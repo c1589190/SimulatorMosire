@@ -90,11 +90,16 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | 项 | 状态 |
 |---|---|
 | 总纲 spec | ✅ 已批准、已提交 |
-| 实现计划 | ✅ 已落（本地 `2610229`，**未推送**） |
-| M0 | ⬜ 未开始 |
+| 实现计划 | ✅ 已落（本地 `2610229` + 本机化修正，**未推送**）；阶段推进机制见其 **§六** |
+| M0 | 🔄 进行中（2026-09-16 开跑，本会话内联执行） |
 | 远程仓库 | `https://github.com/c1589190/SimulatorMosire`（**PRIVATE**，默认分支 `main`） |
 
-**M0 的硬阻塞项**：`~/.m2` 里的 `agentlib-mosire` 是过时构建（**49 类**，源码构建产物应为
-**118 类**），`ToolCallAuthorizer`/`ResourceAuthorizer`/`Digest`/`ApprovalCoordinator`/`AskKind`
-全部缺失。修复：`cd ~/ProjectMosire && ./mvnw -pl AgentLibMosire -am install`。
-详见实现计划 Task 1。
+**M0 硬阻塞项（2026-09-16 本机实测修正）**：`~/.m2` 里的 `agentlib-mosire` 是 2026-09-13 的
+陈旧构建（**109 类**，源码构建产物为 **118 类**），缺 `permission` 包 8 类
+（含 `ResourceAuthorizer`）与 `plugin.HostServices`。修复：只重建安装——
+`cd ~/ProjectMosire && ./mvnw -Dspotbugs.skip=true -pl AgentLibMosire -am install`。
+**用户已裁决：暂缓**把 `0.1.0-SNAPSHOT` 升为固定版本（ProjectMosire 有在途工作），
+本仓暂依赖 SNAPSHOT，由 `AgentLibAvailabilityTest` 钉住类可用性。详见实现计划 §〇.4 / Task 1。
+
+**机器与路径**：本机为 `/root/...`（原稿写的 `/home/cna/...` 已全文替换）；本机**无 `unzip`**，
+数 JAR 类数用 `jar tf`。

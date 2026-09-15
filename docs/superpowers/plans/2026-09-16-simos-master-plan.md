@@ -58,126 +58,108 @@ M0 骨架 ──→ M1 UtilSimos ──→ M2 MapSimos ──┬──→ M3 Soc
 
 M6 只依赖 M2，可与 M3/M4 并行。其余严格串行。
 
+### 0.4 本机化修正（2026-09-16，原稿写于另一台机器）
+
+计划原稿的路径与若干数字写于另一台机器（`/home/cna`）。本机执行前已做如下修正，全部经实测核实：
+
+| # | 原稿 | 本机修正 |
+|---|---|---|
+| 1 | 路径一律 `/home/cna/...` | 一律 `/root/...`（换机器时全文替换即可） |
+| 2 | Task 1 用 `unzip -l` 数类 | 本机**没有 `unzip`** → 一律改用 `jar tf` |
+| 3 | Task 1 改 10 个版本引用文件 | 实测 **9 个**——`MainMosire/.../AppPluginsWiringTest.java` 本机已不存在 |
+| 4 | 陈旧 JAR 为 2026-09-10 构建、**49 类** | 本机实测为 2026-09-13 构建、**109 类**：缺 `permission` 包 8 类 + `plugin/HostServices`（恰是最近两次提交新增的类） |
+| 5 | Task 1 升固定版本 `0.2.0` | **用户裁决：暂缓升版**（ProjectMosire 有在途工作）→ 只重建 + 安装，本仓依赖 `0.1.0-SNAPSHOT`；后续待办见 §五 风险 1 |
+| 6 | Task 5 用 sed 降版本号做护栏自证 | 暂缓升版后该手法失效 → 改为**换回备份的陈旧 JAR** 做自证（Task 5 Step 5~6） |
+
+实测环境（全部就绪，无需联网拉取）：JDK 21.0.12；`./mvnw` = Maven 3.9.16（复用 ProjectMosire 的 wrapper，发行版已缓存）；enforcer 3.6.3 / Spotless 3.10.2 / Checkstyle 3.6.0 / SpotBugs 4.10.4.1 四插件与全部依赖（Jackson 2.22.2、JUnit 6.1.3、AssertJ 3.27.7、MCP-BOM 2.0.1、sqlite-jdbc 3.53.4.0 …）均已在 `~/.m2` 缓存。
+
 ---
 
 ## 一 M0：构建骨架（可执行）
 
-### Task 1: 固定 AgentLibMosire 版本并重建本地 JAR
+### Task 1: 重建并安装 AgentLibMosire（解除硬阻塞；版本号暂缓升）
 
-**为什么排第一**：这是**硬阻塞项**。2026-09-16 实测 `~/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar` 是 2026-09-10 的旧构建，只有 **49 个类**；而 `AgentLibMosire/target/classes` 有 **118 个类**（源码 91 个 `.java`，含嵌套类共 118 个 `.class`）。spec §10.5 列出的能力（`ToolCallAuthorizer`、`ResourceAuthorizer`、`Digest`、`ApprovalCoordinator`、`AskKind`）**在旧 JAR 里全部缺失**。不先修这个，M0 Task 5 的验收测试根本编译不过。
+**为什么排第一**：这是**硬阻塞项**。2026-09-16 本机实测 `~/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar` 是 **2026-09-13 的陈旧构建，只有 109 个类**；而重新编译的 `AgentLibMosire/target/classes` 有 **118 个类**。缺失的 9 个类正是 `permission/{Operation, ResourceAuthorizer, ResourceDeniedException, ResourceId, ResourceManifest, ResourcePolicy, ResourceScope, ResourceScopeMap}` 与 `plugin/HostServices`——`ResourceAuthorizer` 是 spec §10.5 点名复用的能力，不在 JAR 里，Task 5 的验收测试根本编译不过。
+
+**版本号裁决（2026-09-16 用户拍板：暂缓升）**：**本次不**把 `0.1.0-SNAPSHOT` 升为固定版本 `0.2.0`。理由：`~/ProjectMosire` 工作树有在途工作（插件系统，其 `开发计划.md` 记 工作束四 进行中），其中根 `pom.xml` 与 `MainMosire/pom.xml` 正是版本替换要碰的两个文件，升版本会与在途改动混在一起。处置：**只重建 + 安装**，本仓先依赖 `0.1.0-SNAPSHOT`，由 Task 5 的 `AgentLibAvailabilityTest` 钉住类可用性；待 ProjectMosire 在途工作落地后，再另起一次"升固定版本"的机械操作（9 个文件：5 个 pom + 3 个 `Version.java` + 1 处测试常量）并同步本仓父 POM。
 
 **Files:**
-- Modify: `/home/cna/ProjectMosire/pom.xml:9`（`<version>0.1.0-SNAPSHOT</version>` → `0.2.0`）
-- Modify: `/home/cna/ProjectMosire/AgentLibMosire/pom.xml:10`（`<parent>` 块内的 version）
-- Modify: `/home/cna/ProjectMosire/BrainMosire/pom.xml:10`（同上）
-- Modify: `/home/cna/ProjectMosire/MainMosire/pom.xml:10`（同上）
-- Modify: `/home/cna/ProjectMosire/BashPluginMosire/pom.xml:10`（同上）
-- Modify: `/home/cna/ProjectMosire/AgentLibMosire/src/main/java/io/mosire/agentlib/Version.java`（`VERSION` 常量）
-- Modify: `/home/cna/ProjectMosire/BrainMosire/src/main/java/io/mosire/brain/Version.java`（`VERSION` 常量）
-- Modify: `/home/cna/ProjectMosire/MainMosire/src/main/java/io/mosire/main/Version.java`（`VERSION` 常量）
-- Modify: `/home/cna/ProjectMosire/BashPluginMosire/src/test/java/io/mosire/bash/BashPluginLoadPathTest.java:57`（`PLUGIN_VERSION` 常量）
-- Modify: `/home/cna/ProjectMosire/MainMosire/src/test/java/io/mosire/main/app/AppPluginsWiringTest.java:43`（`PLUGIN_VERSION` 常量）
+- **不改任何源码文件**（对 `~/ProjectMosire` 零侵入）
+- 产物：`/root/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar` 被重建（109 类 → 118 类）
+- 备份产物：`/tmp/simos-m0-backup/agentlib-mosire-stale-109.jar`（Task 5 护栏自证用的陈旧样本）
 
 **Interfaces:**
 - Consumes: 无（本任务是全计划的前置）
-- Produces: 本地仓库中的 `io.mosire:agentlib-mosire:0.2.0` JAR，含 **≥118** 个 `.class`。Task 5 与 `simos-core/pom.xml` 依赖此坐标与版本号
+- Produces: 本地仓库中类数 **≥118** 的 `io.mosire:agentlib-mosire:0.1.0-SNAPSHOT`。Task 5 与 `simos-core/pom.xml` 依赖此坐标
 
-**⚠️ 影响面**：本任务修改的是**另一个仓库** `~/ProjectMosire`，它当前有在途工作（其 `开发计划.md` 记 工作束三、工作束七 均"进行中"）。改动是机械的 10 处字符串替换，但需在 ProjectMosire 侧单独提交。
+- [ ] **Step 1: 备份陈旧 JAR 并记录基线（护栏自证要用）**
 
-- [ ] **Step 1: 记录基线（改动前）**
+⚠️ **必须在 Step 2 重建之前做**——重建会覆盖 `~/.m2` 里的旧 JAR，而 Task 5 要拿这份陈旧样本证明护栏真的会响。
 
 ```bash
-cd /home/cna/ProjectMosire
-echo "引用 0.1.0-SNAPSHOT 的文件数（期望 10）:"
-grep -rl "0\.1\.0-SNAPSHOT" . --exclude-dir=.git --exclude-dir=target 2>/dev/null | wc -l
+mkdir -p /tmp/simos-m0-backup
+J=/root/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar
+cp -n "$J" /tmp/simos-m0-backup/agentlib-mosire-stale-109.jar
+ls -l /tmp/simos-m0-backup/
+echo "陈旧 JAR 类数（期望 109）:"
+jar tf "$J" | grep -c '\.class$'
 ```
 
-Expected: `10`
+Expected: 备份文件存在；类数 `109`
 
-**⚠️ `--exclude-dir=.git` 不可省**。不加的话 `grep -r` 会遍历 `.git/`，而 `.git/logs/HEAD` 里存着历史提交信息——若任何一条提到该字符串，下一步的 `sed` 就会**改写 git 元数据**。下面的数量守卫同时兜住这个风险。
-
-- [ ] **Step 2: 替换版本字符串（带数量守卫）**
+- [ ] **Step 2: 重建并安装 AgentLibMosire（解除阻塞）**
 
 ```bash
-cd /home/cna/ProjectMosire
-FILES=$(grep -rl "0\.1\.0-SNAPSHOT" . --exclude-dir=.git --exclude-dir=target 2>/dev/null)
-N=$(echo "$FILES" | wc -l)
-echo "待改文件数: $N"
-[ "$N" -eq 10 ] || { echo "❌ 文件数与预期(10)不符，中止以免误改"; echo "$FILES"; exit 1; }
-echo "$FILES"
-echo "$FILES" | xargs sed -i 's/0\.1\.0-SNAPSHOT/0.2.0/g'
-```
-
-Expected: 打印 10 个文件路径后替换
-
-- [ ] **Step 3: 验证无残留**
-
-```bash
-cd /home/cna/ProjectMosire
-echo "残留 0.1.0-SNAPSHOT（期望 0）:"
-grep -rl "0\.1\.0-SNAPSHOT" . --exclude-dir=.git --exclude-dir=target 2>/dev/null | wc -l
-echo "新版本出现次数（期望 10）:"
-grep -rl "0\.2\.0" . --exclude-dir=.git --exclude-dir=target 2>/dev/null | wc -l
-```
-
-Expected: 第一行 `0`，第二行 `10`
-
-- [ ] **Step 4: 证明 ProjectMosire 自身没被改坏**
-
-```bash
-cd /home/cna/ProjectMosire
-./mvnw -q -Dspotbugs.skip=true verify
-```
-
-Expected: `BUILD SUCCESS`。加 `-Dspotbugs.skip=true` 是因为 SpotBugs 在本机最慢模块上会跑数分钟（其 POM 注释记载 1.6GB 内存机器上曾超 10 分钟）。
-
-- [ ] **Step 5: 重建并安装 AgentLibMosire（解除阻塞）**
-
-```bash
-cd /home/cna/ProjectMosire
+cd /root/ProjectMosire
 ./mvnw -q -Dspotbugs.skip=true -pl AgentLibMosire -am install
 ```
 
 Expected: `BUILD SUCCESS`
 
-- [ ] **Step 6: 验证新 JAR 内容（关键断言）**
+> 本任务**不改 ProjectMosire 的任何源码**，因此不需要先跑它的全量 `verify`（旧版计划里"证明 ProjectMosire 自身没被改坏"一步随版本升级一并移除）。零侵入由 Step 4 的 `git status` 对照证明。
+
+- [ ] **Step 3: 验证新 JAR 内容（关键断言）**
 
 ```bash
-J=/home/cna/.m2/repository/io/mosire/agentlib-mosire/0.2.0/agentlib-mosire-0.2.0.jar
+J=/root/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar
 echo "JAR: $J"
 ls -l "$J"
-echo "类数（期望 >= 118，旧 JAR 为 49）:"
-unzip -l "$J" | grep -c '\.class$'
+echo "类数（期望 >= 118，陈旧 JAR 为 109）:"
+jar tf "$J" | grep -c '\.class$'
 echo "关键类抽查:"
-for c in ToolCallAuthorizer ResourceAuthorizer ResourceScopeMap Digest ApprovalCoordinator AskKind OpenAICompatibleLlmClient SqliteEventStore; do
+for c in ToolCallAuthorizer Digest ResourceAuthorizer ResourceScope ResourceScopeMap \
+         ApprovalCoordinator AskKind HostServices PluginToolSource \
+         OpenAICompatibleLlmClient LlmRouteLoader SqliteEventStore FileConfigStore; do
   printf "  %-28s " "$c"
-  unzip -l "$J" | grep -q "/$c\.class" && echo "✓" || echo "✗ 缺失"
+  jar tf "$J" | grep -q "/$c\.class" && echo "✓" || echo "✗ 缺失"
 done
 ```
 
-Expected: 类数 `>= 118`；八个关键类**全部 `✓`**
+Expected: 类数 `>= 118`；十三个关键类**全部 `✓`**（与 Task 5 测试断言的清单同源）
 
-- [ ] **Step 7: 提交（在 ProjectMosire 仓库内）**
+> 本机**没有 `unzip`**（旧版计划用的是 `unzip -l`），一律改用 JDK 自带的 `jar tf`。
+
+- [ ] **Step 4: 交叉核对（JAR 类集合 == target/classes 类集合）**
 
 ```bash
-cd /home/cna/ProjectMosire
-git add pom.xml AgentLibMosire/pom.xml BrainMosire/pom.xml MainMosire/pom.xml BashPluginMosire/pom.xml \
-  AgentLibMosire/src/main/java/io/mosire/agentlib/Version.java \
-  BrainMosire/src/main/java/io/mosire/brain/Version.java \
-  MainMosire/src/main/java/io/mosire/main/Version.java \
-  BashPluginMosire/src/test/java/io/mosire/bash/BashPluginLoadPathTest.java \
-  MainMosire/src/test/java/io/mosire/main/app/AppPluginsWiringTest.java
-git diff --cached --stat
-git commit -m "chore: 版本由 0.1.0-SNAPSHOT 升为固定版本 0.2.0
-
-SimulatorMosire 需依赖一个不随 SNAPSHOT 漂移的 agentlib-mosire。
-本仓 4 个模块均继承父 POM 版本，一并更新（含 3 个 Version.java 常量
-与 2 处测试常量）。
-
-Co-Authored-By: Claude Code <noreply@anthropic.com>"
+J=/root/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar
+jar tf "$J" | grep '\.class$' | sort > /tmp/jar_classes_new.txt
+(cd /root/ProjectMosire/AgentLibMosire/target/classes && find . -name '*.class' | sed 's|^\./||' | sort) > /tmp/target_classes.txt
+echo "差异行数（期望 0）:"
+diff /tmp/jar_classes_new.txt /tmp/target_classes.txt | wc -l
 ```
 
-**不推送**（G11）。
+Expected: `0`——证明 JAR 与源码构建产物**逐类一致**，不再有"装了一半"的状态
+
+- [ ] **Step 5: 记录结论（本任务无提交）**
+
+本任务不产生任何源码改动，**没有可提交的内容**。只须确认零侵入：
+
+```bash
+cd /root/ProjectMosire && git status --short
+```
+
+Expected: 输出与任务开始前**完全一致**（只有原本就在途的那些条目），`0.1.0-SNAPSHOT` 相关文件一个都不在内。
 
 ---
 
@@ -200,16 +182,16 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Create: `mvnw`、`mvnw.cmd`、`.mvn/wrapper/maven-wrapper.properties`（自 ProjectMosire 复制）
 
 **Interfaces:**
-- Consumes: Task 1 产出的 `io.mosire:agentlib-mosire:0.2.0`（仅 `simos-core` 用）
+- Consumes: Task 1 产出的 `io.mosire:agentlib-mosire:0.1.0-SNAPSHOT`（≥118 类；仅 `simos-core` 用）
 - Produces: 五个可构建的模块，坐标 `io.mosire:simos-{util,map,social,unit,core}:0.1.0-SNAPSHOT`；父 POM 中 `simos-parent` 的 `<properties>` 与 `<dependencyManagement>` 供 Task 3/4/5 追加
 
 - [ ] **Step 1: 复制 Maven wrapper（复用已验证可用的一份）**
 
 ```bash
-cd /home/cna/SimulatorMosire
-cp /home/cna/ProjectMosire/mvnw /home/cna/ProjectMosire/mvnw.cmd .
+cd /root/SimulatorMosire
+cp /root/ProjectMosire/mvnw /root/ProjectMosire/mvnw.cmd .
 mkdir -p .mvn/wrapper
-cp /home/cna/ProjectMosire/.mvn/wrapper/maven-wrapper.properties .mvn/wrapper/
+cp /root/ProjectMosire/.mvn/wrapper/maven-wrapper.properties .mvn/wrapper/
 chmod +x mvnw
 ./mvnw -v
 ```
@@ -256,8 +238,10 @@ Expected: 打印 Maven 版本（应 ≥ 3.8）
     <junit.version>6.1.3</junit.version>
     <assertj.version>3.27.7</assertj.version>
 
-    <!-- 与 ~/ProjectMosire 的固定版本保持一致（Task 1）。改这里之前先改那边并重新 install。 -->
-    <agentlib-mosire.version>0.2.0</agentlib-mosire.version>
+    <!-- 暂用 SNAPSHOT：用户 2026-09-16 裁决"暂缓升固定版本"（ProjectMosire 有在途工作，
+         Task 1）。类可用性由 simos-core 的 AgentLibAvailabilityTest 钉住防漂移；
+         待 ProjectMosire 在途工作落地后升为固定版本 0.2.0，并同步改这里。 -->
+    <agentlib-mosire.version>0.1.0-SNAPSHOT</agentlib-mosire.version>
 
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
@@ -571,7 +555,7 @@ target/
 - [ ] **Step 7: 构建（本计划第一个绿灯）**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw -q clean compile
 ```
 
@@ -580,7 +564,7 @@ Expected: `BUILD SUCCESS`，五个模块全部 `SUCCESS`
 - [ ] **Step 8: 验证五模块都被 reactor 认到**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw -q validate 2>&1 | tail -5
 ./mvnw help:evaluate -Dexpression=project.modules -q -DforceStdout 2>/dev/null | head -20
 ```
@@ -590,7 +574,7 @@ Expected: 模块列表含全部五个
 - [ ] **Step 9: 提交**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 git add pom.xml .gitignore README.md mvnw mvnw.cmd .mvn \
   simos-util/pom.xml simos-map/pom.xml simos-social/pom.xml simos-unit/pom.xml simos-core/pom.xml \
   simos-util/src simos-map/src simos-social/src simos-unit/src simos-core/src
@@ -689,7 +673,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - [ ] **Step 3: 证明护栏在正常情况下静默**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw -q clean validate
 ```
 
@@ -707,7 +691,7 @@ Expected: `BUILD SUCCESS`（无越界，规则不响）
 ```
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw validate 2>&1 | tail -20
 ```
 
@@ -720,7 +704,7 @@ Expected: **`BUILD FAILURE`**，且输出含 `MapSimos 永远不知道 SocialSim
 从 `simos-map/pom.xml` 删掉刚加的 `<dependency>`。
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw -q clean validate
 grep -c "simos-social" simos-map/pom.xml
 ```
@@ -730,7 +714,7 @@ Expected: `BUILD SUCCESS`；`grep` 计数 `0`
 - [ ] **Step 6: 提交**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 git add simos-util/pom.xml simos-map/pom.xml simos-social/pom.xml simos-unit/pom.xml
 git diff --cached --stat
 git commit -m "build: 模块边界由 enforcer bannedDependencies 在构建期强制
@@ -756,9 +740,9 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - [ ] **Step 1: 复制 checkstyle 规则集**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 mkdir -p config
-cp /home/cna/ProjectMosire/config/checkstyle.xml config/
+cp /root/ProjectMosire/config/checkstyle.xml config/
 head -20 config/checkstyle.xml
 ```
 
@@ -813,7 +797,7 @@ Expected: 打印出规则集头部，确认是有效 XML
 - [ ] **Step 3: 跑完整门禁**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw clean verify 2>&1 | tail -30
 ```
 
@@ -822,7 +806,7 @@ Expected: `BUILD SUCCESS`
 - [ ] **Step 4: 证明三个插件真的执行了（不是静默跳过）**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw clean verify 2>&1 | grep -E "spotless|checkstyle|spotbugs" | head -20
 ```
 
@@ -833,7 +817,7 @@ Expected: 输出中出现 `spotless-maven-plugin:...:check`、`maven-checkstyle-
 在一个源文件里制造格式违规（googleJavaFormat 会拒绝的行）：
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 cat >> simos-util/src/main/java/io/mosire/simos/util/package-info.java <<'EOF'
 
 class SpotlessCanary {   int    x=1; }
@@ -846,7 +830,7 @@ Expected: **`BUILD FAILURE`**，输出指出 `package-info.java` 未通过格式
 - [ ] **Step 6: 还原**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 git checkout simos-util/src/main/java/io/mosire/simos/util/package-info.java
 ./mvnw -q spotless:check && echo "OK: 门禁恢复静默"
 ```
@@ -856,7 +840,7 @@ Expected: `OK: 门禁恢复静默`
 - [ ] **Step 7: 提交**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 git add config/checkstyle.xml pom.xml
 git diff --cached --stat
 git commit -m "build: 接上门禁三件套 Spotless + Checkstyle + SpotBugs
@@ -879,7 +863,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Create: `simos-core/src/test/java/io/mosire/simos/core/AgentLibAvailabilityTest.java`
 
 **Interfaces:**
-- Consumes: Task 1 装好的 `io.mosire:agentlib-mosire:0.2.0`
+- Consumes: Task 1 装好的 `io.mosire:agentlib-mosire:0.1.0-SNAPSHOT`（≥118 类）
 - Produces: 一个**长期不变量测试**——任何人把 `~/.m2` 退回旧构建、或改了版本号却没重新 `install`，这个测试立刻红
 
 - [ ] **Step 1: 写失败测试**
@@ -903,16 +887,17 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * M0 验收：证明本地仓库里的 agentlib-mosire 是完整构建，而不是那个只有 49 个类的过时 JAR。
+ * M0 验收：证明本地仓库里的 agentlib-mosire 是完整构建，而不是那个只有 109 个类的陈旧 JAR。
  *
- * <p>背景：2026-09-16 实测 {@code ~/.m2} 里的 0.1.0-SNAPSHOT 是 2026-09-10 的旧构建，只有 49 个类；
- * 同一时刻 {@code AgentLibMosire/target/classes} 有 118 个类。spec §10.5 依赖的能力
+ * <p>背景：2026-09-16 本机实测 {@code ~/.m2} 里的 0.1.0-SNAPSHOT 是 2026-09-13 的陈旧构建，
+ * 只有 109 个类，缺 {@code permission} 包 8 个类与 {@code plugin.HostServices}；同一时刻
+ * {@code AgentLibMosire/target/classes}（重编译）有 118 个类。spec §10.5 依赖的能力
  * （ToolCallAuthorizer / ResourceAuthorizer / Digest / ApprovalCoordinator / AskKind）
- * 在旧 JAR 里全部缺失。这个测试就是防止那种状态悄悄回来。
+ * 中 {@code ResourceAuthorizer} 在陈旧 JAR 里缺失。这个测试就是防止那种状态悄悄回来。
  */
 class AgentLibAvailabilityTest {
 
-  /** agentlib-mosire 0.2.0 的类文件数；旧过时构建为 49。用 >= 以免新增类时误报。 */
+  /** agentlib-mosire 源码构建的类文件数（118）；2026-09-13 的陈旧构建为 109。用 >= 以免新增类时误报。 */
   private static final int MIN_EXPECTED_CLASSES = 118;
 
   @ParameterizedTest
@@ -963,7 +948,7 @@ class AgentLibAvailabilityTest {
 - [ ] **Step 2: 跑测试，确认它因为"依赖没接上"而失败**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest test 2>&1 | tail -25
 ```
 
@@ -985,37 +970,45 @@ Expected: **编译失败**，报 `程序包 io.mosire.agentlib.tool 不存在`�
 - [ ] **Step 4: 跑测试，确认通过**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest test
 ```
 
 Expected: `BUILD SUCCESS`，14 个用例全绿（13 个参数化 + 1 个 JAR 检查）
 
-- [ ] **Step 5: ★ 故意退回旧 JAR——证明这个测试真的会响（G13）**
+- [ ] **Step 5: ★ 故意换回陈旧 JAR——证明这个测试真的会响（G13）**
+
+本仓当前依赖的就是 `0.1.0-SNAPSHOT`，所以不能再靠"降版本号"制造失败（旧版计划的 sed 手法已随"暂缓升版"裁决失效）。改用 Task 1 Step 1 备份的**陈旧样本**直接替换 `~/.m2` 里的 JAR：
 
 ```bash
-cd /home/cna/SimulatorMosire
-# 临时把 0.2.0 换成旧的过时 0.1.0-SNAPSHOT 做一次实验
-sed -i 's|<agentlib-mosire.version>0.2.0</agentlib-mosire.version>|<agentlib-mosire.version>0.1.0-SNAPSHOT</agentlib-mosire.version>|' pom.xml
+J=/root/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar
+cp "$J" /tmp/simos-m0-backup/agentlib-mosire-fresh.jar      # 备份完好版本
+cp /tmp/simos-m0-backup/agentlib-mosire-stale-109.jar "$J"  # 换上陈旧样本（109 类，缺 permission 包）
+cd /root/SimulatorMosire
 ./mvnw -pl simos-core -am -Dtest=AgentLibAvailabilityTest test 2>&1 | tail -20
 ```
 
-Expected: **`BUILD FAILURE`**，报 `程序包 io.mosire.agentlib.tool 不存在`——旧 JAR 里确实没有这些类
+Expected: **`BUILD FAILURE`**，报 `程序包 io.mosire.agentlib.permission 不存在`（陈旧 JAR 里没有 `ResourceAuthorizer`）
 
-- [ ] **Step 6: 还原版本**
+> 说明：陈旧样本缺类导致的是**编译失败**——测试根本没机会跑到断言。它证明的是"依赖面一旦退化，门禁立刻红"。`类数 >= 118` 那条运行时断言的同类证明由 Task 1 Step 3 的 `jar tf` 计数承担；两处数字同源（陈旧 109 / 源码 118）。
+
+- [ ] **Step 6: 还原 JAR 并复验**
 
 ```bash
-cd /home/cna/SimulatorMosire
-git checkout pom.xml
-grep -n "agentlib-mosire.version" pom.xml
+J=/root/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/agentlib-mosire-0.1.0-SNAPSHOT.jar
+cp /tmp/simos-m0-backup/agentlib-mosire-fresh.jar "$J"
+echo "类数（期望回到 >= 118）:"
+jar tf "$J" | grep -c '\.class$'
+cd /root/SimulatorMosire
+./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest test && echo "OK: 门禁恢复绿"
 ```
 
-Expected: `<agentlib-mosire.version>0.2.0</agentlib-mosire.version>`
+Expected: 类数 `>= 118`；`OK: 门禁恢复绿`
 
 - [ ] **Step 7: 跑 M0 的完整验收判据**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 ./mvnw clean verify 2>&1 | tail -30
 ```
 
@@ -1024,14 +1017,14 @@ Expected: `BUILD SUCCESS`
 - [ ] **Step 8: 提交**
 
 ```bash
-cd /home/cna/SimulatorMosire
+cd /root/SimulatorMosire
 git add simos-core/pom.xml simos-core/src/test
 git diff --cached --stat
 git commit -m "test: simos-core 接入 agentlib-mosire 并钉死类可用性（M0 验收）
 
 AgentLibAvailabilityTest 断言 13 个 spec §10.5 要复用的类可加载，
-并直接读 JAR 断言类数 >= 118——旧过时构建（49 类）会让它立刻红。
-已用故意降级到 0.1.0-SNAPSHOT 证伪过该测试确实会响。
+并直接读 JAR 断言类数 >= 118——陈旧构建（109 类，缺 permission 包）
+会让它立刻红。已用换回备份的陈旧 JAR 证伪过该测试确实会响。
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
@@ -1158,10 +1151,39 @@ L1 子节点写 `edges` 静默丢失 / L2 双份连通性存储 / L3 方向数�
 
 **占位符扫描**：无 TBD / TODO / "适当配置" / "类似 Task N"。所有可执行步骤都带真实命令、真实 XML、真实 Java。
 
-**类型一致性**：`agentlib-mosire` 版本号在 Task 1（`0.2.0`）、Task 2 父 POM（`<agentlib-mosire.version>0.2.0`）、Task 5 测试断言（`>= 118`）三处一致；模块 artifactId 在 `pom.xml`、五个模块 POM、Task 3 的 enforcer `<exclude>` 中拼写一致。
+**类型一致性**：`agentlib-mosire` 版本号在 Task 1（`0.1.0-SNAPSHOT`，暂缓升版裁决）、Task 2 父 POM（`<agentlib-mosire.version>0.1.0-SNAPSHOT`）、Task 5（`Consumes` 与测试断言 `>= 118`）三处一致；类数两处同源（陈旧 109 / 源码 118：Task 1 Step 1~3 与 Task 5 测试注释）；模块 artifactId 在 `pom.xml`、五个模块 POM、Task 3 的 enforcer `<exclude>` 中拼写一致。
 
 **已知风险**：
 
-1. **Task 1 修改另一个仓库**（`~/ProjectMosire`，有在途工作）。改动机械（10 处常量），但需在那边单独提交。若用户希望暂缓升版本，可只做 Step 5~6（重新 `install`），把版本固定推迟——但那会让本计划 Task 5 的 `agentlib-mosire.version` 需写 `0.1.0-SNAPSHOT`。
+1. **（2026-09-16 已裁决，降级为开口项）升固定版本推迟**：用户拍板本次**不**改 `~/ProjectMosire`（其工作树有插件系统在途工作，两个待改 pom 均在改动中），Task 1 只重建 + 安装。**待办**：ProjectMosire 在途工作落地后，另起一次机械操作把 `0.1.0-SNAPSHOT` → `0.2.0`（9 个文件：5 pom + 3 `Version.java` + 1 测试常量；⚠️ 执行前先 `grep -rl "0\.1\.0-SNAPSHOT" . --exclude-dir=.git --exclude-dir=target` 核对数量——原计划写的 10 个已过时），并在 ProjectMosire 侧单独提交，随后同步本仓父 POM 的 `agentlib-mosire.version` 与 Task 5 的 `Consumes`。
 2. **`simos-core` 的 MCP / sqlite / 日志实现依赖推迟到 M4/M5**（已定，非开口项）——M0 加进来也没有代码用。真到 M5 时需先用 `mvn dependency:tree` 确认 `mcp-bom` 提供的 artifactId 再写死。
 3. **M1~M6 是路线图不是步骤**，直接照做会卡在未裁决的设计上。每份独立计划的前置条件已在该项"待决"一行列明。
+
+---
+
+## 六 阶段推进机制（2026-09-16 追加）
+
+M0~M6 是**阶段**，每个阶段走同一条五步流水线：
+
+```
+① 裁决待决项   →  ② 写模块 spec  →  ③ 写 bite-sized 计划  →  ④ 执行  →  ⑤ 关账
+ （brainstorming）   （docs/superpowers/specs/）  （writing-plans）   （executing-plans / 子代理）
+```
+
+- **① 是硬门**：总纲 §十三 列了每模块的待决项（亦摘要在本计划 §二 每项"待决"一行）。
+  **未裁决就不写该模块的 bite-sized 步骤**——否则等于编造设计。
+- **⑤ 关账判据**：spec §11 对应判据逐条过；`./mvnw verify` 绿；每条新护栏（enforcer 规则、格式门禁、
+  测试不变量）都要有**故意违规**用例自证会响（G13）。
+- 每阶段结束在本计划 §二 对应项标记状态，并按 G11 提交（不推送）。
+
+| 阶段 | 入口（前置） | ① 要裁决的 | ⑤ 要过的判据 |
+|---|---|---|---|
+| **P0 = M0 骨架** | 无——**本机化修正后即可执行** | 无（spec §10 已钉死） | `mvn verify` 绿；`AgentLibAvailabilityTest` 绿；三条护栏自证 |
+| **P1 = M1 UtilSimos**（成败点） | P0 + 裁决五项 | 八大件方法签名 / Address 转义与边界 / Resolver 注册与优先级 / TemporalSeries 插值·事件语义 / Facet 协议 | 八大件各有单测；往返不变式框架含故意漂移字段的失败用例 |
+| **P2 = M2 MapSimos** | P1 + 克隆 GSimulator 到本机（`~/DevMosire/GSimulator`，只参考不依赖）+ 裁决五项 | 六边形数据结构 / Region 统一三概念 / 连通性稳定 ID 规则 / 生成算法参数面 / `MapChangeSet` 字段清单 | L1~L9 逐条对应用例；框选随机化与自动河流各有验收 |
+| **P3 = M3 Social+Unit** | P2 + 裁决五项 | 增长率段边界语义 / 人口 cache 策略 / 编制树操作面 / 移动 materialize 精度与舍入 / A* 启发函数 | 人口分段积分对账；移动逐值验算（`40-12.5=27.5`；`27.5-32.5=-5`） |
+| **P4 = M4 Core 内核**（成败点） | P3 + 裁决三项 | 时间线 DAG 存储 schema / Checkpoint 周期 / Command 类型清单 | 时间线可分岔；`correlationId` 全链可追；CONFLICT 有真实并发用例 |
+| **P5 = M5 Core 外壳** | P4 + 裁决四项 | GUI 形态 / MCP 工具清单 / `Operation` 是否扩展 / cap 硬上限语义 | Agent 与玩家走同一 Command 路径；MCP 达任意合法状态 |
+| **P6 = M6 GSimap 导入器** | P2（可与 P3/P4 并行） | 输入形态已实测（见 §二 M6） | 旧 `*_map.json` 能转成 simos 数据集 |
+
+**并行机会**：P1 的裁决会与 P0 执行无冲突（裁决不写代码）；P6 可与 P3/P4 并行。
