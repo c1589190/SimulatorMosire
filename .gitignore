@@ -11,3 +11,6 @@ target/
 CLAUDE.local.md
 **/.claude/settings.local.json
 .claude/agent-memory-local/
+
+# 会话原始记录 —— 内容已消化进 spec/计划，留本地作溯源，不进版本库
+*-gsimulator.txt
