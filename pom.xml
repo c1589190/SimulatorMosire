@@ -155,7 +155,6 @@
       </plugins>
     </pluginManagement>
     <plugins>
-      <!-- 门禁的 execution 接线在 Task 4 完成；此处先只锚定 Java/Maven 版本 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
@@ -169,6 +168,48 @@
                 <requireMavenVersion><version>[3.8,)</version></requireMavenVersion>
               </rules>
             </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- 门禁三件套：格式 / 静态风格 / 缺陷扫描。
+           版本与规则配置锚定在上方 pluginManagement，此处只接 execution。 -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <goals><goal>check</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>checkstyle-check</id>
+            <phase>validate</phase>
+            <goals><goal>check</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- fork/768m/30min：本机内存下 effort=More 的分析进程会被换页拖慢，
+             撞上插件默认 60s 超时。三项照搬 ProjectMosire pom.xml:263-267。 -->
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <configuration>
+          <fork>true</fork>
+          <maxHeap>768</maxHeap>
+          <timeout>1800000</timeout>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotbugs-check</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal></goals>
           </execution>
         </executions>
       </plugin>
