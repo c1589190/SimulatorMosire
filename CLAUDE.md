@@ -64,17 +64,22 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 
 ## 构建与门禁
 
-> ⚠️ **M0 尚未落地，`mvnw` 与 `pom.xml` 都还不存在**（见下方"当前状态"）。
-> 下面的命令是 M0 完成后的目标形态，现在跑会失败。
-
 ```bash
-./mvnw verify          # Spotless + Checkstyle + SpotBugs + Surefire
+./mvnw verify          # Spotless + Checkstyle + SpotBugs + Surefire（M0 起即为硬门禁）
 ./mvnw -q -Dtest=<类名> test    # 迭代时只跑相关单条用例
 ```
 
-- **`mvn test` 不跑 SpotBugs**，关账前须单独跑 `spotbugs:check`
+- 只想跑**某一个模块**的用例时，`-pl <模块> -am` 会把 `-Dtest=` 带到 reactor 里每个模块，
+  没有该用例的模块会让 surefire 先报 `No tests matching pattern`——加
+  `-Dsurefire.failIfNoSpecifiedTests=false`
+- **`mvn test` 不跑 SpotBugs**，关账前须单独跑 `spotbugs:check`（或直接 `verify`）
 - Java **21**；Maven `[3.8,)`
 - 父 POM `io.mosire:simos-parent`，**不继承** `io.mosire:mosire-parent`
+- **中文 Javadoc 的折行由 google-java-format 决定**（它按字符数折，100 汉字即换行，
+  手工断行处会留下接缝空格）。写注释不要手工调行宽，改完跑
+  `./mvnw -q spotless:apply`；`~/ProjectMosire` 同为该形态
+- 模块边界不是靠约定：`simos-util`/`map`/`social`/`unit` 各自带
+  `maven-enforcer-plugin` 的 `bannedDependencies`，越界即构建失败（`simos-core` 是集成点，不设限）
 
 ## 纪律
 
@@ -91,15 +96,20 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 |---|---|
 | 总纲 spec | ✅ 已批准、已提交 |
 | 实现计划 | ✅ 已落（本地 `2610229` + 本机化修正，**未推送**）；阶段推进机制见其 **§六** |
-| M0 | 🔄 进行中（2026-09-16 开跑，本会话内联执行） |
+| M0 | ✅ 已完成（5/5，2026-09-16 本会话内联执行；`./mvnw clean verify` 全绿） |
+| M1 | ⬜ 未开始——**先裁决** spec §十三 的五项待决，再写模块 spec（见实现计划 §六 P1） |
 | 远程仓库 | `https://github.com/c1589190/SimulatorMosire`（**PRIVATE**，默认分支 `main`） |
 
-**M0 硬阻塞项（2026-09-16 本机实测修正）**：`~/.m2` 里的 `agentlib-mosire` 是 2026-09-13 的
-陈旧构建（**109 类**，源码构建产物为 **118 类**），缺 `permission` 包 8 类
-（含 `ResourceAuthorizer`）与 `plugin.HostServices`。修复：只重建安装——
-`cd ~/ProjectMosire && ./mvnw -Dspotbugs.skip=true -pl AgentLibMosire -am install`。
-**用户已裁决：暂缓**把 `0.1.0-SNAPSHOT` 升为固定版本（ProjectMosire 有在途工作），
-本仓暂依赖 SNAPSHOT，由 `AgentLibAvailabilityTest` 钉住类可用性。详见实现计划 §〇.4 / Task 1。
+**M0 已完成的东西**：五模块骨架（`simos-util/map/social/unit/core`）+ 父 POM；
+模块边界 enforcer；门禁三件套（Spotless/Checkstyle/SpotBugs）；`simos-core` 接入
+`agentlib-mosire` 并由 `AgentLibAvailabilityTest` 钉住（13 个类可加载 + JAR 类数 ≥ 118）。
+每条护栏都有一个**故意违规用例**证明它会响，见实现计划 Task 3/4/5。
+
+**AgentLibMosire 依赖现状**：`~/.m2` 里的 `0.1.0-SNAPSHOT` 已重建为 118 类的完整构建
+（2026-09-16；此前是 2026-09-13 的 109 类陈旧构建，缺 `permission` 包 8 类与
+`plugin.HostServices`）。**用户已裁决：暂缓**升为固定版本（ProjectMosire 有在途工作），
+本仓暂依赖 SNAPSHOT。若哪天 `AgentLibAvailabilityTest` 红了，先按测试里的提示
+`cd ~/ProjectMosire && ./mvnw -pl AgentLibMosire -am install` 重建。
 
 **机器与路径**：本机为 `/root/...`（原稿写的 `/home/cna/...` 已全文替换）；本机**无 `unzip`**，
 数 JAR 类数用 `jar tf`。
