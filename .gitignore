@@ -1,0 +1,13 @@
+# 构建产物
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Claude Code —— 本机专用，不进仓库（官方要求）
+CLAUDE.local.md
+**/.claude/settings.local.json
+.claude/agent-memory-local/
