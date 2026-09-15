@@ -646,7 +646,8 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 <exclude>io.mosire:agentlib-mosire</exclude>
 ```
 
-`<message>`：`MapSimos 永远不知道 SocialSimos / UnitSimos 存在（spec §3.1 / G7）`
+`<message>`：`MapSimos 永远不知道 SocialSimos / UnitSimos 存在，也不依赖 AgentLibMosire（spec §3.1 / G7）`
+（与 Step 4b 的期望报文一致；v1 稿只写到"存在"、漏了 AgentLibMosire，实测时已补齐）
 
 `simos-social/pom.xml`：
 
@@ -813,14 +814,32 @@ cd /root/SimulatorMosire
 
 Expected: `BUILD SUCCESS`
 
+⚠️ **2026-09-16 实测**：首次跑**必然 `BUILD FAILURE`**——Spotless 会指出手写的
+`package-info.java` Javadoc 未过格式校验。这不是接线错误，是 google-java-format
+按**字符数**折行、中文字符被算作 1 列（视觉上 100 汉字/行），手工断行处还会留下接缝空格。
+`~/ProjectMosire`（同为中文注释、同一套 gjf）里就是这个形态，属既定风格。
+跑一次 `./mvnw -q spotless:apply` 让它统一，再重跑 `clean verify`。
+**后续所有中文 Javadoc 都按 gjf 的折行结果为准，不要手工调行宽。**
+
 - [ ] **Step 4: 证明三个插件真的执行了（不是静默跳过）**
 
 ```bash
 cd /root/SimulatorMosire
-./mvnw clean verify 2>&1 | grep -E "spotless|checkstyle|spotbugs" | head -20
+./mvnw clean verify 2>&1 | grep -E "^\[INFO\] --- (spotless|checkstyle|spotbugs):" | sort | uniq -c
 ```
 
-Expected: 输出中出现 `spotless-maven-plugin:...:check`、`maven-checkstyle-plugin:...:check`、`spotbugs-maven-plugin:...:check` **三条**。缺哪条就说明哪个门禁没接上。
+Expected: **三类 goal 各出现 6 次**（`simos-parent` + 五个模块）：
+
+```
+6 checkstyle:3.6.0:check (checkstyle-check)  @ simos-* ---
+6 spotbugs:4.10.4.1:check (spotbugs-check)  @ simos-* ---
+6 spotless:3.10.2:check (spotless-check)  @ simos-* ---
+```
+
+⚠️ 日志里的 goal 前缀是 **`checkstyle`/`spotless`/`spotbugs`**（短名），不是
+`maven-checkstyle-plugin`/`spotless-maven-plugin` 那种全名——按全名 grep 会一条都搜不到，
+误判成"门禁没接上"。另需 `grep -E "^\[INFO\] --- "` 锚定执行行，否则会连
+`<<< spotbugs:check < :spotbugs @ ...` 这类阶段头一起匹配。缺哪条就说明哪个门禁没接上。
 
 - [ ] **Step 5: ★ 故意违规——证明 Spotless 真的会拦（G13）**
 
@@ -839,24 +858,35 @@ Expected: **`BUILD FAILURE`**，输出指出 `package-info.java` 未通过格式
 
 - [ ] **Step 6: 还原**
 
+⚠️ `git checkout` **单独不够**：canary 改的正是 Step 3 里刚被 `spotless:apply` 修过的那个文件，
+checkout 会连格式化修复一起退回，门禁依旧红。还原 = checkout + 再 apply 一次：
+
 ```bash
 cd /root/SimulatorMosire
 git checkout simos-util/src/main/java/io/mosire/simos/util/package-info.java
+./mvnw -q spotless:apply
 ./mvnw -q spotless:check && echo "OK: 门禁恢复静默"
 ```
 
 Expected: `OK: 门禁恢复静默`
+（可用 `git diff -- <该文件>` 确认还原后与 canary 前逐字一致）
 
 - [ ] **Step 7: 提交**
 
 ```bash
 cd /root/SimulatorMosire
-git add config/checkstyle.xml pom.xml
+git add config/checkstyle.xml pom.xml \
+  simos-util/src/main/java/io/mosire/simos/util/package-info.java \
+  simos-map/src/main/java/io/mosire/simos/map/package-info.java \
+  simos-social/src/main/java/io/mosire/simos/social/package-info.java \
+  simos-unit/src/main/java/io/mosire/simos/unit/package-info.java \
+  simos-core/src/main/java/io/mosire/simos/core/package-info.java
 git diff --cached --stat
 git commit -m "build: 接上门禁三件套 Spotless + Checkstyle + SpotBugs
 
 配置照搬 ProjectMosire（googleJavaFormat、effort=More、fork/768m/30min
-超时）。已用故意格式违规证明 Spotless 确实会拦。
+超时）。已用故意格式违规证明 Spotless 确实会拦。顺带按 gjf 结果整理了
+五个 package-info 的中文 Javadoc 折行。
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
