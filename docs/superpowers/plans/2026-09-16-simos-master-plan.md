@@ -985,11 +985,35 @@ class AgentLibAvailabilityTest {
 }
 ```
 
+⚠️ **上面这段测试代码还差一个方法**：13 个 FQN 是字符串，`ResourceAuthorizer` 的 import 因此
+**不被任何代码引用**，checkstyle 的 `UnusedImports` 会拦下它（2026-09-16 实测）。补一个用代码引用
+两个入口类的方法（顺带也是"编译期可用"的正面证明）：
+
+```java
+  /**
+   * 编译期证明：这两个类是 spec §10.5 点名的复用入口，只要它们不在依赖里，本文件根本编译不过。
+   *
+   * <p>（同时这也让两条 import 成为被代码引用的 import——否则 checkstyle 的 UnusedImports 会拦下它们。）
+   */
+  @Test
+  void agentLibEntryPointsAreOnCompileClasspath() {
+    assertThat(ToolCallAuthorizer.class.getName())
+        .isEqualTo("io.mosire.agentlib.tool.ToolCallAuthorizer");
+    assertThat(ResourceAuthorizer.class.getName())
+        .isEqualTo("io.mosire.agentlib.permission.ResourceAuthorizer");
+  }
+```
+
 - [ ] **Step 2: 跑测试，确认它因为"依赖没接上"而失败**
+
+⚠️ 必须带 `-Dsurefire.failIfNoSpecifiedTests=false`：`-am` 会把 `-Dtest=` 带到 reactor 里的
+每个模块，而 `simos-util` 等模块没有这个测试，surefire 会先以
+`No tests matching pattern "AgentLibAvailabilityTest" were executed!` 失败——那是另一道护栏，
+会盖住我们真正要看的编译错误。
 
 ```bash
 cd /root/SimulatorMosire
-./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest test 2>&1 | tail -25
+./mvnw -pl simos-core -am -Dtest=AgentLibAvailabilityTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tail -25
 ```
 
 Expected: **编译失败**，报 `程序包 io.mosire.agentlib.tool 不存在`（`simos-core/pom.xml` 还没加依赖）
@@ -1011,10 +1035,15 @@ Expected: **编译失败**，报 `程序包 io.mosire.agentlib.tool 不存在`�
 
 ```bash
 cd /root/SimulatorMosire
-./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest test
+./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Expected: `BUILD SUCCESS`，14 个用例全绿（13 个参数化 + 1 个 JAR 检查）
+Expected: `BUILD SUCCESS`，**15** 个用例全绿（13 个参数化 + JAR 类数检查 + 编译期入口检查）
+
+> 测试期 stderr 会出现三行 `SLF4J(W): No SLF4J providers were found.`——**不是失败**，
+> 是测试 classpath 上没有日志实现（spec §10.3 有意让日志实现等到 M4/M5 才引）。
+> 要消掉的话是"给 simos-core 加 test 作用域的 `log4j-slf4j2-impl` + `log4j2-test.xml`"，
+> M0 不做。
 
 - [ ] **Step 5: ★ 故意换回陈旧 JAR——证明这个测试真的会响（G13）**
 
@@ -1028,7 +1057,14 @@ cd /root/SimulatorMosire
 ./mvnw -pl simos-core -am -Dtest=AgentLibAvailabilityTest test 2>&1 | tail -20
 ```
 
-Expected: **`BUILD FAILURE`**，报 `程序包 io.mosire.agentlib.permission 不存在`（陈旧 JAR 里没有 `ResourceAuthorizer`）
+Expected: **`BUILD FAILURE`**，报 **`cannot find symbol / class ResourceAuthorizer / location: package io.mosire.agentlib.permission`**
+
+⚠️ **报文与 Step 2 不同，别以为看错了**：Step 2 是**完全没有依赖**，所以报"程序包不存在"；
+这里 `permission` **包是存在的**（陈旧 JAR 里另有 10 个类：`AccessToken`/`AgentIdentity`/
+`ConfigAuth`/`PermissionChecker`/`ToolSpec` 等），缺的是包内的 8 个类。
+2026-09-16 实测：陈旧 JAR 与完好 JAR 的差集恰为 9 个——
+`permission/{Operation, ResourceAuthorizer, ResourceDeniedException, ResourceId, ResourceManifest,
+ResourcePolicy, ResourceScope, ResourceScopeMap}` + `plugin/HostServices`。
 
 > 说明：陈旧样本缺类导致的是**编译失败**——测试根本没机会跑到断言。它证明的是"依赖面一旦退化，门禁立刻红"。`类数 >= 118` 那条运行时断言的同类证明由 Task 1 Step 3 的 `jar tf` 计数承担；两处数字同源（陈旧 109 / 源码 118）。
 
@@ -1040,8 +1076,11 @@ cp /tmp/simos-m0-backup/agentlib-mosire-fresh.jar "$J"
 echo "类数（期望回到 >= 118）:"
 jar tf "$J" | grep -c '\.class$'
 cd /root/SimulatorMosire
-./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest test && echo "OK: 门禁恢复绿"
+./mvnw -q -pl simos-core -am -Dtest=AgentLibAvailabilityTest -Dsurefire.failIfNoSpecifiedTests=false test \
+  && echo "OK: 门禁恢复绿"
 ```
+
+（可加 `cmp -s "$J" /tmp/simos-m0-backup/agentlib-mosire-fresh.jar && echo 与备份逐字节一致` 佐证还原无残留）
 
 Expected: 类数 `>= 118`；`OK: 门禁恢复绿`
 
