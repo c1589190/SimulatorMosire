@@ -681,12 +681,14 @@ Expected: `BUILD SUCCESS`（无越界，规则不响）
 
 - [ ] **Step 4: ★ 故意违规——证明护栏真的会响（G13）**
 
-临时把 `simos-social` 加进 `simos-map/pom.xml` 的 `<dependencies>`：
+⚠️ **本机实测踩过的坑**：**不要**用"`simos-map` 加 `simos-social` 依赖"做用例——那两个模块在 reactor 内互依成环，Maven 的 `ProjectCycleException` 会**先于 enforcer** 拦下它（`BUILD FAILURE` 是响了，但响的是另一道护栏，证明不了 enforcer）。要选**不成环**的违规对：
+
+**用例 4a**——把 `simos-unit` 加进 `simos-social/pom.xml` 的 `<dependencies>`：
 
 ```xml
 <dependency>
   <groupId>io.mosire</groupId>
-  <artifactId>simos-social</artifactId>
+  <artifactId>simos-unit</artifactId>
 </dependency>
 ```
 
@@ -695,13 +697,19 @@ cd /root/SimulatorMosire
 ./mvnw validate 2>&1 | tail -20
 ```
 
-Expected: **`BUILD FAILURE`**，且输出含 `MapSimos 永远不知道 SocialSimos / UnitSimos 存在`
+Expected: **`BUILD FAILURE`**，且输出含 `SocialSimos 与 UnitSimos 互不依赖（spec §3.1 / G8）`
+（2026-09-16 实测：命中 `maven-enforcer-plugin:3.6.3:enforce (enforce-module-boundaries) on project simos-social`）
 
-**若这里 BUILD SUCCESS，说明护栏是假的**——停下来查出原因（常见：`<phase>` 未绑到 validate 之前的阶段、或规则写在了 `pluginManagement` 里没被任何模块执行），修好再继续。这一步是整个 Task 的核心价值；没有它，前面的规则只是装饰。
+**用例 4b**——撤掉 4a，把 `agentlib-mosire` 加进 `simos-map/pom.xml`：
 
-- [ ] **Step 5: 移除故意违规**
+Expected: **`BUILD FAILURE`**，且输出含 `MapSimos 永远不知道 SocialSimos / UnitSimos 存在，也不依赖 AgentLibMosire（spec §3.1 / G7）`
+（2026-09-16 实测命中）
 
-从 `simos-map/pom.xml` 删掉刚加的 `<dependency>`。
+**若两者之一 BUILD SUCCESS，说明那条护栏是假的**——停下来查出原因（常见：规则写在了 `pluginManagement` 里没被任何模块执行、或 execution 的 id 与父 POM 重复导致被覆盖），修好再继续。这一步是整个 Task 的核心价值；没有它，前面的规则只是装饰。
+
+- [ ] **Step 5: 移除两处故意违规**
+
+把 4a / 4b 加的 `<dependency>` 都删掉。
 
 ```bash
 cd /root/SimulatorMosire
@@ -709,7 +717,9 @@ cd /root/SimulatorMosire
 grep -c "simos-social" simos-map/pom.xml
 ```
 
-Expected: `BUILD SUCCESS`；`grep` 计数 `0`
+Expected: `BUILD SUCCESS`；`grep` 计数 `1`——那一处是规则自身声明的
+`<exclude>io.mosire:simos-social</exclude>`（**不是** 0；原稿写 0 是笔误，
+`<dependencies>` 里不应再有第二条 `simos-social`，用 `grep -n` 人工确认其位置在 `<bannedDependencies>` 块内即可）。
 
 - [ ] **Step 6: 提交**
 
