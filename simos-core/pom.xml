@@ -26,8 +26,13 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
     </dependency>
-    <!-- agentlib-mosire 依赖在 Task 5 接入（M0 只引到这里为止）；
-         sqlite-jdbc / 日志实现 / MCP SDK 到 M4/M5 真正需要时再加。 -->
+    <!-- CoreSimos 是唯一允许依赖 AgentLibMosire 的模块（spec §3.1 / G9）。
+         版本由父 POM dependencyManagement 提供；类可用性由
+         AgentLibAvailabilityTest 钉住，防止 ~/.m2 退回陈旧构建。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>agentlib-mosire</artifactId>
+    </dependency>
+    <!-- MCP SDK / sqlite-jdbc / 日志实现到 M4/M5 真正需要时再加。 -->
     <dependency>
       <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
     </dependency>
