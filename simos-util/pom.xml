@@ -27,4 +27,33 @@
       <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                    <exclude>io.mosire:simos-map</exclude>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                  </excludes>
+                  <message>UtilSimos 是零依赖地基：不得依赖 AgentLibMosire 或任何 simos 模块（spec §3.1 / G6）</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>
