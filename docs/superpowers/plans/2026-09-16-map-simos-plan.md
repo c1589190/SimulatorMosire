@@ -600,7 +600,9 @@ git grep -c "#6CC261" -- .                          # 串味的兜底色（A 的
 TerrainCatalogTest
   - catalogHasExactlySevenKeys            : KEYS.size() == 7
   - defaultsKeySetEqualsKeys              : defaults().keySet() 与 KEYS **顺序**一致   ← 钉保序
-  - defaultsIterationOrderIsStable        : 连调两次 defaults()，key 序逐项相同
+  - ~~defaultsIterationOrderIsStable~~    : ★ **已删**（R-2b，见本任务末的「执行期校正」）——
+                                            它是个**装饰用例**：把 defaults() 换成 Map.copyOf 它照样绿，
+                                            而 copyOf 正是它要抓的那个实现
   - defaultsIsUnmodifiable                : put → UnsupportedOperationException
   - ofThrowsOnUnknownKey                  : of("nope") → IllegalArgumentException，消息含 "未知地形类型"
   - ofNeverFallsBack                      : ★ 断言 of() 里**没有** default 分支 —— 用变异证明（Step 5）
@@ -2251,8 +2253,11 @@ Task 3 的 `Region` **5 组件**与 §4.2 一致（`id`/`name`/`hexes`/`boundary
    **无环。**
 
 **已知的计划期弱点（留给执行期）**：
-- **Task 5 的 `spec` 组件是临时可空的**（`GenerationSpec` 在 Task 8）——
-  执行到 Task 8 时必须**收紧为非 null**，并在报告里明写这次收紧。
+- ~~Task 5 的 `spec` 组件是临时可空的，Task 8 收紧~~ **★ R-48-e 已撤回**：
+  中间会留**两轮 nullable 世界**（Task 6 的 `apply`、Task 7 的反射枚举都得绕开 `spec`），
+  而"收紧"那一步**没人把守**。新口径：Task 5 的 `empty()` 起就 `GenerationSpec.defaults(0L)`，
+  **`spec` 从不 null**；Task 8 的 `specIsNeverNullAfterTask8` 是**守卫**，不是收紧动作。
+  （Task 5 仍然只建 `GenerationSpec` 的**最小骨架**，Task 8 扩写为完整参数面 —— 这一半不变。）
 - **Task 13 的 `map:<mapId>` 段位判定依赖 M1 spec §3.5** —— 计划里没写死答案，
   因为那是 M1 spec 的管辖范围，**执行者要去读，不要凭直觉**。
 - **本计划没有给 `RegionBoundary.of` 与 `RegionIndex.of` 的完整算法** ——
