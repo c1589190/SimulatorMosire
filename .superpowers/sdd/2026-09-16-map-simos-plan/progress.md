@@ -1052,3 +1052,25 @@ R-13-j 源码级无 IO 断言（注意别用裸词 `File` —— 会误伤 `Fiel
 - **R-12-g 的 NaN 守卫是实测钉住的，不是推导的**：自审发现 m12v-4（删整条校验）红在 `-0.1` 那一格、**走不到 NaN** ⇒ 补 m12v-6（"或"形态，只有 NaN 漏过）并对着变异体编译产物逐值定点测量（-0.1/1.1 照样抛、**只有 NaN 未抛**；原件三个值都抛）。
 - **关切（4 条，均不挡关账）**：① `rngFor` 若被内联回 `randomize`，SpotBugs 会立刻复报 —— **编译期无护栏**，只有 `verify` 会响；② m12v-6 的逐值定点测量跑在 `/tmp` 探针上、**没进装置**；③ AssertJ 在"未抛"失败形态下不回显 `.as()` 描述 ⇒ 光看 `.kept` 判不出是哪个值红的；④ 装置只跑 `test` 不跑 `verify`（判的是测试判别力，装置绿 ≠ 门禁绿，两者分别跑过）。
 - **挂起项**：`terrainA.equals(terrainB)` 不设守卫（R-12-h 裁定为合法输入）—— 两种地形相同时变更集**仍会 upsert**（值等于原值的 upsert 不是 no-op），下游别假设"upsert 的格一定换了地形"。
+
+## Task 13 派单（2026-09-17）
+
+- **BASE** = `1358d4d`（Task 12 关账提交）。派单时工作树干净。
+- 需求 = `task-13-brief.md` + `task-13-brief-supplement.md`（**补充为准**：R-13-a~j 是派单前扫描的实测裁定，含 brief 的地址笔误纠正与 brief 漏掉的 `MapSnapshot` 一环）。
+- 派单：**省略 `model` 参数**走 glm（GLM 5 小时额度已于 06:52 重置，Task 12 的 429 期间已过）；若再触发 429 则按用户裁定显式传 `model` 换 deepseek 路由。
+
+## Task 13 关账（2026-09-17）
+
+- **交付** `a9d16e2`：`MapSnapshot.java`（33 行，新建）+ `MapResolver.java`（175 行）+ `MapResolverTest.java`（270 行 / **15 条**用例）+ 6 轮 `.kept` + gate 日志 + 报告。提交面 11 文件、1560 insertions，**零越界**（未碰任何既有文件）。
+- **评审形态 = 控制器自读 diff**。当场核过：
+  1. R-13-a~j 逐条对上源码（`kind.name` 点号形式 / 非 map 命名空间在碰 ctx **之前**返回空 / 第 2 段必须 `Entity(∅,·)` / Index 恰 2 元走查格且 canonical 一律 `hex.<q>_<r>` / 合法不服务一律空候选不抛 / 唯一抛点 = 认领 kind 的名字解析 / canonical 全经 `Address` AST 的 `canonical()`、零手拼 / mapId 只回显 / `regionOfHex` 一行委托 `map.regionIndex()` / 源码无 IO）；
+  2. **`segments.get(1)` 无越界风险**：控制器独立读过 `Address` 构造器 —— 段数 < 2 当场抛 IAE（`Address.java:17`），故 `resolve` 里的按下标取值安全；
+  3. **`regionOfHexUsesTheIndex` 的夹具真有判别力**：控制器独立读过 `RegionIndex` 的构造 —— 确为**按 `RegionId` 字典序排序后 `putIfAbsent`**（插入序 `r2` 在前仍给 `r1`），线性扫描给 `r2` ⇒ 红点在保护"用索引"这条；
+  4. `MapSnapshot` 的 null 校验（显式 if + IAE「X 不得为 null」）与 `City`/`GameMap`/`Region` 等既有 record **同形制**（不是另立风格）；`namespace()` 返回 `"map"` 且经 `SimulationState` 构造期"键 == namespace()"顺带钉住；
+  5. 6 轮变异：干净世界 111 个 .java / **改前先绿 156+236** / 变异体按白名单推成目标类名 / 原件 md5 六轮同为 `d00e0dad…`（**与工作树提交字节一致**，控制器另跑 `md5sum` 核对）/ 变异体 md5 两两相异 / 改后 `COMPILATION ERROR` 计数全 0 / 每轮 23 个 map 测试类真跑过；红点逐轮落在声明靶子（v1 regionOfHexUsesTheIndex、v2 unknownHexGivesEmptyNotException、v3 registeredThroughRegistry(+同缝 wrongNamespaceIsRejected)、v4 malformedHexIndexIsRejected、v5 mapIdIsEchoedIntoCanonicalAddress 主判别 + 7 处同根因连带、v6 quotedMapIdIsCanonicalized）；
+  6. **控制器独立 `./mvnw -q verify` ⇒ rc=0、`[ERROR]` 行数 0**（与实现者的 gate 日志相互独立）。
+- **裁定（控制器派单文字的算术错误，追认实现者）**：派单写"13 条用例"，但 supplement §2 的**逐条清单实为 15 条**（`resolvesIndexFormToTheSameHex`、`unservedShapesGiveEmptyCandidates` 被标题漏数）。实现者按**清单**交付 15 条 —— 清单才是权威，条数只是它的长度。此错误在控制器，不在实现者。
+- **设计点追认**：`mapOf(ctx)` 在形状判定**之前**调用 ⇒ 被认领的 `map:` 地址一律先过装配故障关（连 `terra.Grass` 这类不服务形状也不例外）；非 map 命名空间则完全不碰 ctx。这是 R-13-h 的合理落法，已在代码注释写明。
+- **关切（5 条，均不挡关账）**：① m13v-2 的红是 **Error 形态**（用例体内收 IAE），不是 Failure —— 装置两类都留痕，不误读为"没跑到断言"；② m13v-5 天生非外科（8 红同根因），已在 `mutate.py` 注释预先声明，主判别用非 m1 的 mapId；③ `resolverDoesNotDoIO` 依赖 surefire 工作目录 = 模块根（R-13-j 指定形态的固有属性）；④ 宽松 hex 名归一（`04_003` → `4_3`）只探针钉过、未单列用例；⑤ 空 mapId（`Entity(∅,"")`）只能由直接构造 AST 产生（`parse` 不可达），未加守卫。
+- **挂起项（承接 R-13-g）**：MapSimos **没有地图身份**（`GameMap` 无 id 组件）⇒ `map:<mapId>` 的 mapId 只回显、**不可校验**；将来 `GameMap` 有 id 字段时应收紧（下游别假设 mapId 已被校验）。
+- **★ 范围裁定（用户 2026-09-17）**：**Task 13 关账即停，Task 14（L1~L9 守卫）/ Task 15（M2 关账）不派单**。M2 到此为止：12 任务交付（Task 1~13 关账），L 级守卫清单与 M2 关账留待下次会话。
