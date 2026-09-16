@@ -1,0 +1,31 @@
+=================== ROUND m6v-4 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/change/MapChangeSet.java
+md5 原件=a252c3e8ead53f533e06a3858446459d  变异体=96310e64efcd121d3553be35eed4323f
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 16
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 18, Failures: 4, Errors: 0, Skipped: 0, Time elapsed: 0.026 s <<< FAILURE! -- in io.mosire.simos.map.change.MapChangeSetTest
+Tests run: 150, Failures: 4, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.componentEmptiedIsRemoveNotUnchanged -- Time elapsed: 0.006 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.emptyDiffStillEntersApply -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.everyComponentIsComparedIndependently -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.betweenDetectsChangedTerrainType -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   MapChangeSetTest.betweenDetectsChangedTerrainType:306 
+[ERROR]   MapChangeSetTest.componentEmptiedIsRemoveNotUnchanged:415 
+[ERROR]   MapChangeSetTest.emptyDiffStillEntersApply:444 [只改了 edges ⇒ 变更集**不得**为空] 
+[ERROR]   MapChangeSetTest.everyComponentIsComparedIndependently:320->assertOnlyComponentChanged:351 [只改 regions ⇒ 变更集非空] 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 150, Failures: 4, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
