@@ -590,3 +590,41 @@ Task 9–14 是生成算法/守卫，Task 15 是关账。
 不要长第二套装置（用户红线：装置不得压过代码）。
 
 **框架期口径**：不派评审者；实现者的**变异自证就是测试**；控制器收到报告后自读 diff。
+
+## Task 4（`pathway` 包）: complete
+
+**代码** `18d755c`（9 文件 / +900 行）→ **收口** `bf714bf`；**报告 + 证据** `fe241ff`。
+`./mvnw clean verify` 全绿：simos-map **105**（原 102，+3）、simos-util 156、simos-core 15，
+Checkstyle 0、SpotBugs `BugInstance size is 0`。6 轮变异全红、`COMPILATION ERROR count = 0`、Errors 恒为 0。
+
+### 控制器自读 diff 的产出（框架期不派评审者，自读即评审）
+
+| # | 发现 | 处置 | 代价 |
+|---|---|---|---|
+| 1 | ★ **`start()`/`end()` 的校验只盖头尾**：原先只在头看 `(0,1)`、在尾看 `(n-1,n-2)` 两对相邻边，三种畸形输入**静默产出看起来合理的端点** —— 中途分叉 `[(A,B),(B,C),(B,D)]`（B 度 3）⇒ 端点 A 与 D；中段断开 ⇒ 端点 A 与 Z；同一 `[AB, AB]` ⇒ 被当成"长度为 2 的闭环"、两端同取锚 | **先写三条用例、先跑红**（`Errors: 0`，红的理由是 `Expecting code to raise a throwable`，即端点照算不误 —— 不是编译错、不是抛错），再改代码转绿：取端点前整条走一遍（查重复边、查点数度 ≤ 2、逐条查相接）。`isClosed()`/`freeEnd()` 并入 `endpoint()`，**不留够不着的分支** | — |
+| 2 | `EdgeTags` 类注释自相矛盾：第 8 行写"pathway **组**"、第 14 行写"**pathwayId 的裸值**" | **裁：外层 key 是 `PathwayId`（线的实例），不是 `groupId`** —— spec §5.4 的三层是 组定义 / 线的实例 / 边标注，本表属第二层。老仓 `Map<Integer, List<String>>`（方向 → 组名）是**第三种形态**。组名还表达不了"同一条边同时有某条河与某条路"。已改注释并写明理由 | — |
+
+### 报告 §6 的 6 条顾虑 + §5 的 6 条"没能验证的事"：逐条裁定
+
+| # | 项 | 裁定 |
+|---|---|---|
+| §6.1 | `PathwayGroupTest.java` 不在 brief 的 Files 段 | **追认** —— R-48-c 要求静默填空改抛 + G13 要求每条守卫有故意违规用例；不建文件则那些守卫等于装饰 |
+| §6.2 | ★ **给 Task 6 的硬提醒**：`EdgeTags.byPathway` / `Pathway.props` 是保序映射，`PathwayId`/`EdgeRef` 的 `toString()` 是变更集 String key，**任何集合/哈希/序列化都不得用 `Map.copyOf`/`HashMap`**；`Pathway.props` 的值是 `Object`，`FieldDelta` 需要"值相等"口径 | **接受，随 Task 6 派单原样带走**（见下） |
+| §6.3 | `PathwayGroup.color` 的 `#RRGGBB` 校验是本任务加的（老仓无校验、静默填 `#808080`） | **维持**。与 `TerrainType` 同口径；真出现 `#RGB`/alpha 输入源再裁，**别当噪音改掉** |
+| §6.4 | `PropertyDef.type` 只拒空白、不造白名单 | **维持**。老仓只在注释里列过 `int/float/bool/string`，没有一处代码是判据，造了就是**替将来的词表做决定** |
+| §6.5 | `Pathway.name`/`description` 有意不校验、`props` 允许 null 值 | **维持**（与 `TerrainType.description` 同口径）。Task 6 若要求"值不得为 null"再说，改起来是一行 |
+| §6.6 | ★ `start()/end()` 的语义「空链抛 ISE、闭环取最小 hex 锚、**断链（顶点被 3 条以上边共享，或重复边）在访问端点时抛**」 | **前两条确认；第三条当时是"声称的口径"，代码里没有** —— 报告把**想要**的语义写成了**已有**的行为（乙族）。已由上面发现 #1 补成实测 |
+| §5.1 | 未与老仓 GSimulator 逐边对拍（`EdgeRef` 取坐标序、老仓 `edgeKey` 取串序） | **接受为推导 + 迁移遗留**。实测钉子 `(10,0)/(2,0) → "2_0|10_0"` 在 `toStringMatchesFrozenLiteral` 里。**老仓串序 vs 新仓坐标序的分叉写进迁移清单** |
+| §5.2 | m4v-4 的 `Map.copyOf` 迭代序按 JVM 加盐，理论上可能"恰好落回插入序 ⇒ 假绿" | **接受**，并入 Task 3 那条**跨里程碑遗留**（迭代序无统一守卫）。真正的护栏是那份**冻结字面量**，不是"永远不同" |
+| §5.3 | `start()/end()` 的边界只有正向用例、无删守卫变异 | **已由发现 #1 消解**：三条新用例正是该守卫的删守卫证据（改前红、改后绿，同一条用例两侧都测过）。另两条（空链、闭环锚）的判别力为**推导**：删掉 `isEmpty` 守卫会退化成 `IndexOutOfBoundsException`（不是 ISE ⇒ 用例仍红），删掉锚分支会返回 `(1,-1)`（≠ `(0,0)` ⇒ 红） |
+| §5.4 | `PathwayGroupTest` 5 条、`EdgeTagsTest` 其余 3 条无变异轮 | **不补轮**（用户红线：装置不得压过代码）。这些都是"构造器守卫 + `assertThatThrownBy`"的**正向抛**用例，且被守护字段在构造器内**无下游解引用** ⇒ 形态 2（NPE 消息同名遮蔽）够不着。判别力是**推导**，不是实测 —— **按推导记录** |
+| §5.5 | `EdgeTags` 内层保序未独立变异 | **同上**。与 m4v-4 同形，那条已实测外层会变序 |
+| §5.6 | 未测性能 | **不测**（`verifySimpleChain` 是 O(n)，边数规模远未到） |
+| §3 备注 | m4v-3 只红在第一半断言、161 行够不着 ⇒ 补 m4v-6 精确打第二半 | **确认补救成立**：不是删断言、不是改测试迎合，而是**加一轮能打到那半条的变异**。两条合起来覆盖 `idsArePersistedNotDerived` |
+
+### 留给 Task 6 的硬提醒（从 §6.2 原样带走）
+
+1. **保序**：`EdgeTags.byPathway`、`Pathway.props` 是 `LinkedHashMap` 包裹的保序映射；`PathwayId`/`EdgeRef` 的
+   `toString()` 是变更集 String key。**任何拿这些 key 做集合/哈希/序列化的地方都不得改成 `Map.copyOf`/`HashMap`**
+   —— m4v-4 **实测**顺序会变，变更集内容会跨运行漂移。
+2. **值相等口径**：`Pathway.props` 的值是 `Object`（老仓即如此），`FieldDelta` 落到它上面时需要一条"值相等"判据。
