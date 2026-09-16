@@ -360,3 +360,13 @@ R-M6 删 finite 守卫 → `roundRejectsNonFinite:161`。
 
 **代价若错**：F-新2 我删掉了"各轴偏差 ≤ 0.5"却没给替代上界——若将来有人**依赖**某条偏差上界做优化，
 得重新自己测；文档现在明说"验收口径是返回最近格，不是逐轴偏差"，把这条依赖显式化在反面。
+
+---
+
+## Task 1: complete
+
+**`hex` 包已关账。** 提交链：实现 `b0bcf0e` → 修复轮 1 `30a70a2` → 第 2 轮收尾 `fbafbdd`
+（`cdc814d` 是无关的 `.serena` 配置）。评审用 **2/3 轮**；门禁 `./mvnw -pl simos-map -am verify`
+在收尾提交上全绿（util 156/0、map 26/0、SpotBugs 0）。
+
+**下一个：Task 2（`terrain` 包）**，派单前 BASE = `cdc814d`。
