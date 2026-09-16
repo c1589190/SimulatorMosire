@@ -1,0 +1,81 @@
+=================== ROUND m3v-1 ===================
+m3v-1: mutated map/region/Region.java
+md5 原件=d8b4f780ac3fa4bef181a7b19fa65cc9  变异体=7a9a1b94083fe5e3522ab41a1e7af9d9
+自证：字节不同 OK
+COMPILATION ERROR count = 0
+--- 红了哪些用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.021 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionTest
+Tests run: 69, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情 ---
+[ERROR] io.mosire.simos.map.region.RegionTest.constructorRejectsBoundaryThatDisagreesWithHexes -- Time elapsed: 0.003 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   RegionTest.constructorRejectsBoundaryThatDisagreesWithHexes:173 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+=================== ROUND m3v-2 ===================
+m3v-2: mutated map/region/Region.java
+md5 原件=d8b4f780ac3fa4bef181a7b19fa65cc9  变异体=50f1ca5e7312a46b5dad6268bfac5d63
+自证：字节不同 OK
+COMPILATION ERROR count = 0
+--- 红了哪些用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.024 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionTest
+Tests run: 69, Failures: 2, Errors: 0, Skipped: 0
+--- 失败详情 ---
+[ERROR] io.mosire.simos.map.region.RegionTest.withHexesKeepsIdAndName -- Time elapsed: 0.006 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.region.RegionTest.withHexesRecomputesBoundary -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   RegionTest.withHexesKeepsIdAndName:124 
+[ERROR]   RegionTest.withHexesRecomputesBoundary:183 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+=================== ROUND m3v-3 ===================
+m3v-3: mutated map/region/Region.java
+md5 原件=d8b4f780ac3fa4bef181a7b19fa65cc9  变异体=f3d222ef0ff71006a5e2e6230e9e99fd
+自证：字节不同 OK
+COMPILATION ERROR count = 0
+--- 红了哪些用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 0, Errors: 2, Skipped: 0, Time elapsed: 0.023 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionTest
+Tests run: 69, Failures: 0, Errors: 2, Skipped: 0
+--- 失败详情 ---
+[ERROR] io.mosire.simos.map.region.RegionTest.withHexesKeepsIdAndName -- Time elapsed: 0.002 s <<< ERROR!
+[ERROR] io.mosire.simos.map.region.RegionTest.withHexesRecomputesBoundary -- Time elapsed: 0.001 s <<< ERROR!
+[ERROR] Errors: 
+[ERROR]   RegionTest.withHexesKeepsIdAndName:119 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=20, w=20], HexVertex[u=20, w=22], HexVertex[u=21, w=23], HexVertex[u=22, w=22], HexVertex[u=23, w=23], HexVertex[u=24, w=22], HexVertex[u=24, w=20], HexVertex[u=23, w=19], HexVertex[u=22, w=20], HexVertex[u=21, w=19]]]]，传入的是 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=0, w=4], HexVertex[u=1, w=5], HexVertex[u=2, w=4], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]
+[ERROR]   RegionTest.withHexesRecomputesBoundary:181 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=11, w=11], HexVertex[u=11, w=13], HexVertex[u=12, w=14], HexVertex[u=13, w=13], HexVertex[u=14, w=14], HexVertex[u=15, w=13], HexVertex[u=15, w=11], HexVertex[u=14, w=10], HexVertex[u=13, w=11], HexVertex[u=12, w=10]]]]，传入的是 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=0, w=4], HexVertex[u=1, w=5], HexVertex[u=2, w=4], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: 
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+=================== ROUND m3v-4 ===================
+m3v-4: mutated map/region/RegionBoundary.java
+md5 原件=5e7becaeb59eb737c766fc1f9556f144  变异体=2f01e8aa5bc8aa7543df2ef6e3be2b8f
+自证：字节不同 OK
+COMPILATION ERROR count = 0
+--- 红了哪些用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.008 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionBoundaryTest
+Tests run: 69, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情 ---
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.walkRingsRejectsVertexDegreeOtherThanTwo -- Time elapsed: 0.003 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   RegionBoundaryTest.walkRingsRejectsVertexDegreeOtherThanTwo:134 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+=================== 恢复干净世界 ===================
+813b671bc3e792e7fdb7fe086c74dddc  /home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos/map/hex/HexVertex.java
+d8b4f780ac3fa4bef181a7b19fa65cc9  /home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos/map/region/Region.java
+5e7becaeb59eb737c766fc1f9556f144  /home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos/map/region/RegionBoundary.java
+44dea904f5a085b1aa5b979e37b7c035  /home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos/map/region/RegionIndex.java

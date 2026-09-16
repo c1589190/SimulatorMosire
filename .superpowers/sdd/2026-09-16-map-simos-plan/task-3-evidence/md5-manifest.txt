@@ -1,0 +1,15 @@
+# Task 3 变异实验室：每轮 md5（原件 → 变异体）。由同一 mutate.py 对同一原件重放核对，与当轮记录逐字节一致。
+# 大日志略：m3v-7/m3v-8（各 ~400KB，含规范化失败时的整环转储），需要时按本目录 run.sh + mutate.py 重放得到。
+m3v-1  Region.java         d8b4f780ac3fa4bef181a7b19fa65cc9 -> 7a9a1b94083fe5e3522ab41a1e7af9d9  删 U2 的重算+比对
+m3v-2  Region.java         d8b4f780ac3fa4bef181a7b19fa65cc9 -> 50f1ca5e7312a46b5dad6268bfac5d63  withHexes 内容取旧的
+m3v-3  Region.java         d8b4f780ac3fa4bef181a7b19fa65cc9 -> f3d222ef0ff71006a5e2e6230e9e99fd  withHexes 不重算边界
+m3v-4  RegionBoundary.java 5e7becaeb59eb737c766fc1f9556f144 -> 2f01e8aa5bc8aa7543df2ef6e3be2b8f  删度 != 2 守卫
+m3v-5  HexVertex.java      813b671bc3e792e7fdb7fe086c74dddc -> b15661269e643cbac99a9eb511551460  W[1]: 1 -> -1
+m3v-6  RegionBoundary.java 5e7becaeb59eb737c766fc1f9556f144 -> de3d207bf939356d7ce5c98435291e0d  删环表排序
+m3v-7  RegionBoundary.java 5e7becaeb59eb737c766fc1f9556f144 -> 930fe09c36da65961ebf8fc8373149c6  删方向规范化
+m3v-8  RegionBoundary.java 5e7becaeb59eb737c766fc1f9556f144 -> 4e3bcf40e7dacc395982f6480889ac8b  删起点规范化
+m3v-9  RegionIndex.java    44dea904f5a085b1aa5b979e37b7c035 -> fa3d1b543fae8ed564cf331739211b35  regionOf 退化成遍历
+m3v-10 Region.java         d8b4f780ac3fa4bef181a7b19fa65cc9 -> 09f6143033fa17f8957fbba2bbb79610  withHexes 拿 name 当 id
+m3v-11 Region.java         d8b4f780ac3fa4bef181a7b19fa65cc9 -> 6eacd6553f6009e14ad5ff90bcc389a4  复合 m3v-1 + m3v-3（两种施加顺序同 md5）
+m3v-12 RegionIndex.java    44dea904f5a085b1aa5b979e37b7c035 -> d9d73fca728aa804d5e9b8dc176aa296  删按 id 字典序排序
+m3v-13 RegionId.java       cc724cc228cf11a2483620046bd60fde -> 54124d688bee4a3a9954d56939672be6  删手写 toString（R-48-f 加分项）

@@ -1,0 +1,427 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/3]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/3]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.util.state.StateRefTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.050 s -- in io.mosire.simos.util.state.StateRefTest
+[INFO] Running io.mosire.simos.util.state.SimulationStateTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.util.state.SimulationStateTest
+[INFO] Running io.mosire.simos.util.state.SnapshotProtocolTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.util.state.SnapshotProtocolTest
+[INFO] Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in io.mosire.simos.util.info.InMemoryInfoSystemTest
+[INFO] Running io.mosire.simos.util.facet.FacetRegistryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.util.facet.FacetRegistryTest
+[INFO] Running io.mosire.simos.util.resolve.ResolverRegistryTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.util.resolve.ResolverRegistryTest
+[INFO] Running io.mosire.simos.util.identity.ResolvedSubjectTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.util.identity.ResolvedSubjectTest
+[INFO] Running io.mosire.simos.util.identity.QueryResultTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.util.identity.QueryResultTest
+[INFO] Running io.mosire.simos.util.identity.SubjectIdTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.util.identity.SubjectIdTest
+[INFO] Running io.mosire.simos.util.time.TemporalSeriesTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.util.time.TemporalSeriesTest
+[INFO] Running io.mosire.simos.util.time.TimeRangeTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.util.time.TimeRangeTest
+[INFO] Running io.mosire.simos.util.time.SimosTimestampTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.util.time.SimosTimestampTest
+[INFO] Running io.mosire.simos.util.address.AddressQuoteTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.util.address.AddressQuoteTest
+[INFO] Running io.mosire.simos.util.address.AddressParseTest
+[INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.045 s -- in io.mosire.simos.util.address.AddressParseTest
+[INFO] Running io.mosire.simos.util.address.AddressTolerantParseTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.util.address.AddressTolerantParseTest
+[INFO] Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+[INFO] Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.verify.RoundTripAssertionsTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/3]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 12 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 8 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.map.terrain.TerrainCatalogTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.065 s -- in io.mosire.simos.map.terrain.TerrainCatalogTest
+[INFO] Running io.mosire.simos.map.region.RegionIndexTest
+[ERROR] Tests run: 4, Failures: 0, Errors: 4, Skipped: 0, Time elapsed: 0.019 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionIndexTest
+[ERROR] io.mosire.simos.map.region.RegionIndexTest.findsOwningRegionAndReportsMembership -- Time elapsed: 0.007 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1, w=1] 的度为 1，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionIndexTest.region(RegionIndexTest.java:88)
+	at io.mosire.simos.map.region.RegionIndexTest.findsOwningRegionAndReportsMembership(RegionIndexTest.java:25)
+
+[ERROR] io.mosire.simos.map.region.RegionIndexTest.regionOfIsConstantTime -- Time elapsed: 0.007 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1057, w=1] 的度为 1，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionIndexTest.regionOfIsConstantTime(RegionIndexTest.java:68)
+
+[ERROR] io.mosire.simos.map.region.RegionIndexTest.unknownHexReturnsNull -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionIndexTest.region(RegionIndexTest.java:88)
+	at io.mosire.simos.map.region.RegionIndexTest.unknownHexReturnsNull(RegionIndexTest.java:33)
+
+[ERROR] io.mosire.simos.map.region.RegionIndexTest.overlappingRegionsResolveDeterministically -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionIndexTest.region(RegionIndexTest.java:88)
+	at io.mosire.simos.map.region.RegionIndexTest.overlappingRegionsResolveDeterministically(RegionIndexTest.java:43)
+
+[INFO] Running io.mosire.simos.map.region.RegionTest
+[ERROR] Tests run: 14, Failures: 2, Errors: 10, Skipped: 0, Time elapsed: 0.020 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionTest
+[ERROR] io.mosire.simos.map.region.RegionTest.factoryComputesBoundaryFromHexes -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.factoryComputesBoundaryFromHexes(RegionTest.java:149)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.hexesIsImmutable -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.hexesIsImmutable(RegionTest.java:63)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.constructorRejectsNullId -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalArgumentException
+but was:
+  java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionTest.lambda$constructorRejectsNullId$3(RegionTest.java:44)
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+	at io.mosire.simos.map.region.RegionTest.constructorRejectsNullId(RegionTest.java:45)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.containsIsSetBased -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.containsIsSetBased(RegionTest.java:74)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.withNameKeepsId -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.withNameKeepsId(RegionTest.java:113)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.withNameKeepsBoundary -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.withNameKeepsBoundary(RegionTest.java:174)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.constructorRejectsBlankIdAndName -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalArgumentException
+but was:
+  java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	...(87 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+	at io.mosire.simos.map.region.RegionTest.constructorRejectsBlankIdAndName(RegionTest.java:38)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.constructorRejectsBoundaryThatDisagreesWithHexes -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=28, w=26] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionTest.constructorRejectsBoundaryThatDisagreesWithHexes(RegionTest.java:154)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.withHexesKeepsIdAndName -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.withHexesKeepsIdAndName(RegionTest.java:102)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.metaDefaultsToEmptyWhenNull -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.metaDefaultsToEmptyWhenNull(RegionTest.java:122)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.withHexesRecomputesBoundary -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.withHexesRecomputesBoundary(RegionTest.java:164)
+
+[ERROR] io.mosire.simos.map.region.RegionTest.equalityIsComponentwise -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionTest.region(RegionTest.java:25)
+	at io.mosire.simos.map.region.RegionTest.equalityIsComponentwise(RegionTest.java:87)
+
+[INFO] Running io.mosire.simos.map.region.RegionBoundaryTest
+[ERROR] Tests run: 8, Failures: 0, Errors: 6, Skipped: 0, Time elapsed: 0.007 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionBoundaryTest
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.twoAdjacentHexesShareOneRing -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1, w=1] 的度为 1，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionBoundaryTest.twoAdjacentHexesShareOneRing(RegionBoundaryTest.java:46)
+
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.boundaryIsIndependentOfInputSetIterationOrder -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionBoundaryTest.boundaryIsIndependentOfInputSetIterationOrder(RegionBoundaryTest.java:91)
+
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.storedBoundaryEqualsRecomputed -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	at io.mosire.simos.map.region.RegionBoundaryTest.storedBoundaryEqualsRecomputed(RegionBoundaryTest.java:69)
+
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.nonContiguousHexesGiveMultipleRings -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=13, w=11] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionBoundaryTest.nonContiguousHexesGiveMultipleRings(RegionBoundaryTest.java:59)
+
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.compactConstructorNormalizesStartDirectionAndRingOrder -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionBoundaryTest.compactConstructorNormalizesStartDirectionAndRingOrder(RegionBoundaryTest.java:103)
+
+[ERROR] io.mosire.simos.map.region.RegionBoundaryTest.singleHexRingHasSixVertices -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalStateException: 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionBoundaryTest.singleHexRingHasSixVertices(RegionBoundaryTest.java:23)
+
+[INFO] Running io.mosire.simos.map.hex.HexVertexTest
+[ERROR] Tests run: 2, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.005 s <<< FAILURE! -- in io.mosire.simos.map.hex.HexVertexTest
+[ERROR] io.mosire.simos.map.hex.HexVertexTest.singleHexHasSixDistinctVerticesAndEachNeighborSharesExactlyTwo -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expected size: 6 but was: 5 in:
+[HexVertex[u=0, w=-2],
+    HexVertex[u=0, w=2],
+    HexVertex[u=-1, w=1],
+    HexVertex[u=1, w=-1],
+    HexVertex[u=-1, w=-1]]
+	at io.mosire.simos.map.hex.HexVertexTest.singleHexHasSixDistinctVerticesAndEachNeighborSharesExactlyTwo(HexVertexTest.java:22)
+
+[ERROR] io.mosire.simos.map.hex.HexVertexTest.edgeEndpointsAreTheVerticesSharedWithTheNeighbor -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[方向 E 的边端点] 
+Expecting actual:
+  [HexVertex[u=5, w=-7], HexVertex[u=5, w=-7]]
+to contain exactly in any order:
+  [HexVertex[u=5, w=-7]]
+but the following elements were unexpected:
+  [HexVertex[u=5, w=-7]]
+
+	at io.mosire.simos.map.hex.HexVertexTest.edgeEndpointsAreTheVerticesSharedWithTheNeighbor(HexVertexTest.java:45)
+
+[INFO] Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.027 s -- in io.mosire.simos.map.hex.HexCoordTest
+[INFO] Running io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.hex.HexGridTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   HexVertexTest.edgeEndpointsAreTheVerticesSharedWithTheNeighbor:45 [方向 E 的边端点] 
+Expecting actual:
+  [HexVertex[u=5, w=-7], HexVertex[u=5, w=-7]]
+to contain exactly in any order:
+  [HexVertex[u=5, w=-7]]
+but the following elements were unexpected:
+  [HexVertex[u=5, w=-7]]
+
+[ERROR]   HexVertexTest.singleHexHasSixDistinctVerticesAndEachNeighborSharesExactlyTwo:22 
+Expected size: 6 but was: 5 in:
+[HexVertex[u=0, w=-2],
+    HexVertex[u=0, w=2],
+    HexVertex[u=-1, w=1],
+    HexVertex[u=1, w=-1],
+    HexVertex[u=-1, w=-1]]
+[ERROR]   RegionTest.constructorRejectsBlankIdAndName:38 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalArgumentException
+but was:
+  java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.Region.of(Region.java:49)
+	...(87 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+[ERROR]   RegionTest.constructorRejectsNullId:45 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalArgumentException
+but was:
+  java.lang.IllegalStateException: 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+	at io.mosire.simos.map.region.RegionBoundary.walkRings(RegionBoundary.java:88)
+	at io.mosire.simos.map.region.RegionBoundary.of(RegionBoundary.java:75)
+	at io.mosire.simos.map.region.RegionTest.lambda$constructorRejectsNullId$3(RegionTest.java:44)
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+[ERROR] Errors: 
+[ERROR]   RegionBoundaryTest.boundaryIsIndependentOfInputSetIterationOrder:91 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionBoundaryTest.compactConstructorNormalizesStartDirectionAndRingOrder:103 » IllegalState 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+[ERROR]   RegionBoundaryTest.nonContiguousHexesGiveMultipleRings:59 » IllegalState 边界顶点 HexVertex[u=13, w=11] 的度为 4，应为 2
+[ERROR]   RegionBoundaryTest.singleHexRingHasSixVertices:23 » IllegalState 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+[ERROR]   RegionBoundaryTest.storedBoundaryEqualsRecomputed:69 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionBoundaryTest.twoAdjacentHexesShareOneRing:46 » IllegalState 边界顶点 HexVertex[u=1, w=1] 的度为 1，应为 2
+[ERROR]   RegionIndexTest.findsOwningRegionAndReportsMembership:25->region:88 » IllegalState 边界顶点 HexVertex[u=1, w=1] 的度为 1，应为 2
+[ERROR]   RegionIndexTest.overlappingRegionsResolveDeterministically:43->region:88 » IllegalState 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+[ERROR]   RegionIndexTest.regionOfIsConstantTime:68 » IllegalState 边界顶点 HexVertex[u=1057, w=1] 的度为 1，应为 2
+[ERROR]   RegionIndexTest.unknownHexReturnsNull:33->region:88 » IllegalState 边界顶点 HexVertex[u=1, w=-1] 的度为 4，应为 2
+[ERROR]   RegionTest.constructorRejectsBoundaryThatDisagreesWithHexes:154 » IllegalState 边界顶点 HexVertex[u=28, w=26] 的度为 4，应为 2
+[ERROR]   RegionTest.containsIsSetBased:74->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.equalityIsComponentwise:87->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.factoryComputesBoundaryFromHexes:149->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.hexesIsImmutable:63 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.metaDefaultsToEmptyWhenNull:122->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.withHexesKeepsIdAndName:102->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.withHexesRecomputesBoundary:164->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.withNameKeepsBoundary:174->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[ERROR]   RegionTest.withNameKeepsId:113->region:25 » IllegalState 边界顶点 HexVertex[u=2, w=2] 的度为 4，应为 2
+[INFO] 
+[ERROR] Tests run: 67, Failures: 4, Errors: 20, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.443 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.767 s]
+[INFO] MapSimos ........................................... FAILURE [  1.358 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.645 s
+[INFO] Finished at: 2026-09-17T00:44:56+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
