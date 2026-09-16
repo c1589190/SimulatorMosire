@@ -1,0 +1,8 @@
+# 行尾纪律：文本文件在仓库内与工作树内一律 LF。
+#
+# 由来（2026-09-16）：换设备后 `core.autocrlf=true` 的机器把整棵工作树 checkout 成 CRLF，
+# 后果有二：① `mvnw` 的 shebang 变成 `#!/bin/sh\r`，Maven 完全无法启动；
+# ② 26 个 .java 的 CRLF 令 Spotless 全红。73 个文件须逐字节还原才恢复构建。
+# 钉死行尾后，本仓库在任何平台 clone 下来都直接可构建。
+* text=auto eol=lf
+*.cmd text eol=crlf
