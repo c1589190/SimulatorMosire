@@ -8,10 +8,10 @@
 
 **Tech Stack:** Java 21、Maven（`./mvnw`）、JUnit 5 + AssertJ、google-java-format（Spotless）、Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-util` 只有 Jackson databind + SLF4J）。
 
-**Spec:** `docs/superpowers/specs/2026-09-16-util-simos-design.md`（M1 spec，已批准）——本计划的每一步都从它派生；总纲是 `docs/superpowers/specs/2026-09-16-simos-master-design.md`。**执行者必须同时读这两份**，尤其是 spec §三（Address）与 §九（往返框架）。
+**Spec:** `docs/superpowers/specs/2026-09-16-util-simos-design.md`（M1 spec；**类型形状已于上一会话批准**，**spec 本体仍「待用户评审」**）——本计划的每一步都从它派生；总纲是 `docs/superpowers/specs/2026-09-16-simos-master-design.md`。**执行者必须同时读这两份**，尤其是 spec §三（Address）与 §九（往返框架）。
 
 > **⚠️ 全文代码草图是计划期产物，执行期已就地校正过（2026-09-16 关账时补记）。**
-> 下面的 Java 草图**不是权威**——**spec 与已落地的 `simos-util/src` 才是权威**。已知分歧至少六处，各自在
+> 下面的 Java 草图**不是权威**——**spec 与已落地的 `simos-util/src` 才是权威**。已知分歧各自在
 > 对应位置有**取代说明**：任务地图的 Task 2 行、以及 Task 7 Step 1 前·Step 4、Task 8 Step 1 前、
 > Task 9 Step 1 前、Task 10 Step 1 前·Step 2 各一处。
 > **取代说明一律保留草图原貌**：计划的写法本身是记录，抹掉它等于抹掉"spec 在执行期被磨尖过"这件事。

@@ -1126,7 +1126,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 | **依赖** | M0 |
 | **状态** | ✅ **已完成**（2026-09-16；spec 五项待决于 §〇 裁决，计划 11 个任务逐个执行并过审）；提交都在 `feat/m1-util-simos` 上，**其中一部分已推送、一部分未推送**，具体见下方关账记录的"推送状态"段 |
 
-**M1 关账记录（2026-09-16）**：spec `docs/superpowers/specs/2026-09-16-util-simos-design.md`（已批准）；
+**M1 关账记录（2026-09-16）**：spec `docs/superpowers/specs/2026-09-16-util-simos-design.md`（**类型形状已于上一会话批准**；**spec 本体仍「待用户评审」**）；
 计划 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` 的 11 个任务全部执行完毕：
 
 | # | 任务 | 产出 |
@@ -1148,12 +1148,13 @@ SocialSimos / UnitSimos / CoreSimos **六个 reactor 模块全 `SUCCESS`**、`BU
 `grep -c '^\[ERROR\]'` → **0**；`simos-util` **17 个测试类 / 156 条用例**全绿；`simos-core` 的
 `AgentLibAvailabilityTest` **15 条**全绿；SpotBugs `BugInstance size is 0`。
 判据（spec §1.2）逐条核对的过程与原始输出见工作台账
-`.superpowers/sdd/2026-09-16-util-simos-plan/task-11-report.md`；上述数字均可由 `./mvnw clean verify` 原样复现。
+`.superpowers/sdd/2026-09-16-util-simos-plan/task-11-report.md`；上述数字均可在**本段所记的提交**上由 `./mvnw clean verify` 原样复现。
 
 **推送状态（2026-09-16 关账时实测）**：远程分支 `origin/feat/m1-util-simos` **不是空的**——
 `git ls-remote --heads origin feat/m1-util-simos` → `22aad1f`，即 **M1 的 Task 1–5 已经在远程**：
-`git rev-list --count 56836f0..origin/feat/m1-util-simos` → **20** 个提交，其中 `M1 Task` 打头的是 **17** 个
-（Task 1–5 的实现与修复轮），另 3 个是 spec 裁决 / 构建修复 / SDD 台账入库。
+`git rev-list --count 56836f0..origin/feat/m1-util-simos` → **20** 个提交，其中提交信息里**含** `M1 Task`
+字样的有 **17** 个（14 条 `feat`/`fix`/`test`/`refactor` 代码提交 + 3 条 `docs(spec)` 裁决）——
+**是"含"不是"打头"**：`git log --oneline | grep -c '^M1 Task'` = **0**；另 3 个提交不含该字样。
 未推送的是其后的提交：在关账提交 `28c7e77` 上实测 `git rev-list --count '@{u}..HEAD'` → **14**
 （**此后每追加一个提交就 +1，本段自身及其后续更正也在其中**），最早一个是
 `0876838`（行尾 LF 修复），**M1 的 Task 6 及其后的全部工作都在这些提交里**。
