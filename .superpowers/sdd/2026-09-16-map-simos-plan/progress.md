@@ -681,3 +681,27 @@ SpotBugs `BugInstance size is 0`。变异 7 轮（m5v-1..7）。
 ★ **跨里程碑补充（承接 Task 3 那条）**：迭代序不稳有三个独立来源 —— ① 跨 JVM 的盐，
 ② 撞槽时相对次序随插入序，③ 序列化层（`Region.hexes` / `TerrainCatalog` 的序）尚无守卫。
 三条都指向同一结论：**落盘序必须由 `LinkedHashMap` 纪律保证，不能寄望于"哈希恰好稳定"**。
+
+## Task 6 派单前的扫描发现（补充）
+
+★ **R-48-k：`emptyDiffStillEntersApply` 按 brief 的写法打不响 `isEmpty()` 那条变异。**
+变异表要求 `isEmpty()` 改成 `hexes.changed()`（只看一个组件）时必须红，且指定红的来自
+`emptyDiffStillEntersApply`。但 brief 给该用例的定义是"空 diff 也必须能被 apply 且返回 base" ——
+在**全 Unchanged** 时 `hexes.changed()` 恰好也是 `false`，`isEmpty()` 仍然返回 `true`，**结果正确、照样绿**。
+⇒ 要让它红，必须补一条断言：**只改 `edges`、`hexes` 未变 ⇒ `isEmpty()` 为 `false`**。
+这条正好是 **L1 第四个成因的正面钉子**（老仓 `isEmpty()` 排除 edges ⇒"只改了一条边"产生空 diff、
+根本不进 apply）。已写进派单。
+
+★ **R-48-f 已结清（当场核过，不要再去补三件套）**：`git grep` 实测五个 key 类型
+（`HexCoord`/`RegionId`/`PathwayId`/`EdgeRef`/`CityId`）**都已有**裸值 `toString()` + `static parse(String)`，
+分别由 Task 1/3/4/4/5 交付。
+
+★ **对 brief 正文的修正（控制器裁定）**：`FieldDelta.Remove.keys` 的 `Set.copyOf` **改为保序**
+（`Collections.unmodifiableSet(new LinkedHashSet<>(...))`）。理由与 `Map.copyOf` 同一条且已实测：
+`Set.copyOf` 同样走 `ImmutableCollections`、序不是内容的纯函数（撞槽时随插入序）⇒ 变更集的字节不稳定。
+`Upsert.entries` 同理用 `LinkedHashMap` 包裹。
+
+★ **往返夹具的 `spec` 必须 base 与 target 相同**：`spec` 不进变更集、`apply` 从 base 取（R-48-e），
+夹具若让它俩分叉，`applyRebuildsTargetExactly` 会红，而那是设计如此、不是缺陷。
+
+**BASE `84e38d2`**（Task 6 派单前的最后提交）。
