@@ -578,3 +578,15 @@ Task 9–14 是生成算法/守卫，Task 15 是关账。
 
 - 老仓 `cornerKey` 的注释自陈 "avoid floating-point drift"，但它**本身就是**浮点舍入
   （`Math.round(x*1000)`，且 `Math.cos(90°)` 是 `6.1e-17` 不是 0）—— 整数标签 `(u,w)` 才是那个注释想做而没做到的事。
+
+## Task 4（`pathway` 包）派单
+
+**BASE** `3022a19`。agentId `ae79eb601ed05c94e`（sonnet）。
+派单要点：附 `task-4-brief.md`（唯一需求来源，不要去读整份计划）；补齐 brief 不知道的接口事实
+（`HexCoord` 的 `toString()`=`"q_r"`/`parse`/先 q 后 r；`HexDirection.ALL` 是 `List` 不是数组；
+`HexVertex` 已存在且本任务用不到；`pathway` 与 `region` 无依赖）；
+把 **R-48-f（EdgeRef/PathwayId 三件套 + 冻结字面量）**、**R-48-c（`PathwayGroup` 照老仓、静默填空改抛、
+`PropertyDef` 不许删）** 再点一遍；★ **指它复用 `task-3-evidence/run.sh`+`mutate.py` 的实验室模板**，
+不要长第二套装置（用户红线：装置不得压过代码）。
+
+**框架期口径**：不派评审者；实现者的**变异自证就是测试**；控制器收到报告后自读 diff。
