@@ -13,6 +13,10 @@ import java.util.Map;
  *
  * <p>★ 用户裁决 U1 把 GSimulator 那份 9 项表**整个作废**（不是改名）：本表 7 项、**按高度从小到大**，由 {@link #KEYS} 固定其序。**7
  * 行的具体数值（颜色 / 产出 / moveCost / 高度带边界）为 M2 Task 2 新定，非来自 GSimulator。**
+ *
+ * <p>★ **最高带的边界另经 M2 Task 10 实测校正：下界 0.90 → 0.85。** 默认参数下 48 张图（24 种子 × 2 噪声变体）**没有一格**高度达到
+ * 0.90（实测最大 0.8969）——{@code plateau_mountains} 会**结构性产不出来**，即"词表里有一项永远是谎话"。改为 0.85 后，24 个种子里有 6 个产出
+ * 2~12 格（实测）。
  */
 public final class TerrainCatalog {
 
@@ -59,12 +63,12 @@ public final class TerrainCatalog {
     // 6 平缓高原：海拔高于山地却相对好走（moveCost 4 < 山地的 6）——与山地相反的取舍。
     m.put(
         "plateau",
-        new TerrainType("plateau", "平缓高原", "#B99B6B", 0.78, 0.90, 1, 1, 1, 4, "海拔高但地势平坦，相对好走"));
-    // 7 高原山地：最高；几乎不可通行（12，逼近但不到海洋的哨兵）。
+        new TerrainType("plateau", "平缓高原", "#B99B6B", 0.78, 0.85, 1, 1, 1, 4, "海拔高但地势平坦，相对好走"));
+    // 7 高原山地：最高；几乎不可通行（12，逼近但不到海洋的哨兵）。下界 0.85 为 Task 10 实测校正（见类注释）。
     m.put(
         "plateau_mountains",
         new TerrainType(
-            "plateau_mountains", "高原山地", "#68798C", 0.90, 1.00, 0, 1, 2, 12, "海拔最高处，几乎不可通行"));
+            "plateau_mountains", "高原山地", "#68798C", 0.85, 1.00, 0, 1, 2, 12, "海拔最高处，几乎不可通行"));
     return Collections.unmodifiableMap(m);
   }
 
