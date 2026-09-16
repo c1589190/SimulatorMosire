@@ -109,6 +109,8 @@ public record Address(List<AddressSegment> segments) {
 
 **第 2 段永远是这个命名空间的"根主体"**（总纲 §4.4 的整张地图 `map:Map1`、编制树上的小队 `unit:U` 都落在这一位）。机器协议里的具体实体一律用 `kind.name` 形式（`hex.4_3` / `region.Nation.区域A`），裸词主体只出现在根位置。
 
+**第 ≥3 段的缺 kind `Entity` 只在 name 不是裸词时合法**。name 是裸词时它的 canonical 与同名的 `Property` 逐字相同（都是那个裸词），canonical 唯一性与 `parse(canonical(x)) == x` 会同时破。该约束由 `Address` 的构造器校验（段类型无位置信息，只能在这一层判），违反即抛 `IllegalArgumentException` 并带上段序号。
+
 **kind 与 name 的切分**：段内**第一个不在引号内**的 `.`：
 - 左侧**未被引号包裹** ⇒ `kind = 左侧`，`name = 右侧整体`（`region.Nation.区域A` → kind=`region`，name=`Nation.区域A`）
 - 左侧**被引号包裹** ⇒ 无 kind，`name = 整段`（去掉引号、组件以 `.` 连接）：`"Nation"."区域A"` → `Entity(∅, "Nation.区域A")`
@@ -136,6 +138,8 @@ canonical 是**机器协议的唯一形态**：同一个实体只能有一种规
 条件 3 是 §3.2 切分规则的直接后果：缺 kind 的 name 一旦含 `.`，不引就会被误切成 `kind.name`，往返不变式立刻破。**三条之外一律不加引**——多一处加引，canonical 就少一处唯一。
 
 **归一**：解析时引号只用于消歧，**不进入 AST**——`region."Nation"."区域A"` 与 `region.Nation.区域A` 解析为同一个 AST、渲染为同一个 canonical。这是"按需加引"的另一半。
+
+**引号只在有未加引号的 `.` 时才参与段类型判定**（§3.2 的"左侧是否被引号包裹"）。第 ≥3 段**无未加引号的 `.`** 的 token 一律先去引再判：去引后是裸词 ⇒ `Property`（引号多余，归一掉——`unit:U:"member"` 即 `unit:U:member`），否则 ⇒ 缺 kind 的 `Entity`（其 canonical 会重新加引，如 `"A B"`）。
 
 ### 3.5 宽容解析（人类形式）
 
