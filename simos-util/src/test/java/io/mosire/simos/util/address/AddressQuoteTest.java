@@ -62,6 +62,15 @@ class AddressQuoteTest {
         .hasMessageContaining("至少一个坐标");
   }
 
+  /** spec §3.4 后半：引号只用于消歧，不进 AST——冗余引号归一后消失。 */
+  @Test
+  void redundantQuotesAreNormalizedAway() {
+    Address quoted = Address.parse("map:Map1:region.\"Nation\".\"区域A\"");
+    Address plain = Address.parse("map:Map1:region.Nation.区域A");
+    assertThat(quoted).isEqualTo(plain);
+    assertThat(quoted.canonical()).isEqualTo("map:Map1:region.Nation.区域A");
+  }
+
   /** 记录组件的防御性拷贝：源列表可变时，`coords` 仍是构造那一刻的副本（判别性来自可变源）。 */
   @Test
   void indexCoordsAreDefensivelyCopied() {
@@ -69,5 +78,7 @@ class AddressQuoteTest {
     Index index = new Index(source);
     source.add(2);
     assertThat(index.coords()).containsExactly(1);
+    assertThatThrownBy(() -> index.coords().add(9))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 }
