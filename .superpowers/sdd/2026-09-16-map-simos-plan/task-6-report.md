@@ -93,7 +93,7 @@ UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos …… SUCCESS
 （`rounds/*.kept` 是每轮的要点行；**只**砍掉了末尾 AssertJ 把整张 GameMap 打出来的 `expected/but was` 大段
 ——那份 dump 有 32KB 且无信息量。每轮的开头（干净世界/md5/编译计数/跑过的类数）与失败清单都原文保留。）
 
-## 四 brief 之外补的用例（都在 18 例里）
+## 四 brief 之外补的用例（都在 20 例里）
 
 brief 点名 10 条：`betweenIdenticalIsAllUnchanged`、`betweenDetectsAddedHex`、`betweenDetectsRemovedHex`、
 `betweenDetectsChangedHexValue`、`betweenDetectsChangedTerrainType`、`applyRebuildsTargetExactly`、
