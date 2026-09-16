@@ -1,0 +1,47 @@
+=================== ROUND m8v-11 ===================
+目标（变异体写进**目标类名**的文件）：generate/GenerationSpec.java（只加组件，构造点不动）
+★ 变异在 /tmp 副本上做：REPO=/tmp/m8lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 99 个 .java，无多余文件）
+--- 改前（HEAD c1a2607 的工作树 + 本任务新文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 175, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改的文件（1个）：
+  simos-map/src/main/java/io/mosire/simos/map/generate/GenerationSpec.java  md5 原件=3bff39433c314b4aec5ed5804b1da459  变异体=a94735dc5fd005bc49bc621ec144374d
+自证：每个声明的文件都与原件**字节不同** OK
+自证：除声明的文件外无文件被改动（清单其余项全部一致）OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 1
+!! 编译错误 —— 本轮作废（红了也不是断言红）
+[INFO] Compiling 27 source files with javac [debug release 21] to target/classes
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /tmp/m8lab/repo/simos-map/src/main/java/io/mosire/simos/map/generate/GenerationSpec.java:[101,12] constructor GenerationSpec in record io.mosire.simos.map.generate.GenerationSpec cannot be applied to given types;
+  required: long,long,int,double,int,int,io.mosire.simos.map.generate.NoiseBands,io.mosire.simos.map.generate.RidgeParams,io.mosire.simos.map.generate.FragmentParams,int
+  found:    long,int,double,int,int,io.mosire.simos.map.generate.NoiseBands,io.mosire.simos.map.generate.RidgeParams,io.mosire.simos.map.generate.FragmentParams,int
+  reason: actual and formal argument lists differ in length
+[INFO] 1 error
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
