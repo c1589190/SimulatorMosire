@@ -639,3 +639,16 @@ Checkstyle 0、SpotBugs `BugInstance size is 0`。6 轮变异全红、`COMPILATI
 （拷成 `task-5-evidence/`，只改 TARGET 表与路径）。
 
 **框架期口径**：不派评审者；实现者的**变异自证就是测试**；控制器收到报告后自读 diff。
+
+## Task 6 派单要点（预读 brief 时先记下，免得丢）
+
+1. **R-48-j（新增）**：`GameMap` 的 7 个可变更组件里，`terrainTypes`（`Map<String, TerrainType>`）与
+   `pathwayGroups`（`Map<String, PathwayGroup>`）的 key **本来就是 `String`** ⇒ `keyOf` 是**恒等**、
+   `apply` 侧**不得**对它做 parse。brief 那句"key 是 `HexCoord`/`RegionId`/`PathwayId`/`CityId`/`EdgeRef`"
+   漏了这两个，照抄会多写两个假的 parse 或漏掉两个组件。
+2. ★ **因果链**（不是两条独立纪律）：`between` 是**顺着 `GameMap` 的 map 迭代序**读出来造 `Upsert.entries`
+   的 ⇒ Task 5 的"保序不可变"纪律是 `between` 确定性的**前提**。`GameMap.hexes` 若成了 `HashMap`，
+   `between` 的产物会跨运行漂移。
+3. **值的相等就用 `equals`**（记录的内容判等，与 map 迭代序无关）。**不要**为了"顺序也变了"改用序列化串
+   比对 —— 顺序变了而内容没变**不是状态变更**，那正是"第二条可写路径"那类病的形态。（真需要感知顺序的地方，
+   是 `Pathway.edges` 这种 `List` 组件，`List.equals` 本就有序。）
