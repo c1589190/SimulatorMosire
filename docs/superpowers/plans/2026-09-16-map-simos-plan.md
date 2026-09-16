@@ -61,7 +61,11 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 - **变异体也要自证**：读完测试结果**之前**，先证明"变异后的产物与原件字节不同"（编一份原件作参照比 md5）。否则"全绿"可能只是**变异根本没进去**
 - **提交纪律**：只 `git add <本步明确列出的文件>`，**绝不 `git add -A`**；提交前扫 `git diff --cached`；**不擅自推送**
 - **提交信息末尾**加一行：`Co-Authored-By: Claude Code <noreply@anthropic.com>`
-- **不可变与 equals**：所有状态类型不可变，集合组件一律 `List.copyOf` / `Set.copyOf` / `Map.copyOf`；`equals`/`hashCode`/`toString` **一律由 record 提供，禁止手写**（`equals` 是往返断言的判据本身）。★ **例外**：需要保序的 `Map` 用 `Collections.unmodifiableMap(new LinkedHashMap<>(...))`，**不用 `Map.copyOf`**（它会打乱迭代序，使字节级往返不成立 —— 这是 GSimulator 的实测缺陷，spec §6.1）
+- **不可变与 equals**：所有状态类型不可变，集合组件一律 `List.copyOf` / `Set.copyOf` / `Map.copyOf`；**`equals`/`hashCode` 一律由 record 提供，禁止手写**（`equals` 是往返断言的判据本身）。
+  ★ **`toString` 不在此列**（本条原写作"`equals`/`hashCode`/`toString` 一律禁止手写"，**过宽，已按 R-T1-c 收窄**）：
+  有**渲染契约**时可以手写，**但必须被一条冻结串用例钉住**（`HexCoord` 的 `"q_r"` 即此类，
+  由 `toStringAndParseRoundTrip` 的冻结串把守）。**没有冻结用例的手写 `toString` 仍算违规。**
+  ★ **例外**：需要保序的 `Map` 用 `Collections.unmodifiableMap(new LinkedHashMap<>(...))`，**不用 `Map.copyOf`**（它会打乱迭代序，使字节级往返不成立 —— 这是 GSimulator 的实测缺陷，spec §6.1）
 - **本机 `grep` 是 `ugrep`**：尊重 `.gitignore` 且默认跳过隐藏目录，会**静默返回空**。查 `.superpowers/**` 或被忽略的文件用 `git grep` 或 `grep --hidden --no-ignore-files`
 
 ---
@@ -324,6 +328,132 @@ git add simos-map/src/main/java/io/mosire/simos/map/hex/ simos-map/src/test/java
 git diff --cached          # 先扫
 git commit -m "feat(map): hex 包——HexCoord 身份、唯一方向表、网格几何"
 ```
+
+---
+
+#### ★ 执行期校正（Task 1 修复轮 R1，控制器裁定 —— 上面草图原貌保留）
+
+首次实现的提交是 `b0bcf0e`。以下是**控制器在该轮交回后裁定**的改动，
+**不是原草图的错误**，是执行期磨尖的结果。裁定全文见 M2 台账「Task 1 交回：7 条顾虑的裁定」。
+
+- [ ] **R1-a：`withinRadius` 负数半径改为抛异常**（裁定 R-T1-b）
+
+原实现让 `for (int dq = -radius; ...)` 自然不执行、返回空集，并靠用例冻结了这个语义。
+**改为**：`radius < 0` 时抛 `IllegalArgumentException`。
+**理由**：Global Constraints 与 `GenerationSpec` 都写着"范围校验在构造期抛异常、**不静默夹取**"；
+同模块 `minQ()` 空网格已抛 `IllegalStateException`。**空集是静默夹取的近亲。**
+`radius = 0 → {center}` **不变**。
+**连带**：`cellsWithinRadiusIsClosedBall` 里 `-1 → empty` 那条断言改为断言抛 IAE。
+
+- [ ] **R1-b：补 `HexCoord.round(double q, double r)`**（裁定 R-T1-d）
+
+**spec §3.4（`182-189` 行「一份距离、一份取整」）是绑定权威**，它把 `round` 与 `distanceTo`
+并列裁决为"各一个实现"——`distanceTo` 已落地，`round` **在 15 个任务里没有任何一个承载**，
+是 spec 与计划之间的空隙。**归 Task 1**（它就在 `hex` 包的几何契约里）。
+★ 编号订正：本项在裁定 R-T1-d 时被写成 §3.3，**§3.3 是"删 `gridSize`/`hexOrientation`"**；
+`round` 的出处是 **§3.4**。裁定的实质不变。
+
+**语义**：cube 最近格。**不许写成 `new HexCoord((int) Math.round(q), (int) Math.round(r))`**。
+★ 朴素舍入的缺陷**不是**"产出 `q + r + s ≠ 0` 的非法格"——`s()` 在本类型里是**导出**的
+（`-q - r`），那条恒等式**永远**成立，`(1, 1)` 是合法格。真实缺陷是**它给的不是最近格**：
+`(0.5, 0.5)` 朴素舍入给 `(1, 1)`（cube 距离 **1**），而真正最近的是 `(1, 0)` 与 `(0, 1)`（距离 **0.5**）。
+
+**guard（必须有，否则本方法就是新装饰）**：`roundIsNearestHex` ——
+拿一个 `(q, r)` 分数网格，对每个输入**暴力枚举**候选格求出真正最近的那个（用 `distanceTo` 比较），
+断言 `round` 的结果**其 cube 距离等于暴力求得的最小距离**。
+★ **不要断言"与暴力解坐标一致"**：最近格**存在并列**（`(0.5, 0.5)` 就有两个），
+按坐标比会在并列处**假红**。断言距离等价，朴素舍入照样必红（距离 1 ≠ 0.5）。
+**变异**：把 `round` 换成朴素的 `(int) Math.round(q), (int) Math.round(r)` ⇒ 必须红。
+
+**有限性守卫**（与 R1-a 同一条纪律：**宁抛不静默**）：`NaN`/无穷**抛 `IllegalArgumentException`**——
+`Math.round(Double.NaN)` 是 `0`，静默产出 `(0, 0)` 是把错误藏起来。
+**超出 int 范围**的输入行为**不定义**（Javadoc 写明即可）：本项目的坐标量级到不了。
+
+**裁定**：**不钉并列时选哪一侧**——spec §3.4 未规定，且"一份取整"意味着全模块只有这一份实现，
+不存在跨实现对表的场景。
+
+★ **执行期记录（修复轮 1 实测）**：教科书参考实现的末支是 `else { rs = -rq - rr; }`，
+**这里故意不写** —— 该分支要修正的是 **s 轴**，而 `s` 在本类型里是**导出量、不参与返回**，
+于是那行对返回值毫无影响，SpotBugs 会当场判 `DLS_DEAD_LOCAL_STORE` 让 `verify` 变红。
+**行为等价**（`rs` 本就只参与偏差比较）。**后来者不要把它"补回去"。**
+代价：最坏少修正一次"并列"，而并列取哪一侧上面已裁定为不定义。
+
+- [ ] **R1-c：补变异 M8「删掉 `parse` 的形状检查」**（裁定 R-T1-a）
+
+**代码不改**（实测证明形状检查有判别力，见台账那张成对表）。
+要补的是**变异行**：删掉 `i <= 0 || i == text.length() - 1` ⇒ 必须红，
+**红的理由是异常类型从 `IllegalArgumentException` 变成 `StringIndexOutOfBoundsException`**
+（`i = -1` 时 `substring(0, -1)` 先炸），**判别力来自用例第一条 `""`**，不是来自消息。
+★ 报告里**不要把 `"_"`/`"1_"`/`"_2"` 算作这条变异的判别来源** —— 它们删掉形状检查后抛
+`NumberFormatException`，**而 NFE 是 IAE 的子类，断言根本不翻**（实测见台账）。
+
+- [ ] **R1-d：给报告 §7 第 1 项补上"判形分支"的自证**
+
+> ⚠️ **本条已在第 2 轮 F-新1 就地更正**：原标题写作"更正报告里'形状检查**无判别力**'的结论"，
+> **那是控制器的误转述**——报告原文（`4335b52`）说的是"我**没有**实跑'删掉判形分支'的变异，
+> 故此条只算'已测'、不算'已自证'"，**不是**"没有判别力"。实现者照着这条错误指令写，于是在报告的审计轨迹里
+> 留下了一段**替原文认罪的假自白**（已订正，见报告 §7 第 1 项的 ⚠️ 段）。
+
+报告 §7 按台账那张实测表**补自证**（R-M1 实跑"删掉判形分支"⇒ 红在 `HexCoordTest.parseRejectsMalformed:45`，
+来源是 `""`；`"_"`/`"1_"`/`"_2"` 不是来源），
+并**保留"实现者当初为什么那么判"**——那是执行期的真实轨迹，抹掉它等于抹掉一次判别力误判的记录。
+
+- [ ] **R1-e：给"序"补钉子**（任务级评审第 1 轮 F1，**Important**，本任务最要害的漏洞）
+
+`HexDirection` 的 Doc 写着"**索引即边序号，全模块唯一**"，而**序本身没有任何用例钉住**。
+评审实测两个变异体**存活**（均 exit=0、21/21 全绿，且变异确实编译进去了）：
+
+| 变异 | 结果 | 为什么没红 |
+|---|---|---|
+| **M10**：`HexCoord.neighbors()` 加 `.reversed()` | 全绿 | 现有三条只看 `hasSize(6)`/`doesNotHaveDuplicates`/距离=1，**都不看顺序** |
+| **M11**：交换 `next()` 的 `+1` 与 `prev()` 的 `+5` | 全绿 | `nextAndPrevAreInverse` 在**整体交换下是对称的**，**没有一条断言绝对转移** |
+
+★ **`offsetsMatchFrozenTable` 看着像钉子，钉的却是另一件事**：它比的是 `HexDirection.values()`
+（**声明序**），既不是 `ALL` 的消费序，更不是 `neighbors()` 的输出序。
+**"钉住了"与"漏掉了"不是同一条**——这正是形态 4 里 `facetNames()` 钉住、`queryAll()` 漏掉的翻版。
+（旁证，反方向：`opposite()` **反而被钉死了**——`+3` 是 6 元集上唯一的**无不动点对合**，
+`oppositeIsInvolution` + `oppositeIsNotSelf` 两条合起来迫使它只能是 `+3`。）
+
+**要补的用例**（一律**冻结表**，不得写成"与某表达式一致"——那与被测实现同源）：
+
+1. `neighborsFollowDirectionOrder`（`HexCoordTest`）：对 `(0, 0)` 逐项冻结 A 序
+   `(1,0) (0,1) (-1,1) (-1,0) (0,-1) (1,-1)`；再对非原点 `(2, -3)` 钉同一张表**平移后**的形状
+   `(3,-3) (2,-2) (1,-2) (1,-3) (2,-4) (3,-4)`——证明序与中心无关。
+2. `nextAndPrevFollowFrozenCycle`（`HexDirectionTest`）：★ **断言绝对目标**，不是断言互为逆——
+   `E.next()=SE, SE.next()=SW, SW.next()=W, W.next()=NW, NW.next()=NE, NE.next()=E`；
+   `E.prev()=NE, NE.prev()=NW, NW.prev()=W, W.prev()=SW, SW.prev()=SE, SE.prev()=E`。
+   绝对转移**才是 M11 的判别力来源**（形态 3：输入必须落在两种实现会**分叉**的地方）。
+3. 可并入 1：从任一方向连走 6 次 `next()` 应回到起点，且沿途**按 A 序**访问全部 6 个方向。
+
+**变异自证**：补完用例后 M10、M11 **各自重跑**，两个都必须从"存活（全绿）"变成**红**，
+且红的理由正是上面第 1、2 条用例。
+
+- [ ] **R1-f：三处小修 + 一处口径注释**（同轮评审 F2/F3/F4 + 一条实测补强）
+
+1. **F2 / Minor —— 注释过度声称**（`HexCoordTest.java:76-78`）。该注释称
+   `distanceMatchesCubeFormula` 能抓住"把 `s()` 写成 `q + r`"。**实测抓不住**：
+   对拍**两侧都调 `s()`**，而 `{dq, dr, ds}` 恒有 `ds = -(dq + dr)`，
+   于是 `max(|dq|,|dr|,|ds|) == (|dq|+|dr|+|ds|)/2` 这条恒等式**在任何一致的 `s()` 下都成立**。
+   ⇒ 改写成它**真正**在钉的东西：`distanceTo` 的**组合规则**（漏掉 `/2`、或只用两轴，都会红）；
+   并点明 `s()` 本身**另有钉子**（`sAxisInvariant` 的 `q + r + s() == 0`）。
+2. **F3 / Minor —— 两处中文接缝空格**：`HexCoord.java:10`「唯一两份 实现」、
+   `HexGrid.java:12`「落地后 另行补入」，都是手工断行留下的。
+   ★ **Spotless 抓不到这一类**（门禁实测全绿），只能靠眼睛查。
+3. **F4 —— 控制器裁定：撤回，不加守卫。** `HexGrid.of(null)`/`contains(null)`/`withinRadius(null, …)`
+   抛 NPE，与 `parse(null)` 抛 IAE **不是两套口径，是两种东西**：`parse` 的入参是
+   **JSON 边界上来的外部数据**（`null` 意味着"数据非法"）；`HexGrid` 的入参是**程序内部对象**，
+   NPE 与 JDK 自身（`Set.copyOf(null)`）一致。★ 且按**形态 2**，加 `requireNonNull` 只会造出
+   消息恰为字段名的**装饰护栏**（删掉后 JDK 的热心 NPE 消息**同样含该名**），
+   要让它有判别力还得再补 `hasMessage` 精确匹配——成本换不来收益。
+   **只补一句 Javadoc** 讲清这个区别，免得后续评审重复提。
+4. **补强**：`parseRejectsMalformed` **加入 `"12"`**（无分隔符）。
+   控制器的成对实测表把 `"12"` 判为"会翻"，但它**不在用例里** ⇒ 当时只能算**推导**。
+   ★ **但"加进去就变成用例钉住的事实"这句本就说过头了**（修复轮实测推翻）：
+   `""` 与 `"12"` 命中的是**同一行**、同一变异下是**同一机制**（`i = -1 → substring(0, -1)` 抛 SIOOBE），
+   而断言在 `""` 那条就中止（R-M1 实测红在 `parseRejectsMalformed:45`），`:46` 根本不执行。
+   ⇒ **裁定：不为此新开用例**——再加一条同源用例**不增加任何判别力**，只增加运行时间，
+   那正是本项目反对的"装饰"。`"12"` 留在列表里仍是对的（同形态第二个样本，且 `""` 若被移出它接棒），
+   **但不得声称它有独立的套件级证据**：`"12"` 的判别力**只到探针级**，套件级由 `""` 承担。
 
 ---
 
