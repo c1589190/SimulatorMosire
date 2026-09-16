@@ -195,13 +195,14 @@
           </execution>
         </executions>
       </plugin>
-      <!-- fork/768m/30min：本机内存下 effort=More 的分析进程会被换页拖慢，
-             撞上插件默认 60s 超时。三项照搬 ProjectMosire pom.xml:263-267。 -->
+      <!-- 768m/30min：本机内存下 effort=More 的分析进程会被换页拖慢，撞上插件默认 60s 超时。
+             二者是 spotbugs **目标**的参数，而 check 目标执行前会先调用它，故门禁同样生效。
+             注：4.10.x 已移除 `fork` 参数，原样照搬 ProjectMosire pom.xml:278 会得到
+             "Parameter 'fork' is unknown" 警告且该行完全无效——故此处不写。 -->
       <plugin>
         <groupId>com.github.spotbugs</groupId>
         <artifactId>spotbugs-maven-plugin</artifactId>
         <configuration>
-          <fork>true</fork>
           <maxHeap>768</maxHeap>
           <timeout>1800000</timeout>
         </configuration>
