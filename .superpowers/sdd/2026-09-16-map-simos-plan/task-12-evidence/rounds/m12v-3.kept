@@ -1,0 +1,154 @@
+=================== ROUND m12v-3 ===================
+目标（变异体写进**目标类名**的文件）：generate/RegionRandomizer.java（不看 ratioA，恒选 A）
+★ 变异在 /tmp 副本上做：REPO=/tmp/m12lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 108 个 .java，无多余文件）
+--- 改前（工作树 + 本任务新文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 221, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改的文件（1个）：
+  simos-map/src/main/java/io/mosire/simos/map/generate/RegionRandomizer.java  md5 原件=af8a6f0366a324f4427d67343f81fa86  变异体=ea6abdbc9f8184e68b59130d3bb56e59
+自证：每个声明的文件都与原件**字节不同** OK
+自证：除声明的文件外无文件被改动（清单其余项全部一致）OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 22
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 221, Failures: 5, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 13, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.403 s <<< FAILURE! -- in io.mosire.simos.map.generate.RegionRandomizerTest
+Tests run: 221, Failures: 5, Errors: 0, Skipped: 0
+RegionRandomizerTest.differentSeedGivesDifferentResult:130 [两个 seed 指派不同的格数（实测 489）] 
+RegionRandomizerTest.onlyTwoTerrainTypesAreUsed:202 [产出地形恰为 {A, B}——既不多、也不少] 
+RegionRandomizerTest.randomizeIsDeterministicAcrossRegions:148 [同 seed 不同 region ⇒ 不同结果] 
+RegionRandomizerTest.ratioIsRespectedStatistically:72 [A 的实测占比（实测 559/1027 = 0.5443）] 
+RegionRandomizerTest.ratioZeroGivesAllB:84 [ratioA=0 ⇒ 7 格全 B] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegionRandomizerTest.differentSeedGivesDifferentResult:130 [两个 seed 指派不同的格数（实测 489）] 
+RegionRandomizerTest.onlyTwoTerrainTypesAreUsed:202 [产出地形恰为 {A, B}——既不多、也不少] 
+RegionRandomizerTest.randomizeIsDeterministicAcrossRegions:148 [同 seed 不同 region ⇒ 不同结果] 
+RegionRandomizerTest.ratioIsRespectedStatistically:72 [A 的实测占比（实测 559/1027 = 0.5443）] 
+RegionRandomizerTest.ratioZeroGivesAllB:84 [ratioA=0 ⇒ 7 格全 B] 
+--- surefire 明说（RegionRandomizerTest：断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.generate.RegionRandomizerTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.403 s <<< FAILURE! -- in io.mosire.simos.map.generate.RegionRandomizerTest
+io.mosire.simos.map.generate.RegionRandomizerTest.differentSeedGivesDifferentResult -- Time elapsed: 0.085 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[两个 seed 指派不同的格数（实测 489）] 
+expected: 489
+ but was: 0
+io.mosire.simos.map.generate.RegionRandomizerTest.ratioIsRespectedStatistically -- Time elapsed: 0.022 s <<< FAILURE!
+java.lang.AssertionError: 
+[A 的实测占比（实测 559/1027 = 0.5443）] 
+Expecting actual:
+  1.0
+to be close to:
+  0.5
+by less than 0.05 but difference was 0.5.
+(a difference of exactly 0.05 being considered valid)
+io.mosire.simos.map.generate.RegionRandomizerTest.randomizeIsDeterministicAcrossRegions -- Time elapsed: 0.065 s <<< FAILURE!
+java.lang.AssertionError: 
+[同 seed 不同 region ⇒ 不同结果] 
+Expecting actual:
+  MapChangeSet[hexes=Upsert[entries={-6_0=HexCell[terrain=plains, height=0.0], -6_1=HexCell[terrain=plains, height=0.08333333333333333], -6_2=HexCell[terrain=plains, height=0.16666666666666666], -6_3=HexCell[terrain=plains, height=0.25], -6_4=HexCell[terrain=plains, height=0.3333333333333333], -6_5=HexCell[terrain=plains, height=0.4166666666666667], -6_6=HexCell[terrain=plains, height=0.5], -5_-1=HexCell[terrain=plains, height=0.0], -5_0=HexCell[terrain=plains, height=0.08333333333333333], -5_1=HexCell[terrain=plains, height=0.16666666666666666], -5_2=HexCell[terrain=plains, height=0.25], -5_3=HexCell[terrain=plains, height=0.3333333333333333], -5_4=HexCell[terrain=plains, height=0.4166666666666667], -5_5=HexCell[terrain=plains, height=0.5], -5_6=HexCell[terrain=plains, height=0.5833333333333334], -4_-2=HexCell[terrain=plains, height=0.0], -4_-1=HexCell[terrain=plains, height=0.08333333333333333], -4_0=HexCell[terrain=plains, height=0.16666666666666666], -4_1=HexCell[terrain=plains, height=0.25], -4_2=HexCell[terrain=plains, height=0.3333333333333333], -4_3=HexCell[terrain=plains, height=0.4166666666666667], -4_4=HexCell[terrain=plains, height=0.5], -4_5=HexCell[terrain=plains, height=0.5833333333333334], -4_6=HexCell[terrain=plains, height=0.6666666666666666], -3_-3=HexCell[terrain=plains, height=0.0], -3_-2=HexCell[terrain=plains, height=0.08333333333333333], -3_-1=HexCell[terrain=plains, height=0.16666666666666666], -3_0=HexCell[terrain=plains, height=0.25], -3_1=HexCell[terrain=plains, height=0.3333333333333333], -3_2=HexCell[terrain=plains, height=0.4166666666666667], -3_3=HexCell[terrain=plains, height=0.5], -3_4=HexCell[terrain=plains, height=0.5833333333333334], -3_5=HexCell[terrain=plains, height=0.6666666666666666], -3_6=HexCell[terrain=plains, height=0.75], -2_-4=HexCell[terrain=plains, height=0.0], -2_-3=HexCell[terrain=plains, height=0.08333333333333333], -2_-2=HexCell[terrain=plains, height=0.16666666666666666], -2_-1=HexCell[terrain=plains, height=0.25], -2_0=HexCell[terrain=plains, height=0.3333333333333333], -2_1=HexCell[terrain=plains, height=0.4166666666666667], -2_2=HexCell[terrain=plains, height=0.5], -2_3=HexCell[terrain=plains, height=0.5833333333333334], -2_4=HexCell[terrain=plains, height=0.6666666666666666], -2_5=HexCell[terrain=plains, height=0.75], -2_6=HexCell[terrain=plains, height=0.8333333333333334], -1_-5=HexCell[terrain=plains, height=0.0], -1_-4=HexCell[terrain=plains, height=0.08333333333333333], -1_-3=HexCell[terrain=plains, height=0.16666666666666666], -1_-2=HexCell[terrain=plains, height=0.25], -1_-1=HexCell[terrain=plains, height=0.3333333333333333], -1_0=HexCell[terrain=plains, height=0.4166666666666667], -1_1=HexCell[terrain=plains, height=0.5], -1_2=HexCell[terrain=plains, height=0.5833333333333334], -1_3=HexCell[terrain=plains, height=0.6666666666666666], -1_4=HexCell[terrain=plains, height=0.75], -1_5=HexCell[terrain=plains, height=0.8333333333333334], -1_6=HexCell[terrain=plains, height=0.9166666666666666], 0_-6=HexCell[terrain=plains, height=0.0], 0_-5=HexCell[terrain=plains, height=0.08333333333333333], 0_-4=HexCell[terrain=plains, height=0.16666666666666666], 0_-3=HexCell[terrain=plains, height=0.25], 0_-2=HexCell[terrain=plains, height=0.3333333333333333], 0_-1=HexCell[terrain=plains, height=0.4166666666666667], 0_0=HexCell[terrain=plains, height=0.5], 0_1=HexCell[terrain=plains, height=0.5833333333333334], 0_2=HexCell[terrain=plains, height=0.6666666666666666], 0_3=HexCell[terrain=plains, height=0.75], 0_4=HexCell[terrain=plains, height=0.8333333333333334], 0_5=HexCell[terrain=plains, height=0.9166666666666666], 0_6=HexCell[terrain=plains, height=1.0], 1_-6=HexCell[terrain=plains, height=0.08333333333333333], 1_-5=HexCell[terrain=plains, height=0.16666666666666666], 1_-4=HexCell[terrain=plains, height=0.25], 1_-3=HexCell[terrain=plains, height=0.3333333333333333], 1_-2=HexCell[terrain=plains, height=0.4166666666666667], 1_-1=HexCell[terrain=plains, height=0.5], 1_0=HexCell[terrain=plains, height=0.5833333333333334], 1_1=HexCell[terrain=plains, height=0.6666666666666666], 1_2=HexCell[terrain=plains, height=0.75], 1_3=HexCell[terrain=plains, height=0.8333333333333334], 1_4=HexCell[terrain=plains, height=0.9166666666666666], 1_5=HexCell[terrain=plains, height=1.0], 2_-6=HexCell[terrain=plains, height=0.16666666666666666], 2_-5=HexCell[terrain=plains, height=0.25], 2_-4=HexCell[terrain=plains, height=0.3333333333333333], 2_-3=HexCell[terrain=plains, height=0.4166666666666667], 2_-2=HexCell[terrain=plains, height=0.5], 2_-1=HexCell[terrain=plains, height=0.5833333333333334], 2_0=HexCell[terrain=plains, height=0.6666666666666666], 2_1=HexCell[terrain=plains, height=0.75], 2_2=HexCell[terrain=plains, height=0.8333333333333334], 2_3=HexCell[terrain=plains, height=0.9166666666666666], 2_4=HexCell[terrain=plains, height=1.0], 3_-6=HexCell[terrain=plains, height=0.25], 3_-5=HexCell[terrain=plains, height=0.3333333333333333], 3_-4=HexCell[terrain=plains, height=0.4166666666666667], 3_-3=HexCell[terrain=plains, height=0.5], 3_-2=HexCell[terrain=plains, height=0.5833333333333334], 3_-1=HexCell[terrain=plains, height=0.6666666666666666], 3_0=HexCell[terrain=plains, height=0.75], 3_1=HexCell[terrain=plains, height=0.8333333333333334], 3_2=HexCell[terrain=plains, height=0.9166666666666666], 3_3=HexCell[terrain=plains, height=1.0], 4_-6=HexCell[terrain=plains, height=0.3333333333333333], 4_-5=HexCell[terrain=plains, height=0.4166666666666667], 4_-4=HexCell[terrain=plains, height=0.5], 4_-3=HexCell[terrain=plains, height=0.5833333333333334], 4_-2=HexCell[terrain=plains, height=0.6666666666666666], 4_-1=HexCell[terrain=plains, height=0.75], 4_0=HexCell[terrain=plains, height=0.8333333333333334], 4_1=HexCell[terrain=plains, height=0.9166666666666666], 4_2=HexCell[terrain=plains, height=1.0], 5_-6=HexCell[terrain=plains, height=0.4166666666666667], 5_-5=HexCell[terrain=plains, height=0.5], 5_-4=HexCell[terrain=plains, height=0.5833333333333334], 5_-3=HexCell[terrain=plains, height=0.6666666666666666], 5_-2=HexCell[terrain=plains, height=0.75], 5_-1=HexCell[terrain=plains, height=0.8333333333333334], 5_0=HexCell[terrain=plains, height=0.9166666666666666], 5_1=HexCell[terrain=plains, height=1.0], 6_-6=HexCell[terrain=plains, height=0.5], 6_-5=HexCell[terrain=plains, height=0.5833333333333334], 6_-4=HexCell[terrain=plains, height=0.6666666666666666], 6_-3=HexCell[terrain=plains, height=0.75], 6_-2=HexCell[terrain=plains, height=0.8333333333333334], 6_-1=HexCell[terrain=plains, height=0.9166666666666666], 6_0=HexCell[terrain=plains, height=1.0]}], regions=Unchanged[], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Unchanged[]]
+not to be equal to:
+  MapChangeSet[hexes=Upsert[entries={-6_0=HexCell[terrain=plains, height=0.0], -6_1=HexCell[terrain=plains, height=0.08333333333333333], -6_2=HexCell[terrain=plains, height=0.16666666666666666], -6_3=HexCell[terrain=plains, height=0.25], -6_4=HexCell[terrain=plains, height=0.3333333333333333], -6_5=HexCell[terrain=plains, height=0.4166666666666667], -6_6=HexCell[terrain=plains, height=0.5], -5_-1=HexCell[terrain=plains, height=0.0], -5_0=HexCell[terrain=plains, height=0.08333333333333333], -5_1=HexCell[terrain=plains, height=0.16666666666666666], -5_2=HexCell[terrain=plains, height=0.25], -5_3=HexCell[terrain=plains, height=0.3333333333333333], -5_4=HexCell[terrain=plains, height=0.4166666666666667], -5_5=HexCell[terrain=plains, height=0.5], -5_6=HexCell[terrain=plains, height=0.5833333333333334], -4_-2=HexCell[terrain=plains, height=0.0], -4_-1=HexCell[terrain=plains, height=0.08333333333333333], -4_0=HexCell[terrain=plains, height=0.16666666666666666], -4_1=HexCell[terrain=plains, height=0.25], -4_2=HexCell[terrain=plains, height=0.3333333333333333], -4_3=HexCell[terrain=plains, height=0.4166666666666667], -4_4=HexCell[terrain=plains, height=0.5], -4_5=HexCell[terrain=plains, height=0.5833333333333334], -4_6=HexCell[terrain=plains, height=0.6666666666666666], -3_-3=HexCell[terrain=plains, height=0.0], -3_-2=HexCell[terrain=plains, height=0.08333333333333333], -3_-1=HexCell[terrain=plains, height=0.16666666666666666], -3_0=HexCell[terrain=plains, height=0.25], -3_1=HexCell[terrain=plains, height=0.3333333333333333], -3_2=HexCell[terrain=plains, height=0.4166666666666667], -3_3=HexCell[terrain=plains, height=0.5], -3_4=HexCell[terrain=plains, height=0.5833333333333334], -3_5=HexCell[terrain=plains, height=0.6666666666666666], -3_6=HexCell[terrain=plains, height=0.75], -2_-4=HexCell[terrain=plains, height=0.0], -2_-3=HexCell[terrain=plains, height=0.08333333333333333], -2_-2=HexCell[terrain=plains, height=0.16666666666666666], -2_-1=HexCell[terrain=plains, height=0.25], -2_0=HexCell[terrain=plains, height=0.3333333333333333], -2_1=HexCell[terrain=plains, height=0.4166666666666667], -2_2=HexCell[terrain=plains, height=0.5], -2_3=HexCell[terrain=plains, height=0.5833333333333334], -2_4=HexCell[terrain=plains, height=0.6666666666666666], -2_5=HexCell[terrain=plains, height=0.75], -2_6=HexCell[terrain=plains, height=0.8333333333333334], -1_-5=HexCell[terrain=plains, height=0.0], -1_-4=HexCell[terrain=plains, height=0.08333333333333333], -1_-3=HexCell[terrain=plains, height=0.16666666666666666], -1_-2=HexCell[terrain=plains, height=0.25], -1_-1=HexCell[terrain=plains, height=0.3333333333333333], -1_0=HexCell[terrain=plains, height=0.4166666666666667], -1_1=HexCell[terrain=plains, height=0.5], -1_2=HexCell[terrain=plains, height=0.5833333333333334], -1_3=HexCell[terrain=plains, height=0.6666666666666666], -1_4=HexCell[terrain=plains, height=0.75], -1_5=HexCell[terrain=plains, height=0.8333333333333334], -1_6=HexCell[terrain=plains, height=0.9166666666666666], 0_-6=HexCell[terrain=plains, height=0.0], 0_-5=HexCell[terrain=plains, height=0.08333333333333333], 0_-4=HexCell[terrain=plains, height=0.16666666666666666], 0_-3=HexCell[terrain=plains, height=0.25], 0_-2=HexCell[terrain=plains, height=0.3333333333333333], 0_-1=HexCell[terrain=plains, height=0.4166666666666667], 0_0=HexCell[terrain=plains, height=0.5], 0_1=HexCell[terrain=plains, height=0.5833333333333334], 0_2=HexCell[terrain=plains, height=0.6666666666666666], 0_3=HexCell[terrain=plains, height=0.75], 0_4=HexCell[terrain=plains, height=0.8333333333333334], 0_5=HexCell[terrain=plains, height=0.9166666666666666], 0_6=HexCell[terrain=plains, height=1.0], 1_-6=HexCell[terrain=plains, height=0.08333333333333333], 1_-5=HexCell[terrain=plains, height=0.16666666666666666], 1_-4=HexCell[terrain=plains, height=0.25], 1_-3=HexCell[terrain=plains, height=0.3333333333333333], 1_-2=HexCell[terrain=plains, height=0.4166666666666667], 1_-1=HexCell[terrain=plains, height=0.5], 1_0=HexCell[terrain=plains, height=0.5833333333333334], 1_1=HexCell[terrain=plains, height=0.6666666666666666], 1_2=HexCell[terrain=plains, height=0.75], 1_3=HexCell[terrain=plains, height=0.8333333333333334], 1_4=HexCell[terrain=plains, height=0.9166666666666666], 1_5=HexCell[terrain=plains, height=1.0], 2_-6=HexCell[terrain=plains, height=0.16666666666666666], 2_-5=HexCell[terrain=plains, height=0.25], 2_-4=HexCell[terrain=plains, height=0.3333333333333333], 2_-3=HexCell[terrain=plains, height=0.4166666666666667], 2_-2=HexCell[terrain=plains, height=0.5], 2_-1=HexCell[terrain=plains, height=0.5833333333333334], 2_0=HexCell[terrain=plains, height=0.6666666666666666], 2_1=HexCell[terrain=plains, height=0.75], 2_2=HexCell[terrain=plains, height=0.8333333333333334], 2_3=HexCell[terrain=plains, height=0.9166666666666666], 2_4=HexCell[terrain=plains, height=1.0], 3_-6=HexCell[terrain=plains, height=0.25], 3_-5=HexCell[terrain=plains, height=0.3333333333333333], 3_-4=HexCell[terrain=plains, height=0.4166666666666667], 3_-3=HexCell[terrain=plains, height=0.5], 3_-2=HexCell[terrain=plains, height=0.5833333333333334], 3_-1=HexCell[terrain=plains, height=0.6666666666666666], 3_0=HexCell[terrain=plains, height=0.75], 3_1=HexCell[terrain=plains, height=0.8333333333333334], 3_2=HexCell[terrain=plains, height=0.9166666666666666], 3_3=HexCell[terrain=plains, height=1.0], 4_-6=HexCell[terrain=plains, height=0.3333333333333333], 4_-5=HexCell[terrain=plains, height=0.4166666666666667], 4_-4=HexCell[terrain=plains, height=0.5], 4_-3=HexCell[terrain=plains, height=0.5833333333333334], 4_-2=HexCell[terrain=plains, height=0.6666666666666666], 4_-1=HexCell[terrain=plains, height=0.75], 4_0=HexCell[terrain=plains, height=0.8333333333333334], 4_1=HexCell[terrain=plains, height=0.9166666666666666], 4_2=HexCell[terrain=plains, height=1.0], 5_-6=HexCell[terrain=plains, height=0.4166666666666667], 5_-5=HexCell[terrain=plains, height=0.5], 5_-4=HexCell[terrain=plains, height=0.5833333333333334], 5_-3=HexCell[terrain=plains, height=0.6666666666666666], 5_-2=HexCell[terrain=plains, height=0.75], 5_-1=HexCell[terrain=plains, height=0.8333333333333334], 5_0=HexCell[terrain=plains, height=0.9166666666666666], 5_1=HexCell[terrain=plains, height=1.0], 6_-6=HexCell[terrain=plains, height=0.5], 6_-5=HexCell[terrain=plains, height=0.5833333333333334], 6_-4=HexCell[terrain=plains, height=0.6666666666666666], 6_-3=HexCell[terrain=plains, height=0.75], 6_-2=HexCell[terrain=plains, height=0.8333333333333334], 6_-1=HexCell[terrain=plains, height=0.9166666666666666], 6_0=HexCell[terrain=plains, height=1.0]}], regions=Unchanged[], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Unchanged[]]
+io.mosire.simos.map.generate.RegionRandomizerTest.ratioZeroGivesAllB -- Time elapsed: 0.020 s <<< FAILURE!
+java.lang.AssertionError: 
+[ratioA=0 ⇒ 7 格全 B] 
+Expecting all elements of:
+  {"-1_0"=HexCell[terrain=plains, height=0.3333333333333333], "-1_1"=HexCell[terrain=plains, height=0.5], "0_-1"=HexCell[terrain=plains, height=0.3333333333333333], "0_0"=HexCell[terrain=plains, height=0.5], "0_1"=HexCell[terrain=plains, height=0.6666666666666666], "1_-1"=HexCell[terrain=plains, height=0.5], "1_0"=HexCell[terrain=plains, height=0.6666666666666666]}
+to satisfy given requirements, but these elements did not:
+"-1_0"=HexCell[terrain=plains, height=0.3333333333333333]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+"-1_1"=HexCell[terrain=plains, height=0.5]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+"0_-1"=HexCell[terrain=plains, height=0.3333333333333333]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+"0_0"=HexCell[terrain=plains, height=0.5]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+"0_1"=HexCell[terrain=plains, height=0.6666666666666666]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+"1_-1"=HexCell[terrain=plains, height=0.5]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+"1_0"=HexCell[terrain=plains, height=0.6666666666666666]
+error: org.opentest4j.AssertionFailedError: 
+expected: "desert"
+ but was: "plains"
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+io.mosire.simos.map.generate.RegionRandomizerTest.onlyTwoTerrainTypesAreUsed -- Time elapsed: 0.029 s <<< FAILURE!
+java.lang.AssertionError: 
+[产出地形恰为 {A, B}——既不多、也不少] 
+Expecting actual:
+  ["plains"]
+to contain exactly in any order:
+  ["plains", "desert"]
+but could not find the following elements:
+  ["desert"]
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 5
