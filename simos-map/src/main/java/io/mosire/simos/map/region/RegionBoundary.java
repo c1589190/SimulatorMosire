@@ -40,6 +40,12 @@ public record RegionBoundary(List<List<HexVertex>> rings) {
   public RegionBoundary {
     List<List<HexVertex>> canonical = new ArrayList<>(rings.size());
     for (List<HexVertex> ring : rings) {
+      // ★ 空环**不是**"零条环"（那是 List.of()），而是一个没有起点、无法判等的畸形输入。
+      //   不设这条守卫的话，canonicalRing 里的 getFirst() 会抛 NoSuchElementException ——
+      //   异常类型说不清问题在哪。本类型**直接从存档反序列化**，畸形输入是正常到达路径，故宁抛不静默。
+      if (ring.isEmpty()) {
+        throw new IllegalArgumentException("环不得为空：空的顶点序列不是闭环（零条环用 List.of()）");
+      }
       canonical.add(canonicalRing(ring));
     }
     // 环表按各自的首顶点字典序（各环此刻都已旋到自己的最小顶点开头，故取首顶点即可）

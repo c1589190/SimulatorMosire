@@ -529,3 +529,52 @@ Task 9–14 是生成算法/守卫，Task 15 是关账。
 ⇒ 组件数**仍 8 vs 7**、`spec` 仍是唯一豁免项、V6 照旧。
 
 **推送**：本批改动随下一次提交推送（私有仓库，用户 2026-09-17 明示「你爱推就推」）。
+
+---
+
+## Task 3（`region` 包）: complete
+
+**BASE** `5a0b27f` → 代码 `6d0de35`、报告与实验室证据 `d0338a1`、控制器收口 `（本次提交）`。
+**评审方式**：**不派评审者** —— 控制器自读 diff（用户红线：代码量小时控制器自己读就是评审）。
+**门禁**：`./mvnw -pl simos-map -am clean verify` 全绿（util 156 / map 71，BugInstance 0，Error 0）。
+
+**交付**：`hex/HexVertex`、`region/{RegionId,RegionMeta,Region,RegionBoundary,RegionIndex}` + 4 个测试类。
+实现者跑了 **13 轮变异，全红**，每轮 md5 自证字节不同、`COMPILATION ERROR count = 0`。
+
+### 控制器收口：两处确证的缺口，当场修掉（不 park）
+
+| # | 缺口 | 处理 |
+|---|---|---|
+| 1 | `new RegionBoundary(List.of(List.of()))`（**空环**）无守卫 ⇒ `canonicalRing` 里 `getFirst()` 抛 `NoSuchElementException`，异常类型说不清问题在哪 | 加显式守卫抛 IAE（"环不得为空"）+ 用例 `emptyRingIsRejected`。**理由：本类型直接从存档反序列化，畸形输入是正常到达路径** |
+| 2 | 拓扑只覆盖"两簇互不相邻"，**没覆盖带洞的环**（实现者自己提出） | 加 `ringAroundAHoleGivesAnOuterRingAndAnInnerOne`：中心不在集合、6 邻居都在 ⇒ 2 条环、外 18 内 6、顶点 24、两环顶点集不相交。**计数可独立复算，是硬断言** |
+
+**守卫自证（G13，控制器亲手做的一轮）**：删掉空环守卫 → 变异体 md5 `7f6cc4f…` ≠ 原件 `2dd09ea…`（字节自证）；
+`COMPILATION ERROR count = 0`；`emptyRingIsRejected` **红**，红的理由是
+`NoSuchElementException` 从 `List.getFirst()`（`RegionBoundary.java:132`）经构造器 `:46` 冒出 ——
+**正是被删掉的那一行**。恢复后 md5 与原件逐字节相同，再跑 `clean verify` 全绿。
+★ 这同时把实现者顾虑 #3 从「推导」升格为「**实测**」。
+
+### 实现者 6 条顾虑的裁定
+
+| # | 顾虑 | 裁定 | 依据 |
+|---|---|---|---|
+| 1 | 几何**没与老仓对拍**，偏移表靠推导 + 自洽用例 | ★ **控制器补测，顾虑消除** | 老仓 `TerrainGeometry.java:282-284` 实测为 `corner[i] = center + SIZE·(cos(60i−30), sin(60i−30))`、`:296-297` 为 `c1=d, c2=(d+1)%6`、`hexToPixel` 为 `(SIZE(√3q+√3/2·r), SIZE·3/2·r)`。⇒ 表由**实测公式 + 逐项代数**得到（Δu = (2/√3)cos(60i−30)、Δw = 2sin(60i−30)），**六项全吻合**。不再是"自由推导" |
+| 2 | `boundaryIsIndependentOfInputSetIterationOrder` 判别力比名字弱（m3v-8 下保持绿）；补的大集合断言**时红时绿**故撤掉 | **接受**，不必改 | 核查：起点规范化真正由**冻结字面量**钉住 —— `singleHexRingHasSixVertices` 逐顶点写死 `(-1,-1),(-1,1),(0,2),(1,1),(1,-1),(0,-2)`，以及 `compactConstructorNormalizesStartDirectionAndRingOrder` 的"环起点不同"断言（`rotated(ringA,2)` 不归一就 ≠ canonical ⇒ **必红**）。那条用例的名字**没有过度承诺**（它证明的确实是"整条流水线与入参迭代序无关"）。★ 实现者**主动报告"我的断言时红时绿所以撤掉"**是甲族该有的行为，记一功 |
+| 3 | 空环输入未测（推导为 `NoSuchElementException`） | **已实测并修掉** —— 见上表 #1 | — |
+| 4 | 拓扑没覆盖带洞的环 | **已补** —— 见上表 #2 | — |
+| 5 | ★ **`Region.hexes` 是 `Set.copyOf`，迭代序跨 JVM 运行会变**（实测 923_0 vs 330_0），任何从迭代序派生的序列化/哈希/变更集 key 都必须排序 | **接受为跨里程碑遗留**（见下） | 本模块**不做存储**，落点在实际写存档的那个任务 |
+| 6 | 派单书那行变异不能 1:1 映射（规范化按 R-3d 住在紧凑构造器，`of` 自身不含排序） | **接受** | 实现者拆成 m3v-6（环表序）+ m3v-8（起点），绕向半由 m3v-7 覆盖，已在报告 §4 写明。**拆得对**：派单书那行确实与 R-3d 冲突 |
+
+### 跨里程碑遗留（记裁定，不派工）
+
+- **★ 序列化的迭代序**（顾虑 #5 实测）：`Region.hexes` 是 `Set.copyOf`，**同一内容跨 JVM 运行的迭代序不同**
+  （实测首元素 `923_0` vs `330_0`）。`Region.equals` 不受影响（`Set.equals` 是内容判等，`boundary` 已规范化），
+  但**任何写存档 / 算哈希 / 造变更集 key 的地方若顺着 `hexes()` 迭代序走，产物会跨运行漂移**。
+  **落点**：真正做持久化的那个任务（MapSimos 不做存储，故不在 M2）。**要求：排序或用无序形式。**
+  ★ 这与 Task 2 台账里那条残留同源（`TerrainCatalog` 保序的**跨进程**稳定性无人把守），两处合起来是一条：
+  **"迭代序/字面量序"这件事在本项目里没有统一的守卫，各模块各自为政。** 留给 M6 或存储里程碑一并裁。
+
+### 顺带更正
+
+- 老仓 `cornerKey` 的注释自陈 "avoid floating-point drift"，但它**本身就是**浮点舍入
+  （`Math.round(x*1000)`，且 `Math.cos(90°)` 是 `6.1e-17` 不是 0）—— 整数标签 `(u,w)` 才是那个注释想做而没做到的事。

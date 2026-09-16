@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.hex.HexDirection;
 import io.mosire.simos.map.hex.HexVertex;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,6 +62,37 @@ class RegionBoundaryTest {
     assertThat(boundary.rings()).hasSize(2);
     assertThat(boundary.rings().stream().map(Set::copyOf).toList())
         .containsExactlyInAnyOrder(verticesOf(a), verticesOf(b));
+  }
+
+  /**
+   * ★ **带洞的环**（控制器补，R-3 收口）：中心 {@code (0,0)} **不在**集合里、它的 6 个邻居都在 —— 于是"洞"是一个
+   * **被围住的格**，而不是"两簇互不相邻"。
+   *
+   * <p>★ 计数可独立复算，故它是硬断言而非"跑出来的样子"：6 个格各 4 条暴露边（1 条朝中心 + 3 条朝外）= 24 条；顶点度恒为 2 ⇒ 24 个顶点；其中内圈 6、外圈
+   * 18。**内圈与外圈的顶点集不相交** —— 每个贴着中心的顶点，那 3 个格恰是「中心 + 两个相邻的环格」，k = 2，两条暴露边**都是内圈边**。
+   */
+  @Test
+  void ringAroundAHoleGivesAnOuterRingAndAnInnerOne() {
+    Set<HexCoord> donut = new HashSet<>();
+    for (HexDirection d : HexDirection.ALL) {
+      donut.add(new HexCoord(0, 0).neighbor(d));
+    }
+
+    List<List<HexVertex>> rings = RegionBoundary.of(donut).rings();
+
+    assertThat(rings).as("外环 + 1 个洞").hasSize(2);
+    assertThat(rings.stream().map(List::size)).as("外圈 18、内圈 6").containsExactlyInAnyOrder(18, 6);
+    assertThat(rings.stream().mapToInt(List::size).sum()).isEqualTo(24);
+    // 两条环的顶点集不相交（否则它们会共用顶点、走环时会串成一条）
+    assertThat(Set.copyOf(rings.get(0))).doesNotContainAnyElementsOf(rings.get(1));
+  }
+
+  /** ★ 空环是畸形输入（不是"零条环"），必须有**说得清问题**的异常，不能是 `getFirst()` 的 `NoSuchElementException`。 */
+  @Test
+  void emptyRingIsRejected() {
+    assertThatThrownBy(() -> new RegionBoundary(List.of(List.of())))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("环不得为空");
   }
 
   /** ★ 拿**存储的那份**比重算值。写成"算两次比两次"只证明确定性，不证明存下来的那份是对的。 */
