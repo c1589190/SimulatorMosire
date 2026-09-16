@@ -110,6 +110,24 @@ class RoundTripAssertionsTest {
   }
 
   @Test
+  void aBrokenRoundTripThroughTheSnapshotEntryIsAlsoCaught() {
+    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
+    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
+    // 版本戳**正确**（= base 的版本），只有 beta 漏了 —— 版本戳守卫不会再替我们拦下，
+    // 于是唯一能响的就是 `assertSnapshotRoundTrip` 自己的那次 checkApplied（impl:42）。
+    ToyChangeSet stamped =
+        new ToyChangeSet(base.ref().revision(), target.timestamp(), target.alpha(), base.beta());
+    assertThatThrownBy(
+            () ->
+                RoundTripAssertions.assertSnapshotRoundTrip(
+                    base, target, (b, t) -> stamped, ToySnapshot::apply))
+        .isInstanceOf(AssertionError.class)
+        // 钉 `checkApplied` 独有的措辞（版本戳守卫的报文不含它），
+        // 否则"因错误的原因转红"——即被版本戳守卫拦下——也会通过。
+        .hasMessageContaining("往返不变式破裂");
+  }
+
+  @Test
   void theFrameworkDoesNotRequireSnapshotImplementations() {
     // spec §9.2 给 `assertRoundTrip` 的 `S` **不设上界**——它要能服务 `SimulationState` 这类非快照类型。
     // G13（评审判 M-2）：这条性质写在实现的 Javadoc 里，此前**没有任何用例守它**——给 `S` 加回
