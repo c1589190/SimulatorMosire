@@ -194,6 +194,17 @@ class InMemoryInfoSystemTest {
     assertThat(info.bySubject().get(HEX)).hasSize(1);
   }
 
+  /**
+   * 紧凑构造器的 `bySubject` 守卫（fix round 3）：下游 `Map.copyOf` 对 null 也会抛 NPE，但**消息不同**——
+   * 只钉异常类型的话该守卫是空转的（评审实测：删掉它 13/13 全绿），判据必须钉到字段级消息。
+   */
+  @Test
+  void nullBySubjectIsRejected() {
+    assertThatNullPointerException()
+        .isThrownBy(() -> new InMemoryInfoSystem(null))
+        .withMessage("bySubject");
+  }
+
   private static InfoEntry entry(String key, Object value, TimeRange valid) {
     return new InfoEntry(key, value, valid, new SubjectId("map.hex", "h-0001"), Optional.empty());
   }

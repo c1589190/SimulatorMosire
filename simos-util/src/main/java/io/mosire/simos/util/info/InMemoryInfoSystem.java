@@ -16,8 +16,9 @@ import java.util.Optional;
  * 的逐字段重建断言（铁律 5）依赖它。
  *
  * <p>`bySubject()` 访问器不设防，防线在构造期：逐值 {@code List.copyOf} 再整体 {@code Map.copyOf}——**深**拷贝，否则
- * 调用方的可变列表会穿透进来（浅拷贝下 `clear()` 能改掉本实例的值、连带 `hashCode()` 漂移，spec §十一"集合防御性拷贝"）。 本类自身的写路径（{@link
- * #put}）对各主体列表同样 {@code List.copyOf}，外部无从经它改写内部状态。
+ * 调用方的可变列表会穿透进来（浅拷贝下 `clear()` 能改掉本实例的值、连带 `hashCode()` 漂移，spec §十一"集合防御性拷贝"）。
+ * 这是**唯一可观测**的防线（删掉它有用例转红）。{@link #put} 里的 {@code List.copyOf} 是不可观测的**纵深防御**：构造期
+ * 已深拷贝，删掉它没有用例会转红——留着只为写路径自成一体，别当成承重墙。
  */
 public record InMemoryInfoSystem(Map<Address, List<InfoEntry>> bySubject) implements InfoSystem {
 
