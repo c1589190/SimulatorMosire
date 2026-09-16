@@ -23,8 +23,10 @@ import java.util.function.Function;
 /**
  * 地图状态的变更集。**组件与 {@link GameMap} 的 record 组件一一对应。**
  *
- * <p>铁律 5：变更集从完整状态类型派生。GSimulator 的 {@code MapDiff} 是**手工对着 MapData 维护**的， 后果是 6 个组件漂移出去且零守卫。本类型由
- * {@code MapChangeSetTest} 的**反射枚举**把守 —— 新增状态组件若不进变更集，那个测试自动红。
+ * <p>铁律 5：变更集从完整状态类型派生。GSimulator 的 {@code MapDiff} 是**手工对着 MapData 维护**的， 后果是 6 个字段漂移出去且零守卫 ——
+ * {@code terrainBlocks}/{@code terrainTypes}/{@code pathwayGroups}/{@code edges}，加 {@code
+ * gridSize}/{@code hexOrientation}（见 spec §7.3）；其中**前四个**是"该进变更集而没进"的那一类。 本类型由 {@link
+ * RoundTripComponentsTest} 的**反射枚举**把守 —— 新增状态组件若不进变更集，那个测试自动红。
  *
  * <p>★ **7 个组件**（{@code GameMap} 是 8 个）：{@code spec} **不进变更集**（它是生成输入、不是可变更状态）， 这个不对称是**有意的**，见
  * {@link #apply(MapChangeSet, GameMap)}。{@code RegionIndex} 同理不进 （它是 {@code regions} 的纯函数），而 {@code
