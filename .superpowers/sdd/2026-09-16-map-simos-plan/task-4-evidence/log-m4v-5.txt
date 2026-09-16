@@ -1,0 +1,51 @@
+=================== ROUND m4v-5 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/pathway/PathwayId.java
+md5 原件=578b8aa897df89a3cfe829f8ecd581f0  变异体=5c3f2742e17e4e90c8a7258ea6628411
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 14, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.021 s <<< FAILURE! -- in io.mosire.simos.map.pathway.PathwayTest
+Tests run: 102, Failures: 2, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.pathway.PathwayTest.pathwayIdParseRoundTripsFrozenLiteral -- Time elapsed: 0.004 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.PathwayTest.pathwayIdToStringIsBareValue -- Time elapsed: 0 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   PathwayTest.pathwayIdParseRoundTripsFrozenLiteral:197 
+[ERROR]   PathwayTest.pathwayIdToStringIsBareValue:190 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 102, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.EdgeRefTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.map.pathway.EdgeRefTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.EdgeTagsTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.pathway.EdgeTagsTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.PathwayGroupTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.pathway.PathwayGroupTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.PathwayTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.021 s <<< FAILURE! -- in io.mosire.simos.map.pathway.PathwayTest
+io.mosire.simos.map.pathway.PathwayTest.pathwayIdParseRoundTripsFrozenLiteral -- Time elapsed: 0.004 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: PathwayId[value=p1]
+ but was: PathwayId[value=PathwayId[value=p1]]
+io.mosire.simos.map.pathway.PathwayTest.pathwayIdToStringIsBareValue -- Time elapsed: 0 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: "p1"
+ but was: "PathwayId[value=p1]"

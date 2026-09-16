@@ -1,0 +1,82 @@
+=================== ROUND m4v-1 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/pathway/EdgeRef.java
+md5 原件=b689c01d532b9d48df1c0e75ce3b6270  变异体=788f849dccacc300d3a443226229c6cf
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 8, Failures: 6, Errors: 0, Skipped: 0, Time elapsed: 0.014 s <<< FAILURE! -- in io.mosire.simos.map.pathway.EdgeRefTest
+Tests run: 102, Failures: 6, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.canonicalFormTouchesASortedFields -- Time elapsed: 0.005 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.toStringIsStable -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.toStringMatchesFrozenLiteral -- Time elapsed: 0 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.compareToIsTotalOrder -- Time elapsed: 0.003 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.parseRoundTripsFrozenLiteral -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.orderIsCanonical -- Time elapsed: 0 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   EdgeRefTest.canonicalFormTouchesASortedFields:53 [同一无向边的两个方向 -3_-3 / -3_-2] 
+[ERROR]   EdgeRefTest.compareToIsTotalOrder:147 
+[ERROR]   EdgeRefTest.orderIsCanonical:22 
+[ERROR]   EdgeRefTest.parseRoundTripsFrozenLiteral:101 
+[ERROR]   EdgeRefTest.toStringIsStable:81 
+[ERROR]   EdgeRefTest.toStringMatchesFrozenLiteral:90 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 102, Failures: 6, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.EdgeRefTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 6, Errors: 0, Skipped: 0, Time elapsed: 0.014 s <<< FAILURE! -- in io.mosire.simos.map.pathway.EdgeRefTest
+io.mosire.simos.map.pathway.EdgeRefTest.canonicalFormTouchesASortedFields -- Time elapsed: 0.005 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[同一无向边的两个方向 -3_-3 / -3_-2] 
+expected: -3_-2|-3_-3
+ but was: -3_-3|-3_-2
+io.mosire.simos.map.pathway.EdgeRefTest.toStringIsStable -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: "-1_0|3_4"
+ but was: "3_4|-1_0"
+io.mosire.simos.map.pathway.EdgeRefTest.toStringMatchesFrozenLiteral -- Time elapsed: 0 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: "-1_0|3_4"
+ but was: "3_4|-1_0"
+io.mosire.simos.map.pathway.EdgeRefTest.compareToIsTotalOrder -- Time elapsed: 0.003 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  ["-1_0|3_4", "0_0|0_1", "0_0|1_0", "0_0|1_0", "3_4|-1_0"]
+to contain exactly (and in same order):
+  ["-1_0|3_4", "-1_0|3_4", "0_0|0_1", "0_0|1_0", "0_0|1_0"]
+but some elements were not found:
+  ["-1_0|3_4"]
+and others were not expected:
+  ["3_4|-1_0"]
+io.mosire.simos.map.pathway.EdgeRefTest.parseRoundTripsFrozenLiteral -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: 3_4|-1_0
+ but was: -1_0|3_4
+io.mosire.simos.map.pathway.EdgeRefTest.orderIsCanonical -- Time elapsed: 0 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: -1_0|3_4
+ but was: 3_4|-1_0
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.EdgeTagsTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.pathway.EdgeTagsTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.PathwayGroupTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.pathway.PathwayGroupTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.PathwayTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.map.pathway.PathwayTest

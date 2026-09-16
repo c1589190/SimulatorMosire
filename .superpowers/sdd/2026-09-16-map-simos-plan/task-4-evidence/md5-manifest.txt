@@ -1,0 +1,28 @@
+# Task 4 变异实验室：md5 清单与各轮结果（2026-09-17）
+# 装置：/tmp/m4lab（本目录的 run.sh + mutate.py 建起来的；run.sh init 会从源码重建 pristine 镜像与清单）
+# 每轮顺序：恢复 pristine 镜像 → 逐文件比清单（不一致即作废）→ 文件数校验（不得有清单外的 .java）
+#          → 清 target/{classes,test-classes} → 变异（原地写入目标类名的文件）→ 比 md5 自证字节不同
+#          → 断言除目标外无文件被改动 → 跑 `./mvnw -pl simos-map -am test` → 断言 COMPILATION ERROR 数为 0
+# 六轮**全部**满足：干净世界 OK、md5 字节不同 OK、只有目标文件变、COMPILATION ERROR count = 0。
+
+## 原件（run.sh init 当时的落盘内容；与各轮"原件"列逐字节一致）
+b689c01d532b9d48df1c0e75ce3b6270  map/pathway/EdgeRef.java
+353d5fb227cc6904de547c1502230c9b  map/pathway/EdgeTags.java
+5082b8d676259106128005f9d1b640d7  map/pathway/Pathway.java
+d020d8e211124fd199818f3fd80277bc  map/pathway/PathwayGroup.java
+578b8aa897df89a3cfe829f8ecd581f0  map/pathway/PathwayId.java
+3bab92eca63a84fc4e9b3611a76be0bd  map/pathway/EdgeRefTest.java        # 测试文件：六轮**从未**被变异
+c1da5156e9d327b1ea311d6390284813  map/pathway/EdgeTagsTest.java
+6292ec329ea78c14c86eac4960618530  map/pathway/PathwayGroupTest.java
+f3b1a7f86e1ae1b5db0e631af277d933  map/pathway/PathwayTest.java
+
+## 各轮（红 = Failures 断言红 / Errors 异常红，两列分开；六轮**没有一条** Errors）
+m4v-1  EdgeRef.java    b689c01d… → 788f849d…  删构造期规范序交换     Failures 6 / Errors 0   见 log-m4v-1.txt
+m4v-2  EdgeRef.java    b689c01d… → 8ff831d1…  删自环校验             Failures 2 / Errors 0   见 log-m4v-2.txt
+m4v-3  Pathway.java    5082b8d6… → 3ac5ab82…  构造器忽略传入 id（改用 edges.size()）  Failures 2 / Errors 0  见 log-m4v-3.txt
+m4v-4  EdgeTags.java   353d5fb2… → e38f8898…  改用 Map.copyOf         Failures 1 / Errors 0   见 log-m4v-4.txt
+m4v-5  PathwayId.java  578b8aa8… → 5c3f2742…  删手写 toString        Failures 2 / Errors 0   见 log-m4v-5.txt
+m4v-6  Pathway.java    5082b8d6… → 2ff2fec7…  id 混进内容哈希（补 m4v-3 没盖到的第二条断言）  Failures 1 / Errors 0  见 log-m4v-6.txt
+
+## 实验室收尾（run.sh 末段实测输出）
+恢复干净世界后 `verify_clean` = OK（与上面的原件清单逐字节一致，无多余 .java）

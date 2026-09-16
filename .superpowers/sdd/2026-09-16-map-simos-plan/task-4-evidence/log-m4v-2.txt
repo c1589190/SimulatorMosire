@@ -1,0 +1,49 @@
+=================== ROUND m4v-2 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/pathway/EdgeRef.java
+md5 原件=b689c01d532b9d48df1c0e75ce3b6270  变异体=8ff831d1e8dfc2c5ff23b6ee065ebec3
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 8, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.012 s <<< FAILURE! -- in io.mosire.simos.map.pathway.EdgeRefTest
+Tests run: 102, Failures: 2, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.selfLoopIsRejected -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.pathway.EdgeRefTest.parseRoundTripsFrozenLiteral -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   EdgeRefTest.parseRoundTripsFrozenLiteral:119 
+[ERROR]   EdgeRefTest.selfLoopIsRejected:62 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 102, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.EdgeRefTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.012 s <<< FAILURE! -- in io.mosire.simos.map.pathway.EdgeRefTest
+io.mosire.simos.map.pathway.EdgeRefTest.selfLoopIsRejected -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+Expecting code to raise a throwable.
+io.mosire.simos.map.pathway.EdgeRefTest.parseRoundTripsFrozenLiteral -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+Expecting code to raise a throwable.
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.EdgeTagsTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.pathway.EdgeTagsTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.PathwayGroupTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.pathway.PathwayGroupTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.pathway.PathwayTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.map.pathway.PathwayTest
