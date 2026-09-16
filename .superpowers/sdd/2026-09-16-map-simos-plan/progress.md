@@ -1026,3 +1026,29 @@ R-13-j 源码级无 IO 断言（注意别用裸词 `File` —— 会误伤 `Fiel
 - 需求 = `task-12-brief.md` + `task-12-brief-supplement.md`（补充为准；新增裁定 R-12-g 挡住 NaN 的 ratio、
   R-12-h 校验顺序、R-12-i 图外格跳过且不消费随机数、以及"夹具 ratioA 必须严格落在 (0,1) 否则确定性用例恒真"的判别力要求）。
 - 派单：**省略 `model` 参数**（按用户裁定，省略才走 glm 路由）。
+
+### Task 12 交接（2026-09-17）
+
+- 第一个实现者（glm 路由）写完两个文件、跑完 5 轮变异，**在门禁处卡住后进程被外部终止**：GLM 5 小时额度 429（重置 06:52），未提交、未写报告。
+- **控制器复现了它卡住的原因**：`./mvnw -q verify` rc=1，SpotBugs `DMI_RANDOM_USED_ONLY_ONCE` @ `RegionRandomizer.java:80`。
+  根因（控制器当场读源码 + 读 spotbugsXml 定位）：`new Random(...)` 与唯一的 `nextDouble()` 调用点在**同一方法**里，
+  该检测器是**过程内**的 ⇒ 把"一个 RNG、循环里抽 N 次"这个正确用法误报。**语义没错，要动的是结构**。
+- **裁定**：抽成 `private static Random rngFor(RegionId, long)`（`RiverBuilder.rngFor` 的同形制 —— 那边同样形态在 Task 11 的 verify 里是绿的，即是现成佐证）；
+  **不许** `@SuppressFBWarnings`（要新增依赖）、不许改测试迁就。
+- **第二个实现者**已按用户裁定「glm 没法用就手动换 deepseek」**显式传 `model`** 派单（显式值走 deepseek 路由），任务 = 修复 + 重跑 5 轮变异 + 写报告 + 提交。
+- ★ **评审用的 BASE 更正为 `1212904`**（控制器在第一次派单后又提交了台账与补充文件；`82f3dbf` 不再是最新基线）。
+
+## Task 12 关账（2026-09-17）
+
+- **交付** `e62432a`：`RegionRandomizer.java`（109 行）+ `RegionRandomizerTest.java`（407 行 / 13 条用例）+ 证据 8 件 + 报告。
+  提交面 12 文件、2009 insertions，**零越界**（未碰任何既有文件）。
+- **评审形态 = 控制器自读 diff**（代码量小，不派评审者）。当场核过：
+  1. 实现逐条对上 R-12-a~i（逐格 Bernoulli / 一个 region 一个 RNG / 图外格跳过且不消费 / `(terrain, height)` 顺序 / 校验先于计算 / `!(a>=0&&a<=1)` 挡 NaN / 只有 `hexes` 可能非 `Unchanged`）；
+  2. 13 条用例的夹具判别力与诚实性：初始地形取第三方 `mountains`（与 A/B 都不同 ⇒ upsert 忠实记录指派）、高度非平（随 `(q+r)`）、"核对过 30 格"防循环空转、key 序用 `containsExactly`、NaN 真在覆盖里、孪生区域证明 region 进了 RNG；
+  3. 6 轮变异每轮自证头齐（干净世界 108 个 .java / 改前先绿 156+221 / 变异体按白名单推成**目标类名** / 原件 md5 六轮同为 `af8a6f03…` / 变异体 md5 相异 / `COMPILATION ERROR` 计数真的为 0 / simos-map 22 类真跑过），**红点全部落在声明靶子**；
+  4. 工作树 `RegionRandomizer.java` 的 md5 **与六轮证据里的"原件"逐字节一致**（证据是对着提交字节跑的）；
+  5. **控制器独立 `./mvnw -q verify` ⇒ rc=0、`[ERROR]` 行数 0**（与实现者的门禁日志相互独立）。
+- **裁定（执行期，追认）**：SpotBugs `DMI_RANDOM_USED_ONLY_ONCE` 属**过程内检测**误报 ⇒ 抽 `rngFor(RegionId, long)`，**不许** `@SuppressFBWarnings`、**不许**改测试迁就。语义一字未动（修复前后 13/13 绿且**钉死的实测数字一字未变**：559/1027、489、59）。
+- **R-12-g 的 NaN 守卫是实测钉住的，不是推导的**：自审发现 m12v-4（删整条校验）红在 `-0.1` 那一格、**走不到 NaN** ⇒ 补 m12v-6（"或"形态，只有 NaN 漏过）并对着变异体编译产物逐值定点测量（-0.1/1.1 照样抛、**只有 NaN 未抛**；原件三个值都抛）。
+- **关切（4 条，均不挡关账）**：① `rngFor` 若被内联回 `randomize`，SpotBugs 会立刻复报 —— **编译期无护栏**，只有 `verify` 会响；② m12v-6 的逐值定点测量跑在 `/tmp` 探针上、**没进装置**；③ AssertJ 在"未抛"失败形态下不回显 `.as()` 描述 ⇒ 光看 `.kept` 判不出是哪个值红的；④ 装置只跑 `test` 不跑 `verify`（判的是测试判别力，装置绿 ≠ 门禁绿，两者分别跑过）。
+- **挂起项**：`terrainA.equals(terrainB)` 不设守卫（R-12-h 裁定为合法输入）—— 两种地形相同时变更集**仍会 upsert**（值等于原值的 upsert 不是 no-op），下游别假设"upsert 的格一定换了地形"。
