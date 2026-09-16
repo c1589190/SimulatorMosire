@@ -8,6 +8,7 @@ import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.identity.SubjectId;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -163,6 +164,34 @@ class InMemoryInfoSystemTest {
     assertThat(info.get(HEX, "alias", SimosTimestamp.of(0))).map(InfoEntry::value).contains("甲");
     assertThat(info)
         .isEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO)));
+  }
+
+  // ---- 以下为 fix round 2（控制器裁决）：构造期**深**拷贝——内层列表同样防御 ----
+
+  /** 内层列表也要防御拷贝：构造后调用方清空自己的 list，本实例的值与哈希都不得漂移（浅拷贝会穿透）。 */
+  @Test
+  void mutatingTheBackingListAfterConstructionDoesNotChangeTheSystem() {
+    List<InfoEntry> mutableEntries = new ArrayList<>(List.of(entry("alias", "甲", SINCE_ZERO)));
+    InMemoryInfoSystem info = new InMemoryInfoSystem(Map.of(HEX, mutableEntries));
+    int hashCodeBefore = info.hashCode();
+
+    mutableEntries.clear();
+
+    assertThat(info.get(HEX, "alias", SimosTimestamp.of(0))).map(InfoEntry::value).contains("甲");
+    assertThat(info)
+        .isEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO)));
+    assertThat(info.hashCode()).isEqualTo(hashCodeBefore);
+  }
+
+  /** `bySubject()` 不设防，防线在构造期最后那层 `Map.copyOf`：拿到的 map 与列表都改不动。 */
+  @Test
+  void theExposedMapIsImmutable() {
+    InMemoryInfoSystem info = InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO));
+    assertThatThrownBy(() -> info.bySubject().put(HEX, List.of()))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> info.bySubject().get(HEX).add(entry("icon", "anchor", SINCE_ZERO)))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThat(info.bySubject().get(HEX)).hasSize(1);
   }
 
   private static InfoEntry entry(String key, Object value, TimeRange valid) {

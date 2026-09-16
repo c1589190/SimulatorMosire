@@ -13,13 +13,19 @@ import java.util.Optional;
  * {@link InfoSystem} 的内存实现：写时复制，读不修改任何状态。
  *
  * <p>它是 **record**——值语义由 record 提供（spec §十一：禁止手写 `equals`，`equals` 是往返断言的判据本身）， `SimulationState`
- * 的逐字段重建断言（铁律 5）依赖它。`bySubject()` 访问器返回的是不可变结构：构造期过一遍 {@code Map.copyOf}，本类自身的写路径（{@link
- * #put}）对各主体列表一律 {@code List.copyOf}，外部无从经它改写内部状态。
+ * 的逐字段重建断言（铁律 5）依赖它。
+ *
+ * <p>`bySubject()` 访问器不设防，防线在构造期：逐值 {@code List.copyOf} 再整体 {@code Map.copyOf}——**深**拷贝，否则
+ * 调用方的可变列表会穿透进来（浅拷贝下 `clear()` 能改掉本实例的值、连带 `hashCode()` 漂移，spec §十一"集合防御性拷贝"）。 本类自身的写路径（{@link
+ * #put}）对各主体列表同样 {@code List.copyOf}，外部无从经它改写内部状态。
  */
 public record InMemoryInfoSystem(Map<Address, List<InfoEntry>> bySubject) implements InfoSystem {
 
   public InMemoryInfoSystem {
-    bySubject = Map.copyOf(bySubject);
+    Objects.requireNonNull(bySubject, "bySubject");
+    Map<Address, List<InfoEntry>> copy = new LinkedHashMap<>();
+    bySubject.forEach((key, entries) -> copy.put(key, List.copyOf(entries)));
+    bySubject = Map.copyOf(copy);
   }
 
   public static InMemoryInfoSystem empty() {
