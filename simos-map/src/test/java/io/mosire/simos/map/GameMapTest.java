@@ -180,11 +180,16 @@ class GameMapTest {
     assertThat(GameMap.empty().spec().seed()).isZero();
   }
 
-  /** 骨架的唯一点：{@code defaults} **收种子、不吞种子**（Task 8 才扩参数面，本任务不替它定字段）。 */
+  /**
+   * {@code defaults} **收种子、不吞种子**：种子进得去、出得来，且两个种子给出两个不相等的 spec。
+   *
+   * <p>★ 参数面已在 **Task 8** 落定（本任务写的是骨架期的 {@code defaults(7L) == new GenerationSpec(7L)}， 那时全部组件只有
+   * {@code seed}，只能那么写）。那句话的**真意** —— "只让 seed 变，其余是规范默认值" —— 现在由 {@code
+   * GenerationSpecTest#defaultsCarryOnlyTheSeed} 以**逐组件**的形态钉住（更强：它看得见全部 9 个组件）。
+   */
   @Test
   void generationSpecDefaultsCarryTheSeed() {
     assertThat(GenerationSpec.defaults(7L).seed()).isEqualTo(7L);
-    assertThat(GenerationSpec.defaults(7L)).isEqualTo(new GenerationSpec(7L));
     assertThat(GenerationSpec.defaults(7L)).isNotEqualTo(GenerationSpec.defaults(8L));
   }
 
