@@ -188,7 +188,9 @@ class FacetRegistryTest {
     ResolveContext ctx = context(); // 只取一次——断言与传入必须是**同一个**对象
     registry.queryAll(HEX, ctx);
     assertThat(seenSubjects).containsExactly(HEX.canonical());
-    assertThat(seenContexts).containsExactly(ctx);
+    assertThat(seenContexts).hasSize(1); // 恰好被调用一次
+    assertThat(seenContexts.get(0)).isSameAs(ctx); // **同一个**对象：containsExactly 走 equals，
+    // 值相等的替身它放行；原样转交的意图只有同一性才钉得住
   }
 
   private static FacetProvider provider(String facetName, FacetEntry... entries) {

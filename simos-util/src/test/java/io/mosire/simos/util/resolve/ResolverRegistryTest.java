@@ -129,7 +129,9 @@ class ResolverRegistryTest {
           }
         });
     QueryResult result = registry.resolve(address, ctx);
-    assertThat(seenContexts).containsExactly(ctx); // ctx 原样转交（传 null 或替身都转红）
+    assertThat(seenContexts).hasSize(1); // 恰好被调用一次
+    assertThat(seenContexts.get(0)).isSameAs(ctx); // **同一个**对象：containsExactly 走 equals，
+    // 值相等的替身它放行；原样转交的意图只有同一性才钉得住
     assertThat(result.candidates().get(0).canonicalAddress())
         .isEqualTo(address.canonical()); // 地址原样转交（被替换过的地址在此转红）
   }
