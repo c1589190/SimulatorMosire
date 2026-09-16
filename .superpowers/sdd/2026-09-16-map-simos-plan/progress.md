@@ -793,3 +793,25 @@ m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILAT
 | `specIsNeverNullAfterTask8` 断言 `GameMap.empty().spec() == defaults(0L)` | **接受**：`defaults(0L)` 是 `empty()` 的规范种子约定（R-48-e）；逐组件相等比单 `isNotNull` 强 |
 
 **下一步**：Task 9（`TerrainClassifier`）派单前扫描 → 派单。
+
+## Task 9 派单前的扫描（控制器预做）
+
+| 配对 | 一方产出 → 另一方消费 | 发现 |
+|---|---|---|
+| **Task 2 → Task 9** | `TerrainCatalog.KEYS`（7 项、高度升序）/ `defaults()`（升序 `LinkedHashMap`）/ `of(key)`；`TerrainType` 带**左闭右开**、构造期校验 `0 <= min < max <= 1` | ★ **真缺口**：带右开 ⇒ **`h == 1.0` 不属于任何带**（最高带 `plateau_mountains [0.90, 1.00)`），而 `classify` 是总函数 ⇒ **R-9a**（见下）。其余核过：KEYS 序 = 高度升序、`defaults()` 同序、`of(key)` 对未知 key 抛 —— 遍历与判例都成立 |
+| Task 8 → Task 9 | 同在 `generate` 包；Task 8 已把高度阈值清出参数面（U1） | **无冲突**：文件不相交；"分类器不许有自己的数"与 Task 8 的 `noTerrainHeightThresholds` 是同一军令的两端，互相加强 |
+| Task 9 → Task 10 | `classify(height, humidity, temperature)`（Task 10 的 `MapGenerator` 调它） | **无冲突，两条注记**：(1) 湿度阈值由 Task 9 唯一持有，Task 10 若要沙漠出现需让湿度噪声下探到阈值以下 —— 但 Task 10 的用例不要求沙漠出现，**不构成硬约束**；(2) temperature 本任务收下不用 ⇒ Task 10 的"气候"不得假定它已被消费 |
+| Task 2 用例 → Task 9 变异轮 2 | `TerrainCatalogTest` 的钉子：最低带起于 `0.0`、最高带止于 `1.0`、相邻带共享边界 —— **数值全部取自类型自身，无边界字面量** | ★ **变异轮 2 可构造、且不污染词表自己的用例**：挪一条**中间**共享边界并**成对改**（如 ocean/plains 的 `0.30 → 0.32`：改 `ocean.maxHeight` 与 `plains.minHeight` 两处）⇒ 划分/端点/连续性三条仍绿，而"分类器写死旧阈值"只在 `classifierFollowsCatalogBands` 上红（**R-9c**） |
+| Task 9 自洽 | Step 2 的 8 条用例 vs Step 1 的语义（沙漠门 / 总函数 / 查表） | **基本一致**，两处需补：`h == 1.0` 无任何用例钉住（→ R-9a 的钉子）；变异行 4"末尾加 default 兜底"在 R-9a 的形态下可能不可达/无判别力（→ **R-9d**）。desert 门与 `desertBandFallsBackToPlainsWhenHumid` 一致；`classifierFollowsCatalogBands` 采样点由被遍历带**现算**（min/中点/`nextDown(max)`），与"无私有数"同构 |
+| Task 9 外部依赖 | — | **无**：不读 GSimulator、无外部路径 |
+
+**R-9a（补 brief 的缺口）**：落带算法 = **升序找第一条 `height < maxHeight` 的带；一条都没有（`height >= 1.0`）⇒ 取最高带**。
+- 理由：带是 `[0,1]` 的划分但**右开**，`h == 1.0` 是唯一缺口；`classifyIsTotal` 要求不抛。
+- **不采用夹取**（`Math.max(0, Math.min(1, height))`）：顶端**仍要补一次退末带**（`1.0 < 1.00` 为假），等于两处约定；且引入 `0.0/1.0` 字面量，与"不许有自己的数"擦边。退末带**零字面量、零算术**。
+- 副产物（结构性、不承诺语义）：负值天然落最低带。
+- **钉子**：`classifyIsTotal` 显式加 `classify(1.0, …)`（不抛、= 最高带 key）与一个域外负值（不抛、= 最低带 key）。
+- 代价若错：一句约定 + 一条断言，一行改回。
+
+**R-9c（变异轮 2 的构造细则）**：挪边界必须**成对改**共享边界、**只挪中间边界**（不与 `TerrainCatalogTest` 的 0.0/1.0 端点相干）；目标红点 = `classifierFollowsCatalogBands`。若同轮别条用例也红，如实列出并标明因果（两套词表分叉），不算污染。
+
+**R-9d（变异行 4 的等价形态）**：R-9a 之后"末尾 default 兜底"可能**不可达**（总函数的正常路径就是退末带）。等价且能响的形态：**把"退末带"改成"全不中 ⇒ 返回常量 `plains`"** —— 这才测出"总函数的来源是结构、不是兜底常量"。红点落在 R-9a 的 `1.0` 钉子（`classifyIsTotal`）或 `plateauMountainsIsHighestBand`，以实测为准、报告写实际红处。
