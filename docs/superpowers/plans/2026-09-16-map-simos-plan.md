@@ -1149,10 +1149,11 @@ EdgeRefTest
   - nullEndpointIsRejected
   - toStringIsStable                      : 同一无向边的两个构造方向 toString **相同**
   - toStringMatchesFrozenLiteral          : ★ **冻结串**（R-48-f）：`new EdgeRef(c(3,4), c(-1,0)).toString()`
-                                            恰为字面量 `"3_4|-1_0"`（**规范序在前**，不是入参序）。
+                                            恰为字面量 `"-1_0|3_4"`（**规范序在前**，不是入参序：
+                                            `HexCoord.compareTo` 先 q 后 r，−1 < 3 故 `(-1,0)` 在前）。
                                             全局约束「没有冻结用例的手写 toString 算违规」—— `toStringIsStable`
                                             只比两个方向，**不算冻结**，光有它不达标。
-  - parseRoundTripsFrozenLiteral           : ★ `EdgeRef.parse("3_4|-1_0")` equals 上式结果；
+  - parseRoundTripsFrozenLiteral           : ★ `EdgeRef.parse("-1_0|3_4")` equals 上式结果；
                                             段数不为 2 的串 → IllegalArgumentException
   - compareToIsTotalOrder
 
