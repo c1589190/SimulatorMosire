@@ -628,3 +628,14 @@ Checkstyle 0、SpotBugs `BugInstance size is 0`。6 轮变异全红、`COMPILATI
    `toString()` 是变更集 String key。**任何拿这些 key 做集合/哈希/序列化的地方都不得改成 `Map.copyOf`/`HashMap`**
    —— m4v-4 **实测**顺序会变，变更集内容会跨运行漂移。
 2. **值相等口径**：`Pathway.props` 的值是 `Object`（老仓即如此），`FieldDelta` 落到它上面时需要一条"值相等"判据。
+
+## Task 5（`map` 包：`HexCell`/`City`/`GameMap` + `GenerationSpec` 骨架）派单
+
+**BASE** `07a49f0`。agentId `a77857d16ba08eb21`（sonnet）。
+派单要点：附 `task-5-brief.md`（唯一需求来源）；补齐 brief 不知道的接口事实
+（`HexCoord`/`RegionId` 三件套已齐、`Region.of` 会替你重算边界、`RegionIndex.of` 的签名、
+`Region` 的 `boundary` 是组件而非派生）；把 **R-48-d/e/f** 再点一遍；★ **顺序纪律**（Task 4 §6.2
+原样带走，含"冻结字面量钉插入序、不许跟源 map 比"的理由）；★ **指它复用 `task-4-evidence/` 的实验室模板**
+（拷成 `task-5-evidence/`，只改 TARGET 表与路径）。
+
+**框架期口径**：不派评审者；实现者的**变异自证就是测试**；控制器收到报告后自读 diff。
