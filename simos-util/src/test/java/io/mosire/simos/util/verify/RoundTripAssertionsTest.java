@@ -87,18 +87,56 @@ class RoundTripAssertionsTest {
   void aBrokenRoundTripReportsAllThreeStates() {
     ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
     ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
+    // **控制器修正（T10 评审判 I-1，详见下方"控制器修正说明 ②"）**：原写的
+    // `.hasMessageContaining("target")` 是**空转的**，`base` 那一行则**完全没有 needle**。
+    ToyChangeSet broken =
+        new ToyChangeSet(base.ref().revision(), target.timestamp(), target.alpha(), base.beta());
+    // apply(broken, base) 的预期结果：ref 取 base 的下一版（1+1=2）、timestamp/alpha 取变更集、
+    // namespace/beta 沿袭 base ⇒ (ref(2), of(1), "toy", 5, 2)。它与 target **只差 beta 一个字段**。
+    ToySnapshot expectedActual = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 2);
     assertThatThrownBy(
             () ->
                 RoundTripAssertions.assertRoundTrip(
-                    base,
-                    target,
-                    (b, t) ->
-                        new ToyChangeSet(b.ref().revision(), t.timestamp(), t.alpha(), b.beta()),
-                    ToySnapshot::apply))
+                    base, target, (b, t) -> broken, ToySnapshot::apply))
         .isInstanceOf(AssertionError.class)
-        .hasMessageContaining("target")
-        .hasMessageContaining("actual");
+        // 钉**整条 dump 行**（标签 + 该行的对象），而不是裸的字段名/词：
+        // 这样删掉实现里任何一行、或把那行拼错对象，对应 needle 必然消失。
+        .hasMessageContaining("  base      = " + base)
+        .hasMessageContaining("  target    = " + target)
+        .hasMessageContaining("  actual    = " + expectedActual)
+        .hasMessageContaining("  changeSet = " + broken)
+        // spec §9.2 要求报文含"一句定位提示"（评审判 M-1：删掉提示行原本无人察觉）。
+        .hasMessageContaining("这正是 L1 事故的形态");
   }
+
+  @Test
+  void theFrameworkDoesNotRequireSnapshotImplementations() {
+    // spec §9.2 给 `assertRoundTrip` 的 `S` **不设上界**——它要能服务 `SimulationState` 这类非快照类型。
+    // G13（评审判 M-2）：这条性质写在实现的 Javadoc 里，此前**没有任何用例守它**——给 `S` 加回
+    // `extends Snapshot` 上界，编译照样通过、5 条用例全绿。本用例用一个**刻意不实现 `Snapshot`** 的
+    // record 调用它；一旦有人加上界，这里**编译失败**（响亮的红）。
+    PlainState base = new PlainState(1);
+    PlainState target = new PlainState(2);
+    assertThatCode(
+            () ->
+                RoundTripAssertions.assertRoundTrip(
+                    base, target, PlainState::diff, PlainState::apply))
+        .doesNotThrowAnyException();
+  }
+
+  /** 刻意**不**实现 `Snapshot`：证明框架对 `S` 真的没有上界。 */
+  record PlainState(long value) {
+
+    static PlainChangeSet diff(PlainState base, PlainState target) {
+      return new PlainChangeSet(new RevisionId(target.value()));
+    }
+
+    static PlainState apply(PlainChangeSet changeSet, PlainState base) {
+      return new PlainState(changeSet.baseRevision().value());
+    }
+  }
+
+  record PlainChangeSet(RevisionId baseRevision) implements ChangeSet {}
 
   /** 玩具快照：证明框架不关心 `S` 是什么，只要它是 record 并实现 `Snapshot`。 */
   record ToySnapshot(StateRef ref, SimosTimestamp timestamp, String namespace, int alpha, int beta)

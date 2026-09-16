@@ -21,16 +21,21 @@ class RoundTripAssertionsDriftTest {
   void aChangeSetThatDropsAFieldMustBeCaught() {
     DriftingSnapshot base = new DriftingSnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
     DriftingSnapshot target = new DriftingSnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
+    // **控制器修正（T10 评审判 I-2，详见下方"控制器修正说明 ③"）**：原写的 `beta=9` / `beta=2`
+    // 两条 needle **不具备注释所声称的"定位到 beta"的能力**——报文里 base 行与 target 行是
+    // **无条件打印**的，两条 needle 分别被它们满足。评审实测 W1（把漂移从 beta 挪到 alpha）下
+    // 本用例**全绿**：断言在"红得不是 beta"的世界里没有转红。
+    // 改为钉 **actual 那一整行**。apply 的预期结果：ref 取 base 的下一版（1+1=2）、timestamp/alpha
+    // 取变更集、namespace/beta 沿袭 base ⇒ `(ref(2), of(1), "toy", 5, 2)`，它与 target `(…,5,9)`
+    // **只差 beta**——"差异出在 beta"因此由构造本身钉死，而不是由子串碰巧满足。
+    DriftingSnapshot expectedActual =
+        new DriftingSnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 2);
     assertThatThrownBy(
             () ->
                 RoundTripAssertions.assertRoundTrip(
                     base, target, DriftingSnapshot::diff, DriftingSnapshot::apply))
         .isInstanceOf(AssertionError.class)
-        // 钉**两侧的具体值**，不只钉字段名：报文拼的是 target 与 actual 的整份 record toString，
-        // 只要报文里出现过 "beta" 字样（两侧的 toString 都带着它），只写 `hasMessageContaining("beta")`
-        // 对"差异出在哪个字段"**零判别力**——ref 版本对不上时它照样满足。
-        .hasMessageContaining("beta=9") // target 的 beta
-        .hasMessageContaining("beta=2"); // actual（沿袭 base）的 beta —— 两者必须同时出现，才证明红的是 beta
+        .hasMessageContaining("  actual    = " + expectedActual);
   }
 
   /** 故意漂移的玩具快照：`beta` 在快照里有、在变更集里没有——L1 事故的最小重演。 */
