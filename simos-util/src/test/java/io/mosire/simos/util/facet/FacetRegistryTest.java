@@ -12,6 +12,7 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -27,8 +28,8 @@ class FacetRegistryTest {
     // 注册序**故意不取字母序**：若按字母序注册，"注册序"这条断言换成 TreeMap 实现也照样全绿，
     // 等于空转护栏。unitsHere → population 之后，LinkedHashMap 绿、任何排序实现红
     // （字母序恰是 population → unitsHere）。
-    registry.register(provider("unit", "unitsHere", entry("unit", "unitsHere", List.of("U-1"))));
-    registry.register(provider("social", "population", entry("social", "population", 10_000)));
+    registry.register(provider("unitsHere", entry("unit", "unitsHere", List.of("U-1"))));
+    registry.register(provider("population", entry("social", "population", 10_000)));
     assertThat(registry.facetNames()).containsExactly("unitsHere", "population"); // 注册序，非排序
     assertThat(registry.queryAll(HEX, context()).stream().map(FacetEntry::label).toList())
         .containsExactly("unitsHere", "population");
@@ -37,11 +38,9 @@ class FacetRegistryTest {
   @Test
   void duplicateFacetNameIsRejected() {
     FacetRegistry registry = new FacetRegistry();
-    registry.register(provider("unit", "unitsHere", entry("unit", "unitsHere", List.of())));
+    registry.register(provider("unitsHere", entry("unit", "unitsHere", List.of())));
     assertThatThrownBy(
-            () ->
-                registry.register(
-                    provider("unit", "unitsHere", entry("unit", "unitsHere", List.of()))))
+            () -> registry.register(provider("unitsHere", entry("unit", "unitsHere", List.of()))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unitsHere");
   }
@@ -49,7 +48,7 @@ class FacetRegistryTest {
   @Test
   void aProviderWithNothingToSayIsNotAnError() {
     FacetRegistry registry = new FacetRegistry();
-    registry.register(provider("unit", "unitsHere")); // 返回空列表
+    registry.register(provider("unitsHere")); // 返回空列表
     assertThat(registry.queryAll(HEX, context())).isEmpty();
   }
 
@@ -98,11 +97,11 @@ class FacetRegistryTest {
     assertThatThrownBy(() -> registry.register(null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("provider");
-    assertThatThrownBy(() -> registry.register(provider("unit", " ")))
+    assertThatThrownBy(() -> registry.register(provider(" ")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得为空白");
     // null 走同一条守卫：只写 isBlank() 的实现会在此抛 NPE，本断言转红。
-    assertThatThrownBy(() -> registry.register(provider("unit", null)))
+    assertThatThrownBy(() -> registry.register(provider((String) null)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得为空白");
     assertThatThrownBy(() -> registry.queryAll(null, context()))
@@ -140,18 +139,59 @@ class FacetRegistryTest {
   void facetNamesIsDefensivelyCopiedAndImmutable() {
     FacetRegistry registry = new FacetRegistry();
     assertThat(registry.facetNames()).isEmpty(); // 空注册表不是错误
-    registry.register(provider("unit", "unitsHere"));
+    registry.register(provider("unitsHere"));
     List<String> names = registry.facetNames();
     assertThatThrownBy(() -> names.add("population"))
         .isInstanceOf(UnsupportedOperationException.class);
     // 取到的是**快照**而非视图：后续注册不得改变已取出的列表
-    // （返回 Collections.unmodifiableList(providers.keySet()) 这类"不可改但仍是视图"的实现会在此转红）。
-    registry.register(provider("social", "population"));
+    // （把内部集合包一层 unmodifiable 的"不可改但仍是视图"实现会在此转红）。
+    registry.register(provider("population"));
     assertThat(names).containsExactly("unitsHere");
     assertThat(registry.facetNames()).containsExactly("unitsHere", "population");
   }
 
-  private static FacetProvider provider(String namespace, String facetName, FacetEntry... entries) {
+  @Test
+  void queryAllResultIsImmutable() {
+    // G13 自证：`return List.copyOf(entries)` 换成 `new ArrayList<>(entries)` 时只有本用例转红
+    // （既有四个调用点分别只是 stream、isEmpty()、或在返回前就抛，都看不见这个加固）。
+    // 只断"不可改"、**不断"是快照"**：queryAll 每次调用都新建局部累加器再复制返回，
+    // 没有任何被保留的字段可别名，快照性在此不是一条性质，断言它等于断言空气。
+    FacetRegistry registry = new FacetRegistry();
+    registry.register(provider("unitsHere", entry("unit", "unitsHere", List.of("U-1"))));
+    List<FacetEntry> entries = registry.queryAll(HEX, context());
+    assertThat(entries).hasSize(1);
+    assertThatThrownBy(() -> entries.add(entry("social", "population", 10_000)))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void forwardsTheCallersSubjectAndContextVerbatim() {
+    // 同 ResolverRegistryTest：注册表是纯转发，不得替换 subject、不得吞掉 ctx。
+    List<String> seenSubjects = new ArrayList<>();
+    List<ResolveContext> seenContexts = new ArrayList<>();
+    FacetRegistry registry = new FacetRegistry();
+    registry.register(
+        new FacetProvider() {
+
+          @Override
+          public String facetName() {
+            return "unitsHere";
+          }
+
+          @Override
+          public List<FacetEntry> query(Address subject, ResolveContext ctx) {
+            seenSubjects.add(subject.canonical());
+            seenContexts.add(ctx);
+            return List.of(entry("unit", "unitsHere", List.of("U-1")));
+          }
+        });
+    ResolveContext ctx = context(); // 只取一次——断言与传入必须是**同一个**对象
+    registry.queryAll(HEX, ctx);
+    assertThat(seenSubjects).containsExactly(HEX.canonical());
+    assertThat(seenContexts).containsExactly(ctx);
+  }
+
+  private static FacetProvider provider(String facetName, FacetEntry... entries) {
     return new FacetProvider() {
 
       @Override

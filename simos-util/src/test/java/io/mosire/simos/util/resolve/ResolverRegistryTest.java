@@ -14,6 +14,7 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -98,10 +99,39 @@ class ResolverRegistryTest {
     List<String> names = registry.namespaces();
     assertThatThrownBy(() -> names.add("map")).isInstanceOf(UnsupportedOperationException.class);
     // 取到的是**快照**而非视图：后续注册不得改变已取出的列表
-    // （返回 Collections.unmodifiableList(resolvers.keySet()) 这类"不可改但仍是视图"的实现会在此转红）。
+    // （把内部集合包一层 unmodifiable 的"不可改但仍是视图"实现会在此转红）。
     registry.register(resolver("map", "m-1"));
     assertThat(names).containsExactly("unit");
     assertThat(registry.namespaces()).containsExactly("unit", "map");
+  }
+
+  @Test
+  void forwardsTheCallersAddressAndContextVerbatim() {
+    // 注册表是**纯转发**：不得替换地址、不得替换或吞掉 ctx。
+    // 变异：把 `resolver.resolve(address, ctx)` 改成 `resolver.resolve(address, null)`（或换成一个
+    // 规范化过的地址）时，只有本用例转红——既有用例只读 id().localId()，看不见这两个参数。
+    Address address = Address.parse("map:Map1");
+    ResolveContext ctx = context(); // 只取一次，断言与传入必须是**同一个**对象
+    List<ResolveContext> seenContexts = new ArrayList<>();
+    ResolverRegistry registry = new ResolverRegistry();
+    registry.register(
+        new Resolver() {
+          @Override
+          public String namespace() {
+            return "map";
+          }
+
+          @Override
+          public QueryResult resolve(Address a, ResolveContext c) {
+            seenContexts.add(c);
+            return new QueryResult(
+                List.of(new ResolvedSubject(new SubjectId("map", "m-1"), a.canonical(), "Toy")));
+          }
+        });
+    QueryResult result = registry.resolve(address, ctx);
+    assertThat(seenContexts).containsExactly(ctx); // ctx 原样转交（传 null 或替身都转红）
+    assertThat(result.candidates().get(0).canonicalAddress())
+        .isEqualTo(address.canonical()); // 地址原样转交（被替换过的地址在此转红）
   }
 
   private static Resolver resolver(String namespace, String localId) {
