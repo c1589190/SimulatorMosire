@@ -9,13 +9,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/** {@link InfoSystem} 的内存实现：写时复制，读不修改任何状态。 */
-public final class InMemoryInfoSystem implements InfoSystem {
+/**
+ * {@link InfoSystem} 的内存实现：写时复制，读不修改任何状态。
+ *
+ * <p>它是 **record**——值语义由 record 提供（spec §十一：禁止手写 `equals`，`equals` 是往返断言的判据本身）， `SimulationState`
+ * 的逐字段重建断言（铁律 5）依赖它。`bySubject()` 访问器返回的是不可变结构：构造期过一遍 {@code Map.copyOf}，本类自身的写路径（{@link
+ * #put}）对各主体列表一律 {@code List.copyOf}，外部无从经它改写内部状态。
+ */
+public record InMemoryInfoSystem(Map<Address, List<InfoEntry>> bySubject) implements InfoSystem {
 
-  private final Map<Address, List<InfoEntry>> bySubject;
-
-  private InMemoryInfoSystem(Map<Address, List<InfoEntry>> bySubject) {
-    this.bySubject = bySubject;
+  public InMemoryInfoSystem {
+    bySubject = Map.copyOf(bySubject);
   }
 
   public static InMemoryInfoSystem empty() {
@@ -41,6 +45,6 @@ public final class InMemoryInfoSystem implements InfoSystem {
     List<InfoEntry> entries = new ArrayList<>(next.getOrDefault(subject, List.of()));
     entries.add(entry);
     next.put(subject, List.copyOf(entries));
-    return new InMemoryInfoSystem(Map.copyOf(next));
+    return new InMemoryInfoSystem(next);
   }
 }

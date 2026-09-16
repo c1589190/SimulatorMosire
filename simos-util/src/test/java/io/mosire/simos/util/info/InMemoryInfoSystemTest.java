@@ -8,6 +8,9 @@ import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.identity.SubjectId;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -105,6 +108,61 @@ class InMemoryInfoSystemTest {
         .isThrownBy(() -> info.put(null, entry("alias", "甲", SINCE_ZERO)))
         .withMessage("subject");
     assertThatNullPointerException().isThrownBy(() -> info.put(HEX, null)).withMessage("entry");
+  }
+
+  // ---- 以下为 fix round 1（控制器裁决）：record 值语义——铁律 5 的往返断言依赖它 ----
+
+  /** 值语义：内容相同的两个**独立构建**的实例相等且同哈希（record 提供，未手写 equals——spec §十一）。 */
+  @Test
+  void instancesWithSameContentAreEqual() {
+    InMemoryInfoSystem chained =
+        InMemoryInfoSystem.empty()
+            .put(HEX, entry("alias", "甲", SINCE_ZERO))
+            .put(HEX, entry("icon", "anchor", SINCE_ZERO));
+    Map<Address, List<InfoEntry>> backing = new HashMap<>();
+    backing.put(HEX, List.of(entry("alias", "甲", SINCE_ZERO), entry("icon", "anchor", SINCE_ZERO)));
+    InMemoryInfoSystem assembled = new InMemoryInfoSystem(backing);
+
+    assertThat(assembled).isNotSameAs(chained); // 不是同一对象，相等性才说明问题
+    assertThat(assembled).isEqualTo(chained);
+    assertThat(assembled).hasSameHashCodeAs(chained);
+  }
+
+  @Test
+  void emptyInstancesAreEqual() {
+    InMemoryInfoSystem first = InMemoryInfoSystem.empty();
+    InMemoryInfoSystem second = InMemoryInfoSystem.empty();
+    assertThat(first).isNotSameAs(second);
+    assertThat(first).isEqualTo(second);
+    assertThat(first).hasSameHashCodeAs(second);
+  }
+
+  /** 反向：内容有差（多一条 / 值不同 / 主体不同）就不许相等——防"恒等 equals"式的过宽。 */
+  @Test
+  void instancesWithDifferentContentAreNotEqual() {
+    InMemoryInfoSystem base = InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO));
+    assertThat(base).isNotEqualTo(base.put(HEX, entry("icon", "anchor", SINCE_ZERO)));
+    assertThat(base)
+        .isNotEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "乙", SINCE_ZERO)));
+    assertThat(base)
+        .isNotEqualTo(
+            InMemoryInfoSystem.empty()
+                .put(Address.parse("map:Map1"), entry("alias", "甲", SINCE_ZERO)));
+  }
+
+  /** 构造期 `Map.copyOf` 是防御性拷贝：调用方构造后改自己的 map，不得改到本实例。 */
+  @Test
+  void mutatingTheBackingMapAfterConstructionDoesNotChangeTheSystem() {
+    Map<Address, List<InfoEntry>> backing = new HashMap<>();
+    backing.put(HEX, List.of(entry("alias", "甲", SINCE_ZERO)));
+    InMemoryInfoSystem info = new InMemoryInfoSystem(backing);
+
+    backing.put(HEX, List.of(entry("alias", "乙", SINCE_ZERO)));
+    backing.remove(HEX);
+
+    assertThat(info.get(HEX, "alias", SimosTimestamp.of(0))).map(InfoEntry::value).contains("甲");
+    assertThat(info)
+        .isEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO)));
   }
 
   private static InfoEntry entry(String key, Object value, TimeRange valid) {
