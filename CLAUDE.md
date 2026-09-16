@@ -110,7 +110,7 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | 项 | 状态 |
 |---|---|
 | 总纲 spec | ✅ 已批准、已提交 |
-| 实现计划 | ✅ 已落（本地 `2610229` + 本机化修正，**未推送**）；阶段推进机制见其 **§六** |
+| 实现计划 | ✅ 已落（`2610229` + 本机化修正）；阶段推进机制见其 **§六**。分支推送状态见该计划 §二 M1 的关账记录 |
 | M0 | ✅ 已完成（5/5，2026-09-16 本会话内联执行；`./mvnw clean verify` 全绿） |
 | M1 | ✅ 已完成（11/11，2026-09-16；spec 五项待决已裁决，`./mvnw clean verify` 全绿）——设计见 `docs/superpowers/specs/2026-09-16-util-simos-design.md`，计划见 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` |
 | M2 | ⬜ 未开始——**待裁决** MapSimos 待决项（总纲 spec §十三） |

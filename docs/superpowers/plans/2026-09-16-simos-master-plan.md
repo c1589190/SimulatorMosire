@@ -1124,7 +1124,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 | **判据** | 八大件各有单测；往返不变式框架有一个**故意漂移字段**的失败用例，证明护栏真的会响（spec §11） |
 | **待决**（spec §十三） | 八大件完整方法签名；Address 转义与边界规则；Resolver 注册与优先级；TemporalSeries 的插值/事件语义；Facet 查询协议 |
 | **依赖** | M0 |
-| **状态** | ✅ **已完成**（2026-09-16；spec 五项待决于 §〇 裁决，计划 11 个任务逐个执行并过审；本地提交、**未推送**） |
+| **状态** | ✅ **已完成**（2026-09-16；spec 五项待决于 §〇 裁决，计划 11 个任务逐个执行并过审）；提交都在 `feat/m1-util-simos` 上，**其中一部分已推送、一部分未推送**，具体见下方关账记录的"推送状态"段 |
 
 **M1 关账记录（2026-09-16）**：spec `docs/superpowers/specs/2026-09-16-util-simos-design.md`（已批准）；
 计划 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` 的 11 个任务全部执行完毕：
@@ -1149,6 +1149,17 @@ SocialSimos / UnitSimos / CoreSimos **六个 reactor 模块全 `SUCCESS`**、`BU
 `AgentLibAvailabilityTest` **15 条**全绿；SpotBugs `BugInstance size is 0`。
 判据（spec §1.2）逐条核对的过程与原始输出见工作台账
 `.superpowers/sdd/2026-09-16-util-simos-plan/task-11-report.md`；上述数字均可由 `./mvnw clean verify` 原样复现。
+
+**推送状态（2026-09-16 关账时实测）**：远程分支 `origin/feat/m1-util-simos` **不是空的**——
+`git ls-remote --heads origin feat/m1-util-simos` → `22aad1f`，即 **M1 的 Task 1–5 已经在远程**：
+`git rev-list --count 56836f0..origin/feat/m1-util-simos` → **20** 个提交，其中 `M1 Task` 打头的是 **17** 个
+（Task 1–5 的实现与修复轮），另 3 个是 spec 裁决 / 构建修复 / SDD 台账入库。
+未推送的是其后的提交：在关账提交 `28c7e77` 上实测 `git rev-list --count '@{u}..HEAD'` → **14**
+（本更正提交又 +1 ⇒ 现在跑是 15），最早一个是 `0876838`（行尾 LF 修复），
+**M1 的 Task 6 及其后的全部工作都在这些提交里**。
+另一条独立证据：`git merge-base --is-ancestor 22aad1f HEAD` 成立，即推送只会是 fast-forward。
+本段所记的这个口径**曾写作"本地提交、未推送"**，2026-09-16 实测后按上述数字更正——
+"全部未推送"**不成立**，不要照抄。
 
 ### M2：MapSimos
 
