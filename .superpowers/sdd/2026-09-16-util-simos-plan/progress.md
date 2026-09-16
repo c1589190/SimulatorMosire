@@ -1980,3 +1980,211 @@ assertThat(registry.resolve(Address.parse("map:Map1"), context())
 一处附注未实测（`MapData.java:68` 只对 `edges` **最外层**做 `Map.copyOf`，内两层未冻结且失插入顺序）。
 
 取证文件：`/tmp/m2-recon-C-mapdata-mapdiff.md`；GSimulator 工作树**未被修改**。
+
+### 侦察 B 回报（Region 概念群 / 连通性 / L1·L2·L5）
+
+**★ 首要发现一：Region 概念群是「4 活 + 1 死」，不是 3 个。** 取证者原话：「总数取决于『概念』判据，本报告只报实测清单，**不替你裁定**」——**这正是我要的**。
+
+| # | 类型 | 定义处 | 状态 |
+|---|---|---|---|
+| A | `MapData.Province` | `MapData.java:294-314` | 活。**无 name 字段**（名字是 `provinces` map 的键，`RegionSearchSource.java:16-18` 明写）；**无边界字段**（闭环边界要前端现算 `render.js:244 computeBoundaryHexes`） |
+| B | `MapData.CompressedRegion` | `MapData.java:498-537` | 活。渲染缓存，可随时 `compress()` 重建 |
+| C | `ContourLayer` | `ContourLayer.java:12-59` | 活。地形编辑层，**无 hexKeys** |
+| D | `MapData.TerrainBlock` | `MapData.java:139-158` | 活。旧的地形块（笔刷/套索产物） |
+| E | `com.gsim.map.service.CompressedRegion` | `service/CompressedRegion.java:14-23` | **死代码**（`git grep` import 实测为空；**未跑编译期 unused 检查**，见其未核实第 2 条） |
+
+`git grep -ni "territory"` / `git grep -nE "\bArea\b"` 在 `*.java`/`*.js` 中**均为空** ⇒ **不存在 `territory` / `Area` 概念**。
+**四者之间只有两条单向转换**（`hexes→CompressedRegion`、`ContourLayer→hexes`）；**`Province` 与其余三者之间零转换代码**。
+
+**★ 首要发现二：连通性「没有任何稳定 ID」。** 三层身份，逐层退化：
+- **边**：坐标对派生的确定性字符串 `"minQ_minR|maxQ_maxR"`（`MapData.edgeKey:390-417`）。
+  ★ **这份逻辑有 4 份重复实现**：`MapData.edgeKey`、`MapService.undirectedKey:827-829`、前端 `pathway.js:452-459 buildEdgeKey`
+  （注释自认 `Must stay in sync with MapData.edgeKey() in Java`）。
+- **线段（河/路）**：**只有 groupId，无实例 ID** ⇒ **所有河流共享 `"river"` 一个身份**（`MapData.defaultPathwayGroups:469-480`）。
+- **链（chain）**：身份 **= 返回列表的下标**（`MapService.java:757` Javadoc；`GsimapEdgeTraceTool.java:65-70` 按 `i+1` 编号打印）。
+⇒ **「一条有名字的河」这个语义，在 `River`/`Road` 废弃后没有新承载结构**（`River`/`Road` 有 `name`+`path`，`PathwayGroup`+`edges` 都没有）。
+这直接顶到 M2 待决项 3「连通性稳定 ID 的生成规则」——**现状是没有，要从零设计**。
+
+**★ 首要发现三：L1 的完整丢失链路（四处叠加，取证者逐环给了原文）。**
+1. `MapService.saveMap:309-330`（自述唯一保存入口）→ 非 root 走 `MapDiff.compute`。
+2. `MapDiff` 10 分量里**没有 `edges`**（`MapData` 12 分量）——`compute:133-143` 的 `return new MapDiff(...)` **压根没有 edges 实参**，`List.of()` 顶了 rivers/roads 两位。
+3. `MapResolver.applyDiff:255-267` 重建时 **`base.edges()` 直接透传**（`terrainBlocks`/`terrainTypes`/`pathwayGroups` 同）⇒ 读取侧再丢一次。
+4. ★ **短路**：`MapResolver.java:76-82` **只在 `!diff.isEmpty()` 时才 `applyDiff`**，而 `MapDiff.isEmpty():70-80` 也**不含 edges**
+   ⇒ **「只改了一条边」算出空 diff，连 apply 都不进**。这一环是取证者自己多挖出来的。
+
+**旁路也已堵死（取证者补核）**：`MapWebUIHandler.handleSave:714-717` 客户端若自带 `parentNodeId` 会**直通 `MapStore.saveDiff`**，
+但 `MapWebUIHandler.java:52` 的 `MAPPER = JsonUtils.MAPPER`，而 `JsonUtils.java:18` 显式
+`.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)` ⇒ 客户端 JSON 里带 `edges` 也**只会被静默丢弃**。
+
+**⚠️ 总纲 §L1 的一处数字与实际不符（待核，勿直接改文档）**：总纲写默认路径的活跃节点是 `n0007`；
+取证者逐个读 `worlds/default/nodes/*.json` 的 turn 值 + 读 `WorldManager.java:30-31、:90-105` 的比较器
+（turn 最大、同 turn 取 nodeId 最大），推出**当前活跃节点是 `n0005`**，并注明
+「`active.json` 的 `n0000` 与 `world.json` 的 `currentNodeId=n0000` **都不是**判据」。
+**它自己明写「此条由读 JSON + 读比较器推导，未运行代码验证」** ⇒ **按纪律第 5 条，这不算结论。**
+**⇒ 处置：记为待核项，不据此改总纲**（改文档要等有人真跑一次代码验出来）。**结论方向不变**：活跃节点非 root ⇒ 默认写入走 diff ⇒ 丢。
+
+**L5（性能）**：成因是 `Province.hexes` 是 `List<String>` ⇒ `.contains` 线性扫描，外层再遍历全部 province，**无反向索引**。
+**6 处逐字重复**同一段 `for (var entry : map.provinces().entrySet()) if (entry.getValue().hexes().contains(key))`：
+`GsimapGetHexTool:80`、`GsimapQueryByAddressTool:146`、`:175`、`GsimapResolver:122`、`:154`、`GsimapRenderTextTool:259`。
+★ **最后一处最贵：它不 `break`**（为取字典序最小的名字必须全扫，每次渲染都跑）；`GsimapResolver.resolveHex:91-144`
+意味**每次 `gsimap:hex:{q}_{r}` 地址解析都全表扫**。体量参照：`n0000_map.json` 4921 hex / 2 province。**未做基准测试。**
+另同族一处：`MapService.computeAdjacency:967-984` 被 `GsimapListRegionsTool:70-87` 对每个区域各调一次
+⇒ 整体 **O(区域数² × 区域 hex 数 × 6)**。
+
+**L2（双份连通性存储）**：第一份 `MapData.edges:46`（主存储，写入口 `MapService.setEdgeTag:340-373` / `removeEdgeTag:381-421`）；
+第二份 `HexCell.edgeTags:191` + 遗留 `riverMask:190` —— ★ **Java 侧只读不写，只有前端 `pathway.js` 写**。
+两份之间**没有 Java 侧转换代码**，只有前端手写投影（`pathway.js:462-490` / `:493-516`），
+★ 后者自认 `Props are empty by default — frontend doesn't edit edge properties yet`（`:510`）
+⇒ **前端一存就把所有边的 props 抹平**。
+
+**取证者自报未能核实 4 条**（照记）：上面那条 `n0005` 系推导未运行；死代码判定未跑编译期检查；
+`traceChains` 第二趟（`MapService.java:790-796`，须整条链全为度 2 的闭环）**未构造用例实测**；
+L4「三个概念」的口径未替控制器裁定（**它对**）。
+
+取证文件：`/tmp/m2-recon-B-region-connectivity.md`；GSimulator 工作树**未被修改**（仅读取 + `git grep` + 读 JSON）。
+
+### 侦察 A 回报（六边形几何 / 坐标系 / 方向常量表 / 距离）
+
+**★ 它纠正了控制器派单里的一处措辞。** 我在派单里沿用了总纲的说法「`TerrainGeometry.DIRS` 与 `MapService.HEX_DIRS`
+在**索引 1-4** 指向不同方向」。取证者脚本实算后给出：**精确错位集合是 {1, 2, 4, 5}（4 个），索引 0 与 3 一致。**
+两表的精确关系（脚本实测，均为 True）：
+```
+A[1:] == reversed(B[1:])
+B[i] == A[(6 - i) % 6]  for all i
+```
+即 **同一组 6 个向量的相反绕序**——没有任何向量缺席或被换掉，**差别纯粹是索引位置**。
+A 序 = `TerrainGeometry`（E→SE→SW→W→NW→NE，顺时针）；B 序 = `MapService`（E→NE→NW→W→SW→SE，逆时针）。
+**⇒ 总纲 §L3 的「索引 1-4」应校正为「索引 1、2、4、5」**；此条是取证者实测，可采纳。
+
+**方向常量表全仓 8 份**（6 Java + 2 JS），完备性用 `git grep -n "int\[\]\[\]"` 全仓 + 关键词双重确认
+（`gsim-core`/`app`/`agentsmanager` **无任何方向数组**）：
+`TerrainGeometry:33`(A)、`TerrainBlockProcessor:24`(A)、`MapService:932`(B)、`CompressionService:32`(B)、
+`LassoProcessor:23`(B)、`GsimapGetNeighborsTool:20`(B)、前端 `state.js:3 DIR_VECTORS`(A)、`expand.js:2-8 EXPAND_DIRS`(错开一位)。
+
+**★★ 但它同时把 L3 的"后果"降级了，这一条很重要**：逐处核对后，**唯一实际错位**是 `expand.js:2-8` 的
+`EXPAND_DIRS` 的 `q`/`r` 字段整体错开一位（`NW` 配 `(-1,0)`＝实为 W 等），
+**但这两个字段全仓从未被读取**（`git grep -n "EXPAND_DIRS"` 只有定义处与 `:64` 只读 `d.key`；
+`:33` 实发请求只带 key，后端由 `EXPAND_NAMES` 反查索引）
+⇒ **是「值与名不符的死数据」，当前无行为差异。**
+其余走 A 序的链（`MapData:179` riverMask 位序 + `:201-207` 迁移 + 前端 `pathway.js`/`hex-math.js`）**自洽**；
+走 B 序的（`MapService:977/1034-1035/1695` 与 `EXPAND_NAMES`）**自洽**；纯 BFS 的（`CompressionService:69`、
+`LassoProcessor:99/126-127`）**索引序无影响**。
+**⇒ 总纲 L3 记为「8 份表、两种绕序、一对互逆」；实际错位面比总纲描述的窄。**
+
+**无共享入口是根因**：`TerrainGeometry.DIRS` 与 `MapService.HEX_DIRS` **均为 package-private，都不导出公共 API**
+⇒ 消费方只能各自复制，**无编译期一致性约束**。这正是总纲说「单一方向常量表」要解决的。
+
+**坐标系**：axial `(q,r)` 整数；**坐标不是字段**，只作 `Map<String,HexCell>` 的键（`"q_r"`，`MapData:113/36`）；
+**不是二维数组**。`gridSize` **只做构造期范围校验**（`MapData:48-49`），**不参与取格**。
+cube 只作中间量（`s = -q-r`），不作存储或接口格式。`HexCell` **本身不含坐标**。
+**唯一存独立坐标的实体**：`MapData.City`（`:327-332`）。
+
+**★ `hexOrientation` 是死字段**：写死 `false`（`MapData.empty():90-104`、`ContourQueryEngine.materialize:106-108`、前端 `events.js:162/276`），
+全仓**只有构造器透传、无任何读取分支**；而实际像素公式（`TerrainGeometry:42-46`）是 **pointy-top** 形式
+⇒ **字段值与几何不符**。（与侦察 C 的发现合看：这个字段既漂移又死。）
+
+**距离函数 4 处，公式代数恒等，无口径分歧**：`MapService:939`(public)、`LassoProcessor:177`、`GsimapEdgeListTool:87`、
+前端 `hex-math.js:46`，全是 cube 曼哈顿 `(|dq|+|dr|+|ds|)/2`。**无 BFS/A\* 寻路**（全仓无几何命中）。
+`hexRound` 另有 **3 份逐字复制**（`TerrainGeometry:80-91` / `TerrainBlockProcessor:226-238` / `hex-math.js:13-20`）。
+
+**无硬编码邻居偏移**（全仓 `q+1`/`r-1` 之类只命中 URL 解析与视口外扩）—— 这点是好消息。
+
+**海拔**：`HexCell` **无 height 字段**；height 只在 `ContourQueryEngine.TerrainSample`（`:62`）的内存 LRU 里；
+`MapService.queryTerrain:860-871` **把它丢掉**（fallback 写死 `0`/`0.5`）；**`.height()` 全仓零调用点**
+（含前端 JS 与 docs）。与侦察 D 结论一致，**互为独立佐证**。
+
+**★ 又一处分叉（A 与 D 都命中，独立）**：`MapWebUIHandler.populateTerrainBlocks:740-801` **三种标度混用** ——
+`:764-766` 注释自称 "Convert axial → pixel (with GRID scaling for TerrainGeometry)" 却把**轮廓系点当 axial 代入**；
+`:791-798` 又把**未乘 grid 的轮廓系原点**直接喂 `TerrainGeometry.pixelToHex`（内部除 `SIZE=30`）。
+**A 明写它只做了公式代数比对、没跑生成流程** ⇒ **「公式不同」是实测，「结果一定错」是推导，未证实。**
+
+**取证者自报未核实 7 条**（照记，重点是前两条与最后一条）：`populateTerrainBlocks` 标度混用**未跑生成流程验证**；
+`TerrainBlockProcessor` 的 √3 标度差未验证（且该类**全仓无调用者**）；两处 `hexRound` 边界输入**未跑差分测试**；
+前端六边形朝向**未开浏览器**（"顺时针"是从公式 + y 向下屏幕系推导）；未查 git 历史判两表先后；
+**未跑任何 Maven 命令**；★ **`MapService.java` 1771 行未逐行通读**，是按四个锚点定位式阅读，
+**「可能仍有我未触及的方向/距离代码」**——缓解：表清单本身用双重 grep 确认完备，但**消费者清单以 grep 命中为界**。
+
+---
+
+## 四路取证完成 —— 汇总与下一步
+
+四份交付件已从 `/tmp` 拷入工作区（`/tmp` 不跨重启）：`m2-recon-{A,B,C,D}-*.md`，共约 138KB。
+四路都在派单的三条约束下作业：**只给事实 + `文件:行`**、**不给设计建议**、**宁可报「核不了」也不报没跑过的结论**。
+**三路交了「未能核实」清单**（B 4 条 / C 4 条 / D 7 条 / A 7 条），**无一路把推导当结论**。
+
+**控制器抽验（不采信、只看过）**：
+- `minQ_minR|maxQ_maxR` 确在 `MapData.java`(2 处) 与 `pathway.js`(1 处) —— B 的"前端重写一份"属实
+- `TerraType` 在 GSimulator **零命中**（exit=1）；`TerrainType` 实测 7 字段
+  `name/color/food/gold/stone/moveCost/description` —— D 的"总纲字段描述不符"属实
+
+**★ 四处与总纲的出入（M2 spec 必须处理，不得沉默沿用）**：
+1. **L3 措辞**：总纲「索引 1-4」→ 实测 **{1,2,4,5}**；且**实际错位面比总纲窄**（唯一错位处是死数据）。
+2. **L8 计数**：总纲「`MapService` 内 12 处」→ 实测 **13 处**；主源码 **17**；全仓（含测试）**36**。
+   （"12 参数"**对**；"12 次"**不准**。事故文档 `bugs/2026-08-01-logic-edges-wiped-on-rebuild.md:30-34` 记的
+   **6 处**是那一次事故的触发面，**不是 `new MapData(` 的全部调用点**——两者不是一回事。）
+3. **`TerraType` 字段**：总纲 §5.1 写 `TerraType`（`color`/`height`/`pass`/`name`）；
+   实测 GSimulator **无 `TerraType` 这个名字**，等价类 `MapData.TerrainType` 是
+   `name/color/food/gold/stone/moveCost/description` —— **`height` 与 `pass` 都不存在**。
+   （**性质判读**：这段是总纲对**新设计**的描述，不必然算错——但它与现状的差异是**必须裁决的设计问题**：
+   新 `TerraType` 是保留 food/gold/stone/moveCost，还是改成 height/pass？**M2 spec 必须给出答案**。）
+4. **L1 的默认路径节点**：总纲写 `n0007`，B 推出 `n0005`（**B 自陈系推导、未运行代码**）⇒ **记为待核，不改文档**。
+
+---
+
+## M2 步骤 ① 完成 —— 五项待决全部裁决
+
+**Ruling: 总纲 §十三 给 MapSimos 列的五项待决，逐条裁决如下；四项总纲出入按纪律第 5 条
+（推导 ≠ 实测）分别处置 —— 措辞/计数类当场写进 spec §八，推导类记为待核。**
+— 依据：四路只读取证（`m2-recon-{A,B,C,D}-*.md`，逐条带 `文件:行`）+ 控制器抽验。
+— 代价若错：设计面重做（spec §三~§七 是 bite-sized 计划的直接输入），但**每一项都指向可复核的证据**，
+  推翻时只需重读对应 recon 段落，不需重建取证。
+
+| # | 待决项 | 裁决 | 硬证据 |
+|---|---|---|---|
+| 1 | 六边形数据结构 | `HexCoord(q,r)` record 作身份；`Map<HexCoord,HexCell>`；**单一 `HexDirection` 枚举（A 序）取代 8 份方向表**；**删 `gridSize`**（恒 30 死值、不参与取格、与真实 `mapRadius=80` 矛盾）；**删 `hexOrientation`**（恒 `false`、无读取分支，而实际公式是 pointy-top ⇒ 值与几何矛盾） | A：`TerrainGeometry.DIRS` vs `MapService.HEX_DIRS` **都是 package-private、都不导出 API** ⇒ 消费方只能复制，无编译期约束（这是 8 份表的**根因**）；`hexOrientation` 三处写死 false |
+| 2 | `Region` 统一 | ★ **实测是 4 活 + 1 死，不是 3 个**；只留一个权威 `Region`（`RegionId`+`name`+`Set<HexCoord>`+`RegionMeta`）；**边界降为可重算的 `RegionBoundary`**；**`CompressedRegion` 概念整体取消**（缓存不是状态）；`ContourLayer`→生成参数、`TerrainBlock`→Command；**加 `RegionIndex` 反向索引**解 L5 | B：`Province` **无 name 字段**（名字是 map 键）、**无边界字段**；`service.CompressedRegion` **import 零命中**；4 份 `edgeKey` 里前端那份注释自陈 *"Must stay in sync with MapData.edgeKey() in Java"*；6 处 `hexes().contains(...)` 线性扫描逐字重复 |
+| 3 | 连通性稳定 ID | **边不要 ID**（规范序 `EdgeRef` 一个类型取代 4 份字符串实现）；**`PathwayId` 一旦分配即持久化、不由内容派生**（内容派生会让"改一个中间节点"变成"换了一条河"）；**分支点即端点**，分支处断成独立线 | B：★ **线段只有 groupId，所有河流共享 `"river"`**；**链身份 = 返回列表下标**；**"一条有名字的河"在 River/Road 废弃后无承载结构** ⇒ 总纲 §5.1 的"单条线段可寻址"**当前做不到** |
+| 4 | 生成参数面 | 参数对象化 `GenerationSpec`（~60 个方法体内魔法数字全提字段、**默认值只此一份**）；**删 `worldId`/`coastRoughness`**（形参在体内从未被引用）；**`ridges` 静默硬夹改构造期抛异常**；**`landRatio` 改名 `baseSeaLevel`**（实测只影响这一个数）；**seed 落盘 + 两条入口同路**（MCP 当前不写 contour ⇒ 不可复现）；**`HexCell` 加 `height`**；**地形词表唯一化** | D：`worldId`/`coastRoughness` 体内零引用；默认值三份拷贝已分歧（radius 120 vs 80、roughness 0.5 vs 0.6）；`frags` 可为负；`classify` **永产不出 forest/desert/tundra**（词表是谎话）；`Map.copyOf` 打乱落盘序 |
+| 5 | `MapChangeSet` 字段清单 | 与 `GameMap` 的 record 组件**一一对应**；★ **往返测试用反射枚举 `GameMap` 全部组件逐组件制造差异** ⇒ **新增状态字段若不进变更集，测试自动红**。这是铁律 5 的**机械化落地**，不靠纪律 | C：`MapDiff` 手工维护 ⇒ **6 个字段漂移**（含 C 新查出的 `gridSize`/`hexOrientation`），**零守卫**（最接近的 `MapServiceChildNodeSaveTest` 只断言"父基线被创建 + diff 文件存在"，**不断言 resolve 回的内容**） |
+
+**★ 一处刻意不做的修正**：`CLAUDE.md` 里铁律 5 的由来段写"**四个字段**漂移"
+（`terrainBlocks`/`terrainTypes`/`pathwayGroups`/`edges`）。侦察 C 实测**是 6 个**，
+但新查出的 `gridSize`/`hexOrientation` **没有任何写路径能改它们**（`MapResolver:256-257` 直接透传 `base.*`），
+属**结构性同构而非实际丢失**。**⇒ 不改 CLAUDE.md**：那段是**事故叙事**，四个字段是**真实丢过的那四个**；
+把结构性同构混进事故记录，会让叙事变模糊。**新事实记在这里，不覆盖旧叙事。**
+
+**★ 一处纪律第 5 条的现场执行**：`TerraType` 的 `height`/`pass` 两字段，
+总纲 §5.1 写有、GSimulator 实测无。**控制器判读为"总纲在描述新设计"而非笔误** ——
+但那是**判读**，不是实测。⇒ spec §八 第 1 条把它列为**明确裁决**（用 `TerrainType`、7 字段、海拔归 `HexCell`），
+而不是当成"总纲写错了"悄悄改掉。**判读与实测分开摆。**
+
+**产出**：`docs/superpowers/specs/2026-09-16-map-simos-design.md`（未提交，工作树 `??`）。
+状态标 **待用户评审**（与 M1 spec 同形制）。**下一动作 = 步骤 ③ 写 bite-sized 计划。**
+
+---
+
+## M2 步骤 ③ 完成 —— bite-sized 计划落盘 + dispatch 前冲突扫描
+
+**产出**：`docs/superpowers/plans/2026-09-16-map-simos-plan.md`（15 个任务，未提交，工作树 `??`）。
+
+**★ dispatch 前扫描查出四处，两处是真冲突，都在派单前判掉了**（不是执行期才发现）：
+
+| 冲突 | 形态 | 裁决 |
+|---|---|---|
+| **Task 5 ↔ Task 8：`GenerationSpec` 类型不存在** | Task 5 的 `GameMap.spec` 组件**需要该类型才能编译**，而完整参数面在 Task 8 ⇒ **Task 5 根本编译不过** | Task 5 建**只含 `seed` 的骨架**，Task 8 的 Files 改为 **Modify** 扩写 |
+| **Task 6 ↔ Task 7：8 vs 7 的组件数** | Task 7 的 `everyGameMapComponentParticipatesInTheChangeSet` 遍历**全部 8 个** `GameMap` 组件，而 `spec` **有意**不在变更集里 ⇒ 那一轮**必然红** | 引入 `EXCLUDED_FROM_CHANGE_SET = Set.of("spec")`，**且加一条用例把它钉死** + **V6 变异**证明豁免口不是洞 |
+| **依赖漏记** | Task 10/11/12 都返回 `MapChangeSet`，任务地图里**都没写依赖 6** | 三条依赖已补 |
+| **断言重复** | "`GameMap` 不含 `RegionIndex`"两边都想写，而 Task 3 时 `GameMap` 还不存在 | 判归 **Task 5 独有**，Task 3 里改成注释说明 |
+
+**★ 第二处值得单说**：若给 `spec` 随手写一个 `if (name.equals("spec")) continue`，
+**豁免口就成了一个正好等于"下一个被遗忘的字段"大小的洞** ——
+以后任何人"加字段忘了进变更集"，都能靠往这个 `if` 里再加一个名字糊过去。
+**判法**：把豁免写成一个**被单独用例钉死的集合**（加名字是显式动作，diff 里看得见），
+**并配一条变异 V6**（往豁免集里塞 `"edges"` ⇒ 必须红）。**豁免与它的守卫必须同时存在。**
+
+**★ 一处刻意的不写**：`TerrainCatalog` 的 9 行数值、`GenerationSpec` 的 ~60 个阈值、
+`TerrainClassifier` 的后 3 项阈值 —— 计划里**故意不给数**，只给**读取程序**（`git grep` 命令 + 出处要求）。
+理由：控制器**没有实测过它们**，写进来就是**编造设计**（总纲 §六 的硬门原话）。
+计划头部已把"本计划写死的值"与"执行期从 GSimulator 现读的值"**分成两类明写**。
+
+**下一步**：步骤 ④ 执行（SDD 派单），**评审每任务 ≤3 轮**（CLAUDE.md 新规）。
