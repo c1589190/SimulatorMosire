@@ -150,9 +150,11 @@ class TemporalSeriesTest {
     assertThatThrownBy(() -> new Event<Long>(SimosTimestamp.of(0), 1L, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("mode");
+    // 末条必须**精确**匹配（`hasMessage` 而非 `hasMessageContaining`）：守卫被删后，valueAt(null) 会在
+    // compareTo 里抛 JDK 的 helpful NPE，其消息同样含 `t`，只断前缀的写法照绿——等于没有自证。
     assertThatThrownBy(() -> series(List.of(segment(0, 1L)), List.of()).valueAt(null))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("t");
+        .hasMessage("t");
   }
 
   @Test
@@ -186,6 +188,35 @@ class TemporalSeriesTest {
         .isEqualTo(
             SegmentedSeries.of(
                 List.of(segment(0, 1L)), List.of(event(5, 2L, EventMode.SET)), null));
+  }
+
+  @Test
+  void seriesDifferingOnlyInSegmentsOrOnlyInEventsAreUnequal() {
+    // 补相等语义的覆盖完备性：上两条用例的两侧 `segments`/`events` **内容相同**，
+    // 故一个"丢掉 segments 或 events 的手写 equals"能通过此前全部断言。铁律 5 拿 equals 当判据，
+    // 逐组件判别力必须自证。
+    assertThat(SegmentedSeries.of(List.of(segment(0, 100L)), List.of(), ADDITION))
+        .isNotEqualTo(SegmentedSeries.of(List.of(segment(0, 2L)), List.of(), ADDITION));
+    assertThat(
+            SegmentedSeries.of(
+                List.of(segment(0, 100L)), List.of(event(5, 1L, EventMode.ADD)), ADDITION))
+        .isNotEqualTo(SegmentedSeries.of(List.of(segment(0, 100L)), List.of(), ADDITION));
+  }
+
+  @Test
+  void theSameInstantIsDecidedByCompareToNotEquals() {
+    // SimosTimestamp 的 Javadoc：判"同刻"一律用 compareTo == 0，不要用 equals
+    // （compareTo 只看 tick，record 的 equals 含 calendarLabel）。
+    TemporalSeries<Long> labelled =
+        SegmentedSeries.of(
+            List.of(segment(0, 100L), new Segment<>(SimosTimestamp.of(10, "第 10 日"), 200L)),
+            List.of(new Event<>(SimosTimestamp.of(10, "第 10 日"), 5L, EventMode.ADD)),
+            ADDITION);
+    // 序列带 label、查询不带：用 equals 的实现会把段与事件都当成"未来"而跳过 → 得 100 而非 205
+    assertThat(labelled.valueAt(SimosTimestamp.of(10))).isEqualTo(205L);
+    // 反向：序列不带 label、查询带
+    TemporalSeries<Long> plain = series(List.of(segment(0, 100L), segment(10, 200L)), List.of());
+    assertThat(plain.valueAt(SimosTimestamp.of(10, "第 10 日"))).isEqualTo(200L);
   }
 
   /**
