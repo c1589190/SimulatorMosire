@@ -27,10 +27,12 @@ import java.util.Random;
  *
  * <p>★ **能影响结果的每一个输入都在 {@link GenerationSpec} 里** —— 故 {@code generate} **只有一个形参** （由 {@code
  * MapGeneratorTest.generateHasExactlyOneParameter} 与 {@code noSecondPathToGenerate} 反射钉住）。
- * 本类里剩下的常数只有四类、且都不承载可调语义：去相关相位平移、退化线段判据、温度占位值、水体 key（见各常量注释）。
+ * 本类里剩下的常数，除六边形→像素的几何映射（{@code px = q + r*0.5} / {@code py = r*0.8660254}，照抄 GSimulator
+ * `:135-136`）外，只有四类、且都不承载可调语义：去相关相位平移、退化线段判据、温度占位值、水体 key（见各常量注释）。
  *
- * <p>★ **湿度不做夹取**：噪声 {@code m} 经 {@code (m + 1) / 2} 落到 [0,1]（实测全域包络 ±0.71、默认采样域 ±0.60）， 越界也**不夹**
- * —— {@link TerrainClassifier} 对域外输入是**总函数**（见其类注释的落带约定），夹取只会多一道 把噪声削平的手脚，且那道手脚正是"静默修正"的一种。
+ * <p>★ **湿度不做夹取**：噪声 {@code m} 经 {@code (m + 1) / 2} 落到 [0,1]（实测 4 个种子 0/12/42/12345：默认采样域 |m| ≤
+ * 0.59、|px|,|py| ≤ 2000 的细网格上 |m| ≤ 0.71），越界也**不夹** —— {@link TerrainClassifier}
+ * 对域外输入是**总函数**（见其类注释的落带约定），夹取只会多一道 把噪声削平的手脚，且那道手脚正是"静默修正"的一种。
  *
  * <p>★ **高度的构造管线**逐行移植 GSimulator 的 {@code ContourQueryEngine.compute}（`:125-175`）：域扭曲 → 脊线 → 大陆架 →
  * 多频带 → 谷地 → 合成（{@code ridgeH*w + shelf*w + multi*w - valley}）→ {@code Math.max(0, h)} → {@code
