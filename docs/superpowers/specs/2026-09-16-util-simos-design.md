@@ -253,7 +253,9 @@ public record Segment<T>(SimosTimestamp from, T value) {}
 public record Event<T>(SimosTimestamp at, T value, EventMode mode) {}
 public enum EventMode { ADD, SET }
 
-public final class SegmentedSeries<T> implements TemporalSeries<T> {
+public record SegmentedSeries<T>(
+        List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition)
+        implements TemporalSeries<T> {
     public static <T> SegmentedSeries<T> of(
             List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition);
 }
@@ -271,6 +273,12 @@ public final class SegmentedSeries<T> implements TemporalSeries<T> {
 **ADD 的算术来源**：Util 不能用泛型做加法，也不把 `T` 限制成数字——`SET` 不需要算术，`ADD` 需要时由调用方注入 `BinaryOperator<T>`（如 Social 的人口）。带 `ADD` 事件却给不出 `addition` 的序列在**构造期即抛异常**（不给运行期惊喜）。
 
 **不可变**：段/事件列表防御性拷贝并保序；"增长率的调整"在模块侧表现为新建序列或追加分段，不是原地改。
+
+**`SegmentedSeries` 是 record，不是 `final class`**（本 spec 修订：`TemporalSeries` 是状态类型，往返断言（铁律 5）要拿它当判据，故 §十一 的"`equals` 由 record 提供、禁手写"适用）。**代价是 `addition` 按身份比较**——函数没有结构相等。故：
+
+- **含 `ADD` 事件的序列，`addition` 必须是共享实例（模块级 `static final` 常量）**；随手内联 `(a, b) -> a + b` 会让两个结构相同的序列**不相等**，并让 M2 起的往返断言以"序列不相等"这种费解形态转红（`addition` 为 `null` 的 `SET`-only 序列不受影响）。
+- 这条纪律由一个用例钉住：同一 `addition` 实例构建的两个同构序列相等；两个等价但不同的 lambda 构建的两个序列**不相等**——**有意为之**，把陷阱显式化而不是藏起来。
+- 跨进程/持久化（M4）时 `addition` 必须以同样的常量方式复原；序列化形态由 M4 的存储 spec 定。
 
 ---
 
