@@ -1,0 +1,285 @@
+# Review package: c7d32cf..f7785cb
+
+## Commits
+f7785cb feat(util): SimosTimestamp 与 TimeRange（M1 Task 4）
+
+## Files changed
+ .../io/mosire/simos/util/time/SimosTimestamp.java  | 38 ++++++++++++++++
+ .../java/io/mosire/simos/util/time/TimeRange.java  | 37 ++++++++++++++++
+ .../simos/util/identity/ResolvedSubjectTest.java   | 13 ++++++
+ .../mosire/simos/util/identity/SubjectIdTest.java  | 12 ++++++
+ .../mosire/simos/util/time/SimosTimestampTest.java | 49 +++++++++++++++++++++
+ .../io/mosire/simos/util/time/TimeRangeTest.java   | 50 ++++++++++++++++++++++
+ 6 files changed, 199 insertions(+)
+
+## Diff
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/time/SimosTimestamp.java b/simos-util/src/main/java/io/mosire/simos/util/time/SimosTimestamp.java
+new file mode 100644
+index 0000000..7ff5451
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/time/SimosTimestamp.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.util.time;
++
++import java.util.Objects;
++import java.util.Optional;
++
++/**
++ * 模拟时间戳：`tick` 是第一序，`calendarLabel` 仅作展示（spec §五）。时间戳与版本正交 （`RevisionId` 管数据版本），两把尺子互不换算。
++ *
++ * <p><b>排序与相等的口径不同，这是有意的</b>：{@link #compareTo} 只看 `tick`，而 record 的 {@link #equals} 含全部组件。判"同刻"一律用
++ * {@code compareTo == 0}，不要用 `equals`。
++ *
++ * <p>没有 setter：推进只经 {@link #plus(long)}（总纲 §4.9）。
++ */
++public record SimosTimestamp(long tick, Optional<String> calendarLabel)
++    implements Comparable<SimosTimestamp> {
++
++  public SimosTimestamp {
++    Objects.requireNonNull(calendarLabel, "calendarLabel");
++  }
++
++  public static SimosTimestamp of(long tick) {
++    return new SimosTimestamp(tick, Optional.empty());
++  }
++
++  public static SimosTimestamp of(long tick, String calendarLabel) {
++    return new SimosTimestamp(tick, Optional.of(calendarLabel));
++  }
++
++  /** 推进（负值即回拨），保留 label。 */
++  public SimosTimestamp plus(long delta) {
++    return new SimosTimestamp(tick + delta, calendarLabel);
++  }
++
++  @Override
++  public int compareTo(SimosTimestamp other) {
++    return Long.compare(tick, other.tick);
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/time/TimeRange.java b/simos-util/src/main/java/io/mosire/simos/util/time/TimeRange.java
+new file mode 100644
+index 0000000..b871aa6
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/time/TimeRange.java
+@@ -0,0 +1,37 @@
++package io.mosire.simos.util.time;
++
++import java.util.Objects;
++import java.util.Optional;
++
++/**
++ * 有效区间：**左闭右开** `[from, to)`；`to` 缺省表示无上界（spec §十-D5）。
++ *
++ * <p>`to` 必须严格晚于 `from`——空区间是配置错误，不给它静默存在的机会。
++ */
++public record TimeRange(SimosTimestamp from, Optional<SimosTimestamp> to) {
++
++  public TimeRange {
++    Objects.requireNonNull(from, "from");
++    Objects.requireNonNull(to, "to");
++    to.ifPresent(
++        end -> {
++          if (end.compareTo(from) <= 0) {
++            throw new IllegalArgumentException(
++                "TimeRange 的 to 必须晚于 from（左闭右开区间不得为空）：" + from + " .. " + end);
++          }
++        });
++  }
++
++  /** 自 `from` 起、无上界的区间。 */
++  public static TimeRange since(SimosTimestamp from) {
++    return new TimeRange(from, Optional.empty());
++  }
++
++  /** `t` 是否落在 `[from, to)` 内（同刻判定用 {@code compareTo}，见 {@link SimosTimestamp}）。 */
++  public boolean contains(SimosTimestamp t) {
++    if (t.compareTo(from) < 0) {
++      return false;
++    }
++    return to.map(end -> t.compareTo(end) < 0).orElse(true);
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java b/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java
+index d42b1b5..3d22baa 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java
+@@ -29,20 +29,33 @@ class ResolvedSubjectTest {
+         .isInstanceOf(IllegalArgumentException.class);
+   }
+ 
+   @Test
+   void nullIdIsRejected() {
+     // 候选没有身份即无意义：ID 缺失必须在构造期就被拒绝
+     assertThatThrownBy(() -> new ResolvedSubject(null, "map:Map1:hex.4_3", "Hex"))
+         .isInstanceOf(IllegalArgumentException.class);
+   }
+ 
++  @Test
++  void nullAddressOrTypeNameIsRejected() {
++    // 与 id 的守卫同一口径（IAE）。canonicalAddress 的判据必须钉消息：`Address.parse(null)`
++    // 自己也会抛 IAE（"地址不得为空"），只看类型的话本层守卫删掉也不转红。
++    SubjectId id = new SubjectId("map.hex", "h-0001");
++    assertThatThrownBy(() -> new ResolvedSubject(id, null, "Hex"))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("canonicalAddress");
++    assertThatThrownBy(() -> new ResolvedSubject(id, "map:Map1:hex.4_3", null))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("typeName");
++  }
++
+   @Test
+   void nonCanonicalAddressIsRejected() {
+     // §四：调用方选定后一律回传 canonical。宽容写法不得成为 Resolver 的输出。
+     assertThatThrownBy(
+             () ->
+                 new ResolvedSubject(
+                     new SubjectId("social.population", "p-1"),
+                     "social:Map1.[4,3]:population",
+                     "Population"))
+         .isInstanceOf(IllegalArgumentException.class)
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java b/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java
+index 5834273..7002071 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java
+@@ -17,17 +17,29 @@ class SubjectIdTest {
+   }
+ 
+   @Test
+   void blankPartsAreRejected() {
+     assertThatThrownBy(() -> new SubjectId(" ", "h-0001"))
+         .isInstanceOf(IllegalArgumentException.class);
+     assertThatThrownBy(() -> new SubjectId("map.hex", ""))
+         .isInstanceOf(IllegalArgumentException.class);
+   }
+ 
++  @Test
++  void nullPartsAreRejected() {
++    // 守卫把 null 与空白合并成同一条 IAE（"不得为空白"）：null 是"忘了写"，不是合法值。
++    // 判据连字段名一起钉：哪一臂缺席，都能指名道姓地转红。
++    assertThatThrownBy(() -> new SubjectId(null, "h-0001"))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("namespace");
++    assertThatThrownBy(() -> new SubjectId("map.hex", null))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("localId");
++  }
++
+   @Test
+   void namespaceHierarchyIsFreeForm() {
+     // §四：`<模块>` 或 `<模块>.<类型>` 都由模块自定，Util 不校验层级
+     assertThat(new SubjectId("unit", "U-1").namespace()).isEqualTo("unit");
+     assertThat(new SubjectId("map.region", "R-1").namespace()).isEqualTo("map.region");
+   }
+ }
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/time/SimosTimestampTest.java b/simos-util/src/test/java/io/mosire/simos/util/time/SimosTimestampTest.java
+new file mode 100644
+index 0000000..bb7e4c1
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/time/SimosTimestampTest.java
+@@ -0,0 +1,49 @@
++package io.mosire.simos.util.time;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatNullPointerException;
++
++import java.util.stream.Stream;
++import org.junit.jupiter.api.Test;
++
++/** spec §五：tick 是第一序、plus 保留 label、类型本身不提供复写入口。 */
++class SimosTimestampTest {
++
++  @Test
++  void orderingUsesTickOnly() {
++    assertThat(SimosTimestamp.of(3)).isEqualByComparingTo(SimosTimestamp.of(3, "第 3 日"));
++    assertThat(SimosTimestamp.of(2)).isLessThan(SimosTimestamp.of(3, "第 3 日"));
++    assertThat(SimosTimestamp.of(0, "第 0 日")).isGreaterThan(SimosTimestamp.of(-1));
++  }
++
++  @Test
++  void plusAdvancesAndRewindsWhileKeepingTheLabel() {
++    SimosTimestamp t = SimosTimestamp.of(10, "第 10 日");
++    assertThat(t.plus(5)).isEqualTo(SimosTimestamp.of(15, "第 10 日"));
++    assertThat(t.plus(-7)).isEqualTo(SimosTimestamp.of(3, "第 10 日"));
++    assertThat(t).isEqualTo(SimosTimestamp.of(10, "第 10 日")); // 原实例不变
++  }
++
++  @Test
++  void equalityStillIncludesTheLabelWhereasOrderingDoesNot() {
++    // 计划期新增细则 2：同 tick 的两种写法排序相等但不 equals，判"同刻"用 compareTo == 0。
++    assertThat(SimosTimestamp.of(3)).isEqualByComparingTo(SimosTimestamp.of(3, "第 3 日"));
++    assertThat(SimosTimestamp.of(3)).isNotEqualTo(SimosTimestamp.of(3, "第 3 日"));
++  }
++
++  @Test
++  void nullCalendarLabelIsRejected() {
++    // label 是 Optional 而不是裸引用：null 表示"忘了写"，必须在构造期点名拒绝。
++    assertThatNullPointerException().isThrownBy(() -> new SimosTimestamp(1, null));
++  }
++
++  @Test
++  void sortingWorks() {
++    assertThat(
++            Stream.of(SimosTimestamp.of(3), SimosTimestamp.of(1), SimosTimestamp.of(2))
++                .sorted()
++                .map(SimosTimestamp::tick)
++                .collect(java.util.stream.Collectors.toList()))
++        .containsExactly(1L, 2L, 3L);
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/time/TimeRangeTest.java b/simos-util/src/test/java/io/mosire/simos/util/time/TimeRangeTest.java
+new file mode 100644
+index 0000000..d11d387
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/time/TimeRangeTest.java
+@@ -0,0 +1,50 @@
++package io.mosire.simos.util.time;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatNullPointerException;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.Optional;
++import org.junit.jupiter.api.Test;
++
++/** spec §十-D5：有效区间左闭右开；`to` 缺省 = 无上界。 */
++class TimeRangeTest {
++
++  @Test
++  void intervalIsHalfOpen() {
++    TimeRange range = new TimeRange(SimosTimestamp.of(10), Optional.of(SimosTimestamp.of(20)));
++    assertThat(range.contains(SimosTimestamp.of(9))).isFalse();
++    assertThat(range.contains(SimosTimestamp.of(10))).isTrue(); // 左闭
++    assertThat(range.contains(SimosTimestamp.of(19))).isTrue();
++    assertThat(range.contains(SimosTimestamp.of(20))).isFalse(); // 右开
++  }
++
++  @Test
++  void absentToMeansUnbounded() {
++    TimeRange range = TimeRange.since(SimosTimestamp.of(10));
++    assertThat(range.contains(SimosTimestamp.of(10))).isTrue();
++    assertThat(range.contains(SimosTimestamp.of(1_000_000))).isTrue();
++    assertThat(range.contains(SimosTimestamp.of(9))).isFalse();
++  }
++
++  @Test
++  void emptyOrInvertedIntervalIsRejected() {
++    assertThatThrownBy(
++            () -> new TimeRange(SimosTimestamp.of(10), Optional.of(SimosTimestamp.of(10))))
++        .isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(
++            () -> new TimeRange(SimosTimestamp.of(10), Optional.of(SimosTimestamp.of(5))))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++
++  @Test
++  void nullPartsAreRejected() {
++    // `to` 的 null ≠ `Optional.empty()`：前者是"忘了写"，后者才是"无上界"，不得混同。
++    assertThatNullPointerException().isThrownBy(() -> new TimeRange(null, Optional.empty()));
++    // 第二条必须钉消息：删掉 requireNonNull(to) 后，下一行 to.ifPresent(...) 照样抛 NPE
++    // （类型无从判别），只有 NPE 的消息能证明这条护栏在场（house style 同身份包的 M4 处置）。
++    assertThatNullPointerException()
++        .isThrownBy(() -> new TimeRange(SimosTimestamp.of(1), null))
++        .withMessage("to");
++  }
++}

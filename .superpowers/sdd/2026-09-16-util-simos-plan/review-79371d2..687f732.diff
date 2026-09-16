@@ -1,0 +1,568 @@
+# Review package: 79371d2..687f732
+
+## Commits
+687f732 fix(util): 第 ≥3 段引号归一为 Property（M1 Task 2 修复轮 1）
+3ebb891 docs(spec): 明确第 ≥3 段缺 kind Entity 的合法性判据与引号归一顺序（M1 Task 2 裁决）
+4188cc1 feat(util): Address 与 AddressParser：宽容解析 + canonical 唯一（M1 Task 2）
+e1eac8e test(util): Address 解析/归一/冻结样例用例（M1 Task 2，先 RED）
+
+## Files changed
+ .../specs/2026-09-16-util-simos-design.md          |   4 +
+ .../java/io/mosire/simos/util/address/Address.java |  61 ++++++
+ .../mosire/simos/util/address/AddressParser.java   | 213 +++++++++++++++++++++
+ .../simos/util/address/AddressParseTest.java       | 123 ++++++++++++
+ .../simos/util/address/AddressQuoteTest.java       |  11 ++
+ .../util/address/AddressTolerantParseTest.java     |  44 +++++
+ 6 files changed, 456 insertions(+)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-09-16-util-simos-design.md b/docs/superpowers/specs/2026-09-16-util-simos-design.md
+index 723b2a1..61b6e02 100644
+--- a/docs/superpowers/specs/2026-09-16-util-simos-design.md
++++ b/docs/superpowers/specs/2026-09-16-util-simos-design.md
+@@ -102,20 +102,22 @@ public record Address(List<AddressSegment> segments) {
+ | 第 1 段 | 任意 | **Namespace**（必须是裸词，否则解析失败） |
+ | 第 2 段 | 裸词 | **Entity**，`kind` 缺省（`Map1`、`U`） |
+ | 第 2 段 | 含未加引号的 `.` | **Entity**，第一个 `.` 切 kind/name（`hex.4_3`） |
+ | 第 2 段 | `[...]` | **Index** |
+ | 第 ≥3 段 | `[...]` | **Index** |
+ | 第 ≥3 段 | 含未加引号的 `.` | **Entity**，第一个 `.` 切 kind/name |
+ | 第 ≥3 段 | 裸词 | **Property**（`population` / `height` / `member` / `hexes`） |
+ 
+ **第 2 段永远是这个命名空间的"根主体"**（总纲 §4.4 的整张地图 `map:Map1`、编制树上的小队 `unit:U` 都落在这一位）。机器协议里的具体实体一律用 `kind.name` 形式（`hex.4_3` / `region.Nation.区域A`），裸词主体只出现在根位置。
+ 
++**第 ≥3 段的缺 kind `Entity` 只在 name 不是裸词时合法**。name 是裸词时它的 canonical 与同名的 `Property` 逐字相同（都是那个裸词），canonical 唯一性与 `parse(canonical(x)) == x` 会同时破。该约束由 `Address` 的构造器校验（段类型无位置信息，只能在这一层判），违反即抛 `IllegalArgumentException` 并带上段序号。
++
+ **kind 与 name 的切分**：段内**第一个不在引号内**的 `.`：
+ - 左侧**未被引号包裹** ⇒ `kind = 左侧`，`name = 右侧整体`（`region.Nation.区域A` → kind=`region`，name=`Nation.区域A`）
+ - 左侧**被引号包裹** ⇒ 无 kind，`name = 整段`（去掉引号、组件以 `.` 连接）：`"Nation"."区域A"` → `Entity(∅, "Nation.区域A")`
+ 
+ **kind 必须是裸词**（不含 `: . [ ] "` 与空白，非空）。这条是**有意的收紧**：kind 是结构词（类型判别用），name 才是任意字符的载体。理由：若 kind 也允许含 `.`，`"a.b".name` 与 `"Nation"."区域A"` 两种形态在语法上不可区分。
+ 
+ ### 3.3 名字合法性（用户裁决："只要能读就都能加"）
+ 
+ - **name 允许任意字符**，包括 `:` `[` `]` `"` 空格、CJK、emoji。
+ - 需要引号包裹的情形由 §3.4 的渲染规则决定；解析器一律**宽容接受**带引与不带引两种写法。
+@@ -130,20 +132,22 @@ canonical 是**机器协议的唯一形态**：同一个实体只能有一种规
+ | # | 条件 | 例 |
+ |---|---|---|
+ | 1 | 含 `:`、`[`、`]`、`"` 任一（含以 `[` 开头——不加引就会被当成 Index 段） | `"河口:渡口"`、`"[4,3]"` |
+ | 2 | 为空串，或含空白（**任意位置**——§3.2 的裸词定义即"不含空白"，故内部空白同样必须加引，否则 `region.A B` 解析不回来） | `" 区域A "`、`"A B"` |
+ | 3 | 作为 `Entity` 的 name，且 kind 缺省，且 name 含 `.` | `"高地人旅指挥部.1营指挥部"` |
+ 
+ 条件 3 是 §3.2 切分规则的直接后果：缺 kind 的 name 一旦含 `.`，不引就会被误切成 `kind.name`，往返不变式立刻破。**三条之外一律不加引**——多一处加引，canonical 就少一处唯一。
+ 
+ **归一**：解析时引号只用于消歧，**不进入 AST**——`region."Nation"."区域A"` 与 `region.Nation.区域A` 解析为同一个 AST、渲染为同一个 canonical。这是"按需加引"的另一半。
+ 
++**引号只在有未加引号的 `.` 时才参与段类型判定**（§3.2 的"左侧是否被引号包裹"）。第 ≥3 段**无未加引号的 `.`** 的 token 一律先去引再判：去引后是裸词 ⇒ `Property`（引号多余，归一掉——`unit:U:"member"` 即 `unit:U:member`），否则 ⇒ 缺 kind 的 `Entity`（其 canonical 会重新加引，如 `"A B"`）。
++
+ ### 3.5 宽容解析（人类形式）
+ 
+ - 引号可省略（不与结构冲突时）、可冗余（归一后消失）。
+ - **兼容写法**：段内出现"未加引号的 `.` 紧跟 `[`"时，`.` 处断开为两段——消化总纲遗留的 `social:Map1.[4,3]:population` 写法（`Map1.[4,3]` → `Entity(∅,Map1)` + `Index([4,3])`）。canonical **永不产生**该写法。
+ - 除上述之外**不猜测**：结构不合法（总段数 < 2、首段非裸词、空段、`[` 无闭合、`[]` 空索引）一律抛 `IllegalArgumentException`，附上出错的段序号与原文。名字要以 `[` 开头就加引（§3.4 条件 1），故不存在"既像 Index 又是名字"的合法歧义。
+ 
+ ### 3.6 冻结样例核对表（总纲 §4.4，逐条必须成立）
+ 
+ | canonical 原文 | 解析结果 | `render(parse(s)) == s` |
+ |---|---|---|
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/Address.java b/simos-util/src/main/java/io/mosire/simos/util/address/Address.java
+new file mode 100644
+index 0000000..c4f3d5e
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/Address.java
+@@ -0,0 +1,61 @@
++package io.mosire.simos.util.address;
++
++import java.util.List;
++
++/**
++ * 地址：段序列。首段是命名空间、第 2 段是该命名空间的根主体（spec §3.2）。
++ *
++ * <p>解析宽容（人类形式），{@link #canonical()} 唯一（机器协议只用这个，spec §3.4）。
++ */
++public record Address(List<AddressSegment> segments) {
++
++  public Address {
++    segments = List.copyOf(segments);
++    if (segments.size() < 2) {
++      throw new IllegalArgumentException("地址至少两段（命名空间 + 根主体）：" + segments);
++    }
++    if (!(segments.get(0) instanceof Namespace)) {
++      throw new IllegalArgumentException("地址首段必须是命名空间：" + segments.get(0));
++    }
++    for (int i = 2; i < segments.size(); i++) {
++      if (rendersAsBareSubject(segments.get(i))) {
++        throw new IllegalArgumentException(
++            "第 " + (i + 1) + " 段是缺 kind 的实体——裸词主体只允许出现在根位置（第 2 段）：" + segments.get(i));
++      }
++    }
++  }
++
++  /**
++   * 该段是否是"渲染成裸词"的缺 kind 实体——只有这种实体在第 ≥3 段非法（spec §3.2）。
++   *
++   * <p>它的 canonical 与同名 {@link Property} 逐字相同（都是 `member`），canonical 唯一性与 `parse(canonical(x)) ==
++   * x` 会同时破。名字需要加引的缺 kind 实体不在此列（如 {@code "Nation.区域A"}）： 它的 canonical 自带引号，解析回来仍是同一个缺 kind
++   * 实体——spec §3.1 的 Human 形式靠它承载。
++   *
++   * <p>解析器不会产出这种实体（`unit:U:"member"` 按 spec §3.4 末段归一并读成 {@link Property}），
++   * 故本校验守的是直接构造——段类型无位置信息，只能在这一层判（spec §3.2 末段）。
++   */
++  private static boolean rendersAsBareSubject(AddressSegment segment) {
++    return segment instanceof Entity e && e.kind().isEmpty() && AddressText.isBareWord(e.name());
++  }
++
++  public static Address parse(String text) {
++    return AddressParser.parse(text);
++  }
++
++  /** 首段的命名空间标识，例如 `map`。 */
++  public String namespace() {
++    return ((Namespace) segments.get(0)).ident();
++  }
++
++  public String canonical() {
++    StringBuilder sb = new StringBuilder();
++    for (int i = 0; i < segments.size(); i++) {
++      if (i > 0) {
++        sb.append(':');
++      }
++      sb.append(segments.get(i).canonical());
++    }
++    return sb.toString();
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/AddressParser.java b/simos-util/src/main/java/io/mosire/simos/util/address/AddressParser.java
+new file mode 100644
+index 0000000..d95b192
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/AddressParser.java
+@@ -0,0 +1,213 @@
++package io.mosire.simos.util.address;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * 地址解析：切段（`:`，引号内的不切）、宽容写法（`.[`）、按位置与表面形式判定段类型（spec §3.2/§3.5）。 包内可见——对外只有 {@link
++ * Address#parse(String)}。
++ */
++final class AddressParser {
++
++  private AddressParser() {}
++
++  static Address parse(String text) {
++    if (text == null || text.isBlank()) {
++      throw new IllegalArgumentException("地址不得为空");
++    }
++    List<String> tokens = new ArrayList<>();
++    List<String> raw = splitOnColons(text);
++    for (int i = 0; i < raw.size(); i++) {
++      String token = raw.get(i);
++      if (token.isEmpty()) {
++        throw new IllegalArgumentException("第 " + (i + 1) + " 段为空：`" + text + "`");
++      }
++      tokens.addAll(splitTolerantDot(token, text));
++    }
++    if (tokens.size() < 2) {
++      throw new IllegalArgumentException("地址至少两段（命名空间 + 根主体）：`" + text + "`");
++    }
++    List<AddressSegment> segments = new ArrayList<>(tokens.size());
++    for (int i = 0; i < tokens.size(); i++) {
++      segments.add(toSegment(tokens.get(i), i, text));
++    }
++    return new Address(segments);
++  }
++
++  /** 按 `:` 切段；引号内的 `:` 按字面处理（连续两个 `"` 是转义，来回抵消）。 */
++  private static List<String> splitOnColons(String text) {
++    List<String> out = new ArrayList<>();
++    StringBuilder cur = new StringBuilder();
++    boolean inQuotes = false;
++    for (int i = 0; i < text.length(); i++) {
++      char c = text.charAt(i);
++      if (c == '"') {
++        inQuotes = !inQuotes;
++      } else if (c == ':' && !inQuotes) {
++        out.add(cur.toString());
++        cur.setLength(0);
++        continue;
++      }
++      cur.append(c);
++    }
++    if (inQuotes) {
++      throw new IllegalArgumentException("引号未闭合：`" + text + "`");
++    }
++    out.add(cur.toString());
++    return out;
++  }
++
++  /** 兼容写法：未加引号的 `.` 紧跟 `[` 时在此断开（`Map1.[4,3]` → `Map1` + `[4,3]`）。 */
++  private static List<String> splitTolerantDot(String token, String whole) {
++    int idx = indexOfUnquotedDotBeforeBracket(token);
++    if (idx < 0) {
++      return List.of(token);
++    }
++    String left = token.substring(0, idx);
++    String right = token.substring(idx + 1);
++    if (left.isEmpty() || right.isEmpty()) {
++      throw new IllegalArgumentException(
++          "兼容写法 `.` `[` 的两侧不得为空：`" + token + "`（地址：`" + whole + "`）");
++    }
++    return List.of(left, right);
++  }
++
++  private static int indexOfUnquotedDotBeforeBracket(String token) {
++    boolean inQuotes = false;
++    for (int i = 0; i < token.length(); i++) {
++      char c = token.charAt(i);
++      if (c == '"') {
++        inQuotes = !inQuotes;
++      } else if (!inQuotes && c == '.' && i + 1 < token.length() && token.charAt(i + 1) == '[') {
++        return i;
++      }
++    }
++    return -1;
++  }
++
++  /** 段类型判定（spec §3.2 表）：位置 + 表面形式，没有隐式兜底。 */
++  private static AddressSegment toSegment(String token, int position, String whole) {
++    if (position == 0) {
++      if (!AddressText.isBareWord(token)) {
++        throw new IllegalArgumentException("首段必须是裸词的命名空间：`" + token + "`（地址：`" + whole + "`）");
++      }
++      return new Namespace(token);
++    }
++    if (token.charAt(0) == '[') {
++      return toIndex(token, whole);
++    }
++    int dot = indexOfUnquotedDot(token);
++    if (dot < 0) {
++      if (isQuoted(token)) {
++        // 引号只在有未加引号的 `.` 时才参与段类型判定（spec §3.4 末段）：无未加引号 `.` 的 token 先去引再判。
++        // 第 ≥3 段去引后是裸词即 `Property`（引号冗余，归一掉）；否则是缺 kind 的 `Entity`（canonical 会重新加引）。
++        // 第 2 段是根主体，永远是 `Entity`（spec §3.2）。
++        String text = unquote(token);
++        return position >= 2 && AddressText.isBareWord(text) ? new Property(text) : Entity.of(text);
++      }
++      if (!AddressText.isBareWord(token)) {
++        throw new IllegalArgumentException(
++            "第 " + (position + 1) + " 段既不是裸词也不是引号包裹的名字：`" + token + "`（地址：`" + whole + "`）");
++      }
++      return position == 1 ? Entity.of(token) : new Property(token);
++    }
++    String left = token.substring(0, dot);
++    String right = token.substring(dot + 1);
++    if (isQuoted(left)) {
++      return Entity.of(nameParts(token, whole));
++    }
++    if (!AddressText.isBareWord(left)) {
++      throw new IllegalArgumentException("kind 必须是裸词或整段加引：`" + left + "`（地址：`" + whole + "`）");
++    }
++    return Entity.of(left, nameParts(right, whole));
++  }
++
++  private static Index toIndex(String token, String whole) {
++    if (!token.endsWith("]")) {
++      throw new IllegalArgumentException("Index 段未闭合：`" + token + "`（地址：`" + whole + "`）");
++    }
++    String body = token.substring(1, token.length() - 1);
++    if (body.isEmpty()) {
++      throw new IllegalArgumentException("Index 段不得为空：`" + token + "`（地址：`" + whole + "`）");
++    }
++    List<Integer> coords = new ArrayList<>();
++    for (String part : body.split(",", -1)) {
++      try {
++        coords.add(Integer.parseInt(part.strip()));
++      } catch (NumberFormatException e) {
++        throw new IllegalArgumentException("Index 坐标不是整数：`" + part + "`（地址：`" + whole + "`）", e);
++      }
++    }
++    return new Index(coords);
++  }
++
++  /** 第一个不在引号内的 `.`，没有则返回 -1。 */
++  private static int indexOfUnquotedDot(String token) {
++    return indexOfUnquotedDotFrom(token, 0);
++  }
++
++  private static int indexOfUnquotedDotFrom(String token, int from) {
++    boolean inQuotes = false;
++    for (int i = 0; i < token.length(); i++) {
++      char c = token.charAt(i);
++      if (c == '"') {
++        inQuotes = !inQuotes;
++      } else if (!inQuotes && c == '.' && i >= from) {
++        return i;
++      }
++    }
++    return -1;
++  }
++
++  /** 名字部分：按未加引号的 `.` 切组件，各组件去引号后以 `.` 连接（spec §3.2）。 */
++  private static String nameParts(String part, String whole) {
++    StringBuilder sb = new StringBuilder();
++    int start = 0;
++    while (true) {
++      int dot = indexOfUnquotedDotFrom(part, start);
++      String component = dot < 0 ? part.substring(start) : part.substring(start, dot);
++      sb.append(componentText(component, whole));
++      if (dot < 0) {
++        return sb.toString();
++      }
++      sb.append('.');
++      start = dot + 1;
++    }
++  }
++
++  private static String componentText(String component, String whole) {
++    if (isQuoted(component)) {
++      return unquote(component);
++    }
++    if (AddressText.isBareWord(component)) {
++      return component;
++    }
++    throw new IllegalArgumentException(
++        "名字组件必须加引号（含 : [ ] \" 或空白）：`" + component + "`（地址：`" + whole + "`）");
++  }
++
++  /** 整个 token 是否恰好是一个引号包裹的段（`""` 转义计入内容）。 */
++  private static boolean isQuoted(String s) {
++    if (s.length() < 2 || s.charAt(0) != '"') {
++      return false;
++    }
++    int i = 1;
++    while (i < s.length()) {
++      char c = s.charAt(i);
++      if (c == '"') {
++        if (i + 1 < s.length() && s.charAt(i + 1) == '"') {
++          i += 2;
++          continue;
++        }
++        return i == s.length() - 1;
++      }
++      i++;
++    }
++    return false;
++  }
++
++  /** 引号包裹 token 的内容：`""` → `"`。 */
++  private static String unquote(String s) {
++    return s.substring(1, s.length() - 1).replace("\"\"", "\"");
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/address/AddressParseTest.java b/simos-util/src/test/java/io/mosire/simos/util/address/AddressParseTest.java
+new file mode 100644
+index 0000000..8e6027f
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/address/AddressParseTest.java
+@@ -0,0 +1,123 @@
++package io.mosire.simos.util.address;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.List;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.ValueSource;
++
++/** spec §3.6：总纲 §4.4 的冻结样例逐条核对——解析结果与 canonical 往返。 */
++class AddressParseTest {
++
++  /** 冻结样例（逐字抄自 spec §3.6 表）。 */
++  @ParameterizedTest
++  @ValueSource(
++      strings = {
++        "map:Map1",
++        "map:Map1:hex.4_3",
++        "map:Map1:terra.Grass",
++        "map:Map1:terra.Grass:height",
++        "map:Map1:region.Nation.区域A",
++        "map:Map1:region.Nation.区域A:hexes",
++        "map:Map1:conn.river.r-f82a",
++        "social:Map1:hex.4_3:population",
++        "social:Map1:hex.4_3:population_growth",
++        "unit:U:member",
++        "unit:U:equipment.步枪",
++        "unit:U:hex",
++        "unit:U:speed",
++        "agent:bind.b-f82a",
++        "agent:map:Map1:region.Nation.区域A"
++      })
++  void frozenSamplesRoundTrip(String canonical) {
++    assertThat(Address.parse(canonical).canonical()).isEqualTo(canonical);
++  }
++
++  @Test
++  void secondSegmentIsRootSubjectWithAbsentKind() {
++    Address a = Address.parse("map:Map1");
++    assertThat(a.namespace()).isEqualTo("map");
++    assertThat(a.segments()).hasSize(2);
++    assertThat(a.segments().get(1)).isEqualTo(Entity.of("Map1"));
++  }
++
++  @Test
++  void kindNameSplitHappensOnFirstUnquotedDot() {
++    assertThat(Address.parse("map:Map1:region.Nation.区域A").segments().get(2))
++        .isEqualTo(Entity.of("region", "Nation.区域A"));
++    assertThat(Address.parse("map:Map1:conn.river.r-f82a").segments().get(2))
++        .isEqualTo(Entity.of("conn", "river.r-f82a"));
++  }
++
++  @Test
++  void bareWordAfterPositionTwoIsProperty() {
++    assertThat(Address.parse("unit:U:member").segments().get(2)).isEqualTo(new Property("member"));
++    assertThat(Address.parse("map:Map1:region.Nation.区域A:hexes").segments().get(3))
++        .isEqualTo(new Property("hexes"));
++  }
++
++  /**
++   * spec §3.4 末段：引号只在有未加引号的 `.` 时才参与段类型判定——第 ≥3 段无未加引号 `.` 的 token 先去引再判，去引后是裸词即
++   * `Property`（引号冗余，归一掉）。
++   */
++  @Test
++  void quotedBareWordAtPositionThreeNormalizesToProperty() {
++    assertThat(Address.parse("unit:U:\"member\"").segments().get(2))
++        .isEqualTo(new Property("member"));
++    assertThat(Address.parse("unit:U:\"member\"").canonical()).isEqualTo("unit:U:member");
++    assertThat(Address.parse("unit:\"U\":member").segments().get(1)).isEqualTo(Entity.of("U"));
++  }
++
++  @Test
++  void indexSegmentIsParsed() {
++    assertThat(Address.parse("map:Map1:[4,3]").segments().get(2))
++        .isEqualTo(new Index(List.of(4, 3)));
++    assertThat(Address.parse("map:Map1:[7]").segments().get(2)).isEqualTo(new Index(List.of(7)));
++  }
++
++  @Test
++  void quotedKindlessComponentsCollapseIntoOneName() {
++    assertThat(Address.parse("map:Map1:\"Nation\".\"区域A\"").segments().get(2))
++        .isEqualTo(Entity.of("Nation.区域A"));
++  }
++
++  @Test
++  void addressRequiresAtLeastTwoSegmentsAndNamespaceFirst() {
++    assertThat(Address.parse("map:Map1").segments().get(0)).isInstanceOf(Namespace.class);
++    assertThatThrownBy(() -> new Address(List.of(Entity.of("Map1"))))
++        .isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> new Address(List.of(Entity.of("Map1"), new Property("x"))))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++
++  /** G13 自证：第 ≥3 段缺 kind 的裸词主体必须被拒——否则它与 `Property` 的 canonical 撞车。 */
++  @Test
++  void kindlessEntityOutsideRootPositionIsRejected() {
++    assertThatThrownBy(
++            () ->
++                new Address(List.of(new Namespace("social"), Entity.of("U"), Entity.of("member"))))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++
++  /** spec §3.4 条件 2（已收紧为含任意空白即加引）：`region."A B"` 往返恒等。 */
++  @Test
++  void internalWhitespaceNameRoundTrips() {
++    Entity original = Entity.of("region", "A B");
++    String canonical = "map:Map1:" + original.canonical();
++    assertThat(canonical).isEqualTo("map:Map1:region.\"A B\"");
++    assertThat(Address.parse(canonical).segments().get(2)).isEqualTo(original);
++    assertThat(Address.parse(canonical).canonical()).isEqualTo(canonical);
++  }
++
++  /** spec §3.4 条件 2 的另一半：空名字要写成 `""`，它与真·空段（`::`）不是一回事。 */
++  @Test
++  void emptyNameParsesButTrulyEmptySegmentThrows() {
++    assertThat(Address.parse("map:Map1:region.\"\"").segments().get(2))
++        .isEqualTo(Entity.of("region", ""));
++    assertThat(Address.parse("map:Map1:region.\"\"").canonical()).isEqualTo("map:Map1:region.\"\"");
++    assertThatThrownBy(() -> Address.parse("map:Map1::x"))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+index e8f5779..1fbf443 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+@@ -55,19 +55,30 @@ class AddressQuoteTest {
+   }
+ 
+   /** G13 自证：空坐标护栏必须真的会响（spec §3.5 把 `[]` 列为非法）。 */
+   @Test
+   void emptyIndexIsRejected() {
+     assertThatThrownBy(() -> new Index(List.of()))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("至少一个坐标");
+   }
+ 
++  /** spec §3.4 后半：引号只用于消歧，不进 AST——冗余引号归一后消失。 */
++  @Test
++  void redundantQuotesAreNormalizedAway() {
++    Address quoted = Address.parse("map:Map1:region.\"Nation\".\"区域A\"");
++    Address plain = Address.parse("map:Map1:region.Nation.区域A");
++    assertThat(quoted).isEqualTo(plain);
++    assertThat(quoted.canonical()).isEqualTo("map:Map1:region.Nation.区域A");
++  }
++
+   /** 记录组件的防御性拷贝：源列表可变时，`coords` 仍是构造那一刻的副本（判别性来自可变源）。 */
+   @Test
+   void indexCoordsAreDefensivelyCopied() {
+     List<Integer> source = new ArrayList<>(List.of(1));
+     Index index = new Index(source);
+     source.add(2);
+     assertThat(index.coords()).containsExactly(1);
++    assertThatThrownBy(() -> index.coords().add(9))
++        .isInstanceOf(UnsupportedOperationException.class);
+   }
+ }
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/address/AddressTolerantParseTest.java b/simos-util/src/test/java/io/mosire/simos/util/address/AddressTolerantParseTest.java
+new file mode 100644
+index 0000000..92eef29
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/address/AddressTolerantParseTest.java
+@@ -0,0 +1,44 @@
++package io.mosire.simos.util.address;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.List;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.ValueSource;
++
++/** spec §3.5：宽容只限"引号可省/可冗余"与 `.[` 一处兼容写法；其余一律明确报错。 */
++class AddressTolerantParseTest {
++
++  @Test
++  void strayDotBeforeIndexIsTolerated() {
++    Address a = Address.parse("social:Map1.[4,3]:population");
++    assertThat(a.segments())
++        .containsExactly(
++            new Namespace("social"),
++            Entity.of("Map1"),
++            new Index(List.of(4, 3)),
++            new Property("population"));
++    assertThat(a.canonical()).isEqualTo("social:Map1:[4,3]:population");
++  }
++
++  @ParameterizedTest
++  @ValueSource(
++      strings = {
++        "map", // 段数 < 2
++        "map:", // 空段
++        ":Map1", // 空段（首段为空）
++        "map::Map1", // 空段
++        "map:M[a", // 名字未加引却含 `[`
++        "map:a b", // 含空格却不是裸词、也未加引
++        "map:[]", // 空 Index
++        "map:[4,]", // 坐标不是整数
++        "map:[4,x]", // 坐标不是整数
++        "map:[4,3", // Index 未闭合
++        "map:\"a", // 引号未闭合
++      })
++  void malformedAddressesAreRejected(String text) {
++    assertThatThrownBy(() -> Address.parse(text)).isInstanceOf(IllegalArgumentException.class);
++  }
++}

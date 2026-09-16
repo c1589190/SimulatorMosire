@@ -1,0 +1,397 @@
+# Review package: f7785cb..2630e3f
+
+## Commits
+2630e3f fix(util): InMemoryInfoSystem 构造期深拷贝内层列表（M1 Task 5 fix-2）
+baeeb95 refactor(util): InMemoryInfoSystem 改为 record 以获得值语义（M1 Task 5 fix-1）
+f7ac329 docs(spec): SegmentedSeries 定为 record——函数组件的相等语义与共享实例纪律（Task 7 前置裁决）
+0f14a95 feat(util): InfoEntry/InfoSystem/InMemoryInfoSystem（M1 Task 5）
+
+## Files changed
+ .../specs/2026-09-16-util-simos-design.md          |  10 +-
+ .../mosire/simos/util/info/InMemoryInfoSystem.java |  56 ++++++
+ .../java/io/mosire/simos/util/info/InfoEntry.java  |  28 +++
+ .../java/io/mosire/simos/util/info/InfoSystem.java |  19 ++
+ .../simos/util/info/InMemoryInfoSystemTest.java    | 200 +++++++++++++++++++++
+ 5 files changed, 312 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-09-16-util-simos-design.md b/docs/superpowers/specs/2026-09-16-util-simos-design.md
+index 41bb0d2..54bcbd9 100644
+--- a/docs/superpowers/specs/2026-09-16-util-simos-design.md
++++ b/docs/superpowers/specs/2026-09-16-util-simos-design.md
+@@ -246,39 +246,47 @@ public record SimulationState(StateMeta meta, Map<String, Snapshot> modules, Inf
+ ```java
+ public interface TemporalSeries<T> {
+     T valueAt(SimosTimestamp t);       // 即时计算，不物化中间点
+     List<Segment<T>> segments();       // 分段常量，按 from 升序
+     List<Event<T>> events();           // 离散跳变，按插入序
+ }
+ public record Segment<T>(SimosTimestamp from, T value) {}
+ public record Event<T>(SimosTimestamp at, T value, EventMode mode) {}
+ public enum EventMode { ADD, SET }
+ 
+-public final class SegmentedSeries<T> implements TemporalSeries<T> {
++public record SegmentedSeries<T>(
++        List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition)
++        implements TemporalSeries<T> {
+     public static <T> SegmentedSeries<T> of(
+             List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition);
+ }
+ ```
+ 
+ **不做插值**：段是**阶跃常量**（总纲 §4.7 的"分段常量"）——`valueAt` 在段内恒定，只在段边界或事件处跳变。连续变化（人口那种积分型序列）**由 SocialSimos 自己实现 `TemporalSeries<T>`**，本 spec 只保证四条时间语义被它继承。
+ 
+ **四条时间语义（本会话裁决，`SegmentedSeries` 必须逐条可测）**：
+ 
+ 1. **段边界左闭右开**：段 `[from_i, from_{i+1})`；`t` 恰好等于切换点时**新段生效**。最后一段延伸到无穷。**第一段即 anchor**（总纲 §4.7 的 `t=0 population=10000 anchor` 就是 `Segment(at(0), 10000)`）。
+ 2. **anchor 之前**（`t` 早于第一段 `from`）：**向前恒定延拓** = 第一段的值；不外推、不抛异常。
+ 3. **同一时刻先切段、再施加事件**：事件发生在"那一刻的新速率之下"。
+ 4. **同一时刻多个事件按插入序**稳定施加：`valueAt(t)` 先取段值，再把全部 `at ≤ t` 的事件按插入序依次施加——`ADD` ⇒ `v = addition.apply(v, e.value)`，`SET` ⇒ `v = e.value`。
+ 
+ **ADD 的算术来源**：Util 不能用泛型做加法，也不把 `T` 限制成数字——`SET` 不需要算术，`ADD` 需要时由调用方注入 `BinaryOperator<T>`（如 Social 的人口）。带 `ADD` 事件却给不出 `addition` 的序列在**构造期即抛异常**（不给运行期惊喜）。
+ 
+ **不可变**：段/事件列表防御性拷贝并保序；"增长率的调整"在模块侧表现为新建序列或追加分段，不是原地改。
+ 
++**`SegmentedSeries` 是 record，不是 `final class`**（本 spec 修订：`TemporalSeries` 是状态类型，往返断言（铁律 5）要拿它当判据，故 §十一 的"`equals` 由 record 提供、禁手写"适用）。**代价是 `addition` 按身份比较**——函数没有结构相等。故：
++
++- **含 `ADD` 事件的序列，`addition` 必须是共享实例（模块级 `static final` 常量）**；随手内联 `(a, b) -> a + b` 会让两个结构相同的序列**不相等**，并让 M2 起的往返断言以"序列不相等"这种费解形态转红（`addition` 为 `null` 的 `SET`-only 序列不受影响）。
++- 这条纪律由一个用例钉住：同一 `addition` 实例构建的两个同构序列相等；两个等价但不同的 lambda 构建的两个序列**不相等**——**有意为之**，把陷阱显式化而不是藏起来。
++- 跨进程/持久化（M4）时 `addition` 必须以同样的常量方式复原；序列化形态由 M4 的存储 spec 定。
++
+ ---
+ 
+ ## 八 跨模块可见性：Facet
+ 
+ ```java
+ public interface FacetProvider {
+     String facetName();                                        // "unitsHere" / "population"
+     List<FacetEntry> query(Address subject, ResolveContext ctx);
+ }
+ public record FacetEntry(String namespace, String label, String typeName, Object value) {}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java b/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java
+new file mode 100644
+index 0000000..2bfdd6d
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java
+@@ -0,0 +1,56 @@
++package io.mosire.simos.util.info;
++
++import io.mosire.simos.util.address.Address;
++import io.mosire.simos.util.time.SimosTimestamp;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++import java.util.Optional;
++
++/**
++ * {@link InfoSystem} 的内存实现：写时复制，读不修改任何状态。
++ *
++ * <p>它是 **record**——值语义由 record 提供（spec §十一：禁止手写 `equals`，`equals` 是往返断言的判据本身）， `SimulationState`
++ * 的逐字段重建断言（铁律 5）依赖它。
++ *
++ * <p>`bySubject()` 访问器不设防，防线在构造期：逐值 {@code List.copyOf} 再整体 {@code Map.copyOf}——**深**拷贝，否则
++ * 调用方的可变列表会穿透进来（浅拷贝下 `clear()` 能改掉本实例的值、连带 `hashCode()` 漂移，spec §十一"集合防御性拷贝"）。 本类自身的写路径（{@link
++ * #put}）对各主体列表同样 {@code List.copyOf}，外部无从经它改写内部状态。
++ */
++public record InMemoryInfoSystem(Map<Address, List<InfoEntry>> bySubject) implements InfoSystem {
++
++  public InMemoryInfoSystem {
++    Objects.requireNonNull(bySubject, "bySubject");
++    Map<Address, List<InfoEntry>> copy = new LinkedHashMap<>();
++    bySubject.forEach((key, entries) -> copy.put(key, List.copyOf(entries)));
++    bySubject = Map.copyOf(copy);
++  }
++
++  public static InMemoryInfoSystem empty() {
++    return new InMemoryInfoSystem(Map.of());
++  }
++
++  @Override
++  public Optional<InfoEntry> get(Address subject, String key, SimosTimestamp at) {
++    InfoEntry found = null;
++    for (InfoEntry entry : bySubject.getOrDefault(subject, List.of())) {
++      if (entry.key().equals(key) && entry.valid().contains(at)) {
++        found = entry;
++      }
++    }
++    return Optional.ofNullable(found);
++  }
++
++  @Override
++  public InMemoryInfoSystem put(Address subject, InfoEntry entry) {
++    Objects.requireNonNull(subject, "subject");
++    Objects.requireNonNull(entry, "entry");
++    Map<Address, List<InfoEntry>> next = new LinkedHashMap<>(bySubject);
++    List<InfoEntry> entries = new ArrayList<>(next.getOrDefault(subject, List.of()));
++    entries.add(entry);
++    next.put(subject, List.copyOf(entries));
++    return new InMemoryInfoSystem(next);
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/info/InfoEntry.java b/simos-util/src/main/java/io/mosire/simos/util/info/InfoEntry.java
+new file mode 100644
+index 0000000..1b93bd2
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/info/InfoEntry.java
+@@ -0,0 +1,28 @@
++package io.mosire.simos.util.info;
++
++import io.mosire.simos.util.identity.SubjectId;
++import io.mosire.simos.util.time.TimeRange;
++import java.util.Objects;
++import java.util.Optional;
++
++/**
++ * 一条外挂信息：`key` + 结构化值 + 有效期 + 来源（总纲 §4.6）。
++ *
++ * <p>**Info ≠ 领域字段**：凡影响领域计算的（`TerraType.height` 影响河流生成）都是领域字段， 不许走这条路；否则 Info 会退化成绕过领域模型的 JSON
++ * 垃圾桶（总纲 §4.6）。
++ *
++ * <p>`value` 是结构化 `Object`，不是预格式化字符串。
++ */
++public record InfoEntry(
++    String key, Object value, TimeRange valid, SubjectId source, Optional<String> note) {
++
++  public InfoEntry {
++    if (key == null || key.isBlank()) {
++      throw new IllegalArgumentException("InfoEntry.key 不得为空白");
++    }
++    Objects.requireNonNull(value, "value");
++    Objects.requireNonNull(valid, "valid");
++    Objects.requireNonNull(source, "source");
++    Objects.requireNonNull(note, "note");
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/info/InfoSystem.java b/simos-util/src/main/java/io/mosire/simos/util/info/InfoSystem.java
+new file mode 100644
+index 0000000..3ff393c
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/info/InfoSystem.java
+@@ -0,0 +1,19 @@
++package io.mosire.simos.util.info;
++
++import io.mosire.simos.util.address.Address;
++import io.mosire.simos.util.time.SimosTimestamp;
++import java.util.Optional;
++
++/**
++ * 外挂时态属性系统（总纲 §4.6）：**不挂在任何 Java 对象上**，是"地址 → 信息"的外挂关系。
++ *
++ * <p>实现必须不可变——{@link #put} 返回新实例（spec §十-D4），否则 `equals()` 往返断言无从谈起。
++ */
++public interface InfoSystem {
++
++  /** 取 `subject` 上 `key` 在时刻 `at` 有效的那条；同一 key 重叠时**插入序最后者胜**。 */
++  Optional<InfoEntry> get(Address subject, String key, SimosTimestamp at);
++
++  /** 追加一条（新开有效期的写法就是"改值"）；返回新实例，原实例不变。 */
++  InfoSystem put(Address subject, InfoEntry entry);
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java b/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java
+new file mode 100644
+index 0000000..8a3068b
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java
+@@ -0,0 +1,200 @@
++package io.mosire.simos.util.info;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatNullPointerException;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import io.mosire.simos.util.address.Address;
++import io.mosire.simos.util.identity.SubjectId;
++import io.mosire.simos.util.time.SimosTimestamp;
++import io.mosire.simos.util.time.TimeRange;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import org.junit.jupiter.api.Test;
++
++/** spec §十-D4：按 key + 时刻取值、有效期左闭右开、`put` 返回新实例。 */
++class InMemoryInfoSystemTest {
++
++  private static final Address HEX = Address.parse("map:Map1:hex.4_3");
++  private static final SubjectId SOURCE = new SubjectId("map.hex", "h-0001");
++  private static final TimeRange SINCE_ZERO = TimeRange.since(SimosTimestamp.of(0));
++
++  @Test
++  void readsByKeyAndMoment() {
++    InMemoryInfoSystem info =
++        InMemoryInfoSystem.empty()
++            .put(HEX, entry("alias", "河口渡口", TimeRange.since(SimosTimestamp.of(0))))
++            .put(HEX, entry("icon", "anchor", TimeRange.since(SimosTimestamp.of(0))));
++    assertThat(info.get(HEX, "alias", SimosTimestamp.of(5))).map(InfoEntry::value).contains("河口渡口");
++    assertThat(info.get(HEX, "icon", SimosTimestamp.of(5)))
++        .map(InfoEntry::value)
++        .contains("anchor");
++    assertThat(info.get(HEX, "unknown", SimosTimestamp.of(5))).isEmpty();
++    assertThat(info.get(Address.parse("map:Map1"), "alias", SimosTimestamp.of(5))).isEmpty();
++  }
++
++  @Test
++  void validityWindowIsHalfOpen() {
++    InMemoryInfoSystem info =
++        InMemoryInfoSystem.empty()
++            .put(
++                HEX,
++                entry(
++                    "alias",
++                    "旧名",
++                    new TimeRange(SimosTimestamp.of(0), Optional.of(SimosTimestamp.of(10)))))
++            .put(HEX, entry("alias", "新名", TimeRange.since(SimosTimestamp.of(10))));
++    assertThat(info.get(HEX, "alias", SimosTimestamp.of(9))).map(InfoEntry::value).contains("旧名");
++    assertThat(info.get(HEX, "alias", SimosTimestamp.of(10)))
++        .map(InfoEntry::value)
++        .contains("新名"); // 切换点归新条目
++  }
++
++  @Test
++  void theLastInsertedOverlappingEntryWins() {
++    InMemoryInfoSystem info =
++        InMemoryInfoSystem.empty()
++            .put(HEX, entry("alias", "先写的", TimeRange.since(SimosTimestamp.of(0))))
++            .put(HEX, entry("alias", "后写的", TimeRange.since(SimosTimestamp.of(0))));
++    assertThat(info.get(HEX, "alias", SimosTimestamp.of(1))).map(InfoEntry::value).contains("后写的");
++  }
++
++  @Test
++  void putReturnsANewInstanceAndLeavesTheOriginalUntouched() {
++    InMemoryInfoSystem base = InMemoryInfoSystem.empty();
++    InMemoryInfoSystem next =
++        base.put(HEX, entry("alias", "甲", TimeRange.since(SimosTimestamp.of(0))));
++    assertThat(base.get(HEX, "alias", SimosTimestamp.of(0))).isEmpty();
++    assertThat(next.get(HEX, "alias", SimosTimestamp.of(0))).isPresent();
++  }
++
++  // ---- 以下为 brief 未给、控制器点名补的守卫用例（brief 只有取值的 4 条，守卫全空转） ----
++
++  /** 空 key 与 null key 合并成同一条 IAE；判据连字段名一起钉，哪一臂缺席都能指名道姓地转红。 */
++  @Test
++  void blankOrNullKeyIsRejected() {
++    assertThatThrownBy(() -> new InfoEntry(" ", "值", SINCE_ZERO, SOURCE, Optional.empty()))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("key");
++    assertThatThrownBy(() -> new InfoEntry(null, "值", SINCE_ZERO, SOURCE, Optional.empty()))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("key");
++  }
++
++  /** 四条 `Objects.requireNonNull` 逐臂钉字段级消息——只钉 NPE 类型会被其他守卫同型掩盖（T4-M7 的坑）。 */
++  @Test
++  void nullPartsAreRejected() {
++    assertThatNullPointerException()
++        .isThrownBy(() -> new InfoEntry("alias", null, SINCE_ZERO, SOURCE, Optional.empty()))
++        .withMessage("value");
++    assertThatNullPointerException()
++        .isThrownBy(() -> new InfoEntry("alias", "值", null, SOURCE, Optional.empty()))
++        .withMessage("valid");
++    assertThatNullPointerException()
++        .isThrownBy(() -> new InfoEntry("alias", "值", SINCE_ZERO, null, Optional.empty()))
++        .withMessage("source");
++    assertThatNullPointerException()
++        .isThrownBy(() -> new InfoEntry("alias", "值", SINCE_ZERO, SOURCE, null))
++        .withMessage("note");
++  }
++
++  /** `put` 的两条 `requireNonNull` 同样没有 brief 用例；消息判据必须钉死（否则下游的第二次 NPE 会顶包）。 */
++  @Test
++  void putRejectsNullSubjectAndEntry() {
++    InMemoryInfoSystem info = InMemoryInfoSystem.empty();
++    assertThatNullPointerException()
++        .isThrownBy(() -> info.put(null, entry("alias", "甲", SINCE_ZERO)))
++        .withMessage("subject");
++    assertThatNullPointerException().isThrownBy(() -> info.put(HEX, null)).withMessage("entry");
++  }
++
++  // ---- 以下为 fix round 1（控制器裁决）：record 值语义——铁律 5 的往返断言依赖它 ----
++
++  /** 值语义：内容相同的两个**独立构建**的实例相等且同哈希（record 提供，未手写 equals——spec §十一）。 */
++  @Test
++  void instancesWithSameContentAreEqual() {
++    InMemoryInfoSystem chained =
++        InMemoryInfoSystem.empty()
++            .put(HEX, entry("alias", "甲", SINCE_ZERO))
++            .put(HEX, entry("icon", "anchor", SINCE_ZERO));
++    Map<Address, List<InfoEntry>> backing = new HashMap<>();
++    backing.put(HEX, List.of(entry("alias", "甲", SINCE_ZERO), entry("icon", "anchor", SINCE_ZERO)));
++    InMemoryInfoSystem assembled = new InMemoryInfoSystem(backing);
++
++    assertThat(assembled).isNotSameAs(chained); // 不是同一对象，相等性才说明问题
++    assertThat(assembled).isEqualTo(chained);
++    assertThat(assembled).hasSameHashCodeAs(chained);
++  }
++
++  @Test
++  void emptyInstancesAreEqual() {
++    InMemoryInfoSystem first = InMemoryInfoSystem.empty();
++    InMemoryInfoSystem second = InMemoryInfoSystem.empty();
++    assertThat(first).isNotSameAs(second);
++    assertThat(first).isEqualTo(second);
++    assertThat(first).hasSameHashCodeAs(second);
++  }
++
++  /** 反向：内容有差（多一条 / 值不同 / 主体不同）就不许相等——防"恒等 equals"式的过宽。 */
++  @Test
++  void instancesWithDifferentContentAreNotEqual() {
++    InMemoryInfoSystem base = InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO));
++    assertThat(base).isNotEqualTo(base.put(HEX, entry("icon", "anchor", SINCE_ZERO)));
++    assertThat(base)
++        .isNotEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "乙", SINCE_ZERO)));
++    assertThat(base)
++        .isNotEqualTo(
++            InMemoryInfoSystem.empty()
++                .put(Address.parse("map:Map1"), entry("alias", "甲", SINCE_ZERO)));
++  }
++
++  /** 构造期 `Map.copyOf` 是防御性拷贝：调用方构造后改自己的 map，不得改到本实例。 */
++  @Test
++  void mutatingTheBackingMapAfterConstructionDoesNotChangeTheSystem() {
++    Map<Address, List<InfoEntry>> backing = new HashMap<>();
++    backing.put(HEX, List.of(entry("alias", "甲", SINCE_ZERO)));
++    InMemoryInfoSystem info = new InMemoryInfoSystem(backing);
++
++    backing.put(HEX, List.of(entry("alias", "乙", SINCE_ZERO)));
++    backing.remove(HEX);
++
++    assertThat(info.get(HEX, "alias", SimosTimestamp.of(0))).map(InfoEntry::value).contains("甲");
++    assertThat(info)
++        .isEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO)));
++  }
++
++  // ---- 以下为 fix round 2（控制器裁决）：构造期**深**拷贝——内层列表同样防御 ----
++
++  /** 内层列表也要防御拷贝：构造后调用方清空自己的 list，本实例的值与哈希都不得漂移（浅拷贝会穿透）。 */
++  @Test
++  void mutatingTheBackingListAfterConstructionDoesNotChangeTheSystem() {
++    List<InfoEntry> mutableEntries = new ArrayList<>(List.of(entry("alias", "甲", SINCE_ZERO)));
++    InMemoryInfoSystem info = new InMemoryInfoSystem(Map.of(HEX, mutableEntries));
++    int hashCodeBefore = info.hashCode();
++
++    mutableEntries.clear();
++
++    assertThat(info.get(HEX, "alias", SimosTimestamp.of(0))).map(InfoEntry::value).contains("甲");
++    assertThat(info)
++        .isEqualTo(InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO)));
++    assertThat(info.hashCode()).isEqualTo(hashCodeBefore);
++  }
++
++  /** `bySubject()` 不设防，防线在构造期最后那层 `Map.copyOf`：拿到的 map 与列表都改不动。 */
++  @Test
++  void theExposedMapIsImmutable() {
++    InMemoryInfoSystem info = InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO));
++    assertThatThrownBy(() -> info.bySubject().put(HEX, List.of()))
++        .isInstanceOf(UnsupportedOperationException.class);
++    assertThatThrownBy(() -> info.bySubject().get(HEX).add(entry("icon", "anchor", SINCE_ZERO)))
++        .isInstanceOf(UnsupportedOperationException.class);
++    assertThat(info.bySubject().get(HEX)).hasSize(1);
++  }
++
++  private static InfoEntry entry(String key, Object value, TimeRange valid) {
++    return new InfoEntry(key, value, valid, new SubjectId("map.hex", "h-0001"), Optional.empty());
++  }
++}

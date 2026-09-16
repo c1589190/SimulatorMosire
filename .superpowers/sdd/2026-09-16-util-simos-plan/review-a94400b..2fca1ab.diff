@@ -1,0 +1,230 @@
+# Review package: a94400b..2fca1ab
+
+## Commits
+2fca1ab feat(util): SubjectId/ResolvedSubject/QueryResult 身份三件（M1 Task 3）
+
+## Files changed
+ .../io/mosire/simos/util/identity/QueryResult.java | 11 +++++
+ .../simos/util/identity/ResolvedSubject.java       | 26 ++++++++++
+ .../io/mosire/simos/util/identity/SubjectId.java   | 19 ++++++++
+ .../simos/util/identity/QueryResultTest.java       | 35 ++++++++++++++
+ .../simos/util/identity/ResolvedSubjectTest.java   | 55 ++++++++++++++++++++++
+ .../mosire/simos/util/identity/SubjectIdTest.java  | 33 +++++++++++++
+ 6 files changed, 179 insertions(+)
+
+## Diff
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/identity/QueryResult.java b/simos-util/src/main/java/io/mosire/simos/util/identity/QueryResult.java
+new file mode 100644
+index 0000000..02a08ee
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/identity/QueryResult.java
+@@ -0,0 +1,11 @@
++package io.mosire.simos.util.identity;
++
++import java.util.List;
++
++/** 解析结果：候选列表，保序（spec §四）。Human 形式可多解，全部列出；空列表 = 没有候选，不是错误。 */
++public record QueryResult(List<ResolvedSubject> candidates) {
++
++  public QueryResult {
++    candidates = List.copyOf(candidates);
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/identity/ResolvedSubject.java b/simos-util/src/main/java/io/mosire/simos/util/identity/ResolvedSubject.java
+new file mode 100644
+index 0000000..f9ec164
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/identity/ResolvedSubject.java
+@@ -0,0 +1,26 @@
++package io.mosire.simos.util.identity;
++
++import io.mosire.simos.util.address.Address;
++
++/**
++ * 解析结果的候选项：稳定 ID + canonical 地址 + 展示/路由用类型名（spec §四）。
++ *
++ * <p>地址必须是 canonical 形式——机器协议只用 canonical，宽容写法在解析入口就被归一掉了。
++ */
++public record ResolvedSubject(SubjectId id, String canonicalAddress, String typeName) {
++
++  public ResolvedSubject {
++    if (id == null) {
++      throw new IllegalArgumentException("ResolvedSubject.id 不得为 null");
++    }
++    if (canonicalAddress == null || canonicalAddress.isBlank()) {
++      throw new IllegalArgumentException("ResolvedSubject.canonicalAddress 不得为空白");
++    }
++    if (!Address.parse(canonicalAddress).canonical().equals(canonicalAddress)) {
++      throw new IllegalArgumentException("canonicalAddress 必须是 canonical 形式：" + canonicalAddress);
++    }
++    if (typeName == null || typeName.isBlank()) {
++      throw new IllegalArgumentException("ResolvedSubject.typeName 不得为空白");
++    }
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/identity/SubjectId.java b/simos-util/src/main/java/io/mosire/simos/util/identity/SubjectId.java
+new file mode 100644
+index 0000000..ae9e2d1
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/identity/SubjectId.java
+@@ -0,0 +1,19 @@
++package io.mosire.simos.util.identity;
++
++/**
++ * 稳定身份：`namespace` + `localId`（铁律 1——地址是定位方式，ID 是身份）。
++ *
++ * <p>`namespace` 取 `<模块>` 或 `<模块>.<类型>`（`map.hex` / `unit.equipment`），层级由各模块自定，Util 不校验； `localId`
++ * 的生成规则（前缀、长度、随机源）同样属于各领域模块。
++ */
++public record SubjectId(String namespace, String localId) {
++
++  public SubjectId {
++    if (namespace == null || namespace.isBlank()) {
++      throw new IllegalArgumentException("SubjectId.namespace 不得为空白");
++    }
++    if (localId == null || localId.isBlank()) {
++      throw new IllegalArgumentException("SubjectId.localId 不得为空白");
++    }
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/identity/QueryResultTest.java b/simos-util/src/test/java/io/mosire/simos/util/identity/QueryResultTest.java
+new file mode 100644
+index 0000000..e56a048
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/identity/QueryResultTest.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.util.identity;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.ArrayList;
++import java.util.List;
++import org.junit.jupiter.api.Test;
++
++/** spec §四：候选列表保序、不可变（Human 形式可多解，全部列出）。 */
++class QueryResultTest {
++
++  @Test
++  void candidatesKeepInsertionOrder() {
++    ResolvedSubject first = subject("h-0001");
++    ResolvedSubject second = subject("h-0002");
++    assertThat(new QueryResult(List.of(first, second)).candidates()).containsExactly(first, second);
++    assertThat(new QueryResult(List.of()).candidates()).isEmpty();
++  }
++
++  @Test
++  void candidatesAreDefensivelyCopied() {
++    List<ResolvedSubject> mutable = new ArrayList<>();
++    mutable.add(subject("h-0001"));
++    QueryResult result = new QueryResult(mutable);
++    mutable.clear();
++    assertThat(result.candidates()).hasSize(1);
++    assertThatThrownBy(() -> result.candidates().add(subject("h-0002")))
++        .isInstanceOf(UnsupportedOperationException.class);
++  }
++
++  private static ResolvedSubject subject(String localId) {
++    return new ResolvedSubject(new SubjectId("map.hex", localId), "map:Map1:hex.4_3", "Hex");
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java b/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java
+new file mode 100644
+index 0000000..d42b1b5
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/identity/ResolvedSubjectTest.java
+@@ -0,0 +1,55 @@
++package io.mosire.simos.util.identity;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import org.junit.jupiter.api.Test;
++
++/** spec §四：候选 = 稳定 ID + canonical 地址 + 展示用类型名。 */
++class ResolvedSubjectTest {
++
++  @Test
++  void carriesIdentityAddressAndType() {
++    ResolvedSubject s = hexSubject("map:Map1:hex.4_3");
++    assertThat(s.id()).isEqualTo(new SubjectId("map.hex", "h-0001"));
++    assertThat(s.canonicalAddress()).isEqualTo("map:Map1:hex.4_3");
++    assertThat(s.typeName()).isEqualTo("Hex");
++  }
++
++  @Test
++  void valueSemantics() {
++    assertThat(hexSubject("map:Map1:hex.4_3")).isEqualTo(hexSubject("map:Map1:hex.4_3"));
++    // 空白地址的错误消息必须点名 canonicalAddress：`Address.parse` 对空串自己也会抛 IAE，
++    // 本层校验的可见差别只在这条消息（字段级定位），故判据钉消息而不是只钉异常类型。
++    assertThatThrownBy(() -> new ResolvedSubject(new SubjectId("map.hex", "h-0001"), " ", "Hex"))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("canonicalAddress");
++    assertThatThrownBy(
++            () -> new ResolvedSubject(new SubjectId("map.hex", "h-0001"), "map:Map1", ""))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++
++  @Test
++  void nullIdIsRejected() {
++    // 候选没有身份即无意义：ID 缺失必须在构造期就被拒绝
++    assertThatThrownBy(() -> new ResolvedSubject(null, "map:Map1:hex.4_3", "Hex"))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++
++  @Test
++  void nonCanonicalAddressIsRejected() {
++    // §四：调用方选定后一律回传 canonical。宽容写法不得成为 Resolver 的输出。
++    assertThatThrownBy(
++            () ->
++                new ResolvedSubject(
++                    new SubjectId("social.population", "p-1"),
++                    "social:Map1.[4,3]:population",
++                    "Population"))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("canonical");
++  }
++
++  private static ResolvedSubject hexSubject(String address) {
++    return new ResolvedSubject(new SubjectId("map.hex", "h-0001"), address, "Hex");
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java b/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java
+new file mode 100644
+index 0000000..5834273
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/identity/SubjectIdTest.java
+@@ -0,0 +1,33 @@
++package io.mosire.simos.util.identity;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import org.junit.jupiter.api.Test;
++
++/** spec §四：稳定身份的值语义；命名层级由各模块自定，Util 不校验。 */
++class SubjectIdTest {
++
++  @Test
++  void valueSemantics() {
++    assertThat(new SubjectId("map.hex", "h-0001")).isEqualTo(new SubjectId("map.hex", "h-0001"));
++    assertThat(new SubjectId("map.hex", "h-0001"))
++        .hasSameHashCodeAs(new SubjectId("map.hex", "h-0001"));
++    assertThat(new SubjectId("map.hex", "h-0001").toString()).contains("map.hex", "h-0001");
++  }
++
++  @Test
++  void blankPartsAreRejected() {
++    assertThatThrownBy(() -> new SubjectId(" ", "h-0001"))
++        .isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> new SubjectId("map.hex", ""))
++        .isInstanceOf(IllegalArgumentException.class);
++  }
++
++  @Test
++  void namespaceHierarchyIsFreeForm() {
++    // §四：`<模块>` 或 `<模块>.<类型>` 都由模块自定，Util 不校验层级
++    assertThat(new SubjectId("unit", "U-1").namespace()).isEqualTo("unit");
++    assertThat(new SubjectId("map.region", "R-1").namespace()).isEqualTo("map.region");
++  }
++}

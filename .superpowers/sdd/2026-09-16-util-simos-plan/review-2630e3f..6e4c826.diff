@@ -1,0 +1,71 @@
+# Review package: 2630e3f..6e4c826
+
+## Commits
+6e4c826 test(util): 补 InMemoryInfoSystem 的 null 守卫自证用例并校正 Javadoc（M1 Task 5 fix-3）
+
+## Files changed
+ .../java/io/mosire/simos/util/info/InMemoryInfoSystem.java    |  5 +++--
+ .../io/mosire/simos/util/info/InMemoryInfoSystemTest.java     | 11 +++++++++++
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java b/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java
+index 2bfdd6d..cd195a6 100644
+--- a/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java
++++ b/simos-util/src/main/java/io/mosire/simos/util/info/InMemoryInfoSystem.java
+@@ -9,22 +9,23 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
+ 
+ /**
+  * {@link InfoSystem} 的内存实现：写时复制，读不修改任何状态。
+  *
+  * <p>它是 **record**——值语义由 record 提供（spec §十一：禁止手写 `equals`，`equals` 是往返断言的判据本身）， `SimulationState`
+  * 的逐字段重建断言（铁律 5）依赖它。
+  *
+  * <p>`bySubject()` 访问器不设防，防线在构造期：逐值 {@code List.copyOf} 再整体 {@code Map.copyOf}——**深**拷贝，否则
+- * 调用方的可变列表会穿透进来（浅拷贝下 `clear()` 能改掉本实例的值、连带 `hashCode()` 漂移，spec §十一"集合防御性拷贝"）。 本类自身的写路径（{@link
+- * #put}）对各主体列表同样 {@code List.copyOf}，外部无从经它改写内部状态。
++ * 调用方的可变列表会穿透进来（浅拷贝下 `clear()` 能改掉本实例的值、连带 `hashCode()` 漂移，spec §十一"集合防御性拷贝"）。
++ * 这是**唯一可观测**的防线（删掉它有用例转红）。{@link #put} 里的 {@code List.copyOf} 是不可观测的**纵深防御**：构造期
++ * 已深拷贝，删掉它没有用例会转红——留着只为写路径自成一体，别当成承重墙。
+  */
+ public record InMemoryInfoSystem(Map<Address, List<InfoEntry>> bySubject) implements InfoSystem {
+ 
+   public InMemoryInfoSystem {
+     Objects.requireNonNull(bySubject, "bySubject");
+     Map<Address, List<InfoEntry>> copy = new LinkedHashMap<>();
+     bySubject.forEach((key, entries) -> copy.put(key, List.copyOf(entries)));
+     bySubject = Map.copyOf(copy);
+   }
+ 
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java b/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java
+index 8a3068b..a3ade05 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/info/InMemoryInfoSystemTest.java
+@@ -187,14 +187,25 @@ class InMemoryInfoSystemTest {
+   @Test
+   void theExposedMapIsImmutable() {
+     InMemoryInfoSystem info = InMemoryInfoSystem.empty().put(HEX, entry("alias", "甲", SINCE_ZERO));
+     assertThatThrownBy(() -> info.bySubject().put(HEX, List.of()))
+         .isInstanceOf(UnsupportedOperationException.class);
+     assertThatThrownBy(() -> info.bySubject().get(HEX).add(entry("icon", "anchor", SINCE_ZERO)))
+         .isInstanceOf(UnsupportedOperationException.class);
+     assertThat(info.bySubject().get(HEX)).hasSize(1);
+   }
+ 
++  /**
++   * 紧凑构造器的 `bySubject` 守卫（fix round 3）：下游 `Map.copyOf` 对 null 也会抛 NPE，但**消息不同**——
++   * 只钉异常类型的话该守卫是空转的（评审实测：删掉它 13/13 全绿），判据必须钉到字段级消息。
++   */
++  @Test
++  void nullBySubjectIsRejected() {
++    assertThatNullPointerException()
++        .isThrownBy(() -> new InMemoryInfoSystem(null))
++        .withMessage("bySubject");
++  }
++
+   private static InfoEntry entry(String key, Object value, TimeRange valid) {
+     return new InfoEntry(key, value, valid, new SubjectId("map.hex", "h-0001"), Optional.empty());
+   }
+ }

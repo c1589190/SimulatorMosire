@@ -1,0 +1,286 @@
+# Review package: 56836f0..4109eb5
+
+## Commits
+4109eb5 docs(spec): §3.4 条件 2 收紧为含任意空白即加引（M1 Task 1 裁决）
+0f8d5ff fix(util): 内部空白同样加引（M1 Task 1 修复轮 1）
+b40b28f feat(util): 地址段类型与按需加引的 canonical 渲染（M1 Task 1）
+
+## Files changed
+ .../specs/2026-09-16-util-simos-design.md          |  2 +-
+ .../mosire/simos/util/address/AddressSegment.java  |  8 ++++
+ .../io/mosire/simos/util/address/AddressText.java  | 49 +++++++++++++++++++
+ .../java/io/mosire/simos/util/address/Entity.java  | 34 +++++++++++++
+ .../java/io/mosire/simos/util/address/Index.java   | 20 ++++++++
+ .../io/mosire/simos/util/address/Namespace.java    | 16 +++++++
+ .../io/mosire/simos/util/address/Property.java     | 16 +++++++
+ .../simos/util/address/AddressQuoteTest.java       | 55 ++++++++++++++++++++++
+ 8 files changed, 199 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-09-16-util-simos-design.md b/docs/superpowers/specs/2026-09-16-util-simos-design.md
+index 391081c..723b2a1 100644
+--- a/docs/superpowers/specs/2026-09-16-util-simos-design.md
++++ b/docs/superpowers/specs/2026-09-16-util-simos-design.md
+@@ -123,21 +123,21 @@ public record Address(List<AddressSegment> segments) {
+ 
+ ### 3.4 按需加引（canonical 唯一性的保证）
+ 
+ canonical 是**机器协议的唯一形态**：同一个实体只能有一种规范写法，否则 `region.Nation.区域A` 与 `region."Nation"."区域A"` 会指向同一实体却是两个字符串——查询缓存、事件日志的目标地址、`correlationId` 追溯全会裂开。
+ 
+ **渲染规则**：token 满足任一条件即加双引号，否则一律不加（冻结样例因此原样输出）：
+ 
+ | # | 条件 | 例 |
+ |---|---|---|
+ | 1 | 含 `:`、`[`、`]`、`"` 任一（含以 `[` 开头——不加引就会被当成 Index 段） | `"河口:渡口"`、`"[4,3]"` |
+-| 2 | 为空串，或首尾含空白 | `" 区域A "` |
++| 2 | 为空串，或含空白（**任意位置**——§3.2 的裸词定义即"不含空白"，故内部空白同样必须加引，否则 `region.A B` 解析不回来） | `" 区域A "`、`"A B"` |
+ | 3 | 作为 `Entity` 的 name，且 kind 缺省，且 name 含 `.` | `"高地人旅指挥部.1营指挥部"` |
+ 
+ 条件 3 是 §3.2 切分规则的直接后果：缺 kind 的 name 一旦含 `.`，不引就会被误切成 `kind.name`，往返不变式立刻破。**三条之外一律不加引**——多一处加引，canonical 就少一处唯一。
+ 
+ **归一**：解析时引号只用于消歧，**不进入 AST**——`region."Nation"."区域A"` 与 `region.Nation.区域A` 解析为同一个 AST、渲染为同一个 canonical。这是"按需加引"的另一半。
+ 
+ ### 3.5 宽容解析（人类形式）
+ 
+ - 引号可省略（不与结构冲突时）、可冗余（归一后消失）。
+ - **兼容写法**：段内出现"未加引号的 `.` 紧跟 `[`"时，`.` 处断开为两段——消化总纲遗留的 `social:Map1.[4,3]:population` 写法（`Map1.[4,3]` → `Entity(∅,Map1)` + `Index([4,3])`）。canonical **永不产生**该写法。
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/AddressSegment.java b/simos-util/src/main/java/io/mosire/simos/util/address/AddressSegment.java
+new file mode 100644
+index 0000000..cbcf280
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/AddressSegment.java
+@@ -0,0 +1,8 @@
++package io.mosire.simos.util.address;
++
++/** 地址的一段。段间用 `:` 分隔，段内用 `.` 分隔 kind 与 name（spec §3.2）。 */
++public sealed interface AddressSegment permits Namespace, Entity, Index, Property {
++
++  /** 本段的规范写法（canonical，按需加引，spec §3.4）。 */
++  String canonical();
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java b/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java
+new file mode 100644
+index 0000000..10a812b
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java
+@@ -0,0 +1,49 @@
++package io.mosire.simos.util.address;
++
++/** 地址词法工具：裸词判定、引号转义与"按需加引"（spec §3.3/§3.4）。包内可见。 */
++final class AddressText {
++
++  private AddressText() {}
++
++  /** 裸词：非空、不含任何空白、且不含 `: . [ ] "`（spec §3.2：kind 与命名空间的合法性判据）。 */
++  static boolean isBareWord(String s) {
++    if (s == null || s.isEmpty()) {
++      return false;
++    }
++    for (int i = 0; i < s.length(); i++) {
++      char c = s.charAt(i);
++      if (Character.isWhitespace(c)) {
++        return false;
++      }
++      switch (c) {
++        case ':', '.', '[', ']', '"' -> {
++          return false;
++        }
++        default -> {}
++      }
++    }
++    return true;
++  }
++
++  /** 无条件加引：内部 `"` 写成 `""`。 */
++  static String quote(String s) {
++    return '"' + s.replace("\"", "\"\"") + '"';
++  }
++
++  /**
++   * 名字的规范写法：命中 spec §3.4 三条加引条件才加引（条件 2：为空串或含任意空白）。
++   *
++   * @param kindAbsent 该名字所属的 Entity 是否缺省了 kind（条件 3：缺 kind 且名字含 `.` 必须加引）
++   */
++  static String quoteIfNeeded(String name, boolean kindAbsent) {
++    boolean needs =
++        name.isEmpty()
++            || name.chars().anyMatch(Character::isWhitespace)
++            || name.indexOf(':') >= 0
++            || name.indexOf('[') >= 0
++            || name.indexOf(']') >= 0
++            || name.indexOf('"') >= 0
++            || (kindAbsent && name.indexOf('.') >= 0);
++    return needs ? quote(name) : name;
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/Entity.java b/simos-util/src/main/java/io/mosire/simos/util/address/Entity.java
+new file mode 100644
+index 0000000..87cc200
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/Entity.java
+@@ -0,0 +1,34 @@
++package io.mosire.simos.util.address;
++
++import java.util.Objects;
++import java.util.Optional;
++
++/**
++ * 实体段：`kind.name`（`hex.4_3`）或根主体名（`Map1`，kind 缺省）。
++ *
++ * <p>kind 必须是裸词——它是结构词（类型判别用），任意字符的载体是 name（spec §3.2/§3.4）。
++ */
++public record Entity(Optional<String> kind, String name) implements AddressSegment {
++
++  public Entity {
++    Objects.requireNonNull(kind, "kind");
++    Objects.requireNonNull(name, "name");
++    if (kind.isPresent() && !AddressText.isBareWord(kind.get())) {
++      throw new IllegalArgumentException("kind 必须是裸词（非空、无空白、不含 : . [ ] \"）：" + kind.get());
++    }
++  }
++
++  /** 缺省 kind 的实体（根主体，或 Human 形式里省略类型词的实体）。 */
++  public static Entity of(String name) {
++    return new Entity(Optional.empty(), name);
++  }
++
++  public static Entity of(String kind, String name) {
++    return new Entity(Optional.of(kind), name);
++  }
++
++  @Override
++  public String canonical() {
++    return kind.map(k -> k + ".").orElse("") + AddressText.quoteIfNeeded(name, kind.isEmpty());
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/Index.java b/simos-util/src/main/java/io/mosire/simos/util/address/Index.java
+new file mode 100644
+index 0000000..95e93ac
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/Index.java
+@@ -0,0 +1,20 @@
++package io.mosire.simos.util.address;
++
++import java.util.List;
++import java.util.stream.Collectors;
++
++/** 索引段：`[q,r]` 或 `[i]`（Human 形式；canonical 的单个 hex 用 `hex.4_3` 形式）。 */
++public record Index(List<Integer> coords) implements AddressSegment {
++
++  public Index {
++    coords = List.copyOf(coords);
++    if (coords.isEmpty()) {
++      throw new IllegalArgumentException("Index 段至少一个坐标");
++    }
++  }
++
++  @Override
++  public String canonical() {
++    return coords.stream().map(String::valueOf).collect(Collectors.joining(",", "[", "]"));
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/Namespace.java b/simos-util/src/main/java/io/mosire/simos/util/address/Namespace.java
+new file mode 100644
+index 0000000..edd8b51
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/Namespace.java
+@@ -0,0 +1,16 @@
++package io.mosire.simos.util.address;
++
++/** 命名空间段（`map` / `social` / `unit` / `agent`）：地址的第 1 段，必须是裸词（spec §3.2）。 */
++public record Namespace(String ident) implements AddressSegment {
++
++  public Namespace {
++    if (!AddressText.isBareWord(ident)) {
++      throw new IllegalArgumentException("命名空间必须是裸词（非空、无空白、不含 : . [ ] \"）：" + ident);
++    }
++  }
++
++  @Override
++  public String canonical() {
++    return ident;
++  }
++}
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/Property.java b/simos-util/src/main/java/io/mosire/simos/util/address/Property.java
+new file mode 100644
+index 0000000..6ab99b0
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/Property.java
+@@ -0,0 +1,16 @@
++package io.mosire.simos.util.address;
++
++/** 属性段：`population` / `height` / `member`——地址第 3 段起的裸词（spec §3.2）。 */
++public record Property(String ident) implements AddressSegment {
++
++  public Property {
++    if (!AddressText.isBareWord(ident)) {
++      throw new IllegalArgumentException("属性名必须是裸词（非空、无空白、不含 : . [ ] \"）：" + ident);
++    }
++  }
++
++  @Override
++  public String canonical() {
++    return ident;
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+new file mode 100644
+index 0000000..7a32707
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+@@ -0,0 +1,55 @@
++package io.mosire.simos.util.address;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.List;
++import org.junit.jupiter.api.Test;
++
++/** spec §3.4：三条"按需加引"条件、`""` 转义，与段类型的构造期校验（§3.2）。 */
++class AddressQuoteTest {
++
++  @Test
++  void bareWordNamesAreNotQuoted() {
++    assertThat(Entity.of("hex", "4_3").canonical()).isEqualTo("hex.4_3");
++    assertThat(Entity.of("region", "Nation.区域A").canonical()).isEqualTo("region.Nation.区域A");
++  }
++
++  @Test
++  void namesWithStructuralCharactersAreQuoted() {
++    assertThat(Entity.of("region", "河口:渡口").canonical()).isEqualTo("region.\"河口:渡口\"");
++    assertThat(Entity.of("region", "[前线]").canonical()).isEqualTo("region.\"[前线]\"");
++    assertThat(Entity.of("region", " 区域A ").canonical()).isEqualTo("region.\" 区域A \"");
++    assertThat(Entity.of("region", "A B").canonical()).isEqualTo("region.\"A B\"");
++    assertThat(Entity.of("region", "").canonical()).isEqualTo("region.\"\"");
++  }
++
++  @Test
++  void quoteCharacterIsDoubled() {
++    assertThat(Entity.of("region", "A\"B").canonical()).isEqualTo("region.\"A\"\"B\"");
++  }
++
++  @Test
++  void kindlessDottedNameIsQuoted() {
++    assertThat(Entity.of("高地人旅指挥部.1营指挥部").canonical()).isEqualTo("\"高地人旅指挥部.1营指挥部\"");
++    assertThat(Entity.of("Map1").canonical()).isEqualTo("Map1");
++  }
++
++  @Test
++  void kindMustBeBareWord() {
++    assertThat(Entity.of("hex", "4_3").kind()).contains("hex");
++    assertThat(Entity.of("Map1").kind()).isEmpty();
++    assertThatThrownBy(() -> Entity.of("a.b", "x")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> Entity.of("a b", "x")).isInstanceOf(IllegalArgumentException.class);
++  }
++
++  @Test
++  void namespaceIndexAndPropertyRenderCanonically() {
++    assertThat(new Namespace("map").canonical()).isEqualTo("map");
++    assertThat(new Index(List.of(4, 3)).canonical()).isEqualTo("[4,3]");
++    assertThat(new Index(List.of(7)).canonical()).isEqualTo("[7]");
++    assertThat(new Property("population_growth").canonical()).isEqualTo("population_growth");
++    assertThatThrownBy(() -> new Namespace("a:b")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> new Property("a b")).isInstanceOf(IllegalArgumentException.class);
++  }
++}

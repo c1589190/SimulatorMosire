@@ -1,0 +1,110 @@
+# Review package: 4109eb5..424877f
+
+## Commits
+424877f fix(util): Index 空坐标护栏自证 + 结构化字符集去重（M1 Task 1 修复轮 2）
+
+## Files changed
+ .../io/mosire/simos/util/address/AddressText.java  | 28 +++++++++++-----------
+ .../simos/util/address/AddressQuoteTest.java       | 15 ++++++++++++
+ 2 files changed, 29 insertions(+), 14 deletions(-)
+
+## Diff
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java b/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java
+index 10a812b..d1a8984 100644
+--- a/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java
++++ b/simos-util/src/main/java/io/mosire/simos/util/address/AddressText.java
+@@ -1,49 +1,49 @@
+ package io.mosire.simos.util.address;
+ 
+ /** 地址词法工具：裸词判定、引号转义与"按需加引"（spec §3.3/§3.4）。包内可见。 */
+ final class AddressText {
+ 
+   private AddressText() {}
+ 
+-  /** 裸词：非空、不含任何空白、且不含 `: . [ ] "`（spec §3.2：kind 与命名空间的合法性判据）。 */
++  /** 结构化字符：出现任一即不可能作为裸词，且（除 `.` 外）是加引条件 1 的判据。 */
++  private static boolean hasStructuralChar(String s) {
++    return s.indexOf(':') >= 0 || s.indexOf('[') >= 0 || s.indexOf(']') >= 0 || s.indexOf('"') >= 0;
++  }
++
++  /**
++   * 裸词：非空、不含任何空白、且不含 `: . [ ] "`（spec §3.2：kind 与命名空间的合法性判据）。
++   *
++   * <p>注意 `.` 单独判：它是裸词的否决字符，却**不是**加引条件 1 的判据（见 {@link #hasStructuralChar}）—— 缺 kind 的 name 含 `.`
++   * 才加引，kind 在时 `region.Nation.区域A` 不能加引。
++   */
+   static boolean isBareWord(String s) {
+-    if (s == null || s.isEmpty()) {
++    if (s == null || s.isEmpty() || s.indexOf('.') >= 0 || hasStructuralChar(s)) {
+       return false;
+     }
+     for (int i = 0; i < s.length(); i++) {
+-      char c = s.charAt(i);
+-      if (Character.isWhitespace(c)) {
++      if (Character.isWhitespace(s.charAt(i))) {
+         return false;
+       }
+-      switch (c) {
+-        case ':', '.', '[', ']', '"' -> {
+-          return false;
+-        }
+-        default -> {}
+-      }
+     }
+     return true;
+   }
+ 
+   /** 无条件加引：内部 `"` 写成 `""`。 */
+   static String quote(String s) {
+     return '"' + s.replace("\"", "\"\"") + '"';
+   }
+ 
+   /**
+    * 名字的规范写法：命中 spec §3.4 三条加引条件才加引（条件 2：为空串或含任意空白）。
+    *
+    * @param kindAbsent 该名字所属的 Entity 是否缺省了 kind（条件 3：缺 kind 且名字含 `.` 必须加引）
+    */
+   static String quoteIfNeeded(String name, boolean kindAbsent) {
+     boolean needs =
+         name.isEmpty()
+             || name.chars().anyMatch(Character::isWhitespace)
+-            || name.indexOf(':') >= 0
+-            || name.indexOf('[') >= 0
+-            || name.indexOf(']') >= 0
+-            || name.indexOf('"') >= 0
++            || hasStructuralChar(name)
+             || (kindAbsent && name.indexOf('.') >= 0);
+     return needs ? quote(name) : name;
+   }
+ }
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+index 7a32707..c2708df 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+@@ -45,11 +45,26 @@ class AddressQuoteTest {
+ 
+   @Test
+   void namespaceIndexAndPropertyRenderCanonically() {
+     assertThat(new Namespace("map").canonical()).isEqualTo("map");
+     assertThat(new Index(List.of(4, 3)).canonical()).isEqualTo("[4,3]");
+     assertThat(new Index(List.of(7)).canonical()).isEqualTo("[7]");
+     assertThat(new Property("population_growth").canonical()).isEqualTo("population_growth");
+     assertThatThrownBy(() -> new Namespace("a:b")).isInstanceOf(IllegalArgumentException.class);
+     assertThatThrownBy(() -> new Property("a b")).isInstanceOf(IllegalArgumentException.class);
+   }
++
++  /** G13 自证：空坐标护栏必须真的会响（spec §3.5 把 `[]` 列为非法）。 */
++  @Test
++  void emptyIndexIsRejected() {
++    assertThatThrownBy(() -> new Index(List.of()))
++        .isInstanceOf(IllegalArgumentException.class)
++        .hasMessageContaining("至少一个坐标");
++  }
++
++  /** 记录组件的防御性拷贝：`coords` 必须是不可变副本，改不动原实例。 */
++  @Test
++  void indexCoordsAreDefensivelyCopied() {
++    assertThatThrownBy(() -> new Index(List.of(1)).coords().add(2))
++        .isInstanceOf(UnsupportedOperationException.class);
++  }
+ }

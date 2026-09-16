@@ -1,0 +1,54 @@
+# Review package: 424877f..79371d2
+
+## Commits
+79371d2 test(util): Index 防御拷贝用例换可变源以具备判别性（M1 Task 1 修复轮 3）
+
+## Files changed
+ .../test/java/io/mosire/simos/util/address/AddressQuoteTest.java | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+index c2708df..e8f5779 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/address/AddressQuoteTest.java
+@@ -1,15 +1,16 @@
+ package io.mosire.simos.util.address;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatThrownBy;
+ 
++import java.util.ArrayList;
+ import java.util.List;
+ import org.junit.jupiter.api.Test;
+ 
+ /** spec §3.4：三条"按需加引"条件、`""` 转义，与段类型的构造期校验（§3.2）。 */
+ class AddressQuoteTest {
+ 
+   @Test
+   void bareWordNamesAreNotQuoted() {
+     assertThat(Entity.of("hex", "4_3").canonical()).isEqualTo("hex.4_3");
+     assertThat(Entity.of("region", "Nation.区域A").canonical()).isEqualTo("region.Nation.区域A");
+@@ -54,17 +55,19 @@ class AddressQuoteTest {
+   }
+ 
+   /** G13 自证：空坐标护栏必须真的会响（spec §3.5 把 `[]` 列为非法）。 */
+   @Test
+   void emptyIndexIsRejected() {
+     assertThatThrownBy(() -> new Index(List.of()))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("至少一个坐标");
+   }
+ 
+-  /** 记录组件的防御性拷贝：`coords` 必须是不可变副本，改不动原实例。 */
++  /** 记录组件的防御性拷贝：源列表可变时，`coords` 仍是构造那一刻的副本（判别性来自可变源）。 */
+   @Test
+   void indexCoordsAreDefensivelyCopied() {
+-    assertThatThrownBy(() -> new Index(List.of(1)).coords().add(2))
+-        .isInstanceOf(UnsupportedOperationException.class);
++    List<Integer> source = new ArrayList<>(List.of(1));
++    Index index = new Index(source);
++    source.add(2);
++    assertThat(index.coords()).containsExactly(1);
+   }
+ }
