@@ -881,4 +881,32 @@ m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILAT
 **R-10-k**（黄金钉子 `measuredSeedProfileMatchesReferencePort` + `measuredSeedsProduceEveryCatalogKey` + `hexesAreInNaturalOrder`，变异补 m-5~m-8）：brief 的 4 行变异对管线保真度零判别力；实测值（seed 42 的 7 行全精度）见补充文件 §2.1，由控制器独立移植产出 —— **不符时实现者先核 GSimulator 源、控制器数值错则报告，不许静默改期望**。
 **R-10-l**（`noSecondPathToGenerate` 用反射：唯一 `generate`、无其它 public static）：brief 字面的 git grep 在单测内不可执行。
 
-**BASE `4a0c0e8`**（Task 10 派单前的最后提交；实现者首笔提交的父提交应是它）。已派单（glm 路由）。
+**BASE `4a0c0e8`**（代码基线；派单时 HEAD 为 `bdcf744` = 本台账入库提交，评审包用 `bdcf744..HEAD`）。已派单。
+
+## 会话中更正（2026-09-17）
+
+- **★ 路由更正**：Task 10 的派单**实际走的是 deepseek**，不是 glm —— 派单时显式传了 `model:"haiku"`，
+  而本机实测（看子 Agent 转写里的上游模型名）：**省略 `model` 参数才是 glm（`route-glm-opus` → `GLM-5.1`）；显式传任何 model 值都落到 `route-deepseek-haiku`（`deepseek-flash`）**。
+  用户指出「你压根没上glm」后经探针实测确认；Task 1~10 的派单都踩了这个坑。**Task 11 起一律省略 `model` 参数**。
+- **★ 范围裁定（用户 2026-09-17）**：「做到 task13 就停下」⇒ **Task 13（`MapResolver`）关账后停止派单**，
+  Task 14（L1~L9 守卫）与 Task 15（M2 关账）不执行；恢复时从 Task 14 起。代价若误判：多派两个任务（可撤销）。
+
+## Task 10 关账（2026-09-17）
+
+- **交付**：`9427099`（`feat(map): MapGenerator——单入口、seed 落盘、可复现`）+ `b7126ed`（fix-1：三处 Javadoc 数字按实测校正）。
+  改动文件 6 处 = 补充文件 §4 清单（MapGenerator/SimplexNoise/MapGeneratorTest 新增 + NoiseBands/GenerationSpec/GenerationSpecTest），**零越界**。
+- **评审形态**：控制器**自读 diff**（734 行改动），未派评审者 —— 依 CLAUDE.md「代码量小时自读即评审」与用户 2026-09-17 重申。
+- **当场核过的事实**（控制器独立跑，不引用实现者日志）：
+  - `SimplexNoise` 去注释后与 GSimulator 源**逐行相同**（仅包名不同；diff 实证）—— 保真最硬的一条。
+  - 黄金 7 值 vs 补充文件 §2.1 表**逐条比对一致**；实现侧 delta ≤ 1.44e-15（13 ulp）≪ 1e-9 容差。
+  - 变异 **8/8 全红**、红点全落预期用例；m10v-6 只红 `(-68,62)` 一格（= 被删的海平面检查本身，判别力落点精准）；
+    自证头齐（104 文件 md5 清单、原件/变异体 md5 相异、`COMPILATION ERROR = 0`、20 个测试类真跑）。
+  - 判别力**当场量过**：30 次独立 JVM，7 键词表与 19441 格集合的迭代序 30/30 ≠ 插入序/自然序。
+  - 控制器自跑 `./mvnw -q verify` → **rc=0、零 ERROR**（Spotless/Checkstyle/SpotBugs/Surefire 全过）。
+- **无阻塞发现**。留观两条（不修，记此备查）：
+  1. `0.8660254`（√3/2 的七位截断）沿自 GSimulator 且与 WebUI 渲染同款 ⇒ 将来标定几何须**两处同改**（报告 §八.2）。
+  2. 跨机字节级复现**只有单机证据**（构成条件已齐：两个随机源只吃 seed、枚举序显式排序、无环境量）；若需要，须在第二台机器跑加强版。
+- **留给下游的硬提醒**：判水靠 `terrain == "ocean"` 而**非**高度带（水体高度可 ≥ 0.30，实测海平面最高 0.3344）；
+  `hexes` 落盘序 = 自然序（R-10-h）是 Task 13 往返的前提。
+- **挂起项**：`contourCacheMax` 的去留原定 M2 关账（Task 15）裁决；Task 15 依用户指示不执行 ⇒ 该裁决**随 Task 15 一并挂起**，恢复时处理。
+- **下一步**：Task 11（`RiverBuilder`）派单前扫描 → 派单（★ **省略 `model` 参数**）。
