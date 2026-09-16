@@ -37,6 +37,19 @@ class ResolvedSubjectTest {
   }
 
   @Test
+  void nullAddressOrTypeNameIsRejected() {
+    // 与 id 的守卫同一口径（IAE）。canonicalAddress 的判据必须钉消息：`Address.parse(null)`
+    // 自己也会抛 IAE（"地址不得为空"），只看类型的话本层守卫删掉也不转红。
+    SubjectId id = new SubjectId("map.hex", "h-0001");
+    assertThatThrownBy(() -> new ResolvedSubject(id, null, "Hex"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("canonicalAddress");
+    assertThatThrownBy(() -> new ResolvedSubject(id, "map:Map1:hex.4_3", null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("typeName");
+  }
+
+  @Test
   void nonCanonicalAddressIsRejected() {
     // §四：调用方选定后一律回传 canonical。宽容写法不得成为 Resolver 的输出。
     assertThatThrownBy(
