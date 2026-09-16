@@ -49,7 +49,16 @@ class ResolverRegistryTest {
     registry.register(resolver("map", "m-1"));
     assertThatThrownBy(() -> registry.register(resolver("map", "m-2")))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("map");
+        .hasMessageContaining("已有解析器"); // 消息**专有**文本，输入数据里不含（见下方自证 M2'）
+    // 失败的注册不得改动注册表：putIfAbsent→put 时此处读到 "m-2"，转红（见下方自证 M3'）。
+    assertThat(
+            registry
+                .resolve(Address.parse("map:Map1"), context())
+                .candidates()
+                .get(0)
+                .id()
+                .localId())
+        .isEqualTo("m-1");
   }
 
   @Test
@@ -58,7 +67,7 @@ class ResolverRegistryTest {
     ResolverRegistry registry = new ResolverRegistry();
     assertThatThrownBy(() -> registry.resolve(Address.parse("map:Map1"), context()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("map");
+        .hasMessageContaining("没有注册命名空间");
   }
 
   @Test
