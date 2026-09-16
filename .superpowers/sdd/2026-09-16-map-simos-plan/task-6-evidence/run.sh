@@ -24,8 +24,10 @@ declare -A TARGET=(
   [m6v-3]=map/change/MapChangeSet.java
   [m6v-4]=map/change/MapChangeSet.java
   [m6v-5]=map/change/MapChangeSet.java
+  [m6v-6]=map/change/MapChangeSet.java
+  [m6v-7]=map/change/MapChangeSet.java
 )
-ORDER="${ROUNDS:-m6v-1 m6v-2 m6v-3 m6v-4 m6v-5}"
+ORDER="${ROUNDS:-m6v-1 m6v-2 m6v-3 m6v-4 m6v-5 m6v-6 m6v-7}"
 
 init() {
   rm -rf "$PRISTINE" "$LAB/logs"

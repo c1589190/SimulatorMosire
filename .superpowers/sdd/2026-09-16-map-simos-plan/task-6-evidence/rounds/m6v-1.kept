@@ -1,30 +1,34 @@
 =================== ROUND m6v-1 ===================
 干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
 目标文件 map/change/MapChangeSet.java
-md5 原件=a252c3e8ead53f533e06a3858446459d  变异体=187110c312fa34c98ba64493aa3488d2
+md5 原件=dcfe2525ad7ef68647154d7633fa8414  变异体=ce55680ef47b7efda114e1e5dc192236
 自证：落盘字节与原件不同 OK
 自证：除目标外无文件被改动（清单其余项全部一致）OK
 COMPILATION ERROR count = 0
 simos-map 跑过的测试类数 = 16
 --- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
-Tests run: 18, Failures: 7, Errors: 0, Skipped: 0, Time elapsed: 0.029 s <<< FAILURE! -- in io.mosire.simos.map.change.MapChangeSetTest
-Tests run: 150, Failures: 7, Errors: 0, Skipped: 0
+Tests run: 20, Failures: 9, Errors: 0, Skipped: 0, Time elapsed: 0.025 s <<< FAILURE! -- in io.mosire.simos.map.change.MapChangeSetTest
+Tests run: 152, Failures: 9, Errors: 0, Skipped: 0
 --- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
-[ERROR] io.mosire.simos.map.change.MapChangeSetTest.betweenRefusesMixedUpsertAndRemoveInOneComponent -- Time elapsed: 0.004 s <<< FAILURE!
-[ERROR] io.mosire.simos.map.change.MapChangeSetTest.deltasPreserveInsertionOrder -- Time elapsed: 0.003 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.mixedChangeRoundTrips -- Time elapsed: 0.004 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.betweenDetectsAddedAndRemovedHex -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.deltasPreserveInsertionOrder -- Time elapsed: 0 s <<< FAILURE!
 [ERROR] io.mosire.simos.map.change.MapChangeSetTest.betweenDetectsChangedHexValue -- Time elapsed: 0.001 s <<< FAILURE!
-[ERROR] io.mosire.simos.map.change.MapChangeSetTest.applyRebuildsTargetExactly -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.applyRebuildsTargetExactly -- Time elapsed: 0.001 s <<< FAILURE!
 [ERROR] io.mosire.simos.map.change.MapChangeSetTest.betweenDetectsAddedHex -- Time elapsed: 0.001 s <<< FAILURE!
 [ERROR] io.mosire.simos.map.change.MapChangeSetTest.betweenDetectsRemovedHex -- Time elapsed: 0 s <<< FAILURE!
 [ERROR] io.mosire.simos.map.change.MapChangeSetTest.everyComponentIsComparedIndependently -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.change.MapChangeSetTest.patchIsNotSilentlyHalfApplied -- Time elapsed: 0.002 s <<< FAILURE!
 [ERROR] Failures: 
 [ERROR]   MapChangeSetTest.applyRebuildsTargetExactly:368 
+[ERROR]   MapChangeSetTest.betweenDetectsAddedAndRemovedHex:599 
 [ERROR]   MapChangeSetTest.betweenDetectsAddedHex:258->upsertEntries:223 
 [ERROR]   MapChangeSetTest.betweenDetectsChangedHexValue:286->upsertEntries:223 
 [ERROR]   MapChangeSetTest.betweenDetectsRemovedHex:273->removeKeys:228 
-[ERROR]   MapChangeSetTest.betweenRefusesMixedUpsertAndRemoveInOneComponent:572 
-[ERROR]   MapChangeSetTest.deltasPreserveInsertionOrder:519->upsertEntries:223 
+[ERROR]   MapChangeSetTest.deltasPreserveInsertionOrder:528->upsertEntries:223 
 [ERROR]   MapChangeSetTest.everyComponentIsComparedIndependently:319->assertOnlyComponentChanged:344 [hexes 被改了 ⇒ 它必须不是 Unchanged] 
+[ERROR]   MapChangeSetTest.mixedChangeRoundTrips:630 
+[ERROR]   MapChangeSetTest.patchIsNotSilentlyHalfApplied:646 
 [ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
 [ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
 [ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
@@ -33,5 +37,5 @@ Tests run: 150, Failures: 7, Errors: 0, Skipped: 0
 [ERROR]   mvn <args> -rf :simos-map
 --- 模块汇总（各模块 Results 段的合计行）---
 [INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
-[ERROR] Tests run: 150, Failures: 7, Errors: 0, Skipped: 0
+[ERROR] Tests run: 152, Failures: 9, Errors: 0, Skipped: 0
 [INFO] BUILD FAILURE

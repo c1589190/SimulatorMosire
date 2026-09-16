@@ -18,11 +18,13 @@ SRC = "/home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos"
 MUTATIONS = {
     # brief 表第 1 行：`between` 里 hexes 的比较被摘掉（恒 Unchanged）。
     # 期望红的**必须包含** betweenDetectsChangedHexValue（同 key 不同 value 是本类型的核心判别力）。
+    # 现场记（2026-09-17）：`diff` 的“组件名”参数在加 Patch 变体时删掉了（它只被那份已删的异常消息
+    # 用着，是死参数），故第 1/2 轮的匹配串去掉了尾参。
     "m6v-1": (
         "map/change/MapChangeSet.java",
         [
             (
-                """        diff(base.hexes(), target.hexes(), "hexes"),
+                """        diff(base.hexes(), target.hexes()),
 """,
                 """        new FieldDelta.Unchanged<HexCell>(), // 变异 m6v-1：hexes 的比较被摘掉
 """,
@@ -36,7 +38,7 @@ MUTATIONS = {
         "map/change/MapChangeSet.java",
         [
             (
-                """        diff(base.terrainTypes(), target.terrainTypes(), "terrainTypes"),
+                """        diff(base.terrainTypes(), target.terrainTypes()),
 """,
                 """        new FieldDelta.Unchanged<TerrainType>(), // 变异 m6v-2：terrainTypes 的比较被摘掉
 """,
@@ -91,6 +93,34 @@ MUTATIONS = {
                 """        base.spec());
 """,
                 """        io.mosire.simos.map.generate.GenerationSpec.defaults(0L)); // 变异 m6v-5：spec 不从 base 取
+""",
+            )
+        ],
+    ),
+    # ★★ Patch 变体（控制器裁决后新增的第四条变体）——两轮，不铺开。
+    #   m6v-6：混合分支**只返回 Upsert、丢掉 removals** —— 正是老仓那类静默数据损失的形态。
+    #     期望红：betweenDetectsAddedAndRemovedHex（两侧都在那两条断言）+ patchIsNotSilentlyHalfApplied。
+    "m6v-6": (
+        "map/change/MapChangeSet.java",
+        [
+            (
+                """    return new FieldDelta.Patch<>(
+        new FieldDelta.Upsert<>(upserts), new FieldDelta.Remove<>(removals));
+""",
+                """    return new FieldDelta.Upsert<>(upserts); // 变异 m6v-6：丢掉 removals（静默丢一半）
+""",
+            )
+        ],
+    ),
+    #   m6v-7：rebuild 的 Patch 分支**跳过 removals**（只做 upserts）。
+    #     期望红：mixedChangeRoundTrips（往返对不上）+ patchIsNotSilentlyHalfApplied（被删的键还在）。
+    "m6v-7": (
+        "map/change/MapChangeSet.java",
+        [
+            (
+                """      return rebuild(rebuild(base, patch.removals(), parse), patch.upserts(), parse);
+""",
+                """      return rebuild(base, patch.upserts(), parse); // 变异 m6v-7：跳过 removals
 """,
             )
         ],
