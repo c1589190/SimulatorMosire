@@ -774,3 +774,22 @@ simos-core 15，Checkstyle 0，SpotBugs `BugInstance size is 0`。`MapChangeSetT
   **移进 Task 8 自己的 `GenerationSpecTest`**，写成**更强**的形态：`defaults(7L)` 与 `defaults(8L)`
   **除 seed 外逐组件相等** —— 这才是原来那句 `isEqualTo(new GenerationSpec(7L))` 的真意
   （骨架只有一个组件时它只能这么写）。第 186/188 行保留；第 184 行那句 Javadoc（"Task 8 才扩参数面"）按现状改写。
+
+## Task 8 关账（控制器自读 diff = 评审；框架期不派评审者）
+
+交付：`d4d2857`（实现）、`d19747d`（报告 + 12 轮变异证据）。
+自读范围：4 个源文件 + `GenerationSpecTest`（18 条）逐行读过；R-48-p 的 `GameMapTest` hunk 核过；
+m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILATION ERROR count = 0`）与门禁日志尾抽验过，
+与报告逐条对得上。**关账。**
+
+| 项 | 裁定 |
+|---|---|
+| ★ 简报草图偏离：Step 2 的 `if (fragments < 1) throw` 被删 | **接受**。它被 `requireNonNegativeRemaining` 整段包住（`fragments < 2` ⇒ 剩余必为负，`secondaryCountFloor=2` 与总数无关）；留两句会得到两条将来会分叉的同义抛点。实现者按 CLAUDE.md"草图不是权威"如实报告，做法正确 |
+| ★ 1 ulp：`defaults()` 的 `baseSeaLevel` = 字面量 `0.2025`，GSimulator 算式值 `0.20249999999999999` | **接受为有意**（冻结常量 > 每次构造重算浮点式）。**跨 Task 10 约束**：不许按"与 GSimulator 算式逐位相同"对拍；要复现就用 `defaults()` |
+| U1 判定：`NoiseBands` 16 字段全为形状参数 | **接受**。判据（塑造高度值 vs 给高度分类）+ 逐组 `file:line` 依据齐；两条判据独立自证（m8v-4 红形态、m8v-7 红名字）。`classify()` 那批阈值一个没搬 |
+| `RidgeParams` 33 组件不设守卫；`secondaryCountDivisor=0` 靠 `ArithmeticException` | **接受**（取负是"另一种分布"；除法当场响）。**跨 Task 10 硬提醒**：若把那条除法改成浮点或包 `Math.max`，"响声"就没了，必须补构造期守卫 |
+| `warpFreq/warpAmplitude` 暂居 `NoiseBands`；相位平移 `+100/+300/+500`、`+77` 留在生成器侧 | **暂定接受**。Task 10 若判定域扭曲属"坐标变换"，搬家成本一行；相位平移**不许**顺手提成字段（报告 §3.1 理由已收进 `NoiseBands` 类注释） |
+| `MapChangeSet.java` Inspect 结论"无需改动" | **属实**：`:90` 是 `base.spec()`，无 null 兜底；该文件零改动（`git show --stat` 可证）。`specIsNeverNullAfterTask8` 的身份是守卫而非收紧证明 —— 与 R-48-e 一致 |
+| `specIsNeverNullAfterTask8` 断言 `GameMap.empty().spec() == defaults(0L)` | **接受**：`defaults(0L)` 是 `empty()` 的规范种子约定（R-48-e）；逐组件相等比单 `isNotNull` 强 |
+
+**下一步**：Task 9（`TerrainClassifier`）派单前扫描 → 派单。
