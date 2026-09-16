@@ -848,3 +848,37 @@ m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILAT
 4. `temperature` 通道已接进签名但**不被消费**——Task 10 生成气候值时别假定它被用。
 
 **下一步**：Task 10（`MapGenerator`）派单前扫描 → 派单。
+
+## Task 10 派单前的扫描（控制器预做）
+
+| 配对 | 一方产出 → 另一方消费 | 发现 |
+|---|---|---|
+| **Task 8 → Task 10** | `GenerationSpec` 参数面（五个频率是"每单位半径"分子；`RidgeParams` 33 字段；`FragmentParams` 切分规则）→ 生成器要的输入 | ★ **真缺口（1）**：参数面里**没有湿度频率**，而沙漠门需要 [0,1] 湿度 ⇒ 不补则沙漠永不出现（词表谎话在图上重演）⇒ **R-10-c**（`NoiseBands` 加 `moistureFreq = 0.02`，**绝对频率**）。**（2）** `contourCacheMax` 在单程生成器里**无消费者** ⇒ **R-10-j**（保留 + Javadoc 注明 + 记 M2 关账复核）。其余核过：`placeRidges` 每次 RNG 抽取都对得上 `RidgeParams`/`FragmentParams` 的字段；标量齐 |
+| **Task 2 → Task 10** | 词表带 vs 生成器实际能到的高度 | ★ **真缺口（L9 的图上版）**：实测 48 张默认图（24 种子 × 2 噪声变体）**无一格** ≥ 0.90（最大 0.8969）⇒ `plateau_mountains` 结构性产不出 ⇒ **R-10-g**（下界 0.90→0.85，控制器已改并提交 `4a0c0e8`；0.85 下 6/24 种子产出 2~12 格）。另：`ocean` 带（h<0.30）与"海平面判水"并存 ⇒ 水的 key 统一取 `"ocean"`（**R-10-f**） |
+| **Task 9 → Task 10** | `classify(h, humidity, temperature)` 的输入契约 | **无冲突，三条注记**：(1) 湿度须 [0,1] —— 实测 (m+1)/2 ⊂ [0,1]（**R-10-b**）；(2) `temperature` 不被消费 ⇒ 送命名常量 0.5（**R-10-e**）；(3) 词表遍历序不许重排（Task 9 关账注记 2）—— 生成器只调用、不重排 |
+| **Task 10 → Task 11** | 生成器的 heights / terrain（河流要用高度判流向） | 注记：**水体的高度可以 ≥ 0.30**（海平面最高 ~0.45）—— Task 11 判水靠 `terrain == "ocean"`，**别靠高度带** |
+| **Task 10 → Task 13/14** | `GameMap.hexes()` 迭代序 = 落盘序；字节级往返 | **R-10-h**：自然序（q 升 r 升）。不排序则 `Set.copyOf` 的散列盐使落盘序跨 JVM 启动不稳（Task 5 的盐教训）。R-10-a + R-10-h 是"同 spec 同图"跨进程成立的前提 |
+| **Task 10 自洽** | brief 的 10 条用例 × Step 3 的 4 行变异 vs Files 列表 | ★ 三处补：**(1)** brief 的 Files **漏了 `SimplexNoise`**（53 行，R-10-i 移为包私有类）；**(2)** brief 的 `noSecondPathToGenerate`（git grep）在单测内不可执行 ⇒ 反射形态（**R-10-l**）；**(3)** brief 的 4 行变异对**高度管线保真度零判别力**（改系数/删项/删湿度通道在其下全绿）⇒ 补**黄金钉子**（**R-10-k**，7 行全精度实测值已备）+ m-5~m-8 |
+| **Task 10 外部依赖** | GSimulator 源（只读） | `placeRidges`（`MapGenerator.java:56-118`，RNG 次序）、`generateContour`（`:129-157`）、`compute`（`ContourQueryEngine.java:125-175`）、湿度行（`:230`）、`SimplexNoise.java` 全文 —— 控制器**逐行核过**，行号地图写进补充文件 §5 |
+
+细则（实现者照办版）在 `task-10-brief-supplement.md`；下面是裁定本体。
+
+**R-10-a**（种子）：`Random(spec.seed())` + `SimplexNoise(spec.seed())` **直接用入参**，不派生 `rng.nextLong()`。
+理由：GSimulator `MapGenerator.java:147` 把派生值写进 contour、入参因此丢失 —— L7 的病灶本体。代价若错：与 GSimulator 同 seed 的图形状不同（预期内的分歧）。
+
+**R-10-b**（湿度）：移植 `noise2(px * 0.02 + 500, py * 0.02 + 500)`（**未扭曲** px/py）⇒ `humidity = (m + 1) / 2`，**不夹取**。
+依据：实测 m 全域包络 ±0.71、默认采样域 ±0.60 ⇒ (m+1)/2 ⊂ [0,1]；分类器对域外是总函数 ⇒ 夹取是可省的一行。代价若错：未来参数把 m 推出 ±1 时湿度出界 —— 仍不静默失效（分类器有定义）。
+
+**R-10-c**（`NoiseBands` 加 `moistureFreq = 0.02`，**绝对**频率，带 `requirePositiveFrequency` 守卫）：见补充文件 §1。代价若错：record 组件位移的机械改动（同任务内一并 `defaults` 与三个夹具）。
+
+**R-10-d**（不移植 `hillsNoise`/`plainsNoise`/`patch`）：服务作废的 9 项词表，7 项词表下无消费者 = 装饰（L8 的教训）。
+**R-10-e**（温度 = 命名常量 0.5）：Task 9 的签名预留，M2 无温度通道。
+**R-10-f**（海平面检查 → `"ocean"`）：不移植则 `baseSeaLevel`/`coastFreq`/`coastAmplitude` 三参数无消费者。
+**R-10-g**（最高带下界 0.90→0.85，控制器已提交 `4a0c0e8`）：见扫描表 Task 2 行；实测依据在 `TerrainCatalog` 类注释留了一份。
+**R-10-h**（枚举取 `HexGrid.withinRadius` + 自然序排序后入 `LinkedHashMap`）：见扫描表。
+**R-10-i**（`SimplexNoise` 逐字移植为**包私有**类）：brief Files 之外的偏差裁定（53 行内联会让生成器不可读）。
+**R-10-j**（`contourCacheMax` 保留、不消费）：spec §6.4 的正式组件，擅自删属超范围；记 M2 关账复核项。
+**R-10-k**（黄金钉子 `measuredSeedProfileMatchesReferencePort` + `measuredSeedsProduceEveryCatalogKey` + `hexesAreInNaturalOrder`，变异补 m-5~m-8）：brief 的 4 行变异对管线保真度零判别力；实测值（seed 42 的 7 行全精度）见补充文件 §2.1，由控制器独立移植产出 —— **不符时实现者先核 GSimulator 源、控制器数值错则报告，不许静默改期望**。
+**R-10-l**（`noSecondPathToGenerate` 用反射：唯一 `generate`、无其它 public static）：brief 字面的 git grep 在单测内不可执行。
+
+**BASE `4a0c0e8`**（Task 10 派单前的最后提交；实现者首笔提交的父提交应是它）。已派单（glm 路由）。
