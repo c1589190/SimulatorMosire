@@ -144,6 +144,66 @@ class PathwayTest {
   }
 
   /**
+   * ★ **链内部不得有分支点**（度数 ≥ 3）：分支点把线切成一串，它只能是某条线的**端点**，不可能是线内部的格。
+   *
+   * <p>这条是控制器自读 diff 时实测出的缺口（修复前）：{@code start()} 只看头两条边、{@code end()} 只看尾两条边 —— {@code
+   * [(A,B),(B,C),(B,D)]} 里 B 的度为 3，可这两对**都相接**，于是端点照算：{@code start()} 静默给出 A、{@code end()} 静默给出
+   * D，一条分叉的线**看起来完全正常**。
+   */
+  @Test
+  void branchedChainIsRejectedAtEndpointAccess() {
+    Pathway branched =
+        new Pathway(
+            new PathwayId("p1"),
+            null,
+            "river",
+            List.of(AB, BC, new EdgeRef(c(1, 0), c(0, 1))),
+            Map.of());
+
+    assertThatThrownBy(branched::start)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("分支点");
+    assertThatThrownBy(branched::end)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("分支点");
+  }
+
+  /**
+   * ★ **中段断开**：端点只挨着头尾各看一对相邻边，链在**中间**断掉时那两对都是好的 —— 修复前 {@code start()} 给出 (0,0)、 {@code end()} 给出
+   * (9,7)，两个"端点"分属两条不同的链，却谁也不报错。
+   */
+  @Test
+  void chainBrokenInTheMiddleIsRejectedAtEndpointAccess() {
+    Pathway broken =
+        new Pathway(
+            new PathwayId("p1"),
+            null,
+            "river",
+            List.of(AB, BC, new EdgeRef(c(7, 7), c(8, 7)), new EdgeRef(c(8, 7), c(9, 7))),
+            Map.of());
+
+    assertThatThrownBy(broken::start)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("接不上");
+    assertThatThrownBy(broken::end)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("接不上");
+  }
+
+  /** 同一条边出现两次**不是**"长度为 2 的闭环"：修复前它会被静默当成闭环、两端同取锚 (0,0)。 */
+  @Test
+  void duplicatedEdgeIsRejected() {
+    Pathway twice = new Pathway(new PathwayId("p1"), null, "river", List.of(AB, AB), Map.of());
+
+    assertThatThrownBy(twice::start)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("重复");
+    assertThatThrownBy(twice::end)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("重复");
+  }
+
+  /**
    * ★ **id 是持久身份，不随内容漂移**（待决项 3 的钉子，两条合起来才算数）：
    *
    * <p>① 内容全同、只有 id 不同 ⇒ **不相等**（id 不是冗余字段）；② 换掉一个中间节点、id 不变 ⇒ **id 仍相同**
