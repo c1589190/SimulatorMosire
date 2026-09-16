@@ -1,0 +1,51 @@
+=================== ROUND m5v-7 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/City.java
+md5 原件=b9a6fe30cf5203f6aea1b5a1ce5c6cab  变异体=019be67e9fe33d00f71d914f243e6b9f
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.020 s <<< FAILURE! -- in io.mosire.simos.map.CityTest
+Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.CityTest.propsPreservesInsertionOrder -- Time elapsed: 0.011 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   CityTest.propsPreservesInsertionOrder:40 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.020 s <<< FAILURE! -- in io.mosire.simos.map.CityTest
+io.mosire.simos.map.CityTest.propsPreservesInsertionOrder -- Time elapsed: 0.011 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  ["walls", "trade", "port", "population", "founded", "owner"]
+to contain exactly (and in same order):
+  ["population", "owner", "founded", "walls", "trade", "port"]
+but there were differences at these indexes:
+  - element at index 0: expected "population" but was "walls"
+  - element at index 1: expected "owner" but was "trade"
+  - element at index 2: expected "founded" but was "port"
+  - element at index 3: expected "walls" but was "population"
+  - element at index 4: expected "trade" but was "founded"
+  - element at index 5: expected "port" but was "owner"
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.094 s -- in io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.HexCellTest

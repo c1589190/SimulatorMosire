@@ -1,0 +1,56 @@
+=================== ROUND m5v-3 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=829f552fb9a42ed62ae0e4275ca406ea
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.097 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+Tests run: 132, Failures: 2, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.GameMapTest.mapsAreInsertionOrdered -- Time elapsed: 0.014 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.005 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   GameMapTest.mapsAreInsertionOrdered:229 
+[ERROR]   GameMapTest.withMethodsPreserveOtherComponents:399->assertOnlyComponentChanged:524 [改 hexes 时不该重排 cities 的键序] 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.097 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+io.mosire.simos.map.GameMapTest.mapsAreInsertionOrdered -- Time elapsed: 0.014 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  [-3_2, 2_-4, 0_0, 5_5]
+to contain exactly (and in same order):
+  [5_5, 0_0, -3_2, 2_-4]
+but there were differences at these indexes:
+  - element at index 0: expected "5_5" but was "-3_2"
+  - element at index 1: expected "0_0" but was "2_-4"
+  - element at index 2: expected "-3_2" but was "0_0"
+  - element at index 3: expected "2_-4" but was "5_5"
+io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.005 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[改 hexes 时不该重排 cities 的键序] 
+expected: [c1, c9, c5, c3]
+ but was: [c9, c1, c5, c3]
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.HexCellTest

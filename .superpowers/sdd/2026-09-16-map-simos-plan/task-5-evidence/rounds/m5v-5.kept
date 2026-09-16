@@ -1,0 +1,43 @@
+=================== ROUND m5v-5 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=10318464a6b58c032de1dd19289b0ed5
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.102 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.018 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   GameMapTest.withMethodsPreserveOtherComponents:399->assertOnlyComponentChanged:520 [改 hexes 时不该动 regions] 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.102 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.018 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[改 hexes 时不该动 regions] 
+expected: {r2=Region[id=r2, name=区域 r2, hexes=[5_5], boundary=RegionBoundary[rings=[[HexVertex[u=14, w=14], HexVertex[u=14, w=16], HexVertex[u=15, w=17], HexVertex[u=16, w=16], HexVertex[u=16, w=14], HexVertex[u=15, w=13]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r10=Region[id=r10, name=区域 r10, hexes=[0_0], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r1=Region[id=r1, name=区域 r1, hexes=[-3_2], boundary=RegionBoundary[rings=[[HexVertex[u=-5, w=5], HexVertex[u=-5, w=7], HexVertex[u=-4, w=8], HexVertex[u=-3, w=7], HexVertex[u=-3, w=5], HexVertex[u=-4, w=4]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r5=Region[id=r5, name=区域 r5, hexes=[2_-4], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-13], HexVertex[u=-1, w=-11], HexVertex[u=0, w=-10], HexVertex[u=1, w=-11], HexVertex[u=1, w=-13], HexVertex[u=0, w=-14]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]]}
+ but was: {r10=Region[id=r10, name=区域 r10, hexes=[0_0], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r1=Region[id=r1, name=区域 r1, hexes=[-3_2], boundary=RegionBoundary[rings=[[HexVertex[u=-5, w=5], HexVertex[u=-5, w=7], HexVertex[u=-4, w=8], HexVertex[u=-3, w=7], HexVertex[u=-3, w=5], HexVertex[u=-4, w=4]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r5=Region[id=r5, name=区域 r5, hexes=[2_-4], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-13], HexVertex[u=-1, w=-11], HexVertex[u=0, w=-10], HexVertex[u=1, w=-11], HexVertex[u=1, w=-13], HexVertex[u=0, w=-14]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]]}
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.HexCellTest

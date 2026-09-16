@@ -1,0 +1,355 @@
+=================== ROUND m5v-1 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-1: mutated map/HexCell.java（1 步）
+目标文件 map/HexCell.java
+md5 原件=8df1ac9aaae7c72c5186ce8be8934920  变异体=5c1b91d1f58d5d4381c861917d0f56a0
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.010 s <<< FAILURE! -- in io.mosire.simos.map.HexCellTest
+Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.HexCellTest.hasNoConnectivityField -- Time elapsed: 0.005 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   HexCellTest.hasNoConnectivityField:61 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.087 s -- in io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.010 s <<< FAILURE! -- in io.mosire.simos.map.HexCellTest
+io.mosire.simos.map.HexCellTest.hasNoConnectivityField -- Time elapsed: 0.005 s <<< FAILURE!
+java.lang.AssertionError: 
+Expected size: 2 but was: 3 in:
+[java.lang.String terrain, double height, java.util.Map edgeTags]
+=================== ROUND m5v-2 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-2: mutated map/GameMap.java（1 步）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=b7c09f29f392b3c4eb314ae25640e4c2
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.113 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+Tests run: 132, Failures: 3, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.GameMapTest.noGridSizeNoHexOrientation -- Time elapsed: 0.007 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.GameMapTest.componentNamesAreFrozenList -- Time elapsed: 0.004 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.GameMapTest.componentCountIsExactlyEight -- Time elapsed: 0.005 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   GameMapTest.componentCountIsExactlyEight:194 
+[ERROR]   GameMapTest.componentNamesAreFrozenList:200 
+[ERROR]   GameMapTest.noGridSizeNoHexOrientation:206 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 3, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.113 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+io.mosire.simos.map.GameMapTest.noGridSizeNoHexOrientation -- Time elapsed: 0.007 s <<< FAILURE!
+java.lang.AssertionError: 
+Expecting
+  ["hexes",
+    "regions",
+    "cities",
+    "terrainTypes",
+    "pathways",
+    "pathwayGroups",
+    "edges",
+    "spec",
+    "gridSize"]
+not to contain
+  ["gridSize", "hexOrientation"]
+but found
+  ["gridSize"]
+io.mosire.simos.map.GameMapTest.componentNamesAreFrozenList -- Time elapsed: 0.004 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  ["hexes",
+    "regions",
+    "cities",
+    "terrainTypes",
+    "pathways",
+    "pathwayGroups",
+    "edges",
+    "spec",
+    "gridSize"]
+to contain exactly (and in same order):
+  ["hexes",
+    "regions",
+    "cities",
+    "terrainTypes",
+    "pathways",
+    "pathwayGroups",
+    "edges",
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.HexCellTest
+=================== ROUND m5v-3 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-3: mutated map/GameMap.java（1 步）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=829f552fb9a42ed62ae0e4275ca406ea
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.097 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+Tests run: 132, Failures: 2, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.GameMapTest.mapsAreInsertionOrdered -- Time elapsed: 0.014 s <<< FAILURE!
+[ERROR] io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.005 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   GameMapTest.mapsAreInsertionOrdered:229 
+[ERROR]   GameMapTest.withMethodsPreserveOtherComponents:399->assertOnlyComponentChanged:524 [改 hexes 时不该重排 cities 的键序] 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.097 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+io.mosire.simos.map.GameMapTest.mapsAreInsertionOrdered -- Time elapsed: 0.014 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  [-3_2, 2_-4, 0_0, 5_5]
+to contain exactly (and in same order):
+  [5_5, 0_0, -3_2, 2_-4]
+but there were differences at these indexes:
+  - element at index 0: expected "5_5" but was "-3_2"
+  - element at index 1: expected "0_0" but was "2_-4"
+  - element at index 2: expected "-3_2" but was "0_0"
+  - element at index 3: expected "2_-4" but was "5_5"
+io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.005 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[改 hexes 时不该重排 cities 的键序] 
+expected: [c1, c9, c5, c3]
+ but was: [c9, c1, c5, c3]
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.HexCellTest
+=================== ROUND m5v-4 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-4: mutated map/GameMap.java（1 步）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=a7053a7a58df9636023b3fee1c0f5e7b
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 132, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.086 s -- in io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.HexCellTest
+=================== ROUND m5v-5 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-5: mutated map/GameMap.java（1 步）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=10318464a6b58c032de1dd19289b0ed5
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.102 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.018 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   GameMapTest.withMethodsPreserveOtherComponents:399->assertOnlyComponentChanged:520 [改 hexes 时不该动 regions] 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.102 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.018 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[改 hexes 时不该动 regions] 
+expected: {r2=Region[id=r2, name=区域 r2, hexes=[5_5], boundary=RegionBoundary[rings=[[HexVertex[u=14, w=14], HexVertex[u=14, w=16], HexVertex[u=15, w=17], HexVertex[u=16, w=16], HexVertex[u=16, w=14], HexVertex[u=15, w=13]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r10=Region[id=r10, name=区域 r10, hexes=[0_0], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r1=Region[id=r1, name=区域 r1, hexes=[-3_2], boundary=RegionBoundary[rings=[[HexVertex[u=-5, w=5], HexVertex[u=-5, w=7], HexVertex[u=-4, w=8], HexVertex[u=-3, w=7], HexVertex[u=-3, w=5], HexVertex[u=-4, w=4]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r5=Region[id=r5, name=区域 r5, hexes=[2_-4], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-13], HexVertex[u=-1, w=-11], HexVertex[u=0, w=-10], HexVertex[u=1, w=-11], HexVertex[u=1, w=-13], HexVertex[u=0, w=-14]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]]}
+ but was: {r10=Region[id=r10, name=区域 r10, hexes=[0_0], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r1=Region[id=r1, name=区域 r1, hexes=[-3_2], boundary=RegionBoundary[rings=[[HexVertex[u=-5, w=5], HexVertex[u=-5, w=7], HexVertex[u=-4, w=8], HexVertex[u=-3, w=7], HexVertex[u=-3, w=5], HexVertex[u=-4, w=4]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]], r5=Region[id=r5, name=区域 r5, hexes=[2_-4], boundary=RegionBoundary[rings=[[HexVertex[u=-1, w=-13], HexVertex[u=-1, w=-11], HexVertex[u=0, w=-10], HexVertex[u=1, w=-11], HexVertex[u=1, w=-13], HexVertex[u=0, w=-14]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]]}
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.HexCellTest
+=================== ROUND m5v-6 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-6: mutated map/GameMap.java（1 步）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=48680c31e94a6aa089132dbafea0040e
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 16, Failures: 0, Errors: 2, Skipped: 0, Time elapsed: 0.098 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+Tests run: 132, Failures: 0, Errors: 2, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.GameMapTest.regionsCarryTheirBoundary -- Time elapsed: 0.006 s <<< ERROR!
+[ERROR] io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.009 s <<< ERROR!
+[ERROR] Errors: 
+[ERROR]   GameMapTest.regionsCarryTheirBoundary:445 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+[ERROR]   GameMapTest.withMethodsPreserveOtherComponents:402 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=20, w=20], HexVertex[u=20, w=22], HexVertex[u=21, w=23], HexVertex[u=22, w=22], HexVertex[u=22, w=20], HexVertex[u=21, w=19]]]]，传入的是 RegionBoundary[rings=[]]
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: 
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 0, Errors: 2, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 2, Skipped: 0, Time elapsed: 0.098 s <<< FAILURE! -- in io.mosire.simos.map.GameMapTest
+io.mosire.simos.map.GameMapTest.regionsCarryTheirBoundary -- Time elapsed: 0.006 s <<< ERROR!
+java.lang.IllegalArgumentException: boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+io.mosire.simos.map.GameMapTest.withMethodsPreserveOtherComponents -- Time elapsed: 0.009 s <<< ERROR!
+java.lang.IllegalArgumentException: boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=20, w=20], HexVertex[u=20, w=22], HexVertex[u=21, w=23], HexVertex[u=22, w=22], HexVertex[u=22, w=20], HexVertex[u=21, w=19]]]]，传入的是 RegionBoundary[rings=[]]
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.HexCellTest
+=================== ROUND m5v-7 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+m5v-7: mutated map/City.java（2 步）
+目标文件 map/City.java
+md5 原件=b9a6fe30cf5203f6aea1b5a1ce5c6cab  变异体=019be67e9fe33d00f71d914f243e6b9f
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.020 s <<< FAILURE! -- in io.mosire.simos.map.CityTest
+Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+[ERROR] io.mosire.simos.map.CityTest.propsPreservesInsertionOrder -- Time elapsed: 0.011 s <<< FAILURE!
+[ERROR] Failures: 
+[ERROR]   CityTest.propsPreservesInsertionOrder:40 
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] See /home/cna/SimulatorMosire/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 132, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.020 s <<< FAILURE! -- in io.mosire.simos.map.CityTest
+io.mosire.simos.map.CityTest.propsPreservesInsertionOrder -- Time elapsed: 0.011 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  ["walls", "trade", "port", "population", "founded", "owner"]
+to contain exactly (and in same order):
+  ["population", "owner", "founded", "walls", "trade", "port"]
+but there were differences at these indexes:
+  - element at index 0: expected "population" but was "walls"
+  - element at index 1: expected "owner" but was "trade"
+  - element at index 2: expected "founded" but was "port"
+  - element at index 3: expected "walls" but was "population"
+  - element at index 4: expected "trade" but was "founded"
+  - element at index 5: expected "port" but was "owner"
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.094 s -- in io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.HexCellTest
+=================== 恢复干净世界 ===================
+恢复后与清单一致 OK
+8df1ac9aaae7c72c5186ce8be8934920  map/HexCell.java
+b9a6fe30cf5203f6aea1b5a1ce5c6cab  map/City.java
+83a4579328fc6abe24c5af1c3750e20c  map/CityId.java
+fc1431f9f0ea72fb6a10c866a1834710  map/GameMap.java
+68e07605cf0ad885b5400e2ad62ac523  map/generate/GenerationSpec.java

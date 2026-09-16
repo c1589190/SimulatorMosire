@@ -1,0 +1,27 @@
+=================== ROUND m5v-4 ===================
+干净世界 OK（pristine 镜像 + md5 清单逐文件一致，无多余 .java）
+目标文件 map/GameMap.java
+md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=a7053a7a58df9636023b3fee1c0f5e7b
+自证：落盘字节与原件不同 OK
+自证：除目标外无文件被改动（清单其余项全部一致）OK
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 15
+--- 红了的用例（Tests run 行里 Failures/Errors 非 0 的）---
+--- 失败详情（Failures=断言红 / Errors=异常红，两者分开）---
+--- 模块汇总（各模块 Results 段的合计行）---
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 132, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+--- surefire 明说（断言消息：expected/but was 或异常类型，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.CityTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.086 s -- in io.mosire.simos.map.GameMapTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.HexCellTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.HexCellTest

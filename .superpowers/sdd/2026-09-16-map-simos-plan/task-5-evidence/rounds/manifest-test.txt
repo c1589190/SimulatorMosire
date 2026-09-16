@@ -1,0 +1,15 @@
+2839db25893e073d3aaa72860ac9f0f3  map/CityTest.java
+0e1898f8e2e08025ef024481ec6e6ada  map/GameMapTest.java
+34b5e65b1bccfc8147da8c492f77b737  map/HexCellTest.java
+ac39f06edea33cd5525f83ac6377fc7d  map/hex/HexCoordTest.java
+64de2708d2a80f81eef0349f2cb954cd  map/hex/HexDirectionTest.java
+61b19c66fad549af2179d4fa5cf6c4cd  map/hex/HexGridTest.java
+576664d549dcc7bc60dd5abc104515ba  map/hex/HexVertexTest.java
+3bab92eca63a84fc4e9b3611a76be0bd  map/pathway/EdgeRefTest.java
+c1da5156e9d327b1ea311d6390284813  map/pathway/EdgeTagsTest.java
+6292ec329ea78c14c86eac4960618530  map/pathway/PathwayGroupTest.java
+b195fcf1e296c66578adf46497b60e18  map/pathway/PathwayTest.java
+01cc167bcf3f8040029cad40402d0177  map/region/RegionBoundaryTest.java
+481b8c60984bd0c7c4c4947fa2064be3  map/region/RegionIndexTest.java
+c8f08843b8da32a3e89db01b2bcac8fd  map/region/RegionTest.java
+4e4755cdd5ac278a11b86f21c0139fd8  map/terrain/TerrainCatalogTest.java
