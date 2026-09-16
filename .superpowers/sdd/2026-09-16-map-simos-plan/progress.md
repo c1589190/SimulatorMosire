@@ -910,3 +910,86 @@ m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILAT
   `hexes` 落盘序 = 自然序（R-10-h）是 Task 13 往返的前提。
 - **挂起项**：`contourCacheMax` 的去留原定 M2 关账（Task 15）裁决；Task 15 依用户指示不执行 ⇒ 该裁决**随 Task 15 一并挂起**，恢复时处理。
 - **下一步**：Task 11（`RiverBuilder`）派单前扫描 → 派单（★ **省略 `model` 参数**）。
+
+## Task 11 派单前的扫描（2026-09-17）
+
+扫描表（本任务无前序未关账任务，逐条对**已关账**的接口）：
+
+| 对象 | 一侧产出 | 另一侧消费 | 结论 |
+|---|---|---|---|
+| Task 11 ↔ Task 5 | `Pathway`/`EdgeRef`/`EdgeTags`/`PathwayId` | 河 = 链、边 = 标注 | 一致；`start()` 由 `edges` 顺序定（Task 5 的 `chainHead`）⇒ 边的顺序必须 = 流向 |
+| Task 11 ↔ Task 6 | `MapChangeSet`/`FieldDelta` | 产出变更集 | 一致；★ `Upsert`/`Remove` **构造期拒空**（`FieldDelta:67`/`:93`）⇒ 空结果必须走 `Unchanged` |
+| Task 11 ↔ Task 10 | `GameMap` 的地形与高度 | 判水/判降 | 一致；水按 `terrain == "ocean"`（Task 10 硬提醒），`MapGenerator` 已有同款 private 常量可照形 |
+| Task 11 ↔ Task 1 | `HexCoord.compareTo`/`neighbors()` | 候选排序、自然序 | 一致；`neighbors()` 是在图纸邻格吗？**不是** —— 它不含"是否在地图里"，必须逐格过滤 |
+| Task 11 ↔ Task 12 | 同为 `map.generate` 包的变更集生产者 | — | 无共享文件、无接口重叠 |
+| Task 11 自洽 | 9 条用例 vs 签名 `build(GameMap, long)` | — | ★ **不自洽**：算法形态（源、局部最低点、河数、组注册、seed 的用法）全缺；`branch` 用例要求多源结构，而 brief 的"走一条路径"读法根本产不出分支 |
+
+- **R-11-a/b（算法形态）**：出边网络（每陆地格至多一条出边、目标严格更低、海洋格无出边）⇒ 森林；
+  线 = 森林边集切成的**极大简单链**（度数 ≠ 2 的格是两端，分支点即端点）。**代价若误判**：整条实现重做，
+  但形态是 spec §5.2「分支点即端点…分支点把线切成一串」的直接落地，spec 是权威。
+- **R-11-c（ID）**：`"river-<seed>-<n>"`，`n` = 链的发现序 ⇒ spec §5.2 的「(generationSeed, 序号)」。
+- **R-11-d/e（组件取值与变更集）**：`name=null`/`groupId="river"`/`props={}`；只有 `pathways`/`edges` 是 Upsert；
+  ★ **不 upsert `PathwayGroup("river")`** —— `producesNoRiversOnFlatMap` 要求全平图空变更集，**代价若误判**：
+  组定义缺一份，将来由 Command/上层补（小改动）。已记为挂起项。
+- **R-11-f（无阈值）**：不做汇流量过滤（规格未给阈值，不发明魔数）⇒ 生成图上水系密集。
+  **代价若误判**：将来加一个 `GenerationSpec` 参数即可（局部改动）。
+- **R-11-g（随机源）**：`java.util.Random`，由 `(seed, 本格)` 派生（**不是每条河一个 RNG 沿途抽**，否则网络不是良定义函数图）；
+  候选先按自然序排序再 `nextInt`。**代价若误判**：河形变化，用例夹具需重挑。
+- **★ 偏差声明**：brief 的「随机源从 (seed, **起点** HexCoord) 派生」按**逐格**读（起点=当前格）；
+  按"每条河一个源"读会让同一格在不同河里选不同出边 ⇒ 分叉/网络无定义，与 spec §5.2 冲突。
+- **新增两条用例**（控制器的裁定要求）：`differentSeedChangesRiverShape`（R-11-g 的护栏；★ 比边集不比 ID）、
+  `worksOnGeneratedMap`（半径 6 的生成图集成冒烟）。变异表补 3 行。全部落在
+  `task-11-brief-supplement.md`（与 brief **冲突以补充为准**）。
+- **留观**：未给 `RiverBuilder` 配 Task 10 式的"第二条入口"反射守卫（新类无历史包袱，风险≈0；Task 14 不执行，故不补）。
+
+**BASE `82473ed`**（= Task 10 关账提交，派单时即 HEAD）。按此派单（★ **省略 `model` 参数** ⇒ 走 glm）。
+
+## Task 12 预扫描（2026-09-17，趁 Task 11 在跑时提前做；派单前复核）
+
+Task 12 的计划文本比 Task 11 完整（签名、11 条用例、4 行变异都有）。扫描要点与裁定：
+
+- **R-12-a 抽样口径**：逐格 Bernoulli（`rng.nextDouble() < ratioA` ⇒ 该格取 A，否则取 B），
+  RNG = `new Random(seed * 31L + regionId.value().hashCode())`（String.hashCode 由规范钉死 ⇒ 跨 JVM 稳），
+  格按 `HexCoord` 自然序消费。`ratioIsRespectedStatistically` 两种诚实写法都收：
+  ① 1000 格的区域跑一次，|实测占比 − p| ≤ 0.05；② 小区域 × 1000 个不同种子，合并占比落 ±0.05。
+  **不许**写成恒真的形式（如只断言"两种地形都出现过"）。
+- **R-12-b 变更集**：只有 `hexes` 是 `Upsert<HexCell>`（key = `HexCoord` 的 `"q_r"`），其余 6 个 `Unchanged`；
+  空/未知 region ⇒ 7 个全 `Unchanged`（`Upsert` 拒空）。
+- **R-12-c 重分配 = 新 `HexCell(terrain, 原 height)`** ★ 组件顺序是 **(terrain, height)**（`HexCell` 是 record(String, double)）；高度与其它字段一律不动（L7：高度是落盘的一等公民）。
+- **R-12-d 校验**：`terrainA`/`terrainB` 交给 `TerrainCatalog.of(key)`（未知 key 抛它自己的 IAE，**不包不吞**）；
+  `ratioA ∉ [0,1]` ⇒ IAE。**不**为 `a == b` 加守卫（规格未提，且它是合法输入；记留观）。
+- **R-12-e 范围**：只改 `map.regions().get(regionId).hexes()` 里、且**同时在 `map.hexes()` 里**的格
+  （区域里落在图外的格跳过，不抛——与 `MapResolver` 的"未知 ⇒ 空，不抛"同口径）；region 之外的格**一格不动**。
+- **R-12-f 不碰** `regions`/`cities`/`terrainTypes`/`pathways`/`pathwayGroups`/`edges`/`spec`。
+- 跨任务：与 Task 11 同在 `map.generate` 包、同为变更集生产者，**无共享文件**；与 Task 4（Region）的接口在派单前复核
+  （`Region.of(id, name, hexes, meta)` / `Region.contains` / `RegionIndex`）。
+
+## Task 11 关账（2026-09-17）
+
+- **交付**：`213a8f9`（`feat(map): RiverBuilder——按海拔生成可寻址、可复现的水系`）+ `e0778b4`（报告与变异证据入库）。
+  改动面 = **仅两个新文件**（`RiverBuilder.java` 231 行、`RiverBuilderTest.java` 396 行，11 条用例），**零越界**。
+- **评审形态**：控制器**自读 diff**（630 行），未派评审者（CLAUDE.md「代码量小时自读即评审」）。
+- **当场核过的事实**（控制器独立跑/独立读，不取实现者日志的表面结论）：
+  - 算法逐条对上 R-11-a~h：出边严格更低 + 海洋格不流、候选自然序排序后 `nextInt`、每格 RNG 由 `(seed, 本格)` 派生、
+    链按发现序编号、`pathways`/`edges` 是唯一两个 Upsert 且位置正确（第 5、第 7 组件）、空走 `Unchanged`（`upsertOrUnchanged`）。
+  - **空链不可能**：`from` 取的是触发边的**尾**（尾必有出边），上溯只路过"入度恰 1"的格 ⇒ 每条链 ≥ 1 边（逐路径推演过）。
+  - 发现序不依赖哈希序：外层按 `HexCoord` 自然序、`incident` 按对端自然序、`unused` 判消费 ⇒ 同种子同结果。
+  - 变异 **7/7 全红**、红点均含其**声明靶子**（v1 兼红 `riverStartsAtHighestHex` —— 派单前点名的"最高格获得入边即不再是叶"当场成立；
+    v3 `riverIsAddressable`；v4 `branchesAreSeparatePathways`；v5 `differentSeedChangesRiverShape`；v6 唯一红 = `producesNoRiversOnFlatMap`
+    （`FieldDelta` 构造期守卫当场抛，补充文件已声明该形态为"红（构造期抛）"）；v7 `edgesAreConsistentWithPathways`）。
+  - 自证头逐轮齐：106 个 .java 的 md5 干净世界、改前先绿（红点 0）、变异体按**白名单推成目标类名**、原件与各变异体 md5 相异、
+    `COMPILATION ERROR` 真实计数 0（我看到的非零匹配是证据文本里的**断言回显**行，不是编译错误）、测试类真跑过。
+  - 判别力纪律的两处自纠都在 `.kept` 里：m11v-1/2 用**事先声明**的等价形态（字面"六邻随机"会造 2-环 ⇒ 超时红不是断言红 —— 因果独立复核过）；
+    m11v-4 首版"穿过分支"红在错用例（单条线内度数恒 ≤ 2），换成真分叉形态重跑，两版来龙去脉都在 `mutate.py` 注释与报告"诚实说明"里。
+- **执行期裁定（控制器追认）**：**度恰为 2 的汇点（两入零出）也切链** —— 补充文件的"度数 ≠ 2 是两端"在它上面与"边序 = 流向"直接矛盾
+  （两条入边相向汇合，无论怎么排都有一段上坡）。细化后链只在**过路格（恰一入一出）**内部延伸，边集划分/极大性/严格降高度全部保持。
+  **代价若误判**：链数略增，无正确性影响。
+- **挂起项 / 留给下游**：
+  1. ★ **重建河流会整份覆盖 `EdgeTags`**（`edges` 的 Upsert 按边 key 换整份值）：若 base 的某条边已挂别的 Pathway 的标注，
+     重建后被替掉而非合并。生成图（pathways/edges 为空）无此问题；**合并语义属 Command 层**（生成器不做读-改-写——那会让变更集依赖 base，破坏纯函数）。
+     未派 Task 14/15 ⇒ 记此备查，**Task 13 之后的编辑流实现者必须处理**。
+  2. `PathwayGroup("river")` 无人注册（R-11-e 的裁定），消费方别假设生成变更集里有组定义。
+  3. 水系密集（R-11-f 无阈值）：半径 6 图 44 格陆地 ⇒ 30 条河；稀疏化阈值将来作 `GenerationSpec` 参数，届时夹具钉死的数字要重测。
+  4. `differentSeedChangesRiverShape` 钉了实测差集 = 13 ⇒ 换 RNG 形态要重测（与 Task 10 黄金钉同族，属**有意**的强断言）。
+- **门禁**：控制器自跑 `./mvnw -q verify` ⇒ **rc=0、`[ERROR]` 行 0 条**（独立于实现者；2026-09-17）。
+- **下一步**：Task 12（`RegionRandomizer`）—— 预扫描已在本台账（R-12-a~f），brief 已生成 `task-12-brief.md`，直接派单（★ 省略 `model`）。
