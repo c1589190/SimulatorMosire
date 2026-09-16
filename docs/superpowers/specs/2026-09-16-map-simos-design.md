@@ -13,16 +13,41 @@
 
 ## 〇 已裁决记录（本 spec 的输入）
 
+### 〇.0 ★ 用户裁决（2026-09-16，**推翻控制器两处**）
+
+控制器先自行裁决了五项待决，用户评审时**推翻其中两处**，并加了三条决定。**用户裁决优先**，
+下表（〇.1）中与本节冲突处**以本节为准**。
+
+| # | 议题 | 用户裁决 | 被推翻的控制器裁决 |
+|---|---|---|---|
+| U1 | **地形词表** | **7 项**：海洋、平原、沙漠、低矮丘陵、山地、平缓高原、高原山地。**按高度从小到大**，**各有不同特性** | 控制器原裁"以 GSimulator 落盘的 9 项为准"（water/lowland/plains/hills/mountain/forest/swamp/desert/tundra）⇒ **整个 9 项作废** |
+| U2 | **边界是否入存储** | ★ **要写存储**。理由：「要不然数据持久化会出问题」 | 控制器原裁"边界降为可随时重算的派生缓存，**不进 `GameMap`、不进变更集**"⇒ **推翻** |
+| U3 | **分支策略** | M1 先并入 `main`，再从 `main` 开 `feat/m2-map-simos` | （控制器原倾向即此，非推翻） |
+| U4 | **工作区产物** | **全部进仓库**（含两个 `.superpowers/sdd/**` 工作区），理由：「方便从其他地方恢复工作状态」 | 控制器原拟**分类**（侦察件+台账进、评审 diff 不进）⇒ **改为全进** |
+
+**★ U2 的落地方式（控制器给出，用户未指定细节）**：**边界作为 `Region` 的一个组件**，
+而不是一个新的顶层状态字段 —— 这样它**自动随 `Region` 持久化、自动往返**，
+`MapChangeSet` **不需要新增组件**（`Region` 本来就在变更集里）。
+**并且**：`Region` 的规范构造器**校验** `boundary` 等于由 `hexes` 重算的值，不等即抛。
+⇒ **存储满足持久化需求，校验使漂移不可能** —— 用户要的东西与控制器担心的事情同时成立。
+（用户说的是"要存储"，没有说"可以不与 hexes 一致"；**校验是控制器补的**，若不想要，删掉构造器里那一行即可。）
+
+**★ U1 的一处控制器补裁（用户未指定，需你过目）**：7 项按高度从小到大**各有自己的带**，
+但**沙漠额外要求低湿度** —— 否则每张图在那个高度都会长出一圈**沙漠环**。
+若你要的是"沙漠与高度无关、纯由气候决定"，改一行阈值即可。
+
+### 〇.1 控制器的裁决记录
+
 总纲 §十三 给 MapSimos 列了**五项待决**。逐条裁决如下。
 
 | # | 议题（总纲 §十三） | 裁决 | 出处 |
 |---|---|---|---|
 | 1 | 六边形数据结构的最终形态 | **axial `(q,r)` + `HexCoord` record 作身份**；容器 `Map<HexCoord, HexCell>`；**单一 `HexDirection` 枚举（6 项）取代现存 8 份方向表**；**删 `gridSize` 与 `hexOrientation`**（前者是恒 30 的死值、不参与取格；后者恒 `false` 且无读取分支，与实际 pointy-top 公式矛盾） | 本会话裁决 |
-| 2 | `Region` 如何统一"三个旧概念" | ★ **实测旧概念是 4 活 + 1 死，不是 3 个**（见 §四）。裁决：**只保留一个权威 `Region`**（`RegionId` + `name` + `Set<HexCoord>` + 元数据）；**闭环边界降为可重算的派生缓存**；**`CompressedRegion` 概念整体取消**（缓存不是状态）；**`ContourLayer` 归生成参数**、**`TerrainBlock` 归编辑 Command** | 本会话裁决 |
+| 2 | `Region` 如何统一"三个旧概念" | ★ **实测旧概念是 4 活 + 1 死，不是 3 个**（见 §四）。裁决：**只保留一个权威 `Region`**（`RegionId` + `name` + `Set<HexCoord>` + 元数据）；~~闭环边界降为可重算的派生缓存~~ **← 已被 U2 推翻，边界改为存储且校验**（见 §4.3）；**`CompressedRegion` 概念整体取消**（缓存不是状态）；**`ContourLayer` 归生成参数**、**`TerrainBlock` 归编辑 Command** | 本会话裁决，**边界部分经 U2 修正** |
 | 3 | 连通性稳定 ID 的生成规则 | **边不需要 ID**（无序 `HexCoord` 对即身份，`EdgeRef` 一个类型取代 4 份字符串实现）；**线（`Pathway`）需要真 ID**，且 **ID 是分配并持久化的，不由内容派生**；**分支点即端点**，分支处断成多条独立线 | 本会话裁决 |
 | 4 | 生成算法的参数面 | **参数对象化 `GenerationSpec`**，存量的 ~60 个方法体内魔法数字**全部提取为字段**并集中给默认值；**删两个装饰形参**（`worldId`、`coastRoughness`）；**`ridges` 的静默硬夹改为构造期校验抛异常**；**`landRatio` 改名 `baseSeaLevel`**（它实际只影响这一个数）；**seed 必须落盘**、**海拔必须落盘**；**地形词表唯一化** | 本会话裁决 |
 | 5 | `MapChangeSet` 的字段清单 | **变更集与 `GameMap` 的 record 组件一一对应**，且**往返测试用反射枚举 `GameMap` 的全部组件**逐组件制造差异 —— **新增状态字段若不进变更集，测试自动红**。这是铁律 5 的机械化落地，见 §七 | 本会话裁决 |
-| 附 | `TerraType` 的命名与字段 | 总纲 §5.1 写 `TerraType`（`color`/`height`/`pass`/`name`）。**实测 GSimulator 无 `TerraType` 这个名字**（全仓零命中），等价类 `MapData.TerrainType` 是 `name/color/food/gold/stone/moveCost/description` —— **`height` 与 `pass` 都不存在**。裁决：**用 `TerrainType`**（`TerraType` 不是词）；字段见 §六，**`height` 归 `HexCell`**（海拔是格子的属性，不是地形类型的属性） | 本会话裁决（**偏离总纲字面，见 §八**） |
+| 附 | `TerraType` 的命名与字段 | 总纲 §5.1 写 `TerraType`（`color`/`height`/`pass`/`name`）。**实测 GSimulator 无 `TerraType` 这个名字**（全仓零命中）。裁决：**用 `TerrainType`**（`TerraType` 不是词）；**10 字段**见 §6.1，其中 **`minHeight`/`maxHeight` 就是总纲说的 `height`** —— 控制器原裁"海拔只是格子的属性"**理解窄了**，见 §八 第 1 条。**逐格的海拔值仍在 `HexCell`** | 本会话裁决，**字段部分经 U1 修正** |
 
 **裁决之外的首次定义**集中在 §八（偏离总纲草案清单），**评审重点在那**。
 
@@ -194,30 +219,65 @@ public record RegionId(String value) { /* 非空、非空白 */ }
 
 public record RegionMeta(String color, String tag, String description, String annexedBy) {}
 
-/** 权威区域：一组 hex 的命名集合。 */
-public record Region(RegionId id, String name, Set<HexCoord> hexes, RegionMeta meta) {}
+/** 权威区域：一组 hex 的命名集合，加它的闭环边界。 */
+public record Region(RegionId id, String name, Set<HexCoord> hexes,
+                     RegionBoundary boundary, RegionMeta meta) {
+
+  /** 规范构造器：★ **校验 boundary 等于由 hexes 重算的值**，不等即抛（U2 的落地，见 §4.3）。 */
+  public Region { /* … */ }
+
+  /** ★ 正常代码走这个工厂：边界由 hexes **算出来**，不手写。 */
+  public static Region of(RegionId id, String name, Set<HexCoord> hexes, RegionMeta meta) { /* … */ }
+}
 ```
 
 - **`id` 与 `name` 都要有。** GSimulator 的 `Province` 把名字当 map 的键 —— 那是**用地址当身份**，
   改名就要重建键，正是铁律 1 要消灭的形态。
 - **`hexes` 是权威内容**，`Set<HexCoord>`（GSimulator 是 `List<String>` ⇒ 线性 `contains`，
   且这个线性扫描在 **6 处逐字重复**，见 §4.4）。
-- **闭环边界不进这个类型** —— 它是**派生物**，见 §4.3。
+- **`boundary` **入这个类型**（U2）** —— 它是**存储的**，但**由 `hexes` 校验**，见 §4.3。
+  ⇒ **`Region.of(...)` 是代码的正常入口**（边界算出来）；规范构造器留给反序列化器，
+  它接受外部传入的边界**并当场验伪**。
+- ★ **`withHexes` 必须重算边界** —— 这是 `boundary` 成为组件后**最容易写错的一处**，
+  §九 有专门用例钉它。
 
-### 4.3 边界是派生缓存，不是状态
+### 4.3 边界**入存储，且被校验**（★ U2 推翻了控制器的原裁）
+
+**控制器原裁**：边界降为可随时重算的派生缓存，**不进 `GameMap`、不进变更集**。
+理由是 GSimulator 把渲染缓存塞进 `MapData` 的教训（整份拷贝而非增量，
+侦察 C 实测 `MapDiff.java:143`），且 `TerrainBlock` 里那份 `boundary` 已被标注 `deprecated`。
+
+**★ 用户裁决 U2 推翻它**：「**边界还是要写存储的，要不然数据持久化会出问题**」。
+
+**⇒ 两者如何同时成立**（★ **控制器给的落地方式，用户未指定细节**）：
 
 ```java
-/** 由 Region.hexes 计算出的闭环边界。可随时重算，故不进变更集。 */
+/** 由 Region.hexes 计算出的闭环边界。**持久化，且与 hexes 的一致性被构造器强制。** */
 public record RegionBoundary(List<List<HexCoord>> rings) {}
 ```
 
-GSimulator 把 `CompressedRegion`（渲染缓存）**塞进了 `MapData`** —— 后果是它**整份拷贝而非增量**
-（侦察 C 实测 `MapDiff.java:143` 传 `child.compressedRegions()` 整份），
-且 **`TerrainBlock` 里那份 `boundary` 已被标注 `deprecated`**。
-**⇒ 一个可随时重算的东西不该是权威状态。** 裁决：`CompressedRegion` 概念**整体取消**，
-边界作为 `RegionBoundary` 按需计算（必要时缓存，但缓存**不进 `GameMap`、不进变更集**）。
+**① 边界作为 `Region` 的组件，不是新的顶层状态字段。**
+⇒ 它**自动随 `Region` 持久化、自动往返**，`MapChangeSet` **不需要新增组件**
+（`Region` 本来就在变更集里，见 §七）。用户的"要存储"由此满足。
 
-★ **这同时消灭了一整类 bug**：缓存与权威不同步。GSimulator 的 `terrainBlocks`/`compressedRegions`/
+**② `Region` 的规范构造器校验 `boundary` 等于由 `hexes` 重算的值，不等即抛。**
+⇒ **漂移不可能**。控制器原来担心的"缓存与权威不同步"由此被**堵死在入口**，
+而不是靠"不存储"来回避。
+
+**★ 为什么校验比"不存储"更好**（这一条是控制器在 U2 之后补的论证，不是原裁）：
+用户点出的持久化问题是真的 —— **若边界只活在计算里，则任何消费存档的一方
+（前端、外部工具、M6 的导入器）都必须自己再实现一遍推导**。
+GSimulator 正是这么坏掉的：闭环边界由前端现算（`render.js:244`），
+于是同一份几何在 Java 与 JS 里各有一份实现 ——
+**这与控制器刚在 §5.1 里痛斥的 `edgeKey` 四份实现是同一个病**。
+⇒ **把边界写进存档，等于把"推导"这件事收敛到一处**；
+而**构造器校验**保证那份写下来的值不会与权威脱钩。**两个目标不冲突。**
+
+**★ `CompressedRegion` 概念仍然整体取消**（U2 **没有**推翻这一条）：
+它是"地形 + 颜色 + 边界"的**渲染打包**，而地形在格上、颜色在地形类型上、边界在 `Region` 上
+—— 三样都已有归宿，**打包本身没有信息**。用户要存的**是边界**，不是那个包。
+
+★ **这同时消灭了一整类 bug**：GSimulator 的 `terrainBlocks`/`compressedRegions`/
 `terrainTypes`/`pathwayGroups`/`edges` **五个字段全都在"权威 vs 缓存"上含混**，正是 §七 要根治的。
 
 ### 4.4 取消 L5 的线性扫描
@@ -325,24 +385,45 @@ public record Pathway(PathwayId id, String name, String groupId,
 ★ **串味铁证**：`ContourQueryEngine.terrainColor` 的 `default -> "#6CC261"` 用的正是**词表 A 的平原绿**。
 实测**落盘数据用词表 B（9 项）**。
 
-⇒ 裁决：
+⇒ 裁决（**★ 已被用户裁决 U1 推翻，以本节为准**）：
+
+**A 与 B 同时作废。** 词表改为**用户给的 7 项**，**按高度从小到大**，各有不同特性：
+
+| # | 名称 | key | 高度带（升序） | 特性（控制器给，待你过目） |
+|---|---|---|---|---|
+| 1 | 海洋 | `ocean` | 最低 | 不可通行（`moveCost` 最高/不可入）；无产出 |
+| 2 | 平原 | `plains` | ↓ | 产能最高、最好走 —— **可耕作的核心地带** |
+| 3 | 沙漠 | `desert` | ↓ | **★ 额外的低湿度门**（见下）；产出贫瘠、难走 |
+| 4 | 低矮丘陵 | `low_hills` | ↓ | 产量中等、略难走；矿藏起点 |
+| 5 | 山地 | `mountains` | ↓ | 石/矿富集、很难走 |
+| 6 | 平缓高原 | `plateau` | ↓ | **高但平坦** —— 海拔高却相对好走（与山地相反的取舍） |
+| 7 | 高原山地 | `plateau_mountains` | 最高 | 最险；几乎不可通行 |
 
 ```java
-public record TerrainType(String name, String color,
-                          int food, int gold, int stone, int moveCost,
-                          String description) {}
+public record TerrainType(
+    String key, String name, String color,
+    double minHeight, double maxHeight,      // ★ 高度带，由 TerrainCatalog 唯一持有
+    int food, int gold, int stone, int moveCost,
+    String description) {}
 ```
 
-- **集合以 B 的 9 项为准**（实测落盘的就是它）：`water / lowland / plains / hills / mountain / forest / swamp / desert / tundra`。
-- ★ **但 `plains` 的 name/color/yield 必须重定为"平原"** —— B 里的 `plains` 叫"山区"、
-  `hills` 叫"丘陵"却涂 `#A0522D`、`mountain` 叫"高山"，这是**历史命名事故**。
-  spec 给出**唯一一份**自洽的 `TerrainCatalog.DEFAULTS`，**A 与 B 同时作废**。
-- **`TerrainCatalog` 是唯一词表**：`MapData.defaults()`、`MapGenerator.defaultTerrainTypes()`、
-  前端 `DEFAULT_TERRAINS`、`TerrainTextRenderer.TERRAIN_CHAR`、`CompressionService.terrainColor`、
-  两个 `switch` 颜色表、工具里的校验文本 —— **全部改为从这一份派生**。
+- ★ **高度带进词表，不进分类器的代码**（★ **控制器补裁，用户未指定**）：
+  用户说"**高度从小到大**"，最直接的落地就是**把带作为数据**。
+  好处有三：① 判据可断言（带**连续、不重叠、覆盖 `[0,1]`** 是一条结构性用例，
+  而不是靠人去读 `if/else`）；② `TerrainClassifier` 退化成"查带 + 变体"，
+  **不再是第二个藏着阈值的词表**（GSimulator 的 L9 正是这么来的）；
+  ③ 调平衡只改表，不改代码。
+- ★ **沙漠的低湿度门**（★ **控制器补裁，用户未指定，需你过目**）：
+  7 项**各有自己的高度带**（用户给的序）。但**沙漠若只看高度，每张图都会在那个高度长出一圈沙漠环**。
+  ⇒ 沙漠带内**额外要求低湿度**，湿度高时落回**平原**。
+  若你要的是"沙漠与高度无关、纯由气候决定"，改一行阈值即可。
+- **`TerrainCatalog` 是唯一词表**：GSimulator 的
+  `MapData.defaults()`（A）、`MapGenerator.defaultTerrainTypes()`（B）、前端 `DEFAULT_TERRAINS`、
+  `TerrainTextRenderer.TERRAIN_CHAR`、`CompressionService.terrainColor`、两个 `switch` 颜色表、
+  工具里的校验文本 —— **全部作废**，只此一份。
 - ★ **落盘顺序**：侦察 D 实测 `MapData.java:65` 的 `Map.copyOf` **打乱迭代序**
-  （同一份 9 项表在两个存档里顺序不同）⇒ 用 `LinkedHashMap` 且**不 `copyOf`**，或按 key 排序后落盘。
-  **顺序必须确定**，否则"往返"在字节层面不成立。
+  （同一份表在两个存档里顺序不同）⇒ 用 `LinkedHashMap` 且**不 `copyOf`**。
+  **顺序必须确定**，否则"往返"在字节层面不成立。**本表的迭代序 = 高度升序**，是语义序，不是巧合。
 
 ### 6.2 地形类型必须都能产出
 
@@ -350,7 +431,11 @@ public record TerrainType(String name, String color,
 （`mountain`/`hills`/`plains`/`lowland`/`swamp`/`water`），
 ★ **`forest` / `desert` / `tundra` 永远产生不出来** —— 而它们**在词表里**。
 **一份产不出来的词表是谎话。**
-⇒ 裁决：**`TerrainClassifier` 必须覆盖全部 9 项**，每项的判据在 spec 里明写（`height` + 湿度 + 噪声带）。
+⇒ 裁决：**`TerrainClassifier` 必须覆盖全部 7 项**（U1 后的词表），
+且因为**高度带已在词表里**（§6.1），分类器**不再藏阈值** ——
+它只做两件事：**按 `height` 查带**，以及**带内的变体判定**（目前只有沙漠的湿度门这一处）。
+**"覆盖 7 项"因此从"人去读 if/else"变成一条结构性用例**：带的并集必须等于 `[0,1]`，
+故每个带都非空、故每一项都产得出。
 
 ### 6.3 海拔必须落盘（L7）
 
@@ -503,11 +588,12 @@ for each component c of GameMap.class.getRecordComponents():
 
 | # | 总纲原文 | 本 spec | 为什么 |
 |---|---|---|---|
-| 1 | §5.1「`TerraType`（`color`/`height`/`pass`/`name`）」 | **`TerrainType`**（7 字段，无 `height`/`pass`；海拔归 `HexCell`） | 实测 GSimulator **无 `TerraType` 这个名字**（全仓零命中）；`color`/`name` 对，**`height`/`pass` 不存在**；海拔是**格子**的属性不是**地形类型**的 |
+| 1 | §5.1「`TerraType`（`color`/`height`/`pass`/`name`）」 | **`TerrainType`**（**10 字段**：`key`/`name`/`color`/`minHeight`/`maxHeight`/`food`/`gold`/`stone`/`moveCost`/`description`；**海拔值本身仍归 `HexCell`**） | 实测 GSimulator **无 `TerraType` 这个名字**（全仓零命中）。★ **U1 之后这条的性质变了**：用户要求"高度从小到大"，故**高度带进了地形类型**（`minHeight`/`maxHeight`）—— **这才是总纲写 `height` 的本意**，控制器的原裁（"海拔只是格子的属性"）**理解窄了**。**逐格的海拔仍在 `HexCell`；类型携带的是它的带** |
+| 1b | §5.1 未指定地形项数 | **7 项**：海洋/平原/沙漠/低矮丘陵/山地/平缓高原/高原山地，**按高度升序** | ★ **U1（用户裁决）**。GSimulator 实测落盘的是 9 项（`water/lowland/plains/hills/mountain/forest/swamp/desert/tundra`）—— **整个作废**，不是改名 |
 | 2 | §L3「方向数组错位（`TerrainGeometry.DIRS` 与 `MapService.HEX_DIRS` 在索引 1-4 指向不同方向）」 | **错位集合是 `{1,2,4,5}`**；且**实际错位面比总纲窄** —— 唯一真错位处（前端 `expand.js` 的 `EXPAND_DIRS`）**的 `q`/`r` 字段全仓从未被读取**，是死数据 | 侦察 A 脚本实算 + 逐处核对消费者 |
 | 3 | §L8「12 参数构造复制 12 次；`MapService` 内 12 处」 | **`MapService` 内 13 处；主源码 17 处；全仓（含测试）36 处** | 侦察 D 脚本逐括号数实参。"12 参数"**对**，"12 次"**不准**。事故文档记的"6 处"是**那一次事故的触发面**，不是全部调用点 |
 | 4 | §L7「无海拔无种子落盘」 | **成立**，且比总纲更严重：**MCP 路径根本不写 contour** ⇒ **MCP 生成的地图不可复现** | 侦察 D 实测（总纲只说了"没落盘"，没说"两条入口不一样"） |
-| 5 | §5.1「`Region`（**闭环 hex 边界** + 元数据）」 | **边界不进 `Region`**，降为可重算的 `RegionBoundary` | 一个可随时重算的东西不该是权威状态；GSimulator 把它塞进 `MapData` 的后果就是整份拷贝、不往返 |
+| 5 | §5.1「`Region`（**闭环 hex 边界** + 元数据）」 | ~~边界不进 `Region`~~ **← U2 已推翻，边界回归 `Region` 且被校验** | ★ **用户的裁决让这一条重新与总纲一致**：控制器原裁偏离了总纲，U2 把它掰了回来。**记录在此，是因为"偏离清单"要显示的是最终态与总纲的差，不是控制器的中途意见** |
 | 6 | §十二「本轮不做」未列 | **新增开口项**：前端几何（§3.4 说"前端不算几何"）的具体形态、`annexedBy` 的最终归属（是地图数据还是未来的 Social 语义） | 见 §九"开口项" |
 | 7 | §L1 的默认路径节点写 `n0007` | **记为待核** —— 侦察 B 推出应为 `n0005`，但**它自己明写"系推导、未运行代码"**。按纪律第 5 条**不当结论、不改文档** | 推导 ≠ 实测 |
 
@@ -527,7 +613,17 @@ for each component c of GameMap.class.getRecordComponents():
 | **L6** 坐标表述不一致 | `HexCoord` 是唯一坐标类型；`"q_r"` 只在 JSON 边界出现（grep 断言） |
 | **L7** 无海拔无种子落盘 | 往返：`GameMap` 经 JSON **逐字节**往返（含 `height` 与 `spec.seed`）；★ **同 seed 生成两次结果相同** |
 | **L8** 12 参数构造复制 | `GameMap` 用 builder 或 `with*`；**断言全仓 `new GameMap(` 的调用点数量**（或干脆让构造器 package-private） |
-| **L9** 地形词表分裂 | **只有一份 `TerrainCatalog`**：断言 9 项；★ **每一份 `TerrainType` 都能被 `TerrainClassifier` 产出**（把 `forest`/`desert`/`tundra` 的产出用例写死） |
+| **L9** 地形词表分裂 | **只有一份 `TerrainCatalog`**：断言 **7 项**（U1）；★ **带的并集恰等于 `[0,1]`、两两不重叠、逐项升序** ⇒ **每一项都产得出**（由结构性断言保证，不靠人去读 `if/else`）；★ 沙漠的湿度门有专门用例（干燥→沙漠、湿润→平原） |
+
+### 9.1b U1 / U2 的守卫（★ 用户裁决带来的新面）
+
+| 裁决 | 守卫用例 |
+|---|---|
+| **U1** 7 项、高度升序 | ① `KEYS` 恰 7 项且**迭代序 = 高度升序**；② **带连续**（`catalog[i].maxHeight() == catalog[i+1].minHeight()`）；③ **覆盖 `[0,1]`**（首项 `minHeight()==0`、末项 `maxHeight()==1`）；④ 两两不重叠 |
+| **U1** 沙漠的湿度门（控制器补裁） | 同一高度带内：**干燥 → 沙漠**、**湿润 → 平原**。★ 否则"每张图一圈沙漠环" |
+| **U2** 边界入存储 | ① `Region` **含** `boundary` 组件（反射断言）；② `boundary` 经 JSON **往返**后逐字相同；③ **构造器校验**：给一个与 `hexes` 不符的边界 ⇒ **抛** |
+| **U2** `withHexes` 重算 | `withHexes` 后 `boundary()` 等于由新 `hexes` 重算的值 |
+| **U2** 边界**不进 `MapChangeSet` 的新组件** | 反射断言 `MapChangeSet` 的组件数**仍是 7** —— 边界随 `Region` 走，不另开一个 |
 
 ### 9.2 两个新模式的验收
 
@@ -541,7 +637,12 @@ for each component c of GameMap.class.getRecordComponents():
 | 护栏 | 故意违规用例 |
 |---|---|
 | §7.3 的反射枚举往返 | **从 `MapChangeSet` 摘掉一个组件** ⇒ 该用例必须红 |
+| §7.3 的**豁免集**（`Set.of("spec")`） | 往豁免集里**再加一个名字**（如 `"edges"`）⇒ 该用例必须红。**防的是"用豁免糊过组件漂移"** |
 | `TerrainCatalog` 唯一 | 加第二份词表 ⇒ 断言必须红 |
+| **§6.1 的高度带自洽**（U1） | 把某个带的上界改到与下一带重叠 ⇒ 断言必须红 |
+| **§6.2 沙漠的湿度门**（U1 补裁） | 删掉湿度门 ⇒ "湿润时不产沙漠"的用例必须红 |
+| **§4.3 边界与 `hexes` 一致**（U2） | 用一个与 `hexes` 不符的 `boundary` 构造 `Region` ⇒ **必须抛**（不是静默接受） |
+| **§4.2 `withHexes` 重算边界**（U2 的连带） | 让 `withHexes` **只换 hexes 不重算 boundary** ⇒ 该用例必须红。**这是 `boundary` 成为组件后最容易写错的一处** |
 | `HexCell` 无连通性字段 | 加回一个 `edgeTags` ⇒ 反射断言必须红 |
 | `PathwayId` 持久 | 改成内容派生 ⇒ "改中间节点 ID 不变"的用例必须红 |
 | `GenerationSpec` 校验 | 传 `mainRidges = 5` ⇒ **必须抛异常**（不是静默夹到 2） |

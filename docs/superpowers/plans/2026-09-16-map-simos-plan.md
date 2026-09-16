@@ -7,12 +7,17 @@
 地形生成三模式（从头生成 / 框选随机化 / 自动河流）、`map:` 寻址。
 
 **Architecture:** 全部是**不可变值类型 + 一张由 record 组件反射把守的归属表**。
-三条贯穿的设计决定（均见 spec §〇 的五项裁决）：
+四条贯穿的设计决定（均见 spec §〇 的五项裁决 + 用户裁决 U1~U2）：
 
 1. **`HexCoord` 是身份，`"q_r"` 只是它的一个渲染** —— 坐标不再借字符串当身份（铁律 1）。
-2. **可重算的东西不进状态** —— 闭环边界（`RegionBoundary`）、归属反向索引（`RegionIndex`）、
-   渲染缓存，**一律派生**，故不进 `GameMap`、不进变更集。
-3. **连通性只有一个主存储** —— `Map<EdgeRef, EdgeTags>`；`HexCell` 里那份是 L2 的第二份，删掉。
+2. **可重算的索引不进状态** —— 归属反向索引（`RegionIndex`）与渲染缓存**是派生**的，
+   不进 `GameMap`、不进变更集。
+3. **★ 但边界进状态**（用户裁决 U2，**推翻了控制器原本"边界纯派生"的裁定**）——
+   `RegionBoundary` 是 `Region` 的**组件**，理由是「**要不然数据持久化会出问题**」：
+   只活在计算里的边界，会逼每个读档方各自重实现一遍推导。
+   漂移由**规范构造器重算比对**堵死，不是靠"它反正是派生的"。
+   ★ **第 2 条与第 3 条不矛盾，别合并**：索引没有"存起来的那一份"可比，边界有。
+4. **连通性只有一个主存储** —— `Map<EdgeRef, EdgeTags>`；`HexCell` 里那份是 L2 的第二份，删掉。
 
 **Tech Stack:** Java 21、Maven（`./mvnw`）、JUnit 5 + AssertJ、google-java-format（Spotless）、
 Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos-util` + Jackson databind + SLF4J）。
@@ -26,12 +31,19 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 > **`simos-map/src` 与 spec 才是权威**；执行期就地校正处**一律保留草图原貌 + 加取代说明**，
 > **不要抹掉计划原文**——抹掉它等于抹掉"spec 在执行期被磨尖过"这件事。
 
-> **⚠️ 本计划有两类取值，执行时不要混淆：**
-> - **本计划写死的值**（枚举序、字段清单、类型形状、判据）—— **照抄，不得自行发挥**。
-> - **标注「执行期从 GSimulator 现读」的值**（`TerrainCatalog` 的 9 行具体数值、`GenerationSpec` 的
->   ~60 个阈值）—— **计划里故意不给数**，因为控制器**没有实测过它们**，写进来就是**编造设计**
+> **⚠️ 本计划有三类取值，执行时不要混淆，报告里也要分开标：**
+> - **① 本计划写死的值**（枚举序、字段清单、类型形状、判据）—— **照抄，不得自行发挥**。
+> - **② 标注「执行期从 GSimulator 现读」的值**（`GenerationSpec` 的 ~60 个阈值）——
+>   **计划里故意不给数**，因为控制器**没有实测过它们**，写进来就是**编造设计**
 >   （总纲 §六 的硬门原话）。执行者按各任务给出的**读取程序**从
 >   `~/DevMosire/GSimulator` 现读并记录出处。
+> - **③ 本任务新定的值**（**`TerrainCatalog` 的 7 行全部数值**、`TerrainClassifier` 的湿度阈值）——
+>   U1 把 GSimulator 那份 9 项表**整个作废**，所以这些值**不是抄来的，是新定的**。
+>   控制器给的是**结构与硬约束**（哪 7 项、序按高度、带要连续且覆盖），**具体数值由执行者定**。
+>   ★ **这类值在报告里必须明写「本任务新定，非来自 GSimulator」** —— 与第 ② 类分开标，
+>   否则后人会以为它们是实测遗产。
+>   ★ 第 ② 类**去 GSimulator 是为了抄数**；Task 2 Step 3 那次**去 GSimulator 是为了记录被丢弃的旧 key**
+>   （M6 的导入器要用）—— **同样是"读 GSimulator"，目的相反，别混**。
 
 ---
 
@@ -61,17 +73,17 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 | `.../map/hex/HexCoord.java` | 轴向坐标，**六边形格的唯一身份**（spec §3.1） |
 | `.../map/hex/HexDirection.java` | **全模块唯一的方向常量表**，枚举 6 项（spec §3.2） |
 | `.../map/hex/HexGrid.java` | `Map<HexCoord, HexCell>` 容器 + 邻居/范围/遍历（spec §3.1/§3.3） |
-| `.../map/terrain/TerrainType.java` | 地形类型（7 字段，spec §6.1） |
-| `.../map/terrain/TerrainCatalog.java` | ★ **唯一词表**（9 项）+ 默认集（spec §6.1） |
-| `.../map/region/RegionId.java` `RegionMeta.java` `Region.java` | 权威区域（spec §4.2） |
-| `.../map/region/RegionBoundary.java` | **派生的**闭环边界（spec §4.3） |
+| `.../map/terrain/TerrainType.java` | 地形类型（**10 字段**，含高度带，spec §6.1） |
+| `.../map/terrain/TerrainCatalog.java` | ★ **唯一词表**（**7 项**，高度升序）+ 默认集（spec §6.1） |
+| `.../map/region/RegionId.java` `RegionMeta.java` `Region.java` | 权威区域，**含边界组件**（spec §4.2） |
+| `.../map/region/RegionBoundary.java` | 闭环边界：**入存储**，但由 `hexes` 唯一确定、构造期校验（spec §4.3，用户裁决 U2） |
 | `.../map/region/RegionIndex.java` | **派生的**归属反向索引，`regionOf` 为 O(1)（spec §4.4） |
 | `.../map/pathway/EdgeRef.java` | 无向边（**规范序在构造期完成**，spec §5.1） |
 | `.../map/pathway/EdgeTags.java` `PathwayId.java` `Pathway.java` `PathwayGroup.java` | 边上的标注与**稳定 ID 的线**（spec §5.2/§5.4） |
 | `.../map/GameMap.java` `CityId.java` `City.java` `HexCell.java` | 地图状态（spec §7.1） |
 | `.../map/change/FieldDelta.java` `MapChangeSet.java` | 变更集（spec §7.2） |
 | `.../map/generate/GenerationSpec.java` | 生成参数面（spec §6.4） |
-| `.../map/generate/TerrainClassifier.java` | 海拔+噪声 → 9 种地形**全覆盖**（spec §6.2） |
+| `.../map/generate/TerrainClassifier.java` | 海拔+气候 → **7 种全覆盖**，高度走词表查表、**无私有阈值**（spec §6.2） |
 | `.../map/generate/MapGenerator.java` | 从头生成（spec §6.5） |
 | `.../map/generate/RiverBuilder.java` | 自动河流（spec §6.6） |
 | `.../map/generate/RegionRandomizer.java` | 框选随机化（spec §6.6） |
@@ -85,13 +97,13 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 |---|---|---|---|
 | 1 | `hex` 包：坐标、方向、网格 | `HexCoord` / `HexDirection` / `HexGrid` | — |
 | 2 | `terrain` 包：唯一词表 | `TerrainType` / `TerrainCatalog` | — |
-| 3 | `region` 包：权威区域 + 派生边界 + 反向索引 | region 包全部 | 1 |
+| 3 | `region` 包：权威区域 + **入存储的边界** + 反向索引 | region 包全部 | 1 |
 | 4 | `pathway` 包：边与线 | pathway 包全部 | 1 |
 | 5 | `map` 包：`HexCell` / `City` / `GameMap`（+ `GenerationSpec` 骨架） | map 包（除 change） | 1,2,3,4 |
 | 6 | `change` 包：`FieldDelta` / `MapChangeSet` | change 包 | 5 |
 | 7 | ★ **往返框架 + 反射组件枚举 + 自证** | `MapChangeSetTest` 的硬判据 | 6 |
 | 8 | `GenerationSpec`：参数面（★ 扩写 Task 5 的骨架） | `GenerationSpec` + 子 record | 1,5 |
-| 9 | `TerrainClassifier`：9 项全覆盖 | `TerrainClassifier` | 2,8 |
+| 9 | `TerrainClassifier`：7 项全覆盖、无私有阈值 | `TerrainClassifier` | 2,8 |
 | 10 | `MapGenerator`：从头生成 + seed 复现 | `MapGenerator` | 5,6,8,9 |
 | 11 | `RiverBuilder`：自动河流 | `RiverBuilder` | 5,6,10 |
 | 12 | `RegionRandomizer`：框选随机化 | `RegionRandomizer` | 5,6,8 |
@@ -324,25 +336,43 @@ git commit -m "feat(map): hex 包——HexCoord 身份、唯一方向表、网�
 
 **这个任务解的是 L9**（至少 9 份地形词表副本，两份在同一批 key 上完全分叉）。
 
+> **★ 词表已由用户裁决 U1 重定**（详见 spec §〇.0 与 §6.1）：**7 项，按高度从小到大**。
+> GSimulator 那 9 项（`water/lowland/plains/hills/mountain/forest/swamp/desert/tundra`）**整个作废**，
+> **不是改名**。本节下面的内容已按 U1 重写，**不要再去 GSimulator 抄那份 9 项表**。
+
 - [ ] **Step 1: 写 `TerrainType`**
 
 ```java
 package io.mosire.simos.map.terrain;
 
 /**
- * 地形类型。
+ * 地形类型。**高度带是类型自己的属性** —— 用户裁决 U1 要求"按高度从小到大"。
  *
- * <p>★ 字段取自 GSimulator 的实测等价类（{@code MapData.TerrainType}，7 字段），
- * **不是总纲 §5.1 写的 {@code color/height/pass/name}** —— GSimulator 全仓无 {@code height}/{@code pass}，
- * 且"海拔"是**格子**的属性不是**地形类型**的属性（见 spec §八 第 1 条）。
+ * <p>★ 带进词表、**不进分类器的代码**：这样判据可断言（带连续、不重叠、覆盖 [0,1]），
+ * 分类器退化成一个查表，**不再是第二个藏着阈值的词表**（GSimulator 的 L9 正是那么来的）。
+ *
+ * <p>★ 逐格的**海拔值**仍在 {@code HexCell}；本类型携带的是它的**带**。
  */
 public record TerrainType(
-    String name, String color, int food, int gold, int stone, int moveCost, String description) {
+    String key,
+    String name,
+    String color,
+    double minHeight,
+    double maxHeight,
+    int food,
+    int gold,
+    int stone,
+    int moveCost,
+    String description) {
 
   public TerrainType {
+    if (key == null || key.isBlank()) throw new IllegalArgumentException("key 不得为空白");
     if (name == null || name.isBlank()) throw new IllegalArgumentException("name 不得为空白");
     if (color == null || !color.matches("#[0-9A-Fa-f]{6}")) {
       throw new IllegalArgumentException("color 必须是 #RRGGBB 形式: " + color);
+    }
+    if (!(minHeight >= 0.0 && minHeight < maxHeight && maxHeight <= 1.0)) {
+      throw new IllegalArgumentException("高度带非法: [" + minHeight + ", " + maxHeight + "]");
     }
     if (moveCost < 1) throw new IllegalArgumentException("moveCost 必须 >= 1: " + moveCost);
     if (food < 0 || gold < 0 || stone < 0) throw new IllegalArgumentException("产出不得为负");
@@ -350,13 +380,28 @@ public record TerrainType(
 }
 ```
 
+★ **10 个字段**（数一遍：`key`/`name`/`color`/`minHeight`/`maxHeight`/`food`/`gold`/`stone`/`moveCost`/`description`）。
+**高度带的左闭右开**（`minHeight <= h < maxHeight`）—— 这样相邻带天然不重叠，无需特判边界。
+
 - [ ] **Step 2: 写 `TerrainCatalog`（★ 唯一词表）**
 
-**9 项 key 固定为**（实测落盘数据用的就是这一组）：
-`water / lowland / plains / hills / mountain / forest / swamp / desert / tundra`。
+**7 项 key 固定为**（U1 的序即**高度升序**，**这个顺序是语义序，落盘就用它**）：
 
-★ **9 行具体数值执行期从 GSimulator 现读，本计划故意不给** —— 控制器**没有实测过**每一个数，
-写进来就是编造。读取程序见 Step 3。
+| # | 名称 | key | 特性（★ 控制器补裁，用户未给数值，**需过目**） |
+|---|---|---|---|
+| 1 | 海洋 | `ocean` | 最低；不可通行；无产出 |
+| 2 | 平原 | `plains` | 产能最高、最好走 |
+| 3 | 沙漠 | `desert` | **★ 额外的低湿度门**；贫瘠、难走 |
+| 4 | 低矮丘陵 | `low_hills` | 产量中等、略难走；矿藏起点 |
+| 5 | 山地 | `mountains` | 石/矿富集、很难走 |
+| 6 | 平缓高原 | `plateau` | **高但平坦** —— 海拔高却相对好走 |
+| 7 | 高原山地 | `plateau_mountains` | 最高；几乎不可通行 |
+
+★ **7 行的具体数值（颜色 / 产出 / moveCost / 高度带边界）执行期由实现者定，本计划故意不给** ——
+控制器**没有实测过**它们，写进来就是编造（总纲 §六 的硬门）。
+**但两条硬约束是给定的**：① 高度带必须**连续、不重叠、覆盖 `[0,1]`**；
+② `moveCost` 的**相对大小必须与上表"特性"栏一致**（海洋最难走、平原最好走）。
+**数值必须在报告里明写为"本任务新定，非来自 GSimulator"** —— 与从 GSimulator 抄来的值分开标。
 
 ```java
 package io.mosire.simos.map.terrain;
@@ -373,19 +418,20 @@ import java.util.Map;
  */
 public final class TerrainCatalog {
 
-  /** 9 项的 key，**顺序即落盘顺序**。 */
+  /** 7 项的 key，**顺序 = 高度升序 = 落盘顺序**（U1）。 */
   public static final java.util.List<String> KEYS =
-      java.util.List.of("water", "lowland", "plains", "hills", "mountain", "forest", "swamp", "desert", "tundra");
+      java.util.List.of(
+          "ocean", "plains", "desert", "low_hills", "mountains", "plateau", "plateau_mountains");
 
   /**
-   * ★ 唯一的默认词表。
+   * ★ 唯一的默认词表。**迭代序 = 高度升序**。
    *
    * <p>★ **保序**：GSimulator 的 {@code Map.copyOf} 会打乱迭代序，使同一份表在两个存档里顺序不同，
    * 字节级往返因此不成立。此处用 {@link LinkedHashMap} 且**不 copyOf**。
    */
   public static Map<String, TerrainType> defaults() {
     Map<String, TerrainType> m = new LinkedHashMap<>();
-    // ← 9 行在此，执行期从 GSimulator 现读（见 Step 3）
+    // ← 7 行在此；高度带必须连续、不重叠、覆盖 [0,1]（Step 4 有用例钉死）
     return java.util.Collections.unmodifiableMap(m);
   }
 
@@ -398,42 +444,64 @@ public final class TerrainCatalog {
 }
 ```
 
-- [ ] **Step 3: ★ 现读 GSimulator 的 9 行数值**
+- [ ] **Step 3: ★ 调查 GSimulator 的旧词表（**是为了记录被丢弃的东西，不是为了抄**）**
 
-**不要照抄本计划的任何数**。按此程序现读并**把出处记进报告**：
+**不要从 GSimulator 抄任何地形数值** —— U1 已把那份 9 项表整个作废。但**要留下记录**，
+因为 **M6 的老存档导入器**得知道旧 key 要映射到什么：
 
 ```bash
 cd ~/DevMosire/GSimulator
 git grep -n "defaultTerrainTypes" -- '*.java'      # 词表 B 的定义处与全部副本
 git grep -n "TerrainType.defaults" -- '*.java'     # 词表 A 的定义处
-git grep -n "#6CC261" -- .                          # 串味的兜底色（A 的平原绿）
+git grep -c "#6CC261" -- .                          # 串味的兜底色（A 的平原绿）有几个副本
 ```
 
-**★ `plains` 的处置（spec §6.1 的裁决）**：B 里 `plains` 的 `name` 是"**山区**"、色 `#B8A88A`、
-产出 2,2 —— 这是**历史命名事故**。新表里 `plains` 必须是**平原**。
-**其余 8 项的数值照 B 抄**（B 是实测落盘的那一份），`plains` 的 name/color/产出按"平原"重定，
-**重定的取值必须在报告里明写为"本任务新定，非来自 GSimulator"** —— 与抄来的值分开标。
+**在报告里给一张映射表**：旧 key（9 项）→ 新 key（7 项）或"无对应"。
+★ **这张表是给 M6 用的**，不是本任务的实现输入。**明写它属于 M6 的输入**，别让它看着像 M2 的需求。
+（已知的难点：旧表的 `forest`/`swamp`/`lowland`/`tundra` 在新表的 7 项里**没有显然的对应物** ——
+**如实写"无直接对应，待 M6 裁决"，不要替 M6 编一个映射**。控制器已知旧表的 `plains` 叫"山区"，是命名事故。）
 
 - [ ] **Step 4: 写用例**
 
 ```
 TerrainCatalogTest
-  - catalogHasExactlyNineKeys             : KEYS.size() == 9
+  - catalogHasExactlySevenKeys            : KEYS.size() == 7
   - defaultsKeySetEqualsKeys              : defaults().keySet() 与 KEYS **顺序**一致   ← 钉保序
   - defaultsIterationOrderIsStable        : 连调两次 defaults()，key 序逐项相同
   - defaultsIsUnmodifiable                : put → UnsupportedOperationException
   - ofThrowsOnUnknownKey                  : of("nope") → IllegalArgumentException，消息含 "未知地形类型"
-  - ofNeverFallsBack                       : ★ 断言 of() 里**没有** default 分支 —— 用变异证明（Step 5）
-  - everyTypeHasDistinctNameAndColor      : 9 项 name 两两不同、color 两两不同
-  - everyColorMatchesHexPattern           : 9 项全过 #RRGGBB
-  - plainsIsPlainsNotMountains            : ★ plains 的 name **不含**"山"            ← 钉住命名事故已修
-  - plainsGreenIsNotTheOldFallback        : ★ plains.color != "#6CC261"            ← 见下
-  - everyTypeIsConstructible              : 9 项都能构造（构造期校验不误伤）
+  - ofNeverFallsBack                      : ★ 断言 of() 里**没有** default 分支 —— 用变异证明（Step 5）
+  - everyTypeHasDistinctNameAndColor      : 7 项 name 两两不同、color 两两不同
+  - everyColorMatchesHexPattern           : 7 项全过 #RRGGBB
+  - everyTypeIsConstructible              : 7 项都能构造（构造期校验不误伤）
+  - ★ heightBandsAreContiguousAndCoverUnitInterval
+                                          : 按 minHeight 升序排开，首带 minHeight == 0.0、
+                                            末带 maxHeight == 1.0、且**相邻处**上一个 maxHeight
+                                            == 下一个 minHeight（浮点直接 ==，见下）
+  - ★ keysAreInAscendingHeightOrder       : ★ KEYS 的下标序 == 按 minHeight 升序排出的序
+  - ★ moveCostOrderMatchesCharacteristics : plains 严格最小；ocean ≥ plateau_mountains；
+                                            plateau < mountains
+  - plainsIsPlainsNotMountains            : ★ plains 的 name **不含**"山"            ← 钉住命名事故
+  - plainsGreenIsNotTheOldFallback        : ★ 任何一项的 color 都 != "#6CC261"       ← 见下
 ```
+
+★ **`heightBandsAreContiguousAndCoverUnitInterval` 为什么用浮点 `==` 而不是容差**：带边界是
+**同一批字面量**（上一个的 `maxHeight` 与下一个的 `minHeight` 写的是同一个数），不是两次数值计算的结果。
+用容差会让"差 0.001 的缝"变成绿 —— 而那正是这个用例要抓的东西。**"容差"在这里是判别力的敌人**。
+
+★ **`keysAreInAscendingHeightOrder` 的用意**：Step 2 的表把"顺序 = 高度升序"写成了**注释里的承诺**。
+注释不算护栏。这条用例把它变成**可红的断言** —— 否则将来有人往中间插一项、注释还写着"升序"。
 
 ★ **`plainsGreenIsNotTheOldFallback` 的用意**：`#6CC261` 是**词表 A** 的平原绿，
 它出现在 `ContourQueryEngine.terrainColor` 的 `default` 分支里 —— **跨词表串味的物证**。
-新表**不得**再出现这个值。
+新表**不得**再出现这个值。★ 注意它现在**不是**在钉"plains 的颜色"，而是在钉
+"**这个已知污染值不许在任何一项上复活**" —— 一个**排除用例**（见 §9.3 的排除集合那类）。
+
+★ **`moveCostOrderMatchesCharacteristics`** 把 Step 2 表"特性"栏里那句相对大小写成断言。
+**具体断言给定如下**（这是控制器的裁定，别自己改）：
+`plains` 严格小于其余六项；`ocean ≥ plateau_mountains`（"不可通行"不弱于"几乎不可通行"）；
+`plateau < mountains`（"高但平坦、相对好走"）。**其余两两之间不设断言** —— 计划没给依据的，
+不许编成断言。
 
 - [ ] **Step 5: ★ 护栏自证（G13）**
 
@@ -442,25 +510,40 @@ TerrainCatalogTest
 | `of()` 加一个 `return defaults().get("plains")` 兜底 | **红** | `ofNeverFallsBack` 不是装饰 |
 | `defaults()` 改用 `Map.copyOf` | **红** | `defaultsIterationOrderIsStable` / `defaultsKeySetEqualsKeys` 真的钉住了保序 |
 | 把 `plains` 的 name 改回"山区" | **红** | `plainsIsPlainsNotMountains` 有判别力 |
-| 删掉一项（8 项） | **红** | `catalogHasExactlyNineKeys` 有判别力 |
+| 删掉一项（6 项） | **红** | `catalogHasExactlySevenKeys` 有判别力 |
+| ★ 把某一带的 `maxHeight` 缩小 0.01（造出一条缝） | **红** | `heightBandsAreContiguousAndCoverUnitInterval` 抓得住缝，且**证明它没用容差** |
+| ★ 交换 `KEYS` 里 `plateau` 与 `plateau_mountains` | **红** | `keysAreInAscendingHeightOrder` 有判别力 |
+| ★ 把 `plains` 的 `moveCost` 改成全表最大 | **红** | `moveCostOrderMatchesCharacteristics` 有判别力 |
+| ★ 把某项的 `color` 改成 `#6CC261` | **红** | `plainsGreenIsNotTheOldFallback` 是排除用例、不是空转 |
+| ★ 把某带的 `minHeight` 设成等于它的 `maxHeight` | **红** | **`TerrainType` 的构造器校验**有判别力（构造期护栏也要自证） |
+
+★ 每个变异体**都要先自证**：编一份原件作参照、比 `md5`，**确认变异产物 ≠ 原件**再看测试结果。
+否则"三向全绿"可能只是"变异根本没写进磁盘"。**这条自身也要有痕迹**（把两份 md5 贴进报告）。
 
 - [ ] **Step 6: 跑门禁并提交**
 
 同 Task 1 的形制，路径换成 `terrain/`，提交信息
-`feat(map): terrain 包——唯一地形词表（9 项，保序）`。
+`feat(map): terrain 包——唯一地形词表（7 项，高度升序，保序）`。
 
 ---
 
-### Task 3: `region` 包 —— 权威区域 + 派生边界 + 反向索引
+### Task 3: `region` 包 —— 权威区域 + **入存储的**边界 + 反向索引
 
 **Files:**
 - Create: `simos-map/src/main/java/io/mosire/simos/map/region/RegionId.java` `RegionMeta.java` `Region.java`
 - Create: `simos-map/src/main/java/io/mosire/simos/map/region/RegionBoundary.java`
 - Create: `simos-map/src/main/java/io/mosire/simos/map/region/RegionIndex.java`
 - Test: `simos-map/src/test/java/io/mosire/simos/map/region/RegionTest.java`
+- Test: `simos-map/src/test/java/io/mosire/simos/map/region/RegionBoundaryTest.java`
 - Test: `simos-map/src/test/java/io/mosire/simos/map/region/RegionIndexTest.java`
 
-**这个任务解的是 L4 与 L5**。
+**这个任务解的是 L4 与 L5。**
+
+> **★ 用户裁决 U2 推翻了控制器的原裁定**（详见 spec §〇.0 U2 与 §4.2/§4.3）：
+> 控制器原本裁"边界纯派生、不进状态"，**用户的理由是「要不然数据持久化会出问题」**。
+> 现在的形态：**`boundary` 是 `Region` 的组件**（因此自然落盘、自然往返，`MapChangeSet` **不需要新组件**），
+> 而**规范构造器校验它等于由 `hexes` 重算的值**，不等即抛 —— **漂移在构造期就不可能发生**。
+> **本节下面已按 U2 重写**，若你看到的还是"边界不在这里"，那是旧文本。
 
 - [ ] **Step 1: 写 `RegionId` / `RegionMeta` / `Region`**
 
@@ -490,18 +573,36 @@ import io.mosire.simos.map.hex.HexCoord;
 import java.util.Set;
 
 /**
- * 权威区域：一组 hex 的**命名**集合。
+ * 权威区域：一组 hex 的**命名**集合，**连同它的边界**。
  *
- * <p>★ 边界**不在这里** —— 它是派生物，见 {@link RegionBoundary}。
+ * <p>★ 边界是**组件**（用户裁决 U2）：落盘、往返、进变更集都自然成立 —— 不需要为它单开字段。
+ * 代价是它可能与 {@code hexes} 漂移，故**规范构造器把它钉死**：重算一遍，不等即抛。
+ *
  * <p>★ GSimulator 的 {@code Province} 既无 name 字段（名字是 map 的键）也无边界字段，此处都补上。
  */
-public record Region(RegionId id, String name, Set<HexCoord> hexes, RegionMeta meta) {
+public record Region(RegionId id, String name, Set<HexCoord> hexes,
+                     RegionBoundary boundary, RegionMeta meta) {
 
   public Region {
     if (id == null) throw new IllegalArgumentException("id 不得为 null");
     if (name == null || name.isBlank()) throw new IllegalArgumentException("name 不得为空白");
-    hexes = Set.copyOf(hexes);          // 不可变；注意 Set.copyOf 不保序，故本类型不依赖迭代序
+    hexes = Set.copyOf(hexes);          // 不可变；注意 Set.copyOf 不保序，故 hexes 的迭代序不可依赖
+    if (boundary == null) throw new IllegalArgumentException("boundary 不得为 null");
     if (meta == null) meta = RegionMeta.empty();
+    // ★ U2 的钉子：边界必须与 hexes 一致。这一步让"漂移"在构造期就不可能存在。
+    RegionBoundary recomputed = RegionBoundary.of(hexes);
+    if (!recomputed.equals(boundary)) {
+      throw new IllegalArgumentException(
+          "boundary 与 hexes 不一致：hexes 重算得 " + recomputed + "，传入的是 " + boundary);
+    }
+  }
+
+  /**
+   * ★ **正常代码走这个工厂**：边界**由 hexes 算出来**，不手写。
+   * <p>直接调构造器只在反序列化（边界已由存档给出、需要被校验）时才合理。
+   */
+  public static Region of(RegionId id, String name, Set<HexCoord> hexes, RegionMeta meta) {
+    return new Region(id, name, hexes, RegionBoundary.of(hexes), meta);
   }
 
   /** 是否含某格。**O(1)** —— GSimulator 是 List<String>.contains 线性扫描。 */
@@ -509,47 +610,74 @@ public record Region(RegionId id, String name, Set<HexCoord> hexes, RegionMeta m
     return hexes.contains(c);
   }
 
+  /**
+   * ★ **必须重算边界** —— U2 落地后这是最容易写错的一处。
+   * 写成 {@code new Region(id, name, newHexes, boundary, meta)} 会被构造器当场抛掉（这正是钉子生效），
+   * 但**别指望它**：直接用 {@link #of} 更省事，也让意图明了。
+   */
   public Region withHexes(Set<HexCoord> newHexes) {
-    return new Region(id, name, newHexes, meta);
+    return Region.of(id, name, newHexes, meta);
   }
 
+  /** 改名不动内容 ⇒ 边界不变，可直接复用（**这是唯一可以原样传 boundary 的地方**）。 */
   public Region withName(String newName) {
-    return new Region(id, newName, hexes, meta);
+    return new Region(id, newName, hexes, boundary, meta);
   }
 }
 ```
 
+★ **代价，写清楚**：边界的重算发生在**每一次 `new Region`** 上（含反序列化）。这是 O(边界格数)，
+对一张地图的 region 总数而言是可接受的；**但它不是免费的，也不该被"顺手"调用** —— 批量构造
+region 时优先用 `Region.of`，别在循环里先造了再改。
+
 ★ **`hexes` 用 `Set.copyOf`（不保序）是有意的**：它是**集合语义**，迭代序不该被依赖。
 **需要保序的只有 `TerrainCatalog`**（落盘的是它）。两处的理由不同，**不要统一**。
+★ 但 U2 之后这条**多了一层后果**：`boundary` 是 `Region` 的组件、`Region.equals` 是逐组件的，
+**所以 `RegionBoundary.of` 必须是 `hexes` 的纯函数、且与迭代序无关** —— 见 Step 2 的规范性要求。
 
-- [ ] **Step 2: 写 `RegionBoundary`（★ 派生物）**
+- [ ] **Step 2: 写 `RegionBoundary`（★ 入存储、但**可重算**，且必须**规范**）**
 
 ```java
 package io.mosire.simos.map.region;
 
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.List;
+import java.util.Set;
 
 /**
- * 区域的闭环边界。**由 {@link Region#hexes()} 派生，可随时重算**。
+ * 区域的闭环边界。**是 {@link Region} 的组件（U2），同时是由 hexes 唯一确定的纯函数。**
  *
- * <p>★ **不进 GameMap、不进变更集** —— 一个可随时重算的东西不该是权威状态。
- * GSimulator 把渲染缓存塞进 {@code MapData}，后果是它整份拷贝而非增量，且那份 {@code boundary}
- * 已被标注 {@code deprecated}。
+ * <p>★ 两个性质都不可少：**入存储**解决持久化（存档必须自带边界，否则每个读档方都要重新实现
+ * 一遍推导 —— 那正是 GSimulator 的 {@code edgeKey} 四份副本那类病）；**可重算**解决漂移
+ * （构造器重算一遍比对，不等即抛）。
  *
- * @param rings 每一条闭环。外环 + 可能的内环（洞）。
+ * <p>★ **规范性**：{@link #of} 的结果必须**只由集合内容决定**，与入参 Set 的迭代序无关。
+ * {@code hexes} 用 {@code Set.copyOf}（不保序），若本方法顺着迭代序走，两个内容相同的 Region
+ * 会得到不同的 {@code boundary}，于是 `equals` 为假 —— 而它们本该相等。
+ * **实现要求：先按 {@link HexCoord#compareTo} 排序，再定环的起点与绕行方向，二者都取规范值。**
+ *
+ * @param rings 每一条闭环。外环 + 可能的内环（洞），**环表本身也按规范序**。
  */
 public record RegionBoundary(List<List<HexCoord>> rings) {
   public RegionBoundary {
     rings = rings.stream().map(List::copyOf).toList();
   }
 
-  /** 从 hex 集合计算边界。 */
-  public static RegionBoundary of(Region region) {
-    // 实现：对每个边界格收集其朝外的边，串联成环
+  /**
+   * 从 hex 集合计算边界。**纯函数**：同集合必得同结果，与迭代序无关。
+   *
+   * <p>★ 取 {@code Set<HexCoord>} 而**不是** {@code Region} —— U2 之后 {@code Region} 的构造
+   * 需要 {@code RegionBoundary}，若本方法收 {@code Region} 就成死循环。
+   */
+  public static RegionBoundary of(Set<HexCoord> hexes) {
+    // 实现：① 复制并排序（规范序）② 对每个边界格收集其朝外的边 ③ 串联成环
+    //      ④ 每条环旋到字典序最小的顶点开头，绕行方向取规范（同向）
   }
 }
 ```
+
+★ **环的起点与方向也必须规范**，理由同上：两个内容相同的 Region 若起点不同，`rings` 就不同，
+`equals` 就为假。**排序只解决"从哪个格开始扫"，不解决"环从哪个顶点开始"**，两者都要做。
 
 - [ ] **Step 3: 写 `RegionIndex`（★ 派生索引，解 L5）**
 
@@ -593,19 +721,34 @@ public final class RegionIndex {
 RegionTest
   - constructorRejectsBlankIdAndName
   - constructorRejectsNullId
+  - constructorRejectsNullBoundary
   - hexesIsImmutable                     : 改入参 Set → 不影响 Region
   - containsIsSetBased                   : 含与不含各一例
-  - equalityIsComponentwise              : 同 id 同 name 同 hexes 同 meta → equal；任一不同 → 不等
+  - equalityIsComponentwise              : 同五元组 → equal；id/name/hexes/boundary/meta 任一不同 → 不等
   - withHexesKeepsIdAndName              : ★ id/name 不随内容变            ← 铁律 1
   - withNameKeepsId                      : ★ 改名不改身份                  ← 铁律 1
   - metaDefaultsToEmptyWhenNull
+
+  # ★ 以下三条是 U2 的钉子
+  - boundaryIsAStoredComponent           : ★ 反射断言 Region **含** boundary 组件、类型为 RegionBoundary
+                                           （与旧裁定的 `boundaryIsDerivedNotStored` **恰好相反**）
+  - factoryComputesBoundaryFromHexes     : Region.of(...) 的 boundary == RegionBoundary.of(hexes)
+  - constructorRejectsBoundaryThatDisagreesWithHexes
+                                         : ★ 直接 new 一个 boundary 与 hexes 不符的 Region
+                                           → IllegalArgumentException，消息含 "不一致"
+  - withHexesRecomputesBoundary          : ★ withHexes(新集合) 后：
+                                           ① hexes 确实是新的 ② boundary == 由新 hexes 重算的值
+  - withNameKeepsBoundary                 : 改名不动内容 ⇒ boundary **引用不变**
 
 RegionBoundaryTest
   - singleHexRingHasSixVertices          : 单格边界 6 个顶点
   - twoAdjacentHexesShareOneRing         : 相邻两格 → **一个**环（不是两个）
   - nonContiguousHexesGiveMultipleRings  : 两簇不连通 → **两个**环
-  - boundaryIsRecomputable               : 同 Region 算两次 equals
-  - boundaryIsDerivedNotStored           : ★ 反射断言 Region **不含** boundary 组件
+  - storedBoundaryEqualsRecomputed       : region.boundary() equals RegionBoundary.of(region.hexes())
+  - ★ boundaryIsIndependentOfInputSetIterationOrder
+                                         : ★ 用两个**迭代序不同**的 Set（如 LinkedHashSet 正序 与 反序）
+                                           装**同一批** hex → 两次 RegionBoundary.of 结果 equals。
+                                           见下
 
 RegionIndexTest
   - regionOfIsConstantTime               : ★ 见下
@@ -613,7 +756,19 @@ RegionIndexTest
   - unknownHexReturnsNull
   # ★ 注意：本任务**不写** "GameMap 不含 RegionIndex" 那条断言 —— GameMap 在 Task 5 才存在。
   #   该断言归 Task 5 的 `regionIndexIsDerivedNotStored`，**只写一处**，不要两处重复。
+  #   注意那里的"派生"指的是 **RegionIndex**，与 U2 之后**入存储的 region 边界**不冲突，别混。
 ```
+
+★ **`boundaryIsIndependentOfInputSetIterationOrder` 是本任务最容易漏、也最该写的一条**。
+U2 把 `boundary` 变成组件之后，`Region.equals` 就依赖它；而 `hexes` 是 `Set.copyOf`（**不保序**）。
+**若 `RegionBoundary.of` 顺着迭代序走，内容相同的两个 Region 会 `equals` 为假** —— 一个
+只在"两次构造的 Set 迭代序恰好不同"时才现形的 bug。上述用例**故意造出两种迭代序**，
+正是为了让两种实现**在断言处真的分叉**（否则两种实现下断言全等价，等于空转）。
+
+★ **`storedBoundaryEqualsRecomputed` 的第二种写法（必须用）**：不要只写
+`RegionBoundary.of(r.hexes()).equals(RegionBoundary.of(r.hexes()))` —— 那是"算两次比两次"，
+**只证明了确定性，没证明存储的那份是对的**。必须是
+`r.boundary().equals(RegionBoundary.of(r.hexes()))`：**拿存储的那份去比**。
 
 ★ **`regionOfIsConstantTime` 怎么写才有判别力**：**不要**测时间（不稳）。
 用**结构性断言**：索引的构造是 O(n)，`regionOf` 只做一次 `Map.get`。
@@ -626,13 +781,27 @@ RegionIndexTest
 
 | 变异 | 期望 | 证明什么 |
 |---|---|---|
-| `Region.withHexes` 里改成 `new Region(new RegionId(name), ...)`（用 name 当 id） | **红** | `withHexesKeepsIdAndName` 真的钉住了"ID 是身份" |
+| ★ **删掉规范构造器里"重算并比对"那两行** | **红** | `constructorRejectsBoundaryThatDisagreesWithHexes` 有判别力 —— **这就是 U2 的钉子本身** |
+| `Region.withHexes` 里把 `newHexes` 写成 `hexes`（保持旧内容） | **红** | `withHexesRecomputesBoundary` 不是装饰。★ 见下 |
+| `Region.withHexes` 改成原样传旧 `boundary`（不重算） | **红**（构造器抛 IAE） | ★ **预期红，但红的理由是构造器的校验，不是断言** —— 记进报告，别当成"这条用例钉住了" |
+| `RegionBoundary.of` 不排序、顺着入参迭代序走 | **红** | `boundaryIsIndependentOfInputSetIterationOrder` 有判别力 |
+| `RegionBoundary.of` 排了序，但环的起点不旋到规范顶点 | **红** | 同上 —— 证明"排序只解决一半"那句话不是空话 |
 | `RegionIndex.regionOf` 改成遍历全部 regions 线性找 | **红** | 计数断言有判别力 |
-| `Region` 加一个 `boundary` 组件 | **红** | `boundaryIsDerivedNotStored` 有判别力 |
+| `Region.withHexes` 里改成 `new Region(new RegionId(name), ...)`（用 name 当 id） | **红** | `withHexesKeepsIdAndName` 真的钉住了"ID 是身份" |
+
+★ **第 2 行是这张表里最该认真做的一条**：它的变异**不触发构造器异常**（内容与边界自洽，
+只是内容是旧的），所以**红的必须来自断言** —— 这才证明 `withHexesRecomputesBoundary` 有判别力。
+第 3 行则相反，红来自异常。**两行的"红"理由不同，报告里要分开写**（形态 1：红了还要问为什么红）。
+
+★ **一条被 U2 反转的历史，记在这里免得后人看糊涂**：旧裁定下本表有一行是
+"`Region` 加一个 `boundary` 组件 → 红（`boundaryIsDerivedNotStored`）"，
+即**加组件是错的**。U2 之后**恰好相反**：`boundary` 是组件，而**去掉**它才会红。
+若你在别处看到"边界是派生物"的旧措辞（例如 Task 5 的 `regionIndexIsDerivedNotStored`），
+注意那条说的是 **`RegionIndex`** —— 索引仍是派生、不进存储；**边界不是**。
 
 - [ ] **Step 6: 跑门禁并提交**
 
-提交信息 `feat(map): region 包——权威 Region + 派生边界 + O(1) 归属索引`。
+提交信息 `feat(map): region 包——权威 Region + 入存储的边界（构造期校验）+ O(1) 归属索引`。
 
 ---
 
@@ -878,11 +1047,16 @@ public record GameMap(
 
   /** 派生：归属反向索引。**不进组件、不进变更集**。 */
   public RegionIndex regionIndex() { /* … */ }
-
-  /** 派生：某区域的闭环边界。**不进组件、不进变更集**。 */
-  public RegionBoundary boundaryOf(RegionId id) { /* … */ }
 }
 ```
+
+★ **本任务原本还有一个 `boundaryOf(RegionId)`，U2 之后删掉了**。理由：
+U2 把边界变成 `Region` 的组件，于是 `regions().get(id).boundary()` 就是权威路径，
+再开一个 `boundaryOf` 就是**同一概念的第二条路**（`RegionIndex` 与它不同：索引是派生的，
+没有"存起来的那一份"可比）。**若你在旧草稿里看到 `boundaryOf` 且注释写着"派生、不进组件"，
+那是 U2 之前的文本，别照抄。**
+★ **注意 `RegionIndex` 与 `RegionBoundary` 在 U2 之后地位相反**：索引**仍**是派生、不进存储；
+边界**不**是。Task 3 已把这条讲清，这里只作提醒。
 
 ★ **`spec` 的类型是 `GenerationSpec` 骨架**（本任务 Step 1 前建）——
 本任务先把 `spec` 声明为**可空**（`GameMap.empty()` 给 `null`），
@@ -905,6 +1079,8 @@ GameMapTest
   - mapsAreInsertionOrdered         : ★ 落盘序稳定（不用 Map.copyOf）
   - mapsAreImmutable                : put → UnsupportedOperationException
   - ★ regionIndexIsDerivedNotStored : 反射断言组件里没有 RegionIndex
+  - ★ regionsCarryTheirBoundary     : ★ 放进 regions 的 Region，取回来 boundary() 非 null
+                                      且 == RegionBoundary.of(它的 hexes)   ← U2 的落地检查
 ```
 
 - [ ] **Step 5: ★ 护栏自证（G13）**
@@ -915,6 +1091,7 @@ GameMapTest
 | 给 `GameMap` 加回 `gridSize` | **红** | `componentCountIsExactlyEight` 与 `noGridSizeNoHexOrientation` 真会响 |
 | `empty()` 里改用 `Map.copyOf` | **红** | `mapsAreInsertionOrdered` 真的钉住了保序 |
 | `withHexes` 里顺手把 `regions` 也改了 | **红** | `withMethodsPreserveOtherComponents` 有判别力 |
+| `withRegions` 里把每个 `Region` 的 `boundary` 抹成空环 | **红**（由 `Region` 构造器抛 IAE） | ★ **U2 的钉子穿到了 GameMap 层**：连"从 Map 这一侧塞进不一致的 Region"也拦得住。**红来自异常，报告里写明** |
 
 - [ ] **Step 6: 跑门禁并提交**
 
@@ -1215,6 +1392,15 @@ public record GenerationSpec(
 `frags = fragmentCount - secondary`（`MapGenerator.java:105`）**可为负**。
 本 record 必须在构造期把它挡住，**并写一条用例证明它真的挡住了**。
 
+★ **U1 给本任务加的一道硬约束（别漏）**：**高度带只许有一份，持有者是 `TerrainCatalog`。**
+U1 之后"某个高度算哪种地形"由 `TerrainType.minHeight/maxHeight` 唯一决定。
+**`GenerationSpec`（含 `NoiseBands`/`RidgeParams`/`FragmentParams`）里不得出现任何
+"按高度切地形"的阈值** —— 那是 L9 的第二份词表换个地方长出来。
+允许留在 spec 里的是**形状参数**（噪声频率、脊线数量、海岸粗糙度这类造海拔的过程参数），
+**不允许的是"海拔多高算山"这类分界**。
+**报告里必须明写你如何判定 `NoiseBands` 属于前者而非后者** —— 这一条控制器没有实测过
+`NoiseBands` 的字段，**是把判断权交给你，不是已经替你判好了**。
+
 - [ ] **Step 3: 写用例**
 
 ```
@@ -1227,8 +1413,16 @@ GenerationSpecTest
   - baseSeaLevelRangeChecked
   - ★ noWorldIdNoCoastRoughness        : 反射断言组件名里没有 "worldId"/"coastRoughness"
   - ★ seedIsAComponent                 : 反射断言有 seed 组件（L7 的落盘前提）
+  - ★ noTerrainHeightThresholds        : ★ 见下  ← U1 加的
   - equalityIsComponentwise
 ```
+
+★ **`noTerrainHeightThresholds` 怎么写**：**递归遍历 `GenerationSpec` 的全部组件及其嵌套 record**
+（`NoiseBands`/`RidgeParams`/`FragmentParams` 都在内），断言**不存在** `double`/`float` 字段
+与 `TerrainCatalog.KEYS` 里任一 key 同处一个类型 —— 也就是**没有任何类型同时知道"一个高度数"
+与"一个地形名"**。这是结构性断言，不依赖你对字段语义的判断。
+**若某个嵌套类型里确实既有一个 [0,1] 的 double、又有一个地形 key，报告里必须解释它为什么不是分界**
+（这条会红，而它红了**不一定是错**）—— 那种情况**交回控制器裁定，不要自己放行**。
 
 - [ ] **Step 4: ★ 护栏自证（G13）**
 
@@ -1237,6 +1431,7 @@ GenerationSpecTest
 | `mainRidges` 校验改成 `Math.max(1, Math.min(mainRidges, 2))`（即 GSimulator 的静默夹取） | **红** | `mainRidgesFiveThrows` 有判别力 |
 | 删掉负差值校验 | **红** | `negativeFragmentDifferenceThrows` 不是装饰 |
 | 加回 `worldId` 组件 | **红** | `noWorldIdNoCoastRoughness` 真会响 |
+| ★ 往 `NoiseBands` 里加一对 `double mountainAbove` + `String terrainKey` | **红** | ★ `noTerrainHeightThresholds` 有判别力 —— **这是 U1 之后"高度带只有一份"的守卫** |
 
 - [ ] **Step 5: 跑门禁并提交**
 
@@ -1244,7 +1439,7 @@ GenerationSpecTest
 
 ---
 
-### Task 9: `TerrainClassifier` —— 9 项全覆盖
+### Task 9: `TerrainClassifier` —— **7 项全覆盖，且不许自带阈值**
 
 **Files:**
 - Create: `simos-map/src/main/java/io/mosire/simos/map/generate/TerrainClassifier.java`
@@ -1253,28 +1448,48 @@ GenerationSpecTest
 **这个任务解的是 L9 的后半**：GSimulator 的 `classify` **只产出 6 种**，
 `forest`/`desert`/`tundra` **永远产生不出来** —— 一份产不出来的词表是谎话。
 
+> **★ U1 之后本任务的形态变了**（spec §6.1）。词表是 **7 项**，而且
+> **高度带由 `TerrainCatalog` 唯一持有** —— 于是分类器**退化成一个查表**，
+> **它自己不许再有第二套高度阈值**。GSimulator 的 L9 正是"词表一份、阈值另一份"长出来的。
+> **这个任务的判别力，全在"分类器有没有自己的数"这一条上。**
+
 - [ ] **Step 1: 写 `TerrainClassifier`**
 
 ```java
 package io.mosire.simos.map.generate;
 
 /**
- * 从海拔与噪声判定地形。**必须覆盖 TerrainCatalog 的全部 9 项。**
+ * 从海拔与气候判定地形。**必须覆盖 TerrainCatalog 的全部 7 项。**
+ *
+ * <p>★ **高度判定是查表，不是阈值**：按高度落进 {@link TerrainCatalog} 里唯一那条带
+ * （带构成 [0,1] 的划分，故落点唯一）。**本类里不许出现任何高度字面量。**
  *
  * <p>★ GSimulator 的等价物只产出 6 种（mountain/hills/plains/lowland/swamp/water），
  * {@code forest}/{@code desert}/{@code tundra} 在词表里但产出不来。
  */
 public final class TerrainClassifier {
 
-  /** 判定。输入的 humidity 与 temperature 都在 [0,1]。 */
+  /**
+   * 判定。输入的 humidity 与 temperature 都在 [0,1]。
+   *
+   * <p>★ 只有 {@code desert} 带带**气候门**（低湿度）：落在 desert 带而湿度不低时**退到
+   * {@code plains}** —— **总函数**，任何输入都有返回值，且返回值恒在 {@code KEYS} 内。
+   */
   public static String classify(double height, double humidity, double temperature) { /* … */ }
 }
 ```
 
-★ **判定阈值的具体取值执行期从 GSimulator 现读并补齐缺的三项** —— 前 6 项照抄，
-后 3 项（forest/desert/tundra）**是新定的**，报告里分开标。
-`forest` 用湿度、`desert` 用湿度低+温度高、`tundra` 用温度低 —— **这是 spec §6.2 的方向**，
-具体阈值由执行者定并在报告里说明依据。
+★ **沙漠那道门的具体形态（控制器的裁定，别自己改）**：带是划分 ⇒ 高度先唯一定位候选带。
+`desert` 带再加一道**低湿度**门；**过不了门就返回 `plains`**。
+选 `plains` 而不是"相邻低带"是因为**要一个写死的常量，不要一条算法** ——
+"相邻低带"将来插一项就变意思，`plains` 不会。
+**这道门必须是用例钉住的**（见 Step 2 的 `desertBandFallsBackToPlainsWhenHumid`），
+否则它就是一段没人验过的分支。
+
+★ **湿度的具体阈值由执行者定** —— 控制器没实测过，写进来就是编造（总纲 §六 的硬门）。
+**数值必须在报告里明写为"本任务新定，非来自 GSimulator"**。温度参数本任务**先收下但不使用**
+（U1 的 7 项里没有靠温度区分的项）—— **报告里明写"temperature 目前不参与判定、为 M3+ 预留"**，
+别让它看着像忘了用。
 
 - [ ] **Step 2: 写用例**
 
@@ -1282,29 +1497,44 @@ public final class TerrainClassifier {
 TerrainClassifierTest
   - ★ everyCatalogKeyIsProducible       : 遍历 TerrainCatalog.KEYS，断言**每一项**都存在
                                           至少一组 (height,humidity,temperature) 判出它
-                                          ← 这是本任务的核心断言，直接钉住"词表不是谎话"
+                                          ← 核心断言，直接钉住"词表不是谎话"
+  - ★ classifierFollowsCatalogBands     : ★ 见下 —— 本任务判别力最强的一条
+  - ★ desertBandFallsBackToPlainsWhenHumid
+                                        : desert 带内、湿度取中值 → "plains"（不是 desert、
+                                          也不是别的）；同高度、低湿度 → "desert"
   - classifyNeverReturnsUnknownKey      : 扫一个三维网格，断言返回值恒在 KEYS 里（**不兜底**）
-  - waterIsLowest                       : height 极低 → water
-  - mountainIsHighest                   : height 极高 → mountain
-  - forestNeedsHumidity                 : 高湿度 + 中海拔 → forest（且**不是** plain）
-  - desertNeedsDrynessAndHeat           : 低湿度 + 高温 → desert
-  - tundraNeedsCold                     : 低温度 → tundra
+  - oceanIsLowestBand                   : 最低带的输入 → ocean，**且与湿度温度无关**
+  - plateauMountainsIsHighestBand       : 最高带的输入 → plateau_mountains
   - classifyIsDeterministic             : 同输入两次同输出
   - classifyIsTotal                     : 全域有定义，不抛异常
 ```
+
+★ **`classifierFollowsCatalogBands` 怎么写**：**不许把高度值写死在用例里**。
+遍历 `TerrainCatalog.defaults()`，对每个类型 `t` 取**由它自己的带算出来的**采样点
+（`t.minHeight()`、带中点、`t.maxHeight()`；`maxHeight()` 用 `Math.nextDown` 收进来以钉左闭右开），
+断言 `classify(该点, 中性湿度, 中性温度) == t.key()`（`desert` 按上面那条单独处理）。
+**这样写，分类器里但凡藏着自己的一套数，用例就红** —— 若把高度值抄进用例，两种实现下
+断言全等价，这条就白写了。
 
 - [ ] **Step 3: ★ 护栏自证（G13）**
 
 | 变异 | 期望 | 证明什么 |
 |---|---|---|
-| 删掉 `forest` 的分支（退回 GSimulator 的 6 项） | **红** | ★ `everyCatalogKeyIsProducible` 有判别力 —— 这条正是 L9 的守卫 |
-| 删掉 `desert` 的分支 | **红** | 同上 |
+| 删掉 `desert` 的分支（退回 6 项） | **红** | ★ `everyCatalogKeyIsProducible` 有判别力 —— 这条正是 L9 的守卫 |
+| ★ **在分类器里写死一套高度阈值**（把带边界抄成字面量，再改动 `TerrainCatalog` 里的带） | **红** | ★ `classifierFollowsCatalogBands` 有判别力 —— **这是本任务存在的理由** |
+| ★ 去掉沙漠的低湿度门（落 desert 带一律 desert） | **红** | `desertBandFallsBackToPlainsWhenHumid` 有判别力 |
 | `classify` 末尾加一个 `default -> return "plains"` 兜底 | **红** | `classifyNeverReturnsUnknownKey` 的"不兜底"半 |
 | 让 `classify` 对某段输入抛异常 | **红** | `classifyIsTotal` 有判别力 |
+| ★ 把 `ocean` 带也加上气候门 | **红** | `oceanIsLowestBand` 的"与湿度温度无关"半有判别力 |
+
+★ 第 2 行**要这么做**：变异体不是"改分类器"，而是**同时改两处** —— 分类器里写死一套旧阈值，
+再把 `TerrainCatalog` 里某条带的边界挪一点。**若分类器真的查表，结果跟着变（绿）；
+若它自带阈值，结果不变而用例期望它变（红）**。这条变异的构造比别条麻烦，**但它是本任务唯一
+能证明"没有第二份词表"的办法**，不许省。
 
 - [ ] **Step 4: 跑门禁并提交**
 
-提交信息 `feat(map): TerrainClassifier——9 项地形全覆盖`。
+提交信息 `feat(map): TerrainClassifier——7 项地形全覆盖，高度走词表查表、无私有阈值`。
 
 ---
 
@@ -1414,7 +1644,7 @@ public final class RiverBuilder {
 RiverBuilderTest
   - riverStartsAtHighestHex            : 造一个单峰图，断言河的起点是最高格
   - riverNeverGoesUphill               : 沿途每一格的 height <= 前一格
-  - riverEndsAtWaterOrBoundary         : 终点是 water 格或图边界
+  - riverEndsAtOceanOrBoundary         : 终点是 ocean 格或图边界
   - ★ riverIsAddressable               : 产出里每条河有**互不相同**的 PathwayId  ← 待决项 3 的验收
   - ★ branchesAreSeparatePathways      : 造一个带分支的输入，断言产出是**多条** Pathway（不是一条带分叉的）
   - ★ sameSeedGivesSameRivers          : 确定性
@@ -1663,9 +1893,29 @@ M2 行从 `⬜ 未开始` 改为 `✅ 已完成`，并指向 M2 spec 与计划�
 | Task 4 ↔ Task 6 | `PathwayGroup` / `EdgeTags` 类型 | Task 4 建、Task 6 用作 `FieldDelta` 的类型参数。**顺序正确**（4 在 6 前） |
 | Task 1 ↔ Task 11/12/13 | `HexCoord` | 全部单向消费。**一致** |
 
-**自洽检查（每个任务自身）**：Task 5 的 `componentCountIsExactlyEight` 与 §7.1 的字段表一致（8 个）；
+★ **用户裁决 U1 / U2 落地后补扫的四行**（这两条裁决**改掉了接口形状**，必须重扫）：
+
+| 谁与谁共享 | 共享的东西 | 查到了什么 |
+|---|---|---|
+| Task 2 ↔ Task 9 | 词表的**项数** | U1 把 9 项改成 7 项。Task 2 的 `KEYS`、Task 9 的 `everyCatalogKeyIsProducible`、文件结构表、任务地图**四处都写过"9"**。**已判**：四处全部改为 7，**并以 Task 2 的 `catalogHasExactlySevenKeys` 为唯一权威** —— 其余三处是叙述，不是判据 |
+| Task 2 ↔ Task 8 ↔ Task 9 | **高度带归属** | ★ **真冲突**：U1 说"高度从小到大"⇒ 高度带进词表；而 Task 8（`GenerationSpec`）与 Task 9（分类器）都可能各自持有一套高度阈值 ⇒ **退回 L9 的病**。**已判**：**高度带的唯一持有者是 `TerrainCatalog`**；`GenerationSpec` 不得再有按地形的高度阈值，分类器**不含任何高度字面量**（Task 9 的 `classifyFollowsCatalogBands` 与第 2 条变异钉死） |
+| Task 3 ↔ Task 5 | `RegionBoundary` 的归属 | ★ **真冲突（U2 造成）**：Task 3 原写"`boundaryIsDerivedNotStored`：反射断言 `Region` **不含** boundary"，Task 5 原写"`boundaryOf` 派生、不进组件" —— U2 之后**两条都反了**。**已判**：Task 3 改为 `boundaryIsAStoredComponent`（断言**含**该组件），Task 5 **删掉 `boundaryOf`**（`regions().get(id).boundary()` 已是权威路径，再开一条就是同一概念的第二条路） |
+| Task 3 ↔ Task 5 ↔ 铁律 5 | `boundary` 进不进变更集 | ★ **U2 的连锁**：`boundary` 成了 `Region` 的组件 ⇒ **`MapChangeSet` 不需要新组件**（`regions` 整个 `Region` 值被比对，`equals` 含 `boundary`）。**已判**：Task 6/7 的组件数**不变**（8 vs 7），`spec` 仍是唯一豁免项，**V6 变异照旧**。**但要在 Task 7 的报告里明写这条推理链**，否则后人会以为边界被漏掉了 |
+
+★ **U2 自身的一致性**：`Region` 构造器要 `boundary`、而 `boundary` 要由 `hexes` 算 ——
+若 `RegionBoundary.of` 收 `Region` 就成死循环。**已判**：`of` 收 `Set<HexCoord>`（Task 3 Step 2 已写明）。
+
+★ **U2 引出的新护栏（原计划没有）**：`hexes` 是 `Set.copyOf`（不保序），而 `boundary` 现在参与
+`equals` ⇒ **`RegionBoundary.of` 必须是集合内容的纯函数、与迭代序无关**（排序 + 环起点规范）。
+否则两个内容相同的 `Region` 会 `equals` 为假 —— 一个只在迭代序恰好分叉时才现形的 bug。
+**已判**：`boundaryIsIndependentOfInputSetIterationOrder` 用**两种迭代序**构造同一批 hex。
+
+**自洽检查（每个任务自身）**：
+Task 5 的 `componentCountIsExactlyEight` 与 §7.1 的字段表一致（8 个 —— **`Region` 从 4 组件变 5 组件不影响它**，`GameMap` 的组件是 `Map<RegionId, Region>`，仍算一个）；
 Task 6 的 `MapChangeSet` 7 组件与 Task 7 的 8 vs 7 不对称叙述一致；
-Task 2 的 `KEYS` 9 项与 Task 9 的 `everyCatalogKeyIsProducible` 同源。
+Task 2 的 `KEYS` **7 项**与 Task 9 的 `everyCatalogKeyIsProducible` 同源；
+Task 2 的 `TerrainType` **10 字段**与文件结构表的"10 字段"一致；
+Task 3 的 `Region` **5 组件**与 §4.2 一致（`id`/`name`/`hexes`/`boundary`/`meta`）。
 **扫描不是"干净"两个字，是上面这张表。**
 
 ### 1~3. 三项自查
@@ -1673,10 +1923,11 @@ Task 2 的 `KEYS` 9 项与 Task 9 的 `everyCatalogKeyIsProducible` 同源。
 1. **每个 Task 都有明确的 Files 与可执行的 Step** —— 是。Task 1~15 全部给出文件路径与步骤；
    Task 1~14 各带护栏自证表，Task 7 与 Task 14 的自证是**成对证据**要求。
 
-2. **两种取值分开标** —— 是。**本计划写死的**（枚举序、字段清单、类型形状、判据）
-   与**标注「执行期从 GSimulator 现读」的**（`TerrainCatalog` 的 9 行数值、
-   `GenerationSpec` 的 ~60 个阈值、`TerrainClassifier` 的阈值）在头部统一声明，
-   并在各任务里再次点明。**控制器没有实测过的值一律不写进来。**
+2. **三类取值分开标**（U1 之后从两类变三类）—— 是。**本计划写死的**（枚举序、字段清单、
+   类型形状、判据）、**标注「执行期从 GSimulator 现读」的**（`GenerationSpec` 的 ~60 个阈值）、
+   与**本任务新定的**（`TerrainCatalog` 的 **7 行全部数值**、`TerrainClassifier` 的湿度阈值）
+   在头部统一声明，并在各任务里再次点明。**控制器没有实测过的值一律不写进来**；
+   **新定的值必须与抄来的值分开标**，否则后人分不清哪些是实测遗产。
 
 3. **依赖顺序自洽** —— 是。Task 1（hex）与 Task 2（terrain）无依赖；
    Task 3/4 依赖 1；Task 5 依赖 1~4；Task 6 依赖 5；Task 7 依赖 6；
@@ -1690,6 +1941,11 @@ Task 2 的 `KEYS` 9 项与 Task 9 的 `everyCatalogKeyIsProducible` 同源。
 - **Task 13 的 `map:<mapId>` 段位判定依赖 M1 spec §3.5** —— 计划里没写死答案，
   因为那是 M1 spec 的管辖范围，**执行者要去读，不要凭直觉**。
 - **本计划没有给 `RegionBoundary.of` 与 `RegionIndex.of` 的完整算法** ——
-  它们的形状已定（闭环 / 反向索引）、契约已定（派生、不进状态）、
-  用例已定（相邻两格一个环 / 重叠确定性），**实现细节留给执行者**。
+  形状已定（闭环 / 反向索引）、用例已定（相邻两格一个环 / 重叠确定性），**实现细节留给执行者**。
   这与 M1 计划的粒度一致（M1 的 `AddressParser` 也是给契约不给算法）。
+  ★ **但两者的契约在 U2 之后相反了，别照抄旧话**：`RegionIndex` 是**派生、不进状态**；
+  `RegionBoundary` 是**入存储的组件**（构造期校验 + 规范化）。Task 3 Step 2 已写明。
+- **★ U2 新增了一个原计划没有的设计要求：`RegionBoundary.of` 必须规范化**（排序 + 环起点/方向
+  取规范值）。控制器**给了要求与判据，没给算法** —— 因为环的规范化怎么写有多种正确解，
+  而判据只有一条：**同集合必得同结果，与迭代序无关**。执行者自选一种并**在报告里写明选了哪种、
+  以及为什么它对**。这条是本计划里**唯一一处"契约清楚但实现空间较大"**的地方，评审时重点看它。

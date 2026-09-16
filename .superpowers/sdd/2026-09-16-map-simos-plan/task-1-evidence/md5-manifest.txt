@@ -1,0 +1,10 @@
+0254e25bafbd136edd9e74012fee5cd9  /tmp/hexmut/ref/HexCoord.java
+fd804a33272adcde70d5dbaa1ed00dcb  /tmp/hexmut/ref/HexDirection.java
+1261f98eb7c1af340bc713cbb61118d2  /tmp/hexmut/ref/HexGrid.java
+b96e8330be1ffd5f4dfb1b4842d93742  /tmp/hexmut/mutants/m1-opposite-plus0.HexDirection.java
+da7cb8bf47c8caa7266ce7740dab1355  /tmp/hexmut/mutants/m2-swap-se-sw.HexDirection.java
+dc0bc0db58e89c9ba4207b856527907a  /tmp/hexmut/mutants/m3-drop-div2.HexCoord.java
+c1891199dfaacacc433c750aee93d530  /tmp/hexmut/mutants/m4-neighbors-five.HexCoord.java
+3cb4ad503bc1fd4dfd92c627c3c95e2c  /tmp/hexmut/mutants/m5-no-null-guard.HexCoord.java
+8872b8a3810a45bcdb1b99cbfddd13f8  /tmp/hexmut/mutants/m6-no-defensive-copy.HexGrid.java
+68073efae8e6f8172c61421e8855e215  /tmp/hexmut/mutants/m7-ball-not-copied.HexGrid.java
