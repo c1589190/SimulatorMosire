@@ -704,4 +704,30 @@ SpotBugs `BugInstance size is 0`。变异 7 轮（m5v-1..7）。
 ★ **往返夹具的 `spec` 必须 base 与 target 相同**：`spec` 不进变更集、`apply` 从 base 取（R-48-e），
 夹具若让它俩分叉，`applyRebuildsTargetExactly` 会红，而那是设计如此、不是缺陷。
 
-**BASE `84e38d2`**（Task 6 派单前的最后提交）。
+**BASE `11a8de5`**（Task 6 派单前的最后提交）。
+★ 原记 `84e38d2` —— 那是**写上面这段扫描之前的**提交。按本台账自订的口径（以实现者的父提交为 BASE，见 Task 5 那段），
+实现者首笔 `107e9d9` 的父提交是 `11a8de5`。差这一笔会把**控制器自己的台账提交**卷进评审包。
+
+## Task 6 关账（控制器自读 diff = 评审；框架期不派评审者）
+
+交付：`107e9d9`（实现，3 文件 / +893）、`db6a362`（报告 + 变异证据）、`96e8346`（补 `Patch` 变体）、
+`342917b` + `3bf7ee2`（报告与证据更新）。门禁 `clean verify` 全绿：simos-map **152** / simos-util 156 /
+simos-core 15，Checkstyle 0，SpotBugs `BugInstance size is 0`。`MapChangeSetTest` **20 例**。
+变异 **7 轮**（m6v-1..7），其中 m6v-6/7 是为本任务新增的 `Patch` 面配的自证。
+
+★ **报告的变异表与原始 surefire 输出逐轮相符**：我按另一条路径从 `rounds/m6v-*.kept` 重新数过红的例数
+（9/3/4/4/6/3/2），与报告表格逐行对得上；这与 Task 5 那次"注释数字在存档里查无"形成对照——**本任务的报告面可信**。
+
+| 项 | 裁定 |
+|---|---|
+| ★ brief 的三变体 `FieldDelta` 表达不了"同一组件又增又删"（`diff` 当场抛 `UnsupportedOperationException`） | **当场改设计**：新增第四条变体 `Patch(Upsert, Remove)`（**嵌套**，不新开第三份展开）。理由走铁律 5：`between` 是派生函数，往返必须对**任意** (b,t) 成立，而 Task 7 的反射枚举天生会造出"同组件又增又删"。语义定**先删后增**、重叠时**增胜**、**不为重叠写守卫**（R-48-e）；`rebuild` 的 `Patch` 那一路**递归复用**已有两路（重实现一遍就有了跟它们分叉的可能）。**只加两轮变异**，不铺开 |
+| 修复轮删掉 `diff` 的 `component` 参数 | **接受**。读 diff 实证：它只用于拼混合情形的异常消息，混合情形改走 `Patch` 后无消息可拼 ⇒ 死参数。Javadoc 已写明 |
+| `Patch` 重叠时"增胜"**无用例** | **接受为有意留白**（R-48-e）：`between` 是唯一生产者、产不出重叠；为不存在的输入写用例正是"为不存在的世界写代码"。已写进 `FieldDelta.Patch` 类注释 |
+| `Patch` 的 null 守卫抛 NPE，`Upsert`/`Remove` 抛 IAE | **不动**（纯外观差异）。用例已按形态 2 **精确匹配**消息钉住；两条守卫从唯一生产者走不到 |
+| 原"当场抛"用例被删（20 例的账） | **对得上**：删 1 条已废行为，加 3 条 `Patch` 用例 + `Patch` 的不可变/null 断言，18 → 20 |
+| ★ **R-48-k 兑现** | m6v-4 红在 `emptyDiffStillEntersApply:**444**`（**不是** 433 行）——正是派单前补的那条"只改 edges ⇒ 变更集不得为空"。预判成立 |
+| m6v-3 的两条是 **Errors 非 Failures**（NPE） | **接受**：变异是「全等时 `between` 返回 `null`」，NPE 是其**因果后果**（用例解引用了 null）；同一轮里 `betweenIdenticalIsAllUnchanged:240` 用 `assertThat(cs).isNotNull()` 正面红了。报告自己就如实标了 NPE，没伪装成断言红 |
+| `Patch` 的保序钉子键数 | 沿用 Task 5 量出的口径：`deltasPreserveInsertionOrder` 用 **4 键**，不用 3 |
+
+★ **交给 Task 7 的硬提醒**：`FieldDelta` 现在是**四条**变体（不是三条）——反射枚举与往返用例都要知道
+`Patch` 在"同组件又增又删"时出现；`spec` 仍是有意不进变更集的那一个（`EXCLUDED_FROM_CHANGE_SET = Set.of("spec")`）。
