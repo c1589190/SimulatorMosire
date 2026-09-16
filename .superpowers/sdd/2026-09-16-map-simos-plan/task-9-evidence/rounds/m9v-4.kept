@@ -1,0 +1,76 @@
+=================== ROUND m9v-4 ===================
+目标（变异体写进**目标类名**的文件）：generate/TerrainClassifier.java（全不中 ⇒ 常量 plains，R-9d 的等价形态）
+★ 变异在 /tmp 副本上做：REPO=/tmp/m9lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 101 个 .java，无多余文件）
+--- 改前（工作树 + 本任务新文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 184, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改的文件（1个）：
+  simos-map/src/main/java/io/mosire/simos/map/generate/TerrainClassifier.java  md5 原件=39211b644299f051d751a4c70fa39240  变异体=64c4ff38d54a6f88b7693147325a254f
+自证：每个声明的文件都与原件**字节不同** OK
+自证：除声明的文件外无文件被改动（清单其余项全部一致）OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 19
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 184, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.437 s <<< FAILURE! -- in io.mosire.simos.map.generate.TerrainClassifierTest
+Tests run: 184, Failures: 1, Errors: 0, Skipped: 0
+TerrainClassifierTest.classifyIsTotal:215 [1.0 落在最高带右端之外，必须结构性落到最高带] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+TerrainClassifierTest.classifyIsTotal:215 [1.0 落在最高带右端之外，必须结构性落到最高带] 
+--- surefire 明说（TerrainClassifierTest / TerrainCatalogTest：断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.generate.TerrainClassifierTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.437 s <<< FAILURE! -- in io.mosire.simos.map.generate.TerrainClassifierTest
+io.mosire.simos.map.generate.TerrainClassifierTest.classifyIsTotal -- Time elapsed: 0.081 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[1.0 落在最高带右端之外，必须结构性落到最高带] 
+expected: "plateau_mountains"
+ but was: "plains"
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.terrain.TerrainCatalogTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.152 s -- in io.mosire.simos.map.terrain.TerrainCatalogTest

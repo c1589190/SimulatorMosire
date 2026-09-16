@@ -1,0 +1,83 @@
+=================== ROUND m9v-1 ===================
+目标（变异体写进**目标类名**的文件）：generate/TerrainClassifier.java（沙漠恒退 plains：desert 产不出来 = 退回 6 项）
+★ 变异在 /tmp 副本上做：REPO=/tmp/m9lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 101 个 .java，无多余文件）
+--- 改前（工作树 + 本任务新文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 184, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改的文件（1个）：
+  simos-map/src/main/java/io/mosire/simos/map/generate/TerrainClassifier.java  md5 原件=39211b644299f051d751a4c70fa39240  变异体=7e1d10cb8477b77e149e86f99046a473
+自证：每个声明的文件都与原件**字节不同** OK
+自证：除声明的文件外无文件被改动（清单其余项全部一致）OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 19
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 184, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 9, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.354 s <<< FAILURE! -- in io.mosire.simos.map.generate.TerrainClassifierTest
+Tests run: 184, Failures: 2, Errors: 0, Skipped: 0
+TerrainClassifierTest.desertBandFallsBackToPlainsWhenHumid:93 [沙漠带 + 低湿度 ⇒ desert] 
+TerrainClassifierTest.everyCatalogKeyIsProducible:49 [地形 desert 必须产得出（其带 [0.45, 0.55) 的中点）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+TerrainClassifierTest.desertBandFallsBackToPlainsWhenHumid:93 [沙漠带 + 低湿度 ⇒ desert] 
+TerrainClassifierTest.everyCatalogKeyIsProducible:49 [地形 desert 必须产得出（其带 [0.45, 0.55) 的中点）] 
+--- surefire 明说（TerrainClassifierTest / TerrainCatalogTest：断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.generate.TerrainClassifierTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.354 s <<< FAILURE! -- in io.mosire.simos.map.generate.TerrainClassifierTest
+io.mosire.simos.map.generate.TerrainClassifierTest.everyCatalogKeyIsProducible -- Time elapsed: 0.047 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[地形 desert 必须产得出（其带 [0.45, 0.55) 的中点）] 
+expected: "desert"
+ but was: "plains"
+io.mosire.simos.map.generate.TerrainClassifierTest.desertBandFallsBackToPlainsWhenHumid -- Time elapsed: 0.013 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[沙漠带 + 低湿度 ⇒ desert] 
+expected: "desert"
+ but was: "plains"
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.terrain.TerrainCatalogTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.132 s -- in io.mosire.simos.map.terrain.TerrainCatalogTest
