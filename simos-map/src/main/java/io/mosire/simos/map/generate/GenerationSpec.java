@@ -45,7 +45,7 @@ import java.util.Objects;
  * @param ridges 脊线形状与"脊线 → 海拔"的衰减/谷地参数
  * @param fragmentParams 碎片形状与预算切分规则
  * @param contourCacheMax 六边形采样缓存上限（GSimulator 的 {@code ContourQueryEngine.MAX_CACHE} / {@code
- *     MapConfig} 默认 5000）
+ *     MapConfig} 默认 5000）。★ M2 Task 10 的生成器**不消费它**（没有 contour 引擎可缓存），留待 M2 关账裁决
  */
 public record GenerationSpec(
     long seed,
@@ -104,12 +104,14 @@ public record GenerationSpec(
         2, // mainRidges 默认（:60）
         5, // fragments 默认（:62）
         new NoiseBands(
-            // 五个频带（每单位半径）：MapGenerator.java:131-135
+            // 五个海拔频带（每单位半径）：MapGenerator.java:131-135
             1.8,
             3.5,
             8.0,
             20.0,
             3.5,
+            // 气候带（湿度）频率：绝对频率、不除半径：ContourQueryEngine.java:230 的 px * 0.02
+            0.02,
             // 大陆架整型与权重：ContourQueryEngine.java:147,159
             0.35,
             0.15,

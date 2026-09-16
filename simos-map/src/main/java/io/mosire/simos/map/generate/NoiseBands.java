@@ -1,18 +1,22 @@
 package io.mosire.simos.map.generate;
 
 /**
- * 噪声场的**形状参数**：五个频带的频率、各带合成海拔时的相对幅度与整形系数。
+ * 噪声场的**形状参数**：六个频带（五个海拔带 + 一个气候带）的频率、各带合成海拔时的相对幅度与整形系数。
  *
- * <p>★ **U1（本类型为什么不是"第二份高度带"）**：本类型的每一个字段都是**造海拔的过程参数** ——
+ * <p>★ **U1（本类型为什么不是"第二份高度带"）**：本类型的每一个字段都是**造海拔/造气候的过程参数** ——
  * 频率决定噪声在**空间**上变化多快（每单位半径多少个起伏），权重/系数决定各带对海拔的**相对贡献**， {@code gamma} 只做整体幂次整形，{@code
  * warpFreq/warpAmplitude} 决定采样坐标被扰动得多厉害。 <b>本类型里没有任何"海拔多高算山"之类的分界</b>：它不知道任何地形名，字段里也出现不了 {@link
  * io.mosire.simos.map.terrain.TerrainCatalog} 的 key —— 本类型**连一个 String 组件都没有**， 而"某个高度算哪种地形"的唯一持有者是
  * {@code TerrainCatalog}（{@code TerrainType.minHeight/maxHeight}）。 这一条由 {@code
  * GenerationSpecTest.noTerrainHeightThresholds} **结构性**钉住（不依赖对字段语义的判断）。
  *
- * <p>★ **为什么频率是"每单位半径"而不是绝对频率**：GSimulator 把五个频率都写成 {@code 1.8 / radius} 这类**商**（{@code
+ * <p>★ **例外只有一个、且不破 U1**：{@link #moistureFreq} 塑造的是**湿度场**而不是高度，它同样是一个"场长得多快"的频率 —— 湿度的**判定**（沙漠那道
+ * 0.35 的低湿度门）在 {@link TerrainClassifier} 里，本类型只是把噪声的尺度交出去。
+ *
+ * <p>★ **为什么海拔频率是"每单位半径"而不是绝对频率**：GSimulator 把那五个频率都写成 {@code 1.8 / radius} 这类**商**（{@code
  * MapGenerator.java:131-135}），真正可调的只有分子。 存分子、由 {@link MapGenerator}（M2 Task 10）按 {@code mapRadius}
- * 除掉 —— 于是"改半径" 不会连带改掉地形的手感，两个参数各自独立。
+ * 除掉 —— 于是"改半径" 不会连带改掉地形的手感，两个参数各自独立。 <b>唯一例外是气候带的 {@link #moistureFreq}</b>：GSimulator 原式是 {@code
+ * px * 0.02}（`ContourQueryEngine.java:230`），**不除 radius** —— 湿度场的粗细与地图半径无关，是一条**绝对频率**。
  *
  * <p>★ 少数**有意不进字段**的数字：{@code ContourQueryEngine.java:150-152} 里的 {@code +100 / +300 / +500} 与
  * {@code :164} 的 {@code +77}。它们是给各带**去相关**用的相位平移 —— 任意常数，改成任何别的值都只是换一张同样合理的图，不承载语义。把它们做成字段会让参数面
@@ -27,6 +31,8 @@ package io.mosire.simos.map.generate;
  * @param midFreq 中频带频率，每单位半径（`MapGenerator.java:133` 的 {@code 8.0 / radius}）
  * @param highFreq 高频带频率，每单位半径（`MapGenerator.java:134` 的 {@code 20.0 / radius}）
  * @param coastFreq 海岸线噪声频率，每单位半径（`MapGenerator.java:135` 的 {@code 3.5 / radius}）
+ * @param moistureFreq 气候带（湿度）的噪声频率，**绝对频率、不除半径**（`ContourQueryEngine.java:230` 的 {@code px *
+ *     0.02}；该行同时给采样坐标加了一个任意相位 {@code +500}）—— 六个频带里唯一的例外，见类注释
  * @param shelfScale 大陆架的放大系数（`ContourQueryEngine.java:147` 的 {@code shelf * 0.35}）
  * @param shelfOffset 大陆架的基线抬升（`ContourQueryEngine.java:147` 的 {@code + 0.15}）
  * @param shelfHeightWeight 大陆架对海拔的贡献权重（`ContourQueryEngine.java:159` 的 {@code shelf * 0.35}）
@@ -45,6 +51,7 @@ public record NoiseBands(
     double midFreq,
     double highFreq,
     double coastFreq,
+    double moistureFreq,
     double shelfScale,
     double shelfOffset,
     double shelfHeightWeight,
@@ -63,6 +70,9 @@ public record NoiseBands(
     midFreq = requirePositiveFrequency("midFreq", midFreq);
     highFreq = requirePositiveFrequency("highFreq", highFreq);
     coastFreq = requirePositiveFrequency("coastFreq", coastFreq);
+    // ★ 气候带这条守卫的靶子与海拔带略不同：取 0 时湿度场退化成**常数** ⇒ 沙漠门要么恒开要么恒关，
+    //   "干旱/湿润"这层地貌从此不存在（图上要么全是沙漠环、要么永远没有沙漠），且不抛任何异常。
+    moistureFreq = requirePositiveFrequency("moistureFreq", moistureFreq);
     warpFreq = requirePositiveFrequency("warpFreq", warpFreq);
   }
 

@@ -165,21 +165,25 @@ class GenerationSpecTest {
   }
 
   /**
-   * ★ 频率面守卫：六个频率**逐个**自证（`assertAll` 让 6 个都在一次运行里响， 于是"某个调用点忘了接守卫"与"守卫本身被删"都会被看见）。
+   * ★ 频率面守卫：七个频率**逐个**自证（`assertAll` 让 7 个都在一次运行里响， 于是"某个调用点忘了接守卫"与"守卫本身被删"都会被看见）。
    *
    * <p>为什么频率值得守：取 0 时该带在整张图上退化成同一个常数，这一层地貌**静默消失**。
    */
   @Test
   void noiseFrequencyMustBePositiveAndFinite() {
     assertAll(
-        frequencyRejected("shelfFreq", 0.0, 3.5, 8.0, 20.0, 3.5, 0.018),
-        frequencyRejected("lowFreq", 1.8, 0.0, 8.0, 20.0, 3.5, 0.018),
-        frequencyRejected("midFreq", 1.8, 3.5, 0.0, 20.0, 3.5, 0.018),
-        frequencyRejected("highFreq", 1.8, 3.5, 8.0, 0.0, 3.5, 0.018),
-        frequencyRejected("coastFreq", 1.8, 3.5, 8.0, 20.0, 0.0, 0.018),
-        frequencyRejected("warpFreq", 1.8, 3.5, 8.0, 20.0, 3.5, 0.0),
-        frequencyRejected("shelfFreq", Double.NaN, 3.5, 8.0, 20.0, 3.5, 0.018),
-        frequencyRejected("shelfFreq", Double.POSITIVE_INFINITY, 3.5, 8.0, 20.0, 3.5, 0.018));
+        frequencyRejected("shelfFreq", 0.0, 3.5, 8.0, 20.0, 3.5, 0.02, 0.018),
+        frequencyRejected("lowFreq", 1.8, 0.0, 8.0, 20.0, 3.5, 0.02, 0.018),
+        frequencyRejected("midFreq", 1.8, 3.5, 0.0, 20.0, 3.5, 0.02, 0.018),
+        frequencyRejected("highFreq", 1.8, 3.5, 8.0, 0.0, 3.5, 0.02, 0.018),
+        frequencyRejected("coastFreq", 1.8, 3.5, 8.0, 20.0, 0.0, 0.02, 0.018),
+        frequencyRejected("moistureFreq", 1.8, 3.5, 8.0, 20.0, 3.5, 0.0, 0.018),
+        frequencyRejected("warpFreq", 1.8, 3.5, 8.0, 20.0, 3.5, 0.02, 0.0),
+        frequencyRejected("shelfFreq", Double.NaN, 3.5, 8.0, 20.0, 3.5, 0.02, 0.018),
+        frequencyRejected("shelfFreq", Double.POSITIVE_INFINITY, 3.5, 8.0, 20.0, 3.5, 0.02, 0.018),
+        frequencyRejected("moistureFreq", 1.8, 3.5, 8.0, 20.0, 3.5, Double.NaN, 0.018),
+        frequencyRejected(
+            "moistureFreq", 1.8, 3.5, 8.0, 20.0, 3.5, Double.POSITIVE_INFINITY, 0.018));
   }
 
   // ── ★ 结构性断言（不依赖对字段语义的判断） ────────────────────────────────────
@@ -337,6 +341,7 @@ class GenerationSpecTest {
         b.midFreq(),
         b.highFreq(),
         b.coastFreq(),
+        b.moistureFreq(),
         b.shelfScale(),
         b.shelfOffset(),
         b.shelfHeightWeight(),
@@ -350,17 +355,33 @@ class GenerationSpecTest {
         b.warpAmplitude());
   }
 
-  /** 把六个频率整件替换掉的 {@link NoiseBands} 夹具（其余字段取默认值）。 */
+  /** 把七个频率整件替换掉的 {@link NoiseBands} 夹具（其余字段取默认值）。 */
   private static NoiseBands bandsWith(
       double shelfFreq,
       double lowFreq,
       double midFreq,
       double highFreq,
       double coastFreq,
+      double moistureFreq,
       double warpFreq) {
     return new NoiseBands(
-        shelfFreq, lowFreq, midFreq, highFreq, coastFreq, 0.35, 0.15, 0.35, 0.40, 0.25, 0.12, 0.45,
-        0.35, 0.92, warpFreq, 10.0);
+        shelfFreq,
+        lowFreq,
+        midFreq,
+        highFreq,
+        coastFreq,
+        moistureFreq,
+        0.35,
+        0.15,
+        0.35,
+        0.40,
+        0.25,
+        0.12,
+        0.45,
+        0.35,
+        0.92,
+        warpFreq,
+        10.0);
   }
 
   /** "这个频率必须被构造期挡住"的可执行断言，供 {@code assertAll} 逐个报告。 */
@@ -371,10 +392,13 @@ class GenerationSpecTest {
       double midFreq,
       double highFreq,
       double coastFreq,
+      double moistureFreq,
       double warpFreq) {
     return () ->
         assertThatThrownBy(
-                () -> bandsWith(shelfFreq, lowFreq, midFreq, highFreq, coastFreq, warpFreq))
+                () ->
+                    bandsWith(
+                        shelfFreq, lowFreq, midFreq, highFreq, coastFreq, moistureFreq, warpFreq))
             .as("%s 必须被构造期挡住", name)
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining(name);
