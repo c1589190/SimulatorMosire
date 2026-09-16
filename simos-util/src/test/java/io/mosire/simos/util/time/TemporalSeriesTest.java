@@ -110,6 +110,24 @@ class TemporalSeriesTest {
   }
 
   @Test
+  void sameInstantDifferentLabelsAreStillRejectedAsDuplicateSegments() {
+    // "同刻"按 `compareTo` 判定（spec §七），不是 `equals`。两段的 ticks 相同而 calendarLabel 不同：
+    // `compareTo == 0` 但 `equals == false`。**独立方法**是为了让变异证据只红一条——
+    // 若塞进 malformedSeriesAreRejectedAtConstruction，该文件里那条无 label 的同刻用例
+    // 在两种写法下都会抛，钉不住判定口径。
+    assertThatThrownBy(
+            () ->
+                SegmentedSeries.of(
+                    List.of(
+                        new Segment<>(SimosTimestamp.of(10, "第 10 日"), 1L),
+                        new Segment<>(SimosTimestamp.of(10, "第 10 日夜"), 2L)),
+                    List.of(),
+                    null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("严格升序");
+  }
+
+  @Test
   void segmentsAndEventsAreDefensivelyCopied() {
     List<Segment<Long>> mutableSegments = new ArrayList<>(List.of(segment(0, 100L)));
     List<Event<Long>> mutableEvents = new ArrayList<>(List.of(event(5, 10L, EventMode.ADD)));
