@@ -70,15 +70,89 @@ class FacetRegistryTest {
     // spec §八：value 是结构化 Object，不是预先格式化的字符串。
     FacetEntry entry = entry("social", "population", Map.of("total", 10_000, "growth", 0.03));
     assertThat(entry.value()).isInstanceOf(Map.class);
-    assertThat(new FacetRegistry().facetNames()).isEmpty();
   }
 
   @Test
   void blankOrNullPartsAreRejected() {
+    // 断言钉到**消息**：三条空白守卫的消息各不相同，只断异常类型的话把它们互换实现也照绿。
     assertThatThrownBy(() -> new FacetEntry(" ", "label", "Type", "v"))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("namespace");
+    assertThatThrownBy(() -> new FacetEntry(null, "label", "Type", "v"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("namespace");
+    assertThatThrownBy(() -> new FacetEntry("unit", " ", "Type", "v"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("label");
+    assertThatThrownBy(() -> new FacetEntry("unit", "label", " ", "v"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("typeName");
     assertThatThrownBy(() -> new FacetEntry("unit", "label", "Type", null))
-        .isInstanceOf(NullPointerException.class); // 空值走 Objects.requireNonNull，不裹成 IAE
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("value"); // 空值走 Objects.requireNonNull，不裹成 IAE
+  }
+
+  @Test
+  void nullArgumentsAreRejectedWithFieldLevelMessages() {
+    // 三条 `requireNonNull` 一律用 **`hasMessage` 精确匹配**：其消息恰是字段名本身，而删掉守卫后
+    // 紧接着的解引用（`provider.facetName()`）会抛 JDK 21 的热心 NPE，消息形如
+    // `Cannot invoke "..." because "provider" is null`——**同样含该字段名**，
+    // 故 `hasMessageContaining("provider")` 对守卫的存废毫无判别力（T7 `"t"` 的同一形态）。
+    FacetRegistry registry = new FacetRegistry();
+    assertThatThrownBy(() -> registry.register(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("provider");
+    assertThatThrownBy(() -> registry.register(provider("unit", " ")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不得为空白");
+    // null 走同一条守卫：只写 isBlank() 的实现会在此抛 NPE，本断言转红。
+    assertThatThrownBy(() -> registry.register(provider("unit", null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不得为空白");
+    assertThatThrownBy(() -> registry.queryAll(null, context()))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("subject");
+    assertThatThrownBy(() -> registry.queryAll(HEX, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("ctx");
+  }
+
+  @Test
+  void aProviderReturningNullIsRejected() {
+    // 返回 null 与"返回空列表"是两回事：前者是提供者的 bug，后者是"我这一面没内容"。
+    // 少了这条守卫，实现会以 NPE 的形态倒下——响亮，但指错了地方。
+    FacetRegistry registry = new FacetRegistry();
+    registry.register(
+        new FacetProvider() {
+
+          @Override
+          public String facetName() {
+            return "unitsHere";
+          }
+
+          @Override
+          public List<FacetEntry> query(Address subject, ResolveContext ctx) {
+            return null;
+          }
+        });
+    assertThatThrownBy(() -> registry.queryAll(HEX, context()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("unitsHere");
+  }
+
+  @Test
+  void facetNamesIsDefensivelyCopiedAndImmutable() {
+    FacetRegistry registry = new FacetRegistry();
+    assertThat(registry.facetNames()).isEmpty(); // 空注册表不是错误
+    registry.register(provider("unit", "unitsHere"));
+    List<String> names = registry.facetNames();
+    assertThatThrownBy(() -> names.add("population"))
+        .isInstanceOf(UnsupportedOperationException.class);
+    // 取到的是**快照**而非视图：后续注册不得改变已取出的列表
+    // （返回 Collections.unmodifiableList(providers.keySet()) 这类"不可改但仍是视图"的实现会在此转红）。
+    registry.register(provider("social", "population"));
+    assertThat(names).containsExactly("unitsHere");
+    assertThat(registry.facetNames()).containsExactly("unitsHere", "population");
   }
 
   private static FacetProvider provider(String namespace, String facetName, FacetEntry... entries) {
@@ -235,7 +309,7 @@ public final class FacetRegistry {
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `./mvnw -q -pl simos-util -Dtest=FacetRegistryTest test`
-Expected: PASS（5 个用例）
+Expected: PASS（**8 个用例**：brief 原给 5 条 + 控制器补齐的 3 条——null 守卫字段级消息、提供者返回 null、`facetNames()` 快照语义；`blankOrNullPartsAreRejected` 同时扩到三条空白守卫并钉消息）
 
 - [ ] **Step 5: 格式化并提交**
 

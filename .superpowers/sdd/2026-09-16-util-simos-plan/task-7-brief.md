@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BinaryOperator;
 import org.junit.jupiter.api.Test;
 
 /** spec §七：四条时间语义逐条钉死。 */
@@ -108,32 +109,120 @@ class TemporalSeriesTest {
 
   @Test
   void malformedSeriesAreRejectedAtConstruction() {
+    // 断言钉到**消息**而非只钉异常类型：三条守卫的消息各不相同，
+    // 只断类型的话把三条守卫互换实现也照绿（T6 先例）。
     assertThatThrownBy(() -> SegmentedSeries.of(List.of(), List.of(), null))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("anchor");
     assertThatThrownBy(
             () -> SegmentedSeries.of(List.of(segment(10, 1L), segment(10, 2L)), List.of(), null))
-        .isInstanceOf(IllegalArgumentException.class); // 同刻两段
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("严格升序"); // 同刻两段
     assertThatThrownBy(
             () ->
                 SegmentedSeries.of(
                     List.of(segment(0, 1L)),
                     List.of(event(5, 1L, EventMode.SET), event(3, 2L, EventMode.SET)),
                     null))
-        .isInstanceOf(IllegalArgumentException.class); // 事件时刻回退
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("非递减"); // 事件时刻回退
   }
 
   @Test
   void segmentsAndEventsAreDefensivelyCopied() {
     List<Segment<Long>> mutableSegments = new ArrayList<>(List.of(segment(0, 100L)));
-    TemporalSeries<Long> series = SegmentedSeries.of(mutableSegments, List.of(), null);
+    List<Event<Long>> mutableEvents = new ArrayList<>(List.of(event(5, 10L, EventMode.ADD)));
+    TemporalSeries<Long> series =
+        SegmentedSeries.of(mutableSegments, mutableEvents, ADDITION);
     mutableSegments.clear();
+    mutableEvents.clear();
+    // 两半都测：调用方的可变对象被隔离 + 取出来的列表不可改。
     assertThat(series.segments()).hasSize(1);
+    assertThat(series.events()).hasSize(1);
+    assertThat(series.valueAt(SimosTimestamp.of(5))).isEqualTo(110L); // clear 后行为不变
     assertThatThrownBy(() -> series.segments().add(segment(1, 1L)))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> series.events().add(event(6, 1L, EventMode.ADD)))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
+  @Test
+  void nullArgumentsAreRejectedWithFieldLevelMessages() {
+    // 字段级消息：`requireNonNull` 的字段串若写错位，只断异常类型的写法不会转红。
+    assertThatThrownBy(() -> SegmentedSeries.of(null, List.of(), null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("segments");
+    assertThatThrownBy(() -> SegmentedSeries.of(List.of(segment(0, 1L)), null, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("events");
+    assertThatThrownBy(() -> new Segment<Long>(null, 1L))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("from");
+    assertThatThrownBy(() -> new Segment<>(SimosTimestamp.of(0), null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("value");
+    assertThatThrownBy(() -> new Event<Long>(null, 1L, EventMode.SET))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("at");
+    assertThatThrownBy(() -> new Event<>(SimosTimestamp.of(0), null, EventMode.SET))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("value");
+    assertThatThrownBy(() -> new Event<Long>(SimosTimestamp.of(0), 1L, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("mode");
+    assertThatThrownBy(() -> series(List.of(segment(0, 1L)), List.of()).valueAt(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("t");
+  }
+
+  @Test
+  void aSharedAdditionInstanceMakesStructurallyIdenticalSeriesEqual() {
+    // spec §七：`addition` 是普通组件，record 的 `equals` 对函数只能按**身份**比较。
+    // 用同一个共享实例构建的两个同构序列必须相等——M2 起的往返断言拿这个当判据（铁律 5）。
+    List<Segment<Long>> segments = List.of(segment(0, 100L));
+    List<Event<Long>> events = List.of(event(5, 10L, EventMode.ADD));
+    assertThat(SegmentedSeries.of(segments, events, ADDITION))
+        .isEqualTo(SegmentedSeries.of(segments, events, ADDITION));
+  }
+
+  @Test
+  void twoEquivalentButDistinctLambdasMakeSeriesUnequal() {
+    // G13 自证：这条**故意**把陷阱钉住——它证明 `equals` 真的在比较 `addition`。
+    // 若有人把 `equals` 改成忽略 `addition`（本项目最贵教训 MapDiff 的形态），本用例立刻转红。
+    BinaryOperator<Long> first = capturingAdder();
+    BinaryOperator<Long> second = capturingAdder();
+    assertThat(first).isNotSameAs(second); // 先自证前提：两个实例确实不同
+    List<Segment<Long>> segments = List.of(segment(0, 100L));
+    List<Event<Long>> events = List.of(event(5, 10L, EventMode.ADD));
+    assertThat(SegmentedSeries.of(segments, events, first))
+        .isNotEqualTo(SegmentedSeries.of(segments, events, second));
+  }
+
+  @Test
+  void setOnlySeriesWithNullAdditionStillCompareByValue() {
+    // `addition` 为 null 的 SET-only 序列不受身份比较影响（spec §七）。
+    assertThat(
+            SegmentedSeries.of(
+                List.of(segment(0, 1L)), List.of(event(5, 2L, EventMode.SET)), null))
+        .isEqualTo(
+            SegmentedSeries.of(
+                List.of(segment(0, 1L)), List.of(event(5, 2L, EventMode.SET)), null));
+  }
+
+  /**
+   * 捕获局部变量的 lambda 每次求值都产生**新实例**（JLS §15.27.2），故两次调用必得两个不同实例——
+   * 不依赖 JIT 对非捕获 lambda 的按调用点缓存（那会让同一调用点的两次求值返回同一实例，前提落空）。
+   */
+  private static BinaryOperator<Long> capturingAdder() {
+    long zero = 0L;
+    return (a, b) -> a + b + zero;
+  }
+
+  /** 共享的加法实例：spec §七 要求含 `ADD` 的序列一律用模块级 `static final` 常量。 */
+  private static final BinaryOperator<Long> ADDITION = Long::sum;
+
   private static TemporalSeries<Long> series(List<Segment<Long>> segments, List<Event<Long>> events) {
-    return SegmentedSeries.of(segments, events, Long::sum);
+    return SegmentedSeries.of(segments, events, ADDITION);
   }
 
   private static Segment<Long> segment(long from, long value) {
@@ -240,18 +329,32 @@ import java.util.function.BinaryOperator;
  *
  * <p>四条时间语义：段边界左闭右开；anchor 之前向前恒定延拓；同刻先切段再施加事件；同刻多事件按插入序。
  * `ADD` 的算术由调用方以 {@link BinaryOperator} 注入——Util 不把 `T` 限制成数字。
+ *
+ * <p><b>是 record，不是 `final class`</b>：`TemporalSeries` 是状态类型，往返断言（铁律 5）要拿它当判据，
+ * 故 `equals` 一律由 record 提供、禁手写（spec §十一）。代价是 `addition` 按**身份**比较——函数没有结构相等。
  */
-public final class SegmentedSeries<T> implements TemporalSeries<T> {
+public record SegmentedSeries<T>(
+    List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition)
+    implements TemporalSeries<T> {
 
-  private final List<Segment<T>> segments;
-  private final List<Event<T>> events;
-  private final BinaryOperator<T> addition;
-
-  private SegmentedSeries(
-      List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition) {
-    this.segments = segments;
-    this.events = events;
-    this.addition = addition;
+  /**
+   * 紧凑构造器即校验点：record 的规范构造器是公开的，绕过 {@link #of} 直接 {@code new} 也受同一套守卫约束。
+   *
+   * @throws IllegalArgumentException 段为空、段未严格升序、事件时刻回退，或含 `ADD` 事件却未给 `addition`
+   */
+  public SegmentedSeries {
+    Objects.requireNonNull(segments, "segments");
+    Objects.requireNonNull(events, "events");
+    segments = List.copyOf(segments);
+    events = List.copyOf(events);
+    if (segments.isEmpty()) {
+      throw new IllegalArgumentException("序列至少一个段（第一段即 anchor）");
+    }
+    requireStrictlyAscending(segments);
+    requireNonDecreasing(events);
+    if (addition == null && events.stream().anyMatch(e -> e.mode() == EventMode.ADD)) {
+      throw new IllegalArgumentException("含 ADD 事件的序列必须在构造期提供 addition（spec §七）");
+    }
   }
 
   /**
@@ -261,19 +364,7 @@ public final class SegmentedSeries<T> implements TemporalSeries<T> {
    */
   public static <T> SegmentedSeries<T> of(
       List<Segment<T>> segments, List<Event<T>> events, BinaryOperator<T> addition) {
-    Objects.requireNonNull(segments, "segments");
-    Objects.requireNonNull(events, "events");
-    List<Segment<T>> copiedSegments = List.copyOf(segments);
-    List<Event<T>> copiedEvents = List.copyOf(events);
-    if (copiedSegments.isEmpty()) {
-      throw new IllegalArgumentException("序列至少一个段（第一段即 anchor）");
-    }
-    requireStrictlyAscending(copiedSegments);
-    requireNonDecreasing(copiedEvents);
-    if (addition == null && copiedEvents.stream().anyMatch(e -> e.mode() == EventMode.ADD)) {
-      throw new IllegalArgumentException("含 ADD 事件的序列必须在构造期提供 addition（spec §七）");
-    }
-    return new SegmentedSeries<>(copiedSegments, copiedEvents, addition);
+    return new SegmentedSeries<>(segments, events, addition);
   }
 
   @Override
@@ -289,15 +380,8 @@ public final class SegmentedSeries<T> implements TemporalSeries<T> {
     return value;
   }
 
-  @Override
-  public List<Segment<T>> segments() {
-    return segments;
-  }
-
-  @Override
-  public List<Event<T>> events() {
-    return events;
-  }
+  // `segments()` / `events()` 由 record 自动生成，已满足 TemporalSeries 的契约，无需手写覆盖
+  // （手写覆盖在这里只会是重复代码，且会给 SpotBugs/评审增加无谓的读数）。
 
   /** 段值：`t` 早于第一段则为第一段的值（向前恒定延拓）。 */
   private T baseValueAt(SimosTimestamp t) {
@@ -340,7 +424,7 @@ public final class SegmentedSeries<T> implements TemporalSeries<T> {
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `./mvnw -q -pl simos-util -Dtest=TemporalSeriesTest test`
-Expected: PASS（9 个用例）
+Expected: PASS（**13 个用例**：brief 原给 9 条 + 控制器补齐的 4 条——null 守卫字段级消息、共享 `addition` 相等、两个等价 lambda 不相等、SET-only 的 null `addition` 仍按值相等）
 
 - [ ] **Step 6: 格式化并提交**
 
