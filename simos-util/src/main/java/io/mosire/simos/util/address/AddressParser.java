@@ -99,7 +99,11 @@ final class AddressParser {
     int dot = indexOfUnquotedDot(token);
     if (dot < 0) {
       if (isQuoted(token)) {
-        return Entity.of(unquote(token));
+        // 引号只在有未加引号的 `.` 时才参与段类型判定（spec §3.4 末段）：无未加引号 `.` 的 token 先去引再判。
+        // 第 ≥3 段去引后是裸词即 `Property`（引号冗余，归一掉）；否则是缺 kind 的 `Entity`（canonical 会重新加引）。
+        // 第 2 段是根主体，永远是 `Entity`（spec §3.2）。
+        String text = unquote(token);
+        return position >= 2 && AddressText.isBareWord(text) ? new Property(text) : Entity.of(text);
       }
       if (!AddressText.isBareWord(token)) {
         throw new IllegalArgumentException(

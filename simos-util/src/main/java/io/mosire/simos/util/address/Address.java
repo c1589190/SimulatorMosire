@@ -31,6 +31,9 @@ public record Address(List<AddressSegment> segments) {
    * <p>它的 canonical 与同名 {@link Property} 逐字相同（都是 `member`），canonical 唯一性与 `parse(canonical(x)) ==
    * x` 会同时破。名字需要加引的缺 kind 实体不在此列（如 {@code "Nation.区域A"}）： 它的 canonical 自带引号，解析回来仍是同一个缺 kind
    * 实体——spec §3.1 的 Human 形式靠它承载。
+   *
+   * <p>解析器不会产出这种实体（`unit:U:"member"` 按 spec §3.4 末段归一并读成 {@link Property}），
+   * 故本校验守的是直接构造——段类型无位置信息，只能在这一层判（spec §3.2 末段）。
    */
   private static boolean rendersAsBareSubject(AddressSegment segment) {
     return segment instanceof Entity e && e.kind().isEmpty() && AddressText.isBareWord(e.name());

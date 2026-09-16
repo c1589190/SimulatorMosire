@@ -58,6 +58,18 @@ class AddressParseTest {
         .isEqualTo(new Property("hexes"));
   }
 
+  /**
+   * spec §3.4 末段：引号只在有未加引号的 `.` 时才参与段类型判定——第 ≥3 段无未加引号 `.` 的 token 先去引再判，去引后是裸词即
+   * `Property`（引号冗余，归一掉）。
+   */
+  @Test
+  void quotedBareWordAtPositionThreeNormalizesToProperty() {
+    assertThat(Address.parse("unit:U:\"member\"").segments().get(2))
+        .isEqualTo(new Property("member"));
+    assertThat(Address.parse("unit:U:\"member\"").canonical()).isEqualTo("unit:U:member");
+    assertThat(Address.parse("unit:\"U\":member").segments().get(1)).isEqualTo(Entity.of("U"));
+  }
+
   @Test
   void indexSegmentIsParsed() {
     assertThat(Address.parse("map:Map1:[4,3]").segments().get(2))
