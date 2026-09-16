@@ -47,7 +47,9 @@
 
 `writing-plans` 技能规定：spec 覆盖多个独立子系统时，应拆成"每个子系统一份计划，每份能独立产出可工作、可测试的软件"。M1（UtilSimos 八大件）本身就能独立产出一个"八大件全绿 + 往返不变式框架"的可测库，且是 spec 点名的**两个成败点之一**——它值得单独一份计划。
 
-**M1 的详细计划是下一份文档**，前置条件是把 spec §十三 中"UtilSimos 待决事项"（八大件完整签名、Address 转义规则、Resolver 注册与优先级、TemporalSeries 插值/事件语义、Facet 协议）裁决掉。裁决方式可以是用户直接拍板，也可以在 M1 计划里作为显式决策列出供审。
+**M1 的详细计划曾是"下一份文档"**（此为本计划原稿口径，保留于此作为当时的拆卷理由），前置条件是把 spec §十三 中"UtilSimos 待决事项"（八大件完整签名、Address 转义规则、Resolver 注册与优先级、TemporalSeries 插值/事件语义、Facet 协议）裁决掉。裁决方式可以是用户直接拍板，也可以在 M1 计划里作为显式决策列出供审。
+
+**该前置条件已满足**（2026-09-16 关账时更正）：五项待决已在 M1 spec 的「〇 已裁决记录」逐条裁决完毕，详细计划也已落盘并**执行完毕**——spec 是 `docs/superpowers/specs/2026-09-16-util-simos-design.md`，计划是 `docs/superpowers/plans/2026-09-16-util-simos-plan.md`（11 个任务），关账结论见 §二 M1 的**状态**行。
 
 ### 0.3 里程碑顺序（spec §11）
 
@@ -1122,6 +1124,31 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 | **判据** | 八大件各有单测；往返不变式框架有一个**故意漂移字段**的失败用例，证明护栏真的会响（spec §11） |
 | **待决**（spec §十三） | 八大件完整方法签名；Address 转义与边界规则；Resolver 注册与优先级；TemporalSeries 的插值/事件语义；Facet 查询协议 |
 | **依赖** | M0 |
+| **状态** | ✅ **已完成**（2026-09-16；spec 五项待决于 §〇 裁决，计划 11 个任务逐个执行并过审；本地提交、**未推送**） |
+
+**M1 关账记录（2026-09-16）**：spec `docs/superpowers/specs/2026-09-16-util-simos-design.md`（已批准）；
+计划 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` 的 11 个任务全部执行完毕：
+
+| # | 任务 | 产出 |
+|---|---|---|
+| 1 | 地址段类型与 canonical 渲染 | 四种段（`Namespace`/`Entity`/`Index`/`Property`）+ `AddressText` |
+| 2 | `Address.parse` / `canonical` + 冻结样例 | 解析器 + 15 条冻结样例往返恒等 |
+| 3 | 身份 | `SubjectId` / `ResolvedSubject` / `QueryResult` |
+| 4 | 时间基础 | `SimosTimestamp` / `TimeRange` |
+| 5 | 外挂属性 | `InfoEntry` / `InfoSystem` / `InMemoryInfoSystem` |
+| 6 | 版本坐标、三个协议接口与 `SimulationState` | state 包 |
+| 7 | `TemporalSeries` 与 `SegmentedSeries` | 四条时间语义 |
+| 8 | `Resolver` SPI 与注册表 | resolve 包 |
+| 9 | Facet 协议与注册表 | facet 包 |
+| 10 | 往返不变式框架 + 漂移自证 | verify 包（M1 硬判据） |
+| 11 | M1 关账 | 判据核对 + spec 回填 + 状态表同步 |
+
+**`verify` 结论**（`./mvnw clean verify`，在 `54ef235` 上实测）：SimulatorMosire / UtilSimos / MapSimos /
+SocialSimos / UnitSimos / CoreSimos **六个 reactor 模块全 `SUCCESS`**、`BUILD SUCCESS`、
+`grep -c '^\[ERROR\]'` → **0**；`simos-util` **17 个测试类 / 156 条用例**全绿；`simos-core` 的
+`AgentLibAvailabilityTest` **15 条**全绿；SpotBugs `BugInstance size is 0`。
+判据（spec §1.2）逐条核对的过程与原始输出见工作台账
+`.superpowers/sdd/2026-09-16-util-simos-plan/task-11-report.md`；上述数字均可由 `./mvnw clean verify` 原样复现。
 
 ### M2：MapSimos
 
@@ -1131,6 +1158,8 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 | **判据** | GSimulator 的 L1~L9 **逐条**有对应用例；框选随机化与自动河流各有验收（spec §11） |
 | **待决** | 六边形数据结构最终形态；`Region` 如何统一 GSimulator 的三个 region 概念；连通性稳定 ID 生成规则；生成算法参数面；`MapChangeSet` 字段清单 |
 | **依赖** | M1 |
+
+**M2 规范必须明确的一条跨里程碑约束**（M1 关账时补记）：**任何含 `ADD` 事件的 `TemporalSeries`，一律用模块级 `static final` 的 `addition` 构建**。spec §七 已述——`SegmentedSeries` 是 record，`addition` 在 `equals` 里按**身份**比较（函数没有结构相等）；**各写各的 lambda 会让两个结构相同的序列不相等**，从而让 M2 起的往返断言以"序列不相等"这种费解形态**假红**。M2 的 `MapChangeSet` 若含时态序列，其 spec 与测试都必须照此办理。
 
 **M2 必须修正的 GSimulator 缺陷**（spec §5.1，逐条源码核实过）：
 L1 子节点写 `edges` 静默丢失 / L2 双份连通性存储 / L3 方向数组错位（`TerrainGeometry.DIRS` 与 `MapService.HEX_DIRS` 在索引 1-4 指向不同方向）/ L4 三个 region 概念 / L5 Province 归属 O(区域数×hex数) / L6 坐标表述不一致 / L7 无海拔无种子落盘 / L8 12 参数构造复制 12 次 / L9 地形词表分裂。
@@ -1213,7 +1242,7 @@ L1 子节点写 `edges` 静默丢失 / L2 双份连通性存储 / L3 方向数�
 |---|---|
 | §2 五条铁律 | Task 2 Step 5（README）+ Global Constraints G10 |
 | §3.1 依赖硬约束 | Task 3（enforcer 强制）+ G6~G9 |
-| §4 UtilSimos 八大件 | M1 路线图（详细计划待写） |
+| §4 UtilSimos 八大件 | M1 详细计划（已执行完毕）：`docs/superpowers/plans/2026-09-16-util-simos-plan.md`；关账见 §二 M1 的**状态**行 |
 | §5.1~§5.4 各模块职责与不做清单 | M2~M5 路线图"交付物/待决" |
 | §5.5 AgentBinding | M5 路线图 |
 | §6 两阶段时间推进 | M4 路线图 + 判据 |

@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-16-util-simos-design.md`（M1 spec，已批准）——本计划的每一步都从它派生；总纲是 `docs/superpowers/specs/2026-09-16-simos-master-design.md`。**执行者必须同时读这两份**，尤其是 spec §三（Address）与 §九（往返框架）。
 
+> **⚠️ 全文代码草图是计划期产物，执行期已就地校正过（2026-09-16 关账时补记）。**
+> 下面的 Java 草图**不是权威**——**spec 与已落地的 `simos-util/src` 才是权威**。已知分歧至少六处，各自在
+> 对应位置有**取代说明**：任务地图的 Task 2 行、以及 Task 7 Step 1 前·Step 4、Task 8 Step 1 前、
+> Task 9 Step 1 前、Task 10 Step 1 前·Step 2 各一处。
+> **取代说明一律保留草图原貌**：计划的写法本身是记录，抹掉它等于抹掉"spec 在执行期被磨尖过"这件事。
+> **M2 及以后照抄本计划的草图会重蹈覆辙**——照抄 Task 9 或 Task 10 的草图**编译得过但跑不过**，理由见各处的取代说明。
+
 ## Global Constraints
 
 - **Java 21**（`maven.compiler.release=21`）；Maven `[3.8,)`；父 POM `io.mosire:simos-parent:0.1.0-SNAPSHOT`，**不继承** `io.mosire:mosire-parent`
@@ -52,7 +59,7 @@
 | # | 任务 | 交付物 |
 |---|---|---|
 | 1 | 地址段类型与 canonical 渲染 | 四种段 + `AddressText` |
-| 2 | `Address.parse` / `canonical` + 冻结样例 | 解析器 + 14 条冻结样例核对 |
+| 2 | `Address.parse` / `canonical` + 冻结样例 | 解析器 + 14 条冻结样例核对（**执行期更正，2026-09-16**：本行原写 14 条，**与本计划 Task 2 Step 5 自己的"15 条冻结样例"不一致**；实际 spec §3.6 表是 **14 行、15 条**——`unit:U:hex` / `unit:U:speed` 同占一行。已落地的 `AddressParseTest.frozenSamplesRoundTrip` 是 **15** 个 `@ValueSource` 参数，surefire 报告亦为 15 条） |
 | 3 | 身份：`SubjectId` / `ResolvedSubject` / `QueryResult` | identity 包 |
 | 4 | 时间基础：`SimosTimestamp` / `TimeRange` | time 包（上半） |
 | 5 | 外挂属性：`InfoEntry` / `InfoSystem` / `InMemoryInfoSystem` | info 包 |
@@ -1860,6 +1867,10 @@ git commit -m "feat(util): 版本坐标、三个协议接口与 SimulationState�
 
 **本节的四条时间语义**（spec §七，逐条可测）：段边界**左闭右开**；anchor 之前**向前恒定延拓**；同刻**先切段、再施加事件**；同刻多事件按**插入序**。**不做插值**——段是阶跃常量。
 
+> **取代说明（2026-09-16 执行期，用例数）**：本节 Step 1 的草图是**计划期下限**——已落地的
+> `TemporalSeriesTest` 是 **16** 条（草图 9 条）。派发前逐条补齐了 G13 守卫自证：null 守卫要钉**字段级消息**、
+> 同一个共享 `addition` 构建的两个同构序列**相等**、两个等价但不同的 lambda 构建的序列**不相等**。
+
 - [ ] **Step 1: 写失败测试**
 
 ```java
@@ -2074,6 +2085,13 @@ public enum EventMode {
 
 - [ ] **Step 4: 实现 `SegmentedSeries`**
 
+> **取代说明（2026-09-16 执行期；不要照抄下面的草图）**：草图是 `public final class SegmentedSeries<T>`
+> ——私有构造器、显式字段、**校验与拷贝全在 `of` 里**（私有构造器自身不校验、不拷贝）。而 **spec §七 强制它是
+> record，不是 `final class`**：往返断言（铁律 5）要拿它当判据，`equals` 必须由 record 提供、**禁手写**（spec §十一）。
+> 已落地的是 **record + 紧凑构造器校验 + `List.copyOf` 防御拷贝**——record 的规范构造器是公开的，
+> 校验放进紧凑构造器才能让 `new` 与 `of` 两条入口受同一套守卫约束；且**不**手写 `segments()` / `events()` 覆盖。
+> 代价照旧：`addition` 按**身份**比较（spec §七 已述）。
+
 ```java
 package io.mosire.simos.util.time;
 
@@ -2212,6 +2230,14 @@ git commit -m "feat(util): TemporalSeries 与 SegmentedSeries，四条时间语�
 - Produces: `ResolveContext(SimulationState state, SimosTimestamp at)`；`Resolver{namespace(), resolve(Address, ResolveContext)}`；`ResolverRegistry{register(Resolver), namespaces(), resolve(Address, ResolveContext)}`
 
 **裁决口径**（spec §〇 第 3 项）：**namespace 唯一映射**——无顺序、无兜底、重复注册立即抛异常。与 GSimulator 的"多解析器按优先级遮蔽、不匹配就静默兜底"相反。
+
+> **取代说明（2026-09-16 执行期，两处）**：
+> ① **用例数是计划期下限**——下面的草图 4 条，已落地的 `ResolverRegistryTest` 是 **8** 条：派发时逐条补齐了
+> null 守卫（`register(null)`、`resolver(null, …)`）与 `namespaces()` 的**快照语义**用例。
+> ② **注册序反了，且是有意的**：草图写 `map` → `unit` 并断言 `containsExactly("map", "unit") // 注册序`——
+> 但 `map` → `unit` **恰好等于字母序**，于是"注册序"那条断言换成 `TreeMap` 实现也照样绿（**空转护栏**）。
+> 已落地的是 `unit` → `map` + `containsExactly("unit", "map") // 注册序，非排序`：只有真正保序的实现
+> （`LinkedHashMap`）才通过。**照抄草图的顺序会把这条护栏重新变成装饰。**
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2444,6 +2470,21 @@ git commit -m "feat(util): Resolver SPI 与唯一映射注册表（M1 Task 8）"
 - Produces: `FacetProvider{facetName(), query(Address, ResolveContext)}`；`FacetEntry(String namespace, String label, String typeName, Object value)`；`FacetRegistry{register(FacetProvider), facetNames(), queryAll(Address, ResolveContext)}`
 
 **解决什么**：`inspect map:Map1:hex.4_3` 要能列出该 hex 上的单位，而 `MapSimos` 绝不能知道 `UnitSimos` 存在（铁律 3）。模块自注册提供者，`MapSimos` 对这些扩展完全不知情。
+
+> **取代说明（2026-09-16 执行期，两处；照抄下面的草图必然编译过但跑不过）**：
+> ① **草图自相矛盾**：Step 1 的 `queryAllConcatenatesInRegistrationOrder` 断言
+> `registry.facetNames()).containsExactly("unit", "social") // 注册序`，而**同一张草图**的 Step 3 实现里
+> `register` 是 `putIfAbsent(facetName, provider)`、`facetNames()` 返回 `keySet()`——**返回的是 facet 名，不是 namespace**。
+> 断言与实现互斥，逐字照抄必跑不过。根因是 Step 1 里那个草图助手
+> `provider(String namespace, String facetName, FacetEntry... entries)` 的第 1 参 **从未被引用**（死参）。
+> 已落地的是 **`provider(String facetName, FacetEntry...)`（死参已删）+ `containsExactly("unitsHere", "population")`**。
+> **⇒ 计划原文与已落地断言值不同，M2 照抄草图会重蹈覆辙。**（旁注一：草图那条 `// 注册序` 的**判别力论证是错的**——
+> 它按 **namespace** 比较字母序（`social` < `unit`），而 `facetNames()` 返回的是 **facet 名**；正确的那条轴上是
+> `"population"` < `"unitsHere"`。结论（`unitsHere` → `population` 非字母序）**恰好仍成立**——2026-09-16 以 jshell 实测：
+> `List.of("unitsHere","population").stream().sorted()` → `[population, unitsHere]`，与已落地断言**相反**，故该断言对排序实现确有判别力。
+> 旁注二：**这是"断言值与实现互斥"，不是"注释里顺序写错"**——照抄者会直接撞墙，且会先怀疑自己的环境。）
+> ② **用例数是计划期下限**：草图 5 条，已落地的 `FacetRegistryTest` 是 **10** 条：派发时逐条补齐了
+> 提供者返回 `null` 的守卫与 `facetNames()` 的**快照语义**用例。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2694,6 +2735,20 @@ git commit -m "feat(util): Facet 协议与注册表（M1 Task 9）"
 
 **工具必须在 main 源码里**（M2~M4 都要用），因此**不能依赖 JUnit**——失败以 `AssertionError` 抛出。
 
+> **取代说明（2026-09-16 执行期，两处；照抄下面的草图必然抛 AssertionError）**：
+> ① **草图自相矛盾**：本节 Step 1 草图的 `ToySnapshot.apply` 写的是
+> `new StateRef(base.ref().branch(), changeSet.baseRevision())`，而 `changeSet.baseRevision()` 是 **base 的**版本
+> （`diff` 传的正是 `base.ref().revision()`）。于是 `apply` 产出的 ref **恒等于 base 的 ref**，
+> 而本步所有用例都是 `base = ref(1)` / `target = ref(2)`——**`target` 永远不可达**，
+> Step 5（`Expected: PASS`）那一次运行**不可能通过**：`aCorrectRoundTripPasses` 断言的是"不得抛出"，
+> 而它必然抛 `AssertionError`。**2026-09-16 关账时以真实值类型在 jshell 上实跑证实**：
+> `target.rev=2`、`appliedPerPlan.rev=1`、`target.equals(appliedPerPlan)=false`；
+> 按已落地写法（`+1`）则 `applied.rev=2`、`equals=true`。
+> 已落地的是产出**下一个**版本（`changeSet.baseRevision().value() + 1`），`DriftingSnapshot.apply`（Step 2）同改。
+> ② **用例数是计划期下限**：草图 4 条，已落地的是 `RoundTripAssertionsTest` **6** 条 + `RoundTripAssertionsDriftTest` **1** 条
+> （共 7 条）：派发时补齐了 null 返回守卫（`diff` / `apply` 各自，且 `assertSnapshotRoundTrip` 里那一份**单独**要有一条——
+> 同一文件内的不对称即是证据）与"框架对 `S` 不设上界"的用例。
+
 - [ ] **Step 1: 写失败测试（框架本身）**
 
 ```java
@@ -2790,6 +2845,16 @@ class RoundTripAssertionsTest {
 ```
 
 - [ ] **Step 2: 写失败测试（**护栏自证**，spec §9.3 + G13）**
+
+> **取代说明（2026-09-16 执行期，本 Step 的草图另有两处必须改）**：
+> ① `DriftingSnapshot.apply` 里的 `new StateRef(base.ref().branch(), changeSet.baseRevision())` 同 Step 1 的错——
+> 照抄时 applied 的 ref 比 target **低一版**，于是**即便 `diff` 把 `beta` 一并带上（漂移消失），`assertRoundTrip`
+> 仍然会抛**：本用例的断言是"必须抛 `AssertionError`"，故它**照样通过**，但它证明的已不是"抓到了 beta 漂移"，
+> 而是"ref 不匹配"——**判别力在无声中丢掉了**（"红了还要问为什么红"）。已落地为 `base.ref().revision().value() + 1`。
+> ② `.hasMessageContaining("beta")` **零判别力**：报文里 base 行与 target 行是**无条件打印**的，两侧都带 `beta` 字样，
+> 只钉字段名对"差异出在哪个字段"毫无鉴别。已落地为**钉 actual 那一整行**（`"  actual    = " + expectedActual`）——
+> `apply` 的预期结果与 target **只差 beta**，由构造本身把这件事钉死，而不是靠子串碰巧满足。
+> （更早一版的修法钉 `beta=9` / `beta=2` 两条具体值，仍不够：那两条 needle 分别被 base 行与 target 行满足，见已落地用例的注释。）
 
 ```java
 package io.mosire.simos.util.verify;

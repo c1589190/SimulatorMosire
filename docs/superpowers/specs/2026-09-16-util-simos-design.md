@@ -211,6 +211,12 @@ public record StateMeta(StateRef ref, SimosTimestamp timestamp) {}
 ```
 
 - **`tick` 是第一序**；比较只看 `tick`（`calendarLabel` 仅作展示，同 tick 视为同一时刻）。
+- **`SimosTimestamp` 的 `equals` 含 `calendarLabel`，而 `compareTo` 只看 `tick`**（执行期回填，2026-09-16）：
+  两者口径**有意**不同——`equals` 由 record 提供、必比全部组件（§十一 禁手写），排序只管第一序。
+  故判"同刻"一律用 **`compareTo == 0`**，**不要**用 `equals`；带 label 的时间戳是这两种实现**分叉**的地方。
+- **`TimeRange` 的 `to` 必须严格晚于 `from`**（执行期回填，2026-09-16）：区间左闭右开 `[from, to)`，
+  空区间是配置错误，故构造期即抛 `IllegalArgumentException`，不给它静默存在的机会；`to` 缺省（`Optional.empty()`）
+  表示无上界，与"传了 `null`"不是一回事（后者抛 NPE）。
 - **时间戳与版本正交**（总纲 §0.1）：`RevisionId` 管数据版本，`SimosTimestamp` 管模拟时间，两把尺子互不换算。
 - `RevisionId` **只在分支内有意义**；跨分支的完整坐标是 `StateRef`（总纲 §4.1）。
 - **没有 setter**：推进只经 `plus(delta)`（总纲 §4.9）。世界时钟"只能 `advance`/`rewind`、不能赋值"的纪律由 Core（M4）的时钟持有者保证；Util 只保证类型本身不提供复写入口。
@@ -366,6 +372,10 @@ public final class RoundTripAssertions {
 
 ## 十二 测试清单（判据"八大件各有单测"的落点）
 
+> **本表是下限，不是上限**：执行期新增的测试类（如回填进来的 `TimeRangeTest`）只增不减，表外的类不是异常。
+> **表格也不是证据**——判"某个件有没有落点"要去看用例本身，不要从表格推（M1 关账时曾从本表直接推出
+> "`ChangeSet`/`Command` 缺落点"，实际用例一直在 `SnapshotProtocolTest` 里）。
+
 | 测试类 | 覆盖 |
 |---|---|
 | `AddressParseTest` | §3.6 冻结样例逐条：解析结果 + 往返恒等；第 2 段主体段规则 |
@@ -373,8 +383,9 @@ public final class RoundTripAssertions {
 | `AddressTolerantParseTest` | `Map1.[4,3]` 宽容写法；非法输入（段数 < 2、首段非裸词、`[` 未闭合、空段、`[]`）抛 `IllegalArgumentException` |
 | `SubjectIdTest` / `ResolvedSubjectTest` / `QueryResultTest` | 值语义、不可变、候选列表保序 |
 | `SimosTimestampTest` | 排序、`plus` 保留 label、时间戳无 setter（编译期即证） |
+| `TimeRangeTest`（执行期回填，2026-09-16） | `to` 必须严格晚于 `from`（否则构造期抛 `IllegalArgumentException`）；`since` 无上界；`contains` 左闭右开 |
 | `StateRefTest` | 分支 + 版本的坐标语义 |
-| `SnapshotProtocolTest` | 玩具快照实现三个接口方法；`namespace()` 与 `modules` 键一致 |
+| `SnapshotProtocolTest` | 三个协议接口各实现一遍——`Snapshot` 三方法（玩具快照）；`ChangeSet.baseRevision()` 与 `Command.expectedRevision()` 各自取值（执行期回填说明：这两个件是**单方法接口、无行为可测**，故不另开测试类）；`namespace()` 与 `modules` 键一致 |
 | `SimulationStateTest` | `module(namespace)` 取用；无跨模块访问器（编译期即证） |
 | `InMemoryInfoSystemTest` | 按 key + 时刻取值；有效区间（`TimeRange` 左闭右开）；`put` 返回新实例且原实例不变 |
 | `TemporalSeriesTest` | 四条时间语义逐条：段边界左闭右开；同刻先切段后事件；ADD 累积 / SET 覆盖；同刻多事件按插入序；anchor 之前恒定延拓；带 ADD 无 `addition` 构造期抛异常 |

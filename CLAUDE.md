@@ -51,16 +51,18 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | 文档 | 内容 |
 |---|---|
 | `docs/superpowers/specs/2026-09-16-simos-master-design.md` | **总纲**：五模块边界、八大件原语、两层地址、两阶段时间推进、存储分层、里程碑。已获用户批准 |
-| `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 可执行分解（5 任务）+ M1~M6 路线图 |
+| `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 可执行分解（5 任务）+ M1~M6 路线图；每阶段的推进机制见其 **§六** |
+| `docs/superpowers/specs/2026-09-16-util-simos-design.md` | **M1 spec（已执行）**：UtilSimos 八大件、Address 语法、四条时间语义、往返框架。五项待决见其 §〇 |
+| `docs/superpowers/plans/2026-09-16-util-simos-plan.md` | **M1 计划（已执行完毕）**：11 个任务的 bite-sized 步骤。⚠️ 其代码草图是**计划期产物**，执行期已就地校正，**spec 与 `simos-util/src` 才是权威**（分歧处均有"取代说明"） |
 
-**注意粒度**：总纲是**总纲**，不是五份 spec 的合集。各模块的**内部设计**（`MapChangeSet` 字段清单、
-`Region` 如何统一 GSimulator 的三个 region 概念、`TemporalSeries` 插值语义、时间线 DAG 存储 schema）
-**尚未裁决**——总纲 §十三 有意把它们留给各模块自己的 spec。给 M1~M6 写 bite-sized 步骤前，
+**注意粒度**：总纲是**总纲**，不是五份 spec 的合集。各模块的**内部设计**（M1 已裁决完毕；
+`MapChangeSet` 字段清单、`Region` 如何统一 GSimulator 的三个 region 概念、时间线 DAG 存储 schema
+等**仍未裁决**）——总纲 §十三 有意把它们留给各模块自己的 spec。给 **M2~M6** 写 bite-sized 步骤前，
 先确认对应模块的待决项已裁决，否则等于编造设计。
 
-**⚠️ 不要用 `@` 导入这两份文档。** 官方语义是导入文件**在启动时展开进上下文**——导入**不省上下文**，
-只会让每个会话白白载入 1800+ 行。上面用反引号书写路径（反引号 = 字面量，不触发导入），需要时按需读取。
-只有**必须每会话都生效**的短内容才该进本文件。
+**⚠️ 不要用 `@` 导入上面这些文档。** 官方语义是导入文件**在启动时展开进上下文**——导入**不省上下文**，
+只会让每个会话白白载入 **5000+ 行**（2026-09-16 实测四份合计 5445 行）。上面用反引号书写路径
+（反引号 = 字面量，不触发导入），需要时按需读取。只有**必须每会话都生效**的短内容才该进本文件。
 
 ## 构建与门禁
 
@@ -86,7 +88,20 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 - **绝不 `git add -A`**；提交前先扫 `git diff --cached`；**不擅自推送**
 - **迭代只跑相关单条用例**，别动辄全量测试；出 bug 再找
 - **护栏必须自证**：任何 enforcer 规则、格式门禁、测试不变量，都要有一个**故意违规**的用例
-  证明它真的会响。没有这个的护栏等于装饰
+  证明它真的会响。没有这个的护栏等于装饰。**怎么确认它真的有效**（M1 关账时补）：
+  1. 把被保护的那行**删掉**、跑该用例、看它是否真的红；红不了就是装饰。**红了还要问"为什么红"**——
+     红的理由必须是被保护的那行本身（M1 里末尾的 `null` 被 varargs 吸收成**整个数组**，调用点没改却照样
+     编译，javac 只给警告不报错；用例确实红了，红的却是"被测行为变了"）。**没红也要问"为什么没红"**——
+     空输出可能只是**根本没跑到**（`junit-platform-console --details=none` 全通过时不打汇总行）。
+  2. `requireNonNull(x, "x")` 的失败消息**恰是字段名本身**，而删掉守卫后紧接着的解引用会抛 JDK 21 的
+     热心 NPE，消息**同样含该字段名**——这类守卫只有**精确匹配**（`hasMessage`）才有判别力。
+  3. 判"同刻/相等"口径的用例，输入必须落在两种实现会**分叉**的地方（如带 `calendarLabel` 的时间戳：
+     `equals` 分叉而 `compareTo` 不分叉），否则两种实现下断言全等价。
+  4. **纯转发型 SPI**（注册表、分发器）要有一条用例证明参数被**原样转交**；**返回处的加固**
+     （`List.copyOf(...)`）也要逐处自证——M1 里同一个 `FacetRegistry` 的 `facetNames()` 钉住了、`queryAll()` 漏了。
+  5. **（另一族）"我验过了"与"我记得是这样"必须分开**：写给别人当依据的每个 **Expected / 事实 / 出处**
+     都要有**当场跑过的痕迹**——不写没实测过的期望输出；不把**工具的静默假阴性**当"不存在"；不把
+     **推导出来的风险**当既成事实；不引用**还只活在待写文件里**的条文；不把**推导出来的"护栏边界"**当结论。
 - **密钥纪律**：值绝不进日志/异常/事件/argv/env/stdio；读配置只打印路径 + 长度
 - 注释与文档用中文，与既有风格一致
 
@@ -97,7 +112,8 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | 总纲 spec | ✅ 已批准、已提交 |
 | 实现计划 | ✅ 已落（本地 `2610229` + 本机化修正，**未推送**）；阶段推进机制见其 **§六** |
 | M0 | ✅ 已完成（5/5，2026-09-16 本会话内联执行；`./mvnw clean verify` 全绿） |
-| M1 | ⬜ 未开始——**先裁决** spec §十三 的五项待决，再写模块 spec（见实现计划 §六 P1） |
+| M1 | ✅ 已完成（11/11，2026-09-16；spec 五项待决已裁决，`./mvnw clean verify` 全绿）——设计见 `docs/superpowers/specs/2026-09-16-util-simos-design.md`，计划见 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` |
+| M2 | ⬜ 未开始——**待裁决** MapSimos 待决项（总纲 spec §十三） |
 | 远程仓库 | `https://github.com/c1589190/SimulatorMosire`（**PRIVATE**，默认分支 `main`） |
 
 **M0 已完成的东西**：五模块骨架（`simos-util/map/social/unit/core`）+ 父 POM；
@@ -105,13 +121,16 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 `agentlib-mosire` 并由 `AgentLibAvailabilityTest` 钉住（13 个类可加载 + JAR 类数 ≥ 118）。
 每条护栏都有一个**故意违规用例**证明它会响，见实现计划 Task 3/4/5。
 
-**AgentLibMosire 依赖现状**：`~/.m2` 里的 `0.1.0-SNAPSHOT` 曾重建为 118 类的完整构建
-（2026-09-16；此前是 2026-09-13 的 109 类陈旧构建，缺 `permission` 包 8 类与
-`plugin.HostServices`）。**注意这是 `2026-09-16` 在 `/root` 那台机器上的结果**，
-`/home/cna` 这台仍是 49 类的陈旧构建，尚未重建。
-**用户已裁决：暂缓**升为固定版本（ProjectMosire 有在途工作），
-本仓暂依赖 SNAPSHOT。若哪天 `AgentLibAvailabilityTest` 红了，先按测试里的提示
-`cd ~/ProjectMosire && ./mvnw -pl AgentLibMosire -am install` 重建。
+**AgentLibMosire 依赖现状**（2026-09-16 关账时复核）：**本机** `~/.m2` 里的
+`0.1.0-SNAPSHOT` **已是完整构建**——`jar tf … | grep -c '\.class$'` 实测 **118**，
+`simos-core` 的 testCompile 通过（`./mvnw clean verify` 全绿）。此前它曾是 49 类的陈旧构建
+（缺 `permission` 包等），会导致**测试编译失败**（比"测试变红"更早一步）。**`~/.m2` 不跨机同步**——
+换机器后若 `AgentLibAvailabilityTest` 红或 `simos-core` 编译失败，按测试里的提示在本机重建一次：
+`cd ~/ProjectMosire && ./mvnw -pl AgentLibMosire -am install`。
+⚠️ **判断重建成功与否看类数，不看时间戳**：`install` 会把源 jar 的 mtime 一并带过去，
+`~/.m2` 里那个 jar 的时间戳与源 `target/` 下的**完全相同**，2026-09-16 当天被改写的只有同目录的
+`maven-metadata-local.xml` 与 `_remote.repositories`。**用户已裁决：暂缓**升为固定版本
+（ProjectMosire 有在途工作），本仓暂依赖 SNAPSHOT。
 
 **机器与路径**：本项目**在多台机器上交替推进**，家目录不固定（已见 `/root` 与 `/home/cna`
 两种），故文档里一律写 `~/`、不写死绝对家目录。工具可用性同样因机而异：数 JAR 类数一律用
@@ -122,4 +141,10 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
    `#!/bin/sh\r` 导致 Maven 完全起不来、Spotless 全红。仓库已用 `.gitattributes` 钉死 LF，
    新机器首次 clone 后若仍异常，先查这条。
 2. `~/.m2` 是**每台机器各自的**：`agentlib-mosire` 的重建不会跨机同步，新机器上若
-   `AgentLibAvailabilityTest` 红，按上条命令在本机重建一次。
+   `AgentLibAvailabilityTest` 红（或 `simos-core` 测试编译失败），按上条命令在本机重建一次。
+   **判"本机构件重建成功与否"一律看类数**（`jar tf … | grep -c '\.class$'` ≥ 118），**不看文件时间戳**
+   ——理由见上面"AgentLibMosire 依赖现状"的 ⚠️（`install` 会把源 jar 的 mtime 一并带过去）。
+3. **本机 `grep` 可能是 ugrep**（`grep --version` 可辨，本机实测 `ugrep 7.8.4`）：它**默认尊重 `.gitignore`
+   且跳过隐藏目录**——于是 `grep -rn <串> .` 会**静默返回空**，把"没搜到"伪装成"不存在"。仓根下的
+   `.superpowers/**` 正是被 ignore 的隐藏目录，属重灾区（M1 已因此得出过一次假阴性结论）。
+   **要搜全仓一律用 `git grep <串>`**，或 `grep --hidden --no-ignore-files`。
