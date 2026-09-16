@@ -1,0 +1,423 @@
+##### tag=m9   2026-09-17T00:31:29+08:00
+=== 干净世界 md5（原件）===
+091e92cc442ef04eac66141d9c328ccf  /tmp/terrainmut/simos-map/src/main/java/io/mosire/simos/map/terrain/TerrainCatalog.java
+ce41f240f2d67707e3a7d4d19b13046c  /tmp/terrainmut/simos-map/src/main/java/io/mosire/simos/map/terrain/TerrainType.java
+d5e41c4b91740011adb9d36771a74d25  /tmp/terrainmut/simos-map/src/test/java/io/mosire/simos/map/terrain/TerrainCatalogTest.java
+=== 装入：mutants/m9.TerrainCatalog.java  ->  /tmp/terrainmut/simos-map/src/main/java/io/mosire/simos/map/terrain/TerrainCatalog.java ===
+md5(落盘的变异体) = f19f338d83f693d98a71ab5298e3e851
+md5(原件参照)     = 091e92cc442ef04eac66141d9c328ccf
+字节数 变异体/原件 = 4268 / 4268
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/3]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/3]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /tmp/terrainmut/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 37 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /tmp/terrainmut/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 17 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/3]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /tmp/terrainmut/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 6 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /tmp/terrainmut/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 4 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.map.terrain.TerrainCatalogTest
+[ERROR] Tests run: 13, Failures: 1, Errors: 11, Skipped: 0, Time elapsed: 0.073 s <<< FAILURE! -- in io.mosire.simos.map.terrain.TerrainCatalogTest
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.defaultsIterationOrderIsStable -- Time elapsed: 0.020 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.defaultsIterationOrderIsStable(TerrainCatalogTest.java:28)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.plainsIsPlainsNotMountains -- Time elapsed: 0.004 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalog.of(TerrainCatalog.java:73)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.plainsIsPlainsNotMountains(TerrainCatalogTest.java:137)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.defaultsIsUnmodifiable -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.defaultsIsUnmodifiable(TerrainCatalogTest.java:35)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.everyTypeHasDistinctNameAndColor -- Time elapsed: 0.003 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.everyTypeHasDistinctNameAndColor(TerrainCatalogTest.java:50)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.defaultsKeySetEqualsKeys -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.defaultsKeySetEqualsKeys(TerrainCatalogTest.java:23)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.everyColorMatchesHexPattern -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.everyColorMatchesHexPattern(TerrainCatalogTest.java:59)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.moveCostOrderMatchesCharacteristics -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.moveCostOrderMatchesCharacteristics(TerrainCatalogTest.java:119)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.ofThrowsOnUnknownKey -- Time elapsed: 0.004 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting throwable message:
+  "高度带非法: [0.55, 0.55]"
+to contain:
+  "未知地形类型"
+but did not.
+
+Throwable that failed the check:
+
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalog.of(TerrainCatalog.java:73)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.lambda$ofThrowsOnUnknownKey$1(TerrainCatalogTest.java:42)
+	at org.assertj.core.api.ThrowableAssert.catchThrowable(ThrowableAssert.java:66)
+	at org.assertj.core.api.AssertionsForClassTypes.catchThrowable(AssertionsForClassTypes.java:908)
+	at org.assertj.core.api.Assertions.catchThrowable(Assertions.java:1476)
+	at org.assertj.core.api.Assertions.assertThatThrownBy(Assertions.java:1319)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.ofThrowsOnUnknownKey(TerrainCatalogTest.java:42)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:700)
+	at org.junit.platform.commons.support.ReflectionSupport.invokeMethod(ReflectionSupport.java:528)
+	at org.junit.jupiter.engine.support.MethodReflectionUtils.invoke(MethodReflectionUtils.java:53)
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:61)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:124)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:163)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:148)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:124)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:105)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:99)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:66)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:47)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:39)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:104)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:98)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invokeVoid(InterceptingExecutableInvoker.java:71)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$0(TestMethodTestDescriptor.java:219)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:215)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:157)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:70)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$2(NodeTestTask.java:176)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$1(NodeTestTask.java:166)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:139)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$0(NodeTestTask.java:164)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:163)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:116)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:42)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$2(NodeTestTask.java:180)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$1(NodeTestTask.java:166)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:139)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$0(NodeTestTask.java:164)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:163)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:116)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:42)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$2(NodeTestTask.java:180)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$1(NodeTestTask.java:166)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:139)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$0(NodeTestTask.java:164)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:163)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:116)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:36)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:52)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:58)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.executeEngine(EngineExecutionOrchestrator.java:256)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.failOrExecuteEngine(EngineExecutionOrchestrator.java:228)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:189)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:109)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:66)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:168)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:65)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:137)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:126)
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:71)
+	at org.junit.platform.launcher.core.InterceptingLauncher.lambda$execute$2(InterceptingLauncher.java:66)
+	at org.junit.platform.launcher.core.ClasspathAlignmentCheckingLauncherInterceptor.intercept(ClasspathAlignmentCheckingLauncherInterceptor.java:25)
+	at org.junit.platform.launcher.core.InterceptingLauncher.execute(InterceptingLauncher.java:65)
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:71)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.apache.maven.surefire.api.util.ReflectionUtils.invokeMethodWithArray(ReflectionUtils.java:125)
+	at org.apache.maven.surefire.junitplatform.LauncherAdapter.executeWithCancellationToken(LauncherAdapter.java:68)
+	at org.apache.maven.surefire.junitplatform.LauncherAdapter.execute(LauncherAdapter.java:54)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.execute(JUnitPlatformProvider.java:283)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(JUnitPlatformProvider.java:253)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(JUnitPlatformProvider.java:221)
+	at org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:394)
+	at org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:181)
+	at org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:530)
+	at org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:518)
+
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.ofThrowsOnUnknownKey(TerrainCatalogTest.java:44)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.everyTypeIsConstructible -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.everyTypeIsConstructible(TerrainCatalogTest.java:68)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.heightBandsAreContiguousAndCoverUnitInterval -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.heightBandsAreContiguousAndCoverUnitInterval(TerrainCatalogTest.java:93)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.plainsGreenIsNotTheOldFallback -- Time elapsed: 0 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.plainsGreenIsNotTheOldFallback(TerrainCatalogTest.java:148)
+
+[ERROR] io.mosire.simos.map.terrain.TerrainCatalogTest.keysAreInAscendingHeightOrder -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.keysAreInAscendingHeightOrder(TerrainCatalogTest.java:110)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   TerrainCatalogTest.ofThrowsOnUnknownKey:44 
+Expecting throwable message:
+  "高度带非法: [0.55, 0.55]"
+to contain:
+  "未知地形类型"
+but did not.
+
+Throwable that failed the check:
+
+java.lang.IllegalArgumentException: 高度带非法: [0.55, 0.55]
+	at io.mosire.simos.map.terrain.TerrainType.<init>(TerrainType.java:41)
+	at io.mosire.simos.map.terrain.TerrainCatalog.defaults(TerrainCatalog.java:51)
+	at io.mosire.simos.map.terrain.TerrainCatalog.of(TerrainCatalog.java:73)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.lambda$ofThrowsOnUnknownKey$1(TerrainCatalogTest.java:42)
+	at org.assertj.core.api.ThrowableAssert.catchThrowable(ThrowableAssert.java:66)
+	at org.assertj.core.api.AssertionsForClassTypes.catchThrowable(AssertionsForClassTypes.java:908)
+	at org.assertj.core.api.Assertions.catchThrowable(Assertions.java:1476)
+	at org.assertj.core.api.Assertions.assertThatThrownBy(Assertions.java:1319)
+	at io.mosire.simos.map.terrain.TerrainCatalogTest.ofThrowsOnUnknownKey(TerrainCatalogTest.java:42)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:700)
+	at org.junit.platform.commons.support.ReflectionSupport.invokeMethod(ReflectionSupport.java:528)
+	at org.junit.jupiter.engine.support.MethodReflectionUtils.invoke(MethodReflectionUtils.java:53)
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:61)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:124)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:163)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:148)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:124)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:105)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:99)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:66)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:47)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:39)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:104)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:98)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invokeVoid(InterceptingExecutableInvoker.java:71)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$0(TestMethodTestDescriptor.java:219)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:215)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:157)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:70)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$2(NodeTestTask.java:176)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$1(NodeTestTask.java:166)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:139)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$0(NodeTestTask.java:164)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:163)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:116)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:42)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$2(NodeTestTask.java:180)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$1(NodeTestTask.java:166)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:139)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$0(NodeTestTask.java:164)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:163)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:116)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:42)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$2(NodeTestTask.java:180)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$1(NodeTestTask.java:166)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:139)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$0(NodeTestTask.java:164)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:74)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:163)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:116)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:36)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:52)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:58)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.executeEngine(EngineExecutionOrchestrator.java:256)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.failOrExecuteEngine(EngineExecutionOrchestrator.java:228)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:189)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:109)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:66)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:168)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:65)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:137)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:126)
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:71)
+	at org.junit.platform.launcher.core.InterceptingLauncher.lambda$execute$2(InterceptingLauncher.java:66)
+	at org.junit.platform.launcher.core.ClasspathAlignmentCheckingLauncherInterceptor.intercept(ClasspathAlignmentCheckingLauncherInterceptor.java:25)
+	at org.junit.platform.launcher.core.InterceptingLauncher.execute(InterceptingLauncher.java:65)
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:71)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.apache.maven.surefire.api.util.ReflectionUtils.invokeMethodWithArray(ReflectionUtils.java:125)
+	at org.apache.maven.surefire.junitplatform.LauncherAdapter.executeWithCancellationToken(LauncherAdapter.java:68)
+	at org.apache.maven.surefire.junitplatform.LauncherAdapter.execute(LauncherAdapter.java:54)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.execute(JUnitPlatformProvider.java:283)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(JUnitPlatformProvider.java:253)
+	at org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(JUnitPlatformProvider.java:221)
+	at org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:394)
+	at org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:181)
+	at org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:530)
+	at org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:518)
+
+[ERROR] Errors: 
+[ERROR]   TerrainCatalogTest.defaultsIsUnmodifiable:35 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.defaultsIterationOrderIsStable:28 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.defaultsKeySetEqualsKeys:23 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.everyColorMatchesHexPattern:59 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.everyTypeHasDistinctNameAndColor:50 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.everyTypeIsConstructible:68 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.heightBandsAreContiguousAndCoverUnitInterval:93 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.keysAreInAscendingHeightOrder:110 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.moveCostOrderMatchesCharacteristics:119 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.plainsGreenIsNotTheOldFallback:148 » IllegalArgument 高度带非法: [0.55, 0.55]
+[ERROR]   TerrainCatalogTest.plainsIsPlainsNotMountains:137 » IllegalArgument 高度带非法: [0.55, 0.55]
+[INFO] 
+[ERROR] Tests run: 13, Failures: 1, Errors: 11, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.480 s]
+[INFO] UtilSimos .......................................... SUCCESS [  1.311 s]
+[INFO] MapSimos ........................................... FAILURE [  0.664 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.529 s
+[INFO] Finished at: 2026-09-17T00:31:32+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /tmp/terrainmut/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+### maven_exit=1
+### 编译产物 md5（证明变异真进了字节码）
+485ada7d0ac2c1e18b3a32740df0c65e  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+d4a5046aca81a7eefe02a72be61211b7  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainType.class
+### COMPILATION ERROR 计数 = 0
+### tag=m9 结束

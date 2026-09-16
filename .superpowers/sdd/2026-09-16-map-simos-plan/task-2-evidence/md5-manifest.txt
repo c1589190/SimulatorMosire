@@ -1,0 +1,37 @@
+# Task 2 变异实验室 md5 清单（自证：变异体 ≠ 原件，且 .class 也随之改变）
+# 原件参照 = ref/（与仓库 6d52322 的三份源文件逐字节相同）
+
+## 原件 md5
+091e92cc442ef04eac66141d9c328ccf  ref/TerrainCatalog.java
+d5e41c4b91740011adb9d36771a74d25  ref/TerrainCatalogTest.java
+ce41f240f2d67707e3a7d4d19b13046c  ref/TerrainType.java
+
+## 变异体 md5
+2608055ce965fbacf09fa062470c684b  mutants/m1.TerrainCatalog.java
+0a61569453f8ab8e237e9c770f2be653  mutants/m2.TerrainCatalog.java
+69b8d4449723489cc0d079742ab8cda0  mutants/m3.TerrainCatalog.java
+35cc5935ca34a1f9ad10dce1cb6531ed  mutants/m4a.TerrainCatalog.java
+4f0f6a63d0fa2c6918a47fe90c0929a7  mutants/m4b.TerrainCatalog.java
+c29536e650eb85fb5e11b090b0e13469  mutants/m5.TerrainCatalog.java
+f409ffa24939e7aa510d5ac831df794d  mutants/m6.TerrainCatalog.java
+8a421f279275d91e32adb8307c388de3  mutants/m7.TerrainCatalog.java
+e88cb4f7220419a77aae12b6a2931497  mutants/m8.TerrainCatalog.java
+f19f338d83f693d98a71ab5298e3e851  mutants/m9.TerrainCatalog.java
+
+## 各轮编译产物 TerrainCatalog.class 的 md5（基线与每个变异体都不同）
+a55a3393dffd32dd42d8b1e743609285  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+86957ae97712a24a62bf94a9944b641f  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+16e88ca5d5a4f31c987a108afb9eecdc  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+44135f41f6310718add4ba4971b85ed3  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+4faebc0f133bb9c2b656bff7d011f936  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+85e22da1a98bed1828c38ddb996f0c1d  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+5e0c5bd4c2590b168731fa9c81a14277  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+8c2d69b573ca3c5b451a33bfce701fff  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+02bd8d3988f5b7329bd9e16f5bab6f1b  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+cc91c138171e4c2372058502d71502e8  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+485ada7d0ac2c1e18b3a32740df0c65e  simos-map/target/classes/io/mosire/simos/map/terrain/TerrainCatalog.class
+
+## 仓库侧原件 md5（交叉核对）
+091e92cc442ef04eac66141d9c328ccf  simos-map/src/main/java/io/mosire/simos/map/terrain/TerrainCatalog.java
+ce41f240f2d67707e3a7d4d19b13046c  simos-map/src/main/java/io/mosire/simos/map/terrain/TerrainType.java
+d5e41c4b91740011adb9d36771a74d25  simos-map/src/test/java/io/mosire/simos/map/terrain/TerrainCatalogTest.java
