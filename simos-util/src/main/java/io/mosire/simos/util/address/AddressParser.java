@@ -57,19 +57,22 @@ final class AddressParser {
     return out;
   }
 
-  /** 兼容写法：未加引号的 `.` 紧跟 `[` 时在此断开（`Map1.[4,3]` → `Map1` + `[4,3]`）。 */
+  /**
+   * 兼容写法：未加引号的 `.` 紧跟 `[` 时在此断开（`Map1.[4,3]` → `Map1` + `[4,3]`）。
+   *
+   * <p>断点由 {@link #indexOfUnquotedDotBeforeBracket} 给出，即 `.` 之后必有 `[`，故右侧不会为空； 左侧（`.` 前）为空则是真·空段，抛
+   * IAE。
+   */
   private static List<String> splitTolerantDot(String token, String whole) {
     int idx = indexOfUnquotedDotBeforeBracket(token);
     if (idx < 0) {
       return List.of(token);
     }
     String left = token.substring(0, idx);
-    String right = token.substring(idx + 1);
-    if (left.isEmpty() || right.isEmpty()) {
-      throw new IllegalArgumentException(
-          "兼容写法 `.` `[` 的两侧不得为空：`" + token + "`（地址：`" + whole + "`）");
+    if (left.isEmpty()) {
+      throw new IllegalArgumentException("兼容写法 `.` 的左侧不得为空：`" + token + "`（地址：`" + whole + "`）");
     }
-    return List.of(left, right);
+    return List.of(left, token.substring(idx + 1));
   }
 
   private static int indexOfUnquotedDotBeforeBracket(String token) {
@@ -94,7 +97,7 @@ final class AddressParser {
       return new Namespace(token);
     }
     if (token.charAt(0) == '[') {
-      return toIndex(token, whole);
+      return toIndex(token, position, whole);
     }
     int dot = indexOfUnquotedDot(token);
     if (dot < 0) {
@@ -122,20 +125,26 @@ final class AddressParser {
     return Entity.of(left, nameParts(right, whole));
   }
 
-  private static Index toIndex(String token, String whole) {
+  /**
+   * Index 段（spec §3.2）：坐标两侧空白、`+` 号与前导零宽容接受（§3.5），canonical 一律紧形式。 错误消息带段序号与原文；非数字坐标不得漏出 {@link
+   * NumberFormatException}。
+   */
+  private static Index toIndex(String token, int position, String whole) {
+    String where = "第 " + (position + 1) + " 段";
     if (!token.endsWith("]")) {
-      throw new IllegalArgumentException("Index 段未闭合：`" + token + "`（地址：`" + whole + "`）");
+      throw new IllegalArgumentException(where + " Index 未闭合：`" + token + "`（地址：`" + whole + "`）");
     }
     String body = token.substring(1, token.length() - 1);
     if (body.isEmpty()) {
-      throw new IllegalArgumentException("Index 段不得为空：`" + token + "`（地址：`" + whole + "`）");
+      throw new IllegalArgumentException(where + " 是空 Index：`" + token + "`（地址：`" + whole + "`）");
     }
     List<Integer> coords = new ArrayList<>();
     for (String part : body.split(",", -1)) {
       try {
         coords.add(Integer.parseInt(part.strip()));
       } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("Index 坐标不是整数：`" + part + "`（地址：`" + whole + "`）", e);
+        throw new IllegalArgumentException(
+            where + " Index 坐标不是整数：`" + part.strip() + "`（地址：`" + whole + "`）", e);
       }
     }
     return new Index(coords);

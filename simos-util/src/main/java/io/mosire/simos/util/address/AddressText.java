@@ -34,16 +34,26 @@ final class AddressText {
   }
 
   /**
-   * 名字的规范写法：命中 spec §3.4 三条加引条件才加引（条件 2：为空串或含任意空白）。
+   * 名字是否含空组件：以 `.` 开头/结尾，或含连续 `..`（条件 4 的判据）。
    *
-   * @param kindAbsent 该名字所属的 Entity 是否缺省了 kind（条件 3：缺 kind 且名字含 `.` 必须加引）
+   * <p>带 kind 的 name 不加引时会被按 `.` 切成组件，空组件没有合法表面形式——`hex.1..2` 解析不回来。
+   */
+  private static boolean hasEmptyComponent(String name) {
+    return name.startsWith(".") || name.endsWith(".") || name.contains("..");
+  }
+
+  /**
+   * 名字的规范写法：命中 spec §3.4 四条加引条件才加引（条件 2：为空串或含任意空白；条件 4：空组件）。
+   *
+   * @param kindAbsent 该名字所属的 Entity 是否缺省了 kind（条件 3：缺 kind 且名字含 `.` 必须加引； 反之则用条件 4 判空组件）
    */
   static String quoteIfNeeded(String name, boolean kindAbsent) {
     boolean needs =
         name.isEmpty()
             || name.chars().anyMatch(Character::isWhitespace)
             || hasStructuralChar(name)
-            || (kindAbsent && name.indexOf('.') >= 0);
+            || (kindAbsent && name.indexOf('.') >= 0)
+            || (!kindAbsent && hasEmptyComponent(name));
     return needs ? quote(name) : name;
   }
 }
