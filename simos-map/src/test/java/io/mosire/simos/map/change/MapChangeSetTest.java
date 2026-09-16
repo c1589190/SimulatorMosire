@@ -483,6 +483,15 @@ class MapChangeSetTest {
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> remove.keys().add("0_0"))
         .isInstanceOf(UnsupportedOperationException.class);
+
+    // ★ Patch 的两层容器都继承自上面两个 record ⇒ 同样不可变（它自己不新写一行冻结）
+    FieldDelta.Patch<HexCell> patch = new FieldDelta.Patch<>(upsert, remove);
+    assertThat(patch.upserts().entries()).isUnmodifiable();
+    assertThat(patch.removals().keys()).isUnmodifiable();
+    assertThatThrownBy(() -> patch.upserts().entries().put("0_0", new HexCell("ocean", 0.1)))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> patch.removals().keys().add("0_0"))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 
   /**
@@ -544,6 +553,17 @@ class MapChangeSetTest {
     assertThatThrownBy(() -> new FieldDelta.Remove<HexCell>(nullKey))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Remove.keys 不得含 null");
+
+    // Patch 自己的守卫只有两条 requireNonNull：消息恰是字段名，故必须**精确匹配**（形态 2）
+    FieldDelta.Upsert<HexCell> okUpsert =
+        new FieldDelta.Upsert<>(Map.of("5_5", new HexCell("plains", 0.5)));
+    FieldDelta.Remove<HexCell> okRemove = new FieldDelta.Remove<>(Set.of("5_5"));
+    assertThatThrownBy(() -> new FieldDelta.Patch<HexCell>(null, okRemove))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("upserts");
+    assertThatThrownBy(() -> new FieldDelta.Patch<HexCell>(okUpsert, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("removals");
   }
 
   @Test
@@ -557,25 +577,35 @@ class MapChangeSetTest {
     assertThat(new FieldDelta.Remove<HexCell>(Set.of("5_5")).lookup("5_5")).isEmpty();
   }
 
+  /** 同一组件**又增又删**：删掉 H_D、加上 H_E。 */
+  private static Map<HexCoord, HexCell> mixedHexes() {
+    Map<HexCoord, HexCell> m = new LinkedHashMap<>(linkedHexes());
+    m.remove(H_D);
+    m.put(H_E, new HexCell("plains", 0.20));
+    return m;
+  }
+
   /**
-   * ★ **本类型形状的边界**：同一组件**又增又删**（这里：删掉 H_D、同时改 H_A）时， 一条组件只能有一种 {@code FieldDelta} ⇒ **当场抛，不丢任何一侧**。
+   * ★ **同一组件又增又删 ⇒ {@code Patch}**（第四条变体），且**两侧都在** —— 只报一侧就是静默的数据损失。
    *
-   * <p>静默丢掉删除那一侧正是 GSimulator"只改了一条边产生空 diff"的病根；丢新增那一侧同样不可接受。 要表达这种编辑，拆成两条变更集先后 apply。
+   * <p>对照：只增一侧是 {@code Upsert}、只删一侧是 {@code Remove}，{@code Patch} 只在**两侧都非空**时出现。
    */
   @Test
-  void betweenRefusesMixedUpsertAndRemoveInOneComponent() {
+  void betweenDetectsAddedAndRemovedHex() {
     GameMap base = richMap();
-    Map<HexCoord, HexCell> mixed = new LinkedHashMap<>(linkedHexes());
-    mixed.remove(H_D);
-    mixed.put(H_A, new HexCell("desert", 0.90));
 
-    assertThatThrownBy(() -> MapChangeSet.between(base, base.withHexes(mixed)))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("hexes 同时有新增/覆盖与删除")
-        .hasMessageContaining("removals=[2_-4]")
-        .hasMessageContaining("upserts=[5_5]");
+    MapChangeSet cs = MapChangeSet.between(base, base.withHexes(mixedHexes()));
 
-    // ★ 单侧的两种输入都不抛（边界只在那一个点上）
+    assertThat(cs.hexes()).isInstanceOf(FieldDelta.Patch.class);
+    FieldDelta.Patch<HexCell> patch = (FieldDelta.Patch<HexCell>) cs.hexes();
+    assertThat(patch.upserts().entries()).containsOnlyKeys("7_-1"); // 加的那一侧
+    assertThat(patch.removals().keys()).containsExactly("2_-4"); // 删的那一侧
+    // lookup 只看 upserts：删除那一侧没有"新值"可给
+    assertThat(patch.lookup("7_-1")).contains(new HexCell("plains", 0.20));
+    assertThat(patch.lookup("2_-4")).isEmpty();
+    assertThat(cs.isEmpty()).isFalse();
+
+    // 单侧输入**不**产出 Patch（Patch 只在两侧都非空时出现）
     Map<HexCoord, HexCell> addedOnly = new LinkedHashMap<>(linkedHexes());
     addedOnly.put(H_E, new HexCell("plains", 0.2));
     Map<HexCoord, HexCell> removedOnly = new LinkedHashMap<>(linkedHexes());
@@ -584,6 +614,40 @@ class MapChangeSetTest {
         .isInstanceOf(FieldDelta.Upsert.class);
     assertThat(MapChangeSet.between(base, base.withHexes(removedOnly)).hexes())
         .isInstanceOf(FieldDelta.Remove.class);
+  }
+
+  /**
+   * ★★ **本任务为 `Patch` 这个新面欠的账**：{@code between} 是铁律 5 的派生函数，{@code apply(between(b,t), b)} 必须对
+   * **任意** (b,t) 成立 —— 包括"同一组件又增又删"这种。Task 7 的往返用例天生会造出这种对。
+   */
+  @Test
+  void mixedChangeRoundTrips() {
+    GameMap base = richMap();
+    GameMap target = base.withHexes(mixedHexes());
+
+    MapChangeSet cs = MapChangeSet.between(base, target);
+
+    assertThat(cs.hexes()).isInstanceOf(FieldDelta.Patch.class);
+    GameMap applied = MapChangeSet.apply(cs, base);
+    assertThat(applied).isEqualTo(target);
+    assertThat(applied.hexes()).isEqualTo(target.hexes());
+    // ★ **先删后增**的键序：base 的序删掉 H_D，新键 H_E 追加在尾
+    assertThat(applied.hexes().keySet()).containsExactly(H_A, H_B, H_C, H_E);
+  }
+
+  /** ★ `Patch` 不许**只落一半**：apply 之后被删的键真的没了、被加的键真的在（任一侧丢失都红）。 */
+  @Test
+  void patchIsNotSilentlyHalfApplied() {
+    GameMap base = richMap();
+
+    GameMap applied =
+        MapChangeSet.apply(MapChangeSet.between(base, base.withHexes(mixedHexes())), base);
+
+    assertThat(applied.hexes()).doesNotContainKey(H_D); // 删的那一侧落地了
+    assertThat(applied.hexes()).containsKey(H_E); // 加的那一侧落地了
+    assertThat(applied.hexes().get(H_E)).isEqualTo(new HexCell("plains", 0.20));
+    assertThat(applied.hexes()).hasSize(4); // 4 - 1 + 1
+    assertThat(applied.hexes().get(H_A)).isEqualTo(new HexCell("mountains", 0.70)); // 没动的键原样
   }
 
   @Test

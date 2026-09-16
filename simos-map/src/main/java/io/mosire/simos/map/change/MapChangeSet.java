@@ -53,13 +53,13 @@ public record MapChangeSet(
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(target, "target");
     return new MapChangeSet(
-        diff(base.hexes(), target.hexes(), "hexes"),
-        diff(base.regions(), target.regions(), "regions"),
-        diff(base.cities(), target.cities(), "cities"),
-        diff(base.terrainTypes(), target.terrainTypes(), "terrainTypes"),
-        diff(base.pathways(), target.pathways(), "pathways"),
-        diff(base.pathwayGroups(), target.pathwayGroups(), "pathwayGroups"),
-        diff(base.edges(), target.edges(), "edges"));
+        diff(base.hexes(), target.hexes()),
+        diff(base.regions(), target.regions()),
+        diff(base.cities(), target.cities()),
+        diff(base.terrainTypes(), target.terrainTypes()),
+        diff(base.pathways(), target.pathways()),
+        diff(base.pathwayGroups(), target.pathwayGroups()),
+        diff(base.edges(), target.edges()));
   }
 
   /**
@@ -69,9 +69,10 @@ public record MapChangeSet(
    * base —— 这一条要写进 Javadoc，否则后人会以为 `spec` 是漏掉的。 ★ **不得对 `spec` 写任何 null 兜底**（如 `cs.spec() != null ?
    * … : base.spec()`）： `GameMap.spec` 从 Task 5 起就非 null，兜底是**为不存在的世界写的代码**，且会掩盖真的漏传。
    *
-   * <p>★ 三条变体各一路（见 {@link FieldDelta}）：{@code Unchanged} ⇒ base 的那一份**原样**（连键序都不动）； {@code Upsert}
-   * ⇒ 在 base 的那一份上**新增或覆盖**，base 的键序不变、新键按 Upsert 的序追加； {@code Remove} ⇒ 从 base 的那一份上删。**只有新出现的 key
-   * 需要 {@code parse}**：已在 base 里的 key 直接复用原对象（这正是 R-48-f 那五个 key 类型的三件套被用到的地方）。
+   * <p>★ 四条变体各一路（见 {@link FieldDelta}）：{@code Patch} ⇒ **先删后增**的两路，**递归复用** {@code Remove}/{@code
+   * Upsert} 那两路（不重实现）；{@code Unchanged} ⇒ base 的那一份**原样**（连键序都不动）； {@code Upsert} ⇒ 在 base
+   * 的那一份上**新增或覆盖**，base 的键序不变、新键按 Upsert 的序追加； {@code Remove} ⇒ 从 base 的那一份上删。**只有新出现的 key 需要
+   * {@code parse}**：已在 base 里的 key 直接复用原对象（这正是 R-48-f 那五个 key 类型的三件套被用到的地方）。
    */
   public static GameMap apply(MapChangeSet cs, GameMap base) {
     Objects.requireNonNull(cs, "cs");
@@ -101,10 +102,12 @@ public record MapChangeSet(
   /**
    * 一个组件的差异。**顺着 {@code target} 的迭代序读**，故 upsert 的键序 = target 的序（保序不可变是前提）。
    *
-   * <p>★ **同时有"增"与"删"时当场抛**（{@code FieldDelta} 的一条组件只能表达一种）。抛而**不丢弃** ——
-   * 丢哪一侧都是静默的数据损失，正是本任务要根除的那类病。
+   * <p>★ **同时有"增"与"删"⇒ {@link FieldDelta.Patch}**（两侧各自是 {@code Upsert} 与 {@code Remove}），
+   * **两侧都保留、不丢任何一侧** —— 丢删除正是 GSimulator"只改了一条边产生空 diff"的病根。
+   *
+   * <p>★ 不再收"组件名"参数：混合情形过去靠它拼异常消息，现在走 {@code Patch} 没有消息可拼；留着就是死参数。
    */
-  private static <K, V> FieldDelta<V> diff(Map<K, V> base, Map<K, V> target, String component) {
+  private static <K, V> FieldDelta<V> diff(Map<K, V> base, Map<K, V> target) {
     Map<String, V> upserts = new LinkedHashMap<>();
     Set<String> removals = new LinkedHashSet<>();
     for (Map.Entry<K, V> entry : target.entrySet()) {
@@ -127,17 +130,11 @@ public record MapChangeSet(
     if (removals.isEmpty()) {
       return new FieldDelta.Upsert<>(upserts);
     }
-    throw new UnsupportedOperationException(
-        component
-            + " 同时有新增/覆盖与删除，FieldDelta 的一条组件表达不了（见 FieldDelta 的类注释）："
-            + " upserts="
-            + upserts.keySet()
-            + ", removals="
-            + removals
-            + "。请拆成两条变更集先后 apply。");
+    return new FieldDelta.Patch<>(
+        new FieldDelta.Upsert<>(upserts), new FieldDelta.Remove<>(removals));
   }
 
-  /** 一个组件的重建。三条变体各一路，见 {@link #apply(MapChangeSet, GameMap)}。 */
+  /** 一个组件的重建。四条变体各一路，见 {@link #apply(MapChangeSet, GameMap)}。 */
   private static <K, V> Map<K, V> rebuild(
       Map<K, V> base, FieldDelta<V> delta, Function<String, K> parse) {
     if (!delta.changed()) {
@@ -168,7 +165,12 @@ public record MapChangeSet(
       }
       return out;
     }
-    // 三条变体已穷尽；走到这里说明 FieldDelta 新增了变体而这里没跟上 —— 与铁律 5 同源的漂移，必须响。
+    if (delta instanceof FieldDelta.Patch<V> patch) {
+      // ★ **先删后增**（见 FieldDelta.Patch），且**复用上面那两路**：Patch 的正确性恰恰**等于**
+      //   "那两条纯情形的语义"，这里重新实现一遍就有了跟它们分叉的可能。递归调用即复用。
+      return rebuild(rebuild(base, patch.removals(), parse), patch.upserts(), parse);
+    }
+    // 四条变体已穷尽；走到这里说明 FieldDelta 新增了变体而这里没跟上 —— 与铁律 5 同源的漂移，必须响。
     throw new IllegalStateException("未知的 FieldDelta 变体: " + delta.getClass());
   }
 }

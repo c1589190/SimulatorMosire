@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -13,17 +14,14 @@ import java.util.Set;
  * <p>★ {@code Unchanged} 与"变为空"是**两件事** —— GSimulator 的 {@code MapDiff.isEmpty()}
  * 混淆了这两者，导致"只改了一条边"产生空 diff、进而**根本不进 apply 流程**。
  *
- * <p>★ **三条变体各自的语义**（{@code MapChangeSet.apply} 逐条照此实现）：
+ * <p>★ **四条变体各自的语义**（{@code MapChangeSet.apply} 逐条照此实现）：
  *
  * <ul>
  *   <li>{@link Unchanged} —— 该组件的内容**一字未动**。"内容变成空的"**不是**这一条，是 {@link Remove}。
  *   <li>{@link Upsert} —— 在 base 的该组件上**新增或覆盖**这些 key，其余 key 原样保留（**增量，不是全量替换**）。
  *   <li>{@link Remove} —— 从 base 的该组件里**删掉**这些 key，其余 key 原样保留。
+ *   <li>{@link Patch} —— 同一组件**又增又删**，两侧各自是上面那两条。
  * </ul>
- *
- * <p>★ **一条组件只能有一种变体**：同一组件若**同时**"增"与"删"，这三条变体表达不了。遇到这种输入时 {@code MapChangeSet.between}
- * **当场抛**（{@link UnsupportedOperationException}）而**不静默丢弃任何一侧** —— 静默丢删除正是 GSimulator"只改了一条边产生空
- * diff"的病根。要同时表达，拆成两条变更集先后 apply。
  *
  * <p>★ **key 一律是 String**：{@code GameMap} 的 map key 由 {@code toString()} 变成地址串 （五个 key 类型各有"裸值
  * {@code toString()} + {@code static parse}"，见 R-48-f），值就是组件值本身， 判等**用 {@code equals}**（与 map
@@ -100,6 +98,27 @@ public sealed interface FieldDelta<T> {
     @Override
     public Optional<T> lookup(String key) {
       return Optional.empty();
+    }
+  }
+
+  /**
+   * 同一组件**又增又删**。两侧各自沿用 {@link Upsert}/{@link Remove}，故非空、保序、冻结、null 校验全部**继承**，本类型不新增一行校验。
+   *
+   * <p>★ **语义：先删后增** —— 等于"先走 {@link Remove} 那一路、再走 {@link Upsert} 那一路"。若某个 key **两侧都在**（{@code
+   * MapChangeSet.between} 不会产出这种重叠，只有手搓才可能），**增胜**。
+   *
+   * <p>★ **不为重叠写守卫**：{@code between} 是唯一生产者、不可能产出重叠，为不存在的输入写守卫正是 R-48-e 反对的"为不存在的世界写代码"。
+   */
+  record Patch<T>(Upsert<T> upserts, Remove<T> removals) implements FieldDelta<T> {
+
+    public Patch {
+      Objects.requireNonNull(upserts, "upserts");
+      Objects.requireNonNull(removals, "removals");
+    }
+
+    @Override
+    public Optional<T> lookup(String key) {
+      return upserts.lookup(key); // 删除那一侧没有"新值"可给，故只看 upserts
     }
   }
 
