@@ -20,6 +20,7 @@ class AddressQuoteTest {
     assertThat(Entity.of("region", "河口:渡口").canonical()).isEqualTo("region.\"河口:渡口\"");
     assertThat(Entity.of("region", "[前线]").canonical()).isEqualTo("region.\"[前线]\"");
     assertThat(Entity.of("region", " 区域A ").canonical()).isEqualTo("region.\" 区域A \"");
+    assertThat(Entity.of("region", "A B").canonical()).isEqualTo("region.\"A B\"");
     assertThat(Entity.of("region", "").canonical()).isEqualTo("region.\"\"");
   }
 

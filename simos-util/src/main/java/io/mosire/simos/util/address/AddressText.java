@@ -31,14 +31,14 @@ final class AddressText {
   }
 
   /**
-   * 名字的规范写法：命中 spec §3.4 三条加引条件才加引。
+   * 名字的规范写法：命中 spec §3.4 三条加引条件才加引（条件 2：为空串或含任意空白）。
    *
    * @param kindAbsent 该名字所属的 Entity 是否缺省了 kind（条件 3：缺 kind 且名字含 `.` 必须加引）
    */
   static String quoteIfNeeded(String name, boolean kindAbsent) {
     boolean needs =
         name.isEmpty()
-            || !name.equals(name.strip())
+            || name.chars().anyMatch(Character::isWhitespace)
             || name.indexOf(':') >= 0
             || name.indexOf('[') >= 0
             || name.indexOf(']') >= 0
