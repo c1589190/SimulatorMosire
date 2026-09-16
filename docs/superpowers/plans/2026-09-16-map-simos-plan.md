@@ -59,7 +59,7 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 - **关账门禁**：`./mvnw clean verify` = Spotless(check) + Checkstyle(validate) + SpotBugs(verify) + Surefire。**`mvn test` 不跑 SpotBugs**
 - **护栏必须自证**（G13）：每条新护栏都要有一个故意违规用例证明它真的会响。**怎么确认**：把被保护的那行**删掉**、跑该用例、看它是否真的红；**红了还要问为什么红、没红也要问为什么没红**（CLAUDE.md 纪律节五条形态）
 - **变异体也要自证**：读完测试结果**之前**，先证明"变异后的产物与原件字节不同"（编一份原件作参照比 md5）。否则"全绿"可能只是**变异根本没进去**
-- **提交纪律**：只 `git add <本步明确列出的文件>`，**绝不 `git add -A`**；提交前扫 `git diff --cached`；**不擅自推送**
+- **提交纪律**：只 `git add <本步明确列出的文件>`，**绝不 `git add -A`**；提交前扫 `git diff --cached`；**该推就推**（私有仓库；★ 原写"不擅自推送"，系控制器自加、非用户裁定，2026-09-17 已撤）
 - **提交信息末尾**加一行：`Co-Authored-By: Claude Code <noreply@anthropic.com>`
 - **不可变与 equals**：所有状态类型不可变，集合组件一律 `List.copyOf` / `Set.copyOf` / `Map.copyOf`；**`equals`/`hashCode` 一律由 record 提供，禁止手写**（`equals` 是往返断言的判据本身）。
   ★ **`toString` 不在此列**（本条原写作"`equals`/`hashCode`/`toString` 一律禁止手写"，**过宽，已按 R-T1-c 收窄**）：

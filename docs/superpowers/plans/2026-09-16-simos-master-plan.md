@@ -28,7 +28,7 @@
 | G8 | `simos-social` 与 `simos-unit` **互不依赖**；二者可依赖 `simos-util` + `simos-map` | spec §3.1 |
 | G9 | 只有 `simos-core` 可依赖 `agentlib-mosire`、MCP SDK、`sqlite-jdbc`、日志实现 | spec §10.2 |
 | G10 | 五条铁律写进 `README.md` 第一行（spec §2 原文） | spec §2 |
-| G11 | 提交前扫暂存 diff；**绝不 `git add -A`**；**不擅自推送** | 项目纪律 |
+| G11 | 提交前扫暂存 diff；**绝不 `git add -A`**；**该推就推**（私有仓库） | 项目纪律（★ "不擅自推送"系控制器自加，非用户裁定，2026-09-17 撤） |
 | G12 | 迭代只跑相关单条用例（`-Dtest=<类名>`）；完整门禁 `mvn verify` 在关账时跑 | 项目纪律 D29 |
 | G13 | **门禁自证**：任何"护栏"（enforcer 规则、Spotless、测试不变量）必须用一个**故意违规**的用例证明它真的会响——这是 spec §1.3 从 GSimulator 的 L1 事故提炼出的原则 | spec §1.3、§11 M1 判据 |
 
@@ -1239,7 +1239,7 @@ L1 子节点写 `edges` 静默丢失 / L2 双份连通性存储 / L3 方向数�
 
 ## 四 纪律（沿用，逐条有效）
 
-- **绝不 `git add -A`**；提交前先扫 `git diff --cached`；**不擅自推送**（G11）
+- **绝不 `git add -A`**；提交前先扫 `git diff --cached`；**该推就推**（G11）
 - **迭代只跑相关单条用例**（`-Dtest=<类名>`），别动辄全量测试（G12）
 - **门禁**：`./mvnw verify` = Spotless + Checkstyle + SpotBugs + Surefire；`mvn test` **不跑** SpotBugs，关账前须单独跑 `spotbugs:check`
 - **护栏必须自证**（G13）：任何 enforcer 规则、格式门禁、测试不变量，都要有一个故意违规的用例证明它真的会响

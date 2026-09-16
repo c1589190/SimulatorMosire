@@ -28,7 +28,7 @@
 - **迭代只跑相关单条用例**：`./mvnw -q -pl simos-util -Dtest=<类名> test`（从仓库根目录执行）
 - **关账门禁**：`./mvnw clean verify` = Spotless(check) + Checkstyle(validate) + SpotBugs(verify) + Surefire。`mvn test` **不跑** SpotBugs
 - **护栏必须自证**（G13）：每条新护栏都要有一个故意违规用例证明它真的会响
-- **提交纪律**：只 `git add <本步明确列出的文件>`，**绝不 `git add -A`**；提交前扫 `git diff --cached`；**不擅自推送**
+- **提交纪律**：只 `git add <本步明确列出的文件>`，**绝不 `git add -A`**；提交前扫 `git diff --cached`；**该推就推**（私有仓库；★ 原写"不擅自推送"，系控制器自加、非用户裁定，2026-09-17 已撤）
 - **不可变与 equals**：所有状态类型不可变，集合组件一律 `List.copyOf` / `Map.copyOf`；`equals`/`hashCode`/`toString` **一律由 record 提供，禁止手写**（`equals` 是往返断言的判据本身）
 
 ---
