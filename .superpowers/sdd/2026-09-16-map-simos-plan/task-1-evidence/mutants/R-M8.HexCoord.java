@@ -14,7 +14,7 @@ public record HexCoord(int q, int r) implements Comparable<HexCoord> {
 
   /** cube 第三轴。恒等式 {@code q + r + s == 0}。 */
   public int s() {
-    return -q - r;
+    return q + r;
   }
 
   /**

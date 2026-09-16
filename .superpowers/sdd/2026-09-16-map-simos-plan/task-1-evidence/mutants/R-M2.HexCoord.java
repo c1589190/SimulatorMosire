@@ -67,7 +67,7 @@ public record HexCoord(int q, int r) implements Comparable<HexCoord> {
 
   /** 六条邻格，**枚举序**（即边序号序）。 */
   public List<HexCoord> neighbors() {
-    return HexDirection.ALL.stream().map(this::neighbor).toList();
+    return HexDirection.ALL.reversed().stream().map(this::neighbor).toList();
   }
 
   @Override

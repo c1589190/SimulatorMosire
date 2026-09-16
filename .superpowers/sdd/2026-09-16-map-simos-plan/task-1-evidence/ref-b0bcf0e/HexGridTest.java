@@ -35,9 +35,7 @@ class HexGridTest {
     assertThat(HexGrid.withinRadius(center, 0)).containsExactly(center);
     assertThat(HexGrid.withinRadius(center, 1)).hasSize(7);
     assertThat(HexGrid.withinRadius(center, 2)).hasSize(19);
-    // 负半径不静默返回空集（"空集是静默夹取的近亲"）——这一条钉的是那道 `radius < 0` 守卫。
-    assertThatThrownBy(() -> HexGrid.withinRadius(center, -1))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(HexGrid.withinRadius(center, -1)).isEmpty();
   }
 
   @Test
@@ -71,7 +69,7 @@ class HexGridTest {
   /**
    * 两处返回的集合都必须是不可变的（构造期拷贝 + `Set.copyOf`），否则调用方能反手改掉网格状态。
    *
-   * <p>入参刻意用**可变**集合：若用 `Set.of(...)`（本就不可变），`cells()` 那一条会继承入参的属性而恒成立，就算把构造期的 `Set.copyOf`
+   * <p>入参刻意用**可变**集合：若用 `Set.of(...)`（本就不可变），`cells()` 那一条会继承入参的属性而恒成立， 就算把构造期的 `Set.copyOf`
    * 删掉也照样绿——那正是"装饰性断言"。
    */
   @Test

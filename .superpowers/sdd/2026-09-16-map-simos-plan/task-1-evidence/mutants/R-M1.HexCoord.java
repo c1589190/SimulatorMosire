@@ -95,9 +95,6 @@ public record HexCoord(int q, int r) implements Comparable<HexCoord> {
       throw new IllegalArgumentException("非法坐标串: null");
     }
     int i = text.indexOf('_');
-    if (i <= 0 || i == text.length() - 1) {
-      throw new IllegalArgumentException("非法坐标串: " + text);
-    }
     return new HexCoord(
         Integer.parseInt(text.substring(0, i)), Integer.parseInt(text.substring(i + 1)));
   }

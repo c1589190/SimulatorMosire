@@ -35,31 +35,6 @@ class HexDirectionTest {
     }
   }
 
-  /**
-   * ★ **A 序的"序"本身的真值锚**：逐项冻结**绝对转移**（`E.next() == SE` 这种）。
-   *
-   * <p>`nextAndPrevAreInverse` 在"`next()` 与 `prev()` **整体交换**"下是**对称的**（`d.next().prev() == d` 与
-   * `d.prev().next() == d` 同时成立），故交换 `+1`/`+5` 的变异体曾整轮全绿存活；而 `offsetsMatchFrozenTable` 钉的是
-   * `values()` 的**声明序**（名字↔偏移），**不是**由枚举序派生的朝向。能抓住它的只有**绝对目标**——即下面这 12 行。判据同形态
-   * 3：输入必须落在两种实现会**分叉**的地方。
-   */
-  @Test
-  void nextAndPrevFollowFrozenCycle() {
-    assertThat(HexDirection.E.next()).isEqualTo(HexDirection.SE);
-    assertThat(HexDirection.SE.next()).isEqualTo(HexDirection.SW);
-    assertThat(HexDirection.SW.next()).isEqualTo(HexDirection.W);
-    assertThat(HexDirection.W.next()).isEqualTo(HexDirection.NW);
-    assertThat(HexDirection.NW.next()).isEqualTo(HexDirection.NE);
-    assertThat(HexDirection.NE.next()).isEqualTo(HexDirection.E);
-
-    assertThat(HexDirection.E.prev()).isEqualTo(HexDirection.NE);
-    assertThat(HexDirection.NE.prev()).isEqualTo(HexDirection.NW);
-    assertThat(HexDirection.NW.prev()).isEqualTo(HexDirection.W);
-    assertThat(HexDirection.W.prev()).isEqualTo(HexDirection.SW);
-    assertThat(HexDirection.SW.prev()).isEqualTo(HexDirection.SE);
-    assertThat(HexDirection.SE.prev()).isEqualTo(HexDirection.E);
-  }
-
   @Test
   void allSixDistinctAndCoversEnum() {
     assertThat(HexDirection.ALL).hasSize(6);

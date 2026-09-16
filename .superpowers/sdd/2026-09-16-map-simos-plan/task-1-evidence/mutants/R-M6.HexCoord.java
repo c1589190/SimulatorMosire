@@ -40,9 +40,6 @@ public record HexCoord(int q, int r) implements Comparable<HexCoord> {
    * 范围的输入行为不定义**（本项目坐标量级到不了）。
    */
   public static HexCoord round(double q, double r) {
-    if (!Double.isFinite(q) || !Double.isFinite(r)) {
-      throw new IllegalArgumentException("坐标必须有限: " + q + ", " + r);
-    }
     double s = -q - r;
     int rq = (int) Math.round(q);
     int rr = (int) Math.round(r);

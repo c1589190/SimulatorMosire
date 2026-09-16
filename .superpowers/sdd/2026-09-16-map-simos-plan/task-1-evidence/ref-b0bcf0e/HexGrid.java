@@ -9,7 +9,7 @@ import java.util.Set;
  * <p>★ 没有 {@code gridSize} 字段：GSimulator 那个字段只做构造期范围校验、不参与取格，且到处写死 30 而真实生成半径是 80 —— 范围由本类的 {@code
  * minQ()/maxQ()/minR()/maxR()} 导出。
  *
- * <p>本类当前只承载**坐标集合**（纯几何：范围导出、半径内枚举）；格的内容由 {@code map} 包的 {@code HexCell} 落地后另行补入，届时本类改为持有 {@code
+ * <p>本类当前只承载**坐标集合**（纯几何：范围导出、半径内枚举）；格的内容由 {@code map} 包的 {@code HexCell} 落地后 另行补入，届时本类改为持有 {@code
  * Map<HexCoord, HexCell>}。
  */
 public final class HexGrid {
@@ -20,13 +20,7 @@ public final class HexGrid {
     this.cells = Set.copyOf(cells);
   }
 
-  /**
-   * 由坐标集合建网格。构造期做**防御性拷贝**，此后改动入参集合不再影响本网格。
-   *
-   * <p>入参是**程序内部对象**，{@code null} 按 JDK 惯例抛 {@link NullPointerException}（与 {@code Set.copyOf(null)}
-   * 一致），**不另设显式守卫**；而 {@link HexCoord#parse(String)} 的入参来自 **JSON 边界上的外部数据**，{@code null}
-   * 意味着"数据非法"，故那里显式抛 {@link IllegalArgumentException}。**两种入参、两种口径，不是不一致。**
-   */
+  /** 由坐标集合建网格。构造期做**防御性拷贝**，此后改动入参集合不再影响本网格。 */
   public static HexGrid of(Set<HexCoord> cells) {
     return new HexGrid(cells);
   }
@@ -65,13 +59,9 @@ public final class HexGrid {
    * 以 center 为中心、半径 radius 的六边形球内全部坐标（含 center）。
    *
    * <p>cube 坐标下即枚举满足 {@code |dq| <= radius}、{@code |dr| <= radius}、{@code |ds| <= radius}（其中 {@code
-   * ds = -dq - dr}）的全部偏移，逐格加到 center 上。**radius 为负时抛 {@link IllegalArgumentException}**——返回空集是
-   * "静默夹取"的近亲（范围校验在构造期抛异常、不静默夹取）；{@code radius = 0} 时返回 {@code {center}}。
+   * ds = -dq - dr}）的全部偏移，逐格加到 center 上。**radius 为负时返回空集**。
    */
   public static Set<HexCoord> withinRadius(HexCoord center, int radius) {
-    if (radius < 0) {
-      throw new IllegalArgumentException("半径不能为负: " + radius);
-    }
     Set<HexCoord> ball = new HashSet<>();
     for (int dq = -radius; dq <= radius; dq++) {
       int from = Math.max(-radius, -dq - radius);

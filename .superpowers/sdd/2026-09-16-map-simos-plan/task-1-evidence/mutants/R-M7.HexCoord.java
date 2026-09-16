@@ -23,7 +23,7 @@ public record HexCoord(int q, int r) implements Comparable<HexCoord> {
    * <p>GSimulator 有 4 份代数恒等的实现（Java 3 + JS 1），此处合并为唯一一份。
    */
   public int distanceTo(HexCoord other) {
-    return (Math.abs(q - other.q) + Math.abs(r - other.r) + Math.abs(s() - other.s())) / 2;
+    return (Math.abs(q - other.q) + Math.abs(r - other.r)) / 2;
   }
 
   /**

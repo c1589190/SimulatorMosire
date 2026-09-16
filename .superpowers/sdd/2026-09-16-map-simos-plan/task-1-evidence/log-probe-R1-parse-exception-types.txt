@@ -1,0 +1,25 @@
+##### 探针：形状检查成对表（原件 vs R-M1 变异体）+ F4 的 HexGrid null 实测  2026-09-16T23:59:07+08:00
+探针源码 = /tmp/hexmut-r1/ProbeR1.java；跑法 = java -cp simos-map/target/classes ProbeR1.java
+--- tag=ref  装入的 HexCoord.java md5=bb0cd0389dc5084a0295a3a7e27dea5f（原件参照=bb0cd0389dc5084a0295a3a7e27dea5f）
+    HexCoord.class md5=51c86ce11fb26d3fc4a84fd74dcb0448
+PROBE parse("") -> java.lang.IllegalArgumentException  [IS IAE] 断言不翻
+PROBE parse("12") -> java.lang.IllegalArgumentException  [IS IAE] 断言不翻
+PROBE parse("_") -> java.lang.IllegalArgumentException  [IS IAE] 断言不翻
+PROBE parse("1_") -> java.lang.IllegalArgumentException  [IS IAE] 断言不翻
+PROBE parse("_2") -> java.lang.IllegalArgumentException  [IS IAE] 断言不翻
+PROBE parse("a_b") -> java.lang.NumberFormatException  [IS IAE] 断言不翻
+PROBE HexGrid.of(null) -> java.lang.NullPointerException: Cannot invoke "java.util.Collection.isEmpty()" because "coll" is null
+PROBE HexGrid.of(Set.of()).contains(null) -> java.lang.NullPointerException: null
+PROBE HexGrid.withinRadius(null, 0) -> java.lang.NullPointerException: Cannot invoke "io.mosire.simos.map.hex.HexCoord.q()" because "center" is null
+--- tag=R-M1  装入的 HexCoord.java md5=bf85532ccb6651f8e5f57b04b4935a6f（原件参照=bb0cd0389dc5084a0295a3a7e27dea5f）
+    HexCoord.class md5=01ec6d173e7c87f1b7c60b7121f0fd9c
+PROBE parse("") -> java.lang.StringIndexOutOfBoundsException  [NOT IAE] 断言会翻
+PROBE parse("12") -> java.lang.StringIndexOutOfBoundsException  [NOT IAE] 断言会翻
+PROBE parse("_") -> java.lang.NumberFormatException  [IS IAE] 断言不翻
+PROBE parse("1_") -> java.lang.NumberFormatException  [IS IAE] 断言不翻
+PROBE parse("_2") -> java.lang.NumberFormatException  [IS IAE] 断言不翻
+PROBE parse("a_b") -> java.lang.NumberFormatException  [IS IAE] 断言不翻
+PROBE HexGrid.of(null) -> java.lang.NullPointerException: Cannot invoke "java.util.Collection.isEmpty()" because "coll" is null
+PROBE HexGrid.of(Set.of()).contains(null) -> java.lang.NullPointerException: null
+PROBE HexGrid.withinRadius(null, 0) -> java.lang.NullPointerException: Cannot invoke "io.mosire.simos.map.hex.HexCoord.q()" because "center" is null
+##### 结束

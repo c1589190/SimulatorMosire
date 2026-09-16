@@ -69,9 +69,6 @@ public final class HexGrid {
    * "静默夹取"的近亲（范围校验在构造期抛异常、不静默夹取）；{@code radius = 0} 时返回 {@code {center}}。
    */
   public static Set<HexCoord> withinRadius(HexCoord center, int radius) {
-    if (radius < 0) {
-      throw new IllegalArgumentException("半径不能为负: " + radius);
-    }
     Set<HexCoord> ball = new HashSet<>();
     for (int dq = -radius; dq <= radius; dq++) {
       int from = Math.max(-radius, -dq - radius);

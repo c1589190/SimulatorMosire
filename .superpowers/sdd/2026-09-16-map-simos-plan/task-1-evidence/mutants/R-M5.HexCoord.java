@@ -43,21 +43,7 @@ public record HexCoord(int q, int r) implements Comparable<HexCoord> {
     if (!Double.isFinite(q) || !Double.isFinite(r)) {
       throw new IllegalArgumentException("坐标必须有限: " + q + ", " + r);
     }
-    double s = -q - r;
-    int rq = (int) Math.round(q);
-    int rr = (int) Math.round(r);
-    int rs = (int) Math.round(s);
-    double dq = Math.abs(rq - q);
-    double dr = Math.abs(rr - r);
-    double ds = Math.abs(rs - s);
-    if (dq > dr && dq > ds) {
-      rq = -rr - rs;
-    } else if (dr > ds) {
-      rr = -rq - rs;
-    }
-    // 其余情形（s 轴偏差最大或并列）**故意不写 else**：该分支要修正的是 s 轴，而 s 是导出的、不参与返回，
-    // 于是 `rs = -rq - rr;` 对返回值毫无影响——SpotBugs 会当场判它 DLS_DEAD_LOCAL_STORE。若在此改动 q/r 反而错。
-    return new HexCoord(rq, rr);
+    return new HexCoord((int) Math.round(q), (int) Math.round(r));
   }
 
   /** 沿一个方向走一步。 */

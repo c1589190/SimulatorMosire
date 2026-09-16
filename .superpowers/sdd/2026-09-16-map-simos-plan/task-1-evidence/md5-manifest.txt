@@ -8,3 +8,50 @@ c1891199dfaacacc433c750aee93d530  /tmp/hexmut/mutants/m4-neighbors-five.HexCoord
 3cb4ad503bc1fd4dfd92c627c3c95e2c  /tmp/hexmut/mutants/m5-no-null-guard.HexCoord.java
 8872b8a3810a45bcdb1b99cbfddd13f8  /tmp/hexmut/mutants/m6-no-defensive-copy.HexGrid.java
 68073efae8e6f8172c61421e8855e215  /tmp/hexmut/mutants/m7-ball-not-copied.HexGrid.java
+# ---- 修复轮 R1（2026-09-16T23:57:47+08:00）：原件参照改名为 ref-r1/（R1 前的 ref/ 是修复前的字节，保留不动）
+bb0cd0389dc5084a0295a3a7e27dea5f  ref-r1/HexCoord.java
+fd804a33272adcde70d5dbaa1ed00dcb  ref-r1/HexDirection.java
+f3ec0484326452a2d9c977ea27e2f82a  ref-r1/HexGrid.java
+bf85532ccb6651f8e5f57b04b4935a6f  mutants/R-M1.HexCoord.java
+ee4dca0da4bca942a6167b28ca9c98b4  mutants/R-M2.HexCoord.java
+b245d55346d720b5f37b5a0d2eb7dd47  mutants/R-M3.HexDirection.java
+68efc4165040dd0f26d37e07e6e5f5df  mutants/R-M4.HexGrid.java
+8b0ce4d1bde17315514813a72c1ec5a5  mutants/R-M5.HexCoord.java
+9c96598b97ec7d50bd32428f3da3e8da  mutants/R-M6.HexCoord.java
+1c0f51528fb7ad0cffb51e57eb1fd92d  mutants/R-M7.HexCoord.java
+# ---- R1 基线编译产物（★ 逐字抄自 log-R1-base.txt 的「### 编译产物 md5」段，不是另跑一次编出来的）
+# ★ 更正记录：本节初次落盘时把 `01ec6d17…  HexCoord.class` 抄了进来——那是 **R-M1** 的产物
+#   （探针循环最后停在 R-M1 上，`simos-map/target/classes` 里留的正是它）。基线 HexCoord.class 是 `51c86ce1…`。
+51c86ce11fb26d3fc4a84fd74dcb0448  HexCoord.class
+605a4bc3c2ef8a43dce62a8a81d1364b  HexDirection.class
+d54a1173adaf4ade82fccc3f5d96eb3f  HexGrid.class
+# ---- 修复前世界（b0bcf0e）与补充证据（2026-09-17T00:0x）：证明 R1-e 之前 R-M2/R-M3 是【绿的】
+0254e25bafbd136edd9e74012fee5cd9  ref-b0bcf0e/HexCoord.java
+de9c4e8eceb1f05dd64bd7e35ac0d775  ref-b0bcf0e/HexCoordTest.java
+fd804a33272adcde70d5dbaa1ed00dcb  ref-b0bcf0e/HexDirection.java
+37174694446fe8fa76aaac47f0662601  ref-b0bcf0e/HexDirectionTest.java
+1261f98eb7c1af340bc713cbb61118d2  ref-b0bcf0e/HexGrid.java
+b5caea4373beebfaaf4a4f3b57a6c831  ref-b0bcf0e/HexGridTest.java
+793ff2830ba220c11298494b4f6b955e  mutants/R-M2-preR1.HexCoord.java
+b245d55346d720b5f37b5a0d2eb7dd47  mutants/R-M3-preR1.HexDirection.java
+05c8450c7f75f0940ae21e1f6d5f4960  log-R-M2-preR1-world.txt
+ab7ccf4cca9409e7d9089293f6478395  log-R-M3-preR1-world.txt
+d4ca8aca285c41adb2a5838cf43494f6  log-R1-final-base.txt
+f06ea54c5c8d0d6675a494d714ec02a7  log-R3-preR1-tests-vs-R1-main.txt
+77acfa71baf207a3bb9c7e1464178e15  log-R1-gate-module.txt
+6db68bfeb72644324f5671ca46d0d754  log-R1-gate-all.txt
+fe6cbf9c726a1de59d59370b9045d80c  run_old_world.sh
+# （路径规范化说明：上面 6 行 ref-b0bcf0e/ 当初是照抄 md5sum 带目录的输出，路径前缀重复了一次；
+#   md5 值一字未动，只去掉了重复前缀。）
+# （另：log-R3-preR1-tests-vs-R1-main.txt 原名 log-R1-restore.txt，是R1 后的 main + R1 前的 test的；
+#   改名是因为它其实不是基线跑，见「修复轮 1」§3 的说明。）
+25f7d36fdba12f7d5c7dd9d0d4b8f06d  mutants/R-M8.HexCoord.java
+750732d674abc284b8916b707a376efa  log-R-M8.txt
+# ---- R-M8 = F2 注释里那句「实测：该变异只有它翻」的证据（s() 的 -q-r 写成 q+r）
+# ---- 门禁日志补全（同一批运行的原始输出入库 + 索引重建）：
+#   log-R1-gate-*.txt 上一版 md5=77acfa71baf207a3bb9c7e1464178e15 / 6db68bfeb72644324f5671ca46d0d754，
+#   那版索引把 spotless/checkstyle 的行滤掉了（过滤口径写窄了）；原始输出一字未动，只重写索引。
+02552340548f4aa5d37dd97725d502cf  raw-R1-gate-module.txt
+d47fde7138f2802e4e0ff53a1b5898ce  raw-R1-gate-all.txt
+ddafe497842d1d56c0e52bd31a12d70f  log-R1-gate-module.txt
+c8f5bbee777423a3bbc6163bf7e558c9  log-R1-gate-all.txt

@@ -196,8 +196,17 @@ b0bcf0e1237dbbc826539e2a98f5732b74e7dd0d
 1. **`"a_b"` 那条是靠继承关系满足的，不是显式判空**（控制器 (c) 要求报告的口径）。判别力不同：
    删掉 `parse` 里的**判形**分支不影响 `"a_b"`（它由 `Integer.parseInt` 抛 `NumberFormatException` 挡下，
    而 `NumberFormatException extends IllegalArgumentException`）；反过来，删掉判空也不影响 `"a_b"`。
-   两条路径**互不覆盖**，M5 只证明了判空那条，**判形那条没有专门变异**（它被 `""`/`"_"`/`"1_"`/`"_2"` 四条输入守着，
-   但我**没有**实跑"删掉判形分支"的变异，故此条只算"已测"、不算"已自证"）。
+   两条路径**互不覆盖**，M5 只证明了判空那条。
+
+   ★ **判决更正（修复轮 1 / R1-d）："判形那条"我当初判反了。** 原文把 `""`/`"_"`/`"1_"`/`"_2"` **一并**算作
+   "被 `NFE` 挡住"，于是认定判形分支**没有判别力**、只配得上"已测"二字。**实测只有 `"_"`/`"1_"`/`"_2"` 属于那一类**：
+   `""` 走的是另一条路——`i = -1` 时 `substring(0, -1)` 先于任何 `parseInt` 炸成
+   `StringIndexOutOfBoundsException`，而 **`SIOOBE` 不 `extends` `IAE`**，`isInstanceOf(IllegalArgumentException.class)`
+   当场翻。**故判形有判别力，来源是用例第一条 `""`**（`"12"` 与它同源，见「修复轮 1」§3 的探针）。
+   **当初为什么会判反**：我核过 `"a_b"` 那一路的继承关系后，把"同一条 `try` 里的其余字符串"顺手归成了同一类，
+   没有再逐个实测**异常类型本身**——而这正是本项目"红了要问为什么红 / 异常类型不同 ≠ 判别力"那条纪律的镜像
+   （形态 1 的兄弟：**没红也要问为什么没红**，我问的是"会不会被挡住"，没问"挡它的是不是 `IAE`"）。
+   这段轨迹**保留**，因为抹掉它等于抹掉一次真实的判别力误判记录。
 2. **`withinRadius` 对负半径的语义是我定的，不是控制器裁的**：实现上 `radius < 0` 自然返回空集，我在 Javadoc 里
    写成"**radius 为负时返回空集**"并在 `cellsWithinRadiusIsClosedBall` 里钉了一条 `radius = -1 → 空`。
    若你要的是"负半径抛异常"，改一行 + 改一条断言即可；但**现在这个语义是需求书没写、我替他固化下来的**。
@@ -222,3 +231,134 @@ b0bcf0e1237dbbc826539e2a98f5732b74e7dd0d
 8. **本机 `git grep` 的一次假阴性（现场记录）**：我用 `git grep` 查"不得出现 `java.io`/`Files`"时**返回零命中**，
    差点当成"约束满足"；实际原因是**新文件还没 `git add`，`git grep` 只搜已跟踪文件**。改用 `grep -rn` 重查才有效
    （结论不变：确为零命中，且 main/test 的 import 只有 JDK + JUnit + AssertJ）。**"零命中"必须先问"它到底搜了哪些文件"。**
+
+---
+
+## 修复轮 1（R1-a … R1-f）
+
+> **一句话**：六项全部执行；每条新增/加固的护栏都牵了自己的变异体（R-M1…R-M8）；门禁两条全绿（exit 0）。
+> **最要紧的一条**：R1-e 想证的"这条顺序以前没人钉"**实测证到了**——在**修复前的字节**（`b0bcf0e`）上，
+> R-M2（邻居顺序反转）与 R-M3（`next`/`prev` 真交换）**都是绿的**（各 21/0，BUILD SUCCESS）；在修复后的字节上**都红**（§3.2）。
+> 本轮**没有重写**前面已成立的章节；只按 R1-d 的要求把 §7 第 1 项那处**结论就地改掉**（改动可见 §7 的 ★ 段）。
+
+### 1. 逐项对账 R1-a … R1-f
+
+| 项 | 落在哪（文件:行） | 改了什么 |
+|---|---|---|
+| **R1-a** | `HexGrid.java:72-74`（守卫）＋`:68-69`（Javadoc）＋`HexGridTest.java:38-40`（断言在 `:39`） | 负半径由"静默返回空集"改为**抛 `IllegalArgumentException`**：`if (radius < 0) { throw new IllegalArgumentException("半径不能为负: " + radius); }`。Javadoc 口径同步改成"**radius 为负时抛 `IllegalArgumentException`**——返回空集是'静默夹取'的近亲"。用例里那条 `-1 → isEmpty()` 换成 `assertThatThrownBy(...).isInstanceOf(IllegalArgumentException.class)`。★ 审查报告写的 `HexGridTest.java:30` **是错的**，改动前那条断言确实在 `:38`（与需求书一致）——已按 `:38` 改。 |
+| **R1-b** | `HexCoord.java:29-41`（Javadoc）＋`:42-61`（实现） | 按 spec §3.4 新增 `public static HexCoord round(double q, double r)`：三轴各自 `Math.round`，再把**偏差最大**的那一轴改写成"另两轴之和的相反数"（**不是**逐轴四舍五入——Javadoc 里就举了 `(0.5, 0.5)`：逐轴取整得 `(1, 1)`，距该点整 1 格，真正的最近格是 `(1, 0)`/`(0, 1)`，距离 0.5）；`NaN`/±∞ 抛 IAE；**并列时取哪一侧不定义**、**`int` 越界行为不定义**，两条都写进了 Javadoc。三条用例见下。★ 一处**因 SpotBugs 被迫的结构调整**，登记在 §4 第 3 条。 |
+| **R1-c** | 只加变异行（代码零改动）：本轮 §3.1 的 **R-M1** | 删掉 `parse` 的判形分支 ⇒ **红**。红在 `HexCoordTest.parseRejectsMalformed:45`，理由是**异常类型**：`""` 走 `i = -1 → substring(0, -1)`，先于任何 `parseInt` 炸成 `StringIndexOutOfBoundsException`，而 **`SIOOBE` 不是 `IAE` 的子类** ⇒ `isInstanceOf(IllegalArgumentException.class)` 翻。判别力来自 **`""`**；`"_"`/`"1_"`/`"_2"` **不是**来源（它们抛 NFE，**NFE 是 IAE 的子类**，断言不翻）——探针逐输入实测，见 §3.3。 |
+| **R1-d** | 本文件 §7 第 1 项（**就地改写**） | 结论改判：判形分支**有**判别力，"没有判别力/只算已测"那句是错的；来源是 `""`（不是 `"_"`/`"1_"`/`"_2"`）。**当初为什么会判反的轨迹一并保留**（原文那段推理仍在，后面直接接"★ 判决更正（修复轮 1 / R1-d）"）。 |
+| **R1-e** | `HexCoordTest.java:204`（`neighborsFollowDirectionOrder`，断言在 `:217`/`:226`/`:247`）＋ `HexDirectionTest.java:47`（`nextAndPrevFollowFrozenCycle`，12 条绝对断言在 `:48-60`） | 冻结表照抄需求书：`(0,0)` 的 A 序邻居 = `(1,0) (0,1) (-1,1) (-1,0) (0,-1) (1,-1)`；`(2,-3)` 的 = `(3,-3) (2,-2) (1,-2) (1,-3) (2,-4) (3,-4)`；再用 6 个起点各走 6 次 `next()` 走回起点、且沿途正是 **A 序环**（回不到起点或环序不对都翻）。`next`/`prev` 那 12 条写成**绝对目标**（`E.next() == SE` …），**没有**写成"互为逆"或"与某表达式一致"。需求书第 3 条用例按裁定**并入** `neighborsFollowDirectionOrder`，**没有新开方法**。 |
+| **R1-f** | (1) `HexCoordTest.java:80-88`；(2) `HexCoord.java:10`、`HexGrid.java:12`（另修 `HexGridTest.java:74`）；(3) `HexGrid.java:26-28`；(4) `HexCoordTest.java:46` | (1) 把 `distanceMatchesCubeFormula` 注释里那句越界的"能抓 `s()` 写错"改成它真正钉的东西——**`distanceTo` 的组合规则**（漏 `/2`、只用两轴，都会翻），并写明它对该变异**完全免疫**（对拍两侧都调 `s()`，且 `z = x + y` 恒有 `max(|x|,|y|,|z|) == (|x|+|y|+|z|)/2`），`s()` 由 `sAxisInvariant` 钉——这句"实测"现在由 **R-M8** 背书（§3.1）。(2) 两处接缝空格已消；`spotless:apply` 后按 `grep -rnP '[\p{Han}] [\p{Han}]'` 复查为 **0**，另用汉字标点口径的正则又查出并修掉 `HexGridTest.java:74` 一处 **HEAD 里就有**的接缝（审查报告的正则漏了它，因为空格后跟的是 `，`）。(3) **F4 按裁定撤回**：**不加** `requireNonNull`；只在 `HexGrid.of` 的 Javadoc 补**一句**——入参是程序内部对象，`null` 按 JDK 惯例抛 NPE（与 `Set.copyOf(null)` 一致）、不另设显式守卫；而 JSON 边界上的 `HexCoord.parse(String)` 另有守卫。守卫**没有**落地（`of` 的方法体一行未动）。(4) `parseRejectsMalformed` 增 `"12"`（断言行 `:46`）。 |
+
+**R1-b 的三条用例**：`roundIsNearestHex`（`:122`，断言 `:138`）暴力枚举 ±4 内全部候选格，比的是**距离等价**——`distanceFromDoubled`（`:144`）把分数点与被比格**各放大两倍**后借 `distanceTo` 比较（各轴差值全是偶数，`/2` 精确）；因为比的是距离，**并列格天然合法**（返回的格只要是最小距离的之一就通过），这条正是"不许要求坐标相等"的落点。`roundOnFrozenSamples`（`:150`）钉三组**不并列**的冻结输入（`(0.6,0.4)→(1,0)`、`(-0.6,-0.4)→(-1,0)`、`(2.2,-1.1)→(2,-1)`）。`roundRejectsNonFinite`（`:158`，断言 `:161`/`:164`）NaN/±∞ 分别落在 `q` 位与 `r` 位。
+
+### 2. 门禁（原样；索引日志与**全文原始输出**都在 `task-1-evidence/`）
+
+两条都在**本轮最终字节**上跑，运行前工作树 == 日志里的字节（§3 的逐文件 md5 可比对）。
+
+`./mvnw -pl simos-map -am verify` → **exit=0**（`log-R1-gate-module.txt` 索引／`raw-R1-gate-module.txt` 全文）
+```
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-map ---
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0 -- in io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 8,  Failures: 0, Errors: 0, Skipped: 0 -- in io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Tests run: 5,  Failures: 0, Errors: 0, Skipped: 0 -- in io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BugInstance size is 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  5.544 s
+```
+`./mvnw verify`（全六模块）→ **exit=0**（`log-R1-gate-all.txt` 索引／`raw-R1-gate-all.txt` 全文）
+```
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0   （UtilSimos）
+[INFO] Tests run: 26,  Failures: 0, Errors: 0, Skipped: 0   （MapSimos）
+[INFO] Tests run: 15,  Failures: 0, Errors: 0, Skipped: 0   （CoreSimos）
+[INFO] BugInstance size is 0                                （util/map/social/unit/core 各一次，共 5 次）
+[INFO] UtilSimos/MapSimos/SocialSimos/UnitSimos/CoreSimos .. SUCCESS（5/5）
+[INFO] BUILD SUCCESS
+[INFO] Total time:  10.622 s
+```
+两轮日志里 `spotless:check` 与 `checkstyle:check` 各跑了 **6** 个模块（父 POM + 五模块），**无 `[ERROR]` 行**。★ 记一笔口径：`log-R1-gate-*.txt` 的**第一版索引把 spotless/checkstyle 的行滤掉了**（我的过滤正则写窄了）——原始输出一字未动，只是重建索引，明细见 `md5-manifest.txt` 的"门禁日志补全"段。
+
+### 3. 变异（R-M1 … R-M8）
+
+#### 3.0 装置与自证口径
+
+- 实验室在 **`/tmp/hexmut-r1`**（仓根 `rsync` 副本，排除 `.git`/`target`）；**工作树全程未被变异**（本轮跑完再逐文件比对实验室与工作树，六个文件 md5 全同）。
+- 原件参照 = `task-1-evidence/ref-r1/*.java`（= 本轮提交的字节）。变异体 = `mutants/R-M*.java`，每个都是"ref-r1 副本 + **恰好一处**定向替换"，生成器 `make_mutants.py` 对每条 needle **断言命中次数 == 1**（`R-M3` 是**两处真交换**，第二处对已改文本再换，且断言只命中 `prev` 块）。
+- 装盘**按白名单**推目标类名（`HexCoord`/`HexDirection`/`HexGrid`），**绝不按变异文件名**；每轮先清掉规范名之外的 `.java`。★ 这条本轮**真的响过一次**：我把修复前世界的变异体命名为 `R-M2.b0bcf0e.HexCoord.java`，白名单当场拒收（`目标名不在白名单: b0bcf0e.HexCoord.java —— 本轮作废`），改名成 `R-M2-preR1.HexCoord.java` 才跑。
+- 装盘**三方 md5 自证**：装入后的源文件 == 变异体产物，**且 != 原件参照**（否则 javac 可能编的是原件，得到"三路全绿"的假象）。每轮**强制断言 `COMPILATION ERROR` 计数 == 0**（红了必须红在断言上，不是红在编译上），并打印**编译产物 `.class` 的 md5**，证明变异真的进了字节码。
+- 基线（修复后字节）：`Tests run: 26, Failures: 0`，`maven_exit=0`，`COMPILATION_ERROR_COUNT=0`；`HexCoord.class=51c86ce11fb26d3fc4a84fd74dcb0448`、`HexDirection.class=605a4bc3c2ef8a43dce62a8a81d1364b`、`HexGrid.class=d54a1173adaf4ade82fccc3f5d96eb3f`。
+- **红了的每一个都问过"为什么红"**：红的必须是**被保护的那行**所管的行为（见每条的"为什么红"列）；跑偏一次就作废重做（§3.2 末尾那次）。**没红的也问过"为什么没红"**（§3.4）。
+
+#### 3.1 修复后的字节
+
+| 变异 | 内容 | 源 md5 自证（产物=装入 ≠ 参照） | 编译产物 | 修复后 | 为什么红（= 被保护的那行） |
+|---|---|---|---|---|---|
+| **R-M1** | 删掉 `parse` 的**判形**分支（只留 `int i = text.indexOf('_');`） | `bf85532ccb6651f8e5f57b04b4935a6f`（参照 `bb0cd038…`） | `HexCoord.class 01ec6d17…` | **26 → Failures 1**：`HexCoordTest.parseRejectsMalformed:45` | `:45` 断言的是"非法串抛 IAE"；删掉判形后 `""` 先炸成 **`StringIndexOutOfBoundsException`**（`⊄ IAE`），翻的正是 `:45` 自己。R1-c 要的那一行。 |
+| **R-M2** | `neighbors()` 加 `.reversed()`（`ALL.stream()` → `ALL.reversed().stream()`） | `ee4dca0da4bca942a6167b28ca9c98b4` | `HexCoord.class fd7922e6…` | **26 → Failures 1**：`HexCoordTest.neighborsFollowDirectionOrder:217`（打印了完整 6 元序差异） | `:217` 是 `containsExactly`（**有序**）；反转后序反。R1-e 新增的这条正是唯一的抓手——**修复前它是绿的**（§3.2）。 |
+| **R-M3** | `next()` 的 `+1` 与 `prev()` 的 `+5` **真交换** | `b245d55346d720b5f37b5a0d2eb7dd47` | `HexDirection.class 46bcae51…` | **26 → Failures 2**：`HexDirectionTest.nextAndPrevFollowFrozenCycle:48`（`expected: SE but was: NE`）＋ `HexCoordTest.neighborsFollowDirectionOrder:247`（`[从 E 起的 A 序环]`） | `:48` 是**绝对目标** `E.next() == SE`；`:247` 是 A 序环。两条都直接钉方向本身。**修复前两条都没有**，故修复前是绿的（§3.2）。 |
+| **R-M4** | 删掉 `withinRadius` 的 `radius < 0` 守卫 | `68efc4165040dd0f26d37e07e6e5f5df`（参照 `f3ec0484…`） | `HexGrid.class 25a47fbe…` | **26 → Failures 1**：`HexGridTest.cellsWithinRadiusIsClosedBall:39`（`Expecting code to raise a throwable`） | `:39` 就是 R1-a 那条"负半径必抛 IAE"。 |
+| **R-M5** | `round` 改成**逐轴四舍五入**（`return new HexCoord((int) Math.round(q), (int) Math.round(r));`，finite 守卫保留） | `8b0ce4d1bde17315514813a72c1ec5a5` | `HexCoord.class 47c2d600…` | **26 → Failures 1**：`HexCoordTest.roundIsNearestHex:138 [(-1.5, -1.5) 的取整格是否最近]`（`expected: 0.5 but was: 1.0`） | `:138` 是"取整格到该点的距离 == 最小距离"。朴素取整给出的格距离 1.0，而 0.5 可达 ⇒ 不最近。（`(-1.5,-1.5)` **不是并列**情形，断言失效不是并列造成的。） |
+| **R-M6** | 删掉 `round` 的 finite 守卫 | `9c96598b97ec7d50bd32428f3da3e8da` | `HexCoord.class 51072fd3…` | **26 → Failures 1**：`HexCoordTest.roundRejectsNonFinite:161`（`Expecting code to raise a throwable`） | `:161` 就是"`NaN`/±∞ 必抛 IAE"；删掉守卫后 `Math.round(NaN)` 静默给 0。 |
+| **R-M7**（我加的） | `distanceTo` 只用两轴：`(|dq|+|dr|+|ds|)/2` → `(|dq|+|dr|)/2` | `1c0f51528fb7ad0cffb51e57eb1fd92d` | `HexCoord.class 81d3f0c4…` | **26 → Failures 4**：`distanceMatchesCubeFormula:96`、`distanceOnKnownPairs:106`、`neighborsAreSixDistinctAtDistance1:189`、`HexDirectionTest.everyNeighborIsAtDistanceOne:100` | 背书 R1-f(1) 注释里"**只用两轴**也会翻"那句——它翻的正是 `:96` 这条对拍。 |
+| **R-M8**（我加的） | `s()` 的 `-q - r` 写成 `q + r`（**第三轴整体变号**） | `25f7d36fdba12f7d5c7dd9d0d4b8f06d` | `HexCoord.class a214676f…` | **26 → Failures 1**：`HexCoordTest.sAxisInvariant:59 [-20_-20 的 cube 恒等式]`（`expected: 0 but was: -80`） | 背书 R1-f(1) 注释的另一半：`distanceMatchesCubeFormula` 对它是**免疫**的（**没有**出现在失败名单里，实测），`s()` 只被 `sAxisInvariant` 钉住。 |
+
+八条的 `COMPILATION_ERROR_COUNT` **全为 0**；每条的 `.class` md5 与基线**不同**（且只有被改的那一个类变了，另两个与基线逐字相同）——变异确实进了字节码。
+
+#### 3.2 修复前的字节（`b0bcf0e`）——R1-e"以前没人钉"的实证
+
+装置：`run_old_world.sh`（同纪律：白名单、三方 md5、强制断编译错误为 0），把 `b0bcf0e` 的 **3 个 main + 3 个 test** 原样取出（`ref-b0bcf0e/`），再装变异体。
+
+| 变异（修复前世界） | 源 md5 自证 | 结果 |
+|---|---|---|
+| **R-M2-preR1**（`neighbors()` 反转，needle 打在 `b0bcf0e` 原文上） | `793ff2830ba220c11298494b4f6b955e` ≠ `0254e25b…`（`b0bcf0e` 原件） | **21 tests, 0 failures，BUILD SUCCESS（绿！）** |
+| **R-M3-preR1**（`next`/`prev` 真交换） | `b245d55346d720b5f37b5a0d2eb7dd47` ≠ `fd804a33…`（`b0bcf0e` 原件） | **21 tests, 0 failures，BUILD SUCCESS（绿！）** |
+
+★ 三条附带结论：
+1. **R1-e 的两条用例不是装饰**：在修复前的字节上，这两个变异**一个都抓不住**（修复前 21 条用例全绿），修复后同一份变异**双双变红**（§3.1）。这就是需求书要"钉住顺序"的全部理由，现在是测出来的、不是推出来的。
+2. **R-M3-preR1 与 R-M3 字节完全相同**（`b245d553…`）：`HexDirection.java` 本轮**一行未改**（改的只是它的测试），故"修复前的那个交换"与"修复后的那个交换"本就是同一个文件——这也顺带说明修复前的绿**不是**变异体造得不一样。
+3. **R1-a 改的是可观测行为**：顺手跑了一次"**R1 后的 main + R1 前的 test**"（`log-R3-preR1-tests-vs-R1-main.txt`），red 在 `HexGridTest.cellsWithinRadiusIsClosedBall:38 » IllegalArgument 半径不能为负: -1`——老期望（`isEmpty()`）被新守卫直接顶翻，且**再次印证那条断言在 `:38`**（审查报告写的 `:30` 是错的）。
+4. **一次"红错了理由"的现场（我抓到的）**：R-M3-preR1 的**第一版**我用裸行 needle 做第二处替换，`    return ALL.get((ordinal() + 5) % 6);` 一次命中**两行**（`next` 刚改成的 `+5` 与 `prev` 原本的 `+5`），结果变异体成了"**`prev := next`**"而**不是真交换**——它当然也红（`nextAndPrevAreInverse:31`，`expected: E but was: SW`），但**红的理由不是"测试能抓交换"**，而是"变异体本身是错的"。改成**块级 needle**（带方法签名）后才是真交换，结果为绿。这正是"**红了还要问为什么红**"的又一例：只看到"有 red"就收工，会得出**与事实相反**的结论。
+
+#### 3.3 探针（`log-probe-R1-parse-exception-types.txt`，源码 `ProbeR1.java`）
+
+逐输入打印 `parse` 抛出的**异常类型**，并直接判"`isInstanceOf(IAE)` 会不会翻"：
+
+| 输入 | 原件 | R-M1（删判形） |
+|---|---|---|
+| `""` | `IAE`，不翻 | **`StringIndexOutOfBoundsException`，会翻** |
+| `"12"` | `IAE`，不翻 | **`StringIndexOutOfBoundsException`，会翻** |
+| `"_"` / `"1_"` / `"_2"` | `IAE`，不翻 | `NumberFormatException`，**不翻** |
+| `"a_b"` | `NumberFormatException`，不翻 | `NumberFormatException`，**不翻** |
+
+⇒ **判形的判别力来自 `""`/`"12"`**，`"_"`/`"1_"`/`"_2"` **不是**来源（NFE 是 IAE 的子类）。同一份探针还实测了 F4 裁定所依据的三处 `null` 入参：`HexGrid.of(null)` → `NPE: Cannot invoke "java.util.Collection.isEmpty()" because "coll" is null`；`HexGrid.of(Set.of()).contains(null)` → `NPE`；`HexGrid.withinRadius(null, 0)` → `NPE: Cannot invoke "...HexCoord.q()" because "center" is null`。三者都是 JDK 自己抛的**热心 NPE**，这既说明"不加 `requireNonNull`"不会把错误藏起来（与 `Set.copyOf(null)` 的口径一致），也说明**这类守卫若加，只有精确匹配消息才有判别力**（形态 2）。
+
+#### 3.4 "为什么没红 / 为什么只有它红"
+
+- **R-M1 下 `"12"`（`:46`）在套件层面看不到**：`parseRejectsMalformed` 在**第一条**断言（`:45`，`""`）就中止，`:46` 根本没执行。所以 `"12"` 的判别力**只有探针级证据**（§3.3 实测它会翻），这一点已写进 §4 第 1 条，不冒充套件级。`""` 与 `"12"` 同源（都走 `substring(0, -1)`），加 `"12"` 的价值是**输入面**更宽，不是补一条独立通道。
+- **R-M8 只翻一条**：26 条里只有 `sAxisInvariant` 翻，`distanceMatchesCubeFormula`／`distanceOnKnownPairs`／`neighborsAreSixDistinctAtDistance1`／`everyNeighborIsAtDistanceOne` **全都没翻**——这就是 F2 注释说"对拍对它完全免疫"的实测依据（距离里 `|s1 - s2|` 对整体变号不变）。
+- **R-M7 翻了 4 条**（`:96`/`:106`/`:189`/`HexDirectionTest:100`）：说明 `distanceTo` 的组合规则不只被对拍钉着，另有三条用例**独立**覆盖——注释里只声称 `:96` 会翻，实际更强，故注释不必改（少报不算越界）。
+
+### 4. 我没做 / 做不到的（请控制器裁）
+
+1. **`"12"` 只有探针级证据**（理由见 §3.4）。若你要**套件级**的，最便宜的做法是把 `"12"` 抽成独立一条用例（这样它不会被执行顺序掩盖）；那会**新开一条计划外的用例**，我没擅自加——加与不加都请裁。同理，`parse` 的 `null` 入参（`:51`）也没进过任何变异体。
+2. **F2 注释里那句"实测"原本是没实测过的**：我核了 R-M1…R-M7 没有 `s()` 变异，也就是说那句在写下的当时属于"我记得是这样"。本轮补跑 **R-M8** 才让它是真的（结果恰好与断言一致）。按纪律我把它单列出来——**"我验过了"与"我记得是这样"必须分开**；本轮它侥幸对了，但当时的状态是后者。
+3. **`round` 里一处偏离需求书草图的改动（SpotBugs 逼的）**：需求书的做法若把"s 轴偏差最大"那支写成 `else { rs = -rq - rr; }`，`verify` 会红在 `[ERROR] Medium: Dead store to rs in …HexCoord.round(double, double) … DLS_DEAD_LOCAL_STORE`（`rs` 只参与偏差比较、**不参与返回**）。我改成"**故意不写 else**"并在代码里写明理由（改 `q`/`r` 反而错；写 `rs` 是死存储）。**对所有入参行为等价**（`rs` 本来就不影响返回值），最坏情况下少修正一次"并列"——而**并列取哪一侧已按 spec 裁定为不定义**。它确实偏离了草图，登记在案。
+4. **我自己加的、超出派单的东西**（不算需求书要求，供审查取舍）：用例 `roundOnFrozenSamples`（`:150`，派单只点名了暴力对拍与 finite 两条）；`HexGridTest.java:74` 那处 **HEAD 里就存在**的接缝空格（审查报告的正则没覆盖"空格后跟汉字标点"）；变异体 **R-M7**、**R-M8**；修复前世界的两次跑（§3.2）与那次"R1 main + R1 前 test"的混合跑；`run_old_world.sh`。
+5. **本轮提交的 SHA 无法写进本文件**：本文件就在那个提交里，写进去必然自指。SHA 在回给控制器的正文里；§6 的老条目讲的是上一个提交（`b0bcf0e`），未改动。
+
+### 5. 本轮最终字节（工作树 == 提交内容，逐文件 md5）
+
+| 文件 | md5 |
+|---|---|
+| `.../main/java/io/mosire/simos/map/hex/HexCoord.java` | `bb0cd0389dc5084a0295a3a7e27dea5f` |
+| `.../main/java/io/mosire/simos/map/hex/HexDirection.java` | `fd804a33272adcde70d5dbaa1ed00dcb`（**本轮未改**，= `b0bcf0e` 的字节） |
+| `.../main/java/io/mosire/simos/map/hex/HexGrid.java` | `f3ec0484326452a2d9c977ea27e2f82a` |
+| `.../test/java/io/mosire/simos/map/hex/HexCoordTest.java` | `ac39f06edea33cd5525f83ac6377fc7d` |
+| `.../test/java/io/mosire/simos/map/hex/HexDirectionTest.java` | `64de2708d2a80f81eef0349f2cb954cd` |
+| `.../test/java/io/mosire/simos/map/hex/HexGridTest.java` | `61b19c66fad549af2179d4fa5cf6c4cd` |
+
+约束复核（本轮出口处再跑一遍）：`java.io` / `java.nio` / `Files` / `Path` 在 `simos-map/src` 下**零命中**；hex 包 `import` 全表 = `java.util.{ArrayList,Collections,Comparator,HashSet,List,Set}` + `org.junit.jupiter.api.Test` + AssertJ 两个静态导入（**无新增依赖、无 pom 改动**）；`equals`/`hashCode` 仍全部来自 record（`toString` 按 spec §3.1 保留手写，见本文件 §7 第 3 条的老登记）；`git status` 里 `simos-map/src` 只有上述 **5 个文件**被改（`HexDirection.java` 不在其中）。
