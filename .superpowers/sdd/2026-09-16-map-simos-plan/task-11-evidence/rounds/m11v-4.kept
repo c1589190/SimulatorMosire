@@ -1,0 +1,119 @@
+=================== ROUND m11v-4 ===================
+目标（变异体写进**目标类名**的文件）：generate/RiverBuilder.java（补充-4：分支不切开，链穿过分支继续）
+★ 变异在 /tmp 副本上做：REPO=/tmp/m11lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 106 个 .java，无多余文件）
+--- 改前（工作树 + 本任务新文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 208, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改的文件（1个）：
+  simos-map/src/main/java/io/mosire/simos/map/generate/RiverBuilder.java  md5 原件=cda2058cdadc2bf937c472ac4a1202c8  变异体=714e428796395de9efac2dc0736a43b8
+自证：每个声明的文件都与原件**字节不同** OK
+自证：除声明的文件外无文件被改动（清单其余项全部一致）OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 21
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 208, Failures: 5, Errors: 1, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 11, Failures: 5, Errors: 1, Skipped: 0, Time elapsed: 0.416 s <<< FAILURE! -- in io.mosire.simos.map.generate.RiverBuilderTest
+Tests run: 208, Failures: 5, Errors: 1, Skipped: 0
+RiverBuilderTest.branchesAreSeparatePathways:178 [河 river-7-5 内部不得有度 ≥ 3 的格（分支点应把链断开）] 
+RiverBuilderTest.edgesAreConsistentWithPathways:242 [(2) 边 -2_-1|-1_-1 的标注必须以河 river-7-3 的 PathwayId 为键] 
+RiverBuilderTest.riverEndsAtOceanOrBoundary:136 [河 river-7-2 的终点 -2_2 必须是 ocean 或图缘格] 
+RiverBuilderTest.riverNeverGoesUphill:112 [河 river-7-2 第 3 步必须严格下降（-3_2 → -2_2）] 
+RiverBuilderTest.worksOnGeneratedMap:300 [实测 30 条河] 
+RiverBuilderTest.riverStartsAtHighestHex:79 » IllegalState 链不合法：格 -1_-1 上挂了 3 条边（分支点应把链断开，不得出现在线内部）: river-7-5
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RiverBuilderTest.branchesAreSeparatePathways:178 [河 river-7-5 内部不得有度 ≥ 3 的格（分支点应把链断开）] 
+RiverBuilderTest.edgesAreConsistentWithPathways:242 [(2) 边 -2_-1|-1_-1 的标注必须以河 river-7-3 的 PathwayId 为键] 
+RiverBuilderTest.riverEndsAtOceanOrBoundary:136 [河 river-7-2 的终点 -2_2 必须是 ocean 或图缘格] 
+RiverBuilderTest.riverNeverGoesUphill:112 [河 river-7-2 第 3 步必须严格下降（-3_2 → -2_2）] 
+RiverBuilderTest.worksOnGeneratedMap:300 [实测 30 条河] 
+RiverBuilderTest.riverStartsAtHighestHex:79 » IllegalState 链不合法：格 -1_-1 上挂了 3 条边（分支点应把链断开，不得出现在线内部）: river-7-5
+--- surefire 明说（RiverBuilderTest：断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.generate.RiverBuilderTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 5, Errors: 1, Skipped: 0, Time elapsed: 0.416 s <<< FAILURE! -- in io.mosire.simos.map.generate.RiverBuilderTest
+io.mosire.simos.map.generate.RiverBuilderTest.riverNeverGoesUphill -- Time elapsed: 0.087 s <<< FAILURE!
+java.lang.AssertionError: 
+[河 river-7-2 第 3 步必须严格下降（-3_2 → -2_2）] 
+Expecting actual:
+  0.5
+to be less than:
+  0.29999999999999993 
+io.mosire.simos.map.generate.RiverBuilderTest.riverEndsAtOceanOrBoundary -- Time elapsed: 0.030 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[河 river-7-2 的终点 -2_2 必须是 ocean 或图缘格] 
+Expecting value to be true but was false
+io.mosire.simos.map.generate.RiverBuilderTest.edgesAreConsistentWithPathways -- Time elapsed: 0.025 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[(2) 边 -2_-1|-1_-1 的标注必须以河 river-7-3 的 PathwayId 为键] 
+Expecting actual:
+  ["river-7-5"]
+to contain exactly (and in same order):
+  ["river-7-3"]
+but some elements were not found:
+  ["river-7-3"]
+and others were not expected:
+  ["river-7-5"]
+io.mosire.simos.map.generate.RiverBuilderTest.worksOnGeneratedMap -- Time elapsed: 0.044 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[实测 30 条河] 
+expected: 30
+ but was: 25
+io.mosire.simos.map.generate.RiverBuilderTest.riverStartsAtHighestHex -- Time elapsed: 0.032 s <<< ERROR!
+java.lang.IllegalStateException: 链不合法：格 -1_-1 上挂了 3 条边（分支点应把链断开，不得出现在线内部）: river-7-5
+io.mosire.simos.map.generate.RiverBuilderTest.branchesAreSeparatePathways -- Time elapsed: 0.022 s <<< FAILURE!
+java.lang.AssertionError: 
+[河 river-7-5 内部不得有度 ≥ 3 的格（分支点应把链断开）] 
+Expecting actual:
+  3
+to be less than or equal to:
+  2 
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 6
