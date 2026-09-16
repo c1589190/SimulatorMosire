@@ -105,11 +105,21 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 `agentlib-mosire` 并由 `AgentLibAvailabilityTest` 钉住（13 个类可加载 + JAR 类数 ≥ 118）。
 每条护栏都有一个**故意违规用例**证明它会响，见实现计划 Task 3/4/5。
 
-**AgentLibMosire 依赖现状**：`~/.m2` 里的 `0.1.0-SNAPSHOT` 已重建为 118 类的完整构建
+**AgentLibMosire 依赖现状**：`~/.m2` 里的 `0.1.0-SNAPSHOT` 曾重建为 118 类的完整构建
 （2026-09-16；此前是 2026-09-13 的 109 类陈旧构建，缺 `permission` 包 8 类与
-`plugin.HostServices`）。**用户已裁决：暂缓**升为固定版本（ProjectMosire 有在途工作），
+`plugin.HostServices`）。**注意这是 `2026-09-16` 在 `/root` 那台机器上的结果**，
+`/home/cna` 这台仍是 49 类的陈旧构建，尚未重建。
+**用户已裁决：暂缓**升为固定版本（ProjectMosire 有在途工作），
 本仓暂依赖 SNAPSHOT。若哪天 `AgentLibAvailabilityTest` 红了，先按测试里的提示
 `cd ~/ProjectMosire && ./mvnw -pl AgentLibMosire -am install` 重建。
 
-**机器与路径**：本机为 `/root/...`（原稿写的 `/home/cna/...` 已全文替换）；本机**无 `unzip`**，
-数 JAR 类数用 `jar tf`。
+**机器与路径**：本项目**在多台机器上交替推进**，家目录不固定（已见 `/root` 与 `/home/cna`
+两种），故文档里一律写 `~/`、不写死绝对家目录。工具可用性同样因机而异：数 JAR 类数一律用
+`jar tf`（比 `unzip -l` 通用，`unzip` 并非每台都有）。
+
+**换设备后的自检清单**（本机踩过的坑，按序做）：
+1. `git status` 看 `core.autocrlf`——曾把整棵工作树 checkout 成 CRLF，`mvnw` 的 shebang 变
+   `#!/bin/sh\r` 导致 Maven 完全起不来、Spotless 全红。仓库已用 `.gitattributes` 钉死 LF，
+   新机器首次 clone 后若仍异常，先查这条。
+2. `~/.m2` 是**每台机器各自的**：`agentlib-mosire` 的重建不会跨机同步，新机器上若
+   `AgentLibAvailabilityTest` 红，按上条命令在本机重建一次。

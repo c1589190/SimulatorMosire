@@ -7,6 +7,12 @@ target/
 *.iml
 .vscode/
 
+# Eclipse / m2e —— 全部由 pom.xml 派生，可随时重新生成，不进仓库
+.project
+.classpath
+.factorypath
+.settings/
+
 # Claude Code —— 本机专用，不进仓库（官方要求）
 CLAUDE.local.md
 **/.claude/settings.local.json
