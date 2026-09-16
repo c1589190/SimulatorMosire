@@ -612,7 +612,9 @@ TerrainCatalogTest
   - ★ moveCostOrderMatchesCharacteristics : plains 严格最小；ocean ≥ plateau_mountains；
                                             plateau < mountains
   - plainsIsPlainsNotMountains            : ★ plains 的 name **不含**"山"            ← 钉住命名事故
-  - plainsGreenIsNotTheOldFallback        : ★ 任何一项的 color 都 != "#6CC261"       ← 见下
+  - noTypeRevivesAKnownFallbackColor      : ★ 任何一项的 color 都不等于 "#6CC261"
+                                            也不等于 "#5B8C3E"（**大小写不敏感**）    ← 见下
+  - constructorRejectsInvalidFields       : ★ 六条构造期守卫**逐条**给一个违例       ← 见下
 ```
 
 ★ **`heightBandsAreContiguousAndCoverUnitInterval` 为什么用浮点 `==` 而不是容差**：带边界是
@@ -622,10 +624,17 @@ TerrainCatalogTest
 ★ **`keysAreInAscendingHeightOrder` 的用意**：Step 2 的表把"顺序 = 高度升序"写成了**注释里的承诺**。
 注释不算护栏。这条用例把它变成**可红的断言** —— 否则将来有人往中间插一项、注释还写着"升序"。
 
-★ **`plainsGreenIsNotTheOldFallback` 的用意**：`#6CC261` 是**词表 A** 的平原绿，
-它出现在 `ContourQueryEngine.terrainColor` 的 `default` 分支里 —— **跨词表串味的物证**。
-新表**不得**再出现这个值。★ 注意它现在**不是**在钉"plains 的颜色"，而是在钉
-"**这个已知污染值不许在任何一项上复活**" —— 一个**排除用例**（见 §9.3 的排除集合那类）。
+★ **`noTypeRevivesAKnownFallbackColor` 的用意**（原名 `plainsGreenIsNotTheOldFallback`，执行期改名并加宽）：
+`#6CC261` 是**词表 A** 的平原绿，出现在 `ContourQueryEngine.terrainColor` 的 `default` 分支里 —— **跨词表串味的物证**；
+`#5B8C3E` 是**词表 B 族**的低地绿，出现在 `CompressionService.terrainColor` 的 `default` 分支里 —— 第二个物证，
+来自**另一个**词表族。新表**不得**再出现这两个值中的任何一个。★ 注意它**不是**在钉"plains 的颜色"，而是在钉
+"**这些已知污染值不许在任何一项上复活**" —— 一个**排除用例**（见 §9.3 的排除集合那类）。
+★ **必须大小写不敏感**：本类型颜色校验正则允许小写（`#[0-9A-Fa-f]{6}`），故 `"#6cc261"` 是一条与物证**同值**的真实漏路。
+
+★ **`constructorRejectsInvalidFields` 的用意**：m9 只自证了"高度带"**一条**守卫，其余五条
+（key 空白 / name 空白 / color 正则 / moveCost &lt; 1 / 产出为负）此前**无人故意违规过** —— 按 G13 那就是装饰。
+这条例例把六条**逐条**变成可红的断言。判别力来源是**抛不抛**（这些守卫的消息都是自定义文案，
+不是 `requireNonNull` 那种"消息恰是字段名"的形态 2）；消息断言只用来钉**是哪一条**响的。
 
 ★ **`moveCostOrderMatchesCharacteristics`** 把 Step 2 表"特性"栏里那句相对大小写成断言。
 **具体断言给定如下**（这是控制器的裁定，别自己改）：
@@ -637,15 +646,16 @@ TerrainCatalogTest
 
 | 变异 | 期望 | 证明什么 |
 |---|---|---|
-| `of()` 加一个 `return defaults().get("plains")` 兜底 | **红** | `ofNeverFallsBack` 不是装饰 |
-| `defaults()` 改用 `Map.copyOf` | **红** | `defaultsIterationOrderIsStable` / `defaultsKeySetEqualsKeys` 真的钉住了保序 |
+| `of()` 加一个 `return defaults().get("plains")` 兜底 | **红** | `ofThrowsOnUnknownKey` 有判别力（★ 不另写 `ofNeverFallsBack`，见下） |
+| `defaults()` 改用 `Map.copyOf` | **红** | `defaultsKeySetEqualsKeys` 真的钉住了保序（★ `defaultsIterationOrderIsStable` 已删，见下） |
 | 把 `plains` 的 name 改回"山区" | **红** | `plainsIsPlainsNotMountains` 有判别力 |
 | 删掉一项（6 项） | **红** | `catalogHasExactlySevenKeys` 有判别力 |
 | ★ 把某一带的 `maxHeight` 缩小 0.01（造出一条缝） | **红** | `heightBandsAreContiguousAndCoverUnitInterval` 抓得住缝，且**证明它没用容差** |
 | ★ 交换 `KEYS` 里 `plateau` 与 `plateau_mountains` | **红** | `keysAreInAscendingHeightOrder` 有判别力 |
 | ★ 把 `plains` 的 `moveCost` 改成全表最大 | **红** | `moveCostOrderMatchesCharacteristics` 有判别力 |
-| ★ 把某项的 `color` 改成 `#6CC261` | **红** | `plainsGreenIsNotTheOldFallback` 是排除用例、不是空转 |
+| ★ 把某项的 `color` 改成 `#6CC261`（小写 `#6cc261` 也要试） | **红** | `noTypeRevivesAKnownFallbackColor` 是排除用例、不是空转，且**大小写不敏感那半也有判别力** |
 | ★ 把某带的 `minHeight` 设成等于它的 `maxHeight` | **红** | **`TerrainType` 的构造器校验**有判别力（构造期护栏也要自证） |
+| ★ **删掉 `TerrainType` 的某一条守卫**（如 `key` 空白那一条） | **红** | `constructorRejectsInvalidFields` 的**逐条**判别力 |
 
 ★ 每个变异体**都要先自证**：编一份原件作参照、比 `md5`，**确认变异产物 ≠ 原件**再看测试结果。
 否则"三向全绿"可能只是"变异根本没写进磁盘"。**这条自身也要有痕迹**（把两份 md5 贴进报告）。
@@ -654,6 +664,25 @@ TerrainCatalogTest
 
 同 Task 1 的形制，路径换成 `terrain/`，提交信息
 `feat(map): terrain 包——唯一地形词表（7 项，高度升序，保序）`。
+
+**★ 执行期校正（2026-09-17，控制器自读 diff 后当场裁定；未另开评审轮）**
+
+用户 2026-09-17 立了红线「**评审的体量不得压过代码本身**」，故 Task 2 **不派评审者、不生成评审包** ——
+控制器读 diff 即评审，已确证的发现在发现的那一刻修掉。四处裁定：
+
+- **R-2a｜不写 `ofNeverFallsBack`**。`of()` 的唯一未知 key 路径与兜底路径**同一个断言**（都要求抛），
+  两条用例同红同绿 = 重复的一种。m1 变异体照跑，红的会是 `ofThrowsOnUnknownKey`。
+- **R-2b｜删 `defaultsIterationOrderIsStable`**。实现者实测：把 `defaults()` 换成 `Map.copyOf`，它
+  **照样绿** —— 而 `copyOf` 正是它要抓的那个实现（同一 JVM 内 key 序确定，跨进程才不同）。名字在承诺
+  一件它测不了的事。保序的钉子是 `defaultsKeySetEqualsKeys`（与冻结的 `KEYS` 逐项比字面量序）。
+  **残留**：跨进程序无人把守，单进程用例够不到 → 记台账，不在本模块解决。
+- **R-2c｜兜底色补第二个值，且改大小写不敏感**。`#5B8C3E` 是**另一个**词表族的兜底色（见 spec §6.1 补记）。
+  逐字符 `isNotEqualTo` 会放过同值小写写法 `"#6cc261"`，而颜色校验正则明确允许小写。用例改名
+  `noTypeRevivesAKnownFallbackColor`。
+- **R-2d｜补 `constructorRejectsInvalidFields`**。m9 只覆盖"高度带"一条，其余五条守卫无自证。
+
+自证：拆 `key` 守卫 → `:171` 红；plains 改 `#6cc261` → `:156` 红（消息指名 plains）；两轮均无
+`COMPILATION ERROR`，事后 `clean verify` 全绿（**不信任 `target/classes` 里的陈旧产物** —— 第六形态）。
 
 ---
 

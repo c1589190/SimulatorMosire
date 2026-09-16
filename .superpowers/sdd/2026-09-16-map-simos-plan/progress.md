@@ -420,3 +420,42 @@ Task 9–14 是生成算法/守卫，Task 15 是关账。
 `with CRLF line terminators`，41 行带 `\r`），直接执行报
 `/usr/bin/env: 'bash\r': No such file or directory`。**绕法**：`tr -d '\r' < 脚本 > /tmp/x.sh && bash /tmp/x.sh <参数>`
 （已写进 CLAUDE.md 的换机自检清单）。
+
+---
+
+## Task 2（`terrain` 包）: complete（框架期，评审延后）
+
+**实现**：`6d52322`（`TerrainType` + `TerrainCatalog`，281 行）→ **修复**：`20508d8`（控制器当场修）。
+报告与变异证据 `abf293e`。门禁 `clean verify`：util 156 / map 39，Failures 0、Errors 0，
+`BugInstance size is 0` ×2，BUILD SUCCESS。
+
+**评审方式**：按用户 2026-09-17 红线，**不派评审者、不生成评审包**，控制器自读 diff 即评审；
+本轮**不计入**≤3 轮额度（未派独立评审）。
+
+### 裁定（实现者报了 10 条顾虑，全数裁定）
+
+| # | 顾虑 | 裁定 |
+|---|---|---|
+| 1 | `defaultsIterationOrderIsStable` 在 m2（`Map.copyOf`）下**照样绿** | **删用例**（R-2b）。名字在承诺一件它测不了的事；保序钉子是 `defaultsKeySetEqualsKeys` |
+| 2 | 颜色排除用例逐字符比，`"#6cc261"` 能溜过 | **改大小写不敏感**（R-2c）。正则明确允许小写 ⇒ 这是真实漏路，不是理论风险 |
+| 3 | 只排了 `#6CC261`，漏了 `#5B8C3E`（**请裁定**） | **补进排除集合**（R-2c）。**已回写 spec §6.1**：两个兜底色来自两个不同词表族，初稿只记了前者 |
+| 4 | 哨兵 999 的 M6 换算成本（100 倍差距） | **不动**。哨兵"不参与任何算术"已有 Javadoc 承诺；换算成本归 M6 导入器裁定 |
+| 5 | 构造器 5 条守卫只有"高度带"有自证（m9） | **补 `constructorRejectsInvalidFields`**（R-2d），六条逐条给违例 |
+| 6 | `description` 无校验 | **有意不设**——只作文档用途，不被解引用，null 不破坏往返。已写进 Javadoc 免得被当疏漏 |
+| 7 | `everyTypeIsConstructible` 与 m9 覆盖面重叠 | **不动**。两者口径不同：前者防"校验误伤合法行"，后者证"校验能响" |
+| 8 | 旧 key → 新 key 映射有 4 个孤儿 + `plains` 双射 + `hills → low_hills` 偏弱 | **不动，留 M6 裁定**。U1 已作废旧表，此时替 M6 定映射就是编造设计（与派单里"不许替 M6 编映射"一致） |
+| 9 | 词表 B 的 `plains` name 是"山区" | **不动**。`plainsIsPlainsNotMountains` 已钉住新表不复活它 |
+| 10 | 7 项颜色与旧表无一致对应 | **不构成问题**。U1 的意图正是"不作废改名、而是整表作废" |
+
+### 接受并外溢的遗留
+
+- **跨进程序**的 `defaults()` 迭代序无人把守（单进程用例够不到）；保序的实际保证来自
+  `LinkedHashMap` + 不 `copyOf` 的**实现选择**，由 `defaultsKeySetEqualsKeys` 间接钉住。
+- spec §6.1 **已补记**第二个兜底色 `#5B8C3E`。
+- 旧 key → 新 key 映射表（M6 老存档导入器用）：4 个孤儿 + `plains` 双射 + `hills` 偏弱 → **M6 裁决**。
+
+### 自证（G13）
+
+拆 `TerrainType` 的 `key` 守卫 → `constructorRejectsInvalidFields:171` 红（**是那一行**，非编译错误、
+非别的守卫代偿）；`plains` 颜色改 `#6cc261` → `noTypeRevivesAKnownFallbackColor:156` 红，消息指名 plains。
+两轮变异体 md5 均 ≠ 原件、恢复后精确回位；事后 `clean verify`（不信 `target/classes` 陈旧产物 —— 第六形态）。

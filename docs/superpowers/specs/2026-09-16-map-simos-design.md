@@ -385,6 +385,11 @@ public record Pathway(PathwayId id, String name, String groupId,
 ★ **串味铁证**：`ContourQueryEngine.terrainColor` 的 `default -> "#6CC261"` 用的正是**词表 A 的平原绿**。
 实测**落盘数据用词表 B（9 项）**。
 
+★ **第二个兜底色 `#5B8C3E`**（M2 Task 2 实测补记，本 spec 初稿只记了 `#6CC261`）：`CompressionService.terrainColor`
+的 `default -> "#5B8C3E"` 是**词表 B 族的低地绿**。两个兜底色来自**两个不同**的词表族，故
+`TerrainCatalog` 的排除用例（`noTypeRevivesAKnownFallbackColor`）**同时排除这两个值、且大小写不敏感**
+（本类型颜色校验正则允许小写，`"#6cc261"` 是真实可写的同值漏路）。
+
 ⇒ 裁决（**★ 已被用户裁决 U1 推翻，以本节为准**）：
 
 **A 与 B 同时作废。** 词表改为**用户给的 7 项**，**按高度从小到大**，各有不同特性：
