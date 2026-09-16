@@ -731,3 +731,46 @@ simos-core 15，Checkstyle 0，SpotBugs `BugInstance size is 0`。`MapChangeSetT
 
 ★ **交给 Task 7 的硬提醒**：`FieldDelta` 现在是**四条**变体（不是三条）——反射枚举与往返用例都要知道
 `Patch` 在"同组件又增又删"时出现；`spec` 仍是有意不进变更集的那一个（`EXCLUDED_FROM_CHANGE_SET = Set.of("spec")`）。
+
+## Task 7 关账（控制器自读 diff = 评审；框架期不派评审者）
+
+交付：`c83058c`（`RoundTripComponentsTest`，5 用例）、`28f62d6`（报告 + 9 轮证据）、`f0ddce0`（控制器当场修类注释）。
+门禁 `clean verify` 全绿：simos-map **157**（152 旧 + 5 新）/ simos-util 156 / simos-core 15，Checkstyle 0，
+`BugInstance size is 0`，BUILD SUCCESS。`MapChangeSet.java` **反射未查出缺口 ⇒ 一字未改**（唯一改动是 `f0ddce0` 的注释，控制器做）。
+变异 **9 轮**（m7v-1..9）：**m7v-1/m7v-8 撞编译期、如实作废**；m7v-9 是实现者为回答"预测不符"自加的隔离轮。
+
+★ 复核方式：我从 `m7v-*.kept` 独立取每轮的自证头（干净世界 / **md5 原件↔变异体的实际值** / 无旁文件改动 /
+`COMPILATION ERROR count`）与红点行，与报告逐条对上。九轮都不是"OK"二字了事。
+
+| 项 | 裁定 |
+|---|---|
+| ★ 交付物比 brief 强的一处 | `specIsDeliberatelyExcludedFromTheChangeSet` 第三条断言「变更集组件 ∪ 豁免集 必须恰好覆盖 `GameMap` 全部组件」——**brief 草图没有**。一个断言同时封两向（多一项 = 有组件被"豁免"掉，少一项 = 有组件谁都没管）。保留 |
+| V3（加 `foo` 组件）落在**测试期 · Error** | **接受，且正是要的那一层**。变异体把 4 个构造点一并改到编译得过（`GameMap`/`MapChangeSet`/两个测试）——即现实中"加了字段、改了构造、忘了变更集"的形态 ⇒ `mutate` 的 default 抛「未登记的组件: foo」。同轮 `specIsDeliberatelyExcludedFromTheChangeSet:144` 也红并点出缺的是 `foo`；Task 5 的两条组件数钉子同轮也响 |
+| ★ V1/V2（"从变更集删组件"）**被 javac 接住**（4 处 `cannot find symbol`）⇒ 该轮作废、不计测试期判别力 | **接受**。★ **项目级事实（新）**：**铁律 5 的漂移在本仓有两道网** —— javac 管"组件的增删"（`apply` 显式构造 `GameMap`、测试显式调 7 个访问器），本测试管"比较漏了"（编译得过、静默丢）。故 brief 表里 V1/V2 的**字面方向到不了断言**；能推到测试期的等价形态是 m7v-2 的"恒定 `Unchanged` 占位访问器" |
+| ★ V2/V4 红在**第 ① 条**断言，不是我在派单里预测的第 ② 条 | **我预测错了，实现者如实报了出来 —— 算它对**。单组件夹具下 `isEmpty()` 为假 ⟺ 该组件 `changed()`，故 ① 必然先响。**裁定：不改夹具** —— 把 base/target 改成多组件不同，会把 ① 从"漏了它 ⇒ 变更集整个为空"（GSimulator 病根的正面钉子）稀释成"某个组件变了"；**为迁就我的预测而牺牲钉子，是拿预测当目标**。② 的独立判别力已由 **m7v-9 实测隔离**（把 `changedOf` 的 `edges` 映射复制粘贴成 `pathwayGroups` ⇒ 只有 ② 红、① 绿），**实测强于构造** |
+| 豁免口的固有边界（同时改豁免集与其期望值的共谋式改动拦不住） | **接受为已声明的限界**。实现者自己写明"以备后人误读为绝对"——形态 5 的正当用法 |
+| `MapChangeSet.java` 类注释把把守者指成 `MapChangeSetTest` | **当场修**（`f0ddce0`，用户裁定「已确证的发现，若修复比它的描述还短，在发现的那一刻修掉」）。同处那句「6 个字段漂移出去」**经查 spec §7.3 属实**（四者 + `gridSize`/`hexOrientation`）⇒ **没改数**，只补半句口径说明 |
+
+★ **我这次差点犯的错（必须记）**：看到"6 个"时我的第一反应是「CLAUDE.md 铁律 5 说四个，这里错了，改掉」——
+**那是按记忆去"纠正"一个已经正确的数**，正是乙族的形态。查 spec §7.3 才知 4 与 6 是**两个口径**
+（6 = 全部漂移字段；4 = 其中"该进变更集而没进"的那一类）。那半句口径说明已写进注释，免得后人踩同一个坑。
+
+## Task 8 派单前的扫描（控制器预做，Task 7 运行期间；结论先落 `/tmp/task-8-scan.md`）
+
+| 配对 | 一方产出 → 另一方消费 | 发现 |
+|---|---|---|
+| **Task 5 → Task 8** | `GenerationSpec` 骨架（只 `seed`）；`GameMapTest` 第 187 行 `isEqualTo(new GenerationSpec(7L))` | ★ **真冲突**：扩成 9 组件后该行**编译不过**，而 Task 8 的 Files 段**没列 `GameMapTest.java`** ⇒ **R-48-p**（见下） |
+| Task 7 → Task 8 | Task 7 反射枚举 `GameMap` 的 8 个组件 + 豁免集 `Set.of("spec")` | **无冲突**：Task 8 加的是 `GenerationSpec` 的**内部**组件，`GameMap` 的组件数与名**不变** ⇒ 8 vs 7 不变、豁免集不变 |
+| Task 6 → Task 8 | `apply` 里的 `base.spec()`（R-48-e 要求核实有无 null 兜底） | **已核实、无需改动**：`MapChangeSet.java:90` 是 `base.spec()`，无兜底 ⇒ Task 8 那份 Inspect 的结论就是"无需改动"，**不许为凑 diff 动它** |
+| Task 8 自洽 | Step 2 校验 `mainRidges ∈ [1,2]` vs 用例 `mainRidgesFiveThrows` + `mainRidgesTwoIsAccepted` | **一致**（R-48-a 已修过原稿"只有下界"） |
+| Task 8 外部依赖 | Step 1 要读 `~/DevMosire/GSimulator` 的 `MapGenerator.java:105` | **当场核过**：仓库在；真实路径是 `gsim-map/src/main/java/com/gsim/map/service/MapGenerator.java`（brief 只给裸文件名）⇒ 派单带全路径 |
+| Task 8 外部依赖 | Step 3 的 `noTerrainHeightThresholds` 要 `TerrainCatalog.KEYS` | **当场核过**：存在（`public static final List<String>`，7 项、U1 定的序） |
+| Task 8 Step 4 变异 | 「加回 `worldId` 组件」要让 `noWorldIdNoCoastRoughness` 红 | ★ **与 Task 7 V3 同型的坑**：往 record 加组件先撞**编译期**（构造点全炸）⇒ 要么如实记"编译期接住、该轮作废"，要么把构造点一起改到编译得过。同一条裁定随派单带走 |
+
+**R-48-p（新裁定）**：Task 8 **允许且必须**改 `GameMapTest.java`（brief 的 Files 段漏了它）。
+- **不采用**"留一个 1 参便捷构造器"的解法：那是**静默填 8 个默认值**的第二构造路径，与本任务
+  "删装饰形参、不静默夹取"的立意正相反。
+- **采用**：删掉第 187 行；把它想说的话（"`defaults(seed)` 收种子、只让 seed 变，其余是规范默认值"）
+  **移进 Task 8 自己的 `GenerationSpecTest`**，写成**更强**的形态：`defaults(7L)` 与 `defaults(8L)`
+  **除 seed 外逐组件相等** —— 这才是原来那句 `isEqualTo(new GenerationSpec(7L))` 的真意
+  （骨架只有一个组件时它只能这么写）。第 186/188 行保留；第 184 行那句 Javadoc（"Task 8 才扩参数面"）按现状改写。
