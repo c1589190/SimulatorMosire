@@ -138,7 +138,7 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 - **密钥纪律**：值绝不进日志/异常/事件/argv/env/stdio；读配置只打印路径 + 长度
 - 注释与文档用中文，与既有风格一致
 
-## 当前状态（2026-09-16）
+## 当前状态（2026-09-17）
 
 | 项 | 状态 |
 |---|---|
@@ -146,7 +146,7 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | 实现计划 | ✅ 已落（`2610229` + 本机化修正）；阶段推进机制见其 **§六**。分支推送状态见该计划 §二 M1 的关账记录 |
 | M0 | ✅ 已完成（5/5，2026-09-16 本会话内联执行；`./mvnw clean verify` 全绿） |
 | M1 | ✅ 已完成（11/11，2026-09-16；spec 五项待决已裁决，`./mvnw clean verify` 全绿）——设计见 `docs/superpowers/specs/2026-09-16-util-simos-design.md`，计划见 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` |
-| M2 | 🔄 进行中——总纲 §十三 的 MapSimos 待决项**已全部裁决**（2026-09-16，含用户四项裁定：7 项地形词表、边界入存储、工作区产物全进、恢复点选 B）；spec 见 `docs/superpowers/specs/2026-09-16-map-simos-design.md`，15 任务计划见 `docs/superpowers/plans/2026-09-16-map-simos-plan.md`。**Task 1（`hex` 包）已关账**（`b0bcf0e` 实现 → `30a70a2` 修复轮 1；评审用 2 轮：第 1 轮 Needs fixes〔F1 序无钉子〕，第 2 轮限域重审 Accept with 2 Minor〔均文档层〕，已当场修）。下一步：**Task 2（`terrain` 包）** |
+| M2 | 🔄 进行中——总纲 §十三 的 MapSimos 待决项**已全部裁决**（2026-09-16，含用户四项裁定：7 项地形词表、边界入存储、工作区产物全进、恢复点选 B）；spec 见 `docs/superpowers/specs/2026-09-16-map-simos-design.md`，15 任务计划见 `docs/superpowers/plans/2026-09-16-map-simos-plan.md`。**Task 1~9 已关账**（逐任务裁定与跨任务约束见 SDD 台账 `.superpowers/sdd/2026-09-16-map-simos-plan/progress.md`；台账在 gitignore 下、以 `git add -f` 入库）。下一步：**Task 10（`MapGenerator`）** |
 | 远程仓库 | `https://github.com/c1589190/SimulatorMosire`（**PRIVATE**，默认分支 `main`） |
 | 推送状态 | ✅ **已推送**（2026-09-17）。用户原话「你爱推就推反正是私有仓库」。★ 原写作"本地领先远程、用户裁定不擅自推送"——**"不擅自推送"从来不是用户的裁定**，是控制器自加的规则，已撤 |
 

@@ -805,6 +805,8 @@ m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILAT
 | Task 9 自洽 | Step 2 的 8 条用例 vs Step 1 的语义（沙漠门 / 总函数 / 查表） | **基本一致**，两处需补：`h == 1.0` 无任何用例钉住（→ R-9a 的钉子）；变异行 4"末尾加 default 兜底"在 R-9a 的形态下可能不可达/无判别力（→ **R-9d**）。desert 门与 `desertBandFallsBackToPlainsWhenHumid` 一致；`classifierFollowsCatalogBands` 采样点由被遍历带**现算**（min/中点/`nextDown(max)`），与"无私有数"同构 |
 | Task 9 外部依赖 | — | **无**：不读 GSimulator、无外部路径 |
 
+**BASE `3d3a598`**（Task 9 派单前的最后提交；实现者首笔提交的父提交应是它）。已派单（glm 路由）。
+
 **R-9a（补 brief 的缺口）**：落带算法 = **升序找第一条 `height < maxHeight` 的带；一条都没有（`height >= 1.0`）⇒ 取最高带**。
 - 理由：带是 `[0,1]` 的划分但**右开**，`h == 1.0` 是唯一缺口；`classifyIsTotal` 要求不抛。
 - **不采用夹取**（`Math.max(0, Math.min(1, height))`）：顶端**仍要补一次退末带**（`1.0 < 1.00` 为假），等于两处约定；且引入 `0.0/1.0` 字面量，与"不许有自己的数"擦边。退末带**零字面量、零算术**。
@@ -815,3 +817,34 @@ m8v-3/4/7 的自证头（干净世界 / 原件↔变异体实际 md5 / `COMPILAT
 **R-9c（变异轮 2 的构造细则）**：挪边界必须**成对改**共享边界、**只挪中间边界**（不与 `TerrainCatalogTest` 的 0.0/1.0 端点相干）；目标红点 = `classifierFollowsCatalogBands`。若同轮别条用例也红，如实列出并标明因果（两套词表分叉），不算污染。
 
 **R-9d（变异行 4 的等价形态）**：R-9a 之后"末尾 default 兜底"可能**不可达**（总函数的正常路径就是退末带）。等价且能响的形态：**把"退末带"改成"全不中 ⇒ 返回常量 `plains`"** —— 这才测出"总函数的来源是结构、不是兜底常量"。红点落在 R-9a 的 `1.0` 钉子（`classifyIsTotal`）或 `plateauMountainsIsHighestBand`，以实测为准、报告写实际红处。
+
+## Task 9 关账（控制器自读 diff = 评审；框架期不派评审者）
+
+交付：`333fd79`（实现，2 文件 / +306）、`a1bb5ef`（报告 + 6 轮变异证据，10 文件）。
+自读范围：`TerrainClassifier`（74 行）+ `TerrainClassifierTest`（232 行，9 例）逐行读过；
+6 轮 `.kept` 的自证头逐轮核过（干净世界 md5 清单 / 改前全绿 `Tests run: 156 + 184, Failures 0` /
+`COMPILATION ERROR count = 0` 改前改后各一行 / 原件 md5 `39211b64…` 六轮恒同，m9v-2 另含 `TerrainCatalog`
+原件 `091e92cc…`↔变异体成对声明 / 红点清单逐轮与报告对上）。
+★ **工作树落盘 md5 = `39211b64…` = 证据里的"原件"** ⇒ 通过评审的就是每个变异轮的同一份起点。
+门禁日志尾：`BUILD SUCCESS`，spotbugs `BugInstance size is 0`，surefire 156 / 184 / 15。**关账。**
+
+| 项 | 裁定 |
+|---|---|
+| brief 之外的夹具自证用例 `humidityFixturesStraddleTheDesertThreshold` | **接受**（9 例 > brief 的 8 例）。它把"低湿度 < 阈值 ≤ 中性湿度"变成被验的断言——阈值被挪走时先红在这里并指明失配的半边，正是派单时要求的"夹具与阈值相容"的钉子形态 |
+| ★ R-9d 实测红在 `classifyIsTotal:215`（brief 字面写的是 `classifyNeverReturnsUnknownKey`） | **实现者如实报出、分析正确**：兜底常量 `plains ∈ KEYS` ⇒ "返回值恒在 KEYS 内"对它结构性无判别力，判别力只能来自"1.0 必须落最高带"（R-9a 的钉子）。**这正是 R-9a 当初被裁定的原因**；m9v-4 实测"只有一条红"佐证"不兜底半"与"1.0 钉子"是两件事 |
+| m9v-1/3/6 的附带红点 | **接受**：同一处语义被改、多条断言同时看见（沙漠/ocean 的产出路径、门、带定位是同一事实的几个侧面）；逐条已标因果，非装置杂音 |
+| 装置首轮把 Maven `-rf` 续跑提示误收进红点清单 | **已修过滤并重跑全部 6 轮**（不留"事后补记"）；重跑后的 6 轮自证头我逐轮核过 |
+| `DESERT_MAX_HUMIDITY = 0.35` 为 **public** | **接受**：测试用它做夹逼自证，Task 10 的气候侧若要与"沙漠出现面"对齐也应引用它而非重抄。0.35 已在 Javadoc 与报告双处声明"本任务新定、非来自 GSimulator" |
+| m9v-5 的红是 **Error**（抛 IAE）而非 Failure | **接受**：变异即"对某段输入抛异常"，`classifyIsTotal:216` 的直接调用把异常抛成 Error 是因果后果；报告如实写了异常消息，未伪装成断言红 |
+| 每次 `classify` 重建词表（`defaults()` 每次 new） | **接受为 YAGNI**。**跨 Task 10 注记**：若逐格调用实测有压力，缓存加在**调用方或词表侧**并自带护栏，别在分类器里开状态 |
+| 类 Javadoc 把 `{@link MapGenerator}` 改 `{@code}` | **接受**：目标类尚不存在，链接会指空气；发现即改，正确 |
+| `classifyIsDeterministic` 删去域外采样 `-0.25` | **接受**：让"域外行为"由 `classifyIsTotal` 独占把守，避免"负值抛异常"的变异多红一条噪声——红点归属清晰 > 采样覆盖堆量 |
+| 分类器依赖 `defaults()` 的**升序迭代序**（控制器复核项） | **已核实有守卫**：`TerrainCatalogTest:23` 用 `containsExactlyElementsOf(KEYS)` 钉住迭代序、`keysAreInAscendingHeightOrder` 钉住 KEYS 升序 ⇒ 依赖不是静默的，无需改动 |
+
+**交给 Task 10 的硬提醒**：
+1. `classify(height, humidity, temperature)` 已交付，签名与计划逐字一致；`humidity >= 0.35` 退 `plains` 是它唯一的气候门。
+2. 词表遍历序已被 `TerrainCatalogTest:23` 钉住，分类器依赖它——Task 10 不要再排序或重建词表序。
+3. 气候噪声若要保证沙漠可出现，引用 `TerrainClassifier.DESERT_MAX_HUMIDITY`，别抄 0.35。
+4. `temperature` 通道已接进签名但**不被消费**——Task 10 生成气候值时别假定它被用。
+
+**下一步**：Task 10（`MapGenerator`）派单前扫描 → 派单。
