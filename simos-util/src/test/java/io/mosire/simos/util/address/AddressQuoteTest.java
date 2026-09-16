@@ -3,6 +3,7 @@ package io.mosire.simos.util.address;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -61,10 +62,12 @@ class AddressQuoteTest {
         .hasMessageContaining("至少一个坐标");
   }
 
-  /** 记录组件的防御性拷贝：`coords` 必须是不可变副本，改不动原实例。 */
+  /** 记录组件的防御性拷贝：源列表可变时，`coords` 仍是构造那一刻的副本（判别性来自可变源）。 */
   @Test
   void indexCoordsAreDefensivelyCopied() {
-    assertThatThrownBy(() -> new Index(List.of(1)).coords().add(2))
-        .isInstanceOf(UnsupportedOperationException.class);
+    List<Integer> source = new ArrayList<>(List.of(1));
+    Index index = new Index(source);
+    source.add(2);
+    assertThat(index.coords()).containsExactly(1);
   }
 }
