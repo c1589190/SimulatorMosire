@@ -253,8 +253,15 @@ public record Region(RegionId id, String name, Set<HexCoord> hexes,
 
 ```java
 /** 由 Region.hexes 计算出的闭环边界。**持久化，且与 hexes 的一致性被构造器强制。** */
-public record RegionBoundary(List<List<HexCoord>> rings) {}
+public record RegionBoundary(List<List<HexVertex>> rings) {}
 ```
+
+★ **类型校正（M2 Task 3 执行期，2026-09-17）**：本行原写作 `List<List<HexCoord>>` —— **那是错的**。
+派的单里 `RegionBoundary(List<List<HexCoord>>)` 与测试名 `singleHexRingHasSixVertices`（单格边界 6 个**顶点**）
+**自相矛盾**：`HexCoord` 是**格**，环的元素是**格角顶点**，两套东西。实测老仓的权威算法确证环是顶点：
+`TerrainGeometry.hexSetToBoundaryWithHoles` 逐格逐边收集暴露边、取该边**两个端点**成段再串环，
+注释写明「Each ring is a closed polygon」、「Use with Canvas **evenodd** fill」。
+⇒ 新增 `hex.HexVertex(int u, int w)`（整数标签，全格唯一）作为环元素；详见 M2 计划 Task 3 的执行期校正。
 
 **① 边界作为 `Region` 的组件，不是新的顶层状态字段。**
 ⇒ 它**自动随 `Region` 持久化、自动往返**，`MapChangeSet` **不需要新增组件**
@@ -267,11 +274,20 @@ public record RegionBoundary(List<List<HexCoord>> rings) {}
 **★ 为什么校验比"不存储"更好**（这一条是控制器在 U2 之后补的论证，不是原裁）：
 用户点出的持久化问题是真的 —— **若边界只活在计算里，则任何消费存档的一方
 （前端、外部工具、M6 的导入器）都必须自己再实现一遍推导**。
-GSimulator 正是这么坏掉的：闭环边界由前端现算（`render.js:244`），
-于是同一份几何在 Java 与 JS 里各有一份实现 ——
-**这与控制器刚在 §5.1 里痛斥的 `edgeKey` 四份实现是同一个病**。
 ⇒ **把边界写进存档，等于把"推导"这件事收敛到一处**；
 而**构造器校验**保证那份写下来的值不会与权威脱钩。**两个目标不冲突。**
+
+★ **本节初稿对 GSimulator 的转述有误，实测更正**（M2 Task 3 执行期，2026-09-17）：初稿写「闭环边界由前端现算
+（`render.js:244`），于是同一份几何在 Java 与 JS 里各有一份实现」——**实测不成立**。老仓有**两个不同的东西同名混用**：
+- `render.js:370 computeBoundaryHexes`：返回**边界格**（有外邻居的格）、**无序**，只用来在
+  `:340-344` 画**调试圆点**（`arc(x,y,5/zoom)`）。**它不是环**。
+- `TerrainGeometry.java:267 hexSetToBoundaryWithHoles`：返回**顶点环**，在 **Java** 里算，
+  由 `CompressionService.java:88` 存进 `CompressedRegion.boundaries()`，前端只负责 `moveTo/lineTo` 画出来。
+
+⇒ 真正的"闭环边界"**没有**在 JS 里被重新实现；本节的结论（推导应收敛到一处）**依然成立，但理由要换成**：
+病在"**边界格**与**顶点环**两个概念共用一个名字"，以及顶点身份靠 `Math.round(x*1000)+"_"+Math.round(y*1000)`
+（`TerrainGeometry.java:357`）——**拿浮点舍入当身份**，同一顶点由不同格中心算出时可能对不上键而断环。
+新实现用整数顶点标签（见 §4.3 的类型校正）从根上消除后者。
 
 **★ `CompressedRegion` 概念仍然整体取消**（U2 **没有**推翻这一条）：
 它是"地形 + 颜色 + 边界"的**渲染打包**，而地形在格上、颜色在地形类型上、边界在 `Region` 上

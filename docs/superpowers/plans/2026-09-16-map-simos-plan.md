@@ -77,6 +77,7 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 | `.../map/hex/HexCoord.java` | 轴向坐标，**六边形格的唯一身份**（spec §3.1） |
 | `.../map/hex/HexDirection.java` | **全模块唯一的方向常量表**，枚举 6 项（spec §3.2） |
 | `.../map/hex/HexGrid.java` | `Map<HexCoord, HexCell>` 容器 + 邻居/范围/遍历（spec §3.1/§3.3） |
+| `.../map/hex/HexVertex.java` | ★ **格角顶点**（整数标签 `(u,w)`）+ 格→6 顶点的偏移表（Task 3 执行期新增，spec §4.3 的类型校正） |
 | `.../map/terrain/TerrainType.java` | 地形类型（**10 字段**，含高度带，spec §6.1） |
 | `.../map/terrain/TerrainCatalog.java` | ★ **唯一词表**（**7 项**，高度升序）+ 默认集（spec §6.1） |
 | `.../map/region/RegionId.java` `RegionMeta.java` `Region.java` | 权威区域，**含边界组件**（spec §4.2） |
@@ -690,6 +691,7 @@ TerrainCatalogTest
 
 **Files:**
 - Create: `simos-map/src/main/java/io/mosire/simos/map/region/RegionId.java` `RegionMeta.java` `Region.java`
+- Create: `simos-map/src/main/java/io/mosire/simos/map/hex/HexVertex.java`（★ 执行期新增，见本任务末尾校正）
 - Create: `simos-map/src/main/java/io/mosire/simos/map/region/RegionBoundary.java`
 - Create: `simos-map/src/main/java/io/mosire/simos/map/region/RegionIndex.java`
 - Test: `simos-map/src/test/java/io/mosire/simos/map/region/RegionTest.java`
@@ -817,7 +819,7 @@ import java.util.Set;
  *
  * @param rings 每一条闭环。外环 + 可能的内环（洞），**环表本身也按规范序**。
  */
-public record RegionBoundary(List<List<HexCoord>> rings) {
+public record RegionBoundary(List<List<HexVertex>> rings) {   // ★ 原写 HexCoord，执行期校正见下
   public RegionBoundary {
     rings = rings.stream().map(List::copyOf).toList();
   }
@@ -837,6 +839,35 @@ public record RegionBoundary(List<List<HexCoord>> rings) {
 
 ★ **环的起点与方向也必须规范**，理由同上：两个内容相同的 Region 若起点不同，`rings` 就不同，
 `equals` 就为假。**排序只解决"从哪个格开始扫"，不解决"环从哪个顶点开始"**，两者都要做。
+
+---
+
+**★★ 执行期校正（2026-09-17，控制器；完整裁定见 `.superpowers/sdd/2026-09-16-map-simos-plan/task-3-rulings.md`）**
+
+本任务原文**自相矛盾**：上面的 `List<List<HexCoord>>` 说环的元素是**格**，而 Step 4 的
+`singleHexRingHasSixVertices` 说单格边界有 6 个**顶点**。**格与顶点是两套东西。**
+实测老仓权威算法（`TerrainGeometry.hexSetToBoundaryWithHoles`，`hexSetToBoundaryWithHoles` 逐格逐边
+收集暴露边、取边的**两个端点**串环，注释写明「closed polygon」「Canvas **evenodd** fill」）确证
+**环是格角顶点**。故：
+
+- **R-3a**：环元素改为**新增的 `hex.HexVertex(int u, int w)`**（整数标签、全格唯一、可比）。
+  不重用 `HexCoord`（它是格），不引入 `Pt`（那是老仓的像素渲染类型）。
+- **R-3b**：`(u,w)` 定义 —— `u = x/(size·√3/2)`、`w = y/(size/2)`（各向异性缩放，**是标签不是坐标，
+  不可用来算距离/角度**）。格心 → `(2q+r, 3r)`；第 `i` 个顶点 → `(2q+r+U[i], 3r+W[i])`，
+  六项常量 `U/W` 见裁定文件。**`HexDirection` 第 `d` 条边的两端点是第 `d` 与第 `(d+1)%6` 个顶点。**
+  逐项对表已验证：本仓 `HexDirection` 枚举序与老仓 `DIRS` 完全相同。
+- **R-3c**：**不沿用**老代码 `hexSet.size() < 3 → 空` 的短路（那是渲染期的多边形下限，不是几何事实）。
+  单格 → 1 条环 6 顶点；相邻两格 → 1 条环 10 顶点。
+- **R-3d**：规范化（旋到最小顶点开头、取字典序较小方向、环表按首顶点排序）放进**紧凑构造器**，
+  幂等 ⇒ `RegionBoundary` 成为真正的值类型。★ 绕向规范化**没有几何含义**（消费端 evenodd），
+  不要在 Javadoc 里说成"顺时针"。
+- **R-3e**：★ 顶点度**恒为 2**（六角格每顶点恰 3 格 3 边，k 格属于本区则暴露边 = k(3−k)，k=1/2 都得 2）
+  —— 这是**控制器的推导**，故**必须落成代码护栏**：走环时发现度 ≠ 2 就**抛**，不许取"第一个未访问邻居"糊过去。
+- **R-3f**：偏移表是推导的 ⇒ 落码前先钉两条（相邻两格顶点交集恰 2 个；单格 6 顶点互不相同）。不过就报告。
+- **R-3h**：不写"边界不进存储"这类已作废的断言；`GameMap` 的那条归 Task 5，只写一处。
+
+★ 老代码用 `Math.round(x*1000)+"_"+Math.round(y*1000)` 当顶点身份（**浮点舍入当身份**，同顶点可能对不上键
+而断环）—— 整数标签正是为消除它。
 
 - [ ] **Step 3: 写 `RegionIndex`（★ 派生索引，解 L5）**
 

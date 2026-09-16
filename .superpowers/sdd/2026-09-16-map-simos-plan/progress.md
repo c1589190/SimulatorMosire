@@ -459,3 +459,44 @@ Task 9–14 是生成算法/守卫，Task 15 是关账。
 拆 `TerrainType` 的 `key` 守卫 → `constructorRejectsInvalidFields:171` 红（**是那一行**，非编译错误、
 非别的守卫代偿）；`plains` 颜色改 `#6cc261` → `noTypeRevivesAKnownFallbackColor:156` 红，消息指名 plains。
 两轮变异体 md5 均 ≠ 原件、恢复后精确回位；事后 `clean verify`（不信 `target/classes` 陈旧产物 —— 第六形态）。
+
+---
+
+## Task 3（`region` 包）派单
+
+**BASE**：`5a0b27f`　**agentId**：`ac717a7f85c2a313b`（sonnet）　**brief**：`task-3-brief.md`
+**裁定**：`task-3-rulings.md`（**优先于派单书原文**）　**报告**：`task-3-report.md`
+
+### ★ 派单书自相矛盾 —— 控制器裁定 R-3a~R-3h
+
+派单书写 `RegionBoundary(List<List<HexCoord>> rings)`（环元素是**格**），却又要求
+`singleHexRingHasSixVertices`（单格边界 6 个**顶点**）。**两套东西，不可能都对。**
+
+**实测判据**（不是推测）：老仓权威算法 `TerrainGeometry.hexSetToBoundaryWithHoles`
+（`:267`）逐格逐边收集暴露边、取该边**两个端点**成段再串环；注释写明「closed polygon」
+「Canvas **evenodd** fill」；`CompressionService.java:88` 调它存进 `CompressedRegion.boundaries()`。
+⇒ **环是格角顶点，`List<List<HexCoord>>` 是错的**；派单书那三个测试名反而全对。
+
+| 裁定 | 内容 | 代价若错 |
+|---|---|---|
+| **R-3a** | 环元素改为**新增 `hex.HexVertex(int u,int w)`**（放 `hex` 包，它是格几何原语）。不重用 `HexCoord`（是格）、不引 `Pt`（老仓像素类型） | 新增一个公共类型；跨模块可见性由 enforcer 保证不越界 |
+| **R-3b** | `(u,w)` 标签定义（各向异性缩放 ⇒ **是标签不是坐标**，不可算距离/角度）；六项 `U/W` 偏移常量表。`HexDirection` 第 `d` 边的两端点 = 顶点 `d` 与 `(d+1)%6`（**逐项对表已验证**：本仓枚举序 = 老仓 `DIRS`） | 偏移表若错，环装配全错 —— 故 R-3f 强制先用例钉住 |
+| **R-3c** | **不沿用**老代码 `size()<3 → 空` 短路（那是渲染期下限，非几何事实）。单格→1 环 6 顶点；相邻两格→1 环 10 顶点 | 与老仓行为有意偏离，已要求写进 Javadoc 免得对表时误判 |
+| **R-3d** | 规范化（旋到最小顶点开头、取字典序较小方向、环表按首顶点排序）放进**紧凑构造器**，幂等 ⇒ `RegionBoundary` 成值类型 | 绕向被钉死但**无几何含义**（消费端 evenodd），已禁止在 Javadoc 里说成"顺时针" |
+| **R-3e** | ★ 顶点度**恒为 2**（每顶点恰 3 格 3 边，k 格属本区 ⇒ 暴露边 = k(3−k)，k=1/2 皆得 2）⇒ 无岔路口、无需转向规则。**这是控制器的推导**，故**必须落成护栏**：度 ≠ 2 就抛 | 推导若错，护栏会在真实输入上抛 —— 已要求**如实报告而不是绕过去** |
+| **R-3f** | 偏移表是推导 ⇒ 落码前先钉两条（相邻两格顶点交集恰 2；单格 6 顶点互不相同） | 同 R-3b |
+| **R-3g** | `RegionIndex` 承重断言是"**只触发一次 `get`**"（计数 `Map` 包装）；派单书那条"两个索引结果相同"只是冒烟，不算护栏 | 线性扫描若复活，只有计数断言抓得住 |
+| **R-3h** | 不写任何"边界不进存储"的断言（U2 已推翻）；`GameMap` 那条归 Task 5，**只写一处** | — |
+
+★ **老代码的浮点身份坑**：`cornerKey = Math.round(x*1000)+"_"+Math.round(y*1000)`（`TerrainGeometry.java:357`）
+—— **拿浮点舍入当身份**，同一顶点由不同格中心算出时可能落在 `.5` 两侧而对不上键、**环就断了**。
+整数标签 `(u,w)` 正是为消除它。
+
+### 顺带更正的两处文档
+
+1. **spec §4.3 的类型** `List<List<HexCoord>>` → `List<List<HexVertex>>`（含校正说明）。
+2. **spec §4.3 对 GSimulator 的转述有误**：初稿写「闭环边界由前端现算（`render.js:244`），
+   于是同一份几何在 Java 与 JS 里各有一份实现」——**实测不成立**。老仓是**两个不同的东西同名混用**：
+   `render.js:370 computeBoundaryHexes` 返回**边界格**（无序，只用来画调试圆点 `arc(x,y,5/zoom)`），
+   `TerrainGeometry:267` 返回**顶点环**（在 Java 里算、存进存档）。结论（推导应收敛到一处）**仍成立，
+   但理由换成了"两个概念共用一个名字"+"浮点当身份"**。
