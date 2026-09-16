@@ -993,3 +993,36 @@ Task 12 的计划文本比 Task 11 完整（签名、11 条用例、4 行变异�
   4. `differentSeedChangesRiverShape` 钉了实测差集 = 13 ⇒ 换 RNG 形态要重测（与 Task 10 黄金钉同族，属**有意**的强断言）。
 - **门禁**：控制器自跑 `./mvnw -q verify` ⇒ **rc=0、`[ERROR]` 行 0 条**（独立于实现者；2026-09-17）。
 - **下一步**：Task 12（`RegionRandomizer`）—— 预扫描已在本台账（R-12-a~f），brief 已生成 `task-12-brief.md`，直接派单（★ 省略 `model`）。
+
+## Task 13 预扫描（2026-09-17，趁 Task 12 在跑时提前做）
+
+扫描表（与已完成任务逐条对缝，★ = 查出问题并当场裁定）：
+
+| 对上谁 | 缝是什么 | 发现 |
+|---|---|---|
+| M1 `Resolver` SPI（Task 1/2） | `namespace()` + `resolve(Address, ResolveContext)` | ✓ 签名照抄，无歧义 |
+| M1 `Address`（§3.2/§3.6） | brief 的 `map:<mapId>:hex:<q>_<r>` | ★ **计划期笔误**：冒号形式实测解析成两个 **Property** 段（`map:m1:hex:0_0` ⇒ `[Ns(map),Entity(∅,m1),Property(hex),Property(0_0)]`），真形态是 `map:m1:hex.0_0`（`Entity(hex,0_0)`，M1 §3.6 冻结样例）。⇒ R-13-a |
+| M1 `SimulationState`/`Snapshot`（Task 8/9） | `resolve` 的图从哪来 | ★ **brief 全无此环**：`SimulationState` 无跨模块访问器（铁律 3/4），`Snapshot` 是接口 ⇒ Task 13 必须顺带建 `MapSnapshot`（总纲 §4.5 已点名该类型）。⇒ R-13-h |
+| Task 5 `GameMap` | `map:<mapId>` 的 mapId | ★ `GameMap` **无 id 组件**（8 组件里没有）⇒ mapId 不可校验，只能回显。⇒ R-13-g + 挂起项 |
+| Task 3 `RegionIndex` | `regionOfHexUsesTheIndex` 怎么钉 O(1) | ★ `RegionIndex(Map)` 构造器**包私有**（`RegionIndex:24`），`MapResolverTest` 跨包 ⇒ 计数注入这条路**堵死**；改为**重叠区域 + 插入序与字典序相反**（线性扫描给 `r2`、索引给 `r1`）⇒ 仍是结果级红。⇒ R-13-i |
+| Task 12（同批） | 包/文件 | ✓ 无共享文件 |
+| 自洽行 | brief 的 9 条用例 vs 签名 | ✓ 签名够用；补 4 条（Index 人类形式、mapId 回显、带引 mapId、注册表转发、无 map 模块）⇒ 13 条 |
+
+**裁定摘要**（细则与代价写在 `task-13-brief-supplement.md`，**以它为准**）：
+R-13-a 只认 `kind.name` 点号形式（依据 M1 §3.2 第 ≥3 段裸词 = Property + §3.6 冻结样例 + 总纲 §4.3「段间只用 `:`」）；
+R-13-b 非 map 命名空间 ⇒ 空候选（抛由注册表负责）；R-13-c 根地址第 2 段必须 `Entity(∅,·)`（M1 §3.2「根主体」）；
+R-13-d 三类实体 + **Index 人类形式**（canonical 一律 `hex.<q>_<r>`，总纲 §4.2「Human 进 canonical 出」）；
+R-13-e 合法但不服务/形状不符 ⇒ **空候选不抛**（`terra.Grass`、冒号形式、属性段都在此列）；
+R-13-f **唯一抛点** = 认领的 kind 名字解析失败（`hex.abc`）；
+R-13-g mapId 只回显不校验 + canonical 必须走 `Address` AST（§3.4 加引不许手写）；
+R-13-i `regionOfHex(GameMap,HexCoord) -> Optional<RegionId>` 委托 `map.regionIndex()`；
+R-13-j 源码级无 IO 断言（注意别用裸词 `File` —— 会误伤 `FieldDelta`）。
+
+**新增挂起项**：MapSimos 缺地图身份（`GameMap` 无 id）⇒ `map:<mapId>` 的 mapId 目前不可校验、只回显；将来 GameMap 有 id 字段时应收紧。
+
+## Task 12 派单（2026-09-17）
+
+- **BASE** = `82f3dbf`（Task 11 关账提交）。派单时工作树干净。
+- 需求 = `task-12-brief.md` + `task-12-brief-supplement.md`（补充为准；新增裁定 R-12-g 挡住 NaN 的 ratio、
+  R-12-h 校验顺序、R-12-i 图外格跳过且不消费随机数、以及"夹具 ratioA 必须严格落在 (0,1) 否则确定性用例恒真"的判别力要求）。
+- 派单：**省略 `model` 参数**（按用户裁定，省略才走 glm 路由）。
