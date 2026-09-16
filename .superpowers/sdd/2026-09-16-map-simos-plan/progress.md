@@ -500,3 +500,32 @@ Task 9–14 是生成算法/守卫，Task 15 是关账。
    `render.js:370 computeBoundaryHexes` 返回**边界格**（无序，只用来画调试圆点 `arc(x,y,5/zoom)`），
    `TerrainGeometry:267` 返回**顶点环**（在 Java 里算、存进存档）。结论（推导应收敛到一处）**仍成立，
    但理由换成了"两个概念共用一个名字"+"浮点当身份"**。
+
+---
+
+## Task 4~8 派单前扫描：控制器裁定（2026-09-17）
+
+派单 Task 4 **之前**做的只读静态扫描（不是代码期评审装置 —— 是**计划期检查**）。
+12 条发现，**控制器逐条回读计划原文核实过**（子代理是模型输出，不直接采信）。**无"高"severity**。
+全文见 `task-4-8-scan-rulings.md`（**优先于计划原文**）。计划与 spec 已**就地改正**。
+
+**代价依据**：Task 3 那个"类型与断言互斥"是**派单后**才发现的 —— 派单前扫出便宜一个量级。
+
+| 裁定 | 内容 | 计划/spec 改动 |
+|---|---|---|
+| **R-48-a** | `mainRidges` 合法区间 **[1,2]**、越界抛（原稿只有下界，与同任务的 `mainRidgesFiveThrows` 互斥；`mainRidgesTwoIsAccepted` 反证上界=2） | Task 8 校验改 `if (mainRidges < 1 \|\| mainRidges > 2)` |
+| **R-48-b** | Task 4 Files 漏了 `EdgeTagsTest.java`（Step 4/5 都用它） | 已补 |
+| **R-48-c** | `PathwayGroup` 形状**照老仓不编造**（`MapData.java:451`：`id,name,color,description,visible,Map<String,PropertyDef>`；默认 river `#3295D2`/road `#8B7355`）。★ 两处改口径：老仓静默填空改**抛**；`PropertyDef` 是**嵌套 record，不许为省事删掉**（Task 7 反射要穿透它） | Task 4 Step 2 补两份定义 |
+| **R-48-d** | Task 5 的 `Modify HexGrid.java（补内容访问）` 是**残留**：`GameMap` 自己持 `Map<HexCoord,HexCell>`，不经 `HexGrid` ⇒ **删该行，`HexGrid` 永远纯几何** | 删 Modify 行；文件表、Task 1 Step 3 说明、自审表三处一并更正 |
+| **R-48-e** | ★ **撤回原裁定的"Task 5 可空 → Task 8 收紧"**。否决理由：中间会留**两轮 nullable 世界**（Task 6 的 `apply`、Task 7 的反射枚举都得绕开 `spec`），而"收紧"那步**没人把守**。⇒ Task 5 的 `empty()` 起即 `GenerationSpec.defaults(0L)`，**spec 从不 null**；Task 8 仍加 `specIsNeverNullAfterTask8`，身份是**守卫**不是收紧动作；`MapChangeSet.java` 列进 Task 8 Files 只为**核实前提**（无 null 兜底就如实报"无需改动"） | Task 5、Task 6 `apply`、Task 8 Files+Step 3、自审表 |
+| **R-48-f** | ★★ **本批最要紧的一条**：`keyOf = toString()` 要成立，**每个当 key 的类型必须自备"裸值 `toString()` + `static parse(String)` + 冻结字面量往返用例"三件套**。实测只有 `HexCoord` 齐备；`RegionId`/`PathwayId`/`CityId` 是裸 record（默认输出 `PathwayId[value=…]`、无 `parse`）⇒ **往返当场断、`applyRebuildsTargetExactly` 必红**；`EdgeRef` 有手写 `toString` 但无 `parse`、无冻结串（**全局约束：没有冻结用例的手写 toString 算违规**）。⇒ 三件套**各归其创建任务**：`RegionId`→T3、`PathwayId`/`EdgeRef`→T4、`CityId`→T5。**另更正**：原稿"`"q_r"` 唯一允许出现处"与 `EdgeRef` 的 `"a\|b"` 冲突 ⇒ 正确口径是"**地图 key 的规范串**的唯一允许处"，两者并列 | T3 已发消息追加；T4/T5 就地改；`:1379` 补说明 |
+| **R-48-g** | Task 7 补**组件数断言**（spec §9.1b 明文要求，原稿漏）。与反方向的逐组件对应**不重复**：反方向挡不住"两边**同时**多一个同名的第 8 个组件" | Task 7 加 `changeSetHasExactlySevenComponents` |
+| **R-48-h** | Task 7 的 `V1~V5` 应为 **V1~V6**（表里是六条；V6"往豁免集加 `edges`"同样要证改前是绿的） | 已改 |
+| **R-48-i** | Task 6 的 `terrainTypes` 变异**要配对**：原稿三条 `betweenDetects*` **全是 hexes**，删掉 `terrainTypes` 比较**它们照样绿** —— 红的是 Task 7 的反射枚举。**不许把它记成 Step 3 用例的判别力** | 加 `betweenDetectsChangedTerrainType`；变异行注明红的来源 |
+| **R-48-j** | `GenerationSpec.defaults(long seed)`（seed 无法有默认值） | spec `:487` 就地改 |
+
+★ **U2 的连锁补记**（写进 Task 7，防后人以为边界被漏掉）：`boundary` 成了 `Region` 的组件
+⇒ `MapChangeSet` **不需要**为它新开组件（`regions` 整值比对，`Region.equals` 含 `boundary`）
+⇒ 组件数**仍 8 vs 7**、`spec` 仍是唯一豁免项、V6 照旧。
+
+**推送**：本批改动随下一次提交推送（私有仓库，用户 2026-09-17 明示「你爱推就推」）。

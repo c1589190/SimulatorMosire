@@ -484,7 +484,7 @@ public record GenerationSpec(
     NoiseBands bands, RidgeParams ridges, FragmentParams fragments_, /* … */
     int contourCacheMax) {
   public GenerationSpec { /* 全部范围校验，越界抛 IllegalArgumentException */ }
-  public static GenerationSpec defaults() { /* 唯一一份默认值 */ }
+  public static GenerationSpec defaults(long seed) { /* 唯一一份默认值 */ }
 }
 ```
 

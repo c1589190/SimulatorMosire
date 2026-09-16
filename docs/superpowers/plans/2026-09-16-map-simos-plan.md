@@ -76,7 +76,7 @@ Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-map` 只有 `simos
 |---|---|
 | `.../map/hex/HexCoord.java` | 轴向坐标，**六边形格的唯一身份**（spec §3.1） |
 | `.../map/hex/HexDirection.java` | **全模块唯一的方向常量表**，枚举 6 项（spec §3.2） |
-| `.../map/hex/HexGrid.java` | `Map<HexCoord, HexCell>` 容器 + 邻居/范围/遍历（spec §3.1/§3.3） |
+| `.../map/hex/HexGrid.java` | ★ **纯几何**：邻居/范围/遍历，**不含任何状态**（R-48-d 更正：原写"`Map<HexCoord, HexCell>` 容器"是残留；内容归 `GameMap` 自己的 map）（spec §3.1/§3.3） |
 | `.../map/hex/HexVertex.java` | ★ **格角顶点**（整数标签 `(u,w)`）+ 格→6 顶点的偏移表（Task 3 执行期新增，spec §4.3 的类型校正） |
 | `.../map/terrain/TerrainType.java` | 地形类型（**10 字段**，含高度带，spec §6.1） |
 | `.../map/terrain/TerrainCatalog.java` | ★ **唯一词表**（**7 项**，高度升序）+ 默认集（spec §6.1） |
@@ -269,14 +269,16 @@ import java.util.Set;
  * 且到处写死 30 而真实生成半径是 80 —— 范围由本类的 {@code minQ()/maxQ()/minR()/maxR()} 导出。
  */
 public final class HexGrid {
-  private final Map<HexCoord, ?> cells; // 具体化见 Task 5（HexCell 由 map 包提供）
-  // …Task 5 落地后本类改为持有 Map<HexCoord, HexCell>；本任务先只做坐标运算部分
+  // ★ R-48-d：**本类永远不持有内容** —— 没有 `cells` 字段，没有 `cell(HexCoord)`。
+  //   `Map<HexCoord, HexCell>` 归 `GameMap`（Task 5）自己。
 }
 ```
 
-★ **本任务只交付坐标运算**。`HexGrid` 的**内容类型**是 `HexCell`，而 `HexCell` 在 Task 5 ——
-⇒ 本任务先建 `HexGrid` 的**纯几何部分**（范围导出、邻域遍历、半径内枚举），
-**不引入 `HexCell`**；Task 5 再补内容访问（`cell(HexCoord)` / `with(...)`）。
+★ **本任务只交付坐标运算，而且这就是它的最终形态**（R-48-d 更正）。
+原稿写"`HexGrid` 的内容类型是 `HexCell`，Task 5 再补内容访问" —— **那是残留**：
+实测 `GameMap` **自己持有** `Map<HexCoord, HexCell> hexes`，根本不经过 `HexGrid`。
+⇒ **`HexGrid` 保持纯几何**（范围导出、邻域遍历、半径内枚举），**不引入 `HexCell`、以后也不引入**。
+**一件事只有一个地方说**：内容归 `GameMap`，几何归 `HexGrid`。
 
 - [ ] **Step 4: 写用例**
 
@@ -1001,7 +1003,9 @@ U2 把 `boundary` 变成组件之后，`Region.equals` 就依赖它；而 `hexes
 - Create: `simos-map/src/main/java/io/mosire/simos/map/pathway/EdgeRef.java` `EdgeTags.java`
 - Create: `simos-map/src/main/java/io/mosire/simos/map/pathway/PathwayId.java` `Pathway.java` `PathwayGroup.java`
 - Test: `simos-map/src/test/java/io/mosire/simos/map/pathway/EdgeRefTest.java`
-- Test: `simos-map/src/test/java/io/mosire/simos/map/pathway/PathwayTest.java`
+- Test: `simos-map/src/test/java/io/mosire/simos/map/pathway/EdgeTagsTest.java`（★ 派单前扫描补，R-48-b）
+- Test: `simos-map/src/test/java/io/mosire/simos/map/pathway/PathwayTest.java`（`PathwayId` 的三件套用例
+  并进这里，**不另开文件** —— 与 Task 3 把 `RegionId` 的用例放进 `RegionTest` 同形制）
 
 **这个任务解的是 L2，并落地待决项 3**（连通性稳定 ID）。
 
@@ -1032,10 +1036,19 @@ public record EdgeRef(HexCoord a, HexCoord b) implements Comparable<EdgeRef> {
     }
   }
 
-  /** 规范字符串形式，**只在 JSON 边界使用**。 */
+  /**
+   * 规范字符串形式。★ **两种用途**（R-48-f 更正）：① 它是变更集里 {@code edges} 组件的 **key**
+   * （`MapChangeSet.between/apply` 用 `keyOf = toString()` 比对与还原）；② JSON 边界。
+   * 原稿只写了 ②，与 Task 6 的变更集口径**对不上**，已改。
+   */
   @Override
   public String toString() {
     return a + "|" + b;
+  }
+
+  /** ★ **往返的另一半**（R-48-f）：没有它就断链 —— 变更集 key 还原不回来。 */
+  public static EdgeRef parse(String s) {
+    // 按 '|' 切成两段，各交给 HexCoord.parse；段数不为 2 即抛（宁抛不静默）
   }
 
   @Override
@@ -1067,8 +1080,32 @@ public record PathwayId(String value) {
   public PathwayId {
     if (value == null || value.isBlank()) throw new IllegalArgumentException("PathwayId 不得为空白");
   }
+
+  /** ★ **裸值**，不是 record 默认的 `PathwayId[value=…]`（R-48-f）—— 它是**地址**，是变更集的 key。 */
+  @Override
+  public String toString() { return value; }
+
+  /** ★ 往返的另一半（R-48-f）。缺了它 `MapChangeSet.apply` 就还原不回来。 */
+  public static PathwayId parse(String s) { /* 非空白即收，否则抛 */ }
 }
 ```
+
+```java
+/** 线的**组定义**（river / road …）。老仓 `MapData.PathwayGroup`（实测 `:451`），字段照搬。 */
+public record PathwayGroup(String id, String name, String color, String description,
+                           boolean visible, java.util.Map<String, PropertyDef> properties) {
+  public PathwayGroup {
+    // ★ 老仓对 id/name 等做 `if (x == null) x = "";` **静默填空** —— 本项目禁。
+    //   空白即抛（与 TerrainType / RegionId 同族）。
+  }
+}
+
+/** 组属性的一条定义。**嵌套 record** —— Task 7 的反射枚举要能穿透它（R-48-c：不许为省事删掉）。 */
+public record PropertyDef(String type, Object defaultValue, String description) {}
+```
+
+★ **老仓的两组默认值**（`MapData.java:469 defaultPathwayGroups`，实测）：`river` 河流 `#3295D2` / `road` 道路 `#8B7355`。
+是否需要一份 `defaults()` 由 Task 6 的 `GenerationSpec` 决定；**本任务只交付类型**。
 
 - [ ] **Step 3: 写 `Pathway`**
 
@@ -1109,6 +1146,12 @@ EdgeRefTest
   - selfLoopIsRejected                    : new EdgeRef(a,a) → IllegalArgumentException
   - nullEndpointIsRejected
   - toStringIsStable                      : 同一无向边的两个构造方向 toString **相同**
+  - toStringMatchesFrozenLiteral          : ★ **冻结串**（R-48-f）：`new EdgeRef(c(3,4), c(-1,0)).toString()`
+                                            恰为字面量 `"3_4|-1_0"`（**规范序在前**，不是入参序）。
+                                            全局约束「没有冻结用例的手写 toString 算违规」—— `toStringIsStable`
+                                            只比两个方向，**不算冻结**，光有它不达标。
+  - parseRoundTripsFrozenLiteral           : ★ `EdgeRef.parse("3_4|-1_0")` equals 上式结果；
+                                            段数不为 2 的串 → IllegalArgumentException
   - compareToIsTotalOrder
 
 PathwayTest
@@ -1119,9 +1162,24 @@ PathwayTest
   - ★ idsArePersistedNotDerived           : 见 Step 5
   - equalityIsComponentwise
 
+  # ★ R-48-f：`PathwayId` 的三件套（缺一，Task 6 的往返就断）
+  - pathwayIdToStringIsBareValue          : new PathwayId("p1").toString() 恰为 "p1"
+                                            （**不是** `PathwayId[value=p1]` —— 默认实现会让变更集 key
+                                             变成 `PathwayId[value=p1]`，apply 侧认不出来）
+  - pathwayIdParseRoundTripsFrozenLiteral : PathwayId.parse("p1").equals(new PathwayId("p1"))
+  - pathwayIdParseRejectsBlank            : parse("") / parse("  ") → IllegalArgumentException
+
 EdgeTagsTest
   - preservesInsertionOrder               : ★ 保序（前端曾因 props 被抹平而丢数据）
   - isImmutable
+
+PathwayIdTest                             # ★ R-48-f：ID 三件套，缺一往返就断
+  - toStringIsBareValue                   : new PathwayId("p1").toString() 恰为 "p1"
+                                            （**不是** `PathwayId[value=p1]` —— 那条默认实现会让
+                                             变更集 key 变成 `PathwayId[value=p1]`，apply 侧认不出来）
+  - parseRoundTripsFrozenLiteral          : PathwayId.parse("p1").equals(new PathwayId("p1"))
+  - parseRejectsBlank                     : parse("") / parse("  ") → IllegalArgumentException
+  - rejectsBlankValue                     : 构造期校验不是装饰
 ```
 
 - [ ] **Step 5: ★ 护栏自证（G13）**
@@ -1132,6 +1190,7 @@ EdgeTagsTest
 | 删掉自环校验 | **红** | `selfLoopIsRejected` 不是装饰 |
 | `Pathway` 加一个派生 id 的方法并让构造器**忽略传入 id** | **红** | ★ `idsArePersistedNotDerived` 有判别力 |
 | `EdgeTags` 改用 `Map.copyOf` | **红** | `preservesInsertionOrder` 真的钉住了保序 |
+| `PathwayId` 里**删掉手写 `toString()`**（退回 record 默认） | **红** | ★ R-48-f 的钉子：`pathwayIdToStringIsBareValue` 直接红。**这条是"往返会不会断"的早期报警** —— 它在 Task 4 红，比拖到 Task 6 的 `applyRebuildsTargetExactly` 才红便宜得多 |
 
 ★ **`idsArePersistedNotDerived` 怎么写**：构造两条 `edges` 相同的 `Pathway`，
 **只让 `id` 不同** ⇒ 断言**不相等**。
@@ -1149,7 +1208,8 @@ EdgeTagsTest
 **Files:**
 - Create: `simos-map/src/main/java/io/mosire/simos/map/HexCell.java` `CityId.java` `City.java` `GameMap.java`
 - Create: `simos-map/src/main/java/io/mosire/simos/map/generate/GenerationSpec.java`（★ **只建骨架**）
-- Modify: `simos-map/src/main/java/io/mosire/simos/map/hex/HexGrid.java`（补内容访问）
+- ~~Modify: `.../map/hex/HexGrid.java`（补内容访问）~~ **★ R-48-d：已删** —— `GameMap` 自己持有
+  `Map<HexCoord, HexCell> hexes`，不经 `HexGrid`；`HexGrid` **保持纯几何**（Task 1 已交付完毕）
 
 ★ **`GenerationSpec` 的骨架为什么由本任务建**（dispatch 前冲突扫描查出）：
 `GameMap` 的 `spec` 组件**需要这个类型存在才能编译**，而完整参数面在 Task 8。
@@ -1190,7 +1250,11 @@ public record HexCell(String terrain, double height) {
 - [ ] **Step 2: 写 `CityId` / `City`**
 
 ```java
-public record CityId(String value) { /* 非空白，同 RegionId 形制 */ }
+public record CityId(String value) { /* 非空白，同 RegionId 形制 */
+  // ★ R-48-f：除值校验外，**必须**手写 `toString()` 返回**裸 value**，并配 `static CityId parse(String)`。
+  //   理由：`keyOf = toString()`（Task 6）—— record 默认的 `CityId[value=c1]` 会让变更集的 key
+  //   在 apply 侧还原不回来，`applyRebuildsTargetExactly` 当场红。与 `RegionId`/`PathwayId` 同形制。
+}
 
 public record City(CityId id, String name, io.mosire.simos.map.hex.HexCoord at,
                    io.mosire.simos.map.region.RegionId region,
@@ -1248,9 +1312,16 @@ U2 把边界变成 `Region` 的组件，于是 `regions().get(id).boundary()` �
 ★ **注意 `RegionIndex` 与 `RegionBoundary` 在 U2 之后地位相反**：索引**仍**是派生、不进存储；
 边界**不**是。Task 3 已把这条讲清，这里只作提醒。
 
-★ **`spec` 的类型是 `GenerationSpec` 骨架**（本任务 Step 1 前建）——
-本任务先把 `spec` 声明为**可空**（`GameMap.empty()` 给 `null`），
-**Task 8 落地完整参数面时收紧为非 null**。**在报告里明写这个临时放宽**，不要让它悄悄留下。
+★ **`spec` 的类型是 `GenerationSpec` 骨架**（本任务 Step 1 前建）。
+
+★ **R-48-e 更正：`spec` 从本任务起就非 null，不留"临时可空"。**
+原稿写"本任务先声明可空（`empty()` 给 `null`），Task 8 再收紧" —— **那样中间会留两轮
+nullable 世界**（Task 6 的 `apply`、Task 7 的反射枚举都要绕开它），而收紧那一步**没人把守**。
+现在：`empty()` 直接给 `GenerationSpec.defaults(0L)`；`spec` 组件**从不 null**。
+`specIsNeverNullAfterTask8`（Task 8）是**守卫**，钉住这条不变量 —— 不是"收紧动作"本身。
+
+★ **`empty()` 里的 `0L` 是"空图的种子"，不是"没有种子"** —— 语义上说得通：空图没有生成历史，
+种子取规范值 0。**不要**为了"看起来诚实"改成 null。
 
 - [ ] **Step 4: 写用例**
 
@@ -1271,6 +1342,11 @@ GameMapTest
   - ★ regionIndexIsDerivedNotStored : 反射断言组件里没有 RegionIndex
   - ★ regionsCarryTheirBoundary     : ★ 放进 regions 的 Region，取回来 boundary() 非 null
                                       且 == RegionBoundary.of(它的 hexes)   ← U2 的落地检查
+
+  # ★ R-48-f：`CityId` 的三件套（`RegionId` 同形制，见 Task 3）
+  - cityIdToStringIsBareValue       : new CityId("c1").toString() 恰为 "c1"（不是 `CityId[value=c1]`）
+  - cityIdParseRoundTripsFrozenLiteral
+  - cityIdParseRejectsBlank
 ```
 
 - [ ] **Step 5: ★ 护栏自证（G13）**
@@ -1363,7 +1439,15 @@ public record MapChangeSet(
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
   public static MapChangeSet between(GameMap base, GameMap target) { /* … */ }
 
-  /** 逐组件重建。铁律 5 的原文。 */
+  /**
+   * 逐组件重建。铁律 5 的原文。
+   *
+   * <p>★ **R-48-e：7 个组件逐一从变更集重建，`spec` 从 `base` 原样带过来。**
+   * 变更集里没有 `spec`（它是生成输入、不是可变更状态），所以**只有它**取自 base ——
+   * 这一条要写进 Javadoc，否则后人会以为 `spec` 是漏掉的。
+   * ★ **不得对 `spec` 写任何 null 兜底**（如 `cs.spec() != null ? … : base.spec()`）：
+   * `GameMap.spec` 从 Task 5 起就非 null，兜底是**为不存在的世界写的代码**，且会掩盖真的漏传。
+   */
   public static GameMap apply(MapChangeSet cs, GameMap base) { /* … */ }
 
   /** 是否所有组件都未变。 */
@@ -1376,8 +1460,20 @@ public record MapChangeSet(
 但**必须被测试显式钉住**（见 Task 7），否则它会变成下一个"漂移"。
 
 ★ **`between` 的 key 类型**：`FieldDelta` 的 key 是 `String`，而 `GameMap` 的 map key 是
-`HexCoord`/`RegionId`/… ⇒ 需要一个 `keyOf` 转换。**它必须是 `toString()`**（即 `HexCoord` 的 `"q_r"`），
-且 `apply` 侧用对应的 `parse` 还原。**这是 `"q_r"` 唯一被允许出现的地方。**
+`HexCoord`/`RegionId`/`PathwayId`/`CityId`/`EdgeRef` ⇒ 需要一个 `keyOf` 转换。**它必须是 `toString()`**
+（即 `HexCoord` 的 `"q_r"`），且 `apply` 侧用对应的 `parse` 还原。
+
+★ **R-48-f（派单前扫描查出，这是本阶段最容易漏的一条）**：`keyOf = toString()` 要成立，
+**每一个被当作 key 的类型都必须自己提供"裸值 `toString()` + `static parse(String)` + 冻结字面量往返用例"**
+三件套。实测当时只有 `HexCoord` 齐备（Task 1 已交付）；`RegionId`/`PathwayId`/`CityId` 都是
+`record X(String value)`，**既不覆写 `toString`（默认输出 `PathwayId[value=abc]`）、也没有 `parse`**
+⇒ 往返当场断掉、`applyRebuildsTargetExactly` 必红。`EdgeRef` 有手写 `toString` 但**没有 `parse`、
+也没有冻结串用例**（全局约束明文：没有冻结用例的手写 `toString` 算违规）。
+⇒ 三件套**各自归其创建任务**：`RegionId`→Task 3、`PathwayId`/`EdgeRef`→Task 4、`CityId`→Task 5。
+`toString()` 一律**裸值**（是地址，不是调试输出）。
+★ 更正：本条原写「**这是 `"q_r"` 唯一被允许出现的地方**」——与 Task 4 里 `EdgeRef.toString()`
+的「`a + "|" + b` 作为变更集 key」**冲突**。正确口径：**这是"地图 key 的规范串"的唯一允许处**，
+`EdgeRef` 的 `"a|b"` 是**另一类 key**，两者并列、各自有冻结串用例。
 
 - [ ] **Step 3: 写用例**
 
@@ -1387,6 +1483,8 @@ MapChangeSetTest（基础部分；★ 反射枚举部分在 Task 7）
   - betweenDetectsAddedHex            : Upsert 含新 key
   - betweenDetectsRemovedHex          : Remove 含旧 key
   - betweenDetectsChangedHexValue     : ★ 同 key 不同 value → Upsert（不是 Unchanged）
+  - betweenDetectsChangedTerrainType  : ★ **R-48-i 补**：同 key 的 TerrainType 换了值 → 该组件 Upsert。
+                                        **没有这条，下一行变异就是装饰**（见 Step 4 的说明）
   - applyRebuildsTargetExactly        : apply(between(b,t), b).equals(t)
   - applyOfAllUnchangedReturnsBase    : apply(between(b,b), b).equals(b)
   - upsertCannotBeEmptyOrRemoveCannotBeEmpty : 构造期拒绝空 delta
@@ -1399,7 +1497,7 @@ MapChangeSetTest（基础部分；★ 反射枚举部分在 Task 7）
 | 变异 | 期望 | 证明什么 |
 |---|---|---|
 | `between` 里把 `hexes` 的比较改成恒 `Unchanged` | **红** | `betweenDetectsChangedHexValue` 有判别力（这是 L1 的形态） |
-| `between` 里 `terrainTypes` 的比较整个删掉（默认 Unchanged） | **红** | ★ **该组件漂移出去时测试会响** —— 这是铁律 5 的核心 |
+| `between` 里 `terrainTypes` 的比较整个删掉（默认 Unchanged） | **红** | ★ **该组件漂移出去时测试会响** —— 这是铁律 5 的核心。★ **R-48-i：红的必须来自 `betweenDetectsChangedTerrainType`**。原稿只列了三条 `betweenDetects*` 且**全是 hexes**，删掉 `terrainTypes` 比较它们**照样绿** —— 那时红的只有 Task 7 的反射枚举，**别把它记成这条用例的判别力** |
 | `between(x,x)` 改成返回 `null` | **红** | `betweenIdenticalIsAllUnchanged` 不是装饰 |
 | `isEmpty()` 改成 `hexes.changed()`（只看一个组件） | **红** | ★ `emptyDiffStillEntersApply` 有判别力 |
 
@@ -1466,6 +1564,14 @@ class RoundTripComponentsTest {
   }
 
   @Test
+  void changeSetHasExactlySevenComponents() {
+    // ★ R-48-g（spec §9.1b 的 U2 守卫明文要求，原稿漏了）：
+    //   反射断言 MapChangeSet.class.getRecordComponents().length == 7。
+    // ★ 它与上一条**不重复**：上一条只保证"变更集的组件在 GameMap 里有同名者"，
+    //   挡不住"两边**同时**多出一个同名的第 8 个组件"（那种漂移两边对称，反方向全绿）。
+  }
+
+  @Test
   void specIsDeliberatelyExcludedFromTheChangeSet() {
     // ★ 显式钉住那个有意的 8 vs 7 不对称：GameMap 有 spec，MapChangeSet 没有
   }
@@ -1477,6 +1583,11 @@ class RoundTripComponentsTest {
 若本测试无条件遍历全部 8 个，`spec` 那一轮**必然**断言失败；若为它写一个 `if (name.equals("spec")) continue`，
 **豁免口就成了一个洞** —— 以后任何人"加字段忘了进变更集"，都能靠往这个 `if` 里再加一个名字糊过去。
 ⇒ **把豁免写成一个被单独用例钉死的集合**：加名字是显式动作，diff 里看得见。
+
+★ **U2 的连锁，报告里要明写**：`RegionBoundary` 成了 `Region` 的组件 ⇒ **`MapChangeSet` 不需要
+为边界新开组件**（`regions` 整个 `Region` 值被比对，而 `Region.equals` 逐组件含 `boundary`）。
+⇒ **组件数仍是 8 vs 7，`spec` 仍是唯一豁免项，V6 照旧。**
+不写这句，后人看"boundary 没进变更集"会以为是被漏掉的。
 
 ★ **"在 rc 上换成合法新值"需要每个组件一个构造器**。用一个 `switch` 按组件名分派
 ⇒ **新增组件时这个 `switch` 会编译不过或走 `default` 抛异常**，**这正是想要的**：
@@ -1503,7 +1614,8 @@ class RoundTripComponentsTest {
 用 `javac` 编一份原件作参照。**控制器在 M1 期间踩过"变异源码算了却没写盘、javac 编的是原件、
 三向全绿"的坑 —— 不要信任 `/tmp` 里任何残留装置，自己重建。**
 
-- [ ] **Step 3: ★ V1~V5 的"改前"必须真的跑在当前 HEAD 上**
+- [ ] **Step 3: ★ V1~V6 的"改前"必须真的跑在当前 HEAD 上**（★ R-48-h：**六条都要**，
+      表上是 V1~V6 而这里原写 V1~V5；V6 是"往豁免集里加 `edges`"，**豁免口不是洞**、同样要证改前绿）
 
 若你先改了文件才想跑"改前"，用 `git stash` 或 `git worktree` 取一份 HEAD 副本到 `/tmp`，
 **不要在时间上撒谎**。报告里每条变异各带**改前一次、改后一次**的原始输出。
@@ -1520,14 +1632,21 @@ class RoundTripComponentsTest {
 - ★ **Modify**: `simos-map/src/main/java/io/mosire/simos/map/generate/GenerationSpec.java`
   （Task 5 建的是**只有 `seed` 的骨架**，本任务**扩写为完整参数面**）
 - Create: `simos-map/src/main/java/io/mosire/simos/map/generate/NoiseBands.java` `RidgeParams.java` `FragmentParams.java`
-- Modify: `simos-map/src/main/java/io/mosire/simos/map/GameMap.java`（★ **把 `spec` 从可空收紧为非 null**）
+- ★ **Inspect（不预设要改）**: `simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java`
+  （R-48-e：**先去看一眼** `apply` 里有没有对 `spec` 写 null 兜底）
 - Test: `simos-map/src/test/java/io/mosire/simos/map/generate/GenerationSpecTest.java`
 
 **这个任务解的是 L8**（参数面）。
 
-★ **收紧要连带改的地方**（dispatch 前冲突扫描查出）：`GameMap.empty()` 与 `MapChangeSet` 的
-`apply` 重建里都可能写着 `null` spec；本任务必须**逐处改掉**，并**加一条用例**
-`specIsNeverNullAfterTask8`（`GameMap.empty().spec()` 非 null）证明收紧真的落地了。
+★ **R-48-e 更正了原稿的"收紧"叙述**。原稿说 `GameMap.empty()` 与 `MapChangeSet.apply` 里
+"都可能写着 `null` spec"、要本任务逐处改掉。**那条前提已被推翻**：Task 5 的 `empty()` 起就非 null
+（`GenerationSpec.defaults(0L)`），Task 6 的 `apply` 也不写 null 兜底。⇒ **本任务无 null 可收紧。**
+
+⇒ 本任务**仍然**加 `specIsNeverNullAfterTask8`（`GameMap.empty().spec()` 非 null）——
+但它的身份是**守卫**（钉住"spec 从不 null"这条不变量），**不是"收紧动作"的证明**。
+★ `MapChangeSet.java` 列进 Files 是**要你去核实前提**（走 R-48-e 的第 4 条），
+**不是"必须先改"** —— 若 `apply` 里确实没有 null 兜底，**如实在报告里写"无需改动"**，
+不要为了凑一条 diff 去动它。
 
 - [ ] **Step 1: ★ 现读 GSimulator 的参数与魔法数字**
 
@@ -1568,7 +1687,10 @@ public record GenerationSpec(
   public GenerationSpec {
     if (mapRadius < 1) throw new IllegalArgumentException("mapRadius 必须 >= 1: " + mapRadius);
     if (baseSeaLevel < 0.0 || baseSeaLevel > 1.0) throw new IllegalArgumentException("…");
-    if (mainRidges < 1) throw new IllegalArgumentException("mainRidges 必须 >= 1: " + mainRidges);   // ← 不夹取
+    // ★ R-48-a：合法区间 [1, 2]、越界抛（spec §9.3 要求 mainRidges=5 必须抛；
+    // 同任务的 mainRidgesTwoIsAccepted 反证上界恰为 2）。原稿只有下界、无上界，与用例互斥。
+    if (mainRidges < 1 || mainRidges > 2)
+      throw new IllegalArgumentException("mainRidges 必须在 [1, 2]: " + mainRidges);   // ← 不夹取
     if (fragments < 1) throw new IllegalArgumentException("…");
     // ★ fragmentCount - secondary 可为负 —— 显式校验，见 FragmentParams
   }
@@ -1604,6 +1726,9 @@ GenerationSpecTest
   - ★ noWorldIdNoCoastRoughness        : 反射断言组件名里没有 "worldId"/"coastRoughness"
   - ★ seedIsAComponent                 : 反射断言有 seed 组件（L7 的落盘前提）
   - ★ noTerrainHeightThresholds        : ★ 见下  ← U1 加的
+  - ★ specIsNeverNullAfterTask8        : ★ R-48-e：`GameMap.empty().spec()` **非 null**。
+                                         这是**守卫**（钉住"spec 从不 null"），不是"收紧动作"的证明——
+                                         前提已改：Task 5 起就非 null，本任务无 null 可收紧。
   - equalityIsComponentwise
 ```
 
@@ -2073,9 +2198,9 @@ M2 行从 `⬜ 未开始` 改为 `✅ 已完成`，并指向 M2 spec 与计划�
 
 | 谁与谁共享 | 共享的东西 | 查到了什么 |
 |---|---|---|
-| Task 1 ↔ Task 5 | `HexGrid.java` | Task 1 建**纯几何**、Task 5 补内容访问。**已写进 Task 1 Step 3** —— Task 1 不引入 `HexCell`，故 Task 1 不受 Task 5 未落地影响。**一致** |
+| Task 1 ↔ Task 5 | `HexGrid.java` | ★ **本条原写"Task 5 补内容访问"——派单前扫描证明是残留**（R-48-d）：实测 `GameMap` **自己持有 `Map<HexCoord, HexCell> hexes`**，根本不经过 `HexGrid`。⇒ **Task 5 不再 Modify `HexGrid`**，它**保持纯几何**；原"已写进 Task 1 Step 3"的说法也不成立（Task 1 Step 3 只写了"不引入 `HexCell`"）。**已就地删掉那行 Modify** |
 | Task 5 ↔ Task 8 | `GenerationSpec` | ★ **真冲突**：Task 5 的 `GameMap.spec` **需要该类型存在才能编译**，而完整参数面在 Task 8。**已判**：Task 5 建骨架（只有 `seed`），Task 8 扩写；Task 8 的 Files 已改为 **Modify** |
-| Task 5 ↔ Task 8 | `GameMap.spec` 的可空性 | Task 5 声明可空、Task 8 收紧。**已写进 Task 8**：收紧要连带改 `empty()` 与 `apply` 重建，并加 `specIsNeverNullAfterTask8` 用例证明收紧落地 |
+| Task 5 ↔ Task 8 | `GameMap.spec` 的可空性 | ★ **R-48-e 撤回了原裁定**：原写"Task 5 声明可空、Task 8 收紧"。否决理由——**中间会留两轮 nullable 世界**（Task 6 的 `apply`、Task 7 的反射枚举都得绕开 `spec`），而"收紧"那一步**没人把守**。**新口径**：Task 5 的 `empty()` 起就 `GenerationSpec.defaults(0L)`，**`spec` 从不 null**；Task 8 仍加 `specIsNeverNullAfterTask8`，但它是**守卫**不是收紧动作，`MapChangeSet.java` 列进 Task 8 Files 只为**核实前提**（无 null 兜底就如实报告"无需改动"） |
 | Task 6 ↔ Task 7 | `MapChangeSet` 的组件数（7）vs `GameMap`（8） | ★ **真冲突**：Task 7 的 `everyGameMapComponentParticipatesInTheChangeSet` 遍历**全部 8 个** `GameMap` 组件，而 `spec` 有意不在变更集里 ⇒ 该轮**必然红**。**已判**：引入**被单独用例钉死的豁免集** `EXCLUDED_FROM_CHANGE_SET = Set.of("spec")`，并加 V6 变异证明豁免口不是洞 |
 | Task 3 ↔ Task 5 | `RegionIndex` 的"不进状态"断言 | 两边都想写 ⇒ **已判归 Task 5 独有**（Task 3 里那条会引用尚不存在的 `GameMap`）。**已写进 Task 3 Step 4** |
 | Task 2 ↔ Task 10 | `TerrainCatalog` 的顺序 | Task 5 的 `GameMap` 用保序不可变、Task 10 断言 `terrainTypes()` 与 catalog **顺序一致**。**一致** |
