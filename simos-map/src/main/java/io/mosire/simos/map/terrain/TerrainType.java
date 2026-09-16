@@ -13,7 +13,8 @@ package io.mosire.simos.map.terrain;
  *
  * <p>★ 高度带**左闭右开**（{@code minHeight <= h < maxHeight}）—— 相邻带天然不重叠，无需特判边界。
  *
- * <p>构造期校验**抛 {@link IllegalArgumentException}、不静默夹取**（与 `hex` 包同族口径）。
+ * <p>构造期校验**抛 {@link IllegalArgumentException}、不静默夹取**（与 `hex` 包同族口径）。{@code description}
+ * 是**有意不设校验**的一个：它只作文档用途，既不参与判据也不被解引用，null 也不破坏往返。
  */
 public record TerrainType(
     String key,

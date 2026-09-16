@@ -23,12 +23,11 @@ class TerrainCatalogTest {
     assertThat(TerrainCatalog.defaults().keySet()).containsExactlyElementsOf(TerrainCatalog.KEYS);
   }
 
-  @Test
-  void defaultsIterationOrderIsStable() {
-    List<String> first = new ArrayList<>(TerrainCatalog.defaults().keySet());
-    List<String> second = new ArrayList<>(TerrainCatalog.defaults().keySet());
-    assertThat(second).containsExactlyElementsOf(first);
-  }
+  // ★ 这里原有一条 `defaultsIterationOrderIsStable`（连调两次 defaults()、比 key 序），**已删**：
+  // 变异体 m2 把 defaults() 换成 Map.copyOf，它**照样绿** —— 而 copyOf 正是它要抓的那个实现。
+  // 原因是 copyOf 在**同一 JVM 内**对同一批 key 是确定的（探针实测：进程内两次相同，跨进程才不同）。
+  // 真正钉住保序的是上面那条 `defaultsKeySetEqualsKeys`（与冻结的 KEYS 逐项比字面量序）。
+  // 残留风险（记台账，不在本模块解决）：**跨进程**序的稳定性无人把守，单进程用例够不到它。
 
   @Test
   void defaultsIsUnmodifiable() {
@@ -138,15 +137,79 @@ class TerrainCatalogTest {
   }
 
   /**
-   * ★ 排除用例：{@code #6CC261} 是旧词表 A 的平原绿，也正是 {@code ContourQueryEngine.terrainColor} 的兜底色
-   * ——**跨词表串味的物证**。
+   * ★ 排除用例：**已知的串味兜底色不许在任何一项上复活**。
    *
-   * <p>★ 它钉的**不是**"plains 的颜色长什么样"，而是"**这个已知污染值不许在任何一项上复活**"。
+   * <p>两个物证来自**两个不同的**旧词表：{@code #6CC261} 是词表 A 的平原绿、也是 {@code ContourQueryEngine.terrainColor}
+   * 的兜底色；{@code #5B8C3E} 是词表 B 的低地绿、{@code CompressionService.terrainColor} 的兜底色（后者由 Task 2 实测补出，
+   * spec §6.1 原先只记了前者）。
+   *
+   * <p>★ 它钉的**不是**"plains 的颜色长什么样"，而是"**这两个已知污染值一个都不许复活**"。
+   *
+   * <p>★ **必须大小写不敏感**：本类型的颜色校验正则允许小写（{@code #[0-9A-Fa-f]{6}}），所以 {@code "#6cc261"} 是一条与物证
+   * **同值**的真实漏路，逐字符的 {@code isNotEqualTo} 会放过它。
    */
   @Test
-  void plainsGreenIsNotTheOldFallback() {
+  void noTypeRevivesAKnownFallbackColor() {
+    List<String> polluted = List.of("#6CC261", "#5B8C3E");
     for (TerrainType t : TerrainCatalog.defaults().values()) {
-      assertThat(t.color()).as("地形 %s 复活了旧的兜底色", t.key()).isNotEqualTo("#6CC261");
+      for (String bad : polluted) {
+        assertThat(t.color()).as("地形 %s 的颜色复活了旧兜底色 %s", t.key(), bad).isNotEqualToIgnoringCase(bad);
+      }
     }
+  }
+
+  /**
+   * ★ 构造期校验**逐条自证**（G13）。m9 只证明了"高度带"那一条，其余几条若无人故意违规过就只是装饰。
+   *
+   * <p>判别力来源是**抛不抛**：删掉任一条守卫，对应的 {@code assertThatThrownBy} 会因"压根没抛"而红（这些守卫的失败消息都是 自定义文案，不是 {@code
+   * requireNonNull} 那种"消息恰是字段名"的形态 2）。消息断言用来钉**是哪一条**守卫响的。
+   *
+   * <p>{@code description} **有意不设校验**——它只作文档用途，既不参与判据也不被解引用，null 也不破坏往返。
+   */
+  @Test
+  void constructorRejectsInvalidFields() {
+    assertThatThrownBy(() -> type(" ", "平原", "#9CCB5B", 0.30, 0.45, 3, 0, 0, 1))
+        .as("key 空白")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("key");
+    assertThatThrownBy(() -> type("plains", " ", "#9CCB5B", 0.30, 0.45, 3, 0, 0, 1))
+        .as("name 空白")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("name");
+    assertThatThrownBy(() -> type("plains", "平原", "9CCB5B", 0.30, 0.45, 3, 0, 0, 1))
+        .as("color 缺 # 号")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("color");
+    assertThatThrownBy(() -> type("plains", "平原", "#9CCB5B", 0.30, 0.45, 3, 0, 0, 0))
+        .as("moveCost < 1")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("moveCost");
+    assertThatThrownBy(() -> type("plains", "平原", "#9CCB5B", 0.30, 0.45, -1, 0, 0, 1))
+        .as("food 为负")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("产出");
+    assertThatThrownBy(() -> type("plains", "平原", "#9CCB5B", 0.55, 0.45, 3, 0, 0, 1))
+        .as("minHeight >= maxHeight")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("高度带");
+    assertThatThrownBy(() -> type("plains", "平原", "#9CCB5B", 0.30, 1.45, 3, 0, 0, 1))
+        .as("maxHeight > 1.0")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("高度带");
+  }
+
+  /** 逐字段可替换地造一个 {@code TerrainType}——只为负例用例服务，不进词表。 */
+  private static TerrainType type(
+      String key,
+      String name,
+      String color,
+      double minHeight,
+      double maxHeight,
+      int food,
+      int gold,
+      int stone,
+      int moveCost) {
+    return new TerrainType(
+        key, name, color, minHeight, maxHeight, food, gold, stone, moveCost, "负例用例");
   }
 }
