@@ -1,0 +1,43 @@
+=================== ROUND m7v-8 ===================
+★ 变异在 /tmp 副本上做：REPO=/tmp/m7lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 95 个 .java，无多余文件）
+--- 改前（HEAD 4bba61e + 本任务新测试，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 157, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改的文件（1个）：
+  simos-map/src/main/java/io/mosire/simos/map/GameMap.java  md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=e535ea84cd77ae4c465c2b6264a4be62
+自证：每个声明的文件都与原件**字节不同** OK
+自证：除声明的文件外无文件被改动（清单其余项全部一致）OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 1
+!! 编译错误 —— 本轮作废（红了也不是断言红）
+[INFO] Compiling 24 source files with javac [debug release 21] to target/classes
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /tmp/m7lab/repo/simos-map/src/main/java/io/mosire/simos/map/GameMap.java:[86,12] constructor GameMap in record io.mosire.simos.map.GameMap cannot be applied to given types;
+  required: java.util.Map<io.mosire.simos.map.hex.HexCoord,io.mosire.simos.map.HexCell>,java.util.Map<io.mosire.simos.map.region.RegionId,io.mosire.simos.map.region.Region>,java.util.Map<io.mosire.simos.map.CityId,io.mosire.simos.map.City>,java.util.Map<java.lang.String,io.mosire.simos.map.terrain.TerrainType>,java.util.Map<io.mosire.simos.map.pathway.PathwayId,io.mosire.simos.map.pathway.Pathway>,java.util.Map<java.lang.String,io.mosire.simos.map.pathway.PathwayGroup>,java.util.Map<io.mosire.simos.map.pathway.EdgeRef,io.mosire.simos.map.pathway.EdgeTags>,io.mosire.simos.map.generate.GenerationSpec,java.util.Map<java.lang.String,java.lang.String>
+  found:    java.util.Map<java.lang.Object,java.lang.Object>,java.util.Map<java.lang.Object,java.lang.Object>,java.util.Map<java.lang.Object,java.lang.Object>,java.util.Map<java.lang.Object,java.lang.Object>,java.util.Map<java.lang.Object,java.lang.Object>,java.util.Map<java.lang.Object,java.lang.Object>,java.util.Map<java.lang.Object,java.lang.Object>,io.mosire.simos.map.generate.GenerationSpec
+  reason: actual and formal argument lists differ in length
+[ERROR] /tmp/m7lab/repo/simos-map/src/main/java/io/mosire/simos/map/GameMap.java:[103,12] constructor GameMap in record io.mosire.simos.map.GameMap cannot be applied to given types;
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
