@@ -52,4 +52,19 @@ class AddressQuoteTest {
     assertThatThrownBy(() -> new Namespace("a:b")).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new Property("a b")).isInstanceOf(IllegalArgumentException.class);
   }
+
+  /** G13 自证：空坐标护栏必须真的会响（spec §3.5 把 `[]` 列为非法）。 */
+  @Test
+  void emptyIndexIsRejected() {
+    assertThatThrownBy(() -> new Index(List.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("至少一个坐标");
+  }
+
+  /** 记录组件的防御性拷贝：`coords` 必须是不可变副本，改不动原实例。 */
+  @Test
+  void indexCoordsAreDefensivelyCopied() {
+    assertThatThrownBy(() -> new Index(List.of(1)).coords().add(2))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
 }

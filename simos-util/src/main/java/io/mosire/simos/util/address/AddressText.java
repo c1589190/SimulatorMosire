@@ -5,21 +5,24 @@ final class AddressText {
 
   private AddressText() {}
 
-  /** 裸词：非空、不含任何空白、且不含 `: . [ ] "`（spec §3.2：kind 与命名空间的合法性判据）。 */
+  /** 结构化字符：出现任一即不可能作为裸词，且（除 `.` 外）是加引条件 1 的判据。 */
+  private static boolean hasStructuralChar(String s) {
+    return s.indexOf(':') >= 0 || s.indexOf('[') >= 0 || s.indexOf(']') >= 0 || s.indexOf('"') >= 0;
+  }
+
+  /**
+   * 裸词：非空、不含任何空白、且不含 `: . [ ] "`（spec §3.2：kind 与命名空间的合法性判据）。
+   *
+   * <p>注意 `.` 单独判：它是裸词的否决字符，却**不是**加引条件 1 的判据（见 {@link #hasStructuralChar}）—— 缺 kind 的 name 含 `.`
+   * 才加引，kind 在时 `region.Nation.区域A` 不能加引。
+   */
   static boolean isBareWord(String s) {
-    if (s == null || s.isEmpty()) {
+    if (s == null || s.isEmpty() || s.indexOf('.') >= 0 || hasStructuralChar(s)) {
       return false;
     }
     for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      if (Character.isWhitespace(c)) {
+      if (Character.isWhitespace(s.charAt(i))) {
         return false;
-      }
-      switch (c) {
-        case ':', '.', '[', ']', '"' -> {
-          return false;
-        }
-        default -> {}
       }
     }
     return true;
@@ -39,10 +42,7 @@ final class AddressText {
     boolean needs =
         name.isEmpty()
             || name.chars().anyMatch(Character::isWhitespace)
-            || name.indexOf(':') >= 0
-            || name.indexOf('[') >= 0
-            || name.indexOf(']') >= 0
-            || name.indexOf('"') >= 0
+            || hasStructuralChar(name)
             || (kindAbsent && name.indexOf('.') >= 0);
     return needs ? quote(name) : name;
   }
