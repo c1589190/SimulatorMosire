@@ -369,4 +369,33 @@ R-M6 删 finite 守卫 → `roundRejectsNonFinite:161`。
 （`cdc814d` 是无关的 `.serena` 配置）。评审用 **2/3 轮**；门禁 `./mvnw -pl simos-map -am verify`
 在收尾提交上全绿（util 156/0、map 26/0、SpotBugs 0）。
 
-**下一个：Task 2（`terrain` 包）**，派单前 BASE = `cdc814d`。
+**下一个：Task 2（`terrain` 包）**。
+
+---
+
+## Task 2（`terrain` 包）派单
+
+- **brief**：`task-2-brief.md`（脚本 `scripts/task-brief` 抽出，200 行）
+- **BASE**：`9744c56`（台账补 `Task 1: complete` 的提交；它之前还有 `fbafbdd`/`cdc814d` 两笔收尾）
+  ★ **生成评审包时以此为准，不要用 `HEAD~1`**（Task 2 若多提交，`HEAD~1` 会静默截断）。
+  若实现者的提交落在别的提交之后（我随后又提交了文档），以**实现者的父提交**为 BASE——等价的"开工前那一刻"。
+- **实现者**：模型 `sonnet`，agentId `ac63add44c841ae1f`（修复轮 1–3 复用它）
+- **报告**：`task-2-report.md`
+
+### 派单时我做的裁定（brief 里有歧义的四处，都写进派单了）
+
+| # | 歧义 | 裁定 | 若错代价 |
+|---|---|---|---|
+| **a** | brief 的用例清单列了 `ofNeverFallsBack`，但它的注解说"用变异证明" | **不写成 `@Test`**——一句断不了言的 `@Test` 在评审里就是装饰。它的判别力**已由 `ofThrowsOnUnknownKey` 承担**（兜底变异会让 `of("nope")` 不再抛）。它只作为 Step 5 变异表第 1 行存在 | 少一条"名字存在但没有断言"的用例；判别力不损失 |
+| **b** | 平原的颜色最顺手的绿**很可能就是 `#6CC261`**（旧词表 A 的平原绿 = `ContourQueryEngine.terrainColor` 的兜底色） | 要求实现者**选中就换掉并记录**。该用例钉的是"这个已知污染值不许复活"，不是"plains 长什么样" | 若没换，`plainsGreenIsNotTheOldFallback` 会红——**这是设计如此**，不是误伤 |
+| **c** | 表里"不可通行"没有字段承载（brief 数过是 10 字段） | **不加第 11 个字段**，用 `moveCost` 哨兵值表达，并在 Javadoc 与报告里写明哨兵 | 将来若要布尔 `passable`，改 record 组件列表是跨模块破坏性变更（铁律 5 下须刻意为之） |
+| **d** | `defaults()` 是否缓存成 `static final` | **按草图（方法内新建）**。类加载期静态初始化抛异常会变成 `ExceptionInInitializerError`，比 IAE 难查得多——而 `everyTypeIsConstructible` 正要看 IAE | 每次 `of()` 重建 7 项表，性能可忽略；换来的失败模式更可读 |
+
+**另**：Step 3 的 GSimulator 旧词表调查**只为留记录**（M6 的老存档导入器要那张映射表），**明写它是 M6 的输入**；U1 已把那份 9 项表整个作废，**不得从此抄任何数值**。`forest`/`swamp`/`lowland`/`tundra` 无显然对应物 ⇒ **如实写"待 M6 裁决"，不许替 M6 编映射**。
+
+### 本机工具坑（本次实际踩到）
+
+**SDD 技能自带的 `scripts/task-brief` / `scripts/review-package` 是 CRLF**（`file` 实测
+`with CRLF line terminators`，41 行带 `\r`），直接执行报
+`/usr/bin/env: 'bash\r': No such file or directory`。**绕法**：`tr -d '\r' < 脚本 > /tmp/x.sh && bash /tmp/x.sh <参数>`
+（已写进 CLAUDE.md 的换机自检清单）。

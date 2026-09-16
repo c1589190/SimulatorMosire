@@ -166,3 +166,8 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
    且跳过隐藏目录**——于是 `grep -rn <串> .` 会**静默返回空**，把"没搜到"伪装成"不存在"。仓根下的
    `.superpowers/**` 正是被 ignore 的隐藏目录，属重灾区（M1 已因此得出过一次假阴性结论）。
    **要搜全仓一律用 `git grep <串>`**，或 `grep --hidden --no-ignore-files`。
+4. **superpowers 插件的 `scripts/*` 可能是 CRLF**（本机实测 `task-brief` 是
+   `with CRLF line terminators`，41 行带 `\r`）：直接执行会报
+   `/usr/bin/env: 'bash\r': No such file or directory`，看起来像"脚本不存在"。**绕法**：
+   `tr -d '\r' < 脚本 > /tmp/x.sh && bash /tmp/x.sh <参数>`。
+   （与第 1 条同源——都是 `core.autocrlf` 在别的 checkout 上留下的 `\r`。）
