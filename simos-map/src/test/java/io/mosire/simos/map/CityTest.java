@@ -15,8 +15,9 @@ class CityTest {
   /**
    * 六个属性，**插入序既不是字典序、也不是哈希序**。
    *
-   * <p>★ 键数是量出来的，不是随手定的：3 键时 {@code Map.copyOf} 有 **43%** 的概率**恰好落回插入序**（30 次 JVM 启动里 13 次），此时"改用
-   * {@code Map.copyOf}"的变异体**打不响**这条钉子；6 键实测 0/30。见 {@code task-5-evidence/order-probe/}。
+   * <p>★ 键数是量出来的，不是随手定的：3 键时 {@code Map.copyOf} 有 **10/30（33%）** 的概率**恰好落回插入序**（同一条探针 另一次跑出 13/30 =
+   * 43% —— 30 次采样的率是**估值**，不是常量），此时"改用 {@code Map.copyOf}"的变异体**打不响**这条钉子； 6 键实测 0/30。见 {@code
+   * task-5-evidence/order-probe/}。
    */
   private static final String[] INSERTION_ORDER = {
     "population", "owner", "founded", "walls", "trade", "port"
@@ -34,7 +35,7 @@ class CityTest {
     return new City(new CityId("c1"), "临江", new HexCoord(0, 0), new RegionId("r1"), props());
   }
 
-  /** ★ 保序：与**冻结字面量**比，而不是"再调一次、比两次结果" —— 后者在同一 JVM 内对 {@code Map.copyOf} 也成立，钉不住它。 */
+  /** ★ 保序：与**冻结字面量**比，而不是"再调一次、比两次结果" —— {@code props()} 两次返回的是**同一个实例**，那种写法恒绿，钉不住它。 */
   @Test
   void propsPreservesInsertionOrder() {
     assertThat(city().props().keySet()).containsExactly(INSERTION_ORDER);

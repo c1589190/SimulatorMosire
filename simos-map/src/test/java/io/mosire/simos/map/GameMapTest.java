@@ -48,8 +48,9 @@ class GameMapTest {
   private static final HexCoord H_C = new HexCoord(-3, 2);
 
   /**
-   * ★ **第 4 个格不是装饰**：3 键的夹具对 {@code Map.copyOf} 的假绿率实测可达 17%（30 次 JVM 启动里 5 次恰好落回插入序）， 4 键实测 0/30（7
-   * 个 map 逐个量过，见 {@code task-5-evidence/order-probe/}）。键太少时这条保序钉子**可能钉不住**。
+   * ★ **第 4 个格不是装饰**：3 键的夹具对 {@code Map.copyOf} 的假绿率，30 次独立 JVM 启动实测 **2/30 ~ 12/30** （7%~40%，最高那列是
+   * {@code terrainTypes}），4 键**全为 0/30**（7 个 map 逐个量过，见 {@code
+   * task-5-evidence/order-probe/}）。键太少时这条保序钉子**可能钉不住**。
    */
   private static final HexCoord H_D = new HexCoord(2, -4);
 
@@ -219,7 +220,7 @@ class GameMapTest {
    * ★ **落盘序稳定**：与**冻结的插入序字面量**逐项比，**不写成"跟源 map 比"** —— {@code Map.copyOf} 的迭代序按 JVM
    * 加盐，写成"跟源比"时它可能恰好落回插入序而**假绿**。
    *
-   * <p>★ 夹具每表 4 键也是这个道理：3 键时 "落回插入序" 的假绿率实测 0~17%（30 次 JVM 启动，见 {@code
+   * <p>★ 夹具每表 4 键也是这个道理：3 键时 "落回插入序" 的假绿率实测 **2/30 ~ 12/30**（30 次 JVM 启动，见 {@code
    * task-5-evidence/order-probe/}），4 键实测 0/30。**钉子要真能响，键就不能太少。**
    */
   @Test
