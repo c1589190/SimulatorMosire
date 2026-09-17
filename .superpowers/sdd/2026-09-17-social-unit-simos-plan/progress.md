@@ -1,0 +1,51 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-09-17-social-unit-simos-plan.md
+
+> **本文件是 M3（SocialSimos + UnitSimos）的台账与恢复地图。**
+> M1 台账在 `.superpowers/sdd/2026-09-16-util-simos-plan/`，M2 台账在 `.superpowers/sdd/2026-09-16-map-simos-plan/` ——
+> 只读，不要写回去。本目录是本轮唯一可写台账。
+> **台账记裁定与结论，不记取证过程**（CLAUDE.md 纪律；体量不得压过代码本身）。
+
+**上游**：M3 spec `docs/superpowers/specs/2026-09-17-social-unit-simos-design.md`（**已获用户批准，2026-09-17**）；
+总纲 `2026-09-16-simos-master-design.md`；M1 spec（已执行）；M2 spec 与计划（已关账，`origin/feat/m2-map-simos` @ `9e4c1cb`）。
+
+**执行基线**：分支 `feat/m3-social-unit-simos`，BASE = `1b0397e`（计划提交）。执行者 = 控制器 + 实现者子代理。
+
+**跨里程碑承接约束**（M1/M2 关账时补记）：
+1. 含 `ADD` 事件的 `TemporalSeries` 一律用模块级 `static final` 的 `addition`（各写各的 lambda ⇒ 假红）。
+2. `Map.copyOf` / `Set.copyOf` 迭代序非内容纯函数 ⇒ 保序一律 `LinkedHashMap` + `unmodifiableMap`。
+3. 变异自证五形态（CLAUDE.md 纪律节）：字节不同先自证 / 白名单推成目标类名 / 每轮干净世界 / `COMPILATION ERROR` 计数为 0 / 红点必须在被保护那行。
+
+---
+
+## 任务地图（13 任务）
+
+| # | 任务 | 状态 |
+|---|---|---|
+| 1 | `FieldDelta` 上移 util + `diff`/`rebuild` 提为静态机制 + M2 侧委托 + R1 | ✅ `0de76ed`+`b9ff9b8` |
+| 2 | `TerrainType.IMPASSABLE_MOVE_COST` + R2 | ⏳ |
+| 3 | `PopulationSeries`：积分语义 + R3 + R4 | ⏳ |
+| 4 | `SocialData` / `SocialSnapshot` / `SocialChangeSet` + 往返 | ⏳ |
+| 5 | `SocialResolver` + R12/R13 的 social 半 | ⏳ |
+| 6 | `UnitId` / `Unit` / `UnitState` + `effectivePosition` + R5/R6/R7 | ⏳ |
+| 7 | `UnitChangeSet` + 往返 | ⏳ |
+| 8 | `MovementCost` + `TerrainMovementCost` + 判据二夹具 | ⏳ |
+| 9 | `PathFinder`（A\*）+ R8 | ⏳ |
+| 10 | `Route` / `Movement` / `MovementState` / `UnitMoves` + R9/R10 | ⏳ |
+| 11 | `UnitOperations` 8 项 + R11 | ⏳ |
+| 12 | `UnitResolver` + R12/R13 的 unit 半 | ⏳ |
+| 13 | M3 关账 | ⏳ |
+
+---
+
+## 执行日志
+
+（逐任务关账时追加）
+
+
+## Task 1 关账（2026-09-17）
+
+- **交付** `0de76ed`（代码 9 文件，+138/−104，含 53% rename 检出）+ `b9ff9b8`（报告 + 证据，6 文件 +978）。
+- **评审形态 = 控制器自读 diff**（不派评审者）。核过：迁移逐字（`diff`/`rebuild` 逻辑与原件一致，接口内 `new Unchanged<>()` 等短路写法正确）；类 Javadoc 三处改写 + C7 新增段落位；`MapChangeSet` 委托完整、4 行无用 import 已清（R-1-c）；import 面 7 文件全对（终局 `git grep "map.change.FieldDelta" -- 'simos-map/src'` 空）；R1 用例照计划（`rawLines`、`containsExactly`、`entry` 导入已补）。
+- **控制器独立复核**（与实现者证据相互独立）：`RegressionGuardsTest` **9/9 绿**（BUILD SUCCESS，本机当场跑）；变异轮 `m3t1v-1.kept`：干净世界 113 .java/extras=0、改前 156+246 绿、变异体 md5 `a1f1e486…`、`COMPILATION ERROR count = 0`、25 类真跑、红点原文 `R1_thereIsExactlyOneFieldDelta:402`（actual 带出多余键 `LegacyFieldDelta.java`）；`gate-clean-verify.txt` rc=0、util 156 / map **246** / core 15、`BugInstance size is 0` ×5。
+- **裁定（执行期，取代计划 Step 8 第 3 条）**：R1 变异体的**声明名必须是 `FieldDelta`**（包级私有，落 `LegacyFieldDelta.java`），**不是** `LegacyFieldDelta`——守卫是逐行子串 `interface FieldDelta`，改名副本会**假绿**。依据：javac 探针（包级私有可编译，rc=0）+ 本任务实跑。计划原文的"确保类名与文件名一致（LegacyFieldDelta）"是计划缺陷。
+- **关切（不挡关账）**：① R1 用 `rawLines` 不剔注释 ⇒ 对注释里出现该字面同样敏感（只会更严；将来若 Javadoc 里出现会假红，届时可改 `codeLines`，一行的事）；② 变异体命中 2 次（注释 1 + 声明 1），决定性命中是声明行；③ `simos-social`/`simos-unit` 的 src/main 现只有 `package-info.java` ⇒ R1 对这两模块**结构性活着**、暂无真实代码可护；④ `.omo/` 为先前已存在的未跟踪目录，未触碰。
