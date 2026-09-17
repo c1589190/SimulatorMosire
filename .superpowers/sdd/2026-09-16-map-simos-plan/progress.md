@@ -1074,3 +1074,43 @@ R-13-j 源码级无 IO 断言（注意别用裸词 `File` —— 会误伤 `Fiel
 - **关切（5 条，均不挡关账）**：① m13v-2 的红是 **Error 形态**（用例体内收 IAE），不是 Failure —— 装置两类都留痕，不误读为"没跑到断言"；② m13v-5 天生非外科（8 红同根因），已在 `mutate.py` 注释预先声明，主判别用非 m1 的 mapId；③ `resolverDoesNotDoIO` 依赖 surefire 工作目录 = 模块根（R-13-j 指定形态的固有属性）；④ 宽松 hex 名归一（`04_003` → `4_3`）只探针钉过、未单列用例；⑤ 空 mapId（`Entity(∅,"")`）只能由直接构造 AST 产生（`parse` 不可达），未加守卫。
 - **挂起项（承接 R-13-g）**：MapSimos **没有地图身份**（`GameMap` 无 id 组件）⇒ `map:<mapId>` 的 mapId 只回显、**不可校验**；将来 `GameMap` 有 id 字段时应收紧（下游别假设 mapId 已被校验）。
 - **★ 范围裁定（用户 2026-09-17）**：**Task 13 关账即停，Task 14（L1~L9 守卫）/ Task 15（M2 关账）不派单**。M2 到此为止：12 任务交付（Task 1~13 关账），L 级守卫清单与 M2 关账留待下次会话。
+
+## Task 14 预扫描（2026-09-17）
+
+| 对上谁 | 缝是什么 | 发现 |
+|---|---|---|
+| M2 spec §9.1 | L1~L9 的**权威判据**（比计划 §Task 14 的表更细） | ★ 计划只给用例名与落点；spec §9.1 还给了**判据形态**（L2 反射组件清单、L3 代数性质 + 第二份方向表、L7 JSON 逐字节往返 + 同 seed 两次、L8 调用点计数、L9 阈值结构性断言）⇒ 补充文件以 spec 为准逐条落形 |
+| Task 7 `RoundTripComponentsTest` | L1 的往返 | ★ **已有全组件往返**（`everyGameMapComponentParticipatesInTheChangeSet`）⇒ 若 L1 照抄，edges 被别的组件顺带重建也**照样绿** ⇒ 必须用"**只有 edges 变**"的夹具（= simos 侧的非 root 形态）⇒ R-14-b L1 |
+| Task 3 `RegionIndex(Map)` 包私有构造器 | L5 的计数注入 | ★ 与 Task 13 同一条理由：`RegressionGuardsTest` 在 `io.mosire.simos.map` 包进不去 ⇒ **L5 单独成文件放 region 包**（计划 Step 1 允许"或按缺陷分文件"）⇒ R-14-a |
+| 源码扫描白名单（4 条） | L3/L4/L6/L9 的实测命中 | ★ 控制器实测：`int[][]` 在 src/main **零命中**；`+ "_" +` 代码行**仅 `HexCoord.java:85`**（`HexVertex.java:9` 是 Javadoc 里的历史说明 ⇒ **扫描必须剔注释行**）；`new GameMap(` src/main **11 处**（GameMap 9 / MapChangeSet 1 / MapGenerator 1）；`{low_hills,mountains,plateau,plateau_mountains}` **只在 TerrainCatalog.java**（`ocean`/`plains`/`desert` 另有合法常量 ⇒ 不进扫描）；`region` 包顶层类型 **5 个** |
+| Task 12/13 的变异装置 | 本任务变异体**含新增文件** | ★ Task 12/13 的 `md5sum -c` 自证**看不见新增**；L3/L4/L9 的变异正好要新增文件 ⇒ 自证头改为"修改+新增"的并集，且**每轮开跑前断言上一轮新增文件真的没了** ⇒ R-14-d |
+
+**裁定摘要**：R-14-a L5 分文件放 region 包（计数注入的必然推论）；R-14-b 八条判据形态逐条钉死（以 spec §9.1 为准）；
+R-14-c 扫描器统一口径（仓库根定位 + 注释剔除 + 扫描器自证"文件数 > 0"）；R-14-d 装置升级为"修改+新增"并集自证；
+R-14-e 门禁/证据/提交同前。细则见 `task-14-brief-supplement.md`。
+
+## Task 14 派单（2026-09-17）
+
+- **BASE** = `49f8445`（Task 13 关账提交）。派单时工作树干净。
+- 需求 = `task-14-brief.md` + `task-14-brief-supplement.md`（**补充为准**）。
+- 派单：**省略 `model` 参数**走 glm（额度已于 06:52 重置）。
+- ★ **用户 2026-09-17 新指令「继续吧」** ⇒ 覆盖先前「做到 task13 就停下」：本任务照做，关账后**继续 Task 15（M2 关账）**。
+
+### Task 14 交接（2026-09-17）
+
+- 第一个实现者（glm 路由）把**两个测试文件写完**（`RegressionGuardsTest.java` / `RegionIndexGuardTest.java`）、装置改成 `/tmp/m14lab` 版、跑完第 1 遍 9 轮——**自审发现 L7 用例 flaky**，把第 1 遍整体归档进 `rounds-pass1-flakyL7/`、改掉夹具（18:30 版）、从第 2 遍第 1 轮重跑，**跑到 `m14v-3` 时被 GLM 429 中断**（5 小时额度，22:41 重置）。
+- **L7 flaky 的根因**（探针 `rounds-pass1-flakyL7/SetOrderProbe.java` 实测 + 控制器复核）：**`Set` 的迭代序不是内容集的纯函数** ⇒ 任何对集合做**顺序敏感**的断言（如整图 JSON 串逐字节比）都会随机翻。与本仓 M2 Task 5 的同源教训一致（`Map.copyOf`/`Set.copyOf` 的迭代序 = 散列槽位序）。
+- **控制器裁定**：顺序敏感断言**只允许**落在"序由构造保证"处（`LinkedHashMap` 夹具的 map、词表定序的 `terrainTypes`）；**`Set` 只做结构相等**。并**要求当场自证不再 flaky**（两个守卫类连跑 ≥ 20 次全绿，计数进报告）。
+- **控制器裁定（证据卫生）**：中断时 `rounds/` 是**两遍混装**——`m14v-1/2` 是第 2 遍（新夹具）、`m14v-4..9` 是第 1 遍旧夹具产物、`m14v-3.kept` 截断且 `.before.log` 为 0 字节。⇒ 要求 `rm -rf /tmp/m14lab` 与陈旧 `.kept` 后**整遍重跑**，`rounds/` 只留同一遍的 9 个、逐轮与 `manifest.txt` 的原件 md5 对上；`rounds-pass1-flakyL7/` 只留 `SetOrderProbe.java` + `jprobe.jsh` 作诊断留痕（9 个重复 `.kept` 是纯噪声，删）。
+- **第二个实现者**已按用户裁定「glm 没法用就手动换 deepseek」**显式传 `model`** 派单（显式值走 deepseek 路由）：任务 = 核实/修测试 → 证据重跑 → L7 非 flaky 自证 → 门禁 → 报告 → 提交。
+
+## Task 14 关账（2026-09-17）
+
+- **交付** `9152749`：`RegressionGuardsTest.java`（581 行，L1/L2/L3/L4/L6/L7/L8/L9 八条 + 四条扫描的公共底座）+ `region/RegionIndexGuardTest.java`（76 行，L5 计数注入）+ 9 轮 `.kept` + 装置（`run.sh`/`mutate.py`）+ `l7-flaky-recheck.out` + `rounds-pass1-flakyL7/`（探针 + 当场输出）+ gate 日志 + 报告。提交面 23 文件、5335 insertions，**零越界**（未碰任何既有文件）。
+- **评审形态 = 控制器自读 diff**（两个子 Agent 相继死亡——glm 429、deepseek 看门狗——后控制器接手；装置与测试文件的收尾、重跑、门禁、报告均出自控制器）。两份文件逐行读过，判据形态与 R-14-b 逐条对上，**无承重缺陷**。非阻塞观察 2 条：① `isCommentLine` 只剔**整行**注释（行尾注释仍计数——方向是**更严**，且冻结字面量正是在此口径下量得）；② L7 键序断言隐含依赖 Jackson `ObjectNode` 保序（实测已过，记为假设）。
+- **9 轮无一作废**：每轮干净世界 113 个 `.java`、清单之外 0 个；**改前基线 156+245 全绿**；自证头全（原件/变异体 md5 相异或新增非空；修改∪新增 == 声明）；改后 `COMPILATION ERROR` 全 0、simos-map **25** 个测试类真跑过；**红点逐轮落在声明靶子**（L1~L9 各就各位），m14v-1/2/5/7 另有既有用例的同根因连带红（不是充数：对应 `L?` 断言自身红了，红点原文见报告 §2）。六个"原件" md5 与工作树逐一核对相符。
+- **L7 的 pass-1 作废 + 根因 + 修订（承接交接节）**：原版对 `Region.hexes`（`Set.copyOf`）做 JSON 字节序断言 ⇒ flaky。探针当场复跑 **20 个独立 JVM**：第一组翻转 **9/20**、第二组 0/20 —— **`Set` 迭代序不是内容的纯函数**（M2 Task 5 同源教训）。修订 = 字节序断言只落在**序由构造保证**处（`GameMap` 插入序、词表定序），`Region.hexes` 只做结构相等；边界写进用例 Javadoc。
+- **不 flaky 自证**：两个守卫类连跑 **20/20 rc=0**（`BUILD FAILURE` 0 次；每次 8+1 条全绿 ⇒ **180 次执行零红**），日志 `task-14-evidence/l7-flaky-recheck.out`。
+- **控制器独立门禁**：`./mvnw -q spotless:apply` 与 `./mvnw -q verify` ⇒ **双 rc=0、`[ERROR]` 行数 0**；旁证：surefire 报告 util 17 / map 26 / core 1 份、`spotbugsXml.xml` mtime 落在门禁窗口内；spotless **未改写**测试文件（前后 md5 一致 ⇒ 连跑证据对**提交字节**有效）。
+- **关切（4 条，均不挡关账）**：① 四条源码扫描**不覆盖 `src/test`**（测试里再写第二份 `q_r` 拼接或 `int[][]` 抓不到——spec/R-14-c 口径即"主源码"）；② L3 的 `int[][]` 扫描只含 `simos-map`+`simos-util`（social/unit/core 当前无地图实现，将来长出方向表不被抓）；③ `GenerationSpec.defaults(0L)` 与"用户显式 seed = 0"在断言层面同形 ⇒ "seed=0 的图"本身没有守卫（L7 用非零 42 避开歧义）；④ L5 把 `regionOf` 钉成"恰一次 `Map.get`"——将来若合理地需要 2 次查表（如别名回退）会红，判定权归当时的控制器。
+- **挂起项（承接 Task 13，随 M2 关账统一记录）**：`GameMap` 无 id ⇒ `map:<mapId>` 的 mapId 只回显、不可校验。
