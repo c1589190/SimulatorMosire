@@ -1,7 +1,5 @@
 package io.mosire.simos.util.state;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -56,13 +54,6 @@ import java.util.function.Function;
  *
  * @param <T> 组件值的类型
  */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
-@JsonSubTypes({
-  @JsonSubTypes.Type(value = FieldDelta.Unchanged.class, name = "unchanged"),
-  @JsonSubTypes.Type(value = FieldDelta.Upsert.class, name = "upsert"),
-  @JsonSubTypes.Type(value = FieldDelta.Remove.class, name = "remove"),
-  @JsonSubTypes.Type(value = FieldDelta.Patch.class, name = "patch"),
-})
 public sealed interface FieldDelta<T> {
 
   /** 未变。 */
