@@ -59,8 +59,8 @@ final class RepoSourceScan {
 
   /**
    * ★ 只对**被扫目录之下**的相对部分做过滤，不碰绝对路径前缀。本仓在 git worktree 里构建时绝对路径会带上 {@code .claude/worktrees/…}
-   * 这样的隐藏段——若按绝对路径的每个名字元素判 {@code startsWith(".")}，会把**所有** 文件滤掉、扫描 0 命中，护栏反而恒绿（同型缺陷先在
-   * simos-core 的 R1 装置上实测到，本文件是后补的同款修复）。
+   * 这样的隐藏段——若按绝对路径的每个名字元素判 {@code startsWith(".")}，会把**所有** 文件滤掉、扫描 0 命中，护栏反而恒绿（同型缺陷先在 simos-core 的
+   * R1 装置上实测到，本文件是后补的同款修复）。
    */
   private static boolean isScannableJava(Path rootDir, Path path) {
     if (!path.toString().endsWith(".java")) {
