@@ -12,7 +12,7 @@
 | `simos-unit/src/main/java/io/mosire/simos/unit/move/MovementCost.java` | 新增（main） | 接口：`costMillis(from,to,unit,map) → OptionalLong` + `minStepCostMillis(unit,map) → long`。A\* 启发与成本出自同一实现的落点（spec §4.3） |
 | `simos-unit/src/main/java/io/mosire/simos/unit/move/TerrainMovementCost.java` | 新增（main） | v1 实现：`public static final INSTANCE`、私构造、无状态；毫 MP 定点成本 `scale(v,‰)=floorDiv(v×‰+500,1000)` |
 | `simos-unit/src/test/java/io/mosire/simos/unit/move/MoveFixture.java` | 新增（test） | 判据二冻结夹具：`[1,1]/[1,2]/[1,3]` 走廊、自建地形 25/65/999（**不进 TerrainCatalog**）、单位 `u-f82a`（speed 2、mobility ‰500）。`final class`、包级私有、私构造（R-8-f） |
-| `simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java` | 新增（test） | 6 用例（见 §二） |
+| `simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java` | 新增（test） | **7 用例**（原计划 6 + fix-1 转正 1，见 §四#1 与 §五 fix-1 节） |
 
 执行顺序照派单：夹具+失败测试 → 编译失败（唯一一次红）→ 实现（R-8-c）→ 6/6 → `spotless:apply` → 四轮变异 → `verify` → 提交。
 
@@ -42,9 +42,10 @@
 ### R-8-b（m2/m3 形态）
 
 - **m2**：`costOf` 的 `>=` → `>` ⇒ **红点 = `impassableTerrainHasNoCost:29`**（"Expecting an empty OptionalLong but was containing value: **499500L**"，正是 scale(999000,500)）。其余 5 用例绿。
-- **m3**：删 `minStepCostMillis` 的"跳过不可通行"守卫。**实测：计划自带的 `minStepCostIsTheCheapestTraversableTerrainScaled` 不红（0 红点）**。派单预测的"999 会赢，499500≠12500"在算术上不成立：min 对**更大**的值不敏感——夹具里 25 缩放后 12500 恒最小，把 499500 加进候选集不改变 min；且 `map(STEEP_65)` 的三个格**根本没有 999 格**（999 只在词表里）。999 唯一能"赢"的场景 = **全图不可通行**（无可通行格 ⇒ 正确实现返回 0，变异体返回 499500）。
-  - 为让 m3 红在被保护的那行上，实验室副本**追加了一个实验室专用探针** `AllImpassableMinStepProbeTest`（全 999 图 ⇒ 断言 `minStepCostMillis == 0`，即 spec §4.3 第 6 条的冻结行为）：**红点 = `allImpassableMapHasZeroLowerBound:36`（expected 0L, but was 499500L）**。探针由 mutate.py 落进 /tmp 副本、并集自证纳入声明集合，**不进工作树、不进提交**（装置先例：Task 7 m2-B 同样改测试侧文件）。
-- 各轮 `COMPILATION ERROR count = 0`、改前基线全绿（见 §三）。
+- **m3**：删 `minStepCostMillis` 的"跳过不可通行"守卫。**首轮实测：计划自带的 `minStepCostIsTheCheapestTraversableTerrainScaled` 不红（0 红点）**。派单预测的"999 会赢，499500≠12500"在算术上不成立：min 对**更大**的值不敏感——夹具里 25 缩放后 12500 恒最小，把 499500 加进候选集不改变 min；且 `map(STEEP_65)` 的三个格**根本没有 999 格**（999 只在词表里）。999 唯一能"赢"的场景 = **全图不可通行**（无可通行格 ⇒ 正确实现返回 0，变异体返回 499500）。
+  - 首轮以实验室专用探针（全 999 图 ⇒ 断言 `minStepCostMillis == 0`，spec §4.3 第 6 条）兑现了 m3 的红（`expected 0L, but was 499500L`），并在报告 §四#1 上报"该冻结行为提交套件零覆盖"。
+  - **fix-1（控制器裁定转正，最终形态）**：探针转正为提交用例 `TerrainMovementCostTest.allImpassableMapHasZeroLowerBound`（夹具新增 `MoveFixture.allImpassableMap()`），对**最终字节**重跑 m3 轮 ⇒ **红点 = `TerrainMovementCostTest.allImpassableMapHasZeroLowerBound:73`（expected: 0L, but was: 499500L）**，落在**提交在案**的用例上；计划自带 minStep 用例仍绿（无判别输入，符合判别力分析）。`rounds/m3t8v-4.kept` 已被本轮取代（首轮探针形态的 .kept 不再保留，轨迹在本节与 fix-1 节）。
+- 各轮 `COMPILATION ERROR count = 0`、改前基线全绿（见 §三；fix-1 后基线 unit = 30）。
 
 ### R-8-c（实现纪律）✅
 
@@ -54,9 +55,9 @@
 ### R-8-d（期望数字）✅
 
 - 加实现前：**编译失败**（`cannot find symbol: MovementCost / TerrainMovementCost`，`pre-implementation-compile-failure.log`，COMPILATION ERROR = 1）——唯一一次"红是编译错"。
-- 加实现后：`TerrainMovementCostTest` **6/6**（`post-implementation-6of6.log`：`Tests run: 6, Failures: 0`）。六条 = 12500/32500 两值 + 不可通行 empty + 图外 empty + 非相邻/自环 IAE + 缺词表 key IAE + minStep 12500。
-- 改前基线（每轮 before 实测）：util **156** / map **248** / social **30** / **unit 29**（23 存量 + 6 新增）——四轮完全一致。
-- 四轮变异 `COMPILATION ERROR count` 全部 = **0**；每轮 simos-unit 测试类实跑（6 类，m3 轮 7 类含探针）。
+- 加实现后：`TerrainMovementCostTest` 首 **6/6**（`post-implementation-6of6.log`：`Tests run: 6, Failures: 0`）；fix-1 转正第 7 条后 **7/7**。七条 = 12500/32500 两值 + 不可通行 empty + 图外 empty + 非相邻/自环 IAE + 缺词表 key IAE + minStep 12500 + 全不可通行 ⇒ 0（fix-1）。
+- 改前基线（每轮 before 实测）：util **156** / map **248** / social **30** / **unit 29**（23 存量 + 6 新增）——首轮四轮完全一致；fix-1 重跑 m3 轮时基线为 **unit 30**（29 + 1 转正）。
+- 各轮变异 `COMPILATION ERROR count` 全部 = **0**；每轮 simos-unit 测试类实跑（首轮 6 类，m3 探针轮与 fix-1 轮 6 类单变异文件）。
 
 ### R-8-e（装置）✅
 
@@ -78,8 +79,9 @@
 | `nonAdjacentStepsAreACallerBug` | `H11→H13`（距离 2）与 `H11→H11` ⇒ IAE | 绿 |
 | `unknownTerrainKeyThrows` | 词表被抽空的图 ⇒ IAE | 绿 |
 | `minStepCostIsTheCheapestTraversableTerrainScaled` | minStep = **12500** | 绿 |
+| `allImpassableMapHasZeroLowerBound`（fix-1 转正） | 三格全 999 ⇒ minStep = **0**（spec §4.3 第 6 条） | 绿 |
 
-**`./mvnw verify`（`gate-clean-verify.log`）**：rc=0，BUILD SUCCESS；Tests run：util **156** / map **248** / social **30** / unit **29** / core **15**；`BugInstance size is 0` **×5**；Spotless/Checkstyle 全过。
+**`./mvnw verify`（`gate-clean-verify.log`，fix-1 后重录）**：rc=0，BUILD SUCCESS；Tests run：util **156** / map **248** / social **30** / unit **30** / core **15**；`BugInstance size is 0` **×5**；Spotless/Checkstyle 全过。（fix-1 前的首轮门禁 = unit 29，其余同。）
 
 ---
 
@@ -92,21 +94,33 @@
 | m3t8v-1（m1 原形态） | `scale`：floorDiv → `Math.round(v*‰/1000.0)` | **红点数 = 0**（156/248/29 全绿） | **存活**。R-8-a 预期兑现：等价变体、无判别输入（§一 R-8-a ②的 1 002 990 对实测 0 分叉为据） |
 | m3t8v-2（m1' 真变异） | `costOf` 丢 `* 1000L` | `TerrainMovementCostTest.stepCostsMatchTheFrozenFixture:21`（OptionalLong[**13**] ≠ 12500） | **1 红**，恰落在冻结成本数上；impassable/minStep 绿符合结构预测 |
 | m3t8v-3（m2） | `>=` → `>` | `TerrainMovementCostTest.impassableTerrainHasNoCost:29`（empty 变 **499500L**） | **1 红**，单一来源哨兵判据被废时唯一守它的用例红 |
-| m3t8v-4（m3） | 删 minStep 的跳过守卫 + 落探针 | 提交套件 **0 红**；探针 `AllImpassableMinStepProbeTest.allImpassableMapHasZeroLowerBound:36`（expected **0L**, but was **499500L**） | 计划自带 minStep 用例对 m3 **无判别输入**（min 对更大值不敏感 + 夹具无 999 格）；探针红的就是被保护的那行（spec §4.3 第 6 条的"全不可通行 ⇒ 0"） |
+| m3t8v-4（m3，首轮） | 删 minStep 的跳过守卫 + 落探针 | 提交套件 **0 红**；探针 `AllImpassableMinStepProbeTest.allImpassableMapHasZeroLowerBound:36`（expected **0L**, but was **499500L**） | 计划自带 minStep 用例对 m3 **无判别输入**（min 对更大值不敏感 + 夹具无 999 格）；探针红的就是被保护的那行（spec §4.3 第 6 条）——该发现上报后由 **fix-1 转正**（下行） |
+| m3t8v-4（m3，**fix-1 重跑**） | 删 minStep 的跳过守卫（对**最终字节**） | `TerrainMovementCostTest.allImpassableMapHasZeroLowerBound:73`（expected **0L**, but was **499500L**） | **1 红，落在提交在案的用例上**；计划自带 minStep 用例仍绿（无判别输入，符合分析）。基线改前 156/248/**30**、CE=0、单文件变异并集自证 OK |
 
-红点与 Task 7 各轮零重叠、四轮之间也互不重叠（m1'/m2/m3 各 1 红，落点互不相同）。
+红点与 Task 7 各轮零重叠、各轮之间也互不重叠（m1'/m2/m3 各 1 红，落点互不相同）。
 
 ---
 
 ## 四、关切 / 未能核实（不挡关账，供裁定）
 
-1. **★ 提交套件对 m3 无判别输入（实测确证）**：spec §4.3 第 6 条冻结的"全图不可通行 ⇒ 返回 0"**没有任何提交在案的用例**（计划的 6 条是定盘，未含此行为；R-8-d 钉死 6/6 故未擅自加第 7 条）。当前"0 语义"只有实验室探针守着（不进提交）。**建议**：后续任务（Task 9 A\* 用到 minStep 做启发下界时）把探针转正进提交套件——到时 minStep 的 0 退化语义会实际进入 PathFinder 的行为面，正是补用例的自然时机。
-2. **R-8-b 的预测与算术的出入**（已如实记录）：派单预测 m3 ⇒ 计划自带 minStep 用例红（"999 赢，499500≠12500"）；实测该用例绿。原因 = min 不因加入更大的候选而变 + `map(STEEP_65)` 无 999 格。m3 的判别力改由探针兑现（红点实测在案）。**未跑**"改夹具让该用例红"的变体——那等于改计划定盘的用例，超出本任务授权。
+1. **★ 已转正（fix-1，控制器裁定）**：首轮报告发现 spec §4.3 第 6 条冻结的"全图不可通行 ⇒ 返回 0"**提交套件零覆盖**（计划的 6 条是定盘；探针只在实验室）。控制器裁定**转正**：`TerrainMovementCostTest.allImpassableMapHasZeroLowerBound`（+ `MoveFixture.allImpassableMap()`）入提交套件（7 条），并对最终字节重跑 m3 轮——红点落在提交用例上（§三末行）。此关切**关闭**。
+2. **R-8-b 的预测与算术的出入**（已如实记录）：派单预测 m3 ⇒ 计划自带 minStep 用例红（"999 赢，499500≠12500"）；实测该用例绿。原因 = min 不因加入更大的候选而变 + `map(STEEP_65)` 无 999 格。m3 的判别力最终由**提交在案**的 `allImpassableMapHasZeroLowerBound` 兑现（红点实测在案）。**未跑**"改夹具让该用例红"的变体——那等于改计划定盘的用例，超出本任务授权。
 3. m1 的扫描程序是**纯算术复刻**（与 `scale` 逐字符同式的两个公式，`/tmp` 里跑、输出入库），不是对编译后 `TerrainMovementCost.class` 的反射调用；m1 变异体对冻结夹具的"两侧同值"则由 m3t8v-1 的套件实跑（12500/32500 断言仍绿）实打实压过。两者合起来覆盖"等价"结论的两侧。
-4. `spotless:apply` 在实验室之前跑过且四文件零改动（`git status` 干净）；实验室全程在 `/tmp/m3t8lab`，工作树未被触碰（run.sh 末尾 `git status --short` 仅 `.omo/` 与本任务新增目录）。
+4. `spotless:apply` 在实验室之前跑过且四文件零改动（`git status` 干净；fix-1 后复跑亦零改动）；实验室全程在 `/tmp/m3t8lab`，工作树未被触碰（run.sh 末尾 `git status --short` 仅 `.omo/` 与本任务新增目录/改动文件）。
 
 ---
 
-## 五、结论
+## 五、fix-1 记录（控制器裁定转正，2026-09-17）
 
-Task 8 交付完成：接口 + 单例实现 + 判据二夹具 + 6/6；四轮变异 CE=0、改前全绿，红点实测为 m1 存活（等价，0 红）、m1' 1 红、m2 1 红、m3 探针 1 红（提交套件 0 红，判别缺口已如实上报并给出转正建议）；`./mvnw verify` 全绿（156/248/30/29/15，SpotBugs 0 ×5）。
+- **裁定**：§四#1 的发现成立——"无任何可通行格 ⇒ 返回 0"是 spec §4.3 第 6 条的**真实冻结行为**，探针只活在实验室 = 该行为无提交在案的守卫。转正。
+- **改动**：`MoveFixture` 增 `allImpassableMap()`（三格全 `IMPASSABLE_999`，同探针构造）；`TerrainMovementCostTest` 增 `allImpassableMapHasZeroLowerBound`（断言 `minStepCostMillis == 0`）。**实现一字未动**（原件本就绿）。
+- **验证**：`TerrainMovementCostTest` **7/7** 绿；对最终字节重跑 m3 轮（`rounds/m3t8v-4.kept` 已替换）：干净世界 131 个 .java、改前 156/248/**30** 全绿、单文件变异字节不同（md5 `cd20ce…` → `df5bc9…`）、并集自证 OK、CE=0，红点 = **`allImpassableMapHasZeroLowerBound:73`（expected: 0L, but was: 499500L）**。
+- **门禁**：`./mvnw verify` rc=0（156/248/30/**30**/15，`BugInstance size is 0` ×5），日志重录入库。
+- **装置同步**：`mutate.py` 的 m3t8v-4 删去探针落盘分支（`files_of` 回到单文件）、`run.sh` 的 TARGET 文案更新为 fix-1 形态；首轮探针形态的 `.kept` 按裁定**不再保留**（轨迹保留在本报告 §一 R-8-b 与本节）。
+- **提交**：A `test(unit): minStep 全不可通行边界转正（Task 8 fix-1）`；B `docs(sdd): M3 Task 8 fix-1 报告与证据更新（-f 越过 .superpowers/sdd/.gitignore）`。
+
+---
+
+## 六、结论
+
+Task 8 交付完成（含 fix-1）：接口 + 单例实现 + 判据二夹具 + **7/7**；五轮变异 CE=0、改前全绿，红点实测为 m1 存活（等价，0 红）、m1' 1 红、m2 1 红、m3 首轮探针 1 红 → **fix-1 转正后红点落在提交用例上**（提交套件判别力闭合）；`./mvnw verify` 全绿（156/248/30/30/15，SpotBugs 0 ×5）。

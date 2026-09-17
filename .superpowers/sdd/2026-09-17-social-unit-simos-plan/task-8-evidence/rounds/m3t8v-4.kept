@@ -1,5 +1,5 @@
 =================== ROUND m3t8v-4 ===================
-目标：R-8-b m3：删 minStepCostMillis 的『跳过不可通行』守卫 + 落实验室专用探针 AllImpassableMinStepProbeTest（全图不可通行 ⇒ 0，spec §4.3 第 6 条）。★ R-8-b 预测『计划自带 minStep 用例红』在算术上不可能（把更大的 499500 加进 min 不改变 min=12500，且 map(STEEP_65) 根本没有 999 格）⇒ 该用例预计不红、探针预计红（499500 ≠ 0）——实际红点以日志为准
+目标：R-8-b m3（fix-1 形态）：删 minStepCostMillis 的『跳过不可通行』守卫。fix-1 已把『全不可通行 ⇒ 0』探针转正为提交用例 allImpassableMapHasZeroLowerBound（夹具 allImpassableMap()）⇒ 期望红点落**提交在案**的该用例（expected 0L, but was 499500L）。判别力分析不变：计划自带 minStep 用例（map(STEEP_65)）对 m3 无判别输入（min 对更大值不敏感 + 无 999 格），预计仍绿——实际红点以日志为准（fix-1 前的探针形态 .kept 已被本轮取代，轨迹见报告 fix-1 节）
 ★ 变异在 /tmp 副本上做：REPO=/tmp/m3t8lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
 干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 131 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
 --- 改前（工作树 + 本任务新测试文件，未变异）---
@@ -55,16 +55,15 @@ Running io.mosire.simos.unit.UnitStateTest
 Running io.mosire.simos.unit.UnitIdTest
 [INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
 [INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
-[INFO] Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 30, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
-声明要改/新增的文件（2 个，其中新增 1 个）：
+声明要改/新增的文件（1 个，其中新增 0 个）：
   simos-unit/src/main/java/io/mosire/simos/unit/move/TerrainMovementCost.java  md5 原件=cd20ce3e3e26d5058cf32bc15a393ec2  变异体=df5bc9223cc28bafa25b8da2dad332c5
-  simos-unit/src/test/java/io/mosire/simos/unit/move/AllImpassableMinStepProbeTest.java  md5 原件=(新增)  变异体=f40a455f69e7876865579e267c5d7dfb
 自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
 自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
 --- 改后（变异体）---
 COMPILATION ERROR count = 0
-simos-unit 跑过的测试类数 = 7
+simos-unit 跑过的测试类数 = 6
 Running io.mosire.simos.util.state.StateRefTest
 Running io.mosire.simos.util.state.SimulationStateTest
 Running io.mosire.simos.util.state.SnapshotProtocolTest
@@ -110,7 +109,6 @@ Running io.mosire.simos.map.hex.HexDirectionTest
 Running io.mosire.simos.map.hex.HexGridTest
 Running io.mosire.simos.unit.UnitTest
 Running io.mosire.simos.unit.move.TerrainMovementCostTest
-Running io.mosire.simos.unit.move.AllImpassableMinStepProbeTest
 Running io.mosire.simos.unit.change.UnitChangeSetTest
 Running io.mosire.simos.unit.change.UnitRoundTripTest
 Running io.mosire.simos.unit.UnitStateTest
@@ -119,13 +117,13 @@ Running io.mosire.simos.unit.UnitIdTest
 [INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
 [ERROR] Tests run: 30, Failures: 1, Errors: 0, Skipped: 0
 [INFO] BUILD FAILURE
-Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.009 s <<< FAILURE! -- in io.mosire.simos.unit.move.AllImpassableMinStepProbeTest
+Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in io.mosire.simos.unit.move.TerrainMovementCostTest
 Tests run: 30, Failures: 1, Errors: 0, Skipped: 0
-AllImpassableMinStepProbeTest.allImpassableMapHasZeroLowerBound:36 [全部格不可通行 ⇒ 无可通行格 ⇒ 0（合法下界）] 
+TerrainMovementCostTest.allImpassableMapHasZeroLowerBound:73 [三个格全是 999 ⇒ 无可通行格 ⇒ 0（合法下界，spec §4.3 第 6 条）] 
 --- 红点（测试名 + 行号；无输出 = 全绿）---
-AllImpassableMinStepProbeTest.allImpassableMapHasZeroLowerBound:36 [全部格不可通行 ⇒ 无可通行格 ⇒ 0（合法下界）] 
+TerrainMovementCostTest.allImpassableMapHasZeroLowerBound:73 [三个格全是 999 ⇒ 无可通行格 ⇒ 0（合法下界，spec §4.3 第 6 条）] 
 --- surefire 明说（实际失败类：日志 FAILURE! 行 + 单元全部测试类的 .txt 摘要，去栈帧）---
-[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.009 s <<< FAILURE! -- in io.mosire.simos.unit.move.AllImpassableMinStepProbeTest
+[ERROR] Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in io.mosire.simos.unit.move.TerrainMovementCostTest
 -------------------------------------------------------------------------------
 Test set: io.mosire.simos.unit.UnitIdTest
 -------------------------------------------------------------------------------
@@ -137,27 +135,23 @@ Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io
 -------------------------------------------------------------------------------
 Test set: io.mosire.simos.unit.UnitTest
 -------------------------------------------------------------------------------
-Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.051 s -- in io.mosire.simos.unit.UnitTest
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.052 s -- in io.mosire.simos.unit.UnitTest
 -------------------------------------------------------------------------------
 Test set: io.mosire.simos.unit.change.UnitChangeSetTest
 -------------------------------------------------------------------------------
-Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.unit.change.UnitChangeSetTest
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.unit.change.UnitChangeSetTest
 -------------------------------------------------------------------------------
 Test set: io.mosire.simos.unit.change.UnitRoundTripTest
 -------------------------------------------------------------------------------
 Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.unit.change.UnitRoundTripTest
 -------------------------------------------------------------------------------
-Test set: io.mosire.simos.unit.move.AllImpassableMinStepProbeTest
--------------------------------------------------------------------------------
-Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.009 s <<< FAILURE! -- in io.mosire.simos.unit.move.AllImpassableMinStepProbeTest
-io.mosire.simos.unit.move.AllImpassableMinStepProbeTest.allImpassableMapHasZeroLowerBound -- Time elapsed: 0.006 s <<< FAILURE!
-org.opentest4j.AssertionFailedError: 
-[全部格不可通行 ⇒ 无可通行格 ⇒ 0（合法下界）] 
-expected: 0L
- but was: 499500L
--------------------------------------------------------------------------------
 Test set: io.mosire.simos.unit.move.TerrainMovementCostTest
 -------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.unit.move.TerrainMovementCostTest
+Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in io.mosire.simos.unit.move.TerrainMovementCostTest
+io.mosire.simos.unit.move.TerrainMovementCostTest.allImpassableMapHasZeroLowerBound -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[三个格全是 999 ⇒ 无可通行格 ⇒ 0（合法下界，spec §4.3 第 6 条）] 
+expected: 0L
+ but was: 499500L
 --- 红/绿的判读（脚本不替你下结论）---
 红点数 = 1

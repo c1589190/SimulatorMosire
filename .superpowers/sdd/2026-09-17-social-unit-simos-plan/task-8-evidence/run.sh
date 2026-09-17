@@ -33,7 +33,7 @@ declare -A TARGET=(
   [m3t8v-1]="R-8-a ① m1 原形态：scale 的 floorDiv(millis×‰+500,1000) → Math.round(millis×‰/1000.0)。代数结论（R-8-a）：v 恒为 moveCost×1000 ⇒ +500 永不进位 ⇒ floorDiv 恒等于精确乘法 moveCost×‰；v×‰ ≤ 998000×(2^31-1) ≈ 2.1e15 < 2^53 ⇒ double 两侧全精确 ⇒ **预计存活（等价变体、无判别输入）**——判别输入的实测扫描另存 task-8-evidence/m1-scale-scan.txt，红点以日志为准"
   [m3t8v-2]="R-8-a ③ m1' 真变异：costOf 里 scale(type.moveCost() * 1000L, …) → scale(type.moveCost(), …)（丢 ×1000，单位错误）⇒ 期望 stepCostsMatchTheFrozenFixture 红（12500→floorDiv(25×500+500,1000)=13、32500→33）；impassable（在 scale 之前 return empty）与 minStep（用自己的 ×1000L 调用点）应仍绿——实际红点以日志为准"
   [m3t8v-3]="R-8-b m2：costOf 的 >= → >（999 漏判为可通行）⇒ 期望 impassableTerrainHasNoCost 红（empty → OptionalLong.of(scale(999000,500)=499500)）；minStepCost…（map(STEEP_65) 无不可通行格）与其余用例应仍绿——实际红点以日志为准"
-  [m3t8v-4]="R-8-b m3：删 minStepCostMillis 的『跳过不可通行』守卫 + 落实验室专用探针 AllImpassableMinStepProbeTest（全图不可通行 ⇒ 0，spec §4.3 第 6 条）。★ R-8-b 预测『计划自带 minStep 用例红』在算术上不可能（把更大的 499500 加进 min 不改变 min=12500，且 map(STEEP_65) 根本没有 999 格）⇒ 该用例预计不红、探针预计红（499500 ≠ 0）——实际红点以日志为准"
+  [m3t8v-4]="R-8-b m3（fix-1 形态）：删 minStepCostMillis 的『跳过不可通行』守卫。fix-1 已把『全不可通行 ⇒ 0』探针转正为提交用例 allImpassableMapHasZeroLowerBound（夹具 allImpassableMap()）⇒ 期望红点落**提交在案**的该用例（expected 0L, but was 499500L）。判别力分析不变：计划自带 minStep 用例（map(STEEP_65)）对 m3 无判别输入（min 对更大值不敏感 + 无 999 格），预计仍绿——实际红点以日志为准（fix-1 前的探针形态 .kept 已被本轮取代，轨迹见报告 fix-1 节）"
 )
 ORDER="${ROUNDS:-m3t8v-1 m3t8v-2 m3t8v-3 m3t8v-4}"
 

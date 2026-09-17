@@ -19,19 +19,18 @@
 #     ⇒ 期望 stepCostsMatchTheFrozenFixture 红（12500→13、32500→33）。**.kept 必须有**。
 #   m3t8v-3（m2，R-8-b）：**costOf 的 >= → >** ⇒ 999 不再被判不可通行 ⇒
 #     期望 impassableTerrainHasNoCost 红（收到 OptionalLong.of(499500)）。
-#   m3t8v-4（m3，R-8-b）：**删 minStepCostMillis 的"跳过不可通行"**（守卫整块删除）+ 落一个
-#     **实验室专用探针用例**（全图不可通行 ⇒ minStep 必须 0，spec §4.3 第 6 条）。
-#     ★ R-8-b 预测"minStepCost…红（999 赢）"在计划自带的 minStep 用例上**不可能成立**：
-#     map(STEEP_65) 的三个格全是可通行地形，把**更大的** 499500 加进 min 不会改变 min（12500 仍最小）
-#     ⇒ 该用例对 m3 无判别输入（实测见 .kept）；判别输入 = **全不可通行图**（正确实现 ⇒ MAX→0，
-#     变异体 ⇒ 499500）。探针只在实验室副本里跑（不进工作树、不进提交），红点归属 m3 本身。
+#   m3t8v-4（m3，R-8-b；fix-1 起的形态）：**删 minStepCostMillis 的"跳过不可通行"守卫**（守卫整块
+#     删除）。fix-1 已把"全不可通行 ⇒ 0"探针**转正**为提交用例
+#     TerrainMovementCostTest.allImpassableMapHasZeroLowerBound（夹具 MoveFixture.allImpassableMap()）
+#     ⇒ 期望红点落**提交在案**的该用例（expected 0L, but was 499500L）。
+#     （fix-1 前的形态 = 改 main + 落实验室专用探针文件，其 .kept 已被 fix-1 重跑取代；判别力分析
+#     不变：计划自带 minStep 用例对 m3 无判别输入——min 对更大值不敏感 + map(STEEP_65) 无 999 格。）
 
 import os
 import sys
 
 REPO = "/tmp/m3t8lab/repo"
 COST = "simos-unit/src/main/java/io/mosire/simos/unit/move/TerrainMovementCost.java"
-PROBE = "simos-unit/src/test/java/io/mosire/simos/unit/move/AllImpassableMinStepProbeTest.java"
 
 
 def files_of(mid):
@@ -39,49 +38,8 @@ def files_of(mid):
         "m3t8v-1": [COST],
         "m3t8v-2": [COST],
         "m3t8v-3": [COST],
-        "m3t8v-4": [COST, PROBE],
+        "m3t8v-4": [COST],
     }[mid]
-
-
-PROBE_SOURCE = '''package io.mosire.simos.unit.move;
-
-import static io.mosire.simos.unit.move.MoveFixture.*;
-import static org.assertj.core.api.Assertions.assertThat;
-
-import io.mosire.simos.map.GameMap;
-import io.mosire.simos.map.HexCell;
-import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.map.terrain.TerrainType;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import org.junit.jupiter.api.Test;
-
-/**
- * m3 轮**实验室专用探针**（变异体装置，不进工作树）：全图不可通行 ⇒ minStepCostMillis 必须 0
- * （spec §4.3 第 6 条）。原件绿；m3（删"跳过不可通行"）⇒ 499500 ≠ 0 ⇒ 红——红的就是被保护的那行。
- */
-class AllImpassableMinStepProbeTest {
-
-  @Test
-  void allImpassableMapHasZeroLowerBound() {
-    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(IMPASSABLE_999.key(), 0.5));
-    hexes.put(H12, new HexCell(IMPASSABLE_999.key(), 0.5));
-    hexes.put(H13, new HexCell(IMPASSABLE_999.key(), 0.5));
-    Map<String, TerrainType> vocab = new LinkedHashMap<>();
-    vocab.put(FLAT_25.key(), FLAT_25);
-    vocab.put(STEEP_65.key(), STEEP_65);
-    vocab.put(IMPASSABLE_999.key(), IMPASSABLE_999);
-    GameMap allImpassable =
-        new GameMap(
-            hexes, Map.of(), Map.of(), vocab, Map.of(), Map.of(), Map.of(),
-            io.mosire.simos.map.generate.GenerationSpec.defaults(0L));
-    assertThat(TerrainMovementCost.INSTANCE.minStepCostMillis(unit(), allImpassable))
-        .as("全部格不可通行 ⇒ 无可通行格 ⇒ 0（合法下界）")
-        .isEqualTo(0L);
-  }
-}
-'''
 
 
 def mutate(mid):
@@ -113,7 +71,6 @@ def mutate(mid):
             """      TerrainType type = terrainOf(map, cell); // 变异体 m3：跳过不可通行的守卫已删除
       best = Math.min(best, scale(type.moveCost() * 1000L, unit.mobilityPerMille()));""",
         )
-        write(PROBE, PROBE_SOURCE)
     else:
         raise AssertionError(f"未知变异 id: {mid}")
 
@@ -135,7 +92,6 @@ def read(path):
 
 
 def write(path, text):
-    os.makedirs(os.path.dirname(f"{REPO}/{path}"), exist_ok=True)
     with open(f"{REPO}/{path}", "w", encoding="utf-8") as f:
         f.write(text)
 
