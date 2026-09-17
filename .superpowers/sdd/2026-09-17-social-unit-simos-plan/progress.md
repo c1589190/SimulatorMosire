@@ -90,3 +90,14 @@
 - **裁定（执行期，补 R-5-b 靶子）**：m2 若无 `:`-mapId 用例会**存活**（手写拼接与 AST 对无引号输入逐字相同）；补 `colonMapIdKeepsQuotesInCanonical`（根 + hex 双断言）后 m2 有唯一落点。已实测。
 - **关切（不挡关账）**：① m2 的 hex 断言因 JUnit 首败即停未单独执行——报告按"1 实测 + 1 同机制"如实记（同根因：同一对手写拼接丢同一对引号）；② 实验室改前基线 social=30（21 是任务前存量，口径差已说明）；③ 本轮 verify 日志未单独入库（实现者只在报告记数字）——控制器独立跑已复核，下不为例（后续任务要求 gate 日志入库）。
 - **下一任务** Task 6（UnitSimos 状态层：`UnitId`/`Unit`/`UnitState` + `effectivePosition` + R5/R6/R7）。
+
+## Task 6 关账（2026-09-17）
+
+- **交付** `a62c5a8`（6 实现类 + 3 测试类，9 文件 +658）+ `4e369b9`（报告 + 证据，9 文件）。
+- **评审 = 控制器自读 diff**：`Route`/`Movement` 在根包；`UnitState` 关键时点逐点查环（非合并图）；`units`/`equipment` 保序不可变；`effectivePosition` 自身优先 → 父链 → 空，撞环 `IllegalStateException`；`UnitId` 三件套同形。
+- **控制器独立复核**：三测试类 **12/12 绿**（本机当场跑，2+5+5）；`verify` 由实现者跑过（rc=0、`BugInstance size is 0` ×5、util 156 / map 248 / social 30 / unit 12 / core 15）。
+- **★ 计划缺陷（执行期实测发现，取代说明在案）**：计划自己的 `legalReparentAcrossTimeIsNotACycle` **数据与实现自相矛盾**——b 单段 `[T0→a]` 按"向前恒定延拓"在 t≥10 仍指向 a，与 a→b 同时在场 ⇒ 真环，计划自己的实现必抛（首轮实测确实抛）。修正 = **改测试数据**（b 补 `[T10→空]`，合法改编要求双方同刻各改一段），**实现一字未动**。修正后 m2（合并图）预测精确兑现。
+- **R-6-a 命中（实测先例兑现）**：计划原稿 `frozenEquipment` 返回 `unmodifiableMap` ⇒ SpotBugs **`EI_EXPOSE_REP` ×1**（`Unit.java:20`，日志入库）⇒ 按 GameMap 先例改"helper 只拷贝校验 + 赋值处冻结"，复跑 rc=0。
+- **四轮红点（实测，每轮恰 1 红）**：m1 = `parentAndPositionRejectEvents:50`；m2（合并图）= `legalReparentAcrossTimeIsNotACycle:96 » 合并编制图成环`——且 `cycleAcrossUnitsThrowsAtConstruction` **仍绿**（反直觉结果如实记录，正是"为何不得合并图"的判别力证据）；m3 = `ownPositionWinsOverParent:124`；m4 = `parentPointingToItselfThrows:90`。各轮 CE=0、改前 156/248/12 绿。
+- **关切（不挡关账，报告 §五）**：`Route`/`Movement`/`UnitSnapshot` 的构造期守卫**本轮无直接测试目标**（12 条用例是计划定盘），后续任务（8/10/11/12）会实打实压到它们——届时按需补变异靶子。
+- **下一任务** Task 7（`UnitChangeSet` + 往返框架）。
