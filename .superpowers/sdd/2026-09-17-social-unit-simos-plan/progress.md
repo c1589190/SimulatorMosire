@@ -141,3 +141,13 @@
 - **各轮红点（实测）**：m1 存活（8 测试世界）→ 补边界后重跑唯一红；m2（frozen→原 unit）唯一红 `mobilityChange…:141`（R10 第二靶）；m3 唯一红 `impassableNextStep…:95`；m4 唯一红 `noRouteOrEarlier…:150`。**补测后零存活变异**。
 - **关切**：`movementStateRejectsSelfContradictoryCombinations` 由 2 组断言加严到 4 组（R-10-e 的四组全钉，方法数不变）；编译失败日志为复现件（已注明）。
 - **下一任务** Task 11（`UnitOperations` 8 项 + R11）。
+
+## Task 11 关账（2026-09-17）
+
+- **交付** `bf56223`（UnitOperations 222 行 + 测试 223 行/13 用例）+ `9d0ae95`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：8 项全纯函数；无第二写路径；父存在校验在操作面、环仍归 UnitState；`disband` 按 at 判下属；`placeAt`/`disband` 清路线；`withUnit` 保键位。
+- **控制器独立复核**：`UnitOperationsTest` **13/13 绿**（本机当场跑）；`clean verify` rc=0（unit 58）。
+- **★ 计划缺陷两处（实测发现，取代说明在案）**：① **R-11-a（派单扫描已捕获）**"COMPANY 无位置 ⇒ 抛"不成立（位置从父继承 H11）⇒ 改用 `create` 出的 `u-lost`（真整链无位置）钉"无位置 ⇒ 抛"。② **实现者另捕获一处**：`reparentAppends…` 的 `valueAt(T0)).isEmpty()` 对正确实现也红（COMPANY 在 T0 已是 BRIGADE 下属）⇒ 改钉 `create` 出的无父新兵 `u-recruit` 的追加段作用域。
+- **六轮红点（实测，零存活）**：m1 `createRejectsDuplicateId:63`；m2a 两 disband 用例（同根因）；m2b **唯一** `disbandIsTimeSensitive:219`（时点敏感判别力）；m3 `planRouteRequires…:179`；m4 `placeAtClearsInTransitRoute:154`（R-11-b 补条正是缺的判别力）；m5 `reparentAppends…:96` + 预告内连带 + **预告外连带** `reparentOntoItselfThrows:114`（append 是新父值进入对象的唯一载体，删除废掉两族环校验输入——如实记录）。
+- **SpotBugs 返工**：计划草图的 `disband` 死存储 `DLS_DEAD_LOCAL_STORE` ⇒ 修为裸 `require(state, id);`；**六轮实验室对最终字节全部重跑**（证据与提交字节一致）。
+- **下一任务** Task 12（`UnitResolver` + R12/R13 的 unit 半）。
