@@ -49,3 +49,12 @@
 - **控制器独立复核**（与实现者证据相互独立）：`RegressionGuardsTest` **9/9 绿**（BUILD SUCCESS，本机当场跑）；变异轮 `m3t1v-1.kept`：干净世界 113 .java/extras=0、改前 156+246 绿、变异体 md5 `a1f1e486…`、`COMPILATION ERROR count = 0`、25 类真跑、红点原文 `R1_thereIsExactlyOneFieldDelta:402`（actual 带出多余键 `LegacyFieldDelta.java`）；`gate-clean-verify.txt` rc=0、util 156 / map **246** / core 15、`BugInstance size is 0` ×5。
 - **裁定（执行期，取代计划 Step 8 第 3 条）**：R1 变异体的**声明名必须是 `FieldDelta`**（包级私有，落 `LegacyFieldDelta.java`），**不是** `LegacyFieldDelta`——守卫是逐行子串 `interface FieldDelta`，改名副本会**假绿**。依据：javac 探针（包级私有可编译，rc=0）+ 本任务实跑。计划原文的"确保类名与文件名一致（LegacyFieldDelta）"是计划缺陷。
 - **关切（不挡关账）**：① R1 用 `rawLines` 不剔注释 ⇒ 对注释里出现该字面同样敏感（只会更严；将来若 Javadoc 里出现会假红，届时可改 `codeLines`，一行的事）；② 变异体命中 2 次（注释 1 + 声明 1），决定性命中是声明行；③ `simos-social`/`simos-unit` 的 src/main 现只有 `package-info.java` ⇒ R1 对这两模块**结构性活着**、暂无真实代码可护；④ `.omo/` 为先前已存在的未跟踪目录，未触碰。
+
+## Task 2 关账（2026-09-17）
+
+- **交付** `ca1284a`（`TerrainType.java` +12/−2，`ImpassableSentinelTest.java` 新建 32 行）+ `577baf9`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：常量落 record 体最前、Javadoc 照计划；类 Javadoc 三处字面量改写到位；用例 = 计划原文 + **R-2-a 的 `filteredOn(key -> !"ocean".equals(key))` 修正**（注释在案）。
+- **控制器独立复核**：`ImpassableSentinelTest` **2/2 绿**（本机当场跑，BUILD SUCCESS）；两轮 `.kept` 红点**各自唯一**落 `oceanUsesTheImpassableSentinel:18`（m1 `expected: 998 / but was: 999`，m2 反向——两侧互换证明守卫真在比较两侧）；两轮改前 **156+248 全绿**、`COMPILATION ERROR count = 0`；R-2-c 兑现（`TerrainCatalogTest` 未受 m2 波及）。
+- **裁定（执行期，取代计划 Step 1 第二用例原文）**：`everyOtherTerrainIsBelowTheSentinel` **必须排除 ocean**——`KEYS` 含 ocean 自身（999），原样 `allSatisfy` 会对自己取哨兵的海洋断言 `999 <= 998`、**恒红**（计划 Step 4 的"2/2 绿"按原文到不了）。修正 = `filteredOn`，保用例名与 Javadoc 的原意（"除海洋外"）。
+- **关切（不挡关账）**：① 常量与词表仍是**两个物理字面量**（守卫钉等值；物理单一化=新裁决）；② unit 侧对它的消费要等 Task 8 才可核实（届时勿复制第二份哨兵）；③ 装置本轮做了两处必要触碰（surefire 抽取目标、`replace_exactly_once` 自证），已记入报告。
+- **下一任务** Task 3（`PopulationSeries` + R3 + R4）。
