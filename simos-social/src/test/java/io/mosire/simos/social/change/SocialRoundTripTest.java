@@ -1,0 +1,107 @@
+package io.mosire.simos.social.change;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.Segment;
+import io.mosire.simos.util.time.SegmentedSeries;
+import io.mosire.simos.util.time.SimosTimestamp;
+import java.lang.reflect.RecordComponent;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+/**
+ * ★ 铁律 5 的机械化落地（照 M2 的 {@code RoundTripComponentsTest}）：反射枚举 {@link SocialData} 的 record
+ * 组件，逐组件造差异，三条断言 —— 新增状态组件若忘了进变更集，本测试自动红。
+ */
+class SocialRoundTripTest {
+
+  private static final HexCoord H00 = new HexCoord(0, 0);
+
+  /** ★ 唯一的豁免集合：M3 的 SocialData 没有"不进变更集"的组件 ⇒ 必须是空集，且被单独钉死。 */
+  private static final Set<String> EXCLUDED_FROM_CHANGE_SET = Set.of();
+
+  @Test
+  void everySocialDataComponentParticipatesInTheChangeSet() {
+    for (RecordComponent rc : SocialData.class.getRecordComponents()) {
+      if (EXCLUDED_FROM_CHANGE_SET.contains(rc.getName())) {
+        continue;
+      }
+      String name = rc.getName();
+      SocialData base = SocialData.empty();
+      SocialData target = mutate(base, name);
+      SocialChangeSet cs = SocialChangeSet.between(base, target);
+
+      assertThat(cs.isEmpty()).as("组件 %s 必须进变更集（漏了它 ⇒ 变更集整个为空）", name).isFalse();
+      assertThat(changedOf(cs, name)).as("组件 %s 必须被 between 报成非 Unchanged", name).isTrue();
+      assertThat(SocialChangeSet.apply(cs, base)).as("组件 %s 的往返", name).isEqualTo(target);
+    }
+  }
+
+  @Test
+  void theExclusionListIsEmpty() {
+    assertThat(EXCLUDED_FROM_CHANGE_SET).as("SocialData 没有豁免项；要加名字必须在 diff 里现形").isEmpty();
+  }
+
+  @Test
+  void changeSetHasExactlyOneComponent() {
+    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(1);
+    assertThat(componentNames(SocialChangeSet.class))
+        .as("变更集的每个组件都必须在 SocialData 里有同名的 record 组件")
+        .isSubsetOf(componentNames(SocialData.class));
+    assertThat(componentNames(SocialData.class))
+        .as("反向也成立 ⇒ 两边组件集相同")
+        .isSubsetOf(componentNames(SocialChangeSet.class));
+  }
+
+  @Test
+  void snapshotNamespaceIsSocial() {
+    SocialSnapshot snapshot =
+        new SocialSnapshot(
+            new StateRef(new BranchId("main"), new RevisionId(1)),
+            SimosTimestamp.of(5),
+            SocialData.empty());
+    assertThat(snapshot.namespace()).isEqualTo("social");
+  }
+
+  private static SocialData mutate(SocialData base, String name) {
+    return switch (name) {
+      case "populations" -> base.withPopulations(onePopulation());
+      default -> throw new IllegalStateException("未登记的组件: " + name);
+    };
+  }
+
+  private static boolean changedOf(SocialChangeSet cs, String name) {
+    return switch (name) {
+      case "populations" -> cs.populations().changed();
+      default -> throw new IllegalStateException("未登记的组件: " + name);
+    };
+  }
+
+  private static Set<String> componentNames(Class<? extends Record> type) {
+    Set<String> names = new LinkedHashSet<>();
+    for (RecordComponent rc : type.getRecordComponents()) {
+      names.add(rc.getName());
+    }
+    return names;
+  }
+
+  private static Map<HexCoord, PopulationSeries> onePopulation() {
+    return Map.of(
+        H00,
+        new PopulationSeries(
+            new Segment<>(SimosTimestamp.of(0), 10000L),
+            new SegmentedSeries<>(
+                List.of(new Segment<>(SimosTimestamp.of(0), 0.02)), List.of(), null),
+            List.of()));
+  }
+}
