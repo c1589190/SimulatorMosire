@@ -30,20 +30,20 @@ M1/M2/M3 spec 与计划均已关账。
 |---|---|---|
 | 1 | 契约收敛（`ChangeSet` 标记接口 + 删 `assertSnapshotRoundTrip`） | ✅ Batch A `d1ad67b` |
 | 2 | `util.spi` 五类型 + `package-info` | ✅ Batch A `d1ad67b` |
-| 3 | JSON 地基（★ 最高风险） | 🔄 Batch B1 `m4/b1` |
-| 4 | `WorldChangeSet` + `Envelope`（C26）+ R1 | 🔄 Batch B2 `m4/b2` |
-| 5 | `SqliteStore` | 🔄 Batch B3 `m4/b3` |
-| 6 | `Timeline` | ⏳ Batch C1 |
+| 3 | JSON 地基（★ 最高风险） | ✅ Batch B1 `m4/b1` → 合并 `acfcb14`（4 提交，532 用例全绿，7 轮变异存活 0） |
+| 4 | `WorldChangeSet` + `Envelope`（C26）+ R1 | ✅ Batch B2 `m4/b2` → 合并 `068769d` |
+| 5 | `SqliteStore` | ✅ Batch B3 `m4/b3` → 合并 `2ec17ff` |
+| 6 | `Timeline` | 🔄 Batch C1 `m4/b6`（基线 `acfcb14`） |
 | 7 | `CheckpointStore` | ⏳ Batch C1 |
 | 8 | `Replay` | ⏳ Batch C1 |
-| 9 | `CommandRegistry` + `CommandBus` | ⏳ Batch C2 |
+| 9 | `CommandRegistry` + `CommandBus` | ⏳ Batch C2 ★ **依赖 Task 6**（见裁定 24） |
 | 10 | 乐观并发两处检查（C17）+ R7 | ⏳ Batch C2 |
 | 11 | 可观测性 + `correlationId` 全链 + R6 | ⏳ Batch C2 |
 | 12 | 两阶段推进六步（C25）+ R9/R10/R14 | ⏳ Batch E |
 | 13 | `CoreSimos` 装配门面 | ⏳ Batch E |
 | 14 | 判据一——分岔端到端 | ⏳ Batch E |
 | 15 | 判据三——真实并发加固 | ⏳ Batch E |
-| 16 | unit 侧最小真实链路（U15 乙）+ R16 | ⏳ Batch E |
+| 16 | unit 侧最小真实链路（U15 乙）+ R16 | 🔄 只派了 **SPI 两类** `m4/b16`（基线 `acfcb14`）；端到端要 Task 13（裁定 20） |
 | 17 | M4 关账 | ⏳ Batch F |
 
 **派单批次**：A(1,2) → **B1(3) ‖ B2(4) ‖ B3(5)** → **C1(6,7,8) ‖ C2(9,10,11)** → E(12,13,14,15,16) → F(17)。
@@ -142,6 +142,9 @@ M1/M2/M3 spec 与计划均已关账。
 | 21 | **Task 6 的 `Consumes:` 行漏了 Task 3 与 Task 4 ⇒ 暂不派发**（2026-09-18 07:1x 当场读 B2 产物实测） | Task 6 Step 4 要求 `fork` 写 **「变更集 = `WorldChangeSet.empty()`」**，但它的 `Consumes:` 只写了 `SqliteStore`。**实测**（读 `.claude/worktrees/b2/.../core/state/WorldChangeSet.java`）：`WorldChangeSet` 是 `record WorldChangeSet(Map<String, ChangeSet> modules) implements ChangeSet`，而 `ChangeSet` 是**标记接口**（连 namespace 访问器都没有）⇒ 要落成 `RevisionRow.changesetJson` 那个 **`String`**，**必须过 Jackson + 类型信息** = Task 3 的 mapper + Task 4 的裁定 4。**⇒ Task 6 的真实依赖 = Task 5 + Task 3 + Task 4**，不是"只有 Task 5"。**处置：不派**，等 B1/B2 合进来再开 `b6`；已建好的 `b6` 工作树**已移除**（基线不成立，留着就是陷阱表里刚记的那条陈旧基线）。两个理由同时成立：① 正确性；② 2 核约束下正好把并发维持在 2，不再招 503 |
 | 22 | **`Consumes:` 行不可信，必须对着步骤里的代码复核**（同族问题第二次） | 第一次是"Task 3 与 Task 4 文件集不相交"（未实测的推导，后来被抠 `Files:` 推翻），这次是 `Consumes:` 漏依赖。**根因**：这些行是**控制器写计划时手工推的**，而步骤正文里的一句 `XxxClass.empty()` 就足以引入一整条依赖。⇒ **派单前必须把该任务每一步正文里出现的类型名，逐个与 `Consumes:` 对一遍**；对不上就以正文为准并回填 |
 | 23 | **R15 装置在 worktree 下恒绿——已当场修掉（`50921bc`）** | B2 报「上游发现，请控制器裁决」⇒ 控制器做**四格实测**（真实类，非重实现；`-Duser.dir` 切树根，**不 `cd`**）：`isScannableJava` 遍历的是**绝对路径的每一个名字元素**，而 worktree 的绝对路径含 `.claude` ⇒ 每个文件都被 `startsWith(".")` 滤掉 ⇒ `javaFilesUnder` 返回**空**。<br>**修前**：主树 `hits=44` / worktree b1 `hits=0` ← **缺陷当场复现**；**修后**：主树 44（**无回归**）/ worktree b1 **45** = 44 + B1 新落的 `util/json` 一个文件（即修后**真的看见了 B1 的新代码**）。<br>★ **同型缺陷 core 侧的 R1 装置已先修**（B2 自己那件），本文件是后补的同款。★ **连带结论：本轮所有在 worktree 里跑出来的 R15 结论都是空真，一律不作数**——权威结论只取**主树**的 verify（收口动作第 3 条）；这不影响 B1/B2/B3 各自交付物的成立（R15 是 Task 1 的判据，不是它们的），但它们报告里若出现"R15 绿"这一行按空真处理 |
+| 24 | ★★ **`C1 ‖ C2` 从来就不成立——Task 9 依赖 Task 6** | 派发前按裁定 22 复核 Task 9 的步骤正文时发现：Task 9 的 `Consumes:` 行**自己写着** `Timeline`（6），Step 1 的 `ForkBranch → Core 的分岔（Task 6）` 也指向它。**⇒ 9 必须排在 6 之后**，计划里"C1(6,7,8) ‖ C2(9,10,11)"这个并行划分是**错的**（手工推的批次划分，与 `Consumes:` 行自身矛盾）。<br>★ **连带**：`CommandBus.submit(AdvanceTime)` 指向 **Task 12** 的推进管线——而 Task 12 排在 C2 **之后** ⇒ **9 与 12 之间还有一个方向未定的接缝**（9 先于 12，但 9 的分派表要指向 12 的产物）。派发 Task 9 时**必须先裁定这个接缝**（建议：9 定义注入点/函数式接口，12 填实现），否则执行者要么卡住、要么自己发明设计。**本轮未派 9，留给下一轮** |
+| 25 | **陈旧分支 `m4/b6` 残留 ⇒ `git worktree add -b m4/b6` 失败** | 裁定 21 当时**移除了 b6 工作树但留下了同名分支**（停在 `2ec17ff`）。它**缺 Task 3 的 `util/json` 与 Task 4 的 `WorldChangeSet`**——正是裁定 21 判定"不能派"的那棵树。★ **危险动作是"顺手复用已有分支"**（`git worktree add <path> m4/b6`）：那样会**建出一棵看起来完好、实则陈旧三个任务**的树，与本轮已两度踩过的陈旧基线陷阱**同型**。已 `git branch -D` 后按当前 HEAD 重建。⇒ **移除工作树时必须一并处理同名分支**；`add -b` 报"branch already exists"本身就是一条**值得听的告警** |
+| 26 | **`cd` 进工作树的陷阱——控制器自己复发了**（记账而不是记功） | 07:2x 为查 B1 的 diff，命令以 `cd /home/dev/SimulatorMosire/.claude/worktrees/b1` 开头 ⇒ 环境随即报 **"Primary working directory: …/worktrees/b1"**，会话工作目录**再次被带偏**。**上一轮已在陷阱表里写过这条，仍然复发**。★ 这次的危害比上次更具体：**下一步就是 `git merge m4/b1`**——若没发现，那次合并会**在 b1 的工作树里执行**，往 `m4/b1` 上打提交，而输出**完全正常**。<br>⇒ **规则要写成可执行的形态，不是"要小心"**：**控制器检查任何工作树内的文件，一律用 `git -C <绝对路径>` 或写全绝对路径，命令里出现 `cd .claude/worktrees` 即为违规**；且**每轮 git 写操作之前**无条件跑一次 `pwd && git rev-parse --abbrev-ref HEAD && git rev-parse --git-dir`（`.git` = 主树，文件路径 = worktree） |
 
 ★ **探针明确"未核实"的 6 条**已逐条抄进计划末节，**不许当成已结论**——尤其
 **`@JsonTypeInfo` 用 `Id.CLASS` 还是 `Id.NAME` 未测**，Task 3 执行者必须自测并记录。
@@ -215,12 +218,17 @@ M1/M2/M3 spec 与计划均已关账。
    每条要含：任务号 / 依赖已满足到哪一步 / 下一个该派什么 / 分支名（若有半成品）。
 
 ### 三、分支与工作树台账（收口时照此核对）
-| 批次 | 任务 | 分支 | 工作树 |
-|---|---|---|---|
-| B1 | 3 | `m4/b1` | `.claude/worktrees/b1` |
-| B2 | 4 | `m4/b2` | `.claude/worktrees/b2` |
-| B3 | 5 | `m4/b3` | `.claude/worktrees/b3` |
-| 主线 | — | `feat/adr1-core-scope` | 仓根 |
+| 批次 | 任务 | 分支 | 工作树 | 状态 |
+|---|---|---|---|---|
+| B1 | 3 | `m4/b1` | `.claude/worktrees/b1` | ✅ 已合并 `acfcb14` |
+| B2 | 4 | `m4/b2` | `.claude/worktrees/b2` | ✅ 已合并 `068769d` |
+| B3 | 5 | `m4/b3` | `.claude/worktrees/b3` | ✅ 已合并 `2ec17ff` |
+| C1 | 6 | `m4/b6` | `.claude/worktrees/b6` | 🔄 在跑（基线 `acfcb14`） |
+| E(部分) | 16 的 SPI 两类 | `m4/b16` | `.claude/worktrees/b16` | 🔄 在跑（基线 `acfcb14`） |
+| 主线 | — | `feat/adr1-core-scope` | 仓根 | 已合并 1~5 |
+
+★ **收口清理时**：`git worktree remove` **之后还要 `git branch -D <同名分支>`**——
+本轮 `m4/b6` 就是只移了树、留了分支，直接导致下次 `add -b` 失败，且**诱导"复用旧分支"这个陈旧基线陷阱**（裁定 25）。
 
 ★ **续派的最优形态已定**：B3 完结后**用 `SendMessage` 让同一个 agent 接着做 Task 6**
 （它刚写完 `SqliteStore`，schema 与事务边界在它上下文里最热，省一次 ramp-up）；
