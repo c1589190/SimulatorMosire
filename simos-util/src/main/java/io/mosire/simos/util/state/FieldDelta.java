@@ -1,5 +1,7 @@
 package io.mosire.simos.util.state;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -41,8 +43,26 @@ import java.util.function.Function;
  * {@code Collections.unmodifiable*}）；而把这段挪进接口的 {@code private static} 会再报一条 {@code
  * UPM_UNCALLED_PRIVATE_METHOD} —— 跨类的私有接口方法调用它追不到。同 {@code GameMap} 的构造：展开换门禁干净，"拷一份 + 冻一层"也一眼可见。
  *
+ * <p>★ **类型信息直接以注解钉在本接口上**（M4 / 台账裁定 4，2026-09-18）：本接口是 sealed 多态类型，裸往返**不可能**——探针实测 {@code
+ * Unchanged}/{@code Upsert} 均"序列化出字节、反序列化必死"，且 {@code activateDefaultTyping(NON_FINAL)} 修不了它（record
+ * 是 final，写出侧 不带 type id、读入侧的接口却非要一个）。两种落地都实测过：注解 vs mixin。**选注解**，理由：mixin 必须在**每一台** mapper 上补注册，
+ * 忘了就是静默失效、恰好退化回今天的探针报错（{@code no Creators / abstract types}，实测复现）；注解跟着类型走，连裸 {@code new
+ * ObjectMapper()} 都认得。"状态类型带 Jackson 注解"的代价在这里不成立——带注解的是 util 自己的机制件，而 util 的白名单本来就只有 Jackson；
+ * 领域状态类型（{@code GameMap}/{@code Unit}/…）在两种方案下都保持零注解。type id 用 {@link JsonTypeInfo.Id#NAME} 而非
+ * {@code Id.CLASS}（两种也都实测往返通过）：{@code Id.CLASS} 会把**全限定类名**写进存档（本例 {@code
+ * …FieldDelta$Upsert}），持久化格式从此与 类名耦合——重命名/挪包即全部旧档不可读；且 {@code Id.NAME} + {@code @JsonSubTypes}
+ * 是**封闭**子类集，读入侧不接受任意的 classpath 类名。属性名用 {@code "@class"}：{@code @} 前缀不可能与四个变体的真实属性（{@code
+ * entries}/{@code keys}/{@code upserts}/{@code removals}）撞名。
+ *
  * @param <T> 组件值的类型
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = FieldDelta.Unchanged.class, name = "unchanged"),
+  @JsonSubTypes.Type(value = FieldDelta.Upsert.class, name = "upsert"),
+  @JsonSubTypes.Type(value = FieldDelta.Remove.class, name = "remove"),
+  @JsonSubTypes.Type(value = FieldDelta.Patch.class, name = "patch"),
+})
 public sealed interface FieldDelta<T> {
 
   /** 未变。 */
