@@ -58,3 +58,13 @@
 - **裁定（执行期，取代计划 Step 1 第二用例原文）**：`everyOtherTerrainIsBelowTheSentinel` **必须排除 ocean**——`KEYS` 含 ocean 自身（999），原样 `allSatisfy` 会对自己取哨兵的海洋断言 `999 <= 998`、**恒红**（计划 Step 4 的"2/2 绿"按原文到不了）。修正 = `filteredOn`，保用例名与 Javadoc 的原意（"除海洋外"）。
 - **关切（不挡关账）**：① 常量与词表仍是**两个物理字面量**（守卫钉等值；物理单一化=新裁决）；② unit 侧对它的消费要等 Task 8 才可核实（届时勿复制第二份哨兵）；③ 装置本轮做了两处必要触碰（surefire 抽取目标、`replace_exactly_once` 自证），已记入报告。
 - **下一任务** Task 3（`PopulationSeries` + R3 + R4）。
+
+## Task 3 关账（2026-09-17）
+
+- **交付** `381c705`（`PopulationSeries.java` 170 行 + `PopulationSeriesTest.java` 153 行/10 用例 + `package-info.java` 顺改）+ `e0f8dea`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：五步算法逐字对上 spec §3.2（切分点收集/anchor 前恒定/先切段后事件/列表序施加）；构造校验三条（growth 首段晚于 anchor、growth 带事件、events 非递减）+ null 三条；冻结数字 **18036 / 6300 / 15000 / 10000** 全在断言里（实测行号 39/57/77/84/146）。
+- **控制器独立复核**：`PopulationSeriesTest` **10/10 绿**（本机当场跑，BUILD SUCCESS）。
+- **三轮红点（实测，先跑后写）**：m1（删 `cuts.add(t)`）**3 红同根因**——seed 18036→16700、boundary 6300→2100、multi 15000→5000（尾段不施）；m2（反转 `applyEventsAt` 施加序）**恰 1 红**——multi 15000→15300；m3（删 growth 事件校验）**恰 1 红**——`growthCarryingEventsIsRejected`。各轮改前 156/248/10 全绿、`COMPILATION ERROR count = 0`。
+- **追认（执行期）**：计划第 703 行消息里的 ASCII 引号确会截断字符串字面量（实现者 hexdump 实证），按计划 809 行自带处置改为「同刻多事件」——两处均在计划授权内。
+- **关切（不挡关账）**：① m1 的连带红已全列——形态是"同根因"而非"判别力不足"；② `mutate.py` 注释里 m1 机制的初稿预测值（20875）与实测（16700）不符，已按实测订正入库——`.kept` 证据本就是实测值；③ simos-social 首个测试目录建立，surefire 正常识别；④ 实现者途中拦下一个误入的 `__pycache__/*.pyc`（未入库）。
+- **下一任务** Task 4（`SocialData` / `SocialSnapshot` / `SocialChangeSet` + 往返测试）。
