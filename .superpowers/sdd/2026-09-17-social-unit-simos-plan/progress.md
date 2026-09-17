@@ -151,3 +151,13 @@
 - **六轮红点（实测，零存活）**：m1 `createRejectsDuplicateId:63`；m2a 两 disband 用例（同根因）；m2b **唯一** `disbandIsTimeSensitive:219`（时点敏感判别力）；m3 `planRouteRequires…:179`；m4 `placeAtClearsInTransitRoute:154`（R-11-b 补条正是缺的判别力）；m5 `reparentAppends…:96` + 预告内连带 + **预告外连带** `reparentOntoItselfThrows:114`（append 是新父值进入对象的唯一载体，删除废掉两族环校验输入——如实记录）。
 - **SpotBugs 返工**：计划草图的 `disband` 死存储 `DLS_DEAD_LOCAL_STORE` ⇒ 修为裸 `require(state, id);`；**六轮实验室对最终字节全部重跑**（证据与提交字节一致）。
 - **下一任务** Task 12（`UnitResolver` + R12/R13 的 unit 半）。
+
+## Task 12 关账（2026-09-17）
+
+- **交付** `bc30038`（UnitResolver 186 行 + 测试 193 行/9 用例）+ `8cfbca9`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：`name.contains(".")` 守卫已删（实测第 79 行 = "未命中即走链式"）；`ctx.at()` 全程传参、**无可变静态状态**；canonical 全经 AST；链式多解按 UnitId 字典序；装配故障先于形状判定。
+- **控制器独立复核**：`UnitResolverTest` **9/9 绿**（本机当场跑）；`verify` rc=0（unit 67）。
+- **★ 计划实现与自己的测试矛盾（R-12-a，派单扫描捕获）**：`resolveRootLevel` 的 `!name.contains(".")` 守卫让单元素链 `unit:"同名连"` 直接空候选，而 `chainWithMultipleHitsIsOrderedByUnitId` 期望 2 候选——**实现按取代说明删守卫**（spec §4.8 不要求链含点；`u-ghost` 等连带已核不受影响）。实现者复核后确认无异议。
+- **四轮红点（实测）**：m1（canonical 链回显）2 红（R13 靶 + canonical 断言连带）；m2（childrenAt 首段值）**唯一**红 `chainFollowsTheParentAtTheQueryTime:159`（R-12-b 的时点夹具——计划建议的 T0/T10 时点对不上 TS=5，已修正为 `[T0→1营, TS→空]`）；m3（删 sort）唯一红；m4 唯一红；**m3b（计划原建议"根候选改所有单位"）存活**——与 R-12-c 预判一致（唯一分叉输入"链首非根名"未被测），如实存档。
+- **关切**：m3b 存活属**已知未测面**（链首为非根名时，根筛与全量筛分叉）；要杀它需扩用例面，留待后续需要时（报告 §五）。
+- **下一任务** Task 13（M3 关账）。
