@@ -1427,6 +1427,12 @@ app/测试 构造 CommandEnvelope{type:"unit.RenameUnit", payloadJson:{"id":"u-1
 public static UnitState rename(UnitState state, UnitId id, String name)   // UnitOperations.java:66
 ```
 
+★★ **路径更正（2026-09-18 06:2x 控制器当场 `find` 实测）**：真实路径是
+**`simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java`**——**有 `/ops/` 一层**，
+本行原先漏写。类名、行号（66）、签名逐字与上文一致，**只有路径错**。
+（`UnitMoves` 那条 `simos-unit/.../unit/move/UnitMoves.java:31` **是对的**，已核。）
+**教训**：这是"引用没当场跑过"的形态——写计划时 grep 到了签名却把路径凭印象补全。
+
 同批核到的还有 `create`/`reparent`/`setStrength`/`placeAt`/`planRoute`/`cancelRoute`/`disband`（共 8 项，与 M3 spec §4.6 一致）。
 ⇒ spec §9.2 的引用**成立**，**不需要**另选等价操作。
 
