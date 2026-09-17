@@ -131,3 +131,13 @@
 - **裁定（执行期）**：`unreachableGoalIsEmpty` 的"只留 H00"会退化成 goal-缺席前置检查（不测搜索穷尽）⇒ 改双孤岛（H00/H20 都在图、不相邻），真走穷尽路径。追认。
 - **关切**：m1(×2)/m3 两个存活变异是**实测结论**（非失败），已连理由入报告；`sameInputTwice` 现在同时承担"重跑相等 + 全序输出"两职。
 - **下一任务** Task 10（`Route`/`Movement`/`MovementState`/`UnitMoves.evaluate` + R9/R10，判据二）。
+
+## Task 10 关账（2026-09-17）
+
+- **交付** `c69a42b`（MovementStatus/MovementState/UnitMoves + 测试 9 条，4 文件 +308）+ `8ed53f0`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：判据二逐值（40000→27500→−5000⇒remaining 5000；22h⇒1000；23h⇒ARRIVED；不可通行⇒NEED_REPLAN@H12）全对冻结表；`MovementState` 构造期拒矛盾组合（加严到 **4 组**）；`evaluate` 纯函数、机动性冻结走内部副本。
+- **控制器独立复核**：`UnitMovesTest` **9/9 绿**（本机当场跑）；`clean verify` rc=0（unit 45）。
+- **★ 计划缺陷（m1 前提不成立）+ 处置（R-10-b）**：`>=`→`>` 在 at=23 **仍 ARRIVED**（33500 > 32500），套件无等值边界用例 ⇒ m1 存活（实测在案）；**补 `exactBudgetArrivalIsArrived`**（speed=5、at=T0+9 ⇒ 预算恰 45000）后重跑 m1 ⇒ 红点落该用例（`OptionalLong[0]` 触发构造期 IAE，"恰够也是够"）。补后测试数 9 = 计划 Step 4 写的 9。
+- **各轮红点（实测）**：m1 存活（8 测试世界）→ 补边界后重跑唯一红；m2（frozen→原 unit）唯一红 `mobilityChange…:141`（R10 第二靶）；m3 唯一红 `impassableNextStep…:95`；m4 唯一红 `noRouteOrEarlier…:150`。**补测后零存活变异**。
+- **关切**：`movementStateRejectsSelfContradictoryCombinations` 由 2 组断言加严到 4 组（R-10-e 的四组全钉，方法数不变）；编译失败日志为复现件（已注明）。
+- **下一任务** Task 11（`UnitOperations` 8 项 + R11）。
