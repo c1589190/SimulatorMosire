@@ -111,3 +111,12 @@
 - **四轮红点（实测）**：m1（diff 对调）4 红（含"对调后 Upsert 携带旧值"）；m2-A（加 tag 组件）恰 2 红（组件数/双向 subset + mutate 抛"未登记的组件"）——铁律 5 机械落地的直接证明；m2-B（changedOf default→true + 注册 tag）**`every…` 由红转绿 = 泄漏已验证**（温和兜底废掉判别力的实测证据）；m3（Map.copyOf）**唯一红 = `unitOrderFollowsInsertionOrder:87`**、与前轮零重叠。各轮 CE=0、改前全绿。
 - **裁定（执行期，R-7-a）**：平移母本取 Task 4 **最终形态**（`containsExactlyEntriesOf` + 序观察点）；unit 序用例的夹具按 20-JVM 实测量定（6 键）。
 - **下一任务** Task 8（`MovementCost` + `TerrainMovementCost` + 判据二夹具）。
+
+## Task 8 关账（2026-09-17，含 fix-1）
+
+- **交付** `7587606`（MovementCost 24 行 + TerrainMovementCost 86 行 + MoveFixture 80 行 + 测试 68 行）+ `ad8b45d`（报告 + 证据）；**fix-1** `cc8d66c`（minStep 全不可通行边界转正：fixture +21 / 测试 +7）+ `41e9287`（报告与证据更新）。
+- **评审 = 控制器自读 diff**：单例私构造；`costOf` 引用 `TerrainType.IMPASSABLE_MOVE_COST`（**unit 侧 src/main 零 999 字面量**）；`minStepCostMillis` 一次查表合并（R-8-c 兑现）；非相邻/自环抛、图外空。测试 7/7。
+- **控制器独立复核**：`TerrainMovementCostTest` **7/7 绿**（本机当场跑）；实现者 `verify` rc=0（util 156 / map 248 / social 30 / unit 30 / core 15、BugInstance 0×5）。
+- **★ 计划缺陷两处（实测发现）**：① **m1 前提不成立**——`scale` 对 `v=moveCost×1000` 恒为精确乘法（`+500` 永不进位），`Math.round` 形态是**等价变体**；实现者以 **1 002 990 对 (moveCost,‰) 全域扫描 0 分叉**实证，随后按 R-8-a 跑 m1'（丢 ×1000）真变异红在冻结夹具。② **m3 前提不成立**——计划自带的 minStep 用例用 `map(STEEP_65)`，**无 999 格** ⇒ 删跳过守卫在提交套件上 0 红；判别输入是"全不可通行图 ⇒ 0"（spec §4.3 第 6 条），**该边界原无提交在案用例** ⇒ 控制器裁定**转正**（fix-1）并重跑 m3 轮，红点落 `allImpassableMapHasZeroLowerBound:73`（expected 0 / was 499500）。
+- **四轮红点（实测）**：m1 存活（等价，已证）；m1' `stepCostsMatchTheFrozenFixture:21`；m2 `impassableTerrainHasNoCost:29`；m3（fix-1 重跑）`allImpassableMapHasZeroLowerBound:73`。
+- **下一任务** Task 9（`PathFinder` A\* + R8 对拍/决定论）。
