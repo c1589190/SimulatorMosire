@@ -1,0 +1,198 @@
+[ERROR] COMPILATION ERROR : 
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[54,12] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[59,12] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[66,19] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[75,17] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[83,9] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[94,9] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[102,19] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[105,19] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[111,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[117,23] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[120,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[126,23] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[130,19] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[136,23] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[140,19] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[148,25] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[149,23] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[157,23] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[164,16] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[167,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[173,17] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[177,19] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[184,25] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[185,16] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[186,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[192,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[197,23] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[199,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[207,9] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[208,16] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[210,30] cannot find symbol
+  symbol:   variable UnitOperations
+  location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.16.0:testCompile (default-testCompile) on project simos-unit: Compilation failure: Compilation failure: 
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[54,12] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[59,12] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[66,19] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[75,17] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[83,9] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[94,9] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[102,19] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[105,19] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[111,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[117,23] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[120,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[126,23] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[130,19] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[136,23] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[140,19] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[148,25] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[149,23] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[157,23] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[164,16] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[167,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[173,17] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[177,19] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[184,25] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[185,16] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[186,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[192,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[197,23] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[199,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[207,9] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[208,16] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:[210,30] cannot find symbol
+[ERROR]   symbol:   variable UnitOperations
+[ERROR]   location: class io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-unit
