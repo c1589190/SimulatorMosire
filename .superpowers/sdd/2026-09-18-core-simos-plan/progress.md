@@ -246,3 +246,51 @@ M1/M2/M3 spec 与计划均已关账。
 （它刚写完 `SqliteStore`，schema 与事务边界在它上下文里最热，省一次 ramp-up）；
 B1 完结后同理接 **Task 16 的两个 SPI 类**（它刚写完 `UnitCodec`）——
 ★ 但 Task 16 的 `RealmEffectEndToEndTest` 要 `CoreSimos`（Task 13），**必须留到 13 之后**（裁定 20）。
+
+---
+
+# 关账（2026-09-18 08:0x，Task 17）
+
+**结论：M4 未完成，按期收口。** 完成 **5/17**（Task 1~5），主树**冻结于 `a2bc3ce`**。
+关账报告见 **`task-17-report.md`**（含「四条判据一律不评」与「我未能核实的」清单）。
+权威证据：`task-17-evidence/final-freeze-verify.log`。
+★ 本节**取代**上文「任务地图」与旧的分支台账。
+
+### 一、最终 verify（照实记，不引用记忆）
+- `./mvnw clean verify` @ `a2bc3ce` → **rc=0 / `BUILD SUCCESS` / 04:20 / 6-6 模块 SUCCESS**
+- 用例 **168 / 254 / 36 / 74 / 36 = 568**，Failures **0** / Errors **0** / Skipped **0**
+- `BugInstance size is 0` × **5**；`[ERROR]` **0** 行、`[WARNING]` **1** 行（父 POM 无 class 可查，既有常态）
+- ★ 跑的是 **`clean`**，不是增量——排除 `target/` 陈旧产物冒充绿
+- ★ 该命令是台账 §二.3 所写 `-pl …` 形式的**超集**（多覆盖了 parent 模块），结论更强，不冲突
+
+### 二、★ 裁定 28 —— 早前那条「绿」是**记忆**，不是**日志**
+本会话早前我写过「主树 merge 后 verify 绿：BUILD SUCCESS / 4:38 / 568 条」。
+收口查证：`/tmp/m4verify/` 下**唯一**一份 `main-1-5.log` 是 **07:44:31 的 `BUILD FAILURE`**
+（spotless 打回了**控制器自己手工折行**的 javadoc）。**那份「绿」没有任何日志支撑 ⇒ 作废。**
+上面 §一 那组是当场跑出来并**落盘入库**的，取代它。
+⇒ CLAUDE.md 形态 5 的又一实例，且这次犯错的是**控制器本人**——
+**「我记得是这样」不得写进交给别人当依据的文档；没当场跑过的期望输出，不许落笔。**
+
+### 三、★ 裁定 29 —— 08:00 的闸门**按报告文件判**，Task 6 未合并
+08:00 时 `task-6-report.md` **不存在**（该 agent 刚建出 `timeline/` 目录、正在写码），
+按预设闸门「**没有报告 = 没完成，不合**」**未合并**。
+⇒ 主树因此保持 1~5 的已验证状态，**§一 那条 verify 对冻结树依然成立**——
+**不为「没发生的事」重跑一遍 verify**（重跑要吃掉两个核，本会话已因同类操作杀过一个 agent）。
+
+### 四、分支与工作树台账（收口时实测）
+| 批次 | 任务 | 分支 | 工作树 | 状态 |
+|---|---|---|---|---|
+| B1 | 3 | `m4/b1` | `.claude/worktrees/b1` | ✅ 已合并 `acfcb14` |
+| B2 | 4 | `m4/b2` | `.claude/worktrees/b2` | ✅ 已合并 `068769d` |
+| B3 | 5 | `m4/b3` | `.claude/worktrees/b3` | ✅ 已合并 `2ec17ff` |
+| C1 | 6 | `m4/b6` | `.claude/worktrees/b6` | ❌ **未合并**（无报告）→ 遗留 1 |
+| E(部分) | 16 Step1/2 | `m4/b16` | `.claude/worktrees/b16` | ❌ **零提交**（503 杀掉，未写盘）→ 遗留 2 |
+| 主线 | — | `feat/adr1-core-scope` | 仓根 | **冻结于 `a2bc3ce`**，1~5 已合并并验证 |
+
+### 五、下一轮开工照这个顺序
+1. **Task 6** —— 它一个人卡着 **7 / 8 / 9** 三个任务，是本阶段咽喉。
+2. **并行 Task 16 的 Step 1/2**（`UnitTimeParticipant` + `RenameUnitHandler`）——与 Task 6 **无依赖**，
+   依赖（Task 2 ✅ / Task 3 ✅ / M3 ✅）**已全部满足**。
+3. ★ **并发上限是 2**（`nproc=2`，且 127.0.0.1:3000 的本地推理网关与 Maven 抢同样的核）；
+   ★ **不要在 agent 活着的时候跑全量 verify**。
+4. **续派前先裁决裁定 24 记下的 9↔12 接缝**（`submit(AdvanceTime)` 指向后置的 Task 12）。
