@@ -942,6 +942,12 @@ public record WorldChangeSet(Map<String, ChangeSet> modules) implements ChangeSe
 
 `RevisionRow` 的 `parent` 是 `Optional<StateRef>`——创世的 `parent_branch` / `parent_revision` **均为 NULL**。
 
+★★ **DDL 归 Task 5（`SqliteStore`），本任务不得重复建表**（控制器 2026-09-18 06:2x 补注）：
+`revisions` 表的 2 表 + 4 索引由 `SqliteStore` 在**打开时**建（Task 5 Step 1 逐字照 spec §3.2 + §6.1）。
+本任务的"建表常量"**只指列名/表名的共享常量与 `RevisionRow` ↔ `ResultSet` 的行映射**。
+**理由**：schema 有两个来源就是**第二真相来源**（Task 6 Step 2 的 ★ 原话），而 C1 与 B3 是**两批**——
+重复建表会得到"看起来一样、实际会漂移"的两份 DDL。**发现 Task 5 没建某张表/某个索引 ⇒ 回报，不要自己补。**
+
 - [ ] **Step 2: 派生查询（spec §3.3 逐条）**
 
 | 查询 | SQL |
@@ -1164,7 +1170,12 @@ submit(cmd):
 
 **Files:**
 - New: `simos-core/src/main/java/io/mosire/simos/core/observe/{EventTypes,Digest}.java`
-- New: `.../core/store/EventRow.java`、`.../core/store/EventStore.java`（或并入 `SqliteStore`，**执行者二选一，记取代说明**）
+- New: `.../core/store/EventRow.java`、`.../core/store/EventStore.java`
+  ★★ **控制器裁定 10（2026-09-18）：原文的"或并入 `SqliteStore`，执行者二选一"已作废。**
+  `SqliteStore.java` 归 **C1 独占**，C2 **绝不许改**——Task 11 一律用**独立文件** `EventStore.java`。
+  理由：C1（5~8）与 C2（9~11）**并行**，两者都往 `core/store/` 放文件；
+  若 C2 选"并入"，就是**同文件冲突**。**判据**：两批产物同处 `core/store/` 但文件不相交
+  ⇒ `git merge` 应当**无冲突**；**真出现冲突 = 有人越了界**，先回报，不要"解决"它。
 - Test: `.../core/observe/{EventTypesTest,DigestTest}.java`、`.../core/command/CorrelationChainTest.java`
 
 **Interfaces:**

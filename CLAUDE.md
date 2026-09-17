@@ -32,7 +32,7 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 
 | 模块 | artifactId | 允许依赖 |
 |---|---|---|
-| UtilSimos | `simos-util` | **仅** Jackson databind + SLF4J。不依赖 AgentLibMosire，不依赖任何 simos 模块，**不碰文件系统** |
+| UtilSimos | `simos-util` | **仅** Jackson（databind + datatype-jdk8）+ SLF4J。不依赖 AgentLibMosire，不依赖任何 simos 模块，**不碰文件系统**。★ jdk8 模块是 2026-09-18 M4 Task 3 裁定的：`Optional` 在快照树里且处于**嵌套泛型位置**（`SegmentedSeries<Optional<…>>`、`SimosTimestamp.calendarLabel`），裸 databind 会把它写成 `{"present":…}` 并丢值。⇒ 本条描述的目标是 **spec §二 / §〇.3**；`simos-util/pom.xml` 只有 `bannedDependencies` **黑名单**（无 `includes`），加 Jackson 家族构件**不会**触发 enforcer |
 | MapSimos | `simos-map` | `simos-util`。**永不** import social/unit/agentlib。**不做任何存储** |
 | SocialSimos | `simos-social` | `simos-util` + `simos-map`。**不依赖 UnitSimos** |
 | UnitSimos | `simos-unit` | `simos-util` + `simos-map`。**不依赖 SocialSimos** |
