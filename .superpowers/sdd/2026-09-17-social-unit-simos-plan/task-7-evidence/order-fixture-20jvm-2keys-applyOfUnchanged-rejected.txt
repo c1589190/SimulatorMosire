@@ -1,0 +1,23 @@
+# applyOfUnchanged 双键 base 的 20-JVM 探针（2026-09-18，本机）——否决双键的依据
+# 键=插入序 u-1 u-2；结果：13/20 PRESERVED、7/20 SHUFFLED —— 任何双键对的槽位序都随 JVM 盐翻转，
+# 不存在跨盐稳定的双键夹具 ⇒ applyOfUnchangedKeepsTheBaseMapIdentical 退回母本的单键形态（单键无从重排），多键序观察职责归 6 键的 unitOrderFollowsInsertionOrder
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+SHUFFLED | u-2 u-1 
+PRESERVED | u-1 u-2 
+SHUFFLED | u-2 u-1 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+SHUFFLED | u-2 u-1 
+PRESERVED | u-1 u-2 
+SHUFFLED | u-2 u-1 
+PRESERVED | u-1 u-2 
+SHUFFLED | u-2 u-1 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+PRESERVED | u-1 u-2 
+SHUFFLED | u-2 u-1 

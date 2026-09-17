@@ -1,0 +1,176 @@
+=================== ROUND m3t7v-1 ===================
+目标：UnitChangeSet.java 的 between 两侧对调（diff(target, base)）⇒ 期望红 removalWithoutUpsertIsRemoveAndSurvivesApply（删除变异成 Unchanged ⇒ isEmpty 为 true）与 addAndRemoveTogetherIsAPatch（又增又删变异成 Upsert ⇒ 非 Patch 且 apply 丢删除侧）；同键集的 aSingleChangedUnit 与往返用例（base/target 键集相同、diff 只靠值分叉）不受方向影响应仍绿——红点集合与 m2/m3 不重叠，实际红点以日志为准
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t7lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 127 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.unit.UnitTest
+Running io.mosire.simos.unit.change.UnitChangeSetTest
+Running io.mosire.simos.unit.change.UnitRoundTripTest
+Running io.mosire.simos.unit.UnitStateTest
+Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 23, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1 个，其中新增 0 个）：
+  simos-unit/src/main/java/io/mosire/simos/unit/change/UnitChangeSet.java  md5 原件=fa02b000d9f692a69c19991d2aec5699  变异体=c91832b1ad16d6f9076b282ea07b7764
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-unit 跑过的测试类数 = 5
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.unit.UnitTest
+Running io.mosire.simos.unit.change.UnitChangeSetTest
+Running io.mosire.simos.unit.change.UnitRoundTripTest
+Running io.mosire.simos.unit.UnitStateTest
+Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 23, Failures: 4, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 7, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.036 s <<< FAILURE! -- in io.mosire.simos.unit.change.UnitChangeSetTest
+Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.009 s <<< FAILURE! -- in io.mosire.simos.unit.change.UnitRoundTripTest
+Tests run: 23, Failures: 4, Errors: 0, Skipped: 0
+UnitChangeSetTest.aSingleChangedUnitIsNotAnEmptyChangeSet:64 
+UnitChangeSetTest.addAndRemoveTogetherIsAPatch:119 [Patch 两侧都不许丢] 
+UnitChangeSetTest.removalWithoutUpsertIsRemoveAndSurvivesApply:102 
+UnitRoundTripTest.everyUnitStateComponentParticipatesInTheChangeSet:64 [组件 units 的往返] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+UnitChangeSetTest.aSingleChangedUnitIsNotAnEmptyChangeSet:64 
+UnitChangeSetTest.addAndRemoveTogetherIsAPatch:119 [Patch 两侧都不许丢] 
+UnitChangeSetTest.removalWithoutUpsertIsRemoveAndSurvivesApply:102 
+UnitRoundTripTest.everyUnitStateComponentParticipatesInTheChangeSet:64 [组件 units 的往返] 
+--- surefire 明说（实际失败类：日志 FAILURE! 行 + 单元全部测试类的 .txt 摘要，去栈帧）---
+[ERROR] Tests run: 7, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.036 s <<< FAILURE! -- in io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.009 s <<< FAILURE! -- in io.mosire.simos.unit.change.UnitRoundTripTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitIdTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.UnitIdTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitStateTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.unit.UnitStateTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.050 s -- in io.mosire.simos.unit.UnitTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.change.UnitChangeSetTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.036 s <<< FAILURE! -- in io.mosire.simos.unit.change.UnitChangeSetTest
+io.mosire.simos.unit.change.UnitChangeSetTest.addAndRemoveTogetherIsAPatch -- Time elapsed: 0.022 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[Patch 两侧都不许丢] 
+expected: UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=100, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty], u-3=Unit[id=u-3, name=单位 u-3, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[2_2]]], events=[], addition=null], member=300, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]
+ but was: UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=100, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty], u-2=Unit[id=u-2, name=单位 u-2, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[2_2]]], events=[], addition=null], member=200, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]
+io.mosire.simos.unit.change.UnitChangeSetTest.aSingleChangedUnitIsNotAnEmptyChangeSet -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=100, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty], u-2=Unit[id=u-2, name=单位 u-2, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[2_2]]], events=[], addition=null], member=201, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]
+ but was: UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=100, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty], u-2=Unit[id=u-2, name=单位 u-2, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[2_2]]], events=[], addition=null], member=200, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]
+io.mosire.simos.unit.change.UnitChangeSetTest.removalWithoutUpsertIsRemoveAndSurvivesApply -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+Expecting actual:
+  Upsert[entries={u-2=Unit[id=u-2, name=单位 u-2, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[2_2]]], events=[], addition=null], member=200, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]
+to be an instance of:
+  io.mosire.simos.util.state.FieldDelta.Remove
+but was instance of:
+  io.mosire.simos.util.state.FieldDelta.Upsert
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.change.UnitRoundTripTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.009 s <<< FAILURE! -- in io.mosire.simos.unit.change.UnitRoundTripTest
+io.mosire.simos.unit.change.UnitRoundTripTest.everyUnitStateComponentParticipatesInTheChangeSet -- Time elapsed: 0.002 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[组件 units 的往返] 
+expected: UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=100, equipment={}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]
+ but was: UnitState[units={}]
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 4

@@ -1,0 +1,264 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/4]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/4]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/4]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [4/4]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of added or removed source files.
+[INFO] Compiling 7 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 5 source files with javac [debug release 21] to target/test-classes
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[101,36] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[52,16] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[53,16] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[62,5] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[62,24] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[64,16] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[101,5] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[101,24] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[103,16] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[117,5] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[117,24] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[119,16] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[133,5] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[133,24] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[134,16] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[60,7] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[60,26] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[64,18] cannot find symbol
+  symbol:   variable UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[75,16] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[76,31] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[81,36] cannot find symbol
+  symbol:   class UnitChangeSet
+  location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[INFO] 21 errors 
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.571 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.227 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.027 s]
+[INFO] UnitSimos .......................................... FAILURE [  0.849 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  1.759 s
+[INFO] Finished at: 2026-09-18T00:58:10+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.16.0:testCompile (default-testCompile) on project simos-unit: Compilation failure: Compilation failure: 
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[101,36] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[52,16] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[53,16] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[62,5] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[62,24] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[64,16] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[101,5] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[101,24] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[103,16] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[117,5] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[117,24] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[119,16] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[133,5] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[133,24] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:[134,16] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitChangeSetTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[60,7] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[60,26] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[64,18] cannot find symbol
+[ERROR]   symbol:   variable UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[75,16] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[76,31] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:[81,36] cannot find symbol
+[ERROR]   symbol:   class UnitChangeSet
+[ERROR]   location: class io.mosire.simos.unit.change.UnitRoundTripTest
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-unit

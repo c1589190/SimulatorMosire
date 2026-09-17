@@ -1,0 +1,23 @@
+# 序夹具 20-JVM 探针（2026-09-18，本机）——6 键（采用）
+# 键=插入序 u-1 corps-2 division-33 brigade-444 regiment-5555 battalion-66666；UnitId 取自 simos-unit/target/classes
+# 结果：20/20 全 SHUFFLED（10 种槽位序）、0 PRESERVED —— 达标，unitOrderFollowsInsertionOrder 采用此夹具
+SHUFFLED | brigade-444 battalion-66666 corps-2 u-1 regiment-5555 division-33 
+SHUFFLED | division-33 brigade-444 battalion-66666 corps-2 u-1 regiment-5555 
+SHUFFLED | brigade-444 battalion-66666 corps-2 u-1 regiment-5555 division-33 
+SHUFFLED | corps-2 battalion-66666 brigade-444 division-33 regiment-5555 u-1 
+SHUFFLED | battalion-66666 brigade-444 division-33 regiment-5555 u-1 corps-2 
+SHUFFLED | division-33 regiment-5555 u-1 corps-2 battalion-66666 brigade-444 
+SHUFFLED | regiment-5555 u-1 corps-2 battalion-66666 brigade-444 division-33 
+SHUFFLED | regiment-5555 u-1 corps-2 battalion-66666 brigade-444 division-33 
+SHUFFLED | brigade-444 division-33 regiment-5555 u-1 corps-2 battalion-66666 
+SHUFFLED | regiment-5555 division-33 brigade-444 battalion-66666 corps-2 u-1 
+SHUFFLED | division-33 regiment-5555 u-1 corps-2 battalion-66666 brigade-444 
+SHUFFLED | division-33 brigade-444 battalion-66666 corps-2 u-1 regiment-5555 
+SHUFFLED | corps-2 u-1 regiment-5555 division-33 brigade-444 battalion-66666 
+SHUFFLED | division-33 regiment-5555 u-1 corps-2 battalion-66666 brigade-444 
+SHUFFLED | regiment-5555 u-1 corps-2 battalion-66666 brigade-444 division-33 
+SHUFFLED | brigade-444 battalion-66666 corps-2 u-1 regiment-5555 division-33 
+SHUFFLED | division-33 regiment-5555 u-1 corps-2 battalion-66666 brigade-444 
+SHUFFLED | corps-2 u-1 regiment-5555 division-33 brigade-444 battalion-66666 
+SHUFFLED | regiment-5555 division-33 brigade-444 battalion-66666 corps-2 u-1 
+SHUFFLED | u-1 regiment-5555 division-33 brigade-444 battalion-66666 corps-2 
