@@ -1,4 +1,4 @@
-package io.mosire.simos.map.change;
+package io.mosire.simos.util.state;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -7,14 +7,19 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * 一个状态组件的差异。
  *
+ * <p>★ **本类型在 Util，不在 map**（C7）：它是通用机制件——三个变更集（map / social / unit）共用同一份 "差异 + 重建"语义，放在 map 里会让
+ * social/unit 的变更集依赖 map 的变更机制（语义错位）。配套机制 {@link #diff} / {@link #rebuild} 一并在此，故任何模块都不需要第二份实现（R1
+ * 扫描守卫把守"全仓恰一份"）。
+ *
  * <p>★ {@code Unchanged} 与"变为空"是**两件事** —— GSimulator 的 {@code MapDiff.isEmpty()}
  * 混淆了这两者，导致"只改了一条边"产生空 diff、进而**根本不进 apply 流程**。
  *
- * <p>★ **四条变体各自的语义**（{@code MapChangeSet.apply} 逐条照此实现）：
+ * <p>★ **四条变体各自的语义**（各变更集的 {@code apply} 逐条照此实现）：
  *
  * <ul>
  *   <li>{@link Unchanged} —— 该组件的内容**一字未动**。"内容变成空的"**不是**这一条，是 {@link Remove}。
@@ -23,8 +28,8 @@ import java.util.Set;
  *   <li>{@link Patch} —— 同一组件**又增又删**，两侧各自是上面那两条。
  * </ul>
  *
- * <p>★ **key 一律是 String**：{@code GameMap} 的 map key 由 {@code toString()} 变成地址串 （五个 key 类型各有"裸值
- * {@code toString()} + {@code static parse}"，见 R-48-f），值就是组件值本身， 判等**用 {@code equals}**（与 map
+ * <p>★ **key 一律是 String**：状态 map 的 key 由 {@code toString()} 变成规范串 （各 key 类型各有"裸值 {@code toString()}
+ * + {@code static parse}"，见 R-48-f），值就是组件值本身， 判等**用 {@code equals}**（与 map
  * 迭代序无关：顺序变了而内容没变**不是**状态变更）。
  *
  * <p>★ 两个容器的**保序**与冻结是同一件事的两半：{@link LinkedHashMap}/{@link LinkedHashSet} 管"序 = 插入序"， {@code
@@ -104,8 +109,8 @@ public sealed interface FieldDelta<T> {
   /**
    * 同一组件**又增又删**。两侧各自沿用 {@link Upsert}/{@link Remove}，故非空、保序、冻结、null 校验全部**继承**，本类型不新增一行校验。
    *
-   * <p>★ **语义：先删后增** —— 等于"先走 {@link Remove} 那一路、再走 {@link Upsert} 那一路"。若某个 key **两侧都在**（{@code
-   * MapChangeSet.between} 不会产出这种重叠，只有手搓才可能），**增胜**。
+   * <p>★ **语义：先删后增** —— 等于"先走 {@link Remove} 那一路、再走 {@link Upsert} 那一路"。若某个 key **两侧都在**（{@link
+   * #diff} 不会产出这种重叠，只有手搓才可能），**增胜**。
    *
    * <p>★ **不为重叠写守卫**：{@code between} 是唯一生产者、不可能产出重叠，为不存在的输入写守卫正是 R-48-e 反对的"为不存在的世界写代码"。
    */
@@ -120,6 +125,84 @@ public sealed interface FieldDelta<T> {
     public Optional<T> lookup(String key) {
       return upserts.lookup(key); // 删除那一侧没有"新值"可给，故只看 upserts
     }
+  }
+
+  /**
+   * 两份 map 的差异（{@link #rebuild} 的逆）。
+   *
+   * <p>★ **顺着 {@code target} 的迭代序读**，故 upsert 的键序 = target 的序（保序不可变是前提，见类注释）。
+   *
+   * <p>★ **同时有"增"与"删" ⇒ {@link Patch}**（两侧各自是 {@link Upsert} 与 {@link Remove}），**两侧都保留、 不丢任何一侧** ——
+   * 丢删除正是 GSimulator"只改了一条边产生空 diff"的病根。
+   */
+  static <K, V> FieldDelta<V> diff(Map<K, V> base, Map<K, V> target) {
+    Map<String, V> upserts = new LinkedHashMap<>();
+    Set<String> removals = new LinkedHashSet<>();
+    for (Map.Entry<K, V> entry : target.entrySet()) {
+      if (!entry.getValue().equals(base.get(entry.getKey()))) {
+        // 同 key 不同 value 与"新增的 key"走同一条：base.get 缺席即 null，equals 必为 false。
+        upserts.put(entry.getKey().toString(), entry.getValue());
+      }
+    }
+    for (K key : base.keySet()) {
+      if (!target.containsKey(key)) {
+        removals.add(key.toString());
+      }
+    }
+    if (upserts.isEmpty() && removals.isEmpty()) {
+      return new Unchanged<>();
+    }
+    if (upserts.isEmpty()) {
+      return new Remove<>(removals);
+    }
+    if (removals.isEmpty()) {
+      return new Upsert<>(upserts);
+    }
+    return new Patch<>(new Upsert<>(upserts), new Remove<>(removals));
+  }
+
+  /**
+   * 从 base 与差异重建一份 map（{@link #diff} 的逆）。四条变体各一路，见 {@link Patch} 的语义。
+   *
+   * <p>★ **只有新出现的 key 需要 {@code parse}**：已在 base 里的 key 直接复用原对象（这正是各 key 类型 "裸值 {@code toString()}
+   * + {@code static parse}" 三件套被用到的地方）。
+   */
+  static <K, V> Map<K, V> rebuild(Map<K, V> base, FieldDelta<V> delta, Function<String, K> parse) {
+    if (!delta.changed()) {
+      return base;
+    }
+    if (delta instanceof Remove<V> remove) {
+      Map<K, V> out = new LinkedHashMap<>();
+      for (Map.Entry<K, V> entry : base.entrySet()) {
+        if (!remove.keys().contains(entry.getKey().toString())) {
+          out.put(entry.getKey(), entry.getValue());
+        }
+      }
+      return out;
+    }
+    if (delta instanceof Upsert<V> upsert) {
+      Map<String, V> entries = upsert.entries();
+      Set<String> fromBase = new LinkedHashSet<>();
+      Map<K, V> out = new LinkedHashMap<>();
+      for (Map.Entry<K, V> entry : base.entrySet()) {
+        String key = entry.getKey().toString();
+        fromBase.add(key);
+        out.put(entry.getKey(), entries.containsKey(key) ? entries.get(key) : entry.getValue());
+      }
+      for (Map.Entry<String, V> entry : entries.entrySet()) {
+        if (!fromBase.contains(entry.getKey())) {
+          out.put(parse.apply(entry.getKey()), entry.getValue());
+        }
+      }
+      return out;
+    }
+    if (delta instanceof Patch<V> patch) {
+      // ★ **先删后增**（见 Patch 的语义），且**复用上面那两路**：Patch 的正确性恰恰**等于**
+      //   "那两条纯情形的语义"，这里重新实现一遍就有了跟它们分叉的可能。递归调用即复用。
+      return rebuild(rebuild(base, patch.removals(), parse), patch.upserts(), parse);
+    }
+    // 四条变体已穷尽；走到这里说明 FieldDelta 新增了变体而这里没跟上 —— 与铁律 5 同源的漂移，必须响。
+    throw new IllegalStateException("未知的 FieldDelta 变体: " + delta.getClass());
   }
 
   /** 本组件是否有变化。 */

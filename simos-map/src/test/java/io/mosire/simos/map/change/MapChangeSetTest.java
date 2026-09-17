@@ -19,6 +19,7 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.util.state.FieldDelta;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;

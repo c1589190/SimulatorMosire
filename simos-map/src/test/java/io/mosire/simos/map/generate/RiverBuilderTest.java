@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
-import io.mosire.simos.map.change.FieldDelta;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
@@ -13,6 +12,7 @@ import io.mosire.simos.map.pathway.EdgeTags;
 import io.mosire.simos.map.pathway.Pathway;
 import io.mosire.simos.map.pathway.PathwayId;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.util.state.FieldDelta;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;

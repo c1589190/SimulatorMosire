@@ -13,11 +13,8 @@ import io.mosire.simos.map.pathway.PathwayId;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.terrain.TerrainType;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
+import io.mosire.simos.util.state.FieldDelta;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -55,13 +52,13 @@ public record MapChangeSet(
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(target, "target");
     return new MapChangeSet(
-        diff(base.hexes(), target.hexes()),
-        diff(base.regions(), target.regions()),
-        diff(base.cities(), target.cities()),
-        diff(base.terrainTypes(), target.terrainTypes()),
-        diff(base.pathways(), target.pathways()),
-        diff(base.pathwayGroups(), target.pathwayGroups()),
-        diff(base.edges(), target.edges()));
+        FieldDelta.diff(base.hexes(), target.hexes()),
+        FieldDelta.diff(base.regions(), target.regions()),
+        FieldDelta.diff(base.cities(), target.cities()),
+        FieldDelta.diff(base.terrainTypes(), target.terrainTypes()),
+        FieldDelta.diff(base.pathways(), target.pathways()),
+        FieldDelta.diff(base.pathwayGroups(), target.pathwayGroups()),
+        FieldDelta.diff(base.edges(), target.edges()));
   }
 
   /**
@@ -80,13 +77,13 @@ public record MapChangeSet(
     Objects.requireNonNull(cs, "cs");
     Objects.requireNonNull(base, "base");
     return new GameMap(
-        rebuild(base.hexes(), cs.hexes(), HexCoord::parse),
-        rebuild(base.regions(), cs.regions(), RegionId::parse),
-        rebuild(base.cities(), cs.cities(), CityId::parse),
-        rebuild(base.terrainTypes(), cs.terrainTypes(), STRING_KEY),
-        rebuild(base.pathways(), cs.pathways(), PathwayId::parse),
-        rebuild(base.pathwayGroups(), cs.pathwayGroups(), STRING_KEY),
-        rebuild(base.edges(), cs.edges(), EdgeRef::parse),
+        FieldDelta.rebuild(base.hexes(), cs.hexes(), HexCoord::parse),
+        FieldDelta.rebuild(base.regions(), cs.regions(), RegionId::parse),
+        FieldDelta.rebuild(base.cities(), cs.cities(), CityId::parse),
+        FieldDelta.rebuild(base.terrainTypes(), cs.terrainTypes(), STRING_KEY),
+        FieldDelta.rebuild(base.pathways(), cs.pathways(), PathwayId::parse),
+        FieldDelta.rebuild(base.pathwayGroups(), cs.pathwayGroups(), STRING_KEY),
+        FieldDelta.rebuild(base.edges(), cs.edges(), EdgeRef::parse),
         base.spec());
   }
 
@@ -99,80 +96,5 @@ public record MapChangeSet(
         || pathways.changed()
         || pathwayGroups.changed()
         || edges.changed());
-  }
-
-  /**
-   * 一个组件的差异。**顺着 {@code target} 的迭代序读**，故 upsert 的键序 = target 的序（保序不可变是前提）。
-   *
-   * <p>★ **同时有"增"与"删"⇒ {@link FieldDelta.Patch}**（两侧各自是 {@code Upsert} 与 {@code Remove}），
-   * **两侧都保留、不丢任何一侧** —— 丢删除正是 GSimulator"只改了一条边产生空 diff"的病根。
-   *
-   * <p>★ 不再收"组件名"参数：混合情形过去靠它拼异常消息，现在走 {@code Patch} 没有消息可拼；留着就是死参数。
-   */
-  private static <K, V> FieldDelta<V> diff(Map<K, V> base, Map<K, V> target) {
-    Map<String, V> upserts = new LinkedHashMap<>();
-    Set<String> removals = new LinkedHashSet<>();
-    for (Map.Entry<K, V> entry : target.entrySet()) {
-      if (!entry.getValue().equals(base.get(entry.getKey()))) {
-        // 同 key 不同 value 与"新增的 key"走同一条：base.get 缺席即 null，equals 必为 false。
-        upserts.put(entry.getKey().toString(), entry.getValue());
-      }
-    }
-    for (K key : base.keySet()) {
-      if (!target.containsKey(key)) {
-        removals.add(key.toString());
-      }
-    }
-    if (upserts.isEmpty() && removals.isEmpty()) {
-      return new FieldDelta.Unchanged<>();
-    }
-    if (upserts.isEmpty()) {
-      return new FieldDelta.Remove<>(removals);
-    }
-    if (removals.isEmpty()) {
-      return new FieldDelta.Upsert<>(upserts);
-    }
-    return new FieldDelta.Patch<>(
-        new FieldDelta.Upsert<>(upserts), new FieldDelta.Remove<>(removals));
-  }
-
-  /** 一个组件的重建。四条变体各一路，见 {@link #apply(MapChangeSet, GameMap)}。 */
-  private static <K, V> Map<K, V> rebuild(
-      Map<K, V> base, FieldDelta<V> delta, Function<String, K> parse) {
-    if (!delta.changed()) {
-      return base;
-    }
-    if (delta instanceof FieldDelta.Remove<V> remove) {
-      Map<K, V> out = new LinkedHashMap<>();
-      for (Map.Entry<K, V> entry : base.entrySet()) {
-        if (!remove.keys().contains(entry.getKey().toString())) {
-          out.put(entry.getKey(), entry.getValue());
-        }
-      }
-      return out;
-    }
-    if (delta instanceof FieldDelta.Upsert<V> upsert) {
-      Map<String, V> entries = upsert.entries();
-      Set<String> fromBase = new LinkedHashSet<>();
-      Map<K, V> out = new LinkedHashMap<>();
-      for (Map.Entry<K, V> entry : base.entrySet()) {
-        String key = entry.getKey().toString();
-        fromBase.add(key);
-        out.put(entry.getKey(), entries.containsKey(key) ? entries.get(key) : entry.getValue());
-      }
-      for (Map.Entry<String, V> entry : entries.entrySet()) {
-        if (!fromBase.contains(entry.getKey())) {
-          out.put(parse.apply(entry.getKey()), entry.getValue());
-        }
-      }
-      return out;
-    }
-    if (delta instanceof FieldDelta.Patch<V> patch) {
-      // ★ **先删后增**（见 FieldDelta.Patch），且**复用上面那两路**：Patch 的正确性恰恰**等于**
-      //   "那两条纯情形的语义"，这里重新实现一遍就有了跟它们分叉的可能。递归调用即复用。
-      return rebuild(rebuild(base, patch.removals(), parse), patch.upserts(), parse);
-    }
-    // 四条变体已穷尽；走到这里说明 FieldDelta 新增了变体而这里没跟上 —— 与铁律 5 同源的漂移，必须响。
-    throw new IllegalStateException("未知的 FieldDelta 变体: " + delta.getClass());
   }
 }

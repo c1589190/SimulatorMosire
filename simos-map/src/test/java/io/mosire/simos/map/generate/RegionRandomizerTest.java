@@ -6,13 +6,13 @@ import static org.assertj.core.api.Assertions.within;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
-import io.mosire.simos.map.change.FieldDelta;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.util.state.FieldDelta;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;

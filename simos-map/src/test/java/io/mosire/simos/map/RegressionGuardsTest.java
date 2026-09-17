@@ -1,6 +1,7 @@
 package io.mosire.simos.map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.DeserializationContext;
@@ -8,7 +9,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
-import io.mosire.simos.map.change.FieldDelta;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.generate.MapGenerator;
@@ -24,6 +24,7 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.util.state.FieldDelta;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Constructor;
@@ -374,6 +375,32 @@ class RegressionGuardsTest {
       }
     }
     assertThat(leaked).as("四个独占 key 不得出现在 TerrainCatalog 之外的任何文件（连注释都算）").isEmpty();
+  }
+
+  // ── R1：全仓恰一份 FieldDelta（M3 spec §六；其落点在 util.state，C7） ──────────
+
+  /**
+   * ★ **R1（M3）**：全仓恰一份 {@code FieldDelta} 声明。
+   *
+   * <p>病灶形态：M3 有三个变更集（map / social / unit）共用这一套差异语义——若哪个模块自己再写一份， 两份的语义立刻开始漂移（`Patch`
+   * 的先删后增、`Upsert` 的保序冻结都可能只改一边），而且**没有任何东西会响**。
+   */
+  @Test
+  void R1_thereIsExactlyOneFieldDelta() {
+    Map<String, Long> hits = new LinkedHashMap<>();
+    for (String module : List.of("simos-util", "simos-map", "simos-social", "simos-unit")) {
+      for (Path file : javaFilesUnder(repoRoot().resolve(module + "/src/main"))) {
+        for (String line : rawLines(file)) {
+          if (line.contains("interface FieldDelta")) {
+            hits.merge(relative(file), 1L, Long::sum);
+          }
+        }
+      }
+    }
+    assertThat(hits)
+        .as("四个模块的 src/main 里必须恰有一份 FieldDelta 声明（第二份 = 语义必然漂移）")
+        .containsExactly(
+            entry("simos-util/src/main/java/io/mosire/simos/util/state/FieldDelta.java", 1L));
   }
 
   // ── 源码扫描的公共底座（R-14-c：四条扫描共用） ─────────────────────────────

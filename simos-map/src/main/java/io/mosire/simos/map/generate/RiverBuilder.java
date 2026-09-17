@@ -2,13 +2,13 @@ package io.mosire.simos.map.generate;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
-import io.mosire.simos.map.change.FieldDelta;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
 import io.mosire.simos.map.pathway.Pathway;
 import io.mosire.simos.map.pathway.PathwayId;
+import io.mosire.simos.util.state.FieldDelta;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
