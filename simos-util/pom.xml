@@ -17,6 +17,16 @@
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>
+    <!-- ★ M4 Task 3 裁定（2026-09-18）：Optional 在快照树里且在嵌套泛型位置
+         （Unit.java:23/24/29 的 SegmentedSeries<Optional<…>>、SimosTimestamp.calendarLabel、
+         TimeRange.to）。裸 jackson-databind 会把 Optional 写成 {"present":…} 并丢值。
+         手写替代方案 = 又一份"手工对着状态类型维护的平行结构" = L1 事故形态（MapDiff 漂移）。
+         ⇒ 用 Jackson 家族构件，不是领域模块，不违反铁律 3。
+         版本由父 POM 已 import 的 jackson-bom 提供，无需新增版本属性。
+         ★ 探针实测：无它则三个快照**全部**死在序列化期。 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId><artifactId>jackson-datatype-jdk8</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId>
     </dependency>
