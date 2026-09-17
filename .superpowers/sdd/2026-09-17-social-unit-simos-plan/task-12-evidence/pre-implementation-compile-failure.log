@@ -1,0 +1,116 @@
+[ERROR] COMPILATION ERROR : 
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[71,40] reference to unit is ambiguous
+  both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[74,37] reference to unit is ambiguous
+  both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[80,22] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[90,13] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[99,34] reference to unit is ambiguous
+  both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[100,34] reference to unit is ambiguous
+  both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[103,22] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[112,17] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[120,19] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[125,20] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[148,40] reference to unit is ambiguous
+  both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[154,13] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[163,20] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[164,20] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[166,17] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[174,20] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[175,20] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[176,20] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[184,34] cannot find symbol
+  symbol:   class UnitResolver
+  location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.16.0:testCompile (default-testCompile) on project simos-unit: Compilation failure: Compilation failure: 
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[71,40] reference to unit is ambiguous
+[ERROR]   both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[74,37] reference to unit is ambiguous
+[ERROR]   both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[80,22] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[90,13] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[99,34] reference to unit is ambiguous
+[ERROR]   both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[100,34] reference to unit is ambiguous
+[ERROR]   both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[103,22] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[112,17] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[120,19] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[125,20] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[148,40] reference to unit is ambiguous
+[ERROR]   both method unit(java.lang.String,java.lang.String,java.lang.String) in io.mosire.simos.unit.resolve.UnitResolverTest and method unit(java.lang.String,java.lang.String,java.util.List<io.mosire.simos.util.time.Segment<java.util.Optional<io.mosire.simos.unit.UnitId>>>) in io.mosire.simos.unit.resolve.UnitResolverTest match
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[154,13] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[163,20] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[164,20] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[166,17] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[174,20] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[175,20] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[176,20] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:[184,34] cannot find symbol
+[ERROR]   symbol:   class UnitResolver
+[ERROR]   location: class io.mosire.simos.unit.resolve.UnitResolverTest
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-unit
