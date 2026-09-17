@@ -1,0 +1,835 @@
+=================== ROUND m14v-1 ===================
+目标：change/MapChangeSet.java（between 里把 edges 的比较摘掉 → Unchanged）⇒ 期望红 L1
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java  md5 原件=ca83cb16be012ace7e44a0ddf29e4952  变异体=065bc77ca477e71e45ec97047eeb6a7f
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 5, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 20, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.862 s <<< FAILURE! -- in io.mosire.simos.map.change.MapChangeSetTest
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.103 s <<< FAILURE! -- in io.mosire.simos.map.change.RoundTripComponentsTest
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.790 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 5, Errors: 0, Skipped: 0
+RegressionGuardsTest.L1_edgesSurviveRoundTripOnNonRoot:139 [edges 必须真的进了 diff（不是 Unchanged）] 
+MapChangeSetTest.applyRebuildsTargetExactly:378 
+MapChangeSetTest.emptyDiffStillEntersApply:442 
+MapChangeSetTest.everyComponentIsComparedIndependently:326->assertOnlyComponentChanged:344 [edges 被改了 ⇒ 它必须不是 Unchanged] 
+RoundTripComponentsTest.everyGameMapComponentParticipatesInTheChangeSet:88 [组件 edges 必须进变更集（漏了它 ⇒ 变更集整个为空）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L1_edgesSurviveRoundTripOnNonRoot:139 [edges 必须真的进了 diff（不是 Unchanged）] 
+MapChangeSetTest.applyRebuildsTargetExactly:378 
+MapChangeSetTest.emptyDiffStillEntersApply:442 
+MapChangeSetTest.everyComponentIsComparedIndependently:326->assertOnlyComponentChanged:344 [edges 被改了 ⇒ 它必须不是 Unchanged] 
+RoundTripComponentsTest.everyGameMapComponentParticipatesInTheChangeSet:88 [组件 edges 必须进变更集（漏了它 ⇒ 变更集整个为空）] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.790 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L1_edgesSurviveRoundTripOnNonRoot -- Time elapsed: 0.007 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[edges 必须真的进了 diff（不是 Unchanged）] 
+Expecting value to be true but was false
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.106 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 5
+=================== ROUND m14v-2 ===================
+目标：HexCell.java（加第三份组件 edgeTags + 旧签名二级构造器）⇒ 期望红 L2
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/HexCell.java  md5 原件=8df1ac9aaae7c72c5186ce8be8934920  变异体=68b4347cc43bfdf93dfd17dd41443f48
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.606 s <<< FAILURE! -- in io.mosire.simos.map.HexCellTest
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.876 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 2, Errors: 0, Skipped: 0
+HexCellTest.hasNoConnectivityField:61 
+RegressionGuardsTest.L2_hexCellHasNoConnectivityField:165 [HexCell 不含任何连通性字段（主存储只有 GameMap.edges 一份）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+HexCellTest.hasNoConnectivityField:61 
+RegressionGuardsTest.L2_hexCellHasNoConnectivityField:165 [HexCell 不含任何连通性字段（主存储只有 GameMap.edges 一份）] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.876 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L2_hexCellHasNoConnectivityField -- Time elapsed: 0.032 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[HexCell 不含任何连通性字段（主存储只有 GameMap.edges 一份）] 
+Expecting actual:
+  ["terrain", "height", "edgeTags"]
+to contain exactly (and in same order):
+  ["terrain", "height"]
+but some elements were not expected:
+  ["edgeTags"]
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.806 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 2
+=================== ROUND m14v-3 ===================
+目标：hex/LegacyDirTable.java【新增文件】（static final int[][] DIRS）⇒ 期望红 L3
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 1个）：
+  simos-map/src/main/java/io/mosire/simos/map/hex/LegacyDirTable.java  md5 原件=(新增)  变异体=4366af389af3b0b81d5eeb41ebf4fc6f
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.811 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+RegressionGuardsTest.L3_thereIsExactlyOneDirectionTable:196 [src/main 里不许有第二个 int[][] 方向表（HexDirection 是唯一一份）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L3_thereIsExactlyOneDirectionTable:196 [src/main 里不许有第二个 int[][] 方向表（HexDirection 是唯一一份）] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.811 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L3_thereIsExactlyOneDirectionTable -- Time elapsed: 0.098 s <<< FAILURE!
+java.lang.AssertionError: 
+[src/main 里不许有第二个 int[][] 方向表（HexDirection 是唯一一份）] 
+Expecting empty but was: {"simos-map/src/main/java/io/mosire/simos/map/hex/LegacyDirTable.java"=1L}
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.342 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
+=================== ROUND m14v-4 ===================
+目标：region/Province.java【新增文件】（第二个 region 类型）⇒ 期望红 L4
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 1个）：
+  simos-map/src/main/java/io/mosire/simos/map/region/Province.java  md5 原件=(新增)  变异体=9d24a5f96fcf608e15277d1a84b6c916
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.810 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+RegressionGuardsTest.L4_thereIsExactlyOneRegionType:217 [simos-map 里不许再长出 Province/Territory/Zone 任何一个名字的第二个 region 概念] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L4_thereIsExactlyOneRegionType:217 [simos-map 里不许再长出 Province/Territory/Zone 任何一个名字的第二个 region 概念] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.810 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L4_thereIsExactlyOneRegionType -- Time elapsed: 0.176 s <<< FAILURE!
+java.lang.AssertionError: 
+[simos-map 里不许再长出 Province/Territory/Zone 任何一个名字的第二个 region 概念] 
+Expecting empty but was: ["Province"]
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.684 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
+=================== ROUND m14v-5 ===================
+目标：region/RegionIndex.java（regionOf 改线性扫描）⇒ 期望红 L5
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/region/RegionIndex.java  md5 原件=44dea904f5a085b1aa5b979e37b7c035  变异体=eb39e40bf370d902804448179ddaa181
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 2, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 2.136 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionIndexGuardTest
+Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.660 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionIndexTest
+Tests run: 245, Failures: 2, Errors: 0, Skipped: 0
+RegionIndexGuardTest.L5_regionOfIsIndexedNotScanned:56 [一次 regionOf = 恰一次 Map.get（线性扫描是 0 次或 N 次，都不是 1）] 
+RegionIndexTest.regionOfIsConstantTime:82 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegionIndexGuardTest.L5_regionOfIsIndexedNotScanned:56 [一次 regionOf = 恰一次 Map.get（线性扫描是 0 次或 N 次，都不是 1）] 
+RegionIndexTest.regionOfIsConstantTime:82 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.721 s -- in io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 2.136 s <<< FAILURE! -- in io.mosire.simos.map.region.RegionIndexGuardTest
+io.mosire.simos.map.region.RegionIndexGuardTest.L5_regionOfIsIndexedNotScanned -- Time elapsed: 2.121 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[一次 regionOf = 恰一次 Map.get（线性扫描是 0 次或 N 次，都不是 1）] 
+expected: 1
+ but was: 0
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 2
+=================== ROUND m14v-6 ===================
+目标：City.java（加 atKey()：手写 q + "_" + r）⇒ 期望红 L6
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/City.java  md5 原件=b9a6fe30cf5203f6aea1b5a1ce5c6cab  变异体=69429f5476489317ebbb38fce1307e7c
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.886 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+RegressionGuardsTest.L6_hexCoordIsTheOnlyCoordinateType:244 [q_r 拼接全 simos-map/src/main 恰 1 处（多了就是第二份坐标串实现）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L6_hexCoordIsTheOnlyCoordinateType:244 [q_r 拼接全 simos-map/src/main 恰 1 处（多了就是第二份坐标串实现）] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.886 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L6_hexCoordIsTheOnlyCoordinateType -- Time elapsed: 0.096 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[q_r 拼接全 simos-map/src/main 恰 1 处（多了就是第二份坐标串实现）] 
+expected: 1L
+ but was: 2L
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.955 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
+=================== ROUND m14v-7 ===================
+目标：generate/MapGenerator.java（结果不带 spec：defaults(0L)）⇒ 期望红 L7
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/generate/MapGenerator.java  md5 原件=95eb6f4ff940e1ae5b865b8298c720a3  变异体=85fcf821757f1e3f30ddd2c8d4887cce
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 3, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 13, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 14.23 s <<< FAILURE! -- in io.mosire.simos.map.generate.MapGeneratorTest
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.878 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 3, Errors: 0, Skipped: 0
+RegressionGuardsTest.L7_heightAndSeedSurvivePersistence:299 
+MapGeneratorTest.generatedMapRoundTripsThroughChangeSet:147 
+MapGeneratorTest.specIsCarriedOnTheResult:66 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L7_heightAndSeedSurvivePersistence:299 
+MapGeneratorTest.generatedMapRoundTripsThroughChangeSet:147 
+MapGeneratorTest.specIsCarriedOnTheResult:66 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.878 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L7_heightAndSeedSurvivePersistence -- Time elapsed: 1.384 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+expected: 42L
+ but was: 0L
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.193 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 3
+=================== ROUND m14v-8 ===================
+目标：GameMap.java（加 12 参数二级构造器）⇒ 期望红 L8
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/GameMap.java  md5 原件=fc1431f9f0ea72fb6a10c866a1834710  变异体=a114a3ad355047f9b43d63b0b8f7bb45
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.835 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+RegressionGuardsTest.L8_gameMapHasNoTwelveArgConstructor:315 [GameMap 只有规范构造器（12 参数的复制形态不许回来）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L8_gameMapHasNoTwelveArgConstructor:315 [GameMap 只有规范构造器（12 参数的复制形态不许回来）] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.835 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L8_gameMapHasNoTwelveArgConstructor -- Time elapsed: 0.077 s <<< FAILURE!
+java.lang.AssertionError: 
+[GameMap 只有规范构造器（12 参数的复制形态不许回来）] 
+Expected size: 1 but was: 2 in:
+[public io.mosire.simos.map.GameMap(java.util.Map,java.util.Map,java.util.Map,java.util.Map,java.util.Map,java.util.Map,java.util.Map,io.mosire.simos.map.generate.GenerationSpec),
+    public io.mosire.simos.map.GameMap(java.util.Map,java.util.Map,java.util.Map,java.util.Map,java.util.Map,java.util.Map,java.util.Map,io.mosire.simos.map.generate.GenerationSpec,int,boolean,java.lang.String,java.lang.String)]
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.181 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
+=================== ROUND m14v-9 ===================
+目标：terrain/BackupTerrainTable.java【新增文件】（第二份地形词表）⇒ 期望红 L9
+★ 变异在 /tmp 副本上做：REPO=/tmp/m14lab/repo（工作树 /root/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /root/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 1个）：
+  simos-map/src/main/java/io/mosire/simos/map/terrain/BackupTerrainTable.java  md5 原件=(新增)  变异体=9329f068e7356af431aa09b527ce86e4
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.786 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 245, Failures: 1, Errors: 0, Skipped: 0
+RegressionGuardsTest.L9_thereIsExactlyOneTerrainCatalog:376 [四个独占 key 不得出现在 TerrainCatalog 之外的任何文件（连注释都算）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.L9_thereIsExactlyOneTerrainCatalog:376 [四个独占 key 不得出现在 TerrainCatalog 之外的任何文件（连注释都算）] 
+--- surefire 明说（两条守卫测试类的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.786 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.L9_thereIsExactlyOneTerrainCatalog -- Time elapsed: 0.148 s <<< FAILURE!
+java.lang.AssertionError: 
+[四个独占 key 不得出现在 TerrainCatalog 之外的任何文件（连注释都算）] 
+Expecting empty but was: {"simos-map/src/main/java/io/mosire/simos/map/terrain/BackupTerrainTable.java 含 low_hills"=1L, "simos-map/src/main/java/io/mosire/simos/map/terrain/BackupTerrainTable.java 含 mountains"=1L, "simos-map/src/main/java/io/mosire/simos/map/terrain/BackupTerrainTable.java 含 plateau"=1L, "simos-map/src/main/java/io/mosire/simos/map/terrain/BackupTerrainTable.java 含 plateau_mountains"=1L}
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.region.RegionIndexGuardTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.524 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
+=================== 工作树状态（本实验从未被变异触碰）===================
+ M .superpowers/sdd/2026-09-16-map-simos-plan/progress.md
+?? simos-map/src/test/java/io/mosire/simos/map/RegressionGuardsTest.java
+?? simos-map/src/test/java/io/mosire/simos/map/region/RegionIndexGuardTest.java

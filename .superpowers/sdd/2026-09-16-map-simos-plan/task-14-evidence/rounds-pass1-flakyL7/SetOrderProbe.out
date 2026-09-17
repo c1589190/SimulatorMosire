@@ -1,0 +1,22 @@
+# SetOrderProbe 当场复跑：/root/SimulatorMosire/.superpowers/sdd/2026-09-16-map-simos-plan/task-14-evidence/rounds-pass1-flakyL7/SetOrderProbe.java（每次一个独立 JVM；列1 = 旧组 {(0,0),(5,5)}，列2 = 候选组 {(0,0),(-3,2)}；true = 该组经 Set.copyOf 往返后序翻转）
+# 日期：2026-09-17T20:30:58+08:00
+run 01: true false
+run 02: true false
+run 03: false false
+run 04: false false
+run 05: false false
+run 06: true false
+run 07: false false
+run 08: true false
+run 09: false false
+run 10: false false
+run 11: true false
+run 12: false false
+run 13: true false
+run 14: false false
+run 15: false false
+run 16: false false
+run 17: false false
+run 18: true false
+run 19: true false
+run 20: false false

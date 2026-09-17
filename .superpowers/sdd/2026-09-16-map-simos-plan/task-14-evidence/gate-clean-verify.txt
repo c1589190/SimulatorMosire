@@ -1,0 +1,23 @@
+# 门禁留痕（控制器当场执行）
+# 日期：2026-09-17T20:38:59+08:00
+
+## ./mvnw -q spotless:apply
+spotless rc=0
+
+## ./mvnw -q verify
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+verify rc=0
+
+## 旁证：门禁真的跑了（本机当场 stat）
+simos-util: surefire 报告 17 份
+simos-map: surefire 报告 26 份
+simos-social: surefire 报告 0 份
+simos-unit: surefire 报告 0 份
+simos-core: surefire 报告 1 份
+2026-09-17 20:41:16.742958145 +0800  simos-map/target/spotbugsXml.xml
+2026-09-17 20:41:50.532686993 +0800  simos-core/target/spotbugsXml.xml
+
+## 关键行计数
+[ERROR] 行数 = 0
