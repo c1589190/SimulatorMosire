@@ -120,3 +120,14 @@
 - **★ 计划缺陷两处（实测发现）**：① **m1 前提不成立**——`scale` 对 `v=moveCost×1000` 恒为精确乘法（`+500` 永不进位），`Math.round` 形态是**等价变体**；实现者以 **1 002 990 对 (moveCost,‰) 全域扫描 0 分叉**实证，随后按 R-8-a 跑 m1'（丢 ×1000）真变异红在冻结夹具。② **m3 前提不成立**——计划自带的 minStep 用例用 `map(STEEP_65)`，**无 999 格** ⇒ 删跳过守卫在提交套件上 0 红；判别输入是"全不可通行图 ⇒ 0"（spec §4.3 第 6 条），**该边界原无提交在案用例** ⇒ 控制器裁定**转正**（fix-1）并重跑 m3 轮，红点落 `allImpassableMapHasZeroLowerBound:73`（expected 0 / was 499500）。
 - **四轮红点（实测）**：m1 存活（等价，已证）；m1' `stepCostsMatchTheFrozenFixture:21`；m2 `impassableTerrainHasNoCost:29`；m3（fix-1 重跑）`allImpassableMapHasZeroLowerBound:73`。
 - **下一任务** Task 9（`PathFinder` A\* + R8 对拍/决定论）。
+
+## Task 9 关账（2026-09-17）
+
+- **交付** `4355e9e`（`PathFinder.java` 118 行 + `PathFinderTest.java` 219 行）+ `151ccbb`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：全序 `(f,h,q,r)` 平局项在；`bestG`/`cameFrom`/`closed`/`PriorityQueue` 结构照计划；`NoHeuristic` 只改 `minStepCostMillis→0`；起终点/单元素/不可达边界齐。
+- **控制器独立复核**：`PathFinderTest` **6/6 绿**（本机当场跑）；`verify` rc=0（util 156 / map 248 / social 30 / unit 36 / core 15）。
+- **★ 计划夹具两处就地校正（已实测在案）**：① **几何不成立**——计划"绕行"首步 `(0,0)→(1,1)` 的 `distanceTo=2`（不相邻），原图从 H00 只能走山格；改 `H21`→`H01=(0,1)`，绕行 = `H00→H01→H11→H20`（三步各 distanceTo=1）。② **数字错位**——计划按 ‰1000 写 11000/3000，而夹具单位 ‰500 ⇒ 按冻结规则重算 **5500/1500**。`MoveFixture.unit()` 未动。
+- **四轮红点（实测）**：m1(×2 高估) **存活**（与预判一致）；m1'(×1000) **双红** `aStarDetours…:121`（1500 vs 5500）+ `matchesDijkstra…:137`；m2（删平局项）**红** `sameInputTwice…:160`——对称夹具钉死精确路径 `[(0,0),(1,-1),(2,-1)]`，把"平局项决定跨实现序"变成**可观测输出**（比预期更强，决定论护栏有真判别力）；m3（删 closed 判重）**存活**（一致性下它是性能护栏，如实记）。各轮 CE=0、改前全绿。
+- **裁定（执行期）**：`unreachableGoalIsEmpty` 的"只留 H00"会退化成 goal-缺席前置检查（不测搜索穷尽）⇒ 改双孤岛（H00/H20 都在图、不相邻），真走穷尽路径。追认。
+- **关切**：m1(×2)/m3 两个存活变异是**实测结论**（非失败），已连理由入报告；`sameInputTwice` 现在同时承担"重跑相等 + 全序输出"两职。
+- **下一任务** Task 10（`Route`/`Movement`/`MovementState`/`UnitMoves.evaluate` + R9/R10，判据二）。
