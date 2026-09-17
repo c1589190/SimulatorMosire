@@ -80,3 +80,13 @@
 - **m1/m3 红点**：m1 = 4 红（恒 Unchanged 同根因）、m3 = 4 红（apply 不吃 delta 同根因），各轮 CE=0、改前全绿。
 - **关切（不挡关账）**：① m1/m3 的 `.kept` 摄于 S0（11 用例补之前），红点集合不变、序用例不调用 between/apply，已如实记入报告；② m2 变异须连删 `Collections` import（否则 UnusedImports 让红变构建红）——装置已记。
 - **下一任务** Task 5（`SocialResolver` + R12/R13 的 social 半）。
+
+## Task 5 关账（2026-09-17）
+
+- **交付** `a5755ba`（`SocialResolver.java` 127 行 + `SocialResolverTest.java` 168 行/9 用例）+ `c229eef`（报告 + 证据）。
+- **评审 = 控制器自读 diff**：形制逐条对上 `MapResolver`（namespace 前置空候选、`dataOf` 先于形状判定、`segments.get(1)` 根主体检查、>3 段空候选、Index 恰 2 元走查格、canonical 全经 AST）；`Address` 构造期 ≥2 段（实测）保证 `get(1)` 无越界——与计划核验一致。
+- **控制器独立复核**：`./mvnw verify` 整仓 **BUILD SUCCESS**；Tests run util 156 / map **248** / social **30** / core 15；`BugInstance size is 0` **×5**（★ 实现者报告写"×4 模块"，独立跑为准 ×5——已更正口径）；三类 Spotless/Checkstyle 全过。
+- **三轮红点（实测）**：m1 = `absentHexIsAnEmptyCandidateNotAnError:89`；m2 = `colonMapIdKeepsQuotesInCanonical:159`（`expected "social:\"m:1\"" but was "social:m:1"`——**R-5-b 靶子判别力兑现**，全部 `Map1` 用例不红）；m3 = `wrongSliceTypeThrows:143`（ClassCastException ≠ IAE；`missingSliceThrows` 不红符合预期选形）。
+- **裁定（执行期，补 R-5-b 靶子）**：m2 若无 `:`-mapId 用例会**存活**（手写拼接与 AST 对无引号输入逐字相同）；补 `colonMapIdKeepsQuotesInCanonical`（根 + hex 双断言）后 m2 有唯一落点。已实测。
+- **关切（不挡关账）**：① m2 的 hex 断言因 JUnit 首败即停未单独执行——报告按"1 实测 + 1 同机制"如实记（同根因：同一对手写拼接丢同一对引号）；② 实验室改前基线 social=30（21 是任务前存量，口径差已说明）；③ 本轮 verify 日志未单独入库（实现者只在报告记数字）——控制器独立跑已复核，下不为例（后续任务要求 gate 日志入库）。
+- **下一任务** Task 6（UnitSimos 状态层：`UnitId`/`Unit`/`UnitState` + `effectivePosition` + R5/R6/R7）。
