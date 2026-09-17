@@ -1,0 +1,30 @@
+== 门禁终局数字（2026-09-18 03:01:44 +08:00 跑，最终字节）
+rc=0（BUILD SUCCESS）
+-- 五模块 Tests run：
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 30, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 68, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+-- 模块测试类数（Running io.mosire.simos.<m>.）：
+  util: 17
+  map: 26
+  social: 4
+  unit: 10
+  core: 1
+-- BugInstance size is 0 次数：5
+-- ^\[ERROR\] 行数：0
+-- ^\[WARNING\] 行数：1
+    [WARNING] No files found to generate report on. Check if compile phase has been run.
+-- 六模块 reactor：
+[INFO] SimulatorMosire .................................... SUCCESS [  1.019 s]
+[INFO] SimulatorMosire .................................... SUCCESS [  1.019 s]
+[INFO] UtilSimos .......................................... SUCCESS [  6.918 s]
+[INFO] MapSimos ........................................... SUCCESS [  5.455 s]
+[INFO] SocialSimos ........................................ SUCCESS [  1.918 s]
+[INFO] UnitSimos .......................................... SUCCESS [  2.363 s]
+[INFO] CoreSimos .......................................... SUCCESS [  1.408 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  19.161 s

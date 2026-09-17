@@ -1,0 +1,37 @@
+simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:35:        1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:74:            1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:90:            1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:35:        id, "第一连", noParent(), positionAt(H11), 100, Map.of("步枪", 50), 2, 1000, Optional.empty());
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:43:    assertThat(u.mobilityPerMille()).isEqualTo(1000);
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:63:                    1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:81:                    1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:101:                    1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:119:                    1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:132:                    1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:163:            1000,
+simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:180:                    1000,
+simos-unit/src/test/java/io/mosire/simos/unit/change/UnitChangeSetTest.java:38:        1000,
+simos-unit/src/test/java/io/mosire/simos/unit/change/UnitRoundTripTest.java:47:        1000,
+simos-unit/src/test/java/io/mosire/simos/unit/move/PathFinderTest.java:48:   * 本测试不改它）⇒ {@code costMillis = moveCost × 500}（平坦 500、山 5000）。计划写的"11000 / 3000"按 ‰1000
+simos-unit/src/test/java/io/mosire/simos/unit/move/PathFinderTest.java:52:   *   <li>直线 {@code H00→H10(山)→H20 = 5000 + 500 = 5500} 毫；
+simos-unit/src/test/java/io/mosire/simos/unit/move/PathFinderTest.java:85:   * (1,0)}，都是两格平地（{@code 2 × 500 = 1000} 毫）。中途两格的 {@code f}、{@code h}、{@code q} 全相等，只有 {@code r}
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:11:/** 毫 MP 成本：判据二的两条成本数（12500 / 32500）+ 不可通行 + 越界 + 调用方 bug。 */
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:20:        .as("25 × 1000 = 25000 毫，按 ‰500 缩放 ⇒ floor((25000×500+500)/1000) = 12500")
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:21:        .hasValue(12500L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:23:        .as("65 × 1000 = 65000 毫，按 ‰500 缩放 ⇒ 32500")
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:24:        .hasValue(32500L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:65:        .as("最便宜的可通行地形是 25 ⇒ 12500；999 那条不算")
+simos-unit/src/test/java/io/mosire/simos/unit/move/TerrainMovementCostTest.java:66:        .isEqualTo(12500L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:47:        .as("预算 40000 ⇒ 40000−12500=27500；27500−32500=−5000")
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:50:    assertThat(state.remainingEdgeCostMillis()).hasValue(5000L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:57:   * <p>上面的可观察量（{@code currentHex = H12} + {@code remaining = 5000}）只是**联合**推出 27500 / −5000；本条用生产代码
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:58:   * 取值（预算 = {@code Movement.speedAtDeparture × 1000 × Δt}，两段成本 = {@code
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:60:   * ×1000 ⇒ 三条断言全红。
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:67:    long budget = movement.speedAtDeparture() * 1000L * (at.tick() - movement.departedAt().tick());
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:74:    assertThat(budget - firstCost - secondCost).as("27.5 付不起第 2 段 32.5 ⇒ 差 −5").isEqualTo(-5000L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:77:        .isEqualTo(5000L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:86:    assertThat(state.remainingEdgeCostMillis()).as("预算 44000 比 45000 少 1000").hasValue(1000L);
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:101:   * ★ R-10-b：预算**恰好**付清全部段（等值边界，`speed = 5`、`at = T0+9` ⇒ `5×1000×9 = 45000 == 12500+32500`）⇒
+simos-unit/src/test/java/io/mosire/simos/unit/move/UnitMovesTest.java:163:            1000,
+simos-unit/src/test/java/io/mosire/simos/unit/ops/UnitOperationsTest.java:40:        1000,
+simos-unit/src/test/java/io/mosire/simos/unit/resolve/UnitResolverTest.java:58:        1000,

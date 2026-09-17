@@ -33,7 +33,7 @@
 | 10 | `Route` / `Movement` / `MovementState` / `UnitMoves` + R9/R10 | ⏳ |
 | 11 | `UnitOperations` 8 项 + R11 | ⏳ |
 | 12 | `UnitResolver` + R12/R13 的 unit 半 | ⏳ |
-| 13 | M3 关账 | ⏳ |
+| 13 | M3 关账 | ✅ 见文末关账节 |
 
 ---
 
@@ -161,3 +161,16 @@
 - **四轮红点（实测）**：m1（canonical 链回显）2 红（R13 靶 + canonical 断言连带）；m2（childrenAt 首段值）**唯一**红 `chainFollowsTheParentAtTheQueryTime:159`（R-12-b 的时点夹具——计划建议的 T0/T10 时点对不上 TS=5，已修正为 `[T0→1营, TS→空]`）；m3（删 sort）唯一红；m4 唯一红；**m3b（计划原建议"根候选改所有单位"）存活**——与 R-12-c 预判一致（唯一分叉输入"链首非根名"未被测），如实存档。
 - **关切**：m3b 存活属**已知未测面**（链首为非根名时，根筛与全量筛分叉）；要杀它需扩用例面，留待后续需要时（报告 §五）。
 - **下一任务** Task 13（M3 关账）。
+
+## Task 13 关账 —— ★ M3 关账完成
+
+- **交付**：R-13-b 补条 `criterionTwoArithmeticMatchesTheSpecTable`（`UnitMovesTest` 9→**10**、unit 67→**68**，预算/两段成本全从生产代码取、期望值字面量 27500/−5000/5000）+ 关账轮 **m13v-1**（`costOf` 丢 ×1000；改前 156/248/68 全绿、变异体 md5 `cd20ce3e…→b03e4871…` 字节不同、CE=0、**6 红全列**：靶子 `criterionTwoArithmetic…:73` expected 27500/was 39987 + stepCosts:21 同根 + atTwentyHours:48 / atTwentyTwoHours:84 / PathFinderTest:121/:137 预告外同根连带）+ 报告 `task-13-report.md` + 证据 `task-13-evidence/`（摸底/终局两遍门禁日志、step2/step3 痕迹、装置 run.sh+mutate.py、rounds/m13v-1.kept）。
+- **四条判据逐条核过（live trace，细节见报告）**：
+  - **① 人口种子**：`PopulationSeriesTest` **10/10**（step2-populationseries.log），18036:39 / 6300:57 / 15000:77 字面断言在案（step2-grep.txt）。
+  - **② 移动逐值**：12500:21 / 32500:24（TerrainMovementCostTest）+ **27500:73 / −5000:74 / 5000:77（R-13-b 补条，此前中间值只有联合可推、无直接断言）** + currentHex/nextHex/remaining 既有断言；m13v-1 红点证明补条真咬合。
+  - **③ 门禁**：终局遍（最终字节）`./mvnw clean verify` **rc=0**，六模块全 SUCCESS，Tests run **156/248/30/68/15**（=517；social/unit 从 M2 关账的 0 变实际条数），`BugInstance size is 0` **×5**，`^\[ERROR\]` **0**，`^\[WARNING\]` **1**（spotbugs @ simos-parent，packaging=pom 无类可报）。摸底遍数字与终局遍一致，以终局为准。
+  - **④ 护栏自证**：Task 1~12 证据目录 **46 个 `.kept`** + 关账轮 m13v-1 = **47 轮，红 40 / 未红 7**（未红全部实测+理由：Task 4 探针×2 存活后补序用例杀掉、Task 8 m1 等价、Task 9 m1 ×2 高估/m3 性能护栏、Task 10 m1 补测前、Task 12 m3b 已知未测面）。台账与证据口径唯一分歧在 Task 10（台账"四轮"按变异体计、证据 5 个 .kept 按轮次计）——并列如实。
+- **裁定（执行期）**：R-13-b 二选一选了**补**（不采用"未直接核实"口径）；R-13-e 按派单七条目回填计划文末（Task 4/6/8/9/10/11/12，只追加、草图未动）；R-13-d 只动 CLAUDE.md 两处（M3 行 + 推送状态行）。
+- **关账报告**：`task-13-report.md`（§七"我未能核实的"11 条：GameMap 无 id、属性段不服务、materialize 写回、人口 cache、A\* 规模、A\* 跨 JVM 决定论、含点名字取舍、m3b 存活面、Route/Movement/UnitSnapshot 构造守卫覆盖弱、补条第三断言无独立变异、Task 10 编译失败日志为复现件）。
+- **推送**：本分支已推 `origin`（用户裁定「你爱推就推反正是私有仓库」）。
+- **★ M3 关账完成**（13/13）。下一里程碑 M4（CoreSimos：组合调度、时间推进、存储）——推进机制照实现计划 §六。

@@ -4185,3 +4185,20 @@ git push -u origin feat/m3-social-unit-simos
 **4. 上游 API 核对（写完计划后当场做的，不是记忆）**：`git grep` 逐条读了 M1/M2 的真实签名，修正了计划草图的 **三处漂移**（全部在 resolver 测试里）：`QueryResult.subjects()` ⇒ **`candidates()`**、`SubjectId.localPart()` ⇒ **`localId()`**（第三处是同一批的连带改写）。同批核实无误的还有：`ResolveContext(SimulationState, SimosTimestamp)`、`Address.namespace()`、`Entity.of(name)` / `Entity.of(kind, name)`、`Index(List<Integer> coords)`、`Namespace(String ident)`、`MapResolver` 的 `single/empty/entityAddress` 私有助手形制、`GameMap` 八组件、`HexCell(String, double)`、`TerrainType` 十参数序、`TerrainCatalog.of/KEYS`、`GenerationSpec.defaults(long)`、`InMemoryInfoSystem.empty()`、`HexCoord.neighbors()/distanceTo()/parse/toString`、`EventMode.ADD/SET`、`SimulationState.module(String) → Optional<Snapshot>`。
 
 **3. 类型一致性**：`FieldDelta.diff/rebuild`（Task 1）在 Task 4/7 被调用，签名一致；`Unit` 的 9 个组件在 Task 6/7/10/11 逐处一致；`Route`/`Movement` 在 `io.mosire.simos.unit`（**不是** `...unit.move`）——Task 6 定义、Task 10 使用、Task 11 构造，三处一致；`MovementState` 的四组件与 `UnitMoves` 的构造点一致；`UnitOperations` 的 8 个签名**逐字照 spec §4.6**（`placeAt` 收 `Optional<HexCoord>`，不是 `HexCoord`）。
+
+---
+
+## 执行期取代说明汇总（Task 1~12 关账时回填）
+
+> M3 执行期发现并处置的计划缺陷/取值校正，目前只在各 brief/report/台账里；本节是**索引**——只记"计划原文在哪、取代后写成什么、详情在哪"，**不重写、不删除任何草图原文**。
+> 出处三件套：`task-N-brief.md`（派单扫描结论）+ `task-N-report.md`（实测处置）+ 台账 `progress.md`（关账裁定），均在 `.superpowers/sdd/2026-09-17-social-unit-simos-plan/` 下。
+
+| 任务 | 计划原文所在 | 取代后写法（一句） | 详情出处 |
+|---|---|---|---|
+| Task 4 | 第 945 行：`applyOfUnchanged` 用例里 `…isSameAs(base.populations())` | `SocialData` 构造期总是冻结拷贝 ⇒ `apply` 必返回新实例，`isSameAs` 不可满足（首轮实测即红）；改 `containsExactlyEntriesOf`（含迭代序，贴 spec §3.4 的"原样（连键序）"冻结语义），实现一字未动 | task-4-brief.md / task-4-report.md；progress.md Task 4 |
+| Task 6 | Step 1 的 `legalReparentAcrossTimeIsNotACycle` 测试数据（b 单段 `[T0→a]`） | 单段数据按"向前恒定延拓"在 t≥10 与 `a→b` 同在场 ⇒ 真环，计划的实现对该数据必抛（首轮实测确实抛）；改**测试数据**：b 补 `[T10→空]`（合法改编要求双方同刻各改一段），实现一字未动 | task-6-brief.md R-6-b / task-6-report.md §二.2；progress.md Task 6 |
+| Task 8 | Step 5 的 m1（`scale` 的 `floorDiv` → `Math.round`）与 m3 靶子（计划自带 minStep 用例） | ① m1 前提不成立：`v = moveCost×1000` 恒使 `+500` 不进位，`scale` 是精确乘法 ⇒ `Math.round` 形态为**等价变体**（1 002 990 对 (moveCost,‰) 扫描 0 分叉），真变异改跑 m1'（`costOf` 丢 ×1000）红在 `stepCostsMatchTheFrozenFixture:21`；② 计划自带 minStep 用例用 `map(STEEP_65)`（无 999 格）对 m3 无判别输入 ⇒ "全不可通行 ⇒ 0" 边界**转正**为提交用例 `allImpassableMapHasZeroLowerBound`（fix-1），m3 重跑红点落 `:73` | task-8-brief.md R-8-a / R-8-b；task-8-report.md（含 fix-1 节）；progress.md Task 8 |
+| Task 9 | Step 1 的绕行路径与成本数字（`H00→H11(1,1)→H21(2,1)→H20`；11000/3000） | ① 计划绕行首步 `H00→H11` 的 `distanceTo=2`（不相邻），原图从 H00 只能走山格 ⇒ 改 `H21`→`H01=(0,1)`（平地），绕行 = `H00→H01→H11→H20`（三步各 `distanceTo=1`）；② `11000/3000` 按 ‰1000 写错 ⇒ 按冻结夹具 ‰500 重算：直线 5500、绕行 1500（`MoveFixture.unit()` 未动） | task-9-brief.md R-9-a；task-9-report.md；progress.md Task 9 |
+| Task 10 | Step 5 的 m1（`budget >= edgeCost` → `>`） | at=23 时第二步 33500 > 32500 仍 `ARRIVED`、提交套件无"预算恰等于段成本"的等值边界用例 ⇒ m1 存活（实测在案，8 测试世界）；补 `exactBudgetArrivalIsArrived`（speed=5、at=T0+9 ⇒ 预算恰 45000）后重跑 m1 ⇒ 红点落该用例（`remaining=0` 触发构造期 IAE——"恰够也是够"） | task-10-brief.md R-10-b；task-10-report.md；progress.md Task 10 |
+| Task 11 | Step 1 的 `planRouteRequiresAStartThatMatchesTheEffectivePosition`（COMPANY 无位置 ⇒ 抛）与 `reparentAppendsASegmentAndRejectsUnknownParents`（断言 `parent().valueAt(T0)).isEmpty()`） | ① COMPANY 位置从 BRIGADE 继承出 H11 ⇒"无位置 ⇒ 抛"不成立，改钉 `create` 出的 `u-lost`（真整链无位置）；② COMPANY 在 T0 已是 BRIGADE 下属 ⇒ `valueAt(T0)` 恒非空，该断言对正确实现也红 ⇒ 改钉 `create` 出的无父新兵 `u-recruit`（T0 空、T10 起 BRIGADE）的追加段时间作用域 | task-11-brief.md R-11-a；task-11-report.md §二；progress.md Task 11 |
+| Task 12 | Step 3 的 `resolveRootLevel`：`if (!name.contains(".")) return empty();` | 单元素链（名字无点）会被该守卫直接空候选，与计划自己的 `chainWithMultipleHitsIsOrderedByUnitId`（期望 2 候选）矛盾，spec §4.8 也不要求链含点 ⇒ **删守卫**：ID 未命中即走链式定位；类 Javadoc 的"未命中且名字含 . 才走链式定位"同步改为"未命中即走链式定位"（"ID 优先 = 身份优先于名字"的理由仍成立） | task-12-brief.md R-12-a；task-12-report.md；progress.md Task 12 |

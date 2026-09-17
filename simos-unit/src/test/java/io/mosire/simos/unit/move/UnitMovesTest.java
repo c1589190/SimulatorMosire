@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -48,6 +49,32 @@ class UnitMovesTest {
     assertThat(state.nextHex()).contains(H13);
     assertThat(state.remainingEdgeCostMillis()).hasValue(5000L);
     assertThat(state.status()).isEqualTo(MovementStatus.IN_TRANSIT);
+  }
+
+  /**
+   * ★ R-13-b（M3 关账补条）：判据二三行表的**中间值直接断言**——{@code 40 − 12.5 = 27.5}、{@code 27.5 − 32.5 = −5}。
+   *
+   * <p>上面的可观察量（{@code currentHex = H12} + {@code remaining = 5000}）只是**联合**推出 27500 / −5000；本条用生产代码
+   * 取值（预算 = {@code Movement.speedAtDeparture × 1000 × Δt}，两段成本 = {@code
+   * TerrainMovementCost.costMillis}）， 把每一行钉在**字面量**上（写成恒等式没有判别力）。变异靶子：m13v-1 让 {@code costOf} 丢
+   * ×1000 ⇒ 三条断言全红。
+   */
+  @Test
+  void criterionTwoArithmeticMatchesTheSpecTable() {
+    Unit departed = inTransit(20);
+    Movement movement = departed.movement().orElseThrow();
+    SimosTimestamp at = T0.plus(20);
+    long budget = movement.speedAtDeparture() * 1000L * (at.tick() - movement.departedAt().tick());
+    long firstCost =
+        TerrainMovementCost.INSTANCE.costMillis(H11, H12, departed, map(STEEP_65)).orElseThrow();
+    long secondCost =
+        TerrainMovementCost.INSTANCE.costMillis(H12, H13, departed, map(STEEP_65)).orElseThrow();
+
+    assertThat(budget - firstCost).as("预算 40 MP，付第 1 段 12.5 ⇒ 剩 27.5").isEqualTo(27500L);
+    assertThat(budget - firstCost - secondCost).as("27.5 付不起第 2 段 32.5 ⇒ 差 −5").isEqualTo(-5000L);
+    assertThat(secondCost - (budget - firstCost))
+        .as("evaluate 的 remaining = 32.5 − 27.5 = 5")
+        .isEqualTo(5000L);
   }
 
   @Test
