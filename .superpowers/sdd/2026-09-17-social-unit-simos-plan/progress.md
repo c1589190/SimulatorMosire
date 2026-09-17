@@ -68,3 +68,15 @@
 - **追认（执行期）**：计划第 703 行消息里的 ASCII 引号确会截断字符串字面量（实现者 hexdump 实证），按计划 809 行自带处置改为「同刻多事件」——两处均在计划授权内。
 - **关切（不挡关账）**：① m1 的连带红已全列——形态是"同根因"而非"判别力不足"；② `mutate.py` 注释里 m1 机制的初稿预测值（20875）与实测（16700）不符，已按实测订正入库——`.kept` 证据本就是实测值；③ simos-social 首个测试目录建立，surefire 正常识别；④ 实现者途中拦下一个误入的 `__pycache__/*.pyc`（未入库）。
 - **下一任务** Task 4（`SocialData` / `SocialSnapshot` / `SocialChangeSet` + 往返测试）。
+
+## Task 4 关账（2026-09-17）
+
+- **交付** `2815463`（3 类型 + 2 测试类，5 文件 +354）+ `229664f`（报告 + 证据，10 文件）。
+- **评审 = 控制器自读 diff**：三类型形制照计划（SocialData 冻结拷贝 + 逐键查 null；SocialSnapshot namespace 固定；SocialChangeSet **全委托** FieldDelta、不重实现）；往返框架照 M2 形制（豁免集空被单独钉死、default 抛、双向 subset）。
+- **控制器独立复核**：`SocialChangeSetTest` 7 + `SocialRoundTripTest` 4 = **11/11 绿**（本机当场跑）。
+- **m2 探针轨迹（R-4-b 决策规则完整兑现，实测）**：① 现状夹具 → **存活**（0 红，印证扫描结论"断言序不敏感是形态问题"）；② 加键至 5 → **仍存活**（0 红，实测否证"加键能救"）；③ 补 `populationOrderFollowsInsertionOrder`（`containsExactly` 钉插入序）→ **唯一红点落新用例 :76**；独立 20 JVM 实测该夹具 `Map.copyOf` **20/20 打乱**（8 种槽位序）——新护栏判别力已量过。
+- **裁定（执行期，取代计划第 945 行的 `isSameAs`）**：计划测试与计划自带实现**自相矛盾**——`SocialData` 构造期总是冻结拷贝 ⇒ `apply` 返回的必是新实例，`isSameAs` 不可满足（首轮实测即红）。改为 `containsExactlyEntriesOf`（**含迭代序**，更贴 spec §3.4 的"原样（连键序）"冻结语义）；实现一字未改。**追认**。
+- **裁定（执行期，补 R-4-b 序观察点）**：spec §3.1 冻结要点 1 的"保序不可变"在 Task 4 原断言下**零观测点**；补一用例（5 键非平凡序）使其可被 m2 变异捕获。依据 = 计划原文"加键造捕手"的意图 + G13 护栏自证纪律。
+- **m1/m3 红点**：m1 = 4 红（恒 Unchanged 同根因）、m3 = 4 红（apply 不吃 delta 同根因），各轮 CE=0、改前全绿。
+- **关切（不挡关账）**：① m1/m3 的 `.kept` 摄于 S0（11 用例补之前），红点集合不变、序用例不调用 between/apply，已如实记入报告；② m2 变异须连删 `Collections` import（否则 UnusedImports 让红变构建红）——装置已记。
+- **下一任务** Task 5（`SocialResolver` + R12/R13 的 social 半）。
