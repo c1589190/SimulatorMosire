@@ -1,0 +1,34 @@
+# 实现前编译失败证明（R-6-d：加实现前的唯一一次红 = 编译错）
+# 命令：./mvnw -pl simos-unit -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=UnitIdTest,UnitTest,UnitStateTest test
+# rc=1；此时 simos-unit/src/main 六类尚未落盘，仅三个测试类在。
+COMPILATION ERROR count = 1
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[24,18] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:[24,35] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:[33,20] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitTest.java:[33,10] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitIdTest.java:[13,20] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitIdTest.java:[14,54] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitIdTest.java:[14,16] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitIdTest.java:[19,34] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitIdTest.java:[22,34] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitIdTest.java:[23,30] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[26,16] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[27,13] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[30,56] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[43,9] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[43,17] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[44,19] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[45,19] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[47,34] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[55,5] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[56,13] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[57,17] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[61,49] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[62,56] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[72,5] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[74,9] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[74,17] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[75,19] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[76,19] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[77,5] cannot find symbol
+[ERROR] /home/cna/SimulatorMosire/simos-unit/src/test/java/io/mosire/simos/unit/UnitStateTest.java:[77,27] cannot find symbol

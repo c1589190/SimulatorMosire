@@ -1,0 +1,5 @@
+# R-6-a 实测：计划原稿形态（helper 内 unmodifiableMap）→ SpotBugs 报 EI_EXPOSE_REP
+# 命令：./mvnw verify（第一次，2026-09-18，Unit.java 为计划原稿 frozenEquipment 形态）
+# rc=1，BUILD FAILURE；处置后（helper 只拷贝校验、赋值处冻结）复跑 rc=0。
+[ERROR] Medium: io.mosire.simos.unit.Unit.equipment() may expose internal representation by returning Unit.equipment [io.mosire.simos.unit.Unit] At Unit.java:[line 20] EI_EXPOSE_REP
+[INFO] BUILD FAILURE

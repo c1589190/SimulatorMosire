@@ -1,0 +1,141 @@
+=================== ROUND m3t6v-3 ===================
+目标：UnitState.java 的 effectivePosition 改成先问父、后问己 ⇒ 期望红 ownPositionWinsOverParent（自身有位置时被父的位置盖掉）；effectivePositionPrefersOwnThenWalksToParent / noPositionAnywhereIsEmpty 应仍绿，实际红点以日志为准
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t6lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 124 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.unit.UnitTest
+Running io.mosire.simos.unit.UnitStateTest
+Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1 个，其中新增 0 个）：
+  simos-unit/src/main/java/io/mosire/simos/unit/UnitState.java  md5 原件=cc748cbf2268bf3ad354fbdb07a53f4a  变异体=6a1fd3172a1d054f99cabe27375817a2
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-unit 跑过的测试类数 = 3
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.unit.UnitTest
+Running io.mosire.simos.unit.UnitStateTest
+Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 12, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.015 s <<< FAILURE! -- in io.mosire.simos.unit.UnitStateTest
+Tests run: 12, Failures: 1, Errors: 0, Skipped: 0
+UnitStateTest.ownPositionWinsOverParent:124 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+UnitStateTest.ownPositionWinsOverParent:124 
+--- surefire 明说（实际失败类：日志 FAILURE! 行 + 单元三测试类的 .txt 摘要，去栈帧）---
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.015 s <<< FAILURE! -- in io.mosire.simos.unit.UnitStateTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.048 s -- in io.mosire.simos.unit.UnitTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitStateTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.015 s <<< FAILURE! -- in io.mosire.simos.unit.UnitStateTest
+io.mosire.simos.unit.UnitStateTest.ownPositionWinsOverParent -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Expecting actual:
+  Optional[2_2]
+to contain:
+  1_1
+but did not.
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitIdTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.unit.UnitIdTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
