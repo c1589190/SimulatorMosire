@@ -1,0 +1,43 @@
+# Task 15 门禁留痕：./mvnw clean verify（控制器当场执行）
+# 日期：2026-09-17T20:48:21+08:00　完整日志：/tmp/task15-clean-verify.log（467 行，未入库）
+# 退出码：rc=0
+
+## Reactor 汇总
+[INFO] SimulatorMosire .................................... SUCCESS [ 13.457 s]
+[INFO] UtilSimos .......................................... SUCCESS [01:02 min]
+[INFO] MapSimos ........................................... SUCCESS [01:19 min]
+[INFO] SocialSimos ........................................ SUCCESS [ 10.707 s]
+[INFO] UnitSimos .......................................... SUCCESS [  9.796 s]
+[INFO] CoreSimos .......................................... SUCCESS [ 16.895 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  03:12 min
+[INFO] Finished at: 2026-09-17T20:46:20+08:00
+
+## 各模块用例汇总（Surefire）
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 245, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+（上行依次为 simos-util 156 / simos-map 245 / simos-core 15；social 与 unit 无测试）
+
+## 新增守卫类（Task 14）
+[INFO] Running io.mosire.simos.map.region.RegionIndexGuardTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.102 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+[INFO] Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.172 s -- in io.mosire.simos.map.RegressionGuardsTest
+
+## SpotBugs
+[INFO] BugInstance size is 0
+[INFO] BugInstance size is 0
+[INFO] BugInstance size is 0
+[INFO] BugInstance size is 0
+[INFO] BugInstance size is 0
+
+## 错误行
+^\[ERROR\] 行数 = 0
+^\[WARNING\] 行数 = 1
+
+## 唯一一条 WARNING 的出处（已当场核）
+[WARNING] No files found to generate report on. Check if compile phase has been run.
+→ 出在聚合 pom `simos-parent`（无源码，SpotBugs 无物可析），每次构建都有，无害。

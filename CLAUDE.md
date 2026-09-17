@@ -146,7 +146,7 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | 实现计划 | ✅ 已落（`2610229` + 本机化修正）；阶段推进机制见其 **§六**。分支推送状态见该计划 §二 M1 的关账记录 |
 | M0 | ✅ 已完成（5/5，2026-09-16 本会话内联执行；`./mvnw clean verify` 全绿） |
 | M1 | ✅ 已完成（11/11，2026-09-16；spec 五项待决已裁决，`./mvnw clean verify` 全绿）——设计见 `docs/superpowers/specs/2026-09-16-util-simos-design.md`，计划见 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` |
-| M2 | 🔄 进行中——总纲 §十三 的 MapSimos 待决项**已全部裁决**（2026-09-16，含用户四项裁定：7 项地形词表、边界入存储、工作区产物全进、恢复点选 B）；spec 见 `docs/superpowers/specs/2026-09-16-map-simos-design.md`，15 任务计划见 `docs/superpowers/plans/2026-09-16-map-simos-plan.md`。**Task 1~13 已关账**（逐任务裁定与跨任务约束见 SDD 台账 `.superpowers/sdd/2026-09-16-map-simos-plan/progress.md`；台账在 gitignore 下、以 `git add -f` 入库）。★ **用户 2026-09-17 裁定：Task 13 关账即停，Task 14（L1~L9 守卫）/ Task 15（M2 关账）未派单**——M2 尚未关账，交接点在台账「Task 13 关账」节。已知挂起项：`GameMap` 无 id ⇒ `map:<mapId>` 的 mapId 只回显不可校验 |
+| M2 | ✅ 已完成（15/15，2026-09-17）——设计见 `docs/superpowers/specs/2026-09-16-map-simos-design.md`（其 §1.2 是关账判据），计划见 `docs/superpowers/plans/2026-09-16-map-simos-plan.md`，逐任务裁定与跨任务约束见 SDD 台账 `.superpowers/sdd/2026-09-16-map-simos-plan/progress.md`（gitignore 下、以 `git add -f` 入库）。关账四条判据逐条核过：① L1~L9 逐条守卫（`RegressionGuardsTest` + `region/RegionIndexGuardTest`，提交 `9152749`，9 轮变异逐条自证）；② 框选随机化与自动河流各有 ★ 验收；③ `./mvnw clean verify` 绿（rc=0、416 条用例、`BugInstance size is 0` ×5）；④ Task 1~14 每条护栏都有故意违规用例自证。关账报告 `task-15-report.md`（含"我未能核实的"清单）。挂起项：`GameMap` 无 id ⇒ `map:<mapId>` 的 mapId 只回显不可校验；重建河流会整份覆盖 `EdgeTags`（合并语义归 Command 层，编辑流实现者必须处理） |
 | 远程仓库 | `https://github.com/c1589190/SimulatorMosire`（**PRIVATE**，默认分支 `main`） |
 | 推送状态 | ✅ **已推送**（2026-09-17）。用户原话「你爱推就推反正是私有仓库」。★ 原写作"本地领先远程、用户裁定不擅自推送"——**"不擅自推送"从来不是用户的裁定**，是控制器自加的规则，已撤 |
 
