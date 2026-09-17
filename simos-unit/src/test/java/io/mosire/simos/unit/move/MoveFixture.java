@@ -63,6 +63,27 @@ final class MoveFixture {
         GenerationSpec.defaults(0L));
   }
 
+  /** 三个格全是 {@code IMPASSABLE_999}：判"**无可通行格 ⇒ 下界返回 0**"（spec §4.3 第 6 条）的输入。 */
+  static GameMap allImpassableMap() {
+    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    hexes.put(H11, new HexCell(IMPASSABLE_999.key(), 0.5));
+    hexes.put(H12, new HexCell(IMPASSABLE_999.key(), 0.5));
+    hexes.put(H13, new HexCell(IMPASSABLE_999.key(), 0.5));
+    Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
+    terrainTypes.put(FLAT_25.key(), FLAT_25);
+    terrainTypes.put(STEEP_65.key(), STEEP_65);
+    terrainTypes.put(IMPASSABLE_999.key(), IMPASSABLE_999);
+    return new GameMap(
+        hexes,
+        Map.of(),
+        Map.of(),
+        terrainTypes,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
+  }
+
   /** 判据二的单位：speed = 2 MP/小时、mobility ‰500、位置 {@code [1,1]}、无在途路线。 */
   static Unit unit() {
     return new Unit(

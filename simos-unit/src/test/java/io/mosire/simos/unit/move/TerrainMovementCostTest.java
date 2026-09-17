@@ -65,4 +65,11 @@ class TerrainMovementCostTest {
         .as("最便宜的可通行地形是 25 ⇒ 12500；999 那条不算")
         .isEqualTo(12500L);
   }
+
+  @Test
+  void allImpassableMapHasZeroLowerBound() {
+    assertThat(cost.minStepCostMillis(unit(), allImpassableMap()))
+        .as("三个格全是 999 ⇒ 无可通行格 ⇒ 0（合法下界，spec §4.3 第 6 条）")
+        .isEqualTo(0L);
+  }
 }
