@@ -211,7 +211,8 @@ M1/M2/M3 spec 与计划均已关账。
 4. **清理 worktree**：`git worktree list` 逐个 `remove`；★ 但**先确认该分支已合并或已记档**。
    `.claude/` 本来就不入库，别 `-A`。
 5. **回填**：
-   - spec §二 / §〇.3 补 `simos-util` 的 jdk8（CLAUDE.md 模块表已改，**spec 还没改**）；
+   - ~~spec §二 / §〇.3 补 `simos-util` 的 jdk8~~ ★ **实测：spec 里早就有了**（〇.3 第 9 条 + §二 的那条），本台账这条**是陈旧的**。当场复核反而揪出真问题：那两处都写着"白名单要同步改，否则 enforcer 让构建失败"——**实测是错的**（`simos-util/pom.xml:52` 的 enforcer 只有 `bannedDependencies` 的 `excludes`、**无 `includes`**）⇒ 已按实测改正，并把"推导出来的风险当成既成事实"这层教训一并写进 spec（CLAUDE.md 模块表**早就改对了**，只有 spec 那两行是错的）；
+   - **spec §6.2 的事务写法**（Task 5 探针实测）：`setAutoCommit(false)` + `BEGIN IMMEDIATE` 在 sqlite-jdbc 3.53.4.0 上抛 `cannot start a transaction within a transaction`（该驱动在 autoCommit=false 时自己开事务）⇒ 已把 §6.2 改成"保持 autoCommit 出厂值 + 显式 SQL 边界"并附两个探针的实测表；
    - **`Region.hexes` 的 `Set.copyOf` 上游发现**（裁定 14，只在关账呈报，M4 不修）；
    - Task 17 的那条 `install` **已在 06:16 提前执行**（裁定 17），关账只需复核。
 6. **如实写"未完成"**：没跑完的任务**不写成"待办"**，写成**带裁定的遗留条目**——

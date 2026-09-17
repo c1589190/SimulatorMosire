@@ -71,7 +71,11 @@
    | `simos-unit/.../Unit.java:29` | `Optional<Movement> movement` |
    三处都在 `UnitSnapshot → UnitState → Map<UnitId, Unit>` 之下。`jackson-databind` **本体不处理 `Optional`**（会序列化成 `{"present":…}`，**值直接丢**）。
    **裁定：加 `jackson-datatype-jdk8`**，理由三条：① 它是 **Jackson 家族**构件、**不是领域模块** ⇒ 不违反铁律 3、不影响 ADR-1，只动"依赖白名单"这条自我约束；② 版本由**父 POM 已 import 的 `jackson-bom`** 提供（`jackson.version = 2.22.2`）⇒ 不需新增版本属性；③ 手写替代方案要在 `SegmentedSeries<Optional<…>>` 这种**嵌套泛型位置**工作 ⇒ 那是一份**手工对着状态类型维护的平行结构**，**正是 L1 事故（`MapDiff` 漂移）的形态**，也正是铁律 5 的由来。
-   **代价（如实记）**：`simos-util` 的依赖白名单与它的 `bannedDependencies` **要一并改**（否则 enforcer 让构建失败）；这是本项目**首次**动 util 的白名单，`CLAUDE.md` 的模块表与"换设备自检清单"要同步。
+   **代价（2026-09-18 修正）**：★ **本节原写"`simos-util` 的依赖白名单与它的 `bannedDependencies` 要一并改，否则 enforcer 让构建失败"——该句是错的，已撤**。
+   控制器当场实测：`simos-util/pom.xml:52` 的 enforcer 只有 `<bannedDependencies>` 的 `<excludes>`，**没有 `<includes>`** ⇒ 它是一份**黑名单**、不是白名单，**加 Jackson 家族构件不会触发它，enforcer 块一个字都不用改**。
+   **实证**：`ce98212` 只往 `<dependencies>` 里加了 `jackson-datatype-jdk8`（main scope，`simos-util/pom.xml:28`）、未碰 enforcer，其后 `simos-util` 的 verify 实测 **BUILD SUCCESS**（Task 3 落地的 532 用例全绿、`BugInstance size is 0` ×4）。
+   ⇒ 要同步的**只有 `CLAUDE.md` 的模块表**（已改），**没有第二个真相来源**。
+   ★ **这一句的教训本身就是 CLAUDE.md 形态 5 的禁忌**：它把**推导出来的风险**（"加依赖当然要改白名单"）当成了既成事实写进 spec，而当时的 spec 草案里并没有人跑过 enforcer。
    **仍未核**：`MovementState` 的 `Optional`/`OptionalLong` 是 `UnitMoves.evaluate` 的**返回值**，是否进快照树——不影响本裁定。
 10. ★ **三个模块的 `apply` 一律「收具体 ChangeSet、返回模块状态类型」**（**执行期实测**，2026-09-18 05:1x）：
 
@@ -128,7 +132,7 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 
 - **ADR-1 已生效**：`simos-core` 的 main scope 只有 `simos-util` + `agentlib-mosire`；map/social/unit 在 **test scope**，且由 `enforce-core-boundaries` 在构建期钉住（含故意违规自证，已绿）。
 - **本 spec 给 core 的 pom 加两个 main scope 依赖**：`jackson-databind`、`sqlite-jdbc`（〇.3 第 8 条）。两者都**不是领域模块** ⇒ `bannedDependencies` 与 ADR-1 均不受影响，**不需要改 enforcer 块**。
-- ★ **`simos-util` 的 pom 加 `jackson-datatype-jdk8`**（2026-09-18 执行期裁定，〇.3 第 9 条）：本项目**首次**动 `simos-util` 的依赖白名单。它同样是 Jackson 家族构件、**不是领域模块** ⇒ ADR-1 不受影响；但**白名单本身要同步改**，否则 enforcer 会让构建失败。
+- ★ **`simos-util` 的 pom 加 `jackson-datatype-jdk8`**（2026-09-18 执行期裁定，〇.3 第 9 条）：它同样是 Jackson 家族构件、**不是领域模块** ⇒ ADR-1 不受影响。★ **本行原接着写"白名单本身要同步改，否则 enforcer 会让构建失败"——据实测撤回**：`simos-util` 的 enforcer 只有 `bannedDependencies` 的**黑名单**（无 `includes`），加构件**不触发它**；修正与实证见 〇.3 第 9 条。
 - Core **不 import 任何 `io.mosire.simos.{map,social,unit}`**——这条由构建期强制，不由 reviewer 盯。
 - 三个模块**不依赖 core**（各自的 `bannedDependencies` 已就位，M3 现状）。
 - 跨模块可见性（"某 hex 上有哪些单位"）本轮**仍不落地**（§〇.4）。
@@ -370,14 +374,25 @@ CREATE INDEX IF NOT EXISTS idx_events_correlation_id_seq        -- ★ 本 spec 
 ### 6.2 事务边界（C23）
 
 ```java
-conn.setAutoCommit(false);
+// ★ 保持 autoCommit 的出厂值不动，事务边界一律用**显式 SQL** 驱动（见下方修正）
 try (Statement s = conn.createStatement()) { s.execute("BEGIN IMMEDIATE"); }
   ... INSERT revisions ... INSERT events ...
-conn.commit();
-// 任何异常 ⇒ conn.rollback()，且清理自身失败不得顶掉原异常
+try (Statement s = conn.createStatement()) { s.execute("COMMIT"); }
+// 任何异常 ⇒ s.execute("ROLLBACK")，且清理自身失败不得顶掉原异常
 ```
 
 `BEGIN IMMEDIATE` 在事务一开始就拿写锁 ⇒ 不出现"读事务升级为写事务"时的 `SQLITE_BUSY` 僵局。单连接 + 私有锁下这是冗余的，但冗余的方向是安全。
+
+★★ **修正（2026-09-18 执行期实测，Task 5 当场探针，/tmp 不进仓库）——本节原先的 `setAutoCommit(false)` + `BEGIN IMMEDIATE` 组合在 sqlite-jdbc 3.53.4.0 上根本跑不起来**：
+
+| 探针 | 做法 | 实测结果 |
+|---|---|---|
+| 1 | `setAutoCommit(false)` 后执行 `BEGIN IMMEDIATE` | `[SQLITE_ERROR] (cannot start a transaction within a transaction)` |
+| 2 | 保持 autoCommit 出厂值（true） | 显式 `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` **可行**；而 `conn.commit()` / `conn.rollback()` 抛 `database in auto-commit mode` |
+
+**根因**：该驱动在 `autoCommit=false` 时**由驱动自己开事务**（字节码可见 `DB.execute(sql, autoCommit)` 传标 + `JDBC3Connection.tryEnforceTransactionMode()`）⇒ 再手写 `BEGIN` 就成了"事务里开事务"。
+
+**落地**：保持 autoCommit 出厂值不动，用显式 SQL 驱动事务边界。**C23 的语义（单事务、写锁前置、显式边界、异常即回滚）一样不少**，变的只是 JDBC 层的手段；类 Javadoc 里已写明。⇒ **本节是"手段"的权威不再是唯一来源，`SqliteStore` 的类 Javadoc 与实现才是。**
 
 ### 6.3 快照 JSON（C26）
 
