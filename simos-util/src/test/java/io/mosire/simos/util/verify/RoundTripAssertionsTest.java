@@ -1,5 +1,6 @@
 package io.mosire.simos.util.verify;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -9,9 +10,16 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.io.IOException;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** spec §九：正常往返通过、盖错版本戳抛错、破裂时给得出三份 toString。 */
+/**
+ * spec §九：正常往返通过、破裂时给得出三份 toString。
+ *
+ * <p>★ M4（spec §十）：**快照专用入口与其版本戳用例已删**——它守的性质升级为结构不变量（C27，由 revision 行的 parent 指针承担），并有一条全仓 0
+ * 处的扫描护栏（R15，本文件末条）钉住"不许复活"。本文件由此**不得再出现那个被删方法的名字**（否则 R15 扫到自己）。
+ */
 class RoundTripAssertionsTest {
 
   @Test
@@ -23,31 +31,6 @@ class RoundTripAssertionsTest {
                 RoundTripAssertions.assertRoundTrip(
                     base, target, ToySnapshot::diff, ToySnapshot::apply))
         .doesNotThrowAnyException();
-    assertThatCode(
-            () ->
-                RoundTripAssertions.assertSnapshotRoundTrip(
-                    base, target, ToySnapshot::diff, ToySnapshot::apply))
-        .doesNotThrowAnyException();
-  }
-
-  @Test
-  void aMisStampedChangeSetIsRejected() {
-    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
-    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
-    // 断言必须钉到**版本戳守卫自己的文案**，不能钉 "baseRevision"：盖错戳时 `apply` 会照用那个错戳，
-    // 于是兜底的往返破裂消息也会抛 AssertionError，而它拼进去的 `ToyChangeSet` 是 record，
-    // toString 形如 `ToyChangeSet[baseRevision=999, ...]` —— **同样含 "baseRevision"**。
-    // 钉 "baseRevision" 的话，删掉版本戳守卫本用例照样绿，等于空转护栏（T7 的 "t" 同一形态）。
-    assertThatThrownBy(
-            () ->
-                RoundTripAssertions.assertSnapshotRoundTrip(
-                    base,
-                    target,
-                    (b, t) ->
-                        new ToyChangeSet(new RevisionId(999), t.timestamp(), t.alpha(), t.beta()),
-                    ToySnapshot::apply))
-        .isInstanceOf(AssertionError.class)
-        .hasMessageContaining("必须相对它被施加的 base");
   }
 
   @Test
@@ -70,17 +53,8 @@ class RoundTripAssertionsTest {
                     base, target, ToySnapshot::diff, (ToyChangeSet c, ToySnapshot b) -> null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("apply 返回 null");
-    // `diff 返回 null` 这条守卫在**两个公开方法里各写了一遍**，上面那条只盖住了 `assertRoundTrip` 的那一份：
-    // 删掉 `assertSnapshotRoundTrip` 里的那份，全套用例照样绿——这正是本里程碑刚清理过的
-    // "同一个 `FacetRegistry` 里 `facetNames()` 钉住了、`queryAll()` 漏了"的同一形态（**同文件内的不对称即是证据**）。
-    // 删掉这份守卫的实现会走到 `changeSet.baseRevision()`，抛的是热心 NPE（消息里是 `changeSet`），
-    // 不含 "diff 返回 null"，故本断言转红。
-    assertThatThrownBy(
-            () ->
-                RoundTripAssertions.assertSnapshotRoundTrip(
-                    base, target, (ToySnapshot b, ToySnapshot t) -> null, ToySnapshot::apply))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("diff 返回 null");
+    // ★ M4：第三个断言（盖快照专用入口的那份同形守卫）随该入口一并删除——它守的两份重复守卫只剩
+    // `assertRoundTrip` 这一份，上面的断言继续钉住它（spec §十 的处置）。
   }
 
   @Test
@@ -110,24 +84,6 @@ class RoundTripAssertionsTest {
   }
 
   @Test
-  void aBrokenRoundTripThroughTheSnapshotEntryIsAlsoCaught() {
-    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
-    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
-    // 版本戳**正确**（= base 的版本），只有 beta 漏了 —— 版本戳守卫不会再替我们拦下，
-    // 于是唯一能响的就是 `assertSnapshotRoundTrip` 自己的那次 checkApplied（impl:42）。
-    ToyChangeSet stamped =
-        new ToyChangeSet(base.ref().revision(), target.timestamp(), target.alpha(), base.beta());
-    assertThatThrownBy(
-            () ->
-                RoundTripAssertions.assertSnapshotRoundTrip(
-                    base, target, (b, t) -> stamped, ToySnapshot::apply))
-        .isInstanceOf(AssertionError.class)
-        // 钉 `checkApplied` 独有的措辞（版本戳守卫的报文不含它），
-        // 否则"因错误的原因转红"——即被版本戳守卫拦下——也会通过。
-        .hasMessageContaining("往返不变式破裂");
-  }
-
-  @Test
   void theFrameworkDoesNotRequireSnapshotImplementations() {
     // spec §9.2 给 `assertRoundTrip` 的 `S` **不设上界**——它要能服务 `SimulationState` 这类非快照类型。
     // G13（评审判 M-2）：这条性质写在实现的 Javadoc 里，此前**没有任何用例守它**——给 `S` 加回
@@ -140,6 +96,30 @@ class RoundTripAssertionsTest {
                 RoundTripAssertions.assertRoundTrip(
                     base, target, PlainState::diff, PlainState::apply))
         .doesNotThrowAnyException();
+  }
+
+  /** R15：被删的快照专用入口**不许在别处复活**——它守的性质已升级为结构不变量（C27），留着就是同一事实两个来源。 */
+  @Test
+  void snapshotRoundTripAssertionIsGoneFromTheWholeRepo() throws IOException {
+    // ★ needle 拆成两半拼出来：本文件若写下完整方法名的连续字面量，全仓扫描会扫到本文件自己，用例恒红。
+    //   （RepoSourceScan 自身不含这个名字——它只提供扫描能力，不写被扫的串。）
+    //   ★ rawContent 声明受检异常，而 lambda（Predicate）传不出去——计划草图此处编不过，
+    //   故经下面的 content() 拆包成 UncheckedIOException（执行期校正）。
+    String needle = "assertSnapshot" + "RoundTrip";
+    List<String> hits =
+        RepoSourceScan.javaFilesUnder(".").stream()
+            .filter(p -> content(p).contains(needle))
+            .map(RepoSourceScan::relative)
+            .toList();
+    assertThat(hits).as("全仓应为 0 处（spec §十一 R15）").isEmpty();
+  }
+
+  private static String content(java.nio.file.Path file) {
+    try {
+      return RepoSourceScan.rawContent(file);
+    } catch (IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
   }
 
   /** 刻意**不**实现 `Snapshot`：证明框架对 `S` 真的没有上界。 */

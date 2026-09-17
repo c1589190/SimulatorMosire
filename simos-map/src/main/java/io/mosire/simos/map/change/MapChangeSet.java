@@ -13,6 +13,7 @@ import io.mosire.simos.map.pathway.PathwayId;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.Objects;
 import java.util.function.Function;
@@ -34,6 +35,9 @@ import java.util.function.Function;
  * parse}"，{@link #apply} 侧用对应的 {@code parse} 还原。 {@code terrainTypes} 与 {@code pathwayGroups} 的 key
  * **本来就是 {@code String}**（R-48-j） ⇒ 那两处的 {@code keyOf} 是恒等、{@code parse} 也是恒等，**不要**给它们写一个凭空的
  * parse。
+ *
+ * <p>★ **实现 util 的 {@code ChangeSet} 标记接口**（M4 / spec §十）：该接口已收窄为**标记接口**（原 {@code baseRevision()}
+ * 版本戳已删），故实现它不带来任何新义务——只是把"这是变更集"这件事落进类型系统。
  */
 public record MapChangeSet(
     FieldDelta<HexCell> hexes,
@@ -42,7 +46,8 @@ public record MapChangeSet(
     FieldDelta<TerrainType> terrainTypes,
     FieldDelta<Pathway> pathways,
     FieldDelta<PathwayGroup> pathwayGroups,
-    FieldDelta<EdgeTags> edges) {
+    FieldDelta<EdgeTags> edges)
+    implements ChangeSet {
 
   /** {@code terrainTypes}/{@code pathwayGroups} 的 key 是 String ⇒ 解析这一步是恒等（R-48-j）。 */
   private static final Function<String, String> STRING_KEY = Function.identity();

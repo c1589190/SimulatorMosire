@@ -3,6 +3,7 @@ package io.mosire.simos.unit.change;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.Objects;
 
@@ -14,9 +15,11 @@ import java.util.Objects;
  * <p>★ 差异与重建的语义不在这里：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
  * MapChangeSet} / {@code SocialChangeSet} 共用同一份机制，R1 守卫把守"全仓恰一份"）。
  *
- * <p>★ **不实现 util 的 {@code ChangeSet} 接口**（C8）：版本戳属 Revision 层，照 M2/M3-social 先例。
+ * <p>★ **实现 util 的 {@code ChangeSet} 标记接口**（M4 / spec §十，取代本段原引的 C8 结论）：该接口已收窄为**标记接口**——原 {@code
+ * baseRevision()} 版本戳已删，C8 当年"版本戳属 Revision 层"的顾虑随之消失（那是 C27 的裁定）。 实现它不带来任何新义务，**字段与既有测试零变化**（U
+ * 裁定原话）。
  */
-public record UnitChangeSet(FieldDelta<Unit> units) {
+public record UnitChangeSet(FieldDelta<Unit> units) implements ChangeSet {
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
   public static UnitChangeSet between(UnitState base, UnitState target) {

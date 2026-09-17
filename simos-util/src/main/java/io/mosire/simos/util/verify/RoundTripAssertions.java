@@ -1,8 +1,6 @@
 package io.mosire.simos.util.verify;
 
 import io.mosire.simos.util.state.ChangeSet;
-import io.mosire.simos.util.state.RevisionId;
-import io.mosire.simos.util.state.Snapshot;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
@@ -23,22 +21,6 @@ public final class RoundTripAssertions {
   public static <S, C extends ChangeSet> void assertRoundTrip(
       S base, S target, BiFunction<S, S, C> diff, BiFunction<C, S, S> apply) {
     C changeSet = Objects.requireNonNull(diff.apply(base, target), "diff 返回 null");
-    checkApplied(base, target, changeSet, apply);
-  }
-
-  /** 快照专用：额外要求变更集**相对于它被施加的那个 base**——防止 diff 盖错版本戳。 */
-  public static <S extends Snapshot, C extends ChangeSet> void assertSnapshotRoundTrip(
-      S base, S target, BiFunction<S, S, C> diff, BiFunction<C, S, S> apply) {
-    C changeSet = Objects.requireNonNull(diff.apply(base, target), "diff 返回 null");
-    RevisionId declared = changeSet.baseRevision();
-    RevisionId actual = base.ref().revision();
-    if (!actual.equals(declared)) {
-      throw new AssertionError(
-          "变更集必须相对它被施加的 base：changeSet.baseRevision()="
-              + declared
-              + "，base.ref().revision()="
-              + actual);
-    }
     checkApplied(base, target, changeSet, apply);
   }
 
