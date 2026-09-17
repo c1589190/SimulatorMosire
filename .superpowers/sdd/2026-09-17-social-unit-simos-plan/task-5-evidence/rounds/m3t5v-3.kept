@@ -1,0 +1,134 @@
+=================== ROUND m3t5v-3 ===================
+目标：SocialResolver.java 的 dataOf 删掉 instanceof 类型判断（直接强转，R-5-e 二选一之'删 instanceof'）⇒ 期望红 wrongSliceTypeThrows（ClassCastException ≠ IllegalArgumentException）；missingSliceThrows 不受影响（orElseThrow 还在），实际红点以日志为准
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t5lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 124 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.social.resolve.SocialResolverTest
+Running io.mosire.simos.social.population.PopulationSeriesTest
+Running io.mosire.simos.social.change.SocialRoundTripTest
+Running io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 30, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-social/src/main/java/io/mosire/simos/social/resolve/SocialResolver.java  md5 原件=1af68c543619915fa4cfcd3ef31422a0  变异体=5f873ad009cc384116a2f158e87c4577
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-social 跑过的测试类数 = 4
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.social.resolve.SocialResolverTest
+Running io.mosire.simos.social.population.PopulationSeriesTest
+Running io.mosire.simos.social.change.SocialRoundTripTest
+Running io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 30, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.068 s <<< FAILURE! -- in io.mosire.simos.social.resolve.SocialResolverTest
+Tests run: 30, Failures: 1, Errors: 0, Skipped: 0
+SocialResolverTest.wrongSliceTypeThrows:143 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+SocialResolverTest.wrongSliceTypeThrows:143 
+--- surefire 明说（SocialResolverTest 的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.social.resolve.SocialResolverTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.068 s <<< FAILURE! -- in io.mosire.simos.social.resolve.SocialResolverTest
+io.mosire.simos.social.resolve.SocialResolverTest.wrongSliceTypeThrows -- Time elapsed: 0.006 s <<< FAILURE!
+java.lang.AssertionError: 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalArgumentException
+but was:
+  java.lang.ClassCastException: class io.mosire.simos.social.resolve.SocialResolverTest$1 cannot be cast to class io.mosire.simos.social.SocialSnapshot (io.mosire.simos.social.resolve.SocialResolverTest$1 and io.mosire.simos.social.SocialSnapshot are in unnamed module of loader 'app')
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
