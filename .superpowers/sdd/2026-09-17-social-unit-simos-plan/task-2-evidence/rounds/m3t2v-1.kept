@@ -1,0 +1,88 @@
+=================== ROUND m3t2v-1 ===================
+目标：TerrainType.java 的常量 IMPASSABLE_MOVE_COST 999→998（就地替换）⇒ 期望红 oceanUsesTheImpassableSentinel（expected: 998 but was: 999），everyOtherTerrainIsBelowTheSentinel 仍绿
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t2lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 114 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-map/src/main/java/io/mosire/simos/map/terrain/TerrainType.java  md5 原件=dac90cdeb78cb4d6f6615fdd84a99062  变异体=da8a23d42adcac62402d0606215a7861
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 26
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 248, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.007 s <<< FAILURE! -- in io.mosire.simos.map.terrain.ImpassableSentinelTest
+Tests run: 248, Failures: 1, Errors: 0, Skipped: 0
+ImpassableSentinelTest.oceanUsesTheImpassableSentinel:18 [海洋的 moveCost 必须就是那个具名哨兵（不是另写的字面量）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+ImpassableSentinelTest.oceanUsesTheImpassableSentinel:18 [海洋的 moveCost 必须就是那个具名哨兵（不是另写的字面量）] 
+--- surefire 明说（ImpassableSentinelTest 的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.terrain.ImpassableSentinelTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.007 s <<< FAILURE! -- in io.mosire.simos.map.terrain.ImpassableSentinelTest
+io.mosire.simos.map.terrain.ImpassableSentinelTest.oceanUsesTheImpassableSentinel -- Time elapsed: 0.004 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[海洋的 moveCost 必须就是那个具名哨兵（不是另写的字面量）] 
+expected: 998
+ but was: 999
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
