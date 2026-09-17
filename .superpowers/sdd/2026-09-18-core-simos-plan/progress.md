@@ -132,7 +132,7 @@ M1/M2/M3 spec 与计划均已关账。
 | 11 | **不启用 `ORDER_MAP_ENTRIES_BY_KEYS`**；也不采用"关 `FAIL_ON_ORDER_MAP_BY_INCOMPARABLE_KEY` 绕过" | 开启即抛 `Cannot order Map entries by key of incomparable type RegionId`（`RegionId`/`CityId`/`PathwayId`/`UnitId` 非 `Comparable`）。**且就算不抛也打不中靶**：真正的漂移源是 `Region.hexes` 的 **`Set.copyOf` 数组序**，而该 feature 只管 Map 键序 ⇒ **既抛异常又无效** |
 | 12 | **M4 任何测试不许拿"快照 JSON 的字节"当断言依据**；往返一律断 `equals` | 探针三次独立 JVM 得 **2 种字节**（run0==run1 ≠ run2）。字节断言会有约 1/3 概率假红/假绿 |
 | 13 | **Task 7/8 的"内容指纹"不得直接哈希快照 JSON** | 同 12。要么先规范化（排序），要么改用 `equals` 语义比较 |
-| 14 | `Region.hexes` 的 `Set.copyOf` **记为上游发现，M4 不修** | 与 `CLAUDE.md` 形态 1 的既有教训直接冲突（"保序一律 `LinkedHashMap`/`LinkedHashSet`"），疑似 M2 遗留缺陷；就地改会动到已关账里程碑的语义与守卫 ⇒ 只在关账时呈报 |
+| 14 | ~~`Region.hexes` 的 `Set.copyOf` **记为上游发现**~~ ★★ **当场实测后撤回"缺陷"定性（2026-09-18 07:4x）** | 原写"与 CLAUDE.md 形态 1 的既有教训直接冲突、**疑似 M2 遗留缺陷**"——**这个定性是错的，撤回**。控制器当场读码实测：<br>① `Region.java:14` 的 javadoc **明写这是有意的**（"`hexes` 用 `Set.copyOf`（不保序）**是有意的**：它是**集合语义**，迭代序不该被依赖"）；<br>② **补偿机制真实存在且是承重的**：`RegionBoundary.of(Set<HexCoord>)` 的 javadoc 写着"**纯函数**：同集合必得同结果，与迭代序无关"，且 `RegionBoundary` 的紧凑构造器把每条环经 `canonicalRing` 化成规范形（旋转/反转取字典序小者）、再把环表按首顶点排序（`RegionBoundary.java:41-53`）。⇒ **内容相同的两个 Region 必然相等，与散列序无关**。<br>③ 这正是形态 1 那条教训要求的做法，**只是手段是"规范化"而不是"保序"**——所以它不是反例。<br>**真正剩下的后果窄得多**：含 `hexes` 的 **JSON 字节**跨 JVM 不稳定（Set 迭代序 = 散列槽位序）⇒ **已被裁定 12/13 覆盖**（不许拿快照 JSON 的字节当断言依据；内容指纹不得直接哈希快照 JSON）。<br>⇒ **关账时不呈报为缺陷**。若 M5 需要字节级决定论（MCP 传输/签名），须先规范化再哈希——那是一条**已知代价**，不是 bug。<br>★ **本条的教训与它自己同源**：原定性正是"把**推导出来的风险**当既成事实"（CLAUDE.md 形态 5）——写台账时**没有读码**，只凭"`Set.copyOf` ⇒ 与形态 1 冲突"推了出来 |
 | 15 | Task 17 增加一条动作：**用绿色源码重跑 `install` 覆盖 `~/.m2`** | 探针自陈"无法证明当时 main 不含 mutant"（install 时撞上 Batch A 的变异轮）。控制器 `javap` 只抽查了 `ChangeSet` 一例，**不足以覆盖全部类** |
 | 16 | Task 3 的 `SimosObjectMapper` 签名改为 **`create(Module... extraModules)`** | 六个键类型**全在领域模块**（5 个在 `simos-map`、1 个在 `simos-unit`）⇒ `simos-util` **够不着**，键反序列化器只能各 codec 自己注册（铁律 3）。原"三个 codec 共用一份配置"不能理解成"键反序列化也统一注册"——**那行代码写不出来** |
 | 17 | **裁定 15 已提前执行**：06:16 在 `b43d115`（绿色源）上跑 `./mvnw -DskipTests install` 覆盖 `~/.m2` | 一举三得：① 覆掉探针那份**无法自证未被污染**的快照；② 预下 `sqlite-jdbc` / `log4j-*` / `jdk8`，**消灭三个并行 agent 同时下载的竞争**；③ 建立"开跑前工作树"的绿色基线。实测 `BUILD SUCCESS` 2:41，六模块全 SUCCESS，`BugInstance size is 0`。⇒ Task 17 那条动作**已完成**，关账时只需复核 |
@@ -213,7 +213,7 @@ M1/M2/M3 spec 与计划均已关账。
 5. **回填**：
    - ~~spec §二 / §〇.3 补 `simos-util` 的 jdk8~~ ★ **实测：spec 里早就有了**（〇.3 第 9 条 + §二 的那条），本台账这条**是陈旧的**。当场复核反而揪出真问题：那两处都写着"白名单要同步改，否则 enforcer 让构建失败"——**实测是错的**（`simos-util/pom.xml:52` 的 enforcer 只有 `bannedDependencies` 的 `excludes`、**无 `includes`**）⇒ 已按实测改正，并把"推导出来的风险当成既成事实"这层教训一并写进 spec（CLAUDE.md 模块表**早就改对了**，只有 spec 那两行是错的）；
    - **spec §6.2 的事务写法**（Task 5 探针实测）：`setAutoCommit(false)` + `BEGIN IMMEDIATE` 在 sqlite-jdbc 3.53.4.0 上抛 `cannot start a transaction within a transaction`（该驱动在 autoCommit=false 时自己开事务）⇒ 已把 §6.2 改成"保持 autoCommit 出厂值 + 显式 SQL 边界"并附两个探针的实测表；
-   - **`Region.hexes` 的 `Set.copyOf` 上游发现**（裁定 14，只在关账呈报，M4 不修）；
+   - ~~**`Region.hexes` 的 `Set.copyOf` 上游发现**~~ ★ **当场读码后撤回**：那是 M2 **有意**的设计（`Region.java:14` javadoc 明写），且 `RegionBoundary` 有**承重的规范化补偿**（`canonicalRing` + 环表排序）⇒ 内容相等与散列序无关。**关账不呈报为缺陷**；剩下的只是"JSON 字节跨 JVM 不稳定"这条已知代价，已被裁定 12/13 覆盖（详见裁定 14 的更正）；
    - Task 17 的那条 `install` **已在 06:16 提前执行**（裁定 17），关账只需复核。
 6. **如实写"未完成"**：没跑完的任务**不写成"待办"**，写成**带裁定的遗留条目**——
    每条要含：任务号 / 依赖已满足到哪一步 / 下一个该派什么 / 分支名（若有半成品）。
