@@ -149,6 +149,7 @@ M1/M2/M3 spec 与计划均已关账。
 |---|---|---|
 | **`git grep` 不看 untracked** | 对**刚写的**文件 `git grep <串>` → **无输出、rc=1**；文件里其实有 77 处 | 与 ugrep 同族：把"没搜到"伪装成"不存在"，且**恰在开发期发作**（那时新文件全是 untracked）。用 `git grep --untracked` |
 | **★ Agent 工具的 `isolation:"worktree"` 从陈旧提交分叉** | 工作树**建起来了、`mvnw`/`pom.xml` 都在**，一切看起来正常——但**基线是 `f5c8485`（M1 期）**，不是当前 HEAD。产物会**不可合并**，且**当场看不出来** | **别信"建起来了"就等于"建对了"**：建完先 `git -C <wt> log --oneline -1` 与派单里写死的 commit 比对，并对一个新近才存在的文件做存在性检查（如 `util/spi/`）。**本轮改用控制器手工 `git worktree add -b <br> <path> <commit>`** |
+| **★ Bash 的 `cd` 会**持久**改掉整个会话的工作目录** | 为查一个文件而 `cd` 进某个工作树 ⇒ **之后所有命令都在那棵树里跑**。若接着执行 `git add`/`git commit`/`git merge`，**提交会落到那棵树的分支上**，而不是主线——**而命令的输出来看一切正常**（`git log` 显示提交成功） | **控制器绝不 `cd` 进工作树做检查**：一律 `git -C <worktree> <子命令>`，或 `grep <路径>` 写全路径。**发现 cwd 被带偏后第一件事是 `pwd && git rev-parse --abbrev-ref HEAD && git log --oneline -1` 三连自证**（2026-09-18 06:53 本会话**差点**在 `m4/b1` 上执行主线操作，靠环境提示才发现） |
 | **Maven 不读 `HTTP_PROXY`/`HTTPS_PROXY`** | `dependency:get` **静默超时**，像"外网不通" | 只认 `settings.xml` 的 `<proxies>`；`-Dhttps.proxyHost` 实测**也不生效**。已建 `~/.m2/settings.xml` |
 | **`.superpowers/` 不是 gitignore 的** | 照 CLAUDE.md 旧条文会去用 `git add -f` | 实测 `git check-ignore` 返回"未忽略"。**普通 `git add` 即可** |
 
@@ -165,6 +166,10 @@ M1/M2/M3 spec 与计划均已关账。
 `nproc` = **2**。06:50 实测 load average **3.02**，三路并行时把一个 agent 打成了
 **服务端 503**（`system cpu overloaded (current: 99.6%, threshold: 90%)`，
 错误文本点名 `127.0.0.1:3000` 的推理网关）——即 **Maven 的 JVM 把推理网关一起饿死了**。
+**06:54 第二个 503**（B1/Task 3，`99.8%`）⇒ **三路并行被实测否证两次，不再是"风险"而是"已知故障"**。
+
+★ **根因**：`127.0.0.1:3000` 上的推理网关是**本机在服务**的——**每一次 agent 回合都要它生成 token，
+而它和 Maven 抢同样的 2 个核**。⇒ 这不是"网络抖动"，是**资源竞争**，重试不解决，**只能降并发**。
 
 ⇒ **结论：并行的上限不是磁盘、不是依赖、是 CPU。**
 - **同时最多 2 个 agent**（不是 3）。第 3 个必须在有空位后再派。
