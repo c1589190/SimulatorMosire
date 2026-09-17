@@ -1,0 +1,159 @@
+=================== ROUND m3t10v-1 ===================
+目标：R-10-b 第 1 步 m1（原形态）：budget >= edgeCost → budget > edgeCost。预期**存活**（at=23 时 33500 > 32500 仍 ARRIVED；8 条计划测试无一落在等值边界上）；实际红/绿以日志为准
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t10lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 137 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.unit.UnitTest
+Running io.mosire.simos.unit.move.UnitMovesTest
+Running io.mosire.simos.unit.move.TerrainMovementCostTest
+Running io.mosire.simos.unit.move.PathFinderTest
+Running io.mosire.simos.unit.change.UnitChangeSetTest
+Running io.mosire.simos.unit.change.UnitRoundTripTest
+Running io.mosire.simos.unit.UnitStateTest
+Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 44, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1 个，其中新增 0 个）：
+  simos-unit/src/main/java/io/mosire/simos/unit/move/UnitMoves.java  md5 原件=abbe46e3c802a70b22084784dfb34a38  变异体=370029bf19021c5f374f6c59c3a054fe
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-unit 跑过的测试类数 = 8
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.unit.UnitTest
+Running io.mosire.simos.unit.move.UnitMovesTest
+Running io.mosire.simos.unit.move.TerrainMovementCostTest
+Running io.mosire.simos.unit.move.PathFinderTest
+Running io.mosire.simos.unit.change.UnitChangeSetTest
+Running io.mosire.simos.unit.change.UnitRoundTripTest
+Running io.mosire.simos.unit.UnitStateTest
+Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 44, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+--- surefire 明说（实际失败类：日志 FAILURE! 行 + 单元全部测试类的 .txt 摘要，去栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitIdTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.UnitIdTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitStateTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.unit.UnitStateTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.UnitTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.064 s -- in io.mosire.simos.unit.UnitTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.change.UnitChangeSetTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.unit.change.UnitChangeSetTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.change.UnitRoundTripTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.unit.change.UnitRoundTripTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.move.PathFinderTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.unit.move.PathFinderTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.move.TerrainMovementCostTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.unit.move.TerrainMovementCostTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.unit.move.UnitMovesTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in io.mosire.simos.unit.move.UnitMovesTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 0

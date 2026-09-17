@@ -1,0 +1,513 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-parent ---
+[INFO] Deleting /home/cna/SimulatorMosire/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-parent ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-parent >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-parent ---
+[WARNING] No files found to generate report on. Check if compile phase has been run.
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-parent <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-parent ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-util ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-util/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 38 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 17 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.util.state.StateRefTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.054 s -- in io.mosire.simos.util.state.StateRefTest
+[INFO] Running io.mosire.simos.util.state.SimulationStateTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.util.state.SimulationStateTest
+[INFO] Running io.mosire.simos.util.state.SnapshotProtocolTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.util.state.SnapshotProtocolTest
+[INFO] Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.021 s -- in io.mosire.simos.util.info.InMemoryInfoSystemTest
+[INFO] Running io.mosire.simos.util.facet.FacetRegistryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.facet.FacetRegistryTest
+[INFO] Running io.mosire.simos.util.resolve.ResolverRegistryTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.util.resolve.ResolverRegistryTest
+[INFO] Running io.mosire.simos.util.identity.ResolvedSubjectTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.util.identity.ResolvedSubjectTest
+[INFO] Running io.mosire.simos.util.identity.QueryResultTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.util.identity.QueryResultTest
+[INFO] Running io.mosire.simos.util.identity.SubjectIdTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.util.identity.SubjectIdTest
+[INFO] Running io.mosire.simos.util.time.TemporalSeriesTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.util.time.TemporalSeriesTest
+[INFO] Running io.mosire.simos.util.time.TimeRangeTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.util.time.TimeRangeTest
+[INFO] Running io.mosire.simos.util.time.SimosTimestampTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.util.time.SimosTimestampTest
+[INFO] Running io.mosire.simos.util.address.AddressQuoteTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.address.AddressQuoteTest
+[INFO] Running io.mosire.simos.util.address.AddressParseTest
+[INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.047 s -- in io.mosire.simos.util.address.AddressParseTest
+[INFO] Running io.mosire.simos.util.address.AddressTolerantParseTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.util.address.AddressTolerantParseTest
+[INFO] Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+[INFO] Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.verify.RoundTripAssertionsTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-util ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-util/target/simos-util-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-util ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 55 files clean - 0 needs changes to be clean, 55 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-util >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-util ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-util <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-util ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-map ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-map/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 33 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 26 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.map.GameMapTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.097 s -- in io.mosire.simos.map.GameMapTest
+[INFO] Running io.mosire.simos.map.generate.RiverBuilderTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.037 s -- in io.mosire.simos.map.generate.RiverBuilderTest
+[INFO] Running io.mosire.simos.map.generate.RegionRandomizerTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in io.mosire.simos.map.generate.RegionRandomizerTest
+[INFO] Running io.mosire.simos.map.generate.MapGeneratorTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.279 s -- in io.mosire.simos.map.generate.MapGeneratorTest
+[INFO] Running io.mosire.simos.map.generate.TerrainClassifierTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.map.generate.TerrainClassifierTest
+[INFO] Running io.mosire.simos.map.generate.GenerationSpecTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.map.generate.GenerationSpecTest
+[INFO] Running io.mosire.simos.map.CityTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.CityTest
+[INFO] Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.terrain.ImpassableSentinelTest
+[INFO] Running io.mosire.simos.map.terrain.TerrainCatalogTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.map.terrain.TerrainCatalogTest
+[INFO] Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.199 s -- in io.mosire.simos.map.RegressionGuardsTest
+[INFO] Running io.mosire.simos.map.region.RegionIndexTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.142 s -- in io.mosire.simos.map.region.RegionIndexTest
+[INFO] Running io.mosire.simos.map.region.RegionTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.map.region.RegionTest
+[INFO] Running io.mosire.simos.map.region.RegionIndexGuardTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.093 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+[INFO] Running io.mosire.simos.map.region.RegionBoundaryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.region.RegionBoundaryTest
+[INFO] Running io.mosire.simos.map.HexCellTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.HexCellTest
+[INFO] Running io.mosire.simos.map.resolve.MapResolverTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.map.resolve.MapResolverTest
+[INFO] Running io.mosire.simos.map.pathway.PathwayTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.map.pathway.PathwayTest
+[INFO] Running io.mosire.simos.map.pathway.EdgeRefTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.pathway.EdgeRefTest
+[INFO] Running io.mosire.simos.map.pathway.EdgeTagsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.pathway.EdgeTagsTest
+[INFO] Running io.mosire.simos.map.pathway.PathwayGroupTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.pathway.PathwayGroupTest
+[INFO] Running io.mosire.simos.map.change.RoundTripComponentsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.change.RoundTripComponentsTest
+[INFO] Running io.mosire.simos.map.change.MapChangeSetTest
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.map.change.MapChangeSetTest
+[INFO] Running io.mosire.simos.map.hex.HexVertexTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in io.mosire.simos.map.hex.HexVertexTest
+[INFO] Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.map.hex.HexCoordTest
+[INFO] Running io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.hex.HexGridTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-map ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-map/target/simos-map-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-map ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 59 files clean - 0 needs changes to be clean, 59 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-map >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-map ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-map <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-map ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/6]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-social ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-social/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 6 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 4 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.social.resolve.SocialResolverTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.061 s -- in io.mosire.simos.social.resolve.SocialResolverTest
+[INFO] Running io.mosire.simos.social.population.PopulationSeriesTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.social.population.PopulationSeriesTest
+[INFO] Running io.mosire.simos.social.change.SocialRoundTripTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.social.change.SocialRoundTripTest
+[INFO] Running io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 30, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-social ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-social/target/simos-social-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-social ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 10 files clean - 0 needs changes to be clean, 10 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-social >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-social ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-social <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-social ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/6]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-unit ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-unit/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 14 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 9 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.unit.UnitTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.055 s -- in io.mosire.simos.unit.UnitTest
+[INFO] Running io.mosire.simos.unit.move.UnitMovesTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.unit.move.UnitMovesTest
+[INFO] Running io.mosire.simos.unit.move.TerrainMovementCostTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.unit.move.TerrainMovementCostTest
+[INFO] Running io.mosire.simos.unit.move.PathFinderTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.unit.move.PathFinderTest
+[INFO] Running io.mosire.simos.unit.change.UnitChangeSetTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.unit.change.UnitChangeSetTest
+[INFO] Running io.mosire.simos.unit.change.UnitRoundTripTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.unit.change.UnitRoundTripTest
+[INFO] Running io.mosire.simos.unit.UnitStateTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.unit.UnitStateTest
+[INFO] Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.UnitIdTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-unit ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-unit/target/simos-unit-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-unit ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 23 files clean - 0 needs changes to be clean, 23 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-unit >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-unit ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-unit <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-unit ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/6]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-core ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-core/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.core.AgentLibAvailabilityTest
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.153 s -- in io.mosire.simos.core.AgentLibAvailabilityTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-core ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-core/target/simos-core-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-core ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 2 files clean - 0 needs changes to be clean, 2 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-core >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-core ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-core <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-core ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.959 s]
+[INFO] UtilSimos .......................................... SUCCESS [  4.135 s]
+[INFO] MapSimos ........................................... SUCCESS [  5.460 s]
+[INFO] SocialSimos ........................................ SUCCESS [  1.933 s]
+[INFO] UnitSimos .......................................... SUCCESS [  2.156 s]
+[INFO] CoreSimos .......................................... SUCCESS [  1.490 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  16.212 s
+[INFO] Finished at: 2026-09-18T02:05:21+08:00
+[INFO] ------------------------------------------------------------------------
