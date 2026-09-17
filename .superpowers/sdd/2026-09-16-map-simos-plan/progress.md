@@ -1114,3 +1114,22 @@ R-14-e 门禁/证据/提交同前。细则见 `task-14-brief-supplement.md`。
 - **控制器独立门禁**：`./mvnw -q spotless:apply` 与 `./mvnw -q verify` ⇒ **双 rc=0、`[ERROR]` 行数 0**；旁证：surefire 报告 util 17 / map 26 / core 1 份、`spotbugsXml.xml` mtime 落在门禁窗口内；spotless **未改写**测试文件（前后 md5 一致 ⇒ 连跑证据对**提交字节**有效）。
 - **关切（4 条，均不挡关账）**：① 四条源码扫描**不覆盖 `src/test`**（测试里再写第二份 `q_r` 拼接或 `int[][]` 抓不到——spec/R-14-c 口径即"主源码"）；② L3 的 `int[][]` 扫描只含 `simos-map`+`simos-util`（social/unit/core 当前无地图实现，将来长出方向表不被抓）；③ `GenerationSpec.defaults(0L)` 与"用户显式 seed = 0"在断言层面同形 ⇒ "seed=0 的图"本身没有守卫（L7 用非零 42 避开歧义）；④ L5 把 `regionOf` 钉成"恰一次 `Map.get`"——将来若合理地需要 2 次查表（如别名回退）会红，判定权归当时的控制器。
 - **挂起项（承接 Task 13，随 M2 关账统一记录）**：`GameMap` 无 id ⇒ `map:<mapId>` 的 mapId 只回显、不可校验。
+
+## Task 15 关账 —— ★ M2 关账完成（2026-09-17）
+
+- **交付** `868d31e`：`task-15-report.md` + `task-15-evidence/clean-verify.txt` + `CLAUDE.md` 的 M2 行（`🔄 进行中` → `✅ 已完成（15/15）`）。3 文件、166 insertions。
+- **Step 1 全量门禁（当场跑）**：`./mvnw clean verify` ⇒ **rc=0、BUILD SUCCESS**、总耗时 **03:12**。六模块全 SUCCESS（parent 13.457 s / util 01:02 / map 01:19 / social 10.707 s / unit 9.796 s / core 16.895 s）。`Tests run`：util **156** / map **245** / core **15** = **416 条全 0 失败**；SpotBugs `BugInstance size is 0` ×5；`^\[ERROR\]` **0** 行；唯一一条 WARNING 出在聚合 pom `simos-parent`（无源码，SpotBugs 无物可析），出处已当场核过。
+- **四条判据逐条**（spec §1.2）：
+  1. **L1~L9 逐条守卫**（`9152749`）——九条用例名逐条列进报告 §1；判别力 = 9 轮变异逐条红。
+  2. **框选随机化（Task 12 `e62432a`）与自动河流（Task 11 `213a8f9`）各有 ★ 验收**——7 条用例名 + 行号当场 `git grep` 核实存在，本次 clean verify 里真跑过。
+  3. **`./mvnw clean verify` 绿**——见上条。
+  4. **Task 1~14 每条护栏都有故意违规用例自证**——报告 §4 的逐任务表（轮数 + 证据目录路径）；"按推导记录、未补轮"的项逐条在案（Task 2 跨进程序迭代序、Task 4 §5.4/§5.5、Task 5 同类）。
+- **本任务裁决（了结 Task 10 的挂起项）**：`GenerationSpec.contourCacheMax` **保留**——它是 spec §6.4 的正式组件，**删它 = 改 spec 形状**，超出 M2 关账的权限；已有守卫（`>= 1` 校验 + `contourCacheMaxZeroThrows` + m8v-8 变异自证）。代价 = 一个当前无消费者的参数（Javadoc 已注明）；若将来确认 contour 查询引擎归 CoreSimos，迁移属**那时的 spec 裁决**。
+- **挂起项（随 M2 关账记录；完整清单见报告 §5/§6）**：
+  - `GameMap` 无 id ⇒ `map:<mapId>` 的 mapId 只回显、不可校验（Task 13）；
+  - **重建河流会整份覆盖 `EdgeTags`**（合并语义属 Command 层，Task 11）——**M2 之后的编辑流实现者必须处理**；
+  - `PathwayGroup("river")` 无人注册；水系密集无阈值（夹具钉死的数字将来作废要重测）；
+  - `Region.hexes` 的序不可依赖（`Set.copyOf`；当场 20 个独立 JVM 实测 9/20 翻转）；
+  - `0.8660254`（√3/2 七位截断）沿自 GSimulator 且与 WebUI 同款，将来标定几何须两处同改。
+- **未核实清单**（报告 §5 全文）：L1 的"非 root"是类比、无法复现当年的失败现场；四条扫描不覆盖 `src/test`；L3 的 `int[][]` 扫描不含 social/unit/core；`seed = 0` 的图无守卫；跨机字节级复现只有单机证据；旧 key → 新 key 地形映射表留 M6 裁决。
+- **★ M2 到此关账**：15/15 任务全部关账，spec §1.2 四条判据逐条落地。用户 2026-09-17 的停点（Task 13 即停）已被同日「继续吧」覆盖，Task 14/15 在本会话内执行完毕。
