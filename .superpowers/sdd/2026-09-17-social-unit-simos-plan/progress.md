@@ -101,3 +101,13 @@
 - **四轮红点（实测，每轮恰 1 红）**：m1 = `parentAndPositionRejectEvents:50`；m2（合并图）= `legalReparentAcrossTimeIsNotACycle:96 » 合并编制图成环`——且 `cycleAcrossUnitsThrowsAtConstruction` **仍绿**（反直觉结果如实记录，正是"为何不得合并图"的判别力证据）；m3 = `ownPositionWinsOverParent:124`；m4 = `parentPointingToItselfThrows:90`。各轮 CE=0、改前 156/248/12 绿。
 - **关切（不挡关账，报告 §五）**：`Route`/`Movement`/`UnitSnapshot` 的构造期守卫**本轮无直接测试目标**（12 条用例是计划定盘），后续任务（8/10/11/12）会实打实压到它们——届时按需补变异靶子。
 - **下一任务** Task 7（`UnitChangeSet` + 往返框架）。
+
+## Task 7 关账（2026-09-17）
+
+- **交付** `6d805b3`（UnitChangeSet 39 行 + 两测试类 273 行，3 文件 +312）+ `787f6db`（报告 + 证据 11 文件）。
+- **评审 = 控制器自读 diff**：全委托 FieldDelta；两个 switch 的 default 抛；豁免集空被单独钉死；`applyOfUnchanged` 用 `containsExactlyEntriesOf`。
+- **控制器独立复核**：11/11 绿（本机当场跑，7+4）；`verify` rc=0（util 156 / map 248 / social 30 / unit 23 / core 15）。
+- **序夹具实测量（20 独立 JVM/组，存档）**：5 键 17/20 SHUFFLED（不达标弃用）→ **6 键 20/20 SHUFFLED（采用）**；附带发现双键 {u-1,u-2} 13/7 随盐漂 ⇒ `applyOfUnchanged` 退回单键 base——**"夹具键集要当场量"的又一条实测**。
+- **四轮红点（实测）**：m1（diff 对调）4 红（含"对调后 Upsert 携带旧值"）；m2-A（加 tag 组件）恰 2 红（组件数/双向 subset + mutate 抛"未登记的组件"）——铁律 5 机械落地的直接证明；m2-B（changedOf default→true + 注册 tag）**`every…` 由红转绿 = 泄漏已验证**（温和兜底废掉判别力的实测证据）；m3（Map.copyOf）**唯一红 = `unitOrderFollowsInsertionOrder:87`**、与前轮零重叠。各轮 CE=0、改前全绿。
+- **裁定（执行期，R-7-a）**：平移母本取 Task 4 **最终形态**（`containsExactlyEntriesOf` + 序观察点）；unit 序用例的夹具按 20-JVM 实测量定（6 键）。
+- **下一任务** Task 8（`MovementCost` + `TerrainMovementCost` + 判据二夹具）。
