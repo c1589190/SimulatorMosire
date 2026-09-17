@@ -28,11 +28,11 @@ M1/M2/M3 spec 与计划均已关账。
 
 | # | 任务 | 状态 |
 |---|---|---|
-| 1 | 契约收敛（`ChangeSet` 标记接口 + 删 `assertSnapshotRoundTrip`） | ⏳ Batch A |
-| 2 | `util.spi` 五类型 + `package-info` | ⏳ Batch A |
-| 3 | JSON 地基（★ 最高风险） | ⏳ Batch B |
-| 4 | `WorldChangeSet` + `Envelope`（C26）+ R1 | ⏳ Batch B |
-| 5 | `SqliteStore` | ⏳ Batch C1 |
+| 1 | 契约收敛（`ChangeSet` 标记接口 + 删 `assertSnapshotRoundTrip`） | ✅ Batch A `d1ad67b` |
+| 2 | `util.spi` 五类型 + `package-info` | ✅ Batch A `d1ad67b` |
+| 3 | JSON 地基（★ 最高风险） | 🔄 Batch B1 `m4/b1` |
+| 4 | `WorldChangeSet` + `Envelope`（C26）+ R1 | 🔄 Batch B2 `m4/b2` |
+| 5 | `SqliteStore` | 🔄 Batch B3 `m4/b3` |
 | 6 | `Timeline` | ⏳ Batch C1 |
 | 7 | `CheckpointStore` | ⏳ Batch C1 |
 | 8 | `Replay` | ⏳ Batch C1 |
@@ -46,18 +46,44 @@ M1/M2/M3 spec 与计划均已关账。
 | 16 | unit 侧最小真实链路（U15 乙）+ R16 | ⏳ Batch E |
 | 17 | M4 关账 | ⏳ Batch F |
 
-**派单批次**：A(1,2) → **B1(3) ‖ B2(4)** → **C1(5,6,7,8) ‖ C2(9,10,11)** → E(12,13,14,15,16) → F(17)。
-★★ **本行原写"A→B(3,4)→C1‖C2"，2026-09-18 05:3x 控制器改**：实测 **Task 3 与 Task 4 的文件集不相交**
-（3 = `util/json/` + 三个 `*/codec/` + `simos-core/pom.xml`；4 = `core/state/` + `core/store/Envelope.java`），
-且 **Task 4 不依赖 Task 3**（`Envelope` 按 C26 把载荷当**不透明字符串**，全程不碰 Jackson 多态）
-⇒ 二者可**并行**。
-**动因是时间盒**：串行总时长实测约 235 分钟（05:45 起算 ⇒ 约 09:40，**超截止 70 分钟**）；
-两处并行后约 155 分钟 ⇒ **约 08:20，压线**。
-`git worktree` 机制已当场实测可用（`add`/`list`/`remove` 全通，工作树内含 `mvnw`/`pom.xml`）。
+**派单批次**：A(1,2) → **B1(3) ‖ B2(4) ‖ B3(5)** → **C1(6,7,8) ‖ C2(9,10,11)** → E(12,13,14,15,16) → F(17)。
 
-**边界**（沿用裁定 10 的形态）：B1 独占 `simos-util/json/**`、`simos-{map,social,unit}/**/codec/**`、
-`simos-util/pom.xml`、`simos-core/pom.xml`、`FieldDelta.java`；B2 独占 `simos-core/src/**`。
-**两边都禁 `mvn install`**（裁定 8）。
+★★ **本行改过两次，两次都记在案**：
+- 原写 `A→B(3,4)→C1‖C2`。2026-09-18 05:5x 抠 `Files:` 后改：**Task 3 与 Task 4 文件集不相交**
+  （3 = `util/json/` + 三个 `*/codec/`；4 = `core/state/` + `core/store/Envelope.java`），
+  且 **Task 4 不依赖 Task 3**（`Envelope` 按 C26 把载荷当**不透明字符串**，全程不碰 Jackson 多态）。
+- 2026-09-18 06:1x 再并进 **Task 5（`SqliteStore`）**：抠每个任务的 `Consumes:` 行**实测它零依赖**
+  ⇒ 3/4/5 三者互相独立，合成**三路并行**。（★ 这条是**实测**不是推导：`Consumes:` 行是计划里逐任务写死的。）
+
+**动因是时间盒**：串行总时长实测约 235 分钟，超截止；两处并行约 155 分钟只是压线。
+★ **06:13 实测，已比原估算晚 28 分钟起飞**（原文按 05:45 起算）⇒ **本轮到点未完成的批次按
+"带裁定的遗留条目"往下走，不加轮**（纪律节的"评审不超过 3 轮"）。
+
+**边界**（三份，互斥）：
+
+| 批次 | 任务 | 独占路径 |
+|---|---|---|
+| B1 | 3 | `simos-util/src/**/util/json/**`、`simos-{map,social,unit}/src/**/codec/**`、`simos-util/src/**/util/state/FieldDelta.java`、`simos-core/src/test/resources/**` |
+| B2 | 4 | `simos-core/src/**/core/state/**`、`simos-core/src/**/core/store/Envelope.java` |
+| B3 | 5 | `simos-core/src/**/core/store/SqliteStore.java` |
+
+★★ **三份都不得改任何 `pom.xml`**：`simos-util`（jdk8）与 `simos-core`（sqlite-jdbc main / log4j test）
+的依赖**已由控制器在切分之前一次性落盘并提交（`ce98212`）**——这正是为了消灭这个三方冲突点。
+（裁定 10 原把 `simos-core/pom.xml` 划给 C1，**该条已随之消解**：也没人需要改它了。）
+**三份都禁 `mvn install`**（裁定 8）。
+
+★★★ **`isolation:"worktree"` 实测不可用，本轮 worktree 由控制器手工建**（这条要记牢，别再踩）：
+本机实测该参数把工作树建在 **`f5c8485`（M1 期提交）**，而 `ce98212` **不是它的祖先**
+（`git diff --stat ce98212 f5c8485` = **511 files changed / 80028 deletions**）——那棵树里
+**没有 `util/spi/*.java`、没有 `FieldDelta.java`、`simos-util/pom.xml` 里没有 jdk8**，
+即**陈旧三个里程碑**。已派出的三个 agent 因此被控制器 `TaskStop` 停掉（未落任何盘）。
+
+**现行做法**：控制器
+`git worktree add -b m4/b<N> .claude/worktrees/b<N> <当轮 HEAD>`，
+派单时把**绝对路径**给执行者，并要求**第 0 步先自证基线**：
+`git -C <wt> log --oneline -1` 必须**等于派单里写死的 commit**，**不匹配就停下回报**。
+★ 副产物：`.claude/` **不在 `.gitignore` 里**（实测 `git check-ignore -v .claude/worktrees` 返回**未忽略**），
+故 worktree 目录会让主树 `git status` 出现 `?? .claude/`——**它不是产物，别提交、别 `-A`**。
 
 ---
 
@@ -109,6 +135,8 @@ M1/M2/M3 spec 与计划均已关账。
 | 14 | `Region.hexes` 的 `Set.copyOf` **记为上游发现，M4 不修** | 与 `CLAUDE.md` 形态 1 的既有教训直接冲突（"保序一律 `LinkedHashMap`/`LinkedHashSet`"），疑似 M2 遗留缺陷；就地改会动到已关账里程碑的语义与守卫 ⇒ 只在关账时呈报 |
 | 15 | Task 17 增加一条动作：**用绿色源码重跑 `install` 覆盖 `~/.m2`** | 探针自陈"无法证明当时 main 不含 mutant"（install 时撞上 Batch A 的变异轮）。控制器 `javap` 只抽查了 `ChangeSet` 一例，**不足以覆盖全部类** |
 | 16 | Task 3 的 `SimosObjectMapper` 签名改为 **`create(Module... extraModules)`** | 六个键类型**全在领域模块**（5 个在 `simos-map`、1 个在 `simos-unit`）⇒ `simos-util` **够不着**，键反序列化器只能各 codec 自己注册（铁律 3）。原"三个 codec 共用一份配置"不能理解成"键反序列化也统一注册"——**那行代码写不出来** |
+| 17 | **裁定 15 已提前执行**：06:16 在 `b43d115`（绿色源）上跑 `./mvnw -DskipTests install` 覆盖 `~/.m2` | 一举三得：① 覆掉探针那份**无法自证未被污染**的快照；② 预下 `sqlite-jdbc` / `log4j-*` / `jdk8`，**消灭三个并行 agent 同时下载的竞争**；③ 建立"开跑前工作树"的绿色基线。实测 `BUILD SUCCESS` 2:41，六模块全 SUCCESS，`BugInstance size is 0`。⇒ Task 17 那条动作**已完成**，关账时只需复核 |
+| 18 | 三个并行 agent 的**测试范围不得重叠到同一模块的同一批测试类** | 三份边界各自独占文件，但都在 `simos-core` / `simos-util` 上跑 `verify` ⇒ 报告里的用例**条数会互相包含**（B2 的 verify 会把 B1 的 util 测试也算进去）。**判据不是条数**，是"**本任务新增的类全都跑了且全绿**"。★ 冲突信号仍是 `git merge` 冲突（裁定 10） |
 
 ★ **探针明确"未核实"的 6 条**已逐条抄进计划末节，**不许当成已结论**——尤其
 **`@JsonTypeInfo` 用 `Id.CLASS` 还是 `Id.NAME` 未测**，Task 3 执行者必须自测并记录。
@@ -118,6 +146,7 @@ M1/M2/M3 spec 与计划均已关账。
 | 陷阱 | 症状 | 判据 |
 |---|---|---|
 | **`git grep` 不看 untracked** | 对**刚写的**文件 `git grep <串>` → **无输出、rc=1**；文件里其实有 77 处 | 与 ugrep 同族：把"没搜到"伪装成"不存在"，且**恰在开发期发作**（那时新文件全是 untracked）。用 `git grep --untracked` |
+| **★ Agent 工具的 `isolation:"worktree"` 从陈旧提交分叉** | 工作树**建起来了、`mvnw`/`pom.xml` 都在**，一切看起来正常——但**基线是 `f5c8485`（M1 期）**，不是当前 HEAD。产物会**不可合并**，且**当场看不出来** | **别信"建起来了"就等于"建对了"**：建完先 `git -C <wt> log --oneline -1` 与派单里写死的 commit 比对，并对一个新近才存在的文件做存在性检查（如 `util/spi/`）。**本轮改用控制器手工 `git worktree add -b <br> <path> <commit>`** |
 | **Maven 不读 `HTTP_PROXY`/`HTTPS_PROXY`** | `dependency:get` **静默超时**，像"外网不通" | 只认 `settings.xml` 的 `<proxies>`；`-Dhttps.proxyHost` 实测**也不生效**。已建 `~/.m2/settings.xml` |
 | **`.superpowers/` 不是 gitignore 的** | 照 CLAUDE.md 旧条文会去用 `git add -f` | 实测 `git check-ignore` 返回"未忽略"。**普通 `git add` 即可** |
 
