@@ -1,0 +1,92 @@
+=================== ROUND m3t1v-1 ===================
+目标：change/LegacyFieldDelta.java【新增文件】（包级私有 interface FieldDelta<T>，声明名必须 FieldDelta，见 R-1-a）⇒ 期望红 R1_thereIsExactlyOneFieldDelta
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t1lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 113 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 246, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 1个）：
+  simos-map/src/main/java/io/mosire/simos/map/change/LegacyFieldDelta.java  md5 原件=(新增)  变异体=a1f1e4868736bb895758080fa1346922
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-map 跑过的测试类数 = 25
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[ERROR] Tests run: 246, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.173 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+Tests run: 246, Failures: 1, Errors: 0, Skipped: 0
+RegressionGuardsTest.R1_thereIsExactlyOneFieldDelta:402 [四个模块的 src/main 里必须恰有一份 FieldDelta 声明（第二份 = 语义必然漂移）] 
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+RegressionGuardsTest.R1_thereIsExactlyOneFieldDelta:402 [四个模块的 src/main 里必须恰有一份 FieldDelta 声明（第二份 = 语义必然漂移）] 
+--- surefire 明说（RegressionGuardsTest 的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.map.RegressionGuardsTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.173 s <<< FAILURE! -- in io.mosire.simos.map.RegressionGuardsTest
+io.mosire.simos.map.RegressionGuardsTest.R1_thereIsExactlyOneFieldDelta -- Time elapsed: 0.015 s <<< FAILURE!
+java.lang.AssertionError: 
+[四个模块的 src/main 里必须恰有一份 FieldDelta 声明（第二份 = 语义必然漂移）] 
+Actual and expected should have same size but actual size is:
+  2
+while expected size is:
+  1
+Actual was:
+  {"simos-map/src/main/java/io/mosire/simos/map/change/LegacyFieldDelta.java"=2L, "simos-util/src/main/java/io/mosire/simos/util/state/FieldDelta.java"=1L}
+Expected was:
+  ["simos-util/src/main/java/io/mosire/simos/util/state/FieldDelta.java"=1L]
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 1
