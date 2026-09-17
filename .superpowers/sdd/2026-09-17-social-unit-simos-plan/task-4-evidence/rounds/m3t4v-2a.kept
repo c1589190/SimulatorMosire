@@ -1,0 +1,125 @@
+=================== ROUND m3t4v-2a ===================
+目标：【m2 探针①现状夹具】SocialData.java 的 Collections.unmodifiableMap(copy) 换成 Map.copyOf(copy)（并删掉随之失效的 import）⇒ 计划列出的断言全是序不敏感 ⇒ 预期存活（R-4-b），实测以日志为准
+★ 变异在 /tmp 副本上做：REPO=/tmp/m3t4lab/repo（工作树 /home/cna/SimulatorMosire 一字不动）
+干净世界 OK（副本逐文件与 /home/cna/SimulatorMosire 的 md5 清单一致，共 122 个 .java；清单之外的 .java = 0 个，上一轮新增的变异文件已清）
+--- 改前（工作树 + 本任务新测试文件，未变异）---
+改前 COMPILATION ERROR count = 0
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.social.population.PopulationSeriesTest
+Running io.mosire.simos.social.change.SocialRoundTripTest
+Running io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+声明要改/新增的文件（1个，其中新增 0个）：
+  simos-social/src/main/java/io/mosire/simos/social/SocialData.java  md5 原件=81e37221e5c1138894212295d924f967  变异体=2735f8d1b328c7476b4c15db9e727bb3
+自证：修改的文件与原件字节不同 / 新增的文件已落盘且非空 OK
+自证：实际（修改 ∪ 新增）== 声明集合，别无其它改动 OK
+--- 改后（变异体）---
+COMPILATION ERROR count = 0
+simos-social 跑过的测试类数 = 3
+Running io.mosire.simos.util.state.StateRefTest
+Running io.mosire.simos.util.state.SimulationStateTest
+Running io.mosire.simos.util.state.SnapshotProtocolTest
+Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+Running io.mosire.simos.util.facet.FacetRegistryTest
+Running io.mosire.simos.util.resolve.ResolverRegistryTest
+Running io.mosire.simos.util.identity.ResolvedSubjectTest
+Running io.mosire.simos.util.identity.QueryResultTest
+Running io.mosire.simos.util.identity.SubjectIdTest
+Running io.mosire.simos.util.time.TemporalSeriesTest
+Running io.mosire.simos.util.time.TimeRangeTest
+Running io.mosire.simos.util.time.SimosTimestampTest
+Running io.mosire.simos.util.address.AddressQuoteTest
+Running io.mosire.simos.util.address.AddressParseTest
+Running io.mosire.simos.util.address.AddressTolerantParseTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+Running io.mosire.simos.map.GameMapTest
+Running io.mosire.simos.map.generate.RiverBuilderTest
+Running io.mosire.simos.map.generate.RegionRandomizerTest
+Running io.mosire.simos.map.generate.MapGeneratorTest
+Running io.mosire.simos.map.generate.TerrainClassifierTest
+Running io.mosire.simos.map.generate.GenerationSpecTest
+Running io.mosire.simos.map.CityTest
+Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+Running io.mosire.simos.map.terrain.TerrainCatalogTest
+Running io.mosire.simos.map.RegressionGuardsTest
+Running io.mosire.simos.map.region.RegionIndexTest
+Running io.mosire.simos.map.region.RegionTest
+Running io.mosire.simos.map.region.RegionIndexGuardTest
+Running io.mosire.simos.map.region.RegionBoundaryTest
+Running io.mosire.simos.map.HexCellTest
+Running io.mosire.simos.map.resolve.MapResolverTest
+Running io.mosire.simos.map.pathway.PathwayTest
+Running io.mosire.simos.map.pathway.EdgeRefTest
+Running io.mosire.simos.map.pathway.EdgeTagsTest
+Running io.mosire.simos.map.pathway.PathwayGroupTest
+Running io.mosire.simos.map.change.RoundTripComponentsTest
+Running io.mosire.simos.map.change.MapChangeSetTest
+Running io.mosire.simos.map.hex.HexVertexTest
+Running io.mosire.simos.map.hex.HexCoordTest
+Running io.mosire.simos.map.hex.HexDirectionTest
+Running io.mosire.simos.map.hex.HexGridTest
+Running io.mosire.simos.social.population.PopulationSeriesTest
+Running io.mosire.simos.social.change.SocialRoundTripTest
+Running io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Tests run: 156, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 248, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+--- 红点（测试名 + 行号；无输出 = 全绿）---
+--- surefire 明说（SocialChangeSetTest / SocialRoundTripTest 的断言消息，去掉栈帧）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.social.change.SocialChangeSetTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.social.change.SocialChangeSetTest
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.social.change.SocialRoundTripTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.social.change.SocialRoundTripTest
+--- 红/绿的判读（脚本不替你下结论）---
+红点数 = 0

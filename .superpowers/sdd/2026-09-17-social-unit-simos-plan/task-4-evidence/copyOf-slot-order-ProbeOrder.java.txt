@@ -1,0 +1,20 @@
+import io.mosire.simos.map.hex.HexCoord;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public class ProbeOrder {
+  public static void main(String[] args) {
+    HexCoord k1 = new HexCoord(0, 0);
+    HexCoord k2 = new HexCoord(3, 1);
+    HexCoord k3 = new HexCoord(1, 2);
+    HexCoord k4 = new HexCoord(2, -1);
+    HexCoord k5 = new HexCoord(4, 4);
+    Map<HexCoord, Integer> ins = new LinkedHashMap<>();
+    ins.put(k1, 1); ins.put(k2, 2); ins.put(k3, 3); ins.put(k4, 4); ins.put(k5, 5);
+    Map<HexCoord, Integer> copy = Map.copyOf(ins);
+    StringBuilder sb = new StringBuilder();
+    for (HexCoord k : copy.keySet()) sb.append(k.q()).append("_").append(k.r()).append(" ");
+    boolean same = copy.keySet().stream().toList().equals(ins.keySet().stream().toList());
+    System.out.println((same ? "PRESERVED" : "SHUFFLED") + " | " + sb);
+  }
+}

@@ -1,0 +1,23 @@
+# Map.copyOf 槽位序实测（2026-09-18，本机）；键=插入序 (0,0)(3,1)(1,2)(2,-1)(4,4)，值略
+# 程序：/tmp/opencode/m2probe/ProbeOrder.java（HexCoord 取自 simos-map/target/classes，即生产的 record hashCode）
+# 结果：20/20 次 JVM 启动全部 SHUFFLED（0 次保插入序），共 8 种不同槽位序
+SHUFFLED | 2_-1 1_2 3_1 4_4 0_0 
+SHUFFLED | 0_0 4_4 3_1 1_2 2_-1 
+SHUFFLED | 4_4 0_0 2_-1 1_2 3_1 
+SHUFFLED | 3_1 4_4 0_0 2_-1 1_2 
+SHUFFLED | 3_1 4_4 0_0 2_-1 1_2 
+SHUFFLED | 2_-1 0_0 4_4 3_1 1_2 
+SHUFFLED | 3_1 1_2 2_-1 0_0 4_4 
+SHUFFLED | 3_1 4_4 0_0 2_-1 1_2 
+SHUFFLED | 4_4 3_1 1_2 2_-1 0_0 
+SHUFFLED | 1_2 2_-1 0_0 4_4 3_1 
+SHUFFLED | 3_1 1_2 2_-1 0_0 4_4 
+SHUFFLED | 4_4 0_0 2_-1 1_2 3_1 
+SHUFFLED | 4_4 3_1 1_2 2_-1 0_0 
+SHUFFLED | 3_1 1_2 2_-1 0_0 4_4 
+SHUFFLED | 4_4 3_1 1_2 2_-1 0_0 
+SHUFFLED | 2_-1 0_0 4_4 3_1 1_2 
+SHUFFLED | 3_1 4_4 0_0 2_-1 1_2 
+SHUFFLED | 3_1 4_4 0_0 2_-1 1_2 
+SHUFFLED | 4_4 3_1 1_2 2_-1 0_0 
+SHUFFLED | 4_4 3_1 1_2 2_-1 0_0 
