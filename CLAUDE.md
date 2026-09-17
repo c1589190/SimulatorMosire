@@ -36,10 +36,16 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | MapSimos | `simos-map` | `simos-util`。**永不** import social/unit/agentlib。**不做任何存储** |
 | SocialSimos | `simos-social` | `simos-util` + `simos-map`。**不依赖 UnitSimos** |
 | UnitSimos | `simos-unit` | `simos-util` + `simos-map`。**不依赖 SocialSimos** |
-| CoreSimos | `simos-core` | 以上全部 + `agentlib-mosire` + MCP SDK + sqlite-jdbc + 日志实现 |
+| CoreSimos | `simos-core` | **main scope 只有** `simos-util` + `agentlib-mosire`（+ 后续的 sqlite-jdbc / MCP SDK / 日志实现）。map/social/unit **退到 test scope** |
 
-这些边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，
-不是 code review 的事。
+> ★ **CoreSimos 的 main scope 不依赖领域模块**（ADR-1，2026-09-18）。这是**铁律 4 的结构化**——
+> Core 编译期看不见任何领域类型，**想重新实现领域逻辑也无从下手**。由 `simos-core` 自己的
+> `bannedDependencies` 在构建期强制。具体模块的装配归 **app 层**（M5 的 GUI / MCP）。
+> 连带后果：**命令跨边界是不透明载荷**（Core 只认信封的 `type` 字符串，不 `instanceof`、不 switch 类型），
+> 见 ADR-1 §七。新增契约放 `io.mosire.simos.util.spi`，**既有契约原地不动**。
+>
+> 这些边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，
+> 不是 code review 的事。
 
 ### 跨模块可见性走 Facet，不走反向依赖
 
@@ -54,11 +60,12 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
 | `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 可执行分解（5 任务）+ M1~M6 路线图；每阶段的推进机制见其 **§六** |
 | `docs/superpowers/specs/2026-09-16-util-simos-design.md` | **M1 spec（已执行）**：UtilSimos 八大件、Address 语法、四条时间语义、往返框架。五项待决见其 §〇 |
 | `docs/superpowers/plans/2026-09-16-util-simos-plan.md` | **M1 计划（已执行完毕）**：11 个任务的 bite-sized 步骤。⚠️ 其代码草图是**计划期产物**，执行期已就地校正，**spec 与 `simos-util/src` 才是权威**（分歧处均有"取代说明"） |
+| `docs/superpowers/specs/2026-09-18-spi-layering-design.md` | **ADR-1（架构决策）**：修订总纲 §三 的最后一条。记「为什么**不**拆 `simos-spi`」与「Core 的 main scope 为什么要收窄」。含插件假设的评估、否掉的方案及其理由、以及尚未自证的清单 |
 
-**注意粒度**：总纲是**总纲**，不是五份 spec 的合集。各模块的**内部设计**（M1 已裁决完毕；
-`MapChangeSet` 字段清单、`Region` 如何统一 GSimulator 的三个 region 概念、时间线 DAG 存储 schema
-等**仍未裁决**）——总纲 §十三 有意把它们留给各模块自己的 spec。给 **M2~M6** 写 bite-sized 步骤前，
-先确认对应模块的待决项已裁决，否则等于编造设计。
+**注意粒度**：总纲是**总纲**，不是五份 spec 的合集。各模块的**内部设计**（M1/M2/M3 已裁决完毕；
+**M4 的三项已于 2026-09-18 裁决**——时间线 DAG 存储 schema / Checkpoint 周期 / Command 类型清单，
+见 `2026-09-18-spi-layering-design.md` 与即将落地的 M4 spec）——总纲 §十三 有意把它们留给各模块自己的 spec。
+给 **M5/M6** 写 bite-sized 步骤前，先确认对应模块的待决项已裁决，否则等于编造设计。
 
 **⚠️ 不要用 `@` 导入上面这些文档。** 官方语义是导入文件**在启动时展开进上下文**——导入**不省上下文**，
 只会让每个会话白白载入 **5000+ 行**。上面用反引号书写路径

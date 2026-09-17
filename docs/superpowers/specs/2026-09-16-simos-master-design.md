@@ -84,6 +84,9 @@
 
 ## 三、模块划分与依赖方向
 
+> ⚠️ **本节经 `2026-09-18-spi-layering-design.md`（ADR-1）修订。** 修订处：§3.1 的最后一条。
+> 图的画法与其余条文不变。ADR-1 记的是「为什么不拆 `simos-spi`」与「Core 的依赖为什么要收窄」。
+
 ```
                     ┌──────────────────────┐
                     │     UtilSimos        │  零领域依赖
@@ -121,7 +124,12 @@
 - `MapSimos` 依赖 `UtilSimos`，**永远不 import `SocialSimos` / `UnitSimos`**。
 - `SocialSimos` 与 `UnitSimos` **互不依赖**。
 - `UtilSimos` 不依赖任何 simos 模块，不依赖 `AgentLibMosire`，不碰文件系统。
-- `CoreSimos` 是唯一知晓全部模块的集成点。
+- ~~`CoreSimos` 是唯一知晓全部模块的集成点。~~
+  **（ADR-1 修订）** `CoreSimos` 的 **main scope 只依赖 `UtilSimos`**（+ `AgentLibMosire`）；
+  map / social / unit 退到 **test scope**。⇒ 铁律 4 由**结构**保证，不再靠自觉：
+  Core 编译期看不见任何领域类型，**想重新实现领域逻辑也无从下手**。
+  具体模块的装配归 **app 层**（M5 的 GUI / MCP），它们依赖 core + 具体模块。
+  此约束由 `simos-core` 自己的 `bannedDependencies` 在构建期强制（含故意违规用例自证）。
 
 ### 3.2 跨模块可见性：Facet 扩展查询
 

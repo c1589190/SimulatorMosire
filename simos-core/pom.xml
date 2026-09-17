@@ -11,20 +11,11 @@
 
   <artifactId>simos-core</artifactId>
   <name>CoreSimos</name>
-  <description>集成点：时间线 DAG、两阶段时间推进、Command Bus、存储、可观测性、AgentBinding、GUI 与 MCP。</description>
+  <description>内核：时间线 DAG、两阶段时间推进、Command Bus、存储、可观测性。只依赖共享层，不依赖任何领域模块（ADR-1）。</description>
 
   <dependencies>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
     </dependency>
     <!-- CoreSimos 是唯一允许依赖 AgentLibMosire 的模块（spec §3.1 / G9）。
          版本由父 POM dependencyManagement 提供；类可用性由
@@ -32,6 +23,22 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>agentlib-mosire</artifactId>
     </dependency>
+
+    <!-- ★ 领域模块一律 test scope（ADR-1 §六）。main scope 只留共享层 ⇒
+         Core 编译期看不见 Unit / GameMap / PopulationSeries，铁律 4 由结构保证：
+         想重新实现领域逻辑也无从下手。具体模块的装配归 app 层（M5 的 GUI / MCP）。
+         test scope 保留是为了让 M4 的判据（时间线分岔 / correlationId 全链 /
+         真实并发 CONFLICT）能端到端验——这不违反分层：test classpath 不是产物。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId><scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId><scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId><scope>test</scope>
+    </dependency>
+
     <!-- MCP SDK / sqlite-jdbc / 日志实现到 M4/M5 真正需要时再加。 -->
     <dependency>
       <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
@@ -40,4 +47,41 @@
       <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- ★ 本项目唯一"被限制的集成点"：其余四个模块禁 core，core 禁领域模块（ADR-1 §六）。
+           写法是官方推荐的「宽 exclude + 窄 include」：先把三个领域模块在任何 scope 下禁掉，
+           再只为 test scope 开一条口子。
+           ⇒ provided / runtime 这些"编译期可见或可绕过"的 scope 一并被盖住
+             （只 ban compile 会留下 provided 这条绕过路径）。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-core-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.mosire:simos-map</exclude>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                  </excludes>
+                  <includes>
+                    <include>io.mosire:simos-map:*:*:test</include>
+                    <include>io.mosire:simos-social:*:*:test</include>
+                    <include>io.mosire:simos-unit:*:*:test</include>
+                  </includes>
+                  <message>CoreSimos 的 main scope 不得依赖领域模块（ADR-1 §六）：铁律 4「Core 不重新实现领域逻辑」由结构保证。领域模块只允许在 test scope 出现</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>

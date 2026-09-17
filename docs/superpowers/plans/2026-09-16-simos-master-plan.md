@@ -1192,8 +1192,21 @@ L1 子节点写 `edges` 静默丢失 / L2 双份连通性存储 / L3 方向数�
 |---|---|
 | **交付物** | 时间线 DAG（分支、按时间戳推进）、两阶段时间推进（Prepare→Propose→Resolve→Validate→Commit→Post-commit）、Command Bus（含乐观并发）、存储（日志 SQLite / 快照 JSON）、可观测性 |
 | **判据** | 时间线能分岔；`correlationId` 能一条命令从入口追到落盘；CONFLICT 有**真实并发**用例（spec §11） |
-| **待决** | 时间线 DAG 存储 schema；Checkpoint 周期；Command 类型清单 |
-| **依赖** | M3 |
+| **待决** | ~~时间线 DAG 存储 schema；Checkpoint 周期；Command 类型清单~~ **✅ 2026-09-18 已全部裁决**（见下方"裁决落点"） |
+| **依赖** | M3 + **ADR-1 的架构改动**（2026-09-18：`simos-core` 的 main scope 收窄到共享层） |
+
+**裁决落点**（2026-09-18，用户裁定 U7~U14 + 控制器裁定 C9~C11）：
+
+| 项 | 裁定 |
+|---|---|
+| 时间线 DAG 存储 schema | **只有 `revisions` 表，一切派生**——head 用 `MAX(revision)`、分岔点用首条 revision 的 parent 指针、分支清单用 `DISTINCT`。没有第二来源可漂移 |
+| Checkpoint 周期 | **每 N 条 revision（默认 100）+ 分岔强制一次**；重放上界 N 含新分支（分岔点必有一份快照） |
+| Command 类型清单 | **操作级**：unit 8 项 + `AdvanceTime` + `ForkBranch`。map/social 的操作面按各自 spec 后补（M2/M3 有意留白，现在补等于编造设计） |
+| `AdvanceTime` 的形状 | 走 `Command` 接口、同一条总线；§六 的两阶段是它的**解算方式**，不是铁律 2 的第二个入口 |
+| `util.ChangeSet` 死代码环 | `WorldChangeSet implements ChangeSet`（首次获得真消费者）；`ChangeSet` **收窄为标记接口**（去掉 `baseRevision()`），三个模块级变更集各加 `implements ChangeSet`（字段与测试零变化）；删 `assertSnapshotRoundTrip` |
+| Core 的依赖 | **main scope 只依赖共享层**（ADR-1）⇒ 命令跨边界是**不透明载荷**（信封 + `type` 字符串），Core 不 `instanceof`、不 switch 类型 |
+
+⚠️ **最后两条改变了命令的形态**，写 bite-sized 步骤前必须先读 `2026-09-18-spi-layering-design.md` §七。
 
 **关键约束**：A* 寻路与实际移动**必须用同一个 `movementCost()` 函数**（spec §5.3），否则会出现"算法说 A 最快、执行发现 B 更快"。`correlationId` 须贯穿 `Command → Proposal → ChangeSet → Revision`（spec §8）。
 
@@ -1303,7 +1316,7 @@ M0~M6 是**阶段**，每个阶段走同一条五步流水线：
 | **P1 = M1 UtilSimos**（成败点） | P0 + 裁决五项 | 八大件方法签名 / Address 转义与边界 / Resolver 注册与优先级 / TemporalSeries 插值·事件语义 / Facet 协议 | 八大件各有单测；往返不变式框架含故意漂移字段的失败用例 |
 | **P2 = M2 MapSimos** | P1 + 克隆 GSimulator 到本机（`~/DevMosire/GSimulator`，只参考不依赖）+ 裁决五项 | 六边形数据结构 / Region 统一三概念 / 连通性稳定 ID 规则 / 生成算法参数面 / `MapChangeSet` 字段清单 | L1~L9 逐条对应用例；框选随机化与自动河流各有验收 |
 | **P3 = M3 Social+Unit** | P2 + 裁决五项 | 增长率段边界语义 / 人口 cache 策略 / 编制树操作面 / 移动 materialize 精度与舍入 / A* 启发函数 | 人口分段积分对账；移动逐值验算（`40-12.5=27.5`；`27.5-32.5=-5`） |
-| **P4 = M4 Core 内核**（成败点） | P3 + 裁决三项 | 时间线 DAG 存储 schema / Checkpoint 周期 / Command 类型清单 | 时间线可分岔；`correlationId` 全链可追；CONFLICT 有真实并发用例 |
+| **P4 = M4 Core 内核**（成败点） | P3 + ~~裁决三项~~ **✅ 已于 2026-09-18 裁决** | ~~时间线 DAG 存储 schema / Checkpoint 周期 / Command 类型清单~~ **已裁决**：schema = 只有 `revisions` 表一切派生；Checkpoint = 每 N 条 revision + 分岔强制一次；Command = 操作级 unit 8 项 + `AdvanceTime` + `ForkBranch`。另加：`WorldChangeSet implements ChangeSet`、`ChangeSet` 收窄为标记接口、`AdvanceTime` 走 Command 接口 | 时间线可分岔；`correlationId` 全链可追；CONFLICT 有真实并发用例 |
 | **P5 = M5 Core 外壳** | P4 + 裁决四项 | GUI 形态 / MCP 工具清单 / `Operation` 是否扩展 / cap 硬上限语义 | Agent 与玩家走同一 Command 路径；MCP 达任意合法状态 |
 | **P6 = M6 GSimap 导入器** | P2（可与 P3/P4 并行） | 输入形态已实测（见 §二 M6） | 旧 `*_map.json` 能转成 simos 数据集 |
 
