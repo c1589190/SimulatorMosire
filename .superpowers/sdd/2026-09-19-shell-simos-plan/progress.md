@@ -18,7 +18,7 @@
 | T1 | `simos-app` 骨架与装配门面 | ✅ `m5/t1` → 合并 `33fa15f`（冒烟 4 条；**2 轮变异 0 存活**；reactor 七模块首绿） |
 | T3 | 查询层 + 两个真 Facet | ✅ `m5/t3` → 合并 `009e8b3`（27 条新测试；**2 轮变异 0 存活**） |
 | T8 | GUI 服务器与 `/api` | ✅ `m5/t8` → 合并 `5ac368b`（14 条新测试；**2 轮变异 0 存活**）★ WebUI 1/2 |
-| T9 | GUI 前端三页 | ⏳ Batch D ★ WebUI 2/2 |
+| T9 | GUI 前端三页 | ✅ `m5/t9` → 合并 `6917365`（5 条新测试；**1 轮变异 0 存活**；★ 截图 7 张在案）★ WebUI **出形** |
 | T5 | 工具集（3 写 + 9 读） | ⏳ Batch E |
 | T6 | 审批装配 | ⏳ Batch E |
 | T7 | MCP 服务装配（判据②前置） | ⏳ Batch E |
@@ -88,3 +88,20 @@
 5. GUI **恒绑 127.0.0.1**（回环基线，不提供改绑口子）。
 
 **下一批**：Batch D-2 = **T9（前端三页）**。
+
+---
+
+### Batch D-2（T9 前端三页）已关账（2026-09-19 05:3x，子代理 + 控制器视觉核验）
+
+**T9**（`m5/t9` `2ab94e9` → 合并 `6917365`）：`webui/{map,unit,social}.html` + 每页 `map.js(312)/unit.js(411)/social.js(100)` + 共享 `api.js(132)/app.js(184)/styles.css(287)` + `index.html` 接线；`WebuiAssetsTest`（5 条：资产在册非空 / classpath 打包 / **无绝对 URL 无 CDN** / 三页相对引用 / **判定器自证**）；**1 轮变异 0 存活**（往 `map.js` 塞 `https://cdn…` ⇒ 红在 `:92`）。合并后主树门禁 **781** 条 = 170/255/45/131/147/**33**、`BugInstance size is 0` ×6、`[ERROR]` 0。
+★ **控制器视觉核验（读了截图）**：`/map` 正确画出走廊 3 格的 pointy-top 六角（`main · rev 1 · tick 7`、图例 `desert=3`）；`/unit` 有单位表 + 8 命令动态表单（branch/expectedRevision/提交）。**中文显示为方框**＝headless 环境**无 CJK 字体**（`fc-list` 空），非页面缺陷。
+★ **T9 自证的两次真缺陷**：① 页面 JS 在 `<div>` 上用 `.elements[...]`（`pageerror: reading 'id'`）——截图 QA 当场抓到并修；② 绝对 URL 扫描器把引号当标识符，**`//cdn…` 协议相对形式漏检**——其自带自证用例抓到并修。**两者若没跑真 QA/自证都会潜伏**。
+
+**裁定 60 —— T9 的口径与一处 UX 缺口**：
+1. 每页一个 JS + 三个共享资产（spec 只点名共享三件）——接受（便于 `node --check` 与无绝对 URL 扫描统一）。
+2. 区域描边延后（种子地图 `regions` 为空）——接受。
+3. ★ **单位标记未画在全局 Canvas**（派单本说数据来自 `/api/map/overview` **与** `/api/units`；实现只做了点击格子的 `unitsHere` facet）——**真 UX 缺口**，待人补：用 `/api/units` 的 `effectivePosition` 叠加标记。归 **T9b**。
+4. 审批面板 503 优雅降级（T6 接入后改）——接受。
+5. ★ **可运行性缺口**：`ShellMain` 不种世界 ⇒ 空库启动后页面无数据（`/api/map/overview` 失败）。归 **T9b**（加 `--demo` 首启种子 + 地图单位标记）。
+
+**下一批**：**T9b（demo 首启 + 地图单位标记）** → 然后 Batch E（T5 ‖ T6 → T7）。
