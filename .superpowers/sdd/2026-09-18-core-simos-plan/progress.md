@@ -1232,3 +1232,18 @@ m7 提交失败无条件折成 `Conflict`（裁定 48 的要害）/ m8 checkpoin
    `TimeAdvanceTest.realRouteProducesTheFrozenR6Sequence`）；★ **撤的是告示，不是它"机制级"这个性质**——那条用例用的
    仍是替身 route，引用 R6 的端到端结论时**引前者**。Task 11 用例只改了注释（剥注释骨架 md5 两侧同为 `9324ae37…`，实测）。
 5. **Task 13 ← 8、12**：本任务关账后两条依赖均已满足。**Task 16 Step 3 仍须等 Task 13**（裁定 20）。
+
+### 收尾：文档入库审计 + worktree 边界显式化（`340e298` 之后）
+
+问"开发文档和各类记录是否都提交了"。**实测结论：早已全在库，且远端与本地是同一提交**——`docs/` 11、
+`.superpowers/` **623**（含本计划 205 个文件：台账 + 报告 + 证据）、`.serena/` 2、`config/` 1；
+`git status` 除 `.claude/worktrees/` 外**零未跟踪** ⇒ **没有遗漏可提交**，不是我漏提交。
+
+★ 唯一未跟踪的两项是**两个死掉的 agent 工作树**（`b8`/`b9`）。顺带查清：`m4/b8` 的 `adfb871` 是当前分支的
+**祖先**（`merge-base --is-ancestor` 实测）、**零独有提交** ⇒ 那棵树上的工作**没丢**，只是落后 8 个提交。
+树根那份 `Task8-probe-draft-from-dead-agent.java.txt` 维持既有处置（上文「b8 树根留有…」：**绝不许进提交**），本次未动。
+
+**改动**：`.gitignore` 增 `.claude/worktrees/`——每棵工作树都是**整仓副本**（内含嵌套 `.git` 与 `target/`），
+一旦入库就是把仓库再塞一份；注释里写明**忽略 ≠ 删除**。**实测**：`check-ignore` 恰命中那两个路径，`CLAUDE.md` /
+`docs` / `.superpowers/sdd` / `.serena/project.yml` / `config/checkstyle.xml` / `README.md` 六条反证**均未被忽略**，
+`git worktree list` 仍列两棵树、草稿仍在盘上。⇒ 这条边界从此**显式**，不再靠"下一个人记得别 `git add -A`"。

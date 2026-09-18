@@ -18,5 +18,10 @@ CLAUDE.local.md
 **/.claude/settings.local.json
 .claude/agent-memory-local/
 
+# Claude Code 的 agent 工作树 —— 每棵都是整仓副本（内含嵌套 .git 与 target/），
+# 一旦入库就是把整个仓库再塞一份。忽略 ≠ 删除：git worktree list 仍看得见它们，
+# b8 树根那份死 agent 的探针草稿也仍在本地（处置见 progress.md「b8 树根留有…」，绝不许进提交）
+.claude/worktrees/
+
 # 会话原始记录 —— 内容已消化进 spec/计划，留本地作溯源，不进版本库
 *-gsimulator.txt
