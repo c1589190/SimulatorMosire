@@ -1,0 +1,592 @@
+package io.mosire.simos.app.gui;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.command.AdvanceTime;
+import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.core.command.ForkBranch;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.address.Entity;
+import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.facet.FacetEntry;
+import io.mosire.simos.util.identity.QueryResult;
+import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * GUI 服务器（M5 T8，spec §8.1/§8.2；★ WebUI 出形 1/2）：JDK {@link HttpServer} + **虚拟线程 executor**，同源提供静态页与
+ * {@code /api/*} JSON。
+ *
+ * <p>★ **写面唯一**：三个写端点（{@code /api/command}、{@code /api/advance}、{@code /api/fork}）一律经 {@link
+ * CoreSimos#submit}，身份 {@code initiator="player:gui"}、{@code commandId=correlationId=新 UUID}（spec
+ * §九；C22 的"单命令链缺省"由调用方显式满足）。本类**不打开任何存储/时间线写面**——R1 的扫描对象。
+ *
+ * <p>★ **读面唯一**：所有读端点经 {@link QueryService}（每次重放，spec §5.1）。
+ *
+ * <p>★ **canonical 地址由 Address AST 构造**（T3 的硬接缝，spec §5.2 + 台账裁定 58）：facet 只服务 canonical {@code
+ * map:<mapId>:hex.<q>_<r>}，且 {@code QueryService.facets} **不改写**转交的地址 ⇒ 本类的两个 hex 端点用 {@link
+ * #canonicalHex(int, int)} 先造 canonical 主体再查 facet。
+ *
+ * <p>★ **审批代理是 T6 的接缝**：未配置 base URL（T6 未接入）⇒ {@code 503}；配置了但代理未实现 ⇒ {@code 501}（本任务**不**实现审批语义，
+ * 只留 {@code approvalBaseUrl} 这个注入点）。
+ *
+ * <p>★ **零 CORS 头**（spec §〇.4）：同源，无预检面。静态资源带 {@code Cache-Control: no-store}。
+ */
+public final class GuiServer implements AutoCloseable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(GuiServer.class);
+
+  private static final ObjectMapper MAPPER = SimosObjectMapper.create();
+
+  /** GUI 写命令的发起者（spec §九；R4 的行为面断言对象）。 */
+  static final String GUI_INITIATOR = "player:gui";
+
+  private static final String DEFAULT_BRANCH = "main";
+  private static final String UNIT_DETAIL_PREFIX = "/api/unit/";
+  private static final String APPROVAL_DECISION_PREFIX = "/api/approvals/";
+
+  private static final Set<String> GET_ROUTES =
+      Set.of(
+          "/api/state",
+          "/api/resolve",
+          "/api/facets",
+          "/api/map/overview",
+          "/api/map/hex",
+          "/api/units",
+          "/api/social/population",
+          "/api/approvals");
+
+  private static final Set<String> POST_ROUTES =
+      Set.of("/api/command", "/api/advance", "/api/fork");
+
+  private final QueryService queryService;
+  private final CoreSimos core;
+  private final String mapId;
+
+  /** T6 的注入点：审批面 base URL；null / 空白 = 尚未接入（端点回 503）。 */
+  private final String approvalBaseUrl;
+
+  private final ExecutorService executor;
+  private final StaticHandler staticHandler;
+
+  private HttpServer server;
+  private volatile boolean closed;
+
+  /**
+   * @param queryService 只读门面
+   * @param core 唯一写入口
+   * @param mapId 本世界的 map 称谓（构造 canonical hex 地址用）
+   * @param approvalBaseUrl 审批面 base URL；{@code null} = T6 未接入
+   */
+  public GuiServer(
+      QueryService queryService, CoreSimos core, String mapId, String approvalBaseUrl) {
+    this.queryService = Objects.requireNonNull(queryService, "queryService");
+    this.core = Objects.requireNonNull(core, "core");
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.approvalBaseUrl = approvalBaseUrl;
+    this.executor = Executors.newVirtualThreadPerTaskExecutor();
+    this.staticHandler = new StaticHandler();
+  }
+
+  /**
+   * 启动并绑定。{@code port=0} ⇒ 由系统分配随机端口，实际端口经 {@link #boundPort()} 读回（spec §3.1 的测试口径）。
+   *
+   * @throws IllegalStateException 已启动、或绑定失败
+   */
+  public void start(String host, int port) {
+    Objects.requireNonNull(host, "host");
+    if (port < 0) {
+      throw new IllegalArgumentException("port 不得为负（0 = 随机端口）: " + port);
+    }
+    if (server != null) {
+      throw new IllegalStateException("GUI 服务器已启动，不能重复 start");
+    }
+    HttpServer created;
+    try {
+      created = HttpServer.create(new InetSocketAddress(host, port), 0);
+    } catch (IOException e) {
+      executor.shutdownNow();
+      throw new IllegalStateException("GUI 服务器绑定失败: " + host + ":" + port, e);
+    }
+    created.setExecutor(executor);
+    created.createContext("/", this::handle);
+    created.start();
+    this.server = created;
+    LOG.info("GUI 服务器已启动: http://{}:{}/（静态 /webui，同源，无 CORS 头）", host, boundPort());
+  }
+
+  /** 实际绑定端口（{@code port=0} 时由 OS 分配）。 */
+  public int boundPort() {
+    return requireServer().getAddress().getPort();
+  }
+
+  /** 实际绑定主机（回环）。 */
+  public String boundHost() {
+    return requireServer().getAddress().getHostString();
+  }
+
+  private HttpServer requireServer() {
+    HttpServer current = server;
+    if (current == null) {
+      throw new IllegalStateException("GUI 服务器尚未启动，没有可读回的端口");
+    }
+    return current;
+  }
+
+  /** 关闭：停监听（释放端口）+ 停执行器。幂等（spec §3.3 的关闭次序里 GUI 排第一）。 */
+  @Override
+  public void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    HttpServer current = server;
+    if (current != null) {
+      current.stop(0);
+      server = null;
+    }
+    executor.shutdownNow();
+  }
+
+  // ── 路由 ────────────────────────────────────────────────────────────────────────────
+
+  private void handle(HttpExchange exchange) throws IOException {
+    try {
+      String path = exchange.getRequestURI().getPath();
+      if (path.equals("/api") || path.startsWith("/api/")) {
+        writeReply(exchange, handleApi(exchange, exchange.getRequestMethod(), path));
+      } else if (!staticHandler.tryServe(exchange, path)) {
+        writeReply(exchange, Reply.of(404, notFound(path)));
+      }
+    } catch (IllegalArgumentException e) {
+      safeError(exchange, 400, e.getMessage());
+    } catch (Exception e) {
+      LOG.warn("GUI 请求处理失败: {} {}", exchange.getRequestMethod(), exchange.getRequestURI(), e);
+      safeError(exchange, 500, "internal error");
+    } finally {
+      exchange.close();
+    }
+  }
+
+  private Reply handleApi(HttpExchange exchange, String method, String path) throws IOException {
+    return switch (method) {
+      case "GET" -> {
+        Reply reply = handleGet(exchange, path);
+        yield reply != null ? reply : routeError(path);
+      }
+      case "POST" -> {
+        Reply reply = handlePost(exchange, path);
+        yield reply != null ? reply : routeError(path);
+      }
+      default -> routeError(path);
+    };
+  }
+
+  private Reply handleGet(HttpExchange exchange, String path) throws IOException {
+    if (path.equals("/api/state")) {
+      return stateReply();
+    }
+    if (path.equals("/api/resolve")) {
+      Map<String, String> params = queryParams(exchange);
+      QueryResult result = queryService.resolve(requiredParam(params, "address"), target(params));
+      return Reply.of(200, Map.of("candidates", ApiViews.resolveResult(result)));
+    }
+    if (path.equals("/api/facets")) {
+      Map<String, String> params = queryParams(exchange);
+      List<FacetEntry> entries =
+          queryService.facets(requiredParam(params, "address"), target(params));
+      return Reply.of(200, Map.of("entries", ApiViews.facets(entries)));
+    }
+    if (path.equals("/api/map/overview")) {
+      Map<String, String> params = queryParams(exchange);
+      SimulationState state = queryService.stateAt(target(params));
+      return Reply.of(200, ApiViews.mapOverview(mapId, ApiViews.gameMap(state)));
+    }
+    if (path.equals("/api/map/hex")) {
+      return mapHexReply(exchange);
+    }
+    if (path.equals("/api/units")) {
+      Map<String, String> params = queryParams(exchange);
+      SimulationState state = queryService.stateAt(target(params));
+      UnitState units = ApiViews.unitState(state);
+      return Reply.of(200, Map.of("units", ApiViews.units(units, state.meta().timestamp())));
+    }
+    if (isUnitDetail(path)) {
+      return unitReply(exchange, urlDecode(path.substring(UNIT_DETAIL_PREFIX.length())));
+    }
+    if (path.equals("/api/social/population")) {
+      return populationReply(exchange);
+    }
+    if (path.equals("/api/approvals")) {
+      return approvalSeam();
+    }
+    return null;
+  }
+
+  private Reply handlePost(HttpExchange exchange, String path) throws IOException {
+    if (path.equals("/api/command")) {
+      return submitReply(exchange);
+    }
+    if (path.equals("/api/advance")) {
+      return advanceReply(exchange);
+    }
+    if (path.equals("/api/fork")) {
+      return forkReply(exchange);
+    }
+    if (isApprovalDecision(path)) {
+      return approvalSeam();
+    }
+    return null;
+  }
+
+  /** known-but-wrong-method ⇒ 405（带 Allow）；unknown ⇒ 404。 */
+  private static Reply routeError(String path) {
+    String allowed = allowedMethod(path);
+    if (allowed != null) {
+      return new Reply(405, Map.of("error", "method not allowed", "allow", allowed), allowed);
+    }
+    return Reply.of(404, notFound(path));
+  }
+
+  private static String allowedMethod(String path) {
+    if (GET_ROUTES.contains(path) || isUnitDetail(path)) {
+      return "GET";
+    }
+    if (POST_ROUTES.contains(path) || isApprovalDecision(path)) {
+      return "POST";
+    }
+    return null;
+  }
+
+  private static boolean isUnitDetail(String path) {
+    return path.startsWith(UNIT_DETAIL_PREFIX) && path.length() > UNIT_DETAIL_PREFIX.length();
+  }
+
+  private static boolean isApprovalDecision(String path) {
+    return path.startsWith(APPROVAL_DECISION_PREFIX)
+        && path.length() > APPROVAL_DECISION_PREFIX.length();
+  }
+
+  // ── 读端点 ──────────────────────────────────────────────────────────────────────────
+
+  private Reply stateReply() {
+    Set<BranchId> branches = core.branches();
+    List<String> names = new ArrayList<>(branches.size());
+    Map<String, Long> heads = new LinkedHashMap<>();
+    for (BranchId branch : branches) {
+      names.add(branch.value());
+      core.head(branch).ifPresent(head -> heads.put(branch.value(), head.value()));
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("branches", names);
+    body.put("heads", heads);
+    body.put("meta", metaFor(names));
+    return Reply.of(200, body);
+  }
+
+  private Object metaFor(List<String> branchNames) {
+    if (branchNames.isEmpty()) {
+      return null;
+    }
+    String branchName = branchNames.contains(DEFAULT_BRANCH) ? DEFAULT_BRANCH : branchNames.get(0);
+    BranchId branch = new BranchId(branchName);
+    RevisionId revision = core.head(branch).orElseThrow();
+    SimulationState state = queryService.stateAt(QueryTarget.head(branch));
+    Map<String, Object> meta = new LinkedHashMap<>();
+    meta.put("branch", branchName);
+    meta.put("revision", revision.value());
+    meta.put("timestamp", ApiViews.timestamp(state.meta().timestamp()));
+    return meta;
+  }
+
+  private Reply mapHexReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    int q = intParam(params, "q");
+    int r = intParam(params, "r");
+    HexCoord coord = new HexCoord(q, r);
+    QueryTarget target = target(params);
+    SimulationState state = queryService.stateAt(target);
+    GameMap map = ApiViews.gameMap(state);
+    HexCell cell = map.hexes().get(coord);
+    if (cell == null) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "hex not found");
+      return Reply.of(404, body);
+    }
+    List<FacetEntry> facets = queryService.facets(canonicalHex(q, r), target);
+    return Reply.of(200, ApiViews.mapHex(coord, cell, facets));
+  }
+
+  private Reply unitReply(HttpExchange exchange, String id) {
+    UnitId unitId = new UnitId(id);
+    Map<String, String> params = queryParams(exchange);
+    SimulationState state = queryService.stateAt(target(params));
+    UnitState units = ApiViews.unitState(state);
+    Unit unit = units.units().get(unitId);
+    if (unit == null) {
+      return Reply.of(404, Map.of("error", "unit not found", "id", id));
+    }
+    return Reply.of(200, ApiViews.unit(unit, units, state.meta().timestamp()));
+  }
+
+  private Reply populationReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    HexCoord coord = new HexCoord(intParam(params, "q"), intParam(params, "r"));
+    SimulationState state = queryService.stateAt(target(params));
+    PopulationSeries series = ApiViews.socialData(state).populations().get(coord);
+    if (series == null) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "population series not found");
+      return Reply.of(404, body);
+    }
+    return Reply.of(200, ApiViews.population(coord, series, state.meta().timestamp()));
+  }
+
+  // ── 写端点（全部经 CoreSimos.submit；身份 = player:gui）─────────────────────────────────
+
+  private Reply submitReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            textField(root, "type"),
+            payloadField(root));
+    return resultReply(core.submit(command));
+  }
+
+  private Reply advanceReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    long from = longField(root, "from");
+    TimeRange range =
+        root.hasNonNull("to")
+            ? new TimeRange(
+                SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(longField(root, "to"))))
+            : TimeRange.since(SimosTimestamp.of(from));
+    AdvanceTime command =
+        new AdvanceTime(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            range);
+    return resultReply(core.submit(command));
+  }
+
+  private Reply forkReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    ForkBranch command =
+        new ForkBranch(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "source")),
+            new RevisionId(longField(root, "expectedRevision")),
+            new BranchId(textField(root, "newBranch")));
+    return resultReply(core.submit(command));
+  }
+
+  private static Reply resultReply(CommandResult result) {
+    return switch (result) {
+      case CommandResult.Committed committed -> Reply.of(200, ApiViews.committed(committed.ref()));
+      case CommandResult.Conflict conflict -> Reply.of(409, ApiViews.conflict(conflict.current()));
+      case CommandResult.Rejected rejected -> Reply.of(422, ApiViews.rejected(rejected.reason()));
+    };
+  }
+
+  /** 审批代理接缝（T6）：未配置 base URL ⇒ 503；已配置但代理未实现 ⇒ 501。 */
+  private Reply approvalSeam() {
+    if (approvalBaseUrl == null || approvalBaseUrl.isBlank()) {
+      return Reply.of(503, Map.of("error", "approval endpoint 未配置（T6 接入后由 Shell 注入 base URL）"));
+    }
+    return Reply.of(501, Map.of("error", "approval 代理未实现（T8 只留注入点，T6 落地后透传）"));
+  }
+
+  // ── 请求工具 ────────────────────────────────────────────────────────────────────────
+
+  private JsonNode readBody(HttpExchange exchange) throws IOException {
+    byte[] bytes;
+    try (InputStream in = exchange.getRequestBody()) {
+      bytes = in.readAllBytes();
+    }
+    if (bytes.length == 0) {
+      throw new IllegalArgumentException("请求体为空");
+    }
+    try {
+      return MAPPER.readTree(bytes);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("请求体不是合法 JSON: " + e.getOriginalMessage());
+    }
+  }
+
+  private static String textField(JsonNode root, String name) {
+    JsonNode node = root.get(name);
+    if (node == null || !node.isTextual() || node.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + name + " 必填且为非空文本");
+    }
+    return node.asText();
+  }
+
+  private static long longField(JsonNode root, String name) {
+    JsonNode node = root.get(name);
+    if (node == null || !node.isIntegralNumber()) {
+      throw new IllegalArgumentException("字段 " + name + " 必填且为整数");
+    }
+    return node.asLong();
+  }
+
+  private static String payloadField(JsonNode root) {
+    JsonNode node = root.get("payloadJson");
+    if (node == null || node.isNull()) {
+      return "{}";
+    }
+    if (!node.isTextual()) {
+      throw new IllegalArgumentException("字段 payloadJson 必须是文本");
+    }
+    return node.asText();
+  }
+
+  private static Map<String, String> queryParams(HttpExchange exchange) {
+    String raw = exchange.getRequestURI().getRawQuery();
+    Map<String, String> params = new LinkedHashMap<>();
+    if (raw == null || raw.isEmpty()) {
+      return params;
+    }
+    for (String pair : raw.split("&")) {
+      int eq = pair.indexOf('=');
+      if (eq < 0) {
+        params.put(urlDecode(pair), "");
+      } else {
+        params.put(urlDecode(pair.substring(0, eq)), urlDecode(pair.substring(eq + 1)));
+      }
+    }
+    return params;
+  }
+
+  private static String requiredParam(Map<String, String> params, String name) {
+    String value = params.get(name);
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必填");
+    }
+    return value;
+  }
+
+  private static int intParam(Map<String, String> params, String name) {
+    String value = requiredParam(params, name);
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
+    }
+  }
+
+  private static QueryTarget target(Map<String, String> params) {
+    BranchId branch = new BranchId(params.getOrDefault("branch", DEFAULT_BRANCH));
+    String revision = params.get("revision");
+    if (revision == null || revision.isBlank()) {
+      return QueryTarget.head(branch);
+    }
+    try {
+      return QueryTarget.at(branch, new RevisionId(Long.parseLong(revision)));
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 revision 必须是整数: " + revision);
+    }
+  }
+
+  /** canonical {@code map:<mapId>:hex.<q>_<r>}——**只能用 Address AST 造**（T3 的硬接缝）。 */
+  private String canonicalHex(int q, int r) {
+    Address address =
+        new Address(List.of(new Namespace("map"), Entity.of(mapId), Entity.of("hex", q + "_" + r)));
+    return address.canonical();
+  }
+
+  private static String urlDecode(String text) {
+    return URLDecoder.decode(text, StandardCharsets.UTF_8);
+  }
+
+  // ── 响应工具 ────────────────────────────────────────────────────────────────────────
+
+  private void writeReply(HttpExchange exchange, Reply reply) throws IOException {
+    byte[] body = reply.body() == null ? new byte[0] : MAPPER.writeValueAsBytes(reply.body());
+    Headers headers = exchange.getResponseHeaders();
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    if (reply.allow() != null) {
+      headers.set("Allow", reply.allow());
+    }
+    if (body.length == 0) {
+      exchange.sendResponseHeaders(reply.status(), -1);
+    } else {
+      exchange.sendResponseHeaders(reply.status(), body.length);
+      try (OutputStream out = exchange.getResponseBody()) {
+        out.write(body);
+      }
+    }
+  }
+
+  private void safeError(HttpExchange exchange, int status, String message) {
+    try {
+      writeReply(exchange, Reply.of(status, Map.of("error", message == null ? "error" : message)));
+    } catch (IOException | RuntimeException e) {
+      LOG.debug("无法写出错误响应（客户端可能已断开）", e);
+    }
+  }
+
+  private static Map<String, Object> notFound(String path) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("error", "not found");
+    body.put("path", path);
+    return body;
+  }
+
+  /** 一个已算好的响应：状态码 + JSON 体（null = 空体）+ 可选 {@code Allow} 头。 */
+  private record Reply(int status, Object body, String allow) {
+
+    static Reply of(int status, Object body) {
+      return new Reply(status, body, null);
+    }
+  }
+}

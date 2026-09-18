@@ -84,7 +84,7 @@ public final class ShellMain {
           config.storeDir(),
           config.checkpointInterval(),
           shell.registeredModuleCount(),
-          config.guiPort(),
+          shell.boundGuiPort(),
           config.mcpPort(),
           config.mcpPath(),
           config.approvalPort(),
