@@ -1,0 +1,111 @@
+──────── t13-m1 ────────
+  分岔点不写 checkpoint（计划 m1；打 R8 的 checkpoint 断言）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=5477e4c25655dbf6abc368513fc5208e  mutant=7b2efa2ff251aae95f83fa066c3103c1  worktree_before=5477e4c25655dbf6abc368513fc5208e
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 CoreSimos.java 这一条路径 ==
+worktree_after_push=7b2efa2ff251aae95f83fa066c3103c1
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.CoreSimosTest.txt  mtime=1789752017  round_start=1789752013
+== 门禁 5：期望变红的类必须真的红 ==
+命中 CoreSimosTest 的变红行数=1
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.613 s <<< FAILURE! -- in io.mosire.simos.core.CoreSimosTest
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   CoreSimosTest.forkStartsAtRevisionOneAndItsForkPointGetsACheckpoint:375 [分岔点 (main,2) 必须有一份 checkpoint（C19 第②项：重放上界 ≤ N 跨分支的保证）] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=5477e4c25655dbf6abc368513fc5208e
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t13-m2 ────────
+  新分支 revision 从 0 起（计划 m2；打 (b2,1) 断言）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=d0f7bf384c741d211c44f761e3879b05  mutant=c5e57bcdaa8d9315b4c10fe7de80b931  worktree_before=d0f7bf384c741d211c44f761e3879b05
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 Timeline.java 这一条路径 ==
+worktree_after_push=c5e57bcdaa8d9315b4c10fe7de80b931
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.CoreSimosTest.txt  mtime=1789752021  round_start=1789752017
+== 门禁 5：期望变红的类必须真的红 ==
+命中 CoreSimosTest 的变红行数=1
+   [ERROR] Tests run: 5, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.650 s <<< FAILURE! -- in io.mosire.simos.core.CoreSimosTest
+   [ERROR] Tests run: 5, Failures: 0, Errors: 1, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   CoreSimosTest.forkStartsAtRevisionOneAndItsForkPointGetsACheckpoint:346 » IllegalArgument 重放目标的坐标不在时间线上（revisions 表没有这一行）: b2@1
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=d0f7bf384c741d211c44f761e3879b05
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t13-m3 ────────
+  封存后静默忽略注册（本任务新增护栏的变异体）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=5477e4c25655dbf6abc368513fc5208e  mutant=f6788e93a174ff6e9e278a115dee228f  worktree_before=5477e4c25655dbf6abc368513fc5208e
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 CoreSimos.java 这一条路径 ==
+worktree_after_push=f6788e93a174ff6e9e278a115dee228f
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.CoreSimosTest.txt  mtime=1789752029  round_start=1789752021
+== 门禁 5：期望变红的类必须真的红 ==
+命中 CoreSimosTest 的变红行数=1
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.716 s <<< FAILURE! -- in io.mosire.simos.core.CoreSimosTest
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   CoreSimosTest.registeringAfterTheFirstUseThrows:403 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=5477e4c25655dbf6abc368513fc5208e
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t13-m4 ────────
+  信封支无条件写 checkpoint（多写文件；打 C19 谓词守卫）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=5477e4c25655dbf6abc368513fc5208e  mutant=908d6022491550920f1e41a68347965c  worktree_before=5477e4c25655dbf6abc368513fc5208e
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 CoreSimos.java 这一条路径 ==
+worktree_after_push=908d6022491550920f1e41a68347965c
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.CoreSimosTest.txt  mtime=1789752033  round_start=1789752029
+== 门禁 5：期望变红的类必须真的红 ==
+命中 CoreSimosTest 的变红行数=1
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.717 s <<< FAILURE! -- in io.mosire.simos.core.CoreSimosTest
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   CoreSimosTest.envelopeBranchCommitsAndReplaysThroughTheRealWiring:217 [(main,2) 不命中 C19，不该有 checkpoint 文件] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=5477e4c25655dbf6abc368513fc5208e
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t13-m5 ────────
+  信封支命中 C19 却不写 checkpoint（正向行为被删）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=5477e4c25655dbf6abc368513fc5208e  mutant=231e8880f225540fad3fd3b3d9d9dfc9  worktree_before=5477e4c25655dbf6abc368513fc5208e
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 CoreSimos.java 这一条路径 ==
+worktree_after_push=231e8880f225540fad3fd3b3d9d9dfc9
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.CoreSimosTest.txt  mtime=1789752038  round_start=1789752033
+== 门禁 5：期望变红的类必须真的红 ==
+命中 CoreSimosTest 的变红行数=1
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.713 s <<< FAILURE! -- in io.mosire.simos.core.CoreSimosTest
+   [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   CoreSimosTest.envelopeBranchWritesACheckpointWhenTheIntervalHits:238 [(main,2) 命中 C19 第①项（2 % N == 0）⇒ 信封支必须写它] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=5477e4c25655dbf6abc368513fc5208e
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+=== 5 轮结束 ===
