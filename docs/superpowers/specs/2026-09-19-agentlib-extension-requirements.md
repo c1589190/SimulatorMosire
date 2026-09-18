@@ -120,3 +120,26 @@
 - 构件实测：`~/.m2/repository/io/modelcontextprotocol/sdk/mcp-bom/2.0.1/mcp-bom-2.0.1.pom`（artifact 清单）、`mcp-core-2.0.1.jar`（server transport 清单）、`mcp-json-jackson2-2.0.1.jar`。
 - `MainMosire`：`io/mosire/main/approval/{HttpApprovalChannel,TtyApprovalChannel,ApprovalHttpServer}.java`（审批实现所在）。
 - 参考前例：`~/DevMosire/GSimulator/gsim-agentsmanager/.../mcp/McpHttpServer.java`（JDK HttpServer 承载 MCP 的旧形态）。
+
+---
+
+## 交付核验（2026-09-19，隔壁交付后当场复核）
+
+**交付**：AgentLibMosire `main` 九个提交（`511be01` → `db4df36`）把 P1-A/B/C 全部做掉，P2-D/E/F 按建议不做；设计文档 `~/ProjectMosire/设计-MCP-HTTP传输与审批渠道.md`（230 行，冻结 verb→session→`Mcp-Session-Id` 路由表、双形态生命周期、兼容硬约束）；构件已 install（JAR **126** 类）。
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| simos 兼容门禁 | ✅ `AgentLibAvailabilityTest` **15/15** 绿（126 类 ≥ 118、13 个被钉类可加载） | simos 侧当场实测（本次） |
+| 公开类只增不减 | ✅ 0 删、118→126、13/13 在册 | 其 `.omo/evidence/agentlib-simos-m5-extension/task-10-compat.txt` |
+| 全仓门禁 | ✅ ProjectMosire `./mvnw verify` 绿（AgentLib 379 / Brain 291 / Bash 100 / Main 174） | 同上 |
+| 真面验收 | ✅ raw-HTTP 客户端 15/15（initialize 会话头、SSE 的 tools/list、`noExport` 隐藏、400/404、审批 200/409） | `F3-manual-qa.txt`（VERDICT: APPROVE） |
+| P2 边界 | ✅ P2-D/E/F 未做；聚合 `mcp`（Jackson 3）未引入；`jackson-databind` 仍 2.x | 设计文档 §十 + 其依赖线检查 |
+
+**M5 直接可用的新面**（M5 spec 将引用）：
+
+- `AgentToMcpServer.startHttp(...)`：**caller-owned**（`startHttp(HttpServer, path, …)`，挂到我们自己的 server；须先 `setExecutor(虚拟线程)`，否则默认单线程 executor 会与 GET 停驻流互锁——javadoc 有 WARN）；**owned**（`startHttp(host, port, path, …)`，自建并管生命周期；`port=0` 用 `boundPort()` 读回）。
+- `AgentToMcpServer.startWith(...)` 三重载**已公开**（transport 注入；streamable 族走 `startHttp`；兄弟接口误传抛带原因的 `IllegalArgumentException`）。
+- `ApprovalHttpEndpoint.start(port, pending, coordinator)`（**恒绑 127.0.0.1**）+ `createContext(path, handler)`（在同一台 server 上追加消费方端点）+ `boundPort()/close()`；`HttpApprovalChannel(pending)` + `markUp()`（绑定成功后打开可用性）；端点 `/api/approvals`（GET 列表）、`/api/approvals/{id}`（POST 决议），体 `{"decision":"approve|deny","scope":"once|session","by":"…"}`，**三态 200/404/409**。
+- 行为记账：`tools.listChanged=true` 恒广播（修复 SDK 装箱 NPE 吞异常导致的 list_changed 永不可达）；**无 resumability**；不校验 `MCP-Protocol-Version`；回环默认、**无鉴权/TLS**（对外须另加）。
+
+**遗留（归 M5 spec 设计）**：审批面目前**只有"自建 server"形态**（无 caller-owned 注入口）⇒ GUI（5711）与审批面（另一回环端口）的交互形态需在 spec 里定（候选：审批 server 上经 `createContext` 挂极小审批页 / 5711 服务端代理到审批端口）。
