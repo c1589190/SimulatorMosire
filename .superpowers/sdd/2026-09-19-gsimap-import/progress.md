@@ -121,6 +121,7 @@ swamp    -> plains        # ★ lossy：simos 词表是纯高度带的，没有�
 ### 6.3 交付物
 
 - `tools/gsimap_import.py`（**601 行**，Python 标准库 only；**零 Java/Maven 改动、无新模块**）。用法：`gsimap_import.py <旧 map.json> <输出目录>`。
+- **门禁**：主树 `./mvnw clean verify` **绿**（rc=0、**825** 条 = 170/255/45/131/153/71、7/7 模块、`BugInstance size is 0` ×6、`[ERROR]` 0；日志 `/tmp/m6-final-verify.log`）。——`tools/` **不入 Maven reactor**，故门禁与 M5 关账**同值**；这是本项目第一次在模块之外新增文件，故仍跑了一次确认。
 - `/tmp/m6-import-verify/` 下：两个真目录的产物 + `import.log`/`shell.log`/`fielddiff.log`/`overview.json` + `failclosed-evidence.log` + 6 个合成夹具。
 
 ### 6.4 我未能核实的
