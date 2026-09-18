@@ -1,0 +1,2 @@
+0c60d6e0878ec91aca123bc65367a7d9  .superpowers/sdd/2026-09-18-core-simos-plan/task-9-evidence/orig/CommandBus.java
+5d62c1d7c2f744e1c2eaf45e0a53e066  .superpowers/sdd/2026-09-18-core-simos-plan/task-9-evidence/orig/CommandRegistry.java

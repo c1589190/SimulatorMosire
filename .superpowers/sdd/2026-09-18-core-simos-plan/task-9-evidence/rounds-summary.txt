@@ -1,0 +1,12 @@
+# Task 9 变异自证存档（2026-09-18）
+# 基线（原件）
+0c60d6e0878ec91aca123bc65367a7d9  .superpowers/sdd/2026-09-18-core-simos-plan/task-9-evidence/orig/CommandBus.java
+5d62c1d7c2f744e1c2eaf45e0a53e066  .superpowers/sdd/2026-09-18-core-simos-plan/task-9-evidence/orig/CommandRegistry.java
+# 变异体（与原件字节不同 = 第一形态自证）
+ffc88205053232ceb9e5101ad39b2338  .superpowers/sdd/2026-09-18-core-simos-plan/task-9-evidence/mutants/m1.trim-payload.CommandBus.java
+2713caa40c472cfea58f928eda9491a2  .superpowers/sdd/2026-09-18-core-simos-plan/task-9-evidence/mutants/m2.silent-overwrite.CommandRegistry.java
+# 结论
+m1 trim-payload   : COMPILATION ERROR=0, surefire 执行=13 条, 红 1 条 → payloadJsonIsForwardedByteForByte:169（R11），理由=载荷被 trim
+m2 silent-overwrite: COMPILATION ERROR=0, surefire 执行=6 条,  红 1 条 → duplicateTypeFailsAtConstruction:44（R12），理由=该抛而未抛
+# m2 首跑作废记录：忘了 export JAVA_HOME，mvnw 未启动（日志=‘JAVA_HOME ... not defined correctly’），
+#   rc=1 却非编译错误亦非用例红。⇒ 装置自检乙（surefire 实际执行条数）是因此新增的。

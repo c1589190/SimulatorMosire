@@ -627,3 +627,120 @@ rc=0、6/6 模块 SUCCESS、`BugInstance size is 0` ×5、`[ERROR]` **0** 行、
 - 两单都写了 **`-am` 必带**（不带会从**可能陈旧的 `~/.m2`** 解析兄弟模块——`~/.m2` 里那份 simos 构件是
   2026-09-18 05:12 探针 `install` 写进去的）、**禁 `install`**、**禁改 `pom.xml`**、**全量 verify 只跑一次且在最后**。
 - ★ **并发上限 2 已用满**；两单都提示了"另一棵树上有 agent 在跑，2 核机器慢是正常的，别把慢当挂死"。
+
+---
+
+## 丑、第三次 429 —— 两个 agent 同时被打死，改**控制器内联执行**（2026-09-18 17:24）
+
+**实测**：`17:24:49` 与 `17:24:51`，Task 9 与 Task 8 的 agent **相隔 2 秒**双双死于同一条
+`HTTP 429 / [1308] 5 小时使用上限 / 限额将于 2026-09-18 20:19:36 重置 / model sent to the API: glm-5.3-flash`。
+`ListAgents` 复核：两个都 `failed`，无存活子进程。
+
+★ **但 `./mvnw -v` 当场实测 rc=0（可跑），控制器的调用也活着** —— 差别在**模型路由**：
+agent 走 `glm-5.3-flash`（限额中），主会话走另一路。⇒ **本次 429 只打死 subagent，没打死 Bash 分类器**
+（与 16:2x 那次不同，那次三样一起死）。
+
+⇒ **裁决：改控制器内联执行**（`M0` 就是本会话内联做完的，有先例）。**不再重试派单**——错误信息已明确写出
+账户级上限与重置时刻，重试是确定性失败。
+
+**两棵树**（`m4/b8`/`m4/b9`，均零提交、均在 `adfb871`）**本轮闲置**；内联在主树 `feat/adr1-core-scope` 上做。
+★ 若之后限额恢复仍要派单，**必须先 `reset --hard` 到当时的 HEAD**——它们现在指向的基线会变陈旧（裁定 25 的陷阱）。
+
+## 寅、裁定 34 —— 9↔8 接缝：**注入 `StateLoader`**（与裁定 32 同法，但成因不同）
+
+**当场发现**（读 spec §4.4 的 ①②③④ 与计划 Task 9 的 Steps）：**② handler 需要一个 `SimulationState`**，
+而装配状态的唯一来源是 `Replay.replay(StateRef)`（Task 8 / spec §6.4）。但
+**Task 9 的 `Consumes` 里没有 8，Task 8 的 `Consumes` 里也没有 9** —— 计划把这条缝**漏掉了**
+（与 Task 9 `Consumes` 漏掉 Task 12 **同族**：引用没当场对齐）。
+
+**为什么这次不"让 9 直接依赖 8"**：技术上无环（`9 → 8` 合法，两者同在 simos-core），但
+① 会让 Task 9 的用例被迫搭一整套 store+timeline+checkpoint 才能验一条 R11 转发；
+② `Replay` 是重协作对象，而 Task 9 只需要"给定坐标给我状态"这一件事。
+
+**裁决**：Task 9 定义 `core.command.StateLoader`（函数式接口，`SimulationState load(StateRef ref)`），
+`CommandBus` 构造期收它；Task 9 自己的用例传替身；Task 13 装配时传 `replay::replay`。
+- ★ **必须配一条用例**钉住「loader 被**以确切的坐标**问过、且它返回的状态**就是**交给 handler 的那个」
+  （形态 4：纯转发型 SPI）。★ 坐标是 `(envelope.branch(), head(branch))` ——**不是** `expectedRevision`：
+  两者在 ① 通过后相等，但读的是"当前 tip"这个语义。
+- **与裁定 32 的区别（别混为一谈）**：裁定 32 是**解环**（9↔12 构成闭环，非注入不可）；本条**不是解环**，
+  是**为可测性与职责分离选的注入**。理由不同，结论同形。
+
+## 卯、裁定 35 —— 领域命令的 revision **继承父的时刻**
+
+**当场发现**：`revisions.tick` 是 **NOT NULL**（spec §3.2 冻结 schema），而 spec §4.1 的 `CommandEnvelope`
+**不带任何时刻字段**（只有 commandId/correlationId/initiator/branch/expectedRevision/type/payloadJson）。
+
+⇒ **裁决**：领域命令（信封支）落 revision 时，`SimosTimestamp` **继承父行**——与 `Timeline.fork` 同一口径。
+**理由**：时刻只由时间推进改变（spec §五的两阶段推进是唯一改 tick 的路径），一条 `unit.RenameUnit` 不该移动时钟。
+★ **这条是推定**（从"信封无时刻字段 + tick NOT NULL"两个事实推出来的，spec 没有明文写）；
+Task 12 落地后（`AdvanceTime` 走自己的路径）回来复核；若与 §五冲突，以 §五为准并记取代说明。
+
+## 辰、裁定 36 —— Core 自己的两条命令**补上身份三件套**（取代 spec §4.1 的 record 形状）
+
+**当场发现**：`revisions` 表的 `command_id` / `correlation_id` / `initiator` **三列都是 NOT NULL**（spec §3.2 冻结
+schema），而 spec §4.1 的 `ForkBranch(source, expectedRevision, newBranch)` **三件套一个都没有** ——
+`Timeline.fork(...)` 却要收这三个参数。**信封支没有这个问题**（`CommandEnvelope` 自带三个）。
+
+⇒ **裁决**：Core 自己的两条命令**各补三个组件**，与 `CommandEnvelope` **同形同序**：
+- `AdvanceTime(commandId, correlationId, initiator, branch, expectedRevision, range)`
+- `ForkBranch(commandId, correlationId, initiator, source, expectedRevision, newBranch)`
+
+**理由**：① schema 强制三列 NOT NULL，数据必须有来源；② 对称——**没道理信封带身份、Core 自己的命令不带**；
+③ **避免第五个注入点**（否则 `CommandBus` 还得再收一个身份源，而 Task 11 的 correlationId 全链又要动它）。
+**标注：这是对 spec §4.1 的取代**，Task 12/13 必须按新形状写。`CommandEnvelope` **一字不改**（计划的 Produces 行是平铺的，照抄）。
+
+## 巳、裁定 37 —— `type` 的**命名空间前缀**是 Core 与模块之间的约定
+
+**当场发现**：`HandlerOutcome.Applied` 只携带一个 `ChangeSet`（util.spi，Task 2 冻结，**不动它**），
+而 `WorldChangeSet` 是 `Map<namespace, ChangeSet>` ⇒ **Core 必须知道这个 ChangeSet 属于哪个 namespace**，
+可 `CommandHandler` **没有 namespace() 访问器**。
+
+**裁决**：约定 `CommandHandler.type()` **必须**形如 `<namespace>.<Command>`（`RenameUnitHandler` 实测正是
+`"unit.RenameUnit"`），namespace = 第一个 `.` 之前的部分。
+- **校验点放 `CommandRegistry` 构造期**：`type()` 不含 `.`、或 `.` 在首尾 ⇒ **当场抛**。理由：这是装配错误，
+  早响比晚响好，且**不许**在 `CommandBus` 的每次提交里重复校验。
+- `CommandBus` 用同一规则把 `Applied(ChangeSet)` 装进 `WorldChangeSet`（单键）。
+- ★ **这不违反 C16/C26**：Core 没有 `instanceof` 任何模块类型、没有 parse 载荷，只用了一个**由 Core 自己规定的字符串形状**。
+- ★ **推论（当场）**：`CommandRegistry` 的重复注册校验与命名空间校验**都在构造期**，故 `CommandRegistry`
+  **不提供可变的 `register()`**——构造期收一个 `Collection<CommandHandler>`。这与计划 Produces 行写的
+  `register(CommandHandler)` **不同**，记在此处作取代说明：可变注册与 spec §4.3 的「**构造期**抛」自相矛盾。
+
+## 午、Task 9 已关账（**8/17**，2026-09-18 17:5x，控制器内联执行）
+
+**交付**：`core/command/` 8 个主源文件（`CommandEnvelope` / `AdvanceTime` / `ForkBranch` / `CommandResult` /
+`AdvanceRoute` / `StateLoader` / `CommandRegistry` / `CommandBus`）+ 2 个测试类（**6 + 13 = 19 条**）。
+全部走**裁定 32 / 33 / 34 / 35 / 36 / 37** 的形态——**本任务是 M4 里与 spec 分歧最多的一个**（六条真设计缺口，
+不是笔误），逐条裁定见 §乙/§庚/§寅/§卯/§辰/§巳。
+
+**绿轮（全量，不是单类）**：`./mvnw clean verify` → **rc=0**，5 分 23 秒，**627 条用例**
+（168/255/37/93/**74**——core 55→74，**+19 恰为 6+13**），`[ERROR]` **0 行**，`BugInstance size is 0` ×5，
+`BUILD SUCCESS`。日志 `task-9-evidence/merged-full-verify.log`。
+★ 单类绿轮首跑用了 `-q`（无汇总行）——按形态 1 当场摘掉 `-q` 重跑，确认 19 条**确实执行**，排除
+`No tests matching pattern` 的假绿。
+
+**变异自证 2 轮，0 存活**：m1 分派路径 trim 载荷 ⇒ 恰红 `payloadJsonIsForwardedByteForByte:169`（R11），
+**红的理由正是 trim 本身**（expected 带首尾空白、actual 被削），且 **13 条里只红这 1 条**——12 条用 `"{}"`
+的用例全绿，与计划表预判逐字吻合；m2 删重复检查改静默覆盖 ⇒ 恰红 `duplicateTypeFailsAtConstruction:44`（R12），
+理由 `Expecting code to raise a throwable`。两轮均 `COMPILATION ERROR` = 0、落盘 md5 == 变异体 ≠ 原件、
+恢复后 md5 逐字节归位（`0c60d6e0…` / `5d62c1d7…`），**未用 `git checkout --`**。
+
+**★ 装置自检新增一条（形态 1 的装置家族）**：m2 的**首跑作废**——那条命令忘了 `export JAVA_HOME`，
+`mvnw` 根本没启动，但 **`rc=1` 成立、`grep -c "COMPILATION ERROR"` 仍给出 0**。
+⇒ **「编译错误计数为 0」单独不足以证明这一轮真的跑过**。装置自检**必须**再加
+`grep -cE 'Tests run: [0-9]+' <轮日志>` **≥ 1**，否则当场作废整轮（已按纪律先恢复干净世界再整轮重做）。
+与「**没红也要问'为什么没红'**」同源：`0` 与「空」都能同时由**成功**和**根本没跑**产生。
+
+**留给下游的硬接缝**（Task 10 必读，详见 `task-9-report.md` §5）：
+1. **`submit` 现在不是线程安全的，且是故意的**（裁定 33）：① 入口检查与 ④ 落行之间**无锁**，
+   两次并发提交可同时通过入口检查并各落一行；③ 的锁内复查**必须**补上。
+2. **revision 号并发分配语义未定**：`commit` 用 `base.revision().value() + 1`，并发下两提交算出**同一个**号，
+   主键会拒第二条 ⇒ Task 10 要么靠锁排除、要么把失败折成 `Conflict`，**两条路都还没选**。
+3. **裁定 35 是推定**（时刻继承父行），**Task 12 落地后必须复核**：若时间推进语义要求领域命令也动 `tick`，本条要改。
+4. **`StateLoader` 的真实装配（`replay::replay`）从未跑过**——Task 8 未落地，全部用例用替身 `ref -> STUB_STATE`；
+   `CommandBus` 与 `Replay` 的组合**从未在真状态上执行过**，Task 13 装配时第一个要看这里。
+5. **裁定 37 未做真集成**：命名空间前缀只用替身 type 验过，**没有真的把 `RenameUnitHandler` 装进
+   `CommandRegistry` 跑一遍**——归 Task 13。
+
+**下一轮**：**Task 8（`Replay`）**——开工前先做**强制探针**（台账 §辛）：当场实测
+`SimulationState` / `Snapshot`（及 `GameMap` / `SocialData` / `UnitState`）**有没有值相等语义**，
+没有则 R4 对拍是装饰。★ 工作树 `b8`/`b9` 仍停在 `adfb871`，**派发前必须 `reset --hard` 到当时的 HEAD**（裁定 25 的陈旧基线陷阱）。
