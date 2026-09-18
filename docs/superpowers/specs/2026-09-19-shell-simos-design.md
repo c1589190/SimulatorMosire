@@ -114,7 +114,8 @@ record ShellConfig(Path storeDir, int checkpointInterval,
 7. GUI：`GuiServer`（5711；静态资源 + `/api`；MCP/审批端口注入页面）；
 8. `ShellMain` 解析参数 → `Shell.start(config)`；日志打印四个实际端口。
 
-**caller（MCP 调用者身份）**：`ToolContext.of(AccessToken.GUEST, permissionSet, AgentIdentity.external())`；`permissionSet` = 白名单 `simos.*` + `sensitiveAllowed`/`destructiveAllowed` 显式开（写工具带敏感标记）+ 资源面 `map/social/unit` 三命名空间。**装配期定死**（无 per-session 身份，S/P2-F）。
+**caller（MCP 调用者身份）**：`ToolContext.of(AccessToken.DEFAULT, permissionSet, AgentIdentity.external())`；`permissionSet` = 白名单 `simos.*` + `sensitiveAllowed`/`destructiveAllowed` 显式开（写工具带敏感标记）+ 资源面 `map/social/unit` 三命名空间。**装配期定死**（无 per-session 身份，S/P2-F）。
+★ **桶的取值经实测校正（T7）**：本节原写 `AccessToken.GUEST`——**错**。三条写工具的 `ToolSpec` 是 `ToolSpec.level(DEFAULT, sensitive=true, …)`，而 `PermissionChecker` 对**级别不足硬拒**（不进审批）⇒ `GUEST` 桶下**三条写工具全部不可达**（MCP 只能读不能写，与 S3/S4 矛盾）。`DEFAULT` 是**满足全部 12 条工具的最小桶**。**放行 ≠ 免审批**：authorizer 仍是带 `ApprovalCoordinator` 的那个；审批 `callerKey` 取**桶名**（`DEFAULT`），不是 identity 实例 id（裁定 63/64）。
 
 ### 3.3 关闭次序
 

@@ -22,7 +22,7 @@
 | T9b | 可运行性收尾（计划外） | ✅ `m5/t9b` → 合并 `e2df025`（+8 测试；**2 轮变异 0 存活**；★ 单位标记截图在案） |
 | T5 | 工具集（3 写 + 9 读） | ✅ `m5/t5` `a62bb6a` → 合并（11 条测试；**2 轮变异 0 存活**；★ 门禁抓 5 个真项） |
 | T6 | 审批装配 | ✅ `m5/t6` `337c9f7` → 合并 `3957a1a`（3 条测试；**1 轮变异 0 存活**；5711 代理落地） |
-| T7 | MCP 服务装配（判据②前置） | ⏳ Batch E |
+| T7 | MCP 服务装配（判据②前置） | ✅ `m5/t7` `7f9322b` → 合并（4 条测试；**2 轮变异 0 存活**；★ R2 按"M5 无内部工具"存档） |
 | T10 | AgentBinding | ✅ `m5/t10` `03e5a5f` → 合并 `b2dedd2`（12 条测试；**1 轮变异 0 存活**） |
 | T11 | 判据端到端 ①② | ⏳ Batch F |
 | T12 | M5 关账 | ⏳ Batch F |
@@ -154,3 +154,16 @@
 ★ **带裁定的遗留**：`ShellMain` 仍打印 `config.approvalPort()`（不在派单文件集内、未改）；`port=0` 时与实际不符——无害（缺省 5713 一致），记着。
 
 **下一批**：**T7（5715 MCP 服务装配）**——**最后一个实现任务**（← 之后 T11 判据端到端、T12 关账）。
+
+---
+
+### Batch E-3（T7 MCP 服务装配）已关账（2026-09-19 06:3x，子代理 + 控制器核验）
+
+**T7**（`m5/t7` `7f9322b` → 合并）：`Shell` 在装配第 6 步 `AgentToMcpServer.startHttp("127.0.0.1", config.mcpPort(), config.mcpPath(), toolRegistry, "simos-shell", …, mcpCaller(), toolAuthorizer())`（**必带审批 authorizer**）+ `boundMcpPort()` + close 次序 GUI → **MCP** → 端点 → 通道 → Core；`McpServerTest` 4 条（**官方 SDK 客户端** `McpClient.sync` + `HttpClientStreamableHttpTransport` 走真 socket）：`initialize` / `tools/list` **exactly 12** / 读工具与 `QueryService` **逐值对拍** / **写工具经 MCP 触发审批**（DENY ⇒ `APPROVAL_DENIED` 且无 revision；APPROVE_ONCE ⇒ 提交 + `initiator` == `config.mcpInitiator` + 改名经 MCP 读回）；`AgentLibAvailabilityTest` 扩钉 3 类（+3 用例）。**2 轮变异 0 存活**（m1 末参换 `standard()` ⇒ 绕过审批；m2 caller 桶降为 `GUEST` ⇒ 硬拒先于审批——两者都红在 `McpServerTest:232` 的"**写工具必须先进审批**"断言，如实记：**同一断言**）。任务内全量 822（core 150→153、app 64→68）。合并后主树门禁见下。
+
+**裁定 64 —— T7 的两处实测校正（全部接受）**：
+1. ★ **spec §3.2 的 MCP caller 桶写错了**：`GUEST` → **`DEFAULT`**。三条写工具是 `ToolSpec.level(DEFAULT, sensitive=true, …)`，`PermissionChecker` 对级别不足**硬拒（不进审批）**⇒ `GUEST` 桶下**写工具全部不可达**（MCP 只能读不能写，与 S3/S4 的工具面设计直接矛盾）。`DEFAULT` 是**满足全部 12 条工具的最小桶**；权限集 `AgentPermissionSet.unrestricted(DEFAULT)`。**放行 ≠ 免审批**（authorizer 仍带 coordinator）。**spec §3.2 已回填**，计划汇总表加行。
+2. **R2 按"M5 无内部工具"存档（不发明工具）**：12 条工具 `noExport()` 全 `false`；`McpServerTest` 用 `tools/list` **exact-set == 12** 作其 M5 形态；`noExport` 机制本身的判别力归 AgentLib 自己的用例。**如实记"R2 未自证"**（spec §11 允许存档）。
+★ 另记（未验，归 T12 或存档）：caller-owned `startHttp` 形态未用（用 owned，spec §7.2 点名）；MCP 官方客户端首连 405/降级行为未细察；跨机/网络 MCP 未测。
+
+**下一批**：**T11（判据①②端到端 + R9 生命周期）**，然后 **T12（M5 关账）**。

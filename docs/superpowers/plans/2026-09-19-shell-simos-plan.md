@@ -206,3 +206,4 @@ Batch F: T10 → T11 → T12（AgentBinding → 判据端到端 → 关账）
 | T3 | spec §5.2 `unitsHere` 值形态 | 改为**一单位一条** `FacetEntry("unit", <name>, "Unit", "unit:<id>")`（按 id 排序）；facet 只认 canonical `hex.<q>_<r>`、非法坐标名 ⇒ 空列表；`facets` 不改写转交（调用方传 canonical 或先 `resolve`）——**spec §5.2 已回填** | `t3-report.md` §四 |
 | T8 | spec §11 R1 的字面 | 扫描**扫代码不扫注释**（`Shell` 的 javadoc 有意写着该禁令本身）；stripper 有自证 + m1 反向证明 | `t8-report.md` §四 |
 | T9b | 计划外新增（控制器裁定） | **core 创世 bootstrap**（`bootstrapGenesis`，唯一绕过 `submit` 的写路径、仅空库）+ `--demo` 首启 + 地图单位标记；S8 的"只读"应读作"除创世外只读"——**spec §S8 已回填** | `t9b-report.md` |
+| T7 | spec §3.2 的 MCP caller 桶 | `AccessToken.GUEST` → **`DEFAULT`**（三条写工具是 `ToolSpec.level(DEFAULT, sensitive=true, …)`，GUEST 被 `PermissionChecker` **硬拒、不进审批** ⇒ 只能读不能写，与 S3/S4 矛盾）；**spec §3.2 已回填** | `t7-report.md` §四.1 |
