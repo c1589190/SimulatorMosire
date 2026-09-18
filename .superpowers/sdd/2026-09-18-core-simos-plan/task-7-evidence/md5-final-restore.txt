@@ -1,0 +1,2 @@
+715706a8fc0212222771579adb6311a4  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java
