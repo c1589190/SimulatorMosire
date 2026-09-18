@@ -1,0 +1,22 @@
+== Task 16 变异轮 md5 记录（全部为 2026-09-18 当场实测） ==
+
+-- 原件快照（绿轮落盘 = 原件）--
+485b94a56064de662765f24fb9b58b91  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/orig/UnitTimeParticipant.java
+485b94a56064de662765f24fb9b58b91  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+
+-- m1 推入时（落盘 == 变异体 m1，!= 原件）--
+76744537ea6c55bc3cdaf9875fd354c9  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+76744537ea6c55bc3cdaf9875fd354c9  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/mutants/UnitTimeParticipant.m1-keep-movement-on-arrival.java
+485b94a56064de662765f24fb9b58b91  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/orig/UnitTimeParticipant.java
+
+-- m1 后恢复（落盘 == 原件）--
+485b94a56064de662765f24fb9b58b91  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+(原件 485b94a56064de662765f24fb9b58b91)
+
+-- m2 推入时（落盘 == 变异体 m2，!= 原件）--
+e6806e0e6e2316118b8abe49237183a3  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+e6806e0e6e2316118b8abe49237183a3  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/mutants/UnitTimeParticipant.m2-empty-writes.java
+485b94a56064de662765f24fb9b58b91  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/orig/UnitTimeParticipant.java
+
+-- m2 后最终恢复（落盘 == 原件）--
+485b94a56064de662765f24fb9b58b91  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
