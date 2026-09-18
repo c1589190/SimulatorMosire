@@ -1,0 +1,11 @@
+P1 empty plain ser : {"modules":{}}
+P2 toy   plain ser : {"modules":{"toy":{"v":7}}}
+P3 empty mixin ser : {"@class":"io.mosire.simos.core.state.WorldChangeSet","modules":{}}
+P4 toy   mixin ser : {"@class":"io.mosire.simos.core.state.WorldChangeSet","modules":{"toy":{"@class":"REPL.$JShell$19$ToyChangeSet","v":7}}}
+P5 mixin roundtrip equals : true
+P6 mixin roundtrip as ChangeSet : WorldChangeSet[modules={toy=ToyChangeSet[v=7]}]
+P7 plain roundtrip of NONEMPTY FAILS: InvalidDefinitionException: Cannot construct instance of `io.mosire.simos.util.state.ChangeSet` (no Creators, like default constructor, exist): abstract types either need to be mapped to concrete types, have custom deserializer, or contain additional type information
+P8 plain roundtrip of EMPTY: true
+P9 mixin empty roundtrip equals: true
+P10 mixin ser key order: {"@class":"io.mosire.simos.core.state.WorldChangeSet","modules":{"zulu":{"@class":"REPL.$JShell$19$ToyChangeSet","v":1},"mike":{"@class":"REPL.$JShell$19$ToyChangeSet","v":2},"alpha":{"@class":"REPL.$JShell$19$ToyChangeSet","v":3}}}
+P11 mixin deserde of PLAIN nonempty bytes (no @class) dies?: 
