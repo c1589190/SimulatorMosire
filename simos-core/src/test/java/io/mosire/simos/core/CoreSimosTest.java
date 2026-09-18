@@ -508,6 +508,76 @@ class CoreSimosTest {
     }
   }
 
+  // ── 6. 创世 bootstrap（唯一绕过 submit 的写路径）────────────────────────────────────
+
+  /**
+   * ★★ **空库 → 创世 → 逐值重放**：{@code bootstrapGenesis} 落 {@code (main,1)} 行 + checkpoint， 门面随即看到 {@code
+   * main}、head=1，且 {@code replay((main,1))} **逐字段等于**传入的 {@code
+   * genesis}；行级字段（parent/时刻/类型/initiator/UUID/空变更集）在**关库后**用独立 store 逐条对。
+   *
+   * <p>★ 判别力前提：创世时刻取 {@code of(9)}（非 0）——否则"时刻写成了 {@code of(0)}"这类变异（m2） 在逐值断言下与正确实现不可分（形态 3）。
+   */
+  @Test
+  void bootstrapGenesisOnEmptyStoreWritesRowCheckpointAndReplaysExactState() {
+    SimulationState genesis = genesisState(9L, 7);
+    try (CoreSimos core = core(4L)) {
+      core.register(TOY_CODEC);
+      core.bootstrapGenesis(genesis);
+
+      assertThat(core.branches()).as("创世后 main 在册").containsExactly(main());
+      assertThat(core.head(main())).contains(new RevisionId(1));
+      assertThat(core.replay(ref("main", 1)))
+          .as("bootstrapGenesis 写出的 (main,1) 必须被真 Replay 逐值重建（含时刻）")
+          .isEqualTo(genesis);
+    }
+
+    assertThat(checkpointFile(ref("main", 1)))
+        .as("C19 第③项要求 (main,1) 有 checkpoint——少了它 replay 会失败")
+        .isRegularFile();
+
+    RevisionRow row = row(ref("main", 1));
+    assertThat(row.parent()).as("创世行无父").isEmpty();
+    assertThat(row.timestamp())
+        .as("行时刻取 genesis.meta().timestamp()")
+        .isEqualTo(SimosTimestamp.of(9L));
+    assertThat(row.commandType()).isEqualTo("core.Bootstrap");
+    assertThat(row.initiator()).isEqualTo("system:bootstrap");
+    assertThat(row.commandId()).isNotBlank();
+    assertThat(row.correlationId()).isNotBlank();
+    assertThat(row.changesetJson())
+        .as("创世不改变世界：空变更集")
+        .isEqualTo(Timeline.changeSetJson(WorldChangeSet.empty()));
+  }
+
+  /** ★ **非空库（尚未提交任何命令）⇒ 第二次创世必须抛**，绝不覆盖已有世界。 */
+  @Test
+  void bootstrapGenesisRefusesANonEmptyStoreBeforeAnyCommand() {
+    seedGenesis(5L, 0);
+    try (CoreSimos core = core(4L)) {
+      core.register(TOY_CODEC);
+      assertThatThrownBy(() -> core.bootstrapGenesis(genesisState(9L, 7)))
+          .as("空库前提是硬约束：已有创世行 ⇒ 抛，不覆盖")
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("空库");
+    }
+  }
+
+  /** ★ **非空库（已提交过命令）⇒ 同样抛**：`branches()` 非空是判据，与库是"被谁写的"无关。 */
+  @Test
+  void bootstrapGenesisRefusesANonEmptyStoreAfterASubmit() {
+    seedGenesis(0L, 0);
+    try (CoreSimos core = core(4L)) {
+      core.register(TOY_CODEC);
+      core.register(new ToyHandler("toy.Do", 1));
+      assertThat(core.submit(envelope("cmd-e1", main(), 1L, "toy.Do")))
+          .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+      assertThatThrownBy(() -> core.bootstrapGenesis(genesisState(9L, 7)))
+          .as("提交推进后仍是非空库 ⇒ 创世被拒")
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("空库");
+    }
+  }
+
   // ────────────────────────────── 夹具 ──────────────────────────────
 
   /** 同一个 {@code storeDir} 上的门面；{@code interval} 即 C19 的 N。 */
@@ -515,10 +585,20 @@ class CoreSimosTest {
     return new CoreSimos(new CoreConfig(tempDir, (int) interval, MAPPER));
   }
 
+  /** 一个坐标 {@code (main,1)}、时刻 {@code tick}、toy 切片值 {@code value} 的创世状态（供 bootstrap 用例）。 */
+  private SimulationState genesisState(long tick, int value) {
+    StateRef at = ref("main", 1);
+    return new SimulationState(
+        new StateMeta(at, SimosTimestamp.of(tick)),
+        Map.of("toy", new ToySnapshot(at, SimosTimestamp.of(tick), "toy", value)),
+        InMemoryInfoSystem.empty());
+  }
+
   /**
    * 种创世：独立打开含同名库文件的 store，落一行 {@code (main,1)}（parent 空、变更集空），再写创世 checkpoint 文件，然后关掉它。
    *
-   * <p>★ **不把"创世 API"加进 {@link CoreSimos}**——计划没要求，也没有消费者；夹具自己承担这一份。
+   * <p>★ **生产路径的创世现由 {@link CoreSimos#bootstrapGenesis(SimulationState)} 提供**（T9b）；本夹具仍直接落盘，
+   * 好让"必须预先存在一个世界"的用例（封存/分岔/只读面）不依赖被测的创世方法，**避免用被测物搭自己的夹具**。
    */
   private void seedGenesis(long tick, int value) {
     try (SqliteStore seedStore = SqliteStore.open(dbFile())) {

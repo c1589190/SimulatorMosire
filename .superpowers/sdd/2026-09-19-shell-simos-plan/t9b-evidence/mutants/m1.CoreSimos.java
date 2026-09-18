@@ -233,7 +233,9 @@ public final class CoreSimos implements AutoCloseable {
             BOOTSTRAP_INITIATOR,
             BOOTSTRAP_COMMAND_TYPE,
             Timeline.changeSetJson(WorldChangeSet.empty())));
-    checkpoints.write(at, CheckpointEncoder.encode(genesis, codecs));
+    if (at.revision().value() != 1) {
+      checkpoints.write(at, CheckpointEncoder.encode(genesis, codecs));
+    }
   }
 
   // ── 只读面（spec §S8）─────────────────────────────────────────────────────────────────

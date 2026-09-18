@@ -1,0 +1,59 @@
+# T9b 证据：--demo 首启 + 页面/JSON 抓取 + node --check + 截图
+date=2026-09-19T05:55:49+08:00
+base=http://127.0.0.1:5817  store=/tmp/t9b-demo-store  ready=1
+
+## 0 起动日志（应含已种入演示世界）
+05:55:49.194 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/t9b-demo-store checkpointInterval=100 codec=3 handler=8 participant=1 resolver=3 facet=2 mapId=Map1 guiPort=5817
+05:55:49.282 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+05:55:49.282 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5817/
+
+## 1 页面与静态资产（HTTP 状态码）
+GET /              -> 200 text/html; charset=utf-8 1162
+GET /map           -> 200 text/html; charset=utf-8 1577
+GET /unit          -> 200 text/html; charset=utf-8 1990
+GET /social        -> 200 text/html; charset=utf-8 1401
+GET /api.js        -> 200 text/javascript; charset=utf-8 3843
+GET /app.js        -> 200 text/javascript; charset=utf-8 4992
+GET /styles.css    -> 200 text/css; charset=utf-8 4371
+GET /map.js        -> 200 text/javascript; charset=utf-8 12829
+GET /unit.js       -> 200 text/javascript; charset=utf-8 13650
+GET /social.js     -> 200 text/javascript; charset=utf-8 2927
+
+## 2 关键 JSON（--demo 种子值的可断言形态）
+GET /api/state
+{"branches":["main"],"heads":{"main":1},"meta":{"branch":"main","revision":1,"timestamp":{"tick":5,"calendarLabel":null}}}
+GET /api/units
+{"units":[{"id":"u-1","name":"第一连","member":100,"equipment":{"步枪":50},"speed":2,"mobilityPerMille":500,"parent":null,"position":{"q":1,"r":1},"movement":false}]}
+GET /api/map/overview
+{"mapId":"Map1","hexCount":3,"hexes":[{"q":1,"r":1,"terrain":"desert","height":0.5},{"q":1,"r":2,"terrain":"desert","height":0.5},{"q":1,"r":3,"terrain":"desert","height":0.5}],"regions":[],"cities":[],"terrainTypes":["desert"]}
+GET /api/map/hex?q=1&r=1
+{"q":1,"r":1,"terrain":"desert","height":0.5,"facets":[{"namespace":"unit","label":"第一连","typeName":"Unit","value":"unit:u-1"},{"namespace":"social","label":"1_1","typeName":"Population","value":15000}]}
+GET /api/social/population?q=1&r=1
+{"q":1,"r":1,"at":{"tick":5,"calendarLabel":null},"population":15000}
+
+## 3 node --check（5 个 JS）
+node --check api.js rc=0
+node --check app.js rc=0
+node --check map.js rc=0
+node --check unit.js rc=0
+node --check social.js rc=0
+
+## 4 playwright 截图 + 单位标记像素核验
+SHOT / -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9b/.superpowers/sdd/2026-09-19-shell-simos-plan/t9b-evidence/screenshots/index.png
+SHOT /map -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9b/.superpowers/sdd/2026-09-19-shell-simos-plan/t9b-evidence/screenshots/map.png
+SHOT /unit -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9b/.superpowers/sdd/2026-09-19-shell-simos-plan/t9b-evidence/screenshots/unit.png
+SHOT /social -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9b/.superpowers/sdd/2026-09-19-shell-simos-plan/t9b-evidence/screenshots/social.png
+MAP_STATUS 已载入 3 格（mapId=Map1，单位 1）
+MARKER_PIXELS 189
+HOVER_TITLE u-1 · 第一连
+HOVER_CURSOR pointer
+CLICK_STATUS 单位 u-1：第一连
+SHOT /map clicked marker -> map-unit-selected.png
+UNIT_ROWS 1
+UNIT_STATUS 1 个单位。
+SOCIAL_STATUS q=1, r=1 有数据
+JS_ERRORS 2
+JSERR console.error: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+JSERR console.error: Failed to load resource: the server responded with a status of 404 (Not Found)
+HTTP_FAILURES 1
+HTTPFAIL HTTP 503 http://127.0.0.1:5817/api/approvals
