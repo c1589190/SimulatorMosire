@@ -4,19 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Simos Shell</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header>
     <h1>Simos Shell</h1>
   </header>
-  <nav>
-    <a href="/map">地图</a>
-    <a href="/unit">单位</a>
-    <a href="/social">社会</a>
-  </nav>
-  <section id="approvals">
-    <h2>待批</h2>
-    <p id="approvals-status">审批面未接入（T6）</p>
-  </section>
+  <nav id="nav"></nav>
+
+  <main>
+    <section class="panel">
+      <h2>入口</h2>
+      <p>
+        <a href="/map">地图（只读六角图）</a> ·
+        <a href="/unit">单位（列表 / 详情 / 8 条命令）</a> ·
+        <a href="/social">社会（格人口查询）</a>
+      </p>
+    </section>
+
+    <section class="panel" id="approvals">
+      <h2>待批</h2>
+      <p id="approvals-count" class="status muted">审批未接入（T6）</p>
+      <p class="muted">审批代理端点在服务端（<code>/api/approvals</code>）；T6 接入前返回 503，这里如实显示为未接入。</p>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      window.SimosApp.boot({ title: "首页", approvals: "approvals-count" });
+    });
+  </script>
 </body>
 </html>

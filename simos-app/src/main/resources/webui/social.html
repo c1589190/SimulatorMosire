@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>社会 · Simos Shell</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>社会</h1>
+  </header>
+  <nav id="nav"></nav>
+
+  <main>
+    <p class="muted">按格查询人口时序点，数据来自 <code>/api/social/population?q=&amp;r=</code>（取值口径与 facet 同源：<code>PopulationSeries.valueAt(head 时刻)</code>）。</p>
+
+    <div class="grid-2">
+      <section class="panel">
+        <h2>查询</h2>
+        <div class="row">
+          <label>q
+            <input id="q" type="number" step="1" value="1">
+          </label>
+          <label>r
+            <input id="r" type="number" step="1" value="1">
+          </label>
+          <button id="query" class="primary">查询</button>
+        </div>
+        <p id="query-status" class="status muted">未查询。</p>
+
+        <h2 style="margin-top:18px">结果</h2>
+        <dl class="kv" id="result"></dl>
+      </section>
+
+      <section class="panel">
+        <h2>查询历史（本页会话）</h2>
+        <p class="muted">仅浏览器内存，不落盘。</p>
+        <div id="history"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script src="social.js"></script>
+</body>
+</html>

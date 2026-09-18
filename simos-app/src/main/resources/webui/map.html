@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>地图 · Simos Shell</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>地图</h1>
+  </header>
+  <nav id="nav"></nav>
+
+  <main>
+    <p class="muted">只读视图：Cel 色块来自 <code>/api/map/overview</code>，点击六角格查询 <code>/api/map/hex</code>（含该格 facet）。<strong>本页不可编辑</strong>。</p>
+
+    <div class="grid-2">
+      <section class="panel">
+        <h2>六角图</h2>
+        <div class="row">
+          <label>每格边长(px)
+            <input id="cell-size" type="number" min="12" max="80" step="2" value="34">
+          </label>
+          <button id="reload" class="primary">重新载入</button>
+        </div>
+        <canvas id="canvas" width="960" height="620"></canvas>
+        <p id="map-status" class="status muted">载入中…</p>
+        <p class="muted" id="legend"></p>
+      </section>
+
+      <section class="panel">
+        <h2>格详情</h2>
+        <p id="hex-status" class="muted">点击左侧任意六角格。</p>
+        <dl class="kv" id="hex-detail"></dl>
+        <h3>该格 facets</h3>
+        <div id="hex-facets"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script src="map.js"></script>
+</body>
+</html>
