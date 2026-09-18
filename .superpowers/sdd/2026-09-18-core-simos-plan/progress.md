@@ -41,7 +41,7 @@ M1/M2/M3 spec 与计划均已关账。
 | 11 | 可观测性 + `correlationId` 全链 + R6 | ⏳ Batch C2 |
 | 12 | 两阶段推进六步（C25）+ R9/R10/R14 | ⏳ Batch E |
 | 13 | `CoreSimos` 装配门面 | ✅ 子代理 `m4/b13` → 合并 `d7148b4`（697 用例全绿；**5 轮变异 0 存活**） |
-| 14 | 判据一——分岔端到端 | ⏳ Batch E |
+| 14 | 判据一——分岔端到端 | ✅ 子代理 `m4/b14` → 合并 `a2d015a`（698 用例全绿；**2 轮变异 0 存活**） |
 | 15 | 判据三——真实并发加固 | ⏳ Batch E |
 | 16 | unit 侧最小真实链路（U15 乙）+ R16 | 🔄 只派了 **SPI 两类**（`m4/b16`）；端到端要 Task 13（裁定 20）——**13 已满足**，归 Step 3 |
 | 17 | M4 关账 | ⏳ Batch F |
@@ -1296,3 +1296,37 @@ m1 分岔点不写 / m2 新分支 revision 从 0 起 / m3 封存后静默不报 
 6. `CoreConfig.mapper` **当前无消费者**（如实记——它是计划组件，不是死代码环；将来要它真被用，改口应在需要 mapper 的那一处）。
 
 **下一轮**：**Task 14（判据一——分岔端到端）**（← 13，已满足）；Task 15 ← 13；Task 16 Step 3 ← 13（已满足）；Task 17 收口。
+
+---
+
+## Task 14 已关账（**14/17**，2026-09-19 01:3x，子代理执行 + 控制器核验）
+
+**执行形态**：子代理 `deepseek-flash-go` 在 worktree `m4/b14` 执行，~7 分钟一次过；控制器自读 diff（318 行测试）+ 主树合并后全量门禁。提交 `e17604a`，合并 `a2d015a`。
+
+**交付物**：`BranchingEndToEndTest`（318 行，1 条用例，**test-only——零 main 改动**）；报告 `task-14-report.md`；证据 `task-14-evidence/`。
+
+**门禁**：主树合并后 `clean verify` rc=0、**698** 条 170/255/37/93/**143**、BugInstance 0 ×5、ERROR 0。★ 与 697 基线对差：core 142→143 恰 +1 ＝ 新用例类（1 条）。
+
+**判据一 ① ② ③ 的端到端落点**（全部逐值 + 反向对照，非"没报错"）：
+- ① 两侧真 `unit.RenameUnit` 各推一格：重放状态各自只看见自己的改名（名字必须互不相同的反向对照防恒真）；
+- ② `(b2,1).parent == (main,2)` 行级断言 + `chainToGenesis` 跨分支链 `[b2@2, b2@1, main@2, main@1]` 逐项；
+- ③ main 再推一次后 `b2` head **仍是 2**（断言置于重放 `(b2,2)` **之前**——为让 m1 红在**断言**而非异常，刻意设计）；`b2` 重放状态 `equals` 推进前快照 + 单位各字段（name/member/equipment/speed/mobility/position）逐个；
+- 端到端口径：跨分支过期 `expectedRevision` ⇒ `Conflict` 报该分支**自己的**真 head；head 读取另走独立 store（不用 `Conflict` 当读 head 的途径——它会落事件行、污染被测物）。
+
+### 裁定 53 —— Task 14 的 D1~D5 **全部接受**
+
+D1 **无偏离**（Task 16 Step 1/2 已落地 ⇒ 直接用真 `RenameUnitHandler`；计划 Step 2 那句"若在 Task 16 之前跑就记取代说明"**不适用**）；D2 夹具只种 `unit` 切片（`RenameUnitHandler` 只取它，种 `map` 是无关依赖）；D3 **m2 为 ①/③ 逐值断言补的变异体**（计划只指定 m1——按裁定 42"新增护栏必须自带变异轮"，**范围扩展正当**）；D4 head 断言前置于重放（判别力所迫）；D5 head 读取用独立 store 而非 `Conflict`。
+
+### 变异自证：**2 轮 2 杀**
+
+- m1（计划指定）：`Timeline.head` 忽略 `branch`（全局 MAX）⇒ 红在 `:141 [③ b2 在分岔后自己推进一格，head 必须是 2]`；
+- m2（新增）：`Replay` 不施加变更集 ⇒ 红在 `:163 [① main 的重放状态只看见 main 自己的改名]`。
+九道门禁逐轮成立（干净世界 md5 / 白名单推送 / COMPILATION ERROR=0 / Tests run≥1 / surefire mtime / 红点落位 / 逐字节还原 / 日志自指）。
+
+### 给下游的接缝（新增/延续）
+
+1. **并发下的分岔未验**（"两线程同时从同一 head 分岔"谁赢、谁冲突）——归 Task 15。
+2. **跨 JVM 决定论未测**（checkpoint 模块表 `TreeMap` 只保证进程内定序；M2 哈希盐同族教训）。
+3. 其余沿用 Task 13 的六条（封存并发 / WARN 路无故意违规 / R5 装配层无直接断言 / 真 codec 全链归 Task 16 Step 3 / 分岔无事件 / `CoreConfig.mapper` 无消费者）。
+
+**下一轮**：**Task 15（判据三——真实并发加固）**（← 13，已满足；计划说 m1/m3 已在 Task 10 跑过就不再重复——**确有其事，日志在 `task-10-evidence/`**）；Task 16 Step 3 ← 13（已满足）；Task 17 收口。
