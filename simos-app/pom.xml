@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-app</artifactId>
+  <name>SimosApp</name>
+  <description>组合根：装配 CoreSimos 与领域模块（Shell / ShellConfig / ShellMain）。GUI/MCP/审批在 T6/T7/T8 接入。</description>
+
+  <!-- ★ 依赖表照 spec §2.1。本模块**不设** maven-enforcer-plugin 的 bannedDependencies：
+       它是组合根（ADR-1 §九 记的那笔账），天然认识全部领域模块与 AgentLib/MCP。
+       父 POM 的 enforce-java-and-maven（Java 21 / Maven 3.8+）照常继承。 -->
+  <dependencies>
+    <!-- 唯一写入口：CoreSimos 门面 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-core</artifactId>
+    </dependency>
+    <!-- 领域类型、codec、handler、participant（装配用） -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
+    </dependency>
+    <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
+         SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>agentlib-mosire</artifactId>
+    </dependency>
+    <!-- MCP SDK（spec §2.1：**禁**聚合 mcp，它带 Jackson 3）。版本由父 POM import 的 mcp-bom 提供。 -->
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId><artifactId>mcp-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId><artifactId>mcp-json-jackson2</artifactId>
+    </dependency>
+    <!-- 工具 payload / GUI JSON -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
+    <!-- ★ 可执行体的日志实现（M4 Task 3 裁定"实现归 app 层"）：main scope。
+         版本由父 POM dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId><artifactId>log4j-slf4j2-impl</artifactId>
+    </dependency>
+
+    <!-- ★ M5 T1 实测补记（spec §2.1 之外的一件，provided、不影响产物）：
+         `Shell.coreSimos()` 按 spec §3.2 必须交出 CoreSimos 引用，SpotBugs 判 EI_EXPOSE_REP。
+         有意豁免需要 @SuppressFBWarnings，其注解住在 spotbugs-annotations 里。
+         AgentLibMosire/BrainMosire 同法（该仓 pom 里同一条 provided 依赖）——此处照其先例。
+         版本与 spotbugs 插件同代（4.10.4，~/.m2 已存在），不写进父 POM（本任务只许改父 POM 的模块行）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+</project>

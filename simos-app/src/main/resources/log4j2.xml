@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ★ M5 T1：可执行体的日志配置（spec §2.1 的"日志实现归 app 层"）。
+     没有它 log4j2 用默认配置（只出 ERROR），ShellMain 启动时那条"生效配置"就看不见了。
+     只挂一个控制台 appender、级别 INFO；不外写文件（避免在 storeDir 之外落盘，也避免把载荷明文写进日志——
+     明文纪律见 CommandBus/TimeAdvance 的 §7.3 注）。 -->
+<Configuration status="WARN">
+  <Appenders>
+    <Console name="Console" target="SYSTEM_OUT">
+      <PatternLayout pattern="%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"/>
+    </Console>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="Console"/>
+    </Root>
+  </Loggers>
+</Configuration>

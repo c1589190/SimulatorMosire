@@ -19,6 +19,9 @@
     <module>simos-social</module>
     <module>simos-unit</module>
     <module>simos-core</module>
+    <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
+         它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->
+    <module>simos-app</module>
   </modules>
 
   <properties>
