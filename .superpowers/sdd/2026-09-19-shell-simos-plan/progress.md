@@ -24,8 +24,8 @@
 | T6 | 审批装配 | ✅ `m5/t6` `337c9f7` → 合并 `3957a1a`（3 条测试；**1 轮变异 0 存活**；5711 代理落地） |
 | T7 | MCP 服务装配（判据②前置） | ✅ `m5/t7` `7f9322b` → 合并（4 条测试；**2 轮变异 0 存活**；★ R2 按"M5 无内部工具"存档） |
 | T10 | AgentBinding | ✅ `m5/t10` `03e5a5f` → 合并 `b2dedd2`（12 条测试；**1 轮变异 0 存活**） |
-| T11 | 判据端到端 ①② | ⏳ Batch F |
-| T12 | M5 关账 | ⏳ Batch F |
+| T11 | 判据端到端 ①② | ✅ `m5/t11` `e130d67` → 合并 `559c6f2`（3 用例类；**3 轮变异 0 存活**；★ **判据①②端到端闭合**；825） |
+| T12 | M5 关账 | ✅ 本次（判据逐条实测值 + R1~R9 点验 + 门禁 825 + `CLAUDE.md` + `task-12-final-report.md`） |
 
 **批次**：A(T4‖T2) → B(T1) → C(T3) → D(T8→T9) → E(T5‖T6→T7) → F(T10→T11→T12)。
 
@@ -167,3 +167,28 @@
 ★ 另记（未验，归 T12 或存档）：caller-owned `startHttp` 形态未用（用 owned，spec §7.2 点名）；MCP 官方客户端首连 405/降级行为未细察；跨机/网络 MCP 未测。
 
 **下一批**：**T11（判据①②端到端 + R9 生命周期）**，然后 **T12（M5 关账）**。
+
+---
+
+### Batch E-4（T11 判据端到端）已关账（2026-09-19 06:4x，子代理 + 控制器核验）
+
+**T11**（`m5/t11` `e130d67` → 合并 `559c6f2`）：三个**新用例类**（test-only，零 main 改动）——`ShellEndToEndTest`（判据①：GUI 写 `(main,2)` / MCP 写 `(main,3)` / MCP advance `(main,4)` **同表**、`initiator` `player:gui` vs `agent:t11-e2e` 逐字不同、链 2/2/5 完整、世界逐值）、`McpCoverageTest`（判据②：catalog 8 类型逐类 committed `main@2..9` + `advance` `main@10` + `fork` `mcp-branch@1`；反向坏载荷 ⇒ `REJECTED` 且行数不变）、`ShellLifecycleTest`（R9：三端口可重绑 + 非守护线程差为空）；**3 轮变异 0 存活**（m1 R9 去掉 `mcpServer.close()`；m2 R4 `player:gui→player:local`；m3 R5 `DisbandUnit` 返 `UNSUPPORTED`）。任务内全量 **825**（app 68→71）。合并后主树门禁 **825** = 170/255/45/131/153/**71**、`BugInstance` 0 ×6、`[ERROR]` 0。
+
+**裁定 65 —— T11 的两处口径校正（接受）**：
+1. ★ **"冻结 6 事件"是派单措辞错，不是代码缺陷**：我（控制器）在 T11 派单里写"assert its full frozen 6-event sequence"，把 M4 文档里 **N=2 的举例**当成了常量。R6/spec §1.1 的原文是 `received → started → **N×proposal** → finished → committed`，`N = 注册的 time participant 数`；本壳只注册 1 个（`UnitTimeParticipant`）⇒ **实测 5 条**，用例按 5 条断言。**spec 无需改**（spec 本来就写 N×proposal）。
+2. **判据②执行序 = 语义合法序，非 catalog 字典序**：字典序把 `CancelRoute` 排在 `DisbandUnit` 前，而 `DisbandUnit` 会移除 `u-1` ⇒ 后续命令"查无此人"。用例改为自定义合法序，另用 `MINIMAL_PAYLOADS.keySet() == catalogTypes` 钉住"每个 catalog 类型都有载荷"。**R9 单独立类**（`ShellLifecycleTest`，派单允许）。
+
+★ 如实记（T11 报告 §七）：反向用例绝对行数**未打印**（推导 11）；R9 线程名未枚举（有判别力的是端口释放那一半）；R9 未覆盖"审批长连在途时关壳"；`simos.fork` 不发事件 ⇒ 判据①未断言分岔行的链。
+
+---
+
+## T12 M5 关账（2026-09-19 06:5x，控制器内联）
+
+**M5 = 12/12 完成**。关账四条判据逐条核过：
+
+1. **判据① 逐条实测值**：`ShellEndToEndTest` 三行同表 + initiator 逐字不同 + 链 2/2/5 + 世界逐值（本报告 §一）。
+2. **判据② 逐条实测值**：`McpCoverageTest` catalog 8 类型逐类 committed + advance + fork + 反向 REJECTED 无 revision（本报告 §一）。
+3. **主树全量门禁绿**：`./mvnw clean verify` rc=0、**825** 条 = 170/255/45/131/153/**71**、7/7 模块、`BugInstance size is 0` ×6、`[ERROR]` 0（`t12-evidence/merged-full-verify.log`）。
+4. **R1~R9 点验**：8 条有变异自证（含 R3/R4/R5 各两条独立载体），**R2 存档**（M5 无内部工具，如实记偏离）；12 个任务累计 **21 轮变异 0 存活**（本报告 §三）。
+
+**裁定 66 —— M5 关账结论与遗留条目**：判据①②闭合；`task-12-final-report.md` 落盘（含"我未能核实的"清单）。**带裁定的遗留 11 条**（R2 存档 / `ShellMain` port 打印 / `BindingRegistry` 不持久化 / `PlanRoute` 稀疏 waypoints / 审批超时与会话键未验 / fork 不发事件 / R9 长连分支未覆盖 / 反向行数未打印 / 重放代价未测 / **运行形态评测=够用但不便、shade 归开口项** / §十三 1~3 已消）。**M5 完成，下一里程碑 M6**（开工前先裁决 M6 待决项）。
