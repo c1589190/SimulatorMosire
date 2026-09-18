@@ -109,12 +109,31 @@ jackson-datatype-jdk8，core 加 sqlite-jdbc 与日志实现）。
 ### 遗留 1 —— **Task 6 `Timeline`（临界路径的咽喉）**
 - **依赖已满足**：`SqliteStore`（Task 5）✅ 已合并 `2ec17ff`。
 - **分支 / 工作树**：`m4/b6` @ `.claude/worktrees/b6`，基线 `acfcb14`。
-- **停在哪一步**：08:0x 时该 agent **刚建出** `simos-core/src/main/java/io/mosire/simos/core/timeline/`
-  目录并开始写代码，**没有 `task-6-report.md`**。按 08:00 的闸门（**没有报告 = 没完成，不合**），
-  **未合并**。
-- **下一个该派什么**：续派同一分支，做完 `Timeline` 的读写与派生 + 用例 + 变异自证，
-  写 `task-6-report.md`，再 `--no-ff` 合并。
+- **停在哪一步（08:13 实测，**取代**早前的观测）**：该 agent **已提交 `ca5b446`**——
+  `Timeline.java`（414 行）、`TimelineTest.java`（291 行）、`RevisionRow.java`（47 行），共 **752 行新增**；
+  证据在 `.superpowers/sdd/…/task-6-evidence/`（`timeline-test-green-run.log`、`m1-round.log`、
+  `m2-round.log`、`mutants/`、`orig/`、`reposourcescan-spotless-churn.diff`、Jackson mixin 探针）
+  —— ★ **该目录仍是 untracked，未入库**。
+  **基线确为绿**：`task-6-evidence/timeline-test-green-run.log` 实测
+  `Tests run: 14, Failures: 0, Errors: 0, Skipped: 0`。
+  （★ 另有一份 08:11 的 surefire 报 **9 errors**——那是**变异体**那一轮，不是基线；两者别混。）
+  变异轮已跑到 m1/m2：m1 在**受保护的那一行**（`hasCheckpointFollowsTheThreeCriteria:203`）准确变红，
+  且 `COMPILATION_ERROR_COUNT=0`、有 MD5 自证与干净世界复位。
+  **但 `task-6-report.md` 始终没写出来**，且收口时该 agent **仍在跑 m2 轮**。
+- ★ **它看起来绿，我仍然没合——理由**：
+  (a) 闸门是「**报告文件存在**才算完成」，而报告不存在 = **作者本人没自陈完成**，且**它还在改同一个文件**；
+  (b) 合并后**必须重跑一次主树 verify**（刚测过是 4:20 的干净构建），而收口只剩几分钟——
+  一旦红了就是**在截止点上把已验证的主树弄坏**，比不合并**糟得多**。
+  合并本身只是一次 `--no-ff` + 一次 verify 的事，留给下一轮成本极低。
+  **不在压力下临场改自己预先钉死的闸门**（这正是 08:0x 钉时间闸时要防的那件事，见裁定 29）。
+- **下一个该派什么**：① 让该 agent 补齐 `task-6-report.md`（自测命令 + 绿/红如实）；
+  ② 把 `task-6-evidence/` 一并 `add` 入库（**逐个文件 add，不用 `-A`**）；
+  ③ 然后 `--no-ff` 合并 `m4/b6` + 主树跑一次 `./mvnw clean verify`。
 - ★ **它卡着 7、8、9 三个任务**，是本阶段最该先拿下的。
+- ★ **一处已知的无害冲突点**：`m4/b6` 基线 `acfcb14` **早于** spotless 修复 `9e59f5d`，
+  故该分支里跑 `spotless:apply` 会把 `RepoSourceScan.java` 重新折行一次（其 worktree 里
+  观测到 `M simos-util/…/RepoSourceScan.java`）。**同一输入的格式化是确定性的**，两侧结果逐字节相同
+  ⇒ 合并**不会冲突**。该 agent 已把这段 churn 存证为 `reposourcescan-spotless-churn.diff`。
 
 ### 遗留 2 —— **Task 16 的 Step 1/2（两个 SPI 类，**可立即派发**）**
 - **依赖已满足**：`TimeParticipant`/`CommandHandler`（Task 2）✅、`UnitCodec`（Task 3）✅、

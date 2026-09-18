@@ -277,13 +277,32 @@ B1 完结后同理接 **Task 16 的两个 SPI 类**（它刚写完 `UnitCodec`�
 ⇒ 主树因此保持 1~5 的已验证状态，**§一 那条 verify 对冻结树依然成立**——
 **不为「没发生的事」重跑一遍 verify**（重跑要吃掉两个核，本会话已因同类操作杀过一个 agent）。
 
+### 三之二、★ 裁定 30 —— 08:13 复检：**它绿了，我仍然没合**
+08:13 复检 `m4/b6`：已提交 `ca5b446`（`Timeline.java` 414 行 + `TimelineTest.java` 291 行 +
+`RevisionRow.java` 47 行 = **752 行**），**基线确为绿**（`task-6-evidence/timeline-test-green-run.log`：
+`Tests run: 14, Failures: 0, Errors: 0, Skipped: 0`）；m1 变异在**受保护的那一行**
+`hasCheckpointFollowsTheThreeCriteria:203` 上准确变红，`COMPILATION_ERROR_COUNT=0`，有 MD5 自证与干净世界复位。
+**看起来可以合了，我仍然决定不合**，理由两条：
+1. 闸门是「**报告文件存在**才算完成」——报告不存在 = **作者没自陈完成**，且收口时它**还在跑 m2 轮、
+   还在改同一个文件**；合并一个作者仍在改的分支，正是闸门要挡的「半成品」；
+2. 合并后**必须重跑一次主树 verify**（实测 4:20 干净构建），而距收口只剩几分钟——
+   一旦红了，就是**在截止点上把已验证的主树弄坏**，比不合并**糟得多**。
+★ **要防的正是「到点了、它看着挺绿、顺手合了吧」这个念头**——这正是 07:4x 预先钉死时间闸要防的事。
+合并成本极低（一次 `--no-ff` + 一次 verify），留给下一轮。
+★ **一处已知的无害冲突点**：`m4/b6` 的基线 `acfcb14` **早于** spotless 修复 `9e59f5d`，故在该分支里跑
+`spotless:apply` 会把 `RepoSourceScan.java` 重新折行（其 worktree 观测到该文件为 `M`）。
+**同一输入的格式化是确定性的** ⇒ 两侧逐字节相同 ⇒ **合并不冲突**。
+该 agent 已把这段 churn 存证为 `task-6-evidence/reposourcescan-spotless-churn.diff`——
+即我在 08:0x 预测的那件事，**实测吻合**。
+★ **另注意**：`task-6-evidence/` 目前仍是 **untracked**，续派时要**逐个文件 `add`** 入库（不用 `-A`）。
+
 ### 四、分支与工作树台账（收口时实测）
 | 批次 | 任务 | 分支 | 工作树 | 状态 |
 |---|---|---|---|---|
 | B1 | 3 | `m4/b1` | `.claude/worktrees/b1` | ✅ 已合并 `acfcb14` |
 | B2 | 4 | `m4/b2` | `.claude/worktrees/b2` | ✅ 已合并 `068769d` |
 | B3 | 5 | `m4/b3` | `.claude/worktrees/b3` | ✅ 已合并 `2ec17ff` |
-| C1 | 6 | `m4/b6` | `.claude/worktrees/b6` | ❌ **未合并**（无报告）→ 遗留 1 |
+| C1 | 6 | `m4/b6` | `.claude/worktrees/b6` | ❌ **未合并**：已提交 `ca5b446`（Timeline+用例+RevisionRow，**752 行**）、**基线绿 14/14**（`task-6-evidence/timeline-test-green-run.log`）、m1/m2 变异轮已跑，**但没有 `task-6-report.md`** ⇒ 遗留 1 |
 | E(部分) | 16 Step1/2 | `m4/b16` | `.claude/worktrees/b16` | ❌ **零提交**（503 杀掉，未写盘）→ 遗留 2 |
 | 主线 | — | `feat/adr1-core-scope` | 仓根 | **冻结于 `a2bc3ce`**，1~5 已合并并验证 |
 
