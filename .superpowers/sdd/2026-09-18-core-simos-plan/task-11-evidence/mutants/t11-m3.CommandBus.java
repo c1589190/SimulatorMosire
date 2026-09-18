@@ -261,14 +261,9 @@ public final class CommandBus {
               envelope.correlationId(),
               conflict.current().branch().value(),
               conflict.current().revision().value());
-      case CommandResult.Committed committed ->
-          LOG.info(
-              "命令提交: type={} commandId={} correlationId={} 新坐标={}@{}",
-              envelope.type(),
-              envelope.commandId(),
-              envelope.correlationId(),
-              committed.ref().branch().value(),
-              committed.ref().revision().value());
+      case CommandResult.Committed committed -> {
+        // 变异 m3：删掉提交日志（仍是穷尽 switch，故能编译）
+      }
     }
   }
 

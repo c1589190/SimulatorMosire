@@ -385,7 +385,7 @@ public final class CommandBus {
    * correlationId**，否则那个变异恒绿（计划 Task 11 Step 5 明写的坑）。
    */
   private static EventRow event(String type, CommandEnvelope envelope, String payload) {
-    return EventRow.of(type, envelope.initiator(), payload, envelope.correlationId());
+    return EventRow.of(type, envelope.initiator(), payload, envelope.commandId());
   }
 
   private static Map<String, String> refJson(StateRef ref) {

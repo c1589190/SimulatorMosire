@@ -263,12 +263,13 @@ public final class CommandBus {
               conflict.current().revision().value());
       case CommandResult.Committed committed ->
           LOG.info(
-              "命令提交: type={} commandId={} correlationId={} 新坐标={}@{}",
+              "命令提交: type={} commandId={} correlationId={} 新坐标={}@{} payload={}",
               envelope.type(),
               envelope.commandId(),
               envelope.correlationId(),
               committed.ref().branch().value(),
-              committed.ref().revision().value());
+              committed.ref().revision().value(),
+              envelope.payloadJson());
     }
   }
 

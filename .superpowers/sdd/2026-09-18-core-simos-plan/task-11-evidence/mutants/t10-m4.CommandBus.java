@@ -328,7 +328,7 @@ public final class CommandBus {
     RevisionRow row =
         new RevisionRow(
             envelope.branch(),
-            new RevisionId(base.revision().value() + 1),
+            new RevisionId(base.revision().value() + 2),
             Optional.of(base),
             timestamp,
             envelope.commandId(),

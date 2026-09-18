@@ -205,7 +205,7 @@ public final class CommandBus {
 
     // ① 入口乐观并发检查（C17）：head(branch) 必须等于 expectedRevision。③ 的锁内复查归 Task 10。
     Optional<RevisionId> head = timeline.head(envelope.branch());
-    if (head.isEmpty() || head.get().compareTo(envelope.expectedRevision()) != 0) {
+    if (head.get().compareTo(envelope.expectedRevision()) != 0) {
       return head.<CommandResult>map(
               current -> conflict(envelope, trace, new StateRef(envelope.branch(), current)))
           .orElseGet(() -> reject(envelope, trace, "分支不存在: " + envelope.branch().value()));

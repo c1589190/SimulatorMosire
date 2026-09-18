@@ -1,0 +1,18 @@
+== 门禁 1：开跑前必须是干净世界 ==
+orig=9b8c7b46f6fbd74bdc32245503d6cdd8  mutant=9397ca4eb5b47b13f8623729c032f1a9  worktree_before=9b8c7b46f6fbd74bdc32245503d6cdd8
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 EventTypes.java 这一条路径 ==
+worktree_after_push=9397ca4eb5b47b13f8623729c032f1a9
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=7
+== 门禁 5：期望变红的类必须真的红 ==
+命中 EventTypesTest 的变红行数=1
+   [ERROR] Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.725 s <<< FAILURE! -- in io.mosire.simos.core.observe.EventTypesTest
+   [ERROR] Tests run: 38, Failures: 2, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   EventTypesTest.allHoldsExactlyTheEightFrozenTypes:39 [C20 / spec §7.1 冻结八种；实得 [simos.command.received, simos.command.rejected, simos.command.conflicted, simos.command.committed, simos.time.advance.started, simos.time.advance.finished, simos.module.proposal, simos.timeline.conflict, simos.revision.created]] 
+   [ERROR]   EventTypesTest.revisionCreatedIsDeliberatelyNotAType:48 [revision 落盘由 simos.command.committed 承载，不再另发一条] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=9b8c7b46f6fbd74bdc32245503d6cdd8
+== 通过：变异被杀，工作树已还原 ==

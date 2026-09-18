@@ -1,0 +1,17 @@
+== 门禁 1：开跑前必须是干净世界 ==
+orig=30eac8bfc0a578887b52a86ffe665a71  mutant=529f3e86b2bed44ed9efe5e3f1ce9d03  worktree_before=30eac8bfc0a578887b52a86ffe665a71
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 CommandBus.java 这一条路径 ==
+worktree_after_push=529f3e86b2bed44ed9efe5e3f1ce9d03
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=7
+== 门禁 5：期望变红的类必须真的红 ==
+命中 CommandBusLoggingTest 的变红行数=1
+   [ERROR] Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 2.849 s <<< FAILURE! -- in io.mosire.simos.core.command.CommandBusLoggingTest
+   [ERROR] Tests run: 38, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   CommandBusLoggingTest.conflictLineReportsTheRealHeadNotTheExpectedOne:180 [真实 head 是种子那行 main@1] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=30eac8bfc0a578887b52a86ffe665a71
+== 通过：变异被杀，工作树已还原 ==

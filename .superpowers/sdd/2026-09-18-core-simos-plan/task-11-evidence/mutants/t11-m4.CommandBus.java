@@ -259,8 +259,8 @@ public final class CommandBus {
               envelope.type(),
               envelope.commandId(),
               envelope.correlationId(),
-              conflict.current().branch().value(),
-              conflict.current().revision().value());
+              envelope.branch().value(),
+              envelope.expectedRevision().value());
       case CommandResult.Committed committed ->
           LOG.info(
               "命令提交: type={} commandId={} correlationId={} 新坐标={}@{}",

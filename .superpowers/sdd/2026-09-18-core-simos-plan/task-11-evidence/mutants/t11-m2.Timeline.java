@@ -163,6 +163,10 @@ public final class Timeline {
     store.inTransaction(
         connection -> {
           insert(connection, row);
+          return null;
+        });
+    store.inTransaction(
+        connection -> {
           EventStore.insertAll(connection, events);
           return null;
         });

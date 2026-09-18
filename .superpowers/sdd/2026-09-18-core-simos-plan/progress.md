@@ -1007,3 +1007,107 @@ Task 8 报告 §5 那条"`Replay` 从未在真状态上跑过"**依然成立**�
   （★ 报告初稿写"没有任何用例钉住它"——**说重了**，已更正。）
 - **`OptimisticConcurrencyTest` 只在主树跑过**：它不碰文件系统、不依赖 cwd ⇒ **据理**不受形态 1 那条目录陷阱影响，
   但**没有在 worktree 里实跑过**。
+
+---
+
+## 亥、Task 11 进行中 + Task 12 的**派发前**裁定（2026-09-18）
+
+Task 11 的 agent（`ac08422bbf884491c`）已从 `b9 @ 30a24eb` 重新起跑（上一轮死于 503）。
+控制器在它跑期间**全程不碰 Maven**，只做只读核对；下列事实**每条都是当场跑过的**。
+
+### 裁定 43：`Either` 全仓不存在 ⇒ Task 12 不新造它
+
+实测：`git grep -c "Either" -- '*.java'` → **无输出、rc=1**。（★ 首次测时我写成
+`git grep -l … | head` 后取 `$?`——**那个 rc 是 `head` 的**，不能当结论用，已重测。）
+
+计划 Task 12 的 Produces 行写着 `TimeProposalResolver.resolve(…) → Either<AdvanceConflict, WorldChangeSet>`，
+而 `Either` **仓里没有**。**裁决：不新增 `Either`。**
+理由：它是个**通用函数式容器**，不是 simos 的契约——ADR-1 的"新增契约放 `util.spi`"针对的是**跨模块契约**，
+不是为一个调用点往共享层塞通用容器（M2 `contourCacheMax` 那条"无消费者的抽象 = 死代码环"的教训）。
+⇒ 在 **`core/advance` 内**用一个 **sealed 两 case 类型**（形如 `ResolveResult` = `Merged(WorldChangeSet)` |
+`Conflicted(AdvanceConflict)`），**照 `CommandResult` / `HandlerOutcome` 的现成范式**（两者都是 sealed + record）。
+★ 注意 `CommandResult` 已有 `Rejected(String reason)`：写-写冲突**对外**仍折成 `Rejected`（计划 Step 2 原话），
+`ResolveResult` 只是 **resolver ↔ `TimeAdvance` 之间**的内部边界，不要把它塞进 `CommandResult`。
+
+### 裁定 44：C25 的"按 namespace 字典序"**必须显式排序**
+
+`SimulationState.modules()` 是 **`Map.copyOf`**（`SimulationState.java` 构造器）⇒ **迭代序不是键集的纯函数**
+（M2 Task 5 实测 30 次那条）。Task 12 Step 1 ① 的"参与者清单按 namespace 字典序（C25）"
+**不得靠遍历 `modules()`、也不得靠 registry 的插入序**——必须 **`sorted()` 一次**再定序。
+★ 这与 Task 12 Step 2 那条"地址列表按字典序排序后落事件"是**同一条纪律的两个落点**，别只做一个。
+
+### 给 Task 12 的两条形状更正（都不是笔误，是计划没写全）
+
+- **`Validate` 第 4 项核对的字段是 `Snapshot.ref()` 与 `Snapshot.timestamp()`**，
+  计划原文写的是"新的 `ref` 与 `tick`"——`StateMeta` 只有 `(StateRef ref, SimosTimestamp timestamp)` 两件，
+  **没有独立的 `tick` 字段**（`StateMeta.java` 实测）。`Snapshot` 的公开面是 `ref()` / `timestamp()` / `namespace()`。
+- **`events` 表只有五列**：`seq / ts / type / agent / payload / correlation_id`
+  （`SqliteStore.java` 的 `EVENTS_DDL` 实测）——**没有 `branch` / `revision` 列**。Task 11 的 `EventRow` 形状由它定死，
+  Task 12 的 `simos.timeline.conflict` 也只能落进 `payload`。
+
+### 给 Task 12 的两个省事的事实
+
+- **三个真 `ModuleCodec` 已存在**：`MapCodec` / `SocialCodec` / `UnitCodec`
+  （`git grep -ln "implements ModuleCodec"` 实测，三个模块各一）。Step 3 第 1 项"已注册的 `ModuleCodec`"有真件可用。
+- **Task 16 的 Step 1/2 已经落地**（`simos-unit/src/main/…/spi/UnitTimeParticipant.java` 与
+  `RenameUnitHandler.java` 实测在册，另有 `task-16-evidence/`）⇒ **Task 14 Step 2 可以用真域命令**，
+  那句"若在 Task 16 之前跑就记取代说明"**不适用**。
+
+### 尚未裁决：Task 11 → Task 12 的一处接缝（等 Task 11 报告）
+
+`AdvanceTime` **不过 `CommandEnvelope`**（Task 9 的 `submit` 把它直接递给注入的 `AdvanceRoute`，
+只有 `CommandEnvelope` 才走 `dispatch`）。而 R6 要的事件序列是
+`received → started → N×proposal → finished → committed`。
+⇒ **`received` 与 `committed` 归谁写**（`CommandBus`？还是 `TimeAdvance`？）**决定了 Task 12 的接缝在哪**，
+也决定了 Task 11 那个**替身 route** 要不要（能不能）自己写 `started`/`proposal`/`finished`。
+★ 这一条**必须在 Task 11 的 §5 里有答案**；若它没写，我来裁，且**不许把"替身下凑齐了序列"当成"全链成立"**。
+
+---
+
+## 巳、Task 11 已关账（**11/17**，2026-09-18）
+
+**交付物**：`observe/EventTypes.java`（八类冻结表）、`store/EventRow.java`、`store/EventStore.java`（读侧；
+**写侧是静态方法、收 `Connection`** ⇒ 结构上无法自开事务）、`CommandBus.java` 接上事件链 + §7.3 四条日志、
+`Timeline.java` **只增**两个多参重载（单参版一字未动 ⇒ Task 6/8/10 的守卫无需改）。
+4 个新用例类各 6 条 = **24 条绿**；**12 个变异体全杀**（8 个 Task 11 新写 + 4 个 Task 10 的重跑，含 m2/m2b 互补对）。
+报告 `task-11-report.md`（§5 非空，7 条）。
+
+### 裁定 45 —— **不造** `core/observe/Digest.java`，复用 agentlib 的 `Digest`
+
+总纲 §8.1 行 503 / §10.5 行 692 / M4 spec §7.1 行 451 **三处同口径**都写"**复用** `AgentLibMosire` 的 `Digest`"。
+⇒ Task 11 改为**钉住这个外来类的契约**（`DigestTest`，期望值是当场跑探针得到的字面量）。
+**不是装饰**：总纲 §10.5 自己记着该类在旧的 49 类 agentlib 构件里**整个缺席**过，且那次的形态是**编译失败**。
+
+### 裁定 46 —— `received` 与 `committed` **归谁写**（结掉本节上面那条悬案）
+
+**只有 `CommandEnvelope` 支的事件链归 `CommandBus`。** `AdvanceTime` 是**原样递给注入的 `AdvanceRoute`** 的，
+它那一支的**整条链**（`received → started → N×proposal → finished → committed`）**由 route 写**。
+
+理由**不是分工好看，是事务边界**：只有 route 能开那个事务。若 `CommandBus` 替它写 `received`，
+那条事件必然落在**另一个事务**里 ⇒ Step ④ 要的"revision 行 + 全部事件行同一事务"当场就破。
+（这正是 Task 10 留下的硬接缝在 Task 11 的兑现形态。）
+
+⇒ **Task 12 的接缝就此定死**：`TimeAdvance`（真 route）必须自己写全那 5 种事件，`CommandBus` **不与它抢**。
+★ **`ForkBranch` 支不发事件是已知缺口**（发它要把「新分支 revision 恰为 1」这条 `Timeline` 内部知识复制进
+`CommandBus`）⇒ **判据二现在覆盖不到分岔**，如实记，不粉饰。
+
+### 结论：§7.3 的日志放在锁**外**（`dispatch` 拆成 `dispatch` + `routeEnvelope`）
+
+`commit` 在 `commitLock` **内**。日志若写在里面：① 持锁做 IO；② **appender 抛异常会在提交成功之后逃出
+`submit`** ⇒ 调用方看到异常以为失败、实际已提交。故 `logOutcome` 只在锁外调，且用**穷尽 switch 不写 `default`**
+（`CommandResult` 将来加 case 会编译不过）。
+
+### ★ 纪律新实例：装置的产物带状态——载体是 **surefire 报告**（形态 1 的第五例）
+
+读 surefire 数字时 `CommandBusLoggingTest.txt` 写着 `Tests run: 6, Failures: 1`，**差点当成实测结论抄进报告**。
+它是**变异轮留下的陈旧报告**（mtime 19:35:56 = 第 5 轮；干净轮 19:42 重跑才覆盖）。
+⇒ `mut-round.sh` 还原的是**源文件**，`target/` 下的一切（`.class`、`surefire-reports/*.txt`）**一律不还原**。
+⇒ **读 surefire 数字必须先跑干净轮，并核对报告 mtime 落在本轮内**。
+★ 与 M2 Task 1 那次 `HexCoord.class` 同族但**方向相反**：那次是**假发现**，这次险些是**假失败**。
+
+### 给 Task 12 的三条（除上面的接缝）
+
+- **`SimulationState.modules()` 不是键集的纯函数**（已在上节记）⇒ C25 的参与者清单必须 `sorted()` 一次再定序。
+- **`AdvanceTime` 的链要写在 route 开的那一个事务里**——连同 revision 行。
+- ★ Task 11 的 `advanceSequenceShapeIsWhatR6Requires` 用的是**替身 route**，**它不证明真 `TimeAdvance`
+  会产出该序列**（报告 §5.1）。Task 12 落地后，那条用例的"机制级"标注可以撤掉——**在此之前不许引用它当证据**。

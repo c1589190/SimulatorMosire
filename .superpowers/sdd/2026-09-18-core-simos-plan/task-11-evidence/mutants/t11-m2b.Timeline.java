@@ -162,8 +162,12 @@ public final class Timeline {
   public void appendRevision(RevisionRow row, List<EventRow> events) {
     store.inTransaction(
         connection -> {
-          insert(connection, row);
           EventStore.insertAll(connection, events);
+          return null;
+        });
+    store.inTransaction(
+        connection -> {
+          insert(connection, row);
           return null;
         });
   }

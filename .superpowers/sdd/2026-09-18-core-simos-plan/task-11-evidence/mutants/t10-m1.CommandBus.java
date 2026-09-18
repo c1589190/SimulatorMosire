@@ -287,12 +287,6 @@ public final class CommandBus {
       CommandEnvelope envelope, List<EventRow> trace, ChangeSet changeSet) {
     synchronized (commitLock) {
       Optional<RevisionId> current = timeline.head(envelope.branch());
-      if (current.isEmpty() || current.get().compareTo(envelope.expectedRevision()) != 0) {
-        return current
-            .<CommandResult>map(
-                now -> conflict(envelope, trace, new StateRef(envelope.branch(), now)))
-            .orElseGet(() -> reject(envelope, trace, "分支不存在: " + envelope.branch().value()));
-      }
       return commit(envelope, trace, new StateRef(envelope.branch(), current.get()), changeSet);
     }
   }
