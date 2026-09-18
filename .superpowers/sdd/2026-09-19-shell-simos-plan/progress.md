@@ -19,6 +19,7 @@
 | T3 | 查询层 + 两个真 Facet | ✅ `m5/t3` → 合并 `009e8b3`（27 条新测试；**2 轮变异 0 存活**） |
 | T8 | GUI 服务器与 `/api` | ✅ `m5/t8` → 合并 `5ac368b`（14 条新测试；**2 轮变异 0 存活**）★ WebUI 1/2 |
 | T9 | GUI 前端三页 | ✅ `m5/t9` → 合并 `6917365`（5 条新测试；**1 轮变异 0 存活**；★ 截图 7 张在案）★ WebUI **出形** |
+| T9b | 可运行性收尾（计划外） | ✅ `m5/t9b` → 合并 `e2df025`（+8 测试；**2 轮变异 0 存活**；★ 单位标记截图在案） |
 | T5 | 工具集（3 写 + 9 读） | ⏳ Batch E |
 | T6 | 审批装配 | ⏳ Batch E |
 | T7 | MCP 服务装配（判据②前置） | ⏳ Batch E |
@@ -105,3 +106,18 @@
 5. ★ **可运行性缺口**：`ShellMain` 不种世界 ⇒ 空库启动后页面无数据（`/api/map/overview` 失败）。归 **T9b**（加 `--demo` 首启种子 + 地图单位标记）。
 
 **下一批**：**T9b（demo 首启 + 地图单位标记）** → 然后 Batch E（T5 ‖ T6 → T7）。
+
+---
+
+### Batch D-3（T9b 可运行性收尾）已关账（2026-09-19 05:5x，子代理 + 控制器视觉核验）
+
+**T9b**（`m5/t9b` `d41ba87` → 合并 `e2df025`）：① core `CoreSimos.bootstrapGenesis(SimulationState)`——**唯一绕过 `submit` 的写路径、只在空库**（S8 的记录偏离；M4 Task 17"世界创建无主"在此收口）；② app `DemoWorld`（确定性走廊三格 desert + `u-1` + 人口 15000）+ `ShellMain --demo` 空库首启 + 可点击 URL；③ `webui/map.js` 叠加 `/api/units` **单位标记**。测试 +8（`CoreSimosTest` +3 / `DemoWorldTest` +5）；**2 轮变异 0 存活**（m1 不写创世 checkpoint ⇒ `replay((main,1))` 红；m2 tick 写 0 ⇒ 行时刻断言红）。合并后主树门禁 **789** 条 = 170/255/45/131/**150**/**38**、`BugInstance size is 0` ×6、`[ERROR]` 0。
+★ **控制器视觉核验（读 `map-unit-selected.png`）**：`u-1` 标记画在 (1,1)；点击后右栏 `terrain=desert / height=0.5`、**facets 表 `unit 第一册 unit:u-1` 与 `social 1_1 Population 15000`**；底部"1 位单位"。——"世界真的可看"成立。
+
+**裁定 61**：
+1. **S8 偏离获准**：`bootstrapGenesis` 是第二条写路径，但**世界创建先于命令面存在**（无 base/handler/变更集可提交）⇒ 必须有一条 bootstrap；护栏 = **仅空库 + 二次调用必抛**（有测试）。**spec §S8 已回填**（"只读"读作"除创世外只读"）。
+2. **T9b 是计划外任务**（控制器在 T9 关账时裁定新增）——计划 §四汇总表已加一行。
+3. 前端标记/选中态与 `map.html` 一行提示文案——接受。
+★ 另记：执行者实测本机 `nproc=8`（CLAUDE.md 旧记 `nproc=2`）——旧并发上限至少在本机已不成立；**仍沿用"一次只跑一个 Maven"**。
+
+**下一批**：Batch E = **T5（工具集）‖ T6（审批装配）→ T7（MCP 服务）**。
