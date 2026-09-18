@@ -10,7 +10,6 @@ import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
 import io.mosire.simos.unit.codec.UnitCodec;
-import io.mosire.simos.unit.facet.UnitsHereFacet;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.resolve.UnitResolver;
 import io.mosire.simos.unit.spi.CancelRouteHandler;
@@ -113,7 +112,6 @@ public final class Shell implements AutoCloseable {
     resolverRegistry.register(new UnitResolver());
 
     FacetRegistry facetRegistry = new FacetRegistry();
-    facetRegistry.register(new UnitsHereFacet());
     facetRegistry.register(new PopulationFacet());
 
     QueryService queryService = new QueryService(coreSimos, resolverRegistry, facetRegistry);
