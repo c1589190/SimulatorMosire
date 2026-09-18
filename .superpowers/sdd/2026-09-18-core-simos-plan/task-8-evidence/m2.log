@@ -1,0 +1,294 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/6]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/6]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/6]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 16 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/dev/SimulatorMosire/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java: /home/dev/SimulatorMosire/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java uses or overrides a deprecated API.
+[INFO] /home/dev/SimulatorMosire/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 12 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.core.store.ReplayTest
+[ERROR] Tests run: 11, Failures: 6, Errors: 0, Skipped: 0, Time elapsed: 7.407 s <<< FAILURE! -- in io.mosire.simos.core.store.ReplayTest
+[ERROR] io.mosire.simos.core.store.ReplayTest.replayFallsBackToAnEarlierCheckpointWhenTheNearestFileIsMissing -- Time elapsed: 3.561 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[C18：两份 checkpoint 都不可读 ⇒ 只能一路回退到创世，走 8 步] 
+expected: 8
+ but was: 0
+	at io.mosire.simos.core.store.ReplayTest.replayFallsBackToAnEarlierCheckpointWhenTheNearestFileIsMissing(ReplayTest.java:317)
+
+[ERROR] io.mosire.simos.core.store.ReplayTest.replayStaysWithinTheCheckpointIntervalEvenAcrossAFork -- Time elapsed: 0.261 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[且步数必须是算得出来的那个：3 = (b2,3)(b2,2)(b2,1)，起点是分岔点 (main,6) 的 checkpoint] 
+expected: 3
+ but was: 0
+	at io.mosire.simos.core.store.ReplayTest.replayStaysWithinTheCheckpointIntervalEvenAcrossAFork(ReplayTest.java:293)
+
+[ERROR] io.mosire.simos.core.store.ReplayTest.replayRebuildsTheIndependentlyConstructedTruthAtEveryCoordinate -- Time elapsed: 0.651 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[重放 StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]] 必须逐字段重建出真值（含「没提名的模块保持原样」与模块快照各自的坐标）] 
+expected: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], data=SocialData[populations={}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], state=UnitState[units={}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty], map=GameMap[hexes={1_1=HexCell[terrain=plains, height=0.35]}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+ but was: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], data=SocialData[populations={}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], state=UnitState[units={}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], map=GameMap[hexes={}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+	at io.mosire.simos.core.store.ReplayTest.replayRebuildsTheIndependentlyConstructedTruthAtEveryCoordinate(ReplayTest.java:250)
+
+[ERROR] io.mosire.simos.core.store.ReplayTest.replayFromTheNearestCheckpointEqualsReplayFromGenesis -- Time elapsed: 0.394 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[R4：从最近 checkpoint 重放到 StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]] 必须等于从创世全量重放（C18：checkpoint 不改变结果）] 
+expected: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]], timestamp=SimosTimestamp[tick=4, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], data=SocialData[populations={}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], state=UnitState[units={}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], map=GameMap[hexes={}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+ but was: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]], timestamp=SimosTimestamp[tick=4, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=3]], timestamp=SimosTimestamp[tick=3, calendarLabel=Optional.empty], data=SocialData[populations={1_1=PopulationSeries[anchor=Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=10000], growth=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=0.02]], events=[], addition=null], events=[]]}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]], timestamp=SimosTimestamp[tick=4, calendarLabel=Optional.empty], state=UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=500, equipment={旗帜=3}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty], map=GameMap[hexes={1_1=HexCell[terrain=plains, height=0.35]}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+	at io.mosire.simos.core.store.ReplayTest.replayFromTheNearestCheckpointEqualsReplayFromGenesis(ReplayTest.java:266)
+
+[ERROR] io.mosire.simos.core.store.ReplayTest.aChangeSetNamespaceWithoutACodecIsRejected -- Time elapsed: 0.216 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at io.mosire.simos.core.store.ReplayTest.aChangeSetNamespaceWithoutACodecIsRejected(ReplayTest.java:387)
+
+[ERROR] io.mosire.simos.core.store.ReplayTest.applyCountCountsRevisionsNotCodecCalls -- Time elapsed: 0.156 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[一条变更集改了 map 与 social 两个模块 ⇒ 步数仍是 1，不是 2] 
+expected: 1
+ but was: 0
+	at io.mosire.simos.core.store.ReplayTest.applyCountCountsRevisionsNotCodecCalls(ReplayTest.java:357)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   ReplayTest.aChangeSetNamespaceWithoutACodecIsRejected:387 
+Expecting code to raise a throwable.
+[ERROR]   ReplayTest.applyCountCountsRevisionsNotCodecCalls:357 [一条变更集改了 map 与 social 两个模块 ⇒ 步数仍是 1，不是 2] 
+expected: 1
+ but was: 0
+[ERROR]   ReplayTest.replayFallsBackToAnEarlierCheckpointWhenTheNearestFileIsMissing:317 [C18：两份 checkpoint 都不可读 ⇒ 只能一路回退到创世，走 8 步] 
+expected: 8
+ but was: 0
+[ERROR]   ReplayTest.replayFromTheNearestCheckpointEqualsReplayFromGenesis:266 [R4：从最近 checkpoint 重放到 StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]] 必须等于从创世全量重放（C18：checkpoint 不改变结果）] 
+expected: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]], timestamp=SimosTimestamp[tick=4, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], data=SocialData[populations={}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], state=UnitState[units={}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], map=GameMap[hexes={}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+ but was: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]], timestamp=SimosTimestamp[tick=4, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=3]], timestamp=SimosTimestamp[tick=3, calendarLabel=Optional.empty], data=SocialData[populations={1_1=PopulationSeries[anchor=Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=10000], growth=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=0.02]], events=[], addition=null], events=[]]}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=4]], timestamp=SimosTimestamp[tick=4, calendarLabel=Optional.empty], state=UnitState[units={u-1=Unit[id=u-1, name=单位 u-1, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=500, equipment={旗帜=3}, speed=2, mobilityPerMille=1000, movement=Optional.empty]}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty], map=GameMap[hexes={1_1=HexCell[terrain=plains, height=0.35]}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+[ERROR]   ReplayTest.replayRebuildsTheIndependentlyConstructedTruthAtEveryCoordinate:250 [重放 StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]] 必须逐字段重建出真值（含「没提名的模块保持原样」与模块快照各自的坐标）] 
+expected: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], data=SocialData[populations={}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], state=UnitState[units={}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty], map=GameMap[hexes={1_1=HexCell[terrain=plains, height=0.35]}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+ but was: SimulationState[meta=StateMeta[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]], timestamp=SimosTimestamp[tick=2, calendarLabel=Optional.empty]], modules={social=SocialSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], data=SocialData[populations={}]], unit=UnitSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], state=UnitState[units={}]], map=MapSnapshot[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]], timestamp=SimosTimestamp[tick=1, calendarLabel=Optional.empty], map=GameMap[hexes={}, regions={}, cities={}, terrainTypes={}, pathways={}, pathwayGroups={}, edges={}, spec=GenerationSpec[seed=0, mapRadius=80, baseSeaLevel=0.2025, mainRidges=2, fragments=5, bands=NoiseBands[shelfFreq=1.8, lowFreq=3.5, midFreq=8.0, highFreq=20.0, coastFreq=3.5, moistureFreq=0.02, shelfScale=0.35, shelfOffset=0.15, shelfHeightWeight=0.35, lowWeight=0.4, midWeight=0.25, highWeight=0.12, multiHeightWeight=0.45, coastAmplitude=0.35, gamma=0.92, warpFreq=0.018, warpAmplitude=10.0], ridges=RidgeParams[mainCompanionAngleMin=0.3, mainCompanionAngleSpan=0.5, mainLengthMin=1.3, mainLengthSpan=0.4, mainOffsetMin=0.2, mainOffsetSpan=0.3, mainStartJitter=0.03, mainCurveSpan=0.18, mainTailLength=0.48, mainTailJitter=0.02, mainHeadLength=0.52, mainHeadJitter=0.03, mainWeightMin=0.75, mainWeightSpan=0.25, secondaryAngleMin=0.12, secondaryAngleSpan=0.4, secondaryOffsetMin=0.1, secondaryOffsetSpan=0.28, secondaryLengthMin=0.5, secondaryLengthSpan=0.45, secondaryAlongMin=0.05, secondaryAlongSpan=0.22, secondaryTailLength=0.5, secondaryHeadLength=0.5, secondaryJitter=0.02, secondaryWeightMin=0.25, secondaryWeightSpan=0.3, heightWeight=0.68, decayBase=5.5, decayPerWeight=2.0, valleyMinRidges=2, valleySigma=0.1, valleyWeight=0.3], fragmentParams=FragmentParams[distMin=0.35, distSpan=0.5, lenMin=0.04, lenSpan=0.08, angleJitter=0.5, tipLength=0.5, weightMin=0.1, weightSpan=0.15, secondaryCountFloor=2, secondaryCountDivisor=2], contourCacheMax=5000]]]}, info=InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1], Entity[kind=Optional[hex], name=1_1]]]=[InfoEntry[key=alias, value=某个值, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=map.hex, localId=h-0001], note=Optional[备注]]]}]]
+[ERROR]   ReplayTest.replayStaysWithinTheCheckpointIntervalEvenAcrossAFork:293 [且步数必须是算得出来的那个：3 = (b2,3)(b2,2)(b2,1)，起点是分岔点 (main,6) 的 checkpoint] 
+expected: 3
+ but was: 0
+[INFO] 
+[ERROR] Tests run: 11, Failures: 6, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  6.542 s]
+[INFO] UtilSimos .......................................... SUCCESS [  2.578 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.279 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.362 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.339 s]
+[INFO] CoreSimos .......................................... FAILURE [ 29.153 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  40.109 s
+[INFO] Finished at: 2026-09-18T18:10:34+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-core: There are test failures.
+[ERROR] 
+[ERROR] See /home/dev/SimulatorMosire/simos-core/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-core

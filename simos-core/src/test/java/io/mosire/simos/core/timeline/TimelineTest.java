@@ -1,14 +1,28 @@
 package io.mosire.simos.core.timeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.SqliteStore;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.change.MapChangeSet;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.change.SocialChangeSet;
+import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.Segment;
+import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.nio.file.Path;
 import java.util.List;
@@ -222,6 +236,46 @@ class TimelineTest {
         .isEqualTo(WorldChangeSet.empty());
   }
 
+  /**
+   * ★ **裁定 39 的护栏**（Task 8 实测，2026-09-18）：{@code changeset_json} 这一列的往返**必须用真的模块变更集验**。
+   *
+   * <p>上一条护栏的替身 {@link ToyChangeSet} 只有 {@code v()} 一个组件，而三个真变更集都多一个**派生判断** {@code public boolean
+   * isEmpty()}——Jackson 把内省出的属性 {@code empty} **写进字节**，严格读回随即抛 {@code
+   * UnrecognizedPropertyException}。 于是「非空变更集落盘后能读回」这句结论**只在替身上成立**：判别力差的就是**那一个方法**。 （当场取证：{@code
+   * task-8-evidence/probe-changeset-wire-BEFORE.log}，{@code map}/{@code unit} 双双 {@code
+   * HAS_EMPTY_PROPERTY=true} 且读回必抛。）
+   *
+   * <p>故本用例**头一件事是把那个差当场量出来**（形态 1：夹具的先决条件自证）——不钉住它，本条随时可能退化成上一条的翻版。
+   *
+   * <p>★ 修法在**共享层**（util 的 {@code SimosObjectMapper}）而不在本类：{@code Timeline} 那台 mapper 按 ADR-1
+   * 看不见任何领域类型， 装不上三个模块 codec 各自注册的 mixin——这是"三处各自都对、中间没有装配点"，只能由底座给一条与领域类型无关的规则。
+   */
+  @Test
+  void changeSetJsonRoundTripsRealModuleChangeSetsNotJustStandIns() {
+    // ── 前提自证：替身与真身差的正是 isEmpty ──
+    assertThatThrownBy(() -> ToyChangeSet.class.getMethod("isEmpty"))
+        .as("前提：替身 ToyChangeSet 必须**没有** isEmpty，否则它俩的差别不在这个轴上，本条与上一条同义")
+        .isInstanceOf(NoSuchMethodException.class);
+    for (Class<?> real : List.of(MapChangeSet.class, SocialChangeSet.class, UnitChangeSet.class)) {
+      assertThatCode(() -> real.getMethod("isEmpty"))
+          .as("前提：%s 必须有 isEmpty（正是替身缺的那一个方法）", real.getSimpleName())
+          .doesNotThrowAnyException();
+    }
+
+    // ── 真身往返：写侧不得写出 empty，读侧必须逐值读回 ──
+    WorldChangeSet real =
+        new WorldChangeSet(
+            Map.of(
+                "map", MapChangeSet.between(GameMap.empty(), oneHexMap()),
+                "social", SocialChangeSet.between(new SocialData(Map.of()), onePopulation()),
+                "unit", UnitChangeSet.between(UnitState.empty(), oneUnitState())));
+
+    String json = Timeline.changeSetJson(real);
+
+    assertThat(json).as("写侧不得把派生判断 empty 写进线格式（它是判断不是状态，裁定 39）").doesNotContain("\"empty\"");
+    assertThat(Timeline.readChangeSet(json)).as("三个真模块变更集必须逐值往返——上一条替身查不出的正是这里").isEqualTo(real);
+  }
+
   /** 越界写不留残行（R2 经 Timeline 的路径）：parent 行不存在 ⇒ 库拒绝 + 回滚，以"事务失败"上抛。 */
   @Test
   void appendRejectsRowWhoseParentDoesNotExist() {
@@ -251,6 +305,45 @@ class TimelineTest {
   }
 
   // ---- 夹具 ----
+
+  // ── 裁定 39 的夹具：三个**真**模块变更集各一份非空值（不是替身） ──
+
+  private static GameMap oneHexMap() {
+    return GameMap.empty().withHexes(Map.of(new HexCoord(1, 1), new HexCell("plains", 0.35)));
+  }
+
+  private static SocialData onePopulation() {
+    SimosTimestamp t0 = SimosTimestamp.of(0);
+    return new SocialData(
+        Map.of(
+            new HexCoord(1, 1),
+            new PopulationSeries(
+                new Segment<>(t0, 10000L),
+                new SegmentedSeries<>(List.of(new Segment<>(t0, 0.02)), List.of(), null),
+                List.of())));
+  }
+
+  private static UnitState oneUnitState() {
+    SimosTimestamp t0 = SimosTimestamp.of(0);
+    return UnitState.empty()
+        .withUnits(
+            Map.of(
+                new UnitId("u-1"),
+                new Unit(
+                    new UnitId("u-1"),
+                    "单位 u-1",
+                    new SegmentedSeries<>(
+                        List.of(new Segment<>(t0, Optional.<UnitId>empty())), List.of(), null),
+                    new SegmentedSeries<>(
+                        List.of(new Segment<>(t0, Optional.of(new HexCoord(1, 1)))),
+                        List.of(),
+                        null),
+                    500,
+                    Map.of("旗帜", 3),
+                    2,
+                    1000,
+                    Optional.empty())));
+  }
 
   private static BranchId branch(String name) {
     return new BranchId(name);

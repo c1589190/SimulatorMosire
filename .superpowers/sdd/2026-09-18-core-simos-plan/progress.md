@@ -818,3 +818,99 @@ core 74→76 恰 +2），`[ERROR]` **0 行**，`BugInstance size is 0` ×5，`BU
 ★ **处置方式**：按纪律推论「**已确证的发现，若修复比它的描述还短，在发现的那一刻修掉，不 park**」——
 注册一个键绑定不到 20 行，**比本条裁定的描述还短** ⇒ 当场修完并配守卫，不走"park 到终审"那条老路
 （M1 的 `ResolverRegistryTest` 六轮就是这么来的）。
+
+---
+
+## 申、Task 8 已关账（**9/17**，2026-09-18，控制器内联执行）
+
+**交付物**：`core/store/Replay.java`（287 行：R4/R5 的实现）＋ `core/store/ReplayTest.java`（539 行、**11 条**）
+＋ `TimelineTest` 14 → **15 条**（裁定 39 的护栏）＋ `SimosObjectMapper` +62 行（裁定 39 的修法）。
+报告 `task-8-report.md`（六节，含 9 条"我未能核实的"）。
+
+**关账判据逐条核过**：
+1. **R4**（从最近 checkpoint 重放 == 从创世全量重放）——★ **夹具的判别力在于世界由夹具独立演进**：
+   每步的变更集由 `XChangeSet.between(before, after)` 算出，`after` 是**直接构造**的状态对象，
+   故 `truths` 里每份状态都是**真值**，与重放的实现路径无关。所有断言是「重放 == 真值」，**不是**「重放跟自己比」。
+   末两行另有判别力对照：生产路径 **3** 步 vs 全量路径 **8** 步（两条路径必须真的走不同步数）。
+   顺带把**铁律 5**在**跨模块、跨分支、多步累积**的场合又验了一遍（单模块往返用例覆盖不到"连施五步后还对不对"）。
+2. **R5**（步数 ≤ N）——用**跨分支** target `(b2,3)`，这一条才真正验到 C19 第 ② 项。
+   ★ 同时**如实记下 R5 的边界**：那两处 checkpoint 文件被删掉后步数 **8 > N = 4**，且写成了断言
+   （`isEqualTo(8)` ＋ `isGreaterThan(N)`）——R5 依赖「C19 说的 checkpoint 确实都在」，不是无条件。
+3. `./mvnw clean verify` **rc=0**、**643 条**（170/255/37/93/**88**）、`BugInstance size is 0` ×5、`[ERROR]` **0 行**。
+   ★ 与上一绿轮（631）**逐模块对差**：前四个模块**一个都没动**，core 76→88 恰 +12 ＝ 11 + 1。日志 `task-8-evidence/full-verify.log`。
+4. **四轮变异逐条自证**，每轮 `COMPILATION_ERROR_lines = 0`、`Tests_run_lines ≥ 1`、还原 md5 == 原件 md5：
+   m1（`hasCheckpoint` 去第②项）红在 `replayStaysWithinTheCheckpointIntervalEvenAcrossAFork:290`；
+   m2（`path.clear()`）红在 `replayRebuildsTheIndependentlyConstructedTruthAtEveryCoordinate:250`（6 failures）；
+   m3（照抄伪码 `orElseThrow`）红在 `replayFallsBackToAnEarlierCheckpointWhenTheNearestFileIsMissing:313`；
+   m4（删 `changesetsWithoutDerivedPredicates()`）红在 `changeSetJsonRoundTripsRealModuleChangeSetsNotJustStandIns:278`。
+   **m3/m4 是计划外补的**——Step 5 的表只列了 m1/m2；补的理由是这两处最容易被下一个人"照伪码改回去"/"顺手删掉"。
+
+**给下游的硬接缝**：
+1. ★★ **`Replay` 从未在真由 `CommandBus` 写出来的 revision 上跑过**——`ReplayTest` 的行是夹具直接落盘的。
+   Task 9 报告 §5 那条"`StateLoader` 的真实装配 `replay::replay` 从未在真状态上跑过"**依然成立**。**Task 13 装配时第一个要看这里。**
+2. **`readInfo` 落到具体类型 `InMemoryInfoSystem` 是接缝，不是终局**（`InfoSystem` 是接口，util 没给它的 SPI）。
+3. **裁定 39 的深层形态未做**（见酉）——`changeset_json` 仍含全限定类名，**挪包即旧档不可读**。
+4. **`changesetsWithoutDerivedPredicates()` 在 util 内没有自己的守卫**（有意：规则的意义是四台 mapper 一致，
+   只有跨 mapper 的用例验得了它；在 util 里写一条是**同义反复**）。但**本次纯增量全在 core，util 用例数没变**。
+5. **它是"按名的规则"不是"按语义的规则"**：`"empty"` 是字符串常量。已当场核查三个实现都没有叫 `empty` 的状态组件，
+   但这是**当时为真**，不是**结构上保证**。
+
+**下一轮**：**Task 10（③ 与锁纪律）与 Task 11 可并行开工**（均 ← Task 9，已满足）；**Task 12 ← 10、11**；
+**Task 13 ← 8、12**（本任务刚把它的一半满足了）；**Task 14/15 ← 13**；**Task 16 Step 3 ← Task 13**（裁定 20）。
+★ 工作树 `b8`/`b9` 停在 `adfb871`，**派发前必须 `reset --hard` 到当时的 HEAD**（裁定 25 的陈旧基线陷阱）。
+★ 本机 `nproc=2` ⇒ **并发上限 2**，且**不要在 agent 活着的时候跑全量 verify**。
+
+---
+
+## 酉、裁定 39 —— `changeset_json` 的线格式：**第四台 mapper 装不上模块级 mixin**（2026-09-18）
+
+**触发**：Task 8 首轮跑出 5 个 `UnrecognizedPropertyException: Unrecognized field "empty"`。**这不是夹具写错，是真缺陷。**
+
+**取证**（`task-8-evidence/probe-changeset-wire-BEFORE.log`，修前修后各一份）：
+
+```
+BEFORE:  PROBE[map]-HAS_EMPTY_PROPERTY=true
+         PROBE[map]-CAUSE=UnrecognizedPropertyException: Unrecognized field "empty"
+            (class …MapChangeSet), not marked as ignorable (7 known properties: "terrainTypes","edges",
+            "hexes","pathwayGroups","regions","cities","pathways")
+         PROBE[unit]-HAS_EMPTY_PROPERTY=true（同型）
+AFTER:   PROBE[map]-HAS_EMPTY_PROPERTY=false
+         PROBE[unit]-HAS_EMPTY_PROPERTY=false
+```
+
+**根因**：三个模块的变更集都有 `public boolean isEmpty()`（**派生判断，不是状态组件**）。Jackson 的 bean 内省
+把内省出的属性 `empty` **写进字节**，而读侧 `FAIL_ON_UNKNOWN_PROPERTIES` 保持默认的严格
+⇒ **写出来的档，自己读不回**。
+
+**为什么三处各自都对、中间却没有装配点**：`MapCodec`/`SocialCodec`/`UnitCodec` **各自**用 mixin 把 `isEmpty()`
+摘了出去（M4 Task 3 的实测发现，三处都没做错）——而 `Timeline` 是从 `SimosObjectMapper.create(...)` 另起
+**第四台** mapper，它按 ADR-1 **看不见任何领域类型**，装不上那三个 mixin。
+★ **与裁定 38 是同一个形状**：两处各自正确的东西之间**没有装配点**。
+
+**为什么 Task 6 的既有护栏没抓到**：`TimelineTest.changeSetJsonCarriesTypeInfoAndRoundTrips`（213~223 行）
+用的是替身 `record ToyChangeSet(int v) implements ChangeSet {}`——**它没有 `isEmpty()`**。
+**判别力差的就是那一个方法**（形态 1：夹具规模决定判别力，又一次实例）。
+
+**裁定：修在共享层**——`SimosObjectMapper.changesetsWithoutDerivedPredicates()`（`SimpleModule`
+带 serializer + deserializer modifier，条件 `ChangeSet.class.isAssignableFrom(...)`）。三条理由：
+1. **`ChangeSet` 是 util 自己的标记接口**，`"empty"` 是一个字符串 ⇒ 本条**不认识任何领域类型**（铁律 3 不破）；
+2. **不能用 mixin**：mixin 在同一 target 上**只有一份**（`SimpleMixInResolver` 的语义），
+   而 `Timeline` 已给 `ChangeSet` 装了 `@JsonTypeInfo` 的 mixin——再加一个会**碰撞**；用 modifier 才与它**相加**；
+3. **它不是"把严格关掉"**：`FAIL_ON_UNKNOWN_PROPERTIES` 保持默认。声明的是**一个具名的派生判断不进线格式**，
+   与三个模块 codec 的 mixin 是**同一条事实**，只是从"各模块各写一遍"提为"共享层写一遍"。
+
+**三条模块级 mixin 成为冗余但保留**（改动面越小越好）；读侧 `addIgnorable` 是给**旧字节**的，落地后的字节本就不含该属性。
+
+**守卫**：`TimelineTest.changeSetJsonRoundTripsRealModuleChangeSetsNotJustStandIns`（14 → 15 条）。
+★ 它的**头一件事是把判别力差当场量出来**（形态 1 的夹具先决条件自证）：断言替身**没有** `isEmpty`
+（`getMethod` 抛 `NoSuchMethodException`），三个真身**都有**——不钉住这个差，本条随时退化成上一条的翻版。
+另断言写侧 `doesNotContain("\"empty\"")`。m4 已证明它会红（§申 4）。
+
+★ **带裁定的遗留条目（本条到此为止，不在 Task 8 里再动）**：spec §3.2 把这一列定义成
+「**信封（C26），模块载荷是其中的一段文本**」——即 Core 只搬**不透明文本**；而 **Task 6 落成了
+`WorldChangeSet` 的整体 JSON ＋ `Id.CLASS` 多态信息，Core 于是内省了模块类型（C26 的原意被破）**。
+★ **这是 Task 6 的一处真偏离**，不是"措辞不严谨"（我第一版 `Replay` 类注就是这么误写的，已改正，见报告 §4.5）。
+**判据**：伪码写的 `decodeEnvelope(rev.changeset_json)` **在方向上是对的**，是实现没照它做。
+**为什么不在此改**：把载荷真改成不透明文本会改 `WorldChangeSet` 的**类型**，牵动 Task 4/6/9 三个**已关账**任务
+⇒ 成本远大于它的描述，**按纪律不 park 的那条推论在此不适用**（那条的前提是"修复比描述还短"）。
+**归**：Task 13 装配期裁决，或在 Task 16 收口时一并裁。

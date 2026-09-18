@@ -42,9 +42,8 @@ import java.util.List;
  *       Comparable}），**且就算不抛也打不中靶**（跨 JVM 的字节漂移源是 {@code Region.hexes} 的 {@code Set.copyOf} 数组序，不是
  *       Map 键序，而七个 Map 本就 {@code LinkedHashMap} 保序）。⇒ **既抛异常又无效**，一条都不留
  *   <li>**不关闭** {@code FAIL_ON_UNKNOWN_PROPERTIES}——保持默认的严格：多出来的字段是**漂移信号**（铁律 5），静默吞掉等于把守卫拆掉一半
- *   <li>**摘掉 {@link ChangeSet} 实现上的派生判断 {@code empty}**——见 {@link
- *       #changesetsWithoutDerivedPredicates()}：它不是状态， 而**第四台 mapper（{@code Timeline} 的那台）装不上模块级
- *       mixin**，故这条只能落在共享层
+ *   <li>**摘掉 {@link ChangeSet} 实现上的派生判断 {@code empty}**——见 {@link #changesetsWithoutDerivedPredicates()}：它不是状态，
+ *       而**第四台 mapper（{@code Timeline} 的那台）装不上模块级 mixin**，故这条只能落在共享层
  * </ul>
  *
  * <p>★ **{@code create(Module... extraModules)} 这个口子的边界**（台账裁定 16）：六个自定义键类型（{@code HexCoord}/{@code
@@ -82,22 +81,21 @@ public final class SimosObjectMapper {
    * 把 {@link ChangeSet} 实现上的**派生判断**摘出线格式：名为 {@code empty} 的属性，写侧不写、读侧不认。
    *
    * <p>★ **为什么这件事必须由共享层来定**（Task 8 实测，2026-09-18 当场，日志 {@code
-   * task-8-evidence/probe-changeset-wire-BEFORE.log}）：三个模块的变更集都写了 {@code public boolean isEmpty()}
-   * —— Jackson 的 bean 内省把它当成属性 {@code empty} **写进字节**，而读侧 {@code FAIL_ON_UNKNOWN_PROPERTIES}
+   * task-8-evidence/probe-changeset-wire-BEFORE.log}）：三个模块的变更集都写了 {@code public boolean isEmpty()} —— Jackson
+   * 的 bean 内省把它当成属性 {@code empty} **写进字节**，而读侧 {@code FAIL_ON_UNKNOWN_PROPERTIES}
    * 保持默认的严格，于是**写出来的档，自己读不回**：{@code Timeline.changeSetJson} 出来的 JSON 含 {@code "empty":false}，
-   * {@code Timeline.readChangeSet} 随即抛 {@code UnrecognizedPropertyException: Unrecognized field
-   * "empty"}（{@code MapChangeSet} 与 {@code UnitChangeSet} 双双复现）。
+   * {@code Timeline.readChangeSet} 随即抛 {@code UnrecognizedPropertyException: Unrecognized field "empty"}（{@code
+   * MapChangeSet} 与 {@code UnitChangeSet} 双双复现）。
    *
    * <p>★ **三处各自都对、中间却没有装配点**：{@code MapCodec}/{@code SocialCodec}/{@code UnitCodec} 各自用 mixin 把
    * {@code isEmpty()} 摘了出去（M4 Task 3 的实测发现），而 {@code Timeline} 是从本方法另起**第四台** mapper —— 它按 ADR-1
    * 看不见任何领域类型，装不上那三个 mixin。本方法在底座上加一条**与领域类型无关**的规则，四台 mapper 从此一致。
    *
-   * <p>★ **它为什么能放共享层**：{@link ChangeSet} 是 util 自己的标记接口，{@code "empty"} 是一个字符串 ——本条不认识任何领域类型（铁律 3
-   * 不破）。
+   * <p>★ **它为什么能放共享层**：{@link ChangeSet} 是 util 自己的标记接口，{@code "empty"} 是一个字符串
+   * ——本条不认识任何领域类型（铁律 3 不破）。
    *
-   * <p>★ **它不是"把严格关掉"**：{@code FAIL_ON_UNKNOWN_PROPERTIES}
-   * 保持默认（多出来的字段是漂移信号）。这里声明的是**一个具名的派生判断不进线格式** ——与三个模块 codec 的 mixin
-   * 是**同一条事实**，只是从"各模块各写一遍"提为"共享层写一遍"。三条模块级 mixin 因此**成为冗余**， 但**保留**：改动面越小越好，且它们是更具体的同一句话。
+   * <p>★ **它不是"把严格关掉"**：{@code FAIL_ON_UNKNOWN_PROPERTIES} 保持默认（多出来的字段是漂移信号）。这里声明的是**一个具名的派生判断不进线格式**
+   * ——与三个模块 codec 的 mixin 是**同一条事实**，只是从"各模块各写一遍"提为"共享层写一遍"。三条模块级 mixin 因此**成为冗余**， 但**保留**：改动面越小越好，且它们是更具体的同一句话。
    *
    * <p>★ **读侧的 {@code addIgnorable} 是给旧字节的**：本修法落地**之前**产出的字节里带着 {@code empty}，读侧容忍它们，不必重写存档。
    * 落地之后的字节本就不含该属性。**没有别的属性被放过**。
