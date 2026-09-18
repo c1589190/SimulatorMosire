@@ -1,0 +1,11 @@
+# T11 evidence md5 manifest (2026-09-19T06:39:44+08:00)
+0ee1929c14d208f7d4daff73ba7ffcd0  simos-app/src/test/java/io/mosire/simos/app/ShellEndToEndTest.java
+58f1d81799b44b8e6acd7776028f8c07  simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java
+25e65250b8836d1910e991356b10759c  simos-app/src/test/java/io/mosire/simos/app/ShellLifecycleTest.java
+477f05fc4e22f544bab0fbd12bf45da0  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/orig/CommandSubmitTool.java
+5182e7f9bec916b116b918034989c9d7  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/orig/GuiServer.java
+6633a34dfc7ea9f1cad49fc67f0d0c2f  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/orig/Shell.java
+8cfdc40e5b2fcb512bd457f75a83f46d  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/CommandSubmitTool-m3.java
+6b3138c09a2d9f86f04b6a8462582b8b  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/GuiServer-m2.java
+a68cea97cfde310b6513d35d3b29a411  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/Shell-m1.java
+c18844a592fb8d55ff00df9e3cc8a6bf  .superpowers/sdd/2026-09-19-shell-simos-plan/t11-evidence/mutants/mut-round.sh
