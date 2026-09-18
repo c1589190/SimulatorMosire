@@ -593,3 +593,37 @@ rc=0、6/6 模块 SUCCESS、`BugInstance size is 0` ×5、`[ERROR]` **0** 行、
 `./mvnw -pl <mod> spotbugs:check` **直调不跑生命周期、不编译**。在没编译过的树里它会 **rc=0 / 日志 0 行 / 无任何提示** 地通过。
 本会话第一次「旧提交 rc=0」就是这么来的，随即自查发现（`target/classes` **0 个类**、日志 0 行）当场作废重做。
 **要跑门禁就跑 `verify`，别直调单点 goal。**
+
+---
+
+## 子、第三次派单（2026-09-18，门禁转绿之后）
+
+**前置已办**：
+1. 全量 `clean verify` **绿**（rc=0、6/6 模块、608 用例、`BugInstance size is 0` ×5、`[ERROR]` 0、04:26）——
+   Task 7 欠的那道门禁**已补上**，见 §癸。
+2. 提交 `adfb871` 已推上 `origin/feat/adr1-core-scope`（`684c757..adfb871`）。
+3. CLAUDE.md M4 行 → **7/17**，并把 §癸 的实测升为**纪律形态 6**。
+4. ★ **顺手清掉一条陈旧指引**：CLAUDE.md 原写「下一轮：Task 16 的 Step 1/2」，但 `git log` 实测那两步
+   **已于 `eaa8093` 落地**（`UnitTimeParticipant`/`RenameUnitHandler`/`UnitSnapshots` 三者都在库里）。
+   若照旧指引走，下一轮会**重做完工的事**。已改成「下一轮：Task 9 与 Task 8；Task 16 的 Step 3 等 Task 13」。
+
+**两棵树都 `reset --hard adfb871`**（`m4/b8`/`m4/b9` 均**零提交**，重置不丢任何已提交工作）。
+
+★ **b8 树根留有一份 `Task8-probe-draft-from-dead-agent.java.txt`**——上轮死在探针阶段的 agent 留下的
+**未经核实**草稿（307 行）。处置：**从 `src/test/java/` 移出到树根**（移出 ≠ 删除），
+既保持"干净世界"（它不会被编译进构建），又不销毁别人的工作；派单里已写明**可以读、必须自己重跑、只信自己跑出来的、绝不许进提交**。
+
+| 批次 | 任务 | 分支 | 工作树 | 基线 |
+|---|---|---|---|---|
+| D1 | 9 `CommandRegistry`+`CommandBus` | `m4/b9` | `.claude/worktrees/b9` | `adfb871` |
+| C2 | 8 `Replay` | `m4/b8` | `.claude/worktrees/b8` | `adfb871` |
+
+**派单里写进去的硬约束**（除计划原文外，控制器另加的）：
+- Task 9：裁定 32 的 `AdvanceRoute` **注入**形态 + 形态 4 的转发用例；裁定 33 的边界（**明示"③与锁纪律归 Task 10"**，
+  且**明示裁定 33 是推定、须与 spec §4 及 Task 10/11 原文核对，不符则以计划为准并记取代说明**）。
+- Task 8：**先探针、后写码**（§辛）；`fromGenesis` 开关而**不改 `hasCheckpoint`**；用例必须带**跨分支 target**；
+  `N` 为构造参数（`CoreConfig` 尚无，如何注入由执行者定并记取代说明）。
+- 两单都写了 **ADR-1 的落地形态**：`simos-core` main **不许 import 领域模块**，codec 表与 `AdvanceRoute` 都是**注入**。
+- 两单都写了 **`-am` 必带**（不带会从**可能陈旧的 `~/.m2`** 解析兄弟模块——`~/.m2` 里那份 simos 构件是
+  2026-09-18 05:12 探针 `install` 写进去的）、**禁 `install`**、**禁改 `pom.xml`**、**全量 verify 只跑一次且在最后**。
+- ★ **并发上限 2 已用满**；两单都提示了"另一棵树上有 agent 在跑，2 核机器慢是正常的，别把慢当挂死"。
