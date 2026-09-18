@@ -1,8 +1,11 @@
 package io.mosire.simos.app;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.agentlib.mcp.McpSourceBridge;
+import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.map.codec.MapCodec;
@@ -26,9 +29,12 @@ import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
+import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +47,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>★ **装配清单**（spec §3.2 第 1~2 步）：三 codec + 八 handler + 一 participant（{@link CoreSimos} 侧） + 三
  * {@code Resolver}（map/social/unit）+ 两 {@code FacetProvider}（unitsHere/population）→ {@link
- * QueryService}（查询层，T3）。后续任务在此继续接审批/MCP/GUI。
+ * QueryService}（查询层，T3）；再 {@link SimosToolSource}（12 工具 = 3 写 + 9 读）经 {@code McpSourceBridge.bind}
+ * 同步进 {@link ToolRegistry}（T5，T7 消费）。后续任务在此继续接审批/MCP/GUI。
  *
  * <p>★ **本类不持有任何存储写路径**：{@code SqliteStore} / {@code Timeline.appendRevision} / {@code
  * CheckpointStore} 一个都不在 app 源码里（铁律 2 的结构化，R1 的扫描对象）。唯一的写入口是 {@link
@@ -51,8 +58,6 @@ public final class Shell implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(Shell.class);
 
-  private static final int HANDLER_COUNT = 8;
-
   /** GUI 监听地址：回环（spec §〇.4 不做鉴权/TLS 的回环基线）。 */
   private static final String GUI_HOST = "127.0.0.1";
 
@@ -61,6 +66,12 @@ public final class Shell implements AutoCloseable {
 
   /** 查询层（T3）：GUI 与工具集唯一的只读入口（spec §5.1）。 */
   private final QueryService queryService;
+
+  /** 工具注册表（T5）：{@link SimosToolSource} 的 12 条工具经桥同步进此表；T7 交给 {@code AgentToMcpServer}。 */
+  private final ToolRegistry toolRegistry;
+
+  /** 工具源 ↔ 注册表的同步桥（T5）：{@link #close()} 时整组下架本桥带入的工具。 */
+  private final McpSourceBridge toolBridge;
 
   /** GUI 服务器（T8）：5711 的静态页 + {@code /api}；关闭次序里排第一（spec §3.3）。 */
   private final GuiServer guiServer;
@@ -72,11 +83,15 @@ public final class Shell implements AutoCloseable {
       ShellConfig config,
       CoreSimos coreSimos,
       QueryService queryService,
+      ToolRegistry toolRegistry,
+      McpSourceBridge toolBridge,
       GuiServer guiServer,
       int registeredModuleCount) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.queryService = queryService;
+    this.toolRegistry = toolRegistry;
+    this.toolBridge = toolBridge;
     this.guiServer = guiServer;
     this.registeredModuleCount = registeredModuleCount;
   }
@@ -109,14 +124,21 @@ public final class Shell implements AutoCloseable {
       coreSimos.register(codec);
     }
 
-    coreSimos.register(new RenameUnitHandler());
-    coreSimos.register(new CreateUnitHandler());
-    coreSimos.register(new ReparentUnitHandler());
-    coreSimos.register(new SetStrengthHandler());
-    coreSimos.register(new PlaceAtHandler());
-    coreSimos.register(new PlanRouteHandler());
-    coreSimos.register(new CancelRouteHandler());
-    coreSimos.register(new DisbandUnitHandler());
+    List<CommandHandler> handlers =
+        List.of(
+            new RenameUnitHandler(),
+            new CreateUnitHandler(),
+            new ReparentUnitHandler(),
+            new SetStrengthHandler(),
+            new PlaceAtHandler(),
+            new PlanRouteHandler(),
+            new CancelRouteHandler(),
+            new DisbandUnitHandler());
+    Set<String> commandTypes = new LinkedHashSet<>();
+    for (CommandHandler handler : handlers) {
+      coreSimos.register(handler);
+      commandTypes.add(handler.type());
+    }
 
     coreSimos.register(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()));
 
@@ -131,22 +153,31 @@ public final class Shell implements AutoCloseable {
 
     QueryService queryService = new QueryService(coreSimos, resolverRegistry, facetRegistry);
 
+    // 工具集（T5）：12 条工具（3 写 + 9 读）经桥同步进注册表；T7 把注册表交给 MCP 服务。
+    SimosToolSource toolSource =
+        new SimosToolSource(
+            coreSimos, queryService, config.mcpInitiator(), config.mapId(), commandTypes);
+    ToolRegistry toolRegistry = new ToolRegistry();
+    McpSourceBridge toolBridge = McpSourceBridge.bind(toolSource, toolRegistry);
+
     // GUI（T8）：审批 base URL 传 null——T6 未接入，approval 端点回 503（spec §8.2 的接缝）。
     GuiServer guiServer = new GuiServer(queryService, coreSimos, config.mapId(), null);
     guiServer.start(GUI_HOST, config.guiPort());
 
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant=1"
-            + " resolver={} facet={} mapId={} guiPort={}",
+            + " resolver={} facet={} tool={} mapId={} guiPort={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
-        HANDLER_COUNT,
+        handlers.size(),
         resolverRegistry.namespaces().size(),
         facetRegistry.facetNames().size(),
+        toolRegistry.size(),
         config.mapId(),
         guiServer.boundPort());
-    return new Shell(config, coreSimos, queryService, guiServer, codecs.size());
+    return new Shell(
+        config, coreSimos, queryService, toolRegistry, toolBridge, guiServer, codecs.size());
   }
 
   /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */
@@ -157,6 +188,14 @@ public final class Shell implements AutoCloseable {
   /** 查询门面（spec §5.1）：GUI（T8）与工具集（T5）经此读状态、解析地址、取 facet。**只读**——写面仍只有 {@link CoreSimos#submit}。 */
   public QueryService queryService() {
     return queryService;
+  }
+
+  /** 工具注册表（spec §7.1；T5）：12 条工具（3 写 + 9 读）的活清单，T7 交给 {@code AgentToMcpServer}。 */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "spec §3.2/§7.2 要求把注册表交给 MCP 服务（T7）；它不是内部表示而是本壳的产物本身，与 coreSimos() 同法")
+  public ToolRegistry toolRegistry() {
+    return toolRegistry;
   }
 
   /**
@@ -193,6 +232,7 @@ public final class Shell implements AutoCloseable {
   @Override
   public void close() {
     guiServer.close();
+    toolBridge.close();
     coreSimos.close();
   }
 }
