@@ -1,0 +1,10 @@
+== orig/target snapshot (UnitTimeParticipant) ==
+485b94a56064de662765f24fb9b58b91  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+485b94a56064de662765f24fb9b58b91  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/step3/mutants/orig/UnitTimeParticipant.java
+
+== mutants ==
+76744537ea6c55bc3cdaf9875fd354c9  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/step3/mutants/UnitTimeParticipant.m1.java
+e6806e0e6e2316118b8abe49237183a3  .superpowers/sdd/2026-09-18-core-simos-plan/task-16-evidence/step3/mutants/UnitTimeParticipant.m2.java
+
+== 还原后（必须 == orig）==
+485b94a56064de662765f24fb9b58b91  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
