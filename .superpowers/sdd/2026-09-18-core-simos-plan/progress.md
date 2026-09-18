@@ -40,10 +40,10 @@ M1/M2/M3 spec 与计划均已关账。
 | 10 | 乐观并发两处检查（C17）+ R7 | ⏳ Batch C2 |
 | 11 | 可观测性 + `correlationId` 全链 + R6 | ⏳ Batch C2 |
 | 12 | 两阶段推进六步（C25）+ R9/R10/R14 | ⏳ Batch E |
-| 13 | `CoreSimos` 装配门面 | ⏳ Batch E |
+| 13 | `CoreSimos` 装配门面 | ✅ 子代理 `m4/b13` → 合并 `d7148b4`（697 用例全绿；**5 轮变异 0 存活**） |
 | 14 | 判据一——分岔端到端 | ⏳ Batch E |
 | 15 | 判据三——真实并发加固 | ⏳ Batch E |
-| 16 | unit 侧最小真实链路（U15 乙）+ R16 | 🔄 只派了 **SPI 两类** `m4/b16`（基线 `acfcb14`）；端到端要 Task 13（裁定 20） |
+| 16 | unit 侧最小真实链路（U15 乙）+ R16 | 🔄 只派了 **SPI 两类**（`m4/b16`）；端到端要 Task 13（裁定 20）——**13 已满足**，归 Step 3 |
 | 17 | M4 关账 | ⏳ Batch F |
 
 **派单批次**：A(1,2) → **B1(3) ‖ B2(4) ‖ B3(5)** → **C1(6,7,8) ‖ C2(9,10,11)** → E(12,13,14,15,16) → F(17)。
@@ -1247,3 +1247,52 @@ m7 提交失败无条件折成 `Conflict`（裁定 48 的要害）/ m8 checkpoin
 一旦入库就是把仓库再塞一份；注释里写明**忽略 ≠ 删除**。**实测**：`check-ignore` 恰命中那两个路径，`CLAUDE.md` /
 `docs` / `.superpowers/sdd` / `.serena/project.yml` / `config/checkstyle.xml` / `README.md` 六条反证**均未被忽略**，
 `git worktree list` 仍列两棵树、草稿仍在盘上。⇒ 这条边界从此**显式**，不再靠"下一个人记得别 `git add -A`"。
+
+---
+
+## Task 13 已关账（**13/17**，2026-09-19 01:2x，子代理执行 + 控制器核验）
+
+**执行形态**：**子代理 `deepseek-flash-go`（`opencode-go/deepseek-v4.1-flash`）**在隔离 worktree `m4/b13` 执行，~11 分钟一次过；控制器自读 diff（新增 ~840 行）核验 + 主树合并后全量门禁。★ 用户 2026-09-19 重新配置子代理后的**首用**——为 429/503 死单史翻页。提交 `4a8b945`，合并 `d7148b4`。
+
+**交付物**：`CoreConfig`（40 行）/ `CoreSimos`（279 行）/ `CoreSimosTest`（5 条）；报告 `task-13-report.md`；证据 `task-13-evidence/`（5 轮变异日志 + 主树合并后全量门禁 `logs/merged-full-verify.log`）。
+
+**门禁**：主树合并后 `./mvnw clean verify` rc=0、**697** 条用例 **170/255/37/93/142**、`BugInstance size is 0` ×5、`[ERROR]` 0 行、6/6 模块。★ 与 692 基线**逐模块对差**：前四模块一字未动，core 137→**142** 恰 +5 ＝ `CoreSimosTest` 的 5 条。
+
+**两条老欠账当期消账**（这两个洞从 Task 8/9 挂到此轮）：
+1. 「`Replay` 从未在真由 `CommandBus` 写出来的 revision 上跑过」＋「`StateLoader` 的真实装配从未在真状态上跑过」⇒ **已消**：用例 1 走真 store + 真 `CommandBus` + 真 `Replay`，重放的是总线亲手落的那一行。
+2. 「`TimeAdvance` 写出的 checkpoint 没被 `Replay` 读回」⇒ **已消**：用例 3 用**删创世档**的反向对照证明读的确实是 `(main,4)` 那份档（删掉它 ⇒ 必须抛，不许静默返空世界）。
+
+### 裁定 51 —— Task 13 的 D1~D6 **全部接受**（D1 是取代说明）
+
+| # | 内容 | 定性 |
+|---|---|---|
+| D1 | 装配草图 `replay::replay` **编译不过**（`Replay.replay` 返回 `ReplayResult`，`StateLoader` 要 `SimulationState`）⇒ 落地 `this::load` | **取代说明**（已回填计划汇总表）——与裁定 34 同族："注入"的意图不变，形状按签名校正 |
+| D2 | `CoreConfig.mapper` 防御性拷贝（构造器存副本 + 访问器返副本） | 实现细节。SpotBugs `EI_EXPOSE_REP`×2 硬门禁；组件无消费者 ⇒ 零语义代价。★ `ObjectMapper` 是**新出现的可变异形态** |
+| D3 | `register(...)` 链式返回 `this`；`implements AutoCloseable` | 实现细节（计划未指定返回类型/接口） |
+| D4 | m1/m2 的"期望红"从"Task 14 的 R8 / Task 8 的 R5"收敛到**本任务新增断言** | **范围收敛**（Task 14 尚未落地；Task 13 只到 R8 前半即机制面） |
+| D5 | 库文件名自选 `<storeDir>/simos.db`（`DB_FILE_NAME` 文档化） | 实现细节 |
+| D6 | 分岔点走统一的 guarded `maybeWriteCheckpoint`（带 C19 谓词）而非无条件写 | 实现细节。分岔后谓词必真 ⇒ 与无条件写等价；统一路径让"绝不超谓词"只有一处实现 |
+
+### 裁定 52 —— 裁定 39 的裁决时点：**不在 Task 13**，归 Task 16 收口
+
+保持现状（`changeset_json` 仍为 `WorldChangeSet` 整体 JSON + `Id.CLASS`）。理由：修复要动 `WorldChangeSet` 的**类型**、牵动 Task 4/6/8/9/12 五个已关账任务的产物与变异证据，**成本远超描述**（"修复比描述短就当场修"的前提不成立）。Task 13 **未碰任何既有 main 源**——范围守住了。
+
+### 门禁抓到的真缺陷（第三次"不跳过门禁"的价值）
+
+首次 `clean verify` rc=1：SpotBugs 在 `simos-core` 报 **3 条**（`CoreConfig.mapper` 的 `EI_EXPOSE_REP`×2 ＋ `CoreSimos.bus` 的 `IS2_INCONSISTENT_SYNC`）。修法就地（防御性拷贝 / 两字段 `volatile`），**改了字节 ⇒ 变异轮全部重跑**。★ 与 Task 7 同形：只跑 `-Dtest=CoreSimosTest` 的话这三条会潜伏到关账。
+
+### 变异自证：**5 轮 5 杀**（跑在最终提交的 artifact 上）
+
+m1 分岔点不写 / m2 新分支 revision 从 0 起 / m3 封存后静默不报 / m4 超 C19 谓词多写 / m5 信封支命中却不写。
+每轮九道门禁：干净世界 md5、字节不同自证、白名单推成目标类名、`COMPILATION ERROR`=0、`Tests run`≥1、surefire 报告 mtime 落在本轮、红点落位、逐字节还原、**日志自指（装置补记把三处 md5 追加进日志本身）**。★ m5 的由来值得记：初版只验了"不命中不写"、**没验"命中会写"**——正向缺口 ⇒ 补用例 5 + m5。
+
+### 给下游的接缝（新）
+
+1. **封存的真并发没测**（`synchronized sealIfNeeded` + 两 `volatile` 是选型）——与 Task 15 的并发范围相接，本任务契约不含。
+2. **checkpoint 写失败 ⇒ WARN 的路径没有故意违规用例**（靠 `catch` 结构 + `CheckpointStore.write` 的 I/O 语义保证）。
+3. **R5 步数上界在装配层没有直接断言**：`CoreSimos.replay` 只返 `SimulationState`（`ReplayResult.applyCount` 被折掉）。
+4. **真 codec/handler/participant 的装配未覆盖**（全替身）⇒ 判据四端到端归 **Task 16 Step 3**（其依赖现已满足，裁定 20）。
+5. **`ForkBranch` 支不发事件**的缺口仍在（Task 15 复核）。
+6. `CoreConfig.mapper` **当前无消费者**（如实记——它是计划组件，不是死代码环；将来要它真被用，改口应在需要 mapper 的那一处）。
+
+**下一轮**：**Task 14（判据一——分岔端到端）**（← 13，已满足）；Task 15 ← 13；Task 16 Step 3 ← 13（已满足）；Task 17 收口。

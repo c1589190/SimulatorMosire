@@ -1664,4 +1664,5 @@ jar mtime **05:12:08**，`simos-util` jar md5 `4529f2aa344a4b2c4dfaae1ee8564146`
 
 | 任务 | 计划原文所在 | 取代后写法（一句） | 详情出处 |
 |---|---|---|---|
-| （待回填） | | | |
+| 13 | Task 13 Step 1 装配草图：`new TimeAdvance(timeline, replay::replay, …)` / `new CommandBus(…, replay::replay)` | `Replay.replay` 返回 `ReplayResult`、而 `StateLoader` 要 `SimulationState` ⇒ 草图**编译不过**；落地 `this::load`（`replay.replay(ref).state()`），语义同"传 `replay::replay`" | `task-13-report.md` §6.2 / §7 D1 |
+| 13 | Task 13 Step 4 变异表：m1/m2 的"期望红在哪"写的是 **Task 14 的 R8 / Task 8 的 R5** | Task 14 尚未落地 ⇒ 红点收敛到本任务新增的 `CoreSimosTest` 断言（R8 **前半**机制面；端到端归 Task 14） | `task-13-report.md` §7 D4 |
