@@ -44,7 +44,7 @@ M1/M2/M3 spec 与计划均已关账。
 | 14 | 判据一——分岔端到端 | ✅ 子代理 `m4/b14` → 合并 `a2d015a`（698 用例全绿；**2 轮变异 0 存活**） |
 | 15 | 判据三——真实并发加固 | ✅ 零改动关账（裁定 54：Task 10 已足；核验 log `task-15-evidence/verify.log`） |
 | 16 | unit 侧最小真实链路（U15 乙）+ R16 | ✅ Step 1/2 `m4/b16`（eaa8093）+ **Step 3 子代理 `m4/b16s3` → 合并 `96e17f3`**（700 用例全绿；Step 3 **2 轮变异 0 存活**） |
-| 17 | M4 关账 | ⏳ Batch F |
+| 17 | M4 关账 | ✅ 控制器执行（M4 **完成**：700 用例全绿；四条判据逐条核；R1~R18 点验 + **R3/R14 当场补证**） |
 
 **派单批次**：A(1,2) → **B1(3) ‖ B2(4) ‖ B3(5)** → **C1(6,7,8) ‖ C2(9,10,11)** → E(12,13,14,15,16) → F(17)。
 
@@ -1391,3 +1391,27 @@ D1 **无偏离**（Task 16 Step 1/2 已落地 ⇒ 直接用真 `RenameUnitHandle
 3. 沿用 Task 13~15 的既有接缝（封存并发 / WARN 路 / R5 装配层 / 分岔无事件 / 裁定 39 / 跨 JVM 决定论等）。
 
 **下一轮**：**Task 17（M4 关账）**——四条判据逐条实测值 + R1~R18 点验 + `CLAUDE.md` 状态行 + 关账报告（含"我未能核实的"）。
+
+---
+
+## Task 17 已关账（**17/17**，2026-09-19 02:1x，控制器执行）——**M4 完成**
+
+**关账报告**：`task-17-final-report.md`（★ 同目录 `task-17-report.md` 是 2026-09-18 08:00 的**按期收口**，历史档案，未被取代）。
+**门禁**：`./mvnw clean verify` rc=0、**700** 条 170/255/37/93/145、BugInstance 0 ×5、ERROR 0（`task-17-evidence/completion-full-verify.log`）；四判据定向轮 26 条绿（`criteria-green.log`）。
+
+**四条判据逐条实测值**：① fork `(main,2)`→`(b2,1)`，main 再推后 b2 head 仍 2 + 状态逐值不变；② 信封支恰 `received+committed` 2 条、真 route 恰 6 条（`received+started+2×proposal`（字典序）`+finished+committed`）、`revisions` 各恰 1 行；③ K=50 每轮恰 1 Committed / 1 Conflict、败者 current == 胜者 ref、`barrierPasses=100`、`maxSimultaneous≥2`；④ `position [1,1]→[1,3]`、`movement` 清空、重放 == 独立重建期望、R10 reads 4（字典序）/ writes 1。
+
+### 裁定 56 —— R1/R2/R13/R15/R18 的证据等级：**报告在案、日志未入库，不补跑**
+
+子代理只读检索（`task-17-evidence/R1-R18-sweep.md`）查明：Task 1/2、Task 4、Task 5 **没有 `task-N-evidence/` 目录**，这五条 R 的变异轮只留在报告表里（日志在 `/tmp` 或仅表格）。补跑要**重造已消失的变异体**并动四个已关账任务的产物 ⇒ 成本远超收益。⇒ **接受为"报告在案"**，但**必须标档**：它们弱于有落盘日志的 11 条，引用时须知；后续重审这些护栏须重跑。
+
+### ★ 关账当场发现并补上的两处（"护栏必须自证"的又一次兑现）
+
+1. **R3、R14 从未被变异轮咬过**（有用例、无变异体）——当场造两个变异体 + 九道门禁轮补证：
+   - `r14`（未注册 namespace 放行）⇒ 红在 `TimeAdvanceTest.proposalWithoutARegisteredCodecIsRejected:377`（`Rejected` 断言）；
+   - `r3`（`CheckpointStore.write` 不落盘）⇒ 红在 `CheckpointStoreTest.diskFilesMatchHasCheckpointRowByRowAcrossABatch:188`（跨件一致性断言本身）；
+   - 两轮 rc=1 / `COMPILATION_ERROR=0` / `Tests run=1` / 报告 mtime 落轮内 / 逐字节还原；还原后定向复跑 **2/2 绿**。
+   - ★ 装置首跑测到**假阴性**（surefire 报告按全限定名落盘，短名取文件读到 mtime=0）——当场修（FQN glob + mtime 纳入判定），**先怀疑自己的读取**。
+2. **spec 要求而从未落盘的 `jackson-databind` 显式声明**（spec §二 / 〇.3-8；`git log -S` 查无、台账无记录；`ce98212` 只加了 sqlite-jdbc/log4j）——Core main 源码直接 import Jackson 却只靠传递依赖。按"修复比描述短 ⇒ 当场修"补上（父 POM 管版本），**`clean verify` 重跑 rc=0**；pom 声明不改变 classpath ⇒ 既有 .java 变异证据不受影响。
+
+**M4 终态**：17/17；测试 568（08:00 收口时）→ **700**（170/255/37/93/145）；`feat/adr1-core-scope` 全部推送。**遗留条目**见 `task-17-final-report.md` §五（裁定 39 的 `changeset_json` 偏离、分岔无事件、并发范围、WARN 路、R5 条件上界、`CoreConfig.mapper` 无消费者、`InfoEntry.value`、`GameMap` 无 id、unit 其余命令…）。**下一里程碑：M5**（GUI / MCP / AgentBinding，总纲 §5.4 第 6~9 项；开工前先裁决 M5 待决项）。
