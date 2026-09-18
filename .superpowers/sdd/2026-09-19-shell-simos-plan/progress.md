@@ -17,7 +17,7 @@
 | T2 | core 只读扩展（`branches/head`） | ✅ `m5/t2` → 合并 `d475489`（+2 条；**1 轮变异 0 存活**） |
 | T1 | `simos-app` 骨架与装配门面 | ✅ `m5/t1` → 合并 `33fa15f`（冒烟 4 条；**2 轮变异 0 存活**；reactor 七模块首绿） |
 | T3 | 查询层 + 两个真 Facet | ✅ `m5/t3` → 合并 `009e8b3`（27 条新测试；**2 轮变异 0 存活**） |
-| T8 | GUI 服务器与 `/api` | ⏳ Batch D ★ WebUI 1/2 |
+| T8 | GUI 服务器与 `/api` | ✅ `m5/t8` → 合并 `5ac368b`（14 条新测试；**2 轮变异 0 存活**）★ WebUI 1/2 |
 | T9 | GUI 前端三页 | ⏳ Batch D ★ WebUI 2/2 |
 | T5 | 工具集（3 写 + 9 读） | ⏳ Batch E |
 | T6 | 审批装配 | ⏳ Batch E |
@@ -73,3 +73,18 @@
 ★ **R7 的落地修正**：util 的 `FacetRegistry` **只有** `register/facetNames/queryAll`、**无按名查询** ⇒ spec §5.1"未注册 facet 名 ⇒ 明确失败"在**本层无 API 可达**；R7 落为"注册集合完整性 + queryAll 结果"（未注册 namespace 的明确失败有直证）。
 
 **下一批**：Batch D = **T8 → T9（WebUI 出形）**。
+
+---
+
+### Batch D-1（T8 GUI 服务器）已关账（2026-09-19 05:3x，子代理 + 控制器核验）
+
+**T8**（`m5/t8` `abb2039` → 合并 `5ac368b`）：`gui/{GuiServer(592),ApiViews(238),StaticHandler(93)}` + `webui/index.html`（最小骨架）；Shell 起/停 GUI（close 次序 GUI 第一）+ `boundGuiPort()`；全端点（读 8 + 写 3 + 审批代理接缝 503）；**2 轮变异 0 存活**（m1 R1 扫描加真写路径直引 ⇒ 红在扫描断言；m2 R4 initiator 改 `player:local` ⇒ 红在身份断言）；14 条新测试。合并后主树门禁 **776** 条 = 170/255/45/131/147/**28**、`BugInstance size is 0` ×6、`[ERROR]` 0。
+
+**裁定 59 —— T8 的口径（全部接受）**：
+1. **R1 扫描"扫代码、不扫注释"**：spec §十一 R1 的字面是"app 源码不出现 `SqliteStore`/`Timeline`/`CheckpointStore`"，而 `Shell` 的 javadoc **有意**写着这句禁令本身。⇒ 护栏先 `stripComments` 再判串；stripper 由专项用例自证（注释去掉、代码与字符串保留），并**由 m1 反向证明它真能抓住代码引用**（若 stripper 抹掉一切，m1 不红）。**不回填 spec**，记此取代说明。
+2. `ApiViews.java` 是**计划外第三文件**（视图与路由分离）——接受。
+3. 审批接缝：**未配置 ⇒ 503**（照派单）；**已配置 ⇒ 501 Not Implemented**（T6 未落地、无法实测转发）——接受，**T6 落地时必须改这里**。
+4. `ShellMain` 启动日志改打**实际** GUI 端口（0 时回显配置值会骗人）。
+5. GUI **恒绑 127.0.0.1**（回环基线，不提供改绑口子）。
+
+**下一批**：Batch D-2 = **T9（前端三页）**。
