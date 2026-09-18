@@ -15,7 +15,7 @@
 |---|---|---|
 | T4 | unit 命令面补齐（7 条 handler） | ✅ `m5/t4` → 合并 `6926ae1`（29 条测试；**2 轮变异 0 存活**） |
 | T2 | core 只读扩展（`branches/head`） | ✅ `m5/t2` → 合并 `d475489`（+2 条；**1 轮变异 0 存活**） |
-| T1 | `simos-app` 骨架与装配门面 | ⏳ Batch B |
+| T1 | `simos-app` 骨架与装配门面 | ✅ `m5/t1` → 合并 `33fa15f`（冒烟 4 条；**2 轮变异 0 存活**；reactor 七模块首绿） |
 | T3 | 查询层 + 两个真 Facet | ⏳ Batch C |
 | T8 | GUI 服务器与 `/api` | ⏳ Batch D ★ WebUI 1/2 |
 | T9 | GUI 前端三页 | ⏳ Batch D ★ WebUI 2/2 |
@@ -44,3 +44,17 @@
 ★ **T1 的一处 spec 缺口（派单时已告知执行者）**：spec §3.1 的 `ShellConfig` 漏了 `mapId`，而 `UnitTimeParticipant(MovementCost, String mapId)` 构造需要它 ⇒ T1 补 `mapId`（缺省 `Map1`）并记取代说明候选。
 
 **下一批**：Batch B = **T1**（`simos-app` 骨架 + 装配门面）。
+
+---
+
+### Batch B 已关账（T1，2026-09-19 04:4x，子代理 + 控制器核验）
+
+**T1**（`m5/t1` `aa21aea` → 合并 `33fa15f`）：新建 `simos-app`（父 POM 加模块，reactor 六 → **七**）；`ShellConfig`/`Shell`/`ShellMain` + `log4j2.xml`；装配 **3 codec + 8 handler + 1 participant**；冒烟 4 条（改名全链 / 推进全链 / `branches·head` / close 幂等）；**2 轮变异 0 存活**（m1 不注册 `UnitCodec`；m2 不注册 participant）。合并后主树门禁 **735** 条 = 170/255/37/**122**/**147**/**4**、`BugInstance size is 0` **×6**、`[ERROR]` 0、7/7 模块。
+
+**裁定 57 —— T1 的三处执行期校正/新增，全部接受**：
+1. **`ShellConfig` 补 `String mapId`**（spec §3.1 漏写；`UnitTimeParticipant(MovementCost, String mapId)` 构造需要）⇒ **取代说明**：该节应读作"record 头 + `mapId`"。
+2. `TerrainMovementCost.INSTANCE` 取代派单文字的 `new TerrainMovementCost()`（其构造器私有）——就地校正，语义不变。
+3. 新增 `simos-app/src/main/resources/log4j2.xml`（否则 `ShellMain` 的 INFO 配置行不可见）+ **provided 的 `spotbugs-annotations`**（供 `Shell.coreSimos()` 的 `EI_EXPOSE_REP` **精确豁免**）——★ **门禁首次七模块 `verify` 真抓到该缺陷**（`BugInstance size is 1`，其余六模块 SUCCESS）；修后 0。★ 如实记：失败那次的日志被随后的绿跑**同名覆盖**、无独立留档（形态 1 一族）。
+★ **m1 的实测修正（不照抄派单预测）**：派单预测 rename 会走 `Rejected`；实测是 **`IllegalStateException`**——`UnitCodec` 缺席时在 `stateLoader.load(base)`（重放创世 checkpoint）阶段就抛，**根本没走到 handler**（`Replay.decodeCheckpoint` 对未装配 namespace 的既定契约）。红是真的且由被保护行造成，但**红的形态是异常不是拒绝**；如实记，不改 Core。
+
+**下一批**：Batch C = **T3**（查询层 + 两个真 Facet）→ 随后 **T8/T9（WebUI 出形）**。
