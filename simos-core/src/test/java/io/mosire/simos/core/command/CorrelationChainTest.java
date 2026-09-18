@@ -44,8 +44,10 @@ import org.junit.jupiter.api.io.TempDir;
  *       {@link CommandBus} 的信封支。{@code received} 与 {@code committed} 由**本任务写的**代码产出。
  *   <li>{@link #failedRevisionInsertLeavesNoEventRowsBehind}：**真的原子性守卫**——见其方法注。
  *   <li>{@link #advanceSequenceShapeIsWhatR6Requires}：**机制级**，替身 route 产出序列，钉的是"落盘 + 排序 + 一条 SQL
- *       追全链"这条**通路**，以及把 R6 的**冻结形状**写成一个 Task 12 必须满足的目标。 ★ **它不证明真 route 会产出该序列**——那条在 Task
- *       12/15。
+ *       追全链"这条**通路**，以及把 R6 的**冻结形状**写成一个下游必须满足的目标。 ★ <b>Task 11 给它挂的那条"不许引用它当证据"的告示已在 Task 12
+ *       撤除</b>——真 route 的端到端证据落在 {@code TimeAdvanceTest.realRouteProducesTheFrozenR6Sequence}（真
+ *       {@code TimeAdvance} + 真 store，断言同一条冻结序列与逐行 payload）。**撤的是告示，不是它"机制级"这个性质**：它用的是替身
+ *       route，单独看仍不证明任何真实现的行为，故引用 R6 的端到端结论时**引那条，不引这条**。
  * </ul>
  *
  * <p>★★ **两个 id 必须不同**：C22 说单命令链**缺省** {@code correlationId == commandId}。若用例图省事让它们相等， "把事件的
@@ -229,8 +231,9 @@ class CorrelationChainTest {
    * **机制级，不是端到端**（见类注）：替身 route 产出 R6 的冻结序列 ⇒ 全部事件行与 revision 行**落盘后可被 一条 SQL 完整追回**，且**按 {@code
    * seq} 升序**。
    *
-   * <p>★ 它把 R6 的形状写成一个 Task 12 必须满足的目标，并钉住"落盘 + 排序 + 追全链"这条通路； **它不证明真 {@code TimeAdvance}
-   * 会产出这个序列**。N = 2（两个替身参与者）。
+   * <p>★ 它把 R6 的形状写成下游必须满足的目标，并钉住"落盘 + 排序 + 追全链"这条通路。 ★ **Task 12 起，"真实现也会产出这个序列"由 {@code
+   * TimeAdvanceTest.realRouteProducesTheFrozenR6Sequence} 端到端证明**（真 route、真 store）——本条**仍只证明通路**，
+   * 两者的分工见类注。
    */
   @Test
   void advanceSequenceShapeIsWhatR6Requires() {

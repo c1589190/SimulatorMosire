@@ -1,0 +1,12 @@
+[ERROR] Medium: io.mosire.simos.core.advance.AdvanceConflict.addresses() may expose internal representation by returning AdvanceConflict.addresses [io.mosire.simos.core.advance.AdvanceConflict] At AdvanceConflict.java:[line 41] EI_EXPOSE_REP
+[ERROR] Medium: io.mosire.simos.core.advance.AdvanceConflict.namespaces() may expose internal representation by returning AdvanceConflict.namespaces [io.mosire.simos.core.advance.AdvanceConflict] At AdvanceConflict.java:[line 41] EI_EXPOSE_REP
+[ERROR] Failed to execute goal com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:check (spotbugs-check) on project simos-core: failed with 2 bugs and 0 errors -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-core

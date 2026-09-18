@@ -1111,3 +1111,124 @@ Task 11 的 agent（`ac08422bbf884491c`）已从 `b9 @ 30a24eb` 重新起跑（�
 - **`AdvanceTime` 的链要写在 route 开的那一个事务里**——连同 revision 行。
 - ★ Task 11 的 `advanceSequenceShapeIsWhatR6Requires` 用的是**替身 route**，**它不证明真 `TimeAdvance`
   会产出该序列**（报告 §5.1）。Task 12 落地后，那条用例的"机制级"标注可以撤掉——**在此之前不许引用它当证据**。
+
+---
+
+## 午、裁定 47 / 48 —— Task 12 开工前，spec 内部有一处**自相矛盾**必须先裁
+
+### 裁定 47 —— `advance.finished` 写在**提交事务之内**（紧邻 `committed` 之前）
+
+**spec 自己打了自己**，三处说法，2 对 1：
+
+| 出处 | 说法 | 蕴含 |
+|---|---|---|
+| §5.1 ⑤ 行 296 | 「汇总 `WorldChangeSet` → 新 revision + **全部事件**，一个事务」 | `finished` 在事务**内** |
+| §7.2 行 459（**判据二的落点**，`恰好`表） | `received + started + N×proposal + **finished** + committed` | `finished` 在 `committed` **之前** ⇒ 必在事务内 |
+| §5.1 ⑥ 行 297 / §5.5 行 346 | 「发 `advance.finished`。**两件事都在事务之外**」 | `finished` 在事务**外** ⇒ `seq` 最大 |
+
+**裁：按前两条。** 理由：
+
+1. **`seq` 是自增列**——事务外写的行 `seq` 必然**大于** `committed`。故"事务之外"与 §7.2 那条**冻结的 `恰好` 序列**在物理上**不可兼得**，必须舍一个。
+2. **§7.2 是判据二（R6）的落点**，写成 `恰好` 表格；§5.5 那句是行文里的括号说明。
+3. ★ **§5.5 的理由只对 checkpoint 成立**：它的原话是"它们失败不影响**已经落盘的事实**"——checkpoint 是**派生缓存**（丢了只赔重放时间，C19），确实是"副作用"；而**事件行不是副作用，它是记录本身**。把 `finished` 放到事务外，等于让"一条命令的全部事件要么都在、要么都不在"这条原则**为一个事件破例**，且**崩溃窗口**里留下一条"已落盘但链不全"的推进——**R6 这条判据会在合法数据上失败**。这比 checkpoint 陈旧严重得多。
+4. Task 11 的 `CommandBus` 已经把这条原则写进结构（`received` 建好后**不立即落盘**，要等结局；三条结局各落 `received + 结局` 一个事务）——`TimeAdvance` 应同构。
+
+⇒ **⑥ Post-commit 只剩 checkpoint 一件事**（它失败不影响已落盘的事实，这句**对它成立**）。
+★ 这是**取代 spec 条文**的裁定，**不是**措辞澄清 ⇒ 记在此，Task 15 关账时复核。
+
+### 裁定 48 —— `TimeAdvance` **不加锁**：靠 `(branch, revision)` 主键挡并发，把失败**折成 `Conflict`**
+
+**问题**：`AdvanceTime` **不过** `CommandBus` 的信封支（`submit` 直接把它递给 `AdvanceRoute`）⇒ Task 10 那把 `commitLock` **罩不到它**。
+⇒ 两条并发推进（或"推进 vs 信封命令"）会各自算出**同一个** `newRevision = head+1`，第二笔撞 `PRIMARY KEY (branch, revision)`，
+`SqliteStore.inTransaction` 把它包成 `IllegalStateException("事务失败，已回滚")` **抛出去**——调用方拿到的是一个异常，
+而不是一个干净的 `Conflict`。**这与 Task 9 报告 §5 记的那条硬接缝是同一个洞**，Task 10 只在信封支堵了它。
+
+**裁：不在 `TimeAdvance` 里再造一把锁**，而是：**提交事务失败后回头读一次 head**——
+- head **动了**（≠ `expectedRevision`）⇒ 有人先提交了 ⇒ **折成 `Conflict(真 head)`**；
+- head **没动** ⇒ 失败**不是**竞态引起的 ⇒ **原样抛出**，不许吞。
+
+理由：① `SqliteStore.inTransaction` 已经把每个事务串行化，**真正的序列化点是库**，锁只是省一次白算；
+② 主键这条路**跨进程也成立**，而进程内的锁不成立；③ ★★★ **"失败后 head 没动就重抛"是本裁定的要害**——
+它保证这个 `catch` **不会把真 bug 伪装成冲突**（若无条件折成 `Conflict`，任何写失败都会变成"别人抢先了"，是最难查的一类假象）。
+④ 与 Task 11 那条"日志绝不许改被判事物的结局"同源：**异常处理不许改写事实**。
+
+★ **同一洞在信封支仍在**（Task 10 用锁堵的，锁是进程内的）——**跨进程时不成立**。本任务**不改** `CommandBus`
+（改了就要重跑 Task 11 的 12 轮变异，不划算）⇒ **如实记为 Task 13/15 的待办**，不在此扩范围。
+
+---
+
+## 亥、Task 12 已关账（**12/17**，2026-09-18 21:0x，控制器内联执行）
+
+**范围**：两阶段推进六步（spec §5.1）+ ③ Resolve（C14/C15）+ ④ Validate 五项（§5.4）+ ⑤ 单事务落 revision 与全链事件
+（裁定 47）+ ⑥ checkpoint（C19）+ R9/R10/R14。交付物 **4 个 main**（`TimeAdvance` 510 行 / `TimeProposalResolver` 137 / `AdvanceConflict` 93 /
+**`CheckpointEncoder` 75**）+ 2 个 test（16 + 8 条）。★ 第 4 个是**计划外新增**（计划的 Files 行只列了那三个）：
+⑥ 要写 checkpoint，而 `Envelope.encode` **在 main 侧从来没有生产调用点**（`decode` 有、`Replay` 在用）
+⇒ "状态 → 信封"这条通路**在本任务之前从未在生产代码里跑过**；**与裁定 38/39 同族：缺一个装配点**。
+★ 提交前扫 `git status` 才发现它一直是 **untracked** ⇒ `git ls-files`/`git grep` 这类"只看已入库"的手段
+**全看不见它**，报告初稿因此漏报过一次（详见 `task-12-report.md` §6.4）。★ `Either` 未新造（裁定 43 兑现：`TimeProposalResolver.Outcome` 是 sealed 两分支）。
+
+### 裁定 49 —— `AdvanceConflict.namespaces` **不排序**（C15 只管地址）
+
+**当场抓到的真缺陷**（首轮 2 failures / 24，其中一条是产品错）：构造器一度对 `namespaces` 与 `addresses` **都**排序，
+而 javadoc 写着 `namespaces` 是 `[读方, 写方]`（**有向**）⇒ `[alpha,beta]` 与 `[beta,alpha]` 落成**同一个值**，
+**两条独立的风险在事件表里变成两条逐字节相同的行**，方向被抹掉。
+
+**裁定依据是 spec 原文不是记忆**：回查 §5.3，C15 只要求"冲突报告按字典序排序"——**只针对地址**。
+⇒ 排序 `namespaces` 是**多做**的且做错了。修：`namespaces` 保序、`addresses` 排序；两条规则不同已写进类注释。
+**判别力**：m5 就是它的复原体（把排序加回去，3 条断言立刻红）。
+★ 同轮另一条 failure 是**夹具错**（串行两次推进把 `expectedRevision` 写成 1 而 head 已是 2 ⇒ 走过期检查、无 proposal 事件），
+已在夹具里留痕："这是夹具错不是产品错"。
+
+### 裁定 50 —— 包装调用**必须留在构造器体**（SpotBugs 的硬约束）
+
+全量 `clean verify` 首轮 rc=1：SpotBugs 在 `simos-core` 报 **2 条** `EI_EXPOSE_REP`（其余 4 模块 0，用例全绿）。
+**机理经两次探针定位**：① 把包装换成 `Collections.unmodifiableList` 放在**辅助方法**里 ⇒ **仍 2 条**（第一假设被否定）；
+② 包装**内联进构造器体** ⇒ 五个模块全 `BugInstance size is 0`。⇒ **`EI_EXPOSE_REP` 只认构造函数体内直接可见的包装调用，
+不做跨过程分析。** 修：保留 `List.copyOf`（强不可变优于视图），只把包装搬进构造器体；两个辅助方法诚实改名
+`immutableCopy`→`checkedCopy`、`sortedCopy`→`sortedCheckedCopy`（不再保证不可变）。
+★ 同模块 `WorldChangeSet` 一直是"包装写在构造器体里"故从未报过——**同形不必然同判，别照抄形状**。
+★ **两格没测过**：`unmodifiableList` 放进构造器体判不判 0 —— **未验，别当结论**（探针同时换了两个因素）。
+⇒ 已升为 **CLAUDE.md 形态 7**。
+
+### 纪律实测 —— 装置的日志必须**自指**（形态 1 第六例）
+
+核对"哪些旧变异轮还成立"时发现：`mut-round.sh` 的门禁把自证项只打到**终端**，`grep -c 'mutant=' <某轮日志>` 实测 **0**
+⇒ 日志**证不了它跑的是哪份字节**，只能靠推导。★ 同一次还撞到**我的核对脚本自己造出假红**：`grep` 读到空串 ⇒ 与 `now`
+一比即"不一致" ⇒ **7 个变异体全被判"必须重跑"**，而那 7 轮本来没问题。⇒ **先怀疑自己的读取，别先怀疑被测物。**
+**修**：`mut-round.sh` 加"装置补记"段，Maven 跑完即把三处 md5 **追加进日志本身**；9 份日志现在逐份自指。已升为 CLAUDE.md 形态 1 第六例。
+
+### 裁定 35 **结案**（Task 9 指定"Task 12 后回来复核"）
+
+三条路径实测一致，推定成立、**与 spec §五不冲突、无取代说明**：信封支 `CommandBus.java:325` 取 `baseRow.timestamp()`
+（继承父行）；推进支 `TimeAdvance.java:156` 取 `range.to()`（唯一移动时钟的路径）；重放 `Replay.java:189/196`
+一律取 **revision 行自己的 timestamp**（两条路径同一口径，无需分支）。
+
+### 实测结论行（照抄日志）
+
+最终绿轮 `task-12-evidence/logs/full-verify-final.log`（mtime `21:03:05`，rc=0，`20:58:11 → 21:03:05`）：
+**692** 条用例 **170/255/37/93/137**、6/6 模块 SUCCESS、`BugInstance size is 0` ×5、`[ERROR]` **0** 行、BUILD SUCCESS。
+★ 与 Task 11 绿轮（668 ＝ 170/255/37/93/113）**逐模块对差**：前四个模块**一字未动**，core 113 → 137 **恰 +24
+＝ Task 12 两个新用例类（16+8）**——不是"总数变大"，是**增量可归因**。
+
+### 变异自证：**九轮零存活**（全部跑在最终提交的 artifact 上）
+
+m1 只查一个方向 / m2 写-写退化成警告 / m3 去掉 ④ 第 0 项 / m4 地址不排序 / m5 `namespaces` 排序 / m6 参与者按注册序 /
+m7 提交失败无条件折成 `Conflict`（裁定 48 的要害）/ m8 checkpoint 丢未触碰模块 / m9 信封坐标用 base 的。
+**每轮实测 `Tests run: 24`、`COMPILATION_ERROR_lines=0`、期望类真红、工作树逐字节还原**；逐轮的红在哪条用例见
+`task-12-report.md` §5。★ **m6 首轮作废**：改 `LinkedHashMap` 后 `import java.util.TreeMap` 变成未使用 ⇒ Checkstyle 在
+**跑用例之前**把构建打掉（`Tests_run_lines=0`），装置的门禁"一条用例都没跑到 ⇒ 这不叫红"当场判它作废——**那道门禁的价值就在这**。
+★ **m4/m5 各重跑一遍**（`AdvanceConflict` 因裁定 49/50 两次改字节）：每次更新 `orig/` 快照 → 重新生成 → 重跑，两轮均被杀。
+
+### 给下游的硬接缝
+
+1. **真并发没验**：裁定 48 说靠 `(branch, revision)` 主键挡并发，而三条守它的用例都是**单线程演出**（用例自陈
+   `TimeAdvanceTest:531`"不必真起线程"，抢先者是替身 `StateLoader` 在 ① 里插一行）⇒ **两个真线程同时 `run()` 同一个
+   `TimeAdvance` 会怎样，没验。**
+2. **`TimeAdvance` 写出的 checkpoint 被 `Replay` 读回**，端到端**没跑过**（本任务只验"checkpoint 内容对"；
+   `Replay` 读 checkpoint 是 Task 8 用夹具行验的）⇒ **Task 8 那条"`Replay` 从未在真状态上跑过"依然成立**，Task 13 装配第一个看这里。
+3. **参与者全是替身**（`ToyParticipant`/`ToyCodec`）："真 route"指真 `TimeAdvance` + 真 store；**真 codec 只有 Task 16 的
+   `UnitTimeParticipant`** ⇒ R6 在**装配层**是否仍成立，归 Task 13/15。
+4. Task 11 那条"机制级、不许当证据"的告示**已撤**（真 route 的端到端证据落在
+   `TimeAdvanceTest.realRouteProducesTheFrozenR6Sequence`）；★ **撤的是告示，不是它"机制级"这个性质**——那条用例用的
+   仍是替身 route，引用 R6 的端到端结论时**引前者**。Task 11 用例只改了注释（剥注释骨架 md5 两侧同为 `9324ae37…`，实测）。
+5. **Task 13 ← 8、12**：本任务关账后两条依赖均已满足。**Task 16 Step 3 仍须等 Task 13**（裁定 20）。

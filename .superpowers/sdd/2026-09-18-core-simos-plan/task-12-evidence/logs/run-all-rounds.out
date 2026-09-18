@@ -1,0 +1,194 @@
+──────── t12-m1 ────────
+  ③ 只查一个方向（计划 m1）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=6bb957b6537ecaddf982f5b2ee9eaf5e  mutant=994eaffd380038f8b6a9234ab1660319  worktree_before=6bb957b6537ecaddf982f5b2ee9eaf5e
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeProposalResolver.java 这一条路径 ==
+worktree_after_push=994eaffd380038f8b6a9234ab1660319
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeProposalResolverTest 的变红行数=1
+   [ERROR] Tests run: 8, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.894 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeProposalResolverTest
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.688 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 4, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.readWriteOverlapIsCommittedAndItsEventAddressesAreSorted:343->conflictPayload:760 [该链上应恰有一条 timeline.conflict] 
+   [ERROR]   TimeProposalResolverTest.bothReadWriteDirectionsAreReportedAsTwoWarnings:114 
+   [ERROR]   TimeProposalResolverTest.onlyTheReverseReadWriteDirectionIsReported:90 [读方在前、写方在后的**有向**对：reads(alpha) ∩ writes(beta) 非空 ⇒ 必须留痕] 
+   [ERROR]   TimeProposalResolverTest.warningsOrderIsAFunctionOfContentNotOfInputOrder:203 [同一批内容换个顺序喂 ⇒ 逐条相同] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=6bb957b6537ecaddf982f5b2ee9eaf5e
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m2 ────────
+  写-写改成记警告并放行（计划 m2）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=6bb957b6537ecaddf982f5b2ee9eaf5e  mutant=6275a2f0c6f011d091f780021d014980  worktree_before=6bb957b6537ecaddf982f5b2ee9eaf5e
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeProposalResolver.java 这一条路径 ==
+worktree_after_push=6275a2f0c6f011d091f780021d014980
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeProposalResolverTest 的变红行数=1
+   [ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.854 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeProposalResolverTest
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 4.198 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 2, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.writeWriteConflictIsRejectedAndLeavesNoRevision:299 
+   [ERROR]   TimeProposalResolverTest.writeWriteIntersectionIsBlocked:46 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=6bb957b6537ecaddf982f5b2ee9eaf5e
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m3 ────────
+  Validate 去掉第 0 项（计划 m3）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=bc5072b13e76cc4a955335c7751f654c  mutant=05393b581faa487eed875e674d62dbf8  worktree_before=bc5072b13e76cc4a955335c7751f654c
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeAdvance.java 这一条路径 ==
+worktree_after_push=05393b581faa487eed875e674d62dbf8
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeAdvanceTest 的变红行数=1
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 4.060 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.missingRangeUpperBoundIsRejectedBeforeAnythingElseRuns:416->lambda$missingRangeUpperBoundIsRejectedBeforeAnythingElseRuns$11:399 缺 to 的推进不该走到 ① 的装配状态
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=bc5072b13e76cc4a955335c7751f654c
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m4 ────────
+  冲突地址不排序（计划 m4）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=18533eed838e2f3dcd720ad9b5ff9a41  mutant=3af8e850702c578e987c2eccef87bf58  worktree_before=18533eed838e2f3dcd720ad9b5ff9a41
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 AdvanceConflict.java 这一条路径 ==
+worktree_after_push=3af8e850702c578e987c2eccef87bf58
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeProposalResolverTest 的变红行数=1
+   [ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.672 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeProposalResolverTest
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.843 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 2, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.readWriteOverlapIsCommittedAndItsEventAddressesAreSorted:347 [★ 输入序 x3,x1,x4,x2 ⇒ 落事件必须是 x1,x2,x3,x4（差一位就红）] 
+   [ERROR]   TimeProposalResolverTest.conflictAddressesAreSortedLexicographicallyEvenWhenGivenOutOfOrder:159 [★ 输入序是 x3,x1,x4,x2 ⇒ 输出必须是 x1,x2,x3,x4（差一位就红）] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=18533eed838e2f3dcd720ad9b5ff9a41
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m5 ────────
+  namespaces 也排序（Task 12 实测缺陷的复原体）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=18533eed838e2f3dcd720ad9b5ff9a41  mutant=de69f21e8e5732d374f10243f05e3db0  worktree_before=18533eed838e2f3dcd720ad9b5ff9a41
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 AdvanceConflict.java 这一条路径 ==
+worktree_after_push=de69f21e8e5732d374f10243f05e3db0
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeProposalResolverTest 的变红行数=1
+   [ERROR] Tests run: 8, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.849 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeProposalResolverTest
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 4.104 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 3, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.readWriteOverlapIsCommittedAndItsEventAddressesAreSorted:350 [★ 有向对：**读方 beta 在前、写方 alpha 在后**（不是字典序——排序会把方向抹掉）] 
+   [ERROR]   TimeProposalResolverTest.bothReadWriteDirectionsAreReportedAsTwoWarnings:117 [★ 有向对，两条都要在（只查一个方向的实现只会报一条）] 
+   [ERROR]   TimeProposalResolverTest.conflictAddressesAreSortedLexicographicallyEvenWhenGivenOutOfOrder:162 [★ 有向：读方 zulu 在前。**不是**字典序——排了就把方向抹掉了] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=18533eed838e2f3dcd720ad9b5ff9a41
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m6 ────────
+  参与者按注册序而非字典序（C25/裁定 44）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=bc5072b13e76cc4a955335c7751f654c  mutant=1301c911c67722e59d9c1872433b06cd  worktree_before=bc5072b13e76cc4a955335c7751f654c
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeAdvance.java 这一条路径 ==
+worktree_after_push=1301c911c67722e59d9c1872433b06cd
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeAdvanceTest 的变红行数=1
+   [ERROR] Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 3.729 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 2, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.participantOrderIsFixedAtConstructionNotByRegistrationOrder:275 
+   [ERROR]   TimeAdvanceTest.realRouteProducesTheFrozenR6Sequence:244 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=bc5072b13e76cc4a955335c7751f654c
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m7 ────────
+  提交失败无条件折成 Conflict（裁定 48 的要害）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=bc5072b13e76cc4a955335c7751f654c  mutant=e1b398298fc15dc3ba1d6ce0a40a8c2f  worktree_before=bc5072b13e76cc4a955335c7751f654c
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeAdvance.java 这一条路径 ==
+worktree_after_push=e1b398298fc15dc3ba1d6ce0a40a8c2f
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeAdvanceTest 的变红行数=1
+   [ERROR] Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 3.827 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 2, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.failureThatIsNotARaceIsRethrownInsteadOfDisguisedAsConflict:587 
+   [ERROR]   TimeAdvanceTest.primaryKeyCollisionWithAMovedHeadIsFoldedIntoConflict:553 [报的是**真实 head**，调用方拿到即可重试或分岔] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=bc5072b13e76cc4a955335c7751f654c
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m8 ────────
+  checkpoint 丢掉未触碰的模块
+== 门禁 1：开跑前必须是干净世界 ==
+orig=bc5072b13e76cc4a955335c7751f654c  mutant=513db738e303be520c7a84b21c50fa56  worktree_before=bc5072b13e76cc4a955335c7751f654c
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeAdvance.java 这一条路径 ==
+worktree_after_push=513db738e303be520c7a84b21c50fa56
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeAdvanceTest 的变红行数=1
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.765 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.checkpointIsWrittenWhenDueAndKeepsUntouchedModulesAtTheirOwnCoordinates:625 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=bc5072b13e76cc4a955335c7751f654c
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t12-m9 ────────
+  checkpoint 信封坐标用 base 的
+== 门禁 1：开跑前必须是干净世界 ==
+orig=bc5072b13e76cc4a955335c7751f654c  mutant=4a5e8f2f0493c49764c8427f75c7b74b  worktree_before=bc5072b13e76cc4a955335c7751f654c
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 TimeAdvance.java 这一条路径 ==
+worktree_after_push=4a5e8f2f0493c49764c8427f75c7b74b
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=3
+== 门禁 5：期望变红的类必须真的红 ==
+命中 TimeAdvanceTest 的变红行数=1
+   [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.730 s <<< FAILURE! -- in io.mosire.simos.core.advance.TimeAdvanceTest
+   [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   TimeAdvanceTest.checkpointIsWrittenWhenDueAndKeepsUntouchedModulesAtTheirOwnCoordinates:621 [信封的坐标是新 revision] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=bc5072b13e76cc4a955335c7751f654c
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+=== 9 轮结束 ===
