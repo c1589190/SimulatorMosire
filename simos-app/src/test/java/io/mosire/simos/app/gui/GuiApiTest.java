@@ -241,9 +241,18 @@ class GuiApiTest {
   }
 
   @Test
-  void approvalsReturn503WhenT6NotWired() throws Exception {
-    assertThat(get("/api/approvals").statusCode()).isEqualTo(503);
-    assertThat(post("/api/approvals/abc", "{}").statusCode()).isEqualTo(503);
+  void approvalsProxyForwardsToTheLiveAgentLibEndpoint() throws Exception {
+    // Shell 现在恒装配审批端点（T6）⇒ 5711 的 /api/approvals 是真代理，状态码/体透传。
+    JsonNode list = getJson("/api/approvals");
+    assertThat(list.get("pending")).as("无写调用 ⇒ 待裁决表为空").isEmpty();
+
+    assertThat(post("/api/approvals/ap-nope", "{\"decision\":\"deny\"}").statusCode())
+        .as("未知 id ⇒ AgentLib 端点的 404 原样透传")
+        .isEqualTo(404);
+
+    HttpResponse<String> wrongMethod = get("/api/approvals/ap-nope");
+    assertThat(wrongMethod.statusCode()).as("错误方法 ⇒ 405（端点判定）").isEqualTo(405);
+    assertThat(wrongMethod.headers().firstValue("Allow").orElse("")).isEqualTo("POST");
   }
 
   @Test
