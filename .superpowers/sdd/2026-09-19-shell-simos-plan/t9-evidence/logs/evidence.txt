@@ -1,0 +1,62 @@
+# T9 证据：起壳 + HTTP 抓取 + 契约交叉核对
+base=http://127.0.0.1:46369
+
+## 1. 页面与静态资产
+GET /            -> 200  Content-Type=text/html; charset=utf-8  bytes=1162
+GET /map         -> 200  Content-Type=text/html; charset=utf-8  bytes=1432
+GET /unit        -> 200  Content-Type=text/html; charset=utf-8  bytes=1990
+GET /social      -> 200  Content-Type=text/html; charset=utf-8  bytes=1401
+GET /api.js      -> 200  Content-Type=text/javascript; charset=utf-8  bytes=3843
+GET /app.js      -> 200  Content-Type=text/javascript; charset=utf-8  bytes=4992
+GET /styles.css  -> 200  Content-Type=text/css; charset=utf-8  bytes=4371
+GET /map.js      -> 200  Content-Type=text/javascript; charset=utf-8  bytes=8718
+GET /unit.js     -> 200  Content-Type=text/javascript; charset=utf-8  bytes=13650
+GET /social.js   -> 200  Content-Type=text/javascript; charset=utf-8  bytes=2927
+
+## 2. 契约交叉核对（页面实际调用的端点）
+GET /api/state                                    -> 200
+    {"branches":["main"],"heads":{"main":1},"meta":{"branch":"main","revision":1,"timestamp":{"tick":7,"calendarLabel":null}}}
+GET /api/map/overview                             -> 200
+    {"mapId":"Map1","hexCount":3,"hexes":[{"q":1,"r":1,"terrain":"desert","height":0.5},{"q":1,"r":2,"terrain":"desert","height":0.5},{"q":1,"r":3,"terrain":"desert","height":0.5}],"regions":[],"cities":[],"terrainTypes":["desert"]}
+GET /api/map/hex?q=1&r=1                          -> 200
+    {"q":1,"r":1,"terrain":"desert","height":0.5,"facets":[{"namespace":"unit","label":"第一连","typeName":"Unit","value":"unit:u-1"},{"namespace":"social","label":"1_1","typeName":"Population","value":11400}]}
+GET /api/units                                    -> 200
+    {"units":[{"id":"u-1","name":"第一连","member":100,"equipment":{"步枪":50},"speed":2,"mobilityPerMille":500,"parent":null,"position":{"q":1,"r":1},"movement":false}]}
+GET /api/unit/u-1                                 -> 200
+    {"id":"u-1","name":"第一连","member":100,"equipment":{"步枪":50},"speed":2,"mobilityPerMille":500,"parent":null,"position":{"q":1,"r":1},"movement":false}
+GET /api/social/population?q=1&r=1                -> 200
+    {"q":1,"r":1,"at":{"tick":7,"calendarLabel":null},"population":11400}
+GET /api/facets?address=map%3AMap1%3Ahex.1_1      -> 200
+    {"entries":[{"namespace":"unit","label":"第一连","typeName":"Unit","value":"unit:u-1"},{"namespace":"social","label":"1_1","typeName":"Population","value":11400}]}
+
+## 3. 写端点路由（空体 ⇒ 400，证明路由在且不落 revision）
+/api/command POST {} -> 400
+/api/advance POST {} -> 400
+/api/fork POST {} -> 400
+/api/approvals GET -> 503（T6 未接入 = 503）
+
+## 4. node --check JS 语法检查
+node --check api.js     rc=0 （无输出）
+node --check app.js     rc=0 （无输出）
+node --check map.js     rc=0 （无输出）
+node --check unit.js    rc=0 （无输出）
+node --check social.js  rc=0 （无输出）
+
+## 5. 浏览器截图（playwright headless chromium）
+t9-screenshot.mjs rc=0
+SHOT / -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9/.superpowers/sdd/2026-09-19-shell-simos-plan/t9-evidence/screenshots/index.png
+SHOT /map -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9/.superpowers/sdd/2026-09-19-shell-simos-plan/t9-evidence/screenshots/map.png
+SHOT /unit -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9/.superpowers/sdd/2026-09-19-shell-simos-plan/t9-evidence/screenshots/unit.png
+SHOT /social -> /home/cna/SimulatorMosire/.claude/worktrees/m5t9/.superpowers/sdd/2026-09-19-shell-simos-plan/t9-evidence/screenshots/social.png
+UNIT_ROWS 1
+SHOT /unit detail -> unit-detail.png
+UNIT_STATUS 1 个单位。
+SHOT /social query -> social-query.png
+SOCIAL_STATUS q=1, r=1 有数据
+MAP_STATUS 已载入 3 格（mapId=Map1）
+SHOT /map loaded -> map-loaded.png
+JS_ERRORS 2
+JSERR console.error: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+JSERR console.error: Failed to load resource: the server responded with a status of 404 (Not Found)
+HTTP_FAILURES 1
+HTTPFAIL HTTP 503 http://127.0.0.1:46369/api/approvals

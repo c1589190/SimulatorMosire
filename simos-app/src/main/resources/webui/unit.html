@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>单位 · Simos Shell</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>单位</h1>
+  </header>
+  <nav id="nav"></nav>
+
+  <main>
+    <p class="muted">列表来自 <code>/api/units</code>，详情来自 <code>/api/unit/{id}</code>；8 条命令经 <code>POST /api/command</code>（信封 <code>{type,payloadJson,branch,expectedRevision}</code>，服务端记 <code>player:gui</code>）。</p>
+
+    <div class="grid-2">
+      <section class="panel">
+        <h2>单位列表</h2>
+        <button id="reload-units">刷新</button>
+        <p id="units-status" class="status muted">载入中…</p>
+        <div id="units-table"></div>
+
+        <h2 style="margin-top:18px">详情</h2>
+        <p id="detail-status" class="muted">选择左侧任一单位。</p>
+        <dl class="kv" id="detail"></dl>
+      </section>
+
+      <section class="panel">
+        <h2>命令</h2>
+        <label>命令类型
+          <select id="command-type"></select>
+        </label>
+        <div id="command-fields"></div>
+        <details style="margin-top:10px">
+          <summary class="muted">原始信封（可编辑 JSON，提交以此为准）</summary>
+          <textarea id="envelope-json"></textarea>
+        </details>
+        <div class="row" style="margin-top:10px">
+          <label>branch
+            <input id="branch" type="text" value="main">
+          </label>
+          <label>expectedRevision
+            <input id="expected-revision" type="number" min="1" step="1" value="1">
+          </label>
+          <button id="submit-command" class="primary">提交</button>
+        </div>
+        <p id="command-status" class="status muted">未提交。</p>
+      </section>
+    </div>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script src="unit.js"></script>
+</body>
+</html>
