@@ -21,7 +21,7 @@
 | T9 | GUI 前端三页 | ✅ `m5/t9` → 合并 `6917365`（5 条新测试；**1 轮变异 0 存活**；★ 截图 7 张在案）★ WebUI **出形** |
 | T9b | 可运行性收尾（计划外） | ✅ `m5/t9b` → 合并 `e2df025`（+8 测试；**2 轮变异 0 存活**；★ 单位标记截图在案） |
 | T5 | 工具集（3 写 + 9 读） | ✅ `m5/t5` `a62bb6a` → 合并（11 条测试；**2 轮变异 0 存活**；★ 门禁抓 5 个真项） |
-| T6 | 审批装配 | ⏳ Batch E |
+| T6 | 审批装配 | ✅ `m5/t6` `337c9f7` → 合并 `3957a1a`（3 条测试；**1 轮变异 0 存活**；5711 代理落地） |
 | T7 | MCP 服务装配（判据②前置） | ⏳ Batch E |
 | T10 | AgentBinding | ✅ `m5/t10` `03e5a5f` → 合并 `b2dedd2`（12 条测试；**1 轮变异 0 存活**） |
 | T11 | 判据端到端 ①② | ⏳ Batch F |
@@ -139,3 +139,18 @@
 3. T5 的 `SimosToolSource` 构造签名照派单；`Shell` 新增 `toolRegistry()`（T7 的输入）。
 
 **下一批**：Batch E-2 = **T6（审批装配）**——**串行**（改 `Shell` + T8 留的审批代理口）。
+
+---
+
+### Batch E-2（T6 审批装配）已关账（2026-09-19 06:2x，子代理 + 控制器核验）
+
+**T6**（`m5/t6` `337c9f7` → 合并 `3957a1a`）：`Shell` 装配审批链（`PendingApprovals` → `HttpApprovalChannel` → `ApprovalCoordinator`（`AutoApproveGate`+`ConfirmGate`）→ `ToolCallAuthorizer.of(guard, coordinator)`（**非** `standard()`）；`ApprovalHttpEndpoint.start(config.approvalPort())` 成功后 `markUp()`；close 次序 GUI → 端点 → 通道 → Core）；`GuiServer` 把 T8 的 503/501 缝换成**真代理**（原始字节透传 状态码/体 + `Content-Type`/`Allow`；不可达 ⇒ 502）；`ShellApprovalTest` 3 条 + `GuiApiTest` 调整；**1 轮变异 0 存活**（m1 写工具 `Ask→Allow` ⇒ 红在 R3 断言「写工具必须先进审批」）。任务内全量 815（app 61→64）。合并后主树门禁 **815** = 170/255/45/131/150/**64**、BugInstance 0 ×6、ERROR 0。
+
+**裁定 63 —— T6 的四处实测校正（全部接受）**：
+1. **`callerKey` 是 `AccessToken` 桶名**（`GUEST`/`DEFAULT`/`SYSTEM`），**给不出 `player:gui`**——我的派单文字有误；实测收窄证据 = 代理回执 `scope=="once"`（调用者桶 `DEFAULT`）。spec §九若写"审批按 `player:gui` 归类"需校正（T6 报告 §四.1 在案）。
+2. `pendingApprovals()` 的 `EI_EXPOSE_REP` 抑制**不必要**（加了反被 `US_USELESS_SUPPRESSION_ON_METHOD` 判红）⇒ 已撤；**不得**据此推断 `PendingApprovals` 不可变（形态 6 同源）。
+3. GUI 绑定失败的端点回滚**不能写显式 `throw e;`**（`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION`）⇒ 改 `finally` 无显式 throw。
+4. 审批等待上限 **5 分钟**（spec 未定值；到点 fail-closed 归 AgentLib）。**未验**：超时真到点 / `APPROVE_SESSION` 真落会话键（需 `SYSTEM` 桶）/ **MCP 入口经同一 authorizer**（T7 验）。
+★ **带裁定的遗留**：`ShellMain` 仍打印 `config.approvalPort()`（不在派单文件集内、未改）；`port=0` 时与实际不符——无害（缺省 5713 一致），记着。
+
+**下一批**：**T7（5715 MCP 服务装配）**——**最后一个实现任务**（← 之后 T11 判据端到端、T12 关账）。
