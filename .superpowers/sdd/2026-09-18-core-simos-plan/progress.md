@@ -296,6 +296,86 @@ B1 完结后同理接 **Task 16 的两个 SPI 类**（它刚写完 `UnitCodec`�
 即我在 08:0x 预测的那件事，**实测吻合**。
 ★ **另注意**：`task-6-evidence/` 目前仍是 **untracked**，续派时要**逐个文件 `add`** 入库（不用 `-A`）。
 
+### 三之三、★ 裁定 31 —— Task 6 的**报告到了**（08:13:21），**我仍没合**，这次是**实测**挡住的
+`task-6-report.md` 于 **08:13:21** 落盘，自陈**「已完成（含变异自证 3 轮）」**，提交 `ca5b446`。
+⇒ **裁定 30 的理由 (a)（"没有报告 = 作者没自陈完成"）到此解除**，我**确实**重新考虑过合并
+（报告是齐的、代码是提交过的、闸门字面条件已满足）。
+**最终没合，理由是实测出来的，不是保守**：
+1. 报告 §5.1 自陈「**全量 verify 未跑**（控制器指令）——SpotBugs 对 Timeline/RevisionRow 的判定、
+   Checkstyle、与既有测试的相互作用，全部未测；**接手者关账前必须跑一次**」
+   ⇒ 该分支**从未过过门禁**：`ca5b446` 只跑过 `-Dtest=TimelineTest test`。
+2. 合并后**必须**跑一次主树 verify（实测 **4:20** 干净构建）才算数，而此刻
+   **Bash 的安全分类器连续多次不可用**（`glm-5.3-flash is temporarily unavailable (rate-limited)`）。
+   ★★ **归因更正（08:16 拿到真凭据后改口）**：我起初把这条读成「**同一个 CPU 饥饿症状**、
+   即第三次 503 的同一根因」——**这是错的**。Task 6 的 agent 在 **08:16:48** 死于
+   **HTTP 429**：`[1308][已达到 5 小时的使用上限。您的限额将在 2026-09-18 09:01:53 重置]`
+   （`model sent to the API: glm-5.3-flash`，request id `202609180016479551811728268d9d6tMwP08Qd`）。
+   ⇒ 分类器与 agent 用的是**同一个 glm-5.3-flash**，它的"rate-limited"是**账号级 5 小时配额耗尽**，
+   **不是** CPU 过载。**503（CPU）与 429（配额）是本会话里两个不同的失效模式，别合并成一条**。
+   ⇒ 执行工具（Bash/Monitor）在 **09:01:53** 前都可能不可用。
+   在**命令行本身不可靠**的情况下起一个 4:20 的构建，**一旦中途失联就会把已验证的主树留在半合并态**。
+   **这比不合并糟得多**，尤其在截止点上。
+★ **教训（写给下一轮）**：**"闸门条件满足"不等于"能安全执行"**——还要有**能跑完验证的环境**。
+裁定 30 的理由 (b)（验证成本）在 08:13 **依然是**决定性理由，只是换了形态：从"来不及"变成"跑不动"。
+★★ **接手者第一件事**：`git -C .claude/worktrees/b6 add`（逐个文件）`task-6-report.md` + `task-6-evidence/`
+→ commit 到 `m4/b6` → `--no-ff` 合并 → 主树 `./mvnw clean verify`。
+**报告 §4 的 9 条取代说明与 §5 的 6 条"未能核实"必须一起读**，其中两条对下游有直接后果：
+- §4.3/§4.4：changeset 落盘用 **mixin + `Id.CLASS`**（`ChangeSet` 是 util 冻结契约，注不上注解）；
+  **代价**：`changeset_json` 里含全限定类名，类挪包即旧档不可读。
+- §4.9：分岔行的 `changeset_json` 是 **`WorldChangeSet` 的 JSON**（`{"@class":…,"modules":{}}`），
+  **不是** checkpoint 信封 —— Task 8 若按"信封"想象它就是错的。
+- §3 m2：**计划对 `MAX vs COUNT` 的判别力推导被实测推翻**（真杀点是"查不存在的分支 ⇒ `MAX` 为 NULL"，
+  不是"两条长度不同的分支"）⇒ 后续再写同类变异，**夹具必须含"查不存在的分支"**。
+
+### 三之四、★ 控制器自读 diff（08:1x，`Timeline.java` 414 行通读）
+> 依据 CLAUDE.md「**代码量小时，控制器自己读 diff 就是评审**」。**未发现缺陷**；
+> 两条**接缝**留给下一轮 —— 二者都是「**没测到的地方**」，**不是已确证的缺陷，别当结论引用**。
+
+1. ★ **`hasCheckpoint` 会做数据库 I/O，但 javadoc 自称"纯函数"**：读码确认它经 `isForkParent`
+   → `store.inTransaction`，**每次调用都开事务、发一条 SQL**。该处的"纯"是指
+   「**不碰文件系统**」（C18 的语境），**不是**"无副作用"。
+   ⇒ **待查**：若在别的 `inTransaction` 块**内部**调 `hasCheckpoint`，就构成**嵌套事务**；
+   `SqliteStore.inTransaction` **是否支持嵌套未测**（报告 §5.4 也把并发/原子性列为未测）。
+   下一轮宜补一条用例，或在 javadoc 里写明"不可在事务内调用"。
+2. ★ **`chainToGenesis` 无环检测**：只有「起点行缺席 ⇒ 空清单」与「中段父行缺席 ⇒ 炸」两条路径。
+   `parent` 指针成环时（只能由**绕过本类**的写造成）会在**事务内死循环**，
+   与本类别处「库被绕开本类写坏 ⇒ 当场炸」的姿态不一致。
+   API 层构造不出环（插入只能指向**已存在**的行），属**防御性缺口**，**非现行缺陷**。
+
+**已确认无问题的点**（省下一轮重复看）：全部 SQL 走 `PreparedStatement` 绑定参数、
+表名/列名是**编译期常量**（无注入面）；`Statement`/`ResultSet` **全在 try-with-resources 内**；
+`mapRow` 的 `wasNull()` **紧跟** `getLong("parent_revision")`（顺序正确，前面那次 `getString` 不干扰它）；
+`branches()` 用 `LinkedHashSet` + `unmodifiableSet` **保住了 `ORDER BY` 的迭代序**
+（**没有**误用 `Set.copyOf` —— 那正是 M2 裁定 12/13 的已知代价点）；`fork` 的「检查 head + 插入新行」
+确在**同一事务**内（C21/C22 的原子性诉求成立）。
+
+---
+
+## 六、★★ 交接：主树里有**未提交**的文档改动（08:2x，必须下一轮补交）
+
+**原因**：账号级 **HTTP 429**——`[1308][已达到 5 小时的使用上限。您的限额将在 2026-09-18 09:01:53 重置]`。
+它同时打死两样东西：① Task 6 的 agent（08:16:48）；② **Bash / Monitor 的安全分类器**
+（同一账号、同一 `glm-5.3-flash`）⇒ **收口时执行工具全部不可用**，只能读文件、改文件，**不能 commit/push**。
+
+**只落在工作树、未提交的两份**：
+1. `.superpowers/sdd/2026-09-18-core-simos-plan/task-17-report.md`（裁定 31/30 的更正 + 控制器自读的接缝）
+2. `.superpowers/sdd/2026-09-18-core-simos-plan/progress.md`（关账节、裁定 28~32、控制器自读 diff）
+
+**下一个人第一件事（逐条照抄）**：
+```bash
+cd ~/SimulatorMosire                                              # 主树，不是 worktree
+pwd && git rev-parse --abbrev-ref HEAD && git rev-parse --git-dir # 期望：.git
+git add .superpowers/sdd/2026-09-18-core-simos-plan/task-17-report.md \
+        .superpowers/sdd/2026-09-18-core-simos-plan/progress.md
+git diff --cached --stat                                          # 先扫：确认**只有这两个**文件
+git commit -m 'docs(m4): 更正裁定 31 归因（429 配额 ≠ 503 CPU）+ 控制器自读 Timeline 的接缝'
+git push origin feat/adr1-core-scope
+```
+★ **已提交并推送的最后一个是 `acd7c52`** —— **任务 1~5 的验证结论与推送状态不受影响**，
+本节的未提交项**纯粹是文档**，不含任何代码。
+★ **警告**：`git status` 里**只应**看到这两个 markdown + `?? .claude/`（worktree 目录，本就不入库）。
+**若出现别的文件，先停下来查清楚再 add**——`target/`、证据日志、`.serena/project.local.yml` 都可能被误扫。
+
 ### 四、分支与工作树台账（收口时实测）
 | 批次 | 任务 | 分支 | 工作树 | 状态 |
 |---|---|---|---|---|
