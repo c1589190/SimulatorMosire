@@ -1,0 +1,20 @@
+M2V1 orig=0b06e05ec568bb49b6ed2d5822108d37 mut=04dac245b2cb2a4102168f6fca8b8d81 canonical=04dac245b2cb2a4102168f6fca8b8d81 byte_different=YES canonical_is_mutant=YES
+COMPILATION_ERROR_COUNT=0
+[ERROR] Tests run: 14, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.951 s <<< FAILURE! -- in io.mosire.simos.core.timeline.TimelineTest
+[ERROR]   TimelineTest.headIsMaxRevisionPerBranch:87 
+[ERROR] Tests run: 14, Failures: 1, Errors: 0, Skipped: 0
+CLEAN_WORLD_OK
+M2V2 mut=04e92f676fbd127e0bc22f2ea0fdf4bf canonical=04e92f676fbd127e0bc22f2ea0fdf4bf byte_different=YES canonical_is_mutant=YES
+COMPILATION_ERROR_COUNT=0
+[ERROR] Tests run: 14, Failures: 0, Errors: 9, Skipped: 0, Time elapsed: 4.559 s <<< FAILURE! -- in io.mosire.simos.core.timeline.TimelineTest
+[ERROR]   TimelineTest.branchesListsEveryBranchOnce:94->forkFrom:282 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.byCorrelationFindsRowsAcrossBranches:129->forkFrom:282 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.chainToGenesisWalksAcrossTheFork:115->forkFrom:282 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.forkRefusesUnknownSource:184 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.forkRefusesWhenHeadMovedOn:172 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.forkWritesFirstRevisionInheritingTimestampAndEmptyChangeSet:147 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.hasCheckpointFollowsTheThreeCriteria:198->forkFrom:282 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.headIsMaxRevisionPerBranch:83->forkFrom:282 » IllegalState 事务失败，已回滚
+[ERROR]   TimelineTest.parentPointsAtForkSourceAndGenesisHasNone:103->forkFrom:282 » IllegalState 事务失败，已回滚
+[ERROR] Tests run: 14, Failures: 0, Errors: 9, Skipped: 0
+FINAL_RESTORE_MD5_MATCH=YES
