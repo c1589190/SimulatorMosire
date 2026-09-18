@@ -15,12 +15,16 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
+import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.Command;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -168,6 +172,38 @@ public final class CoreSimos implements AutoCloseable {
   public SimulationState replay(StateRef ref) {
     Objects.requireNonNull(ref, "ref");
     return sealedReplay().replay(ref).state();
+  }
+
+  // ── 只读面（spec §S8）─────────────────────────────────────────────────────────────────
+
+  /**
+   * 分支清单（spec §S8 / Timeline §3.3）：直接委托 {@link Timeline#branches()}，按 branch 字典序。
+   *
+   * <p>★ **只读、零写面**：本方法不封存、不触发 checkpoint、不改任何行——它只把时间线的既成事实读出来。核心的**唯一写入口仍是 {@link #submit}**（铁律
+   * 2）。
+   *
+   * <p>★ **未封存与已封存两态都可调用**：数据在 {@link SqliteStore} 那条连接上，与本类的 seal 状态无关；调用本方法**不会**触发 {@link
+   * #sealIfNeeded()}（seal 仍只由 {@link #submit}/{@link #replay} 触发）。
+   *
+   * @return 全部出现过 revision 的分支名；库为空时是空集
+   */
+  public Set<BranchId> branches() {
+    return timeline.branches();
+  }
+
+  /**
+   * 分支的 head（spec §S8 / Timeline §3.3）：直接委托 {@link Timeline#head(BranchId)}。
+   *
+   * <p>★ **只读、零写面**：同 {@link #branches()}——不封存、不写盘，唯一写入口仍是 {@link #submit}。
+   *
+   * <p>★ 分支不存在 ⇒ {@link Optional#empty()}，**不是**抛异常：GUI/查询层问"这个分支现在到哪"时，"还没有这个分支"是正常答案。
+   *
+   * @param branch 分支名；null ⇒ {@link NullPointerException}
+   * @return 该分支的最大 revision；分支不存在 ⇒ 空
+   */
+  public Optional<RevisionId> head(BranchId branch) {
+    Objects.requireNonNull(branch, "branch");
+    return timeline.head(branch);
   }
 
   /**
