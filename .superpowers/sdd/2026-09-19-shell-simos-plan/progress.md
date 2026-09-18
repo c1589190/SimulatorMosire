@@ -20,10 +20,10 @@
 | T8 | GUI 服务器与 `/api` | ✅ `m5/t8` → 合并 `5ac368b`（14 条新测试；**2 轮变异 0 存活**）★ WebUI 1/2 |
 | T9 | GUI 前端三页 | ✅ `m5/t9` → 合并 `6917365`（5 条新测试；**1 轮变异 0 存活**；★ 截图 7 张在案）★ WebUI **出形** |
 | T9b | 可运行性收尾（计划外） | ✅ `m5/t9b` → 合并 `e2df025`（+8 测试；**2 轮变异 0 存活**；★ 单位标记截图在案） |
-| T5 | 工具集（3 写 + 9 读） | ⏳ Batch E |
+| T5 | 工具集（3 写 + 9 读） | ✅ `m5/t5` `a62bb6a` → 合并（11 条测试；**2 轮变异 0 存活**；★ 门禁抓 5 个真项） |
 | T6 | 审批装配 | ⏳ Batch E |
 | T7 | MCP 服务装配（判据②前置） | ⏳ Batch E |
-| T10 | AgentBinding | ⏳ Batch F |
+| T10 | AgentBinding | ✅ `m5/t10` `03e5a5f` → 合并 `b2dedd2`（12 条测试；**1 轮变异 0 存活**） |
 | T11 | 判据端到端 ①② | ⏳ Batch F |
 | T12 | M5 关账 | ⏳ Batch F |
 
@@ -121,3 +121,21 @@
 ★ 另记：执行者实测本机 `nproc=8`（CLAUDE.md 旧记 `nproc=2`）——旧并发上限至少在本机已不成立；**仍沿用"一次只跑一个 Maven"**。
 
 **下一批**：Batch E = **T5（工具集）‖ T6（审批装配）→ T7（MCP 服务）**。
+
+---
+
+### Batch E-1（T5 工具集 ‖ T10 AgentBinding）已关账（2026-09-19 06:1x，子代理并行 + 控制器核验）
+
+**T5**（`m5/t5` `a62bb6a` → 合并）：9 读 + 3 写 + `SimosToolSource` + Shell 绑定（并暴露 `toolRegistry()` 给 T7）；11 条测试；**2 轮变异 0 存活**（m1 R5 catalog 少列一个 type ⇒ 红在 catalog 完备性；m2 R4 initiator 写死 `player:local` ⇒ 红在**独立 store 读回**的身份断言）。任务内全量 800（app 33→49）。
+★ **门禁又抓到 5 个真项**：4×`EI_EXPOSE_REP2`（工具构造器存 `CoreSimos`）+ 1×`EI_EXPOSE_REP`（`Shell.toolRegistry()`）——均已修。**"护栏真的会响"再次兑现。**
+
+**T10**（`m5/t10` `03e5a5f` → 合并 `b2dedd2`）：util `AgentAttachPolicy` + map/unit 两条模块策略 + app `binding/*`（记录族 + `BindingRegistry`）；12 条测试；**1 轮变异 0 存活**（m1 删整段策略咨询 ⇒ **4 条断言同时红**，含"**拿 canonical 地址问策略、而不是 Human 形**"）。任务内全量 801（app 38→50）。
+
+**合并后主树门禁**：`clean verify` rc=0、**812** 条 = 170/255/45/131/150/**61**、`BugInstance size is 0` ×6、`[ERROR]` 0。
+
+**裁定 62**：
+1. **map 策略从「Region 且 `type=Nation`」降级为「任意存在的 `Region`」**——实测 M2 的 `Region`/`RegionMeta` **没有 `type` 字段**（`RegionMeta(color,tag,description,annexedBy)`）；判定委托 `MapResolver`（`typeName == "Region"`）。⇒ **取代说明**：总纲 §5.5 的举例应读作"**由各模块自己声明**"，具体判据随模块真实形状落地（不发明字段）。
+2. **`BindingRegistry` 纯内存、不持久化**（spec §6 只要求"记录 + 可绑性 + 查询"）；"绑定是否跨进程存活"**未裁决**，M5 不做——如实记（T10 报告 §4/§5）。
+3. T5 的 `SimosToolSource` 构造签名照派单；`Shell` 新增 `toolRegistry()`（T7 的输入）。
+
+**下一批**：Batch E-2 = **T6（审批装配）**——**串行**（改 `Shell` + T8 留的审批代理口）。
