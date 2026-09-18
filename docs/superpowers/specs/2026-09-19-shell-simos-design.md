@@ -165,10 +165,12 @@ List<String> facetNames()
 
 | facet | 实现模块 | subject 形态 | 返回（value 只用 JSON 基础/简单型，S 〇.3-5） |
 |---|---|---|---|
-| `unitsHere` | `simos-unit` | `map:<mapId>:hex.<q>_<r>` | 该格上的单位摘要（`List<String>`：`unit:<id> <name>` 形） |
-| `population` | `simos-social` | 同上 | `Number`：`ctx.at` 时刻该格人口 |
+| `unitsHere` | `simos-unit` | **canonical** `map:<mapId>:hex.<q>_<r>`（Address AST 判定；Index/Human 形不服务） | **一单位一条** `FacetEntry("unit", <单位名>, "Unit", "unit:<id>")`，按 unit id 字典序 |
+| `population` | `simos-social` | 同上 | `FacetEntry("social", <q_r>, "Population", <Number>)` ＝ `valueAt(ctx.at)` |
 
 - 两实现都**只读** `ctx.state()` 的对应切片（unit 用 `effectivePosition(id, ctx.at)`；social 用 `PopulationSeries.valueAt(ctx.at)`）。
+- **非法坐标名**（如 `hex.xyz`）⇒ **空列表**（facet 契约"空 = 没有内容，不是错误"；与 `MapResolver` "认领 kind 即抛"的口径**有意不同**）。
+- ★ **`QueryService.facets` 不改写转交的 `Address`**（R6）⇒ **调用方须传 canonical 主体**，或先 `resolve` 再查；GUI/MCP 侧由各自端点负责构造 canonical 形。
 - `FacetRegistry` 的注册与查询在 app 装配；`MapSimos` 对两者**零知情**（铁律 3）。
 
 ---

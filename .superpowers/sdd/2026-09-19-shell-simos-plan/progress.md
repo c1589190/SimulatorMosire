@@ -16,7 +16,7 @@
 | T4 | unit 命令面补齐（7 条 handler） | ✅ `m5/t4` → 合并 `6926ae1`（29 条测试；**2 轮变异 0 存活**） |
 | T2 | core 只读扩展（`branches/head`） | ✅ `m5/t2` → 合并 `d475489`（+2 条；**1 轮变异 0 存活**） |
 | T1 | `simos-app` 骨架与装配门面 | ✅ `m5/t1` → 合并 `33fa15f`（冒烟 4 条；**2 轮变异 0 存活**；reactor 七模块首绿） |
-| T3 | 查询层 + 两个真 Facet | ⏳ Batch C |
+| T3 | 查询层 + 两个真 Facet | ✅ `m5/t3` → 合并 `009e8b3`（27 条新测试；**2 轮变异 0 存活**） |
 | T8 | GUI 服务器与 `/api` | ⏳ Batch D ★ WebUI 1/2 |
 | T9 | GUI 前端三页 | ⏳ Batch D ★ WebUI 2/2 |
 | T5 | 工具集（3 写 + 9 读） | ⏳ Batch E |
@@ -58,3 +58,18 @@
 ★ **m1 的实测修正（不照抄派单预测）**：派单预测 rename 会走 `Rejected`；实测是 **`IllegalStateException`**——`UnitCodec` 缺席时在 `stateLoader.load(base)`（重放创世 checkpoint）阶段就抛，**根本没走到 handler**（`Replay.decodeCheckpoint` 对未装配 namespace 的既定契约）。红是真的且由被保护行造成，但**红的形态是异常不是拒绝**；如实记，不改 Core。
 
 **下一批**：Batch C = **T3**（查询层 + 两个真 Facet）→ 随后 **T8/T9（WebUI 出形）**。
+
+---
+
+### Batch C 已关账（T3，2026-09-19 05:0x，子代理 + 控制器核验）
+
+**T3**（`m5/t3` `6d81dac` → 合并 `009e8b3`）：`UnitsHereFacet`（unit）+ `PopulationFacet`（social）+ `QueryService`（app）+ Shell 装配两注册表并暴露 `queryService()`；27 条新测试（9/8/10）；**2 轮变异 0 存活**（m1 R6 转发改时间戳 ⇒ 红在转发断言；m2 R7 少注册一面 ⇒ 红在 `facetNames` 完整性）。合并后主树门禁 **762** 条 = 170/255/**45**/**131**/147/**14**、`BugInstance size is 0` ×6、`[ERROR]` 0。
+
+**裁定 58 —— T3 的口径细化（全部接受并回填 spec/计划）**：
+1. **`unitsHere` 值形态细化**：**一单位一条** `FacetEntry("unit", <name>, "Unit", "unit:<id>")`（按 id 字典序），取代 spec §5.2 的 `List<String>` 表述——结构化条目对 GUI/MCP 更有用。**spec §5.2 已回填**。
+2. **facet 只认 canonical `hex.<q>_<r>`（Entity 段）**：Index/Human 形（`map:Map1:[1,1]`）⇒ 空列表；且 `QueryService.facets` 按 R6 **不改写**转交 ⇒ **调用方（T5/T8）要么先 `resolve`、要么直接传 canonical**。★ **这是给 T8 的硬接缝**。
+3. **非法坐标名（`hex.xyz`）⇒ 空列表**（facet 契约"空=没有内容，不是错误"），与 `MapResolver`"认领即抛"**有意不同**；两个 facet 各钉一条。
+4. `PopulationFacet.label` 取 `q_r`（spec 未指定，补白）；`QueryTarget` 内嵌于 `QueryService`（派单只列一个文件）。
+★ **R7 的落地修正**：util 的 `FacetRegistry` **只有** `register/facetNames/queryAll`、**无按名查询** ⇒ spec §5.1"未注册 facet 名 ⇒ 明确失败"在**本层无 API 可达**；R7 落为"注册集合完整性 + queryAll 结果"（未注册 namespace 的明确失败有直证）。
+
+**下一批**：Batch D = **T8 → T9（WebUI 出形）**。

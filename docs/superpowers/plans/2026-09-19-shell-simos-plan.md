@@ -202,4 +202,5 @@ Batch F: T10 → T11 → T12（AgentBinding → 判据端到端 → 关账）
 
 | 任务 | 计划原文所在 | 取代后写法（一句） | 详情出处 |
 |---|---|---|---|
-| （待回填） | | | |
+| T1 | spec §3.1 `ShellConfig` record 头 | 补 **`String mapId`**（缺省 `Map1`）——`UnitTimeParticipant` 构造需要它；`TerrainMovementCost.INSTANCE` 取代 `new TerrainMovementCost()`（构造器私有） | `t1-report.md` §四 |
+| T3 | spec §5.2 `unitsHere` 值形态 | 改为**一单位一条** `FacetEntry("unit", <name>, "Unit", "unit:<id>")`（按 id 排序）；facet 只认 canonical `hex.<q>_<r>`、非法坐标名 ⇒ 空列表；`facets` 不改写转交（调用方传 canonical 或先 `resolve`）——**spec §5.2 已回填** | `t3-report.md` §四 |
