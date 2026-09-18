@@ -251,7 +251,7 @@ public final class Shell implements AutoCloseable {
               MCP_SERVER_NAME,
               MCP_SERVER_VERSION,
               mcpCaller(),
-              toolAuthorizer);
+              ToolCallAuthorizer.standard());
       mcpUp = true;
     } finally {
       if (!mcpUp) {

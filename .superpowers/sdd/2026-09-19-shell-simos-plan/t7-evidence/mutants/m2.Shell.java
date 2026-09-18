@@ -340,8 +340,8 @@ public final class Shell implements AutoCloseable {
    */
   private static ToolContext mcpCaller() {
     return ToolContext.of(
-        AccessToken.DEFAULT,
-        AgentPermissionSet.unrestricted(AccessToken.DEFAULT),
+        AccessToken.GUEST,
+        AgentPermissionSet.unrestricted(AccessToken.GUEST),
         AgentIdentity.external());
   }
 
