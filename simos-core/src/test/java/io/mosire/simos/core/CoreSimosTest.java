@@ -34,6 +34,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -383,7 +385,98 @@ class CoreSimosTest {
     assertThat(forkRow.revision()).isEqualTo(new RevisionId(1));
   }
 
-  // ── 4. 封存护栏 ─────────────────────────────────────────────────────────────────────
+  // ── 4. 只读面（spec §S8）────────────────────────────────────────────────────────────
+
+  /**
+   * ★★ **只读委托与独立 Timeline 对拍**：走门面建一条小时间线（创世 + 一条信封提交 + 一次分岔）后， {@code branches()} 含 {@code
+   * main}/{@code b2}、{@code head(b2)} = {@code (b2,1)}，且与**关库后用一棵独立 store** 读到的 {@code Timeline}
+   * 结果逐字段相等。
+   *
+   * <p>★★ **无副作用**：读调用前后 {@code revisions} 行数不变（读不能悄悄写——否则铁律 2 的"唯一写入口"当场破）。
+   */
+  @Test
+  void branchesAndHeadDelegateToTimelineWithoutWriting() {
+    seedGenesis(5L, 0);
+    Set<BranchId> branches;
+    Optional<RevisionId> headB2;
+    Optional<RevisionId> headMain;
+    Optional<RevisionId> headUnknown;
+    long rowsBeforeReads;
+    long rowsAfterReads;
+    try (CoreSimos core = core(4L)) {
+      core.register(TOY_CODEC);
+      core.register(new ToyHandler("toy.Do", 1));
+
+      assertThat(core.submit(envelope("cmd-e1", main(), 1L, "toy.Do")))
+          .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+      assertThat(
+              core.submit(
+                  new ForkBranch(
+                      "cmd-fork",
+                      "corr-fork",
+                      "player:local",
+                      main(),
+                      new RevisionId(2),
+                      branch("b2"))))
+          .isEqualTo(new CommandResult.Committed(ref("b2", 1)));
+
+      rowsBeforeReads = revisionRowCount();
+      branches = core.branches();
+      headB2 = core.head(branch("b2"));
+      headMain = core.head(main());
+      headUnknown = core.head(branch("nope"));
+      rowsAfterReads = revisionRowCount();
+    }
+
+    assertThat(rowsBeforeReads)
+        .as("夹具前提：三个写动作落了三行（main1 / main2 / b2-1），否则下面的行数对照没有意义")
+        .isEqualTo(3L);
+    assertThat(rowsAfterReads)
+        .as("branches()/head() 是只读的：读调用前后 revisions 行数必须不变")
+        .isEqualTo(rowsBeforeReads);
+
+    assertThat(branches).as("分岔后应同时看到 main 与 b2").contains(main(), branch("b2"));
+    assertThat(headB2).as("b2 的 head 是它的 revision 1，不是全局最大 revision").contains(new RevisionId(1));
+    assertThat(headMain).as("main 的 head 是分岔前的 (main,2)").contains(new RevisionId(2));
+    assertThat(headUnknown).as("不存在的分支 ⇒ 空，而不是抛").isEmpty();
+
+    // ★ 独立对拍：关库后用另一棵 store 读同一个库文件（与 row() 夹具同法）
+    assertThat(branches).as("门面的 branches() 必须与独立 Timeline 读到的一致").isEqualTo(independentBranches());
+    assertThat(headB2)
+        .as("门面的 head(b2) 必须与独立 Timeline 读到的一致")
+        .isEqualTo(independentHead(branch("b2")));
+    assertThat(headMain)
+        .as("门面的 head(main) 必须与独立 Timeline 读到的一致")
+        .isEqualTo(independentHead(main()));
+  }
+
+  /**
+   * ★ **封存前后两态都可用，且读调用不触发封存**：未首次使用（未封存）时先读一轮 {@code branches()/head(main)}，再 {@code register(...)}
+   * 仍然生效（若读触发封存，这次注册会抛）；随后提交封存，已封存态下再读一轮，结果随新 head 更新。
+   */
+  @Test
+  void branchesAndHeadWorkBeforeSealAndAfterSeal() {
+    seedGenesis(0L, 0);
+    try (CoreSimos core = core(4L)) {
+      // 未封存态：还没 submit/replay 过
+      assertThat(core.branches()).containsExactly(main());
+      assertThat(core.head(main())).contains(new RevisionId(1));
+
+      // ★ 读没有触发封存：此刻 register 仍必须成功
+      core.register(TOY_CODEC);
+      core.register(new ToyHandler("toy.Do", 1));
+
+      // 首次 submit ⇒ 封存
+      assertThat(core.submit(envelope("cmd-e1", main(), 1L, "toy.Do")))
+          .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+
+      // 已封存态：读仍然可用，且看得到新 head
+      assertThat(core.head(main())).as("封存后 head 随提交推进").contains(new RevisionId(2));
+      assertThat(core.branches()).containsExactly(main());
+    }
+  }
+
+  // ── 5. 封存护栏 ─────────────────────────────────────────────────────────────────────
 
   /**
    * ★ **封存规则**：第一次 {@code submit}/{@code replay} 之后，三类 {@code register(...)} 一律抛 {@link
@@ -457,6 +550,35 @@ class CoreSimosTest {
       return new Timeline(store, 4L)
           .row(at)
           .orElseThrow(() -> new AssertionError("期望存在的 revision 行: " + at));
+    }
+  }
+
+  /** revisions 表总行数：独立 store 读，用来证明只读调用没有副作用（多写一行就会被这里抓到）。 */
+  private long revisionRowCount() {
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      return store.inTransaction(
+          connection -> {
+            try (PreparedStatement statement =
+                    connection.prepareStatement("SELECT COUNT(*) FROM revisions");
+                ResultSet resultSet = statement.executeQuery()) {
+              resultSet.next();
+              return resultSet.getLong(1);
+            }
+          });
+    }
+  }
+
+  /** 独立 Timeline 的分支清单——门面 {@code branches()} 的对拍基线。 */
+  private Set<BranchId> independentBranches() {
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      return new Timeline(store, 4L).branches();
+    }
+  }
+
+  /** 独立 Timeline 的 head——门面 {@code head(..)} 的对拍基线。 */
+  private Optional<RevisionId> independentHead(BranchId branch) {
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      return new Timeline(store, 4L).head(branch);
     }
   }
 
