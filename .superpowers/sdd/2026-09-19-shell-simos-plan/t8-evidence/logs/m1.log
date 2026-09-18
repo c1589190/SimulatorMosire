@@ -1,0 +1,1510 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/7]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/7]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/7]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 34 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 27 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/7]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 8 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 6 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/7]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 29 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 17 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/7]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 25 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java: /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 22 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [7/7]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 7 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 4 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.AppWritePathGuardTest
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.071 s <<< FAILURE! -- in io.mosire.simos.app.AppWritePathGuardTest
+[ERROR] io.mosire.simos.app.AppWritePathGuardTest.appMainSourcesNeverReferenceTheStorageWritePath -- Time elapsed: 0.056 s <<< FAILURE!
+java.lang.AssertionError: 
+[GuiServer.java 不得出现 SqliteStore（铁律 2：唯一写入口是 CoreSimos.submit）] 
+Expecting actual:
+  "package io.mosire.simos.app.gui;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.command.AdvanceTime;
+import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.core.command.ForkBranch;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.address.Entity;
+import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.facet.FacetEntry;
+import io.mosire.simos.util.identity.QueryResult;
+import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+public final class GuiServer implements AutoCloseable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(GuiServer.class);
+
+  private static final ObjectMapper MAPPER = SimosObjectMapper.create();
+
+  
+  static final String GUI_INITIATOR = "player:gui";
+
+  private static final String DEFAULT_BRANCH = "main";
+  private static final String UNIT_DETAIL_PREFIX = "/api/unit/";
+  private static final String APPROVAL_DECISION_PREFIX = "/api/approvals/";
+
+  private static final Set<String> GET_ROUTES =
+      Set.of(
+          "/api/state",
+          "/api/resolve",
+          "/api/facets",
+          "/api/map/overview",
+          "/api/map/hex",
+          "/api/units",
+          "/api/social/population",
+          "/api/approvals");
+
+  private static final Set<String> POST_ROUTES =
+      Set.of("/api/command", "/api/advance", "/api/fork");
+
+  private final QueryService queryService;
+  private final CoreSimos core;
+  private final String mapId;
+
+  
+  private final String approvalBaseUrl;
+
+  private final ExecutorService executor;
+  private final StaticHandler staticHandler;
+
+  private HttpServer server;
+  private volatile boolean closed;
+
+  
+
+
+
+
+
+  public GuiServer(
+      QueryService queryService, CoreSimos core, String mapId, String approvalBaseUrl) {
+    this.queryService = Objects.requireNonNull(queryService, "queryService");
+    this.core = Objects.requireNonNull(core, "core");
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.approvalBaseUrl = approvalBaseUrl;
+    this.executor = Executors.newVirtualThreadPerTaskExecutor();
+    this.staticHandler = new StaticHandler();
+  }
+
+  
+
+
+
+
+  public void start(String host, int port) {
+    Objects.requireNonNull(host, "host");
+    if (port < 0) {
+      throw new IllegalArgumentException("port 不得为负（0 = 随机端口）: " + port);
+    }
+    if (server != null) {
+      throw new IllegalStateException("GUI 服务器已启动，不能重复 start");
+    }
+    HttpServer created;
+    try {
+      created = HttpServer.create(new InetSocketAddress(host, port), 0);
+    } catch (IOException e) {
+      executor.shutdownNow();
+      throw new IllegalStateException("GUI 服务器绑定失败: " + host + ":" + port, e);
+    }
+    created.setExecutor(executor);
+    created.createContext("/", this::handle);
+    created.start();
+    this.server = created;
+    LOG.info("GUI 服务器已启动: http://{}:{}/（静态 /webui，同源，无 CORS 头）", host, boundPort());
+  }
+
+  
+  public int boundPort() {
+    return requireServer().getAddress().getPort();
+  }
+
+  
+  public String boundHost() {
+    return requireServer().getAddress().getHostString();
+  }
+
+  private HttpServer requireServer() {
+    HttpServer current = server;
+    if (current == null) {
+      throw new IllegalStateException("GUI 服务器尚未启动，没有可读回的端口");
+    }
+    return current;
+  }
+
+  
+  @Override
+  public void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    HttpServer current = server;
+    if (current != null) {
+      current.stop(0);
+      server = null;
+    }
+    executor.shutdownNow();
+  }
+
+  @SuppressWarnings("unused")
+  private static void forbiddenWritePathProbe(java.nio.file.Path dir) {
+    io.mosire.simos.core.store.SqliteStore.open(dir.resolve("probe.db")).close();
+  }
+
+  
+
+  private void handle(HttpExchange exchange) throws IOException {
+    try {
+      String path = exchange.getRequestURI().getPath();
+      if (path.equals("/api") || path.startsWith("/api/")) {
+        writeReply(exchange, handleApi(exchange, exchange.getRequestMethod(), path));
+      } else if (!staticHandler.tryServe(exchange, path)) {
+        writeReply(exchange, Reply.of(404, notFound(path)));
+      }
+    } catch (IllegalArgumentException e) {
+      safeError(exchange, 400, e.getMessage());
+    } catch (Exception e) {
+      LOG.warn("GUI 请求处理失败: {} {}", exchange.getRequestMethod(), exchange.getRequestURI(), e);
+      safeError(exchange, 500, "internal error");
+    } finally {
+      exchange.close();
+    }
+  }
+
+  private Reply handleApi(HttpExchange exchange, String method, String path) throws IOException {
+    return switch (method) {
+      case "GET" -> {
+        Reply reply = handleGet(exchange, path);
+        yield reply != null ? reply : routeError(path);
+      }
+      case "POST" -> {
+        Reply reply = handlePost(exchange, path);
+        yield reply != null ? reply : routeError(path);
+      }
+      default -> routeError(path);
+    };
+  }
+
+  private Reply handleGet(HttpExchange exchange, String path) throws IOException {
+    if (path.equals("/api/state")) {
+      return stateReply();
+    }
+    if (path.equals("/api/resolve")) {
+      Map<String, String> params = queryParams(exchange);
+      QueryResult result = queryService.resolve(requiredParam(params, "address"), target(params));
+      return Reply.of(200, Map.of("candidates", ApiViews.resolveResult(result)));
+    }
+    if (path.equals("/api/facets")) {
+      Map<String, String> params = queryParams(exchange);
+      List<FacetEntry> entries =
+          queryService.facets(requiredParam(params, "address"), target(params));
+      return Reply.of(200, Map.of("entries", ApiViews.facets(entries)));
+    }
+    if (path.equals("/api/map/overview")) {
+      Map<String, String> params = queryParams(exchange);
+      SimulationState state = queryService.stateAt(target(params));
+      return Reply.of(200, ApiViews.mapOverview(mapId, ApiViews.gameMap(state)));
+    }
+    if (path.equals("/api/map/hex")) {
+      return mapHexReply(exchange);
+    }
+    if (path.equals("/api/units")) {
+      Map<String, String> params = queryParams(exchange);
+      SimulationState state = queryService.stateAt(target(params));
+      UnitState units = ApiViews.unitState(state);
+      return Reply.of(200, Map.of("units", ApiViews.units(units, state.meta().timestamp())));
+    }
+    if (isUnitDetail(path)) {
+      return unitReply(exchange, urlDecode(path.substring(UNIT_DETAIL_PREFIX.length())));
+    }
+    if (path.equals("/api/social/population")) {
+      return populationReply(exchange);
+    }
+    if (path.equals("/api/approvals")) {
+      return approvalSeam();
+    }
+    return null;
+  }
+
+  private Reply handlePost(HttpExchange exchange, String path) throws IOException {
+    if (path.equals("/api/command")) {
+      return submitReply(exchange);
+    }
+    if (path.equals("/api/advance")) {
+      return advanceReply(exchange);
+    }
+    if (path.equals("/api/fork")) {
+      return forkReply(exchange);
+    }
+    if (isApprovalDecision(path)) {
+      return approvalSeam();
+    }
+    return null;
+  }
+
+  
+  private static Reply routeError(String path) {
+    String allowed = allowedMethod(path);
+    if (allowed != null) {
+      return new Reply(405, Map.of("error", "method not allowed", "allow", allowed), allowed);
+    }
+    return Reply.of(404, notFound(path));
+  }
+
+  private static String allowedMethod(String path) {
+    if (GET_ROUTES.contains(path) || isUnitDetail(path)) {
+      return "GET";
+    }
+    if (POST_ROUTES.contains(path) || isApprovalDecision(path)) {
+      return "POST";
+    }
+    return null;
+  }
+
+  private static boolean isUnitDetail(String path) {
+    return path.startsWith(UNIT_DETAIL_PREFIX) && path.length() > UNIT_DETAIL_PREFIX.length();
+  }
+
+  private static boolean isApprovalDecision(String path) {
+    return path.startsWith(APPROVAL_DECISION_PREFIX)
+        && path.length() > APPROVAL_DECISION_PREFIX.length();
+  }
+
+  
+
+  private Reply stateReply() {
+    Set<BranchId> branches = core.branches();
+    List<String> names = new ArrayList<>(branches.size());
+    Map<String, Long> heads = new LinkedHashMap<>();
+    for (BranchId branch : branches) {
+      names.add(branch.value());
+      core.head(branch).ifPresent(head -> heads.put(branch.value(), head.value()));
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("branches", names);
+    body.put("heads", heads);
+    body.put("meta", metaFor(names));
+    return Reply.of(200, body);
+  }
+
+  private Object metaFor(List<String> branchNames) {
+    if (branchNames.isEmpty()) {
+      return null;
+    }
+    String branchName = branchNames.contains(DEFAULT_BRANCH) ? DEFAULT_BRANCH : branchNames.get(0);
+    BranchId branch = new BranchId(branchName);
+    RevisionId revision = core.head(branch).orElseThrow();
+    SimulationState state = queryService.stateAt(QueryTarget.head(branch));
+    Map<String, Object> meta = new LinkedHashMap<>();
+    meta.put("branch", branchName);
+    meta.put("revision", revision.value());
+    meta.put("timestamp", ApiViews.timestamp(state.meta().timestamp()));
+    return meta;
+  }
+
+  private Reply mapHexReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    int q = intParam(params, "q");
+    int r = intParam(params, "r");
+    HexCoord coord = new HexCoord(q, r);
+    QueryTarget target = target(params);
+    SimulationState state = queryService.stateAt(target);
+    GameMap map = ApiViews.gameMap(state);
+    HexCell cell = map.hexes().get(coord);
+    if (cell == null) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "hex not found");
+      return Reply.of(404, body);
+    }
+    List<FacetEntry> facets = queryService.facets(canonicalHex(q, r), target);
+    return Reply.of(200, ApiViews.mapHex(coord, cell, facets));
+  }
+
+  private Reply unitReply(HttpExchange exchange, String id) {
+    UnitId unitId = new UnitId(id);
+    Map<String, String> params = queryParams(exchange);
+    SimulationState state = queryService.stateAt(target(params));
+    UnitState units = ApiViews.unitState(state);
+    Unit unit = units.units().get(unitId);
+    if (unit == null) {
+      return Reply.of(404, Map.of("error", "unit not found", "id", id));
+    }
+    return Reply.of(200, ApiViews.unit(unit, units, state.meta().timestamp()));
+  }
+
+  private Reply populationReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    HexCoord coord = new HexCoord(intParam(params, "q"), intParam(params, "r"));
+    SimulationState state = queryService.stateAt(target(params));
+    PopulationSeries series = ApiViews.socialData(state).populations().get(coord);
+    if (series == null) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "population series not found");
+      return Reply.of(404, body);
+    }
+    return Reply.of(200, ApiViews.population(coord, series, state.meta().timestamp()));
+  }
+
+  
+
+  private Reply submitReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            textField(root, "type"),
+            payloadField(root));
+    return resultReply(core.submit(command));
+  }
+
+  private Reply advanceReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    long from = longField(root, "from");
+    TimeRange range =
+        root.hasNonNull("to")
+            ? new TimeRange(
+                SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(longField(root, "to"))))
+            : TimeRange.since(SimosTimestamp.of(from));
+    AdvanceTime command =
+        new AdvanceTime(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            range);
+    return resultReply(core.submit(command));
+  }
+
+  private Reply forkReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    ForkBranch command =
+        new ForkBranch(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "source")),
+            new RevisionId(longField(root, "expectedRevision")),
+            new BranchId(textField(root, "newBranch")));
+    return resultReply(core.submit(command));
+  }
+
+  private static Reply resultReply(CommandResult result) {
+    return switch (result) {
+      case CommandResult.Committed committed -> Reply.of(200, ApiViews.committed(committed.ref()));
+      case CommandResult.Conflict conflict -> Reply.of(409, ApiViews.conflict(conflict.current()));
+      case CommandResult.Rejected rejected -> Reply.of(422, ApiViews.rejected(rejected.reason()));
+    };
+  }
+
+  
+  private Reply approvalSeam() {
+    if (approvalBaseUrl == null || approvalBaseUrl.isBlank()) {
+      return Reply.of(503, Map.of("error", "approval endpoint 未配置（T6 接入后由 Shell 注入 base URL）"));
+    }
+    return Reply.of(501, Map.of("error", "approval 代理未实现（T8 只留注入点，T6 落地后透传）"));
+  }
+
+  
+
+  private JsonNode readBody(HttpExchange exchange) throws IOException {
+    byte[] bytes;
+    try (InputStream in = exchange.getRequestBody()) {
+      bytes = in.readAllBytes();
+    }
+    if (bytes.length == 0) {
+      throw new IllegalArgumentException("请求体为空");
+    }
+    try {
+      return MAPPER.readTree(bytes);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("请求体不是合法 JSON: " + e.getOriginalMessage());
+    }
+  }
+
+  private static String textField(JsonNode root, String name) {
+    JsonNode node = root.get(name);
+    if (node == null || !node.isTextual() || node.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + name + " 必填且为非空文本");
+    }
+    return node.asText();
+  }
+
+  private static long longField(JsonNode root, String name) {
+    JsonNode node = root.get(name);
+    if (node == null || !node.isIntegralNumber()) {
+      throw new IllegalArgumentException("字段 " + name + " 必填且为整数");
+    }
+    return node.asLong();
+  }
+
+  private static String payloadField(JsonNode root) {
+    JsonNode node = root.get("payloadJson");
+    if (node == null || node.isNull()) {
+      return "{}";
+    }
+    if (!node.isTextual()) {
+      throw new IllegalArgumentException("字段 payloadJson 必须是文本");
+    }
+    return node.asText();
+  }
+
+  private static Map<String, String> queryParams(HttpExchange exchange) {
+    String raw = exchange.getRequestURI().getRawQuery();
+    Map<String, String> params = new LinkedHashMap<>();
+    if (raw == null || raw.isEmpty()) {
+      return params;
+    }
+    for (String pair : raw.split("&")) {
+      int eq = pair.indexOf('=');
+      if (eq < 0) {
+        params.put(urlDecode(pair), "");
+      } else {
+        params.put(urlDecode(pair.substring(0, eq)), urlDecode(pair.substring(eq + 1)));
+      }
+    }
+    return params;
+  }
+
+  private static String requiredParam(Map<String, String> params, String name) {
+    String value = params.get(name);
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必填");
+    }
+    return value;
+  }
+
+  private static int intParam(Map<String, String> params, String name) {
+    String value = requiredParam(params, name);
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
+    }
+  }
+
+  private static QueryTarget target(Map<String, String> params) {
+    BranchId branch = new BranchId(params.getOrDefault("branch", DEFAULT_BRANCH));
+    String revision = params.get("revision");
+    if (revision == null || revision.isBlank()) {
+      return QueryTarget.head(branch);
+    }
+    try {
+      return QueryTarget.at(branch, new RevisionId(Long.parseLong(revision)));
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 revision 必须是整数: " + revision);
+    }
+  }
+
+  
+  private String canonicalHex(int q, int r) {
+    Address address =
+        new Address(List.of(new Namespace("map"), Entity.of(mapId), Entity.of("hex", q + "_" + r)));
+    return address.canonical();
+  }
+
+  private static String urlDecode(String text) {
+    return URLDecoder.decode(text, StandardCharsets.UTF_8);
+  }
+
+  
+
+  private void writeReply(HttpExchange exchange, Reply reply) throws IOException {
+    byte[] body = reply.body() == null ? new byte[0] : MAPPER.writeValueAsBytes(reply.body());
+    Headers headers = exchange.getResponseHeaders();
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    if (reply.allow() != null) {
+      headers.set("Allow", reply.allow());
+    }
+    if (body.length == 0) {
+      exchange.sendResponseHeaders(reply.status(), -1);
+    } else {
+      exchange.sendResponseHeaders(reply.status(), body.length);
+      try (OutputStream out = exchange.getResponseBody()) {
+        out.write(body);
+      }
+    }
+  }
+
+  private void safeError(HttpExchange exchange, int status, String message) {
+    try {
+      writeReply(exchange, Reply.of(status, Map.of("error", message == null ? "error" : message)));
+    } catch (IOException | RuntimeException e) {
+      LOG.debug("无法写出错误响应（客户端可能已断开）", e);
+    }
+  }
+
+  private static Map<String, Object> notFound(String path) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("error", "not found");
+    body.put("path", path);
+    return body;
+  }
+
+  
+  private record Reply(int status, Object body, String allow) {
+
+    static Reply of(int status, Object body) {
+      return new Reply(status, body, null);
+    }
+  }
+}
+"
+not to contain:
+  "SqliteStore"
+
+	at io.mosire.simos.app.AppWritePathGuardTest.appMainSourcesNeverReferenceTheStorageWritePath(AppWritePathGuardTest.java:53)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   AppWritePathGuardTest.appMainSourcesNeverReferenceTheStorageWritePath:53 [GuiServer.java 不得出现 SqliteStore（铁律 2：唯一写入口是 CoreSimos.submit）] 
+Expecting actual:
+  "package io.mosire.simos.app.gui;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.command.AdvanceTime;
+import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.core.command.ForkBranch;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.address.Entity;
+import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.facet.FacetEntry;
+import io.mosire.simos.util.identity.QueryResult;
+import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+public final class GuiServer implements AutoCloseable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(GuiServer.class);
+
+  private static final ObjectMapper MAPPER = SimosObjectMapper.create();
+
+  
+  static final String GUI_INITIATOR = "player:gui";
+
+  private static final String DEFAULT_BRANCH = "main";
+  private static final String UNIT_DETAIL_PREFIX = "/api/unit/";
+  private static final String APPROVAL_DECISION_PREFIX = "/api/approvals/";
+
+  private static final Set<String> GET_ROUTES =
+      Set.of(
+          "/api/state",
+          "/api/resolve",
+          "/api/facets",
+          "/api/map/overview",
+          "/api/map/hex",
+          "/api/units",
+          "/api/social/population",
+          "/api/approvals");
+
+  private static final Set<String> POST_ROUTES =
+      Set.of("/api/command", "/api/advance", "/api/fork");
+
+  private final QueryService queryService;
+  private final CoreSimos core;
+  private final String mapId;
+
+  
+  private final String approvalBaseUrl;
+
+  private final ExecutorService executor;
+  private final StaticHandler staticHandler;
+
+  private HttpServer server;
+  private volatile boolean closed;
+
+  
+
+
+
+
+
+  public GuiServer(
+      QueryService queryService, CoreSimos core, String mapId, String approvalBaseUrl) {
+    this.queryService = Objects.requireNonNull(queryService, "queryService");
+    this.core = Objects.requireNonNull(core, "core");
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.approvalBaseUrl = approvalBaseUrl;
+    this.executor = Executors.newVirtualThreadPerTaskExecutor();
+    this.staticHandler = new StaticHandler();
+  }
+
+  
+
+
+
+
+  public void start(String host, int port) {
+    Objects.requireNonNull(host, "host");
+    if (port < 0) {
+      throw new IllegalArgumentException("port 不得为负（0 = 随机端口）: " + port);
+    }
+    if (server != null) {
+      throw new IllegalStateException("GUI 服务器已启动，不能重复 start");
+    }
+    HttpServer created;
+    try {
+      created = HttpServer.create(new InetSocketAddress(host, port), 0);
+    } catch (IOException e) {
+      executor.shutdownNow();
+      throw new IllegalStateException("GUI 服务器绑定失败: " + host + ":" + port, e);
+    }
+    created.setExecutor(executor);
+    created.createContext("/", this::handle);
+    created.start();
+    this.server = created;
+    LOG.info("GUI 服务器已启动: http://{}:{}/（静态 /webui，同源，无 CORS 头）", host, boundPort());
+  }
+
+  
+  public int boundPort() {
+    return requireServer().getAddress().getPort();
+  }
+
+  
+  public String boundHost() {
+    return requireServer().getAddress().getHostString();
+  }
+
+  private HttpServer requireServer() {
+    HttpServer current = server;
+    if (current == null) {
+      throw new IllegalStateException("GUI 服务器尚未启动，没有可读回的端口");
+    }
+    return current;
+  }
+
+  
+  @Override
+  public void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    HttpServer current = server;
+    if (current != null) {
+      current.stop(0);
+      server = null;
+    }
+    executor.shutdownNow();
+  }
+
+  @SuppressWarnings("unused")
+  private static void forbiddenWritePathProbe(java.nio.file.Path dir) {
+    io.mosire.simos.core.store.SqliteStore.open(dir.resolve("probe.db")).close();
+  }
+
+  
+
+  private void handle(HttpExchange exchange) throws IOException {
+    try {
+      String path = exchange.getRequestURI().getPath();
+      if (path.equals("/api") || path.startsWith("/api/")) {
+        writeReply(exchange, handleApi(exchange, exchange.getRequestMethod(), path));
+      } else if (!staticHandler.tryServe(exchange, path)) {
+        writeReply(exchange, Reply.of(404, notFound(path)));
+      }
+    } catch (IllegalArgumentException e) {
+      safeError(exchange, 400, e.getMessage());
+    } catch (Exception e) {
+      LOG.warn("GUI 请求处理失败: {} {}", exchange.getRequestMethod(), exchange.getRequestURI(), e);
+      safeError(exchange, 500, "internal error");
+    } finally {
+      exchange.close();
+    }
+  }
+
+  private Reply handleApi(HttpExchange exchange, String method, String path) throws IOException {
+    return switch (method) {
+      case "GET" -> {
+        Reply reply = handleGet(exchange, path);
+        yield reply != null ? reply : routeError(path);
+      }
+      case "POST" -> {
+        Reply reply = handlePost(exchange, path);
+        yield reply != null ? reply : routeError(path);
+      }
+      default -> routeError(path);
+    };
+  }
+
+  private Reply handleGet(HttpExchange exchange, String path) throws IOException {
+    if (path.equals("/api/state")) {
+      return stateReply();
+    }
+    if (path.equals("/api/resolve")) {
+      Map<String, String> params = queryParams(exchange);
+      QueryResult result = queryService.resolve(requiredParam(params, "address"), target(params));
+      return Reply.of(200, Map.of("candidates", ApiViews.resolveResult(result)));
+    }
+    if (path.equals("/api/facets")) {
+      Map<String, String> params = queryParams(exchange);
+      List<FacetEntry> entries =
+          queryService.facets(requiredParam(params, "address"), target(params));
+      return Reply.of(200, Map.of("entries", ApiViews.facets(entries)));
+    }
+    if (path.equals("/api/map/overview")) {
+      Map<String, String> params = queryParams(exchange);
+      SimulationState state = queryService.stateAt(target(params));
+      return Reply.of(200, ApiViews.mapOverview(mapId, ApiViews.gameMap(state)));
+    }
+    if (path.equals("/api/map/hex")) {
+      return mapHexReply(exchange);
+    }
+    if (path.equals("/api/units")) {
+      Map<String, String> params = queryParams(exchange);
+      SimulationState state = queryService.stateAt(target(params));
+      UnitState units = ApiViews.unitState(state);
+      return Reply.of(200, Map.of("units", ApiViews.units(units, state.meta().timestamp())));
+    }
+    if (isUnitDetail(path)) {
+      return unitReply(exchange, urlDecode(path.substring(UNIT_DETAIL_PREFIX.length())));
+    }
+    if (path.equals("/api/social/population")) {
+      return populationReply(exchange);
+    }
+    if (path.equals("/api/approvals")) {
+      return approvalSeam();
+    }
+    return null;
+  }
+
+  private Reply handlePost(HttpExchange exchange, String path) throws IOException {
+    if (path.equals("/api/command")) {
+      return submitReply(exchange);
+    }
+    if (path.equals("/api/advance")) {
+      return advanceReply(exchange);
+    }
+    if (path.equals("/api/fork")) {
+      return forkReply(exchange);
+    }
+    if (isApprovalDecision(path)) {
+      return approvalSeam();
+    }
+    return null;
+  }
+
+  
+  private static Reply routeError(String path) {
+    String allowed = allowedMethod(path);
+    if (allowed != null) {
+      return new Reply(405, Map.of("error", "method not allowed", "allow", allowed), allowed);
+    }
+    return Reply.of(404, notFound(path));
+  }
+
+  private static String allowedMethod(String path) {
+    if (GET_ROUTES.contains(path) || isUnitDetail(path)) {
+      return "GET";
+    }
+    if (POST_ROUTES.contains(path) || isApprovalDecision(path)) {
+      return "POST";
+    }
+    return null;
+  }
+
+  private static boolean isUnitDetail(String path) {
+    return path.startsWith(UNIT_DETAIL_PREFIX) && path.length() > UNIT_DETAIL_PREFIX.length();
+  }
+
+  private static boolean isApprovalDecision(String path) {
+    return path.startsWith(APPROVAL_DECISION_PREFIX)
+        && path.length() > APPROVAL_DECISION_PREFIX.length();
+  }
+
+  
+
+  private Reply stateReply() {
+    Set<BranchId> branches = core.branches();
+    List<String> names = new ArrayList<>(branches.size());
+    Map<String, Long> heads = new LinkedHashMap<>();
+    for (BranchId branch : branches) {
+      names.add(branch.value());
+      core.head(branch).ifPresent(head -> heads.put(branch.value(), head.value()));
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("branches", names);
+    body.put("heads", heads);
+    body.put("meta", metaFor(names));
+    return Reply.of(200, body);
+  }
+
+  private Object metaFor(List<String> branchNames) {
+    if (branchNames.isEmpty()) {
+      return null;
+    }
+    String branchName = branchNames.contains(DEFAULT_BRANCH) ? DEFAULT_BRANCH : branchNames.get(0);
+    BranchId branch = new BranchId(branchName);
+    RevisionId revision = core.head(branch).orElseThrow();
+    SimulationState state = queryService.stateAt(QueryTarget.head(branch));
+    Map<String, Object> meta = new LinkedHashMap<>();
+    meta.put("branch", branchName);
+    meta.put("revision", revision.value());
+    meta.put("timestamp", ApiViews.timestamp(state.meta().timestamp()));
+    return meta;
+  }
+
+  private Reply mapHexReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    int q = intParam(params, "q");
+    int r = intParam(params, "r");
+    HexCoord coord = new HexCoord(q, r);
+    QueryTarget target = target(params);
+    SimulationState state = queryService.stateAt(target);
+    GameMap map = ApiViews.gameMap(state);
+    HexCell cell = map.hexes().get(coord);
+    if (cell == null) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "hex not found");
+      return Reply.of(404, body);
+    }
+    List<FacetEntry> facets = queryService.facets(canonicalHex(q, r), target);
+    return Reply.of(200, ApiViews.mapHex(coord, cell, facets));
+  }
+
+  private Reply unitReply(HttpExchange exchange, String id) {
+    UnitId unitId = new UnitId(id);
+    Map<String, String> params = queryParams(exchange);
+    SimulationState state = queryService.stateAt(target(params));
+    UnitState units = ApiViews.unitState(state);
+    Unit unit = units.units().get(unitId);
+    if (unit == null) {
+      return Reply.of(404, Map.of("error", "unit not found", "id", id));
+    }
+    return Reply.of(200, ApiViews.unit(unit, units, state.meta().timestamp()));
+  }
+
+  private Reply populationReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    HexCoord coord = new HexCoord(intParam(params, "q"), intParam(params, "r"));
+    SimulationState state = queryService.stateAt(target(params));
+    PopulationSeries series = ApiViews.socialData(state).populations().get(coord);
+    if (series == null) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "population series not found");
+      return Reply.of(404, body);
+    }
+    return Reply.of(200, ApiViews.population(coord, series, state.meta().timestamp()));
+  }
+
+  
+
+  private Reply submitReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            textField(root, "type"),
+            payloadField(root));
+    return resultReply(core.submit(command));
+  }
+
+  private Reply advanceReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    long from = longField(root, "from");
+    TimeRange range =
+        root.hasNonNull("to")
+            ? new TimeRange(
+                SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(longField(root, "to"))))
+            : TimeRange.since(SimosTimestamp.of(from));
+    AdvanceTime command =
+        new AdvanceTime(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            range);
+    return resultReply(core.submit(command));
+  }
+
+  private Reply forkReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    ForkBranch command =
+        new ForkBranch(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "source")),
+            new RevisionId(longField(root, "expectedRevision")),
+            new BranchId(textField(root, "newBranch")));
+    return resultReply(core.submit(command));
+  }
+
+  private static Reply resultReply(CommandResult result) {
+    return switch (result) {
+      case CommandResult.Committed committed -> Reply.of(200, ApiViews.committed(committed.ref()));
+      case CommandResult.Conflict conflict -> Reply.of(409, ApiViews.conflict(conflict.current()));
+      case CommandResult.Rejected rejected -> Reply.of(422, ApiViews.rejected(rejected.reason()));
+    };
+  }
+
+  
+  private Reply approvalSeam() {
+    if (approvalBaseUrl == null || approvalBaseUrl.isBlank()) {
+      return Reply.of(503, Map.of("error", "approval endpoint 未配置（T6 接入后由 Shell 注入 base URL）"));
+    }
+    return Reply.of(501, Map.of("error", "approval 代理未实现（T8 只留注入点，T6 落地后透传）"));
+  }
+
+  
+
+  private JsonNode readBody(HttpExchange exchange) throws IOException {
+    byte[] bytes;
+    try (InputStream in = exchange.getRequestBody()) {
+      bytes = in.readAllBytes();
+    }
+    if (bytes.length == 0) {
+      throw new IllegalArgumentException("请求体为空");
+    }
+    try {
+      return MAPPER.readTree(bytes);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("请求体不是合法 JSON: " + e.getOriginalMessage());
+    }
+  }
+
+  private static String textField(JsonNode root, String name) {
+    JsonNode node = root.get(name);
+    if (node == null || !node.isTextual() || node.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + name + " 必填且为非空文本");
+    }
+    return node.asText();
+  }
+
+  private static long longField(JsonNode root, String name) {
+    JsonNode node = root.get(name);
+    if (node == null || !node.isIntegralNumber()) {
+      throw new IllegalArgumentException("字段 " + name + " 必填且为整数");
+    }
+    return node.asLong();
+  }
+
+  private static String payloadField(JsonNode root) {
+    JsonNode node = root.get("payloadJson");
+    if (node == null || node.isNull()) {
+      return "{}";
+    }
+    if (!node.isTextual()) {
+      throw new IllegalArgumentException("字段 payloadJson 必须是文本");
+    }
+    return node.asText();
+  }
+
+  private static Map<String, String> queryParams(HttpExchange exchange) {
+    String raw = exchange.getRequestURI().getRawQuery();
+    Map<String, String> params = new LinkedHashMap<>();
+    if (raw == null || raw.isEmpty()) {
+      return params;
+    }
+    for (String pair : raw.split("&")) {
+      int eq = pair.indexOf('=');
+      if (eq < 0) {
+        params.put(urlDecode(pair), "");
+      } else {
+        params.put(urlDecode(pair.substring(0, eq)), urlDecode(pair.substring(eq + 1)));
+      }
+    }
+    return params;
+  }
+
+  private static String requiredParam(Map<String, String> params, String name) {
+    String value = params.get(name);
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必填");
+    }
+    return value;
+  }
+
+  private static int intParam(Map<String, String> params, String name) {
+    String value = requiredParam(params, name);
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
+    }
+  }
+
+  private static QueryTarget target(Map<String, String> params) {
+    BranchId branch = new BranchId(params.getOrDefault("branch", DEFAULT_BRANCH));
+    String revision = params.get("revision");
+    if (revision == null || revision.isBlank()) {
+      return QueryTarget.head(branch);
+    }
+    try {
+      return QueryTarget.at(branch, new RevisionId(Long.parseLong(revision)));
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 revision 必须是整数: " + revision);
+    }
+  }
+
+  
+  private String canonicalHex(int q, int r) {
+    Address address =
+        new Address(List.of(new Namespace("map"), Entity.of(mapId), Entity.of("hex", q + "_" + r)));
+    return address.canonical();
+  }
+
+  private static String urlDecode(String text) {
+    return URLDecoder.decode(text, StandardCharsets.UTF_8);
+  }
+
+  
+
+  private void writeReply(HttpExchange exchange, Reply reply) throws IOException {
+    byte[] body = reply.body() == null ? new byte[0] : MAPPER.writeValueAsBytes(reply.body());
+    Headers headers = exchange.getResponseHeaders();
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    if (reply.allow() != null) {
+      headers.set("Allow", reply.allow());
+    }
+    if (body.length == 0) {
+      exchange.sendResponseHeaders(reply.status(), -1);
+    } else {
+      exchange.sendResponseHeaders(reply.status(), body.length);
+      try (OutputStream out = exchange.getResponseBody()) {
+        out.write(body);
+      }
+    }
+  }
+
+  private void safeError(HttpExchange exchange, int status, String message) {
+    try {
+      writeReply(exchange, Reply.of(status, Map.of("error", message == null ? "error" : message)));
+    } catch (IOException | RuntimeException e) {
+      LOG.debug("无法写出错误响应（客户端可能已断开）", e);
+    }
+  }
+
+  private static Map<String, Object> notFound(String path) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("error", "not found");
+    body.put("path", path);
+    return body;
+  }
+
+  
+  private record Reply(int status, Object body, String allow) {
+
+    static Reply of(int status, Object body) {
+      return new Reply(status, body, null);
+    }
+  }
+}
+"
+not to contain:
+  "SqliteStore"
+
+[INFO] 
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.587 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.226 s]
+[INFO] MapSimos ........................................... SUCCESS [  1.345 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.268 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.402 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.635 s]
+[INFO] SimosApp ........................................... FAILURE [  0.906 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.465 s
+[INFO] Finished at: 2026-09-19T05:04:19+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m5t8/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+
+===== 装置补记（m1）：本轮推送的正是以下字节 =====
+目标: simos-app/src/main/java/io/mosire/simos/app/gui/GuiServer.java
+orig_md5=5f3fe11c9dacd3b837c9fd68eea35605
+mutant_md5=d56e76a49ccf6a6899dc07208b206876
+worktree_restored=5f3fe11c9dacd3b837c9fd68eea35605

@@ -1,6 +1,7 @@
 package io.mosire.simos.app;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
@@ -35,8 +36,8 @@ import org.slf4j.LoggerFactory;
  * 外壳：**唯一的装配点**（spec §3.2 的 1~2 步与 3~4 步中不依赖审批/MCP 的部分）。
  *
  * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），三 codec / 八 handler / 一
- * participant 必须由组合根注入。GUI / MCP / 审批的装配归 T6/T7/T8，本任务**不接**——{@link #start}
- * 只走到"世界能提交命令、能重放、能推进、能查询"为止。
+ * participant 必须由组合根注入。MCP / 审批的装配归 T6/T7，**本壳在 T8 已接上 GUI**——{@link #start} 走到"世界能提交命令、能重放、
+ * 能推进、能查询、能经 {@code /api} 读写"为止。
  *
  * <p>★ **装配清单**（spec §3.2 第 1~2 步）：三 codec + 八 handler + 一 participant（{@link CoreSimos} 侧） + 三
  * {@code Resolver}（map/social/unit）+ 两 {@code FacetProvider}（unitsHere/population）→ {@link
@@ -52,11 +53,17 @@ public final class Shell implements AutoCloseable {
 
   private static final int HANDLER_COUNT = 8;
 
+  /** GUI 监听地址：回环（spec §〇.4 不做鉴权/TLS 的回环基线）。 */
+  private static final String GUI_HOST = "127.0.0.1";
+
   private final ShellConfig config;
   private final CoreSimos coreSimos;
 
   /** 查询层（T3）：GUI 与工具集唯一的只读入口（spec §5.1）。 */
   private final QueryService queryService;
+
+  /** GUI 服务器（T8）：5711 的静态页 + {@code /api}；关闭次序里排第一（spec §3.3）。 */
+  private final GuiServer guiServer;
 
   /** 已注册模块 codec 的个数（map/social/unit）；由实际注册动作数出来，不是写死的常量。 */
   private final int registeredModuleCount;
@@ -65,10 +72,12 @@ public final class Shell implements AutoCloseable {
       ShellConfig config,
       CoreSimos coreSimos,
       QueryService queryService,
+      GuiServer guiServer,
       int registeredModuleCount) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.queryService = queryService;
+    this.guiServer = guiServer;
     this.registeredModuleCount = registeredModuleCount;
   }
 
@@ -80,9 +89,13 @@ public final class Shell implements AutoCloseable {
    * TerrainMovementCost#INSTANCE}（构造器私有，不能 {@code new}——这是对派单文字 {@code new TerrainMovementCost()}
    * 的一处就地校正）。
    *
+   * <p>★ **GUI 在此启动**（T8，spec §3.2 第 7 步）：{@code guiPort=0} 时由 OS 分配随机端口，实际端口经 {@link
+   * #boundGuiPort()} 读回；关闭由 {@link #close()} 按 spec §3.3 的次序（GUI 第一）负责。
+   *
    * @param config 装配配置
    * @return 已装配、尚未封存的壳（封存发生在第一次 {@code submit}/{@code replay}）
    * @throws NullPointerException {@code config} 为 null
+   * @throws IllegalStateException GUI 绑定失败（端口被占等）
    */
   public static Shell start(ShellConfig config) {
     Objects.requireNonNull(config, "config");
@@ -118,17 +131,27 @@ public final class Shell implements AutoCloseable {
 
     QueryService queryService = new QueryService(coreSimos, resolverRegistry, facetRegistry);
 
+    // GUI（T8）：审批 base URL 传 null——T6 未接入，approval 端点回 503（spec §8.2 的接缝）。
+    GuiServer guiServer = new GuiServer(queryService, coreSimos, config.mapId(), null);
+    guiServer.start(GUI_HOST, config.guiPort());
+
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant=1"
-            + " resolver={} facet={} mapId={}",
+            + " resolver={} facet={} mapId={} guiPort={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
         HANDLER_COUNT,
         resolverRegistry.namespaces().size(),
         facetRegistry.facetNames().size(),
-        config.mapId());
-    return new Shell(config, coreSimos, queryService, codecs.size());
+        config.mapId(),
+        guiServer.boundPort());
+    return new Shell(config, coreSimos, queryService, guiServer, codecs.size());
+  }
+
+  /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */
+  public int boundGuiPort() {
+    return guiServer.boundPort();
   }
 
   /** 查询门面（spec §5.1）：GUI（T8）与工具集（T5）经此读状态、解析地址、取 facet。**只读**——写面仍只有 {@link CoreSimos#submit}。 */
@@ -162,13 +185,14 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
-   * 关闭：T1 阶段只关 {@link CoreSimos}（它下面挂着唯一的一条 Sqlite 连接，幂等）。
+   * 关闭：GUI → {@link CoreSimos}（spec §3.3 的次序，GUI 排第一先释放监听端口）。幂等。
    *
-   * <p>★ spec §3.3 的完整次序是 GUI → MCP → 审批端点 → 审批通道 → CoreSimos；那些组件要到 T6/T7/T8 才存在，故**在此
-   * 之前**先插它们、最后才关 Core。当前实现就是完整次序去掉尚不存在的四项。
+   * <p>★ spec §3.3 的完整次序是 GUI → MCP → 审批端点 → 审批通道 → CoreSimos；MCP / 审批要到 T6/T7 才存在，故当前实现就是
+   * 完整次序去掉尚不存在的三项。
    */
   @Override
   public void close() {
+    guiServer.close();
     coreSimos.close();
   }
 }
