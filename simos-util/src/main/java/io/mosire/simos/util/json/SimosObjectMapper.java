@@ -1,9 +1,17 @@
 package io.mosire.simos.util.json;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import io.mosire.simos.util.address.Address;
+import java.io.IOException;
 
 /**
  * 全项目**唯一**的 {@code ObjectMapper} 装配点（M4 计划增补，spec §1.2 未列）。
@@ -43,10 +51,50 @@ public final class SimosObjectMapper {
    * 从第一刻起就是完整的。
    */
   public static ObjectMapper create(Module... extraModules) {
-    JsonMapper.Builder builder = JsonMapper.builder().addModule(new Jdk8Module());
+    JsonMapper.Builder builder =
+        JsonMapper.builder().addModule(new Jdk8Module()).addModule(addressKeys());
     for (Module module : extraModules) {
       builder.addModule(module);
     }
     return builder.build();
+  }
+
+  /**
+   * {@link Address} 作 **Map 键**时的绑定（裁定 38）：写成 {@link Address#canonical()}，读回走 {@link
+   * Address#parse(String)}。
+   *
+   * <p>★ **为什么 util 自己注册它**：{@code Address} 是 **util 自己的类型**（与那六个领域键类型不同，util 够得着）， 而它是全仓**唯一**的
+   * mapper 装配点——util 的类型在 util 接上 Jackson，是这条"单点"的自然推论。
+   *
+   * <p>★ **为什么序列化器与反序列化器都要**（对照领域模块只注册后者）：模块的键类型（{@code UnitId}/{@code HexCoord}/…）都**重写了 {@code
+   * toString()}**，与各自的 {@code parse} 互为逆——Jackson 的默认键序列化器调 {@code toString()} 恰好就对了。{@link
+   * Address} 没有重写它（record 默认给出 {@code Address[segments=[…]]}， **不可解析**），所以写侧必须显式指向 {@code
+   * canonical()}。
+   *
+   * <p>★ **这不动任何既有字节**：实测 {@code Map<Address, …>} 全仓只出现在 {@link
+   * io.mosire.simos.util.info.InMemoryInfoSystem} 一处，没有任何领域快照以 {@code Address} 为键——键序列化器只作用于 **Map
+   * 的键**，故领域模块的快照字节不受影响。
+   */
+  private static Module addressKeys() {
+    SimpleModule module = new SimpleModule("util-address-keys");
+    module.addKeySerializer(
+        Address.class,
+        new JsonSerializer<Address>() {
+          @Override
+          public void serialize(
+              Address value, JsonGenerator generator, SerializerProvider serializers)
+              throws IOException {
+            generator.writeFieldName(value.canonical());
+          }
+        });
+    module.addKeyDeserializer(
+        Address.class,
+        new KeyDeserializer() {
+          @Override
+          public Object deserializeKey(String key, DeserializationContext context) {
+            return Address.parse(key);
+          }
+        });
+    return module;
   }
 }

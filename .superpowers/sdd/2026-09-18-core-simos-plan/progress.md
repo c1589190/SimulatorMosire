@@ -513,11 +513,32 @@ C24 是结构保证而非时序用例、全量 verify 未跑）——**均如实
 - ★ **执行者仍须先读 spec §4 与 Task 10/11 原文核对本裁定**；若计划原意不同，**以计划为准并记取代说明**。
   **本条是从计划自身的证据推出来的，标注为推定，不是引文。**
 
-## 辛、第三处疑点（**未证**，派 Task 8 前先当场验）
+## 辛、疑点 3 已结：**值相等成立**（探针已跑，2026-09-18）
 
 **`SimulationState` / `Snapshot` 有没有值相等语义？** R4 的对拍靠 `equals`——若只有**引用**相等，
-对拍会**恒假或恒真**，该护栏就是装饰。已写进 Task 8 的派单，要求执行者**先写最小探针当场测出来**，
-测不出就在取代说明里另找有判别力的对拍方式。
+对拍会**恒假或恒真**，该护栏就是装饰。
+
+**已当场实测（控制器内联跑，非推演）**，结论：**有值相等语义，R4 的对拍成立**。逐条结果：
+
+| 问 | map | social | unit |
+|---|---|---|---|
+| [1] `encode→decode` 后值相等 | ✅ | ✅ | ✅ |
+| [1b] 且**非同一对象**（否则 [1] 由身份成立） | ✅ | ✅ | ✅ |
+| [2] ★ 两个值相等的 base 各自 `apply` 同一变更集 ⇒ 结果相等 | ✅ | ✅ | ✅ |
+| [2b] 两路结果**非同一对象**（否则 [2] 由身份成立） | ✅ | ✅ | ✅ |
+| [3] 判别力：施加后 ≠ 施加前（否则 `equals` 恒真） | ✅ | ✅ | ✅ |
+
+`SimulationState` 整体另测三问：三条切片**各自独立 decode** 后组装，值相等 ✅；判别力（换掉 map 切片）✅；
+其 `meta()` 分量**非同一对象** ✅（=`[1]` 不是被身份传递出来的）。
+
+★ **探针已转正为永久护栏** `simos-core/src/test/java/…/StateValueEqualityTest.java`（2 条用例，
+控制器内联跑绿 `Tests run: 2, Failures: 0`）：探针那版靠 `System.out` 传信息，转正版把信息搬进 `as(...)`
+（失败时才打），**理由**：这条不是"验一次就完"的疑点，它是 **R4 的夹具前提**——前提变了而没人知道，R4 就退化成装饰。
+★ 它**必须**住 core 的 test scope：被测的三条快照分处 map/social/unit，util 一个都够不着（铁律 3）。
+
+★★ **本条护栏已覆盖到的边界（如实记，不当结论用）**：夹具的 `GameMap` **只填了 `hexes` 一个字段**，
+`regions` / `pathways` / `edges` / 河流等一概为空 ⇒ 证的是"**这些字段为空时**值相等成立"。字段更满时是否存在
+绕过 `equals` 的别名路径，**既没证伪也没证实**。Task 8 若在 R4 里用更满的 `GameMap`，须自行复核这一步。
 
 ## 壬、工作树现状（实测）
 
@@ -744,3 +765,56 @@ schema），而 spec §4.1 的 `ForkBranch(source, expectedRevision, newBranch)`
 **下一轮**：**Task 8（`Replay`）**——开工前先做**强制探针**（台账 §辛）：当场实测
 `SimulationState` / `Snapshot`（及 `GameMap` / `SocialData` / `UnitState`）**有没有值相等语义**，
 没有则 R4 对拍是装饰。★ 工作树 `b8`/`b9` 仍停在 `adfb871`，**派发前必须 `reset --hard` 到当时的 HEAD**（裁定 25 的陈旧基线陷阱）。
+
+---
+
+## 未、裁定 38 —— `info` 段的编解码**是个全仓缺口**（2026-09-18，当场修掉，不 park）
+
+**发现经过**：做完 §辛 的探针后顺手问了一句"checkpoint 信封的 `info` 段谁负责编解码"——**spec 没有、计划没有、
+`ModuleCodec` 表里也没有**（那张表只有 map/social/unit 三条）。⇒ 不是"写错了"，是**没有任何一处把这件事派给谁**。
+
+**实测证据**（`ProbeInfoJsonTest`，跑完已删；本条的结论全部来自当场跑，不是读代码推的）：
+
+```
+=== info 段 JSON 往返 ===
+  [1] 序列化     : OK          字节长度: 291
+  [2] 反序列化   : ★ 失败
+      com.fasterxml.jackson.databind.exc.InvalidDefinitionException
+      消息: Cannot find a (Map) Key deserializer for type [simple type, class io.mosire.simos.util.address.Address]
+  [空表] 往返    : ★ 失败 (same error)
+```
+
+★★ **两处要害，都不是"读"出来的**：
+1. **连 `InMemoryInfoSystem.empty()` 都失败** ⇒ 与数据无关，是**类型解析期**就死（Jackson 要先知道
+   `Address` 这个键类型怎么读，才轮得到看有没有数据）。
+2. 失败**不在**序列化期 ⇒ 只测"写得出字节"会得到**假绿**。这正是形态 5 那一族。
+
+**炸开的范围**：**双重硬阻塞**——Task 8（重放）要把 checkpoint 信封解回 `SimulationState`、Task 13（写 checkpoint）
+要把它编出去。不修这两条任务都动不了。
+
+**裁定：在 util 的 `SimosObjectMapper` 注册 `Address` 的 Map 键绑定**（写侧 `canonical()`、读侧 `parse`）。
+三条理由：
+1. **`Address` 是 util 自己的类型**（与那六个领域键类型不同，util 够得着，不违反铁律 3）；
+2. util 是**全仓唯一的 mapper 装配点**——util 的类型在 util 接上 Jackson，是这条"单点"的**自然推论**，
+   不需要新口子、不需要动 `ModuleCodec` 表；
+3. **实测不动任何既有字节**：`git grep --untracked -n 'Map<Address' -- '*.java'` ⇒ main source 里**只有**
+   `InMemoryInfoSystem` 一处（另有三处是测试）。键序列化器**只作用于 Map 的键**，领域快照一个都不以 `Address` 为键。
+
+★ **为什么写侧也要显式注册**（领域模块只注册了反序列化器，这里两边都要）：六个领域键类型都**重写了 `toString()`**
+且与各自的 `parse` 互为逆 ⇒ Jackson 的默认键序列化器调 `toString()` 恰好就对。**`Address` 没有重写它**——
+record 默认给出 `Address[segments=[…]]`，**不可解析**。⇒ 只注册读侧的话，写出去的键读不回来。
+**这条已用夹具自证**（形态 1）：用例先断言所选地址的 `canonical() != toString()`，否则默认序列化器也能过，
+这条对"写侧必须显式指向 canonical"**零判别力**。
+
+★★ **本条的范围止于键，`value` 没解决也不在这里解决**：`InfoEntry.value` 是**裸 `Object`**，Jackson 读回来
+只能给 `String`/`Map` ⇒ **结构化 value 不满足 `equals` 往返**。这不是本次修的疏漏，是 `InfoEntry` 的设计取值；
+**如实记下，不假装**。已修的那两条用例刻意只用 `String` value，并在 `as(...)` 里写明"★ 结构化 value 除外"。
+
+**守卫**：`SimosObjectMapperTest` 增两条（键绑定 1 条 + `InMemoryInfoSystem` 空/满端到端 1 条），4 → **6 条**。
+**全量绿轮**：`./mvnw clean verify` → **rc=0**，**631 条用例**（170/255/37/93/**76**：util 168→170 恰 +2、
+core 74→76 恰 +2），`[ERROR]` **0 行**，`BugInstance size is 0` ×5，`BUILD SUCCESS`，04:19。
+日志 `verdict38-evidence/full-verify.log`；日志内可见两条用例**各自真的跑过**（排除形态 1 的假绿）。
+
+★ **处置方式**：按纪律推论「**已确证的发现，若修复比它的描述还短，在发现的那一刻修掉，不 park**」——
+注册一个键绑定不到 20 行，**比本条裁定的描述还短** ⇒ 当场修完并配守卫，不走"park 到终审"那条老路
+（M1 的 `ResolverRegistryTest` 六轮就是这么来的）。

@@ -5,8 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.info.InfoEntry;
 import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -71,6 +78,58 @@ class SimosObjectMapperTest {
                 "{\"#a\":\"1\",\"#b\":\"2\"}",
                 new com.fasterxml.jackson.core.type.TypeReference<Map<ToyKey, String>>() {});
     assertThat(back.keySet()).containsExactly(new ToyKey("a"), new ToyKey("b"));
+  }
+
+  /**
+   * 裁定 38：{@link Address} 作 Map 键的绑定——写侧 {@code canonical()}、读侧 {@code parse}。
+   *
+   * <p>★ **为什么这条必须有**：实测（裁定 38 的探针）**连空表都往返不了**——Jackson 在**类型解析期**就找 `Address` 的键反序列化器，报 {@code
+   * Cannot find a (Map) Key deserializer}，与数据无关。⇒ checkpoint 信封里 的 {@code info} 段整体读不出来，Task 8（重放）与
+   * Task 13（写 checkpoint）双重阻塞。
+   *
+   * <p>★ 夹具的先决条件**当场自证**（形态 1）：所选地址的 {@code canonical()} 必须与 record 默认的 {@code toString()}
+   * **不同**——否则默认键序列化器也能过，这条对"写侧要显式指向 canonical"零判别力。
+   */
+  @Test
+  void addressMapKeysRoundTripAsCanonicalText() throws Exception {
+    Address hex = Address.parse("map:Map1:hex.4_3");
+    assertThat(hex.canonical())
+        .as("夹具判别力：canonical 必须与 record 默认 toString 不同，否则写侧显式绑定无从判别")
+        .isNotEqualTo(hex.toString());
+
+    String json = SimosObjectMapper.create().writeValueAsString(Map.of(hex, List.of("甲")));
+    assertThat(json)
+        .as("写侧走 canonical，不是 record 的 toString（Address[segments=[…]]）")
+        .isEqualTo("{\"" + hex.canonical() + "\":[\"甲\"]}");
+
+    Map<Address, List<String>> back =
+        SimosObjectMapper.create()
+            .readValue(
+                json,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<Address, List<String>>>() {});
+    assertThat(back).containsOnlyKeys(hex);
+  }
+
+  /** 裁定 38 的端到端落点：{@code info} 段的载体类型（{@code Map<Address, …>}）整体往返。 */
+  @Test
+  void inMemoryInfoSystemRoundTripsWithANonEmptyEntry() throws Exception {
+    Address hex = Address.parse("map:Map1:hex.4_3");
+    InMemoryInfoSystem info =
+        InMemoryInfoSystem.empty()
+            .put(
+                hex,
+                new InfoEntry(
+                    "alias",
+                    "某个值",
+                    TimeRange.since(SimosTimestamp.of(0)),
+                    new SubjectId("map.hex", "h-0001"),
+                    Optional.of("备注")));
+
+    String json = SimosObjectMapper.create().writeValueAsString(info);
+
+    assertThat(SimosObjectMapper.create().readValue(json, InMemoryInfoSystem.class))
+        .as("info 段整体值相等往返（★ 结构化 value 除外，见裁定 38 的范围说明）")
+        .isEqualTo(info);
   }
 
   /** 测试局部的自定义键类型（有"裸值 toString + parse"三件套的缩影）。 */
