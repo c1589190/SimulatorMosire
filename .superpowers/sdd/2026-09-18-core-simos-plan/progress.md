@@ -914,3 +914,96 @@ AFTER:   PROBE[map]-HAS_EMPTY_PROPERTY=false
 **为什么不在此改**：把载荷真改成不透明文本会改 `WorldChangeSet` 的**类型**，牵动 Task 4/6/9 三个**已关账**任务
 ⇒ 成本远大于它的描述，**按纪律不 park 的那条推论在此不适用**（那条的前提是"修复比描述还短"）。
 **归**：Task 13 装配期裁决，或在 Task 16 收口时一并裁。
+
+## 戌、Task 10 已关账（**10/17**，2026-09-18，控制器内联执行）
+
+**执行形态**：控制器内联。本轮 agent 死于 **503（CPU 过载）**——`nproc=2` 而我当时在跑 Maven（**这是我造成的**，
+不是 429）。且 Task 10 与 Task 11 **都要改 `CommandBus.java`**，本就必须串行 ⇒ 次序只能是
+"先做完 Task 10（我独占 Maven），再把冻结后的 `CommandBus.java` 交给 Task 11"。agent 的 worktree `b9`
+**完全干净**（死在动笔之前），无产物可救。报告：`task-10-report.md`。
+
+**改动面**：一个 main 源（`CommandBus.java`）+ 一个测试（`OptimisticConcurrencyTest.java`，1 条用例）。
+计划 Files 行的两行都兑现，没有第三个源文件被动。
+
+### 裁定 40 —— C17 的锁**只罩 ③④**，理由是"事务**之间**才是缝"
+
+`SqliteStore.inTransaction` 已经用一把私有锁 + 一条共享连接把**每个事务**串行化了（Task 5/C23）
+⇒ 竞态**不在事务内部**，而在 ① 那个事务与 ④ 那个事务**之间**。故 `commitLock` 只包 ③ 复查 + ④ 落盘；
+① 入口检查（快速失败）与 ② handler（可能很慢）**都在锁外**，一条都不能挪进去。
+**锁序**：`commitLock → store 的私有锁`；反向次序在本类中**不存在**（① 与 `fork` 都只取 store 锁）⇒ 无环。
+
+★ **红在前**（`red-before-lock.log`，加锁之前实测）：两线程撞
+`SQLITE_CONSTRAINT_PRIMARYKEY (UNIQUE constraint failed: revisions.branch, revisions.revision)`
+——Task 9 报告 §5 那条硬接缝（"并发下两提交会算出同一个 revision 号"）**当场兑现**，不是我推的风险。
+
+★ **base 改用 ③ 复查过的那个 head**（计划没规定）：`commit` 据 base 算 `revision + 1`，
+若沿用 ① 读到的 base，① 与 ④ 之间的窗口依旧敞着。**这是那条硬接缝的实际收口处。**
+
+### 裁定 41 —— m2 的预测被推翻，且推翻它的过程记着我一个错
+
+计划说"m2 去掉 ① 入口检查，**不一定**让 R7 红……若存活，如实记为等价变体"。**实测 m2 不存活。**
+R7 那 1 条**确实通过**（计划这部分判断对了），但 **Task 9 的既有用例**把它杀了：
+`CommandBusDispatchTest.staleExpectedRevisionConflictsWithRealHead:181 » IllegalState 本用例不该跑到 handler`。
+★ **我差点把它写成"等价变体"**：我读那条用例时只看了主体、看到 `busWith(handler("unit.RenameUnit"))`，
+就下结论"它只断言结局是 `Conflict`"——**错了**，`handler(String)` 返回的是**带炸药的替身**，
+`handle` 一进去就抛，**handler 本身就是那条断言**。⇒ **形态 5 的又一实例**：我把"我记得是这样"当成了"我验过了"。
+代价恰好是**把一条已存在的护栏漏报成不存在**——与 ugrep / `git grep` 那一族**同形**。
+
+★ **顺带查清：① 其实有两半，都是护栏，都不是装饰**（分两轮量）：
+`head.isEmpty()` 是**分支不存在**（`head.get()` 在空 Optional 上会炸，被 `missingBranchIsRejectedNotConflicted` 钉住，m2b 红）；
+`compareTo != 0` 是**过期快失败**（被炸药替身钉住，m2 红）。两半各有各的用例。
+
+### 裁定 42 —— 补跑 m4：**新增护栏必须自带故意违规用例**（形态 1）
+
+m1 让我发现用例**没有直接钉住"一轮恰好前进一个 revision"**（那条算式只被"恰一个 Committed"间接约束）。
+补了一条直证 `winner.revision() == expected + 1`，并按形态 1 **同时补了它的变异轮 m4**（`+1` → `+2`），
+实测第 0 轮即红在该行。⇒ **没有 m4 的话，那条新断言就是装饰。**
+
+### 实测结论行（照抄日志）
+
+关账全量绿轮 `full-verify.log`：`rc=0`、**644** 条（170/255/37/93/**89**）、`BugInstance size is 0` ×5、`[ERROR]` 0。
+★ 与上一绿轮 **643**（前四模块 170/255/37/93 相同、core 88）**逐模块对差**：core **+1 = `OptimisticConcurrencyTest`**。
+
+### 变异自证：**五轮零存活**（全部跑在最终提交的 artifact 上）
+
+| 轮 | 变异 | 实测红在哪（行号是格式化后的） |
+|---|---|---|
+| m1 | 去掉 ③ 锁内复查 | `OptimisticConcurrencyTest:138` 恰一个 Committed，实得两个（revision 2 与 3） |
+| m2 | 掐掉 ① 的过期快失败 | `CommandBusDispatchTest.staleExpectedRevisionConflictsWithRealHead:181`（炸药替身） |
+| m2b | 掐掉 ① 的分支存在性 | `CommandBusDispatchTest.missingBranchIsRejectedNotConflicted:191`（NoSuchElement） |
+| m3 | ② handler 挪进锁内 | **只有自证断言抓得住**：`OptimisticConcurrencyTest:170 自证①…实得 0 次`；★ **主体正确性断言全绿** |
+| m4 | 步长 `+1` → `+2` | `OptimisticConcurrencyTest:150`（`+1` 直证） |
+
+★★ **m3 是本轮最有价值的一条**：它证明"同时进入数"那条自证断言**是承重的**——没有它，m3 就是**存活变异体**，
+"锁把 handler 罩住、并发名存实亡"会被静默当成并发正确。计划原话"这条变异是检验那条自证断言有没有用的唯一办法"，实测确认。
+
+★ **装置的可信度**：中途 spotless 改了注释换行（我**第三次**踩这个坑），于是**从格式化后的源码重新生成五个变异体、
+五轮全部重跑**（剔除注释行后代码逐字节相同，已当场 diff 验证）——"跑在最终 artifact 上"这句话不该带保留。
+
+### 给下游的硬接缝
+
+★ **给 Task 11（最要紧）**：`commit` **只在 `commitLock` 内被调用**。计划 ④ 要求"revision 行 **+ 全部事件行**同一事务"
+⇒ 事件写入应落在 `commit` 里（那就**天然在锁内**）；**若放到 `dispatch` 里 ③④ 之外的任何位置，原子性就破了。**
+本类里 `commit` 是私有方法且只有一个调用点，这条约定由结构守住。
+
+★ **给 Task 13 / Task 15**：本任务的锁**只保证 `CommandBus` 自己的状态机**。`StateLoader` 与 `AdvanceRoute` 是**注入**的，
+R7 用的是**返回常量的替身 loader**（推进支一进去就抛）⇒ **"`Replay` 在并发下安全吗"本任务没有验**，归 Task 15。
+Task 8 报告 §5 那条"`Replay` 从未在真状态上跑过"**依然成立**。
+
+★ **给 Task 15（判据三）**：计划 §"若 Task 10 已足则本任务只做 K 轮与反例加固"、"**复用 Task 10 的 m1/m3**……
+若两处都已在 Task 10 跑过，不再重复跑"——**m1 与 m3 均已在 Task 10 跑过且都红**，日志在 `task-10-evidence/`。
+
+### 带裁定的遗留条目（本任务不解决）
+
+- **K=50 是计划定的、不是量出来的**：m1 在**第 0 轮**就红 ⇒ 就 m1 而言 K=50 **过量**。K 的选取未做敏感性分析。
+- **>2 线程 / 跨多分支同时提交未测**：2 线程是本机（`nproc=2`）能给的**最大真并发**。
+- **屏障 2 s 超时未做敏感性分析**：绿轮 50 轮实测 **0.473 s**（门禁轮）/ **0.649 s**（迭代轮）、**零超时**；
+  m3 实测 100.7 s ＝ 50×2 s，超时按设计触发。但高负载下是否会假红**未在高负载下测过**。
+- **"回滚之后同一个 store 仍能接受新提交"无用例钉住**：只测到"回滚后仍可**读**"
+  （`SqliteStoreTest` 的 `foreignKeysRejectAMissingParent:118`、`notNullViolationLeavesNoResidue:140`）。
+  ★ 报告初稿写过"m1 那轮后续 49 轮照跑"——**那是错的**，m1 与加锁前那轮都**在第 0 轮**中断了，已更正。
+- **"因为事务被串行化 ⇒ 只需锁 ③④"这条推论没有直接用例**：串行化本身**已被钉住**
+  （`SqliteStoreTest.concurrentTransactionsSerializeOnThePrivateLock:158`），没钉住的是推论的另一半。
+  （★ 报告初稿写"没有任何用例钉住它"——**说重了**，已更正。）
+- **`OptimisticConcurrencyTest` 只在主树跑过**：它不碰文件系统、不依赖 cwd ⇒ **据理**不受形态 1 那条目录陷阱影响，
+  但**没有在 worktree 里实跑过**。

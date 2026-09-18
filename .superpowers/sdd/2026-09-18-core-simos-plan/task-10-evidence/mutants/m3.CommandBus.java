@@ -139,12 +139,14 @@ public final class CommandBus {
 
     // ② handler：装配状态 → 执行 → 折结局。★ payloadJson 逐字节转交（R11），此处不得 trim / re-serialize。
     // ★ ② 全程在锁外——见类注"handler 在锁外执行"。
-    StateRef base = new StateRef(envelope.branch(), head.get());
-    SimulationState state = stateLoader.load(base);
-    return switch (handler.get().handle(state, envelope.payloadJson())) {
-      case HandlerOutcome.Rejected rejected -> new CommandResult.Rejected(rejected.reason());
-      case HandlerOutcome.Applied applied -> commitUnderLock(envelope, applied.changeSet());
-    };
+    synchronized (commitLock) {
+      StateRef base = new StateRef(envelope.branch(), head.get());
+      SimulationState state = stateLoader.load(base);
+      return switch (handler.get().handle(state, envelope.payloadJson())) {
+        case HandlerOutcome.Rejected rejected -> new CommandResult.Rejected(rejected.reason());
+        case HandlerOutcome.Applied applied -> commitUnderLock(envelope, applied.changeSet());
+      };
+    }
   }
 
   /**

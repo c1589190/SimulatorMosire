@@ -161,12 +161,6 @@ public final class CommandBus {
   private CommandResult commitUnderLock(CommandEnvelope envelope, ChangeSet changeSet) {
     synchronized (commitLock) {
       Optional<RevisionId> current = timeline.head(envelope.branch());
-      if (current.isEmpty() || current.get().compareTo(envelope.expectedRevision()) != 0) {
-        return current
-            .<CommandResult>map(
-                now -> new CommandResult.Conflict(new StateRef(envelope.branch(), now)))
-            .orElseGet(() -> new CommandResult.Rejected("分支不存在: " + envelope.branch().value()));
-      }
       return commit(envelope, new StateRef(envelope.branch(), current.get()), changeSet);
     }
   }
