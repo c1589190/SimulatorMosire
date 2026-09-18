@@ -1,0 +1,18 @@
+=== m1 轮（2026-09-18）===
+[0] 开跑前干净世界：原件 md5 对账
+715706a8fc0212222771579adb6311a4  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java
+    基线绿轮（本轮开跑前的重编原件 + 全绿）：green-run.log —— Tests run: 5, Failures: 0, Errors: 0, Skipped: 0；BUILD SUCCESS
+[1] 按白名单推变异体为目标类名 CheckpointStore.java
+[2] md5 三向对账（落盘应=变异体 ba6994f4…，≠原件 715706a8…）
+ba6994f414c97573359c4cf1c3164ffc  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+ba6994f414c97573359c4cf1c3164ffc  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/mutants/m1.CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java
+[3] 跑定向用例：rc=1；COMPILATION ERROR 计数=0
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+    红点：rejectsBranchNamesThatAreNotFilenameSafe:127（恰是 R17 用例）
+    红因：守卫行被删 ⇒ write("../evil") 不再抛 IllegalArgumentException，而是尝试写穿 <tmp>/checkpoints/../evil/1.json
+    （该尝试本身死于 I/O——沙箱对含 .. 段的路径拒绝建目录；语义不变：R17 拒绝已不存在，且若沙箱放行，后续 read/exists 断言同样红）
+[4] 恢复：从证据目录拷回原件（不用 git checkout --）
+715706a8fc0212222771579adb6311a4  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java

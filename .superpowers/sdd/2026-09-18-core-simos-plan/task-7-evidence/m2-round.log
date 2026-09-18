@@ -1,0 +1,15 @@
+=== m2 轮（2026-09-18）===
+[0] 开跑前干净世界：原件已从证据目录拷回并重编——baseline-before-m2.log rc=0，Tests run: 5, Failures: 0, Errors: 0, Skipped: 0，BUILD SUCCESS
+715706a8fc0212222771579adb6311a4  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java
+[1] 按白名单推变异体为目标类名 CheckpointStore.java
+[2] md5 三向对账（落盘应=变异体 572b7020…，≠原件 715706a8…）
+572b7020bb479370f4751e1f9aa47dc8  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+572b7020bb479370f4751e1f9aa47dc8  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/mutants/m2.CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java
+[3] 跑定向用例：rc=1；COMPILATION ERROR 计数=0
+    主红点：readMissingReturnsEmptyAndLogsWarning:85——缺失即抛 IllegalStateException（恰是被保护的 C18 语义行本身）
+    连带红：diskFilesMatchHasCheckpointRowByRowAcrossABatch:189——R3 里读非 checkpoint 坐标同样抛（缺失回退被破坏的同一后果）
+[4] 恢复：从证据目录拷回原件（不用 git checkout --）
+715706a8fc0212222771579adb6311a4  simos-core/src/main/java/io/mosire/simos/core/store/CheckpointStore.java
+715706a8fc0212222771579adb6311a4  .superpowers/sdd/2026-09-18-core-simos-plan/task-7-evidence/orig/CheckpointStore.java
