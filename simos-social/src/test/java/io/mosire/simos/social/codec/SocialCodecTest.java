@@ -1,6 +1,7 @@
 package io.mosire.simos.social.codec;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -10,6 +11,7 @@ import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
@@ -109,6 +111,39 @@ class SocialCodecTest {
     assertThat(applied.timestamp()).isEqualTo(newMeta.timestamp());
     assertThat(applied.data()).isEqualTo(SocialChangeSet.apply(changeSet, base.data()));
     assertThat(base.data()).isEqualTo(onePopulation(H00));
+  }
+
+  /**
+   * ★ 下转型守卫的自证：喂一个**别的模块的切片**，{@code apply} 与 {@code encodeSnapshot} 都必须当场 {@link
+   * IllegalStateException}。
+   *
+   * <p>这条用例**只在改成 {@code instanceof} 之后**才有判别力——裸 cast 同样会抛（{@code ClassCastException}），
+   * 所以断言钉的是**异常类型 + 消息**，不是"抛了就算"。
+   */
+  @Test
+  void applyAndEncodeSnapshotRejectForeignSlice() {
+    Snapshot foreign =
+        new ForeignSlice(
+            new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
+    SocialChangeSet changeSet = SocialChangeSet.between(SocialData.empty(), SocialData.empty());
+    StateMeta meta =
+        new StateMeta(new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
+
+    assertThatThrownBy(() -> CODEC.encodeSnapshot(foreign))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 SocialSnapshot");
+    assertThatThrownBy(() -> CODEC.apply(changeSet, foreign, meta))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 SocialSnapshot");
+  }
+
+  /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
+  private record ForeignSlice(StateRef ref, SimosTimestamp timestamp) implements Snapshot {
+
+    @Override
+    public String namespace() {
+      return "unit";
+    }
   }
 
   // ── 夹具 ──

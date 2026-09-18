@@ -109,13 +109,13 @@ public final class MapCodec implements ModuleCodec {
 
   @Override
   public String encodeSnapshot(Snapshot snapshot) {
-    return writeJson((MapSnapshot) snapshot);
+    return writeJson(asMapSnapshot(snapshot));
   }
 
   /**
    * 施加变更集，返回**新的**快照（C28）。
    *
-   * <p>★ 两层 cast 都在**模块自己的地盘**：先 {@code (MapSnapshot) base} 取 {@code GameMap}，再 {@code
+   * <p>★ 两层下转型都在**模块自己的地盘**：先经 {@link #asMapSnapshot} 取 {@code GameMap}（**先验后转**，不是裸 cast），再 {@code
    * (MapChangeSet) changeSet}。
    *
    * <p>★ 新快照的 ref/timestamp **来自 {@code newMeta}**，**不是** base 的——用 base 的会得到陈旧坐标，spec §5.4 第 4
@@ -123,9 +123,25 @@ public final class MapCodec implements ModuleCodec {
    */
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
-    MapSnapshot mapBase = (MapSnapshot) base;
+    MapSnapshot mapBase = asMapSnapshot(base);
     GameMap next = MapChangeSet.apply((MapChangeSet) changeSet, mapBase.map());
     return new MapSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /**
+   * 切片下转型的唯一入口：**先验后转**，验不过当场炸。
+   *
+   * <p>★ 原先这里是裸 {@code (MapSnapshot) base}。它合法，但那是**未确认的下转型**——{@code Snapshot} 有 map/social/unit
+   * 三个实现，转错只在下游落成 {@code ClassCastException}，读不出"这是装配给错了切片"。改成 {@code instanceof} 之后连 cast
+   * 都不存在，错误信息指名道姓。
+   */
+  private static MapSnapshot asMapSnapshot(Snapshot snapshot) {
+    if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      throw new IllegalStateException(
+          "map codec 的切片不是 MapSnapshot: "
+              + (snapshot == null ? "null" : snapshot.getClass().getName()));
+    }
+    return mapSnapshot;
   }
 
   private static <T> T readJson(String json, Class<T> type) {

@@ -1,6 +1,7 @@
 package io.mosire.simos.unit.codec;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.Movement;
@@ -13,6 +14,7 @@ import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
@@ -122,6 +124,40 @@ class UnitCodecTest {
     assertThat(applied.timestamp()).isEqualTo(newMeta.timestamp());
     assertThat(applied.state()).isEqualTo(UnitChangeSet.apply(changeSet, base.state()));
     assertThat(base.state().units()).containsOnlyKeys(new UnitId("u-1"));
+  }
+
+  /**
+   * ★ 下转型守卫的自证：喂一个**别的模块的切片**，{@code apply} 与 {@code encodeSnapshot} 都必须当场 {@link
+   * IllegalStateException}。
+   *
+   * <p>这条用例**只在改成 {@code instanceof} 之后**才有判别力——裸 cast 同样会抛（{@code ClassCastException}），
+   * 所以断言钉的是**异常类型 + 消息**，不是"抛了就算"。
+   */
+  @Test
+  void applyAndEncodeSnapshotRejectForeignSlice() {
+    Snapshot foreign =
+        new ForeignSlice(
+            new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
+    UnitSnapshot base = snapshotOf(stateOf(oneUnit("u-1", H11, false)), SimosTimestamp.of(10));
+    UnitChangeSet changeSet = UnitChangeSet.between(base.state(), base.state());
+    StateMeta meta =
+        new StateMeta(new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
+
+    assertThatThrownBy(() -> CODEC.encodeSnapshot(foreign))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 UnitSnapshot");
+    assertThatThrownBy(() -> CODEC.apply(changeSet, foreign, meta))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 UnitSnapshot");
+  }
+
+  /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
+  private record ForeignSlice(StateRef ref, SimosTimestamp timestamp) implements Snapshot {
+
+    @Override
+    public String namespace() {
+      return "map";
+    }
   }
 
   // ── 夹具 ──

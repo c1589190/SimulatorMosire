@@ -63,9 +63,10 @@ public final class CheckpointStore {
   public void write(StateRef ref, String envelopeJson) {
     Objects.requireNonNull(ref, "ref");
     Objects.requireNonNull(envelopeJson, "envelopeJson");
-    Path file = fileFor(ref);
+    Path dir = branchDir(ref);
+    Path file = dir.resolve(fileName(ref));
     try {
-      Files.createDirectories(file.getParent());
+      Files.createDirectories(dir);
       Files.writeString(file, envelopeJson, StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new UncheckedIOException("checkpoint 写入失败: " + file, e);
@@ -80,7 +81,7 @@ public final class CheckpointStore {
    */
   public Optional<String> read(StateRef ref) {
     Objects.requireNonNull(ref, "ref");
-    Path file = fileFor(ref);
+    Path file = branchDir(ref).resolve(fileName(ref));
     if (!Files.isRegularFile(file)) {
       LOG.warn("checkpoint 缺失（C18：回退到更早的 checkpoint，最坏从创世重放，不失败）: {}", file);
       return Optional.empty();
@@ -92,8 +93,14 @@ public final class CheckpointStore {
     }
   }
 
-  /** 坐标 → checkpoint 文件路径（R17 的唯一校验点，write/read 共用）。 */
-  private Path fileFor(StateRef ref) {
+  /**
+   * 坐标 → checkpoint 目录（R17 的唯一校验点，write/read 共用）。
+   *
+   * <p>★ 目录是**构造**出来的，不是从文件路径 {@code getParent()} 反推的：后者是可空返回，依赖它就等于把"路径够不够深"变成 隐含约定。原先 {@code
+   * write} 里正是 {@code createDirectories(file.getParent())}——SpotBugs 的 {@code
+   * NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE} 指的就是它（M4 门禁实测）。改成构造之后**那条可空路径根本不存在**， 不是拿断言把它压下去。
+   */
+  private Path branchDir(StateRef ref) {
     String name = ref.branch().value();
     if (name.isEmpty()
         || name.indexOf('/') >= 0
@@ -101,6 +108,11 @@ public final class CheckpointStore {
         || name.contains("..")) {
       throw new IllegalArgumentException("分支名不得用作 checkpoint 文件名（R17：禁空、'/'、'\\'、\"..\"）: " + name);
     }
-    return checkpointsDir.resolve(name).resolve(ref.revision().value() + ".json");
+    return checkpointsDir.resolve(name);
+  }
+
+  /** {@code revision} 是 long，天然路径安全（R17 尾句）。 */
+  private static String fileName(StateRef ref) {
+    return ref.revision().value() + ".json";
   }
 }

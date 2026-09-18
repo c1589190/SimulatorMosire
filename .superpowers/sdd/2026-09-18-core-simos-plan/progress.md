@@ -456,3 +456,140 @@ Step ③/⑥（冲突事件、`advance.finished`）要用 Task 11 的事件类�
 - **Task 9 `CommandRegistry` + `CommandBus`**：`Consumes` 2 ✅ / 6 ✅ / 4 ✅ ⇒ **已解锁**，
   **必须按裁定 32 的注入形态做**
 - Task 10/11 ← 9 ；Task 12 ← 10/11 ；Task 13 ← 8/12 ；Task 14/15 ← 13
+
+---
+
+# 第二次 429 阻塞（2026-09-18 16:2x）—— **Task 7 已合并但未关账**
+
+**失效模式与早上同一条**（**不是** 503）：账号级 **HTTP 429**，
+`[1308][已达到 5 小时的使用上限。您的限额将在 2026-09-18 20:19:36 重置]`，`model sent to the API: glm-5.3-flash`。
+它同时打死三样：① Task 8 的 agent（16:20:34）；② Task 9 的 agent（16:22:16）；③ **Bash 的安全分类器**（同账号、同模型）。
+⇒ 16:2x 起**只能读文件、改文件**：`./mvnw`、`git add/commit/push`、派 agent **全部不可用**（已实测，`./mvnw -v` 被拒）。
+用户当日做了**自动路由**，但**本会话进程早于该改动起跑**、分类器链路仍走旧配置 ⇒ **未生效**。
+
+## 己、Task 7 已合并（**7/17，门禁缺口未补**）
+
+| 步骤 | 实测 |
+|---|---|
+| 报告与证据 | `a2029f2`（`m4/b7`）——16 文件（主类 106 行 + 测试 266 行 + 报告 + 证据目录） |
+| 控制器自读 diff | **未发现缺陷** |
+| 合并 | `684c757`（`--no-ff`）——16 文件，**零冲突** |
+| ★ **全量门禁** | ❌ **未跑**（分类器不可用）⇒ **状态是「已合并、未关账」，不得记为已验** |
+| 推送 | ✅ `origin` 到 `684c757`——**由用户在会话里用 `!` 前缀亲自执行**（`618f840..684c757`）。★ **分类器不可用时这是唯一通路**，值得记住 |
+
+**控制器自读的两条要点**（省下一轮重复看）：
+- R3 用例（`diskFilesMatchHasCheckpointRowByRowAcrossABatch`）**不是走过场**：先下**防夹具退化断言**
+  （`hasSize(4)`，钉住这批判定"四真三假"再继续），C19 三条判据**各有见证**
+  （创世 `main@1` / `4%4==0` 的 `main@4` / 两个分叉点 `main@3`+`b2@1`），
+  末尾以 `containsExactlyInAnyOrder` 把真值集**逐项钉死**——这是该用例**唯一**独立于 `hasCheckpoint` 的期望来源。
+- C18 用例记下了 log4j2 两个**实测**坑：Logger facade 的 `setLevel` **不落** live `LoggerConfig`
+  （事件在 appender 之前就被滤掉）、appender 不 `start()` 会**静默丢弃**。属"没红也要问为什么没红"那一族。
+
+**取代说明我认了一条**：计划写 R17「**构造期**抛」，但构造函数只拿得到 `storeDir`、拿不到分支名
+（分支名随每次 `write`/`read` 的 `StateRef` 来）⇒ 落成「**路径构造时**抛」，收在 `fileFor` **单一校验点**、write/read 共用。
+**计划那句话本身有歧义**，执行者的处理是对的。
+**报告 §5 的 5 条「未能核实」**（read 的 I/O 异常路径无直接测试、`..` 段路径的 ENOENT 机理未定、并发写未测、
+C24 是结构保证而非时序用例、全量 verify 未跑）——**均如实存档，未当成结论**。
+
+## 庚、裁定 33 —— Task 9 / 10 / 11 的分工（**计划没写死的那条接缝**）
+
+**问题**：Task 9 的 `Produces` 里有 `CommandResult.Committed(StateRef)`（要求**真落盘**）
+与 `Conflict(StateRef)`（要求**已有并发检查**），而「四步」写在 **Task 10** 名下。
+★ **spec 不回答这个**——它描述的是**最终设计**（C17 的两处检查），**计划的切分是计划的事**。
+不裁定就会让执行者猜，把 9 与 10 的设计搅在一起。
+
+**从计划自身抠出的三条证据**：
+1. Task 10 的 Files 写的是 **`Modify: CommandBus.java`**（**不是** `New`）⇒ Task 9 已交出可运行的 `CommandBus`；
+2. Task 10 的变异 `m1 = 去掉③锁内复查（**只留①**）`——**「只留①」预设①在 Task 10 之前就已存在**；
+3. **事件是 Task 11 的产物**（Task 11 = 可观测性：事件类型 + `Digest` + `correlationId` 全链）
+   ⇒ Task 9 的「④提交」**不可能**是「revision 行 + 全部事件行」的完整形态。
+
+**裁决**：
+- **Task 9**：分派（C16 的 3 支）+ **① 入口检查** + **④ 落 revision**（经 `Timeline`，**单条、无事件**）。
+  **单线程正确**；无锁、无③。
+- **Task 10**：**插入 ③ 锁内复查 + 锁纪律**，并落 R7 的真实并发用例
+  （`CyclicBarrier` 让两线程都越过入口检查 + 「同时进入数 ≥ 2」的**自证断言**）。
+- **Task 11**：把**事件行**并入 Task 9 已建立的那条提交路径的**同一事务**（判据二的落点）。
+- ★ **执行者仍须先读 spec §4 与 Task 10/11 原文核对本裁定**；若计划原意不同，**以计划为准并记取代说明**。
+  **本条是从计划自身的证据推出来的，标注为推定，不是引文。**
+
+## 辛、第三处疑点（**未证**，派 Task 8 前先当场验）
+
+**`SimulationState` / `Snapshot` 有没有值相等语义？** R4 的对拍靠 `equals`——若只有**引用**相等，
+对拍会**恒假或恒真**，该护栏就是装饰。已写进 Task 8 的派单，要求执行者**先写最小探针当场测出来**，
+测不出就在取代说明里另找有判别力的对拍方式。
+
+## 壬、工作树现状（实测）
+
+| 分支 | 工作树 | HEAD | 提交 |
+|---|---|---|---|
+| `m4/b8` | `.claude/worktrees/b8` | `684c757` | **零提交**（agent 死在探针阶段，草稿未落盘） |
+| `m4/b9` | `.claude/worktrees/b9` | `6e93cd5` | **零提交**（agent 死在「设计定稿、准备一次写出 7 个主文件」） |
+| `m4/b7` / `m4/b16` | 已移除 | — | 已合并，分支已 `-d` 删除（裁定 25） |
+
+★★ **限额回来后的第一件事（顺序不能换）**：
+1. 主树 `./mvnw clean verify` —— **必须**，这是 Task 7 那个门禁缺口；
+2. 归档日志 → 记 CLAUDE.md **7/17**（**只有第 1 步绿了才记**）；
+3. 再派 **Task 9**（按裁定 32 的注入形态 + 裁定 33 的边界）与 **Task 8**（含 §辛 的探针要求）。
+
+---
+
+## 癸、M4 门禁第一次真正过线 —— 抓到 2 个真 defect（2026-09-18）
+
+**补跑 Task 7 欠的那次全量 `clean verify`（`task-7-evidence/merged-full-verify.log`，红）→ 修完第二次跑绿
+（`unitcodec-cast-evidence/merged-full-verify.log`）。**
+
+### 1. `simos-unit` SpotBugs：`UnitCodec` 两条 `BC_UNCONFIRMED_CAST`（已修）
+
+**实测对照（两边都真编译真分析，`compile spotbugs:check`）**：
+
+| 树的类集 | `BugInstance size` | rc |
+|---|---|---|
+| `c76b2b6` 原样 | 0 | 0 |
+| `684c757` 原样 | **2** | 1 |
+| 旧树 + 仅 `UnitSnapshots.java`（同模块内 `instanceof`） | 0 | 0 |
+| 旧树 + 仅 14 行探针（`instanceof MapSnapshot`，**跨模块**） | **2** | 1 |
+
+`UnitCodec.java` 在 `c76b2b6` 与 `684c757` **逐字节相同**（`git diff` 无输出）。
+
+⇒ **结论（实测）**：SpotBugs 对**未改动文件**的判定**不是该文件的纯函数**——它随模块类集变化；触发点已定位到
+「模块内首次出现对兄弟模块 `Snapshot` 实现的引用」（旧树 + 那 14 行探针即复现）。**内部机理（类型图解析不动就保守弃报）
+是推断，未证，不作为依据。**
+
+⇒ **这条比那 2 行代码重要**：`c76b2b6` 那次「`BugInstance size is 0` ×5」里，`simos-unit`/`simos-map`/`simos-social`
+的 0 **是假的**——不是它们的 cast 干净，是分析器没解出类型图。属**「把没搜到伪装成不存在」**同族
+（与 ugrep 尊重 .gitignore、`git grep` 漏 untracked、M4 R15 的自建扫描器并列），**该族新增一形态**。
+
+**修复**：三个 codec（`UnitCodec`/`MapCodec`/`SocialCodec`）的裸 `(XSnapshot)` 一律改成私有 `asXSnapshot`：
+`instanceof` 模式匹配 + 指名道姓的 `IllegalStateException`（与既有 `UnitSnapshots.of`/`UnitTimeParticipant.mapOf` 同口径）。
+**改完连 cast 都不存在**，不是压制告警。★ 门禁**只对 `simos-unit` 响了**；`map`/`social` 是**同型预防**
+（那两个模块的 0 同样不可信），**不是「门禁抓到 3 个」**。
+
+**护栏自证（`unitcodec-cast-evidence/`）**：m1 = helper 换回裸 cast（md5 `786fdbb9` ≠ 基线 `53ed6c2b`，
+**字节不同已自证**）→ 白名单推成**目标类名** → `UnitCodecTest` **红**、编译错误 **0**、红的理由正是保护行本身
+（`ClassCastException: ForeignSlice cannot be cast to UnitSnapshot`，`applyAndEncodeSnapshotRejectForeignSlice:147`）
+→ 拷回原件（**非 `git checkout`**，md5 复核与基线相同）→ 绿。
+
+### 2. `simos-core` SpotBugs：`CheckpointStore.write` 的 `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`（已修）
+
+Medium，`CheckpointStore.java:68` 的 `Files.createDirectories(file.getParent())`。`Path.getParent()` 是**可空返回**；
+此处实际不为 null（`fileFor` 保证两级父路径），但**「实际不为 null」不是不变量**。
+
+**修复（改构造，不是加断言）**：`fileFor(ref)` 拆成 `branchDir(ref)`（目录由 `resolve` **构造**出来）+ `fileName(ref)`；
+`write` 不再经 `getParent()`。**取代说明**：先前台账记的「R17 校验在 `fileFor` 里、路径构造时抛」**随迁到 `branchDir`**，
+语义不变（仍是构造路径时抛）。`CheckpointStoreTest` 5/5 绿，`simos-core` `BugInstance size is 0`。
+
+★ **这是 Task 7 的代码第一次真正过 SpotBugs**——合并时被 429 挡着，之后那次全量 verify 里 `simos-core` 是 `SKIPPED`。
+我逐行读过那 106 行的控制器评审**没看出这条**：静态分析抓的是「依赖可空 API」这类读代码不容易当回事的东西。
+
+### 3. 第二次 `clean verify` 结果（`unitcodec-cast-evidence/merged-full-verify.log`）
+
+rc=0、6/6 模块 SUCCESS、`BugInstance size is 0` ×5、`[ERROR]` **0** 行、`[WARNING]` 1（父 POM 的 spotbugs report goal，无害）、04:26。
+用例 **608**（168/255/37/93/55）——较 `c76b2b6` 的 600 多 8 = 3 条新守卫用例 + `CheckpointStoreTest` 的 5 条
+（那次 `simos-core` 是 SKIPPED，从未计入）。
+
+### 4. 另一条实测（不当结论用，只立规矩）
+
+`./mvnw -pl <mod> spotbugs:check` **直调不跑生命周期、不编译**。在没编译过的树里它会 **rc=0 / 日志 0 行 / 无任何提示** 地通过。
+本会话第一次「旧提交 rc=0」就是这么来的，随即自查发现（`target/classes` **0 个类**、日志 0 行）当场作废重做。
+**要跑门禁就跑 `verify`，别直调单点 goal。**

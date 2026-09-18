@@ -1,0 +1,2 @@
+53ed6c2be26f822cf5fa5e49afbec3bf  .superpowers/sdd/2026-09-18-core-simos-plan/unitcodec-cast-evidence/orig/UnitCodec.java
+53ed6c2be26f822cf5fa5e49afbec3bf  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java

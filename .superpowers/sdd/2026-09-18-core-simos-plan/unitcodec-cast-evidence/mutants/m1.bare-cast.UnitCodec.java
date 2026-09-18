@@ -114,12 +114,7 @@ public final class UnitCodec implements ModuleCodec {
    * 都不存在，错误信息指名道姓。
    */
   private static UnitSnapshot asUnitSnapshot(Snapshot snapshot) {
-    if (!(snapshot instanceof UnitSnapshot unitSnapshot)) {
-      throw new IllegalStateException(
-          "unit codec 的切片不是 UnitSnapshot: "
-              + (snapshot == null ? "null" : snapshot.getClass().getName()));
-    }
-    return unitSnapshot;
+    return (UnitSnapshot) snapshot;
   }
 
   private static <T> T readJson(String json, Class<T> type) {

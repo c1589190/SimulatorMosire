@@ -94,15 +94,31 @@ public final class SocialCodec implements ModuleCodec {
 
   @Override
   public String encodeSnapshot(Snapshot snapshot) {
-    return writeJson((SocialSnapshot) snapshot);
+    return writeJson(asSocialSnapshot(snapshot));
   }
 
   /** 施加变更集，返回**新的**快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。 */
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
-    SocialSnapshot socialBase = (SocialSnapshot) base;
+    SocialSnapshot socialBase = asSocialSnapshot(base);
     SocialData next = SocialChangeSet.apply((SocialChangeSet) changeSet, socialBase.data());
     return new SocialSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /**
+   * 切片下转型的唯一入口：**先验后转**，验不过当场炸。
+   *
+   * <p>★ 原先这里是裸 {@code (SocialSnapshot) base}。它合法，但那是**未确认的下转型**——{@code Snapshot} 有
+   * map/social/unit 三个实现，转错只在下游落成 {@code ClassCastException}，读不出"这是装配给错了切片"。改成 {@code instanceof}
+   * 之后连 cast 都不存在，错误信息指名道姓。
+   */
+  private static SocialSnapshot asSocialSnapshot(Snapshot snapshot) {
+    if (!(snapshot instanceof SocialSnapshot socialSnapshot)) {
+      throw new IllegalStateException(
+          "social codec 的切片不是 SocialSnapshot: "
+              + (snapshot == null ? "null" : snapshot.getClass().getName()));
+    }
+    return socialSnapshot;
   }
 
   private static <T> T readJson(String json, Class<T> type) {
