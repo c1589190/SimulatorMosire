@@ -1,7 +1,15 @@
 package io.mosire.simos.app;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.agentlib.approval.ApprovalCoordinator;
+import io.mosire.agentlib.approval.ApprovalHttpEndpoint;
+import io.mosire.agentlib.approval.AutoApproveGate;
+import io.mosire.agentlib.approval.ConfirmGate;
+import io.mosire.agentlib.approval.HttpApprovalChannel;
+import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.mcp.McpSourceBridge;
+import io.mosire.agentlib.tool.ToolCallAuthorizer;
+import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.query.QueryService;
@@ -31,6 +39,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -39,16 +48,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 外壳：**唯一的装配点**（spec §3.2 的 1~2 步与 3~4 步中不依赖审批/MCP 的部分）。
+ * 外壳：**唯一的装配点**（spec §3.2 的 1~5 步与 7 步；MCP 服务归 T7）。
  *
  * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），三 codec / 八 handler / 一
- * participant 必须由组合根注入。MCP / 审批的装配归 T6/T7，**本壳在 T8 已接上 GUI**——{@link #start} 走到"世界能提交命令、能重放、
- * 能推进、能查询、能经 {@code /api} 读写"为止。
+ * participant 必须由组合根注入。审批链（T6）与 GUI（T8）已接上，MCP 服务归 T7——{@link #start} 走到"世界能提交命令、能重放、 能推进、能查询、能经
+ * {@code /api} 读写、写命令要过人审批"为止。
  *
- * <p>★ **装配清单**（spec §3.2 第 1~2 步）：三 codec + 八 handler + 一 participant（{@link CoreSimos} 侧） + 三
+ * <p>★ **装配清单**（spec §3.2 第 1~5 步）：三 codec + 八 handler + 一 participant（{@link CoreSimos} 侧） + 三
  * {@code Resolver}（map/social/unit）+ 两 {@code FacetProvider}（unitsHere/population）→ {@link
- * QueryService}（查询层，T3）；再 {@link SimosToolSource}（12 工具 = 3 写 + 9 读）经 {@code McpSourceBridge.bind}
- * 同步进 {@link ToolRegistry}（T5，T7 消费）。后续任务在此继续接审批/MCP/GUI。
+ * QueryService}（查询层，T3）；审批链（T6，S5：{@code PendingApprovals → HttpApprovalChannel →
+ * ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior 判定）→ {@link SimosToolSource}（12 工具 = 3 写 +
+ * 9 读）经 {@code McpSourceBridge.bind} 同步进 {@link ToolRegistry}（T5，T7 消费）→ GUI（T8）。后续任务在此继续接 MCP。
  *
  * <p>★ **本类不持有任何存储写路径**：{@code SqliteStore} / {@code Timeline.appendRevision} / {@code
  * CheckpointStore} 一个都不在 app 源码里（铁律 2 的结构化，R1 的扫描对象）。唯一的写入口是 {@link
@@ -60,6 +70,9 @@ public final class Shell implements AutoCloseable {
 
   /** GUI 监听地址：回环（spec §〇.4 不做鉴权/TLS 的回环基线）。 */
   private static final String GUI_HOST = "127.0.0.1";
+
+  /** 审批等待上限（spec 未定值，M5 取 5 分钟）：到点没人答 ⇒ fail-closed 拒（AgentLib 契约）。 */
+  private static final Duration APPROVAL_TIMEOUT = Duration.ofMinutes(5);
 
   private final ShellConfig config;
   private final CoreSimos coreSimos;
@@ -76,8 +89,25 @@ public final class Shell implements AutoCloseable {
   /** GUI 服务器（T8）：5711 的静态页 + {@code /api}；关闭次序里排第一（spec §3.3）。 */
   private final GuiServer guiServer;
 
+  /** 审批登记表（T6，spec §3.2 第 3 步）：进程内唯一的那一份，端点与通道共享同一 id。 */
+  private final PendingApprovals pendingApprovals;
+
+  /** HTTP 审批通道（T6）：端点真的绑定成功后才 {@code markUp()}（可用性认"端口在监听"）。 */
+  private final HttpApprovalChannel approvalChannel;
+
+  /** 审批编排器（T6，S5）：gates = {@code AutoApproveGate → ConfirmGate}，M5 无 LLM 上级判定。 */
+  private final ApprovalCoordinator approvalCoordinator;
+
+  /** 审批 HTTP 端点（T6，spec §3.2 第 4 步）：恒绑回环；关闭次序在 GUI 之后（spec §3.3）。 */
+  private final ApprovalHttpEndpoint approvalEndpoint;
+
+  /** 工具调用唯一入口（T6）：**带审批**（非 {@code standard()}），T7 交给 {@code startHttp}。 */
+  private final ToolCallAuthorizer toolAuthorizer;
+
   /** 已注册模块 codec 的个数（map/social/unit）；由实际注册动作数出来，不是写死的常量。 */
   private final int registeredModuleCount;
+
+  private volatile boolean closed;
 
   private Shell(
       ShellConfig config,
@@ -86,6 +116,11 @@ public final class Shell implements AutoCloseable {
       ToolRegistry toolRegistry,
       McpSourceBridge toolBridge,
       GuiServer guiServer,
+      PendingApprovals pendingApprovals,
+      HttpApprovalChannel approvalChannel,
+      ApprovalCoordinator approvalCoordinator,
+      ApprovalHttpEndpoint approvalEndpoint,
+      ToolCallAuthorizer toolAuthorizer,
       int registeredModuleCount) {
     this.config = config;
     this.coreSimos = coreSimos;
@@ -93,6 +128,11 @@ public final class Shell implements AutoCloseable {
     this.toolRegistry = toolRegistry;
     this.toolBridge = toolBridge;
     this.guiServer = guiServer;
+    this.pendingApprovals = pendingApprovals;
+    this.approvalChannel = approvalChannel;
+    this.approvalCoordinator = approvalCoordinator;
+    this.approvalEndpoint = approvalEndpoint;
+    this.toolAuthorizer = toolAuthorizer;
     this.registeredModuleCount = registeredModuleCount;
   }
 
@@ -153,6 +193,24 @@ public final class Shell implements AutoCloseable {
 
     QueryService queryService = new QueryService(coreSimos, resolverRegistry, facetRegistry);
 
+    // 审批链（T6，spec §3.2 第 3 步；S5：无 Superior 判定，M5 无 LLM）。
+    PendingApprovals pendingApprovals = new PendingApprovals();
+    HttpApprovalChannel approvalChannel = new HttpApprovalChannel(pendingApprovals);
+    ApprovalCoordinator approvalCoordinator =
+        new ApprovalCoordinator(
+            List.of(new AutoApproveGate(pendingApprovals), new ConfirmGate()),
+            List.of(approvalChannel),
+            pendingApprovals,
+            APPROVAL_TIMEOUT,
+            null);
+    ToolCallAuthorizer toolAuthorizer =
+        ToolCallAuthorizer.of(new ToolExecutionGuard(), approvalCoordinator);
+
+    // 端点先真的绑上端口，再 markUp 通道（可用性认"端口在监听"，spec §3.2 第 4 步）。
+    ApprovalHttpEndpoint approvalEndpoint =
+        ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
+    approvalChannel.markUp();
+
     // 工具集（T5）：12 条工具（3 写 + 9 读）经桥同步进注册表；T7 把注册表交给 MCP 服务。
     SimosToolSource toolSource =
         new SimosToolSource(
@@ -160,13 +218,28 @@ public final class Shell implements AutoCloseable {
     ToolRegistry toolRegistry = new ToolRegistry();
     McpSourceBridge toolBridge = McpSourceBridge.bind(toolSource, toolRegistry);
 
-    // GUI（T8）：审批 base URL 传 null——T6 未接入，approval 端点回 503（spec §8.2 的接缝）。
-    GuiServer guiServer = new GuiServer(queryService, coreSimos, config.mapId(), null);
-    guiServer.start(GUI_HOST, config.guiPort());
+    // GUI（T8）：审批面 base URL 指向刚绑定的端点，5711 的 /api/approvals 是它的透传代理。
+    GuiServer guiServer =
+        new GuiServer(
+            queryService,
+            coreSimos,
+            config.mapId(),
+            "http://127.0.0.1:" + approvalEndpoint.boundPort());
+    boolean guiUp = false;
+    try {
+      guiServer.start(GUI_HOST, config.guiPort());
+      guiUp = true;
+    } finally {
+      if (!guiUp) {
+        // GUI 绑定失败：已起的审批端点/通道不能留着占端口（spec §3.3 里 GUI 本应排第一，此处它还没起来）。
+        approvalEndpoint.close();
+        approvalChannel.close();
+      }
+    }
 
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant=1"
-            + " resolver={} facet={} tool={} mapId={} guiPort={}",
+            + " resolver={} facet={} tool={} mapId={} guiPort={} approvalPort={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
@@ -175,14 +248,49 @@ public final class Shell implements AutoCloseable {
         facetRegistry.facetNames().size(),
         toolRegistry.size(),
         config.mapId(),
-        guiServer.boundPort());
+        guiServer.boundPort(),
+        approvalEndpoint.boundPort());
     return new Shell(
-        config, coreSimos, queryService, toolRegistry, toolBridge, guiServer, codecs.size());
+        config,
+        coreSimos,
+        queryService,
+        toolRegistry,
+        toolBridge,
+        guiServer,
+        pendingApprovals,
+        approvalChannel,
+        approvalCoordinator,
+        approvalEndpoint,
+        toolAuthorizer,
+        codecs.size());
   }
 
   /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */
   public int boundGuiPort() {
     return guiServer.boundPort();
+  }
+
+  /** 审批端点实际绑定端口（{@code approvalPort=0} 时由 OS 分配；spec §3.1 的读回口径）。 */
+  public int boundApprovalPort() {
+    return approvalEndpoint.boundPort();
+  }
+
+  /**
+   * 审批登记表（T6）：T7 的 MCP 调用触发审批时，测试/调试面经此读待裁决项并作答。
+   *
+   * <p>★ SpotBugs 未判它 {@code EI_EXPOSE_REP}（实测：加了抑制反被 {@code US_USELESS_SUPPRESSION_ON_METHOD}
+   * 判红）——它本就是给人面 与测试的进程内共享件。
+   */
+  public PendingApprovals pendingApprovals() {
+    return pendingApprovals;
+  }
+
+  /**
+   * 工具调用唯一入口（T6，spec §7.1/§7.2）：**带审批**（非 {@code standard()}）。T7 把它交给 {@code
+   * AgentToMcpServer.startHttp}；测试用它执行写工具以验证 R3（未审批的写调用必须被拒且不留 revision）。
+   */
+  public ToolCallAuthorizer toolAuthorizer() {
+    return toolAuthorizer;
   }
 
   /** 查询门面（spec §5.1）：GUI（T8）与工具集（T5）经此读状态、解析地址、取 facet。**只读**——写面仍只有 {@link CoreSimos#submit}。 */
@@ -224,15 +332,21 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
-   * 关闭：GUI → {@link CoreSimos}（spec §3.3 的次序，GUI 排第一先释放监听端口）。幂等。
+   * 关闭：GUI → 工具桥 → 审批端点 → 审批通道 → {@link CoreSimos}（spec §3.3 的次序，GUI 排第一先释放监听端口）。幂等。
    *
-   * <p>★ spec §3.3 的完整次序是 GUI → MCP → 审批端点 → 审批通道 → CoreSimos；MCP / 审批要到 T6/T7 才存在，故当前实现就是
-   * 完整次序去掉尚不存在的三项。
+   * <p>★ spec §3.3 的完整次序是 GUI → MCP → 审批端点 → 审批通道 → CoreSimos；MCP 要到 T7 才存在，故当前实现就是完整次序去掉 MCP
+   * 那一项（工具桥是 app 内的注册表卸载，插在 GUI 与审批之间不改变端口/线程的释放次序）。
    */
   @Override
   public void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
     guiServer.close();
     toolBridge.close();
+    approvalEndpoint.close();
+    approvalChannel.close();
     coreSimos.close();
   }
 }

@@ -35,7 +35,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -64,8 +68,9 @@ import org.slf4j.LoggerFactory;
  * map:<mapId>:hex.<q>_<r>}，且 {@code QueryService.facets} **不改写**转交的地址 ⇒ 本类的两个 hex 端点用 {@link
  * #canonicalHex(int, int)} 先造 canonical 主体再查 facet。
  *
- * <p>★ **审批代理是 T6 的接缝**：未配置 base URL（T6 未接入）⇒ {@code 503}；配置了但代理未实现 ⇒ {@code 501}（本任务**不**实现审批语义，
- * 只留 {@code approvalBaseUrl} 这个注入点）。
+ * <p>★ **审批代理（T6）**：{@code GET /api/approvals} 与 {@code POST /api/approvals/{id}} **原样透传**给
+ * AgentLib 的 {@code ApprovalHttpEndpoint}（方法/路径/体照转，状态码/体/头照回；不可达 ⇒ 502）。**本类不实现审批语义**——id
+ * 幂等、{@code APPROVE_SESSION} 的收窄、404/405/409 的判定全在 AgentLib 端点里；未配置 base URL ⇒ 503（仅直接构造时会遇到）。
  *
  * <p>★ **零 CORS 头**（spec §〇.4）：同源，无预检面。静态资源带 {@code Cache-Control: no-store}。
  */
@@ -80,7 +85,9 @@ public final class GuiServer implements AutoCloseable {
 
   private static final String DEFAULT_BRANCH = "main";
   private static final String UNIT_DETAIL_PREFIX = "/api/unit/";
-  private static final String APPROVAL_DECISION_PREFIX = "/api/approvals/";
+
+  /** 审批代理路径：{@code /api/approvals} 或 {@code /api/approvals/{id}}（原样转给 AgentLib 端点）。 */
+  private static final String APPROVAL_PATH = "/api/approvals";
 
   private static final Set<String> GET_ROUTES =
       Set.of(
@@ -90,8 +97,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/map/overview",
           "/api/map/hex",
           "/api/units",
-          "/api/social/population",
-          "/api/approvals");
+          "/api/social/population");
 
   private static final Set<String> POST_ROUTES =
       Set.of("/api/command", "/api/advance", "/api/fork");
@@ -100,8 +106,11 @@ public final class GuiServer implements AutoCloseable {
   private final CoreSimos core;
   private final String mapId;
 
-  /** T6 的注入点：审批面 base URL；null / 空白 = 尚未接入（端点回 503）。 */
+  /** 审批面 base URL（T6 由 Shell 注入为 AgentLib 端点地址）；null / 空白 = 未配置（端点回 503）。 */
   private final String approvalBaseUrl;
+
+  /** 审批透传用（T6）：只转发，不解释语义。 */
+  private final HttpClient approvalClient;
 
   private final ExecutorService executor;
   private final StaticHandler staticHandler;
@@ -121,6 +130,7 @@ public final class GuiServer implements AutoCloseable {
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.approvalBaseUrl = approvalBaseUrl;
+    this.approvalClient = HttpClient.newHttpClient();
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
     this.staticHandler = new StaticHandler();
   }
@@ -182,6 +192,7 @@ public final class GuiServer implements AutoCloseable {
       current.stop(0);
       server = null;
     }
+    approvalClient.close();
     executor.shutdownNow();
   }
 
@@ -190,7 +201,9 @@ public final class GuiServer implements AutoCloseable {
   private void handle(HttpExchange exchange) throws IOException {
     try {
       String path = exchange.getRequestURI().getPath();
-      if (path.equals("/api") || path.startsWith("/api/")) {
+      if (isApprovalPath(path)) {
+        proxyApproval(exchange, path);
+      } else if (path.equals("/api") || path.startsWith("/api/")) {
         writeReply(exchange, handleApi(exchange, exchange.getRequestMethod(), path));
       } else if (!staticHandler.tryServe(exchange, path)) {
         writeReply(exchange, Reply.of(404, notFound(path)));
@@ -254,9 +267,6 @@ public final class GuiServer implements AutoCloseable {
     if (path.equals("/api/social/population")) {
       return populationReply(exchange);
     }
-    if (path.equals("/api/approvals")) {
-      return approvalSeam();
-    }
     return null;
   }
 
@@ -269,9 +279,6 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/fork")) {
       return forkReply(exchange);
-    }
-    if (isApprovalDecision(path)) {
-      return approvalSeam();
     }
     return null;
   }
@@ -289,7 +296,7 @@ public final class GuiServer implements AutoCloseable {
     if (GET_ROUTES.contains(path) || isUnitDetail(path)) {
       return "GET";
     }
-    if (POST_ROUTES.contains(path) || isApprovalDecision(path)) {
+    if (POST_ROUTES.contains(path)) {
       return "POST";
     }
     return null;
@@ -299,9 +306,9 @@ public final class GuiServer implements AutoCloseable {
     return path.startsWith(UNIT_DETAIL_PREFIX) && path.length() > UNIT_DETAIL_PREFIX.length();
   }
 
-  private static boolean isApprovalDecision(String path) {
-    return path.startsWith(APPROVAL_DECISION_PREFIX)
-        && path.length() > APPROVAL_DECISION_PREFIX.length();
+  /** 审批代理路径：{@code /api/approvals}（列表/GET）与 {@code /api/approvals/{id}}（决议/POST）。 */
+  private static boolean isApprovalPath(String path) {
+    return path.equals(APPROVAL_PATH) || path.startsWith(APPROVAL_PATH + "/");
   }
 
   // ── 读端点 ──────────────────────────────────────────────────────────────────────────
@@ -438,12 +445,54 @@ public final class GuiServer implements AutoCloseable {
     };
   }
 
-  /** 审批代理接缝（T6）：未配置 base URL ⇒ 503；已配置但代理未实现 ⇒ 501。 */
-  private Reply approvalSeam() {
+  /**
+   * 审批透传（T6，spec §8.2）：把方法与路径原样转给 AgentLib 的 {@code ApprovalHttpEndpoint}，状态码/体/头原样回。
+   *
+   * <p>★ **不解释语义**：404/405/409/400 全部由 AgentLib 端点判定；本方法只做"转发 + 照回"。不可达 ⇒ 502。未配置 base URL ⇒ 503。
+   */
+  private void proxyApproval(HttpExchange exchange, String path) throws IOException {
     if (approvalBaseUrl == null || approvalBaseUrl.isBlank()) {
-      return Reply.of(503, Map.of("error", "approval endpoint 未配置（T6 接入后由 Shell 注入 base URL）"));
+      writeReply(exchange, Reply.of(503, Map.of("error", "approval endpoint 未配置")));
+      return;
     }
-    return Reply.of(501, Map.of("error", "approval 代理未实现（T8 只留注入点，T6 落地后透传）"));
+    String query = exchange.getRequestURI().getRawQuery();
+    String target = approvalBaseUrl + path + (query == null || query.isEmpty() ? "" : "?" + query);
+    byte[] requestBody = exchange.getRequestBody().readAllBytes();
+    HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(target));
+    String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+    if (contentType != null) {
+      builder.header("Content-Type", contentType);
+    }
+    builder.method(
+        exchange.getRequestMethod(),
+        requestBody.length == 0
+            ? HttpRequest.BodyPublishers.noBody()
+            : HttpRequest.BodyPublishers.ofByteArray(requestBody));
+    HttpResponse<byte[]> response;
+    try {
+      response = approvalClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      writeReply(exchange, Reply.of(502, Map.of("error", "审批端点不可达")));
+      return;
+    } catch (IOException e) {
+      writeReply(exchange, Reply.of(502, Map.of("error", "审批端点不可达")));
+      return;
+    }
+    Headers headers = exchange.getResponseHeaders();
+    String responseType = response.headers().firstValue("Content-Type").orElse(null);
+    headers.set(
+        "Content-Type", responseType == null ? "application/json; charset=utf-8" : responseType);
+    response.headers().firstValue("Allow").ifPresent(allow -> headers.set("Allow", allow));
+    byte[] body = response.body();
+    if (body.length == 0) {
+      exchange.sendResponseHeaders(response.statusCode(), -1);
+    } else {
+      exchange.sendResponseHeaders(response.statusCode(), body.length);
+      try (OutputStream out = exchange.getResponseBody()) {
+        out.write(body);
+      }
+    }
   }
 
   // ── 请求工具 ────────────────────────────────────────────────────────────────────────
