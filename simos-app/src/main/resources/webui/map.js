@@ -30,6 +30,7 @@
   var cellSize = 34;
   var overview = null;
   var hexIndex = null; // "q_r" → hex
+  var units = []; // /api/units 的列表（含 effectivePosition）；map:overview 不含单位位置
   var selected = null;
 
   // 顶点朝上（pointy-top）的轴向坐标 → 像素：与旧 GSimulator hex-math 同型。
@@ -148,6 +149,9 @@
       ctx.strokeRect(cx - 4, cy - 4, 8, 8);
     });
 
+    // 单位标记层（T9b）：数据来自 /api/units 的 effectivePosition，叠加在地形之上。
+    drawUnits(layout);
+
     // 选中高亮
     if (selected) {
       var sp = hexToPixel(selected.q, selected.r, cellSize);
@@ -158,6 +162,72 @@
       );
     }
     drawLegend();
+  }
+
+  /** 单位在画布坐标（含 layout 偏移）里的圆心；无位置 ⇒ null。 */
+  function unitCenter(unit, layout) {
+    if (!unit || !unit.position) {
+      return null;
+    }
+    var p = hexToPixel(unit.position.q, unit.position.r, cellSize);
+    return { x: p.x + layout.offsetX, y: p.y + layout.offsetY };
+  }
+
+  /** 画单位标记：实心圆 + 白环 + id 短标签。 */
+  function drawUnits(layout) {
+    var radius = Math.max(6, cellSize * 0.3);
+    units.forEach(function (unit) {
+      var center = unitCenter(unit, layout);
+      if (!center) {
+        return;
+      }
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#e8503a";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = Math.max(9, Math.round(radius)) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(shortId(unit.id), center.x, center.y);
+    });
+  }
+
+  /** 圆形标记上的短标签：取 id 的前 4 个字符。 */
+  function shortId(id) {
+    var text = app.text(id);
+    return text.length > 4 ? text.slice(0, 4) : text;
+  }
+
+  /** 命中哪个单位标记（画布坐标，不含 layout 偏移）。后画的在上，故从后往前找。 */
+  function unitHitAt(px, py) {
+    var radius = Math.max(8, cellSize * 0.36);
+    for (var i = units.length - 1; i >= 0; i--) {
+      if (!units[i].position) {
+        continue;
+      }
+      var p = hexToPixel(units[i].position.q, units[i].position.r, cellSize);
+      var dx = px - p.x;
+      var dy = py - p.y;
+      if (dx * dx + dy * dy <= radius * radius) {
+        return units[i];
+      }
+    }
+    return null;
+  }
+
+  /** 鼠标事件 → 画布坐标（已减去 layout 偏移），与 hexToPixel/pixelToHex 同一坐标系。 */
+  function pickPoint(event, layout) {
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width;
+    var scaleY = canvas.height / rect.height;
+    return {
+      px: (event.clientX - rect.left) * scaleX - layout.offsetX,
+      py: (event.clientY - rect.top) * scaleY - layout.offsetY,
+    };
   }
 
   function drawLegend() {
@@ -175,7 +245,9 @@
       overview.hexCount +
       " 格 · " +
       (overview.regions ? overview.regions.length : 0) +
-      " 区域 · " +
+      " 区域 · 单位 " +
+      units.length +
+      " · " +
       types
         .map(function (t) {
           return t + "=" + (counts[t] || 0);
@@ -191,13 +263,19 @@
     if (!overview) {
       return;
     }
-    var rect = canvas.getBoundingClientRect();
     var layout = computeLayout();
-    var scaleX = canvas.width / rect.width;
-    var scaleY = canvas.height / rect.height;
-    var px = (event.clientX - rect.left) * scaleX - layout.offsetX;
-    var py = (event.clientY - rect.top) * scaleY - layout.offsetY;
-    var coord = pixelToHex(px, py, cellSize);
+    var point = pickPoint(event, layout);
+    // 单位标记优先于格点：点在标记上就选中它所在的格并显示 id/name。
+    var hit = unitHitAt(point.px, point.py);
+    if (hit) {
+      selected = { q: hit.position.q, r: hit.position.r };
+      render();
+      var label = "单位 " + app.text(hit.id) + "：" + app.text(hit.name);
+      app.statusMessage(app.byId("hex-status"), label, "ok");
+      loadHex(hit.position.q, hit.position.r, label);
+      return;
+    }
+    var coord = pixelToHex(point.px, point.py, cellSize);
     if (!hexIndex[hexKey(coord.q, coord.r)]) {
       app.statusMessage(app.byId("hex-status"), "该位置无格（q=" + coord.q + ", r=" + coord.r + "）", "warn");
       return;
@@ -207,22 +285,26 @@
     loadHex(coord.q, coord.r);
   }
 
-  async function loadHex(q, r) {
+  /**
+   * 查一个格的详情。{@code statusLabel} 非空时把它作为状态文字（点单位标记时用来保留
+   * "单位 id：名称"，否则会被 "q=x, r=y" 覆盖）；失败仍显示错误。
+   */
+  async function loadHex(q, r, statusLabel) {
     var status = app.byId("hex-status");
-    app.statusMessage(status, "查询 q=" + q + ", r=" + r + " …", "muted");
+    app.statusMessage(status, statusLabel || "查询 q=" + q + ", r=" + r + " …", statusLabel ? "ok" : "muted");
     try {
       var body = await api.mapHex(q, r);
-      showHex(body);
+      showHex(body, statusLabel);
     } catch (e) {
       app.statusMessage(status, "查询失败：" + e.message, "err");
       app.clear(app.byId("hex-facets"));
     }
   }
 
-  function showHex(body) {
+  function showHex(body, statusLabel) {
     var detail = app.clear(app.byId("hex-detail"));
     var status = app.byId("hex-status");
-    app.statusMessage(status, "q=" + body.q + ", r=" + body.r, "ok");
+    app.statusMessage(status, statusLabel || "q=" + body.q + ", r=" + body.r, "ok");
 
     [
       ["q", body.q],
@@ -265,6 +347,18 @@
     facetsNode.appendChild(table);
   }
 
+  /** 拉单位列表（T9b）：/api/units 的 effectivePosition 是标记层的数据源；失败不致命，返回错误消息。 */
+  async function loadUnits() {
+    try {
+      var body = await api.units();
+      units = (body && body.units) || [];
+      return null;
+    } catch (e) {
+      units = [];
+      return e.message;
+    }
+  }
+
   async function loadOverview() {
     var status = app.byId("map-status");
     app.statusMessage(status, "载入地图总览…", "muted");
@@ -274,12 +368,27 @@
       overview.hexes.forEach(function (h) {
         hexIndex[hexKey(h.q, h.r)] = h;
       });
+      var unitError = await loadUnits();
       render();
-      app.statusMessage(
-        status,
-        "已载入 " + overview.hexCount + " 格（mapId=" + app.text(overview.mapId) + "）",
-        "ok"
-      );
+      if (unitError) {
+        app.statusMessage(
+          status,
+          "已载入 " + overview.hexCount + " 格，但单位载入失败：" + unitError,
+          "warn"
+        );
+      } else {
+        app.statusMessage(
+          status,
+          "已载入 " +
+            overview.hexCount +
+            " 格（mapId=" +
+            app.text(overview.mapId) +
+            "，单位 " +
+            units.length +
+            "）",
+          "ok"
+        );
+      }
     } catch (e) {
       app.statusMessage(status, "地图载入失败：" + e.message, "err");
     }
@@ -290,6 +399,16 @@
     canvas = app.byId("canvas");
     ctx = canvas.getContext("2d");
     canvas.addEventListener("click", pickHex);
+    canvas.addEventListener("mousemove", function (event) {
+      if (!overview) {
+        return;
+      }
+      var layout = computeLayout();
+      var point = pickPoint(event, layout);
+      var hit = unitHitAt(point.px, point.py);
+      canvas.style.cursor = hit ? "pointer" : "default";
+      canvas.title = hit ? app.text(hit.id) + " · " + app.text(hit.name) : "";
+    });
 
     app.byId("cell-size").addEventListener("change", function (event) {
       var value = Number(event.target.value);

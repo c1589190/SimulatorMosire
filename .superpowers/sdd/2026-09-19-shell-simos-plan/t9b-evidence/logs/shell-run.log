@@ -1,0 +1,6 @@
+05:55:49.193 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5817/（静态 /webui，同源，无 CORS 头）
+05:55:49.194 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/t9b-demo-store checkpointInterval=100 codec=3 handler=8 participant=1 resolver=3 facet=2 mapId=Map1 guiPort=5817
+05:55:49.282 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+05:55:49.282 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/t9b-demo-store checkpointInterval=100 模块数=3 guiPort=5817 mcpPort=5715 mcpPath=/mcp approvalPort=5713 mapId=Map1
+05:55:49.282 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5817/
+05:56:00.808 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

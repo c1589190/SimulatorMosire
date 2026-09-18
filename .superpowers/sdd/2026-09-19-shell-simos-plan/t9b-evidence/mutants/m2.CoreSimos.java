@@ -227,7 +227,7 @@ public final class CoreSimos implements AutoCloseable {
             GENESIS_BRANCH,
             new RevisionId(1),
             Optional.empty(),
-            genesis.meta().timestamp(),
+            io.mosire.simos.util.time.SimosTimestamp.of(0),
             UUID.randomUUID().toString(),
             UUID.randomUUID().toString(),
             BOOTSTRAP_INITIATOR,
