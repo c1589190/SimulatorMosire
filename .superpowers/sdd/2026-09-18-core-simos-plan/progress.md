@@ -393,3 +393,66 @@ git push origin feat/adr1-core-scope
 3. ★ **并发上限是 2**（`nproc=2`，且 127.0.0.1:3000 的本地推理网关与 Maven 抢同样的核）；
    ★ **不要在 agent 活着的时候跑全量 verify**。
 4. **续派前先裁决裁定 24 记下的 9↔12 接缝**（`submit(AdvanceTime)` 指向后置的 Task 12）。
+
+---
+
+# 关账之后 · 续跑轮（2026-09-18 15:2x 起）
+
+> ★★ **本节取代上文若干陈旧条目**——上文是 **08:2x 收口时**的快照，其「Task 6 未合并 / 遗留 1 / 遗留 2 /
+> 四之分支表里的 b6 行 / 五、下一轮顺序」**均已作废**。**以本节为准。** 保留上文是为了留痕，不是现状。
+> 具体取代关系：遗留 1（Task 6 未合并）→ **已合并并验证**；遗留 2（Task 16 零提交）→ **已重开并派发**；
+> §四 表里 b6 的「未合并」与 b16 的「零提交」→ **两者都已被删除重建**；§五 的顺序 → **已执行到第 4 条**。
+
+## 甲、Task 6 已关账（6/17）
+
+| 步骤 | 实测 |
+|---|---|
+| 报告与证据入库 | `80677ec`（`m4/b6`）——agent 死在 commit 前，**文件已 staged**，控制器只补了落锤 |
+| 合并 | `5e49816`（`--no-ff`）——17 个文件，**零冲突**（spotless churn 如预判未冲突） |
+| ★ **全量门禁** | `c76b2b6` 附日志：`./mvnw clean verify` **rc=0 / BUILD SUCCESS / 04:51**、6-6 模块、**582** 条用例（168/254/36/74/**50**，= 基线 568 + `TimelineTest` 14）、`BugInstance size is 0` ×5、`[ERROR]` **0 行** |
+| 文档 | `ed60fd8`——CLAUDE.md 的 M4 行 5/17 → 6/17；推送状态行订正 |
+
+★ **这一步正是补上 Task 6 报告 §5.1 自陈「全量 verify 未跑」的那道门禁**——`TimelineTest` 首次在
+**SpotBugs + Checkstyle + Spotless + 整个 reactor** 下通过。**报告自陈的缺口，由控制器用一条日志填上了。**
+
+## 乙、裁定 32 —— 9↔12 接缝：**用注入解耦，不重排任务**（裁定 24 由此结案）
+
+**当场把依赖图抠出来**（实测：`awk` 扫计划里每条 `Consumes`）：
+
+```
+2,6,4 → 9 ；  9 → 10, 11 ；  10,11 → 12 ；  8,12 → 13
+```
+而 Task 9 Step 1 的分派表写着 `submit(AdvanceTime) → Core 的推进管线（Task 12）` ⇒ **9 → 12 与
+12 → 10/11 → 9 构成闭环**。★ 且 **Task 9 的 `Consumes` 行根本没写 Task 12**——**行与它自己的
+Step 1 分派表不一致**（与 Task 16 那条"grep 到签名却把路径凭印象补全"**同族**：引用没当场对齐）。
+
+**裁决**：`AdvanceTime` 那一支的目标**由注入给出**，Task 9 不认识 Task 12。
+- Task 9 定义 `core.command.AdvanceRoute`（函数式接口，`CommandResult run(AdvanceTime cmd)`），
+  `CommandBus` 构造期收它；Task 9 自己的用例传**替身**。
+- ★ **必须配一条用例**钉住「`AdvanceTime` 确实被路由到注入的实现、且请求原样转交」——
+  否则这个注入点本身没有判别力（形态 4：纯转发型 SPI）。
+- Task 12 的 `TimeAdvance` **实现** `AdvanceRoute`（其 `Consumes` 追加 Task 9 的
+  `CommandResult`/`AdvanceRoute`），**不回头改 Task 9**。
+- Task 13 装配时把真的 `TimeAdvance` 传进 `CommandBus`——**join 落在计划本来放装配的那一处**。
+
+**为什么不重排**：Task 12 Step ⑤（Commit 落 revision）要用 Task 10 的乐观并发检查，
+Step ③/⑥（冲突事件、`advance.finished`）要用 Task 11 的事件类型 ⇒ **12 确实在 10/11 下游**，重排不成立。
+**为什么不留桩**：留 `UnsupportedOperationException` 是**运行时地雷**，且 Task 9 的门禁会**不覆盖**
+自己分派表的一整支。**不影响 C16**：`switch` 仍在 Core 自己的**封闭**命令集上，只是其中一支的目标由注入给出。
+
+## 丙、续跑轮的分支与工作树（实测）
+
+| 批次 | 任务 | 分支 | 工作树 | 基线 |
+|---|---|---|---|---|
+| C2 | 7 `CheckpointStore` | `m4/b7` | `.claude/worktrees/b7` | `ed60fd8` |
+| E | 16 Step 1/2 | `m4/b16` | `.claude/worktrees/b16` | `ed60fd8` |
+
+★ **`m4/b6` 与旧的 `m4/b16` 已 `git branch -d` 删除、worktree 一并移除**（裁定 25：只移树留分支会
+诱导"复用旧分支"的陈旧基线陷阱）。两个新 worktree **都从当时的 HEAD `ed60fd8` 重开**，不是从旧基线。
+
+## 丁、下一轮的候选（按依赖）
+
+- **Task 8 `Replay`**：`Consumes` 6 ✅ / **7（本轮在跑）** / 4 ✅ / 3 ✅
+- **Task 9 `CommandRegistry` + `CommandBus`**：`Consumes` 2 ✅ / 6 ✅ / 4 ✅ ⇒ **已解锁**，
+  **必须按裁定 32 的注入形态做**
+- Task 10/11 ← 9 ；Task 12 ← 10/11 ；Task 13 ← 8/12 ；Task 14/15 ← 13
