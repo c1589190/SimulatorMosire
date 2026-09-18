@@ -1,0 +1,45 @@
+──────── t14-m1 ────────
+  Timeline.head 忽略 branch 参数（计划 m1；打判据一③ 的 b2 head 断言）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=d0f7bf384c741d211c44f761e3879b05  mutant=59d86c45bb15c157834ae4187be61be8  worktree_before=d0f7bf384c741d211c44f761e3879b05
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 Timeline.java 这一条路径 ==
+worktree_after_push=59d86c45bb15c157834ae4187be61be8
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.BranchingEndToEndTest.txt  mtime=1789752788  round_start=1789752785
+== 门禁 5：期望变红的类必须真的红 ==
+命中 BranchingEndToEndTest 的变红行数=1
+   [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.514 s <<< FAILURE! -- in io.mosire.simos.core.BranchingEndToEndTest
+   [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   BranchingEndToEndTest.forkEndToEndWithRealRenameCommands:141 [③ b2 在分岔后自己推进一格，head 必须是 2] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=d0f7bf384c741d211c44f761e3879b05
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+──────── t14-m2 ────────
+  Replay 不施加变更集（本任务新增逐值断言的变异体；打判据一① 的两侧名字）
+== 门禁 1：开跑前必须是干净世界 ==
+orig=146fd336b606ea4efcdbbcaf1f429121  mutant=dbc71179e9f8c90707e90b4af531220f  worktree_before=146fd336b606ea4efcdbbcaf1f429121
+== 门禁 2：变异体必须与原件字节不同 ==
+== 白名单推送：只推 Replay.java 这一条路径 ==
+worktree_after_push=dbc71179e9f8c90707e90b4af531220f
+== 门禁 3/4：真的编过、真的跑到了 ==
+rc=1  COMPILATION_ERROR_lines=0  Tests_run_lines=2
+== 门禁 4b：本轮 surefire 报告必须存在且 mtime 落在本轮内 ==
+report=simos-core/target/surefire-reports/io.mosire.simos.core.BranchingEndToEndTest.txt  mtime=1789752792  round_start=1789752788
+== 门禁 5：期望变红的类必须真的红 ==
+命中 BranchingEndToEndTest 的变红行数=1
+   [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.484 s <<< FAILURE! -- in io.mosire.simos.core.BranchingEndToEndTest
+   [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+--- 变红的用例方法 ---
+   [ERROR]   BranchingEndToEndTest.forkEndToEndWithRealRenameCommands:163 [① main 的重放状态只看见 main 自己的改名] 
+   [ERROR]   mvn <args> -rf :simos-core
+== 回到开跑前的工作树状态 ==
+worktree_restored=146fd336b606ea4efcdbbcaf1f429121
+== 通过：变异被杀，工作树已还原 ==
+  ⇒ 杀死
+=== 2 轮结束 ===
