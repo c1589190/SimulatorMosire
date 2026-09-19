@@ -1,0 +1,25 @@
+{
+  "label": "strip",
+  "strip": true,
+  "base": "http://127.0.0.1:45911",
+  "startedAt": "2026-09-19T08:17:25.494Z",
+  "strippedCount": 58323,
+  "ready": true,
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "pickAtCenter": {
+    "kind": "hex",
+    "q": 0,
+    "r": 0,
+    "inMap": true
+  },
+  "selectionAfter": "q0r0terrainplains（平原）height0.375regionstest_nation该处单位无人口无序列",
+  "leftStatus": "q=0, r=0 · main@1",
+  "legend": "共 19441 格 · 2 区域 · 单位 0 · ocean=4506  plains=10719  low_hills=3330  mountains=886",
+  "fatal": null,
+  "overviewHits": 3,
+  "finishedAt": "2026-09-19T08:17:31.014Z"
+}

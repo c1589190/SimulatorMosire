@@ -215,11 +215,11 @@
 
   // ── 取数 ──────────────────────────────────────────────────────────
 
-  /** 重取 /api/state + 每分支 /api/timeline，重建节点模型，再重画。 */
-  async function refresh() {
+  /** 重取 /api/state + 每分支 /api/timeline，重建节点模型，再重画。force=true 强制作废 state 缓存（写后）。 */
+  async function refresh(force) {
     model.loading = true;
     try {
-      var body = await app.refreshState();
+      var body = await app.refreshState(force);
       var branches = body.branches || [];
       var heads = body.heads || {};
       var nodes = {};
@@ -257,7 +257,7 @@
       renderCursor(app.getState());
       if (refreshQueued) {
         refreshQueued = false;
-        refresh();
+        refresh(force);
       }
     }
   }
@@ -652,7 +652,7 @@
     try {
       await window.SimosApi.advance(state.branch, head, tick, tick + steps);
       showStatus("已推进 " + steps + " tick（" + tick + " → " + (tick + steps) + "）", "ok");
-      await refresh();
+      await refresh(true);
       var newHead = model.heads[app.getState().branch];
       if (newHead !== null && newHead !== undefined) {
         app.setRevision(newHead);
@@ -677,7 +677,7 @@
     try {
       await window.SimosApi.fork(state.branch, head, newBranch);
       showStatus("已分岔：新分支 " + newBranch, "ok");
-      await refresh();
+      await refresh(true);
       app.setBranch(newBranch);
       var newHead = model.heads[newBranch];
       if (newHead !== null && newHead !== undefined) {

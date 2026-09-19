@@ -1,0 +1,51 @@
+pristine md5:
+  map.js     63cc3391238fe800c4903487d9d0de22
+  api.js     fb5a5bb4e3fdfea60f556f9bdd16ccfb
+  panels.js  4a9107182f5cf18af22b017ef3d2f901
+  app.js     c77a5b9a5c0a868817e657feb7404e09
+  timeline.js d97b4029ce2096fd5c2d2e14f865b56a
+  unitTree.js 14790d1275dc62f5d9f42eaf287e58ae
+
+== round A-m1-remove-memo: clean_md5=fb5a5bb4e3fdfea60f556f9bdd16ccfb mutant_md5=d4a14a2459bf66cbb6632690d6e8166a ==
+   expect_red=['a-memo-no-new-request']
+   actual_fails=['a-overview-rev1-once', 'a-units-rev1-once', 'a-memo-no-new-request']
+   killed=True rc=0
+
+== round A-m2-target-not-in-key: clean_md5=fb5a5bb4e3fdfea60f556f9bdd16ccfb mutant_md5=c98df11ad6497b1900f382026381a778 ==
+   expect_red=['a-target-invalidates']
+   actual_fails=['a-overview-no-target-once', 'a-overview-rev1-once', 'a-units-no-target-once', 'a-units-rev1-once', 'a-target-invalidates', 'c-legend-memoized-scan-once-per-overview']
+   killed=True rc=0
+
+== round B-m1-pan-rebuilds: clean_md5=63cc3391238fe800c4903487d9d0de22 mutant_md5=03118a7a798fcd7686441c344e8ab696 ==
+   expect_red=['b-pan-does-not-rebuild']
+   actual_fails=['b-render-warm-p50-lt33', 'b-pan-does-not-rebuild']
+   killed=True rc=0
+
+== round B-m2-resize-no-rebuild: clean_md5=63cc3391238fe800c4903487d9d0de22 mutant_md5=2c58ba5ce569e6bd48c2ef4463102924 ==
+   expect_red=['b-resize-rebuilds-terrain']
+   actual_fails=['b-resize-rebuilds-terrain']
+   killed=True rc=0
+
+== round B-m3-no-border-lod: clean_md5=63cc3391238fe800c4903487d9d0de22 mutant_md5=fcab9e1c8d69c09ca26c5a446e6fe2f4 ==
+   expect_red=['b-border-lod-skipped-at-fit']
+   actual_fails=['b-border-lod-skipped-at-fit']
+   killed=True rc=0
+
+== round B-m4-giant-reverted: clean_md5=63cc3391238fe800c4903487d9d0de22 mutant_md5=a38f6951c4238a9bf95dc21c84815098 ==
+   expect_red=['b-render-cold-p50-lt33']
+   actual_fails=['b-render-cold-p50-lt33']
+   killed=True rc=0
+
+== round C-m1-legend-no-memo: clean_md5=63cc3391238fe800c4903487d9d0de22 mutant_md5=343bdde4c55a95ba7eae4d95593ce27c ==
+   expect_red=['c-legend-memoized-scan-once-per-overview']
+   actual_fails=['c-legend-memoized-scan-once-per-overview']
+   killed=True rc=0
+
+=== MUTATION SUMMARY ===
+{"id": "A-m1-remove-memo", "clean_md5": "fb5a5bb4e3fdfea60f556f9bdd16ccfb", "mutant_md5": "d4a14a2459bf66cbb6632690d6e8166a", "expected_red": ["a-memo-no-new-request"], "actual_fails": ["a-overview-rev1-once", "a-units-rev1-once", "a-memo-no-new-request"], "pass_count": 13, "fail_count": 3, "killed": true, "rc": 0, "restore_ok": true}
+{"id": "A-m2-target-not-in-key", "clean_md5": "fb5a5bb4e3fdfea60f556f9bdd16ccfb", "mutant_md5": "c98df11ad6497b1900f382026381a778", "expected_red": ["a-target-invalidates"], "actual_fails": ["a-overview-no-target-once", "a-overview-rev1-once", "a-units-no-target-once", "a-units-rev1-once", "a-target-invalidates", "c-legend-memoized-scan-once-per-overview"], "pass_count": 10, "fail_count": 6, "killed": true, "rc": 0, "restore_ok": true}
+{"id": "B-m1-pan-rebuilds", "clean_md5": "63cc3391238fe800c4903487d9d0de22", "mutant_md5": "03118a7a798fcd7686441c344e8ab696", "expected_red": ["b-pan-does-not-rebuild"], "actual_fails": ["b-render-warm-p50-lt33", "b-pan-does-not-rebuild"], "pass_count": 14, "fail_count": 2, "killed": true, "rc": 0, "restore_ok": true}
+{"id": "B-m2-resize-no-rebuild", "clean_md5": "63cc3391238fe800c4903487d9d0de22", "mutant_md5": "2c58ba5ce569e6bd48c2ef4463102924", "expected_red": ["b-resize-rebuilds-terrain"], "actual_fails": ["b-resize-rebuilds-terrain"], "pass_count": 15, "fail_count": 1, "killed": true, "rc": 0, "restore_ok": true}
+{"id": "B-m3-no-border-lod", "clean_md5": "63cc3391238fe800c4903487d9d0de22", "mutant_md5": "fcab9e1c8d69c09ca26c5a446e6fe2f4", "expected_red": ["b-border-lod-skipped-at-fit"], "actual_fails": ["b-border-lod-skipped-at-fit"], "pass_count": 15, "fail_count": 1, "killed": true, "rc": 0, "restore_ok": true}
+{"id": "B-m4-giant-reverted", "clean_md5": "63cc3391238fe800c4903487d9d0de22", "mutant_md5": "a38f6951c4238a9bf95dc21c84815098", "expected_red": ["b-render-cold-p50-lt33"], "actual_fails": ["b-render-cold-p50-lt33"], "pass_count": 15, "fail_count": 1, "killed": true, "rc": 0, "restore_ok": true}
+{"id": "C-m1-legend-no-memo", "clean_md5": "63cc3391238fe800c4903487d9d0de22", "mutant_md5": "343bdde4c55a95ba7eae4d95593ce27c", "expected_red": ["c-legend-memoized-scan-once-per-overview"], "actual_fails": ["c-legend-memoized-scan-once-per-overview"], "pass_count": 15, "fail_count": 1, "killed": true, "rc": 0, "restore_ok": true}

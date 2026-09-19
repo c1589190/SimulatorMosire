@@ -68,8 +68,87 @@
     return path + separator + query;
   }
 
+  // ── 共享记忆化取数层（M9 T2，档 0）──────────────────────────────────
+  //
+  // ★ 键 = `withTarget(path, target)` 的完整 URL：target 变 ⇒ 键变 ⇒ 旧键自然失效，**不做手工失效**。
+  //   `panels.js` / `map.js` / `unitTree.js` 共用同一份缓存 ⇒ 同一 URL×target 只发一次请求。
+  //   并发同键合流；失败不缓存（下次可重试）；FIFO 淘汰防无界增长。
+  var dataCache = Object.create(null);
+  var DATA_CACHE_LIMIT = 64;
+
+  function cachedGet(path, target) {
+    var url = withTarget(path, target);
+    var hit = dataCache[url];
+    if (hit) {
+      return hit;
+    }
+    var pending = getJson(url).catch(function (e) {
+      delete dataCache[url];
+      throw e;
+    });
+    dataCache[url] = pending;
+    var keys = Object.keys(dataCache);
+    if (keys.length > DATA_CACHE_LIMIT) {
+      for (var i = 0; i < keys.length - DATA_CACHE_LIMIT; i++) {
+        delete dataCache[keys[i]];
+      }
+    }
+    return pending;
+  }
+
+  function cachedMapOverview(target) {
+    return cachedGet("/map/overview", target);
+  }
+
+  function cachedUnits(target) {
+    return cachedGet("/units", target);
+  }
+
+  // ── /api/state 合流（M9 T2）：启动期 pollState 与 timeline 各拉一次 ⇒ 去重。
+  //   TTL 只罩"刚刚解析过"的极短窗口（启动同拍）；写命令开头发起 invalidateState()（epoch+1），
+  //   使写后的 state() 既不读旧缓存、也不搭上写前已发出的在途请求 ⇒ 必读到新 head。
+  var STATE_TTL_MS = 250;
+  var stateInFlight = null;
+  var stateInFlightEpoch = -1;
+  var stateCache = null;
+  var stateCachedAt = 0;
+  var stateEpoch = 0;
+
   function state() {
-    return getJson("/state");
+    if (stateInFlight && stateInFlightEpoch === stateEpoch) {
+      return stateInFlight;
+    }
+    if (stateCache && performance.now() - stateCachedAt < STATE_TTL_MS) {
+      return Promise.resolve(stateCache);
+    }
+    var epoch = stateEpoch;
+    var pending = getJson("/state").then(
+      function (body) {
+        if (stateInFlight === pending) {
+          stateInFlight = null;
+        }
+        if (epoch === stateEpoch) {
+          stateCache = body;
+          stateCachedAt = performance.now();
+        }
+        return body;
+      },
+      function (e) {
+        if (stateInFlight === pending) {
+          stateInFlight = null;
+        }
+        throw e;
+      }
+    );
+    stateInFlight = pending;
+    stateInFlightEpoch = epoch;
+    return pending;
+  }
+
+  function invalidateState() {
+    stateCache = null;
+    stateCachedAt = 0;
+    stateEpoch += 1;
   }
 
   /** 时间轴节点清单（M7 T1/T3）：{branch, head, nodes:[…]}。按分支拉，不带 revision。 */
@@ -135,10 +214,12 @@
    * 返回 {result:"committed",ref} | {result:"conflict",current}（非 2xx 抛出，body 里带 result）。
    */
   function submitCommand(envelope) {
+    invalidateState();
     return postJson("/command", envelope);
   }
 
   function advance(branch, expectedRevision, from, to) {
+    invalidateState();
     var body = { branch: branch, expectedRevision: expectedRevision, from: from };
     if (to !== null && to !== undefined) {
       body.to = to;
@@ -147,6 +228,7 @@
   }
 
   function fork(source, expectedRevision, newBranch) {
+    invalidateState();
     return postJson("/fork", {
       source: source,
       expectedRevision: expectedRevision,
@@ -173,6 +255,9 @@
     units: units,
     unit: unit,
     population: population,
+    cachedMapOverview: cachedMapOverview,
+    cachedUnits: cachedUnits,
+    invalidateState: invalidateState,
     submitCommand: submitCommand,
     advance: advance,
     fork: fork,

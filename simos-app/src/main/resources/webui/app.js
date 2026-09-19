@@ -240,8 +240,14 @@
     notify();
   }
 
-  /** 重取 /api/state 并写回状态机；返回服务器视图（调用方可复用，避免重复请求）。 */
-  async function refreshState() {
+  /**
+   * 重取 /api/state 并写回状态机；返回服务器视图（调用方可复用，避免重复请求）。
+   * force=true 时先失效 TTL 缓存（写命令后必须读到新 head，M9 T2）。
+   */
+  async function refreshState(force) {
+    if (force && window.SimosApi.invalidateState) {
+      window.SimosApi.invalidateState();
+    }
     var body = await window.SimosApi.state();
     setServerState(body.branches, body.heads, body.meta);
     return body;
@@ -286,7 +292,7 @@
     try {
       var body = await window.SimosApi.submitCommand(commandEnvelope(type, payload));
       try {
-        await refreshState();
+        await refreshState(true);
       } catch (refreshError) {
         // 提交已成功：刷新失败不该把成功报成失败（body.ref 已是权威新坐标）。
       }
@@ -298,7 +304,7 @@
       if (error && error.status === 409) {
         var current = error.body && error.body.current ? error.body.current : null;
         try {
-          await refreshState();
+          await refreshState(true);
         } catch (refreshError) {
           // 重取失败：保持旧游标，下次操作仍会 409（不伪造成功）。
         }

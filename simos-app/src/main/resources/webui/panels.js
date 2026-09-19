@@ -22,35 +22,12 @@
   var rightRegions = null;
   var selectedRegion = null;
 
-  // ── 地图总览共享缓存（M7b T2）：左栏 ETA 与右栏区域共用一份，按目标 {branch,revision} 缓存 ──
-  var overviewKey = null;
-  var overviewBody = null;
-  var overviewPending = null;
+  // ── 地图总览共享缓存（M7b T2 → M9 T2 移入 api.js 的共享记忆化层）──
+  //   左栏 ETA / 右栏区域 / map.js 渲染共用同一份按 target 记忆化的缓存（同一 URL×target 只发一次）。
 
-  /** 取当前目标的地图总览（成功才缓存；失败不缓存，下次可重试）。 */
+  /** 取当前目标的地图总览（M9 T2：与 map.js 同走 SimosApi.cachedMapOverview）。 */
   function loadOverview() {
-    var key = targetLabel();
-    if (key !== overviewKey) {
-      overviewKey = key;
-      overviewBody = null;
-      overviewPending = null;
-    }
-    if (overviewBody) {
-      return Promise.resolve(overviewBody);
-    }
-    if (!overviewPending) {
-      overviewPending = api
-        .mapOverview(app.target())
-        .then(function (body) {
-          overviewBody = body;
-          return body;
-        })
-        .catch(function (e) {
-          overviewPending = null;
-          throw e;
-        });
-    }
-    return overviewPending;
+    return api.cachedMapOverview(app.target());
   }
 
   /** tag 归一化：null / undefined / 纯空白 ⇒ 「未标注」（判据④ / R4）。 */
@@ -246,7 +223,7 @@
     // 人口序列可能不存在（/api/social/population 404）⇒ 折成 null，不让整条详情失败（判据③"人口"）。
     Promise.all([
       api.mapHex(selection.q, selection.r, app.target()),
-      api.units(app.target()),
+      api.cachedUnits(app.target()),
       api.population(selection.q, selection.r, app.target()).catch(function () {
         return null;
       }),

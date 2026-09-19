@@ -1,0 +1,198 @@
+{
+  "base": "http://127.0.0.1:45911",
+  "startedAt": "2026-09-19T08:22:26.180Z",
+  "assertions": [
+    {
+      "id": "a-overview-no-target-once",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "id": "a-overview-rev1-once",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "id": "a-units-no-target-once",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "id": "a-units-rev1-once",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "id": "a-state-startup-once",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "id": "a-memo-no-new-request",
+      "pass": true,
+      "detail": "overview+0 units+0"
+    },
+    {
+      "id": "a-target-invalidates",
+      "pass": true,
+      "detail": "new-revision requests=1"
+    },
+    {
+      "id": "b-render-warm-p50-lt33",
+      "pass": true,
+      "detail": "p50=2.5"
+    },
+    {
+      "id": "b-render-cold-p50-lt33",
+      "pass": true,
+      "detail": "p50=27.6"
+    },
+    {
+      "id": "b-terrain-giant-path-is-cause",
+      "pass": true,
+      "detail": "giant=1411.5 chunked=24.1"
+    },
+    {
+      "id": "b-border-giant-path-is-cause",
+      "pass": true,
+      "detail": "giant=3606.4 chunked=28.4"
+    },
+    {
+      "id": "b-border-lod-skipped-at-fit",
+      "pass": true,
+      "detail": "draws 0->0 screenPx=3.29"
+    },
+    {
+      "id": "b-pan-does-not-rebuild",
+      "pass": true,
+      "detail": "rebuilds 1->1 blits 16->18"
+    },
+    {
+      "id": "b-resize-rebuilds-terrain",
+      "pass": true,
+      "detail": "rebuilds 1->2"
+    },
+    {
+      "id": "c-legend-memoized-scan-once-per-overview",
+      "pass": true,
+      "detail": "scans 1->2（期望 +1：仅 setData 重扫）"
+    },
+    {
+      "id": "z-zero-pageerror",
+      "pass": true,
+      "detail": "pageErrors=0"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+  ],
+  "requestCounts": {
+    "/": 1,
+    "/styles.css": 1,
+    "/api.js": 1,
+    "/app.js": 1,
+    "/panels.js": 1,
+    "/unitTree.js": 1,
+    "/timeline.js": 1,
+    "/map.js": 1,
+    "/api/state": 1,
+    "/api/approvals": 1,
+    "/api/map/overview?branch=main": 1,
+    "/api/units?branch=main": 1,
+    "/api/map/overview?branch=main&revision=1": 1,
+    "/api/units?branch=main&revision=1": 1,
+    "/api/timeline?branch=main": 2
+  },
+  "raw": {
+    "debug0": {
+      "scale": 0.09666505558240696,
+      "tx": 640,
+      "ty": 400,
+      "cellSize": 34,
+      "hexCount": 19441,
+      "unitCount": 0,
+      "colorByTerrain": {
+        "ocean": "#1F5FA0",
+        "plains": "#9CCB5B",
+        "low_hills": "#A8B36A",
+        "mountains": "#7A7F85"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": null,
+      "selectedUnit": null,
+      "mode": "view",
+      "isWorkbench": true,
+      "terrainRebuilds": 1,
+      "terrainBlits": 3,
+      "borderDraws": 0,
+      "legendScans": 1,
+      "borderScreenPx": 3.2866118898018364,
+      "terrainMode": "chunked",
+      "routeCount": 0,
+      "routes": []
+    },
+    "warm": {
+      "p50": 2.5,
+      "max": 3.5
+    },
+    "cold": {
+      "p50": 27.6,
+      "max": 31.3
+    },
+    "terrainVariants": {
+      "giant": {
+        "p50": 1411.5,
+        "max": 1411.6
+      },
+      "chunked": {
+        "p50": 24.1,
+        "max": 24.5
+      },
+      "perHex": {
+        "p50": 45,
+        "max": 416.3
+      }
+    },
+    "borderVariants": {
+      "giant": {
+        "p50": 3606.4,
+        "max": 3613.5
+      },
+      "chunked64": {
+        "p50": 28.4,
+        "max": 28.7
+      },
+      "perHex": {
+        "p50": 42.4,
+        "max": 113.9
+      }
+    },
+    "lod": {
+      "before": 0,
+      "after": 0,
+      "borderScreenPx": 3.2866118898018364,
+      "threshold": 4
+    },
+    "panCache": {
+      "rebuilds": "1->1",
+      "blits": "16->18"
+    },
+    "resizeDirty": {
+      "rebuilds": "1->2"
+    },
+    "legend": {
+      "before": 1,
+      "after": 2
+    }
+  },
+  "fatal": null,
+  "pageErrorCount": 0,
+  "finishedAt": "2026-09-19T08:22:45.175Z"
+}

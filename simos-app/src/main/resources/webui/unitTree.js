@@ -257,7 +257,7 @@
     }
     var token = ++requestToken;
     api
-      .units(app.target())
+      .cachedUnits(app.target())
       .then(function (body) {
         if (token !== requestToken) {
           return;
