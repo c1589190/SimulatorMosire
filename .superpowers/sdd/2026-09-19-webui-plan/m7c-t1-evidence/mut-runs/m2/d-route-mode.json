@@ -1,0 +1,14 @@
+{
+  "routePath": [
+    {
+      "q": 1,
+      "r": 2
+    }
+  ],
+  "selection": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "nonGetBeforeD": 0,
+  "nonGetAfterD": 0
+}

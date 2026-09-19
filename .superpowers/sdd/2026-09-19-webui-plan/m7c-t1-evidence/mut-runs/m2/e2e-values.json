@@ -1,0 +1,56 @@
+{
+  "a": {
+    "position": {
+      "q": 1,
+      "r": 1
+    },
+    "revStart": 1,
+    "headA": 1,
+    "nodesBefore": 1
+  },
+  "b": {
+    "nonGetBeforeB": 0,
+    "nonGetAfterB": 0,
+    "position": {
+      "q": 1,
+      "r": 1
+    },
+    "revB": 1,
+    "headB": 1,
+    "nodesB": 1,
+    "selection": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    }
+  },
+  "c": {
+    "path": [],
+    "routePath": [],
+    "route": null,
+    "revC0": 1,
+    "revC": null,
+    "nodes": {
+      "before": 1,
+      "after": null
+    }
+  },
+  "d": {
+    "routePath": [
+      {
+        "q": 1,
+        "r": 2
+      }
+    ],
+    "selection": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "nonGetBeforeD": 0,
+    "nonGetAfterD": 0
+  },
+  "e": {
+    "list": [],
+    "violations": []
+  }
+}
