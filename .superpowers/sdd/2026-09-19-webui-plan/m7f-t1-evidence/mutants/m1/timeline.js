@@ -92,7 +92,7 @@
     var groups = [];
     var index = {};
     (nodes || []).forEach(function (node) {
-      var key = String(node.tick);
+      var key = String(node.revision);
       var group = index[key];
       if (!group) {
         group = {

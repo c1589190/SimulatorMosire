@@ -1,0 +1,35 @@
+[
+  {
+    "value": "0",
+    "enabled": true,
+    "status": "推进步数必须是 ≥1 的整数（当前：0）",
+    "nonGetBefore": 3,
+    "nonGetAfter": 3,
+    "nodesBefore": 4,
+    "nodesAfter": 4,
+    "headBefore": 4,
+    "headAfter": 4
+  },
+  {
+    "value": "-5",
+    "enabled": true,
+    "status": "推进步数必须是 ≥1 的整数（当前：-5）",
+    "nonGetBefore": 3,
+    "nonGetAfter": 3,
+    "nodesBefore": 4,
+    "nodesAfter": 4,
+    "headBefore": 4,
+    "headAfter": 4
+  },
+  {
+    "value": "abc",
+    "enabled": true,
+    "status": "推进步数必须是 ≥1 的整数（当前：空）",
+    "nonGetBefore": 3,
+    "nonGetAfter": 3,
+    "nodesBefore": 4,
+    "nodesAfter": 4,
+    "headBefore": 4,
+    "headAfter": 4
+  }
+]

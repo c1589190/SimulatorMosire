@@ -1,0 +1,43 @@
+{
+  "beforeA": [
+    {
+      "tick": 5,
+      "revision": 1,
+      "firstRevision": 1,
+      "count": 1,
+      "commands": "core.Bootstrap",
+      "styleLeft": "72px",
+      "centerX": 103,
+      "text": "tick 5· Bootstrap"
+    }
+  ],
+  "afterA": [
+    {
+      "tick": 5,
+      "revision": 2,
+      "firstRevision": 1,
+      "count": 2,
+      "commands": "core.Bootstrap,unit.PlanRoute",
+      "styleLeft": "72px",
+      "centerX": 103,
+      "text": "tick 5· 2 条命令"
+    }
+  ],
+  "headBeforeA": 1,
+  "headAfterA": 2,
+  "apiBeforeA": {
+    "ticks": [
+      5
+    ],
+    "lastTick": 5,
+    "nodeCount": 1
+  },
+  "apiAfterA": {
+    "ticks": [
+      5
+    ],
+    "lastTick": 5,
+    "nodeCount": 2
+  },
+  "domText": "tick 5· 2 条命令"
+}

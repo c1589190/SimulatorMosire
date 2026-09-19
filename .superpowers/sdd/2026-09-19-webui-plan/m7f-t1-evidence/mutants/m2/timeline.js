@@ -650,7 +650,7 @@
     }
     setBusy(true);
     try {
-      await window.SimosApi.advance(state.branch, head, tick, tick + steps);
+      await window.SimosApi.advance(state.branch, head, tick, tick + 1);
       showStatus("已推进 " + steps + " tick（" + tick + " → " + (tick + steps) + "）", "ok");
       await refresh();
       var newHead = model.heads[app.getState().branch];

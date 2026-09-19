@@ -1,0 +1,13 @@
+{
+  "atMiddleF": "main",
+  "midRevF": 1,
+  "tick5LastRevision": 1,
+  "disabledMiddleCreate": true,
+  "disabledMiddleFork": true,
+  "revAfterDrag": 4,
+  "mainHeadF": 4,
+  "nonGetBeforeDrag": 4,
+  "nonGetAfterDrag": 4,
+  "disabledTipCreate": false,
+  "disabledTipFork": false
+}
