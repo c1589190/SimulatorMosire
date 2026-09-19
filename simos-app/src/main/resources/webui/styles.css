@@ -394,8 +394,10 @@ textarea {
   background: var(--panel);
 }
 
-/* 时间轴（M7 T3）：每分支一条线，线上每节点一个点；游标 = .tl-node.active。 */
+/* 时间轴（M7 T3；M7b T1 列坐标 + 可见 knob + 分岔连线）：
+   节点 x = 左边距(label 区) + (列 − 1) × 列宽；游标 = .tl-node.active + 吸附其上的 .tl-knob。 */
 .timeline-track {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 28px;
@@ -407,15 +409,13 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .timeline-line {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 34px;
-  padding: 3px 0;
+  height: 34px;
+  flex: 0 0 auto;
 }
 
 .timeline-line::before {
@@ -429,9 +429,11 @@ textarea {
 }
 
 .tl-branch-label {
-  position: relative;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 1;
-  flex: 0 0 auto;
   padding: 1px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -441,9 +443,10 @@ textarea {
 }
 
 .tl-node {
-  position: relative;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 1;
-  flex: 0 0 auto;
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -463,6 +466,39 @@ textarea {
   background: var(--accent);
   border-color: var(--accent);
   font-weight: 600;
+}
+
+/* 分岔连线：从 parent 节点垂直指向分支 rev1（同列 ⇒ 竖线）。★ 类名独立，绝不混入 .timeline-line。 */
+.tl-fork-link {
+  position: absolute;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--accent);
+  opacity: 0.7;
+  z-index: 0;
+}
+
+/* 游标手柄：可见、可抓、吸附到当前节点中心。 */
+.tl-knob {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #06121f;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 0 0 3px rgba(78, 161, 255, 0.25);
+}
+
+.tl-knob:active {
+  cursor: grabbing;
+}
+
+.tl-knob[hidden] {
+  display: none;
 }
 
 .timeline-actions {

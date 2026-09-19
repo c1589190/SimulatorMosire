@@ -1,0 +1,14 @@
+# M7b T1 变异清单（md5）
+# 生成时间: 2026-09-19T10:59:26+08:00
+# 源: simos-app/src/main/resources/webui/timeline.js
+
+## 原件（每轮开跑前先恢复成它：干净世界）
+e24956bf3eb0fe92d61337a496923baf  mutants/orig/timeline.src.js
+
+## 变异体（白名单：按目标类名推成 timeline.js）
+8586dde87a97f3118202f478d080ffd5  mutants/m1.timeline.js
+5b5996b3a831e4e5e80c6a20a41acf38  mutants/m2.timeline.js
+
+## 轮日志
+2bb7462d9eeb1a7d33d3fb0278214ea5  mutants/round1-m1/round.log
+add4b5124ea865e9352356fc72e7fc03  mutants/round2-m2/round.log

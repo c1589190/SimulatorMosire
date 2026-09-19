@@ -1,0 +1,14 @@
+=== M7b T1 变异轮 m2 @ .superpowers/sdd/2026-09-19-webui-plan/t1b-evidence/mutants/round2-m2 2026-09-19T10:59:13+08:00 ===
+orig_src_md5=e24956bf3eb0fe92d61337a496923baf
+orig_tgt_md5=e24956bf3eb0fe92d61337a496923baf
+mutant_md5=5b5996b3a831e4e5e80c6a20a41acf38
+pushed_src_md5=5b5996b3a831e4e5e80c6a20a41acf38
+pushed_tgt_md5=5b5996b3a831e4e5e80c6a20a41acf38
+clean_world_check=src==tgt==orig_before_push
+e2e_rc=1
+restored_src_md5=e24956bf3eb0fe92d61337a496923baf
+restored_tgt_md5=e24956bf3eb0fe92d61337a496923baf
+restore_ok=yes
+--- e2e FAIL/STEP lines ---
+STEP d-fork-aligned: FAIL child.x=103 parent.x=323 dx=220
+E2E RESULT: FAIL d-fork-aligned
