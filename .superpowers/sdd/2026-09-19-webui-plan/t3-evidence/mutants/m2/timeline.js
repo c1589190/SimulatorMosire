@@ -167,10 +167,10 @@
     var create = app.byId("timeline-create");
     var fork = app.byId("timeline-fork");
     if (create) {
-      create.disabled = !atTip || model.busy;
+      create.disabled = model.busy;
     }
     if (fork) {
-      fork.disabled = !atTip || model.busy;
+      fork.disabled = model.busy;
     }
     var meta = app.byId("timeline-meta");
     if (meta) {

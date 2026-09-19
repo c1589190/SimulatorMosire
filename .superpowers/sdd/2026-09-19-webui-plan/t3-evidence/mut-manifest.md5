@@ -1,0 +1,11 @@
+# M7 T3 mut-manifest.md5（生成于 2026-09-19 09:20:16）
+5d406de8fe068880c43e2aebe11b5456  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/mutants/orig/timeline.js
+7cdf9e38453f1afb070e6697e2d91adc  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/mutants/m1/timeline.js
+536e1a5d48ddcdafcec953e891e6c268  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/mutants/m2/timeline.js
+a216f4e22a5674902fedb3a53418cfde  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/e2e/e2e.cjs
+aedb6bae40ad2d83001e6ee37092c5bd  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/e2e/run-e2e.sh
+f66c08128cce8e8b783130c187c72626  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/mutants/mut-round-e2e.sh
+fe5fe4db56061f7ad797962ea0608812  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/logs/m1.log
+51930fd84f16ac55e612da685910c365  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/logs/m2.log
+b883feece9c99432fcae20c8f175d8de  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/logs/full-verify.log
+78470af1bb62da28a7c35f6541906811  .superpowers/sdd/2026-09-19-webui-plan/t3-evidence/e2e/e2e-clean.log

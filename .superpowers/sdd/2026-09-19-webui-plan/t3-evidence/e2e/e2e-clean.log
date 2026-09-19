@@ -1,0 +1,16 @@
+server_ready_tries=3 code=200 pid=209750
+STEP b-seed: PASS head=3 rows=3
+STEP c-timeline: PASS head=3 nodes=3
+STEP d-nodes: PASS nodes=3 head=3
+STEP d-labels: PASS ["rev 1 · Bootstrap","rev 2 · RenameUnit","rev 3 · RenameUnit"]
+STEP d-isAtTip: PASS {"mid":false,"tip":true,"missing":false,"empty":false}
+STEP e-mid-rev: PASS {"create":true,"fork":true,"rev":2,"branch":"main","meta":"分支 main · rev 2 · head 3 · tick 5"}
+STEP e-mid-disabled: PASS create_disabled=true fork_disabled=true
+STEP e-readonly: PASS head 3->3 rows 3->3
+STEP f-tip-enabled: PASS {"create":false,"fork":false}
+STEP e2-drag-preview: PASS {"rev":1,"create":true,"fork":true} head=3 rows=3
+STEP g-fork: PASS branches=["b2","main"] lines=2
+STEP g-postfork-tip: PASS {"create":false,"fork":false,"meta":"分支 b2 · rev 1 · head 1 · tick 5","active":"rev 1 · ForkBranch"}
+STEP h-conflict: PASS status="末端已移动，已自动重取最新状态" create_disabled=true meta="分支 main · rev 3 · head 4 · tick 6"
+E2E RESULT: PASS
+e2e_rc=0

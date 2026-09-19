@@ -1,0 +1,8 @@
+──── m1 ────
+orig_md5=5d406de8fe068880c43e2aebe11b5456  mutant_md5=7cdf9e38453f1afb070e6697e2d91adc  classes_md5=7cdf9e38453f1afb070e6697e2d91adc
+rc=1  round_start=1789780796  server_log_mtime=1789780807
+--- 变红的步骤 ---
+STEP e-readonly: FAIL head 3->4 rows 3->4
+STEP e2-drag-preview: FAIL {"rev":1,"create":true,"fork":true} head=4 rows=4
+E2E RESULT: FAIL exception page.waitForFunction: Timeout 8000ms exceeded.
+⇒ 杀死（红点 STEP e-readonly），源与 classpath 均逐字节还原

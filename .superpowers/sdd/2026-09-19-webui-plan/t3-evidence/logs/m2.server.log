@@ -1,0 +1,12 @@
+09:20:08.303 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+09:20:08.387 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5826/（静态 /webui，同源，无 CORS 头）
+09:20:08.388 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m7t3-e2e-store-m2 checkpointInterval=100 codec=3 handler=8 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=46385 guiPort=5826 approvalPort=46357
+09:20:08.450 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+09:20:08.450 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m7t3-e2e-store-m2 checkpointInterval=100 模块数=3 guiPort=5826 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+09:20:08.450 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5826/
+09:20:09.080 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.RenameUnit commandId=8a0830e3-f629-4f2e-9cca-3490ee429677 correlationId=8a0830e3-f629-4f2e-9cca-3490ee429677 新坐标=main@2
+09:20:09.096 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.RenameUnit commandId=23f6c6ba-d4ab-4a60-aa71-5f3070401c00 correlationId=23f6c6ba-d4ab-4a60-aa71-5f3070401c00 新坐标=main@3
+09:20:11.036 WARN  io.mosire.simos.core.store.CheckpointStore - checkpoint 缺失（C18：回退到更早的 checkpoint，最坏从创世重放，不失败）: /tmp/m7t3-e2e-store-m2/checkpoints/main/3.json
+09:20:11.282 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=33e4d96b-fb16-4876-956c-a9a711468085 correlationId=33e4d96b-fb16-4876-956c-a9a711468085 新坐标=main@4
+09:20:11.318 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=cb78ca0c-8382-4f11-8b85-d3b9b4a0e326 correlationId=cb78ca0c-8382-4f11-8b85-d3b9b4a0e326 真实head=main@4
+09:20:11.546 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

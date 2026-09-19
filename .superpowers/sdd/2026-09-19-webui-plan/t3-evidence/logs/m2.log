@@ -1,0 +1,28 @@
+server_ready_tries=3 code=200 pid=210217
+STEP b-seed: PASS head=3 rows=3
+STEP c-timeline: PASS head=3 nodes=3
+STEP d-nodes: PASS nodes=3 head=3
+STEP d-labels: PASS ["rev 1 · Bootstrap","rev 2 · RenameUnit","rev 3 · RenameUnit"]
+STEP d-isAtTip: PASS {"mid":false,"tip":true,"missing":false,"empty":false}
+STEP e-mid-rev: PASS {"create":false,"fork":false,"rev":2,"branch":"main","meta":"分支 main · rev 2 · head 3 · tick 5"}
+STEP e-mid-disabled: FAIL create_disabled=false fork_disabled=false
+STEP e-readonly: PASS head 3->3 rows 3->3
+STEP f-tip-enabled: PASS {"create":false,"fork":false}
+STEP e2-drag-preview: FAIL {"rev":1,"create":false,"fork":false} head=3 rows=3
+STEP g-fork: PASS branches=["b2","main"] lines=2
+STEP g-postfork-tip: PASS {"create":false,"fork":false,"meta":"分支 b2 · rev 1 · head 1 · tick 5","active":"rev 1 · ForkBranch"}
+STEP h-conflict: PASS status="末端已移动，已自动重取最新状态" create_disabled=false meta="分支 main · rev 3 · head 4 · tick 6"
+E2E RESULT: FAIL e-mid-disabled,e2-drag-preview
+e2e_rc=1
+
+===== 装置补记（m2）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/timeline.js
+orig_md5=5d406de8fe068880c43e2aebe11b5456
+mutant_md5=536e1a5d48ddcdafcec953e891e6c268
+pushed_classes_md5=536e1a5d48ddcdafcec953e891e6c268
+restored_src=5d406de8fe068880c43e2aebe11b5456
+restored_classes=5d406de8fe068880c43e2aebe11b5456
+round_start=1789780807
+server_log_mtime=1789780811
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7t3/.superpowers/sdd/2026-09-19-webui-plan/t3-evidence/logs/m2.server.log

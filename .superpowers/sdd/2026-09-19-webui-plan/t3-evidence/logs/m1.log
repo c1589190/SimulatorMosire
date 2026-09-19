@@ -1,0 +1,26 @@
+server_ready_tries=3 code=200 pid=209988
+STEP b-seed: PASS head=3 rows=3
+STEP c-timeline: PASS head=3 nodes=3
+STEP d-nodes: PASS nodes=3 head=3
+STEP d-labels: PASS ["rev 1 · Bootstrap","rev 2 · RenameUnit","rev 3 · RenameUnit"]
+STEP d-isAtTip: PASS {"mid":false,"tip":true,"missing":false,"empty":false}
+STEP e-mid-rev: PASS {"create":true,"fork":true,"rev":2,"branch":"main","meta":"分支 main · rev 2 · head 3 · tick 5"}
+STEP e-mid-disabled: PASS create_disabled=true fork_disabled=true
+STEP e-readonly: FAIL head 3->4 rows 3->4
+STEP f-tip-enabled: PASS {"create":false,"fork":false}
+STEP e2-drag-preview: FAIL {"rev":1,"create":true,"fork":true} head=4 rows=4
+E2E RESULT: FAIL exception page.waitForFunction: Timeout 8000ms exceeded.
+    at /home/cna/SimulatorMosire/.claude/worktrees/m7t3/.superpowers/sdd/2026-09-19-webui-plan/t3-evidence/e2e/e2e.cjs:216:14
+e2e_rc=1
+
+===== 装置补记（m1）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/timeline.js
+orig_md5=5d406de8fe068880c43e2aebe11b5456
+mutant_md5=7cdf9e38453f1afb070e6697e2d91adc
+pushed_classes_md5=7cdf9e38453f1afb070e6697e2d91adc
+restored_src=5d406de8fe068880c43e2aebe11b5456
+restored_classes=5d406de8fe068880c43e2aebe11b5456
+round_start=1789780796
+server_log_mtime=1789780807
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7t3/.superpowers/sdd/2026-09-19-webui-plan/t3-evidence/logs/m1.server.log

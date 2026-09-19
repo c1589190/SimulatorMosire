@@ -388,14 +388,107 @@ textarea {
   background: var(--panel);
 }
 
+/* 时间轴（M7 T3）：每分支一条线，线上每节点一个点；游标 = .tl-node.active。 */
 .timeline-track {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 28px;
   display: flex;
-  align-items: center;
-  padding: 0 10px;
-  border: 1px dashed var(--line);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.timeline-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 3px 0;
+}
+
+.timeline-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--line);
+}
+
+.tl-branch-label {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tl-node {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tl-node:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.tl-node.active {
+  color: #06121f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.timeline-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.timeline-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.tl-status {
+  flex: 1 1 160px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.tl-status.ok {
+  color: var(--ok);
+}
+
+.tl-status.warn {
+  color: var(--warn);
+}
+
+.tl-status.err {
+  color: var(--err);
 }
 
 @media (max-width: 1100px) {
