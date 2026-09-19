@@ -45,7 +45,7 @@
 | # | 任务 | 状态 |
 |---|---|---|
 | T1 | Core 只读扩展 + 只读 API（S2/S6/S7） | ✅ `m7/t1` `33fed9b` → 合并 `5b8fb5a`（2 变异轮 0 存活；830） |
-| T2 | 单页骨架 + 模式栏 + 静态资源改造 | ⏸ |
+| T2 | 单页骨架 + 模式栏 + 资源重构（含 `terrainTypes` 形状切换） | ✅ `m7/t2` `6ef622e` → 合并 `676d527`（2 变异轮 0 存活；833；截图 2 张） |
 | T3 | 时间轴组件（节点/拖动预览/末端写与分岔，U1） | ⏸ |
 | T4 | 地图 Canvas 升级（缩放平移/区域填充/点选联动） | ⏸ |
 | T5 | 左栏详情 + 单位倒树 | ⏸ |
@@ -68,3 +68,18 @@
 **纯增量核对**：`terrainTypes` 仍为 `[key…]` 并由断言钉住（形状切换归 T2 与前端同批）；hex 只**增**两字段；region 项只**增** `meta`；前端 `webui/**` **零改动**（`git status` 实证）。**主树合并门禁 830** = 170/255/45/131/**154**/**75**、`BugInstance` 0 ×6、`[ERROR]` 0。
 
 ★ 如实记（T1 报告 §五）：`region` hex 排序只在 2 格夹具上测过；`terrainType` 的两条来源路径（`map.terrainTypes().get` vs `TerrainCatalog.of`）**测试无法区分**（夹具同源）；`/api/timeline` 的**多分支**形状未在 HTTP 层测（库侧由 `TimelineTest` 直证）；R1 扫描的边界已核：新增的 `import …core.timeline.RevisionRow` 里的**小写 `timeline` 包名不触发**扫描（禁的是大写 `Timeline`）。
+
+### T2（单页骨架 + 模式栏 + 资源拆分 + `terrainTypes` 形状切换）已关账（2026-09-19，子代理 + 控制器核验）
+
+**T2**（`m7/t2` `6ef622e` → 合并 `676d527`）：`index.html` 变**工作台骨架**（顶栏五模式 + 三栏 + 底栏）；`app.js` 变**状态机**（`{mode,branch,revision,selection}` + `applyMode`，保留既有 `boot/mountNav/mountApprovals/pollState` 原行为）；新增 `panels.js`/`unitTree.js`/`timeline.js` 骨架（占位注明归 T5/T6/T3）；`styles.css` 追加布局（**全复用既有 `--*` 变量**）；**`terrainTypes` 形状原子切换**（`ApiViews.mapOverview` + `map.js` 图例 + T1 的那条断言**三处同批**）；`WebuiAssetsTest` +3（工作台骨架 / 两编辑模式 disabled+`data-milestone="M8"` / 按钮扫描器自证）。**2 变异轮 0 存活**（m1 R6 塞 `https://cdn…` ⇒ 判定器红；m2 去掉 `disabled` ⇒ 资产断言红）。
+
+**裁定 68 —— T2 的两处口径（接受并回填 spec）**：
+1. ★ **`terrainTypes` 是"状态里的词表（子集）"，不是无条件全 7 项**：`TerrainCatalog.KEYS` **只用于定序**，词表外 key 排末尾（字典序）以保证字节可复现。理由：词表只有一个来源（T1 口径）；改成全量输出＝制造第二份真相（且真实导入档的 `terrainTypes` 本就是子集）。**spec §3.2 已回填**。
+2. **`/api/state` 轮询与 approvals 计数保留在 `app.js`**（未迁 `panels.js`）：旧三页也经 `app.boot({approvals:…})` 使用它 ⇒ 迁走会动三页的回归面。行为未丢（实测顶栏与「待批: 0」在场）。
+
+**端到端实测（真 `ShellMain --demo` + 真 `StaticHandler`）**：`GET /` 200 / 2545B / `id="mode-bar"`×1 / `data-milestone="M8"`×2；`/map` `/unit` `/social` 全 200（旧三页仍可访问）；`/api/map/overview` 的 `terrainTypes` 已是对象数组、十字段全在场。**控制器另核**：截图 2 张（`常规查看`/`区域查看`）与设计图**逐项对上**，CJK 正常、三栏无错位。
+**主树合并门禁 833** = 170/255/45/131/154/**78**、`BugInstance` 0 ×6、`[ERROR]` 0。
+
+★ 如实记（T2 报告 §五）：**`terrainTypes` 的多词表排序未实测**（夹具与 `--demo` 世界都只有 `desert` 一项 ⇒ "按 KEYS 升序"缺 >1 项的证据）；disabled 按钮的"点击无响应"只证到视觉置灰（无 JS 单测装置）；旧三页的 JS 未被本任务测试覆盖（`/map` 200 已证，图例文本未断言）。
+
+**下一批**：**T3（时间轴组件，U1）**——依赖 T1/T2 已满足。

@@ -91,6 +91,7 @@ public List<RevisionRow> revisions(BranchId branch)        // 纯委托，只读
   - `region`: `RegionId` 字符串或 `null`（用 **`MapResolver.regionOfHex`**——已存在、O(1)、当前 app 零调用点 ⇒ 接线即可）；
   - `terrainType`: `TerrainType` **完整定义** `{key,name,color,minHeight,maxHeight,food,gold,stone,moveCost,description}`。
 - `/api/map/overview` 的 `terrainTypes` 从 `[key…]` 改为 `[{完整定义}…]`（按 `TerrainCatalog.KEYS` 的高度升序）。
+  ★ **T2 执行期澄清（裁定 68）**：**数据源是状态里的 `map.terrainTypes()`（子集），不是无条件输出全 7 项**——词表只有一个来源（T1 口径），`TerrainCatalog.KEYS` **只用来定序**；词表外的 key 排末尾并按字典序（保证响应字节可复现）。若改成无条件全 7 项，就制造了"第二份真相"。
 - **前端因此不再硬编码色表**（删掉 `map.js` 里那 15 项 `TERRAIN_COLORS`，改由后端权威给出）。
 
 ### 3.3 S7 区域读面
