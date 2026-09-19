@@ -1,0 +1,240 @@
+{
+  "preflight": {
+    "hexCount": 19441,
+    "regions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "blockCount": 44
+  },
+  "m9Baseline": {
+    "blockCount": 44,
+    "unmergedCount": 0
+  },
+  "lasso": {
+    "center": {
+      "q": -16,
+      "r": 0
+    },
+    "expectedCount": 19,
+    "posts": 1,
+    "payloadCount": 19,
+    "matchesIndependentFlood": true
+  },
+  "c14_test_nation": {
+    "hexCount": 701,
+    "ringCount": 1,
+    "renderVertices": 246,
+    "jsReplicatedVertices": 246,
+    "javaVertices": 246,
+    "renderEqualsJs": true,
+    "renderEqualsJava": true,
+    "maxLatticeResidual": 0.000056802526701815736,
+    "minVertexToHexCenterDist": 0.9999573984074729,
+    "sampleRenderLabels": [
+      "-37:-1",
+      "-37:1",
+      "-36:2",
+      "-36:4",
+      "-35:5",
+      "-34:4"
+    ],
+    "sampleJavaLabels": [
+      "-37:-1",
+      "-37:1",
+      "-36:2",
+      "-36:4",
+      "-35:5",
+      "-34:4"
+    ]
+  },
+  "c14_m8s_lasso": {
+    "hexCount": 19,
+    "ringCount": 1,
+    "renderVertices": 30,
+    "jsReplicatedVertices": 30,
+    "javaVertices": 30,
+    "renderEqualsJs": true,
+    "renderEqualsJava": true,
+    "maxLatticeResidual": 0.000046118767478731115,
+    "minVertexToHexCenterDist": 0.9999654111238018,
+    "sampleRenderLabels": [
+      "-39:5",
+      "-39:7",
+      "-38:8",
+      "-38:10",
+      "-37:11",
+      "-37:13"
+    ],
+    "sampleJavaLabels": [
+      "-39:5",
+      "-39:7",
+      "-38:8",
+      "-38:10",
+      "-37:11",
+      "-37:13"
+    ]
+  },
+  "dupPromptI": {
+    "prompt": {
+      "debug": {
+        "id": "m8s_dup_new",
+        "name": "test_nation",
+        "existingId": "test_nation",
+        "hexCount": 3
+      },
+      "visible": true,
+      "msg": "名称「test_nation」已存在（regionId=test_nation）——请选择：",
+      "head": 2
+    },
+    "writesAtPrompt": 0
+  },
+  "dupNew": {
+    "posts": 1,
+    "type": "map.CreateRegion",
+    "payload": {
+      "regionId": "m8s_dup_new",
+      "name": "test_nation",
+      "hexes": [
+        {
+          "q": -19,
+          "r": 1
+        },
+        {
+          "q": -19,
+          "r": 0
+        },
+        {
+          "q": -18,
+          "r": -1
+        }
+      ]
+    },
+    "apiName": "test_nation",
+    "apiHexCount": 3
+  },
+  "dupPromptII": {
+    "prompt": {
+      "debug": {
+        "id": "m8s_dup_merge",
+        "name": "test_annex_target",
+        "existingId": "test_annex_target",
+        "hexCount": 3
+      },
+      "visible": true,
+      "head": 3
+    },
+    "writesAtPrompt": 0
+  },
+  "dupMerge": {
+    "posts": 1,
+    "type": "map.UpdateRegion",
+    "regionId": "test_annex_target",
+    "beforeCount": 201,
+    "newCount": 3,
+    "payloadCount": 3,
+    "unionCount": 204,
+    "payloadEqualsUnion": false,
+    "allOriginalHexesRetained": false,
+    "headBefore": 3,
+    "headAfter": 4
+  },
+  "dots": {
+    "focused": 12,
+    "unfocused": 0
+  },
+  "mergeR": {
+    "posts": 1,
+    "payloadCount": 22,
+    "unionCount": 22,
+    "matchesUnion": true
+  },
+  "excludeR": {
+    "posts": 1,
+    "payloadCount": 19,
+    "diffCount": 19,
+    "matchesDifference": true
+  },
+  "pick": {
+    "p": {
+      "x": 640,
+      "y": 400
+    },
+    "hit": {
+      "kind": "hex",
+      "q": -16,
+      "r": 0,
+      "inMap": true,
+      "terrain": "plains"
+    }
+  },
+  "leftPan": {
+    "viewBefore": {
+      "scale": 1,
+      "tx": 1582.2356393174691,
+      "ty": 400
+    },
+    "viewAfter": {
+      "scale": 1,
+      "tx": 1702.2356393174691,
+      "ty": 480
+    },
+    "writes": 0
+  },
+  "m9After": {
+    "blockCount": 44,
+    "unmergedCount": 0
+  },
+  "nonGetGrouped": [
+    {
+      "phase": "A-lasso-create",
+      "types": [
+        "map.CreateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "B-dup-prompt-i",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "B-dup-new",
+      "types": [
+        "map.CreateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dup-merge",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "R-merge",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "R-exclude",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    }
+  ]
+}

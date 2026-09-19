@@ -1,0 +1,1152 @@
+/* styles.css —— 三页共享的单套样式（M5 T9）。无 CDN、无字体外链、无绝对 URL（spec §8.1）。 */
+
+:root {
+  --bg: #12151a;
+  --panel: #1b2027;
+  --panel-2: #232a33;
+  --line: #333d49;
+  --text: #e6ebf2;
+  --muted: #8a97a8;
+  --accent: #4ea1ff;
+  --ok: #4ec9a0;
+  --warn: #e0b34c;
+  --err: #e5675f;
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans CJK SC", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+header {
+  padding: 14px 20px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+}
+
+nav a:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+nav a.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.shell-state {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+main {
+  padding: 20px;
+  display: grid;
+  gap: 18px;
+}
+
+/* /map 与 /social 用两栏布局；窄屏退化单栏。 */
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.panel h3 {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+canvas {
+  width: 100%;
+  max-width: 100%;
+  background: #0d1015;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: crosshair;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+tbody tr:hover {
+  background: var(--panel-2);
+  cursor: pointer;
+}
+
+tbody tr.selected {
+  background: var(--panel-2);
+  outline: 1px solid var(--accent);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+  font-weight: 600;
+}
+
+button.danger:hover {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+label {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+label input,
+label select,
+label textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+}
+
+textarea {
+  min-height: 90px;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.row > label {
+  margin-top: 0;
+  flex: 1 1 120px;
+}
+
+.row > button {
+  flex: 0 0 auto;
+}
+
+.status {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.status.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.status.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.status.err {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.status.muted,
+.muted {
+  color: var(--muted);
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--muted);
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.badge.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── 单页工作台布局（M7 T2，spec §四）：模式栏 + 三栏 + 底栏 ─────────────
+   沿用上面的深色主题变量，不另起配色。 */
+
+[hidden] {
+  display: none !important;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.mode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.mode-bar .mode {
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.mode-bar .mode:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.mode-bar .mode.active {
+  color: #06121f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.mode-bar .mode:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-badge {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.mode-bar .mode.active .mode-badge {
+  color: #06121f;
+}
+
+.workbench {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 320px);
+  gap: 14px;
+  padding: 14px 20px;
+  align-items: start;
+}
+
+/* ── 工作台视口高度布局（M7d T1；用户实测 A：左栏太长把底栏时间轴挤出视口）──────────
+   仅工作台页（body.workbench-page）：body 一列 flex 占满视口，主区吃掉剩余高度并
+   把溢出留给**各栏自己**滚动，底栏 flex:0 0 auto ⇒ 时间轴**始终钉在视口底部**。 */
+body.workbench-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body.workbench-page .topbar,
+body.workbench-page .mode-bar,
+body.workbench-page .timeline-bar {
+  flex: 0 0 auto;
+}
+
+body.workbench-page .workbench {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+}
+
+body.workbench-page .col-left,
+body.workbench-page .col-center,
+body.workbench-page .col-right {
+  min-height: 0;
+  overflow: auto;
+}
+
+.col-left,
+.col-center,
+.col-right {
+  min-width: 0;
+}
+
+.canvas-mount {
+  min-height: 440px;
+  display: block;
+  padding: 0;
+  color: var(--muted);
+  background: #0d1015;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.canvas-mount canvas {
+  display: block;
+  border: 0;
+  border-radius: var(--radius);
+  touch-action: none;
+}
+
+.unit-tree {
+  margin-top: 6px;
+}
+
+.timeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+/* 时间轴（M7 T3；M7b T1 列坐标 + 可见 knob + 分岔连线）：
+   节点 x = 左边距(label 区) + (列 − 1) × 列宽；游标 = .tl-node.active + 吸附其上的 .tl-knob。 */
+.timeline-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-line {
+  position: relative;
+  height: 34px;
+  flex: 0 0 auto;
+}
+
+.timeline-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--line);
+}
+
+.tl-branch-label {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tl-node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tl-node:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.tl-node.active {
+  color: #06121f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* 分岔连线：从 parent 节点垂直指向分支 rev1（同列 ⇒ 竖线）。★ 类名独立，绝不混入 .timeline-line。 */
+.tl-fork-link {
+  position: absolute;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--accent);
+  opacity: 0.7;
+  z-index: 0;
+}
+
+/* 游标手柄：可见、可抓、吸附到当前节点中心。 */
+.tl-knob {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #06121f;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 0 0 3px rgba(78, 161, 255, 0.25);
+}
+
+.tl-knob:active {
+  cursor: grabbing;
+}
+
+.tl-knob[hidden] {
+  display: none;
+}
+
+.timeline-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+/* "推进 N tick"数字输入（M7f T1）：就地给 AdvanceTime 的步长。 */
+.timeline-actions .tl-advance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.timeline-actions .tl-advance input {
+  width: 60px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* tick 节点的内联明细（"一个节点 = 一个 tick"）：命令名 / "N 条命令"。 */
+.tl-node .tl-detail {
+  margin-left: 6px;
+  opacity: 0.8;
+}
+
+.timeline-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.tl-status {
+  flex: 1 1 160px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.tl-status.ok {
+  color: var(--ok);
+}
+
+.tl-status.warn {
+  color: var(--warn);
+}
+
+.tl-status.err {
+  color: var(--err);
+}
+
+@media (max-width: 1100px) {
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── 单位编制倒树（M7 T5，spec §六）：根在下、下级向上生长；分岔点加粗放大 ────────
+   DOM 是自然的（子在前、节点在后），CSS 用 flex 竖排把子行摆在节点**上方** ⇒ 视觉倒置。 */
+
+.tree-forest {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 18px;
+  padding: 8px 4px 4px;
+  overflow-x: auto;
+}
+
+.tree-subtree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tree-children {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+/* 兄弟之间的横梁 + 每个子树向上的短竖线（倒树的连接线）。 */
+.tree-children::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: var(--line);
+}
+
+.tree-children > .tree-subtree {
+  position: relative;
+  padding-top: 8px;
+}
+
+.tree-children > .tree-subtree::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 1px;
+  height: 13px;
+  background: var(--line);
+}
+
+.tree-node {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.tree-node:hover {
+  border-color: var(--accent);
+}
+
+.tree-node .tree-node-name {
+  font-weight: 600;
+}
+
+.tree-node .tree-node-id {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* 分岔点（子数 ≥ 2）：加粗 + 放大 + 警示色描边（spec §六"标大！"）。 */
+.tree-node.branch {
+  padding: 6px 14px;
+  border: 2px solid var(--warn);
+  background: #2c2618;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(224, 179, 76, 0.18);
+}
+
+.tree-node.branch .tree-node-name {
+  font-weight: 700;
+}
+
+.tree-node.branch .tree-node-id {
+  font-size: 11px;
+  color: var(--warn);
+}
+
+.tree-node.selected {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px rgba(78, 201, 160, 0.35);
+}
+
+.tree-branch-detail {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 1px dashed var(--warn);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: 11px;
+}
+
+.tree-branch-detail .tree-branch-title {
+  margin: 0 0 3px;
+  color: var(--warn);
+}
+
+.tree-branch-detail .branch-row {
+  white-space: nowrap;
+}
+
+/* ── 右栏区域分组（M7 T6）────────────────────────────────────────── */
+
+.region-tag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
+
+.region-tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+}
+
+.region-tag .region-tag-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.region-tag.active .region-tag-count {
+  color: #06121f;
+}
+
+.region-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+}
+
+.region-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+}
+
+.region-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(78, 201, 160, 0.35);
+}
+
+.region-item .region-hexcount {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.region-detail {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+/* ── 单位移动与编辑（M7 T7）──────────────────────────────────────── */
+
+.unit-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.unit-editor h3 {
+  margin: 4px 0;
+}
+
+.unit-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.unit-edit-row button {
+  flex: 1 1 auto;
+}
+
+.unit-edit-group {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.unit-edit-group legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.unit-edit-group input {
+  width: 100%;
+  margin: 3px 0;
+}
+
+.unit-edit-group button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+#unit-route-preview {
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ══ 全屏底图 + 浮层控件（M7g T1；用户裁定：地图是底图，不被框在范围里）══════════════
+   仅工作台页（body.workbench-page）：canvas 铺满整个视口（无边框/圆角）；模式栏、时间轴、
+   左右栏都是浮在底图之上的半透明控件（backdrop-filter，退化纯半透明）。旧三页不受影响。
+   ★ 指针：.wb-overlay 与 .wb-body 默认 pointer-events:none（底图照常点选/右键/缩放平移），
+     只有具体控件重新打开 auto ⇒ 面板不穿透、面板之外照常。 */
+
+body.workbench-page {
+  height: 100vh;
+  width: 100vw;
+}
+
+body.workbench-page .canvas-mount {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #0d1015;
+  overflow: hidden;
+}
+
+body.workbench-page .canvas-mount canvas {
+  display: block;
+  border: 0;
+  border-radius: 0;
+}
+
+body.workbench-page .wb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+body.workbench-page .wb-overlay .topbar {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 12px;
+  background: rgba(18, 21, 26, 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+body.workbench-page .wb-overlay .mode-bar {
+  flex: 1 1 auto;
+  border-bottom: 0;
+  padding: 0;
+  background: transparent;
+}
+
+body.workbench-page .topbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+body.workbench-page .topbar-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+body.workbench-page .topbar-actions button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+body.workbench-page .wb-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+body.workbench-page .wb-body .panel {
+  pointer-events: auto;
+  max-height: 100%;
+  overflow: auto;
+  background: rgba(27, 32, 39, 0.78);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+}
+
+body.workbench-page .wb-body .col-left {
+  flex: 0 0 300px;
+  max-width: 320px;
+}
+
+body.workbench-page .wb-body .col-right {
+  flex: 0 0 300px;
+  max-width: 320px;
+}
+
+body.workbench-page .wb-gap {
+  flex: 1 1 auto;
+  pointer-events: none;
+}
+
+body.workbench-page .wb-body .panel[hidden] {
+  display: none !important;
+}
+
+body.workbench-page .map-hud {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 4px 12px;
+  background: rgba(18, 21, 26, 0.6);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+body.workbench-page .map-hud .status {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  white-space: normal;
+}
+
+body.workbench-page #legend {
+  max-width: 60vw;
+}
+
+body.workbench-page .wb-overlay .timeline-bar {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line);
+  background: rgba(27, 32, 39, 0.84);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.38);
+  pointer-events: auto;
+}
+
+/* ══ 五模式当前态 + 地图编辑面板（M8 T7/T8）══════════════════════════════
+   模式栏第五个元素 #mode-current 显示当前模式中文名（可断言）；.terrain-palette 是地形词表色板，
+   选中项 .active；.region-meta-editor 只在所选 hex 有区域时显示。 */
+
+.mode-current {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.map-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.map-editor h3 {
+  margin: 4px 0;
+}
+
+.terrain-palette {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.terrain-swatch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.terrain-swatch.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.terrain-swatch-dot {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+}
+
+.terrain-swatch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-edit-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.region-meta-editor {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.region-meta-editor legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.rm-field {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 3px 0;
+}
+
+.rm-field input,
+.rm-field select {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.region-meta-editor button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* ══ 区域编辑模式（M8 T10）════════════════════════════════════════════
+   新建/改 hex/删除三段式；删除必须二次确认（#region-delete-confirm 未确认时 hidden）。 */
+
+.region-editor,
+.region-info-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.region-editor h3,
+.region-info-editor h3 {
+  margin: 4px 0;
+}
+
+.region-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.region-edit-row button,
+.region-edit-row select {
+  flex: 1 1 auto;
+}
+
+.region-edit-group {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.region-edit-group legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.region-edit-group button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.region-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid #d9534f;
+  border-radius: var(--radius);
+  color: #ffb4b0;
+  font-size: 11px;
+}
+
+.region-delete-confirm button {
+  flex: 1 1 auto;
+  width: auto;
+}
+

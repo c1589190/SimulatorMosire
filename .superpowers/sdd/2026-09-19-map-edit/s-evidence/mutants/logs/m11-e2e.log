@@ -1,0 +1,32 @@
+webui_synced map.js_md5=ff469fc479b9aa02833ca86ee3d5260f
+probe_compiled=/home/cna/SimulatorMosire/.claude/worktrees/m8s/.superpowers/sdd/2026-09-19-map-edit/s-evidence/e2e/probe-classes
+store_src_md5_before=2348b9365e5b107945a305d06fad8fab
+server_ready_tries=3 code=200 pid=490293
+STEP pre-real-archive: PASS {"hexCount":19441,"regions":["test_annex_target","test_nation"],"blockCount":44}
+STEP pre-m9-blocks: PASS {"blockCount":44,"unmergedCount":0}
+STEP a0-lasso-center-found: PASS {"q":-16,"r":0}
+STEP a1-lasso-one-create: PASS {"center":{"q":-16,"r":0},"expectedCount":19,"posts":1,"payloadCount":19,"matchesIndependentFlood":true}
+STEP c14-test_nation-render-equals-js-authoritative: PASS {"hexCount":701,"ringCount":1,"renderVertices":246,"jsReplicatedVertices":246,"javaVertices":246,"renderEqualsJs":true,"renderEqualsJava":true,"maxLatticeResidual":0.000056802526701815736,"minVertexToHexCenterDist":0.9999573984074729,"sampleRenderLabels":["-37:-1","-37:1","-36:2","-36:4","-35:5","-34:4"],"sampleJavaLabels":["-37:-1","-37:1","-36:2","-36:4","-35:5","-34:4"]}
+STEP c14-test_nation-render-equals-java-authoritative: PASS {"hexCount":701,"ringCount":1,"renderVertices":246,"jsReplicatedVertices":246,"javaVertices":246,"renderEqualsJs":true,"renderEqualsJava":true,"maxLatticeResidual":0.000056802526701815736,"minVertexToHexCenterDist":0.9999573984074729,"sampleRenderLabels":["-37:-1","-37:1","-36:2","-36:4","-35:5","-34:4"],"sampleJavaLabels":["-37:-1","-37:1","-36:2","-36:4","-35:5","-34:4"]}
+STEP c14-test_nation-vertices-on-hex-corners-not-centers: PASS {"residual":0.000056802526701815736,"dist":0.9999573984074729}
+STEP c14-m8s_lasso-render-equals-js-authoritative: PASS {"hexCount":19,"ringCount":1,"renderVertices":30,"jsReplicatedVertices":30,"javaVertices":30,"renderEqualsJs":true,"renderEqualsJava":true,"maxLatticeResidual":0.000046118767478731115,"minVertexToHexCenterDist":0.9999654111238018,"sampleRenderLabels":["-39:5","-39:7","-38:8","-38:10","-37:11","-37:13"],"sampleJavaLabels":["-39:5","-39:7","-38:8","-38:10","-37:11","-37:13"]}
+STEP c14-m8s_lasso-render-equals-java-authoritative: PASS {"hexCount":19,"ringCount":1,"renderVertices":30,"jsReplicatedVertices":30,"javaVertices":30,"renderEqualsJs":true,"renderEqualsJava":true,"maxLatticeResidual":0.000046118767478731115,"minVertexToHexCenterDist":0.9999654111238018,"sampleRenderLabels":["-39:5","-39:7","-38:8","-38:10","-37:11","-37:13"],"sampleJavaLabels":["-39:5","-39:7","-38:8","-38:10","-37:11","-37:13"]}
+STEP c14-m8s_lasso-vertices-on-hex-corners-not-centers: PASS {"residual":0.000046118767478731115,"dist":0.9999654111238018}
+STEP c15i0-disjoint-hexes-found: PASS {"nationName":"test_nation","dupNewHexes":[{"q":-19,"r":1},{"q":-19,"r":0},{"q":-18,"r":-1}]}
+STEP c15i1-prompt-shown-no-write-yet: FAIL {"prompt":{"debug":null,"visible":false,"msg":"—","head":3},"writesAtPrompt":1}
+STEP c15i2-create-same-name-different-id: FAIL skipped: 未弹重名提示（直接提交）
+STEP c15ii0-disjoint-hexes-found: PASS {"annexName":"test_annex_target","beforeCount":201,"annexNewHexes":[{"q":-19,"r":1},{"q":-19,"r":0},{"q":-18,"r":-1}]}
+STEP c15ii1-prompt-shown-no-write-yet: FAIL {"prompt":{"debug":null,"visible":false,"head":4},"writesAtPrompt":1}
+STEP c15ii2-merge-update-union-value-exact: FAIL skipped: 未弹重名提示（直接提交）
+STEP r-dots-only-when-focused: PASS {"focused":12,"unfocused":0}
+STEP r-merge-equals-union: PASS {"posts":1,"payloadCount":22,"unionCount":22,"matchesUnion":true}
+STEP r-exclude-equals-difference: PASS {"posts":1,"payloadCount":19,"diffCount":19,"matchesDifference":true}
+STEP r-m9-pick-accurate: PASS {"p":{"x":640,"y":400},"hit":{"kind":"hex","q":-16,"r":0,"inMap":true,"terrain":"plains"}}
+STEP r-left-drag-pans-zero-write: PASS {"viewBefore":{"scale":1,"tx":1582.2356393174691,"ty":400},"viewAfter":{"scale":1,"tx":1702.2356393174691,"ty":480},"writes":0}
+STEP r-m9-blocks-still-44: PASS {"blockCount":44,"unmergedCount":0}
+STEP r-no-pageerror: PASS []
+NONGET_GROUPED [{"phase":"A-lasso-create","types":["map.CreateRegion"],"paths":["/api/command"]},{"phase":"B-dup-prompt-i","types":["map.CreateRegion","map.CreateRegion"],"paths":["/api/command","/api/command"]},{"phase":"R-merge","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"R-exclude","types":["map.UpdateRegion"],"paths":["/api/command"]}]
+PAGEERRORS []
+E2E RESULT: 4 FAIL c15i1-prompt-shown-no-write-yet,c15i2-create-same-name-different-id,c15ii1-prompt-shown-no-write-yet,c15ii2-merge-update-union-value-exact
+e2e_rc=1
+store_src_md5_after=2348b9365e5b107945a305d06fad8fab

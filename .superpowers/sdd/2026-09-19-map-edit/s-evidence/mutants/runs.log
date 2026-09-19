@@ -1,0 +1,15 @@
+=== mutation m10 ===
+orig_md5=51deaab336332cbba9986a7d5a7418c8
+mutant_md5=c9c8c1313949a64603005ae335e2ca59
+classes_md5=c9c8c1313949a64603005ae335e2ca59
+orig_aggregate_md5=7880bd77f03c6fbcd23c02d8aa701fb7
+=== mutation m11 ===
+orig_md5=51deaab336332cbba9986a7d5a7418c8
+mutant_md5=ff469fc479b9aa02833ca86ee3d5260f
+classes_md5=ff469fc479b9aa02833ca86ee3d5260f
+orig_aggregate_md5=7880bd77f03c6fbcd23c02d8aa701fb7
+=== mutation m12 ===
+orig_md5=51deaab336332cbba9986a7d5a7418c8
+mutant_md5=5b75e1330b04cd29114eabdbb77f6cea
+classes_md5=5b75e1330b04cd29114eabdbb77f6cea
+orig_aggregate_md5=7880bd77f03c6fbcd23c02d8aa701fb7
