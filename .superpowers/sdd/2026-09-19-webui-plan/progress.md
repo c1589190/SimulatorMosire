@@ -48,7 +48,7 @@
 | T2 | 单页骨架 + 模式栏 + 资源重构（含 `terrainTypes` 形状切换） | ✅ `m7/t2` `6ef622e` → 合并 `676d527`（2 变异轮 0 存活；833；截图 2 张） |
 | T3 | 时间轴组件（节点/拖动预览/末端写与分岔，U1） | ✅ `m7/t3` `98ed9f3` → 合并 `9d63243`（e2e 14 项全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
 | T4 | 地图 Canvas 升级（缩放平移/区域填充/点选联动） | ✅ `m7/t4`（e2e demo 10 项 + 真地图 5 项全 PASS；2 变异轮 0 存活；833 不变；截图 3 张；大图耗时已实测） |
-| T5 | 左栏详情 + 单位倒树 | ⏸ |
+| T5 | 左栏详情 + 单位倒树 | ✅ `m7/t5` `263236d`+`257421a`（报告补交） → 合并 `db5e22b`（树自检 8 断言 + e2e 9 步全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
 | T6 | 区域查看面板（tag 分组 / 点区域 / 点标签） | ⏸ |
 | T7 | 单位移动与编辑模式 | ⏸ |
 | T8 | M7 关账 | ⏸ |
@@ -142,3 +142,23 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 4. ★ **区域重叠的归属语义未核**：`test_nation` 的第 0 格经**权威解析**实归 `test_annex_target` ⇒ `RegionIndex` 在重叠时的"谁赢"**没有查证**。M8 允许**画重叠区域**时会直接撞上这条 ⇒ **M8 spec 必须裁决**。
 
 **下一批**：**T5（左栏详情 + 单位倒树）**。
+
+### T5（左栏详情 + 单位编制倒树）已关账（2026-09-19，子代理执行；控制器合并后核验）
+
+**T5**（`m7/t5` `263236d` 实现 + `257421a` 报告补交 → 合并 `db5e22b`）：**纯前端**（`unitTree.js` +290、`panels.js` +45、`styles.css` +126）。**零 Java 改动**、**未改台账**、全量 **833 不变**。
+
+**判据⑥ 实测（我读的是日志、非其自述）**：
+- **树自检（`logs/tree-check.log`，8 断言全 PASS）**：`depth-parent-child-per-node`（**4 层链 A→B→C→F**，逐节点 `depth/parent/children`）、`branch-point-recognition`（A/B 各 2 子 ⇒ true，C 1 子 ⇒ false）、`branch-teeth-single-vs-double`、`multi-root-forest`（roots=`[A,G,H]`）、`missing-or-null-parent-is-root`、**`dangling-parent-becomes-root`（`H.parent="ghost"` ⇒ `depth 0`）**、`descendant-count`、`empty-input`。
+- **e2e 9 步全 PASS**：`seed head 1->7`（**用既有 `unit.CreateUnit` 造出 t5-a→t5-b→{t5-c,t5-d}、t5-c→t5-f、t5-a→t5-e 的层级**）；`tree-structure`（DOM 与 `buildTree` 逐节点一致，7 节点）；**`branch-visual` 给出数值证据 `weight 700 vs 400`、`size 15 vs 12`**（"标大"不是嘴上说的）；`branch-expand`（`visibleRows 0 → 4`）；`leaf-detail`（与 `/api/unit/t5-f` 逐字段一致）；`map-unit-link`（点地图单位 ⇒ `selectedInTree=true`）；**`revision-target-*` 的 URL 实测含 `?branch=main&revision=1`** 且面板值来自该 revision。
+- 截图 2 张：**倒置树（根在下）** 与 **点分岔点后展开**；控制器目视核对：`第一连 u-1` 在底、向上长出 `甲部→乙部/戊队/丙队/丁队/己组`，分岔点 `甲部`/`乙部` 明显加粗放大。
+
+**变异 2 轮 0 存活**（m1 少挂一个子/父子错位 ⇒ 深度断言红；m2 把"≥2 子"改成"≥1"⇒ 分岔点识别红）；九道门禁逐条在案、**无作废轮**。
+
+**裁定 71 —— T5 的三条**：
+1. **`parent` 指向不存在的 id ⇒ 当根**（`H.parent="ghost"` ⇒ `depth 0`）。**接受并立项为行为约定**——这是防御性：真实路径下 `ReparentUnit` 不接受不存在的父，但**只读面板不该因为脏数据而崩**。
+2. ★★ **系统性开口项（不是本任务的错）**：本项目**没有 JS 测试器** ⇒ T3/T4/T5 的前端护栏（时间轴纯函数、几何换算、`buildTree`）**全部是"证据级"**（node 自检 / Playwright e2e / 截图），**不进 Maven 门禁** ⇒ 有**静默腐烂**风险（`tree-check.cjs` 留在证据目录，没人会再跑它）。**建议 M8 或后续裁决**：引入 JS 测试器，或把 node 自检接进 Maven（`exec-maven-plugin`）。**在此之前，前端护栏的强度低于后端**——如实记，不粉饰。
+3. **倒树方向（根在下）是按原话字面实现**；spec §九.2 已标"可推翻"——若原意是普通自上而下树，改一处方向即可。
+
+★ 如实记（T5 报告 §八，11 条）：`tree-check.cjs` 不在 CI ⇒ 可能腐烂；`PAGE-ERROR 404`（疑似 favicon）**未抓到 URL（属推断）**；CJK 仅截图间接证明；Playwright/Chromium 版本与硬编码路径耦合；**真 19441 格大图下的树未跑**；多区域/多分支下的树未测；环输入未测（领域拒绝）；`scrollIntoView` 未断言；独立的视觉评审**未做**（美术判断是它自看）。
+
+**下一批**：**T6（区域查看面板）**。
