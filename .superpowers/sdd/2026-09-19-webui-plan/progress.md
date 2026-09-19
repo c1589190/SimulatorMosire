@@ -202,3 +202,47 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 4. **M7 关账结论**：**8/8 完成**；判据①~⑥**逐条实测值**见 `task-8-final-report.md`；**R1~R8 每条都有变异自证**（14 轮 0 存活）；**旧三页裁定保留**为调试/回归页（spec §九.6 收口）。
 
 **下一批**：**M8**（地图编辑写面）——开工前先裁决 **区域重叠归属**（T4/T6 两次挂起）与 **`map.*` 命令族的粒度**。
+
+---
+
+# M7b —— 用户实测反馈的修复包（2026-09-19）
+
+> **缘起**：用户在 M7 关账后**亲自试用**，报了四条实测反馈。控制器先派**两路只读取证**（移动语义 / 时间轴布局），再定修法。
+> **性质**：**修复包**，不另立 spec 文档（**评审体量不得压过代码本身**）；裁定与要点记在本节。
+
+## 一 用户裁定（M7b-U1~U2）
+
+| # | 项 | 裁定 |
+|---|---|---|
+| **U1** | 移动模型 | **A：时间驱动**（HoI4 味）——右键下路线，**随 `advance` 沿路线走**，MP/地形成本决定何时到 |
+| **U2** | 瞬时置位（`PlaceAt`） | **不做为正常编辑手段**，归**后续控制台功能**。用户原话：「**0tick speed 还不超模？**」⇒ 记入"不做"清单 |
+
+## 二 取证结论（决定修法的硬事实）
+
+1. **移动规则**（准确口径）：前提是**一条显式 `Route.path`**（逐格相邻、无重复）——**单位不自寻路**；预算 `speed×1000×(tick−出发tick)` 毫 MP；每格成本 `地形(目标格).moveCost × mobilityPerMille`（★**越大越慢**，是成本倍率）；付不起 ⇒ **原地停**（`IN_TRANSIT`，`nextHex`/`remaining` **不落盘**、每 tick 重算）；付清 ⇒ `ARRIVED` 清路线。**`speed=0` 不可表示**（`Unit`/`Movement` 构造器硬拒 `<1`）。
+2. ★ **用户"不知道移动逻辑"的根因是产品缺陷**：现有 UI 的"点目标格"其实是 **`PlaceAt`（瞬时传送+清路线）**，跟移动是两码事；且**界面从不显示** MP / 每格成本 / 预计到达 ⇒ 规则不可见。
+3. ★ **寻路已存在但零接线**：`PathFinder.findPath(map,start,goal,unit,cost) → Optional<List<HexCoord>>`（A\*，确定性全序 `(f,h,q,r)`，**已有 `PathFinderTest`**）——**没有任何 handler/API/工具调用它**。
+4. ★ **路线没暴露**：`/api/unit/{id}` 与 MCP `simos.unit.get` 的 `movement` 都是**布尔**（仅 `isPresent()`）；`route.path`/`waypoints`/`currentHex`/`nextHex`/`remaining` **全未出** ⇒ 前端**无数据画线**。
+5. **`PlanRoute` 载荷只收 `waypoints`**，handler 把它**当 path**（`new Route(waypoints, waypoints)`）⇒ 必须提交**完整逐格序列** ⇒ **寻路只能放服务端**（前端自算＝第二份真相）。
+6. **没有右键**：`map.js` 的 `pointerdown` 直接 `if (event.button !== 0) return`；全仓无 `contextmenu` 监听。
+7. **时间轴缺陷①成因**：DOM 只有 `.timeline-line`/`.tl-branch-label`/`.tl-node`；**"游标"只是给节点切 `.active` 类**；拖动是**隐形手势**（按在整条行上、`closest(".timeline-line")`、吸附最近节点），**没有抓手**。
+8. **时间轴缺陷②成因**：布局是 **CSS flex 流**（`.timeline-track` 列 + `.timeline-line` 行），**`revision` 从未参与定位**——每条分支行**独立**从 label 后从最左开始；分支按 `ORDER BY branch` 字典序 ⇒ `b2` 插在 `main` **上方**。**spec §五-4 的"从分岔点长出"从未实现**。
+9. ★ **"分岔自哪里"的数据已具备**：`b2@1` 的 `parent = {branch:"main", revision:k}` 由 `Timeline.fork` 写入、由 `/api/timeline` 序列化，且前端 `refresh()` **已拉取全部分支的 timeline** ⇒ **不需要新端点**。
+
+## 三 控制器裁定（M7b-S1~S4，可推翻）
+
+| # | 项 | 裁定 |
+|---|---|---|
+| S1 | 时间轴 | 加**可见 knob**（可抓、`setPointerCapture`、吸附节点）＋ **列坐标布局**（`x=(revision−1)×列宽`）＋ 非 main 分支 rev1 **对齐 parent 所在列并画垂直连线**。★ **连线必须用新类名**——既有 e2e `g-fork` 断言 `.timeline-line` 数量==2，复用会打破它 |
+| S2 | 移动可见化 | `/api/unit/{id}` 的 `movement` 由**布尔改对象**（`route.path`/`waypoints`/`departedAt`/`speedAtDeparture`/`currentHex`/`nextHex`/`remaining`）；左栏显示 **MP / 每格成本 / 预计到达 tick** |
+| S3 | 右键移动 | `contextmenu` ⇒ 服务端 A\*（新增**只读**端点 `/api/map/path?from=&to=&unit=&branch=&revision=`）⇒ 前端发 `unit.PlanRoute(waypoints=path)` ⇒ 画线、随 advance 缩短。**线的画法**：整条 path 淡色 + 剩余段亮色（可推翻）。**右键语义**：**替换**当前路线（HoI4 行为，可推翻） |
+| S4 | 不做 | **`PlaceAt` 瞬时置位作为正常编辑手段**（U2）；**B 模型**（0-tick 到位） |
+
+## 四 任务
+
+| # | 任务 | 状态 |
+|---|---|---|
+| T1 | 时间轴：可见 knob + 列布局 + 分岔连线 | ⏳ |
+| T2 | 移动可见化（路线暴露 + 左栏 MP/成本/ETA） | ⏸ |
+| T3 | 右键移动（服务端 A\* + PlanRoute + 画线） | ⏸ |
+| T4 | M7b 关账 | ⏸ |
