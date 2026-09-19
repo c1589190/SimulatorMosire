@@ -19,7 +19,6 @@ import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.Unit;
@@ -377,7 +376,7 @@ public final class GuiServer implements AutoCloseable {
       body.put("error", "hex not found");
       return Reply.of(404, body);
     }
-    RegionId region = MapResolver.regionOfHex(map, coord).orElse(null);
+    RegionId region = Optional.<RegionId>empty().orElse(null);
     TerrainType terrainType = map.terrainTypes().get(cell.terrain());
     List<FacetEntry> facets = queryService.facets(canonicalHex(q, r), target);
     return Reply.of(200, ApiViews.mapHex(coord, cell, facets, region, terrainType));

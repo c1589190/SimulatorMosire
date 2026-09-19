@@ -20,6 +20,9 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.Region;
+import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
@@ -57,6 +60,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -172,6 +176,106 @@ class GuiApiTest {
     assertThat(body.get("mapId").asText()).isEqualTo("Map1");
     assertThat(body.get("hexCount").asInt()).isEqualTo(3);
     assertThat(body.get("hexes")).hasSize(3);
+  }
+
+  // ── M7 T1 只读扩展（spec §3.1/§3.2/§3.3）──────────────────────────────
+
+  /** 判据②后端面 / R3：{@code /api/timeline} 的节点与库一致、升序、parent 形状正确、未知分支 404。 */
+  @Test
+  void timelineReportsNodesAndHeadAnd404sForUnknownBranch() throws Exception {
+    appendRevision(ref("main", 2), ref("main", 1), SimosTimestamp.of(8L), "unit.RenameUnit");
+
+    JsonNode body = getJson("/api/timeline?branch=main");
+    assertThat(body.get("branch").asText()).isEqualTo("main");
+    assertThat(body.get("head").asLong()).as("节点数与 head 一致").isEqualTo(2L);
+    JsonNode nodes = body.get("nodes");
+    assertThat(nodes).hasSize(2);
+    JsonNode genesis = nodes.get(0);
+    assertThat(genesis.get("revision").asLong()).isEqualTo(1L);
+    assertThat(genesis.get("tick").asLong()).isEqualTo(T7.tick());
+    assertThat(genesis.get("commandType").asText()).isEqualTo("core.AdvanceTime");
+    assertThat(genesis.get("initiator").asText()).isEqualTo("player:local");
+    assertThat(genesis.get("parent").isNull()).as("创世节点 parent 为 null").isTrue();
+    assertThat(genesis.has("changesetJson")).as("changesetJson 不进节点（体积大且对 UI 无用）").isFalse();
+    JsonNode second = nodes.get(1);
+    assertThat(second.get("revision").asLong()).isEqualTo(2L);
+    assertThat(second.get("commandType").asText()).isEqualTo("unit.RenameUnit");
+    assertThat(second.get("parent").get("branch").asText()).isEqualTo("main");
+    assertThat(second.get("parent").get("revision").asLong()).isEqualTo(1L);
+
+    assertThat(getJson("/api/timeline").get("branch").asText())
+        .as("branch 缺省 main")
+        .isEqualTo("main");
+    assertThat(get("/api/timeline?branch=ghost").statusCode()).as("分支不存在 ⇒ 404").isEqualTo(404);
+  }
+
+  /** 判据③ / R5：hex 详情带 {@code region} 与完整 {@code terrainType} 定义。 */
+  @Test
+  void mapHexCarriesRegionAndFullTerrainDefinition() throws Exception {
+    JsonNode body = getJson("/api/map/hex?q=1&r=1");
+
+    assertThat(body.get("region").asText())
+        .as("H11 属 r-1（MapResolver.regionOfHex）")
+        .isEqualTo("r-1");
+    TerrainType expected = TerrainCatalog.of("desert");
+    JsonNode terrain = body.get("terrainType");
+    assertThat(terrain).as("完整地形定义在场").isNotNull();
+    assertThat(terrain.get("key").asText()).isEqualTo(expected.key());
+    assertThat(terrain.get("name").asText()).isEqualTo(expected.name());
+    assertThat(terrain.get("color").asText()).isEqualTo(expected.color());
+    assertThat(terrain.get("minHeight").asDouble()).isEqualTo(expected.minHeight());
+    assertThat(terrain.get("maxHeight").asDouble()).isEqualTo(expected.maxHeight());
+    assertThat(terrain.get("food").asInt()).isEqualTo(expected.food());
+    assertThat(terrain.get("gold").asInt()).isEqualTo(expected.gold());
+    assertThat(terrain.get("stone").asInt()).isEqualTo(expected.stone());
+    assertThat(terrain.get("moveCost").asInt()).isEqualTo(expected.moveCost());
+    assertThat(terrain.get("description").asText()).isEqualTo(expected.description());
+  }
+
+  /**
+   * 判据④后端面：overview 的 region 项带 {@code meta}（可空），且 {@code terrainTypes} 仍是 {@code [key…]}（T2
+   * 才切换形状）。
+   */
+  @Test
+  void mapOverviewRegionItemsCarryMeta() throws Exception {
+    JsonNode body = getJson("/api/map/overview");
+    JsonNode regions = body.get("regions");
+    assertThat(regions).hasSize(2);
+
+    JsonNode first = regionById(regions, "r-1");
+    assertThat(first.get("meta").get("color").asText()).isEqualTo("#112233");
+    assertThat(first.get("meta").get("tag").asText()).isEqualTo("核心");
+    assertThat(first.get("meta").get("description").asText()).isEqualTo("测试区域");
+    assertThat(first.get("meta").get("annexedBy").asText()).isEqualTo("u-1");
+
+    JsonNode second = regionById(regions, "r-2");
+    assertThat(second.get("meta").get("color").isNull()).isTrue();
+    assertThat(second.get("meta").get("tag").isNull()).isTrue();
+    assertThat(second.get("meta").get("description").isNull()).isTrue();
+    assertThat(second.get("meta").get("annexedBy").isNull()).isTrue();
+
+    assertThat(body.get("terrainTypes").get(0).asText())
+        .as("T1 必须保持 [key…] 形状（完整定义切换是 T2 的原子改动）")
+        .isEqualTo("desert");
+  }
+
+  /** 判据③后端面：区域详情回排序后的 hex 集合，未知区域 404。 */
+  @Test
+  void regionDetailReturnsSortedHexesAnd404sForUnknownId() throws Exception {
+    JsonNode body = getJson("/api/map/region/r-1");
+
+    assertThat(body.get("id").asText()).isEqualTo("r-1");
+    assertThat(body.get("name").asText()).isEqualTo("第一区");
+    assertThat(body.get("hexCount").asInt()).isEqualTo(2);
+    assertThat(body.get("meta").get("tag").asText()).isEqualTo("核心");
+    JsonNode hexes = body.get("hexes");
+    assertThat(hexes).hasSize(2);
+    assertThat(hexes.get(0).get("q").asInt()).isEqualTo(1);
+    assertThat(hexes.get(0).get("r").asInt()).isEqualTo(1);
+    assertThat(hexes.get(1).get("q").asInt()).isEqualTo(1);
+    assertThat(hexes.get(1).get("r").asInt()).isEqualTo(3);
+
+    assertThat(get("/api/map/region/r-ghost").statusCode()).as("区域不存在 ⇒ 404").isEqualTo(404);
   }
 
   @Test
@@ -376,9 +480,20 @@ class GuiApiTest {
     hexes.put(H13, new HexCell(desert.key(), 0.5));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
+    // M7 T1：两个区域——r-1 带全量 meta（覆盖 H11/H13，非相邻 ⇒ 两条环），r-2 空 meta（覆盖 H12）
+    Region r1 =
+        Region.of(
+            new RegionId("r-1"),
+            "第一区",
+            Set.of(H11, H13),
+            new RegionMeta("#112233", "核心", "测试区域", "u-1"));
+    Region r2 = Region.of(new RegionId("r-2"), "第二区", Set.of(H12), RegionMeta.empty());
+    Map<RegionId, Region> regions = new LinkedHashMap<>();
+    regions.put(r1.id(), r1);
+    regions.put(r2.id(), r2);
     return new GameMap(
         hexes,
-        Map.of(),
+        regions,
         Map.of(),
         terrainTypes,
         Map.of(),
@@ -389,6 +504,34 @@ class GuiApiTest {
 
   private Path dbFile() {
     return tempDir.resolve(CoreSimos.DB_FILE_NAME);
+  }
+
+  /** 从第二个连接追加一行 revision（M7 T1 的时间轴夹具；空变更集 ⇒ 不需要新 checkpoint）。 */
+  private void appendRevision(
+      StateRef target, StateRef parent, SimosTimestamp timestamp, String commandType) {
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      new Timeline(store, CHECKPOINT_INTERVAL)
+          .appendRevision(
+              new RevisionRow(
+                  target.branch(),
+                  target.revision(),
+                  Optional.of(parent),
+                  timestamp,
+                  "cmd-" + target.revision().value(),
+                  "corr-" + target.revision().value(),
+                  "player:local",
+                  commandType,
+                  Timeline.changeSetJson(WorldChangeSet.empty())));
+    }
+  }
+
+  private static JsonNode regionById(JsonNode regions, String id) {
+    for (JsonNode region : regions) {
+      if (id.equals(region.get("id").asText())) {
+        return region;
+      }
+    }
+    throw new AssertionError("overview 里没有区域 " + id);
   }
 
   private static BranchId main() {

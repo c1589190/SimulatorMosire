@@ -1,0 +1,16 @@
+# M7 T1 变异清单（orig + mutant 的 md5；目标文件路径 → 字节）
+# 生成时间: 2026-09-19 08:54:41 +0800
+#
+## orig（原件备份，与工作树逐字节一致）
+7b1b10ab2c87458ee8a801865da1e264  .superpowers/sdd/2026-09-19-webui-plan/t1-evidence/mutants/orig/GuiServer.java
+91b0c2ecfe64a0b3978b51d88d860ca1  .superpowers/sdd/2026-09-19-webui-plan/t1-evidence/mutants/orig/Timeline.java
+#
+## m1（Timeline.listRevisions 去掉 WHERE branch=?）
+e6fa059ba4d2f5f810f9709b6a96efc5  .superpowers/sdd/2026-09-19-webui-plan/t1-evidence/mutants/m1/Timeline.java
+#
+## m2（GuiServer regionOfHex → Optional.empty()）
+82a153718d80f9b453a0b5c1b35d303d  .superpowers/sdd/2026-09-19-webui-plan/t1-evidence/mutants/m2/GuiServer.java
+#
+## 工作树当前目标文件（应与 orig 一致）
+91b0c2ecfe64a0b3978b51d88d860ca1  simos-core/src/main/java/io/mosire/simos/core/timeline/Timeline.java
+7b1b10ab2c87458ee8a801865da1e264  simos-app/src/main/java/io/mosire/simos/app/gui/GuiServer.java

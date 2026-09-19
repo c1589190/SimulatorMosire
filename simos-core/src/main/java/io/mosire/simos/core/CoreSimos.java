@@ -269,6 +269,23 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * 某分支的全部 revision 行，按 {@code revision} 升序（spec §3.1 / M7 T1）：纯委托 {@link
+   * Timeline#listRevisions(BranchId)}。
+   *
+   * <p>★ **只读、零写面**：同 {@link #branches()} / {@link #head(BranchId)}——不封存、不写盘、不触发 {@link
+   * #sealIfNeeded()}。核心的唯一写入口仍是 {@link #submit}（铁律 2）。
+   *
+   * <p>分支不存在 ⇒ 空清单（与 {@link #head(BranchId)} 同口径）。
+   *
+   * @param branch 分支名；null ⇒ {@link NullPointerException}
+   * @return 该分支的全部行，revision 升序；分支不存在 ⇒ 空清单
+   */
+  public List<RevisionRow> revisions(BranchId branch) {
+    Objects.requireNonNull(branch, "branch");
+    return timeline.listRevisions(branch);
+  }
+
+  /**
    * 关闭底层存储。
    *
    * <p>★ 其余组件（{@code Timeline} / {@code Replay} / {@code CommandBus} / {@code TimeAdvance} /
