@@ -246,8 +246,8 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 | # | 任务 | 状态 |
 |---|---|---|
 | T1 | 时间轴：可见 knob + 列布局 + 分岔连线 | ✅ `m7b/t1` `9dd1363` → 合并 `95bd45d`（e2e 21 步全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
-| T2 | 移动可见化（路线暴露 + 左栏 MP/成本/ETA + 画线） | ⏳ |
-| T3 | 右键移动（服务端 A\* + PlanRoute + 画线） | ⏸ |
+| T2 | 移动可见化（路线暴露 + 左栏 MP/成本/ETA + 画线） | ✅ `m7b/t2` `c32b2d7` → 合并 `7593ac5`（e2e 43 步全 PASS；**3** 变异轮 0 存活；836；截图 2 张） |
+| T3 | 右键移动（服务端 A\* + PlanRoute + 画线） | ⏳ |
 | T4 | M7b 关账 | ⏸ |
 
 ## 五 M7b 执行日志
@@ -277,3 +277,27 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 3. **报告位置**：`t1b-report.md` 放在 `t1b-evidence/` 内（派单书要求放计划目录根）——**不影响可用性**，记此一处。
 
 ★ 如实记（T1 报告 §五，8 条）：**嵌套分岔（fork 自 fork）的列递归只有代码路径、无真 e2e**；横向滚动/窗口 resize/触摸/笔未测；`columnOf` 的防环分支未触发；仅本机 headless Chromium；新 JS/CSS 只靠门禁判"无绝对 URL"、未逐行人工复核。
+
+### T2（移动可见化：movement 布尔→对象 + 左栏 MP/成本/ETA + Canvas 路线折线）已关账（2026-09-19，子代理 `deepseek-flash-go` 执行；控制器合并后核验）
+
+**T2**（`m7b/t2` `c32b2d7` → 合并 `7593ac5`）：Java（`ApiViews`/`ToolSupport`/`GuiServer`/两个 Tool + 两个测试）+ 前端（`panels.js`/`map.js`）。**未碰 `simos-core`**、未加写端点、未改台账。全量 **836** = 170/255/45/131/154/**81**（**+3** = `GuiApiTest` +2 / `SimosToolsTest` +1）。
+
+**判据实测（我核日志，不是自述）**：
+| 项 | 实测 |
+|---|---|
+| `movement` 对象 | `{"route":{"waypoints":[…],"path":[3 点]},"departedAt":{"tick":5},"speedAtDeparture":2,"mobilityPerMilleAtDeparture":500,"status":"IN_TRANSIT","currentHex":{1,1},"nextHex":{1,2},"remainingMillis":1500}` |
+| 四处同形 | `/api/unit/{id}`、`/api/units`、`simos.unit.get`、`simos.unit.list` |
+| 左栏读数 | **`每格成本 1500`** / `本 tick 预算 2000` / `总成本 3000` / `IN_TRANSIT` / `currentHex` / `nextHex` / `remaining 1500` / **`预计到达 tick 7`** |
+| **ETA 算式**（实现者推出并写入报告） | `ETA = departedAt.tick + ceil(Σ每格成本 / (speed×1000))`；demo 核对 `5 + ceil(3000/2000) = 7` |
+| Canvas 折线 | `totalPoints:3, remainingPoints:3`；`baseColor rgba(255,214,130,0.35)` ≠ `remainingColor #ffd27a`（分层） |
+| **推进后** | `head 5→6`；`currentHex {1,1}→{1,2}`；`nextHex →{1,3}`；**`remainingMillis 1500→1000`**；**`remainingPoints 3→2`**（剩余段变短） |
+| 无路线单位 | `movement === null`；面板 `无（无在途路线）`；不画线；**零 pageerror** |
+
+**变异 3 轮 0 存活**：m1（`ApiViews` 退回布尔）⇒ `STEP b-movement-is-object: FAIL {"movement":true}`；m2（不调 `evaluate`）⇒ `STEP b-status-in-transit: FAIL null`；**m3（额外一轮，变异 `panels.js` 资源）** ⇒ `STEP c-panel-step-cost-1500: FAIL`——**用来证明"前端资源 + classpath 两份"的装置路径真能杀**（前端护栏强度是本项目系统性开口项，故补一轮）。
+
+**裁定 M7b-S6 —— T2 的三条（控制器接受）**：
+1. ★★ **它修好了自己装置里的一个假绿**（**"装置的产物自己也要自指"的同族新实例**）：`.class` md5 聚合模式写成 `"$CLASS_NAME".*.class`——**多一个点** ⇒ 只匹 `ApiViews.X.class`、**不匹 `ApiViews.class`** ⇒ 聚合读到**空串**（`d41d8cd9…` = `md5("")`）⇒ "还原相等"退化成 **`空==空` 的恒真断言**。改为 `"$CLASS_NAME"*.class` 并**先断言非空**再比较。**记入纪律形态（与"先怀疑自己的读取"同族）。**
+2. **陈旧消费方故意不改**：历史证据 `t7-evidence/e2e/e2e.cjs:257` 与 `t5-evidence/e2e/e2e.cjs:271` 仍按**旧布尔**断言 `movement`——它们是**已关账任务的存档证据、不在任何门禁里**；**改历史证据 = 篡改留痕**，故**不改**，并在报告里记明。**接受**（这是正确的纪律判断）。
+3. **`remainingMillis` 同刻取整段**：领域命令继承父行时刻（M4 裁定 35）⇒ `departedAt.tick == 查询 tick` ⇒ 同刻预算 0 ⇒ `remaining = 1500`（整段未付）。**是设计事实，不是 app 层重算**。
+
+★ 如实记（T2 报告 §七，8 条）：折线**未逐点做 `getImageData` 像素证明**（只有钩子 + 截图）；**`ARRIVED`/`NEED_REPLAN` 未在页面观察**（只覆盖 `IN_TRANSIT`）；**异质地形的 ETA 未测**（demo 单一 desert）；MCP 面与 GUI 面"完全同形"只靠 code review（两处手写重复、无逐字节对拍）；`map.js` 的 classpath 资源路径未单独变异；m2 轮因 JS null 提前终结、未观察后续步骤。
