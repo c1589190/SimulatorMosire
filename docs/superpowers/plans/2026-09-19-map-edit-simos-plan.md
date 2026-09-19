@@ -176,3 +176,16 @@ T12 ← 全部
 ```
 ★ T3~T6 都在 `simos-map` + `CommandRegistry` ⇒ **串行**；T2 与 T3~T6 文件不相交 ⇒ **可并行**。
 ★ 本机 `nproc` 实测 8，但**本地推理网关与 Maven 抢核** ⇒ **一次只跑一个 Maven**。
+
+---
+
+## ★★ 执行期取代说明（2026-09-19，M9 T6 之后）
+
+**M9（大图性能）的 T6 改动了地形数据模型**，本计划 T3~T11 的相关描述**按此取代**：
+- `HexCell(terrain, height)` ⇒ **`HexCell(height)`**；地形改由 **`GameMap.terrainBlocks: Map<BlockId,TerrainBlock>` 权威承载**（`TerrainBlock = terrain + Set<HexCoord> + 带洞 RegionBoundary`）。
+- ★★ **分割不变式**（`GameMap` 构造期强制）：块 `hexes` **并集 == 全部 hex、两两不交**；失败消息精确到 hex。
+- **`terrainAt(HexCoord)`** 是唯一稳定访问器（`terrainIndex()` 供批量）；**`simos-map` 之外不许直读块内部**（有 grep 守卫用例）。
+- `MapChangeSet` 由 7 ⇒ **8 组件**（含 `terrainBlocks`）；`RoundTripComponentsTest` 的组件数与两个 `switch` 已同步。
+- **`BlockId` 确定性**：`<terrain>@<最小hex>`（如 `plains@-5_-59`）；`TerrainBlocks.split` 用 `TreeMap` 全序。
+- ⇒ **`map.SetTerrain`（T3）必须"改块 + 重切分"**（合并/拆分受影响块），**不得逐格写地形**；`map.RandomizeRegion`（T6）同理。
+- 真档参考值：**19441 格 = 44 个块**（`test_integration`，旧档经 `MapCodec` 就地迁移）。
