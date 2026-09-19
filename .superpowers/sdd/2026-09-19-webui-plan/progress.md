@@ -44,7 +44,7 @@
 
 | # | 任务 | 状态 |
 |---|---|---|
-| T1 | Core 只读扩展 + 只读 API（S2/S6/S7） | ⏸ |
+| T1 | Core 只读扩展 + 只读 API（S2/S6/S7） | ✅ `m7/t1` `33fed9b` → 合并 `5b8fb5a`（2 变异轮 0 存活；830） |
 | T2 | 单页骨架 + 模式栏 + 静态资源改造 | ⏸ |
 | T3 | 时间轴组件（节点/拖动预览/末端写与分岔，U1） | ⏸ |
 | T4 | 地图 Canvas 升级（缩放平移/区域填充/点选联动） | ⏸ |
@@ -52,3 +52,19 @@
 | T6 | 区域查看面板（tag 分组 / 点区域 / 点标签） | ⏸ |
 | T7 | 单位移动与编辑模式 | ⏸ |
 | T8 | M7 关账 | ⏸ |
+
+---
+
+## 五 执行日志（裁定与结论随任务关账追加）
+
+### T1（Core 只读扩展 + 只读 API）已关账（2026-09-19，子代理 + 控制器核验）
+
+**T1**（`m7/t1` `33fed9b` → 合并 `5b8fb5a`）：`Timeline.BY_BRANCH_SQL` + `listRevisions`（**列清单复用 `ALL_COLUMNS`、行映射复用 `mapRow`——不另立一套**，正是铁律 5 的防漂移形态）+ `CoreSimos.revisions`（纯委托，不触发封存）+ `GET /api/timeline` + `/api/map/hex` 增 `region`/`terrainType` + overview 的 region 项增 `meta` + 新增 `GET /api/map/region/{id}`；测试 +5（`TimelineTest` +1 / `GuiApiTest` +4）。**2 变异轮 0 存活**（m1 R3 去 `WHERE branch=?`＋绑定参数 ⇒ 分支隔离断言红；m2 R5 `regionOfHex`→常返空 ⇒ region 断言红）。
+
+**裁定 67 —— T1 的两处执行期校正（接受）**：
+1. ★ **变异体"半截"会造出假红**：m1 若**只删 `WHERE` 而留 `setString(1, …)`**，红因是 `setString` 索引越界抛 `SQLException`（"事务失败"），**不是**被保护的分支隔离断言。⇒ **变异体必须连同绑定参数一起去掉**（形态 1："红的理由必须是被保护的那行本身"）。
+2. ★ **`test` 阶段含 Checkstyle ⇒ 变异体可能要连 import 一起去**：m2 第一版只改 `regionOfHex`、留着 `MenuResolver` import，`UnusedImports` 在**测试之前**红 ⇒ `Tests run=0` + surefire 是**上一轮陈旧文件**（mtime 早于 round_start）⇒ 装置按门禁 5/6 **当场作废本轮**（rc=2）。第二轮机械地去 import 后才落到 region 断言。**装置再次证明它能识别自己的产物带状态**。
+
+**纯增量核对**：`terrainTypes` 仍为 `[key…]` 并由断言钉住（形状切换归 T2 与前端同批）；hex 只**增**两字段；region 项只**增** `meta`；前端 `webui/**` **零改动**（`git status` 实证）。**主树合并门禁 830** = 170/255/45/131/**154**/**75**、`BugInstance` 0 ×6、`[ERROR]` 0。
+
+★ 如实记（T1 报告 §五）：`region` hex 排序只在 2 格夹具上测过；`terrainType` 的两条来源路径（`map.terrainTypes().get` vs `TerrainCatalog.of`）**测试无法区分**（夹具同源）；`/api/timeline` 的**多分支**形状未在 HTTP 层测（库侧由 `TimelineTest` 直证）；R1 扫描的边界已核：新增的 `import …core.timeline.RevisionRow` 里的**小写 `timeline` 包名不触发**扫描（禁的是大写 `Timeline`）。
