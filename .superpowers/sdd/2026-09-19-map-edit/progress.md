@@ -47,3 +47,12 @@
 |---|---|---|
 | T0 | **spec**（含 §三 地基裁决的落地清单 + §四 Q1~Q5 裁定 + 判据 + 任务分解） | ⏳ |
 | T1+ | 待 spec 定 | ⏸ |
+
+## T3 ✅ `map.SetTerrain`（块感知）（`6c65c23` → 合并见下；10 文件 +858/−15）
+
+**语义**：`map.SetTerrain(hexes, terrain)` 落在 `simos-map`；**改块 + 整体重切分**（`TerrainBlocks.split` 重切 ⇒ 合并/拆分自然发生），**不逐格写地形**；变更集**只有 `terrainBlocks` 非 Unchanged**（`hexes` 高度恒 Unchanged ⇒ 逐组件独立性保住）。校验序：判空 → `TerrainCatalog.of`（**词表 fail-closed**）→ hexes 非空 → 每格 `hexes().containsKey`。
+**真档实测**（**副本**，原档 md5 `9e13d856…` 未变；5817/5818 全程未动）：19441 格，直方图 `ocean 4506→4516 / plains 10719→10709`（**+10/−10 算术对上**）；`replayByteIdentical=true`。
+**负例三连**：`Rejected[hexes 不得为空…]` / `Rejected[未知地形类型: forest]` / `Rejected[hex 不在图上: 9999_9999]`，**`revisionsRowsUnchanged=true rows=2`**。
+**变异 m1~m3b 全杀**：删词表校验 / 只改块字段不重切（★ 被 `GameMap` 构造期**分割不变式**当场抓：`地形块键 desert@1_0 与块内容不符（内容派生得 plains@1_0）`）/ 打乱序装块 / `TreeMap→HashMap`。
+**门禁 890** = 170/**289**/45/131/**158**/96，SpotBugs 0×6，ERROR 0。
+**未核实**：跨 JVM 字节稳定（同 JVM 已测；无 HashMap 迭代序进结果）；重切单独耗时（226.88ms 是 `submit` 全链）；**GUI `/api/command` 发该命令未跑**（前端调色板归 T8）。
