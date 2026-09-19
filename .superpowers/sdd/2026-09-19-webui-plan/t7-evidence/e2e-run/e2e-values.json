@@ -1,0 +1,86 @@
+{
+  "a": {
+    "headBefore": 1,
+    "headAfter": 2,
+    "nodesBefore": 1,
+    "nodesAfter": 2,
+    "positionBefore": {
+      "q": 1,
+      "r": 1
+    },
+    "positionAfter": {
+      "q": 1,
+      "r": 2
+    },
+    "mapPositionAfter": {
+      "q": 1,
+      "r": 2
+    }
+  },
+  "a2": {
+    "routePath": [
+      {
+        "q": 1,
+        "r": 3
+      }
+    ],
+    "movement": true
+  },
+  "b": {
+    "createId": "u-2",
+    "reparent": {
+      "id": "u-1",
+      "parentBefore": null,
+      "parentAfter": "u-2"
+    },
+    "strength": {
+      "member": 123,
+      "equipment": {
+        "步枪": 7
+      }
+    },
+    "createWithParent": {
+      "id": "u-3",
+      "parent": "u-2",
+      "position": {
+        "q": 1,
+        "r": 1
+      }
+    }
+  },
+  "c": {
+    "reasonShown": "父单位不存在: ghost-parent",
+    "headUnchanged": 8
+  },
+  "d": {
+    "headBeforeD": 8,
+    "headAfterExternal": 9,
+    "pageRevBeforeD": 8,
+    "pageRevAfterD": 9,
+    "statusShown": "末端已移动，已自动重取最新状态",
+    "positionUnchanged": {
+      "q": 1,
+      "r": 3
+    }
+  },
+  "e": {
+    "allowlist": [
+      "/api/command",
+      "/api/advance",
+      "/api/fork"
+    ],
+    "observedPaths": [
+      "/api/command"
+    ],
+    "count": 9
+  },
+  "f": {
+    "nonGetBefore": 9,
+    "nonGetAfter": 9,
+    "selection": {
+      "kind": "hex",
+      "q": 1,
+      "r": 1
+    }
+  }
+}

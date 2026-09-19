@@ -1021,7 +1021,8 @@
     }
     host.editBusy = true;
     setEditStatus("移动 " + id + " → " + coordText({ q: q, r: r }) + " …", "muted");
-    var result = await app.writeCommand("unit.PlaceAt", { id: id, hex: { q: q, r: r } });
+    var own = active.positionOf(id) || { q: q, r: r };
+    var result = await app.writeCommand("unit.PlaceAt", { id: id, hex: { q: own.q, r: own.r } });
     host.editBusy = false;
     if (result.ok) {
       resetRoute();

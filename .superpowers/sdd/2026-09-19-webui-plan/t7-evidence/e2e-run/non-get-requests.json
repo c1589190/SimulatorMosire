@@ -1,0 +1,47 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  },
+  {
+    "method": "POST",
+    "path": "/api/command",
+    "url": "http://127.0.0.1:5917/api/command"
+  }
+]

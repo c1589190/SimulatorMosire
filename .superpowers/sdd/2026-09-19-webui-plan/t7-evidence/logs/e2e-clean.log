@@ -1,0 +1,45 @@
+server_ready_tries=3 code=200 pid=249863
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP mode-unit-active: PASS unit
+STEP a-select-unit: PASS {"kind":"unit","id":"u-1"}
+STEP a-position-before: PASS {"q":1,"r":1}
+STEP a-position-after-target: PASS {"before":{"q":1,"r":1},"after":{"q":1,"r":2}}
+STEP a-head-plus-one: PASS {"before":1,"after":2}
+STEP a-timeline-node-plus-one: PASS {"before":1,"after":2}
+STEP a-edit-status: PASS "已移动 u-1 → (1,2)"
+STEP a-map-reflects-move: PASS {"q":1,"r":2}
+STEP a-shell-state-refreshed: PASS "分支 main · rev 2 · tick 5"
+STEP a2-route-append: PASS [{"q":1,"r":3}]
+STEP a2-plan-route: PASS {"movement":true}
+STEP a2-head-plus-one: PASS {"before":2,"after":3}
+STEP b1-create-unit: PASS {"id":"u-2","position":{"q":1,"r":3},"parent":null}
+STEP b1-head-plus-one: PASS {"before":3,"after":4}
+STEP b2-reparent: PASS {"parentBefore":null,"parentAfter":"u-2"}
+STEP b2-head-plus-one: PASS {"before":4,"after":5}
+STEP b3-set-strength: PASS {"member":123,"equipment":{"步枪":7}}
+STEP b3-head-plus-one: PASS {"before":5,"after":6}
+STEP b4-create-with-parent: PASS {"id":"u-3","parent":"u-2","position":{"q":1,"r":1}}
+STEP b4-head-plus-one: PASS {"before":6,"after":7}
+B5-UNITS [{"id":"u-1","pos":{"q":1,"r":2}},{"id":"u-2","pos":{"q":1,"r":3}},{"id":"u-3","pos":{"q":1,"r":1}}]
+STEP b5-select-u3: PASS {"kind":"unit","id":"u-3"}
+HTTP-404 GET http://127.0.0.1:5917/api/unit/u-3?branch=main&revision=8
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b5-disband: PASS {"status":404}
+STEP b5-head-plus-one: PASS {"before":7,"after":8}
+HTTP-422 POST http://127.0.0.1:5917/api/command
+PAGE-ERROR: Failed to load resource: the server responded with a status of 422 ()
+STEP c-422-reason-visible: PASS "父单位不存在: ghost-parent"
+STEP c-422-head-unchanged: PASS {"before":8,"after":8}
+STEP d-external-advance: PASS {"result":"committed","ref":{"branch":"main","revision":9}}
+STEP d-page-revision-stale: PASS {"pageRevBeforeD":8,"headBeforeD":8,"headAfterExternal":9}
+HTTP-409 POST http://127.0.0.1:5917/api/command
+PAGE-ERROR: Failed to load resource: the server responded with a status of 409 (Conflict)
+STEP d-409-message: PASS "末端已移动，已自动重取最新状态"
+STEP d-head-refetched: PASS {"pageRevAfterD":9,"headAfterExternal":9}
+STEP d-409-no-write: PASS {"before":{"q":1,"r":3},"after":{"q":1,"r":3}}
+STEP e-write-allowlist: PASS ["/api/command"]
+NON-GET-REQUESTS ["POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command"]
+STEP f-readonly-no-write: PASS {"before":9,"after":9,"newOnes":[]}
+STEP f-readonly-selection: PASS {"kind":"hex","q":1,"r":1}
+E2E RESULT: PASS
+e2e_rc=0

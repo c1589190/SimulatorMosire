@@ -27,6 +27,50 @@
       <dl class="kv" id="selection-detail"></dl>
       <h3>编制</h3>
       <div id="unit-tree-mount" class="unit-tree"></div>
+
+      <section class="unit-editor" data-modes="unit" aria-label="单位移动与编辑">
+        <h3>单位移动与编辑</h3>
+        <p id="unit-edit-status" class="status muted">点选一个单位开始。</p>
+        <p id="unit-edit-selected" class="muted">未选中单位</p>
+        <div class="unit-edit-row">
+          <button type="button" id="unit-route-toggle">路线模式：关</button>
+          <button type="button" id="unit-route-send" disabled>下路线</button>
+          <button type="button" id="unit-route-clear" disabled>清除路线</button>
+        </div>
+        <p id="unit-route-preview" class="muted">路线：（未选）</p>
+
+        <fieldset class="unit-edit-group">
+          <legend>改上级（ReparentUnit）</legend>
+          <input id="unit-reparent-parent" type="text" placeholder="父单位 id（留空=清根）">
+          <button type="button" id="unit-reparent" disabled>提交</button>
+        </fieldset>
+
+        <fieldset class="unit-edit-group">
+          <legend>改编制（SetStrength）</legend>
+          <input id="unit-strength-member" type="number" min="0" placeholder="人数">
+          <input id="unit-strength-equipment" type="text" placeholder="步枪=50；火炮=2（留空=清空）">
+          <button type="button" id="unit-strength" disabled>提交</button>
+        </fieldset>
+
+        <fieldset class="unit-edit-group">
+          <legend>解散（DisbandUnit）</legend>
+          <button type="button" id="unit-disband" disabled>解散选中单位</button>
+        </fieldset>
+
+        <fieldset class="unit-edit-group">
+          <legend>新建单位（CreateUnit）</legend>
+          <input id="unit-create-id" type="text" placeholder="id">
+          <input id="unit-create-name" type="text" placeholder="名称">
+          <input id="unit-create-q" type="number" placeholder="q">
+          <input id="unit-create-r" type="number" placeholder="r">
+          <input id="unit-create-member" type="number" min="0" placeholder="人数">
+          <input id="unit-create-equipment" type="text" placeholder="步枪=50；火炮=2">
+          <input id="unit-create-speed" type="number" min="1" placeholder="速度（≥1）">
+          <input id="unit-create-mobility" type="number" min="1" placeholder="机动‰（≥1）">
+          <input id="unit-create-parent" type="text" placeholder="上级 id（可空）">
+          <button type="button" id="unit-create">创建</button>
+        </fieldset>
+      </section>
     </section>
 
     <section class="panel col-center" id="center-panel">

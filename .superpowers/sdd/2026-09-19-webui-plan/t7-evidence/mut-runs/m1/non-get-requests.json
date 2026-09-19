@@ -1,0 +1,42 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  },
+  {
+    "method": "POST",
+    "path": "/api/raw-write",
+    "url": "http://127.0.0.1:5917/api/raw-write"
+  }
+]
