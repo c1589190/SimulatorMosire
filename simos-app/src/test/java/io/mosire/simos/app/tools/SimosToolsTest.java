@@ -319,6 +319,40 @@ class SimosToolsTest {
     assertThat(units.get(0).get("position").get("r").asInt()).isEqualTo(1);
   }
 
+  /** M7b T2 判据：MCP 读面与 GUI 同形——有路线 ⇒ movement 对象；无路线 ⇒ null。 */
+  @Test
+  void unitReadToolsExposeMovementObjectAndNullWithoutRoute() throws Exception {
+    ToolResult before = call("simos.unit.get", Map.of("id", "u-1"));
+    assertThat(JSON.readTree(before.message()).get("movement").isNull())
+        .as("无路线 ⇒ movement 为 null")
+        .isTrue();
+
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("type", "unit.PlanRoute");
+    args.put(
+        "payloadJson",
+        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}");
+    args.put("branch", "main");
+    args.put("expectedRevision", 1);
+    assertThat(call("simos.command.submit", args).success()).isTrue();
+
+    JsonNode movement =
+        JSON.readTree(call("simos.unit.get", Map.of("id", "u-1")).message()).get("movement");
+    assertThat(movement.isObject()).as("movement 必须是对象（不再是布尔）").isTrue();
+    assertThat(movement.get("route").get("path")).hasSize(3);
+    assertThat(movement.get("status").asText()).isEqualTo("IN_TRANSIT");
+    assertThat(movement.get("currentHex").get("r").asInt()).isEqualTo(1);
+    assertThat(movement.get("nextHex").get("r").asInt()).isEqualTo(2);
+    assertThat(movement.get("remainingMillis").asLong()).isEqualTo(1500L);
+
+    JsonNode listed =
+        JSON.readTree(call("simos.unit.list", Map.of()).message())
+            .get("units")
+            .get(0)
+            .get("movement");
+    assertThat(listed.get("route").get("path")).as("list 与 get 同形").hasSize(3);
+  }
+
   @Test
   void mapHexBuildsTheCanonicalFacetSubject() throws Exception {
     ToolResult result = call("simos.map.hex", Map.of("q", 1, "r", 1));

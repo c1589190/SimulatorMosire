@@ -1,0 +1,187 @@
+{
+  "b": {
+    "movement": {
+      "route": {
+        "waypoints": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ],
+        "path": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ]
+      },
+      "departedAt": {
+        "tick": 5,
+        "calendarLabel": null
+      },
+      "speedAtDeparture": 2,
+      "mobilityPerMilleAtDeparture": 500,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "remainingMillis": 1500
+    }
+  },
+  "c": {
+    "id": "u-1",
+    "name": "第一连",
+    "parent": "—",
+    "position": "q=1, r=1",
+    "member": "100",
+    "equipment": "步枪=50",
+    "speed": "2",
+    "mobilityPerMille": "500",
+    "movement": "有",
+    "路线格数": "3",
+    "本 tick 预算（毫 MP）": "2000",
+    "路线每格成本（毫 MP）": "1500",
+    "路线总成本（毫 MP）": "3000",
+    "status": "IN_TRANSIT",
+    "currentHex": "q=1, r=1",
+    "nextHex": "q=1, r=2",
+    "remainingMillis": "1500",
+    "预计到达 tick": "7",
+    "出发 tick": "5",
+    "出发速度（毫 MP/tick）": "2000",
+    "出发机动‰": "500"
+  },
+  "d": {
+    "id": "u-1",
+    "totalPoints": 3,
+    "remainingPoints": 3,
+    "status": "IN_TRANSIT",
+    "currentHex": {
+      "q": 1,
+      "r": 1
+    },
+    "nextHex": {
+      "q": 1,
+      "r": 2
+    },
+    "baseColor": "rgba(255, 214, 130, 0.35)",
+    "remainingColor": "#ffd27a"
+  },
+  "e": {
+    "unit": {
+      "route": {
+        "waypoints": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ],
+        "path": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ]
+      },
+      "departedAt": {
+        "tick": 5,
+        "calendarLabel": null
+      },
+      "speedAtDeparture": 2,
+      "mobilityPerMilleAtDeparture": 500,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 2
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 3
+      },
+      "remainingMillis": 1000
+    },
+    "panel": {
+      "id": "u-1",
+      "name": "第一连",
+      "parent": "—",
+      "position": "q=1, r=2",
+      "member": "100",
+      "equipment": "步枪=50",
+      "speed": "2",
+      "mobilityPerMille": "500",
+      "movement": "有",
+      "路线格数": "3",
+      "本 tick 预算（毫 MP）": "2000",
+      "路线每格成本（毫 MP）": "1500",
+      "路线总成本（毫 MP）": "3000",
+      "status": "IN_TRANSIT",
+      "currentHex": "q=1, r=2",
+      "nextHex": "q=1, r=3",
+      "remainingMillis": "1000",
+      "预计到达 tick": "7",
+      "出发 tick": "5",
+      "出发速度（毫 MP/tick）": "2000",
+      "出发机动‰": "500"
+    },
+    "route": {
+      "id": "u-1",
+      "totalPoints": 3,
+      "remainingPoints": 2,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 2
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 3
+      },
+      "baseColor": "rgba(255, 214, 130, 0.35)",
+      "remainingColor": "#ffd27a"
+    }
+  },
+  "f": {
+    "apiMovement": null,
+    "panel": "无（无在途路线）",
+    "routeIds": [
+      "u-1"
+    ]
+  }
+}

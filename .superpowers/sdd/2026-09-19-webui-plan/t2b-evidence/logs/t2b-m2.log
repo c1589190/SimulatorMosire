@@ -1,0 +1,28 @@
+server_ready_tries=3 code=200 pid=266684
+STEP a-plan-route-committed: PASS {"status":200,"body":{"result":"committed","ref":{"branch":"main","revision":2}}}
+STEP b-movement-is-object: PASS {"movement":{"route":{"waypoints":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}],"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]},"departedAt":{"tick":5,"calendarLabel":null},"speedAtDeparture":2,"mobilityPerMilleAtDeparture":500,"status":null,"currentHex":null,"nextHex":null,"remainingMillis":null}}
+STEP b-route-path-3: PASS [{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]
+STEP b-route-path-values: PASS [{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]
+STEP b-departed-at-tick: PASS {"tick":5,"calendarLabel":null}
+STEP b-speed-at-departure: PASS 2
+STEP b-mobility-at-departure: PASS 500
+STEP b-status-in-transit: FAIL null
+E2E RESULT: FAIL fatal TypeError: Cannot read properties of null (reading 'q')
+    at /home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/e2e/e2e.cjs:178:18
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+e2e_rc=1
+
+===== 装置补记（t2b-m2）：本轮推送的正是以下字节 =====
+kind=java
+target=simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java
+orig_md5=51123c5ec835d1180e14c9fffe83dbc9
+pushed_src_md5=734a4040d46cf5b032aba09971d5facd
+pushed_classes_agg=0bb6641e1c68fdc1899366f6e66e93dd
+restored_src_md5=51123c5ec835d1180e14c9fffe83dbc9
+restored_classes_agg=17ed02ed049c5bbdaa9c37eb38dbbfe2
+class_backup_agg=17ed02ed049c5bbdaa9c37eb38dbbfe2
+round_start=1789787514
+server_log_mtime=1789787516
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/logs/t2b-m2.server.log
+javac_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/logs/t2b-m2.javac.log

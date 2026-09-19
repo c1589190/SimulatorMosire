@@ -1,0 +1,60 @@
+server_ready_tries=3 code=200 pid=266961
+STEP a-plan-route-committed: PASS {"status":200,"body":{"result":"committed","ref":{"branch":"main","revision":2}}}
+STEP b-movement-is-object: PASS {"movement":{"route":{"waypoints":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}],"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]},"departedAt":{"tick":5,"calendarLabel":null},"speedAtDeparture":2,"mobilityPerMilleAtDeparture":500,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"remainingMillis":1500}}
+STEP b-route-path-3: PASS [{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]
+STEP b-route-path-values: PASS [{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]
+STEP b-departed-at-tick: PASS {"tick":5,"calendarLabel":null}
+STEP b-speed-at-departure: PASS 2
+STEP b-mobility-at-departure: PASS 500
+STEP b-status-in-transit: PASS IN_TRANSIT
+STEP b-current-hex: PASS {"q":1,"r":1}
+STEP b-next-hex: PASS {"q":1,"r":2}
+STEP b-remaining-1500: PASS 1500
+STEP b-list-same-shape: PASS {"route":{"waypoints":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}],"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]},"departedAt":{"tick":5,"calendarLabel":null},"speedAtDeparture":2,"mobilityPerMilleAtDeparture":500,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"remainingMillis":1500}
+STEP c-panel-step-cost-1500: FAIL {"id":"u-1","name":"第一连","parent":"—","position":"q=1, r=1","member":"100","equipment":"步枪=50","speed":"2","mobilityPerMille":"500","movement":"true"}
+STEP c-panel-budget-2000: FAIL
+STEP c-panel-total-cost-3000: FAIL
+STEP c-panel-status: FAIL
+STEP c-panel-current-hex: FAIL
+STEP c-panel-next-hex: FAIL
+STEP c-panel-remaining: FAIL
+STEP c-panel-eta-7: FAIL
+STEP c-panel-speed: PASS 2
+STEP c-panel-mobility: PASS 500
+STEP d-route-count-1: PASS 1
+STEP d-polyline-points: PASS {"id":"u-1","totalPoints":3,"remainingPoints":3,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP d-color-layering: PASS {"base":"rgba(255, 214, 130, 0.35)","remaining":"#ffd27a"}
+STEP d-route-state: PASS {"id":"u-1","totalPoints":3,"remainingPoints":3,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP e-advance-committed: PASS {"status":200,"body":{"result":"committed","ref":{"branch":"main","revision":3}}}
+STEP e-current-hex-advanced: PASS {"q":1,"r":2}
+STEP e-next-hex-advanced: PASS {"q":1,"r":3}
+STEP e-remaining-changed: PASS 1000
+STEP e-panel-current-hex: FAIL
+STEP e-panel-next-hex: FAIL
+STEP e-panel-remaining: FAIL
+STEP e-polyline-remaining-shorter: PASS {"id":"u-1","totalPoints":3,"remainingPoints":2,"status":"IN_TRANSIT","currentHex":{"q":1,"r":2},"nextHex":{"q":1,"r":3},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP e-route-state-advanced: PASS {"id":"u-1","totalPoints":3,"remainingPoints":2,"status":"IN_TRANSIT","currentHex":{"q":1,"r":2},"nextHex":{"q":1,"r":3},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP f-create-unit: PASS {"result":"committed","ref":{"branch":"main","revision":4}}
+STEP f-api-movement-null: PASS {"movement":null}
+STEP f-api-list-movement-null: PASS null
+STEP f-panel-empty-readout: FAIL "false"
+STEP f-no-line-for-u2: PASS {"routeCount":1,"ids":["u-1"]}
+STEP f-u1-line-still-drawn: PASS ["u-1"]
+STEP z-no-page-errors: PASS []
+E2E RESULT: FAIL c-panel-step-cost-1500,c-panel-budget-2000,c-panel-total-cost-3000,c-panel-status,c-panel-current-hex,c-panel-next-hex,c-panel-remaining,c-panel-eta-7,e-panel-current-hex,e-panel-next-hex,e-panel-remaining,f-panel-empty-readout
+e2e_rc=1
+
+===== 装置补记（t2b-m3）：本轮推送的正是以下字节 =====
+kind=resource
+target=simos-app/src/main/resources/webui/panels.js
+orig_md5=96ffcc3da60e36db3507f003e1e8dc3a
+pushed_src_md5=02355d0e0fb4894a462617d62e2e2249
+pushed_classes_agg=02355d0e0fb4894a462617d62e2e2249
+restored_src_md5=96ffcc3da60e36db3507f003e1e8dc3a
+restored_classes_agg=96ffcc3da60e36db3507f003e1e8dc3a
+class_backup_agg=96ffcc3da60e36db3507f003e1e8dc3a
+round_start=1789787528
+server_log_mtime=1789787577
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/logs/t2b-m3.server.log
+javac_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/logs/t2b-m3.javac.log

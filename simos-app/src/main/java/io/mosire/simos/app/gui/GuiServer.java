@@ -274,7 +274,10 @@ public final class GuiServer implements AutoCloseable {
       Map<String, String> params = queryParams(exchange);
       SimulationState state = queryService.stateAt(target(params));
       UnitState units = ApiViews.unitState(state);
-      return Reply.of(200, Map.of("units", ApiViews.units(units, state.meta().timestamp())));
+      return Reply.of(
+          200,
+          Map.of(
+              "units", ApiViews.units(units, state.meta().timestamp(), ApiViews.gameMap(state))));
     }
     if (isUnitDetail(path)) {
       return unitReply(exchange, urlDecode(path.substring(UNIT_DETAIL_PREFIX.length())));
@@ -420,7 +423,8 @@ public final class GuiServer implements AutoCloseable {
     if (unit == null) {
       return Reply.of(404, Map.of("error", "unit not found", "id", id));
     }
-    return Reply.of(200, ApiViews.unit(unit, units, state.meta().timestamp()));
+    return Reply.of(
+        200, ApiViews.unit(unit, units, state.meta().timestamp(), ApiViews.gameMap(state)));
   }
 
   private Reply populationReply(HttpExchange exchange) {

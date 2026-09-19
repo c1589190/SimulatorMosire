@@ -321,7 +321,7 @@
         appendRow(detail, "equipment", equipmentText(unit.equipment));
         appendRow(detail, "speed", unit.speed);
         appendRow(detail, "mobilityPerMille", unit.mobilityPerMille);
-        appendMovementRows(detail, unit, overview);
+        appendRow(detail, "movement", unit.movement ? "true" : "false");
         app.statusMessage(status, "单位 " + unit.id + " · " + targetLabel(), "ok");
       })
       .catch(function (e) {

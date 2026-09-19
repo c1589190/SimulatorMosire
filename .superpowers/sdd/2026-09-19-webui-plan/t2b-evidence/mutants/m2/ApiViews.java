@@ -320,20 +320,15 @@ final class ApiViews {
       return null;
     }
     Movement movement = unit.movement().orElseThrow();
-    MovementState state = UnitMoves.evaluate(unit, at, map, TerrainMovementCost.INSTANCE);
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("route", route(movement.route()));
     view.put("departedAt", timestamp(movement.departedAt()));
     view.put("speedAtDeparture", movement.speedAtDeparture());
     view.put("mobilityPerMilleAtDeparture", movement.mobilityAtDeparture());
-    view.put("status", state.status().name());
-    view.put("currentHex", hexCoord(state.currentHex()));
-    view.put("nextHex", state.nextHex().map(ApiViews::hexCoord).orElse(null));
-    view.put(
-        "remainingMillis",
-        state.remainingEdgeCostMillis().isPresent()
-            ? state.remainingEdgeCostMillis().getAsLong()
-            : null);
+    view.put("status", null);
+    view.put("currentHex", null);
+    view.put("nextHex", null);
+    view.put("remainingMillis", null);
     return view;
   }
 

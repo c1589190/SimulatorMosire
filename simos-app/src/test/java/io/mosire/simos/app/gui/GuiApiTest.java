@@ -305,6 +305,55 @@ class GuiApiTest {
     assertThat(detail.get("position").get("q").asInt()).isEqualTo(1);
   }
 
+  /**
+   * M7b T2 判据：有路线 ⇒ {@code movement} 是对象，且 {@code status}/{@code currentHex}/{@code nextHex}/{@code
+   * remainingMillis} 由 {@code UnitMoves.evaluate} 现算（同刻预算 0 ⇒ 全段未付）。
+   */
+  @Test
+  void unitDetailExposesMovementObjectWithRouteAndInTransitState() throws Exception {
+    String payload =
+        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}";
+    String requestBody =
+        "{\"type\":\"unit.PlanRoute\",\"payloadJson\":"
+            + JSON.writeValueAsString(payload)
+            + ",\"branch\":\"main\",\"expectedRevision\":1}";
+
+    HttpResponse<String> response = post("/api/command", requestBody);
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(JSON.readTree(response.body()).get("result").asText()).isEqualTo("committed");
+
+    JsonNode movement = getJson("/api/unit/u-1").get("movement");
+    assertThat(movement.isObject()).as("movement 必须是对象（不再是布尔）").isTrue();
+    JsonNode path = movement.get("route").get("path");
+    assertThat(path).hasSize(3);
+    assertThat(path.get(0).get("q").asInt()).isEqualTo(1);
+    assertThat(path.get(0).get("r").asInt()).isEqualTo(1);
+    assertThat(path.get(2).get("r").asInt()).isEqualTo(3);
+    assertThat(movement.get("route").get("waypoints")).hasSize(3);
+    assertThat(movement.get("departedAt").get("tick").asLong())
+        .as("领域命令继承父行时刻 ⇒ 出发 tick == 创世 tick")
+        .isEqualTo(T7.tick());
+    assertThat(movement.get("speedAtDeparture").asInt()).isEqualTo(2);
+    assertThat(movement.get("mobilityPerMilleAtDeparture").asInt()).isEqualTo(500);
+    assertThat(movement.get("status").asText()).isEqualTo("IN_TRANSIT");
+    assertThat(movement.get("currentHex").get("q").asInt()).isEqualTo(1);
+    assertThat(movement.get("currentHex").get("r").asInt()).isEqualTo(1);
+    assertThat(movement.get("nextHex").get("r").asInt()).isEqualTo(2);
+    assertThat(movement.get("remainingMillis").asLong())
+        .as("每格成本 = desert.moveCost(3) × 500‰ = 1500 毫 MP；同刻预算 0")
+        .isEqualTo(1500L);
+
+    JsonNode listed = getJson("/api/units").get("units").get(0).get("movement");
+    assertThat(listed.get("route").get("path")).as("/api/units 与 /api/unit 同形").hasSize(3);
+  }
+
+  /** M7b T2 判据：无路线的单位 ⇒ {@code movement} 为 {@code null}（不是 false，也不是空对象）。 */
+  @Test
+  void unitWithoutRouteHasNullMovement() throws Exception {
+    assertThat(getJson("/api/unit/u-1").get("movement").isNull()).isTrue();
+    assertThat(getJson("/api/units").get("units").get(0).get("movement").isNull()).isTrue();
+  }
+
   @Test
   void populationMatchesTheSeriesValueAtHead() throws Exception {
     JsonNode body = getJson("/api/social/population?q=1&r=1");

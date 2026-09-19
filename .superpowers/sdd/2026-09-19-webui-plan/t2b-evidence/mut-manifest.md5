@@ -1,0 +1,10 @@
+048a430de41f9472c6689cec27ad64fc  mutants/m1/ApiViews.java
+734a4040d46cf5b032aba09971d5facd  mutants/m2/ApiViews.java
+02355d0e0fb4894a462617d62e2e2249  mutants/m3/panels.js
+51123c5ec835d1180e14c9fffe83dbc9  mutants/orig/ApiViews.java
+96ffcc3da60e36db3507f003e1e8dc3a  mutants/orig/classes-resource/panels.js
+3c92814bd37cb99b42b89a0c1274c613  mutants/orig/classes/ApiViews.class
+96ffcc3da60e36db3507f003e1e8dc3a  mutants/orig/panels.js
+bb77d25f31594ee437fe5ba0a6c92b05  mutants/t2b-mut-round.sh
+f5952b99058344ebdc10d272b15e08cb  e2e/e2e.cjs
+3b9cb7db60148fc746fc65c85f1fc372  e2e/run-e2e.sh

@@ -20,6 +20,10 @@
   var BASE_CELL = 34; // 世界坐标的基准格边长（px）
   var FALLBACK_COLOR = "#ff00ff"; // 词表外地形的兜底色（品红；刻意不像任何地形）
   var REGION_FALLBACK_COLOR = "#00e5ff"; // 区域色缺失/非法时的兜底色（青色；与地形兜底色不同）
+  var ROUTE_BASE_COLOR = "rgba(255, 214, 130, 0.35)"; // 整条路线的淡色层（M7b T2）
+  var ROUTE_REMAINING_COLOR = "#ffd27a"; // 未走完的那一段的亮色层
+  var ROUTE_BASE_WIDTH = 5;
+  var ROUTE_REMAINING_WIDTH = 3;
   var HIGHLIGHT_ALPHA = 0.42; // 区域填充透明度（保留地形可见性）
   var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
   var regionFallbackWarned = false;
@@ -114,6 +118,19 @@
     return { x: (point.x - view.tx) / view.scale, y: (point.y - view.ty) / view.scale };
   }
 
+  /** 纯函数：路线中"尚未走完"的那一段（从 currentHex 起；ARRIVED 或找不到 currentHex ⇒ 空）。 */
+  function remainingPath(path, currentHex, status) {
+    if (!path || path.length < 2 || !currentHex || status === "ARRIVED") {
+      return [];
+    }
+    for (var i = 0; i < path.length; i++) {
+      if (path[i].q === currentHex.q && path[i].r === currentHex.r) {
+        return path.slice(i);
+      }
+    }
+    return [];
+  }
+
   /** 以 anchor（屏幕 CSS 坐标）为锚缩放：锚下的世界点保持不动。 */
   function zoomAt(view, anchor, factor, minScale, maxScale) {
     var next = clamp(view.scale * factor, minScale, maxScale);
@@ -148,6 +165,7 @@
     var hexes = []; // 预计算世界坐标的格：{q,r,terrain,height,px,py}
     var hexIndex = {}; // "q_r" → hex
     var units = []; // 预计算世界坐标的单位：{id,name,position,px,py}
+    var routes = []; // 在途路线（M7b T2）：{id,movement,path:[{q,r}…]}
     var colorByTerrain = {};
     var fallbackWarned = false;
     var selected = null;
@@ -249,6 +267,19 @@
     }
 
     function setUnits(list) {
+      routes = (list || [])
+        .filter(function (u) {
+          return u && u.movement && u.movement.route && (u.movement.route.path || []).length >= 2;
+        })
+        .map(function (u) {
+          return {
+            id: u.id,
+            movement: u.movement,
+            path: u.movement.route.path.map(function (h) {
+              return { q: h.q, r: h.r };
+            }),
+          };
+        });
       units = (list || [])
         .filter(function (u) {
           return u && u.position;
@@ -376,6 +407,43 @@
       return out;
     }
 
+    function strokePolyline(points, color, width) {
+      if (points.length < 2) {
+        return;
+      }
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (var i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width / view.scale;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
+
+    /** 在途路线折线（M7b T2）：整条淡色 + 未走完的部分亮色；无路线时不画。 */
+    function drawRoutes() {
+      routes.forEach(function (route) {
+        strokePolyline(
+          route.path.map(function (h) {
+            return hexToPixel(h.q, h.r, cellSize);
+          }),
+          ROUTE_BASE_COLOR,
+          ROUTE_BASE_WIDTH
+        );
+        var remaining = remainingPath(route.path, route.movement.currentHex, route.movement.status);
+        strokePolyline(
+          remaining.map(function (h) {
+            return hexToPixel(h.q, h.r, cellSize);
+          }),
+          ROUTE_REMAINING_COLOR,
+          ROUTE_REMAINING_WIDTH
+        );
+      });
+    }
+
     function drawCities() {
       (overview.cities || []).forEach(function (city) {
         if (!city.at) {
@@ -474,6 +542,7 @@
       ctx.lineWidth = 1 / view.scale;
       ctx.stroke();
 
+      drawRoutes();
       drawCities();
       drawUnits();
 
@@ -670,6 +739,23 @@
         selectedUnit: selectedUnit,
         mode: mode,
         isWorkbench: isWorkbench,
+        routeCount: routes.length,
+        routes: routes.map(function (route) {
+          return {
+            id: route.id,
+            totalPoints: route.path.length,
+            remainingPoints: remainingPath(
+              route.path,
+              route.movement.currentHex,
+              route.movement.status
+            ).length,
+            status: route.movement.status,
+            currentHex: route.movement.currentHex,
+            nextHex: route.movement.nextHex,
+            baseColor: ROUTE_BASE_COLOR,
+            remainingColor: ROUTE_REMAINING_COLOR,
+          };
+        }),
       };
     }
 
@@ -1395,6 +1481,8 @@
     FALLBACK_COLOR: FALLBACK_COLOR,
     REGION_FALLBACK_COLOR: REGION_FALLBACK_COLOR,
     HIGHLIGHT_ALPHA: HIGHLIGHT_ALPHA,
+    ROUTE_BASE_COLOR: ROUTE_BASE_COLOR,
+    ROUTE_REMAINING_COLOR: ROUTE_REMAINING_COLOR,
     MIN_SCALE: MIN_SCALE,
     MAX_SCALE: MAX_SCALE,
     clamp: clamp,
@@ -1409,6 +1497,7 @@
     resolveRegionColor: resolveRegionColor,
     hexDistance: hexDistance,
     isAdjacent: isAdjacent,
+    remainingPath: remainingPath,
     parseEquipmentText: parseEquipmentText,
     // 宿主
     init: initHost,
