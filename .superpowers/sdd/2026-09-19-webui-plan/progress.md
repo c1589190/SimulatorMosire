@@ -245,7 +245,35 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 
 | # | 任务 | 状态 |
 |---|---|---|
-| T1 | 时间轴：可见 knob + 列布局 + 分岔连线 | ⏳ |
-| T2 | 移动可见化（路线暴露 + 左栏 MP/成本/ETA） | ⏸ |
+| T1 | 时间轴：可见 knob + 列布局 + 分岔连线 | ✅ `m7b/t1` `9dd1363` → 合并 `95bd45d`（e2e 21 步全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
+| T2 | 移动可见化（路线暴露 + 左栏 MP/成本/ETA + 画线） | ⏳ |
 | T3 | 右键移动（服务端 A\* + PlanRoute + 画线） | ⏸ |
 | T4 | M7b 关账 | ⏸ |
+
+## 五 M7b 执行日志
+
+### T1（时间轴：可见 knob + 列坐标布局 + 分岔连线）已关账（2026-09-19，子代理 `deepseek-flash-go` 执行；控制器合并后核验）
+
+**T1**（`m7b/t1` `9dd1363` → 合并 `95bd45d`）：**纯前端两文件**（`timeline.js` / `styles.css`），**零 Java**、未改台账、全量 **833 不变**。
+
+**判据（我核的是日志与截图，不是它的自述）**：
+| 断言 | 实测 |
+|---|---|
+| `a-knob-exists-visible` | `knobHidden=false, display=block, knobRev=3, nodeRev=3` |
+| `a-knob-on-cursor` | ★ **`delta=0`**（node `{x:323,y:804}` == knob `{x:323,y:804}`） |
+| ★ `b-drag-knob-offrow` | **`offRowY=874`（行中心 804，纵向 +70px）仍改 x ⇒ rev 变 2**（`setPointerCapture` 生效） |
+| `b-drag-readonly` / `e-readonly` | `head 3->3 rows 3->3`（拖动仍只读） |
+| ★ `c-column-spacing` | **`COL_WIDTH=110 d1=110 d2=110`**（centers `103/213/323`） |
+| ★★ `d-fork-aligned` | **`child.x=323 parent.x=323 dx=0`** |
+| `d-fork-link-visible` | `.tl-fork-link` `[{x:323,y:804,h:40,w:2}]` |
+| `e-main-first` | `firstLine=main` |
+| 回归 | `g-fork`（`lines=2`）/`e2-drag-preview`/`d-nodes`/`d-labels`/`h-conflict` **全部仍 PASS** |
+
+**变异 2 轮 0 存活**：m1（`renderCursor` 删掉 knob 定位）⇒ `STEP a-knob-on-cursor: FAIL delta=292.494… knob={x:31,y:787}`；m2（`columnOf` 非 main 直接 `return rev`）⇒ `STEP d-fork-aligned: FAIL child.x=103 parent.x=323 dx=220`。装置**含变异体生成器的锚点自证**（断言锚点匹配恰 1 次 + 替换后字节必变），且**变异后重跑干净轮**（`e2e-clean-after-mutants.log` PASS）——"验过"与"推出来"分开。
+
+**裁定 M7b-S5 —— T1 的三处（控制器接受）**：
+1. ★★ **我的派单公式写错了**（**第三次**被实现者当场纠正，前两次是裁定 65、72.1）：我写 `x = 左内边距 + (revision − 1) × 列宽`——**对非 main 分支不成立**。正确是 `x = 左内边距 + (列 − 1) × 列宽`，其中 **main 的列 == revision**，**分支的列由其 `parent` 递归决定**（这正是"从分岔点长出"的数学表述）。已按此实现。
+2. **`#timeline-meta` 的 tick 数据源**由"分支 head 的 tick"改为**游标节点的 tick**（缺省回退 head tick）——符合 S1 的字面语义，**格式未变**。接受。
+3. **报告位置**：`t1b-report.md` 放在 `t1b-evidence/` 内（派单书要求放计划目录根）——**不影响可用性**，记此一处。
+
+★ 如实记（T1 报告 §五，8 条）：**嵌套分岔（fork 自 fork）的列递归只有代码路径、无真 e2e**；横向滚动/窗口 resize/触摸/笔未测；`columnOf` 的防环分支未触发；仅本机 headless Chromium；新 JS/CSS 只靠门禁判"无绝对 URL"、未逐行人工复核。
