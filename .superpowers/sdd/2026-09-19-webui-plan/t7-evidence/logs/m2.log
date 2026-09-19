@@ -1,0 +1,59 @@
+server_ready_tries=3 code=200 pid=247876
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP mode-unit-active: PASS unit
+STEP a-select-unit: PASS {"kind":"unit","id":"u-1"}
+STEP a-position-before: PASS {"q":1,"r":1}
+STEP a-position-after-target: FAIL {"before":{"q":1,"r":1},"after":{"q":1,"r":1}}
+STEP a-head-plus-one: PASS {"before":1,"after":2}
+STEP a-timeline-node-plus-one: PASS {"before":1,"after":2}
+STEP a-edit-status: PASS "已移动 u-1 → (1,2)"
+STEP a-map-reflects-move: FAIL {"q":1,"r":1}
+STEP a-shell-state-refreshed: PASS "分支 main · rev 2 · tick 5"
+STEP a2-route-append: FAIL []
+CLICK-SKIP #unit-route-send page.click: Timeout 3000ms exceeded.
+STEP a2-plan-route: FAIL {"movement":false}
+STEP a2-head-plus-one: FAIL {"before":2,"after":2}
+STEP b1-create-unit: PASS {"id":"u-2","position":{"q":1,"r":3},"parent":null}
+STEP b1-head-plus-one: PASS {"before":2,"after":3}
+STEP b2-reparent: PASS {"parentBefore":null,"parentAfter":"u-2"}
+STEP b2-head-plus-one: PASS {"before":3,"after":4}
+STEP b3-set-strength: PASS {"member":123,"equipment":{"步枪":7}}
+STEP b3-head-plus-one: PASS {"before":4,"after":5}
+STEP b4-create-with-parent: PASS {"id":"u-3","parent":"u-2","position":{"q":1,"r":1}}
+STEP b4-head-plus-one: PASS {"before":5,"after":6}
+B5-UNITS [{"id":"u-1","pos":{"q":1,"r":1}},{"id":"u-2","pos":{"q":1,"r":3}},{"id":"u-3","pos":{"q":1,"r":1}}]
+STEP b5-select-u3: PASS {"kind":"unit","id":"u-3"}
+STEP b5-disband: PASS {"status":404}
+HTTP-404 GET http://127.0.0.1:5917/api/unit/u-3?branch=main&revision=7
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b5-head-plus-one: PASS {"before":6,"after":7}
+HTTP-404 GET http://127.0.0.1:5917/api/social/population?q=1&r=2&branch=main&revision=7
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+CLICK-SKIP #unit-reparent page.click: Timeout 3000ms exceeded.
+STEP c-422-reason-visible: FAIL "已解散 u-3"
+STEP c-422-head-unchanged: PASS {"before":7,"after":7}
+STEP d-external-advance: PASS {"result":"committed","ref":{"branch":"main","revision":8}}
+STEP d-page-revision-stale: PASS {"pageRevBeforeD":7,"headBeforeD":7,"headAfterExternal":8}
+STEP d-409-message: FAIL "已解散 u-3"
+STEP d-head-refetched: FAIL {"pageRevAfterD":7,"headAfterExternal":8}
+STEP d-409-no-write: PASS {"before":{"q":1,"r":1},"after":{"q":1,"r":1}}
+STEP e-write-allowlist: PASS ["/api/command"]
+NON-GET-REQUESTS ["POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command","POST /api/command"]
+HTTP-404 GET http://127.0.0.1:5917/api/social/population?q=1&r=2&branch=main&revision=7
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP f-readonly-no-write: PASS {"before":6,"after":6,"newOnes":[]}
+STEP f-readonly-selection: PASS {"kind":"unit","id":"u-1"}
+E2E RESULT: FAIL a-position-after-target,a-map-reflects-move,a2-route-append,a2-plan-route,a2-head-plus-one,c-422-reason-visible,d-409-message,d-head-refetched
+e2e_rc=1
+
+===== 装置补记（m2）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/map.js
+orig_md5=2abc4794f6793e796fc0a68fd055b1e2
+mutant_md5=9ffc419b3bf7a1dc63c369089d7d6720
+pushed_classes_md5=9ffc419b3bf7a1dc63c369089d7d6720
+restored_src=2abc4794f6793e796fc0a68fd055b1e2
+restored_classes=2abc4794f6793e796fc0a68fd055b1e2
+round_start=1789784853
+server_log_mtime=1789784922
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7t7/.superpowers/sdd/2026-09-19-webui-plan/t7-evidence/logs/m2.server.log

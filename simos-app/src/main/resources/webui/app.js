@@ -186,6 +186,20 @@
     );
   }
 
+  /** 顶栏摘要文本：meta 缺省显示"无状态"。写后 refreshState 也会经它刷新，故不只 5s 轮询才更新。 */
+  function renderShellState(meta) {
+    var node = byId("shell-state");
+    if (!node) {
+      return;
+    }
+    if (!meta) {
+      node.textContent = "无状态";
+      return;
+    }
+    node.textContent =
+      "分支 " + meta.branch + " · rev " + meta.revision + " · tick " + meta.timestamp.tick;
+  }
+
   /** 轮询 /api/state 顶栏摘要（revision / tick）。失败时显示离线。 */
   function pollState() {
     var node = byId("shell-state");
@@ -194,14 +208,7 @@
     }
     var refresh = async function () {
       try {
-        var body = await refreshState();
-        var meta = body.meta;
-        if (!meta) {
-          node.textContent = "无状态";
-          return;
-        }
-        node.textContent =
-          "分支 " + meta.branch + " · rev " + meta.revision + " · tick " + meta.timestamp.tick;
+        await refreshState();
       } catch (e) {
         node.textContent = "状态不可用（" + e.message + "）";
       }
@@ -229,6 +236,7 @@
         state.revision = meta.revision;
       }
     }
+    renderShellState(meta);
     notify();
   }
 
@@ -242,6 +250,80 @@
   /** 所有面板的只读取数目标（M7 T3 约定；T4~T7 一律传它）。 */
   function target() {
     return { branch: state.branch, revision: state.revision };
+  }
+
+  // ── 写命令（M7 T7）────────────────────────────────────────────────
+  //
+  // ★ 唯一写入口是服务端的 CoreSimos.submit；前端只组信封、打三个 allowlist 端点之一
+  //   （/api/command|advance|fork，R8）。本文件只发 submitCommand（/api/command）。
+
+  /**
+   * 组一条写命令信封：{type, payloadJson, branch, expectedRevision}。
+   * ★ expectedRevision 一律取**当前游标**——过期由服务端 409 挡，前端不猜、不预检。
+   */
+  function commandEnvelope(type, payload) {
+    return {
+      type: type,
+      payloadJson: JSON.stringify(payload === undefined ? {} : payload),
+      branch: state.branch,
+      expectedRevision: state.revision,
+    };
+  }
+
+  /**
+   * 提交一条写命令（M7 T7）：
+   *
+   * <ul>
+   *   <li>成功 ⇒ 重取 /api/state 并把游标推进到新 head（写后可见：时间轴 +1、面板切到新 revision）；
+   *   <li>409 ⇒ 重取 head 并把游标拉到服务端 `current.revision`（**不静默重试**，spec §五 第 5 步）；
+   *   <li>422 ⇒ 原样回服务端 `reason`（MUST DO #6：不得吞掉、不得只 console）。
+   * </ul>
+   *
+   * 返回 {ok:true, body} 或 {ok:false, kind:"conflict"|"rejected"|"error", message, error}——本函数**不碰
+   * DOM**，显示位置由调用方决定。
+   */
+  async function writeCommand(type, payload) {
+    try {
+      var body = await window.SimosApi.submitCommand(commandEnvelope(type, payload));
+      try {
+        await refreshState();
+      } catch (refreshError) {
+        // 提交已成功：刷新失败不该把成功报成失败（body.ref 已是权威新坐标）。
+      }
+      if (body && body.ref && body.ref.revision !== undefined) {
+        setRevision(body.ref.revision);
+      }
+      return { ok: true, body: body };
+    } catch (error) {
+      if (error && error.status === 409) {
+        var current = error.body && error.body.current ? error.body.current : null;
+        try {
+          await refreshState();
+        } catch (refreshError) {
+          // 重取失败：保持旧游标，下次操作仍会 409（不伪造成功）。
+        }
+        if (current && current.revision !== undefined) {
+          setRevision(current.revision);
+        }
+        return {
+          ok: false,
+          kind: "conflict",
+          message: "末端已移动，已自动重取最新状态",
+          error: error,
+        };
+      }
+      if (error && error.status === 422) {
+        var reason =
+          error.body && error.body.reason ? error.body.reason : "422 " + (error.message || "被拒");
+        return { ok: false, kind: "rejected", message: reason, error: error };
+      }
+      return {
+        ok: false,
+        kind: "error",
+        message: (error && error.message) || String(error),
+        error: error,
+      };
+    }
   }
 
   /** 待批计数（T6 未接入时 /api/approvals 回 503 —— 优雅显示"未接入"）。 */
@@ -343,5 +425,7 @@
     target: target,
     refreshState: refreshState,
     setServerState: setServerState,
+    commandEnvelope: commandEnvelope,
+    writeCommand: writeCommand,
   };
 })();

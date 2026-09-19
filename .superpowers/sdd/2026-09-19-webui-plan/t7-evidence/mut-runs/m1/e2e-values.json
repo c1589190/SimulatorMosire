@@ -1,0 +1,75 @@
+{
+  "a": {
+    "headBefore": 1,
+    "headAfter": 1,
+    "nodesBefore": 1,
+    "nodesAfter": 1,
+    "positionBefore": {
+      "q": 1,
+      "r": 1
+    },
+    "positionAfter": {
+      "q": 1,
+      "r": 1
+    },
+    "mapPositionAfter": {
+      "q": 1,
+      "r": 1
+    }
+  },
+  "a2": {
+    "routePath": [],
+    "movement": false
+  },
+  "b": {
+    "createId": "u-2",
+    "reparent": {
+      "id": "u-1",
+      "parentBefore": null,
+      "parentAfter": null
+    },
+    "strength": {
+      "member": 100,
+      "equipment": {
+        "步枪": 50
+      }
+    },
+    "createWithParent": {
+      "id": "u-3"
+    }
+  },
+  "c": {
+    "reasonShown": "not found",
+    "headUnchanged": 1
+  },
+  "d": {
+    "headBeforeD": 1,
+    "headAfterExternal": 2,
+    "pageRevBeforeD": 1,
+    "pageRevAfterD": 1,
+    "statusShown": "not found",
+    "positionUnchanged": {
+      "q": 1,
+      "r": 1
+    }
+  },
+  "e": {
+    "allowlist": [
+      "/api/command",
+      "/api/advance",
+      "/api/fork"
+    ],
+    "observedPaths": [
+      "/api/raw-write"
+    ],
+    "count": 8
+  },
+  "f": {
+    "nonGetBefore": 8,
+    "nonGetAfter": 8,
+    "selection": {
+      "kind": "unit",
+      "id": "u-1"
+    }
+  }
+}

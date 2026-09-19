@@ -1,0 +1,80 @@
+{
+  "a": {
+    "headBefore": 1,
+    "headAfter": 2,
+    "nodesBefore": 1,
+    "nodesAfter": 2,
+    "positionBefore": {
+      "q": 1,
+      "r": 1
+    },
+    "positionAfter": {
+      "q": 1,
+      "r": 1
+    },
+    "mapPositionAfter": {
+      "q": 1,
+      "r": 1
+    }
+  },
+  "a2": {
+    "routePath": [],
+    "movement": false
+  },
+  "b": {
+    "createId": "u-2",
+    "reparent": {
+      "id": "u-1",
+      "parentBefore": null,
+      "parentAfter": "u-2"
+    },
+    "strength": {
+      "member": 123,
+      "equipment": {
+        "步枪": 7
+      }
+    },
+    "createWithParent": {
+      "id": "u-3",
+      "parent": "u-2",
+      "position": {
+        "q": 1,
+        "r": 1
+      }
+    }
+  },
+  "c": {
+    "reasonShown": "已解散 u-3",
+    "headUnchanged": 7
+  },
+  "d": {
+    "headBeforeD": 7,
+    "headAfterExternal": 8,
+    "pageRevBeforeD": 7,
+    "pageRevAfterD": 7,
+    "statusShown": "已解散 u-3",
+    "positionUnchanged": {
+      "q": 1,
+      "r": 1
+    }
+  },
+  "e": {
+    "allowlist": [
+      "/api/command",
+      "/api/advance",
+      "/api/fork"
+    ],
+    "observedPaths": [
+      "/api/command"
+    ],
+    "count": 6
+  },
+  "f": {
+    "nonGetBefore": 6,
+    "nonGetAfter": 6,
+    "selection": {
+      "kind": "unit",
+      "id": "u-1"
+    }
+  }
+}

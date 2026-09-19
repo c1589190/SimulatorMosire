@@ -685,3 +685,53 @@ textarea {
   border-top: 1px solid var(--line);
   padding-top: 6px;
 }
+
+/* ── 单位移动与编辑（M7 T7）──────────────────────────────────────── */
+
+.unit-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.unit-editor h3 {
+  margin: 4px 0;
+}
+
+.unit-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.unit-edit-row button {
+  flex: 1 1 auto;
+}
+
+.unit-edit-group {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.unit-edit-group legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.unit-edit-group input {
+  width: 100%;
+  margin: 3px 0;
+}
+
+.unit-edit-group button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+#unit-route-preview {
+  font-size: 11px;
+  word-break: break-all;
+}

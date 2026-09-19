@@ -1,0 +1,70 @@
+server_ready_tries=3 code=200 pid=247161
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP mode-unit-active: PASS unit
+STEP a-select-unit: PASS {"kind":"unit","id":"u-1"}
+STEP a-position-before: PASS {"q":1,"r":1}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP a-position-after-target: FAIL {"before":{"q":1,"r":1},"after":{"q":1,"r":1}}
+STEP a-head-plus-one: FAIL {"before":1,"after":1}
+STEP a-timeline-node-plus-one: FAIL {"before":1,"after":1}
+STEP a-edit-status: FAIL "not found"
+STEP a-map-reflects-move: FAIL {"q":1,"r":1}
+STEP a-shell-state-refreshed: PASS "分支 main · rev 1 · tick 5"
+STEP a2-route-append: FAIL []
+CLICK-SKIP #unit-route-send page.click: Timeout 3000ms exceeded.
+STEP a2-plan-route: FAIL {"movement":false}
+STEP a2-head-plus-one: FAIL {"before":1,"after":1}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b1-create-unit: FAIL {"id":"u-2"}
+STEP b1-head-plus-one: FAIL {"before":1,"after":1}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b2-reparent: FAIL {"parentBefore":null,"parentAfter":null}
+STEP b2-head-plus-one: FAIL {"before":1,"after":1}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b3-set-strength: FAIL {"member":100,"equipment":{"步枪":50}}
+STEP b3-head-plus-one: FAIL {"before":1,"after":1}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b4-create-with-parent: FAIL {"id":"u-3"}
+STEP b4-head-plus-one: FAIL {"before":1,"after":1}
+B5-UNITS [{"id":"u-1","pos":{"q":1,"r":1}}]
+STEP b5-select-u3: FAIL {"kind":"unit","id":"u-1"}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP b5-disband: PASS {"status":404}
+STEP b5-head-plus-one: FAIL {"before":1,"after":1}
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+HTTP-404 POST http://127.0.0.1:5917/api/raw-write
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP c-422-reason-visible: FAIL "not found"
+STEP c-422-head-unchanged: PASS {"before":1,"after":1}
+STEP d-external-advance: PASS {"result":"committed","ref":{"branch":"main","revision":2}}
+STEP d-page-revision-stale: PASS {"pageRevBeforeD":1,"headBeforeD":1,"headAfterExternal":2}
+STEP d-409-message: FAIL "not found"
+STEP d-head-refetched: FAIL {"pageRevAfterD":1,"headAfterExternal":2}
+STEP d-409-no-write: PASS {"before":{"q":1,"r":1},"after":{"q":1,"r":1}}
+STEP e-write-allowlist: FAIL ["/api/raw-write"]
+NON-GET-REQUESTS ["POST /api/raw-write","POST /api/raw-write","POST /api/raw-write","POST /api/raw-write","POST /api/raw-write","POST /api/raw-write","POST /api/raw-write","POST /api/raw-write"]
+HTTP-404 GET http://127.0.0.1:5917/api/social/population?q=1&r=2&branch=main&revision=1
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP f-readonly-no-write: PASS {"before":8,"after":8,"newOnes":[]}
+STEP f-readonly-selection: PASS {"kind":"unit","id":"u-1"}
+E2E RESULT: FAIL a-position-after-target,a-head-plus-one,a-timeline-node-plus-one,a-edit-status,a-map-reflects-move,a2-route-append,a2-plan-route,a2-head-plus-one,b1-create-unit,b1-head-plus-one,b2-reparent,b2-head-plus-one,b3-set-strength,b3-head-plus-one,b4-create-with-parent,b4-head-plus-one,b5-select-u3,b5-head-plus-one,c-422-reason-visible,d-409-message,d-head-refetched,e-write-allowlist
+e2e_rc=1
+
+===== 装置补记（m1）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/api.js
+orig_md5=c0e755dd835cc3cda7afec1260f572d1
+mutant_md5=bedfb2e9039b6d5cf58d4b184fce370b
+pushed_classes_md5=bedfb2e9039b6d5cf58d4b184fce370b
+restored_src=c0e755dd835cc3cda7afec1260f572d1
+restored_classes=c0e755dd835cc3cda7afec1260f572d1
+round_start=1789784708
+server_log_mtime=1789784850
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7t7/.superpowers/sdd/2026-09-19-webui-plan/t7-evidence/logs/m1.server.log
