@@ -94,7 +94,52 @@
             <button type="button" disabled data-pending="map.SetEdge" title="白名单已放行；UI 归 T11">河流/道路（归 T11）</button>
             <button type="button" disabled data-pending="map.RandomizeRegion" title="白名单已放行；UI 归 T11">圈选随机化（归 T11）</button>
           </div>
+        </section>
 
+        <section class="region-editor" data-modes="region-edit" aria-label="区域编辑">
+          <h3>区域编辑</h3>
+          <p id="region-edit-status" class="status muted">点「新建区域」或从右栏选一个已有区域开始；重叠是正常状态，不会被拒绝。</p>
+          <div class="region-edit-row">
+            <button type="button" id="region-edit-new">新建区域</button>
+            <button type="button" id="region-edit-draw">绘制选区：关</button>
+            <select id="region-edit-op" aria-label="选区操作">
+              <option value="add">加入选区</option>
+              <option value="remove">移除选区</option>
+            </select>
+            <button type="button" id="region-edit-clear">清空选区</button>
+          </div>
+          <p id="region-edit-draft" class="muted">选区：0 格</p>
+          <p class="muted">目标区域：<b id="region-edit-focus">未选中</b></p>
+
+          <fieldset class="region-edit-group" id="region-create-form">
+            <legend>新建区域（map.CreateRegion；重叠不报错）</legend>
+            <label class="rm-field">regionId
+              <input id="region-create-id" type="text" placeholder="regionId（可改）">
+            </label>
+            <label class="rm-field">名称
+              <input id="region-create-name" type="text" placeholder="名称">
+            </label>
+            <button type="button" id="region-create-submit">创建区域</button>
+          </fieldset>
+
+          <fieldset class="region-edit-group" id="region-update-form">
+            <legend>改已有区域（map.UpdateRegion，hex 集合）</legend>
+            <button type="button" id="region-edit-load">把目标区域 hex 载入选区</button>
+            <button type="button" id="region-update-submit">保存选区为新 hex 集合</button>
+          </fieldset>
+
+          <fieldset class="region-edit-group" id="region-delete-form">
+            <legend>删除区域（map.DeleteRegion，需二次确认）</legend>
+            <button type="button" id="region-delete">删除目标区域</button>
+            <div class="region-delete-confirm" id="region-delete-confirm" hidden>
+              <span>确认删除 <b id="region-delete-name">—</b>？不可撤销。</span>
+              <button type="button" id="region-delete-yes">确认删除</button>
+              <button type="button" id="region-delete-cancel">取消</button>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="region-info-editor" data-modes="map-edit region-edit" aria-label="区域信息编辑">
           <h3>区域信息编辑</h3>
           <p id="region-info-status" class="status muted">点选一个格子查看其所属区域与地形。</p>
           <dl class="kv" id="region-info-detail"></dl>

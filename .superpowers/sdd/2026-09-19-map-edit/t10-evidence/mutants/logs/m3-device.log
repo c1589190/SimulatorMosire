@@ -1,0 +1,6 @@
+mutation=m3 orig_md5=4950d1b8951f8a057acc1d2ea57a30dc mutant_md5=9229c34e90dd341b5c643cfb108ce0f8 file=map.js expect_red=c2-fade-colors-distinct
+syntax_rc=0 (must be 0)
+e2e_rc=1 (expect 1)
+result_line=E2E RESULT: 1 FAIL c2-fade-colors-distinct
+restored_md5=4950d1b8951f8a057acc1d2ea57a30dc restored_classes_md5=4950d1b8951f8a057acc1d2ea57a30dc orig_md5=4950d1b8951f8a057acc1d2ea57a30dc
+MUTATION m3: KILLED (expected red c2-fade-colors-distinct observed)

@@ -1,0 +1,8 @@
+=== BEFORE hex(-18,0) ===
+{"q":-18,"r":0,"terrain":"low_hills","height":0.6000000000000001,"regions":["test_annex_target","test_nation"],"terrainType":{"key":"low_hills","name":"低矮丘陵","color":"#A8B36A","minHeight":0.55,"maxHeight":0.65,"food":2,"gold":1,"stone":1,"moveCost":2,"description":"低地与山地的过渡带，产量中等、略难走"},"facets":[]}
+=== POST CreateRegion t10_overlap (5 hexes overlapping) ===
+{"result":"committed","ref":{"branch":"main","revision":2}}
+=== AFTER hex(-18,0) revision=2 ===
+{"q":-18,"r":0,"terrain":"low_hills","height":0.6000000000000001,"regions":["t10_overlap","test_annex_target","test_nation"],"terrainType":{"key":"low_hills","name":"低矮丘陵","color":"#A8B36A","minHeight":0.55,"maxHeight":0.65,"food":2,"gold":1,"stone":1,"moveCost":2,"description":"低地与山地的过渡带，产量中等、略难走"},"facets":[]}
+=== ORIGINAL ARCHIVE MD5 ===
+2348b9365e5b107945a305d06fad8fab  /tmp/m6-import-verify/test_integration/simos.db

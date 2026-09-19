@@ -1,0 +1,312 @@
+{
+  "preflight": {
+    "hexCount": 19441,
+    "regions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "terrainTypes": [
+      "ocean",
+      "plains",
+      "low_hills",
+      "mountains"
+    ]
+  },
+  "before": {
+    "annexHexCount": 201,
+    "nationHexCount": 701,
+    "H_RM": {
+      "q": -18,
+      "r": 0
+    },
+    "H_ADD": {
+      "q": -2,
+      "r": 0
+    }
+  },
+  "m9Baseline": {
+    "blockCount": 44,
+    "unmergedCount": 0,
+    "unitCount": 0
+  },
+  "a": {
+    "body": "region-edit",
+    "cur": "区域编辑",
+    "regionPanelVisible": true,
+    "editorVisible": true,
+    "metaEditorVisible": true,
+    "whitelist": {
+      "create": true,
+      "update": true,
+      "del": true,
+      "terrain": false
+    }
+  },
+  "bPreview": {
+    "midPainting": true,
+    "midBrush": 3,
+    "draftHexCount": 5
+  },
+  "hexRegionsBeforeCreate": [
+    "test_annex_target",
+    "test_nation"
+  ],
+  "create": {
+    "posts": 1,
+    "payload": {
+      "regionId": "t10_overlap",
+      "name": "T10 Overlap",
+      "hexes": [
+        {
+          "q": -18,
+          "r": 0
+        },
+        {
+          "q": -17,
+          "r": 0
+        },
+        {
+          "q": -16,
+          "r": 0
+        },
+        {
+          "q": -15,
+          "r": 0
+        },
+        {
+          "q": -14,
+          "r": 0
+        }
+      ]
+    },
+    "headBefore": 1,
+    "headAfter": 2,
+    "regionIdsAfter": [
+      "test_annex_target",
+      "test_nation",
+      "t10_overlap"
+    ],
+    "hexRegionsAfter": [
+      "t10_overlap",
+      "test_annex_target",
+      "test_nation"
+    ]
+  },
+  "fade": {
+    "focus": "t10_overlap",
+    "fadedRegions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "bodyFocus": "t10_overlap",
+    "colors": [
+      "#00e5ff",
+      "#dbadcc",
+      "#ceaecf"
+    ],
+    "alphas": [
+      0.13,
+      0.52
+    ],
+    "focusAlpha": 0.52,
+    "fadeAlpha": 0.13,
+    "fadedNation": "#ceaecf",
+    "fadedAnnex": "#dbadcc"
+  },
+  "deleteConfirm": {
+    "armed": {
+      "confirmShown": true,
+      "debug": {
+        "mode": "region-edit",
+        "focus": "t10_overlap",
+        "fadedRegions": [
+          "test_annex_target",
+          "test_nation"
+        ],
+        "draftHexCount": 5,
+        "draftHexes": [
+          {
+            "q": -18,
+            "r": 0
+          },
+          {
+            "q": -17,
+            "r": 0
+          },
+          {
+            "q": -16,
+            "r": 0
+          },
+          {
+            "q": -15,
+            "r": 0
+          },
+          {
+            "q": -14,
+            "r": 0
+          }
+        ],
+        "drawEnabled": true,
+        "op": "add",
+        "deleteArmed": true,
+        "busy": false,
+        "bodyRegionFocus": "t10_overlap",
+        "overviewRegions": [
+          "test_annex_target",
+          "test_nation",
+          "t10_overlap"
+        ]
+      }
+    },
+    "cancelled": {
+      "confirmHidden": true,
+      "focus": "t10_overlap"
+    },
+    "postsArmed": 0,
+    "postsCancelled": 0
+  },
+  "deleteDone": {
+    "posts": 1,
+    "headBefore": 2,
+    "headAfter": 3,
+    "regionIdsAfter": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "hexRegionsAfter": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "focusAfter": null
+  },
+  "fadeAfterClear": {
+    "focus": "test_annex_target",
+    "fadedRegions": [
+      "test_nation"
+    ],
+    "alphas": [
+      0.13,
+      0.52
+    ]
+  },
+  "updateDraft": {
+    "before": 201,
+    "afterRemove": 198,
+    "afterAdd": 201,
+    "containsAdd": true,
+    "containsRm": false
+  },
+  "update": {
+    "posts": 1,
+    "payloadRegionId": "test_annex_target",
+    "payloadHexCount": 201,
+    "hexCountBefore": 201,
+    "hexCountAfter": 201,
+    "H_RM": "-18,0",
+    "H_ADD": "-2,0",
+    "afterContainsAdd": true,
+    "afterContainsRm": false,
+    "headBefore": 3,
+    "headAfter": 4
+  },
+  "negDuplicate": {
+    "status": "区域已存在: test_nation",
+    "posts": 1
+  },
+  "negEmpty": {
+    "status": "hexes 不得为空：一个区域至少要有一格",
+    "draft": 0,
+    "posts": 1
+  },
+  "negOffmap": {
+    "ok": false,
+    "kind": "rejected",
+    "message": "hex 不在图上: 9999_9999"
+  },
+  "regionEditNonGet": {
+    "count": 6,
+    "types": [
+      "map.CreateRegion",
+      "map.DeleteRegion",
+      "map.UpdateRegion"
+    ]
+  },
+  "mapEditBrush": {
+    "posts": 1,
+    "hexCount": 5,
+    "terrain": "ocean"
+  },
+  "m9": {
+    "blockCount": 46,
+    "unmergedCount": 0,
+    "selection": {
+      "kind": "hex",
+      "q": -18,
+      "r": 0
+    }
+  },
+  "m7": {
+    "createRes": {
+      "ok": true,
+      "kind": null,
+      "message": null
+    },
+    "routePosts": 1,
+    "routeCount": 1,
+    "cancelPosts": 1,
+    "routeCountAfterCancel": 0
+  },
+  "pageErrors": [],
+  "nonGet": [
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.CreateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.DeleteRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.UpdateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.CreateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.CreateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.CreateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.SetTerrain"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "unit.CreateUnit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "unit.PlanRoute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "unit.CancelRoute"
+    }
+  ]
+}

@@ -371,6 +371,8 @@
     highlighted.forEach(function (id) {
       highlightSet[id] = true;
     });
+    // ★ M8 T10：区域编辑模式下"当前目标区域"（focus）也算选中态（它由 map.js 渲染正常色/其它淡色）。
+    var regionFocus = state.regionFocus || null;
     groups.forEach(function (group) {
       var ids = group.regions.map(function (region) {
         return region.id;
@@ -397,9 +399,10 @@
 
       var list = app.el("div", { class: "region-list" });
       group.regions.forEach(function (region) {
+        var isSelected = !!highlightSet[region.id] || region.id === regionFocus;
         var item = app.el("button", {
           type: "button",
-          class: "region-item" + (highlightSet[region.id] ? " selected" : ""),
+          class: "region-item" + (isSelected ? " selected" : ""),
           "data-region-id": region.id,
         });
         item.appendChild(
@@ -410,7 +413,11 @@
         );
         item.addEventListener("click", function () {
           selectedRegion = region;
-          app.setHighlightRegions([region.id]);
+          if (app.getState().mode === "region-edit") {
+            app.setRegionFocus(region.id);
+          } else {
+            app.setHighlightRegions([region.id]);
+          }
         });
         list.appendChild(item);
       });

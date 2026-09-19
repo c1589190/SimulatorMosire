@@ -1,0 +1,32 @@
+webui_synced map.js_md5=621deeea897357a5673beb7a6f12a4e1
+server_ready_tries=3 code=200 pid=449441
+STEP pre-real-archive: PASS {"hexCount":19441,"regions":["test_annex_target","test_nation"],"terrainTypes":["ocean","plains","low_hills","mountains"]}
+STEP pre-update-candidates: PASS {"annexHexCount":201,"nationHexCount":701,"H_RM":{"q":-18,"r":0},"H_ADD":{"q":-2,"r":0}}
+STEP pre-m9-blocks-baseline: PASS {"blockCount":44,"unmergedCount":0,"unitCount":0}
+STEP a-region-edit-mode: PASS {"body":"region-edit","cur":"区域编辑","regionPanelVisible":true,"editorVisible":true,"metaEditorVisible":true,"whitelist":{"create":true,"update":true,"del":true,"terrain":false}}
+STEP b0-new-draft-cleared-draw-on: PASS {"mode":"region-edit","focus":null,"fadedRegions":["test_annex_target","test_nation"],"draftHexCount":0,"draftHexes":[],"drawEnabled":true,"op":"add","deleteArmed":false,"busy":false,"bodyRegionFocus":"","overviewRegions":["test_annex_target","test_nation"]}
+STEP b0-draft-preview-during-drag: PASS {"midPainting":true,"midBrush":3,"draftHexCount":5}
+STEP b1-overlap-one-command-head-plus-one: PASS {"posts":1,"payload":{"regionId":"t10_overlap","name":"T10 Overlap","hexes":[{"q":-18,"r":0},{"q":-17,"r":0},{"q":-16,"r":0},{"q":-15,"r":0},{"q":-14,"r":0}]},"headBefore":1,"headAfter":2,"regionIdsAfter":["test_annex_target","test_nation","t10_overlap"],"hexRegionsAfter":["t10_overlap","test_annex_target","test_nation"]}
+STEP b2-overlap-allows-multi-membership: PASS hex(-18,0).regions=["t10_overlap","test_annex_target","test_nation"]
+STEP b3-overlap-draft-kept: PASS {"focus":"t10_overlap","draftHexCount":5}
+STEP c1-fade-focus-set: PASS {"focus":"t10_overlap","bodyFocus":"t10_overlap","fadedRegions":["test_annex_target","test_nation"]}
+STEP c2-fade-colors-distinct: PASS {"colors":["#00e5ff","#dbadcc","#ceaecf"],"alphas":[0.13,0.52],"focusAlpha":0.52,"fadeAlpha":0.13,"fadedNation":"#ceaecf","fadedAnnex":"#dbadcc"}
+STEP e1-delete-unconfirmed-zero-write: FAIL {"armed":{"confirmShown":false,"debug":{"mode":"region-edit","focus":"t10_overlap","fadedRegions":["test_annex_target","test_nation"],"draftHexCount":5,"draftHexes":[{"q":-18,"r":0},{"q":-17,"r":0},{"q":-16,"r":0},{"q":-15,"r":0},{"q":-14,"r":0}],"drawEnabled":true,"op":"add","deleteArmed":false,"busy":true,"bodyRegionFocus":"t10_overlap","overviewRegions":["test_annex_target","test_nation","t10_overlap"]}},"cancelled":{"confirmHidden":true,"focus":"t10_overlap"},"postsArmed":1,"postsCancelled":1}
+STEP e2-delete-confirmed-one-command: FAIL 删除按钮不可用（focus 已在 e1 被清空）
+STEP d0-focus-loads-hexes: PASS {"focus":"test_annex_target","draftHexCount":201,"drawEnabled":true}
+STEP d0b-fade-annex-focus: PASS {"focus":"test_annex_target","fadedRegions":["test_nation"],"alphas":[0.13,0.52]}
+STEP d1-update-draft-add-remove: PASS {"before":201,"afterRemove":198,"afterAdd":201,"containsAdd":true,"containsRm":false}
+STEP d2-update-one-command-before-after: PASS {"posts":1,"payloadRegionId":"test_annex_target","payloadHexCount":201,"hexCountBefore":201,"hexCountAfter":201,"H_RM":"-18,0","H_ADD":"-2,0","afterContainsAdd":true,"afterContainsRm":false,"headBefore":3,"headAfter":4}
+STEP f1-duplicate-id-rejected-reason: PASS {"status":"区域已存在: test_nation","posts":1}
+STEP f2-empty-selection-rejected-reason: PASS {"status":"hexes 不得为空：一个区域至少要有一格","draft":0,"posts":1}
+STEP f3-offmap-rejected-reason: PASS {"ok":false,"kind":"rejected","message":"hex 不在图上: 9999_9999"}
+STEP f4-negatives-no-revision: PASS {"headBeforeNeg":4,"headAfterNeg":4,"tlBeforeNeg":{"nodeCount":4},"tlAfterNeg":{"nodeCount":4}}
+STEP g1-region-edit-whitelist: PASS {"count":6,"types":["map.CreateRegion","map.DeleteRegion","map.UpdateRegion"]}
+STEP g2-map-edit-brush-not-regressed: PASS {"posts":1,"hexCount":5,"terrain":"ocean"}
+STEP g3-blocks-not-regressed: PASS {"blockCount":46,"unmergedCount":0,"selection":{"kind":"hex","q":-18,"r":0}}
+STEP g4-route-not-regressed: PASS {"createRes":{"ok":true,"kind":null,"message":null},"routePosts":1,"routeCount":1,"cancelPosts":1,"routeCountAfterCancel":0}
+STEP g5-no-pageerror: PASS []
+NONGET [{"method":"POST","path":"/api/command","type":"map.CreateRegion"},{"method":"POST","path":"/api/command","type":"map.DeleteRegion"},{"method":"POST","path":"/api/command","type":"map.UpdateRegion"},{"method":"POST","path":"/api/command","type":"map.CreateRegion"},{"method":"POST","path":"/api/command","type":"map.CreateRegion"},{"method":"POST","path":"/api/command","type":"map.CreateRegion"},{"method":"POST","path":"/api/command","type":"map.SetTerrain"},{"method":"POST","path":"/api/command","type":"unit.CreateUnit"},{"method":"POST","path":"/api/command","type":"unit.PlanRoute"},{"method":"POST","path":"/api/command","type":"unit.CancelRoute"}]
+PAGEERRORS []
+E2E RESULT: 2 FAIL e1-delete-unconfirmed-zero-write,e2-delete-confirmed-one-command
+e2e_rc=1
