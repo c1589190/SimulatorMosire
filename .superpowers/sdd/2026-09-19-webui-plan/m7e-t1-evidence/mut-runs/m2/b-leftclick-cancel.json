@@ -1,0 +1,60 @@
+{
+  "selB0": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "revBeforeCancel": 2,
+  "revAfterCancel": null,
+  "nodesBeforeCancel": 2,
+  "nodesAfterCancel": null,
+  "movement": {
+    "route": {
+      "waypoints": [
+        {
+          "q": 1,
+          "r": 1
+        },
+        {
+          "q": 1,
+          "r": 2
+        },
+        {
+          "q": 1,
+          "r": 3
+        }
+      ],
+      "path": [
+        {
+          "q": 1,
+          "r": 1
+        },
+        {
+          "q": 1,
+          "r": 2
+        },
+        {
+          "q": 1,
+          "r": 3
+        }
+      ]
+    },
+    "departedAt": {
+      "tick": 5,
+      "calendarLabel": null
+    },
+    "speedAtDeparture": 2,
+    "mobilityPerMilleAtDeparture": 500,
+    "status": "IN_TRANSIT",
+    "currentHex": {
+      "q": 1,
+      "r": 1
+    },
+    "nextHex": {
+      "q": 1,
+      "r": 2
+    },
+    "remainingMillis": 1500
+  },
+  "routeCountAfter": null,
+  "status": null
+}

@@ -1,0 +1,11 @@
+13:28:59.002 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+13:28:59.085 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5832/（静态 /webui，同源，无 CORS 头）
+13:28:59.086 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m7e-mut-store-m1 checkpointInterval=100 codec=3 handler=8 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45425 guiPort=5832 approvalPort=46037
+13:28:59.159 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+13:28:59.160 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m7e-mut-store-m1 checkpointInterval=100 模块数=3 guiPort=5832 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+13:28:59.160 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5832/
+13:29:00.705 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=df1e35e0-c036-4880-866d-9c8ca566bcc7 correlationId=df1e35e0-c036-4880-866d-9c8ca566bcc7 新坐标=main@2
+13:29:00.960 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CancelRoute commandId=1b5dc66e-f757-4d9a-93fc-6ffbce075e5e correlationId=1b5dc66e-f757-4d9a-93fc-6ffbce075e5e 新坐标=main@3
+13:29:01.693 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CancelRoute commandId=edd7b0aa-aad3-4421-a461-69ad542762fe correlationId=edd7b0aa-aad3-4421-a461-69ad542762fe 新坐标=main@4
+13:29:02.794 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=be9022ef-7e24-4706-b67a-29b4880a4f84 correlationId=be9022ef-7e24-4706-b67a-29b4880a4f84 新坐标=main@5
+13:29:03.527 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

@@ -954,10 +954,6 @@
     // ★ M7e T1（用户裁定，§2「一下选中、两下取消」）：左键点**已选中**的单位标记 ⇒ 取消移动；
     //   未选中则只是选中它。不点单位、点已选中单位**当前所在格**同样取消移动。
     if (pick.kind === "unit") {
-      if (mode === "unit" && selId === pick.id) {
-        cancelRouteFor(pick.id);
-        return;
-      }
       app.setSelection({ kind: "unit", id: pick.id });
       if (mode === "unit") {
         resetRoute();

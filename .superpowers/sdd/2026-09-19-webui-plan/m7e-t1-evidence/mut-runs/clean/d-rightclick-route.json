@@ -1,0 +1,53 @@
+{
+  "path": [
+    {
+      "q": 1,
+      "r": 1
+    },
+    {
+      "q": 1,
+      "r": 2
+    },
+    {
+      "q": 1,
+      "r": 3
+    }
+  ],
+  "routePath": [
+    {
+      "q": 1,
+      "r": 1
+    },
+    {
+      "q": 1,
+      "r": 2
+    },
+    {
+      "q": 1,
+      "r": 3
+    }
+  ],
+  "route": {
+    "id": "u-1",
+    "totalPoints": 3,
+    "remainingPoints": 3,
+    "status": "IN_TRANSIT",
+    "currentHex": {
+      "q": 1,
+      "r": 1
+    },
+    "nextHex": {
+      "q": 1,
+      "r": 2
+    },
+    "outlineColor": "rgba(12, 8, 2, 0.95)",
+    "baseColor": "#f59e0b",
+    "remainingColor": "#ffffff"
+  },
+  "revBeforeD": 3,
+  "revD": 4,
+  "nodes": {
+    "before": 3,
+    "after": 4
+  }
+}

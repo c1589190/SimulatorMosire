@@ -1,0 +1,88 @@
+{
+  "blank": {
+    "point": {
+      "x": 4,
+      "y": 4
+    },
+    "pick": {
+      "kind": "hex",
+      "q": -1,
+      "r": 0,
+      "inMap": false
+    }
+  },
+  "selBeforeA": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "selAfterA": null,
+  "nonGetBeforeA": 2,
+  "nonGetAfterA": 2,
+  "movement": {
+    "route": {
+      "waypoints": [
+        {
+          "q": 1,
+          "r": 1
+        },
+        {
+          "q": 1,
+          "r": 2
+        },
+        {
+          "q": 1,
+          "r": 3
+        }
+      ],
+      "path": [
+        {
+          "q": 1,
+          "r": 1
+        },
+        {
+          "q": 1,
+          "r": 2
+        },
+        {
+          "q": 1,
+          "r": 3
+        }
+      ]
+    },
+    "departedAt": {
+      "tick": 5,
+      "calendarLabel": null
+    },
+    "speedAtDeparture": 2,
+    "mobilityPerMilleAtDeparture": 500,
+    "status": "IN_TRANSIT",
+    "currentHex": {
+      "q": 1,
+      "r": 1
+    },
+    "nextHex": {
+      "q": 1,
+      "r": 2
+    },
+    "remainingMillis": 1500
+  },
+  "routes": [
+    {
+      "id": "u-1",
+      "totalPoints": 3,
+      "remainingPoints": 3,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "outlineColor": "rgba(12, 8, 2, 0.95)",
+      "baseColor": "#f59e0b",
+      "remainingColor": "#ffffff"
+    }
+  ]
+}

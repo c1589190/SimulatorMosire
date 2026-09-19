@@ -1,0 +1,48 @@
+server_ready_tries=3 code=200 pid=301741
+TERRAIN_PX=[231,200,110] desertColor="#E7C86E"
+STEP setup-mode-unit: PASS unit
+STEP setup-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP setup-route-planned: FAIL {"rev0":1,"rev1":2,"routeSetup":[]}
+STEP a-blank-is-off-map: PASS {"point":{"x":4,"y":4},"pick":{"kind":"hex","q":-1,"r":0,"inMap":false}}
+STEP a-selection-cleared: PASS {"selBeforeA":{"kind":"unit","id":"u-1"},"selAfterA":null}
+STEP a-no-write: PASS {"nonGetBeforeA":2,"nonGetAfterA":2}
+STEP a-movement-kept: PASS {"route":{"waypoints":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}],"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]},"departedAt":{"tick":5,"calendarLabel":null},"speedAtDeparture":2,"mobilityPerMilleAtDeparture":500,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"remainingMillis":1500}
+STEP a-polyline-kept: PASS [{"id":"u-1","totalPoints":3,"remainingPoints":3,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"outlineColor":"rgba(12, 8, 2, 0.95)","baseColor":"#f59e0b","remainingColor":"#ffffff"}]
+STEP b-first-click-selects: PASS {"kind":"unit","id":"u-1"}
+STEP b-first-click-no-write: FAIL {"nonGetBeforeBSelect":2,"nonGetAfterBSelect":3}
+STEP b-movement-cleared: PASS null
+STEP b-head-advanced: PASS {"revBeforeCancel":3,"revAfterCancel":4}
+STEP b-node-plus-1: PASS {"nodesBeforeCancel":3,"nodesAfterCancel":4}
+STEP b-polyline-gone: PASS []
+STEP b-still-selected: PASS {"kind":"unit","id":"u-1"}
+STEP b-status-refreshed: PASS "已取消 u-1 的移动（路线已清）"
+STEP c-precondition-hex-selected: PASS {"kind":"hex","q":1,"r":2}
+STEP c-selection-unit: PASS {"kind":"unit","id":"u-1"}
+STEP c-no-write: FAIL {"nonGetBeforeC":4,"nonGetAfterC":5}
+STEP c-movement-still-null: PASS null
+STEP d-path-3-points: PASS (1,1)->(1,2)->(1,3)
+STEP d-head-advanced: PASS {"revBeforeD":6,"revD":7}
+STEP d-route-3-points: PASS (1,1)->(1,2)->(1,3)
+STEP d-node-plus-1: PASS {"nodesBeforeD":6,"nodesD":7}
+STEP d-polyline-3-points: PASS {"id":"u-1","totalPoints":3,"remainingPoints":3,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"outlineColor":"rgba(12, 8, 2, 0.95)","baseColor":"#f59e0b","remainingColor":"#ffffff"}
+STEP g-pixel-contrast: PASS {"terrainPx":[231,200,110],"best":{"dx":-6,"rgb":[23,18,8],"diff":208},"brightest":{"dx":-1,"rgb":[255,255,255],"lum":765},"darkest":{"dx":-6,"rgb":[23,18,8],"lum":49}}
+STEP g-color-changed: PASS {"baseColor":"#f59e0b","outlineColor":"rgba(12, 8, 2, 0.95)"}
+NON_GET_LIST=["/api/command","/api/command","/api/command","/api/command","/api/command","/api/command"]
+STEP e-nonget-allowlist: PASS {"list":["/api/command","/api/command","/api/command","/api/command","/api/command","/api/command"],"violations":[]}
+STEP e-command-present: PASS ["/api/command","/api/command","/api/command","/api/command","/api/command","/api/command"]
+STEP f-no-page-errors: PASS []
+E2E RESULT: FAIL setup-route-planned,b-first-click-no-write,c-no-write
+e2e_rc=1
+
+===== 装置补记（m3）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/map.js
+orig_md5=57ffb8d104514f0883acf3af84720dad
+pushed_src_md5=a85fb089d41a51e72c7fc1ecd259fdf8
+pushed_classes_md5=a85fb089d41a51e72c7fc1ecd259fdf8
+restored_src_md5=57ffb8d104514f0883acf3af84720dad
+restored_classes_md5=57ffb8d104514f0883acf3af84720dad
+class_backup_md5=57ffb8d104514f0883acf3af84720dad
+round_start=1789795775
+server_log_mtime=1789795780
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7et1/.superpowers/sdd/2026-09-19-webui-plan/m7e-t1-evidence/logs/m3.server.log
