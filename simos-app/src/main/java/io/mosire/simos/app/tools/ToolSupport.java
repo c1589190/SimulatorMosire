@@ -304,9 +304,10 @@ public final class ToolSupport {
     view.put("hexCount", map.hexes().size());
 
     List<Map<String, Object>> hexes = new ArrayList<>(map.hexes().size());
+    Map<HexCoord, String> terrainIndex = map.terrainIndex();
     for (Map.Entry<HexCoord, HexCell> entry : map.hexes().entrySet()) {
       Map<String, Object> hex = hexCoord(entry.getKey());
-      hex.put("terrain", entry.getValue().terrain());
+      hex.put("terrain", terrainIndex.get(entry.getKey()));
       hex.put("height", entry.getValue().height());
       hexes.add(hex);
     }

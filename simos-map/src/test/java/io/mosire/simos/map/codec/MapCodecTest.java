@@ -8,6 +8,7 @@ import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
@@ -83,7 +84,7 @@ class MapCodecTest {
   void changeSetRoundTripsWithAllFourDeltaVariants() {
     GameMap base = fixturedMap();
     GameMap target =
-        base.withHexes(plusHex(base.hexes()))
+        withExtraHex(base)
             .withCities(Map.of())
             .withEdges(Map.of(EDGE_BC, new EdgeTags(Map.of("road", Map.of("width", 2)))));
     MapChangeSet changeSet = MapChangeSet.between(base, target);
@@ -102,18 +103,18 @@ class MapCodecTest {
   @Test
   void deltaValuesSurviveAsHexCellNotAsMaps() {
     GameMap base = GameMap.empty();
-    GameMap target = base.withHexes(Map.of(H_A, new HexCell("plains", 0.35)));
+    GameMap target = fixturedMap();
     MapChangeSet back =
         (MapChangeSet)
             CODEC.decodeChangeSet(CODEC.encodeChangeSet(MapChangeSet.between(base, target)));
-    assertThat(back.hexes().lookup(H_A.toString())).contains(new HexCell("plains", 0.35));
+    assertThat(back.hexes().lookup(H_A.toString())).contains(new HexCell(0.35));
   }
 
   /** 施加（C28）：新快照的 ref/timestamp 来自 newMeta，**不是** base 的；且 base 原样不动。 */
   @Test
   void applyProducesNewSnapshotStampedWithNewMeta() {
     MapSnapshot base = snapshotOf(fixturedMap(), SimosTimestamp.of(10));
-    GameMap target = base.map().withHexes(plusHex(base.map().hexes()));
+    GameMap target = withExtraHex(base.map());
     MapChangeSet changeSet = MapChangeSet.between(base.map(), target);
     StateMeta newMeta =
         new StateMeta(new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
@@ -163,10 +164,11 @@ class MapCodecTest {
 
   // ── 夹具 ──
 
-  /** 七个组件全非空的图（照 M2 {@code RoundTripComponentsTest} 的单件夹具，五个自定义键类型全在键位上）。 */
+  /** 九个组件全非空的图（照 M2 {@code RoundTripComponentsTest} 的单件夹具，六个自定义键类型全在键位上）。 */
   private static GameMap fixturedMap() {
     return new GameMap(
-        Map.of(H_A, new HexCell("plains", 0.35)),
+        Map.of(H_A, new HexCell(0.35)),
+        TerrainBlocks.uniform(Set.of(H_A), "plains"),
         Map.of(
             new RegionId("r1"),
             Region.of(new RegionId("r1"), "区域 r1", Set.of(H_A), RegionMeta.empty())),
@@ -183,10 +185,23 @@ class MapCodecTest {
         GenerationSpec.defaults(0L));
   }
 
-  private static Map<HexCoord, HexCell> plusHex(Map<HexCoord, HexCell> hexes) {
-    LinkedHashMap<HexCoord, HexCell> next = new LinkedHashMap<>(hexes);
-    next.put(H_B, new HexCell("ocean", 0.1));
-    return next;
+  /** 加一格（hexes 与 terrainBlocks **原子**更新：两者受分割不变式约束，不能分两步 with）。 */
+  private static GameMap withExtraHex(GameMap base) {
+    LinkedHashMap<HexCoord, HexCell> hexes = new LinkedHashMap<>(base.hexes());
+    hexes.put(H_B, new HexCell(0.1));
+    Map<HexCoord, String> terrain = new LinkedHashMap<>();
+    terrain.put(H_A, "plains");
+    terrain.put(H_B, "ocean");
+    return new GameMap(
+        hexes,
+        TerrainBlocks.split(terrain),
+        base.regions(),
+        base.cities(),
+        base.terrainTypes(),
+        base.pathways(),
+        base.pathwayGroups(),
+        base.edges(),
+        base.spec());
   }
 
   private static MapSnapshot snapshotOf(GameMap map, SimosTimestamp timestamp) {

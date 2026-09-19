@@ -120,7 +120,7 @@ class MapGeneratorTest {
   /** 每个格上的地形 key 都在词表里（分类器是总函数，返回**恒**在 {@link TerrainCatalog#KEYS} 内）。 */
   @Test
   void everyHexTerrainIsInCatalog() {
-    assertThat(SEED_42.hexes().values().stream().map(HexCell::terrain).distinct().toList())
+    assertThat(SEED_42.terrainIndex().values().stream().distinct().toList())
         .isSubsetOf(TerrainCatalog.KEYS);
   }
 
@@ -189,9 +189,7 @@ class MapGeneratorTest {
   void measuredSeedsProduceEveryCatalogKey() {
     Set<String> produced = new HashSet<>();
     for (long seed : new long[] {12L, SEED}) {
-      MapGenerator.generate(GenerationSpec.defaults(seed)).hexes().values().stream()
-          .map(HexCell::terrain)
-          .forEach(produced::add);
+      produced.addAll(MapGenerator.generate(GenerationSpec.defaults(seed)).terrainIndex().values());
     }
 
     assertThat(produced).containsExactlyInAnyOrderElementsOf(TerrainCatalog.KEYS);
@@ -230,7 +228,7 @@ class MapGeneratorTest {
   private static void assertCell(int q, int r, String terrain, double height) {
     HexCell cell = SEED_42.hexes().get(new HexCoord(q, r));
     assertThat(cell).as("格 (%s, %s) 必须在图里", q, r).isNotNull();
-    assertThat(cell.terrain()).as("格 (%s, %s) 的地形", q, r).isEqualTo(terrain);
+    assertThat(SEED_42.terrainAt(new HexCoord(q, r))).as("格 (%s, %s) 的地形", q, r).isEqualTo(terrain);
     assertThat(cell.height()).as("格 (%s, %s) 的高度", q, r).isCloseTo(height, within(1e-9));
   }
 

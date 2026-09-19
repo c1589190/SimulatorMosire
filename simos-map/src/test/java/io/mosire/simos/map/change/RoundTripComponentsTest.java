@@ -6,6 +6,10 @@ import io.mosire.simos.map.City;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.BlockId;
+import io.mosire.simos.map.block.TerrainBlock;
+import io.mosire.simos.map.block.TerrainBlocks;
+import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
@@ -48,15 +52,16 @@ import org.junit.jupiter.api.Test;
  * {@code default -> base} / {@code default -> true} 之类的温和兜底：那会让"新增组件"这个场景**恰好**在新字段上失效，而新字段正是
  * GSimulator 出事的那个场景（护栏变成了装饰）。两个 {@code switch} 分开写、不合并 —— 加字段的人必须两处都来读。
  *
- * <p>★ **豁免集为什么必须有、且必须被单独钉死**：{@code GameMap} 有 **8** 个组件，{@code MapChangeSet} **有意**只有 **7**
- * 个（{@code spec} 是生成输入、不是可变更状态，见 {@link MapChangeSet#apply}）。若本测试无条件遍历全部 8 个，{@code spec}
+ * <p>★ **豁免集为什么必须有、且必须被单独钉死**：{@code GameMap} 有 **9** 个组件，{@code MapChangeSet} **有意**只有 **8**
+ * 个（{@code spec} 是生成输入、不是可变更状态，见 {@link MapChangeSet#apply}）。若本测试无条件遍历全部 9 个，{@code spec}
  * 那一轮**必然**断言失败；若为它写一个 {@code if (name.equals("spec")) continue}，**豁免口就成了一个洞** ——
  * 以后任何人"加字段忘了进变更集"，都能靠往这个 {@code if} 里再加一个名字糊过去。故豁免写成**一个被 {@link #theExclusionListIsExactlySpec}
  * 单独钉死的集合**：加名字是一次显式动作，在 diff 里现形。
  *
  * <p>★ **U2 的连锁**（免得后人以为是被漏掉的）：{@code RegionBoundary} 是 {@link Region} 的**组件** ⇒ {@code
  * MapChangeSet} **不需要**为边界新开组件（{@code regions} 整个 {@code Region} 值被比对，而 {@code Region.equals} 逐组件含
- * {@code boundary}）。⇒ **组件数仍是 8 vs 7、{@code spec} 仍是唯一豁免项。**
+ * {@code boundary}）。{@code TerrainBlock.boundary} 同理随 {@code terrainBlocks} 整体比对。⇒ **组件数仍是 9 vs 8、
+ * {@code spec} 仍是唯一豁免项。**
  *
  * <p>★ 反射枚举的**方向性**：{@link #everyChangeSetComponentCorrespondsToAGameMapComponent} 只保证"变更集的每个组件在
  * {@code GameMap} 里有同名者"，**挡不住**"两边同时多出一个同名的第 8 个组件"（那种漂移两边对称、反方向全绿），故另有 {@link
@@ -113,20 +118,20 @@ class RoundTripComponentsTest {
   }
 
   /**
-   * ★ **R-48-g**（spec §9.1b 的 U2 守卫明文要求）：反射断言 {@code MapChangeSet} 的组件数恰为 **7**。
+   * ★ **R-48-g**（spec §9.1b 的 U2 守卫明文要求）：反射断言 {@code MapChangeSet} 的组件数恰为 **8**。
    *
    * <p>与 {@link #everyChangeSetComponentCorrespondsToAGameMapComponent} **不重复**：那条只保证"变更集的组件在
-   * {@code GameMap} 里有同名者"，挡不住"两边**同时**多出一个同名的第 8 个组件"。
+   * {@code GameMap} 里有同名者"，挡不住"两边**同时**多出一个同名的第 9 个组件"。
    */
   @Test
-  void changeSetHasExactlySevenComponents() {
+  void changeSetHasExactlyEightComponents() {
     assertThat(MapChangeSet.class.getRecordComponents())
-        .as("变更集的组件数必须是 7（GameMap 是 8，差的那一个是有意排除的 spec）")
-        .hasSize(7);
+        .as("变更集的组件数必须是 8（GameMap 是 9，差的那一个是有意排除的 spec）")
+        .hasSize(8);
   }
 
   /**
-   * ★ 显式钉住那个有意的 **8 vs 7** 不对称：{@code GameMap} 有 {@code spec}，{@code MapChangeSet} 没有。
+   * ★ 显式钉住那个有意的 **9 vs 8** 不对称：{@code GameMap} 有 {@code spec}，{@code MapChangeSet} 没有。
    *
    * <p>最后一条断言是它的要害：**变更集组件 ∪ 豁免集必须恰好等于 {@code GameMap} 的全部组件** —— 多一项 = 有组件被"豁免"掉了（正是 V6 那类糊法），少一项
    * = 有组件谁都没管。
@@ -152,7 +157,9 @@ class RoundTripComponentsTest {
    */
   private static GameMap mutate(GameMap base, String name) {
     return switch (name) {
-      case "hexes" -> base.withHexes(oneHex());
+      // ★ hexes 与 terrainBlocks 是**耦合**的（分割不变式）：只设一边会当场抛，故一次原子建图。
+      case "hexes" -> oneHexMap();
+      case "terrainBlocks" -> oneHexMap();
       case "regions" -> base.withRegions(oneRegion());
       case "cities" -> base.withCities(oneCity());
       case "terrainTypes" -> base.withTerrainTypes(oneTerrainType());
@@ -172,6 +179,7 @@ class RoundTripComponentsTest {
     FieldDelta<?> delta =
         switch (name) {
           case "hexes" -> cs.hexes();
+          case "terrainBlocks" -> cs.terrainBlocks();
           case "regions" -> cs.regions();
           case "cities" -> cs.cities();
           case "terrainTypes" -> cs.terrainTypes();
@@ -195,7 +203,25 @@ class RoundTripComponentsTest {
   // ── 夹具：每个组件一份**非空**的合法取值（单键 {@code Map.of()} ⇒ 键序天然固定，不碰 copyOf/HashMap）──
 
   private static Map<HexCoord, HexCell> oneHex() {
-    return Map.of(H_A, new HexCell("plains", 0.35));
+    return Map.of(H_A, new HexCell(0.35));
+  }
+
+  private static Map<BlockId, TerrainBlock> oneTerrainBlock() {
+    return TerrainBlocks.uniform(Set.of(H_A), "plains");
+  }
+
+  /** 单格（H_A，地形 plains）：hexes 与 terrainBlocks 原子构造（分割不变式）。 */
+  private static GameMap oneHexMap() {
+    return new GameMap(
+        oneHex(),
+        oneTerrainBlock(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
   }
 
   private static Map<RegionId, Region> oneRegion() {

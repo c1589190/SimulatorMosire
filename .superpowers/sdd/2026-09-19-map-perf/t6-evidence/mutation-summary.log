@@ -1,0 +1,10 @@
+# mutation summary (each md5 written into its own round log too)
+m1 verdict=KILLED red=2 expect_hits=2 comp_err=0 tests_run=2 report_ok=yes mutant_md5=3ca13a0ab39f7b281e27d4feb3841b68 restored_md5=3dbc4be4caacd42c94da24046eef7c38
+m2 verdict=KILLED red=2 expect_hits=2 comp_err=0 tests_run=2 report_ok=yes mutant_md5=c7e4626653edc5f7faa5fda326500833 restored_md5=3dbc4be4caacd42c94da24046eef7c38
+m3 verdict=KILLED red=2 expect_hits=2 comp_err=0 tests_run=2 report_ok=yes mutant_md5=12c58ddf700d28fd214c3672e6602c7a restored_md5=3dbc4be4caacd42c94da24046eef7c38
+m4 verdict=KILLED red=2 expect_hits=2 comp_err=0 tests_run=2 report_ok=yes mutant_md5=055d9e9eec5c5e314d33e3e1f6de1422 restored_md5=2e57fa9d82a9a2eacba9c025bc443152
+m5 verdict=KILLED red=2 expect_hits=2 comp_err=0 tests_run=2 report_ok=yes mutant_md5=f21bd8927a30a955540a64d02fb8ebcf restored_md5=654eb3e0bf3f60e3e68a9e746813ec68
+final 3dbc4be4caacd42c94da24046eef7c38 block/TerrainBlocks.java
+final 2e57fa9d82a9a2eacba9c025bc443152 change/MapChangeSet.java
+final 654eb3e0bf3f60e3e68a9e746813ec68 GameMap.java
+DONE

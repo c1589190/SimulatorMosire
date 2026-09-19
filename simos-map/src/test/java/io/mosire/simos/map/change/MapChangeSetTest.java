@@ -7,6 +7,9 @@ import io.mosire.simos.map.City;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.BlockId;
+import io.mosire.simos.map.block.TerrainBlock;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
@@ -28,7 +31,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * 变更集：**组件与 {@code GameMap} 的 7 个可变更组件一一对应**（第 8 个 {@code spec} 有意不进）。
+ * 变更集：**组件与 {@code GameMap} 的 8 个可变更组件一一对应**（第 9 个 {@code spec} 有意不进）。
  *
  * <p>每条变体的语义、{@code between} 与 {@code apply} 的往返、以及"只改了一条边"这类**边界**都在这里钉住。 反射式的逐组件枚举（`MapChangeSet`
  * ↔ `GameMap` 的双向对应）在 Task 7，本文件只做**非反射**的那一半。
@@ -63,11 +66,36 @@ class MapChangeSetTest {
 
   private static Map<HexCoord, HexCell> linkedHexes() {
     Map<HexCoord, HexCell> m = new LinkedHashMap<>();
-    m.put(H_A, new HexCell("mountains", 0.70));
-    m.put(H_B, new HexCell("plains", 0.35));
-    m.put(H_C, new HexCell("ocean", 0.10));
-    m.put(H_D, new HexCell("desert", 0.50));
+    m.put(H_A, new HexCell(0.70));
+    m.put(H_B, new HexCell(0.35));
+    m.put(H_C, new HexCell(0.10));
+    m.put(H_D, new HexCell(0.50));
     return m;
+  }
+
+  /** 每格的**地形**（与 {@link #linkedHexes()} 同键集）：地形权威在块里。 */
+  private static Map<HexCoord, String> linkedTerrain() {
+    Map<HexCoord, String> m = new LinkedHashMap<>();
+    m.put(H_A, "mountains");
+    m.put(H_B, "plains");
+    m.put(H_C, "ocean");
+    m.put(H_D, "desert");
+    return m;
+  }
+
+  /** 用一份 hexes 与一份地形**原子地**重建图（P1 之后两者耦合：分割不变式要求块并集 == hex 键集，故不能分两步 with）。 */
+  private static GameMap rebuild(
+      GameMap base, Map<HexCoord, HexCell> hexes, Map<HexCoord, String> terrain) {
+    return new GameMap(
+        hexes,
+        TerrainBlocks.split(terrain),
+        base.regions(),
+        base.cities(),
+        base.terrainTypes(),
+        base.pathways(),
+        base.pathwayGroups(),
+        base.edges(),
+        base.spec());
   }
 
   private static Map<RegionId, Region> linkedRegions() {
@@ -143,10 +171,11 @@ class MapChangeSetTest {
     return new EdgeTags(Map.of(groupId, Map.of("width", 2)));
   }
 
-  /** 8 个组件全非空的地图：逐组件比较的判别力全靠它。 */
+  /** 9 个组件全非空的地图：逐组件比较的判别力全靠它。 */
   private static GameMap richMap() {
     return new GameMap(
         linkedHexes(),
+        TerrainBlocks.split(linkedTerrain()),
         linkedRegions(),
         linkedCities(),
         linkedTerrainTypes(),
@@ -160,8 +189,15 @@ class MapChangeSetTest {
 
   private static Map<HexCoord, HexCell> targetHexes() {
     Map<HexCoord, HexCell> m = new LinkedHashMap<>(linkedHexes());
-    m.put(H_A, new HexCell("desert", 0.90)); // 同 key 不同 value
-    m.put(H_E, new HexCell("plains", 0.20)); // 新 key
+    m.put(H_A, new HexCell(0.90)); // 同 key 不同 height
+    m.put(H_E, new HexCell(0.20)); // 新 key
+    return m;
+  }
+
+  private static Map<HexCoord, String> targetTerrain() {
+    Map<HexCoord, String> m = new LinkedHashMap<>(linkedTerrain());
+    m.put(H_A, "desert"); // 同 key 换地形
+    m.put(H_E, "plains"); // 新 key
     return m;
   }
 
@@ -207,10 +243,9 @@ class MapChangeSetTest {
     return m;
   }
 
-  /** 7 个可变更组件全都与 {@link #richMap()} 不同，**spec 一字不动**（roundtrip 的前提）。 */
+  /** 8 个可变更组件全都与 {@link #richMap()} 不同，**spec 一字不动**（roundtrip 的前提）。 */
   private static GameMap targetMap() {
-    return richMap()
-        .withHexes(targetHexes())
+    return rebuild(richMap(), targetHexes(), targetTerrain())
         .withRegions(targetRegions())
         .withCities(targetCities())
         .withTerrainTypes(targetTerrainTypes())
@@ -240,6 +275,7 @@ class MapChangeSetTest {
 
     assertThat(cs).isNotNull(); // ★ "全 Unchanged"，**不是 null**、也不是空对象
     assertThat(cs.hexes()).isEqualTo(new FieldDelta.Unchanged<HexCell>());
+    assertThat(cs.terrainBlocks()).isEqualTo(new FieldDelta.Unchanged<TerrainBlock>());
     assertThat(cs.regions()).isEqualTo(new FieldDelta.Unchanged<Region>());
     assertThat(cs.cities()).isEqualTo(new FieldDelta.Unchanged<City>());
     assertThat(cs.terrainTypes()).isEqualTo(new FieldDelta.Unchanged<TerrainType>());
@@ -253,14 +289,16 @@ class MapChangeSetTest {
   void betweenDetectsAddedHex() {
     GameMap base = richMap();
     Map<HexCoord, HexCell> added = new LinkedHashMap<>(linkedHexes());
-    added.put(H_E, new HexCell("plains", 0.20));
+    added.put(H_E, new HexCell(0.20));
+    Map<HexCoord, String> terrain = new LinkedHashMap<>(linkedTerrain());
+    terrain.put(H_E, "plains");
 
     Map<String, HexCell> entries =
-        upsertEntries(MapChangeSet.between(base, base.withHexes(added)).hexes());
+        upsertEntries(MapChangeSet.between(base, rebuild(base, added, terrain)).hexes());
 
     // ★ 增量：只带**新 key**，base 里没动的四个键一概不进（全量替换的写法会在这里红）
     assertThat(entries).containsOnlyKeys("7_-1");
-    assertThat(entries.get("7_-1")).isEqualTo(new HexCell("plains", 0.20));
+    assertThat(entries.get("7_-1")).isEqualTo(new HexCell(0.20));
   }
 
   @Test
@@ -268,8 +306,10 @@ class MapChangeSetTest {
     GameMap base = richMap();
     Map<HexCoord, HexCell> shrunk = new LinkedHashMap<>(linkedHexes());
     shrunk.remove(H_D);
+    Map<HexCoord, String> terrain = new LinkedHashMap<>(linkedTerrain());
+    terrain.remove(H_D);
 
-    MapChangeSet cs = MapChangeSet.between(base, base.withHexes(shrunk));
+    MapChangeSet cs = MapChangeSet.between(base, rebuild(base, shrunk, terrain));
 
     assertThat(removeKeys(cs.hexes())).containsExactly("2_-4");
     assertThat(cs.regions()).isEqualTo(new FieldDelta.Unchanged<Region>());
@@ -279,15 +319,34 @@ class MapChangeSetTest {
   void betweenDetectsChangedHexValue() {
     GameMap base = richMap();
     Map<HexCoord, HexCell> changed = new LinkedHashMap<>(linkedHexes());
-    changed.put(H_A, new HexCell("desert", 0.90));
+    changed.put(H_A, new HexCell(0.90)); // 同键集、只改高度 ⇒ 块不动，能单换
 
     MapChangeSet cs = MapChangeSet.between(base, base.withHexes(changed));
 
     // ★ 同 key 不同 value ⇒ Upsert（**不是** Unchanged）：只在 key 集上比对会漏掉这一整类编辑
     Map<String, HexCell> entries = upsertEntries(cs.hexes());
     assertThat(entries).containsOnlyKeys("5_5");
-    assertThat(entries.get("5_5")).isEqualTo(new HexCell("desert", 0.90));
+    assertThat(entries.get("5_5")).isEqualTo(new HexCell(0.90));
     assertThat(cs.regions()).isEqualTo(new FieldDelta.Unchanged<Region>());
+  }
+
+  /**
+   * ★ **P1 的新组件必须有自己的一条**：只改地形（hexes 键集与高度都不动）⇒ {@code terrainBlocks} 必须进 diff、其余一律 {@code
+   * Unchanged}，且能往返。变异"between 不装 terrainBlocks"在此红。
+   */
+  @Test
+  void betweenDetectsChangedTerrainBlocks() {
+    GameMap base = richMap();
+    GameMap target = base.withTerrainBlocks(changedBlocks());
+
+    MapChangeSet cs = MapChangeSet.between(base, target);
+
+    assertThat(cs.terrainBlocks())
+        .as("只改地形 ⇒ terrainBlocks 必须进 diff（不是 Unchanged）")
+        .isNotInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.hexes()).as("高度没动 ⇒ hexes 一律 Unchanged").isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.isEmpty()).isFalse();
+    assertThat(MapChangeSet.apply(cs, base)).as("只改地形的单组件往返").isEqualTo(target);
   }
 
   /** ★ **R-48-i**：三个 {@code betweenDetects*} 若全是 hexes，删掉 {@code terrainTypes} 的比较它们照样绿。 */
@@ -308,16 +367,18 @@ class MapChangeSetTest {
   }
 
   /**
-   * ★ **7 个组件逐个钉住**：改一个组件 ⇒ **只有它**不是 {@code Unchanged}，其余六个一律 {@code Unchanged}， 且这一条单组件变更能独立往返。
+   * ★ **8 个组件逐个钉住**：改一个组件 ⇒ **只有它**不是 {@code Unchanged}，其余七个一律 {@code Unchanged}， 且这一条单组件变更能独立往返。
    *
    * <p>这正是 R-48-i 要的覆盖面：brief 只要求 hexes 与 terrainTypes 两条，而"某个组件整个漂移出去" 可以发生在任意一个组件上。**反射版**的对应关系在
-   * Task 7，这里以 7 条显式调用钉住每个 {@code diff} 调用点。
+   * Task 7，这里以 8 条显式调用钉住每个 {@code diff} 调用点。
    */
   @Test
   void everyComponentIsComparedIndependently() {
     GameMap base = richMap();
 
-    assertOnlyComponentChanged(base, base.withHexes(targetHexes()), "hexes");
+    // hexes 只承载高度：换高度而键集不变 ⇒ 块不动，能单换
+    assertOnlyComponentChanged(base, base.withHexes(changedHeights()), "hexes");
+    assertOnlyComponentChanged(base, base.withTerrainBlocks(changedBlocks()), "terrainBlocks");
     assertOnlyComponentChanged(base, base.withRegions(targetRegions()), "regions");
     assertOnlyComponentChanged(base, base.withCities(targetCities()), "cities");
     assertOnlyComponentChanged(base, base.withTerrainTypes(targetTerrainTypes()), "terrainTypes");
@@ -327,10 +388,25 @@ class MapChangeSetTest {
     assertOnlyComponentChanged(base, base.withEdges(targetEdges()), "edges");
   }
 
+  /** 同键集、只改 H_A 高度。 */
+  private static Map<HexCoord, HexCell> changedHeights() {
+    Map<HexCoord, HexCell> m = new LinkedHashMap<>(linkedHexes());
+    m.put(H_A, new HexCell(0.99));
+    return m;
+  }
+
+  /** 同 hex 键集、只改 H_A 地形（H_A 是孤格 ⇒ 换地形只换一个块的键与内容）。 */
+  private static Map<BlockId, TerrainBlock> changedBlocks() {
+    Map<HexCoord, String> terrain = new LinkedHashMap<>(linkedTerrain());
+    terrain.put(H_A, "desert");
+    return TerrainBlocks.split(terrain);
+  }
+
   private static void assertOnlyComponentChanged(GameMap base, GameMap target, String name) {
     MapChangeSet cs = MapChangeSet.between(base, target);
     Map<String, FieldDelta<?>> byName = new LinkedHashMap<>();
     byName.put("hexes", cs.hexes());
+    byName.put("terrainBlocks", cs.terrainBlocks());
     byName.put("regions", cs.regions());
     byName.put("cities", cs.cities());
     byName.put("terrainTypes", cs.terrainTypes());
@@ -371,6 +447,7 @@ class MapChangeSetTest {
     GameMap applied = MapChangeSet.apply(cs, base);
 
     assertThat(applied.hexes()).isEqualTo(target.hexes());
+    assertThat(applied.terrainBlocks()).isEqualTo(target.terrainBlocks());
     assertThat(applied.regions()).isEqualTo(target.regions());
     assertThat(applied.cities()).isEqualTo(target.cities());
     assertThat(applied.terrainTypes()).isEqualTo(target.terrainTypes());
@@ -465,7 +542,7 @@ class MapChangeSetTest {
   @Test
   void deltasAreImmutable() {
     Map<String, HexCell> source = new LinkedHashMap<>();
-    source.put("5_5", new HexCell("plains", 0.5));
+    source.put("5_5", new HexCell(0.5));
     Set<String> sourceKeys = new LinkedHashSet<>();
     sourceKeys.add("5_5");
 
@@ -473,14 +550,14 @@ class MapChangeSetTest {
     FieldDelta.Remove<HexCell> remove = new FieldDelta.Remove<>(sourceKeys);
 
     // ★ 构造后改源，delta 一字不动（是**快照**，不是视图）
-    source.put("0_0", new HexCell("ocean", 0.1));
+    source.put("0_0", new HexCell(0.1));
     sourceKeys.add("0_0");
     assertThat(upsert.entries()).containsOnlyKeys("5_5");
     assertThat(remove.keys()).containsExactly("5_5");
 
     assertThat(upsert.entries()).isUnmodifiable();
     assertThat(remove.keys()).isUnmodifiable();
-    assertThatThrownBy(() -> upsert.entries().put("0_0", new HexCell("ocean", 0.1)))
+    assertThatThrownBy(() -> upsert.entries().put("0_0", new HexCell(0.1)))
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> remove.keys().add("0_0"))
         .isInstanceOf(UnsupportedOperationException.class);
@@ -489,7 +566,7 @@ class MapChangeSetTest {
     FieldDelta.Patch<HexCell> patch = new FieldDelta.Patch<>(upsert, remove);
     assertThat(patch.upserts().entries()).isUnmodifiable();
     assertThat(patch.removals().keys()).isUnmodifiable();
-    assertThatThrownBy(() -> patch.upserts().entries().put("0_0", new HexCell("ocean", 0.1)))
+    assertThatThrownBy(() -> patch.upserts().entries().put("0_0", new HexCell(0.1)))
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> patch.removals().keys().add("0_0"))
         .isInstanceOf(UnsupportedOperationException.class);
@@ -505,10 +582,10 @@ class MapChangeSetTest {
   @Test
   void deltasPreserveInsertionOrder() {
     Map<String, HexCell> entries = new LinkedHashMap<>();
-    entries.put("5_5", new HexCell("mountains", 0.7));
-    entries.put("7_-1", new HexCell("plains", 0.2));
-    entries.put("0_0", new HexCell("plains", 0.35));
-    entries.put("2_-4", new HexCell("desert", 0.5));
+    entries.put("5_5", new HexCell(0.7));
+    entries.put("7_-1", new HexCell(0.2));
+    entries.put("0_0", new HexCell(0.35));
+    entries.put("2_-4", new HexCell(0.5));
     assertThat(new FieldDelta.Upsert<>(entries).entries().keySet())
         .containsExactly("5_5", "7_-1", "0_0", "2_-4");
 
@@ -518,17 +595,16 @@ class MapChangeSetTest {
     keys.add("0_0");
     assertThat(new FieldDelta.Remove<HexCell>(keys).keys()).containsExactly("2_-4", "5_5", "0_0");
 
-    // ★ 且 between 顺着 **target** 的迭代序读：把新键排在头里，产物里它也在头里
+    // ★ 且 between 顺着 **target** 的迭代序读：改过的键按 target 的序进 Upsert
     Map<HexCoord, HexCell> target = new LinkedHashMap<>();
-    target.put(H_E, new HexCell("plains", 0.2)); // 新键排第一
-    target.put(H_A, new HexCell("desert", 0.9)); // 同 key 换值排第二
-    target.put(H_B, new HexCell("plains", 0.35));
-    target.put(H_C, new HexCell("ocean", 0.10));
-    target.put(H_D, new HexCell("desert", 0.50));
+    target.put(H_A, new HexCell(0.70)); // 同值（第一键，未改）
+    target.put(H_B, new HexCell(0.99)); // 同 key 换高度（排第二）
+    target.put(H_C, new HexCell(0.88)); // 同 key 换高度（排第三）
+    target.put(H_D, new HexCell(0.50)); // 同值
     assertThat(
             upsertEntries(MapChangeSet.between(richMap(), richMap().withHexes(target)).hexes())
                 .keySet())
-        .containsExactly("7_-1", "5_5");
+        .containsExactly("0_0", "-3_2");
   }
 
   @Test
@@ -538,7 +614,7 @@ class MapChangeSetTest {
         .hasMessage("Upsert.entries 不得为 null");
 
     Map<String, HexCell> nullValue = new LinkedHashMap<>();
-    nullValue.put("5_5", new HexCell("plains", 0.5));
+    nullValue.put("5_5", new HexCell(0.5));
     nullValue.put("0_0", null);
     assertThatThrownBy(() -> new FieldDelta.Upsert<>(nullValue))
         .isInstanceOf(IllegalArgumentException.class)
@@ -556,8 +632,7 @@ class MapChangeSetTest {
         .hasMessage("Remove.keys 不得含 null");
 
     // Patch 自己的守卫只有两条 requireNonNull：消息恰是字段名，故必须**精确匹配**（形态 2）
-    FieldDelta.Upsert<HexCell> okUpsert =
-        new FieldDelta.Upsert<>(Map.of("5_5", new HexCell("plains", 0.5)));
+    FieldDelta.Upsert<HexCell> okUpsert = new FieldDelta.Upsert<>(Map.of("5_5", new HexCell(0.5)));
     FieldDelta.Remove<HexCell> okRemove = new FieldDelta.Remove<>(Set.of("5_5"));
     assertThatThrownBy(() -> new FieldDelta.Patch<HexCell>(null, okRemove))
         .isInstanceOf(NullPointerException.class)
@@ -569,7 +644,7 @@ class MapChangeSetTest {
 
   @Test
   void lookupReadsOnlyFromUpsert() {
-    HexCell cell = new HexCell("plains", 0.5);
+    HexCell cell = new HexCell(0.5);
 
     assertThat(new FieldDelta.Upsert<>(Map.of("5_5", cell)).lookup("5_5")).contains(cell);
     assertThat(new FieldDelta.Upsert<>(Map.of("5_5", cell)).lookup("0_0")).isEmpty();
@@ -582,7 +657,14 @@ class MapChangeSetTest {
   private static Map<HexCoord, HexCell> mixedHexes() {
     Map<HexCoord, HexCell> m = new LinkedHashMap<>(linkedHexes());
     m.remove(H_D);
-    m.put(H_E, new HexCell("plains", 0.20));
+    m.put(H_E, new HexCell(0.20));
+    return m;
+  }
+
+  private static Map<HexCoord, String> mixedTerrain() {
+    Map<HexCoord, String> m = new LinkedHashMap<>(linkedTerrain());
+    m.remove(H_D);
+    m.put(H_E, "plains");
     return m;
   }
 
@@ -595,25 +677,29 @@ class MapChangeSetTest {
   void betweenDetectsAddedAndRemovedHex() {
     GameMap base = richMap();
 
-    MapChangeSet cs = MapChangeSet.between(base, base.withHexes(mixedHexes()));
+    MapChangeSet cs = MapChangeSet.between(base, rebuild(base, mixedHexes(), mixedTerrain()));
 
     assertThat(cs.hexes()).isInstanceOf(FieldDelta.Patch.class);
     FieldDelta.Patch<HexCell> patch = (FieldDelta.Patch<HexCell>) cs.hexes();
     assertThat(patch.upserts().entries()).containsOnlyKeys("7_-1"); // 加的那一侧
     assertThat(patch.removals().keys()).containsExactly("2_-4"); // 删的那一侧
     // lookup 只看 upserts：删除那一侧没有"新值"可给
-    assertThat(patch.lookup("7_-1")).contains(new HexCell("plains", 0.20));
+    assertThat(patch.lookup("7_-1")).contains(new HexCell(0.20));
     assertThat(patch.lookup("2_-4")).isEmpty();
     assertThat(cs.isEmpty()).isFalse();
 
     // 单侧输入**不**产出 Patch（Patch 只在两侧都非空时出现）
     Map<HexCoord, HexCell> addedOnly = new LinkedHashMap<>(linkedHexes());
-    addedOnly.put(H_E, new HexCell("plains", 0.2));
+    addedOnly.put(H_E, new HexCell(0.2));
+    Map<HexCoord, String> addedTerrain = new LinkedHashMap<>(linkedTerrain());
+    addedTerrain.put(H_E, "plains");
     Map<HexCoord, HexCell> removedOnly = new LinkedHashMap<>(linkedHexes());
     removedOnly.remove(H_D);
-    assertThat(MapChangeSet.between(base, base.withHexes(addedOnly)).hexes())
+    Map<HexCoord, String> removedTerrain = new LinkedHashMap<>(linkedTerrain());
+    removedTerrain.remove(H_D);
+    assertThat(MapChangeSet.between(base, rebuild(base, addedOnly, addedTerrain)).hexes())
         .isInstanceOf(FieldDelta.Upsert.class);
-    assertThat(MapChangeSet.between(base, base.withHexes(removedOnly)).hexes())
+    assertThat(MapChangeSet.between(base, rebuild(base, removedOnly, removedTerrain)).hexes())
         .isInstanceOf(FieldDelta.Remove.class);
   }
 
@@ -624,7 +710,7 @@ class MapChangeSetTest {
   @Test
   void mixedChangeRoundTrips() {
     GameMap base = richMap();
-    GameMap target = base.withHexes(mixedHexes());
+    GameMap target = rebuild(base, mixedHexes(), mixedTerrain());
 
     MapChangeSet cs = MapChangeSet.between(base, target);
 
@@ -642,13 +728,14 @@ class MapChangeSetTest {
     GameMap base = richMap();
 
     GameMap applied =
-        MapChangeSet.apply(MapChangeSet.between(base, base.withHexes(mixedHexes())), base);
+        MapChangeSet.apply(
+            MapChangeSet.between(base, rebuild(base, mixedHexes(), mixedTerrain())), base);
 
     assertThat(applied.hexes()).doesNotContainKey(H_D); // 删的那一侧落地了
     assertThat(applied.hexes()).containsKey(H_E); // 加的那一侧落地了
-    assertThat(applied.hexes().get(H_E)).isEqualTo(new HexCell("plains", 0.20));
+    assertThat(applied.hexes().get(H_E)).isEqualTo(new HexCell(0.20));
     assertThat(applied.hexes()).hasSize(4); // 4 - 1 + 1
-    assertThat(applied.hexes().get(H_A)).isEqualTo(new HexCell("mountains", 0.70)); // 没动的键原样
+    assertThat(applied.hexes().get(H_A)).isEqualTo(new HexCell(0.70)); // 没动的键原样
   }
 
   @Test

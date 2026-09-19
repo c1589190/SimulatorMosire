@@ -1,7 +1,6 @@
 package io.mosire.simos.unit.move;
 
 import io.mosire.simos.map.GameMap;
-import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.Unit;
@@ -26,14 +25,13 @@ public final class TerrainMovementCost implements MovementCost {
     Objects.requireNonNull(to, "to");
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(map, "map");
-    HexCell cell = map.hexes().get(to); // ★ R-8-c：一次查表兼判"图外"（值非 null 由 GameMap 构造期保证）
-    if (cell == null) {
+    if (!map.hexes().containsKey(to)) { // ★ R-8-c：一次查表兼判"图外"
       return OptionalLong.empty();
     }
     if (from.equals(to) || from.distanceTo(to) != 1) {
       throw new IllegalArgumentException("相邻性是调用方的前提（不是\"没有候选\"）: " + from + " → " + to);
     }
-    return costOf(terrainOf(map, cell), unit.mobilityPerMille());
+    return costOf(terrainOf(map, map.terrainAt(to)), unit.mobilityPerMille());
   }
 
   @Override
@@ -41,8 +39,9 @@ public final class TerrainMovementCost implements MovementCost {
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(map, "map");
     long best = Long.MAX_VALUE;
-    for (HexCell cell : map.hexes().values()) {
-      TerrainType type = terrainOf(map, cell); // ★ R-8-c：一次遍历里同时判断与取最小，不查两遍表
+    // ★ P1：地形是权威块，整表走派生访问器一次建好（不逐格扫块）。
+    for (String key : map.terrainIndex().values()) {
+      TerrainType type = terrainOf(map, key); // ★ R-8-c：一次遍历里同时判断与取最小，不查两遍表
       if (type.moveCost() < TerrainType.IMPASSABLE_MOVE_COST) {
         best = Math.min(best, scale(type.moveCost() * 1000L, unit.mobilityPerMille()));
       }
@@ -63,10 +62,10 @@ public final class TerrainMovementCost implements MovementCost {
   }
 
   /** 缺 key ⇒ 抛（与 {@code TerrainCatalog.of} 的"不兜底"同口径）。 */
-  private static TerrainType terrainOf(GameMap map, HexCell cell) {
-    TerrainType type = map.terrainTypes().get(cell.terrain());
+  private static TerrainType terrainOf(GameMap map, String key) {
+    TerrainType type = map.terrainTypes().get(key);
     if (type == null) {
-      throw new IllegalArgumentException("地形 key 不在词表里: " + cell.terrain());
+      throw new IllegalArgumentException("地形 key 不在词表里: " + key);
     }
     return type;
   }

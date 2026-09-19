@@ -156,9 +156,10 @@ final class ApiViews {
     view.put("hexCount", map.hexes().size());
 
     List<Map<String, Object>> hexes = new ArrayList<>(map.hexes().size());
+    Map<HexCoord, String> terrainIndex = map.terrainIndex();
     for (Map.Entry<HexCoord, HexCell> entry : map.hexes().entrySet()) {
       Map<String, Object> hex = hexCoord(entry.getKey());
-      hex.put("terrain", entry.getValue().terrain());
+      hex.put("terrain", terrainIndex.get(entry.getKey()));
       hexes.add(hex);
     }
     view.put("hexes", hexes);
@@ -239,11 +240,12 @@ final class ApiViews {
   static Map<String, Object> mapHex(
       HexCoord coord,
       HexCell cell,
+      String terrain,
       List<FacetEntry> facets,
       List<RegionId> regions,
       TerrainType terrainType) {
     Map<String, Object> view = hexCoord(coord);
-    view.put("terrain", cell.terrain());
+    view.put("terrain", terrain);
     view.put("height", cell.height());
     List<String> regionIds = new ArrayList<>(regions.size());
     for (RegionId region : regions) {

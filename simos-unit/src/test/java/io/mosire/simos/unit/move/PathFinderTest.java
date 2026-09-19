@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
@@ -57,13 +58,25 @@ class PathFinderTest {
    */
   private static GameMap detourMap() {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H00, new HexCell("flat", 0.5));
-    hexes.put(H10, new HexCell("hill", 0.5));
-    hexes.put(H20, new HexCell("flat", 0.5));
-    hexes.put(H11, new HexCell("flat", 0.5));
-    hexes.put(H01, new HexCell("flat", 0.5));
+    hexes.put(H00, new HexCell(0.5));
+    hexes.put(H10, new HexCell(0.5));
+    hexes.put(H20, new HexCell(0.5));
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H01, new HexCell(0.5));
+    Map<HexCoord, String> terrain = new LinkedHashMap<>();
+    terrain.put(H00, "flat");
+    terrain.put(H10, "hill");
+    terrain.put(H20, "flat");
+    terrain.put(H11, "flat");
+    terrain.put(H01, "flat");
+    return mapWith(hexes, terrain);
+  }
+
+  /** 给定逐格地形的图：hexes 与 terrainBlocks 原子构造（分割不变式）。 */
+  private static GameMap mapWith(Map<HexCoord, HexCell> hexes, Map<HexCoord, String> terrain) {
     return new GameMap(
         hexes,
+        TerrainBlocks.split(terrain),
         Map.of(),
         Map.of(),
         detourTerrainTypes(),
@@ -87,19 +100,19 @@ class PathFinderTest {
    */
   private static GameMap symmetricMap() {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H00, new HexCell("flat", 0.5));
-    hexes.put(new HexCoord(1, 0), new HexCell("flat", 0.5));
-    hexes.put(new HexCoord(1, -1), new HexCell("flat", 0.5));
-    hexes.put(new HexCoord(2, -1), new HexCell("flat", 0.5));
-    return new GameMap(
-        hexes,
-        Map.of(),
-        Map.of(),
-        detourTerrainTypes(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        GenerationSpec.defaults(0L));
+    hexes.put(H00, new HexCell(0.5));
+    hexes.put(new HexCoord(1, 0), new HexCell(0.5));
+    hexes.put(new HexCoord(1, -1), new HexCell(0.5));
+    hexes.put(new HexCoord(2, -1), new HexCell(0.5));
+    return mapWith(hexes, flatTerrain(hexes));
+  }
+
+  private static Map<HexCoord, String> flatTerrain(Map<HexCoord, HexCell> hexes) {
+    Map<HexCoord, String> terrain = new LinkedHashMap<>();
+    for (HexCoord c : hexes.keySet()) {
+      terrain.put(c, "flat");
+    }
+    return terrain;
   }
 
   private static long pathCost(MovementCost cost, GameMap map, Unit unit, List<HexCoord> path) {
@@ -199,18 +212,9 @@ class PathFinderTest {
     // ★ 比计划原形更强：两格都在图上、互不相邻（distanceTo = 2）⇒ 真正走"搜索穷尽"的不可达路径。
     //   计划的"只留 H00"会让 goal 缺席图，退化成"goal 不在图"的前置检查，根本不进搜索循环。
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H00, new HexCell("flat", 0.5));
-    hexes.put(H20, new HexCell("flat", 0.5));
-    GameMap islands =
-        new GameMap(
-            hexes,
-            Map.of(),
-            Map.of(),
-            detourTerrainTypes(),
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            GenerationSpec.defaults(0L));
+    hexes.put(H00, new HexCell(0.5));
+    hexes.put(H20, new HexCell(0.5));
+    GameMap islands = mapWith(hexes, flatTerrain(hexes));
     assertThat(
             PathFinder.findPath(
                 islands, H00, H20, MoveFixture.unit(), TerrainMovementCost.INSTANCE))

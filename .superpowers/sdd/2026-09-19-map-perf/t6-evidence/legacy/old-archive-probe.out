@@ -1,0 +1,6 @@
+payload chars=949869
+partition=OK hexCount=19441
+blockCount=44
+histogram={low_hills=3330, mountains=886, ocean=4506, plains=10719}
+firstHex terrain=plains height=0.375
+sampleBlockId=low_hills@-64_72

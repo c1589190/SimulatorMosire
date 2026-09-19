@@ -2,6 +2,7 @@ package io.mosire.simos.unit.move;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
@@ -45,15 +46,20 @@ final class MoveFixture {
   /** {@code [1,3]} 的地形可换成 {@code IMPASSABLE_999}（"中途变不可通行"那条用例）。 */
   static GameMap map(TerrainType hex13Terrain) {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(FLAT_25.key(), 0.5));
-    hexes.put(H12, new HexCell(FLAT_25.key(), 0.5));
-    hexes.put(H13, new HexCell(hex13Terrain.key(), 0.5));
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H12, new HexCell(0.5));
+    hexes.put(H13, new HexCell(0.5));
+    Map<HexCoord, String> terrain = new LinkedHashMap<>();
+    terrain.put(H11, FLAT_25.key());
+    terrain.put(H12, FLAT_25.key());
+    terrain.put(H13, hex13Terrain.key());
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(FLAT_25.key(), FLAT_25);
     terrainTypes.put(STEEP_65.key(), STEEP_65);
     terrainTypes.put(IMPASSABLE_999.key(), IMPASSABLE_999);
     return new GameMap(
         hexes,
+        TerrainBlocks.split(terrain),
         Map.of(),
         Map.of(),
         terrainTypes,
@@ -66,15 +72,16 @@ final class MoveFixture {
   /** 三个格全是 {@code IMPASSABLE_999}：判"**无可通行格 ⇒ 下界返回 0**"（spec §4.3 第 6 条）的输入。 */
   static GameMap allImpassableMap() {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(IMPASSABLE_999.key(), 0.5));
-    hexes.put(H12, new HexCell(IMPASSABLE_999.key(), 0.5));
-    hexes.put(H13, new HexCell(IMPASSABLE_999.key(), 0.5));
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H12, new HexCell(0.5));
+    hexes.put(H13, new HexCell(0.5));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(FLAT_25.key(), FLAT_25);
     terrainTypes.put(STEEP_65.key(), STEEP_65);
     terrainTypes.put(IMPASSABLE_999.key(), IMPASSABLE_999);
     return new GameMap(
         hexes,
+        TerrainBlocks.uniform(hexes.keySet(), IMPASSABLE_999.key()),
         Map.of(),
         Map.of(),
         terrainTypes,

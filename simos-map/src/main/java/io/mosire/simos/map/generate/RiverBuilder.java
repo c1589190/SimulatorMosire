@@ -92,9 +92,11 @@ public final class RiverBuilder {
     Objects.requireNonNull(map, "map");
     Map<HexCoord, HexCoord> out = new LinkedHashMap<>(); // 流向：每陆地格至多一条出边
     Map<HexCoord, List<HexCoord>> in = new LinkedHashMap<>(); // 汇入：目标格 → 上游格（按自然序追加）
+    // ★ P1：地形是权威块，读地形走派生访问器（批量建一次 terrainIndex 再查，避免逐格扫块）。
+    Map<HexCoord, String> terrainByHex = map.terrainIndex();
     // ★ 逐格按自然序处理：out/in 的遍历序因此是确定的，发现序（ID 的 n）不依赖哈希序（Task 5 的教训）。
     for (HexCoord at : map.hexes().keySet().stream().sorted().toList()) {
-      if (map.hexes().get(at).terrain().equals(OCEAN)) {
+      if (terrainByHex.get(at).equals(OCEAN)) {
         continue; // 海洋格永不流
       }
       HexCoord to = strictlyLowerNeighbor(map, at, seed);
@@ -126,6 +128,7 @@ public final class RiverBuilder {
     }
     return new MapChangeSet(
         new FieldDelta.Unchanged<>(),
+        new FieldDelta.Unchanged<>(), // terrainBlocks：生成河流不改地形
         new FieldDelta.Unchanged<>(),
         new FieldDelta.Unchanged<>(),
         new FieldDelta.Unchanged<>(),

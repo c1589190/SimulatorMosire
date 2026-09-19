@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
@@ -18,23 +19,21 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 /**
  * ★ 本类守的是框选随机化的四件套：**确定性**（同 seed 同结果、不同 seed 不同结果、区域进了随机源派生）、 **占比**（统计口径 +
  * 两个边界值）、**只碰目标区域**（区域外一格不动、只用两种地形、高度不动）、**参数校验** （ratio 范围含 NaN、未知地形 key，且与区域空不空无关）。
  *
- * <p>★ 夹具的初始地形一律取 {@code mountains}——与两种目标地形都不同，使 upsert 的值**忠实记录每一次指派** （若初始地形与目标重合，同指派会被 record
- * equals 折叠成"没变"，differentSeed 等用例就丢了判别力）。
+ * <p>★ 夹具的初始地形一律取 {@code mountains}——与两种目标地形都不同，使每次指派都**真的改变**地形 （若初始地形与目标重合，同指派会被 equals
+ * 折叠成"没变"，differentSeed 等用例就丢了判别力）。
  *
- * <p>★ 夹具的高度随 {@code (q + r)} 变化（{(q+r+radius)}/{2radius}）：高度全平时"高度不动"的断言 （变异靶 m12v-5：{@code new
- * HexCell(t, 0.5)}）在 0.5 高度的夹具上是恒真的装饰。
+ * <p>★ P1 之后地形是**权威块**：随机化产出的是 {@code terrainBlocks} 变更（{@code hexes} 只承载高度、一律不动）。本类用 {@link
+ * #changedTerrains} 从"apply 前后逐格地形"取被改的格——这正是对外的稳定口径（{@code terrainAt}），不依赖块内部形状。
  *
  * <p>★ 实测数字（2026-09-17，本机，{@code /tmp/m12probe} 探针）：大区域图（半径 18 = **1027 格**）seed 7、 ratio 0.5 ⇒ **A
  * 占 559/1027 = 0.5443**；seed 8 ⇒ A 占 512，两 seed 指派不同者 **489** 格；孪生区域图 （半径 6 = 127 格、两区域同 hex 集）同
- * seed 指派不同者 **59** 格；双区域图（半径 3 = 37 格）core 的 upsert key 序 = 自然序 {@code -1_0..1_0} 共 7 格、rim 30
- * 格逐格不变。
+ * seed 指派不同者 **59** 格；双区域图（半径 3 = 37 格）core 的 7 格全变、rim 30 格逐格不变。
  */
 class RegionRandomizerTest {
 
@@ -47,7 +46,7 @@ class RegionRandomizerTest {
 
   private static final String TERRAIN_B = "desert";
 
-  /** 夹具初始地形：与 A/B 都不同 ⇒ upsert 的值忠实记录每次指派（见类注释）。 */
+  /** 夹具初始地形：与 A/B 都不同 ⇒ 每次指派都改变地形（见类注释）。 */
   private static final String THIRD = "mountains";
 
   /** 大区域半径：{@code 3R²+3R+1 = 1027} 格——differentSeed 的"巧合相等"概率 2⁻¹⁰²⁷。 */
@@ -62,12 +61,14 @@ class RegionRandomizerTest {
    */
   @Test
   void ratioIsRespectedStatistically() {
-    Map<String, HexCell> upserts =
-        upsertsOf(RegionRandomizer.randomize(bigMap(), big(), TERRAIN_A, TERRAIN_B, 0.5, SEED));
+    GameMap map = bigMap();
+    Map<String, String> changed =
+        changedTerrains(
+            map, RegionRandomizer.randomize(map, big(), TERRAIN_A, TERRAIN_B, 0.5, SEED));
 
-    assertThat(upserts.size()).as("大区域格数（半径 18）").isEqualTo(1027);
-    long countA = upserts.values().stream().filter(c -> c.terrain().equals(TERRAIN_A)).count();
-    assertThat((double) countA / upserts.size())
+    assertThat(changed.size()).as("大区域格数（半径 18）").isEqualTo(1027);
+    long countA = changed.values().stream().filter(TERRAIN_A::equals).count();
+    assertThat((double) countA / changed.size())
         .as("A 的实测占比（实测 559/1027 = 0.5443）")
         .isCloseTo(0.5, within(0.05));
   }
@@ -75,25 +76,27 @@ class RegionRandomizerTest {
   /** {@code ratioA = 0}：{@code nextDouble() < 0} 恒假 ⇒ 全 B（无需特判）。 */
   @Test
   void ratioZeroGivesAllB() {
-    Map<String, HexCell> upserts =
-        upsertsOf(
-            RegionRandomizer.randomize(twoRegionMap(), core(), TERRAIN_A, TERRAIN_B, 0.0, SEED));
+    GameMap map = twoRegionMap();
+    Map<String, String> changed =
+        changedTerrains(
+            map, RegionRandomizer.randomize(map, core(), TERRAIN_A, TERRAIN_B, 0.0, SEED));
 
-    assertThat(upserts)
+    assertThat(changed)
         .as("ratioA=0 ⇒ 7 格全 B")
-        .allSatisfy((k, v) -> assertThat(v.terrain()).isEqualTo(TERRAIN_B));
+        .allSatisfy((k, v) -> assertThat(v).isEqualTo(TERRAIN_B));
   }
 
   /** {@code ratioA = 1}：{@code nextDouble() ∈ [0,1)} 恒小于 1 ⇒ 全 A（无需特判）。 */
   @Test
   void ratioOneGivesAllA() {
-    Map<String, HexCell> upserts =
-        upsertsOf(
-            RegionRandomizer.randomize(twoRegionMap(), core(), TERRAIN_A, TERRAIN_B, 1.0, SEED));
+    GameMap map = twoRegionMap();
+    Map<String, String> changed =
+        changedTerrains(
+            map, RegionRandomizer.randomize(map, core(), TERRAIN_A, TERRAIN_B, 1.0, SEED));
 
-    assertThat(upserts)
+    assertThat(changed)
         .as("ratioA=1 ⇒ 7 格全 A")
-        .allSatisfy((k, v) -> assertThat(v.terrain()).isEqualTo(TERRAIN_A));
+        .allSatisfy((k, v) -> assertThat(v).isEqualTo(TERRAIN_A));
   }
 
   // ── 确定性 ───────────────────────────────────────────────────────────────────
@@ -116,13 +119,15 @@ class RegionRandomizerTest {
   @Test
   void differentSeedGivesDifferentResult() {
     GameMap map = bigMap();
-    Map<String, HexCell> of7 =
-        upsertsOf(RegionRandomizer.randomize(map, big(), TERRAIN_A, TERRAIN_B, 0.5, SEED));
-    Map<String, HexCell> of8 =
-        upsertsOf(RegionRandomizer.randomize(map, big(), TERRAIN_A, TERRAIN_B, 0.5, OTHER_SEED));
+    Map<String, String> of7 =
+        changedTerrains(
+            map, RegionRandomizer.randomize(map, big(), TERRAIN_A, TERRAIN_B, 0.5, SEED));
+    Map<String, String> of8 =
+        changedTerrains(
+            map, RegionRandomizer.randomize(map, big(), TERRAIN_A, TERRAIN_B, 0.5, OTHER_SEED));
 
     int differing = 0;
-    for (Map.Entry<String, HexCell> e : of7.entrySet()) {
+    for (Map.Entry<String, String> e : of7.entrySet()) {
       if (!of8.get(e.getKey()).equals(e.getValue())) {
         differing++;
       }
@@ -131,25 +136,27 @@ class RegionRandomizerTest {
   }
 
   /**
-   * ★ 区域进了随机源派生：孪生区域（hex 集**完全相同** ⇒ upsert 键集相同，只有值可分叉）同 seed ⇒ 变更集不同。若 RNG 种子不含 region，两条流相同 ⇒
-   * 本条红。实测 59/127 格指派不同——127 格下 "逐格巧合全同"的概率约 0.52¹²⁷ ≈ 10⁻³⁶。
+   * ★ 区域进了随机源派生：孪生区域（hex 集**完全相同** ⇒ 变更目标集相同，只有值可分叉）同 seed ⇒ 结果不同。若 RNG 种子不含 region，两条流相同 ⇒ 本条红。实测
+   * 59/127 格指派不同——127 格下 "逐格巧合全同"的概率约 0.52¹²⁷ ≈ 10⁻³⁶。
    */
   @Test
   void randomizeIsDeterministicAcrossRegions() {
     GameMap map = twinRegionMap();
-    MapChangeSet ofAlpha =
-        RegionRandomizer.randomize(map, new RegionId("alpha"), TERRAIN_A, TERRAIN_B, 0.4, SEED);
-    MapChangeSet ofBeta =
-        RegionRandomizer.randomize(map, new RegionId("beta"), TERRAIN_A, TERRAIN_B, 0.4, SEED);
+    Map<String, String> ofAlpha =
+        changedTerrains(
+            map,
+            RegionRandomizer.randomize(
+                map, new RegionId("alpha"), TERRAIN_A, TERRAIN_B, 0.4, SEED));
+    Map<String, String> ofBeta =
+        changedTerrains(
+            map,
+            RegionRandomizer.randomize(map, new RegionId("beta"), TERRAIN_A, TERRAIN_B, 0.4, SEED));
 
-    assertThat(upsertsOf(ofBeta).keySet())
-        .as("孪生区域键集相同（夹具自证：分叉只能在值上）")
-        .isEqualTo(upsertsOf(ofAlpha).keySet());
-    assertThat(ofBeta).as("同 seed 不同 region ⇒ 不同结果").isNotEqualTo(ofAlpha);
+    assertThat(ofBeta.keySet()).as("孪生区域键集相同（夹具自证：分叉只能在值上）").isEqualTo(ofAlpha.keySet());
 
     int differing = 0;
-    for (Map.Entry<String, HexCell> e : upsertsOf(ofAlpha).entrySet()) {
-      if (!upsertsOf(ofBeta).get(e.getKey()).equals(e.getValue())) {
+    for (Map.Entry<String, String> e : ofAlpha.entrySet()) {
+      if (!ofBeta.get(e.getKey()).equals(e.getValue())) {
         differing++;
       }
     }
@@ -159,19 +166,22 @@ class RegionRandomizerTest {
   // ── 只碰目标区域 ─────────────────────────────────────────────────────────────
 
   /**
-   * ★ 区域外一格都不动：(1) upsert 的 key **恰为** core 的 7 格（少一格 = 偷懒，多一格 = 越界）且序 = {@code HexCoord}
-   * 自然序（处理序）；(2) {@code apply} 后区域外 30 格**逐格 equals 原值**（地形与高度都动不得）。 变异"忽略 region 改全图"在 (1)(2) 都红。
+   * ★ 区域外一格都不动：(1) 被改的格**恰为** core 的 7 格（少一格 = 偷懒，多一格 = 越界）且序 = {@code HexCoord} 自然序（处理序）；(2)
+   * {@code apply} 后区域外 30 格**逐格 equals 原值**（地形与高度都动不得）。 变异"忽略 region 改全图"在 (1)(2) 都红。
    */
   @Test
   void onlyTargetRegionIsTouched() {
     GameMap map = twoRegionMap();
     RegionId core = core();
     MapChangeSet cs = RegionRandomizer.randomize(map, core, TERRAIN_A, TERRAIN_B, 0.5, SEED);
-    Map<String, HexCell> upserts = upsertsOf(cs);
+    Map<String, String> changed = changedTerrains(map, cs);
 
-    assertThat(upserts.keySet())
-        .as("upsert 的 key 恰为 core 的 7 格，序 = 自然序（实测）")
+    assertThat(changed.keySet())
+        .as("被改的格恰为 core 的 7 格，序 = 自然序（实测）")
         .containsExactly("-1_0", "-1_1", "0_-1", "0_0", "0_1", "1_-1", "1_0");
+    assertThat(cs.hexes())
+        .as("P1：改地形不动高度 ⇒ hexes 组件一律 Unchanged")
+        .isInstanceOf(FieldDelta.Unchanged.class);
 
     GameMap applied = MapChangeSet.apply(cs, map);
     int checked = 0;
@@ -193,19 +203,13 @@ class RegionRandomizerTest {
     MapChangeSet cs = RegionRandomizer.randomize(map, big(), TERRAIN_A, TERRAIN_B, 0.5, SEED);
     GameMap after = MapChangeSet.apply(cs, map);
 
-    Set<String> terrains =
-        after.hexes().values().stream()
-            .map(HexCell::terrain)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
+    Set<String> terrains = new LinkedHashSet<>(after.terrainIndex().values());
     assertThat(terrains)
         .as("产出地形恰为 {A, B}——既不多、也不少")
         .containsExactlyInAnyOrder(TERRAIN_A, TERRAIN_B);
   }
 
-  /**
-   * ★ 高度逐格不变（区域内外都是）：重分配 = {@code new HexCell(新地形, 原 height)}。变异 m12v-5 （高度也一起改）在此红——夹具高度随 {@code
-   * q+r} 变化（见类注释），不是全平的。
-   */
+  /** ★ 高度逐格不变（区域内外都是）：重分配只改地形，不碰高度。变异"高度也一起改"在此红——夹具高度随 {@code q+r} 变化（见类注释）， 不是全平的。 */
   @Test
   void heightsArePreserved() {
     GameMap map = twoRegionMap();
@@ -264,7 +268,7 @@ class RegionRandomizerTest {
   }
 
   /**
-   * ★ 三种"没有目标格"的形态 ⇒ **空变更集**（非 null、{@code isEmpty()}、7 个组件逐一 {@code Unchanged}， 不是空
+   * ★ 三种"没有目标格"的形态 ⇒ **空变更集**（非 null、{@code isEmpty()}、8 个组件逐一 {@code Unchanged}， 不是空
    * Upsert）：空区域（hexes 为空集）、区域存在但 hexes 全在图外、未知 RegionId（**不抛**）。
    */
   @Test
@@ -276,6 +280,9 @@ class RegionRandomizerTest {
       assertThat(cs).as("%s ⇒ 非 null", id).isNotNull();
       assertThat(cs.isEmpty()).as("%s ⇒ isEmpty()", id).isTrue();
       assertThat(cs.hexes()).as("%s 的 hexes", id).isInstanceOf(FieldDelta.Unchanged.class);
+      assertThat(cs.terrainBlocks())
+          .as("%s 的 terrainBlocks", id)
+          .isInstanceOf(FieldDelta.Unchanged.class);
       assertThat(cs.regions()).as("%s 的 regions", id).isInstanceOf(FieldDelta.Unchanged.class);
       assertThat(cs.cities()).as("%s 的 cities", id).isInstanceOf(FieldDelta.Unchanged.class);
       assertThat(cs.terrainTypes())
@@ -300,17 +307,23 @@ class RegionRandomizerTest {
     Set<HexCoord> coreSet = HexGrid.withinRadius(new HexCoord(0, 0), 1);
     Map<HexCoord, HexCell> heldHexes = new LinkedHashMap<>();
     for (HexCoord c : HexGrid.withinRadius(new HexCoord(0, 0), 3).stream().sorted().toList()) {
-      heldHexes.put(c, new HexCell(THIRD, (c.q() + c.r() + 3) / 6.0));
+      heldHexes.put(c, new HexCell((c.q() + c.r() + 3) / 6.0));
     }
     Map<RegionId, Region> heldRegions = new LinkedHashMap<>();
     heldRegions.put(core(), Region.of(core(), "核心", coreSet, null));
     Map<HexCoord, HexCell> hexesBefore = new LinkedHashMap<>(heldHexes);
     Map<RegionId, Region> regionsBefore = new LinkedHashMap<>(heldRegions);
     GameMap map =
-        GameMap.empty()
-            .withHexes(heldHexes)
-            .withRegions(heldRegions)
-            .withTerrainTypes(TerrainCatalog.defaults());
+        new GameMap(
+            heldHexes,
+            TerrainBlocks.uniform(heldHexes.keySet(), THIRD),
+            heldRegions,
+            Map.of(),
+            TerrainCatalog.defaults(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            GenerationSpec.defaults(0L));
 
     RegionRandomizer.randomize(map, core(), TERRAIN_A, TERRAIN_B, 0.5, SEED);
 
@@ -334,10 +347,7 @@ class RegionRandomizerTest {
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(core(), Region.of(core(), "核心", coreSet, null));
     regions.put(new RegionId("rim"), Region.of(new RegionId("rim"), "外环", rimSet, null));
-    return GameMap.empty()
-        .withHexes(hexesOf(3))
-        .withRegions(regions)
-        .withTerrainTypes(TerrainCatalog.defaults());
+    return singleTerrainMap(hexesOf(3), regions);
   }
 
   /**
@@ -349,10 +359,7 @@ class RegionRandomizerTest {
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(new RegionId("alpha"), Region.of(new RegionId("alpha"), "甲", all, null));
     regions.put(new RegionId("beta"), Region.of(new RegionId("beta"), "乙", all, null));
-    return GameMap.empty()
-        .withHexes(hexesOf(6))
-        .withRegions(regions)
-        .withTerrainTypes(TerrainCatalog.defaults());
+    return singleTerrainMap(hexesOf(6), regions);
   }
 
   /** 空形态图：半径 1（7 格），含空区域 void、全在图外的 outside；ghost 不存在（未知 id 形态）。 */
@@ -361,30 +368,39 @@ class RegionRandomizerTest {
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(new RegionId("void"), Region.of(new RegionId("void"), "空域", Set.of(), null));
     regions.put(new RegionId("outside"), Region.of(new RegionId("outside"), "图外", outside, null));
-    return GameMap.empty()
-        .withHexes(hexesOf(1))
-        .withRegions(regions)
-        .withTerrainTypes(TerrainCatalog.defaults());
+    return singleTerrainMap(hexesOf(1), regions);
   }
 
   private static GameMap singleRegionMap(String id, String name, int radius) {
     Set<HexCoord> all = new LinkedHashSet<>(HexGrid.withinRadius(new HexCoord(0, 0), radius));
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(new RegionId(id), Region.of(new RegionId(id), name, all, null));
-    return GameMap.empty()
-        .withHexes(hexesOf(radius))
-        .withRegions(regions)
-        .withTerrainTypes(TerrainCatalog.defaults());
+    return singleTerrainMap(hexesOf(radius), regions);
+  }
+
+  /** 单地形（{@link #THIRD}）的图：hexes 与 terrainBlocks **原子**构造（两者受分割不变式约束）。 */
+  private static GameMap singleTerrainMap(
+      Map<HexCoord, HexCell> hexes, Map<RegionId, Region> regions) {
+    return new GameMap(
+        hexes,
+        TerrainBlocks.uniform(hexes.keySet(), THIRD),
+        regions,
+        Map.of(),
+        TerrainCatalog.defaults(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
   }
 
   /**
-   * 格内容：初始地形全 {@link #THIRD}，高度随 {@code (q + r)} 变化（{(q+r+radius)}/{2radius} ∈ [0,1]）。
-   * 高度必须**不全等**——否则"高度不动"的断言在变异 m12v-5（写死 0.5）下是恒真的。
+   * 格内容：初始地形全 {@link #THIRD}（进块），高度随 {@code (q + r)} 变化（{(q+r+radius)}/{2radius} ∈ [0,1]）。
+   * 高度必须**不全等**——否则"高度不动"的断言在变异（写死 0.5）下是恒真的。
    */
   private static Map<HexCoord, HexCell> hexesOf(int radius) {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     for (HexCoord c : HexGrid.withinRadius(new HexCoord(0, 0), radius).stream().sorted().toList()) {
-      hexes.put(c, new HexCell(THIRD, (c.q() + c.r() + radius) / (2.0 * radius)));
+      hexes.put(c, new HexCell((c.q() + c.r() + radius) / (2.0 * radius)));
     }
     return hexes;
   }
@@ -397,11 +413,22 @@ class RegionRandomizerTest {
     return new RegionId("big");
   }
 
-  /** 从变更集里取出 hexes 的 Upsert 项（key = "q_r"）。调用前应已断言是 Upsert——本断言就在这里。 */
-  private static Map<String, HexCell> upsertsOf(MapChangeSet cs) {
-    assertThat(cs.hexes()).as("有目标格 ⇒ hexes 必须是 Upsert").isInstanceOf(FieldDelta.Upsert.class);
-    @SuppressWarnings("unchecked")
-    FieldDelta.Upsert<HexCell> upsert = (FieldDelta.Upsert<HexCell>) cs.hexes();
-    return upsert.entries();
+  /**
+   * 从变更集取"逐格地形真的变了的那些格"（key = {@code "q_r"}、value = 新地形，序 = {@code map.hexes()} 的序）。
+   *
+   * <p>★ 走 {@code apply} 前后 {@link GameMap#terrainAt(HexCoord)} 对表——这是 P1 的**稳定对外口径**， 不依赖块/BlockId
+   * 的内部形状（那些是 simos-map 的实现细节）。
+   */
+  private static Map<String, String> changedTerrains(GameMap map, MapChangeSet cs) {
+    GameMap after = MapChangeSet.apply(cs, map);
+    Map<String, String> changed = new LinkedHashMap<>();
+    for (HexCoord hex : map.hexes().keySet()) {
+      String before = map.terrainAt(hex);
+      String now = after.terrainAt(hex);
+      if (!before.equals(now)) {
+        changed.put(hex.toString(), now);
+      }
+    }
+    return changed;
   }
 }

@@ -10,8 +10,10 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -138,7 +140,7 @@ class ReplayTest {
     fromGenesis = new Replay(timeline, checkpoints, CODECS, true);
 
     // ── (main,1) 创世：变更集为空（世界由创世 checkpoint 承载，没有"更早的状态"可施加）──
-    map = GameMap.empty().withHexes(Map.of());
+    map = GameMap.empty();
     social = new SocialData(Map.of());
     unit = UnitState.empty();
     mapMeta = meta(ref("main", 1), 1);
@@ -149,7 +151,7 @@ class ReplayTest {
 
     // ── (main,2)：map 加一格 ──
     GameMap mapBefore = map;
-    map = map.withHexes(Map.of(H11, plains()));
+    map = mapOf(Map.of(H11, plains()), Map.of(H11, "plains"));
     mapMeta = meta(ref("main", 2), 2);
     append(
         ref("main", 2),
@@ -180,7 +182,7 @@ class ReplayTest {
 
     // ── (main,5)：map 再加一格 ──
     mapBefore = map;
-    map = map.withHexes(Map.of(H11, plains(), H22, hills()));
+    map = mapOf(Map.of(H11, plains(), H22, hills()), Map.of(H11, "plains", H22, "hills"));
     mapMeta = meta(ref("main", 5), 5);
     append(
         ref("main", 5),
@@ -232,7 +234,10 @@ class ReplayTest {
 
     // ── (b2,3)：map 再加一格 ──
     mapBefore = map;
-    map = map.withHexes(Map.of(H11, plains(), H22, hills(), H33, plains()));
+    map =
+        mapOf(
+            Map.of(H11, plains(), H22, hills(), H33, plains()),
+            Map.of(H11, "plains", H22, "hills", H33, "plains"));
     mapMeta = meta(ref("b2", 3), 8);
     append(
         ref("b2", 3),
@@ -348,7 +353,10 @@ class ReplayTest {
     // 一行同时改 map 与 social：一条变更集、两个模块
     GameMap mapBefore = map;
     SocialData socialBefore = social;
-    map = map.withHexes(Map.of(H11, plains(), H22, hills(), H33, plains(), H44, plains()));
+    map =
+        mapOf(
+            Map.of(H11, plains(), H22, hills(), H33, plains(), H44, plains()),
+            Map.of(H11, "plains", H22, "hills", H33, "plains", H44, "plains"));
     social = new SocialData(Map.of(H11, population(), H22, population(), H44, population()));
     append(
         ref("main", 7),
@@ -391,7 +399,7 @@ class ReplayTest {
         wcs(
             "ghost",
             MapChangeSet.between(
-                GameMap.empty(), GameMap.empty().withHexes(Map.of(H44, plains())))),
+                GameMap.empty(), mapOf(Map.of(H44, plains()), Map.of(H44, "plains")))),
         7);
 
     assertThatThrownBy(() -> replay.replay(ref("main", 7)))
@@ -519,11 +527,25 @@ class ReplayTest {
   }
 
   private static HexCell plains() {
-    return new HexCell("plains", 0.35);
+    return new HexCell(0.35);
   }
 
   private static HexCell hills() {
-    return new HexCell("hills", 0.9);
+    return new HexCell(0.9);
+  }
+
+  /** 单地形（{@code plains}）的图：hexes 与 terrainBlocks 原子构造（P1 分割不变式）。 */
+  private static GameMap mapOf(Map<HexCoord, HexCell> hexes, Map<HexCoord, String> terrain) {
+    return new GameMap(
+        hexes,
+        TerrainBlocks.split(terrain),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
   }
 
   private static PopulationSeries population() {

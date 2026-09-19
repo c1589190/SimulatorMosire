@@ -2,6 +2,7 @@ package io.mosire.simos.map.generate;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
 import io.mosire.simos.map.terrain.TerrainCatalog;
@@ -98,16 +99,28 @@ public final class MapGenerator {
     placeRidges();
 
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    Map<HexCoord, String> terrainByHex = new LinkedHashMap<>();
     // ★ R-10-h：先按自然序（q 升、r 升）排好再逐格计算、按该序放进 hexes。withinRadius 内部是 Set.copyOf，
     //   迭代序 = 散列槽位序（跨 JVM 的哈希盐不同）⇒ 不排序则落盘序跨进程不稳，字节级往返不成立。
     for (HexCoord coord :
         HexGrid.withinRadius(new HexCoord(0, 0), radius).stream().sorted().toList()) {
-      hexes.put(coord, sampleAt(coord));
+      Sample sample = sampleAt(coord);
+      hexes.put(coord, new HexCell(sample.height()));
+      terrainByHex.put(coord, sample.terrain());
     }
 
-    // 生成只产出 hexes 与词表：区域/城市/线/组/边是编辑期的东西，生成期一律为空。
+    // 生成只产出 hexes/terrainBlocks 与词表：区域/城市/线/组/边是编辑期的东西，生成期一律为空。
+    // ★ P1：地形是权威块——由逐格地形一次性切成同地形连通分量。
     return new GameMap(
-        hexes, Map.of(), Map.of(), TerrainCatalog.defaults(), Map.of(), Map.of(), Map.of(), spec);
+        hexes,
+        TerrainBlocks.split(terrainByHex),
+        Map.of(),
+        Map.of(),
+        TerrainCatalog.defaults(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        spec);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -239,7 +252,7 @@ public final class MapGenerator {
   // ═══════════════════════════════════════════════════════
 
   /** 一个格的完整采样：先算高度、再判水、最后（只在陆地上）判地形。 */
-  private HexCell sampleAt(HexCoord coord) {
+  private Sample sampleAt(HexCoord coord) {
     double px = coord.q() + coord.r() * 0.5;
     double py = coord.r() * 0.8660254;
 
@@ -286,7 +299,7 @@ public final class MapGenerator {
 
     // ★ R-10-f：判水在分类**之前**（GSimulator `:167`）。水下的高度**原样记**（不记 0）—— 它是同一根管线的产物。
     if (height < seaLevel) {
-      return new HexCell(OCEAN, height);
+      return new Sample(OCEAN, height);
     }
 
     // ★ R-10-b：湿度用**未扭曲**的 px/py（GSimulator 传给 classify 的就是 `:135-136` 那对），
@@ -294,7 +307,7 @@ public final class MapGenerator {
     double moisture =
         noise.noise2(
             px * bands.moistureFreq() + MOISTURE_PHASE, py * bands.moistureFreq() + MOISTURE_PHASE);
-    return new HexCell(
+    return new Sample(
         TerrainClassifier.classify(height, (moisture + 1) / 2, NO_TEMPERATURE_CHANNEL), height);
   }
 
@@ -371,4 +384,7 @@ public final class MapGenerator {
 
   /** 折线上的一个控制点。 */
   private record Pt(double x, double y) {}
+
+  /** 一格的地形与高度。地形进权威块、高度进逐格 {@link HexCell}（P1）。 */
+  private record Sample(String terrain, double height) {}
 }
