@@ -96,7 +96,7 @@ public final class QueryService {
                   () ->
                       new IllegalArgumentException("分支不存在，没有 head 可查：" + target.branch().value()));
     }
-    StateRef ref = new StateRef(target.branch(), revision);
+    StateRef ref = new StateRef(target.branch(), new RevisionId(1));
     SimulationState cached = stateCache.get(ref);
     if (cached != null) {
       stateCacheHits.increment();
@@ -120,8 +120,6 @@ public final class QueryService {
 
   /** 有界 LRU（访问序）：超过容量即淘汰最久未用者。 */
   private static final class StateCache extends LinkedHashMap<StateRef, SimulationState> {
-
-    private static final long serialVersionUID = 1L;
 
     private final int capacity;
 

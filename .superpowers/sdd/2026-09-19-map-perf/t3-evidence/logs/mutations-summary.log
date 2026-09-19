@@ -1,0 +1,17 @@
+m1 self: orig_md5=90f47af5748e0f96d15de52a9c1dfb0c mutant_md5=37d55eee8be8ebe0926ff22d29b850aa pushed_md5=37d55eee8be8ebe0926ff22d29b850aa rc=1 compilation_errors=0
+[ERROR]   GuiApiTest.unitDetailExposesMovementObjectWithRouteAndInTransitState:386 [movement 必须是对象（不再是布尔）] 
+[ERROR]   GuiApiTest.writeCommitsThroughCoreAndStampsPlayerGuiInitiator:532 
+[ERROR]   QueryServiceTest.cachedEntriesAreSeparatedByBranch:201 
+[ERROR]   QueryServiceTest.commitIsVisibleOnTheNextHeadQuery:183 [提交后 head 查询必须看到新 revision（key = 已解析坐标，新 revision ⇒ 新键）] 
+[ERROR]   GuiApiTest.mapPathResultFeedsPlanRoute:481 NullPointer Cannot invoke "com.fasterxml.jackson.databind.JsonNode.get(String)" because the return value of "com.fasterxml.jackson.databind.JsonNode.get(String)" is null
+m2 self: orig_md5=90f47af5748e0f96d15de52a9c1dfb0c mutant_md5=35c80fcb62b3d62ee0fe7e18169d0f24 pushed_md5=35c80fcb62b3d62ee0fe7e18169d0f24 rc=1 compilation_errors=0
+[ERROR]   QueryServiceTest.cachedEntriesAreSeparatedByBranch:202 [键漏 branch ⇒ main@2 与 side@2 串味] 
+m3 self: orig_md5=90f47af5748e0f96d15de52a9c1dfb0c mutant_md5=d12e4077d915f245e28d12e907c5521d pushed_md5=d12e4077d915f245e28d12e907c5521d rc=0 compilation_errors=0
+m3: no red-test lines
+m4 self: orig_md5=845d7e03d0f5d94c2723beb6d6db9d7f mutant_md5=85f12faf009d211fa24f2b73f09ca6ef pushed_md5=85f12faf009d211fa24f2b73f09ca6ef rc=1 compilation_errors=0
+[ERROR]   GuiApiTest.mapHexBuildsTheCanonicalFacetSubject:166 NullPointer Cannot invoke "com.fasterxml.jackson.databind.JsonNode.asDouble()" because the return value of "com.fasterxml.jackson.databind.JsonNode.get(String)" is null
+[ERROR]   GuiApiTest.mapOverviewOmitsHeightWhileMapHexKeepsIt:199 NullPointer Cannot invoke "com.fasterxml.jackson.databind.JsonNode.asDouble()" because the return value of "com.fasterxml.jackson.databind.JsonNode.get(String)" is null
+restored QueryService md5=90f47af5748e0f96d15de52a9c1dfb0c
+restored ApiViews md5=845d7e03d0f5d94c2723beb6d6db9d7f
+orig QueryService md5=90f47af5748e0f96d15de52a9c1dfb0c
+orig ApiViews md5=845d7e03d0f5d94c2723beb6d6db9d7f

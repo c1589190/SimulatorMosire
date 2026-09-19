@@ -1,0 +1,49 @@
+{
+  "archive": "/tmp/m6-import-verify/test_integration",
+  "hexCount": 19441,
+  "overview": {
+    "before": {
+      "source": "user :5818 (main-tree b17649c / T2-era classes; height present)",
+      "bytes": 1044970,
+      "heightKeys": 19441
+    },
+    "after": {
+      "source": "worktree :45921 (m9/t3, height removed)",
+      "bytes": 703053,
+      "heightKeys": 0
+    },
+    "deltaBytes": 341917,
+    "deltaPct": 32.72
+  },
+  "singleHex": {
+    "endpoint": "/api/map/hex?q=-5&r=-59",
+    "source": "worktree :45921",
+    "status": 200,
+    "bytes": 282,
+    "hasHeight": true,
+    "height": 0.375
+  },
+  "probe": {
+    "class": "in-process Shell against true archive, two real HTTP GETs",
+    "overviewBytesCharsFirst": 702911,
+    "overviewBytesCharsSecond": 702911,
+    "checkpointReadCount_beforeFirst": 0,
+    "checkpointReadCount_afterFirst": 1,
+    "checkpointReadCount_afterSecond": 1,
+    "secondDelta": 0,
+    "cacheHits": 1,
+    "cacheMisses": 1,
+    "overviewHasHeightKey": false
+  },
+  "t2_harness": {
+    "device": "t2-evidence/harness/measure.cjs (reused, same criterion)",
+    "t2_new1": {"firstInteractiveMs": 509.4, "renderP50": 1.75, "apiBytes": 2090800, "startupUnder2sBytes": 2261555, "pageErrors": 0},
+    "t2_new2": {"firstInteractiveMs": 377, "renderP50": 1.65, "apiBytes": 2090800, "startupUnder2sBytes": 2261555, "pageErrors": 0},
+    "now":     {"firstInteractiveMs": 420.7, "renderP50": 1.65, "apiBytes": 1406966, "startupUnder2sBytes": 1577721, "pageErrors": 0}
+  },
+  "writeProtection": {
+    "simosDbMd5Before": "2348b9365e5b107945a305d06fad8fab",
+    "simosDbMd5After": "2348b9365e5b107945a305d06fad8fab"
+  },
+  "fullVerify": {"total": 850, "perModule": [170, 256, 45, 131, 154, 94], "baseline": 844, "delta": 6}
+}

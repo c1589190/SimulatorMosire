@@ -244,7 +244,6 @@ final class ApiViews {
       TerrainType terrainType) {
     Map<String, Object> view = hexCoord(coord);
     view.put("terrain", cell.terrain());
-    view.put("height", cell.height());
     List<String> regionIds = new ArrayList<>(regions.size());
     for (RegionId region : regions) {
       regionIds.add(region.value());

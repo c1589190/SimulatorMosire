@@ -179,6 +179,41 @@ class GuiApiTest {
     assertThat(body.get("hexes")).hasSize(4);
   }
 
+  /**
+   * M9 T3：overview 停发死重量 {@code height}（前端全仓零读取点），而单格 {@code /api/map/hex} 的 {@code height}
+   * **必须保留**（{@code panels.js} 在用）。
+   */
+  @Test
+  void mapOverviewOmitsHeightWhileMapHexKeepsIt() throws Exception {
+    HttpResponse<String> overview = get("/api/map/overview");
+    assertThat(overview.statusCode()).isEqualTo(200);
+    assertThat(overview.body()).as("overview 整体不含 height 键").doesNotContain("\"height\"");
+
+    JsonNode hexes = JSON.readTree(overview.body()).get("hexes");
+    assertThat(hexes).as("逐 hex 抽检（夹具 4 格）").hasSize(4);
+    for (JsonNode hex : hexes) {
+      assertThat(hex.has("height")).as("overview 的 hex 不含 height: %s", hex).isFalse();
+    }
+
+    JsonNode single = getJson("/api/map/hex?q=1&r=1");
+    assertThat(single.get("height").asDouble()).as("单格端点保留 height").isEqualTo(0.5);
+  }
+
+  /** M9 T3：同一坐标连打两次 overview ⇒ 第二次命中读缓存、不读 checkpoint（计数可观测）。 */
+  @Test
+  void secondOverviewForTheSameTargetDoesNotReadACheckpoint() throws Exception {
+    getJson("/api/map/overview");
+    long readsAfterFirst = shell.coreSimos().checkpointReadCount();
+    long hitsAfterFirst = shell.queryService().stateCacheHits();
+
+    getJson("/api/map/overview");
+
+    assertThat(shell.coreSimos().checkpointReadCount())
+        .as("第二次同一坐标的 overview 不再读 checkpoint")
+        .isEqualTo(readsAfterFirst);
+    assertThat(shell.queryService().stateCacheHits()).isEqualTo(hitsAfterFirst + 1);
+  }
+
   // ── M7 T1 只读扩展（spec §3.1/§3.2/§3.3）──────────────────────────────
 
   /** 判据②后端面 / R3：{@code /api/timeline} 的节点与库一致、升序、parent 形状正确、未知分支 404。 */

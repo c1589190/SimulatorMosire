@@ -7,6 +7,9 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.core.command.ForkBranch;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
 import io.mosire.simos.core.store.CheckpointStore;
@@ -56,6 +59,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -141,6 +145,79 @@ class QueryServiceTest {
         .hasMessageContaining("nope");
   }
 
+  // ── M9 T3：读路径按坐标记忆化 ────────────────────────────────────────
+
+  @Test
+  void secondRequestForTheSameTargetDoesNotReadACheckpoint() {
+    QueryService queryService = shell.queryService();
+    QueryTarget target = QueryTarget.head(main());
+
+    SimulationState first = queryService.stateAt(target);
+    long readsAfterFirst = shell.coreSimos().checkpointReadCount();
+    long hitsAfterFirst = queryService.stateCacheHits();
+
+    SimulationState second = queryService.stateAt(target);
+
+    assertThat(shell.coreSimos().checkpointReadCount())
+        .as("同一坐标第二次读不得再碰 checkpoint（增量为 0）")
+        .isEqualTo(readsAfterFirst);
+    assertThat(queryService.stateCacheHits()).isEqualTo(hitsAfterFirst + 1);
+    assertThat(queryService.stateCacheMisses()).as("首读至少真重放过一次").isPositive();
+    assertThat(second).as("缓存返回同一个不可变实例").isSameAs(first);
+    assertThat(second.meta().ref()).isEqualTo(ref("main", 1));
+  }
+
+  @Test
+  void commitIsVisibleOnTheNextHeadQuery() {
+    QueryService queryService = shell.queryService();
+    QueryTarget head = QueryTarget.head(main());
+    assertThat(queryService.stateAt(head).meta().ref().revision().value()).isEqualTo(1L);
+
+    CommandResult result = shell.coreSimos().submit(renameEnvelope(main(), 1L, "缓存后的名字"));
+
+    assertThat(result).isInstanceOf(CommandResult.Committed.class);
+    assertThat(((CommandResult.Committed) result).ref().revision().value()).isEqualTo(2L);
+    SimulationState after = queryService.stateAt(head);
+    assertThat(after.meta().ref().revision().value())
+        .as("提交后 head 查询必须看到新 revision（key = 已解析坐标，新 revision ⇒ 新键）")
+        .isEqualTo(2L);
+    assertThat(nameOf(after)).isEqualTo("缓存后的名字");
+  }
+
+  @Test
+  void cachedEntriesAreSeparatedByBranch() {
+    QueryService queryService = shell.queryService();
+
+    assertThat(shell.coreSimos().submit(forkEnvelope(main(), 1L, "side")))
+        .isInstanceOf(CommandResult.Committed.class);
+    assertThat(shell.coreSimos().submit(renameEnvelope(main(), 1L, "main-2")))
+        .isInstanceOf(CommandResult.Committed.class);
+    assertThat(shell.coreSimos().submit(renameEnvelope(side(), 1L, "side-2")))
+        .isInstanceOf(CommandResult.Committed.class);
+
+    SimulationState mainAtTwo = queryService.stateAt(QueryTarget.at(main(), new RevisionId(2)));
+    SimulationState sideAtTwo = queryService.stateAt(QueryTarget.at(side(), new RevisionId(2)));
+
+    assertThat(nameOf(mainAtTwo)).isEqualTo("main-2");
+    assertThat(nameOf(sideAtTwo)).as("键漏 branch ⇒ main@2 与 side@2 串味").isEqualTo("side-2");
+  }
+
+  @Test
+  void cachedStateIsDeeplyImmutableSoDownstreamCannotPolluteIt() {
+    QueryService queryService = shell.queryService();
+    SimulationState first = queryService.stateAt(QueryTarget.head(main()));
+
+    assertThatThrownBy(() -> first.modules().put("x", first.module("map").orElseThrow()))
+        .as("modules 是 Map.copyOf ⇒ 下游就地修改必抛（故无需防御性拷贝）")
+        .isInstanceOf(UnsupportedOperationException.class);
+
+    assertThat(queryService.stateAt(QueryTarget.head(main())))
+        .as("就地修改尝试之后，缓存仍在且未被污染")
+        .isSameAs(first);
+    assertThat(queryService.stateAt(QueryTarget.head(main())).modules().keySet())
+        .containsExactlyInAnyOrder("map", "unit", "social");
+  }
+
   @Test
   void unknownNamespaceFailsExplicitly() {
     assertThatThrownBy(() -> shell.queryService().resolve("agent:x-1", QueryTarget.head(main())))
@@ -221,6 +298,37 @@ class QueryServiceTest {
       contexts.add(ctx);
       return List.of();
     }
+  }
+
+  // ── M9 T3 的命令夹具 ────────────────────────────────────────────────
+
+  private static CommandEnvelope renameEnvelope(
+      BranchId branch, long expectedRevision, String name) {
+    String id = UUID.randomUUID().toString();
+    return new CommandEnvelope(
+        id,
+        id,
+        "test:query",
+        branch,
+        new RevisionId(expectedRevision),
+        "unit.RenameUnit",
+        "{\"id\":\"u-1\",\"name\":\"" + name + "\"}");
+  }
+
+  private static ForkBranch forkEnvelope(BranchId source, long expectedRevision, String newBranch) {
+    String id = UUID.randomUUID().toString();
+    return new ForkBranch(
+        id, id, "test:query", source, new RevisionId(expectedRevision), new BranchId(newBranch));
+  }
+
+  private static String nameOf(SimulationState state) {
+    UnitSnapshot snapshot =
+        (UnitSnapshot) state.module("unit").orElseThrow(() -> new AssertionError("状态里没有 unit 切片"));
+    return snapshot.state().units().get(U1).name();
+  }
+
+  private static BranchId side() {
+    return new BranchId("side");
   }
 
   // ────────────────────────────── 夹具 ──────────────────────────────

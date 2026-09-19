@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +36,9 @@ public final class CheckpointStore {
   private static final String CHECKPOINTS_DIR_NAME = "checkpoints";
 
   private final Path checkpointsDir;
+
+  /** 本实例被调用 {@link #read} 的累计次数（M9 T3 的可观测计数：缓存命中一次都不该让它增长）。 */
+  private final LongAdder readCount = new LongAdder();
 
   /**
    * @param storeDir 存储根目录（Task 13 由 {@code CoreConfig.storeDir} 给出），**必须已存在且是目录**
@@ -81,6 +85,7 @@ public final class CheckpointStore {
    */
   public Optional<String> read(StateRef ref) {
     Objects.requireNonNull(ref, "ref");
+    readCount.increment();
     Path file = branchDir(ref).resolve(fileName(ref));
     if (!Files.isRegularFile(file)) {
       LOG.warn("checkpoint 缺失（C18：回退到更早的 checkpoint，最坏从创世重放，不失败）: {}", file);
@@ -91,6 +96,11 @@ public final class CheckpointStore {
     } catch (IOException e) {
       throw new UncheckedIOException("checkpoint 读取失败（文件在但读不出）: " + file, e);
     }
+  }
+
+  /** 本实例被调用 {@link #read} 的累计次数（含"文件缺失"的调用；M9 T3 用它与读缓存一起证明"第二次未读档"）。 */
+  public long readCount() {
+    return readCount.sum();
   }
 
   /**
