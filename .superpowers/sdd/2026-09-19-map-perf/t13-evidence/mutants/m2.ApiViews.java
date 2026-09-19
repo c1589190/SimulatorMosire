@@ -202,7 +202,6 @@ final class ApiViews {
    */
   private static List<Map<String, Object>> blockViews(GameMap map) {
     List<BlockId> ids = new ArrayList<>(map.terrainBlocks().keySet());
-    ids.sort(Comparator.naturalOrder());
     List<Map<String, Object>> out = new ArrayList<>(ids.size());
     for (BlockId id : ids) {
       TerrainBlock block = map.terrainBlocks().get(id);

@@ -1,0 +1,58 @@
+{
+  "base": "http://127.0.0.1:5824",
+  "assertions": [
+    {
+      "id": "route-planned",
+      "pass": true,
+      "detail": "{\"ok\":true,\"result\":{\"ok\":true,\"body\":{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}},\"pathLen\":3}"
+    },
+    {
+      "id": "panel-step-cost-numeric",
+      "pass": true,
+      "detail": "idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movement有路线格数3本 tick 预算（毫 MP）2000路线每格成本（毫 MP）1500路线总成本（毫 MP）3000statusIN_TRANSITcurrentHexq=1, r=1nextHexq=1, r=2remainingMillis1500预计到达 tick7出发 tick5出发速度（毫 MP/tick）2000出发机动‰500"
+    },
+    {
+      "id": "panel-budget-numeric",
+      "pass": true,
+      "detail": "idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movement有路线格数3本 tick 预算（毫 MP）2000路线每格成本（毫 MP）1500路线总成本（毫 MP）3000statusIN_TRANSITcurrentHexq=1, r=1nextHexq=1, r=2remainingMillis1500预计到达 tick7出发 tick5出发速度（毫 MP/tick）2000出发机动‰500"
+    },
+    {
+      "id": "panel-total-cost-numeric",
+      "pass": true,
+      "detail": "idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movement有路线格数3本 tick 预算（毫 MP）2000路线每格成本（毫 MP）1500路线总成本（毫 MP）3000statusIN_TRANSITcurrentHexq=1, r=1nextHexq=1, r=2remainingMillis1500预计到达 tick7出发 tick5出发速度（毫 MP/tick）2000出发机动‰500"
+    },
+    {
+      "id": "panel-eta-tick",
+      "pass": true,
+      "detail": "idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movement有路线格数3本 tick 预算（毫 MP）2000路线每格成本（毫 MP）1500路线总成本（毫 MP）3000statusIN_TRANSITcurrentHexq=1, r=1nextHexq=1, r=2remainingMillis1500预计到达 tick7出发 tick5出发速度（毫 MP/tick）2000出发机动‰500"
+    },
+    {
+      "id": "no-page-errors",
+      "pass": true,
+      "detail": "[]"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "raw": {
+    "planned": {
+      "ok": true,
+      "result": {
+        "ok": true,
+        "body": {
+          "result": "committed",
+          "ref": {
+            "branch": "main",
+            "revision": 2
+          }
+        }
+      },
+      "pathLen": 3
+    },
+    "panel": "idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movement有路线格数3本 tick 预算（毫 MP）2000路线每格成本（毫 MP）1500路线总成本（毫 MP）3000statusIN_TRANSITcurrentHexq=1, r=1nextHexq=1, r=2remainingMillis1500预计到达 tick7出发 tick5出发速度（毫 MP/tick）2000出发机动‰500"
+  },
+  "fatal": null,
+  "summary": "6/6 PASS"
+}

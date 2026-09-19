@@ -1,0 +1,418 @@
+{
+  "base": "http://127.0.0.1:5821",
+  "startedAt": "2026-09-19T13:07:05.756Z",
+  "assertions": [
+    {
+      "id": "no-per-hex-array",
+      "pass": true,
+      "detail": "overview.hasOwnProperty('hexes')=false"
+    },
+    {
+      "id": "blocks-partition-covers-all",
+      "pass": true,
+      "detail": "hexCount=19441 unmergedCount=0"
+    },
+    {
+      "id": "pick-0_0-terrain",
+      "pass": true,
+      "detail": "expected=plains got=plains inMap=true"
+    },
+    {
+      "id": "pick--5_-59-terrain",
+      "pass": true,
+      "detail": "expected=plains got=plains inMap=true"
+    },
+    {
+      "id": "pick--64_72-terrain",
+      "pass": true,
+      "detail": "expected=low_hills got=low_hills inMap=true"
+    },
+    {
+      "id": "pick-18_53-terrain",
+      "pass": true,
+      "detail": "expected=ocean got=ocean inMap=true"
+    },
+    {
+      "id": "pick-1_1-terrain",
+      "pass": true,
+      "detail": "expected=plains got=plains inMap=true"
+    },
+    {
+      "id": "pick-40_-40-terrain",
+      "pass": true,
+      "detail": "expected=plains got=plains inMap=true"
+    },
+    {
+      "id": "pick--42_-1-terrain",
+      "pass": true,
+      "detail": "expected=plains got=plains inMap=true"
+    },
+    {
+      "id": "pick--11_56-terrain",
+      "pass": true,
+      "detail": "expected=mountains got=mountains inMap=true"
+    },
+    {
+      "id": "pick-69_-78-terrain",
+      "pass": true,
+      "detail": "expected=plains got=plains inMap=true"
+    },
+    {
+      "id": "pick--68_3-terrain",
+      "pass": true,
+      "detail": "expected=mountains got=mountains inMap=true"
+    },
+    {
+      "id": "pixel-0_0",
+      "pass": true,
+      "detail": "expected plains 156,203,91 got 156,203,91,255 dist=0"
+    },
+    {
+      "id": "pixel--5_-59",
+      "pass": true,
+      "detail": "expected plains 156,203,91 got 156,203,91,255 dist=0"
+    },
+    {
+      "id": "pixel--64_72",
+      "pass": true,
+      "detail": "expected low_hills 168,179,106 got 168,179,106,255 dist=0"
+    },
+    {
+      "id": "pixel-18_53",
+      "pass": true,
+      "detail": "expected ocean 31,95,160 got 31,95,160,255 dist=0"
+    },
+    {
+      "id": "pixel-1_1",
+      "pass": true,
+      "detail": "expected plains 156,203,91 got 156,203,91,255 dist=0"
+    },
+    {
+      "id": "pixel-40_-40",
+      "pass": true,
+      "detail": "expected plains 156,203,91 got 156,203,91,255 dist=0"
+    },
+    {
+      "id": "pixel--42_-1",
+      "pass": true,
+      "detail": "expected plains 156,203,91 got 156,203,91,255 dist=0"
+    },
+    {
+      "id": "pixel--11_56",
+      "pass": true,
+      "detail": "expected mountains 122,127,133 got 122,127,133,255 dist=0"
+    },
+    {
+      "id": "pixel-69_-78",
+      "pass": true,
+      "detail": "expected plains 156,203,91 got 156,203,91,255 dist=0"
+    },
+    {
+      "id": "pixel--68_3",
+      "pass": true,
+      "detail": "expected mountains 122,127,133 got 122,127,133,255 dist=0"
+    },
+    {
+      "id": "click-selects-hex",
+      "pass": true,
+      "detail": "q0r0terrainplains（平原）height0.375regionstest_nation该处单位无人口无序列"
+    },
+    {
+      "id": "overview-lists-regions",
+      "pass": true,
+      "detail": "regions=2"
+    },
+    {
+      "id": "region-detail-ok",
+      "pass": true,
+      "detail": "{\"id\":\"test_annex_target\",\"status\":200,\"hexes\":201}"
+    },
+    {
+      "id": "region-highlight-active",
+      "pass": true,
+      "detail": "highlightHexCount=201"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "nonGET": [],
+  "raw": {
+    "blockCount": 44,
+    "hexCount": 19441,
+    "hasHexes": false,
+    "debug": {
+      "scale": 0.09666505558240696,
+      "tx": 640,
+      "ty": 400,
+      "cellSize": 34,
+      "hexCount": 19441,
+      "blockCount": 44,
+      "blockVertexCount": 9694,
+      "blockRingCounts": {
+        "low_hills@-64_72": 1,
+        "low_hills@-50_-10": 3,
+        "low_hills@-42_67": 1,
+        "low_hills@-35_62": 6,
+        "low_hills@-22_-58": 1,
+        "low_hills@8_43": 1,
+        "low_hills@33_28": 1,
+        "mountains@-73_2": 1,
+        "mountains@-54_69": 1,
+        "mountains@-40_-40": 1,
+        "mountains@-16_4": 1,
+        "mountains@-13_-33": 1,
+        "mountains@-13_54": 1,
+        "mountains@-12_55": 1,
+        "mountains@-11_56": 1,
+        "mountains@-7_61": 1,
+        "mountains@2_71": 1,
+        "mountains@6_74": 1,
+        "mountains@23_-26": 1,
+        "ocean@-80_17": 1,
+        "ocean@-80_74": 1,
+        "ocean@-64_-16": 1,
+        "ocean@-31_76": 1,
+        "ocean@-28_13": 1,
+        "ocean@-26_41": 1,
+        "ocean@-22_38": 1,
+        "ocean@-21_-44": 1,
+        "ocean@-18_80": 1,
+        "ocean@-14_41": 1,
+        "ocean@-13_77": 1,
+        "ocean@7_-50": 1,
+        "ocean@10_-32": 1,
+        "ocean@18_53": 2,
+        "ocean@22_-72": 1,
+        "ocean@30_-41": 1,
+        "ocean@38_-3": 1,
+        "ocean@39_-9": 1,
+        "plains@-80_0": 13,
+        "plains@-42_-1": 1,
+        "plains@-28_-17": 1,
+        "plains@31_49": 1,
+        "plains@38_-41": 1,
+        "plains@69_-78": 1,
+        "plains@71_-8": 1
+      },
+      "unmergedCount": 0,
+      "paintedRingCount": 64,
+      "pass2Draws": 0,
+      "unitCount": 0,
+      "colorByTerrain": {
+        "ocean": "#1F5FA0",
+        "plains": "#9CCB5B",
+        "low_hills": "#A8B36A",
+        "mountains": "#7A7F85"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": null,
+      "selectedUnit": null,
+      "mode": "view",
+      "isWorkbench": true,
+      "terrainRebuilds": 1,
+      "terrainBlits": 2,
+      "borderDraws": 0,
+      "legendScans": 1,
+      "borderScreenPx": 3.2866118898018364,
+      "terrainMode": "blocks",
+      "routeCount": 0,
+      "routes": []
+    },
+    "rows": [
+      {
+        "q": 0,
+        "r": 0,
+        "expected": "plains",
+        "height": 0.375,
+        "inMap": true,
+        "got": "plains"
+      },
+      {
+        "q": -5,
+        "r": -59,
+        "expected": "plains",
+        "height": 0.375,
+        "inMap": true,
+        "got": "plains"
+      },
+      {
+        "q": -64,
+        "r": 72,
+        "expected": "low_hills",
+        "height": 0.6000000000000001,
+        "inMap": true,
+        "got": "low_hills"
+      },
+      {
+        "q": 18,
+        "r": 53,
+        "expected": "ocean",
+        "height": 0.15,
+        "inMap": true,
+        "got": "ocean"
+      },
+      {
+        "q": 1,
+        "r": 1,
+        "expected": "plains",
+        "height": 0.375,
+        "inMap": true,
+        "got": "plains"
+      },
+      {
+        "q": 40,
+        "r": -40,
+        "expected": "plains",
+        "height": 0.375,
+        "inMap": true,
+        "got": "plains"
+      },
+      {
+        "q": -42,
+        "r": -1,
+        "expected": "plains",
+        "height": 0.375,
+        "inMap": true,
+        "got": "plains"
+      },
+      {
+        "q": -11,
+        "r": 56,
+        "expected": "mountains",
+        "height": 0.7150000000000001,
+        "inMap": true,
+        "got": "mountains"
+      },
+      {
+        "q": 69,
+        "r": -78,
+        "expected": "plains",
+        "height": 0.375,
+        "inMap": true,
+        "got": "plains"
+      },
+      {
+        "q": -68,
+        "r": 3,
+        "expected": "mountains",
+        "height": 0.7150000000000001,
+        "inMap": true,
+        "got": "mountains"
+      }
+    ],
+    "pixels": [
+      {
+        "q": 0,
+        "r": 0,
+        "rgba": [
+          156,
+          203,
+          91,
+          255
+        ]
+      },
+      {
+        "q": -5,
+        "r": -59,
+        "rgba": [
+          156,
+          203,
+          91,
+          255
+        ]
+      },
+      {
+        "q": -64,
+        "r": 72,
+        "rgba": [
+          168,
+          179,
+          106,
+          255
+        ]
+      },
+      {
+        "q": 18,
+        "r": 53,
+        "rgba": [
+          31,
+          95,
+          160,
+          255
+        ]
+      },
+      {
+        "q": 1,
+        "r": 1,
+        "rgba": [
+          156,
+          203,
+          91,
+          255
+        ]
+      },
+      {
+        "q": 40,
+        "r": -40,
+        "rgba": [
+          156,
+          203,
+          91,
+          255
+        ]
+      },
+      {
+        "q": -42,
+        "r": -1,
+        "rgba": [
+          156,
+          203,
+          91,
+          255
+        ]
+      },
+      {
+        "q": -11,
+        "r": 56,
+        "rgba": [
+          122,
+          127,
+          133,
+          255
+        ]
+      },
+      {
+        "q": 69,
+        "r": -78,
+        "rgba": [
+          156,
+          203,
+          91,
+          255
+        ]
+      },
+      {
+        "q": -68,
+        "r": 3,
+        "rgba": [
+          122,
+          127,
+          133,
+          255
+        ]
+      }
+    ],
+    "selectionText": "q0r0terrainplains（平原）height0.375regionstest_nation该处单位无人口无序列"
+  },
+  "fatal": null,
+  "finishedAt": "2026-09-19T13:07:08.875Z",
+  "summary": "26/26 PASS"
+}

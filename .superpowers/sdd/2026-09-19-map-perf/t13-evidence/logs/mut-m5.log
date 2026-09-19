@@ -1,0 +1,5 @@
+summary: 23/26 PASS
+  FAIL pick--42_-1-terrain | expected=plains got=low_hills inMap=true
+  FAIL pick--11_56-terrain | expected=mountains got=low_hills inMap=true
+  FAIL pick-69_-78-terrain | expected=plains got=ocean inMap=true
+pageErrors: 0 nonGET: []

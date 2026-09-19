@@ -593,7 +593,7 @@
       });
       colors.forEach(function (color) {
         targetCtx.fillStyle = color;
-        targetCtx.fill(byColor[color], "evenodd");
+        targetCtx.fill(byColor[color]);
       });
     }
 

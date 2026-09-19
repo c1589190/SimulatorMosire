@@ -217,6 +217,7 @@ final class ApiViews {
       item.put("boundaries", rings);
       out.add(item);
     }
+    java.util.Collections.shuffle(out);
     return out;
   }
 

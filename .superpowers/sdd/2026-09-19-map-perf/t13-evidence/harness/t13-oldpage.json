@@ -1,0 +1,40 @@
+{
+  "base": "http://127.0.0.1:5821",
+  "assertions": [
+    {
+      "id": "map-page-200",
+      "pass": true,
+      "detail": "status=200"
+    },
+    {
+      "id": "old-page-has-blocks",
+      "pass": true,
+      "detail": "{\"blockCount\":44,\"hexCount\":19441,\"unmergedCount\":0}"
+    },
+    {
+      "id": "old-page-click-reads-hex",
+      "pass": true,
+      "detail": "q0r0terrainplainsheight0.375"
+    },
+    {
+      "id": "no-page-errors",
+      "pass": true,
+      "detail": "[]"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "raw": {
+    "status": 200,
+    "debug": {
+      "blockCount": 44,
+      "hexCount": 19441,
+      "unmergedCount": 0
+    },
+    "hexDetail": "q0r0terrainplainsheight0.375"
+  },
+  "fatal": null,
+  "summary": "4/4 PASS"
+}

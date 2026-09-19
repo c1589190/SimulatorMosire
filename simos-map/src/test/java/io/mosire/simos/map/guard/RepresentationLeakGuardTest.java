@@ -27,6 +27,13 @@ class RepresentationLeakGuardTest {
 
   private static final List<String> FORBIDDEN = List.of(".terrain()", "HexCell::terrain");
 
+  /**
+   * ★ M9 T13 起**唯一**允许在 simos-map 之外读块地形的落点：GUI 总览的视图装配器 —— 它把权威块多边形折成 JSON （spec §七.4
+   * 的「服务端发块多边形」正需要读一次 {@code TerrainBlock.terrain()}）。其余文件一处都不许。
+   */
+  private static final String SANCTIONED_BLOCK_TERRAIN_READER =
+      "simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java";
+
   @Test
   void noDirectTerrainReadsOutsideSimosMap() {
     List<Path> files = new ArrayList<>();
@@ -75,6 +82,9 @@ class RepresentationLeakGuardTest {
         }
         for (String token : FORBIDDEN) {
           if (line.contains(token)) {
+            if (".terrain()".equals(token) && isSanctionedBlockTerrainReader(file)) {
+              break;
+            }
             hits.add(file + ":" + (i + 1) + ": " + line.strip());
             break;
           }
@@ -87,6 +97,10 @@ class RepresentationLeakGuardTest {
   private static boolean isCommentLine(String line) {
     String t = line.stripLeading();
     return t.startsWith("*") || t.startsWith("/*") || t.startsWith("*/") || t.startsWith("//");
+  }
+
+  private static boolean isSanctionedBlockTerrainReader(Path file) {
+    return file.toString().replace('\\', '/').endsWith(SANCTIONED_BLOCK_TERRAIN_READER);
   }
 
   private static Path repoRoot() {

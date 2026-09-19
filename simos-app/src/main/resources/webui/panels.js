@@ -114,10 +114,6 @@
 
   var IMPASSABLE_MOVE_COST = 999;
 
-  function coordKey(coord) {
-    return coord.q + "_" + coord.r;
-  }
-
   /**
    * 纯函数（不碰 DOM、不查 IO）：单位 + 总览 ⇒ 移动读数。
    *
@@ -131,10 +127,7 @@
       return null;
     }
     var path = (m.route && m.route.path) || [];
-    var hexTerrain = {};
-    ((overview && overview.hexes) || []).forEach(function (h) {
-      hexTerrain[coordKey(h)] = h.terrain;
-    });
+    var blocks = (overview && overview.blocks) || [];
     var typeByKey = {};
     ((overview && overview.terrainTypes) || []).forEach(function (t) {
       typeByKey[t.key] = t;
@@ -143,7 +136,11 @@
       if (!coord) {
         return null;
       }
-      var type = typeByKey[hexTerrain[coordKey(coord)]];
+      var terrain =
+        window.SimosBlocks && window.SimosBlocks.terrainAt
+          ? window.SimosBlocks.terrainAt(blocks, coord.q, coord.r)
+          : null;
+      var type = typeByKey[terrain];
       if (!type || type.moveCost >= IMPASSABLE_MOVE_COST) {
         return null;
       }
