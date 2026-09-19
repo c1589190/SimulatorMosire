@@ -1,0 +1,8 @@
+──── m3（target=map.js, expect=e-resize-keeps-view）────
+orig_md5=19e6e4b7c0105eacce7d994907cc2564  mutant_md5=214aee2fc47b01a41aeb669d34b968a1  pushed_src_md5=214aee2fc47b01a41aeb669d34b968a1  pushed_classes_md5=214aee2fc47b01a41aeb669d34b968a1
+rc=1  round_start=1789798890  server_log_mtime=1789798898
+--- 变红的步骤 ---
+STEP e-resize-keeps-view: FAIL {"v1":{"scale":8.167122673366855,"tx":-201.91925669050215,"ty":-353.0465126834192},"v2":{"scale":3.256880733944954,"tx":176.40636243382846,"ty":22.798165137614717}}
+STEP f-reset-changed-view: FAIL {"vBeforeReset":{"scale":3.256880733944954,"tx":176.40636243382846,"ty":22.798165137614717},"vAfterReset":{"scale":3.256880733944954,"tx":176.40636243382846,"ty":22.798165137614717}}
+E2E RESULT: FAIL e-resize-keeps-view,f-reset-changed-view
+⇒ 杀死（红点 STEP e-resize-keeps-view），源与 classpath 资源均逐字节还原

@@ -1,0 +1,400 @@
+{
+  "a": {
+    "vp0": {
+      "w": 1024,
+      "h": 700
+    },
+    "cbox": {
+      "x": 0,
+      "y": 0,
+      "width": 1024,
+      "height": 700
+    },
+    "cstyle": {
+      "border": "0px",
+      "radius": "0px",
+      "mountPos": "fixed",
+      "canvasW": 1024,
+      "canvasH": 700,
+      "dpr": 1
+    }
+  },
+  "b": {
+    "mode-bar": {
+      "found": true,
+      "x": 362.0234375,
+      "y": 47,
+      "hitTag": "NAV",
+      "hitId": "mode-bar",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "timeline": {
+      "found": true,
+      "x": 512,
+      "y": 665.5,
+      "hitTag": "BUTTON",
+      "hitId": "timeline-fork",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "left-panel": {
+      "found": true,
+      "x": 162,
+      "y": 348.75,
+      "hitTag": "SECTION",
+      "hitId": "left-panel",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "right-panel": {
+      "found": true,
+      "x": 862,
+      "y": 348.75,
+      "hitTag": "SECTION",
+      "hitId": "right-panel",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    }
+  },
+  "c": {
+    "p12c": {
+      "x": 512,
+      "y": 350
+    },
+    "outsideInfo": {
+      "tag": "CANVAS",
+      "id": "canvas",
+      "isCanvas": true
+    },
+    "selC1": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "h2Info": {
+      "found": true,
+      "x": 162,
+      "y": 131.25,
+      "hitTag": "H2",
+      "hitId": "",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "selBeforeC": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "selAfterC": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "nonGetBeforeC": 0,
+    "nonGetAfterC": 0
+  },
+  "d": {
+    "vpD": {
+      "w": 1024,
+      "h": 700
+    },
+    "barBoxD": {
+      "x": 0,
+      "y": 631,
+      "width": 1024,
+      "height": 69
+    },
+    "barBoxD2": {
+      "x": 0,
+      "y": 631,
+      "width": 1024,
+      "height": 69
+    },
+    "leftScroll": {
+      "scrollHeight": 1501,
+      "clientHeight": 486,
+      "overflowY": "auto"
+    },
+    "leftHidden": true,
+    "leftBtn": {
+      "text": "展开左栏",
+      "pressed": "true"
+    },
+    "cboxCollapsed": {
+      "x": 0,
+      "y": 0,
+      "width": 1024,
+      "height": 700
+    },
+    "leftShown": true
+  },
+  "e": {
+    "v0": {
+      "scale": 3.2110091743119265,
+      "tx": 133.8090897234929,
+      "ty": 22.47706422018348
+    },
+    "v1": {
+      "scale": 7.146232339195997,
+      "tx": -209.67934960418927,
+      "ty": -298.91569859799176
+    },
+    "v2": {
+      "scale": 7.146232339195997,
+      "tx": -209.67934960418927,
+      "ty": -298.91569859799176
+    },
+    "vpE": {
+      "w": 864,
+      "h": 610
+    },
+    "cboxE": {
+      "x": 0,
+      "y": 0,
+      "width": 864,
+      "height": 610
+    }
+  },
+  "f": {
+    "expectedF": {
+      "scale": 2.7981651376146788,
+      "tx": 102.43363533047238,
+      "ty": 19.58715596330279
+    },
+    "vBeforeReset": {
+      "scale": 7.146232339195997,
+      "tx": -209.67934960418927,
+      "ty": -298.91569859799176
+    },
+    "vAfterReset": {
+      "scale": 2.7981651376146788,
+      "tx": 102.43363533047238,
+      "ty": 19.58715596330279
+    },
+    "vZoomF": {
+      "scale": 4.522043052007637,
+      "tx": -100.60376576619194,
+      "ty": -156.24839130477892
+    },
+    "vHomeF": {
+      "scale": 2.7981651376146788,
+      "tx": 102.43363533047238,
+      "ty": 19.58715596330279
+    }
+  },
+  "g": {
+    "blankG": {
+      "x": 340,
+      "y": 110
+    },
+    "selCleared": null,
+    "nonGetAfterClear": 0,
+    "selG": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "nonGetAfterSelect": 0,
+    "headBeforeRoute": 1,
+    "headAfterRoute": 2,
+    "route1": {
+      "scale": 3.2110091743119265,
+      "tx": 133.8090897234929,
+      "ty": 22.47706422018348,
+      "cellSize": 34,
+      "hexCount": 3,
+      "unitCount": 1,
+      "colorByTerrain": {
+        "desert": "#E7C86E"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": {
+        "q": 1,
+        "r": 1
+      },
+      "selectedUnit": "u-1",
+      "mode": "unit",
+      "isWorkbench": true,
+      "routeCount": 1,
+      "routes": [
+        {
+          "id": "u-1",
+          "totalPoints": 3,
+          "remainingPoints": 3,
+          "status": "IN_TRANSIT",
+          "currentHex": {
+            "q": 1,
+            "r": 1
+          },
+          "nextHex": {
+            "q": 1,
+            "r": 2
+          },
+          "outlineColor": "rgba(12, 8, 2, 0.95)",
+          "baseColor": "#f59e0b",
+          "remainingColor": "#ffffff"
+        }
+      ]
+    },
+    "selBlank": null,
+    "dbgBlank": {
+      "scale": 3.2110091743119265,
+      "tx": 133.8090897234929,
+      "ty": 22.47706422018348,
+      "cellSize": 34,
+      "hexCount": 3,
+      "unitCount": 1,
+      "colorByTerrain": {
+        "desert": "#E7C86E"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": null,
+      "selectedUnit": null,
+      "mode": "unit",
+      "isWorkbench": true,
+      "routeCount": 1,
+      "routes": [
+        {
+          "id": "u-1",
+          "totalPoints": 3,
+          "remainingPoints": 3,
+          "status": "IN_TRANSIT",
+          "currentHex": {
+            "q": 1,
+            "r": 1
+          },
+          "nextHex": {
+            "q": 1,
+            "r": 2
+          },
+          "outlineColor": "rgba(12, 8, 2, 0.95)",
+          "baseColor": "#f59e0b",
+          "remainingColor": "#ffffff"
+        }
+      ]
+    },
+    "nonGetBeforeBlank": 1,
+    "nonGetAfterBlank": 1,
+    "headBeforeCancel": 2,
+    "headAfterCancel": 3,
+    "routeZero": {
+      "scale": 3.2110091743119265,
+      "tx": 133.8090897234929,
+      "ty": 22.47706422018348,
+      "cellSize": 34,
+      "hexCount": 3,
+      "unitCount": 1,
+      "colorByTerrain": {
+        "desert": "#E7C86E"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": {
+        "q": 1,
+        "r": 1
+      },
+      "selectedUnit": "u-1",
+      "mode": "unit",
+      "isWorkbench": true,
+      "routeCount": 0,
+      "routes": []
+    },
+    "nodesBeforeG5": [
+      {
+        "tick": 5,
+        "revision": 3,
+        "firstRevision": 1,
+        "count": 3,
+        "commands": "core.Bootstrap,unit.PlanRoute,unit.CancelRoute",
+        "centerX": 103
+      }
+    ],
+    "nodesAfterG5": [
+      {
+        "tick": 5,
+        "revision": 4,
+        "firstRevision": 1,
+        "count": 4,
+        "commands": "core.Bootstrap,unit.PlanRoute,unit.CancelRoute,unit.PlanRoute",
+        "centerX": 103
+      }
+    ],
+    "apiBeforeG5": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 3
+    },
+    "apiAfterG5": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 4
+    },
+    "tipG5": 5,
+    "nodesAfterAdv": [
+      {
+        "tick": 5,
+        "revision": 4,
+        "firstRevision": 1,
+        "count": 4,
+        "commands": "core.Bootstrap,unit.PlanRoute,unit.CancelRoute,unit.PlanRoute",
+        "centerX": 103
+      },
+      {
+        "tick": 8,
+        "revision": 5,
+        "firstRevision": 5,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "centerX": 213
+      }
+    ],
+    "apiAfterAdv": {
+      "ticks": [
+        5,
+        8
+      ],
+      "lastTick": 8,
+      "nodeCount": 5
+    },
+    "midRevG6": 4,
+    "headG6": 5,
+    "revBackG6": 5,
+    "p12": {
+      "x": 512,
+      "y": 349.9999999999999
+    },
+    "selT4": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    }
+  },
+  "h": {
+    "list": [
+      "/api/command",
+      "/api/command",
+      "/api/command",
+      "/api/advance"
+    ],
+    "violations": [],
+    "pageErrors": []
+  }
+}

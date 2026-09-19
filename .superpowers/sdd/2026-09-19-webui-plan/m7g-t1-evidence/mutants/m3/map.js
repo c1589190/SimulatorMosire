@@ -1609,6 +1609,7 @@
       app.onStateChange(renderUnitEditor);
       window.addEventListener("resize", function () {
         active.resize();
+        active.fit();
         active.render();
       });
       return;

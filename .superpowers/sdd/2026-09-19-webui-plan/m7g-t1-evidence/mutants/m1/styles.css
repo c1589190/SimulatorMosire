@@ -845,11 +845,11 @@ body.workbench-page {
 }
 
 body.workbench-page .canvas-mount {
-  position: fixed;
-  inset: 0;
+  position: static;
+  margin: 20px;
   z-index: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 60vw;
+  height: 60vh;
   min-height: 0;
   margin: 0;
   padding: 0;

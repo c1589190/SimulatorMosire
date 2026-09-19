@@ -7,102 +7,116 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-mode="view" class="workbench-page">
-  <header class="topbar">
-    <h1>Simos 工作台</h1>
-    <span id="shell-state" class="shell-state">状态加载中…</span>
-  </header>
+  <!-- 全屏底图（M7g T1）：canvas 由 map.js 挂在 #canvas-mount 内，铺满整个视口。 -->
+  <div id="canvas-mount" class="canvas-mount col-center" aria-label="地图底图"></div>
 
-  <nav id="mode-bar" class="mode-bar" aria-label="模式栏">
-    <button type="button" class="mode active" data-mode="view" aria-pressed="true">常规查看</button>
-    <button type="button" class="mode" data-mode="region" aria-pressed="false">区域查看</button>
-    <button type="button" class="mode" data-mode="map-edit" data-milestone="M8" disabled>地图编辑<span class="mode-badge">归 M8</span></button>
-    <button type="button" class="mode" data-mode="region-edit" data-milestone="M8" disabled>区域编辑<span class="mode-badge">归 M8</span></button>
-    <button type="button" class="mode" data-mode="unit" aria-pressed="false">单位移动与编辑</button>
-  </nav>
+  <!-- 浮在底图之上的控件层：pointer-events:none，只有具体控件重新打开 pointer-events:auto。 -->
+  <div class="wb-overlay">
+    <header class="topbar">
+      <h1>Simos 工作台</h1>
 
-  <main class="workbench">
-    <section class="panel col-left" id="left-panel">
-      <h2>详情</h2>
-      <p id="left-status" class="muted">点选地图或单位以查看详情。</p>
-      <dl class="kv" id="selection-detail"></dl>
-      <h3>编制</h3>
-      <div id="unit-tree-mount" class="unit-tree"></div>
+      <nav id="mode-bar" class="mode-bar" aria-label="模式栏">
+        <button type="button" class="mode active" data-mode="view" aria-pressed="true">常规查看</button>
+        <button type="button" class="mode" data-mode="region" aria-pressed="false">区域查看</button>
+        <button type="button" class="mode" data-mode="map-edit" data-milestone="M8" disabled>地图编辑<span class="mode-badge">归 M8</span></button>
+        <button type="button" class="mode" data-mode="region-edit" data-milestone="M8" disabled>区域编辑<span class="mode-badge">归 M8</span></button>
+        <button type="button" class="mode" data-mode="unit" aria-pressed="false">单位移动与编辑</button>
+      </nav>
 
-      <section class="unit-editor" data-modes="unit" aria-label="单位移动与编辑">
-        <h3>单位移动与编辑</h3>
-        <p id="unit-edit-status" class="status muted">点选一个单位开始；右键点目标格自动下路线，右键点空白取消选中；左键点单位自身（或再点一次已选中的单位/其所在格）取消移动。</p>
-        <p id="unit-edit-selected" class="muted">未选中单位</p>
-        <div class="unit-edit-row">
-          <button type="button" id="unit-route-toggle">路线模式：关</button>
-          <button type="button" id="unit-route-send" disabled>下路线</button>
-          <button type="button" id="unit-route-clear" disabled>清除路线</button>
-        </div>
-        <p id="unit-route-preview" class="muted">路线：（未选）</p>
-
-        <fieldset class="unit-edit-group">
-          <legend>改上级（ReparentUnit）</legend>
-          <input id="unit-reparent-parent" type="text" placeholder="父单位 id（留空=清根）">
-          <button type="button" id="unit-reparent" disabled>提交</button>
-        </fieldset>
-
-        <fieldset class="unit-edit-group">
-          <legend>改编制（SetStrength）</legend>
-          <input id="unit-strength-member" type="number" min="0" placeholder="人数">
-          <input id="unit-strength-equipment" type="text" placeholder="步枪=50；火炮=2（留空=清空）">
-          <button type="button" id="unit-strength" disabled>提交</button>
-        </fieldset>
-
-        <fieldset class="unit-edit-group">
-          <legend>解散（DisbandUnit）</legend>
-          <button type="button" id="unit-disband" disabled>解散选中单位</button>
-        </fieldset>
-
-        <fieldset class="unit-edit-group">
-          <legend>新建单位（CreateUnit）</legend>
-          <input id="unit-create-id" type="text" placeholder="id">
-          <input id="unit-create-name" type="text" placeholder="名称">
-          <input id="unit-create-q" type="number" placeholder="q">
-          <input id="unit-create-r" type="number" placeholder="r">
-          <input id="unit-create-member" type="number" min="0" placeholder="人数">
-          <input id="unit-create-equipment" type="text" placeholder="步枪=50；火炮=2">
-          <input id="unit-create-speed" type="number" min="1" placeholder="速度（≥1）">
-          <input id="unit-create-mobility" type="number" min="1" placeholder="机动‰（≥1）">
-          <input id="unit-create-parent" type="text" placeholder="上级 id（可空）">
-          <button type="button" id="unit-create">创建</button>
-        </fieldset>
-      </section>
-    </section>
-
-    <section class="panel col-center" id="center-panel">
-      <h2>地图 <span id="zoom-level" class="muted">缩放 1.00×</span></h2>
-      <div id="canvas-mount" class="canvas-mount"></div>
-      <p id="map-status" class="status muted">地图骨架。</p>
-      <p id="legend" class="muted"></p>
-    </section>
-
-    <section class="panel col-right" id="right-panel">
-      <div data-modes="region">
-        <h2>区域</h2>
-        <div id="region-panel-mount"></div>
+      <div class="topbar-actions">
+        <button type="button" id="view-reset" title="把地图重新居中并适配视口（快捷键 Home）">回到世界中心</button>
+        <button type="button" id="panel-toggle-left" aria-pressed="false" title="折叠/展开左栏">收起左栏</button>
+        <button type="button" id="panel-toggle-right" aria-pressed="false" title="折叠/展开右栏">收起右栏</button>
       </div>
-      <h3>待批</h3>
-      <p id="approvals-count" class="status muted">审批未接入（T6）</p>
-    </section>
-  </main>
 
-  <footer class="timeline-bar" id="timeline-bar">
-    <div id="timeline-mount" class="timeline-track"></div>
-    <div class="timeline-actions">
-      <label class="tl-advance">推进
-        <input id="timeline-advance-n" type="number" min="1" step="1" value="1" aria-label="推进 tick 数">
-        tick</label>
-      <button type="button" id="timeline-create" class="primary" disabled
-        title="推进 N 个 tick（core.AdvanceTime；N 由左侧输入框给定，默认 1）：单位沿已下路线出发/前进">推进 N tick</button>
-      <button type="button" id="timeline-fork" disabled>分岔</button>
+      <span id="shell-state" class="shell-state">状态加载中…</span>
+    </header>
+
+    <div class="wb-body">
+      <section class="panel col-left" id="left-panel">
+        <h2>详情</h2>
+        <p id="left-status" class="muted">点选地图或单位以查看详情。</p>
+        <dl class="kv" id="selection-detail"></dl>
+        <h3>编制</h3>
+        <div id="unit-tree-mount" class="unit-tree"></div>
+
+        <section class="unit-editor" data-modes="unit" aria-label="单位移动与编辑">
+          <h3>单位移动与编辑</h3>
+          <p id="unit-edit-status" class="status muted">点选一个单位开始；右键点目标格自动下路线，右键点空白取消选中；左键点单位自身（或再点一次已选中的单位/其所在格）取消移动。</p>
+          <p id="unit-edit-selected" class="muted">未选中单位</p>
+          <div class="unit-edit-row">
+            <button type="button" id="unit-route-toggle">路线模式：关</button>
+            <button type="button" id="unit-route-send" disabled>下路线</button>
+            <button type="button" id="unit-route-clear" disabled>清除路线</button>
+          </div>
+          <p id="unit-route-preview" class="muted">路线：（未选）</p>
+
+          <fieldset class="unit-edit-group">
+            <legend>改上级（ReparentUnit）</legend>
+            <input id="unit-reparent-parent" type="text" placeholder="父单位 id（留空=清根）">
+            <button type="button" id="unit-reparent" disabled>提交</button>
+          </fieldset>
+
+          <fieldset class="unit-edit-group">
+            <legend>改编制（SetStrength）</legend>
+            <input id="unit-strength-member" type="number" min="0" placeholder="人数">
+            <input id="unit-strength-equipment" type="text" placeholder="步枪=50；火炮=2（留空=清空）">
+            <button type="button" id="unit-strength" disabled>提交</button>
+          </fieldset>
+
+          <fieldset class="unit-edit-group">
+            <legend>解散（DisbandUnit）</legend>
+            <button type="button" id="unit-disband" disabled>解散选中单位</button>
+          </fieldset>
+
+          <fieldset class="unit-edit-group">
+            <legend>新建单位（CreateUnit）</legend>
+            <input id="unit-create-id" type="text" placeholder="id">
+            <input id="unit-create-name" type="text" placeholder="名称">
+            <input id="unit-create-q" type="number" placeholder="q">
+            <input id="unit-create-r" type="number" placeholder="r">
+            <input id="unit-create-member" type="number" min="0" placeholder="人数">
+            <input id="unit-create-equipment" type="text" placeholder="步枪=50；火炮=2">
+            <input id="unit-create-speed" type="number" min="1" placeholder="速度（≥1）">
+            <input id="unit-create-mobility" type="number" min="1" placeholder="机动‰（≥1）">
+            <input id="unit-create-parent" type="text" placeholder="上级 id（可空）">
+            <button type="button" id="unit-create">创建</button>
+          </fieldset>
+        </section>
+      </section>
+
+      <div class="wb-gap" aria-hidden="true"></div>
+
+      <section class="panel col-right" id="right-panel">
+        <div data-modes="region">
+          <h2>区域</h2>
+          <div id="region-panel-mount"></div>
+        </div>
+        <h3>待批</h3>
+        <p id="approvals-count" class="status muted">审批未接入（T6）</p>
+      </section>
     </div>
-    <span id="timeline-meta" class="muted">分支 — · rev —</span>
-    <span id="timeline-status" class="tl-status muted"></span>
-  </footer>
+
+    <div class="map-hud" id="map-hud">
+      <span id="zoom-level" class="muted">缩放 1.00×</span>
+      <div id="map-status" class="status muted">地图骨架。</div>
+      <div id="legend" class="muted"></div>
+    </div>
+
+    <footer class="timeline-bar" id="timeline-bar">
+      <div id="timeline-mount" class="timeline-track"></div>
+      <div class="timeline-actions">
+        <label class="tl-advance">推进
+          <input id="timeline-advance-n" type="number" min="1" step="1" value="1" aria-label="推进 tick 数">
+          tick</label>
+        <button type="button" id="timeline-create" class="primary" disabled
+          title="推进 N 个 tick（core.AdvanceTime；N 由左侧输入框给定，默认 1）：单位沿已下路线出发/前进">推进 N tick</button>
+        <button type="button" id="timeline-fork" disabled>分岔</button>
+      </div>
+      <span id="timeline-meta" class="muted">分支 — · rev —</span>
+      <span id="timeline-status" class="tl-status muted"></span>
+    </footer>
+  </div>
 
   <script src="api.js"></script>
   <script src="app.js"></script>

@@ -922,7 +922,7 @@ body.workbench-page .wb-body {
 }
 
 body.workbench-page .wb-body .panel {
-  pointer-events: auto;
+  pointer-events: none;
   max-height: 100%;
   overflow: auto;
   background: rgba(27, 32, 39, 0.78);

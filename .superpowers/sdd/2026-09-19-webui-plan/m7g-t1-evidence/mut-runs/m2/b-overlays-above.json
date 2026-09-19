@@ -1,0 +1,38 @@
+{
+  "mode-bar": {
+    "found": true,
+    "x": 487.40625,
+    "y": 25.5,
+    "hitTag": "BUTTON",
+    "hitId": "",
+    "hitInControl": true,
+    "hitIsCanvas": false
+  },
+  "timeline": {
+    "found": true,
+    "x": 640,
+    "y": 765.5,
+    "hitTag": "BUTTON",
+    "hitId": "timeline-fork",
+    "hitInControl": true,
+    "hitIsCanvas": false
+  },
+  "left-panel": {
+    "found": true,
+    "x": 162,
+    "y": 377.25,
+    "hitTag": "CANVAS",
+    "hitId": "canvas",
+    "hitInControl": false,
+    "hitIsCanvas": true
+  },
+  "right-panel": {
+    "found": true,
+    "x": 1118,
+    "y": 377.25,
+    "hitTag": "CANVAS",
+    "hitId": "canvas",
+    "hitInControl": false,
+    "hitIsCanvas": true
+  }
+}

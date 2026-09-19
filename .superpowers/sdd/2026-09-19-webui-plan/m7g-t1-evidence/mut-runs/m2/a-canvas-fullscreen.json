@@ -1,0 +1,20 @@
+{
+  "vp0": {
+    "w": 1280,
+    "h": 800
+  },
+  "cbox": {
+    "x": 0,
+    "y": 0,
+    "width": 1280,
+    "height": 800
+  },
+  "cstyle": {
+    "border": "0px",
+    "radius": "0px",
+    "mountPos": "fixed",
+    "canvasW": 1280,
+    "canvasH": 800,
+    "dpr": 1
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "blankG": {
+    "x": 340,
+    "y": 90
+  },
+  "selCleared": null,
+  "nonGetAfterClear": 0,
+  "selG": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "nonGetAfterSelect": 0,
+  "headBeforeRoute": 1,
+  "headAfterRoute": 2,
+  "route1": {
+    "scale": 3.669724770642202,
+    "tx": 207.78181682684897,
+    "ty": 25.688073394495405,
+    "cellSize": 34,
+    "hexCount": 3,
+    "unitCount": 1,
+    "colorByTerrain": {
+      "desert": "#E7C86E"
+    },
+    "fallbackColor": "#ff00ff",
+    "fallbackWarned": false,
+    "highlightHexCount": 0,
+    "highlightColors": [],
+    "regionFallbackColor": "#00e5ff",
+    "regionFallbackWarned": false,
+    "selected": {
+      "q": 1,
+      "r": 1
+    },
+    "selectedUnit": "u-1",
+    "mode": "unit",
+    "isWorkbench": true,
+    "routeCount": 1,
+    "routes": [
+      {
+        "id": "u-1",
+        "totalPoints": 3,
+        "remainingPoints": 3,
+        "status": "IN_TRANSIT",
+        "currentHex": {
+          "q": 1,
+          "r": 1
+        },
+        "nextHex": {
+          "q": 1,
+          "r": 2
+        },
+        "outlineColor": "rgba(12, 8, 2, 0.95)",
+        "baseColor": "#f59e0b",
+        "remainingColor": "#ffffff"
+      }
+    ]
+  },
+  "selBlank": null,
+  "dbgBlank": {
+    "scale": 3.669724770642202,
+    "tx": 207.78181682684897,
+    "ty": 25.688073394495405,
+    "cellSize": 34,
+    "hexCount": 3,
+    "unitCount": 1,
+    "colorByTerrain": {
+      "desert": "#E7C86E"
+    },
+    "fallbackColor": "#ff00ff",
+    "fallbackWarned": false,
+    "highlightHexCount": 0,
+    "highlightColors": [],
+    "regionFallbackColor": "#00e5ff",
+    "regionFallbackWarned": false,
+    "selected": null,
+    "selectedUnit": null,
+    "mode": "unit",
+    "isWorkbench": true,
+    "routeCount": 1,
+    "routes": [
+      {
+        "id": "u-1",
+        "totalPoints": 3,
+        "remainingPoints": 3,
+        "status": "IN_TRANSIT",
+        "currentHex": {
+          "q": 1,
+          "r": 1
+        },
+        "nextHex": {
+          "q": 1,
+          "r": 2
+        },
+        "outlineColor": "rgba(12, 8, 2, 0.95)",
+        "baseColor": "#f59e0b",
+        "remainingColor": "#ffffff"
+      }
+    ]
+  },
+  "nonGetBeforeBlank": 1,
+  "nonGetAfterBlank": 1,
+  "headBeforeCancel": 2,
+  "headAfterCancel": 3,
+  "routeZero": {
+    "scale": 3.669724770642202,
+    "tx": 207.78181682684897,
+    "ty": 25.688073394495405,
+    "cellSize": 34,
+    "hexCount": 3,
+    "unitCount": 1,
+    "colorByTerrain": {
+      "desert": "#E7C86E"
+    },
+    "fallbackColor": "#ff00ff",
+    "fallbackWarned": false,
+    "highlightHexCount": 0,
+    "highlightColors": [],
+    "regionFallbackColor": "#00e5ff",
+    "regionFallbackWarned": false,
+    "selected": {
+      "q": 1,
+      "r": 1
+    },
+    "selectedUnit": "u-1",
+    "mode": "unit",
+    "isWorkbench": true,
+    "routeCount": 0,
+    "routes": []
+  },
+  "nodesBeforeG5": [
+    {
+      "tick": 5,
+      "revision": 3,
+      "firstRevision": 1,
+      "count": 3,
+      "commands": "core.Bootstrap,unit.PlanRoute,unit.CancelRoute",
+      "centerX": 103
+    }
+  ],
+  "nodesAfterG5": [
+    {
+      "tick": 5,
+      "revision": 4,
+      "firstRevision": 1,
+      "count": 4,
+      "commands": "core.Bootstrap,unit.PlanRoute,unit.CancelRoute,unit.PlanRoute",
+      "centerX": 103
+    }
+  ],
+  "apiBeforeG5": {
+    "ticks": [
+      5
+    ],
+    "lastTick": 5,
+    "nodeCount": 3
+  },
+  "apiAfterG5": {
+    "ticks": [
+      5
+    ],
+    "lastTick": 5,
+    "nodeCount": 4
+  },
+  "tipG5": 5,
+  "nodesAfterAdv": [
+    {
+      "tick": 5,
+      "revision": 4,
+      "firstRevision": 1,
+      "count": 4,
+      "commands": "core.Bootstrap,unit.PlanRoute,unit.CancelRoute,unit.PlanRoute",
+      "centerX": 103
+    },
+    {
+      "tick": 8,
+      "revision": 5,
+      "firstRevision": 5,
+      "count": 1,
+      "commands": "core.AdvanceTime",
+      "centerX": 213
+    }
+  ],
+  "apiAfterAdv": {
+    "ticks": [
+      5,
+      8
+    ],
+    "lastTick": 8,
+    "nodeCount": 5
+  },
+  "midRevG6": 4,
+  "headG6": 5,
+  "revBackG6": 5,
+  "p12": {
+    "x": 640,
+    "y": 400
+  },
+  "selT4": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  }
+}

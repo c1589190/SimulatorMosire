@@ -1,0 +1,35 @@
+{
+  "vpD": {
+    "w": 1024,
+    "h": 700
+  },
+  "barBoxD": {
+    "x": 0,
+    "y": 631,
+    "width": 1024,
+    "height": 69
+  },
+  "barBoxD2": {
+    "x": 0,
+    "y": 631,
+    "width": 1024,
+    "height": 69
+  },
+  "leftScroll": {
+    "scrollHeight": 1501,
+    "clientHeight": 486,
+    "overflowY": "auto"
+  },
+  "leftHidden": true,
+  "leftBtn": {
+    "text": "展开左栏",
+    "pressed": "true"
+  },
+  "cboxCollapsed": {
+    "x": 0,
+    "y": 0,
+    "width": 1024,
+    "height": 700
+  },
+  "leftShown": true
+}

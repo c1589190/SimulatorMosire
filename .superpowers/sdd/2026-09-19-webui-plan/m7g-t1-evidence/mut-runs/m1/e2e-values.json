@@ -1,0 +1,337 @@
+{
+  "a": {
+    "vp0": {
+      "w": 1280,
+      "h": 800
+    },
+    "cbox": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 800
+    },
+    "cstyle": {
+      "border": "0px",
+      "radius": "0px",
+      "mountPos": "static",
+      "canvasW": 1280,
+      "canvasH": 800,
+      "dpr": 1
+    }
+  },
+  "b": {
+    "mode-bar": {
+      "found": true,
+      "x": 487.40625,
+      "y": 25.5,
+      "hitTag": "BUTTON",
+      "hitId": "",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "timeline": {
+      "found": true,
+      "x": 640,
+      "y": 765.5,
+      "hitTag": "BUTTON",
+      "hitId": "timeline-fork",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "left-panel": {
+      "found": true,
+      "x": 162,
+      "y": 377.25,
+      "hitTag": "SECTION",
+      "hitId": "left-panel",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "right-panel": {
+      "found": true,
+      "x": 1118,
+      "y": 377.25,
+      "hitTag": "SECTION",
+      "hitId": "right-panel",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    }
+  },
+  "c": {
+    "p12c": {
+      "x": 640,
+      "y": 400
+    },
+    "outsideInfo": {
+      "tag": "CANVAS",
+      "id": "canvas",
+      "isCanvas": true
+    },
+    "selC1": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "h2Info": {
+      "found": true,
+      "x": 162,
+      "y": 88.25,
+      "hitTag": "H2",
+      "hitId": "",
+      "hitInControl": true,
+      "hitIsCanvas": false
+    },
+    "selBeforeC": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "selAfterC": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "nonGetBeforeC": 0,
+    "nonGetAfterC": 0
+  },
+  "d": {
+    "vpD": {
+      "w": 1280,
+      "h": 800
+    },
+    "barBoxD": {
+      "x": 0,
+      "y": 731,
+      "width": 1280,
+      "height": 69
+    },
+    "barBoxD2": {
+      "x": 0,
+      "y": 731,
+      "width": 1280,
+      "height": 69
+    },
+    "leftScroll": {
+      "scrollHeight": 1501,
+      "clientHeight": 629,
+      "overflowY": "auto"
+    },
+    "leftHidden": true,
+    "leftBtn": {
+      "text": "展开左栏",
+      "pressed": "true"
+    },
+    "cboxCollapsed": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 800
+    },
+    "leftShown": true
+  },
+  "e": {
+    "v0": {
+      "scale": 3.669724770642202,
+      "tx": 207.78181682684897,
+      "ty": 25.688073394495405
+    },
+    "v1": {
+      "scale": 8.167122673366855,
+      "tx": -201.91925669050215,
+      "ty": -353.0465126834192
+    },
+    "v2": {
+      "scale": 8.167122673366855,
+      "tx": -201.91925669050215,
+      "ty": -353.0465126834192
+    },
+    "vpE": {
+      "w": 1120,
+      "h": 710
+    },
+    "cboxE": {
+      "x": 0,
+      "y": 0,
+      "width": 672,
+      "height": 710
+    }
+  },
+  "f": {
+    "expectedF": {
+      "scale": 3.256880733944954,
+      "tx": 176.40636243382846,
+      "ty": 22.798165137614717
+    },
+    "vBeforeReset": {
+      "scale": 8.167122673366855,
+      "tx": -201.91925669050215,
+      "ty": -353.0465126834192
+    },
+    "vAfterReset": {
+      "scale": 3.256880733944954,
+      "tx": 176.40636243382846,
+      "ty": 22.798165137614717
+    },
+    "vZoomF": {
+      "scale": 5.2633615851236435,
+      "tx": -59.91585851474815,
+      "ty": -181.8628816826116
+    },
+    "vHomeF": {
+      "scale": 3.256880733944954,
+      "tx": 176.40636243382846,
+      "ty": 22.798165137614717
+    }
+  },
+  "g": {
+    "blankG": {
+      "x": 340,
+      "y": 90
+    },
+    "selCleared": null,
+    "nonGetAfterClear": 0,
+    "selG": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "nonGetAfterSelect": 0,
+    "headBeforeRoute": 1,
+    "headAfterRoute": null,
+    "route1": null,
+    "selBlank": null,
+    "dbgBlank": {
+      "scale": 3.669724770642202,
+      "tx": 207.78181682684897,
+      "ty": 25.688073394495405,
+      "cellSize": 34,
+      "hexCount": 3,
+      "unitCount": 1,
+      "colorByTerrain": {
+        "desert": "#E7C86E"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": null,
+      "selectedUnit": null,
+      "mode": "unit",
+      "isWorkbench": true,
+      "routeCount": 0,
+      "routes": []
+    },
+    "nonGetBeforeBlank": 0,
+    "nonGetAfterBlank": 0,
+    "headBeforeCancel": 1,
+    "headAfterCancel": 2,
+    "routeZero": {
+      "scale": 3.669724770642202,
+      "tx": 207.78181682684897,
+      "ty": 25.688073394495405,
+      "cellSize": 34,
+      "hexCount": 3,
+      "unitCount": 1,
+      "colorByTerrain": {
+        "desert": "#E7C86E"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": {
+        "q": 1,
+        "r": 1
+      },
+      "selectedUnit": "u-1",
+      "mode": "unit",
+      "isWorkbench": true,
+      "routeCount": 0,
+      "routes": []
+    },
+    "nodesBeforeG5": [
+      {
+        "tick": 5,
+        "revision": 1,
+        "firstRevision": 1,
+        "count": 1,
+        "commands": "core.Bootstrap",
+        "centerX": 103
+      }
+    ],
+    "nodesAfterG5": [
+      {
+        "tick": 5,
+        "revision": 2,
+        "firstRevision": 1,
+        "count": 2,
+        "commands": "core.Bootstrap,unit.CancelRoute",
+        "centerX": 103
+      }
+    ],
+    "apiBeforeG5": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 2
+    },
+    "apiAfterG5": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 2
+    },
+    "tipG5": 5,
+    "nodesAfterAdv": [
+      {
+        "tick": 5,
+        "revision": 2,
+        "firstRevision": 1,
+        "count": 2,
+        "commands": "core.Bootstrap,unit.CancelRoute",
+        "centerX": 103
+      },
+      {
+        "tick": 8,
+        "revision": 3,
+        "firstRevision": 3,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "centerX": 213
+      }
+    ],
+    "apiAfterAdv": {
+      "ticks": [
+        5,
+        8
+      ],
+      "lastTick": 8,
+      "nodeCount": 3
+    },
+    "midRevG6": 2,
+    "headG6": 3,
+    "revBackG6": 3,
+    "p12": {
+      "x": 640,
+      "y": 400
+    },
+    "selT4": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    }
+  },
+  "h": {
+    "list": [
+      "/api/command",
+      "/api/advance"
+    ],
+    "violations": [],
+    "pageErrors": []
+  }
+}
