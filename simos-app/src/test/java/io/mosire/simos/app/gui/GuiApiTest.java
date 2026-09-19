@@ -233,8 +233,7 @@ class GuiApiTest {
   }
 
   /**
-   * 判据④后端面：overview 的 region 项带 {@code meta}（可空），且 {@code terrainTypes} 仍是 {@code [key…]}（T2
-   * 才切换形状）。
+   * 判据④后端面：overview 的 region 项带 {@code meta}（可空），且 {@code terrainTypes} 已是**完整定义**（M7 T2 的 原子形状切换）。
    */
   @Test
   void mapOverviewRegionItemsCarryMeta() throws Exception {
@@ -254,9 +253,21 @@ class GuiApiTest {
     assertThat(second.get("meta").get("description").isNull()).isTrue();
     assertThat(second.get("meta").get("annexedBy").isNull()).isTrue();
 
-    assertThat(body.get("terrainTypes").get(0).asText())
-        .as("T1 必须保持 [key…] 形状（完整定义切换是 T2 的原子改动）")
-        .isEqualTo("desert");
+    JsonNode terrainTypes = body.get("terrainTypes");
+    assertThat(terrainTypes).as("T2 起 terrainTypes 是完整定义，不再是 [key…]").hasSize(1);
+    JsonNode desert = terrainTypes.get(0);
+    assertThat(desert.isObject()).as("每项必须是对象（不是字符串 key）").isTrue();
+    TerrainType expected = TerrainCatalog.of("desert");
+    assertThat(desert.get("key").asText()).isEqualTo(expected.key());
+    assertThat(desert.get("name").asText()).isEqualTo(expected.name());
+    assertThat(desert.get("color").asText()).isEqualTo(expected.color());
+    assertThat(desert.get("minHeight").asDouble()).isEqualTo(expected.minHeight());
+    assertThat(desert.get("maxHeight").asDouble()).isEqualTo(expected.maxHeight());
+    assertThat(desert.get("food").asInt()).isEqualTo(expected.food());
+    assertThat(desert.get("gold").asInt()).isEqualTo(expected.gold());
+    assertThat(desert.get("stone").asInt()).isEqualTo(expected.stone());
+    assertThat(desert.get("moveCost").asInt()).isEqualTo(expected.moveCost());
+    assertThat(desert.get("description").asText()).isEqualTo(expected.description());
   }
 
   /** 判据③后端面：区域详情回排序后的 hex 集合，未知区域 404。 */

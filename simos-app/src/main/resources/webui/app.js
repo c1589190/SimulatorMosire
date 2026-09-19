@@ -1,5 +1,7 @@
-// app.js —— 三页共享的导航、格式化与小工具（M5 T9）。
+// app.js —— 单页工作台的状态机 + 三页共享的导航、格式化与小工具（M5 T9；M7 T2 改造）。
 // ★ 无框架、无构建：只用原生 DOM API，保持同源、零依赖（spec §8.1）。
+// ★ M7 T2：本文件持有唯一状态 {mode, branch, revision, selection}；模式切换只改可见性/可用性，
+//   不改数据来源。其它文件（panels/timeline/unitTree/map）经 window.SimosApp 读取与订阅。
 
 (function () {
   "use strict";
@@ -10,6 +12,95 @@
     { href: "/unit", label: "单位" },
     { href: "/social", label: "社会" },
   ];
+
+  // ── 状态机（M7 T2）──────────────────────────────────────────────────
+
+  /** 唯一可变状态；模式只影响可见性/可用性（spec §四）。 */
+  var state = { mode: "view", branch: "main", revision: null, selection: null };
+
+  var listeners = [];
+
+  function getState() {
+    return state;
+  }
+
+  function setMode(mode) {
+    if (!mode || mode === state.mode) {
+      return;
+    }
+    state.mode = mode;
+    applyMode();
+    notify();
+  }
+
+  function setBranch(branch) {
+    state.branch = branch;
+    notify();
+  }
+
+  function setRevision(revision) {
+    state.revision = revision;
+    notify();
+  }
+
+  function setSelection(selection) {
+    state.selection = selection;
+    notify();
+  }
+
+  /** 订阅状态变化；返回取消订阅函数。 */
+  function onStateChange(listener) {
+    listeners.push(listener);
+    return function () {
+      var index = listeners.indexOf(listener);
+      if (index >= 0) {
+        listeners.splice(index, 1);
+      }
+    };
+  }
+
+  function notify() {
+    listeners.slice().forEach(function (listener) {
+      listener(state);
+    });
+  }
+
+  /** 模式切换的落点：按钮选中态 + [data-modes] 元素的可见性。不碰任何数据。 */
+  function applyMode() {
+    document.body.setAttribute("data-mode", state.mode);
+    var bar = byId("mode-bar");
+    if (bar) {
+      Array.prototype.forEach.call(bar.querySelectorAll("button[data-mode]"), function (button) {
+        if (button.disabled) {
+          return;
+        }
+        var active = button.getAttribute("data-mode") === state.mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("[data-modes]"), function (node) {
+      var modes = node.getAttribute("data-modes").split(/\s+/);
+      node.hidden = modes.indexOf(state.mode) === -1;
+    });
+  }
+
+  /** 接线模式栏按钮；禁用的（归 M8）不接线。 */
+  function mountModeBar() {
+    var bar = byId("mode-bar");
+    if (!bar) {
+      return;
+    }
+    Array.prototype.forEach.call(bar.querySelectorAll("button[data-mode]"), function (button) {
+      button.addEventListener("click", function () {
+        if (button.disabled) {
+          return;
+        }
+        setMode(button.getAttribute("data-mode"));
+      });
+    });
+    applyMode();
+  }
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -97,6 +188,8 @@
         }
         node.textContent =
           "分支 " + meta.branch + " · rev " + meta.revision + " · tick " + meta.timestamp.tick;
+        setBranch(meta.branch);
+        setRevision(meta.revision);
       } catch (e) {
         node.textContent = "状态不可用（" + e.message + "）";
       }
@@ -126,13 +219,25 @@
     window.setInterval(refresh, 5000);
   }
 
-  /** 页面初始化共用入口：nav + state 摘要（+ 可选待批）。 */
+  /** 页面初始化共用入口：nav + state 摘要（+ 可选待批）；工作台页额外接线模式栏与各面板骨架。 */
   function boot(options) {
     var opts = options || {};
     mountNav();
     pollState();
     if (opts.approvals) {
       mountApprovals(opts.approvals);
+    }
+    if (byId("mode-bar")) {
+      mountModeBar();
+      if (window.SimosPanels && window.SimosPanels.init) {
+        window.SimosPanels.init();
+      }
+      if (window.SimosUnitTree && window.SimosUnitTree.init) {
+        window.SimosUnitTree.init();
+      }
+      if (window.SimosTimeline && window.SimosTimeline.init) {
+        window.SimosTimeline.init();
+      }
     }
     document.title = (opts.title ? opts.title + " · " : "") + "Simos Shell";
   }
@@ -180,5 +285,13 @@
     statusMessage: statusMessage,
     fieldValue: fieldValue,
     intField: intField,
+    getState: getState,
+    setMode: setMode,
+    setBranch: setBranch,
+    setRevision: setRevision,
+    setSelection: setSelection,
+    onStateChange: onStateChange,
+    applyMode: applyMode,
+    mountModeBar: mountModeBar,
   };
 })();

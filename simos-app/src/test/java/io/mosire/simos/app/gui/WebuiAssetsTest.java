@@ -17,7 +17,8 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * WebUI 静态资源结构护栏（M5 T9，spec §8.1/§8.3）：三页 + 共享资产**在册且非空**、**无绝对 URL / 无 CDN**、三页**按相对路径**引用共享 资产。
+ * WebUI 静态资源结构护栏（M5 T9，spec §8.1/§8.3；M7 T2 扩条）：三页 + 共享资产 + 工作台骨架**在册且非空**、**无绝对 URL / 无
+ * CDN**、三页**按相对路径**引用共享资产、{@code /} 是工作台主应用（模式栏五按钮、两个归 M8 的禁用按钮）。
  *
  * <p>★ **为什么读源码树而不是 classpath**：本护栏要能对**故意违规**的源码变异响铃（计划 T9 变异 m1：往某资产里塞 {@code
  * https://cdn.example.com/x.js}）。读 {@code target/classes} 会读到上一次 {@code process-resources}
@@ -25,7 +26,7 @@ import org.junit.jupiter.api.Test;
  * src/main/resources/webui/}（surefire 工作目录＝模块根，主树与 worktree 均成立，与 {@code AppWritePathGuardTest}
  * 同法）；同时**另立一条**用例断言这些资源确实进了 classpath（打包口径不被忽略）。
  *
- * <p>★ **非空自证**：扫到的 webui 资产数 ≥ 7、且三页与三个共享资产逐一在册——"扫描器静默扫 0 个文件"在本项目是已知陷阱（形态 1），不钉住护栏会变装饰。
+ * <p>★ **非空自证**：扫到的 webui 资产数 ≥ 10、且三页与全部共享/骨架资产逐一在册——"扫描器静默扫 0 个文件"在本项目是已知陷阱（形态 1），不钉住护栏会变装饰。
  *
  * <p>★ **无绝对 URL 的判定**：扫描 {@code http://} / {@code https://} 与**协议相对**的 {@code //host} 形态。后者以行内
  * {@code //} 出现（JS 注释、正则、字符串里也可能有），故**只认"// 后紧跟一个看起来像主机名/路径的字符"**：{@code //} 后是空白、{@code /}、或者属于 JS
@@ -46,7 +47,19 @@ class WebuiAssetsTest {
   /** 三页各自额外引用的页内脚本（非共享，但同属 webui 资产）。 */
   private static final List<String> PAGE_SCRIPTS = List.of("map.js", "unit.js", "social.js");
 
-  private static final List<String> ALL_ASSETS = concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS);
+  /** 工作台骨架脚本（M7 T2）：主应用 `/` 引用的三个新资产。 */
+  private static final List<String> WORKBENCH_SCRIPTS =
+      List.of("panels.js", "unitTree.js", "timeline.js");
+
+  /** 模式栏五按钮的可见标签（spec §四 / 判据①）。 */
+  private static final List<String> MODE_LABELS =
+      List.of("常规查看", "区域查看", "地图编辑", "区域编辑", "单位移动与编辑");
+
+  /** 归 M8 的两个禁用模式。 */
+  private static final List<String> M8_MODES = List.of("地图编辑", "区域编辑");
+
+  private static final List<String> ALL_ASSETS =
+      concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS, WORKBENCH_SCRIPTS);
 
   @Test
   void allWebuiAssetsExistAndAreNonEmpty() throws IOException {
@@ -54,9 +67,10 @@ class WebuiAssetsTest {
 
     assertThat(assets)
         .as("扫描必须非空（surefire 工作目录＝模块根）：扫到 0 个文件是『扫描器静默扫 0』陷阱，不是通过")
-        .hasSizeGreaterThanOrEqualTo(7)
+        .hasSizeGreaterThanOrEqualTo(10)
         .anyMatch(path -> path.getFileName().toString().equals("map.html"))
-        .anyMatch(path -> path.getFileName().toString().equals("api.js"));
+        .anyMatch(path -> path.getFileName().toString().equals("api.js"))
+        .anyMatch(path -> path.getFileName().toString().equals("timeline.js"));
 
     for (String name : ALL_ASSETS) {
       Path asset = WEBUI_SOURCE.resolve(name);
@@ -107,6 +121,74 @@ class WebuiAssetsTest {
             .contains("\"" + shared + "\"");
       }
     }
+  }
+
+  // ── 工作台主应用（M7 T2，判据①）────────────────────────────────────
+
+  /** `/` 回来的必须是工作台骨架：模式栏五按钮、三栏、底栏、三个骨架脚本。 */
+  @Test
+  void rootServesTheWorkbenchSkeleton() throws IOException {
+    String html = read(WEBUI_SOURCE.resolve("index.html"));
+
+    assertThat(html).as("/ 必须是工作台主应用（模式栏标识）").contains("id=\"mode-bar\"");
+    for (String label : MODE_LABELS) {
+      assertThat(html).as("模式栏必须含按钮「%s」", label).contains(label);
+    }
+    for (String script : WORKBENCH_SCRIPTS) {
+      assertThat(html).as("index.html 必须以相对路径引用骨架脚本 %s", script).contains("\"" + script + "\"");
+    }
+    assertThat(html).as("中部三栏容器").contains("col-left").contains("col-center").contains("col-right");
+    assertThat(html).as("底部时间轴容器").contains("timeline-bar").contains("timeline-mount");
+  }
+
+  /** 两个编辑模式**可见但禁用**且带 `data-milestone="M8"`；其余三个可点击。 */
+  @Test
+  void editModesAreVisibleButDisabledAndMarkedM8() throws IOException {
+    String html = read(WEBUI_SOURCE.resolve("index.html"));
+
+    for (String label : M8_MODES) {
+      List<String> tags = buttonTagsContaining(html, label);
+      assertThat(tags).as("必须恰有一个「%s」按钮", label).hasSize(1);
+      assertThat(tags.get(0)).as("「%s」必须 disabled", label).contains("disabled");
+      assertThat(tags.get(0))
+          .as("「%s」必须带 data-milestone=\"M8\"", label)
+          .contains("data-milestone=\"M8\"");
+    }
+
+    for (String label : List.of("常规查看", "区域查看", "单位移动与编辑")) {
+      List<String> tags = buttonTagsContaining(html, label);
+      assertThat(tags).as("必须恰有一个「%s」按钮", label).hasSize(1);
+      assertThat(tags.get(0)).as("「%s」不得 disabled（T2 需能切换）", label).doesNotContain("disabled");
+      assertThat(tags.get(0)).as("「%s」不得带 M8 标记", label).doesNotContain("data-milestone");
+    }
+  }
+
+  /** 取含指定 label 的完整 {@code <button …>…</button>} 标签。 */
+  static List<String> buttonTagsContaining(String html, String label) {
+    List<String> found = new ArrayList<>();
+    Matcher matcher = Pattern.compile("(?s)<button\\b[^>]*>.*?</button>").matcher(html);
+    while (matcher.find()) {
+      String tag = matcher.group();
+      if (tag.contains(label)) {
+        found.add(tag);
+      }
+    }
+    return found;
+  }
+
+  /** 按钮判定器自证（形态 1）：禁用/启用两种形态各自可判，且不误伤。 */
+  @Test
+  void buttonScannerHasTeeth() {
+    String html =
+        "<button type=\"button\" disabled data-milestone=\"M8\">地图编辑</button>"
+            + "<button type=\"button\">区域查看</button>";
+    List<String> disabled = buttonTagsContaining(html, "地图编辑");
+    assertThat(disabled).hasSize(1);
+    assertThat(disabled.get(0)).contains("disabled");
+    List<String> enabled = buttonTagsContaining(html, "区域查看");
+    assertThat(enabled).hasSize(1);
+    assertThat(enabled.get(0)).doesNotContain("disabled");
+    assertThat(buttonTagsContaining(html, "不存在")).isEmpty();
   }
 
   // ── 判定器自证（护栏的判别力；形态 1/5）──────────────────────────────
