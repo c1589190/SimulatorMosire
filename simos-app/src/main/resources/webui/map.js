@@ -1,4 +1,4 @@
-// map.js —— 共享六角 Canvas 渲染器（M5 T9 只读；M7 T4 缩放/平移/区域填充/点选联动）。
+// map.js —— 共享六角 Canvas 渲染器（M5 T9 只读；M7 T4 缩放/平移/区域填充/点选联动；M7 T6 区域填充用 RegionMeta.color）。
 //
 // 两处宿主共用同一份渲染器：
 //   · 旧页 /map（map.html）：DOM 有 #canvas / #hex-detail / #hex-facets / #hex-status / #cell-size / #reload
@@ -6,6 +6,8 @@
 //
 // ★ 地形色一律来自后端 /api/map/overview 的 terrainTypes[].color（T4 删除硬编码 15 色表）。
 //   词表外的地形用唯一兜底色 FALLBACK_COLOR 并在控制台记一次——不悄悄回退到某个像地形的颜色。
+// ★ 区域填充色一律来自 /api/map/region/{id} 的 meta.color（T6；合法形如 #RRGGBB），非法/缺失用
+//   REGION_FALLBACK_COLOR 并在控制台记一次——T4 的固定半透明色已由 T6 收口。
 // ★ 所有取数经 window.SimosApi 并带 window.SimosApp.target()（T3 约定，T4 由本文件与 panels.js 收口）。
 // ★ 只读：本文件不发任何写请求（写只经 /api/command|advance|fork）。
 
@@ -17,7 +19,10 @@
 
   var BASE_CELL = 34; // 世界坐标的基准格边长（px）
   var FALLBACK_COLOR = "#ff00ff"; // 词表外地形的兜底色（品红；刻意不像任何地形）
-  var HIGHLIGHT_FILL = "rgba(255, 210, 80, 0.42)"; // 区域填充（半透明）
+  var REGION_FALLBACK_COLOR = "#00e5ff"; // 区域色缺失/非法时的兜底色（青色；与地形兜底色不同）
+  var HIGHLIGHT_ALPHA = 0.42; // 区域填充透明度（保留地形可见性）
+  var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+  var regionFallbackWarned = false;
   var MIN_SCALE = 0.03;
   var MAX_SCALE = 12;
   var ZOOM_WHEEL = 0.0016; // 滚轮 deltaY → 缩放指数系数
@@ -28,6 +33,38 @@
 
   function clamp(value, lo, hi) {
     return value < lo ? lo : value > hi ? hi : value;
+  }
+
+  /** 纯函数：RegionMeta.color 合法（#RRGGBB）则用它，否则回兜底色并经 warnFn 报一次（不静默）。 */
+  function resolveRegionColor(meta, warnFn) {
+    var color = meta && meta.color;
+    if (typeof color === "string" && HEX_COLOR_RE.test(color)) {
+      return color;
+    }
+    if (typeof warnFn === "function") {
+      warnFn(color);
+    }
+    return REGION_FALLBACK_COLOR;
+  }
+
+  /** 取区域填充色；非法/缺失时**全页只 warn 一次**（T4 地形色同型纪律）。 */
+  function regionColor(meta) {
+    return resolveRegionColor(meta, function (raw) {
+      if (!regionFallbackWarned) {
+        regionFallbackWarned = true;
+        window.console.warn(
+          "[SimosMap] 区域色非法或缺失（" + JSON.stringify(raw) + "），使用兜底色 " + REGION_FALLBACK_COLOR
+        );
+      }
+    });
+  }
+
+  /** #RRGGBB → rgba(r,g,b,alpha)。 */
+  function withAlpha(hex, alpha) {
+    var r = parseInt(hex.slice(1, 3), 16);
+    var g = parseInt(hex.slice(3, 5), 16);
+    var b = parseInt(hex.slice(5, 7), 16);
+    return "rgba(" + r + ", " + g + ", " + b + ", " + alpha + ")";
   }
 
   /** 顶点朝上（pointy-top）的轴向坐标 → 世界像素：与旧 GSimulator hex-math 同型。 */
@@ -114,7 +151,7 @@
     var colorByTerrain = {};
     var fallbackWarned = false;
     var selected = null;
-    var highlightKeys = [];
+    var highlightColorByKey = {};
     var mode = "view";
 
     var cssW = 800;
@@ -240,8 +277,22 @@
       scheduleRender();
     }
 
-    function setHighlightHexes(keys) {
-      highlightKeys = keys || [];
+    /**
+     * 高亮集合：entries = `[{key,color}…]`（T6 起带区域色）。同一个 hex 归属多个高亮区域时
+     * **先者胜**（调用方按 id 升序给，重叠归属因此可复现）；色值一律是已解析的 `#RRGGBB`。
+     */
+    function setHighlightHexes(entries) {
+      highlightColorByKey = {};
+      (entries || []).forEach(function (entry) {
+        if (!entry) {
+          return;
+        }
+        var key = typeof entry === "string" ? entry : entry.key;
+        if (!key || Object.prototype.hasOwnProperty.call(highlightColorByKey, key)) {
+          return;
+        }
+        highlightColorByKey[key] = typeof entry === "string" ? null : entry.color || null;
+      });
       scheduleRender();
     }
 
@@ -370,25 +421,22 @@
         ctx.fill();
       });
 
-      // 区域填充层（半透明；高亮集合由状态机给出）。
-      if (highlightKeys.length) {
-        var keySet = {};
-        highlightKeys.forEach(function (k) {
-          keySet[k] = true;
-        });
-        ctx.beginPath();
-        var any = false;
-        visible.forEach(function (h) {
-          if (keySet[hexKey(h.q, h.r)]) {
-            addHexPath(h.px, h.py, radius);
-            any = true;
-          }
-        });
-        if (any) {
-          ctx.fillStyle = HIGHLIGHT_FILL;
-          ctx.fill();
+      // 区域填充层：按 RegionMeta.color 分组，一组一次 fill（半透明，保留地形可见性）。
+      var highlightByColor = {};
+      visible.forEach(function (h) {
+        var color = highlightColorByKey[hexKey(h.q, h.r)];
+        if (color) {
+          (highlightByColor[color] || (highlightByColor[color] = [])).push(h);
         }
-      }
+      });
+      Object.keys(highlightByColor).forEach(function (color) {
+        ctx.beginPath();
+        highlightByColor[color].forEach(function (h) {
+          addHexPath(h.px, h.py, radius);
+        });
+        ctx.fillStyle = withAlpha(color, HIGHLIGHT_ALPHA);
+        ctx.fill();
+      });
 
       // 格边框：一条路径一次描边。
       ctx.beginPath();
@@ -564,6 +612,18 @@
           .join("  ");
     }
 
+    /** 当前高亮实际用到的区域色（去重，首次出现序）。 */
+    function distinctColors() {
+      var colors = [];
+      Object.keys(highlightColorByKey).forEach(function (key) {
+        var color = highlightColorByKey[key];
+        if (color && colors.indexOf(color) < 0) {
+          colors.push(color);
+        }
+      });
+      return colors;
+    }
+
     function debug() {
       return {
         scale: view.scale,
@@ -575,7 +635,10 @@
         colorByTerrain: Object.assign({}, colorByTerrain),
         fallbackColor: FALLBACK_COLOR,
         fallbackWarned: fallbackWarned,
-        highlightHexCount: highlightKeys.length,
+        highlightHexCount: Object.keys(highlightColorByKey).length,
+        highlightColors: distinctColors(),
+        regionFallbackColor: REGION_FALLBACK_COLOR,
+        regionFallbackWarned: regionFallbackWarned,
         selected: selected ? { q: selected.q, r: selected.r } : null,
         mode: mode,
         isWorkbench: isWorkbench,
@@ -686,7 +749,7 @@
       active.setHighlightHexes([]);
       return;
     }
-    var keys = [];
+    var entries = [];
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i];
       var cacheKey = regionCacheKey(id);
@@ -698,11 +761,13 @@
           window.console.warn("[SimosMap] 区域拉取失败：" + id + "：" + e.message);
         }
       }
-      (host.regionCache[cacheKey].hexes || []).forEach(function (h) {
-        keys.push(h.q + "_" + h.r);
+      var region = host.regionCache[cacheKey];
+      var color = regionColor(region.meta);
+      (region.hexes || []).forEach(function (h) {
+        entries.push({ key: h.q + "_" + h.r, color: color });
       });
     }
-    active.setHighlightHexes(keys);
+    active.setHighlightHexes(entries);
   }
 
   /** 目标坐标变了 ⇒ 地图/单位/区域填充全部按新 revision 重取（取数一律带 withTarget）。 */
@@ -943,7 +1008,8 @@
     // 纯几何（e2e 直接断言）
     BASE_CELL: BASE_CELL,
     FALLBACK_COLOR: FALLBACK_COLOR,
-    HIGHLIGHT_FILL: HIGHLIGHT_FILL,
+    REGION_FALLBACK_COLOR: REGION_FALLBACK_COLOR,
+    HIGHLIGHT_ALPHA: HIGHLIGHT_ALPHA,
     MIN_SCALE: MIN_SCALE,
     MAX_SCALE: MAX_SCALE,
     clamp: clamp,
@@ -955,6 +1021,7 @@
     screenToWorld: screenToWorld,
     zoomAt: zoomAt,
     fitView: fitView,
+    resolveRegionColor: resolveRegionColor,
     // 宿主
     init: initHost,
   };

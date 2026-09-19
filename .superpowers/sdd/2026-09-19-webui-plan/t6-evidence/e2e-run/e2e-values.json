@@ -1,0 +1,25 @@
+{
+  "basePixel": [
+    168,
+    179,
+    106
+  ],
+  "filledPixel": [
+    186,
+    151,
+    151
+  ],
+  "expectedFill": [
+    186,
+    151,
+    151
+  ],
+  "unionCount": 701,
+  "sumOfHexCounts": 902,
+  "nationColor": "#d370d6",
+  "annexColor": "#fc6dce",
+  "tagHighlightColors": [
+    "#fc6dce",
+    "#d370d6"
+  ]
+}

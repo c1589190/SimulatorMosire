@@ -1,0 +1,15 @@
+GRP tags-order-untagged-last: PASS ["Alpha","Beta","未标注"]
+GRP alpha-bucket-sorted-by-id: PASS ["r-a","r-a2"]
+GRP beta-bucket: PASS ["r-b"]
+GRP untagged-bucket-covers-null-undefined-blank-space-missing-meta: PASS ["r-blank","r-nometa","r-null","r-space","r-undef"]
+GRP invalid-id-excluded: PASS [["r-a","r-a2"],["r-b"],["r-blank","r-nometa","r-null","r-space","r-undef"]]
+GRP input-not-mutated: PASS order stable
+GRP empty-input: PASS []
+GRP null-input: PASS []
+GRP normalizeTag: PASS ["未标注","未标注","Nation"]
+GRP order-independent: PASS ["Alpha","Beta","未标注"]
+GRP region-color-valid: PASS #fc6dce
+GRP region-color-invalid-falls-back-and-warns: PASS {"fallback":"#00e5ff","warned":1,"expected":"#00e5ff"}
+GRP region-color-missing-meta-falls-back: PASS {"fallbackNull":"#00e5ff","warnedNull":1}
+GRP region-color-shorthand-rejected: PASS #fff must not pass #RRGGBB
+GRP RESULT: PASS

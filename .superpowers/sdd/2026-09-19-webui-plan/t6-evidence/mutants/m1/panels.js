@@ -43,6 +43,9 @@
         return;
       }
       var tag = normalizeTag(region.meta ? region.meta.tag : null);
+      if (tag === UNTAGGED_LABEL) {
+        return;
+      }
       if (!Object.prototype.hasOwnProperty.call(buckets, tag)) {
         buckets[tag] = [];
         order.push(tag);

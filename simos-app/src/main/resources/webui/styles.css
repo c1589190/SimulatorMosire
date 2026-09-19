@@ -628,3 +628,60 @@ textarea {
 .tree-branch-detail .branch-row {
   white-space: nowrap;
 }
+
+/* ── 右栏区域分组（M7 T6）────────────────────────────────────────── */
+
+.region-tag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
+
+.region-tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+}
+
+.region-tag .region-tag-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.region-tag.active .region-tag-count {
+  color: #06121f;
+}
+
+.region-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+}
+
+.region-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+}
+
+.region-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(78, 201, 160, 0.35);
+}
+
+.region-item .region-hexcount {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.region-detail {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}

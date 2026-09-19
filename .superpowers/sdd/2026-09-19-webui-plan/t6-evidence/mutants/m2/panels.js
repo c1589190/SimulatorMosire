@@ -275,7 +275,7 @@
       tagButton.appendChild(app.el("span", { class: "region-tag-count", text: String(ids.length) }));
       tagButton.addEventListener("click", function () {
         selectedRegion = null;
-        app.setHighlightRegions(ids.slice());
+        app.setHighlightRegions(ids.slice(0, 1));
       });
       mount.appendChild(tagButton);
 
