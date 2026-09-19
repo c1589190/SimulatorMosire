@@ -38,14 +38,26 @@ class EdgeOperationsTest {
 
   // ── merge：只加不删 ─────────────────────────────────────────────────────────
 
-  /** ★ merge 不丢既有 tag：既有边上的 river 一字不动，新边拿到 road。 */
+  /**
+   * ★ merge 不丢既有 tag：既有边**逐值**不动（**同 kind 的 props** 与别的 kind 都在），新边拿到 road。
+   *
+   * <p>★ 夹具**必须**让既有边带上本次 merge 的**同一 kind**：{@code replace} 是**逐 kind** 摘标注的，既有 tag 若只在 别的 kind
+   * 上，则"merge 当 replace 使"在这份输入上**两种语义结果相同** ⇒ 用例成装饰。实测 m2 变异体（{@code REPLACE.equals(operation) ||
+   * MERGE.equals(operation)}）在**旧夹具**（E_LEFT 只有 river、命令是 road）下本方法 **仍全绿**——那时它是靠 {@link
+   * #mergeKeepsExistingPropertiesOfTheSameKind} 与 {@link #mergeLeavesUntargetedEdgesUntouched} 杀的。
+   */
   @Test
   void mergeAddsTheNewTagAndKeepsEveryExistingTag() {
-    GameMap base = graphOf(Map.of(E_LEFT, tags("river", Map.of())));
+    Map<String, Object> roadProps = Map.of("width", 3);
+    Map<String, Object> riverProps = Map.of("width", 2);
+    GameMap base =
+        graphOf(Map.of(E_LEFT, new EdgeTags(Map.of("road", roadProps, "river", riverProps))));
 
     GameMap after = apply(base, EdgeOperations.setEdge(base, "road", Set.of(E_UP), "merge"));
 
-    assertThat(after.edges()).containsEntry(E_LEFT, tags("river", Map.of()));
+    assertThat(after.edges())
+        .as("既有边逐值不变：同 kind 的 props 未被重置，别的 kind 也一字不动")
+        .containsEntry(E_LEFT, new EdgeTags(Map.of("road", roadProps, "river", riverProps)));
     assertThat(after.edges()).containsEntry(E_UP, tags("road", Map.of()));
     assertThat(after.edges()).as("既有边 + 新边，无别的边").containsOnlyKeys(E_LEFT, E_UP);
   }

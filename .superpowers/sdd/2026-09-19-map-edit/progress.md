@@ -112,3 +112,19 @@
 **真档 e2e 复跑 23/23 PASS、0 pageerror；原档 md5 写前=写后 `2348b936…`**；变异 7 轮有效红 + 1 轮"装置失效"反证。
 **未核实**：只在**本机 node v22.23.2** 跑过；`--test-reporter=tap` **需 node ≥19**（更老版本会因坏选项**非零退出 ⇒ 仍是 fail-closed**，但具体报错文案未实测）。
 ★ **实现者第 5 次纠正控制器**：派单 m1 那行"**期望红**"与"**装置自证失败**"**自相矛盾**；拆成 **m1**（违规⇒红）+ **m1b**（永真⇒不红⇒装置失效）**两条合起来**才构成完整自证。
+
+## T5+T6 ✅ `map.SetEdge` + `map.RandomizeRegion`（5 文件 +231/−17，**全在 `src/test`，零 `src/main` 改动**；提交号见下）
+
+**范围**：两族各三段——领域操作（`EdgeOperations` / `RandomizeOperations`+`RegionRandomizer`）、SPI 边界（`SetEdgeHandler` / `RandomizeRegionHandler`）、端到端（`MapSetEdgeEndToEndTest` / `MapRandomizeEndToEndTest`：真 store / 真 checkpoint / 真 replay）。判据 T5-1~4 / T6-1~6 逐条结论、两张口径表、"我未能核实的"四条，见 `t5t6-evidence/notes/t5t6-conclusion.md`。
+
+★★ **本轮抓到并当场修掉的真缺陷：两条 ★ 用例不在分叉点上。** `m2`（`if (REPLACE.equals(operation))` ⇒ `|| MERGE.equals(operation)`，即"merge 当 replace 使"）**只被杀中 2 点**，而两条名字里就写着"merge 不丢既有 tag"的 ★ 用例**全绿**。根因**读实现即定、非猜测**：`replace` 分支是**逐 kind** 摘标注（`withoutTag(tags, tagKey)` 只摘 `tagKey` 那一 kind），而这两条用例的夹具里**既有 tag 都在别的 kind 上**（既有 `river`、命令 `road`）⇒ 变异体**摘不到任何东西** ⇒ 两种语义**在这份输入上结果相同** ⇒ 用例恒真、是装饰。属**形态 3 的夹具版**。修法比它的描述短 ⇒ **当场修、不 park**：既有边改成带**同 kind**（外加别的 kind）、断言**逐值不变**；连带把 e2e 的 `replace` 断言**改强**（多钉一条"别的 kind 一字不动"）。★ **诚实区分**：`SetEdgeHandlerTest.appliesAMergePayload` 同样分不开两语义，但其 javadoc 明写验的是**管道**（载荷⇒Applied⇒变更集生效）、**不声称**保护语义 ⇒ **不是缺陷**。
+
+★★ **修法先立预测、再上实测（不是事后解释）**：改夹具**之前**写死"若两条 ★ 用例真落到分叉点上，t5-m2 的 hits **必须**从 2 升到 4，且失败原文里**必须**同时出现那两条方法名"。**实测 hits=4、两条都在** ⇒ 修法生效；反之则记"修法没生效"、不许记成"已修"。★ 四轮因而**全部在改动后的字节上重跑**（裁定 42「新增/改动的护栏必须自带变异轮」＋通则「同一文件被改动 ⇒ 旧证据对应旧字节」）。
+
+**变异**：四轮 **0 存活**（t5-m1 `2` / t5-m2 `4` / t6-m1 `4` / t6-m2 `2`），四轮 `clean_rc=0`、`mut_compilation_error=0`、`class_removed` 有值（陈旧 `.class` 已清）、`restored_md5 == orig`。★ **`hits` 是下界、不是"红了几个方法"**：t6-m1 实际红了 **5 个**，多出的 `seedOneAndFiveShareAHistogram` **被杀但不在当轮白名单**故不计。★ **`self_md5` 不是日志自身的摘要**——装置回读日志里本轮的 `mutant_md5`（"日志自指"的兑现方式），故它**必然等于** `mutant_md5`；但那句只断言**非空**、**不**断言等于 `MUT_MD5`，等价来自日志每轮 `>` 截断而非断言本身（**已知弱断言**，未改：四轮跑在同一活进程上，改脚本会让四轮跑在两个版本的装置上）。装置 v1→v4 的四个盲区见结论台账 §四。
+
+★ **种子表不是手算、是探针在当轮字节上跑出来的**（形态 5）：`SeedTableProbe` 与夹具同形（半径 10、331 格、选区 326）。★★ **实测 `seed=1` 与 `seed=5` 的直方图完全相同**（`{desert=161, mountains=5, plains=165}`），只有**块数**分得开（25 vs 28）⇒ 只钉直方图的表在 `(1,5)` 这一对上**不判别**"忽略 seed"类变异。故种子表**同时钉直方图与块数**，并另加 `seedOneAndFiveShareAHistogram` **当场自证这条设计选择必需**（它自己也是一个杀点）。
+
+★★ **如实记账：T5 的端到端用的是合成夹具，不是真档。** 判据原文允许"若无则合成"；本机实测**没有**真档（无 `/tmp/m6-import-verify/test_integration`、无 `*_map.json`、无 `simos.db`）⇒ 依兜底条款用合成夹具（三格链 `H00—H10—H01`、`E_LEFT` 带 `river`+`road`、`E_UP` 空）。**因此本任务不对"真档上的 `edges` 往返"作任何断言**；M6 的开口项（`edges` 非空无真实样本）**依然成立**。
+
+**未核实**：真档上的 `map.SetEdge`（同上）/ `RegionRandomizer` 的大图重切性能 / `mode`·`kind` 大小写混合只在单元层验过（e2e 与浏览器未跑）/ 块表 `TreeMap` 全序在 >1000 块时未测（本夹具最大 28 块）。

@@ -1,0 +1,299 @@
+===== 变异轮 t5-m1 =====
+target=simos-map/src/main/java/io/mosire/simos/map/spi/SetEdgeHandler.java mutant=.superpowers/sdd/2026-09-19-map-edit/t5t6-evidence/mutants/m1.SetEdgeHandler.java expect=rejectsPayloadWithoutMode|negativePayloadsAreRejectedAndLeaveNoRevision tests=EdgeOperationsTest,SetEdgeHandlerTest,MapSetEdgeEndToEndTest,RandomizeOperationsTest,RandomizeRegionHandlerTest,MapRandomizeEndToEndTest,RegionRandomizerTest
+orig_md5=ac8a4eba2962aa8374074842d961860f backup_md5=ac8a4eba2962aa8374074842d961860f
+--- 干净世界基线（变异前，期望绿）---
+clean_rc=0 clean_compilation_error=0 clean_Tests run: 8
+mutant_md5=b74391285a861e4c8d40e4f9a049f2ad
+pushed_src_md5=b74391285a861e4c8d40e4f9a049f2ad class_removed=io/mosire/simos/map/spi/SetEdgeHandler.class
+mut_rc=0 mut_compilation_error=0 mut_Tests run: 8
+--- 本轮 surefire 报告（mtime 落轮内）---
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-core/target/surefire-reports/io.mosire.simos.core.MapRandomizeEndToEndTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-core/target/surefire-reports/io.mosire.simos.core.MapSetEdgeEndToEndTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.ops.RandomizeOperationsTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.spi.RandomizeRegionHandlerTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.generate.RegionRandomizerTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.spi.SetEdgeHandlerTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.ops.EdgeOperationsTest.txt
+--- 失败方法 ---
+protected_assertion_hits=2
+restored_md5=ac8a4eba2962aa8374074842d961860f (== orig)
+ROUND t5-m1 DONE mut_rc=0 hits=2 restored=ac8a4eba2962aa8374074842d961860f self_md5=b74391285a861e4c8d40e4f9a049f2ad
+done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 50 source files with javac [debug release 21] to target/classes
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java: /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java uses or overrides a deprecated API.
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 38 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.map.ops.EdgeOperationsTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.150 s -- in io.mosire.simos.map.ops.EdgeOperationsTest
+[INFO] Running io.mosire.simos.map.ops.RandomizeOperationsTest
+[T6-RANDOMIZE] seed7={desert=164, mountains=5, plains=162}
+[T6-RANDOMIZE] seed8={desert=171, mountains=5, plains=155}
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.533 s -- in io.mosire.simos.map.ops.RandomizeOperationsTest
+[INFO] Running io.mosire.simos.map.spi.SetEdgeHandlerTest
+[ERROR] Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.412 s <<< FAILURE! -- in io.mosire.simos.map.spi.SetEdgeHandlerTest
+[ERROR] io.mosire.simos.map.spi.SetEdgeHandlerTest.rejectsPayloadWithoutMode -- Time elapsed: 0.151 s <<< FAILURE!
+java.lang.AssertionError: 
+[payload {"kind":"river","edges":["0_0|1_0"]} 必须被拒] 
+Expecting actual:
+  Applied[changeSet=MapChangeSet[hexes=Unchanged[], terrainBlocks=Unchanged[], regions=Unchanged[], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Upsert[entries={0_0|1_0=EdgeTags[byPathway={river={}}]}]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.map.spi.SetEdgeHandlerTest.assertRejected(SetEdgeHandlerTest.java:128)
+	at io.mosire.simos.map.spi.SetEdgeHandlerTest.rejectsPayloadWithoutMode(SetEdgeHandlerTest.java:81)
+
+[INFO] Running io.mosire.simos.map.spi.RandomizeRegionHandlerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.294 s -- in io.mosire.simos.map.spi.RandomizeRegionHandlerTest
+[INFO] Running io.mosire.simos.map.generate.RegionRandomizerTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.628 s -- in io.mosire.simos.map.generate.RegionRandomizerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   SetEdgeHandlerTest.rejectsPayloadWithoutMode:81->assertRejected:128 [payload {"kind":"river","edges":["0_0|1_0"]} 必须被拒] 
+Expecting actual:
+  Applied[changeSet=MapChangeSet[hexes=Unchanged[], terrainBlocks=Unchanged[], regions=Unchanged[], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Upsert[entries={0_0|1_0=EdgeTags[byPathway={river={}}]}]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[INFO] 
+[ERROR] Tests run: 54, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[ERROR] There are test failures.
+
+See /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports for the individual test results.
+See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/6]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 8 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 6 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/6]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 30 source files with javac [debug release 21] to target/classes
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java uses or overrides a deprecated API.
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 17 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/6]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 27 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.core.MapRandomizeEndToEndTest
+[T5-RANDOMIZE-E2E] seed7={desert=59, mountains=5, plains=63}
+[T5-RANDOMIZE-E2E] seed8={desert=62, mountains=5, plains=60}
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.943 s -- in io.mosire.simos.core.MapRandomizeEndToEndTest
+[INFO] Running io.mosire.simos.core.MapSetEdgeEndToEndTest
+[ERROR] Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.640 s <<< FAILURE! -- in io.mosire.simos.core.MapSetEdgeEndToEndTest
+[ERROR] io.mosire.simos.core.MapSetEdgeEndToEndTest.negativePayloadsAreRejectedAndLeaveNoRevision -- Time elapsed: 0.131 s <<< FAILURE!
+java.lang.AssertionError: 
+[必须被拒: {"kind":"river","edges":["0_0|0_1"]}] 
+Expecting actual:
+  Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]]]
+to be an instance of:
+  io.mosire.simos.core.command.CommandResult.Rejected
+but was instance of:
+  io.mosire.simos.core.command.CommandResult.Committed
+	at io.mosire.simos.core.MapSetEdgeEndToEndTest.assertRejectedNoRevision(MapSetEdgeEndToEndTest.java:151)
+	at io.mosire.simos.core.MapSetEdgeEndToEndTest.negativePayloadsAreRejectedAndLeaveNoRevision(MapSetEdgeEndToEndTest.java:125)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   MapSetEdgeEndToEndTest.negativePayloadsAreRejectedAndLeaveNoRevision:125->assertRejectedNoRevision:151 [必须被拒: {"kind":"river","edges":["0_0|0_1"]}] 
+Expecting actual:
+  Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]]]
+to be an instance of:
+  io.mosire.simos.core.command.CommandResult.Rejected
+but was instance of:
+  io.mosire.simos.core.command.CommandResult.Committed
+[INFO] 
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[ERROR] There are test failures.
+
+See /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-core/target/surefire-reports for the individual test results.
+See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  6.500 s]
+[INFO] UtilSimos .......................................... SUCCESS [  2.919 s]
+[INFO] MapSimos ........................................... SUCCESS [ 33.440 s]
+[INFO] SocialSimos ........................................ SUCCESS [  3.301 s]
+[INFO] UnitSimos .......................................... SUCCESS [  5.879 s]
+[INFO] CoreSimos .......................................... SUCCESS [ 18.140 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  01:11 min
+[INFO] Finished at: 2026-09-20T03:47:24+08:00
+[INFO] ------------------------------------------------------------------------
+
+===== 装置补记（t5-m1）：本轮字节自指 =====
+target=simos-map/src/main/java/io/mosire/simos/map/spi/SetEdgeHandler.java
+orig_md5=ac8a4eba2962aa8374074842d961860f
+mutant_md5=b74391285a861e4c8d40e4f9a049f2ad
+pushed_src_md5=b74391285a861e4c8d40e4f9a049f2ad
+restored_md5=ac8a4eba2962aa8374074842d961860f
+mut_rc=0 protected_assertion_hits=2

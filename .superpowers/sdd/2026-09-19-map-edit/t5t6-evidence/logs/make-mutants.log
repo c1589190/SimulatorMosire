@@ -1,0 +1,31 @@
+[T5-m1] 替换 1 处 OK
+[T5-m2] 替换 1 处 OK
+[T6-m1] 替换 1 处 OK
+[T6-m2] 替换 1 处 OK
+--- 变异体清单 ---
+m1.SetEdgeHandler.java md5=b74391285a861e4c8d40e4f9a049f2ad
+m2.EdgeOperations.java md5=0b7c5bca755b51980f4f7fd271ebc218
+m3.RandomizeOperations.java md5=b1871b26c1d6a9174826299823a71e96
+m4.RegionRandomizer.java md5=22e7128e0c010a2cbe0ad3e7575f61f9
+--- 差异（对原件）---
+### m1.SetEdgeHandler.java
+48c48,49
+<       String mode = MapPayloads.requireText(payload, "mode");
+---
+>       JsonNode modeNode = payload.get("mode");
+>       String mode = modeNode == null || !modeNode.isTextual() ? "replace" : modeNode.asText();
+### m2.EdgeOperations.java
+77c77
+<     if (REPLACE.equals(operation)) {
+---
+>     if (REPLACE.equals(operation) || MERGE.equals(operation)) {
+### m3.RandomizeOperations.java
+61c61
+<     return RegionRandomizer.randomize(base, hexes, TERRAIN_A, TERRAIN_B, RATIO_A, seed);
+---
+>     return RegionRandomizer.randomize(base, hexes, TERRAIN_A, TERRAIN_B, RATIO_A, 0L);
+### m4.RegionRandomizer.java
+113c113
+<         map, hexes.stream().sorted().toList(), terrainA, terrainB, ratioA, new Random(seed));
+---
+>         map, hexes.stream().toList(), terrainA, terrainB, ratioA, new Random(seed));

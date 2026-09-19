@@ -34,8 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ M8 T5 的**端到端**：真 {@code map.RandomizeRegion} 经 {@link CoreSimos} 后**同 seed 逐字节相同、不同 seed
- * 直方图不同**、选区外不动、高度不动，且负例**不留 revision**。
+ * ★★ M8 T6 的**端到端**：真 {@code map.RandomizeRegion} 经 {@link CoreSimos} 后**同 seed 逐字节相同、不同 seed
+ * 直方图不同**、选区外不动、高度不动，且负例**不留 revision**。（T5 是 {@code map.SetEdge}，别与本类混记。）
  */
 class MapRandomizeEndToEndTest {
 
@@ -133,8 +133,8 @@ class MapRandomizeEndToEndTest {
     }
 
     assertThat(histogram(of8)).as("不同 seed 的直方图必须不同").isNotEqualTo(histogram(of7));
-    System.out.println("[T5-RANDOMIZE-E2E] seed7=" + histogram(of7));
-    System.out.println("[T5-RANDOMIZE-E2E] seed8=" + histogram(of8));
+    System.out.println("[T6-RANDOMIZE-E2E] seed7=" + histogram(of7));
+    System.out.println("[T6-RANDOMIZE-E2E] seed8=" + histogram(of8));
   }
 
   @Test
