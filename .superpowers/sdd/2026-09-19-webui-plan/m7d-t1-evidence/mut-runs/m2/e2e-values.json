@@ -1,0 +1,100 @@
+{
+  "a": {
+    "viewportH": 800,
+    "docScrollHeight": 800,
+    "barTop": 731,
+    "barBottom": 800,
+    "leftClientH": 601,
+    "leftScrollH": 1762,
+    "detailRows": 21
+  },
+  "d": {
+    "hint": "已下路线 u-1（2 格，替换原路线）—— 点「创建节点」推进时间，单位才会出发",
+    "createTitle": "推进时间一格（core.AdvanceTime）：单位沿已下路线出发/前进"
+  },
+  "c": {
+    "before": {
+      "revision": 2,
+      "head": 2,
+      "shell": "分支 main · rev 2 · tick 5",
+      "meta": "分支 main · rev 2 · head 2 · tick 5",
+      "createDisabled": false,
+      "nodes": 2,
+      "nodeLabels": [
+        "rev 1 · Bootstrap",
+        "rev 2 · PlanRoute"
+      ]
+    },
+    "rounds": [
+      {
+        "revBefore": 2,
+        "revAfter": 3,
+        "newTick": 6,
+        "apiBeforeTick": 5,
+        "snap": {
+          "revision": 3,
+          "head": 3,
+          "shell": "分支 main · rev 3 · tick 6",
+          "meta": "分支 main · rev 3 · head 3 · tick 6",
+          "createDisabled": false,
+          "nodes": 3,
+          "nodeLabels": [
+            "rev 1 · Bootstrap",
+            "rev 2 · PlanRoute",
+            "rev 3 · AdvanceTime"
+          ]
+        }
+      },
+      {
+        "revBefore": 3,
+        "revAfter": 4,
+        "newTick": 7,
+        "apiBeforeTick": 6,
+        "snap": {
+          "revision": 4,
+          "head": 4,
+          "shell": "分支 main · rev 4 · tick 7",
+          "meta": "分支 main · rev 4 · head 4 · tick 7",
+          "createDisabled": false,
+          "nodes": 4,
+          "nodeLabels": [
+            "rev 1 · Bootstrap",
+            "rev 2 · PlanRoute",
+            "rev 3 · AdvanceTime",
+            "rev 4 · AdvanceTime"
+          ]
+        }
+      }
+    ]
+  },
+  "b": {
+    "knob": {
+      "exists": true,
+      "hidden": false,
+      "x": 426,
+      "y": 759,
+      "w": 14,
+      "h": 14,
+      "pointerEvents": "auto",
+      "inViewport": true,
+      "elementAtCenter": "tl-knob",
+      "dataRevision": "4"
+    },
+    "revB0": 4,
+    "revB1": 4,
+    "afterDrag": {
+      "revision": 4,
+      "head": 4,
+      "shell": "分支 main · rev 4 · tick 7",
+      "meta": "分支 main · rev 4 · head 4 · tick 7",
+      "createDisabled": false,
+      "nodes": 4,
+      "nodeLabels": [
+        "rev 1 · Bootstrap",
+        "rev 2 · PlanRoute",
+        "rev 3 · AdvanceTime",
+        "rev 4 · AdvanceTime"
+      ]
+    }
+  }
+}

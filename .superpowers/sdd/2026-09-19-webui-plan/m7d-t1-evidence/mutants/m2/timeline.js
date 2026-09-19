@@ -445,10 +445,7 @@
           return;
         }
         var handle =
-          event.target.closest &&
-          (event.target.closest(".tl-node") ||
-            event.target.closest(".tl-knob") ||
-            event.target.closest(".timeline-line"));
+          event.target.closest && event.target.closest(".timeline-line");
         if (!handle) {
           return;
         }

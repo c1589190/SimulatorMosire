@@ -530,7 +530,6 @@
     try {
       await window.SimosApi.advance(state.branch, head, tick, tick + 1);
       showStatus("已创建节点：推进 tick " + tick + " → " + (tick + 1), "ok");
-      await refresh();
       var newHead = model.heads[app.getState().branch];
       if (newHead !== null && newHead !== undefined) {
         app.setRevision(newHead);

@@ -1,0 +1,43 @@
+server_ready_tries=3 code=200 pid=292817
+STEP prep-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP a-timeline-in-viewport: PASS {"viewportH":800,"docScrollHeight":800,"barTop":731,"barBottom":800,"leftClientH":601,"leftScrollH":1762,"detailRows":21}
+STEP a-no-page-scroll: PASS {"viewportH":800,"docScrollHeight":800,"barTop":731,"barBottom":800,"leftClientH":601,"leftScrollH":1762,"detailRows":21}
+STEP a-left-column-scrolls: PASS {"viewportH":800,"docScrollHeight":800,"barTop":731,"barBottom":800,"leftClientH":601,"leftScrollH":1762,"detailRows":21}
+STEP d-route-hint: PASS "已下路线 u-1（2 格，替换原路线）—— 点「创建节点」推进时间，单位才会出发"
+STEP d-create-title: PASS "推进时间一格（core.AdvanceTime）：单位沿已下路线出发/前进"
+STEP c-tick-advances-r1: FAIL {"revBefore":2,"revAfter":null,"newTick":6,"shell":"分支 main · rev 3 · tick 6","meta":"分支 main · rev 2 · head 3 · tick 5"}
+STEP c-create-not-stuck-disabled-r1: FAIL {"createDisabled":true,"shell":null}
+STEP c-node-count-r1: FAIL {"domNodes":3,"apiNodes":3}
+E2E RESULT: FAIL fatal page.click: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('#timeline-create')[22m
+[2m    - locator resolved to <button disabled type="button" class="primary" id="timeline-create" title="推进时间一格（core.AdvanceTime）：单位沿已下路线出发/前进">创建节点（推进时间）</button>[22m
+[2m  - attempting click action[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is not enabled[22m
+[2m    - retrying click action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is not enabled[22m
+[2m    - retrying click action[22m
+[2m      - waiting 100ms[22m
+[2m    58 × waiting for element to be visible, enabled and stable[22m
+[2m       - element is not enabled[22m
+[2m     - retrying click action[22m
+[2m       - waiting 500ms[22m
+
+    at /home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/e2e/e2e.cjs:175:16
+e2e_rc=1
+
+===== 装置补记（m3）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/timeline.js
+orig_md5=2926d1042041e74a2192d55f64b54b80
+pushed_src_md5=675dfcec31f197fc73875f2bcd5136a3
+pushed_cls_md5=675dfcec31f197fc73875f2bcd5136a3
+restored_src_md5=2926d1042041e74a2192d55f64b54b80
+restored_cls_md5=2926d1042041e74a2192d55f64b54b80
+class_backup_md5=2926d1042041e74a2192d55f64b54b80
+round_start=1789795064
+server_log_mtime=1789795109
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/logs/m3.server.log

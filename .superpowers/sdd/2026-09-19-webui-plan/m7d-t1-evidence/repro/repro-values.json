@@ -1,0 +1,42 @@
+{
+  "layout": {
+    "viewportH": 800,
+    "scrollHeight": 800,
+    "scrollY": 0,
+    "barTop": 731,
+    "barBottom": 800,
+    "barH": 69,
+    "leftH": 603,
+    "leftScrollH": 1462
+  },
+  "hint": "已下路线 u-1（2 格，替换原路线）—— 点「创建节点」推进时间，单位才会出发",
+  "c0": {
+    "label": "before-create",
+    "apiHead": 2,
+    "apiMetaTick": 5,
+    "apiMetaRev": 2,
+    "apiRevs": [
+      "1:5",
+      "2:5"
+    ],
+    "nodeCount": 1,
+    "stateRevision": 2,
+    "shellState": "分支 main · rev 2 · tick 5",
+    "timelineMeta": "分支 main · rev 2 · head 2 · tick 5",
+    "leftStatus": "单位 u-1 · main@2",
+    "detail": "idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movement有路线格数3本 tick 预算（毫 MP）2000路线每格成本（毫 MP）1500路线总成本（毫 MP）3000statusIN_TRANSITcurrentHexq=1, r=1nextHexq=1, r=2remainingMillis1500预计到达 tick7出发 tick5出发速度（毫 MP/tick）2000出发机动‰500"
+  },
+  "knobBox": {
+    "exists": true,
+    "hidden": false,
+    "x": 426,
+    "y": 759,
+    "w": 14,
+    "h": 14,
+    "pointerEvents": "auto",
+    "zIndex": "3",
+    "dataBranch": "main",
+    "dataRevision": "4",
+    "elementAtCenter": "tl-knob|DIV"
+  }
+}
