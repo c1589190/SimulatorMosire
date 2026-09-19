@@ -1,0 +1,195 @@
+{
+  "base": "http://127.0.0.1:45911",
+  "startedAt": "2026-09-19T08:26:34.693Z",
+  "assertions": [
+    {
+      "id": "a-overview-no-target-once",
+      "pass": false,
+      "detail": "count=undefined"
+    },
+    {
+      "id": "a-overview-rev1-once",
+      "pass": false,
+      "detail": "count=undefined"
+    },
+    {
+      "id": "a-units-no-target-once",
+      "pass": false,
+      "detail": "count=undefined"
+    },
+    {
+      "id": "a-units-rev1-once",
+      "pass": false,
+      "detail": "count=undefined"
+    },
+    {
+      "id": "a-state-startup-once",
+      "pass": true,
+      "detail": "count=1"
+    },
+    {
+      "id": "a-memo-no-new-request",
+      "pass": true,
+      "detail": "overview+0 units+0"
+    },
+    {
+      "id": "a-target-invalidates",
+      "pass": false,
+      "detail": "new-revision requests=0"
+    },
+    {
+      "id": "b-render-warm-p50-lt33",
+      "pass": true,
+      "detail": "p50=1.7"
+    },
+    {
+      "id": "b-render-cold-p50-lt33",
+      "pass": true,
+      "detail": "p50=26.2"
+    },
+    {
+      "id": "b-terrain-giant-path-is-cause",
+      "pass": true,
+      "detail": "giant=1406.5 chunked=23.1"
+    },
+    {
+      "id": "b-border-giant-path-is-cause",
+      "pass": true,
+      "detail": "giant=3574.1 chunked=28.1"
+    },
+    {
+      "id": "b-border-lod-skipped-at-fit",
+      "pass": true,
+      "detail": "draws 0->0 screenPx=3.29"
+    },
+    {
+      "id": "b-pan-does-not-rebuild",
+      "pass": true,
+      "detail": "rebuilds 2->2 blits 20->22"
+    },
+    {
+      "id": "b-resize-rebuilds-terrain",
+      "pass": true,
+      "detail": "rebuilds 2->3"
+    },
+    {
+      "id": "c-legend-memoized-scan-once-per-overview",
+      "pass": false,
+      "detail": "scans 1->1（期望 +1：仅 setData 重扫）"
+    },
+    {
+      "id": "z-zero-pageerror",
+      "pass": true,
+      "detail": "pageErrors=0"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "requestCounts": {
+    "/": 1,
+    "/styles.css": 1,
+    "/api.js": 1,
+    "/app.js": 1,
+    "/panels.js": 1,
+    "/unitTree.js": 1,
+    "/timeline.js": 1,
+    "/map.js": 1,
+    "/api/state": 1,
+    "/api/approvals": 1,
+    "/api/map/overview": 1,
+    "/api/units": 1,
+    "/api/timeline?branch=main": 2
+  },
+  "raw": {
+    "debug0": {
+      "scale": 0.09666505558240696,
+      "tx": 640,
+      "ty": 400,
+      "cellSize": 34,
+      "hexCount": 19441,
+      "unitCount": 0,
+      "colorByTerrain": {
+        "ocean": "#1F5FA0",
+        "plains": "#9CCB5B",
+        "low_hills": "#A8B36A",
+        "mountains": "#7A7F85"
+      },
+      "fallbackColor": "#ff00ff",
+      "fallbackWarned": false,
+      "highlightHexCount": 0,
+      "highlightColors": [],
+      "regionFallbackColor": "#00e5ff",
+      "regionFallbackWarned": false,
+      "selected": null,
+      "selectedUnit": null,
+      "mode": "view",
+      "isWorkbench": true,
+      "terrainRebuilds": 1,
+      "terrainBlits": 4,
+      "borderDraws": 0,
+      "legendScans": 1,
+      "borderScreenPx": 3.2866118898018364,
+      "terrainMode": "chunked",
+      "routeCount": 0,
+      "routes": []
+    },
+    "warm": {
+      "p50": 1.7,
+      "max": 2.3
+    },
+    "cold": {
+      "p50": 26.2,
+      "max": 28.3
+    },
+    "terrainVariants": {
+      "giant": {
+        "p50": 1406.5,
+        "max": 1408.4
+      },
+      "chunked": {
+        "p50": 23.1,
+        "max": 23.4
+      },
+      "perHex": {
+        "p50": 46,
+        "max": 413.5
+      }
+    },
+    "borderVariants": {
+      "giant": {
+        "p50": 3574.1,
+        "max": 3589.6
+      },
+      "chunked64": {
+        "p50": 28.1,
+        "max": 28.4
+      },
+      "perHex": {
+        "p50": 42.4,
+        "max": 117.1
+      }
+    },
+    "lod": {
+      "before": 0,
+      "after": 0,
+      "borderScreenPx": 3.2866118898018364,
+      "threshold": 4
+    },
+    "panCache": {
+      "rebuilds": "2->2",
+      "blits": "20->22"
+    },
+    "resizeDirty": {
+      "rebuilds": "2->3"
+    },
+    "legend": {
+      "before": 1,
+      "after": 1
+    }
+  },
+  "fatal": null,
+  "pageErrorCount": 0,
+  "finishedAt": "2026-09-19T08:26:53.587Z"
+}

@@ -37,6 +37,21 @@
   var OLD_PAGE_CANVAS_HEIGHT = 620; // 旧页 /map 的固定画布高度（工作台铺满视口，不用固定值）
   var FIT_PAD = 24; // fitView 的世界四周留白（初始适配与"回到世界中心"共用）
 
+  // ★ M9 T4（档 0 止血）：大图渲染的性能开关。
+  //   `render()` 的 5s 成本在适配比例（19441 格全可见）下由地形填充路径主导——见 t2-evidence 的隔离表。
+  //   · terrainMode：巨路径 giant / 分块 Path2D chunked / 逐格 perHex（隔离实验的三档，最终用 chunked）。
+  //   · borderMinScreenPx：可见格屏幕半径低于此值 ⇒ 跳过边框层（LOD；19441 格时边框是纯噪声且要一整遍路径）。
+  //   · terrainCacheEnabled：地形层离屏位图缓存（pan 时 drawImage blit；数据变 / zoom 停 / resize 才重建）。
+  var perfConfig = {
+    terrainMode: "chunked",
+    terrainChunk: 32,
+    borderChunk: 64,
+    borderMinScreenPx: 4,
+    terrainCacheEnabled: true,
+  };
+  var TERRAIN_CACHE_MARGIN = 256; // 地形位图在视口四周多留的 CSS 像素（pan 容差）
+  var ZOOM_SETTLE_MS = 180; // 缩放停止后重建地形位图的防抖窗口
+
   // ── 纯几何（e2e 用 page.evaluate 直接断言；无 DOM、无 IO）────────────────
 
   function clamp(value, lo, hi) {
@@ -185,6 +200,16 @@
     var cssH = OLD_PAGE_CANVAS_HEIGHT; // 工作台的尺寸在 resize() 里按视口覆盖
     var dpr = 1;
 
+    var terrainCanvas = null; // 地形层离屏位图（perfConfig.terrainCacheEnabled 时启用）
+    var terrainCtx = null;
+    var terrainCache = null; // {scale, tx, ty}：位图对应的视图；null = 无缓存
+    var terrainDirty = true; // 数据/尺寸变 ⇒ 必须重建位图
+    var terrainSettleTimer = null;
+    var terrainRebuilds = 0; // 地形位图重建次数（断言 pan 不重建 / 数据变必重建）
+    var terrainBlits = 0; // 地形位图 blit 次数
+    var borderDraws = 0; // 边框层实际绘制次数（断言 LOD 生效）
+    var legendScans = 0; // updateLegend 对 overview.hexes 的扫描次数（断言记忆化）
+
     var rafId = null;
     var dragging = false;
     var dragMoved = false;
@@ -271,6 +296,7 @@
       });
       rebuildColors();
       updateLegend();
+      terrainDirty = true;
       scheduleRender();
     }
 
@@ -322,6 +348,7 @@
     function setCellSize(size) {
       cellSize = size;
       recomputeWorldPixels();
+      terrainDirty = true;
       scheduleRender();
     }
 
@@ -395,25 +422,43 @@
       canvas.style.height = h + "px";
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
+      if (perfConfig.terrainCacheEnabled) {
+        ensureTerrainCanvas();
+        terrainDirty = true;
+      }
       scheduleRender();
     }
 
-    function addHexPath(cx, cy, size) {
+    function addHexPath(targetCtx, cx, cy, size) {
       for (var i = 0; i < 6; i++) {
         var a = (Math.PI / 180) * (60 * i - 30);
         var x = cx + size * Math.cos(a);
         var y = cy + size * Math.sin(a);
         if (i === 0) {
-          ctx.moveTo(x, y);
+          targetCtx.moveTo(x, y);
         } else {
-          ctx.lineTo(x, y);
+          targetCtx.lineTo(x, y);
         }
       }
-      ctx.closePath();
+      targetCtx.closePath();
     }
 
-    function visibleHexes() {
-      var margin = cellSize * 2;
+    function appendHexPathTo(path, cx, cy, size) {
+      for (var i = 0; i < 6; i++) {
+        var a = (Math.PI / 180) * (60 * i - 30);
+        var x = cx + size * Math.cos(a);
+        var y = cy + size * Math.sin(a);
+        if (i === 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      path.closePath();
+    }
+
+    function visibleHexes(marginScreenPx) {
+      var margin = marginScreenPx === undefined ? cellSize * 2 : marginScreenPx;
       var tl = screenToWorld({ x: -margin, y: -margin }, view);
       var br = screenToWorld({ x: cssW + margin, y: cssH + margin }, view);
       var out = [];
@@ -508,33 +553,62 @@
       });
     }
 
-    function render() {
-      if (!overview || cssW <= 0) {
-        return;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, cssW, cssH);
-      ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.tx, dpr * view.ty);
-
-      var visible = visibleHexes();
-      var radius = cellSize * 0.98;
-
-      // 地形层：按后端色分组，减少 fillStyle 切换。
+    function groupVisibleByTerrain(visible) {
       var byColor = {};
+      var colors = [];
       visible.forEach(function (h) {
         var color = terrainColor(h.terrain);
-        (byColor[color] || (byColor[color] = [])).push(h);
+        if (!byColor[color]) {
+          byColor[color] = [];
+          colors.push(color);
+        }
+        byColor[color].push(h);
       });
-      Object.keys(byColor).forEach(function (color) {
-        ctx.beginPath();
-        byColor[color].forEach(function (h) {
-          addHexPath(h.px, h.py, radius);
-        });
-        ctx.fillStyle = color;
-        ctx.fill();
-      });
+      return { byColor: byColor, colors: colors };
+    }
 
-      // 区域填充层：按 RegionMeta.color 分组，一组一次 fill（半透明，保留地形可见性）。
+    function paintTerrain(targetCtx, visible) {
+      var radius = cellSize * 0.98;
+      var groups = groupVisibleByTerrain(visible);
+      if (perfConfig.terrainMode === "perHex") {
+        groups.colors.forEach(function (color) {
+          targetCtx.fillStyle = color;
+          groups.byColor[color].forEach(function (h) {
+            targetCtx.beginPath();
+            addHexPath(targetCtx, h.px, h.py, radius);
+            targetCtx.fill();
+          });
+        });
+        return;
+      }
+      if (perfConfig.terrainMode === "chunked") {
+        var chunk = perfConfig.terrainChunk;
+        groups.colors.forEach(function (color) {
+          var list = groups.byColor[color];
+          targetCtx.fillStyle = color;
+          for (var start = 0; start < list.length; start += chunk) {
+            var path = new Path2D();
+            var end = Math.min(start + chunk, list.length);
+            for (var i = start; i < end; i++) {
+              appendHexPathTo(path, list[i].px, list[i].py, radius);
+            }
+            targetCtx.fill(path);
+          }
+        });
+        return;
+      }
+      groups.colors.forEach(function (color) {
+        targetCtx.beginPath();
+        groups.byColor[color].forEach(function (h) {
+          addHexPath(targetCtx, h.px, h.py, radius);
+        });
+        targetCtx.fillStyle = color;
+        targetCtx.fill();
+      });
+    }
+
+    function paintHighlights(targetCtx, visible) {
+      var radius = cellSize * 0.98;
       var highlightByColor = {};
       visible.forEach(function (h) {
         var color = highlightColorByKey[hexKey(h.q, h.r)];
@@ -543,22 +617,79 @@
         }
       });
       Object.keys(highlightByColor).forEach(function (color) {
-        ctx.beginPath();
+        targetCtx.beginPath();
         highlightByColor[color].forEach(function (h) {
-          addHexPath(h.px, h.py, radius);
+          addHexPath(targetCtx, h.px, h.py, radius);
         });
-        ctx.fillStyle = withAlpha(color, HIGHLIGHT_ALPHA);
-        ctx.fill();
+        targetCtx.fillStyle = withAlpha(color, HIGHLIGHT_ALPHA);
+        targetCtx.fill();
       });
+    }
 
-      // 格边框：一条路径一次描边。
-      ctx.beginPath();
+    function paintBorders(targetCtx, visible) {
+      paintBordersChunked(targetCtx, visible, perfConfig.borderChunk);
+    }
+
+    function paintBordersGiant(targetCtx, visible) {
+      var radius = cellSize * 0.98;
+      targetCtx.beginPath();
       visible.forEach(function (h) {
-        addHexPath(h.px, h.py, radius);
+        addHexPath(targetCtx, h.px, h.py, radius);
       });
-      ctx.strokeStyle = "#0d1015";
-      ctx.lineWidth = 1 / view.scale;
-      ctx.stroke();
+      targetCtx.strokeStyle = "#0d1015";
+      targetCtx.lineWidth = 1 / view.scale;
+      targetCtx.stroke();
+    }
+
+    function paintBordersChunked(targetCtx, visible, chunk) {
+      var radius = cellSize * 0.98;
+      targetCtx.strokeStyle = "#0d1015";
+      targetCtx.lineWidth = 1 / view.scale;
+      for (var start = 0; start < visible.length; start += chunk) {
+        var path = new Path2D();
+        var end = Math.min(start + chunk, visible.length);
+        for (var i = start; i < end; i++) {
+          appendHexPathTo(path, visible[i].px, visible[i].py, radius);
+        }
+        targetCtx.stroke(path);
+      }
+    }
+
+    function paintBordersPerHex(targetCtx, visible) {
+      var radius = cellSize * 0.98;
+      targetCtx.strokeStyle = "#0d1015";
+      targetCtx.lineWidth = 1 / view.scale;
+      visible.forEach(function (h) {
+        targetCtx.beginPath();
+        addHexPath(targetCtx, h.px, h.py, radius);
+        targetCtx.stroke();
+      });
+    }
+
+    function worldTransform() {
+      ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.tx, dpr * view.ty);
+    }
+
+    function render() {
+      if (!overview || cssW <= 0) {
+        return;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
+      worldTransform();
+
+      var visible = visibleHexes();
+      if (perfConfig.terrainCacheEnabled) {
+        updateTerrainCache();
+        blitTerrainCache();
+      } else {
+        paintTerrain(ctx, visible);
+      }
+      paintHighlights(ctx, visible);
+      if (cellSize * view.scale >= perfConfig.borderMinScreenPx) {
+        borderDraws += 1;
+        paintBorders(ctx, visible);
+      }
 
       drawRoutes();
       drawCities();
@@ -566,13 +697,105 @@
 
       if (selected) {
         var p = hexToPixel(selected.q, selected.r, cellSize);
+        worldTransform();
         ctx.beginPath();
-        addHexPath(p.x, p.y, cellSize * 0.92);
+        addHexPath(ctx, p.x, p.y, cellSize * 0.92);
         ctx.strokeStyle = "#4ea1ff";
         ctx.lineWidth = 2 / view.scale;
         ctx.stroke();
       }
       updateZoomUi();
+    }
+
+    function updateTerrainCache() {
+      if (!terrainCanvas || !terrainCache || terrainDirty) {
+        rebuildTerrainCanvas();
+        return;
+      }
+      if (Math.abs(view.scale - terrainCache.scale) >= 1e-9) {
+        scheduleTerrainSettle();
+        return;
+      }
+      if (
+        Math.abs(view.tx - terrainCache.tx) > TERRAIN_CACHE_MARGIN ||
+        Math.abs(view.ty - terrainCache.ty) > TERRAIN_CACHE_MARGIN
+      ) {
+        rebuildTerrainCanvas();
+      }
+    }
+
+    function ensureTerrainCanvas() {
+      var w = cssW + TERRAIN_CACHE_MARGIN * 2;
+      var h = cssH + TERRAIN_CACHE_MARGIN * 2;
+      if (!terrainCanvas) {
+        terrainCanvas = document.createElement("canvas");
+        terrainCtx = terrainCanvas.getContext("2d");
+      }
+      if (terrainCanvas.width !== Math.round(w * dpr) || terrainCanvas.height !== Math.round(h * dpr)) {
+        terrainCanvas.width = Math.round(w * dpr);
+        terrainCanvas.height = Math.round(h * dpr);
+      }
+    }
+
+    function rebuildTerrainCanvas() {
+      ensureTerrainCanvas();
+      if (!terrainCtx) {
+        return;
+      }
+      var w = cssW + TERRAIN_CACHE_MARGIN * 2;
+      var h = cssH + TERRAIN_CACHE_MARGIN * 2;
+      terrainCtx.setTransform(1, 0, 0, 1, 0, 0);
+      terrainCtx.clearRect(0, 0, w * dpr, h * dpr);
+      terrainCtx.setTransform(
+        dpr * view.scale,
+        0,
+        0,
+        dpr * view.scale,
+        dpr * (view.tx + TERRAIN_CACHE_MARGIN),
+        dpr * (view.ty + TERRAIN_CACHE_MARGIN)
+      );
+      var visible = visibleHexes(TERRAIN_CACHE_MARGIN);
+      paintTerrain(terrainCtx, visible);
+      terrainCache = { scale: view.scale, tx: view.tx, ty: view.ty };
+      terrainDirty = false;
+      terrainRebuilds += 1;
+    }
+
+    function blitTerrainCache() {
+      if (!terrainCanvas || !terrainCache) {
+        return;
+      }
+      terrainBlits += 1;
+      var ratio = view.scale / terrainCache.scale;
+      var w = cssW + TERRAIN_CACHE_MARGIN * 2;
+      var h = cssH + TERRAIN_CACHE_MARGIN * 2;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.drawImage(
+        terrainCanvas,
+        0,
+        0,
+        terrainCanvas.width,
+        terrainCanvas.height,
+        view.tx - (TERRAIN_CACHE_MARGIN + terrainCache.tx) * ratio,
+        view.ty - (TERRAIN_CACHE_MARGIN + terrainCache.ty) * ratio,
+        w * ratio,
+        h * ratio
+      );
+      worldTransform();
+    }
+
+    function scheduleTerrainSettle() {
+      if (terrainSettleTimer !== null) {
+        window.clearTimeout(terrainSettleTimer);
+      }
+      terrainSettleTimer = window.setTimeout(function () {
+        terrainSettleTimer = null;
+        if (!perfConfig.terrainCacheEnabled || !overview) {
+          return;
+        }
+        rebuildTerrainCanvas();
+        scheduleRender();
+      }, ZOOM_SETTLE_MS);
     }
 
     /** 屏幕 CSS 坐标 → 世界 → 命中（单位优先于格）。★ m2 保护的是这里的世界换算。 */
@@ -699,15 +922,29 @@
       }
     }
 
-    function updateLegend() {
-      var legend = app.byId("legend");
-      if (!legend || !overview) {
-        return;
+    var legendOverviewRef = null;
+    var legendCounts = null;
+
+    function terrainCounts() {
+      if (legendOverviewRef === overview && legendCounts) {
+        return legendCounts;
       }
       var counts = {};
       overview.hexes.forEach(function (h) {
         counts[h.terrain] = (counts[h.terrain] || 0) + 1;
       });
+      legendOverviewRef = overview;
+      legendCounts = counts;
+      legendScans += 1;
+      return counts;
+    }
+
+    function updateLegend() {
+      var legend = app.byId("legend");
+      if (!legend || !overview) {
+        return;
+      }
+      var counts = terrainCounts();
       var types = (overview.terrainTypes || []).map(function (t) {
         return t && t.key ? t.key : t;
       });
@@ -757,6 +994,12 @@
         selectedUnit: selectedUnit,
         mode: mode,
         isWorkbench: isWorkbench,
+        terrainRebuilds: terrainRebuilds,
+        terrainBlits: terrainBlits,
+        borderDraws: borderDraws,
+        legendScans: legendScans,
+        borderScreenPx: cellSize * view.scale,
+        terrainMode: perfConfig.terrainMode,
         routeCount: routes.length,
         routes: routes.map(function (route) {
           return {
@@ -788,6 +1031,132 @@
       }
     }
 
+    // ── 微基准（M9 T4 隔离实验；e2e/harness 用 page.evaluate 调用）──────────
+    //   各段分别计时，返回原始毫秒样本数组（调用方算 p50）。不改渲染行为。
+
+    function benchStages(n) {
+      if (!overview) {
+        return null;
+      }
+      var out = {
+        visible: [],
+        terrain: [],
+        highlights: [],
+        borders: [],
+        cities: [],
+        units: [],
+        total: [],
+      };
+      for (var i = 0; i < n; i++) {
+        var v;
+        var t0 = performance.now();
+        v = visibleHexes();
+        out.visible.push(performance.now() - t0);
+        worldTransform();
+        t0 = performance.now();
+        paintTerrain(ctx, v);
+        out.terrain.push(performance.now() - t0);
+        worldTransform();
+        t0 = performance.now();
+        paintHighlights(ctx, v);
+        out.highlights.push(performance.now() - t0);
+        worldTransform();
+        t0 = performance.now();
+        paintBorders(ctx, v);
+        out.borders.push(performance.now() - t0);
+        worldTransform();
+        t0 = performance.now();
+        drawCities();
+        out.cities.push(performance.now() - t0);
+        worldTransform();
+        t0 = performance.now();
+        drawUnits();
+        out.units.push(performance.now() - t0);
+        t0 = performance.now();
+        render();
+        out.total.push(performance.now() - t0);
+      }
+      return out;
+    }
+
+    function benchTerrainVariants(n) {
+      if (!overview) {
+        return null;
+      }
+      var visible = visibleHexes();
+      var saved = perfConfig.terrainMode;
+      var modes = ["giant", "chunked", "perHex"];
+      var out = {};
+      modes.forEach(function (mode) {
+        perfConfig.terrainMode = mode;
+        var samples = [];
+        for (var i = 0; i < n; i++) {
+          worldTransform();
+          var t0 = performance.now();
+          paintTerrain(ctx, visible);
+          samples.push(performance.now() - t0);
+        }
+        out[mode] = samples;
+      });
+      perfConfig.terrainMode = saved;
+      return out;
+    }
+
+    function benchBorderVariants(n) {
+      if (!overview) {
+        return null;
+      }
+      var visible = visibleHexes();
+      var out = { giant: [], chunked64: [], chunked256: [], perHex: [] };
+      var run = function (bucket, fn) {
+        for (var i = 0; i < n; i++) {
+          worldTransform();
+          var t0 = performance.now();
+          fn();
+          bucket.push(performance.now() - t0);
+        }
+      };
+      run(out.giant, function () {
+        paintBordersGiant(ctx, visible);
+      });
+      run(out.chunked64, function () {
+        paintBordersChunked(ctx, visible, 64);
+      });
+      run(out.chunked256, function () {
+        paintBordersChunked(ctx, visible, 256);
+      });
+      run(out.perHex, function () {
+        paintBordersPerHex(ctx, visible);
+      });
+      return out;
+    }
+
+    function benchChunkSweep(n) {
+      if (!overview) {
+        return null;
+      }
+      var visible = visibleHexes();
+      var saved = perfConfig.terrainMode;
+      var savedChunk = perfConfig.terrainChunk;
+      perfConfig.terrainMode = "chunked";
+      var chunks = [32, 64, 128, 256, 512];
+      var out = {};
+      chunks.forEach(function (c) {
+        perfConfig.terrainChunk = c;
+        var samples = [];
+        for (var i = 0; i < n; i++) {
+          worldTransform();
+          var t0 = performance.now();
+          paintTerrain(ctx, visible);
+          samples.push(performance.now() - t0);
+        }
+        out["chunk" + c] = samples;
+      });
+      perfConfig.terrainMode = saved;
+      perfConfig.terrainChunk = savedChunk;
+      return out;
+    }
+
     canvas.addEventListener("contextmenu", onContextMenuEvent);
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
@@ -796,6 +1165,11 @@
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     return {
+      benchStages: benchStages,
+      benchTerrainVariants: benchTerrainVariants,
+      benchBorderVariants: benchBorderVariants,
+      benchChunkSweep: benchChunkSweep,
+      perfConfig: perfConfig,
       canvas: canvas,
       setData: setData,
       setUnits: setUnits,
@@ -856,7 +1230,7 @@
     var status = app.byId("map-status");
     app.statusMessage(status, "载入地图总览…", "muted");
     try {
-      var body = await api.mapOverview(app.target());
+      var body = await api.cachedMapOverview(app.target());
       var branch = app.target().branch;
       var needFit = !active.isReady() || host.fittedBranch !== branch;
       active.setData(body);
@@ -891,7 +1265,7 @@
 
   async function reloadUnits() {
     try {
-      var body = await api.units(app.target());
+      var body = await api.cachedUnits(app.target());
       active.setUnits((body && body.units) || []);
       return null;
     } catch (e) {
@@ -1520,6 +1894,11 @@
     window.SimosMap.render = renderer.render;
     window.SimosMap.debug = renderer.debug;
     window.SimosMap.resetView = renderer.fit;
+    window.SimosMap.benchStages = renderer.benchStages;
+    window.SimosMap.benchTerrainVariants = renderer.benchTerrainVariants;
+    window.SimosMap.benchBorderVariants = renderer.benchBorderVariants;
+    window.SimosMap.benchChunkSweep = renderer.benchChunkSweep;
+    window.SimosMap.perfConfig = renderer.perfConfig;
     window.SimosMap.computeFit = renderer.computeFit;
     window.SimosMap.currentView = renderer.view;
     window.SimosMap.setView = renderer.setView;

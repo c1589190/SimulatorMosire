@@ -1,0 +1,18 @@
+=== ASSERTIONS ===
+FAIL a-overview-no-target-once | count=undefined
+FAIL a-overview-rev1-once | count=undefined
+FAIL a-units-no-target-once | count=undefined
+FAIL a-units-rev1-once | count=undefined
+PASS a-state-startup-once | count=1
+PASS a-memo-no-new-request | overview+0 units+0
+FAIL a-target-invalidates | new-revision requests=0
+PASS b-render-warm-p50-lt33 | p50=1.7
+PASS b-render-cold-p50-lt33 | p50=26.2
+PASS b-terrain-giant-path-is-cause | giant=1406.5 chunked=23.1
+PASS b-border-giant-path-is-cause | giant=3574.1 chunked=28.1
+PASS b-border-lod-skipped-at-fit | draws 0->0 screenPx=3.29
+PASS b-pan-does-not-rebuild | rebuilds 2->2 blits 20->22
+PASS b-resize-rebuilds-terrain | rebuilds 2->3
+FAIL c-legend-memoized-scan-once-per-overview | scans 1->1（期望 +1：仅 setData 重扫）
+PASS z-zero-pageerror | pageErrors=0
+=== SUMMARY === pass=10 fail=6 pageErrors=0

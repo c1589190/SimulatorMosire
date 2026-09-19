@@ -1,0 +1,100 @@
+{
+  "a": {
+    "position": {
+      "q": 1,
+      "r": 1
+    },
+    "revStart": 1,
+    "headA": 1,
+    "nodesBefore": 1
+  },
+  "b": {
+    "nonGetBeforeB": 0,
+    "nonGetAfterB": 0,
+    "position": {
+      "q": 1,
+      "r": 1
+    },
+    "revB": 1,
+    "headB": 1,
+    "nodesB": 1,
+    "selection": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    }
+  },
+  "c": {
+    "path": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      },
+      {
+        "q": 1,
+        "r": 3
+      }
+    ],
+    "routePath": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      },
+      {
+        "q": 1,
+        "r": 3
+      }
+    ],
+    "route": {
+      "id": "u-1",
+      "totalPoints": 3,
+      "remainingPoints": 3,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "outlineColor": "rgba(12, 8, 2, 0.95)",
+      "baseColor": "#f59e0b",
+      "remainingColor": "#ffffff"
+    },
+    "revC0": 1,
+    "revC": 2,
+    "nodes": {
+      "before": 1,
+      "after": null
+    }
+  },
+  "d": {
+    "routePath": [
+      {
+        "q": 1,
+        "r": 2
+      }
+    ],
+    "selection": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "nonGetBeforeD": 1,
+    "nonGetAfterD": 1
+  },
+  "e": {
+    "list": [
+      "/api/command"
+    ],
+    "violations": []
+  }
+}
