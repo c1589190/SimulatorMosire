@@ -56,3 +56,11 @@
 **变异 m1~m3b 全杀**：删词表校验 / 只改块字段不重切（★ 被 `GameMap` 构造期**分割不变式**当场抓：`地形块键 desert@1_0 与块内容不符（内容派生得 plains@1_0）`）/ 打乱序装块 / `TreeMap→HashMap`。
 **门禁 890** = 170/**289**/45/131/**158**/96，SpotBugs 0×6，ERROR 0。
 **未核实**：跨 JVM 字节稳定（同 JVM 已测；无 HashMap 迭代序进结果）；重切单独耗时（226.88ms 是 `submit` 全链）；**GUI `/api/command` 发该命令未跑**（前端调色板归 T8）。
+
+## T4 ✅ 区域三命令（`f5d1964` → 合并见下；11 文件 +1150/−11）
+
+**三命令**（`simos-map` 的 `ops/RegionOperations` + 三 `spi` handler）：`map.CreateRegion{regionId,name,hexes,meta?}` / `map.UpdateRegion{regionId,hexes?,meta?}` / `map.DeleteRegion{regionId}`；**`RegionId` 调用方给**（Q3）；重复 id 的 Create **拒绝**、Update 二者**至少给一**、Delete 不存在**拒绝**；★ **重叠一律允许**（不校验、不裁剪）；边界一律经 **`Region.of` 重算**（不手造）；三者**只换 `regions` 组件**（`hexes`/`terrainBlocks` 恒 Unchanged，逐条断言）。
+**★ 重叠正例（真档副本，非合成）**：`regionCount 2→3`、`regions=[test_annex_target, test_nation, t4_overlap]`；重叠格 **`(-18,0)` ⇒ 3 个从属**（字典序）；`replayRegionsByteIdentical=true`；原档 md5 `2348b936…` 跑前=跑后。
+**变异 m1~m4 全杀**，★ **m3 是方向性护栏**——**给 `createRegion` 加"与已有区域相交就拒绝"** ⇒ 重叠正例当场红（**谁加了这条限制，测试立刻抓**）。
+**门禁 924** = 170/**321**/45/131/**161**/96，SpotBugs 0×6，ERROR 0。
+**未核实**：浏览器内 3 从属的渲染（归 T9/T10）；`UpdateRegion` **改 name 无入口**（spec 载荷不含 name）；超大区域 `RegionBoundary.of` 重算耗时未单测。
