@@ -121,8 +121,6 @@ public final class QueryService {
   /** 有界 LRU（访问序）：超过容量即淘汰最久未用者。 */
   private static final class StateCache extends LinkedHashMap<StateRef, SimulationState> {
 
-    private static final long serialVersionUID = 1L;
-
     private final int capacity;
 
     StateCache(int capacity) {

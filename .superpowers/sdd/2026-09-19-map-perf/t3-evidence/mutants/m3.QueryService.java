@@ -103,9 +103,13 @@ public final class QueryService {
       return cached;
     }
     SimulationState state = core.replay(ref);
-    stateCache.put(ref, state);
+    java.util.Map<String, io.mosire.simos.util.state.Snapshot> sharedModules =
+        new java.util.LinkedHashMap<>(state.modules());
+    SimulationState cachedState =
+        new SimulationState(state.meta(), sharedModules, state.info());
+    stateCache.put(ref, cachedState);
     stateCacheMisses.increment();
-    return state;
+    return cachedState;
   }
 
   /** 缓存命中次数（M9 T3 的可观测计数：第二次读同一坐标 ⇒ 该值 +1 且不触发任何 checkpoint 读取）。 */
@@ -120,8 +124,6 @@ public final class QueryService {
 
   /** 有界 LRU（访问序）：超过容量即淘汰最久未用者。 */
   private static final class StateCache extends LinkedHashMap<StateRef, SimulationState> {
-
-    private static final long serialVersionUID = 1L;
 
     private final int capacity;
 

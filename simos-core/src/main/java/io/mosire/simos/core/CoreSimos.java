@@ -269,6 +269,15 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * 本实例累计调用 {@link CheckpointStore#read} 的次数（M9 T3 的可观测计数）。
+   *
+   * <p>★ **只读、零写面**：只读取计数，不封存、不写盘。它与读路径缓存配合，使"缓存命中 ⇒ 不再重读 checkpoint" 成为**可断言的数字**，而不是"代码上看应该"。
+   */
+  public long checkpointReadCount() {
+    return checkpoints.readCount();
+  }
+
+  /**
    * 某分支的全部 revision 行，按 {@code revision} 升序（spec §3.1 / M7 T1）：纯委托 {@link
    * Timeline#listRevisions(BranchId)}。
    *
