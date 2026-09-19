@@ -14,7 +14,7 @@ import java.util.Map;
  * 1）、{@link #region()}（归属）与 {@link #props()}（可扩展属性）。
  *
  * <p>★ {@code region} **允许为 {@code null}** = "这座城不在任何区域内"。这不是缺失，是合法状态：区域是画出来的，格可以没有归属 ——{@code
- * RegionIndex.regionOf} 对无归属的格正是返回 {@code null}，两处同口径。**其余四个字段都不许 null**（{@code name} 空白即抛，与 {@code
+ * RegionIndex.regionOf} 对无归属的格正是返回**空列表**，两处同口径。**其余四个字段都不许 null**（{@code name} 空白即抛，与 {@code
  * Region}/{@code PathwayGroup} 同族）：它们没有"空"的语义。
  *
  * <p>★ {@code props} **保序不可变**，且键值都不得为 null（老仓那份用的 {@code Map.copyOf} 本就拒 null，此处只把**顺序**这一项换掉

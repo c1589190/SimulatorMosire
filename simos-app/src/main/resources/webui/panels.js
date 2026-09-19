@@ -268,7 +268,8 @@
         appendRow(detail, "r", hex.r);
         appendRow(detail, "terrain", terrainText);
         appendRow(detail, "height", hex.height);
-        appendRow(detail, "region", hex.region === null || hex.region === undefined ? "—" : hex.region);
+        var regionIds = Array.isArray(hex.regions) ? hex.regions : [];
+        appendRow(detail, "regions", regionIds.length ? regionIds.join("、") : "无区域");
         appendRow(
           detail,
           "该处单位",

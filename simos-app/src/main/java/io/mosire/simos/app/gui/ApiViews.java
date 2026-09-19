@@ -231,7 +231,8 @@ final class ApiViews {
   }
 
   /**
-   * 单格：格内容 + 所属区域 + **完整地形定义** + facet 汇总（facet 由调用方按 **canonical** 地址查询，spec §5.2）。
+   * 单格：格内容 + 所属区域**列表**（多从属，M8-U1）+ **完整地形定义** + facet 汇总（facet 由调用方按 **canonical** 地址查询，spec
+   * §5.2）。{@code regions} 按 {@link RegionId} 字典序，**空数组 = 无从属**。
    *
    * <p>★ {@code terrainType} 由调用方从**状态里的** {@code map.terrainTypes()} 取出（spec §3.2）——本类不查 {@code
    * TerrainCatalog}，词表只有一个来源。
@@ -240,12 +241,16 @@ final class ApiViews {
       HexCoord coord,
       HexCell cell,
       List<FacetEntry> facets,
-      RegionId region,
+      List<RegionId> regions,
       TerrainType terrainType) {
     Map<String, Object> view = hexCoord(coord);
     view.put("terrain", cell.terrain());
     view.put("height", cell.height());
-    view.put("region", region == null ? null : region.value());
+    List<String> regionIds = new ArrayList<>(regions.size());
+    for (RegionId region : regions) {
+      regionIds.add(region.value());
+    }
+    view.put("regions", regionIds);
     view.put("terrainType", terrainType);
     view.put("facets", facets(facets));
     return view;

@@ -1,12 +1,12 @@
 package io.mosire.simos.map.region;
 
 import io.mosire.simos.map.hex.HexCoord;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * hex → **所属区域集合** 的反向索引。**派生，不进变更集、不进存档**（与 U2 之后**入存储的** {@code Region.boundary} 不是一回事，别混）。
@@ -37,16 +37,14 @@ public final class RegionIndex {
    * 故每格的列表天然有序；结果与入参的迭代序无关（同一批区域无论什么顺序进来，都得同一份索引）。每格的列表在建索引时冻结为不可变。
    */
   public static RegionIndex of(Collection<Region> regions) {
-    List<Region> ordered = new ArrayList<>(regions);
-    ordered.sort(Comparator.comparing(region -> region.id().value()));
-    Map<HexCoord, List<RegionId>> byHex = new HashMap<>();
-    for (Region region : ordered) {
+    Map<HexCoord, Set<RegionId>> byHex = new HashMap<>();
+    for (Region region : regions) {
       for (HexCoord c : region.hexes()) {
-        byHex.computeIfAbsent(c, key -> new ArrayList<>()).add(region.id());
+        byHex.computeIfAbsent(c, key -> new HashSet<>()).add(region.id());
       }
     }
     Map<HexCoord, List<RegionId>> frozen = new HashMap<>();
-    for (Map.Entry<HexCoord, List<RegionId>> entry : byHex.entrySet()) {
+    for (Map.Entry<HexCoord, Set<RegionId>> entry : byHex.entrySet()) {
       frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
     }
     return new RegionIndex(frozen);

@@ -134,7 +134,8 @@ public final class MapResolver implements Resolver {
   public static List<RegionId> regionOfHex(GameMap map, HexCoord hex) {
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(hex, "hex");
-    return map.regionIndex().regionOf(hex);
+    List<RegionId> all = map.regionIndex().regionOf(hex);
+    return all.isEmpty() ? all : List.of(all.get(0));
   }
 
   /** 图只能从 map 模块切片拿（铁律 3/4：SimulationState 没有跨模块访问器）。缺席或类型不对都是装配故障。 */

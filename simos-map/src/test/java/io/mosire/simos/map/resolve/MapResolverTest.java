@@ -56,8 +56,8 @@ class MapResolverTest {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     hexes.put(H00, new HexCell("plain", 0.1));
     hexes.put(H10, new HexCell("plain", 0.2));
-    // ★ 两个区域都盖住 H00，插入序 r2 在前、r1 在后——与 RegionId 字典序**相反**：
-    // RegionIndex 按字典序先写入者胜 ⇒ r1；沿插入序的线性扫描 ⇒ r2（regionOfHexUsesTheIndex 的靶子）。
+    // ★ 两个区域都盖住 H00（多从属，M8-U1），插入序 r2 在前、r1 在后——与 RegionId 字典序**相反**：
+    // RegionIndex 全保留并按字典序 ⇒ [r1, r2]；沿插入序的线性扫描 ⇒ [r2, r1]（regionOfHexUsesTheIndex 的靶子）。
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(new RegionId("r2"), Region.of(new RegionId("r2"), "区域二", Set.of(H00), null));
     regions.put(new RegionId("r1"), Region.of(new RegionId("r1"), "区域一", Set.of(H00, H10), null));
@@ -156,14 +156,16 @@ class MapResolverTest {
   }
 
   /**
-   * ★ 重叠区域 + 插入序与字典序相反 ⇒ 索引给字典序较小的 r1；线性扫描（沿插入序）会给 r2 ⇒ 红。 不是计时、 不是反射——结果级的判别力（RegionIndex
+   * ★ 重叠区域 + 插入序与字典序相反 ⇒ 索引给有序的 [r1, r2]；线性扫描（沿插入序）会给 [r2, r1] ⇒ 红。 不是计时、 不是反射——结果级的判别力（RegionIndex
    * 的包私有构造器挡了计数注入的路）。
    */
   @Test
   void regionOfHexUsesTheIndex() {
     // 钉住夹具前提：regions 的迭代序（插入序）确实是 r2 在前——否则本用例失去判别力
     assertThat(map.regions().keySet()).containsExactly(new RegionId("r2"), new RegionId("r1"));
-    assertThat(MapResolver.regionOfHex(map, H00)).contains(new RegionId("r1"));
+    assertThat(MapResolver.regionOfHex(map, H00))
+        .as("两个区域都盖住 H00 ⇒ 都在；按字典序 r1,r2")
+        .containsExactly(new RegionId("r1"), new RegionId("r2"));
     assertThat(MapResolver.regionOfHex(map, NOWHERE)).isEmpty();
   }
 

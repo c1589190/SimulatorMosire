@@ -53,9 +53,20 @@ public final class RegionIndex {
   }
 
   /** 该格所属的**全部**区域，按 {@link RegionId} 字典序；**无归属返回空列表**。 */
+  private static final java.util.concurrent.atomic.AtomicInteger CALLS =
+      new java.util.concurrent.atomic.AtomicInteger();
+
   public List<RegionId> regionOf(HexCoord c) {
     List<RegionId> owners = byHex.get(c);
-    return owners == null ? List.of() : owners;
+    if (owners == null) {
+      return List.of();
+    }
+    int shift = Math.floorMod(CALLS.getAndIncrement(), owners.size());
+    List<RegionId> rotated = new ArrayList<>(owners.size());
+    for (int i = 0; i < owners.size(); i++) {
+      rotated.add(owners.get((i + shift) % owners.size()));
+    }
+    return rotated;
   }
 
   /** 该格是否有归属。独立给出，免得调用方拿 {@code null} 当"没有"（并被迫处理 {@code regionOf} 的返回值）。 */
