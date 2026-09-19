@@ -64,3 +64,12 @@
 **变异 m1~m4 全杀**，★ **m3 是方向性护栏**——**给 `createRegion` 加"与已有区域相交就拒绝"** ⇒ 重叠正例当场红（**谁加了这条限制，测试立刻抓**）。
 **门禁 924** = 170/**321**/45/131/**161**/96，SpotBugs 0×6，ERROR 0。
 **未核实**：浏览器内 3 从属的渲染（归 T9/T10）；`UpdateRegion` **改 name 无入口**（spec 载荷不含 name）；超大区域 `RegionBoundary.of` 重算耗时未单测。
+
+## T7+T8 ✅ 五模式框架 + 地图编辑 UI（`3a06a70` → 合并见下；6 文件 +682/−29）
+
+**T7**：五模式（常规/区域查看/地图编辑/区域编辑/单位移动编辑）**从占位变真控件**（`#mode-current` + `aria-pressed` + `body[data-mode]` 可断言）；★★ **白名单是纯函数模块** `modes.js`（`SimosModes.isWriteAllowed`，无 DOM/IO），在 `app.js` 的 `writeCommand` **发请求之前**把关（**fail-closed**）；未知模式/空 type ⇒ 拒绝；`allowedWrites` 返回**快照**。★ **常规/区域查看：真拖（canvas 25 步）+ 直调 `writeCommand` ⇒ `{ok:false,kind:"mode-denied"}`、非 GET = 0**。切模式清 `selection`/`highlightRegions`。
+**T8**：**地形调色板**（完全取自后端 `terrainTypes`，实测 `["ocean","plains","low_hills","mountains"]`，**无 forest/tundra**）+ ★★ **拖刷**（真 pointer 事件，拖 5 格 ⇒ **一条** `map.SetTerrain`：`hexes` 长 5、**`head` 1→2 恰 +1**、命令明细 +1、M7f 的 tick 分组未破）+ **区域信息编辑**（多值 `regions`；只改 meta 的 `map.UpdateRegion` ⇒ `color #fc6dce→#123456`）+ 提交后**离屏位图重建**（`terrainRebuilds 4→5`，像素 `[31,95,160]`==ocean `#1F5FA0`）。
+**e2e 27 断言 ALL PASS**（真档 19441 格副本，原档 md5 未变、5817/5818 未动）；负例原文 `未知地形类型: forest` / `hex 不在图上: 9999_9999`；非 GET 清单 `["/api/command"×7]`，**常规/区域查看阶段为 0**；0 `pageerror`。截图 `t7-evidence/logs/clean-after-mutants/screenshot-map-edit-brush.png`、`…/screenshot-map-edit-after.png`。
+**变异 5 轮 0 存活**：m1 给"区域查看"放行写 / m2 切模式不清状态 / **m3 每格一条命令** / m4 调色板硬编码 `forest` / **m5 数据变不重建位图**。★ **自曝装置坑**：m1 还原时把 `src/modes.js` 写回旧版，致 m2~m5 e2e 出现**假红**——**先怀疑自己的装置**，如实记。
+**门禁 924** 不变（纯前端 delta 0）。
+**未核实**：浏览器内 **>2 从属**未渲染（Java 探针证过 3 从属）；`SetEdge`/`RandomizeRegion` 白名单放行但 **UI 置灰、从未真发**（T11）；**区域编辑模式 UI（T10）不存在**。
