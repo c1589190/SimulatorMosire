@@ -52,13 +52,15 @@
 
   // ★ M9 T4（档 0 止血）+ M9 T13/T14：大图渲染的性能开关。
   //   · terrainMode：M9 T13 起地形唯一来源是**权威块多边形**（"blocks"），不再有逐格通道。
-  //   · borderMinScreenPx：格屏幕尺寸低于此值 ⇒ 跳过边框层（LOD；块边界描边在适配比例下是纯噪声）。
   //   · terrainCacheEnabled：地形层离屏位图缓存（pan 时 drawImage blit；数据变 / zoom 停 / resize 才重建）。
+  // ★ M8-R §八：地形块之间**不画线**（旧 borderMinScreenPx/边框层已删）——不同地形只靠颜色区分。
   var perfConfig = {
     terrainMode: "blocks",
-    borderMinScreenPx: 4,
     terrainCacheEnabled: true,
   };
+
+  // ★ M8-R §八.3：区域边界用 RDP 简化，压掉"逐 hex 台阶"的冗余顶点（单位＝「格边长=1」的世界坐标）。
+  var REGION_OUTLINE_RDP_EPS = 0.5;
   var TERRAIN_CACHE_MARGIN = 256; // 地形位图在视口四周多留的 CSS 像素（pan 容差）
   var ZOOM_SETTLE_MS = 180; // 缩放停止后重建地形位图的防抖窗口
 
@@ -221,15 +223,9 @@
     var onContextMenu = opts.onContextMenu || function () {
       return false;
     };
-    var paintEnabled = opts.paintEnabled || function () {
-      return false;
-    };
     var onPaintCommit = opts.onPaintCommit || function () {};
-    // ★ M8-R：区域编辑的"按键分派"入口。返回 true ⇒ 右键拖动走套索、左键命中边界小点时走拖点；
-    //   常规 / 单位移动编辑返回 false ⇒ 右键仍归宿主的 unit.PlanRoute（不许变）。
-    var regionEditEnabled = opts.regionEditEnabled || function () {
-      return false;
-    };
+    // ★ M8-R §七 统一按键模型：左键=平移；右键按模式分派（region-edit=套索 / map-edit=刷地形 /
+    //   常规·单位=宿主 contextmenu 的 PlanRoute）；Shift+右键（region-edit）=逐格画擦。
     var onLassoCommit = opts.onLassoCommit || function () {};
     var onDotDragCommit = opts.onDotDragCommit || function () {};
 
@@ -273,14 +269,14 @@
     var terrainSettleTimer = null;
     var terrainRebuilds = 0; // 地形位图重建次数（断言 pan 不重建 / 数据变必重建）
     var terrainBlits = 0; // 地形位图 blit 次数
-    var borderDraws = 0; // 边框层实际绘制次数（断言 LOD 生效）
     var legendScans = 0; // updateLegend 的 counts 重建次数（断言记忆化）
     var paintedRingCount = 0; // Pass 1 累计追加的环数（丢洞/"逐格"退化时红）
     var pass2Draws = 0; // Pass 2（未合并余量）绘制次数：P6 全部建块 ⇒ 恒 0
     var blockVertexCount = 0; // 全部块环的顶点数（数据变时更新）
     var unmergedCount = 0; // hexCount − Σ 块 hexCount：> 0 ⇒ 服务端块没覆盖全图（缺陷）
-    var bordersPath = null; // 块边界描边路径（沿块边界，不再逐格）
-    var bordersDirty = true;
+    var regionOutlines = []; // {id,color,alpha,rings,verticesBefore,verticesAfter}：区域边界（RDP 简化后）
+    var outlineVerticesBefore = 0; // 简化前顶点数（逐 hex 台阶）
+    var outlineVerticesAfter = 0; // 简化后顶点数
 
     var rafId = null;
     var dragging = false;
@@ -398,7 +394,6 @@
             unmergedCount
         );
       }
-      bordersDirty = true;
       rebuildColors();
       updateLegend();
       terrainDirty = true;
@@ -454,7 +449,6 @@
       cellSize = size;
       recomputeWorldPixels();
       terrainDirty = true;
-      bordersDirty = true;
       scheduleRender();
     }
 
@@ -670,9 +664,13 @@
       });
     }
 
-    /** 区域高亮：直接迭代高亮集合（不再扫全表）；区域 hex 来自 /api/map/region/{id}（按需拉取）。 */
+    /**
+     * 区域高亮：直接迭代高亮集合（不再扫全表）；区域 hex 来自 /api/map/region/{id}（按需拉取）。
+     * ★ M8-R §八：填充半径 = cellSize（满格）——旧值 0.98 会在每个 hex 之间留缝，用户见到的
+     *   "区域中每一个 hex 都有边框"就是这些**填充缝**（不是 stroke）。
+     */
     function paintHighlights(targetCtx) {
-      var radius = cellSize * 0.98;
+      var radius = cellSize;
       var highlightByColor = {};
       Object.keys(highlightColorByKey).forEach(function (key) {
         var color = highlightColorByKey[key];
@@ -698,7 +696,7 @@
       });
     }
 
-    /** 拖刷预览（M8 T8）：把正在涂抹的格画成半透明白底 + 蓝描边；区域编辑的"移除"用红底红边。 */
+    /** 拖刷预览（M8 T8；M8-R §八 去描边）：只铺半透明色，**不逐格 stroke**（不再有逐 hex 边框）。 */
     function paintBrush(targetCtx) {
       var keys = Object.keys(brushKeys);
       if (!keys.length) {
@@ -708,17 +706,14 @@
       keys.forEach(function (key) {
         var hex = brushKeys[key];
         var point = hexToPixel(hex.q, hex.r, cellSize);
-        addHexPath(targetCtx, point.x, point.y, cellSize * 0.9);
+        addHexPath(targetCtx, point.x, point.y, cellSize);
       });
       var removing = brushOp === "remove";
-      targetCtx.fillStyle = removing ? "rgba(255, 90, 90, 0.3)" : "rgba(255, 255, 255, 0.3)";
+      targetCtx.fillStyle = removing ? "rgba(255, 90, 90, 0.35)" : "rgba(78, 161, 255, 0.35)";
       targetCtx.fill();
-      targetCtx.strokeStyle = removing ? "#ff3b3b" : "#4ea1ff";
-      targetCtx.lineWidth = 2 / view.scale;
-      targetCtx.stroke();
     }
 
-    /** 区域编辑的持久选区（M8 T10）：松手后仍显示，形制同拖刷预览。 */
+    /** 区域编辑的临时选区（M8-R §八 去描边）：只铺半透明色，**不逐格 stroke**。 */
     function paintDraft(targetCtx) {
       var keys = Object.keys(draftKeys);
       if (!keys.length) {
@@ -728,13 +723,10 @@
       keys.forEach(function (key) {
         var hex = draftKeys[key];
         var point = hexToPixel(hex.q, hex.r, cellSize);
-        addHexPath(targetCtx, point.x, point.y, cellSize * 0.9);
+        addHexPath(targetCtx, point.x, point.y, cellSize);
       });
-      targetCtx.fillStyle = "rgba(255, 255, 255, 0.28)";
+      targetCtx.fillStyle = "rgba(78, 161, 255, 0.3)";
       targetCtx.fill();
-      targetCtx.strokeStyle = "#4ea1ff";
-      targetCtx.lineWidth = 2 / view.scale;
-      targetCtx.stroke();
     }
 
     /** 套索预览（M8-R）：品红折线 + 半透明填格（照 GSimulator renderProvincePreview）。 */
@@ -763,7 +755,7 @@
 
     /** 焦点区域边界小点（M8-R）：只对**正在编辑**的区域画，点在**边界 hex 中心**（照 render.js:335-346）。 */
     function paintBoundaryDots(targetCtx) {
-      if (!regionEditEnabled() || !Object.keys(focusKeys).length) {
+      if (mode !== "region-edit" || !Object.keys(focusKeys).length) {
         return;
       }
       var boundary = focusBoundaryList();
@@ -784,33 +776,212 @@
       targetCtx.stroke();
     }
 
-    /** 块边界描边（M9 T14）：沿块多边形自带的外环 + 洞环，一条 Path2D 一次 stroke，不再逐格。 */
-    function rebuildBordersPath() {
-      bordersPath = new Path2D();
-      blocks.forEach(function (block) {
-        (block.boundaries || []).forEach(function (ring) {
+    function cornerKey(x, y) {
+      return Math.round(x * 10000) + "," + Math.round(y * 10000);
+    }
+
+    /**
+     * 区域 hex 集合的**边环**（精确的逐 hex 台阶多边形，单位＝「格边长=1」的世界坐标）。
+     * 每条格边被两个同区域 hex 共享 ⇒ 内部边成对出现被抵消，剩下的即成环。可能多环（多块/带洞）。
+     */
+    function regionBoundaryRings(hexList) {
+      var pointOf = {};
+      var edgeList = [];
+      var edgeIndex = {};
+      (hexList || []).forEach(function (hex) {
+        if (!hex || hex.q === undefined || hex.r === undefined) {
+          return;
+        }
+        var center = hexToPixel(hex.q, hex.r, 1);
+        var corners = hexCorners(center.x, center.y, 1);
+        for (var i = 0; i < 6; i++) {
+          var a = corners[i];
+          var b = corners[(i + 1) % 6];
+          var ka = cornerKey(a.x, a.y);
+          var kb = cornerKey(b.x, b.y);
+          pointOf[ka] = { x: Math.round(a.x * 10000) / 10000, y: Math.round(a.y * 10000) / 10000 };
+          pointOf[kb] = { x: Math.round(b.x * 10000) / 10000, y: Math.round(b.y * 10000) / 10000 };
+          var canon = ka < kb ? ka + "|" + kb : kb + "|" + ka;
+          if (Object.prototype.hasOwnProperty.call(edgeIndex, canon)) {
+            edgeList[edgeIndex[canon]] = null;
+            delete edgeIndex[canon];
+          } else {
+            edgeIndex[canon] = edgeList.length;
+            edgeList.push({ a: ka, b: kb });
+          }
+        }
+      });
+      var byCorner = {};
+      edgeList.forEach(function (edge, index) {
+        if (!edge) {
+          return;
+        }
+        (byCorner[edge.a] || (byCorner[edge.a] = [])).push(index);
+        (byCorner[edge.b] || (byCorner[edge.b] = [])).push(index);
+      });
+      var used = {};
+      var rings = [];
+      edgeList.forEach(function (edge, startIndex) {
+        if (!edge || used[startIndex]) {
+          return;
+        }
+        used[startIndex] = true;
+        var ringKeys = [edge.a, edge.b];
+        var current = edge.b;
+        var guard = 0;
+        while (guard++ < 200000) {
+          var incident = byCorner[current] || [];
+          var next = -1;
+          for (var i = 0; i < incident.length; i++) {
+            if (!used[incident[i]] && edgeList[incident[i]]) {
+              next = incident[i];
+              break;
+            }
+          }
+          if (next < 0) {
+            break;
+          }
+          used[next] = true;
+          var nextEdge = edgeList[next];
+          current = nextEdge.a === current ? nextEdge.b : nextEdge.a;
+          if (current === ringKeys[0]) {
+            break;
+          }
+          ringKeys.push(current);
+        }
+        if (ringKeys.length >= 3) {
+          rings.push(
+            ringKeys.map(function (key) {
+              return pointOf[key];
+            })
+          );
+        }
+      });
+      return rings;
+    }
+
+    function perpDistance(point, a, b) {
+      var dx = b.x - a.x;
+      var dy = b.y - a.y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) {
+        return Math.sqrt((point.x - a.x) * (point.x - a.x) + (point.y - a.y) * (point.y - a.y));
+      }
+      return Math.abs((point.x - a.x) * dy - (point.y - a.y) * dx) / len;
+    }
+
+    /** Ramer–Douglas–Peucker（开放折线）。 */
+    function rdpOpen(points, eps) {
+      if (points.length < 3) {
+        return points.slice();
+      }
+      var keep = new Array(points.length);
+      keep[0] = true;
+      keep[points.length - 1] = true;
+      var stack = [[0, points.length - 1]];
+      while (stack.length) {
+        var segment = stack.pop();
+        var start = segment[0];
+        var end = segment[1];
+        var maxDistance = -1;
+        var maxIndex = -1;
+        for (var i = start + 1; i < end; i++) {
+          var distance = perpDistance(points[i], points[start], points[end]);
+          if (distance > maxDistance) {
+            maxDistance = distance;
+            maxIndex = i;
+          }
+        }
+        if (maxDistance > eps && maxIndex > 0) {
+          keep[maxIndex] = true;
+          stack.push([start, maxIndex]);
+          stack.push([maxIndex, end]);
+        }
+      }
+      var out = [];
+      for (var j = 0; j < points.length; j++) {
+        if (keep[j]) {
+          out.push(points[j]);
+        }
+      }
+      return out;
+    }
+
+    /** 闭合环的 RDP：取距 ring[0] 最远的顶点切成两条开放链分别简化，再拼回（仍闭合）。 */
+    function rdpClosed(ring, eps) {
+      if (ring.length <= 3) {
+        return ring.slice();
+      }
+      var far = 0;
+      var maxDistance = -1;
+      for (var i = 1; i < ring.length; i++) {
+        var dx = ring[i].x - ring[0].x;
+        var dy = ring[i].y - ring[0].y;
+        var distance = dx * dx + dy * dy;
+        if (distance > maxDistance) {
+          maxDistance = distance;
+          far = i;
+        }
+      }
+      var chainA = ring.slice(0, far + 1);
+      var chainB = ring.slice(far).concat(ring.slice(0, 1));
+      var simplifiedA = rdpOpen(chainA, eps);
+      var simplifiedB = rdpOpen(chainB, eps);
+      var out = simplifiedA.slice(0, simplifiedA.length - 1).concat(simplifiedB.slice(0, simplifiedB.length - 1));
+      return out.length >= 3 ? out : ring.slice();
+    }
+
+    /** 设置要描边的区域（每项 {id,color,alpha,hexes}）：重算边界环并 RDP 简化（顶点数记进 debug）。 */
+    function setRegionOutlines(list) {
+      var before = 0;
+      var after = 0;
+      regionOutlines = (list || []).map(function (entry) {
+        var rings = regionBoundaryRings(entry.hexes || []);
+        var simplified = [];
+        rings.forEach(function (ring) {
+          before += ring.length;
+          var reduced = rdpClosed(ring, REGION_OUTLINE_RDP_EPS);
+          after += reduced.length;
+          simplified.push(reduced);
+        });
+        return {
+          id: entry.id,
+          color: entry.color || REGION_FALLBACK_COLOR,
+          alpha: entry.alpha === undefined || entry.alpha === null ? 1 : entry.alpha,
+          rings: simplified,
+        };
+      });
+      outlineVerticesBefore = before;
+      outlineVerticesAfter = after;
+      scheduleRender();
+    }
+
+    /** 区域边界描边（M8-R §八）：只画区域边界、简化后的闭合环；**绝无逐格 stroke**。 */
+    function paintRegionOutlines(targetCtx) {
+      if (!regionOutlines.length) {
+        return;
+      }
+      regionOutlines.forEach(function (outline) {
+        if (!outline.rings.length) {
+          return;
+        }
+        targetCtx.beginPath();
+        outline.rings.forEach(function (ring) {
           for (var i = 0; i < ring.length; i++) {
             var x = ring[i].x * cellSize;
             var y = ring[i].y * cellSize;
             if (i === 0) {
-              bordersPath.moveTo(x, y);
+              targetCtx.moveTo(x, y);
             } else {
-              bordersPath.lineTo(x, y);
+              targetCtx.lineTo(x, y);
             }
           }
-          bordersPath.closePath();
+          targetCtx.closePath();
         });
+        targetCtx.strokeStyle = withAlpha(outline.color, outline.alpha);
+        targetCtx.lineWidth = 2 / view.scale;
+        targetCtx.stroke();
       });
-      bordersDirty = false;
-    }
-
-    function paintBorders(targetCtx) {
-      if (!bordersPath || bordersDirty) {
-        rebuildBordersPath();
-      }
-      targetCtx.strokeStyle = "#0d1015";
-      targetCtx.lineWidth = 1 / view.scale;
-      targetCtx.stroke(bordersPath);
     }
 
     function worldTransform() {
@@ -839,14 +1010,11 @@
         paintTerrain(ctx);
       }
       paintHighlights(ctx);
+      paintRegionOutlines(ctx);
       paintDraft(ctx);
       paintLasso(ctx);
       paintBoundaryDots(ctx);
       paintBrush(ctx);
-      if (cellSize * view.scale >= perfConfig.borderMinScreenPx) {
-        borderDraws += 1;
-        paintBorders(ctx);
-      }
       paintLeftover();
 
       drawRoutes();
@@ -1309,8 +1477,6 @@
         canvas.style.cursor = "crosshair";
       } else if (dragging || dotDrag) {
         canvas.style.cursor = "grabbing";
-      } else if (paintEnabled()) {
-        canvas.style.cursor = "crosshair";
       } else if (mode === "region") {
         canvas.style.cursor = "pointer";
       } else {
@@ -1318,11 +1484,24 @@
       }
     }
 
+    /** 开始一次"画/擦"（地形刷 或 区域 Shift+右键逐格）：收集预览格，松手由 onPaintCommit 落一条命令。 */
+    function beginPaint(event) {
+      painting = true;
+      capturePointer(event.pointerId);
+      paintAt(canvasPoint(event));
+      updateCursor();
+    }
+
     function onPointerDown(event) {
-      // ★ M8-R：右键在区域编辑模式 = 自由套索（启动 flood fill 创建）；其它模式放行给 contextmenu 宿主分派。
+      // ★ §七 右键按模式分派：区域编辑=套索（Shift+右键=逐格画擦）；地图编辑=刷地形；
+      //   常规 / 单位移动编辑 ⇒ 放行给 contextmenu 宿主（unit.PlanRoute，不许变）。
       if (event.button === 2) {
-        if (regionEditEnabled()) {
+        if (mode === "region-edit") {
           event.preventDefault();
+          if (event.shiftKey) {
+            beginPaint(event);
+            return;
+          }
           lassoActive = true;
           lassoKeys = {};
           lassoOrder = [];
@@ -1333,14 +1512,20 @@
           }
           updateCursor();
           scheduleRender();
+          return;
+        }
+        if (mode === "map-edit") {
+          event.preventDefault();
+          beginPaint(event);
         }
         return;
       }
       if (event.button !== 0) {
         return;
       }
-      // ★ 边界小点优先于"左键画格"：命中正在编辑区域的边界格 ⇒ 进入拖点。
-      if (regionEditEnabled()) {
+      // ★ §七：左键在所有编辑模式统一为"平移地图"（永不误改）；唯一例外是抓住编辑手柄——
+      //   区域编辑下命中边界小点 ⇒ 拖点（不是平移）。
+      if (mode === "region-edit") {
         var dot = boundaryDotAt(canvasPoint(event));
         if (dot) {
           dotDrag = dot;
@@ -1349,13 +1534,6 @@
           updateCursor();
           return;
         }
-      }
-      if (paintEnabled()) {
-        painting = true;
-        capturePointer(event.pointerId);
-        paintAt(canvasPoint(event));
-        updateCursor();
-        return;
       }
       dragging = true;
       dragMoved = false;
@@ -1395,7 +1573,7 @@
         return;
       }
       var pick = pickAt(canvasPoint(event));
-      canvas.style.cursor = pick.kind === "unit" ? "pointer" : paintEnabled() ? "crosshair" : mode === "region" ? "pointer" : "grab";
+      canvas.style.cursor = pick.kind === "unit" ? "pointer" : mode === "region" ? "pointer" : "grab";
       canvas.title = pick.kind === "unit" ? app.text(pick.name) : "";
     }
 
@@ -1574,9 +1752,13 @@
         isWorkbench: isWorkbench,
         terrainRebuilds: terrainRebuilds,
         terrainBlits: terrainBlits,
-        borderDraws: borderDraws,
         legendScans: legendScans,
-        borderScreenPx: cellSize * view.scale,
+        regionOutlineCount: regionOutlines.length,
+        outlineRingCount: regionOutlines.reduce(function (sum, outline) {
+          return sum + outline.rings.length;
+        }, 0),
+        outlineVerticesBefore: outlineVerticesBefore,
+        outlineVerticesAfter: outlineVerticesAfter,
         terrainMode: perfConfig.terrainMode,
         routeCount: routes.length,
         routes: routes.map(function (route) {
@@ -1666,20 +1848,6 @@
       return out;
     }
 
-    function benchBorderVariants(n) {
-      if (!overview) {
-        return null;
-      }
-      var out = { blocks: [] };
-      for (var i = 0; i < n; i++) {
-        worldTransform();
-        var t0 = performance.now();
-        paintBorders(ctx);
-        out.blocks.push(performance.now() - t0);
-      }
-      return out;
-    }
-
     function benchChunkSweep(n) {
       return benchTerrainVariants(n);
     }
@@ -1694,7 +1862,6 @@
     return {
       benchStages: benchStages,
       benchTerrainVariants: benchTerrainVariants,
-      benchBorderVariants: benchBorderVariants,
       benchChunkSweep: benchChunkSweep,
       perfConfig: perfConfig,
       canvas: canvas,
@@ -1709,7 +1876,13 @@
       setBrushOp: setBrushOp,
       setDraftHexes: setDraftHexes,
       draftHexes: draftList,
+      setRegionOutlines: setRegionOutlines,
       setFocusHexes: setFocusHexes,
+      regionOutlineRings: function () {
+        return regionOutlines.map(function (outline) {
+          return { id: outline.id, rings: outline.rings };
+        });
+      },
       clearFocusHexes: clearFocusHexes,
       focusHexes: focusHexList,
       focusBoundary: focusBoundaryList,
@@ -1884,17 +2057,21 @@
     var ids = app.getState().highlightRegions || [];
     if (!ids.length) {
       active.setHighlightHexes([]);
+      active.setRegionOutlines([]);
       return;
     }
     var entries = [];
+    var outlines = [];
     for (var i = 0; i < ids.length; i++) {
       var region = await fetchRegionCached(ids[i]);
       var color = regionColor(region.meta);
       (region.hexes || []).forEach(function (h) {
         entries.push({ key: h.q + "_" + h.r, color: color });
       });
+      outlines.push({ id: ids[i], color: color, alpha: 1, hexes: region.hexes || [] });
     }
     active.setHighlightHexes(entries);
+    active.setRegionOutlines(outlines);
   }
 
   /** 与中性灰混合 ⇒ "淡色"（M8 T10：编辑中其它区域淡出，焦点区域保持原色）。 */
@@ -1942,6 +2119,7 @@
       }
     });
     var entries = [];
+    var outlines = [];
     var faded = [];
     for (var i = 0; i < ordered.length; i++) {
       var region = ordered[i];
@@ -1959,12 +2137,20 @@
       (detail.hexes || []).forEach(function (h) {
         entries.push({ key: h.q + "_" + h.r, color: color, alpha: alpha });
       });
+      // ★ §八：边框只画区域边界（简化的闭合环）；焦点实、其它淡。
+      outlines.push({
+        id: region.id,
+        color: color,
+        alpha: isFocus ? 1 : 0.45,
+        hexes: detail.hexes || [],
+      });
     }
     if (app.getState().mode !== "region-edit") {
       return;
     }
     host.regionFaded = faded;
     active.setHighlightHexes(entries);
+    active.setRegionOutlines(outlines);
   }
 
 
@@ -2188,12 +2374,12 @@
     if (host.brushTerrain === key) {
       host.brushTerrain = null;
       updatePaletteSelection();
-      setMapEditStatus("已取消地形选择：左键恢复为选中/平移。", "muted");
+      setMapEditStatus("已取消地形选择：左键恢复为平移/选中。", "muted");
       return;
     }
     host.brushTerrain = key;
     updatePaletteSelection();
-    setMapEditStatus("已选地形 " + key + "：按住左键在地图上拖动涂抹，松手提交一条命令。", "ok");
+    setMapEditStatus("已选地形 " + key + "：右键在地图上拖动涂抹（多格 ⇒ 一条 map.SetTerrain）；左键=平移。", "ok");
   }
 
   function updatePaletteSelection() {
@@ -2496,7 +2682,7 @@
     renderRegionEditor();
     reloadRegionEditHighlight();
     setRegionEditStatus(
-      "★ 右键在地图上拖动圈出闭合套索 ⇒ 直接创建区域（flood fill 内部）；左键拖动=临时选区（供合并/剔除）。重叠不报错。",
+      "★ 右键拖动=套索创建（flood fill 内部）；Shift+右键拖动=逐格画/擦（临时选区，供合并/剔除）；左键拖动=平移。重叠不报错。",
       "muted"
     );
   }
@@ -2524,7 +2710,7 @@
     return regionDraftList();
   }
 
-  /** 左键拖刷松手：把涂抹的格按当前操作并入/移出**临时选区**（**不发写**，选区只是编辑草稿）。 */
+  /** Shift+右键逐格画/擦松手：把涂抹的格按当前操作并入/移出**临时选区**（**不发写**，选区只是编辑草稿）。 */
   function commitRegionPaint(painted) {
     if (app.getState().mode !== "region-edit") {
       return null;
@@ -2845,7 +3031,7 @@
         return;
       }
       setRegionEditStatus(
-        "已选中 " + focus + "（" + (region.hexes || []).length + " 格）：边界小点可拖动增删；左键拖动=临时选区，右键拖动=套索新建。",
+        "已选中 " + focus + "（" + (region.hexes || []).length + " 格）：边界小点可拖动增删；右键拖动=套索，Shift+右键拖动=逐格画擦，左键拖动=平移。",
         "muted"
       );
     });
@@ -3037,9 +3223,10 @@
    * 更不发任何写请求——只读模式不得被污染，R8）。
    */
   function handleContextMenu(pick) {
-    // ★ M8-R 判据 7：区域编辑模式的右键 = 自由套索（由 pointer 事件消费）——这里只抑制原生菜单、
-    //   绝不落到 unit.PlanRoute，也不改选中态。常规 / 单位移动编辑的右键行为**不变**。
-    if (app.getState().mode === "region-edit") {
+    // ★ §七 判据 7：区域编辑（套索/逐格）与地图编辑（刷地形）的右键由 pointer 事件消费——
+    //   这里只抑制原生菜单，绝不落到 unit.PlanRoute，也不改选中态。常规 / 单位移动编辑的右键行为**不变**。
+    var contextMode = app.getState().mode;
+    if (contextMode === "region-edit" || contextMode === "map-edit") {
       return true;
     }
     // ★ M7e T1（用户原话）：右键点**空白/图外/无格** ⇒ 取消选中；**不发任何写、不清路线**（路线归左键取消）。
@@ -3374,7 +3561,6 @@
     window.SimosMap.resetView = renderer.fit;
     window.SimosMap.benchStages = renderer.benchStages;
     window.SimosMap.benchTerrainVariants = renderer.benchTerrainVariants;
-    window.SimosMap.benchBorderVariants = renderer.benchBorderVariants;
     window.SimosMap.benchChunkSweep = renderer.benchChunkSweep;
     window.SimosMap.perfConfig = renderer.perfConfig;
     window.SimosMap.computeFit = renderer.computeFit;
@@ -3450,24 +3636,7 @@
       isWorkbench: isWorkbench,
       onSelect: isWorkbench ? workbenchSelect : oldPageSelect,
       onContextMenu: isWorkbench ? handleContextMenu : undefined,
-      // ★ M8-R：区域编辑**没有**"进入绘制模式"的开关——左键一律画格（擦除由「选区操作」选）。
-      paintEnabled: isWorkbench
-        ? function () {
-            var mode = app.getState().mode;
-            if (mode === "map-edit") {
-              return !!host.brushTerrain;
-            }
-            if (mode === "region-edit") {
-              return true;
-            }
-            return false;
-          }
-        : undefined,
-      regionEditEnabled: isWorkbench
-        ? function () {
-            return app.getState().mode === "region-edit";
-          }
-        : undefined,
+      // ★ §七：刷写不再由左键触发（左键恒为平移）；右键（区域 Shift+右键 / 地形）由 onPaintCommit 落一条命令。
       onPaintCommit: isWorkbench
         ? function (hexes) {
             if (app.getState().mode === "region-edit") {
@@ -3627,6 +3796,9 @@
     },
     focusBoundaryForTest: function () {
       return active && active.focusBoundary ? active.focusBoundary() : [];
+    },
+    regionOutlineRingsForTest: function () {
+      return active && active.regionOutlineRings ? active.regionOutlineRings() : [];
     },
   };
 

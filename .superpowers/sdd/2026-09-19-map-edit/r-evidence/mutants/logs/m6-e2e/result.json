@@ -229,18 +229,18 @@
     },
     "after": {
       "scale": 1,
-      "tx": 524.4410901706327,
-      "ty": 888
+      "tx": 404.4410901706327,
+      "ty": 808
     },
-    "moved": true,
-    "writes": 0
+    "moved": false,
+    "writes": 1
   },
   "terrainRightBrush": {
     "posts": 1,
     "hexCount": 6,
     "terrain": "ocean",
-    "headBefore": 10,
-    "headAfter": 11
+    "headBefore": 11,
+    "headAfter": 12
   },
   "leftPanAllModes": [
     {
@@ -257,9 +257,15 @@
     },
     {
       "mode": "map-edit",
-      "txChanged": true,
-      "tyChanged": true,
-      "nonGet": []
+      "txChanged": false,
+      "tyChanged": false,
+      "nonGet": [
+        {
+          "method": "POST",
+          "path": "/api/command",
+          "type": "map.SetTerrain"
+        }
+      ]
     },
     {
       "mode": "region-edit",
@@ -405,15 +411,21 @@
     },
     {
       "phase": "J9-terrain-left-pan",
-      "types": [],
-      "paths": []
-    },
-    {
-      "phase": "J9b-terrain-right-brush",
       "types": [
         "map.SetTerrain"
       ],
       "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "J9b-terrain-right-brush",
+      "types": [
+        "map.SetTerrain",
+        "map.SetTerrain"
+      ],
+      "paths": [
+        "/api/command",
         "/api/command"
       ]
     },

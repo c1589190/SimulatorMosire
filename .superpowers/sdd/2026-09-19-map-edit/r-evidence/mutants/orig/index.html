@@ -89,7 +89,7 @@
           <h3>地形调色板</h3>
           <p id="terrain-palette-status" class="status muted">载入地形词表…</p>
           <div id="terrain-palette" class="terrain-palette" role="group" aria-label="地形调色板"></div>
-          <p id="brush-status" class="status muted">选一种地形后，按住左键在地图上拖动涂抹；松手提交一条 map.SetTerrain。</p>
+          <p id="brush-status" class="status muted">选一种地形后，<b>右键</b>在地图上拖动涂抹；松手提交一条 map.SetTerrain（多格合成一条）。<b>左键=平移地图</b>。</p>
           <div class="map-edit-pending">
             <button type="button" disabled data-pending="map.SetEdge" title="白名单已放行；UI 归 T11">河流/道路（归 T11）</button>
             <button type="button" disabled data-pending="map.RandomizeRegion" title="白名单已放行；UI 归 T11">圈选随机化（归 T11）</button>
@@ -98,12 +98,12 @@
 
         <section class="region-editor" data-modes="region-edit" aria-label="区域编辑">
           <h3>区域编辑</h3>
-          <p id="region-edit-status" class="status muted">右键在地图上拖动圈出闭合套索即可新建区域；左键拖动=临时选区（供合并/剔除）。重叠是正常状态，不会被拒绝。</p>
+          <p id="region-edit-status" class="status muted"><b>右键拖动</b>=套索创建；<b>Shift+右键拖动</b>=逐格画/擦（临时选区，供合并/剔除）；<b>左键拖动</b>=平移地图。重叠是正常状态，不会被拒绝。</p>
           <div class="region-edit-row">
             <button type="button" id="region-edit-new">新建区域</button>
             <select id="region-edit-op" aria-label="选区操作">
-              <option value="add">左键加入选区</option>
-              <option value="remove">左键移除选区</option>
+              <option value="add">Shift+右键加入选区</option>
+              <option value="remove">Shift+右键移除选区</option>
             </select>
             <button type="button" id="region-edit-clear">清空选区</button>
           </div>

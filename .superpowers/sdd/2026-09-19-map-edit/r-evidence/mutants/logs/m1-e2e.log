@@ -1,6 +1,6 @@
-webui_synced map.js_md5=5c1b90ff1b2fefd783626ddf3ada849f
+webui_synced map.js_md5=567304a4111e1fc3cd86d9679cbd9fd9
 store_src_md5_before=2348b9365e5b107945a305d06fad8fab
-server_ready_tries=3 code=200 pid=464247
+server_ready_tries=3 code=200 pid=476162
 STEP pre-real-archive: PASS {"hexCount":19441,"regions":["test_annex_target","test_nation"],"blockCount":44}
 STEP pre-m9-blocks: PASS {"blockCount":44,"unmergedCount":0}
 STEP f1-no-draw-toggle-no-checkbox: PASS {"mode":"region-edit","drawTogglePresent":false,"checkboxesInSection":0,"whitelist":{"create":true,"update":true,"del":true,"terrain":false}}

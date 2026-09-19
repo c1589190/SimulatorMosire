@@ -145,3 +145,87 @@ H-delete                    : ["map.DeleteRegion"]
     ├── orig/                        ← 原件快照（还原源）
     └── logs/m1~m5-{e2e.log,server.log,syntax.log,e2e/result.json}
 ```
+
+---
+
+# 修正一（spec §七 统一按键模型）+ 修正二（spec §八 边框与区域边界）
+
+- 仍纯前端两文件（`map.js`、`index.html`），**零 Java 改动**、无依赖/npm/CDN。
+- 门禁：`./mvnw clean verify` 绿（rc=0）：**924 = 170/321/45/131/161/96**、7/7 模块、`BugInstance size is 0` ×6、`[ERROR]` 0 ⇒ **delta 0**。日志 `logs/full-verify-final2.log`。
+- e2e：真档 19441 格副本 + 真 ShellMain + 真 pointer，**ALL PASS**（`logs/clean-final/result.json`）；源档 md5 写前=写后=`2348b936…`。
+
+## 九 §七 统一按键模型（实测）
+
+| 判据 | 实测值 |
+|---|---|
+| **⑨ 地形编辑左键拖动 ⇒ 零写 + 平移** | 视图 `tx 404.44→524.44、ty 808→888`（确实平移）；该阶段 **0 条写命令** |
+| **⑨b 地形编辑右键拖动 ⇒ 一条 `map.SetTerrain`** | **恰 1 条**、`hexes=6`、`terrain=ocean`、`head 10→11` |
+| **⑩ 所有模式左键拖动 ⇒ 无非 GET** | `[view, region, map-edit, region-edit, unit]` 五模式各 `nonGet=0` 且 `tx/ty` 均改变（打印 `LEFT_PAN_ALL_MODES`） |
+| **⑩b Shift+右键逐格画 ⇒ 一条 `UpdateRegion` 改一格、不落套索** | 单击一格后 `draftHexCount=1`、`lassoActive=false`、0 条写 / 0 条 `CreateRegion`；再「合并」⇒ **1 条 `UpdateRegion`**、payload **20** == 期望 **20**（仅 +该格） |
+
+- 按键分派落点：`map.js:1494`（`onPointerDown` 右键：`region-edit` = 套索 / Shift+右键 = `beginPaint`；`map-edit` = `beginPaint`）；左键 = 平移（唯一例外：`region-edit` 命中边界小点 ⇒ 拖点，`map.js:1527`）。
+- `handleContextMenu`（`map.js:3225`）：`region-edit`/`map-edit` 右键一律 `return true`（抑制原生菜单、绝不落 `unit.PlanRoute`）；常规/单位移动编辑**不变**。
+- 勾选框（旧 `#region-edit-draw` 开关）**已删**；`index.html` 文案更新为「左键=平移 / 右键=套索 / Shift+右键=逐格」。
+
+## 十 ★ T13 冲突的查证结论（§八.2）
+
+**先查清再改**，结论：**T13 的声称成立，但它说的是"地形块边界"层；用户看到的"每个 hex 边框"来自另一个层——区域高亮的填充缝。两者并不冲突（不是同一层）。** 证据如下：
+
+| 层 | 实现 | 是否逐格 | 证据 |
+|---|---|---|---|
+| **地形块边界层**（旧 `paintBorders`，`map.js` 改前 `rebuildBordersPath`/`paintBorders`） | 逐 `block.boundaries` 环拼**一条 `Path2D`**，一次 `stroke` | **否**（合并的块环） | T13 声称正确；`l2` 探针：该层存在时 `path2dStrokes>0`。它画出的正是用户说的「**地形区之间有黑色的间隔**」（`#0d1015`） |
+| **区域高亮填充层**（旧 `paintHighlights`，`radius = cellSize * 0.98`） | 每个 hex 以 `0.98×cellSize` 填充 | **不描边，但留缝** | ★ **用户看到的"区域中每一个 hex 都有边框"就是这些填充缝**：hex 满格半径是 `cellSize`，缩到 0.98 后相邻格之间留下 ~2% 的缝，露出底色 ⇒ 看起来每格都有黑边。**改回 `cellSize`（`map.js:673`）即消失** |
+| **选区预览层**（旧 `paintDraft`/`paintBrush`） | 逐格 `addHexPath` + 一次 `stroke` | **是（逐格描边）** | ★ 这是**唯一真正的"逐格 stroke"**；M8-R 已把焦点区自动载入 draft 的旧行为去掉，本轮又把这两层的 `stroke` 删除（改为纯填充，`map.js:700/717`） |
+
+⇒ **"两者不可能同时为真"由分层解释消解**：T13 说块边界（真）；用户说区域每格有边（真，但那是填充缝 + 旧的 draft 逐格描边）。**T13 的声称没有错，只是没有覆盖区域高亮层**。已在代码里就地记账（`map.js:667-673` 注释）。
+
+## 十一 §八 边框与区域边界（实测）
+
+| 判据 | 实测值 |
+|---|---|
+| **⑪ 无逐格 / 无块边界 stroke** | `__strokeStats()`（包 `CanvasRenderingContext2D.stroke`）：`sto​​kes=9, maxLineToPerStroke=20, path2dStrokes=0`（最大者=简化后的区域边界环 20 段；**无** 6×N 的逐格描边、**无** Path2D 块边界） |
+| **⑫ 区域边界简化 + 仍闭合/包住** | **顶点数 378 → 43**（−88.6%）；`focusRingCount=1`、`ringCount=3`；对焦点区 20 个 hex 中心做 even‑odd 点在环内判定 ⇒ **全部 `enclosed=true`** |
+| **⑬ 地形块之间无黑线** | 取相邻异地形格 `(-19,1)=low_hills` 与 `(-18,1)=plains`，在格心中点 ±8px 窗口采样 **最小亮度 171.4**（无近黑像素；阈值 >40）；对照变异 m8 恢复边框层时该值会骤降（`l3` 红） |
+
+- 实现：`regionBoundaryRings`（`map.js:787`，逐 hex 格边，内部边成对抵消 ⇒ 边界环，多环/带洞）→ `rdpOpen`/`rdpClosed`（`map.js:874/911`，RDP）→ `setRegionOutlines`（`map.js:935`）→ `paintRegionOutlines`（`map.js:960`，一条 path 描所有环，`lineWidth=2/scale`）。RDP `eps=0.5`（`map.js:63`；经独立脚本标定：0.32 不压、1.4 会切出区域外，0.5 在压缩率与包住之间取平衡）。
+- **逐格网格线全删**：旧 `paintBorders`（块边界）整个删除（连同 `bordersDirty`/`borderDraws`/`benchBorderVariants`），渲染不再调用；`paintDraft`/`paintBrush` 的逐格 `stroke` 也已删除（只填充）。
+- **区域填充无缝**：`paintHighlights` 半径 `0.98·cellSize → cellSize`。
+- 前后截图差异（`clean-5` 旧 vs `clean-final` 新，同状态同视口 1280×800）：**18,854 像素通道差 >30、6,757 像素 >60**，最大通道差 234 ⇒ 肉眼可见的边框/缝确已改变。
+
+## 十二 变异 m6~m9（全部被杀，0 存活；含 m1~m5 重跑）
+
+| m | 护栏 | 变异 | 期望红 | 实测红点 | 结果 |
+|---|---|---|---|---|---|
+| m6 | 地形编辑左键=平移 | 左键仍刷地形 | ⑨ 红 | `k1-terrain-left-pans-zero-write` + `k3` | **KILLED** |
+| m7 | Shift+右键=逐格画 | 去掉 Shift 分支（落到套索） | ⑩b 红 | `f3` / `k4` / `k5`（+连带 `h2`） | **KILLED** |
+| m8 | 无逐格/块边界描边 | 恢复旧边框层（Path2D 块边界） | ⑪+⑬ 红 | `l2-no-per-hex-or-path2d-stroke`（`path2dStrokes>0`）+ `l3`（黑线） | **KILLED** |
+| m9 | 区域边界 RDP 简化 | 关掉简化（eps=0） | ⑫ 红 | `l1-outline-simplified-and-enclosing`（43→378） | **KILLED** |
+| m1~m5 | （同上一节） | 重叠拒绝 / 右键误分派 / 不清焦点 / 合并=交集 / 剔除=并集 | — | 见上节 | **全部 KILLED** |
+
+- 9/9 轮：`orig_md5 == restored_md5 == restored_classes_md5 == 140a0a9e7119c0d55a2a629662e6ff73`；`orig_aggregate_md5 == restored_aggregate_md5 == abd08474adf750453b5e1353e6a6775b`（**非空且逐字节相同**）。
+- **m7 首轮曾 `e2e_rc=2`（崩溃）而非 `rc=1`**：变异令 `#region-create-submit` 在空选区下被服务端拒 ⇒ 后续 `waitForSelector('[data-region-id="m8r_btn"]')` 超时。已把该步改为**容错**（缺 `m8r_btn` ⇒ 如实记 `h2` FAIL，不崩），第二轮起 m7 稳定 `rc=1`。**这是装置缺陷、非护栏问题**，如实记账。
+
+## 十三 与 spec / 派单的矛盾（以 spec 原文/源码为准）
+
+1. **"每个 hex 都有边框"不是 stroke**：派单 §八.2 把它列为"逐格描边"候选之一；实测它是**区域高亮 `0.98·cellSize` 的填充缝**（另加旧 `paintDraft` 的逐格描边，M8-R 已去）。T13 的"一条 Path2D、不逐格"**没错**——它管的是**地形块边界层**。
+2. **`#region-edit-draw` 是按钮不是 checkbox**（重申上一节 §五-2）。
+3. **"Shift+右键逐格画能改单个格（一条 UpdateRegion）"**：§七.1 把 Shift+右键定义为"逐格画/擦"（编辑**选区**，与旧左键同语义），它本身**不发写**；要落成 `UpdateRegion` 需再点合并/保存。本单按此实现，并用「Shift+右键写一格 ⇒ 合并 ⇒ 1 条 `UpdateRegion` 恰好改一格」满足判据 ⑩b 的字面要求。
+4. **左键"永不误改"的唯一例外**：`region-edit` 下左键**命中边界小点**仍是拖点（编辑手柄，非平移）——spec §七 未重定义拖点手势，保留 GSimulator 习惯；已在报告标注为**有意例外**（需精确命中手柄，非手抖可触发）。
+
+## 十四 §修正的"我未能核实的"
+
+- **区域边界 RDP 的包住性**：只对**本次运行的真实区域（20 格，含一个并入格）**做了 20 个 hex 中心的 even‑odd 判定（全过）。**带洞/多连通/凹形大区域**未逐一构造验证（算法按逐 hex 格边生成，理论上对洞环也成立）。
+- **RDP `eps=0.5` 的普适性**：在一个半径 2 圆盘上标定（0.4/0.5/0.6 → 12/8/7 顶点，均包住；1.4 越界），**未在大陆尺度区域上标定**。
+- **`maxLineToPerStroke<=300` 阈值**：实测 clean 为 20（简化后环），m8 为 Path2D（不计 lineTo）故用 `path2dStrokes` 抓；**未构造"6×N 逐格 stroke"的 ctx 版变异**去直接压这个阈值（当前靠 Path2D 计数 + m8 的像素黑线）。
+- **`getImageData` 采样**在 dpr>1 下的坐标换算未测（clean 轮 dpr=1）。
+- 前端护栏仍**不进 Maven 门禁**（本树无 `exec-maven-plugin`/`node --test`）——§七/§八 的判据全靠 e2e 证据级装置。
+
+## 十五 §修正的"实测 vs 推断"
+
+| 项 | 实测 | 推断（未测） |
+|---|---|---|
+| 左键平移 | 五模式 `tx/ty` 均变、`nonGet=0`；地形左键 `writes=0` | 触摸/触控笔 |
+| 右键分派 | 地形右键 1 条 `SetTerrain`(6 格)；区域右键 0 `mapPath`/0 PlanRoute；Shift+右键 1 格 ⇒ 1 `UpdateRegion` | —— |
+| 边界简化 | **378→43** 顶点、包住 20/20；m9 变异回 378 | 大区域/带洞的压缩率与包住 |
+| 无逐格/块描边 | `path2dStrokes=0`、`maxLineTo=20`；m8 变异 ⇒ `l2/l3` 红（黑线 min 亮度骤降） | 更多地形组合的像素采样 |
+| 原档 | 源副本 md5 写前=写后=`2348b936…` | —— |

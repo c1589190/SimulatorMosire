@@ -292,7 +292,7 @@
   },
   "outline": {
     "verticesBefore": 378,
-    "verticesAfter": 43,
+    "verticesAfter": 378,
     "ringCount": 3,
     "focusRingCount": 1,
     "enclosed": true,
@@ -300,7 +300,7 @@
   },
   "strokeProbe": {
     "strokes": 9,
-    "maxLineToPerStroke": 20,
+    "maxLineToPerStroke": 245,
     "path2dStrokes": 0
   },
   "terrainBorder": {

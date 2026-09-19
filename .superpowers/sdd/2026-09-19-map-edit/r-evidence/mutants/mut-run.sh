@@ -67,7 +67,8 @@ PY
     python3 - "$FILE" <<'PY'
 import sys
 p=sys.argv[1]; s=open(p).read()
-old1='''    if (app.getState().mode === "region-edit") {
+old1='''    var contextMode = app.getState().mode;
+    if (contextMode === "region-edit" || contextMode === "map-edit") {
       return true;
     }
 '''
@@ -126,6 +127,78 @@ new='''    var base = await fetchRegionCached(id);
       setRegionEditStatus("差集为空（会清空 " + id + "，服务端拒绝空 hexes），未发命令。", "warn");'''
 assert s.count(old)==1, "m5 anchor not unique"
 open(p,'w').write(s.replace(old,new))
+PY
+    ;;
+  m6)
+    # 护栏：地形编辑左键=平移（零写）⇒ 变异：左键仍刷地形（开始 painting）。
+    python3 - "$FILE" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old='''      if (event.button !== 0) {
+        return;
+      }
+      // ★ §七：左键在所有编辑模式统一为"平移地图"'''
+new='''      if (event.button !== 0) {
+        return;
+      }
+      if (mode === "map-edit") {
+        beginPaint(event);
+        return;
+      }
+      // ★ §七：左键在所有编辑模式统一为"平移地图"'''
+assert s.count(old)==1, "m6 anchor not unique"
+open(p,'w').write(s.replace(old,new))
+PY
+    ;;
+  m7)
+    # 护栏：Shift+右键=逐格画 ⇒ 变异：Shift 分支未实现（落到套索）。
+    python3 - "$FILE" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old='''          if (event.shiftKey) {
+            beginPaint(event);
+            return;
+          }
+'''
+assert s.count(old)==1, "m7 anchor not unique"
+open(p,'w').write(s.replace(old,'          /* mutant m7: Shift+右键未实现，落回套索 */\n'))
+PY
+    ;;
+  m8)
+    # 护栏：不再有逐格/块边界描边 ⇒ 变异：恢复旧边框层（Path2D 块边界 + 黑线）。
+    python3 - "$FILE" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old='''      paintHighlights(ctx);
+      paintRegionOutlines(ctx);'''
+new='''      paintHighlights(ctx);
+      var __mutBorder = new Path2D();
+      blocks.forEach(function (block) {
+        (block.boundaries || []).forEach(function (ring) {
+          for (var __i = 0; __i < ring.length; __i++) {
+            var __x = ring[__i].x * cellSize;
+            var __y = ring[__i].y * cellSize;
+            if (__i === 0) { __mutBorder.moveTo(__x, __y); } else { __mutBorder.lineTo(__x, __y); }
+          }
+          __mutBorder.closePath();
+        });
+      });
+      ctx.strokeStyle = "#0d1015";
+      ctx.lineWidth = 1 / view.scale;
+      ctx.stroke(__mutBorder);
+      paintRegionOutlines(ctx);'''
+assert s.count(old)==1, "m8 anchor not unique"
+open(p,'w').write(s.replace(old,new))
+PY
+    ;;
+  m9)
+    # 护栏：区域边界 RDP 简化 ⇒ 变异：关掉简化（eps=0 ⇒ 回到逐 hex 台阶）。
+    python3 - "$FILE" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old='var REGION_OUTLINE_RDP_EPS = 0.5;'
+assert s.count(old)==1, "m9 anchor not unique"
+open(p,'w').write(s.replace(old,'var REGION_OUTLINE_RDP_EPS = 0;'))
 PY
     ;;
   *) echo "unknown mutation $ID"; exit 1 ;;

@@ -117,6 +117,15 @@ async function screenPoints(page, points) {
   return page.evaluate((list) => list.map((h) => window.SimosMap.screenPointOf(h.q, h.r)), points);
 }
 
+// 左键拖动（平移）：从 (from→to) 屏幕点拖 30 步。返回是否发生位移由调用方读 currentView 判断。
+async function leftDrag(page, box, from, to) {
+  await page.mouse.move(box.x + from.x, box.y + from.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 30 });
+  await page.mouse.up();
+  await sleep(150);
+}
+
 // ★ 独立 flood（e2e 自己实现，不复用 map.js 的 finishLasso）——输入套索墙，输出 内部∪墙。
 async function independentFlood(page, wallCells) {
   return page.evaluate((cells) => {
@@ -229,6 +238,44 @@ function regionHexesFromApi(id) {
   function markPhase(name) {
     phaseStarts[name] = nonGet.length;
   }
+
+  // ★ §八 判据 11 的外部探针：包住 CanvasRenderingContext2D.stroke，统计每次 render 的
+  //   "最大 lineTo 数 / 单次 stroke"（逐格 stroke ⇒ 6×N）以及 **Path2D 描边次数**（旧块边界层）。
+  await page.addInitScript(() => {
+    const P = CanvasRenderingContext2D.prototype;
+    const origBegin = P.beginPath;
+    const origLine = P.lineTo;
+    const origStroke = P.stroke;
+    let lineTos = 0;
+    let maxLine = 0;
+    let strokes = 0;
+    let path2dStrokes = 0;
+    P.beginPath = function () {
+      lineTos = 0;
+      return origBegin.apply(this, arguments);
+    };
+    P.lineTo = function () {
+      lineTos += 1;
+      return origLine.apply(this, arguments);
+    };
+    P.stroke = function (pathArg) {
+      strokes += 1;
+      if (lineTos > maxLine) {
+        maxLine = lineTos;
+      }
+      if (typeof Path2D !== "undefined" && pathArg instanceof Path2D) {
+        path2dStrokes += 1;
+      }
+      return origStroke.apply(this, arguments);
+    };
+    window.__strokeStats = () => ({ strokes: strokes, maxLineToPerStroke: maxLine, path2dStrokes: path2dStrokes });
+    window.__strokeReset = () => {
+      strokes = 0;
+      maxLine = 0;
+      path2dStrokes = 0;
+      lineTos = 0;
+    };
+  });
 
   await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.SimosMap && window.SimosMap.isReady && window.SimosMap.isReady(), null, {
@@ -751,18 +798,20 @@ function regionHexesFromApi(id) {
   const draftBefore = await page.evaluate(() => window.SimosMap.regionEditDebug().draftHexCount);
   markPhase("F-leftpaint");
   const paintPts = await screenPoints(page, paintCells);
+  await page.keyboard.down("Shift");
   await page.mouse.move(canvasBox.x + paintPts[0].x, canvasBox.y + paintPts[0].y);
-  await page.mouse.down();
+  await page.mouse.down({ button: "right" });
   await page.mouse.move(canvasBox.x + paintPts[1].x, canvasBox.y + paintPts[1].y, { steps: 8 });
-  await page.mouse.up();
+  await page.mouse.up({ button: "right" });
+  await page.keyboard.up("Shift");
   await sleep(400);
   const draftAfter = await page.evaluate(() => window.SimosMap.regionEditDebug().draftHexCount);
   const paintWrites = nonGet.slice(phaseStarts["F-leftpaint"]).filter((r) => r.path === "/api/command").length;
-  values.leftPaint = { draftBefore: draftBefore, draftAfter: draftAfter, writesDuringPaint: paintWrites };
+  values.shiftPaint = { draftBefore: draftBefore, draftAfter: draftAfter, writesDuringPaint: paintWrites };
   check(
-    "f3-left-drag-paints-draft-no-write",
+    "f3-shift-right-paints-draft-no-write",
     draftAfter > draftBefore && paintWrites === 0,
-    JSON.stringify(values.leftPaint)
+    JSON.stringify(values.shiftPaint)
   );
   await page.fill("#region-create-id", "m8r_btn");
   await page.fill("#region-create-name", "M8R Button");
@@ -884,32 +933,40 @@ function regionHexesFromApi(id) {
   // ── h 不退化：删除二次确认 / 焦点淡色 / M9 / 0 pageerror ──
   await page.click('#mode-bar button[data-mode="region-edit"]');
   await sleep(250);
-  await page.waitForSelector('[data-region-id="m8r_btn"]', { timeout: 8000 });
-  await page.click('[data-region-id="m8r_btn"]');
-  await sleep(600);
-  markPhase("H-delete");
-  await page.click("#region-delete");
-  await sleep(200);
-  const armed = await page.evaluate(() => ({
-    confirmShown: document.getElementById("region-delete-confirm").hidden === false,
-    armed: window.SimosMap.regionEditDebug().deleteArmed,
-  }));
-  const armedWrites = nonGet.slice(phaseStarts["H-delete"]).filter((r) => {
-    const body = parse(r.post) || {};
-    return r.path === "/api/command" && body.type === "map.DeleteRegion";
-  });
-  await page.click("#region-delete-yes");
-  await sleep(900);
-  const delWrites = nonGet.slice(phaseStarts["H-delete"]).filter((r) => {
-    const body = parse(r.post) || {};
-    return r.path === "/api/command" && body.type === "map.DeleteRegion";
-  });
-  values.deleteConfirm = { armed: armed, armedWrites: armedWrites.length, confirmedWrites: delWrites.length };
-  check(
-    "h2-delete-confirm-two-step",
-    armed.confirmShown === true && armed.armed === true && armedWrites.length === 0 && delWrites.length === 1,
-    JSON.stringify(values.deleteConfirm)
-  );
+  // ★ 前序若失败（如 m7 让 Shift+右键不再画格 ⇒ m8r_btn 没建成），这里如实记 FAIL 而不是让 waitForSelector 崩掉 e2e。
+  const btnRegionVisible = await page
+    .waitForSelector('[data-region-id="m8r_btn"]', { timeout: 8000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!btnRegionVisible) {
+    check("h2-delete-confirm-two-step", false, "m8r_btn 未创建（前序失败），删除确认未测");
+  } else {
+    await page.click('[data-region-id="m8r_btn"]');
+    await sleep(600);
+    markPhase("H-delete");
+    await page.click("#region-delete");
+    await sleep(200);
+    const armed = await page.evaluate(() => ({
+      confirmShown: document.getElementById("region-delete-confirm").hidden === false,
+      armed: window.SimosMap.regionEditDebug().deleteArmed,
+    }));
+    const armedWrites = nonGet.slice(phaseStarts["H-delete"]).filter((r) => {
+      const body = parse(r.post) || {};
+      return r.path === "/api/command" && body.type === "map.DeleteRegion";
+    });
+    await page.click("#region-delete-yes");
+    await sleep(900);
+    const delWrites = nonGet.slice(phaseStarts["H-delete"]).filter((r) => {
+      const body = parse(r.post) || {};
+      return r.path === "/api/command" && body.type === "map.DeleteRegion";
+    });
+    values.deleteConfirm = { armed: armed, armedWrites: armedWrites.length, confirmedWrites: delWrites.length };
+    check(
+      "h2-delete-confirm-two-step",
+      armed.confirmShown === true && armed.armed === true && armedWrites.length === 0 && delWrites.length === 1,
+      JSON.stringify(values.deleteConfirm)
+    );
+  }
 
   // 焦点淡色（m8r_lasso 为焦点，其它区域淡色）
   await page.waitForSelector('[data-region-id="m8r_lasso"]', { timeout: 8000 });
@@ -960,6 +1017,308 @@ function regionHexesFromApi(id) {
 
   check("h5-no-pageerror", pageErrors.length === 0, JSON.stringify(pageErrors));
   values.pageErrors = pageErrors;
+
+  // ═══════════════ §七 统一按键模型（判据 9 / 10）═══════════════
+
+  // ⑨ 地形编辑：左键拖动 ⇒ 零写 + 视图确实平移
+  await page.click('#mode-bar button[data-mode="map-edit"]');
+  await page.waitForSelector("#terrain-palette button[data-terrain]", { timeout: 20000 });
+  await sleep(250);
+  const palKeys2 = await page.evaluate(() => window.SimosMap.mapEditDebug().paletteKeys);
+  const terrainTarget2 = palKeys2.indexOf("ocean") >= 0 ? "ocean" : palKeys2[0];
+  await page.click('#terrain-palette button[data-terrain="' + terrainTarget2 + '"]');
+  await sleep(150);
+  await centerView(page, 8, -8, 1);
+  canvasBox = await page.locator("#canvas").boundingBox();
+  const viewBefore9 = await page.evaluate(() => window.SimosMap.currentView());
+  markPhase("J9-terrain-left-pan");
+  await leftDrag(page, canvasBox, { x: 640, y: 400 }, { x: 760, y: 480 });
+  const viewAfter9 = await page.evaluate(() => window.SimosMap.currentView());
+  const writes9 = nonGet.slice(phaseStarts["J9-terrain-left-pan"]).filter((r) => r.path === "/api/command").length;
+  const panMoved9 = viewAfter9.tx !== viewBefore9.tx || viewAfter9.ty !== viewBefore9.ty;
+  values.terrainLeftPan = { before: viewBefore9, after: viewAfter9, moved: panMoved9, writes: writes9 };
+  check("k1-terrain-left-pans-zero-write", panMoved9 && writes9 === 0, JSON.stringify(values.terrainLeftPan));
+
+  // ⑨b 地形编辑：右键拖动 ⇒ 恰 1 条 map.SetTerrain（多 hex）
+  await centerView(page, 8, -8, 1);
+  canvasBox = await page.locator("#canvas").boundingBox();
+  const brushRun = await page.evaluate(() =>
+    [
+      { q: 8, r: -8 },
+      { q: 9, r: -8 },
+      { q: 10, r: -8 },
+      { q: 11, r: -8 },
+      { q: 8, r: -7 },
+      { q: 8, r: -9 },
+    ].filter((c) => window.SimosMap.hexExists(c.q, c.r))
+  );
+  const brushPts = await screenPoints(page, brushRun);
+  const headBeforeBrush2 = await page.evaluate(() => window.SimosApp.getState().revision);
+  markPhase("J9b-terrain-right-brush");
+  await page.mouse.move(canvasBox.x + brushPts[0].x, canvasBox.y + brushPts[0].y);
+  await page.mouse.down({ button: "right" });
+  for (let i = 1; i < brushPts.length; i++) {
+    await page.mouse.move(canvasBox.x + brushPts[i].x, canvasBox.y + brushPts[i].y, { steps: 1 });
+    await sleep(20);
+  }
+  await page.mouse.up({ button: "right" });
+  await page
+    .waitForFunction((h) => window.SimosApp.getState().revision !== h, headBeforeBrush2, { timeout: 20000 })
+    .catch(() => null);
+  await sleep(700);
+  const brushPosts2 = nonGet.slice(phaseStarts["J9b-terrain-right-brush"]).filter((r) => {
+    const body = parse(r.post) || {};
+    return r.path === "/api/command" && body.type === "map.SetTerrain";
+  });
+  const brushPayload2 = brushPosts2.length === 1 ? parse((parse(brushPosts2[0].post) || {}).payloadJson) : null;
+  values.terrainRightBrush = {
+    posts: brushPosts2.length,
+    hexCount: brushPayload2 && (brushPayload2.hexes || []).length,
+    terrain: brushPayload2 && brushPayload2.terrain,
+    headBefore: headBeforeBrush2,
+    headAfter: await page.evaluate(() => window.SimosApp.getState().revision),
+  };
+  check(
+    "k2-terrain-right-one-command",
+    brushPosts2.length === 1 && brushPayload2 && (brushPayload2.hexes || []).length >= 3 && brushPayload2.terrain === terrainTarget2,
+    JSON.stringify(values.terrainRightBrush)
+  );
+
+  // ⑩ 所有模式左键拖动 ⇒ 无非 GET（打印清单）
+  const leftPanModes = ["view", "region", "map-edit", "region-edit", "unit"];
+  const perModeLeft = [];
+  for (const m of leftPanModes) {
+    await page.click('#mode-bar button[data-mode="' + m + '"]');
+    await sleep(200);
+    await centerView(page, 0, 0, 1);
+    canvasBox = await page.locator("#canvas").boundingBox();
+    const before = await page.evaluate(() => window.SimosMap.currentView());
+    const idx = nonGet.length;
+    await leftDrag(page, canvasBox, { x: 640, y: 400 }, { x: 720, y: 460 });
+    const after = await page.evaluate(() => window.SimosMap.currentView());
+    const deltas = nonGet.slice(idx);
+    perModeLeft.push({
+      mode: m,
+      txChanged: after.tx !== before.tx,
+      tyChanged: after.ty !== before.ty,
+      nonGet: deltas.map((r) => ({ method: r.method, path: r.path, type: (parse(r.post) || {}).type || null })),
+    });
+  }
+  values.leftPanAllModes = perModeLeft;
+  console.log("LEFT_PAN_ALL_MODES " + JSON.stringify(perModeLeft));
+  check(
+    "k3-left-drag-no-nonget-all-modes",
+    perModeLeft.every((entry) => entry.nonGet.length === 0),
+    JSON.stringify(perModeLeft.map((e) => ({ mode: e.mode, nonGet: e.nonGet.length })))
+  );
+
+  // ⑩b 区域编辑：Shift+右键逐格画 ⇒ 一条 UpdateRegion 改一格，且不落套索
+  await page.click('#mode-bar button[data-mode="region-edit"]');
+  await sleep(250);
+  await page.waitForSelector('[data-region-id="m8r_lasso"]', { timeout: 8000 });
+  await page.click('[data-region-id="m8r_lasso"]');
+  await page
+    .waitForFunction(
+      () => window.SimosMap.regionEditDebug().focus === "m8r_lasso" && window.SimosMap.regionEditDebug().focusHexCount > 0,
+      null,
+      { timeout: 8000 }
+    )
+    .catch(() => null);
+  await sleep(400);
+  await page.click("#region-edit-clear");
+  await sleep(200);
+  const baseShift = await regionHexesFromApi("m8r_lasso");
+  const shiftCell = await page.evaluate((cells) => {
+    const D = [
+      [1, 0],
+      [1, -1],
+      [0, -1],
+      [-1, 0],
+      [-1, 1],
+      [0, 1],
+    ];
+    const set = {};
+    cells.forEach((c) => {
+      set[c.q + "," + c.r] = true;
+    });
+    const ex = (q, r) => window.SimosMap.hexExists(q, r);
+    for (const c of cells) {
+      for (const d of D) {
+        const q = c.q + d[0];
+        const r = c.r + d[1];
+        if (!set[q + "," + r] && ex(q, r)) return { q: q, r: r };
+      }
+    }
+    return null;
+  }, baseShift);
+  await centerView(page, shiftCell.q, shiftCell.r, 2.4);
+  canvasBox = await page.locator("#canvas").boundingBox();
+  const shiftPt = await page.evaluate((h) => window.SimosMap.screenPointOf(h.q, h.r), shiftCell);
+  markPhase("J10b-shift-paint");
+  await page.keyboard.down("Shift");
+  await page.mouse.move(canvasBox.x + shiftPt.x, canvasBox.y + shiftPt.y);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.up({ button: "right" });
+  await page.keyboard.up("Shift");
+  await sleep(300);
+  const afterShiftPaint = await page.evaluate(() => window.SimosMap.regionEditDebug());
+  const shiftPaintWrites = nonGet.slice(phaseStarts["J10b-shift-paint"]).filter((r) => r.path === "/api/command");
+  values.shiftPerHex = {
+    cell: shiftCell,
+    draftCount: afterShiftPaint.draftHexCount,
+    lassoActive: afterShiftPaint.lassoActive,
+    createRegionPosts: shiftPaintWrites.filter((r) => (parse(r.post) || {}).type === "map.CreateRegion").length,
+    writes: shiftPaintWrites.length,
+  };
+  check(
+    "k4-shift-right-per-hex-no-lasso",
+    afterShiftPaint.draftHexCount === 1 && !afterShiftPaint.lassoActive && shiftPaintWrites.length === 0,
+    JSON.stringify(values.shiftPerHex)
+  );
+  const headBeforeShiftMerge = await page.evaluate(() => window.SimosApp.getState().revision);
+  markPhase("J10b-shift-merge");
+  await page.click("#region-merge");
+  await page
+    .waitForFunction((h) => window.SimosApp.getState().revision !== h, headBeforeShiftMerge, { timeout: 20000 })
+    .catch(() => null);
+  await sleep(800);
+  const shiftMergePosts = nonGet.slice(phaseStarts["J10b-shift-merge"]).filter((r) => {
+    const body = parse(r.post) || {};
+    return r.path === "/api/command" && body.type === "map.UpdateRegion";
+  });
+  const shiftMergePayload = shiftMergePosts.length === 1 ? parse((parse(shiftMergePosts[0].post) || {}).payloadJson) : null;
+  const shiftExpected = setOf(baseShift);
+  shiftExpected[hk(shiftCell)] = shiftCell;
+  values.shiftPerHexMerge = {
+    posts: shiftMergePosts.length,
+    payloadCount: shiftMergePayload && (shiftMergePayload.hexes || []).length,
+    expectedCount: listOf(shiftExpected).length,
+    matchesSingleCellAdd: shiftMergePayload ? sameSet(shiftMergePayload.hexes, listOf(shiftExpected)) : false,
+  };
+  check(
+    "k5-shift-right-merge-one-update",
+    shiftMergePosts.length === 1 && shiftMergePayload && sameSet(shiftMergePayload.hexes, listOf(shiftExpected)),
+    JSON.stringify(values.shiftPerHexMerge)
+  );
+
+  // ═══════════════ §八 边框与区域边界（判据 11 / 12 / 13）═══════════════
+
+  // ⑫ 区域边界被简化（顶点数显著下降），且仍闭合、仍包住区域 hex 集合
+  const outlineDebug = await page.evaluate(() => window.SimosMap.debug());
+  const outlineRings = await page.evaluate(() => window.SimosMap.regionOutlineRingsForTest());
+  const focusRings = ((outlineRings || []).find((o) => o.id === "m8r_lasso") || {}).rings || [];
+  const apiLassoNow = await regionHexesFromApi("m8r_lasso");
+  function pointInRings(rings, x, y) {
+    let inside = false;
+    rings.forEach((ring) => {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i].x;
+        const yi = ring[i].y;
+        const xj = ring[j].x;
+        const yj = ring[j].y;
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+    });
+    return inside;
+  }
+  const SQRT3 = Math.sqrt(3);
+  const enclosed = apiLassoNow.every((h) => pointInRings(focusRings, SQRT3 * h.q + (SQRT3 / 2) * h.r, 1.5 * h.r));
+  values.outline = {
+    verticesBefore: outlineDebug.outlineVerticesBefore,
+    verticesAfter: outlineDebug.outlineVerticesAfter,
+    ringCount: outlineDebug.outlineRingCount,
+    focusRingCount: focusRings.length,
+    enclosed: enclosed,
+    regionHexCount: apiLassoNow.length,
+  };
+  check(
+    "l1-outline-simplified-and-enclosing",
+    outlineDebug.outlineVerticesBefore > 0 &&
+      outlineDebug.outlineVerticesAfter > 0 &&
+      outlineDebug.outlineVerticesAfter < outlineDebug.outlineVerticesBefore * 0.75 &&
+      focusRings.length >= 1 &&
+      enclosed,
+    JSON.stringify(values.outline)
+  );
+
+  // ⑪ 渲染路径不再有逐格 stroke / Path2D 块边界描边
+  const strokeStats = await page.evaluate(() => {
+    window.__strokeReset();
+    window.SimosMap.render();
+    return window.__strokeStats();
+  });
+  values.strokeProbe = strokeStats;
+  check(
+    "l2-no-per-hex-or-path2d-stroke",
+    strokeStats.path2dStrokes === 0 && strokeStats.maxLineToPerStroke <= 300,
+    JSON.stringify(strokeStats)
+  );
+
+  // ⑬ 相邻不同地形块之间没有黑线（像素采样）
+  await page.click('#mode-bar button[data-mode="view"]');
+  await sleep(250);
+  let terrainPair = null;
+  for (let dq = -3; dq <= 3 && !terrainPair; dq++) {
+    for (let dr = -3; dr <= 3 && !terrainPair; dr++) {
+      const c = { q: lassoCenter.q + dq, r: lassoCenter.r + dr };
+      const body = (await api("/api/map/hex?q=" + c.q + "&r=" + c.r)).body;
+      if (!body || !body.terrain) {
+        continue;
+      }
+      for (const d of DIRS) {
+        const n = { q: c.q + d[0], r: c.r + d[1] };
+        const nb = (await api("/api/map/hex?q=" + n.q + "&r=" + n.r)).body;
+        if (nb && nb.terrain && nb.terrain !== body.terrain) {
+          terrainPair = { a: c, b: n, ta: body.terrain, tb: nb.terrain };
+          break;
+        }
+      }
+    }
+  }
+  let terrainMinLum = null;
+  if (terrainPair) {
+    const mid = {
+      q: Math.round((terrainPair.a.q + terrainPair.b.q) / 2),
+      r: Math.round((terrainPair.a.r + terrainPair.b.r) / 2),
+    };
+    await centerView(page, mid.q, mid.r, 4);
+    await sleep(250);
+    const pts = await screenPoints(page, [terrainPair.a, terrainPair.b]);
+    terrainMinLum = await page.evaluate(
+      (pp) => {
+        const c = document.getElementById("canvas");
+        const ctx = c.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        const mx = (pp[0].x + pp[1].x) / 2;
+        const my = (pp[0].y + pp[1].y) / 2;
+        let min = 999;
+        for (let dx = -8; dx <= 8; dx++) {
+          for (let dy = -8; dy <= 8; dy++) {
+            const px = Math.round((mx + dx) * dpr);
+            const py = Math.round((my + dy) * dpr);
+            if (px < 0 || py < 0 || px >= c.width || py >= c.height) {
+              continue;
+            }
+            const d = ctx.getImageData(px, py, 1, 1).data;
+            const lum = 0.2126 * d[0] + 0.7152 * d[1] + 0.0722 * d[2];
+            if (lum < min) {
+              min = lum;
+            }
+          }
+        }
+        return min;
+      },
+      pts
+    );
+  }
+  values.terrainBorder = { pair: terrainPair, minLuminance: terrainMinLum };
+  check(
+    "l3-no-black-line-between-terrain-blocks",
+    !!terrainPair && terrainMinLum !== null && terrainMinLum > 40,
+    JSON.stringify(values.terrainBorder)
+  );
 
   // ── 非 GET 清单（按模式/阶段分组）──
   const phases = Object.keys(phaseStarts).sort((a, b) => phaseStarts[a] - phaseStarts[b]);

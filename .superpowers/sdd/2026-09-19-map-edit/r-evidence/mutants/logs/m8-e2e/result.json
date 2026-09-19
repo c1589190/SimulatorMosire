@@ -299,9 +299,9 @@
     "regionHexCount": 20
   },
   "strokeProbe": {
-    "strokes": 9,
-    "maxLineToPerStroke": 20,
-    "path2dStrokes": 0
+    "strokes": 10,
+    "maxLineToPerStroke": 2500,
+    "path2dStrokes": 1
   },
   "terrainBorder": {
     "pair": {
@@ -316,7 +316,7 @@
       "ta": "low_hills",
       "tb": "plains"
     },
-    "minLuminance": 171.39079999999998
+    "minLuminance": 26.435599999999997
   },
   "nonGetGrouped": [
     {

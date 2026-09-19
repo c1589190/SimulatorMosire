@@ -1,6 +1,6 @@
-00:18:58.905 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
-00:18:59.004 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5841/（静态 /webui，同源，无 CORS 头）
-00:18:59.005 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m8r-e2e-store-5841 checkpointInterval=100 codec=3 handler=12 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=44757 guiPort=5841 approvalPort=46599
-00:18:59.005 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m8r-e2e-store-5841 checkpointInterval=100 模块数=3 guiPort=5841 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
-00:18:59.005 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5841/
-00:19:23.194 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell
+00:48:43.360 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+00:48:43.461 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5881/（静态 /webui，同源，无 CORS 头）
+00:48:43.461 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m8r-e2e-store-5881 checkpointInterval=100 codec=3 handler=12 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45519 guiPort=5881 approvalPort=44621
+00:48:43.461 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m8r-e2e-store-5881 checkpointInterval=100 模块数=3 guiPort=5881 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+00:48:43.461 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5881/
+00:49:07.658 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

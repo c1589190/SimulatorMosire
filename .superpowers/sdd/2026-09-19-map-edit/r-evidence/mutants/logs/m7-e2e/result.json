@@ -157,12 +157,12 @@
   },
   "shiftPaint": {
     "draftBefore": 0,
-    "draftAfter": 2,
+    "draftAfter": 0,
     "writesDuringPaint": 0
   },
   "createByButton": {
     "posts": 1,
-    "draft": 2
+    "draft": 0
   },
   "dispatchRegionEdit": {
     "types": [
@@ -186,14 +186,6 @@
     "mapPathGets": 0,
     "routeCountBefore": 1,
     "routeCountAfter": 1
-  },
-  "deleteConfirm": {
-    "armed": {
-      "confirmShown": true,
-      "armed": true
-    },
-    "armedWrites": 0,
-    "confirmedWrites": 1
   },
   "fade": {
     "faded": [
@@ -239,8 +231,8 @@
     "posts": 1,
     "hexCount": 6,
     "terrain": "ocean",
-    "headBefore": 10,
-    "headAfter": 11
+    "headBefore": 8,
+    "headAfter": 9
   },
   "leftPanAllModes": [
     {
@@ -279,27 +271,27 @@
       "q": -18,
       "r": -1
     },
-    "draftCount": 1,
+    "draftCount": 0,
     "lassoActive": false,
     "createRegionPosts": 0,
     "writes": 0
   },
   "shiftPerHexMerge": {
     "posts": 1,
-    "payloadCount": 20,
+    "payloadCount": 19,
     "expectedCount": 20,
-    "matchesSingleCellAdd": true
+    "matchesSingleCellAdd": false
   },
   "outline": {
-    "verticesBefore": 378,
-    "verticesAfter": 43,
+    "verticesBefore": 376,
+    "verticesAfter": 41,
     "ringCount": 3,
     "focusRingCount": 1,
     "enclosed": true,
-    "regionHexCount": 20
+    "regionHexCount": 19
   },
   "strokeProbe": {
-    "strokes": 9,
+    "strokes": 8,
     "maxLineToPerStroke": 20,
     "path2dStrokes": 0
   },
@@ -393,15 +385,6 @@
       "phase": "G3-region-edit-right-with-unit",
       "types": [],
       "paths": []
-    },
-    {
-      "phase": "H-delete",
-      "types": [
-        "map.DeleteRegion"
-      ],
-      "paths": [
-        "/api/command"
-      ]
     },
     {
       "phase": "J9-terrain-left-pan",
