@@ -46,7 +46,7 @@
 |---|---|---|
 | T1 | Core 只读扩展 + 只读 API（S2/S6/S7） | ✅ `m7/t1` `33fed9b` → 合并 `5b8fb5a`（2 变异轮 0 存活；830） |
 | T2 | 单页骨架 + 模式栏 + 资源重构（含 `terrainTypes` 形状切换） | ✅ `m7/t2` `6ef622e` → 合并 `676d527`（2 变异轮 0 存活；833；截图 2 张） |
-| T3 | 时间轴组件（节点/拖动预览/末端写与分岔，U1） | ⏸ |
+| T3 | 时间轴组件（节点/拖动预览/末端写与分岔，U1） | ✅ `m7/t3` `98ed9f3` → 合并 `9d63243`（e2e 14 项全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
 | T4 | 地图 Canvas 升级（缩放平移/区域填充/点选联动） | ⏸ |
 | T5 | 左栏详情 + 单位倒树 | ⏸ |
 | T6 | 区域查看面板（tag 分组 / 点区域 / 点标签） | ⏸ |
@@ -83,3 +83,28 @@
 ★ 如实记（T2 报告 §五）：**`terrainTypes` 的多词表排序未实测**（夹具与 `--demo` 世界都只有 `desert` 一项 ⇒ "按 KEYS 升序"缺 >1 项的证据）；disabled 按钮的"点击无响应"只证到视觉置灰（无 JS 单测装置）；旧三页的 JS 未被本任务测试覆盖（`/map` 200 已证，图例文本未断言）。
 
 **下一批**：**T3（时间轴组件，U1）**——依赖 T1/T2 已满足。
+
+### T3（底部线型时间轴，U1）已关账（2026-09-19，子代理 + 控制器核验）
+
+**T3**（`m7/t3` `98ed9f3` → 合并 `9d63243`）：**纯前端**（`api.js` 加 `withTarget(path,target)`——**所有只读取数统一带 `?branch=&revision=`**，T4~T7 直接复用；`app.js` 状态机加 `branches`/`heads` + `refreshState`/`target()`，且 **`pollState` 只在首次初始化游标**（否则 5s 轮询会把用户拖到中间的游标弹回末端）；`index.html` 底栏加两按钮 + 状态位；`timeline.js` **377 行**（多分支线/节点/拖动 scrub/末端判定/写与分岔/409）；`styles.css` 时间轴与 `button:disabled` 灰化）。**零 Java 改动**，全量 **833 不变**。
+
+**裁定 69 —— "创建节点"的语义（接受）**：`POST /api/advance`，参数 `from = 末端 tick`、`to = tick+1`。依据是实测的 `TimeAdvance` **第 0 项校验**：「`range.to` 缺失 ⇒ Rejected（开区间落不成 revision）」⇒ 必须给 `to`，而"推进一格"最自然的语义就是 `[tick, tick+1)`。实测每点一次 head +1 / tick +1。
+
+**e2e 实测（真 `ShellMain --demo` + Playwright，14 项全 PASS；`t3-evidence/e2e/e2e-clean.log`）**——**判据②的每条都有值**：
+| 步 | 实测值 |
+|---|---|
+| 造 ≥3 revision | `head=3 rows=3` |
+| 节点数 == head | `nodes=3 head=3`；标签 `["rev 1 · Bootstrap","rev 2 · RenameUnit","rev 3 · RenameUnit"]` |
+| `isAtTip` 纯函数（中间/末端/缺分支/null） | `{mid:false, tip:true, missing:false, empty:false}` |
+| **中间节点** | 游标 rev 2；**两按钮 `disabled=true`**；★ **`head 3->3 rows 3->3`（R1：只读预览不写盘）** |
+| **末端** | 两按钮可用 |
+| **真鼠标拖动** | 只读预览 + 置灰，`head=3 rows=3` |
+| **分岔** | `branches=["b2","main"]`、`lines=2`、游标到新末端 |
+| **409 路径** | 外部先推 head（3→4）⇒ 页面 `expectedRevision` 过期 ⇒ 点「创建节点」收 409 ⇒ 提示"**末端已移动，已自动重取最新状态**"、head **自动更新为 4**、按钮随之置灰——**只重取、未静默重试写** |
+
+**变异（2 轮 0 存活，红点均落在被保护断言本身）**：m1（`moveCursor` 里误发一次 `advance`）⇒ `STEP e-readonly: FAIL head 3->4 rows 3->4`——**红的就是"预览误写盘"的后果本身**；m2（去掉末端判定）⇒ `STEP e-mid-disabled: FAIL create_disabled=false fork_disabled=false`。装置为**资源类目标 + e2e 观察**（源与 classpath 两份推送、逐字节还原、日志自指）。
+
+★ **带裁定的遗留（重要）**：spec §九-1 明确要求 **T3 实测"拖动时每次切换重放 19441 格地图的代价"**——本任务**只在小世界（`--demo`，3 revision / 1 hex）测过**，**大图/长历史的拖动手感仍未测**。归 **T8 关账**实测或 M8（记为**未履行**的 spec 项，不粉饰）。
+★ 如实记：多分支 >2 条的渲染未实测；跨分支拖动未测；`?branch=&revision=` 约定**尚未被真面板消费**（T3 面板仍是骨架，属"读起来对"）；409 的复现依赖 5s 轮询窗口（本轮一次成功，非结构保证）。
+
+**下一批**：**T4（Canvas 升级）**。
