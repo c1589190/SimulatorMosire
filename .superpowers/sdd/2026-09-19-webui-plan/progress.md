@@ -287,6 +287,17 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 
 **下一批**：**M7e**（用户补充的交互表 + 折线对比度）。
 
+### M7e（交互表 + 折线对比度）已关账（2026-09-19，子代理 `deepseek-flash-go`；控制器合并后核验）
+
+**缘起（用户原话）**：「**右键点击空白的地方取消选中而不取消路径**；**左键点击单位本身或者单位原本的地方才是取消移动**」＋ 控制器发现折线对比度低（`baseColor=rgba(255,214,130,0.35)`＝**35% 透明度的黄**叠在黄沙上，即用户"看不出发生了什么"的物理原因）。
+
+**M7e-T1**（`m7e/t1` `22ffc70` → 合并 `0005303`）：**纯前端两文件**（`map.js` +68/−15、`index.html` +1/−1），零 Java，全量 **841 不变**；干净轮 **30 断言全 PASS**（变异前后各一次）；**变异 3 轮 0 存活**。
+
+**实测**：★ 右键空白 ⇒ **`a-selection-cleared`** + **`a-no-write`** + **`a-movement-kept`** + **`a-polyline-kept`**（**取消选中但路线/折线都留着**）；★ 左键单位第一次 ⇒ `b-first-click-selects` + `b-first-click-no-write`（**只选中不写**）、第二次 ⇒ `b-movement-cleared null` + `b-head-advanced` + `b-node-plus-1` + **`b-polyline-gone []`**（**发真 `unit.CancelRoute`**）。
+**变异**：m1（右键空白也清路线）⇒ `a-movement-kept`/`a-polyline-kept` 红；m2（左键不写）⇒ `b-movement-cleared` 等红；m3（未选中就发 CancelRoute）⇒ `b-first-click-*` 红。
+
+**裁定 M7e-S1（控制器默认，用户未反对，**可推翻**）**：左键点单位**同时**承载"选中"与"取消移动" ⇒ 定为 **未选中⇒选中、已选中⇒再点=取消移动**（一下选中、两下取消，不用修饰键）。若要"一点即取消"，改一处分支即可。
+
 ### T1（时间轴：可见 knob + 列坐标布局 + 分岔连线）已关账（2026-09-19，子代理 `deepseek-flash-go` 执行；控制器合并后核验）
 
 **T1**（`m7b/t1` `9dd1363` → 合并 `95bd45d`）：**纯前端两文件**（`timeline.js` / `styles.css`），**零 Java**、未改台账、全量 **833 不变**。
