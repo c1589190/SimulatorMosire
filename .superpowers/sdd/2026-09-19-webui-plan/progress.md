@@ -50,8 +50,8 @@
 | T4 | 地图 Canvas 升级（缩放平移/区域填充/点选联动） | ✅ `m7/t4`（e2e demo 10 项 + 真地图 5 项全 PASS；2 变异轮 0 存活；833 不变；截图 3 张；大图耗时已实测） |
 | T5 | 左栏详情 + 单位倒树 | ✅ `m7/t5` `263236d`+`257421a`（报告补交） → 合并 `db5e22b`（树自检 8 断言 + e2e 9 步全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
 | T6 | 区域查看面板（tag 分组 / 点区域 / 点标签） | ✅ `m7/t6` `c017eed` → 合并 `bc7f434`（分组自检 14 断言 + e2e 12 步全 PASS；2 变异轮 0 存活；833 不变；截图 2 张） |
-| T7 | 单位移动与编辑模式 | ⏸ |
-| T8 | M7 关账 | ⏸ |
+| T7 | 单位移动与编辑模式 | ✅ `m7/t7` `fbd63bb` → 合并 `7307f78`（e2e 34 步全 PASS 含 R8 allowlist；2 变异轮 0 存活；833 不变；截图 2 张） |
+| T8 | M7 关账 | ✅ 本次（判据①~⑥逐条实测值 + R1~R8 点验 + 门禁 833 + `CLAUDE.md` + `task-8-final-report.md`） |
 
 ---
 
@@ -184,3 +184,21 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 ★ 如实记（T6 报告 §八，10 条）：兜底色分支只被 node 覆盖（真实色都合法）；"未标注"桶**从未在真页面渲染过**；多标签场景未测（真实只有 1 个 tag）；窄屏未测；e2e 硬编码 Playwright/Chromium 路径；大图 2.6s 传输代价仍在。
 
 **下一批**：**T7（单位移动与编辑模式）**。
+
+### T7（单位移动与编辑模式）已关账（2026-09-19，子代理执行；控制器合并后核验）
+
+**T7**（`m7/t7` `fbd63bb` → 合并 `7307f78`）：**纯前端**（`app.js` +100、`index.html` +44、`map.js` +401、`styles.css` +50）。**零 Java 改动**、**未改台账**、**833 不变**。唯一写入口 `app.writeCommand(type,payload)`（组信封 → `POST /api/command`；409 ⇒ 重取并拉到 `current.revision`；422 ⇒ 原样回 `reason`）。
+
+**判据⑤ 实测（e2e 34 步全 PASS，真写）**：点选式移动 `position {1,1}→{1,2}` + `head 1→2` + **时间轴节点 1→2**；路线式 `unit.PlanRoute` ⇒ `movement false→true` + `head 2→3`；编制 `parent null→"u-2"` / `member 100→123` / `equipment {步枪:50}→{步枪:7}` / `CreateUnit`(带 parent) / `DisbandUnit`(后 404)；**422 显示 `reason` 原文**「父单位不存在: ghost-parent」；**409** ⇒ 提示 + head 8→9 + **位置未变（确实没写）**。
+
+**★ R8 的两半都有实测**：① **写路径 allowlist**——全过程 9 个非 GET，path 去重 = `["/api/command"]` ⊂ `{/api/command,/api/advance,/api/fork}`（**清单原样落盘**）；② **只读模式未被污染**——切「常规查看」后点单位+点格 ⇒ **新增非 GET = 0**，且 hex 选择仍可用。
+
+**变异 2 轮 0 存活**：m1（写调用改到 `/api/raw-write`）⇒ `STEP e-write-allowlist: FAIL`；m2（`PlaceAt` 发选中单位自身所在格）⇒ `STEP a-position-after-target: FAIL {"before":{1,1},"after":{1,1}}`。
+
+**裁定 73 —— T7 的三条 + M7 关账结论**：
+1. ★ **"变异要能被杀"再次成为装置设计约束**：m1 会让 a/b 系列超时 ⇒ 若装置在超时处抛异常，`run()` 提前中止、**e 步的 allowlist 断言永远跑不到**，护栏就成了**杀不掉的装饰**。T7 因此把 `waitRevisionAbove` 与编辑器点击改成**不抛**（只记 `FAIL`/`CLICK-SKIP`）。与裁定 72.5 同一条通则，**已两次独立命中**。
+2. ★ **e2e 装置的一个真坑（记给后续所有前端任务）**：`page.fill` 会把页面滚下去 ⇒ `#canvas` 的 `boundingBox().y` 变负 ⇒ `page.mouse.click` 落在视口外、**点击静默无效**（T7 的 b5 首次就跑中）。修法：点击前 `scrollIntoViewIfNeeded()`。**与 CLAUDE.md「把没发生伪装成没发生」同族**——**这条要进 CLAUDE.md 的纪律形态清单**。
+3. **`PlanRoute` 稀疏路点缺口照旧**：客户端保证逐格相邻（每点即路径一格），**不伪造稀疏语义**；载荷补字段归后续（M5 挂起项延续）。
+4. **M7 关账结论**：**8/8 完成**；判据①~⑥**逐条实测值**见 `task-8-final-report.md`；**R1~R8 每条都有变异自证**（14 轮 0 存活）；**旧三页裁定保留**为调试/回归页（spec §九.6 收口）。
+
+**下一批**：**M8**（地图编辑写面）——开工前先裁决 **区域重叠归属**（T4/T6 两次挂起）与 **`map.*` 命令族的粒度**。
