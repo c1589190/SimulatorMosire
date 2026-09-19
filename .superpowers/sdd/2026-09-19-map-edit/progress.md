@@ -113,7 +113,7 @@
 **未核实**：只在**本机 node v22.23.2** 跑过；`--test-reporter=tap` **需 node ≥19**（更老版本会因坏选项**非零退出 ⇒ 仍是 fail-closed**，但具体报错文案未实测）。
 ★ **实现者第 5 次纠正控制器**：派单 m1 那行"**期望红**"与"**装置自证失败**"**自相矛盾**；拆成 **m1**（违规⇒红）+ **m1b**（永真⇒不红⇒装置失效）**两条合起来**才构成完整自证。
 
-## T5+T6 ✅ `map.SetEdge` + `map.RandomizeRegion`（5 文件 +231/−17，**全在 `src/test`，零 `src/main` 改动**；提交号见下）
+## T5+T6 ✅ `map.SetEdge` + `map.RandomizeRegion`（5 文件 +231/−17，**全在 `src/test`，零 `src/main` 改动**；`1b14d8b`）
 
 **范围**：两族各三段——领域操作（`EdgeOperations` / `RandomizeOperations`+`RegionRandomizer`）、SPI 边界（`SetEdgeHandler` / `RandomizeRegionHandler`）、端到端（`MapSetEdgeEndToEndTest` / `MapRandomizeEndToEndTest`：真 store / 真 checkpoint / 真 replay）。判据 T5-1~4 / T6-1~6 逐条结论、两张口径表、"我未能核实的"四条，见 `t5t6-evidence/notes/t5t6-conclusion.md`。
 
@@ -126,5 +126,8 @@
 ★ **种子表不是手算、是探针在当轮字节上跑出来的**（形态 5）：`SeedTableProbe` 与夹具同形（半径 10、331 格、选区 326）。★★ **实测 `seed=1` 与 `seed=5` 的直方图完全相同**（`{desert=161, mountains=5, plains=165}`），只有**块数**分得开（25 vs 28）⇒ 只钉直方图的表在 `(1,5)` 这一对上**不判别**"忽略 seed"类变异。故种子表**同时钉直方图与块数**，并另加 `seedOneAndFiveShareAHistogram` **当场自证这条设计选择必需**（它自己也是一个杀点）。
 
 ★★ **如实记账：T5 的端到端用的是合成夹具，不是真档。** 判据原文允许"若无则合成"；本机实测**没有**真档（无 `/tmp/m6-import-verify/test_integration`、无 `*_map.json`、无 `simos.db`）⇒ 依兜底条款用合成夹具（三格链 `H00—H10—H01`、`E_LEFT` 带 `river`+`road`、`E_UP` 空）。**因此本任务不对"真档上的 `edges` 往返"作任何断言**；M6 的开口项（`edges` 非空无真实样本）**依然成立**。
+
+**门禁**：整树 `./mvnw clean verify` 绿（rc=0、**973** 条 = 170/**362**/45/131/**169**/96、7/7 模块、`BugInstance size is 0` ×6、`[ERROR]` 0 行、`COMPILATION ERROR` 0、Checkstyle 违例 0×7、`[frontend-gate] OK tests=61 pass=61 fail=0`、`Total time: 07:30 min`；日志 `t5t6-evidence/logs/full-verify.log`，1539 行、已封口）。★★ **这 5 个测试文件的格式合规是这一轮才被证明的**——变异轮跑 `test` 阶段、**不跑 Spotless**（`e2d00df` 当初门禁红的唯一原因就是一个空行），故在此之前"变异全杀 + 干净轮绿"**证不到格式**；本轮 6 条 `Spotless.Java is keeping N files clean - 0 needs changes to be clean` 逐模块在案（map **88** / core **52** 含本单 5 文件）。
+★ **本树没有实测的 before 值**（基线 `e2d00df` **从未跑过门禁**）⇒ **不报 delta**，不拿"上一棵树的绿"当本树的对照。能报的是**对账**：`973 = 869 + 90 + 14`，其中 **map 的 90 与 core 的 14 逐类相加恰好闭合、六个模块无剩余**（map：T3 18〔`TerrainOperationsTest` 11 + `SetTerrainHandlerTest` 7〕+ T4 31〔`RegionOperationsTest` 16 + `RegionHandlersTest` 15〕+ T5 22〔`SetEdgeHandlerTest` 9 + `EdgeOperationsTest` 13〕+ T6 19〔`RandomizeRegionHandlerTest` 7 + `RandomizeOperationsTest` 12〕= **90**；core：T3 3 + T4 3 + T5 4 + T6 4 = **14**；其余四模块 170/45/131/96 与 M9 基线**逐值相同**）⇒ 这棵树确实**只多了它该多的东西**。★ 本单 5 个类在本轮日志里的条数：`EdgeOperationsTest` **13** / `RandomizeOperationsTest` **12** / `RandomizeRegionHandlerTest` **7** / `MapRandomizeEndToEndTest` **4** / `MapSetEdgeEndToEndTest` **4**，全 0 失败。
 
 **未核实**：真档上的 `map.SetEdge`（同上）/ `RegionRandomizer` 的大图重切性能 / `mode`·`kind` 大小写混合只在单元层验过（e2e 与浏览器未跑）/ 块表 `TreeMap` 全序在 >1000 块时未测（本夹具最大 28 块）。
