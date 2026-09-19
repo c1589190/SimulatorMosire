@@ -1,0 +1,46 @@
+===== 变异轮 m3 =====
+target=simos-map/src/main/java/io/mosire/simos/map/ops/RegionOperations.java mutant=.superpowers/sdd/2026-09-19-map-edit/t4-evidence/mutants/m3.RegionOperations.java expect=createRegionOverlappingAnExistingOneIsAllowed|createRegionHandlerAllowsOverlap
+orig_md5=2002fbbd23528f0d85fb9a5fd9ca234b backup_md5=2002fbbd23528f0d85fb9a5fd9ca234b
+--- 干净世界基线（变异前，期望绿）---
+clean_rc=0 clean_compilation_error=0 clean_
+mutant_md5=052a0dc22bcae1ccf312f2163dbddba3
+pushed_src_md5=052a0dc22bcae1ccf312f2163dbddba3 class_removed=io/mosire/simos/map/ops/RegionOperations.class
+mut_rc=1 mut_compilation_error=0 mut_Tests run: 31
+--- 本轮 surefire 报告（mtime 落轮内）---
+/home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports/io.mosire.simos.map.spi.RegionHandlersTest.txt
+/home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports/io.mosire.simos.map.ops.RegionOperationsTest.txt
+--- 失败方法 ---
+protected_assertion_hits=2
+restored_md5=2002fbbd23528f0d85fb9a5fd9ca234b (== orig)
+ROUND m3 DONE mut_rc=1 hits=2 restored=2002fbbd23528f0d85fb9a5fd9ca234b self_md5=052a0dc22bcae1ccf312f2163dbddba3
+ailures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.119 s <<< FAILURE! -- in io.mosire.simos.map.spi.RegionHandlersTest
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAllowsOverlap -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.ClassCastException: class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+	at io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAllowsOverlap(RegionHandlersTest.java:97)
+
+[ERROR] Errors: 
+[ERROR]   RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed:75 » IllegalArgument 区域与已有区域重叠: r1
+[ERROR]   RegionHandlersTest.createRegionHandlerAllowsOverlap:97 ClassCast class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+[ERROR] Tests run: 31, Failures: 0, Errors: 2, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: 
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+
+===== 装置补记（m3）：本轮字节自指 =====
+target=simos-map/src/main/java/io/mosire/simos/map/ops/RegionOperations.java
+orig_md5=2002fbbd23528f0d85fb9a5fd9ca234b
+mutant_md5=052a0dc22bcae1ccf312f2163dbddba3
+pushed_src_md5=052a0dc22bcae1ccf312f2163dbddba3
+restored_md5=2002fbbd23528f0d85fb9a5fd9ca234b
+mut_rc=1 protected_assertion_hits=2

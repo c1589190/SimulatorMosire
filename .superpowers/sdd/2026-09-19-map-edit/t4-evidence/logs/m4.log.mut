@@ -1,0 +1,73 @@
+[ERROR] Tests run: 16, Failures: 0, Errors: 3, Skipped: 0, Time elapsed: 0.099 s <<< FAILURE! -- in io.mosire.simos.map.ops.RegionOperationsTest
+[ERROR] io.mosire.simos.map.ops.RegionOperationsTest.createRegionKeepsTheGivenMeta -- Time elapsed: 0.029 s <<< ERROR!
+java.lang.IllegalArgumentException: boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+	at io.mosire.simos.map.region.Region.<init>(Region.java:38)
+	at io.mosire.simos.map.ops.RegionOperations.createRegion(RegionOperations.java:62)
+	at io.mosire.simos.map.ops.RegionOperationsTest.createRegionKeepsTheGivenMeta(RegionOperationsTest.java:122)
+
+[ERROR] io.mosire.simos.map.ops.RegionOperationsTest.createRegionAddsItAndOnlyTheRegionsComponentChanges -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+	at io.mosire.simos.map.region.Region.<init>(Region.java:38)
+	at io.mosire.simos.map.ops.RegionOperations.createRegion(RegionOperations.java:62)
+	at io.mosire.simos.map.ops.RegionOperationsTest.createRegionAddsItAndOnlyTheRegionsComponentChanges(RegionOperationsTest.java:48)
+
+[ERROR] io.mosire.simos.map.ops.RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=1, w=-1], HexVertex[u=1, w=1], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=4, w=2], HexVertex[u=5, w=1], HexVertex[u=5, w=-1], HexVertex[u=4, w=-2], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+	at io.mosire.simos.map.region.Region.<init>(Region.java:38)
+	at io.mosire.simos.map.ops.RegionOperations.createRegion(RegionOperations.java:62)
+	at io.mosire.simos.map.ops.RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed(RegionOperationsTest.java:75)
+
+[ERROR] Tests run: 15, Failures: 1, Errors: 3, Skipped: 0, Time elapsed: 0.128 s <<< FAILURE! -- in io.mosire.simos.map.spi.RegionHandlersTest
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerWithoutMetaDefaultsToEmptyMeta -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.ClassCastException: class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+	at io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerWithoutMetaDefaultsToEmptyMeta(RegionHandlersTest.java:84)
+
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAppliesAReadablePayload -- Time elapsed: 0 s <<< ERROR!
+java.lang.ClassCastException: class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+	at io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAppliesAReadablePayload(RegionHandlersTest.java:69)
+
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.duplicateHexCoordinatesInTheArrayAreDeduplicated -- Time elapsed: 0.004 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Rejected[reason=boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+	at io.mosire.simos.map.spi.RegionHandlersTest.duplicateHexCoordinatesInTheArrayAreDeduplicated(RegionHandlersTest.java:144)
+
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAllowsOverlap -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.ClassCastException: class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+	at io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAllowsOverlap(RegionHandlersTest.java:97)
+
+[ERROR] Failures: 
+[ERROR]   RegionHandlersTest.duplicateHexCoordinatesInTheArrayAreDeduplicated:144 
+Expecting actual:
+  Rejected[reason=boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+[ERROR] Errors: 
+[ERROR]   RegionOperationsTest.createRegionAddsItAndOnlyTheRegionsComponentChanges:48 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+[ERROR]   RegionOperationsTest.createRegionKeepsTheGivenMeta:122 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=-1, w=-1], HexVertex[u=-1, w=1], HexVertex[u=0, w=2], HexVertex[u=1, w=1], HexVertex[u=1, w=-1], HexVertex[u=0, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+[ERROR]   RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed:75 » IllegalArgument boundary 与 hexes 不一致：hexes 重算得 RegionBoundary[rings=[[HexVertex[u=1, w=-1], HexVertex[u=1, w=1], HexVertex[u=2, w=2], HexVertex[u=3, w=1], HexVertex[u=4, w=2], HexVertex[u=5, w=1], HexVertex[u=5, w=-1], HexVertex[u=4, w=-2], HexVertex[u=3, w=-1], HexVertex[u=2, w=-2]]]]，传入的是 RegionBoundary[rings=[]]
+[ERROR]   RegionHandlersTest.createRegionHandlerAllowsOverlap:97 ClassCast class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+[ERROR]   RegionHandlersTest.createRegionHandlerAppliesAReadablePayload:69 ClassCast class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+[ERROR]   RegionHandlersTest.createRegionHandlerWithoutMetaDefaultsToEmptyMeta:84 ClassCast class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+[ERROR] Tests run: 31, Failures: 1, Errors: 6, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
