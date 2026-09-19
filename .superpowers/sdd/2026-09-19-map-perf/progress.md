@@ -35,3 +35,14 @@
 **门禁 850**（170/256/45/131/154/**94**），delta **+6** 逐模块解释（QueryServiceTest +4 / GuiApiTest +2，其余五模块一例未动）。
 **变异**：m1（缓存键丢 revision）✅杀；m2（缓存键漏 branch）✅杀；**m3 ❌存活——结构性不可表达**：`SimulationState` 构造期 `Map.copyOf` + `GameMap` 全 `unmodifiableMap` + 切片 record ⇒ 缓存值**深度不可变**，下游就地修改在**不削弱 `simos-state`**（会动铁律 5）前提下无法表达；已补**等价强度**护栏（实测 `UnsupportedOperationException` + 两次读同实例且内容未变）。m4（误删单格 height）✅杀。★ **不伪造红点。**
 **未核实**：缓存内存上界未实测（容量 8 是设计判断）；并发未压测（仅 `synchronizedMap`）；LRU 淘汰未构造会话测。
+
+## T6 ✅ P1 权威地形块（`06373bd` → 合并见下；48 文件 +1954/−414，**编译耦合必须一次落地**）
+
+**落地**：`TerrainBlock(String terrain, Set<HexCoord> hexes, RegionBoundary boundary)`（复用 `RegionBoundary`；`hexes` 自然序不可变集合 ⇒ `toString()` 可复现；构造期重算边界比对，同 `Region` 形制）；`TerrainBlocks.split`（六邻连通分量 BFS，**P6 全部建块无阈值**，`TreeMap` 全序 ⇒ 确定性）；`GameMap` 第 2 组件 `terrainBlocks`（9 组件）；`HexCell` **只剩 `height`**；`terrainAt(HexCoord)` 稳定访问器 + `terrainIndex()`（批量）；`MapCodec` 注册 `BlockId` 键 + **旧形状回退**。
+
+**★ 分割不变式**（`GameMap:88-89` 构造期）：失败消息**精确到 hex** —— `hex 0_0 不属于任何地形块（分割不变式要求并集覆盖全部 hex）`；`hex 5_5 同时属于地形块 plains@0_0 与 desert@5_5（分割不变式要求两两不交）`。
+**★ 确定性**：两次重建 ⇒ `BlockId` 集合逐项相同、`hexes` 迭代序相同、`boundary().toString()` **逐字节相同**；`BlockId.of` 乱序入参仍取最小 hex（`plains@-5_-59`）、`parse` 往返。
+**★★ 旧档兼容 = 选项 a（就地迁移）+ 实测**：真档 `checkpoints/main/1.json`（**复制**到 /tmp，原档 md5 `9e13d856…` 前后一致）；`partition=OK hexCount=19441`、**`blockCount=44`**、`histogram={plains:10719, mountains:886, ocean:4506, low_hills:3330}` **与 M6 Python 直读逐值相同**（含 `swamp→plains` 合并算术）；首格 `(-5,-59) terrain=plains height=0.375`。再用**新构建**跑**旧档副本** `:5819` ⇒ `overview 200 / 703,053 B`、零异常，**只杀自起的 5819，5817/5818 全程未动**。★ **旧变更集**（`hexes` 值带 terrain）不可静态迁移（切分依赖 base 全图）⇒ `MapCodec` **显式抛**并给重导入指引。
+**变异 m1~m5 全杀**：漏 singleton 分量 / plains 吞中心一格（`expected:19 but was:20`）/ `BlockId` 自增 / `between` 不 diff `terrainBlocks` / `terrainAt` 回退默认地形（`expected:"mountains" but was:"plains"`）。
+**门禁 867** = 170/272/45/131/155/94，+17，`BugInstance size is 0` ×6，ERROR 0。
+**未核实**：`RegionRandomizer` 整体重切在 19441 格上的性能；`terrainAt` O(#块) 在极端碎片化图上的代价（批量已走 `terrainIndex`）；**未重跑 M7 系列浏览器 e2e**（前端零改动，只跑了 `measure.cjs`）。
