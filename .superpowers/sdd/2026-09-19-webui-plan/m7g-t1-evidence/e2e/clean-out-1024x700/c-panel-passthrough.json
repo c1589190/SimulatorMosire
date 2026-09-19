@@ -1,0 +1,37 @@
+{
+  "p12c": {
+    "x": 512,
+    "y": 350
+  },
+  "outsideInfo": {
+    "tag": "CANVAS",
+    "id": "canvas",
+    "isCanvas": true
+  },
+  "selC1": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  },
+  "h2Info": {
+    "found": true,
+    "x": 162,
+    "y": 131.25,
+    "hitTag": "H2",
+    "hitId": "",
+    "hitInControl": true,
+    "hitIsCanvas": false
+  },
+  "selBeforeC": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  },
+  "selAfterC": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  },
+  "nonGetBeforeC": 0,
+  "nonGetAfterC": 0
+}

@@ -1,0 +1,143 @@
+{
+  "blankG": {
+    "x": 340,
+    "y": 90
+  },
+  "selCleared": null,
+  "nonGetAfterClear": 0,
+  "selG": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "nonGetAfterSelect": 0,
+  "headBeforeRoute": 1,
+  "headAfterRoute": null,
+  "route1": null,
+  "selBlank": null,
+  "dbgBlank": {
+    "scale": 3.669724770642202,
+    "tx": 207.78181682684897,
+    "ty": 25.688073394495405,
+    "cellSize": 34,
+    "hexCount": 3,
+    "unitCount": 1,
+    "colorByTerrain": {
+      "desert": "#E7C86E"
+    },
+    "fallbackColor": "#ff00ff",
+    "fallbackWarned": false,
+    "highlightHexCount": 0,
+    "highlightColors": [],
+    "regionFallbackColor": "#00e5ff",
+    "regionFallbackWarned": false,
+    "selected": null,
+    "selectedUnit": null,
+    "mode": "unit",
+    "isWorkbench": true,
+    "routeCount": 0,
+    "routes": []
+  },
+  "nonGetBeforeBlank": 0,
+  "nonGetAfterBlank": 0,
+  "headBeforeCancel": 1,
+  "headAfterCancel": 2,
+  "routeZero": {
+    "scale": 3.669724770642202,
+    "tx": 207.78181682684897,
+    "ty": 25.688073394495405,
+    "cellSize": 34,
+    "hexCount": 3,
+    "unitCount": 1,
+    "colorByTerrain": {
+      "desert": "#E7C86E"
+    },
+    "fallbackColor": "#ff00ff",
+    "fallbackWarned": false,
+    "highlightHexCount": 0,
+    "highlightColors": [],
+    "regionFallbackColor": "#00e5ff",
+    "regionFallbackWarned": false,
+    "selected": {
+      "q": 1,
+      "r": 1
+    },
+    "selectedUnit": "u-1",
+    "mode": "unit",
+    "isWorkbench": true,
+    "routeCount": 0,
+    "routes": []
+  },
+  "nodesBeforeG5": [
+    {
+      "tick": 5,
+      "revision": 1,
+      "firstRevision": 1,
+      "count": 1,
+      "commands": "core.Bootstrap",
+      "centerX": 103
+    }
+  ],
+  "nodesAfterG5": [
+    {
+      "tick": 5,
+      "revision": 2,
+      "firstRevision": 1,
+      "count": 2,
+      "commands": "core.Bootstrap,unit.CancelRoute",
+      "centerX": 103
+    }
+  ],
+  "apiBeforeG5": {
+    "ticks": [
+      5
+    ],
+    "lastTick": 5,
+    "nodeCount": 2
+  },
+  "apiAfterG5": {
+    "ticks": [
+      5
+    ],
+    "lastTick": 5,
+    "nodeCount": 2
+  },
+  "tipG5": 5,
+  "nodesAfterAdv": [
+    {
+      "tick": 5,
+      "revision": 2,
+      "firstRevision": 1,
+      "count": 2,
+      "commands": "core.Bootstrap,unit.CancelRoute",
+      "centerX": 103
+    },
+    {
+      "tick": 8,
+      "revision": 3,
+      "firstRevision": 3,
+      "count": 1,
+      "commands": "core.AdvanceTime",
+      "centerX": 213
+    }
+  ],
+  "apiAfterAdv": {
+    "ticks": [
+      5,
+      8
+    ],
+    "lastTick": 8,
+    "nodeCount": 3
+  },
+  "midRevG6": 2,
+  "headG6": 3,
+  "revBackG6": 3,
+  "p12": {
+    "x": 640,
+    "y": 400
+  },
+  "selT4": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  }
+}

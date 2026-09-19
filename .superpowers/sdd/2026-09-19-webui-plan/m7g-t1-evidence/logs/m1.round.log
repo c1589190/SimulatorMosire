@@ -1,0 +1,13 @@
+──── m1（target=styles.css, expect=a-canvas-covers-viewport）────
+orig_md5=acb7ec66ff7224f1e029126ae8eeb645  mutant_md5=e69219d81c0045996562f96346789599  pushed_src_md5=e69219d81c0045996562f96346789599  pushed_classes_md5=e69219d81c0045996562f96346789599
+rc=1  round_start=1789798839  server_log_mtime=1789798882
+--- 变红的步骤 ---
+STEP a-canvas-covers-viewport: FAIL {"vp0":{"w":1280,"h":800},"cbox":{"x":0,"y":0,"width":768,"height":800}}
+STEP a-canvas-no-box: FAIL {"border":"0px","radius":"0px","mountPos":"static","canvasW":1280,"canvasH":800,"dpr":1}
+STEP d-canvas-after-collapse: FAIL {"x":0,"y":0,"width":768,"height":800}
+STEP e-canvas-covers-after-resize: FAIL {"vpE":{"w":1120,"h":710},"cboxE":{"x":0,"y":0,"width":672,"height":710}}
+STEP g-route-created: FAIL {"headBeforeRoute":1,"headAfterRoute":null,"routeCount":null}
+STEP g-rightblank-keeps-route: FAIL {"routeCount":0}
+STEP g-leftclick1-keeps-route: FAIL {"routeCount":0,"nonGetAfterBlank":0,"nonGetAfterFirst":0}
+E2E RESULT: FAIL a-canvas-covers-viewport,a-canvas-no-box,d-canvas-after-collapse,e-canvas-covers-after-resize,g-route-created,g-rightblank-keeps-route,g-leftclick1-keeps-route
+⇒ 杀死（红点 STEP a-canvas-covers-viewport），源与 classpath 资源均逐字节还原

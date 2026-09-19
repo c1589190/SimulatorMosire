@@ -1,0 +1,9 @@
+──── m2（target=styles.css, expect=c-panel-hit-is-control）────
+orig_md5=acb7ec66ff7224f1e029126ae8eeb645  mutant_md5=e4374678e4328c099efe2987a0a5c48d  pushed_src_md5=e4374678e4328c099efe2987a0a5c48d  pushed_classes_md5=e4374678e4328c099efe2987a0a5c48d
+rc=1  round_start=1789798882  server_log_mtime=1789798890
+--- 变红的步骤 ---
+STEP b-left-panel-above-canvas: FAIL {"found":true,"x":162,"y":377.25,"hitTag":"CANVAS","hitId":"canvas","hitInControl":false,"hitIsCanvas":true}
+STEP b-right-panel-above-canvas: FAIL {"found":true,"x":1118,"y":377.25,"hitTag":"CANVAS","hitId":"canvas","hitInControl":false,"hitIsCanvas":true}
+STEP c-panel-hit-is-control: FAIL {"found":true,"x":162,"y":88.25,"hitTag":"CANVAS","hitId":"canvas","hitInControl":false,"hitIsCanvas":true}
+E2E RESULT: FAIL b-left-panel-above-canvas,b-right-panel-above-canvas,c-panel-hit-is-control
+⇒ 杀死（红点 STEP c-panel-hit-is-control），源与 classpath 资源均逐字节还原
