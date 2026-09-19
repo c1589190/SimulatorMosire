@@ -310,6 +310,17 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 **变异**：m1（按 `revision` 分组）⇒ `a-node-count-unchanged`/`a-detail-plus-one`/`a-command-is-planroute` 红；m2（`to=from+1` 忽略 N）⇒ `c-new-tick-is-old-plus-100` 红；m3（分支首节点不对齐 parent 列）⇒ `e-fork-aligned` 红。
 **游标语义（实现期决定，已记）**：点一个 tick 节点 ⇒ 取该 tick 的**最后一个 revision**（面板看到的是该 tick 结束时的状态）。
 
+### M7g（全屏底图 + 浮层控件）已关账（2026-09-19，子代理 `deepseek-flash-go`；控制器合并后核验）
+
+**缘起（用户原话）**：「这个地图啊，应该类似于**底图**，而不是**被框在一个范围里**」。控制器先解释现状（Canvas 是**中栏里带边框的盒子**，且 `computeLayout` **自动把所有格子缩放塞进视口** ⇒ "看一张图"而不是"看一张地图"），并给出三档选择；**用户裁定：全屏底图（连模式栏/时间轴都浮在上面）**。
+
+**M7g-T1**（`m7g/t1` `7239f4d` → 合并 `b800995`）：**纯前端三文件**（`index.html` 重构 +182、`map.js` +95、`styles.css` +156），零 Java，**841 不变**；干净轮 **50 断言全 PASS**，且**在 1280×800 与 1024×700 两个视口各跑一次**（★ "装了护栏要在它真正会被用到的每一种环境形态下各自证一次"）；**变异 3 轮 0 存活**。
+
+**实测**：★ `a-canvas-covers-viewport` + **`a-canvas-no-box`**（无盒子感）+ `a-canvas-dpr-sharp`；★ `b-mode-bar/timeline/left-panel/right-panel-above-canvas`（**四者都是浮层**）；★ **不穿透**：`c-panel-hit-is-control` + `c-panel-no-passthrough-selection` + `c-panel-no-passthrough-nowrite`，而面板外 `c-map-outside-selects` 仍生效；★ **M7d 的意图保住**：`d-timeline-visible` + `d-left-panel-scrolls` + `d-timeline-not-pushed`；**resize 不重置视图**（`e-*`）。
+**变异**：m1（canvas 改回流式子元素）⇒ `a-canvas-covers-viewport`/`a-canvas-no-box` 红；m2（浮层 `pointer-events:none`）⇒ 穿透类断言红；m3（resize 重新适配）⇒ `e-canvas-covers-after-resize` 红；另 `g-route-created` 红（回归护栏当场抓到破坏）。
+
+★ **另需记**：**视图语义改了**——不再"自动把世界塞进视口"，改为**初始适配一次 + 自由平移缩放 + resize 不重置**，并**新增"回到世界中心/适配"入口**（否则用户乱拖后找不回）。
+
 ### T1（时间轴：可见 knob + 列坐标布局 + 分岔连线）已关账（2026-09-19，子代理 `deepseek-flash-go` 执行；控制器合并后核验）
 
 **T1**（`m7b/t1` `9dd1363` → 合并 `95bd45d`）：**纯前端两文件**（`timeline.js` / `styles.css`），**零 Java**、未改台账、全量 **833 不变**。
