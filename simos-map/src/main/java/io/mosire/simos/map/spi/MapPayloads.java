@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -66,6 +68,56 @@ final class MapPayloads {
       hexes.add(hexFrom(element, field));
     }
     return hexes;
+  }
+
+  /** 必填的 {@code regionId} 字符串 ⇒ {@link RegionId}（空白由 {@link RegionId#parse} 拒绝，消息是它自己的）。 */
+  static RegionId requireRegionId(JsonNode payload, String field) {
+    return RegionId.parse(requireText(payload, field));
+  }
+
+  /**
+   * 可选的 {@code [{q,r}…]} 数组 ⇒ 去重后的坐标集合（保序）；**字段缺席或 JSON {@code null} ⇒ 返回 {@code null}**（"不给"），
+   * 出现但形态不符 ⇒ 抛。用于 {@code map.UpdateRegion} 的"hexes 可选"语义——**缺席与空数组是两回事**：
+   * 空数组在这一层合法，由领域操作判"至少要有一格"。
+   */
+  static Set<HexCoord> optionalHexes(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    return requireHexes(payload, field);
+  }
+
+  /**
+   * 可选的 {@code meta} 对象 ⇒ {@link RegionMeta}；**字段缺席或 JSON {@code null} ⇒ 返回 {@code null}**（"不给"）。
+   * 出现但非对象、或四个子字段非字符串 ⇒ 抛。四个子字段各自可选（缺席 ⇒ 该项 {@code null}）。
+   */
+  static RegionMeta optionalMeta(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 {color,tag,description,annexedBy} 对象: " + payload);
+    }
+    return new RegionMeta(
+        optionalText(value, "color"),
+        optionalText(value, "tag"),
+        optionalText(value, "description"),
+        optionalText(value, "annexedBy"));
+  }
+
+  /** 可选的字符串子字段：缺席或 JSON {@code null} ⇒ {@code null}；出现但非字符串 ⇒ 抛。 */
+  private static String optionalText(JsonNode object, String field) {
+    JsonNode value = object.get(field);
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    if (!value.isTextual()) {
+      throw new IllegalArgumentException("meta 字段 " + field + " 必须是字符串: " + object);
+    }
+    return value.asText();
   }
 
   private static HexCoord hexFrom(JsonNode object, String field) {

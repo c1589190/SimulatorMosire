@@ -1,0 +1,61 @@
+===== 变异轮 m1 =====
+target=simos-map/src/main/java/io/mosire/simos/map/ops/RegionOperations.java mutant=.superpowers/sdd/2026-09-19-map-edit/t4-evidence/mutants/m1.RegionOperations.java expect=createRegionRejectsDuplicateId|rejectsDuplicateCreate
+orig_md5=2002fbbd23528f0d85fb9a5fd9ca234b backup_md5=2002fbbd23528f0d85fb9a5fd9ca234b
+--- 干净世界基线（变异前，期望绿）---
+clean_rc=0 clean_compilation_error=0 clean_
+mutant_md5=57281a7094f8e62e1035478ed67706e7
+pushed_src_md5=57281a7094f8e62e1035478ed67706e7 class_removed=io/mosire/simos/map/ops/RegionOperations.class
+mut_rc=1 mut_compilation_error=0 mut_Tests run: 31
+--- 本轮 surefire 报告（mtime 落轮内）---
+/home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports/io.mosire.simos.map.spi.RegionHandlersTest.txt
+/home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports/io.mosire.simos.map.ops.RegionOperationsTest.txt
+--- 失败方法 ---
+protected_assertion_hits=2
+restored_md5=2002fbbd23528f0d85fb9a5fd9ca234b (== orig)
+ROUND m1 DONE mut_rc=1 hits=2 restored=2002fbbd23528f0d85fb9a5fd9ca234b self_md5=57281a7094f8e62e1035478ed67706e7
+est
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.rejectsDuplicateCreate -- Time elapsed: 0.096 s <<< FAILURE!
+java.lang.AssertionError: 
+[map.CreateRegion 对 payload {"regionId":"r1","name":"覆盖","hexes":[{"q":2,"r":0}]} 必须被拒] 
+Expecting actual:
+  Applied[changeSet=MapChangeSet[hexes=Unchanged[], terrainBlocks=Unchanged[], regions=Upsert[entries={r1=Region[id=r1, name=覆盖, hexes=[2_0], boundary=RegionBoundary[rings=[[HexVertex[u=3, w=-1], HexVertex[u=3, w=1], HexVertex[u=4, w=2], HexVertex[u=5, w=1], HexVertex[u=5, w=-1], HexVertex[u=4, w=-2]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]]}], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.map.spi.RegionHandlersTest.assertRejected(RegionHandlersTest.java:217)
+	at io.mosire.simos.map.spi.RegionHandlersTest.rejectsDuplicateCreate(RegionHandlersTest.java:151)
+
+[ERROR] Failures: 
+[ERROR]   RegionOperationsTest.createRegionRejectsDuplicateId:91 
+Expecting code to raise a throwable.
+[ERROR]   RegionHandlersTest.rejectsDuplicateCreate:151->assertRejected:217 [map.CreateRegion 对 payload {"regionId":"r1","name":"覆盖","hexes":[{"q":2,"r":0}]} 必须被拒] 
+Expecting actual:
+  Applied[changeSet=MapChangeSet[hexes=Unchanged[], terrainBlocks=Unchanged[], regions=Upsert[entries={r1=Region[id=r1, name=覆盖, hexes=[2_0], boundary=RegionBoundary[rings=[[HexVertex[u=3, w=-1], HexVertex[u=3, w=1], HexVertex[u=4, w=2], HexVertex[u=5, w=1], HexVertex[u=5, w=-1], HexVertex[u=4, w=-2]]]], meta=RegionMeta[color=null, tag=null, description=null, annexedBy=null]]}], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR] Tests run: 31, Failures: 2, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+
+===== 装置补记（m1）：本轮字节自指 =====
+target=simos-map/src/main/java/io/mosire/simos/map/ops/RegionOperations.java
+orig_md5=2002fbbd23528f0d85fb9a5fd9ca234b
+mutant_md5=57281a7094f8e62e1035478ed67706e7
+pushed_src_md5=57281a7094f8e62e1035478ed67706e7
+restored_md5=2002fbbd23528f0d85fb9a5fd9ca234b
+mut_rc=1 protected_assertion_hits=2

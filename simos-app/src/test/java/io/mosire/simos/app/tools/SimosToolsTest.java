@@ -112,7 +112,10 @@ class SimosToolsTest {
           "unit.PlanRoute",
           "unit.CancelRoute",
           "unit.DisbandUnit",
-          "map.SetTerrain");
+          "map.SetTerrain",
+          "map.CreateRegion",
+          "map.UpdateRegion",
+          "map.DeleteRegion");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 

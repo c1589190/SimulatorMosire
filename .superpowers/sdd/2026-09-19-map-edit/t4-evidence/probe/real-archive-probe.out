@@ -1,0 +1,31 @@
+22:33:25.550 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+22:33:25.648 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45861/（静态 /webui，同源，无 CORS 头）
+22:33:25.648 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/t4-real-archive checkpointInterval=100 codec=3 handler=12 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=46211 guiPort=45861 approvalPort=45275
+hexCount=19441
+regionCount=2
+pickedHexes=[-18_0, -18_1, -17_-1]
+  genesisOwners(-18_0)=[test_annex_target, test_nation]
+  genesisOwners(-18_1)=[test_annex_target, test_nation]
+  genesisOwners(-17_-1)=[test_annex_target, test_nation]
+22:33:26.175 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=cmd-map.CreateRegion correlationId=cmd-map.CreateRegion 新坐标=main@2
+createResult=Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]]]
+revisionsBefore=1 after=2
+regionsAfter=[test_annex_target, test_nation, t4_overlap]
+ownersAfter(-18_0)=[t4_overlap, test_annex_target, test_nation]
+API_URL=http://127.0.0.1:45861/api/map/hex?q=-18&r=0&revision=2
+API_JSON=status=200 {"q":-18,"r":0,"terrain":"low_hills","height":0.6000000000000001,"regions":["t4_overlap","test_annex_target","test_nation"],"terrainType":{"key":"low_hills","name":"低矮丘陵","color":"#A8B36A","minHeight":0.55,"maxHeight":0.65,"food":2,"gold":1,"stone":1,"moveCost":2,"description":"低地与山地的过渡带，产量中等、略难走"},"facets":[]}
+apiListsBoth=true
+replayRegionsByteIdentical=true
+22:33:26.713 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.CreateRegion commandId=cmd-map.CreateRegion correlationId=cmd-map.CreateRegion 原因=区域已存在: test_nation
+negDuplicate=Rejected[reason=区域已存在: test_nation]
+22:33:26.784 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.UpdateRegion commandId=cmd-map.UpdateRegion correlationId=cmd-map.UpdateRegion 原因=区域不存在: nope
+negUpdateMissing=Rejected[reason=区域不存在: nope]
+22:33:26.842 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.DeleteRegion commandId=cmd-map.DeleteRegion correlationId=cmd-map.DeleteRegion 原因=区域不存在: nope
+negDeleteMissing=Rejected[reason=区域不存在: nope]
+22:33:26.910 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.CreateRegion commandId=cmd-map.CreateRegion correlationId=cmd-map.CreateRegion 原因=hexes 不得为空：一个区域至少要有一格
+negEmpty=Rejected[reason=hexes 不得为空：一个区域至少要有一格]
+22:33:26.971 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.CreateRegion commandId=cmd-map.CreateRegion correlationId=cmd-map.CreateRegion 原因=hex 不在图上: 9999_9999
+negOutside=Rejected[reason=hex 不在图上: 9999_9999]
+rowsUnchanged=true rows=2
+22:33:26.978 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45275）
+22:33:26.978 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭

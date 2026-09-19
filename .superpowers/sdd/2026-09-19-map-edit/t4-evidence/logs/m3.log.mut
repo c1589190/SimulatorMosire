@@ -1,0 +1,29 @@
+[ERROR] Tests run: 16, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.089 s <<< FAILURE! -- in io.mosire.simos.map.ops.RegionOperationsTest
+[ERROR] io.mosire.simos.map.ops.RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.IllegalArgumentException: 区域与已有区域重叠: r1
+	at io.mosire.simos.map.ops.RegionOperations.createRegion(RegionOperations.java:63)
+	at io.mosire.simos.map.ops.RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed(RegionOperationsTest.java:75)
+
+[ERROR] Tests run: 15, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.119 s <<< FAILURE! -- in io.mosire.simos.map.spi.RegionHandlersTest
+[ERROR] io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAllowsOverlap -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.ClassCastException: class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+	at io.mosire.simos.map.spi.RegionHandlersTest.createRegionHandlerAllowsOverlap(RegionHandlersTest.java:97)
+
+[ERROR] Errors: 
+[ERROR]   RegionOperationsTest.createRegionOverlappingAnExistingOneIsAllowed:75 » IllegalArgument 区域与已有区域重叠: r1
+[ERROR]   RegionHandlersTest.createRegionHandlerAllowsOverlap:97 ClassCast class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+[ERROR] Tests run: 31, Failures: 0, Errors: 2, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: 
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t4/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
