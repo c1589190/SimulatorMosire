@@ -69,7 +69,7 @@
     order.forEach(function (node) {
       var parentId = node.parent === null || node.parent === undefined ? null : String(node.parent);
       var parent = parentId === null ? null : nodes.get(parentId);
-      if (parent && parent !== node) {
+      if (parent && parent !== node && parent.children.length === 0) {
         parent.children.push(node);
       } else {
         roots.push(node);

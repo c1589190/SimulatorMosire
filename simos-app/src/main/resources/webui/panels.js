@@ -1,4 +1,4 @@
-// panels.js —— 左栏详情（M7 T2 骨架 → T4 接真读数）/ 右栏区域面板（占位，分组列表归 T6）。
+// panels.js —— 左栏详情（M7 T2 骨架 → T4 接真读数 → T5 补全判据③：hex 加"人口"、单位补全字段）/ 右栏区域面板（占位，分组列表归 T6）。
 // ★ 无框架、无构建：原生 DOM；所有只读取数经 window.SimosApi 并带 window.SimosApp.target()
 //   （T3 约定在 T4 由本文件收口：面板值随游标的 {branch, revision} 变化）。
 // ★ 本文件不含任何写调用。
@@ -30,6 +30,22 @@
     return value;
   }
 
+  /** 装备表渲染成 `键=值；…`（空表显示"（空）"）。 */
+  function equipmentText(equipment) {
+    if (!equipment) {
+      return "（空）";
+    }
+    var keys = Object.keys(equipment);
+    if (!keys.length) {
+      return "（空）";
+    }
+    return keys
+      .map(function (key) {
+        return key + "=" + equipment[key];
+      })
+      .join("；");
+  }
+
   function hexLabel(coord) {
     return "q=" + coord.q + ", r=" + coord.r;
   }
@@ -38,7 +54,14 @@
     var status = app.byId("left-status");
     var detail = app.clear(app.byId("selection-detail"));
     app.statusMessage(status, "查询 " + hexLabel(selection) + "（" + targetLabel() + "）…", "muted");
-    Promise.all([api.mapHex(selection.q, selection.r, app.target()), api.units(app.target())])
+    // 人口序列可能不存在（/api/social/population 404）⇒ 折成 null，不让整条详情失败（判据③"人口"）。
+    Promise.all([
+      api.mapHex(selection.q, selection.r, app.target()),
+      api.units(app.target()),
+      api.population(selection.q, selection.r, app.target()).catch(function () {
+        return null;
+      }),
+    ])
       .then(function (results) {
         if (token !== requestToken) {
           return;
@@ -47,6 +70,7 @@
         var unitsHere = (results[1].units || []).filter(function (u) {
           return u.position && u.position.q === selection.q && u.position.r === selection.r;
         });
+        var population = results[2];
         var terrainText = hex.terrain;
         if (hex.terrainType && hex.terrainType.name) {
           terrainText = hex.terrain + "（" + hex.terrainType.name + "）";
@@ -66,6 +90,13 @@
                 })
                 .join("；")
             : "无"
+        );
+        appendRow(
+          detail,
+          "人口",
+          population && population.population !== null && population.population !== undefined
+            ? population.population
+            : "无序列"
         );
         app.statusMessage(status, hexLabel(hex) + " · " + targetLabel(), "ok");
       })
@@ -90,12 +121,12 @@
         appendRow(detail, "id", unit.id);
         appendRow(detail, "name", unit.name);
         appendRow(detail, "parent", unit.parent === null || unit.parent === undefined ? "—" : unit.parent);
-        appendRow(
-          detail,
-          "position",
-          unit.position ? hexLabel(unit.position) : "—"
-        );
+        appendRow(detail, "position", unit.position ? hexLabel(unit.position) : "—");
         appendRow(detail, "member", unit.member);
+        appendRow(detail, "equipment", equipmentText(unit.equipment));
+        appendRow(detail, "speed", unit.speed);
+        appendRow(detail, "mobilityPerMille", unit.mobilityPerMille);
+        appendRow(detail, "movement", unit.movement ? "true" : "false");
         app.statusMessage(status, "单位 " + unit.id + " · " + targetLabel(), "ok");
       })
       .catch(function (e) {

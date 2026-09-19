@@ -1,0 +1,10 @@
+TREE-CHECK target: /home/cna/SimulatorMosire/.claude/worktrees/m7t5/simos-app/src/main/resources/webui/unitTree.js
+ASSERT depth-parent-child-per-node: PASS [{"id":"A","depth":0,"parent":null,"children":["B","E"]},{"id":"B","depth":1,"parent":"A","children":["C","D"]},{"id":"C","depth":2,"parent":"B","children":["F"]},{"id":"F","depth":3,"parent":"C","children":[]},{"id":"D","depth":2,"parent":"B","children":[]},{"id":"E","depth":1,"parent":"A","children":[]},{"id":"G","depth":0,"parent":null,"children":[]},{"id":"H","depth":0,"parent":"ghost","children":[]}]
+ASSERT branch-point-recognition: PASS [{"id":"A","children":2,"branch":true},{"id":"B","children":2,"branch":true},{"id":"C","children":1,"branch":false},{"id":"F","children":0,"branch":false},{"id":"D","children":0,"branch":false},{"id":"E","children":0,"branch":false},{"id":"G","children":0,"branch":false},{"id":"H","children":0,"branch":false}]
+ASSERT branch-teeth-single-vs-double: PASS C(1子)=false B(2子)=true D(0子)=false
+ASSERT multi-root-forest: PASS roots=["A","G","H"]
+ASSERT missing-or-null-parent-is-root: PASS G.parent=null
+ASSERT dangling-parent-becomes-root: PASS H.parent="ghost" H.depth=0
+ASSERT descendant-count: PASS [{"id":"A","descendants":5},{"id":"B","descendants":3},{"id":"C","descendants":1},{"id":"F","descendants":0},{"id":"D","descendants":0},{"id":"E","descendants":0},{"id":"G","descendants":0},{"id":"H","descendants":0}]
+ASSERT empty-input: PASS buildTree([])=[]
+TREE-CHECK RESULT: PASS

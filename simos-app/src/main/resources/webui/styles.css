@@ -502,3 +502,129 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── 单位编制倒树（M7 T5，spec §六）：根在下、下级向上生长；分岔点加粗放大 ────────
+   DOM 是自然的（子在前、节点在后），CSS 用 flex 竖排把子行摆在节点**上方** ⇒ 视觉倒置。 */
+
+.tree-forest {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 18px;
+  padding: 8px 4px 4px;
+  overflow-x: auto;
+}
+
+.tree-subtree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tree-children {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+/* 兄弟之间的横梁 + 每个子树向上的短竖线（倒树的连接线）。 */
+.tree-children::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: var(--line);
+}
+
+.tree-children > .tree-subtree {
+  position: relative;
+  padding-top: 8px;
+}
+
+.tree-children > .tree-subtree::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 1px;
+  height: 13px;
+  background: var(--line);
+}
+
+.tree-node {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.tree-node:hover {
+  border-color: var(--accent);
+}
+
+.tree-node .tree-node-name {
+  font-weight: 600;
+}
+
+.tree-node .tree-node-id {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* 分岔点（子数 ≥ 2）：加粗 + 放大 + 警示色描边（spec §六"标大！"）。 */
+.tree-node.branch {
+  padding: 6px 14px;
+  border: 2px solid var(--warn);
+  background: #2c2618;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(224, 179, 76, 0.18);
+}
+
+.tree-node.branch .tree-node-name {
+  font-weight: 700;
+}
+
+.tree-node.branch .tree-node-id {
+  font-size: 11px;
+  color: var(--warn);
+}
+
+.tree-node.selected {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px rgba(78, 201, 160, 0.35);
+}
+
+.tree-branch-detail {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 1px dashed var(--warn);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: 11px;
+}
+
+.tree-branch-detail .tree-branch-title {
+  margin: 0 0 3px;
+  color: var(--warn);
+}
+
+.tree-branch-detail .branch-row {
+  white-space: nowrap;
+}
