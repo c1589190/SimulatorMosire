@@ -73,3 +73,12 @@
 **变异 5 轮 0 存活**：m1 给"区域查看"放行写 / m2 切模式不清状态 / **m3 每格一条命令** / m4 调色板硬编码 `forest` / **m5 数据变不重建位图**。★ **自曝装置坑**：m1 还原时把 `src/modes.js` 写回旧版，致 m2~m5 e2e 出现**假红**——**先怀疑自己的装置**，如实记。
 **门禁 924** 不变（纯前端 delta 0）。
 **未核实**：浏览器内 **>2 从属**未渲染（Java 探针证过 3 从属）；`SetEdge`/`RandomizeRegion` 白名单放行但 **UI 置灰、从未真发**（T11）；**区域编辑模式 UI（T10）不存在**。
+
+## T10 ✅ 区域编辑模式 UI（`9a47714` → 合并见下；5 文件 +734/−30）
+
+**交互**：**新建区域**（真 pointer 拖选 ⇒ **一条** `map.CreateRegion`，★ **重叠不报错**）/ **改 hex**（右栏选区域 ⇒ 载入 hex ⇒ 图上增删 ⇒ 一条 `UpdateRegion`）/ **删除**（★ **二次确认**：确认前**零写**、取消仍零写、确认后**恰一条** `DeleteRegion`）/ ★ **焦点区域原色（alpha 0.52）+ 其它淡色（同色相 alpha 0.13）**（`body[data-region-focus]` + `regionEditDebug()` 的 `focus`/`fadedRegions` 可断言）。★ T8 的 meta 编辑器**移出复用**（`section.region-info-editor[data-modes="map-edit region-edit"]`），两模式共用不重写。
+**★ 重叠正例（真档，核心判据）**：`CreateRegion` POST **恰 1 条**、载荷 5 格、`head 1→2`、`regions` 2→3；重叠格 `regions=["t10_overlap","test_annex_target","test_nation"]`（**3 项，字典序**）——"多对多、无谁赢"的**端点级证明**（原始 JSON 在 `logs/overlap-raw-json.log`；原档 md5 跑前=跑后）。
+**变异 3 轮全杀**：★★ **m1 前端加"与已有区域相交就拒绝" ⇒ 8 FAIL**（方向性护栏兑现）；m2 去掉删除确认 ⇒ `e1-delete-unconfirmed` 红；m3 所有区域同色同 alpha ⇒ `c2-fade-colors-distinct` 红。
+★ **本单 e2e 抓到真缺陷**：**焦点区域必须"先入高亮集合"**，否则**与别区重叠的焦点格会被淡色盖掉**（overlap × focus 的交叉缺陷，只有真重叠数据能暴露）。
+**门禁 924 不变（纯前端 delta 0）**；e2e **27 断言 ALL PASS**；0 pageerror；5817/5818 未动。
+**未核实**：真档上 **4 个及以上区域**的浏览器渲染（本轮最多 3 从属）；触摸/触控笔拖选；HiDPI（dpr>1）下淡色像素采样；`UpdateRegion` 改 name 无入口（T4 已记）。
