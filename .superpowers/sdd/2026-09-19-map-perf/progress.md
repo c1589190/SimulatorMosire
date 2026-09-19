@@ -46,3 +46,12 @@
 **变异 m1~m5 全杀**：漏 singleton 分量 / plains 吞中心一格（`expected:19 but was:20`）/ `BlockId` 自增 / `between` 不 diff `terrainBlocks` / `terrainAt` 回退默认地形（`expected:"mountains" but was:"plains"`）。
 **门禁 867** = 170/272/45/131/155/94，+17，`BugInstance size is 0` ×6，ERROR 0。
 **未核实**：`RegionRandomizer` 整体重切在 19441 格上的性能；`terrainAt` O(#块) 在极端碎片化图上的代价（批量已走 `terrainIndex`）；**未重跑 M7 系列浏览器 e2e**（前端零改动，只跑了 `measure.cjs`）。
+
+## T13/T14 ✅ 块多边形端到端（`fe52d8c` → 合并见下；60 文件 +13418/−255）
+
+**实测**：overview **703,053 → 227,377 B（−67.66%）**（★ 累计 **1,044,970 → 227,377 = −78.2%**）；**44 块 / 64 条环 / 4 块带洞 / 9,694 顶点**；★ **块 hexCount 之和 = 19,441 = hexCount，`unmergedCount = 0`**（P6 全建块当场兑现）；**两次调用逐字节相同**（md5 `9eb39b19a3c736beaa06eea02bd1495e`）；直方图与 T6 逐值相同。
+**★ 拾取对拍 10/10 一致（含 4 个洞内格）**：`(-42,-1)`=plains（非外层 low_hills）、`(-11,56)`=mountains、`(69,-78)`=plains（非 ocean）、`(-68,3)`=mountains（口径 = `/api/map/hex` 权威 vs 前端块多边形 `hexAtScreen`）；像素色与后端 `terrainTypes[].color` 距离 ≤12；截图 `t13-evidence/screenshot-5821.png`。
+**对照**：`firstInteractiveMs` 420.7 → **304.3**；`render()` p50/p95 **0 / 0.1ms**；旧调试页 `/map` **4/4 PASS**。
+**变异 6 轮全杀**（含"不画洞"⇒ 视觉红、"Pass 2 仍逐格"⇒ ops 红、"pickAt 忽略洞"⇒ 洞内拾取红）。
+**门禁 869** = 170/272/45/131/155/**96**，+2。
+**未核实**：HiDPI（dpr>1）未测；只对 `test_integration` 跑；更激进编码（`[x,y]` −34% / 整数顶点标签 −66%）未做；★ **T11/T12 分块端点未做**（块传输仍是**一次性整包 227KB**，spec §四·档 1 的"屏外不传"**未覆盖**）。
