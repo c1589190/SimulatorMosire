@@ -1,0 +1,7 @@
+mutation=m4 orig_md5=efeb13e5ec642935ac7695af1436c291 mutant_md5=7e33818c9128b93680fb977e3d609824 file=map.js
+syntax_rc=0 (must be 0)
+classes_md5=7e33818c9128b93680fb977e3d609824 (must == mutant_md5)
+e2e_rc=1 (expect 1)
+E2E RESULT: 1 FAIL e-palette-only-backend-vocab
+restored_md5=efeb13e5ec642935ac7695af1436c291 restored_classes_md5=efeb13e5ec642935ac7695af1436c291 orig_md5=efeb13e5ec642935ac7695af1436c291
+MUTATION m4: KILLED (expected red observed)

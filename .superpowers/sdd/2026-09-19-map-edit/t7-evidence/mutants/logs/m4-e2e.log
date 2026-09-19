@@ -1,0 +1,32 @@
+server_ready_tries=3 code=200 pid=434395
+STEP pre-overview-real-archive: PASS hexCount=19441 terrainTypes=["ocean","plains","low_hills","mountains"]
+STEP pre-target-differs: PASS target=ocean before={"-18,0":"low_hills","-17,0":"plains","-16,0":"plains","-15,0":"plains","-14,0":"mountains"}
+STEP a-mode-view: PASS {"cur":"常规","bodyMode":"view","pressed":"true"}
+STEP a-mode-region: PASS {"cur":"区域查看","bodyMode":"region","pressed":"true"}
+STEP a-mode-map-edit: PASS {"cur":"地图编辑","bodyMode":"map-edit","pressed":"true"}
+STEP a-mode-region-edit: PASS {"cur":"区域编辑","bodyMode":"region-edit","pressed":"true"}
+STEP a-mode-unit: PASS {"cur":"单位移动编辑","bodyMode":"unit","pressed":"true"}
+STEP a2-mode-switch-clears-state: PASS {"beforeSwitch":{"sel":{"kind":"hex","q":-18,"r":0},"hl":2,"debugHl":701},"afterSwitch":{"sel":null,"hl":0,"debugHl":0,"brush":0},"afterBack":{"sel":null,"hl":0}}
+STEP b-whitelist-pure-function: PASS {"view":false,"region":false,"mapEdit":true,"mapEditEdge":true,"mapEditRnd":true,"regionEdit":true,"unit":true,"unknown":false,"empty":false,"labels":["常规","区域查看","地图编辑","区域编辑","单位移动编辑"]}
+STEP b-readonly-zero-write: PASS {"paletteHiddenView":true,"paletteHiddenRegion":true,"deniedView":{"ok":false,"kind":"mode-denied"},"deniedRegion":{"ok":false,"kind":"mode-denied"},"nonGetReadonly":[]}
+STEP e-palette-only-backend-vocab: FAIL palette=["ocean","plains","low_hills","mountains","forest"] backend=["ocean","plains","low_hills","mountains"]
+STEP e-terrain-selected-visible: PASS {"terrain":"ocean","active":true}
+STEP h-brush-preview-visible: PASS {"mode":"map-edit","paletteKeys":["ocean","plains","low_hills","mountains","forest"],"selectedTerrain":"ocean","brushHexCount":3,"painting":true,"mapEditBusy":false}
+STEP c-one-command-one-head: PASS {"posts":1,"headBefore":1,"headAfter":2}
+STEP c-payload-five-hexes: PASS hexes=[{"q":-18,"r":0},{"q":-17,"r":0},{"q":-16,"r":0},{"q":-15,"r":0},{"q":-14,"r":0}]
+STEP c-timeline-node-unchanged-detail-plus-one: PASS {"tlBefore":{"nodeCount":1,"tickCount":1,"headTick":"0"},"tlAfter":{"nodeCount":2,"tickCount":1,"headTick":"0"}}
+STEP c-command-detail-plus-one: PASS data-count=2
+STEP d-terrain-values-changed: PASS {"before":{"-18,0":"low_hills","-17,0":"plains","-16,0":"plains","-15,0":"plains","-14,0":"mountains"},"after":{"-18,0":"ocean","-17,0":"ocean","-16,0":"ocean","-15,0":"ocean","-14,0":"ocean"}}
+STEP d-offscreen-bitmap-rebuilt: PASS {"rebuildBefore":4,"rebuildAfter":5,"px":[31,95,160],"targetRgb":[31,95,160]}
+STEP region-info-multi-regions-visible: PASS {"regionInfoText":"q-14r0terrainocean（海洋）regionstest_annex_target、test_nation","editorHidden":null}
+STEP region-meta-update-one-command: PASS {"metaPosts":1,"metaPayload":{"regionId":"test_annex_target","meta":{"color":"#123456","tag":"Nation","description":null,"annexedBy":"test_nation"}},"headBeforeMeta":2,"headAfterMeta":3,"color":"#123456","metaBefore":{"busy":false,"selectedRegion":"test_annex_target","colorField":"#123456","submitExists":true,"mode":"map-edit"},"metaStatus":"(-14,0) · 2 个区域"}
+STEP f-negative-rejected-with-reason: PASS {"negBadTerrain":{"ok":false,"kind":"rejected","message":"未知地形类型: forest","error":{"name":"Error"}},"statusBadTerrain":"未知地形类型: forest","negOffMap":{"ok":false,"kind":"rejected","message":"hex 不在图上: 9999_9999","error":{"name":"Error"}},"statusOffMap":"hex 不在图上: 9999_9999","headBeforeNeg":3,"headAfterNeg":3}
+STEP g-create-unit-for-route: PASS {"ok":true,"kind":null,"message":null}
+STEP g-rightclick-route-still-works: PASS {"routePosts":1,"routeCount":1}
+STEP g-leftclick-cancel-route-still-works: PASS {"cancelPosts":1,"routeCountAfterCancel":0}
+STEP g-overlay-not-passthrough: PASS {"nonGetDelta":0,"hexGetDelta":0}
+STEP g-no-pageerror: PASS []
+NONGET [{"method":"POST","path":"/api/command"},{"method":"POST","path":"/api/command"},{"method":"POST","path":"/api/command"},{"method":"POST","path":"/api/command"},{"method":"POST","path":"/api/command"},{"method":"POST","path":"/api/command"},{"method":"POST","path":"/api/command"}]
+PAGEERRORS []
+E2E RESULT: 1 FAIL e-palette-only-backend-vocab
+e2e_rc=1

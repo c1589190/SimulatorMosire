@@ -1,0 +1,8 @@
+mutation=m1 orig_md5=fdce26b3c83153b5e6e938e588bc786d mutant_md5=bdb7eed5b7e25107d972532a8c4fa430 file=modes.js
+syntax_rc=0 (must be 0)
+classes_md5=bdb7eed5b7e25107d972532a8c4fa430 (must == mutant_md5)
+selfcheck_rc=1 (expect 1)
+e2e_rc=1 (expect 1)
+E2E RESULT: 2 FAIL b-whitelist-pure-function,b-readonly-zero-write
+restored_md5=fdce26b3c83153b5e6e938e588bc786d restored_classes_md5=fdce26b3c83153b5e6e938e588bc786d orig_md5=fdce26b3c83153b5e6e938e588bc786d
+MUTATION m1: KILLED (expected red observed)

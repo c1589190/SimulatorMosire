@@ -1,0 +1,11 @@
+CHECK module-loaded: PASS
+CHECK labels-order: PASS ["view","region","map-edit","region-edit","unit"]
+CHECK labels-text: PASS ["常规","区域查看","地图编辑","区域编辑","单位移动编辑"]
+CHECK view-no-writes: PASS []
+CHECK region-no-writes: FAIL ["map.SetTerrain"]
+CHECK map-edit-writes: PASS ["map.SetTerrain","map.SetEdge","map.RandomizeRegion","map.UpdateRegion"]
+CHECK region-edit-writes: PASS ["map.CreateRegion","map.UpdateRegion","map.DeleteRegion"]
+CHECK unit-writes: PASS ["unit.PlanRoute","unit.CancelRoute","unit.ReparentUnit","unit.SetStrength","unit.DisbandUnit","unit.CreateUnit"]
+CHECK fail-closed: PASS unknown/empty/null 均拒绝
+CHECK allowedWrites-returns-copy: PASS ["map.SetTerrain","map.SetEdge","map.RandomizeRegion","map.UpdateRegion"]
+SELFCHECK RESULT: 1 FAIL region-no-writes

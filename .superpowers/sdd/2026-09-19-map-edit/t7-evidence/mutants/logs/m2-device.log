@@ -1,0 +1,7 @@
+mutation=m2 orig_md5=1b22c2c3b69af9d18d1011e625548211 mutant_md5=946c90241eb55867a95977ba6fd5aa69 file=app.js
+syntax_rc=0 (must be 0)
+classes_md5=946c90241eb55867a95977ba6fd5aa69 (must == mutant_md5)
+e2e_rc=1 (expect 1)
+E2E RESULT: 2 FAIL a2-mode-switch-clears-state,d-offscreen-bitmap-rebuilt
+restored_md5=1b22c2c3b69af9d18d1011e625548211 restored_classes_md5=1b22c2c3b69af9d18d1011e625548211 orig_md5=1b22c2c3b69af9d18d1011e625548211
+MUTATION m2: KILLED (expected red observed)

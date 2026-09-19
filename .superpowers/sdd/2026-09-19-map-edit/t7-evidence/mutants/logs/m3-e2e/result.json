@@ -1,0 +1,206 @@
+{
+  "overviewTerrainTypes": [
+    "ocean",
+    "plains",
+    "low_hills",
+    "mountains"
+  ],
+  "terrainBefore": {
+    "-18,0": "low_hills",
+    "-17,0": "plains",
+    "-16,0": "plains",
+    "-15,0": "plains",
+    "-14,0": "mountains"
+  },
+  "modes": {
+    "view": {
+      "cur": "常规",
+      "bodyMode": "view",
+      "pressed": "true"
+    },
+    "region": {
+      "cur": "区域查看",
+      "bodyMode": "region",
+      "pressed": "true"
+    },
+    "map-edit": {
+      "cur": "地图编辑",
+      "bodyMode": "map-edit",
+      "pressed": "true"
+    },
+    "region-edit": {
+      "cur": "区域编辑",
+      "bodyMode": "region-edit",
+      "pressed": "true"
+    },
+    "unit": {
+      "cur": "单位移动编辑",
+      "bodyMode": "unit",
+      "pressed": "true"
+    }
+  },
+  "modeSwitch": {
+    "beforeSwitch": {
+      "sel": {
+        "kind": "hex",
+        "q": -18,
+        "r": 0
+      },
+      "hl": 2,
+      "debugHl": 701
+    },
+    "afterSwitch": {
+      "sel": null,
+      "hl": 0,
+      "debugHl": 0,
+      "brush": 0
+    },
+    "afterBack": {
+      "sel": null,
+      "hl": 0
+    }
+  },
+  "whitelist": {
+    "view": false,
+    "region": false,
+    "mapEdit": true,
+    "mapEditEdge": true,
+    "mapEditRnd": true,
+    "regionEdit": true,
+    "unit": true,
+    "unknown": false,
+    "empty": false,
+    "labels": [
+      "常规",
+      "区域查看",
+      "地图编辑",
+      "区域编辑",
+      "单位移动编辑"
+    ]
+  },
+  "readonlyNonGet": [],
+  "paletteKeys": [
+    "ocean",
+    "plains",
+    "low_hills",
+    "mountains"
+  ],
+  "dragPosts": [
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "post": "{\"type\":\"map.SetTerrain\",\"payloadJson\":\"{\\\"hexes\\\":[{\\\"q\\\":-18,\\\"r\\\":0}],\\\"terrain\\\":\\\"ocean\\\"}\",\"branch\":\"main\",\"expectedRevision\":1}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "post": "{\"type\":\"map.SetTerrain\",\"payloadJson\":\"{\\\"hexes\\\":[{\\\"q\\\":-17,\\\"r\\\":0}],\\\"terrain\\\":\\\"ocean\\\"}\",\"branch\":\"main\",\"expectedRevision\":2}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "post": "{\"type\":\"map.SetTerrain\",\"payloadJson\":\"{\\\"hexes\\\":[{\\\"q\\\":-16,\\\"r\\\":0}],\\\"terrain\\\":\\\"ocean\\\"}\",\"branch\":\"main\",\"expectedRevision\":3}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "post": "{\"type\":\"map.SetTerrain\",\"payloadJson\":\"{\\\"hexes\\\":[{\\\"q\\\":-15,\\\"r\\\":0}],\\\"terrain\\\":\\\"ocean\\\"}\",\"branch\":\"main\",\"expectedRevision\":4}"
+    }
+  ],
+  "payloadHexes": [],
+  "terrainAfter": {
+    "-18,0": "ocean",
+    "-17,0": "ocean",
+    "-16,0": "ocean",
+    "-15,0": "ocean",
+    "-14,0": "ocean"
+  },
+  "pixel": {
+    "sampled": [
+      31,
+      95,
+      160
+    ],
+    "expected": [
+      31,
+      95,
+      160
+    ]
+  },
+  "terrainRebuilds": {
+    "before": 4,
+    "after": 9
+  },
+  "negative": {
+    "negBadTerrain": {
+      "ok": false,
+      "kind": "rejected",
+      "message": "未知地形类型: forest",
+      "error": {
+        "name": "Error"
+      }
+    },
+    "statusBadTerrain": "未知地形类型: forest",
+    "negOffMap": {
+      "ok": false,
+      "kind": "rejected",
+      "message": "hex 不在图上: 9999_9999",
+      "error": {
+        "name": "Error"
+      }
+    },
+    "statusOffMap": "hex 不在图上: 9999_9999"
+  },
+  "createUnit": {
+    "ok": true,
+    "kind": null,
+    "message": null
+  },
+  "nonGet": [
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command"
+    }
+  ],
+  "pageErrors": []
+}

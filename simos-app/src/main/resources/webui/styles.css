@@ -988,3 +988,101 @@ body.workbench-page .wb-overlay .timeline-bar {
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.38);
   pointer-events: auto;
 }
+
+/* ══ 五模式当前态 + 地图编辑面板（M8 T7/T8）══════════════════════════════
+   模式栏第五个元素 #mode-current 显示当前模式中文名（可断言）；.terrain-palette 是地形词表色板，
+   选中项 .active；.region-meta-editor 只在所选 hex 有区域时显示。 */
+
+.mode-current {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.map-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.map-editor h3 {
+  margin: 4px 0;
+}
+
+.terrain-palette {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.terrain-swatch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.terrain-swatch.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.terrain-swatch-dot {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+}
+
+.terrain-swatch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-edit-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.region-meta-editor {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.region-meta-editor legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.rm-field {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 3px 0;
+}
+
+.rm-field input,
+.rm-field select {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.region-meta-editor button {
+  width: 100%;
+  margin-top: 4px;
+}

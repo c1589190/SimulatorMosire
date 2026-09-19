@@ -1,0 +1,7 @@
+mutation=m5 orig_md5=efeb13e5ec642935ac7695af1436c291 mutant_md5=960b13b8604dc82a8f96a7c1c9b1837d file=map.js
+syntax_rc=0 (must be 0)
+classes_md5=960b13b8604dc82a8f96a7c1c9b1837d (must == mutant_md5)
+e2e_rc=1 (expect 1)
+E2E RESULT: 1 FAIL d-offscreen-bitmap-rebuilt
+restored_md5=efeb13e5ec642935ac7695af1436c291 restored_classes_md5=efeb13e5ec642935ac7695af1436c291 orig_md5=efeb13e5ec642935ac7695af1436c291
+MUTATION m5: KILLED (expected red observed)
