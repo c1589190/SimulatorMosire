@@ -1,0 +1,51 @@
+# M9 T1 服务端响应头实测（curl -D -，绕开浏览器）
+## date: 2026-09-19T16:00:37+08:00
+
+### GET /api/state
+HTTP/1.1 200 OK
+Content-type: application/json; charset=utf-8
+Content-length: 122
+body_bytes: 122
+
+### GET /api/map/overview?branch=main
+HTTP/1.1 200 OK
+Content-type: application/json; charset=utf-8
+Content-length: 1044970
+body_bytes: 1044970
+
+### GET /api/units?branch=main
+HTTP/1.1 200 OK
+Content-type: application/json; charset=utf-8
+Content-length: 12
+body_bytes: 12
+
+### GET /api/timeline?branch=main
+HTTP/1.1 200 OK
+Content-type: application/json; charset=utf-8
+Content-length: 136
+body_bytes: 136
+
+### GET /api/social/population?q=0&r=0&branch=main&revision=1
+HTTP/1.1 404 Not Found
+Content-type: application/json; charset=utf-8
+Content-length: 51
+body_bytes: 51
+
+### GET /
+HTTP/1.1 200 OK
+Content-type: text/html; charset=utf-8
+Content-length: 6796
+body_bytes: 6796
+
+### GET /map.js
+HTTP/1.1 200 OK
+Content-type: text/javascript; charset=utf-8
+Content-length: 56023
+body_bytes: 56023
+
+### GET /styles.css
+HTTP/1.1 200 OK
+Content-type: text/css; charset=utf-8
+Content-length: 18345
+body_bytes: 18345
+
