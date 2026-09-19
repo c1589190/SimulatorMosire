@@ -298,6 +298,18 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 
 **裁定 M7e-S1（控制器默认，用户未反对，**可推翻**）**：左键点单位**同时**承载"选中"与"取消移动" ⇒ 定为 **未选中⇒选中、已选中⇒再点=取消移动**（一下选中、两下取消，不用修饰键）。若要"一点即取消"，改一处分支即可。
 
+### M7f（时间轴按 tick 分组 + 推进 N tick）已关账（2026-09-19，子代理 `deepseek-flash-go`；控制器合并后核验）
+
+**缘起（用户原话）**：「我让单位移动，下面还是会**先创建一个新的节点**，而不是为当前节点改变单位移动状态；以及，**增加多少 tick**？点推进时间只能增加 1，那我想增加 100 怎么办？」
+★ **控制器先解释了一条不可协商的约束**：**"改写当前节点"违反铁律 2**（所有修改＝`Command → ChangeSet → Revision`；时间线是**只追加** DAG，改写历史会让 `correlationId` 链 / checkpoint / 分岔全崩）。⇒ 提出**替代方案并获用户批准**：**时间轴按 tick 分组**（一个节点 = 一个 tick；同 tick 的命令**视觉归并**进同一节点；只有 tick 变化才长新节点）——**用户手感满足，铁律不破**（每条命令仍是真 revision，只是视觉归并）。
+★ 用户同时裁定：**不做「推进到本路线抵达」**（原话"因为后面会有多单位互动，要额外做"）——**这个判断是对的**：单单位"算到抵达"是特例，多单位要的是"推进到下一个事件"。
+
+**M7f-T1**（`m7f/t1` `fe9d49f` → 合并 `51cd252`）：**纯前端三文件**（`timeline.js` +221/−48、`index.html` +5、`styles.css` +26），零 Java，**841 不变**；干净轮 **45 断言全 PASS**（变异前后各一次）；**变异 3 轮 0 存活**。
+
+**实测**：★ **`a-node-count-unchanged` + `a-detail-plus-one` + `a-command-is-planroute` + `a-api-tick-count-unchanged`**（下路线**不再多出节点**，只在该 tick 的节点里**多一条命令明细**）；`b-new-tick-is-old-plus-1`（推进 1）；★ **`c-new-tick-is-old-plus-100`**（**推进 100 真生效**）；`e-fork-aligned`（**分岔对齐保住**，列基准已从 `revision` 换成 **tick 序号**——因为 demo 的 tick 从 5 起、直接用 tick 值会留空列）。
+**变异**：m1（按 `revision` 分组）⇒ `a-node-count-unchanged`/`a-detail-plus-one`/`a-command-is-planroute` 红；m2（`to=from+1` 忽略 N）⇒ `c-new-tick-is-old-plus-100` 红；m3（分支首节点不对齐 parent 列）⇒ `e-fork-aligned` 红。
+**游标语义（实现期决定，已记）**：点一个 tick 节点 ⇒ 取该 tick 的**最后一个 revision**（面板看到的是该 tick 结束时的状态）。
+
 ### T1（时间轴：可见 knob + 列坐标布局 + 分岔连线）已关账（2026-09-19，子代理 `deepseek-flash-go` 执行；控制器合并后核验）
 
 **T1**（`m7b/t1` `9dd1363` → 合并 `95bd45d`）：**纯前端两文件**（`timeline.js` / `styles.css`），**零 Java**、未改台账、全量 **833 不变**。
