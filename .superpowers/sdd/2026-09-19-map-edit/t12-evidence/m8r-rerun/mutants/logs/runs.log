@@ -1,0 +1,30 @@
+=== round clean (2026-09-19T23:16:57Z) ===
+outcome=green anchor_line=n/a orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=014ffd3aac68dbf282d91e49365d4b0d consumed_agg=4294de6d441bc28a7230a616bef77d21 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=n/a gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m1 (2026-09-19T23:18:43Z) ===
+outcome=unobservable anchor_line=3292 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=9ba61676eea07bfbc89fcfa6dc62c3ea consumed_agg=6803e16292b51e5b796f7ba2049d24d6 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m2 (2026-09-19T23:20:07Z) ===
+outcome=unobservable anchor_line=3794 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=caf8466a923d47c208ee306fe6752a7a consumed_agg=3228a64f3b9570e7771afebb555ba5b3 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m3 (2026-09-19T23:21:31Z) ===
+outcome=unobservable anchor_line=1326 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=186ecd16896ae3de2d01eb7ccc112f8e consumed_agg=2d8e78f92f5f16197250cd39f546c54e restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m4 (2026-09-19T23:22:56Z) ===
+outcome=unobservable anchor_line=3378 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=2439c14602dc0759fdfee1a047096e0d consumed_agg=eca4c675e2498e2ccf9a648ac453daf0 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m5 (2026-09-19T23:24:31Z) ===
+outcome=unobservable anchor_line=3412 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=68cdef79868cabc32a542025004fff9f consumed_agg=7573f89434392496b65db8e12ca3f453 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m6 (2026-09-19T23:26:01Z) ===
+outcome=kill anchor_line=1497 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=bae321df103b5c9ebb6af87c8f9d5b4b consumed_agg=9e04b437f152111b2ccc57677afc9d55 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=a5-five-modes-left-drag-zero-write red_line=
+=== round m7 (2026-09-19T23:27:32Z) ===
+outcome=unobservable anchor_line=1471 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=cde9a5c755fc6138334e522c467b3566 consumed_agg=5bb3ddb464f3565e52743b90c6392b23 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m8 (2026-09-19T23:28:57Z) ===
+outcome=unobservable anchor_line=751 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=660ed8a819776538eb9625d875b199bf consumed_agg=9ff90f2ec3589f8720258631473a1ac3 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=n/a red_line=
+=== round m6 (2026-09-19T23:32:06Z) ===
+outcome=kill anchor_line=1497 orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=bae321df103b5c9ebb6af87c8f9d5b4b consumed_agg=9e04b437f152111b2ccc57677afc9d55 restored_md5=014ffd3aac68dbf282d91e49365d4b0d restored_classes_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=f81ed3a3a48d290fd8d8d32d8ecb77f3 syntax_rc=0 gate_rc=0 e2e_rc=0 e2e_pass=57 e2e_fail=0 expected_red=a5-five-modes-left-drag-zero-write red_line=

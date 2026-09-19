@@ -1,0 +1,12 @@
+attempt 1 —— 结局：**被杀（KILLED）**，不是红、不是绿
+时间：2026-09-20 ~07:40（日志 mtime）
+命令：./mvnw clean verify   （干线树 /home/dev/SimulatorMosire，HEAD fbd09ee）
+后台任务 id：bfmrkxmqf
+系统通知原文（逐字）：「Background command "Run full clean verify gate on trunk tree" was stopped because the system is running low on memory」
+运行时进度（由日志尾部读出）：已过 util / map（含 surefire 170+ 及 map 各测试）/ social（含 spotbugs），停在 simos-unit 的
+  compiler:3.16.0:compile —— "Compiling 30 source files with javac [debug release 21] to target/classes"
+日志内自证：`OutOfMemoryError|Killed|BUILD FAILURE|[ERROR]` 命中 **0** 条 ⇒ 构建自身没有报错，是外部内存守卫终止的。
+rc：**无**（包装脚本的 rc 落盘语句没执行到）⇒ 不得据此报"通过"或"失败"。
+★ 归因留痕（本次的教训，写进报告）：被杀时我正**并发**执行全仓 find / 126 文件 md5 对拍 / git 读操作。
+  "门禁独占"不只是"不跑第二个 Maven" —— 同机任何重 IO 都会把门禁推向被杀。
+★ 本次 attempt 不作为任何判据的证据；结论以独占重跑（attempt 2）为准。

@@ -1,0 +1,107 @@
+# M8 T12 pre-closure「还债」：M8-R 的 m1~m8 在当前字节上重跑的**先验预测**
+#
+# ★★ 本文件必须在**任何一次测量之前**写完。写完后只许在文末追加「预测 vs 实测：修正记录」段落，
+#    **不许改上面的原始预测文字**（改判据/事后诸葛亮 = 造假）。
+#
+# 被测字节：`simos-app/src/main/resources/webui/map.js`
+#   orig md5 = 014ffd3aac68dbf282d91e49365d4b0d（= 本目录 mutants/orig/map.js，三个位置实测一致）
+# 本轮**能跑的检查器只有两个**（本机实测可用；理由见下）：
+#   ① 门禁 gate  = `node simos-app/src/test/js/run-gate.cjs`（node --test TAP，82 例；红点形如 `not ok <n> - <名>`）
+#   ② 演示 e2e  = `.superpowers/sdd/2026-09-19-map-edit/t9-evidence/e2e/run-e2e.sh`（--demo 空库，57 例；
+#                  红点形如 `STEP <名>: FAIL`）
+# ★ 跑不了（故**不能**当判据用）的检查器，理由是**装置级**的、与本题无关：
+#   `r-evidence/e2e/run-e2e.sh:7`  `ROOT=/home/cna/SimulatorMosire/...`（另一台机器）
+#   `r-evidence/e2e/run-e2e.sh:55` `NODE_PATH=/home/cna/.npm/...`（另一台机器）
+#   `r-evidence/e2e/run-e2e.sh:33,39` 必须有**真档** `$STORE_SRC/simos.db`（19441 格），本机不存在
+#   `r-evidence/e2e/e2e.cjs:215` `pre-real-archive` 断言 hexCount=19441 + test_nation + test_annex_target
+#   ⇒ 该装置在本机上**干净世界也必红**（无判据价值）。s-evidence:343 / t10-evidence:113 同型。
+#
+# ── 每轮预测 ─────────────────────────────────────────────────────────────────────────
+# 轮 0（干净）：
+#   预期门禁 `# tests 82 / # fail 0`、rc=0；预期 e2e `E2E RESULT: ALL PASS`、57 PASS、`e2e_rc=0`；
+#   预期**零** `STEP .*: FAIL`、零 `not ok`。
+#
+# m1（守护：套索建区**重叠允许**，不许自加"相交就拒绝"）
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：唯一带该判据的断言是 `r-evidence/e2e/e2e.cjs:435 h1-overlap-allowed`（该装置跑不了）；
+#         本机可跑的 t9 e2e 造夹具走 `writeCommand("map.CreateRegion")` 直发（e2e.cjs:738 h1-…），**从不套索**。
+#   预期红点：无（`STEP`/`not ok` 两条都预期为空）。
+# m2（守护：右键**按模式分派**——region-edit 右键=套索、绝不落 `unit.PlanRoute`）
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：判据在 `r-evidence/e2e/e2e.cjs:843 g1-region-edit-right-is-lasso`、`:925 g3-region-edit-right-is-not-planroute`（跑不了）；
+#         t9 e2e 的右拖动 `rightDrag` 只出现在 map-edit（河/路）语境，region-edit 无右键用例；t9 全文无 `contextmenu`/`shiftKey`。
+#   预期红点：无。
+# m3（守护：**小点只画 focus 区域**；取消选中 ⇒ 0 点）
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：判据在 `r-evidence/e2e/e2e.cjs:477 b1-dots-match-boundary`、`:491 b2-no-dots-when-unselected` /
+#         `s-evidence/e2e/e2e.cjs:693 r-dots-only-when-focused`（均跑不了）。门禁是纯函数级，不碰 `clearFocusHexes`（实测 grep 0 命中）。
+#   预期红点：无。
+# m4（守护：**合并 = 并集**（临时选区 ∪ 焦点区域））
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：判据在 `r-evidence/e2e/e2e.cjs:727 d1-merge-equals-union`、`s-evidence/e2e/e2e.cjs:721 r-merge-equals-union`（跑不了）。
+#         ★ 注意别混淆：t9 的 `c0-merge-selected`(e2e.cjs:325) / `e2-merge-one-command-and-river-present`(:345) 是**连边 edgeMode=merge**，不是区域合并。
+#   预期红点：无。
+# m5（守护：**剔除 = 差集**（焦点区域 − 临时选区））
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：判据在 `r-evidence/e2e/e2e.cjs:763 e1-exclude-equals-difference`、`s-evidence/e2e/e2e.cjs:747 r-exclude-equals-difference`（跑不了）。
+#   预期红点：无。
+# m6（守护：**地形编辑左键 = 平移地图、零写**）
+#   预测：**门禁绿 + e2e 红 ⇒ KILLED**。
+#   预期红点（e2e，点名）：`STEP a5-five-modes-left-drag-zero-write: FAIL`（`t9-evidence/e2e/e2e.cjs:267`）
+#     机制：变异体让 map-edit 左键按下即 `beginPaint` ⇒ 拖到 hex(1,2)（`recenter` 把 (1,2) 放在视口 620,360，`e2e.cjs:116-126`；
+#     拖动起点正是 620,360 ⇒ `e2e.cjs:256`）⇒ 松手 `onPointerUp`(`map.js:1591`) ⇒ `commitBrush` ⇒ 一条 `POST /api/command`。
+#   预期附带红点（同一笔写的连带）：`STEP a8-preflight-zero-write: FAIL`（`e2e.cjs:289`，断言 `/api/command` 计数 = 0）。
+#   预期门禁：绿（门禁无任何用例覆盖 pointer 分派——实测 grep 0 命中 `button === 2`/`shiftKey`/`contextmenu`）。
+# m7（守护：**Shift+右键 = 逐格画/擦**（编辑选区、不发写））
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：判据在 `r-evidence/e2e/e2e.cjs:812 f3-shift-right-paints-draft-no-write`、`:1174 k4-shift-right-per-hex-no-lasso`（跑不了）；
+#         t9 e2e 无 Shift、无 region-edit 右键用例。
+#   预期红点：无。
+# m8（守护：**不再有逐格/块边界描边**（不许把旧边框层画回来））
+#   预测：**门禁绿 + e2e 全绿 ⇒ 不可观察 / SURVIVED**。
+#   理由：判据是**画布 stroke 探针**（`page.addInitScript` 包 `beginPath/lineTo/stroke`），在
+#         `r-evidence/e2e/e2e.cjs:1254 l2-no-per-hex-or-path2d-stroke`、`:1318 l3-no-black-line-between-terrain-blocks`；
+#         t9 e2e **全文无 stroke/Path2D 探针**（实测 grep 0 命中）⇒ 恢复边框层在 t9 里量不到。
+#   ★ 另：门禁的 `regionBoundaryRings` 纯函数测试**不覆盖绘制层**，本变异体只改 `paintTerrain` 的绘制，故门禁也预期绿。
+#   预期红点：无。
+#
+# ── 总预测 ────────────────────────────────────────────────────────────────────────────
+# 杀掉 1（m6）、存活 7（m1 m2 m3 m4 m5 m7 m8 —— 均为「该行为在当前可跑检查器里**无对应判据**」，
+# 不是「护栏失效」；护栏本身仍在代码里，只是判据所在装置在本机跑不了）。
+# ★ 判据「不可观察」必须**实测**（两侧全绿）而不是**推导**；两侧任一红都算预测失败，如实记。
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# 预测 vs 实测：修正记录（**测量之后**追加；上面的原始预测文字一字未改）
+# ══════════════════════════════════════════════════════════════════════════════════════
+# 测量时间 2026-09-19T23:16Z ~ 23:32Z；装置 md5 f81ed3a3a48d290fd8d8d32d8ecb77f3（10 轮同一个装置，未改过）。
+#
+# ① **错的是 m6**（唯一一处预测失败，且是有信息量的失败）：
+#    预测：KILLED，红在 `STEP a5-five-modes-left-drag-zero-write: FAIL`。
+#    实测：e2e_rc=0、pass=57、**fail=0**（`mutants/logs/m6-e2e.log`；重跑一轮结果逐值相同）⇒ **存活**。
+#    机制（两条，都是量出来的，不是猜的）：
+#      (a) 变异体**确实生效了**：`LEFT_PAN_ALL_MODES` 实测
+#          clean = 五模式 `moved:true`；m6 = map-edit `moved:false`、其余四模式仍 `true`
+#          （`mutants/logs/clean-e2e.log` vs `mutants/logs/m6-e2e.log`）——左键拖动在 map-edit 被
+#          `beginPaint` 抢走，**平移没了**。
+#      (b) 但它**一条写都没发**：`commitBrush` 在"没选地形"时直接早退
+#          （`simos-app/src/main/resources/webui/map.js:2517-2521` 的 `if (!host.brushTerrain) { … return null; }`），
+#          而 a5 这一段的前提恰恰是"还没点过调色板"（默认 tool=terrain 但没选具体地形）。
+#          ⇒ 变异体的签名是"**平移没了 + 零写**"，而 a5 只断言 `nonGet.length === 0`
+#          （`t9-evidence/e2e/e2e.cjs:267-270`），**不含 `moved`**（`moved` 在 `:260` 算了、打了，却没进断言）。
+#    ★ 对照：M8-R 当年杀掉 m6 的那条判据是 `k1-terrain-left-pans-zero-write`，
+#      它的断言是 `panMoved9 && writes9 === 0`（`r-evidence/e2e/e2e.cjs:1040`），**并且先把地形选上**
+#      （`r-evidence/e2e/e2e.cjs:1025-1030` 点 `#terrain-palette button[data-terrain]`）⇒ 两个半边都能红。
+#      ⇒ 本机可跑的 a5 是 k1 的**严格弱化版**（少了"平移确实发生"半边、且少了对"已选地形"状态的铺垫）。
+#      m6 存活**不是因为护栏没了**（`map.js:1500-1501` 的"左键恒平移"注释与左侧分支都在、行为也在），
+#      而是因为**能跑的那条判据看不见它**。
+#    ★ 处置：不改判据、不造红点、不把 `moved:false` 冒充当红 —— 如实记为"不可观察（判据弱于行为）"。
+#      为排除抖动，m6 又重跑一轮（port 5869）：mutant_md5=bae321df… / consumed_agg=9e04b437… /
+#      LEFT_PAN_ALL_MODES 与 pass=57 全部逐值相同；首轮日志留档为 `mutants/logs/m6-e2e.run1.log`。
+#
+# ② **兑现的预测**：m1 m2 m3 m4 m5 m7 m8 预测"两侧全绿 ⇒ 不可观察"，实测全部兑现：
+#    每轮 gate_rc=0（# tests 82 / # fail 0）、e2e_rc=0（pass=57 / fail=0）、零 `STEP .*: FAIL`、零 `not ok`。
+#    且每轮 `consumed_agg` == 独立复算的 `agg_expect` **且互不相同**（9 份不同字节各跑各的）⇒ 不是"跑的还是原件"。
+# ③ **轮 0 干净基线**：预测全绿，实测兑现（gate 82/82；e2e ALL PASS 57；agg=4294de6d…）。
+# ④ 台账措辞与旧变异体本体**不一致**一处，如实记：`progress.md:92` 把 m4 写作"合并误用交集"，
+#    而旧装置的 m4 本体是"只取临时选区"（`r-evidence/mutants/mut-run.sh:99,107-108`）。
+#    本轮重跑以**旧装置本体**为准（判据是并集，变异是"丢弃已选区域"）。

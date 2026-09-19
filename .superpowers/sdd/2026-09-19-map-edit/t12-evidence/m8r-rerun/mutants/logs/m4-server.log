@@ -1,0 +1,18 @@
+07:21:42.284 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+07:21:43.693 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5864/（静态 /webui，同源，无 CORS 头）
+07:21:43.694 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m8t9-e2e-store-5864 checkpointInterval=100 codec=3 handler=14 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=37419 guiPort=5864 approvalPort=38149
+07:21:45.712 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+07:21:45.714 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m8t9-e2e-store-5864 checkpointInterval=100 模块数=3 guiPort=5864 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+07:21:45.714 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5864/
+07:22:20.038 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetEdge commandId=8d8abad5-4691-4103-8bae-7bd18a2dc77e correlationId=8d8abad5-4691-4103-8bae-7bd18a2dc77e 新坐标=main@2
+07:22:22.110 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetEdge commandId=780f6b1b-8d61-43d4-8de3-776a616d7973 correlationId=780f6b1b-8d61-43d4-8de3-776a616d7973 新坐标=main@3
+07:22:24.496 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetEdge commandId=dd58f861-b479-41f6-bbd8-d2d3b4afe43b correlationId=dd58f861-b479-41f6-bbd8-d2d3b4afe43b 新坐标=main@4
+07:22:31.519 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.RandomizeRegion commandId=1c34de6a-77e8-4dca-a013-5aeffecdd844 correlationId=1c34de6a-77e8-4dca-a013-5aeffecdd844 新坐标=main@5
+07:22:32.936 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.RandomizeRegion commandId=3570b2c4-735e-4405-b7b7-2be376397aaf correlationId=3570b2c4-735e-4405-b7b7-2be376397aaf 新坐标=main@6
+07:22:34.553 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.RandomizeRegion commandId=fc8fd9a1-535c-447c-8c17-9f8f5728e18b correlationId=fc8fd9a1-535c-447c-8c17-9f8f5728e18b 新坐标=main@7
+07:22:36.095 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.RandomizeRegion commandId=67d57ebc-eabc-491b-9b3c-36c6709044c3 correlationId=67d57ebc-eabc-491b-9b3c-36c6709044c3 新坐标=main@8
+07:22:37.977 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetTerrain commandId=2f7adb8a-9965-432a-be01-654797d49174 correlationId=2f7adb8a-9965-432a-be01-654797d49174 新坐标=main@9
+07:22:41.011 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=f6668408-90ff-4a5a-830f-6dcdc2a6f06f correlationId=f6668408-90ff-4a5a-830f-6dcdc2a6f06f 新坐标=main@10
+07:22:41.535 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=882bd142-317f-485b-b7c2-04e25733d5fc correlationId=882bd142-317f-485b-b7c2-04e25733d5fc 新坐标=main@11
+07:22:42.334 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=6b0d17e9-ffd1-46ce-9e43-53d46971e632 correlationId=6b0d17e9-ffd1-46ce-9e43-53d46971e632 新坐标=main@12
+07:22:56.335 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell
