@@ -1,0 +1,12 @@
+=== mutation m2b ===
+src=simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java
+orig_md5_expected=c6ba21dc67d495bd8f89b8ec66f8c1d7
+mutant_md5=e554ab232b1573c9f8cd2e38f01fe0fb
+after_restore_md5=c6ba21dc67d495bd8f89b8ec66f8c1d7
+pushed_md5=e554ab232b1573c9f8cd2e38f01fe0fb
+target_rc=1
+compilation_errors=0
+red_pattern='逐字节相同' hits=2
+failure_lines=3
+restored_md5=c6ba21dc67d495bd8f89b8ec66f8c1d7
+VERDICT=KILLED

@@ -1,0 +1,12 @@
+=== mutation m3 ===
+src=simos-app/target/classes/webui/map.js
+orig_md5_expected=49ebd44d1a8b64976b8d566dfd785261
+mutant_md5=28f5f07e3e6e623aee1a69c7a6dad602
+after_restore_md5=49ebd44d1a8b64976b8d566dfd785261
+pushed_md5=28f5f07e3e6e623aee1a69c7a6dad602
+target_rc=1
+compilation_errors=0
+red_pattern='pixel--68_3' hits=1
+failure_lines=1
+restored_md5=49ebd44d1a8b64976b8d566dfd785261
+VERDICT=KILLED

@@ -51,6 +51,9 @@ class WebuiAssetsTest {
   private static final List<String> WORKBENCH_SCRIPTS =
       List.of("panels.js", "unitTree.js", "timeline.js");
 
+  /** 块几何（M9 T13）：index/map 两页共用的纯函数模块（`window.SimosBlocks`）。 */
+  private static final List<String> BLOCK_SCRIPTS = List.of("blocks.js");
+
   /** 模式栏五按钮的可见标签（spec §四 / 判据①）。 */
   private static final List<String> MODE_LABELS =
       List.of("常规查看", "区域查看", "地图编辑", "区域编辑", "单位移动与编辑");
@@ -59,7 +62,7 @@ class WebuiAssetsTest {
   private static final List<String> M8_MODES = List.of("地图编辑", "区域编辑");
 
   private static final List<String> ALL_ASSETS =
-      concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS, WORKBENCH_SCRIPTS);
+      concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS, WORKBENCH_SCRIPTS, BLOCK_SCRIPTS);
 
   @Test
   void allWebuiAssetsExistAndAreNonEmpty() throws IOException {

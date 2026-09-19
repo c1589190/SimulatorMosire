@@ -1,0 +1,12 @@
+=== mutation m4 ===
+src=simos-map/src/main/java/io/mosire/simos/map/block/TerrainBlocks.java
+orig_md5_expected=3dbc4be4caacd42c94da24046eef7c38
+mutant_md5=a6baaeb5fc67e91150631e709b42ba9f
+after_restore_md5=3dbc4be4caacd42c94da24046eef7c38
+pushed_md5=a6baaeb5fc67e91150631e709b42ba9f
+target_rc=1
+compilation_errors=0
+red_pattern='2 块' hits=2
+failure_lines=3
+restored_md5=3dbc4be4caacd42c94da24046eef7c38
+VERDICT=KILLED

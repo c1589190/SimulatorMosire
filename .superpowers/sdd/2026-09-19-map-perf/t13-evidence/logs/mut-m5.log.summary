@@ -1,0 +1,12 @@
+=== mutation m5 ===
+src=simos-app/target/classes/webui/blocks.js
+orig_md5_expected=b068eb1fdb0676435dd98cf12e66305d
+mutant_md5=ea299eff20de0ca47c9b48bd3c790439
+after_restore_md5=b068eb1fdb0676435dd98cf12e66305d
+pushed_md5=ea299eff20de0ca47c9b48bd3c790439
+target_rc=1
+compilation_errors=0
+red_pattern='pick--42_-1' hits=1
+failure_lines=3
+restored_md5=b068eb1fdb0676435dd98cf12e66305d
+VERDICT=KILLED

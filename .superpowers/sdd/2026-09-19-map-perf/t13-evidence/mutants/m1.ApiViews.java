@@ -210,10 +210,8 @@ final class ApiViews {
       item.put("id", id.toString());
       item.put("terrain", block.terrain());
       item.put("hexCount", block.hexes().size());
-      List<List<Map<String, Object>>> rings = new ArrayList<>(block.boundary().rings().size());
-      for (List<HexVertex> ring : block.boundary().rings()) {
-        rings.add(closedRingView(ring));
-      }
+      List<List<Map<String, Object>>> rings = new ArrayList<>(1);
+      rings.add(closedRingView(block.boundary().rings().get(0)));
       item.put("boundaries", rings);
       out.add(item);
     }

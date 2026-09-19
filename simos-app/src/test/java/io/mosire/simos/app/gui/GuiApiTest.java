@@ -177,24 +177,24 @@ class GuiApiTest {
 
     assertThat(body.get("mapId").asText()).isEqualTo("Map1");
     assertThat(body.get("hexCount").asInt()).isEqualTo(4);
-    assertThat(body.get("hexes")).hasSize(4);
+    assertThat(body.has("hexes")).as("M9 T13：逐格数组整个移除（地形归块多边形）").isFalse();
+    JsonNode blocks = body.get("blocks");
+    assertThat(blocks).as("夹具 4 格同地形且连通 ⇒ 恰 1 块").hasSize(1);
+    assertThat(blocks.get(0).get("terrain").asText()).isEqualTo("desert");
+    assertThat(blocks.get(0).get("hexCount").asInt()).isEqualTo(4);
+    assertThat(blocks.get(0).get("boundaries")).isNotEmpty();
   }
 
   /**
-   * M9 T3：overview 停发死重量 {@code height}（前端全仓零读取点），而单格 {@code /api/map/hex} 的 {@code height}
-   * **必须保留**（{@code panels.js} 在用）。
+   * M9 T3：overview 停发死重量 {@code height}（前端全仓零读取点）；M9 T13 起逐格 {@code hexes} 也整个停发。 单格 {@code
+   * /api/map/hex} 的 {@code height} **必须保留**（{@code panels.js} 在用）。
    */
   @Test
   void mapOverviewOmitsHeightWhileMapHexKeepsIt() throws Exception {
     HttpResponse<String> overview = get("/api/map/overview");
     assertThat(overview.statusCode()).isEqualTo(200);
     assertThat(overview.body()).as("overview 整体不含 height 键").doesNotContain("\"height\"");
-
-    JsonNode hexes = JSON.readTree(overview.body()).get("hexes");
-    assertThat(hexes).as("逐 hex 抽检（夹具 4 格）").hasSize(4);
-    for (JsonNode hex : hexes) {
-      assertThat(hex.has("height")).as("overview 的 hex 不含 height: %s", hex).isFalse();
-    }
+    assertThat(overview.body()).as("overview 不再发逐格数组（地形归块）").doesNotContain("\"hexes\"");
 
     JsonNode single = getJson("/api/map/hex?q=1&r=1");
     assertThat(single.get("height").asDouble()).as("单格端点保留 height").isEqualTo(0.5);
