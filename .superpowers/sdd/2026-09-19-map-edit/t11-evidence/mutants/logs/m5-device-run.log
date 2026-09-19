@@ -1,0 +1,37 @@
+clean_world src_md5=4eeb254bf6bea4e8f7383b05e5abe41d class_files=1 classes_md5=1baecd28b4e8b9dfbd67a5298f3414c7
+mutation=m5 orig_md5=4eeb254bf6bea4e8f7383b05e5abe41d mutant_md5=a01fa201c6720bc8661ab40690321960 file=ApiViews.java expect_red_test=mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder
+mvn_rc=1 compilation_error_lines=0 (CE 必须为 0，否则这一轮作废)
+fresh_class_files=1 (>=1 才算本轮真的重编了)
+surefire_report=/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-app/target/surefire-reports/io.mosire.simos.app.gui.MapHexEdgesApiTest.txt is_this_round=1
+--- surefire 原文（前 30 行）---
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.app.gui.MapHexEdgesApiTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 9.191 s <<< FAILURE! -- in io.mosire.simos.app.gui.MapHexEdgesApiTest
+io.mosire.simos.app.gui.MapHexEdgesApiTest.mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder -- Time elapsed: 0.281 s <<< FAILURE!
+java.lang.AssertionError: 
+[(1,2) 是两条边的公共端点] 
+Expected size: 2 but was: 1 in:
+[{"edge":"1_2|1_3","pathways":["river"]}]
+	at io.mosire.simos.app.gui.MapHexEdgesApiTest.mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder(MapHexEdgesApiTest.java:125)
+
+io.mosire.simos.app.gui.MapHexEdgesApiTest.mapHexEdgesAreByteIdenticalAcrossTwoCalls -- Time elapsed: 0.207 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: 2
+ but was: 1
+	at io.mosire.simos.app.gui.MapHexEdgesApiTest.mapHexEdgesAreByteIdenticalAcrossTwoCalls(MapHexEdgesApiTest.java:148)
+
+--- Maven 日志里的用例结果与失败明细 ---
+[ERROR] Tests run: 4, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 9.191 s <<< FAILURE! -- in io.mosire.simos.app.gui.MapHexEdgesApiTest
+[ERROR] io.mosire.simos.app.gui.MapHexEdgesApiTest.mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder -- Time elapsed: 0.281 s <<< FAILURE!
+[ERROR] io.mosire.simos.app.gui.MapHexEdgesApiTest.mapHexEdgesAreByteIdenticalAcrossTwoCalls -- Time elapsed: 0.207 s <<< FAILURE!
+[ERROR]   MapHexEdgesApiTest.mapHexEdgesAreByteIdenticalAcrossTwoCalls:148 
+[ERROR]   MapHexEdgesApiTest.mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder:125 [(1,2) 是两条边的公共端点] 
+[ERROR] Tests run: 4, Failures: 2, Errors: 0, Skipped: 0
+[ERROR]   mvn <args> -rf :simos-app
+restored_md5=4eeb254bf6bea4e8f7383b05e5abe41d orig_md5=4eeb254bf6bea4e8f7383b05e5abe41d
+restore_compile_rc=0 class_files_after=1 classes_md5_after=1baecd28b4e8b9dfbd67a5298f3414c7 classes_md5_before=1baecd28b4e8b9dfbd67a5298f3414c7
+red_line=[ERROR]   MapHexEdgesApiTest.mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder:125 [(1,2) 是两条边的公共端点] 
+MUTATION m5: KILLED (expected red mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder observed)
+device_rc=0

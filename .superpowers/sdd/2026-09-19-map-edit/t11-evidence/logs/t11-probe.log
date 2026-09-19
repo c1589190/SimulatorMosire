@@ -1,0 +1,205 @@
+server_ready_tries=11 code=200 pid=1651825 store=/tmp/m8t11-probe-store-5821
+{
+  "overview": {
+    "status": 200,
+    "bytes": 603,
+    "md5": "3f5a712a3b36e536123b4d519a005e08",
+    "hexCount": 3,
+    "blockCount": 1,
+    "regions": [],
+    "terrainTypes": [
+      "desert"
+    ],
+    "hasRevisionField": false
+  },
+  "units": [
+    {
+      "id": "u-1",
+      "position": {
+        "q": 1,
+        "r": 1
+      }
+    }
+  ],
+  "hexBefore": {
+    "1_1": {
+      "status": 200,
+      "edges": [],
+      "terrain": "desert"
+    },
+    "1_2": {
+      "status": 200,
+      "edges": [],
+      "terrain": "desert"
+    },
+    "1_3": {
+      "status": 200,
+      "edges": [],
+      "terrain": "desert"
+    }
+  },
+  "nonAdjacentEdge": {
+    "status": 200,
+    "result": "committed"
+  },
+  "hexAfterNonAdjacent": {
+    "edges": [
+      {
+        "edge": "1_1|1_3",
+        "pathways": [
+          "river"
+        ]
+      }
+    ]
+  },
+  "modeMissing": {
+    "status": 422,
+    "result": "rejected",
+    "reason": "字段 mode 必须是字符串: {\"kind\":\"river\",\"edges\":[\"1_1|1_2\"]}"
+  },
+  "hexAfterModeMissing": {
+    "edges": [
+      {
+        "edge": "1_1|1_3",
+        "pathways": [
+          "river"
+        ]
+      }
+    ]
+  },
+  "headBefore": 1,
+  "headAfter": 2,
+  "randomize": {
+    "seed7_run0": {
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    },
+    "seed7_run1": {
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    },
+    "seed99_run2": {
+      "status": 200,
+      "result": "committed",
+      "bytes": 860,
+      "md5": "85663af6bf4ba3a9f475f22cb296c318",
+      "blockCount": 3,
+      "terrains": [
+        "desert:1",
+        "desert:1",
+        "plains:1"
+      ]
+    },
+    "seed0_run3": {
+      "status": 200,
+      "result": "committed",
+      "bytes": 860,
+      "md5": "85663af6bf4ba3a9f475f22cb296c318",
+      "blockCount": 3,
+      "terrains": [
+        "desert:1",
+        "desert:1",
+        "plains:1"
+      ]
+    }
+  },
+  "randomizeTwoHex": [
+    {
+      "seed": 7,
+      "status": 200,
+      "result": "committed",
+      "bytes": 603,
+      "md5": "3f5a712a3b36e536123b4d519a005e08",
+      "blockCount": 1,
+      "terrains": [
+        "desert:3"
+      ]
+    },
+    {
+      "seed": 7,
+      "status": 200,
+      "result": "committed",
+      "bytes": 603,
+      "md5": "3f5a712a3b36e536123b4d519a005e08",
+      "blockCount": 1,
+      "terrains": [
+        "desert:3"
+      ]
+    },
+    {
+      "seed": 99,
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    },
+    {
+      "seed": 0,
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    },
+    {
+      "seed": 1,
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    },
+    {
+      "seed": 5,
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    },
+    {
+      "seed": 3,
+      "status": 200,
+      "result": "committed",
+      "bytes": 731,
+      "md5": "4271a07929b1e6919f6a3f634b8511fc",
+      "blockCount": 2,
+      "terrains": [
+        "desert:2",
+        "plains:1"
+      ]
+    }
+  ]
+}
+probe_rc=0

@@ -1,0 +1,11 @@
+mutation=m4 orig_md5=f6eeed79e98ffca3a240ce86bf049084 mutant_md5=223cc050f7ff08aa079f68c47670e3d6 file=map.js expect_red=r0c-empty-seed-zero-write-with-warning
+syntax_rc=0 (must be 0)
+gate_rc=1 (expect 非 0)
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+e2e_rc=1 (expect 1；2=装置崩溃，**不算红**)
+consumed_md5=223cc050f7ff08aa079f68c47670e3d6 (e2e 实际加载的字节)
+result_line=E2E RESULT: FAILURES ["r0c-empty-seed-zero-write-with-warning"]
+red_line=STEP r0c-empty-seed-zero-write-with-warning: FAIL {"posts":1,"warning":"","status":"已随机化 2 格（seed 0，一条命令，head 已前进）"}
+restored_md5=f6eeed79e98ffca3a240ce86bf049084 restored_classes_md5=f6eeed79e98ffca3a240ce86bf049084 orig_md5=f6eeed79e98ffca3a240ce86bf049084
+MUTATION m4: KILLED (expected red r0c-empty-seed-zero-write-with-warning observed)
+device_rc=0

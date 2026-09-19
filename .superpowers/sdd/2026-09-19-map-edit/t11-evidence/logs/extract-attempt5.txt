@@ -1,0 +1,158 @@
+===== ① BUILD 行 =====
+1617:[INFO] BUILD SUCCESS
+===== ② 退出码行（若有）=====
+1622:clean_verify_rc=0
+===== ③ 逐模块 surefire 汇总（模块名 + Tests run + Packaging）=====
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.642 s -- in io.mosire.simos.util.identity.ResolvedSubjectTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.072 s -- in io.mosire.simos.util.identity.QueryResultTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.140 s -- in io.mosire.simos.util.identity.SubjectIdTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.217 s -- in io.mosire.simos.util.facet.FacetRegistryTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.129 s -- in io.mosire.simos.util.spi.SpiShapesTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.258 s -- in io.mosire.simos.util.info.InMemoryInfoSystemTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.093 s -- in io.mosire.simos.util.state.SimulationStateTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.035 s -- in io.mosire.simos.util.state.SnapshotProtocolTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.093 s -- in io.mosire.simos.util.state.StateRefTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.129 s -- in io.mosire.simos.util.address.AddressQuoteTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.673 s -- in io.mosire.simos.util.address.AddressParseTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.247 s -- in io.mosire.simos.util.address.AddressTolerantParseTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.182 s -- in io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.404 s -- in io.mosire.simos.util.verify.RoundTripAssertionsTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.046 s -- in io.mosire.simos.util.time.SimosTimestampTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.210 s -- in io.mosire.simos.util.time.TemporalSeriesTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.042 s -- in io.mosire.simos.util.time.TimeRangeTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.074 s -- in io.mosire.simos.util.resolve.ResolverRegistryTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.146 s -- in io.mosire.simos.util.json.SimosObjectMapperTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.306 s -- in io.mosire.simos.util.json.FieldDeltaJsonTest
+UtilSimos 0.1.0-SNAPSHOT                                  [2/7] | [INFO] Tests run: 170, Failures: 0, Errors: 0, Skipped: 0
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.923 s -- in io.mosire.simos.map.codec.MapCodecTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.208 s -- in io.mosire.simos.map.codec.MapCodecLegacyTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.155 s -- in io.mosire.simos.map.CityTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.446 s -- in io.mosire.simos.map.GameMapTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.376 s -- in io.mosire.simos.map.ops.TerrainOperationsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.277 s -- in io.mosire.simos.map.ops.RegionOperationsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.244 s -- in io.mosire.simos.map.ops.EdgeOperationsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.054 s -- in io.mosire.simos.map.ops.RandomizeOperationsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.148 s -- in io.mosire.simos.map.spi.SetTerrainHandlerTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.075 s -- in io.mosire.simos.map.spi.SetEdgeHandlerTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.178 s -- in io.mosire.simos.map.spi.RandomizeRegionHandlerTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.221 s -- in io.mosire.simos.map.spi.RegionHandlersTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.084 s -- in io.mosire.simos.map.block.TerrainBlocksTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.076 s -- in io.mosire.simos.map.hex.HexGridTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.map.hex.HexVertexTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.298 s -- in io.mosire.simos.map.hex.HexCoordTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.078 s -- in io.mosire.simos.map.hex.HexDirectionTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.254 s -- in io.mosire.simos.map.region.RegionTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.152 s -- in io.mosire.simos.map.region.RegionBoundaryTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.373 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.061 s -- in io.mosire.simos.map.region.RegionIndexTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.276 s -- in io.mosire.simos.map.terrain.TerrainCatalogTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in io.mosire.simos.map.terrain.ImpassableSentinelTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 8.038 s -- in io.mosire.simos.map.RegressionGuardsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.385 s -- in io.mosire.simos.map.change.MapChangeSetTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.083 s -- in io.mosire.simos.map.change.RoundTripComponentsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 21.44 s -- in io.mosire.simos.map.generate.MapGeneratorTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.256 s -- in io.mosire.simos.map.generate.RegionRandomizerTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.073 s -- in io.mosire.simos.map.generate.TerrainClassifierTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.168 s -- in io.mosire.simos.map.generate.GenerationSpecTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.243 s -- in io.mosire.simos.map.generate.RiverBuilderTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.323 s -- in io.mosire.simos.map.resolve.MapResolverTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.551 s -- in io.mosire.simos.map.guard.RepresentationLeakGuardTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in io.mosire.simos.map.pathway.PathwayGroupTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.076 s -- in io.mosire.simos.map.pathway.EdgeRefTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.045 s -- in io.mosire.simos.map.pathway.EdgeTagsTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.185 s -- in io.mosire.simos.map.pathway.PathwayTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.057 s -- in io.mosire.simos.map.HexCellTest
+MapSimos 0.1.0-SNAPSHOT                                   [3/7] | [INFO] Tests run: 362, Failures: 0, Errors: 0, Skipped: 0
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.835 s -- in io.mosire.simos.social.codec.SocialCodecTest
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.196 s -- in io.mosire.simos.social.facet.PopulationFacetTest
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.164 s -- in io.mosire.simos.social.population.PopulationSeriesTest
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.091 s -- in io.mosire.simos.social.change.SocialRoundTripTest
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.213 s -- in io.mosire.simos.social.change.SocialChangeSetTest
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.295 s -- in io.mosire.simos.social.resolve.SocialResolverTest
+SocialSimos 0.1.0-SNAPSHOT                                [4/7] | [INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.131 s -- in io.mosire.simos.unit.codec.UnitCodecTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.160 s -- in io.mosire.simos.unit.facet.UnitsHereFacetTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.252 s -- in io.mosire.simos.unit.ops.UnitOperationsTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.182 s -- in io.mosire.simos.unit.spi.RenameUnitHandlerTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 29, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.376 s -- in io.mosire.simos.unit.spi.UnitCommandHandlersTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.138 s -- in io.mosire.simos.unit.spi.UnitTimeParticipantTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.072 s -- in io.mosire.simos.unit.UnitTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in io.mosire.simos.unit.UnitIdTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.073 s -- in io.mosire.simos.unit.UnitStateTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.120 s -- in io.mosire.simos.unit.change.UnitChangeSetTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.049 s -- in io.mosire.simos.unit.change.UnitRoundTripTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.078 s -- in io.mosire.simos.unit.resolve.UnitResolverTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.157 s -- in io.mosire.simos.unit.move.PathFinderTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.169 s -- in io.mosire.simos.unit.move.UnitMovesTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.085 s -- in io.mosire.simos.unit.move.TerrainMovementCostTest
+UnitSimos 0.1.0-SNAPSHOT                                  [5/7] | [INFO] Tests run: 131, Failures: 0, Errors: 0, Skipped: 0
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.723 s -- in io.mosire.simos.core.store.ReplayTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.104 s -- in io.mosire.simos.core.store.EnvelopeTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.327 s -- in io.mosire.simos.core.store.CheckpointStoreTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.657 s -- in io.mosire.simos.core.store.SqliteStoreTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.028 s -- in io.mosire.simos.core.StateValueEqualityTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.557 s -- in io.mosire.simos.core.AgentLibAvailabilityTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.063 s -- in io.mosire.simos.core.observe.EventTypesTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.080 s -- in io.mosire.simos.core.observe.DigestTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.074 s -- in io.mosire.simos.core.command.CommandRegistryTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.623 s -- in io.mosire.simos.core.command.CommandBusLoggingTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.926 s -- in io.mosire.simos.core.command.CommandBusDispatchTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.498 s -- in io.mosire.simos.core.command.CorrelationChainTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.695 s -- in io.mosire.simos.core.command.OptimisticConcurrencyTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.218 s -- in io.mosire.simos.core.BranchingEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in io.mosire.simos.core.state.WorldChangeSetTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.453 s -- in io.mosire.simos.core.MapRegionEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.863 s -- in io.mosire.simos.core.MapRandomizeEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.108 s -- in io.mosire.simos.core.MapTerrainBlockEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.434 s -- in io.mosire.simos.core.MapSetTerrainEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.036 s -- in io.mosire.simos.core.CoreSimosTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.419 s -- in io.mosire.simos.core.MapSetEdgeEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.310 s -- in io.mosire.simos.core.ArchitectureGuardsTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.072 s -- in io.mosire.simos.core.advance.TimeProposalResolverTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.030 s -- in io.mosire.simos.core.advance.TimeAdvanceTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.286 s -- in io.mosire.simos.core.RealmEffectEndToEndTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.738 s -- in io.mosire.simos.core.timeline.TimelineTest
+CoreSimos 0.1.0-SNAPSHOT                                  [6/7] | [INFO] Tests run: 169, Failures: 0, Errors: 0, Skipped: 0
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.391 s -- in io.mosire.simos.app.ShellSmokeTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.136 s -- in io.mosire.simos.app.ShellLifecycleTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.416 s -- in io.mosire.simos.app.ShellApprovalTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.394 s -- in io.mosire.simos.app.ShellEndToEndTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.107 s -- in io.mosire.simos.app.McpServerTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.991 s -- in io.mosire.simos.app.query.QueryServiceTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.226 s -- in io.mosire.simos.app.tools.SimosToolsTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.119 s -- in io.mosire.simos.app.AppWritePathGuardTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 27, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.290 s -- in io.mosire.simos.app.gui.GuiApiTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.518 s -- in io.mosire.simos.app.gui.MapHexEdgesApiTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in io.mosire.simos.app.gui.MapOverviewBlocksTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.185 s -- in io.mosire.simos.app.gui.WebuiAssetsTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.189 s -- in io.mosire.simos.app.binding.BindingRegistryTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.551 s -- in io.mosire.simos.app.McpCoverageTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.116 s -- in io.mosire.simos.app.demo.DemoWorldTest
+SimosApp 0.1.0-SNAPSHOT                                   [7/7] | [INFO] Tests run: 100, Failures: 0, Errors: 0, Skipped: 0
+===== ④ 每个模块的 Tests run 行数（应与模块数相等）=====
+126
+===== ⑤ SpotBugs：BugInstance size is 0 次数 =====
+6
+145:[INFO] BugInstance size is 0
+290:[INFO] BugInstance size is 0
+367:[INFO] BugInstance size is 0
+464:[INFO] BugInstance size is 0
+628:[INFO] BugInstance size is 0
+1603:[INFO] BugInstance size is 0
+===== ⑥ `[ERROR]` 行数（逐行原文，便于人看）=====
+0
+===== ⑦ Spotless 的 keeping N files clean（逐行原文）=====
+133:[INFO] Spotless.Java is keeping 67 files clean - 0 needs changes to be clean, 67 were already clean, 0 were skipped because caching determined they were already clean
+278:[INFO] Spotless.Java is keeping 88 files clean - 0 needs changes to be clean, 88 were already clean, 0 were skipped because caching determined they were already clean
+355:[INFO] Spotless.Java is keeping 14 files clean - 0 needs changes to be clean, 14 were already clean, 0 were skipped because caching determined they were already clean
+452:[INFO] Spotless.Java is keeping 47 files clean - 0 needs changes to be clean, 47 were already clean, 0 were skipped because caching determined they were already clean
+616:[INFO] Spotless.Java is keeping 52 files clean - 0 needs changes to be clean, 52 were already clean, 0 were skipped because caching determined they were already clean
+1591:[INFO] Spotless.Java is keeping 43 files clean - 0 needs changes to be clean, 43 were already clean, 0 were skipped because caching determined they were already clean
+===== ⑧ 前端门禁行 =====
+1584:[frontend-gate] OK tests=71 pass=71 fail=0
+===== ⑨ Reactor Summary =====
+5:[INFO] SimulatorMosire                                                    [pom]
+14:[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/7]
+1609:[INFO] SimulatorMosire .................................... SUCCESS [ 13.324 s]
+===== ⑩ 模块数（用 [n/N] 反应堆标记数，**不是** Packaging 行）=====
+reactor_marker_N=7  building_lines=7

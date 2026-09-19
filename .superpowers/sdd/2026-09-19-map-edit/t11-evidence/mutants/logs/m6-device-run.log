@@ -1,0 +1,12 @@
+mutation=m6 orig_md5=f6eeed79e98ffca3a240ce86bf049084 mutant_md5=56bf64e70320ac103655da5afaa9af67 file=map.js expect_red=r0a-empty-selection-zero-write-with-warning
+syntax_rc=0 (must be 0)
+gate_rc=1 (expect 非 0)
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+gate_red_line=not ok 11 - randomizeSelectionState-rejects-an-empty-selection
+e2e_rc=1 (expect 1；2=装置崩溃，**不算红**)
+consumed_md5=56bf64e70320ac103655da5afaa9af67 (e2e 实际加载的字节)
+result_line=E2E RESULT: FAILURES ["r0a-empty-selection-zero-write-with-warning"]
+red_line=STEP r0a-empty-selection-zero-write-with-warning: FAIL {"posts":1,"selection":[],"warning":"","status":"hexes 不得为空：一条 map.RandomizeRegion 至少要选一格","seed":"7"}
+restored_md5=f6eeed79e98ffca3a240ce86bf049084 restored_classes_md5=f6eeed79e98ffca3a240ce86bf049084 orig_md5=f6eeed79e98ffca3a240ce86bf049084
+MUTATION m6: KILLED (expected red r0a-empty-selection-zero-write-with-warning observed)
+device_rc=0

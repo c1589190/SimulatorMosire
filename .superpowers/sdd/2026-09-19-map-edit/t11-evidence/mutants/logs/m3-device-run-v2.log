@@ -1,0 +1,8 @@
+mutation=m3 orig_md5=f6eeed79e98ffca3a240ce86bf049084 mutant_md5=00834bb3c7481f67a89c62eabf06741e file=map.js expect_red=x1-nonadjacent-jump-zero-write
+syntax_rc=0 (must be 0)
+e2e_rc=1 (expect 1；2=装置崩溃，**不算红**)
+consumed_md5=00834bb3c7481f67a89c62eabf06741e (e2e 实际加载的字节)
+result_line=E2E RESULT: FAILURES ["x1-nonadjacent-jump-zero-write"]
+red_line=STEP x1-nonadjacent-jump-zero-write: FAIL posts=1 status="已改 river 1 条边（merge，一条命令，head 已前进）"
+restored_md5=f6eeed79e98ffca3a240ce86bf049084 restored_classes_md5=f6eeed79e98ffca3a240ce86bf049084 orig_md5=f6eeed79e98ffca3a240ce86bf049084
+MUTATION m3: KILLED (expected red x1-nonadjacent-jump-zero-write observed)

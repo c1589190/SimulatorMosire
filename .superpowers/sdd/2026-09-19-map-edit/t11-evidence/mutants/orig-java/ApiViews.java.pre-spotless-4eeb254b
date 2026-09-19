@@ -293,9 +293,10 @@ final class ApiViews {
    * <p>★ {@code terrainType} 由调用方从**状态里的** {@code map.terrainTypes()} 取出（spec §3.2）——本类不查 {@code
    * TerrainCatalog}，词表只有一个来源。
    *
-   * <p>★ {@code edges}（T11 新增）是**只读**增量：连通性此前在 app 层**没有任何读路径**（overview 只有块， mapHex
-   * 只有地形），于是"`merge` 后既有 tag 仍在 / `replace` 后只剩新的"这条判据在**浏览器里根本观测不到** （断不了言 = 装饰）。字段形如 {@code
-   * [{edge:"1_1|1_2", pathways:["river","road"]}]}，语义照 {@link EdgeTags#byPathway()} 的键。
+   * <p>★ {@code edges}（T11 新增）是**只读**增量：连通性此前在 app 层**没有任何读路径**（overview 只有块，
+   * mapHex 只有地形），于是"`merge` 后既有 tag 仍在 / `replace` 后只剩新的"这条判据在**浏览器里根本观测不到**
+   * （断不了言 = 装饰）。字段形如 {@code [{edge:"1_1|1_2", pathways:["river","road"]}]}，语义照
+   * {@link EdgeTags#byPathway()} 的键。
    */
   static Map<String, Object> mapHex(
       HexCoord coord,
@@ -323,8 +324,8 @@ final class ApiViews {
    * 入射到 {@code coord} 的边（M8 T11）：{@code [{edge:"1_1|1_2", pathways:["river","road"]}]}。
    *
    * <p>★ **两种排序都是为了可复现**：边按 {@link EdgeRef} 自然序（`(q,r)`，**不是字符串序**——`1_10` 与 `1_2`
-   * 的字符串序会把规范序倒过来），`pathways` 按字典序。`/api/map/hex` 有一条"同一 revision 两次响应**逐字节 相同**"的既有断言（{@code
-   * GuiApiTest}）：任何一处跟着 `Map` 的迭代序走，那条断言就会随 JVM 的散列盐抖动。
+   * 的字符串序会把规范序倒过来），`pathways` 按字典序。`/api/map/hex` 有一条"同一 revision 两次响应**逐字节
+   * 相同**"的既有断言（{@code GuiApiTest}）：任何一处跟着 `Map` 的迭代序走，那条断言就会随 JVM 的散列盐抖动。
    *
    * <p>★ 只发 pathway **键**（当前载荷里 props 恒为空表），与"哪种连通性在这条边上"这一个判据同名。
    */

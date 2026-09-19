@@ -1,0 +1,8 @@
+mutation=m2 orig_md5=f6eeed79e98ffca3a240ce86bf049084 mutant_md5=f6cdd1523817c5bdc5bca18740ddaf7f file=map.js expect_red=r1-seed-reaches-payload-verbatim
+syntax_rc=0 (must be 0)
+e2e_rc=1 (expect 1；2=装置崩溃，**不算红**)
+consumed_md5=f6cdd1523817c5bdc5bca18740ddaf7f (e2e 实际加载的字节)
+result_line=E2E RESULT: FAILURES ["r1-seed-reaches-payload-verbatim","r3-other-seed-differs","r4-back-to-first-seed-reproduces-bytes"]
+red_line=STEP r1-seed-reaches-payload-verbatim: FAIL {"posts":1,"payload":{"hexes":[{"q":1,"r":2},{"q":1,"r":3}],"seed":0},"md5":"4271a07929b1e6919f6a3f634b8511fc","bytes":731}
+restored_md5=f6eeed79e98ffca3a240ce86bf049084 restored_classes_md5=f6eeed79e98ffca3a240ce86bf049084 orig_md5=f6eeed79e98ffca3a240ce86bf049084
+MUTATION m2: KILLED (expected red r1-seed-reaches-payload-verbatim observed)
