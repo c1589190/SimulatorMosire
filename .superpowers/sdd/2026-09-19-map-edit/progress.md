@@ -157,3 +157,32 @@
 **未核实**（承报告 §八，逐条保留）：**真档**（本机无档 ⇒ 全部 e2e 跑在 `--demo` 的 **3 格**演示世界，随机化样本面窄）/ 只验 `river`·`road` 两个 kind（本机词表只此两类）/ 长连拖动（>2 格链）/ seed 全域边界 / **只 Chromium，未跑第二视口**（1024×700）/ 触摸与触控笔 / 异常路径（后端 422/409 下的 UI 反应）/ ★ **`GuiServer:393` 那行接线本身没有变异体**（m5 钉的是 `ApiViews.incidentEdges` 的排序与列举）/ ★ **`e2e.cjs` v1 不可 diff**（见上）。
 
 **带裁定的遗留（归还 T12）**：① 真档上的连通性读写仍未验——**与 T5/T6 同一条开口项**（M6 的"`edges` 非空无真实样本"**依然成立**）；② `randomizeSelectionState` 会**静默丢弃**缺 `q`/`r` 的项（选择来自内部状态、非用户文本 ⇒ 未按错误处理）；③ 触摸 / HiDPI / 第二视口随 M8 关账统一记。
+
+## T9 ✅ 区域查看模式 UI（**已关账 `9eef9ab`**；4 文件 + 1 新增：`webui/map.js`、`webui/panels.js`、`src/test/js/{run-gate,gate-contract.test}.cjs`、新增 `src/test/js/region-view.test.cjs`；**零 Java 改动**）
+
+**交互（判据逐值）**：点重叠格 `(1,2)` ⇒ 高亮**全部**从属区域（`highlighted=["t9_a","t9_b"]` == `/api/map/hex` 的 `regions`，长度 **2 > 1**；`/api/map/hex` 实测 `regions:["t9_a","t9_b"]` 字典序）；选区域 ⇒ **其它淡色逐值可断言**（焦点 `0.42`／区域编辑 `0.52`、淡色 `0.13` + **独立复算**的混合色 `#8a8adc`，harness 内自算 `t=0.68→203`，不是"看起来淡了"）。
+★★ **两模式共用一份实现**：抽出 `buildRegionHighlightPlan` + `reloadRegionHighlight`，差别只剩两组参数常量（`REGION_VIEW_HIGHLIGHT` / `REGION_EDIT_HIGHLIGHT`）；门禁里 `fadeRegionColor(base)` **全仓只准出现 1 次**（反向断言，m5 正是红在它上面）。★ **焦点先入**（T10 抓过的真缺陷）在**浏览器路径**上有回归位：焦 `t9_b` ⇒ `at12`/`at13` 都必须是它的焦点色（m3 红成 `at12={"#dc8a8a",0.13}` —— 焦点区丢了自己的格）。
+
+**★★ 裁定 72.1 的杀点**：左栏每个区域报**它自己的** `hexCount`（`t9_a:2, t9_b:2`），合计是**真并集**（`union=3`，与 `sum=4` **不等**），并把 "求和" 钉成红点——纯函数 `regionMembershipSummary` 算 `hexCountSum` 只为断言"和 ≠ 并集"，**求和值绝不写进 DOM**（`appendRegionMembership` 源码级反向断言）；取不到某区域 hex 列表时 `unionCount=null`（**不给数字**），**不拿求和顶替**。
+
+**e2e 干净轮 57/57 ALL PASS**（`e2e_rc=0`、`z0-no-pageerror: PASS []`；T8/T11 的既有断言全绿，判据⑥ 相关面未退化）。★ 世界是**真写**出来的（3 条 `map.CreateRegion`，`head 9→12`）——**本机无真档**，"1 hex ≥2 区域"是在 `--demo` 3 格世界上用真写路径**造**的（见报告 §5 第 1 条）。
+
+**变异 7 轮 0 存活**（装置 `mut-run.sh`，全 7 轮跑在同一份装置 `e0267dbd…`）：m1 只高亮第一个（红在 e2e `h2a`）/ m2 合计改求和（红在门禁 `not ok 51` **且** e2e `h3b`；实测 `union:"4"`）/ m3 去掉焦点先入（红在门禁 `not ok 42` + e2e `h4h`）/ m4 淡色也用焦点透明度（红在 e2e `h4c` `[0.42]`）/ m5 淡色用原色（红在 e2e `h4d` `#0000ff ≠ #8a8adc`）/ m6 未知焦点退化成"全都淡色"（门禁 `not ok 44`）/ m7 取不到 hex 列表拿求和顶替（门禁 `not ok 50`）。★ **本次没有 Java 变异轮**（零 Java 改动 ⇒ 无目标类）。★ 两处**如实记账**：① m2 首轮判 SURVIVED 是**装置假阴性**（门禁报 JS 用例名、e2e 报 STEP 名，装置拿后者去核前者）⇒ 改成两套命名分开钉；② m3 首轮**预测错**（预判 e2e 红在 `h2c`，实测全绿）——根因是**夹具不可判别**（h2 的焦点是两个从属区域、待淡化的排末位；h4 的焦点又是色板首位）⇒ **补 H4b**（焦居中的 `t9_b`）后当场在浏览器层红。★ 通则入档：**"高亮了谁"不能靠格数判**（m1 下 `highlightHexCount` 仍是 3——淡色条目照样占格）。
+
+**门禁**：`./mvnw clean verify` **rc=0**（`verify-rc.txt` 当场落盘）、**977** = 170/362/45/131/169/100（**与基线逐值相同**）、7/7 SUCCESS、`BugInstance size is 0` ×6、`[ERROR]` **0** 行、`[frontend-gate] OK tests=82 pass=82 fail=0`（下界 71→**82** 双升，`Total time` 08:07 min）。★ **与派单预期的出入**：JS 断言**不并进** `simos-app` 的 surefire 合计（前端门禁由 `exec-maven-plugin` 独立跑，只进 `[frontend-gate]` 行）⇒ 977 不变是正确的；"下界是真护栏"的证据不是"+11 个数字"，是**它红过**（m2~m7 的门禁轮）。
+
+**★★ 控制器复核（逐条**实读原始产物**，不采信转述；2026-09-20 提交前）**：
+- **字节焊接**：当前树 `agg=4294de6d` / `map.js=014ffd3a` / `panels.js=940bff47` **等于** `mutants/orig/*` **等于**被引干净 e2e 轮（`clean-e2e-final.log`）自记的 `agg_md5` / `map_js_md5`；被引轮自记的装置 `e2e_cjs=75ce5aa0`、`run_e2e_sh=96288100` **等于**当前装置文件 md5 ⇒ **"跑的就是这些字节、这份装置"是读出来的，不是推出来的**。
+- **被引 verify 是哪一次**：`verify-rc.txt`（06:55:28）与 `full-verify-postmutants.log`（06:55:27）同源 = **变异轮全部 `cp` 还原之后**那一次；另一份 `full-verify.log`（06:40:50，变异轮之前）逐项相同、**只有 `Total time` 06:58 vs 08:07 不同**（同工作量、不同负载）。台账引的 08:07 与 rc 同源，**引对了**。
+- **门禁红点编号逐条核对**（原文 `^not ok <n> - `）：m2=**51**、m3=**42**、m4=**42/43/45**、m5=**42/45/47**、m6=**44**、m7=**50** —— 与台账逐值一致。
+- ★★ **m5 的红含 `not ok 47 - page-层-uses-the-shared-plan-for-both-modes`** ⇒ 测试⑥那条**源码级反向断言**（`fadeRegionColor(base)` 计数 `=== 1`）**被真杀过**。这正是"它是不是恒真"的正面回答：**不靠论证，靠一条红**。（该用例没有单独的 `assert.ok(source.length > 0)`；判它非恒真的依据是"计数 `=== 1` 在空源码下会得 0"**加上**这条实测红 —— 两者都在，故不补。）
+- **形态 5 防守实测**：`readWebui()` 走 `__dirname`（树内相对），实测 `map.js` = **157955 字节**、`fadeRegionColor(base)` 恰好 **1** 次、旧内联实现 `indexOf("if (region && region.id === focus)") = -1` ⇒ 在 worktree 下**扫到了真文件**，M4 那类"扫到 0 个 ⇒ 断言恒真"不适用。
+- **核心判据的原始证据**：`h0-hex-1-2-has-exactly-two-owners: PASS {"regions":["t9_a","t9_b"]}`（**服务端自己**报 2 个从属）+ `h2a-highlight-count-equals-regions-length: PASS {"highlighted":["t9_a","t9_b"],"regions":["t9_a","t9_b"]}`（UI 高亮集 == 服务端 `regions`，长度 **2 > 1**）+ `h1-three-regions-created-through-the-real-write-path: PASS {"posts":3,"headBefore":9,"headAfter":12}`（夹具是 3 条真 `map.CreateRegion` 造出来的）。
+
+**★★ 复核新发现一（装置自记里的作废轮）**：`m6-e2e.log` / `m7-e2e.log` 各有**两块** `--- device self-record ---`：前一块装置 `c6cd1e68…`、后一块 `e0267dbd…`（`>>` 追加 ⇒ **后一块才是本名轮**）。⇒ "全 7 轮跑在同一份装置 `e0267dbd…`"**成立**（m1~m5 各一块且即 `e0267dbd`；m6/m7 取后一块），但**引用必须取第二块**；且这两个文件名叫 `-e2e.log`，内容里 `e2e_rc=not-run` —— m6/m7 是 **gate-only 轮，根本没跑 e2e**，别把它们当"跑过浏览器的轮"。★ 与 T11 的"装置 v1 没备份"同族：**装置自己的留痕也会留下作废轮**。
+
+**★★ 复核新发现二（通则新同族：mtime 不是"字节变了"的判据）**：`map.js` / `panels.js` 的 mtime 是 **06:46:59 / 06:47:01**，**晚于**被引的干净 e2e 轮（06:33:32）—— 看上去像"引了旧字节"。实为变异轮还原时 `cp` **重写**了文件、**字节没变**（两边 md5 都是 `014ffd3a` / `940bff47`）。⇒ 通则「同一文件被改动 ⇒ 旧证据对应旧字节」的**对偶**：**文件被重写 ≠ 字节被改**；**mtime 更新不能判旧证据失效，md5 才能**（反向也成立：md5 相同就不能因为 mtime 新而重跑）。★ 这正是装置坚持逐字节 `cp` + 双处 md5 自记的价值所在 —— 本次它把一个假警报挡掉了。
+
+**未核实**（详见 `t9-evidence/notes/t9-report.md` §5）：**真档**（本机无档；多从属未在 19441 格档上验）/ 一个 hex **≥3 从属**只在合成夹具证过（端点与浏览器最多 2 个）/ 左栏是 **N+1** 次 `/api/map/region/<id>`（从属多时未测）/ **m6·m7 只有纯函数层的红**（e2e 造不出那两种状态，不拿门禁层的红冒充浏览器层）/ 淡色只有**入参级**证明、**无像素证明** / `regionHighlightAt` 的 alpha 回落分支无用例 / 左栏不显示区域 `name` / m4·m5 的 e2e 断言是**共用夹具**（一条断言钉多件事）。
+
+**带裁定的遗留（归还 T12）**：① "合计"这一行**要不要留**（裁定 72.1 只禁求和当并集，没说要显示并集；产品上不要就删，比修文案省）；② **双下界同值双写**（`run-gate.cjs:17` 与 `gate-contract.test.cjs:25` 都是 82，合成一处要动 exec 参数传递，未做）；③ **装置噪声留档**：`m1-e2e-prevharness.log`、`m2-*-DEVICEBUG.log`、`m3-*-predh2c.log` 是修订/事故留档，**引用以最终扫轮的本名日志为准**；★ 另：`m6-e2e.log` / `m7-e2e.log` 里的**第二块**自记块才是本名轮（前一块是作废轮 `c6cd1e68…`），且这两个文件**不含任何 e2e 运行**（gate-only 轮）。
