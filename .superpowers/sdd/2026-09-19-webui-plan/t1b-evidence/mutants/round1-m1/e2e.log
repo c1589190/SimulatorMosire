@@ -1,0 +1,26 @@
+server_ready_tries=3 code=200 pid=259555
+STEP b-seed: PASS head=3 rows=3
+STEP c-timeline: PASS head=3 nodes=3
+STEP d-nodes: PASS nodes=3 head=3
+STEP d-labels: PASS ["rev 1 · Bootstrap","rev 2 · RenameUnit","rev 3 · RenameUnit"]
+STEP d-isAtTip: PASS {"mid":false,"tip":true,"missing":false,"empty":false}
+PROBE COL_WIDTH=110
+STEP a-knob-exists-visible: PASS {"node":{"x":323,"y":804},"knob":{"x":31,"y":787},"knobHidden":false,"knobDisplay":"block","knobRev":"3","knobBranch":"main","nodeRev":"3","nodeBranch":"main"}
+STEP a-knob-on-cursor: FAIL delta=292.49444439168417 node={"x":323,"y":804} knob={"x":31,"y":787}
+STEP b-drag-knob-offrow: PASS offRowY=857 {"rev":2,"branch":"main","meta":"分支 main · rev 2 · head 3 · tick 5","create":true,"fork":true,"knobRev":"2"}
+STEP b-drag-readonly: PASS head 3->3 rows 3->3
+STEP b-row-drag: PASS atDown=1 after=2
+STEP c-column-spacing: PASS COL_WIDTH=110 d1=110 d2=110 centers=[{"rev":1,"x":103},{"rev":2,"x":213},{"rev":3,"x":323}]
+STEP e-mid-rev: PASS {"create":true,"fork":true,"rev":2,"branch":"main","meta":"分支 main · rev 2 · head 3 · tick 5"}
+STEP e-mid-disabled: PASS create_disabled=true fork_disabled=true
+STEP e-readonly: PASS head 3->3 rows 3->3
+STEP f-tip-enabled: PASS {"create":false,"fork":false}
+STEP e2-drag-preview: PASS {"rev":1,"create":true,"fork":true} head=3 rows=3
+STEP g-fork: PASS branches=["b2","main"] lines=2
+STEP g-postfork-tip: PASS {"create":false,"fork":false,"meta":"分支 b2 · rev 1 · head 1 · tick 5","active":"rev 1 · ForkBranch"}
+STEP e-main-first: PASS firstLine=main
+STEP d-fork-aligned: PASS child.x=323 parent.x=323 dx=0
+STEP d-fork-link-visible: PASS [{"x":323,"y":804,"h":40,"w":2}]
+STEP h-conflict: PASS status="末端已移动，已自动重取最新状态" create_disabled=true meta="分支 main · rev 3 · head 4 · tick 5"
+E2E RESULT: FAIL a-knob-on-cursor
+e2e_rc=1

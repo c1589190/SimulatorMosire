@@ -1,0 +1,20 @@
+{
+  "firstBranch": "main",
+  "child": {
+    "x": 323,
+    "y": 844
+  },
+  "parent": {
+    "x": 323,
+    "y": 804
+  },
+  "linkCount": 1,
+  "linkRects": [
+    {
+      "x": 323,
+      "y": 804,
+      "h": 40,
+      "w": 2
+    }
+  ]
+}

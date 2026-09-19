@@ -93,14 +93,7 @@
       return rev;
     }
     seen[branch] = true;
-    var list = model.nodes[branch] || [];
-    var first = list.length > 0 ? list[0] : null;
-    if (!first || !first.parent || first.parent.branch === undefined || first.parent.branch === null) {
-      return rev;
-    }
-    return (
-      columnOf(first.parent.branch, Number(first.parent.revision), seen) + (rev - 1)
-    );
+    return rev;
   }
 
   /** 节点 x：columnOf(branch, revision) → columnX。 */

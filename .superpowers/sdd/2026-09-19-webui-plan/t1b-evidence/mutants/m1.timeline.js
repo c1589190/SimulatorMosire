@@ -301,8 +301,6 @@
           var origin = mountOrigin(mount);
           var rect = activeNode.getBoundingClientRect();
           knob.hidden = false;
-          knob.style.left = rect.left + rect.width / 2 - origin.left + origin.scrollLeft + "px";
-          knob.style.top = rect.top + rect.height / 2 - origin.top + origin.scrollTop + "px";
           knob.setAttribute("data-branch", activeNode.getAttribute("data-branch"));
           knob.setAttribute("data-revision", activeNode.getAttribute("data-revision"));
         } else {

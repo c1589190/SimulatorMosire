@@ -1,0 +1,33 @@
+{
+  "branch": "main",
+  "head": 3,
+  "nodes": [
+    {
+      "revision": 1,
+      "tick": 5,
+      "commandType": "core.Bootstrap",
+      "initiator": "system:bootstrap",
+      "parent": null
+    },
+    {
+      "revision": 2,
+      "tick": 5,
+      "commandType": "unit.RenameUnit",
+      "initiator": "player:gui",
+      "parent": {
+        "branch": "main",
+        "revision": 1
+      }
+    },
+    {
+      "revision": 3,
+      "tick": 5,
+      "commandType": "unit.RenameUnit",
+      "initiator": "player:gui",
+      "parent": {
+        "branch": "main",
+        "revision": 2
+      }
+    }
+  ]
+}

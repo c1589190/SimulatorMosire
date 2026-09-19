@@ -1,0 +1,14 @@
+=== M7b T1 变异轮 m1 @ .superpowers/sdd/2026-09-19-webui-plan/t1b-evidence/mutants/round1-m1 2026-09-19T10:58:10+08:00 ===
+orig_src_md5=e24956bf3eb0fe92d61337a496923baf
+orig_tgt_md5=e24956bf3eb0fe92d61337a496923baf
+mutant_md5=8586dde87a97f3118202f478d080ffd5
+pushed_src_md5=8586dde87a97f3118202f478d080ffd5
+pushed_tgt_md5=8586dde87a97f3118202f478d080ffd5
+clean_world_check=src==tgt==orig_before_push
+e2e_rc=1
+restored_src_md5=e24956bf3eb0fe92d61337a496923baf
+restored_tgt_md5=e24956bf3eb0fe92d61337a496923baf
+restore_ok=yes
+--- e2e FAIL/STEP lines ---
+STEP a-knob-on-cursor: FAIL delta=292.49444439168417 node={"x":323,"y":804} knob={"x":31,"y":787}
+E2E RESULT: FAIL a-knob-on-cursor
