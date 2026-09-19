@@ -1,0 +1,8 @@
+head=27e0887ea374313a6e31ec4c196e9e219ee803ee
+launch=2026-09-20T06:47:13+08:00
+simos-app/src/main/resources/webui/map.js md5=014ffd3aac68dbf282d91e49365d4b0d
+simos-app/src/main/resources/webui/panels.js md5=940bff47d74bc22c29e2187e2f4427e7
+simos-app/src/test/js/run-gate.cjs md5=0536a0196255ee092000c16c3f8ce4bc
+simos-app/src/test/js/gate-contract.test.cjs md5=b202c25b775fd41d69ece2b3a2f0398f
+simos-app/src/test/js/region-view.test.cjs md5=184e402060a8739e5b3835e40e51ec12
+java_changed=0

@@ -1,0 +1,10 @@
+--- device self-record (m7) ---
+file=panels.js orig_md5=940bff47d74bc22c29e2187e2f4427e7 mutant_md5=af175322dcdde69519f2c1427f02b499 agg_expect= consumed_agg= restored_md5=940bff47d74bc22c29e2187e2f4427e7
+harness_mut_run_md5=c6cd1e6860b5b5e276459d1ef5a234bd
+syntax_rc=0 gate_rc=1 e2e_rc=not-run expect_red(e2e)=n/a expect_red(gate)=regionMembershipSummary-refuses-to-guess-without-hex-lists
+expected_red_line=
+--- device self-record (m7) ---
+file=panels.js orig_md5=940bff47d74bc22c29e2187e2f4427e7 mutant_md5=af175322dcdde69519f2c1427f02b499 agg_expect= consumed_agg= restored_md5=940bff47d74bc22c29e2187e2f4427e7
+harness_mut_run_md5=e0267dbd2d5d845a2f979f1547265c2b
+syntax_rc=0 gate_rc=1 e2e_rc=not-run expect_red(e2e)=n/a expect_red(gate)=regionMembershipSummary-refuses-to-guess-without-hex-lists
+expected_red_line=
