@@ -1,11 +1,15 @@
 package io.mosire.simos.app.gui;
 
+import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
+import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.region.RegionMeta;
+import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -16,11 +20,13 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
+import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +121,28 @@ final class ApiViews {
     return out;
   }
 
+  /**
+   * 时间轴节点清单（spec §3.1，M7 T1）：{@code {branch,head,nodes:[…]}}。节点**不含 {@code changesetJson}**（体积大且对
+   * UI 无用），{@code parent} 为 {@code {branch,revision}} 或 {@code null}。
+   */
+  static Map<String, Object> timeline(BranchId branch, long head, List<RevisionRow> rows) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("branch", branch.value());
+    view.put("head", head);
+    List<Map<String, Object>> nodes = new ArrayList<>(rows.size());
+    for (RevisionRow row : rows) {
+      Map<String, Object> node = new LinkedHashMap<>();
+      node.put("revision", row.revision().value());
+      node.put("tick", row.timestamp().tick());
+      node.put("commandType", row.commandType());
+      node.put("initiator", row.initiator());
+      node.put("parent", row.parent().map(ApiViews::stateRef).orElse(null));
+      nodes.add(node);
+    }
+    view.put("nodes", nodes);
+    return view;
+  }
+
   /** 地图只读总览（地图形状，T9 的 Canvas 数据源）。 */
   static Map<String, Object> mapOverview(String mapId, GameMap map) {
     Map<String, Object> view = new LinkedHashMap<>();
@@ -136,6 +164,7 @@ final class ApiViews {
       item.put("id", region.id().value());
       item.put("name", region.name());
       item.put("hexCount", region.hexes().size());
+      item.put("meta", regionMeta(region.meta()));
       regions.add(item);
     }
     view.put("regions", regions);
@@ -155,12 +184,56 @@ final class ApiViews {
     return view;
   }
 
-  /** 单格：格内容 + 该格的 facet 汇总（facet 由调用方按 **canonical** 地址查询，spec §5.2）。 */
-  static Map<String, Object> mapHex(HexCoord coord, HexCell cell, List<FacetEntry> facets) {
+  /**
+   * 单格：格内容 + 所属区域 + **完整地形定义** + facet 汇总（facet 由调用方按 **canonical** 地址查询，spec §5.2）。
+   *
+   * <p>★ {@code terrainType} 由调用方从**状态里的** {@code map.terrainTypes()} 取出（spec §3.2）——本类不查 {@code
+   * TerrainCatalog}，词表只有一个来源。
+   */
+  static Map<String, Object> mapHex(
+      HexCoord coord,
+      HexCell cell,
+      List<FacetEntry> facets,
+      RegionId region,
+      TerrainType terrainType) {
     Map<String, Object> view = hexCoord(coord);
     view.put("terrain", cell.terrain());
     view.put("height", cell.height());
+    view.put("region", region == null ? null : region.value());
+    view.put("terrainType", terrainType);
     view.put("facets", facets(facets));
+    return view;
+  }
+
+  /**
+   * 区域详情（spec §3.3，M7 T1）：{@code {id,name,meta,hexCount,hexes:[{q,r}…]}}。
+   *
+   * <p>★ {@code hexes} 按 {@code (q,r)} 升序——{@link Region#hexes()} 是 {@code Set.copyOf}（迭代序不稳定），
+   * 不排序的响应字节不可复现，测试也钉不住。
+   */
+  static Map<String, Object> regionDetail(Region region) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", region.id().value());
+    view.put("name", region.name());
+    view.put("meta", regionMeta(region.meta()));
+    view.put("hexCount", region.hexes().size());
+    List<HexCoord> sorted = new ArrayList<>(region.hexes());
+    sorted.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+    List<Map<String, Object>> hexes = new ArrayList<>(sorted.size());
+    for (HexCoord coord : sorted) {
+      hexes.add(hexCoord(coord));
+    }
+    view.put("hexes", hexes);
+    return view;
+  }
+
+  /** 区域元数据（四字段可空；spec §3.3）。 */
+  private static Map<String, Object> regionMeta(RegionMeta meta) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("color", meta.color());
+    view.put("tag", meta.tag());
+    view.put("description", meta.description());
+    view.put("annexedBy", meta.annexedBy());
     return view;
   }
 

@@ -150,6 +150,25 @@ class TimelineTest {
     assertThat(timeline.byCorrelation("ghost")).isEmpty();
   }
 
+  /** M7 T1：{@code listRevisions} 按分支隔离、revision 升序、parent 与 fork 一致（R3 的库侧护栏）。 */
+  @Test
+  void listRevisionsIsPerBranchAndAscending() {
+    append(ref("main", 1), Optional.empty(), SimosTimestamp.of(0L), "c1");
+    append(ref("main", 2), Optional.of(ref("main", 1)), SimosTimestamp.of(10L), "c2");
+    forkFrom(ref("main", 2), "b2", "cf-b2");
+
+    List<RevisionRow> mainRows = timeline.listRevisions(branch("main"));
+    assertThat(mainRows).extracting(row -> row.branch().value()).containsExactly("main", "main");
+    assertThat(mainRows).extracting(row -> row.revision().value()).containsExactly(1L, 2L);
+
+    List<RevisionRow> b2Rows = timeline.listRevisions(branch("b2"));
+    assertThat(b2Rows).extracting(row -> row.branch().value()).containsExactly("b2");
+    assertThat(b2Rows).extracting(row -> row.revision().value()).containsExactly(1L);
+    assertThat(b2Rows.get(0).parent()).contains(ref("main", 2));
+
+    assertThat(timeline.listRevisions(branch("ghost"))).isEmpty();
+  }
+
   /** 分岔语义（C13）：新行 (b2,1)、parent=源 head、变更集=空集、tick 继承父、命令类型钉为 core.ForkBranch。 */
   @Test
   void forkWritesFirstRevisionInheritingTimestampAndEmptyChangeSet() {

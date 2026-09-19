@@ -90,7 +90,7 @@ public final class Timeline {
           + ALL_COLUMNS
           + " FROM "
           + REVISIONS_TABLE
-          + " WHERE branch = ? ORDER BY revision ASC";
+          + " ORDER BY revision ASC";
 
   /** C19 第②项：是否存在某分支的 revision 1 以 (branch, revision) 为 parent（分岔强制一次的落点）。 */
   private static final String FORK_PARENT_EXISTS_SQL =
@@ -327,7 +327,6 @@ public final class Timeline {
     return store.inTransaction(
         connection -> {
           try (PreparedStatement statement = connection.prepareStatement(BY_BRANCH_SQL)) {
-            statement.setString(1, branch.value());
             try (ResultSet resultSet = statement.executeQuery()) {
               List<RevisionRow> out = new ArrayList<>();
               while (resultSet.next()) {
