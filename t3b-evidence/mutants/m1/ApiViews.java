@@ -363,8 +363,12 @@ final class ApiViews {
    */
   static Map<String, Object> pathResult(boolean reachable, List<HexCoord> path) {
     Map<String, Object> view = new LinkedHashMap<>();
+    List<HexCoord> emitted = path;
+    if (path.size() >= 3) {
+      emitted = List.of(path.get(0), path.get(path.size() - 1));
+    }
     view.put("reachable", reachable);
-    view.put("path", hexCoords(reachable ? path : List.of()));
+    view.put("path", hexCoords(reachable ? emitted : List.of()));
     return view;
   }
 

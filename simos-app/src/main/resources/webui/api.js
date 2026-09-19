@@ -110,6 +110,24 @@
     return getJson(withTarget("/map/region/" + encodeURIComponent(id), target));
   }
 
+  /**
+   * 服务端 A* 寻路（M7b T3，只读 GET）：{reachable, path:[{q,r}…]}。起点由服务端取该单位的有效位置；
+   * 返回的 path 逐格相邻、含首尾，可原样当 unit.PlanRoute 的 waypoints。
+   */
+  function mapPath(unitId, q, r, target) {
+    return getJson(
+      withTarget(
+        "/map/path?unit=" +
+          encodeURIComponent(unitId) +
+          "&q=" +
+          Number(q) +
+          "&r=" +
+          Number(r),
+        target
+      )
+    );
+  }
+
   // ── 写端点（spec §8.2）；服务端唯一写入口 CoreSimos.submit ─────────────
 
   /**
@@ -151,6 +169,7 @@
     mapOverview: mapOverview,
     mapHex: mapHex,
     mapRegion: mapRegion,
+    mapPath: mapPath,
     units: units,
     unit: unit,
     population: population,

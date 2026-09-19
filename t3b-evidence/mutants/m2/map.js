@@ -1170,9 +1170,6 @@
    * 更不发任何写请求——只读模式不得被污染，R8）。
    */
   function handleContextMenu(pick) {
-    if (app.getState().mode !== "unit") {
-      return false;
-    }
     var id = selectedUnitId();
     if (!id) {
       return false;

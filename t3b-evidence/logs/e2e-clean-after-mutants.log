@@ -1,0 +1,32 @@
+server_ready_tries=3 code=200 pid=274836
+STEP a-mode-unit: PASS unit
+STEP a-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP b-path-status-200: PASS {"status":200,"body":{"reachable":true,"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]}}
+STEP b-reachable-true: PASS {"reachable":true,"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]}
+STEP b-path-3-points: PASS (1,1)->(1,2)->(1,3)
+STEP b-path-stepwise: PASS (1,1)->(1,2)->(1,3)
+STEP b-path-endpoints: PASS (1,1)->(1,2)->(1,3)
+PATH_B=(1,1)->(1,2)->(1,3)
+STEP c-head-advanced: PASS {"revStart":1,"revC":2}
+STEP c-route-path-3: PASS (1,1)->(1,2)->(1,3)
+STEP c-route-path-values: PASS (1,1)->(1,2)->(1,3)
+STEP c-head-api: PASS 2
+STEP c-timeline-node-plus-1: PASS {"nodesBefore":1,"nodesAfterC":2}
+STEP c-polyline-3-points: PASS {"id":"u-1","totalPoints":3,"remainingPoints":3,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP d-path-2-points: PASS (1,1)->(1,2)
+STEP d-head-advanced: PASS {"revStartD":2,"revD":3}
+STEP d-route-replaced-not-appended: PASS (1,1)->(1,2)
+STEP d-polyline-2-points: PASS {"id":"u-1","totalPoints":2,"remainingPoints":2,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP e-target-is-off-map: PASS {"kind":"hex","q":2,"r":1,"inMap":false}
+STEP e-reachable-false: PASS {"reachable":false,"path":[]}
+STEP e-path-empty: PASS {"reachable":false,"path":[]}
+STEP e-no-write: PASS {"nonGetBeforeE":2,"nonGetAfterE":2}
+STEP e-ui-unreachable: PASS "不可达：u-1 → (2,1)"
+STEP f-view-mode-no-write: PASS {"nonGetBeforeF":2,"nonGetAfterF":2}
+STEP f-mode-is-view: PASS view
+NON_GET_LIST=["/api/command","/api/command"]
+STEP g-nonget-allowlist: PASS {"list":["/api/command","/api/command"],"violations":[]}
+STEP g-command-present: PASS ["/api/command","/api/command"]
+STEP z-no-page-errors: PASS []
+E2E RESULT: PASS
+e2e_rc=0
