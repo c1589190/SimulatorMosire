@@ -19,6 +19,7 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
@@ -396,13 +397,14 @@ class QueryServiceTest {
   private static GameMap corridorMap() {
     TerrainType desert = TerrainCatalog.of("desert");
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(desert.key(), 0.5));
-    hexes.put(H12, new HexCell(desert.key(), 0.5));
-    hexes.put(H13, new HexCell(desert.key(), 0.5));
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H12, new HexCell(0.5));
+    hexes.put(H13, new HexCell(0.5));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
     return new GameMap(
         hexes,
+        TerrainBlocks.uniform(hexes.keySet(), desert.key()),
         Map.of(),
         Map.of(),
         terrainTypes,

@@ -54,9 +54,9 @@ class DemoWorldTest {
     assertThat(map.hexes().keySet())
         .as("走廊按 [1,1] → [1,2] → [1,3] 保序")
         .containsExactly(H11, H12, H13);
-    assertThat(map.hexes().values())
+    assertThat(map.terrainIndex().values())
         .as("三格全为 desert")
-        .allSatisfy(cell -> assertThat(cell.terrain()).isEqualTo("desert"));
+        .allSatisfy(terrain -> assertThat(terrain).isEqualTo("desert"));
   }
 
   @Test

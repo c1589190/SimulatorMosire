@@ -8,6 +8,7 @@ import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -54,8 +55,8 @@ class MapResolverTest {
   @BeforeEach
   void setUp() {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H00, new HexCell("plain", 0.1));
-    hexes.put(H10, new HexCell("plain", 0.2));
+    hexes.put(H00, new HexCell(0.1));
+    hexes.put(H10, new HexCell(0.2));
     // ★ 两个区域都盖住 H00（多从属，M8-U1），插入序 r2 在前、r1 在后——与 RegionId 字典序**相反**：
     // RegionIndex 全保留并按字典序 ⇒ [r1, r2]；沿插入序的线性扫描 ⇒ [r2, r1]（regionOfHexUsesTheIndex 的靶子）。
     Map<RegionId, Region> regions = new LinkedHashMap<>();
@@ -66,6 +67,7 @@ class MapResolverTest {
     map =
         new GameMap(
             hexes,
+            TerrainBlocks.uniform(hexes.keySet(), "plain"),
             regions,
             cities,
             Map.of(),

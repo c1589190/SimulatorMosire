@@ -17,6 +17,7 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
@@ -680,10 +681,10 @@ class GuiApiTest {
   private static GameMap corridorMap() {
     TerrainType desert = TerrainCatalog.of("desert");
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(desert.key(), 0.5));
-    hexes.put(H12, new HexCell(desert.key(), 0.5));
-    hexes.put(H13, new HexCell(desert.key(), 0.5));
-    hexes.put(H14, new HexCell(desert.key(), 0.5)); // 不属任何区域 ⇒ regions 空数组
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H12, new HexCell(0.5));
+    hexes.put(H13, new HexCell(0.5));
+    hexes.put(H14, new HexCell(0.5)); // 不属任何区域 ⇒ regions 空数组
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
     // M7 T1：两个区域——r-1 带全量 meta（覆盖 H11/H13，非相邻 ⇒ 两条环），r-2 空 meta（覆盖 H12）
@@ -702,6 +703,7 @@ class GuiApiTest {
     regions.put(r3.id(), r3);
     return new GameMap(
         hexes,
+        TerrainBlocks.uniform(hexes.keySet(), desert.key()),
         regions,
         Map.of(),
         terrainTypes,

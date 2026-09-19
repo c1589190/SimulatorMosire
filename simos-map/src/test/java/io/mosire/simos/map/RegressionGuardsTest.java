@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.map.block.BlockId;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.generate.MapGenerator;
@@ -98,10 +100,10 @@ class RegressionGuardsTest {
   private static final String HEXCOORD_FILE =
       "simos-map/src/main/java/io/mosire/simos/map/hex/HexCoord.java";
 
-  /** L8② 的冻结白名单：{@code new GameMap(} 的逐文件调用点数（控制器实测 11 处）。 */
+  /** L8② 的冻结白名单：{@code new GameMap(} 的逐文件调用点数（P1 后 GameMap 多一个 with* ⇒ 10 处）。 */
   private static final Map<String, Long> GAME_MAP_CONSTRUCTOR_CALL_SITES =
       Map.of(
-          "simos-map/src/main/java/io/mosire/simos/map/GameMap.java", 9L,
+          "simos-map/src/main/java/io/mosire/simos/map/GameMap.java", 10L,
           "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java", 1L,
           "simos-map/src/main/java/io/mosire/simos/map/generate/MapGenerator.java", 1L);
 
@@ -128,7 +130,7 @@ class RegressionGuardsTest {
     baseEdges.put(EDGE_AB, new EdgeTags(Map.of("road", Map.of("width", 2))));
     baseEdges.put(EDGE_BC, new EdgeTags(Map.of("river", Map.of("depth", 3))));
     baseEdges.put(EDGE_AC, new EdgeTags(Map.of("rail", Map.of("gauge", 1435))));
-    GameMap base = GameMap.empty().withHexes(fourHexes()).withEdges(baseEdges);
+    GameMap base = mapWith(fourHexes(), fourTerrain()).withEdges(baseEdges);
 
     Map<EdgeRef, EdgeTags> targetEdges = new LinkedHashMap<>();
     targetEdges.put(EDGE_BC, new EdgeTags(Map.of("river", Map.of("depth", 7)))); // 改
@@ -157,13 +159,17 @@ class RegressionGuardsTest {
 
   /**
    * L2（GSimulator 的 {@code HexCell.edgeTags}/{@code riverMask} 是第二份连通性存储，Java 侧只读不写、 前端一存就把所有边的
-   * props 抹平）：{@code HexCell} 的组件清单**恰为** {@code [terrain, height]}（冻结字面量）。
+   * props 抹平）：{@code HexCell} 的组件清单**恰为** {@code [height]}（冻结字面量）。
+   *
+   * <p>★ P1 之后 {@code terrain} 也**不在**这里（地形进了权威块 {@code GameMap.terrainBlocks}）——故本断言同时钉住"无连通性字段"与
+   * "无 terrain"两件事，**没有改成恒真**（改成 {@code doesNotContain("edgeTags")} 才是松口）。
    */
   @Test
   void L2_hexCellHasNoConnectivityField() {
     assertThat(recordComponentNames(HexCell.class))
-        .as("HexCell 不含任何连通性字段（主存储只有 GameMap.edges 一份）")
-        .containsExactly("terrain", "height");
+        .as("HexCell 只剩 height：既不含量地形（P1），也不含任何连通性字段（主存储只有 GameMap.edges 一份）")
+        .containsExactly("height")
+        .doesNotContain("terrain", "edgeTags", "riverMask");
   }
 
   // ── L3：方向数组错位 ───────────────────────────────────────────────────────
@@ -314,7 +320,7 @@ class RegressionGuardsTest {
   void L8_gameMapHasNoTwelveArgConstructor() {
     Constructor<?>[] constructors = GameMap.class.getDeclaredConstructors();
     assertThat(constructors).as("GameMap 只有规范构造器（12 参数的复制形态不许回来）").hasSize(1);
-    assertThat(constructors[0].getParameterCount()).as("8 个组件，一个不多").isEqualTo(8);
+    assertThat(constructors[0].getParameterCount()).as("9 个组件，一个不多").isEqualTo(9);
 
     Map<String, Long> callSites = occurrencesByFile(javaFilesUnder(mapMain()), "new GameMap(");
     assertThat(callSites)
@@ -525,15 +531,11 @@ class RegressionGuardsTest {
 
   // ── L7 的夹具与 JSON 边界 ──────────────────────────────────────────────────
 
-  /** 八组件全非空、带非平凡 height 与非零 seed 的落盘形态（L7 的靶子就是它）。 */
+  /** 九组件全非空、带非平凡 height 与非零 seed 的落盘形态（L7 的靶子就是它）。 */
   private static GameMap persistedShape() {
-    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H_A, new HexCell("plains", PERSISTED_HEIGHT));
-    hexes.put(H_B, new HexCell("mountains", 0.62));
-    hexes.put(H_C, new HexCell("ocean", 0.21));
-    hexes.put(H_D, new HexCell("desert", 0.50));
     return new GameMap(
-        hexes,
+        fourHexes(),
+        TerrainBlocks.split(fourTerrain()),
         Map.of(
             new RegionId("r1"),
             Region.of(new RegionId("r1"), "区域 r1", Set.of(H_A, H_B), RegionMeta.empty())),
@@ -557,11 +559,35 @@ class RegressionGuardsTest {
 
   private static Map<HexCoord, HexCell> fourHexes() {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H_A, new HexCell("plains", 0.35));
-    hexes.put(H_B, new HexCell("ocean", 0.10));
-    hexes.put(H_C, new HexCell("mountains", 0.70));
-    hexes.put(H_D, new HexCell("desert", 0.50));
+    hexes.put(H_A, new HexCell(PERSISTED_HEIGHT));
+    hexes.put(H_B, new HexCell(0.10));
+    hexes.put(H_C, new HexCell(0.70));
+    hexes.put(H_D, new HexCell(0.50));
     return hexes;
+  }
+
+  /** {@link #fourHexes()} 同键集的地形（P1：地形权威在块里）。 */
+  private static Map<HexCoord, String> fourTerrain() {
+    Map<HexCoord, String> terrain = new LinkedHashMap<>();
+    terrain.put(H_A, "plains");
+    terrain.put(H_B, "ocean");
+    terrain.put(H_C, "mountains");
+    terrain.put(H_D, "desert");
+    return terrain;
+  }
+
+  /** 用一份 hexes 与一份地形**原子**建图（分割不变式要求块并集 == hex 键集）。 */
+  private static GameMap mapWith(Map<HexCoord, HexCell> hexes, Map<HexCoord, String> terrain) {
+    return new GameMap(
+        hexes,
+        TerrainBlocks.split(terrain),
+        Map.of(),
+        Map.of(),
+        TerrainCatalog.defaults(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(PERSISTED_SEED));
   }
 
   /** 只换半径的 spec（L7 的生成部分用小图，其余组件原样取自默认值）。 */
@@ -590,6 +616,7 @@ class RegressionGuardsTest {
   private static ObjectMapper jsonMapper() {
     SimpleModule keys = new SimpleModule();
     keys.addKeyDeserializer(HexCoord.class, parsed(HexCoord::parse));
+    keys.addKeyDeserializer(BlockId.class, parsed(BlockId::parse));
     keys.addKeyDeserializer(EdgeRef.class, parsed(EdgeRef::parse));
     keys.addKeyDeserializer(RegionId.class, parsed(RegionId::parse));
     keys.addKeyDeserializer(CityId.class, parsed(CityId::parse));

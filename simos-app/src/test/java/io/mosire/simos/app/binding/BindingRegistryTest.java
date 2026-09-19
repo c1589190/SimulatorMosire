@@ -7,6 +7,7 @@ import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -262,13 +263,14 @@ class BindingRegistryTest {
   private static GameMap map() {
     TerrainType flat = new TerrainType("flat", "flat", "#336699", 0.0, 1.0, 0, 0, 0, 25, "夹具地形");
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(flat.key(), 0.5));
-    hexes.put(H12, new HexCell(flat.key(), 0.5));
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H12, new HexCell(0.5));
     Region region = Region.of(R1, "北方行省", Set.of(H11), RegionMeta.empty());
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(flat.key(), flat);
     return new GameMap(
         hexes,
+        TerrainBlocks.uniform(hexes.keySet(), flat.key()),
         Map.of(R1, region),
         Map.of(),
         terrainTypes,

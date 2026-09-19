@@ -48,6 +48,7 @@ class TerrainMovementCostTest {
     GameMap broken =
         new GameMap(
             map.hexes(),
+            map.terrainBlocks(),
             map.regions(),
             map.cities(),
             java.util.Map.of(),

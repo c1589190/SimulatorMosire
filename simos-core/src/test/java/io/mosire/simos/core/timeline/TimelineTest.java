@@ -8,7 +8,9 @@ import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
+import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.change.SocialChangeSet;
@@ -328,7 +330,17 @@ class TimelineTest {
   // ── 裁定 39 的夹具：三个**真**模块变更集各一份非空值（不是替身） ──
 
   private static GameMap oneHexMap() {
-    return GameMap.empty().withHexes(Map.of(new HexCoord(1, 1), new HexCell("plains", 0.35)));
+    HexCoord at = new HexCoord(1, 1);
+    return new GameMap(
+        Map.of(at, new HexCell(0.35)),
+        TerrainBlocks.uniform(java.util.Set.of(at), "plains"),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
   }
 
   private static SocialData onePopulation() {

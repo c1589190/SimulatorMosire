@@ -3,6 +3,9 @@ package io.mosire.simos.map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.map.block.BlockId;
+import io.mosire.simos.map.block.TerrainBlock;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
@@ -27,13 +30,14 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** 地图状态根：**8 个组件**，删掉死字段与缓存，逐组件替换，派生件不进组件。 */
+/** 地图状态根：**9 个组件**（新增权威 {@code terrainBlocks}），删掉死字段与缓存，逐组件替换，派生件不进组件。 */
 class GameMapTest {
 
   /** 组件名与**序**的冻结字面量 —— 与 record 声明序逐项对表。 */
   private static final List<String> COMPONENT_NAMES =
       List.of(
           "hexes",
+          "terrainBlocks",
           "regions",
           "cities",
           "terrainTypes",
@@ -69,11 +73,25 @@ class GameMapTest {
 
   private static Map<HexCoord, HexCell> linkedHexes() {
     Map<HexCoord, HexCell> m = new LinkedHashMap<>();
-    m.put(H_A, new HexCell("mountains", 0.70));
-    m.put(H_B, new HexCell("plains", 0.35));
-    m.put(H_C, new HexCell("ocean", 0.10));
-    m.put(H_D, new HexCell("desert", 0.50));
+    m.put(H_A, new HexCell(0.70));
+    m.put(H_B, new HexCell(0.35));
+    m.put(H_C, new HexCell(0.10));
+    m.put(H_D, new HexCell(0.50));
     return m;
+  }
+
+  /** 每格的**地形**（与 {@link #linkedHexes()} 同键集）：地形权威在块里，与高度分家。 */
+  private static Map<HexCoord, String> linkedTerrain() {
+    Map<HexCoord, String> m = new LinkedHashMap<>();
+    m.put(H_A, "mountains");
+    m.put(H_B, "plains");
+    m.put(H_C, "ocean");
+    m.put(H_D, "desert");
+    return m;
+  }
+
+  private static Map<BlockId, TerrainBlock> linkedTerrainBlocks() {
+    return TerrainBlocks.split(linkedTerrain());
   }
 
   private static Map<RegionId, Region> linkedRegions() {
@@ -145,10 +163,11 @@ class GameMapTest {
     return new PathwayGroup(id, "组 " + id, color, null, true, Map.of());
   }
 
-  /** 八个组件全非空的地图：逐组件替换的判别力全靠它。 */
+  /** 九个组件全非空的地图：逐组件替换的判别力全靠它。 */
   private static GameMap richMap() {
     return new GameMap(
         linkedHexes(),
+        linkedTerrainBlocks(),
         linkedRegions(),
         linkedCities(),
         linkedTerrainTypes(),
@@ -166,6 +185,7 @@ class GameMapTest {
 
     assertThat(m).isNotNull();
     assertThat(m.hexes()).isEmpty();
+    assertThat(m.terrainBlocks()).isEmpty();
     assertThat(m.regions()).isEmpty();
     assertThat(m.cities()).isEmpty();
     assertThat(m.terrainTypes()).isEmpty();
@@ -197,11 +217,11 @@ class GameMapTest {
   // ── ★ 钉字段清单（L2 / L8 / 死字段） ───────────────────────────────────────────
 
   @Test
-  void componentCountIsExactlyEight() {
-    assertThat(GameMap.class.getRecordComponents()).hasSize(8);
+  void componentCountIsExactlyNine() {
+    assertThat(GameMap.class.getRecordComponents()).hasSize(9);
   }
 
-  /** ★ **比"数量是 8"强**：数量对而名字换了也拦得住。Task 6 的变更集与 Task 7 的反射枚举都按键名走，故这里钉的是名与序的**冻结字面量**。 */
+  /** ★ **比"数量是 9"强**：数量对而名字换了也拦得住。Task 6 的变更集与 Task 7 的反射枚举都按键名走，故这里钉的是名与序的**冻结字面量**。 */
   @Test
   void componentNamesAreFrozenList() {
     assertThat(componentNames()).containsExactlyElementsOf(COMPONENT_NAMES);
@@ -213,11 +233,18 @@ class GameMapTest {
     assertThat(componentNames()).doesNotContain("gridSize", "hexOrientation");
   }
 
-  /** ★ 两个**废弃 record** 与两份**非状态**：语义分别由 {@code pathways} 承载、由 Command 历史与重算缓存承载。 */
+  /**
+   * ★ **P1 显式撤销 M2 的 {@code noTerrainBlocks} 那一半**：地形现在是**权威组件** {@code terrainBlocks}（spec §七.3
+   * 记账的"用户授权范围内推翻"，M6 旧裁定「以 hex 上的 terrain 为权威」被逆转）。
+   *
+   * <p>废弃 record（{@code rivers}/{@code roads}）与渲染缓存（{@code compressedRegions}）仍不许回来。
+   */
   @Test
-  void noRiversNoRoadsNoTerrainBlocksNoCompressedRegions() {
+  void noRiversNoRoadsNoCompressedRegions() {
+    assertThat(componentNames()).doesNotContain("rivers", "roads", "compressedRegions");
     assertThat(componentNames())
-        .doesNotContain("rivers", "roads", "terrainBlocks", "compressedRegions");
+        .as("terrainBlocks 现在必须是组件（P1 直接逆转 M2 的旧断言）")
+        .contains("terrainBlocks");
   }
 
   // ── ★ 顺序 / 不可变 ───────────────────────────────────────────────────────────
@@ -234,6 +261,13 @@ class GameMapTest {
     GameMap m = richMap();
 
     assertThat(m.hexes().keySet()).containsExactly(H_A, H_B, H_C, H_D);
+    // 块表由 TerrainBlocks.split 按 BlockId 全序（地形、再最小 hex）产出
+    assertThat(m.terrainBlocks().keySet())
+        .containsExactly(
+            BlockId.parse("desert@2_-4"),
+            BlockId.parse("mountains@5_5"),
+            BlockId.parse("ocean@-3_2"),
+            BlockId.parse("plains@0_0"));
     assertThat(m.regions().keySet())
         .containsExactly(
             new RegionId("r2"), new RegionId("r10"), new RegionId("r1"), new RegionId("r5"));
@@ -247,9 +281,11 @@ class GameMapTest {
     assertThat(m.edges().keySet()).containsExactly(EDGE_AB, EDGE_BC, EDGE_AC, EDGE_BD);
 
     // ★ 走 empty() 的 with 链（Task 7 的往返用例正是这么起手的）也必须保序
-    GameMap chained = GameMap.empty().withHexes(linkedHexes());
-    assertThat(chained.hexes().keySet()).containsExactly(H_A, H_B, H_C, H_D);
-    assertThat(chained.regions()).isEmpty();
+    GameMap chained = GameMap.empty().withRegions(linkedRegions());
+    assertThat(chained.regions().keySet())
+        .containsExactly(
+            new RegionId("r2"), new RegionId("r10"), new RegionId("r1"), new RegionId("r5"));
+    assertThat(chained.hexes()).isEmpty();
   }
 
   @Test
@@ -257,6 +293,7 @@ class GameMapTest {
     GameMap m = richMap();
 
     assertThat(m.hexes()).isUnmodifiable();
+    assertThat(m.terrainBlocks()).isUnmodifiable();
     assertThat(m.regions()).isUnmodifiable();
     assertThat(m.cities()).isUnmodifiable();
     assertThat(m.terrainTypes()).isUnmodifiable();
@@ -264,7 +301,14 @@ class GameMapTest {
     assertThat(m.pathwayGroups()).isUnmodifiable();
     assertThat(m.edges()).isUnmodifiable();
 
-    assertThatThrownBy(() -> m.hexes().put(new HexCoord(9, 9), new HexCell("plains", 0.5)))
+    assertThatThrownBy(() -> m.hexes().put(new HexCoord(9, 9), new HexCell(0.5)))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(
+            () ->
+                m.terrainBlocks()
+                    .put(
+                        BlockId.parse("plains@9_9"),
+                        TerrainBlock.of("plains", Set.of(new HexCoord(9, 9)))))
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> m.regions().put(new RegionId("r9"), region("r9", new HexCoord(9, 9))))
         .isInstanceOf(UnsupportedOperationException.class);
@@ -285,7 +329,7 @@ class GameMapTest {
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
-  /** 构造期守卫：7 个 map 与 {@code spec} 都不得为 null（宁抛不静默，**不静默兜底成空表**）。 */
+  /** 构造期守卫：8 个 map 与 {@code spec} 都不得为 null（宁抛不静默，**不静默兜底成空表**）。 */
   @Test
   void constructorRejectsNullComponents() {
     GameMap ok = GameMap.empty();
@@ -294,6 +338,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     null,
+                    ok.terrainBlocks(),
                     ok.regions(),
                     ok.cities(),
                     ok.terrainTypes(),
@@ -308,6 +353,21 @@ class GameMapTest {
                 new GameMap(
                     ok.hexes(),
                     null,
+                    ok.regions(),
+                    ok.cities(),
+                    ok.terrainTypes(),
+                    ok.pathways(),
+                    ok.pathwayGroups(),
+                    ok.edges(),
+                    ok.spec()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("terrainBlocks 不得为 null");
+    assertThatThrownBy(
+            () ->
+                new GameMap(
+                    ok.hexes(),
+                    ok.terrainBlocks(),
+                    null,
                     ok.cities(),
                     ok.terrainTypes(),
                     ok.pathways(),
@@ -320,6 +380,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     ok.hexes(),
+                    ok.terrainBlocks(),
                     ok.regions(),
                     null,
                     ok.terrainTypes(),
@@ -333,6 +394,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     ok.hexes(),
+                    ok.terrainBlocks(),
                     ok.regions(),
                     ok.cities(),
                     null,
@@ -346,6 +408,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     ok.hexes(),
+                    ok.terrainBlocks(),
                     ok.regions(),
                     ok.cities(),
                     ok.terrainTypes(),
@@ -359,6 +422,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     ok.hexes(),
+                    ok.terrainBlocks(),
                     ok.regions(),
                     ok.cities(),
                     ok.terrainTypes(),
@@ -372,6 +436,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     ok.hexes(),
+                    ok.terrainBlocks(),
                     ok.regions(),
                     ok.cities(),
                     ok.terrainTypes(),
@@ -385,6 +450,7 @@ class GameMapTest {
             () ->
                 new GameMap(
                     ok.hexes(),
+                    ok.terrainBlocks(),
                     ok.regions(),
                     ok.cities(),
                     ok.terrainTypes(),
@@ -398,36 +464,51 @@ class GameMapTest {
 
   // ── ★ 逐组件替换 ──────────────────────────────────────────────────────────────
 
-  /** ★ **只动一个组件**：8 个 with 方法逐个验，其余 7 个必须原样等于原值，**且键序不变**（{@code Map.equals} 不看序，单靠它会把"顺手重排"放过）。 */
+  /** ★ **只动一个组件**：9 个 with 方法逐个验，其余 8 个必须原样等于原值，**且键序不变**（{@code Map.equals} 不看序，单靠它会把"顺手重排"放过）。 */
   @Test
   void withMethodsPreserveOtherComponents() {
     GameMap base = richMap();
 
+    // hexes 是"仅高度"：换高度而**键集不变**，块不动 ⇒ 分割不变式仍成立
+    assertOnlyComponentChanged(base, base.withHexes(changedHeights()), 0);
+    assertOnlyComponentChanged(base, base.withTerrainBlocks(changedTerrainBlocks()), 1);
     assertOnlyComponentChanged(
-        base, base.withHexes(Map.of(new HexCoord(9, 9), new HexCell("plains", 0.5))), 0);
+        base, base.withRegions(Map.of(new RegionId("r7"), region("r7", new HexCoord(7, 7)))), 2);
     assertOnlyComponentChanged(
-        base, base.withRegions(Map.of(new RegionId("r7"), region("r7", new HexCoord(7, 7)))), 1);
+        base, base.withCities(Map.of(new CityId("c7"), city("c7", new HexCoord(7, 7)))), 3);
     assertOnlyComponentChanged(
-        base, base.withCities(Map.of(new CityId("c7"), city("c7", new HexCoord(7, 7)))), 2);
-    assertOnlyComponentChanged(
-        base, base.withTerrainTypes(Map.of("ocean", TerrainCatalog.of("ocean"))), 3);
+        base, base.withTerrainTypes(Map.of("ocean", TerrainCatalog.of("ocean"))), 4);
     assertOnlyComponentChanged(
         base,
         base.withPathways(
             Map.of(
                 new PathwayId("p7"),
                 pathway("p7", new EdgeRef(new HexCoord(7, 7), new HexCoord(8, 8))))),
-        4);
+        5);
     assertOnlyComponentChanged(
-        base, base.withPathwayGroups(Map.of("river", group("river", "#3295D2"))), 5);
+        base, base.withPathwayGroups(Map.of("river", group("river", "#3295D2"))), 6);
     assertOnlyComponentChanged(
         base,
         base.withEdges(
             Map.of(
                 new EdgeRef(new HexCoord(7, 7), new HexCoord(8, 8)),
                 new EdgeTags(Map.of("river", Map.of("depth", 1))))),
-        6);
-    assertOnlyComponentChanged(base, base.withSpec(GenerationSpec.defaults(7L)), 7);
+        7);
+    assertOnlyComponentChanged(base, base.withSpec(GenerationSpec.defaults(7L)), 8);
+  }
+
+  /** 同键集、只改一个高度 —— 供"只动 hexes"那条用（换键集会破分割不变式，见 GameMap 的构造期守卫）。 */
+  private static Map<HexCoord, HexCell> changedHeights() {
+    Map<HexCoord, HexCell> m = new LinkedHashMap<>(linkedHexes());
+    m.put(H_A, new HexCell(0.99));
+    return m;
+  }
+
+  /** 同 hex 键集、只改 H_A 地形 —— 供"只动 terrainBlocks"那条用（换 hex 键集会破分割不变式）。 */
+  private static Map<BlockId, TerrainBlock> changedTerrainBlocks() {
+    Map<HexCoord, String> terrain = new LinkedHashMap<>(linkedTerrain());
+    terrain.put(H_A, "desert");
+    return TerrainBlocks.split(terrain);
   }
 
   // ── ★ 派生件不进组件（U2 的两处相反地位） ──────────────────────────────────────
@@ -466,6 +547,25 @@ class GameMapTest {
     assertThat(index.regionOf(H_A))
         .containsExactly(new RegionId("r10"), new RegionId("r2"), new RegionId("r7"));
     assertThat(index.regionOf(H_D)).isEmpty();
+  }
+
+  /** ★ P1：{@code terrainAt} 是**稳定访问器**（派生、不缓存）；{@code terrainIndex()} 与它同源。逐格与"按块重建"对表。 */
+  @Test
+  void terrainAtIsDerivedAndMatchesBlocks() {
+    GameMap m = richMap();
+
+    assertThat(m.terrainAt(H_A)).isEqualTo("mountains");
+    assertThat(m.terrainAt(H_B)).isEqualTo("plains");
+    assertThat(m.terrainAt(H_C)).isEqualTo("ocean");
+    assertThat(m.terrainAt(H_D)).isEqualTo("desert");
+    assertThatThrownBy(() -> m.terrainAt(new HexCoord(99, 99)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("图里没有这个 hex");
+
+    Map<HexCoord, String> index = m.terrainIndex();
+    for (HexCoord hex : m.hexes().keySet()) {
+      assertThat(index.get(hex)).as("terrainIndex 与 terrainAt 同源", hex).isEqualTo(m.terrainAt(hex));
+    }
   }
 
   /**
@@ -525,10 +625,11 @@ class GameMapTest {
         .toList();
   }
 
-  /** 8 个组件的**声明序**快照。组件永不为 null（构造期已守卫），故 {@code List.of} 收得下。 */
+  /** 9 个组件的**声明序**快照。组件永不为 null（构造期已守卫），故 {@code List.of} 收得下。 */
   private static List<Object> components(GameMap m) {
     return List.of(
         m.hexes(),
+        m.terrainBlocks(),
         m.regions(),
         m.cities(),
         m.terrainTypes(),
@@ -538,7 +639,7 @@ class GameMapTest {
         m.spec());
   }
 
-  /** 只有第 {@code changedIndex} 个组件可以变，其余 7 个逐项等于原值且键序不变。 */
+  /** 只有第 {@code changedIndex} 个组件可以变，其余 8 个逐项等于原值且键序不变。 */
   private static void assertOnlyComponentChanged(GameMap base, GameMap mutated, int changedIndex) {
     List<Object> before = components(base);
     List<Object> after = components(mutated);

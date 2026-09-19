@@ -1,14 +1,14 @@
 package io.mosire.simos.map.generate;
 
 import io.mosire.simos.map.GameMap;
-import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlock;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.util.state.FieldDelta;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
@@ -21,12 +21,14 @@ import java.util.Random;
  * <p>★ 确定性：随机源从 {@code (seed, RegionId)} 派生 ⇒ 同种子同结果，可复现、可往返测试。{@link Random} 的算法与 {@link
  * String#hashCode()} 都由 Java 规范钉死 ⇒ 跨 JVM 稳；不同区域各派各的流，互不串。
  *
- * <p>★ 返回变更集（铁律 2）：7 个组件里**只有 {@code hexes} 可能非 {@code Unchanged}**，其余 6 个一律 {@code
- * Unchanged}——改格的地形不等于改区域，**不 upsert region 本身**（区域内容没变）。空/未知 region 或目标格全在图外 ⇒ 7 个全 {@code
- * Unchanged}（{@code Upsert} 构造期拒空）。
+ * <p>★ 返回变更集（铁律 2）：8 个组件里**只有 {@code terrainBlocks} 可能非 {@code Unchanged}**，其余 7 个一律 {@code
+ * Unchanged}——P1 之后地形是权威块，改地形 = 重算受影响块的切分；**改地形不再是改 hex**（高度不动，故 {@code hexes} 也不变）。空/未知 region
+ * 或目标格全在图外 ⇒ 8 个全 {@code Unchanged}。
  *
- * <p>★ **高度一律不动**：重分配 = {@code new HexCell(新地形, 原 height)}。海拔是落盘的一等公民（L7）， 也是 {@link RiverBuilder}
- * 的输入——顺手"重算高度"会改掉水系。
+ * <p>★ **高度一律不动**：海拔是落盘的一等公民（L7），也是 {@link RiverBuilder} 的输入——顺手"重算高度"会改掉水系。
+ *
+ * <p>★ **切分口径**：把整图当前地形（{@link GameMap#terrainIndex()}，派生、不缓存）叠上目标格的覆盖，再整体重切。看似"全量"，但 {@link
+ * FieldDelta#diff} 只报内容真变了的块 ⇒ 未受影响的块一个字节都不进变更集。
  */
 public final class RegionRandomizer {
 
@@ -46,21 +48,21 @@ public final class RegionRandomizer {
    * !(ratioA >= 0.0 && ratioA <= 1.0)}：NaN 与任何数比较全是 false，"或"形态会把它静默漏过。**不为** {@code
    * terrainA.equals(terrainB)} 加守卫—— 那是合法输入（两种地形相同 ⇒ 全图同地形，占比退化）。
    *
-   * <p>★ 不改入参：只读 {@code map}，产出全部走变更集；upsert 的插入序 = 处理序（{@code HexCoord} 自然序）。
+   * <p>★ 不改入参：只读 {@code map}，产出全部走变更集。
    *
-   * @param map 现图（只读；目标格与原高度取自它）
+   * @param map 现图（只读；目标格与原地形取自它）
    * @param region 目标区域的身份；未知 id ⇒ 空变更集，不抛
    * @param terrainA 占比为 {@code ratioA} 的地形 key
    * @param terrainB 其余格的地形 key
    * @param ratioA 取 A 的期望占比，含边界 [0,1]
    * @param seed 随机种子；与 {@code region} 一起派生随机源
-   * @return 只有 {@code hexes} 可能非 {@code Unchanged} 的变更集；无目标格 ⇒ 7 个全 {@code Unchanged}
+   * @return 只有 {@code terrainBlocks} 可能非 {@code Unchanged} 的变更集；无目标格 ⇒ 8 个全 {@code Unchanged}
    */
   public static MapChangeSet randomize(
       GameMap map, RegionId region, String terrainA, String terrainB, double ratioA, long seed) {
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(region, "region");
-    // 调用只为校验：未知 key 由词表自己抛（R-12-h 不包不吞）；格上存的是 key 本身，类型定义已在词表里。
+    // 调用只为校验：未知 key 由词表自己抛（R-12-h 不包不吞）。
     TerrainCatalog.of(terrainA);
     TerrainCatalog.of(terrainB);
     if (!(ratioA >= 0.0 && ratioA <= 1.0)) {
@@ -69,21 +71,26 @@ public final class RegionRandomizer {
     }
 
     Region target = map.regions().get(region);
-    Map<String, HexCell> upserts = new LinkedHashMap<>();
+    Map<HexCoord, String> terrainByHex = map.terrainIndex(); // 派生：当前权威地形
+    boolean touched = false;
     if (target != null) {
       Random rng = rngFor(region, seed);
       for (HexCoord at : target.hexes().stream().sorted().toList()) {
-        HexCell cell = map.hexes().get(at);
-        if (cell == null) {
+        if (!map.hexes().containsKey(at)) {
           continue; // 不在图纸：跳过且不消费随机数（图外的格不影响图内格的结果）
         }
         String terrain = rng.nextDouble() < ratioA ? terrainA : terrainB;
-        // ★ 组件顺序 (terrain, height)；高度不动（L7：它是 RiverBuilder 的输入）。
-        upserts.put(at.toString(), new HexCell(terrain, cell.height()));
+        terrainByHex.put(at, terrain);
+        touched = true;
       }
     }
+    FieldDelta<TerrainBlock> blockDelta =
+        touched
+            ? FieldDelta.diff(map.terrainBlocks(), TerrainBlocks.split(terrainByHex))
+            : new FieldDelta.Unchanged<>();
     return new MapChangeSet(
-        upserts.isEmpty() ? new FieldDelta.Unchanged<>() : new FieldDelta.Upsert<>(upserts),
+        new FieldDelta.Unchanged<>(), // hexes：只承载高度，地形改动不碰它
+        blockDelta,
         new FieldDelta.Unchanged<>(), // regions：区域内容没变，不 upsert region 本身
         new FieldDelta.Unchanged<>(),
         new FieldDelta.Unchanged<>(),

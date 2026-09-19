@@ -387,9 +387,10 @@ public final class GuiServer implements AutoCloseable {
       return Reply.of(404, body);
     }
     List<RegionId> regions = MapResolver.regionOfHex(map, coord);
-    TerrainType terrainType = map.terrainTypes().get(cell.terrain());
+    String terrain = map.terrainAt(coord);
+    TerrainType terrainType = map.terrainTypes().get(terrain);
     List<FacetEntry> facets = queryService.facets(canonicalHex(q, r), target);
-    return Reply.of(200, ApiViews.mapHex(coord, cell, facets, regions, terrainType));
+    return Reply.of(200, ApiViews.mapHex(coord, cell, terrain, facets, regions, terrainType));
   }
 
   /**

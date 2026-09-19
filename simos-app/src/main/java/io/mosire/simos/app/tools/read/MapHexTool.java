@@ -74,7 +74,7 @@ public final class MapHexTool implements AgentTool {
       }
       List<FacetEntry> facets = query.facets(ToolSupport.canonicalHex(mapId, q, r), target);
       Map<String, Object> view = ToolSupport.hexCoord(coord);
-      view.put("terrain", cell.terrain());
+      view.put("terrain", map.terrainAt(coord));
       view.put("height", cell.height());
       view.put("facets", ToolSupport.facets(facets));
       return ToolSupport.ok(view);

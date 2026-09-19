@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
@@ -29,8 +30,8 @@ import org.junit.jupiter.api.Test;
  * <p>主夹具是**锥形图**（半径 3、37 格）：高度随到中心的距离严格递减（0.9 − 0.2d），全陆地。锥上每格都有更低的在图纸邻格 ⇒ 终点只能是图缘格 —— {@link
  * #riverEndsAtOceanOrBoundary} 因此是**稳的**（不是恒真：「走 N 步就停」「停在洼地」都会红）。
  *
- * <p>★ 夹具的地形 key 与高度带**有意不对应**（全取 {@code plains} 而高度 0.3~0.9）：带边界是分类器的事，{@link HexCell} 不校验；对
- * RiverBuilder 有意义的只有 terrain 是不是 {@code "ocean"}。
+ * <p>★ 夹具的地形 key 与高度带**有意不对应**（全取 {@code plains} 而高度 0.3~0.9）：带边界是分类器的事；对 RiverBuilder 有意义的只有
+ * terrain 是不是 {@code "ocean"}（读法：{@link GameMap#terrainAt(HexCoord)}）。
  *
  * <p>★ 实测数字（2026-09-17，本机）：锥形图 seed 7 ⇒ **14 条河 / 19 条边**，最高格 {@code (0,0)} 所在链是 {@code
  * river-7-9}、**3 条边**（满足"长度 ≥ 2 才可断言流向"），4 条多边链的终点全是图缘格；seed 7 与 seed 8 的边集 **19 条中 13 条不同**；半径 6
@@ -190,7 +191,7 @@ class RiverBuilderTest {
   // ── 变更集形态 ───────────────────────────────────────────────────────────────
 
   /**
-   * ★ 全平图 ⇒ **空变更集**：{@code isEmpty()} 为 true（不是 null、不是空 Upsert —— {@code Upsert} 构造期拒空）， 7 个组件全部
+   * ★ 全平图 ⇒ **空变更集**：{@code isEmpty()} 为 true（不是 null、不是空 Upsert —— {@code Upsert} 构造期拒空）， 8 个组件全部
    * {@code Unchanged}。等高 ⇒ 无严格更低邻格 ⇒ 无出边 ⇒ 无河。
    */
   @Test
@@ -200,6 +201,7 @@ class RiverBuilderTest {
     assertThat(cs).as("无河时返回空变更集，不是 null").isNotNull();
     assertThat(cs.isEmpty()).as("全平图 ⇒ isEmpty()").isTrue();
     assertThat(cs.hexes()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.terrainBlocks()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.regions()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.cities()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.terrainTypes()).isInstanceOf(FieldDelta.Unchanged.class);
@@ -254,10 +256,20 @@ class RiverBuilderTest {
   void doesNotMutateInput() {
     Map<HexCoord, HexCell> held = new LinkedHashMap<>();
     for (HexCoord c : HexGrid.withinRadius(new HexCoord(0, 0), 3).stream().sorted().toList()) {
-      held.put(c, new HexCell("plains", 0.9 - 0.2 * new HexCoord(0, 0).distanceTo(c)));
+      held.put(c, new HexCell(0.9 - 0.2 * new HexCoord(0, 0).distanceTo(c)));
     }
     Map<HexCoord, HexCell> before = new LinkedHashMap<>(held);
-    GameMap map = GameMap.empty().withHexes(held).withTerrainTypes(TerrainCatalog.defaults());
+    GameMap map =
+        new GameMap(
+            held,
+            TerrainBlocks.uniform(held.keySet(), "plains"),
+            Map.of(),
+            Map.of(),
+            TerrainCatalog.defaults(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            GenerationSpec.defaults(0L));
 
     RiverBuilder.build(map, SEED);
 
@@ -326,18 +338,32 @@ class RiverBuilderTest {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     HexCoord center = new HexCoord(0, 0);
     for (HexCoord c : HexGrid.withinRadius(center, 3).stream().sorted().toList()) {
-      hexes.put(c, new HexCell("plains", 0.9 - 0.2 * center.distanceTo(c)));
+      hexes.put(c, new HexCell(0.9 - 0.2 * center.distanceTo(c)));
     }
-    return GameMap.empty().withHexes(hexes).withTerrainTypes(TerrainCatalog.defaults());
+    return singleTerrainMap(hexes);
   }
 
   /** 全平图：同形状、全部 0.5 ⇒ 无严格更低邻格 ⇒ 无出边 ⇒ 无河。 */
   private static GameMap flatMap() {
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     for (HexCoord c : HexGrid.withinRadius(new HexCoord(0, 0), 3).stream().sorted().toList()) {
-      hexes.put(c, new HexCell("plains", 0.5));
+      hexes.put(c, new HexCell(0.5));
     }
-    return GameMap.empty().withHexes(hexes).withTerrainTypes(TerrainCatalog.defaults());
+    return singleTerrainMap(hexes);
+  }
+
+  /** 单地形（全 {@code plains}）的图：hexes 与 terrainBlocks **原子**构造（分割不变式要求两者一致）。 */
+  private static GameMap singleTerrainMap(Map<HexCoord, HexCell> hexes) {
+    return new GameMap(
+        hexes,
+        TerrainBlocks.uniform(hexes.keySet(), "plains"),
+        Map.of(),
+        Map.of(),
+        TerrainCatalog.defaults(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
   }
 
   /** 只换半径的 spec（与 {@code MapGeneratorTest} 同形制）：其余组件原样取自默认值。 */
@@ -383,7 +409,7 @@ class RiverBuilderTest {
 
   /** 是 ocean 格，或六邻至少一个不在图里（图缘格）。 */
   private static boolean isOceanOrBoundary(GameMap map, HexCoord at) {
-    if (map.hexes().get(at).terrain().equals("ocean")) {
+    if (map.terrainAt(at).equals("ocean")) {
       return true;
     }
     for (HexCoord nb : at.neighbors()) {

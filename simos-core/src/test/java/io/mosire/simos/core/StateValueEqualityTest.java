@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
@@ -77,7 +78,7 @@ class StateValueEqualityTest {
 
   @Test
   void everySnapshotHasValueEqualityNotJustIdentity() {
-    GameMap mapBase = GameMap.empty().withHexes(Map.of(H55, new HexCell("plains", 0.35)));
+    GameMap mapBase = mapWithHex(H55, 0.35);
     SocialData socialBase = onePopulation(H00);
     UnitState unitBase =
         UnitState.empty().withUnits(Map.of(new UnitId("u-1"), oneUnit("u-1", H11)));
@@ -87,15 +88,13 @@ class StateValueEqualityTest {
     MapSnapshot mapAppliedA =
         (MapSnapshot)
             MAP.apply(
-                MapChangeSet.between(
-                    mapBase, mapBase.withHexes(Map.of(H55, new HexCell("hills", 0.9)))),
+                MapChangeSet.between(mapBase, mapBase.withHexes(Map.of(H55, new HexCell(0.9)))),
                 mapSnap,
                 META);
     MapSnapshot mapAppliedB =
         (MapSnapshot)
             MAP.apply(
-                MapChangeSet.between(
-                    mapBase, mapBase.withHexes(Map.of(H55, new HexCell("hills", 0.9)))),
+                MapChangeSet.between(mapBase, mapBase.withHexes(Map.of(H55, new HexCell(0.9)))),
                 mapSnapCopy,
                 META);
     assertSnapshotValueSemantics("map", mapSnap, mapSnapCopy, mapAppliedA, mapAppliedB);
@@ -130,7 +129,7 @@ class StateValueEqualityTest {
    */
   @Test
   void simulationStateComparesByValueAcrossIndependentDecodes() {
-    GameMap mapBase = GameMap.empty().withHexes(Map.of(H55, new HexCell("plains", 0.35)));
+    GameMap mapBase = mapWithHex(H55, 0.35);
     MapSnapshot mapSnap = new MapSnapshot(REF, T11, mapBase);
     MapSnapshot mapSnapCopy = (MapSnapshot) MAP.decodeSnapshot(MAP.encodeSnapshot(mapSnap));
     SocialSnapshot socialSnap = new SocialSnapshot(REF, T11, onePopulation(H00));
@@ -178,6 +177,20 @@ class StateValueEqualityTest {
                 new Segment<>(T0, 10000L),
                 new SegmentedSeries<>(List.of(new Segment<>(T0, 0.02)), List.of(), null),
                 List.of())));
+  }
+
+  /** 单格、单地形（{@code plains}）的图：hexes 与 terrainBlocks 原子构造（P1 分割不变式）。 */
+  private static GameMap mapWithHex(HexCoord at, double height) {
+    return new GameMap(
+        Map.of(at, new HexCell(height)),
+        TerrainBlocks.uniform(java.util.Set.of(at), "plains"),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        io.mosire.simos.map.generate.GenerationSpec.defaults(0L));
   }
 
   private static Unit oneUnit(String id, HexCoord at) {
