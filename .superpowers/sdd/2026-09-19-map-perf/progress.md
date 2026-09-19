@@ -28,3 +28,10 @@
 **★ 纠正控制器两处笔误**：① 「门禁 843」是**算术错**——六个模块和 = **844**（170+256+45+131+154+88），本单 delta 0；② overview 启动次数，旧码本会话可到 **4 次**（竞态），修后恒 1。
 
 **未核实**：Skia 内部机理；未真跑"停发 height 的服务端"；HiDPI（dpr>1）未测；位图内存未量。
+
+## T3 ✅ 服务端缓存 + 停发 height（`6f7d194` → 合并见下）
+
+**实测**：overview **1,044,970 → 703,053 B（−341,917，−32.72%）**；`"height"` 键 **19,441 → 0**；★ **`/api/map/hex` 的 height 保留**（keys: facets,height,q,r,regions,terrain,terrainType；=0.375）。**缓存**：`checkpointReadCount` beforeFirst=0 / afterFirst=1 / afterSecond=**1** ⇒ **第二次增量 0**（可观测）。启动字节 2,261,555 → **1,577,721** = 恰 −2×341,917（与字节差逐字节吻合）。
+**门禁 850**（170/256/45/131/154/**94**），delta **+6** 逐模块解释（QueryServiceTest +4 / GuiApiTest +2，其余五模块一例未动）。
+**变异**：m1（缓存键丢 revision）✅杀；m2（缓存键漏 branch）✅杀；**m3 ❌存活——结构性不可表达**：`SimulationState` 构造期 `Map.copyOf` + `GameMap` 全 `unmodifiableMap` + 切片 record ⇒ 缓存值**深度不可变**，下游就地修改在**不削弱 `simos-state`**（会动铁律 5）前提下无法表达；已补**等价强度**护栏（实测 `UnsupportedOperationException` + 两次读同实例且内容未变）。m4（误删单格 height）✅杀。★ **不伪造红点。**
+**未核实**：缓存内存上界未实测（容量 8 是设计判断）；并发未压测（仅 `synchronizedMap`）；LRU 淘汰未构造会话测。
