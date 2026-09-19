@@ -1,0 +1,24 @@
+[
+  {
+    "id": "test_annex_target",
+    "name": "test_annex_target",
+    "hexCount": 201,
+    "meta": {
+      "color": "#fc6dce",
+      "tag": "Nation",
+      "description": "",
+      "annexedBy": "test_nation"
+    }
+  },
+  {
+    "id": "test_nation",
+    "name": "test_nation",
+    "hexCount": 701,
+    "meta": {
+      "color": "#d370d6",
+      "tag": "Nation",
+      "description": "",
+      "annexedBy": ""
+    }
+  }
+]

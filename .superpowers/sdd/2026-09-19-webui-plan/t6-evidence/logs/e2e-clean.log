@@ -1,0 +1,15 @@
+server_ready_tries=3 code=200 pid=237689
+STEP real-regions-and-meta: PASS [{"id":"test_annex_target","hexCount":201,"meta":{"color":"#fc6dce","tag":"Nation","description":"","annexedBy":"test_nation"}},{"id":"test_nation","hexCount":701,"meta":{"color":"#d370d6","tag":"Nation","description":"","annexedBy":""}}]
+STEP group-result: PASS [{"tag":"Nation","ids":["test_annex_target","test_nation"]}]
+STEP group-matches-page-pure-function: PASS [{"tag":"Nation","ids":["test_annex_target","test_nation"]}]
+STEP real-data-has-no-untagged-bucket: PASS ["Nation"]
+STEP group-null-bucket-fixture: PASS [{"tag":"Alpha","ids":["r-a","r-a2"]},{"tag":"Beta","ids":["r-b"]},{"tag":"未标注","ids":["r-blank","r-nometa","r-null","r-space","r-undef"]}]
+STEP region-click-only-this-id: PASS ["test_nation"]
+STEP region-click-hex-count: PASS {"expected":701,"actual":701}
+STEP region-fill-color-is-meta-color: PASS {"basePixel":[168,179,106],"filledPixel":[186,151,151],"expectedFill":[186,151,151],"metaColor":"#d370d6","highlightColors":["#d370d6"]}
+STEP region-detail-fields: PASS "nametest_nationidtest_nationhexCount701color#d370d6tagNationdescriptionannexedBy"
+STEP tag-click-all-region-ids: PASS ["test_annex_target","test_nation"]
+STEP tag-click-distinct-hex-count-is-union: PASS {"expectedUnion":701,"actual":701,"sumOfHexCounts":902}
+STEP tag-click-both-colors: PASS {"colors":["#fc6dce","#d370d6"],"expected":["#d370d6","#fc6dce"]}
+E2E RESULT: PASS
+e2e_rc=0
