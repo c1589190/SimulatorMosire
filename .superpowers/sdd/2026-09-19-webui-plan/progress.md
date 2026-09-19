@@ -238,6 +238,9 @@ m2（`pickAt` 忽略 transform）⇒ `STEP b-zoom-select: FAIL selB=null`。装�
 | S3 | 右键移动 | `contextmenu` ⇒ 服务端 A\*（新增**只读**端点 `/api/map/path?from=&to=&unit=&branch=&revision=`）⇒ 前端发 `unit.PlanRoute(waypoints=path)` ⇒ 画线、随 advance 缩短。**线的画法**：整条 path 淡色 + 剩余段亮色（可推翻）。**右键语义**：**替换**当前路线（HoI4 行为，可推翻） |
 | S4 | 不做 | **`PlaceAt` 瞬时置位作为正常编辑手段**（U2）；**B 模型**（0-tick 到位） |
 
+**裁定 M7b-U3（用户当场裁定，控制器失误纠正）**：**子代理一律用 `deepseek-flash-go`（DeepSeek **V4.1** Flash）**，禁用 `deepseek-flash`（V4 Flash），**也不许用 `category=` 派单**——后者会落到 `Sisyphus-Junior` 的默认模型（= V4 Flash）。用户原话「**不许用 V4Flash！**」。
+★ **由来（控制器失误）**：M7 的 T1~T7 **七个任务全部误用 `category=...` 派单**（M7b T1 第一次派单亦同），直到用户当场发现；**M5/M6 用的都是 `deepseek-flash-go`**。已把该禁令写进 `CLAUDE.md` 的**纪律**第一条。★ M7b T1 第一次派单**已取消**，实测其工作树**一行未动**（干净 `af70b83`），随后**用 `deepseek-flash-go` 重派**（`bg_47355b17`）。
+
 ## 四 任务
 
 | # | 任务 | 状态 |

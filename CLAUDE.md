@@ -96,6 +96,10 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 
 ## 纪律
 
+- ★★ **子代理一律用 `deepseek-flash-go`（DeepSeek **V4.1** Flash）；禁用 `deepseek-flash`（V4 Flash），也不要用 `category=` 派单**
+  （用户 2026-09-19 裁定，原话「**不许用 V4Flash！**」）。派单时写 `subagent_type="deepseek-flash-go"`，**不要**写 `category="…"`
+  ——后者会落到 `Sisyphus-Junior` 的默认模型（= V4 Flash）。
+  **由来**：控制器在 M7 期间误用 `category=` 连派 7 个任务（T1~T7），直到 M7b 被用户当场发现；**此前 M5/M6 用的都是 `deepseek-flash-go`**。
 - **绝不 `git add -A`**；提交前先扫 `git diff --cached`（本仓有 `target/`、证据日志、
   `.serena/project.local.yml`，一把梭会误扫）。**该推就推**——私有仓库，用户 2026-09-17 原话
   「你爱推就推反正是私有仓库」。
