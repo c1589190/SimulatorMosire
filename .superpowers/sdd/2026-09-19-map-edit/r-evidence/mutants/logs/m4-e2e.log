@@ -1,0 +1,44 @@
+webui_synced map.js_md5=94563fde9d90d8d187e2b05549c06021
+store_src_md5_before=2348b9365e5b107945a305d06fad8fab
+server_ready_tries=3 code=200 pid=477299
+STEP pre-real-archive: PASS {"hexCount":19441,"regions":["test_annex_target","test_nation"],"blockCount":44}
+STEP pre-m9-blocks: PASS {"blockCount":44,"unmergedCount":0}
+STEP f1-no-draw-toggle-no-checkbox: PASS {"mode":"region-edit","drawTogglePresent":false,"checkboxesInSection":0,"whitelist":{"create":true,"update":true,"del":true,"terrain":false}}
+STEP f2-region-edit-whitelist: PASS {"create":true,"update":true,"del":true,"terrain":false}
+STEP a0-lasso-center-found: PASS {"q":-16,"r":0}
+STEP a1-lasso-one-command-head-plus-one: PASS {"center":{"q":-16,"r":0},"ringCount":12,"wallCount":12,"lassoActiveMid":true,"expectedCount":19,"payloadCount":19,"payloadMatchesIndependentFlood":true,"apiHexCount":19,"apiMatchesPayload":true,"headBefore":1,"headAfter":2,"posts":1,"regionId":"m8r_lasso"}
+STEP a2-lasso-hexes-equal-independent-flood: PASS payload=19 independent=19
+STEP a3-lasso-api-matches-payload: PASS api=19
+STEP h1-overlap-allowed: PASS {"q":-16,"r":0,"regions":["m8r_lasso","test_annex_target","test_nation"]}
+STEP b1-dots-match-boundary: PASS {"focus":"m8r_lasso","focusHexCount":19,"boundaryDotCount":12,"expectedBoundary":12,"apiHexCount":19}
+STEP b2-no-dots-when-unselected: PASS {"focus":null,"dots":0}
+STEP c0-add-target-found: PASS {"from":{"q":-18,"r":0},"to":{"q":-18,"r":-1}}
+STEP c1-dot-drag-add-one-update: PASS {"from":{"q":-18,"r":0},"to":{"q":-18,"r":-1},"posts":1,"beforeCount":19,"payloadCount":20,"expectedCount":20,"matches":true,"headBefore":2,"headAfter":3}
+STEP c2-remove-target-found: PASS {"from":{"q":-18,"r":-1},"to":{"q":-17,"r":-1}}
+STEP c3-dot-drag-remove-one-update: PASS {"from":{"q":-18,"r":-1},"to":{"q":-17,"r":-1},"posts":1,"beforeCount":20,"payloadCount":19,"expectedCount":19,"matches":true,"removed":"-18,-1","probeDown":{"pick":{"kind":"hex","q":-18,"r":-1,"inMap":true,"terrain":"low_hills"},"dot":{"q":-18,"r":-1},"dotDragging":true},"probeMove":{"pick":{"kind":"hex","q":-17,"r":-1,"inMap":true,"terrain":"low_hills"},"dotDragging":true}}
+STEP d0-merge-temp-found: PASS [{"q":-18,"r":-1},{"q":-19,"r":0},{"q":-19,"r":1}]
+STEP d1-merge-equals-union: FAIL {"temp":[{"q":-18,"r":-1},{"q":-19,"r":0},{"q":-19,"r":1}],"posts":1,"beforeCount":19,"payloadCount":3,"unionCount":22,"matchesUnion":false}
+STEP e1-exclude-equals-difference: FAIL {"temp":[{"q":-19,"r":0},{"q":-19,"r":1},{"q":-18,"r":-1}],"posts":0,"beforeCount":3,"payloadCount":null,"diffCount":0,"matchesDifference":false}
+STEP f3-shift-right-paints-draft-no-write: PASS {"draftBefore":3,"draftAfter":5,"writesDuringPaint":0}
+STEP f4-draft-create-one-command: PASS {"posts":1,"draft":5}
+STEP g1-region-edit-right-is-lasso: PASS {"types":["map.CreateRegion","map.UpdateRegion"],"hasPlanRoute":false}
+STEP g2-unit-mode-right-is-planroute: PASS {"createUnit":{"ok":true,"kind":null,"message":null},"planRoutePosts":1,"createRegionPosts":0,"routeCount":1}
+STEP g3-region-edit-right-is-not-planroute: PASS {"planRoutePosts":0,"mapPathGets":0,"routeCountBefore":1,"routeCountAfter":1}
+STEP h2-delete-confirm-two-step: PASS {"armed":{"confirmShown":true,"armed":true},"armedWrites":0,"confirmedWrites":1}
+STEP h3-focus-fade-colors: PASS {"faded":["test_annex_target","test_nation"],"alphas":[0.13,0.52],"focusAlpha":0.52,"fadeAlpha":0.13}
+STEP h4-m9-blocks-and-pick: PASS {"blockCount":44,"unmergedCount":0,"pickHex":{"q":-18,"r":0},"selection":{"kind":"hex","q":-18,"r":0}}
+STEP h5-no-pageerror: PASS []
+STEP k1-terrain-left-pans-zero-write: PASS {"before":{"scale":1,"tx":404.4410901706327,"ty":808},"after":{"scale":1,"tx":524.4410901706327,"ty":888},"moved":true,"writes":0}
+STEP k2-terrain-right-one-command: PASS {"posts":1,"hexCount":6,"terrain":"ocean","headBefore":9,"headAfter":10}
+LEFT_PAN_ALL_MODES [{"mode":"view","txChanged":true,"tyChanged":true,"nonGet":[]},{"mode":"region","txChanged":true,"tyChanged":true,"nonGet":[]},{"mode":"map-edit","txChanged":true,"tyChanged":true,"nonGet":[]},{"mode":"region-edit","txChanged":true,"tyChanged":true,"nonGet":[]},{"mode":"unit","txChanged":true,"tyChanged":true,"nonGet":[]}]
+STEP k3-left-drag-no-nonget-all-modes: PASS [{"mode":"view","nonGet":0},{"mode":"region","nonGet":0},{"mode":"map-edit","nonGet":0},{"mode":"region-edit","nonGet":0},{"mode":"unit","nonGet":0}]
+STEP k4-shift-right-per-hex-no-lasso: PASS {"cell":{"q":-18,"r":0},"draftCount":1,"lassoActive":false,"createRegionPosts":0,"writes":0}
+STEP k5-shift-right-merge-one-update: FAIL {"posts":1,"payloadCount":1,"expectedCount":4,"matchesSingleCellAdd":false}
+STEP l1-outline-simplified-and-enclosing: PASS {"verticesBefore":352,"verticesAfter":37,"ringCount":3,"focusRingCount":1,"enclosed":true,"regionHexCount":1}
+STEP l2-no-per-hex-or-path2d-stroke: PASS {"strokes":9,"maxLineToPerStroke":20,"path2dStrokes":0}
+STEP l3-no-black-line-between-terrain-blocks: PASS {"pair":{"a":{"q":-19,"r":1},"b":{"q":-18,"r":1},"ta":"low_hills","tb":"plains"},"minLuminance":171.39079999999998}
+NONGET_GROUPED [{"phase":"A-lasso-create","types":["map.CreateRegion"],"paths":["/api/command"]},{"phase":"C-dot-add","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"C-dot-remove","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"D-merge","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"E-exclude","types":[],"paths":[]},{"phase":"F-leftpaint","types":[],"paths":[]},{"phase":"F-create-by-button","types":["map.CreateRegion","unit.CreateUnit"],"paths":["/api/command","/api/command"]},{"phase":"G-unit-route","types":["unit.PlanRoute"],"paths":["/api/command"]},{"phase":"G3-region-edit-right-with-unit","types":[],"paths":[]},{"phase":"H-delete","types":["map.DeleteRegion"],"paths":["/api/command"]},{"phase":"J9-terrain-left-pan","types":[],"paths":[]},{"phase":"J9b-terrain-right-brush","types":["map.SetTerrain"],"paths":["/api/command"]},{"phase":"J10b-shift-paint","types":[],"paths":[]},{"phase":"J10b-shift-merge","types":["map.UpdateRegion"],"paths":["/api/command"]}]
+PAGEERRORS []
+E2E RESULT: 3 FAIL d1-merge-equals-union,e1-exclude-equals-difference,k5-shift-right-merge-one-update
+e2e_rc=1
+store_src_md5_after=2348b9365e5b107945a305d06fad8fab

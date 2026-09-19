@@ -1,0 +1,435 @@
+{
+  "preflight": {
+    "hexCount": 19441,
+    "regions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "blockCount": 44
+  },
+  "m9Baseline": {
+    "blockCount": 44,
+    "unmergedCount": 0
+  },
+  "domAudit": {
+    "mode": "region-edit",
+    "drawTogglePresent": false,
+    "checkboxesInSection": 0,
+    "whitelist": {
+      "create": true,
+      "update": true,
+      "del": true,
+      "terrain": false
+    }
+  },
+  "lasso": {
+    "center": {
+      "q": -16,
+      "r": 0
+    },
+    "ringCount": 12,
+    "wallCount": 12,
+    "lassoActiveMid": true,
+    "expectedCount": 19,
+    "payloadCount": 19,
+    "payloadMatchesIndependentFlood": true,
+    "apiHexCount": 19,
+    "apiMatchesPayload": true,
+    "headBefore": 1,
+    "headAfter": 2,
+    "posts": 1,
+    "regionId": "m8r_lasso"
+  },
+  "overlap": {
+    "q": -16,
+    "r": 0,
+    "regions": [
+      "m8r_lasso",
+      "test_annex_target",
+      "test_nation"
+    ]
+  },
+  "dots": {
+    "focus": "m8r_lasso",
+    "focusHexCount": 19,
+    "boundaryDotCount": 12,
+    "expectedBoundary": 12,
+    "apiHexCount": 19
+  },
+  "dotAdd": {
+    "from": {
+      "q": -18,
+      "r": 0
+    },
+    "to": {
+      "q": -18,
+      "r": -1
+    },
+    "posts": 1,
+    "beforeCount": 19,
+    "payloadCount": 20,
+    "expectedCount": 20,
+    "matches": true,
+    "headBefore": 2,
+    "headAfter": 3
+  },
+  "dotRemove": {
+    "from": {
+      "q": -18,
+      "r": -1
+    },
+    "to": {
+      "q": -17,
+      "r": -1
+    },
+    "posts": 1,
+    "beforeCount": 20,
+    "payloadCount": 19,
+    "expectedCount": 19,
+    "matches": true,
+    "removed": "-18,-1",
+    "probeDown": {
+      "pick": {
+        "kind": "hex",
+        "q": -18,
+        "r": -1,
+        "inMap": true,
+        "terrain": "low_hills"
+      },
+      "dot": {
+        "q": -18,
+        "r": -1
+      },
+      "dotDragging": true
+    },
+    "probeMove": {
+      "pick": {
+        "kind": "hex",
+        "q": -17,
+        "r": -1,
+        "inMap": true,
+        "terrain": "low_hills"
+      },
+      "dotDragging": true
+    }
+  },
+  "merge": {
+    "temp": [
+      {
+        "q": -18,
+        "r": -1
+      },
+      {
+        "q": -19,
+        "r": 0
+      },
+      {
+        "q": -19,
+        "r": 1
+      }
+    ],
+    "posts": 1,
+    "beforeCount": 19,
+    "payloadCount": 22,
+    "unionCount": 22,
+    "matchesUnion": true
+  },
+  "exclude": {
+    "temp": [
+      {
+        "q": -19,
+        "r": 0
+      },
+      {
+        "q": -19,
+        "r": 1
+      },
+      {
+        "q": -18,
+        "r": -1
+      }
+    ],
+    "posts": 1,
+    "beforeCount": 22,
+    "payloadCount": 19,
+    "diffCount": 19,
+    "matchesDifference": true
+  },
+  "shiftPaint": {
+    "draftBefore": 0,
+    "draftAfter": 2,
+    "writesDuringPaint": 0
+  },
+  "createByButton": {
+    "posts": 1,
+    "draft": 2
+  },
+  "dispatchRegionEdit": {
+    "types": [
+      "map.CreateRegion",
+      "map.UpdateRegion"
+    ],
+    "hasPlanRoute": false
+  },
+  "dispatchUnit": {
+    "createUnit": {
+      "ok": true,
+      "kind": null,
+      "message": null
+    },
+    "planRoutePosts": 1,
+    "createRegionPosts": 0,
+    "routeCount": 1
+  },
+  "dispatchRegionEditWithUnit": {
+    "planRoutePosts": 0,
+    "mapPathGets": 0,
+    "routeCountBefore": 1,
+    "routeCountAfter": 1
+  },
+  "deleteConfirm": {
+    "armed": {
+      "confirmShown": true,
+      "armed": true
+    },
+    "armedWrites": 0,
+    "confirmedWrites": 1
+  },
+  "fade": {
+    "faded": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "alphas": [
+      0.13,
+      0.52
+    ],
+    "focusAlpha": 0.52,
+    "fadeAlpha": 0.13
+  },
+  "m9": {
+    "blockCount": 44,
+    "unmergedCount": 0,
+    "pickHex": {
+      "q": -18,
+      "r": 0
+    },
+    "selection": {
+      "kind": "hex",
+      "q": -18,
+      "r": 0
+    }
+  },
+  "pageErrors": [],
+  "terrainLeftPan": {
+    "before": {
+      "scale": 1,
+      "tx": 404.4410901706327,
+      "ty": 808
+    },
+    "after": {
+      "scale": 1,
+      "tx": 524.4410901706327,
+      "ty": 888
+    },
+    "moved": true,
+    "writes": 0
+  },
+  "terrainRightBrush": {
+    "posts": 1,
+    "hexCount": 6,
+    "terrain": "ocean",
+    "headBefore": 10,
+    "headAfter": 11
+  },
+  "leftPanAllModes": [
+    {
+      "mode": "view",
+      "txChanged": true,
+      "tyChanged": true,
+      "nonGet": []
+    },
+    {
+      "mode": "region",
+      "txChanged": true,
+      "tyChanged": true,
+      "nonGet": []
+    },
+    {
+      "mode": "map-edit",
+      "txChanged": true,
+      "tyChanged": true,
+      "nonGet": []
+    },
+    {
+      "mode": "region-edit",
+      "txChanged": true,
+      "tyChanged": true,
+      "nonGet": []
+    },
+    {
+      "mode": "unit",
+      "txChanged": true,
+      "tyChanged": true,
+      "nonGet": []
+    }
+  ],
+  "shiftPerHex": {
+    "cell": {
+      "q": -18,
+      "r": -1
+    },
+    "draftCount": 1,
+    "lassoActive": false,
+    "createRegionPosts": 0,
+    "writes": 0
+  },
+  "shiftPerHexMerge": {
+    "posts": 1,
+    "payloadCount": 20,
+    "expectedCount": 20,
+    "matchesSingleCellAdd": true
+  },
+  "outline": {
+    "verticesBefore": 378,
+    "verticesAfter": 43,
+    "ringCount": 3,
+    "focusRingCount": 1,
+    "enclosed": true,
+    "regionHexCount": 20
+  },
+  "strokeProbe": {
+    "strokes": 10,
+    "maxLineToPerStroke": 2500,
+    "path2dStrokes": 1
+  },
+  "terrainBorder": {
+    "pair": {
+      "a": {
+        "q": -19,
+        "r": 1
+      },
+      "b": {
+        "q": -18,
+        "r": 1
+      },
+      "ta": "low_hills",
+      "tb": "plains"
+    },
+    "minLuminance": 26.435599999999997
+  },
+  "nonGetGrouped": [
+    {
+      "phase": "A-lasso-create",
+      "types": [
+        "map.CreateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dot-add",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dot-remove",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "D-merge",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "E-exclude",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "F-leftpaint",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "F-create-by-button",
+      "types": [
+        "map.CreateRegion",
+        "unit.CreateUnit"
+      ],
+      "paths": [
+        "/api/command",
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "G-unit-route",
+      "types": [
+        "unit.PlanRoute"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "G3-region-edit-right-with-unit",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "H-delete",
+      "types": [
+        "map.DeleteRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "J9-terrain-left-pan",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "J9b-terrain-right-brush",
+      "types": [
+        "map.SetTerrain"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "J10b-shift-paint",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "J10b-shift-merge",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    }
+  ]
+}

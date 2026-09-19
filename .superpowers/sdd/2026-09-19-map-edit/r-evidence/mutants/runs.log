@@ -1,0 +1,45 @@
+=== mutation m1 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=567304a4111e1fc3cd86d9679cbd9fd9
+classes_md5=567304a4111e1fc3cd86d9679cbd9fd9
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m2 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=51622e0116d9773ef5071aa6ffdf25ea
+classes_md5=51622e0116d9773ef5071aa6ffdf25ea
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m3 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=dac59670fe00c065d1627a0a85f8f26f
+classes_md5=dac59670fe00c065d1627a0a85f8f26f
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m4 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=94563fde9d90d8d187e2b05549c06021
+classes_md5=94563fde9d90d8d187e2b05549c06021
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m5 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=099a80f4280314635eafa4b6d7eacc04
+classes_md5=099a80f4280314635eafa4b6d7eacc04
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m6 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=eec6a88361f22c7a22a9e164ebe3ba62
+classes_md5=eec6a88361f22c7a22a9e164ebe3ba62
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m7 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=2aac15c9f15ee33612bd7c93d83c55a8
+classes_md5=2aac15c9f15ee33612bd7c93d83c55a8
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m8 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=e3d9a754abca49572c85f8f0f409e8c3
+classes_md5=e3d9a754abca49572c85f8f0f409e8c3
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
+=== mutation m9 ===
+orig_md5=140a0a9e7119c0d55a2a629662e6ff73
+mutant_md5=ce924c01cebb46e32c0b78f92b1fc1cd
+classes_md5=ce924c01cebb46e32c0b78f92b1fc1cd
+orig_aggregate_md5=abd08474adf750453b5e1353e6a6775b
