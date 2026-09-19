@@ -1,0 +1,10 @@
+3c18e72c305bd968728201c12398fe75  mutants/orig/ApiViews.java
+db84b3aeded3744fe891bc6a5ffacedc  mutants/orig/map.js
+334b959a0e8af7e77284524119874d67  mutants/orig/classes/ApiViews.class
+db84b3aeded3744fe891bc6a5ffacedc  mutants/orig/classes-resource/map.js
+17e2ef1fb032637541ee4377bf30dccf  mutants/m1/ApiViews.java
+eb8d7f3c9c84fce2fd1efa35a1941037  mutants/m2/map.js
+8b996c1788926d91c5333ebfbe96e547  mutants/make-mutants.py
+4ee03a5182f1229aa8733d243a808140  mutants/t3b-mut-round.sh
+30ff9da8fcba3df89bf73bfb7f445172  e2e/e2e.cjs
+8518f207a7001e30e5c353b846791f94  e2e/run-e2e.sh

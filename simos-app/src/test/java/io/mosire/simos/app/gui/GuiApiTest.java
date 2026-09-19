@@ -354,6 +354,87 @@ class GuiApiTest {
     assertThat(getJson("/api/units").get("units").get(0).get("movement").isNull()).isTrue();
   }
 
+  // ── M7b T3 只读寻路端点（/api/map/path）───────────────────────────────
+
+  /** 判据：起点由服务端取（u-1 在 (1,1)）⇒ 到 (1,3) 的 A* 返回**逐格相邻、含首尾**的 3 点路径。 */
+  @Test
+  void mapPathReturnsStepByStepCorridorPath() throws Exception {
+    JsonNode body = getJson("/api/map/path?unit=u-1&q=1&r=3");
+
+    assertThat(body.get("reachable").asBoolean()).isTrue();
+    JsonNode path = body.get("path");
+    assertThat(path).hasSize(3);
+    assertCoord(path.get(0), 1, 1);
+    assertCoord(path.get(1), 1, 2);
+    assertCoord(path.get(2), 1, 3);
+    for (int i = 1; i < path.size(); i++) {
+      assertThat(hexDistance(path.get(i - 1), path.get(i))).as("逐格相邻").isEqualTo(1);
+    }
+  }
+
+  /** 判据：终点不在状态里（图外）⇒ {@code reachable:false,path:[]}（不是 404，也不是 500）。 */
+  @Test
+  void mapPathIsUnreachableForHexOutsideTheMap() throws Exception {
+    JsonNode body = getJson("/api/map/path?unit=u-1&q=9&r=9");
+
+    assertThat(body.get("reachable").asBoolean()).isFalse();
+    assertThat(body.get("path")).isEmpty();
+  }
+
+  /** 判据：单位不存在 ⇒ 404（与 hex/unit 详情同口径）。 */
+  @Test
+  void mapPath404sForUnknownUnit() throws Exception {
+    HttpResponse<String> response = get("/api/map/path?unit=ghost&q=1&r=3");
+
+    assertThat(response.statusCode()).isEqualTo(404);
+    assertThat(JSON.readTree(response.body()).get("error").asText()).isEqualTo("unit not found");
+  }
+
+  /** ★ 只读：寻路请求不推进 revision、不落任何 revision 行。 */
+  @Test
+  void mapPathIsReadOnlyAndDoesNotAdvanceHead() throws Exception {
+    long before = getJson("/api/state").get("heads").get("main").asLong();
+
+    getJson("/api/map/path?unit=u-1&q=1&r=2");
+    getJson("/api/map/path?unit=u-1&q=9&r=9");
+
+    assertThat(getJson("/api/state").get("heads").get("main").asLong())
+        .as("只读端点不得写盘")
+        .isEqualTo(before);
+    assertThat(getJson("/api/timeline?branch=main").get("nodes")).hasSize(1);
+  }
+
+  /** ★ 契约：端点返回的 path 可**原样**当 {@code unit.PlanRoute} 的 waypoints 提交并 committed。 */
+  @Test
+  void mapPathResultFeedsPlanRoute() throws Exception {
+    JsonNode path = getJson("/api/map/path?unit=u-1&q=1&r=3").get("path");
+    String payload = "{\"id\":\"u-1\",\"waypoints\":" + JSON.writeValueAsString(path) + "}";
+    String requestBody =
+        "{\"type\":\"unit.PlanRoute\",\"payloadJson\":"
+            + JSON.writeValueAsString(payload)
+            + ",\"branch\":\"main\",\"expectedRevision\":1}";
+
+    HttpResponse<String> response = post("/api/command", requestBody);
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(JSON.readTree(response.body()).get("result").asText()).isEqualTo("committed");
+
+    JsonNode committedPath = getJson("/api/unit/u-1").get("movement").get("route").get("path");
+    assertThat(committedPath).hasSize(3);
+    assertCoord(committedPath.get(0), 1, 1);
+    assertCoord(committedPath.get(2), 1, 3);
+  }
+
+  private static void assertCoord(JsonNode coord, int q, int r) {
+    assertThat(coord.get("q").asInt()).isEqualTo(q);
+    assertThat(coord.get("r").asInt()).isEqualTo(r);
+  }
+
+  private static int hexDistance(JsonNode a, JsonNode b) {
+    int dq = a.get("q").asInt() - b.get("q").asInt();
+    int dr = a.get("r").asInt() - b.get("r").asInt();
+    return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+  }
+
   @Test
   void populationMatchesTheSeriesValueAtHead() throws Exception {
     JsonNode body = getJson("/api/social/population?q=1&r=1");
@@ -402,6 +483,10 @@ class GuiApiTest {
     assertThat(wrongMethod.headers().firstValue("Allow").orElse("")).isEqualTo("POST");
 
     assertThat(post("/api/state", "{}").statusCode()).isEqualTo(405);
+
+    HttpResponse<String> pathWrongMethod = post("/api/map/path", "{}");
+    assertThat(pathWrongMethod.statusCode()).as("寻路是 GET 端点").isEqualTo(405);
+    assertThat(pathWrongMethod.headers().firstValue("Allow").orElse("")).isEqualTo("GET");
   }
 
   @Test

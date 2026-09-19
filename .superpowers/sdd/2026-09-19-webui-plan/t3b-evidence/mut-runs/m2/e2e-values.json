@@ -1,0 +1,120 @@
+{
+  "b": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "path": [
+        {
+          "q": 1,
+          "r": 1
+        },
+        {
+          "q": 1,
+          "r": 2
+        },
+        {
+          "q": 1,
+          "r": 3
+        }
+      ]
+    }
+  },
+  "c": {
+    "revStart": 1,
+    "revC": 2,
+    "routePath": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      },
+      {
+        "q": 1,
+        "r": 3
+      }
+    ],
+    "nodes": {
+      "before": 1,
+      "after": 2
+    },
+    "route": {
+      "id": "u-1",
+      "totalPoints": 3,
+      "remainingPoints": 3,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "baseColor": "rgba(255, 214, 130, 0.35)",
+      "remainingColor": "#ffd27a"
+    }
+  },
+  "d": {
+    "path": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      }
+    ],
+    "routePath": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      }
+    ],
+    "route": {
+      "id": "u-1",
+      "totalPoints": 2,
+      "remainingPoints": 2,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "baseColor": "rgba(255, 214, 130, 0.35)",
+      "remainingColor": "#ffd27a"
+    }
+  },
+  "e": {
+    "response": {
+      "reachable": false,
+      "path": []
+    },
+    "nonGetBeforeE": 2,
+    "nonGetAfterE": 2,
+    "status": "不可达：u-1 → (2,1)"
+  },
+  "f": {
+    "nonGetBeforeF": 2,
+    "nonGetAfterF": 3,
+    "mode": "view"
+  },
+  "g": {
+    "list": [
+      "/api/command",
+      "/api/command",
+      "/api/command"
+    ],
+    "violations": []
+  }
+}

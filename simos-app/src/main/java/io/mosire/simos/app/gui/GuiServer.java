@@ -25,6 +25,8 @@ import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.move.PathFinder;
+import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -104,6 +106,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/facets",
           "/api/map/overview",
           "/api/map/hex",
+          "/api/map/path",
           "/api/units",
           "/api/social/population",
           "/api/timeline");
@@ -264,6 +267,9 @@ public final class GuiServer implements AutoCloseable {
     if (path.equals("/api/map/hex")) {
       return mapHexReply(exchange);
     }
+    if (path.equals("/api/map/path")) {
+      return mapPathReply(exchange);
+    }
     if (isRegionDetail(path)) {
       return regionReply(exchange, urlDecode(path.substring(REGION_DETAIL_PREFIX.length())));
     }
@@ -384,6 +390,39 @@ public final class GuiServer implements AutoCloseable {
     TerrainType terrainType = map.terrainTypes().get(cell.terrain());
     List<FacetEntry> facets = queryService.facets(canonicalHex(q, r), target);
     return Reply.of(200, ApiViews.mapHex(coord, cell, facets, region, terrainType));
+  }
+
+  /**
+   * 寻路只读端点（M7b T3，M7b-S3）：{@code GET /api/map/path?unit=&q=&r=&branch=&revision=}。
+   *
+   * <p>★ **起点由服务端取**（该单位在目标时刻的 {@code effectivePosition}，权威）——前端不传起点，避免第二份真相；寻路调 {@link
+   * PathFinder#findPath}（app 层不另写寻路）。单位不存在 ⇒ 404；终点不存在/不可达/单位无位置 ⇒ {@code
+   * reachable:false,path:[]}。**纯只读**：不触发任何写。
+   */
+  private Reply mapPathReply(HttpExchange exchange) {
+    Map<String, String> params = queryParams(exchange);
+    String unitText = requiredParam(params, "unit");
+    int q = intParam(params, "q");
+    int r = intParam(params, "r");
+    QueryTarget target = target(params);
+    SimulationState state = queryService.stateAt(target);
+    UnitState units = ApiViews.unitState(state);
+    UnitId unitId = new UnitId(unitText);
+    Unit unit = units.units().get(unitId);
+    if (unit == null) {
+      return Reply.of(404, Map.of("error", "unit not found", "id", unitText));
+    }
+    Optional<HexCoord> start = units.effectivePosition(unitId, state.meta().timestamp());
+    Optional<List<HexCoord>> path =
+        start.isEmpty()
+            ? Optional.empty()
+            : PathFinder.findPath(
+                ApiViews.gameMap(state),
+                start.get(),
+                new HexCoord(q, r),
+                unit,
+                TerrainMovementCost.INSTANCE);
+    return Reply.of(200, ApiViews.pathResult(path.isPresent(), path.orElse(List.of())));
   }
 
   /** 区域详情（M7 T1，spec §3.3）：区域不存在 ⇒ 404（与 hex/unit 详情同口径）。 */

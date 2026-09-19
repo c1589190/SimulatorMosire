@@ -1,0 +1,9 @@
+{
+  "response": {
+    "reachable": false,
+    "path": []
+  },
+  "nonGetBeforeE": 2,
+  "nonGetAfterE": 2,
+  "status": "不可达：u-1 → (2,1)"
+}

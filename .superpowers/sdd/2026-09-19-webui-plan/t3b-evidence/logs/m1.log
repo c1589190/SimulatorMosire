@@ -1,0 +1,47 @@
+server_ready_tries=3 code=200 pid=274311
+STEP a-mode-unit: PASS unit
+STEP a-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP b-path-status-200: PASS {"status":200,"body":{"reachable":true,"path":[{"q":1,"r":1},{"q":1,"r":3}]}}
+STEP b-reachable-true: PASS {"reachable":true,"path":[{"q":1,"r":1},{"q":1,"r":3}]}
+STEP b-path-3-points: FAIL (1,1)->(1,3)
+STEP b-path-stepwise: FAIL (1,1)->(1,3)
+STEP b-path-endpoints: FAIL (1,1)->(1,3)
+PATH_B=(1,1)->(1,3)
+STEP c-head-advanced: FAIL {"revStart":1,"revC":null}
+STEP c-route-path-3: FAIL
+STEP c-route-path-values: FAIL
+STEP c-head-api: FAIL 2
+STEP c-timeline-node-plus-1: FAIL {"nodesBefore":1,"nodesAfterC":null}
+STEP c-polyline-3-points: FAIL null
+STEP d-path-2-points: PASS (1,1)->(1,2)
+STEP d-head-advanced: PASS {"revStartD":1,"revD":2}
+STEP d-route-replaced-not-appended: PASS (1,1)->(1,2)
+STEP d-polyline-2-points: PASS {"id":"u-1","totalPoints":2,"remainingPoints":2,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP e-target-is-off-map: PASS {"kind":"hex","q":2,"r":1,"inMap":false}
+STEP e-reachable-false: PASS {"reachable":false,"path":[]}
+STEP e-path-empty: PASS {"reachable":false,"path":[]}
+STEP e-no-write: PASS {"nonGetBeforeE":2,"nonGetAfterE":2}
+STEP e-ui-unreachable: PASS "不可达：u-1 → (2,1)"
+STEP f-view-mode-no-write: PASS {"nonGetBeforeF":2,"nonGetAfterF":2}
+STEP f-mode-is-view: PASS view
+NON_GET_LIST=["/api/command","/api/command"]
+STEP g-nonget-allowlist: PASS {"list":["/api/command","/api/command"],"violations":[]}
+STEP g-command-present: PASS ["/api/command","/api/command"]
+STEP z-no-page-errors: PASS []
+E2E RESULT: FAIL b-path-3-points,b-path-stepwise,b-path-endpoints,c-head-advanced,c-route-path-3,c-route-path-values,c-head-api,c-timeline-node-plus-1,c-polyline-3-points
+e2e_rc=1
+
+===== 装置补记（m1）：本轮推送的正是以下字节 =====
+kind=java
+target=simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java
+orig_md5=3c18e72c305bd968728201c12398fe75
+pushed_src_md5=17e2ef1fb032637541ee4377bf30dccf
+pushed_classes_agg=d1529dc19072120caa595447d1271097
+restored_src_md5=3c18e72c305bd968728201c12398fe75
+restored_classes_agg=66c17a81f8129ff5841eaedb43d7660c
+class_backup_agg=66c17a81f8129ff5841eaedb43d7660c
+round_start=1789788298
+server_log_mtime=1789788328
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt3/t3b-evidence/logs/m1.server.log
+javac_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt3/t3b-evidence/logs/m1.javac.log
