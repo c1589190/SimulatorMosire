@@ -1,0 +1,19 @@
+server_ready_tries=80 code=404 pid=289262
+E2E RESULT: FAIL fatal page.waitForFunction: Timeout 40000ms exceeded.
+    at waitMapReady (/home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/e2e/e2e.cjs:47:14)
+    at openWorkbench (/home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/e2e/e2e.cjs:55:9)
+    at async /home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/e2e/e2e.cjs:111:3
+e2e_rc=1
+
+===== 装置补记（m4）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/map.js
+orig_md5=21635e9ec7f8397025d6fd3167650c12
+pushed_src_md5=cf0ca37f03a38c8abd5baa58ecf98852
+pushed_cls_md5=cf0ca37f03a38c8abd5baa58ecf98852
+restored_src_md5=21635e9ec7f8397025d6fd3167650c12
+restored_cls_md5=21635e9ec7f8397025d6fd3167650c12
+class_backup_md5=21635e9ec7f8397025d6fd3167650c12
+round_start=1789794852
+server_log_mtime=1789794852
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/logs/m4.server.log

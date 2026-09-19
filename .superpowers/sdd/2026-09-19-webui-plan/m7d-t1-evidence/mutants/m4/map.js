@@ -1191,7 +1191,7 @@
     var result = await app.writeCommand("unit.PlanRoute", { id: id, waypoints: path });
     host.editBusy = false;
     if (result.ok) {
-      setEditStatus("已下路线 " + id + "（" + (path.length - 1) + " 格，替换原路线）—— 点「创建节点」推进时间，单位才会出发", "ok");
+      setEditStatus("已下路线 " + id + "（" + (path.length - 1) + " 格，替换原路线）", "ok");
     } else {
       setEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
     }

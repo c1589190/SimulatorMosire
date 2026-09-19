@@ -6,7 +6,7 @@
   <title>工作台 · Simos Shell</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-mode="view">
+<body data-mode="view" class="workbench-page">
   <header class="topbar">
     <h1>Simos 工作台</h1>
     <span id="shell-state" class="shell-state">状态加载中…</span>
@@ -93,7 +93,8 @@
   <footer class="timeline-bar" id="timeline-bar">
     <div id="timeline-mount" class="timeline-track"></div>
     <div class="timeline-actions">
-      <button type="button" id="timeline-create" class="primary" disabled>创建节点</button>
+      <button type="button" id="timeline-create" class="primary" disabled
+        title="推进时间一格（core.AdvanceTime）：单位沿已下路线出发/前进">创建节点（推进时间）</button>
       <button type="button" id="timeline-fork" disabled>分岔</button>
     </div>
     <span id="timeline-meta" class="muted">分支 — · rev —</span>

@@ -1,0 +1,35 @@
+server_ready_tries=3 code=200 pid=293046
+STEP prep-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP a-timeline-in-viewport: PASS {"viewportH":800,"docScrollHeight":800,"barTop":731,"barBottom":800,"leftClientH":601,"leftScrollH":1743,"detailRows":21}
+STEP a-no-page-scroll: PASS {"viewportH":800,"docScrollHeight":800,"barTop":731,"barBottom":800,"leftClientH":601,"leftScrollH":1743,"detailRows":21}
+STEP a-left-column-scrolls: PASS {"viewportH":800,"docScrollHeight":800,"barTop":731,"barBottom":800,"leftClientH":601,"leftScrollH":1743,"detailRows":21}
+STEP d-route-hint: FAIL "已下路线 u-1（2 格，替换原路线）"
+STEP d-create-title: PASS "推进时间一格（core.AdvanceTime）：单位沿已下路线出发/前进"
+STEP c-tick-advances-r1: PASS {"revBefore":2,"revAfter":3,"newTick":6,"shell":"分支 main · rev 3 · tick 6","meta":"分支 main · rev 3 · head 3 · tick 6"}
+STEP c-create-not-stuck-disabled-r1: PASS {"createDisabled":false,"shell":"分支 main · rev 3 · tick 6"}
+STEP c-node-count-r1: PASS {"domNodes":3,"apiNodes":3}
+STEP c-tick-advances-r2: PASS {"revBefore":3,"revAfter":4,"newTick":7,"shell":"分支 main · rev 4 · tick 7","meta":"分支 main · rev 4 · head 4 · tick 7"}
+STEP c-create-not-stuck-disabled-r2: PASS {"createDisabled":false,"shell":"分支 main · rev 4 · tick 7"}
+STEP c-node-count-r2: PASS {"domNodes":4,"apiNodes":4}
+STEP c-node-labels-distinguish-commands: PASS "rev 1 · Bootstrap | rev 2 · PlanRoute | rev 3 · AdvanceTime | rev 4 · AdvanceTime"
+STEP b-knob-visible: PASS {"exists":true,"hidden":false,"x":426,"y":759,"w":14,"h":14,"pointerEvents":"auto","inViewport":true,"elementAtCenter":"tl-knob","dataRevision":"4"}
+STEP b-knob-in-viewport: PASS {"exists":true,"hidden":false,"x":426,"y":759,"w":14,"h":14,"pointerEvents":"auto","inViewport":true,"elementAtCenter":"tl-knob","dataRevision":"4"}
+STEP b-knob-hit-target: PASS {"exists":true,"hidden":false,"x":426,"y":759,"w":14,"h":14,"pointerEvents":"auto","inViewport":true,"elementAtCenter":"tl-knob","dataRevision":"4"}
+STEP b-knob-drag-changes-rev: PASS {"revB0":4,"revB1":2}
+STEP b-offtip-disables-create: PASS {"revision":2,"head":4,"shell":"分支 main · rev 4 · tick 7","meta":"分支 main · rev 2 · head 4 · tick 5","createDisabled":true,"nodes":4,"nodeLabels":["rev 1 · Bootstrap","rev 2 · PlanRoute","rev 3 · AdvanceTime","rev 4 · AdvanceTime"]}
+STEP z-no-page-errors: PASS []
+E2E RESULT: FAIL d-route-hint
+e2e_rc=1
+
+===== 装置补记（m4）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/map.js
+orig_md5=21635e9ec7f8397025d6fd3167650c12
+pushed_src_md5=cf0ca37f03a38c8abd5baa58ecf98852
+pushed_cls_md5=cf0ca37f03a38c8abd5baa58ecf98852
+restored_src_md5=21635e9ec7f8397025d6fd3167650c12
+restored_cls_md5=21635e9ec7f8397025d6fd3167650c12
+class_backup_md5=21635e9ec7f8397025d6fd3167650c12
+round_start=1789795109
+server_log_mtime=1789795114
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7dt1/.superpowers/sdd/2026-09-19-webui-plan/m7d-t1-evidence/logs/m4.server.log
