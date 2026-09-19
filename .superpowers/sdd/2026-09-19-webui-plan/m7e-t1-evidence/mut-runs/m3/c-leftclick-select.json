@@ -1,0 +1,14 @@
+{
+  "selHex": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  },
+  "selC": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "nonGetBeforeC": 4,
+  "nonGetAfterC": 5,
+  "movement": null
+}

@@ -1,0 +1,23 @@
+{
+  "blank": {
+    "point": {
+      "x": 4,
+      "y": 4
+    },
+    "pick": {
+      "kind": "hex",
+      "q": -1,
+      "r": 0,
+      "inMap": false
+    }
+  },
+  "selBeforeA": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "selAfterA": null,
+  "nonGetBeforeA": 1,
+  "nonGetAfterA": 2,
+  "movement": null,
+  "routes": []
+}

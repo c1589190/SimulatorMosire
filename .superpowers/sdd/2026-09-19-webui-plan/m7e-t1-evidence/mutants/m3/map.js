@@ -958,6 +958,9 @@
         cancelRouteFor(pick.id);
         return;
       }
+      if (mode === "unit" && !selId) {
+        cancelRouteFor(pick.id);
+      }
       app.setSelection({ kind: "unit", id: pick.id });
       if (mode === "unit") {
         resetRoute();

@@ -1,0 +1,355 @@
+{
+  "pixel": {
+    "terrainPx": [
+      231,
+      200,
+      110
+    ],
+    "desertColor": "#E7C86E",
+    "scan": [
+      [
+        -8,
+        231,
+        200,
+        110,
+        255
+      ],
+      [
+        -7,
+        97,
+        83,
+        43,
+        255
+      ],
+      [
+        -6,
+        23,
+        18,
+        8,
+        255
+      ],
+      [
+        -5,
+        23,
+        18,
+        8,
+        255
+      ],
+      [
+        -4,
+        197,
+        127,
+        10,
+        255
+      ],
+      [
+        -3,
+        245,
+        165,
+        31,
+        255
+      ],
+      [
+        -2,
+        254,
+        250,
+        242,
+        255
+      ],
+      [
+        -1,
+        255,
+        255,
+        255,
+        255
+      ],
+      [
+        0,
+        255,
+        255,
+        255,
+        255
+      ],
+      [
+        1,
+        255,
+        255,
+        255,
+        255
+      ],
+      [
+        2,
+        251,
+        216,
+        156,
+        255
+      ],
+      [
+        3,
+        245,
+        158,
+        11,
+        255
+      ],
+      [
+        4,
+        95,
+        63,
+        8,
+        255
+      ],
+      [
+        5,
+        23,
+        18,
+        8,
+        255
+      ],
+      [
+        6,
+        23,
+        18,
+        8,
+        255
+      ],
+      [
+        7,
+        185,
+        160,
+        87,
+        255
+      ],
+      [
+        8,
+        231,
+        200,
+        110,
+        255
+      ]
+    ],
+    "best": {
+      "dx": -6,
+      "rgb": [
+        23,
+        18,
+        8
+      ],
+      "diff": 208
+    },
+    "brightest": {
+      "dx": -1,
+      "rgb": [
+        255,
+        255,
+        255
+      ],
+      "lum": 765
+    },
+    "darkest": {
+      "dx": -6,
+      "rgb": [
+        23,
+        18,
+        8
+      ],
+      "lum": 49
+    },
+    "baseColor": "#f59e0b",
+    "outlineColor": "rgba(12, 8, 2, 0.95)",
+    "remainingColor": "#ffffff"
+  },
+  "setup": {
+    "rev0": 1,
+    "rev1": 2,
+    "route": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      },
+      {
+        "q": 1,
+        "r": 3
+      }
+    ]
+  },
+  "a": {
+    "blank": {
+      "point": {
+        "x": 4,
+        "y": 4
+      },
+      "pick": {
+        "kind": "hex",
+        "q": -1,
+        "r": 0,
+        "inMap": false
+      }
+    },
+    "selBeforeA": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "selAfterA": null,
+    "nonGetBeforeA": 1,
+    "nonGetAfterA": 1,
+    "movement": {
+      "route": {
+        "waypoints": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ],
+        "path": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ]
+      },
+      "departedAt": {
+        "tick": 5,
+        "calendarLabel": null
+      },
+      "speedAtDeparture": 2,
+      "mobilityPerMilleAtDeparture": 500,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "remainingMillis": 1500
+    },
+    "routes": [
+      {
+        "id": "u-1",
+        "totalPoints": 3,
+        "remainingPoints": 3,
+        "status": "IN_TRANSIT",
+        "currentHex": {
+          "q": 1,
+          "r": 1
+        },
+        "nextHex": {
+          "q": 1,
+          "r": 2
+        },
+        "outlineColor": "rgba(12, 8, 2, 0.95)",
+        "baseColor": "#f59e0b",
+        "remainingColor": "#ffffff"
+      }
+    ]
+  },
+  "b": {
+    "selB0": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "revBeforeCancel": 2,
+    "revAfterCancel": 3,
+    "nodesBeforeCancel": 2,
+    "nodesAfterCancel": 3,
+    "movement": null,
+    "routeCountAfter": 0,
+    "status": "已取消 u-1 的移动（路线已清）"
+  },
+  "c": {
+    "selHex": {
+      "kind": "hex",
+      "q": 1,
+      "r": 2
+    },
+    "selC": {
+      "kind": "unit",
+      "id": "u-1"
+    },
+    "nonGetBeforeC": 2,
+    "nonGetAfterC": 2,
+    "movement": null
+  },
+  "d": {
+    "path": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      },
+      {
+        "q": 1,
+        "r": 3
+      }
+    ],
+    "routePath": [
+      {
+        "q": 1,
+        "r": 1
+      },
+      {
+        "q": 1,
+        "r": 2
+      },
+      {
+        "q": 1,
+        "r": 3
+      }
+    ],
+    "route": {
+      "id": "u-1",
+      "totalPoints": 3,
+      "remainingPoints": 3,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "outlineColor": "rgba(12, 8, 2, 0.95)",
+      "baseColor": "#f59e0b",
+      "remainingColor": "#ffffff"
+    },
+    "revBeforeD": 3,
+    "revD": 4,
+    "nodes": {
+      "before": 3,
+      "after": 4
+    }
+  },
+  "e": {
+    "list": [
+      "/api/command",
+      "/api/command",
+      "/api/command"
+    ],
+    "violations": []
+  }
+}

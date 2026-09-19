@@ -1170,7 +1170,11 @@
   function handleContextMenu(pick) {
     // ★ M7e T1（用户原话）：右键点**空白/图外/无格** ⇒ 取消选中；**不发任何写、不清路线**（路线归左键取消）。
     if (!pick || !pick.inMap) {
+      var blankId = selectedUnitId();
       app.setSelection(null);
+      if (blankId) {
+        cancelRouteFor(blankId);
+      }
       return true;
     }
     if (app.getState().mode !== "unit") {

@@ -1,0 +1,13 @@
+{
+  "selB0": {
+    "kind": "unit",
+    "id": "u-1"
+  },
+  "revBeforeCancel": 2,
+  "revAfterCancel": 3,
+  "nodesBeforeCancel": 2,
+  "nodesAfterCancel": 3,
+  "movement": null,
+  "routeCountAfter": 0,
+  "status": "已取消 u-1 的移动（路线已清）"
+}
