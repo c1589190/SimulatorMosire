@@ -16,11 +16,12 @@
       <h1>Simos 工作台</h1>
 
       <nav id="mode-bar" class="mode-bar" aria-label="模式栏">
-        <button type="button" class="mode active" data-mode="view" aria-pressed="true">常规查看</button>
+        <button type="button" class="mode active" data-mode="view" aria-pressed="true">常规</button>
         <button type="button" class="mode" data-mode="region" aria-pressed="false">区域查看</button>
-        <button type="button" class="mode" data-mode="map-edit" data-milestone="M8" disabled>地图编辑<span class="mode-badge">归 M8</span></button>
-        <button type="button" class="mode" data-mode="region-edit" data-milestone="M8" disabled>区域编辑<span class="mode-badge">归 M8</span></button>
-        <button type="button" class="mode" data-mode="unit" aria-pressed="false">单位移动与编辑</button>
+        <button type="button" class="mode" data-mode="map-edit" aria-pressed="false">地图编辑</button>
+        <button type="button" class="mode" data-mode="region-edit" aria-pressed="false">区域编辑</button>
+        <button type="button" class="mode" data-mode="unit" aria-pressed="false">单位移动编辑</button>
+        <span id="mode-current" class="mode-current" aria-live="polite" title="当前模式">常规</span>
       </nav>
 
       <div class="topbar-actions">
@@ -83,12 +84,46 @@
             <button type="button" id="unit-create">创建</button>
           </fieldset>
         </section>
+
+        <section class="map-editor" data-modes="map-edit" aria-label="地图编辑">
+          <h3>地形调色板</h3>
+          <p id="terrain-palette-status" class="status muted">载入地形词表…</p>
+          <div id="terrain-palette" class="terrain-palette" role="group" aria-label="地形调色板"></div>
+          <p id="brush-status" class="status muted">选一种地形后，按住左键在地图上拖动涂抹；松手提交一条 map.SetTerrain。</p>
+          <div class="map-edit-pending">
+            <button type="button" disabled data-pending="map.SetEdge" title="白名单已放行；UI 归 T11">河流/道路（归 T11）</button>
+            <button type="button" disabled data-pending="map.RandomizeRegion" title="白名单已放行；UI 归 T11">圈选随机化（归 T11）</button>
+          </div>
+
+          <h3>区域信息编辑</h3>
+          <p id="region-info-status" class="status muted">点选一个格子查看其所属区域与地形。</p>
+          <dl class="kv" id="region-info-detail"></dl>
+          <fieldset class="region-meta-editor" id="region-meta-editor" hidden>
+            <legend>改区域元数据（map.UpdateRegion，只改 meta）</legend>
+            <label class="rm-field">区域
+              <select id="region-meta-target"></select>
+            </label>
+            <label class="rm-field">颜色
+              <input id="region-meta-color" type="text" placeholder="#RRGGBB（留空=清除）">
+            </label>
+            <label class="rm-field">标签
+              <input id="region-meta-tag" type="text" placeholder="留空=清除">
+            </label>
+            <label class="rm-field">描述
+              <input id="region-meta-description" type="text" placeholder="留空=清除">
+            </label>
+            <label class="rm-field">annexedBy
+              <input id="region-meta-annexedby" type="text" placeholder="留空=清除">
+            </label>
+            <button type="button" id="region-meta-submit">提交元数据</button>
+          </fieldset>
+        </section>
       </section>
 
       <div class="wb-gap" aria-hidden="true"></div>
 
       <section class="panel col-right" id="right-panel">
-        <div data-modes="region">
+        <div data-modes="region region-edit">
           <h2>区域</h2>
           <div id="region-panel-mount"></div>
         </div>
@@ -119,6 +154,7 @@
   </div>
 
   <script src="api.js"></script>
+  <script src="modes.js"></script>
   <script src="app.js"></script>
   <script src="blocks.js"></script>
   <script src="panels.js"></script>

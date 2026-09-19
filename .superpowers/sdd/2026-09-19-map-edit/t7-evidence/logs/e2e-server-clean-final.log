@@ -1,0 +1,13 @@
+22:58:05.721 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+22:58:05.820 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45929/（静态 /webui，同源，无 CORS 头）
+22:58:05.821 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m8t7-e2e-store-45929 checkpointInterval=100 codec=3 handler=12 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45387 guiPort=45929 approvalPort=46027
+22:58:05.821 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m8t7-e2e-store-45929 checkpointInterval=100 模块数=3 guiPort=45929 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+22:58:05.821 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:45929/
+22:58:14.328 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetTerrain commandId=ca1bf42b-d289-4c31-9931-1baf8b1401d0 correlationId=ca1bf42b-d289-4c31-9931-1baf8b1401d0 新坐标=main@2
+22:58:15.927 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.UpdateRegion commandId=3c22ef28-e60c-45df-8a3e-4d77d331db0e correlationId=3c22ef28-e60c-45df-8a3e-4d77d331db0e 新坐标=main@3
+22:58:16.834 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.SetTerrain commandId=7cb4eb4e-0cbf-4730-9a07-7e8ed7f1519c correlationId=7cb4eb4e-0cbf-4730-9a07-7e8ed7f1519c 原因=未知地形类型: forest
+22:58:17.293 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.SetTerrain commandId=3d8273ca-0a7a-4ac5-bc59-0c25eb5af8e9 correlationId=3d8273ca-0a7a-4ac5-bc59-0c25eb5af8e9 原因=hex 不在图上: 9999_9999
+22:58:18.006 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CreateUnit commandId=9106db25-a55a-41e3-b7f0-c65bc36e99bb correlationId=9106db25-a55a-41e3-b7f0-c65bc36e99bb 新坐标=main@4
+22:58:19.366 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=a8996bee-5dc7-42cd-8fc2-77246b18958a correlationId=a8996bee-5dc7-42cd-8fc2-77246b18958a 新坐标=main@5
+22:58:20.160 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CancelRoute commandId=c196f603-9af8-4f10-80f0-693315c391d0 correlationId=c196f603-9af8-4f10-80f0-693315c391d0 新坐标=main@6
+22:58:21.164 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

@@ -1,0 +1,7 @@
+mutation=m3 orig_md5=efeb13e5ec642935ac7695af1436c291 mutant_md5=cdd76a6e56201d12931f419d42bbbd2c file=map.js
+syntax_rc=0 (must be 0)
+classes_md5=cdd76a6e56201d12931f419d42bbbd2c (must == mutant_md5)
+e2e_rc=1 (expect 1)
+E2E RESULT: 4 FAIL c-one-command-one-head,c-payload-five-hexes,c-timeline-node-unchanged-detail-plus-one,c-command-detail-plus-one
+restored_md5=efeb13e5ec642935ac7695af1436c291 restored_classes_md5=efeb13e5ec642935ac7695af1436c291 orig_md5=efeb13e5ec642935ac7695af1436c291
+MUTATION m3: KILLED (expected red observed)
