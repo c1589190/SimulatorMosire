@@ -102,7 +102,7 @@ class SimosToolsTest {
           "simos.advance",
           "simos.fork");
 
-  private static final List<String> EIGHT_COMMAND_TYPES =
+  private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "unit.RenameUnit",
           "unit.CreateUnit",
@@ -111,7 +111,8 @@ class SimosToolsTest {
           "unit.PlaceAt",
           "unit.PlanRoute",
           "unit.CancelRoute",
-          "unit.DisbandUnit");
+          "unit.DisbandUnit",
+          "map.SetTerrain");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -160,7 +161,7 @@ class SimosToolsTest {
     JsonNode body = JSON.readTree(result.message());
     assertThat(textValues(body.get("types")))
         .as("catalog 与已注册 handler 同源（R5：catalog 列出的每个 type 都能经 submit 到达）")
-        .containsExactlyInAnyOrderElementsOf(EIGHT_COMMAND_TYPES);
+        .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
   }
 
   @Test
