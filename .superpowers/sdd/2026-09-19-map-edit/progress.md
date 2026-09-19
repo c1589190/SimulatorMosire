@@ -131,3 +131,29 @@
 ★ **本树没有实测的 before 值**（基线 `e2d00df` **从未跑过门禁**）⇒ **不报 delta**，不拿"上一棵树的绿"当本树的对照。能报的是**对账**：`973 = 869 + 90 + 14`，其中 **map 的 90 与 core 的 14 逐类相加恰好闭合、六个模块无剩余**（map：T3 18〔`TerrainOperationsTest` 11 + `SetTerrainHandlerTest` 7〕+ T4 31〔`RegionOperationsTest` 16 + `RegionHandlersTest` 15〕+ T5 22〔`SetEdgeHandlerTest` 9 + `EdgeOperationsTest` 13〕+ T6 19〔`RandomizeRegionHandlerTest` 7 + `RandomizeOperationsTest` 12〕= **90**；core：T3 3 + T4 3 + T5 4 + T6 4 = **14**；其余四模块 170/45/131/96 与 M9 基线**逐值相同**）⇒ 这棵树确实**只多了它该多的东西**。★ 本单 5 个类在本轮日志里的条数：`EdgeOperationsTest` **13** / `RandomizeOperationsTest` **12** / `RandomizeRegionHandlerTest` **7** / `MapRandomizeEndToEndTest` **4** / `MapSetEdgeEndToEndTest` **4**，全 0 失败。
 
 **未核实**：真档上的 `map.SetEdge`（同上）/ `RegionRandomizer` 的大图重切性能 / `mode`·`kind` 大小写混合只在单元层验过（e2e 与浏览器未跑）/ 块表 `TreeMap` 全序在 >1000 块时未测（本夹具最大 28 块）。
+
+## T11 ✅ 连通性（河流/道路）+ 圈选随机化 UI（`5cfbd9e`；9 文件 +602/−19、证据 115 文件）
+
+**交互**：地图编辑模式内新增**工具选择器**（地形刷〔默认〕/ 河流 / 道路 / 圈选随机化），参数按需出现（`#edge-controls`/`#randomize-controls` 默认 hidden，可断言）。★★ **Q2 分两层读、两层各司其职**：协议层管"坏载荷进不来"（T5 已交付 `MapPayloads.requireText(payload,"mode")`），**UI 层不预选、不静默兜默认**——`#edge-mode` 首项是 `（未选）`，未选则亮警告 + 写**可见**提示，且**一条写命令都不发**（只给提示，不是只给 console）。理由三条：这是唯一能让 m1 红的读法；两层各管各的（协议层挡不住"浏览器替用户做了决定"）；代价只是一次点击。
+
+**五个新纯函数**（全在 `webui/map.js`，进门禁）：`edgeKeyOf`（端点按 `(q,r)` **规范序**——注释专门点了"非字符串序"，即 `1_10` vs `1_2` 那个坑）/ `edgeChainEdges`（相邻才连边、**不相邻断链重起**、去重保首现序 ⇒ 一条拖动多段仍只发**一条** `SetEdge`）/ `edgeModeState`（只有显式 `merge`/`replace` 才 `ok`）/ `parseSeedInput`（空·空白·非整数·**超 JS 安全整数**一律 `not ok`，**不兜 0**）/ `randomizeSelectionState`（空选区 `not ok`）。
+
+**★ 新增只读读路径**：`/api/map/hex` 加 `edges` 字段（`ApiViews.incidentEdges`，边按 `EdgeRef` 自然序 + `pathways` 字典序**双排序**——`/api/map/hex` 有"同 revision 两次响应**逐字节相同**"的既有断言，任一处跟着 `Map` 的迭代序走就会随 JVM 散列盐抖动）。**理由**：连通性此前在 app 层**没有任何读路径** ⇒ "`merge` 后既有 tag 仍在 / `replace` 后只剩新的"这条判据**在浏览器里观测不到**（断不了言 = 装饰）。唯一调用点 `GuiServer:393`；`GameMap.edges()` 是 record 隐式访问器、构造期已 `unmodifiableMap(copyOf(...))`。
+
+**e2e 31 断言 ALL PASS**（`--demo` 演示世界，**本机无真档**）；`e2e_rc=0`、`z0-no-pageerror: PASS []`；非 GET 清单**恰 8 条**（3×`SetEdge` + 4×`RandomizeRegion` + 1×`SetTerrain`）、**零写期待 5 处**——★ 新增的"空选区点随机化"步**一条都没发**。★★ **端到端决定性证据**：区域信息面板渲染出 `连通性1_1|1_2[river]；1_2|1_3[road]` ⇒ Java 的 `edges` 字段**确实走到了浏览器**。
+
+**判别力**：merge 判据落在**同一条边同一个 kind**（既有 `river` 在新 `road` 命令上 ⇒ 实测 `["river","road"]`）；replace 判据打 **E1**（不在 payload 里）⇒ E2 的 river 被整份摘掉、road 一字不动。★ **随机化按字节比、不按直方图**（T6 教训）。★ 实现者**自曝 `r2` 是弱断言**（seed 7 的产物与该世界随机化前逐字节相同 `3f5a712a…`）⇒ 强断言是 `r4`（`r3` 用 seed 99 确实变、`r4` 回到 7 又逐字节复现 ⇒ 随机化是真的且 seed 相关）。★ `x1` 非相邻跳 **0 写**——后端会接受非相邻边（probe 已实证）⇒ **只有前端守卫挡着**。
+
+**变异 6 轮 0 存活**（逐轮 `consumed_md5 == mutant_md5`、`restored_md5 == orig_md5`）：m1 UI 静默兜 `replace`（红在 `e1`）/ m2 seed 被忽略（红在 `r1`）/ m3 `edgeChainEdges` 相邻性被削（红在 `x1`）/ m4 `parseSeedInput` 空串兜 0（红在 `r0c`）/ ★ **m5 Java 读路径**（红在 `mapHexOnASharedHexListsBothIncidentEdgesInEdgeRefOrder`，其 `orig_md5` **逐字节等于当前 `ApiViews.java` 的 `b9b16adf…`**）/ ★ **m6 空选区守卫**（红在**本轮新补的** `r0a`）。★ 裁定 42 + 判据 7 的兑现：`m5`/`m6` 是在实现者报告 §八.7 自陈缺口后**当场要求补**的（"Java 侧没有变异轮" + "`randomizeSelectionState` 无变异体"）——**修复比它的描述还短，不 park**。
+
+**门禁 977** = 170/**362**/45/131/**169**/**100**，7/7 模块 SUCCESS，`BugInstance size is 0` ×6，`[ERROR]` **0** 行，`COMPILATION ERROR` 0，Checkstyle 违例 0×7，Spotless 六条 `keeping N files clean - 0 needs changes`（67/88/14/47/52/43），`[frontend-gate] OK tests=71 pass=71 fail=0`，`Total time: 06:45 min`。★ **delta 干净**：T5/T6 那棵树是 **973**（…/**96**），本树 **977**，**只有 `simos-app` 96→100 恰 +4**（= `MapHexEdgesApiTest`），其余五个模块**逐值未动**。★ 下界 71 已**逐值实测**：8 个 JS 测试文件按门禁自己的正则数出来正好 **71**（61 + 新文件 10）。
+
+★★ **如实记账：整树 verify 跑了 5 次，只有第 5 次可引用。** ① attempt1 **被系统因内存不足杀掉**（243 行、停在 3/7、**无 `BUILD` 行**）；② 第 2 次**真红**——`MapHexEdgesApiTest.java:186 cannot find symbol: class UnitSnapshot`（缺 import）⇒ ★ **那 4 条 Java 测试在该轮之前从未编译过**（报告 §八.7 的"Java 侧没有变异轮"与它是同一枚硬币的两面）；③ attempt3 **也被杀掉**（277 行、停在 `spotless @ simos-map`、无 BUILD 行）；④ attempt4 **真红**——**Spotless**：`GuiServer.java:390` 超宽需折行（★ 同一份日志里 977 条测试**全绿**，含 `MapHexEdgesApiTest` 4/4）；⑤ attempt5（折行后）**绿**。★ **"被杀"不是"红"、也不是"绿"**——三份半截日志**不产出任何门禁数字**，一律改名存档（`attempt1-killed-by-oom` / `attempt3-killed-by-system`）、**一个数字都不许引用**。★ 连带实测：**本机的瓶颈不只是核数（`nproc=2`），内存也是共享资源**，且**整树 verify 必须独占**（第 3 次正是死在"verify 与 e2e 并发"上）。
+
+★★ **纪律实例（实现者再次纠正控制器，这次错在我）**：我在派单里写"m1~m4 的杀点不受影响，因为 `map.js` 未变"——**只有一半证据**。被测字节确实逐字节相同（`f6eeed79…`），但**装置 `e2e.cjs` 在 05:08:36 被就地改过且 v1 没备份** ⇒ "改了什么"无法 diff；m4 在新装置上重跑过（被杀、原文逐字相同），**m1/m2/m3 从没重跑**，其日志（04:55–04:57）**早于那次编辑** ⇒ 对这三轮那是**论证、不是实测**。实现者**拒绝把论证当实测**，先备份旧日志、再在当前装置下**全部重跑**（v2 日志齐、`orig_md5` 逐轮等于当前 `map.js`）。★ 通则：**"同一文件被改动 ⇒ 旧证据对应旧字节"里的"文件"包括装置本身**。
+★ **两处装置缺陷（实现者自查出）**：① 取数脚本 `extract-verify.sh` 的拒收正则只认 `[ERROR] BUILD FAILURE`，而 Maven 写的是 **`[INFO] BUILD FAILURE`** ⇒ 会把**跑完的红轮**判成"没跑完"——**把"有"伪装成"没有"**，与 ugrep / `git grep --untracked` 同族（CLAUDE.md 已有"命中 0 先怀疑自己的正则"，这是第二个载体）；② 其第 ⑩ 项（模块数）用 Maven 2 的 `[INFO] Packaging ` 写法 ⇒ **本机恒为 0**，一个"看着像测到过"的读数。两者都已修 + **双侧自证**（被杀轮仍 `rc=1`；跑完的红轮能提取出 `701:[INFO] BUILD FAILURE`），旧版 `cp -a` 留档、①~⑨ 项 `diff` 逐字节不变。
+★ 实现者另**自查出自己报告里 5 处"伪造留痕"**（把"我数的"写成"日志里的"逐字引文，如 `PASS=31`、归并 md5 `cae9cfdc…` 实为 `cd9b97af…`）——结论未错、错在让读者以为那是从文件里抄的；已逐条改正。★ 它第一版对拍器还犯过一次 **"空==空"恒真**（把 `notes/` 数了两遍 ⇒ 报告独有值全判 OK）——与 M7b 那条 `.class` 聚合 md5 是同族，一并记在案。
+
+**未核实**（承报告 §八，逐条保留）：**真档**（本机无档 ⇒ 全部 e2e 跑在 `--demo` 的 **3 格**演示世界，随机化样本面窄）/ 只验 `river`·`road` 两个 kind（本机词表只此两类）/ 长连拖动（>2 格链）/ seed 全域边界 / **只 Chromium，未跑第二视口**（1024×700）/ 触摸与触控笔 / 异常路径（后端 422/409 下的 UI 反应）/ ★ **`GuiServer:393` 那行接线本身没有变异体**（m5 钉的是 `ApiViews.incidentEdges` 的排序与列举）/ ★ **`e2e.cjs` v1 不可 diff**（见上）。
+
+**带裁定的遗留（归还 T12）**：① 真档上的连通性读写仍未验——**与 T5/T6 同一条开口项**（M6 的"`edges` 非空无真实样本"**依然成立**）；② `randomizeSelectionState` 会**静默丢弃**缺 `q`/`r` 的项（选择来自内部状态、非用户文本 ⇒ 未按错误处理）；③ 触摸 / HiDPI / 第二视口随 M8 关账统一记。
