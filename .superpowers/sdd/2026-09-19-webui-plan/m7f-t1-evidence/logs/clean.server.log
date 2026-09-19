@@ -1,0 +1,11 @@
+13:45:01.387 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+13:45:01.471 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5820/（静态 /webui，同源，无 CORS 头）
+13:45:01.471 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m7f-clean-store checkpointInterval=100 codec=3 handler=8 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45483 guiPort=5820 approvalPort=45221
+13:45:01.543 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+13:45:01.543 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m7f-clean-store checkpointInterval=100 模块数=3 guiPort=5820 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+13:45:01.543 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5820/
+13:45:03.157 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=9b57432b-5e21-43d2-ab84-6c231225102e correlationId=9b57432b-5e21-43d2-ab84-6c231225102e 新坐标=main@2
+13:45:03.510 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=d2924923-b855-41f7-afb7-04864fac39fb correlationId=d2924923-b855-41f7-afb7-04864fac39fb 新坐标=main@3
+13:45:03.769 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=8ab515fc-4870-431d-8f8c-c56075e03121 correlationId=8ab515fc-4870-431d-8f8c-c56075e03121 新坐标=main@4
+13:45:05.498 WARN  io.mosire.simos.core.store.CheckpointStore - checkpoint 缺失（C18：回退到更早的 checkpoint，最坏从创世重放，不失败）: /tmp/m7f-clean-store/checkpoints/main/4.json
+13:45:05.962 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

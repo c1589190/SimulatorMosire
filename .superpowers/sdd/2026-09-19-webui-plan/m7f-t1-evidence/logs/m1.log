@@ -1,0 +1,63 @@
+server_ready_tries=3 code=200 pid=308670
+STEP setup-single-tick-node: PASS {"initialNodes":[{"tick":5,"revision":1,"firstRevision":1,"count":1,"commands":"core.Bootstrap","styleLeft":"72px","centerX":103,"text":"tick 5· Bootstrap"}],"initialTicks":{"ticks":[5],"lastTick":5,"nodeCount":1}}
+STEP setup-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP a-node-count-unchanged: FAIL {"before":1,"after":null}
+STEP a-detail-plus-one: FAIL {"before":{"tick":5,"revision":1,"firstRevision":1,"count":1,"commands":"core.Bootstrap","styleLeft":"72px","centerX":103,"text":"tick 5· Bootstrap"},"after":null}
+STEP a-command-is-planroute: FAIL null
+STEP a-head-advanced: PASS {"headBeforeA":1,"headAfterA":2}
+STEP a-write-issued: PASS {"nonGetBeforeA":0,"nonGetAfterA":1}
+STEP a-api-tick-count-unchanged: PASS {"apiBeforeA":[5],"apiAfterA":[5]}
+STEP b-advance-button-enabled-at-tip: PASS {"advEnabledB":true}
+STEP b-node-plus-one: PASS {"nodesBeforeB":2,"after":3}
+STEP b-new-tick-is-old-plus-1: PASS {"tipTickB":5,"lastTick":6,"dom":6}
+STEP b-head-advanced: PASS {"headBeforeB":2,"headAfterB":3}
+STEP b-new-node-is-advancetime: PASS "core.AdvanceTime"
+STEP c-node-plus-one: PASS {"nodesBeforeC":3,"after":4}
+STEP c-new-tick-is-old-plus-100: PASS {"tipTickC":6,"apiLastTick":106,"domLastTick":106}
+STEP c-head-advanced: PASS {"headBeforeC":3,"headAfterC":4}
+STEP c-status-shows-100: PASS "已推进 100 tick（6 → 106）"
+STEP d-invalid-0-message: PASS {"value":"0","enabled":true,"status":"推进步数必须是 ≥1 的整数（当前：0）"}
+STEP d-invalid-0-no-write: PASS {"nonGetBefore":3,"nonGetAfter":3}
+STEP d-invalid-0-state-unchanged: PASS {"nodesBefore":4,"nodesAfter":4,"headBefore":4,"headAfter":4}
+STEP d-invalid--5-message: PASS {"value":"-5","enabled":true,"status":"推进步数必须是 ≥1 的整数（当前：-5）"}
+STEP d-invalid--5-no-write: PASS {"nonGetBefore":3,"nonGetAfter":3}
+STEP d-invalid--5-state-unchanged: PASS {"nodesBefore":4,"nodesAfter":4,"headBefore":4,"headAfter":4}
+STEP d-invalid-abc-message: PASS {"value":"abc","enabled":true,"status":"推进步数必须是 ≥1 的整数（当前：空）"}
+STEP d-invalid-abc-no-write: PASS {"nonGetBefore":3,"nonGetAfter":3}
+STEP d-invalid-abc-state-unchanged: PASS {"nodesBefore":4,"nodesAfter":4,"headBefore":4,"headAfter":4}
+STEP e-branch-created: PASS {"branchE":"b2"}
+STEP e-fork-aligned: PASS {"parentTick":106,"parentStyleLeft":"402px","childStyleLeft":"402px","parentCenterX":433,"childCenterX":433}
+STEP e-child-tick-matches-parent: PASS {"tipTickE":106,"childTick":106}
+STEP e-one-line-per-branch: PASS {"linesE":2}
+STEP e-fork-link-present: PASS {"linksE":1}
+STEP f-r2-advance-disabled-off-tip: PASS {"disabledMiddleCreate":true,"midRevF":1}
+STEP f-r2-fork-disabled-off-tip: PASS {"disabledMiddleFork":true}
+STEP f-tick5-cursor-is-last-revision: PASS {"midRevF":1,"tick5LastRevision":1}
+STEP f-knob-visible: PASS {"x":96,"y":1019,"width":14,"height":14}
+STEP f-r1-drag-changes-rev: PASS {"midRevF":1,"mainHeadF":4,"revAfterDrag":4}
+STEP f-r1-drag-no-write: PASS {"nonGetBeforeDrag":4,"nonGetAfterDrag":4}
+STEP f-r2-advance-enabled-at-tip: PASS {"disabledTipCreate":false}
+STEP f-r2-fork-enabled-at-tip: PASS {"disabledTipFork":false}
+STEP f-active-node-at-tip: PASS "tick 106· AdvanceTime"
+NON_GET_LIST=["/api/command","/api/advance","/api/advance","/api/fork"]
+STEP g-nonget-allowlist: PASS {"list":["/api/command","/api/advance","/api/advance","/api/fork"],"violations":[]}
+STEP g-command-present: PASS ["/api/command","/api/advance","/api/advance","/api/fork"]
+STEP g-advance-present: PASS ["/api/command","/api/advance","/api/advance","/api/fork"]
+STEP g-fork-present: PASS ["/api/command","/api/advance","/api/advance","/api/fork"]
+STEP f-no-page-errors: PASS []
+E2E RESULT: FAIL a-node-count-unchanged,a-detail-plus-one,a-command-is-planroute
+e2e_rc=1
+
+===== 装置补记（m1）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/timeline.js
+orig_md5=2b63de5261f6451573bcb7e403415a98
+mutant_md5=3259f138637f9c4d23cf1e25b60b6cd5
+pushed_src_md5=3259f138637f9c4d23cf1e25b60b6cd5
+pushed_classes_md5=3259f138637f9c4d23cf1e25b60b6cd5
+restored_src_md5=2b63de5261f6451573bcb7e403415a98
+restored_classes_md5=2b63de5261f6451573bcb7e403415a98
+class_backup_md5=2b63de5261f6451573bcb7e403415a98
+round_start=1789796738
+server_log_mtime=1789796750
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7ft1/.superpowers/sdd/2026-09-19-webui-plan/m7f-t1-evidence/logs/m1.server.log

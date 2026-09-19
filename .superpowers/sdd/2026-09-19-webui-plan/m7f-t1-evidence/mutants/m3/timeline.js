@@ -161,7 +161,7 @@
     if (parentTick === null) {
       return index + 1;
     }
-    return columnOfTick(parentRef.branch, parentTick, seen) + index;
+    return index + 1;
   }
 
   /** 兼容旧名：revision → 其 tick 所在列。 */

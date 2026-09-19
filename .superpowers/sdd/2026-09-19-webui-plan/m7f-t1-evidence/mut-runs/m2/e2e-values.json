@@ -1,0 +1,257 @@
+{
+  "setup": {
+    "initialNodes": [
+      {
+        "tick": 5,
+        "revision": 1,
+        "firstRevision": 1,
+        "count": 1,
+        "commands": "core.Bootstrap",
+        "styleLeft": "72px",
+        "centerX": 103,
+        "text": "tick 5· Bootstrap"
+      }
+    ],
+    "initialTicks": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 1
+    }
+  },
+  "a": {
+    "beforeA": [
+      {
+        "tick": 5,
+        "revision": 1,
+        "firstRevision": 1,
+        "count": 1,
+        "commands": "core.Bootstrap",
+        "styleLeft": "72px",
+        "centerX": 103,
+        "text": "tick 5· Bootstrap"
+      }
+    ],
+    "afterA": [
+      {
+        "tick": 5,
+        "revision": 2,
+        "firstRevision": 1,
+        "count": 2,
+        "commands": "core.Bootstrap,unit.PlanRoute",
+        "styleLeft": "72px",
+        "centerX": 103,
+        "text": "tick 5· 2 条命令"
+      }
+    ],
+    "headBeforeA": 1,
+    "headAfterA": 2,
+    "apiBeforeA": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 1
+    },
+    "apiAfterA": {
+      "ticks": [
+        5
+      ],
+      "lastTick": 5,
+      "nodeCount": 2
+    },
+    "domText": "tick 5· 2 条命令"
+  },
+  "b": {
+    "tipTickB": 5,
+    "nodesBeforeB": 1,
+    "nodesAfterB": [
+      {
+        "tick": 5,
+        "revision": 2,
+        "firstRevision": 1,
+        "count": 2,
+        "commands": "core.Bootstrap,unit.PlanRoute",
+        "styleLeft": "72px",
+        "centerX": 103,
+        "text": "tick 5· 2 条命令"
+      },
+      {
+        "tick": 6,
+        "revision": 3,
+        "firstRevision": 3,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "styleLeft": "182px",
+        "centerX": 213,
+        "text": "tick 6· AdvanceTime"
+      }
+    ],
+    "apiAfterB": {
+      "ticks": [
+        5,
+        6
+      ],
+      "lastTick": 6,
+      "nodeCount": 3
+    },
+    "headBeforeB": 2,
+    "headAfterB": 3
+  },
+  "c": {
+    "tipTickC": 6,
+    "nodesBeforeC": 2,
+    "nodesAfterC": [
+      {
+        "tick": 5,
+        "revision": 2,
+        "firstRevision": 1,
+        "count": 2,
+        "commands": "core.Bootstrap,unit.PlanRoute",
+        "styleLeft": "72px",
+        "centerX": 103,
+        "text": "tick 5· 2 条命令"
+      },
+      {
+        "tick": 6,
+        "revision": 3,
+        "firstRevision": 3,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "styleLeft": "182px",
+        "centerX": 213,
+        "text": "tick 6· AdvanceTime"
+      },
+      {
+        "tick": 7,
+        "revision": 4,
+        "firstRevision": 4,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "styleLeft": "292px",
+        "centerX": 323,
+        "text": "tick 7· AdvanceTime"
+      }
+    ],
+    "apiAfterC": {
+      "ticks": [
+        5,
+        6,
+        7
+      ],
+      "lastTick": 7,
+      "nodeCount": 4
+    },
+    "headBeforeC": 3,
+    "headAfterC": 4,
+    "status": "已推进 100 tick（6 → 106）"
+  },
+  "d": [
+    {
+      "value": "0",
+      "enabled": true,
+      "status": "推进步数必须是 ≥1 的整数（当前：0）",
+      "nonGetBefore": 3,
+      "nonGetAfter": 3,
+      "nodesBefore": 3,
+      "nodesAfter": 3,
+      "headBefore": 4,
+      "headAfter": 4
+    },
+    {
+      "value": "-5",
+      "enabled": true,
+      "status": "推进步数必须是 ≥1 的整数（当前：-5）",
+      "nonGetBefore": 3,
+      "nonGetAfter": 3,
+      "nodesBefore": 3,
+      "nodesAfter": 3,
+      "headBefore": 4,
+      "headAfter": 4
+    },
+    {
+      "value": "abc",
+      "enabled": true,
+      "status": "推进步数必须是 ≥1 的整数（当前：空）",
+      "nonGetBefore": 3,
+      "nonGetAfter": 3,
+      "nodesBefore": 3,
+      "nodesAfter": 3,
+      "headBefore": 4,
+      "headAfter": 4
+    }
+  ],
+  "e": {
+    "branchE": "b2",
+    "tipTickE": 7,
+    "mainNodesE": [
+      {
+        "tick": 5,
+        "revision": 2,
+        "firstRevision": 1,
+        "count": 2,
+        "commands": "core.Bootstrap,unit.PlanRoute",
+        "styleLeft": "72px",
+        "centerX": 103,
+        "text": "tick 5· 2 条命令"
+      },
+      {
+        "tick": 6,
+        "revision": 3,
+        "firstRevision": 3,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "styleLeft": "182px",
+        "centerX": 213,
+        "text": "tick 6· AdvanceTime"
+      },
+      {
+        "tick": 7,
+        "revision": 4,
+        "firstRevision": 4,
+        "count": 1,
+        "commands": "core.AdvanceTime",
+        "styleLeft": "292px",
+        "centerX": 323,
+        "text": "tick 7· AdvanceTime"
+      }
+    ],
+    "childNodesE": [
+      {
+        "tick": 7,
+        "revision": 1,
+        "firstRevision": 1,
+        "count": 1,
+        "commands": "core.ForkBranch",
+        "styleLeft": "292px",
+        "centerX": 323,
+        "text": "tick 7· ForkBranch"
+      }
+    ],
+    "linesE": 2,
+    "linksE": 1
+  },
+  "f": {
+    "atMiddleF": "main",
+    "midRevF": 2,
+    "tick5LastRevision": 2,
+    "disabledMiddleCreate": true,
+    "disabledMiddleFork": true,
+    "revAfterDrag": 4,
+    "mainHeadF": 4,
+    "nonGetBeforeDrag": 4,
+    "nonGetAfterDrag": 4,
+    "disabledTipCreate": false,
+    "disabledTipFork": false
+  },
+  "g": {
+    "list": [
+      "/api/command",
+      "/api/advance",
+      "/api/advance",
+      "/api/fork"
+    ],
+    "violations": []
+  }
+}

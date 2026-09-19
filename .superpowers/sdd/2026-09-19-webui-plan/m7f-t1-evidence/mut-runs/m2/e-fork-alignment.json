@@ -1,0 +1,50 @@
+{
+  "branchE": "b2",
+  "tipTickE": 7,
+  "mainNodesE": [
+    {
+      "tick": 5,
+      "revision": 2,
+      "firstRevision": 1,
+      "count": 2,
+      "commands": "core.Bootstrap,unit.PlanRoute",
+      "styleLeft": "72px",
+      "centerX": 103,
+      "text": "tick 5· 2 条命令"
+    },
+    {
+      "tick": 6,
+      "revision": 3,
+      "firstRevision": 3,
+      "count": 1,
+      "commands": "core.AdvanceTime",
+      "styleLeft": "182px",
+      "centerX": 213,
+      "text": "tick 6· AdvanceTime"
+    },
+    {
+      "tick": 7,
+      "revision": 4,
+      "firstRevision": 4,
+      "count": 1,
+      "commands": "core.AdvanceTime",
+      "styleLeft": "292px",
+      "centerX": 323,
+      "text": "tick 7· AdvanceTime"
+    }
+  ],
+  "childNodesE": [
+    {
+      "tick": 7,
+      "revision": 1,
+      "firstRevision": 1,
+      "count": 1,
+      "commands": "core.ForkBranch",
+      "styleLeft": "292px",
+      "centerX": 323,
+      "text": "tick 7· ForkBranch"
+    }
+  ],
+  "linesE": 2,
+  "linksE": 1
+}

@@ -93,8 +93,11 @@
   <footer class="timeline-bar" id="timeline-bar">
     <div id="timeline-mount" class="timeline-track"></div>
     <div class="timeline-actions">
+      <label class="tl-advance">推进
+        <input id="timeline-advance-n" type="number" min="1" step="1" value="1" aria-label="推进 tick 数">
+        tick</label>
       <button type="button" id="timeline-create" class="primary" disabled
-        title="推进时间一格（core.AdvanceTime）：单位沿已下路线出发/前进">创建节点（推进时间）</button>
+        title="推进 N 个 tick（core.AdvanceTime；N 由左侧输入框给定，默认 1）：单位沿已下路线出发/前进">推进 N tick</button>
       <button type="button" id="timeline-fork" disabled>分岔</button>
     </div>
     <span id="timeline-meta" class="muted">分支 — · rev —</span>

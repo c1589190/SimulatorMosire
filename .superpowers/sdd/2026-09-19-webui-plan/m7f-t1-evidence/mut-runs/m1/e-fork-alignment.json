@@ -1,0 +1,60 @@
+{
+  "branchE": "b2",
+  "tipTickE": 106,
+  "mainNodesE": [
+    {
+      "tick": 5,
+      "revision": 1,
+      "firstRevision": 1,
+      "count": 1,
+      "commands": "core.Bootstrap",
+      "styleLeft": "72px",
+      "centerX": 103,
+      "text": "tick 5· Bootstrap"
+    },
+    {
+      "tick": 5,
+      "revision": 2,
+      "firstRevision": 2,
+      "count": 1,
+      "commands": "unit.PlanRoute",
+      "styleLeft": "72px",
+      "centerX": 103,
+      "text": "tick 5· PlanRoute"
+    },
+    {
+      "tick": 6,
+      "revision": 3,
+      "firstRevision": 3,
+      "count": 1,
+      "commands": "core.AdvanceTime",
+      "styleLeft": "292px",
+      "centerX": 323,
+      "text": "tick 6· AdvanceTime"
+    },
+    {
+      "tick": 106,
+      "revision": 4,
+      "firstRevision": 4,
+      "count": 1,
+      "commands": "core.AdvanceTime",
+      "styleLeft": "402px",
+      "centerX": 433,
+      "text": "tick 106· AdvanceTime"
+    }
+  ],
+  "childNodesE": [
+    {
+      "tick": 106,
+      "revision": 1,
+      "firstRevision": 1,
+      "count": 1,
+      "commands": "core.ForkBranch",
+      "styleLeft": "402px",
+      "centerX": 433,
+      "text": "tick 106· ForkBranch"
+    }
+  ],
+  "linesE": 2,
+  "linksE": 1
+}
