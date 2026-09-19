@@ -9,9 +9,11 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.util.state.FieldDelta;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * 框选随机化：把一个区域内的格按占比随机重分配给两种地形。
@@ -71,18 +73,63 @@ public final class RegionRandomizer {
     }
 
     Region target = map.regions().get(region);
+    List<HexCoord> ordered = target == null ? List.of() : target.hexes().stream().sorted().toList();
+    return applyToHexes(map, ordered, terrainA, terrainB, ratioA, rngFor(region, seed));
+  }
+
+  /**
+   * 对**任意选区**（{@code Set<HexCoord>}）做同一种两地形重分配——M8 spec §二 {@code map.RandomizeRegion} 的底座（S5：允许
+   * 任意选区，不强制先建 Region）。
+   *
+   * <p>★ **不改原 region-id 入口的语义**：两条入口共用 {@link #applyToHexes}，消费序同为 {@link HexCoord} 自然序、
+   * 图外格同样跳过且不消费随机数。 差别只在随机源：本重载取 **{@code new Random(seed)}**（选区没有 RegionId 可派生，故种子的确定来源就是 seed
+   * 本身）； 原入口仍取 {@code (seed, RegionId)} ⇒ 孪生区域同 seed 结果不同。
+   *
+   * @param map 现图（只读；目标格与原地形取自它）
+   * @param hexes 任意选区；图外的格跳过（不影响图内格的结果）
+   * @param terrainA 占比为 {@code ratioA} 的地形 key
+   * @param terrainB 其余格的地形 key
+   * @param ratioA 取 A 的期望占比，含边界 [0,1]
+   * @param seed 随机种子；同 seed + 同 base + 同选区 ⇒ 逐字节相同
+   * @return 只有 {@code terrainBlocks} 可能非 {@code Unchanged} 的变更集；无目标格 ⇒ 8 个全 {@code Unchanged}
+   */
+  public static MapChangeSet randomize(
+      GameMap map,
+      Set<HexCoord> hexes,
+      String terrainA,
+      String terrainB,
+      double ratioA,
+      long seed) {
+    Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(hexes, "hexes");
+    // 调用只为校验：未知 key 由词表自己抛（R-12-h 不包不吞）。
+    TerrainCatalog.of(terrainA);
+    TerrainCatalog.of(terrainB);
+    if (!(ratioA >= 0.0 && ratioA <= 1.0)) {
+      // ★ 非"或"形态：NaN 与任何数比较全是 false，`ratioA < 0 || ratioA > 1` 会把 NaN 静默漏过。
+      throw new IllegalArgumentException("ratioA 必须在 [0,1]: " + ratioA);
+    }
+    return applyToHexes(
+        map, hexes.stream().sorted().toList(), terrainA, terrainB, ratioA, new Random(seed));
+  }
+
+  /** 两条入口共用的重分配：按 {@code ordered} 逐格消费一次 {@code nextDouble()}，图外格跳过且不消费。 */
+  private static MapChangeSet applyToHexes(
+      GameMap map,
+      List<HexCoord> ordered,
+      String terrainA,
+      String terrainB,
+      double ratioA,
+      Random rng) {
     Map<HexCoord, String> terrainByHex = map.terrainIndex(); // 派生：当前权威地形
     boolean touched = false;
-    if (target != null) {
-      Random rng = rngFor(region, seed);
-      for (HexCoord at : target.hexes().stream().sorted().toList()) {
-        if (!map.hexes().containsKey(at)) {
-          continue; // 不在图纸：跳过且不消费随机数（图外的格不影响图内格的结果）
-        }
-        String terrain = rng.nextDouble() < ratioA ? terrainA : terrainB;
-        terrainByHex.put(at, terrain);
-        touched = true;
+    for (HexCoord at : ordered) {
+      if (!map.hexes().containsKey(at)) {
+        continue; // 不在图纸：跳过且不消费随机数（图外的格不影响图内格的结果）
       }
+      String terrain = rng.nextDouble() < ratioA ? terrainA : terrainB;
+      terrainByHex.put(at, terrain);
+      touched = true;
     }
     FieldDelta<TerrainBlock> blockDelta =
         touched
