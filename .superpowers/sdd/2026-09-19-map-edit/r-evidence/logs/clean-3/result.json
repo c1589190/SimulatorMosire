@@ -1,0 +1,545 @@
+{
+  "preflight": {
+    "hexCount": 19441,
+    "regions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "blockCount": 44
+  },
+  "m9Baseline": {
+    "blockCount": 44,
+    "unmergedCount": 0
+  },
+  "domAudit": {
+    "mode": "region-edit",
+    "drawTogglePresent": false,
+    "checkboxesInSection": 0,
+    "whitelist": {
+      "create": true,
+      "update": true,
+      "del": true,
+      "terrain": false
+    }
+  },
+  "lasso": {
+    "center": {
+      "q": -16,
+      "r": 0
+    },
+    "ringCount": 12,
+    "wallCount": 12,
+    "lassoActiveMid": true,
+    "expectedCount": 19,
+    "payloadCount": 19,
+    "payloadMatchesIndependentFlood": true,
+    "apiHexCount": 19,
+    "apiMatchesPayload": true,
+    "headBefore": 1,
+    "headAfter": 2,
+    "posts": 1,
+    "regionId": "m8r_lasso"
+  },
+  "overlap": {
+    "q": -16,
+    "r": 0,
+    "regions": [
+      "m8r_lasso",
+      "test_annex_target",
+      "test_nation"
+    ]
+  },
+  "dots": {
+    "focus": "m8r_lasso",
+    "focusHexCount": 19,
+    "boundaryDotCount": 12,
+    "expectedBoundary": 12,
+    "apiHexCount": 19
+  },
+  "dotAdd": {
+    "from": {
+      "q": -18,
+      "r": 0
+    },
+    "to": {
+      "q": -18,
+      "r": -1
+    },
+    "posts": 1,
+    "beforeCount": 19,
+    "payloadCount": 20,
+    "expectedCount": 20,
+    "matches": true,
+    "headBefore": 2,
+    "headAfter": 3
+  },
+  "dotRemove": {
+    "from": {
+      "q": -18,
+      "r": -1
+    },
+    "to": {
+      "q": -17,
+      "r": -1
+    },
+    "posts": 0,
+    "beforeCount": 20,
+    "payloadCount": null,
+    "expectedCount": 19,
+    "matches": false,
+    "removed": "-18,-1",
+    "probeDown": {
+      "debug": {
+        "mode": "region-edit",
+        "focus": "m8r_lasso",
+        "fadedRegions": [
+          "test_annex_target",
+          "test_nation"
+        ],
+        "draftHexCount": 0,
+        "draftHexes": [],
+        "focusHexCount": 20,
+        "boundaryDotCount": 13,
+        "lassoHexCount": 0,
+        "lassoActive": false,
+        "dotDragging": false,
+        "op": "add",
+        "deleteArmed": false,
+        "busy": false,
+        "bodyRegionFocus": "m8r_lasso",
+        "overviewRegions": [
+          "test_annex_target",
+          "test_nation",
+          "m8r_lasso"
+        ]
+      },
+      "pick": {
+        "kind": "hex",
+        "q": -18,
+        "r": -1,
+        "inMap": true,
+        "terrain": "low_hills"
+      },
+      "dot": {
+        "q": -18,
+        "r": -1
+      },
+      "render": {
+        "scale": 2.4,
+        "tx": 2901.365534361926,
+        "ty": 400,
+        "cellSize": 34,
+        "hexCount": 19441,
+        "blockCount": 44,
+        "blockVertexCount": 9694,
+        "blockRingCounts": {
+          "low_hills@-64_72": 1,
+          "low_hills@-50_-10": 3,
+          "low_hills@-42_67": 1,
+          "low_hills@-35_62": 6,
+          "low_hills@-22_-58": 1,
+          "low_hills@8_43": 1,
+          "low_hills@33_28": 1,
+          "mountains@-73_2": 1,
+          "mountains@-54_69": 1,
+          "mountains@-40_-40": 1,
+          "mountains@-16_4": 1,
+          "mountains@-13_-33": 1,
+          "mountains@-13_54": 1,
+          "mountains@-12_55": 1,
+          "mountains@-11_56": 1,
+          "mountains@-7_61": 1,
+          "mountains@2_71": 1,
+          "mountains@6_74": 1,
+          "mountains@23_-26": 1,
+          "ocean@-80_17": 1,
+          "ocean@-80_74": 1,
+          "ocean@-64_-16": 1,
+          "ocean@-31_76": 1,
+          "ocean@-28_13": 1,
+          "ocean@-26_41": 1,
+          "ocean@-22_38": 1,
+          "ocean@-21_-44": 1,
+          "ocean@-18_80": 1,
+          "ocean@-14_41": 1,
+          "ocean@-13_77": 1,
+          "ocean@7_-50": 1,
+          "ocean@10_-32": 1,
+          "ocean@18_53": 2,
+          "ocean@22_-72": 1,
+          "ocean@30_-41": 1,
+          "ocean@38_-3": 1,
+          "ocean@39_-9": 1,
+          "plains@-80_0": 13,
+          "plains@-42_-1": 1,
+          "plains@-28_-17": 1,
+          "plains@31_49": 1,
+          "plains@38_-41": 1,
+          "plains@69_-78": 1,
+          "plains@71_-8": 1
+        },
+        "unmergedCount": 0,
+        "paintedRingCount": 320,
+        "pass2Draws": 0,
+        "unitCount": 0,
+        "colorByTerrain": {
+          "ocean": "#1F5FA0",
+          "plains": "#9CCB5B",
+          "low_hills": "#A8B36A",
+          "mountains": "#7A7F85"
+        },
+        "fallbackColor": "#ff00ff",
+        "fallbackWarned": false,
+        "highlightHexCount": 703,
+        "highlightColors": [
+          "#00e5ff",
+          "#dbadcc",
+          "#ceaecf"
+        ],
+        "highlightAlphas": [
+          0.13,
+          0.52
+        ],
+        "regionFallbackColor": "#00e5ff",
+        "regionFallbackWarned": true,
+        "selected": null,
+        "selectedUnit": null,
+        "mode": "region-edit",
+        "brushHexCount": 0,
+        "brushOp": "add",
+        "draftHexCount": 0,
+        "draftHexes": [],
+        "painting": false,
+        "lassoHexCount": 0,
+        "lassoOrderCount": 0,
+        "lassoActive": false,
+        "focusHexCount": 20,
+        "focusBoundaryCount": 13,
+        "dotDragging": false,
+        "isWorkbench": true,
+        "terrainRebuilds": 5,
+        "terrainBlits": 41,
+        "borderDraws": 36,
+        "legendScans": 3,
+        "borderScreenPx": 81.6,
+        "terrainMode": "blocks",
+        "routeCount": 0,
+        "routes": []
+      }
+    },
+    "probeMove": {
+      "debug": {
+        "mode": "region-edit",
+        "focus": "m8r_lasso",
+        "fadedRegions": [
+          "test_annex_target",
+          "test_nation"
+        ],
+        "draftHexCount": 0,
+        "draftHexes": [],
+        "focusHexCount": 20,
+        "boundaryDotCount": 13,
+        "lassoHexCount": 0,
+        "lassoActive": false,
+        "dotDragging": false,
+        "op": "add",
+        "deleteArmed": false,
+        "busy": false,
+        "bodyRegionFocus": "m8r_lasso",
+        "overviewRegions": [
+          "test_annex_target",
+          "test_nation",
+          "m8r_lasso"
+        ]
+      },
+      "pick": {
+        "kind": "hex",
+        "q": -17,
+        "r": -1,
+        "inMap": true,
+        "terrain": "low_hills"
+      },
+      "render": {
+        "scale": 2.4,
+        "tx": 2901.365534361926,
+        "ty": 400,
+        "cellSize": 34,
+        "hexCount": 19441,
+        "blockCount": 44,
+        "blockVertexCount": 9694,
+        "blockRingCounts": {
+          "low_hills@-64_72": 1,
+          "low_hills@-50_-10": 3,
+          "low_hills@-42_67": 1,
+          "low_hills@-35_62": 6,
+          "low_hills@-22_-58": 1,
+          "low_hills@8_43": 1,
+          "low_hills@33_28": 1,
+          "mountains@-73_2": 1,
+          "mountains@-54_69": 1,
+          "mountains@-40_-40": 1,
+          "mountains@-16_4": 1,
+          "mountains@-13_-33": 1,
+          "mountains@-13_54": 1,
+          "mountains@-12_55": 1,
+          "mountains@-11_56": 1,
+          "mountains@-7_61": 1,
+          "mountains@2_71": 1,
+          "mountains@6_74": 1,
+          "mountains@23_-26": 1,
+          "ocean@-80_17": 1,
+          "ocean@-80_74": 1,
+          "ocean@-64_-16": 1,
+          "ocean@-31_76": 1,
+          "ocean@-28_13": 1,
+          "ocean@-26_41": 1,
+          "ocean@-22_38": 1,
+          "ocean@-21_-44": 1,
+          "ocean@-18_80": 1,
+          "ocean@-14_41": 1,
+          "ocean@-13_77": 1,
+          "ocean@7_-50": 1,
+          "ocean@10_-32": 1,
+          "ocean@18_53": 2,
+          "ocean@22_-72": 1,
+          "ocean@30_-41": 1,
+          "ocean@38_-3": 1,
+          "ocean@39_-9": 1,
+          "plains@-80_0": 13,
+          "plains@-42_-1": 1,
+          "plains@-28_-17": 1,
+          "plains@31_49": 1,
+          "plains@38_-41": 1,
+          "plains@69_-78": 1,
+          "plains@71_-8": 1
+        },
+        "unmergedCount": 0,
+        "paintedRingCount": 320,
+        "pass2Draws": 0,
+        "unitCount": 0,
+        "colorByTerrain": {
+          "ocean": "#1F5FA0",
+          "plains": "#9CCB5B",
+          "low_hills": "#A8B36A",
+          "mountains": "#7A7F85"
+        },
+        "fallbackColor": "#ff00ff",
+        "fallbackWarned": false,
+        "highlightHexCount": 703,
+        "highlightColors": [
+          "#00e5ff",
+          "#dbadcc",
+          "#ceaecf"
+        ],
+        "highlightAlphas": [
+          0.13,
+          0.52
+        ],
+        "regionFallbackColor": "#00e5ff",
+        "regionFallbackWarned": true,
+        "selected": null,
+        "selectedUnit": null,
+        "mode": "region-edit",
+        "brushHexCount": 0,
+        "brushOp": "add",
+        "draftHexCount": 0,
+        "draftHexes": [],
+        "painting": false,
+        "lassoHexCount": 0,
+        "lassoOrderCount": 0,
+        "lassoActive": false,
+        "focusHexCount": 20,
+        "focusBoundaryCount": 13,
+        "dotDragging": false,
+        "isWorkbench": true,
+        "terrainRebuilds": 5,
+        "terrainBlits": 41,
+        "borderDraws": 36,
+        "legendScans": 3,
+        "borderScreenPx": 81.6,
+        "terrainMode": "blocks",
+        "routeCount": 0,
+        "routes": []
+      }
+    }
+  },
+  "merge": {
+    "temp": [
+      {
+        "q": -17,
+        "r": -2
+      },
+      {
+        "q": -18,
+        "r": -2
+      },
+      {
+        "q": -19,
+        "r": -1
+      }
+    ],
+    "posts": 1,
+    "beforeCount": 20,
+    "payloadCount": 23,
+    "unionCount": 23,
+    "matchesUnion": true
+  },
+  "exclude": {
+    "temp": [
+      {
+        "q": -19,
+        "r": -1
+      },
+      {
+        "q": -18,
+        "r": -2
+      },
+      {
+        "q": -18,
+        "r": -1
+      }
+    ],
+    "posts": 1,
+    "beforeCount": 23,
+    "payloadCount": 20,
+    "diffCount": 20,
+    "matchesDifference": true
+  },
+  "leftPaint": {
+    "draftBefore": 0,
+    "draftAfter": 2,
+    "writesDuringPaint": 0
+  },
+  "createByButton": {
+    "posts": 1,
+    "draft": 2
+  },
+  "dispatchRegionEdit": {
+    "types": [
+      "map.CreateRegion",
+      "map.UpdateRegion"
+    ],
+    "hasPlanRoute": false
+  },
+  "dispatchUnit": {
+    "createUnit": {
+      "ok": true,
+      "kind": null,
+      "message": null
+    },
+    "planRoutePosts": 1,
+    "createRegionPosts": 0,
+    "routeCount": 1
+  },
+  "deleteConfirm": {
+    "armed": {
+      "confirmShown": true,
+      "armed": true
+    },
+    "armedWrites": 0,
+    "confirmedWrites": 1
+  },
+  "fade": {
+    "faded": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "alphas": [
+      0.13,
+      0.52
+    ],
+    "focusAlpha": 0.52,
+    "fadeAlpha": 0.13
+  },
+  "m9": {
+    "blockCount": 44,
+    "unmergedCount": 0,
+    "pickHex": {
+      "q": -18,
+      "r": 0
+    },
+    "selection": {
+      "kind": "hex",
+      "q": -18,
+      "r": 0
+    }
+  },
+  "pageErrors": [],
+  "nonGetGrouped": [
+    {
+      "phase": "A-lasso-create",
+      "types": [
+        "map.CreateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dot-add",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dot-remove",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "D-merge",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "E-exclude",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "F-leftpaint",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "F-create-by-button",
+      "types": [
+        "map.CreateRegion",
+        "unit.CreateUnit"
+      ],
+      "paths": [
+        "/api/command",
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "G-unit-route",
+      "types": [
+        "unit.PlanRoute"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "H-delete",
+      "types": [
+        "map.DeleteRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    }
+  ]
+}

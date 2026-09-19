@@ -1,0 +1,337 @@
+{
+  "preflight": {
+    "hexCount": 19441,
+    "regions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "blockCount": 44
+  },
+  "m9Baseline": {
+    "blockCount": 44,
+    "unmergedCount": 0
+  },
+  "domAudit": {
+    "mode": "region-edit",
+    "drawTogglePresent": false,
+    "checkboxesInSection": 0,
+    "whitelist": {
+      "create": true,
+      "update": true,
+      "del": true,
+      "terrain": false
+    }
+  },
+  "lasso": {
+    "center": {
+      "q": -16,
+      "r": 0
+    },
+    "ringCount": 12,
+    "wallCount": 12,
+    "lassoActiveMid": true,
+    "expectedCount": 19,
+    "payloadCount": 19,
+    "payloadMatchesIndependentFlood": true,
+    "apiHexCount": 19,
+    "apiMatchesPayload": true,
+    "headBefore": 1,
+    "headAfter": 2,
+    "posts": 1,
+    "regionId": "m8r_lasso"
+  },
+  "overlap": {
+    "q": -16,
+    "r": 0,
+    "regions": [
+      "m8r_lasso",
+      "test_annex_target",
+      "test_nation"
+    ]
+  },
+  "dots": {
+    "focus": "m8r_lasso",
+    "focusHexCount": 19,
+    "boundaryDotCount": 12,
+    "expectedBoundary": 12,
+    "apiHexCount": 19
+  },
+  "dotAdd": {
+    "from": {
+      "q": -18,
+      "r": 0
+    },
+    "to": {
+      "q": -18,
+      "r": -1
+    },
+    "posts": 1,
+    "beforeCount": 19,
+    "payloadCount": 20,
+    "expectedCount": 20,
+    "matches": true,
+    "headBefore": 2,
+    "headAfter": 3
+  },
+  "dotRemove": {
+    "from": {
+      "q": -18,
+      "r": -1
+    },
+    "to": {
+      "q": -17,
+      "r": -1
+    },
+    "posts": 0,
+    "beforeCount": 20,
+    "payloadCount": null,
+    "expectedCount": 19,
+    "matches": false,
+    "removed": "-18,-1",
+    "probeDown": {
+      "debug": {
+        "mode": "region-edit",
+        "focus": "m8r_lasso",
+        "fadedRegions": [
+          "test_annex_target",
+          "test_nation"
+        ],
+        "draftHexCount": 0,
+        "draftHexes": [],
+        "focusHexCount": 20,
+        "boundaryDotCount": 13,
+        "lassoHexCount": 0,
+        "lassoActive": false,
+        "dotDragging": false,
+        "op": "add",
+        "deleteArmed": false,
+        "busy": false,
+        "bodyRegionFocus": "m8r_lasso",
+        "overviewRegions": [
+          "test_annex_target",
+          "test_nation",
+          "m8r_lasso"
+        ]
+      },
+      "pick": {
+        "kind": "hex",
+        "q": -18,
+        "r": -1,
+        "inMap": true,
+        "terrain": "low_hills"
+      }
+    },
+    "probeMove": {
+      "debug": {
+        "mode": "region-edit",
+        "focus": "m8r_lasso",
+        "fadedRegions": [
+          "test_annex_target",
+          "test_nation"
+        ],
+        "draftHexCount": 0,
+        "draftHexes": [],
+        "focusHexCount": 20,
+        "boundaryDotCount": 13,
+        "lassoHexCount": 0,
+        "lassoActive": false,
+        "dotDragging": false,
+        "op": "add",
+        "deleteArmed": false,
+        "busy": false,
+        "bodyRegionFocus": "m8r_lasso",
+        "overviewRegions": [
+          "test_annex_target",
+          "test_nation",
+          "m8r_lasso"
+        ]
+      },
+      "pick": {
+        "kind": "hex",
+        "q": -17,
+        "r": -1,
+        "inMap": true,
+        "terrain": "low_hills"
+      }
+    }
+  },
+  "merge": {
+    "temp": [
+      {
+        "q": -17,
+        "r": -2
+      },
+      {
+        "q": -18,
+        "r": -2
+      },
+      {
+        "q": -19,
+        "r": -1
+      }
+    ],
+    "posts": 1,
+    "beforeCount": 20,
+    "payloadCount": 23,
+    "unionCount": 23,
+    "matchesUnion": true
+  },
+  "exclude": {
+    "temp": [
+      {
+        "q": -19,
+        "r": -1
+      },
+      {
+        "q": -18,
+        "r": -2
+      },
+      {
+        "q": -18,
+        "r": -1
+      }
+    ],
+    "posts": 1,
+    "beforeCount": 23,
+    "payloadCount": 20,
+    "diffCount": 20,
+    "matchesDifference": true
+  },
+  "leftPaint": {
+    "draftBefore": 0,
+    "draftAfter": 2,
+    "writesDuringPaint": 0
+  },
+  "createByButton": {
+    "posts": 1,
+    "draft": 2
+  },
+  "dispatchRegionEdit": {
+    "types": [
+      "map.CreateRegion",
+      "map.UpdateRegion"
+    ],
+    "hasPlanRoute": false
+  },
+  "dispatchUnit": {
+    "createUnit": {
+      "ok": true,
+      "kind": null,
+      "message": null
+    },
+    "planRoutePosts": 1,
+    "createRegionPosts": 0,
+    "routeCount": 1
+  },
+  "deleteConfirm": {
+    "armed": {
+      "confirmShown": true,
+      "armed": true
+    },
+    "armedWrites": 0,
+    "confirmedWrites": 1
+  },
+  "fade": {
+    "faded": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "alphas": [
+      0.13,
+      0.52
+    ],
+    "focusAlpha": 0.52,
+    "fadeAlpha": 0.13
+  },
+  "m9": {
+    "blockCount": 44,
+    "unmergedCount": 0,
+    "pickHex": {
+      "q": -18,
+      "r": 0
+    },
+    "selection": {
+      "kind": "hex",
+      "q": -18,
+      "r": 0
+    }
+  },
+  "pageErrors": [],
+  "nonGetGrouped": [
+    {
+      "phase": "A-lasso-create",
+      "types": [
+        "map.CreateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dot-add",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "C-dot-remove",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "D-merge",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "E-exclude",
+      "types": [
+        "map.UpdateRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "F-leftpaint",
+      "types": [],
+      "paths": []
+    },
+    {
+      "phase": "F-create-by-button",
+      "types": [
+        "map.CreateRegion",
+        "unit.CreateUnit"
+      ],
+      "paths": [
+        "/api/command",
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "G-unit-route",
+      "types": [
+        "unit.PlanRoute"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    },
+    {
+      "phase": "H-delete",
+      "types": [
+        "map.DeleteRegion"
+      ],
+      "paths": [
+        "/api/command"
+      ]
+    }
+  ]
+}

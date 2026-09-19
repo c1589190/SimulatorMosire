@@ -1,0 +1,35 @@
+webui_synced map.js_md5=b3538da0211196c608050b1c0f1ac103
+store_src_md5_before=2348b9365e5b107945a305d06fad8fab
+server_ready_tries=3 code=200 pid=465770
+STEP pre-real-archive: PASS {"hexCount":19441,"regions":["test_annex_target","test_nation"],"blockCount":44}
+STEP pre-m9-blocks: PASS {"blockCount":44,"unmergedCount":0}
+STEP f1-no-draw-toggle-no-checkbox: PASS {"mode":"region-edit","drawTogglePresent":false,"checkboxesInSection":0,"whitelist":{"create":true,"update":true,"del":true,"terrain":false}}
+STEP f2-region-edit-whitelist: PASS {"create":true,"update":true,"del":true,"terrain":false}
+STEP a0-lasso-center-found: PASS {"q":-16,"r":0}
+STEP a1-lasso-one-command-head-plus-one: PASS {"center":{"q":-16,"r":0},"ringCount":12,"wallCount":12,"lassoActiveMid":true,"expectedCount":19,"payloadCount":19,"payloadMatchesIndependentFlood":true,"apiHexCount":19,"apiMatchesPayload":true,"headBefore":1,"headAfter":2,"posts":1,"regionId":"m8r_lasso"}
+STEP a2-lasso-hexes-equal-independent-flood: PASS payload=19 independent=19
+STEP a3-lasso-api-matches-payload: PASS api=19
+STEP h1-overlap-allowed: PASS {"q":-16,"r":0,"regions":["m8r_lasso","test_annex_target","test_nation"]}
+STEP b1-dots-match-boundary: PASS {"focus":"m8r_lasso","focusHexCount":19,"boundaryDotCount":12,"expectedBoundary":12,"apiHexCount":19}
+STEP b2-no-dots-when-unselected: PASS {"focus":null,"dots":0}
+STEP c0-add-target-found: PASS {"from":{"q":-18,"r":0},"to":{"q":-18,"r":-1}}
+STEP c1-dot-drag-add-one-update: PASS {"from":{"q":-18,"r":0},"to":{"q":-18,"r":-1},"posts":1,"beforeCount":19,"payloadCount":20,"expectedCount":20,"matches":true,"headBefore":2,"headAfter":3}
+STEP c2-remove-target-found: PASS {"from":{"q":-18,"r":-1},"to":{"q":-17,"r":-1}}
+STEP c3-dot-drag-remove-one-update: PASS {"from":{"q":-18,"r":-1},"to":{"q":-17,"r":-1},"posts":1,"beforeCount":20,"payloadCount":19,"expectedCount":19,"matches":true,"removed":"-18,-1","probeDown":{"pick":{"kind":"hex","q":-18,"r":-1,"inMap":true,"terrain":"low_hills"},"dot":{"q":-18,"r":-1},"dotDragging":true},"probeMove":{"pick":{"kind":"hex","q":-17,"r":-1,"inMap":true,"terrain":"low_hills"},"dotDragging":true}}
+STEP d0-merge-temp-found: PASS [{"q":-18,"r":-1},{"q":-19,"r":0},{"q":-19,"r":1}]
+STEP d1-merge-equals-union: PASS {"temp":[{"q":-18,"r":-1},{"q":-19,"r":0},{"q":-19,"r":1}],"posts":1,"beforeCount":19,"payloadCount":22,"unionCount":22,"matchesUnion":true}
+STEP e1-exclude-equals-difference: FAIL {"temp":[{"q":-19,"r":0},{"q":-19,"r":1},{"q":-18,"r":-1}],"posts":1,"beforeCount":22,"payloadCount":22,"diffCount":19,"matchesDifference":false}
+STEP f3-left-drag-paints-draft-no-write: PASS {"draftBefore":0,"draftAfter":2,"writesDuringPaint":0}
+STEP f4-draft-create-one-command: PASS {"posts":1,"draft":2}
+STEP g1-region-edit-right-is-lasso: PASS {"types":["map.CreateRegion","map.UpdateRegion"],"hasPlanRoute":false}
+STEP g2-unit-mode-right-is-planroute: PASS {"createUnit":{"ok":true,"kind":null,"message":null},"planRoutePosts":1,"createRegionPosts":0,"routeCount":1}
+STEP g3-region-edit-right-is-not-planroute: PASS {"planRoutePosts":0,"mapPathGets":0,"routeCountBefore":1,"routeCountAfter":1}
+STEP h2-delete-confirm-two-step: PASS {"armed":{"confirmShown":true,"armed":true},"armedWrites":0,"confirmedWrites":1}
+STEP h3-focus-fade-colors: PASS {"faded":["test_annex_target","test_nation"],"alphas":[0.13,0.52],"focusAlpha":0.52,"fadeAlpha":0.13}
+STEP h4-m9-blocks-and-pick: PASS {"blockCount":44,"unmergedCount":0,"pickHex":{"q":-18,"r":0},"selection":{"kind":"hex","q":-18,"r":0}}
+STEP h5-no-pageerror: PASS []
+NONGET_GROUPED [{"phase":"A-lasso-create","types":["map.CreateRegion"],"paths":["/api/command"]},{"phase":"C-dot-add","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"C-dot-remove","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"D-merge","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"E-exclude","types":["map.UpdateRegion"],"paths":["/api/command"]},{"phase":"F-leftpaint","types":[],"paths":[]},{"phase":"F-create-by-button","types":["map.CreateRegion","unit.CreateUnit"],"paths":["/api/command","/api/command"]},{"phase":"G-unit-route","types":["unit.PlanRoute"],"paths":["/api/command"]},{"phase":"G3-region-edit-right-with-unit","types":[],"paths":[]},{"phase":"H-delete","types":["map.DeleteRegion"],"paths":["/api/command"]}]
+PAGEERRORS []
+E2E RESULT: 1 FAIL e1-exclude-equals-difference
+e2e_rc=1
+store_src_md5_after=2348b9365e5b107945a305d06fad8fab

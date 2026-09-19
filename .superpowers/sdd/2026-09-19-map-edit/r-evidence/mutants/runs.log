@@ -1,0 +1,25 @@
+=== mutation m1 ===
+orig_md5=66fa591b9147c18762573a71e3a609e0
+mutant_md5=5c1b90ff1b2fefd783626ddf3ada849f
+classes_md5=5c1b90ff1b2fefd783626ddf3ada849f
+orig_aggregate_md5=8261638ff15eaa5c77032c8e5b81e4ef
+=== mutation m2 ===
+orig_md5=66fa591b9147c18762573a71e3a609e0
+mutant_md5=d0a675df962577b901bfee690c608c12
+classes_md5=d0a675df962577b901bfee690c608c12
+orig_aggregate_md5=8261638ff15eaa5c77032c8e5b81e4ef
+=== mutation m3 ===
+orig_md5=66fa591b9147c18762573a71e3a609e0
+mutant_md5=b804b42cd1176b6c95ff94ea27aefb19
+classes_md5=b804b42cd1176b6c95ff94ea27aefb19
+orig_aggregate_md5=8261638ff15eaa5c77032c8e5b81e4ef
+=== mutation m4 ===
+orig_md5=66fa591b9147c18762573a71e3a609e0
+mutant_md5=2b6aa15c25a066634a793086225ecd93
+classes_md5=2b6aa15c25a066634a793086225ecd93
+orig_aggregate_md5=8261638ff15eaa5c77032c8e5b81e4ef
+=== mutation m5 ===
+orig_md5=66fa591b9147c18762573a71e3a609e0
+mutant_md5=b3538da0211196c608050b1c0f1ac103
+classes_md5=b3538da0211196c608050b1c0f1ac103
+orig_aggregate_md5=8261638ff15eaa5c77032c8e5b81e4ef
