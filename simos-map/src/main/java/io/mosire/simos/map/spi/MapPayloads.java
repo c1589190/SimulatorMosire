@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -54,6 +55,20 @@ final class MapPayloads {
     return value.asText();
   }
 
+  /**
+   * 必填的整数字段。**没有默认值**：字段缺席、JSON {@code null}、非整数（含小数/字符串/布尔）、或超出 long ⇒ 抛。
+   *
+   * <p>★ 这是 {@code map.RandomizeRegion} 的 {@code seed} 用的：seed **必须由调用方显式给**（缺了就是缺了， 不兜
+   * 0——兜底会让"同一操作两次不同"从一条被拒的载荷变成一次静默的非法写）。
+   */
+  static long requireLong(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asLong();
+  }
+
   /** 必填的 {@code [{q,r}…]} 数组 ⇒ 去重后的坐标集合（保序）。空数组**在这一层合法**（形状无错）， 由领域操作判定"至少要改一格"。 */
   static Set<HexCoord> requireHexes(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -73,6 +88,29 @@ final class MapPayloads {
   /** 必填的 {@code regionId} 字符串 ⇒ {@link RegionId}（空白由 {@link RegionId#parse} 拒绝，消息是它自己的）。 */
   static RegionId requireRegionId(JsonNode payload, String field) {
     return RegionId.parse(requireText(payload, field));
+  }
+
+  /**
+   * 必填的 {@code ["q_r|q_r"…]} 数组 ⇒ 去重后的无向边集合（保序）。空数组**在这一层合法**（形状无错）， 由领域操作判定"至少要标注一条边"。
+   *
+   * <p>★ 边的线格式取 {@link EdgeRef#toString()} 的规范串（{@code "a|b"}，两段各自是 {@link HexCoord#toString()} 的
+   * {@code "q_r"}）——这正是仓内既有的"边 key"形式（{@code MapChangeSet} 的 {@code edges} 组件键、真档 JSON 的键都是它）。
+   * 端点顺序由 {@link EdgeRef} 构造期规范化，故 {@code "1_0|0_0"} 与 {@code "0_0|1_0"} 是同一集合元素。
+   * 形态错（元素非字符串、段数不对、坐标非法）由 {@link EdgeRef#parse} 自己抛。
+   */
+  static Set<EdgeRef> requireEdgeRefs(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [\"q_r|q_r\"…] 数组: " + payload);
+    }
+    Set<EdgeRef> edges = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是 \"q_r|q_r\" 字符串: " + element);
+      }
+      edges.add(EdgeRef.parse(element.asText()));
+    }
+    return edges;
   }
 
   /**

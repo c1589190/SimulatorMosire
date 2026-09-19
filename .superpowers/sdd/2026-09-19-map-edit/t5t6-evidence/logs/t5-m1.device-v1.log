@@ -1,0 +1,49 @@
+===== 变异轮 t5-m1 =====
+target=simos-map/src/main/java/io/mosire/simos/map/spi/SetEdgeHandler.java mutant=.superpowers/sdd/2026-09-19-map-edit/t5t6-evidence/mutants/m1.SetEdgeHandler.java expect=rejectsPayloadWithoutMode|negativePayloadsAreRejectedAndLeaveNoRevision tests=EdgeOperationsTest,SetEdgeHandlerTest,MapSetEdgeEndToEndTest,RandomizeOperationsTest,RandomizeRegionHandlerTest,MapRandomizeEndToEndTest,RegionRandomizerTest
+orig_md5=ac8a4eba2962aa8374074842d961860f backup_md5=ac8a4eba2962aa8374074842d961860f
+--- 干净世界基线（变异前，期望绿）---
+clean_rc=0 clean_compilation_error=0 clean_
+mutant_md5=b74391285a861e4c8d40e4f9a049f2ad
+pushed_src_md5=b74391285a861e4c8d40e4f9a049f2ad class_removed=io/mosire/simos/map/spi/SetEdgeHandler.class
+mut_rc=1 mut_compilation_error=0 mut_Tests run: 54
+--- 本轮 surefire 报告（mtime 落轮内）---
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-core/target/surefire-reports/io.mosire.simos.core.MapSetEdgeEndToEndTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.ops.RandomizeOperationsTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.spi.RandomizeRegionHandlerTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.generate.RegionRandomizerTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.spi.SetEdgeHandlerTest.txt
+/home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports/io.mosire.simos.map.ops.EdgeOperationsTest.txt
+--- 失败方法 ---
+protected_assertion_hits=1
+restored_md5=ac8a4eba2962aa8374074842d961860f (== orig)
+ROUND t5-m1 DONE mut_rc=1 hits=1 restored=ac8a4eba2962aa8374074842d961860f self_md5=b74391285a861e4c8d40e4f9a049f2ad
+.rejectsPayloadWithoutMode:81->assertRejected:128 [payload {"kind":"river","edges":["0_0|1_0"]} 必须被拒] 
+Expecting actual:
+  Applied[changeSet=MapChangeSet[hexes=Unchanged[], terrainBlocks=Unchanged[], regions=Unchanged[], cities=Unchanged[], terrainTypes=Unchanged[], pathways=Unchanged[], pathwayGroups=Unchanged[], edges=Upsert[entries={0_0|1_0=EdgeTags[byPathway={river={}}]}]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR] Tests run: 54, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/dev/SimulatorMosire/.claude/worktrees/m8t5/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+
+===== 装置补记（t5-m1）：本轮字节自指 =====
+target=simos-map/src/main/java/io/mosire/simos/map/spi/SetEdgeHandler.java
+orig_md5=ac8a4eba2962aa8374074842d961860f
+mutant_md5=b74391285a861e4c8d40e4f9a049f2ad
+pushed_src_md5=b74391285a861e4c8d40e4f9a049f2ad
+restored_md5=ac8a4eba2962aa8374074842d961860f
+mut_rc=1 protected_assertion_hits=1

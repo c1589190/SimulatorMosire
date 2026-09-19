@@ -90,7 +90,7 @@ class McpCoverageTest {
 
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
-  /** catalog 预期的 12 个已注册命令类型（与 {@code Shell} 注册的 handler 同源）。 */
+  /** catalog 预期的 14 个已注册命令类型（与 {@code Shell} 注册的 handler 同源）。 */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "unit.RenameUnit",
@@ -104,7 +104,9 @@ class McpCoverageTest {
           "map.SetTerrain",
           "map.CreateRegion",
           "map.UpdateRegion",
-          "map.DeleteRegion");
+          "map.DeleteRegion",
+          "map.SetEdge",
+          "map.RandomizeRegion");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -133,6 +135,9 @@ class McpCoverageTest {
         "{\"regionId\":\"r-cov\",\"hexes\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}],"
             + "\"meta\":{\"color\":\"#abc\"}}");
     MINIMAL_PAYLOADS.put("map.DeleteRegion", "{\"regionId\":\"r-cov\"}");
+    MINIMAL_PAYLOADS.put(
+        "map.SetEdge", "{\"kind\":\"river\",\"edges\":[\"1_1|1_2\"],\"mode\":\"merge\"}");
+    MINIMAL_PAYLOADS.put("map.RandomizeRegion", "{\"hexes\":[{\"q\":1,\"r\":1}],\"seed\":7}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -183,7 +188,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 12 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 14 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -214,11 +219,11 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("12 条命令各推一格")
-        .isEqualTo(13L);
+        .as("14 条命令各推一格")
+        .isEqualTo(15L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散、只剩 CreateUnit 建的 u-2。
-    SimulationState afterUnitCommands = shell.coreSimos().replay(ref("main", 13));
+    SimulationState afterUnitCommands = shell.coreSimos().replay(ref("main", 15));
     UnitState units = unitSlice(afterUnitCommands);
     assertThat(units.units().keySet())
         .as("u-1 已被 DisbandUnit 解散，只剩 u-2")
@@ -227,16 +232,16 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(13L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(15L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(14L);
-    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=14");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(14L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(16L);
+    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=16");
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(16L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 14L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 16L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");

@@ -1,0 +1,83 @@
+M8 T9 变异轮 —— 预测（**先写在测量之前**）
+============================================================
+装置: t9-evidence/mutants/mut-run.sh <id> <port>
+检查器: gate = simos-app/src/test/js/run-gate.cjs（node --test，不进浏览器）
+        e2e  = t9-evidence/e2e/run-e2e.sh（真 ShellMain + 真 Chromium）
+
+每轮的预测（红点必须**点名**到下面这一条，红在别处 = 没杀到）：
+
+m1  map.js  selectRegionOfHex: setHighlightRegions([regionIds[0]])
+    检查器 gate+e2e? -> 只 e2e。
+    ★ 预判 gate **不会**红：这条变异在页面调用点，而门禁的源代码级用例只钉"两个模式都走
+      reloadRegionHighlight"，钉不到 selectRegionOfHex 这一行 —— 所以这一轮的非红是情报，
+      不是装置失灵。
+    预期红点 e2e: STEP h2a-highlight-count-equals-regions-length: FAIL
+    连带（同一次运行里应当也红，作为旁证）: h2b（3 格 -> 2 格）、h2d（淡色表里多出 t9_b）
+    预期**不**红的: h3a/h3b（左栏读数与"只高亮第一个"无关）。
+
+m2  panels.js  appendRegionMembership: 合计改成各区域 hexCount 之和
+    检查器 gate + e2e。
+    预期 gate 红点: not ok … - page-层-shows-the-union-and-never-a-summed-total
+    预期 e2e 红点: STEP h3b-total-is-the-union-not-the-summed-hexcounts: FAIL
+    预期**不**红: h3a（每个区域**自己**的 hexCount 照报 2/2）、h2* （高亮面不受影响）。
+
+m3  map.js  buildRegionHighlightPlan: 去掉"焦点先入"重排
+    检查器 gate + e2e。
+    预期 gate 红点: buildRegionHighlightPlan-puts-focus-regions-first
+    预期 e2e 红点: STEP h2c-focus-region-wins-on-the-overlap-with-a-faded-region: FAIL
+      （色板序 t9_a,t9_b,t9_c 里焦点 t9_b 排第二 ⇒ 重叠格 (1,2) 会被 t9_a 的淡色先占）
+    ★ 预判 h4*/h5* **不红**：它们的焦点是 t9_a（色板首位）⇒ 不重排也恰好先入，
+      这正好说明本轮钉的是**次序**而不是"有没有高亮"。
+
+m4  map.js  buildRegionHighlightPlan: 淡色条目也用 focusAlpha
+    检查器 gate。
+    预期 gate 红点: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+      （那条用例断言"每一条 alpha 都 == fadeAlpha 且 != focusAlpha"）
+
+m5  map.js  buildRegionHighlightPlan: 非焦点 region 用原色 fadeRegionColor(base) -> base
+    检查器 gate。
+    预期 gate 红点: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+      （focused.outlines[1].color == M.fadeRegionColor("#0000ff") 那条）
+    预判 m5 与 m4 红在**同一条用例**上：该用例是"焦点/淡色五元组"的总闸，两条护栏共用它。
+
+m6  map.js  buildRegionHighlightPlan: 删掉 !matched && !fadeWhenNoFocus 的提前返回
+    检查器 gate。
+    预期 gate 红点: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+      （未知焦点 id 那一半：删掉提前返回 ⇒ 退化成"全都淡色"）
+
+m7  panels.js  regionMembershipSummary: incomplete 时 unionCount = sum 顶替 null
+    检查器 gate。
+    预期 gate 红点: regionMembershipSummary-refuses-to-guess-without-hex-lists
+
+装置自身预期（每轮都必须成立，否则该轮作废）：
+  syntax_rc=0；mutant_md5 != orig_md5（且两者非空）；
+  e2e 轮: consumed_agg == 独立复算的 agg_expect（证明 e2e 加载的确实是本轮变异体）；
+  gate 轮: gate_rc != 0 且 not-ok 行**点名**到上述用例；
+  e2e 轮: e2e_rc == 1（**rc=2 装置崩溃不算红**）；
+  还原后 restored_md5 == orig_md5（src 与 target/classes 两处）。
+
+================ 预测 vs 实测：修正记录（**写在实测之后**，原名不许改）================
+m1  主点命中（h2a）。**副点猜错**：h2b 不在红名单里。原因实测可读：只高亮 t9_a 时，
+    t9_b/t9_c 仍以**淡色**贡献条目 ⇒ 去重后的**格数**仍是 3，h2b 判的是格数 ⇒ 天生不可判别。
+    真正可判别的是 h2a（id 列表）与 h2c/h2d/h2e（颜色/透明度）。⇒ "格数"不适合当"高亮了谁"的判据。
+m2  两点全中（gate not ok 51 + e2e h3b）。★ 首轮装置把 e2e 的 STEP 名当成了门禁的判据，
+    两层都真红却判 SURVIVED（假阴性）——**先怀疑自己的判定**，已修（两套命名分开钉）。
+m3  门禁点命中（not ok 42）；**e2e 点猜错**：预测 h2c，实测红在 h4h。
+    原因实测可读：h2 的焦点是"两个从属区域"、待淡化的 t9_c 排色板末位 ⇒ 不重排也撞不上；
+    h4 的焦点 t9_a 又是色板首位 ⇒ 不重排也先入。**"焦点先入"在当时的 e2e 里根本不可判别**
+    （h4e 在 m3 下照样 PASS，正是这一点的直接证据——一条判据写得对，但夹具选得不对）。
+    ⇒ 补 H4b（焦 t9_b：与 t9_a、t9_c 各叠一格、在色板里居中）+ 重跑干净轮（57 PASS）⇒ m3 当场在
+    浏览器路径上红（at12 被画成 t9_a 的**淡色** #dc8a8a/0.13，焦点区丢了自己的格）。
+m4  命中且是**超集**：42/43/45 一起红（同一份焦点/淡色五元组夹具，多条用例共用它）。
+m5  命中且是**超集**：42/45/47 一起红。★ 47（page-层-uses-the-shared-plan-for-both-modes）红对了：
+    它的反向断言"fadeRegionColor(base) 只出现 1 次"在 m5 下变成 0 次（变异把那一处删了）。
+m6  精确命中（not ok 44）。
+m7  精确命中（not ok 50）。
+
+================ 第二轮预测（m4/m5 补 e2e 层，**写在第二轮测量之前**）================
+m4（淡色也用 focusAlpha）e2e 预期红点: h4c-two-alpha-levels-are-really-rendered
+   理由：h4c 判"渲染里的 alpha 有两档"= [0.13,0.42]；m4 下淡色条目也拿 0.42 ⇒ 只剩一档。
+   连带预期: h5b（region-edit 的 alphas [0.13,0.52] 会变 [0.52]）。h4h/h2c **预期不红**（焦点先入未被 m4 触及）。
+m5（淡色用原色）e2e 预期红点: h4d-faded-fill-is-the-independently-computed-mixture
+   理由：h4d 判 at13 == 独立复算的混合值 #8a8adc；m5 下它会是原色 #0000ff。
+   连带预期: h5d（同一条断言在 region-edit 里的对应件）。

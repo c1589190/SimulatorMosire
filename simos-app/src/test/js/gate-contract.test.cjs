@@ -8,16 +8,21 @@ const assert = require("node:assert");
 
 const REQUIRED_FILES = [
   "gate-contract.test.cjs",
+  "map-edit-tools.test.cjs",
   "map-geometry.test.cjs",
   "modes.test.cjs",
   "region-boundary.test.cjs",
+  "region-view.test.cjs",
   "timeline.test.cjs",
   "unit-tree.test.cjs",
   "write-allowlist.test.cjs",
 ];
 
 // ★ 下界＝写作时的真实断言总数（逐条 test(...)）；删/注释掉任何一条都会跌破它。
-const MIN_ASSERTIONS = 61;
+//   T11 起 61 → 71：新增 map-edit-tools.test.cjs 的 10 条（连通性/随机化的护栏纯函数）。
+//   T9 起 71 → 82：新增 region-view.test.cjs 的 11 条（区域查看的共享高亮计划 + 并集读数）。
+//   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
+const MIN_ASSERTIONS = 82;
 
 function testFiles() {
   return fs

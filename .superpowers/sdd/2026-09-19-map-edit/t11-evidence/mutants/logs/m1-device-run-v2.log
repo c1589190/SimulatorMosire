@@ -1,0 +1,8 @@
+mutation=m1 orig_md5=f6eeed79e98ffca3a240ce86bf049084 mutant_md5=4d929d25770002422ce0d66171124ddd file=map.js expect_red=e1-unselected-mode-zero-write
+syntax_rc=0 (must be 0)
+e2e_rc=1 (expect 1；2=装置崩溃，**不算红**)
+consumed_md5=4d929d25770002422ce0d66171124ddd (e2e 实际加载的字节)
+result_line=E2E RESULT: FAILURES ["e1-unselected-mode-zero-write","e2-merge-one-command-and-river-present"]
+red_line=STEP e1-unselected-mode-zero-write: FAIL posts=1 warning="" status="提交 map.SetEdge：river × 1 条（replace）…"
+restored_md5=f6eeed79e98ffca3a240ce86bf049084 restored_classes_md5=f6eeed79e98ffca3a240ce86bf049084 orig_md5=f6eeed79e98ffca3a240ce86bf049084
+MUTATION m1: KILLED (expected red e1-unselected-mode-zero-write observed)

@@ -25,6 +25,8 @@ import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
 import io.mosire.simos.map.spi.DeleteRegionHandler;
+import io.mosire.simos.map.spi.RandomizeRegionHandler;
+import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -194,6 +196,8 @@ public final class Shell implements AutoCloseable {
             new CreateRegionHandler(),
             new UpdateRegionHandler(),
             new DeleteRegionHandler(),
+            new SetEdgeHandler(),
+            new RandomizeRegionHandler(),
             new RenameUnitHandler(),
             new CreateUnitHandler(),
             new ReparentUnitHandler(),

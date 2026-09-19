@@ -1,0 +1,10 @@
+--- device self-record (m6) ---
+file=map.js orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=7b8df048b29dbf4139e7a575990aa7d9 agg_expect= consumed_agg= restored_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=c6cd1e6860b5b5e276459d1ef5a234bd
+syntax_rc=0 gate_rc=1 e2e_rc=not-run expect_red(e2e)=n/a expect_red(gate)=buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+expected_red_line=
+--- device self-record (m6) ---
+file=map.js orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=7b8df048b29dbf4139e7a575990aa7d9 agg_expect= consumed_agg= restored_md5=014ffd3aac68dbf282d91e49365d4b0d
+harness_mut_run_md5=e0267dbd2d5d845a2f979f1547265c2b
+syntax_rc=0 gate_rc=1 e2e_rc=not-run expect_red(e2e)=n/a expect_red(gate)=buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+expected_red_line=

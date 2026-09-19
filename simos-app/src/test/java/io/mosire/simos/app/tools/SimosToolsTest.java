@@ -115,7 +115,9 @@ class SimosToolsTest {
           "map.SetTerrain",
           "map.CreateRegion",
           "map.UpdateRegion",
-          "map.DeleteRegion");
+          "map.DeleteRegion",
+          "map.SetEdge",
+          "map.RandomizeRegion");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 

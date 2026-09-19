@@ -1050,10 +1050,56 @@ body.workbench-page .wb-overlay .timeline-bar {
   white-space: nowrap;
 }
 
-.map-edit-pending {
-  display: flex;
-  flex-wrap: wrap;
+/* ── 地图编辑的「工具」选择器（M8 T11）────────────────────────────────
+   右键的语义由当前工具决定：地形刷 / 河流 / 道路 / 圈选随机化。
+   参数组（连通性语义、seed）**只在对应工具选中时出现**（`hidden` 由 JS 切）。 */
+
+.map-edit-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
+  margin: 4px 0;
+}
+
+.map-edit-tools label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.map-edit-tools label:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.map-edit-params {
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.mp-field {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 3px 0;
+}
+
+.mp-field input,
+.mp-field select {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.map-edit-params button {
+  width: 100%;
+  margin-top: 4px;
 }
 
 .region-meta-editor {
