@@ -1,0 +1,47 @@
+server_ready_tries=3 code=200 pid=281601
+STEP a-mode-unit: PASS unit
+STEP a-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP a-position-known: PASS {"q":1,"r":1}
+STEP b-no-write: PASS {"nonGetBeforeB":0,"nonGetAfterB":0}
+STEP b-position-unchanged: PASS {"before":{"q":1,"r":1},"after":{"q":1,"r":1}}
+STEP b-head-unchanged: PASS {"revStart":1,"revB":1,"headA":1,"headB":1}
+STEP b-no-new-revision: PASS {"nodesBefore":1,"nodesB":1}
+STEP b-selection-hex: PASS {"kind":"hex","q":1,"r":2}
+STEP b-not-teleported: PASS {"q":1,"r":1}
+STEP c-reselect-u1: PASS {"kind":"unit","id":"u-1"}
+STEP c-path-status-200: FAIL null
+STEP c-reachable-true: FAIL null
+STEP c-path-3-points: FAIL
+STEP c-path-endpoints: FAIL
+PATH_C=
+STEP c-head-advanced: FAIL {"revC0":1,"revC":null}
+STEP c-route-path-3: FAIL
+STEP c-route-path-values: FAIL
+STEP c-timeline-node-plus-1: FAIL {"nodesC0":1,"nodesC":null}
+STEP c-polyline-3-points: FAIL null
+STEP d-route-mode-on: PASS {"routeMode":true,"routePath":[{"q":1,"r":2}],"editBusy":false}
+STEP d-leftclick-added-point: PASS {"routeMode":true,"routePath":[{"q":1,"r":2}],"editBusy":false}
+STEP d-unit-still-selected: PASS {"kind":"unit","id":"u-1"}
+STEP d-no-write: PASS {"nonGetBeforeD":0,"nonGetAfterD":0}
+NON_GET_LIST=[]
+STEP e-nonget-allowlist: PASS {"list":[],"violations":[]}
+STEP e-command-present: FAIL []
+STEP e-no-placeat-via-leftclick: FAIL []
+STEP f-no-page-errors: PASS []
+E2E RESULT: FAIL c-path-status-200,c-reachable-true,c-path-3-points,c-path-endpoints,c-head-advanced,c-route-path-3,c-route-path-values,c-timeline-node-plus-1,c-polyline-3-points,e-command-present,e-no-placeat-via-leftclick
+e2e_rc=1
+
+===== 装置补记（m2）：本轮推送的正是以下字节 =====
+kind=resource
+target=simos-app/src/main/resources/webui/map.js
+orig_md5=769f6141f584f160438765d943d7bf7f
+pushed_src_md5=ccbdee5829d5a19595d1260c118cc24d
+pushed_classes_agg=ccbdee5829d5a19595d1260c118cc24d
+restored_src_md5=769f6141f584f160438765d943d7bf7f
+restored_classes_agg=769f6141f584f160438765d943d7bf7f
+class_backup_agg=769f6141f584f160438765d943d7bf7f
+round_start=1789789320
+server_log_mtime=1789789356
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7ct1/.superpowers/sdd/2026-09-19-webui-plan/m7c-t1-evidence/logs/m2.server.log
+javac_log=/home/cna/SimulatorMosire/.claude/worktrees/m7ct1/.superpowers/sdd/2026-09-19-webui-plan/m7c-t1-evidence/logs/m2.javac.log

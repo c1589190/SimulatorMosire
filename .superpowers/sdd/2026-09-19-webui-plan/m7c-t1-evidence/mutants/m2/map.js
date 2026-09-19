@@ -1158,8 +1158,8 @@
     if (!id) {
       return false;
     }
-    submitPathRoute(id, pick.q, pick.r);
-    return true;
+    /* m2: 右键下路线被禁用（变异体） */
+    return false;
   }
 
   /** 右键寻路：GET /api/map/path（只读）⇒ reachable 才发 unit.PlanRoute；不可达/已在目标格 ⇒ 明确提示、不发写。 */

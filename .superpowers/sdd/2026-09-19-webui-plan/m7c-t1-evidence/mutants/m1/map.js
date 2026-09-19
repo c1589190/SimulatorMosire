@@ -962,12 +962,14 @@
       );
       return;
     }
-    if (mode === "unit" && selectedUnitId() && host.routeMode) {
-      appendRoutePoint(pick.q, pick.r);
-      return; // 保持单位选中：继续加路线点
+    if (mode === "unit" && selectedUnitId()) {
+      if (host.routeMode) {
+        appendRoutePoint(pick.q, pick.r);
+      } else {
+        submitPlaceAt(selectedUnitId(), pick.q, pick.r);
+      }
+      return; // 保持单位选中：连续移动 / 继续加路线点
     }
-    // ★ M7c T1（用户裁定）：左键点格**不再瞬移**（unit.PlaceAt 已从本路径移除）——落到常规 hex 选中；
-    //   移动只由右键发起（handleContextMenu → A* → unit.PlanRoute）。
     app.setSelection({ kind: "hex", q: pick.q, r: pick.r });
     if (mode === "region") {
       selectRegionOfHex(pick.q, pick.r);
@@ -995,8 +997,7 @@
 
   // ── 单位移动与编辑模式（M7 T7，判据⑤ / R8）────────────────────────────
   //
-  // ★ 仅 `mode === "unit"` 时启用：点单位 ⇒ 选中；**右键目标格 ⇒ A* 下路线**（左键点格只切 hex 选中、不瞬移）；
-  //   路线模式 ⇒ 左键逐格相邻点列 + 下路线。
+  // ★ 仅 `mode === "unit"` 时启用：点单位 ⇒ 选中；点目标格 ⇒ unit.PlaceAt；路线模式 ⇒ 逐格相邻点列 + 下路线。
   //   其它模式仍是只读（点格只切左栏详情，不发任何非 GET 请求）。
   // ★ 所有写经 window.SimosApp.writeCommand（→ POST /api/command，R8 三个 allowlist 端点之一）。
 
@@ -1112,6 +1113,24 @@
     host.routePath.push(point);
     setEditStatus("已加路线点 " + coordText(point) + "（共 " + host.routePath.length + " 格）", "muted");
     renderUnitEditor(app.getState());
+  }
+
+  /** 点选式移动：把选中单位放到目标格（unit.PlaceAt，顺带清路线）。 */
+  async function submitPlaceAt(id, q, r) {
+    if (host.editBusy) {
+      return null;
+    }
+    host.editBusy = true;
+    setEditStatus("移动 " + id + " → " + coordText({ q: q, r: r }) + " …", "muted");
+    var result = await app.writeCommand("unit.PlaceAt", { id: id, hex: { q: q, r: r } });
+    host.editBusy = false;
+    if (result.ok) {
+      resetRoute();
+      setEditStatus("已移动 " + id + " → " + coordText({ q: q, r: r }), "ok");
+    } else {
+      setEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
+    }
+    return result;
   }
 
   /** 路线式移动：waypoints = [单位当前位置, ...逐格点列]（起点必须==当前位置，PlanRoute 域规则）。 */

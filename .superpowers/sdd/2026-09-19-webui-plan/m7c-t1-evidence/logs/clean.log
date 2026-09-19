@@ -1,0 +1,32 @@
+server_ready_tries=3 code=200 pid=281111
+STEP a-mode-unit: PASS unit
+STEP a-unit-selected: PASS {"kind":"unit","id":"u-1"}
+STEP a-position-known: PASS {"q":1,"r":1}
+STEP b-no-write: PASS {"nonGetBeforeB":0,"nonGetAfterB":0}
+STEP b-position-unchanged: PASS {"before":{"q":1,"r":1},"after":{"q":1,"r":1}}
+STEP b-head-unchanged: PASS {"revStart":1,"revB":1,"headA":1,"headB":1}
+STEP b-no-new-revision: PASS {"nodesBefore":1,"nodesB":1}
+STEP b-selection-hex: PASS {"kind":"hex","q":1,"r":2}
+STEP b-not-teleported: PASS {"q":1,"r":1}
+STEP c-reselect-u1: PASS {"kind":"unit","id":"u-1"}
+STEP c-path-status-200: PASS {"status":200,"body":{"reachable":true,"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]}}
+STEP c-reachable-true: PASS {"reachable":true,"path":[{"q":1,"r":1},{"q":1,"r":2},{"q":1,"r":3}]}
+STEP c-path-3-points: PASS (1,1)->(1,2)->(1,3)
+STEP c-path-endpoints: PASS (1,1)->(1,2)->(1,3)
+PATH_C=(1,1)->(1,2)->(1,3)
+STEP c-head-advanced: PASS {"revC0":1,"revC":2}
+STEP c-route-path-3: PASS (1,1)->(1,2)->(1,3)
+STEP c-route-path-values: PASS (1,1)->(1,2)->(1,3)
+STEP c-timeline-node-plus-1: PASS {"nodesC0":1,"nodesC":2}
+STEP c-polyline-3-points: PASS {"id":"u-1","totalPoints":3,"remainingPoints":3,"status":"IN_TRANSIT","currentHex":{"q":1,"r":1},"nextHex":{"q":1,"r":2},"baseColor":"rgba(255, 214, 130, 0.35)","remainingColor":"#ffd27a"}
+STEP d-route-mode-on: PASS {"routeMode":true,"routePath":[{"q":1,"r":2}],"editBusy":false}
+STEP d-leftclick-added-point: PASS {"routeMode":true,"routePath":[{"q":1,"r":2}],"editBusy":false}
+STEP d-unit-still-selected: PASS {"kind":"unit","id":"u-1"}
+STEP d-no-write: PASS {"nonGetBeforeD":1,"nonGetAfterD":1}
+NON_GET_LIST=["/api/command"]
+STEP e-nonget-allowlist: PASS {"list":["/api/command"],"violations":[]}
+STEP e-command-present: PASS ["/api/command"]
+STEP e-no-placeat-via-leftclick: PASS ["/api/command"]
+STEP f-no-page-errors: PASS []
+E2E RESULT: PASS
+e2e_rc=0

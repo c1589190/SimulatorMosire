@@ -1,0 +1,16 @@
+{
+  "nonGetBeforeB": 0,
+  "nonGetAfterB": 0,
+  "position": {
+    "q": 1,
+    "r": 1
+  },
+  "revB": 1,
+  "headB": 1,
+  "nodesB": 1,
+  "selection": {
+    "kind": "hex",
+    "q": 1,
+    "r": 2
+  }
+}
