@@ -30,9 +30,10 @@
     </section>
 
     <section class="panel col-center" id="center-panel">
-      <h2>地图</h2>
-      <div id="canvas-mount" class="canvas-mount">Canvas 容器（缩放/平移/点选在 T4 接入）</div>
+      <h2>地图 <span id="zoom-level" class="muted">缩放 1.00×</span></h2>
+      <div id="canvas-mount" class="canvas-mount"></div>
       <p id="map-status" class="status muted">地图骨架。</p>
+      <p id="legend" class="muted"></p>
     </section>
 
     <section class="panel col-right" id="right-panel">
@@ -60,6 +61,7 @@
   <script src="panels.js"></script>
   <script src="unitTree.js"></script>
   <script src="timeline.js"></script>
+  <script src="map.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       window.SimosApp.boot({ title: "工作台", approvals: "approvals-count" });

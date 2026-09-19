@@ -366,13 +366,19 @@ textarea {
 
 .canvas-mount {
   min-height: 440px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  padding: 0;
   color: var(--muted);
   background: #0d1015;
-  border: 1px dashed var(--line);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
+}
+
+.canvas-mount canvas {
+  display: block;
+  border: 0;
+  border-radius: var(--radius);
+  touch-action: none;
 }
 
 .unit-tree {

@@ -1,0 +1,25 @@
+server_ready_tries=3 code=200 pid=224135
+STEP seed: PASS head=3 rows=3
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP a-color-from-backend: PASS {"backend":"#E7C86E","pixel":[231,200,110],"mapColor":"#E7C86E"}
+STEP b-zoom-select: FAIL {"scale":6.748302832938721,"anchorDrift":[1.7194608289595408,1.6386228310536808],"selB":null}
+STEP c-pan-select: FAIL {"before":{"scale":2.2018348623853212,"tx":100.66909009610936,"ty":15.412844036697237},"after":{"scale":2.2018348623853212,"tx":190.66909009610936,"ty":70.41284403669724},"selC":null}
+STEP unit-detail: FAIL {"selU":null,"unitName":"乙","detail":""}
+STEP d-url-revision: FAIL
+STEP d-panel-revision: FAIL {"unitNameAt2":"甲","height":0.5,"region":null,"detail2":""}
+STEP d-readonly: PASS rows 3->3
+STEP old-page-map: FAIL {"oldDetail":"","oldLegend":"共 3 格 · 0 区域 · 单位 1 · desert=3","oldErrors":[]}
+E2E RESULT: FAIL b-zoom-select,c-pan-select,unit-detail,d-url-revision,d-panel-revision,old-page-map
+e2e_rc=1
+
+===== 装置补记（m2）：本轮推送的正是以下字节 =====
+target=simos-app/src/main/resources/webui/map.js
+orig_md5=38a59da9c4d512710d30dfb2f23f08a8
+mutant_md5=1e5396c6b8c345fc6e0b95189440fe52
+pushed_classes_md5=1e5396c6b8c345fc6e0b95189440fe52
+restored_src=38a59da9c4d512710d30dfb2f23f08a8
+restored_classes=38a59da9c4d512710d30dfb2f23f08a8
+round_start=1789782352
+server_log_mtime=1789782392
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7t4/.superpowers/sdd/2026-09-19-webui-plan/t4-evidence/logs/m2.server.log
