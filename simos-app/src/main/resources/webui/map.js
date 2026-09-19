@@ -1016,8 +1016,9 @@
   async function selectRegionOfHex(q, r) {
     try {
       var body = await api.mapHex(q, r, app.target());
-      if (body.region) {
-        app.setHighlightRegions([body.region]);
+      var regionIds = Array.isArray(body.regions) ? body.regions : [];
+      if (regionIds.length) {
+        app.setHighlightRegions(regionIds);
       } else {
         app.setHighlightRegions([]);
         app.statusMessage(

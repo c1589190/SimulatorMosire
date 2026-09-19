@@ -20,6 +20,7 @@ import io.mosire.simos.map.terrain.TerrainType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -437,8 +438,34 @@ class GameMapTest {
     assertThat(componentTypes()).doesNotContain(RegionIndex.class);
 
     GameMap m = richMap();
-    assertThat(m.regionIndex().regionOf(H_A)).isEqualTo(new RegionId("r2"));
+    assertThat(m.regionIndex().regionOf(H_A)).containsExactly(new RegionId("r2"));
     assertThat(m.regionIndex().hasRegion(new HexCoord(99, 99))).isFalse();
+  }
+
+  /** ★ M8 T1 重建逻辑：从 {@code regions} 重算出的索引 == 逐区域暴力扫描（多从属，含字典序）。 */
+  @Test
+  void regionIndexRebuildsFromRegionsWithMultiOwnership() {
+    GameMap overlapping =
+        richMap()
+            .withRegions(
+                Map.of(
+                    new RegionId("r10"), region("r10", H_A, H_B),
+                    new RegionId("r2"), region("r2", H_A),
+                    new RegionId("r7"), region("r7", H_A, H_B, H_C)));
+
+    RegionIndex index = overlapping.regionIndex();
+    for (HexCoord hex : overlapping.hexes().keySet()) {
+      List<RegionId> brute =
+          overlapping.regions().values().stream()
+              .filter(r -> r.hexes().contains(hex))
+              .map(Region::id)
+              .sorted(Comparator.comparing(RegionId::value))
+              .toList();
+      assertThat(index.regionOf(hex)).as("hex %s 的归属与暴力扫描一致", hex).isEqualTo(brute);
+    }
+    assertThat(index.regionOf(H_A))
+        .containsExactly(new RegionId("r10"), new RegionId("r2"), new RegionId("r7"));
+    assertThat(index.regionOf(H_D)).isEmpty();
   }
 
   /**

@@ -11,7 +11,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * 归属索引：O(1) 查找（解 L5）、重叠区域的裁决**确定**。
+ * 归属索引：O(1) 查找（解 L5）、多从属**全部保留**且按 id 字典序确定（M8-U1）。
  *
  * <p>★ 本类**不写**"GameMap 不含 RegionIndex"那条断言 —— {@code GameMap} 在 Task 5 才存在，该断言归 Task 5 的 {@code
  * regionIndexIsDerivedNotStored}，只写一处。
@@ -24,28 +24,39 @@ class RegionIndexTest {
   void findsOwningRegionAndReportsMembership() {
     RegionIndex index = RegionIndex.of(List.of(region("r1", Set.of(OWNED, new HexCoord(1, 0)))));
 
-    assertThat(index.regionOf(OWNED)).isEqualTo(new RegionId("r1"));
+    assertThat(index.regionOf(OWNED)).containsExactly(new RegionId("r1"));
     assertThat(index.hasRegion(OWNED)).isTrue();
   }
 
   @Test
-  void unknownHexReturnsNull() {
+  void unknownHexReturnsEmptyList() {
     RegionIndex index = RegionIndex.of(List.of(region("r1", Set.of(OWNED))));
 
-    assertThat(index.regionOf(new HexCoord(9, 9))).isNull();
+    assertThat(index.regionOf(new HexCoord(9, 9))).isEmpty();
     assertThat(index.hasRegion(new HexCoord(9, 9))).isFalse();
   }
 
-  /** ★ 重叠时"先到者胜"，而"先到"由 **id 字典序**定义（不是入参顺序）—— 故两种入参顺序必须得同一结果， 且结果必须是 id 较小的那个。 */
+  /** ★ 多从属：重叠格**全部保留**（不是"先到者胜"），且按 **id 字典序**——故两种入参顺序必须得同一份有序列表； 夹具用 3 个区域同盖一格，覆盖 &gt;2 的情形。 */
   @Test
-  void overlappingRegionsResolveDeterministically() {
-    RegionIndex idAscending =
-        RegionIndex.of(List.of(region("a", Set.of(OWNED)), region("b", Set.of(OWNED))));
-    RegionIndex idDescending =
-        RegionIndex.of(List.of(region("b", Set.of(OWNED)), region("a", Set.of(OWNED))));
+  void overlappingRegionsAreAllReportedInIdOrder() {
+    Set<HexCoord> shared = Set.of(OWNED, new HexCoord(1, 0), new HexCoord(1, 1));
+    List<Region> ascending =
+        List.of(
+            region("a", Set.of(OWNED, new HexCoord(1, 0))),
+            region("b", Set.of(OWNED, new HexCoord(1, 1))),
+            region("c", shared));
+    List<Region> descending = new ArrayList<>(ascending);
+    descending.sort((x, y) -> y.id().value().compareTo(x.id().value())); // 入参顺序倒过来
 
-    assertThat(idAscending.regionOf(OWNED)).isEqualTo(new RegionId("a"));
-    assertThat(idDescending.regionOf(OWNED)).isEqualTo(new RegionId("a"));
+    RegionIndex idAscending = RegionIndex.of(ascending);
+    RegionIndex idDescending = RegionIndex.of(descending);
+
+    assertThat(idAscending.regionOf(OWNED))
+        .as("3 个区域同盖一格 ⇒ 三条都在，字典序 a,b,c")
+        .containsExactly(new RegionId("a"), new RegionId("b"), new RegionId("c"));
+    assertThat(idDescending.regionOf(OWNED))
+        .as("结果与入参迭代序无关 ⇒ 逐值相同")
+        .isEqualTo(idAscending.regionOf(OWNED));
   }
 
   /**
@@ -70,17 +81,17 @@ class RegionIndexTest {
     RegionIndex big = RegionIndex.of(many);
     RegionIndex tiny = RegionIndex.of(List.of(many.getFirst()));
     assertThat(big.regionOf(OWNED)).isEqualTo(tiny.regionOf(OWNED));
-    assertThat(big.regionOf(OWNED)).isEqualTo(new RegionId("r000"));
+    assertThat(big.regionOf(OWNED)).containsExactly(new RegionId("r000"));
 
     // ★ 承重：regionOf 只查一次表
     CountingMap counting = new CountingMap();
-    counting.put(OWNED, new RegionId("r1"));
+    counting.put(OWNED, List.of(new RegionId("r1")));
     RegionIndex injected = new RegionIndex(counting);
     assertThat(counting.gets()).as("构造期不该触发 get（否则计数没有判别力）").isZero();
 
-    assertThat(injected.regionOf(OWNED)).isEqualTo(new RegionId("r1"));
+    assertThat(injected.regionOf(OWNED)).containsExactly(new RegionId("r1"));
     assertThat(counting.gets()).isEqualTo(1);
-    assertThat(injected.regionOf(new HexCoord(9, 9))).isNull();
+    assertThat(injected.regionOf(new HexCoord(9, 9))).isEmpty();
     assertThat(counting.gets()).as("无归属也只查一次").isEqualTo(2);
   }
 
@@ -89,12 +100,12 @@ class RegionIndexTest {
   }
 
   /** 计数包装层：只数 {@code get}（{@code put}/{@code containsKey} 走的是 {@code HashMap} 的私有路径，不经过它）。 */
-  private static final class CountingMap extends HashMap<HexCoord, RegionId> {
+  private static final class CountingMap extends HashMap<HexCoord, List<RegionId>> {
 
     private int gets;
 
     @Override
-    public RegionId get(Object key) {
+    public List<RegionId> get(Object key) {
       gets++;
       return super.get(key);
     }

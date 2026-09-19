@@ -84,6 +84,7 @@ class GuiApiTest {
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
   private static final HexCoord H13 = new HexCoord(1, 3);
+  private static final HexCoord H14 = new HexCoord(1, 4);
 
   private static final UnitId U1 = new UnitId("u-1");
   private static final int CHECKPOINT_INTERVAL = 100;
@@ -174,8 +175,8 @@ class GuiApiTest {
     JsonNode body = getJson("/api/map/overview");
 
     assertThat(body.get("mapId").asText()).isEqualTo("Map1");
-    assertThat(body.get("hexCount").asInt()).isEqualTo(3);
-    assertThat(body.get("hexes")).hasSize(3);
+    assertThat(body.get("hexCount").asInt()).isEqualTo(4);
+    assertThat(body.get("hexes")).hasSize(4);
   }
 
   // ── M7 T1 只读扩展（spec §3.1/§3.2/§3.3）──────────────────────────────
@@ -209,14 +210,16 @@ class GuiApiTest {
     assertThat(get("/api/timeline?branch=ghost").statusCode()).as("分支不存在 ⇒ 404").isEqualTo(404);
   }
 
-  /** 判据③ / R5：hex 详情带 {@code region} 与完整 {@code terrainType} 定义。 */
+  /** 判据③ / R5：hex 详情带 {@code regions}（多从属）与完整 {@code terrainType} 定义。 */
   @Test
-  void mapHexCarriesRegionAndFullTerrainDefinition() throws Exception {
+  void mapHexCarriesRegionsAndFullTerrainDefinition() throws Exception {
     JsonNode body = getJson("/api/map/hex?q=1&r=1");
 
-    assertThat(body.get("region").asText())
-        .as("H11 属 r-1（MapResolver.regionOfHex）")
-        .isEqualTo("r-1");
+    JsonNode regions = body.get("regions");
+    assertThat(regions).as("regions 是数组（键名就是 regions）").isNotNull();
+    assertThat(regions).hasSize(2);
+    assertThat(regions.get(0).asText()).as("H11 与 r-1/r-3 都从属 ⇒ 字典序").isEqualTo("r-1");
+    assertThat(regions.get(1).asText()).isEqualTo("r-3");
     TerrainType expected = TerrainCatalog.of("desert");
     JsonNode terrain = body.get("terrainType");
     assertThat(terrain).as("完整地形定义在场").isNotNull();
@@ -232,6 +235,28 @@ class GuiApiTest {
     assertThat(terrain.get("description").asText()).isEqualTo(expected.description());
   }
 
+  /** ★ M8 T1：无从属的格 ⇒ {@code regions} 是**空数组**（不是 null、不是缺字段）。 */
+  @Test
+  void mapHexWithoutRegionGivesEmptyArray() throws Exception {
+    JsonNode body = getJson("/api/map/hex?q=1&r=4");
+
+    assertThat(body.get("regions")).as("空从属 ⇒ 空数组").isNotNull();
+    assertThat(body.get("regions").isArray()).isTrue();
+    assertThat(body.get("regions")).isEmpty();
+  }
+
+  /** ★ M8 T1：同一 revision 连续两次调 {@code /api/map/hex} ⇒ {@code regions} 逐字节相同（输出确定）。 */
+  @Test
+  void mapHexRegionsAreByteIdenticalAcrossTwoCalls() throws Exception {
+    String first = get("/api/map/hex?q=1&r=1").body();
+    String second = get("/api/map/hex?q=1&r=1").body();
+
+    JsonNode regions = JSON.readTree(first).get("regions");
+    assertThat(regions).as("先断言聚合非空，别把空==空当成功").isNotNull();
+    assertThat(regions.size()).isEqualTo(2);
+    assertThat(second).as("同一 revision 两次响应逐字节相同").isEqualTo(first);
+  }
+
   /**
    * 判据④后端面：overview 的 region 项带 {@code meta}（可空），且 {@code terrainTypes} 已是**完整定义**（M7 T2 的 原子形状切换）。
    */
@@ -239,7 +264,7 @@ class GuiApiTest {
   void mapOverviewRegionItemsCarryMeta() throws Exception {
     JsonNode body = getJson("/api/map/overview");
     JsonNode regions = body.get("regions");
-    assertThat(regions).hasSize(2);
+    assertThat(regions).hasSize(3);
 
     JsonNode first = regionById(regions, "r-1");
     assertThat(first.get("meta").get("color").asText()).isEqualTo("#112233");
@@ -623,6 +648,7 @@ class GuiApiTest {
     hexes.put(H11, new HexCell(desert.key(), 0.5));
     hexes.put(H12, new HexCell(desert.key(), 0.5));
     hexes.put(H13, new HexCell(desert.key(), 0.5));
+    hexes.put(H14, new HexCell(desert.key(), 0.5)); // 不属任何区域 ⇒ regions 空数组
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
     // M7 T1：两个区域——r-1 带全量 meta（覆盖 H11/H13，非相邻 ⇒ 两条环），r-2 空 meta（覆盖 H12）
@@ -633,9 +659,12 @@ class GuiApiTest {
             Set.of(H11, H13),
             new RegionMeta("#112233", "核心", "测试区域", "u-1"));
     Region r2 = Region.of(new RegionId("r-2"), "第二区", Set.of(H12), RegionMeta.empty());
+    // M8 T1：r-3 与 r-1 **重叠**于 H11（多从属）——/api/map/hex 的 regions 必须两条都在、按字典序。
+    Region r3 = Region.of(new RegionId("r-3"), "第三区", Set.of(H11), RegionMeta.empty());
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(r1.id(), r1);
     regions.put(r2.id(), r2);
+    regions.put(r3.id(), r3);
     return new GameMap(
         hexes,
         regions,

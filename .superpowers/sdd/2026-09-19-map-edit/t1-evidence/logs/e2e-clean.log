@@ -1,0 +1,12 @@
+STEP a-overlap-fixture-present: PASS ["test_annex_target","test_nation"]
+STEP b-overlap-nonempty: PASS overlap=201
+STEP c1-regions-is-array: PASS {"q":-18,"r":0,"terrain":"low_hills","height":0.6000000000000001,"regions":["test_annex_target","test_nation"],"terrainType":{"key":"low_hills","name":"低矮丘陵","color":"#A8B36A","minHeight":0.55,"maxHeight":0.65,"food":2,"gold":1,"stone":1,"moveCost":2,"description":"低地与山地的过渡带，产量中等、略难走"},"facets":[]}
+STEP c1-regions-has-at-least-two: PASS regions=["test_annex_target","test_nation"]
+STEP c1-regions-lexicographic: PASS ["test_annex_target","test_nation"]
+STEP c2-two-calls-byte-identical: PASS len=299 md5diff=none
+RAW /api/map/hex {"url":"/api/map/hex?q=-18&r=0","body":"{\"q\":-18,\"r\":0,\"terrain\":\"low_hills\",\"height\":0.6000000000000001,\"regions\":[\"test_annex_target\",\"test_nation\"],\"terrainType\":{\"key\":\"low_hills\",\"name\":\"低矮丘陵\",\"color\":\"#A8B36A\",\"minHeight\":0.55,\"maxHeight\":0.65,\"food\":2,\"gold\":1,\"stone\":1,\"moveCost\":2,\"description\":\"低地与山地的过渡带，产量中等、略难走\"},\"facets\":[]}"}
+STEP c3-hex-on-screen: PASS {"pt":{"x":537.5335819978586,"y":400},"box":{"x":0,"y":0,"width":1280,"height":800}}
+STEP c3-panel-lists-two-regions: PASS "q-18r0terrainlow_hills（低矮丘陵）height0.6regionstest_annex_target、test_nation该处单位无人口无序列"
+STEP c3-requested-map-hex: PASS [{"method":"GET","path":"/api/map/hex","query":"?q=-18&r=0&branch=main&revision=1"}]
+STEP c3-no-pageerror: PASS []
+E2E RESULT: ALL PASS

@@ -45,26 +45,26 @@ class RegionIndexGuardTest {
     RegionIndex big = RegionIndex.of(many);
     assertThat(big.regionOf(OWNED))
         .as("冒烟：100×1000 的索引里第一格仍属 r000（答案对不是本条的判据，计数才是）")
-        .isEqualTo(new RegionId("r000"));
+        .containsExactly(new RegionId("r000"));
 
     CountingMap counting = new CountingMap();
-    counting.put(OWNED, new RegionId("r1"));
+    counting.put(OWNED, List.of(new RegionId("r1")));
     RegionIndex injected = new RegionIndex(counting);
     assertThat(counting.gets()).as("构造期不该触发 get（否则计数没有判别力）").isZero();
 
-    assertThat(injected.regionOf(OWNED)).isEqualTo(new RegionId("r1"));
+    assertThat(injected.regionOf(OWNED)).containsExactly(new RegionId("r1"));
     assertThat(counting.gets()).as("一次 regionOf = 恰一次 Map.get（线性扫描是 0 次或 N 次，都不是 1）").isEqualTo(1);
-    assertThat(injected.regionOf(new HexCoord(9, 9))).isNull();
+    assertThat(injected.regionOf(new HexCoord(9, 9))).isEmpty();
     assertThat(counting.gets()).as("无归属也只查一次").isEqualTo(2);
   }
 
   /** 计数包装层：只数 {@code get}（{@code put}/{@code containsKey} 走 HashMap 的私有路径，不经过它）。 */
-  private static final class CountingMap extends HashMap<HexCoord, RegionId> {
+  private static final class CountingMap extends HashMap<HexCoord, List<RegionId>> {
 
     private int gets;
 
     @Override
-    public RegionId get(Object key) {
+    public List<RegionId> get(Object key) {
       gets++;
       return super.get(key);
     }
