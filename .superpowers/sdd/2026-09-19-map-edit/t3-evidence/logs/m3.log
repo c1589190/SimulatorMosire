@@ -1,0 +1,49 @@
+===== 变异轮 m3 =====
+target=simos-map/src/main/java/io/mosire/simos/map/ops/TerrainOperations.java mutant=.superpowers/sdd/2026-09-19-map-edit/t3-evidence/mutants/m3.TerrainOperations.java expect=blockTableOrderIsTheCanonicalBlockIdOrder|rebuildIsByteIdentical
+orig_md5=ada49b881db0c4fa3af0236f4ffd44a1 backup_md5=ada49b881db0c4fa3af0236f4ffd44a1
+--- 干净世界基线（变异前，期望绿）---
+clean_rc=0 clean_compilation_error=0 clean_
+mutant_md5=cd61194b1c3b181e3d787d1613634cb7
+pushed_src_md5=cd61194b1c3b181e3d787d1613634cb7 class_removed=io/mosire/simos/map/ops/TerrainOperations.class
+mut_rc=1 mut_compilation_error=0 mut_Tests run: 18
+--- 本轮 surefire 报告（mtime 落轮内）---
+/home/cna/SimulatorMosire/.claude/worktrees/m8t3/simos-map/target/surefire-reports/io.mosire.simos.map.spi.SetTerrainHandlerTest.txt
+/home/cna/SimulatorMosire/.claude/worktrees/m8t3/simos-map/target/surefire-reports/io.mosire.simos.map.ops.TerrainOperationsTest.txt
+--- 失败方法 ---
+protected_assertion_hits=1
+restored_md5=ada49b881db0c4fa3af0236f4ffd44a1 (== orig)
+ROUND m3 DONE mut_rc=1 hits=1 restored=ada49b881db0c4fa3af0236f4ffd44a1 self_md5=cd61194b1c3b181e3d787d1613634cb7
+ins@-1_-1, desert@-2_2, plains@0_2, desert@-2_0]
+	at io.mosire.simos.map.ops.TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder(TerrainOperationsTest.java:154)
+
+[ERROR] Failures: 
+[ERROR]   TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder:154 [块表键序 == BlockId 规范全序（HashMap 装块 ⇒ 乱序）] 
+group is not sorted according to TerrainOperationsTest$$Lambda/0x00007ea2301afaa0 comparator because element 1:
+  plains@-1_-1
+is not less or equal than element 2:
+  desert@-2_2
+group was:
+  [plains@-2_1, plains@-1_-1, desert@-2_2, plains@0_2, desert@-2_0]
+[ERROR] Tests run: 18, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t3/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+
+===== 装置补记（m3）：本轮字节自指 =====
+target=simos-map/src/main/java/io/mosire/simos/map/ops/TerrainOperations.java
+orig_md5=ada49b881db0c4fa3af0236f4ffd44a1
+mutant_md5=cd61194b1c3b181e3d787d1613634cb7
+pushed_src_md5=cd61194b1c3b181e3d787d1613634cb7
+restored_md5=ada49b881db0c4fa3af0236f4ffd44a1
+mut_rc=1 protected_assertion_hits=1

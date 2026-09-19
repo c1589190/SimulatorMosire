@@ -1,0 +1,35 @@
+[ERROR] Tests run: 11, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.220 s <<< FAILURE! -- in io.mosire.simos.map.ops.TerrainOperationsTest
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder -- Time elapsed: 0.010 s <<< FAILURE!
+java.lang.AssertionError: 
+[块表键序 == BlockId 规范全序（HashMap 装块 ⇒ 乱序）] 
+group is not sorted according to TerrainOperationsTest$$Lambda/0x00007ea2301afaa0 comparator because element 1:
+  plains@-1_-1
+is not less or equal than element 2:
+  desert@-2_2
+group was:
+  [plains@-2_1, plains@-1_-1, desert@-2_2, plains@0_2, desert@-2_0]
+	at io.mosire.simos.map.ops.TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder(TerrainOperationsTest.java:154)
+
+[ERROR] Failures: 
+[ERROR]   TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder:154 [块表键序 == BlockId 规范全序（HashMap 装块 ⇒ 乱序）] 
+group is not sorted according to TerrainOperationsTest$$Lambda/0x00007ea2301afaa0 comparator because element 1:
+  plains@-1_-1
+is not less or equal than element 2:
+  desert@-2_2
+group was:
+  [plains@-2_1, plains@-1_-1, desert@-2_2, plains@0_2, desert@-2_0]
+[ERROR] Tests run: 18, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t3/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map

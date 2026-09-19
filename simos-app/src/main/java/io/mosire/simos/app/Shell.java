@@ -23,6 +23,7 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
+import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
@@ -186,6 +187,7 @@ public final class Shell implements AutoCloseable {
 
     List<CommandHandler> handlers =
         List.of(
+            new SetTerrainHandler(),
             new RenameUnitHandler(),
             new CreateUnitHandler(),
             new ReparentUnitHandler(),

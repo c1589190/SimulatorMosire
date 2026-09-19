@@ -1,0 +1,114 @@
+[ERROR] Tests run: 11, Failures: 0, Errors: 8, Skipped: 0, Time elapsed: 0.089 s <<< FAILURE! -- in io.mosire.simos.map.ops.TerrainOperationsTest
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.changingOneHexTouchesOnlyItsTerrainAndLeavesHeightsAlone -- Time elapsed: 0.029 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@0_0 与块内容不符（内容派生得 desert@0_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.changingOneHexTouchesOnlyItsTerrainAndLeavesHeightsAlone(TerrainOperationsTest.java:46)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.fillingTheGapMergesTwoSameTerrainBlocksIntoOne -- Time elapsed: 0.006 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 desert@1_0 与块内容不符（内容派生得 plains@1_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.fillingTheGapMergesTwoSameTerrainBlocksIntoOne(TerrainOperationsTest.java:84)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.carvingTheMiddleSlotSplitsOneBlockIntoTwo -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@0_0 与块内容不符（内容派生得 desert@0_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.carvingTheMiddleSlotSplitsOneBlockIntoTwo(TerrainOperationsTest.java:99)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.acceptingEveryCatalogKey -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@0_0 与块内容不符（内容派生得 ocean@0_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.acceptingEveryCatalogKey(TerrainOperationsTest.java:207)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.changingMultipleHexesAppliesToEachOfThem -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@0_0 与块内容不符（内容派生得 mountains@0_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.changingMultipleHexesAppliesToEachOfThem(TerrainOperationsTest.java:68)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder -- Time elapsed: 0.003 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@-2_0 与块内容不符（内容派生得 desert@-2_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder(TerrainOperationsTest.java:150)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.rebuildIsByteIdenticalForTheSameInput -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@-2_0 与块内容不符（内容派生得 desert@-2_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.rebuildIsByteIdenticalForTheSameInput(TerrainOperationsTest.java:164)
+
+[ERROR] io.mosire.simos.map.ops.TerrainOperationsTest.theReSplitResultIsStillAPartition -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.IllegalArgumentException: 地形块键 plains@-2_0 与块内容不符（内容派生得 desert@-2_0）
+	at io.mosire.simos.map.block.TerrainBlocks.requirePartition(TerrainBlocks.java:106)
+	at io.mosire.simos.map.GameMap.<init>(GameMap.java:89)
+	at io.mosire.simos.map.GameMap.withTerrainBlocks(GameMap.java:124)
+	at io.mosire.simos.map.ops.TerrainOperations.setTerrain(TerrainOperations.java:84)
+	at io.mosire.simos.map.ops.TerrainOperationsTest.theReSplitResultIsStillAPartition(TerrainOperationsTest.java:120)
+
+[ERROR] Tests run: 7, Failures: 1, Errors: 1, Skipped: 0, Time elapsed: 0.108 s <<< FAILURE! -- in io.mosire.simos.map.spi.SetTerrainHandlerTest
+[ERROR] io.mosire.simos.map.spi.SetTerrainHandlerTest.duplicatesInTheHexArrayAreDeduplicated -- Time elapsed: 0.004 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Rejected[reason=地形块键 plains@0_0 与块内容不符（内容派生得 desert@0_0）]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+	at io.mosire.simos.map.spi.SetTerrainHandlerTest.duplicatesInTheHexArrayAreDeduplicated(SetTerrainHandlerTest.java:67)
+
+[ERROR] io.mosire.simos.map.spi.SetTerrainHandlerTest.appliesAMultiHexPayload -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.ClassCastException: class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+	at io.mosire.simos.map.spi.SetTerrainHandlerTest.appliesAMultiHexPayload(SetTerrainHandlerTest.java:53)
+
+[ERROR] Failures: 
+[ERROR]   SetTerrainHandlerTest.duplicatesInTheHexArrayAreDeduplicated:67 
+Expecting actual:
+  Rejected[reason=地形块键 plains@0_0 与块内容不符（内容派生得 desert@0_0）]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+[ERROR] Errors: 
+[ERROR]   TerrainOperationsTest.acceptingEveryCatalogKey:207 » IllegalArgument 地形块键 plains@0_0 与块内容不符（内容派生得 ocean@0_0）
+[ERROR]   TerrainOperationsTest.blockTableOrderIsTheCanonicalBlockIdOrder:150 » IllegalArgument 地形块键 plains@-2_0 与块内容不符（内容派生得 desert@-2_0）
+[ERROR]   TerrainOperationsTest.carvingTheMiddleSlotSplitsOneBlockIntoTwo:99 » IllegalArgument 地形块键 plains@0_0 与块内容不符（内容派生得 desert@0_0）
+[ERROR]   TerrainOperationsTest.changingMultipleHexesAppliesToEachOfThem:68 » IllegalArgument 地形块键 plains@0_0 与块内容不符（内容派生得 mountains@0_0）
+[ERROR]   TerrainOperationsTest.changingOneHexTouchesOnlyItsTerrainAndLeavesHeightsAlone:46 » IllegalArgument 地形块键 plains@0_0 与块内容不符（内容派生得 desert@0_0）
+[ERROR]   TerrainOperationsTest.fillingTheGapMergesTwoSameTerrainBlocksIntoOne:84 » IllegalArgument 地形块键 desert@1_0 与块内容不符（内容派生得 plains@1_0）
+[ERROR]   TerrainOperationsTest.rebuildIsByteIdenticalForTheSameInput:164 » IllegalArgument 地形块键 plains@-2_0 与块内容不符（内容派生得 desert@-2_0）
+[ERROR]   TerrainOperationsTest.theReSplitResultIsStillAPartition:120 » IllegalArgument 地形块键 plains@-2_0 与块内容不符（内容派生得 desert@-2_0）
+[ERROR]   SetTerrainHandlerTest.appliesAMultiHexPayload:53 ClassCast class io.mosire.simos.util.spi.HandlerOutcome$Rejected cannot be cast to class io.mosire.simos.util.spi.HandlerOutcome$Applied (io.mosire.simos.util.spi.HandlerOutcome$Rejected and io.mosire.simos.util.spi.HandlerOutcome$Applied are in unnamed module of loader 'app')
+[ERROR] Tests run: 18, Failures: 1, Errors: 9, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/m8t3/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map

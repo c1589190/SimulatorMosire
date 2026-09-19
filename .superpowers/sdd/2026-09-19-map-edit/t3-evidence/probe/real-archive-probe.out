@@ -1,0 +1,23 @@
+hexCount=19441
+blockCount=44
+histogramBefore={low_hills=3330, mountains=886, ocean=4506, plains=10719}
+targetHexes=[-5_-59, -5_-58, -5_-57, -5_-56, -5_-55, -5_-54, -5_-53, -5_-52, -5_-51, -5_-50]
+terrainBefore(first)=plains terrain=ocean
+submitResult=Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]]] elapsedMs=226.883827
+headAfter=2
+negEmpty=Rejected[reason=hexes 不得为空：一条 map.SetTerrain 至少要改一格]
+negOutsideCatalog=Rejected[reason=未知地形类型: forest]
+negMissingHex=Rejected[reason=hex 不在图上: 9999_9999]
+revisionsRowsUnchanged=true rows=2
+replayByteIdentical=true
+changedHexes=10
+heightMismatches=0
+allTargetsTerrain=true
+hexesComponentUnchangedHeightCount=19441
+partitionAfter=OK
+histogramAfter={low_hills=3330, mountains=886, ocean=4516, plains=10709}
+blockCountAfter=45
+twoRunsByteIdentical=true
+twoRunsBlockIdSetsEqual=true
+blockTableHeadA=[low_hills@-64_72, low_hills@-50_-10, low_hills@-42_67]
+blockTableHeadB=[low_hills@-64_72, low_hills@-50_-10, low_hills@-42_67]
