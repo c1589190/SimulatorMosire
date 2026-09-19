@@ -201,6 +201,7 @@
   /** 移动游标：只改状态机，绝不发写请求。 */
   function moveCursor(branch, revision) {
     var state = app.getState();
+    window.SimosApi.advance(branch, model.heads[branch], model.tickAtHead[branch], model.tickAtHead[branch] + 1);
     if (state.branch !== branch) {
       app.setBranch(branch);
     }

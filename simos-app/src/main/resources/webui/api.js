@@ -50,37 +50,59 @@
   }
 
   // ── 只读端点（spec §8.2）────────────────────────────────────────────
+  //
+  // ★ M7 T3 取数约定：所有**只读**取数都可带一个目标 {branch, revision}（取自状态机）。带上它 ⇒ 读到该坐标的
+  //   只读快照（spec §五 第 2 步）；不传 ⇒ 服务端缺省 head(main)，旧三页（map/unit/social）保持原行为。
+  //   T4~T7 的面板一律传 window.SimosApp.target()。
+
+  /** 把 {branch, revision} 拼到路径上（自动选 ? / &）；target 为空 ⇒ 原样返回。 */
+  function withTarget(path, target) {
+    if (!target || target.branch === null || target.branch === undefined) {
+      return path;
+    }
+    var separator = path.indexOf("?") >= 0 ? "&" : "?";
+    var query = "branch=" + encodeURIComponent(target.branch);
+    if (target.revision !== null && target.revision !== undefined) {
+      query += "&revision=" + encodeURIComponent(target.revision);
+    }
+    return path + separator + query;
+  }
 
   function state() {
     return getJson("/state");
   }
 
-  function resolve(address) {
-    return getJson("/resolve?address=" + encodeURIComponent(address));
+  /** 时间轴节点清单（M7 T1/T3）：{branch, head, nodes:[…]}。按分支拉，不带 revision。 */
+  function timeline(branch) {
+    return getJson("/timeline?branch=" + encodeURIComponent(branch));
   }
 
-  function facets(address) {
-    return getJson("/facets?address=" + encodeURIComponent(address));
+  function resolve(address, target) {
+    return getJson(withTarget("/resolve?address=" + encodeURIComponent(address), target));
   }
 
-  function mapOverview() {
-    return getJson("/map/overview");
+  function facets(address, target) {
+    return getJson(withTarget("/facets?address=" + encodeURIComponent(address), target));
   }
 
-  function mapHex(q, r) {
-    return getJson("/map/hex?q=" + Number(q) + "&r=" + Number(r));
+  function mapOverview(target) {
+    return getJson(withTarget("/map/overview", target));
   }
 
-  function units() {
-    return getJson("/units");
+  function mapHex(q, r, target) {
+    return getJson(withTarget("/map/hex?q=" + Number(q) + "&r=" + Number(r), target));
   }
 
-  function unit(id) {
-    return getJson("/unit/" + encodeURIComponent(id));
+  function units(target) {
+    return getJson(withTarget("/units", target));
   }
 
-  function population(q, r) {
-    return getJson("/social/population?q=" + Number(q) + "&r=" + Number(r));
+  function unit(id, target) {
+    return getJson(withTarget("/unit/" + encodeURIComponent(id), target));
+  }
+
+  function population(q, r, target) {
+    return getJson(withTarget("/social/population?q=" + Number(q) + "&r=" + Number(r), target));
   }
 
   // ── 写端点（spec §8.2）；服务端唯一写入口 CoreSimos.submit ─────────────
@@ -116,7 +138,9 @@
   window.SimosApi = {
     getJson: getJson,
     postJson: postJson,
+    withTarget: withTarget,
     state: state,
+    timeline: timeline,
     resolve: resolve,
     facets: facets,
     mapOverview: mapOverview,

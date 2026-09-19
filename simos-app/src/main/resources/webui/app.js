@@ -15,8 +15,15 @@
 
   // ── 状态机（M7 T2）──────────────────────────────────────────────────
 
-  /** 唯一可变状态；模式只影响可见性/可用性（spec §四）。 */
-  var state = { mode: "view", branch: "main", revision: null, selection: null };
+  /** 唯一可变状态；模式只影响可见性/可用性（spec §四）。branches/heads 来自 /api/state（M7 T3）。 */
+  var state = {
+    mode: "view",
+    branch: "main",
+    revision: null,
+    selection: null,
+    branches: [],
+    heads: {},
+  };
 
   var listeners = [];
 
@@ -180,7 +187,7 @@
     }
     var refresh = async function () {
       try {
-        var body = await window.SimosApi.state();
+        var body = await refreshState();
         var meta = body.meta;
         if (!meta) {
           node.textContent = "无状态";
@@ -188,14 +195,46 @@
         }
         node.textContent =
           "分支 " + meta.branch + " · rev " + meta.revision + " · tick " + meta.timestamp.tick;
-        setBranch(meta.branch);
-        setRevision(meta.revision);
       } catch (e) {
         node.textContent = "状态不可用（" + e.message + "）";
       }
     };
     refresh();
     window.setInterval(refresh, 5000);
+  }
+
+  /**
+   * 把 /api/state 的服务器视图写进状态机（M7 T3）：分支表与各分支 head **永远更新**；游标**只在首次**（revision
+   * 尚为 null）时初始化。若每次轮询都回填游标，用户拖到中间节点的预览会被 5s 定时器弹回末端——那让 U1 的"只读预览"不可用。
+   */
+  function setServerState(branches, heads, meta) {
+    state.branches = Array.isArray(branches) ? branches.slice() : [];
+    state.heads = heads && typeof heads === "object" ? Object.assign({}, heads) : {};
+    if (state.revision === null || state.revision === undefined) {
+      var branch = (meta && meta.branch) || state.branch;
+      if (state.branches.indexOf(branch) < 0) {
+        branch = state.branches.length > 0 ? state.branches[0] : branch;
+      }
+      state.branch = branch;
+      if (state.heads[branch] !== null && state.heads[branch] !== undefined) {
+        state.revision = state.heads[branch];
+      } else if (meta) {
+        state.revision = meta.revision;
+      }
+    }
+    notify();
+  }
+
+  /** 重取 /api/state 并写回状态机；返回服务器视图（调用方可复用，避免重复请求）。 */
+  async function refreshState() {
+    var body = await window.SimosApi.state();
+    setServerState(body.branches, body.heads, body.meta);
+    return body;
+  }
+
+  /** 所有面板的只读取数目标（M7 T3 约定；T4~T7 一律传它）。 */
+  function target() {
+    return { branch: state.branch, revision: state.revision };
   }
 
   /** 待批计数（T6 未接入时 /api/approvals 回 503 —— 优雅显示"未接入"）。 */
@@ -293,5 +332,8 @@
     onStateChange: onStateChange,
     applyMode: applyMode,
     mountModeBar: mountModeBar,
+    target: target,
+    refreshState: refreshState,
+    setServerState: setServerState,
   };
 })();

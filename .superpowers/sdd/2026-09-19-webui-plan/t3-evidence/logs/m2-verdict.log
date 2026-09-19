@@ -1,0 +1,8 @@
+──── m2 ────
+orig_md5=5d406de8fe068880c43e2aebe11b5456  mutant_md5=536e1a5d48ddcdafcec953e891e6c268  classes_md5=536e1a5d48ddcdafcec953e891e6c268
+rc=1  round_start=1789780807  server_log_mtime=1789780811
+--- 变红的步骤 ---
+STEP e-mid-disabled: FAIL create_disabled=false fork_disabled=false
+STEP e2-drag-preview: FAIL {"rev":1,"create":false,"fork":false} head=3 rows=3
+E2E RESULT: FAIL e-mid-disabled,e2-drag-preview
+⇒ 杀死（红点 STEP e-mid-disabled），源与 classpath 均逐字节还原

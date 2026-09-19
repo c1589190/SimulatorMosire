@@ -1,0 +1,24 @@
+09:19:57.020 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+09:19:57.104 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5825/（静态 /webui，同源，无 CORS 头）
+09:19:57.104 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m7t3-e2e-store-m1 checkpointInterval=100 codec=3 handler=8 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45381 guiPort=5825 approvalPort=44971
+09:19:57.181 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+09:19:57.181 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m7t3-e2e-store-m1 checkpointInterval=100 模块数=3 guiPort=5825 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+09:19:57.181 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5825/
+09:19:57.797 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.RenameUnit commandId=540f07a4-e515-428d-b7a7-fba1ae257d2d correlationId=540f07a4-e515-428d-b7a7-fba1ae257d2d 新坐标=main@2
+09:19:57.816 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.RenameUnit commandId=d69c7987-6c38-4d7c-84d7-236ee40e3ccf correlationId=d69c7987-6c38-4d7c-84d7-236ee40e3ccf 新坐标=main@3
+09:19:58.712 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=930fa8b1-5c1b-4518-bbf2-9065fb44a9e2 correlationId=930fa8b1-5c1b-4518-bbf2-9065fb44a9e2 新坐标=main@4
+09:19:58.719 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=c48c80b6-ea8f-41de-90af-6938d83a0731 correlationId=c48c80b6-ea8f-41de-90af-6938d83a0731 真实head=main@4
+09:19:59.486 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=91b4b7b7-8104-453f-a726-0b2314dbd947 correlationId=91b4b7b7-8104-453f-a726-0b2314dbd947 真实head=main@4
+09:19:59.490 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=986ea0be-94a9-4104-904c-0b0692a82123 correlationId=986ea0be-94a9-4104-904c-0b0692a82123 真实head=main@4
+09:19:59.517 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=ed88f248-38be-4afc-af6a-c64d25c69b0a correlationId=ed88f248-38be-4afc-af6a-c64d25c69b0a 真实head=main@4
+09:19:59.532 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=2714334c-9fd0-4fba-95a3-43019781a9c5 correlationId=2714334c-9fd0-4fba-95a3-43019781a9c5 真实head=main@4
+09:19:59.548 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=a9516853-9d62-4329-8a3a-77d5d3212ff4 correlationId=a9516853-9d62-4329-8a3a-77d5d3212ff4 真实head=main@4
+09:19:59.565 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=eed61cd5-d6cc-4e83-9921-56f966d8b38a correlationId=eed61cd5-d6cc-4e83-9921-56f966d8b38a 真实head=main@4
+09:19:59.581 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=517c9e73-6a4f-4fcb-8600-5942624749be correlationId=517c9e73-6a4f-4fcb-8600-5942624749be 真实head=main@4
+09:19:59.597 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=619e21d7-8056-420e-bca2-cdb4d9f6d5fc correlationId=619e21d7-8056-420e-bca2-cdb4d9f6d5fc 真实head=main@4
+09:19:59.615 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=6bd4d5e0-a7de-4cb9-9a1e-58600bc9fc1b correlationId=6bd4d5e0-a7de-4cb9-9a1e-58600bc9fc1b 真实head=main@4
+09:19:59.631 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=d23f6e43-6d6c-48c1-ac2e-77155394a0bf correlationId=d23f6e43-6d6c-48c1-ac2e-77155394a0bf 真实head=main@4
+09:19:59.647 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=2153dad8-3e29-4633-9429-ee35e8ea038b correlationId=2153dad8-3e29-4633-9429-ee35e8ea038b 真实head=main@4
+09:19:59.700 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=5250fc90-045d-4374-a2c3-a82906e4333b correlationId=5250fc90-045d-4374-a2c3-a82906e4333b 真实head=main@4
+09:19:59.702 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令冲突: type=core.AdvanceTime commandId=9bc3566a-2aee-4024-a9b2-c06d001fa2de correlationId=9bc3566a-2aee-4024-a9b2-c06d001fa2de 真实head=main@4
+09:20:07.744 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

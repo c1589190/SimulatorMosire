@@ -47,7 +47,12 @@
 
   <footer class="timeline-bar" id="timeline-bar">
     <div id="timeline-mount" class="timeline-track"></div>
+    <div class="timeline-actions">
+      <button type="button" id="timeline-create" class="primary" disabled>创建节点</button>
+      <button type="button" id="timeline-fork" disabled>分岔</button>
+    </div>
     <span id="timeline-meta" class="muted">分支 — · rev —</span>
+    <span id="timeline-status" class="tl-status muted"></span>
   </footer>
 
   <script src="api.js"></script>
