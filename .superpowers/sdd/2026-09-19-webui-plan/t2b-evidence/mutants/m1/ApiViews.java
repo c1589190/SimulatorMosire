@@ -304,7 +304,7 @@ final class ApiViews {
     view.put("parent", unit.parent().valueAt(at).map(UnitId::value).orElse(null));
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
-    view.put("movement", movement(unit, at, map));
+    view.put("movement", unit.movement().isPresent());
     return view;
   }
 

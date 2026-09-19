@@ -1,0 +1,22 @@
+server_ready_tries=3 code=200 pid=266381
+STEP a-plan-route-committed: PASS {"status":200,"body":{"result":"committed","ref":{"branch":"main","revision":2}}}
+STEP b-movement-is-object: FAIL {"movement":true}
+E2E RESULT: FAIL fatal TypeError: Cannot read properties of undefined (reading 'path')
+    at /home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/e2e/e2e.cjs:158:35
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+e2e_rc=1
+
+===== 装置补记（t2b-m1）：本轮推送的正是以下字节 =====
+kind=java
+target=simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java
+orig_md5=51123c5ec835d1180e14c9fffe83dbc9
+pushed_src_md5=048a430de41f9472c6689cec27ad64fc
+pushed_classes_agg=cb81278fc69dea2525378a7e35227b74
+restored_src_md5=51123c5ec835d1180e14c9fffe83dbc9
+restored_classes_agg=17ed02ed049c5bbdaa9c37eb38dbbfe2
+class_backup_agg=17ed02ed049c5bbdaa9c37eb38dbbfe2
+round_start=1789787505
+server_log_mtime=1789787506
+e2e_rc=1
+server_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/logs/t2b-m1.server.log
+javac_log=/home/cna/SimulatorMosire/.claude/worktrees/m7bt2/.superpowers/sdd/2026-09-19-webui-plan/t2b-evidence/logs/t2b-m1.javac.log

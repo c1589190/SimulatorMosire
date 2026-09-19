@@ -1,0 +1,16 @@
+{
+  "id": "u-1",
+  "totalPoints": 3,
+  "remainingPoints": 3,
+  "status": "IN_TRANSIT",
+  "currentHex": {
+    "q": 1,
+    "r": 1
+  },
+  "nextHex": {
+    "q": 1,
+    "r": 2
+  },
+  "baseColor": "rgba(255, 214, 130, 0.35)",
+  "remainingColor": "#ffd27a"
+}

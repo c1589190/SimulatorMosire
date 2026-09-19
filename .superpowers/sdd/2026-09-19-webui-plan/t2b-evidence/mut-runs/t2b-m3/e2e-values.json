@@ -1,0 +1,163 @@
+{
+  "b": {
+    "movement": {
+      "route": {
+        "waypoints": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ],
+        "path": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ]
+      },
+      "departedAt": {
+        "tick": 5,
+        "calendarLabel": null
+      },
+      "speedAtDeparture": 2,
+      "mobilityPerMilleAtDeparture": 500,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 1
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 2
+      },
+      "remainingMillis": 1500
+    }
+  },
+  "c": {
+    "id": "u-1",
+    "name": "第一连",
+    "parent": "—",
+    "position": "q=1, r=1",
+    "member": "100",
+    "equipment": "步枪=50",
+    "speed": "2",
+    "mobilityPerMille": "500",
+    "movement": "true"
+  },
+  "d": {
+    "id": "u-1",
+    "totalPoints": 3,
+    "remainingPoints": 3,
+    "status": "IN_TRANSIT",
+    "currentHex": {
+      "q": 1,
+      "r": 1
+    },
+    "nextHex": {
+      "q": 1,
+      "r": 2
+    },
+    "baseColor": "rgba(255, 214, 130, 0.35)",
+    "remainingColor": "#ffd27a"
+  },
+  "e": {
+    "unit": {
+      "route": {
+        "waypoints": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ],
+        "path": [
+          {
+            "q": 1,
+            "r": 1
+          },
+          {
+            "q": 1,
+            "r": 2
+          },
+          {
+            "q": 1,
+            "r": 3
+          }
+        ]
+      },
+      "departedAt": {
+        "tick": 5,
+        "calendarLabel": null
+      },
+      "speedAtDeparture": 2,
+      "mobilityPerMilleAtDeparture": 500,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 2
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 3
+      },
+      "remainingMillis": 1000
+    },
+    "panel": {
+      "id": "u-1",
+      "name": "第一连",
+      "parent": "—",
+      "position": "q=1, r=2",
+      "member": "100",
+      "equipment": "步枪=50",
+      "speed": "2",
+      "mobilityPerMille": "500",
+      "movement": "true"
+    },
+    "route": {
+      "id": "u-1",
+      "totalPoints": 3,
+      "remainingPoints": 2,
+      "status": "IN_TRANSIT",
+      "currentHex": {
+        "q": 1,
+        "r": 2
+      },
+      "nextHex": {
+        "q": 1,
+        "r": 3
+      },
+      "baseColor": "rgba(255, 214, 130, 0.35)",
+      "remainingColor": "#ffd27a"
+    }
+  },
+  "f": {
+    "apiMovement": null,
+    "panel": "false",
+    "routeIds": [
+      "u-1"
+    ]
+  }
+}

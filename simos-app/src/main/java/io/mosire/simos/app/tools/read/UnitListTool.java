@@ -56,7 +56,8 @@ public final class UnitListTool implements AgentTool {
       SimulationState state = query.stateAt(ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH));
       UnitState units = ToolSupport.unitState(state);
       Map<String, Object> view = new LinkedHashMap<>();
-      view.put("units", ToolSupport.units(units, state.meta().timestamp()));
+      view.put(
+          "units", ToolSupport.units(units, state.meta().timestamp(), ToolSupport.gameMap(state)));
       return ToolSupport.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
