@@ -13,6 +13,12 @@
   <name>SimosApp</name>
   <description>组合根：装配 CoreSimos 与领域模块（Shell / ShellConfig / ShellMain）。GUI/MCP/审批在 T6/T7/T8 接入。</description>
 
+  <!-- ★ T2：前端单元测试门禁的 Node 可执行文件。可用 -Dnode.executable=<path> 覆盖；
+       指到不存在的程序 ⇒ 构建必须红（fail-closed，见 spec §五）。 -->
+  <properties>
+    <node.executable>node</node.executable>
+  </properties>
+
   <!-- ★ 依赖表照 spec §2.1。本模块**不设** maven-enforcer-plugin 的 bannedDependencies：
        它是组合根（ADR-1 §九 记的那笔账），天然认识全部领域模块与 AgentLib/MCP。
        父 POM 的 enforce-java-and-maven（Java 21 / Maven 3.8+）照常继承。 -->
@@ -73,4 +79,34 @@
       <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
     </dependency>
   </dependencies>
+
+  <!-- ★ T2 前端单元测试门禁（spec §五）：把 webui 纯函数测试接进 test 阶段。
+       用 exec-maven-plugin 直接跑 node（零 npm 依赖、不联网）；Node 不可用 ⇒ 插件报错、构建红
+       （fail-closed，不设 skip/if 守卫）。驱动脚本自己解析 node 的测试汇总并卡断言数下界，
+       因为 node 的测试运行器在没有匹配文件时会以 rc=0 静默通过。 -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.4.1</version>
+        <executions>
+          <execution>
+            <id>frontend-unit-tests</id>
+            <phase>test</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <executable>${node.executable}</executable>
+              <workingDirectory>${project.basedir}</workingDirectory>
+              <arguments>
+                <argument>${project.basedir}/src/test/js/run-gate.cjs</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>

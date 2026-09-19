@@ -741,5 +741,11 @@
     orderedBranches: orderedBranches,
     COL_WIDTH: COL_WIDTH,
     LABEL_WIDTH: LABEL_WIDTH,
+    // ★ T2 可测性宿主（无行为影响，页面路径不调用）：给列布局/查表注入模型快照，
+    //   使 columnOfTick / tickOfRevision 这两个读 model 的纯函数能在门禁内直接断言。
+    __setModelForTest: function (tickGroups, tickByRevision) {
+      model.tickGroups = tickGroups || {};
+      model.tickByRevision = tickByRevision || {};
+    },
   };
 })();

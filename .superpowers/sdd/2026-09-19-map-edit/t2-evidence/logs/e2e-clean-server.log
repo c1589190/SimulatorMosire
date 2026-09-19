@@ -1,0 +1,11 @@
+02:07:06.339 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+02:07:06.439 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5831/（静态 /webui，同源，无 CORS 头）
+02:07:06.439 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m8t2-e2e-store-5831 checkpointInterval=100 codec=3 handler=12 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45979 guiPort=5831 approvalPort=45087
+02:07:06.439 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m8t2-e2e-store-5831 checkpointInterval=100 模块数=3 guiPort=5831 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+02:07:06.440 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5831/
+02:07:09.961 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=e25f785a-5c9b-4d2f-9ada-05b98105f490 correlationId=e25f785a-5c9b-4d2f-9ada-05b98105f490 新坐标=main@2
+02:07:14.958 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=224da444-a6f9-4530-99de-6bb5bb1ab8ac correlationId=224da444-a6f9-4530-99de-6bb5bb1ab8ac 新坐标=main@3
+02:07:17.025 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.UpdateRegion commandId=f9a86846-896c-4eb9-b973-f9a1dda8b0c7 correlationId=f9a86846-896c-4eb9-b973-f9a1dda8b0c7 新坐标=main@4
+02:07:18.965 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.UpdateRegion commandId=782002f5-bce4-4b97-bc84-81bfaa0a25ad correlationId=782002f5-bce4-4b97-bc84-81bfaa0a25ad 新坐标=main@5
+02:07:20.149 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.UpdateRegion commandId=da5006d3-ac0e-42e8-b527-71a4bdfb455c correlationId=da5006d3-ac0e-42e8-b527-71a4bdfb455c 新坐标=main@6
+02:07:22.516 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell
