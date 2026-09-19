@@ -1,0 +1,6 @@
+mutation=m1 orig_md5=4950d1b8951f8a057acc1d2ea57a30dc mutant_md5=0b63f4dfe66fa933a168af5d8ec1efeb file=map.js expect_red=b1-overlap-one-command-head-plus-one
+syntax_rc=0 (must be 0)
+e2e_rc=1 (expect 1)
+result_line=E2E RESULT: 8 FAIL b1-overlap-one-command-head-plus-one,b2-overlap-allows-multi-membership,b3-overlap-draft-kept,c1-fade-focus-set,c2-fade-colors-distinct,e1-delete-unconfirmed-zero-write,e2-delete-confirmed-one-command,f1-duplicate-id-rejected-reason
+restored_md5=4950d1b8951f8a057acc1d2ea57a30dc restored_classes_md5=4950d1b8951f8a057acc1d2ea57a30dc orig_md5=4950d1b8951f8a057acc1d2ea57a30dc
+MUTATION m1: KILLED (expected red b1-overlap-one-command-head-plus-one observed)

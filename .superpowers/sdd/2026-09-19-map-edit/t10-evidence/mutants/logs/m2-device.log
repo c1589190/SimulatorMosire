@@ -1,0 +1,6 @@
+mutation=m2 orig_md5=4950d1b8951f8a057acc1d2ea57a30dc mutant_md5=621deeea897357a5673beb7a6f12a4e1 file=map.js expect_red=e1-delete-unconfirmed-zero-write
+syntax_rc=0 (must be 0)
+e2e_rc=1 (expect 1)
+result_line=E2E RESULT: 2 FAIL e1-delete-unconfirmed-zero-write,e2-delete-confirmed-one-command
+restored_md5=4950d1b8951f8a057acc1d2ea57a30dc restored_classes_md5=4950d1b8951f8a057acc1d2ea57a30dc orig_md5=4950d1b8951f8a057acc1d2ea57a30dc
+MUTATION m2: KILLED (expected red e1-delete-unconfirmed-zero-write observed)

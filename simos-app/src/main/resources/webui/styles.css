@@ -1086,3 +1086,67 @@ body.workbench-page .wb-overlay .timeline-bar {
   width: 100%;
   margin-top: 4px;
 }
+
+/* ══ 区域编辑模式（M8 T10）════════════════════════════════════════════
+   新建/改 hex/删除三段式；删除必须二次确认（#region-delete-confirm 未确认时 hidden）。 */
+
+.region-editor,
+.region-info-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.region-editor h3,
+.region-info-editor h3 {
+  margin: 4px 0;
+}
+
+.region-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.region-edit-row button,
+.region-edit-row select {
+  flex: 1 1 auto;
+}
+
+.region-edit-group {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px 8px;
+}
+
+.region-edit-group legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.region-edit-group button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.region-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid #d9534f;
+  border-radius: var(--radius);
+  color: #ffb4b0;
+  font-size: 11px;
+}
+
+.region-delete-confirm button {
+  flex: 1 1 auto;
+  width: auto;
+}
+

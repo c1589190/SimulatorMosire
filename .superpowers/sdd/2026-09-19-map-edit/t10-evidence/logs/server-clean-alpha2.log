@@ -1,0 +1,16 @@
+23:31:19.202 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+23:31:19.294 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46351/（静态 /webui，同源，无 CORS 头）
+23:31:19.294 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m8t10-e2e-store-46351 checkpointInterval=100 codec=3 handler=12 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 mcpPort=45039 guiPort=46351 approvalPort=45481
+23:31:19.295 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m8t10-e2e-store-46351 checkpointInterval=100 模块数=3 guiPort=46351 mcpPort=0 mcpPath=/mcp approvalPort=0 mapId=Map1
+23:31:19.295 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:46351/
+23:31:23.924 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=72e72029-a497-4bc1-995e-49384fda7c4e correlationId=72e72029-a497-4bc1-995e-49384fda7c4e 新坐标=main@2
+23:31:26.219 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.DeleteRegion commandId=4486e6bf-e980-4f28-a0fe-2fc8b9841b50 correlationId=4486e6bf-e980-4f28-a0fe-2fc8b9841b50 新坐标=main@3
+23:31:29.809 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.UpdateRegion commandId=6e2cb8b6-8787-45be-b297-1df8e319444d correlationId=6e2cb8b6-8787-45be-b297-1df8e319444d 新坐标=main@4
+23:31:31.317 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.CreateRegion commandId=0ec3faec-276f-4c48-a077-70b19f413c56 correlationId=0ec3faec-276f-4c48-a077-70b19f413c56 原因=区域已存在: test_nation
+23:31:32.321 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.CreateRegion commandId=78e45371-4876-489f-887c-d2b771dfcb48 correlationId=78e45371-4876-489f-887c-d2b771dfcb48 原因=hexes 不得为空：一个区域至少要有一格
+23:31:33.022 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=map.CreateRegion commandId=9f2e9516-3b90-4d9d-b70b-8f1b97f3cdb2 correlationId=9f2e9516-3b90-4d9d-b70b-8f1b97f3cdb2 原因=hex 不在图上: 9999_9999
+23:31:34.592 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetTerrain commandId=83873b77-55db-4e8a-b882-6a0ccd76a810 correlationId=83873b77-55db-4e8a-b882-6a0ccd76a810 新坐标=main@5
+23:31:36.662 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CreateUnit commandId=ea29ab3d-8976-408d-b34e-4ec92fec5a2e correlationId=ea29ab3d-8976-408d-b34e-4ec92fec5a2e 新坐标=main@6
+23:31:37.966 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=7ad62320-5cdb-4aac-b3d4-fbf85e489cac correlationId=7ad62320-5cdb-4aac-b3d4-fbf85e489cac 新坐标=main@7
+23:31:38.873 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CancelRoute commandId=bc555c50-b7c1-4ac3-b38b-ce7b89b88b02 correlationId=bc555c50-b7c1-4ac3-b38b-ce7b89b88b02 新坐标=main@8
+23:31:39.641 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

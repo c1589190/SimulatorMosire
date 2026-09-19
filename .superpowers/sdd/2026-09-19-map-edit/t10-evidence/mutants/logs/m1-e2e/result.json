@@ -1,0 +1,201 @@
+{
+  "preflight": {
+    "hexCount": 19441,
+    "regions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "terrainTypes": [
+      "ocean",
+      "plains",
+      "low_hills",
+      "mountains"
+    ]
+  },
+  "before": {
+    "annexHexCount": 201,
+    "nationHexCount": 701,
+    "H_RM": {
+      "q": -18,
+      "r": 0
+    },
+    "H_ADD": {
+      "q": -2,
+      "r": 0
+    }
+  },
+  "m9Baseline": {
+    "blockCount": 44,
+    "unmergedCount": 0,
+    "unitCount": 0
+  },
+  "a": {
+    "body": "region-edit",
+    "cur": "区域编辑",
+    "regionPanelVisible": true,
+    "editorVisible": true,
+    "metaEditorVisible": true,
+    "whitelist": {
+      "create": true,
+      "update": true,
+      "del": true,
+      "terrain": false
+    }
+  },
+  "bPreview": {
+    "midPainting": true,
+    "midBrush": 3,
+    "draftHexCount": 5
+  },
+  "hexRegionsBeforeCreate": [
+    "test_annex_target",
+    "test_nation"
+  ],
+  "create": {
+    "posts": 0,
+    "payload": null,
+    "headBefore": 1,
+    "headAfter": 1,
+    "regionIdsAfter": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "hexRegionsAfter": [
+      "test_annex_target",
+      "test_nation"
+    ]
+  },
+  "fade": {
+    "focus": null,
+    "fadedRegions": [
+      "test_annex_target",
+      "test_nation"
+    ],
+    "bodyFocus": "",
+    "colors": [
+      "#dbadcc",
+      "#ceaecf"
+    ],
+    "alphas": [
+      0.13
+    ],
+    "focusAlpha": 0.52,
+    "fadeAlpha": 0.13,
+    "fadedNation": "#ceaecf",
+    "fadedAnnex": "#dbadcc"
+  },
+  "fadeAfterClear": {
+    "focus": "test_annex_target",
+    "fadedRegions": [
+      "test_nation"
+    ],
+    "alphas": [
+      0.13,
+      0.52
+    ]
+  },
+  "updateDraft": {
+    "before": 201,
+    "afterRemove": 198,
+    "afterAdd": 201,
+    "containsAdd": true,
+    "containsRm": false
+  },
+  "update": {
+    "posts": 1,
+    "payloadRegionId": "test_annex_target",
+    "payloadHexCount": 201,
+    "hexCountBefore": 201,
+    "hexCountAfter": 201,
+    "H_RM": "-18,0",
+    "H_ADD": "-2,0",
+    "afterContainsAdd": true,
+    "afterContainsRm": false,
+    "headBefore": 1,
+    "headAfter": 2
+  },
+  "negDuplicate": {
+    "status": "禁止重叠：选区与已有区域相交（前端拦截）",
+    "posts": 0
+  },
+  "negEmpty": {
+    "status": "hexes 不得为空：一个区域至少要有一格",
+    "draft": 0,
+    "posts": 1
+  },
+  "negOffmap": {
+    "ok": false,
+    "kind": "rejected",
+    "message": "hex 不在图上: 9999_9999"
+  },
+  "regionEditNonGet": {
+    "count": 3,
+    "types": [
+      "map.UpdateRegion",
+      "map.CreateRegion"
+    ]
+  },
+  "mapEditBrush": {
+    "posts": 1,
+    "hexCount": 5,
+    "terrain": "ocean"
+  },
+  "m9": {
+    "blockCount": 46,
+    "unmergedCount": 0,
+    "selection": {
+      "kind": "hex",
+      "q": -18,
+      "r": 0
+    }
+  },
+  "m7": {
+    "createRes": {
+      "ok": true,
+      "kind": null,
+      "message": null
+    },
+    "routePosts": 1,
+    "routeCount": 1,
+    "cancelPosts": 1,
+    "routeCountAfterCancel": 0
+  },
+  "pageErrors": [],
+  "nonGet": [
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.UpdateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.CreateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.CreateRegion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "map.SetTerrain"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "unit.CreateUnit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "unit.PlanRoute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "type": "unit.CancelRoute"
+    }
+  ]
+}
