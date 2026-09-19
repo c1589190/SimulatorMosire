@@ -21,6 +21,7 @@
     branch: "main",
     revision: null,
     selection: null,
+    highlightRegions: [],
     branches: [],
     heads: {},
   };
@@ -52,6 +53,12 @@
 
   function setSelection(selection) {
     state.selection = selection;
+    notify();
+  }
+
+  /** 当前要高亮的区域集合（M7 T4；区域分组列表归 T6）。map.js 订阅它并懒拉区域 hex。 */
+  function setHighlightRegions(ids) {
+    state.highlightRegions = Array.isArray(ids) ? ids.slice() : [];
     notify();
   }
 
@@ -329,6 +336,7 @@
     setBranch: setBranch,
     setRevision: setRevision,
     setSelection: setSelection,
+    setHighlightRegions: setHighlightRegions,
     onStateChange: onStateChange,
     applyMode: applyMode,
     mountModeBar: mountModeBar,

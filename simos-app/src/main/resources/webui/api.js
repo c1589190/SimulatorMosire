@@ -105,6 +105,11 @@
     return getJson(withTarget("/social/population?q=" + Number(q) + "&r=" + Number(r), target));
   }
 
+  /** 区域 hex 集合（M7 T4，spec §3.3）：{id,name,meta,hexCount,hexes:[{q,r}…]}。懒拉，点选时才取。 */
+  function mapRegion(id, target) {
+    return getJson(withTarget("/map/region/" + encodeURIComponent(id), target));
+  }
+
   // ── 写端点（spec §8.2）；服务端唯一写入口 CoreSimos.submit ─────────────
 
   /**
@@ -145,6 +150,7 @@
     facets: facets,
     mapOverview: mapOverview,
     mapHex: mapHex,
+    mapRegion: mapRegion,
     units: units,
     unit: unit,
     population: population,

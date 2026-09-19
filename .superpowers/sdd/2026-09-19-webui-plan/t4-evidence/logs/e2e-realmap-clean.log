@@ -1,0 +1,10 @@
+server_ready_tries=3 code=200 pid=222759
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP realmap-load: PASS {"loadMs":3019,"fetchMs":[2620,2616],"renderMs":2546,"stateFetchMs":45}
+PAGE-WARNING: Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
+STEP e-region-fill: PASS {"colorA":[168,179,106],"colorB":[204,192,95]}
+STEP e-region-fill-color: PASS {"colorB":[204,192,95],"expectedFill":[205,192,95]}
+STEP e-region-count: PASS {"regionId":"test_annex_target","scale":1.6697452419087107,"expected":201,"actual":201}
+STEP realmap-pan-select: PASS {"panMs":409,"smokeSel":{"kind":"hex","q":0,"r":-1}}
+E2E RESULT: PASS
+e2e_rc=0

@@ -415,7 +415,7 @@
 
     /** 屏幕 CSS 坐标 → 世界 → 命中（单位优先于格）。★ m2 保护的是这里的世界换算。 */
     function pickAt(point) {
-      var world = screenToWorld(point, view);
+      var world = { x: point.x, y: point.y }; // MUTANT m2：忽略 transform（用固定 cellSize/偏移）
       var hitRadius = Math.max(cellSize * 0.36, 10 / view.scale);
       for (var i = units.length - 1; i >= 0; i--) {
         var u = units[i];

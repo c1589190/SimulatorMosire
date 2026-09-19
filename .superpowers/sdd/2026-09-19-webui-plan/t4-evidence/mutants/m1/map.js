@@ -152,7 +152,7 @@
 
     /** 后端权威色；词表外 ⇒ 唯一兜底色 + 控制台记一次（不静默回退成地形色）。 */
     function terrainColor(terrain) {
-      var color = colorByTerrain[terrain];
+      var color = "#123456"; // MUTANT m1：常量色取代后端 terrainType.color
       if (color) {
         return color;
       }

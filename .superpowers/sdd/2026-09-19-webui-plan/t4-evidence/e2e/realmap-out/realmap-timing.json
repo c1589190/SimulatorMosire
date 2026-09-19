@@ -1,0 +1,30 @@
+{
+  "loadMs": 3019,
+  "overviewSamples": [
+    {
+      "transferMs": 2615,
+      "decodeMs": 3,
+      "parseMs": 2,
+      "totalMs": 2620,
+      "bytes": 1044970
+    },
+    {
+      "transferMs": 2611,
+      "decodeMs": 3,
+      "parseMs": 2,
+      "totalMs": 2616,
+      "bytes": 1044970
+    }
+  ],
+  "renderMs": 2546,
+  "stateFetchMs": 45,
+  "panMs": 409,
+  "scaleAfterZoom": 1.6697452419087107,
+  "regionId": "test_annex_target",
+  "regionHexCount": 201,
+  "highlightedHexCount": 201,
+  "regionHex": {
+    "q": -18,
+    "r": 0
+  }
+}

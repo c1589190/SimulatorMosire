@@ -1,0 +1,13 @@
+server_ready_tries=3 code=200 pid=223025
+STEP seed: PASS head=3 rows=3
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP a-color-from-backend: PASS {"backend":"#E7C86E","pixel":[231,200,110],"mapColor":"#E7C86E"}
+STEP b-zoom-select: PASS {"scale":6.748302832938721,"anchorDrift":[1.7194608289595408,1.6386228310536808],"selB":{"kind":"hex","q":1,"r":3}}
+STEP c-pan-select: PASS {"before":{"scale":2.2018348623853212,"tx":100.66909009610936,"ty":15.412844036697237},"after":{"scale":2.2018348623853212,"tx":190.66909009610936,"ty":70.41284403669724},"selC":{"kind":"hex","q":1,"r":2}}
+STEP unit-detail: PASS {"selU":{"kind":"unit","id":"u-1"},"unitName":"乙","detail":"idu-1name乙parent—positionq=1, r=1member100"}
+STEP d-url-revision: PASS http://127.0.0.1:45801/api/map/hex?q=1&r=1&branch=main&revision=2
+STEP d-panel-revision: PASS {"unitNameAt2":"甲","height":0.5,"region":null,"detail2":"q1r1terraindesert（沙漠）height0.5region—该处单位u-1 甲"}
+STEP d-readonly: PASS rows 3->3
+STEP old-page-map: PASS {"oldDetail":"q1r2terraindesertheight0.5","oldLegend":"共 3 格 · 0 区域 · 单位 1 · desert=3","oldErrors":[]}
+E2E RESULT: PASS
+e2e_rc=0
