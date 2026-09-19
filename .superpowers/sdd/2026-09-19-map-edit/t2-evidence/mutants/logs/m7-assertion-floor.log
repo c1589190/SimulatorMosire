@@ -1,0 +1,387 @@
+=== m7-assertion-floor ===
+target=src/test/js/unit-tree.test.cjs
+orig_md5=47e0635c04afdb5b6b75c0403cd87389
+mutant_md5=4c4531abe7cca7167c04512659cbd7af
+mutation=src.replace("test(\"empty-input-returns-empty-forest\", () => {", "test.skip(\"empty-input-returns-empty-forest\", () => {")
+TAP version 13
+# Subtest: all-required-test-files-are-present
+ok 1 - all-required-test-files-are-present
+  ---
+  duration_ms: 1.286126
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 2 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 1.950469
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-six-exact-vectors
+ok 3 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 0.940242
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 4 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 1.24174
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 5 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.186253
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 6 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.089304
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 7 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.374532
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 8 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.142228
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 9 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.285539
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 10 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.099836
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 11 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.265743
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 12 - module-loads
+  ---
+  duration_ms: 0.637509
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 13 - mode-ids-order
+  ---
+  duration_ms: 1.574474
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 14 - mode-labels
+  ---
+  duration_ms: 0.122061
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 15 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.080293
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 16 - view-allows-no-write
+  ---
+  duration_ms: 0.150722
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 17 - region-allows-no-write
+  ---
+  duration_ms: 0.071683
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 18 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.128083
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 19 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.068043
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+ok 20 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.320687
+  type: 'test'
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 21 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.243216
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 22 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.120954
+  type: 'test'
+  ...
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 23 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 2.144832
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 24 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.566677
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 25 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.209738
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 26 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.553478
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 27 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 0.927392
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 28 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.407934
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 29 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.355846
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 30 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.124495
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 31 - deterministic-across-calls
+  ---
+  duration_ms: 0.438093
+  type: 'test'
+  ...
+# Subtest: layout-constants-are-frozen
+ok 32 - layout-constants-are-frozen
+  ---
+  duration_ms: 1.637335
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 33 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.095041
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 34 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.123481
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 35 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.113837
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 36 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.078183
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 37 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.082258
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 38 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.132116
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 39 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.571188
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 40 - groupByTick-empty-input
+  ---
+  duration_ms: 0.189768
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 41 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.268249
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 42 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.116158
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 43 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.083824
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 44 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.078346
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 45 - tickIndex-finds-position
+  ---
+  duration_ms: 0.049692
+  type: 'test'
+  ...
+# Subtest: buildTree-depth-parent-children-per-node
+ok 46 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 1.715218
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 47 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 1.050993
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 48 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.183369
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 49 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.148439
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 50 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.09702
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 51 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.079106
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 52 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.135531
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 53 - empty-input-returns-empty-forest # SKIP
+  ---
+  duration_ms: 0.048231
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 54 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.445271
+  type: 'test'
+  ...
+# Subtest: api.js-declares-exactly-the-three-allowed-write-endpoints
+ok 55 - api.js-declares-exactly-the-three-allowed-write-endpoints
+  ---
+  duration_ms: 0.964281
+  type: 'test'
+  ...
+# Subtest: api.js-exports-exactly-the-three-write-functions
+ok 56 - api.js-exports-exactly-the-three-write-functions
+  ---
+  duration_ms: 2.342779
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 57 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 1.29145
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 58 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.206078
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 59 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.211003
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 60 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 2.261066
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 61 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.19683
+  type: 'test'
+  ...
+1..61
+# tests 61
+# suites 0
+# pass 60
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 74.345101
+[frontend-gate] OK tests=61 pass=60 fail=0
+gate_rc=0
+red_points=0
+
+restored_md5=47e0635c04afdb5b6b75c0403cd87389
+restore_ok=1
