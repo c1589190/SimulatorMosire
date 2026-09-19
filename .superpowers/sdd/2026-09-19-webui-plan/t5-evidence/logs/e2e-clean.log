@@ -1,0 +1,14 @@
+server_ready_tries=3 code=200 pid=230932
+STEP seed: PASS head 1->7
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP tree-structure: PASS {"dom":[{"id":"t5-a","depth":0,"parent":null,"branch":true},{"id":"t5-b","depth":1,"parent":"t5-a","branch":true},{"id":"t5-c","depth":2,"parent":"t5-b","branch":false},{"id":"t5-d","depth":2,"parent":"t5-b","branch":false},{"id":"t5-e","depth":1,"parent":"t5-a","branch":false},{"id":"t5-f","depth":3,"parent":"t5-c","branch":false},{"id":"u-1","depth":0,"parent":null,"branch":false}],"builtCount":7}
+STEP branch-recognition: PASS [{"id":"u-1","dom":false,"built":false,"expected":false},{"id":"t5-a","dom":true,"built":true,"expected":true},{"id":"t5-b","dom":true,"built":true,"expected":true},{"id":"t5-c","dom":false,"built":false,"expected":false},{"id":"t5-d","dom":false,"built":false,"expected":false},{"id":"t5-e","dom":false,"built":false,"expected":false},{"id":"t5-f","dom":false,"built":false,"expected":false}]
+STEP branch-visual: PASS {"branch":{"weight":700,"size":15},"leaf":{"weight":400,"size":12}}
+STEP branch-expand: PASS {"beforeExpand":{"hidden":true,"rows":4,"visibleRows":0,"rowIds":["t5-b","t5-c","t5-f","t5-d"]},"afterExpand":{"hidden":false,"rows":4,"visibleRows":4,"rowIds":["t5-b","t5-c","t5-d","t5-f"]}}
+STEP leaf-detail: PASS {"detailText":"idt5-fname己组parentt5-cpositionq=2, r=5member20equipmentscout=1speed3mobilityPerMille2000movementfalse","api":{"id":"t5-f","name":"己组","member":20,"equipment":{"scout":1},"speed":3,"mobilityPerMille":2000,"parent":"t5-c","position":{"q":2,"r":5},"movement":false},"equipText":"scout=1"}
+STEP map-unit-link: PASS {"selMap":{"kind":"unit","id":"u-1"},"selectedInTree":true}
+STEP revision-target-tree: PASS {"treeAt1":["u-1"],"unitReqs":["http://127.0.0.1:5925/api/units?branch=main&revision=1","http://127.0.0.1:5925/api/units?branch=main&revision=1"]}
+PAGE-ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)
+STEP revision-target-detail: PASS {"unitReqs2":["http://127.0.0.1:5925/api/unit/u-1?branch=main&revision=1"],"detailAt1":"idu-1name第一连parent—positionq=1, r=1member100equipment步枪=50speed2mobilityPerMille500movementfalse","status":"单位 u-1 · main@1"}
+E2E RESULT: PASS
+e2e_rc=0

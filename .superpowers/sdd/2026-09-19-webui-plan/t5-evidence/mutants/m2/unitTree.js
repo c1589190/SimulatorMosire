@@ -27,7 +27,7 @@
    * <p>★ 只认直接子节点（不是后代总数）——`A→B→C` 的三层链里 B 只有一个子 C，B **不是**分岔点。
    */
   function isBranchPoint(node) {
-    return !!node && node.children.length >= 2;
+    return !!node && node.children.length >= 1;
   }
 
   /**

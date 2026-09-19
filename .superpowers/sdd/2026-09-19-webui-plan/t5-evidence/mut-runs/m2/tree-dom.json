@@ -1,0 +1,44 @@
+[
+  {
+    "id": "t5-a",
+    "depth": 0,
+    "parent": null,
+    "branch": true
+  },
+  {
+    "id": "t5-b",
+    "depth": 1,
+    "parent": "t5-a",
+    "branch": true
+  },
+  {
+    "id": "t5-c",
+    "depth": 2,
+    "parent": "t5-b",
+    "branch": true
+  },
+  {
+    "id": "t5-d",
+    "depth": 2,
+    "parent": "t5-b",
+    "branch": false
+  },
+  {
+    "id": "t5-e",
+    "depth": 1,
+    "parent": "t5-a",
+    "branch": false
+  },
+  {
+    "id": "t5-f",
+    "depth": 3,
+    "parent": "t5-c",
+    "branch": false
+  },
+  {
+    "id": "u-1",
+    "depth": 0,
+    "parent": null,
+    "branch": false
+  }
+]
