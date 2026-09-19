@@ -235,7 +235,13 @@
     if (!legend || !overview) {
       return;
     }
-    var types = overview.terrainTypes || Object.keys(TERRAIN_COLORS);
+    // M7 T2：terrainTypes 由 [key…] 变为 [{完整定义}…]；取 key 计数（兼容两种形状）。
+    var types = (overview.terrainTypes || []).map(function (t) {
+      return t && t.key ? t.key : t;
+    });
+    if (!types.length) {
+      types = Object.keys(TERRAIN_COLORS);
+    }
     var counts = {};
     overview.hexes.forEach(function (h) {
       counts[h.terrain] = (counts[h.terrain] || 0) + 1;

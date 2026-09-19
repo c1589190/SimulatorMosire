@@ -1,0 +1,1 @@
+{"mapId":"Map1","hexCount":3,"hexes":[{"q":1,"r":1,"terrain":"desert","height":0.5},{"q":1,"r":2,"terrain":"desert","height":0.5},{"q":1,"r":3,"terrain":"desert","height":0.5}],"regions":[],"cities":[],"terrainTypes":[{"key":"desert","name":"沙漠","color":"#E7C86E","minHeight":0.45,"maxHeight":0.55,"food":0,"gold":1,"stone":1,"moveCost":3,"description":"干旱带上的贫瘠地形，产出少而难走"}]}

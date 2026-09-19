@@ -9,6 +9,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
+import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -180,7 +181,47 @@ final class ApiViews {
     }
     view.put("cities", cities);
 
-    view.put("terrainTypes", new ArrayList<>(map.terrainTypes().keySet()));
+    view.put("terrainTypes", terrainTypeDefinitions(map));
+    return view;
+  }
+
+  /**
+   * 地形词表的**完整定义**（M7 T2，spec §3.2）：由 {@code [key…]} 切换为 {@code [{完整定义}…]}。
+   *
+   * <p>★ **数据来源仍是状态里的** {@code map.terrainTypes()}（不查 {@link TerrainCatalog#defaults()}——那是第二份真相）；
+   * {@code TerrainCatalog.KEYS} **只用来定序**（高度升序）。词表里出现 KEYS 之外的 key（理论不该有）时排到末尾并按字典序， 保证响应字节可复现。
+   *
+   * <p>★ 十字段与 {@link TerrainType} 的 record 组件一一对应——前端图例/色板因此可**完全**取自后端（T4 删硬编码色表）。
+   */
+  private static List<Map<String, Object>> terrainTypeDefinitions(GameMap map) {
+    List<String> keys = new ArrayList<>(map.terrainTypes().keySet());
+    keys.sort(
+        Comparator.comparingInt(
+                (String key) -> {
+                  int index = TerrainCatalog.KEYS.indexOf(key);
+                  return index < 0 ? Integer.MAX_VALUE : index;
+                })
+            .thenComparing(Comparator.naturalOrder()));
+    List<Map<String, Object>> out = new ArrayList<>(keys.size());
+    for (String key : keys) {
+      out.add(terrainType(map.terrainTypes().get(key)));
+    }
+    return out;
+  }
+
+  /** 单个 {@link TerrainType} 的 JSON 形（十字段，顺序与 record 组件一致）。 */
+  private static Map<String, Object> terrainType(TerrainType type) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("key", type.key());
+    view.put("name", type.name());
+    view.put("color", type.color());
+    view.put("minHeight", type.minHeight());
+    view.put("maxHeight", type.maxHeight());
+    view.put("food", type.food());
+    view.put("gold", type.gold());
+    view.put("stone", type.stone());
+    view.put("moveCost", type.moveCost());
+    view.put("description", type.description());
     return view;
   }
 

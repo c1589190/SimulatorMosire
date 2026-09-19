@@ -1,0 +1,21 @@
+root_http=200 root_bytes=2545
+mode_bar_marks=1
+M8_marks=2
+--- /api/map/overview terrainTypes ---
+[
+  {
+    "key": "desert",
+    "name": "沙漠",
+    "color": "#E7C86E",
+    "minHeight": 0.45,
+    "maxHeight": 0.55,
+    "food": 0,
+    "gold": 1,
+    "stone": 1,
+    "moveCost": 3,
+    "description": "干旱带上的贫瘠地形，产出少而难走"
+  }
+]
+/map -> 200
+/unit -> 200
+/social -> 200

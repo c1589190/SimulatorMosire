@@ -1,0 +1,7 @@
+# M7 T2 变异清单（md5）
+# m1: panels.js 注入 https://cdn.example.com/x.js ⇒ R6 判定器红
+# m2: index.html 去掉 地图编辑 的 disabled ⇒ 判据① 断言红
+orig/panels.js  a6f1a11d3170e8ba00b2cdb2543edaf0
+m1/panels.js    3295fa4d1d99c0d982ced64c6ac25207
+orig/index.html 90fabf1a218f448586a88bcae0e4480e
+m2/index.html   102ffcaaeafe7a41a4f2d7c2bc0fb685
