@@ -347,16 +347,17 @@ unit-ext T1：模型地基（UnitStatus/RelativeOffset/CommandChain + Unit 四�
 
 **bite-sized 步骤**
 
-1. `createChain(state, chain, at)`：重 id ⇒ 拒；成员不存在 ⇒ 拒；`commander∉members` ⇒ 拒（构造期也会拦，op 先给可读理由）；**多属不禁**（同一 unit 出现在多条链是正常态）。
+1. `createChain(state, chain)`：重 id ⇒ 拒；成员不存在 ⇒ 拒；**多属不禁**（同一 unit 出现在多条链是正常态）。★ 计划原写的 `at` 形参**多余**（`CommandChain` 四组件全是标量、命令表载荷亦无时刻）⇒ 已删；`commander∉members` 与"members 非空"由 `CommandChain` 构造期拒（消息可读）⇒ op 层**结构性不可达**（见下注 T5-L1/L2）。
    ⇒ 验证：同一 unit 属 2 条链 ⇒ 两条都在。
-2. `updateChain(state, id, name?, commander?, members?)`：未给字段**不动**（不是清空）；给 `members` ⇒ `commander` 必须 ∈ 新 members（否则拒）。
+2. `updateChain(state, id, name?, commander?, members?)`：未给字段**不动**（不是清空）；给 `members` ⇒ 生效的 commander 必须 ∈ 新 members（否则拒）；只给 `commander` ⇒ 必须在**既有** members 里；**三个都缺 ⇒ 允许**（本操作面不判"无变化命令"，T3 立的裁定，这里不开例外）。
    ⇒ 验证：只改 name ⇒ members 逐值不变。
 3. 两个 handler + payload 解析（`members` 字符串数组）。
    ⇒ 验证：逐条 happy/拒绝。
 4. `Codec` Map 键往返（T1 已注册键反序列化器）：含 2 条链且同一 unit 多属的 `UnitState` 快照 + `UnitChangeSet` 各往返一次。
    ⇒ 验证：`UnitCodecTest` 绿（★ m3 的靶子）。
-5. ★ **缺口 U2（待裁）**：`disband` 删单位会让链引用悬空（违反 §一.2 不变量 2）。**建议**：`disband` **拒绝**当该单位仍是任何链的 commander/member（同既有"先改编下属再解散"口径：先修链）；执行者记台账。
-   ⇒ 验证：链中单位被 `disband` ⇒ 拒（若采纳建议）。
+5. ★★ **缺口 U2 —— 控制器已裁（T5-U2），实际范围比本条原描述宽得多**：原写「`disband` 删单位会让链引用悬空」。逐点核实后：`UnitState` 的 T1 兼容构造器 `UnitState(Map<UnitId,Unit>)` 硬编码 `Map.of()`，而 main 里有 **6 处**重建状态走了它 ⇒ **不是"引用悬空"，是静默清空整个 `commandChains` 组件**：`disband`（`UnitOperations:188`）、`attachSubtree`（`:222`，**T3 已关账**）、`reparentSubtree`（`:296`，**T4 已关账**）、私有 `withUnit`（`:403`，**面最宽**——`rename`/`setStrength`/`placeAt`/`planRoute`/`setStatus`/`cancelRoute`/`setOffset` 全走它）、`UnitTimeParticipant:120`（**每个 tick**）；`DemoWorld:126` 建全新演示世界、本就无链 ⇒ **语义正确，不动**。**今天全绿也看不见**的原因：没有任何用例造出带链的状态再去调 op ⇒ `Map.of()` 换 `Map.of()` 是**恒等**。
+   **修法**：前五处改 `state.withUnits(next)`（保留另一组件）；`disband` **另加显式两向拒绝**（该单位是某链的 commander / 只是 member，消息带链 id 与"先改链"），否则 `UnitState` 构造期那条「链 X 的成员不在 units」会以**数据故障口径**暴露成命令失败——命令边界要的是可读原因（与 `attachSubtree` 的成环显式拒同一口径）。
+   ⇒ 验证：**五处各一条守护用例**（形态纪律：装了护栏要在它真正会被用到的每一种形态下各证一次），且各配"把该处还原成 `new UnitState(next)`"的变异体 ⇒ 各自红。
 6. 链**不构成层级**（扁平星形）⇒ 无需查环；显式写一条"多条链交叉不产生环"的用例。
    ⇒ 验证：该用例绿。
 
@@ -371,11 +372,19 @@ unit-ext T1：模型地基（UnitStatus/RelativeOffset/CommandChain + Unit 四�
 **变异思路（≥2 轮）**
 - **m1**：链做成单属（键改 `UnitId`）⇒ 第二条链写不进 ⇒ 红。
 - **m2**：`updateChain` 整体替换 `members`（未给也清空）⇒ 红。
-- **m3**：不注册 `CommandChainId` 键反序列化器 ⇒ 解码抛 ⇒ 红。
+- **m3**：~~不注册 `CommandChainId` 键反序列化器 ⇒ 解码抛 ⇒ 红~~ ⇒ **实测存活、且是等价变异体**（单 String record 走 Jackson 默认键路径，见下注 T5-L3）⇒ 靶子改为**键值**（`new CommandChainId("k-" + text)`）⇒ 红。★ 同一条在 sd 计划已出现过（A3-m4，`NationId`）——**本计划当时拿它当靶子是错的**。
 
 **证据落点**：`.superpowers/sdd/2026-09-20-unit-extension/t5-evidence/`。
 
 **提交信息样式**：`unit-ext T5：command_chain 命令（Create/Update + 多属 + Map 键往返 + disband 交互裁定）`
+
+> ★ **2026-09-21 T5 回填（控制器）**——本轮计划自身四处缺口，逐条裁：
+>
+> - **T5-L1**：步骤 1 的 `createChain(state, chain, at)` 里那个 `at` 是**多余的**（`CommandChain` 四组件全是标量、命令表载荷也没有时刻）⇒ 已删，与 T3 的 `setStatus` 同形（非时态字段不接时刻）。
+> - **T5-L2**：步骤 1 要的 op 层「`commander∉members` 可读理由」对 `createChain` **结构性不可达**——调用方递进来的 `CommandChain` **已经过构造器校验**（`CommandChain.java:40`），进 op 时该不变量必然成立 ⇒ 该守卫连同「members 非空」都由构造期拒，消息本身可读（「commander 必须是 members 之一: …」）。**`updateChain` 侧是活路径**（`nextCommander`/`nextMembers` 由 Optional 现算、尚未构造对象）⇒ 那一侧保留，且**刻意用不同措辞**，好让"是哪一层拒的"可判（T3/T4 的 m9 正是栽在两层消息同形上）。
+> - **T5-L3**：计划 m3 与 spec §五.3/§七/§八#19 都写「不注册键反序列化器 ⇒ 解码抛」——**实测不成立**，是**等价变异体**（同 sd A3-m4）。spec 侧已带注回填，本段 m3 已改靶。★ **两处都是"判据覆盖不到的风险点"**：注册留着（将来换带 `@JsonCreator`/复合结构的 ID 时它承重），但删掉它现有用例不会响。
+> - **T5-L4（根因，留生产里）**：`UnitState` 的 **1 参兼容构造器仍在**（`UnitState.java:57-59`）。它编译期不响、门禁不响，是 T5-U2 那六处的**共同根因**，而且 **T6~T9 每加一条 op 都是一次复发机会**。⇒ 立为**本计划余下任务的通则**：**任何重建状态的代码一律用 `state.withUnits(...)` / `state.withCommandChains(...)`，不得写 `new UnitState(units)`**。是否**删掉**该构造器（会牵动 `UnitState.empty()`、`DemoWorld` 与既有测试）归 **T10** 裁。
+> - **T5-L5（装置形态，新族）**：注释里**复述被禁代码的字样**会让「整份文件计数」型判据**误报**——本轮 `UnitTimeParticipant.java:120` 的 T5 注释里写了 `new UnitState(units)`，把"这个文件还有没有 1 参调用"的整文件计数顶成 1，装置当场作废过一轮，后改成**逐条代码片段**判据才跑通。与 ugrep / `git grep --untracked` / Spotless 正则 / `extract-verify.sh` 的拒收正则**同族**：**判据自己要能区分"真命中"与"提到过"**。
 
 ---
 

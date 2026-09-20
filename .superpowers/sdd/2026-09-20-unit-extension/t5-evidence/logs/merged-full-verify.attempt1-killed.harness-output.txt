@@ -1,0 +1,13 @@
+=== 合并前 ===
+3e7d33e
+ M .serena/project.yml
+
+=== 快进合并 ue/t5 ===
+ create mode 100644 .superpowers/sdd/2026-09-20-unit-extension/t5-evidence/t5-report.md
+ create mode 100644 simos-unit/src/main/java/io/mosire/simos/unit/spi/CreateCommandChainHandler.java
+ create mode 100644 simos-unit/src/main/java/io/mosire/simos/unit/spi/UpdateCommandChainHandler.java
+69d3c7d
+
+=== 起跑 clean verify（前台；>600s 会被摘到后台）===
+
+[killed]

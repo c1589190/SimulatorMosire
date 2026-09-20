@@ -384,7 +384,13 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 
 1. **`UnitState` 新增组件 ⇒ `UnitChangeSet` 必须新增同名组件**：`UnitRoundTripTest.everyUnitStateComponentParticipatesInTheChangeSet`（`:52-66`）反射枚举状态组件、`changeSetHasExactlyOneComponent`（`:74-82`）要求两边组件集相同，`mutate`/`changedOf` 的 `switch`（`:94-106`）要登记新组件名。★ **不登记 ⇒ 该测试自动红**（这正是铁律 5 的护栏在工作）。
 2. **`ArchitectureGuardsTest`**：`changeSetHasExactlyFourMainSourceImplementors`（`:24-45`）钉「全仓恰 4 个 main `ChangeSet` 实现者」。本次只在 `UnitChangeSet` 里**加组件**（仍是同一个类）⇒ **计数仍是 4，无需改**；★ 若有人另造一个 unit 变更集类，此条会红。
-3. **`UnitCodec`**：现在只注册 `UnitId` 一个键反序列化器（`UnitCodec.java:52-55`）。★ 若 `CommandChainId` 作 `Map` 键，**必须照裁定 16 在本模块注册键反序列化器**，否则解码期抛。`UnitChangeSet.isEmpty()` 的 mixin（`:40-50`）已处理，新增组件不改变它。
+3. **`UnitCodec`**：现在只注册 `UnitId` 一个键反序列化器（`UnitCodec.java:52-55`）。★ 若 `CommandChainId` 作 `Map` 键，**照裁定 16 在本模块注册键反序列化器**。~~否则解码期抛~~ 〔★ 见注 ①〕`UnitChangeSet.isEmpty()` 的 mixin（`:40-50`）已处理，新增组件不改变它。
+
+> ★ **注 ①（2026-09-21 T5 回填，控制器）**：本条原写「不注册 ⇒ 解码期抛」——**实测不成立**。`CommandChainId` 是**单 String record**、**无 `@JsonCreator`** ⇒ Jackson 的默认 Map 键路径本来就能建它。T5 的 t5m03（只删 `UnitCodec.java:57` 那一行注册）与 t5m14（删**整个** `keyModule()`，`UnitId` 的注册一并去掉）**两轮都存活**（`Tests run: 117, Failures: 0`、九道门禁 `verdict=OK`）⇒ 构成**等价变异体**；判别力由补的 t5m13（把键**值**改坏）证明（KILLED，红点 `UnitCodecTest` 的 `commandChainIdsSurviveRoundTripAsMapKeys…`）。
+>
+> ★ **这不是新发现**：sd 计划 A3-m4 已记过同一件事（`NationId`，见 `.superpowers/sdd/2026-09-20-sd-simos/progress.md:92`）——**显式键注册在单 String record 上非承重**，此处是**同族的第二例**。⇒ **注册保留**（spec 点名要求，且将来换成带 `@JsonCreator`／复合结构的 ID 时它会是承重的），但把它记为「**判据覆盖不到的风险点**」：谁删了它，现有用例不会响。
+>
+> ★ 同族的**反**向提示：**不能**据此推断"复合键也不必注册"——那一格**没测过**。
 4. **恰一个 participant**：`unit` namespace 的 tick 行为（回归重规划、状态对物化的影响）**只能进 `UnitTimeParticipant`**（`UnitTimeParticipant.java:69`；`namespace() :80-82`）——`TimeAdvance` 的 `putIfAbsent` 对同 namespace **重复即抛**（research §C③.4）。它读 `state.module("map")`（`:146-154`）、产出 `unit` 变更集、声明 `reads/writes`（`:100-118`）。
 5. **resolver**：canonical 仍是 `unit:<id>`（`UnitResolver.java:25`、`:154-159`）。`command_chain` **不给子实体地址**（P11）；若将来要做，须同时改 resolver + `UnitPayloads`/地址 AST——**列挂起**。
 6. **AgentAttachPolicy**：`UnitAgentAttachPolicy` 对**存在的 `Unit`** 可绑（`:19`）。新增实体（链/编队覆盖层）**不自动**可绑；若要，另加策略——**列挂起**。
@@ -396,7 +402,7 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 | 每个新 handler 都能在 `CommandRegistry` 里按 type 找到；`catalog` 含全部新 type | 删一个 handler 的注册 ⇒ catalog 少一个 ⇒ 红 |
 | `type` 形状 `<namespace>.<Command>`（构造期） | 写 `unitAttach`（无点） ⇒ 构造期抛 ⇒ 红 |
 | `unit` namespace 恰一个 participant | 注册第二个 unit participant ⇒ `putIfAbsent` 抛 ⇒ 红 |
-| `CommandChainId` 作 Map 键能往返 | 不注册键反序列化器 ⇒ 解码抛 ⇒ 红 |
+| `CommandChainId` 作 Map 键能往返 | 键**值**改坏（`new CommandChainId("k-" + text)`）⇒ 解码得错值 ⇒ 红（★ 删注册**杀不掉**——单 String record 走 Jackson 默认路径，见 §五.3 注 ①） |
 | 新状态组件全进变更集 | 只在 `UnitState` 加组件、不进 `UnitChangeSet` ⇒ `UnitRoundTripTest` 红 |
 
 ---
@@ -482,7 +488,7 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 | 16 | **事件无明文泄漏**：`received` 载荷只含 digest，不含 delta 明文 | 把 delta 塞进事件载荷 ⇒ 红 |
 | 17 | **往返**：新状态组件全进 `UnitChangeSet`；`UnitRoundTripTest` 绿；`ArchitectureGuardsTest` 计数仍 4 | 状态加组件、变更集不加 ⇒ 自动红 |
 | 18 | **命令注册与形状**：新 handler 全部在册、`type` 形状合法、`unit` namespace 恰一个 participant | 删注册 / 写无点的 type / 注册第二个 participant ⇒ 各自红 |
-| 19 | **codec**：`CommandChainId` 作 Map 键往返 | 不注册键反序列化器 ⇒ 解码抛 ⇒ 红 |
+| 19 | **codec**：`CommandChainId` 作 Map 键往返 | 键值改坏 ⇒ 红（★ 删注册**不红**：单 String record 上非承重，见 §五.3 注 ①；与 sd A3-m4 同族） |
 | 20 | **sd 边界**：sd 侧无直接写 unit；经 drain | 删 drain / sd participant 直接写 unit ⇒ 单位不变或越界 ⇒ 红 |
 
 ★ **门禁**：`./mvnw clean verify` rc=0（本任务**不跑 Maven**，门禁在实现期跑）；变异轮**全杀**。
