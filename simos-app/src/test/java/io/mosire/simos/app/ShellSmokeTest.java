@@ -93,7 +93,9 @@ class ShellSmokeTest {
   void renameThroughTheShellCommitsAndReplays() {
     seedGenesis();
     try (Shell shell = Shell.start(shellConfig())) {
-      assertThat(shell.registeredModuleCount()).as("壳应注册 map/social/unit 三个 codec").isEqualTo(3);
+      assertThat(shell.registeredModuleCount())
+          .as("壳应注册 map/social/unit/sd 四个 codec（A3 起第 4 个是 SdCodec）")
+          .isEqualTo(4);
 
       CommandResult result =
           shell.coreSimos().submit(rename(1L, "{\"id\":\"u-1\",\"name\":\"改名后的第一连\"}"));

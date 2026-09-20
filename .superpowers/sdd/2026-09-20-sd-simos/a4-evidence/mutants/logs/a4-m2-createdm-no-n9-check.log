@@ -1,0 +1,44 @@
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.176 s <<< FAILURE! -- in io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest
+[ERROR] io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest.rejectsGenericWriteInAllowedTools -- Time elapsed: 0.014 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Unchanged[], decisionMakers=Upsert[entries={dm9=DecisionMaker[id=dm9, affiliation=Nation[nationId=n1], allowedTools=[simos.command.submit], viewScope=ViewScope[visibleRegions=[], visibleHexes=[], visibleUnits=[], seeOwnUnits=false, adjudicationDisclosure=WITHHELD, redactedFields=[]], decisionCadenceTicks=1]}], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Unchanged[], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest.rejectsGenericWriteInAllowedTools(CreateDecisionMakerHandlerTest.java:77)
+
+[ERROR] Failures: 
+[ERROR]   CreateDecisionMakerHandlerTest.rejectsGenericWriteInAllowedTools:77 
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Unchanged[], decisionMakers=Upsert[entries={dm9=DecisionMaker[id=dm9, affiliation=Nation[nationId=n1], allowedTools=[simos.command.submit], viewScope=ViewScope[visibleRegions=[], visibleHexes=[], visibleUnits=[], seeOwnUnits=false, adjudicationDisclosure=WITHHELD, redactedFields=[]], decisionCadenceTicks=1]}], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Unchanged[], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
+
+# --- 装置自记（本轮的字节）---
+# mutant=a4-m2-createdm-no-n9-check
+# orig_md5=613d2ceb6297d053e6e41173f4e80e6b
+# mutant_md5=edc52b3b652a21f708ed60374ea6ab00
+# restored_md5=613d2ceb6297d053e6e41173f4e80e6b
+# rc=1 compile_errors=0 failing_lines=2
+# RED: [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.176 s <<< FAILURE! -- in io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest
+# RED: [ERROR] io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest.rejectsGenericWriteInAllowedTools -- Time elapsed: 0.014 s <<< FAILURE!

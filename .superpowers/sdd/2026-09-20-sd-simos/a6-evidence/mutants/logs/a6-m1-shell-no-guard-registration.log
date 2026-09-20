@@ -1,0 +1,62 @@
+21:32:19.777 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+21:32:19.859 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46495/（静态 /webui，同源，无 CORS 头）
+21:32:19.859 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-3250653352544002393 checkpointInterval=100 codec=4 handler=18 participant=1 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45441 guiPort=46495 approvalPort=45003
+21:32:19.933 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.DeleteRegion commandId=cmd-del correlationId=cmd-del 新坐标=main@2
+21:32:19.958 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45003）
+21:32:19.959 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+21:32:20.018 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+21:32:20.027 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46105/（静态 /webui，同源，无 CORS 头）
+21:32:20.027 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-6211580573379407005 checkpointInterval=100 codec=4 handler=18 participant=1 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45197 guiPort=46105 approvalPort=46115
+21:32:20.037 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.DeleteRegion commandId=cmd-del correlationId=cmd-del 新坐标=main@2
+21:32:20.043 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46115）
+21:32:20.043 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+21:32:20.104 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+21:32:20.112 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45357/（静态 /webui，同源，无 CORS 头）
+21:32:20.113 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-14041110088455163826 checkpointInterval=100 codec=4 handler=18 participant=1 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44677 guiPort=45357 approvalPort=45007
+21:32:20.128 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.PutInfo commandId=cmd-put correlationId=cmd-put 新坐标=main@2
+21:32:20.130 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45007）
+21:32:20.130 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.562 s <<< FAILURE! -- in io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest
+[ERROR] io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest.taggedRegionDeleteIsRejectedAndLeavesNoRevision -- Time elapsed: 0.080 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]]]
+to be an instance of:
+  io.mosire.simos.core.command.CommandResult.Rejected
+but was instance of:
+  io.mosire.simos.core.command.CommandResult.Committed
+	at io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest.taggedRegionDeleteIsRejectedAndLeavesNoRevision(SdRegionDeleteGuardEndToEndTest.java:80)
+
+[ERROR] Failures: 
+[ERROR]   SdRegionDeleteGuardEndToEndTest.taggedRegionDeleteIsRejectedAndLeavesNoRevision:80 
+Expecting actual:
+  Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=2]]]
+to be an instance of:
+  io.mosire.simos.core.command.CommandResult.Rejected
+but was instance of:
+  io.mosire.simos.core.command.CommandResult.Committed
+[ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+
+# --- 装置自记（本轮的字节）---
+# mutant=a6-m1-shell-no-guard-registration
+# orig_md5=9b194bb17fbbf7a45eea41e71d52f727
+# mutant_md5=731bae8556dee896f8ad6819e7a63a72
+# restored_md5=9b194bb17fbbf7a45eea41e71d52f727
+# rc=1 compile_errors=0 failing_lines=2
+# RED: [ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.562 s <<< FAILURE! -- in io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest
+# RED: [ERROR] io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest.taggedRegionDeleteIsRejectedAndLeavesNoRevision -- Time elapsed: 0.080 s <<< FAILURE!

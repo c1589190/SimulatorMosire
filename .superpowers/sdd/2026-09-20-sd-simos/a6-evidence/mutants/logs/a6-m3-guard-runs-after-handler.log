@@ -1,0 +1,45 @@
+[ERROR] Tests run: 5, Failures: 0, Errors: 2, Skipped: 0, Time elapsed: 0.502 s <<< FAILURE! -- in io.mosire.simos.core.command.CommandBusGuardTest
+[ERROR] io.mosire.simos.core.command.CommandBusGuardTest.rejectingGuardLeavesReceivedAndRejectedEvents -- Time elapsed: 0.028 s <<< ERROR!
+java.lang.IllegalStateException: 守卫拒绝后不该跑到 handler: unit.RenameUnit
+	at io.mosire.simos.core.command.CommandBusGuardTest$4.handle(CommandBusGuardTest.java:216)
+	at io.mosire.simos.core.command.CommandBus.routeEnvelope(CommandBus.java:245)
+	at io.mosire.simos.core.command.CommandBus.dispatch(CommandBus.java:208)
+	at io.mosire.simos.core.command.CommandBus.submit(CommandBus.java:150)
+	at io.mosire.simos.core.command.CommandBusGuardTest.rejectingGuardLeavesReceivedAndRejectedEvents(CommandBusGuardTest.java:97)
+
+[ERROR] io.mosire.simos.core.command.CommandBusGuardTest.rejectingGuardShortCircuitsBeforeTheHandler -- Time elapsed: 0.032 s <<< ERROR!
+java.lang.IllegalStateException: 守卫拒绝后不该跑到 handler: unit.RenameUnit
+	at io.mosire.simos.core.command.CommandBusGuardTest$4.handle(CommandBusGuardTest.java:216)
+	at io.mosire.simos.core.command.CommandBus.routeEnvelope(CommandBus.java:245)
+	at io.mosire.simos.core.command.CommandBus.dispatch(CommandBus.java:208)
+	at io.mosire.simos.core.command.CommandBus.submit(CommandBus.java:150)
+	at io.mosire.simos.core.command.CommandBusGuardTest.rejectingGuardShortCircuitsBeforeTheHandler(CommandBusGuardTest.java:80)
+
+[ERROR] Errors: 
+[ERROR]   CommandBusGuardTest.rejectingGuardLeavesReceivedAndRejectedEvents:97 » IllegalState 守卫拒绝后不该跑到 handler: unit.RenameUnit
+[ERROR]   CommandBusGuardTest.rejectingGuardShortCircuitsBeforeTheHandler:80 » IllegalState 守卫拒绝后不该跑到 handler: unit.RenameUnit
+[ERROR] Tests run: 5, Failures: 0, Errors: 2, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-core: 
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-core/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-core
+
+# --- 装置自记（本轮的字节）---
+# mutant=a6-m3-guard-runs-after-handler
+# orig_md5=23a07b24ff9ff97dd1ad589e5ff6a67c
+# mutant_md5=46292408d4f47130663bac066106fdf0
+# restored_md5=23a07b24ff9ff97dd1ad589e5ff6a67c
+# rc=1 compile_errors=0 failing_lines=3
+# RED: [ERROR] Tests run: 5, Failures: 0, Errors: 2, Skipped: 0, Time elapsed: 0.502 s <<< FAILURE! -- in io.mosire.simos.core.command.CommandBusGuardTest
+# RED: [ERROR] io.mosire.simos.core.command.CommandBusGuardTest.rejectingGuardLeavesReceivedAndRejectedEvents -- Time elapsed: 0.028 s <<< ERROR!
+# RED: [ERROR] io.mosire.simos.core.command.CommandBusGuardTest.rejectingGuardShortCircuitsBeforeTheHandler -- Time elapsed: 0.032 s <<< ERROR!

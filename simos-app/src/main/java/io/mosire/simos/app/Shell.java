@@ -29,6 +29,13 @@ import io.mosire.simos.map.spi.RandomizeRegionHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
+import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.guard.RegionDeleteGuard;
+import io.mosire.simos.sd.resolve.SdResolver;
+import io.mosire.simos.sd.spi.CreateArmyHandler;
+import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
+import io.mosire.simos.sd.spi.CreateNationHandler;
+import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
@@ -61,16 +68,16 @@ import org.slf4j.LoggerFactory;
 /**
  * 外壳：**唯一的装配点**（spec §3.2 的 1~7 步）。
  *
- * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），三 codec / 八 handler / 一
+ * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），四 codec / 十八 handler / 一
  * participant 必须由组合根注入。审批链（T6）、MCP 服务（T7）与 GUI（T8）都已接上——{@link #start} 走到"世界能提交命令、能重放、 能推进、能查询、能经
  * {@code /api} 与 MCP 工具面读写、写命令要过人审批"为止。
  *
- * <p>★ **装配清单**（spec §3.2 第 1~7 步）：三 codec + 八 handler + 一 participant（{@link CoreSimos} 侧） + 三
- * {@code Resolver}（map/social/unit）+ 两 {@code FacetProvider}（unitsHere/population）→ {@link
- * QueryService}（查询层，T3）；审批链（T6，S5：{@code PendingApprovals → HttpApprovalChannel →
- * ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior 判定）→ {@link SimosToolSource}（12 工具 = 3 写 +
- * 9 读）经 {@code McpSourceBridge.bind} 同步进 {@link ToolRegistry}（T5）→ {@link
- * AgentToMcpServer#startHttp} （第 6 步，T7）→ GUI（第 7 步，T8）。
+ * <p>★ **装配清单**（spec §3.2 第 1~7 步）：四 codec（map/social/unit/sd）+ 十八 handler + 一 participant（{@link
+ * CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 四 {@code Resolver} （map/social/unit/sd）+ 两
+ * {@code FacetProvider}（unitsHere/population）→ {@link QueryService}（查询层，T3）；审批链（T6，S5：{@code
+ * PendingApprovals → HttpApprovalChannel → ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior
+ * 判定）→ {@link SimosToolSource}（12 工具 = 3 写 + 9 读）经 {@code McpSourceBridge.bind} 同步进 {@link
+ * ToolRegistry}（T5）→ {@link AgentToMcpServer#startHttp} （第 6 步，T7）→ GUI（第 7 步，T8）。
  *
  * <p>★ **本类不持有任何存储写路径**：{@code SqliteStore} / {@code Timeline.appendRevision} / {@code
  * CheckpointStore} 一个都不在 app 源码里（铁律 2 的结构化，R1 的扫描对象）。唯一的写入口是 {@link
@@ -122,7 +129,7 @@ public final class Shell implements AutoCloseable {
   /** 工具调用唯一入口（T6）：**带审批**（非 {@code standard()}），T7 交给 {@code startHttp}。 */
   private final ToolCallAuthorizer toolAuthorizer;
 
-  /** 已注册模块 codec 的个数（map/social/unit）；由实际注册动作数出来，不是写死的常量。 */
+  /** 已注册模块 codec 的个数（map/social/unit/sd）；由实际注册动作数出来，不是写死的常量。 */
   private final int registeredModuleCount;
 
   private volatile boolean closed;
@@ -179,7 +186,8 @@ public final class Shell implements AutoCloseable {
             new CoreConfig(
                 config.storeDir(), config.checkpointInterval(), SimosObjectMapper.create()));
 
-    List<ModuleCodec> codecs = List.of(new MapCodec(), new SocialCodec(), new UnitCodec());
+    List<ModuleCodec> codecs =
+        List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -199,7 +207,11 @@ public final class Shell implements AutoCloseable {
             new PlaceAtHandler(),
             new PlanRouteHandler(),
             new CancelRouteHandler(),
-            new DisbandUnitHandler());
+            new DisbandUnitHandler(),
+            new CreateNationHandler(),
+            new CreateArmyHandler(),
+            new CreateDecisionMakerHandler(),
+            new PutInfoHandler());
     Set<String> commandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
@@ -208,10 +220,14 @@ public final class Shell implements AutoCloseable {
 
     coreSimos.register(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()));
 
+    // 写前跨模块守卫（A6，spec §九）：带国家 tag 的区域不可删。
+    coreSimos.register(new RegionDeleteGuard());
+
     ResolverRegistry resolverRegistry = new ResolverRegistry();
     resolverRegistry.register(new MapResolver());
     resolverRegistry.register(new SocialResolver());
     resolverRegistry.register(new UnitResolver());
+    resolverRegistry.register(new SdResolver());
 
     FacetRegistry facetRegistry = new FacetRegistry();
     facetRegistry.register(new UnitsHereFacet());
@@ -418,7 +434,7 @@ public final class Shell implements AutoCloseable {
     return config;
   }
 
-  /** 已注册的模块 codec 个数（map/social/unit = 3）。{@code ShellMain} 用它打印装配实况。 */
+  /** 已注册的模块 codec 个数（map/social/unit/sd = 4）。{@code ShellMain} 用它打印装配实况。 */
   public int registeredModuleCount() {
     return registeredModuleCount;
   }
