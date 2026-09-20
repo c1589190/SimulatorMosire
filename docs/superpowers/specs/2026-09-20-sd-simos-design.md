@@ -1,8 +1,8 @@
 # SDSimos 主设计 —— 国家与决策人（States & Decision-Makers of Simos）
 
-> 状态：**待用户裁决**（未拍项逐条见 §〇.3）。作者：控制器（AI 代笔）。日期：2026-09-20。
+> 状态：**已获用户裁定**——2026-09-20 用户「**开始吧**」＝**采纳 §〇.3 表格里的全部建议**，本 spec **已无待裁项**（§〇.3 记为"已裁定"）。作者：控制器（AI 代笔）。日期：2026-09-20。
 > 前置依据：`2026-09-20-sd-simos-brainstorm.md`（用户原始需求 + R1~R4）、`2026-09-20-sd-simos-research.md`（§A 既有接口实测 / §B 外部研究 / §C 三个基础设施缺口 / §D 对裁决表的影响）、`2026-09-18-spi-layering-design.md`（ADR-1：Core 看不见领域模块；新契约落 `io.mosire.simos.util.spi`，既有契约原地不动）、`CLAUDE.md`（五条铁律与纪律）。
-> 本文是**设计**，不是计划：**不含 bite-sized 步骤**；未拍项一律标「待裁」，**不替用户决定**。
+> 本文是**设计**，不是计划：**不含 bite-sized 步骤**。未拍项原先一律标「待裁」、不替用户决定；**2026-09-20「开始吧」后已全部采纳建议（§〇.3），无遗留待裁**。
 > 术语沿用 brainstorm / research：**SDSimos = 国家 + 决策人**（R1 把 NAA 并入 SDSimos），决策的领域对象叫 **`Directive`**（R3，避与信封 `Command` 撞名）。
 
 ---
@@ -24,7 +24,7 @@
 | **R13** | "**Nation 区域**" = **带特定 `tag` 的 Region**——实测 `RegionMeta(String color, String tag, String description, String annexedBy)` **有 `tag`**（`RegionMeta.java:8`），且 `map.UpdateRegion` 载荷能设 `tag`（`CreateRegionHandler.java:19` / `UpdateRegionHandler.java:19`） | 用户 |
 | **R14** | ★ **INFO 纳入 SDSimos 的 `ChangeSet`**——⚠️ 实测 `InfoSystem.put` **零 main 调用者**、Info **不进 `WorldChangeSet`**（research §C①）⇒ 写路径**全新** | 用户 |
 
-> ★ **编号清理注记（R7 / R8 / R11 / R12 / R15）**：这五个是**早前的提案编号，已被取代或合并**，**不是未决项**——**R7**（战损落账那条 `unit.*` 命令谁发）**已并入 N3 + N10**；**R8**（行政余额）**已被 R4 取代**（统一"一决策人一 tick 至多一令"，"国家比军队更慢"由 **N5 order-latency 时钟**承载，**不再单独做余额机制**）；**R11**（集合单位形状）**≡ N4**（**保持"待裁"**，勿重复列）；**R12**（交战是否每 tick 一阶段）**已并入 N1 + N5**（阶段**不由 tick 强制**，由**进入/退出条件**驱动）；**R15 从未定义，已从表中移除**。
+> ★ **编号清理注记（R7 / R8 / R11 / R12 / R15）**：这五个是**早前的提案编号，已被取代或合并**，**不是未决项**——**R7**（战损落账那条 `unit.*` 命令谁发）**已并入 N3 + N10**；**R8**（行政余额）**已被 R4 取代**（统一"一决策人一 tick 至多一令"，"国家比军队更慢"由 **N5 order-latency 时钟**承载，**不再单独做余额机制**）；**R11**（集合单位形状）**≡ N4**（**已裁定**，见 §〇.3，勿重复列）；**R12**（交战是否每 tick 一阶段）**已并入 N1 + N5**（阶段**不由 tick 强制**，由**进入/退出条件**驱动）；**R15 从未定义，已从表中移除**。
 
 ### 〇.2 N 系列（设计裁定）
 
@@ -33,7 +33,7 @@
 | **N1** | 阶段对象带**进入/退出条件**：条件驱动（非时间驱动）、**上一阶段结束条件 = 下一阶段起始条件**、转换事件驱动、阶段可压缩/扩展/省略 | JP 5-0（research §B.4） |
 | **N2** | 结局表 = **categorical distribution**（具名结局 + 权重）；★ **由 LLM 生成候选 + 选定**，但**保留规范形态**（数据里是 `[(outcome, weight)]`，恰选一个） | research §B.1 / §B.2 |
 | **N3** | 战损 = **人员/装备双轨 + delta** + **代码侧上界校验**（Δ 为负且 \|Δ\| ≤ 当前值）+ **保留损失记录**（供回放/AAR） | research §B.5 |
-| **N4** | ★ **待裁**：编制用"**树约定**"（严格单父树即编制）还是"**显式子表**"（独立 task-org 覆盖层）？⇒ 建议与理由见 §〇.3 | research §B.7 / D-N4 |
+| **N4** | 编制 = **两层**：**`command_chain`**（谁向谁报告，**可多属**）+ **`Formation`**（谁物理跟谁移动：**严格树 + attached/detached + 相对偏移**）——2026-09-20「开始吧」采纳建议（§〇.3） | research §B.7 / D-N4 |
 | **N5** | 独立 **order-latency 时钟**（命令延迟，≠ 简单"1 tick 1 令"；decision-cycle 上限 ≠ order delay） | research §B.8 / D-N5 |
 | **N6** | **per-role redaction 必须做**（工具白名单 ≠ 数据脱敏；ground truth 与 per-actor 感知态分离） | research §A.3 / §B.6 / D-N6 |
 | **N7** | ★★ **判决冻结**：判决是**数据**，落进 revision；**回放/分岔绝不重跑 LLM** | research §B.8 / D-R9 |
@@ -49,15 +49,17 @@
 | **N17** | **视图必须按 actor 的 `viewScope` 取**，**渠道拿不到全量**——否则 R10 的脱敏当场失效。渠道只交出 actor 身份 + 决策请求，**脱敏视图由 sd 侧构造** | 用户追加需求（2026-09-20） |
 | **N18** | **留痕**：**谁经哪条渠道提交**必须可追溯 ⇒ 进 `verdictMeta` / 事件（渠道 id + actor） | 用户追加需求（2026-09-20） |
 
-### 〇.3 未拍项（待裁）
+### 〇.3 已裁定（原未拍项）——★ 用户 2026-09-20「开始吧」＝采纳下列全部建议
 
-| # | 待裁 | 建议 | 理由 |
-|---|---|---|---|
-| **N4** | 编制 = **树约定** 还是 **显式子表**？ | ★ **建议：严格单父树（organic）+ 独立 task-org 覆盖层**（记录 `relationshipType / reason / startRevision / endRevision?`） | ★ AFSIM 是**与本需求近乎精确对应**的既有实现：它把 `command_chain`（谁向谁报告、可多属）与 `WsfFormation`（谁物理跟谁移动、严格树 + attached/detached + 相对偏移）**分开**；纯 `parent` 指针**表达不了**"为某任务附着、然后回归"或 cross-attach（research §B.7）。但这是**用户的编制哲学**，不代拍 |
-| **R14 子问题** | sd 的 info 条目**复用 `InfoEntry`** 还是**自造**？ | ★ 建议**自造 `SdInfoEntry`** | 复用会拖入 `TimeRange` / `SubjectId` 的时态语义（`InfoEntry.java:16`），与 sd 的 tick 模型耦合错位；自造代价是与全局 `InfoSystem` 更难打通——但那本来就是 R14 选择"纳入 sd ChangeSet"的已验证代价（research D-R14） |
-| **R6/N6 效果写别的模块** | sd participant **只能写 `sd`**，跨模块效果怎么落？ | ★ 建议：**pending-command 队列**（见 §五.3） | 结构性问题的唯一不破坏铁律 3 的答法；备选（依赖对应模块 participant）无法保证"条件语义在 sd 侧"，且 map/unit 的 participant 只有各自一个（`TimeAdvance.java:124-127`） |
-| **N5 通道粒度** | order-latency 是**每命令一个延迟值**，还是**按梯队/距离/参谋负载**的函数？是否建 **HQ 积压/饱和**？ | 建议：v1 **每命令一个延迟值**（数据驱动），积压/饱和列挂起 | Command Ops 的精确公式**未公开**（research §B.8 自陈未核实），照抄数值＝编造；先做机制形状 |
-| **战损"可回收"通道** | N3 的 `RECOVERABLE` 是否要有**回池速率**（WITE2 的 1%/tick）？ | 建议：v1 **只记类别、不设回池** | 回池是第二层机制，等战损先落地 |
+> ★ **本表已无"待裁"行**：原"建议"自此升为**设计前提**，§三 / §五 / §六 / §八 / §十 相应段落一律按**确定语气**执行。
+
+| # | 裁定 | 理由 / 依据 |
+|---|---|---|
+| **N4** | 编制 = **两层**：**`command_chain`**（谁向谁报告，**可多属**）+ **`Formation`**（谁物理跟谁移动：**严格树 + attached/detached + 相对偏移**） | ★ AFSIM 是**与本需求近乎精确对应**的既有实现：它把 `command_chain`（可多属）与 `WsfFormation`（严格树 + attached/detached + 相对偏移）**分开**；纯 `parent` 指针**表达不了**"为某任务附着、然后回归"或 cross-attach（research §B.7）。**编制结构仍在 unit**（§十） |
+| **R14 子问题** | sd 的 info 条目**自造 `SdInfoEntry`**（**不复用 `InfoEntry`**） | 复用会拖入 `TimeRange` / `SubjectId` 的时态语义（`InfoEntry.java:16`），与 sd 的 tick 模型耦合错位；自造代价是与全局 `InfoSystem` 更难打通——但那本来就是 R14 选择"纳入 sd ChangeSet"的已验证代价（research D-R14） |
+| **R6/N6 落点** | 跨模块效果 = **pending-command 队列 + app 层 `SdCommandDrain`**（§五.3） | **唯一不破铁律 3 的答法**；备选（依赖对应模块 participant）无法保证"条件语义在 sd 侧"，且 map/unit 的 participant 只有各自一个（`TimeAdvance.java:124-127`） |
+| **N5 粒度** | v1：**每命令一个延迟值**（数据驱动）；**HQ 积压/饱和列挂起** | Command Ops 的精确公式**未公开**（research §B.8 自陈未核实），照抄数值＝编造；先做机制形状 |
+| **战损"可回收"** | v1：**只记类别、不设回池速率** | 回池是第二层机制，等战损先落地（N3） |
 
 ### 〇.4 写作纪律与来源标注
 
@@ -369,7 +371,7 @@ record SdChangeSet(FieldDelta<Nation> nations, FieldDelta<Army> armies,
 
 **问题**：`sd` participant **只能写 sd 数据**（`TimeProposal` 单一 namespace + 本模块 `ChangeSet`），但 R6 的"效果"可能要求改 unit（战损/编制）、map（阶段移动）。simos 六步里**没有**"跨模块写"的通道（research §C③ / D-R9）。
 
-**设计答案（建议，见 §〇.3 待裁）**：**pending-command 队列 + app 层 drain**。
+**设计答案（★ 已裁定，§〇.3）**：**pending-command 队列 + app 层 drain**。
 
 1. `sd` participant **只写 sd**：把跨模块效果落成 sd 自己的 `EffectAction.EnqueueUnitCommand(type,payloadJson)`，状态 `FIRED` 但**命令尚未提交**；
 2. **app 层新增 `SdCommandDrain`**：在一次 `AdvanceTime` **提交成功之后**，读取新 head 的 `sd` 切片里 `FIRED 且未 drain` 的指令，按顺序经 `CommandBus.submit(new CommandEnvelope(...))` 提交；
@@ -388,7 +390,7 @@ record SdChangeSet(FieldDelta<Nation> nations, FieldDelta<Army> armies,
 **R14 的答案**：把 INFO **纳入 `SdState` / `SdChangeSet`**（选项 a）——sd 自己拥有一个 **`Map<Address, List<SdInfoEntry>>` 覆盖层**，写路径 = `sd.PutInfo` 命令 → `SdChangeSet.info` → 进 revision（可重放、受铁律 5 往返守卫）。
 
 - **不复用全局 `InfoSystem`**：它与 sd 是两套（research D-R14）；v1 明确 sd 只服务自己的三类 INFO——**国家自然语言总介绍**、**交战详情/判决记录**、**决策执行原文**（brainstorm §1/§3.3/§4）；
-- `SdInfoEntry` **自造**（建议，§〇.3）：`record SdInfoEntry(String key, Object value, Optional<String> note, RevisionId at, Optional<DirectiveId> sourceDirective)`——**不拖** `TimeRange`/`SubjectId` 的时态语义；
+- `SdInfoEntry` **自造**（★ 已裁定，§〇.3；**不复用 `InfoEntry`**）：`record SdInfoEntry(String key, Object value, Optional<String> note, RevisionId at, Optional<DirectiveId> sourceDirective)`——**不拖** `TimeRange`/`SubjectId` 的时态语义；
 - ★ **ground truth vs perception**（N6 / research §B.6）：`Address` 是**任意地址**（判决可"给其他地址改 INFO"，brainstorm §4）⇒ 这个覆盖层是**感知/叙事侧**；`redaction` 层负责**按角色裁剪**，ground truth 仍由 map/unit 等领域模块持有。★ **写的是真值还是感知**需在实现期明确（本 spec 倾向：`sd.PutInfo` 默认写**感知层**，供 UI/AAR 展示；真值保留在领域模块）。
 
 ★ 兑现 `InfoEntry.java:11-12` 的告诫：**影响领域计算的字段不许走 Info**。
@@ -541,7 +543,7 @@ brainstorm §7 的**五个结构性缺口**与归属：
 
 | # | Unit 缺口（实测） | 归属 | sd 侧只做什么 |
 |---|---|---|---|
-| ① 无"集合单位" | 严格单父树（`UnitState.java:74-97`），无子列表/多父/`Army` 容器 | **N4 待裁**（§〇.3）：树约定 vs 显式子表；无论哪种，**编制结构在 unit** | sd 存 `Army` 的**归属关系**（`NationId` ↔ 单位根），引用不变式 §三.1.2 |
+| ① 无"集合单位" | 严格单父树（`UnitState.java:74-97`），无子列表/多父/`Army` 容器 | **N4 = 两层**（`command_chain` 可多属 + `Formation` 严格树 + attached/detached + 相对偏移，§〇.3）；**编制结构在 unit** | sd 存 `Army` 的**归属关系**（`NationId` ↔ 单位根），引用不变式 §三.1.2 |
 | ② 无作战状态 | `Unit` 无 status/mode（`Unit.java:20-29`）；`MovementStatus` 只是路线进度、现算不落库（`MovementStatus.java:4-10`、`UnitMoves.java:31-74`） | **`unit.*`** 新增三态（移动/休整/交战）与速度映射 | sd 的接战/脱离决策**引用**单位状态（reads），不拥有它 |
 | ③ 无战损语义 | 只有整份替换 `unit.SetStrength`（`UnitOperations.java:82-97`） | **`unit.*`** 新增**增量**命令（暂名 `unit.ApplyCasualties`，**以 unit-extension spec 为准**） | sd 产 `CasualtyDelta`（N3）+ 代码侧上界校验；跨模块落经 §五.3 drain |
 | ④ `PlanRoute` 不容稀疏路点 | handler 写死 `new Route(waypoints, waypoints)`（`PlanRouteHandler.java:44`）；A\* 已存在（`PathFinder.java:59-107`，生产调用者 `GuiServer.java:421`） | **`unit.*`** 新增稀疏路点载荷通道 | sd 的"回归路径"若要 A\* 补中间，**用 unit 的新通道** |
@@ -658,11 +660,11 @@ interface DecisionChannel {
 
 1. **`simos-sd` 的 Maven 坐标/包名/子包划分**（§一.2）——按项目命名惯例推定；
 2. **`sd` 命名空间的地址形态**（§二.2）——N15 只裁"不可 `agent:`"，具体形式由本 spec 提出；
-3. **`SdInfoEntry` 自造**（§六）——R14 子问题，§〇.3 建议项；
-4. **跨模块效果走 pending-command 队列 + app `SdCommandDrain`**（§五.3）——§〇.3 建议项；
+3. ~~**`SdInfoEntry` 自造**（§六）——R14 子问题，§〇.3 建议项~~ ⇒ ★ **已被用户 2026-09-20「开始吧」采纳为裁定**（§〇.3），不再是假设；
+4. ~~**跨模块效果走 pending-command 队列 + app `SdCommandDrain`**（§五.3）——§〇.3 建议项~~ ⇒ ★ **已采纳为裁定**（§〇.3），不再是假设；
 5. **各命令的 `type` 名与字段名、各 record 的字段名**（§三/§四）——设计形状，实现期可微调；
 6. **§九 契约命名 `MutationGuard` 与 Core 调用点（信封支 `dispatch` 前）**——形制照 `AgentAttachPolicy`，具体接口形状由本 spec 提出；
 7. **AI 断点的输出 schema 名与字段**（§八.2）——设计形状；
 8. **判据条目与变异思路**（§十一）——由本 spec 提出，非用户逐条确认。
 
-**编号说明**：R7 / R8 / R11 / R12 / R15 是**早前的提案编号，已被取代或合并**（去向见 §〇.1 表下注记），**不是未决项**；**N4 是唯一仍未拍的结构性未决项**（§〇.3，保持"待裁"）。
+**编号说明**：R7 / R8 / R11 / R12 / R15 是**早前的提案编号，已被取代或合并**（去向见 §〇.1 表下注记），**不是未决项**；**N4 及 §〇.3 其余四项已由用户 2026-09-20「开始吧」采纳为裁定**——本 spec **无遗留待裁项**。
