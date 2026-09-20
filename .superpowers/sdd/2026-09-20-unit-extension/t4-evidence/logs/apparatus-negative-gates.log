@@ -1,0 +1,20 @@
+=== 装置拒收自证 2026-09-21T02:45:39+08:00 ===
+--- (a) TARGET 不在白名单 ---
+ABORT(neg-a): TARGET 不在白名单内: pom.xml
+rc_a=3
+--- (b) 变异体与原件字节相同 ---
+ABORT(neg-b): 变异体与原件字节相同 —— 该轮作废
+rc_b=3
+--- (c) 基线不符（伪造基线文件）---
+ABORT(neg-c): 本轮起点不是干净世界 —— 当前 09840d49510efa4b17c36e06aa23d9c6 != 基线 00000000000000000000000000000000
+rc_c=3
+--- (d) 源树里规范名之外的 .java（在 simos-unit/src 放一个 m1_X.java 再撤）---
+ABORT(neg-d): 源树内有 1 个规范名之外的 .java —— 先清干净世界
+rc_d=3
+--- 自证后干净世界核对 ---
+simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: OK
+=== 结束 2026-09-21T02:45:39+08:00 ===

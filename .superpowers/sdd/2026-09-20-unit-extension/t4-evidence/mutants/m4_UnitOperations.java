@@ -350,7 +350,7 @@ public final class UnitOperations {
   public static UnitState mergeFormation(
       UnitState state, UnitId childId, UnitId parentId, SimosTimestamp at) {
     Objects.requireNonNull(parentId, "parentId");
-    Unit child = require(state, childId); // 存在性校验
+    require(state, childId); // 存在性校验（MUTANT m4：不再持有 child）
     requireExists(state, parentId);
     Optional<HexCoord> childHex = state.effectivePosition(childId, at);
     Optional<HexCoord> parentHex = state.effectivePosition(parentId, at);
@@ -372,10 +372,7 @@ public final class UnitOperations {
               + parentHex.get()
               + " 不同格：只有同格才能合体");
     }
-    if (child.status() != UnitStatus.MOVING) {
-      throw new IllegalArgumentException(
-          "单位 " + childId + " 的状态是 " + child.status() + " 而不是 MOVING：只有移动中的单位才能合体");
-    }
+    // MUTANT m4：删掉"只有 MOVING 才能合体"这条独立前置
     return attachSubtree(state, childId, parentId, at);
   }
 

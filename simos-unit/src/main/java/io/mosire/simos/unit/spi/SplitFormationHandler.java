@@ -1,0 +1,52 @@
+package io.mosire.simos.unit.spi;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitSnapshot;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.change.UnitChangeSet;
+import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * {@code unit.SplitFormation} 命令的处理器（T4 / spec §一.3 / §一.5 表）：{@code rootId, subUnitIds[]}。
+ *
+ * <p>★ `subUnitIds` 走 {@link UnitPayloads#requireTextArray}（形状与类型），**空数组合法**——"拆不了任何东西"由领域层判
+ * （`subUnitIds 不得为空`），两处不重复实现（本模块的分工：payload 只管形状，域规则归 {@code UnitOperations}）。
+ *
+ * <p>★ 每个目标必须**存在**且在 `rootId` 于该时刻的**子树内**，否则拒绝；通过后逐个 detach（**只节点**，P3），全程走 op、无第二套语义。拒绝不留
+ * revision（与其余 handler 同一条路径）。
+ */
+public final class SplitFormationHandler implements CommandHandler {
+
+  @Override
+  public String type() {
+    return "unit.SplitFormation";
+  }
+
+  @Override
+  public HandlerOutcome handle(SimulationState state, String payloadJson) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(payloadJson, "payloadJson");
+    UnitSnapshot snapshot = UnitSnapshots.of(state);
+    try {
+      JsonNode payload = UnitPayloads.parse(payloadJson);
+      UnitId rootId = UnitId.parse(UnitPayloads.requireText(payload, "rootId"));
+      List<UnitId> subUnitIds = new ArrayList<>();
+      for (String text : UnitPayloads.requireTextArray(payload, "subUnitIds")) {
+        subUnitIds.add(UnitId.parse(text));
+      }
+      SimosTimestamp at = state.meta().timestamp();
+      UnitState next = UnitOperations.splitFormation(snapshot.state(), rootId, subUnitIds, at);
+      return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
+    } catch (IllegalArgumentException e) {
+      return new HandlerOutcome.Rejected(e.getMessage());
+    }
+  }
+}

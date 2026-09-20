@@ -358,20 +358,7 @@ public final class UnitOperations {
       throw new IllegalArgumentException(
           "单位 " + childId + " 或 " + parentId + " 在 " + at + " 没有可确定的位置：只有同格才能合体");
     }
-    if (!childHex.get().equals(parentHex.get())) {
-      throw new IllegalArgumentException(
-          "单位 "
-              + childId
-              + " 在 "
-              + at
-              + " 位于 "
-              + childHex.get()
-              + "，与 "
-              + parentId
-              + " 的 "
-              + parentHex.get()
-              + " 不同格：只有同格才能合体");
-    }
+    // MUTANT m3：删掉"同格"判据的相等那一半（"不可确定"的那半还在）
     if (child.status() != UnitStatus.MOVING) {
       throw new IllegalArgumentException(
           "单位 " + childId + " 的状态是 " + child.status() + " 而不是 MOVING：只有移动中的单位才能合体");

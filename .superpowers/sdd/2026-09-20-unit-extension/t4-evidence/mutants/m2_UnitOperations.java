@@ -278,10 +278,7 @@ public final class UnitOperations {
     require(state, rootId); // 存在性校验
     newParent.ifPresent(parent -> requireExists(state, parent));
     List<UnitId> subtree = subtreeOf(state, rootId, at);
-    if (newParent.isPresent() && subtree.contains(newParent.get())) {
-      throw new IllegalArgumentException(
-          "新父 " + newParent.get() + " 落在 " + rootId + " 的子树内（含自身）：会成环");
-    }
+    // MUTANT m2：删掉 op 内的成环显式拒（只剩 UnitState 构造期的成环兜底）
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     for (UnitId member : subtree) {
       Unit current = state.units().get(member);

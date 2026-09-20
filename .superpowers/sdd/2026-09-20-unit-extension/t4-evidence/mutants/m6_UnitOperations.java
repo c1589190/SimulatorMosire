@@ -376,7 +376,17 @@ public final class UnitOperations {
       throw new IllegalArgumentException(
           "单位 " + childId + " 的状态是 " + child.status() + " 而不是 MOVING：只有移动中的单位才能合体");
     }
-    return attachSubtree(state, childId, parentId, at);
+    // MUTANT m6：只重挂 child 节点本身，不级联（P3 的 attach 级联被抹掉）
+    Unit node = state.units().get(childId);
+    Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
+    next.put(
+        childId,
+        copyFormation(
+            node,
+            append(node.parent(), at, Optional.of(parentId)),
+            append(node.attached(), at, true),
+            node.offset()));
+    return new UnitState(next);
   }
 
   // ── 私有助手 ────────────────────────────────────────────────────

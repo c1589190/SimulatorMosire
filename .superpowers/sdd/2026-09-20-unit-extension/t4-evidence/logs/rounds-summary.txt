@@ -1,0 +1,24 @@
+=== T4 变异轮汇总（由各轮日志导出，不手抄） 2026-09-21T02:53:26+08:00 ===
+执行形态：装置 mut-round.sh 逐轮前台跑，命令分两批下发（本机单条 Bash 命令上限 10 分钟）；
+         run-all-rounds.sh 是等价的一键驱动（manifest 驱动 + 收口核对），本轮未直接用它是为批次化。
+选择器：UnitOperationsTest,UnitCommandHandlersTest（干净轮 84 条）
+
+ROUND                        verdict pushed_md5 rc   CE   aggregate                outcome
+m1_UnitOperations            OK     b4fd41… 1    0    Tests run: 84, Failures: 3, Errors: 0, Skipped: 0 RED(被杀)
+m2_UnitOperations            OK     062555… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m3_UnitOperations            OK     980ddd… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m4_UnitOperations            OK     edef7b… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m5_UnitOperations            OK     fe8d4c… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m6_UnitOperations            OK     49269a… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m7_ReparentSubtreeHandler    OK     c99d2f… 1    0    Tests run: 84, Failures: 1, Errors: 0, Skipped: 0 RED(被杀)
+m8_UnitOperations            OK     6e2397… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m9_UnitPayloads              OK     beb75f… 0    0    Tests run: 84, Failures: 0, Errors: 0, Skipped: 0 GREEN(存活)
+
+=== 收口干净世界核对 2026-09-21T02:53:27+08:00 ===
+simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: OK
+clean_world_final=OK
+=== 结束 2026-09-21T02:53:27+08:00 ===

@@ -40,6 +40,16 @@ class UnitOperationsTest {
   /** 同上，`attached` 逐节点给（T3 的级联用例必须从 `false` 起步：缺省 `true` 会把"级联"整个掩盖掉）。 */
   private static Unit unit(
       String id, Optional<String> parent, Optional<HexCoord> position, boolean attached) {
+    return unit(id, parent, position, attached, UnitStatus.MOVING);
+  }
+
+  /** 同上，`status` 逐节点给（T4 的合体前置：非 MOVING 的那条必须与"同格"分开测）。 */
+  private static Unit unit(
+      String id,
+      Optional<String> parent,
+      Optional<HexCoord> position,
+      boolean attached,
+      UnitStatus status) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -50,7 +60,7 @@ class UnitOperationsTest {
         2,
         1000,
         Optional.empty(),
-        UnitStatus.MOVING,
+        status,
         new SegmentedSeries<>(List.of(new Segment<>(T0, attached)), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
@@ -454,5 +464,252 @@ class UnitOperationsTest {
                     formation(true, true), new UnitId("u-ghost"), Optional.empty(), T10))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("单位不存在");
+  }
+
+  // ── 编制命令 B（T4 / spec §一.3 / §一.4 / §一.5 表 / P4 / P9） ──
+
+  private static final UnitId CHILD = new UnitId("u-child");
+  private static final UnitId GRAND = new UnitId("u-grand");
+
+  /**
+   * 同格基线（T4 的两条合体前置要用**位置相等**与**状态**两个独立维度，故位置与状态都逐值给）：`u-root` 与 `u-child` 都在 `H11`（`u-child`
+   * 有**自身**位置 ⇒ detached 时也定得出位置，"拆完还能同格"才成立），`u-child` 挂 `u-root`；它自己还带一个 下属
+   * `u-grand`（同格，用来钉"合体是否级联"）。`childAttached` 同时给 `u-child`/`u-grand` 的起步归属——往返用例必须从 `true`
+   * 起步，否则"拆分把它翻成 false"这一步看不出来。
+   */
+  private static UnitState sameHex(boolean childAttached, UnitStatus status) {
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(ROOT, unit("u-root", Optional.empty(), Optional.of(H11), false));
+    units.put(
+        CHILD, unit("u-child", Optional.of("u-root"), Optional.of(H11), childAttached, status));
+    units.put(GRAND, unit("u-grand", Optional.of("u-child"), Optional.of(H11), childAttached));
+    return new UnitState(units);
+  }
+
+  private static UnitState sameHex(UnitStatus status) {
+    return sameHex(false, status);
+  }
+
+  /**
+   * ★ 判据（spec §一.3 机制列 / §一.5 表 / §八 #6）：整树迁移——`rootId` 换父，**每个后代**都在**同一刻**被重新挂载。
+   *
+   * <p>逐 id 断言两件事：**值**（后代仍挂它本来的父，反扁平化）与**段**（`parent` 系列多出一段）。只断言值的话，"只改 root"
+   * 那个变异体是**等价变体**（值全同），判据形同装饰——杀它的是段数。
+   */
+  @Test
+  void reparentSubtreeRemountsEveryDescendantAtTheSameInstant() {
+    UnitState base = formation(true, true);
+    UnitState state = UnitOperations.reparentSubtree(base, SUB, Optional.of(OTHER), T10);
+
+    assertThat(state.units().get(SUB).parent().valueAt(T10)).as("root 换父").contains(OTHER);
+    assertThat(state.units().get(LEAF).parent().valueAt(T20)).as("后代不改挂（反扁平化）").contains(SUB);
+    assertThat(state.units().get(LEAF).parent().valueAt(T0)).as("T0 的历史值不动").contains(SUB);
+    assertThat(state.units().get(SUB).parent().segments()).as("root 的 parent 追加段").hasSize(2);
+    assertThat(state.units().get(LEAF).parent().segments())
+        .as("★ 后代也在同一刻落段（整树迁移；只改 root ⇒ 这里是 1）")
+        .hasSize(2);
+    assertThat(state.units().get(ROOT).parent().segments()).as("子树外不动").hasSize(1);
+    assertThat(state.units().get(OTHER).parent().segments()).as("新父不动").hasSize(1);
+    assertThat(state.effectivePosition(LEAF, T20)).as("整树跟着新父走（H12）").contains(H12);
+    assertThat(state.units().get(ROOT)).as("原父一字不变").isEqualTo(base.units().get(ROOT));
+    assertThat(base.units().get(SUB).parent().segments()).as("纯函数：旧状态不变").hasSize(1);
+    assertThat(base.units().get(LEAF).parent().segments()).as("纯函数：旧状态不变").hasSize(1);
+  }
+
+  /** ★ 判据（spec §一.5 表）：新父落在 `rootId` 子树内（含自身）⇒ 拒，且理由是"子树"（不是构造期那句成环消息）。 */
+  @Test
+  void reparentSubtreeRejectsANewParentInsideTheSubtree() {
+    UnitState base = formation(true, true);
+    assertThatThrownBy(() -> UnitOperations.reparentSubtree(base, SUB, Optional.of(LEAF), T10))
+        .as("u-leaf 是 u-sub 的后代")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThatThrownBy(() -> UnitOperations.reparentSubtree(base, SUB, Optional.of(SUB), T10))
+        .as("自身也是子树的一员")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThat(base.units().get(SUB).parent().segments()).as("拒绝 ⇒ 状态一字不变").hasSize(1);
+    assertThat(base.units().get(LEAF).parent().segments()).as("拒绝 ⇒ 状态一字不变").hasSize(1);
+  }
+
+  @Test
+  void reparentSubtreeRejectsUnknownUnits() {
+    UnitState base = formation(true, true);
+    assertThatThrownBy(
+            () ->
+                UnitOperations.reparentSubtree(
+                    base, new UnitId("u-ghost"), Optional.of(OTHER), T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.reparentSubtree(base, SUB, Optional.of(new UnitId("u-ghost")), T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("父单位不存在");
+    assertThatThrownBy(() -> UnitOperations.reparentSubtree(base, SUB, null, T10))
+        .as("null 是调用方的编程错误（命令边界只可能给出 Optional）：与「缺省」不同，直接 NPE")
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  /** ★ 判据（P4）：`parent` 缺省 ⇒ **提升为根**——本操作面唯一的"降为根"路径，绝不留下悬空的 parentId。 */
+  @Test
+  void reparentSubtreeWithoutAParentPromotesTheSubtreeToRoot() {
+    UnitState state =
+        UnitOperations.reparentSubtree(formation(true, true), SUB, Optional.empty(), T10);
+
+    assertThat(state.units().get(SUB).parent().valueAt(T10)).as("不再是谁的下属").isEmpty();
+    assertThat(state.units().get(LEAF).parent().valueAt(T10)).as("后代仍挂 u-sub").contains(SUB);
+    assertThat(state.units().get(LEAF).parent().segments()).as("后代也落段").hasSize(2);
+    assertThat(state.effectivePosition(SUB, T20)).as("无父 ⇒ 位置来源断了").isEmpty();
+    assertThat(state.effectivePosition(LEAF, T20)).as("后代随之无位可继承").isEmpty();
+  }
+
+  /** ★ 判据（P3 不对称）：拆**只节点**——被拆的节点 `attached=false`，它**自己的后代不动**；`parent` 也不动。 */
+  @Test
+  void splitFormationDetachesOnlyTheNamedNodes() {
+    UnitState base = formation(true, true);
+    UnitState state = UnitOperations.splitFormation(base, ROOT, List.of(SUB), T10);
+
+    assertThat(state.units().get(SUB).attached().valueAt(T10)).as("u-sub").isFalse();
+    assertThat(state.units().get(LEAF).attached().valueAt(T10)).as("u-leaf（后代）不动").isTrue();
+    assertThat(state.units().get(SUB).parent().valueAt(T10)).as("拆不改父").contains(ROOT);
+    assertThat(state.units().get(SUB).attached().valueAt(T0)).as("T0 仍是旧值（追加段）").isTrue();
+    assertThat(state.units().get(SUB).attached().segments()).as("只追加一段").hasSize(2);
+
+    UnitState both = UnitOperations.splitFormation(base, ROOT, List.of(SUB, LEAF), T10);
+    assertThat(both.units().get(LEAF).attached().valueAt(T10)).as("一次可指名多个目标").isFalse();
+
+    UnitState dup = UnitOperations.splitFormation(base, ROOT, List.of(SUB, SUB), T10);
+    assertThat(dup.units().get(SUB).attached().segments())
+        .as("重复项去重：同一目标在同一刻只追加一段（否则撞严格升序）")
+        .hasSize(2);
+
+    UnitState self = UnitOperations.splitFormation(base, SUB, List.of(SUB), T10);
+    assertThat(self.units().get(SUB).attached().valueAt(T10))
+        .as("rootId 自身在子树内 ⇒ 把它从自己的父那里拆下来是合法的（detach 的既有语义）")
+        .isFalse();
+    assertThat(base.units().get(SUB).attached().segments()).as("纯函数：旧状态不变").hasSize(1);
+  }
+
+  /** ★ 判据（spec §一.5 表）：目标不在 root 子树 / 不存在 / 空名单 ⇒ 拒；"已是根"由 detachUnit 的既有语义接管。 */
+  @Test
+  void splitFormationRejectsTargetsOutsideTheSubtreeAndEmptyLists() {
+    UnitState base = formation(true, true);
+    assertThatThrownBy(() -> UnitOperations.splitFormation(base, ROOT, List.of(OTHER), T10))
+        .as("u-other 是另一个根，不在 u-root 子树内")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThatThrownBy(() -> UnitOperations.splitFormation(base, SUB, List.of(ROOT), T10))
+        .as("父在子树外：子树是单向的")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThatThrownBy(
+            () -> UnitOperations.splitFormation(base, ROOT, List.of(new UnitId("u-ghost")), T10))
+        .as("不存在 ⇒ 报「单位不存在」，不是「不在子树内」")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+    assertThatThrownBy(
+            () -> UnitOperations.splitFormation(base, new UnitId("u-ghost"), List.of(SUB), T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+    assertThatThrownBy(() -> UnitOperations.splitFormation(base, ROOT, List.of(), T10))
+        .as("指不到任何目标的拆分是坏命令")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不得为空");
+    assertThatThrownBy(() -> UnitOperations.splitFormation(base, ROOT, List.of(ROOT), T10))
+        .as("root 自身在子树内，但它在 at 已是根 ⇒ 由 detachUnit 拒（操作面不新增守卫）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("已是根");
+    assertThat(base.units().get(SUB).attached().segments()).as("拒绝 ⇒ 状态一字不变").hasSize(1);
+  }
+
+  /**
+   * ★ 判据（spec §一.4）：**同格**与 **MOVING** 是**两个独立的前置条件**——同格但静止 ⇒ 拒；在移动但不同格 ⇒ 拒。
+   * 位置"不可确定"是同格判据的另一半（任一侧为空同样拒）。
+   */
+  @Test
+  void mergeFormationRequiresTheSameHexAndTheMovingStatus() {
+    UnitState merged = UnitOperations.mergeFormation(sameHex(UnitStatus.MOVING), CHILD, ROOT, T10);
+    assertThat(merged.units().get(CHILD).parent().valueAt(T10)).contains(ROOT);
+    assertThat(merged.units().get(CHILD).parent().segments()).as("重新挂到同一个父 ⇒ 再追加一段").hasSize(2);
+    assertThat(merged.units().get(CHILD).attached().valueAt(T10)).isTrue();
+    assertThat(merged.units().get(CHILD).attached().valueAt(T0)).as("T0 仍是旧值").isFalse();
+
+    assertThatThrownBy(
+            () -> UnitOperations.mergeFormation(sameHex(UnitStatus.RESTING), CHILD, ROOT, T10))
+        .as("同格了，但不在移动")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("MOVING");
+    assertThatThrownBy(
+            () -> UnitOperations.mergeFormation(sameHex(UnitStatus.ENGAGED), CHILD, ROOT, T10))
+        .as("同格，交战中同样拒（三态里只有 MOVING 放行）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("MOVING");
+
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(formation(true, true), SUB, OTHER, T10))
+        .as("u-sub 的有效位置是 u-root 的 H11，u-other 在 H12（都在移动，仍拒）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("同格");
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(formation(false, false), SUB, ROOT, T10))
+        .as("u-sub 已 detached 且无自身位置 ⇒ 位置不可确定")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("同格");
+  }
+
+  /** ★ 判据（§一.5 表把本命令的操作记作 attach + P3 级联 + P9 不销毁节点）：合体把 `childId` 的**整支编队**带回来。 */
+  @Test
+  void mergeFormationCascadesToTheChildsSubtree() {
+    UnitState base = sameHex(UnitStatus.MOVING);
+    UnitState merged = UnitOperations.mergeFormation(base, CHILD, ROOT, T10);
+
+    assertThat(merged.units().get(CHILD).attached().valueAt(T10)).isTrue();
+    assertThat(merged.units().get(GRAND).attached().valueAt(T10))
+        .as("下属一起归队（复用 attach 的级联）")
+        .isTrue();
+    assertThat(merged.units().get(GRAND).parent().valueAt(T10)).as("下属的父不动").contains(CHILD);
+    assertThat(merged.units().get(GRAND).attached().valueAt(T0)).as("是追加段，不是覆写").isFalse();
+  }
+
+  /** ★ 判据（spec §一.5 表）：环（`parentId` 是 `childId` 的后代）与不存在的 id 都拒。 */
+  @Test
+  void mergeFormationRejectsCyclesAndUnknownUnits() {
+    UnitState base = sameHex(UnitStatus.MOVING);
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(base, CHILD, GRAND, T10))
+        .as("u-grand 是 u-child 的后代，且同格 ⇒ 走到成环那条")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(base, CHILD, CHILD, T10))
+        .as("自身也在自己的子树内")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(base, new UnitId("u-ghost"), ROOT, T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(base, CHILD, new UnitId("u-ghost"), T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("父单位不存在");
+  }
+
+  /**
+   * ★★ 判据（spec §一.4 / §八 E2 的核心场景）：**拆 → 合往返**。`detachUnit` 只翻 `attached`、**不碰 `parent`**，所以合体时
+   * `childId` 的父**本来就是** `parentId`——"已是父 ⇒ 拒"这条守卫一旦有人补上，本用例当场红。这正是 T3 裁定 `AttachUnit`
+   * 不判"已是父"的同一条（合体 = 同格前提下**重新 attach**，spec §一.5 表的回填注），T4 不得反向补回。
+   */
+  @Test
+  void splittingThenMergingRoundTripsTheFormation() {
+    UnitState base = sameHex(true, UnitStatus.MOVING);
+    assertThat(base.units().get(CHILD).attached().valueAt(T0)).as("往返的起点：已归属").isTrue();
+
+    UnitState split = UnitOperations.splitFormation(base, ROOT, List.of(CHILD), T10);
+    assertThat(split.units().get(CHILD).attached().valueAt(T10)).isFalse();
+    assertThat(split.units().get(GRAND).attached().valueAt(T10)).as("P3：拆只节点").isTrue();
+
+    UnitState back = UnitOperations.mergeFormation(split, CHILD, ROOT, T20);
+    assertThat(back.units().get(CHILD).parent().valueAt(T20)).as("同一个父，照样重挂").contains(ROOT);
+    assertThat(back.units().get(CHILD).parent().segments()).as("重挂 ⇒ 再追加一段").hasSize(2);
+    assertThat(back.units().get(CHILD).attached().valueAt(T20)).as("往返回到已归属").isTrue();
+    assertThat(back.units().get(CHILD).attached().valueAt(T10)).as("中间那段历史留着（T10 拆过）").isFalse();
+    assertThat(back.effectivePosition(CHILD, T20)).contains(H11);
+    assertThat(back.units().get(GRAND).attached().valueAt(T20)).as("合体把下属一起带回来").isTrue();
   }
 }
