@@ -140,7 +140,7 @@ public final class UnitOperations {
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
-            Optional.of(new Movement(route, at, unit.effectiveSpeed(), unit.mobilityPerMille()))));
+            Optional.of(new Movement(route, at, unit.speed(), unit.mobilityPerMille()))));
   }
 
   /** 改三态（T2 / spec §三.2）：status 是普通字段，只改它；历史由 revision 承载。 */

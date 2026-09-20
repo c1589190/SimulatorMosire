@@ -53,6 +53,7 @@ public final class CreateUnitHandler implements CommandHandler {
       int speed = UnitPayloads.requireInt(payload, "speed");
       int mobilityPerMille = UnitPayloads.requireInt(payload, "mobilityPerMille");
       Optional<UnitId> parent = UnitPayloads.optionalId(payload, "parent");
+      UnitStatus status = UnitPayloads.optionalStatus(payload, "status").orElse(UnitStatus.MOVING);
       SimosTimestamp at = state.meta().timestamp();
       Unit unit =
           new Unit(
@@ -66,7 +67,7 @@ public final class CreateUnitHandler implements CommandHandler {
               speed,
               mobilityPerMille,
               Optional.empty(),
-              UnitStatus.MOVING,
+              status,
               new SegmentedSeries<>(List.of(new Segment<>(at, true)), List.of(), null),
               new SegmentedSeries<>(
                   List.of(new Segment<>(at, Optional.<RelativeOffset>empty())), List.of(), null),

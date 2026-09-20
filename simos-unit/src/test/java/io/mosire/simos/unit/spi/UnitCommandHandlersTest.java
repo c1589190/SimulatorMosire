@@ -10,6 +10,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -42,6 +43,7 @@ class UnitCommandHandlersTest {
   private static final PlanRouteHandler PLAN_ROUTE = new PlanRouteHandler();
   private static final CancelRouteHandler CANCEL_ROUTE = new CancelRouteHandler();
   private static final DisbandUnitHandler DISBAND = new DisbandUnitHandler();
+  private static final SetStatusHandler SET_STATUS = new SetStatusHandler();
 
   // ── 夹具与世界构造 ──────────────────────────────────────────────
 
@@ -125,6 +127,7 @@ class UnitCommandHandlersTest {
     assertThat(PLAN_ROUTE.type()).isEqualTo("unit.PlanRoute");
     assertThat(CANCEL_ROUTE.type()).isEqualTo("unit.CancelRoute");
     assertThat(DISBAND.type()).isEqualTo("unit.DisbandUnit");
+    assertThat(SET_STATUS.type()).isEqualTo("unit.SetStatus");
   }
 
   // ── unit.CreateUnit ────────────────────────────────────────────
@@ -148,6 +151,8 @@ class UnitCommandHandlersTest {
     assertThat(created.speed()).isEqualTo(3);
     assertThat(created.mobilityPerMille()).isEqualTo(900);
     assertThat(created.movement()).isEmpty();
+    // ★ T2：不传 status ⇒ 缺省 MOVING
+    assertThat(created.status()).isEqualTo(UnitStatus.MOVING);
     // ★ 初始段时刻 = base 状态时间戳 T5（m2 的靶子）
     assertThat(created.parent().segments()).hasSize(1);
     assertThat(created.parent().segments().get(0).from()).isEqualTo(T5);
@@ -207,6 +212,51 @@ class UnitCommandHandlersTest {
   @Test
   void createUnitRejectsBadJson() {
     assertThat(reason(CREATE, worldAt(T5, oneUnit()), "这不是 JSON")).contains("不是合法 JSON");
+  }
+
+  /** ★ T2：可选 status —— 传 "RESTING" ⇒ RESTING。 */
+  @Test
+  void createUnitHonoursAnExplicitStatus() {
+    UnitState next =
+        applied(
+            CREATE,
+            worldAt(T5, oneUnit()),
+            "{\"id\":\"u-2\",\"name\":\"休整连\",\"position\":{\"q\":1,\"r\":2},\"member\":10,"
+                + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":100,\"status\":\"RESTING\"}");
+    assertThat(next.units().get(U2).status()).isEqualTo(UnitStatus.RESTING);
+  }
+
+  /** ★ T2：未知 status 串 ⇒ 拒。 */
+  @Test
+  void createUnitRejectsAnUnknownStatus() {
+    assertThat(
+            reason(
+                CREATE,
+                worldAt(T5, oneUnit()),
+                "{\"id\":\"u-2\",\"name\":\"幽灵连\",\"position\":{\"q\":1,\"r\":2},\"member\":10,"
+                    + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":100,\"status\":\"SLEEPING\"}"))
+        .contains("不是合法状态");
+  }
+
+  // ── unit.SetStatus ─────────────────────────────────────────────
+
+  @Test
+  void setStatusAppliesTheNewStatus() {
+    UnitState next =
+        applied(SET_STATUS, world(oneUnit()), "{\"id\":\"u-1\",\"status\":\"ENGAGED\"}");
+    assertThat(next.units().get(SpiFixture.U1).status()).isEqualTo(UnitStatus.ENGAGED);
+  }
+
+  @Test
+  void setStatusRejectsAnUnknownStatus() {
+    assertThat(reason(SET_STATUS, world(oneUnit()), "{\"id\":\"u-1\",\"status\":\"X\"}"))
+        .contains("不是合法状态");
+  }
+
+  @Test
+  void setStatusRejectsUnknownId() {
+    assertThat(reason(SET_STATUS, world(oneUnit()), "{\"id\":\"u-404\",\"status\":\"MOVING\"}"))
+        .contains("单位不存在");
   }
 
   // ── unit.ReparentUnit ──────────────────────────────────────────

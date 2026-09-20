@@ -12,3 +12,12 @@
 - **裁定（`requireChainReferencesResolve` 的检查位置）**：放在 `UnitState` 紧凑构造器（与既有 `requireNoCycleAtKeyTimes` 同层）；commander 与每个 member 逐一查 `units`。这是 spec §一.6 不变量 1。
 - **变异**：m1/m2/m3/m4 **全 KILLED，0 存活**（日志 `t1-evidence/logs/`），每轮 `restored_md5 == orig_md5`。
 - **未触发/未做**：跨 JVM 字节稳定、真档兼容、SpotBugs（归关账轮）——见 `t1-report.md` §五。
+
+## T2 三态速度（E3 / P5 / P6 / P13）
+
+- 落地：`UnitStatus.factorPerMille()`（1000/500/250‰）；`Unit.effectiveSpeed()`；`UnitOperations.planRoute` 冻 `effectiveSpeed`；`UnitOperations.setStatus`；`UnitPayloads.requireStatus/optionalStatus`；`CreateUnitHandler` 可选 `status`（缺省 MOVING）；新增 `SetStatusHandler`。
+- **结论**：三态出发速度 8/4/2 可区分且有序；在途改状态不回溯（`Movement` 一字不变）；`CreateUnit` 缺省 MOVING、可显式、未知串拒；`MovementStatus` 与 `UnitStatus` 正交（`UnitMoves.java` 零改动）。
+- **裁定 U1（effectiveSpeed 的 clamp）**：`max(1, floorDiv(speed × factorPerMille + 500, 1000))`。理由：`Movement.speedAtDeparture ≥ 1` 硬约束；夹具用 `speed=8` 保三档可区分，`speed≤2` 专钉 clamp。
+- **计数**：`simos-unit` **148 → 167**（+19）。
+- **变异**：m1/m2/m3 **全 KILLED，0 存活**（`t2-evidence/logs/`），每轮 `restored_md5 == orig_md5`。
+- **未做**：`unit.SetStatus` 未注册进 `Shell`（归 T9）；真档 / SpotBugs 归关账轮——见 `t2-report.md` §五。

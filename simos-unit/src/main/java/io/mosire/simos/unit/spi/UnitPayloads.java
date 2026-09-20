@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -85,6 +86,29 @@ final class UnitPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
     }
     return value.asInt();
+  }
+
+  /** 必填的三态状态（T2）：未知串 ⇒ 抛（`UnitStatus.valueOf` 失败折成拒绝）。 */
+  static UnitStatus requireStatus(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return UnitStatus.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + " 不是合法状态: " + text, e);
+    }
+  }
+
+  /** 可选的三态状态（T2）：缺失或 {@code null} ⇒ 空 Optional（`CreateUnit` 缺省 MOVING）。 */
+  static Optional<UnitStatus> optionalStatus(JsonNode payload, String field) {
+    Optional<String> text = optionalText(payload, field);
+    if (text.isEmpty()) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(UnitStatus.valueOf(text.get()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + " 不是合法状态: " + text.get(), e);
+    }
   }
 
   /** 必填的 {@code {q,r}} 坐标对象。 */

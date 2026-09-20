@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.List;
 import java.util.Optional;
@@ -167,6 +168,38 @@ class UnitMovesTest {
             UnitMoves.evaluate(nimbler, T0.plus(20), map(STEEP_65), TerrainMovementCost.INSTANCE))
         .isEqualTo(
             UnitMoves.evaluate(departed, T0.plus(20), map(STEEP_65), TerrainMovementCost.INSTANCE));
+  }
+
+  /**
+   * ★ T2 正交性（spec §八 #10）：`UnitStatus` 与 `MovementStatus` 不混——ENGAGED 的单位带在途 `Movement` 时， {@link
+   * UnitMoves#evaluate} 仍按路线进度给出 `IN_TRANSIT`（本类源码零改动）。
+   */
+  @Test
+  void unitStatusIsOrthogonalToMovementStatus() {
+    Unit engaged = withStatus(inTransit(20), UnitStatus.ENGAGED);
+
+    MovementState state =
+        UnitMoves.evaluate(engaged, T0.plus(20), map(STEEP_65), TerrainMovementCost.INSTANCE);
+
+    assertThat(state.status()).isEqualTo(MovementStatus.IN_TRANSIT);
+    assertThat(state.currentHex()).isEqualTo(H12);
+  }
+
+  private static Unit withStatus(Unit unit, UnitStatus status) {
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.member(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        status,
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget());
   }
 
   @Test

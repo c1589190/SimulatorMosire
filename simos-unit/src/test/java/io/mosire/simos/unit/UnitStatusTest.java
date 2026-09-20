@@ -12,4 +12,19 @@ class UnitStatusTest {
     assertThat(UnitStatus.values())
         .containsExactly(UnitStatus.MOVING, UnitStatus.RESTING, UnitStatus.ENGAGED);
   }
+
+  @Test
+  void factorsAreTheExactPerMilleValues() {
+    assertThat(UnitStatus.MOVING.factorPerMille()).isEqualTo(1000);
+    assertThat(UnitStatus.RESTING.factorPerMille()).isEqualTo(500);
+    assertThat(UnitStatus.ENGAGED.factorPerMille()).isEqualTo(250);
+  }
+
+  @Test
+  void theThreeFactorsAreDistinctAndRestingEngagedAreSlowerThanMoving() {
+    assertThat(UnitStatus.RESTING.factorPerMille()).isLessThan(UnitStatus.MOVING.factorPerMille());
+    assertThat(UnitStatus.ENGAGED.factorPerMille()).isLessThan(UnitStatus.MOVING.factorPerMille());
+    assertThat(UnitStatus.RESTING.factorPerMille())
+        .isNotEqualTo(UnitStatus.ENGAGED.factorPerMille());
+  }
 }

@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -218,6 +220,76 @@ class UnitOperationsTest {
         .containsKey(COMPANY);
     assertThatThrownBy(() -> UnitOperations.disband(reparented, BRIGADE, T10))
         .as("在 T10 时刻 COMPANY 仍挂在 BRIGADE 下")
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  // ── 三态速度（T2 / spec §三.2 / P6） ─────────────────────────────
+
+  private static final Route CORNER = new Route(List.of(H11, H12), List.of(H11, H12));
+
+  /** 单个无父、位于 H11、指定 speed 与 status 的单位状态。 */
+  private static UnitState soloUnit(int speed, UnitStatus status) {
+    Unit unit =
+        new Unit(
+            new UnitId("u-solo"),
+            "独立连",
+            new SegmentedSeries<>(
+                List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
+            new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
+            100,
+            Map.of(),
+            speed,
+            1000,
+            Optional.empty(),
+            status,
+            new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+            new SegmentedSeries<>(
+                List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+            Optional.empty());
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(unit.id(), unit);
+    return new UnitState(units, Map.of());
+  }
+
+  private static int departureSpeed(int speed, UnitStatus status) {
+    UnitState state =
+        UnitOperations.planRoute(soloUnit(speed, status), new UnitId("u-solo"), CORNER, T10);
+    return state.units().get(new UnitId("u-solo")).movement().orElseThrow().speedAtDeparture();
+  }
+
+  /** ★ 判据：同单位同路线，三态出发速度 8 / 4 / 2（可区分且有序）——m1/m2 的靶子。 */
+  @Test
+  void planRouteFreezesTheStatusScaledSpeed() {
+    assertThat(departureSpeed(8, UnitStatus.MOVING)).isEqualTo(8);
+    assertThat(departureSpeed(8, UnitStatus.RESTING)).isEqualTo(4);
+    assertThat(departureSpeed(8, UnitStatus.ENGAGED)).isEqualTo(2);
+  }
+
+  /** ★ 判据：在途改状态**不回溯**——已冻结的 `speedAtDeparture` 与已走路程不变（m3 的靶子）。 */
+  @Test
+  void changingStatusInFlightDoesNotRetroactivelyChangeTheFrozenSpeed() {
+    UnitState departed =
+        UnitOperations.planRoute(soloUnit(8, UnitStatus.MOVING), new UnitId("u-solo"), CORNER, T10);
+    int frozen =
+        departed.units().get(new UnitId("u-solo")).movement().orElseThrow().speedAtDeparture();
+
+    UnitState resting =
+        UnitOperations.setStatus(departed, new UnitId("u-solo"), UnitStatus.RESTING);
+
+    assertThat(resting.units().get(new UnitId("u-solo")).status()).isEqualTo(UnitStatus.RESTING);
+    assertThat(
+            resting.units().get(new UnitId("u-solo")).movement().orElseThrow().speedAtDeparture())
+        .as("在途不回溯")
+        .isEqualTo(frozen);
+    assertThat(resting.units().get(new UnitId("u-solo")).movement().orElseThrow())
+        .as("已冻结的整条 Movement 一字不变")
+        .isEqualTo(departed.units().get(new UnitId("u-solo")).movement().orElseThrow());
+  }
+
+  @Test
+  void setStatusRejectsUnknownId() {
+    assertThatThrownBy(
+            () -> UnitOperations.setStatus(twoUnits(), new UnitId("u-ghost"), UnitStatus.RESTING))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

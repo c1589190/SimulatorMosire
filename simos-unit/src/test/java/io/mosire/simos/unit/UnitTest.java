@@ -43,6 +43,40 @@ class UnitTest {
     assertThat(u.mobilityPerMille()).isEqualTo(1000);
   }
 
+  // ── 三态速度（T2 / spec §三.2，缺口 U1 的 clamp 裁定） ────────────
+
+  private static Unit withSpeedAndStatus(int speed, UnitStatus status) {
+    return new Unit(
+        new UnitId("u-1"),
+        "第一连",
+        noParent(),
+        positionAt(H11),
+        100,
+        Map.of("步枪", 50),
+        speed,
+        1000,
+        Optional.empty(),
+        status,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        Optional.empty());
+  }
+
+  @Test
+  void effectiveSpeedScalesByStatusFactor() {
+    assertThat(withSpeedAndStatus(8, UnitStatus.MOVING).effectiveSpeed()).isEqualTo(8);
+    assertThat(withSpeedAndStatus(8, UnitStatus.RESTING).effectiveSpeed()).isEqualTo(4);
+    assertThat(withSpeedAndStatus(8, UnitStatus.ENGAGED).effectiveSpeed()).isEqualTo(2);
+  }
+
+  /** 缺口 U1 的裁定：`speed × factor / 1000` 可能 &lt; 1，clamp 到 1（`Movement.speedAtDeparture ≥ 1`）。 */
+  @Test
+  void effectiveSpeedNeverDropsBelowOne() {
+    assertThat(withSpeedAndStatus(2, UnitStatus.ENGAGED).effectiveSpeed()).isEqualTo(1);
+    assertThat(withSpeedAndStatus(1, UnitStatus.ENGAGED).effectiveSpeed()).isEqualTo(1);
+  }
+
   // ── R5 ──────────────────────────────────────────────────────────
 
   @Test

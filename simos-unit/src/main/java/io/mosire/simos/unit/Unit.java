@@ -79,6 +79,19 @@ public record Unit(
   }
 
   /**
+   * ★ **有效移动速度**（spec §三.2 / P5 / P6）：{@code max(1, floorDiv(speed × factorPerMille + 500, 1000))}。
+   *
+   * <p>★ **下界 1 是缺口 U1 的裁定**：`speed × factor / 1000` 可能 &lt; 1（如 `speed=2`、`ENGAGED ⇒ 0`），而 {@link
+   * Movement} 的 `speedAtDeparture ≥ 1` 是硬约束 ⇒ 用与 {@code TerrainMovementCost.scale} 同款的四舍五入后 clamp 到
+   * 1。判据夹具用 `speed ≥ 4` 保证三档可区分。
+   *
+   * <p>★ 它**只在 `planRoute` 时被读一次**并冻进 {@link Movement}——在途改状态**不回溯**（P6）。
+   */
+  public int effectiveSpeed() {
+    return Math.max(1, Math.floorDiv(speed * status.factorPerMille() + 500, 1000));
+  }
+
+  /**
    * ★ **兼容构造器**（T1，R1 的对策）：旧 9 参签名 ⇒ 以 {@code parent} 的锚段时刻造 {@code attached}/{@code offset}
    * 的锚段，{@code status = MOVING}、{@code rejoinTarget = empty}。
    *

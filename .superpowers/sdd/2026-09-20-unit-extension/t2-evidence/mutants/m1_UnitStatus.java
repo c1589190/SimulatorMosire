@@ -20,8 +20,8 @@ public enum UnitStatus {
   public int factorPerMille() {
     return switch (this) {
       case MOVING -> 1000;
-      case RESTING -> 500;
-      case ENGAGED -> 250;
+      case RESTING -> 1000;
+      case ENGAGED -> 1000;
     };
   }
 }

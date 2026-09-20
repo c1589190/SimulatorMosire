@@ -255,7 +255,14 @@ public final class UnitOperations {
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
-        unit.movement(),
+        unit.movement()
+            .map(
+                m ->
+                    new Movement(
+                        m.route(),
+                        m.departedAt(),
+                        Math.max(1, unit.speed() * status.factorPerMille() / 1000),
+                        m.mobilityAtDeparture())),
         status,
         unit.attached(),
         unit.offset(),
