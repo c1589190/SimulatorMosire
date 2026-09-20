@@ -1,0 +1,76 @@
+label t7m1
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+mutant t7m1_UnitTimeParticipant.java
+reason 终点取自第一趟物化**之前**的快照（等价于把终点冻结在旧 hex 上）（计划 m1）
+frag rejoinRoute(snapshot.state(), unit.id(), map, cost, to.get())
+frag_dir revert
+expect_red UnitTimeParticipantTest.rejoinEndpointFollowsTheTargetsCurrentEffectivePosition（第 1 刻的目标位置会读成 H11 = 自己那格 ⇒ 根本不建行程）
+expect_green 目标静止的其余四条（它们的旧格与新格恰好同值）
+orig_md5 8e391f2244747d2bc3abd1597dbbaeee
+mutant_md5 89698a29fe5e1a9f6baa5a0c77ab2d01
+
+label t7m2
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t7m2_UnitOperations.java
+reason 不判可达：恒建一条 [起点, 终点] 的路线（计划 m2）
+frag new Route(List.of(start.get(), goal.get()), List.of(start.get(), goal.get()))
+frag_dir revert
+expect_red UnitTimeParticipantTest.unreachableTargetLeavesTheStateUntouched（相邻两格 ⇒ 那条恒建的路线能过 Route 的全部构造期校验）
+expect_green 可达路径的用例（相邻两格上恒建恰好等于 A* 产物）
+orig_md5 35b5d7cdc482298b4b6153c4572b0e1e
+mutant_md5 74e3f09e2d34592afa3b9fd2a1fb8e4b
+
+label t7m3
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t7m3_UnitOperations.java
+reason 删掉“状态允许移动”那条判据（裁定 U5）（计划 m3）
+frag return Optional.empty(); // 裁定 U5
+frag_dir delete
+expect_red UnitTimeParticipantTest.restingUnitKeepsTheReferenceButDoesNotRejoin（RESTING 也建出回归行程）
+expect_green MOVING 的用例（判据在它们身上恒真）
+orig_md5 35b5d7cdc482298b4b6153c4572b0e1e
+mutant_md5 dd05667045624822e7c11ac69b9ae8b4
+
+label t7m4
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+mutant t7m4_UnitTimeParticipant.java
+reason 返回前重建状态改回 1 参兼容构造器 new UnitState(units)（T5-L4 的第五个站点 / 计划 m4）
+frag UnitState target = new UnitState(units);
+frag_dir revert
+expect_red UnitTimeParticipantTest.advanceKeepsCommandChainsWhilePositionAndMovementChange（既有 T5 守卫）+ rejoinTickKeepsCommandChains（本轮新增）
+expect_green 不带链的用例（Map.of() 换 Map.of() 是恒等）
+orig_md5 8e391f2244747d2bc3abd1597dbbaeee
+mutant_md5 1062662590159ea3952e885bd34fe484
+
+label t7m5
+target simos-unit/src/main/java/io/mosire/simos/unit/UnitState.java
+mutant t7m5_UnitState.java
+reason 给 UnitState 加第三个组件 rejoinAt（另留一个 2 参构造器 ⇒ 既有调用点照旧编译）：**行为等价的变异体**，只有“状态里没有终点存放位置”这条结构判据区分得了它（计划 m5）
+frag Optional<SimosTimestamp> rejoinAt) {
+frag_dir revert
+expect_red UnitTimeParticipantTest.stateHasNoPlaceToPersistAnEndpointHex（结构判据）+ UnitRoundTripTest 的组件枚举（既有守卫）
+expect_green 行为类用例（新字段无人读 ⇒ 两边的可观测行为逐值相同）
+orig_md5 cec48c8ec9e067cf4d7ab87086b2c24f
+mutant_md5 8307100be0cbc90b7882113dda3e3292
+
+label t7m6
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t7m6_UnitOperations.java
+reason 删掉命令期的“目标存在”检查（计划外补轮：命令层判据也要有自己的变异体，裁定 42）
+frag throw new IllegalArgumentException("回归目标不存在: " + targetId);
+frag_dir delete
+expect_red UnitCommandHandlersTest.setRejoinTargetRejectsUnknownSelfAndSelfReference（期望 Rejected，实得 Applied + 悬空引用）
+expect_green 目标存在的命令用例（那条守卫在它们身上恒真）
+orig_md5 35b5d7cdc482298b4b6153c4572b0e1e
+mutant_md5 b92564776ca229616a73ae6ceeb435f4
+
+label t7m7
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+mutant t7m7_UnitTimeParticipant.java
+reason 回归写回时把**终点**也写进 position（复用第一趟的助手）⇒ 单位瞬移（计划外补轮：给“只写 movement、不碰 position”那条设计决定配一个变异体）
+frag route.path().get(route.path().size() - 1),
+frag_dir revert
+expect_red UnitTimeParticipantTest.rejoinEndpointFollowsTheTargetsCurrentEffectivePosition（“回归不瞬移”那条断言：T0+1 的有效位置变成 H12）
+expect_green 断言只落在 movement 上的用例（它们的 route 不受影响）
+orig_md5 8e391f2244747d2bc3abd1597dbbaeee
+mutant_md5 46f7ae6f5cab71810c9ddd258cdcefa7

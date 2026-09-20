@@ -19,16 +19,25 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.Movement;
+import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.move.MovementCost;
+import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.spi.TimeProposal;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.time.Segment;
+import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.TimeRange;
+import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -218,5 +227,278 @@ class UnitTimeParticipantTest {
                     .simulate(SpiFixture.singleModuleState("map", mapOnly), range))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("unit");
+  }
+
+  // ── 回归路径（T7 / spec §二.2、§二.3 / P7 / P8 / 裁定 U5·U6） ──────────
+
+  private static final UnitId U2 = new UnitId("u-2");
+
+  /**
+   * 认图界的成本替身（T7）：图内每条边 1500 毫 MP；**图外的边**与 {@code blockedFrom→blockedTo} 那条 ⇒ 空。
+   *
+   * <p>★ 与 {@link RecordingCost} 的差别只有"认图界"这一条：`RecordingCost` 对任何 {@code to} 都报价 ⇒ A\* 可以绕出
+   * 图外再绕回来，"封掉一条边"根本封不住 —— 那样就造不出"在图上但不可达"的夹具（而"不可达 ⇒ 不回归"是本轮的一条判据）。
+   */
+  private static final class BoundedCost implements MovementCost {
+
+    HexCoord blockedFrom;
+    HexCoord blockedTo;
+
+    @Override
+    public OptionalLong costMillis(HexCoord from, HexCoord to, Unit unit, GameMap map) {
+      if (!map.hexes().containsKey(to)) {
+        return OptionalLong.empty();
+      }
+      if (to.equals(blockedTo) && from.equals(blockedFrom)) {
+        return OptionalLong.empty();
+      }
+      return OptionalLong.of(1500);
+    }
+
+    @Override
+    public long minStepCostMillis(Unit unit, GameMap map) {
+      return 1;
+    }
+  }
+
+  private static UnitTimeParticipant participantWith(MovementCost cost) {
+    return new UnitTimeParticipant(cost, MAP_ID);
+  }
+
+  /** 13 参规范形态的夹具单位（T7 要造"带回归意图 / 换状态 / 无自身位置"的单位）。 */
+  private static Unit unit(
+      UnitId id, Optional<HexCoord> position, Optional<Movement> movement, UnitStatus status) {
+    return unit(id, position, movement, status, Optional.empty(), true);
+  }
+
+  private static Unit unit(
+      UnitId id,
+      Optional<HexCoord> position,
+      Optional<Movement> movement,
+      UnitStatus status,
+      Optional<UnitId> rejoinTarget,
+      boolean attached) {
+    return new Unit(
+        id,
+        "单位 " + id.value(),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
+        100,
+        Map.of("步枪", 50),
+        2,
+        500,
+        movement,
+        status,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, attached)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        rejoinTarget);
+  }
+
+  /** 回归方 + 目标两单位状态；**两参规范构造器**（T5-L4 的口径，本用例不碰兼容构造器）。 */
+  private static UnitState pair(Unit first, Unit second) {
+    Map<UnitId, Unit> byId = new LinkedHashMap<>();
+    byId.put(first.id(), first);
+    byId.put(second.id(), second);
+    return new UnitState(byId, Map.of());
+  }
+
+  /** 从 {@code base} 推进到 {@code T0+tick} 并把提案落回 base。 */
+  private static UnitState advance(MovementCost cost, UnitState base, long tick) {
+    TimeProposal proposal = participantWith(cost).simulate(state(map(), base), advanceTo(tick));
+    return UnitChangeSet.apply((UnitChangeSet) proposal.changeSet(), base);
+  }
+
+  /**
+   * ★★ 判据（spec §二.3 不变量 3 / P8 / **m1 靶子**）：大编制移动后回归终点**随动** —— 终点 == 目标**当前**的 {@code
+   * effectivePosition}，不是上一 tick 物化出来的旧格。
+   *
+   * <p>夹具算术（与既有一致：每边 1500、预算 2000/刻 ⇒ 每刻一格）：大编制 `u-2` 从 H11 出发，第 1 刻物化在 H12、第 2 刻抵达 H13；回归方 `u-1`
+   * 带着"回归 u-2"的意图停在 H11，每 tick 重规划 ⇒ 第 1 刻拿到 [H11,H12]、第 2 刻拿到 [H12,H13]。
+   *
+   * <p>★ m1（终点取自**第一趟物化之前**的那份状态 ⇒ 等价于"把终点冻结在已有的那份 hex 上"）在本用例红：第 1 刻的目标 位置会读成 H11（= u-1 自己所在格，起点
+   * == 终点）⇒ **根本不建行程**，而本用例要的是终点 H12。
+   */
+  @Test
+  void rejoinEndpointFollowsTheTargetsCurrentEffectivePosition() {
+    Unit child =
+        unit(U1, Optional.of(H11), Optional.empty(), UnitStatus.MOVING, Optional.of(U2), true);
+    Unit formation = unit(U2, Optional.of(H11), Optional.of(inFlight()), UnitStatus.MOVING);
+    UnitState base = pair(child, formation);
+
+    TimeProposal firstProposal =
+        participantWith(new BoundedCost()).simulate(state(map(), base), advanceTo(1));
+    UnitState afterFirst = UnitChangeSet.apply((UnitChangeSet) firstProposal.changeSet(), base);
+    assertThat(afterFirst.effectivePosition(U2, T0.plus(1))).as("前提：大编制这一刻物化在 H12").contains(H12);
+    assertThat(afterFirst.units().get(U1).movement())
+        .as("★ 第 1 刻必须装载回归行程（终点随风向：H11 → H12）")
+        .isPresent();
+    Movement firstPlan = afterFirst.units().get(U1).movement().orElseThrow();
+    assertThat(firstPlan.route().path()).as("第 1 刻：终点 = 目标当前有效位置 H12").containsExactly(H11, H12);
+    assertThat(afterFirst.effectivePosition(U1, T0.plus(1)))
+        .as("★ 回归不瞬移：它还在自己那格（终点只落进 movement，position 没被碰过）——**m7 靶子**")
+        .contains(H11);
+    assertThat(firstPlan.departedAt()).as("裁定 U6：departedAt = 本刻").isEqualTo(T0.plus(1));
+    assertThat(firstPlan.speedAtDeparture()).isEqualTo(2);
+    assertThat(firstPlan.mobilityAtDeparture()).isEqualTo(500);
+    assertThat(firstProposal.writes()).as("回归方与目标都在写集里").contains("unit:u-1", "unit:u-2");
+    assertThat(firstProposal.reads()).as("目标地址与路线格都是真输入").contains("unit:u-1", "unit:u-2");
+
+    UnitState afterSecond = advance(new BoundedCost(), afterFirst, 2);
+    Optional<HexCoord> targetNow = afterSecond.effectivePosition(U2, T0.plus(2));
+    assertThat(targetNow).as("前提：大编制真的又动了一格").contains(H13);
+    assertThat(afterSecond.units().get(U1).movement())
+        .as("★ 第 2 刻必须**重新**装载回归行程（旧行程第 1 刻就抵达了 ⇒ 不重装则停在 H12）")
+        .isPresent();
+    Movement secondPlan = afterSecond.units().get(U1).movement().orElseThrow();
+    assertThat(secondPlan.route().path())
+        .as("★ 终点随动：上一刻的终点 H12 已变成起点，冻结实现会留在这里")
+        .containsExactly(H12, H13);
+    assertThat(secondPlan.route().path().get(secondPlan.route().path().size() - 1))
+        .as("★ 终点逐值等于目标的当前有效位置（不是持久字段，是现算）")
+        .isEqualTo(targetNow.orElseThrow());
+    assertThat(secondPlan.departedAt()).as("每 tick 一条新行程，departedAt = 本刻").isEqualTo(T0.plus(2));
+    assertThat(afterSecond.effectivePosition(U1, T0.plus(2)))
+        .as("★ 回归不瞬移：第 2 刻它只走了一格（没被写到终点 H13）")
+        .contains(H12);
+  }
+
+  /**
+   * ★★ 判据（P7 "有能力回归" = 假 ⇒ 不动 / **m2 靶子**）：目标**不可达** ⇒ 零变更（连差分都不该有）。
+   *
+   * <p>夹具：走廊只有 H11-H12-H13 三格，`u-1` 在 H12、`u-2` 在 H13，**唯一那条 H12→H13 被成本替身封掉** （H13 在图上的邻居只有 H12）⇒
+   * A\* 无路。
+   *
+   * <p>★ m2（不判可达、恒建一条 `[起点, 终点]` 的路线）在本用例红：两格**相邻** ⇒ 那条"恒建"的路线能过 `Route` 的全部 构造期校验（首尾一致、相邻、无重复）⇒
+   * 一个 `Movement` 凭空出现，而本用例要的是空变更集。★ 同一条夹具在**不封边**时 由 {@link
+   * #restingUnitKeepsTheReferenceButDoesNotRejoin} 证明确实有路（判别力来自"只差封边这一项"）。
+   */
+  @Test
+  void unreachableTargetLeavesTheStateUntouched() {
+    BoundedCost cost = new BoundedCost();
+    cost.blockedFrom = H12;
+    cost.blockedTo = H13;
+    Unit child =
+        unit(U1, Optional.of(H12), Optional.empty(), UnitStatus.MOVING, Optional.of(U2), true);
+    Unit formation = unit(U2, Optional.of(H13), Optional.empty(), UnitStatus.MOVING);
+    TimeProposal proposal =
+        participantWith(cost).simulate(state(map(), pair(child, formation)), advanceTo(1));
+
+    assertThat(((UnitChangeSet) proposal.changeSet()).isEmpty()).as("不可达 ⇒ 有能力回归为假 ⇒ 零变更").isTrue();
+    assertThat(proposal.reads()).isEmpty();
+    assertThat(proposal.writes()).isEmpty();
+  }
+
+  /**
+   * ★★ 判据（裁定 U5 / **m3 靶子**）：状态**不允许移动**（RESTING）⇒ 不建回归；**引用不清** —— 状态回到 MOVING 就地恢复。
+   *
+   * <p>★ m3（删掉"状态允许移动"那条判据）在本用例红：RESTING 也会建出回归行程。
+   *
+   * <p>★ 后半段（回到 MOVING ⇒ 恢复）同时是"**不封边时确有路**"的正面样本：同一夹具（H11 → H13）在 RESTING 下零变更、 在 MOVING 下建出
+   * [H11,H12,H13] ⇒ 两半只差 `status` 这一项。
+   */
+  @Test
+  void restingUnitKeepsTheReferenceButDoesNotRejoin() {
+    Unit resting =
+        unit(U1, Optional.of(H11), Optional.empty(), UnitStatus.RESTING, Optional.of(U2), true);
+    Unit formation = unit(U2, Optional.of(H13), Optional.empty(), UnitStatus.MOVING);
+    UnitState base = pair(resting, formation);
+
+    UnitState after = advance(new BoundedCost(), base, 1);
+    assertThat(after.units().get(U1).movement()).as("RESTING ⇒ 不建回归行程").isEmpty();
+    assertThat(after.units().get(U1).rejoinTarget()).as("★ 裁定 U5：引用**不清**（这里不是取消回归）").contains(U2);
+
+    UnitState resumed = UnitOperations.setStatus(after, U1, UnitStatus.MOVING);
+    UnitState rejoined = advance(new BoundedCost(), resumed, 2);
+    assertThat(rejoined.units().get(U1).movement()).as("回到 MOVING ⇒ 重新规划、恢复回归").isPresent();
+    assertThat(rejoined.units().get(U1).movement().orElseThrow().route().path())
+        .as("★ 恢复后走的就是那条真路（不封边时可达）")
+        .containsExactly(H11, H12, H13);
+  }
+
+  /**
+   * ★★ 判据（P7 的第三条"假"）：目标**位置不可确定** ⇒ 不建回归（零变更）。
+   *
+   * <p>夹具：`u-2` **未挂靠**（{@code attached=false}）且**无自身位置** ⇒ {@code effectivePosition} 为空
+   * （`UnitState` 的第五种情形）——它还在 world 里（不是"不存在"，那条在命令期就拒了），但此刻"往谁靠"无解。
+   */
+  @Test
+  void undeterminableTargetPositionLeavesTheStateUntouched() {
+    Unit child =
+        unit(U1, Optional.of(H11), Optional.empty(), UnitStatus.MOVING, Optional.of(U2), true);
+    Unit formation =
+        unit(U2, Optional.empty(), Optional.empty(), UnitStatus.MOVING, Optional.empty(), false);
+    TimeProposal proposal =
+        participantWith(new BoundedCost())
+            .simulate(state(map(), pair(child, formation)), advanceTo(1));
+
+    assertThat(((UnitChangeSet) proposal.changeSet()).isEmpty())
+        .as("目标位置不可确定 ⇒ 有能力回归为假 ⇒ 零变更")
+        .isTrue();
+    assertThat(proposal.reads()).isEmpty();
+  }
+
+  /**
+   * ★★ 判据（T5-L4 的第五个站点）：**回归重规划这一趟也只走 `withUnits`** ⇒ 链逐值活下来、且链不进差分。
+   *
+   * <p>★ 靶子是第二趟之后那行 `snapshot.state().withUnits(units)`：改回 `new UnitState(units)`，本用例与 T5 的既有守卫
+   * 一起红（两处各钉一遍：一趟推进有回归、一趟没有）。
+   */
+  @Test
+  void rejoinTickKeepsCommandChains() {
+    Map<CommandChainId, CommandChain> chains = new LinkedHashMap<>();
+    chains.put(CHAIN, new CommandChain(CHAIN, "第一链", U1, Set.of(U1, U2)));
+    Unit child =
+        unit(U1, Optional.of(H11), Optional.empty(), UnitStatus.MOVING, Optional.of(U2), true);
+    Unit formation = unit(U2, Optional.of(H13), Optional.empty(), UnitStatus.MOVING);
+    UnitState base = pair(child, formation).withCommandChains(chains);
+
+    TimeProposal proposal =
+        participantWith(new BoundedCost()).simulate(state(map(), base), advanceTo(1));
+    UnitState next = UnitChangeSet.apply((UnitChangeSet) proposal.changeSet(), base);
+
+    assertThat(next.units().get(U1).movement()).as("前提：回归行程真的建了").isPresent();
+    assertThat(next.commandChains()).as("★ T5-L4：回归趟也只走 withUnits ⇒ 链活着").isEqualTo(chains);
+    assertThat(((UnitChangeSet) proposal.changeSet()).commandChains().changed())
+        .as("★ 链与回归无关 ⇒ 连差分都不该有")
+        .isFalse();
+  }
+
+  /**
+   * ★★ 判据（spec §二.3 不变量 3 的**结构**半边）：状态里**没有**可以持久存放"终点 hex"的位置。
+   *
+   * <p>行为半边由 {@link #rejoinEndpointFollowsTheTargetsCurrentEffectivePosition} 钉（终点每 tick
+   * 现算、随动）；本用例钉 **类型**：`UnitState` 仍只有两个组件、`Unit` 仍只有那 13 个 —— 想加一个"回归终点 / 回归时刻"字段就会当场红。
+   *
+   * <p>★ **m5 靶子**：给 `UnitState` 加第三个组件（另留一个两参构造器重载，故既有调用点照旧编译）的变异体在本用例红，**并且** 与 {@code
+   * UnitRoundTripTest} 的两条一起红——那个字段谁都不读 ⇒ 回归场景的**行为层**判不出来（t7 的六条回归用例在 m5 下全绿），红的是**类型**与
+   * **往返**两处。这是"等价变异体必须报两种形态"的实例（见 t7 报告 §五）。
+   */
+  @Test
+  void stateHasNoPlaceToPersistAnEndpointHex() {
+    assertThat(componentNames(UnitState.class))
+        .as("★ 不变量 3：状态类型里没有旧格 / 终点这类持久事实的位置")
+        .containsExactly("units", "commandChains");
+    assertThat(componentNames(Unit.class))
+        .as("★ 单位上唯一的回归事实是那个引用（rejoinTarget），没有任何 hex 字段")
+        .containsExactly(
+            "id",
+            "name",
+            "parent",
+            "position",
+            "member",
+            "equipment",
+            "speed",
+            "mobilityPerMille",
+            "movement",
+            "status",
+            "attached",
+            "offset",
+            "rejoinTarget");
+  }
+
+  private static List<String> componentNames(Class<?> recordType) {
+    return Arrays.stream(recordType.getRecordComponents()).map(RecordComponent::getName).toList();
   }
 }

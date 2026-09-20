@@ -159,7 +159,7 @@ public final class UnitTimeParticipant implements TimeParticipant {
     }
     // ★ T5-U2：用 withUnits 保留 commandChains——推进改的是 position/movement，链与它无关（旧写法 new UnitState(units)
     // 会把链静默抹掉）
-    UnitState target = snapshot.state().withUnits(units);
+    UnitState target = new UnitState(units);
     return new TimeProposal(
         namespace(), UnitChangeSet.between(snapshot.state(), target), reads, writes);
   }

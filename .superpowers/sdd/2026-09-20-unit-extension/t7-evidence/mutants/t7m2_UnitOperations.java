@@ -628,8 +628,8 @@ public final class UnitOperations {
     if (start.isEmpty() || goal.isEmpty() || start.get().equals(goal.get())) {
       return Optional.empty();
     }
-    return PathFinder.findPath(map, start.get(), goal.get(), unit, cost)
-        .map(path -> new Route(List.of(start.get(), goal.get()), path));
+    return Optional.of(
+        new Route(List.of(start.get(), goal.get()), List.of(start.get(), goal.get())));
   }
 
   // ── 私有助手 ────────────────────────────────────────────────────

@@ -144,8 +144,10 @@ public final class UnitTimeParticipant implements TimeParticipant {
       // "路线起点 == departedAt 的有效位置"。更关键的是：**绝不把终点 hex 写进任何持久字段**（§二.3 不变量 3）。
       units.put(
           unit.id(),
-          withMovement(
+          withPositionAndMovement(
               units.get(unit.id()),
+              to.get(),
+              route.path().get(route.path().size() - 1),
               Optional.of(
                   new Movement(route, to.get(), unit.effectiveSpeed(), unit.mobilityPerMille()))));
       String unitAddress = unitAddress(unit.id());

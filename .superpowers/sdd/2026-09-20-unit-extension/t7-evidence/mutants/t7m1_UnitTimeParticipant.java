@@ -134,7 +134,7 @@ public final class UnitTimeParticipant implements TimeParticipant {
     UnitState materialized = snapshot.state().withUnits(units);
     for (Unit unit : snapshot.state().units().values()) {
       Optional<Route> planned =
-          UnitOperations.rejoinRoute(materialized, unit.id(), map, cost, to.get());
+          UnitOperations.rejoinRoute(snapshot.state(), unit.id(), map, cost, to.get());
       if (planned.isEmpty()) {
         continue; // 无意图 / 没能力回归（不可达 · 位置不可确定 · 非 MOVING）⇒ 不动（不进变更集）
       }

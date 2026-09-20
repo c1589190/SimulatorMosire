@@ -585,9 +585,6 @@ public final class UnitOperations {
       if (targetId.equals(id)) {
         throw new IllegalArgumentException("回归目标不得是自身: " + id);
       }
-      if (!state.units().containsKey(targetId)) {
-        throw new IllegalArgumentException("回归目标不存在: " + targetId);
-      }
     }
     return withUnit(state, withRejoinTarget(unit, target));
   }

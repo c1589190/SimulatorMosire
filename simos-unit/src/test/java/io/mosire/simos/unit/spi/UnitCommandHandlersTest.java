@@ -43,8 +43,9 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * 十六个 unit 命令 handler（spec §四 + T3 的三条编制命令 A + T4 的三条编制命令 B + T5 的两条命令链命令）：逐命令验证 happy path（{@code
- * Applied} + 应用之后的 {@code UnitState} 逐值）与关键拒绝。
+ * 十八个 unit 命令 handler（spec §四 + T3 的三条编制命令 A + T4 的三条编制命令 B + T5 的两条命令链命令 + T6 的 {@code
+ * PlanSparseRoute} + T7 的 {@code SetRejoinTarget}）：逐命令验证 happy path（{@code Applied} + 应用之后的 {@code
+ * UnitState} 逐值）与关键拒绝。
  *
  * <p>★ 带时刻的命令（CreateUnit / ReparentUnit / PlaceAt / PlanRoute / DisbandUnit / AttachUnit /
  * DetachUnit / SetFormationOffset / ReparentSubtree / SplitFormation / MergeFormation）在**非零 base
@@ -82,6 +83,7 @@ class UnitCommandHandlersTest {
   private static final MergeFormationHandler MERGE = new MergeFormationHandler();
   private static final CreateCommandChainHandler CREATE_CHAIN = new CreateCommandChainHandler();
   private static final UpdateCommandChainHandler UPDATE_CHAIN = new UpdateCommandChainHandler();
+  private static final SetRejoinTargetHandler SET_REJOIN_TARGET = new SetRejoinTargetHandler();
 
   // ── 夹具与世界构造 ──────────────────────────────────────────────
 
@@ -1368,5 +1370,151 @@ class UnitCommandHandlersTest {
                     world, "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("MapSnapshot");
+  }
+
+  // ── unit.SetRejoinTarget（T7 / spec §二.2 / §四 表 / P7 · P8 / 裁定 U4~U6） ──
+
+  /**
+   * ★★ 判据（spec §四 表）：命令名与 spec 逐字一致。
+   *
+   * <p>★ **单列一条方法**：上面那条 `typeNamesMatchTheSpecTable` 是"十六个"的清单（T6 起已是第十七、十八个）， 逐条断言 ⇒
+   * 动它等于改写既有证据，不改；新命令各自立一条。
+   */
+  @Test
+  void setRejoinTargetTypeNameMatchesTheSpecTable() {
+    assertThat(SET_REJOIN_TARGET.type()).isEqualTo("unit.SetRejoinTarget");
+  }
+
+  /**
+   * ★★ 判据（spec §二.2 / §四 表 / P8 / **裁定 U4**）：**只设引用**——写的是 `rejoinTarget` 那个普通字段， `position` 与
+   * `movement` 逐值不动；**目标单位**一字不动；命令边界的变更集非空。
+   *
+   * <p>★ 这是 P8 的"命令期不冻结"那一半：`target` 指的是"往谁靠"，**不是某一格** ⇒ 本命令不建路线、不落 hex。
+   */
+  @Test
+  void setRejoinTargetSetsOnlyTheReference() {
+    UnitState base = twoIndependent();
+    UnitChangeSet changeSet =
+        changeSetOf(SET_REJOIN_TARGET, world(base), "{\"id\":\"u-1\",\"target\":\"u-2\"}");
+    UnitState next = UnitChangeSet.apply(changeSet, base);
+
+    assertThat(changeSet.isEmpty()).as("真的改了字段（不是空转）").isFalse();
+    assertThat(changeSet.units().changed()).isTrue();
+    assertThat(changeSet.commandChains().changed()).as("命令链与它无关").isFalse();
+    assertThat(next.units().get(SpiFixture.U1).rejoinTarget()).contains(U2);
+    assertThat(next.units().get(SpiFixture.U1).position())
+        .as("★ U4：位置分量逐值不动（没往状态里塞 hex）")
+        .isEqualTo(base.units().get(SpiFixture.U1).position());
+    assertThat(next.units().get(SpiFixture.U1).movement())
+        .as("★ P8：不建路线——终点每 tick 现算，命令期只落引用")
+        .isEqualTo(base.units().get(SpiFixture.U1).movement());
+    assertThat(next.units().get(U2)).as("目标单位一字不动").isEqualTo(base.units().get(U2));
+  }
+
+  /**
+   * ★★ 判据（spec §二.2 「设 / 清同一条命令，往返闭合」 / §四 表 `target?`）：**缺失**与**显式 `null`** 都清，
+   * 且清完之后**逐值回到原状态**（铁律 5 的往返在这里是直接的 record 相等，不只是"字段对得上"）。
+   */
+  @Test
+  void setRejoinTargetClearsOnMissingOrNullTargetAndRoundTrips() {
+    UnitState base = twoIndependent();
+    UnitState set = applied(SET_REJOIN_TARGET, world(base), "{\"id\":\"u-1\",\"target\":\"u-2\"}");
+    assertThat(set.units().get(SpiFixture.U1).rejoinTarget()).contains(U2);
+
+    UnitState clearedMissing = applied(SET_REJOIN_TARGET, world(set), "{\"id\":\"u-1\"}");
+    assertThat(clearedMissing.units().get(SpiFixture.U1).rejoinTarget()).as("缺失 ⇒ 清").isEmpty();
+    assertThat(clearedMissing).as("★ 设 → 清往返：逐值回到原状态").isEqualTo(base);
+
+    UnitState setAgain =
+        applied(SET_REJOIN_TARGET, world(base), "{\"id\":\"u-1\",\"target\":\"u-2\"}");
+    UnitState clearedNull =
+        applied(SET_REJOIN_TARGET, world(setAgain), "{\"id\":\"u-1\",\"target\":null}");
+    assertThat(clearedNull.units().get(SpiFixture.U1).rejoinTarget()).as("显式 null ⇒ 清").isEmpty();
+    assertThat(clearedNull).as("★ 两种清法（缺失 / null）结果同值").isEqualTo(clearedMissing);
+  }
+
+  /**
+   * ★★ 判据（spec §四 表的拒绝列）：目标不存在 / 指自己 / 命令对象不存在 —— 三条都折成拒绝，且**三条理由互不相同**。
+   *
+   * <p>★ 理由的**层次**要能分辨：把"目标在不在"与"自己在不在"混成一条消息的实现（例如两者都报"单位不存在"）在本用例红 ——
+   * 这里第一条要的是"回归目标不存在"、第三条要的是"单位不存在"（载荷层对 `target` 形状的消息又是第三种，见下一条）。
+   */
+  @Test
+  void setRejoinTargetRejectsUnknownSelfAndSelfReference() {
+    SimulationState world = world(twoIndependent());
+
+    assertThat(reason(SET_REJOIN_TARGET, world, "{\"id\":\"u-1\",\"target\":\"u-404\"}"))
+        .as("目标不在 units 里")
+        .contains("回归目标不存在")
+        .contains("u-404");
+    assertThat(reason(SET_REJOIN_TARGET, world, "{\"id\":\"u-1\",\"target\":\"u-1\"}"))
+        .as("指向自己（自环）")
+        .contains("不得是自身")
+        .contains("u-1");
+    assertThat(reason(SET_REJOIN_TARGET, world, "{\"id\":\"u-404\",\"target\":\"u-2\"}"))
+        .as("命令的对象自己不存在")
+        .contains("单位不存在")
+        .contains("u-404");
+    assertThat(unitSlice(world).units().get(SpiFixture.U1).rejoinTarget())
+        .as("拒绝 ⇒ 输入状态不动（handler 是纯函数）")
+        .isEmpty();
+    assertThat(unitSlice(world).units().get(U2).rejoinTarget()).as("目标那一侧也不会被顺手写上什么").isEmpty();
+  }
+
+  /**
+   * ★ 判据（spec §四 表 + T5 的载荷口径）：形状坏一律拒绝，**理由整句**属于载荷层（与域层那三条刻意不同）。
+   *
+   * <p>★ 断言写整句而不只写字段 token：`target` 这个 token 在域层消息里也会出现（"回归目标不存在"），只判 token 的 断言分不出是哪一层拒的（T4/T5
+   * 记下的同族缺口）。
+   */
+  @Test
+  void setRejoinTargetRejectsMalformedPayload() {
+    SimulationState world = world(twoIndependent());
+
+    assertThat(reason(SET_REJOIN_TARGET, world, "[1,2,3]")).contains("必须是 JSON 对象");
+    assertThat(reason(SET_REJOIN_TARGET, world, "不是 JSON")).contains("不是合法 JSON");
+    assertThat(reason(SET_REJOIN_TARGET, world, "{}")).contains("id 必须是字符串");
+    assertThat(reason(SET_REJOIN_TARGET, world, "{\"id\":\"u-1\",\"target\":{}}"))
+        .as("target 形状（载荷层整句）")
+        .contains("target 必须是字符串或 null");
+    assertThat(reason(SET_REJOIN_TARGET, world, "{\"id\":\"u-1\",\"target\":\"\"}"))
+        .as("空串不是清（清只能靠缺失或 null）")
+        .contains("target 不得为空白");
+    assertThat(reason(SET_REJOIN_TARGET, world, "{\"id\":\"u-1\",\"target\":\"   \"}"))
+        .as("空白串同理")
+        .contains("target 不得为空白");
+  }
+
+  /**
+   * ★★ 判据（裁定 U5 的命令层半边）：切到 `RESTING` **不清**回归引用 —— 这不是"取消回归"；状态回到 `MOVING` 时 参与者能接着规划（参与者侧见 {@code
+   * UnitTimeParticipantTest#restingUnitKeepsTheReferenceButDoesNotRejoin}）。
+   *
+   * <p>★ 靶子是"顺手把引用清掉"的实现（读起来像垃圾回收，实则是把 U5 判反了）：本用例红在引用那条断言上。
+   */
+  @Test
+  void setStatusDoesNotClearTheRejoinTarget() {
+    UnitState set =
+        applied(SET_REJOIN_TARGET, world(twoIndependent()), "{\"id\":\"u-1\",\"target\":\"u-2\"}");
+    UnitState resting = applied(SET_STATUS, world(set), "{\"id\":\"u-1\",\"status\":\"RESTING\"}");
+
+    assertThat(resting.units().get(SpiFixture.U1).status()).isEqualTo(UnitStatus.RESTING);
+    assertThat(resting.units().get(SpiFixture.U1).rejoinTarget())
+        .as("★ U5：引用留着，MOVING 时自然续上")
+        .contains(U2);
+  }
+
+  /**
+   * ★★ 判据（T5-L4 的又一处站点）：`setRejoinTarget` 重建状态也**只走 `withUnits`** ⇒ 链经命令边界的变更集往返逐值活下来。
+   *
+   * <p>★ 靶子是那个助手改回 `new UnitState(next)`：链会在 `between` 里被当成"被删掉"，`apply` 之后全空 —— 值红，不是异常。
+   */
+  @Test
+  void setRejoinTargetKeepsCommandChains() {
+    UnitState base = twoChains();
+    UnitState next =
+        applied(SET_REJOIN_TARGET, worldAt(T5, base), "{\"id\":\"u-1\",\"target\":\"u-2\"}");
+
+    assertThat(next.units().get(SpiFixture.U1).rejoinTarget()).contains(U2);
+    assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来（旧写法会全清）").isEqualTo(base.commandChains());
   }
 }

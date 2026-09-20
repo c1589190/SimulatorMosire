@@ -1,0 +1,173 @@
+===== SELF-REFERENTIAL RECORD (t7m1) =====
+t7m1  label=t7m1
+t7m1  target=simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+t7m1  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m1_UnitTimeParticipant.java
+t7m1  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m1  orig_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m1  baseline_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m1  mutant_md5=89698a29fe5e1a9f6baa5a0c77ab2d01
+t7m1  pushed_md5=89698a29fe5e1a9f6baa5a0c77ab2d01
+t7m1  restored_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m1  site_revert_proof=frag=[rejoinRoute(snapshot.state(), unit.id(), map, cost, to.get())] dir=revert orig_hits=0 pushed_hits=1
+t7m1  mvn_rc=1
+t7m1  compile_errors=0
+t7m1  surefire_summary=Tests run: 16, Failures: 1, Errors: 0, Skipped: 0
+t7m1  module_summary=[ERROR] Tests run: 163, Failures: 1, Errors: 0, Skipped: 0
+t7m1  surefire_mtime=2026-09-21T06:02:15+08:00
+t7m1  round_start_epoch=1789941669 round_end_epoch=1789941735
+t7m1  verdict=OK
+t7m1  outcome=RED(被杀)
+t7m1  --- 失败清单（原文，供⑦核红点） ---
+t7m1  [ERROR]   UnitTimeParticipantTest.rejoinEndpointFollowsTheTargetsCurrentEffectivePosition:336 [★ 第 1 刻必须装载回归行程（终点随风向：H11 → H12）] 
+t7m1  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:02:15+08:00
+
+===== SELF-REFERENTIAL RECORD (t7m2) =====
+t7m2  label=t7m2
+t7m2  target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+t7m2  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m2_UnitOperations.java
+t7m2  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m2  orig_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m2  baseline_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m2  mutant_md5=74e3f09e2d34592afa3b9fd2a1fb8e4b
+t7m2  pushed_md5=74e3f09e2d34592afa3b9fd2a1fb8e4b
+t7m2  restored_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m2  site_revert_proof=frag=[new Route(List.of(start.get(), goal.get()), List.of(start.get(), goal.get()))] dir=revert orig_hits=0 pushed_hits=1
+t7m2  mvn_rc=1
+t7m2  compile_errors=0
+t7m2  surefire_summary=Tests run: 16, Failures: 1, Errors: 2, Skipped: 0
+t7m2  module_summary=[ERROR] Tests run: 163, Failures: 1, Errors: 2, Skipped: 0
+t7m2  surefire_mtime=2026-09-21T06:03:18+08:00
+t7m2  round_start_epoch=1789941748 round_end_epoch=1789941798
+t7m2  verdict=OK
+t7m2  outcome=RED(被杀)
+t7m2  --- 失败清单（原文，供⑦核红点） ---
+t7m2  [ERROR]   UnitTimeParticipantTest.unreachableTargetLeavesTheStateUntouched:388 [不可达 ⇒ 有能力回归为假 ⇒ 零变更] 
+t7m2  [ERROR]   UnitTimeParticipantTest.rejoinTickKeepsCommandChains:458 » IllegalArgument path 相邻格必须相邻：1_1 → 1_3
+t7m2  [ERROR]   UnitTimeParticipantTest.restingUnitKeepsTheReferenceButDoesNotRejoin:413->advance:309 » IllegalArgument path 相邻格必须相邻：1_1 → 1_3
+t7m2  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:03:19+08:00
+
+===== SELF-REFERENTIAL RECORD (t7m3) =====
+t7m3  label=t7m3
+t7m3  target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+t7m3  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m3_UnitOperations.java
+t7m3  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m3  orig_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m3  baseline_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m3  mutant_md5=dd05667045624822e7c11ac69b9ae8b4
+t7m3  pushed_md5=dd05667045624822e7c11ac69b9ae8b4
+t7m3  restored_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m3  site_revert_proof=frag=[return Optional.empty(); // 裁定 U5] dir=delete orig_hits=1 pushed_hits=0
+t7m3  mvn_rc=1
+t7m3  compile_errors=0
+t7m3  surefire_summary=Tests run: 16, Failures: 1, Errors: 0, Skipped: 0
+t7m3  module_summary=[ERROR] Tests run: 163, Failures: 1, Errors: 0, Skipped: 0
+t7m3  surefire_mtime=2026-09-21T06:04:05+08:00
+t7m3  round_start_epoch=1789941799 round_end_epoch=1789941845
+t7m3  verdict=OK
+t7m3  outcome=RED(被杀)
+t7m3  --- 失败清单（原文，供⑦核红点） ---
+t7m3  [ERROR]   UnitTimeParticipantTest.restingUnitKeepsTheReferenceButDoesNotRejoin:409 [RESTING ⇒ 不建回归行程] 
+t7m3  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:04:05+08:00
+
+===== SELF-REFERENTIAL RECORD (t7m4) =====
+t7m4  label=t7m4
+t7m4  target=simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+t7m4  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m4_UnitTimeParticipant.java
+t7m4  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m4  orig_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m4  baseline_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m4  mutant_md5=1062662590159ea3952e885bd34fe484
+t7m4  pushed_md5=1062662590159ea3952e885bd34fe484
+t7m4  restored_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m4  site_revert_proof=frag=[UnitState target = new UnitState(units);] dir=revert orig_hits=0 pushed_hits=1
+t7m4  mvn_rc=1
+t7m4  compile_errors=0
+t7m4  surefire_summary=Tests run: 16, Failures: 2, Errors: 0, Skipped: 0
+t7m4  module_summary=[ERROR] Tests run: 163, Failures: 2, Errors: 0, Skipped: 0
+t7m4  surefire_mtime=2026-09-21T06:04:51+08:00
+t7m4  round_start_epoch=1789941845 round_end_epoch=1789941891
+t7m4  verdict=OK
+t7m4  outcome=RED(被杀)
+t7m4  --- 失败清单（原文，供⑦核红点） ---
+t7m4  [ERROR]   UnitTimeParticipantTest.advanceKeepsCommandChainsWhilePositionAndMovementChange:205 [★ T5-U2：参与者走 withUnits ⇒ 链逐值活下来（旧写法会全清）] 
+t7m4  [ERROR]   UnitTimeParticipantTest.rejoinTickKeepsCommandChains:462 [★ T5-L4：回归趟也只走 withUnits ⇒ 链活着] 
+t7m4  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:04:51+08:00
+
+===== SELF-REFERENTIAL RECORD (t7m5) =====
+t7m5  label=t7m5
+t7m5  target=simos-unit/src/main/java/io/mosire/simos/unit/UnitState.java
+t7m5  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m5_UnitState.java
+t7m5  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m5  orig_md5=cec48c8ec9e067cf4d7ab87086b2c24f
+t7m5  baseline_md5=cec48c8ec9e067cf4d7ab87086b2c24f
+t7m5  mutant_md5=8307100be0cbc90b7882113dda3e3292
+t7m5  pushed_md5=8307100be0cbc90b7882113dda3e3292
+t7m5  restored_md5=cec48c8ec9e067cf4d7ab87086b2c24f
+t7m5  site_revert_proof=frag=[Optional<SimosTimestamp> rejoinAt) {] dir=revert orig_hits=0 pushed_hits=1
+t7m5  mvn_rc=1
+t7m5  compile_errors=0
+t7m5  surefire_summary=Tests run: 16, Failures: 1, Errors: 0, Skipped: 0
+t7m5  module_summary=[ERROR] Tests run: 163, Failures: 2, Errors: 1, Skipped: 0
+t7m5  surefire_mtime=2026-09-21T06:06:04+08:00
+t7m5  round_start_epoch=1789941918 round_end_epoch=1789941964
+t7m5  verdict=OK
+t7m5  outcome=RED(被杀)
+t7m5  --- 失败清单（原文，供⑦核红点） ---
+t7m5  [ERROR]   UnitRoundTripTest.changeSetHasExactlyTwoComponents:83 [反向也成立 ⇒ 两边组件集相同] 
+t7m5  [ERROR]   UnitTimeParticipantTest.stateHasNoPlaceToPersistAnEndpointHex:481 [★ 不变量 3：状态类型里没有旧格 / 终点这类持久事实的位置] 
+t7m5  [ERROR]   UnitRoundTripTest.everyUnitStateComponentParticipatesInTheChangeSet:61->mutate:100 IllegalState 未登记的组件: rejoinAt
+t7m5  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:06:04+08:00
+
+===== SELF-REFERENTIAL RECORD (t7m6) =====
+t7m6  label=t7m6
+t7m6  target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+t7m6  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m6_UnitOperations.java
+t7m6  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m6  orig_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m6  baseline_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m6  mutant_md5=b92564776ca229616a73ae6ceeb435f4
+t7m6  pushed_md5=b92564776ca229616a73ae6ceeb435f4
+t7m6  restored_md5=35b5d7cdc482298b4b6153c4572b0e1e
+t7m6  site_revert_proof=frag=[throw new IllegalArgumentException("回归目标不存在: " + targetId);] dir=delete orig_hits=1 pushed_hits=0
+t7m6  mvn_rc=1
+t7m6  compile_errors=0
+t7m6  surefire_summary=Tests run: 16, Failures: 0, Errors: 0, Skipped: 0
+t7m6  module_summary=[ERROR] Tests run: 163, Failures: 1, Errors: 0, Skipped: 0
+t7m6  surefire_mtime=2026-09-21T06:06:51+08:00
+t7m6  round_start_epoch=1789941964 round_end_epoch=1789942012
+t7m6  verdict=OK
+t7m6  outcome=RED(被杀)
+t7m6  --- 失败清单（原文，供⑦核红点） ---
+t7m6  [ERROR]   UnitCommandHandlersTest.setRejoinTargetRejectsUnknownSelfAndSelfReference:1446->reason:197 [期望 Rejected 而不是 Applied[changeSet=UnitChangeSet[units=Upsert[entries={u-1=Unit[id=u-1, name=第一连, parent=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], position=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional[1_1]]], events=[], addition=null], member=100, equipment={步枪=50}, speed=2, mobilityPerMille=500, movement=Optional.empty, status=MOVING, attached=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=true]], events=[], addition=null], offset=SegmentedSeries[segments=[Segment[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], value=Optional.empty]], events=[], addition=null], rejoinTarget=Optional[u-404]]}], commandChains=Unchanged[]]]] 
+t7m6  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:06:52+08:00
+
+===== SELF-REFERENTIAL RECORD (t7m7) =====
+t7m7  label=t7m7
+t7m7  target=simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+t7m7  mutant=.superpowers/sdd/2026-09-20-unit-extension/t7-evidence/mutants/t7m7_UnitTimeParticipant.java
+t7m7  selector=UnitTimeParticipantTest,UnitCommandHandlersTest,UnitRoundTripTest,UnitOperationsTest,UnitStateTest,UnitCodecTest
+t7m7  orig_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m7  baseline_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m7  mutant_md5=46f7ae6f5cab71810c9ddd258cdcefa7
+t7m7  pushed_md5=46f7ae6f5cab71810c9ddd258cdcefa7
+t7m7  restored_md5=8e391f2244747d2bc3abd1597dbbaeee
+t7m7  site_revert_proof=frag=[route.path().get(route.path().size() - 1),] dir=revert orig_hits=0 pushed_hits=1
+t7m7  mvn_rc=1
+t7m7  compile_errors=0
+t7m7  surefire_summary=Tests run: 16, Failures: 1, Errors: 0, Skipped: 0
+t7m7  module_summary=[ERROR] Tests run: 163, Failures: 1, Errors: 0, Skipped: 0
+t7m7  surefire_mtime=2026-09-21T06:07:50+08:00
+t7m7  round_start_epoch=1789942024 round_end_epoch=1789942070
+t7m7  verdict=OK
+t7m7  outcome=RED(被杀)
+t7m7  --- 失败清单（原文，供⑦核红点） ---
+t7m7  [ERROR]   UnitTimeParticipantTest.rejoinEndpointFollowsTheTargetsCurrentEffectivePosition:341 [★ 回归不瞬移：它还在自己那格（终点只落进 movement，position 没被碰过）——**m7 靶子**] 
+t7m7  [ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T06:07:50+08:00
+

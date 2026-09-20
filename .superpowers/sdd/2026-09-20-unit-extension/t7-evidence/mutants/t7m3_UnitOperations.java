@@ -620,9 +620,6 @@ public final class UnitOperations {
     if (unit == null || unit.rejoinTarget().isEmpty()) {
       return Optional.empty();
     }
-    if (unit.status() != UnitStatus.MOVING) {
-      return Optional.empty(); // 裁定 U5：RESTING/ENGAGED 不自动回归（引用不清，回到 MOVING 后恢复）
-    }
     Optional<HexCoord> start = state.effectivePosition(id, at);
     Optional<HexCoord> goal = state.effectivePosition(unit.rejoinTarget().get(), at);
     if (start.isEmpty() || goal.isEmpty() || start.get().equals(goal.get())) {
