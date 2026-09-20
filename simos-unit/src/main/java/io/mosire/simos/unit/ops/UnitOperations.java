@@ -1,5 +1,6 @@
 package io.mosire.simos.unit.ops;
 
+import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
@@ -10,6 +11,8 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
+import io.mosire.simos.unit.move.MovementCost;
+import io.mosire.simos.unit.move.PathFinder;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -154,6 +157,51 @@ public final class UnitOperations {
             unit.speed(),
             unit.mobilityPerMille(),
             Optional.of(new Movement(route, at, unit.effectiveSpeed(), unit.mobilityPerMille()))));
+  }
+
+  /**
+   * 稀疏路线（T6 / spec §二.2 / P10）：`waypoints` **允许非相邻**，逐段用 A\* 展开成逐格 `path` 后复用 {@link
+   * #planRoute}（起点校验、{@code Movement} 的装载与既有命令**同一条路**）。
+   *
+   * <p>★ **任一相邻段不可达 ⇒ 抛**（P12）：展开的失败由 {@link #expandSparsePath} 抛出，本方法不做"跳过该段"的处理。
+   */
+  public static UnitState planSparseRoute(
+      UnitState state,
+      UnitId id,
+      GameMap map,
+      List<HexCoord> waypoints,
+      MovementCost cost,
+      SimosTimestamp at) {
+    Unit unit = require(state, id);
+    Route route = new Route(waypoints, expandSparsePath(map, unit, waypoints, cost));
+    return planRoute(state, id, route, at);
+  }
+
+  /**
+   * 稀疏路线的**纯展开**（T6）：把 `waypoints` 的每一相邻对交给 {@link PathFinder#findPath} 求段，段首尾相接成逐格
+   * `path`（第二段起去掉与上一段重复的连接点）。
+   *
+   * <p>★ **段不可达 ⇒ 抛**（P12）：{@link PathFinder#findPath} 的空值在这里折成 {@link IllegalArgumentException}
+   * （调用方 {@code PlanSparseRouteHandler} 再折成命令拒绝），**绝不**静默截断或跳段。
+   *
+   * <p>★ **跨段重复格不由本方法兜底**：A\* 单段产物是简单路径，但两段拼接后可能出现重复格，此时 {@link Route} 的构造期不变量会抛（裁定 R4），消息里带"重复"。
+   */
+  public static List<HexCoord> expandSparsePath(
+      GameMap map, Unit unit, List<HexCoord> waypoints, MovementCost cost) {
+    Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(unit, "unit");
+    Objects.requireNonNull(waypoints, "waypoints");
+    Objects.requireNonNull(cost, "cost");
+    List<HexCoord> path = new ArrayList<>();
+    for (int i = 0; i + 1 < waypoints.size(); i++) {
+      HexCoord from = waypoints.get(i);
+      HexCoord to = waypoints.get(i + 1);
+      List<HexCoord> segment =
+          PathFinder.findPath(map, from, to, unit, cost)
+              .orElseThrow(() -> new IllegalArgumentException("稀疏路线的段不可达: " + from + " → " + to));
+      path.addAll(i == 0 ? segment : segment.subList(1, segment.size()));
+    }
+    return List.copyOf(path);
   }
 
   /** 改三态（T2 / spec §三.2）：status 是普通字段，只改它；历史由 revision 承载。 */

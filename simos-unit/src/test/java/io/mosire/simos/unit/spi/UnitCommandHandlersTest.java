@@ -1,9 +1,15 @@
 package io.mosire.simos.unit.spi;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.block.TerrainBlocks;
+import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.Movement;
@@ -15,12 +21,16 @@ import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
+import io.mosire.simos.unit.move.MovementCost;
+import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
+import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -28,6 +38,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +66,11 @@ class UnitCommandHandlersTest {
   private static final SetStrengthHandler SET_STRENGTH = new SetStrengthHandler();
   private static final PlaceAtHandler PLACE_AT = new PlaceAtHandler();
   private static final PlanRouteHandler PLAN_ROUTE = new PlanRouteHandler();
+
+  /** ★ 裁定 U3：成本由装配注入——测试与 `Shell` 传同一个 `TerrainMovementCost.INSTANCE`（同源）。 */
+  private static final PlanSparseRouteHandler PLAN_SPARSE =
+      new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE);
+
   private static final CancelRouteHandler CANCEL_ROUTE = new CancelRouteHandler();
   private static final DisbandUnitHandler DISBAND = new DisbandUnitHandler();
   private static final SetStatusHandler SET_STATUS = new SetStatusHandler();
@@ -1093,5 +1109,264 @@ class UnitCommandHandlersTest {
         .isEqualTo(
             UnitOperations.updateChain(
                 base, CHAIN_2, Optional.of("改名"), Optional.of(U3), Optional.of(List.of(U3))));
+  }
+
+  // ── unit.PlanSparseRoute（T6 / spec §二.2 / P10 / P12 / R4） ──────
+
+  /** 与走廊**不相邻**的孤岛：邻格都不在图上 ⇒ 在图上但走不通（"段不可达"的强靶子）。 */
+  private static final HexCoord FAR = new HexCoord(5, 5);
+
+  /** 三格走廊 `H11→H12→H13` + 孤岛 `FAR`（平坦 `moveCost 25`；与 {@code SpiFixture.map()} 同制，多一格）。 */
+  private static GameMap sparseMap() {
+    TerrainType flat =
+        new TerrainType("flat", "flat", "#336699", 0.0, 1.0, 0, 0, 0, 25, "稀疏路线夹具地形");
+    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    hexes.put(SpiFixture.H11, new HexCell(0.5));
+    hexes.put(SpiFixture.H12, new HexCell(0.5));
+    hexes.put(SpiFixture.H13, new HexCell(0.5));
+    hexes.put(FAR, new HexCell(0.5));
+    Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
+    terrainTypes.put(flat.key(), flat);
+    return new GameMap(
+        hexes,
+        TerrainBlocks.uniform(hexes.keySet(), flat.key()),
+        Map.of(),
+        Map.of(),
+        terrainTypes,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
+  }
+
+  /** 同 {@link #worldAt}，地图切片换成"走廊 + 孤岛"。 */
+  private static SimulationState sparseWorldAt(SimosTimestamp at, UnitState base) {
+    return new SimulationState(
+        new StateMeta(SpiFixture.REF, at),
+        Map.of(
+            "unit", new UnitSnapshot(SpiFixture.REF, at, base),
+            "map", new MapSnapshot(SpiFixture.REF, at, sparseMap())),
+        InMemoryInfoSystem.empty());
+  }
+
+  /**
+   * 只封**一条边**的成本替身（裁定 U3 的靶子）：指定的 `from → to` 一步返回空，其余原样转交。
+   *
+   * <p>★ 替身自己也要判"图外"——转交的 {@code TerrainMovementCost} 已经这么做了，这里不重复实现，只**加**一条封路。
+   */
+  private record BlockedStep(HexCoord blockedFrom, HexCoord blockedTo, MovementCost delegate)
+      implements MovementCost {
+
+    @Override
+    public OptionalLong costMillis(HexCoord from, HexCoord to, Unit unit, GameMap map) {
+      if (from.equals(blockedFrom) && to.equals(blockedTo)) {
+        return OptionalLong.empty();
+      }
+      return delegate.costMillis(from, to, unit, map);
+    }
+
+    @Override
+    public long minStepCostMillis(Unit unit, GameMap map) {
+      return delegate.minStepCostMillis(unit, map);
+    }
+  }
+
+  @Test
+  void planSparseRouteTypeNameMatchesTheSpecTable() {
+    assertThat(PLAN_SPARSE.type()).isEqualTo("unit.PlanSparseRoute");
+  }
+
+  /**
+   * ★★ 判据（P10 / **m1 靶子**）：非相邻 `waypoints`（`(1,1) → (1,3)`）也能展开成逐格 `path` 并落成 `Movement`。
+   *
+   * <p>m1（回到 `new Route(waypoints, waypoints)`）在本用例红：`(1,1) → (1,3)` 不相邻 ⇒ 构造期拒 ⇒ 边界返回 `Rejected`，
+   * 而本用例要的是 `Applied`。
+   */
+  @Test
+  void planSparseRouteExpandsNonAdjacentWaypointsIntoAPerHexPath() {
+    UnitState next =
+        applied(
+            PLAN_SPARSE,
+            worldAt(T5, oneUnit()),
+            "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}");
+    Movement movement = next.units().get(SpiFixture.U1).movement().orElseThrow();
+    assertThat(movement.route().waypoints())
+        .as("稀疏路点原样保留")
+        .containsExactly(SpiFixture.H11, SpiFixture.H13);
+    assertThat(movement.route().path())
+        .as("path 逐格展开（A* 产物）")
+        .containsExactly(SpiFixture.H11, SpiFixture.H12, SpiFixture.H13);
+    assertThat(movement.departedAt()).isEqualTo(T5);
+    assertThat(movement.speedAtDeparture()).isEqualTo(2);
+    assertThat(movement.mobilityAtDeparture()).isEqualTo(500);
+  }
+
+  /**
+   * ★★ 判据（P12 / **m2 靶子**）：段不可达 ⇒ **命令期拒**，理由带"不可达"，状态一字不动。
+   *
+   * <p>★ 本用例是"拒绝 ⇒ 不变更集"的**模块侧**实测：{@code HandlerOutcome.Rejected} 里没有 {@code UnitChangeSet} ⇒
+   * 流水线无处可落新 `revision` 行（`revisions` 表在 `simos-core`，本轮不动它 ⇒ 见报告 §待控制器裁的缺口）。
+   *
+   * <p>★ m2（静默截断）在本用例红：截断后 `path` 只剩一格 ⇒ `Route` 拒的是"至少两格"（不是"不可达"），空段单段更是直接 `Applied`。
+   */
+  @Test
+  void planSparseRouteRejectsAnUnreachableSegment() {
+    SimulationState world = sparseWorldAt(T5, oneUnit());
+    assertThat(
+            reason(
+                PLAN_SPARSE,
+                world,
+                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":5,\"r\":5}]}"))
+        .as("在图上但不可达（孤岛）")
+        .contains("不可达");
+    assertThat(
+            reason(
+                PLAN_SPARSE,
+                world,
+                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3},{\"q\":5,\"r\":5}]}"))
+        .as("前一段可达、后一段不可达")
+        .contains("不可达");
+    assertThat(
+            reason(
+                PLAN_SPARSE,
+                world,
+                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":9,\"r\":9}]}"))
+        .as("根本不在图上")
+        .contains("不可达");
+    assertThat(unitSlice(world).units().get(SpiFixture.U1).movement()).as("拒绝 ⇒ 状态不动").isEmpty();
+  }
+
+  /**
+   * ★★ 判据（**R4** / m4 靶子）：跨段回头 ⇒ 拼接出的 `path` 有重复格 ⇒ `Route` 构造期拒，理由带"重复"。
+   *
+   * <p>`(1,1) → (1,3) → (1,1)`：两段各自都是简单路径，拼起来才重复。★ m4（拼接时顺手去重）在本用例红——去重后 `path` 的首尾与 `waypoints` 不符
+   * ⇒ 拒的理由变成"首尾"，不是"重复"。
+   */
+  @Test
+  void planSparseRouteRejectsACrossSegmentRepeat() {
+    assertThat(
+            reason(
+                PLAN_SPARSE,
+                worldAt(T5, oneUnit()),
+                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3},{\"q\":1,\"r\":1}]}"))
+        .contains("重复");
+  }
+
+  /** ★★ 判据（§二.2 / **m3 靶子**）：起点 ≠ 单位在 `at` 的位置 ⇒ 拒（既有 `planRoute` 校验，本轮不动它）。 */
+  @Test
+  void planSparseRouteRejectsStartThatIsNotTheEffectivePosition() {
+    assertThat(
+            reason(
+                PLAN_SPARSE,
+                worldAt(T5, oneUnit()),
+                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}"))
+        .contains("起点");
+  }
+
+  /** ★ 判据（§二.2 步骤 3）：逐格相邻的 `waypoints` ⇒ 与既有 `unit.PlanRoute` 落下来的路线逐值相同。 */
+  @Test
+  void planSparseRouteMatchesPlanRouteForAdjacentWaypoints() {
+    String payload = "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2}]}";
+    assertThat(
+            applied(PLAN_SPARSE, worldAt(T5, oneUnit()), payload)
+                .units()
+                .get(SpiFixture.U1)
+                .movement()
+                .orElseThrow())
+        .as("与既有命令同一条路（复用 planRoute）")
+        .isEqualTo(
+            applied(PLAN_ROUTE, worldAt(T5, oneUnit()), payload)
+                .units()
+                .get(SpiFixture.U1)
+                .movement()
+                .orElseThrow());
+  }
+
+  /**
+   * ★★ 判据（裁定 U3 / **m5 靶子**）：成本实现**真的用了注入的那一个**——同一条载荷，两个注入给相反结论。
+   *
+   * <p>m5（handler 里写死 `TerrainMovementCost.INSTANCE`）在本用例红：封路替身那条会照旧 `Applied`。
+   */
+  @Test
+  void planSparseRouteUsesTheInjectedMovementCost() {
+    String payload = "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}";
+    SimulationState world = worldAt(T5, oneUnit());
+    assertThat(applied(PLAN_SPARSE, world, payload).units().get(SpiFixture.U1).movement())
+        .as("前提：地里成本（回廊畅通）⇒ 可达")
+        .isPresent();
+    assertThat(
+            reason(
+                new PlanSparseRouteHandler(
+                    new BlockedStep(SpiFixture.H12, SpiFixture.H13, TerrainMovementCost.INSTANCE)),
+                world,
+                payload))
+        .as("注入封掉 H12→H13 的替身 ⇒ 同一载荷变不可达")
+        .contains("不可达");
+  }
+
+  /** ★ 判据（同既有 `PlanRoute` 的拒法）：未知 id / 载荷畸形 ⇒ 拒（不是装配故障）。 */
+  @Test
+  void planSparseRouteRejectsUnknownIdAndMalformedPayload() {
+    assertThat(
+            reason(
+                PLAN_SPARSE,
+                worldAt(T5, oneUnit()),
+                "{\"id\":\"u-404\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}"))
+        .contains("单位不存在");
+    assertThat(reason(PLAN_SPARSE, worldAt(T5, oneUnit()), "{\"id\":\"u-1\",\"waypoints\":{}}"))
+        .contains("waypoints");
+    assertThat(reason(PLAN_SPARSE, worldAt(T5, oneUnit()), "{\"id\":\"u-1\",\"waypoints\":[]}"))
+        .contains("至少两个");
+    assertThat(reason(PLAN_SPARSE, worldAt(T5, oneUnit()), "不是 JSON")).contains("不是合法 JSON");
+  }
+
+  /**
+   * ★★ 判据（spec §二.2「读法与 `UnitTimeParticipant.mapOf` 同制」）：缺 `map` 切片 ⇒ **装配故障当场炸**，不是拒绝。
+   *
+   * <p>★ 与 {@code RenameUnitHandlerTest.missingUnitSliceIsAssemblyFaultNotRejection} 同族：装配故障走异常，
+   * 坏命令走拒绝，两者不能混成一条路。
+   */
+  @Test
+  void planSparseRouteBlowsUpWhenTheMapSliceIsMissing() {
+    UnitSnapshot unitOnly = new UnitSnapshot(SpiFixture.REF, T5, oneUnit());
+    assertThatThrownBy(
+            () ->
+                PLAN_SPARSE.handle(
+                    SpiFixture.singleModuleState("unit", unitOnly),
+                    "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("map");
+  }
+
+  /**
+   * ★ 判据（同制）：`map` 切片在、但类型不对 ⇒ 同样是装配故障。
+   *
+   * <p>★ 这个替身是**必要的**：{@code SimulationState} 的构造期要求"键 == 快照的 {@code namespace()}"，而 {@code map}
+   * 命名空间的正主只有 {@code MapSnapshot} ⇒ 不自己造一个自称 `map` 的切片，这条分支在测试里根本够不着。
+   */
+  private record ImpostorSnapshot(StateRef ref, SimosTimestamp timestamp) implements Snapshot {
+
+    @Override
+    public String namespace() {
+      return "map";
+    }
+  }
+
+  @Test
+  void planSparseRouteBlowsUpWhenTheMapSliceIsNotAMapSnapshot() {
+    // 两个切片都在（否则先炸的就是"没有 unit 切片"，判据就落不到类型判断那一行上）。
+    SimulationState world =
+        new SimulationState(
+            new StateMeta(SpiFixture.REF, T5),
+            Map.of(
+                "unit", new UnitSnapshot(SpiFixture.REF, T5, oneUnit()),
+                "map", new ImpostorSnapshot(SpiFixture.REF, T5)),
+            InMemoryInfoSystem.empty());
+    assertThatThrownBy(
+            () ->
+                PLAN_SPARSE.handle(
+                    world, "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("MapSnapshot");
   }
 }

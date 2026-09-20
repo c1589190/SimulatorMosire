@@ -3,7 +3,12 @@ package io.mosire.simos.unit.ops;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.block.TerrainBlocks;
+import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.RelativeOffset;
@@ -12,6 +17,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
+import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -1051,5 +1057,192 @@ class UnitOperationsTest {
         .isEqualTo(chains);
 
     assertThat(base.commandChains()).as("纯函数：旧状态不变").isEqualTo(chained().commandChains());
+  }
+
+  // ── 稀疏路线（T6 / spec §二.2 / P10 / P12 / R4） ─────────────────
+
+  private static final HexCoord H13 = new HexCoord(1, 3);
+
+  /** 与走廊**不相邻**的孤岛：它的六个邻格一律不在图上 ⇒ 成本实现（单次查表判图外）对它返回空 ⇒ A\* 进不去。 */
+  private static final HexCoord FAR = new HexCoord(5, 5);
+
+  /**
+   * 三格走廊 `H11→H12→H13` + 孤岛 `FAR(5,5)`（平坦地形 `moveCost 25`）。
+   *
+   * <p>孤岛在图上、但不可达——是"段不可达"的真靶子（不在图上 ⇒ `PathFinder` 直接空，判据弱一档）。
+   */
+  private static GameMap sparseMap() {
+    TerrainType flat =
+        new TerrainType("flat", "flat", "#336699", 0.0, 1.0, 0, 0, 0, 25, "稀疏路线夹具地形");
+    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    hexes.put(H11, new HexCell(0.5));
+    hexes.put(H12, new HexCell(0.5));
+    hexes.put(H13, new HexCell(0.5));
+    hexes.put(FAR, new HexCell(0.5));
+    Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
+    terrainTypes.put(flat.key(), flat);
+    return new GameMap(
+        hexes,
+        TerrainBlocks.uniform(hexes.keySet(), flat.key()),
+        Map.of(),
+        Map.of(),
+        terrainTypes,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
+  }
+
+  /** 走路的人：`twoUnits()` 里的 BRIGADE（H11、mobility ‰1000 ⇒ 平坦格 25 毫 MP）。 */
+  private static Unit walker() {
+    return twoUnits().units().get(BRIGADE);
+  }
+
+  /**
+   * ★★ 判据（P10 / **m1 靶子**）：非相邻 `waypoints` 展开成**逐格** `path`——`[1,1]→[1,3]` 必须补出中间的 `[1,2]`。
+   *
+   * <p>m1（回到 `new Route(waypoints, waypoints)`）在本用例当场红：`(1,1) → (1,3)` 不相邻，构造期就抛， 路线根本落不下来。
+   */
+  @Test
+  void planSparseRouteFreezesTheExpandedPath() {
+    UnitState next =
+        UnitOperations.planSparseRoute(
+            twoUnits(), BRIGADE, sparseMap(), List.of(H11, H13), TerrainMovementCost.INSTANCE, T10);
+    Route route = next.units().get(BRIGADE).movement().orElseThrow().route();
+    assertThat(route.waypoints()).as("waypoints 原样保留（它就是稀疏的）").containsExactly(H11, H13);
+    assertThat(route.path()).as("path 逐格展开").containsExactly(H11, H12, H13);
+    assertThat(next.units().get(BRIGADE).movement().orElseThrow().departedAt()).isEqualTo(T10);
+  }
+
+  /** ★ 判据（P10）：纯展开函数逐值可测——多段拼接的第二段丢掉与上一段重复的**连接点**。 */
+  @Test
+  void expandSparsePathJoinsSegmentsWithoutRepeatingTheJoint() {
+    assertThat(
+            UnitOperations.expandSparsePath(
+                sparseMap(), walker(), List.of(H11, H13), TerrainMovementCost.INSTANCE))
+        .as("单段：整段都在")
+        .containsExactly(H11, H12, H13);
+    assertThat(
+            UnitOperations.expandSparsePath(
+                sparseMap(), walker(), List.of(H11, H13, H12), TerrainMovementCost.INSTANCE))
+        .as("两段：连接点 H13 只出现一次；★ 跨段回头造成的重复**不在这里去重**（R4 交给 Route 拒）")
+        .containsExactly(H11, H12, H13, H12);
+  }
+
+  /**
+   * ★★ 判据（P12 / **m2 靶子**）：任一段不可达 ⇒ **抛**，消息带"不可达"。
+   *
+   * <p>m2（`orElse(List.of())` 静默截断）在本用例红：截断后既不抛也不带"不可达"。★ 后半段的孤岛靶子比"图外格"强一档——
+   * 它是"在图上但走不通"，与"根本没这格"区分开。
+   */
+  @Test
+  void expandSparsePathRejectsAnUnreachableSegment() {
+    assertThatThrownBy(
+            () ->
+                UnitOperations.expandSparsePath(
+                    sparseMap(), walker(), List.of(H11, FAR), TerrainMovementCost.INSTANCE))
+        .as("在图上但不可达")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不可达");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.expandSparsePath(
+                    sparseMap(),
+                    walker(),
+                    List.of(H11, new HexCoord(9, 9)),
+                    TerrainMovementCost.INSTANCE))
+        .as("不在图上")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不可达");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.expandSparsePath(
+                    sparseMap(), walker(), List.of(H11, H13, FAR), TerrainMovementCost.INSTANCE))
+        .as("前一段可达、后一段不可达 ⇒ 同样抛")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不可达");
+  }
+
+  /**
+   * ★★ 判据（§二.2 起点校验 / **m3 靶子**）：`waypoints` 首格 ≠ 单位在 `at` 的位置 ⇒ 抛，消息带"起点"。
+   *
+   * <p>★ 起点校验**不在本任务新写的代码里**：`planSparseRoute` 复用了既有 `planRoute` 的校验（spec §二.2「既有校验不动」）—— m3
+   * 删的是那一处，故它同时会红既有 `PlanRoute` 的两个用例（报告里如实记）。
+   */
+  @Test
+  void planSparseRouteRequiresAStartThatMatchesTheEffectivePosition() {
+    assertThatThrownBy(
+            () ->
+                UnitOperations.planSparseRoute(
+                    twoUnits(),
+                    BRIGADE,
+                    sparseMap(),
+                    List.of(H12, H13),
+                    TerrainMovementCost.INSTANCE,
+                    T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("起点");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.planSparseRoute(
+                    twoUnits(),
+                    new UnitId("u-ghost"),
+                    sparseMap(),
+                    List.of(H11, H13),
+                    TerrainMovementCost.INSTANCE,
+                    T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+  }
+
+  /**
+   * ★★ 判据（**R4** / m4 靶子）：跨段回头 ⇒ 拼接出的 `path` 有重复格 ⇒ `Route` 构造期拒，消息带"重复"。
+   *
+   * <p>`[H11, H13, H11]`：两段各自都是简单路径（A\* 单段产物天然无重复），**拼起来**才重复——正是 R4 说的那种情形。
+   */
+  @Test
+  void planSparseRouteRejectsACrossSegmentRepeat() {
+    assertThatThrownBy(
+            () ->
+                UnitOperations.planSparseRoute(
+                    twoUnits(),
+                    BRIGADE,
+                    sparseMap(),
+                    List.of(H11, H13, H11),
+                    TerrainMovementCost.INSTANCE,
+                    T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("重复");
+  }
+
+  /** ★ 判据（§二.2 步骤 3）：`waypoints` 恰好逐格相邻时，稀疏命令与既有 `planRoute` 落下来的路线**逐值相同**。 */
+  @Test
+  void sparseExpansionMatchesPlanRouteForAdjacentWaypoints() {
+    Route plain = new Route(List.of(H11, H12), List.of(H11, H12));
+    UnitState viaPlanRoute = UnitOperations.planRoute(twoUnits(), BRIGADE, plain, T10);
+    UnitState viaSparse =
+        UnitOperations.planSparseRoute(
+            twoUnits(), BRIGADE, sparseMap(), List.of(H11, H12), TerrainMovementCost.INSTANCE, T10);
+    assertThat(viaSparse.units().get(BRIGADE).movement().orElseThrow().route())
+        .isEqualTo(viaPlanRoute.units().get(BRIGADE).movement().orElseThrow().route());
+  }
+
+  /**
+   * ★★ 判据（**T5-L4**，本轮新增路径的自证）：稀疏路线也走 `planRoute` → `withUnit` → `state.withUnits(...)` ⇒ 链逐值活下来。
+   *
+   * <p>★ 这条是**新代码的复发点守卫**：`planSparseRoute` 若在哪一步改回 `new UnitState(units)`，链会**静默清空**——编译器不响、门禁不响，
+   * 只有这里会红。
+   */
+  @Test
+  void planSparseRouteKeepsTheCommandChains() {
+    UnitState base = chained();
+    UnitState next =
+        UnitOperations.planSparseRoute(
+            base, ROOT, sparseMap(), List.of(H11, H13), TerrainMovementCost.INSTANCE, T10);
+    assertThat(next.units().get(ROOT).movement().orElseThrow().route().path())
+        .as("前提：路线真的落下来了")
+        .containsExactly(H11, H12, H13);
+    assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来").isEqualTo(base.commandChains());
+    assertThat(base.units().get(ROOT).movement()).as("纯函数：旧状态不变").isEmpty();
   }
 }
