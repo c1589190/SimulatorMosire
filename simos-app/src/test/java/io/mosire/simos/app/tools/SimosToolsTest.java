@@ -117,7 +117,11 @@ class SimosToolsTest {
           "map.UpdateRegion",
           "map.DeleteRegion",
           "map.SetEdge",
-          "map.RandomizeRegion");
+          "map.RandomizeRegion",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 

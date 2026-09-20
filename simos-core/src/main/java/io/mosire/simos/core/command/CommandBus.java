@@ -11,6 +11,7 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.spi.MutationGuard;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Command;
 import io.mosire.simos.util.state.RevisionId;
@@ -69,6 +70,14 @@ public final class CommandBus {
   private final StateLoader stateLoader;
 
   /**
+   * 写前跨模块守卫（A6）：在 {@code handler.handle} **之前**、按注册序依次调用；任一拒绝 ⇒ 不留 revision。
+   *
+   * <p>★ **Core 不知道它们是什么**（铁律 4）：它们是 {@code util.spi} 的不透明策略，Core 只按 {@code commandType} 与 {@code
+   * payloadJson} 转发。
+   */
+  private final List<MutationGuard> guards;
+
+  /**
    * C17 的锁：**只罩住 ③ 锁内复查与 ④ 落盘**。
    *
    * <p>★ **不罩 ① 与 ②**，理由见类注。★ 用私有 {@code Object} 而不是 {@code this}：锁对象不外泄， 外部不可能误拿本实例当锁用。
@@ -103,10 +112,25 @@ public final class CommandBus {
       CommandRegistry registry,
       AdvanceRoute advanceRoute,
       StateLoader stateLoader) {
+    this(timeline, registry, advanceRoute, stateLoader, List.of());
+  }
+
+  /**
+   * A6：带写前守卫的构造。
+   *
+   * @param guards 写前跨模块策略；**迭代序即调用序**（构造期拷成不可变表，外部改不动）；空表 = 无守卫（既有调用点行为不变）
+   */
+  public CommandBus(
+      Timeline timeline,
+      CommandRegistry registry,
+      AdvanceRoute advanceRoute,
+      StateLoader stateLoader,
+      List<MutationGuard> guards) {
     this.timeline = Objects.requireNonNull(timeline, "timeline");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.advanceRoute = Objects.requireNonNull(advanceRoute, "advanceRoute");
     this.stateLoader = Objects.requireNonNull(stateLoader, "stateLoader");
+    this.guards = List.copyOf(Objects.requireNonNull(guards, "guards"));
   }
 
   /**
@@ -215,6 +239,16 @@ public final class CommandBus {
     // ★ ② 全程在锁外——见类注"handler 在锁外执行"。
     StateRef base = new StateRef(envelope.branch(), head.get());
     SimulationState state = stateLoader.load(base);
+
+    // ②a 写前守卫（A6）：按注册序依次调用，**在 handler.handle 之前**。任一拒绝 ⇒ 与该 handler 拒绝同一条路径
+    //      （received + rejected 事件，不留 revision）。Core 不认识这些策略（铁律 4）——只转发 type 与载荷文本。
+    for (MutationGuard guard : guards) {
+      Optional<String> rejection = guard.rejection(state, envelope.type(), envelope.payloadJson());
+      if (rejection.isPresent()) {
+        return reject(envelope, trace, rejection.get());
+      }
+    }
+
     return switch (handler.get().handle(state, envelope.payloadJson())) {
       case HandlerOutcome.Rejected rejected -> reject(envelope, trace, rejected.reason());
       case HandlerOutcome.Applied applied -> commitUnderLock(envelope, trace, applied.changeSet());

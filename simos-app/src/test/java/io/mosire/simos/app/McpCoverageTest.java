@@ -25,8 +25,14 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.Region;
+import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -54,6 +60,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -106,7 +113,11 @@ class McpCoverageTest {
           "map.UpdateRegion",
           "map.DeleteRegion",
           "map.SetEdge",
-          "map.RandomizeRegion");
+          "map.RandomizeRegion",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -138,6 +149,18 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "map.SetEdge", "{\"kind\":\"river\",\"edges\":[\"1_1|1_2\"],\"mode\":\"merge\"}");
     MINIMAL_PAYLOADS.put("map.RandomizeRegion", "{\"hexes\":[{\"q\":1,\"r\":1}],\"seed\":7}");
+    MINIMAL_PAYLOADS.put(
+        "sd.CreateNation",
+        "{\"nationId\":\"n-cov\",\"name\":\"覆盖国\",\"homeRegionId\":\"r-nation\","
+            + "\"adminBudgetPerTick\":1}");
+    MINIMAL_PAYLOADS.put(
+        "sd.CreateArmy",
+        "{\"armyId\":\"a-cov\",\"nationId\":\"n-cov\",\"rootUnitId\":\"u-2\",\"name\":\"覆盖军\"}");
+    MINIMAL_PAYLOADS.put(
+        "sd.CreateDecisionMaker",
+        "{\"id\":\"dm-cov\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n-cov\"},"
+            + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":1}");
+    MINIMAL_PAYLOADS.put("sd.PutInfo", "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -189,7 +212,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 14 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 18 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -220,8 +243,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("14 条命令各推一格")
-        .isEqualTo(15L);
+        .as("18 条命令各推一格")
+        .isEqualTo(19L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散、只剩 CreateUnit 建的 u-2。
     SimulationState afterUnitCommands = shell.coreSimos().replay(ref("main", 15));
@@ -233,16 +256,16 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(15L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(19L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(16L);
-    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=16");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(16L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(20L);
+    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=20");
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(20L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 16L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 20L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");
@@ -399,13 +422,15 @@ class McpCoverageTest {
             Map.of(
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
-                "social", new SocialSnapshot(ref("main", 1), T7, social)),
+                "social", new SocialSnapshot(ref("main", 1), T7, social),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
-                genesis, List.of(new MapCodec(), new SocialCodec(), new UnitCodec())));
+                genesis,
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
   }
 
   private static Unit unit() {
@@ -443,10 +468,16 @@ class McpCoverageTest {
     hexes.put(H13, new HexCell(0.5));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
+    Map<RegionId, Region> regions = new LinkedHashMap<>();
+    RegionId nationRegion = new RegionId("r-nation");
+    regions.put(
+        nationRegion,
+        Region.of(
+            nationRegion, "种子国区域", Set.of(H11), new RegionMeta(null, "nation:seed", null, null)));
     return new GameMap(
         hexes,
         TerrainBlocks.uniform(hexes.keySet(), desert.key()),
-        Map.of(),
+        regions,
         Map.of(),
         terrainTypes,
         Map.of(),

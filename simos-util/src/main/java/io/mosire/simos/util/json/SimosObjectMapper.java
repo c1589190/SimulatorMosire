@@ -1,9 +1,11 @@
 package io.mosire.simos.util.json;
 
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.DeserializationConfig;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.Module;
@@ -68,6 +70,7 @@ public final class SimosObjectMapper {
         JsonMapper.builder()
             .addModule(new Jdk8Module())
             .addModule(addressKeys())
+            .addModule(addressValues())
             .addModule(changesetsWithoutDerivedPredicates());
     for (Module module : extraModules) {
       builder.addModule(module);
@@ -172,6 +175,46 @@ public final class SimosObjectMapper {
           @Override
           public Object deserializeKey(String key, DeserializationContext context) {
             return Address.parse(key);
+          }
+        });
+    return module;
+  }
+
+  /**
+   * {@link Address} 作 **值**时的绑定：写成 {@link Address#canonical()}，读回走 {@link Address#parse(String)}。
+   *
+   * <p>★ **为什么需要它**（A3 实测，2026-09-20）：{@code Address} 作为 **Map 键**早有绑定（{@link #addressKeys()}），但直到
+   * SDSimos 才第一次把 {@code Address} 当作**值**放进快照树（{@code Verdict.subject}、{@code Directive.target} 的
+   * {@code Optional<Address>}、{@code Action.PutInfo.address}）。{@code Address} 的内容是 {@code
+   * List<AddressSegment>}，而 {@code AddressSegment} 是**无 Jackson 类型注解的 sealed 接口** ⇒
+   * 裸往返在**反序列化期**必死（{@code abstract types either need to be mapped to concrete types}）。键走的是 {@code
+   * addKeySerializer}，不会覆盖值路径，故这条与 {@link #addressKeys()} 互补、不冲突。
+   *
+   * <p>★ **为什么放共享层**：{@code Address} 是 util 自己的类型，且本类是全仓**唯一**的 mapper 装配点——util 的类型在 util 接上
+   * Jackson，是"单点"的自然推论（与裁定 38 同源）。
+   *
+   * <p>★ **不动既有字节**：既有领域快照不以 {@code Address} 为值（实测全仓只有 {@code InMemoryInfoSystem} 用它的**键**），故本
+   * 绑定只影响新增的 sd 快照。
+   */
+  private static Module addressValues() {
+    SimpleModule module = new SimpleModule("util-address-values");
+    module.addSerializer(
+        Address.class,
+        new JsonSerializer<Address>() {
+          @Override
+          public void serialize(
+              Address value, JsonGenerator generator, SerializerProvider serializers)
+              throws IOException {
+            generator.writeString(value.canonical());
+          }
+        });
+    module.addDeserializer(
+        Address.class,
+        new JsonDeserializer<Address>() {
+          @Override
+          public Address deserialize(JsonParser parser, DeserializationContext context)
+              throws IOException {
+            return Address.parse(parser.getText());
           }
         });
     return module;

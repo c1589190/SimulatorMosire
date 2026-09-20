@@ -16,6 +16,7 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
+import io.mosire.simos.util.spi.MutationGuard;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.Command;
@@ -95,6 +96,7 @@ public final class CoreSimos implements AutoCloseable {
 
   private final List<CommandHandler> handlers = new ArrayList<>();
   private final List<TimeParticipant> participants = new ArrayList<>();
+  private final List<MutationGuard> guards = new ArrayList<>();
 
   /** 封存标志：{@code volatile} 让 {@link #requireNotSealed()} 不必进锁读取。 */
   private volatile boolean sealed;
@@ -156,6 +158,19 @@ public final class CoreSimos implements AutoCloseable {
   public CoreSimos register(TimeParticipant participant) {
     requireNotSealed();
     participants.add(Objects.requireNonNull(participant, "participant"));
+    return this;
+  }
+
+  /**
+   * 注册一个写前跨模块守卫（A6，spec §九）。**必须在封存之前**；迭代序即调用序。
+   *
+   * @return {@code this}
+   * @throws IllegalStateException 已封存
+   * @throws NullPointerException {@code guard} 为 null
+   */
+  public CoreSimos register(MutationGuard guard) {
+    requireNotSealed();
+    guards.add(Objects.requireNonNull(guard, "guard"));
     return this;
   }
 
@@ -326,7 +341,7 @@ public final class CoreSimos implements AutoCloseable {
     CommandRegistry registry = new CommandRegistry(handlers);
     TimeAdvance timeAdvance =
         new TimeAdvance(timeline, this::load, checkpoints, codecs, participants);
-    this.bus = new CommandBus(timeline, registry, timeAdvance, this::load);
+    this.bus = new CommandBus(timeline, registry, timeAdvance, this::load, List.copyOf(guards));
     this.sealed = true;
   }
 
