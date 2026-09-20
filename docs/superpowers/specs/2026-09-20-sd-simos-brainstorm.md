@@ -114,3 +114,19 @@
 
 **其它既有资产（可复用）**：`unit.*` 命令共 **8 条**（Create/Rename/Reparent/SetStrength/PlaceAt/PlanRoute/CancelRoute/DisbandUnit），全部注册在一处（`simos-app/.../Shell.java:193-213`）；SPI 扩展位现成；`UnitAgentAttachPolicy` 已存在（单位可绑 agent）⇒ 决策人 tool-scope 有基础。
 ★ **unit 与 social 编译期互不可见**（enforcer 硬禁）⇒ **国家（= map 的 Region 标签）与军队（unit）的关联只能在 SDSimos / app 层做**。
+
+## 8 追加需求（用户 2026-09-20 追加）
+
+> 用户原话：「用户的输入不一定全是同一个角色——**允许通过多种渠道接入不同人的决策**，因此**应该留有自定义决策提交渠道**」
+
+- **多角色**：决策提交者**不是同一个身份**（玩家 / GM / 多个指挥官 / 各军种）；每人的**可见范围**由其 `viewScope`（GM 配权）决定。
+- **多渠道**：GUI / MCP / CLI / 外部 HTTP / 文件…**都要能接** ⇒ 需要一个**可插拔的"决策提交渠道"契约**。
+- ★ **既有先例**（AgentLib `io.mosire.agentlib.approval`）：**`ApprovalChannel` 接口 + `HttpApprovalChannel` 实现** —— 决策渠道**照同一形制**做。
+- ★★ **要点（设计时必写）**：
+  1. **渠道 ≠ 身份**：渠道只负责"把**某个 actor** 的决定送进来"；**actor 身份必须由渠道声明的可代表集合约束**，渠道**不得冒充**任意 actor。
+  2. **信任边界**：自定义渠道 = **新攻击面** ⇒ 要定**认证**（`AccessToken` 现成）+ **渠道可代表哪些 actor** + **留痕**（谁经哪条渠道提交，进 `verdictMeta`/事件）。
+  3. **按 actor 取脱敏视图**：渠道**不能拿全量**，必须按该 actor 的 `viewScope` 取（与 R10/N6 同一条）。
+  4. **并发**：不同 actor 同 tick 并发提交互不影响（乐观并发 `expectedRevision` 已有）；**同一 actor** 撞 **N12（1 令/tick 同事务强制）**。
+  5. ★ **"人在环"与"Agent 在环"同构**：渠道只是**落点适配器**，不是新语义 ⇒ 与 **R9（人与 Agent 写同一落点）** 一致。
+  6. **GM 本身也可经渠道**（配权也是一种决定）。
+- 待办：进主 spec 的 **§十三 决策提交渠道**（并更新 §〇 裁定表）。
