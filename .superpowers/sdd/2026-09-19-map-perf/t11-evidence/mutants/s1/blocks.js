@@ -12,7 +12,7 @@
 
   /** 整数顶点标签 (u,w) → 「格边长 = 1」的世界坐标（与后端 `ApiViews.closedLabelRing` 同式，不再量化）。 */
   function vertexXY(u, w) {
-    return { x: u * (SQRT3 / 2), y: w * 0.5 };
+    return { x: u * (SQRT3 / 2), y: w * 0.25 };
   }
 
   /** 一条紧凑环 [u,w,u,w,…] ⇒ [{x,y}…]；闭合重复点原样保留。 */

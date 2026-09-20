@@ -76,16 +76,20 @@
   var dataCache = Object.create(null);
   var DATA_CACHE_LIMIT = 64;
 
-  function cachedGet(path, target) {
+  function cachedGet(path, target, decode) {
     var url = withTarget(path, target);
     var hit = dataCache[url];
     if (hit) {
       return hit;
     }
-    var pending = getJson(url).catch(function (e) {
-      delete dataCache[url];
-      throw e;
-    });
+    var pending = getJson(url)
+      .then(function (body) {
+        return decode ? decode(body) : body;
+      })
+      .catch(function (e) {
+        delete dataCache[url];
+        throw e;
+      });
     dataCache[url] = pending;
     var keys = Object.keys(dataCache);
     if (keys.length > DATA_CACHE_LIMIT) {
@@ -96,8 +100,17 @@
     return pending;
   }
 
+  // ★ M9 T11：overview 的块线格式是整数顶点标签（`[u,w,…]`，见 blocks.js）；在**取数层**一次性解码成
+  //   {x,y} 多边形，下游（map.js/panels.js）拿到的仍是同一个形状。decode 只跑一次（结果进缓存）。
+  function decodeOverview(body) {
+    if (body && body.blocks && window.SimosBlocks && window.SimosBlocks.decodeBlocks) {
+      body.blocks = window.SimosBlocks.decodeBlocks(body.blocks);
+    }
+    return body;
+  }
+
   function cachedMapOverview(target) {
-    return cachedGet("/map/overview", target);
+    return cachedGet("/map/overview", target, decodeOverview);
   }
 
   function cachedUnits(target) {
@@ -165,7 +178,7 @@
   }
 
   function mapOverview(target) {
-    return getJson(withTarget("/map/overview", target));
+    return getJson(withTarget("/map/overview", target)).then(decodeOverview);
   }
 
   function mapHex(q, r, target) {

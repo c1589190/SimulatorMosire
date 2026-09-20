@@ -232,11 +232,11 @@ final class ApiViews {
   private static List<Integer> closedLabelRing(List<HexVertex> ring) {
     List<Integer> out = new ArrayList<>(ring.size() * 2 + 2);
     for (HexVertex vertex : ring) {
-      out.add(vertex.u());
       out.add(vertex.w());
+      out.add(vertex.u());
     }
-    out.add(ring.get(0).u());
     out.add(ring.get(0).w());
+    out.add(ring.get(0).u());
     return out;
   }
 

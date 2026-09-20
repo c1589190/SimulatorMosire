@@ -1,0 +1,7 @@
+summary: 14/16 PASS
+  FAIL wire-no-xy-objects-uv-int-labels | hasXY=true allInts=false
+  FAIL wire-single-shot-under-150k | bytes=227377
+pageErrors: 0 consoleErrors: 2 nonGET: []
+frames: {"count":183,"p50":16.699999999999818,"p95":16.800000000000182} sharpness: {"dpr":2,"widthDevice":0,"maxStep":169,"N":437}
+selectRequests: ["GET /api/map/hex?q=0&r=0&branch=main&revision=1","GET /api/social/population?q=0&r=0&branch=main&revision=1","GET /api/map/region/test_nation?branch=main&revision=1"]
+viewportRequests: ["GET /api/state","GET /api/approvals"]

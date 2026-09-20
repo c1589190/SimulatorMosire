@@ -235,8 +235,6 @@ final class ApiViews {
       out.add(vertex.u());
       out.add(vertex.w());
     }
-    out.add(ring.get(0).u());
-    out.add(ring.get(0).w());
     return out;
   }
 
