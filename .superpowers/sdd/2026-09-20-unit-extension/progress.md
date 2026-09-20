@@ -104,3 +104,24 @@
 - **T5-L6（`everyHandlerRejectsMalformedPayload` 的 token 级断言）——与 T4 同条，归 T10 统一扫**（`:620`~`:631` 一带 13 处；T5 又添同族风险）。
 - **★ T5-U2 的控制器定性（本轮实质缺陷）**：计划把它写成"`disband` 留下**悬空链引用**"这一**窄**问题；**实测范围更宽**——**6 处**静默清空**整个 `commandChains` 组件**，含 T3/T4 **自己已关账**的 op 与**每次 tick**。今天不可见的原因是：**没有任何用例先造出"链非空"的状态再调 op**。⇒ 五处生产代码 + `UnitTimeParticipant:122` **各配自己的守卫**、**各被自己的变异体**红（t5m04/05/06/08/09），并带 **⑩ 道自证** `orig_hits=0 pushed_hits=1`。
 - **★ 复用/再生 md5 实测（不靠推断）**：`ReparentSubtreeHandler` `f4b82888…` 与 T4 `baseline-md5.txt` **逐字节相同**、`SetFormationOffsetHandler` `749654ad…` 字节未变 ⇒ **复用合法**；`UnitOperations` `09840d49…→e3731e15…`、`UnitPayloads` `9cfd978a…→b56b2460…` **均变** ⇒ **必须再生且已再生**（旧变异体会把 T5 的修复**一起回退**）。
+
+## 合并后门禁（`feat/adr1-core-scope`，T6 合并）
+
+- `./mvnw clean verify` **rc=0**、**8/8 模块 SUCCESS**、**1162** = 170/362/45/**233**/174/62/116、`BugInstance size is 0` **×7**、`[ERROR]` **0 行**、前端 `[frontend-gate] OK tests=88 pass=88 fail=0`。日志 `t6-evidence/logs/merged-full-verify.log` + `t6-evidence/merged-verify-rc.txt`。★ 前台起跑、显式 `timeout=600000`，**一次 rc=0**（未再被摘到后台）。
+- **核对**：`1162 = 1145 + 17`，**delta 干净**——只有 `simos-unit` **216 → 233**（恰 +17），其余六个模块（170/362/45/174/62/116）与 T5 轮**逐值不变**。
+- ★ **合并形态：rebase 后 ff（本轮特有，记录在案）**：控制器**在派单之后**提交了 `.serena/project.yml`（`6a475df`），而 `ue/t6` 基于 `e2dee0f` ⇒ `--ff-only` 会失败。**处置**：`git rebase feat/adr1-core-scope`（只多一条不碰 `simos-unit` 的提交 ⇒ 无冲突）后 `--ff-only` 合并，**保持线性历史**。**连带事实**：T6 报告里引用的 `0d40cdd`/`70dc4de` 是 **rebase 前**的哈希，合并后为 **`5e32402`（实现）/ `103f51d`（证据）**——同一份内容、逐字节相同，只是父提交变了。
+
+## T6 稀疏路线（`unit.PlanSparseRoute`：A\* 逐段展开 / 不可达命令期拒 / 装配注入 U3）
+
+- **worktree** `.claude/worktrees/uet6`，分支 `ue/t6`，基线 `e2dee0f`。只碰 `simos-unit`。
+- **落地**：新 handler `PlanSparseRouteHandler`（80 行，**U3 构造器注入 `MovementCost`** + `mapOf` 照 `UnitTimeParticipant` 形制、**装配故障当场炸**）；`UnitOperations` +48（纯函数 `expandSparsePath` + `planSparseRoute` **复用既有 `planRoute`**）；测试 **纯追加 596 插入 / 0 删除**（ops +193 = 7 条、SPI +275 = 10 条）⇒ **无既有护栏证据作废**。
+- **★ `UnitPayloads.java` 一行未改（有据）**：先核过 `requireWaypoints` 现成可用、且它**不管条数**；"waypoints 至少两个"由 `Route` 构造器给、稀疏路径上照样落得到 ⇒ **不需要新增守卫**。这与 T3 的 `optionalInt`（确需新增）形成对照：**核过再决定动不动，而不是"顺手加个 helper"**。
+- **计数**：`simos-unit` **216 → 233**（+17）。模块门禁 `./mvnw -o -pl simos-unit -am verify` **rc=0**（170/362/233）；★ 收口轮先 `rm -rf simos-unit/target` 再跑。★ **实现轮首跑曾红**（留档 `logs/gate-impl-attempt1-red.log`）：装配故障用例的夹具被 `SimulationState` 构造期拒 ⇒ 修法是 `ImpostorSnapshot` + 两个切片都放（**`UnitSnapshots.of` 必须在 `mapOf` 之前调用**——这条顺序是实测出来的）。
+- **变异：8 轮 / 8 杀 / 0 存活**。十道门禁全 OK、`mvn_rc=1`、逐轮 `restored_md5 == baseline_md5`；收口后仓根 `md5sum -c baseline-md5.txt` 两份靶文件 OK、源树零残留 `.java`。红点分布：t6m1（去 A\*）7 条 / t6m2（静默截断）3 条 / t6m3（删起点校验）4 条（含 2 条**既有** `PlanRoute` 用例）/ t6m4（跨段重复顺手去重）3 条 / t6m5（写死 `TerrainMovementCost.INSTANCE`）1 条**恰是注入判据** / t6m6（`mapOf` 静默兜底）2 条 / **t6m7（`new UnitState(next)`，T5-L4 靶子）2 条、含 T5 立的保链守卫** / t6m8（`type()` 改成 `unit.PlanRoute`）1 条。
+- ★ **作废轮 1 次（留档不删）**：t6m6 首轮因变异体把 `Snapshot` 变成**未用 import** ⇒ Checkstyle `UnusedImports` 在 surefire **之前**拦 ⇒ 门禁 ⑥ 判 **VOID**，留档 `t6m6.log.VOID-1` + `.note`；改写为仍用 `Snapshot` 的形态后**前台重跑 ⇒ RED(被杀)**。**"没跑到"不等于"没红"**——装置**拒绝**把缺报告当杀。
+- ★ **t6m4 的两种写法（同一条，不许只报一个）**：**判据弱于行为的一面**——该轮断言里有一部分是拒绝**理由文本**（"重复"），一个**只断言 `Rejected`** 的写法会放过这个变体（去重后 `Route` 仍会因"首尾"拒）；**但它不是存活者**——同轮另有 `expandSparsePathJoinsSegmentsWithoutRepeatingTheJoint`（**逐值钉住原始拼接**）把它杀掉。⇒ **真正的承重判据是逐值拼接断言**，理由文本那条只是**放大器**。**区分型变异体就是 t6m4 本身**。
+- ★ **一条不充当护栏的用例（如实登记）**：`sparseExpansionMatchesPlanRouteForAdjacentWaypoints` 作为"与 `PlanRoute` 等价"的证据成立，但**无独立判别力**（等价子域，t6m1 下也红）⇒ 报告 §四 已登记为**不算护栏**。
+- **裁定（G1，控制器）**：spec §二.2 原写 handler 内**写死** `TerrainMovementCost.INSTANCE`，与 U3 冲突 ⇒ **回填 spec**（不是"记 U3 取代 spec 文本"）：spec 是设计权威，留着矛盾句会误导 **T9 的装配**。已在 §二.2 加**注 ①**，并记明该决定**已被 t6m5/t6m6 实测**。
+- **裁定（G3）**：`requireWaypoints` **可复用、未改**；**载荷层不补"≥2"守卫**——`Route` 已兜住，补了就是**新增守卫**（按裁定 42 须自带变异轮），而它挡的是**同一个坑**，边际判别力为零。
+- **未做 / 归下游**：handler **未注册**（T9 的活）；"`revisions` 行数不变"只证到**机制级**（`Rejected` ⇒ 无 `UnitChangeSet`），端到端归 T9/T10；夹具**全是合成小图**、未在真档（19441 格）跑过；A\* 大图代价与跨 JVM 决定论未测（既有开口项）；`mapOf` 的 `instanceof` 分支**无真实触发路径**（仅测试替身）⇒ 归 T9/T10 观察。详见 `t6-evidence/t6-report.md`（§五 诚实清单、§六 缺口表）。
+- ★ **本轮的"通则兑现"**：T5-L4 立的通则**在这一轮直接产出了自己的变异体（t6m7）并被杀**，且红点**含 T5 立的那条保链守卫** ⇒ 通则不是文字，是**有护栏的**。

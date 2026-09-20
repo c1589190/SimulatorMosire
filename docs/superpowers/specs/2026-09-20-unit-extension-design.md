@@ -185,9 +185,13 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 
 **（1）稀疏路点载荷通道**（P10：`unit.PlanSparseRoute`）：
 - 载荷：`id, waypoints[{q,r}…]`（与既有 `unit.PlanRoute` 同形，但**允许非相邻**，`UnitPayloads.requireWaypoints` `:133-146` 可复用）；
-- handler：读 `GameMap`（`state.module("map")`，读法与 `UnitTimeParticipant.mapOf` `:146-154` 同制），对每对相邻 waypoint 调 `PathFinder.findPath(map, from, to, unit, TerrainMovementCost.INSTANCE)`（`PathFinder.java:59`、`TerrainMovementCost.java:18`）**逐段展开**，拼成完整相邻 `path`，再 `new Route(waypoints, expandedPath)`；
+- handler：读 `GameMap`（`state.module("map")`，读法与 `UnitTimeParticipant.mapOf` `:146-154` 同制；★ 装配故障**当场炸、不静默兜底**），对每对相邻 waypoint 调 `PathFinder.findPath(map, from, to, unit, cost)`（`PathFinder.java:59`）**逐段展开**，拼成完整相邻 `path`，再 `new Route(waypoints, expandedPath)`；★ **成本由构造器注入**（`PlanSparseRouteHandler(MovementCost)`）——**不是** handler 内写死 `TerrainMovementCost.INSTANCE`（★ 见注 ①）。
 - 任一相邻段不可达 ⇒ **命令期拒绝**（P12；「给一条走不通的路」是坏命令而非运行时状况）；
 - 起点仍须 == `effectivePosition`（`UnitOperations.planRoute` `:128-130` 的既有校验不动）。
+
+> ★ **注 ①（2026-09-21 T6 回填，控制器）**：本条原写 handler 内**写死** `TerrainMovementCost.INSTANCE` 调 `PathFinder`——**与裁定 U3 冲突**。**U3 裁定：构造器注入 `MovementCost`**，`map` 从 `state.module("map")` 读。**理由**：`MovementCost` 与 `TerrainMovementCost` **都在 `simos-unit` 内**（`simos-unit/.../unit/move/`）⇒ 构造器注入的 handler **在本模块内即可测**（不必等 `simos-app`）；写死则成本维度**不可替换、不可测**。★ 本句已按 U3 改正，**不是**"U3 取代 spec 文本"的记法——spec 是设计权威，留着矛盾句会误导 **T9 的装配**（T9 负责把 cost 传进 `Shell`）。
+>
+> ★ **该决定自身有护栏**：T6 的 **t6m5**（handler 写死 `TerrainMovementCost.INSTANCE`）**KILLED**，红点恰是那条注入判据；**t6m6**（`mapOf` 静默兜底）亦 **KILLED**，红在两条装配故障用例。⇒ 注 ① 记的是"设计口径"，而它**已被变异轮实测过**。
 
 ★ **为什么另开命令而非改 `unit.PlanRoute`**：既有 `unit.PlanRoute` 的「载荷必须逐格相邻」契约已被 M7b/M7c 的 WebUI 与 e2e 引用（`GuiServer.java:299` 那个只读路径端点与 `unit.PlanRoute` 是两条）；`CommandRegistry` **无可变 `register()`**（`CommandRegistry.java:36-56`）但**新增一个 handler 零成本**，另开命令的回归面为零。备选：给 `unit.PlanRoute` 加**可选** `path` 字段（缺省 = 现行为）。
 
