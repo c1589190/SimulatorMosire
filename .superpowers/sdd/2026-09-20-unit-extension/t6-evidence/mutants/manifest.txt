@@ -1,0 +1,87 @@
+label t6m1
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t6m1_UnitOperations.java
+reason 去掉 A* 展开：回到 new Route(waypoints, waypoints)（计划 m1）
+frag new Route(waypoints, waypoints)
+frag_dir revert
+expect_red UnitOperationsTest.planSparseRouteFreezesTheExpandedPath / UnitCommandHandlersTest.planSparseRouteExpandsNonAdjacentWaypointsIntoAPerHexPath
+expect_green 相邻 waypoints 的两条等价性用例（该子域上变异体与原件等价）
+orig_md5 9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5 9875d814fee868eac4fbcb2d5f36a034
+
+label t6m2
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t6m2_UnitOperations.java
+reason 段不可达时静默截断（orElse(List.of())，不抛）（计划 m2）
+frag .orElse(List.of())
+frag_dir revert
+expect_red UnitOperationsTest.expandSparsePathRejectsAnUnreachableSegment / UnitCommandHandlersTest.planSparseRouteRejectsAnUnreachableSegment
+expect_green 可达路径的展开用例（截断只在 empty 分支上换行为）
+orig_md5 9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5 c9c3386ef953b99ee12cb14b9066bb14
+
+label t6m3
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t6m3_UnitOperations.java
+reason 删掉起点校验（planRoute 里既有那一处；spec §二.2 说它不动）（计划 m3）
+frag if (!start.equals(routeStart)) {
+frag_dir delete
+expect_red UnitOperationsTest.planSparseRouteRequiresAStartThatMatchesTheEffectivePosition / UnitCommandHandlersTest.planSparseRouteRejectsStartThatIsNotTheEffectivePosition（★ 同时红既有的 PlanRoute 两条——起点校验在**既有代码**里，本轮没复制第二份）
+expect_green 不碰起点校验的用例
+orig_md5 9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5 b6f02e78ffae448440139463130a20ee
+
+label t6m4
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t6m4_UnitOperations.java
+reason 跨段重复时顺手去重（R4 的静默变体：把拒绝换成另一条拒绝理由）
+frag List.copyOf(new LinkedHashSet<>(path))
+frag_dir revert
+expect_red UnitOperationsTest.planSparseRouteRejectsACrossSegmentRepeat / UnitCommandHandlersTest.planSparseRouteRejectsACrossSegmentRepeat（判的是**理由文本**'重复'）
+expect_green ★ 只断言 Rejected 的写法会放过本变异体（去重后 Route 仍会因'首尾'拒）
+orig_md5 9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5 3228cf62bfa6cf1a1c8dd00ecfeb45c0
+
+label t6m5
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/PlanSparseRouteHandler.java
+mutant t6m5_PlanSparseRouteHandler.java
+reason handler 不用注入的 MovementCost，写死 TerrainMovementCost.INSTANCE（裁定 U3 的靶子）
+frag waypoints, TerrainMovementCost.INSTANCE, at
+frag_dir revert
+expect_red UnitCommandHandlersTest.planSparseRouteUsesTheInjectedMovementCost（同一条载荷：注入封路替身 ⇒ 应拒；写死地形 ⇒ 照走）
+expect_green 注入地形成本的其余用例（与原件等价）
+orig_md5 afe6769e790130c463ca50bced0324bc
+mutant_md5 2e39d1ffec16cb6207ab425b9b01d347
+
+label t6m6
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/PlanSparseRouteHandler.java
+mutant t6m6_PlanSparseRouteHandler.java
+reason mapOf 静默兜底（缺切片/类型不符 ⇒ 返回 null，不炸）——裁定 U3 里'不许静默兜底'的靶子
+frag state.module("map").orElse(null)
+frag_dir revert
+expect_red UnitCommandHandlersTest.planSparseRouteBlowsUpWhenTheMapSliceIsMissing / planSparseRouteBlowsUpWhenTheMapSliceIsNotAMapSnapshot（兜底成 null ⇒ 变成 NPE，不再当场炸装配故障）
+expect_green 装配正常的世界里的全部用例
+orig_md5 afe6769e790130c463ca50bced0324bc
+mutant_md5 5ba62c952cbb3965b054fd4352b269c5
+
+label t6m7
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t6m7_UnitOperations.java
+reason withUnit 回到 1 参兼容构造器 new UnitState(next)（T5-L4 靶子；本轮的**新路径**也走这里）
+frag return new UnitState(next);
+frag_dir revert
+expect_red UnitOperationsTest.planSparseRouteKeepsTheCommandChains（本轮新路径）（★ 同时红 T5 的既有保链三条 + SPI 的命令边界保链用例——这一行是它们的公共路径）
+expect_green 不带链的状态上的全部用例（清空 Map.of() 与 Map.of() 是恒等）
+orig_md5 9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5 d2c6ad27f1290f378300860816c7abdc
+
+label t6m8
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/PlanSparseRouteHandler.java
+mutant t6m8_PlanSparseRouteHandler.java
+reason type() 返回 unit.PlanRoute（复制粘贴型错名；T9 按 type 注册 ⇒ 这条字符串就是命令名）
+frag return "unit.PlanRoute";
+frag_dir revert
+expect_red UnitCommandHandlersTest.planSparseRouteTypeNameMatchesTheSpecTable
+expect_green 其余全部（type 只在注册处用）
+orig_md5 afe6769e790130c463ca50bced0324bc
+mutant_md5 8d045a1bea34a7c6313ca8d2a3d73913

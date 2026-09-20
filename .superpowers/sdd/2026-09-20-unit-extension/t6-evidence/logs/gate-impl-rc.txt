@@ -1,0 +1,4 @@
+GATE_RC=0
+simos-unit Tests run: 233 (baseline 216, +17)
+BUILD SUCCESS
+rc=0

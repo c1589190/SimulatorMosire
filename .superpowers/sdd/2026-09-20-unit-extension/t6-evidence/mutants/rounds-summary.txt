@@ -1,0 +1,139 @@
+# T6 变异轮汇总（逐字取自各轮日志里的 SELF-REFERENTIAL RECORD 块；主证据是 t6m*.log 本身）
+# 装置：mut-round.sh（十道门禁），一次只跑一个 Maven，前台跑；红点清单只取块内那份。
+# t6m6 首轮作废的日志留档在 t6m6.log.VOID-1（Checkstyle UnusedImports ⇒ 没跑到 surefire），下面是重跑后的记录。
+
+label=t6m1
+target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+orig_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+baseline_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5=9875d814fee868eac4fbcb2d5f36a034
+pushed_md5=9875d814fee868eac4fbcb2d5f36a034
+restored_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+site_revert_proof=frag=[new Route(waypoints, waypoints)] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 5, Errors: 2, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitOperationsTest.planSparseRouteRejectsACrossSegmentRepeat:1215 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteExpandsNonAdjacentWaypointsIntoAPerHexPath:1188->applied:185 [期望 Applied 而不是 Rejected[reaso
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteRejectsACrossSegmentRepeat:1252 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteRejectsAnUnreachableSegment:1221 [在图上但不可达（孤岛）] 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteUsesTheInjectedMovementCost:1294->applied:185 [期望 Applied 而不是 Rejected[reason=path 相邻格必须相邻：
+  red: [ERROR]   UnitOperationsTest.planSparseRouteFreezesTheExpandedPath:1109 » IllegalArgument path 相邻格必须相邻：1_1 → 1_3
+  red: [ERROR]   UnitOperationsTest.planSparseRouteKeepsTheCommandChains:1240 » IllegalArgument path 相邻格必须相邻：1_1 → 1_3
+
+label=t6m2
+target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+orig_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+baseline_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5=c9c3386ef953b99ee12cb14b9066bb14
+pushed_md5=c9c3386ef953b99ee12cb14b9066bb14
+restored_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+site_revert_proof=frag=[.orElse(List.of())] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 3, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitOperationsTest.expandSparsePathRejectsAnUnreachableSegment:1140 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteRejectsAnUnreachableSegment:1221 [在图上但不可达（孤岛）] 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteUsesTheInjectedMovementCost:1304 [注入封掉 H12→H13 的替身 ⇒ 同一载荷变不可达] 
+
+label=t6m3
+target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+orig_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+baseline_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5=b6f02e78ffae448440139463130a20ee
+pushed_md5=b6f02e78ffae448440139463130a20ee
+restored_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+site_revert_proof=frag=[if (!start.equals(routeStart)) {] dir=delete orig_hits=1 pushed_hits=0
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 4, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitOperationsTest.planRouteRequiresAStartThatMatchesTheEffectivePosition:214 
+  red: [ERROR]   UnitOperationsTest.planSparseRouteRequiresAStartThatMatchesTheEffectivePosition:1174 
+  red: [ERROR]   UnitCommandHandlersTest.planRouteRejectsStartThatIsNotTheEffectivePosition:504->reason:195 [期望 Rejected 而不是 Applied[changeSet=Unit
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteRejectsStartThatIsNotTheEffectivePosition:1259->reason:195 [期望 Rejected 而不是 Applied[changeS
+
+label=t6m4
+target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+orig_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+baseline_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5=3228cf62bfa6cf1a1c8dd00ecfeb45c0
+pushed_md5=3228cf62bfa6cf1a1c8dd00ecfeb45c0
+restored_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+site_revert_proof=frag=[List.copyOf(new LinkedHashSet<>(path))] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 3, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitOperationsTest.expandSparsePathJoinsSegmentsWithoutRepeatingTheJoint:1129 [两段：连接点 H13 只出现一次；★ 跨段回头造成的重复**不在这里去重**（R4 交给 Route 
+  red: [ERROR]   UnitOperationsTest.planSparseRouteRejectsACrossSegmentRepeat:1215 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteRejectsACrossSegmentRepeat:1252 
+
+label=t6m5
+target=simos-unit/src/main/java/io/mosire/simos/unit/spi/PlanSparseRouteHandler.java
+orig_md5=afe6769e790130c463ca50bced0324bc
+baseline_md5=afe6769e790130c463ca50bced0324bc
+mutant_md5=2e39d1ffec16cb6207ab425b9b01d347
+pushed_md5=2e39d1ffec16cb6207ab425b9b01d347
+restored_md5=afe6769e790130c463ca50bced0324bc
+site_revert_proof=frag=[waypoints, TerrainMovementCost.INSTANCE, at] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 1, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteUsesTheInjectedMovementCost:1298->reason:195 [期望 Rejected 而不是 Applied[changeSet=UnitChangeS
+
+label=t6m6
+target=simos-unit/src/main/java/io/mosire/simos/unit/spi/PlanSparseRouteHandler.java
+orig_md5=afe6769e790130c463ca50bced0324bc
+baseline_md5=afe6769e790130c463ca50bced0324bc
+mutant_md5=5ba62c952cbb3965b054fd4352b269c5
+pushed_md5=5ba62c952cbb3965b054fd4352b269c5
+restored_md5=afe6769e790130c463ca50bced0324bc
+site_revert_proof=frag=[state.module("map").orElse(null)] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 2, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteBlowsUpWhenTheMapSliceIsMissing:1337 
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteBlowsUpWhenTheMapSliceIsNotAMapSnapshot:1369 
+
+label=t6m7
+target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+orig_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+baseline_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+mutant_md5=d2c6ad27f1290f378300860816c7abdc
+pushed_md5=d2c6ad27f1290f378300860816c7abdc
+restored_md5=9eaa2cd2b65decca1c73e61c08f29ef1
+site_revert_proof=frag=[return new UnitState(next);] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 2, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitOperationsTest.everyWithUnitRoutedOperationKeepsTheChains:1034 [rename] 
+  red: [ERROR]   UnitOperationsTest.planSparseRouteKeepsTheCommandChains:1245 [★ T5-L4：链逐值活下来] 
+
+label=t6m8
+target=simos-unit/src/main/java/io/mosire/simos/unit/spi/PlanSparseRouteHandler.java
+orig_md5=afe6769e790130c463ca50bced0324bc
+baseline_md5=afe6769e790130c463ca50bced0324bc
+mutant_md5=8d045a1bea34a7c6313ca8d2a3d73913
+pushed_md5=8d045a1bea34a7c6313ca8d2a3d73913
+restored_md5=afe6769e790130c463ca50bced0324bc
+site_revert_proof=frag=[return "unit.PlanRoute";] dir=revert orig_hits=0 pushed_hits=1
+mvn_rc=1
+compile_errors=0
+module_summary=[ERROR] Tests run: 124, Failures: 1, Errors: 0, Skipped: 0
+verdict=OK
+outcome=RED(被杀)
+  red: [ERROR]   UnitCommandHandlersTest.planSparseRouteTypeNameMatchesTheSpecTable:1176 
+
