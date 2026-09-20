@@ -80,12 +80,6 @@ public final class Shell implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(Shell.class);
 
-  /** GUI 监听地址：回环（spec §〇.4 不做鉴权/TLS 的回环基线）。 */
-  private static final String GUI_HOST = "127.0.0.1";
-
-  /** MCP 监听地址：回环（spec §〇.4；AgentLib 对非回环会响亮告警）。 */
-  private static final String MCP_HOST = "127.0.0.1";
-
   /** MCP server 自报名称（spec §7.2）。 */
   private static final String MCP_SERVER_NAME = "simos-shell";
 
@@ -239,6 +233,7 @@ public final class Shell implements AutoCloseable {
         ToolCallAuthorizer.of(new ToolExecutionGuard(), approvalCoordinator);
 
     // 端点先真的绑上端口，再 markUp 通道（可用性认"端口在监听"，spec §3.2 第 4 步）。
+    // ★ 恒回环，**不**随 config.bindAddress() 变（AgentLib 无 host 形参；对外面是 GUI 的 /api/approvals 代理）。
     ApprovalHttpEndpoint approvalEndpoint =
         ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
     approvalChannel.markUp();
@@ -256,7 +251,7 @@ public final class Shell implements AutoCloseable {
     try {
       mcpServer =
           AgentToMcpServer.startHttp(
-              MCP_HOST,
+              config.bindAddress(),
               config.mcpPort(),
               config.mcpPath(),
               toolRegistry,
@@ -282,7 +277,7 @@ public final class Shell implements AutoCloseable {
             "http://127.0.0.1:" + approvalEndpoint.boundPort());
     boolean guiUp = false;
     try {
-      guiServer.start(GUI_HOST, config.guiPort());
+      guiServer.start(config.bindAddress(), config.guiPort());
       guiUp = true;
     } finally {
       if (!guiUp) {
@@ -295,7 +290,8 @@ public final class Shell implements AutoCloseable {
 
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant=1"
-            + " resolver={} facet={} tool={} mapId={} mcpPort={} guiPort={} approvalPort={}",
+            + " resolver={} facet={} tool={} mapId={} bindAddress={} mcpPort={} guiPort={}"
+            + " approvalPort={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
@@ -304,6 +300,7 @@ public final class Shell implements AutoCloseable {
         facetRegistry.facetNames().size(),
         toolRegistry.size(),
         config.mapId(),
+        config.bindAddress(),
         mcpServer.boundPort(),
         guiServer.boundPort(),
         approvalEndpoint.boundPort());
@@ -326,6 +323,14 @@ public final class Shell implements AutoCloseable {
   /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */
   public int boundGuiPort() {
     return guiServer.boundPort();
+  }
+
+  /**
+   * GUI 服务器实际绑定主机（M10）：回显 {@link ShellConfig#bindAddress()} 的**生效值**（{@code 0.0.0.0} 时 JDK 读回通配形态，
+   * 见 {@link java.net.InetAddress#isAnyLocalAddress()}）。运维与测试据此确认绑定面。
+   */
+  public String boundGuiHost() {
+    return guiServer.boundHost();
   }
 
   /** MCP 服务实际绑定端口（{@code mcpPort=0} 时由 OS 分配；spec §3.1 的读回口径，经 AgentLib {@code boundPort()}）。 */

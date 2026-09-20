@@ -1,0 +1,11 @@
+20:10:08.958 WARN  io.mosire.agentlib.mcp.AgentToMcpServer - MCP HTTP 面绑定非回环地址 0.0.0.0（无鉴权、无 TLS）：任何能连到该地址的人都能列举并调用工具。仅在你已在本机/网络层另有隔离时这样做。path=/mcp
+20:10:09.072 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+20:10:09.160 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://0.0.0.0:5851/（静态 /webui，同源，无 CORS 头）
+20:10:09.160 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/m10shade-demo2 checkpointInterval=100 codec=3 handler=14 participant=1 resolver=3 facet=2 tool=12 mapId=Map1 bindAddress=0.0.0.0 mcpPort=5852 guiPort=5851 approvalPort=5853
+20:10:09.235 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+20:10:09.236 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/m10shade-demo2 checkpointInterval=100 模块数=3 bindAddress=0.0.0.0 guiPort=5851 mcpPort=5852 mcpPath=/mcp approvalPort=5853 mapId=Map1
+20:10:09.236 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5851/
+20:10:16.568 INFO  io.mosire.simos.app.gui.GuiServer - access GET / -> 200 10ms remote=127.0.0.1
+20:11:40.991 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 60ms remote=192.168.71.21
+20:11:40.997 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 1ms remote=192.168.71.21
+20:11:53.196 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

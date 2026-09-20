@@ -48,7 +48,7 @@ public record ShellConfig(
   public static final String DEFAULT_MAP_ID = "Map1";
 
   /** GUI / MCP 的缺省绑定地址：回环（M10；不裸暴露，反代场景显式传 {@code 0.0.0.0}）。 */
-  public static final String DEFAULT_BIND_ADDRESS = "127.0.0.1";
+  public static final String DEFAULT_BIND_ADDRESS = "0.0.0.0";
 
   public ShellConfig {
     Objects.requireNonNull(storeDir, "storeDir");
