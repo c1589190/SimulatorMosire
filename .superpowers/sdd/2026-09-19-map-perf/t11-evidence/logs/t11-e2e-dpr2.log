@@ -1,0 +1,5 @@
+summary: 16/16 PASS
+pageErrors: 0 consoleErrors: 2 nonGET: []
+frames: {"count":182,"p50":16.699999999999818,"p95":16.800000000000182} sharpness: {"dpr":2,"widthDevice":0,"maxStep":154,"N":437}
+selectRequests: ["GET /api/map/hex?q=0&r=0&branch=main&revision=1","GET /api/social/population?q=0&r=0&branch=main&revision=1","GET /api/map/region/test_nation?branch=main&revision=1"]
+viewportRequests: ["GET /api/state","GET /api/approvals"]

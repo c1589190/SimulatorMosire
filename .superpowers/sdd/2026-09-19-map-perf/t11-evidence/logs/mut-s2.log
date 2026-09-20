@@ -1,0 +1,18 @@
+SELF round=s2 kind=s2 mode=js-e2e orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=6fe482f812e217f0ecf38399428b23df start=1789904697
+SELF pushed_md5=6fe482f812e217f0ecf38399428b23df target=simos-app/src/main/resources/webui/map.js
+summary: 8/16 PASS
+  FAIL hidpi-canvas-backing-scaled | {"canvasW":1280,"canvasH":800,"cssW":1280,"cssH":800,"dpr":2}
+  FAIL pixel-0_0 | expected plains 156,203,91 got 0,0,0,0 dist=450 at(1280,800)
+  FAIL pixel-0_-1 | expected low_hills 168,179,106 got 0,0,0,0 dist=453 at(1274,790)
+  FAIL pixel-3_18 | expected ocean 31,95,160 got 0,0,0,0 dist=286 at(1417,977)
+  FAIL pixel--11_-1 | expected mountains 122,127,133 got 0,0,0,0 dist=382 at(1149,790)
+  FAIL pixel--5_-59 | expected plains 156,203,91 got 31,95,160,255 dist=302 at(887,218)
+  FAIL pixel-18_53 | expected ocean 31,95,160 got 0,0,0,0 dist=286 at(1787,1323)
+  FAIL hidpi-transition-is-sharp | widthDevice=null N=437 dpr=2 maxStep=0
+pageErrors: 0 consoleErrors: 2 nonGET: []
+frames: {"count":182,"p50":16.699999999999818,"p95":16.700000000000728} sharpness: {"dpr":2,"widthDevice":null,"maxStep":0,"N":437}
+selectRequests: ["GET /api/map/hex?q=0&r=0&branch=main&revision=1","GET /api/social/population?q=0&r=0&branch=main&revision=1","GET /api/map/region/test_nation?branch=main&revision=1"]
+viewportRequests: ["GET /api/state","GET /api/approvals"]
+SELF runner_rc=1
+SELF RESULT round=s2 kind=s2 KILLED orig_md5=014ffd3aac68dbf282d91e49365d4b0d mutant_md5=6fe482f812e217f0ecf38399428b23df restored_md5=014ffd3aac68dbf282d91e49365d4b0d runner_rc=1 end=1789904705
+ROUND s2 (s2): KILLED (rc=1)

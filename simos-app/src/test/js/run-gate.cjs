@@ -12,9 +12,9 @@ const path = require("node:path");
 const JS_DIR = __dirname;
 // ★ 下界＝写作时 node --test 实测的断言数；删/停用任何一条都会跌破它。
 //   T11 起 61 → 71（新增 map-edit-tools.test.cjs 的 10 条）；T9 起 71 → 82（新增
-//   region-view.test.cjs 的 11 条）。与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——
-//   两层下界各写一个数，**改一处必须改两处**（T11 只改了一处，见 t11 报告 §装置缺陷）。
-const MIN_TESTS = 82;
+//   region-view.test.cjs 的 11 条）；M9 T11 起 82 → 88（新增 block-codec.test.cjs 的 6 条）。
+//   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
+const MIN_TESTS = 88;
 
 function discoverTests() {
   return fs

@@ -12,13 +12,16 @@ import io.mosire.simos.map.block.TerrainBlock;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.hex.HexVertex;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -40,6 +43,10 @@ class MapOverviewBlocksTest {
     assertThat(firstJson).as("同一状态两次 overview 逐字节相同").isEqualTo(secondJson);
     assertThat(firstJson).as("逐格数组整个移除").doesNotContain("\"hexes\"");
     assertThat(firstJson).as("逐格 height 不再发").doesNotContain("\"height\"");
+    assertThat(firstJson)
+        .as("M9 T11：顶点走整数标签，不是 {\"x\":…,\"y\":…} 坐标对象（省流 ~2/3）")
+        .doesNotContain("\"x\":")
+        .doesNotContain("\"y\":");
 
     JsonNode blocks = JSON.readTree(firstJson).get("blocks");
     assertThat(blocks).as("中心 desert + 外圈 plains ⇒ 2 块").hasSize(2);
@@ -51,8 +58,13 @@ class MapOverviewBlocksTest {
     assertThat(plains.get("boundaries")).as("外圈块带一个洞环 ⇒ 2 条环（m1 的护栏）").hasSize(2);
     assertThat(desert.get("boundaries")).as("单格块 1 条环").hasSize(1);
 
-    assertRingsClosedAndPolygonal(plains.get("boundaries"));
-    assertRingsClosedAndPolygonal(desert.get("boundaries"));
+    assertRingsClosedAndIntegerLabeled(plains.get("boundaries"));
+    assertRingsClosedAndIntegerLabeled(desert.get("boundaries"));
+
+    JsonNode desertRing = desert.get("boundaries").get(0);
+    assertThat(labelsOf(desertRing))
+        .as("顶点恰是 HexVertex.at(hex,corner) 的整数标签")
+        .isEqualTo(labelsOfHex(new HexCoord(0, 0)));
 
     int sum = 0;
     for (JsonNode block : blocks) {
@@ -94,21 +106,41 @@ class MapOverviewBlocksTest {
     assertThat(firstId).as("块按 BlockId 全序发（不靠状态插入序）").isLessThan(secondId);
   }
 
-  private static void assertRingsClosedAndPolygonal(JsonNode boundaries) {
+  private static void assertRingsClosedAndIntegerLabeled(JsonNode boundaries) {
     assertThat(boundaries.isArray()).isTrue();
     assertThat(boundaries).isNotEmpty();
     for (JsonNode ring : boundaries) {
-      assertThat(ring.size()).as("环是多边形：顶点数 > 2").isGreaterThan(2);
-      assertThat(ring.get(ring.size() - 1)).as("环首尾同点（闭合）").isEqualTo(ring.get(0));
-      for (JsonNode point : ring) {
-        assertQuantized(point.get("x").asDouble());
-        assertQuantized(point.get("y").asDouble());
+      assertThat(ring.size() % 2).as("整数标签环是 [u,w] 偶长：%s", ring.size()).isZero();
+      assertThat((ring.size() - 2) / 2).as("环是多边形：去闭合点后顶点数 > 2").isGreaterThan(2);
+      for (JsonNode value : ring) {
+        assertThat(value.isInt()).as("顶点标签是整数：%s", value).isTrue();
       }
+      assertThat(ring.get(ring.size() - 2).asInt())
+          .as("环首尾同点（u 闭合）")
+          .isEqualTo(ring.get(0).asInt());
+      assertThat(ring.get(ring.size() - 1).asInt())
+          .as("环首尾同点（w 闭合）")
+          .isEqualTo(ring.get(1).asInt());
     }
   }
 
-  private static void assertQuantized(double value) {
-    assertThat(Math.round(value * 1000.0) / 1000.0).as("顶点坐标量化到 3 位小数：%s", value).isEqualTo(value);
+  /** 一条整数标签环 ⇒ 去重后的 "u,w" 标签集（顺序无关，用于与 {@link HexVertex#at} 对拍）。 */
+  private static Set<String> labelsOf(JsonNode ring) {
+    Set<String> labels = new LinkedHashSet<>();
+    for (int i = 0; i + 1 < ring.size(); i += 2) {
+      labels.add(ring.get(i).asInt() + "," + ring.get(i + 1).asInt());
+    }
+    return labels;
+  }
+
+  /** 某格的六个角顶点标签集。 */
+  private static Set<String> labelsOfHex(HexCoord hex) {
+    Set<String> labels = new LinkedHashSet<>();
+    for (int corner = 0; corner < 6; corner++) {
+      HexVertex vertex = HexVertex.at(hex, corner);
+      labels.add(vertex.u() + "," + vertex.w());
+    }
+    return labels;
   }
 
   private static JsonNode blockByTerrain(JsonNode blocks, String terrain) {

@@ -1,0 +1,62 @@
+{
+  "overviewBytes": 227377,
+  "blockBytes": 226243,
+  "blockByteShare": 0.995,
+  "blockCount": 44,
+  "ringCount": 64,
+  "vertexCount": 9694,
+  "worldW": 278.86,
+  "worldH": 242.0,
+  "biggestBlock": {
+    "id": "plains@-80_0",
+    "bboxAreaFraction": 0.8602,
+    "vertexShare": 0.4263
+  },
+  "chunkingBestCase": [
+    {
+      "viewportAreaFraction": 0.02,
+      "minFetchedVertexShare": 0.4512,
+      "at": [
+        -139.4,
+        57.1
+      ]
+    },
+    {
+      "viewportAreaFraction": 0.05,
+      "minFetchedVertexShare": 0.4512,
+      "at": [
+        -139.4,
+        40.0
+      ]
+    },
+    {
+      "viewportAreaFraction": 0.1,
+      "minFetchedVertexShare": 0.4649,
+      "at": [
+        -139.4,
+        44.5
+      ]
+    },
+    {
+      "viewportAreaFraction": 0.25,
+      "minFetchedVertexShare": 0.6531,
+      "at": [
+        -139.4,
+        -121.0
+      ]
+    },
+    {
+      "viewportAreaFraction": 0.5,
+      "minFetchedVertexShare": 0.7947,
+      "at": [
+        -57.8,
+        -121.0
+      ]
+    },
+    {
+      "viewportAreaFraction": 1.0,
+      "minFetchedVertexShare": 1.0,
+      "at": null
+    }
+  ]
+}
