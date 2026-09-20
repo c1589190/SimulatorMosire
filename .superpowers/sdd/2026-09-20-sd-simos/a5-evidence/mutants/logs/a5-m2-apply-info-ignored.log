@@ -1,0 +1,50 @@
+[ERROR] Tests run: 5, Failures: 2, Errors: 1, Skipped: 0, Time elapsed: 0.155 s <<< FAILURE! -- in io.mosire.simos.sd.spi.PutInfoHandlerTest
+[ERROR] io.mosire.simos.sd.spi.PutInfoHandlerTest.appendsToAnExistingListForTheSameAddress -- Time elapsed: 0.017 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual not to be null
+	at io.mosire.simos.sd.spi.PutInfoHandlerTest.appendsToAnExistingListForTheSameAddress(PutInfoHandlerTest.java:44)
+
+[ERROR] io.mosire.simos.sd.spi.PutInfoHandlerTest.putInfoAppendsAnEntryUnderTheCanonicalAddress -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual not to be null
+	at io.mosire.simos.sd.spi.PutInfoHandlerTest.putInfoAppendsAnEntryUnderTheCanonicalAddress(PutInfoHandlerTest.java:26)
+
+[ERROR] io.mosire.simos.sd.spi.PutInfoHandlerTest.putInfoAcceptsScalarNumbersToo -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "java.util.List.get(int)" because the return value of "java.util.Map.get(Object)" is null
+	at io.mosire.simos.sd.spi.PutInfoHandlerTest.putInfoAcceptsScalarNumbersToo(PutInfoHandlerTest.java:36)
+
+[ERROR] Failures: 
+[ERROR]   PutInfoHandlerTest.appendsToAnExistingListForTheSameAddress:44 
+Expecting actual not to be null
+[ERROR]   PutInfoHandlerTest.putInfoAppendsAnEntryUnderTheCanonicalAddress:26 
+Expecting actual not to be null
+[ERROR] Errors: 
+[ERROR]   PutInfoHandlerTest.putInfoAcceptsScalarNumbersToo:36 NullPointer Cannot invoke "java.util.List.get(int)" because the return value of "java.util.Map.get(Object)" is null
+[ERROR] Tests run: 5, Failures: 2, Errors: 1, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
+
+# --- 装置自记（本轮的字节）---
+# mutant=a5-m2-apply-info-ignored
+# orig_md5=dba25b4d295064ea8c36a24da8909e33
+# mutant_md5=6b92759a05891831bb3fbb9be8e60c25
+# restored_md5=dba25b4d295064ea8c36a24da8909e33
+# rc=1 compile_errors=0 failing_lines=4
+# RED: [ERROR] Tests run: 5, Failures: 2, Errors: 1, Skipped: 0, Time elapsed: 0.155 s <<< FAILURE! -- in io.mosire.simos.sd.spi.PutInfoHandlerTest
+# RED: [ERROR] io.mosire.simos.sd.spi.PutInfoHandlerTest.appendsToAnExistingListForTheSameAddress -- Time elapsed: 0.017 s <<< FAILURE!
+# RED: [ERROR] io.mosire.simos.sd.spi.PutInfoHandlerTest.putInfoAppendsAnEntryUnderTheCanonicalAddress -- Time elapsed: 0.001 s <<< FAILURE!
+# RED: [ERROR] io.mosire.simos.sd.spi.PutInfoHandlerTest.putInfoAcceptsScalarNumbersToo -- Time elapsed: 0.001 s <<< ERROR!

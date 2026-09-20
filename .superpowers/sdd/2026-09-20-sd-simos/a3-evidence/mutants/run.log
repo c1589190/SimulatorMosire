@@ -1,0 +1,18 @@
+KILLED       a3-m1-between-info-unchanged               rc=1 compile_errors=0 failing=3 restored_eq_orig=True
+KILLED       a3-m2-apply-combats-ignored                rc=1 compile_errors=0 failing=3 restored_eq_orig=True
+KILLED       a3-m3-architecture-drop-sd-path            rc=1 compile_errors=0 failing=2 restored_eq_orig=True
+SURVIVED     a3-m4-codec-no-nationid-key                rc=0 compile_errors=0 failing=0 restored_eq_orig=True
+KILLED       a4-m1-createnation-no-tag-check            rc=1 compile_errors=0 failing=2 restored_eq_orig=True
+KILLED       a4-m2-createdm-no-n9-check                 rc=1 compile_errors=0 failing=2 restored_eq_orig=True
+KILLED       a4-m3-resolver-fabricates-candidate        rc=1 compile_errors=0 failing=2 restored_eq_orig=True
+KILLED       a5-m1-putinfo-skips-address-parse          rc=1 compile_errors=0 failing=3 restored_eq_orig=True
+KILLED       a5-m2-apply-info-ignored                   rc=1 compile_errors=0 failing=4 restored_eq_orig=True
+KILLED       a6-m1-shell-no-guard-registration          rc=1 compile_errors=0 failing=2 restored_eq_orig=True
+KILLED       a6-m2-regiondeleteguard-always-reject      rc=1 compile_errors=0 failing=5 restored_eq_orig=True
+KILLED       a6-m3-guard-runs-after-handler             rc=1 compile_errors=0 failing=3 restored_eq_orig=True
+
+SUMMARY killed=11 survived=1 wrong_location=0 total=12
+SURVIVED     a3-m4-codec-no-nationid-key                rc=0 compile_errors=0 failing=0 restored_eq_orig=True
+KILLED       a3-m4b-codec-raw-cast                      rc=1 compile_errors=0 failing=2 restored_eq_orig=True
+
+SUMMARY killed=1 survived=1 wrong_location=0 total=2

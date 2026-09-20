@@ -1,0 +1,48 @@
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.292 s <<< FAILURE! -- in io.mosire.simos.sd.codec.SdCodecTest
+[ERROR] io.mosire.simos.sd.codec.SdCodecTest.applyAndEncodeSnapshotRejectForeignSlice -- Time elapsed: 0.008 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalStateException
+but was:
+  java.lang.ClassCastException: class io.mosire.simos.sd.codec.SdCodecTest$ForeignSlice cannot be cast to class io.mosire.simos.sd.state.SdSnapshot (io.mosire.simos.sd.codec.SdCodecTest$ForeignSlice and io.mosire.simos.sd.state.SdSnapshot are in unnamed module of loader 'app')
+	at io.mosire.simos.sd.codec.SdCodec.asSdSnapshot(SdCodec.java:136)
+	at io.mosire.simos.sd.codec.SdCodec.encodeSnapshot(SdCodec.java:123)
+	at io.mosire.simos.sd.codec.SdCodecTest.lambda$applyAndEncodeSnapshotRejectForeignSlice$0(SdCodecTest.java:95)
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+	at io.mosire.simos.sd.codec.SdCodecTest.applyAndEncodeSnapshotRejectForeignSlice(SdCodecTest.java:96)
+
+[ERROR] Failures: 
+[ERROR]   SdCodecTest.applyAndEncodeSnapshotRejectForeignSlice:96 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalStateException
+but was:
+  java.lang.ClassCastException: class io.mosire.simos.sd.codec.SdCodecTest$ForeignSlice cannot be cast to class io.mosire.simos.sd.state.SdSnapshot (io.mosire.simos.sd.codec.SdCodecTest$ForeignSlice and io.mosire.simos.sd.state.SdSnapshot are in unnamed module of loader 'app')
+	at io.mosire.simos.sd.codec.SdCodec.asSdSnapshot(SdCodec.java:136)
+	at io.mosire.simos.sd.codec.SdCodec.encodeSnapshot(SdCodec.java:123)
+	at io.mosire.simos.sd.codec.SdCodecTest.lambda$applyAndEncodeSnapshotRejectForeignSlice$0(SdCodecTest.java:95)
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
+
+# --- 装置自记（本轮的字节）---
+# mutant=a3-m4b-codec-raw-cast
+# orig_md5=eefd627dbbb2513d7310200d3a49ec77
+# mutant_md5=afbbc9fe559128058e3f9be5739d00cf
+# restored_md5=eefd627dbbb2513d7310200d3a49ec77
+# rc=1 compile_errors=0 failing_lines=2
+# RED: [ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.292 s <<< FAILURE! -- in io.mosire.simos.sd.codec.SdCodecTest
+# RED: [ERROR] io.mosire.simos.sd.codec.SdCodecTest.applyAndEncodeSnapshotRejectForeignSlice -- Time elapsed: 0.008 s <<< FAILURE!

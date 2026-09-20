@@ -1,0 +1,34 @@
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.085 s <<< FAILURE! -- in io.mosire.simos.sd.resolve.SdResolverTest
+[ERROR] io.mosire.simos.sd.resolve.SdResolverTest.unknownEntityYieldsNoCandidates -- Time elapsed: 0.060 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting empty but was: [ResolvedSubject[id=SubjectId[namespace=sd, localId=nation.ghost], canonicalAddress=sd:nation.ghost, typeName=Nation]]
+	at io.mosire.simos.sd.resolve.SdResolverTest.unknownEntityYieldsNoCandidates(SdResolverTest.java:62)
+
+[ERROR] Failures: 
+[ERROR]   SdResolverTest.unknownEntityYieldsNoCandidates:62 
+Expecting empty but was: [ResolvedSubject[id=SubjectId[namespace=sd, localId=nation.ghost], canonicalAddress=sd:nation.ghost, typeName=Nation]]
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
+
+# --- 装置自记（本轮的字节）---
+# mutant=a4-m3-resolver-fabricates-candidate
+# orig_md5=7d54d3e4f9c7ff865481acc301fb7670
+# mutant_md5=6675b87b8aedcebae6ab44c7c4f1ae50
+# restored_md5=7d54d3e4f9c7ff865481acc301fb7670
+# rc=1 compile_errors=0 failing_lines=2
+# RED: [ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.085 s <<< FAILURE! -- in io.mosire.simos.sd.resolve.SdResolverTest
+# RED: [ERROR] io.mosire.simos.sd.resolve.SdResolverTest.unknownEntityYieldsNoCandidates -- Time elapsed: 0.060 s <<< FAILURE!

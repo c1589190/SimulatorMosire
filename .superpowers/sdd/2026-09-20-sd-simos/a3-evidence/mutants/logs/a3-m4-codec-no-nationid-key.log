@@ -1,0 +1,7 @@
+
+# --- 装置自记（本轮的字节）---
+# mutant=a3-m4-codec-no-nationid-key
+# orig_md5=eefd627dbbb2513d7310200d3a49ec77
+# mutant_md5=f1429456295fbdd63da9019416e48d3e
+# restored_md5=eefd627dbbb2513d7310200d3a49ec77
+# rc=0 compile_errors=0 failing_lines=0

@@ -1,0 +1,60 @@
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.066 s <<< FAILURE! -- in io.mosire.simos.core.ArchitectureGuardsTest
+[ERROR] io.mosire.simos.core.ArchitectureGuardsTest.changeSetHasExactlyFiveMainSourceImplementors -- Time elapsed: 0.057 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting actual:
+  ["simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
+    "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
+    "simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java",
+    "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
+    "simos-unit/src/main/java/io/mosire/simos/unit/change/UnitChangeSet.java"]
+to contain exactly (and in same order):
+  ["simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
+    "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
+    "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
+    "simos-unit/src/main/java/io/mosire/simos/unit/change/UnitChangeSet.java"]
+but some elements were not expected:
+  ["simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java"]
+
+	at io.mosire.simos.core.ArchitectureGuardsTest.changeSetHasExactlyFiveMainSourceImplementors(ArchitectureGuardsTest.java:44)
+
+[ERROR] Failures: 
+[ERROR]   ArchitectureGuardsTest.changeSetHasExactlyFiveMainSourceImplementors:44 
+Expecting actual:
+  ["simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
+    "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
+    "simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java",
+    "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
+    "simos-unit/src/main/java/io/mosire/simos/unit/change/UnitChangeSet.java"]
+to contain exactly (and in same order):
+  ["simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
+    "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
+    "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
+    "simos-unit/src/main/java/io/mosire/simos/unit/change/UnitChangeSet.java"]
+but some elements were not expected:
+  ["simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java"]
+
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-core: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-core/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-core
+
+# --- 装置自记（本轮的字节）---
+# mutant=a3-m3-architecture-drop-sd-path
+# orig_md5=2ce1771f689e31d3600ec586065e8ad1
+# mutant_md5=f67c26695bdf0e1a6e2f3ece9e19d8a7
+# restored_md5=2ce1771f689e31d3600ec586065e8ad1
+# rc=1 compile_errors=0 failing_lines=2
+# RED: [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.066 s <<< FAILURE! -- in io.mosire.simos.core.ArchitectureGuardsTest
+# RED: [ERROR] io.mosire.simos.core.ArchitectureGuardsTest.changeSetHasExactlyFiveMainSourceImplementors -- Time elapsed: 0.057 s <<< FAILURE!

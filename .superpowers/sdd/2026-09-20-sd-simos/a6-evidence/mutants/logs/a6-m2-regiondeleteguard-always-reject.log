@@ -1,0 +1,73 @@
+[ERROR] Tests run: 7, Failures: 4, Errors: 0, Skipped: 0, Time elapsed: 0.150 s <<< FAILURE! -- in io.mosire.simos.sd.guard.RegionDeleteGuardTest
+[ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.missingRegionAndBadPayloadAreAllowed -- Time elapsed: 0.060 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting an empty Optional but was containing value: "恒拒"
+	at io.mosire.simos.sd.guard.RegionDeleteGuardTest.missingRegionAndBadPayloadAreAllowed(RegionDeleteGuardTest.java:57)
+
+[ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.taggedRegionIsRejected -- Time elapsed: 0.004 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  "恒拒"
+to contain:
+  "r1" 
+	at io.mosire.simos.sd.guard.RegionDeleteGuardTest.taggedRegionIsRejected(RegionDeleteGuardTest.java:29)
+
+[ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.untaggedRegionIsAllowed -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+[去 tag ⇒ 放行（若恒拒，这条与上一条一起红）] 
+Expecting an empty Optional but was containing value: "恒拒"
+	at io.mosire.simos.sd.guard.RegionDeleteGuardTest.untaggedRegionIsAllowed(RegionDeleteGuardTest.java:34)
+
+[ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.homeRegionReferenceIsAlsoRejectedEvenWithoutTag -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  "恒拒"
+to contain:
+  "r2" 
+	at io.mosire.simos.sd.guard.RegionDeleteGuardTest.homeRegionReferenceIsAlsoRejectedEvenWithoutTag(RegionDeleteGuardTest.java:44)
+
+[ERROR] Failures: 
+[ERROR]   RegionDeleteGuardTest.homeRegionReferenceIsAlsoRejectedEvenWithoutTag:44 
+Expecting actual:
+  "恒拒"
+to contain:
+  "r2" 
+[ERROR]   RegionDeleteGuardTest.missingRegionAndBadPayloadAreAllowed:57 
+Expecting an empty Optional but was containing value: "恒拒"
+[ERROR]   RegionDeleteGuardTest.taggedRegionIsRejected:29 
+Expecting actual:
+  "恒拒"
+to contain:
+  "r1" 
+[ERROR]   RegionDeleteGuardTest.untaggedRegionIsAllowed:34 [去 tag ⇒ 放行（若恒拒，这条与上一条一起红）] 
+Expecting an empty Optional but was containing value: "恒拒"
+[ERROR] Tests run: 7, Failures: 4, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sda3a6/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
+
+# --- 装置自记（本轮的字节）---
+# mutant=a6-m2-regiondeleteguard-always-reject
+# orig_md5=a21b24284f4838ac23f0c418b55fd16e
+# mutant_md5=8feec4f32d588b11b6ad7eb41a6e2614
+# restored_md5=a21b24284f4838ac23f0c418b55fd16e
+# rc=1 compile_errors=0 failing_lines=5
+# RED: [ERROR] Tests run: 7, Failures: 4, Errors: 0, Skipped: 0, Time elapsed: 0.150 s <<< FAILURE! -- in io.mosire.simos.sd.guard.RegionDeleteGuardTest
+# RED: [ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.missingRegionAndBadPayloadAreAllowed -- Time elapsed: 0.060 s <<< FAILURE!
+# RED: [ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.taggedRegionIsRejected -- Time elapsed: 0.004 s <<< FAILURE!
+# RED: [ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.untaggedRegionIsAllowed -- Time elapsed: 0.002 s <<< FAILURE!
+# RED: [ERROR] io.mosire.simos.sd.guard.RegionDeleteGuardTest.homeRegionReferenceIsAlsoRejectedEvenWithoutTag -- Time elapsed: 0.001 s <<< FAILURE!
