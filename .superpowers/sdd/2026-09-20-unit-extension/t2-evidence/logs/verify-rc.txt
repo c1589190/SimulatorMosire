@@ -1,0 +1,2 @@
+rc=0
+total=1096 util=170 map=362 social=45 unit=167 core=174 sd=62 app=116 modules=8 buginstance0=7 error=0 frontend=88/88
