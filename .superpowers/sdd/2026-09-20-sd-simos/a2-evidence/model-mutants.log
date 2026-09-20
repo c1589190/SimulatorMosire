@@ -1,0 +1,17 @@
+aggregate_mutant_md5=97e27b04e46fd33169692de4de0ccaf5
+ROUND m1 cls=OutcomeOption method=outcomeOptionRejectsNonPositiveWeight rc=1
+ROUND m1 orig_md5=43262c9c05914ee50a1cabb202fa7fcc mutant_md5=b00fa1504f31441cc28326478511d13a pushed_md5=b00fa1504f31441cc28326478511d13a restored_md5=43262c9c05914ee50a1cabb202fa7fcc
+ROUND m1 report_md5=9dfe43a834c55698e51a2567177a766a report_fresh=yes COMPILATION_ERROR=0 Tests_run_lines=2 red_on_protected=1
+ROUND m1 OK: red on outcomeOptionRejectsNonPositiveWeight, restored byte-exact
+ROUND m2 cls=OutcomeTable method=outcomeTableRejectsEmptyOptions rc=1
+ROUND m2 orig_md5=20100cf00bb23117b9eab5d6406813b7 mutant_md5=c917e259fdeb96057180d36612631d2e pushed_md5=c917e259fdeb96057180d36612631d2e restored_md5=20100cf00bb23117b9eab5d6406813b7
+ROUND m2 report_md5=0bc1fb6afbe57671d61db6f5f39305b8 report_fresh=yes COMPILATION_ERROR=0 Tests_run_lines=2 red_on_protected=1
+ROUND m2 OK: red on outcomeTableRejectsEmptyOptions, restored byte-exact
+ROUND m3 cls=CasualtyDelta method=casualtyDeltaRejectsNonNegativeEquipment rc=1
+ROUND m3 orig_md5=fb348c8c3b580dde3b6e89bd685d815b mutant_md5=7b2d7d92eba1ba47ed02512e5caea64c pushed_md5=7b2d7d92eba1ba47ed02512e5caea64c restored_md5=fb348c8c3b580dde3b6e89bd685d815b
+ROUND m3 report_md5=374ec308c1002d82b28bb4ca2949d9f7 report_fresh=yes COMPILATION_ERROR=0 Tests_run_lines=2 red_on_protected=1
+ROUND m3 OK: red on casualtyDeltaRejectsNonNegativeEquipment, restored byte-exact
+== post-restore md5 ==
+post_OutcomeOption_md5=43262c9c05914ee50a1cabb202fa7fcc
+post_OutcomeTable_md5=20100cf00bb23117b9eab5d6406813b7
+post_CasualtyDelta_md5=fb348c8c3b580dde3b6e89bd685d815b
