@@ -1,0 +1,25 @@
+=== T4 变异轮【第九轮后收紧判据】控制器重跑汇总（由各轮日志导出，不手抄）2026-09-21T03:15:52+08:00 ===
+缘起：首轮 m9_UnitPayloads GREEN(存活)。控制器核出根因 = SPI 判据弱于行为
+      （UnitCommandHandlersTest:636 传 subUnitIds:{} 却只断言 .contains("subUnitIds")，
+       而域层兜底消息「subUnitIds 不得为空」同样含该 token）⇒ 收紧为断言形状消息原文。
+改动：UnitCommandHandlersTest.java 两处 .contains(...)，**逐行数中性（+2/−2，无行位移）**；
+      生产字节零改动（baseline-md5.txt 全 OK）。裁定 42：改动护栏必须自带变异轮 ⇒ 九轮全部重跑。
+选择器：UnitOperationsTest,UnitCommandHandlersTest（干净轮 84 条，与首轮同值）
+
+ROUND                        VERDICT pushed   rc   CE   aggregate                    outcome
+m1_UnitOperations            OK     b4fd41… 1    0    Tests run: 84, Failures: 3, Errors: 0, Skipped: 0 RED(被杀)
+m2_UnitOperations            OK     062555… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m3_UnitOperations            OK     980ddd… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m4_UnitOperations            OK     edef7b… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m5_UnitOperations            OK     fe8d4c… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m6_UnitOperations            OK     49269a… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m7_ReparentSubtreeHandler    OK     c99d2f… 1    0    Tests run: 84, Failures: 1, Errors: 0, Skipped: 0 RED(被杀)
+m8_UnitOperations            OK     6e2397… 1    0    Tests run: 84, Failures: 2, Errors: 0, Skipped: 0 RED(被杀)
+m9_UnitPayloads              OK     beb75f… 1    0    Tests run: 84, Failures: 1, Errors: 0, Skipped: 0 RED(被杀)
+
+=== 收口干净世界核对 2026-09-21T03:15:53+08:00 ===
+simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java: OK
+simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: OK

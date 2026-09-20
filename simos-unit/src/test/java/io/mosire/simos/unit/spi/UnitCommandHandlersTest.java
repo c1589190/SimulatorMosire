@@ -632,10 +632,10 @@ class UnitCommandHandlersTest {
     assertThat(
             reason(SPLIT, worldAt(T5, attachedLine()), "{\"rootId\":\"u-2\",\"subUnitIds\":[1]}"))
         .as("数组元素必须是字符串")
-        .contains("subUnitIds");
+        .contains("元素必须是非空字符串");
     assertThat(reason(SPLIT, worldAt(T5, attachedLine()), "{\"rootId\":\"u-2\",\"subUnitIds\":{}}"))
         .as("必须是数组")
-        .contains("subUnitIds");
+        .contains("必须是 [字符串…] 数组");
     assertThat(reason(MERGE, worldAt(T5, sameHexLine(false)), "{\"childId\":\"u-3\"}"))
         .contains("parentId");
   }
