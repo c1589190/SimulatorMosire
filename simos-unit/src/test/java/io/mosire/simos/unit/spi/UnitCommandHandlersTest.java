@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.Movement;
+import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -26,15 +27,19 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * 七个 unit 命令 handler（spec §四）：逐命令验证 happy path（{@code Applied} + 应用之后的 {@code UnitState} 逐值）与关键拒绝。
+ * 十一个 unit 命令 handler（spec §四 + T3 的三条编制命令 A）：逐命令验证 happy path（{@code Applied} + 应用之后的 {@code
+ * UnitState} 逐值）与关键拒绝。
  *
- * <p>★ 带时刻的命令（CreateUnit / ReparentUnit / PlaceAt / PlanRoute / DisbandUnit）在**非零 base 时间戳**（{@link
- * #T5}）上跑： 既符合真实推进语义（base 的 anchor 段在 T0），也把"初始段时刻 = base 状态时间戳"钉成可判别的断言（T5 ≠ T0）。
+ * <p>★ 带时刻的命令（CreateUnit / ReparentUnit / PlaceAt / PlanRoute / DisbandUnit / AttachUnit /
+ * DetachUnit / SetFormationOffset）在**非零 base 时间戳**（{@link #T5}）上跑： 既符合真实推进语义（base 的 anchor 段在
+ * T0），也把"初始段时刻 = base 状态时间戳"钉成可判别的断言（T5 ≠ T0）。
  */
 class UnitCommandHandlersTest {
 
   private static final SimosTimestamp T5 = SimosTimestamp.of(5);
+  private static final SimosTimestamp T6 = SimosTimestamp.of(6);
   private static final UnitId U2 = new UnitId("u-2");
+  private static final UnitId U3 = new UnitId("u-3");
 
   private static final CreateUnitHandler CREATE = new CreateUnitHandler();
   private static final ReparentUnitHandler REPARENT = new ReparentUnitHandler();
@@ -44,6 +49,9 @@ class UnitCommandHandlersTest {
   private static final CancelRouteHandler CANCEL_ROUTE = new CancelRouteHandler();
   private static final DisbandUnitHandler DISBAND = new DisbandUnitHandler();
   private static final SetStatusHandler SET_STATUS = new SetStatusHandler();
+  private static final AttachUnitHandler ATTACH = new AttachUnitHandler();
+  private static final DetachUnitHandler DETACH = new DetachUnitHandler();
+  private static final SetFormationOffsetHandler SET_OFFSET = new SetFormationOffsetHandler();
 
   // ── 夹具与世界构造 ──────────────────────────────────────────────
 
@@ -66,7 +74,29 @@ class UnitCommandHandlersTest {
         unit("u-2", Optional.of("u-1"), Optional.of(SpiFixture.H12)));
   }
 
+  /** u-2 与 u-3 都挂在空父下（`u-2` 是根、`u-3` 挂 `u-2`），且**两者 `attached=false`**：attach 级联的基线。 */
+  private static UnitState detachedPair() {
+    return SpiFixture.unitState(
+        SpiFixture.unitWithMovement(Optional.empty()),
+        unit("u-2", Optional.empty(), Optional.of(SpiFixture.H12), false),
+        unit("u-3", Optional.of("u-2"), Optional.empty(), false));
+  }
+
+  /** u-2 挂在 u-1 下、u-3 挂在 u-2 下，三者都 `attached=true`（detach 只节点与偏移的基线）。 */
+  private static UnitState attachedLine() {
+    return SpiFixture.unitState(
+        SpiFixture.unitWithMovement(Optional.empty()),
+        unit("u-2", Optional.of("u-1"), Optional.empty(), true),
+        unit("u-3", Optional.of("u-2"), Optional.empty(), true));
+  }
+
   private static Unit unit(String id, Optional<String> parent, Optional<HexCoord> position) {
+    return unit(id, parent, position, true);
+  }
+
+  /** 同上，`attached` 逐节点给（T3：缺省 `true` 会把"级联"整个掩盖掉）。 */
+  private static Unit unit(
+      String id, Optional<String> parent, Optional<HexCoord> position, boolean attached) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -77,6 +107,13 @@ class UnitCommandHandlersTest {
         Map.of("步枪", 50),
         2,
         500,
+        Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(SpiFixture.T0, attached)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(SpiFixture.T0, Optional.<RelativeOffset>empty())),
+            List.of(),
+            null),
         Optional.empty());
   }
 
@@ -128,6 +165,9 @@ class UnitCommandHandlersTest {
     assertThat(CANCEL_ROUTE.type()).isEqualTo("unit.CancelRoute");
     assertThat(DISBAND.type()).isEqualTo("unit.DisbandUnit");
     assertThat(SET_STATUS.type()).isEqualTo("unit.SetStatus");
+    assertThat(ATTACH.type()).isEqualTo("unit.AttachUnit");
+    assertThat(DETACH.type()).isEqualTo("unit.DetachUnit");
+    assertThat(SET_OFFSET.type()).isEqualTo("unit.SetFormationOffset");
   }
 
   // ── unit.CreateUnit ────────────────────────────────────────────
@@ -457,7 +497,94 @@ class UnitCommandHandlersTest {
     assertThat(reason(DISBAND, world(twoIndependent()), "{\"id\":\"u-404\"}")).contains("单位不存在");
   }
 
-  /** 七个 handler 的载荷畸形一律折成拒绝（不逃逸成异常）。 */
+  // ── unit.AttachUnit / unit.DetachUnit（T3 / spec §一.3 / P3） ────
+
+  /** ★ 判据（P3）：attach 级联到**全部后代**；只有 `id` 换父；子树外一字不变。 */
+  @Test
+  void attachUnitCascadesToTheWholeSubtree() {
+    UnitState base = detachedPair();
+    UnitState next = applied(ATTACH, worldAt(T5, base), "{\"id\":\"u-2\",\"parent\":\"u-1\"}");
+    assertThat(next.units().get(U2).parent().valueAt(T5)).contains(SpiFixture.U1);
+    assertThat(next.units().get(U2).attached().valueAt(T5)).isTrue();
+    assertThat(next.units().get(U3).attached().valueAt(T5)).as("级联到后代").isTrue();
+    assertThat(next.units().get(U3).parent().valueAt(T5)).as("后代父不动").contains(U2);
+    assertThat(next.units().get(U3).attached().valueAt(SpiFixture.T0)).as("T0 仍是旧值").isFalse();
+    assertThat(next.units().get(SpiFixture.U1))
+        .as("子树外的单位一字不变")
+        .isEqualTo(base.units().get(SpiFixture.U1));
+  }
+
+  @Test
+  void attachUnitRejectsACycleUnknownUnitsAndAMissingParent() {
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-3\"}"))
+        .as("u-3 是 u-2 的后代")
+        .contains("子树");
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-2\"}"))
+        .as("自身也是子树的一员")
+        .contains("子树");
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-404\",\"parent\":\"u-1\"}"))
+        .contains("单位不存在");
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-404\"}"))
+        .contains("父单位不存在");
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\"}"))
+        .as("parent 必填")
+        .contains("parent");
+  }
+
+  /** ★ 判据（P3）：detach **只节点**——子节点不动；`parent` 也不动。 */
+  @Test
+  void detachUnitTouchesOnlyTheNode() {
+    UnitState base = attachedLine();
+    UnitState next = applied(DETACH, worldAt(T5, base), "{\"id\":\"u-2\"}");
+    assertThat(next.units().get(U2).attached().valueAt(T5)).as("u-2").isFalse();
+    assertThat(next.units().get(U3).attached().valueAt(T5)).as("u-3（子节点）不动").isTrue();
+    assertThat(next.units().get(U2).parent().valueAt(T5)).as("detach 不改父").contains(SpiFixture.U1);
+    assertThat(next.units().get(U3)).as("子节点一字不变").isEqualTo(base.units().get(U3));
+  }
+
+  @Test
+  void detachUnitRejectsARootAndUnknownUnits() {
+    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{\"id\":\"u-1\"}")).contains("已是根");
+    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{\"id\":\"u-404\"}")).contains("单位不存在");
+  }
+
+  // ── unit.SetFormationOffset（T3 / spec §一.3 / P2） ──────────────
+
+  /** ★ 判据（P2）：设偏移 ⇒ 有效位置 = 父位 ⊕ 偏移；两分量皆缺 ⇒ 清偏移 ⇒ 回父位。 */
+  @Test
+  void setFormationOffsetAppliesAndClears() {
+    UnitState base = attachedLine();
+    UnitState shifted =
+        applied(SET_OFFSET, worldAt(T5, base), "{\"id\":\"u-3\",\"dq\":1,\"dr\":0}");
+    assertThat(shifted.units().get(U3).offset().valueAt(T5)).contains(new RelativeOffset(1, 0));
+    assertThat(shifted.effectivePosition(U3, T5))
+        .as("u-3 无自身位置 ⇒ 父位 ⊕ 偏移")
+        .contains(new HexCoord(2, 1));
+
+    UnitState cleared = applied(SET_OFFSET, worldAt(T6, shifted), "{\"id\":\"u-3\"}");
+    assertThat(cleared.units().get(U3).offset().valueAt(T6)).as("两者皆缺 ⇒ 清").isEmpty();
+    assertThat(cleared.effectivePosition(U3, T6)).as("清偏移 ⇒ 回父位").contains(SpiFixture.H11);
+    assertThat(cleared.effectivePosition(U3, T5)).as("T5 的历史值不受影响").contains(new HexCoord(2, 1));
+  }
+
+  /** ★ 只给一个分量 ⇒ 另一个按 0 补（部分更新，不是清）。 */
+  @Test
+  void setFormationOffsetAcceptsAPartialComponent() {
+    UnitState next = applied(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dr\":-2}");
+    assertThat(next.units().get(U3).offset().valueAt(T5)).contains(new RelativeOffset(0, -2));
+  }
+
+  @Test
+  void setFormationOffsetRejectsBadShapesAndUnknownIds() {
+    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dq\":\"1\"}"))
+        .contains("整数");
+    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dr\":1.5}"))
+        .contains("整数");
+    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-404\",\"dq\":1}"))
+        .contains("单位不存在");
+  }
+
+  /** 十一个 handler 的载荷畸形一律折成拒绝（不逃逸成异常）。 */
   @Test
   void everyHandlerRejectsMalformedPayload() {
     assertThat(reason(REPARENT, worldAt(T5, oneUnit()), "不是 JSON")).contains("不是合法 JSON");
@@ -468,5 +595,9 @@ class UnitCommandHandlersTest {
         .contains("waypoints");
     assertThat(reason(CANCEL_ROUTE, world(oneUnit()), "{}")).contains("id");
     assertThat(reason(DISBAND, world(twoIndependent()), "{}")).contains("id");
+    assertThat(reason(SET_STATUS, world(oneUnit()), "{\"id\":\"u-1\"}")).contains("status");
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{}")).contains("id");
+    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{}")).contains("id");
+    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "[1,2,3]")).contains("JSON 对象");
   }
 }

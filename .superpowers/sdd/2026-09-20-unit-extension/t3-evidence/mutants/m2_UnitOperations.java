@@ -210,7 +210,7 @@ public final class UnitOperations {
       throw new IllegalArgumentException("父单位 " + parent + " 落在 " + id + " 的子树内（含自身）：会成环");
     }
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
-    for (UnitId member : subtree) {
+    for (UnitId member : List.of(id)) {
       Unit current = state.units().get(member);
       // 只有根换父：后代的 parent 原样带过
       SegmentedSeries<Optional<UnitId>> parents =

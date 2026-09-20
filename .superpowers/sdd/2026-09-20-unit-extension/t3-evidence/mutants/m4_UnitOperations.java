@@ -248,7 +248,11 @@ public final class UnitOperations {
     Unit unit = require(state, id);
     return withUnit(
         state,
-        copyFormation(unit, unit.parent(), unit.attached(), append(unit.offset(), at, offset)));
+        copyFormation(
+            unit,
+            unit.parent(),
+            unit.attached(),
+            append(unit.offset(), at, Optional.<RelativeOffset>empty())));
   }
 
   // ── 私有助手 ────────────────────────────────────────────────────

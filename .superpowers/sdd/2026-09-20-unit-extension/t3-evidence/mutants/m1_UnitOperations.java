@@ -231,9 +231,15 @@ public final class UnitOperations {
     if (unit.parent().valueAt(at).isEmpty()) {
       throw new IllegalArgumentException("单位 " + id + " 在 " + at + " 已是根单位：没有可脱离的父");
     }
-    return withUnit(
-        state,
-        copyFormation(unit, unit.parent(), append(unit.attached(), at, false), unit.offset()));
+    Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
+    for (UnitId member : subtreeOf(state, id, at)) {
+      Unit current = state.units().get(member);
+      next.put(
+          member,
+          copyFormation(
+              current, current.parent(), append(current.attached(), at, false), current.offset()));
+    }
+    return new UnitState(next);
   }
 
   /**

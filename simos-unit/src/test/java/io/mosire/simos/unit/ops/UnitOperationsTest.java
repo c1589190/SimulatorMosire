@@ -19,7 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** 编制树操作面 8 项（13 条 = 计划 12 条 + R-11-b 补的 placeAtClearsInTransitRoute）。 */
+/**
+ * 编制树操作面（M3 的 8 项 + T3 的编制命令 A 3 项）：25 条 = 计划 12 条 + R-11-b 补的 placeAtClearsInTransitRoute + T2
+ * 补的三态速度 3 条 + T3 补的 9 条。
+ */
 class UnitOperationsTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
@@ -31,6 +34,12 @@ class UnitOperationsTest {
   private static final UnitId LOST = new UnitId("u-lost");
 
   private static Unit unit(String id, Optional<String> parent, Optional<HexCoord> position) {
+    return unit(id, parent, position, true);
+  }
+
+  /** 同上，`attached` 逐节点给（T3 的级联用例必须从 `false` 起步：缺省 `true` 会把"级联"整个掩盖掉）。 */
+  private static Unit unit(
+      String id, Optional<String> parent, Optional<HexCoord> position, boolean attached) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -40,6 +49,11 @@ class UnitOperationsTest {
         Map.of("步枪", 50),
         2,
         1000,
+        Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, attached)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
         Optional.empty());
   }
 
@@ -291,5 +305,154 @@ class UnitOperationsTest {
     assertThatThrownBy(
             () -> UnitOperations.setStatus(twoUnits(), new UnitId("u-ghost"), UnitStatus.RESTING))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  // ── 编制命令 A（T3 / spec §一.3 / P2 / P3） ──────────────────────
+
+  private static final SimosTimestamp T20 = SimosTimestamp.of(20);
+  private static final UnitId ROOT = new UnitId("u-root");
+  private static final UnitId SUB = new UnitId("u-sub");
+  private static final UnitId LEAF = new UnitId("u-leaf");
+  private static final UnitId OTHER = new UnitId("u-other");
+
+  /**
+   * 三层树 `u-root → u-sub → u-leaf` + 独立根 `u-other`；除 `parent` 外只有 `u-root` 有位置（`H11`，子节点无自身位置 ⇒ 可判
+   * `effectivePosition` 的继承与偏移）。★ 三个根与 `u-other` 一律 `attached=false`：级联若溢出 `id` 的子树，会被"子树外不动"
+   * 的断言抓住（缺省 `true` 会把级联整个掩盖掉）。
+   */
+  private static UnitState formation(boolean subAttached, boolean leafAttached) {
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(ROOT, unit("u-root", Optional.empty(), Optional.of(H11), false));
+    units.put(OTHER, unit("u-other", Optional.empty(), Optional.of(H12), false));
+    units.put(SUB, unit("u-sub", Optional.of("u-root"), Optional.empty(), subAttached));
+    units.put(LEAF, unit("u-leaf", Optional.of("u-sub"), Optional.empty(), leafAttached));
+    return new UnitState(units);
+  }
+
+  /** ★ 判据（P3）：attach **级联**——`id` 与其全部后代都 `attached=true`；只有 `id` 换父，后代的 `parent` 不动。 */
+  @Test
+  void attachCascadesAttachedToTheWholeSubtree() {
+    UnitState base = formation(false, false);
+    UnitState state = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
+
+    assertThat(state.units().get(SUB).parent().valueAt(T10)).contains(OTHER);
+    assertThat(state.units().get(SUB).attached().valueAt(T10)).as("u-sub").isTrue();
+    assertThat(state.units().get(LEAF).attached().valueAt(T10)).as("u-leaf（后代也 true）").isTrue();
+    assertThat(state.units().get(LEAF).parent().valueAt(T10)).as("后代父不动").contains(SUB);
+    assertThat(state.units().get(ROOT).attached().valueAt(T10)).as("原父不在子树内").isFalse();
+    assertThat(state.units().get(OTHER).parent().valueAt(T10)).as("新父不动").isEmpty();
+    assertThat(state.units().get(SUB).attached().valueAt(T0)).as("T0 仍是旧值（追加段）").isFalse();
+    assertThat(base.units().get(SUB).parent().segments()).as("纯函数：旧状态不变").hasSize(1);
+    assertThat(base.units().get(SUB).attached().segments()).hasSize(1);
+  }
+
+  /** ★ 判据：成环 ⇒ op 内**先显式拒**（可读理由），状态不变。 */
+  @Test
+  void attachRejectsAParentInsideTheSubtree() {
+    UnitState base = formation(false, false);
+    assertThatThrownBy(() -> UnitOperations.attachSubtree(base, SUB, LEAF, T10))
+        .as("u-leaf 是 u-sub 的后代")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThatThrownBy(() -> UnitOperations.attachSubtree(base, SUB, SUB, T10))
+        .as("自身也是子树的一员")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("子树");
+    assertThat(base.units().get(SUB).parent().segments()).as("拒绝 ⇒ 状态不变").hasSize(1);
+    assertThat(base.units().get(SUB).attached().segments()).hasSize(1);
+  }
+
+  @Test
+  void attachRejectsUnknownUnits() {
+    UnitState base = formation(false, false);
+    assertThatThrownBy(() -> UnitOperations.attachSubtree(base, new UnitId("u-ghost"), OTHER, T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+    assertThatThrownBy(() -> UnitOperations.attachSubtree(base, SUB, new UnitId("u-ghost"), T10))
+        .as("父不存在同样拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("父单位不存在");
+  }
+
+  /** ★ 判据（P3 的不对称）：detach **只节点**——只 `id` 变 false，子节点不动；`parent` 也不动。 */
+  @Test
+  void detachTouchesOnlyTheNodeItself() {
+    UnitState base = formation(true, true);
+    UnitState state = UnitOperations.detachUnit(base, SUB, T10);
+
+    assertThat(state.units().get(SUB).attached().valueAt(T10)).as("u-sub").isFalse();
+    assertThat(state.units().get(LEAF).attached().valueAt(T10)).as("u-leaf（子节点）不动").isTrue();
+    assertThat(state.units().get(SUB).parent().valueAt(T10)).as("detach 不改父").contains(ROOT);
+    assertThat(state.units().get(SUB).attached().valueAt(T0)).as("T0 仍是旧值（追加段）").isTrue();
+    assertThat(base.units().get(SUB).attached().segments()).as("纯函数：旧状态不变").hasSize(1);
+  }
+
+  @Test
+  void detachRejectsARootAndUnknownUnits() {
+    UnitState base = formation(true, true);
+    assertThatThrownBy(() -> UnitOperations.detachUnit(base, ROOT, T10))
+        .as("根没有可脱离的父")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("已是根");
+    assertThatThrownBy(() -> UnitOperations.detachUnit(base, OTHER, T10))
+        .as("另一个根同判")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> UnitOperations.detachUnit(base, new UnitId("u-ghost"), T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+  }
+
+  /** ★ 判据（P2）：attached + 无自身位置 + offset ⇒ 有效位置 = 父位 ⊕ 偏移；清偏移 ⇒ 回父位。 */
+  @Test
+  void anOffsetShiftsTheEffectivePositionOfAnAttachedChild() {
+    UnitState base = formation(true, true);
+    assertThat(base.effectivePosition(SUB, T10)).as("无偏移 ⇒ 父位").contains(H11);
+
+    UnitState shifted =
+        UnitOperations.setOffset(base, SUB, Optional.of(new RelativeOffset(1, 0)), T10);
+    assertThat(shifted.effectivePosition(SUB, T10)).contains(new HexCoord(2, 1));
+    assertThat(shifted.effectivePosition(LEAF, T10))
+        .as("沿父链传播（u-leaf 无自身位置）")
+        .contains(new HexCoord(2, 1));
+
+    UnitState cleared =
+        UnitOperations.setOffset(shifted, SUB, Optional.<RelativeOffset>empty(), T20);
+    assertThat(cleared.effectivePosition(SUB, T20)).as("清偏移 ⇒ 回父位").contains(H11);
+    assertThat(cleared.effectivePosition(SUB, T10)).as("T10 的历史值不受影响").contains(new HexCoord(2, 1));
+    assertThat(shifted.units().get(SUB).offset().segments()).as("追加段").hasSize(2);
+    assertThat(base.units().get(SUB).offset().segments()).as("纯函数：旧状态不变").hasSize(1);
+  }
+
+  /** ★ 判据（P2）：offset **不强制落在地图内**（这是相对父的站位，不是绝对坐标）。 */
+  @Test
+  void anOffsetIsNotRequiredToStayInsideTheMap() {
+    UnitState state =
+        UnitOperations.setOffset(
+            formation(true, true), SUB, Optional.of(new RelativeOffset(-9999, 9999)), T10);
+    assertThat(state.effectivePosition(SUB, T10)).contains(new HexCoord(1 - 9999, 1 + 9999));
+  }
+
+  /** ★ 判据：detached + 无自身位置 ⇒ 空（不回退父）；即便带着偏移也仍是空。 */
+  @Test
+  void aDetachedNodeWithoutItsOwnPositionHasNoEffectivePosition() {
+    UnitState detached = UnitOperations.detachUnit(formation(true, true), SUB, T10);
+    assertThat(detached.effectivePosition(SUB, T10)).isEmpty();
+    assertThat(detached.effectivePosition(LEAF, T10))
+        .as("u-leaf 仍 attached，但 u-sub 无位可给")
+        .isEmpty();
+
+    UnitState shifted =
+        UnitOperations.setOffset(detached, SUB, Optional.of(new RelativeOffset(1, 0)), T20);
+    assertThat(shifted.effectivePosition(SUB, T20)).as("detached 即便有偏移也不回退父").isEmpty();
+  }
+
+  @Test
+  void setOffsetRejectsUnknownId() {
+    assertThatThrownBy(
+            () ->
+                UnitOperations.setOffset(
+                    formation(true, true), new UnitId("u-ghost"), Optional.empty(), T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
   }
 }

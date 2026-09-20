@@ -16,7 +16,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * unit 七个命令 handler 共用的载荷解析助手（spec §四）。
+ * unit 十一个命令 handler 共用的载荷解析助手（spec §四）。
  *
  * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世、带可读中文原因**；handler 在命令边界把它折成 {@code
  * HandlerOutcome.Rejected}（理由进 {@code simos.command.rejected} 事件，拒绝不留 revision）。域规则违反由 {@code
@@ -86,6 +86,20 @@ final class UnitPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
     }
     return value.asInt();
+  }
+
+  /**
+   * 可选整数字段（T3：{@code SetFormationOffset} 的 {@code dq}/{@code dr}）：缺失或 {@code null} ⇒ 空 Optional。
+   */
+  static Optional<Integer> optionalInt(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
+    }
+    return Optional.of(value.asInt());
   }
 
   /** 必填的三态状态（T2）：未知串 ⇒ 抛（`UnitStatus.valueOf` 失败折成拒绝）。 */
