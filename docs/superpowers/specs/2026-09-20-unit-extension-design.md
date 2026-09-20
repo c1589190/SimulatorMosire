@@ -1,8 +1,8 @@
 # Unit 扩容设计 —— 编制两级 / 回归路径 / 三态 / 战损增量（UnitSimos Extension）
 
-> 状态：**待用户裁决**（未拍项逐条见 §〇.2，编号 `P1~P11`）。作者：控制器（AI 代笔）。日期：2026-09-20。
+> 状态：**已获用户裁决**（§〇.2 已由 2026-09-20「开始吧」全部拍定，**全文无待裁项**）。作者：控制器（AI 代笔）。日期：2026-09-20。
 > 前置依据：`2026-09-20-sd-simos-design.md`（★ 其 **§十「与 Unit 扩容的边界」** 与 **§〇 裁定表**）、`2026-09-20-sd-simos-research.md`（★ 其 **§A.1 是既有 Unit 代码实测，逐条带 `文件:行`**；§B.5/§B.7 是战损与 ORBAT 的外部研究）、`2026-09-20-sd-simos-brainstorm.md`（★ 其 **§3 Unit 的进一步开发** + **§7 五个结构性缺口**）、`CLAUDE.md`（五条铁律 + 模块依赖硬约束 + 纪律）。
-> 本文是**设计**，不是计划：**不含 bite-sized 步骤**；未拍项一律标「待裁」，**不替用户决定**。
+> 本文是**设计**，不是计划：**不含 bite-sized 步骤**；原未拍项见 §〇.2（**已全部裁定**）。
 > 术语沿用 sd 主 spec / research：**编制**分两层——**`command_chain`（谁向谁报告，可多属）** 与 **`Formation`（谁物理跟谁移动：严格树 + attached/detached + 相对偏移）**；战损 = **人员/装备双轨 + delta**（N3）；三态 = **移动 / 休整 / 交战**。
 
 ---
@@ -18,23 +18,28 @@
 | **E3** | ★ **三态**：**移动 / 休整 / 交战**，**三者对应不同移动速度**；★ 合并时，被合的小单位**只能处于「移动」状态**。 | 用户（brainstorm §3.2） |
 | **E4** | ★ **战损增量**：唯一入口 `unit.SetStrength` 是**整份替换**（`UnitOperations.java:82-97`）⇒ 新增**增量/损失**语义，**人员 + 装备双轨**，且**可与时间线恢复状态对接**。 | 用户（brainstorm §3.3；N3） |
 
-> ★ **编号说明**：本 spec 用 **`E` 系列**（Extension），**不与 M3 的 U 系列裁定、也不与 sd 的 R/N 系列混用**。`P` 系列 = 本 spec 的未拍项（§〇.2）。
+> ★ **编号说明**：本 spec 用 **`E` 系列**（Extension），**不与 M3 的 U 系列裁定、也不与 sd 的 R/N 系列混用**。`P` 系列 = 本 spec 的**原未拍项**（§〇.2，**现已全部裁定**）。
 
-### 〇.2 未拍项（待裁）
+### 〇.2 已裁定（原未拍项）——★ 用户 2026-09-20「开始吧」＝采纳下列全部建议
 
-| # | 待裁 | 建议 | 理由 |
-|---|---|---|---|
-| **P1** | `attached`/`offset` 的**存储表示**：(A) 作为 `Unit` 的新时态字段，还是 (B) `UnitState` 的独立 `Formation` 组件？ | ★ 建议 **(A)** | `parent` 本身就是 `Unit` 上的时态序列（`Unit.java:23`）；`attached/offset` 是**同一类「本节点相对父」属性**，放一起可复用既有的「追加段」机制与逐节点构造期校验，且**不引入第二个 key 空间**（备选 B 要额外维护 `formations` 与 `units` 的键一致性）。 |
-| **P2** | **`offset` 是否参与 `effectivePosition`**（attached ⇒ 父位 ⊕ 偏移），还是只作形制/显示参数？ | ★ 建议**参与** | 这是 `Formation` 的实质（form-up / station-keeping）；否则「相对偏移」只是摆设。代价：`effectivePosition`（`UnitState.java:55-72`）语义变化 ⇒ 见 §一.4 的**取代/共存**说明。 |
-| **P3** | **detach 级联策略**：detach 移动整棵子树，还是只移动该节点？（AFSIM 是**刻意不对称**：attach 级联、detach 不级联） | ★ 建议照 AFSIM：**attach 级联、detach 只节点** | research §B.7 原文；「子树迁移」另有独立命令（`ReparentSubtree`），与 detach 标志是两件事。 |
-| **P4** | **孤儿策略**：父被解散 / 被移除后，子怎么办？（级联销毁 / 提升为根 / 标记孤儿） | ★ 建议**提升为根**（`parent=empty`） | AFSIM `RemoveSubCommand` 即此形；★ **绝不留下悬空 `parentId`**（research §B.7 坑 11）。既有 `disband` 已要求先改编下属（`UnitOperations.java:162-176`）⇒ v1 不必新造级联销毁。 |
-| **P5** | **三态的速度映射数值**（MOVING/RESTING/ENGAGED 各乘多少‰） | ★ 建议**只落机制、不落数值**（表留空 / 判据只断言「三者不同且 RESTING/ENGAGED < MOVING」） | 用户未给数值；照 sd 的纪律「只借机制形状，不引入数值真值」（sd 主 spec §十二）。 |
-| **P6** | **在途时改状态**的语义 | ★ 建议 v1：**在途状态的冻结规则不动**（`Movement.speedAtDeparture` 出发时冻结，`Movement.java:12-13`、`UnitMoves.java:42`）——状态**只影响此后新下达的路线**；要停/要休整就 `CancelRoute`。 | 避免「速度翻倍让昨天已走的路突然变长」的时间反演（`Movement.java:9-10` 明文告诫）。 |
-| **P7** | **「有能力回归」的判据** | ★ 建议 v1 = **位置可确定 + A\* 能到达目标当前位置 + 状态允许移动**（三者皆可用代码判） | 用户只说「有能力」未下定义；这是**环境相关**的判据，应每 tick 重算，不能存成一次性的布尔。 |
-| **P8** | **回归路径的存法**：(a) 存**目标引用**（`rejoinTarget: UnitId`）每 tick 重规划；还是 (b) 每次大编制移动时**物化**一条新 `Route`？ | ★ 建议 **(a)** | research §B.7 坑 2（CMO #16284：航点不更新移动母体 ⇒ 飞机飞向错误位置并坠毁）说明**冻结 hex 序列必然过期**。存目标引用 = 天然「大编制移动时对应更新」。 |
-| **P9** | **合体语义**：attach 回父即可（保留子节点），还是**消化**为一个单位（销毁子节点）？ | ★ 建议 v1 = **attach 回父**（不销毁）；「消化」另设命令 | 用户只说「合体」，未说消失；保留节点使「同格」前置与可回放都更简单。 |
-| **P10** | **新增命令的命名与载荷形状**（`unit.AttachUnit` / `ReparentSubtree` / `SplitFormation` / `MergeFormation` / `PlanSparseRoute` / `SetStatus` / `ApplyCasualties` …） | ★ 建议照本文命名；**以实现期 spec 为准** | 设计形状，非用户逐条确认；`ApplyCasualties` 与 sd 主 spec §十 row ③ 的暂名一致。 |
-| **P11** | **`command_chain` 是否需要「关系类型」枚举**（`ORGANIC|ASSIGNED|ATTACHED|OPCON|TACON|SUPPORTED|SUPPORTING`，research §B.7 建议），以及链**是否要可寻址**（`unit:<id>:chain.<id>`）？ | ★ 建议 v1：**不要类型枚举**（`attached` 布尔已够），**链不可寻址**；两者都列挂起 | 用户的两级描述里只提到「可多属」；枚举与地址是**额外机制**，加了要连带 codec / resolver / 判据，不在本需求内。 |
+> ★ **本表已无"待裁"行**：原"建议"自此升为**设计前提**，§一 / §二 / §三 / §四 / §五 相应段落一律按**确定语气**执行。
+
+| # | 裁定 | 理由 / 依据 |
+|---|---|---|
+| **P1** | `attached`/`offset` 的存储 = **(A) `Unit` 的新字段**（**不取**独立 `Formation` 组件） | `parent` 本身就是 `Unit` 上的时态序列（`Unit.java:23`）；`attached/offset` 是**同一类「本节点相对父」属性**，放一起可复用既有的「追加段」机制与逐节点构造期校验，且**不引入第二个 key 空间**（备选 B 要额外维护 `formations` 与 `units` 的键一致性）。 |
+| **P2** | ★ **`offset` 参与 `effectivePosition`**：attached ⇒ 父位 ⊕ 偏移；detached 且无自身位置 ⇒ 空（不回退父）——即 §一.4 的取代/共存那套。★ **`offset` 不强制落在地图内**，只要求是**合法 `HexCoord`**。 | `Formation` 的实质（form-up / station-keeping）就在相对偏移；否则「相对偏移」只是摆设。地图内强制会与「父位在边界、子偏移越界」冲突而无收益，v1 不做。 |
+| **P3** | **detach 级联照 AFSIM：attach 级联、detach 只节点**（刻意不对称） | research §B.7 原文；「子树迁移」另有独立命令（`ReparentSubtree`），与 detach 标志是两件事。 |
+| **P4** | **孤儿策略 = 提升为根**（`parent=empty`）；★ **绝不留下悬空 `parentId`** | AFSIM `RemoveSubCommand` 即此形；research §B.7 坑 11。既有 `disband` 已要求先改编下属（`UnitOperations.java:162-176`）⇒ v1 不必新造级联销毁。 |
+| **P5** | ★ **`statusFactor` 取具体 v1 值**：`MOVING = 1000`、`RESTING = 500`、`ENGAGED = 250`（‰）；★ **v1 可调、非永久** | 三值互不相等且 `RESTING/ENGAGED < MOVING`，满足 E3；照 sd 纪律「只借机制形状，不引入数值真值」（sd 主 spec §十二）——故显式标**可调**，不作永久承诺。 |
+| **P6** | **在途改状态不回溯**：`Movement.speedAtDeparture` 出发时冻结不动（`Movement.java:12-13`、`UnitMoves.java:42`）；状态**只影响此后新下达的路线**；要停/要休整就 `CancelRoute` | 避免「速度翻倍让昨天已走的路突然变长」的时间反演（`Movement.java:9-10` 明文告诫）。 |
+| **P7** | ★ **「有能力回归」= 位置可确定 + A\* 到目标当前 `effectivePosition` 可达 + 状态允许移动**；★★ **每 tick 重算、不存成布尔** | 三者皆可用代码判；环境会变（目标移动、地图改地形）⇒ 一次性布尔会过期。 |
+| **P8** | **回归路径 = (a) 存目标引用（`rejoinTarget: UnitId`）每 tick 重规划**（不物化冻结 `Route`） | research §B.7 坑 2（CMO #16284：航点不更新移动母体 ⇒ 飞机飞向错误位置并坠毁）说明**冻结 hex 序列必然过期**。存目标引用 = 天然「大编制移动时对应更新」。 |
+| **P9** | **合体 = attach 回父（不销毁子节点）**；「消化」另设命令 | 保留节点使「同格」前置与可回放都更简单；用户只说「合体」未说消失。 |
+| **P10** | ★ **命令命名采纳本文建议名**：`unit.AttachUnit` / `unit.DetachUnit` / `unit.ReparentSubtree` / `unit.SetFormationOffset` / `unit.CreateCommandChain` / `unit.UpdateCommandChain` / `unit.SplitFormation` / `unit.MergeFormation` / **`unit.PlanSparseRoute`** / `unit.SetRejoinTarget` / `unit.SetStatus` / **`unit.ApplyCasualties`**（后者与 sd 主 spec §十 row ③ 暂名一致）；载荷形状以实现期 spec 为准 | 设计形状已足够明确；`PlanSparseRoute`/`ApplyCasualties` 两名用户明示采纳。 |
+| **P11** | **`command_chain` 不要关系类型枚举**（`attached` 布尔已够）、**链不可寻址** | 用户的两级描述里只提到「可多属」；枚举与地址是**额外机制**，加了要连带 codec / resolver / 判据，不在本需求内。 |
+| **P12** | ★ **稀疏路线任一相邻段不可达 ⇒ 命令期拒绝** | 「给一条走不通的路」是**坏命令**而非运行时状况；命令期拒绝比落到 `NEED_REPLAN` 更早、更明确。 |
+| **P13** | **`status` 存储 = 普通字段 `UnitStatus status`**（非时态）；`SegmentedSeries<UnitStatus>` **列挂起备选** | 历史由 revision 承载（与 `member` 同族），无需时态序列；保留可时态化的后路。 |
+| **P14** | ★ **未知装备键 ⇒ 拒绝**（不视作 0 忽略） | 没收一个**没有的**装备是坏命令；拒绝让错误在命令边界现形（与 `UnitPayloads`「坏载荷折拒绝」同口径）。 |
 
 ### 〇.3 写作纪律与来源标注
 
@@ -90,8 +95,8 @@ record CommandChain(CommandChainId id, String name,
 record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex 轴向坐标差）
 ```
 
-**存储（P1，建议 (A)）**：作为 `Unit` 的两个**新字段**——
-- `attached`：布尔（建议 `SegmentedSeries<Boolean>`，与 `parent` 同形，可时态化）；
+**存储（P1：(A)）**：作为 `Unit` 的两个**新字段**——
+- `attached`：`SegmentedSeries<Boolean>`（与 `parent` 同形，可时态化）；
 - `offset`：`SegmentedSeries<Optional<RelativeOffset>>`（缺省 `empty` = 无偏移）。
 
 **语义规则**：
@@ -105,7 +110,7 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 
 **现状**：`effectivePosition` = 自身有位置 ⇒ 它；否则**向父递归取**（`UnitState.java:55-72`）。
 
-**建议语义（P2 = 参与）**：
+**语义（P2：参与）**：
 
 | 情形 | `effectivePosition` |
 |---|---|
@@ -119,7 +124,7 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 
 **共存（向后兼容）**：既有存档没有 `attached`/`offset` ⇒ 取默认 `attached=true`、`offset=empty` ⇒ **`effectivePosition` 与今天逐字节相同**。这是本设计的硬约束：**默认值必须让旧行为一字不变**。
 
-★ **连带**：`UnitOperations.planRoute` 用 `effectivePosition` 判路线起点（`:119-143`）⇒ 若 P2 采纳，detached 且无自身位置的单位**无法下达路线**（起点不可确定）——这**正是想要的**（它得先有个位置）。★ **offset 是否必须落在地图内**（`GameMap.hexes().containsKey`）**待裁**（本 spec 未定；倾向 v1 不强制，只要求是合法 `HexCoord`）。
+★ **连带**：`UnitOperations.planRoute` 用 `effectivePosition` 判路线起点（`:119-143`）⇒ P2 之下，detached 且无自身位置的单位**无法下达路线**（起点不可确定）——这**正是想要的**（它得先有个位置）。★ **`offset` 不强制落在地图内**（`GameMap.hexes().containsKey`）：v1 只要求它是**合法 `HexCoord`**（P2）。
 
 ### 一.5 新增：子树迁移与拆合
 
@@ -129,7 +134,7 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 
 | 操作 | 语义 | 拒绝条件 |
 |---|---|---|
-| `reparentSubtree(state, rootId, newParent, at)` | 给 `rootId` **及其全部后代**在同 `at` 追加 `parent` 段 | `newParent` 落在被迁子树内 ⇒ **成环**（构造期 `UnitState.java:74-97` 会拒；建议在 op 内**先显式拒**以给可读理由） |
+| `reparentSubtree(state, rootId, newParent, at)` | 给 `rootId` **及其全部后代**在同 `at` 追加 `parent` 段 | `newParent` 落在被迁子树内 ⇒ **成环**（构造期 `UnitState.java:74-97` 会拒；op 内**先显式拒**以给可读理由） |
 | `attachSubtree / detachUnit` | 改 `attached` 标志（P3 的级联策略） | 目标不存在；detach 已是根等 |
 | `setOffset(state, id, offset, at)` | 改相对偏移 | 目标不存在；偏移非法 |
 
@@ -178,10 +183,10 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 
 ### 二.2 新增
 
-**（1）稀疏路点载荷通道**（P10：命名待裁，建议 `unit.PlanSparseRoute`）：
+**（1）稀疏路点载荷通道**（P10：`unit.PlanSparseRoute`）：
 - 载荷：`id, waypoints[{q,r}…]`（与既有 `unit.PlanRoute` 同形，但**允许非相邻**，`UnitPayloads.requireWaypoints` `:133-146` 可复用）；
 - handler：读 `GameMap`（`state.module("map")`，读法与 `UnitTimeParticipant.mapOf` `:146-154` 同制），对每对相邻 waypoint 调 `PathFinder.findPath(map, from, to, unit, TerrainMovementCost.INSTANCE)`（`PathFinder.java:59`、`TerrainMovementCost.java:18`）**逐段展开**，拼成完整相邻 `path`，再 `new Route(waypoints, expandedPath)`；
-- 任一相邻段不可达 ⇒ **命令期拒绝**（建议；「给一条走不通的路」是坏命令而非运行时状况，标待裁）；
+- 任一相邻段不可达 ⇒ **命令期拒绝**（P12；「给一条走不通的路」是坏命令而非运行时状况）；
 - 起点仍须 == `effectivePosition`（`UnitOperations.planRoute` `:128-130` 的既有校验不动）。
 
 ★ **为什么另开命令而非改 `unit.PlanRoute`**：既有 `unit.PlanRoute` 的「载荷必须逐格相邻」契约已被 M7b/M7c 的 WebUI 与 e2e 引用（`GuiServer.java:299` 那个只读路径端点与 `unit.PlanRoute` 是两条）；`CommandRegistry` **无可变 `register()`**（`CommandRegistry.java:36-56`）但**新增一个 handler 零成本**，另开命令的回归面为零。备选：给 `unit.PlanRoute` 加**可选** `path` 字段（缺省 = 现行为）。
@@ -190,12 +195,12 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 
 **语义（E2）**：拆分后**有能力回归**的单位，额外创建一条**回归路径**；★ **大编制移动时对应更新**。
 
-**建议设计（P8 = (a) 存目标引用 + 每 tick 重规划）**：
+**设计（P8：(a) 存目标引用 + 每 tick 重规划）**：
 - 在**被拆出的单位**上记「回归意图」：`rejoinTarget: UnitId`（= 原大编制的根/父）；
 - **不**存冻结的 hex 序列——终点 = 目标单位**当前**的 `effectivePosition`，每 tick（或每次推进时）重规划；
 - 落点：`unit.*` 里的一条命令（如 `unit.SetRejoinTarget`，P10）设置/清除；物化重规划放 **`UnitTimeParticipant`**（`unit` namespace 唯一的 participant，`UnitTimeParticipant.java:69`、`namespace() :80-82`）——它已能读 map（`:146-154`）且产出 `unit` 变更集，A\\* 是 unit 模块自己的类（`PathFinder.java`），**越界为零**。
 
-**「有能力回归」的判据（P7，待裁，建议 v1）**：位置可确定 + A\\* 到目标当前 `effectivePosition` **可达** + 状态允许移动。⇒ 该判据**每 tick 重算**，**不存成布尔**（环境会变：目标移动、地图改地形）。
+**「有能力回归」的判据（P7）**：位置可确定 + A\\* 到目标当前 `effectivePosition` **可达** + 状态允许移动。★★ **每 tick 重算、不存成布尔**（环境会变：目标移动、地图改地形）。
 
 ### 二.3 不变量
 
@@ -237,24 +242,24 @@ record RelativeOffset(int dq, int dr)          // 相对父的轴向偏移（hex
 enum UnitStatus { MOVING, RESTING, ENGAGED }        // 移动 / 休整 / 交战
 ```
 
-**存储**：`Unit` 新增字段 `UnitStatus status`（**普通字段**，与 `member`/`speed`/`movement` 同族，非时态）——历史由 revision 承载（同 `member` 的处理），无需 `SegmentedSeries`。★ 备选：`SegmentedSeries<UnitStatus>`（可时态查询）；v1 取普通字段，**标待裁**。
+**存储（P13）**：`Unit` 新增字段 `UnitStatus status`（**普通字段**，与 `member`/`speed`/`movement` 同族，非时态）——历史由 revision 承载（同 `member` 的处理），无需 `SegmentedSeries`。★ `SegmentedSeries<UnitStatus>`（可时态查询）**列挂起备选**。
 
-**三态 → 速度（E3，只落机制、不落数值，P5）**：
+**三态 → 速度（E3 / P5）**：
 - 概念式：`effectiveSpeed(status) = speed × statusFactor(status) / 1000`（‰ 定点，与项目既有 ‰ 口径一致，`TerrainMovementCost.scale` `:82-84`）；
-- 建议 `statusFactor(MOVING) = 1000`（基线），`RESTING`、`ENGAGED` **< 1000**；
-- **数值留空**（P5）；判据只断言「三者不同且 RESTING/ENGAGED < MOVING」；
+- ★ **v1 值（P5，可调、非永久）**：`statusFactor(MOVING) = 1000`、`statusFactor(RESTING) = 500`、`statusFactor(ENGAGED) = 250`（‰）；
+- 判据断言「三值互不相等且 `RESTING/ENGAGED < MOVING`」，并逐值钉住上述数字；
 - **施加时点**：在 `planRoute` 时把 `effectiveSpeed(当前 status)` 冻进 `Movement.speedAtDeparture`（沿用 `Movement.java:12-13` 的冻结规则，`UnitOperations.planRoute` `:142` 构造 `Movement`）⇒ ★ **在途状态变化不回溯**（P6）。
 
 **合并前置（E3 后半）**：★ 合并时被合的小单位**只能处于「移动」状态** ⇒ `unit.MergeFormation`（或 attach）在 handler 里判 `status == MOVING`，否则拒绝。与「同格」是**两个独立的拒绝条件**（sd 主 spec §八.2 D5 的 `FormationIntent` 前置即此）。
 
-**创建默认值**：`unit.CreateUnit` 新增 status（建议默认 `MOVING`，或作为可选载荷字段；P10/§五）。
+**创建默认值**：`unit.CreateUnit` 新增 `status`（默认 `MOVING`，或作为可选载荷字段；P10/§五）。
 
 ### 三.3 不变量
 
 1. `status` 是持久状态、`MovementStatus` 是派生量，**两者类型不混、字段不合**；
 2. `planRoute` 冻结的 `speedAtDeparture` = `effectiveSpeed(status at 出发)`；**在途改状态不改变已冻结值**（`Movement.java:9-10` 的「时间反演」禁令）；
 3. 合并前置：`status == MOVING` **且** `effectivePosition` 相等（§一.5）；
-4. `statusFactor` 三值互不相等且 `RESTING/ENGAGED < MOVING`（P5，数值待裁）。
+4. `statusFactor` 三值互不相等且 `RESTING/ENGAGED < MOVING`（P5：1000 / 500 / 250）。
 
 ### 三.4 判据思路
 
@@ -283,7 +288,7 @@ enum UnitStatus { MOVING, RESTING, ENGAGED }        // 移动 / 休整 / 交战
 
 ### 四.2 新增
 
-**命令**（P10：命名待裁，建议 `unit.ApplyCasualties`；与 sd 主 spec §十 row ③ 暂名一致）：
+**命令**（P10：`unit.ApplyCasualties`；与 sd 主 spec §十 row ③ 暂名一致）：
 
 ```
 unit.ApplyCasualties: { id, personnel: int(≤0), equipment: {键: int(≤0)} }
@@ -294,10 +299,10 @@ unit.ApplyCasualties: { id, personnel: int(≤0), equipment: {键: int(≤0)} }
 - **双轨**：`member` + `equipment`（E4）；
 - **delta 语义**：只接受 **≤ 0** 的增量；结果 = 当前值 + Δ；
 - **上界校验（代码侧，§八.4 的「绝不交给 AI」）**：`|Δ| ≤ 当前值`（member 与每个装备键逐项）；越界 ⇒ 拒绝；
-- **未知装备键**：建议**拒绝**（没收一个没有的装备是坏命令），**标待裁**（备选：视作 0 忽略）；
+- **未知装备键**：**拒绝**（P14；没收一个没有的装备是坏命令）；
 - 产出新 `UnitState`；handler 照既有形制返回 `UnitChangeSet.between(base, next)`（**不另造增量路径**，`UnitOperations.java:22-23` 的纪律）。
 
-**`lossClass`（PERMANENT / RECOVERABLE）的归属**：sd 的 `CasualtyDelta` 带 `lossClass`（sd 主 spec §三.4）；★ **建议 v1 由 sd 的 `LossRecord` 持有，unit 命令只收数值 delta**（unit 不新造损失台账）。★ 若将来要 unit 侧留损（供直接查/AAR），再加一个损失台账组件——**列挂起**（P-未定，见 §七）。
+**`lossClass`（PERMANENT / RECOVERABLE）的归属**：sd 的 `CasualtyDelta` 带 `lossClass`（sd 主 spec §三.4）；★ **v1 由 sd 的 `LossRecord` 持有，unit 命令只收数值 delta**（unit 不新造损失台账）。★ 若将来要 unit 侧留损（供直接查/AAR），再加一个损失台账组件——**列挂起**（见 §七）。
 
 ### 四.3 与时间线恢复的对接
 
@@ -350,11 +355,11 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 | 时刻取 `state.meta().timestamp()` | `ReparentUnitHandler.java:39`、`PlanRouteHandler.java:45` |
 | 命令是**不透明载荷**（ADR-1 §七） | `CommandBus.java:34`、`:214-218` |
 
-### 五.2 新命令清单（P10：命名待裁）
+### 五.2 新命令清单（P10：命令名已裁定，载荷形状以实现期 spec 为准）
 
-| type（建议） | 载荷要点 | op | 拒绝条件 | 节 |
+| type | 载荷要点 | op | 拒绝条件 | 节 |
 |---|---|---|---|---|
-| `unit.AttachUnit` | `id, parent` | attach（+ 可选同格） | 不存在；已是父；环 | §一.3 |
+| `unit.AttachUnit` | `id, parent` | attach（级联，P3） | 不存在；已是父；环 | §一.3 |
 | `unit.DetachUnit` | `id` | detach（只节点，P3） | 不存在；已是根 | §一.3 |
 | `unit.ReparentSubtree` | `rootId, parent?` | reparentSubtree | 新父落在子树内（环）；不存在 | §一.5 |
 | `unit.SetFormationOffset` | `id, dq, dr`（或 null 清） | setOffset | 不存在；非法偏移 | §一.3 |
@@ -362,10 +367,10 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 | `unit.UpdateCommandChain` | `chainId, name?, commander?, members?` | updateChain | 不存在；成员不存在；commander∉members | §一.2 |
 | `unit.SplitFormation` | `rootId, subUnitIds[]`（或单 id） | detach 指定 | 目标不在 root 子树；不存在 | §一.5 |
 | `unit.MergeFormation` | `childId, parentId` | attach（**同格 + MOVING**） | 不同格 / 状态非 MOVING / 环 | §一.5、§三.2 |
-| `unit.PlanSparseRoute` | `id, waypoints[]` | A\\* 展开 + planRoute | 段不可达（建议）；起点不符 | §二.2 |
+| `unit.PlanSparseRoute` | `id, waypoints[]` | A\\* 展开 + planRoute | 段不可达（P12）；起点不符 | §二.2 |
 | `unit.SetRejoinTarget` | `id, target`（或 null 清） | 设/清回归目标 | 目标不存在；自指 | §二.2 |
 | `unit.SetStatus` | `id, status` | 改状态 | 未知 status；合并场景前置由合并命令判 | §三 |
-| `unit.ApplyCasualties` | `id, personnel, equipment{}` | applyCasualties | **上界**；未知装备键（建议拒） | §四 |
+| `unit.ApplyCasualties` | `id, personnel, equipment{}` | applyCasualties | **上界**；未知装备键（P14） | §四 |
 
 ★ **`unit.CreateUnit` 的连带**：新增字段（`status` / `attached` / `offset`）要在创建时给默认段（现构造锚点段在 `CreateUnitHandler.java:54-66`）；`command_chain` 为空表。
 
@@ -375,7 +380,7 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 2. **`ArchitectureGuardsTest`**：`changeSetHasExactlyFourMainSourceImplementors`（`:24-45`）钉「全仓恰 4 个 main `ChangeSet` 实现者」。本次只在 `UnitChangeSet` 里**加组件**（仍是同一个类）⇒ **计数仍是 4，无需改**；★ 若有人另造一个 unit 变更集类，此条会红。
 3. **`UnitCodec`**：现在只注册 `UnitId` 一个键反序列化器（`UnitCodec.java:52-55`）。★ 若 `CommandChainId` 作 `Map` 键，**必须照裁定 16 在本模块注册键反序列化器**，否则解码期抛。`UnitChangeSet.isEmpty()` 的 mixin（`:40-50`）已处理，新增组件不改变它。
 4. **恰一个 participant**：`unit` namespace 的 tick 行为（回归重规划、状态对物化的影响）**只能进 `UnitTimeParticipant`**（`UnitTimeParticipant.java:69`；`namespace() :80-82`）——`TimeAdvance` 的 `putIfAbsent` 对同 namespace **重复即抛**（research §C③.4）。它读 `state.module("map")`（`:146-154`）、产出 `unit` 变更集、声明 `reads/writes`（`:100-118`）。
-5. **resolver**：canonical 仍是 `unit:<id>`（`UnitResolver.java:25`、`:154-159`）。`command_chain` 是否要子实体地址（P11 建议**不要**）若将来要做，须同时改 resolver + `UnitPayloads`/地址 AST——**列挂起**。
+5. **resolver**：canonical 仍是 `unit:<id>`（`UnitResolver.java:25`、`:154-159`）。`command_chain` **不给子实体地址**（P11）；若将来要做，须同时改 resolver + `UnitPayloads`/地址 AST——**列挂起**。
 6. **AgentAttachPolicy**：`UnitAgentAttachPolicy` 对**存在的 `Unit`** 可绑（`:19`）。新增实体（链/编队覆盖层）**不自动**可绑；若要，另加策略——**列挂起**。
 
 ### 五.4 判据思路
@@ -424,9 +429,9 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 ### 六.3 与主 spec §十 的协调（★ 只指出，不擅自改主 spec）
 
 1. **N4 的状态（已核当前字节）**：sd 主 spec **§〇.3 已把 N4 记为裁定**（2026-09-20「开始吧」采纳建议），§十 表格 row ① 亦写「**N4 = 两层**」。措辞与本 spec 的 **E1 / §一** **一字一致** ⇒ **无冲突，无需协调**。本 spec 的 §一 是该裁定的 **unit 侧落点细化**（加上了对 `effectivePosition` 的取代/共存说明——那是 sd 主 spec 未展开的部分）。
-2. **`unit.ApplyCasualties` 命名**：sd 主 spec §十 row ③ 写「暂名 `unit.ApplyCasualties`，以 unit-extension spec 为准」⇒ 本 spec **确认该名**（P10 待裁）。
+2. **`unit.ApplyCasualties` 命名**：sd 主 spec §十 row ③ 写「暂名 `unit.ApplyCasualties`，以 unit-extension spec 为准」⇒ 本 spec **确认该名**（P10）。
 3. **D5 前置**：sd 主 spec §十 末行「合法性（同位置、状态=移动）由 unit 的命令判」⇒ 本 spec §一.5 / §三.2 落地，**一致**。
-4. **战损双轨字段对齐**：sd 的 `CasualtyDelta(UnitId unit, int personnel, Map<String,Integer> equipment, LossClass lossClass)`（sd 主 spec §三.4）与 unit 的 `ApplyCasualties` 载荷（`personnel` + `equipment`）**建议逐字段对齐**（`lossClass` 留 sd）。**待实现期协调**。
+4. **战损双轨字段对齐**：sd 的 `CasualtyDelta(UnitId unit, int personnel, Map<String,Integer> equipment, LossClass lossClass)`（sd 主 spec §三.4）与 unit 的 `ApplyCasualties` 载荷（`personnel` + `equipment`）**逐字段对齐**（`lossClass` 留 sd）——实现期落实。
 5. **`Army.rootUnit`**：sd 主 spec §三.2 的 `Army(..., UnitId rootUnit, ...)` 需要一个「根」的 unit 定义 ⇒ 本 spec 的「根」= `parent` 为空（与 `UnitResolver.resolveChain` 的 `parent().valueAt(at).isEmpty()` 判根一致，`UnitResolver.java:83-89`）。
 
 ---
@@ -440,14 +445,8 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 | **`RECOVERABLE` 回池速率** | **不做**（v1 只记类别，且在 sd 侧） | sd 主 spec §〇.3 |
 | **unit 侧损失台账** | **不做**（损失量以 sd 的 `LossRecord` 为准，或对相邻 revision 求差） | 本 spec §四.3 |
 | **LOD / 聚合单位（DIS/HLA 式坍缩-展开）** | **不做** | research §B.7 坑 6 |
-| **`offset` 是否参与 `effectivePosition`** | **待裁**（P2，建议参与） | 本 spec §一.4 |
-| **detach 级联策略** | **待裁**（P3，建议 attach 级联、detach 只节点） | 本 spec §一.3 |
-| **孤儿策略** | **待裁**（P4，建议提升为根；绝不悬空 `parentId`） | 本 spec §一.3 |
-| **三态速度数值** | **待裁**（P5，只落机制不落数值） | 本 spec §三.2 |
-| **在途改状态语义** | **待裁**（P6，建议 v1 不回溯、要停先 `CancelRoute`） | 本 spec §三.2 |
-| **「有能力回归」判据** | **待裁**（P7，建议每 tick 重算） | 本 spec §二.2 |
-| **合体是否消化子节点** | **待裁**（P9，建议 v1 只 attach） | 本 spec §一.5 |
-| **`command_chain` 关系类型枚举 / 链可寻址** | **待裁**（P11，建议 v1 都不要，列挂起） | 本 spec §一.2 |
+| **`SegmentedSeries<UnitStatus>`（状态时态化）** | **挂起**（v1 用普通字段 `UnitStatus status`，P13） | 本 spec §三.2 |
+| **`command_chain` 关系类型枚举 / 链可寻址** | **挂起**（v1 都不要，P11） | 本 spec §一.2 |
 | **空 / 海 / 特殊编队、装备词表、链绑决策人** | **不做** | 本 spec §五.3 |
 | **跨 revision 的 drain 原子性** | **挂起**（v1 幂等 + 可重放补偿） | sd 主 spec §五.3 / §十二 |
 
@@ -491,22 +490,20 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 - **行号漂移**：research §A.1 记 `Shell.java:201-208`（8 条 unit handler），本会话直读为 **`Shell.java:195-202`**；本文用直读值。research §A.2/§A.3 的多数行号仍来自 explore transcript（◇），**本会话未逐行复核**（如 `TimeAdvance.java:124-127` 的 `putIfAbsent`、`FieldDelta`/`CommandBus` 的若干行属本会话直读，其余以源码为准）。
 - **`PathFinder` 在 participant 里的代价**：回归重规划每 tick 对每个在途回归单位跑 A\\*，**在 19441 格真图上的性能未测**（M9 已证 overview/传输是瓶颈，但 A\\* 在推进支的代价**本会话未测**）。
 - **新类型的 Jackson 往返**：`CommandChain` / `RelativeOffset` / `UnitStatus` 是**新 record/enum**，假定按既有 `SegmentedSeries`/`Unit` 同制可往返；**未运行 codec 往返实测**（本任务不跑 Maven）。`CommandChainId` 作 Map 键需要键反序列化器（§五.3），**未写、未验**。
-- **`SegmentedSeries<Boolean>` 是否可序列化**：`parent`/`position` 是 `SegmentedSeries<Optional<…>>`，布尔序列**未验**；若不可用，退化为普通布尔字段（本 spec 未定）。
+- **`SegmentedSeries<Boolean>` 是否可序列化**：`parent`/`position` 是 `SegmentedSeries<Optional<…>>`，布尔序列**未验**；若不可用，退化为普通布尔字段（实现期定）。
 - **`effectivePosition` 加 offset 后对既有用例的冲击面**：假定「offset 为空 ⇒ 与今天逐字相同」⇒ 既有测试全绿；**未实证**。
 - **`unit.CreateUnit` 加默认段对旧档的影响**：假定默认值使旧档行为不变；**未实证**。
 - **sd 主 spec 的 `CasualtyDelta` 与 unit 载荷的字段级对齐**：**未与 sd 实现核对**（sd 尚未实现）。
 
-**我替用户做的假设（凡此均应视为可推翻）**：
+**原「假设」的归属（★ 2026-09-20「开始吧」后）**：
 
-1. **`attached`/`offset` 的存储表示取 (A)**（`Unit` 新字段，P1）——§〇.2 建议项；
-2. **`offset` 参与 `effectivePosition`**（P2）——本 spec 提出的语义；
-3. **detach 级联照 AFSIM（attach 级联、detach 只节点）**（P3）；
-4. **孤儿提升为根**（P4）；
-5. **三态速度只落机制、数值留空**（P5）；在途改状态不回溯（P6）；
-6. **回归路径存「目标引用 + 每 tick 重规划」**（P8 (a)）；
-7. **合体 v1 只 attach、不消化子节点**（P9）；
-8. **新命令的 type 名与载荷字段名**（P10）——设计形状，实现期可微调；
-9. **`command_chain` 用扁平星形、无关系类型枚举、链不可寻址**（P11 建议）；
-10. **`unit.CreateUnit` 的 status 默认值**（建议 `MOVING`）。
+§〇.2 已把 **P1~P14 全部拍定**（含本 spec 原先作为「建议」提出的 P1~P11）⇒ 下列**原假设已升为设计前提**，**不再算假设**：`attached`/`offset` 存 `Unit` 新字段（P1）、`offset` 参与 `effectivePosition` 且不强制落图内（P2）、detach 只节点（P3）、孤儿提升为根（P4）、三态速度 1000/500/250（P5）、在途不回溯（P6）、回归判据每 tick 重算（P7）、回归存目标引用（P8）、合体只 attach（P9）、命令命名（P10）、链无枚举/不可寻址（P11）、稀疏不可达命令期拒（P12）、`status` 普通字段（P13）、未知装备键拒绝（P14）。
+
+**仍属本 spec 的假设 / 待实现期落实（可推翻）**：
+
+1. **`attached`/`offset` 取「时态序列」形态**（`SegmentedSeries<Boolean>` / `SegmentedSeries<Optional<RelativeOffset>>`）——P1 只裁定「存 `Unit` 新字段」，是否时态化由本 spec 提出（复用「追加段」机制）；
+2. **各命令的载荷字段名**——P10 明说：**命名已裁定，载荷形状以实现期 spec 为准**；
+3. **`unit.CreateUnit` 的 `status` 默认值 = `MOVING`**（本 spec 提出）；
+4. **`command_chain` 是扁平星形、`commander ∈ members`**（P11 只说不要枚举/不可寻址，链的形状由本 spec 提出）。
 
 ★ **本 spec 的定位**：它是 `unit.*` 扩容的**设计**；**不含 bite-sized 步骤**；实现顺序与任务分解归实现期计划。**与 sd 主 spec 的协调点已列 §六.3，本 spec 不改主 spec。**
