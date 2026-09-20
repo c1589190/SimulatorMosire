@@ -60,3 +60,9 @@
 ## 六、执行期取代说明
 
 无。计划 §三 T2 七步、文件与判据逐条落地；U1 按计划 §六建议表裁定（clamp 到 1）并记入台账。
+
+## 七、合并后门禁（主树 `feat/adr1-core-scope`，快进合并 `8b8c0c0`）
+
+- `./mvnw clean verify` **rc=0**、**8/8 模块 SUCCESS**、`BugInstance size is 0` **×7**、`[ERROR]` **0 行**、前端 `tests=88 pass=88 fail=0`。
+- 逐模块：`util 170 / map 362 / social 45 / **unit 167** / core 174 / sd 62 / app 116` = **1096**。
+- ★ **基线口径更正**：派单的"基准 1000 = …/169/110/13"**不是起始 HEAD `f9f5f0c` 的实测值**——A3~A6 的 sd 合并给 core/sd/app 加了 +5/+49/+6（git diff 实测，且未碰 simos-unit）。起始树实测 **1060**；**T1+T2 净增量 = unit 131 → 167 = +36**（diff 范围仅 simos-unit + `.superpowers`）⇒ `1096 = 1060 + 36`。日志见 `logs/merged-full-verify.log` 与 `logs/verify-rc.txt`。

@@ -21,3 +21,9 @@
 - **计数**：`simos-unit` **148 → 167**（+19）。
 - **变异**：m1/m2/m3 **全 KILLED，0 存活**（`t2-evidence/logs/`），每轮 `restored_md5 == orig_md5`。
 - **未做**：`unit.SetStatus` 未注册进 `Shell`（归 T9）；真档 / SpotBugs 归关账轮——见 `t2-report.md` §五。
+
+## 合并后门禁（`feat/adr1-core-scope`，T1+T2 快进合并 `8b8c0c0`）
+
+- `./mvnw clean verify` **rc=0**、**8/8 模块 SUCCESS**、`BugInstance size is 0` **×7**、`[ERROR]` **0 行**、前端 `[frontend-gate] OK tests=88 pass=88 fail=0`。日志 `t2-evidence/logs/merged-full-verify.log` + `verify-rc.txt`。
+- **逐模块**：`util 170 / map 362 / social 45 / unit 167 / core 174 / sd 62 / app 116` = **1096**。
+- ★ **基线口径更正（诚实披露）**：派单写"基准 1000 = 170/362/45/131/169/110/13"。**该 1000 与本次起始 HEAD `f9f5f0c` 不符**——A3~A6 的 sd 合并（`924bb49 → f9f5f0c`）给 core/sd/app 加了 **+5/+49/+6 = +60** 条用例（git diff 实测），而它**未碰 simos-unit**。⇒ 起始树实测应为 **1060**（`…/unit 131/core 174/sd 62/app 116`）。**本次 T1+T2 的净增量恰为 `simos-unit 131 → 167 = +36`**，其余模块逐值不变（diff 范围仅 `simos-unit` + `.superpowers`）。**1096 = 1060 + 36**。
