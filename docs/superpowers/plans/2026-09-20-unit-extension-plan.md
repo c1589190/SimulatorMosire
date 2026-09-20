@@ -289,7 +289,7 @@ unit-ext T1：模型地基（UnitStatus/RelativeOffset/CommandChain + Unit 四�
 
 **bite-sized 步骤**
 
-1. `reparentSubtree(state, rootId, newParent, at)`：对 `rootId` **及其全部后代**在同 `at` 追加 `parent` 段（`newParent` 对 root；后代父不变——只有 root 换父）；`newParent` 落在被迁子树内 ⇒ **显式拒**（环）。
+1. `reparentSubtree(state, rootId, newParent, at)`：对 `rootId` **及其全部后代**在同 `at` 追加 `parent` 段（`newParent` 对 root；后代的**值**仍是它本来的父、**但段必须落**——整树在同一刻被重新挂载，只有 root 换父）〔★ 见下注〕；`newParent` 落在被迁子树内 ⇒ **显式拒**（环）。
    ⇒ 验证：`r→a→b`，迁移 `a` 到 `c` ⇒ `a.parent=c`、`b.parent=a`；`c` 是 `b` 的后代 ⇒ 拒。
 2. `splitFormation(state, rootId, subUnitIds, at)`：每个 `subUnitId` 必须**在 `rootId` 子树内**（否则拒）；然后 `detachUnit` 各自（节点级）。
    ⇒ 验证：目标不在子树 ⇒ 拒；在 ⇒ `attached=false`。
@@ -308,10 +308,17 @@ unit-ext T1：模型地基（UnitStatus/RelativeOffset/CommandChain + Unit 四�
 - `simos-unit` 计数累加；前端 88/88 不变。
 
 **变异思路（≥2 轮）**
-- **m1**：`reparentSubtree` 只改 root、不改后代 ⇒ 后代父不变 ⇒ 红。
+- **m1**：`reparentSubtree` 只改 root、不改后代 ⇒ **后代少一段** ⇒ 红（★ 红点是**段数**，不是值——见下注）。
 - **m2**：删环校验 ⇒ 通过 ⇒ 红。
 - **m3**：删同格校验 ⇒ 不同格通过 ⇒ 红。
 - **m4**：合并前置不查 `MOVING` ⇒ 非 MOVING 通过 ⇒ 红。
+
+> ★ **2026-09-21 T4 回填（控制器）**：步骤 1 的括注原写「后代父不变——只有 root 换父」，**落地取 Reading B′**
+> ——后代也在同 `at` 追加段，**值仍是它本来的父**。判据是 spec `:137` 的机制列原文「给 `rootId` **及其全部后代**
+> 在同 `at` 追加 `parent` 段」；本括注只是它的**值层面**提示，把它读成实现语义会让**上面那条 m1 变成零差异变异体**
+> （变异体将等于参照实现）。⇒ 本步括注与 m1 的理由均已按此改写；**m1 的真实杀点是段数**（T4 实测三处红点全是
+> `SegmentedSeries` 段数断言，`Expected size: 2 but was: 1`，无一处是值断言）。详见
+> `.superpowers/sdd/2026-09-20-unit-extension/t4-evidence/t4-report.md` §3.3 与台账 T4 段。
 
 **证据落点**：`.superpowers/sdd/2026-09-20-unit-extension/t4-evidence/`。
 
