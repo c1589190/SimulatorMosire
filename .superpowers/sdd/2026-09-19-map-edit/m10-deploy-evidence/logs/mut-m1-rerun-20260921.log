@@ -1,0 +1,18 @@
+===== M10 m1 本机重跑（控制器，2026-09-21）=====
+round_start=2026-09-21T02:12:59+08:00 host=ubuntu root=/home/dev/SimulatorMosire
+orig_md5=91267b3d36572d4132ac5b873469a998
+pre_target_md5=91267b3d36572d4132ac5b873469a998
+mutant_md5=83dcbc6e8a2cdce05ff0b9bbd5dc75b0
+pushed_md5=83dcbc6e8a2cdce05ff0b9bbd5dc75b0
+mvn_rc=1
+compile_errors=0
+surefire_summary=Tests run: 4, Failures: 4, Errors: 0, Skipped: 0
+surefire_mtime=2026-09-21T02:14:08+08:00
+--- 失败清单（原文，供⑦核红点）---
+[ERROR]   GuiAccessLogTest.accessLogNeverCarriesTheQueryStringOrItsValues:130 [前提：先得真收到访问日志] 
+[ERROR]   GuiAccessLogTest.everyRequestProducesOneAccessLineWithMethodPathStatusAndRemote:106 [两次请求 ⇒ 两行访问日志，实得 []] 
+[ERROR]   GuiAccessLogTest.logLinesAreActuallyCaptured:97 [★ 捕获为空 ⇒ 整套装置失效，其余断言全部无意义。实得 []] 
+[ERROR]   GuiAccessLogTest.notFoundAndWrongMethodAreLoggedWithTheirRealStatus:120 
+restored_md5=91267b3d36572d4132ac5b873469a998
+start_epoch=1789927979 end_epoch=1789928049
+verdict=OK (m1 KILLED；红点含前提断言 logLinesAreActuallyCaptured)

@@ -81,12 +81,18 @@ class GuiAccessLogTest {
     }
   }
 
-  /** ★★ **前提断言**：装置真的在收日志；否则本类其余断言都可能在空捕获上假绿。 */
+  /**
+   * ★★ **前提断言**：装置真的在收日志；否则本类其余断言都可能在空捕获上假绿。
+   *
+   * <p>★ **必须 `awaitAccessLines` 而非裸读**（2026-09-21 控制器修）：访问日志在 `finally` 里写，与客户端拿到响应之间有一个极短窗口 ——
+   * 本类其余三条用例都用了 `awaitAccessLines`，只有这条裸读，于是它**是全类唯一会随机红的那条**（全量 `clean verify` 负载下实测 一次：`Tests
+   * run: 4, Failures: 1`，且控制台日志里那行 `access GET / -> 200` 确实在断言之后才出现）。裸读**不是判据更强，只是更脆**。
+   */
   @Test
   void logLinesAreActuallyCaptured() throws Exception {
     get("/");
 
-    assertThat(accessLines())
+    assertThat(awaitAccessLines(1))
         .as("★ 捕获为空 ⇒ 整套装置失效，其余断言全部无意义。实得 %s", appender.messages())
         .isNotEmpty();
   }

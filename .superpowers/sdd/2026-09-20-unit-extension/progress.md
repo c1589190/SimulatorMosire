@@ -28,6 +28,24 @@
 - **逐模块**：`util 170 / map 362 / social 45 / unit 167 / core 174 / sd 62 / app 116` = **1096**。
 - ★ **基线口径更正（诚实披露）**：派单写"基准 1000 = 170/362/45/131/169/110/13"。**该 1000 与本次起始 HEAD `f9f5f0c` 不符**——A3~A6 的 sd 合并（`924bb49 → f9f5f0c`）给 core/sd/app 加了 **+5/+49/+6 = +60** 条用例（git diff 实测），而它**未碰 simos-unit**。⇒ 起始树实测应为 **1060**（`…/unit 131/core 174/sd 62/app 116`）。**本次 T1+T2 的净增量恰为 `simos-unit 131 → 167 = +36`**，其余模块逐值不变（diff 范围仅 `simos-unit` + `.superpowers`）。**1096 = 1060 + 36**。
 
+## T3 编制命令 A（attach 级联 / detach 只节点 / offset）
+
+- **worktree** `.claude/worktrees/uet3`，分支 `ue/t3`，基线 `4138c5d`，实现提交 **`5adb574`**。
+- **落地**：`UnitOperations.attachSubtree`（级联，P3）/ `detachUnit`（只节点）/ `setOffset` + 私有 `subtreeOf`/`parentAt`/`copyFormation`；`UnitPayloads.optionalInt`；三 handler（`AttachUnitHandler` / `DetachUnitHandler` / `SetFormationOffsetHandler`）。生产 diff **5 文件**（`UnitOperations` +132、`UnitPayloads` +16/−2、3 新 handler），`Co-Authored-By` 命中 **0**。
+- **计数**：`simos-unit` **167 → 183**（+16；`UnitOperationsTest` 16→25、`UnitCommandHandlersTest` 34→41）。
+- **变异 5 轮 5 KILLED / 0 SURVIVED**（`t3-evidence/logs/m1..m5.log`，各九道门禁）；★ **m3**（删环校验）红点 = `UnitOperationsTest.attachRejectsAParentInsideTheSubtree:356`，控制器原文核过失败清单。
+- **裁定 T3-a（`UnitPayloads` 新增 `optionalInt`）——接受**：计划 §三 T3 第 5 步**自身互斥**（"`dq`/`dr` 用 `requireInt`" vs "允许任一缺失 ⇒ 清偏移"），`requireInt` 缺失即抛、无法表达"可选"。实现者新增的 `optionalInt` **镜像既有 `optionalText`/`optionalHex`**，是"尽量不新增 helper"的有意偏离 ⇒ 接受。
+- **裁定 T3-b（spec §五.2 `:362` 的「已是父」不实现）——接受不实现，spec 已回填**（该行改为 `不存在；环 〔★ 见下注〕` + 表下补注）。依据三条：① `:143` 明写**合体 = 同格前提下重新 attach**，而 detach 只翻 `attached`、**不动 `parent`** ⇒ 拒「已是父」会把**拆→合往返**堵死（E2 核心）；② `:369` 的 `MergeFormation` op **就是 attach** 且拒绝条件**不含**「已是父」⇒ 表内自相矛盾；③ `UnitOperations.java:201` 明写操作面不判"无变化命令"。**⇒ T4 不得补这条守卫。**
+- **★ 带裁定的遗留 T3-L1（`dq`/`dr` 无上界 ⇒ 静默溢出）——记，不在 T3 修**：实测 `RelativeOffset.appliedTo` 是裸 int 加法（`hex.q() + dq`），`HexCoord` 无紧凑构造器校验、`RelativeOffset` 无范围护栏 ⇒ `dq = 2147483647` 时结果**静默回绕**为负数（`1 + MAX_VALUE = -2147483648`），单位"瞬移"。**不修的理由**：① 修点应落在 **T1 已关账的 `RelativeOffset`**（只堵 handler 层则 **codec 反序列化路径仍开着**，那比不堵更坏——看着像有护栏）；② spec **P2 明文"无范围约束"**，加界是**动一条已裁定的 P 项**；③ 按**裁定 42** 补护栏必须自带变异轮，而这会牵动 T1 的证据链。⇒ **留给 T10 关账轮连 P2 一起裁**；`unit.SetFormationOffset` 现有的"非法偏移"拒绝（非整数 / 超 int）已兑现 spec `:365` 的载荷层部分。
+- **★ 控制器修的既有 flake（M10 遗留，非 T3 引入）**：合并后首轮全量 `clean verify` **rc=1**，红在 `simos-app` 的 `GuiAccessLogTest.logLinesAreActuallyCaptured`（"捕获为空"）。**根因**：该用例的 javadoc 自称前提断言，却用**裸读** `accessLines()`，而**同类其余三条都用了 `awaitAccessLines`**——而后者的注释**自己就写着**"日志在 `finally` 写出，与客户端拿到响应之间有一个极短窗口"。控制台原文可证那行 `access GET / -> 200 2ms`（`02:09:08.521`）**出现在断言之后**。⇒ 全类唯一会随机红的正是它；T3 未碰 `simos-app`。**修法**：前提断言改用 `awaitAccessLines(1)`（**裸读不是判据更强，只是更脆**）。
+- **★ 改动被测文件 ⇒ M10 的 m1 对新字节重跑（九道门禁，控制器）**：M10 原装置 `mut-round.sh` 把 `WT` 钉死在**另一台机器**（`/home/cna/…`，本机跑不了）⇒ 新写本机版 `m10-deploy-evidence/mutants/mut-m1-rerun.sh`，日志 `m10-deploy-evidence/logs/mut-m1-rerun-20260921.log`。**结果：m1 KILLED**——`orig_md5=91267b3d… == pre/restored_md5`、`mutant_md5=83dcbc6e…`（与原件不同、`logAccess` 计数 2→1）、`compile_errors=0`、`Tests run: 4, Failures: 4`、surefire mtime 落在本轮内、★ **红点含 `logLinesAreActuallyCaptured:97`**（即 await 版前提断言**仍会红** ⇒ 那一行没有把护栏改弱）。**这一段是本轮唯一的新证据，其余 T3 结论均引实现者的 `t3-evidence/`。**
+
+## 合并后门禁（`feat/adr1-core-scope`，T3 快进合并 `5adb574`）
+
+- `./mvnw clean verify` **rc=0**、**8/8 模块 SUCCESS**、`BugInstance size is 0` **×7**、`[ERROR]` **0 行**、前端 `[frontend-gate] OK tests=88 pass=88 fail=0`。日志 `t3-evidence/logs/merged-full-verify.log` + `merged-verify-rc.txt`（红的那一轮**留档不删**：`merged-full-verify.attempt1-flake.log`）。
+- **逐模块**：`util 170 / map 362 / social 45 / unit 183 / core 174 / sd 62 / app 116` = **1112**。
+- **核对**：`1112 = 1096 + 16`，且 **delta 干净**——只有 `simos-unit` 167→183，其余六个模块**逐值不变**（与 T3 "只碰 `simos-unit`" 的范围一致）；`simos-app` 116 不变（控制器改的是**既有断言**，未加用例）。
+
 ## T3 编制命令 A（E1 / P1 / P2 / P3）
 
 - **本任务树**：`.claude/worktrees/uet3`，分支 `ue/t3`，基线 HEAD `4138c5d`（T1+T2 合并后）。

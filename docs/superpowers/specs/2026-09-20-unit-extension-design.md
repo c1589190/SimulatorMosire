@@ -359,7 +359,7 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 
 | type | 载荷要点 | op | 拒绝条件 | 节 |
 |---|---|---|---|---|
-| `unit.AttachUnit` | `id, parent` | attach（级联，P3） | 不存在；已是父；环 | §一.3 |
+| `unit.AttachUnit` | `id, parent` | attach（级联，P3） | 不存在；环 〔★ 见下注〕 | §一.3 |
 | `unit.DetachUnit` | `id` | detach（只节点，P3） | 不存在；已是根 | §一.3 |
 | `unit.ReparentSubtree` | `rootId, parent?` | reparentSubtree | 新父落在子树内（环）；不存在 | §一.5 |
 | `unit.SetFormationOffset` | `id, dq, dr`（或 null 清） | setOffset | 不存在；非法偏移 | §一.3 |
@@ -373,6 +373,12 @@ sd.RecordCasualties（sd 数据：LossRecord，含 delta/lossClass）
 | `unit.ApplyCasualties` | `id, personnel, equipment{}` | applyCasualties | **上界**；未知装备键（P14） | §四 |
 
 ★ **`unit.CreateUnit` 的连带**：新增字段（`status` / `attached` / `offset`）要在创建时给默认段（现构造锚点段在 `CreateUnitHandler.java:54-66`）；`command_chain` 为空表。
+
+★ **注（`AttachUnit` 的「已是父」——2026-09-21 T3 执行期裁定，本节回填）**：本表原把「已是父」列为 `unit.AttachUnit` 的拒绝条件，**T3 决定不实现它**，理由三条：
+① §一.5（本文件 `:143`）明写**「合体 = 同格前提下重新 `attach`」**，而 P3 + `detachUnit` 的语义是 **detach 只翻转 `attached`、不动 `parent`** ⇒ `SplitFormation` 之后子节点的 `parent` **没变**，`MergeFormation` 必须能以**同一个父**重新 attach；若 attach 拒「已是父」，**拆→合的往返当场被堵死**（E2 的核心场景）。
+② 本表 `unit.MergeFormation` 行的 op **就是 attach**，而它的拒绝条件（`不同格 / 状态非 MOVING / 环`）**不含「已是父」** ⇒ 两行自相矛盾，以 `:369` 为准。
+③ `UnitOperations` 的操作面**不判「无变化命令」**（其 javadoc `:201` 明写，`attached` 已是 `true` 的节点也不拒）。
+⇒ **T4 实现 `MergeFormation` 时不得补这条守卫**；若将来要「拒绝无变化命令」，那是**全项目策略**，不在这一条上单独判。
 
 ### 五.3 连带的 SPI / 快照 / codec
 

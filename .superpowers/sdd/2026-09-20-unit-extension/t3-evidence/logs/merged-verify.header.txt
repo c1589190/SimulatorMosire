@@ -1,0 +1,4 @@
+# merged full clean verify — controller run #2 (after GuiAccessLogTest premise-assertion fix)
+# branch=feat/adr1-core-scope  head=5adb5748bd8f47b13ea5567f801ffa261a7076fe
+# started=2026-09-21T02:14:20+08:00
+# finished=2026-09-21T02:23:55+08:00  rc=0
