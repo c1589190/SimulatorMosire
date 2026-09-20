@@ -37,8 +37,15 @@
    ⇒ 装配点传 `INSTANCE` 合法；`Shell` 里若出现任何"handler 内部自己取 cost"的形态才是错的。
 3. **★ T9 的门禁不是"模块门禁"，是"近似全量"。** T9 改 `simos-app`，而 `-pl simos-app -am` 会把 7 个依赖全带上 ⇒ **实测耗时必然压在那条 600 s 线上**（见 §五）。⇒ **T9 的门禁必须按全量门禁的规矩跑**：前台、独占、记"第几次尝试"。
 
-**12 条 handler 清单**（计划 T9 步骤 1，已与 T3~T8 实现对齐）：
+**12 条 handler 清单**（计划 T9 步骤 1，**控制器已逐条实测核过**）：
 `AttachUnit` / `DetachUnit` / `ReparentSubtree` / `SetFormationOffset` / `CreateCommandChain` / `UpdateCommandChain` / `SplitFormation` / `MergeFormation` / `PlanSparseRoute(cost)` / `SetRejoinTarget` / `SetStatus` / `ApplyCasualties`
+
+**★ 已实测核过的前置（不是照抄计划，是查过现状）**：
+
+- `simos-unit` 的 `spi/` 下**共 20 个 `*Handler.java`**，上述 12 个**全部存在**，且各自的 `type()` 返回串**逐个对得上**（`unit.AttachUnit` … `unit.ApplyCasualties`）。
+- **`Shell` 现在只注册了 8 个 unit handler**：`RenameUnit` / `CreateUnit` / `ReparentUnit` / `SetStrength` / `PlaceAt` / `PlanRoute` / `CancelRoute` / `DisbandUnit`（实测 `Shell.java:203-210`）。⇒ **12 + 8 = 20**，账对得上。
+- ★★ **一个容易踩的陷阱**：`SetStatusHandler` 是 **T2** 造的，但**从来没有被注册进 `Shell`**（实测 `Shell.java` 的 import 与 handlers 列表里都没有它）。⇒ **别以为"T2 那批早就注册过了"**；`SetStatus` 确实**要由 T9 首次注册**（计划把它列在 12 条里是**对的**）。
+- ★ **计划的 `Shell.java:193-213` 与 `直读现状 :187-207` 是旧行号**：实测 handlers 列表在 **`:195-214`**（同类漂移见 §五「md5 才是判据」条与 `t8-evidence/mutants/LINE-DRIFT-NOTE.md`）。⇒ **以符号为准，别照抄行号。**
 
 **判据**：catalog type 集合 ⊇ 上述 12 个（**m1 靶子 = 删一条注册**）；每个 `type()` 形状 `<namespace>.<Command>`；`unit` namespace 恰一个 participant（装配 + 一次 `advance` 不抛）；端到端经 `Shell` 发一条新命令 ⇒ `committed`。**变异 ≥2 轮**；★ 十道门禁 + ★ **裁定 42**（新增/改动护栏必须自带变异轮）+ ★ 第 ⑩ 道**逐片段**自证。
 
