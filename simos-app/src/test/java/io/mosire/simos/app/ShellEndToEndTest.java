@@ -125,7 +125,8 @@ class ShellEndToEndTest {
                 base.mcpPath(),
                 base.approvalPort(),
                 TEST_INITIATOR,
-                base.mapId()));
+                base.mapId(),
+                base.bindAddress()));
     client = newClient();
   }
 

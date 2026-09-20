@@ -227,7 +227,6 @@ public final class GuiServer implements AutoCloseable {
       LOG.warn("GUI 请求处理失败: {} {}", exchange.getRequestMethod(), exchange.getRequestURI(), e);
       safeError(exchange, 500, "internal error");
     } finally {
-      logAccess(exchange, startedNanos);
       exchange.close();
     }
   }
