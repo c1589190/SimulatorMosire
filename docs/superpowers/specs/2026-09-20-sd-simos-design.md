@@ -50,6 +50,9 @@
 | **N13** | **LLM 失败降级**（超时/输出非法 ⇒ 明确行为，不得卡死整个 tick） | 任务裁定 |
 | **N14** | ★ **判据不断言 LLM 的具体选择**，只断言**结构 + 约束 + 冻结 + 可回放** | 任务裁定 |
 | **N15** | 决策人地址**不可用 `agent:`**（实测该命名空间**无 resolver**：`implements Resolver` 仅 Map/Social/Unit 三个，`Shell.java:217-220`，research §A.2）⇒ 采用 `sd:` 下的地址形态（§二.2） | 任务裁定 + research §A.2 |
+| **N16** | **身份由渠道声明 + 模块校验**：自定义决策提交渠道（§十三）**不得冒称**任意 actor——渠道只可声明其 `representableActors()`，**actor ∈ 该集合**由**模块侧**校验（渠道自己不算数）。★ 自定义渠道 = **新攻击面**，鉴权复用 AgentLib 现成的 `AccessToken` / `AgentPermissionSet` | 用户追加需求（2026-09-20） |
+| **N17** | **视图必须按 actor 的 `viewScope` 取**，**渠道拿不到全量**——否则 R10 的脱敏当场失效。渠道只交出 actor 身份 + 决策请求，**脱敏视图由 sd 侧构造** | 用户追加需求（2026-09-20） |
+| **N18** | **留痕**：**谁经哪条渠道提交**必须可追溯 ⇒ 进 `verdictMeta` / 事件（渠道 id + actor） | 用户追加需求（2026-09-20） |
 
 ### 〇.3 未拍项（待裁）
 
@@ -64,7 +67,7 @@
 
 ### 〇.4 写作纪律与来源标注
 
-- 本文**每条涉及既有代码的断言都标 `文件:行`**，并指向 research 对应小节；**未实测的一律写"未核实"**（见 §十三）。
+- 本文**每条涉及既有代码的断言都标 `文件:行`**，并指向 research 对应小节；**未实测的一律写"未核实"**（见 §十四）。
 - research 的来源分级照抄：**▲ 实测**（控制器直读本仓字节）、**◇ 引用**（explore transcript，未逐行复核）、**○ 空白**。外部研究可靠性标签：**[Doctrine] / [OR] / [Mil-acad] / [Sim-doc/Practitioner] / [Academic]**。
 - 术语对齐：**判决 = adjudication**、**White Cell / adjudicator**；**延期效果 = trigger → effect 的 ECA 规则**，子类用条令名 *scheduled / on-call / be-prepared / branch / sequel*（research §B.8）。
 
@@ -126,7 +129,8 @@
 5. 装配 `DecisionAdjudicator`（N10；app 实现"调 LLM 或给人"）；
 6. 装配 **redaction 层**与 `viewScope`（R10/N6，§七）；
 7. 装配 **写前守卫**（§九）；
-8. 工具面**改造**：撤掉决策 Agent 的通用 `simos.command.submit`，换成窄工具（N9、§八.3）。
+8. 工具面**改造**：撤掉决策 Agent 的通用 `simos.command.submit`，换成窄工具（N9、§八.3）；
+9. 装配**决策提交渠道** `DecisionChannel`（GUI / MCP / CLI / 外部 HTTP 各一实现；§十三）——★ **新增渠道不改领域代码**。
 
 ---
 
@@ -428,6 +432,14 @@ record ViewScope(Set<RegionId> visibleRegions, Set<HexCoord> visibleHexes,
 - **服务端强制**：`sd.IssueDirective` 的 R4 唯一性 + 命令白名单 + 状态不变量；
 - **与发 revision 同一事务**：命令的 `ChangeSet` 应用与 `Timeline.appendRevision` 同在 `CommandBus` 提交的一段（`CommandBus.java:64/:117`；Task 10 的锁只罩 ③④，Task 11 的事件链归 `commit`）⇒ "检查 + 写"在**同一 revision 事务**里，不会出现"检查通过但没写"或反之。★ 并发两条同 tick 由乐观并发 + 主键挡（Task 12 机制）。
 
+### 七.5 决策提交渠道与身份（N16 / N17 / N18）
+
+- 用户的输入**不一定全是同一个角色** ⇒ **允许通过多种渠道接入不同人的决策**；渠道契约定型见 **§十三**；
+- ★ **视图必须按 actor 的 `viewScope` 取（N17）**：渠道只**交出 actor 身份 + 决策请求**，**拿不到全量**——脱敏视图在 **sd 侧**构造，否则本节的 redaction 当场失效；
+- ★ **身份由渠道声明 + 模块校验（N16）**：渠道只可声明 `representableActors()`，**actor 是否属于该集合由 sd 侧判**；自定义渠道 = **新攻击面**，鉴权复用 `AccessToken` / `AgentPermissionSet`（research §A.3）；
+- ★ **留痕（N18）**：**谁经哪条渠道提交**进 `verdictMeta` / 事件（渠道 id + actor），见 §三.5 的 `VerdictMeta` 与 §十三；
+- ★ 与 R9 一致：**渠道只是"落点适配器"，不是新语义**——它最终仍写同一落点（`sd.IssueDirective` / `sd.SubmitVerdict`）。
+
 ---
 
 ## §八 判决流程 + AI 断点表 + 专用工具
@@ -494,11 +506,15 @@ interface LlmClient { String complete(LlmRequest request); }   // app 实现；�
 
 - **边界内聚（模块内）**：契约、schema/约束校验器、**脱敏视图构造**、工具名单、配额强制、**判决冻结**；
 - **执行上浮（模块外）**：**key / 配额 / 重试 / 超时**留在 app 的 `LlmClient` / `AdjudicatorRunner`；★ `LlmClient` 是接口 ⇒ 测试注入 `FakeLlmClient`（N10），**判据可完全离线**；
-- ★ 若 AgentLib 已有合适的 LLM 客户端，app 侧可适配；**本 spec 未核实其 API**（§十三）。
+- ★ 若 AgentLib 已有合适的 LLM 客户端，app 侧可适配；**本 spec 未核实其 API**（§十四）。
 
 ### 八.6 N13 降级
 
 超时 / 输出非法 ⇒ `Judgement.Failed`/`Abstained` ⇒ **明确行为**：该断点本 tick **无判决**（`Directive`/`CombatState` 保持前态）+ 写一条事件/INFO 留痕；**绝不卡死整个 tick**，下一 tick 继续。★ 与 LLM 兵棋已知失败模式（重复、幻觉出新计划、opacity）对应（research §B.8）。
+
+### 八.7 提交渠道（交叉引用 §十三）
+
+判决/出令的**输入来源不唯一**（人 / Agent / 外部系统）⇒ 由 **`DecisionChannel`（§十三）** 接入；渠道**只做落点适配**，`sd.SubmitVerdict` / `sd.IssueDirective` 仍是**同一落点**（R9）。★ 渠道的身份与视图约束见 **N16 / N17 / N18**（§七.5）：**actor 合法性由模块校验、视图按该 actor 的 `viewScope` 取、渠道 id + actor 进留痕**。渠道**不参与**判决语义，也**不产生**新的裁决步骤——它只是把不同人的输入送进 §八.1 的同一条流程。
 
 ---
 
@@ -588,7 +604,51 @@ brainstorm §7 的**五个结构性缺口**与归属：
 
 ---
 
-## §十三 本文未核实项与已做的假设（诚实清单）
+## §十三 决策提交渠道（`DecisionChannel`）
+
+> 用户追加需求（2026-09-20 原话）：「用户的输入不一定全是同一个角色——**允许通过多种渠道接入不同人的决策**，因此**应该留有自定义决策提交渠道**」。
+
+### 十三.1 契约（★ 照 AgentLib `ApprovalChannel` 形制）
+
+**先例（实测，AgentLib 源码）**：`ApprovalChannel`（`~/ProjectMosire/AgentLibMosire/src/main/java/io/mosire/agentlib/approval/ApprovalChannel.java:18-52`）的形制是 `name()` + `available()` + `publish(req)` + `await(id, wait)`；实现 `HttpApprovalChannel`（`HttpApprovalChannel.java:22`）**不持有 HTTP server**、可用性由装配层 `markUp()` 打开（`:72-75`），且 **fail-closed**（`await` 返回空 ⇒ 拒绝，`:62-69`）。SDSimos 的决策提交渠道**照这个形制**，方法按决策语义签：
+
+```
+interface DecisionChannel {
+  String channelId();
+  Set<ActorId> representableActors();
+  void submit(ActorId actor, DecisionRequest req);
+}
+```
+
+- `channelId()` —— 对应 `ApprovalChannel.name()`：**留痕用**（N18，进 `verdictMeta` / 事件）；
+- `representableActors()` —— ★ 渠道**声明**它能代表哪些 actor（N16；**声明 ≠ 授权**，见十三.2）；
+- `submit(...)` —— 渠道把输入交进 **sd 的落点**（不直接改状态）；
+- ★ **可选** `boolean available()` —— 照 ApprovalChannel 的"**可用性是第一公民**"，装配层在端口真的监听之后再 `markUp()`；★ 自定义渠道的可用性语义由实现自定（本 spec **不强制**，列为待定）。
+- ★ `ActorId` / `DecisionRequest` 是**新类型**（住 `simos-sd`）；`DecisionRequest` 只承载"actor 想做什么"（`IssueDirective` 草稿 / `SubmitVerdict` 草稿 / 自由文本），**不含视图数据**。
+
+### 十三.2 模块侧强制（渠道**不得**自己实现）
+
+★ 以下四条**必须由 `simos-sd` 做**，渠道实现**不得**代劳：
+
+1. **`actor ∈ representableActors()` 校验**——渠道**不得冒称**任意 actor（N16）；
+2. ★ **视图必须按该 actor 的 `viewScope` 取**——渠道**拿不到全量**；脱敏视图由 sd 侧构造（§七.3 / N17）；
+3. **1 令/tick 与发 revision 同事务**——`sd.IssueDirective` 的 R4 + 事务边界（§七.4 / N12）；
+4. **留痕**——渠道 id + actor 进 `verdictMeta` / 事件（N18）。
+
+### 十三.3 app 侧适配（★ 新增渠道不改领域代码）
+
+- **GUI / MCP / CLI / 外部 HTTP 各实现一个** `DecisionChannel`；
+- ★ 添加一条新渠道 = **app 层加一个实现 + 装配一行**（§一.4 第 9 条），**`simos-sd` 一个字不改**；
+- 外部 HTTP 通道照 `HttpApprovalChannel` 的先例：**不持有 server**，可用性由装配层打开。
+
+### 十三.4 与 R9 的关系 + 攻击面
+
+- ★ **渠道只是"落点适配器"，不是新语义**：无论从哪条渠道进来，最终都写**同一落点**（`sd.IssueDirective` / `sd.SubmitVerdict`），走**同一条 `Command → ChangeSet → Revision` 路径**（铁律 2）。渠道**不预设**"立刻生效"、**不绕过**配额、**不放大**权限；
+- ★ **攻击面（N16，必须记）**：自定义渠道是**新入口**，身份声明可被伪造执行；故"**身份以模块校验为准、视图由模块构造、留痕强制**"三条是**安全边界**，不是风格问题。
+
+---
+
+## §十四 本文未核实项与已做的假设（诚实清单）
 
 **未核实（research 已自陈）**：
 
