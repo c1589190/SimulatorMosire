@@ -1,0 +1,3 @@
+eadbe492af290252dbe333178dee0d3d  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+1d6b30a0d9d30ce38b5f980fdecc08b9  simos-unit/src/main/java/io/mosire/simos/unit/spi/ApplyCasualtiesHandler.java
+23a07b24ff9ff97dd1ad589e5ff6a67c  simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java

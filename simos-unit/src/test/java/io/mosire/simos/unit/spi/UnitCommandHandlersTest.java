@@ -84,6 +84,7 @@ class UnitCommandHandlersTest {
   private static final CreateCommandChainHandler CREATE_CHAIN = new CreateCommandChainHandler();
   private static final UpdateCommandChainHandler UPDATE_CHAIN = new UpdateCommandChainHandler();
   private static final SetRejoinTargetHandler SET_REJOIN_TARGET = new SetRejoinTargetHandler();
+  private static final ApplyCasualtiesHandler APPLY_CASUALTIES = new ApplyCasualtiesHandler();
 
   // ── 夹具与世界构造 ──────────────────────────────────────────────
 
@@ -1515,6 +1516,193 @@ class UnitCommandHandlersTest {
         applied(SET_REJOIN_TARGET, worldAt(T5, base), "{\"id\":\"u-1\",\"target\":\"u-2\"}");
 
     assertThat(next.units().get(SpiFixture.U1).rejoinTarget()).contains(U2);
+    assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来（旧写法会全清）").isEqualTo(base.commandChains());
+  }
+
+  // ── unit.ApplyCasualties（T8 / spec §五.2 / §四 表 / E4 · N3 · P14） ──
+
+  /** ★ 判据（spec §四 表）：命令名与 spec 逐字一致（与 `setRejoinTargetTypeNameMatchesTheSpecTable` 同理，不并入十六个那条）。 */
+  @Test
+  void applyCasualtiesTypeNameMatchesTheSpecTable() {
+    assertThat(APPLY_CASUALTIES.type()).isEqualTo("unit.ApplyCasualties");
+  }
+
+  /** 装备双键的基线（`{"步枪":50,"炮":4}`）——由既有 `SetStrength` 造出，不手搓 `Unit`。 */
+  private static UnitState oneUnitWithTwoEquipmentKeys() {
+    return applied(
+        SET_STRENGTH,
+        world(oneUnit()),
+        "{\"id\":\"u-1\",\"member\":100,\"equipment\":{\"步枪\":50,\"炮\":4}}");
+  }
+
+  /**
+   * ★★ 判据（**m1 + m3 的靶子**）：载荷是**增量**（落在当前值上），且装备**只扣提及键**。
+   *
+   * <p>★ 命令边界给的是 `UnitChangeSet.between`（**绝对值**）——所以这里同时钉住两件事：① 应用回 base 后 `100 + (−30) = 70`； ②
+   * 变更集里的装备目标值是 `{步枪:40, 炮:4}`（未提及键**没被整表丢掉**）。
+   */
+  @Test
+  void applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment() {
+    UnitState base = oneUnitWithTwoEquipmentKeys();
+    assertThat(base.units().get(SpiFixture.U1).equipment())
+        .as("前提：双键基线")
+        .containsOnlyKeys("步枪", "炮");
+
+    UnitChangeSet changeSet =
+        changeSetOf(
+            APPLY_CASUALTIES,
+            world(base),
+            "{\"id\":\"u-1\",\"personnel\":-30,\"equipment\":{\"步枪\":-10}}");
+    UnitState next = UnitChangeSet.apply(changeSet, base);
+
+    assertThat(changeSet.isEmpty()).as("真的改了值").isFalse();
+    Unit unit = next.units().get(SpiFixture.U1);
+    assertThat(unit.member()).as("★ 100 + (−30) = 70（当绝对值覆写会得 30）").isEqualTo(70);
+    assertThat(unit.equipment()).as("★ 提及键：50 + (−10) = 40").containsEntry("步枪", 40);
+    assertThat(unit.equipment()).as("★ 未提及键不变（整表替换会丢它）").containsEntry("炮", 4);
+    assertThat(unit.equipment()).containsOnlyKeys("步枪", "炮");
+    assertThat(unit.status()).as("其余字段原样带过").isEqualTo(base.units().get(SpiFixture.U1).status());
+    assertThat(unit.position()).isEqualTo(base.units().get(SpiFixture.U1).position());
+    assertThat(unit.rejoinTarget()).isEqualTo(base.units().get(SpiFixture.U1).rejoinTarget());
+  }
+
+  /**
+   * ★★ 判据（**m2 的靶子**）：逐项上界 `|Δ| ≤ 当前值`，正 Δ 亦拒；**拒绝 ⇒ 世界原样**（handler 是纯函数）。
+   *
+   * <p>（"拒绝时 `revisions` 行数不变"那半条在真 store 上判，见 `UnitCasualtyRevisionTest`。）
+   */
+  @Test
+  void applyCasualtiesRejectsPositiveAndOutOfRangeDeltas() {
+    SimulationState world = world(oneUnitWithTwoEquipmentKeys());
+
+    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":5,\"equipment\":{}}"))
+        .as("正人员 Δ")
+        .contains("人员增量必须 ≤ 0");
+    assertThat(
+            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":-101,\"equipment\":{}}"))
+        .as("★ 上界：100 + (−101) 越界（删掉上界校验 ⇒ 这里变 Applied，红）")
+        .contains("人员战损超出当前值");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"步枪\":1}}"))
+        .as("正装备 Δ")
+        .contains("装备增量必须 ≤ 0");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"步枪\":-51}}"))
+        .as("★ 装备逐项上界：50 + (−51) 越界")
+        .contains("装备战损超出当前值");
+    assertThat(
+            applied(
+                    APPLY_CASUALTIES,
+                    world,
+                    "{\"id\":\"u-1\",\"personnel\":-100,\"equipment\":{\"步枪\":-50}}")
+                .units()
+                .get(SpiFixture.U1)
+                .member())
+        .as("上界本身合法：恰好扣光 ⇒ 0")
+        .isZero();
+    assertThat(unitSlice(world).units().get(SpiFixture.U1).member())
+        .as("拒绝 ⇒ 输入状态不动（纯函数）")
+        .isEqualTo(100);
+  }
+
+  /**
+   * ★★ 判据（**m4 的靶子** / P14）：提及**不存在**的装备键 ⇒ 拒；**Δ=0 的未知键一样拒**。
+   *
+   * <p>★ 靶子是把未知键**视作 0 忽略**的实现（读起来像"宽容"，实则是把"没有这件装备"当成了"这件装备是 0"）。
+   */
+  @Test
+  void applyCasualtiesRejectsUnknownEquipmentKeys() {
+    SimulationState world = world(oneUnitWithTwoEquipmentKeys());
+
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{\"坦克\":-1}}"))
+        .as("★ 未知键 ⇒ 拒（视作 0 忽略会让它静默通过）")
+        .contains("未知装备键")
+        .contains("坦克");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"坦克\":0}}"))
+        .as("★ 未知键 + Δ=0：什么都不减也拒（视作 0 忽略 ⇒ 这里变 Applied，红）")
+        .contains("未知装备键")
+        .contains("坦克");
+    assertThat(
+            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-404\",\"personnel\":-1,\"equipment\":{}}"))
+        .as("命令对象不存在：域层消息")
+        .contains("单位不存在");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\" \":-1}}"))
+        .as("空白键")
+        .contains("不得空白");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"坦克\":-9999}}"))
+        .as("★ 未知键即使数值「看起来越界」：报的是未知键（不存在的键没有当前值可比）")
+        .contains("未知装备键");
+  }
+
+  /** ★ 判据（spec §五.2 载荷形状 + T5 的载荷口径）：形状坏一律拒，**不逃逸异常**。 */
+  @Test
+  void applyCasualtiesRejectsMalformedPayload() {
+    SimulationState world = world(oneUnit());
+
+    assertThat(reason(APPLY_CASUALTIES, world, "[1,2,3]")).contains("必须是 JSON 对象");
+    assertThat(reason(APPLY_CASUALTIES, world, "不是 JSON")).contains("不是合法 JSON");
+    assertThat(reason(APPLY_CASUALTIES, world, "{}")).contains("id 必须是字符串");
+    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"equipment\":{}}"))
+        .as("personnel 缺失")
+        .contains("personnel");
+    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":-1}"))
+        .as("equipment 缺失")
+        .contains("equipment");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":\"-1\",\"equipment\":{}}"))
+        .as("personnel 非整数")
+        .contains("personnel");
+    assertThat(
+            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":[]}"))
+        .as("equipment 非对象")
+        .contains("equipment");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{\"步枪\":\"x\"}}"))
+        .as("装备值非整数")
+        .contains("整数");
+  }
+
+  /**
+   * ★★ 判据（**T5-L4 的又一处站点**）：`applyCasualties` 重建状态也**只走 `withUnits`** ⇒ 链经命令边界的变更集往返逐值活下来。
+   *
+   * <p>★ 靶子是那个助手改回 `new UnitState(next)`：链会在 `between` 里被当成"被删掉"，`apply` 之后全空 —— 值红，不是异常。
+   */
+  @Test
+  void applyCasualtiesKeepsCommandChains() {
+    UnitState base = twoChains();
+    UnitState next =
+        applied(
+            APPLY_CASUALTIES,
+            worldAt(T5, base),
+            "{\"id\":\"u-1\",\"personnel\":-30,\"equipment\":{\"步枪\":-10}}");
+
+    assertThat(next.units().get(SpiFixture.U1).member()).as("前提：战损真的发生了").isEqualTo(70);
     assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来（旧写法会全清）").isEqualTo(base.commandChains());
   }
 }

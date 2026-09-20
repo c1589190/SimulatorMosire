@@ -1,0 +1,249 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/6]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/6]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 46 source files with javac [debug release 21] to target/classes
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java uses or overrides a deprecated API.
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 21 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] Tests run: 55, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.857 s <<< FAILURE! -- in io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] io.mosire.simos.unit.ops.UnitOperationsTest.applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched -- Time elapsed: 0.101 s <<< FAILURE!
+java.lang.AssertionError: 
+[★ 未提及键不变（整表替换会丢它）] 
+Expecting map:
+  {"步枪"=40}
+to contain entries:
+  ["炮"=4]
+but could not find the following map entries:
+  ["炮"=4]
+	at io.mosire.simos.unit.ops.UnitOperationsTest.applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched(UnitOperationsTest.java:1283)
+
+[INFO] Running io.mosire.simos.unit.spi.UnitCommandHandlersTest
+[ERROR] Tests run: 77, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.934 s <<< FAILURE! -- in io.mosire.simos.unit.spi.UnitCommandHandlersTest
+[ERROR] io.mosire.simos.unit.spi.UnitCommandHandlersTest.applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment -- Time elapsed: 0.011 s <<< FAILURE!
+java.lang.AssertionError: 
+[★ 未提及键不变（整表替换会丢它）] 
+Expecting map:
+  {"步枪"=40}
+to contain entries:
+  ["炮"=4]
+but could not find the following map entries:
+  ["炮"=4]
+	at io.mosire.simos.unit.spi.UnitCommandHandlersTest.applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment(UnitCommandHandlersTest.java:1560)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   UnitOperationsTest.applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched:1283 [★ 未提及键不变（整表替换会丢它）] 
+Expecting map:
+  {"步枪"=40}
+to contain entries:
+  ["炮"=4]
+but could not find the following map entries:
+  ["炮"=4]
+[ERROR]   UnitCommandHandlersTest.applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment:1560 [★ 未提及键不变（整表替换会丢它）] 
+Expecting map:
+  {"步枪"=40}
+to contain entries:
+  ["炮"=4]
+but could not find the following map entries:
+  ["炮"=4]
+[INFO] 
+[ERROR] Tests run: 132, Failures: 2, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  5.291 s]
+[INFO] UtilSimos .......................................... SUCCESS [  2.075 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.264 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.232 s]
+[INFO] UnitSimos .......................................... FAILURE [ 29.198 s]
+[INFO] CoreSimos .......................................... SKIPPED
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  37.856 s
+[INFO] Finished at: 2026-09-21T07:25:24+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-unit: There are test failures.
+[ERROR] 
+[ERROR] See /home/dev/SimulatorMosire/.claude/worktrees/uet8/simos-unit/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-unit
+──────────────────────────────────────────────────────────────
+round            t8m3
+target           simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant           t8m3_UnitOperations.java
+started          2026-09-21T07:24:41+08:00
+finished         2026-09-21T07:25:24+08:00
+elapsed_s        43
+mvn_rc           1
+① orig_md5       eadbe492af290252dbe333178dee0d3d
+    baseline     eadbe492af290252dbe333178dee0d3d
+② mutant_md5     30d12f1ab6fa4407a51cfd1535fdfeda
+⑧ pushed_md5     30d12f1ab6fa4407a51cfd1535fdfeda
+⑧ restored_md5   eadbe492af290252dbe333178dee0d3d
+⑧ restored==orig yes
+⑤ compile_errors 0
+⑥ report_mtime   2026-09-21T07:25:24+08:00  (round_start=2026-09-21T07:24:41+08:00)
+⑥ summary        Tests run: 77, Failures: 1, Errors: 0, Skipped: 0
+⑥ module_summary [ERROR] Tests run: 132, Failures: 2, Errors: 0, Skipped: 0
+⑩ self_proof     frag=[equipment.clear(); // 变异 m3：整表替换装备（未提及键被丢）] dir=revert orig_hits=0 pushed_hits=1
+⑦ failures:
+[ERROR]   UnitOperationsTest.applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched:1283 [★ 未提及键不变（整表替换会丢它）] 
+[ERROR]   UnitCommandHandlersTest.applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment:1560 [★ 未提及键不变（整表替换会丢它）] 
+[ERROR]   mvn <args> -rf :simos-unit
+══════════════════════════════════════════════════════════════

@@ -1245,4 +1245,111 @@ class UnitOperationsTest {
     assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来").isEqualTo(base.commandChains());
     assertThat(base.units().get(ROOT).movement()).as("纯函数：旧状态不变").isEmpty();
   }
+
+  // ── 战损增量（T8 / spec §四 / E4 / N3 / P14） ──────────────────────
+
+  /**
+   * ★★ 判据（**m1 的靶子**）：Δ 是**增量**、落在当前值上——`100 + (−30) = 70`。
+   *
+   * <p>把 Δ 当**绝对值**（覆写）会让结果变成 30，本用例当场红。同时逐值钉住"未受战损的单位一字不动"。
+   */
+  @Test
+  void applyCasualtiesSubtractsFromTheCurrentValueInsteadOfOverwriting() {
+    UnitState base = twoUnits();
+    UnitState next = UnitOperations.applyCasualties(base, BRIGADE, -30, Map.of("步枪", -10));
+
+    Unit brigade = next.units().get(BRIGADE);
+    assertThat(brigade.member()).as("★ 100 + (−30) = 70（不是 30、不是覆写）").isEqualTo(70);
+    assertThat(brigade.equipment()).as("★ 装备同样是增量：50 + (−10) = 40").containsEntry("步枪", 40);
+    assertThat(brigade.name()).as("其余字段原样带过").isEqualTo(base.units().get(BRIGADE).name());
+    assertThat(brigade.position()).isEqualTo(base.units().get(BRIGADE).position());
+    assertThat(next.units().get(COMPANY)).as("未受战损的单位一字不动").isEqualTo(base.units().get(COMPANY));
+    assertThat(base.units().get(BRIGADE).member()).as("纯函数：旧状态不变").isEqualTo(100);
+  }
+
+  /**
+   * ★★ 判据（**m3 的靶子**）：装备是**双轨增量**——只扣**提及**的键，未提及的键**保持不变**。
+   *
+   * <p>整表替换（`setStrength` 的语义）会把 `炮` 整条丢掉，本用例当场红。
+   */
+  @Test
+  void applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched() {
+    // 两键基线由既有操作面造出：{步枪:50, 炮:4}（不手搓 Unit，免得绕过构造期校验）
+    UnitState base = UnitOperations.setStrength(twoUnits(), BRIGADE, 100, Map.of("步枪", 50, "炮", 4));
+    UnitState next = UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("步枪", -10));
+
+    Unit brigade = next.units().get(BRIGADE);
+    assertThat(brigade.equipment()).as("★ 只扣提及键").containsEntry("步枪", 40);
+    assertThat(brigade.equipment()).as("★ 未提及键不变（整表替换会丢它）").containsEntry("炮", 4);
+    assertThat(brigade.equipment()).containsOnlyKeys("步枪", "炮");
+    assertThat(brigade.member()).as("人员 Δ=0 ⇒ 不动").isEqualTo(100);
+  }
+
+  /** ★★ 判据（**m2 的靶子**）：逐项上界 `|Δ| ≤ 当前值`；正 Δ 与越界都拒（战损只减员）。 */
+  @Test
+  void applyCasualtiesRejectsPositiveDeltasAndOutOfRangeAmounts() {
+    UnitState base = twoUnits();
+
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 5, Map.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("人员增量必须 ≤ 0");
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, -101, Map.of()))
+        .as("★ 100 + (−101) 越界 ⇒ 拒（删掉上界校验会让它通过）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("人员战损超出当前值");
+    assertThat(
+            UnitOperations.applyCasualties(base, BRIGADE, -100, Map.of())
+                .units()
+                .get(BRIGADE)
+                .member())
+        .as("上界本身合法：恰好 −100 ⇒ 0")
+        .isZero();
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("步枪", 1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("装备增量必须 ≤ 0");
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("步枪", -51)))
+        .as("★ 装备逐项上界：50 + (−51) 越界 ⇒ 拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("装备战损超出当前值");
+  }
+
+  /**
+   * ★★ 判据（**m4 的靶子** / P14）：**提及**一个不存在的装备键 ⇒ 拒（**不视作 0**）。
+   *
+   * <p>含 Δ=0 的形态：未知键即使"什么都不减"也是错误——它说明调用方对装备表的心智模型是错的。
+   */
+  @Test
+  void applyCasualtiesRejectsUnknownEquipmentKeys() {
+    UnitState base = twoUnits();
+
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("炮", -1)))
+        .as("★ 未知键 ⇒ 拒（视作 0 忽略会让它静默通过）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知装备键");
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("炮", 0)))
+        .as("未知键 + Δ=0 一样拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知装备键");
+    assertThatThrownBy(
+            () -> UnitOperations.applyCasualties(base, new UnitId("u-ghost"), -1, Map.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("单位不存在");
+  }
+
+  /**
+   * ★★ 判据（**T5-L4 通则**，本轮新路径的自证）：`applyCasualties` 走 `copy` → `withUnit` → `state.withUnits(...)` ⇒
+   * `commandChains` 逐值活下来。
+   *
+   * <p>★ 这条是**新代码的复发点守卫**：若在哪一步改回 `new UnitState(units)`，链会**静默清空**——编译器不响、门禁不响，只有这里会红。 （既有的
+   * `everyWithUnitRoutedOperationKeepsTheChains` 枚举了七条老操作，**本轮未改它**，故 T5 的旧证据不受影响。）
+   */
+  @Test
+  void applyCasualtiesKeepsTheCommandChains() {
+    UnitState base = chained();
+    UnitState next = UnitOperations.applyCasualties(base, ROOT, -30, Map.of("步枪", -10));
+
+    assertThat(next.units().get(ROOT).member()).as("前提：战损真的发生了").isEqualTo(70);
+    assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来").isEqualTo(base.commandChains());
+    assertThat(base.commandChains()).as("纯函数：旧状态不变").isEqualTo(chained().commandChains());
+  }
 }

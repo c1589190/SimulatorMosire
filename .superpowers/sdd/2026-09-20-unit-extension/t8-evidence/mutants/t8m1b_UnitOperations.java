@@ -115,24 +115,25 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **战损增量**（T8 / spec §四 表 / E4 / N3 / P14）：{@code personnelDelta} 与 {@code equipmentDeltas} 都是
-   * **≤ 0 的 增量**，逐项**落在当前值上**——与 {@link #setStrength} 的"整份替换"是两种语义，绝不混用。
+   * ★ **战损增量**（T8 / spec §四 表 / E4 / N3 / P14）：{@code personnelDelta} 与 {@code equipmentDeltas} 都是 **≤ 0 的
+   * 增量**，逐项**落在当前值上**——与 {@link #setStrength} 的"整份替换"是两种语义，绝不混用。
    *
    * <p>三条判据（都抛 {@link IllegalArgumentException}，由 handler 在命令边界折成拒绝）：
    *
    * <ol>
    *   <li><b>增量必须 ≤ 0</b>：正数 ⇒ 抛（战损只减员；"把 −30 当绝对值"是 m1 的靶子，本操作不接这种解释）。
-   *   <li><b>逐项上界 {@code |Δ| ≤ 当前值}</b>：人员与**每一件**装备各自独立判（P14 的"逐项"面）；越界 ⇒ 抛， 消息里带当前值与本条增量。判据写成
-   *       {@code delta < -current}（**不取负号**：`-Integer.MIN_VALUE` 会溢出成自身、 把越界悄悄放过去）。
-   *   <li><b>未知装备键 ⇒ 抛</b>（P14）：未提及的键**保持不变**，但**提及**了一个不存在的键是**错误**，绝不"视作 0 忽略"（那是 m4
-   *       的靶子）。判定在增量符号之前 ⇒ 未知键**无论**带什么值都拒。
+   *   <li><b>逐项上界 {@code |Δ| ≤ 当前值}</b>：人员与**每一件**装备各自独立判（P14 的"逐项"面）；越界 ⇒ 抛，
+   *       消息里带当前值与本条增量。判据写成 {@code delta < -current}（**不取负号**：`-Integer.MIN_VALUE` 会溢出成自身、
+   *       把越界悄悄放过去）。
+   *   <li><b>未知装备键 ⇒ 抛</b>（P14）：未提及的键**保持不变**，但**提及**了一个不存在的键是**错误**，绝不"视作 0
+   *       忽略"（那是 m4 的靶子）。判定在增量符号之前 ⇒ 未知键**无论**带什么值都拒。
    * </ol>
    *
    * <p>★ 结果的不变量（`member ≥ 0`、装备值 `≥ 0`）由上面的逐项上界**先行保证**，{@code Unit} 构造期继续把守同一件事（两道
    * 不重复实现：上界判据给出可读的领域理由，构造期是最后一道）。
    *
-   * <p>★ **绝对值落 revision**：本操作只产新 {@code UnitState}，命令层用 {@code UnitChangeSet.between(base, next)}
-   * 取差分 ⇒ 落库的是**新绝对值**（不是增量），故回退到战损前那一 revision 读回的就是战前值（m5 的靶子）。
+   * <p>★ **绝对值落 revision**：本操作只产新 {@code UnitState}，命令层用 {@code UnitChangeSet.between(base, next)} 取差分 ⇒
+   * 落库的是**新绝对值**（不是增量），故回退到战损前那一 revision 读回的就是战前值（m5 的靶子）。
    *
    * <p>★ **T5-L4 通则**：重建状态一律走 {@link #withUnit}（内部 {@code state.withUnits(...)}）——`commandChains`
    * 必须原样带过，绝不写 `new UnitState(units)`。
@@ -179,7 +180,7 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.member() + personnelDelta,
+            Math.abs(personnelDelta),
             equipment,
             unit.speed(),
             unit.mobilityPerMille(),

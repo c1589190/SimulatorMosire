@@ -1,0 +1,12 @@
+# spotless 那一步的「零语义改动」证明（2026-09-21T07:35:42+08:00）
+# 基线（变异轮锚定的一份，md5 见 baseline-md5.txt）→ 现状（spotless:apply 之后）
+
+IDENTICAL(代码面)  .superpowers/sdd/2026-09-20-unit-extension/t8-evidence/mutants/pre-spotless_UnitOperations.java  ==  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java   [注释/空格外零改动]
+rc=0
+IDENTICAL(代码面)  .superpowers/sdd/2026-09-20-unit-extension/t8-evidence/mutants/pre-spotless_ApplyCasualtiesHandler.java  ==  simos-unit/src/main/java/io/mosire/simos/unit/spi/ApplyCasualtiesHandler.java   [注释/空格外零改动]
+rc=0
+
+# 逐字节 md5（现状）
+4788d99ffc7e81f8af302c6041ab5288  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+1d6b30a0d9d30ce38b5f980fdecc08b9  simos-unit/src/main/java/io/mosire/simos/unit/spi/ApplyCasualtiesHandler.java
+23a07b24ff9ff97dd1ad589e5ff6a67c  simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java

@@ -1,0 +1,84 @@
+# T8 变异轮 manifest（照 T7 的格式；每条 = 一个 label，含靶文件、变异体、自证片段与方向、期望红点）
+#
+# 字段：
+#   label      轮次名（本文件与 mut-round.sh 的参数）
+#   target     源码树里的规范路径（mut-round.sh 的 ③ 白名单逐条比）
+#   mutant     本目录下的变异体文件
+#   frag       ⑩ 自证用的**代码片段**（只数片段，不数整份文件里的词）
+#   frag_dir   revert ⇒ 原件 0 次 / 变异体 ≥1 次；delete ⇒ 原件 ≥1 次 / 变异体 0 次
+#   expect_red 期望变红的那条断言（人读日志核对，装置不代判）
+#   criterion  对应的判据/靶子编号（E4/N3/P14 那张表）
+#
+# ── 轮次 ───────────────────────────────────────────────────────────────────────
+
+label t8m1
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t8m1_UnitOperations.java
+frag             unit.member() + personnelDelta,
+frag_dir delete
+expect_red UnitOperationsTest.applyCasualtiesSubtractsFromTheCurrentValueInsteadOfOverwriting（70 那条）与 UnitCommandHandlersTest.applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment
+criterion m1（`100 + (−30) = 70`，不是绝对值覆写）
+
+label t8m1b
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t8m1b_UnitOperations.java
+frag             unit.member() + personnelDelta,
+frag_dir delete
+expect_red UnitOperationsTest.applyCasualtiesSubtractsFromTheCurrentValueInsteadOfOverwriting（`isEqualTo(70)` 那条**值断言**，不是异常）与 UnitCommandHandlersTest.applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment
+criterion m1（计划原文："把 Δ 当绝对值（覆写）⇒ 结果 30"—— 30 是**合法值**，所以这一轮的红点必须是值断言）
+
+label t8m2
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t8m2_UnitOperations.java
+frag if (personnelDelta < -unit.member()) {
+frag_dir delete
+expect_red UnitOperationsTest.applyCasualtiesRejectsPositiveDeltasAndOutOfRangeAmounts（越界 ⇒ 拒）与 UnitCasualtyRevisionTest.rejectedCasualtyLeavesTheRevisionTableUntouched（理由文本）
+criterion m2（|Δ| ≤ 当前值；越界 ⇒ 拒）
+
+label t8m3
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t8m3_UnitOperations.java
+frag equipment.clear(); // 变异 m3：整表替换装备（未提及键被丢）
+frag_dir revert
+expect_red UnitOperationsTest.applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched（炮=4 那条）
+criterion m3（装备双轨：只扣提及键）
+
+label t8m4
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t8m4_UnitOperations.java
+frag continue; // 变异 m4：未知键视作 0 忽略
+frag_dir revert
+expect_red UnitOperationsTest.applyCasualtiesRejectsUnknownEquipmentKeys 与 UnitCommandHandlersTest.applyCasualtiesRejectsUnknownEquipmentKeys
+criterion m4（未知装备键 ⇒ 拒；P14）
+
+label t8m5
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t8m5_UnitOperations.java
+frag new UnitState(next); // 变异 T5-L4：绕过 withUnits（commandChains 被静默清空）
+frag_dir revert
+expect_red UnitOperationsTest.applyCasualtiesKeepsTheCommandChains 与 UnitCommandHandlersTest.applyCasualtiesKeepsCommandChains
+criterion T5-L4 通则（本轮新路径的自证：重建状态只走 withUnits）
+
+label t8m6
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/ApplyCasualtiesHandler.java
+mutant t8m6_ApplyCasualtiesHandler.java
+frag UnitChangeSet.between(snapshot.state(), snapshot.state())
+frag_dir revert
+expect_red UnitCasualtyRevisionTest.casualtyLandsAsARealRevisionAndRollsBackToThePreBattleValue（R2 ⇒ 70 那条）
+criterion m5（绝对值落 revision ⇒ 时间线恢复：战损必须落进历史）
+
+label t8m6b
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/ApplyCasualtiesHandler.java
+mutant t8m6_ApplyCasualtiesHandler.java
+frag UnitChangeSet.between(snapshot.state(), snapshot.state())
+frag_dir revert
+expect_red UnitCasualtyRevisionTest.casualtyLandsAsARealRevisionAndRollsBackToThePreBattleValue（R2 ⇒ 70 那条）
+criterion m5（同上；★ 与 t8m6 是**同一个变异体**，差别只有 `-Dmaven.test.failure.ignore=true`：t8m6 首轮 simos-unit 先红 ⇒ 反应堆在到 simos-core 之前收工，core 侧那条被保护断言根本没跑。带该标志的轮**不以 rc 判杀**，以失败清单 + 两模块汇总行为准）
+
+label t8m7
+target simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java
+mutant t8m7_CommandBus.java
+frag "payloadPlain"
+frag_dir revert
+expect_red UnitCasualtyRevisionTest.receivedEventCarriesOnlyTheDigestNotTheDeltaPlaintext（明文那三条）
+criterion m6（received 事件载荷无明文 delta，只有 digest）
