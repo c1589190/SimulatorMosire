@@ -1,0 +1,8 @@
+=== killed round size + how far it got ===
+45585 .superpowers/sdd/2026-09-20-unit-extension/t7-evidence/logs/merged-full-verify.log
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 53 source files with javac [debug release 21] to target/classes
+=== retry (foreground, 600s) ===
+
+[killed]
