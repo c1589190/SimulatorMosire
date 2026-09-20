@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -19,9 +20,10 @@ import java.util.function.Function;
 /**
  * unit 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code MapCodec} 同制，理由不重复——只记 unit 自己的那点差异。
  *
- * <p>★ 树里的自定义键只有 {@code UnitId} 一个（{@code units} 的键，住在 simos-unit 自己家里）。键反序列化器照裁定 16
- * 在**本模块**注册，不进共享基座。 树里的 {@code HexCoord}（{@code position} 序列的值、{@code Route} 的路点）都是**值**不是 Map
- * 键，Jackson 按 record 值处理，**不需要**也不应该注册。
+ * <p>★ 树里的自定义键有 {@code UnitId}（{@code units} 的键）与 {@code CommandChainId}（T1 新增的 {@code
+ * commandChains} 的键），都住在 simos-unit 自己家里。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。 树里的 {@code
+ * HexCoord}（{@code position} 序列的值、{@code Route} 的路点）都是**值**不是 Map 键，Jackson 按 record
+ * 值处理，**不需要**也不应该注册。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  */
@@ -52,6 +54,7 @@ public final class UnitCodec implements ModuleCodec {
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("unit-json-keys");
     module.addKeyDeserializer(UnitId.class, keyDeserializer(UnitId::parse));
+    module.addKeyDeserializer(CommandChainId.class, keyDeserializer(CommandChainId::parse));
     return module;
   }
 

@@ -1,5 +1,7 @@
 package io.mosire.simos.unit.change;
 
+import io.mosire.simos.unit.CommandChain;
+import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -8,7 +10,7 @@ import io.mosire.simos.util.state.FieldDelta;
 import java.util.Objects;
 
 /**
- * 单位状态的变更集。**组件与 {@link UnitState} 的 record 组件一一对应**（当前 1 个）。
+ * 单位状态的变更集。**组件与 {@link UnitState} 的 record 组件一一对应**（当前 2 个：{@code units} 与 {@code commandChains}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code UnitRoundTripTest} 的反射枚举把守——新增状态组件若不进变更集，那个测试自动红。
  *
@@ -19,24 +21,29 @@ import java.util.Objects;
  * baseRevision()} 版本戳已删，C8 当年"版本戳属 Revision 层"的顾虑随之消失（那是 C27 的裁定）。 实现它不带来任何新义务，**字段与既有测试零变化**（U
  * 裁定原话）。
  */
-public record UnitChangeSet(FieldDelta<Unit> units) implements ChangeSet {
+public record UnitChangeSet(FieldDelta<Unit> units, FieldDelta<CommandChain> commandChains)
+    implements ChangeSet {
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
   public static UnitChangeSet between(UnitState base, UnitState target) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(target, "target");
-    return new UnitChangeSet(FieldDelta.diff(base.units(), target.units()));
+    return new UnitChangeSet(
+        FieldDelta.diff(base.units(), target.units()),
+        FieldDelta.diff(base.commandChains(), target.commandChains()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
   public static UnitState apply(UnitChangeSet cs, UnitState base) {
     Objects.requireNonNull(cs, "cs");
     Objects.requireNonNull(base, "base");
-    return new UnitState(FieldDelta.rebuild(base.units(), cs.units(), UnitId::parse));
+    return new UnitState(
+        FieldDelta.rebuild(base.units(), cs.units(), UnitId::parse),
+        FieldDelta.rebuild(base.commandChains(), cs.commandChains(), CommandChainId::parse));
   }
 
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
-    return !units.changed();
+    return !units.changed() && !commandChains.changed();
   }
 }

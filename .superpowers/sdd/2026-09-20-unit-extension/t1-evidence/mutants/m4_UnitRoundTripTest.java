@@ -104,7 +104,7 @@ class UnitRoundTripTest {
   private static boolean changedOf(UnitChangeSet cs, String name) {
     return switch (name) {
       case "units" -> cs.units().changed();
-      case "commandChains" -> cs.commandChains().changed();
+      case "commandChains" -> false;
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

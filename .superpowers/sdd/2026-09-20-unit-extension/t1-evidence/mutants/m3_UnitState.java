@@ -118,17 +118,7 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
 
   private static void requireChainReferencesResolve(
       Map<UnitId, Unit> units, Map<CommandChainId, CommandChain> commandChains) {
-    for (CommandChain chain : commandChains.values()) {
-      if (!units.containsKey(chain.commander())) {
-        throw new IllegalArgumentException(
-            "链 " + chain.id() + " 的 commander 不在 units: " + chain.commander());
-      }
-      for (UnitId member : chain.members()) {
-        if (!units.containsKey(member)) {
-          throw new IllegalArgumentException("链 " + chain.id() + " 的成员不在 units: " + member);
-        }
-      }
-    }
+    // m3: 有意不查引用完整性（变异体）
   }
 
   private static void requireNoCycleAtKeyTimes(Map<UnitId, Unit> units) {

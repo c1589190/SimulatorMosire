@@ -206,6 +206,10 @@ public final class UnitOperations {
     return new SegmentedSeries<>(segments, series.events(), series.addition());
   }
 
+  /**
+   * ★ **canonical 拷贝点**：9 个可变字段由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
+   * offset}/{@code rejoinTarget}）一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。
+   */
   private static Unit copy(
       Unit unit,
       String name,
@@ -217,6 +221,18 @@ public final class UnitOperations {
       int mobilityPerMille,
       Optional<Movement> movement) {
     return new Unit(
-        unit.id(), name, parent, position, member, equipment, speed, mobilityPerMille, movement);
+        unit.id(),
+        name,
+        parent,
+        position,
+        member,
+        equipment,
+        speed,
+        mobilityPerMille,
+        movement,
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget());
   }
 }

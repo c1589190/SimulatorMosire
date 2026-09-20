@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** 编制树不变量（R6）+ 位置继承（R7）。 */
@@ -34,6 +35,37 @@ class UnitStateTest {
         2,
         1000,
         Optional.empty());
+  }
+
+  /** attached/offset 显式给出的单位（spec §一.4 五行情形的夹具）。 */
+  private static Unit formedUnit(
+      String id,
+      Optional<String> parent,
+      Optional<HexCoord> position,
+      boolean attached,
+      Optional<RelativeOffset> offset) {
+    return new Unit(
+        new UnitId(id),
+        "单位 " + id,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, parent.map(UnitId::new))), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
+        100,
+        Map.of(),
+        2,
+        1000,
+        Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, attached)), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, offset)), List.of(), null),
+        Optional.empty());
+  }
+
+  private static UnitState stateOf(Unit... units) {
+    Map<UnitId, Unit> byId = new LinkedHashMap<>();
+    for (Unit unit : units) {
+      byId.put(unit.id(), unit);
+    }
+    return new UnitState(byId, Map.of());
   }
 
   // ── R6 ──────────────────────────────────────────────────────────
@@ -130,5 +162,118 @@ class UnitStateTest {
         new UnitState(Map.of(new UnitId("c"), unit("c", Optional.empty(), Optional.empty(), T0)));
     assertThat(state.effectivePosition(new UnitId("c"), T0)).isEmpty();
     assertThat(state.effectivePosition(new UnitId("nobody"), T0)).as("查不存在的主体 ⇒ 空").isEmpty();
+  }
+
+  // ── spec §一.4 五行情形的取代/共存 ────────────────────────────────
+
+  /** 行 2：attached=true、自身无位置、offset 非空 ⇒ 父的有效位置 ⊕ offset（**不等于**父位）。 */
+  @Test
+  void attachedChildWithoutPositionAddsOffsetToParentPosition() {
+    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Unit child =
+        formedUnit(
+            "c", Optional.of("p"), Optional.empty(), true, Optional.of(new RelativeOffset(2, -1)));
+    UnitState state = stateOf(parent, child);
+
+    HexCoord expected = new RelativeOffset(2, -1).appliedTo(H22);
+    assertThat(state.effectivePosition(new UnitId("c"), T0)).as("父位 ⊕ offset").contains(expected);
+    assertThat(state.effectivePosition(new UnitId("c"), T0))
+        .as("不是父位本身")
+        .isNotEqualTo(Optional.of(H22));
+  }
+
+  /** 行 5：attached=false、自身无位置 ⇒ 空（**不回退**父位，spec §一.4 的取代）。 */
+  @Test
+  void detachedChildWithoutPositionDoesNotFallBackToParent() {
+    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Unit child = formedUnit("c", Optional.of("p"), Optional.empty(), false, Optional.empty());
+    UnitState state = stateOf(parent, child);
+
+    assertThat(state.effectivePosition(new UnitId("c"), T0)).isEmpty();
+    assertThat(state.effectivePosition(new UnitId("p"), T0)).contains(H22); // 父自身不受影响
+  }
+
+  /** 行 4：attached=false、自身有位置 ⇒ 自身位置（detached 只取消继承，不取消自身位置）。 */
+  @Test
+  void detachedChildWithOwnPositionKeepsIt() {
+    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Unit child = formedUnit("c", Optional.of("p"), Optional.of(H11), false, Optional.empty());
+    UnitState state = stateOf(parent, child);
+
+    assertThat(state.effectivePosition(new UnitId("c"), T0)).contains(H11);
+  }
+
+  /** 行 3 的回归条：attached=true、offset 为空 ⇒ 父位（与 M3 今天逐字相同）。 */
+  @Test
+  void attachedChildWithEmptyOffsetIsAByteForByteRegression() {
+    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Unit child = formedUnit("c", Optional.of("p"), Optional.empty(), true, Optional.empty());
+    UnitState state = stateOf(parent, child);
+
+    assertThat(state.effectivePosition(new UnitId("c"), T0)).contains(H22);
+  }
+
+  /** offset 沿父链复合：孙子 = 祖父位 ⊕ 父偏移 ⊕ 自己偏移。 */
+  @Test
+  void offsetsComposeUpTheParentChain() {
+    Unit grand = unit("g", Optional.empty(), Optional.of(H22), T0);
+    Unit parent =
+        formedUnit(
+            "p", Optional.of("g"), Optional.empty(), true, Optional.of(new RelativeOffset(1, 0)));
+    Unit child =
+        formedUnit(
+            "c", Optional.of("p"), Optional.empty(), true, Optional.of(new RelativeOffset(0, 2)));
+    UnitState state = stateOf(grand, parent, child);
+
+    HexCoord expected = new RelativeOffset(0, 2).appliedTo(new RelativeOffset(1, 0).appliedTo(H22));
+    assertThat(state.effectivePosition(new UnitId("c"), T0)).contains(expected);
+  }
+
+  // ── commandChains（spec §一.2 / §一.6 不变量 1、2） ────────────────
+
+  /** 悬空引用（commander 或成员不在 units）⇒ 构造期抛（引用完整性）。 */
+  @Test
+  void danglingChainReferencesAreRejectedAtConstruction() {
+    Unit only = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(only.id(), only);
+
+    UnitId ghost = new UnitId("u-ghost");
+    Map<CommandChainId, CommandChain> danglingCommander = new LinkedHashMap<>();
+    danglingCommander.put(
+        new CommandChainId("c-1"),
+        new CommandChain(new CommandChainId("c-1"), "链", ghost, Set.of(ghost)));
+    assertThatThrownBy(() -> new UnitState(units, danglingCommander))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("commander");
+
+    Map<CommandChainId, CommandChain> danglingMember = new LinkedHashMap<>();
+    danglingMember.put(
+        new CommandChainId("c-2"),
+        new CommandChain(new CommandChainId("c-2"), "链", only.id(), Set.of(only.id(), ghost)));
+    assertThatThrownBy(() -> new UnitState(units, danglingMember))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("成员");
+  }
+
+  /** commandChains 保序不可变：迭代序 == 插入序（不得用 Map.copyOf）。 */
+  @Test
+  void commandChainsKeepInsertionOrder() {
+    Unit p = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Unit q = unit("q", Optional.empty(), Optional.of(H11), T0);
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(p.id(), p);
+    units.put(q.id(), q);
+    Map<CommandChainId, CommandChain> chains = new LinkedHashMap<>();
+    chains.put(
+        new CommandChainId("c-2"),
+        new CommandChain(new CommandChainId("c-2"), "二", q.id(), Set.of(q.id())));
+    chains.put(
+        new CommandChainId("c-1"),
+        new CommandChain(new CommandChainId("c-1"), "一", p.id(), Set.of(p.id())));
+    UnitState state = new UnitState(units, chains);
+
+    assertThat(state.commandChains().keySet())
+        .containsExactly(new CommandChainId("c-2"), new CommandChainId("c-1"));
   }
 }

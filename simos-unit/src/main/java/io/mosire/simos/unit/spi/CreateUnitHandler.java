@@ -2,10 +2,12 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -63,6 +65,11 @@ public final class CreateUnitHandler implements CommandHandler {
               equipment,
               speed,
               mobilityPerMille,
+              Optional.empty(),
+              UnitStatus.MOVING,
+              new SegmentedSeries<>(List.of(new Segment<>(at, true)), List.of(), null),
+              new SegmentedSeries<>(
+                  List.of(new Segment<>(at, Optional.<RelativeOffset>empty())), List.of(), null),
               Optional.empty());
       UnitState next = UnitOperations.create(snapshot.state(), unit);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));

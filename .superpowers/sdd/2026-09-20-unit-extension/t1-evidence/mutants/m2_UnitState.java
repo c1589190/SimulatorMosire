@@ -95,9 +95,6 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
       if (here.isPresent()) {
         return here; // 自身有位置 ⇒ 它（attached/detached 都适用）
       }
-      if (!current.attached().valueAt(at)) {
-        return Optional.empty(); // detached 且无自身位置 ⇒ 空（不回退父，spec §一.4）
-      }
       Optional<UnitId> parentId = current.parent().valueAt(at);
       if (parentId.isEmpty()) {
         return Optional.empty();

@@ -111,7 +111,7 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
         current = parent;
         continue;
       }
-      return effectivePositionFrom(parent, at, seen).map(offset.get()::appliedTo);
+      return effectivePositionFrom(parent, at, seen);
     }
     return Optional.empty();
   }

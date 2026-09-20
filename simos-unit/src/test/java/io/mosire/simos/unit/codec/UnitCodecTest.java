@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CommandChain;
+import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -20,9 +22,11 @@ import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -160,6 +164,31 @@ class UnitCodecTest {
     }
   }
 
+  /** ★ T1：含 2 条链 + 同一 unit 多属的快照往返（{@code CommandChainId} 作 Map 键的靶子）。 */
+  @Test
+  void snapshotRoundTripsCommandChainsWithASharedMember() {
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateWithChains(oneUnit("u-1", H11, false), oneUnit("u-2", H12, false)),
+            SimosTimestamp.of(12));
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.state().commandChains())
+        .containsOnlyKeys(new CommandChainId("c-1"), new CommandChainId("c-2"));
+    assertThat(back.state().commandChains().get(new CommandChainId("c-1")).members())
+        .containsExactlyInAnyOrder(new UnitId("u-1"), new UnitId("u-2"));
+  }
+
+  /** 变更集里的 {@code commandChains} 组件也逐值往返。 */
+  @Test
+  void changeSetRoundTripsCommandChainUpserts() {
+    UnitState target = stateWithChains(oneUnit("u-1", H11, false), oneUnit("u-2", H12, false));
+    UnitChangeSet cs = UnitChangeSet.between(UnitState.empty(), target);
+    assertThat(cs.commandChains()).isInstanceOf(FieldDelta.Upsert.class);
+
+    assertThat((UnitChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(cs))).isEqualTo(cs);
+  }
+
   // ── 夹具 ──
 
   private static UnitState stateOf(Unit unit) {
@@ -186,5 +215,20 @@ class UnitCodecTest {
   private static UnitSnapshot snapshotOf(UnitState state, SimosTimestamp timestamp) {
     return new UnitSnapshot(
         new StateRef(new BranchId("main"), new RevisionId(3)), timestamp, state);
+  }
+
+  /** 两个单位 + 2 条链、两个单位**同属两条链**（多属）。 */
+  private static UnitState stateWithChains(Unit one, Unit two) {
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(one.id(), one);
+    units.put(two.id(), two);
+    Map<CommandChainId, CommandChain> chains = new LinkedHashMap<>();
+    chains.put(
+        new CommandChainId("c-1"),
+        new CommandChain(new CommandChainId("c-1"), "第一链", one.id(), Set.of(one.id(), two.id())));
+    chains.put(
+        new CommandChainId("c-2"),
+        new CommandChain(new CommandChainId("c-2"), "第二链", two.id(), Set.of(one.id(), two.id())));
+    return new UnitState(units, chains);
   }
 }

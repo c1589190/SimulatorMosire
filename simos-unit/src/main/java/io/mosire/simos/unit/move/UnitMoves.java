@@ -50,7 +50,11 @@ public final class UnitMoves {
             unit.equipment(),
             unit.speed(),
             movement.mobilityAtDeparture(),
-            unit.movement());
+            unit.movement(),
+            unit.status(),
+            unit.attached(),
+            unit.offset(),
+            unit.rejoinTarget());
 
     List<HexCoord> path = movement.route().path();
     for (int i = 0; i + 1 < path.size(); i++) {

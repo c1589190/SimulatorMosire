@@ -140,7 +140,11 @@ public final class UnitTimeParticipant implements TimeParticipant {
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
-        movement);
+        movement,
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget());
   }
 
   private static GameMap mapOf(SimulationState state) {
