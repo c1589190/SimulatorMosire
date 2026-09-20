@@ -183,4 +183,5 @@ rc=0
 `new ShellConfig(...)` 补第 9 个实参、+3 个新测试类）。
 证据：`.superpowers/sdd/2026-09-19-map-edit/m10-deploy-evidence/**`。
 
-- 实现提交：**`<见下条追记>`**
+- 实现提交：**`43c5122`**（「M10 部署：shade 可分发产物 + --bind-address + GUI 访问日志」）
+- 本报告与状态行的追记提交见 `git log`（紧随其后的 `M10 收尾` 提交）
