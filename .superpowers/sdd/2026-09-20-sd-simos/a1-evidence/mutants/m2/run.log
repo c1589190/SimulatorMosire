@@ -1,0 +1,59 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [1/2]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [2/2]
+[INFO]   from /home/cna/SimulatorMosire/.claude/worktrees/sda1a2/simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for CoreSimos 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] CoreSimos .......................................... SUCCESS [  0.554 s]
+[INFO] SDSimos ............................................ FAILURE [  0.009 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  0.648 s
+[INFO] Finished at: 2026-09-20T21:00:01+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-enforcer-plugin:3.6.3:enforce (enforce-module-boundaries) on project simos-sd: 
+[ERROR] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies failed with message:
+[ERROR] SDSimos 不得依赖 simos-core / simos-app（R2）：sd 是领域模块的下游，组合与调度归 app 层（铁律 4）。agentlib-mosire 是 R5 要显式依赖的，不在禁列
+[ERROR] io.mosire:simos-sd:jar:0.1.0-SNAPSHOT
+[ERROR]    io.mosire:simos-core:jar:0.1.0-SNAPSHOT <--- banned via the exclude/include list
+[ERROR] 
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd

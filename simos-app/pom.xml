@@ -37,6 +37,10 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
     </dependency>
+    <!-- ★ SDSimos（A1）：组合根装配 sd（codec/handler/participant/resolver，见 spec §一.4）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
+    </dependency>
     <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
          SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
     <dependency>

@@ -15,6 +15,9 @@
 
   <dependencies>
     <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>
     <!-- CoreSimos 是唯一允许依赖 AgentLibMosire 的模块（spec §3.1 / G9）。

@@ -1,0 +1,14 @@
+baseline orig_core_md5=938bf4f5df33431656ce6d27282534f5
+baseline orig_sd_md5=a479a0c91f3cda70b428f36abdcbb463
+clean_validate rc=0 BannedDependencies_passed=2
+ROUND m1 mvn='./mvnw -pl simos-core,simos-sd validate' rc=1
+ROUND m1 orig_md5=938bf4f5df33431656ce6d27282534f5 mutant_md5=b392aa58960aad18c44fed62923858c3 pushed_md5=b392aa58960aad18c44fed62923858c3 restored_md5=938bf4f5df33431656ce6d27282534f5
+ROUND m1 BannedDependencies_failed=1 banned_lines=4 COMPILATION_ERROR=0
+ROUND m1 OK: enforcer fired, red line = BannedDependencies failed
+ROUND m2 mvn='./mvnw -pl simos-core,simos-sd validate' rc=1
+ROUND m2 orig_md5=a479a0c91f3cda70b428f36abdcbb463 mutant_md5=a6bf5f378354c477afee9e9d4cfb4486 pushed_md5=a6bf5f378354c477afee9e9d4cfb4486 restored_md5=a479a0c91f3cda70b428f36abdcbb463
+ROUND m2 BannedDependencies_failed=1 banned_lines=1 COMPILATION_ERROR=0
+ROUND m2 OK: enforcer fired, red line = BannedDependencies failed
+== post-restore md5 check ==
+post_core_md5=938bf4f5df33431656ce6d27282534f5
+post_sd_md5=a479a0c91f3cda70b428f36abdcbb463

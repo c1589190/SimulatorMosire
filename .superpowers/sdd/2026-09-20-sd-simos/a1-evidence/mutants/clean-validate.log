@@ -1,0 +1,49 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [1/2]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [2/2]
+[INFO]   from /home/cna/SimulatorMosire/.claude/worktrees/sda1a2/simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for CoreSimos 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] CoreSimos .......................................... SUCCESS [  0.550 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.018 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  0.653 s
+[INFO] Finished at: 2026-09-20T20:59:58+08:00
+[INFO] ------------------------------------------------------------------------

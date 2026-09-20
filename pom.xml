@@ -19,6 +19,9 @@
     <module>simos-social</module>
     <module>simos-unit</module>
     <module>simos-core</module>
+    <!-- ★ SDSimos（A1）：国家与决策人。领域模块，位于 core 之后、app 之前；
+         它不被 core 依赖（core 的 enforcer 把它禁在 main scope）。 -->
+    <module>simos-sd</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
          它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->
     <module>simos-app</module>
@@ -66,6 +69,9 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-core</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId><version>${project.version}</version>
       </dependency>
 
       <!-- 外部依赖 -->
