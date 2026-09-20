@@ -19,17 +19,12 @@
 | **R4** | ★★ **硬不变量：一个决策人一个 tick 至多一条 `Directive`**（一条 `Directive` 内可携带"产生多个效果的同一命令"） | 用户 |
 | **R5** | ★ **AgentLib 下放到 SDSimos**：`simos-sd` **显式依赖 `agentlib-mosire`**；enforcer 策略见 §一.3 | 用户 |
 | **R6** | "**延期效果**"（现在决策、未来条件达成才发生）= **新增一个 `TimeParticipant`**；★ **不能**塞进 ③Resolve——实测 `TimeProposalResolver.resolve` 只做 canonical 地址集合读写相交、**不评估任何领域条件**（research §C③；`TimeProposalResolver.java:61`） | 用户 |
-| **R7** | **待裁** —— 本会话与两份前置文档均**未提供该编号的内容**；为遵守"不臆造"，**不代拟** | —— |
-| **R8** | **待裁** —— 同上 | —— |
 | **R9** | **判决系统 = SDSimos 自己的 tick 级流程**（simos 六步里**没有**"判决"这一步，research §C③）；★ **人与 Agent 写同一落点**（同一条 `sd.*` 命令路径） | 用户 |
 | **R10** | 可见性 = **工具白名单（已有）+ 新建数据 redaction 层**（★ 实测 `QueryService` 四个读方法**都没有 caller 参数**，`QueryService.java:52`；∴ 插桩点必在 **app 层**）；★★ **主 GM Agent 可为每个决策 Agent 灵活定制可查看范围** | 用户 |
-| **R11** | **待裁** —— 同上 | —— |
-| **R12** | **待裁** —— 同上 | —— |
 | **R13** | "**Nation 区域**" = **带特定 `tag` 的 Region**——实测 `RegionMeta(String color, String tag, String description, String annexedBy)` **有 `tag`**（`RegionMeta.java:8`），且 `map.UpdateRegion` 载荷能设 `tag`（`CreateRegionHandler.java:19` / `UpdateRegionHandler.java:19`） | 用户 |
 | **R14** | ★ **INFO 纳入 SDSimos 的 `ChangeSet`**——⚠️ 实测 `InfoSystem.put` **零 main 调用者**、Info **不进 `WorldChangeSet`**（research §C①）⇒ 写路径**全新** | 用户 |
-| **R15** | **待裁** —— 同上 | —— |
 
-> ★ **R7 / R8 / R11 / R12 / R15** 的编号出现在任务清单里，但**本会话未获其内容与选项**。本 spec 只把它们**列为"待裁"占位**，不填内容——若这些编号已有裁定，请补进本表后本 spec 随之修订。
+> ★ **编号清理注记（R7 / R8 / R11 / R12 / R15）**：这五个是**早前的提案编号，已被取代或合并**，**不是未决项**——**R7**（战损落账那条 `unit.*` 命令谁发）**已并入 N3 + N10**；**R8**（行政余额）**已被 R4 取代**（统一"一决策人一 tick 至多一令"，"国家比军队更慢"由 **N5 order-latency 时钟**承载，**不再单独做余额机制**）；**R11**（集合单位形状）**≡ N4**（**保持"待裁"**，勿重复列）；**R12**（交战是否每 tick 一阶段）**已并入 N1 + N5**（阶段**不由 tick 强制**，由**进入/退出条件**驱动）；**R15 从未定义，已从表中移除**。
 
 ### 〇.2 N 系列（设计裁定）
 
@@ -59,7 +54,6 @@
 | # | 待裁 | 建议 | 理由 |
 |---|---|---|---|
 | **N4** | 编制 = **树约定** 还是 **显式子表**？ | ★ **建议：严格单父树（organic）+ 独立 task-org 覆盖层**（记录 `relationshipType / reason / startRevision / endRevision?`） | ★ AFSIM 是**与本需求近乎精确对应**的既有实现：它把 `command_chain`（谁向谁报告、可多属）与 `WsfFormation`（谁物理跟谁移动、严格树 + attached/detached + 相对偏移）**分开**；纯 `parent` 指针**表达不了**"为某任务附着、然后回归"或 cross-attach（research §B.7）。但这是**用户的编制哲学**，不代拍 |
-| **R7/R8/R11/R12/R15** | 编号内容缺失 | 见 §〇.1 脚注 | 不臆造 |
 | **R14 子问题** | sd 的 info 条目**复用 `InfoEntry`** 还是**自造**？ | ★ 建议**自造 `SdInfoEntry`** | 复用会拖入 `TimeRange` / `SubjectId` 的时态语义（`InfoEntry.java:16`），与 sd 的 tick 模型耦合错位；自造代价是与全局 `InfoSystem` 更难打通——但那本来就是 R14 选择"纳入 sd ChangeSet"的已验证代价（research D-R14） |
 | **R6/N6 效果写别的模块** | sd participant **只能写 `sd`**，跨模块效果怎么落？ | ★ 建议：**pending-command 队列**（见 §五.3） | 结构性问题的唯一不破坏铁律 3 的答法；备选（依赖对应模块 participant）无法保证"条件语义在 sd 侧"，且 map/unit 的 participant 只有各自一个（`TimeAdvance.java:124-127`） |
 | **N5 通道粒度** | order-latency 是**每命令一个延迟值**，还是**按梯队/距离/参谋负载**的函数？是否建 **HQ 积压/饱和**？ | 建议：v1 **每命令一个延迟值**（数据驱动），积压/饱和列挂起 | Command Ops 的精确公式**未公开**（research §B.8 自陈未核实），照抄数值＝编造；先做机制形状 |
@@ -671,4 +665,4 @@ interface DecisionChannel {
 7. **AI 断点的输出 schema 名与字段**（§八.2）——设计形状；
 8. **判据条目与变异思路**（§十一）——由本 spec 提出，非用户逐条确认。
 
-**编号说明**：R7 / R8 / R11 / R12 / R15 与 N4 的编号出现在任务清单中，**内容未提供** ⇒ §〇 一律标"待裁"，**未代拟**。
+**编号说明**：R7 / R8 / R11 / R12 / R15 是**早前的提案编号，已被取代或合并**（去向见 §〇.1 表下注记），**不是未决项**；**N4 是唯一仍未拍的结构性未决项**（§〇.3，保持"待裁"）。
