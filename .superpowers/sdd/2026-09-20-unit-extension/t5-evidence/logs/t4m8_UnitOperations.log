@@ -1,0 +1,212 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/4]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/4]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/4]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [4/4]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 43 source files with javac [debug release 21] to target/classes
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java uses or overrides a deprecated API.
+[INFO] /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 21 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.unit.codec.UnitCodecTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.390 s -- in io.mosire.simos.unit.codec.UnitCodecTest
+[INFO] Running io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] Tests run: 43, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.796 s <<< FAILURE! -- in io.mosire.simos.unit.ops.UnitOperationsTest
+[ERROR] io.mosire.simos.unit.ops.UnitOperationsTest.splitFormationRejectsTargetsOutsideTheSubtreeAndEmptyLists -- Time elapsed: 0.038 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at io.mosire.simos.unit.ops.UnitOperationsTest.splitFormationRejectsTargetsOutsideTheSubtreeAndEmptyLists(UnitOperationsTest.java:618)
+
+[INFO] Running io.mosire.simos.unit.spi.UnitCommandHandlersTest
+[ERROR] Tests run: 54, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.000 s <<< FAILURE! -- in io.mosire.simos.unit.spi.UnitCommandHandlersTest
+[ERROR] io.mosire.simos.unit.spi.UnitCommandHandlersTest.splitFormationRejectsTargetsOutsideTheSubtree -- Time elapsed: 0.053 s <<< FAILURE!
+java.lang.AssertionError: 
+[期望 Rejected 而不是 Applied[changeSet=UnitChangeSet[units=Unchanged[], commandChains=Unchanged[]]]] 
+Expecting actual:
+  Applied[changeSet=UnitChangeSet[units=Unchanged[], commandChains=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.unit.spi.UnitCommandHandlersTest.reason(UnitCommandHandlersTest.java:179)
+	at io.mosire.simos.unit.spi.UnitCommandHandlersTest.splitFormationRejectsTargetsOutsideTheSubtree(UnitCommandHandlersTest.java:756)
+
+[INFO] Running io.mosire.simos.unit.spi.UnitTimeParticipantTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.243 s -- in io.mosire.simos.unit.spi.UnitTimeParticipantTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   UnitOperationsTest.splitFormationRejectsTargetsOutsideTheSubtreeAndEmptyLists:618 
+Expecting code to raise a throwable.
+[ERROR]   UnitCommandHandlersTest.splitFormationRejectsTargetsOutsideTheSubtree:756->reason:179 [期望 Rejected 而不是 Applied[changeSet=UnitChangeSet[units=Unchanged[], commandChains=Unchanged[]]]] 
+Expecting actual:
+  Applied[changeSet=UnitChangeSet[units=Unchanged[], commandChains=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[INFO] 
+[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  5.065 s]
+[INFO] UtilSimos .......................................... SUCCESS [  2.301 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.256 s]
+[INFO] UnitSimos .......................................... FAILURE [ 29.725 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  38.116 s
+[INFO] Finished at: 2026-09-21T04:04:31+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-unit: There are test failures.
+[ERROR] 
+[ERROR] See /home/dev/SimulatorMosire/.claude/worktrees/uet5/simos-unit/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-unit
+
+===== SELF-REFERENTIAL RECORD (t4m8_UnitOperations) =====
+label=t4m8_UnitOperations
+target=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant=/home/dev/SimulatorMosire/.claude/worktrees/uet5/.superpowers/sdd/2026-09-20-unit-extension/t5-evidence/mutants/t4m8_UnitOperations.java
+selector=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest
+orig_md5=e3731e1553617df86491b31ca2ab59ff
+baseline_md5=e3731e1553617df86491b31ca2ab59ff
+mutant_md5=8b111c916ccf3a169ab1408ec47c9f89
+pushed_md5=8b111c916ccf3a169ab1408ec47c9f89
+restored_md5=e3731e1553617df86491b31ca2ab59ff
+site_revert_proof=n/a
+mvn_rc=1
+compile_errors=0
+surefire_summary=Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
+module_summary=[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0
+surefire_mtime=2026-09-21T04:04:31+08:00
+round_start_epoch=1789934627 round_end_epoch=1789934671
+verdict=OK
+outcome=RED(被杀)
+--- 失败清单（原文，供⑦核红点） ---
+[ERROR]   UnitOperationsTest.splitFormationRejectsTargetsOutsideTheSubtreeAndEmptyLists:618 
+[ERROR]   UnitCommandHandlersTest.splitFormationRejectsTargetsOutsideTheSubtree:756->reason:179 [期望 Rejected 而不是 Applied[changeSet=UnitChangeSet[units=Unchanged[], commandChains=Unchanged[]]]] 
+[ERROR]   mvn <args> -rf :simos-unit
+round_end=2026-09-21T04:04:31+08:00

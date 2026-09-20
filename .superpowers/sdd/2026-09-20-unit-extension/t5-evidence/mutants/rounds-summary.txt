@@ -1,0 +1,103 @@
+== T5 变异轮：manifest 26 行，本轮跑 18..18，选择器=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest ==
+SELF t5m04_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=962ec2074c64a3213a950c1e7820617f pushed=962ec2074c64a3213a950c1e7820617f restored=e3731e1553617df86491b31ca2ab59ff orig_new_UnitState=0 pushed_new_UnitState=1 rc=1 compile_errors=0 summary=Tests run: 10, Failures: 0, Errors: 0, Skipped: 0 verdict=OK outcome=RED(被杀)
+== 收尾干净世界复核（md5 与 baseline 逐条比） ==
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java e3731e1553617df86491b31ca2ab59ff
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java f4b82888ab81cf39b6ad27e0d4e361d9
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java 83feefb4ebbd6fadf2a18a08213f9577
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java bde0f8fef62488fc2a7cb2ee89b65e81
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SetFormationOffsetHandler.java 749654ad829ce6114800717c2330049e
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java b56b2460f7e9963371ee0cd553b03cdc
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java 2797dc06bf30f7b94188f4c4f14fadf8
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java ccf5e49d2717ea70747349d286b47758
+CLEAN-WORLD OK
+== T5 变异轮：manifest 26 行，本轮跑 1..9，选择器=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest ==
+SELF t3m1_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=73cabcf83fc5d905b22f9370c476e7ef pushed=73cabcf83fc5d905b22f9370c476e7ef restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 5, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t3m2_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=6699ac0830e7f41e56c269e822e0b8d1 pushed=6699ac0830e7f41e56c269e822e0b8d1 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 3, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t3m3_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=f98f26cd53221b70055a0768fccfac84 pushed=f98f26cd53221b70055a0768fccfac84 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 3, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t3m4_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=76d1561863c3be8ca38f64bbad6bb7f8 pushed=76d1561863c3be8ca38f64bbad6bb7f8 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 4, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t3m5_SetFormationOffsetHandler orig=749654ad829ce6114800717c2330049e base=749654ad829ce6114800717c2330049e mut=15bc49d452c51c6ac15f0eb585333593 pushed=15bc49d452c51c6ac15f0eb585333593 restored=749654ad829ce6114800717c2330049e n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m1_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=d0560ffddeda580cae745a2c7295be61 pushed=d0560ffddeda580cae745a2c7295be61 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 3, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m2_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=d4d8eebaa8e3a6688a47de1e4cc050a1 pushed=d4d8eebaa8e3a6688a47de1e4cc050a1 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m3_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=824b736565ed457faab7a972c3f5e284 pushed=824b736565ed457faab7a972c3f5e284 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m4_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=ec26f58c9b618ac0cd8a34abbf49c3e7 pushed=ec26f58c9b618ac0cd8a34abbf49c3e7 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+== 收尾干净世界复核（md5 与 baseline 逐条比） ==
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java e3731e1553617df86491b31ca2ab59ff
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java f4b82888ab81cf39b6ad27e0d4e361d9
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java 83feefb4ebbd6fadf2a18a08213f9577
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java bde0f8fef62488fc2a7cb2ee89b65e81
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SetFormationOffsetHandler.java 749654ad829ce6114800717c2330049e
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java b56b2460f7e9963371ee0cd553b03cdc
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java 2797dc06bf30f7b94188f4c4f14fadf8
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java ccf5e49d2717ea70747349d286b47758
+CLEAN-WORLD OK
+== T5 变异轮：manifest 26 行，本轮跑 10..18，选择器=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest ==
+SELF t4m5_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=d260729bf6a8b04f29771e265364038d pushed=d260729bf6a8b04f29771e265364038d restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m6_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=10c684e305a416ea9195c8d5a0844966 pushed=10c684e305a416ea9195c8d5a0844966 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m7_ReparentSubtreeHandler orig=f4b82888ab81cf39b6ad27e0d4e361d9 base=f4b82888ab81cf39b6ad27e0d4e361d9 mut=c99d2fa02e5ea127907e12d0886f0383 pushed=c99d2fa02e5ea127907e12d0886f0383 restored=f4b82888ab81cf39b6ad27e0d4e361d9 n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m8_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=8b111c916ccf3a169ab1408ec47c9f89 pushed=8b111c916ccf3a169ab1408ec47c9f89 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t4m9_UnitPayloads orig=b56b2460f7e9963371ee0cd553b03cdc base=b56b2460f7e9963371ee0cd553b03cdc mut=580b7c809ae54d68db4ced101c57d267 pushed=580b7c809ae54d68db4ced101c57d267 restored=b56b2460f7e9963371ee0cd553b03cdc n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m01_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=faf23d01a8d8cde90e56e5f68ed69d50 pushed=faf23d01a8d8cde90e56e5f68ed69d50 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 2, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m02_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=51318e0de41ac5ae9981323a275339d2 pushed=51318e0de41ac5ae9981323a275339d2 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m03_UnitCodec orig=ccf5e49d2717ea70747349d286b47758 base=ccf5e49d2717ea70747349d286b47758 mut=c95b18f1e6a8b215bbdb384f7ac28b53 pushed=c95b18f1e6a8b215bbdb384f7ac28b53 restored=ccf5e49d2717ea70747349d286b47758 n/a rc=1 compile_errors=0 module='<none>' verdict=VOID(无 surefire 汇总行) outcome=n/a
+SELF t5m04_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=962ec2074c64a3213a950c1e7820617f pushed=962ec2074c64a3213a950c1e7820617f restored=e3731e1553617df86491b31ca2ab59ff orig_new_UnitState=0 pushed_new_UnitState=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+== 收尾干净世界复核（md5 与 baseline 逐条比） ==
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java e3731e1553617df86491b31ca2ab59ff
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java f4b82888ab81cf39b6ad27e0d4e361d9
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java 83feefb4ebbd6fadf2a18a08213f9577
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java bde0f8fef62488fc2a7cb2ee89b65e81
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SetFormationOffsetHandler.java 749654ad829ce6114800717c2330049e
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java b56b2460f7e9963371ee0cd553b03cdc
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java 2797dc06bf30f7b94188f4c4f14fadf8
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java ccf5e49d2717ea70747349d286b47758
+CLEAN-WORLD OK
+== T5 变异轮：manifest 26 行，本轮跑 17..26，选择器=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest ==
+SELF t5m03_UnitCodec orig=ccf5e49d2717ea70747349d286b47758 base=ccf5e49d2717ea70747349d286b47758 mut=0dfed35bd68c21624f04aa79e9e62ded pushed=0dfed35bd68c21624f04aa79e9e62ded restored=ccf5e49d2717ea70747349d286b47758 n/a rc=0 compile_errors=0 module='[INFO] Tests run: 117, Failures: 0, Errors: 0, Skipped: 0' verdict=OK outcome=GREEN(存活)
+SELF t5m04_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=962ec2074c64a3213a950c1e7820617f pushed=962ec2074c64a3213a950c1e7820617f restored=e3731e1553617df86491b31ca2ab59ff orig_new_UnitState=0 pushed_new_UnitState=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+ABORT(t5m05_UnitTimeParticipant): T5-U2 还原自证未过（原件应 0 次、变异体应 ≥1 次）: orig_new_UnitState=1 pushed_new_UnitState=1
+SELF t5m06_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=572ce99806f095fb768b2ef50d44b5fa pushed=572ce99806f095fb768b2ef50d44b5fa restored=e3731e1553617df86491b31ca2ab59ff orig_new_UnitState=0 pushed_new_UnitState=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m07_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=1783c010607ab4bb433fc39a2bb337d7 pushed=1783c010607ab4bb433fc39a2bb337d7 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m08_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=d175a1aa527fdd023c5c667700417c62 pushed=d175a1aa527fdd023c5c667700417c62 restored=e3731e1553617df86491b31ca2ab59ff orig_new_UnitState=0 pushed_new_UnitState=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m09_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=14767d4cc58d01bd776ecacdf7792792 pushed=14767d4cc58d01bd776ecacdf7792792 restored=e3731e1553617df86491b31ca2ab59ff orig_new_UnitState=0 pushed_new_UnitState=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m10_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=3f8e3bc99ad7fd5e19948c5132adc4d8 pushed=3f8e3bc99ad7fd5e19948c5132adc4d8 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m11_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=0b20076c8cccdb5f994a5f40e1fb7627 pushed=0b20076c8cccdb5f994a5f40e1fb7627 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m12_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=2b1bb3bd247bd2920cb75f785712c5d9 pushed=2b1bb3bd247bd2920cb75f785712c5d9 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+== 收尾干净世界复核（md5 与 baseline 逐条比） ==
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java e3731e1553617df86491b31ca2ab59ff
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java f4b82888ab81cf39b6ad27e0d4e361d9
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java 83feefb4ebbd6fadf2a18a08213f9577
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java bde0f8fef62488fc2a7cb2ee89b65e81
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SetFormationOffsetHandler.java 749654ad829ce6114800717c2330049e
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java b56b2460f7e9963371ee0cd553b03cdc
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java 2797dc06bf30f7b94188f4c4f14fadf8
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java ccf5e49d2717ea70747349d286b47758
+CLEAN-WORLD OK
+== T5 变异轮：manifest 28 行，本轮跑 27..28，选择器=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest ==
+SELF t5m13_UnitCodec orig=ccf5e49d2717ea70747349d286b47758 base=ccf5e49d2717ea70747349d286b47758 mut=06d862066e3fe9952ec9dff1509c7b17 pushed=06d862066e3fe9952ec9dff1509c7b17 restored=ccf5e49d2717ea70747349d286b47758 n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m14_UnitCodec orig=ccf5e49d2717ea70747349d286b47758 base=ccf5e49d2717ea70747349d286b47758 mut=eeea955bc41f7e890284136a5f6a6079 pushed=eeea955bc41f7e890284136a5f6a6079 restored=ccf5e49d2717ea70747349d286b47758 n/a rc=0 compile_errors=0 module='[INFO] Tests run: 117, Failures: 0, Errors: 0, Skipped: 0' verdict=OK outcome=GREEN(存活)
+== 收尾干净世界复核（md5 与 baseline 逐条比） ==
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java e3731e1553617df86491b31ca2ab59ff
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java f4b82888ab81cf39b6ad27e0d4e361d9
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java 83feefb4ebbd6fadf2a18a08213f9577
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java bde0f8fef62488fc2a7cb2ee89b65e81
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SetFormationOffsetHandler.java 749654ad829ce6114800717c2330049e
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java b56b2460f7e9963371ee0cd553b03cdc
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java 2797dc06bf30f7b94188f4c4f14fadf8
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java ccf5e49d2717ea70747349d286b47758
+CLEAN-WORLD OK
+== T5 变异轮：manifest 28 行，本轮跑 18..23，选择器=UnitOperationsTest,UnitCommandHandlersTest,UnitCodecTest,UnitTimeParticipantTest ==
+SELF t5m04_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=962ec2074c64a3213a950c1e7820617f pushed=962ec2074c64a3213a950c1e7820617f restored=e3731e1553617df86491b31ca2ab59ff frag=[return new UnitState(next);] orig_hits=0 pushed_hits=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m05_UnitTimeParticipant orig=2797dc06bf30f7b94188f4c4f14fadf8 base=2797dc06bf30f7b94188f4c4f14fadf8 mut=9aa5ae56f424c8ea55265770940367c5 pushed=9aa5ae56f424c8ea55265770940367c5 restored=2797dc06bf30f7b94188f4c4f14fadf8 frag=[UnitState target = new UnitState(units);] orig_hits=0 pushed_hits=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m06_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=572ce99806f095fb768b2ef50d44b5fa pushed=572ce99806f095fb768b2ef50d44b5fa restored=e3731e1553617df86491b31ca2ab59ff frag=[return new UnitState(next);] orig_hits=0 pushed_hits=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m07_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=1783c010607ab4bb433fc39a2bb337d7 pushed=1783c010607ab4bb433fc39a2bb337d7 restored=e3731e1553617df86491b31ca2ab59ff n/a rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 2, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m08_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=d175a1aa527fdd023c5c667700417c62 pushed=d175a1aa527fdd023c5c667700417c62 restored=e3731e1553617df86491b31ca2ab59ff frag=[return new UnitState(next);] orig_hits=0 pushed_hits=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+SELF t5m09_UnitOperations orig=e3731e1553617df86491b31ca2ab59ff base=e3731e1553617df86491b31ca2ab59ff mut=14767d4cc58d01bd776ecacdf7792792 pushed=14767d4cc58d01bd776ecacdf7792792 restored=e3731e1553617df86491b31ca2ab59ff frag=[return new UnitState(next);] orig_hits=0 pushed_hits=1 rc=1 compile_errors=0 module='[ERROR] Tests run: 117, Failures: 1, Errors: 0, Skipped: 0' verdict=OK outcome=RED(被杀)
+== 收尾干净世界复核（md5 与 baseline 逐条比） ==
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java e3731e1553617df86491b31ca2ab59ff
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/ReparentSubtreeHandler.java f4b82888ab81cf39b6ad27e0d4e361d9
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SplitFormationHandler.java 83feefb4ebbd6fadf2a18a08213f9577
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/MergeFormationHandler.java bde0f8fef62488fc2a7cb2ee89b65e81
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/SetFormationOffsetHandler.java 749654ad829ce6114800717c2330049e
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java b56b2460f7e9963371ee0cd553b03cdc
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java 2797dc06bf30f7b94188f4c4f14fadf8
+CLEAN-OK  simos-unit/src/main/java/io/mosire/simos/unit/codec/UnitCodec.java ccf5e49d2717ea70747349d286b47758
+CLEAN-WORLD OK

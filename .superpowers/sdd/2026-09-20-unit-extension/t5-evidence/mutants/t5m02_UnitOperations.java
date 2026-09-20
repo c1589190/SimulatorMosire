@@ -477,7 +477,8 @@ public final class UnitOperations {
         nextMembers.add(member);
       }
     } else {
-      nextMembers.addAll(existing.members()); // 未给 ⇒ 不动（不是清空）
+      // MUTANT t5m02：忘了把既有 members 带过来，只补了 commander ⇒ 静默缩水
+      nextMembers.add(existing.commander());
     }
     UnitId nextCommander = commander.orElse(existing.commander());
     requireChainMembersResolve(state, id, nextCommander, nextMembers);

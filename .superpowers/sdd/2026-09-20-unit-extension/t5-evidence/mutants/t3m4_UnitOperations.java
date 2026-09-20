@@ -277,7 +277,11 @@ public final class UnitOperations {
     Unit unit = require(state, id);
     return withUnit(
         state,
-        copyFormation(unit, unit.parent(), unit.attached(), append(unit.offset(), at, offset)));
+        copyFormation(
+            unit,
+            unit.parent(),
+            unit.attached(),
+            append(unit.offset(), at, Optional.<RelativeOffset>empty())));
   }
 
   // ── 编制命令 B（T4 / spec §一.3 / §一.4 / P4 / P9） ──────────────

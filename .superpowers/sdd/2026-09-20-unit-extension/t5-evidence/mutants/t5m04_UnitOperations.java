@@ -540,7 +540,8 @@ public final class UnitOperations {
   private static UnitState withUnit(UnitState state, Unit unit) {
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     next.put(unit.id(), unit); // 覆盖时**保持原键位**（LinkedHashMap 的既有键不改变位置）
-    return state.withUnits(next);
+    // MUTANT t5m04：还原成 1 参兼容构造器（T5-U2 的 site 4，十个单单位操作都经此）
+    return new UnitState(next);
   }
 
   private static <T> SegmentedSeries<T> append(

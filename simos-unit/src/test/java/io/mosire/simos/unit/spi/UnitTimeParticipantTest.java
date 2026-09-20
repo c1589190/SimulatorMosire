@@ -17,6 +17,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CommandChain;
+import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -27,9 +29,12 @@ import io.mosire.simos.util.spi.TimeProposal;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.TimeRange;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -39,6 +44,8 @@ import org.junit.jupiter.api.Test;
  * {@code [1,2]}（余 1000），Δ=2 时 ARRIVED 在 {@code [1,3]}。
  */
 class UnitTimeParticipantTest {
+
+  private static final CommandChainId CHAIN = new CommandChainId("c-1");
 
   /** 每段 1500 毫 MP 的固定成本 + 全程记账（形态 4 的"原样转交"就钉在记账上）。 */
   private static final class RecordingCost implements MovementCost {
@@ -161,6 +168,35 @@ class UnitTimeParticipantTest {
     assertThat(proposal.reads()).isEmpty();
     assertThat(proposal.writes()).isEmpty();
     assertThat(cost.edges).as("无可评估的时刻 ⇒ 根本不询价").isEmpty();
+  }
+
+  /**
+   * ★★ 判据（裁定 T5-U2，site 5 = `UnitTimeParticipant` 的返回）：推进**保留 `commandChains`**——位置与行程真的变了，
+   * 链逐值活下来，且**链根本没进差分**。
+   *
+   * <p>★ 靶子是那行 `snapshot.state().withUnits(units)`：改回 `new UnitState(units)`（1 参兼容构造器 ⇒
+   * `commandChains = Map.of()`），本用例当场红两处——链的逐值断言、与"链没进差分"（变异体下会变成 {@code Remove}）。
+   *
+   * <p>★ 夹具只有 `u-1` 一个单位，链就只能围着它建（commander 也在成员里，T1 的不变量满足即可）——本用例钉的是**链这个 组件有没有被抹掉**，与链的规模无关。
+   */
+  @Test
+  void advanceKeepsCommandChainsWhilePositionAndMovementChange() {
+    Map<CommandChainId, CommandChain> chains = new LinkedHashMap<>();
+    chains.put(CHAIN, new CommandChain(CHAIN, "第一链", U1, Set.of(U1)));
+    UnitState base = unitState(unitWithMovement(Optional.of(inFlight()))).withCommandChains(chains);
+
+    TimeProposal proposal =
+        participant(new RecordingCost()).simulate(state(map(), base), advanceTo(2));
+    UnitState next = UnitChangeSet.apply((UnitChangeSet) proposal.changeSet(), base);
+
+    assertThat(next.units().get(U1).movement()).as("前提：推进真的改了行程（抵达 ⇒ 清空）").isEmpty();
+    assertThat(next.units().get(U1).position().valueAt(T0.plus(2))).as("前提：位置真的变了").contains(H13);
+    assertThat(next.commandChains())
+        .as("★ T5-U2：参与者走 withUnits ⇒ 链逐值活下来（旧写法会全清）")
+        .isEqualTo(chains);
+    assertThat(((UnitChangeSet) proposal.changeSet()).commandChains().changed())
+        .as("★ 链与推进无关 ⇒ 连差分都不该有")
+        .isFalse();
   }
 
   @Test

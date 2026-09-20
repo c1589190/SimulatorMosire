@@ -481,10 +481,7 @@ public final class UnitOperations {
     }
     UnitId nextCommander = commander.orElse(existing.commander());
     requireChainMembersResolve(state, id, nextCommander, nextMembers);
-    if (!nextMembers.contains(nextCommander)) {
-      throw new IllegalArgumentException(
-          "链 " + id + " 的 commander " + nextCommander + " 不在 members 内：先把它加进 members 再改链");
-    }
+    // MUTANT t5m10：删掉"生效 commander 必须在生效 members 里"（由 CommandChain 构造期兜底）
     CommandChain updated =
         new CommandChain(id, name.orElse(existing.name()), nextCommander, nextMembers);
     Map<CommandChainId, CommandChain> next = new LinkedHashMap<>(state.commandChains());

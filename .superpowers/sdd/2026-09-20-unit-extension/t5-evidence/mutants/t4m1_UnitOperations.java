@@ -314,13 +314,18 @@ public final class UnitOperations {
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     for (UnitId member : subtree) {
       Unit current = state.units().get(member);
-      // 只有 root 换父；后代在同一刻重新挂载，值仍是它本来的父（整树一起落到 at）
-      Optional<UnitId> parent =
-          member.equals(rootId) ? newParent : requiredParentAt(state, member, at);
+      // MUTANT T4-m1：只有 root 换父，后代原样带过
+      if (!member.equals(rootId)) {
+        next.put(member, current);
+        continue;
+      }
       next.put(
           member,
           copyFormation(
-              current, append(current.parent(), at, parent), current.attached(), current.offset()));
+              current,
+              append(current.parent(), at, newParent),
+              current.attached(),
+              current.offset()));
     }
     return state.withUnits(next);
   }

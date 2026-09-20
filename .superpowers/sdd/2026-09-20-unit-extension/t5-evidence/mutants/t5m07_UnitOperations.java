@@ -189,7 +189,7 @@ public final class UnitOperations {
    */
   public static UnitState disband(UnitState state, UnitId id, SimosTimestamp at) {
     require(state, id); // 存在性校验（查无此人 ⇒ 抛）；unit 本体在解散时无需再取
-    requireNotInAnyChain(state, id);
+    // MUTANT t5m07：删掉 disband 的链前置
     for (Unit other : state.units().values()) {
       if (other.id().equals(id)) {
         continue;
@@ -202,19 +202,6 @@ public final class UnitOperations {
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     next.remove(id);
     return state.withUnits(next);
-  }
-
-  /** 链引用的可读理由（T5 / spec §一.2 不变量 2）：`id` 是任何一条链的 commander 或 member ⇒ 拒。 */
-  private static void requireNotInAnyChain(UnitState state, UnitId id) {
-    for (CommandChain chain : state.commandChains().values()) {
-      if (chain.commander().equals(id)) {
-        throw new IllegalArgumentException(
-            "单位 " + id + " 仍是链 " + chain.id() + " 的 commander：先改链、再解散");
-      }
-      if (chain.members().contains(id)) {
-        throw new IllegalArgumentException("单位 " + id + " 仍是链 " + chain.id() + " 的成员：先改链、再解散");
-      }
-    }
   }
 
   // ── 编制命令 A（T3 / spec §一.3 / P2 / P3） ──────────────────────

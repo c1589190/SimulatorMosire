@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CommandChain;
+import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
@@ -22,14 +24,16 @@ import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * 十四个 unit 命令 handler（spec §四 + T3 的三条编制命令 A + T4 的三条编制命令 B）：逐命令验证 happy path（{@code Applied} +
- * 应用之后的 {@code UnitState} 逐值）与关键拒绝。
+ * 十六个 unit 命令 handler（spec §四 + T3 的三条编制命令 A + T4 的三条编制命令 B + T5 的两条命令链命令）：逐命令验证 happy path（{@code
+ * Applied} + 应用之后的 {@code UnitState} 逐值）与关键拒绝。
  *
  * <p>★ 带时刻的命令（CreateUnit / ReparentUnit / PlaceAt / PlanRoute / DisbandUnit / AttachUnit /
  * DetachUnit / SetFormationOffset / ReparentSubtree / SplitFormation / MergeFormation）在**非零 base
@@ -41,6 +45,10 @@ class UnitCommandHandlersTest {
   private static final SimosTimestamp T6 = SimosTimestamp.of(6);
   private static final UnitId U2 = new UnitId("u-2");
   private static final UnitId U3 = new UnitId("u-3");
+  private static final UnitId U4 = new UnitId("u-4");
+  private static final CommandChainId CHAIN_1 = new CommandChainId("c-1");
+  private static final CommandChainId CHAIN_2 = new CommandChainId("c-2");
+  private static final CommandChainId CHAIN_3 = new CommandChainId("c-3");
 
   private static final CreateUnitHandler CREATE = new CreateUnitHandler();
   private static final ReparentUnitHandler REPARENT = new ReparentUnitHandler();
@@ -56,6 +64,8 @@ class UnitCommandHandlersTest {
   private static final ReparentSubtreeHandler REPARENT_SUBTREE = new ReparentSubtreeHandler();
   private static final SplitFormationHandler SPLIT = new SplitFormationHandler();
   private static final MergeFormationHandler MERGE = new MergeFormationHandler();
+  private static final CreateCommandChainHandler CREATE_CHAIN = new CreateCommandChainHandler();
+  private static final UpdateCommandChainHandler UPDATE_CHAIN = new UpdateCommandChainHandler();
 
   // ── 夹具与世界构造 ──────────────────────────────────────────────
 
@@ -196,6 +206,8 @@ class UnitCommandHandlersTest {
     assertThat(REPARENT_SUBTREE.type()).isEqualTo("unit.ReparentSubtree");
     assertThat(SPLIT.type()).isEqualTo("unit.SplitFormation");
     assertThat(MERGE.type()).isEqualTo("unit.MergeFormation");
+    assertThat(CREATE_CHAIN.type()).isEqualTo("unit.CreateCommandChain");
+    assertThat(UPDATE_CHAIN.type()).isEqualTo("unit.UpdateCommandChain");
   }
 
   // ── unit.CreateUnit ────────────────────────────────────────────
@@ -612,7 +624,7 @@ class UnitCommandHandlersTest {
         .contains("单位不存在");
   }
 
-  /** 十四个 handler 的载荷畸形一律折成拒绝（不逃逸成异常）。 */
+  /** 十六个 handler 的载荷畸形一律折成拒绝（不逃逸成异常）。 */
   @Test
   void everyHandlerRejectsMalformedPayload() {
     assertThat(reason(REPARENT, worldAt(T5, oneUnit()), "不是 JSON")).contains("不是合法 JSON");
@@ -638,6 +650,8 @@ class UnitCommandHandlersTest {
         .contains("必须是 [字符串…] 数组");
     assertThat(reason(MERGE, worldAt(T5, sameHexLine(false)), "{\"childId\":\"u-3\"}"))
         .contains("parentId");
+    assertThat(reason(CREATE_CHAIN, worldAt(T5, oneUnit()), "{}")).contains("chainId");
+    assertThat(reason(UPDATE_CHAIN, worldAt(T5, oneUnit()), "[1,2,3]")).contains("JSON 对象");
   }
 
   // ── unit.ReparentSubtree（T4 / spec §一.3 / §一.5 表 / P4） ──────
@@ -830,5 +844,254 @@ class UnitCommandHandlersTest {
     assertThat(merge.isEmpty()).as("值没变但落了段 ⇒ 差分仍非空").isFalse();
     assertThat(UnitChangeSet.apply(merge, base))
         .isEqualTo(UnitOperations.mergeFormation(base, U3, U2, T5));
+  }
+
+  // ── 命令链（T5 / spec §一.2 / §五.2 / §五.3 / P11） ──────────────
+
+  /**
+   * u-1…u-4 四个无父单位 + 两条链：c-1（commander `u-1`，成员 `{u-1,u-2}`）、c-2（commander `u-2`，成员 `{u-2,u-3}`） ⇒
+   * `u-2` **多属**（在 c-1 里是成员、在 c-2 里是 commander），`u-4` **不在任何链里**（解散对照）。`LinkedHashMap` 保序遍历序 ⇒
+   * 拒绝消息里报的是哪一条链可判。
+   */
+  private static UnitState twoChains() {
+    Map<CommandChainId, CommandChain> chains = new LinkedHashMap<>();
+    chains.put(CHAIN_1, new CommandChain(CHAIN_1, "第一链", SpiFixture.U1, Set.of(SpiFixture.U1, U2)));
+    chains.put(CHAIN_2, new CommandChain(CHAIN_2, "第二链", U2, Set.of(U2, U3)));
+    return SpiFixture.unitState(
+            SpiFixture.unitWithMovement(Optional.empty()),
+            unit("u-2", Optional.empty(), Optional.of(SpiFixture.H12)),
+            unit("u-3", Optional.empty(), Optional.of(SpiFixture.H13)),
+            unit("u-4", Optional.empty(), Optional.of(SpiFixture.H11)))
+        .withCommandChains(chains);
+  }
+
+  /**
+   * ★ 判据（spec §五.3 第 1 条）：建链 happy path + 三条拒绝**分属三层**（链 id 已在 / 引用不存在 / `commander ∉ members` 由
+   * `CommandChain` 构造期给）。
+   */
+  @Test
+  void createCommandChainAppliesAndRejectsDuplicatesAndDanglingUnits() {
+    UnitState base =
+        SpiFixture.unitState(
+            SpiFixture.unitWithMovement(Optional.empty()),
+            unit("u-2", Optional.empty(), Optional.of(SpiFixture.H12)));
+    SimulationState world = worldAt(T5, base);
+
+    UnitState next =
+        applied(
+            CREATE_CHAIN,
+            world,
+            "{\"chainId\":\"c-1\",\"name\":\"第一链\",\"commander\":\"u-1\","
+                + "\"members\":[\"u-1\",\"u-2\"]}");
+    assertThat(next.commandChains()).containsOnlyKeys(CHAIN_1);
+    assertThat(next.commandChains().get(CHAIN_1).name()).isEqualTo("第一链");
+    assertThat(next.commandChains().get(CHAIN_1).commander()).isEqualTo(SpiFixture.U1);
+    assertThat(next.commandChains().get(CHAIN_1).members())
+        .containsExactlyInAnyOrder(SpiFixture.U1, U2);
+    assertThat(next.units()).as("建链不动 units").isEqualTo(base.units());
+
+    assertThat(
+            reason(
+                CREATE_CHAIN,
+                worldAt(T5, twoChains()),
+                "{\"chainId\":\"c-1\",\"name\":\"又来一条\",\"commander\":\"u-1\","
+                    + "\"members\":[\"u-1\"]}"))
+        .as("链 id 已在")
+        .contains("已存在")
+        .contains("c-1");
+    assertThat(
+            reason(
+                CREATE_CHAIN,
+                world,
+                "{\"chainId\":\"c-1\",\"name\":\"幽灵链\",\"commander\":\"u-404\","
+                    + "\"members\":[\"u-404\"]}"))
+        .as("commander 不在 units 里")
+        .contains("commander 不存在")
+        .contains("u-404");
+    assertThat(
+            reason(
+                CREATE_CHAIN,
+                world,
+                "{\"chainId\":\"c-1\",\"name\":\"幽灵成员\",\"commander\":\"u-1\","
+                    + "\"members\":[\"u-1\",\"u-404\"]}"))
+        .as("成员不在 units 里")
+        .contains("成员不存在")
+        .contains("u-404");
+    assertThat(
+            reason(
+                CREATE_CHAIN,
+                world,
+                "{\"chainId\":\"c-1\",\"name\":\"司令不在队里\",\"commander\":\"u-1\","
+                    + "\"members\":[\"u-2\"]}"))
+        .as("★ commander ∉ members：由 CommandChain 构造期给（op 层不重复实现这条检查）")
+        .contains("commander 必须是 members 之一");
+    assertThat(
+            reason(
+                CREATE_CHAIN,
+                world,
+                "{\"chainId\":\"c-1\",\"name\":\"x\",\"commander\":\"u-1\",\"members\":{}}"))
+        .as("members 形状")
+        .contains("必须是 [字符串…] 数组");
+    assertThat(
+            reason(
+                CREATE_CHAIN,
+                world,
+                "{\"chainId\":\"c-1\",\"name\":\"x\",\"commander\":\"u-1\",\"members\":[1]}"))
+        .as("members 元素类型")
+        .contains("元素必须是非空字符串");
+    assertThat(
+            reason(
+                CREATE_CHAIN, world, "{\"chainId\":\"c-1\",\"name\":\"x\",\"commander\":\"u-1\"}"))
+        .as("members 缺失（四字段全必填）")
+        .contains("members");
+  }
+
+  /**
+   * ★★ 判据（spec §五.3 第 2/3 条）：`UpdateCommandChain` 的未给字段**不动**（**不是清空**）——三个字段各自独立，`null`
+   * 与缺失同义；三缺省合法（空转）。
+   */
+  @Test
+  void updateCommandChainTouchesOnlyTheGivenFields() {
+    SimulationState world = worldAt(T5, twoChains());
+
+    UnitState renamed = applied(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"name\":\"改过的名字\"}");
+    assertThat(renamed.commandChains().get(CHAIN_1).name()).isEqualTo("改过的名字");
+    assertThat(renamed.commandChains().get(CHAIN_1).commander())
+        .as("未给 commander ⇒ 不动")
+        .isEqualTo(SpiFixture.U1);
+    assertThat(renamed.commandChains().get(CHAIN_1).members())
+        .as("★ 未给 members ⇒ 不动，不是清空")
+        .containsExactlyInAnyOrder(SpiFixture.U1, U2);
+    assertThat(renamed.commandChains().get(CHAIN_2))
+        .as("别的链一字不变")
+        .isEqualTo(twoChains().commandChains().get(CHAIN_2));
+
+    UnitState promoted =
+        applied(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"commander\":\"u-2\"}");
+    assertThat(promoted.commandChains().get(CHAIN_1).commander()).isEqualTo(U2);
+    assertThat(promoted.commandChains().get(CHAIN_1).members())
+        .as("只给 commander：members 是既有那组")
+        .containsExactlyInAnyOrder(SpiFixture.U1, U2);
+    assertThat(promoted.commandChains().get(CHAIN_1).name()).as("名字没被顺手清掉").isEqualTo("第一链");
+
+    UnitState blanked =
+        applied(
+            UPDATE_CHAIN,
+            world,
+            "{\"chainId\":\"c-1\",\"name\":null,\"commander\":null,\"members\":null}");
+    assertThat(blanked.commandChains())
+        .as("★ 三个都显式 null ⇒ 一个都不动（与缺失同义）")
+        .isEqualTo(twoChains().commandChains());
+
+    UnitState regiven =
+        applied(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"members\":[\"u-1\",\"u-3\"]}");
+    assertThat(regiven.commandChains().get(CHAIN_1).members())
+        .containsExactlyInAnyOrder(SpiFixture.U1, U3);
+    assertThat(regiven.commandChains().get(CHAIN_1).commander())
+        .as("未给 commander ⇒ 仍是 u-1，它落在新 members 里 ⇒ 放行")
+        .isEqualTo(SpiFixture.U1);
+
+    UnitState idle = applied(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\"}");
+    assertThat(idle.commandChains()).as("三缺省 ⇒ 合法空转").isEqualTo(twoChains().commandChains());
+  }
+
+  /** ★ 判据（spec §五.3 第 2/3 条的另一半）：四条拒绝——链不存在 / 生效 commander 被挤出去 / 引用不存在 / 形状不对。 */
+  @Test
+  void updateCommandChainRejectsUnknownChainsAndCommandersOutsideTheEffectiveMembers() {
+    SimulationState world = worldAt(T5, twoChains());
+
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-404\",\"name\":\"改名\"}"))
+        .as("改一条不存在的链是坏命令，不是顺手建一条")
+        .contains("链不存在")
+        .contains("c-404");
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"members\":[\"u-2\"]}"))
+        .as("★ 只给 members：生效 commander 仍是 u-1（链上原有），它被挤出去了")
+        .contains("不在 members 内")
+        .contains("c-1");
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"commander\":\"u-3\"}"))
+        .as("★ 只给 commander：u-3 存在，但不在既有 members 里")
+        .contains("不在 members 内");
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"commander\":\"u-404\"}"))
+        .as("新 commander 不存在（域层消息，与载荷层刻意不同）")
+        .contains("commander 不存在")
+        .contains("u-404");
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"members\":[\"u-1\",\"u-404\"]}"))
+        .as("新成员不存在")
+        .contains("成员不存在")
+        .contains("u-404");
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"members\":{}}"))
+        .as("★ members 形状：T5 新增的 optionalTextArray 自己的消息（与 requireTextArray 刻意不同）")
+        .contains("必须是 [字符串…] 数组或 null");
+    assertThat(reason(UPDATE_CHAIN, world, "{\"chainId\":\"c-1\",\"members\":[1]}"))
+        .as("members 元素类型")
+        .contains("元素必须是非空字符串");
+  }
+
+  /**
+   * ★★ 判据（spec §一.2 不变量 2 + 裁定 T5-U2）：**链上单位的解散在命令边界被拒**（两个方向都拒、理由带链 id 与"先改链"）；
+   * **链外单位照样能解散**，且**链经变更集往返逐值活下来**。
+   *
+   * <p>★ 第二半是本用例真正钉的东西：`applied` 走的是 `UnitChangeSet.apply(between(base, target), base)`——若
+   * `disband` 改回 `new UnitState(next)`（1 参兼容构造器），`between` 会看到链被删、`apply` 之后链全没，这里是 **值**红而非异常。
+   */
+  @Test
+  void disbandRejectsChainedUnitsAndKeepsTheChainsForChainFreeOnes() {
+    SimulationState world = worldAt(T5, twoChains());
+
+    assertThat(reason(DISBAND, world, "{\"id\":\"u-1\"}"))
+        .as("c-1 的 commander")
+        .contains("c-1")
+        .contains("commander")
+        .contains("先改链");
+    assertThat(reason(DISBAND, world, "{\"id\":\"u-2\"}"))
+        .as("多属：先撞 c-1 的成员分支")
+        .contains("c-1")
+        .contains("成员")
+        .contains("先改链");
+    assertThat(reason(DISBAND, world, "{\"id\":\"u-3\"}"))
+        .as("c-2 的成员")
+        .contains("c-2")
+        .contains("成员")
+        .contains("先改链");
+
+    UnitState next = applied(DISBAND, world, "{\"id\":\"u-4\"}");
+    assertThat(next.units()).as("链外的 u-4 真的没了").doesNotContainKey(U4);
+    assertThat(next.commandChains())
+        .as("★ T5-U2：经命令边界的变更集往返，两条链逐值活下来")
+        .isEqualTo(twoChains().commandChains());
+  }
+
+  /**
+   * ★ 判据（铁律 5 / spec §一.2）：两条链命令都**经 `between` 产变更集**——把命令边界交出去的那份变更集 `apply` 回 base，
+   * 逐字段重建出**域操作算出的目标**（比的是命令边界真正给出的差分，不是重跑一遍 op 再比）。
+   */
+  @Test
+  void chainCommandsProduceChangeSetsThatRebuildTheTarget() {
+    UnitState base = twoChains();
+    SimulationState world = worldAt(T5, base);
+
+    UnitChangeSet create =
+        changeSetOf(
+            CREATE_CHAIN,
+            world,
+            "{\"chainId\":\"c-3\",\"name\":\"第三链\",\"commander\":\"u-4\","
+                + "\"members\":[\"u-4\",\"u-1\"]}");
+    assertThat(create.commandChains().changed()).as("链的差分非空").isTrue();
+    assertThat(create.units().changed()).as("建链不动 units").isFalse();
+    assertThat(UnitChangeSet.apply(create, base))
+        .isEqualTo(
+            UnitOperations.createChain(
+                base, new CommandChain(CHAIN_3, "第三链", U4, Set.of(U4, SpiFixture.U1))));
+
+    UnitChangeSet update =
+        changeSetOf(
+            UPDATE_CHAIN,
+            world,
+            "{\"chainId\":\"c-2\",\"name\":\"改名\",\"commander\":\"u-3\","
+                + "\"members\":[\"u-3\"]}");
+    assertThat(UnitChangeSet.apply(update, base))
+        .isEqualTo(
+            UnitOperations.updateChain(
+                base, CHAIN_2, Optional.of("改名"), Optional.of(U3), Optional.of(List.of(U3))));
   }
 }

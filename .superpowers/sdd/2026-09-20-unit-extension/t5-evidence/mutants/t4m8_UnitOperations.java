@@ -342,9 +342,7 @@ public final class UnitOperations {
       UnitState state, UnitId rootId, List<UnitId> subUnitIds, SimosTimestamp at) {
     Objects.requireNonNull(subUnitIds, "subUnitIds");
     require(state, rootId); // 存在性校验
-    if (subUnitIds.isEmpty()) {
-      throw new IllegalArgumentException("subUnitIds 不得为空：拆分命令至少要指名一个目标");
-    }
+    // MUTANT T4-m8：删掉"subUnitIds 不得为空"这条守卫（空名单静默变成"什么都不做"）
     List<UnitId> subtree = subtreeOf(state, rootId, at);
     Set<UnitId> targets = new LinkedHashSet<>();
     for (UnitId id : subUnitIds) {

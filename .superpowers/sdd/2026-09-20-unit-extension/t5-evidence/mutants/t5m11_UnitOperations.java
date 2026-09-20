@@ -429,9 +429,7 @@ public final class UnitOperations {
   public static UnitState createChain(UnitState state, CommandChain chain) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(chain, "chain");
-    if (state.commandChains().containsKey(chain.id())) {
-      throw new IllegalArgumentException("链 id 已存在: " + chain.id());
-    }
+    // MUTANT t5m11：删掉"链 id 已存在"的检查（后建的静默覆盖先建的）
     requireChainMembersResolve(state, chain.id(), chain.commander(), chain.members());
     Map<CommandChainId, CommandChain> next = new LinkedHashMap<>(state.commandChains());
     next.put(chain.id(), chain);

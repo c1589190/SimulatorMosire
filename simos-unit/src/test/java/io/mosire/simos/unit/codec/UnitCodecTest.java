@@ -13,6 +13,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
+import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -187,6 +188,53 @@ class UnitCodecTest {
     assertThat(cs.commandChains()).isInstanceOf(FieldDelta.Upsert.class);
 
     assertThat((UnitChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(cs))).isEqualTo(cs);
+  }
+
+  /**
+   * ★★ 判据（spec §八 #19 / T5 的 m3）：**`CommandChainId` 作 Map 键的往返**——链由**命令层的 op** （{@code
+   * UnitOperations.createChain}）造出（不是手工 `new UnitState(units, chains)`），两条链共用同一批成员，
+   * **快照与变更集各往返一次**。
+   *
+   * <p>★ m3 的靶子是 `UnitCodec` 里那行 `CommandChainId` 的 Map 键反序列化器（与 `UnitId` 那行相邻）：删掉它，解码落在
+   * **类型解析期**（`Cannot find a (Map) Key deserializer for type …`），本用例与 T1 的往返用例各钉一面——这条钉的是 "**op
+   * 产出的**状态"那一面。
+   */
+  @Test
+  void commandChainIdsSurviveRoundTripAsMapKeysOnOpProducedStates() {
+    Unit u1 = oneUnit("u-1", H11, false);
+    Unit u2 = oneUnit("u-2", H12, false);
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(u1.id(), u1);
+    units.put(u2.id(), u2);
+    UnitState base = UnitState.empty().withUnits(units);
+    UnitState target =
+        UnitOperations.createChain(
+            UnitOperations.createChain(
+                base,
+                new CommandChain(
+                    new CommandChainId("c-1"), "第一链", u1.id(), Set.of(u1.id(), u2.id()))),
+            new CommandChain(new CommandChainId("c-2"), "第二链", u2.id(), Set.of(u2.id(), u1.id())));
+    assertThat(target.commandChains()).as("前提：两条链真的建上了").hasSize(2);
+
+    UnitSnapshot snapshot = snapshotOf(target, SimosTimestamp.of(13));
+    UnitSnapshot snapshotBack = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+    assertThat(snapshotBack).isEqualTo(snapshot);
+    assertThat(snapshotBack.state().commandChains().keySet().iterator().next())
+        .as("键得还是 CommandChainId（不是 String、也不是 Map）")
+        .isInstanceOf(CommandChainId.class);
+    assertThat(snapshotBack.state().commandChains())
+        .containsOnlyKeys(new CommandChainId("c-1"), new CommandChainId("c-2"));
+    assertThat(snapshotBack.state().commandChains().get(new CommandChainId("c-2")).commander())
+        .as("共享成员那条链的 commander 逐值还在")
+        .isEqualTo(u2.id());
+
+    UnitChangeSet cs = UnitChangeSet.between(base, target);
+    assertThat(cs.commandChains()).isInstanceOf(FieldDelta.Upsert.class);
+    UnitChangeSet changeSetBack = (UnitChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(cs));
+    assertThat(changeSetBack).isEqualTo(cs);
+    assertThat(UnitChangeSet.apply(changeSetBack, base))
+        .as("往返后的变更集照样重建出目标（铁律 5）")
+        .isEqualTo(target);
   }
 
   // ── 夹具 ──

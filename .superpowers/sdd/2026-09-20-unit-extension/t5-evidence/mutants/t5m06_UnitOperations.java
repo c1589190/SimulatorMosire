@@ -201,7 +201,8 @@ public final class UnitOperations {
     }
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     next.remove(id);
-    return state.withUnits(next);
+    // MUTANT t5m06：还原成 1 参兼容构造器（T5-U2 的 site 1）——链被静默清空
+    return new UnitState(next);
   }
 
   /** 链引用的可读理由（T5 / spec §一.2 不变量 2）：`id` 是任何一条链的 commander 或 member ⇒ 拒。 */

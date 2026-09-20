@@ -345,14 +345,10 @@ public final class UnitOperations {
     if (subUnitIds.isEmpty()) {
       throw new IllegalArgumentException("subUnitIds 不得为空：拆分命令至少要指名一个目标");
     }
-    List<UnitId> subtree = subtreeOf(state, rootId, at);
     Set<UnitId> targets = new LinkedHashSet<>();
     for (UnitId id : subUnitIds) {
       require(state, id); // 存在性校验（缺 id 时先报"不存在"，而不是"不在子树内"）
-      if (!subtree.contains(id)) {
-        throw new IllegalArgumentException(
-            "单位 " + id + " 不在 " + rootId + " 在 " + at + " 的子树内：不能拆分");
-      }
+      // MUTANT T4-m5：删掉"目标必须在 rootId 子树内"这条守卫
       targets.add(id);
     }
     UnitState next = state;

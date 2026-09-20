@@ -433,6 +433,14 @@ public final class UnitOperations {
       throw new IllegalArgumentException("链 id 已存在: " + chain.id());
     }
     requireChainMembersResolve(state, chain.id(), chain.commander(), chain.members());
+    // MUTANT t5m01：多属被拒（P11 / spec §一.2 的"多属是正常态"被抹掉）
+    for (CommandChain other : state.commandChains().values()) {
+      for (UnitId member : chain.members()) {
+        if (other.members().contains(member)) {
+          throw new IllegalArgumentException("单位 " + member + " 已在链 " + other.id() + " 里：一单位只属一链");
+        }
+      }
+    }
     Map<CommandChainId, CommandChain> next = new LinkedHashMap<>(state.commandChains());
     next.put(chain.id(), chain);
     return state.withCommandChains(next);

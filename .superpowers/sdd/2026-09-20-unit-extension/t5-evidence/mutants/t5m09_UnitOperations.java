@@ -322,7 +322,8 @@ public final class UnitOperations {
           copyFormation(
               current, append(current.parent(), at, parent), current.attached(), current.offset()));
     }
-    return state.withUnits(next);
+    // MUTANT t5m09：还原成 1 参兼容构造器（T5-U2 的 site 3）——链被静默清空
+    return new UnitState(next);
   }
 
   /**

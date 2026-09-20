@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CommandChain;
+import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -17,11 +19,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * 编制树操作面（M3 的 8 项 + T3 的编制命令 A 3 项）：25 条 = 计划 12 条 + R-11-b 补的 placeAtClearsInTransitRoute + T2
- * 补的三态速度 3 条 + T3 补的 9 条。
+ * 编制树操作面（M3 的 8 项 + T3 的编制命令 A 3 项 + T4 的编制命令 B 3 项 + T5 的命令链 2 项）：43 条 = 计划 12 条 + R-11-b 补的
+ * placeAtClearsInTransitRoute + T2 补的三态速度 3 条 + T3 补的 9 条 + T4 补的 10 条 + T5 补的 8 条。
  */
 class UnitOperationsTest {
 
@@ -711,5 +714,342 @@ class UnitOperationsTest {
     assertThat(back.units().get(CHILD).attached().valueAt(T10)).as("中间那段历史留着（T10 拆过）").isFalse();
     assertThat(back.effectivePosition(CHILD, T20)).contains(H11);
     assertThat(back.units().get(GRAND).attached().valueAt(T20)).as("合体把下属一起带回来").isTrue();
+  }
+
+  // ── 命令链（T5 / spec §一.2 / §五.2 / §五.3 / P11） ──────────────
+
+  private static final CommandChainId C1 = new CommandChainId("c-1");
+  private static final CommandChainId C2 = new CommandChainId("c-2");
+
+  /**
+   * `formation(true, true)` + 两条链（`LinkedHashMap` 保序 ⇒ 遍历顺序确定，拒绝消息里报的是哪一条链可判）： c-1 的 commander 是
+   * `u-root`、成员 `{u-root, u-sub}`；c-2 的 commander 是 `u-sub`、成员 `{u-sub, u-leaf}`。
+   *
+   * <p>★ 这个夹具同时是三个判据的载体：**多属**（`u-sub` 同属两条链）、**交叉**（`u-sub` 在 c-1 里是成员、在 c-2 里是 commander ⇒
+   * 链不构成层级，没有环要防）、**链外对照**（`u-other` 不在任何链里）。
+   */
+  private static UnitState chained() {
+    Map<CommandChainId, CommandChain> chains = new LinkedHashMap<>();
+    chains.put(C1, new CommandChain(C1, "第一链", ROOT, Set.of(ROOT, SUB)));
+    chains.put(C2, new CommandChain(C2, "第二链", SUB, Set.of(SUB, LEAF)));
+    return formation(true, true).withCommandChains(chains);
+  }
+
+  /** ★ 判据（spec §五.3 第 1 条）：建链的 happy path + 三条拒绝（id 已在 / commander 不存在 / 成员不存在）。 */
+  @Test
+  void createChainAppliesTheChainAndRejectsDuplicatesAndDanglingReferences() {
+    UnitState base = formation(true, true);
+    UnitState one =
+        UnitOperations.createChain(base, new CommandChain(C1, "第一链", ROOT, Set.of(ROOT, SUB)));
+
+    assertThat(one.commandChains()).containsOnlyKeys(C1);
+    assertThat(one.commandChains().get(C1).name()).isEqualTo("第一链");
+    assertThat(one.commandChains().get(C1).commander()).isEqualTo(ROOT);
+    assertThat(one.commandChains().get(C1).members()).containsExactlyInAnyOrder(ROOT, SUB);
+    assertThat(one.units()).as("建链不动 units").isEqualTo(base.units());
+
+    assertThatThrownBy(
+            () -> UnitOperations.createChain(one, new CommandChain(C1, "又来一条", ROOT, Set.of(ROOT))))
+        .as("链 id 已在")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("已存在")
+        .hasMessageContaining("c-1");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.createChain(
+                    base,
+                    new CommandChain(
+                        C1, "幽灵链", new UnitId("u-ghost"), Set.of(new UnitId("u-ghost")))))
+        .as("commander 不在 units 里")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("commander 不存在")
+        .hasMessageContaining("u-ghost");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.createChain(
+                    base, new CommandChain(C1, "幽灵成员", ROOT, Set.of(ROOT, new UnitId("u-ghost")))))
+        .as("成员不在 units 里")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("成员不存在")
+        .hasMessageContaining("u-ghost");
+
+    assertThat(base.commandChains()).as("纯函数：旧状态不变").isEmpty();
+    assertThat(one.commandChains()).as("拒绝不改已建好的那条").containsOnlyKeys(C1);
+  }
+
+  /**
+   * ★★ 判据（spec §一.2 / P11）：**多属是正常态**，链**不构成层级**——`u-sub` 在 c-1 里是成员、在 c-2 里是 commander，
+   * 两条链各自成立；再建第三条把 `u-root` 同时挂成成员，`createChain` 一次都不许抛。
+   *
+   * <p>本用例是「链不需要环校验」的**显式**判据：唯一防环的是编制树（{@code UnitState} 构造期那套），链是扁平星形， 有人往 {@code createChain}
+   * 里补一条"链成环"检查，这里就红（那检查没有可判定的语义）。
+   */
+  @Test
+  void aUnitMayBelongToSeveralChainsAndChainsMayCrossFreely() {
+    UnitState base = formation(true, true);
+    UnitState two =
+        UnitOperations.createChain(
+            UnitOperations.createChain(base, chain(C1, "第一链", ROOT, ROOT, SUB)),
+            chain(C2, "第二链", SUB, SUB, LEAF));
+
+    assertThat(two.commandChains().get(C1).members()).as("u-sub 是 c-1 的成员").contains(SUB);
+    assertThat(two.commandChains().get(C2).commander())
+        .as("同一个 u-sub 又是 c-2 的 commander")
+        .isEqualTo(SUB);
+    assertThat(two.commandChains().get(C2).members()).containsExactlyInAnyOrder(SUB, LEAF);
+
+    UnitState three =
+        UnitOperations.createChain(
+            two, chain(new CommandChainId("c-3"), "第三链", OTHER, OTHER, ROOT));
+    assertThat(three.commandChains())
+        .as("三条链共存")
+        .containsOnlyKeys(C1, C2, new CommandChainId("c-3"));
+    assertThat(three.commandChains().get(new CommandChainId("c-3")).members())
+        .as("u-root 在 c-1 里是 commander、在 c-3 里只是成员")
+        .containsExactlyInAnyOrder(OTHER, ROOT);
+    assertThat(three.units()).as("链是扁平星，编制树一字不动").isEqualTo(base.units());
+  }
+
+  /** 链的构造助手：commander 必在成员里（少写一次样板，免得把 `Set.of` 的重复项写成编译期错误）。 */
+  private static CommandChain chain(
+      CommandChainId id, String name, UnitId commander, UnitId... members) {
+    return new CommandChain(id, name, commander, Set.of(members));
+  }
+
+  /**
+   * ★★ 判据（spec §五.3 第 2/3 条）：三个字段**各自独立**——未给的原样不动（**不是清空**）；给了 `members` ⇒ 生效的
+   * commander（给没给都由它定）必须落在**新** members 里；只给 `commander` ⇒ 必须落在**既有** members 里；三缺省合法。
+   */
+  @Test
+  void updateChainTouchesOnlyTheFieldsThatWereGiven() {
+    UnitState base = chained();
+
+    UnitState renamed =
+        UnitOperations.updateChain(
+            base, C1, Optional.of("改过的名字"), Optional.empty(), Optional.empty());
+    assertThat(renamed.commandChains().get(C1).name()).isEqualTo("改过的名字");
+    assertThat(renamed.commandChains().get(C1).commander()).as("未给 commander ⇒ 不动").isEqualTo(ROOT);
+    assertThat(renamed.commandChains().get(C1).members())
+        .as("★ 未给 members ⇒ 不动（不是清空）")
+        .containsExactlyInAnyOrder(ROOT, SUB);
+    assertThat(renamed.commandChains().get(C2))
+        .as("别的链一字不变")
+        .isEqualTo(base.commandChains().get(C2));
+
+    UnitState promoted =
+        UnitOperations.updateChain(base, C1, Optional.empty(), Optional.of(SUB), Optional.empty());
+    assertThat(promoted.commandChains().get(C1).commander()).isEqualTo(SUB);
+    assertThat(promoted.commandChains().get(C1).members())
+        .as("★ 只给 commander：members 仍是既有那组")
+        .containsExactlyInAnyOrder(ROOT, SUB);
+    assertThat(promoted.commandChains().get(C1).name()).as("名字也没被顺手清掉").isEqualTo("第一链");
+
+    UnitState idle =
+        UnitOperations.updateChain(base, C1, Optional.empty(), Optional.empty(), Optional.empty());
+    assertThat(idle.commandChains().get(C1))
+        .as("三缺省 ⇒ 合法（空转，不判无变化命令）")
+        .isEqualTo(base.commandChains().get(C1));
+
+    UnitState givenMembers =
+        UnitOperations.updateChain(
+            base, C1, Optional.empty(), Optional.empty(), Optional.of(List.of(ROOT, LEAF)));
+    assertThat(givenMembers.commandChains().get(C1).members())
+        .containsExactlyInAnyOrder(ROOT, LEAF);
+    assertThat(givenMembers.commandChains().get(C1).commander())
+        .as("未给 commander ⇒ 仍是 u-root，它落在新 members 里 ⇒ 放行")
+        .isEqualTo(ROOT);
+
+    UnitState movedCommander =
+        UnitOperations.updateChain(
+            base, C1, Optional.empty(), Optional.of(LEAF), Optional.of(List.of(LEAF)));
+    assertThat(movedCommander.commandChains().get(C1).commander()).isEqualTo(LEAF);
+    assertThat(movedCommander.commandChains().get(C1).members()).containsExactly(LEAF);
+
+    assertThat(base.commandChains().get(C1).name()).as("纯函数：旧状态不变").isEqualTo("第一链");
+    assertThat(base.commandChains().get(C1).commander()).as("纯函数：旧状态不变").isEqualTo(ROOT);
+  }
+
+  /** ★ 判据（spec §五.3 第 2/3 条的另一半）：四条拒绝——commander 被 members 挤出去、链不存在、成员不存在、空 members。 */
+  @Test
+  void updateChainRejectsCommandersOutsideTheEffectiveMembersAndDanglingReferences() {
+    UnitState base = chained();
+
+    assertThatThrownBy(
+            () ->
+                UnitOperations.updateChain(
+                    base, C1, Optional.empty(), Optional.empty(), Optional.of(List.of(SUB))))
+        .as("★ 只给 members：生效 commander 仍是 u-root（链上原有），它被挤出去了")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不在 members 内")
+        .hasMessageContaining("c-1")
+        .hasMessageContaining("先把它加进 members");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.updateChain(
+                    base, C1, Optional.empty(), Optional.of(OTHER), Optional.empty()))
+        .as("★ 只给 commander：u-other 存在，但不在**既有** members 里")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不在 members 内");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.updateChain(
+                    base,
+                    C1,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.of(List.of(ROOT, new UnitId("u-ghost")))))
+        .as("新成员不存在")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("成员不存在")
+        .hasMessageContaining("u-ghost");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.updateChain(
+                    base,
+                    C1,
+                    Optional.empty(),
+                    Optional.of(new UnitId("u-ghost")),
+                    Optional.empty()))
+        .as("新 commander 不存在")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("commander 不存在");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.updateChain(
+                    base, C1, Optional.empty(), Optional.empty(), Optional.of(List.of())))
+        .as("空 members 由同一句拒（不另设「不得为空」的守卫）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不在 members 内");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.updateChain(
+                    base,
+                    new CommandChainId("c-404"),
+                    Optional.of("改名"),
+                    Optional.empty(),
+                    Optional.empty()))
+        .as("改一条不存在的链是坏命令，不是顺手建一条")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("链不存在")
+        .hasMessageContaining("c-404");
+
+    assertThat(base.commandChains().get(C1))
+        .as("拒绝 ⇒ 链一字不变")
+        .isEqualTo(chained().commandChains().get(C1));
+  }
+
+  /**
+   * ★★ 判据（T5 / spec §一.2 不变量 2）：还在链上的单位不许解散——**两个方向都拒**，理由里带链 id 与"先改链" （命令边界要的是可读原因 + 可执行的下一步）。
+   *
+   * <p>★ 这条**先显式拒**而不是让 {@code UnitState} 构造期丢一句"链 X 的成员不在 units"：两处措辞刻意不同，
+   * 否则删掉这一处后构造期兜底会说同样的话，"是哪一层拒的"就判不出来（T3/T4 的 m9 正是栽在这上面）。
+   */
+  @Test
+  void disbandRejectsUnitsThatAreStillInACommandChain() {
+    UnitState base = chained();
+
+    assertThatThrownBy(() -> UnitOperations.disband(base, ROOT, T10))
+        .as("c-1 的 commander")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("c-1")
+        .hasMessageContaining("commander")
+        .hasMessageContaining("先改链");
+    assertThatThrownBy(() -> UnitOperations.disband(base, SUB, T10))
+        .as("同属两条链、且两条都是成员方向 ⇒ 报遍历到的第一条（LinkedHashMap 保序 ⇒ c-1）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("c-1")
+        .hasMessageContaining("成员")
+        .hasMessageContaining("先改链");
+    assertThatThrownBy(() -> UnitOperations.disband(base, LEAF, T10))
+        .as("c-2 的成员（不是 commander）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("c-2")
+        .hasMessageContaining("成员")
+        .hasMessageContaining("先改链");
+
+    assertThat(base.units()).as("拒绝 ⇒ 状态一字不变").containsKey(ROOT);
+    assertThat(base.commandChains()).as("拒绝 ⇒ 链一字不变").isEqualTo(chained().commandChains());
+  }
+
+  /**
+   * ★★ 判据（T5-U2）：链**外**的单位照样能解散，且解散**不碰** commandChains。
+   *
+   * <p>★ 靶子是 `disband` 的返回：改回 `new UnitState(next)`（1 参兼容构造器 ⇒ `commandChains = Map.of()`），
+   * 本用例当场红——而"单位真的没了"照样成立，红的正是被保护的那一行。
+   */
+  @Test
+  void disbandRemovesAChainFreeUnitAndKeepsTheChains() {
+    UnitState base = chained();
+    UnitState next = UnitOperations.disband(base, OTHER, T10);
+
+    assertThat(next.units()).as("人没了").doesNotContainKey(OTHER);
+    assertThat(next.units()).as("别的人一个不少").hasSize(base.units().size() - 1);
+    assertThat(next.commandChains())
+        .as("★ T5-U2：disband 走 state.withUnits ⇒ 链逐值活下来（旧写法会全清）")
+        .isEqualTo(base.commandChains());
+    assertThat(next.commandChains()).containsOnlyKeys(C1, C2);
+  }
+
+  /**
+   * ★★ 判据（T5-U2，T3/T4 两处收口）：`attachSubtree` 与 `reparentSubtree` 都返回 `state.withUnits(next)` ⇒
+   * 链逐值活下来。
+   *
+   * <p>两处的旧写法（`new UnitState(next)`）在 T5 之前一直是对的（那时没人建链）；建链命令一落地，它就成了**静默清空**。
+   */
+  @Test
+  void formationCommandsKeepTheChains() {
+    UnitState base = chained();
+
+    UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
+    assertThat(attached.units().get(SUB).parent().valueAt(T10)).as("前提：改编真的发生了").contains(OTHER);
+    assertThat(attached.commandChains()).as("attachSubtree 保链").isEqualTo(base.commandChains());
+
+    UnitState migrated = UnitOperations.reparentSubtree(base, SUB, Optional.of(OTHER), T10);
+    assertThat(migrated.units().get(SUB).parent().valueAt(T10)).as("前提：迁移真的发生了").contains(OTHER);
+    assertThat(migrated.commandChains()).as("reparentSubtree 保链").isEqualTo(base.commandChains());
+
+    assertThat(base.units().get(SUB).parent().valueAt(T10)).as("纯函数：旧状态不变").contains(ROOT);
+    assertThat(base.commandChains()).as("纯函数：旧状态不变").isEqualTo(chained().commandChains());
+  }
+
+  /**
+   * ★★ 判据（T5-U2，**最宽的那一处**）：私有助手 `withUnit` 是 rename / setStrength / placeAt / planRoute /
+   * setStatus / cancelRoute / setOffset 七条操作的公共返回路径——逐个跑一遍，链必须逐值活下来。
+   *
+   * <p>改回 `new UnitState(next)` 时七条**全部**会清链，本用例（以及命令边界上那条同型用例）当场红。
+   */
+  @Test
+  void everyWithUnitRoutedOperationKeepsTheChains() {
+    UnitState base = chained();
+    Map<CommandChainId, CommandChain> chains = base.commandChains();
+
+    assertThat(UnitOperations.rename(base, SUB, "改个名").commandChains())
+        .as("rename")
+        .isEqualTo(chains);
+    assertThat(UnitOperations.setStrength(base, SUB, 7, Map.of("炮", 1)).commandChains())
+        .as("setStrength")
+        .isEqualTo(chains);
+    assertThat(UnitOperations.placeAt(base, SUB, Optional.of(H12), T10).commandChains())
+        .as("placeAt")
+        .isEqualTo(chains);
+    assertThat(
+            UnitOperations.planRoute(
+                    base, SUB, new Route(List.of(H11, H12), List.of(H11, H12)), T10)
+                .commandChains())
+        .as("planRoute")
+        .isEqualTo(chains);
+    assertThat(UnitOperations.setStatus(base, SUB, UnitStatus.RESTING).commandChains())
+        .as("setStatus")
+        .isEqualTo(chains);
+    assertThat(UnitOperations.cancelRoute(base, SUB).commandChains())
+        .as("cancelRoute")
+        .isEqualTo(chains);
+    assertThat(
+            UnitOperations.setOffset(base, SUB, Optional.of(new RelativeOffset(1, 0)), T10)
+                .commandChains())
+        .as("setOffset")
+        .isEqualTo(chains);
+
+    assertThat(base.commandChains()).as("纯函数：旧状态不变").isEqualTo(chained().commandChains());
   }
 }

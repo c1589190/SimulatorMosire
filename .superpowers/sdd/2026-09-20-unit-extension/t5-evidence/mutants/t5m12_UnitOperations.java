@@ -432,7 +432,7 @@ public final class UnitOperations {
     if (state.commandChains().containsKey(chain.id())) {
       throw new IllegalArgumentException("链 id 已存在: " + chain.id());
     }
-    requireChainMembersResolve(state, chain.id(), chain.commander(), chain.members());
+    // MUTANT t5m12：删掉 createChain 的引用解析检查（只剩 UnitState 构造期兜底）
     Map<CommandChainId, CommandChain> next = new LinkedHashMap<>(state.commandChains());
     next.put(chain.id(), chain);
     return state.withCommandChains(next);
