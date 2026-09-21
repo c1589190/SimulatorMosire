@@ -84,7 +84,7 @@
 
 ## 阶段 C（Combat）—— 2026-09-21
 
-- **worktree** `.claude/worktrees/sdc`，分支 `sd/c`，基线 `a13266d`（unit-ext T10 合并后）。前置（unit-ext T1~T10）已关账。
+- **worktree** `.claude/worktrees/sdc`，分支 `sd/c`，基线 `a13266d`（unit-ext T10 合并后）。前置（unit-ext T1~T10）已关账。**实现提交 `ad74ea0`**。
 - **门禁**：`./mvnw clean verify` **rc=0、第 1 次尝试**、**8/8 SUCCESS**、**1232** = `170/362/45/259/177/91/128`、`BugInstance size is 0` ×7、`[ERROR]` 0、前端 90/90。基线自测 **1199** = `.../62/124`；**delta 干净**：前五模块逐字不变，`sd +29`、`app +4`。证据 `c0-baseline/`、`c-verify/`。
 - **落地**：C1 `sd.CreateCombat`/`AddCombatStage`/`SetStageOutcomeTable` + `CombatStages`；C2 `sd.CommitCombatOutcome`；C3 `sd.RecordCasualties`（双轨 + 上界，读 unit 切片）；C4 `SdTimeParticipant`+`TriggerEvaluator`+`sd.RegisterEffect`/`CancelEffect`；C5 `app/sd/SdCommandDrain` + `Shell.advanceAndDrain`；C6 端到端。catalog/`PAYLOAD_HINTS` 30→37；`McpCoverageTest` 载荷 30→37；`SimosToolsTest` 强判据 30→37。
 - **裁定/取代说明**（详见 `c-stage-report.md` §三）：**C1-a** 首个 `AddCombatStage` 兼建 `CombatState`（`combatStateId`/`hex` 首阶段必填，因 spec §三.3 只有这条路径能给出合法的 `currentStage`）；**G6** drain 幂等键 = `"drain:"+effectId`、以 revision 行 `commandId` 判"已 drain"（进程重启仍成立）；**sd 切片对可推进世界必需**（`TimeAdvance` ④Validate）⇒ `DemoWorld` 与 9 个 app 测试夹具补 `SdSnapshot`（+`SdCodec`）；**MCP/GUI 的 advance 未自动串 drain**（开口项，自然收口点 D 阶段）；`ThresholdKills` 取全局人员损失累计。
