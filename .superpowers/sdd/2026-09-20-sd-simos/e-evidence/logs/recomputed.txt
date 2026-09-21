@@ -1,0 +1,38 @@
+# SDSimos 阶段 E 门禁取数（现场重算，不引用任何文档数字）
+log_md5=50cea6463a49e0179d64f0a086abe29c
+log_lines=2212
+generated=2026-09-21T14:59:56+08:00
+
+## BUILD
+[INFO] BUILD SUCCESS
+
+## rc
+attempt-1 start 2026-09-21T14:56:47+08:00
+rc=0
+
+## 8/8 SUCCESS (显示名)
+[INFO] SimulatorMosire .................................... SUCCESS [  0.974 s]
+[INFO] UtilSimos .......................................... SUCCESS [  4.955 s]
+[INFO] MapSimos ........................................... SUCCESS [  6.800 s]
+[INFO] SocialSimos ........................................ SUCCESS [  2.175 s]
+[INFO] UnitSimos .......................................... SUCCESS [  3.678 s]
+[INFO] CoreSimos .......................................... SUCCESS [  9.011 s]
+[INFO] SDSimos ............................................ SUCCESS [  3.789 s]
+[INFO] SimosApp ........................................... SUCCESS [ 16.819 s]
+
+## 逐模块测试数（现场重算 paste+bc）
+UtilSimos 170
+MapSimos 362
+SocialSimos 45
+UnitSimos 259
+CoreSimos 177
+SDSimos 124
+SimosApp 144
+TOTAL 1281
+
+## BugInstance size is 0
+count=7
+## [ERROR] 行
+count=0
+## 前端门禁
+[frontend-gate] OK tests=90 pass=90 fail=0
