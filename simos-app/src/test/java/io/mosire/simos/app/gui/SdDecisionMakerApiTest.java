@@ -55,6 +55,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,7 +149,10 @@ class SdDecisionMakerApiTest {
     assertThat(army.get("affiliation").get("nationId").asText()).isEqualTo("n1");
     assertThat(army.get("affiliation").get("rootUnit").asText()).isEqualTo("u-1");
     assertThat(army.get("cadence").asLong()).isEqualTo(5L);
-    assertThat(army.get("due").isNull()).as("T5 的 due 是占位（T9 才计算）").isTrue();
+    // ★ T9 起 due 是真值：这两个决策人尚未落过 Directive ⇒ 首次恒待决，无"上一次"。
+    assertThat(army.get("due").asBoolean()).as("首次（无 Directive）恒待决").isTrue();
+    assertThat(army.get("lastDirectiveTick").isNull()).as("无上一次 ⇒ null（不是 0/-1）").isTrue();
+    assertThat(army.get("ticksSinceLast").isNull()).isTrue();
 
     JsonNode nation = makers.get(1);
     assertThat(nation.get("affiliation").get("kind").asText()).isEqualTo("nation");
@@ -295,7 +299,173 @@ class SdDecisionMakerApiTest {
     assertThat(second.body()).as("排序是逐字节可复现的前提").isEqualTo(first.body());
   }
 
+  // ── 判据：待决信号（T9，D7 公式）──────────────────────────────────────
+
+  /** 首次（该 dm 从未落 Directive）恒 due；lastDirectiveTick / ticksSinceLast 为 null（不是 0/-1）。 */
+  @Test
+  void firstTimeAlwaysDueWithNullLastDirective() throws Exception {
+    pendingFixture();
+
+    JsonNode first = detailJson("dm-first");
+
+    assertThat(first.get("due").asBoolean()).as("首次恒待决").isTrue();
+    assertThat(first.get("lastDirectiveTick").isNull()).as("无上一次 ⇒ null，不是 0").isTrue();
+    assertThat(first.get("ticksSinceLast").isNull()).isTrue();
+  }
+
+  /**
+   * 未到 cadence ⇒ 不待决；到点（间隔**恰好等于** cadence）⇒ 待决。
+   *
+   * <p>★ 边界刻意取相等：把公式写成严格 {@code >} 的实现会在此红（{@code >=} 才是 D7 口径）。
+   */
+  @Test
+  void dueIsFalseBeforeCadenceAndTrueExactlyAtCadence() throws Exception {
+    pendingFixture();
+
+    JsonNode before = detailJson("dm-due");
+    assertThat(before.get("cadence").asLong()).isEqualTo(2L);
+    assertThat(before.get("lastDirectiveTick").asLong()).as("最近一次 tick 7").isEqualTo(7L);
+    assertThat(before.get("ticksSinceLast").asLong()).as("当前 tick 7 − 7 = 0").isEqualTo(0L);
+    assertThat(before.get("due").asBoolean()).as("未到 cadence ⇒ 非待决").isFalse();
+
+    advance(7, 9);
+
+    JsonNode atBoundary = detailJson("dm-due");
+    assertThat(atBoundary.get("ticksSinceLast").asLong()).as("推进到 9 ⇒ 间隔 2").isEqualTo(2L);
+    assertThat(atBoundary.get("due").asBoolean()).as("间隔 == cadence ⇒ 待决（>= 口径，不是 >）").isTrue();
+  }
+
+  /** "最近一次"取**最大** tick：directives() 是插入序表，取首个/取最小会把周期算反。 */
+  @Test
+  void lastDirectiveTickUsesTheMaximumTick() throws Exception {
+    pendingFixture();
+
+    JsonNode max = detailJson("dm-max");
+
+    assertThat(max.get("lastDirectiveTick").asLong())
+        .as("两条 Directive（tick 4、6）⇒ 取 6，不取 4")
+        .isEqualTo(6L);
+    assertThat(max.get("ticksSinceLast").asLong()).isEqualTo(1L);
+    assertThat(max.get("due").asBoolean())
+        .as("按最大 tick 算间隔 1 < cadence 2 ⇒ 非待决；取最小的实现会算成 3 ⇒ 待决（红）")
+        .isFalse();
+  }
+
+  /** C16：推进一 tick 只加 revision，**不产生**任何决策标记；due 随 tick 更新。 */
+  @Test
+  void advancingTimeChangesDueWithoutCreatingDecisionMarkers() throws Exception {
+    pendingFixture();
+    int directivesBefore = replayedSdState().directives().size();
+    long revisionBefore = shell.coreSimos().head(main()).orElseThrow().value();
+
+    advance(7, 9);
+
+    assertThat(replayedSdState().directives().size())
+        .as("推进不得产生决策标记（C16）")
+        .isEqualTo(directivesBefore);
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
+        .as("推进本身恰加一条 revision")
+        .isEqualTo(revisionBefore + 1);
+    JsonNode waiting = detailJson("dm-wait");
+    assertThat(waiting.get("ticksSinceLast").asLong()).isEqualTo(2L);
+    assertThat(waiting.get("due").asBoolean()).as("2 < 5 ⇒ 仍非待决").isFalse();
+    assertThat(detailJson("dm-first").get("due").asBoolean()).as("无 Directive 恒待决").isTrue();
+  }
+
+  /**
+   * C17：推进后，`due=true` 的**集合** = 按 D7 公式**离线算出**的集合（冻结字面量，非就地重算）。
+   *
+   * <p>离线手算（当前 tick 9）：{@code dm-first} 无 Directive ⇒ due；{@code dm-wait} 7→9 间隔 2 < 5 ⇒ 否； {@code
+   * dm-due} 间隔 2 == cadence 2 ⇒ due；{@code dm-max} 最近 tick 6 → 间隔 3 ≥ 2 ⇒ due。
+   */
+  @Test
+  void dueSetMatchesTheOfflineFormulaAfterAdvancing() throws Exception {
+    pendingFixture();
+
+    advance(7, 9);
+
+    List<String> dueIds = new ArrayList<>();
+    for (JsonNode maker : getJson("/api/sd/decision-makers").get("decisionMakers")) {
+      if (maker.get("due").asBoolean()) {
+        dueIds.add(maker.get("id").asText());
+      }
+    }
+    assertThat(dueIds).containsExactlyInAnyOrder("dm-due", "dm-first", "dm-max");
+  }
+
+  /** 列表与详情的 due 同源逐值一致（列表是 UI 的列表项数据源）。 */
+  @Test
+  void listAndDetailAgreeOnDue() throws Exception {
+    pendingFixture();
+
+    JsonNode listed = getJson("/api/sd/decision-makers").get("decisionMakers");
+    for (JsonNode maker : listed) {
+      JsonNode detail = detailJson(maker.get("id").asText());
+      assertThat(maker.get("due").asBoolean()).isEqualTo(detail.get("due").asBoolean());
+      assertThat(maker.get("lastDirectiveTick").isNull())
+          .isEqualTo(detail.get("lastDirectiveTick").isNull());
+    }
+  }
+
   // ────────────────────────────── 夹具 ──────────────────────────────
+
+  /**
+   * T9 待决夹具（经真命令路径）：四个决策人 + 四条 Directive。
+   *
+   * <p>创世 tick = 7。{@code dm-first} 无 Directive；{@code dm-wait}（cadence 5）在 7；{@code dm-due}
+   * （cadence 2）在 7（推进到 9 时**恰好到点**）；{@code dm-max}（cadence 2）在 4 与 6（验"取最大"）。
+   */
+  private void pendingFixture() throws Exception {
+    submit(
+        "sd.CreateNation",
+        "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
+    submit(
+        "sd.CreateArmy",
+        "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    createMaker("dm-first", 5);
+    createMaker("dm-wait", 5);
+    createMaker("dm-due", 2);
+    createMaker("dm-max", 2);
+    issueDirective("d-wait", "dm-wait", 7);
+    issueDirective("d-due", "dm-due", 7);
+    issueDirective("d-max-1", "dm-max", 4);
+    issueDirective("d-max-2", "dm-max", 6);
+  }
+
+  private void createMaker(String id, long cadence) throws Exception {
+    submit(
+        "sd.CreateDecisionMaker",
+        "{\"id\":\""
+            + id
+            + "\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},\"allowedTools\":[],\"cadence\":"
+            + cadence
+            + "}");
+  }
+
+  private void issueDirective(String directiveId, String decisionMakerId, long tick)
+      throws Exception {
+    submit(
+        "sd.IssueDirective",
+        "{\"directiveId\":\""
+            + directiveId
+            + "\",\"decisionMakerId\":\""
+            + decisionMakerId
+            + "\",\"tick\":"
+            + tick
+            + ",\"intentInfo\":\"向北推进\",\"commands\":[],\"effects\":[]}");
+  }
+
+  private void advance(long from, long to) throws Exception {
+    long expected = shell.coreSimos().head(main()).orElseThrow().value();
+    Map<String, Object> request = new LinkedHashMap<>();
+    request.put("from", from);
+    request.put("to", to);
+    request.put("branch", "main");
+    request.put("expectedRevision", expected);
+    HttpResponse<String> response = post("/api/advance", JSON.writeValueAsString(request));
+    assertThat(response.statusCode()).as("推进 %d→%d: %s", from, to, response.body()).isEqualTo(200);
+    assertThat(JSON.readTree(response.body()).get("result").asText()).isEqualTo("committed");
+  }
 
   /** 经真命令路径种入：n1 国 + a1 军（根单位 u-1）+ 两个决策人 + 给国家决策人配权。 */
   private void createFixture() throws Exception {
