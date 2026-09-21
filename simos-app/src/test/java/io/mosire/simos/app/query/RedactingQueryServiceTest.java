@@ -19,9 +19,14 @@ import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.id.VerdictId;
+import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DisclosurePolicy;
+import io.mosire.simos.sd.model.Verdict;
+import io.mosire.simos.sd.model.VerdictMeta;
 import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -30,6 +35,9 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.address.Entity;
+import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -63,6 +71,11 @@ class RedactingQueryServiceTest {
   private static final UnitId U1 = new UnitId("u-1");
   private static final DecisionMakerId DM_SCOPE_A = new DecisionMakerId("dm-a");
   private static final DecisionMakerId DM_SCOPE_B = new DecisionMakerId("dm-b");
+  private static final DecisionMakerId DM_FULL = new DecisionMakerId("dm-full");
+  private static final DecisionMakerId DM_PERCEPTION = new DecisionMakerId("dm-perception");
+  private static final DecisionMakerId DM_WITHHELD = new DecisionMakerId("dm-withheld");
+  private static final DecisionMakerId DM_REDACT_POSITION = new DecisionMakerId("dm-redact");
+  private static final VerdictId V1 = new VerdictId("v-1");
 
   @TempDir Path tempDir;
 
@@ -108,6 +121,92 @@ class RedactingQueryServiceTest {
     assertThat(hexes(service.mapOverview(new DecisionMakerId("ghost"), target, MAP_ID))).isEmpty();
   }
 
+  // ── T6：adjudicationDisclosure 真正生效（C28）───────────────────────────
+
+  @Test
+  void withheldDisclosureHidesEveryVerdict() {
+    RedactingQueryService service = start();
+    QueryTarget target = QueryTarget.head(MAIN);
+
+    assertThat(service.verdicts(DM_WITHHELD, target)).as("WITHHELD ⇒ 判决整条不出现（空列表，不是空串）").isEmpty();
+    assertThat(service.verdicts(DM_FULL, target)).as("FULL ⇒ 有判决").isNotEmpty();
+    assertThat(service.verdicts(DM_PERCEPTION, target)).isNotEmpty();
+  }
+
+  @Test
+  void perceptionOnlyDropsTheNonObservableVerdictFields() {
+    RedactingQueryService service = start();
+    QueryTarget target = QueryTarget.head(MAIN);
+
+    Map<String, Object> full = service.verdicts(DM_FULL, target).get(0);
+    Map<String, Object> perception = service.verdicts(DM_PERCEPTION, target).get(0);
+
+    assertThat(full).as("FULL 含模型输出与 meta").containsKeys("payload", "meta");
+    assertThat(perception)
+        .as("PERCEPTION_ONLY 只留可观察项，去掉不可感知的模型内部量")
+        .containsKeys("id", "breakpoint", "subject", "atRevision")
+        .doesNotContainKeys("payload", "meta");
+    assertThat(perception.get("id")).isEqualTo(full.get("id"));
+  }
+
+  @Test
+  void verdictsWithoutActorAreFullDisclosure() {
+    RedactingQueryService service = start();
+    QueryTarget target = QueryTarget.head(MAIN);
+
+    assertThat(service.verdicts(target)).hasSize(1);
+    assertThat(service.verdicts(target).get(0)).containsKeys("payload", "meta");
+  }
+
+  // ── T6：redactedFields 真正生效（C29）──────────────────────────────────
+
+  @Test
+  void redactedFieldsRemovesTheNamedFieldFromUnitViews() {
+    RedactingQueryService service = start();
+    QueryTarget target = QueryTarget.head(MAIN);
+
+    List<Map<String, Object>> redacted = service.units(DM_REDACT_POSITION, target);
+    assertThat(redacted).as("单位仍可见").hasSize(1);
+    assertThat(redacted.get(0))
+        .as("position 被按名剔除")
+        .doesNotContainKey("position")
+        .containsKey("id");
+
+    List<Map<String, Object>> plain = service.units(DM_FULL, target);
+    assertThat(plain.get(0)).as("未声明 redactedFields 的 actor 仍有 position").containsKey("position");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void redactedFieldsRecursesIntoNestedLists() {
+    RedactingQueryService service = start();
+    ViewScope scope =
+        new ViewScope(Set.of(), Set.of(H11), Set.of(U1), false, DisclosurePolicy.FULL, Set.of("q"));
+
+    Object stripped =
+        service.applyRedactedFields(Map.of("hexes", List.of(Map.of("q", 1, "r", 2))), scope);
+
+    Map<String, Object> body = (Map<String, Object>) stripped;
+    List<Map<String, Object>> nested = (List<Map<String, Object>>) body.get("hexes");
+    assertThat(nested.get(0)).as("嵌套列表里的 q 也被剔除").doesNotContainKey("q").containsKey("r");
+  }
+
+  // ── T6：可见性谓词（按地址取单个实体的 fail-closed）────────────────────
+
+  @Test
+  void seesPredicatesFollowTheScope() {
+    RedactingQueryService service = start();
+    QueryTarget target = QueryTarget.head(MAIN);
+
+    assertThat(service.seesHex(DM_SCOPE_A, target, H11)).isTrue();
+    assertThat(service.seesHex(DM_SCOPE_A, target, H12)).as("H12 不在 A 的可见格").isFalse();
+    assertThat(service.seesRegion(DM_SCOPE_A, target, new RegionId("r1"))).isTrue();
+    assertThat(service.seesRegion(DM_SCOPE_A, target, new RegionId("r2"))).isFalse();
+    assertThat(service.seesUnit(DM_SCOPE_A, target, U1)).isTrue();
+    assertThat(service.seesUnit(DM_SCOPE_B, target, U1)).as("B 看不到 u-1").isFalse();
+    assertThat(service.seesHex(DM_SCOPE_A, target, H11)).isTrue();
+  }
+
   private RedactingQueryService start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new MapCodec());
@@ -137,18 +236,51 @@ class RedactingQueryServiceTest {
 
   private static SdState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(DM_SCOPE_A, maker("dm-a", Set.of(H11), Set.of(U1)));
-    makers.put(DM_SCOPE_B, maker("dm-b", Set.of(H12), Set.of()));
-    return SdState.empty().withDecisionMakers(makers);
+    makers.put(
+        DM_SCOPE_A,
+        maker("dm-a", Set.of(H11), Set.of(U1), DisclosurePolicy.PERCEPTION_ONLY, Set.of()));
+    makers.put(
+        DM_SCOPE_B,
+        maker("dm-b", Set.of(H12), Set.of(), DisclosurePolicy.PERCEPTION_ONLY, Set.of()));
+    makers.put(DM_FULL, maker("dm-full", Set.of(H11), Set.of(U1), DisclosurePolicy.FULL, Set.of()));
+    makers.put(
+        DM_PERCEPTION,
+        maker(
+            "dm-perception", Set.of(H11), Set.of(U1), DisclosurePolicy.PERCEPTION_ONLY, Set.of()));
+    makers.put(
+        DM_WITHHELD,
+        maker("dm-withheld", Set.of(H11), Set.of(U1), DisclosurePolicy.WITHHELD, Set.of()));
+    makers.put(
+        DM_REDACT_POSITION,
+        maker("dm-redact", Set.of(H11), Set.of(U1), DisclosurePolicy.FULL, Set.of("position")));
+    Map<VerdictId, Verdict> verdicts = new LinkedHashMap<>();
+    verdicts.put(V1, verdict("v-1"));
+    return SdState.empty().withDecisionMakers(makers).withVerdicts(verdicts);
   }
 
-  private static DecisionMaker maker(String id, Set<HexCoord> hexes, Set<UnitId> units) {
+  private static DecisionMaker maker(
+      String id,
+      Set<HexCoord> hexes,
+      Set<UnitId> units,
+      DisclosurePolicy disclosure,
+      Set<String> redacted) {
     return new DecisionMaker(
         new DecisionMakerId(id),
-        new Affiliation.Nation(new io.mosire.simos.sd.id.NationId("n1")),
+        new Affiliation.Nation(new NationId("n1")),
         Set.of(),
-        new ViewScope(Set.of(), hexes, units, false, DisclosurePolicy.PERCEPTION_ONLY, Set.of()),
+        new ViewScope(Set.of(new RegionId("r1")), hexes, units, false, disclosure, redacted),
         1);
+  }
+
+  private static Verdict verdict(String id) {
+    Address subject = new Address(List.of(new Namespace("sd"), Entity.of("combat", "c1")));
+    return new Verdict(
+        new VerdictId(id),
+        new AdjudicationBreakpoint("D1"),
+        subject,
+        "{\"rationaleText\":\"理由\",\"stageId\":\"s1\",\"selectedOutcomeId\":\"o1\",\"casualtyDeltas\":[]}",
+        new VerdictMeta("model-x", "prompt-v1", "digest-abc"),
+        new RevisionId(7));
   }
 
   private static GameMap map() {
