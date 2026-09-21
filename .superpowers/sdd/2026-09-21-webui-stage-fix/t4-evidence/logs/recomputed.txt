@@ -1,0 +1,16 @@
+# T4 门禁现场重算（只取模块汇总行；日志 clean-verify-after-mutants.log）
+log_md5=6297695badb57e960fe4c3f74191ef54
+rc=0
+module_summary:
+[INFO] Tests run: 170, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 368, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 259, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 178, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 124, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 151, Failures: 0, Errors: 0, Skipped: 0
+total=1295
+modules_success=8
+buginstance_zero=7
+error_lines=0
+[frontend-gate] OK tests=114 pass=114 fail=0
