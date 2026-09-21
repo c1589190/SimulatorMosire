@@ -1,0 +1,7 @@
+221883ce5a49326a5a677eb0a2ca3da3  GuiServer.java
+cb78ce919a05bd0bae0dca71be04840a  RecordingToolSource.java
+1cf20af38b3e6f4ee25cdf17da6dc791  Shell.java
+a54f59f1915a183fab3511123c3bea40  api.js
+db56e0e188430dbfb13e899b84a4ef13  gm.js
+ba11a3e0c90bcbcba3345fd659a5af2e  index.html
+053db9fda9b5f4de35a265c25f8b53e8  styles.css
