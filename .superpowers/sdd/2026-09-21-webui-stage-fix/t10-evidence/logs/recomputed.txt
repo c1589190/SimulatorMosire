@@ -1,0 +1,8 @@
+# T10 门禁现场重算（只取模块汇总行；不引用任何文档现成数字）
+final_log=clean-verify.after-mutants-GREEN.log  md5=7532ab0869bb252438a676ee97da7678
+modules(Util/Map/Social/Unit/Core/SD/App)=170/368/45/259/178/129/198
+total=1347
+baseline_log=baseline-verify.log  md5=259196575891b8944c21b22f219e7f9c
+baseline_modules=170/368/45/259/178/124/193
+delta= +10 = sd +5 (StartDecisionHandlerTest) + app +5 (StartDecisionEndToEndTest)
+BugInstance0=7  ERROR_rows=0  frontend=[frontend-gate] OK tests=164 pass=164 fail=0

@@ -1,0 +1,32 @@
+── t10js-m1 ──
+file=panels.js orig_md5=7f850c1ad7b7e3f32f34b2252ac406a7 mutant_md5=d910c0a00960e1bf38a7d3483c93a5d7 restored_md5=7f850c1ad7b7e3f32f34b2252ac406a7
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=start-decision-gate-requires-due
+verdict=KILLED
+red_point=not ok 19 - start-decision-gate-requires-due
+
+── t10js-m2 ──
+file=panels.js orig_md5=7f850c1ad7b7e3f32f34b2252ac406a7 mutant_md5=4d8d3214af73ff06b13c0f97a47698a6 restored_md5=7f850c1ad7b7e3f32f34b2252ac406a7
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=start-decision-refuses-when-target-is-not-due
+verdict=KILLED
+red_point=not ok 23 - start-decision-refuses-when-target-is-not-due
+
+── t10js-m3 ──
+file=api.js orig_md5=d2a3604b71967b5df58a91f3ac857bb1 mutant_md5=1f6a53a63a35770feed0e83b3e704fb8 restored_md5=d2a3604b71967b5df58a91f3ac857bb1
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=api.js-declares-exactly-the-allowed-write-endpoints
+verdict=KILLED
+red_point=not ok 158 - api.js-declares-exactly-the-allowed-write-endpoints
+
+── t10js-m4 ──
+file=panels.js orig_md5=7f850c1ad7b7e3f32f34b2252ac406a7 mutant_md5=dc8d8e85dc16df240d90dce4beb8f89a restored_md5=7f850c1ad7b7e3f32f34b2252ac406a7
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=panels-js-and-app-js-delegate-subpage-visibility
+verdict=KILLED
+red_point=not ok 34 - panels-js-and-app-js-delegate-subpage-visibility
+

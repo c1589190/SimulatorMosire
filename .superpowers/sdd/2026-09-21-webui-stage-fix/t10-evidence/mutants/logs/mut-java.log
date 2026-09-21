@@ -1,0 +1,88 @@
+===== t10m2 target=simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java expect=gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval =====
+orig_md5=db14c720c5aaaff67c60ab9537b5b293 clean_world_md5=db14c720c5aaaff67c60ab9537b5b293
+mutant_md5=a259c3882efc550dc956aa29e5a3e1ce
+mut_rc=0 compilation_error=0 tests_run=25
+--- 失败原文（本轮 mtime 内的报告）---
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.428 s <<< FAILURE! -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval -- Time elapsed: 0.077 s <<< FAILURE!
+Tests run: 15, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.256 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+io.mosire.simos.app.tools.SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey -- Time elapsed: 0.069 s <<< FAILURE!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=db14c720c5aaaff67c60ab9537b5b293
+===== end t10m2 self_md5=a259c3882efc550dc956aa29e5a3e1ce verdict=KILLED =====
+===== t10m8 target=simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java expect=gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval =====
+orig_md5=080ce3cefb940cfd284284850786911c clean_world_md5=080ce3cefb940cfd284284850786911c
+mutant_md5=0546f13f4f80e256c24360f2fe7abd5f
+mut_rc=0 compilation_error=0 tests_run=25
+--- 失败原文（本轮 mtime 内的报告）---
+Tests run: 5, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.415 s <<< FAILURE! -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.decisionAgentPortHasNoStartDecisionTool -- Time elapsed: 0.062 s <<< FAILURE!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval -- Time elapsed: 0.074 s <<< FAILURE!
+Tests run: 15, Failures: 2, Errors: 1, Skipped: 0, Time elapsed: 1.229 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+io.mosire.simos.app.tools.SimosToolsTest.roleBucketsNeverCarryGenericWrite -- Time elapsed: 0.071 s <<< FAILURE!
+io.mosire.simos.app.tools.SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools -- Time elapsed: 0.073 s <<< FAILURE!
+io.mosire.simos.app.tools.SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey -- Time elapsed: 0.063 s <<< ERROR!
+Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.062 s <<< FAILURE! -- in io.mosire.simos.app.McpPortTopologyTest
+io.mosire.simos.app.McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace -- Time elapsed: 0.756 s <<< FAILURE!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=080ce3cefb940cfd284284850786911c
+===== end t10m8 self_md5=0546f13f4f80e256c24360f2fe7abd5f verdict=KILLED =====
+===== t10m7 target=simos-app/src/main/java/io/mosire/simos/app/Shell.java expect=guiUserPathCommitsDirectlyWithoutApproval =====
+orig_md5=fd1d6588f6c7440cd892788e347f3e35 clean_world_md5=fd1d6588f6c7440cd892788e347f3e35
+mutant_md5=dcde65ce6045b5e0d82a121d744006ac
+mut_rc=0 compilation_error=0 tests_run=25
+--- 失败原文（本轮 mtime 内的报告）---
+Tests run: 5, Failures: 4, Errors: 0, Skipped: 0, Time elapsed: 0.406 s <<< FAILURE! -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.startDecisionDoesNotConsumeTheR4DirectiveSlot -- Time elapsed: 0.087 s <<< FAILURE!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.guiUserPathCommitsDirectlyWithoutApproval -- Time elapsed: 0.075 s <<< FAILURE!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.guiUserPathRejectsUnknownDecisionMakerWithoutRevision -- Time elapsed: 0.082 s <<< FAILURE!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval -- Time elapsed: 0.096 s <<< FAILURE!
+Tests run: 15, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 1.318 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+io.mosire.simos.app.tools.SimosToolsTest.catalogCoversEveryCommandHandlerImplementation -- Time elapsed: 0.079 s <<< FAILURE!
+io.mosire.simos.app.tools.SimosToolsTest.catalogListsExactlyTheRegisteredCommandTypes -- Time elapsed: 0.066 s <<< FAILURE!
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.081 s <<< FAILURE! -- in io.mosire.simos.app.McpCoverageTest
+io.mosire.simos.app.McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect -- Time elapsed: 0.080 s <<< FAILURE!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=fd1d6588f6c7440cd892788e347f3e35
+===== end t10m7 self_md5=dcde65ce6045b5e0d82a121d744006ac verdict=KILLED =====
+===== t10m4 target=simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java expect=guiUserPathCommitsDirectlyWithoutApproval =====
+orig_md5=429d3a3c7accec33082cdfca07efb77a clean_world_md5=429d3a3c7accec33082cdfca07efb77a
+mutant_md5=c080627cb67d3a616b9a1de307e7c083
+mut_rc=0 compilation_error=0 tests_run=25
+--- 失败原文（本轮 mtime 内的报告）---
+Tests run: 5, Failures: 0, Errors: 5, Skipped: 0, Time elapsed: 0.171 s <<< FAILURE! -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.startDecisionDoesNotConsumeTheR4DirectiveSlot -- Time elapsed: 0.037 s <<< ERROR!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.guiUserPathCommitsDirectlyWithoutApproval -- Time elapsed: 0.031 s <<< ERROR!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.guiUserPathRejectsUnknownDecisionMakerWithoutRevision -- Time elapsed: 0.031 s <<< ERROR!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.decisionAgentPortHasNoStartDecisionTool -- Time elapsed: 0.036 s <<< ERROR!
+io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval -- Time elapsed: 0.036 s <<< ERROR!
+Tests run: 15, Failures: 0, Errors: 15, Skipped: 0, Time elapsed: 0.657 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+io.mosire.simos.app.tools.SimosToolsTest.rejectedWriteReturnsErrorAndCreatesNoRevision -- Time elapsed: 0.137 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.conflictingWriteReturnsErrorWithTheRealHeadAndCreatesNoRevision -- Time elapsed: 0.038 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.readToolsMatchQueryServicePerValue -- Time elapsed: 0.035 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.roleBucketsNeverCarryGenericWrite -- Time elapsed: 0.033 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.readsAreAllowGatedAndDeclareTheirResources -- Time elapsed: 0.034 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools -- Time elapsed: 0.031 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.unitReadToolsExposeMovementObjectAndNullWithoutRoute -- Time elapsed: 0.033 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.catalogCoversEveryCommandHandlerImplementation -- Time elapsed: 0.035 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.catalogListsExactlyTheRegisteredCommandTypes -- Time elapsed: 0.063 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.advanceToolCommitsThroughCore -- Time elapsed: 0.035 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey -- Time elapsed: 0.030 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.writeToolCommitsAndStampsTheConfiguredInitiator -- Time elapsed: 0.038 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.unknownUnitReturnsNotFound -- Time elapsed: 0.038 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.catalogRejectsACommandTypeWithoutAPayloadHint -- Time elapsed: 0.033 s <<< ERROR!
+io.mosire.simos.app.tools.SimosToolsTest.mapHexBuildsTheCanonicalFacetSubject -- Time elapsed: 0.035 s <<< ERROR!
+Tests run: 4, Failures: 0, Errors: 4, Skipped: 0, Time elapsed: 0.475 s <<< FAILURE! -- in io.mosire.simos.app.McpPortTopologyTest
+io.mosire.simos.app.McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace -- Time elapsed: 0.357 s <<< ERROR!
+io.mosire.simos.app.McpPortTopologyTest.decisionPortHasNoGenericWriteSoSubmitIsUnknownTool -- Time elapsed: 0.029 s <<< ERROR!
+io.mosire.simos.app.McpPortTopologyTest.decisionPortExposesOnlyDecisionAgentToolFace -- Time elapsed: 0.045 s <<< ERROR!
+io.mosire.simos.app.McpPortTopologyTest.bothServersListenAndCloseReleasesBothPorts -- Time elapsed: 0.031 s <<< ERROR!
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.041 s <<< FAILURE! -- in io.mosire.simos.app.McpCoverageTest
+io.mosire.simos.app.McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect -- Time elapsed: 0.039 s <<< ERROR!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=429d3a3c7accec33082cdfca07efb77a
+===== end t10m4 self_md5=c080627cb67d3a616b9a1de307e7c083 verdict=KILLED =====

@@ -66,10 +66,12 @@
       //     `Command → ChangeSet → Revision` 的世界写 ⇒ **不进本表**（本表只管命令类型），
       //     它作为**单独一条**显式列在 `api.js` 的 postJson 与 `write-allowlist.test.cjs` 的
       //     ALLOWED_APPROVAL_PREFIX 里（逐条精确列出，绝不放宽 isWriteAllowed）。
-      //   ★ 连"开始决策"（sd.StartDecision，T10 才做）也**不在**本表：本模式只读。
+      //   ★ T10 起本表有**一条**：「开始决策」（sd.StartDecision，spec §四.2 "若 D5 选新命令，则加 sd.StartDecision"）。
+      //     它是真命令（落 revision，铁律 2）、由 GUI 窄端点 POST /api/sd/start-decision 发出（api.startDecision）。
+      //     其余决策相关写仍不在本表：审批裁决打 /api/approvals/{id}（非命令写）；出令/配权只有 GM/决策人口。
       id: "decision",
       label: "决策",
-      writes: [],
+      writes: ["sd.StartDecision"],
     },
   ];
 

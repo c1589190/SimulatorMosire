@@ -1,0 +1,54 @@
+--- t10m1 ---
+target=simos-app/src/main/java/io/mosire/simos/app/gui/GuiServer.java
+orig_md5=8e7fd8baf30b1c6d2c802693e78209b4
+mutant_md5=3b728d41f2d1ea5c8d213ca54149b959
+restored_md5=8e7fd8baf30b1c6d2c802693e78209b4
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m9 ---
+target=simos-app/src/main/java/io/mosire/simos/app/gui/GuiServer.java
+orig_md5=8e7fd8baf30b1c6d2c802693e78209b4
+mutant_md5=f0064ecfb055e3d6ff54b7b2e1f671d7
+restored_md5=8e7fd8baf30b1c6d2c802693e78209b4
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m2 ---
+target=simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java
+orig_md5=db14c720c5aaaff67c60ab9537b5b293
+mutant_md5=a259c3882efc550dc956aa29e5a3e1ce
+restored_md5=db14c720c5aaaff67c60ab9537b5b293
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m3 ---
+target=simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+orig_md5=080ce3cefb940cfd284284850786911c
+mutant_md5=75c7926d1c2738eb02b49a58606fcfbb
+restored_md5=080ce3cefb940cfd284284850786911c
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m8 ---
+target=simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+orig_md5=080ce3cefb940cfd284284850786911c
+mutant_md5=0546f13f4f80e256c24360f2fe7abd5f
+restored_md5=080ce3cefb940cfd284284850786911c
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m4 ---
+target=simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+orig_md5=429d3a3c7accec33082cdfca07efb77a
+mutant_md5=c080627cb67d3a616b9a1de307e7c083
+restored_md5=429d3a3c7accec33082cdfca07efb77a
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m7 ---
+target=simos-app/src/main/java/io/mosire/simos/app/Shell.java
+orig_md5=fd1d6588f6c7440cd892788e347f3e35
+mutant_md5=dcde65ce6045b5e0d82a121d744006ac
+restored_md5=fd1d6588f6c7440cd892788e347f3e35
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m5 ---
+target=simos-sd/src/main/java/io/mosire/simos/sd/spi/StartDecisionHandler.java
+orig_md5=b599fad7bc3986f36d65ba921223b96b
+mutant_md5=1c05769ec96c3acebfb9e76cf8f55eb9
+restored_md5=b599fad7bc3986f36d65ba921223b96b
+mut_rc=0 hits=1 verdict=KILLED
+--- t10m6 ---
+target=simos-sd/src/main/java/io/mosire/simos/sd/spi/StartDecisionHandler.java
+orig_md5=b599fad7bc3986f36d65ba921223b96b
+mutant_md5=8e4c01ca02bfa690163b51655b7c73d6
+restored_md5=b599fad7bc3986f36d65ba921223b96b
+mut_rc=0 hits=1 verdict=KILLED

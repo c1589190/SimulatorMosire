@@ -160,13 +160,18 @@ class WebuiAssetsTest {
     }
   }
 
-  /** 取含指定 label 的完整 {@code <button …>…</button>} 标签。 */
+  /**
+   * 取**内部文本恰为** label 的完整 {@code <button …>…</button>} 标签。
+   *
+   * <p>★ 用"整体相等"而非"包含"：决策模式里还有「开**始决策**」这个真按钮（T10），它含子串「决策」但**不是**模式按钮——按包含判会把
+   * 两者都算上，把"六个模式各一个按钮"的断言读错。整体相等同时更严（模式按钮文案被塞进额外文字也会红）。
+   */
   static List<String> buttonTagsContaining(String html, String label) {
     List<String> found = new ArrayList<>();
-    Matcher matcher = Pattern.compile("(?s)<button\\b[^>]*>.*?</button>").matcher(html);
+    Matcher matcher = Pattern.compile("(?s)<button\\b[^>]*>(.*?)</button>").matcher(html);
     while (matcher.find()) {
       String tag = matcher.group();
-      if (tag.contains(label)) {
+      if (matcher.group(1).trim().equals(label)) {
         found.add(tag);
       }
     }
