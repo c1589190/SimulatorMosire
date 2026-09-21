@@ -1,0 +1,41 @@
+02:35:57.834 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 写入 LLM 密钥配置项 name=p1 length=36
+02:35:57.848 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 写入 LLM 密钥配置项 name=old length=6
+02:35:57.855 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 旧 LLM 配置已迁移：1 项（源文件保留：llm-providers.json）
+02:35:57.855 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 旧 LLM 配置已迁移到 AgentLib 配置根：1 项
+[ERROR] Tests run: 11, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.522 s <<< FAILURE! -- in io.mosire.simos.app.llm.AgentLibLlmConfigTest
+[ERROR] io.mosire.simos.app.llm.AgentLibLlmConfigTest.repoDefaultConfigSeedsAnEmptyStoreButLosesToTheStoreOverride -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["repo"]
+but could not find the following elements:
+  ["repo"]
+
+	at io.mosire.simos.app.llm.AgentLibLlmConfigTest.repoDefaultConfigSeedsAnEmptyStoreButLosesToTheStoreOverride(AgentLibLlmConfigTest.java:128)
+
+[ERROR] Failures: 
+[ERROR]   AgentLibLlmConfigTest.repoDefaultConfigSeedsAnEmptyStoreButLosesToTheStoreOverride:128 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["repo"]
+but could not find the following elements:
+  ["repo"]
+
+[ERROR] Tests run: 11, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/llmint/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

@@ -289,6 +289,40 @@
     return getJson("/approvals");
   }
 
+  // ── LLM provider 配置（M11′ 对接版）：读写 AgentLib 的 ConfigStore ─────────
+  // ★ 这些端点改的是 **app 基础设施配置**（`<store>/agentlib/config.json` 的 `llm.routes.*` / `keys.*`），
+  //   不是世界写（不落 revision、不进命令白名单）；决策人绑定那条是**世界写**（走 /sd/set-decision-maker-provider）。
+
+  /** provider 掩码列表（读 AgentLib 配置；坏条目也列出，带 errorCode）。 */
+  function llmProviders() {
+    return getJson("/llm/providers");
+  }
+
+  /** 新增 / 覆盖一条 provider；apiKey 在场 ⇒ 写 `keys.<id>`（值只进配置，绝不进路由）。 */
+  function saveLlmProvider(payload) {
+    return postJson("/llm/providers", payload);
+  }
+
+  function deleteLlmProvider(id) {
+    return postJson("/llm/providers/delete", { id: id });
+  }
+
+  /** 测试连接：服务端用该 provider 走一次真调用；失败回 200 {ok:false, detail}。 */
+  function testLlmProvider(id) {
+    return postJson("/llm/providers/test", { id: id });
+  }
+
+  /** 决策人绑定 provider（世界写，固定类型 sd.SetDecisionMakerProvider，落 revision）。 */
+  function setDecisionMakerProvider(branch, expectedRevision, decisionMakerId, providerId) {
+    invalidateState();
+    return postJson("/sd/set-decision-maker-provider", {
+      branch: branch,
+      expectedRevision: expectedRevision,
+      decisionMakerId: decisionMakerId,
+      providerId: providerId,
+    });
+  }
+
   /** GM MCP 工具使用（T8，只读）：{entries:[{tool, ok, code, atEpochMs}…]}，最新在前。 */
   function gmToolUsage() {
     return getJson("/gm/tool-usage");
@@ -335,5 +369,10 @@
     approvals: approvals,
     approve: approve,
     gmToolUsage: gmToolUsage,
+    llmProviders: llmProviders,
+    saveLlmProvider: saveLlmProvider,
+    deleteLlmProvider: deleteLlmProvider,
+    testLlmProvider: testLlmProvider,
+    setDecisionMakerProvider: setDecisionMakerProvider,
   };
 })();

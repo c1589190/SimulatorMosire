@@ -1,0 +1,39 @@
+02:36:03.101 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 写入 LLM 密钥配置项 name=stub length=11
+02:36:03.256 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=11
+02:36:03.301 INFO  io.mosire.simos.app.llm.LlmProviderResolver - LLM 判决响应 model=deepseek-flash inputTokens=11 outputTokens=7 reasoning=ABSENT
+02:36:03.327 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SubmitVerdict commandId=adjudicated:D1:1 correlationId=adjudicated:D1:1 新坐标=main@2
+02:36:03.329 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=11
+02:36:03.378 INFO  io.mosire.simos.app.llm.LlmProviderResolver - LLM 判决响应 model=deepseek-flash inputTokens=11 outputTokens=7 reasoning=ABSENT
+02:36:03.393 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SubmitVerdict commandId=adjudicated:D6:2 correlationId=adjudicated:D6:2 新坐标=main@3
+02:36:03.465 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 写入 LLM 密钥配置项 name=stub length=11
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.866 s <<< FAILURE! -- in io.mosire.simos.app.llm.AdjudicationEndToEndTest
+[ERROR] io.mosire.simos.app.llm.AdjudicationEndToEndTest.realAgentLibClientProducesAVerdictThatLandsARevision -- Time elapsed: 0.803 s <<< FAILURE!
+java.lang.AssertionError: 
+[判决请求必须带采样：temperature=0（可复现）+ max_tokens 给足（需求 A2）] 
+Expecting actual:
+  "{"model":"deepseek-flash","stream":true,"stream_options":{"include_usage":true},"temperature":0.0,"max_tokens":7,"messages":[{"role":"system","content":"你是 simos 的裁决器，断点 D6。只按给定 schema 在合法选项里选择并写理由，不发明新规则；只输出一个 JSON 对象，不要 markdown、不要多余文字。"},{"role":"user","content":"已脱敏简报：{\"combatId\":\"c1\",\"combatName\":\"战斗一\",\"participants\":[],\"stages\":[],\"decisionMakerId\":\"dm1\",\"guidance\":\"stageId 必须取自 stages[].stageId，selectedOutcomeId 必须取自对应的 outcomes[].outcomeId；无可选值则弃权。\"}\n输出 schema（必须满足，JSON 对象）：{\"breakpoint\":\"D6\",\"type\":\"object\",\"required\":[\"disposition\",\"rationaleText\"]}\n允许使用的命令（白名单）：[]\n只输出一个 JSON 对象；若无法裁决，输出 {\"abstain\":true,\"reason\":\"…\"}。"}]}"
+to contain:
+  ""max_tokens":4096" 
+	at io.mosire.simos.app.llm.AdjudicationEndToEndTest.realAgentLibClientProducesAVerdictThatLandsARevision(AdjudicationEndToEndTest.java:105)
+
+[ERROR] Failures: 
+[ERROR]   AdjudicationEndToEndTest.realAgentLibClientProducesAVerdictThatLandsARevision:105 [判决请求必须带采样：temperature=0（可复现）+ max_tokens 给足（需求 A2）] 
+Expecting actual:
+  "{"model":"deepseek-flash","stream":true,"stream_options":{"include_usage":true},"temperature":0.0,"max_tokens":7,"messages":[{"role":"system","content":"你是 simos 的裁决器，断点 D6。只按给定 schema 在合法选项里选择并写理由，不发明新规则；只输出一个 JSON 对象，不要 markdown、不要多余文字。"},{"role":"user","content":"已脱敏简报：{\"combatId\":\"c1\",\"combatName\":\"战斗一\",\"participants\":[],\"stages\":[],\"decisionMakerId\":\"dm1\",\"guidance\":\"stageId 必须取自 stages[].stageId，selectedOutcomeId 必须取自对应的 outcomes[].outcomeId；无可选值则弃权。\"}\n输出 schema（必须满足，JSON 对象）：{\"breakpoint\":\"D6\",\"type\":\"object\",\"required\":[\"disposition\",\"rationaleText\"]}\n允许使用的命令（白名单）：[]\n只输出一个 JSON 对象；若无法裁决，输出 {\"abstain\":true,\"reason\":\"…\"}。"}]}"
+to contain:
+  ""max_tokens":4096" 
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/llmint/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

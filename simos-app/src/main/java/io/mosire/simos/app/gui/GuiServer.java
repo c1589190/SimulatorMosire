@@ -6,11 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.app.gm.GmToolUsage;
+import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -24,7 +27,9 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.adjudication.Judgement;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.Unit;
@@ -120,6 +125,20 @@ public final class GuiServer implements AutoCloseable {
    */
   private static final String START_DECISION_PATH = "/api/sd/start-decision";
 
+  /**
+   * LLM provider 配置面（M11′ 对接版）：读写 AgentLib 的 {@code ConfigStore}（{@code llm.routes.*} / {@code
+   * keys.*}）。
+   */
+  private static final String LLM_PROVIDERS_PATH = "/api/llm/providers";
+
+  private static final String LLM_PROVIDERS_DELETE_PATH = LLM_PROVIDERS_PATH + "/delete";
+
+  private static final String LLM_PROVIDERS_TEST_PATH = LLM_PROVIDERS_PATH + "/test";
+
+  /** 决策人绑定 provider 窄写（世界写）：固定类型 {@code sd.SetDecisionMakerProvider}，落 revision。 */
+  private static final String SET_DECISION_MAKER_PROVIDER_PATH =
+      "/api/sd/set-decision-maker-provider";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -133,10 +152,19 @@ public final class GuiServer implements AutoCloseable {
           "/api/timeline",
           "/api/sd/decision-makers",
           "/api/sd/verdicts",
-          "/api/gm/tool-usage");
+          "/api/gm/tool-usage",
+          LLM_PROVIDERS_PATH);
 
   private static final Set<String> POST_ROUTES =
-      Set.of("/api/command", "/api/advance", "/api/fork", "/api/sd/start-decision");
+      Set.of(
+          "/api/command",
+          "/api/advance",
+          "/api/fork",
+          "/api/sd/start-decision",
+          LLM_PROVIDERS_PATH,
+          LLM_PROVIDERS_DELETE_PATH,
+          LLM_PROVIDERS_TEST_PATH,
+          SET_DECISION_MAKER_PROVIDER_PATH);
 
   /** 判决只读面（T6，spec `C28`）：{@code GET /api/sd/verdicts[?as=<dmId>]}。 */
   private static final String VERDICTS_PATH = "/api/sd/verdicts";
@@ -152,6 +180,12 @@ public final class GuiServer implements AutoCloseable {
 
   /** 审批面 base URL（T6 由 Shell 注入为 AgentLib 端点地址）；null / 空白 = 未配置（端点回 503）。 */
   private final String approvalBaseUrl;
+
+  /** LLM provider 配置门面（M11′）：读写 AgentLib 的 {@code ConfigStore}；null = 未接入（provider 面回 503）。 */
+  private final AgentLibLlmConfig llmConfig;
+
+  /** 决策编排（T3）：{@code /api/sd/start-decision} 提交成功后跑 LLM 判决；null = 未接入（退回"只发起、不裁决"）。 */
+  private final DecisionAdjudicationService decisionAdjudicationService;
 
   /** 审批透传用（T6）：只转发，不解释语义。 */
   private final HttpClient approvalClient;
@@ -170,7 +204,7 @@ public final class GuiServer implements AutoCloseable {
    */
   public GuiServer(
       QueryService queryService, CoreSimos core, String mapId, String approvalBaseUrl) {
-    this(queryService, core, mapId, approvalBaseUrl, new GmToolUsage());
+    this(queryService, core, mapId, approvalBaseUrl, new GmToolUsage(), null, null);
   }
 
   /**
@@ -184,6 +218,26 @@ public final class GuiServer implements AutoCloseable {
       String mapId,
       String approvalBaseUrl,
       GmToolUsage gmToolUsage) {
+    this(queryService, core, mapId, approvalBaseUrl, gmToolUsage, null, null);
+  }
+
+  /**
+   * 全参构造（M11′ 对接版）：带 LLM provider 配置门面与决策编排。
+   *
+   * @param llmConfig LLM provider 配置门面（{@code /api/llm/providers*} 的唯一数据源）；null = 未接入
+   * @param decisionAdjudicationService 决策编排（{@code /api/sd/start-decision} 提交后跑判决）；null = 不裁决
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "GUI 是组合根装配出来的请求处理器，持有配置门面即其职责本身（只读/写 AgentLib 配置），非内部表示外泄")
+  public GuiServer(
+      QueryService queryService,
+      CoreSimos core,
+      String mapId,
+      String approvalBaseUrl,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      DecisionAdjudicationService decisionAdjudicationService) {
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
@@ -192,6 +246,8 @@ public final class GuiServer implements AutoCloseable {
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.approvalBaseUrl = approvalBaseUrl;
     this.approvalClient = HttpClient.newHttpClient();
+    this.llmConfig = llmConfig;
+    this.decisionAdjudicationService = decisionAdjudicationService;
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
     this.staticHandler = new StaticHandler();
   }
@@ -399,6 +455,10 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return decisionMakersReply(params);
     }
+    if (path.equals(LLM_PROVIDERS_PATH)) {
+      rejectAs(path, asPresent);
+      return llmProvidersReply();
+    }
     if (isDecisionMakerDetail(path)) {
       rejectAs(path, asPresent);
       return decisionMakerReply(
@@ -446,6 +506,18 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(START_DECISION_PATH)) {
       return startDecisionReply(exchange);
+    }
+    if (path.equals(LLM_PROVIDERS_PATH)) {
+      return upsertLlmProviderReply(exchange);
+    }
+    if (path.equals(LLM_PROVIDERS_DELETE_PATH)) {
+      return deleteLlmProviderReply(exchange);
+    }
+    if (path.equals(LLM_PROVIDERS_TEST_PATH)) {
+      return testLlmProviderReply(exchange);
+    }
+    if (path.equals(SET_DECISION_MAKER_PROVIDER_PATH)) {
+      return setDecisionMakerProviderReply(exchange);
     }
     return null;
   }
@@ -764,9 +836,12 @@ public final class GuiServer implements AutoCloseable {
    */
   private Reply startDecisionReply(HttpExchange exchange) throws IOException {
     JsonNode root = readBody(exchange);
+    BranchId branch = new BranchId(textField(root, "branch"));
+    RevisionId expected = new RevisionId(longField(root, "expectedRevision"));
+    String decisionMakerId = textField(root, "decisionMakerId");
     String id = UUID.randomUUID().toString();
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("decisionMakerId", textField(root, "decisionMakerId"));
+    payload.put("decisionMakerId", decisionMakerId);
     if (root.hasNonNull("note")) {
       payload.put("note", root.get("note").asText());
     }
@@ -775,11 +850,157 @@ public final class GuiServer implements AutoCloseable {
             id,
             id,
             GUI_INITIATOR,
-            new BranchId(textField(root, "branch")),
-            new RevisionId(longField(root, "expectedRevision")),
+            branch,
+            expected,
             "sd.StartDecision",
             MAPPER.writeValueAsString(payload));
+    CommandResult result = core.submit(command);
+    if (!(result instanceof CommandResult.Committed committed)
+        || decisionAdjudicationService == null) {
+      return resultReply(result);
+    }
+    // ★ T3：发起成功 ⇒ 真的跑判决（在此之前全仓只有测试调 AdjudicatorRunner ⇒ 点击"开始决策"从不产出判决）。
+    //   判决失败语义见 DecisionAdjudicationService；不可降级的失败冒泡成 500（如实报错，不静默降级）。
+    DecisionMaker maker = decisionMakerAt(branch, committed.ref().revision(), decisionMakerId);
+    List<Judgement> judgements =
+        decisionAdjudicationService.adjudicate(branch, committed.ref().revision(), maker);
+    Map<String, Object> body = new LinkedHashMap<>(ApiViews.committed(committed.ref()));
+    body.put("adjudication", adjudicationView(judgements));
+    return Reply.of(200, body);
+  }
+
+  /** 新 head 上该决策人的当前态（绑定的 providerId 以它为准；不存在 ⇒ 领域错误）。 */
+  private DecisionMaker decisionMakerAt(
+      BranchId branch, RevisionId revision, String decisionMakerId) {
+    SdQueryService.DecisionMakerInfo info =
+        sdQueryService
+            .decisionMaker(new DecisionMakerId(decisionMakerId), QueryTarget.at(branch, revision))
+            .orElseThrow(() -> new IllegalStateException("决策人不存在（提交后读回）: " + decisionMakerId));
+    return info.maker();
+  }
+
+  /** 判决摘要（GUI 读回）：断点 + 三态 + 理由；**不回显 LLM 原始输出**（可能很长，且含输入回显）。 */
+  private static List<Map<String, Object>> adjudicationView(List<Judgement> judgements) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (Judgement judgement : judgements) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      switch (judgement) {
+        case Judgement.Accepted accepted -> {
+          row.put("kind", "accepted");
+          row.put("payloadLength", accepted.payloadJson().length());
+        }
+        case Judgement.Abstained abstained -> {
+          row.put("kind", "abstained");
+          row.put("reason", abstained.reason());
+        }
+        case Judgement.Failed failed -> {
+          row.put("kind", "failed");
+          row.put("reason", failed.reason());
+        }
+      }
+      out.add(row);
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * 决策人绑定 provider 窄写（M11′）：固定类型 {@code sd.SetDecisionMakerProvider}，落 revision（与 {@code
+   * /api/sd/start-decision} 同制）。体 {@code {branch, expectedRevision, decisionMakerId, providerId}}。
+   */
+  private Reply setDecisionMakerProviderReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("decisionMakerId", textField(root, "decisionMakerId"));
+    payload.put("providerId", textField(root, "providerId"));
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            "sd.SetDecisionMakerProvider",
+            MAPPER.writeValueAsString(payload));
     return resultReply(core.submit(command));
+  }
+
+  /** provider 列表（M11′）：读 AgentLib 的 {@code ConfigStore}；坏条目**也列出来**（带 errorCode）；未接入 ⇒ 503。 */
+  private Reply llmProvidersReply() {
+    if (llmConfig == null) {
+      return Reply.of(503, Map.of("error", "LLM 配置未接入（AgentLib ConfigStore 缺席）"));
+    }
+    return Reply.of(200, Map.of("providers", llmConfig.views()));
+  }
+
+  /**
+   * 新增 / 覆盖一条 provider（M11′）：路由与密钥**分两处写**（{@code llm.routes.<id>} / {@code keys.<keyName>}）。
+   *
+   * <p>体 {@code {id, baseUrl, model, credentialsRef?, readTimeoutMs?, apiKey?}}。{@code apiKey} 在场 ⇒
+   * 写 {@code keys.<id>}（引用自动补成 {@code keys.<id>}）；不写密钥值进路由（AgentLib 的形态，也是本仓密钥纪律）。
+   */
+  private Reply upsertLlmProviderReply(HttpExchange exchange) throws IOException {
+    if (llmConfig == null) {
+      return Reply.of(503, Map.of("error", "LLM 配置未接入（AgentLib ConfigStore 缺席）"));
+    }
+    JsonNode root = readBody(exchange);
+    String id = textField(root, "id");
+    String baseUrl = textField(root, "baseUrl");
+    String model = textField(root, "model");
+    long readTimeoutMs =
+        root.hasNonNull("readTimeoutMs") ? longField(root, "readTimeoutMs") : 120_000L;
+    String credentialsRef =
+        root.hasNonNull("credentialsRef") ? root.get("credentialsRef").asText() : "";
+    if (root.hasNonNull("apiKey") && !root.get("apiKey").asText().isBlank()) {
+      llmConfig.putKey(id, root.get("apiKey").asText());
+      credentialsRef = "keys." + id;
+    }
+    llmConfig.upsertRoute(id, baseUrl, model, credentialsRef, readTimeoutMs);
+    return Reply.of(200, Map.of("provider", llmConfig.view(id)));
+  }
+
+  /** 删除一条 provider（幂等语义，见 AgentLib 的 {@code remove}）：路由与同名密钥一起删。 */
+  private Reply deleteLlmProviderReply(HttpExchange exchange) throws IOException {
+    if (llmConfig == null) {
+      return Reply.of(503, Map.of("error", "LLM 配置未接入（AgentLib ConfigStore 缺席）"));
+    }
+    JsonNode root = readBody(exchange);
+    String id = textField(root, "id");
+    boolean existed = llmConfig.availableNames().contains(id);
+    llmConfig.removeRoute(id);
+    llmConfig.removeKey(id);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("id", id);
+    body.put("deleted", existed);
+    return Reply.of(200, body);
+  }
+
+  /**
+   * 测试连接（M11′）：服务端用该 provider 走一次真调用。
+   *
+   * <p>★ 失败**不 500**：回 {@code 200 {ok:false, detail}}（detail 只含我们自己的异常消息，无密钥值、无响应体）。
+   */
+  private Reply testLlmProviderReply(HttpExchange exchange) throws IOException {
+    if (llmConfig == null) {
+      return Reply.of(503, Map.of("error", "LLM 配置未接入（AgentLib ConfigStore 缺席）"));
+    }
+    JsonNode root = readBody(exchange);
+    String id = textField(root, "id");
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("id", id);
+    try {
+      io.mosire.agentlib.llm.LlmClient client = llmConfig.client(id);
+      io.mosire.agentlib.llm.LlmResponse response =
+          client.chat(
+              new io.mosire.agentlib.llm.LlmRequest(
+                  List.of(io.mosire.agentlib.llm.LlmMessage.user("只回复一个 JSON 对象，表示连接正常。"))));
+      body.put("ok", true);
+      body.put("detail", "连接成功（model=" + response.model() + "）");
+    } catch (RuntimeException e) {
+      body.put("ok", false);
+      body.put("detail", e.getClass().getSimpleName() + ": " + e.getMessage());
+    }
+    return Reply.of(200, body);
   }
 
   private static Reply resultReply(CommandResult result) {

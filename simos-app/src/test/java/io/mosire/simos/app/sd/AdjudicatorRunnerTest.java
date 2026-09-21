@@ -162,7 +162,9 @@ class AdjudicatorRunnerTest {
       calls.incrementAndGet();
       String breakpoint = request.breakpoint().value();
       if (failFor.contains(breakpoint)) {
-        throw new IllegalStateException("timeout:" + breakpoint);
+        // ★ 用**可降级**的 AgentLib 失败（N13 的判据来自 LlmException.degradable()）：本 tick 无判决、tick 继续。
+        throw new io.mosire.agentlib.llm.LlmException(
+            "timeout:" + breakpoint, io.mosire.agentlib.llm.LlmException.Kind.TIMEOUT);
       }
       return payloadFor(breakpoint);
     }

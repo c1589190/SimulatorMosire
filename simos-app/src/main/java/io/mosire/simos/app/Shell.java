@@ -20,7 +20,10 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.gm.RecordingToolSource;
 import io.mosire.simos.app.gui.GuiServer;
+import io.mosire.simos.app.llm.AgentLibLlmConfig;
+import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.app.sd.SdCommandDrain;
 import io.mosire.simos.app.sd.channel.CliDecisionChannel;
 import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
@@ -213,6 +216,15 @@ public final class Shell implements AutoCloseable {
   /** 已注册命令类型（D6）：按角色重建工具面时供 catalog 读。 */
   private final Set<String> commandTypes;
 
+  /**
+   * LLM provider 配置（M11′ 对接版）：由 AgentLib 的 {@code ConfigStore} 承载 {@code llm.routes.*} / {@code
+   * keys.*} （用户裁定「Provider 配置归 AgentLib」）。
+   */
+  private final AgentLibLlmConfig llmConfig;
+
+  /** 决策编排（T3）：把 {@code AdjudicatorRunner} 接进壳——「开始决策」真的会跑 LLM 判决。 */
+  private final DecisionAdjudicationService decisionAdjudicationService;
+
   private volatile boolean closed;
 
   private Shell(
@@ -234,7 +246,9 @@ public final class Shell implements AutoCloseable {
       int registeredModuleCount,
       SdCommandDrain sdCommandDrain,
       List<DecisionChannel> decisionChannels,
-      Set<String> commandTypes) {
+      Set<String> commandTypes,
+      AgentLibLlmConfig llmConfig,
+      DecisionAdjudicationService decisionAdjudicationService) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.queryService = queryService;
@@ -254,6 +268,8 @@ public final class Shell implements AutoCloseable {
     this.sdCommandDrain = sdCommandDrain;
     this.decisionChannels = List.copyOf(decisionChannels);
     this.commandTypes = Set.copyOf(commandTypes);
+    this.llmConfig = llmConfig;
+    this.decisionAdjudicationService = decisionAdjudicationService;
   }
 
   /**
@@ -381,6 +397,13 @@ public final class Shell implements AutoCloseable {
 
     QueryService queryService = new QueryService(coreSimos, resolverRegistry, facetRegistry);
 
+    // ★ M11′：LLM provider 配置落在 AgentLib 的 ConfigStore（<store>/agentlib/config.json），
+    //   旧格式（<store>/llm-providers.json）只作一次性迁移来源；决策编排把 AdjudicatorRunner 接进壳。
+    AgentLibLlmConfig llmConfig = AgentLibLlmConfig.open(config.storeDir());
+    LlmProviderResolver llmProviderResolver = new LlmProviderResolver(llmConfig, config.storeDir());
+    DecisionAdjudicationService decisionAdjudicationService =
+        new DecisionAdjudicationService(coreSimos, llmProviderResolver);
+
     // ★ D5：四条决策渠道（spec §十三.3）——声明各自可代表的 actor（当前世界里的决策人），最终写同一落点。
     Supplier<Set<ActorId>> representableActors = () -> currentActorIds(coreSimos);
     List<DecisionChannel> decisionChannels =
@@ -494,7 +517,9 @@ public final class Shell implements AutoCloseable {
             coreSimos,
             config.mapId(),
             "http://127.0.0.1:" + approvalEndpoint.boundPort(),
-            gmToolUsage);
+            gmToolUsage,
+            llmConfig,
+            decisionAdjudicationService);
     boolean guiUp = false;
     try {
       guiServer.start(config.bindAddress(), config.guiPort());
@@ -549,7 +574,9 @@ public final class Shell implements AutoCloseable {
         codecs.size(),
         new SdCommandDrain(coreSimos),
         decisionChannels,
-        commandTypes);
+        commandTypes,
+        llmConfig,
+        decisionAdjudicationService);
   }
 
   /** 当前世界里的决策人（作为渠道可代表的 actor；空库 ⇒ 空集）。 */
@@ -712,6 +739,19 @@ public final class Shell implements AutoCloseable {
   /** 跨模块效果落点（C5）：测试/调试面可直接调它（不经 {@code advanceAndDrain}）。 */
   public SdCommandDrain sdCommandDrain() {
     return sdCommandDrain;
+  }
+
+  /** LLM provider 配置（M11′ 对接版）：AgentLib 的 {@code ConfigStore} 门面（测试/运维读回装配实况）。 */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "本壳要把配置门面交给测试/运维读回装配实况；它不是内部表示而是本壳的产物，与 toolRegistry() 同法")
+  public AgentLibLlmConfig llmConfig() {
+    return llmConfig;
+  }
+
+  /** 决策编排（T3）：测试/调试面可直接调它（不经 GUI 端点）。 */
+  public DecisionAdjudicationService decisionAdjudicationService() {
+    return decisionAdjudicationService;
   }
 
   /**
