@@ -49,6 +49,21 @@
 - ★★ **一个容易踩的陷阱**：`SetStatusHandler` 是 **T2** 造的，但**从来没有被注册进 `Shell`**（实测 `Shell.java` 的 import 与 handlers 列表里都没有它）。⇒ **别以为"T2 那批早就注册过了"**；`SetStatus` 确实**要由 T9 首次注册**（计划把它列在 12 条里是**对的**）。
 - ★ **计划的 `Shell.java:193-213` 与 `直读现状 :187-207` 是旧行号**：实测 handlers 列表在 **`:195-214`**（同类漂移见 §五「md5 才是判据」条与 `t8-evidence/mutants/LINE-DRIFT-NOTE.md`）。⇒ **以符号为准，别照抄行号。**
 
+**★ 权威 type 清单（08:02 机械抽取，非记忆）**：对 `simos-unit/.../unit/spi/*Handler.java` **逐个取首个 `return "…";`** ⇒ **20 个文件、20 个唯一串、全部 `unit.*`**：
+
+```
+unit.ApplyCasualties   unit.AttachUnit        unit.CancelRoute        unit.CreateCommandChain
+unit.CreateUnit        unit.DetachUnit        unit.DisbandUnit        unit.MergeFormation
+unit.PlaceAt           unit.PlanRoute         unit.PlanSparseRoute    unit.RenameUnit
+unit.ReparentSubtree   unit.ReparentUnit      unit.SetFormationOffset unit.SetRejoinTarget
+unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.UpdateCommandChain
+```
+
+- **待注册 12**（T9 的靶子）= 上表**去掉已注册的 8**：`ApplyCasualties`/`AttachUnit`/`CreateCommandChain`/`DetachUnit`/`MergeFormation`/`PlanSparseRoute`/`ReparentSubtree`/`SetFormationOffset`/`SetRejoinTarget`/`SetStatus`/`SplitFormation`/`UpdateCommandChain` ⇒ **与 §三 的 12 条清单逐条相同（已实测对齐）**。
+- **已注册 8** = `RenameUnit`/`CreateUnit`/`ReparentUnit`/`SetStrength`/`PlaceAt`/`PlanRoute`/`CancelRoute`/`DisbandUnit` ⇒ **12 + 8 = 20 ✓**，无遗漏、无重复。
+- ★ **T9 的 catalog 断言请写成"集合相等"，不要用前缀/包含**：本表里有**近名对**（`ReparentUnit` vs `ReparentSubtree`、`PlanRoute` vs `PlanSparseRoute`、`SetStatus` vs `SetStrength` vs `SetFormationOffset`）⇒ 任何 `startswith`/`contains` 型断言都会**掩盖"注册错了一条"**（正是 m1"删一条注册"想抓的东西）。
+- ★ **一个机械事实**：这 20 条**全是 `unit` namespace** ⇒ `unit` namespace 下**恰好一个 participant**（§三判据那半）与"20 条 type"是**两件事**，别混。
+
 **判据**：catalog type 集合 ⊇ 上述 12 个（**m1 靶子 = 删一条注册**）；每个 `type()` 形状 `<namespace>.<Command>`；`unit` namespace 恰一个 participant（装配 + 一次 `advance` 不抛）；端到端经 `Shell` 发一条新命令 ⇒ `committed`。**变异 ≥2 轮**；★ 十道门禁 + ★ **裁定 42**（新增/改动护栏必须自带变异轮）+ ★ 第 ⑩ 道**逐片段**自证。
 
 **★ 装配改动 ⇒ 必须连带复核**：`Shell` 是既有装配点，改它 = **改动既有护栏** ⇒ 按裁定 42 需自带重跑轮；同时确认 `simos-app` 既有测试（实测 **116**）只增不减地绿。
@@ -62,7 +77,7 @@
 | **T10-c** | **T5-L4 的 1 参兼容构造器 `new UnitState(units)` 是否删除**（它会**静默清空 `commandChains`**；T5/L4 立为通则、三次被变异体撞上既有护栏） | T5-L4 / T7-G4 |
 | **T10-d** | **G1**：`disband` 之后可能留**悬空 `rejoinTarget`**——运行期口径安全（`effectivePosition` 对不存在 id 返空 ⇒ 不回归、不写任何东西）但**无判据**；**未在 T7 补**（会动 T3/T4 已关账 op 族） | T7-G1 |
 | **T10-e** | **G5**：回归与**在途普通路线**同时存在时的交互**无 spec 依据**（现状：回归行程**替换**在途行程）；**凭空定策略就是发明需求** ⇒ 届时仍无上游依据就**记为"未定策略"、不记为"已实现"** | T7-G5 |
-| **T10-f** | **G2**：`UnitPayloads` 类注仍写"unit **十六个** handler"（实为 **18**）——纯注释、零行为 | T7-G2 |
+| **T10-f** | **G2**：`UnitPayloads` 类注仍写"unit **十六个** handler"——**T7 立此项时实为 18**，**T8 后实为 20**（08:02 机械抽取复核实测；T9 注册完 type 总数**仍 20**，变的只是 **Shell 注册数 8→20**）⇒ 纯注释、零行为 | T7-G2 |
 | **T10-g** | **spec §八 20 条逐条实测值**（不是"通过/不通过"，要**数字**）+ 变异轮汇总 + **"我未能核实的"清单** + 关账报告 | 计划 T10 |
 
 ## 五、★ 运行纪律与环境实测（**下一个会话必须原样继承**）
