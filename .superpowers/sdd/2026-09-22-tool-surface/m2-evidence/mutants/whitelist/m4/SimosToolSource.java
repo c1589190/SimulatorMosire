@@ -199,6 +199,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
     // M2（spec §八.3）：unit 域 20 条窄写（与 addGmWrites 同一批）。
+    built.add(new MapSetTerrainTool(core, initiator, mapId)); // m4：一条 map 窄写也挂进决策人桶
     built.add(new UnitRenameTool(core, initiator, mapId));
     built.add(new UnitCreateTool(core, initiator, mapId));
     built.add(new UnitReparentTool(core, initiator, mapId));

@@ -218,7 +218,6 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitSetRejoinTargetTool(core, initiator, mapId));
     built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
     built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
-    built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
   }
 
   private static List<AgentTool> readTools(

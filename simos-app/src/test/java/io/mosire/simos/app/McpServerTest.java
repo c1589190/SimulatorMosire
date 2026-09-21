@@ -96,8 +96,8 @@ class McpServerTest {
   private static final String SERVER_NAME = "simos-shell";
 
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 4 sd 窄写 + **7 map 窄写**（spec §七.2 的 C6；T10 起
-   * +StartDecision，M1 起 +7 map）= 23 条。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + sd 域窄写（T10 起 +StartDecision）+ **7 map 窄写**（M1） + **20
+   * unit 窄写**（M2，用户裁定 D-1）= 43 条（spec §七.2 的 C6）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -123,7 +123,27 @@ class McpServerTest {
           "map.UpdateRegion",
           "map.DeleteRegion",
           "map.RandomizeRegion",
-          "map.RegisterPathwayGroup");
+          "map.RegisterPathwayGroup",
+          "unit.RenameUnit",
+          "unit.CreateUnit",
+          "unit.ReparentUnit",
+          "unit.SetStrength",
+          "unit.PlaceAt",
+          "unit.PlanRoute",
+          "unit.CancelRoute",
+          "unit.DisbandUnit",
+          "unit.SetStatus",
+          "unit.AttachUnit",
+          "unit.DetachUnit",
+          "unit.ReparentSubtree",
+          "unit.SetFormationOffset",
+          "unit.SplitFormation",
+          "unit.MergeFormation",
+          "unit.PlanSparseRoute",
+          "unit.SetRejoinTarget",
+          "unit.CreateCommandChain",
+          "unit.UpdateCommandChain",
+          "unit.ApplyCasualties");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 
@@ -179,7 +199,7 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 23 条（C6：含通用写、sd 窄工具与 7 条 map 窄写）")
+        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 43 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

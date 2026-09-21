@@ -104,7 +104,8 @@ class McpPortTopologyTest {
    * **无**通用写、**无** map 窄写。
    */
   private static final List<String> DECISION_AGENT_WRITES =
-      concat(List.of("sd.IssueDirective", "sd.SubmitVerdict"), UNIT_WRITES);
+      concat(
+          List.of("sd.IssueDirective", "sd.SubmitVerdict"), UNIT_WRITES, List.of("map.SetTerrain"));
 
   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
 

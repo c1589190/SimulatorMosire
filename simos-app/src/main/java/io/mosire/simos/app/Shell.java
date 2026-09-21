@@ -129,8 +129,8 @@ import org.slf4j.LoggerFactory;
  * CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 四 {@code Resolver} （map/social/unit/sd）+ 两
  * {@code FacetProvider}（unitsHere/population）→ {@link QueryService}（查询层，T3）；审批链（T6，S5：{@code
  * PendingApprovals → HttpApprovalChannel → ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior
- * 判定）→ {@link SimosToolSource}（T4：现有口 {@code EXTERNAL_WITH_GM} 16 工具 = 3 通用写 + 4 GM 窄写 + 9 读；决策人口
- * {@code DECISION_AGENT} 11 工具 = 2 窄写 + 9 读）经 {@code McpSourceBridge.bind} 同步进各自 {@link
+ * 判定）→ {@link SimosToolSource}（T4：现有口 {@code EXTERNAL_WITH_GM} = 通用写 + GM 窄写 + 读工具；决策人口 {@code
+ * DECISION_AGENT} = 自有窄写 + 读工具。**条数以工具面为准**，不在此钉死）经 {@code McpSourceBridge.bind} 同步进各自 {@link
  * ToolRegistry}（T5）→ {@link AgentToMcpServer#startHttp} **两次**（现有口 + 决策人口，第 6 步，T7/T4）→ GUI（第 7
  * 步，T8）。
  *
@@ -161,7 +161,7 @@ public final class Shell implements AutoCloseable {
   private final QueryService queryService;
 
   /**
-   * 工具注册表（T5/T4）：现有口 {@link SimosToolSource.Role#EXTERNAL_WITH_GM} 的 16 条工具经桥同步进此表；T7 交给 {@code
+   * 工具注册表（T5/T4）：现有口 {@link SimosToolSource.Role#EXTERNAL_WITH_GM} 的全部工具经桥同步进此表；T7 交给 {@code
    * AgentToMcpServer}。
    */
   private final ToolRegistry toolRegistry;
@@ -170,7 +170,7 @@ public final class Shell implements AutoCloseable {
   private final McpSourceBridge toolBridge;
 
   /**
-   * 决策人口工具注册表（T4）：{@link SimosToolSource.Role#DECISION_AGENT} 的 11 条工具经桥同步；与 {@link #toolRegistry}
+   * 决策人口工具注册表（T4）：{@link SimosToolSource.Role#DECISION_AGENT} 的全部工具经桥同步；与 {@link #toolRegistry}
    * 相互独立。
    */
   private final ToolRegistry decisionToolRegistry;
@@ -432,7 +432,7 @@ public final class Shell implements AutoCloseable {
         ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
     approvalChannel.markUp();
 
-    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 9 读 + 3 通用写 + 4 GM 窄写。
+    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 9 读 + 通用写 + GM 窄写（条数以工具面为准）。
     // ★ 与 SDSimos 裁定 N9 的冲突在此端口显式记账：保留通用写是**用户裁定 D2 的取舍、不是缺陷**；
     //   N9 在决策人口（下面的 DECISION_AGENT 桶）与 DecisionMaker.allowedTools 白名单上照旧有效。
     SimosToolSource toolSource =
@@ -450,7 +450,7 @@ public final class Shell implements AutoCloseable {
     McpSourceBridge toolBridge =
         McpSourceBridge.bind(RecordingToolSource.record(toolSource, gmToolUsage), toolRegistry);
 
-    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（9 读 + 2 窄写），**无**通用写、**无** sd.SetViewScope。
+    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（9 读 + 该桶自有窄写），**无**通用写、**无** sd.SetViewScope。
     SimosToolSource decisionToolSource =
         new SimosToolSource(
             coreSimos,
@@ -641,8 +641,9 @@ public final class Shell implements AutoCloseable {
    * <p>★ **桶取 {@link AccessToken#DEFAULT} 而非 spec §3.2 字面的 {@code GUEST}**——这是装配期实测的**取代说明**：三条写工具
    * （{@code command.submit}/{@code advance}/{@code fork}）的 {@code ToolSpec} 是 {@code
    * ToolSpec.level(DEFAULT, sensitive=true, destructive=false)}，而 {@code PermissionChecker}
-   * 在身份级别不足时**硬拒** （{@code PERMISSION_DENIED}），根本进不了审批闸。{@code GUEST} 桶下 12 条工具里的 3 条写工具全部不可达，MCP
-   * 只能读、不能写 ⇒ 与 S3/S4 的工具面设计矛盾。{@code DEFAULT} 是**满足全部 12 条工具的最小桶**（读工具只要求 {@code GUEST}）。
+   * 在身份级别不足时**硬拒** （{@code PERMISSION_DENIED}），根本进不了审批闸。{@code GUEST} 桶下三条通用写工具 （{@code
+   * command.submit}/{@code advance}/{@code fork}）全部不可达，MCP 只能读、不能写 ⇒ 与 S3/S4 的工具面设计矛盾。{@code
+   * DEFAULT} 是**满足该工具面全部工具的最小桶**（读工具只要求 {@code GUEST}）。
    *
    * <p>★ **权限集须显式开 {@code sensitiveAllowed}**（写工具的敏感位在硬拒规则里"默认拒绝"）：故用 {@link
    * AgentPermissionSet#unrestricted(AccessToken)}（含 destructive/sensitive 放行）。**放行 ≠ 免审批**：敏感工具仍走
@@ -687,9 +688,7 @@ public final class Shell implements AutoCloseable {
     return queryService;
   }
 
-  /**
-   * 工具注册表（spec §7.1；T5/T4）：现有口 16 条工具（3 通用写 + 4 GM 窄写 + 9 读）的活清单，T7 交给 {@code AgentToMcpServer}。
-   */
+  /** 工具注册表（spec §7.1；T5/T4）：现有口全部工具（通用写 + GM 窄写 + 读）的活清单，T7 交给 {@code AgentToMcpServer}。 */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP",
       justification = "spec §3.2/§7.2 要求把注册表交给 MCP 服务（T7）；它不是内部表示而是本壳的产物本身，与 coreSimos() 同法")
