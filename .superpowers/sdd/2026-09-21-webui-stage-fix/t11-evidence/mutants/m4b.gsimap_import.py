@@ -416,10 +416,6 @@ def resolve_edges(data, hexes_src, edge_tags_by_hex, river_mask_by_hex):
                 "hex {} 的 edgeTags 与 riverMask 不一致（交叉校验失败，不静默取一）: "
                 "edgeTags={} riverMask={}".format(coord_text, sorted(et), sorted(rm)))
 
-    if edge_tags_by_hex:
-        return edges_from_edge_tags(hexes_src), "edgeTags"
-    if river_mask_by_hex:
-        return edges_from_river_mask(river_mask_by_hex, hexes_src), "riverMask"
     return {}, "none"
 
 

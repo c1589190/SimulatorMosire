@@ -1,0 +1,36 @@
+round=m1
+target=simos-app/src/main/java/io/mosire/simos/app/demo/RichWorld.java
+cmd=./mvnw -q -pl simos-app -am -Dtest=RichWorldTest -Dsurefire.failIfNoSpecifiedTests=false test
+orig_md5=c76317b052541f19312474e765dc9ec6
+mutant_md5=a622c5f94a52dbf7c46cfa315b5de282
+test_rc=1
+compilation_error_count=0
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 4.057 s <<< FAILURE! -- in io.mosire.simos.app.demo.RichWorldTest
+[ERROR] io.mosire.simos.app.demo.RichWorldTest.riverEdgesAre240AdjacentAndAllRiver -- Time elapsed: 0.843 s <<< FAILURE!
+java.lang.AssertionError: 
+[edgeTags 480 个有向条目 / 2 = 240 条无向边（★ 不是 248——248 是『非空格数』）] 
+Expected size: 240 but was: 0 in:
+{}
+	at io.mosire.simos.app.demo.RichWorldTest.riverEdgesAre240AdjacentAndAllRiver(RichWorldTest.java:101)
+
+[ERROR] Failures: 
+[ERROR]   RichWorldTest.riverEdgesAre240AdjacentAndAllRiver:101 [edgeTags 480 个有向条目 / 2 = 240 条无向边（★ 不是 248——248 是『非空格数』）] 
+Expected size: 240 but was: 0 in:
+{}
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/wsf-t11/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+restored_md5=c76317b052541f19312474e765dc9ec6
+round_done=OK

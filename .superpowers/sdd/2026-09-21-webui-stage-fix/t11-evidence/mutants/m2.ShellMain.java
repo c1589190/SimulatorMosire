@@ -151,7 +151,7 @@ public final class ShellMain {
    * @param branches 库里已有的分支（空 = 空库）
    */
   static boolean shouldSeedGenesis(boolean demo, Set<BranchId> branches) {
-    return demo && branches.isEmpty();
+    return demo;
   }
 
   private static String value(String[] args, int index, String flag) {

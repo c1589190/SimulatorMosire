@@ -408,13 +408,6 @@ def resolve_edges(data, hexes_src, edge_tags_by_hex, river_mask_by_hex):
             edges[canonical] = {"byPathway": by_pathway}
         return edges, "edges"
 
-    for coord_text in sorted(set(edge_tags_by_hex) | set(river_mask_by_hex)):
-        et = edge_tags_by_hex.get(coord_text, set())
-        rm = river_mask_by_hex.get(coord_text, set())
-        if et != rm:
-            raise ImportRejected(
-                "hex {} 的 edgeTags 与 riverMask 不一致（交叉校验失败，不静默取一）: "
-                "edgeTags={} riverMask={}".format(coord_text, sorted(et), sorted(rm)))
 
     if edge_tags_by_hex:
         return edges_from_edge_tags(hexes_src), "edgeTags"
