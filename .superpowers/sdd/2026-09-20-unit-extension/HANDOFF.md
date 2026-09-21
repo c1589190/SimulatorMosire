@@ -52,6 +52,7 @@
    - `unit.SetRejoinTarget` ⇒ 依 T7-U5 需 `status == MOVING` 才不早退；
    - `unit.CreateCommandChain`/`UpdateCommandChain` ⇒ 受 `requireNotInAnyChain` 约束，**与 `DisbandUnit` 的相对次序会影响成员可否复用**。
    ⇒ **这条把 T9 从"装配"变成了"装配 + 12 条端到端载荷的时序设计"**，估时**远超** T8 的 28 分钟。★ **别把它当成"顺手补一下"**；也**别**为了变绿去放宽 `McpCoverageTest`（那正是本任务要保的端到端判据）。
+   ★ **插入窗口（实测数出来的，供载荷设计用）**：`MINIMAL_PAYLOADS` 现有 **18** 条（与 `EXPECTED_COMMAND_TYPES` 的 18 条**集合相等、顺序不同**——与 Javadoc「执行序不是 catalog 序」一致），其中 **`unit.DisbandUnit` 排在 put 序第 8 位**，它前面 7 条**全是 unit 命令**（`CreateUnit`/`RenameUnit`/`SetStrength`/`ReparentUnit`/`PlaceAt`/`PlanRoute`/`CancelRoute`）。⇒ **需要 `u-1` 存活的新命令必须插在第 8 位之前**；`DisbandUnit` 之后是 map/sd 命令（不依赖 `u-1`）。
 
 **★★ T9 的完整爆炸半径（实测扫过全部相关测试面；锚 = 各文件路径行号，均未被本任务改动）**：
 
