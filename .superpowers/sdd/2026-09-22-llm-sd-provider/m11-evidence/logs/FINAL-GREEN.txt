@@ -1,0 +1,19 @@
+# FINAL GREEN RUN (m11 / llm-sd-provider) — 权威最终绿轮
+file: .superpowers/sdd/2026-09-22-llm-sd-provider/m11-evidence/logs/final-green-verify.log
+log_md5: 2696f48b8fd0f602a7993a6236b3db10
+attempt: 2（第 1 次尝试亦绿，本文件为变异轮**之后**在冻结字节上的复跑）
+cmd: ./mvnw clean verify
+rc: 0
+modules: UtilSimos/MapSimos/SocialSimos/UnitSimos/CoreSimos/SDSimos/SimosApp 全 SUCCESS（8/8）
+tests: 170/369/45/259/179/138/216 = 1376
+base(dfe74b9): 170/369/45/259/179/129/211 = 1362（现场重算，见 logs/baseline-dfe74b9.txt）
+delta: sd +9, app +5 (其余逐模块逐值不变)
+BugInstance size is 0: 7
+[ERROR] lines: 0
+frontend: tests=188 pass=188 fail=0
+frozen source md5:
+  Shell.java=171459c9535461aa246576b409fc98ae
+  ApiViews.java=10ebefa3f905e7778e145bfc125af725
+  CatalogTool.java=02eb66919e8c861cbe6d46c8e8451103
+  DecisionMaker.java=74423256ab0ae9bde08c8e0d1a5782fd
+  SetViewScopeHandler.java=c3c20fe3a0c11b7e778c1c46f4b35406

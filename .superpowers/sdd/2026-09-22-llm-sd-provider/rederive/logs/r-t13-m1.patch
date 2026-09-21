@@ -1,0 +1,15 @@
+--- /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t13-evidence/mutants/orig/ApiViews.java	2026-09-22 01:21:05.776450590 +0800
++++ /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t13-evidence/mutants/m1.ApiViews.java	2026-09-22 01:21:05.776450590 +0800
+@@ -210,10 +210,8 @@
+       item.put("id", id.toString());
+       item.put("terrain", block.terrain());
+       item.put("hexCount", block.hexes().size());
+-      List<List<Map<String, Object>>> rings = new ArrayList<>(block.boundary().rings().size());
+-      for (List<HexVertex> ring : block.boundary().rings()) {
+-        rings.add(closedRingView(ring));
+-      }
++      List<List<Map<String, Object>>> rings = new ArrayList<>(1);
++      rings.add(closedRingView(block.boundary().rings().get(0)));
+       item.put("boundaries", rings);
+       out.add(item);
+     }

@@ -264,6 +264,19 @@ class SdDecisionMakerApiTest {
     assertThat(body.get("allowedTools").get(0).asText()).isEqualTo("sd.SubmitVerdict");
     assertThat(body.get("affiliation").get("kind").asText()).isEqualTo("nation");
     assertThat(body.get("affiliation").get("id").asText()).isEqualTo("n1");
+    assertThat(body.get("providerId").asText())
+        .as("M11：绑定的 provider 引用经真命令路径写入、原样回读")
+        .isEqualTo("p-nation");
+  }
+
+  /** ★ M11：未绑定 ⇒ {@code providerId} 是 JSON {@code null}，**不是**空串（不拿空串顶替"没有"）。 */
+  @Test
+  void unboundDecisionMakerReportsNullProviderIdNotAnEmptyString() throws Exception {
+    createFixture();
+
+    JsonNode army = detailJson("dm-army");
+
+    assertThat(army.get("providerId").isNull()).as("未绑定 ⇒ null，不是空串").isTrue();
   }
 
   @Test
@@ -488,6 +501,9 @@ class SdDecisionMakerApiTest {
         "{\"decisionMakerId\":\"dm-nation\",\"viewScope\":{\"visibleRegions\":[\"r-nation\"],"
             + "\"visibleHexes\":[{\"q\":1,\"r\":1}],\"visibleUnits\":[\"u-1\"],\"seeOwnUnits\":true,"
             + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[\"position\"]}}");
+    submit(
+        "sd.SetDecisionMakerProvider",
+        "{\"decisionMakerId\":\"dm-nation\",\"providerId\":\"p-nation\"}");
   }
 
   private String submit(String type, String payloadJson) throws Exception {
