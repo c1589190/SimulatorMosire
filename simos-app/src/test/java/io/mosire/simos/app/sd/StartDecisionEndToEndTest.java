@@ -15,6 +15,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.core.CoreSimos;
@@ -382,6 +383,12 @@ class StartDecisionEndToEndTest {
             CheckpointEncoder.encode(
                 genesis,
                 List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+    // ★ 2026-09-22（裁决：无战斗也要走判决）：DM 绑定一个**不可达** provider ⇒ 判决走 N13 可降级失败
+    //   （Judgement.Failed，不落 verdict、不落 revision）。本用例只验 C18 的命令/权限面；成功判决路径
+    //   见 AdjudicationEndToEndTest（本地 stub）与真 e2e。
+    AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
+    config.upsertRoute("stub", "http://127.0.0.1:1/v1", "deepseek-flash", "keys.stub", 2_000L);
+    config.putKey("stub", "sk-test-key");
   }
 
   private static DecisionMaker decisionMaker() {
@@ -390,7 +397,8 @@ class StartDecisionEndToEndTest {
         new Affiliation.Nation(new NationId("n-t10")),
         Set.of("sd.SubmitVerdict"),
         ViewScope.empty(),
-        3);
+        3,
+        Optional.of("stub"));
   }
 
   private static Unit unit() {

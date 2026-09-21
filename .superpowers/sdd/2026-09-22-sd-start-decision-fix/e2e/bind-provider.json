@@ -1,0 +1,3 @@
+=== POST /api/sd/set-decision-maker-provider dm-dashu -> mosire-flash (expectedRevision=10) ===
+{"result":"committed","ref":{"branch":"main","revision":11}}
+http_status=200
