@@ -81,7 +81,20 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "sd.RegisterEffect",
               "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action, createdTick?"),
-          Map.entry("sd.CancelEffect", "effectId"));
+          Map.entry("sd.CancelEffect", "effectId"),
+          Map.entry(
+              "sd.IssueDirective",
+              "directiveId, decisionMakerId, tick, target?, intentInfo, commands[{type,payloadJson}],"
+                  + " effects[字符串...]?"),
+          Map.entry(
+              "sd.SubmitVerdict",
+              "verdictId, breakpoint(D1|D3|D6), subject(sd:combat.*), payload(JSON 文本),"
+                  + " meta{model,promptVersion,inputBriefDigest}"),
+          Map.entry(
+              "sd.SetViewScope",
+              "decisionMakerId, viewScope{visibleRegions[],visibleHexes[{q,r}],visibleUnits[],"
+                  + "seeOwnUnits,adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD),"
+                  + "redactedFields[]}"));
 
   private final List<String> types;
 

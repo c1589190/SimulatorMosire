@@ -100,7 +100,9 @@ class McpCoverageTest {
 
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
-  /** catalog 预期的 37 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37）。 */
+  /**
+   * catalog 预期的 40 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 → 40）。
+   */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "unit.RenameUnit",
@@ -139,7 +141,10 @@ class McpCoverageTest {
           "sd.CommitCombatOutcome",
           "sd.RecordCasualties",
           "sd.RegisterEffect",
-          "sd.CancelEffect");
+          "sd.CancelEffect",
+          "sd.IssueDirective",
+          "sd.SubmitVerdict",
+          "sd.SetViewScope");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -230,6 +235,21 @@ class McpCoverageTest {
             + "\"payloadJson\":\"{\\\"id\\\":\\\"u-4\\\",\\\"personnel\\\":-1,"
             + "\\\"equipment\\\":{\\\"步枪\\\":-1}}\"}}");
     MINIMAL_PAYLOADS.put("sd.CancelEffect", "{\"effectId\":\"e-cov\"}");
+    // ── D 阶段新增的 3 条（语义合法序：SetViewScope 与 IssueDirective 需 dm-cov，SubmitVerdict 只查地址形态）──
+    MINIMAL_PAYLOADS.put(
+        "sd.SetViewScope",
+        "{\"decisionMakerId\":\"dm-cov\",\"viewScope\":{\"visibleHexes\":[{\"q\":1,\"r\":1}],"
+            + "\"adjudicationDisclosure\":\"FULL\"}}");
+    MINIMAL_PAYLOADS.put(
+        "sd.IssueDirective",
+        "{\"directiveId\":\"d-cov\",\"decisionMakerId\":\"dm-cov\",\"tick\":0,"
+            + "\"intentInfo\":\"推进\",\"commands\":[]}");
+    MINIMAL_PAYLOADS.put(
+        "sd.SubmitVerdict",
+        "{\"verdictId\":\"v-cov\",\"breakpoint\":\"D1\",\"subject\":\"sd:combat.c-cov\","
+            + "\"payload\":\"{\\\"stageId\\\":\\\"s-cov\\\",\\\"selectedOutcomeId\\\":\\\"o-cov\\\","
+            + "\\\"casualtyDeltas\\\":[],\\\"rationaleText\\\":\\\"推进\\\"}\","
+            + "\"meta\":{\"model\":\"m\",\"promptVersion\":\"p\",\"inputBriefDigest\":\"d\"}}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -281,7 +301,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 37 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 40 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -312,8 +332,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("37 条命令各推一格")
-        .isEqualTo(38L);
+        .as("40 条命令各推一格")
+        .isEqualTo(41L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -327,16 +347,16 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(38L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(41L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(39L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(42L);
     System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=32");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(39L);
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(42L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 39L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 42L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");

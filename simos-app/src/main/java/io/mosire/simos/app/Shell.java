@@ -12,6 +12,7 @@ import io.mosire.agentlib.mcp.McpSourceBridge;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
@@ -19,6 +20,10 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.sd.SdCommandDrain;
+import io.mosire.simos.app.sd.channel.CliDecisionChannel;
+import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
+import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
+import io.mosire.simos.app.sd.channel.McpDecisionChannel;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
@@ -32,8 +37,11 @@ import io.mosire.simos.map.spi.RandomizeRegionHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
+import io.mosire.simos.sd.channel.ActorId;
+import io.mosire.simos.sd.channel.DecisionChannel;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.guard.RegionDeleteGuard;
+import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.resolve.SdResolver;
 import io.mosire.simos.sd.spi.AddStageHandler;
 import io.mosire.simos.sd.spi.CancelEffectHandler;
@@ -42,10 +50,15 @@ import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
+import io.mosire.simos.sd.spi.DirectiveWhitelist;
+import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
+import io.mosire.simos.sd.spi.SetViewScopeHandler;
+import io.mosire.simos.sd.spi.SubmitVerdictHandler;
+import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
@@ -81,12 +94,19 @@ import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
+import io.mosire.simos.util.state.StateRef;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -162,6 +182,12 @@ public final class Shell implements AutoCloseable {
    */
   private final SdCommandDrain sdCommandDrain;
 
+  /** 决策提交渠道（D5，spec §十三）：GUI / MCP / CLI / 外部 HTTP 各一实现——**新增渠道不改领域代码**。 */
+  private final List<DecisionChannel> decisionChannels;
+
+  /** 已注册命令类型（D6）：按角色重建工具面时供 catalog 读。 */
+  private final Set<String> commandTypes;
+
   private volatile boolean closed;
 
   private Shell(
@@ -178,7 +204,9 @@ public final class Shell implements AutoCloseable {
       ApprovalHttpEndpoint approvalEndpoint,
       ToolCallAuthorizer toolAuthorizer,
       int registeredModuleCount,
-      SdCommandDrain sdCommandDrain) {
+      SdCommandDrain sdCommandDrain,
+      List<DecisionChannel> decisionChannels,
+      Set<String> commandTypes) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.queryService = queryService;
@@ -193,6 +221,8 @@ public final class Shell implements AutoCloseable {
     this.toolAuthorizer = toolAuthorizer;
     this.registeredModuleCount = registeredModuleCount;
     this.sdCommandDrain = sdCommandDrain;
+    this.decisionChannels = List.copyOf(decisionChannels);
+    this.commandTypes = Set.copyOf(commandTypes);
   }
 
   /**
@@ -276,6 +306,18 @@ public final class Shell implements AutoCloseable {
       commandTypes.add(handler.type());
     }
 
+    // ★ D1：决策命令白名单从**注册面**推导（禁 sd 自指/通用写）⇒ 必须在上面那个循环之后、用完整的 commandTypes 构造。
+    IssueDirectiveHandler issueDirectiveHandler =
+        new IssueDirectiveHandler(new DirectiveWhitelist(commandTypes));
+    SubmitVerdictHandler submitVerdictHandler = new SubmitVerdictHandler();
+    SetViewScopeHandler setViewScopeHandler = new SetViewScopeHandler();
+    for (CommandHandler late :
+        List.of(issueDirectiveHandler, submitVerdictHandler, setViewScopeHandler)) {
+      handlers.add(late);
+      coreSimos.register(late);
+      commandTypes.add(late.type());
+    }
+
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
     List<TimeParticipant> participants =
         List.of(
@@ -299,6 +341,15 @@ public final class Shell implements AutoCloseable {
     facetRegistry.register(new PopulationFacet());
 
     QueryService queryService = new QueryService(coreSimos, resolverRegistry, facetRegistry);
+
+    // ★ D5：四条决策渠道（spec §十三.3）——声明各自可代表的 actor（当前世界里的决策人），最终写同一落点。
+    Supplier<Set<ActorId>> representableActors = () -> currentActorIds(coreSimos);
+    List<DecisionChannel> decisionChannels =
+        List.of(
+            new GuiDecisionChannel(coreSimos, representableActors),
+            new McpDecisionChannel(coreSimos, representableActors),
+            new CliDecisionChannel(coreSimos, representableActors),
+            new HttpDecisionChannel(coreSimos, representableActors));
 
     // 审批链（T6，spec §3.2 第 3 步；S5：无 Superior 判定，M5 无 LLM）。
     PendingApprovals pendingApprovals = new PendingApprovals();
@@ -400,7 +451,40 @@ public final class Shell implements AutoCloseable {
         approvalEndpoint,
         toolAuthorizer,
         codecs.size(),
-        new SdCommandDrain(coreSimos));
+        new SdCommandDrain(coreSimos),
+        decisionChannels,
+        commandTypes);
+  }
+
+  /** 当前世界里的决策人（作为渠道可代表的 actor；空库 ⇒ 空集）。 */
+  private static Set<ActorId> currentActorIds(CoreSimos core) {
+    BranchId main = new BranchId("main");
+    Optional<RevisionId> head = core.head(main);
+    if (head.isEmpty()) {
+      return Set.of();
+    }
+    SimulationState state = core.replay(new StateRef(main, head.get()));
+    Snapshot slice = state.module("sd").orElse(null);
+    if (!(slice instanceof SdSnapshot sd)) {
+      return Set.of();
+    }
+    Set<ActorId> actors = new LinkedHashSet<>();
+    for (DecisionMakerId id : sd.state().decisionMakers().keySet()) {
+      actors.add(new ActorId(id.value()));
+    }
+    return actors;
+  }
+
+  /** 决策提交渠道（D5）：测试与运维读回装配的四条渠道。 */
+  public List<DecisionChannel> decisionChannels() {
+    return decisionChannels;
+  }
+
+  /** 按角色重建工具面（D6，N9/N11）：GM / 决策 Agent 桶**无**通用写；运行中的 MCP 服务仍用外部桶（v1 保留现状）。 */
+  public List<AgentTool> toolsFor(SimosToolSource.Role role) {
+    return new SimosToolSource(
+            coreSimos, queryService, config.mcpInitiator(), config.mapId(), commandTypes, role)
+        .listTools();
   }
 
   /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */

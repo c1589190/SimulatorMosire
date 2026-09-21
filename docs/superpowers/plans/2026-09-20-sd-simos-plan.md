@@ -932,15 +932,27 @@ A1→A2→A3→A4→A5→A6                      C1→C2→C3→C4→C5→C6    
 
 ---
 
-## 四 执行期取代说明（留空）
+## 四 执行期取代说明
 
-> **本节点留空**。执行期的**就地校正**（计划草图与 `src` 分歧、spec 未预见的真缺口、行号漂移）逐条记入
-> `.superpowers/sdd/2026-09-20-sd-simos/progress.md`，并由控制器在此汇总。
->
-> 已知**可能**触发取代说明的候选（计划期预判，**尚未发生**，不预先编造结论）：
-> - `SdCodec` 的 mixin 与 `SimosObjectMapper` 的 `changesetsWithoutDerivedPredicates()` 是否**双重处理** `empty`（既有两者冗余，spec §一.3 第 4 点与 `SimosObjectMapper` 类注均记此冗余为**有意保留**）；
-> - `SdState` 的字段名与 `SdChangeSet` 组件名在实现期微调（spec §十四 假设 5 明示"字段名可微调"）；
-> - `MutationGuard` 的注册 API 形状（见 §六 待裁）。
+> 执行期的**就地校正**（计划草图与 `src` 分歧、spec 未预见的真缺口、行号漂移）逐条记入
+> `.superpowers/sdd/2026-09-20-sd-simos/progress.md`，在此汇总。逐任务判据与证据见 `d-stage-report.md`。
+
+### 阶段 D（2026-09-21）
+
+1. **D1 执行原文落点**：`intentInfo` 文本写进地址 `sd:directive.<id>` 的 INFO 条目，key 固定 `"intent"`；`Directive.intentInfoKey` 只记该 key（spec §三.5 未定 INFO 落点）。
+2. **D1 白名单来源**：从**注册面** `commandTypes` 派生，去掉 `sd.*`（禁自指）与 `simos.command.submit`（禁通用写）；`Shell` 注册顺序据此为"先注册普通 handler → 收全量 commandTypes → 再注册 `sd.IssueDirective`"。
+3. **D2 断点合并的表达**：`Breakpoints.callGroups()` 返回 **7 组**（D1/D3 同组）；`acceptsVerdictSubject` 限定 D1/D3/D6 + `sd:combat.*`。
+4. **D3 校验顺序**：`VerdictFreezer` **先判 subject 裁决面、再判 schema**（否则非判决断点的报错会落在"schema 缺字段"上，误导调用方）。
+5. **D4 范围收窄**：redaction 接 **GUI 两个读端点 + 两条读工具**（`map.overview`/`unit.list`）；计划步骤 4 的"9 条读工具"**未全接**——其余 7 条仍直连 `QueryService`，列为开口项。
+6. **D5 `DecisionChannel.submit` 保 `void` 但抛**：被拒/冲突时**抛**（调用方据此知道决策未落地）；`DecisionRequest` 承载 `{branch, expectedRevision, commandType, payloadJson}`（无 free-text、无视图，N17）；渠道 `representableActors()` 由 `Shell` 以**动态 supplier**（当前世界决策人）提供。
+7. **D6 角色桶的落点**：`SimosToolSource` 既有构造器委托 `Role.EXTERNAL`（12 工具**逐条不变**）；GM/决策 Agent 桶由 `Shell.toolsFor(role)` 按需构建；**运行中的 MCP 服务仍用外部桶**（spec §八.3 把外部桶收敛列为挂起）。
+8. **D7 自动落点范围**：`AdjudicatorRunner` 只把**产判决**的断点（D1/D3/D6）经 `sd.SubmitVerdict` 自动落盘；其余断点的接受草案返回给调用方，不自动发 `sd.IssueDirective`。
+
+### 阶段 A/C 遗留候选（原"可能触发"清单，未发生）
+
+- `SdCodec` 的 mixin 与 `SimosObjectMapper.changesetsWithoutDerivedPredicates()` 的 `empty` 冗余：**未触发**（有意保留）。
+- `SdState`/`SdChangeSet` 字段名微调：**未发生**。
+- `MutationGuard` 注册 API 形状：A6 已按 `register(MutationGuard)` 落地。
 
 ---
 

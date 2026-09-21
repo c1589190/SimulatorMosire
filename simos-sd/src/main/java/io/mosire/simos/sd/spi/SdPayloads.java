@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
@@ -13,11 +14,14 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.CasualtyDelta;
 import io.mosire.simos.sd.model.CasualtySpec;
 import io.mosire.simos.sd.model.CombatStage;
+import io.mosire.simos.sd.model.DirectiveCommand;
+import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.EffectKind;
 import io.mosire.simos.sd.model.LossClass;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.Trigger;
+import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -110,6 +114,48 @@ final class SdPayloads {
 
   static Address requireAddress(JsonNode payload, String field) {
     return Address.parse(requireText(payload, field));
+  }
+
+  static Optional<Address> optionalAddress(JsonNode payload, String field) {
+    return optionalText(payload, field).map(Address::parse);
+  }
+
+  static Set<String> optionalTextSet(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Set.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    Set<String> out = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(element.asText());
+    }
+    return out;
+  }
+
+  static List<DirectiveCommand> optionalDirectiveCommands(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是命令数组: " + payload);
+    }
+    List<DirectiveCommand> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      String type = requireText(element, "type");
+      String payloadJson = optionalText(element, "payloadJson").orElse("{}");
+      out.add(new DirectiveCommand(type, payloadJson));
+    }
+    return List.copyOf(out);
   }
 
   static Object requireValue(JsonNode payload, String field) {
@@ -318,5 +364,58 @@ final class SdPayloads {
 
   static Optional<CombatStageId> optionalStageId(JsonNode payload, String field) {
     return optionalText(payload, field).map(CombatStageId::parse);
+  }
+
+  static ViewScope requireViewScope(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 ViewScope 对象: " + payload);
+    }
+    Set<RegionId> regions = new LinkedHashSet<>();
+    for (String region : optionalTextSet(value, "visibleRegions")) {
+      regions.add(RegionId.parse(region));
+    }
+    Set<HexCoord> hexes = new LinkedHashSet<>();
+    JsonNode hexArray = value.get("visibleHexes");
+    if (hexArray != null && !hexArray.isNull()) {
+      if (!hexArray.isArray()) {
+        throw new IllegalArgumentException("visibleHexes 必须是 [{q,r}…] 数组: " + value);
+      }
+      for (JsonNode element : hexArray) {
+        if (!element.isObject() || element.get("q") == null || element.get("r") == null) {
+          throw new IllegalArgumentException("visibleHexes 的元素必须是 {q,r} 对象: " + element);
+        }
+        hexes.add(new HexCoord(requireInt(element, "q"), requireInt(element, "r")));
+      }
+    }
+    Set<UnitId> units = optionalUnitIdSet(value, "visibleUnits");
+    boolean seeOwnUnits = optionalBoolean(value, "seeOwnUnits", false);
+    DisclosurePolicy disclosure = optionalDisclosure(value);
+    Set<String> redactedFields = optionalTextSet(value, "redactedFields");
+    return new ViewScope(regions, hexes, units, seeOwnUnits, disclosure, redactedFields);
+  }
+
+  private static boolean optionalBoolean(JsonNode payload, String field, boolean fallback) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isBoolean()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是布尔: " + payload);
+    }
+    return value.asBoolean();
+  }
+
+  private static DisclosurePolicy optionalDisclosure(JsonNode payload) {
+    Optional<String> text = optionalText(payload, "adjudicationDisclosure");
+    if (text.isEmpty()) {
+      return DisclosurePolicy.WITHHELD;
+    }
+    try {
+      return DisclosurePolicy.valueOf(text.get());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "adjudicationDisclosure 非法（FULL|PERCEPTION_ONLY|WITHHELD）: " + text.get());
+    }
   }
 }

@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -21,6 +22,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -115,6 +117,7 @@ public final class GuiServer implements AutoCloseable {
       Set.of("/api/command", "/api/advance", "/api/fork");
 
   private final QueryService queryService;
+  private final RedactingQueryService redactingQueryService;
   private final CoreSimos core;
   private final String mapId;
 
@@ -141,6 +144,7 @@ public final class GuiServer implements AutoCloseable {
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.redactingQueryService = new RedactingQueryService(queryService);
     this.approvalBaseUrl = approvalBaseUrl;
     this.approvalClient = HttpClient.newHttpClient();
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -290,6 +294,12 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/map/overview")) {
       Map<String, String> params = queryParams(exchange);
+      String actor = params.get("as");
+      if (actor != null && !actor.isBlank()) {
+        return Reply.of(
+            200,
+            redactingQueryService.mapOverview(new DecisionMakerId(actor), target(params), mapId));
+      }
       SimulationState state = queryService.stateAt(target(params));
       return Reply.of(200, ApiViews.mapOverview(mapId, ApiViews.gameMap(state)));
     }
@@ -307,6 +317,13 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/units")) {
       Map<String, String> params = queryParams(exchange);
+      String actor = params.get("as");
+      if (actor != null && !actor.isBlank()) {
+        return Reply.of(
+            200,
+            Map.of(
+                "units", redactingQueryService.units(new DecisionMakerId(actor), target(params))));
+      }
       SimulationState state = queryService.stateAt(target(params));
       UnitState units = ApiViews.unitState(state);
       return Reply.of(
