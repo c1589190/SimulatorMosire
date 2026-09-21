@@ -257,7 +257,7 @@ class GuiApiTest {
     JsonNode regions = body.get("regions");
     assertThat(regions).as("regions 是数组（键名就是 regions）").isNotNull();
     assertThat(regions).hasSize(2);
-    assertThat(regions.get(0).asText()).as("H11 与 r-1/r-3 都从属 ⇒ 字典序").isEqualTo("r-1");
+    assertThat(regions.get(0).asText()).as("H11 与 r-1/r-3 都从属 ⇒ 定义序（r-1 先建，故在前）").isEqualTo("r-1");
     assertThat(regions.get(1).asText()).isEqualTo("r-3");
     TerrainType expected = TerrainCatalog.of("desert");
     JsonNode terrain = body.get("terrainType");
@@ -700,7 +700,8 @@ class GuiApiTest {
             Set.of(H11, H13),
             new RegionMeta("#112233", "核心", "测试区域", "u-1"));
     Region r2 = Region.of(new RegionId("r-2"), "第二区", Set.of(H12), RegionMeta.empty());
-    // M8 T1：r-3 与 r-1 **重叠**于 H11（多从属）——/api/map/hex 的 regions 必须两条都在、按字典序。
+    // M8 T1：r-3 与 r-1 **重叠**于 H11（多从属）——/api/map/hex 的 regions 必须两条都在；★ V3 起按定义序（本夹具 r-1
+    // 先建、两种口径同序）。
     Region r3 = Region.of(new RegionId("r-3"), "第三区", Set.of(H11), RegionMeta.empty());
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(r1.id(), r1);

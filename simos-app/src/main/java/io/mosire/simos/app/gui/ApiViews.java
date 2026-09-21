@@ -331,7 +331,8 @@ final class ApiViews {
 
   /**
    * 单格：格内容 + 所属区域**列表**（多从属，M8-U1）+ **完整地形定义** + facet 汇总（facet 由调用方按 **canonical** 地址查询，spec
-   * §5.2）+ **入射连通性**（M8 T11）。{@code regions} 按 {@link RegionId} 字典序，**空数组 = 无从属**。
+   * §5.2）+ **入射连通性**（M8 T11）。{@code regions} 按**定义序**（{@code GameMap.regions} 插入序，★ **V3 取代 M8-Q6**
+   * 的字典序； **末位 = 最顶层区域**），**空数组 = 无从属**。
    *
    * <p>★ {@code terrainType} 由调用方从**状态里的** {@code map.terrainTypes()} 取出（spec §3.2）——本类不查 {@code
    * TerrainCatalog}，词表只有一个来源。

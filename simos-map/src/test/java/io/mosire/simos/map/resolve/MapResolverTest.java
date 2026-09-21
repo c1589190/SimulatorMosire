@@ -158,17 +158,59 @@ class MapResolverTest {
   }
 
   /**
-   * ★ 重叠区域 + 插入序与字典序相反 ⇒ 索引给有序的 [r1, r2]；线性扫描（沿插入序）会给 [r2, r1] ⇒ 红。 不是计时、 不是反射——结果级的判别力（RegionIndex
-   * 的包私有构造器挡了计数注入的路）。
+   * ★ V3（取代 M8-Q6）：重叠区域 + 插入序与字典序**相反** ⇒ {@code regionOfHex} 必须按**定义序**给出 {@code [r2, r1]}，末位 =
+   * 最顶层 = {@code r1}；字典序会给 {@code [r1, r2]}（末位 {@code r2}）⇒ "退回字典序"这条红。
+   *
+   * <p>★ L5 的"索引而非线性扫描"判据自 V3 起由 {@code RegionIndexGuardTest.L5_regionOfIsIndexedNotScanned} 的
+   * **计数式**守卫承担（定义序的派生必然要扫一遍 {@code regions}，见 {@code MapResolver.regionOfHex}）——本用例改判定义序 /
+   * 顶层，**不是**把原断言改成恒真。
    */
   @Test
-  void regionOfHexUsesTheIndex() {
+  void regionOfHexFollowsDefinitionOrderWithTheTopRegionLast() {
     // 钉住夹具前提：regions 的迭代序（插入序）确实是 r2 在前——否则本用例失去判别力
     assertThat(map.regions().keySet()).containsExactly(new RegionId("r2"), new RegionId("r1"));
-    assertThat(MapResolver.regionOfHex(map, H00))
-        .as("两个区域都盖住 H00 ⇒ 都在；按字典序 r1,r2")
-        .containsExactly(new RegionId("r1"), new RegionId("r2"));
+    List<RegionId> owners = MapResolver.regionOfHex(map, H00);
+    assertThat(owners)
+        .as("★ 定义序（插入序）：r2 先、r1 后")
+        .containsExactly(new RegionId("r2"), new RegionId("r1"));
+    assertThat(owners.getLast()).as("末位 = 最顶层区域").isEqualTo(new RegionId("r1"));
+    // ★ 判别力：字典序的末位是 r2 ⇒ 两种口径在此分叉。
+    assertThat(owners.getLast()).as("字典序会取 r2 ⇒ 若退回字典序这条红").isNotEqualTo(new RegionId("r2"));
     assertThat(MapResolver.regionOfHex(map, NOWHERE)).isEmpty();
+  }
+
+  /**
+   * ★ V3：三从属、**定义序末位 ≠ 字典序末位**（定义序 {@code m,z,a} ⇒ 顶层 {@code a}；字典序 {@code a,m,z} ⇒ 末位 {@code z}）——
+   * 覆盖 &gt;2 从属的顶层判定，与两从属那条各自独立可杀。
+   */
+  @Test
+  void regionOfHexTopIsTheLastByDefinitionNotTheLexicographicMax() {
+    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    hexes.put(H00, new HexCell(0.1));
+    Map<RegionId, Region> regions = new LinkedHashMap<>();
+    regions.put(new RegionId("m"), Region.of(new RegionId("m"), "M", Set.of(H00), null));
+    regions.put(new RegionId("z"), Region.of(new RegionId("z"), "Z", Set.of(H00), null));
+    regions.put(new RegionId("a"), Region.of(new RegionId("a"), "A", Set.of(H00), null));
+    GameMap three =
+        new GameMap(
+            hexes,
+            TerrainBlocks.uniform(hexes.keySet(), "plain"),
+            regions,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            GenerationSpec.defaults(0L));
+
+    List<RegionId> owners = MapResolver.regionOfHex(three, H00);
+    assertThat(owners)
+        .as("定义序 = 插入序")
+        .containsExactly(new RegionId("m"), new RegionId("z"), new RegionId("a"));
+    assertThat(owners.getLast()).as("顶层 = 定义序末位 a").isEqualTo(new RegionId("a"));
+    assertThat(owners)
+        .as("字典序会是 [a,m,z]（末位 z）⇒ 两种口径分叉")
+        .isNotEqualTo(List.of(new RegionId("a"), new RegionId("m"), new RegionId("z")));
   }
 
   /** 认领了的 kind 但名字非法 ⇒ 抛 {@code HexCoord.parse} **自己的** IAE（不包不吞、不改消息）。 */

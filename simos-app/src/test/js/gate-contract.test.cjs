@@ -39,8 +39,9 @@ const REQUIRED_FILES = [
 //   webui-stage-fix T10 起 159 → 164：decision-mode.test.cjs 新增 5 条（「开始决策」闸门 / 按钮态 / 发起与拒发）；modes.test.cjs 决策只读 1 条重命名为"恰一条窄写"，条数不变。
 //   webui-fix2 起 164 → 184：新增 webui-fix2.test.cjs 的 20 条（U1 压暗 / U2 区域名 / U3 选择粒度 / U5 布局）。
 //   webui-fix2 V1/V2 起 184 → 187：U5 宽度断言改写为"稳定可用宽度"；新增 3 条（kv 值列不被压成一字 / 区域名只在区域两模式 / 绘制按模式门控）。
+//   webui-fix2 V3 起 187 → 188：新增 1 条（topRegionId 取定义序末位、退回字典序即红）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 187;
+const MIN_ASSERTIONS = 188;
 
 function testFiles() {
   return fs

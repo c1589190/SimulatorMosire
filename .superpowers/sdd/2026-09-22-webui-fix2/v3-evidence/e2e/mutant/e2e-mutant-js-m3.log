@@ -1,0 +1,12 @@
+STEP a1-found-a-multi-owner-hex-where-definition-and-lexicographic-diverge: PASS {"hex":[54,-67],"owners":["大蜀","东川"],"defLast":"东川","lexLast":"大蜀"}
+STEP a2-hex-regions-are-in-definition-order: PASS {"owners":["大蜀","东川"],"defSorted":["大蜀","东川"]}
+STEP a3-definition-last-is-not-lexicographic-last: PASS {"defLast":"东川","lexLast":"大蜀"}
+STEP a4-hex-screen-point-is-over-the-canvas: PASS {"hit":"canvas"}
+STEP b1-click-selects-exactly-the-definition-last-region: FAIL {"selected":["大蜀","东川"],"expected":["东川"]}
+STEP b2-not-the-lexicographic-last-and-not-all-owners: FAIL {"selected":["大蜀","东川"],"lexLast":"大蜀","owners":["大蜀","东川"]}
+STEP b3-kind-is-single: FAIL {"kind":"group"}
+STEP b4-highlight-color-is-the-top-region-color-at-single-alpha: FAIL {"at":{"color":"#c4a35a","alpha":0.42},"expectedTopColor":"#e77a78","singleFocusAlpha":0.62}
+STEP c1-observed-pixel-matches-top-region-not-the-wrong-one: FAIL {"observed":{"r":125,"g":125,"b":67,"a":255},"terrain":{"r":156,"g":203,"b":91,"a":255},"singleAlpha":0.62,"expectedTop":{"r":171.986,"g":113.07,"b":93.723},"expectedWrong":{"r":150.286,"g":138.49,"b":75.12299999999999},"distTop":55.35456462659605,"distWrong":29.788337063354177,"distTopWrong":38.24952810166422}
+STEP c2-pixel-discriminant-is-real: PASS {"distTopWrong":38.24952810166422}
+STEP d1-map-click-in-region-mode-is-read-only: PASS {"nonGet":[]}
+E2E FAILURES: ["b1-click-selects-exactly-the-definition-last-region","b2-not-the-lexicographic-last-and-not-all-owners","b3-kind-is-single","b4-highlight-color-is-the-top-region-color-at-single-alpha","c1-observed-pixel-matches-top-region-not-the-wrong-one"]

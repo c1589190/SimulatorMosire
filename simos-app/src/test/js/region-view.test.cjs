@@ -51,8 +51,9 @@ test("buildRegionHighlightPlan-puts-focus-regions-first", () => {
   assert.deepEqual(plan.faded, ["t9_a", "t9_c"]);
 });
 
-test("buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex", () => {
-  // ★ 判据（T9）：重叠格点选 ⇒ 高亮**所有**从属区域，数量 == regions.length（>1）。
+test("buildRegionHighlightPlan-highlights-every-focus-id-for-the-tag-group-path", () => {
+  // ★ 判据（T9，★ V3 起语义限定）：纯函数对**多个** focus id 都要画原色 —— 这条路径现在归**点 tag**（group）。
+  //   V3 之后地图点格不再传多个 id（只传定义序末位那一个），故"重叠格点选 ⇒ 高亮所有从属"已**不是**点击语义。
   const ids = ["t9_a", "t9_b"];
   const plan = M.buildRegionHighlightPlan(PALETTE, ids, M.REGION_VIEW_HIGHLIGHT);
   assert.deepEqual(plan.focus, ids, "两个从属区域都要被高亮（只高亮第一个 ⇒ 这条红）");

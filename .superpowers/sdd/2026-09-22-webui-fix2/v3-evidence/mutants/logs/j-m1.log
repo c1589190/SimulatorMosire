@@ -1,0 +1,184 @@
+=== mut-round j-m1 (kind=java) ===
+target=simos-map/src/main/java/io/mosire/simos/map/resolve/MapResolver.java
+orig_bak_md5=7fc1e6a75d760d22ea92cc7d518c896b
+restored_before_round_md5=7fc1e6a75d760d22ea92cc7d518c896b
+old_literal=for (RegionId id : map.regions().keySet()) {
+new_literal=for (RegionId id : map.regions().keySet().stream().sorted(java.util.Comparator.comparing(RegionId::value)).toList()) {
+mutant_md5=05eb7e68ea7d24c0dc2a41872ca5e7ad
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 52 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 38 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.map.resolve.MapResolverTest
+[ERROR] Tests run: 16, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.116 s <<< FAILURE! -- in io.mosire.simos.map.resolve.MapResolverTest
+[ERROR] io.mosire.simos.map.resolve.MapResolverTest.regionOfHexFollowsDefinitionOrderWithTheTopRegionLast -- Time elapsed: 0.025 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[★ 定义序（插入序）：r2 先、r1 后] 
+Expecting actual:
+  [r1, r2]
+to contain exactly (and in same order):
+  [r2, r1]
+but there were differences at these indexes:
+  - element at index 0: expected "r2" but was "r1"
+  - element at index 1: expected "r1" but was "r2"
+
+	at io.mosire.simos.map.resolve.MapResolverTest.regionOfHexFollowsDefinitionOrderWithTheTopRegionLast(MapResolverTest.java:175)
+
+[ERROR] io.mosire.simos.map.resolve.MapResolverTest.regionOfHexTopIsTheLastByDefinitionNotTheLexicographicMax -- Time elapsed: 0.002 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[定义序 = 插入序] 
+Expecting actual:
+  [a, m, z]
+to contain exactly (and in same order):
+  [m, z, a]
+but there were differences at these indexes:
+  - element at index 0: expected "m" but was "a"
+  - element at index 1: expected "z" but was "m"
+  - element at index 2: expected "a" but was "z"
+
+	at io.mosire.simos.map.resolve.MapResolverTest.regionOfHexTopIsTheLastByDefinitionNotTheLexicographicMax(MapResolverTest.java:209)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   MapResolverTest.regionOfHexFollowsDefinitionOrderWithTheTopRegionLast:175 [★ 定义序（插入序）：r2 先、r1 后] 
+Expecting actual:
+  [r1, r2]
+to contain exactly (and in same order):
+  [r2, r1]
+but there were differences at these indexes:
+  - element at index 0: expected "r2" but was "r1"
+  - element at index 1: expected "r1" but was "r2"
+
+[ERROR]   MapResolverTest.regionOfHexTopIsTheLastByDefinitionNotTheLexicographicMax:209 [定义序 = 插入序] 
+Expecting actual:
+  [a, m, z]
+to contain exactly (and in same order):
+  [m, z, a]
+but there were differences at these indexes:
+  - element at index 0: expected "m" but was "a"
+  - element at index 1: expected "z" but was "m"
+  - element at index 2: expected "a" but was "z"
+
+[INFO] 
+[ERROR] Tests run: 16, Failures: 2, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.532 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.239 s]
+[INFO] MapSimos ........................................... FAILURE [  2.199 s]
+[INFO] SocialSimos ........................................ SKIPPED
+[INFO] UnitSimos .......................................... SKIPPED
+[INFO] CoreSimos .......................................... SKIPPED
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  3.056 s
+[INFO] Finished at: 2026-09-21T23:56:53+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-map: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/wsf2-v3/simos-map/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-map
+ran_tests_run_lines=2 run_rc=1
+restored_after_round_md5=7fc1e6a75d760d22ea92cc7d518c896b
