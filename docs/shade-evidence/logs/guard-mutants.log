@@ -1,0 +1,36 @@
+# 变异轮：shaded jar 内容守卫自证（2026-09-21）
+# 控制轮（真 jar，期望 rc=0）
+[shaded-guard] OK   reactor/core/publisher/LambdaMonoSubscriber.class
+[shaded-guard] OK   reactor/core/publisher/Mono.class
+[shaded-guard] OK   io/modelcontextprotocol/spec/McpStreamableServerTransportProvider.class
+[shaded-guard] OK   io/modelcontextprotocol/server/McpSyncServer.class
+[shaded-guard] OK   org/apache/logging/log4j/message/ParameterizedMessage.class
+[shaded-guard] OK   org/slf4j/Logger.class
+[shaded-guard] OK   org/sqlite/JDBC.class
+[shaded-guard] OK   Main-Class=io.mosire.simos.app.ShellMain
+[shaded-guard] 结论：OK（6044 个条目；7 条运行期类 + Main-Class 全在）
+control rc=0
+
+# m1：删掉 jar 内全部 reactor/*（期望 rc=1，红在 reactor 两条）
+[shaded-guard] FAIL 缺少 reactor/core/publisher/LambdaMonoSubscriber.class（running shaded jar 会在运行期 NoClassDefFoundError）
+[shaded-guard] FAIL 缺少 reactor/core/publisher/Mono.class（running shaded jar 会在运行期 NoClassDefFoundError）
+[shaded-guard] OK   io/modelcontextprotocol/spec/McpStreamableServerTransportProvider.class
+[shaded-guard] OK   io/modelcontextprotocol/server/McpSyncServer.class
+[shaded-guard] OK   org/apache/logging/log4j/message/ParameterizedMessage.class
+[shaded-guard] OK   org/slf4j/Logger.class
+[shaded-guard] OK   org/sqlite/JDBC.class
+[shaded-guard] OK   Main-Class=io.mosire.simos.app.ShellMain
+[shaded-guard] 结论：FAIL（shaded jar 不满足运行期不变量）
+m1 rc=1
+
+# m2：篡改 Main-Class（期望 rc=1，红在 Main-Class）
+[shaded-guard] OK   reactor/core/publisher/LambdaMonoSubscriber.class
+[shaded-guard] OK   reactor/core/publisher/Mono.class
+[shaded-guard] OK   io/modelcontextprotocol/spec/McpStreamableServerTransportProvider.class
+[shaded-guard] OK   io/modelcontextprotocol/server/McpSyncServer.class
+[shaded-guard] OK   org/apache/logging/log4j/message/ParameterizedMessage.class
+[shaded-guard] OK   org/slf4j/Logger.class
+[shaded-guard] OK   org/sqlite/JDBC.class
+[shaded-guard] FAIL Main-Class 期望 io.mosire.simos.app.ShellMain，实得 'io.mosire.simos.app.WrongMain'
+[shaded-guard] 结论：FAIL（shaded jar 不满足运行期不变量）
+m2 rc=1

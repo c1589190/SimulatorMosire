@@ -109,6 +109,27 @@
               </arguments>
             </configuration>
           </execution>
+          <!-- ★ 2026-09-21：shaded jar 内容不变量守卫（verify 阶段，跑在 package 之后）。
+                由来：`5817` 关闭抛 `NoClassDefFoundError: reactor/core/publisher/LambdaMonoSubscriber`，
+                实测真因是「运行中的 JVM 读到被就地重写的 jar」（见 tools/shaded-close-check.sh +
+                docs/shade-evidence/），**不是** shaded jar 缺 reactor。但"运行期用到的类必须在内"
+                仍是一条该被构建期钉死的不变量：`mcp-core` 哪天把 reactor 改成 optional/provided，
+                编译与单测都不会红、只会在运行期炸。脚本 fail-closed：缺任一必需类或 Main-Class 不符即红。 -->
+          <execution>
+            <id>shaded-jar-guard</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <executable>bash</executable>
+              <workingDirectory>${project.basedir}</workingDirectory>
+              <arguments>
+                <argument>${project.basedir}/src/verify/shaded-jar-guard.sh</argument>
+                <argument>${project.build.directory}/${project.build.finalName}-shaded.jar</argument>
+              </arguments>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
 
