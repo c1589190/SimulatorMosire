@@ -33,7 +33,7 @@ import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link RichWorld} 的逐值护栏（T11）：复刻世界的形状与**可断言的数字**（59223 hex / 98 区域 / 240 河流边 / 地形直方图 /
+ * {@link RichWorld} 的逐值护栏（T11）：复刻世界的形状与**可断言的数字**（59223 hex / 252 区域 / 240 河流边 / 地形直方图 /
  * 多对多从属）都钉成字面量，并证明它经**真引擎**（{@code bootstrapGenesis} + {@code replay}）往返一致。
  *
  * <p>★ 预期值都是**当场从源档算过的字面量**（地形合并：`plains = lowland 16933 + plains 11315 + swamp 99 = 28347`），不是
@@ -83,15 +83,14 @@ class RichWorldTest {
   }
 
   @Test
-  void provincesAre98WithTagDistribution() {
+  void provincesAre252AllNation() {
     Map<RegionId, Region> regions = map().regions();
-    assertThat(regions).hasSize(98);
+    assertThat(regions).as("★ U4：截至 n0008 回合的最全区域（n0000 只有 98）").hasSize(252);
 
     long nations = regions.values().stream().filter(r -> "Nation".equals(r.meta().tag())).count();
     long kingdoms = regions.values().stream().filter(r -> "王国".equals(r.meta().tag())).count();
-    assertThat(nations).as("tag 不是清一色 Nation").isEqualTo(97);
-    assertThat(kingdoms).isEqualTo(1);
-    assertThat(nations + kingdoms).isEqualTo(98);
+    assertThat(nations).as("n0001 起『王国』被覆盖 ⇒ 最终 252 个全是 Nation").isEqualTo(252);
+    assertThat(kingdoms).isZero();
   }
 
   @Test
@@ -119,6 +118,21 @@ class RichWorldTest {
     assertThat(owners)
         .as("M8-U1：从属是多对多；此格同属 2 个区域")
         .containsExactly(new RegionId("区域14"), new RegionId("石冠诸部"));
+  }
+
+  @Test
+  void carriesRegionsThatN0000Lacked() {
+    Map<RegionId, Region> regions = map().regions();
+
+    // ★ U4 的干净名单：n0000 基础图**没有**、只有 n0001~n0007 的增量才带进来的实名区域。
+    assertThat(regions.keySet())
+        .as("★ U4「最全」：这些实名区域在 n0000 里不存在")
+        .contains(
+            new RegionId("瓦伦狄乌斯专制国"),
+            new RegionId("霜脊伯国"),
+            new RegionId("大汉都护府政权"),
+            new RegionId("艾达王国"),
+            new RegionId("蒙特卡西诺修道院领"));
   }
 
   @Test

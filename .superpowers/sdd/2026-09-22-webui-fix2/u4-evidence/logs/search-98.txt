@@ -1,0 +1,13 @@
+=== 全仓 '98' 命中（代码文件；排除 *.json/目标/证据）——逐处核实 ===
+simos-app/src/main/resources/webui/map.js:885:     * ★ M8-R §八：填充半径 = cellSize（满格）——旧值 0.98 会在每个 hex 之间留缝，用户见到的
+simos-app/src/test/java/io/mosire/simos/app/demo/RichWorldTest.java:88:    assertThat(regions).as("★ U4：截至 n0008 回合的最全区域（n0000 只有 98）").hasSize(252);
+tools/check_v17levant_docs.py:11:  3. **★ 16/82 标注**：有名势力 = `factions` key ∩ 98 province 名 = 16，其余 82 个区域在
+tools/check_v17levant_docs.py:38:EXPECTED_PROVINCES = 98
+tools/check_v17levant_import.py:28:#: （逐条当场算过，写死作对拍基准）。★ U4：T11 用的是 n0000 基础图（98 区域），现改为此档（252 区域）。
+tools/materialize_v17levant.py:6:T11 复刻用的是 `n0000_map.json`（回合 0 的**基础图**，只有 **98** 个区域）；
+tools/v17levant_docs.py:35:    ("map", "map.md", "地图与区域", "98 个区域的程序化条目 + 16 个有名势力的说明（318 条）"),
+tools/v17levant_docs.py:122:    """从 `n0000_map.json` 读 98 个 region（province）名；无档 ⇒ 空集（诚实降级，不假装有）。"""
+tools/v17levant_docs.py:134:    口径（spec §五.4）：有名势力 = `factions` 元素的 key ∩ 98 个 province 名。
+tools/v17levant_docs.py:184:        "## ★★ 先读这一条：98 个区域里只有 16 个有资料",
+tools/v17levant_docs.py:189:        "⇒ **不要**以为 98 个区域都有资料。",
+tools/v17levant_docs.py:222:        "6. `map.md` —— 98 区域的地图条目；**末节明确标出 82 个噪声区域**。",
