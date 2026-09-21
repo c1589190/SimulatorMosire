@@ -1,0 +1,6 @@
+=== relevant app.log lines ===
+03:18:45.225 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 16 个 [sd.IssueDirective, sd.SetViewScope, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 16 个，未外发 0 个 []
+03:18:45.234 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+03:18:46.894 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.StartDecision commandId=822a4f4e-d999-4930-baa5-3fa017071252 correlationId=822a4f4e-d999-4930-baa5-3fa017071252 新坐标=main@11
+03:18:47.453 WARN  io.mosire.simos.app.gui.GuiServer - GUI 请求处理失败: POST /api/sd/start-decision
+03:18:47.454 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/start-decision -> 500 915ms remote=127.0.0.1

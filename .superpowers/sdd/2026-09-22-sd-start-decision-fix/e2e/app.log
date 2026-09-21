@@ -1,0 +1,25 @@
+03:20:01.638 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 16 个 [sd.IssueDirective, sd.SetViewScope, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 16 个，未外发 0 个 []
+03:20:01.644 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+03:20:01.733 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5831/（静态 /webui，同源，无 CORS 头）
+03:20:01.733 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/sdfix-e2e checkpointInterval=100 codec=4 handler=43 participant=2 resolver=4 facet=2 tool=16 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=5832 decisionAgentMcpPort=5834 guiPort=5831 approvalPort=5833
+03:20:01.737 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/sdfix-e2e checkpointInterval=100 模块数=4 bindAddress=127.0.0.1 guiPort=5831 mcpPort=5832 mcpPath=/mcp approvalPort=5833 decisionAgentMcpPort=5834 mapId=Map1
+03:20:01.737 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5831/
+03:20:02.855 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 672ms remote=127.0.0.1
+03:20:02.866 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/sd/decision-makers -> 200 5ms remote=127.0.0.1
+03:20:02.872 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/sd/verdicts -> 200 1ms remote=127.0.0.1
+03:20:02.878 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 0ms remote=127.0.0.1
+03:20:03.191 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SetDecisionMakerProvider commandId=08bd7c2f-dbda-4571-813d-c65cbd679511 correlationId=08bd7c2f-dbda-4571-813d-c65cbd679511 新坐标=main@11
+03:20:03.192 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/set-decision-maker-provider -> 200 301ms remote=127.0.0.1
+03:20:03.542 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 343ms remote=127.0.0.1
+03:20:03.550 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/sd/decision-makers -> 200 0ms remote=127.0.0.1
+03:20:03.560 INFO  io.mosire.simos.core.command.CommandBus - 命令冲突: type=sd.StartDecision commandId=aa7a4206-bf46-4408-ae1c-6bfb6c3d7486 correlationId=aa7a4206-bf46-4408-ae1c-6bfb6c3d7486 真实head=main@11
+03:20:03.560 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/start-decision -> 409 5ms remote=127.0.0.1
+03:20:03.834 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.StartDecision commandId=7ef4f384-dc7e-4660-8474-bf5ad592dcfa correlationId=7ef4f384-dc7e-4660-8474-bf5ad592dcfa 新坐标=main@12
+03:20:04.236 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=51
+03:20:06.380 INFO  io.mosire.simos.app.llm.LlmProviderResolver - LLM 判决响应 model=deepseek-flash inputTokens=282 outputTokens=312 reasoning=SEPARATE
+03:20:06.615 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SubmitVerdict commandId=adjudicated:D2:12 correlationId=adjudicated:D2:12 新坐标=main@13
+03:20:06.616 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/start-decision -> 200 3050ms remote=127.0.0.1
+03:20:06.812 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 190ms remote=127.0.0.1
+03:20:06.817 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/sd/verdicts -> 200 0ms remote=127.0.0.1
+03:20:06.822 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 0ms remote=127.0.0.1
+03:20:06.833 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell

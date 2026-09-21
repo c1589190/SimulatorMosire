@@ -309,6 +309,61 @@ test("start-decision-posts-the-target-when-due", async () => {
   ]);
 });
 
+test("start-decision-advances-the-cursor-on-success", async () => {
+  // ★ 409 的根因之一：成功分支不推进游标 ⇒ 下一次点击仍带旧 revision。本用例钉住 setRevision 被调用。
+  const h = renderHarness([DUE_MAKER], {
+    startDecisionResponder: () =>
+      Promise.resolve({ result: "committed", ref: { branch: "main", revision: 5 } }),
+  });
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  h.P2.startDecision();
+  await flush();
+  await flush();
+  assert.deepEqual(h.calls.setRevision, [5], "成功 ⇒ 游标必须推进到新 head");
+});
+
+test("start-decision-retries-once-after-409-with-the-fresh-head", async () => {
+  // ★ 409（游标过期）⇒ 重取 head、把游标拉到 current.revision，并用它**自动重试一次** ⇒ 点一次就成。
+  const h = renderHarness([DUE_MAKER], {
+    startDecisionResponder: ({ call }) =>
+      call === 1
+        ? Promise.reject(conflictError(2))
+        : Promise.resolve({ result: "committed", ref: { branch: "main", revision: 3 } }),
+  });
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  h.P2.startDecision();
+  await flush();
+  await flush();
+  await flush();
+  assert.equal(h.calls.startDecision.length, 2, "409 ⇒ 恰自动重试一次");
+  assert.equal(h.calls.startDecision[0].expectedRevision, null);
+  assert.equal(h.calls.startDecision[1].expectedRevision, 2, "重试必须用服务端 current.revision");
+  assert.ok(h.calls.refreshState >= 1, "409 ⇒ 必须重取 head");
+  assert.ok(h.calls.setRevision.includes(2), "重试前游标必须拉到 current.revision");
+  assert.ok(h.calls.setRevision.includes(3), "重试成功后再推进到新 head");
+  assert.match(h.app.byId("decision-start-status").text, /已发起/);
+});
+
+test("start-decision-does-not-retry-beyond-once", async () => {
+  // ★ 只允许自动重试一次：重试轮再 409 ⇒ 如实报失败，不得无限循环。
+  const h = renderHarness([DUE_MAKER], {
+    startDecisionResponder: () => Promise.reject(conflictError(2)),
+  });
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  h.P2.startDecision();
+  await flush();
+  await flush();
+  await flush();
+  assert.equal(h.calls.startDecision.length, 2, "恰两次（首次 + 一次重试），不得更多");
+  assert.match(h.app.byId("decision-start-status").text, /发起失败/);
+});
+
 test("start-decision-refuses-when-target-is-not-due", async () => {
   const notDue = {
     id: "dm-x",
@@ -404,10 +459,11 @@ test("nation-ids-of-regions-unions-distinct-nations", () => {
 // ── 渲染流水线的 node 夹具（C13/C14：真 renderDecisionLeft + 替身 app/api）──────────────
 // ★ 只替换 IO 与 DOM 宿主（app/api/document），**不替换被测逻辑**：appendDecisionMakerDetail /
 //   decisionMakerForUnit / decisionMakersForNation / nationIdsOfRegions 都是真实现。
-function renderHarness(makers) {
+function renderHarness(makers, options) {
+  const opts = options || {};
   const nodes = {};
-  const calls = { startDecision: [] };
-  const state = { mode: "decision", selection: null, decisionMakerFocus: null };
+  const calls = { startDecision: [], setRevision: [], refreshState: 0 };
+  const state = { mode: "decision", selection: null, decisionMakerFocus: null, revision: null };
   function fakeNode(tag) {
     return {
       tag: tag,
@@ -464,6 +520,14 @@ function renderHarness(makers) {
     setDecisionMakerFocus() {},
     setSelection() {},
     onStateChange() {},
+    setRevision(revision) {
+      calls.setRevision.push(revision);
+      state.revision = revision;
+    },
+    refreshState() {
+      calls.refreshState += 1;
+      return Promise.resolve({});
+    },
   };
   const makerList = makers || MAKERS;
   const apiStub = {
@@ -476,6 +540,14 @@ function renderHarness(makers) {
     approve: () => Promise.resolve({}),
     startDecision: (branch, expectedRevision, decisionMakerId) => {
       calls.startDecision.push({ branch, expectedRevision, decisionMakerId });
+      if (opts.startDecisionResponder) {
+        return opts.startDecisionResponder({
+          call: calls.startDecision.length,
+          branch: branch,
+          expectedRevision: expectedRevision,
+          decisionMakerId: decisionMakerId,
+        });
+      }
       return Promise.resolve({ result: "committed" });
     },
   };
@@ -483,6 +555,14 @@ function renderHarness(makers) {
   const P2 = loadWebui("panels.js", { SimosApp: appStub, SimosApi: apiStub, SimosMap: mapStub })
     .SimosPanels;
   return { P2: P2, nodes: nodes, state: state, app: appStub, calls: calls };
+}
+
+/** 造一个 {status:409, body:{current:{revision}}} 的冲突错误（与 GuiServer/ApiViews.conflict 同形）。 */
+function conflictError(revision) {
+  const err = new Error("conflict");
+  err.status = 409;
+  err.body = { result: "conflict", current: { branch: "main", revision: revision } };
+  return err;
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));

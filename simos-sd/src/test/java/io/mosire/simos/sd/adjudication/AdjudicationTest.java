@@ -49,7 +49,7 @@ class AdjudicationTest {
   }
 
   @Test
-  void verdictSurfaceIsCombatOnlyAndLimitedToD1D3D6() {
+  void verdictSurfaceHasACombatFaceForD1D3D6AndADecisionMakerFaceForD2() {
     Address combat = Address.parse("sd:combat.c1");
     Address decisionMaker = Address.parse("sd:decision-maker.dm1");
     Address map = Address.parse("map:Map1");
@@ -57,10 +57,16 @@ class AdjudicationTest {
     assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D1, combat)).isTrue();
     assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D6, combat)).isTrue();
     assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D2, combat))
-        .as("D2 出令走 sd.IssueDirective，不走判决窄工具")
+        .as("D2 不裁决战斗——战斗判决归 D1/D3/D6")
         .isFalse();
     assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D1, decisionMaker)).isFalse();
     assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D1, map)).isFalse();
+    // ★ 2026-09-22 用户裁定「战斗是状态、不是决策前提」：D2 对**决策人本人**裁决（决策记录）。
+    assertThat(Breakpoints.producesVerdict(Breakpoints.D2)).isTrue();
+    assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D2, decisionMaker)).isTrue();
+    assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D2, map)).isFalse();
+    assertThat(Breakpoints.producesVerdict(Breakpoints.D4)).isFalse();
+    assertThat(Breakpoints.acceptsVerdictSubject(Breakpoints.D4, decisionMaker)).isFalse();
   }
 
   @Test

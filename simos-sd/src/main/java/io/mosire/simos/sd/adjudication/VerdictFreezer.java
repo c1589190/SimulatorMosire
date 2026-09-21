@@ -13,7 +13,8 @@ import io.mosire.simos.util.state.RevisionId;
  * <p>★ **回放/分岔绝不重跑 LLM**（N7）就落在这里：冻结只做"校验 + 包装 + 记 atRevision"，没有**任何**调用 {@link
  * DecisionAdjudicator} / {@link LlmClient} 的路径。回放读到的是这个 {@link Verdict} 的**数据**。
  *
- * <p>拒绝：载荷不过该断点 schema；subject 不在该断点的裁决面（`sd:combat.*`）。
+ * <p>拒绝：载荷不过该断点 schema；subject 不在该断点的裁决面（D1/D3/D6 = {@code sd:combat.*}；D2 = {@code
+ * sd:decision-maker.*}）。
  */
 public final class VerdictFreezer {
 
@@ -30,7 +31,7 @@ public final class VerdictFreezer {
       throw new IllegalArgumentException(
           "subject 不在断点 "
               + breakpoint.value()
-              + " 的裁决面（判决只裁决 sd:combat.*）: "
+              + " 的裁决面（D1/D3/D6 只裁决 sd:combat.*；D2 只裁决 sd:decision-maker.*）: "
               + subject.canonical());
     }
     AdjudicationSchemas.validate(breakpoint, payloadJson);

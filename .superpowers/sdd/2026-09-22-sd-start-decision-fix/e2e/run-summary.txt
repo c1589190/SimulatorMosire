@@ -1,0 +1,5 @@
+pid=45472
+up_after=3
+head_before_binding=10
+head_after_binding=11
+killed=45472

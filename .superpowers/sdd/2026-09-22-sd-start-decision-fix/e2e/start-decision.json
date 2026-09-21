@@ -1,0 +1,6 @@
+=== [409 证据] POST /api/sd/start-decision dm-dashu 用一个**过期** expectedRevision=10 ===
+{"result":"conflict","current":{"branch":"main","revision":11}}
+http_status=409
+=== [重试] POST /api/sd/start-decision dm-dashu 用服务端 current.revision=11 ===
+{"result":"committed","ref":{"branch":"main","revision":12},"adjudication":[{"kind":"accepted","payloadLength":341}]}
+http_status=200

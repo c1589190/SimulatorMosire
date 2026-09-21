@@ -18,6 +18,7 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Nation;
+import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.spi.SubmitVerdictHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -106,6 +107,43 @@ class AdjudicationEndToEndTest {
   }
 
   @Test
+  void withoutAnyCombatTheDecisionMakerStillGetsAdjudicatedAndTheVerdictLandsARevision()
+      throws Exception {
+    AtomicReference<String> seenModel = new AtomicReference<>();
+    AtomicReference<String> seenAuth = new AtomicReference<>();
+    AtomicReference<String> seenBody = new AtomicReference<>();
+    startStub(seenModel, seenAuth, seenBody);
+
+    CoreSimos core = start(false); // ★ 无战斗的世界
+    AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
+    config.upsertRoute("stub", baseUrl(), "deepseek-flash", "keys.stub", 5_000L);
+    config.putKey("stub", "sk-test-key");
+    DecisionAdjudicationService service =
+        new DecisionAdjudicationService(core, new LlmProviderResolver(config, tempDir));
+
+    DecisionMaker maker = sdState(core, 1).decisionMakers().get(DM1);
+
+    List<Judgement> judgements = service.adjudicate(MAIN, new RevisionId(1), maker);
+
+    assertThat(judgements).as("★ 无战斗**不跳过判决**：D2 一次调用（gate 复原即红）").hasSize(1);
+    assertThat(judgements.get(0)).isInstanceOf(Judgement.Accepted.class);
+    assertThat(core.head(MAIN).orElseThrow())
+        .as("判决落成真 revision（1 → 2）")
+        .isEqualTo(new RevisionId(2));
+    Verdict verdict = sdState(core, 2).verdicts().values().iterator().next();
+    assertThat(verdict.breakpoint().value()).isEqualTo("D2");
+    assertThat(verdict.subject().canonical())
+        .as("无战斗 ⇒ 主体是决策人本人（不是战斗）")
+        .isEqualTo("sd:decision-maker.dm1");
+    assertThat(seenModel.get()).as("provider 真被调（无战斗也要调）").isEqualTo("deepseek-flash");
+    assertThat(seenAuth.get()).as("Authorization 头").isEqualTo("Bearer sk-test-key");
+    assertThat(seenBody.get())
+        .as("D2 请求必须带采样：temperature=0 + max_tokens 给足")
+        .contains("\"temperature\":0")
+        .contains("\"max_tokens\":4096");
+  }
+
+  @Test
   void unboundDecisionMakerMakesTheServiceFailClosedRatherThanUseAnotherProvider()
       throws Exception {
     startStub(new AtomicReference<>(), new AtomicReference<>(), new AtomicReference<>());
@@ -166,6 +204,10 @@ class AdjudicationEndToEndTest {
     String content;
     if (requestBody.contains("断点 D6")) {
       content = "{\"disposition\":\"HOLD\",\"rationaleText\":\"守\"}";
+    } else if (requestBody.contains("断点 D2")) {
+      content =
+          "{\"directiveId\":\"d1\",\"intentText\":\"固守本境\",\"commands\":[],"
+              + "\"rationaleText\":\"无战事，整军\"}";
     } else {
       content =
           "{\"stageId\":\"s1\",\"selectedOutcomeId\":\"o1\",\"casualtyDeltas\":[],\"rationaleText\":\"强攻\"}";
@@ -184,10 +226,14 @@ class AdjudicationEndToEndTest {
   }
 
   private CoreSimos start() {
+    return start(true);
+  }
+
+  private CoreSimos start(boolean withCombat) {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new SdCodec());
     core.register(new SubmitVerdictHandler());
-    core.bootstrapGenesis(genesis());
+    core.bootstrapGenesis(genesis(withCombat));
     return core;
   }
 
@@ -196,7 +242,7 @@ class AdjudicationEndToEndTest {
     return ((SdSnapshot) state.module("sd").orElseThrow()).state();
   }
 
-  private static SimulationState genesis() {
+  private static SimulationState genesis(boolean withCombat) {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     DecisionMaker dm = maker(Optional.of("stub"));
     SdState sd =
@@ -205,11 +251,14 @@ class AdjudicationEndToEndTest {
                 Map.of(
                     new NationId("n1"),
                     new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)))
-            .withDecisionMakers(Map.of(DM1, dm))
-            .withCombats(
-                Map.of(
-                    new CombatId("c1"),
-                    new Combat(new CombatId("c1"), "战斗一", List.of(), Set.of(), Optional.empty())));
+            .withDecisionMakers(Map.of(DM1, dm));
+    if (withCombat) {
+      sd =
+          sd.withCombats(
+              Map.of(
+                  new CombatId("c1"),
+                  new Combat(new CombatId("c1"), "战斗一", List.of(), Set.of(), Optional.empty())));
+    }
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
         Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), sd)),

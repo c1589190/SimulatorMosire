@@ -1,0 +1,4 @@
+=== GET /api/state (after) ===
+{"branches":["main"],"heads":{"main":13},"meta":{"branch":"main","revision":13,"timestamp":{"tick":0,"calendarLabel":null}}}
+=== GET /api/sd/verdicts (after) ===
+{"verdicts":[{"id":"adjudicated:D2:12","breakpoint":"D2","subject":"sd:decision-maker.dm-dashu","atRevision":12,"payload":"{\"breakpoint\":\"D2\",\"directiveId\":\"dir-dashu-D2-001\",\"intentText\":\"本 tick 无战斗对象，我大蜀不与西陵主动交兵：全军维持既定态势与戒备，巩固边备、静候情报明朗，不做无指令支撑的调动，待后续 tick 情报与战斗输入再定攻守。\",\"commands\":[],\"rationaleText\":\"指定命令白名单为空，本 tick 无可用可执行命令，故 commands 只能为空数组；同时无战斗对象，战斗与情报仅作判决输入而非前提，无需强行触发冲突。按 schema 出令，以 directiveId 与 intentText 表达决心、以 rationaleText 说明理由，避免越过可用工具与白名单发明规则。\"}","meta":{"model":"llm","promptVersion":"v1","inputBriefDigest":"digest:D2"}}]}
