@@ -10,6 +10,7 @@ const REQUIRED_FILES = [
   "block-codec.test.cjs",
   "decision-mode.test.cjs",
   "gate-contract.test.cjs",
+  "gm-panel.test.cjs",
   "map-edit-suboptions.test.cjs",
   "map-edit-tools.test.cjs",
   "map-geometry.test.cjs",
@@ -31,8 +32,9 @@ const REQUIRED_FILES = [
 //   webui-stage-fix T2 起 96 → 108：新增 map-edit-suboptions.test.cjs 的 12 条。
 //   webui-stage-fix T3 起 108 → 114：map-edit-tools.test.cjs 新增连通性手势/命中/删边/词表 6 条。
 //   webui-stage-fix T7 起 114 → 138：新增 decision-mode.test.cjs 的 23 条（含 3 条 render 流水线夹具）+ modes.test.cjs 的决策只读 1 条。
+//   webui-stage-fix T8 起 138 → 153：新增 gm-panel.test.cjs 的 15 条（GM 按钮/全屏层/工具使用渲染/空态/无对话输入）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 138;
+const MIN_ASSERTIONS = 153;
 
 function testFiles() {
   return fs

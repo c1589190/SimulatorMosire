@@ -1,0 +1,30 @@
+T8 运行时检查（served assets + 端点）——本会话当场实测（curl --noproxy '*'）
+==============================================================================
+起法：java -jar simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
+        --store /tmp/opencode/t8-store --gui-port 5861 --mcp-port 5862 \
+        --approval-port 5863 --decision-agent-mcp-port 5864
+（独立端口，未触碰 5818 实例 pid 64974；跑完已 kill 本实例、清临时 store）
+
+$ curl -s --noproxy '*' http://127.0.0.1:5861/ -o /tmp/opencode/t8-index.html -w 'status=%{http_code} bytes=%{size_download}\n'
+status=200 bytes=18349
+  含 id="gm-open"        -> 1
+  含 id="gm-overlay"     -> 1
+  含 src="gm.js"         -> 1
+  含 id="gm-tool-usage"  -> 1
+  含 approvals-count     -> 0   （T1 撤除对象未回潮）
+
+$ curl -s --noproxy '*' http://127.0.0.1:5861/gm.js -o /tmp/opencode/t8-gm.js -w 'status=%{http_code} bytes=%{size_download}\n'
+status=200 bytes=6572
+  src_md5=db56e0e188430dbfb13e899b84a4ef13
+  served_md5=db56e0e188430dbfb13e899b84a4ef13   （逐字节同源）
+
+$ curl -s --noproxy '*' -w '\nstatus=%{http_code}\n' http://127.0.0.1:5861/api/gm/tool-usage
+{"entries":[]}
+status=200            （空态：未有过 GM 工具调用 ⇒ 明确空，不编造）
+
+$ curl -s --noproxy '*' -o /dev/null -w 'status=%{http_code}\n' 'http://127.0.0.1:5861/api/gm/tool-usage?as=dm-1'
+status=400            （fail-closed：未接 redaction 的端点带 as= 显式拒绝）
+
+★ 未做：不做浏览器 UI 断言（本机 Playwright/Chromium revision 不匹配，T7 已记）；
+  MCP socket 级端到端未在运行时探针里驱动——"工具被执行 ⇒ 记录可见"由
+  simos-app 测试 GmToolUsageApiTest 走**真 Shell + 真 authorizer + 真工具注册表 + 真 HTTP** 证过。

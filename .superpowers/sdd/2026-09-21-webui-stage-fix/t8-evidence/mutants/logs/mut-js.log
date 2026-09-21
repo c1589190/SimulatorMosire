@@ -1,0 +1,57 @@
+── t8m2 ──
+file=gm.js orig_md5=db56e0e188430dbfb13e899b84a4ef13 mutant_md5=ae94ec24ef2831533dec9236b325d365 restored_md5=db56e0e188430dbfb13e899b84a4ef13
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=renderInto-renders-server-entries-from-the-response
+verdict=KILLED
+red_point=not ok 39 - renderInto-renders-server-entries-from-the-response
+
+── t8m3 ──
+file=gm.js orig_md5=db56e0e188430dbfb13e899b84a4ef13 mutant_md5=8a4c068ac3efc688658f1c4fa5f85c0e restored_md5=db56e0e188430dbfb13e899b84a4ef13
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=mount-wires-open-close-and-refresh
+verdict=KILLED
+red_point=not ok 43 - mount-wires-open-close-and-refresh
+
+── t8m4 ──
+file=styles.css orig_md5=053db9fda9b5f4de35a265c25f8b53e8 mutant_md5=9662d778f92cd6a49d64b955ffe529b4 restored_md5=053db9fda9b5f4de35a265c25f8b53e8
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=gm-overlay-is-fixed-hidden-by-default-and-clickable
+verdict=KILLED
+red_point=not ok 45 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+
+── t8m5 ──
+file=styles.css orig_md5=053db9fda9b5f4de35a265c25f8b53e8 mutant_md5=1c51ebb81d3d014d0e4176dc53fe0433 restored_md5=053db9fda9b5f4de35a265c25f8b53e8
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=gm-overlay-is-fixed-hidden-by-default-and-clickable
+verdict=KILLED
+red_point=not ok 45 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+
+── t8m6 ──
+file=index.html orig_md5=ba11a3e0c90bcbcba3345fd659a5af2e mutant_md5=ad68f2505b57ab6843e18d29ec35e3e2 restored_md5=ba11a3e0c90bcbcba3345fd659a5af2e
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=gm-overlay-is-fixed-hidden-by-default-and-clickable
+verdict=KILLED
+red_point=not ok 45 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+
+r1m1 VOID (mutate failed)
+── r1m1 ──
+file=index.html orig_md5=ba11a3e0c90bcbcba3345fd659a5af2e mutant_md5=5a056b8b2539470823a3727ba847b457 restored_md5=ba11a3e0c90bcbcba3345fd659a5af2e
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=index.html-has-notification-element-and-no-right-panel-approvals
+verdict=KILLED
+red_point=not ok 103 - index.html-has-notification-element-and-no-right-panel-approvals
+
+── r7m3 ──
+file=index.html orig_md5=ba11a3e0c90bcbcba3345fd659a5af2e mutant_md5=a2a62d8879d2b79352d324071b452b2c restored_md5=ba11a3e0c90bcbcba3345fd659a5af2e
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=index-html-has-six-modes-and-decision-panel
+verdict=KILLED
+red_point=not ok 26 - index-html-has-six-modes-and-decision-panel
+

@@ -184,3 +184,31 @@
   未在真 sd 档上验；"后代也算有决策人"无 spec 逐字依据；审批列表无轮询；触摸/HiDPI 未测）。
 - **带裁定的遗留**：`t7-report.md` §六（L1 后代口径 = 设计选择；L2 T10 若加命令须同样显式登记；L3 `due` 恒「—」待 T9；L4 e2e 归 T13；L5 `决策` 一词多处）。
 - **证据**：`t7-evidence/`（logs/ + mutants/ + t7-report.md）。
+
+## T8 GM 交互界面（底栏按钮 + 全屏，仅显示 GM MCP 工具使用）✅（2026-09-21，分支 `wsf/t8`，基线 `d10f5bd`）
+
+- **范围**：只做 T8。`simos-app`：新 `app/gm/GmToolUsage.java` + `app/gm/RecordingToolSource.java` + `app/gui/GmToolUsageApiTest.java` +
+  `webui/gm.js` + `test/js/gm-panel.test.cjs`；改 `Shell.java`（3 处加法）/`GuiServer.java`（端点 + 重载构造器）/`webui/api.js`/
+  `webui/index.html`/`webui/styles.css`/`WebuiAssetsTest.java`/`run-gate.cjs`/`gate-contract.test.cjs`。**零其他模块改动**。
+- **数据源裁决（计划 §T8「若无现成读面 ⇒ 加只读端点」）**：现场核实**无**真正的工具使用读面——`EventTypes` 八类型无"工具调用"事件、
+  `AgentToMcpServer.handleCall`/`ToolCallAuthorizer.execute` 不留痕、`/api/timeline` 只有写 revision 的 `initiator`+`commandType`
+  （且 GM 口与决策人口**同 initiator**、不含读工具/失败）⇒ 按计划加 **`GET /api/gm/tool-usage`**，数据源 = **GM 口（`EXTERNAL_WITH_GM`）
+  工具执行的进程内留痕**（`RecordingToolSource` 只装饰 `execute`，只包 GM 口；`GmToolUsage` 有界 200、不落盘、不进 revision）。
+  空记录 ⇒ **200 `{"entries":[]}`**（明确空态，不编造）；带 `as=` ⇒ **400 fail-closed**。
+- **口径边界**：审批拒绝 / 权限硬拒 / **工具不存在** / 意外异常**不记**（记录点在 `execute`）——`doesNotRecordCallsThatNeverReachATool` 钉住。
+- **C22 兑现**：底栏 `#timeline-bar` 内 `#gm-open` 按钮；点击开 `#gm-overlay` 全屏层（`position:fixed`+`pointer-events:auto`，
+  **默认 `hidden`** ⇒ 不挡底栏、关闭复原）；面板读端点渲染 `工具名 · 结果 · 时刻`；界面**无** `input`/`textarea`/`contenteditable`（一阶段不做对话）。
+- **门禁**：`./mvnw clean verify` **第 1 次 FAILURE**（SpotBugs `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION`：catch 后再 throw）⇒
+  改为只记 `ToolResult`（不 catch/rethrow）后 **第 2 次 rc=0**；变异轮后复跑 rc=0。**8/8 `SUCCESS [`**；
+  **1331** = `170/368/45/259/178/124/187`（现场重算，只取模块汇总行）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **153/153**。
+  基线本树实测 **1324**（`logs/baseline-verify.log`）⇒ **delta 干净**：**只有 app 180→187 = +7**（`GmToolUsageApiTest`），
+  其余六模块逐值不变；前端 138→153 = +15（`gm-panel.test.cjs`；两处下界同改 + `REQUIRED_FILES`）。
+- **变异**：**22 轮 KILLED / 0 SURVIVED / 1 VOID**（VOID = `r1m1` 首轮锚点随 T7 重写失效，**按当前字节重派生同一语义后 KILLED**，VOID 行留档不删）。
+  新靶 7 轮（t8m1/m8 Java 记录器与端点；t8m2/m3 gm.js 空壳与不接线；t8m4/m5/m6 styles.css/index.html 挡底栏与点不动）+ **裁定 42 重跑 14 轮**
+  （Shell 9：T4 六 + T9 三；GuiServer 3：T6 三；index.html 3：T7 T1）。逐轮 `cp` 逐字节还原 `restored_equals_orig=true`，红点全落被保护断言。
+- **运行时核**（served assets，独立端口 5861~5864）：`/` 200 含四处 GM 标识且 `approvals-count`×0；`/gm.js` 200 且 md5 与源**逐字节相同**；
+  `/api/gm/tool-usage` 200 `{"entries":[]}`；`?as=` 400。**5818 未动**，跑完 kill 本实例 + 清临时 store。
+- **我未能核实的**：见 `t8-evidence/t8-report.md` §八（浏览器 e2e 未跑（Chromium revision 不匹配，T7 已记）/ MCP socket 级运行时探针未驱动
+  （"有记录"态由 Java 测试走真 Shell+authorizer+注册表+HTTP 证过）/ 记录不持久 / 两 MCP 口共用 initiator 靠端口区分 / 前序重跑是代表集，
+  未重跑与 T8 改动无交集的前序靶）。
+- **证据**：`t8-evidence/`（logs/ + mutants/（含 py/、pristine/、logs/）+ t8-report.md）。

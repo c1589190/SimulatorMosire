@@ -1,0 +1,135 @@
+── t8m1 ──
+file=RecordingToolSource.java orig_md5=cb78ce919a05bd0bae0dca71be04840a mutant_md5=f7f7b256f351ac53a0b6299f436ce94f restored_md5=cb78ce919a05bd0bae0dca71be04840a
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=recordsSuccessfulToolCallWithToolNameAndResult
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.gui.GmToolUsageApiTest.recordsSuccessfulToolCallWithToolNameAndResult -- Time elapsed: 0.075 s <<< FAILURE!
+
+── t8m8 ──
+file=GuiServer.java orig_md5=221883ce5a49326a5a677eb0a2ca3da3 mutant_md5=daec0989559f0b40d744c3cf5310ee32 restored_md5=221883ce5a49326a5a677eb0a2ca3da3
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=recordsSuccessfulToolCallWithToolNameAndResult
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.gui.GmToolUsageApiTest.recordsSuccessfulToolCallWithToolNameAndResult -- Time elapsed: 0.065 s <<< FAILURE!
+
+── r4m1 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=1c76b78de4253631af4050d308a3fb63 restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=existingPortExposesExternalUnionGmToolFace
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace -- Time elapsed: 0.734 s <<< FAILURE!
+
+── r4m2 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=77425d902e2e4f315f0150913bab961d restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=decisionPortExposesOnlyDecisionAgentToolFace
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.McpPortTopologyTest.decisionPortExposesOnlyDecisionAgentToolFace -- Time elapsed: 0.076 s <<< FAILURE!
+
+── r4m3 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=92c24602ff80aaddf4de9b242be05d3d restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=bothServersListenAndCloseReleasesBothPorts
+reports_this_round=2
+verdict=KILLED
+red_point=io.mosire.simos.app.McpPortTopologyTest.bothServersListenAndCloseReleasesBothPorts -- Time elapsed: 5.123 s <<< FAILURE!
+
+── r4t7m1 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=44c8bed56223675f7501cc8790354c2b restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator
+reports_this_round=2
+verdict=KILLED
+red_point=io.mosire.simos.app.McpServerTest.writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator -- Time elapsed: 0.130 s <<< FAILURE!
+
+── r4t7m2 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=53af769b68bba5d1e33c87beef0fe595 restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator
+reports_this_round=2
+verdict=KILLED
+red_point=io.mosire.simos.app.McpServerTest.writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator -- Time elapsed: 0.130 s <<< FAILURE!
+
+── r4t11m1 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=988619b21651fc28c8bc6faa30f4d0fd restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=bothServersListenAndCloseReleasesBothPorts
+reports_this_round=2
+verdict=KILLED
+red_point=io.mosire.simos.app.McpPortTopologyTest.bothServersListenAndCloseReleasesBothPorts -- Time elapsed: 5.102 s <<< FAILURE!
+
+── r4t9m1 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=29cc47d3e5249ac165b829f084c0b16b restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=catalogCoversEveryCommandHandlerImplementation
+reports_this_round=2
+verdict=KILLED
+red_point=io.mosire.simos.app.tools.SimosToolsTest.catalogCoversEveryCommandHandlerImplementation -- Time elapsed: 0.077 s <<< FAILURE!
+
+── r4t9m2 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=6ece082c592a79168095a247a1fe62c4 restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=catalogCoversEveryCommandHandlerImplementation
+reports_this_round=2
+verdict=KILLED
+red_point=io.mosire.simos.app.tools.SimosToolsTest.catalogCoversEveryCommandHandlerImplementation -- Time elapsed: 0.068 s <<< FAILURE!
+
+── r4t9m3 ──
+file=Shell.java orig_md5=1cf20af38b3e6f4ee25cdf17da6dc791 mutant_md5=93a7251aa9b6f11f1aeb42e3014192cd restored_md5=1cf20af38b3e6f4ee25cdf17da6dc791
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=everyCatalogTypeIsReachableThroughMcpAndTakesEffect
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect -- Time elapsed: 1.311 s <<< FAILURE!
+
+── r6m3 ──
+file=GuiServer.java orig_md5=221883ce5a49326a5a677eb0a2ca3da3 mutant_md5=e974ceeae7553f02e2223b5343b253f0 restored_md5=221883ce5a49326a5a677eb0a2ca3da3
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=endpointsWithoutRedactionRejectTheAsParameter
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.gui.RedactionApiTest.endpointsWithoutRedactionRejectTheAsParameter -- Time elapsed: 0.131 s <<< FAILURE!
+
+── r6m5 ──
+file=GuiServer.java orig_md5=221883ce5a49326a5a677eb0a2ca3da3 mutant_md5=1b1712f231bb0a8b99b1aa019373909c restored_md5=221883ce5a49326a5a677eb0a2ca3da3
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=invisibleHexIsNotFoundUnderAs
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.gui.RedactionApiTest.invisibleHexIsNotFoundUnderAs -- Time elapsed: 0.782 s <<< FAILURE!
+
+── r6t5m5 ──
+file=GuiServer.java orig_md5=221883ce5a49326a5a677eb0a2ca3da3 mutant_md5=26f1b582f85134cd65c5baba92fe2b21 restored_md5=221883ce5a49326a5a677eb0a2ca3da3
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=emptyLibraryGivesEmptyListNotAnError
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.gui.SdDecisionMakerApiTest.emptyLibraryGivesEmptyListNotAnError -- Time elapsed: 0.656 s <<< FAILURE!
+
+── r7m11 ──
+file=index.html orig_md5=ba11a3e0c90bcbcba3345fd659a5af2e mutant_md5=3f1f21fba7b35db4789dc72cb1274147 restored_md5=ba11a3e0c90bcbcba3345fd659a5af2e
+restored_equals_orig=true
+mvn_rc=0 compilation_error=0
+expected_failing_test=allSixModesAreEnabledRealControls
+reports_this_round=1
+verdict=KILLED
+red_point=io.mosire.simos.app.gui.WebuiAssetsTest.allSixModesAreEnabledRealControls -- Time elapsed: 0.008 s <<< FAILURE!
+
