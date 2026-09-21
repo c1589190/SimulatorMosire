@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
+import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -144,6 +147,64 @@ final class MapPayloads {
         optionalText(value, "tag"),
         optionalText(value, "description"),
         optionalText(value, "annexedBy"));
+  }
+
+  /**
+   * 必填的组定义 ⇒ {@link PathwayGroup}（WebUI 阶段修复 T3）：{@code id}/{@code name}/{@code color} 必填（空白与色值由
+   * {@link PathwayGroup} 的构造期守卫拒），{@code description}/{@code visible}/{@code properties} 可选（缺席 ⇒
+   * {@code null} / {@code true} / 空表）。{@code properties} 的每个值是 {@code {type, defaultValue?,
+   * description?}}。
+   *
+   * <p>★ 形状错（字段非字符串、{@code properties} 非对象、属性定义非对象）在这一层抛；空白与色值格式留给 {@link PathwayGroup}—— 与 {@link
+   * #optionalMeta} 同形制。
+   */
+  static PathwayGroup requirePathwayGroup(JsonNode payload) {
+    JsonNode visibleNode = payload.get("visible");
+    boolean visible;
+    if (visibleNode == null || visibleNode.isNull()) {
+      visible = true;
+    } else if (visibleNode.isBoolean()) {
+      visible = visibleNode.asBoolean();
+    } else {
+      throw new IllegalArgumentException("字段 visible 必须是布尔: " + payload);
+    }
+    return new PathwayGroup(
+        requireText(payload, "id"),
+        requireText(payload, "name"),
+        requireText(payload, "color"),
+        optionalText(payload, "description"),
+        visible,
+        propertyDefs(payload.get("properties")));
+  }
+
+  /** {@code properties}：缺席 / JSON {@code null} ⇒ 空表（保序，不兜任何定义）；非对象 ⇒ 抛。 */
+  private static Map<String, PathwayGroup.PropertyDef> propertyDefs(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return Map.of();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException("字段 properties 必须是 {名:{type,…}} 对象: " + value);
+    }
+    Map<String, PathwayGroup.PropertyDef> out = new LinkedHashMap<>();
+    value
+        .fields()
+        .forEachRemaining(
+            entry -> {
+              JsonNode def = entry.getValue();
+              if (def == null || !def.isObject()) {
+                throw new IllegalArgumentException(
+                    "properties." + entry.getKey() + " 必须是 {type,…} 对象: " + value);
+              }
+              Object defaultValue =
+                  def.hasNonNull("defaultValue")
+                      ? MAPPER.convertValue(def.get("defaultValue"), Object.class)
+                      : null;
+              out.put(
+                  entry.getKey(),
+                  new PathwayGroup.PropertyDef(
+                      requireText(def, "type"), defaultValue, optionalText(def, "description")));
+            });
+    return out;
   }
 
   /** 可选的字符串子字段：缺席或 JSON {@code null} ⇒ {@code null}；出现但非字符串 ⇒ 抛。 */

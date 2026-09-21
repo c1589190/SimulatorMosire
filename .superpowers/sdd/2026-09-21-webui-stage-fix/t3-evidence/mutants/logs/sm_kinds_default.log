@@ -1,0 +1,21 @@
+===== T3 JS 变异轮 sm_kinds_default =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=sm_kinds_default replacements=1
+mutant_md5=d79037b23d74b02e47c13edaed28b2b2
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 36 - registered-edge-kinds-default-then-follow-the-server
+failing_count=1
+
+===== 装置补记（sm_kinds_default）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=d79037b23d74b02e47c13edaed28b2b2
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=1
+===== end sm_kinds_default self_md5=d79037b23d74b02e47c13edaed28b2b2 =====

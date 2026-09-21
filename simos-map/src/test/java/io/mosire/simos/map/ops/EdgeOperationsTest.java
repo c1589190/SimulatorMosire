@@ -11,6 +11,7 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
+import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -185,6 +186,82 @@ class EdgeOperationsTest {
     }
   }
 
+  // ── ★ 词表 = 默认 + 可自定义（C34）─────────────────────────────────────────
+
+  /**
+   * ★★ C34 的要害：注册自定义组 {@code canal} 后 {@code map.SetEdge{kind:"canal"}} **成立**（落进 {@code edges}
+   * 组件）。词表不再硬编码 ⇒ 这条在"KINDS 写回 {@code Set.of("river","road")}"的变异体下**必红**。
+   */
+  @Test
+  void registeredCustomGroupBecomesAValidKind() {
+    GameMap base = graphOf(Map.of());
+    GameMap withCanal = apply(base, PathwayGroupOperations.register(base, canalGroup()));
+
+    GameMap after =
+        apply(withCanal, EdgeOperations.setEdge(withCanal, "canal", Set.of(E_LEFT), "merge"));
+
+    assertThat(after.edges().get(E_LEFT).byPathway()).containsOnlyKeys("canal");
+  }
+
+  /** ★ 注册 canal **不**放宽别的：默认两组仍可、未注册的 {@code rail} 仍 fail-closed。 */
+  @Test
+  void registrationDoesNotWidenTheVocabularyBeyondRegisteredGroups() {
+    GameMap base = graphOf(Map.of());
+    GameMap withCanal = apply(base, PathwayGroupOperations.register(base, canalGroup()));
+
+    GameMap afterRiver =
+        apply(withCanal, EdgeOperations.setEdge(withCanal, "river", Set.of(E_LEFT), "merge"));
+    assertThat(afterRiver.edges().get(E_LEFT).byPathway()).containsOnlyKeys("river");
+
+    assertThatThrownBy(() -> EdgeOperations.setEdge(withCanal, "rail", Set.of(E_LEFT), "merge"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("未知连通性类型: rail");
+  }
+
+  /** 自定义组的 kind 也大小写不敏感；tag 键取**注册的组 id 原文**（与组定义不脱节）。 */
+  @Test
+  void customGroupKindMatchesCaseInsensitivelyAndKeepsRegisteredId() {
+    GameMap base = graphOf(Map.of());
+    GameMap withCanal = apply(base, PathwayGroupOperations.register(base, canalGroup()));
+
+    GameMap after =
+        apply(withCanal, EdgeOperations.setEdge(withCanal, "CaNaL", Set.of(E_LEFT), "merge"));
+
+    assertThat(after.edges().get(E_LEFT).byPathway()).containsOnlyKeys("canal");
+  }
+
+  /** 重复注册同一组 id ⇒ 拒绝（fail-closed，不静默覆盖组定义）。 */
+  @Test
+  void duplicateRegistrationIsRejected() {
+    GameMap base = graphOf(Map.of());
+    PathwayGroup river = PathwayGroup.defaults().get("river");
+
+    assertThatThrownBy(() -> PathwayGroupOperations.register(base, river))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("组已存在: river");
+  }
+
+  /** 注册只换 {@code pathwayGroups} 组件，其余 7 个恒 {@code Unchanged}。 */
+  @Test
+  void registrationOnlyChangesThePathwayGroupsComponent() {
+    GameMap base = graphOf(Map.of());
+
+    MapChangeSet cs = PathwayGroupOperations.register(base, canalGroup());
+
+    assertThat(cs.pathwayGroups()).isNotInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.edges()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.hexes()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.terrainBlocks()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.regions()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.cities()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.terrainTypes()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.pathways()).isInstanceOf(FieldDelta.Unchanged.class);
+  }
+
+  private static PathwayGroup canalGroup() {
+    return new PathwayGroup("canal", "运河", "#3A7BD5", "人工水道", true, Map.of());
+  }
+
   @Test
   void rejectsInvalidMode() {
     GameMap base = graphOf(Map.of());
@@ -237,7 +314,7 @@ class EdgeOperationsTest {
         Map.of(),
         Map.of(),
         Map.of(),
-        Map.of(),
+        PathwayGroup.defaults(),
         edges,
         GenerationSpec.defaults(0L));
   }

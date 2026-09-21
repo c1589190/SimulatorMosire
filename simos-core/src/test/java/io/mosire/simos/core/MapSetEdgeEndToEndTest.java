@@ -14,6 +14,8 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
+import io.mosire.simos.map.pathway.PathwayGroup;
+import io.mosire.simos.map.spi.RegisterPathwayGroupHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -154,6 +156,34 @@ class MapSetEdgeEndToEndTest {
     }
   }
 
+  /**
+   * ★★ C34 的**端到端**（真 store / 真 replay）：未注册的 {@code canal} 被拒且**不留 revision**；经真 {@code
+   * map.RegisterPathwayGroup} 注册后同一条 {@code map.SetEdge{kind:"canal"}} **成功落 revision**；默认两组不受影响。
+   */
+  @Test
+  void registeredCustomGroupEnablesTheCommandWhileUnregisteredKindStaysRejected() {
+    GameMap afterMap;
+    try (CoreSimos core = openCore(tempDir)) {
+      core.bootstrapGenesis(genesis(genesisMapWithLeftRiver()));
+
+      assertRejectedNoRevision(
+          core, 1, setEdgeEnvelope(1, "canal", EDGE_UP, "merge"), "未知连通性类型: canal");
+
+      assertThat(core.submit(registerEnvelope(1, "canal")))
+          .as("注册 canal 应落 (main,2)")
+          .isEqualTo(new CommandResult.Committed(ref(2)));
+      assertThat(core.submit(setEdgeEnvelope(2, "canal", EDGE_UP, "merge")))
+          .as("注册后 SetEdge{kind:canal} 应落 (main,3)")
+          .isEqualTo(new CommandResult.Committed(ref(3)));
+
+      afterMap = mapAt(core, 3);
+    }
+
+    assertThat(afterMap.edges().get(EdgeRef.parse(EDGE_UP)).byPathway()).containsOnlyKeys("canal");
+    assertThat(afterMap.pathwayGroups()).containsKey("canal");
+    assertThat(afterMap.pathwayGroups().keySet()).as("默认两组不受影响").contains("river", "road");
+  }
+
   // ── 助手 ────────────────────────────────────────────────────────────────────
 
   private static void assertRejectedNoRevision(
@@ -170,7 +200,21 @@ class MapSetEdgeEndToEndTest {
   private static CoreSimos openCore(Path dir) {
     return new CoreSimos(new CoreConfig(dir, 100, MAPPER))
         .register(new MapCodec())
-        .register(new SetEdgeHandler());
+        .register(new SetEdgeHandler())
+        .register(new RegisterPathwayGroupHandler());
+  }
+
+  /** ★ C34 的端到端：注册 canal 的命令信封（真提交路径）。 */
+  private static CommandEnvelope registerEnvelope(long expectedRevision, String id) {
+    String payload = "{\"id\":\"" + id + "\",\"name\":\"运河\",\"color\":\"#3A7BD5\"}";
+    return new CommandEnvelope(
+        "cmd-register-" + id,
+        "corr-register-" + id,
+        "player:test",
+        MAIN,
+        new RevisionId(expectedRevision),
+        "map.RegisterPathwayGroup",
+        payload);
   }
 
   private static CommandEnvelope setEdgeEnvelope(
@@ -218,7 +262,7 @@ class MapSetEdgeEndToEndTest {
         Map.of(),
         Map.of(),
         Map.of(),
-        Map.of(),
+        PathwayGroup.defaults(),
         edges,
         GenerationSpec.defaults(0L));
   }

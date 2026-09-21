@@ -1,0 +1,21 @@
+===== T3 JS 变异轮 t2m5 =====
+target=gate-contract.test.cjs
+orig_md5=8fd124786aaab08ca3310c33c0e84e9e
+clean_world_md5=8fd124786aaab08ca3310c33c0e84e9e
+mutant=t2m5 replacements=1
+mutant_md5=b73a597870bebf37149e36ae39624ff7
+gate_rc=1
+gate_tests=114
+restored_md5=8fd124786aaab08ca3310c33c0e84e9e
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 7 - all-required-test-files-are-present
+failing_count=1
+
+===== 装置补记（t2m5）=====
+target=gate-contract.test.cjs
+orig_md5=8fd124786aaab08ca3310c33c0e84e9e
+mutant_md5=b73a597870bebf37149e36ae39624ff7
+restored_md5=8fd124786aaab08ca3310c33c0e84e9e
+gate_rc=1 gate_tests=114 failing=1
+===== end t2m5 self_md5=b73a597870bebf37149e36ae39624ff7 =====

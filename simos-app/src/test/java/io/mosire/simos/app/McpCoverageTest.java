@@ -25,6 +25,7 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
@@ -101,7 +102,8 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 40 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 → 40）。
+   * catalog 预期的 41 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * 40，T3 起 40 → 41）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -130,6 +132,7 @@ class McpCoverageTest {
           "map.UpdateRegion",
           "map.DeleteRegion",
           "map.SetEdge",
+          "map.RegisterPathwayGroup",
           "map.RandomizeRegion",
           "sd.CreateNation",
           "sd.CreateArmy",
@@ -250,6 +253,10 @@ class McpCoverageTest {
             + "\"payload\":\"{\\\"stageId\\\":\\\"s-cov\\\",\\\"selectedOutcomeId\\\":\\\"o-cov\\\","
             + "\\\"casualtyDeltas\\\":[],\\\"rationaleText\\\":\\\"推进\\\"}\","
             + "\"meta\":{\"model\":\"m\",\"promptVersion\":\"p\",\"inputBriefDigest\":\"d\"}}");
+    // T3：注册自定义连通性组（词表 = 默认 + 可自定义）。放最后 ⇒ 不移动前面各命令的 revision 号。
+    MINIMAL_PAYLOADS.put(
+        "map.RegisterPathwayGroup",
+        "{\"id\":\"canal\",\"name\":\"运河\",\"color\":\"#3A7BD5\",\"description\":\"人工水道\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -301,7 +308,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 40 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 41 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -332,8 +339,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("40 条命令各推一格")
-        .isEqualTo(41L);
+        .as("41 条命令各推一格")
+        .isEqualTo(42L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -347,16 +354,16 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(41L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(42L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(42L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(43L);
     System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=32");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(42L);
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(43L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 42L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 43L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");
@@ -594,7 +601,7 @@ class McpCoverageTest {
         Map.of(),
         terrainTypes,
         Map.of(),
-        Map.of(),
+        PathwayGroup.defaults(),
         Map.of(),
         GenerationSpec.defaults(0L));
   }

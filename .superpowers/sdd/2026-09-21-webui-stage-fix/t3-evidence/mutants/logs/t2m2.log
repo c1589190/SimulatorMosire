@@ -1,0 +1,22 @@
+===== T3 JS 变异轮 t2m2 =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=t2m2 replacements=1
+mutant_md5=871135a918c29aec89ab4f8a86914e4e
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 14 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  not ok 15 - write-gate-resolves-tool-then-subtool
+failing_count=2
+
+===== 装置补记（t2m2）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=871135a918c29aec89ab4f8a86914e4e
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=2
+===== end t2m2 self_md5=871135a918c29aec89ab4f8a86914e4e =====

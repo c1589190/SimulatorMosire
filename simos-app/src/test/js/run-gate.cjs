@@ -16,8 +16,9 @@ const JS_DIR = __dirname;
 //   unit-ext T10 起 88 → 90（modes.test.cjs 新增白名单派生式断言 2 条）；
 //   webui-stage-fix T1 起 90 → 96（新增 notifications.test.cjs 的 6 条）。
 //   webui-stage-fix T2 起 96 → 108（新增 map-edit-suboptions.test.cjs 的 12 条）。
+//   webui-stage-fix T3 起 108 → 114（map-edit-tools.test.cjs 新增连通性手势/命中/删边/词表 6 条）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 108;
+const MIN_TESTS = 114;
 
 function discoverTests() {
   return fs

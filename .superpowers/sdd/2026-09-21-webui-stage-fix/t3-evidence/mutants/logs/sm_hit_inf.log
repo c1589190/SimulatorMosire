@@ -1,0 +1,21 @@
+===== T3 JS 变异轮 sm_hit_inf =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=sm_hit_inf replacements=1
+mutant_md5=7bf1ab3dfdf98eba2009d095dcb9d7ad
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 34 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+failing_count=1
+
+===== 装置补记（sm_hit_inf）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=7bf1ab3dfdf98eba2009d095dcb9d7ad
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=1
+===== end sm_hit_inf self_md5=7bf1ab3dfdf98eba2009d095dcb9d7ad =====

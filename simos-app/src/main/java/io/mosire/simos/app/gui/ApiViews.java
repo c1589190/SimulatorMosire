@@ -11,6 +11,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexVertex;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
+import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
@@ -193,7 +194,50 @@ final class ApiViews {
     view.put("cities", cities);
 
     view.put("terrainTypes", terrainTypeDefinitions(map));
+    view.put("pathwayGroups", pathwayGroupDefinitions(map));
+    view.put("edges", allEdgeViews(map.edges()));
     return view;
+  }
+
+  /**
+   * 连通性组的**完整定义**（T3，spec §三.6）：{@code [{id,name,color,description,visible,properties}…]}，按组 id 字典序
+   * （与状态插入序无关 ⇒ 响应字节可复现）。UI 的 kind 候选**只能**来自这里（不硬编码 river/road）。
+   */
+  private static List<Map<String, Object>> pathwayGroupDefinitions(GameMap map) {
+    List<String> ids = new ArrayList<>(map.pathwayGroups().keySet());
+    ids.sort(Comparator.naturalOrder());
+    List<Map<String, Object>> out = new ArrayList<>(ids.size());
+    for (String id : ids) {
+      PathwayGroup group = map.pathwayGroups().get(id);
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", group.id());
+      view.put("name", group.name());
+      view.put("color", group.color());
+      view.put("description", group.description());
+      view.put("visible", group.visible());
+      List<Map<String, Object>> properties = new ArrayList<>(group.properties().size());
+      for (Map.Entry<String, PathwayGroup.PropertyDef> entry : group.properties().entrySet()) {
+        Map<String, Object> def = new LinkedHashMap<>();
+        def.put("type", entry.getValue().type());
+        def.put("defaultValue", entry.getValue().defaultValue());
+        def.put("description", entry.getValue().description());
+        properties.add(def);
+      }
+      view.put("properties", properties);
+      out.add(view);
+    }
+    return out;
+  }
+
+  /** 全图边表（T3）：{@code [{edge,pathways}…]}，边按 {@link EdgeRef} 自然序、pathways 按字典序。 */
+  private static List<Map<String, Object>> allEdgeViews(Map<EdgeRef, EdgeTags> edges) {
+    List<EdgeRef> ordered = new ArrayList<>(edges.keySet());
+    ordered.sort(Comparator.naturalOrder());
+    List<Map<String, Object>> out = new ArrayList<>(ordered.size());
+    for (EdgeRef edge : ordered) {
+      out.add(edgeEntry(edge, edges.get(edge)));
+    }
+    return out;
   }
 
   /**
@@ -333,14 +377,19 @@ final class ApiViews {
     incident.sort(Comparator.naturalOrder());
     List<Map<String, Object>> out = new ArrayList<>(incident.size());
     for (EdgeRef edge : incident) {
-      Map<String, Object> entry = new LinkedHashMap<>();
-      entry.put("edge", edge.toString());
-      List<String> pathways = new ArrayList<>(edges.get(edge).byPathway().keySet());
-      pathways.sort(Comparator.naturalOrder());
-      entry.put("pathways", pathways);
-      out.add(entry);
+      out.add(edgeEntry(edge, edges.get(edge)));
     }
     return out;
+  }
+
+  /** 一条边的视图：{@code {edge:"a|b", pathways:["river","road"]}}，pathways 按字典序。 */
+  private static Map<String, Object> edgeEntry(EdgeRef edge, EdgeTags tags) {
+    Map<String, Object> entry = new LinkedHashMap<>();
+    entry.put("edge", edge.toString());
+    List<String> pathways = new ArrayList<>(tags.byPathway().keySet());
+    pathways.sort(Comparator.naturalOrder());
+    entry.put("pathways", pathways);
+    return entry;
   }
 
   /**
