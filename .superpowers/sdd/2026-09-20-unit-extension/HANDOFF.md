@@ -52,6 +52,19 @@
    - `unit.CreateCommandChain`/`UpdateCommandChain` ⇒ 受 `requireNotInAnyChain` 约束，**与 `DisbandUnit` 的相对次序会影响成员可否复用**。
    ⇒ **这条把 T9 从"装配"变成了"装配 + 12 条端到端载荷的时序设计"**，估时**远超** T8 的 28 分钟。★ **别把它当成"顺手补一下"**；也**别**为了变绿去放宽 `McpCoverageTest`（那正是本任务要保的端到端判据）。
 
+**★★ T9 的完整爆炸半径（实测扫过全部相关测试面；锚 = 各文件路径行号，均未被本任务改动）**：
+
+| # | 落点 | 会不会红 | 该怎么办 |
+|---|---|---|---|
+| 1 | `simos-app/.../McpCoverageTest.java:99-219` | ★★ **必红** | 补 12 条 expected + 12 条真载荷（见上，**T9 的主要工作量**） |
+| 2 | `simos-app/src/test/js/gate-contract.test.cjs:9-20,47` | ★ **仅当T9新增 `.cjs` 测试文件时红** | `REQUIRED_FILES` 是**10 个文件的精确集合**（`deepEqual`）⇒ 新增 JS 测试必须同步登记；另有 `assertion-count-is-not-below-the-frozen-floor`（冻结下界，只增不减） |
+| 3 | ★★ **静默**：`simos-app/src/main/resources/webui/modes.js`（`isWriteAllowed` `:77-82`、`unit` 模式 `writes` `:37-48`） | **不红，但功能不通** | 白名单是**逐条精确匹配**（`allowedWrites(mode).indexOf(type) >= 0`）、**未知 type 一律拒（fail-closed）**⇒ **后端注册了，GUI 仍拒绝发这 12 条**。⇒ 必须把这 12 条加进 `unit` 模式的 `writes`，并按 #2 的冻结下界补 `modes.test.cjs` 断言 |
+| 4 | `simos-app/.../McpServerTest.java:97`（`TWELVE_TOOL_NAMES`） | **不红** | 它钉的是 **12 个 MCP 工具名**（不是命令）⇒ **T9 不得新增工具**，否则此表要改 |
+| 5 | `simos-app/src/test/js/write-allowlist.test.cjs` | **不红** | 它管的是 **HTTP 端点**白名单（`/api/command`、`/api/advance`、`/api/fork`），与命令类型无关 |
+| 6 | `simos-app/src/test/js/timeline.test.cjs` | **不红** | 只测标签/分组（`shortCommandType`），与命令集合无关 |
+
+★ **同时发现一处"既有"缺口（不是 unit-ext 造成的，先记为问题、不记为结论）**：`unit` 模式的 `writes` 只有 **6 条**（`PlanRoute`/`CancelRoute`/`ReparentUnit`/`SetStrength`/`DisbandUnit`/`CreateUnit`），而 `Shell` 已注册 **8 条** unit handler ⇒ **`unit.RenameUnit` 与 `unit.PlaceAt` 不在任何模式的 `writes` 里**（`map-edit`/`region-edit` 也只列 map 命令）⇒ **今天 GUI 就发不出这两条命令**。★ **未定**：这可能是**有意收紧**，也可能是**疏漏**——**无判据可判**。⇒ **归 T9/T10 一并裁**：若判"疏漏"，则 12 条新命令同样该进白名单（与 #3 合并处理）；若判"有意"，则 **#3 的结论要反过来写**（新命令**本就不该**进白名单，但那样 T9 就得说清"这 12 条从哪个模式发"）。**别不做裁决就默默跳过。**
+
 **12 条 handler 清单**（计划 T9 步骤 1，**控制器已逐条实测核过**）：
 `AttachUnit` / `DetachUnit` / `ReparentSubtree` / `SetFormationOffset` / `CreateCommandChain` / `UpdateCommandChain` / `SplitFormation` / `MergeFormation` / `PlanSparseRoute(cost)` / `SetRejoinTarget` / `SetStatus` / `ApplyCasualties`
 
