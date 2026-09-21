@@ -1,0 +1,12 @@
+[materialize_v17levant] 输入目录 : /home/cna/DevMosire/workspace/worlds/v17levant/nodes
+[materialize_v17levant] 输出     : /tmp/u4-materialized/map.json
+[materialize_v17levant] 基础 provinces : 98
+[materialize_v17levant]   n0001  removed=0   changed=95  ⇒ provinces=104
+[materialize_v17levant]   n0002  removed=0   changed=11  ⇒ provinces=114
+[materialize_v17levant]   n0003  removed=4   changed=41  ⇒ provinces=145
+[materialize_v17levant]   n0004  removed=0   changed=9   ⇒ provinces=148
+[materialize_v17levant]   n0005  removed=19  changed=106 ⇒ provinces=223
+[materialize_v17levant]   n0006  removed=4   changed=36  ⇒ provinces=240
+[materialize_v17levant]   n0007  removed=5   changed=32  ⇒ provinces=252
+[materialize_v17levant] 最终 provinces : 252
+[materialize_v17levant] 结果 : OK

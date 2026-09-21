@@ -1,0 +1,11 @@
+round=m4
+target=tools/materialize_v17levant.py
+mutant=.superpowers/sdd/2026-09-22-webui-fix2/u4-evidence/mutants/m4.reversed-chain.materialize_v17levant.py
+cmd=python3 tools/materialize_v17levant.py /home/cna/DevMosire/workspace/worlds/v17levant/nodes /tmp/u4-mut/map.json >/dev/null && rm -rf /tmp/u4-mut/out && python3 tools/gsimap_import.py /tmp/u4-mut/map.json /tmp/u4-mut/out >/dev/null && python3 tools/check_v17levant_import.py /tmp/u4-mut/map.json /tmp/u4-mut/out/checkpoints/main/1.json /home/cna/DevMosire/workspace/worlds/v17levant/nodes/n0000_map.json
+orig_md5=8ff1ddd2a34cb07026c259433d3f6a9d
+mutant_md5=8922a565729baeb28894d8f6e452b6fb
+judge_rc=2
+compilation_error_count=0
+restored_md5=8ff1ddd2a34cb07026c259433d3f6a9d
+KILLED
+round_done=OK

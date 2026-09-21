@@ -111,7 +111,7 @@ public final class ShellMain {
     try (Shell shell = Shell.start(config)) {
       if (shouldSeedGenesis(demo, shell.coreSimos().branches())) {
         shell.coreSimos().bootstrapGenesis(RichWorld.state(config.mapId()));
-        LOG.info("已种入富世界（--demo）：v17levant 复刻（59223 hex / 98 区域 / 240 条河流边）");
+        LOG.info("已种入富世界（--demo）：v17levant 复刻（59223 hex / 252 区域 / 240 条河流边）");
       }
       LOG.info(
           "Simos Shell 已启动: store={} checkpointInterval={} 模块数={} bindAddress={} guiPort={}"

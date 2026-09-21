@@ -1,0 +1,34 @@
+round=m4b
+target=tools/materialize_v17levant.py
+mutant=.superpowers/sdd/2026-09-22-webui-fix2/u4-evidence/mutants/m4b.reversed-chain-nocheck.materialize_v17levant.py
+cmd=python3 tools/materialize_v17levant.py /home/cna/DevMosire/workspace/worlds/v17levant/nodes /tmp/u4-mut/map.json >/dev/null && rm -rf /tmp/u4-mut/out && python3 tools/gsimap_import.py /tmp/u4-mut/map.json /tmp/u4-mut/out >/dev/null && python3 tools/check_v17levant_import.py /tmp/u4-mut/map.json /tmp/u4-mut/out/checkpoints/main/1.json /home/cna/DevMosire/workspace/worlds/v17levant/nodes/n0000_map.json
+orig_md5=8ff1ddd2a34cb07026c259433d3f6a9d
+mutant_md5=5ce835a324715aea63541d0a161466dc
+judge_rc=1
+compilation_error_count=0
+[check_v17levant_import] 源档   : /tmp/u4-mut/map.json
+[check_v17levant_import] 资源   : /tmp/u4-mut/out/checkpoints/main/1.json
+[check_v17levant_import] 基础档 : /home/cna/DevMosire/workspace/worlds/v17levant/nodes/n0000_map.json
+  [PASS] teeth.source-non-empty — source hexes=59223
+  [PASS] teeth.resource-non-empty — resource hexes=59223
+  [PASS] hexes.count — resource=59223 source=59223
+  [FAIL] provinces.count — 281
+  [FAIL] provinces.region-content-digest — de0eec4bef0ed70c9989fd059210ee1e2214ea11c05f71d139d84e283de959cc
+  [PASS] edges.count — 240（源档 edgeTags 非空格 248 / 480 有向条目 ÷2）
+  [PASS] histogram.matches-lossy-merge — {'low_hills': 14107, 'plains': 28347, 'mountains': 1096, 'ocean': 14927, 'desert': 746}
+  [FAIL] regions.tags — {'Nation': 281}
+  [FAIL] regions.multi-owner-sample — (-105, 67) -> ['区域14']
+  [PASS] regions.has-at-least-one-multi-owner — multi-owner hexes=2408
+  [PASS] edges.adjacent-and-all-river — bad=0 nonRiver=0
+  [PASS] completeness.named-regions-present-in-resource — 5/5 present
+  [PASS] completeness.named-regions-absent-in-base — 5/5 absent in base
+  [PASS] completeness.base-has-fewer-regions — base=98 resource=281
+  [PASS] priority.falls-back-to-edgeTags-when-edges-empty — source=edgeTags edges=1
+  [PASS] priority.edges-wins-when-present — source=edges
+  [PASS] cross-check.rejects-mismatch — hex 0_0 的 edgeTags 与 riverMask 不一致（交叉校验失
+  [PASS] lossy.lowland-and-swamp-flagged
+[check_v17levant_import] 结果   : FAIL
+[check_v17levant_import] 失败项 : provinces.count, provinces.region-content-digest, regions.tags, regions.multi-owner-sample
+restored_md5=8ff1ddd2a34cb07026c259433d3f6a9d
+KILLED
+round_done=OK
