@@ -1,0 +1,30 @@
+== state before == {"branches": ["main"], "heads": {"main": 1}, "meta": {"branch": "main", "revision": 1, "timestamp": {"tick": 0, "calendarLabel": null}}}
+[cmd] map.CreateRegion rev=1 -> 200 {"result": "committed", "ref": {"branch": "main", "revision": 2}}
+[cmd] sd.CreateNation rev=2 -> 200 {"result": "committed", "ref": {"branch": "main", "revision": 3}}
+[cmd] sd.CreateDecisionMaker rev=3 -> 200 {"result": "committed", "ref": {"branch": "main", "revision": 4}}
+[cmd] sd.CreateCombat rev=4 -> 200 {"result": "committed", "ref": {"branch": "main", "revision": 5}}
+[cmd] sd.AddCombatStage rev=5 -> 200 {"result": "committed", "ref": {"branch": "main", "revision": 6}}
+[bind] dm-dashu -> mosire-flash rev=6 -> 200 {"result": "committed", "ref": {"branch": "main", "revision": 7}}
+== state before start == {"branches": ["main"], "heads": {"main": 7}, "meta": {"branch": "main", "revision": 7, "timestamp": {"tick": 0, "calendarLabel": null}}}
+
+== /api/sd/start-decision rev=7 -> HTTP 200 ==
+{
+  "result": "committed",
+  "ref": {
+    "branch": "main",
+    "revision": 8
+  },
+  "adjudication": [
+    {
+      "kind": "accepted",
+      "payloadLength": 274
+    },
+    {
+      "kind": "abstained",
+      "reason": "participants 为空，且无任何可用命令或判定依据，无法在 o-win/o-lose 中作出胜负裁决。"
+    }
+  ]
+}
+
+== state after == {"branches": ["main"], "heads": {"main": 9}, "meta": {"branch": "main", "revision": 9, "timestamp": {"tick": 0, "calendarLabel": null}}}
+== verdicts == {"verdicts": [{"id": "adjudicated:D1:8", "breakpoint": "D1", "subject": "sd:combat.c1", "atRevision": 8, "payload": "{\"breakpoint\":\"D1\",\"stageId\":\"s1\",\"selectedOutcomeId\":\"o-win\",\"casualtyDeltas\":[],\"rationaleText\":\"简报仅提供单一阶段 s1（交锋）及其两个合法结局，decisionMaker 为 dm-dashu；参与者列表为空且可用命令白名单为空，不存在任何可用于判定胜负的对抗数据或随机裁定手段。在必须于合法选项内作出裁决且不得弃权的前提下，取默认叙事立场判定我方达成阶段目标，故选择 o-win；因无 participantId 记录，伤亡增量为空数组。\"}", "meta": {"model": "llm", "promptVersion": "v1", "inputBriefDigest": "digest:D1"}}]}

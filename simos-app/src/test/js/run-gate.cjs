@@ -24,8 +24,9 @@ const JS_DIR = __dirname;
 //   webui-fix2 起 164 → 184（新增 webui-fix2.test.cjs 的 20 条：U1 地形压暗 / U2 区域名 / U3 选择粒度 / U5 三栏布局）。
 //   webui-fix2 V1/V2 起 184 → 187（U5 宽度断言改写为"稳定可用宽度"；新增 kv 值列不被压成一字、区域名只在区域两模式、绘制按模式门控 3 条）。
 //   webui-fix2 V3 起 187 → 188（新增 topRegionId 的定义序末位 / 退回字典序即红 1 条）。
+//   M11′ 起 188 → 201（新增 provider-config.test.cjs 的 13 条：provider 子页/掩码/表单/绑定/端点对表）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 188;
+const MIN_TESTS = 201;
 
 function discoverTests() {
   return fs

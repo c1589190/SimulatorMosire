@@ -604,6 +604,7 @@
   var DECISION_SUBPAGES = [
     { id: "view", label: "决策人查看" },
     { id: "approval", label: "审批" },
+    { id: "provider", label: "Provider 配置" },
   ];
 
   /** 子页状态（fail-closed）：未知 id ⇒ `{ok:false, id:null, label:null}`（不兜成第一个子页）。 */
@@ -617,12 +618,131 @@
   }
 
   /**
-   * 子页可见性（纯函数，无 DOM）：恰一个为 true；未知 id ⇒ **两个都 false**（fail-closed，
+   * 子页可见性（纯函数，无 DOM）：恰一个为 true；未知 id ⇒ **三个都 false**（fail-closed，
    * 不把"没选"变成"选了决策人查看"——与 map.js 的 mapEditPanelVisibility 同口径）。
    */
   function decisionSubpageVisibility(id) {
     var state = decisionSubpageState(id);
-    return { view: state.ok && state.id === "view", approval: state.ok && state.id === "approval" };
+    return {
+      view: state.ok && state.id === "view",
+      approval: state.ok && state.id === "approval",
+      provider: state.ok && state.id === "provider",
+    };
+  }
+
+  /**
+   * Provider 表单 → 端点载荷（纯函数，M11′ 配置页）。
+   *
+   * <p>★ **不造假**：缺 `baseUrl` / `model` / `id` 一律返回 `{ok:false, reason}` —— 绝不填默认值把空表单
+   * 变成一条"看起来有效"的 provider（同 providerFields 的口径）。`apiKey` 只在非空时带上（空 = 不改密钥）。
+   */
+  function providerFormToPayload(form) {
+    var src = form || {};
+    var id = textOrNull(src.id);
+    if (id === null) {
+      return { ok: false, reason: "id 不得为空" };
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
+      return { ok: false, reason: "id 只能以字母/数字开头，其后可含字母/数字/下划线/连字符" };
+    }
+    var baseUrl = textOrNull(src.baseUrl);
+    if (baseUrl === null) {
+      return { ok: false, reason: "baseUrl 不得为空（API 根，含 /v1，不含 /chat/completions）" };
+    }
+    var model = textOrNull(src.model);
+    if (model === null) {
+      return { ok: false, reason: "model 不得为空" };
+    }
+    var payload = { id: id, baseUrl: baseUrl, model: model };
+    var credentialsRef = textOrNull(src.credentialsRef);
+    if (credentialsRef !== null) {
+      payload.credentialsRef = credentialsRef;
+    }
+    if (src.readTimeoutMs !== null && src.readTimeoutMs !== undefined && src.readTimeoutMs !== "") {
+      var timeout = Number(src.readTimeoutMs);
+      if (!isFinite(timeout) || timeout <= 0) {
+        return { ok: false, reason: "readTimeoutMs 必须是正整数毫秒数" };
+      }
+      payload.readTimeoutMs = timeout;
+    }
+    var apiKey = textOrNull(src.apiKey);
+    if (apiKey !== null) {
+      payload.apiKey = apiKey;
+    }
+    return { ok: true, payload: payload };
+  }
+
+  /**
+   * Provider 视图 → 展示字段（纯函数，掩码，M11′）。
+   *
+   * <p>★ **`valid:false` 的坏条目照样列**（带 `errorCode`）——配置页要能看见自己写坏的那条，才谈得上去修它。
+   * `keyConfigured` 三态：true / false / `null`（取不到 ⇒ 显 `—`，**不拿 false 顶替**）。
+   */
+  function providerFields(provider) {
+    var p = provider || {};
+    if (p.valid === false) {
+      return {
+        id: p.id === null || p.id === undefined ? "—" : String(p.id),
+        valid: false,
+        errorCode: p.errorCode === null || p.errorCode === undefined ? "—" : String(p.errorCode),
+        rows: [],
+      };
+    }
+    var rows = [
+      ["baseUrl", valueOrDash(p.baseUrl)],
+      ["model", valueOrDash(p.model)],
+      ["protocol", valueOrDash(p.protocol)],
+      ["credentialsRef", valueOrDash(p.credentialsRef)],
+      ["readTimeoutMs", valueOrDash(p.readTimeoutMs)],
+      ["keyConfigured", keyConfiguredText(p.keyConfigured)],
+    ];
+    return {
+      id: p.id === null || p.id === undefined ? "—" : String(p.id),
+      valid: true,
+      errorCode: null,
+      rows: rows,
+    };
+  }
+
+  /** 三态文案：true/false 之外一律 `—`（"还没查" ≠ "不可解析"）。 */
+  function keyConfiguredText(value) {
+    if (value === true) {
+      return "可解析";
+    }
+    if (value === false) {
+      return "不可解析";
+    }
+    return "—";
+  }
+
+  /** 决策人绑定 provider 的载荷（纯函数）：两者都非空才 ok。 */
+  function providerBindingPayload(decisionMakerId, providerId) {
+    var maker = textOrNull(decisionMakerId);
+    var provider = textOrNull(providerId);
+    if (maker === null) {
+      return { ok: false, reason: "未选中决策人" };
+    }
+    if (provider === null) {
+      return { ok: false, reason: "providerId 不得为空" };
+    }
+    return { ok: true, decisionMakerId: maker, providerId: provider };
+  }
+
+  /** 非空文本或 null（不 trim 值本身之外的加工；空白一律 null）。 */
+  function textOrNull(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    var text = String(value).trim();
+    return text === "" ? null : text;
+  }
+
+  /** 值或 `—`（缺值不显示 `undefined`/`null` 字面量）。 */
+  function valueOrDash(value) {
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
+    return String(value);
   }
 
   var AFFILIATION_LABELS = { nation: "国家", army: "军队" };
@@ -1261,7 +1381,7 @@
       });
   }
 
-  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批）。 */
+  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批/provider）。 */
   function renderDecision(state) {
     if (!state || state.mode !== "decision") {
       lastDecisionSubpage = null;
@@ -1276,7 +1396,148 @@
       renderDecisionRight(state);
     } else if (subpage.approval) {
       renderDecisionApproval(entered);
+    } else if (subpage.provider) {
+      renderLlmProviders(entered);
     }
+  }
+
+  // ── Provider 配置子页（M11′）：读写 AgentLib 的 ConfigStore ───────────────
+  var lastLlmProvidersLoaded = false;
+
+  function setLlmProviderStatus(message, tone) {
+    app.statusMessage(app.byId("llm-provider-status"), message, tone);
+  }
+
+  /** 拉列表并渲染（掩码视图；坏条目带错误码照样列）。 */
+  function renderLlmProviders(force) {
+    var mount = app.byId("llm-provider-list");
+    if (!mount) {
+      return;
+    }
+    if (!force && lastLlmProvidersLoaded) {
+      return;
+    }
+    lastLlmProvidersLoaded = true;
+    api
+      .llmProviders()
+      .then(function (body) {
+        mount.textContent = "";
+        var providers = (body && body.providers) || [];
+        if (providers.length === 0) {
+          mount.appendChild(app.el("p", { class: "empty", text: "还没有配置任何 provider。" }));
+          return;
+        }
+        providers.forEach(function (provider) {
+          var fields = providerFields(provider);
+          var row = app.el("div", { class: "llm-provider-row" });
+          row.setAttribute("data-provider-id", fields.id);
+          row.setAttribute("data-provider-valid", fields.valid ? "true" : "false");
+          row.appendChild(
+            app.el("strong", { text: fields.id + (fields.valid ? "" : "（配置不完整）") })
+          );
+          if (!fields.valid) {
+            row.appendChild(app.el("span", { class: "muted", text: " " + fields.errorCode }));
+          } else {
+            var dl = app.el("dl", { class: "kv llm-provider-kv" });
+            fields.rows.forEach(function (pair) {
+              dl.appendChild(app.el("dt", { text: pair[0] }));
+              dl.appendChild(app.el("dd", { text: pair[1] }));
+            });
+            row.appendChild(dl);
+          }
+          mount.appendChild(row);
+        });
+      })
+      .catch(function (e) {
+        mount.textContent = "";
+        mount.appendChild(app.el("p", { class: "empty", text: "provider 载入失败：" + e.message }));
+      });
+  }
+
+  /** 保存 provider：表单 → 载荷（纯函数校验）→ POST；成功后重取列表。 */
+  function saveLlmProviderFromForm() {
+    var result = providerFormToPayload({
+      id: valueOf("llm-provider-id"),
+      baseUrl: valueOf("llm-provider-baseurl"),
+      model: valueOf("llm-provider-model"),
+      apiKey: valueOf("llm-provider-apikey"),
+      readTimeoutMs: valueOf("llm-provider-timeout"),
+    });
+    if (!result.ok) {
+      setLlmProviderStatus("保存失败：" + result.reason, "err");
+      return;
+    }
+    setLlmProviderStatus("保存中 " + result.payload.id + "…", "muted");
+    api
+      .saveLlmProvider(result.payload)
+      .then(function () {
+        setLlmProviderStatus("已保存：" + result.payload.id, "ok");
+        renderLlmProviders(true);
+      })
+      .catch(function (e) {
+        setLlmProviderStatus("保存失败：" + (e && e.message ? e.message : String(e)), "err");
+      });
+  }
+
+  /** 测试连接：用列表当前选中/表单的 id 打一次真调用（服务端），回 ok/detail。 */
+  function testLlmProviderFromForm() {
+    var id = valueOrDash(valueOf("llm-provider-id"));
+    if (id === "—") {
+      setLlmProviderStatus("测试连接：先在 id 里填一个 provider", "warn");
+      return;
+    }
+    setLlmProviderStatus("测试连接 " + id + "…", "muted");
+    api
+      .testLlmProvider(id)
+      .then(function (body) {
+        var ok = body && body.ok === true;
+        setLlmProviderStatus(
+          (ok ? "连接成功：" : "连接失败：") + ((body && body.detail) || ""),
+          ok ? "ok" : "err"
+        );
+      })
+      .catch(function (e) {
+        setLlmProviderStatus("测试连接失败：" + (e && e.message ? e.message : String(e)), "err");
+      });
+  }
+
+  /** 决策人绑定 provider（世界写，落 revision）。 */
+  function saveDecisionMakerProviderFromForm() {
+    var result = providerBindingPayload(valueOf("llm-binding-maker"), valueOf("llm-binding-provider"));
+    if (!result.ok) {
+      setLlmProviderStatus("绑定失败：" + result.reason, "err");
+      return;
+    }
+    var at = app.target() || {};
+    setLlmProviderStatus("绑定 " + result.decisionMakerId + " → " + result.providerId + "…", "muted");
+    api
+      .setDecisionMakerProvider(at.branch, at.revision, result.decisionMakerId, result.providerId)
+      .then(function () {
+        setLlmProviderStatus(
+          "已绑定：" + result.decisionMakerId + " → " + result.providerId + "（落 revision）",
+          "ok"
+        );
+        if (app.refreshState) {
+          app.refreshState(true);
+        }
+      })
+      .catch(function (e) {
+        if (e && e.status === 409) {
+          setLlmProviderStatus("末端已移动（409），已重取最新状态", "warn");
+          if (app.refreshState) {
+            app.refreshState(true);
+          }
+          return;
+        }
+        var reason = e && e.body && e.body.reason ? e.body.reason : (e && e.message) || String(e);
+        setLlmProviderStatus("绑定失败：" + reason, "err");
+      });
+  }
+
+  /** 表单字段读值（缺节点 ⇒ ""，不抛）。 */
+  function valueOf(id) {
+    var node = app.byId(id);
+    return node && node.value !== undefined ? node.value : "";
   }
 
   /** 工作台初始化：订阅状态并渲染左栏真读数 + 右栏区域分组。 */
@@ -1284,6 +1545,18 @@
     var startButton = app.byId("decision-start");
     if (startButton && startButton.addEventListener) {
       startButton.addEventListener("click", decideStartDecision);
+    }
+    var providerSave = app.byId("llm-provider-save");
+    if (providerSave && providerSave.addEventListener) {
+      providerSave.addEventListener("click", saveLlmProviderFromForm);
+    }
+    var providerTest = app.byId("llm-provider-test");
+    if (providerTest && providerTest.addEventListener) {
+      providerTest.addEventListener("click", testLlmProviderFromForm);
+    }
+    var bindingSave = app.byId("llm-binding-save");
+    if (bindingSave && bindingSave.addEventListener) {
+      bindingSave.addEventListener("click", saveDecisionMakerProviderFromForm);
     }
     updateStartDecisionControl();
     renderRight(app.getState());
@@ -1313,6 +1586,10 @@
     DECISION_SUBPAGES: DECISION_SUBPAGES,
     decisionSubpageState: decisionSubpageState,
     decisionSubpageVisibility: decisionSubpageVisibility,
+    // ★ M11′：Provider 配置页的纯函数（表单 → 载荷 / 掩码视图 / 绑定载荷）。
+    providerFormToPayload: providerFormToPayload,
+    providerFields: providerFields,
+    providerBindingPayload: providerBindingPayload,
     affiliationKindLabel: affiliationKindLabel,
     affiliationLabel: affiliationLabel,
     pendingStatusText: pendingStatusText,

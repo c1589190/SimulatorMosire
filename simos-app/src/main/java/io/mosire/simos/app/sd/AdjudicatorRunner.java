@@ -64,10 +64,27 @@ public final class AdjudicatorRunner {
       RevisionId expectedRevision,
       List<AdjudicationBreakpoint> due,
       Map<AdjudicationBreakpoint, String> subjects) {
+    return run(branch, expectedRevision, due, subjects, Map.of());
+  }
+
+  /**
+   * 同 {@link #run(BranchId, RevisionId, List, Map)}，但**逐断点给脱敏简报**（取代说明，2026-09-22）：D 阶段这里写死 {@code
+   * "{}"}，真模型拿不到任何上下文（连 schema 要的 {@code stageId}/{@code selectedOutcomeId} 都没有）⇒ 只能弃权。
+   * 本重载把"简报从哪来"交回调用方（app 组合根按世界事实构造事实性简报）；缺省仍为 {@code "{}"}，不替调用方编造。
+   *
+   * @param briefs 各断点的脱敏简报 JSON；缺项 ⇒ {@code "{}"}（不编造）
+   */
+  public List<Judgement> run(
+      BranchId branch,
+      RevisionId expectedRevision,
+      List<AdjudicationBreakpoint> due,
+      Map<AdjudicationBreakpoint, String> subjects,
+      Map<AdjudicationBreakpoint, String> briefs) {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(expectedRevision, "expectedRevision");
     Objects.requireNonNull(due, "due");
     Objects.requireNonNull(subjects, "subjects");
+    Objects.requireNonNull(briefs, "briefs");
 
     long current = expectedRevision.value();
     List<Judgement> results = new ArrayList<>();
@@ -78,7 +95,10 @@ public final class AdjudicatorRunner {
       AdjudicationBreakpoint primary = group.get(0);
       AdjudicationRequest request =
           new AdjudicationRequest(
-              primary.value(), "{}", AdjudicationSchemas.schemaJson(primary), "[]");
+              primary.value(),
+              briefs.getOrDefault(primary, "{}"),
+              AdjudicationSchemas.schemaJson(primary),
+              "[]");
       Judgement judgement = adjudicator.adjudicate(request);
       results.add(judgement);
       if (judgement instanceof Judgement.Accepted accepted

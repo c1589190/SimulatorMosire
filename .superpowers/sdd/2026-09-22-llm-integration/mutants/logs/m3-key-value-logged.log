@@ -1,0 +1,61 @@
+02:36:08.151 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=FILE path=/tmp/junit-10457568175212589267/keys/filekey length=9
+02:36:08.226 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 写入 LLM 密钥配置项 name=k1 length=23
+02:36:08.227 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77
+02:36:08.252 INFO  io.mosire.simos.app.llm.AgentLibLlmConfig - 写入 LLM 密钥配置项 name=k1 length=11
+02:36:08.254 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=11 value=from-config
+02:36:08.258 INFO  io.mosire.simos.app.llm.SimosApiKeySource - 读取密钥引用 kind=ENV name=SIMO_LLM_KEY_DEEPSEEK_KEY length=8
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.396 s <<< FAILURE! -- in io.mosire.simos.app.llm.SimosApiKeySourceTest
+[ERROR] io.mosire.simos.app.llm.SimosApiKeySourceTest.resolvedKeyValueNeverLeaksIntoLogs -- Time elapsed: 0.052 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting all elements of:
+  ["INFO|写入 LLM 密钥配置项 name=k1 length=23",
+    "INFO|读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77"]
+to satisfy given requirements, but these elements did not:
+
+"INFO|读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77"
+error: java.lang.AssertionError: 
+Expecting actual:
+  "INFO|读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77"
+not to contain:
+  "sk-SENTINEL-LOG-LEAK-77"
+
+	at io.mosire.simos.app.llm.SimosApiKeySourceTest.lambda$resolvedKeyValueNeverLeaksIntoLogs$0(SimosApiKeySourceTest.java:142)
+	at io.mosire.simos.app.llm.SimosApiKeySourceTest.resolvedKeyValueNeverLeaksIntoLogs(SimosApiKeySourceTest.java:142)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+	at io.mosire.simos.app.llm.SimosApiKeySourceTest.resolvedKeyValueNeverLeaksIntoLogs(SimosApiKeySourceTest.java:142)
+
+[ERROR] Failures: 
+[ERROR]   SimosApiKeySourceTest.resolvedKeyValueNeverLeaksIntoLogs:142 
+Expecting all elements of:
+  ["INFO|写入 LLM 密钥配置项 name=k1 length=23",
+    "INFO|读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77"]
+to satisfy given requirements, but these elements did not:
+
+"INFO|读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77"
+error: java.lang.AssertionError: 
+Expecting actual:
+  "INFO|读取密钥引用 kind=CONFIG name=<不可显示的引用名> length=23 value=sk-SENTINEL-LOG-LEAK-77"
+not to contain:
+  "sk-SENTINEL-LOG-LEAK-77"
+
+	at io.mosire.simos.app.llm.SimosApiKeySourceTest.lambda$resolvedKeyValueNeverLeaksIntoLogs$0(SimosApiKeySourceTest.java:142)
+	at io.mosire.simos.app.llm.SimosApiKeySourceTest.resolvedKeyValueNeverLeaksIntoLogs(SimosApiKeySourceTest.java:142)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	...(80 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/llmint/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

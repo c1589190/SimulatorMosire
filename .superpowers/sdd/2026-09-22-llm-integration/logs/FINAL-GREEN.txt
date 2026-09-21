@@ -1,0 +1,16 @@
+# FINAL GREEN RUN（AgentLib LLM 对接 / llm-integrator）
+最终绿轮文件：`.superpowers/sdd/2026-09-22-llm-integration/logs/clean-verify-final.log`
+log_md5：a8f602a8bb42dcef08982895aba138c6（size 423006）
+attempt：第 4 次（1/2 次红在 SpotBugs，3 次为变异轮前的中间绿）
+cmd：./mvnw clean verify
+rc：0
+modules：SimulatorMosire/UtilSimos/MapSimos/SocialSimos/UnitSimos/CoreSimos/SDSimos/SimosApp 全 SUCCESS（8/8）
+tests：170/369/45/259/179/141/242 = 1405
+base(1b0b4d9，现场重算：logs/baseline-1b0b4d9.log)：170/369/45/259/179/138/216 = 1376
+delta：sd +3、app +26（其余逐模块逐值不变）；前端 188 → 201（+13）
+BugInstance size is 0：7；[ERROR] 行：0；frontend-gate：tests=201 pass=201 fail=0
+frozen source md5（== 变异装置每轮记录的 orig）：
+  LlmProviderResolver.java   = 5b381d0c523b781d2b9a3e937fed08a9
+  LlmDecisionAdjudicator.java= 81062fbff807c8d3cdcc8e3bdde9df70
+  AgentLibLlmConfig.java     = 8c1802486274d9a51babbabba26698e1
+  SimosApiKeySource.java     = 23e7ecac28e222d4db1a7348fd6f8b46

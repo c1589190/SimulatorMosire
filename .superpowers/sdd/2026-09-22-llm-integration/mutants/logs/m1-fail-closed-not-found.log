@@ -1,0 +1,39 @@
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.428 s <<< FAILURE! -- in io.mosire.simos.app.llm.LlmProviderResolverTest
+[ERROR] io.mosire.simos.app.llm.LlmProviderResolverTest.danglingProviderIdIsRejectedWithTheIdNamed -- Time elapsed: 0.012 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalStateException
+but was:
+  io.mosire.agentlib.config.ConfigException: E_LLM_ROUTE_UNKNOWN: LLM 路由不可用：点名了不存在的路由 "ghost" （可用：p1）——请检查配置根的 config.json 的 llm.route 与 llm.routes（本项绝不回退到别的路由）
+	at io.mosire.agentlib.llm.LlmRouteLoader.unknownRoute(LlmRouteLoader.java:290)
+	at io.mosire.agentlib.llm.LlmRouteLoader.flatOrDefault(LlmRouteLoader.java:260)
+	at io.mosire.agentlib.llm.LlmRouteLoader.load(LlmRouteLoader.java:164)
+	...(88 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+	at io.mosire.simos.app.llm.LlmProviderResolverTest.danglingProviderIdIsRejectedWithTheIdNamed(LlmProviderResolverTest.java:45)
+
+[ERROR] Failures: 
+[ERROR]   LlmProviderResolverTest.danglingProviderIdIsRejectedWithTheIdNamed:45 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalStateException
+but was:
+  io.mosire.agentlib.config.ConfigException: E_LLM_ROUTE_UNKNOWN: LLM 路由不可用：点名了不存在的路由 "ghost" （可用：p1）——请检查配置根的 config.json 的 llm.route 与 llm.routes（本项绝不回退到别的路由）
+	at io.mosire.agentlib.llm.LlmRouteLoader.unknownRoute(LlmRouteLoader.java:290)
+	at io.mosire.agentlib.llm.LlmRouteLoader.flatOrDefault(LlmRouteLoader.java:260)
+	at io.mosire.agentlib.llm.LlmRouteLoader.load(LlmRouteLoader.java:164)
+	...(88 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/llmint/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

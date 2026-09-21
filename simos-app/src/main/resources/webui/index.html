@@ -191,6 +191,7 @@
           <div class="decision-subpages" id="decision-subpages" role="radiogroup" aria-label="决策子页">
             <label><input type="radio" name="decision-subpage" value="view" checked> 决策人查看</label>
             <label><input type="radio" name="decision-subpage" value="approval"> 审批</label>
+            <label><input type="radio" name="decision-subpage" value="provider"> Provider 配置</label>
           </div>
 
           <div data-decision-subpage="view">
@@ -204,6 +205,43 @@
 
           <div data-decision-subpage="approval" hidden>
             <p id="decision-approval-status" class="status muted">待批列表见右栏；这里显示审批操作的结果。</p>
+          </div>
+
+          <!-- M11′ Provider 配置：写 AgentLib 的 ConfigStore（`llm.routes.*` / `keys.*`），不是世界写。
+               密钥值只经 apiKey 输入框 → `keys.<id>`；列表一律掩码。 -->
+          <div data-decision-subpage="provider" hidden>
+            <p id="llm-provider-status" class="status muted">读 AgentLib 配置根；坏条目也会列出（带错误码）。</p>
+            <div id="llm-provider-list" class="llm-provider-list"></div>
+            <fieldset class="llm-provider-form" id="llm-provider-form">
+              <legend>新增 / 覆盖 provider</legend>
+              <label class="lp-field">id
+                <input id="llm-provider-id" type="text" placeholder="deepseek（字母/数字/_-）">
+              </label>
+              <label class="lp-field">baseUrl
+                <input id="llm-provider-baseurl" type="text" placeholder="API 根，含 /v1（如 api.deepseek.com/v1）">
+              </label>
+              <label class="lp-field">model
+                <input id="llm-provider-model" type="text" placeholder="deepseek-flash">
+              </label>
+              <label class="lp-field">apiKey
+                <input id="llm-provider-apikey" type="password" placeholder="留空 = 不改密钥；写入 keys.&lt;id&gt;">
+              </label>
+              <label class="lp-field">readTimeoutMs
+                <input id="llm-provider-timeout" type="text" placeholder="120000">
+              </label>
+              <button type="button" id="llm-provider-save">保存</button>
+              <button type="button" id="llm-provider-test">测试连接</button>
+            </fieldset>
+            <fieldset class="llm-provider-form" id="llm-binding-form">
+              <legend>决策人绑定 provider</legend>
+              <label class="lp-field">决策人
+                <input id="llm-binding-maker" type="text" placeholder="dm1">
+              </label>
+              <label class="lp-field">providerId
+                <input id="llm-binding-provider" type="text" placeholder="deepseek">
+              </label>
+              <button type="button" id="llm-binding-save">绑定（落 revision）</button>
+            </fieldset>
           </div>
         </section>
 

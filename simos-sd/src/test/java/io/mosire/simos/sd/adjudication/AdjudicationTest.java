@@ -3,9 +3,12 @@ package io.mosire.simos.sd.adjudication;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.agentlib.llm.LlmException;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.util.address.Address;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /** D2 判据：三态结构 / 四分量非空 / 断点合并 / schema 约束 / **N13 降级（不逃逸、不卡死）**。 */
@@ -82,17 +85,59 @@ class AdjudicationTest {
   }
 
   @Test
-  void llmTimeoutDegradesToFailedWithoutEscaping() {
-    LlmClient timeout =
-        request -> {
-          throw new IllegalStateException("timeout");
-        };
-    DecisionAdjudicator adjudicator = new LlmDecisionAdjudicator(timeout);
+  void degradableLlmFailuresFoldToFailedWithoutEscaping() {
+    // ★ B3：degradable() 为真的失败（TRANSPORT/TIMEOUT/RATE_LIMIT/…）⇒ 本 tick 无判决，tick 继续。
+    for (LlmException.Kind kind :
+        List.of(
+            LlmException.Kind.TRANSPORT,
+            LlmException.Kind.TIMEOUT,
+            LlmException.Kind.RATE_LIMIT,
+            LlmException.Kind.PROVIDER_ERROR,
+            LlmException.Kind.AUTH,
+            LlmException.Kind.REQUEST_REJECTED,
+            LlmException.Kind.PROTOCOL,
+            LlmException.Kind.NO_TEXT)) {
+      assertThat(kind.degradable()).as("前提：" + kind + " 应是可降级类").isTrue();
+      DecisionAdjudicator adjudicator =
+          new LlmDecisionAdjudicator(
+              request -> {
+                throw new LlmException("upstream failed", kind);
+              });
+      Judgement judgement = adjudicator.adjudicate(requestFor("D1"));
+      assertThat(judgement).isInstanceOf(Judgement.Failed.class);
+      assertThat(((Judgement.Failed) judgement).reason()).contains(kind.name());
+    }
+  }
 
-    Judgement judgement = adjudicator.adjudicate(requestFor("D1"));
+  @Test
+  void nonDegradableLlmFailuresAreRethrownNotSwallowed() {
+    // ★ B3（m4 的杀点）：CONFIG / CANCELLED / INTERNAL **该炸**——配置错降级 = 把故障藏起来。
+    for (LlmException.Kind kind :
+        List.of(
+            LlmException.Kind.CONFIG, LlmException.Kind.CANCELLED, LlmException.Kind.INTERNAL)) {
+      assertThat(kind.degradable()).as("前提：" + kind + " 应是不可降级类").isFalse();
+      DecisionAdjudicator adjudicator =
+          new LlmDecisionAdjudicator(
+              request -> {
+                throw new LlmException("config broken", kind);
+              });
+      assertThatThrownBy(() -> adjudicator.adjudicate(requestFor("D1")))
+          .isInstanceOf(LlmException.class)
+          .hasMessageContaining("config broken");
+    }
+  }
 
-    assertThat(judgement).isInstanceOf(Judgement.Failed.class);
-    assertThat(((Judgement.Failed) judgement).reason()).contains("timeout");
+  @Test
+  void nonLlmRuntimeExceptionsAreRethrown() {
+    // ★ 非 AgentLib 判过类的失败（装配/编程错误）保守判"该炸"——不许悄悄降级。
+    DecisionAdjudicator adjudicator =
+        new LlmDecisionAdjudicator(
+            request -> {
+              throw new IllegalStateException("装配失败");
+            });
+    assertThatThrownBy(() -> adjudicator.adjudicate(requestFor("D1")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("装配失败");
   }
 
   @Test
@@ -135,6 +180,32 @@ class AdjudicationTest {
     assertThat(judgement).isInstanceOf(Judgement.Accepted.class);
     assertThat(((Judgement.Accepted) judgement).payloadJson()).isEqualTo(VALID_D1);
     assertThat(calls.get()).isEqualTo(1);
+  }
+
+  @Test
+  void promptCarriesTheOutputSchemaAndCommandWhitelistToTheModel() {
+    AtomicReference<LlmRequest> seen = new AtomicReference<>();
+    DecisionAdjudicator adjudicator =
+        new LlmDecisionAdjudicator(
+            request -> {
+              seen.set(request);
+              return VALID_D1;
+            });
+    AdjudicationRequest request =
+        new AdjudicationRequest(
+            "D1",
+            "{\"brief\":\"已脱敏\"}",
+            AdjudicationSchemas.schemaJson(Breakpoints.D1),
+            "[\"sd.SubmitVerdict\"]");
+
+    Judgement judgement = adjudicator.adjudicate(request);
+
+    assertThat(judgement).isInstanceOf(Judgement.Accepted.class);
+    assertThat(seen.get().userPrompt())
+        .as("输出 schema 必须随提示词交给模型（否则真模型无从知道字段）")
+        .contains(AdjudicationSchemas.schemaJson(Breakpoints.D1))
+        .contains("sd.SubmitVerdict")
+        .contains("已脱敏");
   }
 
   private static AdjudicationRequest requestFor(String breakpoint) {

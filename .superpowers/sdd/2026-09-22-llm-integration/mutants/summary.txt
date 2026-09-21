@@ -1,0 +1,9 @@
+m1-fail-closed-not-found verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=5b381d0c523b781d2b9a3e937fed08a9 mutant=c6284971f3dbc2e7e40bc02c2bf16a88 test=LlmProviderResolverTest
+m2-fail-closed-unbound verdict=KILLED rc=1 comp=0 red_hits=4 restore=OK orig=5b381d0c523b781d2b9a3e937fed08a9 mutant=02588dfea40328187067ce047bed8933 test=LlmProviderResolverTest
+m4-config-degrades verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=81062fbff807c8d3cdcc8e3bdde9df70 mutant=1922dbcd45b03ebf053d03f324891be2 test=AdjudicationTest
+m-schema-not-sent verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=81062fbff807c8d3cdcc8e3bdde9df70 mutant=77fcab2d861602c6bb3d14370cac7e68 test=AdjudicationTest
+m6-key-into-routes verdict=KILLED rc=1 comp=0 red_hits=5 restore=OK orig=8c1802486274d9a51babbabba26698e1 mutant=98bd0d65eddee1f1aa74068442617109 test=AgentLibLlmConfigTest
+m7-broken-hidden verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=8c1802486274d9a51babbabba26698e1 mutant=550b58bd33a0828c0421e692b60fafff test=AgentLibLlmConfigTest
+m-repo-seed-removed verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=8c1802486274d9a51babbabba26698e1 mutant=be05934a725894f53b045bf983b0ac1a test=AgentLibLlmConfigTest
+m-sampling-max-tokens verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=5b381d0c523b781d2b9a3e937fed08a9 mutant=ef9072c3ec4b414256f40c59a6565647 test=AdjudicationEndToEndTest
+m3-key-value-logged verdict=KILLED rc=1 comp=0 red_hits=3 restore=OK orig=23e7ecac28e222d4db1a7348fd6f8b46 mutant=4fc7c2f7bd15da25e9ec833dc4923b8f test=SimosApiKeySourceTest

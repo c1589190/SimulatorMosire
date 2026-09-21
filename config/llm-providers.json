@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "mosire-flash",
+      "name": "Mosire 自建（deepseek-flash）",
+      "protocol": "openai-compatible",
+      "baseUrl": "http://121.40.130.178:3000/v1",
+      "model": "deepseek-flash",
+      "apiKey": "sk-vLmH2nMxBPsru5UNbGixWP4TaeAm42hSq1Yq1zTUHdypXSpC",
+      "timeoutMs": 120000
+    }
+  ]
+}

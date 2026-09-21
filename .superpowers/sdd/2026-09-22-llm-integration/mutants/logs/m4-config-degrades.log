@@ -1,0 +1,25 @@
+[ERROR] Tests run: 13, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.177 s <<< FAILURE! -- in io.mosire.simos.sd.adjudication.AdjudicationTest
+[ERROR] io.mosire.simos.sd.adjudication.AdjudicationTest.nonDegradableLlmFailuresAreRethrownNotSwallowed -- Time elapsed: 0.005 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at io.mosire.simos.sd.adjudication.AdjudicationTest.nonDegradableLlmFailuresAreRethrownNotSwallowed(AdjudicationTest.java:124)
+
+[ERROR] Failures: 
+[ERROR]   AdjudicationTest.nonDegradableLlmFailuresAreRethrownNotSwallowed:124 
+Expecting code to raise a throwable.
+[ERROR] Tests run: 13, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/llmint/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
