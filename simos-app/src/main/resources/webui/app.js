@@ -22,6 +22,8 @@
     revision: null,
     selection: null,
     highlightRegions: [],
+    // ★ U3：高亮语义 —— "group"（tag 全选 / 多从属格，全部等亮）| "single"（单个区域，更亮 + 只压同 tag 兄弟）。
+    highlightKind: "group",
     // ★ M8 T10：区域编辑的**当前目标区域**（focus）。null = 未选；编辑中它正常色、其它区域淡色。
     //   与 highlightRegions 分开：那个是"区域查看"的临时高亮，这个是编辑会话的目标（可删除/改 hex）。
     regionFocus: null,
@@ -49,6 +51,7 @@
     //   变化清它自己的刷子/路线态（跨文件：各自只清自己持有的状态）。
     state.selection = null;
     state.highlightRegions = [];
+    state.highlightKind = "group";
     state.regionFocus = null;
     state.decisionMakerFocus = null;
     applyMode();
@@ -73,8 +76,15 @@
   }
 
   /** 当前要高亮的区域集合（M7 T4；区域分组列表归 T6）。map.js 订阅它并懒拉区域 hex。 */
-  function setHighlightRegions(ids) {
+  function setHighlightRegions(ids, kind) {
     state.highlightRegions = Array.isArray(ids) ? ids.slice() : [];
+    // ★ U3：第二参可选；缺省按"是否恰一个区域"推断（tag 全选恒显式传 group）。
+    var list = state.highlightRegions;
+    if (kind === "single" || kind === "group") {
+      state.highlightKind = kind;
+    } else {
+      state.highlightKind = list.length === 1 ? "single" : "group";
+    }
     notify();
   }
 

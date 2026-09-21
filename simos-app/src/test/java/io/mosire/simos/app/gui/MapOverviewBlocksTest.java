@@ -13,6 +13,9 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexVertex;
+import io.mosire.simos.map.region.Region;
+import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import java.util.ArrayList;
@@ -106,6 +109,35 @@ class MapOverviewBlocksTest {
     assertThat(firstId).as("块按 BlockId 全序发（不靠状态插入序）").isLessThan(secondId);
   }
 
+  @Test
+  void overviewEmitsRegionLabelAsCentroidAndStaysByteIdentical() throws Exception {
+    GameMap map = regionMap();
+    String firstJson = JSON.writeValueAsString(ApiViews.mapOverview("M", map));
+    String secondJson = JSON.writeValueAsString(ApiViews.mapOverview("M", map));
+    assertThat(firstJson).as("含区域名的 overview 两次调用逐字节相同").isEqualTo(secondJson);
+
+    JsonNode regions = JSON.readTree(firstJson).get("regions");
+    assertThat(regions).hasSize(2);
+    JsonNode r1 = regionById(regions, "r-1");
+    // r-1 = {(0,0),(2,0)} ⇒ 质心 (1,0)；名字原样发（U2 的绘制文本靠它）。
+    assertThat(r1.get("name").asText()).isEqualTo("第一区");
+    assertThat(r1.get("label").get("q").asInt()).isEqualTo(1);
+    assertThat(r1.get("label").get("r").asInt()).isEqualTo(0);
+    assertThat(r1.get("hexCount").asInt()).isEqualTo(2);
+    JsonNode r2 = regionById(regions, "r-2");
+    assertThat(r2.get("label").get("q").asInt()).isEqualTo(1);
+    assertThat(r2.get("label").get("r").asInt()).isEqualTo(1);
+  }
+
+  private static JsonNode regionById(JsonNode regions, String id) {
+    for (JsonNode region : regions) {
+      if (id.equals(region.get("id").asText())) {
+        return region;
+      }
+    }
+    throw new AssertionError("overview 里没有区域 " + id);
+  }
+
   private static void assertRingsClosedAndIntegerLabeled(JsonNode boundaries) {
     assertThat(boundaries.isArray()).isTrue();
     assertThat(boundaries).isNotEmpty();
@@ -172,6 +204,36 @@ class MapOverviewBlocksTest {
         hexes,
         TerrainBlocks.split(terrainByHex),
         Map.of(),
+        Map.of(),
+        terrainTypes,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
+  }
+
+  /** 两个区域的最小图：r-1 = {(0,0),(2,0)}（质心 (1,0)）、r-2 = {(1,1)}。 */
+  private static GameMap regionMap() {
+    TerrainType plains = TerrainCatalog.of("plains");
+    HexCoord a = new HexCoord(0, 0);
+    HexCoord b = new HexCoord(2, 0);
+    HexCoord c = new HexCoord(1, 1);
+    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    for (HexCoord hex : List.of(a, b, c)) {
+      hexes.put(hex, new HexCell(0.5));
+    }
+    Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
+    terrainTypes.put(plains.key(), plains);
+    Map<RegionId, Region> regions = new LinkedHashMap<>();
+    regions.put(
+        new RegionId("r-1"),
+        Region.of(new RegionId("r-1"), "第一区", Set.of(a, b), RegionMeta.empty()));
+    regions.put(
+        new RegionId("r-2"), Region.of(new RegionId("r-2"), "第二区", Set.of(c), RegionMeta.empty()));
+    return new GameMap(
+        hexes,
+        TerrainBlocks.uniform(hexes.keySet(), plains.key()),
+        regions,
         Map.of(),
         terrainTypes,
         Map.of(),

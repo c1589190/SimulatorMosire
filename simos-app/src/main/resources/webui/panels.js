@@ -520,7 +520,8 @@
       tagButton.appendChild(app.el("span", { class: "region-tag-count", text: String(ids.length) }));
       tagButton.addEventListener("click", function () {
         selectedRegion = null;
-        app.setHighlightRegions(ids.slice());
+        // ★ U3：点 tag ⇒ 该 tag 下所有区域**等亮度**（group）。
+        app.setHighlightRegions(ids.slice(), "group");
       });
       mount.appendChild(tagButton);
 
@@ -543,7 +544,8 @@
           if (app.getState().mode === "region-edit") {
             app.setRegionFocus(region.id);
           } else {
-            app.setHighlightRegions([region.id]);
+            // ★ U3：点单个区域 ⇒ 该区域更亮、同 tag 其他区域淡色（single）。
+            app.setHighlightRegions([region.id], "single");
           }
         });
         list.appendChild(item);

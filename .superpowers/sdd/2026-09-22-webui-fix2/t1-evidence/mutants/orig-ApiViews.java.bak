@@ -422,9 +422,9 @@ final class ApiViews {
   /**
    * 区域名的**锚点**（U2 设计 §二）：取区域 hex 集合的质心（{@code round(Σq/n), round(Σr/n)}）。
    *
-   * <p>★ 为什么在服务端算：overview 已是块级载荷，逐区域 hex 会让客户端再拉 N+1 次 + MB 级 payload（M9 教训）。 质心只是两个整数。{@code
-   * hexes} 为空 ⇒ {@code null}（不编造锚点）。{@code long} 累加避免溢出。 质心**可能落在区域外**（带洞 / 细长区域）——它只是标签锚点，与
-   * GSimulator 同口径。
+   * <p>★ 为什么在服务端算：overview 已是块级载荷，逐区域 hex 会让客户端再拉 N+1 次 + MB 级 payload（M9 教训）。
+   * 质心只是两个整数。{@code hexes} 为空 ⇒ {@code null}（不编造锚点）。{@code long} 累加避免溢出。
+   * 质心**可能落在区域外**（带洞 / 细长区域）——它只是标签锚点，与 GSimulator 同口径。
    */
   private static Map<String, Object> regionLabelHex(Region region) {
     Set<HexCoord> hexes = region.hexes();

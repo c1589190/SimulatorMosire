@@ -124,7 +124,12 @@ test("page-层-uses-the-shared-plan-for-both-modes", () => {
   // ★ 源代码级自证：两个模式的宿主入口**都**经过 `reloadRegionHighlight`（不许各写一份）。
   //   否则变异体能杀掉纯函数、却杀不掉页面行为 —— 断言就成了装饰（T11 的同型纪律）。
   const source = readWebui("map.js");
-  assert.ok(source.indexOf("reloadRegionHighlight(ids, REGION_VIEW_HIGHLIGHT)") >= 0, "区域查看要走共享路径");
+  // ★ U3 起：`reloadHighlights` 先按 `highlightKind` 选参数集（single / view），再走共享路径。
+  assert.ok(source.indexOf("reloadRegionHighlight(ids, opts)") >= 0, "区域查看要走共享路径");
+  assert.ok(
+    source.indexOf("? REGION_SINGLE_HIGHLIGHT") >= 0 && source.indexOf(": REGION_VIEW_HIGHLIGHT") >= 0,
+    "单区域 / tag 全选两档都从同一条路径出发（只有参数不同）"
+  );
   assert.ok(
     source.indexOf("reloadRegionHighlight(focus ? [focus] : [], REGION_EDIT_HIGHLIGHT)") >= 0,
     "区域编辑要走共享路径"
