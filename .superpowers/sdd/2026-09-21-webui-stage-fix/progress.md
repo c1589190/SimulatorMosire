@@ -129,3 +129,31 @@
   m1/m3/m4/m5 靶子 `SdQueryService`/`GuiServer` 字节未变 ⇒ 证据不作废。装置 `t5-evidence/mutants/java-round.sh`（九道门禁）。
 - **我未能核实的**：见 `t5-report.md` §八（跨 JVM 逐字节决定论未独立复现；真档未验；`?branch=&revision=` 未逐值实测；多值/URL 编码 id 未测）。
 - **证据**：`t5-evidence/`（logs/ + mutants/ + probe-*.out + t5-report.md）。
+
+## T6 redaction 洞收口 ✅（2026-09-21，分支 `wsf/t6`，基线 `c221736`）
+
+- **范围**：只做 T6。`simos-app`（`query/RedactingQueryService.java` + `gui/GuiServer.java`）+ 测试（扩 `RedactingQueryServiceTest` 3→9 + 新
+  `RedactionApiTest` 10）。**零其他模块改动、零 `Shell` 改动、零前端改动**。
+- **洞 1 修好**：`RedactingQueryService` 新增 `applyRedactedFields`（递归按名剔除）、`seesHex/seesRegion/seesUnit`（按地址取单实体的
+  fail-closed 谓词）、`verdicts(actor,target)`（`adjudicationDisclosure` 三档：`FULL` 全字段 / `PERCEPTION_ONLY` 去 `payload`+`meta` /
+  `WITHHELD` **空列表**）。`mapOverview`/`units` 出口也接 `redactedFields`。
+- **洞 2 修好**：`handleGet` 先解析 `as=`，再逐端点分派。**11 个读端点带 `as=` 走 redaction**（`state/resolve/facets/map.overview/
+  map.hex/map.region/{id}/timeline/units/unit/{id}/social.population` + **新增 `/api/sd/verdicts`**）。
+- **★ 新增 `/api/sd/verdicts` 的理由（诚实披露）**：`adjudicationDisclosure` 的语义是"判决对某角色可不可见"，但**既有任何读端点都不携带判决内容**
+  （`resolve` 只回候选 id/type；`facets` 只有 unitsHere/population）⇒ 不加读面就无法让该字段"真正生效"。复用既有 `sdState()`，**不新增 sd 数据**。
+- **★ 未覆盖端点清单（fail-closed，逐条）**：`/api/map/path`、`/api/sd/decision-makers`、`/api/sd/decision-makers/{id}` 带 `as=` ⇒ **400 拒绝**（不是静默全量）；
+  `/api/approvals` = AgentLib 透明代理（非 sim 状态读，`as=` 无语义）；写端点不在 redaction 范围。★ **计划 §T6 清单未列 `/api/map/region/{id}`，T6 补接**（否则"hex 关了、region 还开着"）。
+- **门禁**：`./mvnw clean verify` **rc=0、实现后第 1 次尝试**（`logs/clean-verify.attempt1.log`）；**8/8 `SUCCESS [`**；
+  **1324** = `170/368/45/259/178/124/180`（现场重算，只取模块汇总行，`logs/recomputed.txt`）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **114/114**。
+  **基线本树实测 1308**（`logs/baseline-verify.log`）⇒ **delta 干净**：只有 app **164→180 = +16**（`RedactingQueryServiceTest` +6、`RedactionApiTest` +10）。
+  **变异轮后复跑 rc=0**（`logs/clean-verify.after-mutants.log`，1324）。
+- **变异**：**7 轮 7 KILLED / 0 存活**——t6m1（`WITHHELD` 不隐藏）/ t6m2（`redactedFields` 不生效）/ t6m3（未接端点不再拒绝 `as=`）/
+  t6m4（`PERCEPTION_ONLY` 恒 FULL 字段集）/ t6m5（单格可见性失效）+ **裁定 42 重跑** t6r-t5m5（`GuiServer` 决策人路由，**重派生**：旧靶串已被 T6 重写）/
+  t6r-d4m1（`RedactingQueryService` hex 过滤，靶串逐字未变）。红点全落被保护断言；`orig_md5==restored_md5` 逐字节。
+- **裁定 42 范围**：T6 改了 `GuiServer`（← T5）与 `RedactingQueryService`（← SDSimos D4）⇒ 各重跑其变异轮；T5 的 t5m1~t5m4 靶文件
+  `SdQueryService`/`ApiViews` 字节未动 ⇒ 不重跑。
+- **我未能核实的**：见 `t6-report.md` §六（前端未验（后端改动）；`/api/sd/verdicts` 夹具直接种入 `Verdict`、未经真 adjudicator；
+  `redactedFields` 是"按名"不是"按路径"；`resolve`/`facets` 只做字段级、**未做实体级可见性**；`/api/approvals` 的 `as=` 透传未验；跨 JVM 字节稳定未复现；真档未验）。
+- **带裁定的遗留**：`t6-report.md` §七（L1 范围声明：`resolve`/`facets` 不做实体级可见性 = 无 spec 依据；L2 未接端点若要支持 `as=` 须先补设计；
+  L3 `/api/approvals` 透传；L4 `PERCEPTION_ONLY` 字段粒度是**实现期裁定**）。
+- **证据**：`t6-evidence/`（logs/ + mutants/（含 orig/ 与七轮日志）+ t6-report.md）。

@@ -1,0 +1,34 @@
+# T6 门禁现场重算（只取模块汇总行）
+# 源日志：clean-verify.attempt1.log（实现后第 1 次尝试，rc=0）
+log_md5=7f18fde4e5136954e1bcc20ee47c1158
+
+## 模块汇总行
+[INFO] Tests run: 170, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 368, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 259, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 178, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 124, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 180, Failures: 0, Errors: 0, Skipped: 0
+
+## 逐模块（按 reactor 序：util/map/social/unit/core/sd/app）
+170
+368
+45
+259
+178
+124
+180
+## 总数
+1324
+
+## 基线（T5 关账终态，本树改动前实测）
+1308 = 170/368/45/259/178/124/164（源：baseline-verify.log, md5=751afa9cb9877cda41cde84018f493f3）
+## delta
+app 164 -> 180 = +16（RedactingQueryServiceTest 3->9 = +6；RedactionApiTest 0->10 = +10）
+其余模块逐字不变
+
+## after-mutants 复跑（最终字节）
+rc=rc=0
+1324
+ERROR=0 BugInstance=7 frontend=tests=114 pass=114 fail=0
