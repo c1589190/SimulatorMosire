@@ -1,0 +1,24 @@
+===== T3 JS 变异轮 sm_subtool_default =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=sm_subtool_default replacements=1
+mutant_md5=562401a3905c323c15593f33edab7f8b
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 13 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  not ok 15 - write-gate-resolves-tool-then-subtool
+  not ok 16 - panel-visibility-is-mutually-exclusive
+  not ok 36 - registered-edge-kinds-default-then-follow-the-server
+failing_count=4
+
+===== 装置补记（sm_subtool_default）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=562401a3905c323c15593f33edab7f8b
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=4
+===== end sm_subtool_default self_md5=562401a3905c323c15593f33edab7f8b =====

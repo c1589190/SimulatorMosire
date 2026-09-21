@@ -1,0 +1,23 @@
+===== T3 JS 变异轮 sm_no_canon =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=sm_no_canon replacements=1
+mutant_md5=7de390304fecaf361ea0e2c7b8634d6d
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 21 - edgeKeyOf-is-canonical-by-q-then-r
+  not ok 24 - edgeChainEdges-dedupes-a-repeated-pair
+  not ok 26 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+failing_count=3
+
+===== 装置补记（sm_no_canon）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=7de390304fecaf361ea0e2c7b8634d6d
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=3
+===== end sm_no_canon self_md5=7de390304fecaf361ea0e2c7b8634d6d =====

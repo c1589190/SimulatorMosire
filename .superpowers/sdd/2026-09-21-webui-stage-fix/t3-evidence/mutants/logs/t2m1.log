@@ -1,0 +1,21 @@
+===== T3 JS 变异轮 t2m1 =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=t2m1 replacements=1
+mutant_md5=67e23ad3029c5b5c63ddd4e0c3998808
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 16 - panel-visibility-is-mutually-exclusive
+failing_count=1
+
+===== 装置补记（t2m1）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=67e23ad3029c5b5c63ddd4e0c3998808
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=1
+===== end t2m1 self_md5=67e23ad3029c5b5c63ddd4e0c3998808 =====

@@ -11,6 +11,7 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
+import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.BranchId;
@@ -144,7 +145,7 @@ class SetEdgeHandlerTest {
         Map.of(),
         Map.of(),
         Map.of(),
-        Map.of(),
+        PathwayGroup.defaults(),
         edges,
         GenerationSpec.defaults(0L));
   }

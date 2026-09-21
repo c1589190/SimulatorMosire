@@ -52,6 +52,23 @@ public record PathwayGroup(
   }
 
   /**
+   * ★ **默认两组**（spec §三.6 的 WebUI 阶段修复，T3）：{@code river} / {@code road}，色值与语义照 GSimulator 的默认组 （老仓
+   * {@code MapData.java:419-480} 的 {@code #3295D2} / {@code #8B7355}）。
+   *
+   * <p>★ **词表不再是代码里的硬编码常量**：{@code EdgeOperations} 的 {@code kind} 校验从状态的 {@code
+   * pathwayGroups().keySet()} 派生 ⇒ 默认两组**必须由 genesis / 导入器显式供给**才生效。本方法就是供给点 （{@code
+   * DemoWorld}、各测试夹具与将来的导入器共用一份），加一种通路**只需注册一条命令、不再改代码**。
+   *
+   * <p>★ 键序 = 声明序（{@code river} 先），返回**保序不可变**表：它是落盘序与 UI 候选序的共同来源。
+   */
+  public static Map<String, PathwayGroup> defaults() {
+    Map<String, PathwayGroup> groups = new LinkedHashMap<>();
+    groups.put("river", new PathwayGroup("river", "河流", "#3295D2", "天然水系", true, Map.of()));
+    groups.put("road", new PathwayGroup("road", "道路", "#8B7355", "陆路通道", true, Map.of()));
+    return Collections.unmodifiableMap(groups);
+  }
+
+  /**
    * 组属性的一条定义。**嵌套 record** —— Task 7 的反射枚举要能穿透它，不许为省事把 {@code properties} 删掉。
    *
    * <p>★ {@code type} 是判别值类型的那个字段（老仓注释：{@code "int"}/{@code "float"}/{@code "bool"}/{@code

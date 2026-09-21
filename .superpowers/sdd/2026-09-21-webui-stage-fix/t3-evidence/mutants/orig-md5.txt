@@ -1,0 +1,5 @@
+210f6efd2a73bb5f6b96e4ae99ee1e6f  .superpowers/sdd/2026-09-21-webui-stage-fix/t3-evidence/mutants/orig/EdgeOperations.java
+2e57fa9d82a9a2eacba9c025bc443152  .superpowers/sdd/2026-09-21-webui-stage-fix/t3-evidence/mutants/orig/MapChangeSet.java
+345dc7c353a236efca94db3a588cadd7  .superpowers/sdd/2026-09-21-webui-stage-fix/t3-evidence/mutants/orig/PathwayGroupOperations.java
+8fd124786aaab08ca3310c33c0e84e9e  .superpowers/sdd/2026-09-21-webui-stage-fix/t3-evidence/mutants/orig/gate-contract.test.cjs
+06ac0d533835b515f815a635e76b0f9c  .superpowers/sdd/2026-09-21-webui-stage-fix/t3-evidence/mutants/orig/map.js

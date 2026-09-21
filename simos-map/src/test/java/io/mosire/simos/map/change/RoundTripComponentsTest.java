@@ -99,6 +99,27 @@ class RoundTripComponentsTest {
     }
   }
 
+  /**
+   * ★★ **C4：连通性往返**（非空 {@code edges} 逐值）。与上面的反射循环**不重复**：反射那条只证"该组件进了变更集"，本条把 {@code edges}
+   * 的往返写成显式字面量，作为 `MapChangeSet.apply` 漏重建 edges（旧仓 GSimulator 的 {@code MapDiff} 不携带 edges ⇒
+   * 非根节点连通性写入静默丢失）那个缺陷的**定向杀点**。
+   */
+  @Test
+  void connectivityRoundTripsWithNonEmptyEdges() {
+    GameMap base = GameMap.empty();
+    Map<EdgeRef, EdgeTags> edges =
+        Map.of(EDGE_AB, new EdgeTags(Map.of("river", Map.of("width", 2), "road", Map.of())));
+    GameMap target = base.withEdges(edges);
+
+    MapChangeSet cs = MapChangeSet.between(base, target);
+
+    assertThat(cs.edges()).isNotInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(MapChangeSet.apply(cs, base))
+        .as("apply(between(base,target), base) 必须逐字段重建出 target（含非空 edges）")
+        .isEqualTo(target);
+    assertThat(MapChangeSet.apply(cs, base).edges()).isEqualTo(edges);
+  }
+
   /** ★ 钉死豁免集本身 —— 否则"加字段忘了改"的补救方式会变成"往豁免集里塞一项"，护栏就出现了一个正好等于新字段大小的洞。 */
   @Test
   void theExclusionListIsExactlySpec() {

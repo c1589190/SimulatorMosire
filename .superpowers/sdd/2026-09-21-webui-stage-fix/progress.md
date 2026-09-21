@@ -66,3 +66,16 @@
 - **我未能核实的**：见 `t2-evidence/t2-report.md` §七（浏览器内点击/拖动未实测——C1/C2 只证到纯函数+静态+served
   三层；CSS 无像素证明；线内工具回退到默认属执行期形态决定；基线未在本树改动前单独重跑）。
 - **证据**：`t2-evidence/`（logs/ + mutants/ + t2-report.md）。
+
+## T3 连通性手势 + 词表默认可自定义 + 往返守卫覆盖连通性 ✅（2026-09-21，分支 `wsf/t3`，基线 `12fb1f0`）
+
+- **范围**：只做 T3。`simos-map`（`EdgeOperations`/`PathwayGroup`/`PathwayGroupOperations`(新)/`MapPayloads`/`RegisterPathwayGroupHandler`(新)）+ `simos-app`（`Shell`/`CatalogTool`/`DemoWorld`/`ApiViews`overview）+ `webui/map.js`/`index.html` + 各层测试 + 两处 JS 下界。
+- **A 手势**：`edgeChainResult`（waypoint 状态机：同格⇒结束、非相邻跳过端点不动）、`edgeHitAtWorldPoint`（12px 阈值）、`edgeDeletePlan`（左键删边）、`drawEdges`（看见边）、缺格/非相邻可见提示；双向由 `edgeKeyOf` 规范序。
+- **B 词表**：删 `EdgeOperations.KINDS` 硬编码 ⇒ `resolveKind` 从 `base.pathwayGroups().keySet()` 派生（大小写不敏感、未注册 fail-closed）；`PathwayGroup.defaults()` 供给 river/road；新命令 `map.RegisterPathwayGroup`（`PathwayGroupOperations.register`，重复 id 拒）。
+- **C 往返**：`RoundTripComponentsTest.connectivityRoundTripsWithNonEmptyEdges`（非空 edges 逐值）。
+- **连带读路径**：`/api/map/overview` 新增 `pathwayGroups` + `edges`（前端 kind 候选与删边的唯一来源，只读增量）。
+- **门禁**：`./mvnw clean verify` **第 1 次尝试 rc=0**（`logs/clean-verify.log`），**变异轮后复跑 rc=0**（`logs/clean-verify-after-mutants.log`）；**8/8 `SUCCESS [`**；**1288** = `170/368/45/259/178/124/144`（现场重算）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **114/114**（108→114，+6）。**delta**（T2 1281）：Map +6、Core +1，其余不变。
+- **变异**：**15 轮 15 KILLED / 0 存活**（JS 10 + Java 5），红点全落被保护断言；详见 `t3-report.md` §四。★ 两处装置自证：`jm_apply` 首轮 VOID（未用 import ⇒ Checkstyle 拦）；`java-round.sh` 判定改看红点（`failure.ignore` 下 rc 恒 0）。
+- **裁定 42**：改 `map.js`/`gate-contract` ⇒ 重跑 T2 的 t2m1/t2m2/t2m3/t2m5（KILLED）；T2 m4 目标串已消失 ⇒ 重派生 `sm_subtool_default`；改 `EdgeOperations` ⇒ 重放 M8 T5 m2 为 `jm_merge_replace`；改 `MapChangeSet`/`PathwayGroupOperations` ⇒ `jm_apply`/`jm_dupe`。
+- **我未能核实的**：见 `t3-report.md` §五（浏览器 e2e / served-asset 未核；`replace` 删边 lossy 且删不掉最后一条；DTO 动态 radio 的 DOM 分支未覆盖；真档未验；D14 未裁故后端相邻校验未加）。
+- **证据**：`t3-evidence/`（logs/ + mutants/ + t3-report.md）。

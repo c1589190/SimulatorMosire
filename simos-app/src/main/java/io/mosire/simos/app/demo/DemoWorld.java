@@ -6,6 +6,7 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -105,7 +106,7 @@ public final class DemoWorld {
         Map.of(),
         terrainTypes,
         Map.of(),
-        Map.of(),
+        PathwayGroup.defaults(),
         Map.of(),
         GenerationSpec.defaults(0L));
   }

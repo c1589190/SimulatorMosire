@@ -1,0 +1,22 @@
+===== T3 JS 变异轮 sm_chain_end =====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+clean_world_md5=06ac0d533835b515f815a635e76b0f9c
+mutant=sm_chain_end replacements=1
+mutant_md5=55e2e81b78317bbefc570dd2af624cd1
+gate_rc=1
+gate_tests=114
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 26 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  not ok 27 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+failing_count=2
+
+===== 装置补记（sm_chain_end）=====
+target=map.js
+orig_md5=06ac0d533835b515f815a635e76b0f9c
+mutant_md5=55e2e81b78317bbefc570dd2af624cd1
+restored_md5=06ac0d533835b515f815a635e76b0f9c
+gate_rc=1 gate_tests=114 failing=2
+===== end sm_chain_end self_md5=55e2e81b78317bbefc570dd2af624cd1 =====

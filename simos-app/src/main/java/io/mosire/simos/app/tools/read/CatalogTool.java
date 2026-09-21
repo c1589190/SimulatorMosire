@@ -59,6 +59,8 @@ public final class CatalogTool implements AgentTool {
           Map.entry("map.UpdateRegion", "regionId, hexes?, meta?"),
           Map.entry("map.DeleteRegion", "regionId"),
           Map.entry("map.SetEdge", "kind, edges[字符串...], mode"),
+          Map.entry(
+              "map.RegisterPathwayGroup", "id, name, color, description?, visible?, properties?"),
           Map.entry("map.RandomizeRegion", "hexes[{q,r}...], seed"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),

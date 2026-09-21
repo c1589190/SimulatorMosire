@@ -142,6 +142,7 @@ class SimosToolsTest {
           "map.UpdateRegion",
           "map.DeleteRegion",
           "map.SetEdge",
+          "map.RegisterPathwayGroup",
           "map.RandomizeRegion",
           "sd.CreateNation",
           "sd.CreateArmy",
@@ -211,7 +212,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 40 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 41 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
    * Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -222,8 +223,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 40 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(40);
+        .as("扫描必须恰为 41 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(41);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
