@@ -271,7 +271,7 @@ class McpCoverageTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -283,7 +283,8 @@ class McpCoverageTest {
                 base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
-                base.bindAddress()));
+                base.bindAddress(),
+                base.decisionAgentMcpPort()));
     client = newClient();
   }
 

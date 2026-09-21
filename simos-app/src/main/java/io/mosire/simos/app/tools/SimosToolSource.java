@@ -43,14 +43,23 @@ public final class SimosToolSource implements ToolSource {
   /** 供给源标识（同一运行时内唯一；审计与按源卸载依赖它）。 */
   public static final String ID = "simos";
 
-  /** 工具面按角色分载（spec §八.3，N9/N11）：外部 MCP / GM / 决策 Agent。 */
+  /** 工具面按角色分载（spec §八.3，N9/N11；T4 起现有运行时口 = {@link #EXTERNAL_WITH_GM}）。 */
   public enum Role {
     /** 外部 MCP 客户端：保留现状（有通用写），spec §八.3 列为挂起。 */
     EXTERNAL,
     /** GM：配权 + 窄工具，**无通用写**（N11）。 */
     GM,
     /** 决策 Agent：仅窄工具（`sd.IssueDirective` / `sd.SubmitVerdict`），**无通用写**（N9）。 */
-    DECISION_AGENT
+    DECISION_AGENT,
+    /**
+     * 现有 MCP 口（T4，**D2="加"**，spec §二.5）：**EXTERNAL ∪ GM** —— 9 读共享 + 通用写（submit/advance/fork）+ GM
+     * 窄写（IssueDirective/SubmitVerdict/**含** SetViewScope）。
+     *
+     * <p>★ **与 SDSimos 裁定 N9 的冲突在此端口显式记账**：N9 的原意是「专用窄工具，不给决策 Agent 通用 `simos.command.submit`」；本口
+     * 保留通用写是**用户裁定 D2 的取舍、不是缺陷**（其持有者可绕过窄工具直接提交任意命令）。N9 在**决策人口**（{@link #DECISION_AGENT} 桶）与
+     * `DecisionMaker.allowedTools` 白名单上**照旧有效**。
+     */
+    EXTERNAL_WITH_GM
   }
 
   private final List<AgentTool> tools;
@@ -73,7 +82,7 @@ public final class SimosToolSource implements ToolSource {
     this(core, query, initiator, mapId, commandTypes, Role.EXTERNAL);
   }
 
-  /** 按角色装配工具面：三个桶的文件面不相交（读工具共享，写面各自不同）。 */
+  /** 按角色装配工具面：读工具四桶共享；写面各自不同（{@link Role#EXTERNAL_WITH_GM} 是外部写 ∪ GM 窄写的复合面）。 */
   public SimosToolSource(
       CoreSimos core,
       QueryService query,
@@ -89,22 +98,38 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(role, "role");
     List<AgentTool> built = new ArrayList<>(readTools(core, query, mapId, commandTypes));
     switch (role) {
-      case EXTERNAL -> {
-        built.add(new CommandSubmitTool(core, initiator, mapId));
-        built.add(new AdvanceTool(core, initiator, mapId));
-        built.add(new ForkTool(core, initiator));
-      }
-      case GM -> {
-        built.add(new IssueDirectiveTool(core, initiator, mapId));
-        built.add(new SubmitVerdictTool(core, initiator, mapId));
-        built.add(new SetViewScopeTool(core, initiator, mapId));
-      }
-      case DECISION_AGENT -> {
-        built.add(new IssueDirectiveTool(core, initiator, mapId));
-        built.add(new SubmitVerdictTool(core, initiator, mapId));
+      case EXTERNAL -> addExternalWrites(built, core, initiator, mapId);
+      case GM -> addGmWrites(built, core, initiator, mapId);
+      case DECISION_AGENT -> addDecisionAgentWrites(built, core, initiator, mapId);
+      case EXTERNAL_WITH_GM -> {
+        addExternalWrites(built, core, initiator, mapId);
+        addGmWrites(built, core, initiator, mapId);
       }
     }
     this.tools = List.copyOf(built);
+  }
+
+  /** EXTERNAL 桶的通用写（spec §八.3）：submit / advance / fork。 */
+  private static void addExternalWrites(
+      List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+    built.add(new CommandSubmitTool(core, initiator, mapId));
+    built.add(new AdvanceTool(core, initiator, mapId));
+    built.add(new ForkTool(core, initiator));
+  }
+
+  /** GM 窄写（N11）：两条决策窄工具 + 配权工具（**含** `sd.SetViewScope`）。 */
+  private static void addGmWrites(
+      List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+    built.add(new IssueDirectiveTool(core, initiator, mapId));
+    built.add(new SubmitVerdictTool(core, initiator, mapId));
+    built.add(new SetViewScopeTool(core, initiator, mapId));
+  }
+
+  /** 决策 Agent 窄写（N9）：**无** `sd.SetViewScope`、**无**通用写。 */
+  private static void addDecisionAgentWrites(
+      List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+    built.add(new IssueDirectiveTool(core, initiator, mapId));
+    built.add(new SubmitVerdictTool(core, initiator, mapId));
   }
 
   private static List<AgentTool> readTools(

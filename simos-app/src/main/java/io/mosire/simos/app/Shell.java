@@ -122,8 +122,10 @@ import org.slf4j.LoggerFactory;
  * CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 四 {@code Resolver} （map/social/unit/sd）+ 两
  * {@code FacetProvider}（unitsHere/population）→ {@link QueryService}（查询层，T3）；审批链（T6，S5：{@code
  * PendingApprovals → HttpApprovalChannel → ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior
- * 判定）→ {@link SimosToolSource}（12 工具 = 3 写 + 9 读）经 {@code McpSourceBridge.bind} 同步进 {@link
- * ToolRegistry}（T5）→ {@link AgentToMcpServer#startHttp} （第 6 步，T7）→ GUI（第 7 步，T8）。
+ * 判定）→ {@link SimosToolSource}（T4：现有口 {@code EXTERNAL_WITH_GM} 15 工具 = 3 通用写 + 3 GM 窄写 + 9 读；决策人口
+ * {@code DECISION_AGENT} 11 工具 = 2 窄写 + 9 读）经 {@code McpSourceBridge.bind} 同步进各自 {@link
+ * ToolRegistry}（T5）→ {@link AgentToMcpServer#startHttp} **两次**（现有口 + 决策人口，第 6 步，T7/T4）→ GUI（第 7
+ * 步，T8）。
  *
  * <p>★ **本类不持有任何存储写路径**：{@code SqliteStore} / {@code Timeline.appendRevision} / {@code
  * CheckpointStore} 一个都不在 app 源码里（铁律 2 的结构化，R1 的扫描对象）。唯一的写入口是 {@link
@@ -135,6 +137,9 @@ public final class Shell implements AutoCloseable {
 
   /** MCP server 自报名称（spec §7.2）。 */
   private static final String MCP_SERVER_NAME = "simos-shell";
+
+  /** 决策人 MCP server 的自报名称（T4，spec §六.4 建议两口用不同名以便区分）。 */
+  private static final String DECISION_MCP_SERVER_NAME = "simos-shell-decision";
 
   /** MCP server 自报版本（spec §7.2 的 {@code "0.1.0-SNAPSHOT"}）。 */
   private static final String MCP_SERVER_VERSION = "0.1.0-SNAPSHOT";
@@ -148,14 +153,29 @@ public final class Shell implements AutoCloseable {
   /** 查询层（T3）：GUI 与工具集唯一的只读入口（spec §5.1）。 */
   private final QueryService queryService;
 
-  /** 工具注册表（T5）：{@link SimosToolSource} 的 12 条工具经桥同步进此表；T7 交给 {@code AgentToMcpServer}。 */
+  /**
+   * 工具注册表（T5/T4）：现有口 {@link SimosToolSource.Role#EXTERNAL_WITH_GM} 的 15 条工具经桥同步进此表；T7 交给 {@code
+   * AgentToMcpServer}。
+   */
   private final ToolRegistry toolRegistry;
 
   /** 工具源 ↔ 注册表的同步桥（T5）：{@link #close()} 时整组下架本桥带入的工具。 */
   private final McpSourceBridge toolBridge;
 
+  /**
+   * 决策人口工具注册表（T4）：{@link SimosToolSource.Role#DECISION_AGENT} 的 11 条工具经桥同步；与 {@link #toolRegistry}
+   * 相互独立。
+   */
+  private final ToolRegistry decisionToolRegistry;
+
+  /** 决策人口的工具源 ↔ 注册表同步桥（T4）：{@link #close()} 时整组下架。 */
+  private final McpSourceBridge decisionToolBridge;
+
   /** MCP 服务（T7，spec §7.2）：5715 的流式 HTTP 面；关闭次序里排第二（spec §3.3）。 */
   private final AgentToMcpServer mcpServer;
+
+  /** 决策人 MCP 服务（T4，spec §二.2）：5717 的流式 HTTP 面；关闭次序里紧随 {@link #mcpServer}（spec §3.3）。 */
+  private final AgentToMcpServer decisionMcpServer;
 
   /** GUI 服务器（T8）：5711 的静态页 + {@code /api}；关闭次序里排第一（spec §3.3）。 */
   private final GuiServer guiServer;
@@ -197,7 +217,10 @@ public final class Shell implements AutoCloseable {
       QueryService queryService,
       ToolRegistry toolRegistry,
       McpSourceBridge toolBridge,
+      ToolRegistry decisionToolRegistry,
+      McpSourceBridge decisionToolBridge,
       AgentToMcpServer mcpServer,
+      AgentToMcpServer decisionMcpServer,
       GuiServer guiServer,
       PendingApprovals pendingApprovals,
       HttpApprovalChannel approvalChannel,
@@ -213,7 +236,10 @@ public final class Shell implements AutoCloseable {
     this.queryService = queryService;
     this.toolRegistry = toolRegistry;
     this.toolBridge = toolBridge;
+    this.decisionToolRegistry = decisionToolRegistry;
+    this.decisionToolBridge = decisionToolBridge;
     this.mcpServer = mcpServer;
+    this.decisionMcpServer = decisionMcpServer;
     this.guiServer = guiServer;
     this.pendingApprovals = pendingApprovals;
     this.approvalChannel = approvalChannel;
@@ -372,15 +398,37 @@ public final class Shell implements AutoCloseable {
         ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
     approvalChannel.markUp();
 
-    // 工具集（T5）：12 条工具（3 写 + 9 读）经桥同步进注册表；T7 把注册表交给 MCP 服务。
+    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 9 读 + 3 通用写 + 3 GM 窄写。
+    // ★ 与 SDSimos 裁定 N9 的冲突在此端口显式记账：保留通用写是**用户裁定 D2 的取舍、不是缺陷**；
+    //   N9 在决策人口（下面的 DECISION_AGENT 桶）与 DecisionMaker.allowedTools 白名单上照旧有效。
     SimosToolSource toolSource =
         new SimosToolSource(
-            coreSimos, queryService, config.mcpInitiator(), config.mapId(), commandTypes);
+            coreSimos,
+            queryService,
+            config.mcpInitiator(),
+            config.mapId(),
+            commandTypes,
+            SimosToolSource.Role.EXTERNAL_WITH_GM);
     ToolRegistry toolRegistry = new ToolRegistry();
     McpSourceBridge toolBridge = McpSourceBridge.bind(toolSource, toolRegistry);
 
-    // MCP 服务（T7，spec §3.2 第 6 步）：注册表交给 AgentLib 的流式 HTTP 面；authorizer 是带审批的那个。
+    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（9 读 + 2 窄写），**无**通用写、**无** sd.SetViewScope。
+    SimosToolSource decisionToolSource =
+        new SimosToolSource(
+            coreSimos,
+            queryService,
+            config.mcpInitiator(),
+            config.mapId(),
+            commandTypes,
+            SimosToolSource.Role.DECISION_AGENT);
+    ToolRegistry decisionToolRegistry = new ToolRegistry();
+    McpSourceBridge decisionToolBridge =
+        McpSourceBridge.bind(decisionToolSource, decisionToolRegistry);
+
+    // MCP 服务（T7/T4，spec §3.2 第 6 步）：两个注册表各交给一个 AgentLib 流式 HTTP 面；authorizer 是带审批的那个。
+    // ★ 两口都绑 config.bindAddress()、都用 mcpCaller()——全仓无多用户认证 ⇒ 权限边界在**端口**、不在身份（spec §二.3）。
     AgentToMcpServer mcpServer = null;
+    AgentToMcpServer decisionMcpServer = null;
     boolean mcpUp = false;
     try {
       mcpServer =
@@ -393,14 +441,36 @@ public final class Shell implements AutoCloseable {
               MCP_SERVER_VERSION,
               mcpCaller(),
               toolAuthorizer);
+      decisionMcpServer =
+          AgentToMcpServer.startHttp(
+              config.bindAddress(),
+              config.decisionAgentMcpPort(),
+              config.mcpPath(),
+              decisionToolRegistry,
+              DECISION_MCP_SERVER_NAME,
+              MCP_SERVER_VERSION,
+              mcpCaller(),
+              toolAuthorizer);
       mcpUp = true;
     } finally {
       if (!mcpUp) {
-        // MCP 绑定失败：已起的审批端点/通道不能留着占端口（GUI 尚未起，spec §3.3 里它排第一）。
+        // 任一口绑定失败：已起的服务、桥与审批端点/通道都不能留着占端口（GUI 尚未起，spec §3.3 里它排第一）。
+        if (decisionMcpServer != null) {
+          decisionMcpServer.close();
+        }
+        if (mcpServer != null) {
+          mcpServer.close();
+        }
+        decisionToolBridge.close();
+        toolBridge.close();
         approvalEndpoint.close();
         approvalChannel.close();
       }
     }
+
+    // 走到这里两个口都已监听（任一绑定失败在上面的 finally 里已收尾并抛出）；显式断言以钉死该后置条件。
+    Objects.requireNonNull(mcpServer, "mcpServer");
+    Objects.requireNonNull(decisionMcpServer, "decisionMcpServer");
 
     // GUI（T8，spec §3.2 第 7 步）：审批面 base URL 指向刚绑定的端点，5711 的 /api/approvals 是它的透传代理。
     GuiServer guiServer =
@@ -415,8 +485,11 @@ public final class Shell implements AutoCloseable {
       guiUp = true;
     } finally {
       if (!guiUp) {
-        // GUI 绑定失败：MCP 与审批端点/通道不能留着占端口（spec §3.3 里 GUI 排第一，此处它还没起来）。
+        // GUI 绑定失败：两个 MCP 与审批端点/通道、工具桥不能留着占端口（spec §3.3 里 GUI 排第一，此处它还没起来）。
+        decisionMcpServer.close();
         mcpServer.close();
+        decisionToolBridge.close();
+        toolBridge.close();
         approvalEndpoint.close();
         approvalChannel.close();
       }
@@ -424,8 +497,8 @@ public final class Shell implements AutoCloseable {
 
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant={}"
-            + " resolver={} facet={} tool={} mapId={} bindAddress={} mcpPort={} guiPort={}"
-            + " approvalPort={}",
+            + " resolver={} facet={} tool={} decisionTool={} mapId={} bindAddress={} mcpPort={}"
+            + " decisionAgentMcpPort={} guiPort={} approvalPort={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
@@ -434,9 +507,11 @@ public final class Shell implements AutoCloseable {
         resolverRegistry.namespaces().size(),
         facetRegistry.facetNames().size(),
         toolRegistry.size(),
+        decisionToolRegistry.size(),
         config.mapId(),
         config.bindAddress(),
         mcpServer.boundPort(),
+        decisionMcpServer.boundPort(),
         guiServer.boundPort(),
         approvalEndpoint.boundPort());
     return new Shell(
@@ -445,7 +520,10 @@ public final class Shell implements AutoCloseable {
         queryService,
         toolRegistry,
         toolBridge,
+        decisionToolRegistry,
+        decisionToolBridge,
         mcpServer,
+        decisionMcpServer,
         guiServer,
         pendingApprovals,
         approvalChannel,
@@ -482,7 +560,9 @@ public final class Shell implements AutoCloseable {
     return decisionChannels;
   }
 
-  /** 按角色重建工具面（D6，N9/N11）：GM / 决策 Agent 桶**无**通用写；运行中的 MCP 服务仍用外部桶（v1 保留现状）。 */
+  /**
+   * 按角色重建工具面（D6，N9/N11；T4）：GM / 决策 Agent 桶**无**通用写；运行时两口分别是 EXTERNAL_WITH_GM 与 DECISION_AGENT 桶。
+   */
   public List<AgentTool> toolsFor(SimosToolSource.Role role) {
     return new SimosToolSource(
             coreSimos, queryService, config.mcpInitiator(), config.mapId(), commandTypes, role)
@@ -505,6 +585,11 @@ public final class Shell implements AutoCloseable {
   /** MCP 服务实际绑定端口（{@code mcpPort=0} 时由 OS 分配；spec §3.1 的读回口径，经 AgentLib {@code boundPort()}）。 */
   public int boundMcpPort() {
     return mcpServer.boundPort();
+  }
+
+  /** 决策人 MCP 服务实际绑定端口（T4；{@code decisionAgentMcpPort=0} 时由 OS 分配，读回口径同 {@link #boundMcpPort()}）。 */
+  public int boundDecisionAgentMcpPort() {
+    return decisionMcpServer.boundPort();
   }
 
   /**
@@ -559,7 +644,9 @@ public final class Shell implements AutoCloseable {
     return queryService;
   }
 
-  /** 工具注册表（spec §7.1；T5）：12 条工具（3 写 + 9 读）的活清单，T7 交给 {@code AgentToMcpServer}。 */
+  /**
+   * 工具注册表（spec §7.1；T5/T4）：现有口 15 条工具（3 通用写 + 3 GM 窄写 + 9 读）的活清单，T7 交给 {@code AgentToMcpServer}。
+   */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP",
       justification = "spec §3.2/§7.2 要求把注册表交给 MCP 服务（T7）；它不是内部表示而是本壳的产物本身，与 coreSimos() 同法")
@@ -625,7 +712,9 @@ public final class Shell implements AutoCloseable {
     closed = true;
     guiServer.close();
     mcpServer.close();
+    decisionMcpServer.close();
     toolBridge.close();
+    decisionToolBridge.close();
     approvalEndpoint.close();
     approvalChannel.close();
     coreSimos.close();
