@@ -1,0 +1,101 @@
+label t10m1
+target simos-unit/src/main/java/io/mosire/simos/unit/RelativeOffset.java
+mutant t10m1_RelativeOffset.java
+runner maven
+pl simos-unit
+sel RelativeOffsetTest
+frag Math.addExact(hex.q(), dq)
+frag_dir delete
+expect_red RelativeOffsetTest.appliedToRejectsIntOverflowInsteadOfSilentlyWrapping（溢出被静默回绕 ⇒ 该断言红）
+
+label t10m2
+target simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+mutant t10m2_CatalogTool.java
+runner maven
+pl simos-app
+sel SimosToolsTest
+frag Map.entry("unit.ApplyCasualties"
+frag_dir delete
+expect_red SimosToolsTest.catalogRejectsACommandTypeWithoutAPayloadHint（构造期拒绝）+ Shell 装配失败
+
+label t10m3
+target simos-app/src/main/resources/webui/modes.js
+mutant t10m3_modes.js
+runner frontend
+pl simos-app
+sel __frontend__
+frag "unit.PlanRoute",
+frag_dir delete
+expect_red modes.test.cjs workbench-write-calls-are-all-whitelisted（工作台写命令未进白名单）
+
+label t10m4
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t10m4_UnitOperations.java
+runner maven
+pl simos-unit
+sel UnitRejoinDanglingTest
+frag withRejoinTarget(other, Optional.empty())
+frag_dir revert
+expect_red UnitRejoinDanglingTest.danglingRejoinTargetAfterDisbandIsSafeAndObservable（disband 顺手清引用）
+
+label t10m5
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t10m5_UnitOperations.java
+runner maven
+pl simos-app
+sel UnitExtensionEndToEndTest
+frag childHex.get().equals(parentHex.get())
+frag_dir delete
+expect_red UnitExtensionEndToEndTest.mergeFormationRequiresTheSameHex（判据 #5）
+
+label t10m6
+target simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+mutant t10m6_UnitOperations.java
+runner maven
+pl simos-app
+sel UnitExtensionEndToEndTest
+frag for (UnitId member : List.of(rootId)) {
+frag_dir revert
+expect_red UnitExtensionEndToEndTest.reparentSubtreeAppendsAParentSegmentToEveryDescendant（判据 #6）
+
+label t10r-t9m1
+target simos-app/src/main/java/io/mosire/simos/app/Shell.java
+mutant t10r-t9m1_Shell.java
+runner maven
+pl simos-app
+sel McpCoverageTest,SimosToolsTest
+frag new SetStatusHandler(),
+frag_dir delete
+expect_red McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect + SimosToolsTest.catalogListsExactlyTheRegisteredCommandTypes
+
+label t10r-t9m2
+target simos-app/src/main/java/io/mosire/simos/app/Shell.java
+mutant t10r-t9m2_Shell.java
+runner maven
+pl simos-app
+sel McpCoverageTest,SimosToolsTest
+frag coreSimos.register(new SetStatusHandler());
+frag_dir revert
+expect_red 同上（注册了却没进 catalog 的唯一真实路径）
+
+label t10r-t9m3
+target simos-app/src/main/java/io/mosire/simos/app/Shell.java
+mutant t10r-t9m3_Shell.java
+runner maven
+pl simos-app
+sel McpCoverageTest,SimosToolsTest
+frag return java.util.OptionalLong.empty();
+frag_dir revert
+expect_red McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect（PlanSparseRoute 被拒）
+
+label t10r-t4m9
+target simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java
+mutant t10r-t4m9_UnitPayloads.java
+runner maven
+pl simos-unit
+sel UnitCommandHandlersTest
+frag if (value == null || value.isNull() || !value.isArray()) {
+frag_dir count
+orig_hits_expected 2
+pushed_hits_expected 1
+expect_red UnitCommandHandlersTest.everyHandlerRejectsMalformedPayload（subUnitIds:{} 的形状校验被删）

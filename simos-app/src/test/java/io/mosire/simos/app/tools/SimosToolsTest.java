@@ -1,6 +1,7 @@
 package io.mosire.simos.app.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +18,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -216,6 +218,19 @@ class SimosToolsTest {
     assertThat(textValues(body.get("types")))
         .as("catalog 的 type 集合必须等于全仓实现的 type() 集合（强判据：注册面 == 实现面）")
         .containsExactlyInAnyOrderElementsOf(implementationTypes);
+  }
+
+  /**
+   * ★ T10-j：载荷提示表缺项 ⇒ **构造期拒绝**（不再 {@code getOrDefault(type, "")} 静默填空串）。
+   *
+   * <p>这是"声明式清单不随注册面自动延伸"这一族的**故意违规用例**：给一个没有提示的 type，{@link CatalogTool} 必须当场抛且消息点名该 type
+   * ——缺项不再伪装成"有值（空串）"。
+   */
+  @Test
+  void catalogRejectsACommandTypeWithoutAPayloadHint() {
+    assertThatThrownBy(() -> new CatalogTool(Set.of("unit.NotARealCommand")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unit.NotARealCommand");
   }
 
   /** 从 simos-unit/map/sd 的 main 源码抽 `public String type()` 的返回串（每个 *Handler.java 取首个匹配）。 */

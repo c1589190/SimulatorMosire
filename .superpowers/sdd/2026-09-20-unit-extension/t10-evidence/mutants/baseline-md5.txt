@@ -1,0 +1,6 @@
+aeaea640f34d89fd2f813d343f44037f  simos-unit/src/main/java/io/mosire/simos/unit/RelativeOffset.java
+2c77554f7ef19c614f9d264a30b94ea7  simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+3c7da28d8b1ed15c1a6bc41e90a2b500  simos-app/src/main/resources/webui/modes.js
+4788d99ffc7e81f8af302c6041ab5288  simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+6358bc6be5a00f25f8444f2d1f0296fd  simos-app/src/main/java/io/mosire/simos/app/Shell.java
+0dfe5e2ade9cc77215e46a6f1bf67ce5  simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java

@@ -23,8 +23,9 @@ const REQUIRED_FILES = [
 //   T11 起 61 → 71：新增 map-edit-tools.test.cjs 的 10 条（连通性/随机化的护栏纯函数）。
 //   T9 起 71 → 82：新增 region-view.test.cjs 的 11 条（区域查看的共享高亮计划 + 并集读数）。
 //   M9 T11 起 82 → 88：新增 block-codec.test.cjs 的 6 条（整数顶点标签解码）。
+//   unit-ext T10 起 88 → 90：modes.test.cjs 新增白名单派生式断言 2 条。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 88;
+const MIN_ASSERTIONS = 90;
 
 function testFiles() {
   return fs

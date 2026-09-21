@@ -170,7 +170,7 @@ final class UnitPayloads {
   /** 必填的非空字符串数组（T4：{@code SplitFormation} 的 {@code subUnitIds}）；空数组合法，由领域层判。 */
   static List<String> requireTextArray(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isArray()) {
+    if (value == null || value.isNull()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
     }
     List<String> items = new ArrayList<>();

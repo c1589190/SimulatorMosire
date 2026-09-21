@@ -221,7 +221,6 @@ public final class Shell implements AutoCloseable {
             new PlanRouteHandler(),
             new CancelRouteHandler(),
             new DisbandUnitHandler(),
-            new SetStatusHandler(),
             new AttachUnitHandler(),
             new DetachUnitHandler(),
             new ReparentSubtreeHandler(),
@@ -242,6 +241,8 @@ public final class Shell implements AutoCloseable {
       coreSimos.register(handler);
       commandTypes.add(handler.type());
     }
+
+    coreSimos.register(new SetStatusHandler());
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
     List<TimeParticipant> participants =
