@@ -96,8 +96,8 @@ class McpServerTest {
   private static final String SERVER_NAME = "simos-shell";
 
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + sd 域窄写（T10 起 +StartDecision）+ **7 map 窄写**（M1） + **20
-   * unit 窄写**（M2，用户裁定 D-1）= 43 条（spec §七.2 的 C6）。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + sd 域窄写（T10 起 +StartDecision，**M3 起 +12 条**） + **7 map
+   * 窄写**（M1） + **20 unit 窄写**（M2，用户裁定 D-1）= 55 条（spec §七.2 的 C6）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -117,6 +117,18 @@ class McpServerTest {
           "sd.SubmitVerdict",
           "sd.SetViewScope",
           "sd.StartDecision",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect",
+          "sd.SetDecisionMakerProvider",
           "map.SetTerrain",
           "map.SetEdge",
           "map.CreateRegion",
@@ -199,7 +211,8 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 43 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写）")
+        .as(
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 55 条（C6：含通用写、16 条 sd 窄工具、7 条 map 窄写与 20 条 unit 窄写）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

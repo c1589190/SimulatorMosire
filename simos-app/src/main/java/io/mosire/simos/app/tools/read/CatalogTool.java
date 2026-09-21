@@ -72,7 +72,7 @@ public final class CatalogTool implements AgentTool {
               "sd.AddCombatStage",
               "combatId, stage{stageId,name,participants?,entry,exit,minDurationTicks?,"
                   + "maxDurationTicks?,outcomes{options[{id,label,weight,casualties?}]}},"
-                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填)"),
+                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填；非首阶段时两者都会被忽略)"),
           Map.entry(
               "sd.SetStageOutcomeTable",
               "combatId, stageId, outcomes{options[{id,label,weight,casualties?}]}"),

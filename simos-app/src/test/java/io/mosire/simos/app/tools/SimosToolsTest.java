@@ -27,6 +27,18 @@ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
+import io.mosire.simos.app.tools.write.SdCancelEffectTool;
+import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
+import io.mosire.simos.app.tools.write.SdCreateArmyTool;
+import io.mosire.simos.app.tools.write.SdCreateCombatTool;
+import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
+import io.mosire.simos.app.tools.write.SdCreateNationTool;
+import io.mosire.simos.app.tools.write.SdPutInfoTool;
+import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
+import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
+import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
+import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
 import io.mosire.simos.app.tools.write.UnitAttachTool;
 import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
@@ -129,7 +141,8 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 34 写（3 通用写 + 4 sd 窄写 + **7 map 窄写**，M1 + **20 unit 窄写**， M2）。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 46 写（3 通用写 + **16 sd 窄写**（4 + M3 的 12）+ **7 map 窄写**， M1 +
+   * **20 unit 窄写**，M2）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -149,6 +162,18 @@ class SimosToolsTest {
           "sd.SubmitVerdict",
           "sd.SetViewScope",
           "sd.StartDecision",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect",
+          "sd.SetDecisionMakerProvider",
           "map.SetTerrain",
           "map.SetEdge",
           "map.CreateRegion",
@@ -195,7 +220,7 @@ class SimosToolsTest {
           "simos.social.population");
 
   /**
-   * 写工具全集（34 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
+   * 写工具全集（46 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
    *
    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
@@ -209,6 +234,18 @@ class SimosToolsTest {
           "sd.SubmitVerdict",
           "sd.SetViewScope",
           "sd.StartDecision",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect",
+          "sd.SetDecisionMakerProvider",
           "map.SetTerrain",
           "map.SetEdge",
           "map.CreateRegion",
@@ -276,6 +313,26 @@ class SimosToolsTest {
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
           "unit.ApplyCasualties");
+
+  /**
+   * M3 的 12 条 sd 窄写：**只进 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含）——**不进** EXTERNAL 桶、**也不进**决策人桶。
+   *
+   * <p>★ 与 M1 的 {@link #MAP_WRITE_NAMES} 同形；M2 的 unit 那批**两桶都有**（用户裁定 D-1），这批**不是**——决策人只出令 / 判决。
+   */
+  private static final List<String> SD_WRITE_NAMES =
+      List.of(
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect",
+          "sd.SetDecisionMakerProvider");
 
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -448,6 +505,51 @@ class SimosToolsTest {
         .containsAll(UNIT_WRITE_NAMES);
   }
 
+  /**
+   * ★ M3 判据 2：**名字同源**（12 条 sd 窄写）—— 每条工具钉死的命令类型 == 它在名单里登记的名字（{@code
+   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM 桶与 {@code
+   * EXTERNAL_WITH_GM} 复合口**里都按名可寻， 且 12 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达
+   * handler）。
+   *
+   * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的类型，这里当场红（M3 的 m2 变异体）。与 M1/M2 同形； ★
+   * 本批**只进这两个桶**——{@code EXTERNAL} 与 {@code DECISION_AGENT} 桶的"不得含"由 {@link
+   * #roleBucketsNeverCarryGenericWrite} 按名反向断言（两处分工：这里证"在"，那里证"不在"）。
+   */
+  @Test
+  void sdNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
+    CoreSimos core = shell.coreSimos();
+    String mapId = ShellConfig.defaults(tempDir).mapId();
+    List<AgentTool> sdTools =
+        List.of(
+            new SdCreateNationTool(core, TEST_INITIATOR, mapId),
+            new SdCreateArmyTool(core, TEST_INITIATOR, mapId),
+            new SdCreateDecisionMakerTool(core, TEST_INITIATOR, mapId),
+            new SdPutInfoTool(core, TEST_INITIATOR, mapId),
+            new SdCreateCombatTool(core, TEST_INITIATOR, mapId),
+            new SdAddCombatStageTool(core, TEST_INITIATOR, mapId),
+            new SdSetStageOutcomeTableTool(core, TEST_INITIATOR, mapId),
+            new SdCommitCombatOutcomeTool(core, TEST_INITIATOR, mapId),
+            new SdRecordCasualtiesTool(core, TEST_INITIATOR, mapId),
+            new SdRegisterEffectTool(core, TEST_INITIATOR, mapId),
+            new SdCancelEffectTool(core, TEST_INITIATOR, mapId),
+            new SdSetDecisionMakerProviderTool(core, TEST_INITIATOR, mapId));
+
+    assertThat(toolNames(sdTools))
+        .as("12 条 sd 窄工具的 name() == 它们各自钉死的命令类型")
+        .containsExactlyElementsOf(SD_WRITE_NAMES);
+    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
+        .as("同一批名字在 GM 桶里按名可寻")
+        .containsAll(SD_WRITE_NAMES);
+    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM)))
+        .as("同一批名字在 EXTERNAL_WITH_GM 复合口里也按名可寻（D2 的复合面）")
+        .containsAll(SD_WRITE_NAMES);
+
+    JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
+    assertThat(textValues(types))
+        .as("12 个 sd 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
+        .containsAll(SD_WRITE_NAMES);
+  }
+
   @Test
   void catalogListsExactlyTheRegisteredCommandTypes() throws Exception {
     ToolResult result = call("simos.command.catalog", Map.of());
@@ -495,29 +597,34 @@ class SimosToolsTest {
     List<String> externalWithGm = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM));
 
     assertThat(gm)
-        .as("M1/M2 判据 1：GM 桶无通用写，且含 map 与 unit 两族窄写")
+        .as("M1/M2 判据 1 + M3 判据 §5.1：GM 桶无通用写，且含 sd 与 map 与 unit 三族窄写")
         .doesNotContain("simos.command.submit")
         .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
+        .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(40);
+        .hasSize(52);
     assertThat(agent)
-        .as("M2 判据 1：决策桶**含全部 20 条 unit 窄写**，但**没有**任何 map 窄写（也没有通用写与 SetViewScope/StartDecision）")
+        .as(
+            "M2 判据 1 + M3 判据 §5.1：决策桶**含全部 20 条 unit 窄写**，但**没有**任何 map 窄写、**也没有 M3 的 12 条 sd 窄写**（也没有通用写与 SetViewScope/StartDecision）")
         .doesNotContain("simos.command.submit", "sd.SetViewScope", "sd.StartDecision")
         .contains("sd.IssueDirective", "sd.SubmitVerdict")
         .containsAll(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
+        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .hasSize(31);
     assertThat(external)
-        .as("M1/M2 判据 1：EXTERNAL 桶**没有**任何 map / unit 窄写（恒 9 读 + 3 通用写）")
+        .as("M1/M2/M3 判据 1：EXTERNAL 桶**没有**任何 sd / map / unit 窄写（恒 9 读 + 3 通用写）")
         .contains("simos.command.submit")
         .doesNotContain(
             "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
+        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .hasSize(12);
     assertThat(externalWithGm)
-        .as("T4/D2 + M1/M2 判据 1：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 sd 窄写 + 7 map 窄写 + 20 unit 窄写）")
+        .as(
+            "T4/D2 + M1/M2/M3 判据 1：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 sd 窄写 + 12 sd 窄写(M3) + 7 map 窄写 + 20 unit 窄写）")
         .contains(
             "simos.command.submit",
             "simos.advance",
@@ -526,9 +633,10 @@ class SimosToolsTest {
             "sd.SubmitVerdict",
             "sd.SetViewScope",
             "sd.StartDecision")
+        .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(43);
+        .hasSize(55);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -601,7 +709,7 @@ class SimosToolsTest {
   @Test
   void everyNarrowWriteToolClassIsWiredIntoTheGmBucket() throws Exception {
     Set<String> implemented = narrowWriteToolNamesFromSources();
-    assertThat(implemented).as("扫描必须恰为 31 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(31);
+    assertThat(implemented).as("扫描必须恰为 43 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(43);
 
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
         .as("GM 桶 ∖ 读名单必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
@@ -1015,6 +1123,207 @@ class SimosToolsTest {
         UnitApplyCasualtiesTool.NAME,
         "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"没这个装备\":-1}}",
         "未知装备键");
+  }
+
+  // ── M3 判据 4：前置即错——12 条 sd 窄写各一条「坏载荷 ⇒ 可读 REJECTED 且 head 不变」──────────
+  //    ★ 与 M1/M2 同裁决：拒绝文案已在（载荷层 / 域层），工具层**不重复校验**——那份校验能被
+  //      simos.command.submit 绕过 ⇒ 是装饰。本任务的义务是**证明理由真的到达调用方**。
+  //    ★ **每条各一个用例**：写成循环里断 12 次时，变异杀掉一条其余十一条照样绿（判别力被稀释）。
+  //    ★ **每条都先造出使该前置可达的状态**：跳过前置去撞另一个错，断言就退化成判别的前置。
+  //    ★ 断的是**完整消息片段**（如「action 引用的阶段不存在」），不是字段 token——只判 token
+  //      判不出是哪一层拒的（域层的兜底文案往往也含同一个字段名）。
+
+  /** ★ 坏载荷 = **homeRegion 无 `nation:` 前缀 tag**（R13）：先经真窄写建一个 tag 为 `plain` 的区域。 */
+  @Test
+  void sdCreateNationToolSurfacesTheDomainRejectionForARegionWithoutANationTag() throws Exception {
+    ToolResult region =
+        callNarrowWrite(
+            MapCreateRegionTool.NAME,
+            "{\"regionId\":\"t3-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}],"
+                + "\"meta\":{\"tag\":\"plain\"}}",
+            1L);
+    assertThat(region.success()).as(region.message()).isTrue();
+
+    assertDomainRejectedAndHeadUnchanged(
+        SdCreateNationTool.NAME,
+        "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
+            + "\"adminBudgetPerTick\":10}",
+        "无国家 tag");
+  }
+
+  /** ★ 坏载荷 = **nationId 不存在**（本夹具里没有任何国家）；存在性检查在 nationId 上先撞。 */
+  @Test
+  void sdCreateArmyToolSurfacesTheDomainRejectionForAnUnknownNation() throws Exception {
+    assertDomainRejectedAndHeadUnchanged(
+        SdCreateArmyTool.NAME,
+        "{\"armyId\":\"a1\",\"nationId\":\"没有这个国家\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}",
+        "nationId 不存在");
+  }
+
+  /**
+   * ★ 坏载荷 = **allowedTools 里含通用写**（N9）：先经真窄写造出 `nation:n1` tag 的区域与国家，使 affiliation 检查通过——
+   * 否则断言会退化成判「affiliation 目标不存在」。
+   */
+  @Test
+  void sdCreateDecisionMakerToolSurfacesTheDomainRejectionForAGenericWriteInAllowedTools()
+      throws Exception {
+    ToolResult region =
+        callNarrowWrite(
+            MapCreateRegionTool.NAME,
+            "{\"regionId\":\"t3-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}],"
+                + "\"meta\":{\"tag\":\"nation:n1\"}}",
+            1L);
+    assertThat(region.success()).as(region.message()).isTrue();
+    ToolResult nation =
+        callNarrowWrite(
+            SdCreateNationTool.NAME,
+            "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
+                + "\"adminBudgetPerTick\":10}",
+            2L);
+    assertThat(nation.success())
+        .as("前置可达：带 `nation:` tag 的区域能建出国家 —— %s", nation.message())
+        .isTrue();
+
+    assertDomainRejectedAndHeadUnchanged(
+        SdCreateDecisionMakerTool.NAME,
+        "{\"id\":\"dm-1\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
+            + "\"allowedTools\":[\"simos.command.submit\"],\"cadence\":5}",
+        "不得含通用写");
+  }
+
+  /** ★ 坏载荷 = **地址连两段都没有**：`Address.parse` 的原文理由是地址语法的前置（载荷层）。 */
+  @Test
+  void sdPutInfoToolSurfacesThePayloadRejectionForAMalformedAddress() throws Exception {
+    assertDomainRejectedAndHeadUnchanged(
+        SdPutInfoTool.NAME, "{\"address\":\"nope\",\"key\":\"k\",\"value\":\"v\"}", "地址至少两段");
+  }
+
+  /** ★ 坏载荷 = **combatId 已存在**：先经同一条窄工具真建一个交战，再用同一个 id 建第二次。 */
+  @Test
+  void sdCreateCombatToolSurfacesTheDomainRejectionForADuplicateId() throws Exception {
+    String payload = "{\"combatId\":\"c1\",\"name\":\"战役甲\",\"participants\":[\"u-1\"]}";
+    ToolResult created = callNarrowWrite(SdCreateCombatTool.NAME, payload, 1L);
+    assertThat(created.success()).as(created.message()).isTrue();
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
+        .as("第一次建交战成功 ⇒ head 前进一步")
+        .isEqualTo(2L);
+
+    assertDomainRejectedAndHeadUnchanged(SdCreateCombatTool.NAME, payload, "交战已存在");
+  }
+
+  /** ★ 坏载荷 = **combatId 不存在**：`stage` 本身**必须合法**（载荷解析在交战查询之前），否则拒的是载荷层而不是这一关。 */
+  @Test
+  void sdAddCombatStageToolSurfacesTheDomainRejectionForAnUnknownCombat() throws Exception {
+    assertDomainRejectedAndHeadUnchanged(
+        SdAddCombatStageTool.NAME,
+        "{\"combatId\":\"c-nope\",\"stage\":{\"stageId\":\"s1\",\"name\":\"阶段一\","
+            + "\"outcomes\":{\"options\":[{\"id\":\"opt-a\",\"label\":\"甲\",\"weight\":1}]}}}",
+        "交战不存在");
+  }
+
+  /** ★ 坏载荷 = **stageId 不在该交战里**：先造出「有交战、有首阶段」的状态。 */
+  @Test
+  void sdSetStageOutcomeTableToolSurfacesTheDomainRejectionForAnUnknownStage() throws Exception {
+    seedCombatWithFirstStage();
+
+    assertDomainRejectedAndHeadUnchanged(
+        SdSetStageOutcomeTableTool.NAME,
+        "{\"combatId\":\"c1\",\"stageId\":\"s-nope\","
+            + "\"outcomes\":{\"options\":[{\"id\":\"opt-b\",\"label\":\"乙\",\"weight\":1}]}}",
+        "阶段不存在");
+  }
+
+  /** ★ 坏载荷 = **结局不在该阶段的 outcomeTable 里**（N2）：首阶段的表里只有 `opt-a`，提交 `opt-b`。 */
+  @Test
+  void sdCommitCombatOutcomeToolSurfacesTheDomainRejectionForAnOutcomeOutsideTheTable()
+      throws Exception {
+    seedCombatWithFirstStage();
+
+    assertDomainRejectedAndHeadUnchanged(
+        SdCommitCombatOutcomeTool.NAME,
+        "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"selectedOutcomeId\":\"opt-b\"}",
+        "结局不在该阶段的 outcomeTable 里");
+  }
+
+  /** ★ 坏载荷 = **未知装备键**（P14：不视作 0）；`personnel` 给 0 确保先撞的是装备那一关。 */
+  @Test
+  void sdRecordCasualtiesToolSurfacesTheDomainRejectionForAnUnknownEquipmentKey() throws Exception {
+    seedCombatWithFirstStage();
+
+    assertDomainRejectedAndHeadUnchanged(
+        SdRecordCasualtiesTool.NAME,
+        "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"deltas\":[{\"unit\":\"u-1\",\"personnel\":0,"
+            + "\"equipment\":{\"没这个装备\":-1},\"lossClass\":\"PERMANENT\"}]}",
+        "未知装备键");
+  }
+
+  /**
+   * ★ 坏载荷 = **action 引用的阶段不存在**：`Action.SetStage` 先查 CombatState（首阶段兼建的那个 `cs-1` 在），再查阶段——所以 `cs-1`
+   * 必须真存在，否则拒的是「CombatState 不存在」那一关。
+   *
+   * <p>★★ **两个内层 id 必须写成对象形态 `{"value":"…"}`、不能写标量**——这是**当场实测**的线格式约束，不是笔误：
+   * `CombatStateId`/`CombatStageId` 是单 `String` record 且无 `@JsonCreator`，写成 `"cs-1"` 时 Jackson
+   * 在**载荷层** 就报 {@code no String-argument constructor/factory method to deserialize from String
+   * value ('cs-1')}， 于是拒绝理由变成载荷层那句、断言会退化成判另一个前置（改回标量即红在此）。★ 该缺口属 **sd 域**（本任务不改
+   * `simos-sd`），已记入报告「我未能核实的」。
+   */
+  @Test
+  void sdRegisterEffectToolSurfacesTheDomainRejectionForAStageThatDoesNotExist() throws Exception {
+    seedCombatWithFirstStage();
+
+    assertDomainRejectedAndHeadUnchanged(
+        SdRegisterEffectTool.NAME,
+        "{\"effectId\":\"e-1\",\"kind\":\"SCHEDULED\","
+            + "\"trigger\":{\"@class\":\"at_or_after_tick\",\"tick\":5},"
+            + "\"action\":{\"@class\":\"set_stage\",\"combatState\":{\"value\":\"cs-1\"},"
+            + "\"stage\":{\"value\":\"s-nope\"}}}",
+        "action 引用的阶段不存在");
+  }
+
+  /** ★ 坏载荷 = **effectId 不存在**（无需前置：效果表本来就是空的）。 */
+  @Test
+  void sdCancelEffectToolSurfacesTheDomainRejectionForAnUnknownEffect() throws Exception {
+    assertDomainRejectedAndHeadUnchanged(
+        SdCancelEffectTool.NAME, "{\"effectId\":\"e-nope\"}", "效果不存在");
+  }
+
+  /**
+   * ★ 坏载荷 = **decisionMakerId 不存在**；`providerId` 是一个**从没登记过**的值。
+   *
+   * <p>★★ **§4 的判据在这一条上兑现**：本工具**不写 provider 存在性校验**——理由不是「某条既有用例会红」，而是那条校验落在工具层 **能被 {@code
+   * simos.command.submit} 绕过 ⇒ 是装饰**。故这里的拒绝理由**只能**来自域层的 decisionMaker 查询，而 `providerId`
+   * 照旧原样落到域层（登记与否由绑定期的真实消费者裁决）。
+   */
+  @Test
+  void sdSetDecisionMakerProviderToolSurfacesTheDomainRejectionForAnUnknownDecisionMaker()
+      throws Exception {
+    assertDomainRejectedAndHeadUnchanged(
+        SdSetDecisionMakerProviderTool.NAME,
+        "{\"decisionMakerId\":\"dm-nope\",\"providerId\":\"p-never-registered\"}",
+        "决策人不存在");
+  }
+
+  /**
+   * M3 判据 4 的共用前置：经**真窄写**建一个交战 + 它的第一个阶段（首阶段兼建 {@code CombatState cs-1}，见 C1-a 的取代说明）。
+   *
+   * <p>★ 只用同一条工具链造状态、不塞夹具——这样「前置可达」本身也被走到（与 M1 的 {@code
+   * mapCreateRegionToolSurfacesTheDomainRejectionForADuplicateId} 同法）。
+   */
+  private void seedCombatWithFirstStage() throws Exception {
+    ToolResult combat =
+        callNarrowWrite(SdCreateCombatTool.NAME, "{\"combatId\":\"c1\",\"name\":\"战役甲\"}", 1L);
+    assertThat(combat.success()).as(combat.message()).isTrue();
+    ToolResult stage =
+        callNarrowWrite(
+            SdAddCombatStageTool.NAME,
+            "{\"combatId\":\"c1\",\"combatStateId\":\"cs-1\",\"hex\":{\"q\":1,\"r\":1},"
+                + "\"stage\":{\"stageId\":\"s1\",\"name\":\"阶段一\","
+                + "\"outcomes\":{\"options\":[{\"id\":\"opt-a\",\"label\":\"甲\",\"weight\":1}]}}}",
+            2L);
+    assertThat(stage.success()).as(stage.message()).isTrue();
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
+        .as("交战 + 首阶段各留一条 revision")
+        .isEqualTo(3L);
   }
 
   /**

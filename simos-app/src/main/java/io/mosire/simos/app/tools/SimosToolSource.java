@@ -23,6 +23,18 @@ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
+import io.mosire.simos.app.tools.write.SdCancelEffectTool;
+import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
+import io.mosire.simos.app.tools.write.SdCreateArmyTool;
+import io.mosire.simos.app.tools.write.SdCreateCombatTool;
+import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
+import io.mosire.simos.app.tools.write.SdCreateNationTool;
+import io.mosire.simos.app.tools.write.SdPutInfoTool;
+import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
+import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
+import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
+import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetViewScopeTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
@@ -153,6 +165,9 @@ public final class SimosToolSource implements ToolSource {
    *
    * <p>★ **窄写工具进的是 GM 桶**（不是通用写、也不是决策桶）：它们的命令类型在工具里固定死，模型只能给载荷 ——与 {@code simos.command.submit}
    * 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此也含这些。
+   *
+   * <p>★ **M3（spec §八.3）：sd 域余下的写命令也在此追加**——命令类型固定、与 map/unit 窄写同形。★ **新窄写一律加在这里**， 加完**不必回来改本注**
+   * （**本注刻意不写条数**：数字是漂移源，M2 已把本文件与 {@code Shell} 的旧计数去掉）。
    */
   private static void addGmWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
@@ -188,6 +203,19 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
     built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
     built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
+    // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
+    built.add(new SdCreateNationTool(core, initiator, mapId));
+    built.add(new SdCreateArmyTool(core, initiator, mapId));
+    built.add(new SdCreateDecisionMakerTool(core, initiator, mapId));
+    built.add(new SdPutInfoTool(core, initiator, mapId));
+    built.add(new SdCreateCombatTool(core, initiator, mapId));
+    built.add(new SdAddCombatStageTool(core, initiator, mapId));
+    built.add(new SdSetStageOutcomeTableTool(core, initiator, mapId));
+    built.add(new SdCommitCombatOutcomeTool(core, initiator, mapId));
+    built.add(new SdRecordCasualtiesTool(core, initiator, mapId));
+    built.add(new SdRegisterEffectTool(core, initiator, mapId));
+    built.add(new SdCancelEffectTool(core, initiator, mapId));
+    built.add(new SdSetDecisionMakerProviderTool(core, initiator, mapId));
   }
 
   /**

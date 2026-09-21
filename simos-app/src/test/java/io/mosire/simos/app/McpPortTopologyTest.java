@@ -92,16 +92,32 @@ class McpPortTopologyTest {
           "unit.UpdateCommandChain",
           "unit.ApplyCasualties");
 
-  /** GM 窄写（M1 起 11 条、M2 起 31 条）：4 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit 窄写；**都不是**通用写。 */
+  /** GM 窄写（M1 起 11 条、M2 起 31 条、**M3 起 43 条**）：16 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit 窄写；**都不是**通用写。 */
   private static final List<String> GM_NARROW_WRITES =
       concat(
-          List.of("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision"),
+          List.of(
+              "sd.IssueDirective",
+              "sd.SubmitVerdict",
+              "sd.SetViewScope",
+              "sd.StartDecision",
+              "sd.CreateNation",
+              "sd.CreateArmy",
+              "sd.CreateDecisionMaker",
+              "sd.PutInfo",
+              "sd.CreateCombat",
+              "sd.AddCombatStage",
+              "sd.SetStageOutcomeTable",
+              "sd.CommitCombatOutcome",
+              "sd.RecordCasualties",
+              "sd.RegisterEffect",
+              "sd.CancelEffect",
+              "sd.SetDecisionMakerProvider"),
           MAP_WRITES,
           UNIT_WRITES);
 
   /**
-   * 决策人桶的窄写（M2 起 22 条）：2 条 sd 窄写 + 20 条 unit 窄写（用户裁定 D-1）；**无** {@code sd.SetViewScope}、
-   * **无**通用写、**无** map 窄写。
+   * 决策人桶的窄写（M2 起 22 条）：`sd.IssueDirective`/`sd.SubmitVerdict` + 20 条 unit 窄写（用户裁定 D-1）；**无** {@code
+   * sd.SetViewScope}、**无**通用写、**无** map 窄写、**无 M3 的 12 条 sd 窄写**（决策人只出令 / 判决）。
    */
   private static final List<String> DECISION_AGENT_WRITES =
       concat(List.of("sd.IssueDirective", "sd.SubmitVerdict"), UNIT_WRITES);
@@ -124,7 +140,9 @@ class McpPortTopologyTest {
     }
   }
 
-  /** C6：现有口同时含通用写与 GM 三十一条窄工具（D2="加"；T10 起 +sd.StartDecision，M1 起 +7 map，M2 起 +20 unit）。 */
+  /**
+   * C6：现有口同时含通用写与 GM 四十三条窄工具（D2="加"；T10 起 +sd.StartDecision，M1 起 +7 map，M2 起 +20 unit，M3 起 +12 sd）。
+   */
   @Test
   void existingPortExposesExternalUnionGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -132,7 +150,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(EXISTING_SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 31 GM 窄写 = 43）")
+          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 43 GM 窄写 = 55）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
     }
@@ -149,7 +167,8 @@ class McpPortTopologyTest {
 
       List<String> names = toolNames(client);
       assertThat(names)
-          .as("C7：决策人口 = 9 读 + 22 窄写（2 条 sd + 20 条 unit，用户裁定 D-1；无 SetViewScope、无通用写、无 map 窄写）")
+          .as(
+              "C7：决策人口 = 9 读 + 22 窄写（sd.IssueDirective/sd.SubmitVerdict + 20 条 unit，用户裁定 D-1；无 SetViewScope、无通用写、无 map 窄写、无 M3 的 12 条 sd 窄写）")
           .containsExactlyInAnyOrderElementsOf(concat(READ_TOOLS, DECISION_AGENT_WRITES));
       // ★ 下面三条反向断言的判别力**只在与上面那份手抄常量脱钩时才显现**：
       //   若"某条工具进了决策桶"而 DECISION_AGENT_WRITES 没跟着同步，上面那条精确匹配先红（这三条此时是冗余的）；
