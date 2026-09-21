@@ -200,3 +200,20 @@
 - ★ **同族第二次兑现：自报型字段不可核验（08:02 立）**。写上面这几段时，我把三次实测的时刻写成 **08:00 / 08:02 / 08:06**，而实际钟点是 **08:00 / 08:01 / 08:02**——**第三次把时刻写到了当前钟点之前**（`08:06` 当时还没到）。★ **这不是"看错表"，是"自报型记录天然不可核验"**，与上面那条「**md5 才是判据、mtime 不是**」是**同一个病**：**凡是记录者自己说的字段（时刻、计数、哈希），都必须挂一个外部可验的锚**。
   ⇒ **已改用的规矩**：**文档里的钟点一律回填提交时间戳**（`git log --format='%ad' --date=format:'%H:%M:%S'`）⇒ 读者可自行复核；本次更正后的锚为 `148d92c` **08:00:34** / `1eff18c` **08:01:05** / `8929737` **08:02:01**。
   ⇒ **与"门禁总数一律现场重算"是同一条纪律**：**记录的权威在源头，不在文档**。
+
+### 控制器：停机前只读侦察（T9 前置，★ **未动一行生产代码、未跑任何门禁**）
+
+- **触发**：跑道不足以派 T9（见 `HANDOFF.md §一`）⇒ 改为把 T9 的**未知量**在**只读面**钉死，产出全部写进 **`HANDOFF.md §三`**（本块只记"做了什么、结论是什么"）。
+- ★ **先声明边界**：本块**没有任何门禁轮次**（因为它是纯文档 + 只读检索工作）⇒ **不得把它读成"T9 已开工"**；也**不产生**变异轮或门禁证据。
+- **产出（11 项，逐项实测，锚都是文件路径+行号）**：
+  1. **权威 type 清单**：`spi/*Handler.java` 共 **20** 个、**20 个唯一 type 串**、全部 `unit.*`；**待注册 12 + 已注册 8 = 20**，与 §三 的 12 条清单**逐条相同**（此前是凭记忆写"对得上"，现在是实测）。
+  2. **全仓 `CommandHandler` 实现 30 个**（map 6 + sd 4 + unit 20）⇒ **18 + 12 = 30 = 全仓所有实现**；且 **30 条 type 串已实测互不重复**（`commandTypes` 是 `Set`，重名会塌）⇒ 判据可写成**集合相等且 |catalog| == 30**。
+  3. ★ **catalog 不需要单独改**：`Shell.java:215-219` **遍历 handlers 现场构建** `commandTypes` → `:260` → `SimosToolSource` → `CatalogTool` ⇒ **注册即入 catalog**。
+  4. ★ **`MovementCost` 注入有先例**：`Shell.java:221` 已是 `new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId())` ⇒ 照抄同一来源；**且必须写进 `:195-214` 的 `List.of(...)` 之内**，否则 catalog 会漏。
+  5. ★★ **最大发现：`McpCoverageTest` 必红**（`:99-219`）——它对 **catalog 每一个 type** 经 MCP **真提交载荷并断言 head 前进**，且 `containsExactlyInAnyOrderElementsOf` 双向钉住载荷表 ⇒ **只注册不补载荷必红、载荷被拒也红** ⇒ T9 必须补 **12 条真能生效的载荷**，其中数条**要先造前置状态**（`AttachUnit` 同格 / `MergeFormation` 同格+MOVING / `SetRejoinTarget` MOVING / `PlanSparseRoute` 逐段可达 / `CreateCommandChain` 受 `requireNotInAnyChain` 约束），且 `MINIMAL_PAYLOADS` 注释明写"**顺序即语义合法序**"、`DisbandUnit` 会删 `u-1`。⇒ **T9 = 装配 + 12 条端到端载荷的时序设计**。
+  6. ★★ **完整的爆炸半径表**（6+1 落点，逐处判"红/不红/静默"）已写入 `HANDOFF.md §三`。
+  7. ★★ **三处静默面**（不红但功能缺失，同族）：①`webui/modes.js` 的 `unit` 模式 `writes` **只有 6 条**、且 `isWriteAllowed` 是**逐条精确匹配 + fail-closed** ⇒ 新命令 **GUI 直接发不出**；②`CatalogTool.PAYLOAD_HINTS` **只有 8 条**（恰是已注册的 8 个 unit handler）⇒ `map.*`/`sd.*` **今天已缺 10 条**、T9 后 **22/30 空**；③`Shell.java:308` 日志**硬编码** `participant=1`。
+  8. **既有缺口（先记为问题、不记为结论）**：`unit.RenameUnit` / `unit.PlaceAt` **不在任何模式的 `writes` 里** ⇒ 今天 GUI 就发不出；可能是有意收紧、也可能是疏漏，**无判据可判**。
+  9. **负结果（同样要记）**：①审批面**不是**按 type 的策略表（`Shell:243` 只给门链 `AutoApproveGate → ConfirmGate`）；②`write-allowlist.test.cjs` 管的是 **HTTP 端点**、与命令类型无关；③`McpServerTest:97` 的 `TWELVE_TOOL_NAMES` 钉的是 **12 个工具**⇒ **T9 不得新增工具**。
+  10. ★★ **本次扫描的盲区（必须写明）**：`agentlib-mosire` 是**外部依赖**（`pom.xml:103`，`0.1.0-SNAPSHOT`），**不在本仓** ⇒ 门链实现、MCP 传输、工具框架的**内部**我**读不到**。⇒ **"新命令是否与既有命令走完全相同的审批/传输路径"这一点我未能核实**（**不得**读作"已确认无洞"）。凡"声明式清单"若存在于该依赖内，**本仓的任何 grep 扫描都看不见**。
+  11. ★ **归纳（建议 T10 立为通则）**：h/i/j + `McpCoverageTest` expected 表 + `gate-contract` 的 `REQUIRED_FILES` **都是"声明式清单不随注册面自动延伸"** ⇒ 建议裁：**这类清单要么改成从源头派生（像 `Shell` 那样现场构建），要么配一条"清单 == 源头集合"的断言**——否则**每加一条命令都会静默留洞**。
