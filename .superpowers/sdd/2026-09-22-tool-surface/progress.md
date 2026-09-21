@@ -6,6 +6,119 @@
 > 证据目录：`.superpowers/sdd/2026-09-22-tool-surface/m1-evidence/`
 > ★ 本机 `nproc=2` ⇒ **一次只准有一个重活**（Maven 与子代理不并存，已实测会杀掉 agent）
 
+## 〇-pre. ★★ 环境阻断（2026-09-22 控制器只读实测，**开工即红**）
+
+**事实：本阶段的基线在这台机器上编译不过** —— `simos-sd` 编译失败，与任何本阶段改动无关。
+M1 实现者的 `m1-evidence/logs/baseline-clean-verify.log` 记 `rc=1`，死点是：
+
+```
+simos-sd/.../sd/adjudication/LlmDecisionAdjudicator.java:[55,13] cannot find symbol: method degradable()
+simos-sd/.../sd/adjudication/LlmDecisionAdjudicator.java:[58,53] cannot find symbol: method kind()
+  location: variable e of type io.mosire.agentlib.llm.LlmException
+```
+
+**根因 = 跨机 `~/.m2` 差距，不是代码缺陷**（逐条实测）：
+
+| 项 | 本机实测 | 需要 |
+|---|---|---|
+| `~/.m2/.../agentlib-mosire-0.1.0-SNAPSHOT.jar` | **126 类**、`LlmException` 只有 2 个构造器 | **134 类**、含 `LlmException.Kind`（`retryable()`/`degradable()`）+ `kind()`/`degradable()` |
+| 台账点名的 6 个新类（`Sampling`/`LlmTransport`/`LlmProtocol`/`LlmRouteAssembler`/`ToolDefs`/`LlmException$Kind`） | **全部缺席（0 命中）** | 逐条在场 |
+| 旧 jar md5 | `4b85536d8d48c041fac21dfb7fb2de02` | —（**回滚锚点**） |
+
+- ★ **绿轮是真的，但在另一台机器上**：`2026-09-22-llm-integration/logs/clean-verify-final.log` 零编译错误、
+  `verify-final-rc.txt` = `RC=0`、8/8 SUCCESS；而**该台账自记「本机 `nproc=8`」**，本机 `nproc=2` ⇒ 不同机器。
+  ★ 两处独立佐证：绿轮 `UtilSimos SUCCESS [4.956 s]` vs 本机 `[01:25 min]`；绿轮的
+  `ProjectMosire` HEAD 提交自述「提交 AgentLib 编译产物（**126 类**）」而本机装在 `~/.m2` 的正是那份。
+- 冻结字节**逐字节相同**（排除"文件被改"）：`LlmDecisionAdjudicator.java` 现 md5 = **`81062fbf…`**
+  = 绿轮 `FINAL-GREEN.txt` 记的冻结 md5；两份 agentlib jar（`~/.m2` 与 `ProjectMosire/…/target/`）md5 也相同。
+  ⇒ **同一份字节，一绿一红 ⇒ 差异只可能来自机器环境**（这正是"换机器先核一遍"那条纪律的又一实例）。
+- **不具备解释力的假设（已排除）**：① 陈旧 jar——用户那轮自己的备注也提示过陈旧，但**本机这份就是它记录的那份**，
+  且"绿"发生在用它之后；② 文件被改——md5 相同；③ 可从远端 `-U` 取——`_remote.repositories` 是
+  `agentlib-mosire-0.1.0-SNAPSHOT.jar>=`（**空仓库 id = 纯本地 install**）+ `maven-metadata-local.xml`
+  的 `<localCopy>true</localCopy>`，simos 侧 `pom.xml` **无 `<repositories>`** ⇒ **没有远程可取**。
+
+**处置（控制器裁决）**：`~/ProjectMosire` 有远端 `git@github.com:c1589190/ProjectMosire.git`，
+本地 `main` = `5141cf9`（Sep 20，126 类），远端 `main` = **`212f57e`**，且 fetch 输出为
+**`5141cf9..212f57e`（快进、无分叉）**。远端那份的 `LlmException.java` **正是 simos 需要的**：
+
+```
+23: public class LlmException extends RuntimeException {
+26:   public enum Kind {
+99:     public boolean degradable() { return degradable; }
+116:  public LlmException(String message, Kind kind) {
+126:  public Kind kind() {
+136:  public boolean degradable() { return kind.degradable(); }
+```
+
+且 `5141cf9..212f57e` 只有两条提交，其一为
+**`3267973 feat(llm): 对齐 simos 需求 A1-A5 / B1-B4（…异常分类…）`** —— **该改动本就是为 simos 做的**。
+
+⇒ **裁决：从 `ProjectMosire@212f57e` 重建并 `install` `agentlib-mosire` 到 `~/.m2`。**
+依据：CLAUDE.md 明文预授权本条路径（「`~/.m2` 不跨机同步……按测试里的提示在本机重建一次」），
+且方向是**该库自己的远端 main、快进、为 simos 而做**，不是回头路。
+*代价若判错*：本机 `~/.m2` 被升到 134 类；**已保留旧 jar 与其 md5（见上表）可原样回滚**。
+*不影响别人*：执行前实测**无 java 实例在跑**、`nproc=2` 且**独占**（实现者已被叫停）。
+
+**★ 对全阶段的后果**：在环境修复并跑出**本机绿基线**之前，**M1 的一切门禁/变异结论都无效**。
+⇒ 修复后的第一件事是**重跑基线 `clean verify` 并现场重算数字**，写进本台账，作为 M1 的真实 BASE 参照。
+
+### 〇-pre.1 环境修复执行记录（2026-09-22 控制器，已执行）
+
+**做法**：`git -C ~/ProjectMosire archive 212f57e | tar -x -C /tmp/pm212`（**只读 git，不动
+`ProjectMosire` 自己的检出**、不碰它那个未提交的 `M mvnw.cmd`），再
+`mvn -f /tmp/pm212/pom.xml -pl AgentLibMosire -am install -Dmaven.test.skip=true …`。
+
+**结果（逐条实测，非推导）**：
+
+| 项 | 修前 | 修后 |
+|---|---|---|
+| `~/.m2` 的 jar **类数** | 126 | ★ **134** ✔ |
+| jar md5 | `4b85536d8d48c041fac21dfb7fb2de02` | **`4d706ab6ce421e749ef4c2ed1dc913c5`** |
+| `LlmException.kind()` / `degradable()` / `retryable()` | 无 | ★ **三者在场**（`javap` 实测） |
+| 台账点名的 6 类 | 全 0 命中 | ★ **全部在场**（`Sampling`/`LlmTransport`/`LlmProtocol`/`LlmRouteAssembler`/`LlmResponse`/`ToolDefs`/`LlmException$Kind`） |
+
+- 构建 `BUILD SUCCESS`，33.2 s；`ProjectMosire Parent SUCCESS [12.148 s]` + `AgentLibMosire SUCCESS [19.911 s]`。
+- ★ **判据按 CLAUDE.md 的"看类数不看时间戳"** —— 用的是 `jar tf | grep -c`，不是 mtime。
+- **回滚锚点物理留存**：旧 jar 整份备份在 `/tmp/agentlib-old/agentlib-mosire-0.1.0-SNAPSHOT.jar`
+  （md5 与上表修前值逐字节相同），需要时一条 `cp` 即可回退。
+- ★ **本次会话实测再次印证**：本机**没有 `unzip`**，`unzip -l <jar>` **无输出也不报错**（实现者中过一次
+  假阴性）⇒ 数类数一律 `jar tf`。这条已在 CLAUDE.md 的换机自检清单里，是它第二次兑现。
+
+**本机绿基线**：`m1-evidence/logs/baseline-local-clean-verify.log`（前台起跑、600 s 处被 harness
+**摘到后台**，**不是** `run_in_background` 起跑 —— 两者不同，见 M8 T12 与 unit-ext T8 的实测）。
+★ **数字一律现场重算**，结果记在下一条。
+
+### 〇-pre.2 ★★ 本机绿基线（2026-09-22，**M1 的真实 BASE 参照**）
+
+**环境修复后第一轮全量门禁即绿**（第 **1** 次尝试；前台起跑、600 s 处被摘到后台、**仍在后台跑完**）。
+
+| 项 | 实测值 |
+|---|---|
+| rc | **0** |
+| `BUILD` | **SUCCESS** |
+| 反应堆 | **8/8 `SUCCESS [`** —— `SimulatorMosire`(父 POM) + `UtilSimos`/`MapSimos`/`SocialSimos`/`UnitSimos`/`CoreSimos`/`SDSimos`/`SimosApp` |
+| **用例总数（现场重算）** | ★ **1406** = **170 / 369 / 45 / 259 / 179 / 141 / 243** |
+| `COMPILATION ERROR` | **0** |
+| `^[ERROR]` | **0** 行 |
+| `BugInstance size is 0` | **×7** |
+| 前端门禁 | `[frontend-gate] OK tests=204 pass=204 fail=0` |
+| 日志 md5 / 大小 | `da8838f4109ba8fd8cb9c35e91d15200` / 424694 B |
+
+★ **重算法**：只取**模块汇总行**（`^\[INFO\] Tests run: N, Failures: 0, Errors: 0, Skipped: 0$`，无 `-- in`
+后缀那 7 行）相加，**不引用任何文档里的现成数字**。逐模块：util 170 / map 369 / social 45 / unit 259 /
+core 179 / sd 141 / app 243。
+
+★★ **一处如实登记的跨机差异（未证实成因，不编解释）**：`2026-09-22-llm-integration` 那台机器的绿轮记
+**1405 = 170/369/45/259/179/141/242** —— **前六个模块逐字相同，只差 `app`：本机 243 vs 其 242（+1）**。
+- **候选解释（是假设，不是结论）**：`BindAddressTest.java:62` 用
+  `Assumptions.assumeTrue(lanIp.isPresent(), "本机无非回环 IPv4，跳过跨接口可达性断言")` ——
+  **唯一一处**环境条件性用例。本机该轮实测 `Tests run: 3, Skipped: 0`（本机**有**非回环 IPv4），
+  但**"另一台机器因假设不成立而少计 1"我没有验过**（另一台机器的 per-class 计数我拿不到）⇒ **未证实**。
+- **影响**：**不影响 M1 的 delta 记账** —— M1 的参照就是本表（本机、本树的实测值）。
+- ★ 与"按机器/按外壳"那一族同源（`~/.m2`、子代理类型、`-f` 是否必要）：**跨机数字不可照抄，一律现场重算**。
+
+---
+
 ## 〇. 开工前裁定（用户 2026-09-22 当场裁定，取代计划 §四 的"倾向"列）
 
 | # | 裁定 | 与计划的差异 |
@@ -47,9 +160,63 @@
 
 （每任务一行：`Task <N>: complete (commits <base7>..<head7>, review clean)` 或 fix round 行）
 
-### Task 1 — M1 地图组（7 条写工具）
-- 状态：**in progress**（简报已落 `task-1-brief.md`，实现者已派）
-- BASE：`1fca612`
+### Task 4 — M4 读口补齐（**取证完成，实现待用户圈范围**）
+- 状态：**取证完成**（`m4-inventory.md`，只读，未跑构建）⇒ **实现阻塞在用户 D-3 裁定**
+- ★ **计划 §一 的「GUI 23 端点」对不上**：实测 **17** 个 JSON 读端点。
+  17 + 5 静态页 + 1 条审批 GET ≈ 23 是**取证者的对账解释，非出处**；且报告核实
+  `/api/approvals/{id}` **要求 POST** ⇒ 那条 GET 可能根本不存在 ⇒ **23 的出处未证实**（报告 §五-4）。
+- 现有读工具 **9** 条（`SimosToolSource.java:137-148`），★ **四桶共享**（`SimosToolSource.java:100` 先铺读工具再按 `Role` 追加写工具）。
+- **缺口 9 条**：8 完全（`map.path`/`timeline`/`sd/decision-makers`/`sd/decision-makers/{id}`/`sd/verdicts`/`gm/tool-usage`/`llm/providers`/`map/region/{id}`）+ 1 部分（`/api/state` 的 `meta` 面）。
+
+**暴露风险（控制器按报告 §二 归纳）**：
+
+| 级 | 端点 | 要害 |
+|---|---|---|
+| **最高** | `/api/sd/verdicts` | ★ **唯一「支持 `as=` 又允许省略」**的 sd 读端点；省略 ⇒ `RedactingQueryService:167` 写死 `DisclosurePolicy.FULL`，连**模型输出 `payload`** 一起发。同类端点（decision-makers/tool-usage/llm-providers）都是**显式 `rejectAs`** fail-closed。该口径被 `RedactionApiTest:184` 钉为**有意** ⇒ **照抄成读工具不会自己红** |
+| **高** | `/api/sd/decision-makers`(+`/{id}`) | 含**别人的** `rootUnit`/`viewScope`/`allowedTools`/`providerId`；**不收 `as=`** ⇒ 无任何按视角裁剪机制 |
+| **高** | `/api/gm/tool-usage` | GM 内部观测面；四桶共享 ⇒ **观测者被反向观测**（该端点亦 `rejectAs`） |
+| **高** | `/api/map/path` | 地形探测读，且**显式拒绝 `as=`**（今天无视角概念）⇒ 照抄 = 给决策人一条**绕过 `viewScope` 的逐格测地形通道**；同一能力在写面已有 `unit.PlanRoute`（**走审批**），读的那副不受审批 |
+| **高** | `/api/llm/providers` | ★ **密钥值不泄露**（逐字段读过：只发 `credentialsRef` 掩码 `:457-461` + `keyConfigured` 布尔 `:311-320`，**无一处分发密钥值**）；但暴露 `baseUrl`/`model`/**key 名**。★ **一处未核实**：`:226` 坏条目把 `ConfigException.getMessage()` 原样发出，该消息是否可能带密钥值**未读到构造端** |
+| 中/低 | `map/region/{id}` · `timeline` · `/api/state`(meta) | 可开，但需先定 `as=` 语义 / 只差值形状 |
+
+**★ 既有读工具的两处形状缺陷（不是缺口，是已存在的东西不对）**：
+1. `simos.map.hex` 的 MCP 版 **少 `regions[]`/`edges[]`**（GUI 版有，`ApiViews.java:354-362` vs `MapHexTool.java:76-79`）
+   ⇒ **决策人经 MCP 看不到「一格同属多区域」**——而那是 **M8-U1 用户裁的地基语义**。
+2. `simos.map.overview` 的 MCP 版与 GUI 的 `as=` 版**仍是逐格数组**（`ToolSupport.mapOverview:306-314`）
+   ⇒ **M9 的省流只落在 `ApiViews` 一侧**，真档 19441 格下 ≈1MB/次（`ApiViews.java:165` 注释记着改造前 1,043,837 B）。
+
+**代价核算**：会红的只有**名字集合**类断言（`SimosToolsTest` / `McpServerTest` / `McpPortTopologyTest`）；
+★ `McpPortTopologyTest.READ_TOOLS` 被**两个端口共用** ⇒ 一处改两处红（= 读工具四桶共享在测试面的可见证据）。
+**不会红**：`McpCoverageTest`（驱动量是**命令类型**，非工具）。
+
+**★ 判据缺口（报告 §四）**：**读口没有 `McpCoverageTest` 的等价物**——一条读工具可以有正确的名字、
+正确的 `spec()`，但**形状错 / 抛异常 / 压根不可达**，而**全部现有断言照绿**。
+（`listTools()` 在全仓只被调过两次，**没有一次 `callTool`**；`readToolsMatchQueryServicePerValue` 只逐值对拍 3 条。）
+另：**同源强判据只覆盖命令**（扫 `*Handler.java`），**没有**"扫 `*Tool.java` ⇄ `readTools`"的同源判据
+⇒ 加了 `read/XxxTool.java` 却忘接进 `readTools(...)`：**不会红**。
+
+**★ creed 措辞待正（控制器裁决，待用户确认）**：creed 五写「每加一条**命令/工具** ⇒ 连带
+`CatalogTool.PAYLOAD_HINTS` + `McpCoverageTest` 双向载荷」——**逐字读会误导**：该规矩的对象是**命令类型**
+（`PAYLOAD_HINTS` 是「命令 type → 载荷提示」表，`CatalogTool` 构造期按**注册 type** 强制）。
+**加读工具不产生新命令类型 ⇒ 两张表都不动**（M1 亦已实测为**空操作**）。
+⇒ 建议把 creed 该处改成「每加一条**命令**」。**控制器未擅自改 creed**（它是绑定权威、用户文档），
+**列为待用户确认项**。
+
+- **状态：`BLOCKED`（环境级）→ 环境已修（见 §〇-pre.1），待重派**
+- BASE：`1fca612`；派单时 HEAD `4d0989d`；★ **实现者零提交**、**生产/测试代码一行未写**（已核：`tools/write/`
+  无 `MapXxxTool`，`SimosToolSource.java` / 三个测试文件 / `Shell.java` / `simos-map/**` / `simos-sd/**` 全未动）
+- 实现者报告在 `task-1-report.md`；基线轮证据 `m1-evidence/logs/baseline-clean-verify.log`（rc=1）
+- ★ **实现者独立复核了我的根因**（与控制器结论一致，且是从另一侧得到的）：`~/.m2` 的 jar 与
+  `~/ProjectMosire/AgentLibMosire/target` 那份**逐字节相同**（同 md5 `4b85536d…`、126 类），
+  且 `git log --all -S degradable` **无输出** ⇒ 本机**全机唯一一份** `LlmException.java` 只有两个构造器。
+  ⇒ 「要有 134 类版本，只能先把 `ProjectMosire` 建到含该 API 的版本再 install」——**已被 §〇-pre.1 兑现**。
+- ★ **它报的一处数字偏差已裁定（不是缺陷）**：`simos-map` **369** / `simos-core` **179**，比 WebUI 阶段的
+  368/178 各 **+1**。出处已查明：**`2026-09-22-llm-integration` 阶段的绿轮总数正是
+  `1405 = 170/369/45/259/179/141/242`** —— 即 llm-integration 给 map 与 core **各加了一条用例**
+  （实现者猜的 `wsf2/v3` 是错的，但**偏差本身报得对**，且它**没有把猜测当结论**，处理正确）。
+  ⇒ 口径以实测为准：**本阶段基线 = 170 / 369 / 45 / 259 / 179 / …（sd 与 app 待本机绿轮补）**。
+- ★ 实现者还报了一条**同族假阴性**实测：本机无 `unzip`，`unzip -l <jar>` **无输出也不报错**
+  ⇒ 已并入 CLAUDE.md 那条纪律的第二次兑现（见 §〇-pre.1 末条）。
 
 #### 1.1 recon 取证结论（只读子代理，未跑构建）
 
