@@ -1,0 +1,15 @@
+===== T1 变异轮 m2 =====
+target=notifications.js
+orig_md5=4d6f7bb046ea98d39d758e968d1c35f2
+clean_world_md5=4d6f7bb046ea98d39d758e968d1c35f2
+mutant=m2 replacements=1
+mutant_md5=6ff5f163aefe2042553daeaf9940e0ec
+gate_rc=1
+gate_tests=96
+restored_md5=4d6f7bb046ea98d39d758e968d1c35f2
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 44 - renderInto-reads-exactly-one-GET-api-approvals
+  not ok 45 - renderInto-degrades-when-approvals-unavailable
+failing_count=2
+===== end m2 =====

@@ -1,0 +1,13 @@
+15:58:57.130 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+15:58:57.224 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:5871/（静态 /webui，同源，无 CORS 头）
+15:58:57.224 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/t1-e2e-store checkpointInterval=100 codec=4 handler=40 participant=2 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=5875 guiPort=5871 approvalPort=5873
+15:58:57.321 INFO  io.mosire.simos.app.ShellMain - 已种入演示世界（--demo）：单位 u-1 在 [1,1]，走廊 [1,1]→[1,2]→[1,3]，人口 [1,1]=15000
+15:58:57.321 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/t1-e2e-store checkpointInterval=100 模块数=4 bindAddress=127.0.0.1 guiPort=5871 mcpPort=5875 mcpPath=/mcp approvalPort=5873 mapId=Map1
+15:58:57.321 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5871/
+15:58:57.708 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/state -> 200 80ms remote=127.0.0.1
+15:58:57.715 INFO  io.mosire.simos.app.gui.GuiServer - access GET / -> 200 0ms remote=127.0.0.1
+15:58:57.754 INFO  io.mosire.simos.app.gui.GuiServer - access GET /api/approvals -> 200 28ms remote=127.0.0.1
+15:58:57.760 INFO  io.mosire.simos.app.gui.GuiServer - access GET /notifications.js -> 200 0ms remote=127.0.0.1
+15:58:57.765 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell
+68d1c35f2 (src md5=4d6f7bb046ea98d39d758e968d1c35f2)
+stopped pid=79070
