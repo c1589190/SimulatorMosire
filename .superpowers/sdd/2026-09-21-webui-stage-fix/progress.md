@@ -105,3 +105,27 @@
 - **我未能核实的**：见 `t4-report.md` §六（`ShellMain.run` 端到端 CLI 未跑；审批层未按口区分（已知限制）；
   同瞬间并发请求未测；生产机/跨平台未测；决策人口未做逐类 catalog 覆盖）。
 - **证据**：`t4-evidence/`（logs/ + mutants/ + tool-face-manifest.txt + t4-report.md）。
+
+## T5 决策人查询面（后端只读）✅（2026-09-21，分支 `wsf/t5`，基线 `ecf9c81`）
+
+- **范围**：只做 T5。新增 `SdQueryService`（`simos-app/.../query/`）+ `ApiViews` 决策人视图 + `GuiServer` 两条只读路由
+  （`/api/sd/decision-makers`、`/api/sd/decision-makers/{id}`）+ 新测试 `SdDecisionMakerApiTest`（13 条）。**零 sd 字段新增（D13）**。
+- **★ 落点 = GUI 端点，不加 MCP 读工具**：读工具是**三桶共享的 9 条**，加一条牵动 3 处冻结清单
+  （`SimosToolsTest.EXTERNAL_UNION_GM_TOOL_NAMES` 15 条 + `subList(0,9)/subList(9,15)` + `hasSize(15)`、
+  `McpPortTopologyTest.READ_TOOLS` 9 条）；而**没有任何 T5~T10 的消费者需要它**（都经 GUI/`Shell`）⇒ 选零牵动的 GUI 端点。代价已在报告 §一量化。
+- **★ 零 `Shell` 改动**：`GuiServer` 构造器内自建 `SdQueryService`（仍用既有 `queryService`）⇒ 构造签名不变 ⇒ 不触发对 T4 变异轮的重跑。
+- **铁律 3**：只经 `state.module("sd")` → `SdSnapshot.state()` 的公共 record 访问器取数；**未在 sd 新增访问器**。
+- **fail-closed**：未知 kind / 缺冒号 / 空 id ⇒ **400**；详情查不到 ⇒ **404**；**合法 kind + 不存在 id ⇒ 200 空列表**（与"查询坏掉"不同结果）。
+  **`due` 恒 `null` 占位**（不填 `false`；D7 公式归 T9）。
+- **门禁**：`./mvnw clean verify` **rc=0、实现轮第 1 次尝试**、变异轮后复跑第 1 次尝试 rc=0；**8/8 `SUCCESS [`**；
+  **1308** = `170/368/45/259/178/124/164`（现场重算，只取模块汇总行）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **114/114 不变**。
+  **delta 干净**（基线 **1295** = `…/151`）：只有 app **151→164 = +13**（= `SdDecisionMakerApiTest`），其余逐字不变。
+- **判据逐条实测**：空库 `200 {"decisionMakers":[]}`；`nation:n1` ⇒ **恰 `dm-nation`**；`army:a1` ⇒ **恰 `dm-army`**；
+  详情与重放出的 `SdState` 逐值一致；`POST` 列表端点 ⇒ **405 + `Allow: GET`**；两次列表响应**逐字节相同**（探针原文见 `t5-report.md` §四）。
+- **★ 探针当场抓到的就地校正**：未排序时 `dm-army.allowedTools` 回的是**载荷插入序的反序**（状态里是 `Set`，迭代序不是内容的纯函数）
+  ⇒ `ApiViews` 出口**字典序排序**。这是 T5 唯一一处实现期校正。
+- **变异**：**5 轮 5 KILLED / 0 存活**——t5m1（不筛 affiliation）/ t5m2（详情缺 `cadence`）/ t5m3（空库抛 500）/
+  t5m4（未知 kind 改成**空集合冒充**）/ t5m5（列表路由整段去掉）。★ **裁定 42**：`ApiViews` 在 m2 后被改过（加排序）⇒ **只重跑 m2**（新 `orig_md5=4722545…`，KILLED）；
+  m1/m3/m4/m5 靶子 `SdQueryService`/`GuiServer` 字节未变 ⇒ 证据不作废。装置 `t5-evidence/mutants/java-round.sh`（九道门禁）。
+- **我未能核实的**：见 `t5-report.md` §八（跨 JVM 逐字节决定论未独立复现；真档未验；`?branch=&revision=` 未逐值实测；多值/URL 编码 id 未测）。
+- **证据**：`t5-evidence/`（logs/ + mutants/ + probe-*.out + t5-report.md）。
