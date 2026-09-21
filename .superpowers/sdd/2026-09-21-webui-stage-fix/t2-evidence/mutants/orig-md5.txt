@@ -1,0 +1,6 @@
+# 变异 baseline = T2 实现后的最终字节（装置还原到此处）
+5e33cf0b26586c872e7ef48d7b482236  simos-app/src/main/resources/webui/index.html
+5078c2c28f66da10432ee57a706c7605  simos-app/src/main/resources/webui/map.js
+ea62f8c0b0ab8c8b684016d8b923692f  simos-app/src/main/resources/webui/styles.css
+ba2176ef4ff1f9553852829d41848c76  simos-app/src/test/js/run-gate.cjs
+3f34677a4e87d77b0329c1a91ff52d8d  simos-app/src/test/js/gate-contract.test.cjs

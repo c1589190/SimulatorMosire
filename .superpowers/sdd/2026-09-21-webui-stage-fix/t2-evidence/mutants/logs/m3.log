@@ -1,0 +1,14 @@
+===== T2 变异轮 m3 =====
+target=map.js
+orig_md5=5078c2c28f66da10432ee57a706c7605
+clean_world_md5=5078c2c28f66da10432ee57a706c7605
+mutant=m3 replacements=1
+mutant_md5=18803f98dde039231a5afe128fb03981
+gate_rc=1
+gate_tests=108
+restored_md5=5078c2c28f66da10432ee57a706c7605
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 19 - map-js-gates-every-map-write-with-the-matching-type
+failing_count=1
+===== end m3 =====

@@ -1,0 +1,15 @@
+===== T2 变异轮 m2 =====
+target=map.js
+orig_md5=5078c2c28f66da10432ee57a706c7605
+clean_world_md5=5078c2c28f66da10432ee57a706c7605
+mutant=m2 replacements=1
+mutant_md5=afb2832651395c15977d02161763d9be
+gate_rc=1
+gate_tests=108
+restored_md5=5078c2c28f66da10432ee57a706c7605
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 14 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  not ok 15 - write-gate-resolves-tool-then-subtool
+failing_count=2
+===== end m2 =====

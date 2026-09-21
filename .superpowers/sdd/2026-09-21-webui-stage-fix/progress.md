@@ -39,3 +39,30 @@
   审查方以独立实例（5881/5885/5883）复现 `/notifications.js` 200 / `Content-length 2940` / md5 `4d6f7bb0…` = 源 / `cmp` IDENTICAL，
   证明**报告论断正确、杂音以本次为准**；`5818`(pid 64974) 未动。
 - **判定**：**未发现需修的代码缺陷**，本轮**零生产/测试字节改动**。
+
+## T2 地图编辑下挂二级子选项（地形 / 连通性）✅（2026-09-21，分支 `wsf/t2`，基线 `611465f`）
+
+- **范围**：只做 T2（子选项框架）。`webui/index.html` / `map.js` / `styles.css` + 新
+  `map-edit-suboptions.test.cjs`（12 条）+ 两处下界 96→108 + `REQUIRED_FILES`。**零 Java 改动**。
+- **C1/C2 兑现**：`#map-edit-subtools`（`terrain`/`connectivity`）下挂两组面板：地形势 =
+  `#terrain-tool-controls`（地形刷/圈选随机化 + 调色板 + `#randomize-controls`）、连通性 = `#edge-controls`
+  （河流/道路 + merge/replace）。互斥判定抽成纯函数 `mapEditPanelVisibility`（恰一个可见）；写门控
+  `mapEditWriteAllowed`/`mapEditWriteGate`（跨线拒：地形线不发 `map.SetEdge`、连通性线不发 `map.SetTerrain`），
+  三个写点（`commitBrush`/`submitRandomize`/`commitEdge`）各加写门。
+- **白名单不变**：`modes.js` **一行未改**（`map-edit` 仍恰 4 条）；模式栏仍 **5** 个按钮（子选项**不是**新模式）。
+- **边界**：**未做**连通性手势（T3）、**未动** `EdgeOperations.KINDS`（T3）。
+- **取代说明（执行期）**：原 4 工具 radio 组 `#map-edit-tools`/`name="map-edit-tool"` **拆成三个 radio 组**
+  （`map-edit-subtool`/`map-edit-terrain-tool`/`map-edit-edge-kind`）⇒ 旧 id/name **消失**（served 实测 ×0）；
+  `mapEditDebug` 增 `subtool`/`hostSubtool`。★ M8 期历史 Playwright e2e 的
+  `input[name="map-edit-tool"]` 选择器**已过时**（历史证据，不在 CI；本任务不改历史证据）。
+- **门禁**：`./mvnw clean verify` **第 1 次尝试 rc=0**、49s、**8/8 `SUCCESS [`**、**1281** =
+  `170/362/45/259/177/124/144`、`BugInstance size is 0 ×7`、`[ERROR]` 0、前端 **108/108**（96→108，+12）。
+  **delta 干净**：零 Java 改动 ⇒ Java 逐值不变；前端 +12 = 新测试文件。
+- **变异**：m1（面板互斥失效）/ m2（地形线放行 SetEdge）/ m3（`commitEdge` 去写门）/ m4（`mapEditSubtoolOf` 兜默认）/
+  m5（`REQUIRED_FILES` 漏新文件）全 **KILLED**，红点均落被保护断言（详见 `t2-evidence/t2-report.md` §四）。
+- **运行时核**（served assets）：独立端口（5891/5895/5893）起 shade jar `--demo` ⇒ `/` 200 含
+  `#map-edit-subtools`×1 / `#terrain-tool-select`×1 / `#edge-kind-select`×1、旧 `#map-edit-tools`×0；
+  `/map.js` 200 且 md5 与源相同（`5078c2c2…`）；`5818`(pid 64974) 未动。
+- **我未能核实的**：见 `t2-evidence/t2-report.md` §七（浏览器内点击/拖动未实测——C1/C2 只证到纯函数+静态+served
+  三层；CSS 无像素证明；线内工具回退到默认属执行期形态决定；基线未在本树改动前单独重跑）。
+- **证据**：`t2-evidence/`（logs/ + mutants/ + t2-report.md）。
