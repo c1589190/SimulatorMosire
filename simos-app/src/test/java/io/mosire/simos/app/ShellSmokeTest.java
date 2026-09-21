@@ -21,6 +21,9 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -203,12 +206,14 @@ class ShellSmokeTest {
             new StateMeta(ref("main", 1), T0),
             Map.of(
                 "map", new MapSnapshot(ref("main", 1), T0, corridorMap()),
-                "unit", new UnitSnapshot(ref("main", 1), T0, units)),
+                "unit", new UnitSnapshot(ref("main", 1), T0, units),
+                "sd", new SdSnapshot(ref("main", 1), T0, SdState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
-            CheckpointEncoder.encode(genesis, List.of(new MapCodec(), new UnitCodec())));
+            CheckpointEncoder.encode(
+                genesis, List.of(new MapCodec(), new UnitCodec(), new SdCodec())));
   }
 
   /** 三格直线走廊，地形取 {@code desert}（{@code moveCost = 3}）⇒ 配合 mobility ‰500 每段恰 1500 毫 MP。 */

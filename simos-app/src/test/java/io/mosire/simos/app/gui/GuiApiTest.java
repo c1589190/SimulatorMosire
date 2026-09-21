@@ -26,6 +26,9 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -641,13 +644,15 @@ class GuiApiTest {
             Map.of(
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
-                "social", new SocialSnapshot(ref("main", 1), T7, social)),
+                "social", new SocialSnapshot(ref("main", 1), T7, social),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
-                genesis, List.of(new MapCodec(), new SocialCodec(), new UnitCodec())));
+                genesis,
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
   }
 
   private static Unit unit() {

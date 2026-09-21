@@ -1,0 +1,39 @@
+14:17:07.767 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.RegisterEffect commandId=cmd-1 correlationId=cmd-1 新坐标=main@2
+14:17:07.803 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.RegisterEffect commandId=cmd-2 correlationId=cmd-2 新坐标=main@3
+14:17:07.819 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=adv-3 correlationId=adv-3 新坐标=main@4
+14:17:07.852 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.ApplyCasualties commandId=drain:e1 correlationId=drain:e1 新坐标=main@5
+14:17:07.864 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.ApplyCasualties commandId=drain:e2 correlationId=drain:e2 新坐标=main@6
+14:17:07.930 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.RegisterEffect commandId=cmd-1 correlationId=cmd-1 新坐标=main@2
+14:17:07.936 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=adv-2 correlationId=adv-2 新坐标=main@3
+14:17:07.952 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=unit.ApplyCasualties commandId=drain:e1 correlationId=drain:e1 原因=人员战损超出当前值: 100 + (-9999)
+14:17:07.973 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=unit.ApplyCasualties commandId=drain:e1 correlationId=drain:e1 原因=人员战损超出当前值: 100 + (-9999)
+[C5] rejected-drain intermediate state: sd=FIRED unit=100 rows=3
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.700 s <<< FAILURE! -- in io.mosire.simos.app.sd.SdCommandDrainTest
+[ERROR] io.mosire.simos.app.sd.SdCommandDrainTest.crossModuleEffectBecomesARealRevisionAndIsIdempotent -- Time elapsed: 0.601 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expected size: 1 but was: 2 in:
+[Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=5]]],
+    Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=6]]]]
+	at io.mosire.simos.app.sd.SdCommandDrainTest.crossModuleEffectBecomesARealRevisionAndIsIdempotent(SdCommandDrainTest.java:78)
+
+[ERROR] Failures: 
+[ERROR]   SdCommandDrainTest.crossModuleEffectBecomesARealRevisionAndIsIdempotent:78 
+Expected size: 1 but was: 2 in:
+[Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=5]]],
+    Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=6]]]]
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sdc/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

@@ -10,7 +10,7 @@
 |---|---|
 | 计划 | ✅ 已落盘（2026-09-20） |
 | 阶段 A（骨架 + Nation + 不可删守卫） | ✅ **已完成（A1~A6）**——A1 ✅ / A2 ✅ / A3 ✅ / A4 ✅ / A5 ✅ / A6 ✅ |
-| 阶段 C（Combat，前置 B） | ⬜ 未开工（★ 需姊妹计划 B 完成） |
+| 阶段 C（Combat，前置 B） | ✅ **已完成（C1~C6，2026-09-21）**——见 `c-stage-report.md` |
 | 阶段 D（Directive + 判决 + 渠道） | ⬜ 未开工 |
 | 阶段 E（关账） | ⬜ 未开工 |
 
@@ -82,6 +82,15 @@
 8. **`ShellSmokeTest` 的 codec 计数 3→4**（A3 起第 4 个 `SdCodec`；按新语义改，非为过门禁）。
 9. **A3-m4 为等价变异体**（显式键注册在单 String record 上非承重），如实记。
 
+## 阶段 C（Combat）—— 2026-09-21
+
+- **worktree** `.claude/worktrees/sdc`，分支 `sd/c`，基线 `a13266d`（unit-ext T10 合并后）。前置（unit-ext T1~T10）已关账。**实现提交 `ad74ea0`**。
+- **门禁**：`./mvnw clean verify` **rc=0、第 1 次尝试**、**8/8 SUCCESS**、**1232** = `170/362/45/259/177/91/128`、`BugInstance size is 0` ×7、`[ERROR]` 0、前端 90/90。基线自测 **1199** = `.../62/124`；**delta 干净**：前五模块逐字不变，`sd +29`、`app +4`。证据 `c0-baseline/`、`c-verify/`。
+- **落地**：C1 `sd.CreateCombat`/`AddCombatStage`/`SetStageOutcomeTable` + `CombatStages`；C2 `sd.CommitCombatOutcome`；C3 `sd.RecordCasualties`（双轨 + 上界，读 unit 切片）；C4 `SdTimeParticipant`+`TriggerEvaluator`+`sd.RegisterEffect`/`CancelEffect`；C5 `app/sd/SdCommandDrain` + `Shell.advanceAndDrain`；C6 端到端。catalog/`PAYLOAD_HINTS` 30→37；`McpCoverageTest` 载荷 30→37；`SimosToolsTest` 强判据 30→37。
+- **裁定/取代说明**（详见 `c-stage-report.md` §三）：**C1-a** 首个 `AddCombatStage` 兼建 `CombatState`（`combatStateId`/`hex` 首阶段必填，因 spec §三.3 只有这条路径能给出合法的 `currentStage`）；**G6** drain 幂等键 = `"drain:"+effectId`、以 revision 行 `commandId` 判"已 drain"（进程重启仍成立）；**sd 切片对可推进世界必需**（`TimeAdvance` ④Validate）⇒ `DemoWorld` 与 9 个 app 测试夹具补 `SdSnapshot`（+`SdCodec`）；**MCP/GUI 的 advance 未自动串 drain**（开口项，自然收口点 D 阶段）；`ThresholdKills` 取全局人员损失累计。
+- **变异**：15 个变异体 **14 KILLED / 1 等值存活**（`c4m2`：重复处理 `FIRED` 效果在 `EnqueueUnitCommand` 下状态无差异 ⇒ 补 `firedPutInfoEffectDoesNotAppendAgain` 后 `c4m2b` KILLED）。装置 `mutants/mut-run.py`、日志 `mutants/mut-run.log` + `logs/*.log`。
+- **实测到的陷阱**：变异装置 `clean test` 后 `cp` 还原源文件，但 `target/classes` 仍是变异体 `.class`；随后**非 `clean`** 的 `mvn test` 复用它 ⇒ 干净代码上误判"红"。**判红必须 `clean`**（CLAUDE.md 形态 1 的新实例）。
+
 ## 我未能核实的
 - 计划期**未跑任何 Maven**：§附的门禁数字为**推演**，非实测（A1/A2 已实测，见下）。
 - A1/A2 本机实测：worktree `./mvnw -pl simos-sd -am verify` rc=0、sd `BugInstance size is 0`、13 条 sd 用例；**主树全量 `clean verify` 的逐模块数字以关账轮为准**（见 `a1a2-report.md`）。
@@ -94,3 +103,4 @@
 - **`sd.PutInfo` 的结构化值往返**未验（挂起项，只覆盖标量）。
 - **守卫只覆盖 `map.DeleteRegion`**（spec §九 v1 范围）；其余跨模块写前校验未预设。
 - 变异轮的**等价强度**：a5-m2/a6-m2 等使整类用例多条红（红点落被保护断言，但非最小红点）；未逐条做"最小杀伤面"分析。
+- **阶段 C 收口后仍未核实**（详见 `c-stage-report.md` §五）：`agentlib-mosire` 外部依赖盲区（C 阶段未触 LLM/渠道）；MCP/GUI 的 advance **未自动串 drain**（端到端"经 MCP 推进 ⇒ 自动 unit 战损"未验）；跨 revision drain 原子性仍挂起；`ThresholdKills` 是**全局**累计（非 per-combat）语义未验；`AfterTicks`/`UnitAtHex`/`OutcomeSelected`/`And`/`Or` 无独立判据；`min/maxDurationTicks` 未参与推进；多 `CombatState` 指向同一 `Combat` 的语义未定；真档/A\* 未上；前端零改动。

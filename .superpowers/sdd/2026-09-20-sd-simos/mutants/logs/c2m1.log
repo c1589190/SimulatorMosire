@@ -1,0 +1,36 @@
+[ERROR] Tests run: 19, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.232 s <<< FAILURE! -- in io.mosire.simos.sd.spi.SdCombatHandlersTest
+[ERROR] io.mosire.simos.sd.spi.SdCombatHandlersTest.commitOutcomeRejectsOutcomeFromAnotherStage -- Time elapsed: 0.016 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional[o2], losses=[]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Unchanged[], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.rejected(SdCombatHandlersTest.java:277)
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.commitOutcomeRejectsOutcomeFromAnotherStage(SdCombatHandlersTest.java:157)
+
+[ERROR] Failures: 
+[ERROR]   SdCombatHandlersTest.commitOutcomeRejectsOutcomeFromAnotherStage:157->rejected:277 
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional[o2], losses=[]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Unchanged[], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR] Tests run: 19, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sdc/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd

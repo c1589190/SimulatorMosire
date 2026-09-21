@@ -1,0 +1,74 @@
+[ERROR] Tests run: 19, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.229 s <<< FAILURE! -- in io.mosire.simos.sd.spi.SdCombatHandlersTest
+[ERROR] io.mosire.simos.sd.spi.SdCombatHandlersTest.recordCasualtiesRejectsPersonnelOverBound -- Time elapsed: 0.019 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional.empty, losses=[c1:1]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Upsert[entries={c1:1=LossRecord[id=c1:1, combat=c1, stage=s1, atRevision=RevisionId[value=1], deltas=[CasualtyDelta[unit=u-1, personnel=-101, equipment={步枪=-5}, lossClass=PERMANENT]]]}], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.rejected(SdCombatHandlersTest.java:277)
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.recordCasualtiesRejectsPersonnelOverBound(SdCombatHandlersTest.java:200)
+
+[ERROR] io.mosire.simos.sd.spi.SdCombatHandlersTest.recordCasualtiesRejectsEquipmentOverBound -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional.empty, losses=[c1:1]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Upsert[entries={c1:1=LossRecord[id=c1:1, combat=c1, stage=s1, atRevision=RevisionId[value=1], deltas=[CasualtyDelta[unit=u-1, personnel=0, equipment={步枪=-51}, lossClass=PERMANENT]]]}], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.rejected(SdCombatHandlersTest.java:277)
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.recordCasualtiesRejectsEquipmentOverBound(SdCombatHandlersTest.java:215)
+
+[ERROR] io.mosire.simos.sd.spi.SdCombatHandlersTest.recordCasualtiesRejectsUnknownEquipmentKey -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional.empty, losses=[c1:1]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Upsert[entries={c1:1=LossRecord[id=c1:1, combat=c1, stage=s1, atRevision=RevisionId[value=1], deltas=[CasualtyDelta[unit=u-1, personnel=0, equipment={坦克=-1}, lossClass=RECOVERABLE]]]}], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.rejected(SdCombatHandlersTest.java:277)
+	at io.mosire.simos.sd.spi.SdCombatHandlersTest.recordCasualtiesRejectsUnknownEquipmentKey(SdCombatHandlersTest.java:226)
+
+[ERROR] Failures: 
+[ERROR]   SdCombatHandlersTest.recordCasualtiesRejectsEquipmentOverBound:215->rejected:277 
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional.empty, losses=[c1:1]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Upsert[entries={c1:1=LossRecord[id=c1:1, combat=c1, stage=s1, atRevision=RevisionId[value=1], deltas=[CasualtyDelta[unit=u-1, personnel=0, equipment={步枪=-51}, lossClass=PERMANENT]]]}], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR]   SdCombatHandlersTest.recordCasualtiesRejectsPersonnelOverBound:200->rejected:277 
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional.empty, losses=[c1:1]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Upsert[entries={c1:1=LossRecord[id=c1:1, combat=c1, stage=s1, atRevision=RevisionId[value=1], deltas=[CasualtyDelta[unit=u-1, personnel=-101, equipment={步枪=-5}, lossClass=PERMANENT]]]}], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR]   SdCombatHandlersTest.recordCasualtiesRejectsUnknownEquipmentKey:226->rejected:277 
+Expecting actual:
+  Applied[changeSet=SdChangeSet[nations=Unchanged[], armies=Unchanged[], combats=Unchanged[], combatStates=Upsert[entries={cs1=CombatState[id=cs1, combatId=c1, currentStage=s1, hex=0_0, participants=[u-1], selectedOutcome=Optional.empty, losses=[c1:1]]}], decisionMakers=Unchanged[], directives=Unchanged[], effects=Unchanged[], verdicts=Unchanged[], lossRecords=Upsert[entries={c1:1=LossRecord[id=c1:1, combat=c1, stage=s1, atRevision=RevisionId[value=1], deltas=[CasualtyDelta[unit=u-1, personnel=0, equipment={坦克=-1}, lossClass=RECOVERABLE]]]}], info=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR] Tests run: 19, Failures: 3, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-sd: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sdc/simos-sd/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-sd
