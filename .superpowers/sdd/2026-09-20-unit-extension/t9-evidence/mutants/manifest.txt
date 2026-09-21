@@ -1,0 +1,36 @@
+# T9 变异轮 manifest（照 T8 的格式；每条 = 一个 label，含靶文件、变异体、自证片段与方向、期望红点）
+#
+# 字段：
+#   label      轮次名（本文件与 mut-round.sh 的参数）
+#   target     源码树里的规范路径（mut-round.sh 的 ③ 白名单逐条比）
+#   mutant     本目录下的变异体文件
+#   frag       ⑩ 自证用的**代码片段**（只数片段，不数整份文件里的词）
+#   frag_dir   revert ⇒ 原件 0 次 / 变异体 ≥1 次；delete ⇒ 原件 ≥1 次 / 变异体 0 次
+#   expect_red 期望变红的那条断言（人读日志核对，装置不代判）
+#   criterion  对应的判据/靶子编号
+#
+# ── 轮次 ───────────────────────────────────────────────────────────────────────
+
+label t9m1
+target simos-app/src/main/java/io/mosire/simos/app/Shell.java
+mutant t9m1_Shell.java
+frag new SetStatusHandler(),
+frag_dir delete
+expect_red McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect（catalog 29 != 30）与 SimosToolsTest.catalogListsExactlyTheRegisteredCommandTypes / catalogCoversEveryCommandHandlerImplementation
+criterion 任务 m1（删一条注册 ⇒ catalog 少一个）
+
+label t9m2
+target simos-app/src/main/java/io/mosire/simos/app/Shell.java
+mutant t9m2_Shell.java
+frag coreSimos.register(new SetStatusHandler());
+frag_dir revert
+expect_red McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect 与 SimosToolsTest.catalogCoversEveryCommandHandlerImplementation（handler 注册了、catalog 漏了）
+criterion HANDOFF §三.2（"注册了却没进 catalog"的唯一真实路径：注册写在 commandTypes 构建循环之后）
+
+label t9m3
+target simos-app/src/main/java/io/mosire/simos/app/Shell.java
+mutant t9m3_Shell.java
+frag new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE)
+frag_dir delete
+expect_red McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect（unit.PlanSparseRoute 命令期被拒 ⇒ result != committed / head 不前进）
+criterion 计划 m2（PlanSparseRouteHandler 注入不可通行的 MovementCost 替身 ⇒ 稀疏路线冒烟红）

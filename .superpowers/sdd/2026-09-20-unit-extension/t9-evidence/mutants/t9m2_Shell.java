@@ -220,7 +220,6 @@ public final class Shell implements AutoCloseable {
             new PlanRouteHandler(),
             new CancelRouteHandler(),
             new DisbandUnitHandler(),
-            new SetStatusHandler(),
             new AttachUnitHandler(),
             new DetachUnitHandler(),
             new ReparentSubtreeHandler(),
@@ -241,6 +240,7 @@ public final class Shell implements AutoCloseable {
       coreSimos.register(handler);
       commandTypes.add(handler.type());
     }
+    coreSimos.register(new SetStatusHandler());
 
     coreSimos.register(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()));
 

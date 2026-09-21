@@ -1,0 +1,1 @@
+0f912b0f209072590b13bc4785fbfe64  simos-app/src/main/java/io/mosire/simos/app/Shell.java
