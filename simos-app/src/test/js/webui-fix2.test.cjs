@@ -244,17 +244,51 @@ test("right-panel-has-data-modes-and-never-shows-in-view-mode", () => {
   assert.ok(!modes.includes("map-edit") && !modes.includes("unit"), "这两个模式下右栏也没有内容");
 });
 
-test("side-columns-are-content-sized-not-fixed-300px", () => {
+test("side-columns-have-a-usable-stable-width", () => {
   const css = readWebui("styles.css");
-  assert.equal(css.indexOf("flex: 0 0 300px"), -1, "★ 写死 300px 是「左栏一大块空白」的根因，必须消失");
   const left = (/body\.workbench-page \.wb-body \.col-left\s*\{([^}]*)\}/.exec(css) || [])[1];
   const right = (/body\.workbench-page \.wb-body \.col-right\s*\{([^}]*)\}/.exec(css) || [])[1];
   assert.ok(left && right, "取到 .col-left / .col-right 规则");
-  assert.ok(left.indexOf("flex: 0 1 auto") >= 0, "左栏宽度按内容");
-  assert.ok(right.indexOf("flex: 0 1 auto") >= 0, "右栏宽度按内容");
+  assert.equal(left.indexOf("fit-content"), -1, "★ 左栏不许按内容塌缩（fit-content 会把值列压到十几 px ⇒ 逐字竖排）");
+  assert.equal(right.indexOf("fit-content"), -1, "右栏同理");
+  assert.ok(/flex:\s*0 1 \d+px/.test(left), "左栏有稳定 px 基准宽（不随内容伸缩）");
+  assert.ok(/flex:\s*0 1 \d+px/.test(right), "右栏有稳定 px 基准宽");
+  assert.ok(left.indexOf("min-width: 240px") >= 0, "下界 ≥ 240px（可用宽度）");
   assert.ok(left.indexOf("max-width: 340px") >= 0 && right.indexOf("max-width: 340px") >= 0, "有上限，长内容不撑爆");
   const body = (/body\.workbench-page \.wb-body\s*\{([^}]*)\}/.exec(css) || [])[1];
-  assert.ok(body && body.indexOf("align-items: flex-start") >= 0, "面板高度按内容（不再撑满一列空白）");
+  assert.ok(body && body.indexOf("align-items: flex-start") >= 0, "面板高度按内容（U5 原意：不留空卡片）");
+});
+
+test("kv-value-column-is-not-squeezed-to-one-character", () => {
+  const css = readWebui("styles.css");
+  const kv = (/\.kv\s*\{([^}]*)\}/.exec(css) || [])[1];
+  assert.ok(kv, "取到 .kv 规则");
+  assert.ok(kv.indexOf("fit-content(") >= 0, "★ 标签列必须有上限，否则长标签（如「从属区域…」）吃掉整行、值列只剩一个字宽");
+  assert.ok(/minmax\(0, 1fr\)/.test(kv), "值列仍占剩余空间");
+});
+
+test("region-names-only-show-in-the-two-region-modes", () => {
+  assert.equal(M.regionNamesVisible("view"), false, "★ 常规模式不显示区域名（用户实测缺陷 V2）");
+  assert.equal(M.regionNamesVisible("map-edit"), false);
+  assert.equal(M.regionNamesVisible("unit"), false);
+  assert.equal(M.regionNamesVisible("decision"), false);
+  assert.equal(M.regionNamesVisible("region"), true);
+  assert.equal(M.regionNamesVisible("region-edit"), true);
+  assert.deepEqual(M.REGION_NAME_MODES, ["region", "region-edit"], "只有区域两模式");
+});
+
+test("region-name-paint-is-gated-by-mode", () => {
+  const src = readWebui("map.js");
+  const start = src.indexOf("function paintRegionNames(");
+  const end = src.indexOf("function paintHighlights(");
+  assert.ok(start >= 0 && end > start, "取到 paintRegionNames 函数体");
+  assert.ok(src.slice(start, end).indexOf("regionNamesVisible(") >= 0, "★ 绘制必须按模式门控（常规模式不许画）");
+  const layoutsStart = src.indexOf("regionNameLayouts: function");
+  assert.ok(layoutsStart >= 0, "取到 regionNameLayouts");
+  assert.ok(
+    src.slice(layoutsStart, layoutsStart + 500).indexOf("regionNamesVisible(") >= 0,
+    "调试投影也要门控（否则 drawn/labels 与画面不一致）"
+  );
 });
 
 test("region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant", () => {

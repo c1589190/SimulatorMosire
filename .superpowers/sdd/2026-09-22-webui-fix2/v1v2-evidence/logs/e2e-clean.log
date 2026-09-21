@@ -1,0 +1,16 @@
+STEP v1-selected-a-hex-with-details: PASS {"x":420,"y":220,"n":9}
+STEP v1-left-panel-usable-width: PASS {"w":300,"minWidth":"240px"}
+STEP v1-value-column-not-one-char: PASS {"minDdWidth":118,"kvCols":"140px 118px"}
+STEP v1-no-vertical-one-char-value: PASS {"maxDdLines":4,"dds":[{"text":"-35","w":118,"lines":1,"wordBreak":"normal"},{"text":"-64","w":118,"lines":1,"wordBreak":"normal"},{"text":"plains（平原）","w":118,"lines":1,"wordBreak":"normal"},{"text":"0.375","w":118,"lines":1,"wordBreak":"normal"},{"text":"霍赫兰伯国","w":118,"lines":1,"wordBreak":"normal"},{"text":"无","w":118,"lines":1,"wordBreak":"normal"},{"text":"无序列","w":118,"lines":1,"wordBreak":"normal"},{"text":"霍赫兰伯国231 格","w":118,"lines":3,"wordBreak":"normal"},{"text":"231 格（并集，逐 hex 去重；1 个区域，重叠 0 格只计一次）","w":118,"lines":4,"wordBreak":"normal"}]}
+STEP v1-dd-wordbreak-normal: PASS ["normal","normal","normal","normal","normal","normal","normal","normal","normal"]
+STEP v2-view-mode-names-not-visible: PASS {"mode":"view","visible":false,"scaleOk":true,"drawn":0,"labels":0}
+STEP v2-view-mode-draws-zero: PASS {"mode":"view","visible":false,"scaleOk":true,"drawn":0,"labels":0}
+STEP v2-view-mode-scale-above-threshold: PASS {"scaleOk":true}
+STEP v2-region-mode-names-visible: PASS {"mode":"region","visible":true,"scaleOk":true,"drawn":252,"labels":252}
+STEP v2-region-mode-draws-many: PASS {"mode":"region","visible":true,"scaleOk":true,"drawn":252,"labels":252}
+STEP v2-region-name-white-pixels: PASS {"text":"区域33","screenX":891,"screenY":667,"white":33}
+STEP v2-view-at-label-anchor-has-no-name-pixels: PASS {"regionWhite":33,"viewWhite":0}
+STEP v2-back-to-view-names-gone: PASS {"drawn":0,"labels":0}
+STEP v2-region-edit-mode-names-visible: PASS {"mode":"region-edit","visible":true,"drawn":252}
+STEP v1-region-edit-left-panel-usable-width: PASS {"w":300}
+E2E PASS failures=[]

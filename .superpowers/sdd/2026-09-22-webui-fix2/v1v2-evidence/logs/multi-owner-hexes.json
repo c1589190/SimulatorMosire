@@ -1,0 +1,197 @@
+[
+ {
+  "hex": [
+   54,
+   -67
+  ],
+  "hexRegions_dictOrder": [
+   "东川",
+   "大蜀"
+  ],
+  "overviewRank": {
+   "东川": 20,
+   "大蜀": 12
+  },
+  "lastInOverviewOrder": "东川"
+ },
+ {
+  "hex": [
+   33,
+   19
+  ],
+  "hexRegions_dictOrder": [
+   "区域29",
+   "苍崖领"
+  ],
+  "overviewRank": {
+   "区域29": 78,
+   "苍崖领": 21
+  },
+  "lastInOverviewOrder": "区域29"
+ },
+ {
+  "hex": [
+   -99,
+   64
+  ],
+  "hexRegions_dictOrder": [
+   "区域14",
+   "石冠诸部"
+  ],
+  "overviewRank": {
+   "区域14": 59,
+   "石冠诸部": 24
+  },
+  "lastInOverviewOrder": "区域14"
+ },
+ {
+  "hex": [
+   29,
+   16
+  ],
+  "hexRegions_dictOrder": [
+   "区域28",
+   "铁峡伯国"
+  ],
+  "overviewRank": {
+   "区域28": 77,
+   "铁峡伯国": 48
+  },
+  "lastInOverviewOrder": "区域28"
+ },
+ {
+  "hex": [
+   -10,
+   -55
+  ],
+  "hexRegions_dictOrder": [
+   "奥斯曼属瓦拉几亚占领区",
+   "瓦拉几亚侯国"
+  ],
+  "overviewRank": {
+   "奥斯曼属瓦拉几亚占领区": 122,
+   "瓦拉几亚侯国": 54
+  },
+  "lastInOverviewOrder": "奥斯曼属瓦拉几亚占领区"
+ },
+ {
+  "hex": [
+   45,
+   -40
+  ],
+  "hexRegions_dictOrder": [
+   "区域745634564",
+   "石桥自由市"
+  ],
+  "overviewRank": {
+   "区域745634564": 79,
+   "石桥自由市": 55
+  },
+  "lastInOverviewOrder": "区域745634564"
+ },
+ {
+  "hex": [
+   -100,
+   64
+  ],
+  "hexRegions_dictOrder": [
+   "区域14",
+   "石冠诸部"
+  ],
+  "overviewRank": {
+   "区域14": 59,
+   "石冠诸部": 24
+  },
+  "lastInOverviewOrder": "区域14"
+ },
+ {
+  "hex": [
+   21,
+   14
+  ],
+  "hexRegions_dictOrder": [
+   "区域27",
+   "灰角伯国"
+  ],
+  "overviewRank": {
+   "区域27": 76,
+   "灰角伯国": 60
+  },
+  "lastInOverviewOrder": "区域27"
+ },
+ {
+  "hex": [
+   21,
+   14
+  ],
+  "hexRegions_dictOrder": [
+   "区域27",
+   "灰角伯国"
+  ],
+  "overviewRank": {
+   "区域27": 76,
+   "灰角伯国": 60
+  },
+  "lastInOverviewOrder": "区域27"
+ },
+ {
+  "hex": [
+   29,
+   16
+  ],
+  "hexRegions_dictOrder": [
+   "区域28",
+   "铁峡伯国"
+  ],
+  "overviewRank": {
+   "区域28": 77,
+   "铁峡伯国": 48
+  },
+  "lastInOverviewOrder": "区域28"
+ },
+ {
+  "hex": [
+   33,
+   19
+  ],
+  "hexRegions_dictOrder": [
+   "区域29",
+   "苍崖领"
+  ],
+  "overviewRank": {
+   "区域29": 78,
+   "苍崖领": 21
+  },
+  "lastInOverviewOrder": "区域29"
+ },
+ {
+  "hex": [
+   45,
+   -40
+  ],
+  "hexRegions_dictOrder": [
+   "区域745634564",
+   "石桥自由市"
+  ],
+  "overviewRank": {
+   "区域745634564": 79,
+   "石桥自由市": 55
+  },
+  "lastInOverviewOrder": "区域745634564"
+ },
+ {
+  "hex": [
+   -21,
+   -87
+  ],
+  "hexRegions_dictOrder": [
+   "区域1464352524",
+   "石冠诸部"
+  ],
+  "overviewRank": {
+   "区域1464352524": 123,
+   "石冠诸部": 24
+  },
+  "lastInOverviewOrder": "区域1464352524"
+ }
+]

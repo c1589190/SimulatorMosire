@@ -42,3 +42,46 @@
 5. `regionLabelHex` 的空 `hexes ⇒ null` 分支：`Region` 构造器实际是否允许空 hex 集**未单独证**（防御性分支）。
 6. U3 的 `faded` 只压同 tag ⇒ **异 tag 区域不画**；观感未与用户确认。
 7. 上一阶段历史变异体未重跑（见 §三）。
+
+---
+
+# # V1 / V2 修复 + V3 只读调查（分支 `wsf2/v1v2`，基线 `849efe6`）
+
+> 用户第 2 轮实测：「左侧边栏的问题你还是没修」「即使在常规模式，区域名称也被显示了」
+> 「区域查看/编辑模式下，点击一个地方，就自动选中拥有这个 hex 的最顶层区域」。
+> 报告 `v1v2-evidence/report.md`。
+
+## 一 根因与改动
+
+- **V1 根因**：U5 把 `.col-left/.col-right` 改成 `width: fit-content`（`36f49ac`），叠加 `.kv { grid-template-columns: auto 1fr }`
+  ⇒ 长标签（`从属区域（各区域自己的 hexCount，不合并不求和）`，max-content 284px）**吃掉整行**，值列只剩 **14px** ⇒ 逐字竖排。
+- **V1 修**：侧栏回 **`flex: 0 1 300px; min-width: 240px; max-width: 340px`**；`.kv` 标签列加 **`fit-content(140px)`** 上限；`dd` 改 `word-break: normal`。
+- **V2 修**：`map.js` 新增 `REGION_NAME_MODES` + 纯函数 `regionNamesVisible(mode)`，`paintRegionNames`/`regionNameLayouts` 按模式门控；`paintRegionNames` 入口先 `regionNameDraws = 0`（防陈旧条数）。
+- **U5 原意未回退**：`#right-panel` 的 `data-modes` + `[hidden]` + `align-items: flex-start` **一字未动**。
+
+## 二 实测（真 Chromium）
+
+- V1：`.kv` 列 **`284px 14px` → `140px 118px`**；`plains（平原）` **8 行 → 1 行**；最坏值 **29 行 → 4 行**；左栏 **300px**。
+- V2：常规模式（`scaleOk=true`）**`drawn 252 → 0`**；区域查看/编辑 **`drawn=252`**；标签锚点近白像素 **33 → 0**（切回常规）。
+- e2e **15/15 PASS**（`v1v2-evidence/logs/e2e-clean.log`，`e2e_rc=0`）。
+
+## 三 门禁
+
+- `./mvnw clean verify` **rc=0、第 1 次尝试**、**8/8 `SUCCESS [`**、**1360** = `170/368/45/259/178/129/211`、`BugInstance size is 0` ×7、`[ERROR]` 0、前端 **187/187**。
+- 基线现场重算 `docs/shade-evidence/logs/clean-verify.log` = **1360**（Java 零变化）；**delta = 前端 184→187（+3）**。
+- **最终绿轮文件名** `v1v2-evidence/logs/clean-verify.attempt1.log`（md5 `4df9074a800263fee1331794e57ef2b8`）。
+
+## 四 变异（九道门禁）
+
+- **7 体 7 KILLED / 0 存活**：`v1m1`/`v1m2`（styles.css）、`v2m1`/`v2m2`/`v2m3`（map.js）、`rerun-u2a`/`rerun-u5a`（裁定 42 从最终字节重派生）。
+- 每轮 `tests=187 / fail=1`、还原 md5 逐字节相同。日志 `v1v2-evidence/mutants/logs/`。
+
+## 五 V3（只读，未实现）
+
+- 候选：**A** `GameMap.regions` 插入序（`LinkedHashMap`，`GameMap.java:78/224/228`，已随 `/api/map/overview` 到前端，实测 252 id 非字典序）/ **B** `RegionIndex` 字典序（`RegionIndex.java:41`，**不可当层次**）/ **C** `annexedBy`（4/252，偏序）/ **D** 显式层字段（**不存在**）/ **E** 旧仓无 province topmost（`MapData.java:63` `Map.copyOf`、`GsimapResolver.java:121-124` 取首个、`render.js:349-361` 全画）。
+- **推荐 A**（零 schema/服务端改动）；★ 但实测 A **与 `annexedBy` 不一致（3 对中 2 对相反）**，语义是"后插入者在上"而非"吞并者在上"。真实数据 9 个多从属 hex 见 `v1v2-evidence/logs/multi-owner-hexes.json`。
+- 若要显式层：`RegionMeta` 加 `Integer layer`（`map.UpdateRegion` 已带 meta ⇒ 无需新命令），代价 = record/codec/变更集/payload + 存量迁移。
+
+## 六 我未能核实的（详见报告 §六）
+
+真档未换（仍是 `--demo` 富世界）；触摸/HiDPI/第二视口/极窄视口未测；V3 未实现；A 的顺序稳定性未在"增删改区域后"实测；`index.html:238` 多余的 `>`（顺带观察，未改）。
