@@ -1,4 +1,4 @@
-// modes.test.cjs —— 五模式写权限白名单（M8 T7 / spec §三 Q7）。纯函数，无 DOM/IO。
+// modes.test.cjs —— 六模式写权限白名单（M8 T7 / spec §三 Q7；T7 加「决策」）。纯函数，无 DOM/IO。
 // ★ 冻结夹具：每个模式的允许/拒绝逐条写死，不拿被测函数自身输出当期望。
 "use strict";
 
@@ -14,7 +14,7 @@ test("module-loads", () => {
 });
 
 test("mode-ids-order", () => {
-  assert.deepEqual(M.modeIds(), ["view", "region", "map-edit", "region-edit", "unit"]);
+  assert.deepEqual(M.modeIds(), ["view", "region", "map-edit", "region-edit", "unit", "decision"]);
 });
 
 test("mode-labels", () => {
@@ -23,6 +23,7 @@ test("mode-labels", () => {
   assert.equal(M.modeLabel("map-edit"), "地图编辑");
   assert.equal(M.modeLabel("region-edit"), "区域编辑");
   assert.equal(M.modeLabel("unit"), "单位移动编辑");
+  assert.equal(M.modeLabel("decision"), "决策");
 });
 
 test("mode-label-unknown-passthrough", () => {
@@ -73,6 +74,23 @@ test("unit-allows-route-and-editor-writes", () => {
   assert.equal(M.isWriteAllowed("unit", "unit.DisbandUnit"), true);
   assert.equal(M.isWriteAllowed("unit", "unit.CreateUnit"), true);
   assert.equal(M.isWriteAllowed("unit", "map.SetTerrain"), false);
+});
+
+test("decision-allows-no-write", () => {
+  // ★★ T7：决策模式**只读**（spec §四.2）——writes 恒空、fail-closed。
+  //   审批的「批准/驳回」打 POST /api/approvals/{id}（审批裁决，非命令写）⇒ **不进**本表；
+  //   连 T10 才做的 sd.StartDecision 也**不在**本表（本模式不发任何 Command）。
+  assert.deepEqual(M.allowedWrites("decision"), []);
+  for (const type of [
+    "sd.StartDecision",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "map.SetTerrain",
+    "unit.PlanRoute",
+  ]) {
+    assert.equal(M.isWriteAllowed("decision", type), false, "决策模式不得允许 " + type);
+  }
 });
 
 test("fail-closed-on-unknown-mode-and-empty-type", () => {

@@ -1,0 +1,904 @@
+TAP version 13
+# Subtest: decodeBlocks-restores-vertex-world-coordinates
+ok 1 - decodeBlocks-restores-vertex-world-coordinates
+  ---
+  duration_ms: 0.801101
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-preserves-block-metadata
+ok 2 - decodeBlocks-preserves-block-metadata
+  ---
+  duration_ms: 0.095465
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-keeps-rings-closed-with-same-vertex-count
+ok 3 - decodeBlocks-keeps-rings-closed-with-same-vertex-count
+  ---
+  duration_ms: 0.072976
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-does-not-mutate-the-wire-input
+ok 4 - decodeBlocks-does-not-mutate-the-wire-input
+  ---
+  duration_ms: 0.985833
+  type: 'test'
+  ...
+# Subtest: terrainAt-reads-decoded-block-at-hex-center
+ok 5 - terrainAt-reads-decoded-block-at-hex-center
+  ---
+  duration_ms: 0.202286
+  type: 'test'
+  ...
+# Subtest: countsByTerrain-sums-decoded-hex-counts
+ok 6 - countsByTerrain-sums-decoded-hex-counts
+  ---
+  duration_ms: 0.088859
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 7 - module-loads
+  ---
+  duration_ms: 0.51779
+  type: 'test'
+  ...
+# Subtest: subpage-ids-and-labels
+ok 8 - subpage-ids-and-labels
+  ---
+  duration_ms: 0.635724
+  type: 'test'
+  ...
+# Subtest: subpage-state-is-fail-closed
+ok 9 - subpage-state-is-fail-closed
+  ---
+  duration_ms: 0.120391
+  type: 'test'
+  ...
+# Subtest: subpage-visibility-is-mutually-exclusive
+ok 10 - subpage-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.175846
+  type: 'test'
+  ...
+# Subtest: decision-groups-put-nation-then-army-and-sort-by-id
+not ok 11 - decision-groups-put-nation-then-army-and-sort-by-id
+  ---
+  duration_ms: 4.325663
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf-t7/simos-app/src/test/js/decision-mode.test.cjs:95:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be loosely deep-equal:
+    
+    [
+      ''
+    ]
+    
+    should loosely deep-equal
+    
+    [
+      'nation',
+      'army'
+    ]
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'nation'
+    1: 'army'
+  actual:
+    0: ''
+  operator: 'deepEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf-t7/simos-app/src/test/js/decision-mode.test.cjs:98:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: decision-groups-keep-unknown-kinds-and-preserve-length
+not ok 12 - decision-groups-keep-unknown-kinds-and-preserve-length
+  ---
+  duration_ms: 0.267168
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf-t7/simos-app/src/test/js/decision-mode.test.cjs:121:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be loosely deep-equal:
+    
+    [
+      ''
+    ]
+    
+    should loosely deep-equal
+    
+    [
+      'nation',
+      'army',
+      'tribe',
+      ''
+    ]
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'nation'
+    1: 'army'
+    2: 'tribe'
+    3: ''
+  actual:
+    0: ''
+  operator: 'deepEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf-t7/simos-app/src/test/js/decision-mode.test.cjs:128:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: decision-makers-for-nation-matches-exactly
+ok 13 - decision-makers-for-nation-matches-exactly
+  ---
+  duration_ms: 1.768132
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-resolves-root-and-descendants
+ok 14 - decision-maker-for-unit-resolves-root-and-descendants
+  ---
+  duration_ms: 0.267675
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-is-deterministic-across-two-armies
+ok 15 - decision-maker-for-unit-is-deterministic-across-two-armies
+  ---
+  duration_ms: 0.196278
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-survives-a-parent-cycle
+ok 16 - decision-maker-for-unit-survives-a-parent-cycle
+  ---
+  duration_ms: 0.191512
+  type: 'test'
+  ...
+# Subtest: pending-status-text-never-fabricates
+ok 17 - pending-status-text-never-fabricates
+  ---
+  duration_ms: 0.085408
+  type: 'test'
+  ...
+# Subtest: affiliation-label-formats-kind-name-and-id
+ok 18 - affiliation-label-formats-kind-name-and-id
+  ---
+  duration_ms: 0.078991
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-the-server-shape
+ok 19 - decision-maker-fields-project-the-server-shape
+  ---
+  duration_ms: 0.099951
+  type: 'test'
+  ...
+# Subtest: nation-region-ids-are-set-equal-not-subset
+ok 20 - nation-region-ids-are-set-equal-not-subset
+  ---
+  duration_ms: 0.109611
+  type: 'test'
+  ...
+# Subtest: nation-tag-helpers-ignore-non-nation-and-blank-tags
+ok 21 - nation-tag-helpers-ignore-non-nation-and-blank-tags
+  ---
+  duration_ms: 0.047602
+  type: 'test'
+  ...
+# Subtest: nation-ids-of-regions-unions-distinct-nations
+ok 22 - nation-ids-of-regions-unions-distinct-nations
+  ---
+  duration_ms: 0.107218
+  type: 'test'
+  ...
+# Subtest: render-left-shows-army-decision-maker-for-a-descendant-unit
+ok 23 - render-left-shows-army-decision-maker-for-a-descendant-unit
+  ---
+  duration_ms: 6.251793
+  type: 'test'
+  ...
+# Subtest: render-left-shows-no-decision-maker-for-an-unrelated-unit
+ok 24 - render-left-shows-no-decision-maker-for-an-unrelated-unit
+  ---
+  duration_ms: 2.084871
+  type: 'test'
+  ...
+# Subtest: render-left-shows-nation-decision-maker-for-a-nation-region-hex
+ok 25 - render-left-shows-nation-decision-maker-for-a-nation-region-hex
+  ---
+  duration_ms: 3.5099
+  type: 'test'
+  ...
+# Subtest: index-html-has-six-modes-and-decision-panel
+ok 26 - index-html-has-six-modes-and-decision-panel
+  ---
+  duration_ms: 0.247252
+  type: 'test'
+  ...
+# Subtest: index-html-decision-mode-has-no-start-decision-button
+ok 27 - index-html-decision-mode-has-no-start-decision-button
+  ---
+  duration_ms: 0.134871
+  type: 'test'
+  ...
+# Subtest: map-js-wires-decision-click-to-nation-highlight
+ok 28 - map-js-wires-decision-click-to-nation-highlight
+  ---
+  duration_ms: 0.678682
+  type: 'test'
+  ...
+# Subtest: panels-js-and-app-js-delegate-subpage-visibility
+ok 29 - panels-js-and-app-js-delegate-subpage-visibility
+  ---
+  duration_ms: 0.225063
+  type: 'test'
+  ...
+# Subtest: all-required-test-files-are-present
+ok 30 - all-required-test-files-are-present
+  ---
+  duration_ms: 0.900181
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 31 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 1.465706
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 32 - module-loads
+  ---
+  duration_ms: 1.289361
+  type: 'test'
+  ...
+# Subtest: subtool-ids-and-labels
+ok 33 - subtool-ids-and-labels
+  ---
+  duration_ms: 0.355653
+  type: 'test'
+  ...
+# Subtest: subtool-state-is-fail-closed
+ok 34 - subtool-state-is-fail-closed
+  ---
+  duration_ms: 0.184059
+  type: 'test'
+  ...
+# Subtest: subtool-tools-return-a-snapshot-and-default-tool
+ok 35 - subtool-tools-return-a-snapshot-and-default-tool
+  ---
+  duration_ms: 0.108755
+  type: 'test'
+  ...
+# Subtest: mapEditSubtoolOf-maps-tools-and-rejects-unknown
+ok 36 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  ---
+  duration_ms: 0.121167
+  type: 'test'
+  ...
+# Subtest: write-allowed-is-per-subtool-and-cross-line-is-denied
+ok 37 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  ---
+  duration_ms: 0.072801
+  type: 'test'
+  ...
+# Subtest: write-gate-resolves-tool-then-subtool
+ok 38 - write-gate-resolves-tool-then-subtool
+  ---
+  duration_ms: 0.131555
+  type: 'test'
+  ...
+# Subtest: panel-visibility-is-mutually-exclusive
+ok 39 - panel-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.102614
+  type: 'test'
+  ...
+# Subtest: index-html-has-suboption-control-and-grouped-panels
+ok 40 - index-html-has-suboption-control-and-grouped-panels
+  ---
+  duration_ms: 0.335782
+  type: 'test'
+  ...
+# Subtest: suboptions-are-not-new-modes
+ok 41 - suboptions-are-not-new-modes
+  ---
+  duration_ms: 0.325902
+  type: 'test'
+  ...
+# Subtest: map-js-gates-every-map-write-with-the-matching-type
+ok 42 - map-js-gates-every-map-write-with-the-matching-type
+  ---
+  duration_ms: 0.690982
+  type: 'test'
+  ...
+# Subtest: page-delegates-to-the-single-guard-implementation
+ok 43 - page-delegates-to-the-single-guard-implementation
+  ---
+  duration_ms: 0.68433
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 44 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 0.618185
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 45 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.072362
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 46 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 0.433368
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 47 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.079592
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+ok 48 - edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+  ---
+  duration_ms: 0.175593
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+ok 49 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  ---
+  duration_ms: 0.08984
+  type: 'test'
+  ...
+# Subtest: edgeChainResult-reports-ending-and-skipped-non-adjacency
+ok 50 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+  ---
+  duration_ms: 0.158157
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-treats-a-missing-sample-as-no-op
+ok 51 - edgeChainEdges-treats-a-missing-sample-as-no-op
+  ---
+  duration_ms: 0.089532
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 52 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.209883
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 53 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.396827
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 54 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.143637
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 55 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 0.829123
+  type: 'test'
+  ...
+# Subtest: parseEdgeKey-round-trips-and-rejects-malformed-keys
+ok 56 - parseEdgeKey-round-trips-and-rejects-malformed-keys
+  ---
+  duration_ms: 0.13069
+  type: 'test'
+  ...
+# Subtest: edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+ok 57 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+  ---
+  duration_ms: 0.157911
+  type: 'test'
+  ...
+# Subtest: edgeDeletePlan-replaces-with-the-surviving-set
+ok 58 - edgeDeletePlan-replaces-with-the-surviving-set
+  ---
+  duration_ms: 0.087954
+  type: 'test'
+  ...
+# Subtest: registered-edge-kinds-default-then-follow-the-server
+ok 59 - registered-edge-kinds-default-then-follow-the-server
+  ---
+  duration_ms: 0.115179
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-six-exact-vectors
+ok 60 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 1.398224
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 61 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 0.119347
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 62 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.128229
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 63 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.072591
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 64 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.279494
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 65 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.106386
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 66 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.190629
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 67 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.067276
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 68 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.175299
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 69 - module-loads
+  ---
+  duration_ms: 1.009639
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 70 - mode-ids-order
+  ---
+  duration_ms: 0.365112
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 71 - mode-labels
+  ---
+  duration_ms: 0.071799
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 72 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.058055
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 73 - view-allows-no-write
+  ---
+  duration_ms: 0.113379
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 74 - region-allows-no-write
+  ---
+  duration_ms: 0.052311
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 75 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.091581
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 76 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.047731
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+ok 77 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.152434
+  type: 'test'
+  ...
+# Subtest: decision-allows-no-write
+ok 78 - decision-allows-no-write
+  ---
+  duration_ms: 0.193729
+  type: 'test'
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 79 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.081367
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 80 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.044438
+  type: 'test'
+  ...
+# Subtest: workbench-write-calls-are-all-whitelisted
+ok 81 - workbench-write-calls-are-all-whitelisted
+  ---
+  duration_ms: 2.315278
+  type: 'test'
+  ...
+# Subtest: whitelist-entries-are-well-formed-command-types
+ok 82 - whitelist-entries-are-well-formed-command-types
+  ---
+  duration_ms: 0.148979
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 83 - module-loads
+  ---
+  duration_ms: 0.405073
+  type: 'test'
+  ...
+# Subtest: pendingCount-reads-the-three-response-shapes
+ok 84 - pendingCount-reads-the-three-response-shapes
+  ---
+  duration_ms: 0.085863
+  type: 'test'
+  ...
+# Subtest: summaryText-shows-the-count
+ok 85 - summaryText-shows-the-count
+  ---
+  duration_ms: 0.064708
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-approvals
+ok 86 - renderInto-reads-exactly-one-GET-api-approvals
+  ---
+  duration_ms: 1.779225
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-approvals-unavailable
+ok 87 - renderInto-degrades-when-approvals-unavailable
+  ---
+  duration_ms: 0.205496
+  type: 'test'
+  ...
+# Subtest: index.html-has-notification-element-and-no-right-panel-approvals
+ok 88 - index.html-has-notification-element-and-no-right-panel-approvals
+  ---
+  duration_ms: 0.2452
+  type: 'test'
+  ...
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 89 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 1.734458
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 90 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.479567
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 91 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.161975
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 92 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.545417
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 93 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 0.792714
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 94 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.338092
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 95 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.318698
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 96 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.135496
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 97 - deterministic-across-calls
+  ---
+  duration_ms: 0.334197
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-puts-focus-regions-first
+ok 98 - buildRegionHighlightPlan-puts-focus-regions-first
+  ---
+  duration_ms: 1.034241
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+ok 99 - buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+  ---
+  duration_ms: 0.187959
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+ok 100 - buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+  ---
+  duration_ms: 0.104321
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+ok 101 - buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+  ---
+  duration_ms: 0.192121
+  type: 'test'
+  ...
+# Subtest: the-two-modes-share-one-plan-and-differ-only-in-parameters
+ok 102 - the-two-modes-share-one-plan-and-differ-only-in-parameters
+  ---
+  duration_ms: 0.092746
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-shared-plan-for-both-modes
+ok 103 - page-层-uses-the-shared-plan-for-both-modes
+  ---
+  duration_ms: 0.649152
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+ok 104 - regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+  ---
+  duration_ms: 0.212551
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-keeps-three-owners-as-one-hex
+ok 105 - regionMembershipSummary-keeps-three-owners-as-one-hex
+  ---
+  duration_ms: 0.078721
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-refuses-to-guess-without-hex-lists
+ok 106 - regionMembershipSummary-refuses-to-guess-without-hex-lists
+  ---
+  duration_ms: 0.180247
+  type: 'test'
+  ...
+# Subtest: page-层-shows-the-union-and-never-a-summed-total
+ok 107 - page-层-shows-the-union-and-never-a-summed-total
+  ---
+  duration_ms: 1.133472
+  type: 'test'
+  ...
+# Subtest: debug-hooks-for-the-region-view-mode-are-exposed
+ok 108 - debug-hooks-for-the-region-view-mode-are-exposed
+  ---
+  duration_ms: 0.101804
+  type: 'test'
+  ...
+# Subtest: layout-constants-are-frozen
+ok 109 - layout-constants-are-frozen
+  ---
+  duration_ms: 1.751868
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 110 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.101427
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 111 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.100733
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 112 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.079828
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 113 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.059211
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 114 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.051771
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 115 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.102646
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 116 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.390252
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 117 - groupByTick-empty-input
+  ---
+  duration_ms: 0.157905
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 118 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.211582
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 119 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.097348
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 120 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.07067
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 121 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.066526
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 122 - tickIndex-finds-position
+  ---
+  duration_ms: 0.042056
+  type: 'test'
+  ...
+# Subtest: buildTree-depth-parent-children-per-node
+ok 123 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 1.654834
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 124 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 0.174425
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 125 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.11483
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 126 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.134465
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 127 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.077731
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 128 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.062649
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 129 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.105329
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 130 - empty-input-returns-empty-forest
+  ---
+  duration_ms: 0.055035
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 131 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.350927
+  type: 'test'
+  ...
+# Subtest: api.js-declares-exactly-the-allowed-write-endpoints
+ok 132 - api.js-declares-exactly-the-allowed-write-endpoints
+  ---
+  duration_ms: 0.761731
+  type: 'test'
+  ...
+# Subtest: api.js-exports-the-command-and-approval-write-functions
+ok 133 - api.js-exports-the-command-and-approval-write-functions
+  ---
+  duration_ms: 1.766568
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 134 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 1.28726
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 135 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.231473
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 136 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.145749
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 137 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 2.114323
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 138 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.115462
+  type: 'test'
+  ...
+1..138
+# tests 138
+# suites 0
+# pass 136
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 110.122104

@@ -1,0 +1,9 @@
+── t7m11 (Java guard) ──
+file=index.html orig_md5=2bbb9108c918c75117ea4a701cab4b9a mutant_md5=ce15f7be091dbe94a13be52bec047a85 restored_md5=2bbb9108c918c75117ea4a701cab4b9a
+restored_equals_orig=true
+maven_rc=1
+expected_failing_test=WebuiAssetsTest.allSixModesAreEnabledRealControls
+verdict=KILLED
+red_point=[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.082 s <<< FAILURE! -- in io.mosire.simos.app.gui.WebuiAssetsTest
+red_point=[ERROR] io.mosire.simos.app.gui.WebuiAssetsTest.allSixModesAreEnabledRealControls -- Time elapsed: 0.008 s <<< FAILURE!
+red_point=	at io.mosire.simos.app.gui.WebuiAssetsTest.allSixModesAreEnabledRealControls(WebuiAssetsTest.java:157)
