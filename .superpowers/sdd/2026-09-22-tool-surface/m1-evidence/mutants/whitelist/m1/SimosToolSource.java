@@ -121,6 +121,7 @@ public final class SimosToolSource implements ToolSource {
   private static void addExternalWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
     built.add(new CommandSubmitTool(core, initiator, mapId));
+    built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new AdvanceTool(core, initiator, mapId));
     built.add(new ForkTool(core, initiator));
   }
@@ -137,7 +138,6 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SubmitVerdictTool(core, initiator, mapId));
     built.add(new SetViewScopeTool(core, initiator, mapId));
     built.add(new StartDecisionTool(core, initiator, mapId));
-    built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));
     built.add(new MapUpdateRegionTool(core, initiator, mapId));

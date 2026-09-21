@@ -1,0 +1,4 @@
+db14c720c5aaaff67c60ab9537b5b293  /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m1-evidence/mutants/pristine/AbstractNarrowWriteTool.java
+c74d374fa1f3e3f25bb1dd94586e6178  /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m1-evidence/mutants/pristine/MapSetTerrainTool.java
+d6c06e80ce4916d90d258f56fe38185e  /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m1-evidence/mutants/pristine/SimosToolSource.java
+65472a0de3126af490bef66793846cc2  /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m1-evidence/mutants/pristine/SimosToolsTest.java

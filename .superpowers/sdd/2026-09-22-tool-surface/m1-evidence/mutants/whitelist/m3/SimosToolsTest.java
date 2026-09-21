@@ -461,7 +461,7 @@ class SimosToolsTest {
 
   @Test
   void writesAreSensitiveAndAskWithTheToolNameAsClassKey() {
-    List<String> covered = writeFaceCoveredByTheWriteGate();
+    List<String> covered = EXTERNAL_UNION_GM_TOOL_NAMES.subList(9, 16);
     assertThat(covered)
         .as("★ 写闸覆盖集 == 写工具全集（现有口 ∖ 读名单）：退回索引切片会让新增的写工具静默逃出写闸")
         .containsExactlyInAnyOrderElementsOf(WRITE_TOOL_NAMES);

@@ -128,8 +128,9 @@ public final class SimosToolSource implements ToolSource {
   /**
    * GM 窄写（N11）：两条决策窄工具 + 配权工具（**含** `sd.SetViewScope`）+ 「开始决策」（T10）+ **7 条 map 窄写**（M1）。
    *
-   * <p>★ **7 条 map 工具进的是 GM 桶**（不是通用写、也不是决策桶）：`map.*` 命令类型在工具里固定死，模型只能给载荷 ——与 {@code
-   * simos.command.submit} 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此 也含这 7 条。
+   * <p>★ **7 条 map 工具进的是 GM 桶**（不是通用写、也不是决策桶）：`map.*` 命令类型在工具里固定死，模型只能给载荷
+   * ——与 {@code simos.command.submit} 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此
+   * 也含这 7 条。
    */
   private static void addGmWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {

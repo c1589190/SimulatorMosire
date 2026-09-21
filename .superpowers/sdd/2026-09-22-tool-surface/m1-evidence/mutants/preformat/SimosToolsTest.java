@@ -155,8 +155,9 @@ class SimosToolsTest {
   /**
    * 写工具全集（14 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
    *
-   * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
-   * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
+   * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用
+   * {@code subList(9, 16)}——名单加了 7 条 map 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状
+   * （本仓「把没发生伪装成没发生」那一族）。
    */
   private static final List<String> WRITE_TOOL_NAMES =
       List.of(
@@ -274,9 +275,9 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ M1 判据 2：**名字同源** —— 7 条 map 窄工具各自钉死的命令类型 == 它在名单里登记的名字（{@code AbstractNarrowWriteTool.name()}
-   * 直返 {@code commandType()}），且同一批名字在 GM 桶里能按名找到、7 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源
-   * ⇒ 名能到达 handler）。
+   * ★ M1 判据 2：**名字同源** —— 7 条 map 窄工具各自钉死的命令类型 == 它在名单里登记的名字（{@code
+   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），且同一批名字在 GM 桶里能按名找到、7 个类型都已在
+   * {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达 handler）。
    *
    * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的已注册类型，这里当场红。
    */
@@ -370,7 +371,9 @@ class SimosToolsTest {
             "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES);
     assertThat(externalWithGm)
-        .as("T4/D2 + M1 判据 1：现有口 = EXTERNAL ∪ GM" + "（9 读 + 3 通用写 + 4 sd 窄写 + 7 map 窄写 = 23）")
+        .as(
+            "T4/D2 + M1 判据 1：现有口 = EXTERNAL ∪ GM"
+                + "（9 读 + 3 通用写 + 4 sd 窄写 + 7 map 窄写 = 23）")
         .contains(
             "simos.command.submit",
             "simos.advance",
@@ -388,10 +391,11 @@ class SimosToolsTest {
   }
 
   /**
-   * 写闸**实际覆盖**的工具名。★★ 它从**真工具面**（{@code EXTERNAL_WITH_GM} 桶）派生、减去读名单，**不是**从名单常量取下标 切片。
+   * 写闸**实际覆盖**的工具名。★★ 它从**真工具面**（{@code EXTERNAL_WITH_GM} 桶）派生、减去读名单，**不是**从名单常量取下标
+   * 切片。
    *
-   * <p>这是 M1 修掉的那处缺陷的替代形态：原实现用 {@code subList(9, 16)}，名单加到 23 条后切片**仍然合法** ⇒ 新增的 7 条 map
-   * 写工具完全不被写闸覆盖、且没有任何症状。现在覆盖集从工具面派生，退化成切片会当场红。
+   * <p>这是 M1 修掉的那处缺陷的替代形态：原实现用 {@code subList(9, 16)}，名单加到 23 条后切片**仍然合法** ⇒
+   * 新增的 7 条 map 写工具完全不被写闸覆盖、且没有任何症状。现在覆盖集从工具面派生，退化成切片会当场红。
    */
   private List<String> writeFaceCoveredByTheWriteGate() {
     return shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM).stream()
@@ -465,7 +469,9 @@ class SimosToolsTest {
     assertThat(covered)
         .as("★ 写闸覆盖集 == 写工具全集（现有口 ∖ 读名单）：退回索引切片会让新增的写工具静默逃出写闸")
         .containsExactlyInAnyOrderElementsOf(WRITE_TOOL_NAMES);
-    assertThat(READ_TOOL_NAMES).as("读名单与写名单互斥").doesNotContainAnyElementsOf(WRITE_TOOL_NAMES);
+    assertThat(READ_TOOL_NAMES)
+        .as("读名单与写名单互斥")
+        .doesNotContainAnyElementsOf(WRITE_TOOL_NAMES);
     assertThat(Stream.concat(READ_TOOL_NAMES.stream(), WRITE_TOOL_NAMES.stream()).toList())
         .as("读名单 + 写名单 == 现有口全名单（完整）：名单加项却没登记到任一侧，这里红")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
@@ -600,12 +606,13 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ {@code map.CreateRegion} 的坏载荷 = **regionId 已存在**：本夹具里没有任何区域，故先经**同一条窄工具**真建一个， 再用同一个 id
-   * 建第二次——第二次必须被域层拒、head 停在第一次之后的那个号。
+   * ★ {@code map.CreateRegion} 的坏载荷 = **regionId 已存在**：本夹具里没有任何区域，故先经**同一条窄工具**真建一个，
+   * 再用同一个 id 建第二次——第二次必须被域层拒、head 停在第一次之后的那个号。
    */
   @Test
   void mapCreateRegionToolSurfacesTheDomainRejectionForADuplicateId() throws Exception {
-    String payload = "{\"regionId\":\"t1-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}]}";
+    String payload =
+        "{\"regionId\":\"t1-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}]}";
     ToolResult created = callNarrowWrite(MapCreateRegionTool.NAME, payload, 1L);
     assertThat(created.success()).as(created.message()).isTrue();
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
@@ -616,8 +623,7 @@ class SimosToolsTest {
   }
 
   @Test
-  void mapUpdateRegionToolSurfacesTheDomainRejectionWhenNeitherHexesNorMetaIsGiven()
-      throws Exception {
+  void mapUpdateRegionToolSurfacesTheDomainRejectionWhenNeitherHexesNorMetaIsGiven() throws Exception {
     assertDomainRejectedAndHeadUnchanged(
         MapUpdateRegionTool.NAME,
         "{\"regionId\":\"t1-region\"}",
@@ -646,10 +652,7 @@ class SimosToolsTest {
         "color 必须是 #RRGGBB 形式");
   }
 
-  /**
-   * 窄写调用形态：{@code payloadJson} + {@code branch=main} + {@code expectedRevision}（类型由工具钉死，schema
-   * 里没有）。
-   */
+  /** 窄写调用形态：{@code payloadJson} + {@code branch=main} + {@code expectedRevision}（类型由工具钉死，schema 里没有）。 */
   private ToolResult callNarrowWrite(String toolName, String payloadJson, long expectedRevision) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("payloadJson", payloadJson);
