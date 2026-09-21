@@ -204,8 +204,8 @@
   基线本树实测 **1324**（`logs/baseline-verify.log`）⇒ **delta 干净**：**只有 app 180→187 = +7**（`GmToolUsageApiTest`），
   其余六模块逐值不变；前端 138→153 = +15（`gm-panel.test.cjs`；两处下界同改 + `REQUIRED_FILES`）。
 - **变异**：**22 轮 KILLED / 0 SURVIVED / 1 VOID**（VOID = `r1m1` 首轮锚点随 T7 重写失效，**按当前字节重派生同一语义后 KILLED**，VOID 行留档不删）。
-  新靶 7 轮（t8m1/m8 Java 记录器与端点；t8m2/m3 gm.js 空壳与不接线；t8m4/m5/m6 styles.css/index.html 挡底栏与点不动）+ **裁定 42 重跑 14 轮**
-  （Shell 9：T4 六 + T9 三；GuiServer 3：T6 三；index.html 3：T7 T1）。逐轮 `cp` 逐字节还原 `restored_equals_orig=true`，红点全落被保护断言。
+  新靶 7 轮（t8m1/m8 Java 记录器与端点；t8m2/m3 gm.js 空壳与不接线；t8m4/m5/m6 styles.css/index.html 挡底栏与点不动）+ **裁定 42 重跑 15 轮**
+  （Shell 9：T4 六 + T9 三；GuiServer 3：T6 三；index.html 3：T7 Java 一 + T1/T7 前端二）。逐轮 `cp` 逐字节还原 `restored_equals_orig=true`，红点全落被保护断言。
 - **运行时核**（served assets，独立端口 5861~5864）：`/` 200 含四处 GM 标识且 `approvals-count`×0；`/gm.js` 200 且 md5 与源**逐字节相同**；
   `/api/gm/tool-usage` 200 `{"entries":[]}`；`?as=` 400。**5818 未动**，跑完 kill 本实例 + 清临时 store。
 - **我未能核实的**：见 `t8-evidence/t8-report.md` §八（浏览器 e2e 未跑（Chromium revision 不匹配，T7 已记）/ MCP socket 级运行时探针未驱动

@@ -53,7 +53,7 @@
 
 ## 五 变异（九道门禁；装置在 `mutants/`，逐轮 `cp` 逐字节还原 + 三 md5 自指）
 
-**新 T8 靶子（8 轮，全 KILLED）**：
+**新 T8 靶子（7 轮，全 KILLED）**：
 
 | 轮 | 靶文件 / 变异 | 红点（受保护断言） |
 |---|---|---|
@@ -65,9 +65,9 @@
 | t8m5 | `.gm-overlay` `pointer-events: auto → none`（点不动） | 同上 |
 | t8m6 | 全屏层丢 `hidden`（一进来就盖住底栏） | 同上 |
 
-（上表 7 行；另有 **r1m1 重派生**归入下一段的「前端重跑」。）
+（7 轮 = 5 前端 + 2 Java。）
 
-**裁定 42 重跑（改了前任务的文件 ⇒ 重跑其变异轮）——14 轮，全 KILLED**：
+**裁定 42 重跑（改了前任务的文件 ⇒ 重跑其变异轮）——15 轮，全 KILLED**：
 
 - **`Shell.java`（T4/T9 靶）9 轮**：`r4m1`（现有口退 EXTERNAL）→ `existingPortExposesExternalUnionGmToolFace`；`r4m2`（决策人口错挂）→ `decisionPortExposesOnlyDecisionAgentToolFace`；`r4m3`/`r4t11m1`（`close()` 漏关 server）→ `bothServersListenAndCloseReleasesBothPorts`；`r4t7m1`/`r4t7m2`（authorizer 去审批 / 桶 DEFAULT→GUEST）→ `writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator`；`r4t9m1`/`r4t9m2`（删/挪 `SetStatusHandler` 注册）→ `catalogCoversEveryCommandHandlerImplementation`；`r4t9m3`（注入不可通行成本）→ `everyCatalogTypeIsReachableThroughMcpAndTakesEffect`。
 - **`GuiServer.java`（T6/T5 靶）3 轮**：`r6m3`（`rejectAs` 失效）→ `endpointsWithoutRedactionRejectTheAsParameter`；`r6m5`（hex 可见性 fail-closed 失效）→ `invisibleHexIsNotFoundUnderAs`；`r6t5m5`（决策人路由整段去掉）→ `emptyLibraryGivesEmptyListNotAnError`。
