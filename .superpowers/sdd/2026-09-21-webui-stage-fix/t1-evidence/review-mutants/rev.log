@@ -1,0 +1,63 @@
+===== sx1 =====
+target=/home/cna/SimulatorMosire/.claude/worktrees/wsf-t1/simos-app/src/main/resources/webui/index.html
+orig_md5=e65f07f07ee486b25da5d6ae99e90dbe
+clean_world_md5=e65f07f07ee486b25da5d6ae99e90dbe
+mutant_md5=2fdd69b4ab10c15145bf28897e632d38
+gate_rc=1
+gate_tests=96
+restored_md5=e65f07f07ee486b25da5d6ae99e90dbe
+VERDICT=KILLED
+-- not ok 行 --
+  not ok 46 - index.html-has-notification-element-and-no-right-panel-approvals
+-- 门禁末 3 行 --
+  # todo 0
+  # duration_ms 89.829531
+  [frontend-gate] 前端测试失败：tests=96 pass=95 fail=1 rc=1
+===== end sx1 =====
+===== sx2r =====
+target=/home/cna/SimulatorMosire/.claude/worktrees/wsf-t1/simos-app/src/test/js/run-gate.cjs
+orig_md5=4d372080fe142657052a44542a7c2772
+clean_world_md5=4d372080fe142657052a44542a7c2772
+mutant_md5=24ad9d6c44aeb22120b17a395c0a3565
+gate_rc=0
+gate_tests=96
+restored_md5=4d372080fe142657052a44542a7c2772
+VERDICT=SURVIVED
+-- not ok 行 --
+-- 门禁末 3 行 --
+  # todo 0
+  # duration_ms 79.048583
+  [frontend-gate] OK tests=96 pass=96 fail=0
+===== end sx2r =====
+===== sx2c =====
+target=/home/cna/SimulatorMosire/.claude/worktrees/wsf-t1/simos-app/src/test/js/gate-contract.test.cjs
+orig_md5=a08943d1fa13852f55a343cedee2633c
+clean_world_md5=a08943d1fa13852f55a343cedee2633c
+mutant_md5=e3f777ee95cbca682a8a3b6a0f8d482b
+gate_rc=0
+gate_tests=96
+restored_md5=a08943d1fa13852f55a343cedee2633c
+VERDICT=SURVIVED
+-- not ok 行 --
+-- 门禁末 3 行 --
+  # todo 0
+  # duration_ms 82.421913
+  [frontend-gate] OK tests=96 pass=96 fail=0
+===== end sx2c =====
+===== sx3 =====
+target=/home/cna/SimulatorMosire/.claude/worktrees/wsf-t1/simos-app/src/test/js/notifications.test.cjs
+orig_md5=5f780c4900b495e3bbdb7168ee084f9d
+clean_world_md5=5f780c4900b495e3bbdb7168ee084f9d
+mutant_md5=afd5b8566740eed9cdbe524e8cf2c3aa
+gate_rc=1
+gate_tests=91
+restored_md5=5f780c4900b495e3bbdb7168ee084f9d
+VERDICT=KILLED
+-- not ok 行 --
+  not ok 8 - assertion-count-is-not-below-the-frozen-floor
+  not ok 6 - /home/cna/SimulatorMosire/.claude/worktrees/wsf-t1/simos-app/src/test/js/notifications.test.cjs
+-- 门禁末 3 行 --
+  # todo 0
+  # duration_ms 81.425439
+  [frontend-gate] 前端测试失败：tests=91 pass=89 fail=2 rc=1
+===== end sx3 =====
