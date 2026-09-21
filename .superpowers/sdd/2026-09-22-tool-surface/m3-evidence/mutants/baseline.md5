@@ -1,0 +1,17 @@
+8ad2cf5cc70607ac65b0038f6160a187  simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+bb77a04304259ad98bddc1e7a6dc850b  simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+205ec3f71bacb042dc9ddca36e3026db  simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+b55a5ddce871a2a8093de93ff24da7fb  simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
+70ea3167919ea200f3e328b1e15238c1  simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
+a383dbb932b58fbcef51975e726eceaa  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateNationTool.java
+f14bf38b25510b2506e3917942c3a546  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateArmyTool.java
+fb81a9d4baf5c2dfd3de5831f0a41132  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateDecisionMakerTool.java
+c04e2de5b90e4d579be397b49015dfa8  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdPutInfoTool.java
+31385b9e1d365f825d9027b84aefe4d9  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateCombatTool.java
+d3f262f3d33daf27fae072a8b5c9439c  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdAddCombatStageTool.java
+168eb0d2ebeb0b603b0810f5277435a4  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetStageOutcomeTableTool.java
+58e09eb295926bdbe8410f9775bfa26e  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCommitCombatOutcomeTool.java
+0e75e574a5fd7b0693c1bbc3d964e6b9  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRecordCasualtiesTool.java
+b07d64dc8789ec7fe3d0949b954cda1c  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRegisterEffectTool.java
+7f305a338c66bce428c5342a201ac94f  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCancelEffectTool.java
+366dfc80161af9aa893f4357e181def4  simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetDecisionMakerProviderTool.java

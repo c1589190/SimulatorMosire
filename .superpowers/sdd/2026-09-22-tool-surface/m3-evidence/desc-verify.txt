@@ -1,0 +1,17 @@
+1  SdCreateNationTool               desc=SAME name=SAME md5=c1b01a2ed3bc
+2  SdCreateArmyTool                 desc=SAME name=SAME md5=f14bf38b2551
+3  SdCreateDecisionMakerTool        desc=SAME name=SAME md5=fb81a9d4baf5
+4  SdPutInfoTool                    desc=SAME name=SAME md5=a202e09e2027
+5  SdCreateCombatTool               desc=SAME name=SAME md5=2a3edb5235cd
+6  SdAddCombatStageTool             desc=SAME name=SAME md5=d3f262f3d33d
+7  SdSetStageOutcomeTableTool       desc=SAME name=SAME md5=168eb0d2ebeb
+8  SdCommitCombatOutcomeTool        desc=SAME name=SAME md5=58e09eb29592
+9  SdRecordCasualtiesTool           desc=SAME name=SAME md5=d0ada30ea3b7
+10 SdRegisterEffectTool             desc=SAME name=SAME md5=dec19addaafc
+11 SdCancelEffectTool               desc=SAME name=SAME md5=7f305a338c66
+12 SdSetDecisionMakerProviderTool   desc=SAME name=SAME md5=7c82b6aa934c
+
+本轮跑的是：verify-desc.py md5=b8014be6968e48c14c4fb22a295e9ead
+description-strings.json md5=928664a6615ea8caf9497f4023323149
+brief sha256=5232076938aa218326c6c0387f396c7f03a9abba90aa0f628af00be18f3d3a93（JSON 自记）
+结果：12 个类，DIFF/缺失 0 处

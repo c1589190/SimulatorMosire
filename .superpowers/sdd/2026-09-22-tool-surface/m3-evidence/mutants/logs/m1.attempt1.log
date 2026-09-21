@@ -1,0 +1,317 @@
+════════════════════════════════════════════════════════════════════
+M3 变异轮 label=m1 attempt=1 selector=McpPortTopologyTest,SimosToolsTest
+起跑时刻: 2026-09-22 06:56:58
+──────────────────────── 干净世界 ────────────────────────
+干净世界 OK：16 个基线文件 md5 全部与 baseline.md5 一致
+baseline.md5 自记 md5 = 205c895d1ef0fa2b993a302d7be8197a
+──────────────────────── 推送变异体 ────────────────────────
+变异体脚本: /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m3-evidence/mutants/m1.py  (md5=050848486a8dfe0377a493dc37c88a89)
+  edited simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java（删掉 sd.CreateNation 的 built.add 一行）
+── 推送后逐文件比对（必须与基线**不同**，否则等于没推）──
+  CHANGED  simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+           base=8ad2cf5cc70607ac65b0038f6160a187
+           now =9876b8e208baefbf859879d31cfc879f
+  ⇒ 共 1 处字节变化
+──────────────────────── Maven ────────────────────────
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/8]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+[ERROR] /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java:32:8: Unused import - io.mosire.simos.app.tools.write.SdCreateNationTool. [UnusedImports]
+Audit done.
+[INFO] There is 1 error reported by Checkstyle 9.3 with /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/config/checkstyle.xml ruleset.
+[ERROR] src/main/java/io/mosire/simos/app/tools/SimosToolSource.java:[32,8] (imports) UnusedImports: Unused import - io.mosire.simos.app.tools.write.SdCreateNationTool.
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  6.093 s]
+[INFO] UtilSimos .......................................... SUCCESS [  2.401 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.309 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.284 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.337 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.846 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.327 s]
+[INFO] SimosApp ........................................... FAILURE [  2.218 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  13.794 s
+[INFO] Finished at: 2026-09-22T06:57:18+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin:3.6.0:check (checkstyle-check) on project simos-app: You have 1 Checkstyle violation. -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+──────────────────────── Maven rc=1 ────────────────────────
+COMPILATION ERROR 计数 = 0 （必须为 0，否则本轮作废）
+本轮 rc=1（0=存活 / 非 0=被杀）——★ 判杀前先读日志红点是不是被保护的那行本身
+════════════════════════════════════════════════════════════════════
+── 装置自记（本段由 mut-round.sh 追加；log_prefix = 本段之前的字节）──
+log_prefix_md5=3e1ef0b3d9ca91ba04133a152697c499
+harness_md5   =c54c1184ac5326f6c788f27cdffd4cc5
+spec_md5      =050848486a8dfe0377a493dc37c88a89
+baseline_md5  =205c895d1ef0fa2b993a302d7be8197a
+  file simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+       baseline=8ad2cf5cc70607ac65b0038f6160a187
+       now     =8ad2cf5cc70607ac65b0038f6160a187
+  file simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+       baseline=bb77a04304259ad98bddc1e7a6dc850b
+       now     =bb77a04304259ad98bddc1e7a6dc850b
+  file simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+       baseline=46fee4d68e78f884460b41e4379332d3
+       now     =46fee4d68e78f884460b41e4379332d3
+  file simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
+       baseline=b55a5ddce871a2a8093de93ff24da7fb
+       now     =b55a5ddce871a2a8093de93ff24da7fb
+  file simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
+       baseline=70ea3167919ea200f3e328b1e15238c1
+       now     =70ea3167919ea200f3e328b1e15238c1
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateNationTool.java
+       baseline=a383dbb932b58fbcef51975e726eceaa
+       now     =a383dbb932b58fbcef51975e726eceaa
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateArmyTool.java
+       baseline=f14bf38b25510b2506e3917942c3a546
+       now     =f14bf38b25510b2506e3917942c3a546
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateDecisionMakerTool.java
+       baseline=fb81a9d4baf5c2dfd3de5831f0a41132
+       now     =fb81a9d4baf5c2dfd3de5831f0a41132
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdPutInfoTool.java
+       baseline=c04e2de5b90e4d579be397b49015dfa8
+       now     =c04e2de5b90e4d579be397b49015dfa8
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateCombatTool.java
+       baseline=31385b9e1d365f825d9027b84aefe4d9
+       now     =31385b9e1d365f825d9027b84aefe4d9
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdAddCombatStageTool.java
+       baseline=d3f262f3d33daf27fae072a8b5c9439c
+       now     =d3f262f3d33daf27fae072a8b5c9439c
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetStageOutcomeTableTool.java
+       baseline=168eb0d2ebeb0b603b0810f5277435a4
+       now     =168eb0d2ebeb0b603b0810f5277435a4
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCommitCombatOutcomeTool.java
+       baseline=58e09eb295926bdbe8410f9775bfa26e
+       now     =58e09eb295926bdbe8410f9775bfa26e
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRecordCasualtiesTool.java
+       baseline=0e75e574a5fd7b0693c1bbc3d964e6b9
+       now     =0e75e574a5fd7b0693c1bbc3d964e6b9
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRegisterEffectTool.java
+       baseline=b07d64dc8789ec7fe3d0949b954cda1c
+       now     =b07d64dc8789ec7fe3d0949b954cda1c
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCancelEffectTool.java
+       baseline=7f305a338c66bce428c5342a201ac94f
+       now     =7f305a338c66bce428c5342a201ac94f
+  file simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetDecisionMakerProviderTool.java
+       baseline=366dfc80161af9aa893f4357e181def4
+       now     =366dfc80161af9aa893f4357e181def4
+结束时刻: 2026-09-22 06:57:18

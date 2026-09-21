@@ -1,0 +1,83 @@
+{
+  "_self": {
+    "brief_path": ".superpowers/sdd/2026-09-22-tool-surface/task-3-brief.md",
+    "brief_sha256": "5232076938aa218326c6c0387f396c7f03a9abba90aa0f628af00be18f3d3a93",
+    "rows_found": 12,
+    "indices": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ]
+  },
+  "tools": {
+    "SdCreateNationTool": {
+      "index": 1,
+      "name": "sd.CreateNation",
+      "desc": "建国家：固定 sd.CreateNation，载荷 {nationId, name, homeRegionId, adminBudgetPerTick}（四者全必填；★ homeRegionId 指向的区域必须**已带 `nation:` 前缀的 tag**，否则被拒——R13）"
+    },
+    "SdCreateArmyTool": {
+      "index": 2,
+      "name": "sd.CreateArmy",
+      "desc": "建军：固定 sd.CreateArmy，载荷 {armyId, nationId, rootUnitId, name}（四者全必填；★ nationId 与 rootUnitId 指向不存在者即被拒）"
+    },
+    "SdCreateDecisionMakerTool": {
+      "index": 3,
+      "name": "sd.CreateDecisionMaker",
+      "desc": "建决策人：固定 sd.CreateDecisionMaker，载荷 {id, affiliation, allowedTools, cadence}（四者全必填；★ 创建期 viewScope 恒为空范围、本命令不接受该字段，传了会被静默忽略；★ allowedTools 不得含通用写）"
+    },
+    "SdPutInfoTool": {
+      "index": 4,
+      "name": "sd.PutInfo",
+      "desc": "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?}（前三者必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等）"
+    },
+    "SdCreateCombatTool": {
+      "index": 5,
+      "name": "sd.CreateCombat",
+      "desc": "建交战：固定 sd.CreateCombat，载荷 {combatId, name, participants?}（前两者必填；★ participants 缺省即空集，可建出零参与者交战）"
+    },
+    "SdAddCombatStageTool": {
+      "index": 6,
+      "name": "sd.AddCombatStage",
+      "desc": "加战斗阶段：固定 sd.AddCombatStage，载荷 {combatId, stage, combatStateId?, hex?}（combatId/stage 必填；★★ combatStateId 与 hex 只在**该交战的首个阶段**生效——非首阶段时给了会被**静默忽略**，不报错）"
+    },
+    "SdSetStageOutcomeTableTool": {
+      "index": 7,
+      "name": "sd.SetStageOutcomeTable",
+      "desc": "设阶段结局表：固定 sd.SetStageOutcomeTable，载荷 {combatId, stageId, outcomes}"
+    },
+    "SdCommitCombatOutcomeTool": {
+      "index": 8,
+      "name": "sd.CommitCombatOutcome",
+      "desc": "定结局：固定 sd.CommitCombatOutcome，载荷 {combatId, stageId, selectedOutcomeId}（三者全必填；★ 结局必须在该阶段的 outcomeTable 里，且**已选定过就不再覆盖**）"
+    },
+    "SdRecordCasualtiesTool": {
+      "index": 9,
+      "name": "sd.RecordCasualties",
+      "desc": "记战损：固定 sd.RecordCasualties，载荷 {combatId, stageId, deltas[{unit, lossClass, personnel?, equipment?}]}（deltas 必须非空；★ personnel 缺省 0、equipment 缺省空表 ⇒ 可写出零损失记录；★ 未知装备键会被拒，不视作 0）"
+    },
+    "SdRegisterEffectTool": {
+      "index": 10,
+      "name": "sd.RegisterEffect",
+      "desc": "登记效果：固定 sd.RegisterEffect，载荷 {effectId, kind, trigger, action, createdTick?}（前四者必填；★ createdTick 缺省 = 当前 tick）"
+    },
+    "SdCancelEffectTool": {
+      "index": 11,
+      "name": "sd.CancelEffect",
+      "desc": "取消效果：固定 sd.CancelEffect，载荷 {effectId}（★ 只有可取消状态的效果才允许）"
+    },
+    "SdSetDecisionMakerProviderTool": {
+      "index": 12,
+      "name": "sd.SetDecisionMakerProvider",
+      "desc": "配 provider：固定 sd.SetDecisionMakerProvider，载荷 {decisionMakerId, providerId}（两者全必填；★★ 本命令**只校验 providerId 非空白，不校验 provider 是否存在**——存在性在**使用时刻**解析，解析不到即 fail-closed，绝不静默兜底）"
+    }
+  }
+}

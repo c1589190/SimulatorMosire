@@ -1,0 +1,23 @@
+M3：sd 域 12 条窄写工具（只进 GM 桶）
+
+把 sd 域剩下 12 条写命令包成窄写工具，全部只接进 Role.GM（因此自动进
+EXTERNAL_WITH_GM 复合口），EXTERNAL 与 DECISION_AGENT 两个桶一个都不加。
+
+- 12 个新类：SdCreateNation/CreateArmy/CreateDecisionMaker/PutInfo/CreateCombat/
+  AddCombatStage/SetStageOutcomeTable/CommitCombatOutcome/RecordCasualties/
+  RegisterEffect/CancelEffect/SetDecisionMakerProvider 各自的 Tool；类名、NAME、
+  description() 逐字按 task-3-brief.md。
+- SimosToolSource.addGmWrites 接线 12 条（GM 桶 31 → 43 条窄写）；
+  addDecisionAgentWrites 一字未动。
+- 常量按红点逐处修正（不做全局替换）：现有口 43 → 55（SimosToolsTest 与
+  McpServerTest 两份手抄名单同改）、GM_NARROW_WRITES 4 → 16、
+  roleBucketsNeverCarryGenericWrite 的 GM 40 → 52、WRITE_TOOL_NAMES 34 → 46。
+- 判据：桶大小（EXTERNAL 12 / GM 52 / DECISION_AGENT 31 / EXTERNAL_WITH_GM 55）、
+  名字与固定命令类型同源（12 条 + catalog 覆盖）、敏感写闸（sensitive + Ask +
+  classKey == name）、12 条前置即错各一个独立用例（坏载荷 ⇒ REJECTED + 域层理由
+  原文 + head 不变）、§5.5 孤儿工具扫描（非空自证）。
+- ★ SdSetDecisionMakerProviderTool 不写 provider 存在性校验：工具层校验能被
+  simos.command.submit 绕过 ⇒ 是装饰（§4）。Javadoc 里记了这条理由。
+- CatalogTool 的 sd.AddCombatStage 提示串补「非首阶段时给了会被忽略」（§6(f)）。
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>

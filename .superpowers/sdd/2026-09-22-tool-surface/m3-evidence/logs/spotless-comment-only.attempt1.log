@@ -1,0 +1,69 @@
+════════ spotless 改动面证明：只动注释/空白 ════════
+跑的时刻: 2026-09-22 07:16:52
+checker_md5  = b70a8a5d0a36b3e934cab03330245088
+selftest_md5 = 529b05e3ce78e97ffa078644a905cf5a
+被验对象     = /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+  pre-spotless md5 = 46fee4d68e78f884460b41e4379332d3
+  现在         md5 = 205ec3f71bacb042dc9ddca36e3026db
+
+──── ① checker 的双侧自证（4 个真样本；只证一侧等于没证）────
+── ① 只改注释 ⇒ 期望 IDENTICAL
+   rc=0（期望 0）
+   | A 原文 md5 = 46fee4d68e78f884460b41e4379332d3 (63758 字节)
+   | B 原文 md5 = dccb44f03fa71a4e05093f89d38a32f5 (63771 字节)
+   | A 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | B 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | A 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | B 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | VERDICT: IDENTICAL（非注释 code 与**全部字符串/字符字面量**都逐字节相同 ⇒ 只动了注释/空白）
+   ⇒ OK
+── ② 改一个代码 token ⇒ 期望 DIFFERENT 走 code 分支
+   rc=1（期望 1）
+   | A 原文 md5 = 46fee4d68e78f884460b41e4379332d3 (63758 字节)
+   | B 原文 md5 = 66caa6edd4dd00824fce76627272ccaa (63759 字节)
+   | A 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | B 剥注释后 code = 35520 字节, md5=8ab8ae559b005424cc797391bde0b166
+   | A 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | B 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | VERDICT: DIFFERENT（**字面量之外的代码被改动了**）
+   |   首个分歧在 code 第 21072 字节：A=',' B='.'
+   |   A 上下文: oolResult created = callNarrowWrite(MapCreateRegionTool.NAME, payload, 1L); assertThat(created.success()).as(created.mes
+   |   B 上下文: oolResult created = callNarrowWrite(MapCreateRegionTool.NAME., payload, 1L); assertThat(created.success()).as(created.me
+   ⇒ OK
+── ③ 改字符串字面量里的一个空格 ⇒ 期望 DIFFERENT 走 literal 分支
+   rc=1（期望 1）
+   | A 原文 md5 = 46fee4d68e78f884460b41e4379332d3 (63758 字节)
+   | B 原文 md5 = 0462587a589da86cc8528e997470a38b (63759 字节)
+   | A 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | B 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | A 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | B 字面量合计     = 11810 字节, md5=f692952443ab58533b5e84731fe88ffd
+   | VERDICT: DIFFERENT（**字符串/字符字面量被改动了**）
+   |   首个分歧在字面量第 327 字节：A='C' B=' '
+   |   A 上下文: ""sd.SetViewScope""sd.StartDecision""sd.CreateNation""sd.CreateArmy""sd.CreateDe
+   |   B 上下文: ""sd.SetViewScope""sd.StartDecision""sd. CreateNation""sd.CreateArmy""sd.CreateD
+   ⇒ OK
+── ④ 与自己比 ⇒ 期望被拒收
+   rc=2（期望 2）
+   | A 原文 md5 = 46fee4d68e78f884460b41e4379332d3 (63758 字节)
+   | B 原文 md5 = 46fee4d68e78f884460b41e4379332d3 (63758 字节)
+   | A 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | B 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+   | A 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | B 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+   | 拒收：两份原文逐字节相同 —— 这个比对证明不了任何事
+   ⇒ OK
+
+自证结论: 4/4 条符合期望
+strip-compare.py 的双侧自证: OK
+
+──── ② 真实比对：pre-spotless vs 现在 ────
+A 原文 md5 = 46fee4d68e78f884460b41e4379332d3 (63758 字节)
+B 原文 md5 = 205ec3f71bacb042dc9ddca36e3026db (63763 字节)
+A 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+B 剥注释后 code = 35519 字节, md5=440cf30ce3b25164c62e18332d63f7bc
+A 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+B 字面量合计     = 11809 字节, md5=3352e40fa1546d7969ea1fcdfaddbc2c
+VERDICT: IDENTICAL（非注释 code 与**全部字符串/字符字面量**都逐字节相同 ⇒ 只动了注释/空白）
+
+真实比对 rc=0 （0=IDENTICAL，即只动注释/空白）

@@ -1,0 +1,14 @@
+════════════════════════════════════════════════════════════════════
+M3 变异轮 label=m5b attempt=1 selector=SimosToolsTest
+起跑时刻: 2026-09-22 07:47:12
+──────────────────────── 干净世界 ────────────────────────
+干净世界 OK：16 个基线文件 md5 全部与 baseline.md5 一致
+baseline.md5 自记 md5 = bc9b1d0c7ccec4fa120d01fc8dba4838
+──────────────────────── 推送变异体 ────────────────────────
+变异体脚本: /home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m3-evidence/mutants/m5b.py  (md5=02940daa42fcc8c16a2f76f290731228)
+Traceback (most recent call last):
+  File "/home/dev/SimulatorMosire/.claude/worktrees/ts+m1/.superpowers/sdd/2026-09-22-tool-surface/m3-evidence/mutants/m5b.py", line 32, in <module>
+    for must, label in ((("        .hasSize(52);"), "GM 桶 hasSize(52)")):
+        ^^^^^^^^^^^
+ValueError: too many values to unpack (expected 2)
+VOID: 变异体推送失败
