@@ -49,7 +49,7 @@
 - ★★ **一个容易踩的陷阱**：`SetStatusHandler` 是 **T2** 造的，但**从来没有被注册进 `Shell`**（实测 `Shell.java` 的 import 与 handlers 列表里都没有它）。⇒ **别以为"T2 那批早就注册过了"**；`SetStatus` 确实**要由 T9 首次注册**（计划把它列在 12 条里是**对的**）。
 - ★ **计划的 `Shell.java:193-213` 与 `直读现状 :187-207` 是旧行号**：实测 handlers 列表在 **`:195-214`**（同类漂移见 §五「md5 才是判据」条与 `t8-evidence/mutants/LINE-DRIFT-NOTE.md`）。⇒ **以符号为准，别照抄行号。**
 
-**★ 权威 type 清单（08:02 机械抽取，非记忆）**：对 `simos-unit/.../unit/spi/*Handler.java` **逐个取首个 `return "…";`** ⇒ **20 个文件、20 个唯一串、全部 `unit.*`**：
+**★ 权威 type 清单（08:01 机械抽取，非记忆；锚 = 提交 `1eff18c` 时间戳 08:01:05）**：对 `simos-unit/.../unit/spi/*Handler.java` **逐个取首个 `return "…";`** ⇒ **20 个文件、20 个唯一串、全部 `unit.*`**：
 
 ```
 unit.ApplyCasualties   unit.AttachUnit        unit.CancelRoute        unit.CreateCommandChain
@@ -64,7 +64,7 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
 - ★ **T9 的 catalog 断言请写成"集合相等"，不要用前缀/包含**：本表里有**近名对**（`ReparentUnit` vs `ReparentSubtree`、`PlanRoute` vs `PlanSparseRoute`、`SetStatus` vs `SetStrength` vs `SetFormationOffset`）⇒ 任何 `startswith`/`contains` 型断言都会**掩盖"注册错了一条"**（正是 m1"删一条注册"想抓的东西）。
 - ★ **一个机械事实**：这 20 条**全是 `unit` namespace** ⇒ `unit` namespace 下**恰好一个 participant**（§三判据那半）与"20 条 type"是**两件事**，别混。
 
-**★ 装配链已实测走通（08:06，全部只读、未动一行生产代码）——T9 的形状比计划描述的更简单**：
+**★ 装配链已实测走通（08:02，全部只读、未动一行生产代码；锚 = 提交 `8929737` 时间戳 08:02:01）——T9 的形状比计划描述的更简单**：
 
 1. ★★ **不存在"独立的 catalog 类"要改**。`Shell.java:215-219` 用 `Set<String> commandTypes = new LinkedHashSet<>()` **遍历 `handlers` 调 `handler.type()` 现场构建**，再经 `Shell.java:260` 传给 `SimosToolSource`（`:49` 注明"与 `Shell` 注册的 handler 同源"）→ `CatalogTool(commandTypes)`（`:64`）→ 面向 agent 的 `simos.command.catalog`。⇒ **注册即入 catalog，判据由构造保证**；T9 所谓"改 catalog" = **别漏注册**，**不存在第二处要改**。
 2. ★ **`MovementCost` 注入已有先例，不必新造通道**：`Shell.java:221` 就是 `new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId())`。⇒ `new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE)` **照抄同一来源**即可。★★ **且必须写进 `List.of(...)` 之内**（`:195-214`）——若写在 `commandTypes` 构建循环**之后**，handler 注册了但 **catalog 会漏**（这是"注册了却没进 catalog"的唯一真实路径，也正是 §三 陷阱 2 的实操含义）。
@@ -87,7 +87,7 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
 | **T10-e** | **G5**：回归与**在途普通路线**同时存在时的交互**无 spec 依据**（现状：回归行程**替换**在途行程）；**凭空定策略就是发明需求** ⇒ 届时仍无上游依据就**记为"未定策略"、不记为"已实现"** | T7-G5 |
 | **T10-f** | **G2**：`UnitPayloads` 类注仍写"unit **十六个** handler"——**T7 立此项时实为 18**，**T8 后实为 20**（08:02 机械抽取复核实测；T9 注册完 type 总数**仍 20**，变的只是 **Shell 注册数 8→20**）⇒ 纯注释、零行为 | T7-G2 |
 | **T10-g** | **spec §八 20 条逐条实测值**（不是"通过/不通过"，要**数字**）+ 变异轮汇总 + **"我未能核实的"清单** + 关账报告 | 计划 T10 |
-| **T10-h** | ★ **新增（08:06 控制器实测）**：`Shell.java:308` 日志字面量**硬编码** `"… participant=1"`——当前**无测试断言**（`*/src/test/*` 搜不到），故**非现行陷阱**；但**一旦将来注册第二个 participant，这条日志会静默说谎**（既不编译错、也不测试红）⇒ 归 T10 清扫，**修法是数出来**而不是写死 | 控制器 08:06 |
+| **T10-h** | ★ **新增（08:02 控制器实测，锚 = `8929737`）**：`Shell.java:308` 日志字面量**硬编码** `"… participant=1"`——当前**无测试断言**（`*/src/test/*` 搜不到），故**非现行陷阱**；但**一旦将来注册第二个 participant，这条日志会静默说谎**（既不编译错、也不测试红）⇒ 归 T10 清扫，**修法是数出来**而不是写死 | 控制器 08:02 |
 
 ## 五、★ 运行纪律与环境实测（**下一个会话必须原样继承**）
 
@@ -112,6 +112,7 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
   ⇒ ①**"被杀"不是"早早失败"**，T7 三轮都在跑完 **85%~90%** 用例后才倒下 ⇒ **重跑一轮的时间代价≈整轮全价**；②**被杀的轮次不许读作"没参考价值"**——它客观证明"耗时确实压在线上"。
   ★ **假说（未验、不得当结论）**：死点偏末段**可能**因 `simos-app` 处 JVM 与 npm 前端门禁同驻、内存压力峰值在那里；但 **T5 的被杀轮死在第 3 个模块** ⇒ **反例在案**，故只记「**压力驱动、不是位置驱动**」。
 - ★ **md5 才是"字节变了"的判据，mtime 不是**；**同一文件被改动 ⇒ 旧证据对应旧字节**。
+- ★ **文档里的时刻要挂可核验的锚，不写"我读的钟"**（08:02 立）：本会话**第三次**把时刻写到实际钟点**之前**（这次写了 `08:06`，实际 `08:02`）。⇒ 不是"看错表"，而是**自报型记录天然不可核验**——与上面的 md5/mtime 是**同族病**：**凡是"记录者自己说"的字段（时刻、计数、哈希），都得挂一个外部可验的锚**。时刻的锚 = **提交时间戳**（`git log --format='%ad' --date=format:'%H:%M:%S'`）⇒ 凡文档里出现钟点，**先取提交时间戳再回填**，读者可自行复核。**这条与"门禁总数一律现场重算"是同一条纪律的第二次兑现。**
 - ★★ **算术：跨文档一致 ≠ 验证**（T8 收口时实测踩到）：我把 T8 门禁总数写成 **1191**（真值 **1189**），错因是**两处连乘的自算错**（`+11 +3` 写成 +16；`1175+16` 算成 1191——两个加数本身是从日志**正确提取**的）。错被抄进 3 份文档 + 2 条已推提交信息。
   **停机前的跨文档一致性检查全部通过**——因为**三份文档一致地错** ⇒ **一致性只证明"抄得整齐"，证明不了数对**。
   ⇒ **通则：门禁总数一律现场重算**（`grep -E '^\[INFO\] Tests run:' <log> | grep -oE '[0-9]+' | paste -sd+ | bc`），**不得引用任何文档里的现成数字，包括本文件与台账**；文档里的数只能用来**发现分歧**、**不能当结论**。★ 同族病：计划里的 `169+K`（core）与 `110+M`（app）都是**立项旧数、无人回源头算**。
