@@ -13,6 +13,7 @@ import java.util.Objects;
  * <p>★ **不静默兜底**是核心不变量：
  *
  * <ul>
+ *   <li>注册表为空（两处配置都没配 / 都空）⇒ 抛「未配置」，**绝不**编造一个默认 provider；
  *   <li>未绑定（providerId 空）⇒ 抛「未绑定」，**绝不**落到某个默认 provider；
  *   <li>绑定的 id 在当前注册表里查无（如回放到一条绑了已删 provider 的 revision）⇒ 抛**点名该 id** 的「不存在」， **绝不**换一个能用的顶上。
  * </ul>
@@ -37,11 +38,19 @@ public final class LlmProviderResolver {
   /**
    * providerId ⇒ {@link LlmClient}。
    *
-   * @throws IllegalStateException providerId 空（未绑定）或查无（回放悬空）
+   * @throws IllegalStateException providerId 空（未绑定）、注册表空（未配置）或查无（回放悬空）
    */
   public LlmClient llmClientFor(String providerId) {
     if (providerId == null || providerId.isBlank()) {
       throw new IllegalStateException("决策人未绑定 LLM provider（providerId 为空）");
+    }
+    if (registry.list().isEmpty()) {
+      throw new IllegalStateException(
+          "LLM provider 未配置（仓库默认配置 "
+              + registry.defaultsFile()
+              + " 与 store 覆盖 "
+              + registry.file()
+              + " 都不存在或为空）");
     }
     LlmProvider provider =
         registry
@@ -50,13 +59,15 @@ public final class LlmProviderResolver {
     return new HttpLlmClient(
         provider.baseUrl(),
         provider.model(),
+        provider.temperature(),
+        provider.maxTokens(),
         () ->
             registry
                 .resolveSecret(provider.apiKeyRef())
                 .orElseThrow(
                     () ->
                         new IllegalStateException(
-                            "LLM provider 的密钥引用不可解析: " + provider.apiKeyRef().ref())),
+                            "LLM provider 的密钥引用不可解析: " + provider.apiKeyRef().kind() + ":" + provider.apiKeyRef().ref())),
         provider.timeout(),
         http);
   }
