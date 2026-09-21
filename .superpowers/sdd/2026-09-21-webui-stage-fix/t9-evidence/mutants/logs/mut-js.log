@@ -1,0 +1,16 @@
+── t9js-m1 ──
+file=panels.js orig_md5=29019a49af240d637dd891acfd761892 mutant_md5=b74867b26fdd69a87382678951295904 restored_md5=29019a49af240d637dd891acfd761892
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=right-list-renders-pending-from-server-due
+verdict=KILLED
+red_point=not ok 107 - right-list-renders-pending-from-server-due
+
+── t9js-m2 ──
+file=panels.js orig_md5=29019a49af240d637dd891acfd761892 mutant_md5=75bc2f1e4093463e902b7bf3d0e4258d restored_md5=29019a49af240d637dd891acfd761892
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=pending-status-text-maps-only-real-booleans-and-never-fabricates
+verdict=KILLED
+red_point=not ok 105 - pending-status-text-maps-only-real-booleans-and-never-fabricates
+

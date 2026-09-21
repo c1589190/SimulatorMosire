@@ -212,3 +212,27 @@
   （"有记录"态由 Java 测试走真 Shell+authorizer+注册表+HTTP 证过）/ 记录不持久 / 两 MCP 口共用 initiator 靠端口区分 / 前序重跑是代表集，
   未重跑与 T8 改动无交集的前序靶）。
 - **证据**：`t8-evidence/`（logs/ + mutants/（含 py/、pristine/、logs/）+ t8-report.md）。
+
+## T9 「建议/待决」信号（服务端计算 + 列表显示）✅（2026-09-21，分支 `wsf/t9`，基线 `14add68`）
+
+- **范围**：只做 T9。**服务端**按 **D7 已裁公式**算出 `due`（首次恒 due）；**只读派生、不落 revision**（铁律 2）；读 `SdState` 走 sd 模块公共访问器（铁律 3）。
+  改 3 文件 + 2 门禁：`SdQueryService.java`（`pending`/`tickOf` + `DecisionMakerInfo.pending` + `PendingSignal`）、`ApiViews.java`（`due`/`lastDirectiveTick`/`ticksSinceLast`）、
+  `SdDecisionMakerApiTest.java`（改 1 条断言 + 新增 6 用例）；新 `test/js/pending-signal.test.cjs`（6 条）；`run-gate.cjs`+`gate-contract.test.cjs`（153→159 + `REQUIRED_FILES`）。
+- ★ **`GuiServer`/`Shell` 零改动**；★ **`panels.js` 逐字节未动**（md5 `29019a49…`，与 T7 终态一致）——T7 早把展示位绑到 `maker.due`
+  ⇒ **T9 无前端生产改动**（见 t9-report §六 L1），前端交付 = 新护栏。
+- **公式**：`since = tick − max(dm 的所有 Directive tick)`（`directives()` 是**插入序表**，必须显式求 max）；`last==null ⇒ due=true`；否则 `due = since >= cadence`。
+  首次的 `lastDirectiveTick`/`ticksSinceLast` 置 **`null`**（"没有基准"，不填 0/-1）。当前 tick = 被查询快照的 `meta().timestamp().tick()`。
+- **门禁**：`./mvnw clean verify` **rc=0**（实现轮**第 3 次尝试**：attempt1 rc=0（补 C17 前）/ **attempt2 Spotless 折行红**（新增中文 Javadoc）/ `spotless:apply` 后 attempt3 rc=0）；
+  变异轮后复跑 **rc=0（第 1 次尝试）**。**8/8 `SUCCESS [`**；**1337** = `170/368/45/259/178/124/193`（现场重算，只取模块汇总行）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **159/159**。
+  基线（T8）**1331** = `…/187` ⇒ **delta 干净**：**只有 app 187→193 = +6**（`SdDecisionMakerApiTest` 13→19），其余六模块逐字不变；前端 153→159 = +6（两处下界同改 + 新文件入册）。
+- **判据逐条实测**（t9-report §二）：**首次恒 due**（`due=true`、last/since 均 `null`）；**未到点不 due**（tick7 间隔 0 < cadence ⇒ false）；**到点 due**（推进 7→9 间隔 2 == cadence ⇒ true，`>=` 口径）；
+  **max**（ticks 4,6 ⇒ last=6）；**C16**（推进 directives 4→4、revision +1、due 随 tick 更新）；**C17**（推进后 `due=true` 集合逐值 == 离线冻结集合 `[dm-due,dm-first,dm-max]`）；
+  **R4** 回归由既有 `IssueDirectiveHandlerTest:69` + `SdStateInvariantTest:40` 钉住。
+- **变异 13 轮 13 KILLED / 0 存活**：T9 自身 6 Java（t9m1 due 恒 true / t9m2 取 min / t9m3 首次不 due / t9m4 严格 `>` / t9m5 `ApiViews` due 写死 false / t9m6 间隔差一）
+  + 2 JS（t9js-m1 列表项写死文案 / t9js-m2 非布尔返回「非待决」）；**裁定 42** 重跑 T5 旧靶 5（t5m1~m5，锚点按当前字节重表达）；**逐轮 `cp` 逐字节还原 `restored_md5==orig_md5`**。
+  ★ 三个分支各有能杀它的变异体；★ 新增的 **C17 集合判据**被 4 轮各自杀掉（不是装饰）。
+- **我未能核实的**：t9-report §五（真浏览器 e2e 未跑（同 T7 开口项）/ 真档未验 / `lastDirectiveTick > tick` 与跨回退的 max 未测 / T7 变异未重跑（依据是靶字节未动）/ 前端"真值"只在替身夹具层）。
+- **带裁定的遗留**：t9-report §六（L1 前端零生产改动 = 设计事实；L2 `lastDirectiveTick`/`ticksSinceLast` 未在前端显示；L3 当前 tick = 快照 tick 属实现期裁定；L4 C17 用冻结字面量）。
+- **证据**：`t9-evidence/`（logs/ + mutants/（pristine/、py/、逐轮日志、mut-java-summary.txt）+ t9-report.md）。
+- ★ **装置自身的坑（如实记）**：`mut-java.sh` 的 `: > "$ALL_LOG"` 会截断累积日志 ⇒ 分两次调用后 `mut-java.log` 只剩后一次（t5m）；
+  **逐轮 `t9m*.log`/`t5m*.log` 完整在档**，判定由逐轮日志重建，不依赖 `mut-java.log`。

@@ -1,0 +1,69 @@
+===== t5m1 target=simos-app/src/main/java/io/mosire/simos/app/query/SdQueryService.java expect=filterByNationReturnsOnlyThatNationsDecisionMakers|filterByArmyReturnsOnlyThatArmysDecisionMakers =====
+orig_md5=eae45882b085efecdc56481475195e78 clean_world_md5=eae45882b085efecdc56481475195e78
+mutant_md5=faac257d9a2cc036b7f3bfafa6b1629b
+mut_rc=0 compilation_error=0 tests_run=19
+--- 失败原文 ---
+Tests run: 19, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 8.734 s <<< FAILURE! -- in io.mosire.simos.app.gui.SdDecisionMakerApiTest
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterByArmyReturnsOnlyThatArmysDecisionMakers -- Time elapsed: 0.318 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterByNationReturnsOnlyThatNationsDecisionMakers -- Time elapsed: 0.317 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterForValidButAbsentNationGivesEmptyList -- Time elapsed: 0.323 s <<< FAILURE!
+protected_assertion_hits=2
+VERDICT=KILLED
+restored_md5=eae45882b085efecdc56481475195e78
+===== end t5m1 self_md5=faac257d9a2cc036b7f3bfafa6b1629b verdict=KILLED =====
+===== t5m2 target=simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java expect=detailMatchesReplayedSdStateFieldByField =====
+orig_md5=de1a3665534a167bebac686e771da7ea clean_world_md5=de1a3665534a167bebac686e771da7ea
+mutant_md5=850f9a2e2256534a14168878e6db4a3f
+mut_rc=0 compilation_error=0 tests_run=19
+--- 失败原文 ---
+Tests run: 19, Failures: 0, Errors: 3, Skipped: 0, Time elapsed: 8.678 s <<< FAILURE! -- in io.mosire.simos.app.gui.SdDecisionMakerApiTest
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.listReturnsAllDecisionMakersSortedByIdWithResolvedAffiliation -- Time elapsed: 0.407 s <<< ERROR!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.dueIsFalseBeforeCadenceAndTrueExactlyAtCadence -- Time elapsed: 0.569 s <<< ERROR!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.detailMatchesReplayedSdStateFieldByField -- Time elapsed: 0.318 s <<< ERROR!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=de1a3665534a167bebac686e771da7ea
+===== end t5m2 self_md5=850f9a2e2256534a14168878e6db4a3f verdict=KILLED =====
+===== t5m3 target=simos-app/src/main/java/io/mosire/simos/app/query/SdQueryService.java expect=emptyLibraryGivesEmptyListNotAnError =====
+orig_md5=eae45882b085efecdc56481475195e78 clean_world_md5=eae45882b085efecdc56481475195e78
+mutant_md5=64dadb8cc8b9143bed745f466a276782
+mut_rc=0 compilation_error=0 tests_run=19
+--- 失败原文 ---
+Tests run: 19, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 8.750 s <<< FAILURE! -- in io.mosire.simos.app.gui.SdDecisionMakerApiTest
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.emptyLibraryGivesEmptyListNotAnError -- Time elapsed: 0.703 s <<< FAILURE!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=eae45882b085efecdc56481475195e78
+===== end t5m3 self_md5=64dadb8cc8b9143bed745f466a276782 verdict=KILLED =====
+===== t5m4 target=simos-app/src/main/java/io/mosire/simos/app/query/SdQueryService.java expect=filterWithUnknownKindIsRejectedNotSilentlyEmpty =====
+orig_md5=eae45882b085efecdc56481475195e78 clean_world_md5=eae45882b085efecdc56481475195e78
+mutant_md5=92a53e68c7aac206baeb37cd7e4618ac
+mut_rc=0 compilation_error=0 tests_run=19
+--- 失败原文 ---
+Tests run: 19, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 8.682 s <<< FAILURE! -- in io.mosire.simos.app.gui.SdDecisionMakerApiTest
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterWithUnknownKindIsRejectedNotSilentlyEmpty -- Time elapsed: 0.325 s <<< FAILURE!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=eae45882b085efecdc56481475195e78
+===== end t5m4 self_md5=92a53e68c7aac206baeb37cd7e4618ac verdict=KILLED =====
+===== t5m5 target=simos-app/src/main/java/io/mosire/simos/app/gui/GuiServer.java expect=emptyLibraryGivesEmptyListNotAnError =====
+orig_md5=221883ce5a49326a5a677eb0a2ca3da3 clean_world_md5=221883ce5a49326a5a677eb0a2ca3da3
+mutant_md5=26f1b582f85134cd65c5baba92fe2b21
+mut_rc=0 compilation_error=0 tests_run=19
+--- 失败原文 ---
+Tests run: 19, Failures: 11, Errors: 0, Skipped: 0, Time elapsed: 8.604 s <<< FAILURE! -- in io.mosire.simos.app.gui.SdDecisionMakerApiTest
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.emptyLibraryGivesEmptyListNotAnError -- Time elapsed: 0.653 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.listReturnsAllDecisionMakersSortedByIdWithResolvedAffiliation -- Time elapsed: 0.440 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterWithEmptyIdIsRejected -- Time elapsed: 0.326 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterWithoutColonIsRejected -- Time elapsed: 0.329 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.listAndDetailAgreeOnDue -- Time elapsed: 0.580 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterByArmyReturnsOnlyThatArmysDecisionMakers -- Time elapsed: 0.325 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterWithUnknownKindIsRejectedNotSilentlyEmpty -- Time elapsed: 0.314 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.dueSetMatchesTheOfflineFormulaAfterAdvancing -- Time elapsed: 0.637 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterByNationReturnsOnlyThatNationsDecisionMakers -- Time elapsed: 0.331 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.twoListCallsAreByteIdentical -- Time elapsed: 0.372 s <<< FAILURE!
+io.mosire.simos.app.gui.SdDecisionMakerApiTest.filterForValidButAbsentNationGivesEmptyList -- Time elapsed: 0.314 s <<< FAILURE!
+protected_assertion_hits=1
+VERDICT=KILLED
+restored_md5=221883ce5a49326a5a677eb0a2ca3da3
+===== end t5m5 self_md5=26f1b582f85134cd65c5baba92fe2b21 verdict=KILLED =====

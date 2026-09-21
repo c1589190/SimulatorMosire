@@ -19,8 +19,9 @@ const JS_DIR = __dirname;
 //   webui-stage-fix T3 起 108 → 114（map-edit-tools.test.cjs 新增连通性手势/命中/删边/词表 6 条）。
 //   webui-stage-fix T7 起 114 → 135（新增 decision-mode.test.cjs 的 20 条 + modes.test.cjs 决策只读 1 条）。
 //   webui-stage-fix T8 起 138 → 153（新增 gm-panel.test.cjs 的 15 条：GM 按钮/全屏层/工具使用渲染/空态/无对话输入）。
+//   webui-stage-fix T9 起 153 → 159（新增 pending-signal.test.cjs 的 6 条：待决文本不造假 + 列表项/左栏渲染 due 真值 + 列表项由 maker.due 驱动）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 153;
+const MIN_TESTS = 159;
 
 function discoverTests() {
   return fs
