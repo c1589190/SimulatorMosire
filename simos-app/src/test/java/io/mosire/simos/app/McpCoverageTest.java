@@ -93,11 +93,14 @@ class McpCoverageTest {
   private static final HexCoord H13 = new HexCoord(1, 3);
 
   private static final UnitId U1 = new UnitId("u-1");
+  private static final UnitId U3 = new UnitId("u-3");
+  private static final UnitId U4 = new UnitId("u-4");
+  private static final UnitId U5 = new UnitId("u-5");
   private static final int CHECKPOINT_INTERVAL = 100;
 
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
-  /** catalog 预期的 14 个已注册命令类型（与 {@code Shell} 注册的 handler 同源）。 */
+  /** catalog 预期的 30 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30）。 */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "unit.RenameUnit",
@@ -108,6 +111,18 @@ class McpCoverageTest {
           "unit.PlanRoute",
           "unit.CancelRoute",
           "unit.DisbandUnit",
+          "unit.SetStatus",
+          "unit.AttachUnit",
+          "unit.DetachUnit",
+          "unit.ReparentSubtree",
+          "unit.SetFormationOffset",
+          "unit.SplitFormation",
+          "unit.MergeFormation",
+          "unit.PlanSparseRoute",
+          "unit.SetRejoinTarget",
+          "unit.CreateCommandChain",
+          "unit.UpdateCommandChain",
+          "unit.ApplyCasualties",
           "map.SetTerrain",
           "map.CreateRegion",
           "map.UpdateRegion",
@@ -135,6 +150,24 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "unit.PlanRoute", "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}");
     MINIMAL_PAYLOADS.put("unit.CancelRoute", "{\"id\":\"u-1\"}");
+    // ── T9 新增的 12 条：顺序即语义合法序（须排在 DisbandUnit 之前，u-1 才还在）──
+    MINIMAL_PAYLOADS.put("unit.SetStatus", "{\"id\":\"u-1\",\"status\":\"RESTING\"}");
+    MINIMAL_PAYLOADS.put("unit.SetRejoinTarget", "{\"id\":\"u-1\",\"target\":\"u-2\"}");
+    MINIMAL_PAYLOADS.put(
+        "unit.ApplyCasualties", "{\"id\":\"u-1\",\"personnel\":-10,\"equipment\":{\"步枪\":-5}}");
+    MINIMAL_PAYLOADS.put(
+        "unit.PlanSparseRoute",
+        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}");
+    MINIMAL_PAYLOADS.put(
+        "unit.CreateCommandChain",
+        "{\"chainId\":\"c-1\",\"name\":\"第一链\",\"commander\":\"u-2\",\"members\":[\"u-2\"]}");
+    MINIMAL_PAYLOADS.put("unit.UpdateCommandChain", "{\"chainId\":\"c-1\",\"name\":\"第一链改\"}");
+    MINIMAL_PAYLOADS.put("unit.AttachUnit", "{\"id\":\"u-3\",\"parent\":\"u-2\"}");
+    MINIMAL_PAYLOADS.put("unit.ReparentSubtree", "{\"rootId\":\"u-4\",\"parent\":\"u-2\"}");
+    MINIMAL_PAYLOADS.put("unit.DetachUnit", "{\"id\":\"u-4\"}");
+    MINIMAL_PAYLOADS.put("unit.SplitFormation", "{\"rootId\":\"u-2\",\"subUnitIds\":[\"u-1\"]}");
+    MINIMAL_PAYLOADS.put("unit.MergeFormation", "{\"childId\":\"u-5\",\"parentId\":\"u-2\"}");
+    MINIMAL_PAYLOADS.put("unit.SetFormationOffset", "{\"id\":\"u-3\",\"dq\":1,\"dr\":0}");
     MINIMAL_PAYLOADS.put("unit.DisbandUnit", "{\"id\":\"u-1\"}");
     MINIMAL_PAYLOADS.put(
         "map.SetTerrain", "{\"hexes\":[{\"q\":1,\"r\":3}],\"terrain\":\"plains\"}");
@@ -212,7 +245,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 18 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 30 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -243,29 +276,31 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("18 条命令各推一格")
-        .isEqualTo(19L);
+        .as("30 条命令各推一格")
+        .isEqualTo(31L);
 
-    // 3. 世界真的变了（不是"没报错"）：u-1 被解散、只剩 CreateUnit 建的 u-2。
-    SimulationState afterUnitCommands = shell.coreSimos().replay(ref("main", 15));
+    // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
+    //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
+    SimulationState afterUnitCommands = shell.coreSimos().replay(ref("main", 21));
     UnitState units = unitSlice(afterUnitCommands);
     assertThat(units.units().keySet())
-        .as("u-1 已被 DisbandUnit 解散，只剩 u-2")
-        .containsExactly(new UnitId("u-2"));
+        .as("u-1 已被 DisbandUnit 解散，只剩 u-2/u-3/u-4/u-5")
+        .containsExactlyInAnyOrder(
+            new UnitId("u-2"), new UnitId("u-3"), new UnitId("u-4"), new UnitId("u-5"));
     assertThat(units.units().get(new UnitId("u-2")).name()).isEqualTo("第二连");
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(19L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(31L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(20L);
-    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=20");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(20L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(32L);
+    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=32");
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(32L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 20L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 32L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");
@@ -414,7 +449,14 @@ class McpCoverageTest {
                   "core.AdvanceTime",
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
-    UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
+    UnitState units =
+        new UnitState(
+            new LinkedHashMap<>(
+                Map.of(
+                    U1, unit(),
+                    U3, genesisUnit(U3, "第三连", H11),
+                    U4, genesisUnit(U4, "第四连", H11),
+                    U5, genesisUnit(U5, "第五连", H12))));
     SocialData social = new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())));
     SimulationState genesis =
         new SimulationState(
@@ -440,6 +482,21 @@ class McpCoverageTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
+        100,
+        Map.of("步枪", 50),
+        2,
+        500,
+        Optional.empty());
+  }
+
+  /** T9 新增的创世单位（锚在 {@code T0}）：给编制类命令提供**互不冲突的段序列**（同刻只能落一段）。 */
+  private static Unit genesisUnit(UnitId id, String name, HexCoord position) {
+    return new Unit(
+        id,
+        name,
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
         100,
         Map.of("步枪", 50),
         2,

@@ -54,11 +54,19 @@ import io.mosire.simos.util.time.EventMode;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -112,6 +120,18 @@ class SimosToolsTest {
           "unit.PlanRoute",
           "unit.CancelRoute",
           "unit.DisbandUnit",
+          "unit.SetStatus",
+          "unit.AttachUnit",
+          "unit.DetachUnit",
+          "unit.ReparentSubtree",
+          "unit.SetFormationOffset",
+          "unit.SplitFormation",
+          "unit.MergeFormation",
+          "unit.PlanSparseRoute",
+          "unit.SetRejoinTarget",
+          "unit.CreateCommandChain",
+          "unit.UpdateCommandChain",
+          "unit.ApplyCasualties",
           "map.SetTerrain",
           "map.CreateRegion",
           "map.UpdateRegion",
@@ -171,7 +191,55 @@ class SimosToolsTest {
     JsonNode body = JSON.readTree(result.message());
     assertThat(textValues(body.get("types")))
         .as("catalog 与已注册 handler 同源（R5：catalog 列出的每个 type 都能经 submit 到达）")
+        .hasSize(EXPECTED_COMMAND_TYPES.size())
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
+  }
+
+  /**
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 30 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
+   * Shell}，或注册了一条没有实现的 type，这里都会红**。
+   *
+   * <p>★ 扫描范围是 surefire 工作目录（模块根 {@code simos-app/}）⇒ 相对路径 {@code ../simos-unit/src/main/java} 在主树与
+   * worktree 里都成立；**非空自证**：文件数必须恰为 30（扫到 0 个是"扫描器静默"陷阱，不是通过）。
+   */
+  @Test
+  void catalogCoversEveryCommandHandlerImplementation() throws Exception {
+    Set<String> implementationTypes = handlerTypesFromSources();
+    assertThat(implementationTypes)
+        .as("扫描必须恰为 30 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(30);
+
+    ToolResult result = call("simos.command.catalog", Map.of());
+    assertThat(result.success()).isTrue();
+    JsonNode body = JSON.readTree(result.message());
+    assertThat(textValues(body.get("types")))
+        .as("catalog 的 type 集合必须等于全仓实现的 type() 集合（强判据：注册面 == 实现面）")
+        .containsExactlyInAnyOrderElementsOf(implementationTypes);
+  }
+
+  /** 从 simos-unit/map/sd 的 main 源码抽 `public String type()` 的返回串（每个 *Handler.java 取首个匹配）。 */
+  private static Set<String> handlerTypesFromSources() throws IOException {
+    List<Path> roots =
+        List.of(
+            Paths.get("..", "simos-unit", "src", "main", "java"),
+            Paths.get("..", "simos-map", "src", "main", "java"),
+            Paths.get("..", "simos-sd", "src", "main", "java"));
+    Pattern typeReturn =
+        Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*\"([^\"]+)\"");
+    Set<String> types = new LinkedHashSet<>();
+    for (Path root : roots) {
+      try (Stream<Path> files = Files.walk(root)) {
+        for (Path file :
+            files.filter(path -> path.getFileName().toString().endsWith("Handler.java")).toList()) {
+          Matcher matcher = typeReturn.matcher(Files.readString(file));
+          if (matcher.find()) {
+            types.add(matcher.group(1));
+          }
+        }
+      }
+    }
+    return types;
   }
 
   @Test

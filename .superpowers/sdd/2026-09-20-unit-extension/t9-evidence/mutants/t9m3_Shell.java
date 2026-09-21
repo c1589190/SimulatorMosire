@@ -227,7 +227,23 @@ public final class Shell implements AutoCloseable {
             new SetFormationOffsetHandler(),
             new SplitFormationHandler(),
             new MergeFormationHandler(),
-            new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE),
+            new PlanSparseRouteHandler(
+                new io.mosire.simos.unit.move.MovementCost() {
+                  @Override
+                  public java.util.OptionalLong costMillis(
+                      io.mosire.simos.map.hex.HexCoord from,
+                      io.mosire.simos.map.hex.HexCoord to,
+                      io.mosire.simos.unit.Unit unit,
+                      io.mosire.simos.map.GameMap map) {
+                    return java.util.OptionalLong.empty();
+                  }
+
+                  @Override
+                  public long minStepCostMillis(
+                      io.mosire.simos.unit.Unit unit, io.mosire.simos.map.GameMap map) {
+                    return 0L;
+                  }
+                }),
             new SetRejoinTargetHandler(),
             new CreateCommandChainHandler(),
             new UpdateCommandChainHandler(),
