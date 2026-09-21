@@ -1,0 +1,40 @@
+[check_v17levant_docs] 源   : /home/cna/DevMosire/testspace/worlds/v17levant_2/nodes
+[check_v17levant_docs] 文档 : docs/worlds/v17levant
+  [PASS] teeth.source-non-empty — source elements=615
+  [PASS] teeth.docs-non-empty — md files=7
+  [PASS] counts.total — 615
+  [PASS] chars.total — 319,630
+  [PASS] counts.narrative — 170
+  [PASS] chars.narrative — 193,165
+  [PASS] counts.map — 318
+  [PASS] chars.map — 25,561
+  [PASS] counts.internal — 67
+  [PASS] chars.internal — 59,558
+  [PASS] counts.factions — 52
+  [PASS] chars.factions — 38,224
+  [PASS] counts.worldview — 6
+  [PASS] chars.worldview — 1,651
+  [PASS] counts.characters — 2
+  [PASS] chars.characters — 1,471
+  [PASS] counts.categories-sum-to-total — 615
+  [PASS] coverage.all-elements-present-in-docs — 缺失: {}
+  [FAIL] docs.only-md — 非 md 条目: ['leak.txt']
+  [PASS] regions.provinces-count — 98
+  [PASS] regions.named-16 — 16
+  [PASS] regions.noise-82 — 82
+  [PASS] map.noise-section-exists — section bytes=30387
+  [PASS] map.all-mapped-noise-regions-in-noise-section — []
+  [PASS] map.noise-without-entry-count — 无 map 条目的噪声区域数=7（实测 7）
+  [PASS] map.noise-not-marked-named — 泄漏: []
+  [PASS] readme.states-16-82 — 16=True 82=True
+  [PASS] factions.named-appear — []
+  [PASS] redline.probe-provided — info probe=.superpowers/sdd/2026-09-21-webui-stage-fix/t12-evidence/logs/info-probe.json
+  [PASS] redline.info-is-empty — infoEmpty=True
+  [PASS] redline.info-bySubject-empty — bySubject=0
+  [PASS] redline.sd-state-info-empty — sdStateInfoEmpty=True
+  [PASS] redline.no-sd-info-entries — sdInfoEntryCount=0
+  [PASS] redline.probe-saw-real-state — hexCount=59223
+  [PASS] redline.docs-under-docs-dir — /home/cna/SimulatorMosire/.claude/worktrees/wsf-t12/docs/worlds/v17levant
+  [PASS] redline.docs-not-under-resources — /home/cna/SimulatorMosire/.claude/worktrees/wsf-t12/docs/worlds/v17levant
+[check_v17levant_docs] 结果 : FAIL
+[check_v17levant_docs] 失败项: docs.only-md

@@ -1,0 +1,36 @@
+=== 产出 md 清单与 md5（7 个，全 .md）===
+total 912
+drwxr-xr-x 2 cna cna   4096 Sep 21 20:08 .
+drwxr-xr-x 3 cna cna   4096 Sep 21 19:54 ..
+-rw-r--r-- 1 cna cna   3650 Sep 21 20:08 README.md
+-rw-r--r-- 1 cna cna   4344 Sep 21 20:08 characters.md
+-rw-r--r-- 1 cna cna 105136 Sep 21 20:08 factions.md
+-rw-r--r-- 1 cna cna 165250 Sep 21 20:08 internal.md
+-rw-r--r-- 1 cna cna  56448 Sep 21 20:08 map.md
+-rw-r--r-- 1 cna cna 569479 Sep 21 20:08 narrative.md
+-rw-r--r-- 1 cna cna   5360 Sep 21 20:08 worldview.md
+
+b6d75fab8c58277f330c01a165792442  docs/worlds/v17levant/README.md
+d230fcd619b4a400886c9aae7e21ef9d  docs/worlds/v17levant/characters.md
+d298a378010b74880fbb958874b423e6  docs/worlds/v17levant/factions.md
+55307856f78012f492433ef5916bc5c1  docs/worlds/v17levant/internal.md
+25879337ad7ab4e4c261e141259b44b4  docs/worlds/v17levant/map.md
+eac9d693cddde037b18cc187cc04dd51  docs/worlds/v17levant/narrative.md
+a721097bb4480f8f4a56af5ccd622764  docs/worlds/v17levant/worldview.md
+
+=== 目录里非 md 条目（应为空）===
+(以上为空即 PASS)
+
+=== 内容抽查 ===
+-- 法蒂玛哈里发国 faction 原文首行（factions.md）--
+19:首都: 科尔多瓦
+-- 叙事 n0000 法蒂玛开局（narrative.md）--
+13:哈里发穆罕默德·奥斯曼奥卢登基已历七载。帝国的心脏——广袤的低地平原——在尼罗河-瓜达尔基维尔的灌溉下迎来又一个丰年。国库充盈，粮仓满溢，科尔多瓦的集市上来自三个大陆的商人摩肩接踵。智慧宫的学者们刚刚完成了波斯《天文表》的阿拉伯语译本。
+-- 内部记录：军事编制（internal.md）--
+50:【帕拉丁帝国 · 军事编制 — 仅西线远征军】（第二/第五/第八军团，约3.4万战斗人员，含辅助军；帝国另有东线五军团及禁卫军一万未计入）
+-- 世界观：稻教（worldview.md）--
+31:稻教的核心叙事将帝国描绘为天地秩序的维护者：
+-- map.md 三节标题 --
+6:## ★ 有名势力的地图条目（21 键）
+430:## ★★ 程序化噪声区域（82 个区域）——**无长篇文本**
+2322:## 其他地图条目（26 键）

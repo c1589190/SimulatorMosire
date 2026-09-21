@@ -1,0 +1,36 @@
+round=m4
+target=tools/v17levant_docs.py
+mutant_source=.superpowers/sdd/2026-09-21-webui-stage-fix/t12-evidence/mutants/m4.v17levant_docs.py
+cmd=./mvnw -q -pl simos-app -am -Dtest=T12InfoRedlineTest -Dsurefire.failIfNoSpecifiedTests=false test
+regen=
+orig_md5=d777f0adb750c5ac25f13c166ac6ba4f
+mutant_md5=b0b9e1b6ae6691ad2dc119672fd9c574
+test_rc=1
+compilation_error_count=0
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.605 s <<< FAILURE! -- in io.mosire.simos.app.demo.T12InfoRedlineTest
+[ERROR] io.mosire.simos.app.demo.T12InfoRedlineTest.docsAndRichWorldHaveNoInfoWritePath -- Time elapsed: 0.022 s <<< FAILURE!
+java.lang.AssertionError: 
+[★ 红线：v17levant_docs.py 是纯离线文档器，源码里不得出现 Info 的符号名] 
+Expecting empty but was: ["InfoSystem"]
+	at io.mosire.simos.app.demo.T12InfoRedlineTest.docsAndRichWorldHaveNoInfoWritePath(T12InfoRedlineTest.java:159)
+
+[ERROR] Failures: 
+[ERROR]   T12InfoRedlineTest.docsAndRichWorldHaveNoInfoWritePath:159 [★ 红线：v17levant_docs.py 是纯离线文档器，源码里不得出现 Info 的符号名] 
+Expecting empty but was: ["InfoSystem"]
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/wsf-t12/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+restored_md5=d777f0adb750c5ac25f13c166ac6ba4f
+round_done=OK

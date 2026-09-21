@@ -1,0 +1,38 @@
+round=m3
+target=simos-app/src/test/java/io/mosire/simos/app/demo/T12InfoRedlineTest.java
+mutant_source=.superpowers/sdd/2026-09-21-webui-stage-fix/t12-evidence/mutants/m3.T12InfoRedlineTest.java
+cmd=./mvnw -q -pl simos-app -am -Dtest=T12InfoRedlineTest -Dsurefire.failIfNoSpecifiedTests=false test
+regen=
+orig_md5=59772b7617db15084a18255e9bf49388
+mutant_md5=308fc4c832bb706926eb22de98b02a3c
+test_rc=1
+compilation_error_count=0
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.558 s <<< FAILURE! -- in io.mosire.simos.app.demo.T12InfoRedlineTest
+[ERROR] io.mosire.simos.app.demo.T12InfoRedlineTest.richWorldCarriesNoInfoAndTheWorldIsNotEmpty -- Time elapsed: 1.522 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[C26：全局 Info 段（InfoSystem）一条都没有] 
+expected: InMemoryInfoSystem[bySubject={}]
+ but was: InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1]]]=[InfoEntry[key=doc, value=v17levant 文档被录进 Info（变异体）, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=doc, localId=v17levant], note=Optional.empty]]}]
+	at io.mosire.simos.app.demo.T12InfoRedlineTest.richWorldCarriesNoInfoAndTheWorldIsNotEmpty(T12InfoRedlineTest.java:82)
+
+[ERROR] Failures: 
+[ERROR]   T12InfoRedlineTest.richWorldCarriesNoInfoAndTheWorldIsNotEmpty:82 [C26：全局 Info 段（InfoSystem）一条都没有] 
+expected: InMemoryInfoSystem[bySubject={}]
+ but was: InMemoryInfoSystem[bySubject={Address[segments=[Namespace[ident=map], Entity[kind=Optional.empty, name=Map1]]]=[InfoEntry[key=doc, value=v17levant 文档被录进 Info（变异体）, valid=TimeRange[from=SimosTimestamp[tick=0, calendarLabel=Optional.empty], to=Optional.empty], source=SubjectId[namespace=doc, localId=v17levant], note=Optional.empty]]}]
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/wsf-t12/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+restored_md5=59772b7617db15084a18255e9bf49388
+round_done=OK
