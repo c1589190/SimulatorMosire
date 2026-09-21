@@ -160,6 +160,9 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
 
 **sd-simos C1~C6 → D1~D7 → E1**，其中 **C 的硬前置 = unit-ext 全部完成**。
 
-## 七、停机时的一件待决（**需用户一句话**）
+## 七、★ `main` 的推送口径（**已更正，见下**）
 
-`origin/main` 落后（★ **数字会漂，现场取**：`git rev-list --left-right --count origin/main...HEAD`；本会话末实测 = **`0 34`**，且只增不减——本会话就推了 10 条）。记录在案的口径是「默认分支 **deliberately unpushed**」，本会话**未推**，也**没有**在停机时擅自推。若要把 main 也推上去（用户此前有过一次「推 main」的先例），说一声即可。
+★ **2026-09-21：用户说「推 main」⇒ 已推**。推送前实测 `origin/main...HEAD` = **`0 42`**、`origin/main` 是 HEAD 的**祖先** ⇒ **纯快进**；实际输出 `f9f5f0c..39e1ac7  HEAD -> main`；推后复测 **`0 0`**、`origin/main` = **`39e1ac7`**。
+★★ **本文件此处原写「记录在案的口径是『默认分支 deliberately unpushed』」——错的，且是控制器自造的词**：`CLAUDE.md`「推送状态」行在案的是 **09-19「是的」** 与 **09-20「推 main」** 两次**用户授权**先例（同款指令到 09-21 已是**第三次**）⇒ 与"deliberately"正相反。★ 性质同 `CLAUDE.md` 里已撤的"不擅自推送"（控制器自加、用户从未说过）。
+⇒ **口径改为事实版**：**`main` 平时落后于 feature 分支，用户说推就推**；推法 `git push origin HEAD:main`，**推前先验祖先关系**（`git merge-base --is-ancestor origin/main HEAD`）⇒ 是 ff 就不用 force（近三次**都是**纯 ff）。
+★ **可操作的一般式（下一个会话照做）**：①`git rev-list --left-right --count origin/main...HEAD` ②`git merge-base --is-ancestor origin/main HEAD && echo ff` ③`git push origin HEAD:main` ④`git fetch -q origin main` 后复测 `0 0`。★ **本地 `main` 分支是 `f5c8485`（M1 期遗留），不等于 `origin/main`，别拿它当远端真相**。

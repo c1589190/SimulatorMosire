@@ -238,4 +238,5 @@
 
 **下一步从哪继续**：照 **`HANDOFF.md §三`** 干 T9——**权威 20 type 清单 + 4 条坑 + 装配链 + 爆炸半径表**都在那里；
 判据用**强版**：**catalog type 集合 == 全仓 30 个 `CommandHandler` 实现的 `type()` 集合，且 `|catalog| == 30`**（m1 靶子 = 删一条注册）；★ 改 `Shell` = 改动既有护栏 ⇒ **裁定 42 需自带重跑轮**；门禁按**全量**规矩跑（前台、独占、记"第几次尝试"）。
-`origin/feat/adr1-core-scope` 已同步；`origin/main` 落后 **40**（现场取），按既有口径 **deliberately unpushed**，**未推**。
+`origin/feat/adr1-core-scope` 已同步；**`main` 已推**（用户当场说「推 main」）——推前 `origin/main...HEAD` = **`0 42`** 且 `origin/main` 是 HEAD 的祖先 ⇒ **纯 ff**，输出 `f9f5f0c..39e1ac7  HEAD -> main`，推后复测 **`0 0`**。
+★ **本行原写「`origin/main` 落后 40，按既有口径 deliberately unpushed，未推」——已更正**：那句里的"deliberately unpushed"**不是用户口径，是控制器在停机小结里自造的词**，与 `CLAUDE.md`「推送状态」行在案的 **09-19「是的」**、**09-20「推 main」**两次用户授权先例**都不符**（09-21 这次是第三次）。⇒ **事实版口径：`main` 平时落后，用户说推就推**（详见 `HANDOFF §七`）。
