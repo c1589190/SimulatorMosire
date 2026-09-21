@@ -1,11 +1,12 @@
-# unit-ext 交接（控制器，2026-09-21 07:56 停机前）
+# unit-ext 交接（控制器，2026-09-21 停机前）
 
 > 目的：让**下一个会话**不必重新推导就能接着干 T9/T10。所有数字均为**实测**，
 > 凡与计划冲突处已标明"计划是立项旧数"。
+> ★ **本文件里的钟点全部挂提交锚**（见 §五「时刻挂锚」条）；**凡会漂的数字（分支 tip、`origin/main` 落后量、门禁总数）一律现场重取，别引用本文件里的现成值**。
 
 ## 一、当前状态（一句话）
 
-主干 `feat/adr1-core-scope` 在 **`38616da`**，**T1~T8 全部关账**（实现 + 变异 + 模块门禁 + 合并 + 合并门禁 + 台账/CLAUDE.md 回填），工作树**干净**，`origin/feat/adr1-core-scope...HEAD` = **`0 0`**。
+主干 `feat/adr1-core-scope`——★ **分支 tip 会漂，现场取**（`git log -1 --format=%h`；本文件所在的侦察提交已是 `38616da` 之后的多条）。**T1~T8 全部关账**（实现 + 变异 + 模块门禁 + 合并 + 合并门禁 + 台账/CLAUDE.md 回填），工作树**干净**，`origin/feat/adr1-core-scope...HEAD` = **`0 0`**（现场取：`git rev-list --left-right --count origin/feat/adr1-core-scope...HEAD`）。
 **未派 T9**：停机前跑道不足——★ 而且实测把 T9 的估时**进一步推高**：除装配本身外，还压着 **12 条端到端载荷的时序设计**（见 §三 坑 4），**远超** T8 的 28 分钟。**不存在进行中的子代理。**
 
 ## 二、已完成的 T1~T8（提交与计数）
@@ -99,9 +100,9 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
    ★ **计数必须限定真源码路径**：不加 `-- '*/src/main/java/*'` 会把 `.superpowers/**` 里的变异体副本算进去（实测 `CommandHandler` 30 → **45**、`TimeParticipant` 1 → **13**）⇒ 一律限定，**别用裸 `-l | wc -l`**。
 4. **participant 侧无事可做**：全仓 `TimeParticipant` 实现**只有 `UnitTimeParticipant` 一个**（`namespace()` 硬编码 `return "unit";`，`:91-93`）；`ModuleCodec` **4 个**，与 `Shell:190` 的四条注册相符。⇒ "unit namespace 恰一个 participant" 现成立，**T9 不应新增 participant**。
 
-**判据**：catalog type 集合 ⊇ 上述 12 个（**m1 靶子 = 删一条注册**）；每个 `type()` 形状 `<namespace>.<Command>`；`unit` namespace 恰一个 participant（装配 + 一次 `advance` 不抛）；端到端经 `Shell` 发一条新命令 ⇒ `committed`。**变异 ≥2 轮**；★ 十道门禁 + ★ **裁定 42**（新增/改动护栏必须自带变异轮）+ ★ 第 ⑩ 道**逐片段**自证。
+**判据**（★ **以 §三「装配链」第 3 条的强判据为准**）：**catalog type 集合 == 全仓 30 个 `CommandHandler` 实现的 `type()` 集合，且 `|catalog| == 30`**（**m1 靶子 = 删一条注册**）；每个 `type()` 形状 `<namespace>.<Command>`；`unit` namespace 恰一个 participant（装配 + 一次 `advance` 不抛）；端到端经 `Shell` 发一条新命令 ⇒ `committed`。**变异 ≥2 轮**；★ 十道门禁 + ★ **裁定 42**（新增/改动护栏必须自带变异轮）+ ★ 第 ⑩ 道**逐片段**自证。
 
-**★ 装配改动 ⇒ 必须连带复核**：`Shell` 是既有装配点，改它 = **改动既有护栏** ⇒ 按裁定 42 需自带重跑轮；同时确认 `simos-app` 既有测试（实测 **116**）只增不减地绿。
+**★ 装配改动 ⇒ 必须连带复核**：`Shell` 是既有装配点，改它 = **改动既有护栏** ⇒ 按裁定 42 需自带重跑轮；同时确认 `simos-app` 既有测试（实测 **116**）只增不减地绿——★ **注意这 116 里就含 `McpCoverageTest`**（见上面坑 4：**它一定会红，且红是对的**，必须靠补载荷转绿，**不许靠放宽它**）。
 
 ## 四、T10（端到端判据 + 关账）——**已挂账的待裁项**（不许丢）
 
@@ -157,4 +158,4 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
 
 ## 七、停机时的一件待决（**需用户一句话**）
 
-`origin/main` 落后 **20** 个提交（`origin/main...HEAD` = `0 20`）。记录在案的口径是「默认分支 **deliberately unpushed**」，本会话**未推**，也**没有**在停机时擅自推。若要把 main 也推上去（用户此前有过一次「推 main」的先例），说一声即可。
+`origin/main` 落后（★ **数字会漂，现场取**：`git rev-list --left-right --count origin/main...HEAD`；本会话末实测 = **`0 34`**，且只增不减——本会话就推了 10 条）。记录在案的口径是「默认分支 **deliberately unpushed**」，本会话**未推**，也**没有**在停机时擅自推。若要把 main 也推上去（用户此前有过一次「推 main」的先例），说一声即可。
