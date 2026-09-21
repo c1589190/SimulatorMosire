@@ -106,9 +106,10 @@
 | 本树（**最终绿轮**） | `v3-evidence/logs/clean-verify.final.log`（md5 `05d181a8…`、rc=0）⇒ **1362** = `170/369/45/259/179/129/211`、**第 1 次尝试**、8/8 `SUCCESS [`、`BugInstance 0 ×7`、`[ERROR] 0`、前端 188/188 |
 | delta | map +1、core +1、前端 +1 |
 
-## 三 变异（九道门禁；**7 体 / 0 存活**）
+## 三 变异（九道门禁；**11 轮 / 0 存活**）
 
-`js-m1`（取首位）/`js-m2`（退回字典序）/`js-m3`（退回 group）/`j-m1`（服务端退回字典序）/`j-m2`（顺序反转）/`j-m1b`（j-m1 绕短路补轮，命中 core 判据）/`e2e-m1`·`e2e-m3`（**浏览器层**：jar 副本改 `map.js`，真 Chromium 红在 `b1`~`c1`）。日志 `v3-evidence/mutants/logs/` 与 `v3-evidence/e2e/mutant/`。
+7 个新轮：`js-m1`（取首位）/`js-m2`（退回字典序）/`js-m3`（退回 group）/`j-m1`（服务端退回字典序）/`j-m2`（顺序反转）/`j-m1b`（j-m1 绕短路补轮，命中 core 判据）/`e2e-m1`·`e2e-m3`（**浏览器层**：jar 副本改 `map.js`，真 Chromium 红在 `b1`~`c1`）。
+★ **裁定 42 重派生 4 轮**：`r-v2m1`/`r-v2m2`/`r-v2m3`/`r-u2a`（V2 区域名门控 —— 改文件但未改其目标字节 ⇒ 在**最终字节**上逐字重放，全 KILLED）。日志 `v3-evidence/mutants/logs/` 与 `v3-evidence/e2e/mutant/`。
 
 ## 四 实测（真富世界，真 Chromium）
 

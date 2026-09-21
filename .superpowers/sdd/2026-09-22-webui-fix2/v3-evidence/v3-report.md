@@ -64,7 +64,12 @@
 | **e2e-m1**（浏览器层） | jar 副本里 `topRegionId` 改取**首位** | **KILLED** | `b1`/`b2`/`b4`/`c1`（选中 `["大蜀"]`、像素 distWrong=1.38 vs distTop=38.7） |
 | **e2e-m3**（浏览器层） | jar 副本里 **退回 group** | **KILLED** | `b1`/`b2`/`b3`/`b4`/`c1`（选中 `["大蜀","东川"]`、kind `group`、alpha 0.42） |
 
-**存活：0。** 每轮还原后 `md5` 与原件逐字节相同（`map.js`=`3a5e981d…`、`MapResolver.java`=`7fc1e6a7…`）；浏览器层两轮用 **jar 副本**（源文件一字未动），故不影响最终绿轮字节。日志在 `v3-evidence/mutants/logs/` 与 `v3-evidence/e2e/mutant/`。
+**★ 裁定 42（改既有文件 ⇒ 在最终字节上重派生相关既有变异轮）**：V3 改了 `MapResolver.java` 与 `map.js`（改的是 `regionOfHex` 与 `regionOfHex` 调用点）。⇒
+① **行为被 V3 取代的旧轮**（M8 T1 的 `MapResolver` 排序轮、U3 的 `selectRegionOfHex` 轮）已在最终字节上**重派生**为 `j-m1`/`j-m2`/`js-m3`/`e2e-m1`/`e2e-m3`（红点落在**新**判据上）；
+② **改文件但未改其目标字节的旧轮**（V2 `map.js` 区域名门控）也在最终字节上**逐字重放**：`r-v2m1`/`r-v2m2`/`r-v2m3`/`r-u2a` **全部 KILLED**（日志 `mutants/logs/r-*.log`）。
+★ **范围声明**：V1/U1/U5 的变异体靶在 `styles.css`/`panels.js`（V3 未改）与其它 worktree，**未重放**——这是范围声明，**不是"已重跑"**。
+
+**存活：0（本任务共 11 轮：7 新 + 4 重派生）。** 每轮还原后 `md5` 与原件逐字节相同（`map.js`=`3a5e981d…`、`MapResolver.java`=`7fc1e6a7…`）；浏览器层两轮用 **jar 副本**（源文件一字未动），故不影响最终绿轮字节。日志在 `v3-evidence/mutants/logs/` 与 `v3-evidence/e2e/mutant/`。
 
 ## 五、我未能核实的 / 如实披露
 
