@@ -2,9 +2,10 @@
 // ★ 冻结夹具：每个模式的允许/拒绝逐条写死，不拿被测函数自身输出当期望。
 "use strict";
 
+const fs = require("node:fs");
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { loadWebui } = require("./helpers/webui-loader.cjs");
+const { loadWebui, webuiDir, readWebui } = require("./helpers/webui-loader.cjs");
 
 const M = loadWebui("modes.js").SimosModes;
 
@@ -88,4 +89,43 @@ test("allowedWrites-returns-a-snapshot", () => {
   copy.push("unit.CreateUnit");
   assert.equal(M.allowedWrites("map-edit").includes("unit.CreateUnit"), false);
   assert.equal(M.isWriteAllowed("map-edit", "unit.CreateUnit"), false);
+});
+
+// ── T10-i：白名单必须覆盖**工作台实际发出的**全部写命令（静态扫描的派生式断言）──────
+// 依据（只读实测）：工作台唯一写路径是 app.writeCommand（app.js），map.js 里的写都经它；
+// 本扫描从 webui/*.js 抽出全部 `writeCommand("<type>"` 字面量，逐条断言"至少一个模式放行"。
+// ⇒ 新增一条工作台写命令却忘了加白名单 ⇒ 这里红（把 isWriteAllowed 的 fail-closed 静默拒提前暴露）。
+// ★ 扫描的是**源码原文**（含注释）：注释里提到一条 writeCommand 调用会被当成真调用——这是 fail-closed
+//   方向的误报（宁可多报），当前 0 例。
+test("workbench-write-calls-are-all-whitelisted", () => {
+  const calls = [];
+  for (const name of fs.readdirSync(webuiDir()).filter((n) => n.endsWith(".js"))) {
+    const source = readWebui(name);
+    const re = /writeCommand\(\s*"([^"]+)"/g;
+    let match;
+    while ((match = re.exec(source)) !== null) {
+      calls.push({ file: name, type: match[1] });
+    }
+  }
+  assert.ok(
+    calls.length > 0,
+    "没扫到任何 writeCommand 字面量 —— 先怀疑扫描器（路径/正则），别先怀疑白名单"
+  );
+  const allowed = new Set();
+  M.modeIds().forEach((id) => M.allowedWrites(id).forEach((type) => allowed.add(type)));
+  const denied = calls.filter((call) => !allowed.has(call.type));
+  assert.deepEqual(
+    denied,
+    [],
+    "工作台写命令未进任何模式的 writes（fail-closed 会静默拒）: " + JSON.stringify(denied)
+  );
+});
+
+test("whitelist-entries-are-well-formed-command-types", () => {
+  const shape = /^[a-z][a-z0-9-]*\.[A-Z][A-Za-z0-9]*$/;
+  M.modeIds().forEach((id) => {
+    M.allowedWrites(id).forEach((type) => {
+      assert.ok(shape.test(type), id + " 的白名单项形状不合法: " + type);
+    });
+  });
 });

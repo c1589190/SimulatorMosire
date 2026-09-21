@@ -240,3 +240,37 @@
 判据用**强版**：**catalog type 集合 == 全仓 30 个 `CommandHandler` 实现的 `type()` 集合，且 `|catalog| == 30`**（m1 靶子 = 删一条注册）；★ 改 `Shell` = 改动既有护栏 ⇒ **裁定 42 需自带重跑轮**；门禁按**全量**规矩跑（前台、独占、记"第几次尝试"）。
 `origin/feat/adr1-core-scope` 已同步；**`main` 已推**（用户当场说「推 main」）——推前 `origin/main...HEAD` = **`0 42`** 且 `origin/main` 是 HEAD 的祖先 ⇒ **纯 ff**，输出 `f9f5f0c..39e1ac7  HEAD -> main`，推后复测 **`0 0`**。
 ★ **本行原写「`origin/main` 落后 40，按既有口径 deliberately unpushed，未推」——已更正**：那句里的"deliberately unpushed"**不是用户口径，是控制器在停机小结里自造的词**，与 `CLAUDE.md`「推送状态」行在案的 **09-19「是的」**、**09-20「推 main」**两次用户授权先例**都不符**（09-21 这次是第三次）。⇒ **事实版口径：`main` 平时落后，用户说推就推**（详见 `HANDOFF §七`）。
+
+---
+
+## ★★ T10 关账（端到端判据 + 挂账 a~l 收口）
+
+> 分支 `ue/t10`，基线 `349887d`（T9 合并后的 HEAD）。关账报告 **`task-10-final-report.md`**（含 §六「我未能核实的」10 条）。
+
+**一句话**：三处静默面收口（GUI 写白名单 / `PAYLOAD_HINTS` / `Shell` 的 `participant=1`）+ 挂账 a~l 逐项处置 +
+1 个 e2e 类（6 条，判据 #1/#5/#6/#7/#8/#12/#15 逐值）+ 2 个针对性护栏 + 2 条派生式断言；
+`./mvnw clean verify` **第 1 次尝试即绿**、**10 变异全杀 0 存活**。
+
+**门禁**（★ 从原始日志重算，非引用文档）：`./mvnw clean verify` **rc=0、第 1 次尝试**、**8/8 模块 SUCCESS**、
+**1199** = `170/362/45/259/177/62/124`、`BugInstance size is 0` ×7、`[ERROR]` 0、前端 `tests=90 pass=90 fail=0`。
+**delta 干净**（T9 = 1190 = `…/257/…/117`）：**unit +2**（`UnitRejoinDanglingTest` 1 + `RelativeOffsetTest` 溢出用例 1）、
+**app +7**（e2e 6 + `SimosToolsTest` 1）；其余模块逐值不变；前端 88→90（两处下界同改）。
+
+**挂账 a~l 处置**（★ 编号是 a~j + l，**无 k**）：
+- ✅ **修**：**a**（`RelativeOffset.appliedTo` 改 `Math.addExact`，溢出拒）／**b**（`everyHandlerRejectsMalformedPayload` 11 处 token 断言收紧为完整载荷层消息）／**d**（补 `UnitRejoinDanglingTest` 判据；**不清引用**）／**f**（`UnitPayloads` 类注"十六→二十"）／**h**（`participant` 由清单数出来）／**j**（`PAYLOAD_HINTS` 补全 30 + 构造期拒绝缺项）。
+- ⚖️ **裁定**：**c**（1 参 `UnitState(Map)` **保留**——删除会让 t7m4/T5-site5 变异体**无法编译**=VOID，即毁掉"1 参构造器是丢链靶子"这条护栏的可重跑性）／**e**（回归 vs 在途路线 = **未定策略**，不写断言以免误导成已裁决）／**i**（白名单语义 = **工作台实际写面**，不是后端注册面；`RenameUnit`/`PlaceAt` 只由调试页直发 ⇒ **有意不列**；改为加派生式静态扫描守卫）／**l**（**范围声明**：unit-ext 是 **MCP/agent-only**）。
+- 📌 **本报告**：**g**。
+
+**变异**（10 轮 / 10 杀 / 0 存活；全部在 `spotless:apply` 后的最终字节上重跑）：t10m1（RelativeOffset 溢出）、
+t10m2（CatalogTool 删提示）、t10m3（modes.js 白名单）、t10m4（disband 清悬空引用）、t10m5（merge 同格）、
+t10m6（reparent 只 root）、t10r-t9m1/m2/m3（**裁定 42：从最终字节重派生 Shell 旧轮**）、
+t10r-t4m9（**从最终字节重派生 UnitPayloads 旧轮**）。★ **旧变异体是旧快照**（t4m9 还含 T5 前的缺 `optionalTextArray`），
+整份套用会误删 T5 特性 ⇒ 只重放其**语义改动**；t9 三轮红点与 T9 原轮逐条相同。
+
+**两条纪律的兑现**：① **裁定 42**：改 `Shell`/`UnitPayloads` ⇒ 旧轮**从最终字节重派生并重跑**，不抄旧结论；
+② **缺项三级谱**：`PAYLOAD_HINTS` 从 ③ 静默兜底升到 ① 构造期抛。
+
+**遗留**（转下一里程碑）：**e** 未定策略；**c** 保留构造器（删则须重建两个变异体）；**l** GUI 不可见（要可见须先有 spec 依据）；
+**spec §八 #17 的"计数仍 4"陈旧**（实为 **5**，SDSimos A3 加了 `SdChangeSet`）；**h** 日志无断言（接受）；
+`CatalogTool` 构造期强制 ⇒ 新增 handler 漏提示会**整个 app 起不来**（有意 fail-fast）；
+**真档 / A\* 大图代价 / `PlanSparseRoute` 非相邻段 / 判据 #10 判据弱 / `agentlib-mosire` 外部依赖盲区** 均在报告 §六。

@@ -48,7 +48,6 @@
       //   ⇒ 不变式：**新增工作台写命令必须同步加进本表**，否则被 isWriteAllowed fail-closed 静默拒。
       //   该不变式由 modes.test.cjs 的 workbench-write-calls-are-all-whitelisted 静态扫描守卫（T10-i）。
       writes: [
-        "unit.PlanRoute",
         "unit.CancelRoute",
         "unit.ReparentUnit",
         "unit.SetStrength",

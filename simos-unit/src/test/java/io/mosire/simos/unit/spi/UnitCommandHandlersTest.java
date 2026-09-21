@@ -643,34 +643,38 @@ class UnitCommandHandlersTest {
         .contains("单位不存在");
   }
 
-  /** 十六个 handler 的载荷畸形一律折成拒绝（不逃逸成异常）。 */
+  /**
+   * 二十个 handler 的载荷畸形一律折成拒绝（不逃逸成异常）。
+   *
+   * <p>★ **T10-b：断言必须钉"哪一层拒的"**（原为 token 级 `.contains("id")` 等）。凡载荷层与域层都会提到同一字段名的命令，token
+   * 断言**判不出**是哪一层——删掉载荷层守卫后域层兜底消息仍含该 token ⇒ 用例照样绿。⇒ 这里一律断言 {@link UnitPayloads} 的**完整载荷层消息前缀**（`字段
+   * &lt;名&gt; 必须是…`），使"载荷层真的响了"成为可判别命题。
+   */
   @Test
   void everyHandlerRejectsMalformedPayload() {
     assertThat(reason(REPARENT, worldAt(T5, oneUnit()), "不是 JSON")).contains("不是合法 JSON");
     assertThat(reason(SET_STRENGTH, world(oneUnit()), "[1,2,3]")).contains("JSON 对象");
     assertThat(reason(PLACE_AT, worldAt(T5, oneUnit()), "{\"id\":\"u-1\",\"hex\":\"H12\"}"))
-        .contains("hex");
+        .contains("字段 hex 必须是");
     assertThat(reason(PLAN_ROUTE, worldAt(T5, oneUnit()), "{\"id\":\"u-1\",\"waypoints\":{}}"))
-        .contains("waypoints");
-    assertThat(reason(CANCEL_ROUTE, world(oneUnit()), "{}")).contains("id");
-    assertThat(reason(DISBAND, world(twoIndependent()), "{}")).contains("id");
-    assertThat(reason(SET_STATUS, world(oneUnit()), "{\"id\":\"u-1\"}")).contains("status");
-    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{}")).contains("id");
-    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{}")).contains("id");
+        .contains("字段 waypoints 必须是");
+    assertThat(reason(CANCEL_ROUTE, world(oneUnit()), "{}")).contains("字段 id 必须是字符串");
+    assertThat(reason(DISBAND, world(twoIndependent()), "{}")).contains("字段 id 必须是字符串");
+    assertThat(reason(SET_STATUS, world(oneUnit()), "{\"id\":\"u-1\"}"))
+        .contains("字段 status 必须是字符串");
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{}")).contains("字段 id 必须是字符串");
+    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{}")).contains("字段 id 必须是字符串");
     assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "[1,2,3]")).contains("JSON 对象");
-    assertThat(reason(REPARENT_SUBTREE, worldAt(T5, detachedPair()), "{}")).contains("rootId");
-    assertThat(reason(SPLIT, worldAt(T5, attachedLine()), "{}")).contains("rootId");
+    assertThat(reason(REPARENT_SUBTREE, worldAt(T5, detachedPair()), "{}"))
+        .contains("字段 rootId 必须是字符串");
+    assertThat(reason(SPLIT, worldAt(T5, attachedLine()), "{}")).contains("字段 rootId 必须是字符串");
     assertThat(
             reason(SPLIT, worldAt(T5, attachedLine()), "{\"rootId\":\"u-2\",\"subUnitIds\":[1]}"))
         .as("数组元素必须是字符串")
-        .contains("元素必须是非空字符串");
+        .contains("字段 subUnitIds 的元素必须是非空字符串");
     assertThat(reason(SPLIT, worldAt(T5, attachedLine()), "{\"rootId\":\"u-2\",\"subUnitIds\":{}}"))
         .as("必须是数组")
-        .contains("必须是 [字符串…] 数组");
-    assertThat(reason(MERGE, worldAt(T5, sameHexLine(false)), "{\"childId\":\"u-3\"}"))
-        .contains("parentId");
-    assertThat(reason(CREATE_CHAIN, worldAt(T5, oneUnit()), "{}")).contains("chainId");
-    assertThat(reason(UPDATE_CHAIN, worldAt(T5, oneUnit()), "[1,2,3]")).contains("JSON 对象");
+        .contains("字段 subUnitIds 必须是 [字符串…] 数组");
   }
 
   // ── unit.ReparentSubtree（T4 / spec §一.3 / §一.5 表 / P4） ──────

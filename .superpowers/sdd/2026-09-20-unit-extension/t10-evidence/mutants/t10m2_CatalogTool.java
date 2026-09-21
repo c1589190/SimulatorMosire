@@ -53,7 +53,6 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.SetRejoinTarget", "id, target?（null=清回归意图）"),
           Map.entry("unit.CreateCommandChain", "chainId, name, commander, members[字符串...]"),
           Map.entry("unit.UpdateCommandChain", "chainId, name?, commander?, members?"),
-          Map.entry("unit.ApplyCasualties", "id, personnel(负增量), equipment{键:负增量}"),
           Map.entry("map.SetTerrain", "hexes[{q,r}...], terrain"),
           Map.entry("map.CreateRegion", "regionId, name, hexes[{q,r}...], meta?"),
           Map.entry("map.UpdateRegion", "regionId, hexes?, meta?"),

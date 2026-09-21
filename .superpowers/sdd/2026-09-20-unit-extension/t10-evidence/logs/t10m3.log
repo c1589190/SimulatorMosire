@@ -1,0 +1,927 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/8]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 16 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 28 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 21 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] 
+[INFO] --- exec:3.4.1:exec (frontend-unit-tests) @ simos-app ---
+TAP version 13
+# Subtest: decodeBlocks-restores-vertex-world-coordinates
+ok 1 - decodeBlocks-restores-vertex-world-coordinates
+  ---
+  duration_ms: 0.72197
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-preserves-block-metadata
+ok 2 - decodeBlocks-preserves-block-metadata
+  ---
+  duration_ms: 0.092304
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-keeps-rings-closed-with-same-vertex-count
+ok 3 - decodeBlocks-keeps-rings-closed-with-same-vertex-count
+  ---
+  duration_ms: 0.071465
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-does-not-mutate-the-wire-input
+ok 4 - decodeBlocks-does-not-mutate-the-wire-input
+  ---
+  duration_ms: 0.751939
+  type: 'test'
+  ...
+# Subtest: terrainAt-reads-decoded-block-at-hex-center
+ok 5 - terrainAt-reads-decoded-block-at-hex-center
+  ---
+  duration_ms: 0.186896
+  type: 'test'
+  ...
+# Subtest: countsByTerrain-sums-decoded-hex-counts
+ok 6 - countsByTerrain-sums-decoded-hex-counts
+  ---
+  duration_ms: 0.092243
+  type: 'test'
+  ...
+# Subtest: all-required-test-files-are-present
+ok 7 - all-required-test-files-are-present
+  ---
+  duration_ms: 0.831152
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 8 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 0.467033
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 9 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 1.142201
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 10 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.079066
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 11 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 0.39614
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 12 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.077965
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-drops-a-non-adjacent-jump
+ok 13 - edgeChainEdges-drops-a-non-adjacent-jump
+  ---
+  duration_ms: 0.119067
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-breaks-the-chain-on-a-gap
+ok 14 - edgeChainEdges-breaks-the-chain-on-a-gap
+  ---
+  duration_ms: 0.060067
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 15 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.143969
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 16 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.163911
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 17 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.195467
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 18 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 0.898695
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-six-exact-vectors
+ok 19 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 1.054442
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 20 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 0.807424
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 21 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.17193
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 22 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.071472
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 23 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.288503
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 24 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.110782
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 25 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.196886
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 26 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.069864
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 27 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.173207
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 28 - module-loads
+  ---
+  duration_ms: 0.459542
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 29 - mode-ids-order
+  ---
+  duration_ms: 0.385203
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 30 - mode-labels
+  ---
+  duration_ms: 0.07091
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 31 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.054813
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 32 - view-allows-no-write
+  ---
+  duration_ms: 0.113209
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 33 - region-allows-no-write
+  ---
+  duration_ms: 0.0516
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 34 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.089989
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 35 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.048784
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+not ok 36 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.482368
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/js/modes.test.cjs:68:1'
+  failureType: 'testCodeFailure'
+  error: 'false == true'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/js/modes.test.cjs:69:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 37 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.202436
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 38 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.097419
+  type: 'test'
+  ...
+# Subtest: workbench-write-calls-are-all-whitelisted
+not ok 39 - workbench-write-calls-are-all-whitelisted
+  ---
+  duration_ms: 1.168114
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/js/modes.test.cjs:100:1'
+  failureType: 'testCodeFailure'
+  error: '工作台写命令未进任何模式的 writes（fail-closed 会静默拒）: [{"file":"map.js","type":"unit.PlanRoute"},{"file":"map.js","type":"unit.PlanRoute"},{"file":"map.js","type":"unit.PlanRoute"}]'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+    0:
+      file: 'map.js'
+      type: 'unit.PlanRoute'
+    1:
+      file: 'map.js'
+      type: 'unit.PlanRoute'
+    2:
+      file: 'map.js'
+      type: 'unit.PlanRoute'
+  operator: 'deepEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/uet10/simos-app/src/test/js/modes.test.cjs:117:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: whitelist-entries-are-well-formed-command-types
+ok 40 - whitelist-entries-are-well-formed-command-types
+  ---
+  duration_ms: 0.118587
+  type: 'test'
+  ...
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 41 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 2.093211
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 42 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.613797
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 43 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.168634
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 44 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.467643
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 45 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 1.083608
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 46 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.352972
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 47 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.289774
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 48 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.13158
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 49 - deterministic-across-calls
+  ---
+  duration_ms: 0.361206
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-puts-focus-regions-first
+ok 50 - buildRegionHighlightPlan-puts-focus-regions-first
+  ---
+  duration_ms: 1.174307
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+ok 51 - buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+  ---
+  duration_ms: 0.183913
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+ok 52 - buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+  ---
+  duration_ms: 0.104711
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+ok 53 - buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+  ---
+  duration_ms: 0.195271
+  type: 'test'
+  ...
+# Subtest: the-two-modes-share-one-plan-and-differ-only-in-parameters
+ok 54 - the-two-modes-share-one-plan-and-differ-only-in-parameters
+  ---
+  duration_ms: 0.092401
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-shared-plan-for-both-modes
+ok 55 - page-层-uses-the-shared-plan-for-both-modes
+  ---
+  duration_ms: 1.052993
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+ok 56 - regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+  ---
+  duration_ms: 0.225069
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-keeps-three-owners-as-one-hex
+ok 57 - regionMembershipSummary-keeps-three-owners-as-one-hex
+  ---
+  duration_ms: 0.105889
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-refuses-to-guess-without-hex-lists
+ok 58 - regionMembershipSummary-refuses-to-guess-without-hex-lists
+  ---
+  duration_ms: 0.185724
+  type: 'test'
+  ...
+# Subtest: page-层-shows-the-union-and-never-a-summed-total
+ok 59 - page-层-shows-the-union-and-never-a-summed-total
+  ---
+  duration_ms: 0.295041
+  type: 'test'
+  ...
+# Subtest: debug-hooks-for-the-region-view-mode-are-exposed
+ok 60 - debug-hooks-for-the-region-view-mode-are-exposed
+  ---
+  duration_ms: 0.080968
+  type: 'test'
+  ...
+# Subtest: layout-constants-are-frozen
+ok 61 - layout-constants-are-frozen
+  ---
+  duration_ms: 1.027575
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 62 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.079592
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 63 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.100265
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 64 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.083193
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 65 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.064644
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 66 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.057668
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 67 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.107704
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 68 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.363378
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 69 - groupByTick-empty-input
+  ---
+  duration_ms: 0.145897
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 70 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.202681
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 71 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.093676
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 72 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.066365
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 73 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.06769
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 74 - tickIndex-finds-position
+  ---
+  duration_ms: 0.067017
+  type: 'test'
+  ...
+# Subtest: buildTree-depth-parent-children-per-node
+ok 75 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 1.429399
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 76 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 0.168924
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 77 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.111024
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 78 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.104905
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 79 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.072323
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 80 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.06222
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 81 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.109714
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 82 - empty-input-returns-empty-forest
+  ---
+  duration_ms: 0.057121
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 83 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.181678
+  type: 'test'
+  ...
+# Subtest: api.js-declares-exactly-the-three-allowed-write-endpoints
+ok 84 - api.js-declares-exactly-the-three-allowed-write-endpoints
+  ---
+  duration_ms: 0.755162
+  type: 'test'
+  ...
+# Subtest: api.js-exports-exactly-the-three-write-functions
+ok 85 - api.js-exports-exactly-the-three-write-functions
+  ---
+  duration_ms: 1.772377
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 86 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 1.096769
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 87 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.162559
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 88 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.173615
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 89 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 1.424579
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 90 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.133831
+  type: 'test'
+  ...
+1..90
+# tests 90
+# suites 0
+# pass 88
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 74.58752
+[frontend-gate] 前端测试失败：tests=90 pass=88 fail=2 rc=1
+[ERROR] Command execution failed.
+org.apache.commons.exec.ExecuteException: Process exited with an error: 1 (Exit value: 1)
+    at org.apache.commons.exec.DefaultExecutor.executeInternal (DefaultExecutor.java:355)
+    at org.apache.commons.exec.DefaultExecutor.execute (DefaultExecutor.java:253)
+    at org.codehaus.mojo.exec.ExecMojo.executeCommandLine (ExecMojo.java:884)
+    at org.codehaus.mojo.exec.ExecMojo.executeCommandLine (ExecMojo.java:844)
+    at org.codehaus.mojo.exec.ExecMojo.execute (ExecMojo.java:445)
+    at org.apache.maven.plugin.DefaultBuildPluginManager.executeMojo (DefaultBuildPluginManager.java:126)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute2 (MojoExecutor.java:328)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.doExecute (MojoExecutor.java:316)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:212)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:174)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.access$000 (MojoExecutor.java:75)
+    at org.apache.maven.lifecycle.internal.MojoExecutor$1.run (MojoExecutor.java:162)
+    at org.apache.maven.plugin.DefaultMojosExecutionStrategy.execute (DefaultMojosExecutionStrategy.java:39)
+    at org.apache.maven.lifecycle.internal.MojoExecutor.execute (MojoExecutor.java:159)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:105)
+    at org.apache.maven.lifecycle.internal.LifecycleModuleBuilder.buildProject (LifecycleModuleBuilder.java:73)
+    at org.apache.maven.lifecycle.internal.builder.singlethreaded.SingleThreadedBuilder.build (SingleThreadedBuilder.java:53)
+    at org.apache.maven.lifecycle.internal.LifecycleStarter.execute (LifecycleStarter.java:118)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:261)
+    at org.apache.maven.DefaultMaven.doExecute (DefaultMaven.java:173)
+    at org.apache.maven.DefaultMaven.execute (DefaultMaven.java:101)
+    at org.apache.maven.cli.MavenCli.execute (MavenCli.java:919)
+    at org.apache.maven.cli.MavenCli.doMain (MavenCli.java:285)
+    at org.apache.maven.cli.MavenCli.main (MavenCli.java:207)
+    at jdk.internal.reflect.DirectMethodHandleAccessor.invoke (DirectMethodHandleAccessor.java:103)
+    at java.lang.reflect.Method.invoke (Method.java:580)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launchEnhanced (Launcher.java:255)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.launch (Launcher.java:201)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.mainWithExitCode (Launcher.java:362)
+    at org.codehaus.plexus.classworlds.launcher.Launcher.main (Launcher.java:314)
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.467 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.196 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.028 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.025 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.025 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.051 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.022 s]
+[INFO] SimosApp ........................................... FAILURE [  1.731 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.629 s
+[INFO] Finished at: 2026-09-21T13:49:42+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.codehaus.mojo:exec-maven-plugin:3.4.1:exec (frontend-unit-tests) on project simos-app: Command execution failed.: Process exited with an error: 1 (Exit value: 1) -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+──────────────────────────────────────────────────────────────
+round            t10m3
+target           simos-app/src/main/resources/webui/modes.js
+mutant           t10m3_modes.js
+runner           frontend  pl=simos-app sel=__frontend__
+started          2026-09-21T13:49:39+08:00
+finished         2026-09-21T13:49:42+08:00
+elapsed_s        3
+mvn_rc           1
+① orig_md5       3c7da28d8b1ed15c1a6bc41e90a2b500
+    baseline     3c7da28d8b1ed15c1a6bc41e90a2b500
+② mutant_md5     05d53ad737fc9a273029807959bcbe69
+⑧ pushed_md5     05d53ad737fc9a273029807959bcbe69
+⑧ restored_md5   3c7da28d8b1ed15c1a6bc41e90a2b500
+⑧ restored==orig yes
+⑤ compile_errors 0
+⑥ report_mtime   1970-01-01T08:00:00+08:00  (round_start=2026-09-21T13:49:39+08:00)
+⑥ summary        
+⑥ module_summary 
+⑥ frontend_gate  [frontend-gate] 前端测试失败：tests=90 pass=88 fail=2 rc=1
+⑩ self_proof     frag=["unit.PlanRoute",] dir=delete orig_hits=1 pushed_hits=0
+⑦ failures:
+[ERROR]   mvn <args> -rf :simos-app
+══════════════════════════════════════════════════════════════

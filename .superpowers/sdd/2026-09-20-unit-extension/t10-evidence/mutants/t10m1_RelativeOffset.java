@@ -18,11 +18,6 @@ public record RelativeOffset(int dq, int dr) {
   /** 叠加到一个 hex 上（轴向坐标逐分量相加）；溢出 int ⇒ 抛（不静默回绕）。 */
   public HexCoord appliedTo(HexCoord hex) {
     Objects.requireNonNull(hex, "hex");
-    try {
-      return new HexCoord(Math.addExact(hex.q(), dq), Math.addExact(hex.r(), dr));
-    } catch (ArithmeticException e) {
-      throw new IllegalArgumentException(
-          "偏移叠加溢出 int：hex=" + hex + " offset=(" + dq + "," + dr + ")", e);
-    }
+    return new HexCoord(hex.q() + dq, hex.r() + dr);
   }
 }

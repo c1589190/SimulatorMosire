@@ -59,7 +59,6 @@ import io.mosire.simos.unit.spi.ReparentSubtreeHandler;
 import io.mosire.simos.unit.spi.ReparentUnitHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
-import io.mosire.simos.unit.spi.SetStatusHandler;
 import io.mosire.simos.unit.spi.SetStrengthHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
@@ -221,7 +220,6 @@ public final class Shell implements AutoCloseable {
             new PlanRouteHandler(),
             new CancelRouteHandler(),
             new DisbandUnitHandler(),
-            new SetStatusHandler(),
             new AttachUnitHandler(),
             new DetachUnitHandler(),
             new ReparentSubtreeHandler(),
