@@ -5,7 +5,9 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -23,9 +25,11 @@ public final class UnitListTool implements AgentTool {
   public static final String NAME = "simos.unit.list";
 
   private final QueryService query;
+  private final RedactingQueryService redacting;
 
   public UnitListTool(QueryService query) {
     this.query = query;
+    this.redacting = new RedactingQueryService(query);
   }
 
   @Override
@@ -40,7 +44,9 @@ public final class UnitListTool implements AgentTool {
 
   @Override
   public Map<String, Object> jsonSchema() {
-    return ToolSupport.schema(ToolSupport.targetProps(), List.of());
+    Map<String, Object> props = new LinkedHashMap<>(ToolSupport.targetProps());
+    props.put("actor", ToolSupport.prop("string", "决策人 id（给出则按该决策人的 viewScope 脱敏；缺省 = GM 全量）"));
+    return ToolSupport.schema(props, List.of());
   }
 
   @Override
@@ -53,7 +59,12 @@ public final class UnitListTool implements AgentTool {
     try {
       ToolSupport.requireUnitRead(context);
       Map<String, Object> args = context.arguments();
-      SimulationState state = query.stateAt(ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH));
+      var target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
+      String actor = ToolSupport.optionalText(args, "actor", null);
+      if (actor != null) {
+        return ToolSupport.ok(Map.of("units", redacting.units(new DecisionMakerId(actor), target)));
+      }
+      SimulationState state = query.stateAt(target);
       UnitState units = ToolSupport.unitState(state);
       Map<String, Object> view = new LinkedHashMap<>();
       view.put(

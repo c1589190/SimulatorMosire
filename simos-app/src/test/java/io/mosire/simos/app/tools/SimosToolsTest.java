@@ -153,7 +153,10 @@ class SimosToolsTest {
           "sd.CommitCombatOutcome",
           "sd.RecordCasualties",
           "sd.RegisterEffect",
-          "sd.CancelEffect");
+          "sd.CancelEffect",
+          "sd.IssueDirective",
+          "sd.SubmitVerdict",
+          "sd.SetViewScope");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -208,7 +211,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 37 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 40 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
    * Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -219,8 +222,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 37 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(37);
+        .as("扫描必须恰为 40 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(40);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -228,6 +231,31 @@ class SimosToolsTest {
     assertThat(textValues(body.get("types")))
         .as("catalog 的 type 集合必须等于全仓实现的 type() 集合（强判据：注册面 == 实现面）")
         .containsExactlyInAnyOrderElementsOf(implementationTypes);
+  }
+
+  /**
+   * ★ D6 判据（N9/N11）：工具面按角色分载——**GM 与决策 Agent 桶都没有通用写** {@code simos.command.submit}，都有 {@code sd.*}
+   * 窄工具；外部 MCP 桶保留现状（有通用写，spec §八.3 挂起）。
+   */
+  @Test
+  void roleBucketsNeverCarryGenericWrite() {
+    List<String> gm = toolNames(shell.toolsFor(SimosToolSource.Role.GM));
+    List<String> agent = toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
+    List<String> external = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL));
+
+    assertThat(gm)
+        .doesNotContain("simos.command.submit")
+        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope");
+    assertThat(agent)
+        .doesNotContain("simos.command.submit", "sd.SetViewScope")
+        .contains("sd.IssueDirective", "sd.SubmitVerdict");
+    assertThat(external)
+        .contains("simos.command.submit")
+        .doesNotContain("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope");
+  }
+
+  private static List<String> toolNames(List<AgentTool> tools) {
+    return tools.stream().map(AgentTool::name).toList();
   }
 
   /**

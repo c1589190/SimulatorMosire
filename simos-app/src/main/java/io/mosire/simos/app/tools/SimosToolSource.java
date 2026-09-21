@@ -15,7 +15,11 @@ import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.ForkTool;
+import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+import io.mosire.simos.app.tools.write.SetViewScopeTool;
+import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.core.CoreSimos;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -39,11 +43,23 @@ public final class SimosToolSource implements ToolSource {
   /** 供给源标识（同一运行时内唯一；审计与按源卸载依赖它）。 */
   public static final String ID = "simos";
 
+  /** 工具面按角色分载（spec §八.3，N9/N11）：外部 MCP / GM / 决策 Agent。 */
+  public enum Role {
+    /** 外部 MCP 客户端：保留现状（有通用写），spec §八.3 列为挂起。 */
+    EXTERNAL,
+    /** GM：配权 + 窄工具，**无通用写**（N11）。 */
+    GM,
+    /** 决策 Agent：仅窄工具（`sd.IssueDirective` / `sd.SubmitVerdict`），**无通用写**（N9）。 */
+    DECISION_AGENT
+  }
+
   private final List<AgentTool> tools;
 
   /**
-   * @param core 唯一写入口（三条写工具经它提交）
-   * @param query 只读门面（九条读工具经它读状态）
+   * 外部 MCP 桶（与既有行为逐条相同：3 写 + 9 读）。
+   *
+   * @param core 唯一写入口（写工具经它提交）
+   * @param query 只读门面（读工具经它读状态）
    * @param initiator 写命令的发起者（C21 的 {@code <kind>:<id>} 形态）
    * @param mapId 本世界的 map 称谓（构造 canonical hex 地址与资源断言）
    * @param commandTypes 已注册命令类型（与 {@code Shell} 注册的 handler 同源，catalog 读它）
@@ -54,25 +70,55 @@ public final class SimosToolSource implements ToolSource {
       String initiator,
       String mapId,
       Set<String> commandTypes) {
+    this(core, query, initiator, mapId, commandTypes, Role.EXTERNAL);
+  }
+
+  /** 按角色装配工具面：三个桶的文件面不相交（读工具共享，写面各自不同）。 */
+  public SimosToolSource(
+      CoreSimos core,
+      QueryService query,
+      String initiator,
+      String mapId,
+      Set<String> commandTypes,
+      Role role) {
     Objects.requireNonNull(core, "core");
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
     Objects.requireNonNull(commandTypes, "commandTypes");
-    this.tools =
-        List.of(
-            new CatalogTool(commandTypes),
-            new StateResolveTool(query, mapId),
-            new StateFacetsTool(query, mapId),
-            new BranchListTool(core),
-            new MapOverviewTool(query, mapId),
-            new MapHexTool(query, mapId),
-            new UnitListTool(query),
-            new UnitGetTool(query),
-            new PopulationTool(query),
-            new CommandSubmitTool(core, initiator, mapId),
-            new AdvanceTool(core, initiator, mapId),
-            new ForkTool(core, initiator));
+    Objects.requireNonNull(role, "role");
+    List<AgentTool> built = new ArrayList<>(readTools(core, query, mapId, commandTypes));
+    switch (role) {
+      case EXTERNAL -> {
+        built.add(new CommandSubmitTool(core, initiator, mapId));
+        built.add(new AdvanceTool(core, initiator, mapId));
+        built.add(new ForkTool(core, initiator));
+      }
+      case GM -> {
+        built.add(new IssueDirectiveTool(core, initiator, mapId));
+        built.add(new SubmitVerdictTool(core, initiator, mapId));
+        built.add(new SetViewScopeTool(core, initiator, mapId));
+      }
+      case DECISION_AGENT -> {
+        built.add(new IssueDirectiveTool(core, initiator, mapId));
+        built.add(new SubmitVerdictTool(core, initiator, mapId));
+      }
+    }
+    this.tools = List.copyOf(built);
+  }
+
+  private static List<AgentTool> readTools(
+      CoreSimos core, QueryService query, String mapId, Set<String> commandTypes) {
+    return List.of(
+        new CatalogTool(commandTypes),
+        new StateResolveTool(query, mapId),
+        new StateFacetsTool(query, mapId),
+        new BranchListTool(core),
+        new MapOverviewTool(query, mapId),
+        new MapHexTool(query, mapId),
+        new UnitListTool(query),
+        new UnitGetTool(query),
+        new PopulationTool(query));
   }
 
   @Override

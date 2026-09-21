@@ -11,8 +11,8 @@
 | 计划 | ✅ 已落盘（2026-09-20） |
 | 阶段 A（骨架 + Nation + 不可删守卫） | ✅ **已完成（A1~A6）**——A1 ✅ / A2 ✅ / A3 ✅ / A4 ✅ / A5 ✅ / A6 ✅ |
 | 阶段 C（Combat，前置 B） | ✅ **已完成（C1~C6，2026-09-21）**——见 `c-stage-report.md` |
-| 阶段 D（Directive + 判决 + 渠道） | ⬜ 未开工 |
-| 阶段 E（关账） | ⬜ 未开工 |
+| 阶段 D（Directive + 判决 + 渠道） | ✅ **已完成（D1~D7，2026-09-21）**——见 `d-stage-report.md` |
+| 阶段 E（关账） | ⬜ 未开工（**不属阶段 D 范围**） |
 
 ## 裁定与结论
 
@@ -91,6 +91,16 @@
 - **变异**：15 个变异体 **14 KILLED / 1 等值存活**（`c4m2`：重复处理 `FIRED` 效果在 `EnqueueUnitCommand` 下状态无差异 ⇒ 补 `firedPutInfoEffectDoesNotAppendAgain` 后 `c4m2b` KILLED）。装置 `mutants/mut-run.py`、日志 `mutants/mut-run.log` + `logs/*.log`。
 - **实测到的陷阱**：变异装置 `clean test` 后 `cp` 还原源文件，但 `target/classes` 仍是变异体 `.class`；随后**非 `clean`** 的 `mvn test` 复用它 ⇒ 干净代码上误判"红"。**判红必须 `clean`**（CLAUDE.md 形态 1 的新实例）。
 
+## 阶段 D（Directive + 判决 + 渠道）—— 2026-09-21
+
+- **worktree** `.claude/worktrees/sdd`，分支 `sd/d`，基线 `e5b96ac`（阶段 C 合并后）。**实现提交短 SHA 见本段末**。
+- **门禁**：`./mvnw clean verify` **rc=0**、**8/8 SUCCESS**、**1281** = `170/362/45/259/177/124/144`、`BugInstance size is 0` ×7、`[ERROR]` 0、前端 90/90。基线自测 **1232** = `…/91/128`；**delta 干净**：前五模块逐字不变，`sd +33`、`app +16`。**第 1 次尝试 FAILURE（SpotBugs 9 条）→ 修后第 2 次 SUCCESS → 变异轮后第 3 次复跑仍绿**（`d-evidence/logs/`）。
+- **落地**：D1 `DirectiveWhitelist`+`IssueDirectiveHandler`（R4 命令期 + 白名单禁自指/通用写 + 执行原文落 INFO）；D2 `sd/adjudication` 八件（`Judgement` 三态 / `DecisionAdjudicator` / `AdjudicationRequest` / `LlmClient`+`LlmRequest` / `Breakpoints`（D1+D3 合并=7 组）/ `AdjudicationSchemas` / `LlmDecisionAdjudicator` N13 降级）；D3 `VerdictFreezer`+`SubmitVerdictHandler`（判决冻结、`atRevision`、N8）；D4 `SetViewScopeHandler`+`RedactingQueryService`（GUI `/api/map/overview`、`/api/units` 的 `?as=`；读工具 `map.overview`/`unit.list` 的 `actor`）；D5 `sd/channel` 四件 + app 四渠道（N16/N17/N18/R9）；D6 三条窄工具 + `SimosToolSource.Role` 三桶；D7 `AdjudicatorRunner`。`catalog` 37→40；`McpCoverageTest`/`SimosToolsTest` 各补 3 条真载荷与强判据。
+- **裁定/取代说明**（详见 `d-stage-report.md` §三）：**D1** 执行原文落 `sd:directive.<id>` 的 INFO（key `intent`）；**D1** 白名单从注册面派生、`Shell` 注册顺序随之调整；**D2** 合并用 `Breakpoints.callGroups()`=7 表达；**D3** `VerdictFreezer` **先判 subject 面、再判 schema**；**D4** redaction 只接 2 端点 + 2 读工具（计划写的 9 条读工具**未全接**，列开口项）；**D5** `submit` 保 `void` 但**抛**；渠道 actor 声明为**动态 supplier**；**D6** 既有构造器委托 `Role.EXTERNAL`（12 工具逐条不变）、运行时 MCP 仍外部桶；**D7** 只自动落 D1/D3/D6 判决，其余草案不自动发指令。
+- **门禁抓到 9 条新代码 SpotBugs**（7 条 `US_USELESS_SUPPRESSION_ON_METHOD`——`CoreSimos` 是 final 故 `EI_EXPOSE_REP2` 不触发；2 条 `CT_CONSTRUCTOR_THROW`——abstract 基类构造器 `requireNonNull`）⇒ 删多余抑制、构造器不再抛。**`mvn test` 不跑 SpotBugs，故只有 `verify` 抓得到**。
+- **变异 13 体 13 杀 0 存活**（`d-evidence/mutants/`，九道门禁）：d1m1~d1m3 / d2m1~d2m2 / d3m1~d3m2 / d4m1~d4m2 / d5m1 / d6m1 / d7m1~d7m2。★ 装置首轮把 `d1m3`（期望方法名写错）与 `d7m1`（模块写错致 `Tests run=0`）误判 SURVIVED，修正后重跑均 KILLED——**未伪造红点**。
+- **实现提交短 SHA**：`（提交后回填）`。
+
 ## 我未能核实的
 - 计划期**未跑任何 Maven**：§附的门禁数字为**推演**，非实测（A1/A2 已实测，见下）。
 - A1/A2 本机实测：worktree `./mvnw -pl simos-sd -am verify` rc=0、sd `BugInstance size is 0`、13 条 sd 用例；**主树全量 `clean verify` 的逐模块数字以关账轮为准**（见 `a1a2-report.md`）。
@@ -104,3 +114,4 @@
 - **守卫只覆盖 `map.DeleteRegion`**（spec §九 v1 范围）；其余跨模块写前校验未预设。
 - 变异轮的**等价强度**：a5-m2/a6-m2 等使整类用例多条红（红点落被保护断言，但非最小红点）；未逐条做"最小杀伤面"分析。
 - **阶段 C 收口后仍未核实**（详见 `c-stage-report.md` §五）：`agentlib-mosire` 外部依赖盲区（C 阶段未触 LLM/渠道）；MCP/GUI 的 advance **未自动串 drain**（端到端"经 MCP 推进 ⇒ 自动 unit 战损"未验）；跨 revision drain 原子性仍挂起；`ThresholdKills` 是**全局**累计（非 per-combat）语义未验；`AfterTicks`/`UnitAtHex`/`OutcomeSelected`/`And`/`Or` 无独立判据；`min/maxDurationTicks` 未参与推进；多 `CombatState` 指向同一 `Combat` 的语义未定；真档/A\* 未上；前端零改动。
+- **阶段 D 收口后仍未核实**（详见 `d-stage-report.md` §六）：**`agentlib-mosire` 外部依赖盲区**（D 只用 lambda 假客户端，**未接真实 LLM/未联网/未核其 LLM API**）；**N12 sd 专属并发**未新增端到端（沿用 M4 Task 10 的 `RenameUnit` 并发用例）；**D4 redaction 只接 2 端点 + 2 读工具**（其余 7 条读工具未接；`seeOwnUnits` 只在合成夹具验；hex/region 级裁剪未单测）；**D5 per-session MCP 身份仍挂起**、渠道 actor 声明=当前世界全部决策人（非按 Agent 绑定）；**CLI/HTTP 两个渠道实现无独立判据**（只经编译）；**D6 角色桶是"可测结构"而非运行时路由**（运行中 MCP 仍发外部桶 12 工具、含通用写）；**D7 只自动落 D1/D3/D6 判决**、subject 由调用方给、**未挂进 tick 循环**；判据 §十一.10 的"去掉插桩则相同"只由变异体 d4m1 间接证；**LLM 选得对不对不在任何判据内**（N14 设计如此）。
