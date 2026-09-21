@@ -100,7 +100,8 @@ class SimosToolsTest {
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
   private static final String TEST_INITIATOR = "agent:t5-test";
 
-  private static final List<String> TWELVE_TOOL_NAMES =
+  /** 现有口（T4：EXTERNAL ∪ GM）的工具面：前 9 条读，后 6 条写（3 通用写 + 3 GM 窄写）。 */
+  private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
           "simos.state.resolve",
@@ -113,7 +114,10 @@ class SimosToolsTest {
           "simos.social.population",
           "simos.command.submit",
           "simos.advance",
-          "simos.fork");
+          "simos.fork",
+          "sd.IssueDirective",
+          "sd.SubmitVerdict",
+          "sd.SetViewScope");
 
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -168,7 +172,7 @@ class SimosToolsTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -180,7 +184,8 @@ class SimosToolsTest {
                 base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
-                base.bindAddress()));
+                base.bindAddress(),
+                base.decisionAgentMcpPort()));
   }
 
   @AfterEach
@@ -193,10 +198,10 @@ class SimosToolsTest {
   // ── 注册面 ────────────────────────────────────────────────────────────
 
   @Test
-  void registryContainsExactlyTheTwelveTools() {
+  void registryContainsExactlyTheExternalUnionGmTools() {
     assertThat(shell.toolRegistry().list())
         .extracting(AgentTool::name)
-        .containsExactlyInAnyOrderElementsOf(TWELVE_TOOL_NAMES);
+        .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 
   @Test
@@ -235,14 +240,15 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ D6 判据（N9/N11）：工具面按角色分载——**GM 与决策 Agent 桶都没有通用写** {@code simos.command.submit}，都有 {@code sd.*}
-   * 窄工具；外部 MCP 桶保留现状（有通用写，spec §八.3 挂起）。
+   * ★ D6 判据（N9/N11）+ T4（D2="加"）：工具面按角色分载——**GM 与决策 Agent 桶都没有通用写** {@code simos.command.submit}，都有
+   * {@code sd.*} 窄工具；外部 MCP 桶保留现状（有通用写）；**现有运行时口 = EXTERNAL_WITH_GM 复合桶**（通用写 ∪ GM 窄写，读共享）。
    */
   @Test
   void roleBucketsNeverCarryGenericWrite() {
     List<String> gm = toolNames(shell.toolsFor(SimosToolSource.Role.GM));
     List<String> agent = toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
     List<String> external = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL));
+    List<String> externalWithGm = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM));
 
     assertThat(gm)
         .doesNotContain("simos.command.submit")
@@ -253,6 +259,16 @@ class SimosToolsTest {
     assertThat(external)
         .contains("simos.command.submit")
         .doesNotContain("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope");
+    assertThat(externalWithGm)
+        .as("T4/D2：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 3 GM 窄写 = 15）")
+        .contains(
+            "simos.command.submit",
+            "simos.advance",
+            "simos.fork",
+            "sd.IssueDirective",
+            "sd.SubmitVerdict",
+            "sd.SetViewScope")
+        .hasSize(15);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -298,7 +314,7 @@ class SimosToolsTest {
 
   @Test
   void readsAreAllowGatedAndDeclareTheirResources() {
-    for (String name : TWELVE_TOOL_NAMES.subList(0, 9)) {
+    for (String name : EXTERNAL_UNION_GM_TOOL_NAMES.subList(0, 9)) {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
       assertThat(tool.spec()).as("%s 是常规读工具", name).isEqualTo(ToolSpec.DEFAULT);
       assertThat(tool.gate(context(tool, Map.of()))).as("%s 直放", name).isEqualTo(ToolGate.ALLOW);
@@ -319,7 +335,7 @@ class SimosToolsTest {
 
   @Test
   void writesAreSensitiveAndAskWithTheToolNameAsClassKey() {
-    for (String name : TWELVE_TOOL_NAMES.subList(9, 12)) {
+    for (String name : EXTERNAL_UNION_GM_TOOL_NAMES.subList(9, 15)) {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
       assertThat(tool.spec().sensitive()).as("%s 是敏感写", name).isTrue();
       assertThat(tool.spec().noExport()).as("%s 不外发标记为假（无内部工具）", name).isFalse();

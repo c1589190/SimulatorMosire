@@ -176,7 +176,7 @@ class ShellSmokeTest {
 
   /** 端口全 0（随机端口；T1 尚未起监听，此处置 0 也是"支持 port=0"的显式表达）。 */
   private ShellConfig shellConfig() {
-    return ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    return ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
   }
 
   /**

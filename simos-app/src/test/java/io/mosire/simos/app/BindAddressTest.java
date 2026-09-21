@@ -35,7 +35,7 @@ class BindAddressTest {
 
   @Test
   void guiBindsLoopbackByDefault() throws Exception {
-    try (Shell shell = Shell.start(ShellConfig.defaults(storeDir("loop")).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(storeDir("loop")).withPorts(0, 0, 0, 0))) {
       assertThat(shell.boundGuiHost()).as("缺省绑定地址").isEqualTo("127.0.0.1");
       assertThat(InetAddress.getByName(shell.boundGuiHost()).isAnyLocalAddress())
           .as("缺省不是通配地址")
@@ -47,7 +47,9 @@ class BindAddressTest {
   void guiHonorsWildcardBindAddress() throws Exception {
     try (Shell shell =
         Shell.start(
-            ShellConfig.defaults(storeDir("wild")).withPorts(0, 0, 0).withBindAddress("0.0.0.0"))) {
+            ShellConfig.defaults(storeDir("wild"))
+                .withPorts(0, 0, 0, 0)
+                .withBindAddress("0.0.0.0"))) {
       assertThat(InetAddress.getByName(shell.boundGuiHost()).isAnyLocalAddress())
           .as("0.0.0.0 ⇒ 通配（JDK 读回 0:0:0:0:0:0:0:0）；硬编码回环的变异体在此红")
           .isTrue();
@@ -63,21 +65,27 @@ class BindAddressTest {
     try (Shell wild =
         Shell.start(
             ShellConfig.defaults(storeDir("wild-iface"))
-                .withPorts(0, 0, 0)
+                .withPorts(0, 0, 0, 0)
                 .withBindAddress("0.0.0.0"))) {
       assertThat(canConnect(ip, wild.boundGuiPort())).as("GUI 绑 0.0.0.0 ⇒ 经 %s 可达", ip).isTrue();
       assertThat(canConnect(ip, wild.boundMcpPort())).as("MCP 绑 0.0.0.0 ⇒ 经 %s 可达", ip).isTrue();
+      assertThat(canConnect(ip, wild.boundDecisionAgentMcpPort()))
+          .as("决策人 MCP 同绑 0.0.0.0 ⇒ 经 %s 可达（T4）", ip)
+          .isTrue();
       assertThat(canConnect(ip, wild.boundApprovalPort()))
           .as("审批恒回环（AgentLib 安全基线）⇒ 经 %s 不可达", ip)
           .isFalse();
     }
 
     try (Shell loop =
-        Shell.start(ShellConfig.defaults(storeDir("loop-iface")).withPorts(0, 0, 0))) {
+        Shell.start(ShellConfig.defaults(storeDir("loop-iface")).withPorts(0, 0, 0, 0))) {
       assertThat(canConnect(ip, loop.boundGuiPort()))
           .as("缺省回环 ⇒ 经 %s 不可达（绑定地址真的生效的判别力）", ip)
           .isFalse();
       assertThat(canConnect(ip, loop.boundMcpPort())).as("缺省回环 ⇒ MCP 经 %s 不可达", ip).isFalse();
+      assertThat(canConnect(ip, loop.boundDecisionAgentMcpPort()))
+          .as("缺省回环 ⇒ 决策人 MCP 经 %s 不可达", ip)
+          .isFalse();
     }
   }
 

@@ -95,7 +95,8 @@ class McpServerTest {
 
   private static final String SERVER_NAME = "simos-shell";
 
-  private static final List<String> TWELVE_TOOL_NAMES =
+  /** 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 3 GM 窄写（spec §七.2 的 C6）。 */
+  private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
           "simos.state.resolve",
@@ -108,7 +109,10 @@ class McpServerTest {
           "simos.social.population",
           "simos.command.submit",
           "simos.advance",
-          "simos.fork");
+          "simos.fork",
+          "sd.IssueDirective",
+          "sd.SubmitVerdict",
+          "sd.SetViewScope");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 
@@ -122,7 +126,7 @@ class McpServerTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -134,7 +138,8 @@ class McpServerTest {
                 base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
-                base.bindAddress()));
+                base.bindAddress(),
+                base.decisionAgentMcpPort()));
     client = newClient();
   }
 
@@ -155,7 +160,7 @@ class McpServerTest {
   // ── initialize + tools/list（R2 的暴露面断言）────────────────────────────
 
   @Test
-  void initializeAndToolsListExposeExactlyTheTwelveTools() {
+  void initializeAndToolsListExposeExactlyTheExternalUnionGmTools() {
     McpSchema.InitializeResult init = client.initialize();
     assertThat(init.serverInfo().name()).as("MCP server 自报名称（spec §7.2）").isEqualTo(SERVER_NAME);
     assertThat(shell.boundMcpPort()).as("MCP owned 形态暴露实际绑定端口").isPositive();
@@ -163,8 +168,8 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("tools/list 必须恰好是 12 条（无内部工具时 exact-set 即 R2 的 M5 形态）")
-        .containsExactlyInAnyOrderElementsOf(TWELVE_TOOL_NAMES);
+        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 15 条（C6：含通用写与 GM 窄工具）")
+        .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 
   // ── 读：与 QueryService 直接调用逐值对拍 ────────────────────────────────

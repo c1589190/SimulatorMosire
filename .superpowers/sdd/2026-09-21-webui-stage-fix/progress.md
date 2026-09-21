@@ -79,3 +79,29 @@
 - **裁定 42**：改 `map.js`/`gate-contract` ⇒ 重跑 T2 的 t2m1/t2m2/t2m3/t2m5（KILLED）；T2 m4 目标串已消失 ⇒ 重派生 `sm_subtool_default`；改 `EdgeOperations` ⇒ 重放 M8 T5 m2 为 `jm_merge_replace`；改 `MapChangeSet`/`PathwayGroupOperations` ⇒ `jm_apply`/`jm_dupe`。
 - **我未能核实的**：见 `t3-report.md` §五（浏览器 e2e / served-asset 未核；`replace` 删边 lossy 且删不掉最后一条；DTO 动态 radio 的 DOM 分支未覆盖；真档未验；D14 未裁故后端相邻校验未加）。
 - **证据**：`t3-evidence/`（logs/ + mutants/ + t3-report.md）。
+
+## T4 MCP 端口拓扑（现有口扩 GM ∪ EXTERNAL + 决策人另开一口）✅（2026-09-21，分支 `wsf/t4`，基线 `ffabc83`，实现提交 `061dcbe`）
+
+- **范围**：只做 T4。`simos-app`（`Shell`/`ShellConfig`/`ShellMain`/`SimosToolSource`）+ 测试（新
+  `McpPortTopologyTest`、改 `McpServerTest`/`McpCoverageTest`/`ShellLifecycleTest`/`ShellMainParseTest`/
+  `BindAddressTest`/`SimosToolsTest` + 12 个 `withPorts`/构造器适配）。**零其他模块改动**。
+- **D2/D3/D8 兑现**：现有口（`--mcp-port`，缺省 5715）= **EXTERNAL ∪ GM** 复合桶（9 读 + 3 通用写 + 3 GM 窄写
+  = **15**）；新决策人口（`--decision-agent-mcp-port`，缺省 **5717**）= 仅 `DECISION_AGENT` 桶（9 读 + 2 窄写
+  = **11**，无通用写、无 `SetViewScope`）；`port=0` 两口都支持。
+- **★ D2 ↔ N9 记账**：D2 的"加"覆盖 N9「不给决策 Agent 通用 `submit`」——**就现有端口而言**；代码两处注释 +
+  报告 §二均写明"此处以用户裁定为准，N9 就本端口不适用"；N9 在决策人口与 `allowedTools` 白名单照旧。
+- **★ 边界 = 端口级、非认证级**（A′）：两口同 `mcpCaller()`（`DEFAULT` 桶），装配处留注释。
+- **门禁**：`./mvnw clean verify` **第 1 次尝试 FAILURE**（SpotBugs 两条 `NP_NULL_ON_SOME_PATH` 假阳性）⇒
+  加 `Objects.requireNonNull` 钉后置条件后 **第 2 次 SUCCESS rc=0**；**变异轮后复跑 rc=0**；**8/8 `SUCCESS [`**；
+  **1295** = `170/368/45/259/178/124/151`（现场重算，`logs/recomputed.txt`）；`BugInstance size is 0 ×7`；
+  `[ERROR]` 0；前端 **114/114 不变**（未改 JS）。**delta 干净**（基线 1288）：**只有 app 144→151 = +7**
+  （`McpPortTopologyTest` 4 + `ShellMainParseTest` 3）。
+- **运行时清单**：`tool-face-manifest.txt` 逐条列出两口 15/11 工具（真 socket，探针跑完即删）。
+- **变异**：**11 轮 11 KILLED / 0 存活**——新靶子 t4m1（现有口丢 GM）/t4m2（决策人口错挂外部）/t4m3
+  （close 漏关第二个）/t4m4（决策人口加 `SetViewScope`）+ **裁定 42 重跑** t4r-t7m1/t7m2/t11m1/t9m1/t9m2/t9m3/
+  m10m2（改 `Shell.java`/`ShellConfig.java` ⇒ 从最终字节重派生）。详见 `t4-report.md` §四。
+- **★ 两 server 并存有直证**（任务书说"属推断"）：`bothServersListenAndCloseReleasesBothPorts` 在两个 server
+  同时监听时用两个 SDK 客户端各自 `initialize()` 并各自读工具面。
+- **我未能核实的**：见 `t4-report.md` §六（`ShellMain.run` 端到端 CLI 未跑；审批层未按口区分（已知限制）；
+  同瞬间并发请求未测；生产机/跨平台未测；决策人口未做逐类 catalog 覆盖）。
+- **证据**：`t4-evidence/`（logs/ + mutants/ + tool-face-manifest.txt + t4-report.md）。
