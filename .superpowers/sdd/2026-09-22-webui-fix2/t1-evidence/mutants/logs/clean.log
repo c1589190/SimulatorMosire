@@ -1,0 +1,9 @@
+=== clean round ===
+e90b54f030ffc4d4dc887057fa0f001d  simos-app/src/main/resources/webui/map.js
+8dfc7cf954c7e1277c2c55bbfdf33a50  simos-app/src/main/resources/webui/index.html
+a93742a1cffa78bb4677560726fc359f  simos-app/src/main/resources/webui/styles.css
+a89ade9b796d37a18b7b1787b1afaf48  simos-app/src/main/resources/webui/app.js
+185cbfedc4420cd9df1ad7ae63ef3a36  simos-app/src/main/resources/webui/panels.js
+# tests 20
+# pass 20
+# fail 0

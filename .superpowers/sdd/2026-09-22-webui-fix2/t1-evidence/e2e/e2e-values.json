@@ -1,0 +1,114 @@
+{
+  "viewLayout": {
+    "mode": "view",
+    "right": {
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "hidden": true,
+      "offsetParent": null
+    },
+    "left": {
+      "w": 221,
+      "h": 196,
+      "display": "block",
+      "hidden": false,
+      "offsetParent": true
+    },
+    "rightModes": "region region-edit decision"
+  },
+  "u1": {
+    "point": {
+      "x": 420,
+      "y": 180,
+      "p": {
+        "r": 156,
+        "g": 203,
+        "b": 91,
+        "a": 255
+      }
+    },
+    "viewPixel": {
+      "r": 156,
+      "g": 203,
+      "b": 91,
+      "a": 255
+    },
+    "regionPixel": {
+      "r": 75,
+      "g": 98,
+      "b": 51,
+      "a": 255
+    },
+    "viewLuma": 184.9214,
+    "regionLuma": 89.71679999999998,
+    "debug": {
+      "terrainDimAlpha": 0.55,
+      "dimPasses": 1
+    }
+  },
+  "u2": {
+    "enabled": true,
+    "scaleOk": true,
+    "drawn": 98,
+    "labelCount": 98,
+    "labelHit": {
+      "text": "阿尔兰",
+      "screenX": 745,
+      "screenY": 330,
+      "whitePixels": 21
+    }
+  },
+  "u3": {
+    "regionCount": 98,
+    "nationCount": 97,
+    "otherTagCount": 1,
+    "target": {
+      "id": "区域32",
+      "name": "区域32",
+      "hexCount": 75,
+      "probeHex": {
+        "q": 8,
+        "r": 11
+      },
+      "probe": {
+        "x": 940,
+        "y": 572
+      }
+    },
+    "group": {
+      "kind": "group",
+      "alphaAt": {
+        "color": "#f062cb",
+        "alpha": 0.42
+      },
+      "pixel": {
+        "r": 75,
+        "g": 98,
+        "b": 51,
+        "a": 255
+      }
+    },
+    "single": {
+      "kind": "single",
+      "faded": 96,
+      "alphaAt": {
+        "color": "#f062cb",
+        "alpha": 0.62
+      },
+      "pixel": {
+        "r": 177,
+        "g": 98,
+        "b": 145,
+        "a": 255
+      }
+    },
+    "singleReady": true
+  },
+  "u5Region": {
+    "mode": "region",
+    "display": "block",
+    "hidden": false
+  },
+  "nonGet": []
+}

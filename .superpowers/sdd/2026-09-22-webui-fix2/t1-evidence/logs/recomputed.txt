@@ -1,0 +1,4 @@
+baseline HEAD=3cb823f rc=0 total=1358 = 170/368/45/259/178/129/209 frontend=164/164 modules=8
+new      HEAD=wsf2/u1u2u3u5 rc=0 total=1359 = 170/368/45/259/178/129/210 frontend=184/184 modules=8
+log_md5=78ab63ea6bd5c980115e04d009c5db32
+baseline_log_md5=50ad2306e31c62a9f8113d84f17ec56e

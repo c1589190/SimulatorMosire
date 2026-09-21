@@ -1,0 +1,153 @@
+=== mut-round u2m1 ===
+target=simos-app/src/main/resources/webui/map.js
+orig_bak_md5=e90b54f030ffc4d4dc887057fa0f001d
+restored_before_round_md5=e90b54f030ffc4d4dc887057fa0f001d
+mutant_md5=308dcc9acf6ee0956dbf48b89867ae6a
+TAP version 13
+# Subtest: terrainDimAlpha-is-nonzero-only-in-region-modes
+ok 1 - terrainDimAlpha-is-nonzero-only-in-region-modes
+  ---
+  duration_ms: 0.847836
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-painted-after-terrain-and-before-highlights
+ok 2 - terrain-dim-is-painted-after-terrain-and-before-highlights
+  ---
+  duration_ms: 0.675856
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-a-full-canvas-dark-scrim
+ok 3 - terrain-dim-is-a-full-canvas-dark-scrim
+  ---
+  duration_ms: 0.657338
+  type: 'test'
+  ...
+# Subtest: pixel-sampling-hook-is-exposed-for-color-level-evidence
+ok 4 - pixel-sampling-hook-is-exposed-for-color-level-evidence
+  ---
+  duration_ms: 0.082879
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-uses-centroid-and-sqrt-font
+ok 5 - regionLabelLayout-uses-centroid-and-sqrt-font
+  ---
+  duration_ms: 0.129658
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+ok 6 - regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+  ---
+  duration_ms: 0.077864
+  type: 'test'
+  ...
+# Subtest: region-name-draws-both-stroke-and-fill-with-zoom-guard
+ok 7 - region-name-draws-both-stroke-and-fill-with-zoom-guard
+  ---
+  duration_ms: 1.182517
+  type: 'test'
+  ...
+# Subtest: region-names-are-actually-invoked-in-render-order
+not ok 8 - region-names-are-actually-invoked-in-render-order
+  ---
+  duration_ms: 0.896501
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/src/test/js/webui-fix2.test.cjs:118:1'
+  failureType: 'testCodeFailure'
+  error: 'render 必须调用 paintRegionNames'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/src/test/js/webui-fix2.test.cjs:124:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: region-name-toggle-is-wired-and-persisted
+ok 9 - region-name-toggle-is-wired-and-persisted
+  ---
+  duration_ms: 1.181394
+  type: 'test'
+  ...
+# Subtest: regionTag-keeps-null-and-string-verbatim
+ok 10 - regionTag-keeps-null-and-string-verbatim
+  ---
+  duration_ms: 0.237917
+  type: 'test'
+  ...
+# Subtest: single-plan-brightens-focus-and-fades-only-same-tag
+ok 11 - single-plan-brightens-focus-and-fades-only-same-tag
+  ---
+  duration_ms: 0.362696
+  type: 'test'
+  ...
+# Subtest: single-focus-alpha-is-higher-than-tag-group-alpha
+ok 12 - single-focus-alpha-is-higher-than-tag-group-alpha
+  ---
+  duration_ms: 0.103227
+  type: 'test'
+  ...
+# Subtest: tag-group-plan-is-unchanged
+ok 13 - tag-group-plan-is-unchanged
+  ---
+  duration_ms: 0.146953
+  type: 'test'
+  ...
+# Subtest: setHighlightRegions-infers-kind-and-honours-explicit-kind
+ok 14 - setHighlightRegions-infers-kind-and-honours-explicit-kind
+  ---
+  duration_ms: 0.383052
+  type: 'test'
+  ...
+# Subtest: sources-split-single-vs-group-at-the-three-call-sites
+ok 15 - sources-split-single-vs-group-at-the-three-call-sites
+  ---
+  duration_ms: 0.802303
+  type: 'test'
+  ...
+# Subtest: regionViewDebug-exposes-kind-and-both-alphas
+ok 16 - regionViewDebug-exposes-kind-and-both-alphas
+  ---
+  duration_ms: 0.755495
+  type: 'test'
+  ...
+# Subtest: loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+ok 17 - loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+  ---
+  duration_ms: 0.047746
+  type: 'test'
+  ...
+# Subtest: right-panel-has-data-modes-and-never-shows-in-view-mode
+ok 18 - right-panel-has-data-modes-and-never-shows-in-view-mode
+  ---
+  duration_ms: 0.1826
+  type: 'test'
+  ...
+# Subtest: side-columns-are-content-sized-not-fixed-300px
+ok 19 - side-columns-are-content-sized-not-fixed-300px
+  ---
+  duration_ms: 0.21277
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+ok 20 - region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+  ---
+  duration_ms: 0.105172
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 19
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 51.244274
+tests=20 fail=1
+restored_after_round_md5=e90b54f030ffc4d4dc887057fa0f001d

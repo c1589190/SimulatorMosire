@@ -1,0 +1,25 @@
+=== jm1 ApiViews.regionLabelHex -> first hex ===
+orig_md5=781f1d552c9aae932f0ae3301f0c4b92
+mutant_md5=df3405d689ab75889181be2ec709a8bb
+[ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.205 s <<< FAILURE! -- in io.mosire.simos.app.gui.MapOverviewBlocksTest
+[ERROR] io.mosire.simos.app.gui.MapOverviewBlocksTest.overviewEmitsRegionLabelAsCentroidAndStaysByteIdentical -- Time elapsed: 0.110 s <<< FAILURE!
+	at io.mosire.simos.app.gui.MapOverviewBlocksTest.overviewEmitsRegionLabelAsCentroidAndStaysByteIdentical(MapOverviewBlocksTest.java:124)
+[ERROR] Failures: 
+[ERROR]   MapOverviewBlocksTest.overviewEmitsRegionLabelAsCentroidAndStaysByteIdentical:124 
+[ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0
+[INFO] BUILD FAILURE
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+jm1: KILLED (overviewEmitsRegionLabelAsCentroidAndStaysByteIdentical)

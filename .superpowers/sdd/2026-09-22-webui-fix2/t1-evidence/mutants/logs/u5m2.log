@@ -1,0 +1,153 @@
+=== mut-round u5m2 ===
+target=simos-app/src/main/resources/webui/styles.css
+orig_bak_md5=a93742a1cffa78bb4677560726fc359f
+restored_before_round_md5=a93742a1cffa78bb4677560726fc359f
+mutant_md5=61a07d883fe46c6824f644f47117aff8
+TAP version 13
+# Subtest: terrainDimAlpha-is-nonzero-only-in-region-modes
+ok 1 - terrainDimAlpha-is-nonzero-only-in-region-modes
+  ---
+  duration_ms: 0.869552
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-painted-after-terrain-and-before-highlights
+ok 2 - terrain-dim-is-painted-after-terrain-and-before-highlights
+  ---
+  duration_ms: 0.613762
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-a-full-canvas-dark-scrim
+ok 3 - terrain-dim-is-a-full-canvas-dark-scrim
+  ---
+  duration_ms: 0.622188
+  type: 'test'
+  ...
+# Subtest: pixel-sampling-hook-is-exposed-for-color-level-evidence
+ok 4 - pixel-sampling-hook-is-exposed-for-color-level-evidence
+  ---
+  duration_ms: 0.073337
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-uses-centroid-and-sqrt-font
+ok 5 - regionLabelLayout-uses-centroid-and-sqrt-font
+  ---
+  duration_ms: 0.124991
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+ok 6 - regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+  ---
+  duration_ms: 0.070872
+  type: 'test'
+  ...
+# Subtest: region-name-draws-both-stroke-and-fill-with-zoom-guard
+ok 7 - region-name-draws-both-stroke-and-fill-with-zoom-guard
+  ---
+  duration_ms: 1.32583
+  type: 'test'
+  ...
+# Subtest: region-names-are-actually-invoked-in-render-order
+ok 8 - region-names-are-actually-invoked-in-render-order
+  ---
+  duration_ms: 0.596419
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-wired-and-persisted
+ok 9 - region-name-toggle-is-wired-and-persisted
+  ---
+  duration_ms: 1.207583
+  type: 'test'
+  ...
+# Subtest: regionTag-keeps-null-and-string-verbatim
+ok 10 - regionTag-keeps-null-and-string-verbatim
+  ---
+  duration_ms: 0.22586
+  type: 'test'
+  ...
+# Subtest: single-plan-brightens-focus-and-fades-only-same-tag
+ok 11 - single-plan-brightens-focus-and-fades-only-same-tag
+  ---
+  duration_ms: 0.362426
+  type: 'test'
+  ...
+# Subtest: single-focus-alpha-is-higher-than-tag-group-alpha
+ok 12 - single-focus-alpha-is-higher-than-tag-group-alpha
+  ---
+  duration_ms: 0.106914
+  type: 'test'
+  ...
+# Subtest: tag-group-plan-is-unchanged
+ok 13 - tag-group-plan-is-unchanged
+  ---
+  duration_ms: 0.144623
+  type: 'test'
+  ...
+# Subtest: setHighlightRegions-infers-kind-and-honours-explicit-kind
+ok 14 - setHighlightRegions-infers-kind-and-honours-explicit-kind
+  ---
+  duration_ms: 0.129057
+  type: 'test'
+  ...
+# Subtest: sources-split-single-vs-group-at-the-three-call-sites
+ok 15 - sources-split-single-vs-group-at-the-three-call-sites
+  ---
+  duration_ms: 0.981086
+  type: 'test'
+  ...
+# Subtest: regionViewDebug-exposes-kind-and-both-alphas
+ok 16 - regionViewDebug-exposes-kind-and-both-alphas
+  ---
+  duration_ms: 0.61221
+  type: 'test'
+  ...
+# Subtest: loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+ok 17 - loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+  ---
+  duration_ms: 0.04157
+  type: 'test'
+  ...
+# Subtest: right-panel-has-data-modes-and-never-shows-in-view-mode
+ok 18 - right-panel-has-data-modes-and-never-shows-in-view-mode
+  ---
+  duration_ms: 0.168172
+  type: 'test'
+  ...
+# Subtest: side-columns-are-content-sized-not-fixed-300px
+not ok 19 - side-columns-are-content-sized-not-fixed-300px
+  ---
+  duration_ms: 0.349821
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/src/test/js/webui-fix2.test.cjs:247:1'
+  failureType: 'testCodeFailure'
+  error: '★ 写死 300px 是「左栏一大块空白」的根因，必须消失'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: -1
+  actual: 16165
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/src/test/js/webui-fix2.test.cjs:249:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+ok 20 - region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+  ---
+  duration_ms: 0.246927
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 19
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49.814706
+tests=20 fail=1
+restored_after_round_md5=a93742a1cffa78bb4677560726fc359f

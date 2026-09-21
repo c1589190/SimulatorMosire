@@ -1,0 +1,151 @@
+=== mut-round u1m2 ===
+target=simos-app/src/main/resources/webui/map.js
+orig_bak_md5=e90b54f030ffc4d4dc887057fa0f001d
+restored_before_round_md5=e90b54f030ffc4d4dc887057fa0f001d
+mutant_md5=bf62c54348b1012e315dfa5702d7b73f
+TAP version 13
+# Subtest: terrainDimAlpha-is-nonzero-only-in-region-modes
+not ok 1 - terrainDimAlpha-is-nonzero-only-in-region-modes
+  ---
+  duration_ms: 0.972595
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/src/test/js/webui-fix2.test.cjs:48:1'
+  failureType: 'testCodeFailure'
+  error: '区域查看要压暗'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0.55
+  actual: 0
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf2/simos-app/src/test/js/webui-fix2.test.cjs:53:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: terrain-dim-is-painted-after-terrain-and-before-highlights
+ok 2 - terrain-dim-is-painted-after-terrain-and-before-highlights
+  ---
+  duration_ms: 0.672522
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-a-full-canvas-dark-scrim
+ok 3 - terrain-dim-is-a-full-canvas-dark-scrim
+  ---
+  duration_ms: 0.58637
+  type: 'test'
+  ...
+# Subtest: pixel-sampling-hook-is-exposed-for-color-level-evidence
+ok 4 - pixel-sampling-hook-is-exposed-for-color-level-evidence
+  ---
+  duration_ms: 0.072099
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-uses-centroid-and-sqrt-font
+ok 5 - regionLabelLayout-uses-centroid-and-sqrt-font
+  ---
+  duration_ms: 0.589269
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+ok 6 - regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+  ---
+  duration_ms: 0.077854
+  type: 'test'
+  ...
+# Subtest: region-name-draws-both-stroke-and-fill-with-zoom-guard
+ok 7 - region-name-draws-both-stroke-and-fill-with-zoom-guard
+  ---
+  duration_ms: 1.170436
+  type: 'test'
+  ...
+# Subtest: region-names-are-actually-invoked-in-render-order
+ok 8 - region-names-are-actually-invoked-in-render-order
+  ---
+  duration_ms: 0.833586
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-wired-and-persisted
+ok 9 - region-name-toggle-is-wired-and-persisted
+  ---
+  duration_ms: 1.272112
+  type: 'test'
+  ...
+# Subtest: regionTag-keeps-null-and-string-verbatim
+ok 10 - regionTag-keeps-null-and-string-verbatim
+  ---
+  duration_ms: 0.239408
+  type: 'test'
+  ...
+# Subtest: single-plan-brightens-focus-and-fades-only-same-tag
+ok 11 - single-plan-brightens-focus-and-fades-only-same-tag
+  ---
+  duration_ms: 0.372562
+  type: 'test'
+  ...
+# Subtest: single-focus-alpha-is-higher-than-tag-group-alpha
+ok 12 - single-focus-alpha-is-higher-than-tag-group-alpha
+  ---
+  duration_ms: 0.133789
+  type: 'test'
+  ...
+# Subtest: tag-group-plan-is-unchanged
+ok 13 - tag-group-plan-is-unchanged
+  ---
+  duration_ms: 0.198026
+  type: 'test'
+  ...
+# Subtest: setHighlightRegions-infers-kind-and-honours-explicit-kind
+ok 14 - setHighlightRegions-infers-kind-and-honours-explicit-kind
+  ---
+  duration_ms: 0.168358
+  type: 'test'
+  ...
+# Subtest: sources-split-single-vs-group-at-the-three-call-sites
+ok 15 - sources-split-single-vs-group-at-the-three-call-sites
+  ---
+  duration_ms: 0.646229
+  type: 'test'
+  ...
+# Subtest: regionViewDebug-exposes-kind-and-both-alphas
+ok 16 - regionViewDebug-exposes-kind-and-both-alphas
+  ---
+  duration_ms: 0.599716
+  type: 'test'
+  ...
+# Subtest: loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+ok 17 - loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+  ---
+  duration_ms: 0.03836
+  type: 'test'
+  ...
+# Subtest: right-panel-has-data-modes-and-never-shows-in-view-mode
+ok 18 - right-panel-has-data-modes-and-never-shows-in-view-mode
+  ---
+  duration_ms: 0.176547
+  type: 'test'
+  ...
+# Subtest: side-columns-are-content-sized-not-fixed-300px
+ok 19 - side-columns-are-content-sized-not-fixed-300px
+  ---
+  duration_ms: 0.224118
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+ok 20 - region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+  ---
+  duration_ms: 0.097922
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 19
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 50.709459
+tests=20 fail=1
+restored_after_round_md5=e90b54f030ffc4d4dc887057fa0f001d
