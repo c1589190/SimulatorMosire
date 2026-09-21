@@ -1,0 +1,5 @@
+clean-verify.final.log  05d181a88029a40d147606cceaa2bf2f
+clean-verify.attempt1.log 4e9702b9eb7aab65b03737fa9f90d2b4
+map.js                 3a5e981d9add14f7f4d5cd06b1da136c
+MapResolver.java       7fc1e6a75d760d22ea92cc7d518c896b
+v3-click-top-region.png a853fde594c86faae86bf2d102c74a6c

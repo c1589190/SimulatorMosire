@@ -85,3 +85,35 @@
 ## 六 我未能核实的（详见报告 §六）
 
 真档未换（仍是 `--demo` 富世界）；触摸/HiDPI/第二视口/极窄视口未测；V3 未实现；A 的顺序稳定性未在"增删改区域后"实测；`index.html:238` 多余的 `>`（顺带观察，未改）。
+
+---
+
+# # V3（第 3 批）—— 点击取「最顶层区域」＝定义序末位（分支 `wsf2/v3`，基线 `408b034`）
+
+> 用户原话与裁定见 `docs/superpowers/specs/2026-09-22-webui-fix2-feedback.md` §五；设计记账见 `...-design.md` §八。报告 `v3-evidence/v3-report.md`。
+
+## 一 裁定 / 落地
+
+- ★ **定义**：最顶层 = `GameMap.regions` **插入序**（定义序）的**末位**（用户答「1」= 后定义的在上）。
+- ★ **推翻 M8-Q6**（`/api/map/hex` 的 `regions` 字典序 → **定义序**）与 **U3-2**（多从属退回 group → **取顶层那一个**）；点 tag 仍 group（不变）。M8-U1 不破（重叠仍全部保留）。
+- **最小风险**：序**从 `GameMap.regions` 派生**；`RegionIndex` **结构零改动**（只管从属）；`MapResolver.regionOfHex` 用 index 取成员后按 `regions()` 插入序重排；前端纯函数 `topRegionId` 只取末位、`selectRegionOfHex` 恒 `single`。
+
+## 二 门禁（★ 现场重算）
+
+| | 值 |
+|---|---|
+| 基线 `408b034` | rc=0、**1360** = `170/368/45/259/178/129/211`、8/8、前端 187/187 |
+| 本树（**最终绿轮**） | `v3-evidence/logs/clean-verify.final.log`（md5 `05d181a8…`、rc=0）⇒ **1362** = `170/369/45/259/179/129/211`、**第 1 次尝试**、8/8 `SUCCESS [`、`BugInstance 0 ×7`、`[ERROR] 0`、前端 188/188 |
+| delta | map +1、core +1、前端 +1 |
+
+## 三 变异（九道门禁；**7 体 / 0 存活**）
+
+`js-m1`（取首位）/`js-m2`（退回字典序）/`js-m3`（退回 group）/`j-m1`（服务端退回字典序）/`j-m2`（顺序反转）/`j-m1b`（j-m1 绕短路补轮，命中 core 判据）/`e2e-m1`·`e2e-m3`（**浏览器层**：jar 副本改 `map.js`，真 Chromium 红在 `b1`~`c1`）。日志 `v3-evidence/mutants/logs/` 与 `v3-evidence/e2e/mutant/`。
+
+## 四 实测（真富世界，真 Chromium）
+
+夹具 hex `[54,-67]`：定义序 `[大蜀, 东川]`（末位 **东川**）、字典序 `[东川, 大蜀]`（末位 大蜀）——**真分叉**。点击 ⇒ `highlightRegions===["东川"]`、`single`、**零写**；**像素**：observed `(171,113,93)` ⊂ 预测 `0.62·东川+0.38·scrim` `(171.99,113.07,93.72)` ⇒ dist **1.22**（选错成大蜀则 dist **37.40**）。截图 `v3-evidence/e2e/v3-click-top-region.png`（**已人工看图确认**）。
+
+## 五 我未能核实的
+
+见 `v3-report.md` §五：region-edit 无点击选区域（按键模型未动）/ 浏览器只验到 2 从属 / 只一份真档 / N+1 高亮等待 / 兜底色分支未触发。

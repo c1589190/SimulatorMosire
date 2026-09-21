@@ -1,0 +1,7 @@
+[
+  "b1-click-selects-exactly-the-definition-last-region",
+  "b2-not-the-lexicographic-last-and-not-all-owners",
+  "b3-kind-is-single",
+  "b4-highlight-color-is-the-top-region-color-at-single-alpha",
+  "c1-observed-pixel-matches-top-region-not-the-wrong-one"
+]

@@ -209,12 +209,30 @@ test("setHighlightRegions-infers-kind-and-honours-explicit-kind", () => {
   assert.equal(A.getState().highlightKind, "group", "setMode 重置 highlightKind");
 });
 
+test("topRegionId-picks-the-definition-order-last-not-the-lexicographic-max", () => {
+  // ★ V3 杀点：服务端按**定义序**给 regions ⇒ 顶层 = **末位**。夹具让字典序末位与之**分叉**
+  //   （"zz_first" 字典序最大、却在定义序里在前）⇒ 一旦有人"顺手 .sort()"（退回字典序）这条红。
+  assert.equal(M.topRegionId(["zz_first", "aa_second"]), "aa_second", "取定义序末位");
+  assert.notEqual(M.topRegionId(["zz_first", "aa_second"]), "zz_first", "字典序最大者不是顶层");
+  assert.equal(M.topRegionId(["m", "z", "a"]), "a", "三从属：仍取定义序末位（字典序末位是 z）");
+  assert.equal(M.topRegionId(["only"]), "only", "单从属 ⇒ 它自己");
+  assert.equal(M.topRegionId([]), null, "无从属 ⇒ null（调用方清高亮）");
+  assert.equal(M.topRegionId(null), null, "非数组 ⇒ null");
+});
+
 test("sources-split-single-vs-group-at-the-three-call-sites", () => {
   const panels = readWebui("panels.js");
   assert.ok(panels.indexOf('app.setHighlightRegions(ids.slice(), "group")') >= 0, "tag 点击 ⇒ group");
   assert.ok(panels.indexOf('app.setHighlightRegions([region.id], "single")') >= 0, "右栏单项 ⇒ single");
   const map = readWebui("map.js");
-  assert.ok(map.indexOf('regionIds.length === 1 ? "single" : "group"') >= 0, "地图点格按从属数分档");
+  // ★ V3：地图点格**不再**按从属数分档（那是 U3-2，已推翻）——改为取定义序末位那一个、恒 single。
+  assert.ok(map.indexOf("var top = topRegionId(regionIds)") >= 0, "地图点格取顶层（定义序末位）");
+  assert.ok(map.indexOf('app.setHighlightRegions([top], "single")') >= 0, "顶层那一个 ⇒ single（恒单区域）");
+  assert.equal(
+    map.indexOf('regionIds.length === 1 ? "single" : "group"'),
+    -1,
+    "旧的『多从属 ⇒ group』分档必须已经不在了（V3 取代 U3-2）"
+  );
 });
 
 test("regionViewDebug-exposes-kind-and-both-alphas", () => {

@@ -31,6 +31,7 @@ import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -87,12 +88,47 @@ class MapRegionEndToEndTest {
     assertThat(afterMap.regions().get(T4).boundary())
         .as("边界恰由 hexes 算出（Region 构造期自洽）")
         .isEqualTo(RegionBoundary.of(Set.of(H00, H10)));
-    // /api/map/hex 的 regions 与 MapResolver.regionOfHex 同源：重叠格同时列出两者，字典序。
+    // /api/map/hex 的 regions 与 MapResolver.regionOfHex 同源：重叠格同时列出两者，按定义序（seed 先建 ⇒ 在前）。
+    // ★ 本夹具不使两种口径分叉（seed 既先插入、字典序也更小）⇒ 顶层判定的判别力在
+    //   overlappingOwnersFollowDefinitionOrderNotLexicographicOrder（zz/aa）与 MapResolverTest。
     assertThat(MapResolver.regionOfHex(afterMap, H00))
-        .as("★ 重叠格 regions 同时列出两者")
+        .as("★ 重叠格 regions 同时列出两者（定义序）")
         .containsExactly(SEED, T4);
     assertThat(MapResolver.regionOfHex(afterMap, H10)).containsExactly(SEED, T4);
     assertThat(MapResolver.regionOfHex(afterMap, H20)).as("未列入的格无从属").isEmpty();
+  }
+
+  /**
+   * ★ V3：真命令路径上、**定义序与字典序分叉**时，{@code /api/map/hex} 同源的 {@code regionOfHex} 取**定义序**、末位 = 顶层。 先建
+   * {@code zz}（字典序大）再建 {@code aa}（字典序小）⇒ 定义序 {@code [seed, zz, aa]}（顶层 {@code aa}）、字典序 {@code [aa,
+   * seed, zz]}（末位 {@code zz}）。
+   */
+  @Test
+  void overlappingOwnersFollowDefinitionOrderNotLexicographicOrder() {
+    try (CoreSimos core = openCore(tempDir)) {
+      core.bootstrapGenesis(genesis(genesisMap()));
+      assertThat(
+              core.submit(
+                  envelope(
+                      1,
+                      "map.CreateRegion",
+                      "{\"regionId\":\"zz\",\"name\":\"ZZ\",\"hexes\":[{\"q\":0,\"r\":0}]}")))
+          .isEqualTo(new CommandResult.Committed(ref(2)));
+      assertThat(
+              core.submit(
+                  envelope(
+                      2,
+                      "map.CreateRegion",
+                      "{\"regionId\":\"aa\",\"name\":\"AA\",\"hexes\":[{\"q\":0,\"r\":0}]}")))
+          .isEqualTo(new CommandResult.Committed(ref(3)));
+
+      List<RegionId> owners = MapResolver.regionOfHex(mapAt(core, 3), H00);
+      RegionId zz = new RegionId("zz");
+      RegionId aa = new RegionId("aa");
+      assertThat(owners).as("定义序 = 插入序 [seed, zz, aa]").containsExactly(SEED, zz, aa);
+      assertThat(owners.getLast()).as("末位 = 最顶层 = aa（最后定义）").isEqualTo(aa);
+      assertThat(owners.getLast()).as("字典序末位是 zz ⇒ 退回字典序这条红").isNotEqualTo(zz);
+    }
   }
 
   @Test

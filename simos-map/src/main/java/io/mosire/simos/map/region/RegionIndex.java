@@ -17,6 +17,9 @@ import java.util.Map;
  *
  * <p>★ 解 L5：GSimulator 有 6 处逐字重复的 {@code for (entry : map.provinces()) if (hexes.contains(key))}
  * 线性扫描（其中一处**不 break**，每次渲染都全扫），故每次 {@code hex:{q}_{r}} 地址解析都全表扫。本类把 {@link #regionOf} 做成 **O(1)**。
+ *
+ * <p>★ **本类不承载层次**（V3）：{@link #regionOf} 的字典序只为可复现；"最顶层区域"（定义序末位）由调用方按 {@code GameMap.regions()}
+ * 的插入序派生（见 {@code MapResolver.regionOfHex}）—— **不要**把本类的次序当层次。
  */
 public final class RegionIndex {
 
