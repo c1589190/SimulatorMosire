@@ -1,0 +1,142 @@
+{
+  "hexHit": {
+    "x": 420,
+    "y": 220,
+    "n": 9
+  },
+  "view": {
+    "mode": "view",
+    "left": {
+      "w": 300,
+      "h": 522,
+      "display": "block",
+      "width": "300px",
+      "minWidth": "240px",
+      "maxWidth": "340px",
+      "flex": "0 1 300px"
+    },
+    "right": {
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "width": "auto",
+      "minWidth": "240px",
+      "maxWidth": "340px",
+      "flex": "0 1 300px"
+    },
+    "kvCols": "140px 118px",
+    "ddCount": 9,
+    "dds": [
+      {
+        "text": "-35",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "-64",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "plains（平原）",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "0.375",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "霍赫兰伯国",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "无",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "无序列",
+        "w": 118,
+        "lines": 1,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "霍赫兰伯国231 格",
+        "w": 118,
+        "lines": 3,
+        "wordBreak": "normal"
+      },
+      {
+        "text": "231 格（并集，逐 hex 去重；1 个区域，重叠 0 格只计一次）",
+        "w": 118,
+        "lines": 4,
+        "wordBreak": "normal"
+      }
+    ],
+    "minDdWidth": 118,
+    "maxDdLines": 4
+  },
+  "viewName": {
+    "mode": "view",
+    "visible": false,
+    "scaleOk": true,
+    "drawn": 0,
+    "labels": 0
+  },
+  "regionName": {
+    "mode": "region",
+    "visible": true,
+    "scaleOk": true,
+    "drawn": 252,
+    "labels": 252
+  },
+  "labelHit": {
+    "text": "区域33",
+    "screenX": 891,
+    "screenY": 667,
+    "white": 33
+  },
+  "viewAtLabelAnchor": {
+    "white": 0
+  },
+  "regionEditName": {
+    "mode": "region-edit",
+    "visible": true,
+    "drawn": 252
+  },
+  "regionEditLayout": {
+    "mode": "region-edit",
+    "left": {
+      "w": 300,
+      "h": 594,
+      "display": "block",
+      "width": "300px",
+      "minWidth": "240px",
+      "maxWidth": "340px",
+      "flex": "0 1 300px"
+    },
+    "right": {
+      "w": 300,
+      "h": 594,
+      "display": "block",
+      "width": "300px",
+      "minWidth": "240px",
+      "maxWidth": "340px",
+      "flex": "0 1 300px"
+    },
+    "kvCols": "0px 258px",
+    "ddCount": 0,
+    "dds": [],
+    "minDdWidth": null,
+    "maxDdLines": null
+  }
+}

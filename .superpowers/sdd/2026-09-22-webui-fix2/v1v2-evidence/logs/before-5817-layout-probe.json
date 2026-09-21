@@ -1,0 +1,271 @@
+{
+  "out": {
+    "hit": {
+      "x": 420,
+      "y": 220,
+      "n": 9
+    },
+    "view": {
+      "mode": "view",
+      "left": {
+        "w": 340,
+        "h": 594,
+        "x": 12,
+        "display": "block",
+        "width": "340px",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "right": {
+        "w": 0,
+        "h": 0,
+        "x": 0,
+        "display": "none",
+        "width": "fit-content",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "kv": {
+        "w": 310,
+        "h": 1355,
+        "x": 27,
+        "display": "grid",
+        "width": "310px",
+        "minWidth": "0px",
+        "maxWidth": "none",
+        "flex": "0 1 auto",
+        "overflow": "visible"
+      },
+      "kvCols": "284px 14px",
+      "dtWidth": 284,
+      "dds": [
+        {
+          "text": "-35",
+          "w": 14,
+          "h": 42,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 2
+        },
+        {
+          "text": "-64",
+          "w": 14,
+          "h": 42,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 2
+        },
+        {
+          "text": "plains（平原）",
+          "w": 14,
+          "h": 168,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 8
+        },
+        {
+          "text": "0.375",
+          "w": 14,
+          "h": 84,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 4
+        },
+        {
+          "text": "霍赫兰伯国",
+          "w": 14,
+          "h": 105,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 5
+        },
+        {
+          "text": "无",
+          "w": 14,
+          "h": 21,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 1
+        },
+        {
+          "text": "无序列",
+          "w": 14,
+          "h": 63,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 3
+        },
+        {
+          "text": "霍赫兰伯国231 格",
+          "w": 14,
+          "h": 189,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 9
+        },
+        {
+          "text": "231 格（并集，逐 hex 去重；1 个区域，重叠 0 格只计一次）",
+          "w": 14,
+          "h": 609,
+          "lineHeight": "21px",
+          "fontSize": "14px",
+          "wordBreak": "break-word",
+          "overflowWrap": "normal",
+          "lines": 29
+        }
+      ],
+      "dtTexts": [
+        "q",
+        "r",
+        "terrain",
+        "height",
+        "regions",
+        "该处单位",
+        "人口",
+        "从属区域（各区域自己的 hexCount，不合并不求和）",
+        "合计（并集：逐 hex 去重，重叠格只计一次）"
+      ]
+    },
+    "regionEdit": {
+      "mode": "region-edit",
+      "left": {
+        "w": 340,
+        "h": 594,
+        "x": 12,
+        "display": "block",
+        "width": "340px",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "right": {
+        "w": 340,
+        "h": 594,
+        "x": 928,
+        "display": "block",
+        "width": "340px",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "kv": {
+        "w": 310,
+        "h": 0,
+        "x": 27,
+        "display": "grid",
+        "width": "310px",
+        "minWidth": "0px",
+        "maxWidth": "none",
+        "flex": "0 1 auto",
+        "overflow": "visible"
+      },
+      "kvCols": "0px 298px",
+      "dtWidth": null,
+      "dds": [],
+      "dtTexts": []
+    },
+    "region": {
+      "mode": "region",
+      "left": {
+        "w": 221,
+        "h": 196,
+        "x": 12,
+        "display": "block",
+        "width": "221.016px",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "right": {
+        "w": 340,
+        "h": 594,
+        "x": 928,
+        "display": "block",
+        "width": "340px",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "kv": {
+        "w": 191,
+        "h": 0,
+        "x": 27,
+        "display": "grid",
+        "width": "191.016px",
+        "minWidth": "0px",
+        "maxWidth": "none",
+        "flex": "0 1 auto",
+        "overflow": "visible"
+      },
+      "kvCols": "0px 179.016px",
+      "dtWidth": null,
+      "dds": [],
+      "dtTexts": []
+    },
+    "view2": {
+      "mode": "view",
+      "left": {
+        "w": 221,
+        "h": 196,
+        "x": 12,
+        "display": "block",
+        "width": "221.016px",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "right": {
+        "w": 0,
+        "h": 0,
+        "x": 0,
+        "display": "none",
+        "width": "fit-content",
+        "minWidth": "200px",
+        "maxWidth": "340px",
+        "flex": "0 1 auto",
+        "overflow": "auto"
+      },
+      "kv": {
+        "w": 191,
+        "h": 0,
+        "x": 27,
+        "display": "grid",
+        "width": "191.016px",
+        "minWidth": "0px",
+        "maxWidth": "none",
+        "flex": "0 1 auto",
+        "overflow": "visible"
+      },
+      "kvCols": "0px 179.016px",
+      "dtWidth": null,
+      "dds": [],
+      "dtTexts": []
+    }
+  },
+  "errors": []
+}

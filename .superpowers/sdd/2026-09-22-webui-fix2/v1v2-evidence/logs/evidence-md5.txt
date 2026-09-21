@@ -1,0 +1,5 @@
+4df9074a800263fee1331794e57ef2b8  logs/clean-verify.attempt1.log
+5dbaa295057437908d53d7abff242e1b  logs/e2e-clean.log
+2be04d07870abe9c1295da02c6614d9f  e2e/e2e-values.json
+8bfcf9646a6b4b7392ac2c93516b6cba  e2e/e2e.cjs
+7c08fb027f6bfc795d7b78aef23d6e49  mutants/mut-round.sh

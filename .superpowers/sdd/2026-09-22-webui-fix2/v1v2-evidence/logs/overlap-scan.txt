@@ -1,0 +1,1 @@
+scanned region centroids: 252 with >=2 owners: 13 errors: 0

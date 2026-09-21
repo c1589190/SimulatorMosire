@@ -22,8 +22,9 @@ const JS_DIR = __dirname;
 //   webui-stage-fix T9 起 153 → 159（新增 pending-signal.test.cjs 的 6 条：待决文本不造假 + 列表项/左栏渲染 due 真值 + 列表项由 maker.due 驱动）。
 //   webui-stage-fix T10 起 159 → 164（decision-mode.test.cjs 新增 5 条：「开始决策」闸门按 due + 按钮态 + 发起/拒发；modes.test.cjs「决策只读」改为「恰一条窄写」重命名，条数不变）。
 //   webui-fix2 起 164 → 184（新增 webui-fix2.test.cjs 的 20 条：U1 地形压暗 / U2 区域名 / U3 选择粒度 / U5 三栏布局）。
+//   webui-fix2 V1/V2 起 184 → 187（U5 宽度断言改写为"稳定可用宽度"；新增 kv 值列不被压成一字、区域名只在区域两模式、绘制按模式门控 3 条）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 184;
+const MIN_TESTS = 187;
 
 function discoverTests() {
   return fs

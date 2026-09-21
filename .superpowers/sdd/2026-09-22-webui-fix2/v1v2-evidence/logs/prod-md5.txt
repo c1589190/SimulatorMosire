@@ -1,0 +1,2 @@
+faab971d6c6a7a68bdf97e6777bf1ec1  simos-app/src/main/resources/webui/styles.css
+b5234ae1c5a06f02fcaf147262e95c09  simos-app/src/main/resources/webui/map.js
