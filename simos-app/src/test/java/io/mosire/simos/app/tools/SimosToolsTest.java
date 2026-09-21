@@ -100,7 +100,7 @@ class SimosToolsTest {
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
   private static final String TEST_INITIATOR = "agent:t5-test";
 
-  /** 现有口（T4：EXTERNAL ∪ GM）的工具面：前 9 条读，后 6 条写（3 通用写 + 3 GM 窄写）。 */
+  /** 现有口（T4：EXTERNAL ∪ GM）的工具面：前 9 条读，后 7 条写（3 通用写 + 4 GM 窄写）。 */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
@@ -117,7 +117,8 @@ class SimosToolsTest {
           "simos.fork",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope");
+          "sd.SetViewScope",
+          "sd.StartDecision");
 
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -161,7 +162,8 @@ class SimosToolsTest {
           "sd.CancelEffect",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope");
+          "sd.SetViewScope",
+          "sd.StartDecision");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -217,7 +219,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 41 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 42 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
    * Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -228,8 +230,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 41 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(41);
+        .as("扫描必须恰为 42 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(42);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -252,23 +254,25 @@ class SimosToolsTest {
 
     assertThat(gm)
         .doesNotContain("simos.command.submit")
-        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope");
+        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision");
     assertThat(agent)
-        .doesNotContain("simos.command.submit", "sd.SetViewScope")
+        .doesNotContain("simos.command.submit", "sd.SetViewScope", "sd.StartDecision")
         .contains("sd.IssueDirective", "sd.SubmitVerdict");
     assertThat(external)
         .contains("simos.command.submit")
-        .doesNotContain("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope");
+        .doesNotContain(
+            "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision");
     assertThat(externalWithGm)
-        .as("T4/D2：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 3 GM 窄写 = 15）")
+        .as("T4/D2：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 GM 窄写 = 16）")
         .contains(
             "simos.command.submit",
             "simos.advance",
             "simos.fork",
             "sd.IssueDirective",
             "sd.SubmitVerdict",
-            "sd.SetViewScope")
-        .hasSize(15);
+            "sd.SetViewScope",
+            "sd.StartDecision")
+        .hasSize(16);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -335,7 +339,7 @@ class SimosToolsTest {
 
   @Test
   void writesAreSensitiveAndAskWithTheToolNameAsClassKey() {
-    for (String name : EXTERNAL_UNION_GM_TOOL_NAMES.subList(9, 15)) {
+    for (String name : EXTERNAL_UNION_GM_TOOL_NAMES.subList(9, 16)) {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
       assertThat(tool.spec().sensitive()).as("%s 是敏感写", name).isTrue();
       assertThat(tool.spec().noExport()).as("%s 不外发标记为假（无内部工具）", name).isFalse();

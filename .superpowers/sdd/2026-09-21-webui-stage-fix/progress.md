@@ -236,3 +236,21 @@
 - **证据**：`t9-evidence/`（logs/ + mutants/（pristine/、py/、逐轮日志、mut-java-summary.txt）+ t9-report.md）。
 - ★ **装置自身的坑（如实记）**：`mut-java.sh` 的 `: > "$ALL_LOG"` 会截断累积日志 ⇒ 分两次调用后 `mut-java.log` 只剩后一次（t5m）；
   **逐轮 `t9m*.log`/`t5m*.log` 完整在档**，判定由逐轮日志重建，不依赖 `mut-java.log`。
+
+## T10 「开始决策」入口与权限（`sd.StartDecision`）✅（2026-09-21，分支 `wsf/t10`，基线 `abd3086`，worktree `.claude/worktrees/wsf-t10`）
+
+- **范围**：只做 T10。**新命令 `sd.StartDecision`**（D5 已裁：走 `Command → ChangeSet → Revision`、落 revision）+ GM 窄工具 + GUI 窄端点 + 前端按钮（按 T9 的 `due` 闸门）。改 6 生产文件 + 8 测试/门禁文件 + 3 新文件（见 §一）。
+- ★★ **裁定 T10-U1（本任务最关键）**：**`sd.StartDecision` 不写 `Directive`**——写 sd **INFO 覆盖层**（`sd:decision.<dmId>` / key `start` / `value` = 当前 tick 标量串 / `note` 可选）。
+  **依据**：`IssueDirectiveHandler` 的 **R4 硬不变量**「同一 `(dm, tick)` 至多一条 `Directive`」；若本命令也写一条（哪怕 `PLANNED`），同 tick 其后的 `sd.IssueDirective` 必被 R4 拒。⇒ **R4 名额不由「开始决策」占用**，判据 = handler 级 + 端到端各一条，且变异 `t10m5`（让它写 `PLANNED` Directive）**KILLED**。
+- ★ **裁定 T10-U2（D6 落实）**：**用户经 GUI 窄端点 `POST /api/sd/start-decision` ⇒ 直接生效**（`initiator="player:gui"`、不经审批）；**GM Agent 经现有 MCP 口（`EXTERNAL_WITH_GM`）的 `sd.StartDecision` 窄工具 ⇒ 过审批门链**；**决策人桶不加该工具**。区分靠 T4 的端口/注册表拓扑（未改审批链）。
+- ★ **裁定 T10-U3**：决策模式 `modes.js` 的 `writes` 由 `[]` 改 **`["sd.StartDecision"]`**（spec §四.2「若 D5 选新命令则加」）；T7 的 `decision-allows-no-write` 随之**改名**为 `decision-allows-exactly-start-decision`（断"恰一条"，**未**改恒真）；`panels.js` 仍**无** `writeCommand(`（T7 既有断言保留且绿）。
+- **前端**：`index.html` 按钮 `#decision-start`（**默认 disabled**）+ `#decision-start-status`；`panels.js#startDecisionGate`（纯函数，`due!==true` ⇒ 不可点，含"未知 due"与"非待决"**两种可区分理由**）+ `decideStartDecision`（经 `api.startDecision`）；`api.js#startDecision`；`write-allowlist.test.cjs` 声明面 4→5。
+- **门禁**：`./mvnw clean verify` **rc=0**（★ **最终绿轮 = `t10-evidence/logs/clean-verify.after-mutants-GREEN.log`**，**第 1 次尝试**；**`clean-verify.attempt1-FAILURE.log` 是留档的失败轮**——它抓到两处真漏改：`WebuiAssetsTest`（新按钮内文含子串「决策」）与 `McpServerTest`（工具面 15 未改 16）；`clean-verify.attempt2-GREEN.log` 为修后（变异前）绿轮）。
+  **8/8 `SUCCESS [`**（`UtilSimos`…`SimosApp`）；**1347** = `170/368/45/259/178/129/198`（现场重算，只取模块汇总行，`t10-evidence/logs/recomputed.txt`）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **164/164**。
+  基线**本机现场重算**：独立 worktree 跑 `abd3086` ⇒ **1337** = `170/368/45/259/178/124/193`（`logs/baseline-verify.log`）⇒ **delta 干净 +10**：`sd +5`（`StartDecisionHandlerTest`）+ `app +5`（`StartDecisionEndToEndTest`），其余五模块逐字不变；前端 159→164（两处下界同改，无新 JS 文件 ⇒ `REQUIRED_FILES` 不变）。
+- **判据 C18**：① 用户 GUI ⇒ `200 committed`、head 1→2、`pendingApprovals` **空**、revision 行 `initiator=player:gui`/`commandType=sd.StartDecision`、INFO 记录逐值（`value="7"`）；② GM 口 ⇒ **未批 `APPROVAL_DENIED` 且 head 不动**、批准后 +1（`initiator=agent:t10-test`）；③ 决策人桶 `toolsFor(DECISION_AGENT)` **不含**该工具（外部通用桶也不含）。另：未知 dm ⇒ 422 且 head 不动；同 tick 出令照常（R4 不占）。
+- **变异 13 体 13 KILLED / 0 SURVIVED**（Java 9 + JS 4；九道门禁，逐轮 `restored_md5==orig_md5`）：`t10m1` 用户身份写坏 / `t10m9` 用户路径不落 revision / **`t10m2` GM 绕过审批** / `t10m3` 决策人桶错加 / `t10m8` GM 桶漏加 / `t10m4` 载荷提示漏项 / `t10m7` handler 未注册 / `t10m5` 占 R4 名额 / `t10m6` 不拒未知 dm；`t10js-m1..m4`（闸门恒开 / 丢闸门守卫 / 端点写错 / 按钮不绑定）。红点全落被保护断言（逐轮日志与 tap 在 `t10-evidence/mutants/logs/`）。
+- ★ **装置两次迭代（如实记）**：① `t10m2`/`t10m8`/`t10m7` 首轮 **VOID**（删掉 API 唯一使用点后 import 变未用 ⇒ **Checkstyle 在测试前拦下，没跑到**，不记存活）⇒ 变异体同时删 import 后重跑 **KILLED**；② `t10m4` 首轮因判据正则只匹配 `<<< ERROR!` 行（无消息）而误判 SURVIVED ⇒ 改按**报错测试名**匹配后 **KILLED**。
+- **我未能核实的**：`t10-report.md` §六（真浏览器 e2e 未跑（同 T7 开口项）/ 真档未验（合成夹具）/ 服务端**不**校验 `due`（"该不该拒"无上游依据，记为未定策略）/ 重复发起未约束 / `AgentLib` 外部依赖 / `SdInfoEntry.value` 只覆盖标量 / "用户点也走审批"无等价单行变异形态，未构造）。
+- **带裁定的遗留**：`t10-report.md` §七（L1 INFO 落点是感知层，要成可计算事实须迁 `SdState` 组件；L2 GUI 窄端点与 `/api/command` 并存；L3 `modes.js` 白名单项不在运行期被该按钮读取；L4 渲染夹具无 `refreshState`，写后刷新未在该层覆盖）。
+- **证据**：`t10-evidence/`（`logs/`（含失败轮/绿轮区分 + `recomputed.txt` + `baseline-verify.log`）+ `mutants/`（`pristine/`、`py/`、`make-mutant.py`、`make-js-mutant.py`、`mut-java.sh`、`mut-js.sh`、逐轮日志）+ `t10-report.md`）。

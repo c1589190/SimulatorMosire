@@ -195,6 +195,10 @@
           <div data-decision-subpage="view">
             <p id="decision-view-status" class="status muted">点选地图上的国家区域或有决策人的单位，查看其决策人信息。</p>
             <div id="decision-maker-detail" class="decision-maker-detail"></div>
+            <!-- T10（三件事模型 ④）：只在当前展示的决策人**本 tick 待决**（due）时可点；
+                 写走窄端点 POST /api/sd/start-decision（服务端写死 sd.StartDecision，落 revision）。 -->
+            <button type="button" id="decision-start" disabled>开始决策</button>
+            <p id="decision-start-status" class="status muted">选中一个待决的决策人后可发起。</p>
           </div>
 
           <div data-decision-subpage="approval" hidden>

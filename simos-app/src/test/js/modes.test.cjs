@@ -76,13 +76,12 @@ test("unit-allows-route-and-editor-writes", () => {
   assert.equal(M.isWriteAllowed("unit", "map.SetTerrain"), false);
 });
 
-test("decision-allows-no-write", () => {
-  // ★★ T7：决策模式**只读**（spec §四.2）——writes 恒空、fail-closed。
-  //   审批的「批准/驳回」打 POST /api/approvals/{id}（审批裁决，非命令写）⇒ **不进**本表；
-  //   连 T10 才做的 sd.StartDecision 也**不在**本表（本模式不发任何 Command）。
-  assert.deepEqual(M.allowedWrites("decision"), []);
+test("decision-allows-exactly-start-decision", () => {
+  // ★★ T10（spec §四.2，D5 已裁"新命令"）：决策模式**恰有一条**命令写 = sd.StartDecision。
+  //   审批的「批准/驳回」打 POST /api/approvals/{id}（审批裁决，非命令写）⇒ **不进**本表。
+  assert.deepEqual(M.allowedWrites("decision"), ["sd.StartDecision"]);
+  assert.equal(M.isWriteAllowed("decision", "sd.StartDecision"), true);
   for (const type of [
-    "sd.StartDecision",
     "sd.IssueDirective",
     "sd.SubmitVerdict",
     "sd.SetViewScope",

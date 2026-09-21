@@ -1,0 +1,1828 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/8]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.sd.spi.StartDecisionHandlerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.141 s -- in io.mosire.simos.sd.spi.StartDecisionHandlerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 18 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 44 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 34 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.McpPortTopologyTest
+19:20:56.398 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:56.407 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:56.509 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45589/（静态 /webui，同源，无 CORS 头）
+19:20:56.510 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-18102840106019181372 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45845 decisionAgentMcpPort=46107 guiPort=45589 approvalPort=46525
+19:20:56.597 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+19:20:56.629 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+19:20:56.688 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46525）
+19:20:56.688 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:56.727 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:56.737 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:56.747 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45443/（静态 /webui，同源，无 CORS 头）
+19:20:56.747 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4877191134028129937 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45927 decisionAgentMcpPort=45243 guiPort=45443 approvalPort=46441
+19:20:56.757 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+19:20:56.759 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell-decision, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+19:20:56.808 INFO  io.modelcontextprotocol.spec.McpClientSession - Server returned a JSON-RPC error when calling method tools/call: JSONRPCError[code=-32602, message=Unknown tool: invalid_tool_name, data=Tool not found: simos.command.submit]
+19:20:56.813 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46441）
+19:20:56.813 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:56.858 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:56.867 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:56.877 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46053/（静态 /webui，同源，无 CORS 头）
+19:20:56.877 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-11184358859701085124 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46119 decisionAgentMcpPort=45353 guiPort=46053 approvalPort=46347
+19:20:56.880 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+19:20:56.882 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell-decision, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+19:20:56.889 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46347）
+19:20:56.889 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:56.935 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:56.944 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:56.953 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44893/（静态 /webui，同源，无 CORS 头）
+19:20:56.954 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-13555730714955017462 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46047 decisionAgentMcpPort=45377 guiPort=44893 approvalPort=44757
+19:20:56.958 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+19:20:56.960 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+19:20:56.964 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+19:20:56.965 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell-decision, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+19:20:56.976 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44757）
+19:20:56.976 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.062 s <<< FAILURE! -- in io.mosire.simos.app.McpPortTopologyTest
+[ERROR] io.mosire.simos.app.McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace -- Time elapsed: 0.756 s <<< FAILURE!
+java.lang.AssertionError: 
+[C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 GM 窄写 = 16）] 
+Expecting actual:
+  ["sd.IssueDirective",
+    "sd.SetViewScope",
+    "sd.SubmitVerdict",
+    "simos.advance",
+    "simos.command.catalog",
+    "simos.command.submit",
+    "simos.fork",
+    "simos.map.hex",
+    "simos.map.overview",
+    "simos.social.population",
+    "simos.state.facets",
+    "simos.state.resolve",
+    "simos.timeline.branches",
+    "simos.unit.get",
+    "simos.unit.list"]
+to contain exactly in any order:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "simos.command.submit",
+    "simos.advance",
+    "simos.fork",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision"]
+but could not find the following elements:
+  ["sd.StartDecision"]
+
+	at io.mosire.simos.app.McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace(McpPortTopologyTest.java:90)
+
+[INFO] Running io.mosire.simos.app.tools.SimosToolsTest
+19:20:57.123 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.132 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.142 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45737/（静态 /webui，同源，无 CORS 头）
+19:20:57.142 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-3783863188200551722 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44793 decisionAgentMcpPort=45977 guiPort=45737 approvalPort=44939
+19:20:57.155 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=core.Nope commandId=99788967-c85b-40ef-9718-08529eab416a correlationId=99788967-c85b-40ef-9718-08529eab416a 原因=未注册的命令类型: core.Nope
+19:20:57.157 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44939）
+19:20:57.158 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.205 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.215 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.224 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44977/（静态 /webui，同源，无 CORS 头）
+19:20:57.224 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-18283602977406294120 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45683 decisionAgentMcpPort=45597 guiPort=44977 approvalPort=45865
+19:20:57.230 INFO  io.mosire.simos.core.command.CommandBus - 命令冲突: type=unit.RenameUnit commandId=779fc6a8-5fc1-40cc-bf3a-bae02b277389 correlationId=779fc6a8-5fc1-40cc-bf3a-bae02b277389 真实head=main@1
+19:20:57.232 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45865）
+19:20:57.232 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.279 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.290 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.299 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46647/（静态 /webui，同源，无 CORS 头）
+19:20:57.299 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-17804160125613463539 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45751 decisionAgentMcpPort=45311 guiPort=46647 approvalPort=44869
+19:20:57.342 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44869）
+19:20:57.342 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.391 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.401 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.410 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46607/（静态 /webui，同源，无 CORS 头）
+19:20:57.411 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-12893083324986207035 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46457 decisionAgentMcpPort=45041 guiPort=46607 approvalPort=44977
+19:20:57.413 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44977）
+19:20:57.413 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.459 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.469 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.478 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45085/（静态 /webui，同源，无 CORS 头）
+19:20:57.479 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-8056286359956756673 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46155 decisionAgentMcpPort=46147 guiPort=45085 approvalPort=44909
+19:20:57.481 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44909）
+19:20:57.481 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.533 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.543 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.553 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44835/（静态 /webui，同源，无 CORS 头）
+19:20:57.553 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-11046588437222130604 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46513 decisionAgentMcpPort=46145 guiPort=44835 approvalPort=45943
+19:20:57.555 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45943）
+19:20:57.555 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.610 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.620 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.630 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45995/（静态 /webui，同源，无 CORS 头）
+19:20:57.630 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-9380392509648647488 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46223 decisionAgentMcpPort=44819 guiPort=45995 approvalPort=44687
+19:20:57.652 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=4cd6dbff-cd70-46ff-b295-f7969c62b8ce correlationId=4cd6dbff-cd70-46ff-b295-f7969c62b8ce 新坐标=main@2
+19:20:57.663 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44687）
+19:20:57.663 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.714 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.724 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.726 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44841/（静态 /webui，同源，无 CORS 头）
+19:20:57.727 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-11546072152423033451 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46143 decisionAgentMcpPort=45567 guiPort=44841 approvalPort=45203
+19:20:57.733 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45203）
+19:20:57.733 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.776 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.786 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.796 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44641/（静态 /webui，同源，无 CORS 头）
+19:20:57.796 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-7595502720992068806 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45683 decisionAgentMcpPort=46237 guiPort=44641 approvalPort=46591
+19:20:57.797 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46591）
+19:20:57.797 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.841 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.850 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.860 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45021/（静态 /webui，同源，无 CORS 头）
+19:20:57.860 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4884983417744299189 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46221 decisionAgentMcpPort=45937 guiPort=45021 approvalPort=45117
+19:20:57.875 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=2403e88d-5339-4734-8eb4-9affb5f0903f correlationId=2403e88d-5339-4734-8eb4-9affb5f0903f 新坐标=main@2
+19:20:57.884 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45117）
+19:20:57.884 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.926 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:57.935 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:57.945 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46115/（静态 /webui，同源，无 CORS 头）
+19:20:57.945 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-7818322343416986723 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45981 decisionAgentMcpPort=46265 guiPort=46115 approvalPort=44623
+19:20:57.947 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44623）
+19:20:57.947 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:57.994 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.004 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.014 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45691/（静态 /webui，同源，无 CORS 头）
+19:20:58.015 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-832674987044490123 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46501 decisionAgentMcpPort=44909 guiPort=45691 approvalPort=45017
+19:20:58.022 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.RenameUnit commandId=cecea7ee-a4f2-4902-b143-bb67ac47093c correlationId=cecea7ee-a4f2-4902-b143-bb67ac47093c 新坐标=main@2
+19:20:58.029 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45017）
+19:20:58.029 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.071 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.081 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.090 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45651/（静态 /webui，同源，无 CORS 头）
+19:20:58.091 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-3631493611421700663 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46013 decisionAgentMcpPort=45221 guiPort=45651 approvalPort=44989
+19:20:58.093 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44989）
+19:20:58.093 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.138 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.148 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.158 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46289/（静态 /webui，同源，无 CORS 头）
+19:20:58.158 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4208294888973959128 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46179 decisionAgentMcpPort=44839 guiPort=46289 approvalPort=45533
+19:20:58.159 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45533）
+19:20:58.159 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.203 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.213 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.223 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46227/（静态 /webui，同源，无 CORS 头）
+19:20:58.223 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-12632266773969144929 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45789 decisionAgentMcpPort=45297 guiPort=46227 approvalPort=45631
+19:20:58.228 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45631）
+19:20:58.228 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 15, Failures: 2, Errors: 1, Skipped: 0, Time elapsed: 1.229 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.roleBucketsNeverCarryGenericWrite -- Time elapsed: 0.071 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting ListN:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope"]
+to contain:
+  ["sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision"]
+but could not find the following element(s):
+  ["sd.StartDecision"]
+
+	at io.mosire.simos.app.tools.SimosToolsTest.roleBucketsNeverCarryGenericWrite(SimosToolsTest.java:257)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools -- Time elapsed: 0.073 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  ["sd.IssueDirective",
+    "sd.SetViewScope",
+    "sd.SubmitVerdict",
+    "simos.advance",
+    "simos.command.catalog",
+    "simos.command.submit",
+    "simos.fork",
+    "simos.map.hex",
+    "simos.map.overview",
+    "simos.social.population",
+    "simos.state.facets",
+    "simos.state.resolve",
+    "simos.timeline.branches",
+    "simos.unit.get",
+    "simos.unit.list"]
+to contain exactly in any order:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "simos.command.submit",
+    "simos.advance",
+    "simos.fork",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision"]
+but could not find the following elements:
+  ["sd.StartDecision"]
+
+	at io.mosire.simos.app.tools.SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools(SimosToolsTest.java:206)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey -- Time elapsed: 0.063 s <<< ERROR!
+java.util.NoSuchElementException: No value present
+	at java.base/java.util.Optional.orElseThrow(Optional.java:377)
+	at io.mosire.simos.app.tools.SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey(SimosToolsTest.java:343)
+
+[INFO] Running io.mosire.simos.app.sd.StartDecisionEndToEndTest
+19:20:58.276 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.286 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.296 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45819/（静态 /webui，同源，无 CORS 头）
+19:20:58.296 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-12976245784679825528 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45379 decisionAgentMcpPort=44697 guiPort=45819 approvalPort=44703
+19:20:58.313 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.StartDecision commandId=e72f93b3-c048-47fc-a533-21871e968c47 correlationId=e72f93b3-c048-47fc-a533-21871e968c47 新坐标=main@2
+19:20:58.315 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/start-decision -> 200 14ms remote=127.0.0.1
+19:20:58.328 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.IssueDirective commandId=59752b64-7e31-4a65-a2f9-263508ef7c3a correlationId=59752b64-7e31-4a65-a2f9-263508ef7c3a 新坐标=main@3
+19:20:58.328 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/command -> 200 10ms remote=127.0.0.1
+19:20:58.336 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44703）
+19:20:58.336 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.391 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.400 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.410 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45473/（静态 /webui，同源，无 CORS 头）
+19:20:58.410 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-167322795674465 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46379 decisionAgentMcpPort=44883 guiPort=45473 approvalPort=46057
+19:20:58.419 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.StartDecision commandId=1eb0804e-5698-489a-aaea-0b32dda919a4 correlationId=1eb0804e-5698-489a-aaea-0b32dda919a4 新坐标=main@2
+19:20:58.420 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/start-decision -> 200 7ms remote=127.0.0.1
+19:20:58.428 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46057）
+19:20:58.428 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.471 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.481 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.491 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44697/（静态 /webui，同源，无 CORS 头）
+19:20:58.491 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-2796470604390970970 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46549 decisionAgentMcpPort=45895 guiPort=44697 approvalPort=45463
+19:20:58.502 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=sd.StartDecision commandId=5fd07f65-87de-4743-aaaa-bfd4ff764a19 correlationId=5fd07f65-87de-4743-aaaa-bfd4ff764a19 原因=决策人不存在: dm-nope
+19:20:58.502 INFO  io.mosire.simos.app.gui.GuiServer - access POST /api/sd/start-decision -> 422 7ms remote=127.0.0.1
+19:20:58.504 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45463）
+19:20:58.504 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.548 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.558 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.568 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45213/（静态 /webui，同源，无 CORS 头）
+19:20:58.568 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-13891208310597197817 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44789 decisionAgentMcpPort=44757 guiPort=45213 approvalPort=44993
+19:20:58.570 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44993）
+19:20:58.570 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+19:20:58.612 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.622 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.631 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45785/（静态 /webui，同源，无 CORS 头）
+19:20:58.632 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-8213962905751781943 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44997 decisionAgentMcpPort=45249 guiPort=45785 approvalPort=45851
+19:20:58.644 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45851）
+19:20:58.644 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 5, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.415 s <<< FAILURE! -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.decisionAgentPortHasNoStartDecisionTool -- Time elapsed: 0.062 s <<< FAILURE!
+java.lang.AssertionError: 
+[GM 桶有「开始决策」窄工具] 
+Expecting ListN:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope"]
+to contain:
+  ["sd.StartDecision"]
+but could not find the following element(s):
+  ["sd.StartDecision"]
+
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.decisionAgentPortHasNoStartDecisionTool(StartDecisionEndToEndTest.java:231)
+
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval -- Time elapsed: 0.074 s <<< FAILURE!
+java.lang.AssertionError: 
+[C18②：GM 口的写工具必须先进审批（未出现待审批项 = 闸门失效）] 
+Expecting actual not to be null
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval(StartDecisionEndToEndTest.java:199)
+
+[INFO] Running io.mosire.simos.app.McpCoverageTest
+19:20:58.699 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 15 个 [sd.IssueDirective, sd.SetViewScope, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 15 个，未外发 0 个 []
+19:20:58.710 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell-decision version=0.1.0-SNAPSHOT 外发工具 11 个 [sd.IssueDirective, sd.SubmitVerdict, simos.command.catalog, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 11 个，未外发 0 个 []
+19:20:58.719 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46177/（静态 /webui，同源，无 CORS 头）
+19:20:58.720 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-6522662494728673745 checkpointInterval=100 codec=4 handler=42 participant=2 resolver=4 facet=2 tool=15 decisionTool=11 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46527 decisionAgentMcpPort=45987 guiPort=46177 approvalPort=45229
+19:20:58.722 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+19:20:58.724 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+19:20:58.763 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CreateUnit commandId=f732adf5-6bcd-4cc1-8fff-c419e63cc2af correlationId=f732adf5-6bcd-4cc1-8fff-c419e63cc2af 新坐标=main@2
+19:20:58.806 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.RenameUnit commandId=da008943-fe69-421e-bcaf-305304df8feb correlationId=da008943-fe69-421e-bcaf-305304df8feb 新坐标=main@3
+19:20:58.848 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.SetStrength commandId=ef60e902-7585-4fcc-a8d0-a507cd0b340c correlationId=ef60e902-7585-4fcc-a8d0-a507cd0b340c 新坐标=main@4
+19:20:58.892 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.ReparentUnit commandId=c5c5b1bb-6d04-4b3f-864b-f83894d0ed2e correlationId=c5c5b1bb-6d04-4b3f-864b-f83894d0ed2e 新坐标=main@5
+19:20:58.934 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlaceAt commandId=a6e36839-ac58-482b-9468-b16027faac53 correlationId=a6e36839-ac58-482b-9468-b16027faac53 新坐标=main@6
+19:20:58.983 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanRoute commandId=a02ad5e5-235f-4f69-a22c-eb60ff4c49aa correlationId=a02ad5e5-235f-4f69-a22c-eb60ff4c49aa 新坐标=main@7
+19:20:59.029 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CancelRoute commandId=6748c712-82d1-4707-933d-2abd8bd58a2b correlationId=6748c712-82d1-4707-933d-2abd8bd58a2b 新坐标=main@8
+19:20:59.074 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.SetStatus commandId=057c7222-d516-4b62-a04f-0e29c60017e7 correlationId=057c7222-d516-4b62-a04f-0e29c60017e7 新坐标=main@9
+19:20:59.119 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.SetRejoinTarget commandId=d8c5d4c8-4eff-4127-b841-1943a076dd77 correlationId=d8c5d4c8-4eff-4127-b841-1943a076dd77 新坐标=main@10
+19:20:59.164 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.ApplyCasualties commandId=0b056123-0389-4f42-9b77-1da6b21c66da correlationId=0b056123-0389-4f42-9b77-1da6b21c66da 新坐标=main@11
+19:20:59.209 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.PlanSparseRoute commandId=196b7565-08cb-4383-8547-ea97cae93ac9 correlationId=196b7565-08cb-4383-8547-ea97cae93ac9 新坐标=main@12
+19:20:59.254 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.CreateCommandChain commandId=f1def857-5a00-4f29-b9d1-b3b6c29ccea6 correlationId=f1def857-5a00-4f29-b9d1-b3b6c29ccea6 新坐标=main@13
+19:20:59.298 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.UpdateCommandChain commandId=8e56e2be-fe67-4227-b4d7-3921d03c8e35 correlationId=8e56e2be-fe67-4227-b4d7-3921d03c8e35 新坐标=main@14
+19:20:59.341 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.AttachUnit commandId=f3bc4503-4d8f-4679-bc4e-4c5cc17f0b33 correlationId=f3bc4503-4d8f-4679-bc4e-4c5cc17f0b33 新坐标=main@15
+19:20:59.383 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.ReparentSubtree commandId=e95f4684-ccc6-4604-8e1f-47ce8cf3256a correlationId=e95f4684-ccc6-4604-8e1f-47ce8cf3256a 新坐标=main@16
+19:20:59.426 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.DetachUnit commandId=ab8dc19f-f560-408b-8338-dc729a1bcf19 correlationId=ab8dc19f-f560-408b-8338-dc729a1bcf19 新坐标=main@17
+19:20:59.482 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.SplitFormation commandId=4734136c-dc7e-418d-86a1-8c756b915435 correlationId=4734136c-dc7e-418d-86a1-8c756b915435 新坐标=main@18
+19:20:59.515 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.MergeFormation commandId=878ce095-f49d-4ce4-9e9d-a66346c62219 correlationId=878ce095-f49d-4ce4-9e9d-a66346c62219 新坐标=main@19
+19:20:59.558 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.SetFormationOffset commandId=2d6f82a3-cecf-48cf-9c68-578dd0937846 correlationId=2d6f82a3-cecf-48cf-9c68-578dd0937846 新坐标=main@20
+19:20:59.604 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=unit.DisbandUnit commandId=8edf0bca-9b69-433e-8e58-297865e4cde6 correlationId=8edf0bca-9b69-433e-8e58-297865e4cde6 新坐标=main@21
+19:20:59.659 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetTerrain commandId=9ffd103d-9cc0-4c67-89f3-b19c7edad55d correlationId=9ffd103d-9cc0-4c67-89f3-b19c7edad55d 新坐标=main@22
+19:20:59.704 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.CreateRegion commandId=ebeaf555-9093-42e5-912d-67fa70d27b5d correlationId=ebeaf555-9093-42e5-912d-67fa70d27b5d 新坐标=main@23
+19:20:59.748 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.UpdateRegion commandId=698f7f47-44e4-4af2-a184-4d33105dc9ab correlationId=698f7f47-44e4-4af2-a184-4d33105dc9ab 新坐标=main@24
+19:20:59.791 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.DeleteRegion commandId=bdd960e6-8102-441d-8640-b88125754069 correlationId=bdd960e6-8102-441d-8640-b88125754069 新坐标=main@25
+19:20:59.833 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.SetEdge commandId=737b4321-365b-47b8-9e2b-1217d9297be8 correlationId=737b4321-365b-47b8-9e2b-1217d9297be8 新坐标=main@26
+19:20:59.876 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.RandomizeRegion commandId=61cf8ab4-036a-438b-a8c2-ad33e4f35f9e correlationId=61cf8ab4-036a-438b-a8c2-ad33e4f35f9e 新坐标=main@27
+19:20:59.919 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CreateNation commandId=9190ad96-74cf-4a88-820a-1a1a4c91bfe6 correlationId=9190ad96-74cf-4a88-820a-1a1a4c91bfe6 新坐标=main@28
+19:20:59.965 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CreateArmy commandId=2ff4775f-d40d-4e2b-b59a-e6ecac788ecd correlationId=2ff4775f-d40d-4e2b-b59a-e6ecac788ecd 新坐标=main@29
+19:21:00.012 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CreateDecisionMaker commandId=886ee4f2-f4d2-43c2-96b7-de412eb8b1d1 correlationId=886ee4f2-f4d2-43c2-96b7-de412eb8b1d1 新坐标=main@30
+19:21:00.058 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.PutInfo commandId=41fca94e-b545-4d91-a21e-c49aad47d2cc correlationId=41fca94e-b545-4d91-a21e-c49aad47d2cc 新坐标=main@31
+19:21:00.098 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CreateCombat commandId=c51d33e2-01b5-4a62-a52f-9acb04692de3 correlationId=c51d33e2-01b5-4a62-a52f-9acb04692de3 新坐标=main@32
+19:21:00.147 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.AddCombatStage commandId=ec563eda-347e-4a1b-bf90-c8ea39d53d8f correlationId=ec563eda-347e-4a1b-bf90-c8ea39d53d8f 新坐标=main@33
+19:21:00.187 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SetStageOutcomeTable commandId=ab41325a-0d2a-4008-8f8d-58ed2d942ea8 correlationId=ab41325a-0d2a-4008-8f8d-58ed2d942ea8 新坐标=main@34
+19:21:00.229 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.RecordCasualties commandId=828ede3c-9aa8-48cf-ba7d-d8254c5037b0 correlationId=828ede3c-9aa8-48cf-ba7d-d8254c5037b0 新坐标=main@35
+19:21:00.274 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CommitCombatOutcome commandId=4670829f-d936-4c22-b698-d41e1fc16b80 correlationId=4670829f-d936-4c22-b698-d41e1fc16b80 新坐标=main@36
+19:21:00.318 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.RegisterEffect commandId=4221ba1a-cb02-4641-aece-1c80ba02d166 correlationId=4221ba1a-cb02-4641-aece-1c80ba02d166 新坐标=main@37
+19:21:00.362 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CancelEffect commandId=85acf256-166a-444a-9787-f6c186d3be35 correlationId=85acf256-166a-444a-9787-f6c186d3be35 新坐标=main@38
+19:21:00.404 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SetViewScope commandId=71a5d085-6463-420e-a8bc-791cf2708e58 correlationId=71a5d085-6463-420e-a8bc-791cf2708e58 新坐标=main@39
+19:21:00.448 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.IssueDirective commandId=2312d457-4861-495f-9e84-2415bfa9365d correlationId=2312d457-4861-495f-9e84-2415bfa9365d 新坐标=main@40
+19:21:00.493 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.SubmitVerdict commandId=d05c7c25-deba-4621-add7-49db4324e48a correlationId=d05c7c25-deba-4621-add7-49db4324e48a 新坐标=main@41
+19:21:00.544 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=map.RegisterPathwayGroup commandId=3bfd8072-037a-426e-a5c5-0034be0995d5 correlationId=3bfd8072-037a-426e-a5c5-0034be0995d5 新坐标=main@42
+19:21:00.584 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.StartDecision commandId=46ce86ff-d307-410a-956c-f8248267ef21 correlationId=46ce86ff-d307-410a-956c-f8248267ef21 新坐标=main@43
+[T11-COVERAGE] type=unit.CreateUnit result=committed revision=2
+[T11-COVERAGE] type=unit.RenameUnit result=committed revision=3
+[T11-COVERAGE] type=unit.SetStrength result=committed revision=4
+[T11-COVERAGE] type=unit.ReparentUnit result=committed revision=5
+[T11-COVERAGE] type=unit.PlaceAt result=committed revision=6
+[T11-COVERAGE] type=unit.PlanRoute result=committed revision=7
+[T11-COVERAGE] type=unit.CancelRoute result=committed revision=8
+[T11-COVERAGE] type=unit.SetStatus result=committed revision=9
+[T11-COVERAGE] type=unit.SetRejoinTarget result=committed revision=10
+[T11-COVERAGE] type=unit.ApplyCasualties result=committed revision=11
+[T11-COVERAGE] type=unit.PlanSparseRoute result=committed revision=12
+[T11-COVERAGE] type=unit.CreateCommandChain result=committed revision=13
+[T11-COVERAGE] type=unit.UpdateCommandChain result=committed revision=14
+[T11-COVERAGE] type=unit.AttachUnit result=committed revision=15
+[T11-COVERAGE] type=unit.ReparentSubtree result=committed revision=16
+[T11-COVERAGE] type=unit.DetachUnit result=committed revision=17
+[T11-COVERAGE] type=unit.SplitFormation result=committed revision=18
+[T11-COVERAGE] type=unit.MergeFormation result=committed revision=19
+[T11-COVERAGE] type=unit.SetFormationOffset result=committed revision=20
+[T11-COVERAGE] type=unit.DisbandUnit result=committed revision=21
+[T11-COVERAGE] type=map.SetTerrain result=committed revision=22
+[T11-COVERAGE] type=map.CreateRegion result=committed revision=23
+[T11-COVERAGE] type=map.UpdateRegion result=committed revision=24
+[T11-COVERAGE] type=map.DeleteRegion result=committed revision=25
+[T11-COVERAGE] type=map.SetEdge result=committed revision=26
+[T11-COVERAGE] type=map.RandomizeRegion result=committed revision=27
+[T11-COVERAGE] type=sd.CreateNation result=committed revision=28
+[T11-COVERAGE] type=sd.CreateArmy result=committed revision=29
+[T11-COVERAGE] type=sd.CreateDecisionMaker result=committed revision=30
+[T11-COVERAGE] type=sd.PutInfo result=committed revision=31
+[T11-COVERAGE] type=sd.CreateCombat result=committed revision=32
+[T11-COVERAGE] type=sd.AddCombatStage result=committed revision=33
+[T11-COVERAGE] type=sd.SetStageOutcomeTable result=committed revision=34
+[T11-COVERAGE] type=sd.RecordCasualties result=committed revision=35
+[T11-COVERAGE] type=sd.CommitCombatOutcome result=committed revision=36
+[T11-COVERAGE] type=sd.RegisterEffect result=committed revision=37
+[T11-COVERAGE] type=sd.CancelEffect result=committed revision=38
+[T11-COVERAGE] type=sd.SetViewScope result=committed revision=39
+[T11-COVERAGE] type=sd.IssueDirective result=committed revision=40
+[T11-COVERAGE] type=sd.SubmitVerdict result=committed revision=41
+[T11-COVERAGE] type=map.RegisterPathwayGroup result=committed revision=42
+[T11-COVERAGE] type=sd.StartDecision result=committed revision=43
+19:21:00.639 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令提交: type=core.AdvanceTime commandId=38d8aa30-a3b3-4b9b-b209-13f8f85af450 correlationId=38d8aa30-a3b3-4b9b-b209-13f8f85af450 新坐标=main@44
+[T11-COVERAGE] tool=simos.advance result=committed revision=32
+19:21:00.677 WARN  io.mosire.simos.core.store.CheckpointStore - checkpoint 缺失（C18：回退到更早的 checkpoint，最坏从创世重放，不失败）: /tmp/junit-6522662494728673745/checkpoints/main/44.json
+[T11-COVERAGE] tool=simos.fork result=committed branch=mcp-branch revision=1
+19:21:00.732 INFO  io.mosire.simos.core.command.CommandBus - 命令被拒: type=unit.RenameUnit commandId=2c7bbd7f-c5a8-4fca-be10-721eb87a1640 correlationId=2c7bbd7f-c5a8-4fca-be10-721eb87a1640 原因=payload 必须是 {"id":字符串,"name":字符串}: {"id":"u-2"}
+[T11-COVERAGE] reverse=bad-payload result=rejected
+19:21:00.767 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45229）
+19:21:00.767 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.122 s -- in io.mosire.simos.app.McpCoverageTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace:90 [C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 GM 窄写 = 16）] 
+Expecting actual:
+  ["sd.IssueDirective",
+    "sd.SetViewScope",
+    "sd.SubmitVerdict",
+    "simos.advance",
+    "simos.command.catalog",
+    "simos.command.submit",
+    "simos.fork",
+    "simos.map.hex",
+    "simos.map.overview",
+    "simos.social.population",
+    "simos.state.facets",
+    "simos.state.resolve",
+    "simos.timeline.branches",
+    "simos.unit.get",
+    "simos.unit.list"]
+to contain exactly in any order:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "simos.command.submit",
+    "simos.advance",
+    "simos.fork",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision"]
+but could not find the following elements:
+  ["sd.StartDecision"]
+
+[ERROR]   StartDecisionEndToEndTest.decisionAgentPortHasNoStartDecisionTool:231 [GM 桶有「开始决策」窄工具] 
+Expecting ListN:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope"]
+to contain:
+  ["sd.StartDecision"]
+but could not find the following element(s):
+  ["sd.StartDecision"]
+
+[ERROR]   StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval:199 [C18②：GM 口的写工具必须先进审批（未出现待审批项 = 闸门失效）] 
+Expecting actual not to be null
+[ERROR]   SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools:206 
+Expecting actual:
+  ["sd.IssueDirective",
+    "sd.SetViewScope",
+    "sd.SubmitVerdict",
+    "simos.advance",
+    "simos.command.catalog",
+    "simos.command.submit",
+    "simos.fork",
+    "simos.map.hex",
+    "simos.map.overview",
+    "simos.social.population",
+    "simos.state.facets",
+    "simos.state.resolve",
+    "simos.timeline.branches",
+    "simos.unit.get",
+    "simos.unit.list"]
+to contain exactly in any order:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "simos.command.submit",
+    "simos.advance",
+    "simos.fork",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision"]
+but could not find the following elements:
+  ["sd.StartDecision"]
+
+[ERROR]   SimosToolsTest.roleBucketsNeverCarryGenericWrite:257 
+Expecting ListN:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope"]
+to contain:
+  ["sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision"]
+but could not find the following element(s):
+  ["sd.StartDecision"]
+
+[ERROR] Errors: 
+[ERROR]   SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey:343 » NoSuchElement No value present
+[INFO] 
+[ERROR] Tests run: 25, Failures: 5, Errors: 1, Skipped: 0
+[INFO] 
+[ERROR] There are test failures.
+
+See /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/target/surefire-reports for the individual test results.
+See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[INFO] 
+[INFO] --- exec:3.4.1:exec (frontend-unit-tests) @ simos-app ---
+TAP version 13
+# Subtest: decodeBlocks-restores-vertex-world-coordinates
+ok 1 - decodeBlocks-restores-vertex-world-coordinates
+  ---
+  duration_ms: 0.70307
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-preserves-block-metadata
+ok 2 - decodeBlocks-preserves-block-metadata
+  ---
+  duration_ms: 0.092573
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-keeps-rings-closed-with-same-vertex-count
+ok 3 - decodeBlocks-keeps-rings-closed-with-same-vertex-count
+  ---
+  duration_ms: 0.072311
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-does-not-mutate-the-wire-input
+ok 4 - decodeBlocks-does-not-mutate-the-wire-input
+  ---
+  duration_ms: 0.724173
+  type: 'test'
+  ...
+# Subtest: terrainAt-reads-decoded-block-at-hex-center
+ok 5 - terrainAt-reads-decoded-block-at-hex-center
+  ---
+  duration_ms: 0.162421
+  type: 'test'
+  ...
+# Subtest: countsByTerrain-sums-decoded-hex-counts
+ok 6 - countsByTerrain-sums-decoded-hex-counts
+  ---
+  duration_ms: 0.089175
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 7 - module-loads
+  ---
+  duration_ms: 0.507637
+  type: 'test'
+  ...
+# Subtest: subpage-ids-and-labels
+ok 8 - subpage-ids-and-labels
+  ---
+  duration_ms: 0.372292
+  type: 'test'
+  ...
+# Subtest: subpage-state-is-fail-closed
+ok 9 - subpage-state-is-fail-closed
+  ---
+  duration_ms: 0.110148
+  type: 'test'
+  ...
+# Subtest: subpage-visibility-is-mutually-exclusive
+ok 10 - subpage-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.172066
+  type: 'test'
+  ...
+# Subtest: decision-groups-put-nation-then-army-and-sort-by-id
+ok 11 - decision-groups-put-nation-then-army-and-sort-by-id
+  ---
+  duration_ms: 4.60183
+  type: 'test'
+  ...
+# Subtest: decision-groups-keep-unknown-kinds-and-preserve-length
+ok 12 - decision-groups-keep-unknown-kinds-and-preserve-length
+  ---
+  duration_ms: 0.163953
+  type: 'test'
+  ...
+# Subtest: decision-makers-for-nation-matches-exactly
+ok 13 - decision-makers-for-nation-matches-exactly
+  ---
+  duration_ms: 0.159838
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-resolves-root-and-descendants
+ok 14 - decision-maker-for-unit-resolves-root-and-descendants
+  ---
+  duration_ms: 0.208149
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-is-deterministic-across-two-armies
+ok 15 - decision-maker-for-unit-is-deterministic-across-two-armies
+  ---
+  duration_ms: 0.153679
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-survives-a-parent-cycle
+ok 16 - decision-maker-for-unit-survives-a-parent-cycle
+  ---
+  duration_ms: 0.214434
+  type: 'test'
+  ...
+# Subtest: pending-status-text-never-fabricates
+ok 17 - pending-status-text-never-fabricates
+  ---
+  duration_ms: 0.087882
+  type: 'test'
+  ...
+# Subtest: affiliation-label-formats-kind-name-and-id
+ok 18 - affiliation-label-formats-kind-name-and-id
+  ---
+  duration_ms: 0.080704
+  type: 'test'
+  ...
+# Subtest: start-decision-gate-requires-due
+ok 19 - start-decision-gate-requires-due
+  ---
+  duration_ms: 0.063354
+  type: 'test'
+  ...
+# Subtest: render-left-gates-the-start-button-on-due
+ok 20 - render-left-gates-the-start-button-on-due
+  ---
+  duration_ms: 6.838486
+  type: 'test'
+  ...
+# Subtest: render-left-disables-the-start-button-when-not-due
+ok 21 - render-left-disables-the-start-button-when-not-due
+  ---
+  duration_ms: 5.215345
+  type: 'test'
+  ...
+# Subtest: start-decision-posts-the-target-when-due
+ok 22 - start-decision-posts-the-target-when-due
+  ---
+  duration_ms: 2.083078
+  type: 'test'
+  ...
+# Subtest: start-decision-refuses-when-target-is-not-due
+ok 23 - start-decision-refuses-when-target-is-not-due
+  ---
+  duration_ms: 2.082759
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-the-server-shape
+ok 24 - decision-maker-fields-project-the-server-shape
+  ---
+  duration_ms: 0.150118
+  type: 'test'
+  ...
+# Subtest: nation-region-ids-are-set-equal-not-subset
+ok 25 - nation-region-ids-are-set-equal-not-subset
+  ---
+  duration_ms: 0.173291
+  type: 'test'
+  ...
+# Subtest: nation-tag-helpers-ignore-non-nation-and-blank-tags
+ok 26 - nation-tag-helpers-ignore-non-nation-and-blank-tags
+  ---
+  duration_ms: 0.057103
+  type: 'test'
+  ...
+# Subtest: nation-ids-of-regions-unions-distinct-nations
+ok 27 - nation-ids-of-regions-unions-distinct-nations
+  ---
+  duration_ms: 0.172234
+  type: 'test'
+  ...
+# Subtest: render-left-shows-army-decision-maker-for-a-descendant-unit
+ok 28 - render-left-shows-army-decision-maker-for-a-descendant-unit
+  ---
+  duration_ms: 3.07303
+  type: 'test'
+  ...
+# Subtest: render-left-shows-no-decision-maker-for-an-unrelated-unit
+ok 29 - render-left-shows-no-decision-maker-for-an-unrelated-unit
+  ---
+  duration_ms: 2.374041
+  type: 'test'
+  ...
+# Subtest: render-left-shows-nation-decision-maker-for-a-nation-region-hex
+ok 30 - render-left-shows-nation-decision-maker-for-a-nation-region-hex
+  ---
+  duration_ms: 4.120444
+  type: 'test'
+  ...
+# Subtest: index-html-has-six-modes-and-decision-panel
+ok 31 - index-html-has-six-modes-and-decision-panel
+  ---
+  duration_ms: 0.237319
+  type: 'test'
+  ...
+# Subtest: index-html-decision-mode-has-start-decision-button
+ok 32 - index-html-decision-mode-has-start-decision-button
+  ---
+  duration_ms: 0.134902
+  type: 'test'
+  ...
+# Subtest: map-js-wires-decision-click-to-nation-highlight
+ok 33 - map-js-wires-decision-click-to-nation-highlight
+  ---
+  duration_ms: 1.483134
+  type: 'test'
+  ...
+# Subtest: panels-js-and-app-js-delegate-subpage-visibility
+ok 34 - panels-js-and-app-js-delegate-subpage-visibility
+  ---
+  duration_ms: 0.375056
+  type: 'test'
+  ...
+# Subtest: all-required-test-files-are-present
+ok 35 - all-required-test-files-are-present
+  ---
+  duration_ms: 0.835252
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 36 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 1.267418
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 37 - module-loads
+  ---
+  duration_ms: 2.007106
+  type: 'test'
+  ...
+# Subtest: toolUsageEntries-reads-two-response-shapes
+ok 38 - toolUsageEntries-reads-two-response-shapes
+  ---
+  duration_ms: 0.364174
+  type: 'test'
+  ...
+# Subtest: resultText-marks-success-and-failure
+ok 39 - resultText-marks-success-and-failure
+  ---
+  duration_ms: 0.076973
+  type: 'test'
+  ...
+# Subtest: formatEntry-includes-tool-and-result
+ok 40 - formatEntry-includes-tool-and-result
+  ---
+  duration_ms: 7.47225
+  type: 'test'
+  ...
+# Subtest: renderPlan-empty-state-is-explicit
+ok 41 - renderPlan-empty-state-is-explicit
+  ---
+  duration_ms: 0.155454
+  type: 'test'
+  ...
+# Subtest: renderPlan-keeps-server-order-and-flags
+ok 42 - renderPlan-keeps-server-order-and-flags
+  ---
+  duration_ms: 0.100297
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-gm-tool-usage
+ok 43 - renderInto-reads-exactly-one-GET-api-gm-tool-usage
+  ---
+  duration_ms: 0.907641
+  type: 'test'
+  ...
+# Subtest: renderInto-renders-server-entries-from-the-response
+ok 44 - renderInto-renders-server-entries-from-the-response
+  ---
+  duration_ms: 0.139404
+  type: 'test'
+  ...
+# Subtest: renderInto-shows-empty-state-when-server-has-none
+ok 45 - renderInto-shows-empty-state-when-server-has-none
+  ---
+  duration_ms: 0.244363
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-endpoint-unavailable
+ok 46 - renderInto-degrades-when-endpoint-unavailable
+  ---
+  duration_ms: 0.271754
+  type: 'test'
+  ...
+# Subtest: setOpen-toggles-overlay-and-aria-expanded
+ok 47 - setOpen-toggles-overlay-and-aria-expanded
+  ---
+  duration_ms: 0.117405
+  type: 'test'
+  ...
+# Subtest: mount-wires-open-close-and-refresh
+ok 48 - mount-wires-open-close-and-refresh
+  ---
+  duration_ms: 4.545604
+  type: 'test'
+  ...
+# Subtest: index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+ok 49 - index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+  ---
+  duration_ms: 0.22004
+  type: 'test'
+  ...
+# Subtest: gm-overlay-is-fixed-hidden-by-default-and-clickable
+ok 50 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+  ---
+  duration_ms: 0.278498
+  type: 'test'
+  ...
+# Subtest: gm-overlay-has-no-chat-input
+ok 51 - gm-overlay-has-no-chat-input
+  ---
+  duration_ms: 0.158446
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 52 - module-loads
+  ---
+  duration_ms: 1.171814
+  type: 'test'
+  ...
+# Subtest: subtool-ids-and-labels
+ok 53 - subtool-ids-and-labels
+  ---
+  duration_ms: 0.36338
+  type: 'test'
+  ...
+# Subtest: subtool-state-is-fail-closed
+ok 54 - subtool-state-is-fail-closed
+  ---
+  duration_ms: 0.208408
+  type: 'test'
+  ...
+# Subtest: subtool-tools-return-a-snapshot-and-default-tool
+ok 55 - subtool-tools-return-a-snapshot-and-default-tool
+  ---
+  duration_ms: 0.10638
+  type: 'test'
+  ...
+# Subtest: mapEditSubtoolOf-maps-tools-and-rejects-unknown
+ok 56 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  ---
+  duration_ms: 0.085724
+  type: 'test'
+  ...
+# Subtest: write-allowed-is-per-subtool-and-cross-line-is-denied
+ok 57 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  ---
+  duration_ms: 0.063057
+  type: 'test'
+  ...
+# Subtest: write-gate-resolves-tool-then-subtool
+ok 58 - write-gate-resolves-tool-then-subtool
+  ---
+  duration_ms: 0.119801
+  type: 'test'
+  ...
+# Subtest: panel-visibility-is-mutually-exclusive
+ok 59 - panel-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.09175
+  type: 'test'
+  ...
+# Subtest: index-html-has-suboption-control-and-grouped-panels
+ok 60 - index-html-has-suboption-control-and-grouped-panels
+  ---
+  duration_ms: 0.30599
+  type: 'test'
+  ...
+# Subtest: suboptions-are-not-new-modes
+ok 61 - suboptions-are-not-new-modes
+  ---
+  duration_ms: 0.297729
+  type: 'test'
+  ...
+# Subtest: map-js-gates-every-map-write-with-the-matching-type
+ok 62 - map-js-gates-every-map-write-with-the-matching-type
+  ---
+  duration_ms: 0.629345
+  type: 'test'
+  ...
+# Subtest: page-delegates-to-the-single-guard-implementation
+ok 63 - page-delegates-to-the-single-guard-implementation
+  ---
+  duration_ms: 0.599022
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 64 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 0.520724
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 65 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.067899
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 66 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 0.366906
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 67 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.073215
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+ok 68 - edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+  ---
+  duration_ms: 0.139999
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+ok 69 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  ---
+  duration_ms: 0.10093
+  type: 'test'
+  ...
+# Subtest: edgeChainResult-reports-ending-and-skipped-non-adjacency
+ok 70 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+  ---
+  duration_ms: 0.130749
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-treats-a-missing-sample-as-no-op
+ok 71 - edgeChainEdges-treats-a-missing-sample-as-no-op
+  ---
+  duration_ms: 0.075069
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 72 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.207243
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 73 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.323822
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 74 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.13853
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 75 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 0.85634
+  type: 'test'
+  ...
+# Subtest: parseEdgeKey-round-trips-and-rejects-malformed-keys
+ok 76 - parseEdgeKey-round-trips-and-rejects-malformed-keys
+  ---
+  duration_ms: 0.157468
+  type: 'test'
+  ...
+# Subtest: edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+ok 77 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+  ---
+  duration_ms: 0.161571
+  type: 'test'
+  ...
+# Subtest: edgeDeletePlan-replaces-with-the-surviving-set
+ok 78 - edgeDeletePlan-replaces-with-the-surviving-set
+  ---
+  duration_ms: 0.090656
+  type: 'test'
+  ...
+# Subtest: registered-edge-kinds-default-then-follow-the-server
+ok 79 - registered-edge-kinds-default-then-follow-the-server
+  ---
+  duration_ms: 0.1152
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-six-exact-vectors
+ok 80 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 1.312851
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 81 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 0.118246
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 82 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.148706
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 83 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.108957
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 84 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.346314
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 85 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.126438
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 86 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.209801
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 87 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.071106
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 88 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.170046
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 89 - module-loads
+  ---
+  duration_ms: 1.145009
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 90 - mode-ids-order
+  ---
+  duration_ms: 0.338996
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 91 - mode-labels
+  ---
+  duration_ms: 0.069692
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 92 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.058137
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 93 - view-allows-no-write
+  ---
+  duration_ms: 0.136021
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 94 - region-allows-no-write
+  ---
+  duration_ms: 0.056895
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 95 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.094615
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 96 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.052159
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+ok 97 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.152882
+  type: 'test'
+  ...
+# Subtest: decision-allows-exactly-start-decision
+ok 98 - decision-allows-exactly-start-decision
+  ---
+  duration_ms: 0.208942
+  type: 'test'
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 99 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.085891
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 100 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.045787
+  type: 'test'
+  ...
+# Subtest: workbench-write-calls-are-all-whitelisted
+ok 101 - workbench-write-calls-are-all-whitelisted
+  ---
+  duration_ms: 2.24171
+  type: 'test'
+  ...
+# Subtest: whitelist-entries-are-well-formed-command-types
+ok 102 - whitelist-entries-are-well-formed-command-types
+  ---
+  duration_ms: 0.111195
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 103 - module-loads
+  ---
+  duration_ms: 0.417858
+  type: 'test'
+  ...
+# Subtest: pendingCount-reads-the-three-response-shapes
+ok 104 - pendingCount-reads-the-three-response-shapes
+  ---
+  duration_ms: 0.087211
+  type: 'test'
+  ...
+# Subtest: summaryText-shows-the-count
+ok 105 - summaryText-shows-the-count
+  ---
+  duration_ms: 0.066007
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-approvals
+ok 106 - renderInto-reads-exactly-one-GET-api-approvals
+  ---
+  duration_ms: 1.737052
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-approvals-unavailable
+ok 107 - renderInto-degrades-when-approvals-unavailable
+  ---
+  duration_ms: 0.203675
+  type: 'test'
+  ...
+# Subtest: index.html-has-notification-element-and-no-right-panel-approvals
+ok 108 - index.html-has-notification-element-and-no-right-panel-approvals
+  ---
+  duration_ms: 0.250322
+  type: 'test'
+  ...
+# Subtest: module-exports-the-pending-helpers
+ok 109 - module-exports-the-pending-helpers
+  ---
+  duration_ms: 0.41085
+  type: 'test'
+  ...
+# Subtest: pending-status-text-maps-only-real-booleans-and-never-fabricates
+ok 110 - pending-status-text-maps-only-real-booleans-and-never-fabricates
+  ---
+  duration_ms: 0.100689
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-due-into-pending
+ok 111 - decision-maker-fields-project-due-into-pending
+  ---
+  duration_ms: 0.126267
+  type: 'test'
+  ...
+# Subtest: right-list-renders-pending-from-server-due
+ok 112 - right-list-renders-pending-from-server-due
+  ---
+  duration_ms: 9.45426
+  type: 'test'
+  ...
+# Subtest: left-detail-shows-pending-from-server-due
+ok 113 - left-detail-shows-pending-from-server-due
+  ---
+  duration_ms: 3.457875
+  type: 'test'
+  ...
+# Subtest: panels-list-item-wires-server-due-into-pending-text
+ok 114 - panels-list-item-wires-server-due-into-pending-text
+  ---
+  duration_ms: 0.226857
+  type: 'test'
+  ...
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 115 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 2.008365
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 116 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.470638
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 117 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.146219
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 118 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.422427
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 119 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 0.866797
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 120 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.342736
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 121 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.287575
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 122 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.15428
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 123 - deterministic-across-calls
+  ---
+  duration_ms: 0.33018
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-puts-focus-regions-first
+ok 124 - buildRegionHighlightPlan-puts-focus-regions-first
+  ---
+  duration_ms: 1.04133
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+ok 125 - buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+  ---
+  duration_ms: 0.160936
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+ok 126 - buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+  ---
+  duration_ms: 0.099078
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+ok 127 - buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+  ---
+  duration_ms: 0.191353
+  type: 'test'
+  ...
+# Subtest: the-two-modes-share-one-plan-and-differ-only-in-parameters
+ok 128 - the-two-modes-share-one-plan-and-differ-only-in-parameters
+  ---
+  duration_ms: 0.089726
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-shared-plan-for-both-modes
+ok 129 - page-层-uses-the-shared-plan-for-both-modes
+  ---
+  duration_ms: 0.716145
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+ok 130 - regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+  ---
+  duration_ms: 0.214208
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-keeps-three-owners-as-one-hex
+ok 131 - regionMembershipSummary-keeps-three-owners-as-one-hex
+  ---
+  duration_ms: 0.088399
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-refuses-to-guess-without-hex-lists
+ok 132 - regionMembershipSummary-refuses-to-guess-without-hex-lists
+  ---
+  duration_ms: 0.911245
+  type: 'test'
+  ...
+# Subtest: page-层-shows-the-union-and-never-a-summed-total
+ok 133 - page-层-shows-the-union-and-never-a-summed-total
+  ---
+  duration_ms: 0.322294
+  type: 'test'
+  ...
+# Subtest: debug-hooks-for-the-region-view-mode-are-exposed
+ok 134 - debug-hooks-for-the-region-view-mode-are-exposed
+  ---
+  duration_ms: 0.078681
+  type: 'test'
+  ...
+# Subtest: layout-constants-are-frozen
+ok 135 - layout-constants-are-frozen
+  ---
+  duration_ms: 1.064511
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 136 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.074553
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 137 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.097265
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 138 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.07927
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 139 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.060015
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 140 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.051638
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 141 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.100159
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 142 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.360088
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 143 - groupByTick-empty-input
+  ---
+  duration_ms: 0.187604
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 144 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.215675
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 145 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.094017
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 146 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.06713
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 147 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.067541
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 148 - tickIndex-finds-position
+  ---
+  duration_ms: 0.042627
+  type: 'test'
+  ...
+# Subtest: buildTree-depth-parent-children-per-node
+ok 149 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 1.326211
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 150 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 0.16803
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 151 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.126545
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 152 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.136063
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 153 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.077271
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 154 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.061495
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 155 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.106022
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 156 - empty-input-returns-empty-forest
+  ---
+  duration_ms: 0.054229
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 157 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.189938
+  type: 'test'
+  ...
+# Subtest: api.js-declares-exactly-the-allowed-write-endpoints
+ok 158 - api.js-declares-exactly-the-allowed-write-endpoints
+  ---
+  duration_ms: 0.752889
+  type: 'test'
+  ...
+# Subtest: api.js-exports-the-command-and-approval-write-functions
+ok 159 - api.js-exports-the-command-and-approval-write-functions
+  ---
+  duration_ms: 1.553411
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 160 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 1.409434
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 161 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.273063
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 162 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.155
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 163 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 1.733956
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 164 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.103936
+  type: 'test'
+  ...
+1..164
+# tests 164
+# suites 0
+# pass 164
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 123.001351
+[frontend-gate] OK tests=164 pass=164 fail=0
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.452 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.197 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.029 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.023 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.023 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.052 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.507 s]
+[INFO] SimosApp ........................................... SUCCESS [  7.454 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  8.812 s
+[INFO] Finished at: 2026-09-21T19:21:01+08:00
+[INFO] ------------------------------------------------------------------------
+
+===== 装置补记（t10m8）=====
+target=simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+orig_md5=080ce3cefb940cfd284284850786911c
+mutant_md5=0546f13f4f80e256c24360f2fe7abd5f
+restored_md5=080ce3cefb940cfd284284850786911c
+mut_rc=0 hits=1 verdict=KILLED

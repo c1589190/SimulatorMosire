@@ -1,0 +1,1532 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/8]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.sd.spi.StartDecisionHandlerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.151 s -- in io.mosire.simos.sd.spi.StartDecisionHandlerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 18 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 44 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 34 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.McpPortTopologyTest
+[ERROR] Tests run: 4, Failures: 0, Errors: 4, Skipped: 0, Time elapsed: 0.475 s <<< FAILURE! -- in io.mosire.simos.app.McpPortTopologyTest
+[ERROR] io.mosire.simos.app.McpPortTopologyTest.existingPortExposesExternalUnionGmToolFace -- Time elapsed: 0.357 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.McpPortTopologyTest.startShell(McpPortTopologyTest.java:71)
+
+[ERROR] io.mosire.simos.app.McpPortTopologyTest.decisionPortHasNoGenericWriteSoSubmitIsUnknownTool -- Time elapsed: 0.029 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.McpPortTopologyTest.startShell(McpPortTopologyTest.java:71)
+
+[ERROR] io.mosire.simos.app.McpPortTopologyTest.decisionPortExposesOnlyDecisionAgentToolFace -- Time elapsed: 0.045 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.McpPortTopologyTest.startShell(McpPortTopologyTest.java:71)
+
+[ERROR] io.mosire.simos.app.McpPortTopologyTest.bothServersListenAndCloseReleasesBothPorts -- Time elapsed: 0.031 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.McpPortTopologyTest.startShell(McpPortTopologyTest.java:71)
+
+[INFO] Running io.mosire.simos.app.tools.SimosToolsTest
+[ERROR] Tests run: 15, Failures: 0, Errors: 15, Skipped: 0, Time elapsed: 0.657 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.rejectedWriteReturnsErrorAndCreatesNoRevision -- Time elapsed: 0.137 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.conflictingWriteReturnsErrorWithTheRealHeadAndCreatesNoRevision -- Time elapsed: 0.038 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.readToolsMatchQueryServicePerValue -- Time elapsed: 0.035 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.roleBucketsNeverCarryGenericWrite -- Time elapsed: 0.033 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.readsAreAllowGatedAndDeclareTheirResources -- Time elapsed: 0.034 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools -- Time elapsed: 0.031 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.unitReadToolsExposeMovementObjectAndNullWithoutRoute -- Time elapsed: 0.033 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.catalogCoversEveryCommandHandlerImplementation -- Time elapsed: 0.035 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.catalogListsExactlyTheRegisteredCommandTypes -- Time elapsed: 0.063 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.advanceToolCommitsThroughCore -- Time elapsed: 0.035 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey -- Time elapsed: 0.030 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.writeToolCommitsAndStampsTheConfiguredInitiator -- Time elapsed: 0.038 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.unknownUnitReturnsNotFound -- Time elapsed: 0.038 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.catalogRejectsACommandTypeWithoutAPayloadHint -- Time elapsed: 0.033 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.mapHexBuildsTheCanonicalFacetSubject -- Time elapsed: 0.035 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.tools.SimosToolsTest.startShell(SimosToolsTest.java:179)
+
+[INFO] Running io.mosire.simos.app.sd.StartDecisionEndToEndTest
+[ERROR] Tests run: 5, Failures: 0, Errors: 5, Skipped: 0, Time elapsed: 0.171 s <<< FAILURE! -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.startDecisionDoesNotConsumeTheR4DirectiveSlot -- Time elapsed: 0.037 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.startShell(StartDecisionEndToEndTest.java:128)
+
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.guiUserPathCommitsDirectlyWithoutApproval -- Time elapsed: 0.031 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.startShell(StartDecisionEndToEndTest.java:128)
+
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.guiUserPathRejectsUnknownDecisionMakerWithoutRevision -- Time elapsed: 0.031 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.startShell(StartDecisionEndToEndTest.java:128)
+
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.decisionAgentPortHasNoStartDecisionTool -- Time elapsed: 0.036 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.startShell(StartDecisionEndToEndTest.java:128)
+
+[ERROR] io.mosire.simos.app.sd.StartDecisionEndToEndTest.gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval -- Time elapsed: 0.036 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.sd.StartDecisionEndToEndTest.startShell(StartDecisionEndToEndTest.java:128)
+
+[INFO] Running io.mosire.simos.app.McpCoverageTest
+[ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.041 s <<< FAILURE! -- in io.mosire.simos.app.McpCoverageTest
+[ERROR] io.mosire.simos.app.McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect -- Time elapsed: 0.039 s <<< ERROR!
+java.lang.IllegalArgumentException: 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+	at io.mosire.simos.app.tools.read.CatalogTool.<init>(CatalogTool.java:117)
+	at io.mosire.simos.app.tools.SimosToolSource.readTools(SimosToolSource.java:139)
+	at io.mosire.simos.app.tools.SimosToolSource.<init>(SimosToolSource.java:100)
+	at io.mosire.simos.app.Shell.start(Shell.java:413)
+	at io.mosire.simos.app.McpCoverageTest.startShell(McpCoverageTest.java:279)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Errors: 
+[ERROR]   McpCoverageTest.startShell:279 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   McpPortTopologyTest.startShell:71 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   McpPortTopologyTest.startShell:71 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   McpPortTopologyTest.startShell:71 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   McpPortTopologyTest.startShell:71 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   StartDecisionEndToEndTest.startShell:128 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   StartDecisionEndToEndTest.startShell:128 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   StartDecisionEndToEndTest.startShell:128 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   StartDecisionEndToEndTest.startShell:128 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   StartDecisionEndToEndTest.startShell:128 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[ERROR]   SimosToolsTest.startShell:179 » IllegalArgument 已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: [sd.StartDecision]
+[INFO] 
+[ERROR] Tests run: 25, Failures: 0, Errors: 25, Skipped: 0
+[INFO] 
+[ERROR] 
+
+See /home/cna/SimulatorMosire/.claude/worktrees/wsf-t10/simos-app/target/surefire-reports for the individual test results.
+See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[INFO] 
+[INFO] --- exec:3.4.1:exec (frontend-unit-tests) @ simos-app ---
+TAP version 13
+# Subtest: decodeBlocks-restores-vertex-world-coordinates
+ok 1 - decodeBlocks-restores-vertex-world-coordinates
+  ---
+  duration_ms: 0.722507
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-preserves-block-metadata
+ok 2 - decodeBlocks-preserves-block-metadata
+  ---
+  duration_ms: 0.095015
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-keeps-rings-closed-with-same-vertex-count
+ok 3 - decodeBlocks-keeps-rings-closed-with-same-vertex-count
+  ---
+  duration_ms: 0.073806
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-does-not-mutate-the-wire-input
+ok 4 - decodeBlocks-does-not-mutate-the-wire-input
+  ---
+  duration_ms: 2.412924
+  type: 'test'
+  ...
+# Subtest: terrainAt-reads-decoded-block-at-hex-center
+ok 5 - terrainAt-reads-decoded-block-at-hex-center
+  ---
+  duration_ms: 0.165742
+  type: 'test'
+  ...
+# Subtest: countsByTerrain-sums-decoded-hex-counts
+ok 6 - countsByTerrain-sums-decoded-hex-counts
+  ---
+  duration_ms: 0.090413
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 7 - module-loads
+  ---
+  duration_ms: 0.521675
+  type: 'test'
+  ...
+# Subtest: subpage-ids-and-labels
+ok 8 - subpage-ids-and-labels
+  ---
+  duration_ms: 0.354668
+  type: 'test'
+  ...
+# Subtest: subpage-state-is-fail-closed
+ok 9 - subpage-state-is-fail-closed
+  ---
+  duration_ms: 0.110762
+  type: 'test'
+  ...
+# Subtest: subpage-visibility-is-mutually-exclusive
+ok 10 - subpage-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.178707
+  type: 'test'
+  ...
+# Subtest: decision-groups-put-nation-then-army-and-sort-by-id
+ok 11 - decision-groups-put-nation-then-army-and-sort-by-id
+  ---
+  duration_ms: 3.782077
+  type: 'test'
+  ...
+# Subtest: decision-groups-keep-unknown-kinds-and-preserve-length
+ok 12 - decision-groups-keep-unknown-kinds-and-preserve-length
+  ---
+  duration_ms: 0.922039
+  type: 'test'
+  ...
+# Subtest: decision-makers-for-nation-matches-exactly
+ok 13 - decision-makers-for-nation-matches-exactly
+  ---
+  duration_ms: 0.157155
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-resolves-root-and-descendants
+ok 14 - decision-maker-for-unit-resolves-root-and-descendants
+  ---
+  duration_ms: 0.176498
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-is-deterministic-across-two-armies
+ok 15 - decision-maker-for-unit-is-deterministic-across-two-armies
+  ---
+  duration_ms: 0.152717
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-survives-a-parent-cycle
+ok 16 - decision-maker-for-unit-survives-a-parent-cycle
+  ---
+  duration_ms: 0.207315
+  type: 'test'
+  ...
+# Subtest: pending-status-text-never-fabricates
+ok 17 - pending-status-text-never-fabricates
+  ---
+  duration_ms: 0.089205
+  type: 'test'
+  ...
+# Subtest: affiliation-label-formats-kind-name-and-id
+ok 18 - affiliation-label-formats-kind-name-and-id
+  ---
+  duration_ms: 0.080563
+  type: 'test'
+  ...
+# Subtest: start-decision-gate-requires-due
+ok 19 - start-decision-gate-requires-due
+  ---
+  duration_ms: 0.062659
+  type: 'test'
+  ...
+# Subtest: render-left-gates-the-start-button-on-due
+ok 20 - render-left-gates-the-start-button-on-due
+  ---
+  duration_ms: 6.696065
+  type: 'test'
+  ...
+# Subtest: render-left-disables-the-start-button-when-not-due
+ok 21 - render-left-disables-the-start-button-when-not-due
+  ---
+  duration_ms: 6.088865
+  type: 'test'
+  ...
+# Subtest: start-decision-posts-the-target-when-due
+ok 22 - start-decision-posts-the-target-when-due
+  ---
+  duration_ms: 3.165663
+  type: 'test'
+  ...
+# Subtest: start-decision-refuses-when-target-is-not-due
+ok 23 - start-decision-refuses-when-target-is-not-due
+  ---
+  duration_ms: 2.050072
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-the-server-shape
+ok 24 - decision-maker-fields-project-the-server-shape
+  ---
+  duration_ms: 0.170496
+  type: 'test'
+  ...
+# Subtest: nation-region-ids-are-set-equal-not-subset
+ok 25 - nation-region-ids-are-set-equal-not-subset
+  ---
+  duration_ms: 0.15461
+  type: 'test'
+  ...
+# Subtest: nation-tag-helpers-ignore-non-nation-and-blank-tags
+ok 26 - nation-tag-helpers-ignore-non-nation-and-blank-tags
+  ---
+  duration_ms: 0.062976
+  type: 'test'
+  ...
+# Subtest: nation-ids-of-regions-unions-distinct-nations
+ok 27 - nation-ids-of-regions-unions-distinct-nations
+  ---
+  duration_ms: 0.187618
+  type: 'test'
+  ...
+# Subtest: render-left-shows-army-decision-maker-for-a-descendant-unit
+ok 28 - render-left-shows-army-decision-maker-for-a-descendant-unit
+  ---
+  duration_ms: 6.597107
+  type: 'test'
+  ...
+# Subtest: render-left-shows-no-decision-maker-for-an-unrelated-unit
+ok 29 - render-left-shows-no-decision-maker-for-an-unrelated-unit
+  ---
+  duration_ms: 3.096827
+  type: 'test'
+  ...
+# Subtest: render-left-shows-nation-decision-maker-for-a-nation-region-hex
+ok 30 - render-left-shows-nation-decision-maker-for-a-nation-region-hex
+  ---
+  duration_ms: 3.381746
+  type: 'test'
+  ...
+# Subtest: index-html-has-six-modes-and-decision-panel
+ok 31 - index-html-has-six-modes-and-decision-panel
+  ---
+  duration_ms: 0.21947
+  type: 'test'
+  ...
+# Subtest: index-html-decision-mode-has-start-decision-button
+ok 32 - index-html-decision-mode-has-start-decision-button
+  ---
+  duration_ms: 1.708226
+  type: 'test'
+  ...
+# Subtest: map-js-wires-decision-click-to-nation-highlight
+ok 33 - map-js-wires-decision-click-to-nation-highlight
+  ---
+  duration_ms: 0.682904
+  type: 'test'
+  ...
+# Subtest: panels-js-and-app-js-delegate-subpage-visibility
+ok 34 - panels-js-and-app-js-delegate-subpage-visibility
+  ---
+  duration_ms: 0.340061
+  type: 'test'
+  ...
+# Subtest: all-required-test-files-are-present
+ok 35 - all-required-test-files-are-present
+  ---
+  duration_ms: 0.997804
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 36 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 1.369958
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 37 - module-loads
+  ---
+  duration_ms: 1.844135
+  type: 'test'
+  ...
+# Subtest: toolUsageEntries-reads-two-response-shapes
+ok 38 - toolUsageEntries-reads-two-response-shapes
+  ---
+  duration_ms: 0.358871
+  type: 'test'
+  ...
+# Subtest: resultText-marks-success-and-failure
+ok 39 - resultText-marks-success-and-failure
+  ---
+  duration_ms: 0.076777
+  type: 'test'
+  ...
+# Subtest: formatEntry-includes-tool-and-result
+ok 40 - formatEntry-includes-tool-and-result
+  ---
+  duration_ms: 7.575716
+  type: 'test'
+  ...
+# Subtest: renderPlan-empty-state-is-explicit
+ok 41 - renderPlan-empty-state-is-explicit
+  ---
+  duration_ms: 0.177069
+  type: 'test'
+  ...
+# Subtest: renderPlan-keeps-server-order-and-flags
+ok 42 - renderPlan-keeps-server-order-and-flags
+  ---
+  duration_ms: 0.104109
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-gm-tool-usage
+ok 43 - renderInto-reads-exactly-one-GET-api-gm-tool-usage
+  ---
+  duration_ms: 0.910322
+  type: 'test'
+  ...
+# Subtest: renderInto-renders-server-entries-from-the-response
+ok 44 - renderInto-renders-server-entries-from-the-response
+  ---
+  duration_ms: 0.155745
+  type: 'test'
+  ...
+# Subtest: renderInto-shows-empty-state-when-server-has-none
+ok 45 - renderInto-shows-empty-state-when-server-has-none
+  ---
+  duration_ms: 0.223459
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-endpoint-unavailable
+ok 46 - renderInto-degrades-when-endpoint-unavailable
+  ---
+  duration_ms: 0.323891
+  type: 'test'
+  ...
+# Subtest: setOpen-toggles-overlay-and-aria-expanded
+ok 47 - setOpen-toggles-overlay-and-aria-expanded
+  ---
+  duration_ms: 0.125068
+  type: 'test'
+  ...
+# Subtest: mount-wires-open-close-and-refresh
+ok 48 - mount-wires-open-close-and-refresh
+  ---
+  duration_ms: 6.350716
+  type: 'test'
+  ...
+# Subtest: index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+ok 49 - index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+  ---
+  duration_ms: 0.246745
+  type: 'test'
+  ...
+# Subtest: gm-overlay-is-fixed-hidden-by-default-and-clickable
+ok 50 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+  ---
+  duration_ms: 0.274793
+  type: 'test'
+  ...
+# Subtest: gm-overlay-has-no-chat-input
+ok 51 - gm-overlay-has-no-chat-input
+  ---
+  duration_ms: 0.154849
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 52 - module-loads
+  ---
+  duration_ms: 1.145369
+  type: 'test'
+  ...
+# Subtest: subtool-ids-and-labels
+ok 53 - subtool-ids-and-labels
+  ---
+  duration_ms: 0.346699
+  type: 'test'
+  ...
+# Subtest: subtool-state-is-fail-closed
+ok 54 - subtool-state-is-fail-closed
+  ---
+  duration_ms: 0.180433
+  type: 'test'
+  ...
+# Subtest: subtool-tools-return-a-snapshot-and-default-tool
+ok 55 - subtool-tools-return-a-snapshot-and-default-tool
+  ---
+  duration_ms: 0.104859
+  type: 'test'
+  ...
+# Subtest: mapEditSubtoolOf-maps-tools-and-rejects-unknown
+ok 56 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  ---
+  duration_ms: 0.086653
+  type: 'test'
+  ...
+# Subtest: write-allowed-is-per-subtool-and-cross-line-is-denied
+ok 57 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  ---
+  duration_ms: 0.064973
+  type: 'test'
+  ...
+# Subtest: write-gate-resolves-tool-then-subtool
+ok 58 - write-gate-resolves-tool-then-subtool
+  ---
+  duration_ms: 0.121608
+  type: 'test'
+  ...
+# Subtest: panel-visibility-is-mutually-exclusive
+ok 59 - panel-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.092935
+  type: 'test'
+  ...
+# Subtest: index-html-has-suboption-control-and-grouped-panels
+ok 60 - index-html-has-suboption-control-and-grouped-panels
+  ---
+  duration_ms: 0.318077
+  type: 'test'
+  ...
+# Subtest: suboptions-are-not-new-modes
+ok 61 - suboptions-are-not-new-modes
+  ---
+  duration_ms: 0.311228
+  type: 'test'
+  ...
+# Subtest: map-js-gates-every-map-write-with-the-matching-type
+ok 62 - map-js-gates-every-map-write-with-the-matching-type
+  ---
+  duration_ms: 0.645437
+  type: 'test'
+  ...
+# Subtest: page-delegates-to-the-single-guard-implementation
+ok 63 - page-delegates-to-the-single-guard-implementation
+  ---
+  duration_ms: 0.642759
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 64 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 0.512574
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 65 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.07044
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 66 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 0.407089
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 67 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.076587
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+ok 68 - edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+  ---
+  duration_ms: 0.145426
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+ok 69 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  ---
+  duration_ms: 0.081934
+  type: 'test'
+  ...
+# Subtest: edgeChainResult-reports-ending-and-skipped-non-adjacency
+ok 70 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+  ---
+  duration_ms: 0.123963
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-treats-a-missing-sample-as-no-op
+ok 71 - edgeChainEdges-treats-a-missing-sample-as-no-op
+  ---
+  duration_ms: 0.069727
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 72 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.198379
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 73 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.322928
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 74 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.13781
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 75 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 0.832274
+  type: 'test'
+  ...
+# Subtest: parseEdgeKey-round-trips-and-rejects-malformed-keys
+ok 76 - parseEdgeKey-round-trips-and-rejects-malformed-keys
+  ---
+  duration_ms: 0.140682
+  type: 'test'
+  ...
+# Subtest: edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+ok 77 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+  ---
+  duration_ms: 0.157373
+  type: 'test'
+  ...
+# Subtest: edgeDeletePlan-replaces-with-the-surviving-set
+ok 78 - edgeDeletePlan-replaces-with-the-surviving-set
+  ---
+  duration_ms: 0.089809
+  type: 'test'
+  ...
+# Subtest: registered-edge-kinds-default-then-follow-the-server
+ok 79 - registered-edge-kinds-default-then-follow-the-server
+  ---
+  duration_ms: 0.111844
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-six-exact-vectors
+ok 80 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 1.424364
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 81 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 0.12173
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 82 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.111881
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 83 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.06931
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 84 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.372427
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 85 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.132911
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 86 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.208697
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 87 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.070478
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 88 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.177974
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 89 - module-loads
+  ---
+  duration_ms: 0.961345
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 90 - mode-ids-order
+  ---
+  duration_ms: 0.353177
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 91 - mode-labels
+  ---
+  duration_ms: 0.071385
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 92 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.056987
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 93 - view-allows-no-write
+  ---
+  duration_ms: 0.110506
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 94 - region-allows-no-write
+  ---
+  duration_ms: 0.054192
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 95 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.111478
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 96 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.055203
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+ok 97 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.151891
+  type: 'test'
+  ...
+# Subtest: decision-allows-exactly-start-decision
+ok 98 - decision-allows-exactly-start-decision
+  ---
+  duration_ms: 0.203652
+  type: 'test'
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 99 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.082125
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 100 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.046658
+  type: 'test'
+  ...
+# Subtest: workbench-write-calls-are-all-whitelisted
+ok 101 - workbench-write-calls-are-all-whitelisted
+  ---
+  duration_ms: 1.725656
+  type: 'test'
+  ...
+# Subtest: whitelist-entries-are-well-formed-command-types
+ok 102 - whitelist-entries-are-well-formed-command-types
+  ---
+  duration_ms: 0.106226
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 103 - module-loads
+  ---
+  duration_ms: 0.398259
+  type: 'test'
+  ...
+# Subtest: pendingCount-reads-the-three-response-shapes
+ok 104 - pendingCount-reads-the-three-response-shapes
+  ---
+  duration_ms: 0.084103
+  type: 'test'
+  ...
+# Subtest: summaryText-shows-the-count
+ok 105 - summaryText-shows-the-count
+  ---
+  duration_ms: 0.066024
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-approvals
+ok 106 - renderInto-reads-exactly-one-GET-api-approvals
+  ---
+  duration_ms: 1.704665
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-approvals-unavailable
+ok 107 - renderInto-degrades-when-approvals-unavailable
+  ---
+  duration_ms: 0.210014
+  type: 'test'
+  ...
+# Subtest: index.html-has-notification-element-and-no-right-panel-approvals
+ok 108 - index.html-has-notification-element-and-no-right-panel-approvals
+  ---
+  duration_ms: 0.394936
+  type: 'test'
+  ...
+# Subtest: module-exports-the-pending-helpers
+ok 109 - module-exports-the-pending-helpers
+  ---
+  duration_ms: 0.40809
+  type: 'test'
+  ...
+# Subtest: pending-status-text-maps-only-real-booleans-and-never-fabricates
+ok 110 - pending-status-text-maps-only-real-booleans-and-never-fabricates
+  ---
+  duration_ms: 0.092555
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-due-into-pending
+ok 111 - decision-maker-fields-project-due-into-pending
+  ---
+  duration_ms: 0.119775
+  type: 'test'
+  ...
+# Subtest: right-list-renders-pending-from-server-due
+ok 112 - right-list-renders-pending-from-server-due
+  ---
+  duration_ms: 8.476014
+  type: 'test'
+  ...
+# Subtest: left-detail-shows-pending-from-server-due
+ok 113 - left-detail-shows-pending-from-server-due
+  ---
+  duration_ms: 2.544113
+  type: 'test'
+  ...
+# Subtest: panels-list-item-wires-server-due-into-pending-text
+ok 114 - panels-list-item-wires-server-due-into-pending-text
+  ---
+  duration_ms: 0.219199
+  type: 'test'
+  ...
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 115 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 3.394494
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 116 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.457913
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 117 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.141188
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 118 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.407173
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 119 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 0.970531
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 120 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.339778
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 121 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.293175
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 122 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.129216
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 123 - deterministic-across-calls
+  ---
+  duration_ms: 0.3716
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-puts-focus-regions-first
+ok 124 - buildRegionHighlightPlan-puts-focus-regions-first
+  ---
+  duration_ms: 1.089968
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+ok 125 - buildRegionHighlightPlan-highlights-every-owner-of-a-shared-hex
+  ---
+  duration_ms: 0.170733
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+ok 126 - buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+  ---
+  duration_ms: 0.103457
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+ok 127 - buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+  ---
+  duration_ms: 0.219609
+  type: 'test'
+  ...
+# Subtest: the-two-modes-share-one-plan-and-differ-only-in-parameters
+ok 128 - the-two-modes-share-one-plan-and-differ-only-in-parameters
+  ---
+  duration_ms: 0.091685
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-shared-plan-for-both-modes
+ok 129 - page-层-uses-the-shared-plan-for-both-modes
+  ---
+  duration_ms: 0.682672
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+ok 130 - regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+  ---
+  duration_ms: 0.227828
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-keeps-three-owners-as-one-hex
+ok 131 - regionMembershipSummary-keeps-three-owners-as-one-hex
+  ---
+  duration_ms: 0.079419
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-refuses-to-guess-without-hex-lists
+ok 132 - regionMembershipSummary-refuses-to-guess-without-hex-lists
+  ---
+  duration_ms: 0.182946
+  type: 'test'
+  ...
+# Subtest: page-层-shows-the-union-and-never-a-summed-total
+ok 133 - page-层-shows-the-union-and-never-a-summed-total
+  ---
+  duration_ms: 0.952705
+  type: 'test'
+  ...
+# Subtest: debug-hooks-for-the-region-view-mode-are-exposed
+ok 134 - debug-hooks-for-the-region-view-mode-are-exposed
+  ---
+  duration_ms: 0.09082
+  type: 'test'
+  ...
+# Subtest: layout-constants-are-frozen
+ok 135 - layout-constants-are-frozen
+  ---
+  duration_ms: 1.227967
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 136 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.076885
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 137 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.101165
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 138 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.100415
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 139 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.059292
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 140 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.051401
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 141 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.193007
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 142 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.385169
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 143 - groupByTick-empty-input
+  ---
+  duration_ms: 0.145225
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 144 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.336804
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 145 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.143087
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 146 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.07406
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 147 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.067432
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 148 - tickIndex-finds-position
+  ---
+  duration_ms: 0.041336
+  type: 'test'
+  ...
+# Subtest: buildTree-depth-parent-children-per-node
+ok 149 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 1.496143
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 150 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 0.171765
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 151 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.110076
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 152 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.107725
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 153 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.077702
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 154 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.080483
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 155 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.128591
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 156 - empty-input-returns-empty-forest
+  ---
+  duration_ms: 0.057355
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 157 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.313497
+  type: 'test'
+  ...
+# Subtest: api.js-declares-exactly-the-allowed-write-endpoints
+ok 158 - api.js-declares-exactly-the-allowed-write-endpoints
+  ---
+  duration_ms: 0.769692
+  type: 'test'
+  ...
+# Subtest: api.js-exports-the-command-and-approval-write-functions
+ok 159 - api.js-exports-the-command-and-approval-write-functions
+  ---
+  duration_ms: 1.528342
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 160 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 1.336629
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 161 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.234902
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 162 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.560808
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 163 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 1.080495
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 164 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.098274
+  type: 'test'
+  ...
+1..164
+# tests 164
+# suites 0
+# pass 164
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 118.055581
+[frontend-gate] OK tests=164 pass=164 fail=0
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.449 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.190 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.027 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.022 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.024 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.052 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.502 s]
+[INFO] SimosApp ........................................... SUCCESS [  4.061 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  5.405 s
+[INFO] Finished at: 2026-09-21T19:21:14+08:00
+[INFO] ------------------------------------------------------------------------
+
+===== 装置补记（t10m4）=====
+target=simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+orig_md5=429d3a3c7accec33082cdfca07efb77a
+mutant_md5=c080627cb67d3a616b9a1de307e7c083
+restored_md5=429d3a3c7accec33082cdfca07efb77a
+mut_rc=0 hits=1 verdict=KILLED

@@ -212,6 +212,95 @@ test("affiliation-label-formats-kind-name-and-id", () => {
   assert.equal(P.affiliationLabel(null), "—：—（—）");
 });
 
+const DUE_MAKER = {
+  id: "dm-due",
+  affiliation: { kind: "army", id: "a1", rootUnit: "u-root" },
+  cadence: 2,
+  due: true,
+};
+
+test("start-decision-gate-requires-due", () => {
+  // ★★ T10 三件事模型 ④：只在**本 tick 待决**（T9 的 due）时可点；due 取不到 ⇒ 不可点（不造假）。
+  assert.equal(P.startDecisionGate(null).enabled, false);
+  assert.equal(P.startDecisionGate(undefined).enabled, false);
+  assert.equal(P.startDecisionGate({}).enabled, false);
+  assert.equal(P.startDecisionGate({ id: "" }).enabled, false);
+  assert.equal(P.startDecisionGate({ id: "dm-1", due: false }).enabled, false);
+  assert.equal(P.startDecisionGate({ id: "dm-1", due: null }).enabled, false);
+  assert.equal(P.startDecisionGate({ id: "dm-1" }).enabled, false);
+  assert.equal(P.startDecisionGate({ id: "dm-1", due: true }).enabled, true);
+  // ★ 三种"不可点"的理由必须互不相同（不把"未知"读成"非待决"）。
+  const reasons = new Set([
+    P.startDecisionGate(null).reason,
+    P.startDecisionGate({ id: "dm-1", due: false }).reason,
+    P.startDecisionGate({ id: "dm-1", due: null }).reason,
+  ]);
+  assert.equal(reasons.size, 3, "未选中 / 非待决 / 未知 三种理由必须互不相同");
+});
+
+test("render-left-gates-the-start-button-on-due", async () => {
+  const h = renderHarness([DUE_MAKER]);
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  assert.equal(h.nodes["decision-start"].disabled, false, "due=true ⇒ 可点");
+  assert.equal(h.P2.startDecisionTargetId(), "dm-due", "目标 = 左栏展示的那个决策人");
+  assert.equal(h.app.byId("decision-start-status").text, "可发起（本 tick 待决）");
+});
+
+test("render-left-disables-the-start-button-when-not-due", async () => {
+  const notDue = {
+    id: "dm-x",
+    affiliation: { kind: "army", id: "a1", rootUnit: "u-root" },
+    cadence: 2,
+    due: false,
+  };
+  const unknown = {
+    id: "dm-x",
+    affiliation: { kind: "army", id: "a1", rootUnit: "u-root" },
+    cadence: 2,
+    due: null,
+  };
+  for (const maker of [notDue, unknown]) {
+    const h = renderHarness([maker]);
+    h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+    await flush();
+    await flush();
+    assert.equal(
+      h.nodes["decision-start"].disabled,
+      true,
+      "due=" + JSON.stringify(maker.due) + " ⇒ 不可点"
+    );
+  }
+});
+
+test("start-decision-posts-the-target-when-due", async () => {
+  const h = renderHarness([DUE_MAKER]);
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  h.P2.startDecision();
+  assert.deepEqual(h.calls.startDecision, [
+    { branch: "main", expectedRevision: null, decisionMakerId: "dm-due" },
+  ]);
+});
+
+test("start-decision-refuses-when-target-is-not-due", async () => {
+  const notDue = {
+    id: "dm-x",
+    affiliation: { kind: "army", id: "a1", rootUnit: "u-root" },
+    cadence: 2,
+    due: false,
+  };
+  const h = renderHarness([notDue]);
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  h.P2.startDecision();
+  assert.deepEqual(h.calls.startDecision, [], "非待决 ⇒ 前端不得发出写请求");
+  assert.equal(h.app.byId("decision-start-status").text, "未选中可发起的决策人");
+});
+
 test("decision-maker-fields-project-the-server-shape", () => {
   // ★ C13：左栏字段与 GET /api/sd/decision-makers/{id} 逐值一致（这里钉的是字段投影）。
   const maker = {
@@ -291,8 +380,9 @@ test("nation-ids-of-regions-unions-distinct-nations", () => {
 // ── 渲染流水线的 node 夹具（C13/C14：真 renderDecisionLeft + 替身 app/api）──────────────
 // ★ 只替换 IO 与 DOM 宿主（app/api/document），**不替换被测逻辑**：appendDecisionMakerDetail /
 //   decisionMakerForUnit / decisionMakersForNation / nationIdsOfRegions 都是真实现。
-function renderHarness() {
+function renderHarness(makers) {
   const nodes = {};
+  const calls = { startDecision: [] };
   const state = { mode: "decision", selection: null, decisionMakerFocus: null };
   function fakeNode(tag) {
     return {
@@ -351,19 +441,24 @@ function renderHarness() {
     setSelection() {},
     onStateChange() {},
   };
+  const makerList = makers || MAKERS;
   const apiStub = {
     mapHex: () => Promise.resolve({ q: 1, r: 1, regions: ["r-b"] }),
     cachedUnits: () => Promise.resolve({ units: UNITS }),
-    cachedDecisionMakers: () => Promise.resolve({ decisionMakers: MAKERS }),
-    decisionMaker: (id) => Promise.resolve(MAKERS.find((m) => m.id === id)),
+    cachedDecisionMakers: () => Promise.resolve({ decisionMakers: makerList }),
+    decisionMaker: (id) => Promise.resolve(makerList.find((m) => m.id === id)),
     cachedMapOverview: () => Promise.resolve({ regions: REGIONS }),
     approvals: () => Promise.resolve({ pending: [] }),
     approve: () => Promise.resolve({}),
+    startDecision: (branch, expectedRevision, decisionMakerId) => {
+      calls.startDecision.push({ branch, expectedRevision, decisionMakerId });
+      return Promise.resolve({ result: "committed" });
+    },
   };
   const mapStub = { nationIdsOfRegions: M.nationIdsOfRegions, nationRegionIds: M.nationRegionIds };
   const P2 = loadWebui("panels.js", { SimosApp: appStub, SimosApi: apiStub, SimosMap: mapStub })
     .SimosPanels;
-  return { P2: P2, nodes: nodes, state: state, app: appStub };
+  return { P2: P2, nodes: nodes, state: state, app: appStub, calls: calls };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -430,11 +525,14 @@ test("index-html-has-six-modes-and-decision-panel", () => {
   assert.ok(html.includes('id="decision-approval-mount"'), "右栏审批挂载点");
 });
 
-test("index-html-decision-mode-has-no-start-decision-button", () => {
+test("index-html-decision-mode-has-start-decision-button", () => {
   const html = readWebui("index.html");
-  // ★ 三件事模型 ④：「开始决策」是 T10 的入口 ⇒ 本任务**不实现它的行为**、也不放按钮。
-  assert.equal(html.includes("sd.StartDecision"), false, "T7 不得放「开始决策」入口");
-  assert.equal(html.includes("开始决策"), false, "T7 不得放「开始决策」按钮");
+  // ★ T10（三件事模型 ④）：决策模式左栏有「开始决策」入口；按钮**默认 disabled**（只在 due 为真时可点）。
+  assert.ok(html.includes('id="decision-start"'), "决策模式必须有「开始决策」按钮");
+  assert.ok(html.includes("开始决策"), "按钮文案必须是「开始决策」");
+  assert.ok(html.includes('id="decision-start-status"'), "必须有发起结果状态行");
+  const buttonTag = html.slice(html.indexOf('id="decision-start"'), html.indexOf(">", html.indexOf('id="decision-start"')));
+  assert.ok(buttonTag.includes("disabled"), "按钮必须默认 disabled（due 闸门未过时不可点）");
   // 撤掉的右栏审批计数不得回归（T1 的成果）。
   assert.equal(html.includes("approvals-count"), false, "右栏审批计数不得回归");
 });
@@ -456,7 +554,10 @@ test("panels-js-and-app-js-delegate-subpage-visibility", () => {
   assert.equal((panels.match(/function decisionSubpageVisibility\(/g) || []).length, 1);
   assert.ok(app.includes("decisionSubpageVisibility("), "app.js 必须委托纯函数判子页可见性");
   assert.equal((app.match(/function decisionSubpageVisibility\(/g) || []).length, 0, "app.js 不得自写一份");
-  // 决策模式面板不得引入命令写（只读）。
-  assert.equal(panels.includes("writeCommand("), false, "panels.js 不得发命令写");
-  assert.equal(app.includes("sd.StartDecision"), false, "app.js 不得含 StartDecision（T10 才做）");
+  // 决策模式面板不得引入**通用命令写**（那条仍是 app.writeCommand 的专属）。
+  assert.equal(panels.includes("writeCommand("), false, "panels.js 不得发通用命令写");
+  // T10 起「开始决策」由决策面板经 api.startDecision（窄端点）发出；命令类型由服务端写死（前端不传 type）。
+  assert.match(panels, /api\s*\.\s*startDecision\(/, "panels.js 必须经 api.startDecision 发起");
+  assert.ok(panels.includes('addEventListener("click", decideStartDecision)'), "按钮必须绑定发起动作");
+  assert.equal(app.includes("sd.StartDecision"), false, "app.js 仍不得含 StartDecision（窄端点专用）");
 });

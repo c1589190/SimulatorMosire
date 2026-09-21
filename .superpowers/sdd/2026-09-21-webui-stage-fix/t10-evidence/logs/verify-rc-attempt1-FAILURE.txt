@@ -1,0 +1,1 @@
+RC=1 (clean-verify.attempt1-FAILURE.log 末尾为 BUILD FAILURE：WebuiAssetsTest + McpServerTest 各 1 failure)

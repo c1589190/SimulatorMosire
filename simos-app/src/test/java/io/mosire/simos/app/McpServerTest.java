@@ -95,7 +95,7 @@ class McpServerTest {
 
   private static final String SERVER_NAME = "simos-shell";
 
-  /** 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 3 GM 窄写（spec §七.2 的 C6）。 */
+  /** 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 4 GM 窄写（spec §七.2 的 C6；T10 起 +StartDecision）。 */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
@@ -112,7 +112,8 @@ class McpServerTest {
           "simos.fork",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope");
+          "sd.SetViewScope",
+          "sd.StartDecision");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 
@@ -168,7 +169,7 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 15 条（C6：含通用写与 GM 窄工具）")
+        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 16 条（C6：含通用写与 GM 窄工具）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

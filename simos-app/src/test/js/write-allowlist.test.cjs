@@ -13,16 +13,22 @@ const assert = require("node:assert");
 const { loadWebui, readWebui, webuiDir } = require("./helpers/webui-loader.cjs");
 
 const API_BASE = "/api";
-// 命令写面（唯一三条，M5 起不变）。
-const ALLOWED = ["/api/advance", "/api/command", "/api/fork"];
+// 命令写面（T10 起四条：M5 的三条 + 决策模式的窄写 /api/sd/start-decision）。
+const ALLOWED = ["/api/advance", "/api/command", "/api/fork", "/api/sd/start-decision"];
 // ★ T7：审批裁决面（**非命令写**）——逐条精确列出，唯一一条。
 //   决策模式的「批准/驳回」打 POST /api/approvals/{id}；它不走 Command → ChangeSet → Revision，
 //   故**不进** modes.js 的命令白名单（那只管命令类型），只在这里显式放行。
 const ALLOWED_APPROVAL_PREFIX = "/api/approvals/";
 // 扫描器看到的是 **api.js 里的字面量**（`postJson("/approvals/" + …)` ⇒ `/api/approvals/`）
 // ⇒ 声明集合是这四条；运行期 URL 由 isAllowedWrite 再要求"前缀 + 非空 id"。
-const DECLARED_WRITES = ["/api/advance", "/api/approvals/", "/api/command", "/api/fork"];
-const WRITE_FUNCTIONS = ["submitCommand", "advance", "fork", "approve"];
+const DECLARED_WRITES = [
+  "/api/advance",
+  "/api/approvals/",
+  "/api/command",
+  "/api/fork",
+  "/api/sd/start-decision",
+];
+const WRITE_FUNCTIONS = ["submitCommand", "advance", "fork", "startDecision", "approve"];
 
 function scanPostEndpoints(source) {
   const out = new Set();
@@ -56,7 +62,11 @@ function webuiJsFiles() {
 
 test("api.js-declares-exactly-the-allowed-write-endpoints", () => {
   const found = scanPostEndpoints(readWebui("api.js"));
-  assert.equal(found.length, 4, "扫描必须非空且恰四条（3 命令 + 1 审批）：" + JSON.stringify(found));
+  assert.equal(
+    found.length,
+    5,
+    "扫描必须非空且恰五条（3 通用命令 + 1 决策窄写 + 1 审批）：" + JSON.stringify(found)
+  );
   assert.deepEqual(found, DECLARED_WRITES);
   assert.deepEqual(violations(found), []);
 });
@@ -120,6 +130,7 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   await api.submitCommand({ type: "map.SetTerrain", payloadJson: "{}" });
   await api.advance("main", 0, 1, 2);
   await api.fork("main", 0, "b2");
+  await api.startDecision("main", 0, "dm-1");
   await api.state();
   await api.timeline("main");
   await api.mapOverview();
@@ -139,7 +150,7 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   const posts = calls.filter((c) => c.method === "POST").map((c) => c.url).sort();
   assert.deepEqual(
     posts,
-    ["/api/advance", "/api/approvals/pm-1", "/api/command", "/api/fork"],
+    ["/api/advance", "/api/approvals/pm-1", "/api/command", "/api/fork", "/api/sd/start-decision"],
     "写函数只能打命令 allowlist + 审批那一条"
   );
   for (const url of posts) {

@@ -55,7 +55,7 @@ class McpPortTopologyTest {
       List.of("simos.command.submit", "simos.advance", "simos.fork");
 
   private static final List<String> GM_NARROW_WRITES =
-      List.of("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope");
+      List.of("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision");
 
   private static final List<String> DECISION_AGENT_WRITES =
       List.of("sd.IssueDirective", "sd.SubmitVerdict");
@@ -78,7 +78,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** C6：现有口同时含通用写与 GM 三条窄工具（D2="加"）。 */
+  /** C6：现有口同时含通用写与 GM 四条窄工具（D2="加"；T10 起 +sd.StartDecision）。 */
   @Test
   void existingPortExposesExternalUnionGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -86,7 +86,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(EXISTING_SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 3 GM 窄写 = 15）")
+          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 GM 窄写 = 16）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
     }
@@ -106,7 +106,7 @@ class McpPortTopologyTest {
           .as("C7：决策人口 = 9 读 + 2 窄写（无 SetViewScope、无通用写）")
           .containsExactlyInAnyOrderElementsOf(concat(READ_TOOLS, DECISION_AGENT_WRITES));
       assertThat(names)
-          .as("C7 反向：通用写与 SetViewScope 都不在决策人口")
+          .as("C7 反向：通用写、SetViewScope 与 StartDecision 都不在决策人口")
           .doesNotContainAnyElementsOf(GENERIC_WRITES)
           .doesNotContain("sd.SetViewScope");
     }
