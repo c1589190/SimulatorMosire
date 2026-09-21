@@ -6,7 +6,7 @@
 ## 一、当前状态（一句话）
 
 主干 `feat/adr1-core-scope` 在 **`38616da`**，**T1~T8 全部关账**（实现 + 变异 + 模块门禁 + 合并 + 合并门禁 + 台账/CLAUDE.md 回填），工作树**干净**，`origin/feat/adr1-core-scope...HEAD` = **`0 0`**。
-**未派 T9**：停机前跑道不足（T9 光实现就超过 T8 的 28 分钟，后面还压着模块门禁 + 变异 + 全量门禁）。**不存在进行中的子代理。**
+**未派 T9**：停机前跑道不足——★ 而且 08:04 的实测把 T9 的估时**进一步推高**：除装配本身外，还压着 **12 条端到端载荷的时序设计**（见 §三 坑 4），**远超** T8 的 28 分钟。**不存在进行中的子代理。**
 
 ## 二、已完成的 T1~T8（提交与计数）
 
@@ -29,7 +29,7 @@
 
 **目标**：12 条新 handler 注册进 `Shell` + `PlanSparseRouteHandler` 的 `MovementCost` 注入 + catalog 含全部新 type + `unit` namespace 恰一个 participant + 端到端冒烟。
 
-**★ 三个必须先知道的坑**（控制器已核实）：
+**★★ 必须先知道的坑（控制器已核实）**：
 
 1. **★ 计划里的 `simos-app` 计数 `110 + M` 是立项旧数，实测是 `116`。**
    （同理 `simos-core` 的 `169 + K` 也是旧数——T8 实测把它变成了 `177`。）
@@ -38,6 +38,19 @@
    U3 禁止的是**handler 内部写死** `INSTANCE`；在**装配点**注入 `INSTANCE` **正是注入的意义所在**。
    ⇒ 装配点传 `INSTANCE` 合法；`Shell` 里若出现任何"handler 内部自己取 cost"的形态才是错的。
 3. **★ T9 的门禁不是"模块门禁"，是"近似全量"。** T9 改 `simos-app`，而 `-pl simos-app -am` 会把 7 个依赖全带上 ⇒ **实测耗时必然压在那条 600 s 线上**（见 §五）。⇒ **T9 的门禁必须按全量门禁的规矩跑**：前台、独占、记"第几次尝试"。
+4. ★★★ **最大的一条（08:04 实测）：`McpCoverageTest` 会把"只注册不补载荷"直接打红，而 T9 的活比"12 条注册"大得多。**
+   实件 `simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java`：
+   - `EXPECTED_COMMAND_TYPES`（`:99-118`）是**硬编码的 18 元 `List`**（★ 注释却写"预期的 **14** 个"——又一例**陈旧注释**，与 T10-f 的"十六个"同族）。
+   - `MINIMAL_PAYLOADS`（`:120` 起）是 `LinkedHashMap`，注释明写「**每类的最小合法载荷（对夹具世界；顺序即语义合法序）**」⇒ **插入顺序承重**；且 `unit.DisbandUnit` 会**删掉 `u-1`**（Javadoc `:80` 专门注明"执行序不是 catalog 序"）。
+   - `everyCatalogTypeIsReachableThroughMcpAndTakesEffect`（`:209`）判据是：**对 catalog 里每一个 type，经 MCP 真提交一条载荷，并断言分支 head 前进**；`containsExactlyInAnyOrderElementsOf(catalogTypes)`（`:219`）再钉住**载荷表与 catalog 双向一致**——`:218` 的原话是"**漏一个就会在这里红**"。
+   ⇒ **推论（T9 的真实工作量）**：注册 12 条 ⇒ catalog 18→30 ⇒ 这个测试**必红**，除非 T9 **同时**①往 `EXPECTED_COMMAND_TYPES` 补 12 条 ②往 `MINIMAL_PAYLOADS` 补 **12 条在夹具世界上真能生效的载荷**。
+   ★★ **"真能生效"是硬要求**：判据是 **head 前进**，**载荷被域层拒绝同样红** ⇒ 不能塞 token 占位符。⇒ 其中数条**必须先造前置状态**，例如：
+   - `unit.AttachUnit`（spec `:143`「合体 = **同格前提下**重新 attach」）⇒ 得先让两个单位同格；
+   - `unit.MergeFormation`（T4 实测要求**同格 + MOVING**）⇒ 得先 `PlaceAt` 同格**再**让它们 MOVING，**两步都排在它前面**；
+   - `unit.PlanSparseRoute` ⇒ 载荷要在夹具地形上**真的逐段可达**（T6 的判据是"任一相邻段不可达即命令期拒绝"）；
+   - `unit.SetRejoinTarget` ⇒ 依 T7-U5 需 `status == MOVING` 才不早退；
+   - `unit.CreateCommandChain`/`UpdateCommandChain` ⇒ 受 `requireNotInAnyChain` 约束，**与 `DisbandUnit` 的相对次序会影响成员可否复用**。
+   ⇒ **这条把 T9 从"装配"变成了"装配 + 12 条端到端载荷的时序设计"**，估时**远超** T8 的 28 分钟。★ **别把它当成"顺手补一下"**；也**别**为了变绿去放宽 `McpCoverageTest`（那正是本任务要保的端到端判据）。
 
 **12 条 handler 清单**（计划 T9 步骤 1，**控制器已逐条实测核过**）：
 `AttachUnit` / `DetachUnit` / `ReparentSubtree` / `SetFormationOffset` / `CreateCommandChain` / `UpdateCommandChain` / `SplitFormation` / `MergeFormation` / `PlanSparseRoute(cost)` / `SetRejoinTarget` / `SetStatus` / `ApplyCasualties`
