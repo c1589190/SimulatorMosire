@@ -13,8 +13,16 @@ const assert = require("node:assert");
 const { loadWebui, readWebui, webuiDir } = require("./helpers/webui-loader.cjs");
 
 const API_BASE = "/api";
+// 命令写面（唯一三条，M5 起不变）。
 const ALLOWED = ["/api/advance", "/api/command", "/api/fork"];
-const WRITE_FUNCTIONS = ["submitCommand", "advance", "fork"];
+// ★ T7：审批裁决面（**非命令写**）——逐条精确列出，唯一一条。
+//   决策模式的「批准/驳回」打 POST /api/approvals/{id}；它不走 Command → ChangeSet → Revision，
+//   故**不进** modes.js 的命令白名单（那只管命令类型），只在这里显式放行。
+const ALLOWED_APPROVAL_PREFIX = "/api/approvals/";
+// 扫描器看到的是 **api.js 里的字面量**（`postJson("/approvals/" + …)` ⇒ `/api/approvals/`）
+// ⇒ 声明集合是这四条；运行期 URL 由 isAllowedWrite 再要求"前缀 + 非空 id"。
+const DECLARED_WRITES = ["/api/advance", "/api/approvals/", "/api/command", "/api/fork"];
+const WRITE_FUNCTIONS = ["submitCommand", "advance", "fork", "approve"];
 
 function scanPostEndpoints(source) {
   const out = new Set();
@@ -26,8 +34,17 @@ function scanPostEndpoints(source) {
   return Array.from(out).sort();
 }
 
+/** 扫描出的**声明**端点是否在册（逐字相等，无通配）。 */
 function violations(endpoints) {
-  return endpoints.filter((endpoint) => !ALLOWED.includes(endpoint)).sort();
+  return endpoints.filter((endpoint) => !DECLARED_WRITES.includes(endpoint)).sort();
+}
+
+/** 运行期写 URL 是否放行：命令写**逐字相等**；审批写 = **前缀 + 非空 id**（前缀精确到末尾斜杠）。 */
+function isAllowedWrite(url) {
+  if (ALLOWED.includes(url)) {
+    return true;
+  }
+  return url.startsWith(ALLOWED_APPROVAL_PREFIX) && url.length > ALLOWED_APPROVAL_PREFIX.length;
 }
 
 function webuiJsFiles() {
@@ -37,14 +54,14 @@ function webuiJsFiles() {
     .sort();
 }
 
-test("api.js-declares-exactly-the-three-allowed-write-endpoints", () => {
+test("api.js-declares-exactly-the-allowed-write-endpoints", () => {
   const found = scanPostEndpoints(readWebui("api.js"));
-  assert.equal(found.length, 3, "扫描必须非空且恰三条：" + JSON.stringify(found));
-  assert.deepEqual(found, ALLOWED);
+  assert.equal(found.length, 4, "扫描必须非空且恰四条（3 命令 + 1 审批）：" + JSON.stringify(found));
+  assert.deepEqual(found, DECLARED_WRITES);
   assert.deepEqual(violations(found), []);
 });
 
-test("api.js-exports-exactly-the-three-write-functions", () => {
+test("api.js-exports-the-command-and-approval-write-functions", () => {
   const api = loadWebui("api.js").SimosApi;
   for (const fn of WRITE_FUNCTIONS) {
     assert.equal(typeof api[fn], "function", fn + " is exported");
@@ -73,6 +90,11 @@ test("scanner-has-teeth-on-undeclared-endpoint", () => {
   const found = scanPostEndpoints(tampered);
   assert.ok(found.includes("/api/evil"), "未声明端点必须被扫出：" + JSON.stringify(found));
   assert.deepEqual(violations(found), ["/api/evil"]);
+  // ★ 审批前缀必须**精确**（不是通配）：无 id、错前缀、多字母都不放行。
+  assert.equal(isAllowedWrite("/api/approvals"), false, "无末尾斜杠不放行");
+  assert.equal(isAllowedWrite("/api/approvals/"), false, "只有斜杠、没有 id 不放行");
+  assert.equal(isAllowedWrite("/api/approvalsx/pm-1"), false, "错前缀不放行");
+  assert.equal(isAllowedWrite("/api/approvals/pm-1"), true, "恰是前缀 + 非空 id ⇒ 放行");
 });
 
 test("scanner-detects-a-missing-declared-endpoint", () => {
@@ -110,9 +132,19 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   await api.resolve("unit:u-1");
   await api.facets("unit:u-1");
   await api.approvals();
+  await api.decisionMakers();
+  await api.decisionMaker("dm-1");
+  await api.approve("pm-1", "approve", "once");
 
   const posts = calls.filter((c) => c.method === "POST").map((c) => c.url).sort();
-  assert.deepEqual(posts, ALLOWED, "写函数只能打三个 allowlist 端点");
+  assert.deepEqual(
+    posts,
+    ["/api/advance", "/api/approvals/pm-1", "/api/command", "/api/fork"],
+    "写函数只能打命令 allowlist + 审批那一条"
+  );
+  for (const url of posts) {
+    assert.ok(isAllowedWrite(url), "写 url 必须被 allowlist 放行：" + url);
+  }
   const gets = calls.filter((c) => !c.method || c.method === "GET");
   assert.ok(gets.length >= 10, "只读调用应被记录（非空自证）");
   for (const call of gets) {

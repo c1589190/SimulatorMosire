@@ -157,3 +157,30 @@
 - **带裁定的遗留**：`t6-report.md` §七（L1 范围声明：`resolve`/`facets` 不做实体级可见性 = 无 spec 依据；L2 未接端点若要支持 `as=` 须先补设计；
   L3 `/api/approvals` 透传；L4 `PERCEPTION_ONLY` 字段粒度是**实现期裁定**）。
 - **证据**：`t6-evidence/`（logs/ + mutants/（含 orig/ 与七轮日志）+ t6-report.md）。
+
+## T7 决策模式（一模式两子页）+ 决策人交互 ✅（2026-09-21，分支 `wsf/t7`，基线 `62a0184`）
+
+- **范围**：只做 T7。**零 Java 生产改动**；Java 只动 `WebuiAssetsTest`（`MODE_LABELS` +「决策」、`allFiveModes…`→`allSixModes…`）。
+  前端：`modes.js` / `index.html` / `api.js` / `app.js` / `panels.js` / `map.js` / `styles.css`；JS 测试：`modes.test.cjs` +1、
+  **新 `decision-mode.test.cjs` 23 条**、`write-allowlist.test.cjs`（审批端点显式化）、两处下界 114→138、`map-edit-suboptions.test.cjs` 5→6。
+- **交付**：第六模式「决策」（`writes: []` 只读）+ 两子页（「决策人查看」/「审批」）+ 三处交互
+  （国家 tag ⇒ 全部区域高亮 / 有决策人的单位（含后代）⇒ 军队决策人 / 右栏按类型分类列表）。子页 B = `/api/approvals` 列表 + 批准·驳回。
+- **三件事模型边界**：② 待决信号（T9）**未实现**，展示位留「—」且 `pendingStatusText` 钉死"不造假"；④「开始决策」（T10）**未实现**、
+  断言 index.html 不含 `sd.StartDecision`/「开始决策」。T7 只做 ③ 与子页 A 的交互。
+- **门禁**：`./mvnw clean verify` **rc=0、最终字节第 3 次尝试**（前两次也 rc=0）；**8/8 `SUCCESS [`**；
+  **1324** = `170/368/45/259/178/124/180`（现场重算，只取模块汇总行）；`BugInstance size is 0 ×7`；`[ERROR]` 0；前端 **138/138**。
+  **基线本树实测 1324**（临时 detached worktree，`/tmp/opencode/baseline-verify.log`，rc=0）⇒ **delta 干净**：
+  **Java 用例 +0**（T7 零生产改动）、前端 **114→138 = +24**（`decision-mode.test.cjs` +23、`modes.test.cjs` +1）。
+- **变异**：**11 轮 11 KILLED / 0 存活**——t7m1 分组混排 / t7m2 国家只高亮第一个 / t7m3 模式从模式栏消失 /
+  t7m4 子页两页同开 / **t7m5 决策模式被给写权限（`sd.StartDecision`）** / t7m6 `due=null` 造假 / t7m7 单位解析不上溯 /
+  t7m8 点格不接高亮 / t7m9 子页可见性不自写纯函数 / t7m10 审批端点改成 `/api/evil/` / **t7m11（Java）按钮标签漂移 ⇒ `WebuiAssetsTest` 红**。
+  红点全落被保护断言；`orig_md5==restored_md5` 逐字节；装置日志**自指**三个 md5。
+- ★★ **装置自身的坑（当场发现并修）**：`mut-js.sh` 首版把 `file` 写成**裸文件名** ⇒ 变异体落在证据目录、真源未动 ⇒ 10 轮**假存活**。
+  这是「被测对象不是我以为的那份字节」同族；改成绝对路径后 10/10 KILLED。**如实记**：首版假存活轮未留档（无有效证据）。
+- ★ **`panels.js` 在首轮变异后被改过**（加 render 导出）⇒ 刷新 pristine 并**重跑全部 10 轮**（t7m11 同）⇒ 最终字节上 11/11。
+- **写权限边界**：审批子页的写是 `POST /api/approvals/{id}`（审批裁决，**非命令写**），作为**单独一条**显式列在
+  `write-allowlist.test.cjs`（`/api/approvals/` 前缀 + 非空 id，配三个反例证明不是通配）；**未放宽 `isWriteAllowed`**。
+- **我未能核实的**：见 `t7-report.md` §五（**无真实浏览器 e2e**——本机 chromium revision 1234 与可用 playwright 1.63/1.64 期望的 1243/1246 不匹配；
+  未在真 sd 档上验；"后代也算有决策人"无 spec 逐字依据；审批列表无轮询；触摸/HiDPI 未测）。
+- **带裁定的遗留**：`t7-report.md` §六（L1 后代口径 = 设计选择；L2 T10 若加命令须同样显式登记；L3 `due` 恒「—」待 T9；L4 e2e 归 T13；L5 `决策` 一词多处）。
+- **证据**：`t7-evidence/`（logs/ + mutants/ + t7-report.md）。

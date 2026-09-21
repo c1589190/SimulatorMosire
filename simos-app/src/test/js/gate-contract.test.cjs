@@ -8,6 +8,7 @@ const assert = require("node:assert");
 
 const REQUIRED_FILES = [
   "block-codec.test.cjs",
+  "decision-mode.test.cjs",
   "gate-contract.test.cjs",
   "map-edit-suboptions.test.cjs",
   "map-edit-tools.test.cjs",
@@ -29,8 +30,9 @@ const REQUIRED_FILES = [
 //   webui-stage-fix T1 起 90 → 96：新增 notifications.test.cjs 的 6 条。
 //   webui-stage-fix T2 起 96 → 108：新增 map-edit-suboptions.test.cjs 的 12 条。
 //   webui-stage-fix T3 起 108 → 114：map-edit-tools.test.cjs 新增连通性手势/命中/删边/词表 6 条。
+//   webui-stage-fix T7 起 114 → 138：新增 decision-mode.test.cjs 的 23 条（含 3 条 render 流水线夹具）+ modes.test.cjs 的决策只读 1 条。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 114;
+const MIN_ASSERTIONS = 138;
 
 function testFiles() {
   return fs

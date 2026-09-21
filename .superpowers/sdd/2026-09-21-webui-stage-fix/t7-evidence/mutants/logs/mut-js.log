@@ -1,0 +1,80 @@
+── t7m1 ──
+file=panels.js orig_md5=29019a49af240d637dd891acfd761892 mutant_md5=98199717a81ceb820ba184e1b786edcc restored_md5=29019a49af240d637dd891acfd761892
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=decision-groups-put-nation-then-army-and-sort-by-id
+verdict=KILLED
+red_point=not ok 11 - decision-groups-put-nation-then-army-and-sort-by-id
+
+── t7m2 ──
+file=map.js orig_md5=66a66fef0ab6684d5ff134e95f43f5f9 mutant_md5=863154f3b119ee06322aefadece11d64 restored_md5=66a66fef0ab6684d5ff134e95f43f5f9
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=nation-region-ids-are-set-equal-not-subset
+verdict=KILLED
+red_point=not ok 20 - nation-region-ids-are-set-equal-not-subset
+
+── t7m3 ──
+file=index.html orig_md5=2bbb9108c918c75117ea4a701cab4b9a mutant_md5=ccc1f6e73d90c77f0d862c7a56b2a8b6 restored_md5=2bbb9108c918c75117ea4a701cab4b9a
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=index-html-has-six-modes-and-decision-panel
+verdict=KILLED
+red_point=not ok 26 - index-html-has-six-modes-and-decision-panel
+
+── t7m4 ──
+file=panels.js orig_md5=29019a49af240d637dd891acfd761892 mutant_md5=1eccd7b40cb2c1f82fa04f58d52ab38d restored_md5=29019a49af240d637dd891acfd761892
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=subpage-visibility-is-mutually-exclusive
+verdict=KILLED
+red_point=not ok 10 - subpage-visibility-is-mutually-exclusive
+
+── t7m5 ──
+file=modes.js orig_md5=01faa526fc8a5de9ce9aa704da224ea8 mutant_md5=ba5636cde2f77e23303a108151c1ebfe restored_md5=01faa526fc8a5de9ce9aa704da224ea8
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=decision-allows-no-write
+verdict=KILLED
+red_point=not ok 78 - decision-allows-no-write
+
+── t7m6 ──
+file=panels.js orig_md5=29019a49af240d637dd891acfd761892 mutant_md5=75bc2f1e4093463e902b7bf3d0e4258d restored_md5=29019a49af240d637dd891acfd761892
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=pending-status-text-never-fabricates
+verdict=KILLED
+red_point=not ok 17 - pending-status-text-never-fabricates
+
+── t7m7 ──
+file=panels.js orig_md5=29019a49af240d637dd891acfd761892 mutant_md5=10ffb0e5462c2aea387e210e5481ba4d restored_md5=29019a49af240d637dd891acfd761892
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=decision-maker-for-unit-resolves-root-and-descendants
+verdict=KILLED
+red_point=not ok 14 - decision-maker-for-unit-resolves-root-and-descendants
+
+── t7m8 ──
+file=map.js orig_md5=66a66fef0ab6684d5ff134e95f43f5f9 mutant_md5=b5dbaf4a56eacdc7d6f3d01bd07cdbef restored_md5=66a66fef0ab6684d5ff134e95f43f5f9
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=map-js-wires-decision-click-to-nation-highlight
+verdict=KILLED
+red_point=not ok 28 - map-js-wires-decision-click-to-nation-highlight
+
+── t7m9 ──
+file=app.js orig_md5=f70556a53a5c234a58230d7f8d17ce4a mutant_md5=28fc626e034bd593fcfe8200e211aade restored_md5=f70556a53a5c234a58230d7f8d17ce4a
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=panels-js-and-app-js-delegate-subpage-visibility
+verdict=KILLED
+red_point=not ok 29 - panels-js-and-app-js-delegate-subpage-visibility
+
+── t7m10 ──
+file=api.js orig_md5=cd97c275c22cbc7f747965ac0bf2c7da mutant_md5=c78e1b314e9be1f70da9bf90d4ab02c1 restored_md5=cd97c275c22cbc7f747965ac0bf2c7da
+restored_equals_orig=true
+node_test_rc=1
+expected_failing_test=api.js-declares-exactly-the-allowed-write-endpoints
+verdict=KILLED
+red_point=not ok 132 - api.js-declares-exactly-the-allowed-write-endpoints
+

@@ -1254,3 +1254,115 @@ body.workbench-page .notify-bar.muted {
   color: var(--muted);
 }
 
+/* ── 决策模式（T7）：一个模式两个子页（决策人查看 / 审批）+ 决策人分类列表 ──
+   子页可见性由 app.js.applyDecisionSubpage 切 `hidden`（判定走 panels.js 的 fail-closed 纯函数）；
+   这里只负责布局与选中态，不含任何"哪个子页该显示"的逻辑。 */
+.decision-panel {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.decision-subpages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.decision-subpages label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.decision-subpages label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.decision-maker-detail .decision-maker {
+  margin: 6px 0 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.decision-empty {
+  margin: 6px 0;
+}
+
+.decision-group {
+  margin: 8px 0;
+}
+
+.decision-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 0 4px;
+  font-weight: 600;
+}
+
+.decision-group-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.decision-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+}
+
+.decision-maker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+}
+
+.decision-maker-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(78, 161, 255, 0.35);
+}
+
+.decision-maker-item .decision-maker-id,
+.decision-maker-item .decision-maker-pending {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.approval-item {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.approval-tool {
+  font-weight: 600;
+}
+
+.approval-summary {
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}

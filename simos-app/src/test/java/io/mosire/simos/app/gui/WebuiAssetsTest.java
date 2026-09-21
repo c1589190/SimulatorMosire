@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * WebUI 静态资源结构护栏（M5 T9，spec §8.1/§8.3；M7 T2 扩条；M8 T7 校正）：三页 + 共享资产 + 工作台骨架**在册且非空**、**无 绝对 URL / 无
- * CDN**、三页**按相对路径**引用共享资产、{@code /} 是工作台主应用（模式栏**五个真控件**，M8 T7 起不再有"归 M8 的禁用按钮"）。
+ * CDN**、三页**按相对路径**引用共享资产、{@code /} 是工作台主应用（模式栏**六个真控件**，M8 T7 起不再有"归 M8 的禁用按钮"、T7 起含「决策」）。
  *
  * <p>★ **为什么读源码树而不是 classpath**：本护栏要能对**故意违规**的源码变异响铃（计划 T9 变异 m1：往某资产里塞 {@code
  * https://cdn.example.com/x.js}）。读 {@code target/classes} 会读到上一次 {@code process-resources}
@@ -54,8 +54,9 @@ class WebuiAssetsTest {
   /** 块几何（M9 T13）：index/map 两页共用的纯函数模块（`window.SimosBlocks`）。 */
   private static final List<String> BLOCK_SCRIPTS = List.of("blocks.js");
 
-  /** 模式栏五按钮的可见标签（M8 spec §三；T7 起五个都是可点击的真控件）。 */
-  private static final List<String> MODE_LABELS = List.of("常规", "区域查看", "地图编辑", "区域编辑", "单位移动编辑");
+  /** 模式栏六按钮的可见标签（M8 spec §三；T7 起五个都是可点击的真控件；T7 加「决策」）。 */
+  private static final List<String> MODE_LABELS =
+      List.of("常规", "区域查看", "地图编辑", "区域编辑", "单位移动编辑", "决策");
 
   private static final List<String> ALL_ASSETS =
       concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS, WORKBENCH_SCRIPTS, BLOCK_SCRIPTS);
@@ -141,13 +142,14 @@ class WebuiAssetsTest {
   }
 
   /**
-   * M8 T7：五个模式**都是可点击的真控件**（不再有"归 M8 的禁用按钮"）。
+   * M8 T7：六个模式**都是可点击的真控件**（不再有"归 M8 的禁用按钮"；T7 起含「决策」）。
    *
    * <p>★ 判别力：{@link #buttonScannerHasTeeth} 用冻结字面量证明本扫描器能区分 disabled / enabled 两种形态——若哪天有人把某个模式改回
-   * {@code disabled} 或塞回 {@code data-milestone}，本用例必红。
+   * {@code disabled} 或塞回 {@code data-milestone}，本用例必红。★ 新增模式只改 {@code modes.js} 而漏了 {@code
+   * index.html} 的按钮 ⇒ 本用例红（T7 的 m3 变异靶子）。
    */
   @Test
-  void allFiveModesAreEnabledRealControls() throws IOException {
+  void allSixModesAreEnabledRealControls() throws IOException {
     String html = read(WEBUI_SOURCE.resolve("index.html"));
 
     for (String label : MODE_LABELS) {

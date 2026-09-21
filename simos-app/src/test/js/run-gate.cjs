@@ -17,8 +17,9 @@ const JS_DIR = __dirname;
 //   webui-stage-fix T1 起 90 → 96（新增 notifications.test.cjs 的 6 条）。
 //   webui-stage-fix T2 起 96 → 108（新增 map-edit-suboptions.test.cjs 的 12 条）。
 //   webui-stage-fix T3 起 108 → 114（map-edit-tools.test.cjs 新增连通性手势/命中/删边/词表 6 条）。
+//   webui-stage-fix T7 起 114 → 135（新增 decision-mode.test.cjs 的 20 条 + modes.test.cjs 决策只读 1 条）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 114;
+const MIN_TESTS = 138;
 
 function discoverTests() {
   return fs
