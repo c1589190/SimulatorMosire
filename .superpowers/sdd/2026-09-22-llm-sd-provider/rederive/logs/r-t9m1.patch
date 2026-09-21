@@ -1,0 +1,20 @@
+--- /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-21-webui-stage-fix/t4-evidence/mutants/orig/Shell.java	2026-09-22 01:21:06.124451143 +0800
++++ /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-21-webui-stage-fix/t4-evidence/mutants/t9m1_Shell.java	2026-09-22 01:21:06.128451149 +0800
+@@ -84,7 +84,6 @@
+ import io.mosire.simos.unit.spi.ReparentUnitHandler;
+ import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
+ import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
+-import io.mosire.simos.unit.spi.SetStatusHandler;
+ import io.mosire.simos.unit.spi.SetStrengthHandler;
+ import io.mosire.simos.unit.spi.SplitFormationHandler;
+ import io.mosire.simos.unit.spi.UnitTimeParticipant;
+@@ -299,8 +298,7 @@
+                 new PlanRouteHandler(),
+                 new CancelRouteHandler(),
+                 new DisbandUnitHandler(),
+-                new SetStatusHandler(),
+-                new AttachUnitHandler(),
++                    new AttachUnitHandler(),
+                 new DetachUnitHandler(),
+                 new ReparentSubtreeHandler(),
+                 new SetFormationOffsetHandler(),

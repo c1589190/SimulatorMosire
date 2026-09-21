@@ -42,6 +42,28 @@ class SdCodecTest {
     assertThat(back).isEqualTo(snapshot);
   }
 
+  /**
+   * ★ M11 判据：绑定的 {@code providerId} 经**真 JSON** 往返一字不丢（铁律 5 的线格式那半）。变异靶子 m2 = 线格式丢 providerId（如裸往返把
+   * {@code Optional} 写坏、或加了 {@code @JsonIgnore}）。
+   */
+  @Test
+  void boundProviderSurvivesTheJsonRoundTrip() {
+    SdState sd =
+        SdFixtures.empty()
+            .withDecisionMakers(
+                Map.of(SdFixtures.DM1, SdFixtures.boundDecisionMaker(SdFixtures.DM1, "p-json")));
+    SdSnapshot snapshot =
+        new SdSnapshot(
+            new StateRef(new BranchId("main"), new RevisionId(3)), SimosTimestamp.of(10), sd);
+
+    String json = CODEC.encodeSnapshot(snapshot);
+    assertThat(json).as("绑定必须真的写进字节").contains("p-json");
+
+    SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(json);
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.state().decisionMakers().get(SdFixtures.DM1).providerId()).contains("p-json");
+  }
+
   @Test
   void changeSetRoundTripsAllFourDeltaVariants() {
     SdState full = SdFixtures.full();

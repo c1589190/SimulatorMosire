@@ -1,0 +1,16 @@
+--- /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t11-evidence/mutants/orig/ApiViews.java	2026-09-22 01:21:05.768450577 +0800
++++ /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t11-evidence/mutants/j2/ApiViews.java	2026-09-22 01:21:05.768450577 +0800
+@@ -232,11 +232,11 @@
+   private static List<Integer> closedLabelRing(List<HexVertex> ring) {
+     List<Integer> out = new ArrayList<>(ring.size() * 2 + 2);
+     for (HexVertex vertex : ring) {
+-      out.add(vertex.u());
+       out.add(vertex.w());
++      out.add(vertex.u());
+     }
+-    out.add(ring.get(0).u());
+     out.add(ring.get(0).w());
++    out.add(ring.get(0).u());
+     return out;
+   }
+ 

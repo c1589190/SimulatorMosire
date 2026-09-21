@@ -1,0 +1,11 @@
+--- /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t11-evidence/mutants/orig/ApiViews.java	2026-09-22 01:21:05.768450577 +0800
++++ /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t11-evidence/mutants/j1/ApiViews.java	2026-09-22 01:21:05.768450577 +0800
+@@ -235,8 +235,6 @@
+       out.add(vertex.u());
+       out.add(vertex.w());
+     }
+-    out.add(ring.get(0).u());
+-    out.add(ring.get(0).w());
+     return out;
+   }
+ 

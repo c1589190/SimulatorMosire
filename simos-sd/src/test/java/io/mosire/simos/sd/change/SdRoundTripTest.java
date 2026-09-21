@@ -12,6 +12,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.verify.RoundTripAssertions;
 import java.lang.reflect.RecordComponent;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -57,6 +58,29 @@ class SdRoundTripTest {
   void fullFixtureRoundTripsThroughTheChangeSet() {
     RoundTripAssertions.assertRoundTrip(
         SdFixtures.empty(), SdFixtures.full(), SdChangeSet::between, SdChangeSet::apply);
+  }
+
+  /**
+   * ★ M11 判据：绑定 provider 的决策人逐字段往返（铁律 5）。变异靶子 m2 = 重建路径丢 {@code providerId}。
+   *
+   * <p>★ 判别力来自**目标态里那个被改动的条目本身带 providerId**：只测"未绑定"的往返看不见新字段。
+   */
+  @Test
+  void boundProviderSurvivesTheChangeSetRoundTrip() {
+    SdState base = SdFixtures.full();
+    SdState target =
+        base.withDecisionMakers(
+            Map.of(
+                SdFixtures.DM1, SdFixtures.boundDecisionMaker(SdFixtures.DM1, "p-rt"),
+                SdFixtures.DM2, SdFixtures.decisionMaker(SdFixtures.DM2)));
+    SdChangeSet cs = SdChangeSet.between(base, target);
+
+    assertThat(cs.decisionMakers().changed()).as("绑定必须被 between 看见").isTrue();
+    SdState rebuilt = SdChangeSet.apply(cs, base);
+    assertThat(rebuilt).as("逐字段重建出 target").isEqualTo(target);
+    assertThat(rebuilt.decisionMakers().get(SdFixtures.DM1).providerId())
+        .as("重建后 providerId 一字不丢")
+        .contains("p-rt");
   }
 
   @Test

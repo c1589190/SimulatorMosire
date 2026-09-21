@@ -1,0 +1,10 @@
+--- /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t13-evidence/mutants/orig/ApiViews.java	2026-09-22 01:21:05.776450590 +0800
++++ /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-19-map-perf/t13-evidence/mutants/m2b.ApiViews.java	2026-09-22 01:21:05.776450590 +0800
+@@ -217,6 +217,7 @@
+       item.put("boundaries", rings);
+       out.add(item);
+     }
++    java.util.Collections.shuffle(out);
+     return out;
+   }
+ 

@@ -210,6 +210,17 @@ public final class SdFixtures {
         id, new Affiliation.Nation(N1), Set.of("sd.SubmitVerdict"), ViewScope.empty(), 1);
   }
 
+  /** 绑定了 LLM provider 引用的决策人（M11 往返夹具）。 */
+  public static DecisionMaker boundDecisionMaker(DecisionMakerId id, String providerId) {
+    return new DecisionMaker(
+        id,
+        new Affiliation.Nation(N1),
+        Set.of("sd.SubmitVerdict"),
+        ViewScope.empty(),
+        1,
+        Optional.of(providerId));
+  }
+
   public static Directive directive(DirectiveId id, DecisionMakerId dm, long tick) {
     return new Directive(
         id,

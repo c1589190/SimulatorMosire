@@ -1,0 +1,20 @@
+--- /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-21-webui-stage-fix/t4-evidence/mutants/orig/Shell.java	2026-09-22 01:21:06.124451143 +0800
++++ /home/cna/SimulatorMosire/.claude/worktrees/llmsd/.superpowers/sdd/2026-09-21-webui-stage-fix/t4-evidence/mutants/t9m2_Shell.java	2026-09-22 01:21:06.128451149 +0800
+@@ -299,8 +299,7 @@
+                 new PlanRouteHandler(),
+                 new CancelRouteHandler(),
+                 new DisbandUnitHandler(),
+-                new SetStatusHandler(),
+-                new AttachUnitHandler(),
++                    new AttachUnitHandler(),
+                 new DetachUnitHandler(),
+                 new ReparentSubtreeHandler(),
+                 new SetFormationOffsetHandler(),
+@@ -333,6 +332,7 @@
+       coreSimos.register(handler);
+       commandTypes.add(handler.type());
+     }
++    coreSimos.register(new SetStatusHandler());
+ 
+     // ★ D1：决策命令白名单从**注册面**推导（禁 sd 自指/通用写）⇒ 必须在上面那个循环之后、用完整的 commandTypes 构造。
+     IssueDirectiveHandler issueDirectiveHandler =

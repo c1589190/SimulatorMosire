@@ -1,0 +1,4 @@
+baseline dfe74b9 (detached worktree run):
+  util=170 map=369 social=45 unit=259 core=179 sd=129 app=211 total=1362
+current frozen:
+  util=170 map=369 social=45 unit=259 core=179 sd=138 app=216 total=1376
