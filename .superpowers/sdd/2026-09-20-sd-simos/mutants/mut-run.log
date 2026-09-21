@@ -15,3 +15,7 @@ c5m1 verdict=KILLED module=simos-app selector=SdCommandDrainTest orig_md5=bc1061
 c5m3 verdict=KILLED module=simos-app selector=SdCommandDrainTest orig_md5=bc1061a5f962454b38cf4c173c9a582c mutant_md5=683d1eef50b080bd42900f99f4d304dc pushed_md5=683d1eef50b080bd42900f99f4d304dc restored_md5=bc1061a5f962454b38cf4c173c9a582c comp_errors=0 tests_run=2 rc=1 marker=crossModuleEffectBecomesARealRevisionAndIsIdempotent red=True
 c6m2 verdict=KILLED module=simos-app selector=SdCombatEndToEndTest orig_md5=eefd627dbbb2513d7310200d3a49ec77 mutant_md5=dfdf59448914c3ae3c84cac6e18799a5 pushed_md5=dfdf59448914c3ae3c84cac6e18799a5 restored_md5=eefd627dbbb2513d7310200d3a49ec77 comp_errors=0 tests_run=1 rc=1 marker=stageAdvanceIsConditionDrivenFrozenAndSelectsExactlyOne red=True
 c4m2b verdict=KILLED orig_md5=72553a335a8f1c61755eaa0a19cd8dd4 mutant_md5=3149dbf89d5a166284af75ac725e1117 restored_md5=72553a335a8f1c61755eaa0a19cd8dd4 comp_errors=0 tests_run=10 rc=1 red=True
+## 装置补记（自指更正）
+- c4m2 被标 VOID(no-tests-ran) 是**装置缺陷**，非"没跑到"：驱动器用 `-q`，Maven 在**通过**轮不打印 `Tests run:` 汇总 ⇒ tests_run=0。
+  实为**存活（等价变异体）**：`EnqueueUnitCommand` 的 action 重复处理把 FIRED 再写成 FIRED，状态无差异 ⇒ 用例判不出。
+- 补判据 `firedPutInfoEffectDoesNotAppendAgain`（PutInfo 重复处理会追加第二条 INFO）后，同款变异体 **c4m2b KILLED**（去掉 `-q` 重跑，`Tests run: 10, Failures: 1`，红点=该新用例）。
