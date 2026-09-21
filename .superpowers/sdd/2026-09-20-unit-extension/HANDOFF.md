@@ -64,6 +64,14 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
 - ★ **T9 的 catalog 断言请写成"集合相等"，不要用前缀/包含**：本表里有**近名对**（`ReparentUnit` vs `ReparentSubtree`、`PlanRoute` vs `PlanSparseRoute`、`SetStatus` vs `SetStrength` vs `SetFormationOffset`）⇒ 任何 `startswith`/`contains` 型断言都会**掩盖"注册错了一条"**（正是 m1"删一条注册"想抓的东西）。
 - ★ **一个机械事实**：这 20 条**全是 `unit` namespace** ⇒ `unit` namespace 下**恰好一个 participant**（§三判据那半）与"20 条 type"是**两件事**，别混。
 
+**★ 装配链已实测走通（08:06，全部只读、未动一行生产代码）——T9 的形状比计划描述的更简单**：
+
+1. ★★ **不存在"独立的 catalog 类"要改**。`Shell.java:215-219` 用 `Set<String> commandTypes = new LinkedHashSet<>()` **遍历 `handlers` 调 `handler.type()` 现场构建**，再经 `Shell.java:260` 传给 `SimosToolSource`（`:49` 注明"与 `Shell` 注册的 handler 同源"）→ `CatalogTool(commandTypes)`（`:64`）→ 面向 agent 的 `simos.command.catalog`。⇒ **注册即入 catalog，判据由构造保证**；T9 所谓"改 catalog" = **别漏注册**，**不存在第二处要改**。
+2. ★ **`MovementCost` 注入已有先例，不必新造通道**：`Shell.java:221` 就是 `new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId())`。⇒ `new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE)` **照抄同一来源**即可。★★ **且必须写进 `List.of(...)` 之内**（`:195-214`）——若写在 `commandTypes` 构建循环**之后**，handler 注册了但 **catalog 会漏**（这是"注册了却没进 catalog"的唯一真实路径，也正是 §三 陷阱 2 的实操含义）。
+3. ★★ **一个比"⊇12"强得多的机械判据**：真源码里 `CommandHandler` 实现**共 30 个**（map 6 + sd 4 + unit 20），而 `Shell` **现注册 18**（`:195-214` 机械计数 = 6 map + 8 unit + 4 sd）⇒ **18 + 12 = 30 = 全仓所有实现，一条不多一条不少**。⇒ T9 判据建议写成 **catalog type 集合 == 30 个实现的 `type()` 集合（集合相等，且 `|catalog| == 30`）**：**比"⊇12"强**，且能同时抓"漏注册"与"注册错/多注册一条"。
+   ★ **计数必须限定真源码路径**：不加 `-- '*/src/main/java/*'` 会把 `.superpowers/**` 里的变异体副本算进去（实测 `CommandHandler` 30 → **45**、`TimeParticipant` 1 → **13**）⇒ 一律限定，**别用裸 `-l | wc -l`**。
+4. **participant 侧无事可做**：全仓 `TimeParticipant` 实现**只有 `UnitTimeParticipant` 一个**（`namespace()` 硬编码 `return "unit";`，`:91-93`）；`ModuleCodec` **4 个**，与 `Shell:190` 的四条注册相符。⇒ "unit namespace 恰一个 participant" 现成立，**T9 不应新增 participant**。
+
 **判据**：catalog type 集合 ⊇ 上述 12 个（**m1 靶子 = 删一条注册**）；每个 `type()` 形状 `<namespace>.<Command>`；`unit` namespace 恰一个 participant（装配 + 一次 `advance` 不抛）；端到端经 `Shell` 发一条新命令 ⇒ `committed`。**变异 ≥2 轮**；★ 十道门禁 + ★ **裁定 42**（新增/改动护栏必须自带变异轮）+ ★ 第 ⑩ 道**逐片段**自证。
 
 **★ 装配改动 ⇒ 必须连带复核**：`Shell` 是既有装配点，改它 = **改动既有护栏** ⇒ 按裁定 42 需自带重跑轮；同时确认 `simos-app` 既有测试（实测 **116**）只增不减地绿。
@@ -79,6 +87,7 @@ unit.SetStatus         unit.SetStrength       unit.SplitFormation     unit.Updat
 | **T10-e** | **G5**：回归与**在途普通路线**同时存在时的交互**无 spec 依据**（现状：回归行程**替换**在途行程）；**凭空定策略就是发明需求** ⇒ 届时仍无上游依据就**记为"未定策略"、不记为"已实现"** | T7-G5 |
 | **T10-f** | **G2**：`UnitPayloads` 类注仍写"unit **十六个** handler"——**T7 立此项时实为 18**，**T8 后实为 20**（08:02 机械抽取复核实测；T9 注册完 type 总数**仍 20**，变的只是 **Shell 注册数 8→20**）⇒ 纯注释、零行为 | T7-G2 |
 | **T10-g** | **spec §八 20 条逐条实测值**（不是"通过/不通过"，要**数字**）+ 变异轮汇总 + **"我未能核实的"清单** + 关账报告 | 计划 T10 |
+| **T10-h** | ★ **新增（08:06 控制器实测）**：`Shell.java:308` 日志字面量**硬编码** `"… participant=1"`——当前**无测试断言**（`*/src/test/*` 搜不到），故**非现行陷阱**；但**一旦将来注册第二个 participant，这条日志会静默说谎**（既不编译错、也不测试红）⇒ 归 T10 清扫，**修法是数出来**而不是写死 | 控制器 08:06 |
 
 ## 五、★ 运行纪律与环境实测（**下一个会话必须原样继承**）
 
