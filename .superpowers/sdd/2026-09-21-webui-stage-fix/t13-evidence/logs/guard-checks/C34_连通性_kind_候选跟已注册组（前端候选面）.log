@@ -1,0 +1,144 @@
+# cmd: node simos-app/src/test/js/map-edit-tools.test.cjs
+# orig_md5=66a66fef0ab6684d5ff134e95f43f5f9 mutant_md5=12ffd56dc727228f03375d59423417f7 rc=1
+
+TAP version 13
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 1 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 0.563556
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 2 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.106249
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 3 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 0.416199
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 4 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.080104
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+ok 5 - edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+  ---
+  duration_ms: 0.191616
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+ok 6 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  ---
+  duration_ms: 0.088972
+  type: 'test'
+  ...
+# Subtest: edgeChainResult-reports-ending-and-skipped-non-adjacency
+ok 7 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+  ---
+  duration_ms: 0.180929
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-treats-a-missing-sample-as-no-op
+ok 8 - edgeChainEdges-treats-a-missing-sample-as-no-op
+  ---
+  duration_ms: 0.081291
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 9 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.266597
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 10 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.375101
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 11 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.137884
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 12 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 1.253851
+  type: 'test'
+  ...
+# Subtest: parseEdgeKey-round-trips-and-rejects-malformed-keys
+ok 13 - parseEdgeKey-round-trips-and-rejects-malformed-keys
+  ---
+  duration_ms: 0.136278
+  type: 'test'
+  ...
+# Subtest: edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+ok 14 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+  ---
+  duration_ms: 0.198721
+  type: 'test'
+  ...
+# Subtest: edgeDeletePlan-replaces-with-the-surviving-set
+ok 15 - edgeDeletePlan-replaces-with-the-surviving-set
+  ---
+  duration_ms: 0.089427
+  type: 'test'
+  ...
+# Subtest: registered-edge-kinds-default-then-follow-the-server
+not ok 16 - registered-edge-kinds-default-then-follow-the-server
+  ---
+  duration_ms: 0.446452
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/map-edit-tools.test.cjs:196:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be loosely deep-equal:
+    
+    [
+      'river',
+      'road'
+    ]
+    
+    should loosely deep-equal
+    
+    [
+      'river',
+      'road',
+      'canal'
+    ]
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'river'
+    1: 'road'
+    2: 'canal'
+  actual:
+    0: 'river'
+    1: 'road'
+  operator: 'deepEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/map-edit-tools.test.cjs:202:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 15
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13.767393

@@ -1,0 +1,50 @@
+# importer rc=0 checker rc=1
+
+[importer]
+========================================================================
+[gsimap_import] 输入文件 : /home/cna/DevMosire/workspace/worlds/v17levant/nodes/n0000_map.json
+[gsimap_import] 输出目录 : /tmp/t11sup__dbmen0i/out
+[gsimap_import] hex 总数 : 59222
+[gsimap_import] 地形逐 key 映射（含 lossy 标记）:
+    desert    -> desert            746 格   代表高度=0.5
+    hills     -> low_hills       14107 格   代表高度=0.6000000000000001
+    lowland   -> plains          16933 格   代表高度=0.375  ★lossy
+    mountain  -> mountains        1096 格   代表高度=0.7150000000000001
+    plains    -> plains          11315 格   代表高度=0.375
+    swamp     -> plains             99 格   代表高度=0.375  ★lossy
+    water     -> ocean           14927 格   代表高度=0.15
+[gsimap_import] 输出 terrainTypes 键集: ['ocean', 'plains', 'desert', 'low_hills', 'mountains']
+[gsimap_import] LOSSY 映射（★ 有损：simos 词表无对应，合并入 plains）:
+    lowland   -> plains          16933 格
+    swamp     -> plains             99 格
+[gsimap_import] 丢弃的键 + 理由:
+    compressedRegions — 旧仓 CompressionService 明说它是纯渲染缓存，hexes 才是权威
+    rivers / roads    — 旧仓已标 @Deprecated，被 edges+pathwayGroups 取代
+    terrainBlocks     — 旧仓 TerrainBlockProcessor 已 @Deprecated，以 hex 上的 terrain 为权威
+    gridSize          — simos 无对应（恒 30 的死值，与真实半径 80 矛盾）
+    hexOrientation    — simos 无对应；已校验为 false（flat-top 假定）
+[gsimap_import] provinces 数 : 98   环数 : 98
+[gsimap_import] edges 条数   : 240（来源=edgeTags；edgeTags 非空格 248 / riverMask 非零格 248）
+[gsimap_import] 合成项       : spec 为 GenerationSpec.defaults(0) 的占位；height 为所映射地形高度带中点
+[gsimap_import] 结果         : OK
+========================================================================
+
+[checker]
+[check_v17levant_import] 源档   : /home/cna/DevMosire/workspace/worlds/v17levant/nodes/n0000_map.json
+[check_v17levant_import] 资源   : /tmp/t11sup__dbmen0i/out/checkpoints/main/1.json
+  [PASS] teeth.source-non-empty — source hexes=59223
+  [PASS] teeth.resource-non-empty — resource hexes=59222
+  [FAIL] hexes.count — resource=59222 source=59223
+  [PASS] provinces.count — 98
+  [PASS] edges.count — 240（源档 edgeTags 非空格 248 / 480 有向条目 ÷2）
+  [FAIL] histogram.matches-lossy-merge — {'low_hills': 14106, 'plains': 28347, 'mountains': 1096, 'ocean': 14927, 'desert': 746}
+  [PASS] regions.tags — {'Nation': 97, '王国': 1}
+  [PASS] regions.multi-owner-sample — (-105, 67) -> ['区域14', '石冠诸部']
+  [PASS] regions.has-at-least-one-multi-owner — multi-owner hexes=81
+  [PASS] edges.adjacent-and-all-river — bad=0 nonRiver=0
+  [PASS] priority.falls-back-to-edgeTags-when-edges-empty — source=edgeTags edges=1
+  [PASS] priority.edges-wins-when-present — source=edges
+  [PASS] cross-check.rejects-mismatch — hex 0_0 的 edgeTags 与 riverMask 不一致（交叉校验失
+  [PASS] lossy.lowland-and-swamp-flagged
+[check_v17levant_import] 结果   : FAIL
+[check_v17levant_import] 失败项 : hexes.count, histogram.matches-lossy-merge

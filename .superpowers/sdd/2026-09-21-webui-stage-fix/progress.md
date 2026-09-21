@@ -282,3 +282,22 @@
 - ★ **装置两处如实记录**：① **m4 首轮存活（等价）**——初版写成 `_X = "InfoSystem"`（**字符串**），AST 判据正确地不视其为符号 ⇒ **是变异体形态选错，不是护栏失效**；改写为真 `import` 后 KILLED。② **m5→m6 跨轮污染**：m5 的 `leak.txt` 轮末未被还原（只还原 `.md`）⇒ m6 假红；已在 `mut-run.sh --regen` 补 `find … ! -name '*.md' -delete` 并**重跑 m5/m6 于干净世界**。③ **m3 的 `restored_md5` 与“pristine”不符是记忆之误**——日志里 `orig==restored==59772b76…` 逐字节相同；当场判清靠**回文件比 md5**。
 - **我未能核实的**：`t12-report.md` §六（产出文档“可读性”无自动化判据 / `caches/` 决策原文**按计划不纳入**（计划 §T12 文件清单只列 6 类） / **82 噪声里只有 75 个有 map 条目、另 7 个连条目都没有**——文档与校验器如实标注但 **spec 正文未改** / 跨 JVM 字节稳定未测 / `info-probe.json` 是测试落盘而非真进程观测 / `SdInfoEntry` 只证“未新增”）。
 - **证据**：`t12-evidence/`（`logs/`（`checker.txt`、`info-probe.json`、`content-spotcheck.txt`、`clean-verify.attempt1.log`(FAILURE 留档)、`clean-verify.attempt2.log`、`clean-verify.after-mutants-GREEN.log`、`recomputed.txt`、`module-*-lines.txt`）+ `mutants/`（`m*.py`/`m3.*.java`、`pristine*`、`mut-run.sh`、`logs/`）+ `t12-report.md`）。
+
+## T13 关账（2026-09-21，分支 `wsf/t13`，worktree `.claude/worktrees/wsf-t13`，基线 `d0e37ab`）✅
+
+- **范围**：收口不扩面。**零生产 / 零测试字节改动**；改 `CLAUDE.md` 一行 + 新关账报告 + 提交 4 份阶段文档
+  （spec / plan / brainstorm / research，此前从未入库）。关账报告 **`t13-evidence/task-final-report.md`**。
+- **判据**：spec §七 `C1`~`C34` **逐条实测值 + `文件:行` 证据锚**、无占位符；唯一未兑现 = **`C5`**（`D14` 未裁 ⇒
+  后端相邻校验未加，如实记）。`C16` 无独立变异靶子（证据级）。
+- **门禁**：`./mvnw clean verify` **rc=0、第 1 次尝试**、**8/8 `SUCCESS [`**、**1358** = `170/368/45/259/178/129/209`
+  （**现场重算**，只取模块汇总行）、`BugInstance size is 0` **×7**、`[ERROR]` **0**、前端 **164/164**。
+  ★ **最终绿轮 = `t13-evidence/logs/clean-verify.attempt1.log`**（`md5=c40766dc…`）。本机 `nproc=8`、无被杀轮。
+- ★ **关键不变量点验（新鲜跑在当前字节上，12/12 KILLED）**：两条编辑线 / kind 候选跟注册组 / 通知栏读 approvals /
+  往返覆盖非空 edges / 后端词表=已注册组 / `EXTERNAL∪GM` 丢 GM 即杀 / 决策人过滤 / `WITHHELD` 判决消失 /
+  未接端点 `as=` fail-closed / due 到点 / 用户 GUI 直发 / GM 过审批。证据 `t13-evidence/logs/guard-checks/`。
+- ★ **T11 欠账补齐 4 个体（全 KILLED）**：tag 分布 / 省份数 / hexCount / 多对多。**控制器欠的 6 条账逐条结论**见报告 §四。
+- ★★ **装置事故（如实记）**：首版点验脚本的 Java 命令拼接错（`-Dtest=@T@` 未替换）⇒ 一轮以"没跑到测试"收工，
+  且崩溃前**已把 `MapChangeSet.java` 写成变异体未还原** —— "装置产物自己带状态"同族。**当场 `md5sum -c` 检出**、
+  按源字节反向替换还原、逐文件 `md5sum -c` 全 OK ⇒ 最终字节与绿轮**逐字节相同**。
+- **未做（不扩面）**：真浏览器 e2e（Chromium revision 不匹配）/ 真档验证（本机无档）/ `D14` 裁定 / **未 kill 5818**。
+- **我未能核实的**：报告 §六（8 条）。

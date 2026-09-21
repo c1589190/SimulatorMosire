@@ -1,0 +1,76 @@
+# cmd: node simos-app/src/test/js/notifications.test.cjs
+# orig_md5=4d6f7bb046ea98d39d758e968d1c35f2 mutant_md5=6ff5f163aefe2042553daeaf9940e0ec rc=1
+
+TAP version 13
+# Subtest: module-loads
+ok 1 - module-loads
+  ---
+  duration_ms: 0.403285
+  type: 'test'
+  ...
+# Subtest: pendingCount-reads-the-three-response-shapes
+ok 2 - pendingCount-reads-the-three-response-shapes
+  ---
+  duration_ms: 0.081215
+  type: 'test'
+  ...
+# Subtest: summaryText-shows-the-count
+ok 3 - summaryText-shows-the-count
+  ---
+  duration_ms: 0.064425
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-approvals
+not ok 4 - renderInto-reads-exactly-one-GET-api-approvals
+  ---
+  duration_ms: 1.493077
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/notifications.test.cjs:53:1'
+  failureType: 'testCodeFailure'
+  error: '通知栏必须恰打一次 GET /api/approvals'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      url: '/api/approvals'
+      method: 'GET'
+  actual:
+  operator: 'deepEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/notifications.test.cjs:69:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: renderInto-degrades-when-approvals-unavailable
+not ok 5 - renderInto-degrades-when-approvals-unavailable
+  ---
+  duration_ms: 0.182497
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/notifications.test.cjs:75:1'
+  failureType: 'testCodeFailure'
+  error: '0 == null'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual: 0
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/notifications.test.cjs:81:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: index.html-has-notification-element-and-no-right-panel-approvals
+ok 6 - index.html-has-notification-element-and-no-right-panel-approvals
+  ---
+  duration_ms: 0.276303
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 4
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7.588195

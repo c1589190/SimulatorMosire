@@ -1,0 +1,122 @@
+# cmd: node simos-app/src/test/js/map-edit-suboptions.test.cjs
+# orig_md5=66a66fef0ab6684d5ff134e95f43f5f9 mutant_md5=fb9cc89e738231ac96d7845b9959e082 rc=1
+
+TAP version 13
+# Subtest: module-loads
+ok 1 - module-loads
+  ---
+  duration_ms: 1.168393
+  type: 'test'
+  ...
+# Subtest: subtool-ids-and-labels
+ok 2 - subtool-ids-and-labels
+  ---
+  duration_ms: 0.344232
+  type: 'test'
+  ...
+# Subtest: subtool-state-is-fail-closed
+ok 3 - subtool-state-is-fail-closed
+  ---
+  duration_ms: 0.217265
+  type: 'test'
+  ...
+# Subtest: subtool-tools-return-a-snapshot-and-default-tool
+ok 4 - subtool-tools-return-a-snapshot-and-default-tool
+  ---
+  duration_ms: 0.113643
+  type: 'test'
+  ...
+# Subtest: mapEditSubtoolOf-maps-tools-and-rejects-unknown
+ok 5 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  ---
+  duration_ms: 0.119248
+  type: 'test'
+  ...
+# Subtest: write-allowed-is-per-subtool-and-cross-line-is-denied
+ok 6 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  ---
+  duration_ms: 0.072424
+  type: 'test'
+  ...
+# Subtest: write-gate-resolves-tool-then-subtool
+ok 7 - write-gate-resolves-tool-then-subtool
+  ---
+  duration_ms: 0.164357
+  type: 'test'
+  ...
+# Subtest: panel-visibility-is-mutually-exclusive
+not ok 8 - panel-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.483169
+  type: 'test'
+  location: '/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/map-edit-suboptions.test.cjs:120:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be loosely deep-equal:
+    
+    {
+      connectivity: true,
+      randomize: false,
+      terrain: true
+    }
+    
+    should loosely deep-equal
+    
+    {
+      connectivity: true,
+      randomize: false,
+      terrain: false
+    }
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    terrain: false
+    connectivity: true
+    randomize: false
+  actual:
+    terrain: true
+    connectivity: true
+    randomize: false
+  operator: 'deepEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/cna/SimulatorMosire/.claude/worktrees/wsf-t13/simos-app/src/test/js/map-edit-suboptions.test.cjs:132:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: index-html-has-suboption-control-and-grouped-panels
+ok 9 - index-html-has-suboption-control-and-grouped-panels
+  ---
+  duration_ms: 0.392839
+  type: 'test'
+  ...
+# Subtest: suboptions-are-not-new-modes
+ok 10 - suboptions-are-not-new-modes
+  ---
+  duration_ms: 0.38451
+  type: 'test'
+  ...
+# Subtest: map-js-gates-every-map-write-with-the-matching-type
+ok 11 - map-js-gates-every-map-write-with-the-matching-type
+  ---
+  duration_ms: 0.886159
+  type: 'test'
+  ...
+# Subtest: page-delegates-to-the-single-guard-implementation
+ok 12 - page-delegates-to-the-single-guard-implementation
+  ---
+  duration_ms: 0.806988
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 11
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12.144785
