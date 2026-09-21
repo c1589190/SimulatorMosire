@@ -1,0 +1,7 @@
+[close-check] jar=simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar store=/tmp/sept-closecheck gui=5821 mcp=5722 approval=5723
+[close-check] log=/tmp/simos-close-zFN9Re.log
+[close-check] OK   GUI / -> 200 且已就绪
+[close-check] OK   SIGTERM 后进程已退出
+[close-check] OK   日志含『收到停止信号，关闭 Shell』
+[close-check] OK   关闭日志无 ClassNotFoundException / NoClassDefFoundError
+[close-check] 结论：PASS（优雅关闭无该异常；日志 /tmp/simos-close-zFN9Re.log）

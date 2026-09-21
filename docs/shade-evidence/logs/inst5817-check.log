@@ -1,0 +1,14 @@
+# 5817 运行证据（Mon Sep 21 23:11:51 CST 2026）
+## GET /
+http=200 bytes=19014
+## GET /api/map/overview
+http=200 bytes=629005
+## 解析
+REGIONS_LEN=252
+## 启动日志（含快照路径与种子行）
+[run-shaded] 快照 simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar -> /tmp/simos-shaded-R95jBR.jar（本次进程独占，免受就地重写影响）
+23:10:54.469 INFO  io.mosire.simos.app.ShellMain - 已种入富世界（--demo）：v17levant 复刻（59223 hex / 252 区域 / 240 条河流边）
+23:10:54.469 INFO  io.mosire.simos.app.ShellMain - Simos Shell 已启动: store=/tmp/sept-rich3 checkpointInterval=100 模块数=4 bindAddress=127.0.0.1 guiPort=5817 mcpPort=5715 mcpPath=/mcp approvalPort=5713 decisionAgentMcpPort=5717 mapId=Map1
+23:10:54.469 INFO  io.mosire.simos.app.ShellMain - WebUI 就绪（点击打开）：http://127.0.0.1:5817/
+## 进程（快照运行，免受就地重写）
+418696 java -jar /tmp/simos-shaded-R95jBR.jar --store /tmp/sept-rich3 --demo --gui-port 5817 --mcp-port 5715 --approval-port 5713

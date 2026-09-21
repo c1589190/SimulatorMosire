@@ -1,0 +1,2 @@
+实现提交：0986383（分支 fix/shaded-jar-guard，基线 14e83f5）
+主题：修 shaded jar 关闭路径：真因是就地重写运行中的 jar，非缺 reactor

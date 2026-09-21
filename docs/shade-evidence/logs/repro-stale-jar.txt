@@ -1,0 +1,24 @@
+# 受控复现：就地重写运行中的 jar（新 jar 同样含该类）⇒ GUI 000 + log4j CNFE
+	at io.modelcontextprotocol.spec.McpStreamableServerTransportProvider.close(McpStreamableServerTransportProvider.java:59)
+	at io.modelcontextprotocol.server.McpAsyncServer.close(McpAsyncServer.java:312)
+	at io.modelcontextprotocol.server.McpSyncServer.close(McpSyncServer.java:254)
+	at io.mosire.agentlib.mcp.AgentToMcpServer.close(AgentToMcpServer.java:748)
+	at io.mosire.simos.app.Shell.close(Shell.java:723)
+	at io.mosire.simos.app.ShellMain.lambda$run$0(ShellMain.java:136)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.ClassNotFoundException: reactor.core.publisher.LambdaMonoSubscriber
+	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)
+	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	... 8 more
+# 受控复现：同一实例关闭 ⇒ reactor CNFE（与 5817 逐帧一致）
+Exception in thread "simos-shutdown" java.lang.NoClassDefFoundError: reactor/core/publisher/LambdaMonoSubscriber
+	at reactor.core.publisher.Mono.subscribe(Mono.java:4403)
+	at io.modelcontextprotocol.spec.McpStreamableServerTransportProvider.close(McpStreamableServerTransportProvider.java:59)
+	at io.modelcontextprotocol.server.McpAsyncServer.close(McpAsyncServer.java:312)
+	at io.modelcontextprotocol.server.McpSyncServer.close(McpSyncServer.java:254)
+	at io.mosire.agentlib.mcp.AgentToMcpServer.close(AgentToMcpServer.java:748)
+	at io.mosire.simos.app.Shell.close(Shell.java:723)
+	at io.mosire.simos.app.ShellMain.lambda$run$0(ShellMain.java:136)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.ClassNotFoundException: reactor.core.publisher.LambdaMonoSubscriber

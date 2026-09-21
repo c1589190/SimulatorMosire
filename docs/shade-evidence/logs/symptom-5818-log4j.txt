@@ -1,0 +1,28 @@
+# 症状原始证据：5818（/tmp/inst5818.log，GUI 请求 + log4j CNFE）
+15:11:04.500 INFO  io.mosire.simos.app.gui.GuiServer - access GET / -> 200 0ms remote=127.0.0.1
+20:30:15.497 INFO  io.mosire.simos.app.gui.GuiServer - access GET / -> 200 8ms remote=127.0.0.1
+21:44:49.334 INFO  io.mosire.simos.app.gui.GuiServer - access GET / -> -1 8ms remote=127.0.0.1
+Exception in thread "" java.lang.NoClassDefFoundError: org/apache/logging/log4j/message/ParameterizedMessage
+	at org.apache.logging.log4j.message.ParameterizedNoReferenceMessageFactory.newMessage(ParameterizedNoReferenceMessageFactory.java:106)
+	at org.apache.logging.log4j.message.AbstractMessageFactory.newMessage(AbstractMessageFactory.java:103)
+	at org.apache.logging.log4j.spi.AbstractLogger.logMessage(AbstractLogger.java:2729)
+	at org.apache.logging.log4j.spi.AbstractLogger.logIfEnabled(AbstractLogger.java:2480)
+	at org.apache.logging.log4j.spi.AbstractLogger.warn(AbstractLogger.java:3738)
+	at org.apache.logging.log4j.spi.AbstractLogger.handleLogMessageException(AbstractLogger.java:2991)
+	at org.apache.logging.log4j.spi.AbstractLogger.tryLogMessage(AbstractLogger.java:2973)
+	at org.apache.logging.log4j.spi.AbstractLogger.logMessageTrackRecursion(AbstractLogger.java:2922)
+	at org.apache.logging.log4j.spi.AbstractLogger.logMessageSafely(AbstractLogger.java:2904)
+	at org.apache.logging.log4j.spi.AbstractLogger.logMessage(AbstractLogger.java:2659)
+	at org.apache.logging.log4j.spi.AbstractLogger.logIfEnabled(AbstractLogger.java:2414)
+	at org.apache.logging.slf4j.Log4jLogger.warn(Log4jLogger.java:248)
+	at io.mosire.simos.app.gui.GuiServer.handle(GuiServer.java:231)
+	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+	at jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(AuthFilter.java:82)
+	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:101)
+	at jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(ServerImpl.java:932)
+	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+	at jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(ServerImpl.java:908)
+	at java.base/java.util.concurrent.ThreadPerTaskExecutor$TaskRunner.run(ThreadPerTaskExecutor.java:314)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
+Caused by: java.lang.ClassNotFoundException: org.apache.logging.log4j.message.ParameterizedMessage
+	... 21 more

@@ -1,0 +1,3 @@
+2ed27039be8520bc13340bcc0d4cf329  /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar
+4dd81f9ee8f38fddd94a4e251743f8dc  /home/cna/SimulatorMosire/.claude/worktrees/shade-fix/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar
+4dd81f9ee8f38fddd94a4e251743f8dc  /tmp/simos-shaded-R95jBR.jar

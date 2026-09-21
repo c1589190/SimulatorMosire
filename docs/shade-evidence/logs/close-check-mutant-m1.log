@@ -1,0 +1,21 @@
+[close-check] jar=/tmp/shade-mut/m1.jar store=/tmp/sept-closecheck-m1 gui=5824 mcp=5724 approval=5725
+[close-check] log=/tmp/simos-close-NIYXVW.log
+[close-check] FAIL 实例未在 60s 内就绪（GUI / 200 且日志『WebUI 就绪』）
+[run-shaded] 快照 /tmp/shade-mut/m1.jar -> /tmp/simos-shaded-W2j7yC.jar（本次进程独占，免受就地重写影响）
+23:10:38.602 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 5725）
+23:10:38.603 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+Exception in thread "main" java.lang.NoClassDefFoundError: reactor/core/publisher/Mono
+	at io.modelcontextprotocol.server.McpServerFeatures$AsyncToolSpecification.fromSync(McpServerFeatures.java:243)
+	at io.modelcontextprotocol.server.McpServerFeatures$Async.fromSync(McpServerFeatures.java:109)
+	at io.modelcontextprotocol.server.McpServer$StreamableSyncSpecification.build(McpServer.java:869)
+	at io.mosire.agentlib.mcp.AgentToMcpServer.assemble(AgentToMcpServer.java:579)
+	at io.mosire.agentlib.mcp.AgentToMcpServer.startWith(AgentToMcpServer.java:358)
+	at io.mosire.agentlib.mcp.AgentToMcpServer.startHttp(AgentToMcpServer.java:498)
+	at io.mosire.simos.app.Shell.start(Shell.java:443)
+	at io.mosire.simos.app.ShellMain.run(ShellMain.java:111)
+	at io.mosire.simos.app.ShellMain.main(ShellMain.java:53)
+Caused by: java.lang.ClassNotFoundException: reactor.core.publisher.Mono
+	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)
+	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	... 9 more

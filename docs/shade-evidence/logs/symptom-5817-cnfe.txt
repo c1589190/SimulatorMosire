@@ -1,0 +1,16 @@
+# 症状原始证据：5817（/tmp/inst5817.log 的关闭段，22:42:56）
+22:42:56.008 INFO  io.mosire.simos.app.ShellMain - 收到停止信号，关闭 Shell
+Exception in thread "simos-shutdown" java.lang.NoClassDefFoundError: reactor/core/publisher/LambdaMonoSubscriber
+	at reactor.core.publisher.Mono.subscribe(Mono.java:4403)
+	at io.modelcontextprotocol.spec.McpStreamableServerTransportProvider.close(McpStreamableServerTransportProvider.java:59)
+	at io.modelcontextprotocol.server.McpAsyncServer.close(McpAsyncServer.java:312)
+	at io.modelcontextprotocol.server.McpSyncServer.close(McpSyncServer.java:254)
+	at io.mosire.agentlib.mcp.AgentToMcpServer.close(AgentToMcpServer.java:748)
+	at io.mosire.simos.app.Shell.close(Shell.java:723)
+	at io.mosire.simos.app.ShellMain.lambda$run$0(ShellMain.java:136)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.ClassNotFoundException: reactor.core.publisher.LambdaMonoSubscriber
+	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)
+	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	... 8 more
