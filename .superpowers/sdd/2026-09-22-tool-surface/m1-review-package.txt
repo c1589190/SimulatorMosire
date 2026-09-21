@@ -1,0 +1,1068 @@
+7e48404 docs(tool-surface): M1 关账报告（取代此前 BLOCKED 报告）+ token 级复核装置
+2c8e29c feat(tool-surface): M1 map 组 7 条窄写工具 + 修掉写闸索引切片缺陷
+f04a24d chore(tool-surface): 修跨机 agentlib 阻断并跑出本机绿基线
+4d0989d docs(sdd): M1 简报 + recon 取证结论 + 四条裁决
+ .../io/mosire/simos/app/tools/SimosToolSource.java |  25 ++-
+ .../simos/app/tools/write/MapCreateRegionTool.java |  36 +++
+ .../simos/app/tools/write/MapDeleteRegionTool.java |  35 +++
+ .../app/tools/write/MapRandomizeRegionTool.java    |  36 +++
+ .../tools/write/MapRegisterPathwayGroupTool.java   |  37 +++
+ .../simos/app/tools/write/MapSetEdgeTool.java      |  36 +++
+ .../simos/app/tools/write/MapSetTerrainTool.java   |  38 ++++
+ .../simos/app/tools/write/MapUpdateRegionTool.java |  40 ++++
+ .../io/mosire/simos/app/McpPortTopologyTest.java   |  38 +++-
+ .../java/io/mosire/simos/app/McpServerTest.java    |  16 +-
+ .../io/mosire/simos/app/tools/SimosToolsTest.java  | 250 ++++++++++++++++++++-
+ 11 files changed, 565 insertions(+), 22 deletions(-)
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java b/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+index 73ccdb0..164dc59 100644
+--- a/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+@@ -9,31 +9,38 @@ import io.mosire.simos.app.tools.read.MapHexTool;
+ import io.mosire.simos.app.tools.read.MapOverviewTool;
+ import io.mosire.simos.app.tools.read.PopulationTool;
+ import io.mosire.simos.app.tools.read.StateFacetsTool;
+ import io.mosire.simos.app.tools.read.StateResolveTool;
+ import io.mosire.simos.app.tools.read.UnitGetTool;
+ import io.mosire.simos.app.tools.read.UnitListTool;
+ import io.mosire.simos.app.tools.write.AdvanceTool;
+ import io.mosire.simos.app.tools.write.CommandSubmitTool;
+ import io.mosire.simos.app.tools.write.ForkTool;
+ import io.mosire.simos.app.tools.write.IssueDirectiveTool;
++import io.mosire.simos.app.tools.write.MapCreateRegionTool;
++import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
++import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
++import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
++import io.mosire.simos.app.tools.write.MapSetEdgeTool;
++import io.mosire.simos.app.tools.write.MapSetTerrainTool;
++import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+ import io.mosire.simos.app.tools.write.SetViewScopeTool;
+ import io.mosire.simos.app.tools.write.StartDecisionTool;
+ import io.mosire.simos.app.tools.write.SubmitVerdictTool;
+ import io.mosire.simos.core.CoreSimos;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Objects;
+ import java.util.Set;
+ 
+ /**
+- * Simos 工具供给源（M5 T5，spec §7.1）：**3 写 + 9 读**共 12 条 {@link AgentTool}。
++ * Simos 工具供给源（M5 T5，spec §7.1）：**9 读 + 各桶自己的写面**（{@link Role}）。
+  *
+  * <p>★ **它是工具清单的唯一出处**：{@code Shell} 建源后经 {@code McpSourceBridge.bind} 把这份快照同步进 {@link
+  * io.mosire.agentlib.tool.ToolRegistry}，T7 再把该注册表交给 {@code
+  * AgentToMcpServer}。源本身**不向任何全局状态注册**（AgentLib 的 {@code ToolSource} 契约）。
+  *
+  * <p>★ **{@code onChange} 是 no-op**：本源的集合是构造期定死的静态集（没有插件式的动态增删口子），故订阅即时成立、无需变更通知。若将来工具集
+  * 变成动态的，替换这里的空实现即可（契约要求返回可关闭句柄）。
+  *
+  * <p>★ **写工具的身份与资源**：{@code initiator} 由 {@code Shell} 从 {@link
+  * io.mosire.simos.app.ShellConfig#mcpInitiator()} 注入（spec §九，R4 的断言对象）；{@code mapId} 用于 hex 工具的
+@@ -47,21 +54,21 @@ public final class SimosToolSource implements ToolSource {
+   /** 工具面按角色分载（spec §八.3，N9/N11；T4 起现有运行时口 = {@link #EXTERNAL_WITH_GM}）。 */
+   public enum Role {
+     /** 外部 MCP 客户端：保留现状（有通用写），spec §八.3 列为挂起。 */
+     EXTERNAL,
+     /** GM：配权 + 窄工具，**无通用写**（N11）。 */
+     GM,
+     /** 决策 Agent：仅窄工具（`sd.IssueDirective` / `sd.SubmitVerdict`），**无通用写**（N9）。 */
+     DECISION_AGENT,
+     /**
+      * 现有 MCP 口（T4，**D2="加"**，spec §二.5）：**EXTERNAL ∪ GM** —— 9 读共享 + 通用写（submit/advance/fork）+ GM
+-     * 窄写（IssueDirective/SubmitVerdict/**含** SetViewScope）。
++     * 窄写（IssueDirective/SubmitVerdict/**含** SetViewScope/StartDecision + **7 条 map**）。
+      *
+      * <p>★ **与 SDSimos 裁定 N9 的冲突在此端口显式记账**：N9 的原意是「专用窄工具，不给决策 Agent 通用 `simos.command.submit`」；本口
+      * 保留通用写是**用户裁定 D2 的取舍、不是缺陷**（其持有者可绕过窄工具直接提交任意命令）。N9 在**决策人口**（{@link #DECISION_AGENT} 桶）与
+      * `DecisionMaker.allowedTools` 白名单上**照旧有效**。
+      */
+     EXTERNAL_WITH_GM
+   }
+ 
+   private final List<AgentTool> tools;
+ 
+@@ -111,27 +118,39 @@ public final class SimosToolSource implements ToolSource {
+   }
+ 
+   /** EXTERNAL 桶的通用写（spec §八.3）：submit / advance / fork。 */
+   private static void addExternalWrites(
+       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+     built.add(new CommandSubmitTool(core, initiator, mapId));
+     built.add(new AdvanceTool(core, initiator, mapId));
+     built.add(new ForkTool(core, initiator));
+   }
+ 
+-  /** GM 窄写（N11）：两条决策窄工具 + 配权工具（**含** `sd.SetViewScope`）+ 「开始决策」（T10）。 */
++  /**
++   * GM 窄写（N11）：两条决策窄工具 + 配权工具（**含** `sd.SetViewScope`）+ 「开始决策」（T10）+ **7 条 map 窄写**（M1）。
++   *
++   * <p>★ **7 条 map 工具进的是 GM 桶**（不是通用写、也不是决策桶）：`map.*` 命令类型在工具里固定死，模型只能给载荷 ——与 {@code
++   * simos.command.submit} 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此 也含这 7 条。
++   */
+   private static void addGmWrites(
+       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+     built.add(new IssueDirectiveTool(core, initiator, mapId));
+     built.add(new SubmitVerdictTool(core, initiator, mapId));
+     built.add(new SetViewScopeTool(core, initiator, mapId));
+     built.add(new StartDecisionTool(core, initiator, mapId));
++    built.add(new MapSetTerrainTool(core, initiator, mapId));
++    built.add(new MapSetEdgeTool(core, initiator, mapId));
++    built.add(new MapCreateRegionTool(core, initiator, mapId));
++    built.add(new MapUpdateRegionTool(core, initiator, mapId));
++    built.add(new MapDeleteRegionTool(core, initiator, mapId));
++    built.add(new MapRandomizeRegionTool(core, initiator, mapId));
++    built.add(new MapRegisterPathwayGroupTool(core, initiator, mapId));
+   }
+ 
+   /** 决策 Agent 窄写（N9）：**无** `sd.SetViewScope`、**无**通用写。 */
+   private static void addDecisionAgentWrites(
+       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+     built.add(new IssueDirectiveTool(core, initiator, mapId));
+     built.add(new SubmitVerdictTool(core, initiator, mapId));
+   }
+ 
+   private static List<AgentTool> readTools(
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapCreateRegionTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapCreateRegionTool.java
+new file mode 100644
+index 0000000..8a88c42
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapCreateRegionTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.CreateRegion} 窄工具（M1，spec §八.3）：**GM 建区域**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **重叠是正常状态**（M8-U1）：新建区域与既有区域相交**不报错**。`regionId` 已存在 ⇒ 域层 fail-closed 拒绝（不静默覆盖），理由原文经 {@code
++ * ToolSupport.fold} 到达调用方。
++ */
++public final class MapCreateRegionTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.CreateRegion";
++
++  public MapCreateRegionTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "建区域 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 建区域：固定 map.CreateRegion，载荷 {regionId, name, hexes[{q,r}…], meta?}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapDeleteRegionTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapDeleteRegionTool.java
+new file mode 100644
+index 0000000..93d23b6
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapDeleteRegionTool.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.DeleteRegion} 窄工具（M1，spec §八.3）：**GM 删区域**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **不做静默幂等**：目标区域不存在 ⇒ 域层 fail-closed 拒绝（"删一个不存在的东西"是坏载荷，不是一次无副作用的写）。
++ */
++public final class MapDeleteRegionTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.DeleteRegion";
++
++  public MapDeleteRegionTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "删区域 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 删区域：固定 map.DeleteRegion，载荷 {regionId}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapRandomizeRegionTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapRandomizeRegionTool.java
+new file mode 100644
+index 0000000..99d2a9e
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapRandomizeRegionTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.RandomizeRegion} 窄工具（M1，spec §八.3）：**GM 随机化区域地形**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **{@code seed} 没有默认值**：缺字段 ⇒ 域层 {@code requireLong} 当场拒。静默兜 0 会把"两次随机化不可复现"
++ * 从一条被拒的载荷变成一次合法但不可解释的写。空 {@code hexes} 亦拒（域层文案含具体命令名，可判别）。
++ */
++public final class MapRandomizeRegionTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.RandomizeRegion";
++
++  public MapRandomizeRegionTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "随机化区域 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 随机化区域地形：固定 map.RandomizeRegion，载荷 {hexes[{q,r}…], seed（整数，无默认）}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapRegisterPathwayGroupTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapRegisterPathwayGroupTool.java
+new file mode 100644
+index 0000000..d929df6
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapRegisterPathwayGroupTool.java
+@@ -0,0 +1,37 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.RegisterPathwayGroup} 窄工具（M1，spec §八.3）：**GM 注册通路组**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **它改的是组定义、不是边**：注册后 {@code map.SetEdge{kind:…}} 才认这个词；未注册的 {@code kind} 仍被域层 fail-closed
++ * 拒绝。{@code color} 必须是 {@code #RRGGBB} 形式（非此形态 ⇒ 域层拒绝，理由原文到达调用方）。
++ */
++public final class MapRegisterPathwayGroupTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.RegisterPathwayGroup";
++
++  public MapRegisterPathwayGroupTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "注册通路组 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 注册通路组：固定 map.RegisterPathwayGroup，载荷 {id, name, color（#RRGGBB）, description?, visible?（缺省"
++        + " true）, properties?}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapSetEdgeTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapSetEdgeTool.java
+new file mode 100644
+index 0000000..c73f3a5
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapSetEdgeTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.SetEdge} 窄工具（M1，spec §八.3）：**GM 改连通性**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **{@code mode} 没有默认值**（域层 {@code EdgeOperations} 只收 {@code replace}/{@code merge}）：缺字段 ⇒
++ * {@code Rejected}，不兜一个"看着合理"的模式。{@code kind} 必须在状态的通路组词表内（fail-closed）。
++ */
++public final class MapSetEdgeTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.SetEdge";
++
++  public MapSetEdgeTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "改连通性 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 改连通性：固定 map.SetEdge，载荷 {kind, edges[\"q_r|q_r\"…], mode（replace|merge，无默认）}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapSetTerrainTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapSetTerrainTool.java
+new file mode 100644
+index 0000000..8322ce5
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapSetTerrainTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.SetTerrain} 窄工具（M1，spec §八.3）：**GM 改地形**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（{@link io.mosire.simos.app.tools.SimosToolSource.Role#GM}，故 {@code
++ * EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷；"选什么命令"不再是可自由发挥的面。标 sensitive ⇒ GM Agent 经 MCP
++ * 调用时走**审批门链**。
++ *
++ * <p>★ **前置即错**：地形词表校验在域层（{@code TerrainCatalog}），词表外 key 经 {@code ToolSupport.fold} 变成可读的 {@code
++ * REJECTED}；工具层不重复校验（重复的那份能被 {@code simos.command.submit} 绕过 ⇒ 是装饰）。
++ */
++public final class MapSetTerrainTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.SetTerrain";
++
++  public MapSetTerrainTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "改地形 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 改地形：固定 map.SetTerrain，载荷 {hexes[{q,r}…], terrain}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapUpdateRegionTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapUpdateRegionTool.java
+new file mode 100644
+index 0000000..89b5bd1
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/MapUpdateRegionTool.java
+@@ -0,0 +1,40 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code map.UpdateRegion} 窄工具（M1，spec §八.3）：**GM 改区域**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **{@code meta} 是整体替换**：给了 {@code meta} 就把 {@code color}/{@code tag}/{@code
++ * description}/{@code annexedBy} 四键**给全**——只给一个键会静默清掉其余三个（域层 {@code RegionMeta} 不是逐键合并）。这条已写进
++ * {@link #description()}，让模型在调用前就看得见。
++ *
++ * <p>★ {@code hexes} 与 {@code meta} **至少给一个**：都不给 ⇒ 域层拒绝（"什么都没改"是一条坏载荷，不是一次无副作用的写）。
++ */
++public final class MapUpdateRegionTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "map.UpdateRegion";
++
++  public MapUpdateRegionTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "改区域 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "GM 改区域：固定 map.UpdateRegion，载荷 {regionId, hexes?, meta?}（至少给一个；★ meta 是整体替换——给了就把"
++        + " color/tag/description/annexedBy 四键给全，只给一个键会静默清掉其余三个）";
++  }
++}
+diff --git a/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java b/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
+index f734f08..ec670a6 100644
+--- a/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
++++ b/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
+@@ -47,22 +47,45 @@ class McpPortTopologyTest {
+           "simos.timeline.branches",
+           "simos.map.overview",
+           "simos.map.hex",
+           "simos.unit.list",
+           "simos.unit.get",
+           "simos.social.population");
+ 
+   private static final List<String> GENERIC_WRITES =
+       List.of("simos.command.submit", "simos.advance", "simos.fork");
+ 
++  /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
++  private static final List<String> MAP_WRITES =
++      List.of(
++          "map.SetTerrain",
++          "map.SetEdge",
++          "map.CreateRegion",
++          "map.UpdateRegion",
++          "map.DeleteRegion",
++          "map.RandomizeRegion",
++          "map.RegisterPathwayGroup");
++
++  /** GM 窄写（M1 起 11 条）：4 条 sd 窄写 + 7 条 map 窄写；**都不在**决策人口、也都不是通用写。 */
+   private static final List<String> GM_NARROW_WRITES =
+-      List.of("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision");
++      List.of(
++          "sd.IssueDirective",
++          "sd.SubmitVerdict",
++          "sd.SetViewScope",
++          "sd.StartDecision",
++          "map.SetTerrain",
++          "map.SetEdge",
++          "map.CreateRegion",
++          "map.UpdateRegion",
++          "map.DeleteRegion",
++          "map.RandomizeRegion",
++          "map.RegisterPathwayGroup");
+ 
+   private static final List<String> DECISION_AGENT_WRITES =
+       List.of("sd.IssueDirective", "sd.SubmitVerdict");
+ 
+   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
+ 
+   @TempDir Path tempDir;
+ 
+   private Shell shell;
+ 
+@@ -71,51 +94,52 @@ class McpPortTopologyTest {
+     shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0));
+   }
+ 
+   @AfterEach
+   void stopShell() {
+     if (shell != null) {
+       shell.close();
+     }
+   }
+ 
+-  /** C6：现有口同时含通用写与 GM 四条窄工具（D2="加"；T10 起 +sd.StartDecision）。 */
++  /** C6：现有口同时含通用写与 GM 十一条窄工具（D2="加"；T10 起 +sd.StartDecision，M1 起 +7 map）。 */
+   @Test
+   void existingPortExposesExternalUnionGmToolFace() {
+     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
+       McpSchema.InitializeResult init = client.initialize();
+       assertThat(init.serverInfo().name()).isEqualTo(EXISTING_SERVER_NAME);
+ 
+       assertThat(toolNames(client))
+-          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 GM 窄写 = 16）")
++          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 11 GM 窄写 = 23）")
+           .containsExactlyInAnyOrderElementsOf(
+               concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
+     }
+   }
+ 
+-  /** C7：决策人口仅 DECISION_AGENT 桶——无通用写、无 {@code sd.SetViewScope}。 */
++  /** C7：决策人口仅 DECISION_AGENT 桶——无通用写、无 {@code sd.SetViewScope}、**无 7 条 map 窄写**。 */
+   @Test
+   void decisionPortExposesOnlyDecisionAgentToolFace() {
+     try (McpSyncClient client = newClient(shell.boundDecisionAgentMcpPort())) {
+       McpSchema.InitializeResult init = client.initialize();
+       assertThat(init.serverInfo().name())
+           .as("决策人口自报名与现有口不同（spec §六.4）")
+           .isEqualTo(DECISION_SERVER_NAME);
+ 
+       List<String> names = toolNames(client);
+       assertThat(names)
+-          .as("C7：决策人口 = 9 读 + 2 窄写（无 SetViewScope、无通用写）")
++          .as("C7：决策人口 = 9 读 + 2 窄写（无 SetViewScope、无通用写、无 map 窄写）")
+           .containsExactlyInAnyOrderElementsOf(concat(READ_TOOLS, DECISION_AGENT_WRITES));
+       assertThat(names)
+-          .as("C7 反向：通用写、SetViewScope 与 StartDecision 都不在决策人口")
++          .as("C7 反向：通用写、SetViewScope、StartDecision 与 **7 条 map 窄写**都不在决策人口")
+           .doesNotContainAnyElementsOf(GENERIC_WRITES)
+-          .doesNotContain("sd.SetViewScope");
++          .doesNotContain("sd.SetViewScope")
++          .doesNotContainAnyElementsOf(MAP_WRITES);
+     }
+   }
+ 
+   /** C8：两个 MCP server 同时监听、端口不同；{@code close()} 后两者都不可连。 */
+   @Test
+   void bothServersListenAndCloseReleasesBothPorts() {
+     int existingPort = shell.boundMcpPort();
+     int decisionPort = shell.boundDecisionAgentMcpPort();
+     assertThat(existingPort).as("现有口已绑定").isPositive();
+     assertThat(decisionPort).as("决策人口已绑定").isPositive();
+diff --git a/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java b/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
+index 1af87c4..ee0b63e 100644
+--- a/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
++++ b/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
+@@ -88,39 +88,49 @@ class McpServerTest {
+   private static final HexCoord H13 = new HexCoord(1, 3);
+ 
+   private static final UnitId U1 = new UnitId("u-1");
+   private static final int CHECKPOINT_INTERVAL = 100;
+ 
+   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
+   private static final String TEST_INITIATOR = "agent:t7-test";
+ 
+   private static final String SERVER_NAME = "simos-shell";
+ 
+-  /** 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 4 GM 窄写（spec §七.2 的 C6；T10 起 +StartDecision）。 */
++  /**
++   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 4 sd 窄写 + **7 map 窄写**（spec §七.2 的 C6；T10 起
++   * +StartDecision，M1 起 +7 map）= 23 条。
++   */
+   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
+       List.of(
+           "simos.command.catalog",
+           "simos.state.resolve",
+           "simos.state.facets",
+           "simos.timeline.branches",
+           "simos.map.overview",
+           "simos.map.hex",
+           "simos.unit.list",
+           "simos.unit.get",
+           "simos.social.population",
+           "simos.command.submit",
+           "simos.advance",
+           "simos.fork",
+           "sd.IssueDirective",
+           "sd.SubmitVerdict",
+           "sd.SetViewScope",
+-          "sd.StartDecision");
++          "sd.StartDecision",
++          "map.SetTerrain",
++          "map.SetEdge",
++          "map.CreateRegion",
++          "map.UpdateRegion",
++          "map.DeleteRegion",
++          "map.RandomizeRegion",
++          "map.RegisterPathwayGroup");
+ 
+   private static final Duration WAIT = Duration.ofSeconds(10);
+ 
+   private static final ObjectMapper JSON = new ObjectMapper();
+ 
+   @TempDir Path tempDir;
+ 
+   private Shell shell;
+   private McpSyncClient client;
+ 
+@@ -162,21 +172,21 @@ class McpServerTest {
+ 
+   @Test
+   void initializeAndToolsListExposeExactlyTheExternalUnionGmTools() {
+     McpSchema.InitializeResult init = client.initialize();
+     assertThat(init.serverInfo().name()).as("MCP server 自报名称（spec §7.2）").isEqualTo(SERVER_NAME);
+     assertThat(shell.boundMcpPort()).as("MCP owned 形态暴露实际绑定端口").isPositive();
+ 
+     McpSchema.ListToolsResult tools = client.listTools();
+     assertThat(tools.tools())
+         .extracting(McpSchema.Tool::name)
+-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 16 条（C6：含通用写与 GM 窄工具）")
++        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 23 条（C6：含通用写、sd 窄工具与 7 条 map 窄写）")
+         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
+   }
+ 
+   // ── 读：与 QueryService 直接调用逐值对拍 ────────────────────────────────
+ 
+   @Test
+   void unitListMatchesQueryServicePerValue() throws Exception {
+     client.initialize();
+ 
+     McpSchema.CallToolResult result =
+diff --git a/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java b/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+index eef4d89..9281cb6 100644
+--- a/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
++++ b/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+@@ -1,31 +1,39 @@
+ package io.mosire.simos.app.tools;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatThrownBy;
+ 
+ import com.fasterxml.jackson.databind.JsonNode;
+ import com.fasterxml.jackson.databind.ObjectMapper;
++import io.mosire.agentlib.approval.AskKind;
+ import io.mosire.agentlib.approval.ToolGate;
+ import io.mosire.agentlib.permission.AccessToken;
+ import io.mosire.agentlib.permission.AgentPermissionSet;
+ import io.mosire.agentlib.permission.ResourceAuthorizer;
+ import io.mosire.agentlib.permission.ResourceManifest;
+ import io.mosire.agentlib.permission.ResourcePolicy;
+ import io.mosire.agentlib.permission.ToolSpec;
+ import io.mosire.agentlib.tool.AgentTool;
+ import io.mosire.agentlib.tool.ToolContext;
+ import io.mosire.agentlib.tool.ToolResult;
+ import io.mosire.simos.app.Shell;
+ import io.mosire.simos.app.ShellConfig;
+ import io.mosire.simos.app.query.QueryService.QueryTarget;
+ import io.mosire.simos.app.tools.read.CatalogTool;
++import io.mosire.simos.app.tools.write.MapCreateRegionTool;
++import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
++import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
++import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
++import io.mosire.simos.app.tools.write.MapSetEdgeTool;
++import io.mosire.simos.app.tools.write.MapSetTerrainTool;
++import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+ import io.mosire.simos.core.CoreSimos;
+ import io.mosire.simos.core.state.WorldChangeSet;
+ import io.mosire.simos.core.store.CheckpointEncoder;
+ import io.mosire.simos.core.store.CheckpointStore;
+ import io.mosire.simos.core.store.SqliteStore;
+ import io.mosire.simos.core.timeline.RevisionRow;
+ import io.mosire.simos.core.timeline.Timeline;
+ import io.mosire.simos.map.GameMap;
+ import io.mosire.simos.map.HexCell;
+ import io.mosire.simos.map.MapSnapshot;
+@@ -93,39 +101,97 @@ class SimosToolsTest {
+   private static final HexCoord H11 = new HexCoord(1, 1);
+   private static final HexCoord H12 = new HexCoord(1, 2);
+   private static final HexCoord H13 = new HexCoord(1, 3);
+ 
+   private static final UnitId U1 = new UnitId("u-1");
+   private static final int CHECKPOINT_INTERVAL = 100;
+ 
+   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
+   private static final String TEST_INITIATOR = "agent:t5-test";
+ 
+-  /** 现有口（T4：EXTERNAL ∪ GM）的工具面：前 9 条读，后 7 条写（3 通用写 + 4 GM 窄写）。 */
++  /** 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 14 写（3 通用写 + 4 sd 窄写 + **7 map 窄写**，M1）。 */
+   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
+       List.of(
+           "simos.command.catalog",
+           "simos.state.resolve",
+           "simos.state.facets",
+           "simos.timeline.branches",
+           "simos.map.overview",
+           "simos.map.hex",
+           "simos.unit.list",
+           "simos.unit.get",
+           "simos.social.population",
+           "simos.command.submit",
+           "simos.advance",
+           "simos.fork",
+           "sd.IssueDirective",
+           "sd.SubmitVerdict",
+           "sd.SetViewScope",
+-          "sd.StartDecision");
++          "sd.StartDecision",
++          "map.SetTerrain",
++          "map.SetEdge",
++          "map.CreateRegion",
++          "map.UpdateRegion",
++          "map.DeleteRegion",
++          "map.RandomizeRegion",
++          "map.RegisterPathwayGroup");
++
++  /**
++   * 读工具名单（9 条）：读闸**按名字选**，不用索引切片。
++   *
++   * <p>★ 索引切片（{@code subList(0, 9)}）在名单变长后**仍然合法** ⇒ 断言照绿、判别力静默流失。
++   */
++  private static final List<String> READ_TOOL_NAMES =
++      List.of(
++          "simos.command.catalog",
++          "simos.state.resolve",
++          "simos.state.facets",
++          "simos.timeline.branches",
++          "simos.map.overview",
++          "simos.map.hex",
++          "simos.unit.list",
++          "simos.unit.get",
++          "simos.social.population");
++
++  /**
++   * 写工具全集（14 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
++   *
++   * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
++   * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
++   */
++  private static final List<String> WRITE_TOOL_NAMES =
++      List.of(
++          "simos.command.submit",
++          "simos.advance",
++          "simos.fork",
++          "sd.IssueDirective",
++          "sd.SubmitVerdict",
++          "sd.SetViewScope",
++          "sd.StartDecision",
++          "map.SetTerrain",
++          "map.SetEdge",
++          "map.CreateRegion",
++          "map.UpdateRegion",
++          "map.DeleteRegion",
++          "map.RandomizeRegion",
++          "map.RegisterPathwayGroup");
++
++  /** M1 的 7 条 map 窄写：进 **GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含），**不进** EXTERNAL 桶、**不进**决策桶。 */
++  private static final List<String> MAP_WRITE_NAMES =
++      List.of(
++          "map.SetTerrain",
++          "map.SetEdge",
++          "map.CreateRegion",
++          "map.UpdateRegion",
++          "map.DeleteRegion",
++          "map.RandomizeRegion",
++          "map.RegisterPathwayGroup");
+ 
+   private static final List<String> EXPECTED_COMMAND_TYPES =
+       List.of(
+           "unit.RenameUnit",
+           "unit.CreateUnit",
+           "unit.ReparentUnit",
+           "unit.SetStrength",
+           "unit.PlaceAt",
+           "unit.PlanRoute",
+           "unit.CancelRoute",
+@@ -200,20 +266,54 @@ class SimosToolsTest {
+ 
+   // ── 注册面 ────────────────────────────────────────────────────────────
+ 
+   @Test
+   void registryContainsExactlyTheExternalUnionGmTools() {
+     assertThat(shell.toolRegistry().list())
+         .extracting(AgentTool::name)
+         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
+   }
+ 
++  /**
++   * ★ M1 判据 2：**名字同源** —— 7 条 map 窄工具各自钉死的命令类型 == 它在名单里登记的名字（{@code AbstractNarrowWriteTool.name()}
++   * 直返 {@code commandType()}），且同一批名字在 GM 桶里能按名找到、7 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源
++   * ⇒ 名能到达 handler）。
++   *
++   * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的已注册类型，这里当场红。
++   */
++  @Test
++  void mapNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
++    CoreSimos core = shell.coreSimos();
++    String mapId = ShellConfig.defaults(tempDir).mapId();
++    List<AgentTool> mapTools =
++        List.of(
++            new MapSetTerrainTool(core, TEST_INITIATOR, mapId),
++            new MapSetEdgeTool(core, TEST_INITIATOR, mapId),
++            new MapCreateRegionTool(core, TEST_INITIATOR, mapId),
++            new MapUpdateRegionTool(core, TEST_INITIATOR, mapId),
++            new MapDeleteRegionTool(core, TEST_INITIATOR, mapId),
++            new MapRandomizeRegionTool(core, TEST_INITIATOR, mapId),
++            new MapRegisterPathwayGroupTool(core, TEST_INITIATOR, mapId));
++
++    assertThat(toolNames(mapTools))
++        .as("7 条 map 窄工具的 name() == 它们各自钉死的命令类型")
++        .containsExactlyElementsOf(MAP_WRITE_NAMES);
++    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
++        .as("同一批名字在 GM 桶里按名可寻")
++        .containsAll(MAP_WRITE_NAMES);
++
++    JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
++    assertThat(textValues(types))
++        .as("7 个 map 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
++        .containsAll(MAP_WRITE_NAMES);
++  }
++
+   @Test
+   void catalogListsExactlyTheRegisteredCommandTypes() throws Exception {
+     ToolResult result = call("simos.command.catalog", Map.of());
+ 
+     assertThat(result.success()).isTrue();
+     JsonNode body = JSON.readTree(result.message());
+     assertThat(textValues(body.get("types")))
+         .as("catalog 与已注册 handler 同源（R5：catalog 列出的每个 type 都能经 submit 到达）")
+         .hasSize(EXPECTED_COMMAND_TYPES.size())
+         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
+@@ -247,46 +347,66 @@ class SimosToolsTest {
+    * {@code sd.*} 窄工具；外部 MCP 桶保留现状（有通用写）；**现有运行时口 = EXTERNAL_WITH_GM 复合桶**（通用写 ∪ GM 窄写，读共享）。
+    */
+   @Test
+   void roleBucketsNeverCarryGenericWrite() {
+     List<String> gm = toolNames(shell.toolsFor(SimosToolSource.Role.GM));
+     List<String> agent = toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
+     List<String> external = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL));
+     List<String> externalWithGm = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM));
+ 
+     assertThat(gm)
++        .as("M1 判据 1：GM 桶无通用写，且含 7 条 map 窄写")
+         .doesNotContain("simos.command.submit")
+-        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision");
++        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
++        .containsAll(MAP_WRITE_NAMES);
+     assertThat(agent)
++        .as("M1 判据 1：决策桶**没有**任何 map 窄写（也没有通用写与 SetViewScope/StartDecision）")
+         .doesNotContain("simos.command.submit", "sd.SetViewScope", "sd.StartDecision")
+-        .contains("sd.IssueDirective", "sd.SubmitVerdict");
++        .contains("sd.IssueDirective", "sd.SubmitVerdict")
++        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES);
+     assertThat(external)
++        .as("M1 判据 1：EXTERNAL 桶**没有**任何 map 窄写")
+         .contains("simos.command.submit")
+         .doesNotContain(
+-            "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision");
++            "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
++        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES);
+     assertThat(externalWithGm)
+-        .as("T4/D2：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 GM 窄写 = 16）")
++        .as("T4/D2 + M1 判据 1：现有口 = EXTERNAL ∪ GM" + "（9 读 + 3 通用写 + 4 sd 窄写 + 7 map 窄写 = 23）")
+         .contains(
+             "simos.command.submit",
+             "simos.advance",
+             "simos.fork",
+             "sd.IssueDirective",
+             "sd.SubmitVerdict",
+             "sd.SetViewScope",
+             "sd.StartDecision")
+-        .hasSize(16);
++        .containsAll(MAP_WRITE_NAMES)
++        .hasSize(23);
+   }
+ 
+   private static List<String> toolNames(List<AgentTool> tools) {
+     return tools.stream().map(AgentTool::name).toList();
+   }
+ 
++  /**
++   * 写闸**实际覆盖**的工具名。★★ 它从**真工具面**（{@code EXTERNAL_WITH_GM} 桶）派生、减去读名单，**不是**从名单常量取下标 切片。
++   *
++   * <p>这是 M1 修掉的那处缺陷的替代形态：原实现用 {@code subList(9, 16)}，名单加到 23 条后切片**仍然合法** ⇒ 新增的 7 条 map
++   * 写工具完全不被写闸覆盖、且没有任何症状。现在覆盖集从工具面派生，退化成切片会当场红。
++   */
++  private List<String> writeFaceCoveredByTheWriteGate() {
++    return shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM).stream()
++        .map(AgentTool::name)
++        .filter(name -> !READ_TOOL_NAMES.contains(name))
++        .toList();
++  }
++
+   /**
+    * ★ T10-j：载荷提示表缺项 ⇒ **构造期拒绝**（不再 {@code getOrDefault(type, "")} 静默填空串）。
+    *
+    * <p>这是"声明式清单不随注册面自动延伸"这一族的**故意违规用例**：给一个没有提示的 type，{@link CatalogTool} 必须当场抛且消息点名该 type
+    * ——缺项不再伪装成"有值（空串）"。
+    */
+   @Test
+   void catalogRejectsACommandTypeWithoutAPayloadHint() {
+     assertThatThrownBy(() -> new CatalogTool(Set.of("unit.NotARealCommand")))
+         .isInstanceOf(IllegalArgumentException.class)
+@@ -312,48 +432,60 @@ class SimosToolsTest {
+             types.add(matcher.group(1));
+           }
+         }
+       }
+     }
+     return types;
+   }
+ 
+   @Test
+   void readsAreAllowGatedAndDeclareTheirResources() {
+-    for (String name : EXTERNAL_UNION_GM_TOOL_NAMES.subList(0, 9)) {
++    // ★ 按**名字**选，不用索引切片（切片在名单变长后仍合法 ⇒ 判别力静默流失）。
++    for (String name : READ_TOOL_NAMES) {
+       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
+       assertThat(tool.spec()).as("%s 是常规读工具", name).isEqualTo(ToolSpec.DEFAULT);
+       assertThat(tool.gate(context(tool, Map.of()))).as("%s 直放", name).isEqualTo(ToolGate.ALLOW);
+     }
+     assertThat(shell.toolRegistry().find("simos.state.resolve").orElseThrow().resources())
+         .isEqualTo(ToolSupport.ALL_READ);
+     assertThat(shell.toolRegistry().find("simos.map.hex").orElseThrow().resources())
+         .isEqualTo(ResourceManifest.of("map", ResourcePolicy.READ_ONLY));
+     assertThat(shell.toolRegistry().find("simos.unit.get").orElseThrow().resources())
+         .isEqualTo(ResourceManifest.of("unit", ResourcePolicy.READ_ONLY));
+     assertThat(shell.toolRegistry().find("simos.social.population").orElseThrow().resources())
+         .isEqualTo(ResourceManifest.of("social", ResourcePolicy.READ_ONLY));
+     assertThat(shell.toolRegistry().find("simos.command.catalog").orElseThrow().resources())
+         .isEqualTo(ResourceManifest.NONE);
+     assertThat(shell.toolRegistry().find("simos.timeline.branches").orElseThrow().resources())
+         .isEqualTo(ResourceManifest.NONE);
+   }
+ 
+   @Test
+   void writesAreSensitiveAndAskWithTheToolNameAsClassKey() {
+-    for (String name : EXTERNAL_UNION_GM_TOOL_NAMES.subList(9, 16)) {
++    List<String> covered = writeFaceCoveredByTheWriteGate();
++    assertThat(covered)
++        .as("★ 写闸覆盖集 == 写工具全集（现有口 ∖ 读名单）：退回索引切片会让新增的写工具静默逃出写闸")
++        .containsExactlyInAnyOrderElementsOf(WRITE_TOOL_NAMES);
++    assertThat(READ_TOOL_NAMES).as("读名单与写名单互斥").doesNotContainAnyElementsOf(WRITE_TOOL_NAMES);
++    assertThat(Stream.concat(READ_TOOL_NAMES.stream(), WRITE_TOOL_NAMES.stream()).toList())
++        .as("读名单 + 写名单 == 现有口全名单（完整）：名单加项却没登记到任一侧，这里红")
++        .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
++    for (String name : covered) {
+       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
+       assertThat(tool.spec().sensitive()).as("%s 是敏感写", name).isTrue();
+       assertThat(tool.spec().noExport()).as("%s 不外发标记为假（无内部工具）", name).isFalse();
+       ToolGate gate = tool.gate(context(tool, Map.of()));
+       assertThat(gate).as("%s 需审批", name).isInstanceOf(ToolGate.Ask.class);
+       assertThat(((ToolGate.Ask) gate).classKey()).isEqualTo(name);
++      assertThat(((ToolGate.Ask) gate).kind())
++          .as("M1 判据 3：%s 的 gate 是 AskKind.SENSITIVE（走审批门链）", name)
++          .isEqualTo(AskKind.SENSITIVE);
+     }
+     assertThat(shell.toolRegistry().find("simos.command.submit").orElseThrow().resources())
+         .isEqualTo(ToolSupport.ALL_WRITE);
+     assertThat(shell.toolRegistry().find("simos.advance").orElseThrow().resources())
+         .isEqualTo(ToolSupport.ALL_WRITE);
+     assertThat(shell.toolRegistry().find("simos.fork").orElseThrow().resources())
+         .as("spec §7.1：fork 无资源命名空间")
+         .isEqualTo(ResourceManifest.NONE);
+   }
+ 
+@@ -440,20 +572,120 @@ class SimosToolsTest {
+     ToolResult result = call("simos.command.submit", args);
+ 
+     assertThat(result.success()).isFalse();
+     assertThat(result.code()).isEqualTo("CONFLICT");
+     JsonNode body = JSON.readTree(result.message());
+     assertThat(body.get("current").get("branch").asText()).isEqualTo("main");
+     assertThat(body.get("current").get("revision").asLong()).as("返回的是真实 head").isEqualTo(1L);
+     assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(1L);
+   }
+ 
++  // ── M1 判据 4：前置即错——7 条 map 窄写各一条「坏载荷 ⇒ 可读 REJECTED 且 head 不变」────────
++  //    ★ 域层守卫逐条已在（工具层不再写一遍：那份校验能被 simos.command.submit 绕过 ⇒ 是装饰）。
++  //    ★ **每条各一个用例**：写成循环里断 7 次时，变异杀掉一条其余六条照样绿（判别力被稀释）。
++
++  @Test
++  void mapSetTerrainToolSurfacesTheDomainRejectionForAnUnknownTerrain() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        MapSetTerrainTool.NAME,
++        "{\"hexes\":[{\"q\":1,\"r\":1}],\"terrain\":\"not_a_terrain\"}",
++        "未知地形类型");
++  }
++
++  @Test
++  void mapSetEdgeToolSurfacesTheDomainRejectionForAnUnregisteredKind() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        MapSetEdgeTool.NAME,
++        "{\"kind\":\"not_registered\",\"edges\":[\"1_1|1_2\"],\"mode\":\"merge\"}",
++        "未知连通性类型");
++  }
++
++  /**
++   * ★ {@code map.CreateRegion} 的坏载荷 = **regionId 已存在**：本夹具里没有任何区域，故先经**同一条窄工具**真建一个， 再用同一个 id
++   * 建第二次——第二次必须被域层拒、head 停在第一次之后的那个号。
++   */
++  @Test
++  void mapCreateRegionToolSurfacesTheDomainRejectionForADuplicateId() throws Exception {
++    String payload = "{\"regionId\":\"t1-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}]}";
++    ToolResult created = callNarrowWrite(MapCreateRegionTool.NAME, payload, 1L);
++    assertThat(created.success()).as(created.message()).isTrue();
++    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
++        .as("第一次建区域成功 ⇒ head 前进一步")
++        .isEqualTo(2L);
++
++    assertDomainRejectedAndHeadUnchanged(MapCreateRegionTool.NAME, payload, "区域已存在");
++  }
++
++  @Test
++  void mapUpdateRegionToolSurfacesTheDomainRejectionWhenNeitherHexesNorMetaIsGiven()
++      throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        MapUpdateRegionTool.NAME,
++        "{\"regionId\":\"t1-region\"}",
++        "map.UpdateRegion 必须至少给 hexes 与 meta 之一");
++  }
++
++  @Test
++  void mapDeleteRegionToolSurfacesTheDomainRejectionForAnUnknownRegion() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        MapDeleteRegionTool.NAME, "{\"regionId\":\"没有这个区域\"}", "区域不存在");
++  }
++
++  @Test
++  void mapRandomizeRegionToolSurfacesTheDomainRejectionForAnEmptySelection() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        MapRandomizeRegionTool.NAME,
++        "{\"hexes\":[],\"seed\":7}",
++        "hexes 不得为空：一条 map.RandomizeRegion 至少要选一格");
++  }
++
++  @Test
++  void mapRegisterPathwayGroupToolSurfacesTheDomainRejectionForAMalformedColor() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        MapRegisterPathwayGroupTool.NAME,
++        "{\"id\":\"t1-canal\",\"name\":\"运河\",\"color\":\"red\"}",
++        "color 必须是 #RRGGBB 形式");
++  }
++
++  /**
++   * 窄写调用形态：{@code payloadJson} + {@code branch=main} + {@code expectedRevision}（类型由工具钉死，schema
++   * 里没有）。
++   */
++  private ToolResult callNarrowWrite(String toolName, String payloadJson, long expectedRevision) {
++    Map<String, Object> args = new LinkedHashMap<>();
++    args.put("payloadJson", payloadJson);
++    args.put("branch", "main");
++    args.put("expectedRevision", expectedRevision);
++    return call(toolName, args);
++  }
++
++  /**
++   * M1 判据 4 的共同断言：坏载荷经窄工具提交 ⇒ {@code REJECTED} + **域层理由原文到达调用方** + head 不变。
++   *
++   * <p>★ 理由断的是**域层文案的关键片段**（如「未知地形类型」），不是 {@code Rejected} 这个词——只判 token 判不出是哪一层拒的
++   * （域层的空载荷兜底消息往往也含同一个字段名）。
++   */
++  private void assertDomainRejectedAndHeadUnchanged(
++      String toolName, String payloadJson, String reasonFragment) throws Exception {
++    long headBefore = shell.coreSimos().head(main()).orElseThrow().value();
++    ToolResult result = callNarrowWrite(toolName, payloadJson, headBefore);
++
++    assertThat(result.success()).as("%s：坏载荷不得成功", toolName).isFalse();
++    assertThat(result.code()).as("%s 折成 REJECTED", toolName).isEqualTo("REJECTED");
++    assertThat(JSON.readTree(result.message()).get("reason").asText())
++        .as("%s：域层理由原文必须到达调用方", toolName)
++        .contains(reasonFragment);
++    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
++        .as("%s：被拒的命令不留 revision", toolName)
++        .isEqualTo(headBefore);
++  }
++
+   // ── 读：与 QueryService 逐值对拍 ────────────────────────────────────────
+ 
+   @Test
+   void readToolsMatchQueryServicePerValue() throws Exception {
+     QueryTarget head = QueryTarget.head(main());
+ 
+     ToolResult resolve = call("simos.state.resolve", Map.of("address", "map:Map1:[1,1]"));
+     QueryResult expected = shell.queryService().resolve("map:Map1:[1,1]", head);
+     JsonNode candidates = JSON.readTree(resolve.message()).get("candidates");
+     assertThat(candidates).hasSize(expected.candidates().size());
