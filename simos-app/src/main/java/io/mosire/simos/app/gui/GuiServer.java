@@ -6,7 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.app.gm.GmToolUsage;
+import io.mosire.simos.app.llm.LlmProvider;
+import io.mosire.simos.app.llm.LlmProviderRegistry;
+import io.mosire.simos.app.llm.LlmProviderResolver;
+import io.mosire.simos.app.llm.SecretRef;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
@@ -24,6 +29,9 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.adjudication.Breakpoints;
+import io.mosire.simos.sd.adjudication.LlmClient;
+import io.mosire.simos.sd.adjudication.LlmRequest;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -53,9 +61,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -120,6 +130,16 @@ public final class GuiServer implements AutoCloseable {
    */
   private static final String START_DECISION_PATH = "/api/sd/start-decision";
 
+  /** LLM provider 面（M11）：app 基础设施的 CRUD 与测试连接（**非世界写**）。 */
+  private static final String LLM_PROVIDERS_PATH = "/api/llm/providers";
+
+  private static final String LLM_PROVIDERS_DELETE_PATH = LLM_PROVIDERS_PATH + "/delete";
+  private static final String LLM_PROVIDERS_TEST_PATH = LLM_PROVIDERS_PATH + "/test";
+
+  /** 决策人绑定 provider 的窄写面（M11）：固定类型 {@code sd.SetDecisionMakerProvider}，落 revision。 */
+  private static final String SET_DECISION_MAKER_PROVIDER_PATH =
+      "/api/sd/set-decision-maker-provider";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -133,10 +153,19 @@ public final class GuiServer implements AutoCloseable {
           "/api/timeline",
           "/api/sd/decision-makers",
           "/api/sd/verdicts",
-          "/api/gm/tool-usage");
+          "/api/gm/tool-usage",
+          LLM_PROVIDERS_PATH);
 
   private static final Set<String> POST_ROUTES =
-      Set.of("/api/command", "/api/advance", "/api/fork", "/api/sd/start-decision");
+      Set.of(
+          "/api/command",
+          "/api/advance",
+          "/api/fork",
+          "/api/sd/start-decision",
+          LLM_PROVIDERS_PATH,
+          LLM_PROVIDERS_DELETE_PATH,
+          LLM_PROVIDERS_TEST_PATH,
+          SET_DECISION_MAKER_PROVIDER_PATH);
 
   /** 判决只读面（T6，spec `C28`）：{@code GET /api/sd/verdicts[?as=<dmId>]}。 */
   private static final String VERDICTS_PATH = "/api/sd/verdicts";
@@ -146,6 +175,9 @@ public final class GuiServer implements AutoCloseable {
   private final SdQueryService sdQueryService;
   private final CoreSimos core;
   private final String mapId;
+
+  /** LLM provider 注册表（M11）：app 层基础设施；{@code null} = 未接入（provider 端点回 503）。 */
+  private final LlmProviderRegistry llmProviderRegistry;
 
   /** GM 口工具使用记录（T8）：{@code GET /api/gm/tool-usage} 的唯一数据源；由 {@code Shell} 注入。 */
   private final GmToolUsage gmToolUsage;
@@ -184,12 +216,31 @@ public final class GuiServer implements AutoCloseable {
       String mapId,
       String approvalBaseUrl,
       GmToolUsage gmToolUsage) {
+    this(queryService, core, mapId, approvalBaseUrl, gmToolUsage, null);
+  }
+
+  /**
+   * 带 LLM provider 注册表（M11）：{@code /api/llm/providers*} 读它；决策人绑定走世界写端点。
+   *
+   * @param llmProviderRegistry provider 注册表；{@code null} = 未接入 ⇒ provider 端点回 503（fail-closed）
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "provider 注册表是组合根（Shell）与 GUI 共享的进程内基础设施（与 coreSimos 同法）；它不是被暴露的内部表示，而是本壳的产物")
+  public GuiServer(
+      QueryService queryService,
+      CoreSimos core,
+      String mapId,
+      String approvalBaseUrl,
+      GmToolUsage gmToolUsage,
+      LlmProviderRegistry llmProviderRegistry) {
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.redactingQueryService = new RedactingQueryService(queryService);
     this.sdQueryService = new SdQueryService(queryService);
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
+    this.llmProviderRegistry = llmProviderRegistry;
     this.approvalBaseUrl = approvalBaseUrl;
     this.approvalClient = HttpClient.newHttpClient();
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -395,6 +446,10 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return gmToolUsageReply();
     }
+    if (path.equals(LLM_PROVIDERS_PATH)) {
+      rejectAs(path, asPresent);
+      return llmProvidersReply();
+    }
     if (path.equals(DECISION_MAKERS_PATH)) {
       rejectAs(path, asPresent);
       return decisionMakersReply(params);
@@ -446,6 +501,18 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(START_DECISION_PATH)) {
       return startDecisionReply(exchange);
+    }
+    if (path.equals(LLM_PROVIDERS_PATH)) {
+      return upsertLlmProviderReply(exchange);
+    }
+    if (path.equals(LLM_PROVIDERS_DELETE_PATH)) {
+      return deleteLlmProviderReply(exchange);
+    }
+    if (path.equals(LLM_PROVIDERS_TEST_PATH)) {
+      return testLlmProviderReply(exchange);
+    }
+    if (path.equals(SET_DECISION_MAKER_PROVIDER_PATH)) {
+      return setDecisionMakerProviderReply(exchange);
     }
     return null;
   }
@@ -780,6 +847,96 @@ public final class GuiServer implements AutoCloseable {
             "sd.StartDecision",
             MAPPER.writeValueAsString(payload));
     return resultReply(core.submit(command));
+  }
+
+  /**
+   * 决策人绑定 provider 窄写（M11 spec §5.1）：固定类型 {@code sd.SetDecisionMakerProvider}，落 revision（与 {@code
+   * /api/sd/start-decision} 同制）。体 {@code {branch, expectedRevision, decisionMakerId, providerId}}。
+   */
+  private Reply setDecisionMakerProviderReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("decisionMakerId", textField(root, "decisionMakerId"));
+    payload.put("providerId", textField(root, "providerId"));
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            "sd.SetDecisionMakerProvider",
+            MAPPER.writeValueAsString(payload));
+    return resultReply(core.submit(command));
+  }
+
+  /** provider 列表（M11）：掩码视图，**绝不回显密钥值**；注册表未接入 ⇒ 503（不静默空表）。 */
+  private Reply llmProvidersReply() {
+    if (llmProviderRegistry == null) {
+      return Reply.of(503, Map.of("error", "LLM provider 注册表未接入"));
+    }
+    return Reply.of(200, Map.of("providers", llmProviderRegistry.views()));
+  }
+
+  private Reply upsertLlmProviderReply(HttpExchange exchange) throws IOException {
+    if (llmProviderRegistry == null) {
+      return Reply.of(503, Map.of("error", "LLM provider 注册表未接入"));
+    }
+    JsonNode root = readBody(exchange);
+    SecretRef apiKeyRef =
+        new SecretRef(
+            SecretRef.Kind.valueOf(textField(root, "apiKeyRefKind").toUpperCase(Locale.ROOT)),
+            textField(root, "apiKeyRef"));
+    long timeoutMs = root.hasNonNull("timeoutMs") ? longField(root, "timeoutMs") : 30_000L;
+    LlmProvider provider =
+        new LlmProvider(
+            textField(root, "id"),
+            textField(root, "baseUrl"),
+            textField(root, "model"),
+            apiKeyRef,
+            Duration.ofMillis(timeoutMs));
+    llmProviderRegistry.upsert(provider);
+    return Reply.of(200, Map.of("provider", llmProviderRegistry.view(provider)));
+  }
+
+  private Reply deleteLlmProviderReply(HttpExchange exchange) throws IOException {
+    if (llmProviderRegistry == null) {
+      return Reply.of(503, Map.of("error", "LLM provider 注册表未接入"));
+    }
+    JsonNode root = readBody(exchange);
+    String id = textField(root, "id");
+    boolean deleted = llmProviderRegistry.delete(id);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("id", id);
+    body.put("deleted", deleted);
+    return Reply.of(200, body);
+  }
+
+  /**
+   * 测试连接（M11）：服务端用该 provider 打一次 {@code complete}。
+   *
+   * <p>★ 失败**不 500**：回 {@code 200 {ok:false, detail}}，让配置页能显示原因（与"没有这个 provider"区分开）。 detail
+   * 只含我们自己的异常消息（无密钥值、无响应体）。
+   */
+  private Reply testLlmProviderReply(HttpExchange exchange) throws IOException {
+    if (llmProviderRegistry == null) {
+      return Reply.of(503, Map.of("error", "LLM provider 注册表未接入"));
+    }
+    JsonNode root = readBody(exchange);
+    String id = textField(root, "id");
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("id", id);
+    try {
+      LlmClient client = new LlmProviderResolver(llmProviderRegistry).llmClientFor(id);
+      client.complete(new LlmRequest(Breakpoints.D1, "请只回复一个 JSON 对象，表示连接正常。", "{\"ping\":true}"));
+      body.put("ok", true);
+      body.put("detail", "连接成功（HTTP 2xx + 合法响应）");
+    } catch (RuntimeException e) {
+      body.put("ok", false);
+      body.put("detail", e.getMessage());
+    }
+    return Reply.of(200, body);
   }
 
   private static Reply resultReply(CommandResult result) {

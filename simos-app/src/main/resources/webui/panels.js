@@ -604,6 +604,7 @@
   var DECISION_SUBPAGES = [
     { id: "view", label: "决策人查看" },
     { id: "approval", label: "审批" },
+    { id: "provider", label: "Provider 配置" },
   ];
 
   /** 子页状态（fail-closed）：未知 id ⇒ `{ok:false, id:null, label:null}`（不兜成第一个子页）。 */
@@ -622,7 +623,11 @@
    */
   function decisionSubpageVisibility(id) {
     var state = decisionSubpageState(id);
-    return { view: state.ok && state.id === "view", approval: state.ok && state.id === "approval" };
+    return {
+      view: state.ok && state.id === "view",
+      approval: state.ok && state.id === "approval",
+      provider: state.ok && state.id === "provider",
+    };
   }
 
   var AFFILIATION_LABELS = { nation: "国家", army: "军队" };
@@ -1068,6 +1073,8 @@
   var decisionApprovalToken = 0;
   var decisionApprovalKey = null;
   var lastDecisionSubpage = null;
+  var providerListToken = 0;
+  var providerListKey = null;
 
   function selectDecisionMakerFromList(maker) {
     var affiliation = maker.affiliation || {};
@@ -1261,7 +1268,300 @@
       });
   }
 
-  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批）。 */
+  // ── M11：Provider 配置子页（纯函数 + 渲染 + 写动作）────────────────────────────
+  //
+  // ★ 边界：provider 是 app 层基础设施（不是世界事实）⇒ 它的 CRUD 打 /api/llm/providers*（非命令写）；
+  //   决策人绑定打窄端点 /api/sd/set-decision-maker-provider（服务端固定 sd.SetDecisionMakerProvider，落 revision）。
+  // ★ 密钥纪律：页面**只显示引用**（apiKeyRef.kind/ref）与"是否可解析"，**绝不回显密钥值**。
+
+  /** provider 只读投影：缺值一律「—」（不编造）；`secretResolvable` 三态（true/false/未知）。 */
+  function providerFields(provider) {
+    var p = provider || {};
+    var keyRef = p.apiKeyRef || {};
+    return {
+      id: p.id === null || p.id === undefined ? "—" : String(p.id),
+      baseUrl: p.baseUrl ? String(p.baseUrl) : "—",
+      model: p.model ? String(p.model) : "—",
+      keyKind: keyRef.kind ? String(keyRef.kind) : "—",
+      keyRef: keyRef.ref ? String(keyRef.ref) : "—",
+      timeoutMs: p.timeoutMs === null || p.timeoutMs === undefined ? "—" : String(p.timeoutMs),
+      resolvable:
+        p.secretResolvable === true ? "可解析" : p.secretResolvable === false ? "不可解析" : "未知",
+    };
+  }
+
+  /** 表单 ⇒ upsert 载荷（纯函数）：缺必填 / 坏 enum / 坏 timeout ⇒ `{ok:false, error}`，绝不造默认值。 */
+  function providerFormToPayload(form) {
+    var f = form || {};
+    function text(v) {
+      return String(v === null || v === undefined ? "" : v).trim();
+    }
+    var id = text(f.id);
+    var baseUrl = text(f.baseUrl);
+    var model = text(f.model);
+    var keyKind = text(f.apiKeyRefKind).toUpperCase();
+    var keyRef = text(f.apiKeyRef);
+    if (!id) {
+      return { ok: false, error: "id 必填" };
+    }
+    if (!baseUrl) {
+      return { ok: false, error: "baseUrl 必填" };
+    }
+    if (!model) {
+      return { ok: false, error: "model 必填" };
+    }
+    if (keyKind !== "ENV" && keyKind !== "FILE") {
+      return { ok: false, error: "apiKeyRefKind 必须是 ENV 或 FILE" };
+    }
+    if (!keyRef) {
+      return { ok: false, error: "apiKeyRef 必填" };
+    }
+    var payload = { id: id, baseUrl: baseUrl, model: model, apiKeyRefKind: keyKind, apiKeyRef: keyRef };
+    var hasTimeout = f.timeoutMs !== undefined && f.timeoutMs !== null && String(f.timeoutMs).trim() !== "";
+    if (hasTimeout) {
+      var timeoutMs = Number(f.timeoutMs);
+      if (!isFinite(timeoutMs) || timeoutMs <= 0 || Math.floor(timeoutMs) !== timeoutMs) {
+        return { ok: false, error: "timeoutMs 必须是正整数" };
+      }
+      payload.timeoutMs = timeoutMs;
+    }
+    return { ok: true, value: payload };
+  }
+
+  /** 绑定表单 ⇒ 载荷（纯函数）：dm / provider 都必须非空白。 */
+  function providerBindingPayload(branch, expectedRevision, decisionMakerId, providerId) {
+    function text(v) {
+      return String(v === null || v === undefined ? "" : v).trim();
+    }
+    var dm = text(decisionMakerId);
+    var provider = text(providerId);
+    if (!dm) {
+      return { ok: false, error: "decisionMakerId 必填" };
+    }
+    if (!provider) {
+      return { ok: false, error: "providerId 必填" };
+    }
+    return {
+      ok: true,
+      value: {
+        branch: branch,
+        expectedRevision: expectedRevision,
+        decisionMakerId: dm,
+        providerId: provider,
+      },
+    };
+  }
+
+  function setProviderStatus(message, tone) {
+    app.statusMessage(app.byId("provider-status"), message, tone);
+  }
+
+  function setProviderBindStatus(message, tone) {
+    app.statusMessage(app.byId("provider-bind-status"), message, tone);
+  }
+
+  function formValue(id) {
+    var node = app.byId(id);
+    return node && node.value !== undefined ? node.value : "";
+  }
+
+  /** 读 provider 表单（DOM 适配层；判定逻辑在纯函数 providerFormToPayload 里）。 */
+  function readProviderForm() {
+    return {
+      id: formValue("provider-id"),
+      baseUrl: formValue("provider-baseurl"),
+      model: formValue("provider-model"),
+      apiKeyRefKind: formValue("provider-keykind"),
+      apiKeyRef: formValue("provider-keyref"),
+      timeoutMs: formValue("provider-timeout"),
+    };
+  }
+
+  function saveProvider() {
+    var parsed = providerFormToPayload(readProviderForm());
+    if (!parsed.ok) {
+      setProviderStatus(parsed.error, "err");
+      return;
+    }
+    setProviderStatus("保存中…", "muted");
+    api
+      .saveLlmProvider(parsed.value)
+      .then(function (body) {
+        var saved = body && body.provider ? body.provider.id : parsed.value.id;
+        setProviderStatus("已保存：" + saved, "ok");
+        renderProviderConfig(app.getState(), true);
+      })
+      .catch(function (e) {
+        setProviderStatus("保存失败：" + e.message, "err");
+      });
+  }
+
+  function deleteProvider(id) {
+    if (!id) {
+      return;
+    }
+    setProviderStatus("删除中…", "muted");
+    api
+      .deleteLlmProvider(id)
+      .then(function (body) {
+        setProviderStatus(body && body.deleted ? "已删除：" + id : "未找到：" + id, "ok");
+        renderProviderConfig(app.getState(), true);
+      })
+      .catch(function (e) {
+        setProviderStatus("删除失败：" + e.message, "err");
+      });
+  }
+
+  function testProvider(id) {
+    if (!id) {
+      return;
+    }
+    setProviderStatus("测试连接 " + id + "…", "muted");
+    api
+      .testLlmProvider(id)
+      .then(function (body) {
+        var ok = body && body.ok === true;
+        setProviderStatus((ok ? "连接成功：" : "连接失败：") + (body ? body.detail : ""), ok ? "ok" : "err");
+      })
+      .catch(function (e) {
+        setProviderStatus("测试失败：" + e.message, "err");
+      });
+  }
+
+  function bindDecisionMakerProvider() {
+    var target = app.target();
+    var parsed = providerBindingPayload(
+      target.branch,
+      target.revision,
+      formValue("provider-bind-maker"),
+      formValue("provider-bind-provider")
+    );
+    if (!parsed.ok) {
+      setProviderBindStatus(parsed.error, "err");
+      return;
+    }
+    setProviderBindStatus("提交绑定…", "muted");
+    api
+      .setDecisionMakerProvider(
+        parsed.value.branch,
+        parsed.value.expectedRevision,
+        parsed.value.decisionMakerId,
+        parsed.value.providerId
+      )
+      .then(function (body) {
+        var result = body && body.result ? body.result : "?";
+        setProviderBindStatus("绑定结果：" + result, result === "committed" ? "ok" : "err");
+        app.invalidateState();
+      })
+      .catch(function (e) {
+        setProviderBindStatus("绑定失败：" + e.message, "err");
+      });
+  }
+
+  /** 渲染 provider 列表 + 两个下拉（真读 /api/llm/providers 与决策人列表）。 */
+  function renderProviderConfig(state, force) {
+    var mount = app.byId("provider-list-mount");
+    if (!mount) {
+      return;
+    }
+    var key = "providers:" + targetLabel();
+    if (!force && key === providerListKey) {
+      return;
+    }
+    providerListKey = key;
+    var token = ++providerListToken;
+    app.clear(mount);
+    mount.appendChild(app.el("p", { class: "empty", text: "载入 provider…" }));
+    Promise.all([
+      api.llmProviders(),
+      api.cachedDecisionMakers(app.target()).catch(function () {
+        return { decisionMakers: [] };
+      }),
+    ])
+      .then(function (results) {
+        if (token !== providerListToken) {
+          return;
+        }
+        drawProviderList((results[0] && results[0].providers) || []);
+        fillBindingSelects((results[1] && results[1].decisionMakers) || [], (results[0] && results[0].providers) || []);
+      })
+      .catch(function (e) {
+        if (token !== providerListToken) {
+          return;
+        }
+        app.clear(mount);
+        mount.appendChild(app.el("p", { class: "empty", text: "provider 载入失败：" + e.message }));
+      });
+  }
+
+  function drawProviderList(providers) {
+    var mount = app.byId("provider-list-mount");
+    if (!mount) {
+      return;
+    }
+    app.clear(mount);
+    if (!providers.length) {
+      mount.appendChild(app.el("p", { class: "empty", text: "尚未配置 provider。" }));
+      return;
+    }
+    providers.forEach(function (provider) {
+      var fields = providerFields(provider);
+      var row = app.el("div", { class: "provider-item" });
+      row.setAttribute("data-provider-id", String(provider.id));
+      row.appendChild(app.el("div", { class: "provider-title", text: fields.id + " · " + fields.model }));
+      row.appendChild(app.el("div", { class: "provider-meta", text: fields.baseUrl }));
+      row.appendChild(
+        app.el("div", {
+          class: "provider-secret",
+          text: "密钥 " + fields.keyKind + ":" + fields.keyRef + "（" + fields.resolvable + "）",
+        })
+      );
+      var actions = app.el("div", { class: "provider-actions" });
+      [["test", "测试连接"], ["delete", "删除"]].forEach(function (pair) {
+        var button = app.el("button", { type: "button", text: pair[1] });
+        button.setAttribute("data-provider-action", pair[0]);
+        button.addEventListener("click", function () {
+          if (pair[0] === "test") {
+            testProvider(provider.id);
+          } else {
+            deleteProvider(provider.id);
+          }
+        });
+        actions.appendChild(button);
+      });
+      row.appendChild(actions);
+      mount.appendChild(row);
+    });
+  }
+
+  function fillSelect(id, options, placeholder) {
+    var select = app.byId(id);
+    if (!select) {
+      return;
+    }
+    app.clear(select);
+    select.appendChild(app.el("option", { value: "", text: placeholder }));
+    options.forEach(function (option) {
+      select.appendChild(app.el("option", { value: option.value, text: option.label }));
+    });
+  }
+
+  function fillBindingSelects(makers, providers) {
+    var makerOptions = (makers || [])
+      .filter(function (m) {
+        return m && m.id;
+      })
+      .map(function (m) {
+        return { value: String(m.id), label: String(m.id) };
+      });
+    var providerOptions = (providers || []).map(function (p) {
+      return { value: String(p.id), label: String(p.id) };
+    });
+    fillSelect("provider-bind-maker", makerOptions, "选择决策人…");
+    fillSelect("provider-bind-provider", providerOptions, "选择 provider…");
+  }
+
+  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批 + provider 配置）。 */
   function renderDecision(state) {
     if (!state || state.mode !== "decision") {
       lastDecisionSubpage = null;
@@ -1276,6 +1576,8 @@
       renderDecisionRight(state);
     } else if (subpage.approval) {
       renderDecisionApproval(entered);
+    } else if (subpage.provider) {
+      renderProviderConfig(state, entered);
     }
   }
 
@@ -1284,6 +1586,14 @@
     var startButton = app.byId("decision-start");
     if (startButton && startButton.addEventListener) {
       startButton.addEventListener("click", decideStartDecision);
+    }
+    var saveProviderButton = app.byId("provider-save");
+    if (saveProviderButton && saveProviderButton.addEventListener) {
+      saveProviderButton.addEventListener("click", saveProvider);
+    }
+    var bindProviderButton = app.byId("provider-bind-submit");
+    if (bindProviderButton && bindProviderButton.addEventListener) {
+      bindProviderButton.addEventListener("click", bindDecisionMakerProvider);
     }
     updateStartDecisionControl();
     renderRight(app.getState());
@@ -1326,6 +1636,15 @@
     decisionMakersForNation: decisionMakersForNation,
     decisionMakerForUnit: decisionMakerForUnit,
     decisionMakerFields: decisionMakerFields,
+    // ★ M11：Provider 配置子页的纯函数 + 写动作（门禁直接断言纯函数；无 DOM/IO）。
+    providerFields: providerFields,
+    providerFormToPayload: providerFormToPayload,
+    providerBindingPayload: providerBindingPayload,
+    renderProviderConfig: renderProviderConfig,
+    saveProvider: saveProvider,
+    deleteProvider: deleteProvider,
+    testProvider: testProvider,
+    bindDecisionMakerProvider: bindDecisionMakerProvider,
     /** 决策模式只读投影（e2e/调试）：已载入的决策人数、分组数、聚焦 id、子页可见性。 */
     decisionDebug: function () {
       var state = app.getState();

@@ -285,6 +285,39 @@
     return postJson("/sd/start-decision", body);
   }
 
+  // ── M11：LLM provider（app 基础设施读写）+ 决策人绑定（世界写）─────────────
+
+  /** provider 掩码列表（只读）：{providers:[…]}；**无密钥值**。 */
+  function llmProviders() {
+    return getJson("/llm/providers");
+  }
+
+  function saveLlmProvider(provider) {
+    return postJson("/llm/providers", provider);
+  }
+
+  function deleteLlmProvider(id) {
+    return postJson("/llm/providers/delete", { id: id });
+  }
+
+  function testLlmProvider(id) {
+    return postJson("/llm/providers/test", { id: id });
+  }
+
+  /**
+   * 决策人绑定 provider（M11 世界写）：打窄端点 `POST /api/sd/set-decision-maker-provider`，命令类型由服务端写死
+   * `sd.SetDecisionMakerProvider`（前端不传 type）；落 revision。
+   */
+  function setDecisionMakerProvider(branch, expectedRevision, decisionMakerId, providerId) {
+    invalidateState();
+    return postJson("/sd/set-decision-maker-provider", {
+      branch: branch,
+      expectedRevision: expectedRevision,
+      decisionMakerId: decisionMakerId,
+      providerId: providerId,
+    });
+  }
+
   function approvals() {
     return getJson("/approvals");
   }
@@ -332,6 +365,11 @@
     advance: advance,
     fork: fork,
     startDecision: startDecision,
+    llmProviders: llmProviders,
+    saveLlmProvider: saveLlmProvider,
+    deleteLlmProvider: deleteLlmProvider,
+    testLlmProvider: testLlmProvider,
+    setDecisionMakerProvider: setDecisionMakerProvider,
     approvals: approvals,
     approve: approve,
     gmToolUsage: gmToolUsage,

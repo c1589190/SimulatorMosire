@@ -20,6 +20,7 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.gm.RecordingToolSource;
 import io.mosire.simos.app.gui.GuiServer;
+import io.mosire.simos.app.llm.LlmProviderRegistry;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.sd.SdCommandDrain;
 import io.mosire.simos.app.sd.channel.CliDecisionChannel;
@@ -58,6 +59,7 @@ import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
+import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.SetViewScopeHandler;
 import io.mosire.simos.sd.spi.StartDecisionHandler;
@@ -343,8 +345,14 @@ public final class Shell implements AutoCloseable {
         new IssueDirectiveHandler(new DirectiveWhitelist(commandTypes));
     SubmitVerdictHandler submitVerdictHandler = new SubmitVerdictHandler();
     SetViewScopeHandler setViewScopeHandler = new SetViewScopeHandler();
+    SetDecisionMakerProviderHandler setDecisionMakerProviderHandler =
+        new SetDecisionMakerProviderHandler();
     for (CommandHandler late :
-        List.of(issueDirectiveHandler, submitVerdictHandler, setViewScopeHandler)) {
+        List.of(
+            issueDirectiveHandler,
+            submitVerdictHandler,
+            setViewScopeHandler,
+            setDecisionMakerProviderHandler)) {
       handlers.add(late);
       coreSimos.register(late);
       commandTypes.add(late.type());
@@ -480,6 +488,9 @@ public final class Shell implements AutoCloseable {
     Objects.requireNonNull(mcpServer, "mcpServer");
     Objects.requireNonNull(decisionMcpServer, "decisionMcpServer");
 
+    // LLM provider 注册表（M11）：app 层基础设施，落 <store>/llm-providers.json；密钥只存引用。
+    LlmProviderRegistry llmProviderRegistry = LlmProviderRegistry.load(config.storeDir());
+
     // GUI（T8，spec §3.2 第 7 步）：审批面 base URL 指向刚绑定的端点，5711 的 /api/approvals 是它的透传代理。
     GuiServer guiServer =
         new GuiServer(
@@ -487,7 +498,8 @@ public final class Shell implements AutoCloseable {
             coreSimos,
             config.mapId(),
             "http://127.0.0.1:" + approvalEndpoint.boundPort(),
-            gmToolUsage);
+            gmToolUsage,
+            llmProviderRegistry);
     boolean guiUp = false;
     try {
       guiServer.start(config.bindAddress(), config.guiPort());

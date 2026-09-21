@@ -188,6 +188,24 @@
     );
   }
 
+  /**
+   * 接线决策模式子页单选组（T7 遗留的缺口：setDecisionSubpage 此前只被程序调用、radio 未接）。
+   * 只有 checked 的那个触发切换 ⇒ 与纯函数 fail-closed 判定同源。
+   */
+  function mountDecisionSubpages() {
+    var group = byId("decision-subpages");
+    if (!group || !group.querySelectorAll) {
+      return;
+    }
+    Array.prototype.forEach.call(group.querySelectorAll('input[name="decision-subpage"]'), function (radio) {
+      radio.addEventListener("change", function () {
+        if (radio.checked) {
+          setDecisionSubpage(radio.value);
+        }
+      });
+    });
+  }
+
   /** 接线模式栏按钮；禁用的（归 M8）不接线。 */
   function mountModeBar() {
     var bar = byId("mode-bar");
@@ -435,6 +453,7 @@
     pollState();
     if (byId("mode-bar")) {
       mountModeBar();
+      mountDecisionSubpages();
       if (window.SimosPanels && window.SimosPanels.init) {
         window.SimosPanels.init();
       }
@@ -503,6 +522,7 @@
     applyMode: applyMode,
     applyDecisionSubpage: applyDecisionSubpage,
     mountModeBar: mountModeBar,
+    mountDecisionSubpages: mountDecisionSubpages,
     target: target,
     refreshState: refreshState,
     setServerState: setServerState,

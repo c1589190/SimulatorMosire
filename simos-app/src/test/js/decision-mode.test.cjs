@@ -53,13 +53,14 @@ test("module-loads", () => {
 });
 
 test("subpage-ids-and-labels", () => {
+  // ★ M11 起三个子页：决策人查看 / 审批 / Provider 配置。
   assert.deepEqual(
     P.DECISION_SUBPAGES.map((s) => s.id),
-    ["view", "approval"]
+    ["view", "approval", "provider"]
   );
   assert.deepEqual(
     P.DECISION_SUBPAGES.map((s) => s.label),
-    ["决策人查看", "审批"]
+    ["决策人查看", "审批", "Provider 配置"]
   );
 });
 
@@ -73,22 +74,40 @@ test("subpage-state-is-fail-closed", () => {
   }
   assert.deepEqual(P.decisionSubpageState("view"), { ok: true, id: "view", label: "决策人查看" });
   assert.deepEqual(P.decisionSubpageState("approval"), { ok: true, id: "approval", label: "审批" });
+  assert.deepEqual(P.decisionSubpageState("provider"), {
+    ok: true,
+    id: "provider",
+    label: "Provider 配置",
+  });
 });
 
 test("subpage-visibility-is-mutually-exclusive", () => {
-  // ★ 故意违规（m4 的杀点）：两个子页**恰一个**可见；未知 ⇒ 两个都不可见。
-  assert.deepEqual(P.decisionSubpageVisibility("view"), { view: true, approval: false });
-  assert.deepEqual(P.decisionSubpageVisibility("approval"), { view: false, approval: true });
+  // ★ 故意违规（m4 的杀点）：三个子页**恰一个**可见；未知 ⇒ 三个都不可见。
+  assert.deepEqual(P.decisionSubpageVisibility("view"), {
+    view: true,
+    approval: false,
+    provider: false,
+  });
+  assert.deepEqual(P.decisionSubpageVisibility("approval"), {
+    view: false,
+    approval: true,
+    provider: false,
+  });
+  assert.deepEqual(P.decisionSubpageVisibility("provider"), {
+    view: false,
+    approval: false,
+    provider: true,
+  });
   for (const bad of ["", "nope", null, undefined, 3]) {
     assert.deepEqual(
       P.decisionSubpageVisibility(bad),
-      { view: false, approval: false },
-      "未知子页必须两个都隐藏：" + JSON.stringify(bad)
+      { view: false, approval: false, provider: false },
+      "未知子页必须三个都隐藏：" + JSON.stringify(bad)
     );
   }
-  ["view", "approval"].forEach((id) => {
+  ["view", "approval", "provider"].forEach((id) => {
     const v = P.decisionSubpageVisibility(id);
-    assert.equal(Number(v.view) + Number(v.approval), 1, id + " 的子页必须恰一个可见");
+    assert.equal(Number(v.view) + Number(v.approval) + Number(v.provider), 1, id + " 的子页必须恰一个可见");
   });
 });
 

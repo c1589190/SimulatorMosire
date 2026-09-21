@@ -97,7 +97,8 @@ public final class CatalogTool implements AgentTool {
               "decisionMakerId, viewScope{visibleRegions[],visibleHexes[{q,r}],visibleUnits[],"
                   + "seeOwnUnits,adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD),"
                   + "redactedFields[]}"),
-          Map.entry("sd.StartDecision", "decisionMakerId, note?"));
+          Map.entry("sd.StartDecision", "decisionMakerId, note?"),
+          Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"));
 
   private final List<String> types;
 

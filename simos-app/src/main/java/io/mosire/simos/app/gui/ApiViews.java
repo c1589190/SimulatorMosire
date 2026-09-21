@@ -585,6 +585,8 @@ final class ApiViews {
     view.put("affiliation", affiliation);
     view.put("allowedTools", sorted(maker.allowedTools()));
     view.put("cadence", maker.decisionCadenceTicks());
+    // M11：绑定的 LLM provider 引用（null = 未绑定，不拿空串顶替）。
+    view.put("providerId", maker.providerId().orElse(null));
     view.put("viewScope", viewScope(maker.viewScope()));
     SdQueryService.PendingSignal pending = info.pending();
     view.put("due", pending.due());

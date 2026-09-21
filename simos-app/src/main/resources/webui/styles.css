@@ -1450,3 +1450,62 @@ body.workbench-page .gm-usage-item {
 body.workbench-page .gm-usage-failed {
   color: #ffb4b0;
 }
+
+/* M11：Provider 配置子页（决策模式第三子页）。 */
+body.workbench-page .provider-editor,
+body.workbench-page .provider-bind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+body.workbench-page .pv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+body.workbench-page .pv-field input,
+body.workbench-page .pv-field select {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(27, 32, 39, 0.6);
+  color: inherit;
+}
+
+body.workbench-page .provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+body.workbench-page .provider-item {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(27, 32, 39, 0.6);
+}
+
+body.workbench-page .provider-title {
+  font-weight: 600;
+}
+
+body.workbench-page .provider-meta,
+body.workbench-page .provider-secret {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+body.workbench-page .provider-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}

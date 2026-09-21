@@ -191,6 +191,7 @@
           <div class="decision-subpages" id="decision-subpages" role="radiogroup" aria-label="决策子页">
             <label><input type="radio" name="decision-subpage" value="view" checked> 决策人查看</label>
             <label><input type="radio" name="decision-subpage" value="approval"> 审批</label>
+            <label><input type="radio" name="decision-subpage" value="provider"> Provider 配置</label>
           </div>
 
           <div data-decision-subpage="view">
@@ -204,6 +205,34 @@
 
           <div data-decision-subpage="approval" hidden>
             <p id="decision-approval-status" class="status muted">待批列表见右栏；这里显示审批操作的结果。</p>
+          </div>
+
+          <div data-decision-subpage="provider" hidden>
+            <p class="muted">LLM provider 是基础设施：密钥只存引用（环境变量名 / 文件路径），页面绝不回显密钥值。</p>
+            <p id="provider-status" class="status muted">填写并保存 provider；「测试连接」由服务端发起。</p>
+            <fieldset class="provider-editor">
+              <legend>新增 / 覆盖 provider</legend>
+              <label class="pv-field">id <input id="provider-id" type="text" placeholder="p-openai"></label>
+              <label class="pv-field">baseUrl <input id="provider-baseurl" type="text" placeholder="api.example.com/v1"></label>
+              <label class="pv-field">model <input id="provider-model" type="text" placeholder="gpt-4o-mini"></label>
+              <label class="pv-field">密钥引用种类
+                <select id="provider-keykind">
+                  <option value="ENV">ENV（环境变量名）</option>
+                  <option value="FILE">FILE（文件路径）</option>
+                </select>
+              </label>
+              <label class="pv-field">密钥引用 <input id="provider-keyref" type="text" placeholder="OPENAI_API_KEY 或 /path/to/key"></label>
+              <label class="pv-field">timeoutMs <input id="provider-timeout" type="text" placeholder="30000（留空=30000）"></label>
+              <button type="button" id="provider-save">保存</button>
+            </fieldset>
+            <div id="provider-list-mount" class="provider-list"></div>
+            <fieldset class="provider-bind">
+              <legend>决策人绑定 provider（落 revision）</legend>
+              <label class="pv-field">决策人 <select id="provider-bind-maker"></select></label>
+              <label class="pv-field">provider <select id="provider-bind-provider"></select></label>
+              <button type="button" id="provider-bind-submit">绑定</button>
+              <p id="provider-bind-status" class="status muted">选一个决策人与 provider，绑定会写入世界 revision。</p>
+            </fieldset>
           </div>
         </section>
 
