@@ -47,9 +47,9 @@ class WebuiAssetsTest {
   /** 三页各自额外引用的页内脚本（非共享，但同属 webui 资产）。 */
   private static final List<String> PAGE_SCRIPTS = List.of("map.js", "unit.js", "social.js");
 
-  /** 工作台骨架脚本（M7 T2）：主应用 `/` 引用的三个新资产。 */
+  /** 工作台骨架脚本（M7 T2）：主应用 `/` 引用的四个新资产（T1 起含右下角通知栏）。 */
   private static final List<String> WORKBENCH_SCRIPTS =
-      List.of("panels.js", "unitTree.js", "timeline.js");
+      List.of("panels.js", "unitTree.js", "timeline.js", "notifications.js");
 
   /** 块几何（M9 T13）：index/map 两页共用的纯函数模块（`window.SimosBlocks`）。 */
   private static final List<String> BLOCK_SCRIPTS = List.of("blocks.js");

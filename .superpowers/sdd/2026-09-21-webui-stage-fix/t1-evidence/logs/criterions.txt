@@ -1,0 +1,43 @@
+== T1 判据实测（现场）==
+index.html approvals-count 命中数: 0
+index.html '待批</h3>' 命中数: 0
+index.html 'approvals:' 命中数: 0
+app.js mountApprovals 命中数: 0
+index.html id=notifications 命中数: 1
+index.html src=notifications.js 命中数: 1
+api.js api.approvals 保留（function+export）: 2
+-- CSS --
+1203:body.workbench-page .notify-bar {
+--
+1221:body.workbench-page .notify-bar[hidden] {
+1225:body.workbench-page .notify-bar.muted {
+-- index.html 通知栏元素行 --
+234:    <div id="notifications" class="notify-bar" hidden aria-live="polite" aria-label="待批审批"></div>
+-- CSS .notify-bar 关键属性 --
+body.workbench-page .notify-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 104px;
+  z-index: 2;
+  min-width: 96px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(27, 32, 39, 0.9);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+body.workbench-page .notify-bar[hidden] {
+  display: none;
+}
+
+body.workbench-page .notify-bar.muted {
+  color: var(--muted);
+}
+
+-- 通知栏底距（应 > 时间轴高度 ⇒ 不挡底栏）: bottom: 104px；时间轴 footer 仍在 .wb-overlay 流内 --

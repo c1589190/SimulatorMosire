@@ -1,0 +1,26 @@
+== 现场重算（attempt 1，rc=0）文件: /home/cna/SimulatorMosire/.claude/worktrees/wsf-t1/.superpowers/sdd/2026-09-21-webui-stage-fix/t1-evidence/logs/clean-verify.attempt1.log ==
+log_md5=c57632f7756496963dd833a4931153be
+
+-- 模块 SUCCESS [ 逐行 --
+[INFO] UtilSimos .......................................... SUCCESS [  4.985 s]
+[INFO] MapSimos ........................................... SUCCESS [  7.099 s]
+[INFO] SocialSimos ........................................ SUCCESS [  2.321 s]
+[INFO] UnitSimos .......................................... SUCCESS [  3.858 s]
+[INFO] CoreSimos .......................................... SUCCESS [  9.860 s]
+[INFO] SDSimos ............................................ SUCCESS [  3.864 s]
+[INFO] SimosApp ........................................... SUCCESS [ 17.865 s]
+module_success_count=8
+
+-- 逐模块 tests（surefire 汇总行，无 -- in）--
+[INFO] Tests run: 170, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 362, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 259, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 177, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 124, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 144, Failures: 0, Errors: 0, Skipped: 0
+
+TOTAL_TESTS=1281
+buginstance_zero=7
+error_lines=0
+[frontend-gate] OK tests=96 pass=96 fail=0

@@ -1,0 +1,14 @@
+===== T1 变异轮 m1 =====
+target=index.html
+orig_md5=e65f07f07ee486b25da5d6ae99e90dbe
+clean_world_md5=e65f07f07ee486b25da5d6ae99e90dbe
+mutant=m1 replacements=1
+mutant_md5=ef019496ea3ab3a8dc0d96d038ec9a17
+gate_rc=1
+gate_tests=96
+restored_md5=e65f07f07ee486b25da5d6ae99e90dbe
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 46 - index.html-has-notification-element-and-no-right-panel-approvals
+failing_count=1
+===== end m1 =====

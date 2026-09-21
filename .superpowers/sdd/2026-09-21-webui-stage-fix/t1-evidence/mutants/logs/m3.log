@@ -1,0 +1,15 @@
+===== T1 变异轮 m3 =====
+target=api.js
+orig_md5=cc431f64f76d940d0eab14a6482db96a
+clean_world_md5=cc431f64f76d940d0eab14a6482db96a
+mutant=m3 replacements=2
+mutant_md5=f6859c17e120c8efde646a338d83fc41
+gate_rc=1
+gate_tests=96
+restored_md5=cc431f64f76d940d0eab14a6482db96a
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 44 - renderInto-reads-exactly-one-GET-api-approvals
+  not ok 95 - dynamic-write-functions-hit-only-allowed-endpoints
+failing_count=2
+===== end m3 =====

@@ -1,0 +1,7 @@
+[INFO] Tests run: 170, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 362, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 259, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 177, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 124, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 144, Failures: 0, Errors: 0, Skipped: 0
