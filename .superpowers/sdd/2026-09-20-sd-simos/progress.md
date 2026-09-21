@@ -99,7 +99,7 @@
 - **裁定/取代说明**（详见 `d-stage-report.md` §三）：**D1** 执行原文落 `sd:directive.<id>` 的 INFO（key `intent`）；**D1** 白名单从注册面派生、`Shell` 注册顺序随之调整；**D2** 合并用 `Breakpoints.callGroups()`=7 表达；**D3** `VerdictFreezer` **先判 subject 面、再判 schema**；**D4** redaction 只接 2 端点 + 2 读工具（计划写的 9 条读工具**未全接**，列开口项）；**D5** `submit` 保 `void` 但**抛**；渠道 actor 声明为**动态 supplier**；**D6** 既有构造器委托 `Role.EXTERNAL`（12 工具逐条不变）、运行时 MCP 仍外部桶；**D7** 只自动落 D1/D3/D6 判决，其余草案不自动发指令。
 - **门禁抓到 9 条新代码 SpotBugs**（7 条 `US_USELESS_SUPPRESSION_ON_METHOD`——`CoreSimos` 是 final 故 `EI_EXPOSE_REP2` 不触发；2 条 `CT_CONSTRUCTOR_THROW`——abstract 基类构造器 `requireNonNull`）⇒ 删多余抑制、构造器不再抛。**`mvn test` 不跑 SpotBugs，故只有 `verify` 抓得到**。
 - **变异 13 体 13 杀 0 存活**（`d-evidence/mutants/`，九道门禁）：d1m1~d1m3 / d2m1~d2m2 / d3m1~d3m2 / d4m1~d4m2 / d5m1 / d6m1 / d7m1~d7m2。★ 装置首轮把 `d1m3`（期望方法名写错）与 `d7m1`（模块写错致 `Tests run=0`）误判 SURVIVED，修正后重跑均 KILLED——**未伪造红点**。
-- **实现提交短 SHA**：`（提交后回填）`。
+- **实现提交短 SHA**：`838a12a`（分支 `sd/d`，基线 `e5b96ac`）。
 
 ## 我未能核实的
 - 计划期**未跑任何 Maven**：§附的门禁数字为**推演**，非实测（A1/A2 已实测，见下）。
