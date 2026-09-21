@@ -1,0 +1,39 @@
+14:17:15.277 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.CreateCombat commandId=cmd-1 correlationId=cmd-1 新坐标=main@2
+14:17:15.318 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.AddCombatStage commandId=cmd-2 correlationId=cmd-2 新坐标=main@3
+14:17:15.329 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.AddCombatStage commandId=cmd-3 correlationId=cmd-3 新坐标=main@4
+14:17:15.345 INFO  io.mosire.simos.core.advance.TimeAdvance - 命令被拒: type=core.AdvanceTime commandId=adv-4 correlationId=adv-4 原因=apply 后的快照没被填入新的坐标（codec 照抄了 base 的）: namespace=sd 期望=StateRef[branch=BranchId[value=main], revision=RevisionId[value=5]]@SimosTimestamp[tick=4, calendarLabel=Optional.empty] 实得=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]]@SimosTimestamp[tick=0, calendarLabel=Optional.empty]
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.585 s <<< FAILURE! -- in io.mosire.simos.app.sd.SdCombatEndToEndTest
+[ERROR] io.mosire.simos.app.sd.SdCombatEndToEndTest.stageAdvanceIsConditionDrivenFrozenAndSelectsExactlyOne -- Time elapsed: 0.576 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Rejected[reason=apply 后的快照没被填入新的坐标（codec 照抄了 base 的）: namespace=sd 期望=StateRef[branch=BranchId[value=main], revision=RevisionId[value=5]]@SimosTimestamp[tick=4, calendarLabel=Optional.empty] 实得=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]]@SimosTimestamp[tick=0, calendarLabel=Optional.empty]]
+to be an instance of:
+  io.mosire.simos.core.command.CommandResult.Committed
+but was instance of:
+  io.mosire.simos.core.command.CommandResult.Rejected
+	at io.mosire.simos.app.sd.SdCombatEndToEndTest.stageAdvanceIsConditionDrivenFrozenAndSelectsExactlyOne(SdCombatEndToEndTest.java:79)
+
+[ERROR] Failures: 
+[ERROR]   SdCombatEndToEndTest.stageAdvanceIsConditionDrivenFrozenAndSelectsExactlyOne:79 
+Expecting actual:
+  Rejected[reason=apply 后的快照没被填入新的坐标（codec 照抄了 base 的）: namespace=sd 期望=StateRef[branch=BranchId[value=main], revision=RevisionId[value=5]]@SimosTimestamp[tick=4, calendarLabel=Optional.empty] 实得=StateRef[branch=BranchId[value=main], revision=RevisionId[value=1]]@SimosTimestamp[tick=0, calendarLabel=Optional.empty]]
+to be an instance of:
+  io.mosire.simos.core.command.CommandResult.Committed
+but was instance of:
+  io.mosire.simos.core.command.CommandResult.Rejected
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sdc/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

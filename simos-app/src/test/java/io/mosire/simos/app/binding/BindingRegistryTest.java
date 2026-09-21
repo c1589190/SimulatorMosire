@@ -16,6 +16,8 @@ import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.MapAgentAttachPolicy;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -256,7 +258,8 @@ class BindingRegistryTest {
         new StateMeta(REF, T0),
         Map.of(
             "map", new MapSnapshot(REF, T0, map()),
-            "unit", new UnitSnapshot(REF, T0, units)),
+            "unit", new UnitSnapshot(REF, T0, units),
+            "sd", new SdSnapshot(REF, T0, SdState.empty())),
         InMemoryInfoSystem.empty());
   }
 

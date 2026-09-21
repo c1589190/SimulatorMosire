@@ -37,14 +37,14 @@ class DemoWorldTest {
   private static final HexCoord H13 = new HexCoord(1, 3);
 
   @Test
-  void demoStateIsDeterministicAndCarriesTheThreeSlices() {
+  void demoStateIsDeterministicAndCarriesTheFourSlices() {
     SimulationState first = DemoWorld.state("Map1");
     SimulationState second = DemoWorld.state("Map1");
 
     assertThat(first).as("确定性：同参数逐字段相等").isEqualTo(second);
     assertThat(first.meta().ref()).isEqualTo(new StateRef(new BranchId("main"), new RevisionId(1)));
     assertThat(first.meta().timestamp()).isEqualTo(T5);
-    assertThat(first.modules().keySet()).containsExactlyInAnyOrder("map", "unit", "social");
+    assertThat(first.modules().keySet()).containsExactlyInAnyOrder("map", "unit", "social", "sd");
   }
 
   @Test

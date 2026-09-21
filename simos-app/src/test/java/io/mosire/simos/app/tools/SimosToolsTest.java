@@ -35,6 +35,9 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -143,7 +146,14 @@ class SimosToolsTest {
           "sd.CreateNation",
           "sd.CreateArmy",
           "sd.CreateDecisionMaker",
-          "sd.PutInfo");
+          "sd.PutInfo",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -198,7 +208,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 30 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 37 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
    * Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -209,8 +219,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 30 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(30);
+        .as("扫描必须恰为 37 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(37);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -508,13 +518,15 @@ class SimosToolsTest {
             Map.of(
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
-                "social", new SocialSnapshot(ref("main", 1), T7, social)),
+                "social", new SocialSnapshot(ref("main", 1), T7, social),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
-                genesis, List.of(new MapCodec(), new SocialCodec(), new UnitCodec())));
+                genesis,
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
   }
 
   private static Unit unit() {

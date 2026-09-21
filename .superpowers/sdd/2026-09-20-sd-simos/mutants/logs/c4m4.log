@@ -1,0 +1,174 @@
+14:16:51.898 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:51.972 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45781/（静态 /webui，同源，无 CORS 头）
+14:16:51.973 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4557746601765770633 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45327 guiPort=45781 approvalPort=45227
+14:16:52.008 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45227）
+14:16:52.009 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.066 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.075 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45761/（静态 /webui，同源，无 CORS 头）
+14:16:52.075 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-17919577999372266819 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45501 guiPort=45761 approvalPort=45943
+14:16:52.077 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45943）
+14:16:52.077 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.126 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.135 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46079/（静态 /webui，同源，无 CORS 头）
+14:16:52.135 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-16985800769401538862 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45817 guiPort=46079 approvalPort=45913
+14:16:52.139 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45913）
+14:16:52.139 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.187 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.195 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45829/（静态 /webui，同源，无 CORS 头）
+14:16:52.196 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-7468072003588871108 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46327 guiPort=45829 approvalPort=46549
+14:16:52.199 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46549）
+14:16:52.200 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.244 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.253 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46079/（静态 /webui，同源，无 CORS 头）
+14:16:52.254 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-7762189200525536291 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45873 guiPort=46079 approvalPort=45721
+14:16:52.256 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45721）
+14:16:52.256 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.302 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.311 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44723/（静态 /webui，同源，无 CORS 头）
+14:16:52.312 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-2753340041589191590 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44963 guiPort=44723 approvalPort=46473
+14:16:52.339 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46473）
+14:16:52.339 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.387 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.397 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45793/（静态 /webui，同源，无 CORS 头）
+14:16:52.397 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-17035169447330123934 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46203 guiPort=45793 approvalPort=45297
+14:16:52.399 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45297）
+14:16:52.399 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.449 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.458 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46623/（静态 /webui，同源，无 CORS 头）
+14:16:52.458 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-18022489667888286771 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44865 guiPort=46623 approvalPort=45037
+14:16:52.461 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45037）
+14:16:52.461 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.503 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.512 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46635/（静态 /webui，同源，无 CORS 头）
+14:16:52.512 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-16453189545248259728 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45221 guiPort=46635 approvalPort=45393
+14:16:52.516 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45393）
+14:16:52.516 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.564 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.574 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45051/（静态 /webui，同源，无 CORS 头）
+14:16:52.574 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-9546177901019254816 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45457 guiPort=45051 approvalPort=45771
+14:16:52.576 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45771）
+14:16:52.576 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.622 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.631 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45547/（静态 /webui，同源，无 CORS 头）
+14:16:52.631 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-10634712612411913484 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44947 guiPort=45547 approvalPort=46535
+14:16:52.633 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46535）
+14:16:52.633 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.681 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.690 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45233/（静态 /webui，同源，无 CORS 头）
+14:16:52.690 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-10657492122202643235 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46579 guiPort=45233 approvalPort=46325
+14:16:52.692 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46325）
+14:16:52.692 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.739 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.748 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45595/（静态 /webui，同源，无 CORS 头）
+14:16:52.748 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-1871538739796135840 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46125 guiPort=45595 approvalPort=45599
+14:16:52.750 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45599）
+14:16:52.751 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+14:16:52.795 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 12 个 [simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list]；Registry 共 12 个，未外发 0 个 []
+14:16:52.805 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46515/（静态 /webui，同源，无 CORS 头）
+14:16:52.805 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4695460934935712811 checkpointInterval=100 codec=4 handler=37 participant=3 resolver=4 facet=2 tool=12 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46165 guiPort=46515 approvalPort=46435
+14:16:52.806 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46435）
+14:16:52.806 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 14, Failures: 5, Errors: 3, Skipped: 0, Time elapsed: 1.494 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.rejectedWriteReturnsErrorAndCreatesNoRevision -- Time elapsed: 0.629 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "REJECTED"
+ but was: "BAD_REQUEST"
+	at io.mosire.simos.app.tools.SimosToolsTest.rejectedWriteReturnsErrorAndCreatesNoRevision(SimosToolsTest.java:375)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.conflictingWriteReturnsErrorWithTheRealHeadAndCreatesNoRevision -- Time elapsed: 0.062 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "CONFLICT"
+ but was: "BAD_REQUEST"
+	at io.mosire.simos.app.tools.SimosToolsTest.conflictingWriteReturnsErrorWithTheRealHeadAndCreatesNoRevision(SimosToolsTest.java:393)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.readToolsMatchQueryServicePerValue -- Time elapsed: 0.060 s <<< ERROR!
+java.lang.IllegalArgumentException: 参与者 namespace 重复: sd
+	at io.mosire.simos.core.advance.TimeAdvance.<init>(TimeAdvance.java:126)
+	at io.mosire.simos.core.CoreSimos.sealIfNeeded(CoreSimos.java:342)
+	at io.mosire.simos.core.CoreSimos.sealedReplay(CoreSimos.java:354)
+	at io.mosire.simos.core.CoreSimos.replay(CoreSimos.java:201)
+	at io.mosire.simos.app.query.QueryService.stateAt(QueryService.java:105)
+	at io.mosire.simos.app.query.QueryService.contextAt(QueryService.java:158)
+	at io.mosire.simos.app.query.QueryService.resolve(QueryService.java:142)
+	at io.mosire.simos.app.tools.SimosToolsTest.readToolsMatchQueryServicePerValue(SimosToolsTest.java:407)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.unitReadToolsExposeMovementObjectAndNullWithoutRoute -- Time elapsed: 0.056 s <<< ERROR!
+com.fasterxml.jackson.core.JsonParseException: 
+Unrecognized token '参与者': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 1]
+	at com.fasterxml.jackson.core.JsonParser._constructReadException(JsonParser.java:2675)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._reportInvalidToken(ReaderBasedJsonParser.java:3041)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._handleOddValue(ReaderBasedJsonParser.java:2062)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextToken(ReaderBasedJsonParser.java:780)
+	at com.fasterxml.jackson.databind.ObjectMapper._readTreeAndClose(ObjectMapper.java:5081)
+	at com.fasterxml.jackson.databind.ObjectMapper.readTree(ObjectMapper.java:3349)
+	at io.mosire.simos.app.tools.SimosToolsTest.unitReadToolsExposeMovementObjectAndNullWithoutRoute(SimosToolsTest.java:431)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.advanceToolCommitsThroughCore -- Time elapsed: 0.062 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[参与者 namespace 重复: sd] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.tools.SimosToolsTest.advanceToolCommitsThroughCore(SimosToolsTest.java:351)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.writeToolCommitsAndStampsTheConfiguredInitiator -- Time elapsed: 0.060 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[参与者 namespace 重复: sd] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.tools.SimosToolsTest.writeToolCommitsAndStampsTheConfiguredInitiator(SimosToolsTest.java:322)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.unknownUnitReturnsNotFound -- Time elapsed: 0.058 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "NOT_FOUND"
+ but was: "BAD_REQUEST"
+	at io.mosire.simos.app.tools.SimosToolsTest.unknownUnitReturnsNotFound(SimosToolsTest.java:477)
+
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.mapHexBuildsTheCanonicalFacetSubject -- Time elapsed: 0.055 s <<< ERROR!
+com.fasterxml.jackson.core.JsonParseException: 
+Unrecognized token '参与者': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 1]
+	at com.fasterxml.jackson.core.JsonParser._constructReadException(JsonParser.java:2675)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._reportInvalidToken(ReaderBasedJsonParser.java:3041)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._handleOddValue(ReaderBasedJsonParser.java:2062)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextToken(ReaderBasedJsonParser.java:780)
+	at com.fasterxml.jackson.databind.ObjectMapper._readTreeAndClose(ObjectMapper.java:5081)
+	at com.fasterxml.jackson.databind.ObjectMapper.readTree(ObjectMapper.java:3349)
+	at io.mosire.simos.app.tools.SimosToolsTest.mapHexBuildsTheCanonicalFacetSubject(SimosToolsTest.java:465)
+
+[ERROR] Failures: 
+[ERROR]   SimosToolsTest.advanceToolCommitsThroughCore:351 [参与者 namespace 重复: sd] 
+Expecting value to be true but was false
+[ERROR]   SimosToolsTest.conflictingWriteReturnsErrorWithTheRealHeadAndCreatesNoRevision:393 
+expected: "CONFLICT"
+ but was: "BAD_REQUEST"
+[ERROR]   SimosToolsTest.rejectedWriteReturnsErrorAndCreatesNoRevision:375 
+expected: "REJECTED"
+ but was: "BAD_REQUEST"
+[ERROR]   SimosToolsTest.unknownUnitReturnsNotFound:477 
+expected: "NOT_FOUND"
+ but was: "BAD_REQUEST"
+[ERROR]   SimosToolsTest.writeToolCommitsAndStampsTheConfiguredInitiator:322 [参与者 namespace 重复: sd] 
+Expecting value to be true but was false
+[ERROR] Errors: 
+[ERROR]   SimosToolsTest.mapHexBuildsTheCanonicalFacetSubject:465 » JsonParse Unrecognized token '参与者': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 1]
+[ERROR]   SimosToolsTest.readToolsMatchQueryServicePerValue:407 » IllegalArgument 参与者 namespace 重复: sd
+[ERROR]   SimosToolsTest.unitReadToolsExposeMovementObjectAndNullWithoutRoute:431 » JsonParse Unrecognized token '参与者': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 1]
+[ERROR] Tests run: 14, Failures: 5, Errors: 3, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/.claude/worktrees/sdc/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

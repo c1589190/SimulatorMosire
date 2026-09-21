@@ -100,7 +100,7 @@ class McpCoverageTest {
 
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
-  /** catalog 预期的 30 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30）。 */
+  /** catalog 预期的 37 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37）。 */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "unit.RenameUnit",
@@ -132,7 +132,14 @@ class McpCoverageTest {
           "sd.CreateNation",
           "sd.CreateArmy",
           "sd.CreateDecisionMaker",
-          "sd.PutInfo");
+          "sd.PutInfo",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -194,6 +201,35 @@ class McpCoverageTest {
         "{\"id\":\"dm-cov\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n-cov\"},"
             + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":1}");
     MINIMAL_PAYLOADS.put("sd.PutInfo", "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}");
+    MINIMAL_PAYLOADS.put(
+        "sd.CreateCombat", "{\"combatId\":\"c-cov\",\"name\":\"覆盖交战\",\"participants\":[\"u-4\"]}");
+    MINIMAL_PAYLOADS.put(
+        "sd.AddCombatStage",
+        "{\"combatId\":\"c-cov\",\"combatStateId\":\"cs-cov\",\"hex\":{\"q\":1,\"r\":1},"
+            + "\"stage\":{\"stageId\":\"s-cov\",\"name\":\"阶段一\",\"participants\":[\"u-4\"],"
+            + "\"entry\":[{\"@class\":\"at_or_after_tick\",\"tick\":0}],"
+            + "\"exit\":[{\"@class\":\"at_or_after_tick\",\"tick\":9}],"
+            + "\"outcomes\":{\"options\":[{\"id\":\"o-cov\",\"label\":\"胜\",\"weight\":1}]}}}");
+    MINIMAL_PAYLOADS.put(
+        "sd.SetStageOutcomeTable",
+        "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\","
+            + "\"outcomes\":{\"options\":[{\"id\":\"o-cov\",\"label\":\"胜\",\"weight\":2}]}}");
+    MINIMAL_PAYLOADS.put(
+        "sd.RecordCasualties",
+        "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\","
+            + "\"deltas\":[{\"unit\":\"u-4\",\"personnel\":-1,\"equipment\":{\"步枪\":-1},"
+            + "\"lossClass\":\"PERMANENT\"}]}");
+    MINIMAL_PAYLOADS.put(
+        "sd.CommitCombatOutcome",
+        "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\",\"selectedOutcomeId\":\"o-cov\"}");
+    MINIMAL_PAYLOADS.put(
+        "sd.RegisterEffect",
+        "{\"effectId\":\"e-cov\",\"kind\":\"SCHEDULED\","
+            + "\"trigger\":{\"@class\":\"at_or_after_tick\",\"tick\":9},"
+            + "\"action\":{\"@class\":\"enqueue_unit_command\",\"type\":\"unit.ApplyCasualties\","
+            + "\"payloadJson\":\"{\\\"id\\\":\\\"u-4\\\",\\\"personnel\\\":-1,"
+            + "\\\"equipment\\\":{\\\"步枪\\\":-1}}\"}}");
+    MINIMAL_PAYLOADS.put("sd.CancelEffect", "{\"effectId\":\"e-cov\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -245,7 +281,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 30 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 37 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -276,8 +312,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("30 条命令各推一格")
-        .isEqualTo(31L);
+        .as("37 条命令各推一格")
+        .isEqualTo(38L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -291,16 +327,16 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(31L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(38L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(32L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(39L);
     System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=32");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(32L);
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(39L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 32L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 39L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");

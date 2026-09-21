@@ -18,9 +18,12 @@ import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.sd.SdCommandDrain;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.command.AdvanceTime;
+import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -32,10 +35,18 @@ import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.guard.RegionDeleteGuard;
 import io.mosire.simos.sd.resolve.SdResolver;
+import io.mosire.simos.sd.spi.AddStageHandler;
+import io.mosire.simos.sd.spi.CancelEffectHandler;
+import io.mosire.simos.sd.spi.CommitOutcomeHandler;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
+import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
+import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
+import io.mosire.simos.sd.spi.RegisterEffectHandler;
+import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
+import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
@@ -71,6 +82,7 @@ import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -145,6 +157,11 @@ public final class Shell implements AutoCloseable {
   /** 已注册模块 codec 的个数（map/social/unit/sd）；由实际注册动作数出来，不是写死的常量。 */
   private final int registeredModuleCount;
 
+  /**
+   * 跨模块效果落点（C5，spec §五.3）：{@code AdvanceTime} 提交成功后把 sd 的 pending 指令经 {@code submit} 落成真 revision。
+   */
+  private final SdCommandDrain sdCommandDrain;
+
   private volatile boolean closed;
 
   private Shell(
@@ -160,7 +177,8 @@ public final class Shell implements AutoCloseable {
       ApprovalCoordinator approvalCoordinator,
       ApprovalHttpEndpoint approvalEndpoint,
       ToolCallAuthorizer toolAuthorizer,
-      int registeredModuleCount) {
+      int registeredModuleCount,
+      SdCommandDrain sdCommandDrain) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.queryService = queryService;
@@ -174,6 +192,7 @@ public final class Shell implements AutoCloseable {
     this.approvalEndpoint = approvalEndpoint;
     this.toolAuthorizer = toolAuthorizer;
     this.registeredModuleCount = registeredModuleCount;
+    this.sdCommandDrain = sdCommandDrain;
   }
 
   /**
@@ -206,37 +225,51 @@ public final class Shell implements AutoCloseable {
     }
 
     List<CommandHandler> handlers =
-        List.of(
-            new SetTerrainHandler(),
-            new CreateRegionHandler(),
-            new UpdateRegionHandler(),
-            new DeleteRegionHandler(),
-            new SetEdgeHandler(),
-            new RandomizeRegionHandler(),
-            new RenameUnitHandler(),
-            new CreateUnitHandler(),
-            new ReparentUnitHandler(),
-            new SetStrengthHandler(),
-            new PlaceAtHandler(),
-            new PlanRouteHandler(),
-            new CancelRouteHandler(),
-            new DisbandUnitHandler(),
-            new SetStatusHandler(),
-            new AttachUnitHandler(),
-            new DetachUnitHandler(),
-            new ReparentSubtreeHandler(),
-            new SetFormationOffsetHandler(),
-            new SplitFormationHandler(),
-            new MergeFormationHandler(),
-            new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE),
-            new SetRejoinTargetHandler(),
-            new CreateCommandChainHandler(),
-            new UpdateCommandChainHandler(),
-            new ApplyCasualtiesHandler(),
-            new CreateNationHandler(),
-            new CreateArmyHandler(),
-            new CreateDecisionMakerHandler(),
-            new PutInfoHandler());
+        new ArrayList<>(
+            List.of(
+                new SetTerrainHandler(),
+                new CreateRegionHandler(),
+                new UpdateRegionHandler(),
+                new DeleteRegionHandler(),
+                new SetEdgeHandler(),
+                new RandomizeRegionHandler(),
+                new RenameUnitHandler(),
+                new CreateUnitHandler(),
+                new ReparentUnitHandler(),
+                new SetStrengthHandler(),
+                new PlaceAtHandler(),
+                new PlanRouteHandler(),
+                new CancelRouteHandler(),
+                new DisbandUnitHandler(),
+                new SetStatusHandler(),
+                new AttachUnitHandler(),
+                new DetachUnitHandler(),
+                new ReparentSubtreeHandler(),
+                new SetFormationOffsetHandler(),
+                new SplitFormationHandler(),
+                new MergeFormationHandler(),
+                new PlanSparseRouteHandler(TerrainMovementCost.INSTANCE),
+                new SetRejoinTargetHandler(),
+                new CreateCommandChainHandler(),
+                new UpdateCommandChainHandler(),
+                new ApplyCasualtiesHandler(),
+                new CreateNationHandler(),
+                new CreateArmyHandler(),
+                new CreateDecisionMakerHandler(),
+                new PutInfoHandler(),
+                new CreateCombatHandler(),
+                new AddStageHandler(),
+                new SetOutcomeTableHandler(),
+                new CommitOutcomeHandler(),
+                new RecordCasualtiesHandler(),
+                new CancelEffectHandler()));
+    Set<String> drainableCommandTypes = new LinkedHashSet<>();
+    for (CommandHandler handler : handlers) {
+      if (!handler.type().startsWith("sd.")) {
+        drainableCommandTypes.add(handler.type());
+      }
+    }
+    handlers.add(new RegisterEffectHandler(drainableCommandTypes));
     Set<String> commandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
@@ -245,7 +278,9 @@ public final class Shell implements AutoCloseable {
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
     List<TimeParticipant> participants =
-        List.of(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()));
+        List.of(
+            new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
+            new SdTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
@@ -364,7 +399,8 @@ public final class Shell implements AutoCloseable {
         approvalCoordinator,
         approvalEndpoint,
         toolAuthorizer,
-        codecs.size());
+        codecs.size(),
+        new SdCommandDrain(coreSimos));
   }
 
   /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */
@@ -468,6 +504,25 @@ public final class Shell implements AutoCloseable {
   /** 已注册的模块 codec 个数（map/social/unit/sd = 4）。{@code ShellMain} 用它打印装配实况。 */
   public int registeredModuleCount() {
     return registeredModuleCount;
+  }
+
+  /**
+   * 跨模块效果落点（C5，spec §五.3）：{@code AdvanceTime} 提交成功后 drain（本方法就是"提交后调 drain"的兑现）。
+   *
+   * <p>★ **只对 {@code AdvanceTime} + 提交成功**触发；被拒/冲突不 drain（没有新 head 可读）。
+   */
+  public List<CommandResult> advanceAndDrain(AdvanceTime command) {
+    Objects.requireNonNull(command, "command");
+    CommandResult result = coreSimos.submit(command);
+    if (result instanceof CommandResult.Committed) {
+      return sdCommandDrain.drainAfterAdvance(command.branch());
+    }
+    return List.of();
+  }
+
+  /** 跨模块效果落点（C5）：测试/调试面可直接调它（不经 {@code advanceAndDrain}）。 */
+  public SdCommandDrain sdCommandDrain() {
+    return sdCommandDrain;
   }
 
   /**

@@ -3,12 +3,29 @@ package io.mosire.simos.sd.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
+import io.mosire.simos.sd.id.CombatOutcomeId;
+import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.Affiliation;
+import io.mosire.simos.sd.model.CasualtyDelta;
+import io.mosire.simos.sd.model.CasualtySpec;
+import io.mosire.simos.sd.model.CombatStage;
+import io.mosire.simos.sd.model.EffectKind;
+import io.mosire.simos.sd.model.LossClass;
+import io.mosire.simos.sd.model.OutcomeOption;
+import io.mosire.simos.sd.model.OutcomeTable;
+import io.mosire.simos.sd.model.Trigger;
+import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -27,7 +44,6 @@ final class SdPayloads {
 
   private SdPayloads() {}
 
-  /** 解析载荷文本：非 JSON、或不是 JSON 对象 ⇒ 抛。 */
   static JsonNode parse(String payloadJson) {
     Objects.requireNonNull(payloadJson, "payloadJson");
     JsonNode payload;
@@ -77,7 +93,6 @@ final class SdPayloads {
     return value.asLong();
   }
 
-  /** 必填的 {@code [字符串…]} ⇒ 去重保序集合（空白元素 ⇒ 抛）。 */
   static Set<String> requireTextSet(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isArray()) {
@@ -93,12 +108,10 @@ final class SdPayloads {
     return out;
   }
 
-  /** 必填的地址文本 ⇒ {@link Address}（非法地址由 {@link Address#parse} 自己抛）。 */
   static Address requireAddress(JsonNode payload, String field) {
     return Address.parse(requireText(payload, field));
   }
 
-  /** 必填的任意 JSON 值 ⇒ {@code Object}（标量：String / Integer / Double / Boolean）。 */
   static Object requireValue(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
@@ -107,7 +120,6 @@ final class SdPayloads {
     return MAPPER.convertValue(value, Object.class);
   }
 
-  /** 必填的 {@code {"kind":"nation"|"army","id":"…"}} ⇒ {@link Affiliation}。 */
   static Affiliation requireAffiliation(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isObject()) {
@@ -121,5 +133,190 @@ final class SdPayloads {
       case "army" -> new Affiliation.Army(ArmyId.parse(id));
       default -> throw new IllegalArgumentException("affiliation.kind 必须是 nation|army: " + kind);
     };
+  }
+
+  static HexCoord requireHex(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"q\":…,\"r\":…} 对象: " + payload);
+    }
+    int q = requireInt(value, "q");
+    int r = requireInt(value, "r");
+    return new HexCoord(q, r);
+  }
+
+  static Set<UnitId> optionalUnitIdSet(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Set.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    Set<UnitId> out = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(UnitId.parse(element.asText()));
+    }
+    return out;
+  }
+
+  static List<Trigger> optionalTriggers(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是条件数组: " + payload);
+    }
+    List<Trigger> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      out.add(MAPPER.convertValue(element, Trigger.class));
+    }
+    return List.copyOf(out);
+  }
+
+  static CombatStage requireStage(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是阶段对象: " + payload);
+    }
+    CombatStageId id = CombatStageId.parse(requireText(value, "stageId"));
+    String name = requireText(value, "name");
+    Set<UnitId> participants = optionalUnitIdSet(value, "participants");
+    List<Trigger> entry = optionalTriggers(value, "entry");
+    List<Trigger> exit = optionalTriggers(value, "exit");
+    long min = optionalLong(value, "minDurationTicks", 0L);
+    long max = optionalLong(value, "maxDurationTicks", min);
+    OutcomeTable outcomes = requireOutcomeTable(value, "outcomes");
+    return new CombatStage(id, name, participants, entry, exit, min, max, outcomes);
+  }
+
+  static OutcomeTable requireOutcomeTable(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"options\":[…]}: " + payload);
+    }
+    JsonNode options = value.get("options");
+    if (options == null || !options.isArray() || options.isEmpty()) {
+      throw new IllegalArgumentException("outcomeTable.options 不得为空（N2）: " + value);
+    }
+    List<OutcomeOption> parsed = new ArrayList<>();
+    for (JsonNode option : options) {
+      CombatOutcomeId id = CombatOutcomeId.parse(requireText(option, "id"));
+      String label = requireText(option, "label");
+      int weight = requireInt(option, "weight");
+      CasualtySpec casualties = optionalCasualtySpec(option, "casualties");
+      parsed.add(new OutcomeOption(id, label, weight, casualties));
+    }
+    return new OutcomeTable(parsed);
+  }
+
+  private static CasualtySpec optionalCasualtySpec(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return new CasualtySpec(0, Map.of());
+    }
+    int personnel = optionalInt(value, "personnel", 0);
+    Map<String, Integer> equipment = optionalIntMap(value, "equipment");
+    return new CasualtySpec(personnel, equipment);
+  }
+
+  static List<CasualtyDelta> requireDeltas(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray() || value.isEmpty()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是非空数组: " + payload);
+    }
+    List<CasualtyDelta> out = new ArrayList<>();
+    for (JsonNode delta : value) {
+      UnitId unit = UnitId.parse(requireText(delta, "unit"));
+      int personnel = optionalInt(delta, "personnel", 0);
+      Map<String, Integer> equipment = optionalIntMap(delta, "equipment");
+      LossClass lossClass = requireLossClass(delta, "lossClass");
+      out.add(new CasualtyDelta(unit, personnel, equipment, lossClass));
+    }
+    return List.copyOf(out);
+  }
+
+  static LossClass requireLossClass(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return LossClass.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("lossClass 非法（PERMANENT|RECOVERABLE）: " + text);
+    }
+  }
+
+  static EffectKind requireEffectKind(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return EffectKind.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("effect kind 非法: " + text);
+    }
+  }
+
+  static Trigger requireTrigger(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是条件对象: " + payload);
+    }
+    return MAPPER.convertValue(value, Trigger.class);
+  }
+
+  static Action requireAction(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是动作对象: " + payload);
+    }
+    return MAPPER.convertValue(value, Action.class);
+  }
+
+  static long optionalLong(JsonNode payload, String field, long fallback) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asLong();
+  }
+
+  static int optionalInt(JsonNode payload, String field, int fallback) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asInt();
+  }
+
+  static Map<String, Integer> optionalIntMap(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Map.of();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"键\":整数} 对象: " + payload);
+    }
+    Map<String, Integer> out = new LinkedHashMap<>();
+    var fields = value.fields();
+    while (fields.hasNext()) {
+      var entry = fields.next();
+      if (!entry.getValue().isIntegralNumber() || !entry.getValue().canConvertToInt()) {
+        throw new IllegalArgumentException("字段 " + field + " 的值必须是整数: " + entry.getKey());
+      }
+      out.put(entry.getKey(), entry.getValue().asInt());
+    }
+    return out;
+  }
+
+  static Optional<CombatStageId> optionalStageId(JsonNode payload, String field) {
+    return optionalText(payload, field).map(CombatStageId::parse);
   }
 }

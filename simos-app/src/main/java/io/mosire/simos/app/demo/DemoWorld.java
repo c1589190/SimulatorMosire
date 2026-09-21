@@ -8,6 +8,8 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -82,7 +84,8 @@ public final class DemoWorld {
         Map.of(
             "map", new MapSnapshot(at, AT, corridorMap()),
             "unit", new UnitSnapshot(at, AT, unitState()),
-            "social", new SocialSnapshot(at, AT, socialData())),
+            "social", new SocialSnapshot(at, AT, socialData()),
+            "sd", new SdSnapshot(at, AT, SdState.empty())),
         InMemoryInfoSystem.empty());
   }
 

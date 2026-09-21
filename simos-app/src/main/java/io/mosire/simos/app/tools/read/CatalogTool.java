@@ -64,7 +64,24 @@ public final class CatalogTool implements AgentTool {
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(
               "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
-          Map.entry("sd.PutInfo", "address, key, value, note?"));
+          Map.entry("sd.PutInfo", "address, key, value, note?"),
+          Map.entry("sd.CreateCombat", "combatId, name, participants[字符串...]"),
+          Map.entry(
+              "sd.AddCombatStage",
+              "combatId, stage{stageId,name,participants?,entry,exit,minDurationTicks?,"
+                  + "maxDurationTicks?,outcomes{options[{id,label,weight,casualties?}]}},"
+                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填)"),
+          Map.entry(
+              "sd.SetStageOutcomeTable",
+              "combatId, stageId, outcomes{options[{id,label,weight,casualties?}]}"),
+          Map.entry("sd.CommitCombatOutcome", "combatId, stageId, selectedOutcomeId"),
+          Map.entry(
+              "sd.RecordCasualties",
+              "combatId, stageId, deltas[{unit,personnel,equipment,lossClass(PERMANENT|RECOVERABLE)}]"),
+          Map.entry(
+              "sd.RegisterEffect",
+              "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action, createdTick?"),
+          Map.entry("sd.CancelEffect", "effectId"));
 
   private final List<String> types;
 
