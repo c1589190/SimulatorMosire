@@ -1,0 +1,7 @@
+http_status: 200
+overview_bytes: 601486
+hexCount: 59223
+regions: 98
+edges: 240
+blocks: 782
+terrainTypes: ['desert', 'low_hills', 'mountains', 'ocean', 'plains']

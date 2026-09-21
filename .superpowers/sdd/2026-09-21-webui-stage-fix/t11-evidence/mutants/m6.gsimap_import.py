@@ -43,7 +43,7 @@ import uuid
 #: 显式映射表（任务书 §3 已裁决）。表外的在用 key ⇒ fail-closed。
 TERRAIN_MAP = {
     "water": "ocean",
-    "lowland": "plains",
+    "lowland": "desert",
     "plains": "plains",
     "desert": "desert",
     "hills": "low_hills",
