@@ -1,0 +1,25 @@
+=== T2 判据现场读数 (2026-09-21T16:19:48+08:00) ===
+--- C1: index.html 子选项控件 ---
+map-edit-subtools id: 1
+map-edit-subtool name: 2
+terrain-tool-select id: 1
+edge-kind-select id: 1
+--- 模式数（data-mode= 计数）---
+      1 data-mode="map-edit"
+      1 data-mode="region"
+      1 data-mode="region-edit"
+      1 data-mode="unit"
+      2 data-mode="view"
+--- C2: 写门控调用（静态）---
+2518:    if (!mapEditWriteGate(host.mapEditTool, "map.SetTerrain").ok) {
+2714:    if (!mapEditWriteGate(host.mapEditTool, "map.SetEdge").ok) {
+2786:    if (!mapEditWriteGate(host.mapEditTool, "map.RandomizeRegion").ok) {
+--- 纯函数读数（node 直取）---
+terrain+SetEdge writeAllowed = false
+connectivity+SetEdge    = true
+connectivity+SetTerrain = false
+gate(terrain,SetEdge)   = {"ok":false,"reason":"wrong-subtool","subtool":"terrain"}
+visibility(terrain)     = {"terrain":true,"connectivity":false,"randomize":false}
+visibility(river)       = {"terrain":false,"connectivity":true,"randomize":false}
+--- modes.js 未改（git status 应无）---
+(空 = 未改)

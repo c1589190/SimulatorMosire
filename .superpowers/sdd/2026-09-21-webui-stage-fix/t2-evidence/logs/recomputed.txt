@@ -1,0 +1,9 @@
+# T2 门禁重算（现场，只取 surefire 汇总行，不含 -- in）
+log_md5=0139aabccf42351a221fcbfabbb121b1
+rc=0 (第 1 次尝试, 49s)
+modules=8/8 SUCCESS [
+total_java=1281
+per_module=UtilSimos 170 / MapSimos 362 / SocialSimos 45 / UnitSimos 259 / CoreSimos 177 / SDSimos 124 / SimosApp 144
+BugInstance_size_is_0=7
+ERROR_lines=0
+frontend-gate OK tests=108 pass=108 fail=0

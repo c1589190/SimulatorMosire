@@ -1,0 +1,14 @@
+===== T2 变异轮 m5 =====
+target=gate-contract.test.cjs
+orig_md5=3f34677a4e87d77b0329c1a91ff52d8d
+clean_world_md5=3f34677a4e87d77b0329c1a91ff52d8d
+mutant=m5 replacements=1
+mutant_md5=8a29f60920a84c377f49a10b0696069a
+gate_rc=1
+gate_tests=108
+restored_md5=3f34677a4e87d77b0329c1a91ff52d8d
+VERDICT=KILLED
+-- 红点（被保护断言）--
+  not ok 7 - all-required-test-files-are-present
+failing_count=1
+===== end m5 =====
