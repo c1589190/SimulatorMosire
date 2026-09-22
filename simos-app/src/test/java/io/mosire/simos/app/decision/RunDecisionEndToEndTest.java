@@ -103,7 +103,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <ol>
  *   <li>**真的跑了一轮**：① head 前进（触发事实 + 决策人自己的 {@code sd.IssueDirective} = 两条真 revision）；② revision 行真的
- *       写着 {@code sd.IssueDirective}（铁律 2：决策不是"记在对话里"）；③ 会话真的落盘（5 条）；
+ *       写着 {@code sd.IssueDirective}（铁律 2：决策不是"记在对话里"）；③ 会话真的落盘（6 条：首条身份 + 本轮 5 条）；
  *   <li>**轨迹可读回**（验收就靠它判"决策人看见了什么"）：{@code toolCalls[].summary} 里带着**夹具世界的真值** （{@code
  *       "desert"}）——编出来的轨迹不会恰是这个值；
  *   <li>**跨 tick 接得上**：用**它发出去的请求本身**当证据（{@link RecordingLlmClient} 记下每次 {@code LlmRequest}）；
@@ -240,8 +240,9 @@ class RunDecisionEndToEndTest {
     // ★ 可观察副作用之二：这一轮的每条消息都落了会话（跨 tick 的锚）。
     try (SqliteConversationStore conversations = openConversations()) {
       assertThat(conversations.load("decision-maker:" + DM_ID))
-          .as("assistant(toolCall) + tool + assistant(toolCall) + tool + assistant(text)")
-          .hasSize(5);
+          .as(
+              "identity(system) + assistant(toolCall) + tool + assistant(toolCall) + tool + assistant(text)")
+          .hasSize(6);
     }
 
     // ★★ 审批面：**决策人自己出的令也过了审批门链**（不是"在运行流里偷偷写"）——两处敏感写各答了一次。
@@ -267,11 +268,23 @@ class RunDecisionEndToEndTest {
     llm.enqueue(LlmResponse.text("第二轮继续"));
     assertThat(callWithApproval(runDecisionArgs(DM_ID, 2L)).isError()).isFalse();
 
-    assertThat(llm.requests().get(0).messages()).as("第一轮开局是空会话——不隐式取全局状态").isEmpty();
+    List<LlmMessage> firstRoundFirstRequest = llm.requests().get(0).messages();
+    assertThat(firstRoundFirstRequest)
+        .as("★ 首轮开局**不是空 messages**：空会话先注入那条身份（真 provider 对空 messages 直接 400）")
+        .hasSize(1);
+    assertThat(firstRoundFirstRequest.get(0).role()).isEqualTo(LlmMessage.ROLE_SYSTEM);
     List<LlmMessage> secondRoundFirstRequest = llm.requests().get(2).messages();
-    assertThat(secondRoundFirstRequest).as("★ 第二轮的**首个请求**里就带着上一轮的 3 条消息（跨 tick 接得上）").hasSize(3);
+    assertThat(secondRoundFirstRequest)
+        .as(
+            "★ 第二轮的**首个请求**里就带着上一轮的 4 条消息（identity + assistant(toolCall) + tool + assistant(text)，跨 tick 接得上）")
+        .hasSize(4);
+    assertThat(secondRoundFirstRequest.get(0).role())
+        .as("★ 身份仍是首条——第二轮从会话里取回它，不重复注入")
+        .isEqualTo(LlmMessage.ROLE_SYSTEM);
     try (SqliteConversationStore conversations = openConversations()) {
-      assertThat(conversations.load("decision-maker:" + DM_ID)).as("两轮共 4 条").hasSize(4);
+      assertThat(conversations.load("decision-maker:" + DM_ID))
+          .as("两轮共 5 条（首条身份 + 第一轮 3 条 + 第二轮 1 条）")
+          .hasSize(5);
     }
     assertThat(Files.exists(conversationsFile()))
         .as("★ 会话落 <store> 下（与 simos.db 同层）⇒ 跨进程重启沿用同一段会话")

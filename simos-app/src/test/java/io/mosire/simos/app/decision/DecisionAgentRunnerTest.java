@@ -125,6 +125,15 @@ class DecisionAgentRunnerTest {
           ViewScope.empty(),
           1);
 
+  /** 军队决策人（**只为验身份正文的军队分支**）：它不必在世界里存在——注入的那条消息只取 {@code DecisionMaker} 自己的字段、不查世界。 */
+  private static final DecisionMaker DM_ARMY =
+      new DecisionMaker(
+          new DecisionMakerId("dm-army"),
+          new Affiliation.Army(new ArmyId("a1")),
+          Set.of(),
+          ViewScope.empty(),
+          1);
+
   @TempDir Path tempDir;
 
   private Shell shell;
@@ -195,10 +204,10 @@ class DecisionAgentRunnerTest {
     List<LlmMessage> history = conversations.load(conversationId());
     assertThat(history)
         .as(
-            "assistant(toolCall) + tool(result) + assistant(toolCall) + tool(result) + assistant(text)")
-        .hasSize(5);
+            "identity(system) + assistant(toolCall) + tool(result) + assistant(toolCall) + tool(result) + assistant(text)")
+        .hasSize(6);
     assertThat(roles(history))
-        .containsExactly("assistant", "tool", "assistant", "tool", "assistant");
+        .containsExactly("system", "assistant", "tool", "assistant", "tool", "assistant");
     assertThat(toolResults(history).get(0).content())
         .as("真跑过 map.hex 的正文里带着夹具世界的地形；编出来的结果不会恰是这个值")
         .contains("desert");
@@ -209,7 +218,7 @@ class DecisionAgentRunnerTest {
   // ── 判据 3：跨 tick 会话沿用 ─────────────────────────────────────────────────────
 
   /**
-   * ★★ **第二次 {@code run} 的上下文里带着上一轮**：证据是**它发出去的请求本身**（第一个请求的消息条数 == 上一轮的 5 条）。
+   * ★★ **第二次 {@code run} 的上下文里带着上一轮**：证据是**它发出去的请求本身**（第一个请求的消息条数 == 上一轮的 6 条）。
    *
    * <p>★ 只断言 {@code load(cid)} 非空是不够的——那只证明"存下来了"；"**接上了**"要看请求。
    */
@@ -220,19 +229,21 @@ class DecisionAgentRunnerTest {
         LlmResponse.text("第一轮到此"));
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
-    assertThat(llm.requests().get(0).messages()).as("第一轮开局是空会话——不隐式取全局状态").isEmpty();
+    assertThat(roles(llm.requests().get(0).messages()))
+        .as("★ 首轮开局**不是空 messages**：空会话先注入那条身份（真 provider 对空 messages 直接 400）")
+        .containsExactly("system");
 
     llm.enqueue(LlmResponse.text("第二轮继续"));
     DecisionAgentRunner.DecisionTurn second =
         runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
     List<LlmMessage> fed = llm.requests().get(2).messages();
-    assertThat(fed).as("★ 第二轮的**首个请求**里就带着上一轮的 3 条消息").hasSize(3);
-    assertThat(roles(fed)).containsExactly("assistant", "tool", "assistant");
+    assertThat(fed).as("★ 第二轮的**首个请求**里就带着上一轮的 4 条消息").hasSize(4);
+    assertThat(roles(fed)).containsExactly("system", "assistant", "tool", "assistant");
     // ★ 逐值：会话里的正文与上一轮落盘的一模一样（不是"条数对了但内容丢了"）。
     assertThat(toolResults(fed).get(0).content()).contains("desert");
     assertThat(second.toolInvocations()).as("第二轮没有调工具").isEmpty();
-    assertThat(conversations.load(conversationId())).hasSize(4);
+    assertThat(conversations.load(conversationId())).hasSize(5);
   }
 
   /** ★★ **换一个 store 实例读同一 cid**（"重启后接得上"）：关掉旧实例、用同一个文件重开，用**新实例**喂新一轮 —— 首个请求里仍带着上一轮的全部历史。 */
@@ -242,24 +253,101 @@ class DecisionAgentRunnerTest {
         LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
         LlmResponse.text("第一轮到此"));
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
-    List<LlmMessage> before = conversations.load(conversationId());
     conversations.close();
 
     SqliteConversationStore reopened = SqliteConversationStore.open(conversationsFile());
     try {
-      assertThat(roles(reopened.load(conversationId()))).as("重开后逐条还在").isEqualTo(roles(before));
+      assertThat(roles(reopened.load(conversationId())))
+          .as("★ 重开后逐条还在，**首条身份也在**——它必须落盘（只往内存里塞的修法在换 store 实例后会话又空、真 provider 再次 400）")
+          .containsExactly("system", "assistant", "tool", "assistant");
       conversations = reopened;
       llm.enqueue(LlmResponse.text("重启后继续"));
       new DecisionAgentRunner(factory(), decisionRegistry(), llm, reopened, MAP_ID)
           .run(DM_FRA, state());
 
       assertThat(roles(llm.requests().get(2).messages()))
-          .as("★ 新 store 上的新一轮，开局请求里带着重启前的历史")
-          .containsExactly("assistant", "tool", "assistant");
+          .as("★ 新 store 上的新一轮，开局请求里带着重启前的历史（首条身份也还在）")
+          .containsExactly("system", "assistant", "tool", "assistant");
     } finally {
       reopened.close();
       conversations = null;
     }
+  }
+
+  // ── 首轮注入：空会话必须先有身份（真 LLM 实测缺陷的修法） ───────────────────────────
+
+  /**
+   * ★★ **空会话的首个请求里必须先有身份**（真 provider 实测缺陷的修法，2026-09-22）。
+   *
+   * <p>★ **缺陷现场**：{@code conversations.load} 对从未写过的会话返回空表 ⇒ 首轮请求的 messages **是空的** ⇒ 供应商直接拒（{@code
+   * HTTP 400: field messages is required}，{@code llmCalls=0}，一次都没成）。
+   *
+   * <p>★ **判别力（变异实测）**：不注入的变异体红在**第一条**（{@code Expecting actual not to be empty}）；只注入、不落盘的变异体红在
+   * **最后一条**（会话里只有 {@code assistant} ⇒ 重启后又空、真 provider 再次 400 ⇒ 只补内存不改存储的修法是假修）。
+   */
+  @Test
+  void anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest() {
+    llm.enqueue(LlmResponse.text("收到"));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    List<LlmMessage> first = llm.requests().get(0).messages();
+    assertThat(first).as("★ 首轮请求的 messages 绝不是空的——真 provider 对空 messages 直接 400").isNotEmpty();
+    assertThat(first.get(0).role()).isEqualTo(LlmMessage.ROLE_SYSTEM);
+    String text = textOf(first.get(0));
+    assertThat(text).as("身份：决策人 id + 归属（含 id）").contains(DM_FRA.id().value()).contains("FRA");
+    assertThat(text)
+        .as("任务：范围由系统强制 + 先查看再决策 + 出令与载荷提示 + expectedRevision 的来源")
+        .contains("sd.IssueDirective")
+        .contains("simos.command.catalog")
+        .contains("simos.timeline.branches")
+        .contains("expectedRevision");
+    assertThat(text)
+        .as(
+            "★ 正文里一个数字都没有：这条消息**永久落盘**（写进去就不再更新）⇒ 里面不能有 head/revision/tick 这类会漂的值；夹具的决策人 id 与归属 id 都不含数字")
+        .doesNotContainPattern("[0-9]");
+    assertThat(roles(conversations.load(conversationId())))
+        .as("★ 注入的消息**同时落盘**（否则进程重启后会话又空、真 provider 再次 400）")
+        .containsExactly("system", "assistant");
+  }
+
+  /** ★ 归属是**军队**时如实报 {@code armyId}（{@code Affiliation} 的两个分支各被自己的用例钉住，不靠"国家那支顺带覆盖"）。 */
+  @Test
+  void theIdentityMessageNamesTheArmyForAnArmyDecisionMaker() {
+    llm.enqueue(LlmResponse.text("收到"));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_ARMY, state());
+
+    assertThat(textOf(llm.requests().get(0).messages().get(0)))
+        .as("军队决策人的身份里是 armyId，不是 nationId")
+        .contains(DM_ARMY.id().value())
+        .contains("a1")
+        .contains("armyId")
+        .doesNotContain("nationId");
+  }
+
+  /**
+   * ★★ **只注入一次**：第二轮从会话里取回它，不得再追加一条。
+   *
+   * <p>★ 判别力（变异实测）："每轮都注入"的变异体把身份**追加到尾部**，于是第二轮的首个请求成了 {@code system, assistant,
+   * system}（身份出现两次）——而 {@code load} 非空这件事**两种实现都成立**，故不能只断言"有 system"。
+   */
+  @Test
+  void theIdentityMessageIsNotInjectedTwiceOnLaterRounds() {
+    llm.enqueue(LlmResponse.text("第一轮"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+    llm.enqueue(LlmResponse.text("第二轮"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    assertThat(roles(llm.requests().get(1).messages()))
+        .as("★ 第二轮的首个请求里 identity 只有一条")
+        .containsExactly("system", "assistant");
+    assertThat(
+            conversations.load(conversationId()).stream()
+                .filter(message -> LlmMessage.ROLE_SYSTEM.equals(message.role()))
+                .toList())
+        .as("落盘的 system 消息恰好一条")
+        .hasSize(1);
   }
 
   // ── 权限：白名单外的工具调不动 ───────────────────────────────────────────────────
@@ -334,8 +422,8 @@ class DecisionAgentRunnerTest {
         .hasMessageContaining("疑似跑飞");
 
     assertThat(conversations.load(conversationId()))
-        .as("★ 中止不丢上下文：已发生的消息逐条落盘，下一 tick 可续")
-        .hasSize(4);
+        .as("★ 中止不丢上下文：已发生的消息逐条落盘（含首条身份），下一 tick 可续")
+        .hasSize(5);
   }
 
   // ────────────────────────────── 助手 ──────────────────────────────
@@ -433,6 +521,15 @@ class DecisionAgentRunnerTest {
 
   private static List<String> roles(List<LlmMessage> messages) {
     return messages.stream().map(LlmMessage::role).toList();
+  }
+
+  /** 一条消息的首个文本分片（身份消息是纯文本）。 */
+  private static String textOf(LlmMessage message) {
+    return message.content().stream()
+        .filter(ContentPart.Text.class::isInstance)
+        .map(part -> ((ContentPart.Text) part).text())
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("这条消息没有文本分片: " + message.role()));
   }
 
   /** 会话里所有 tool 结果（按发生序）。 */

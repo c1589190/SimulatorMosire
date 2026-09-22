@@ -135,6 +135,30 @@
 
 详见 plan 的「验收」节。
 
+---
+
+## 四 验收现场记录（2026-09-22 实跑：真 LLM + 自写 MCP 客户端）
+
+**环境**：`java -jar simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/acc1 --demo`
+（`--demo` 现在种的是**富世界**：59223 hex / 252 区域）；MCP `127.0.0.1:5715/mcp`、GUI 5711、审批 5713。
+
+**工具**（都在 `e2e/`）：`mcp_client.py`（**标准库自写**的 MCP 客户端——本机 Python 是 externally-managed
+且**没装** `mcp` 包）、`auto_approver.py`（自动批准器）。
+
+**已跑通**：
+- MCP 连通（协议 `2025-06-18`）、`tools/list` = **56 条**（含新的 `sd.RunDecision`）；**读工具不经审批**（实测）
+- **审批链路**：★ 现场踩到并修掉——批准器 POST 枚举名 `APPROVE_SESSION` ⇒ **HTTP 400**；
+  AgentLib 的线格式是 `{"decision":"approve","scope":"session","by":…}`（`scope` 是**独立字段**）
+- **建世界**（全经 MCP，head 2→9）：`unit.CreateUnit` → `sd.CreateNation` → `sd.CreateArmy` →
+  `sd.CreateDecisionMaker`×2（Nation / Army）→ `sd.SetDecisionMakerProvider`×2（`mosire-flash`）
+
+**验收发现（现场实测，逐条待修/待记）**：
+
+| # | 发现 | 性质 |
+|---|---|---|
+| **1** | ★ **真 LLM 首轮直接失败**：`sd.RunDecision` 返 `result=failed, llmCalls=0, reason=LlmException, detail="LLM 供应商返回 HTTP 400: field messages is required"`——首次请求 `messages` **为空**（首轮会话空且无 system prompt）。★ 错误**被正确报告**（不是静默），这一点 T11C 的设计是对的 | **真缺陷**，已派单修（注入**落盘**的身份 system 消息） |
+| **2** | 富世界的区域 tag 是**字面量 `'Nation'`**（**无 `nation:` 前缀**）⇒ `sd.CreateNation` 的 homeRegion 前置**不满足**、**建不了国家**——正是 M6 的 D-5 连带①预言的"先有鸡还是先有蛋" | **既有缺口**（D-5 未裁未做）；本轮验收用 `map.UpdateRegion` 手动补前缀绕过 |
+
 ## 四 本阶段的环境事实（本机实测，避免照抄别台）
 
 - `nproc=8`、内存 11 G；`~/.m2` 的 agentlib jar **134 类**（判据看类数，不看时间戳）。
