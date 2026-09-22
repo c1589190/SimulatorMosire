@@ -59,7 +59,9 @@ public final class SetDecisionMakerProviderHandler implements CommandHandler {
               existing.allowedTools(),
               existing.accessLimit(),
               existing.decisionCadenceTicks(),
-              Optional.of(providerId));
+              Optional.of(providerId),
+              // ★ 换 provider 不改会话世代：漏了它 = 换个模型就把会话退回第 0 代（又接回作废的会话），且没有症状。
+              existing.conversationGeneration());
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
       next.put(id, updated);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(next)));

@@ -83,6 +83,30 @@ class SdRoundTripTest {
         .contains("p-rt");
   }
 
+  /**
+   * ★ 会话世代（{@code sd.ResetDecisionMakerConversation} 写的那个字段）逐字段往返（铁律 5）。
+   *
+   * <p>★ 判别力来自**目标态里那条目自己带非零世代**：缺省是 0，故"世代被打通"这件事在缺省夹具下看不见——用 {@code SdFixtures.decisionMaker(id)}
+   * 造的 base/target 两边都是 0，重建丢字段也照样绿。
+   */
+  @Test
+  void aNonZeroConversationGenerationSurvivesTheChangeSetRoundTrip() {
+    SdState base = SdFixtures.full();
+    SdState target =
+        base.withDecisionMakers(
+            Map.of(
+                SdFixtures.DM1, SdFixtures.decisionMakerAtGeneration(SdFixtures.DM1, 3),
+                SdFixtures.DM2, SdFixtures.decisionMaker(SdFixtures.DM2)));
+    SdChangeSet cs = SdChangeSet.between(base, target);
+
+    assertThat(cs.decisionMakers().changed()).as("世代变化必须被 between 看见").isTrue();
+    SdState rebuilt = SdChangeSet.apply(cs, base);
+    assertThat(rebuilt).as("逐字段重建出 target").isEqualTo(target);
+    assertThat(rebuilt.decisionMakers().get(SdFixtures.DM1).conversationGeneration())
+        .as("重建后世代一字不丢")
+        .isEqualTo(3L);
+  }
+
   @Test
   void snapshotNamespaceIsSd() {
     SdSnapshot snapshot =

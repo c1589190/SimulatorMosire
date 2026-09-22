@@ -1,0 +1,142 @@
+[
+  {
+    "seq": 1,
+    "type": "simos.command.received",
+    "agent": "player:gui",
+    "correlation_id": "9a10b0da-df68-408f-af67-55d8cff8f358",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"1\",\"commandId\":\"9a10b0da-df68-408f-af67-55d8cff8f358\",\"payloadDigest\":\"sha256:3e6f22076a2d0c50a737bc0c1efee83f\",\"type\":\"map.UpdateRegion\"}"
+  },
+  {
+    "seq": 2,
+    "type": "simos.command.committed",
+    "agent": "player:gui",
+    "correlation_id": "9a10b0da-df68-408f-af67-55d8cff8f358",
+    "payload": "{\"branch\":\"main\",\"revision\":\"2\"}"
+  },
+  {
+    "seq": 3,
+    "type": "simos.command.received",
+    "agent": "player:gui",
+    "correlation_id": "cd21f46e-32cb-486c-bdb0-d7efbd33ea6a",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"2\",\"commandId\":\"cd21f46e-32cb-486c-bdb0-d7efbd33ea6a\",\"payloadDigest\":\"sha256:b965582e7628df556fa80a172a74feab\",\"type\":\"map.UpdateRegion\"}"
+  },
+  {
+    "seq": 4,
+    "type": "simos.command.committed",
+    "agent": "player:gui",
+    "correlation_id": "cd21f46e-32cb-486c-bdb0-d7efbd33ea6a",
+    "payload": "{\"branch\":\"main\",\"revision\":\"3\"}"
+  },
+  {
+    "seq": 5,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "3b20f957-93e3-4fb7-8fdf-4b5f74eb939f",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"3\",\"commandId\":\"3b20f957-93e3-4fb7-8fdf-4b5f74eb939f\",\"payloadDigest\":\"sha256:bc5f5dd3c667faa46252ed43319bb2c2\",\"type\":\"sd.CreateNation\"}"
+  },
+  {
+    "seq": 6,
+    "type": "simos.command.rejected",
+    "agent": "agent:external-mcp",
+    "correlation_id": "3b20f957-93e3-4fb7-8fdf-4b5f74eb939f",
+    "payload": "{\"reason\":\"Region 大蜀 无国家 tag（R13：需以 nation: 开头的 tag）\"}"
+  },
+  {
+    "seq": 7,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "6be24a60-b549-41b9-93a9-f3d8e0d2dc8d",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"3\",\"commandId\":\"6be24a60-b549-41b9-93a9-f3d8e0d2dc8d\",\"payloadDigest\":\"sha256:e9563f6f64159ab17a43263d7ba5293d\",\"type\":\"map.UpdateRegion\"}"
+  },
+  {
+    "seq": 8,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "6be24a60-b549-41b9-93a9-f3d8e0d2dc8d",
+    "payload": "{\"branch\":\"main\",\"revision\":\"4\"}"
+  },
+  {
+    "seq": 9,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "c06136dc-b0d8-458f-840d-3c06ebed9811",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"4\",\"commandId\":\"c06136dc-b0d8-458f-840d-3c06ebed9811\",\"payloadDigest\":\"sha256:cc16707bad2ff9e3d82b0d7325da63ba\",\"type\":\"map.UpdateRegion\"}"
+  },
+  {
+    "seq": 10,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "c06136dc-b0d8-458f-840d-3c06ebed9811",
+    "payload": "{\"branch\":\"main\",\"revision\":\"5\"}"
+  },
+  {
+    "seq": 11,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "e2885108-dbea-4e86-a9c6-15af5ca4b11a",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"5\",\"commandId\":\"e2885108-dbea-4e86-a9c6-15af5ca4b11a\",\"payloadDigest\":\"sha256:bc5f5dd3c667faa46252ed43319bb2c2\",\"type\":\"sd.CreateNation\"}"
+  },
+  {
+    "seq": 12,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "e2885108-dbea-4e86-a9c6-15af5ca4b11a",
+    "payload": "{\"branch\":\"main\",\"revision\":\"6\"}"
+  },
+  {
+    "seq": 13,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "c5e273c9-9672-4cda-ad7a-9ad4e20a9dd0",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"6\",\"commandId\":\"c5e273c9-9672-4cda-ad7a-9ad4e20a9dd0\",\"payloadDigest\":\"sha256:e2ff1142ced58c016bfee0c5868bf290\",\"type\":\"sd.CreateNation\"}"
+  },
+  {
+    "seq": 14,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "c5e273c9-9672-4cda-ad7a-9ad4e20a9dd0",
+    "payload": "{\"branch\":\"main\",\"revision\":\"7\"}"
+  },
+  {
+    "seq": 15,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "619924d4-7179-4bda-a84b-68e214a409dc",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"7\",\"commandId\":\"619924d4-7179-4bda-a84b-68e214a409dc\",\"payloadDigest\":\"sha256:59fec164d10e64c0a4455cdfee03206b\",\"type\":\"sd.CreateDecisionMaker\"}"
+  },
+  {
+    "seq": 16,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "619924d4-7179-4bda-a84b-68e214a409dc",
+    "payload": "{\"branch\":\"main\",\"revision\":\"8\"}"
+  },
+  {
+    "seq": 17,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "2f1b712e-f147-45df-8e2b-c2e0a59bc4ce",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"8\",\"commandId\":\"2f1b712e-f147-45df-8e2b-c2e0a59bc4ce\",\"payloadDigest\":\"sha256:6de84b1d0cdd0aed8887b2f06cfa51f1\",\"type\":\"sd.CreateDecisionMaker\"}"
+  },
+  {
+    "seq": 18,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "2f1b712e-f147-45df-8e2b-c2e0a59bc4ce",
+    "payload": "{\"branch\":\"main\",\"revision\":\"9\"}"
+  },
+  {
+    "seq": 19,
+    "type": "simos.command.received",
+    "agent": "agent:external-mcp",
+    "correlation_id": "ffc4b1e8-c6a2-42b0-a099-a29c9fce21e3",
+    "payload": "{\"branch\":\"main\",\"expectedRevision\":\"9\",\"commandId\":\"ffc4b1e8-c6a2-42b0-a099-a29c9fce21e3\",\"payloadDigest\":\"sha256:519dc182eed38cdf28da66fe2f1a73b3\",\"type\":\"sd.StartDecision\"}"
+  },
+  {
+    "seq": 20,
+    "type": "simos.command.committed",
+    "agent": "agent:external-mcp",
+    "correlation_id": "ffc4b1e8-c6a2-42b0-a099-a29c9fce21e3",
+    "payload": "{\"branch\":\"main\",\"revision\":\"10\"}"
+  }
+]

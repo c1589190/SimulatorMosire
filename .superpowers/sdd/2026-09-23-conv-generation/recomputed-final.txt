@@ -1,0 +1,2 @@
+Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]=170 Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]=369 Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]=45 Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]=287 Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]=179 Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]=172 Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]=418 
+TOTAL=1640

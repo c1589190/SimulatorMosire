@@ -1,0 +1,20 @@
+00:44:37.120 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+SERVER=simos-shell v0.1.0-SNAPSHOT
+PROTOCOL=2025-11-25
+TOOL_COUNT=16
+TOOL	sd.IssueDirective
+TOOL	sd.SetViewScope
+TOOL	sd.StartDecision
+TOOL	sd.SubmitVerdict
+TOOL	simos.advance
+TOOL	simos.command.catalog
+TOOL	simos.command.submit
+TOOL	simos.fork
+TOOL	simos.map.hex
+TOOL	simos.map.overview
+TOOL	simos.social.population
+TOOL	simos.state.facets
+TOOL	simos.state.resolve
+TOOL	simos.timeline.branches
+TOOL	simos.unit.get
+TOOL	simos.unit.list

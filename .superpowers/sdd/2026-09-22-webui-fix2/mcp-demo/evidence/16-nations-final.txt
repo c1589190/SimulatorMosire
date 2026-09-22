@@ -1,0 +1,2 @@
+TEXT={"candidates":[{"id":{"namespace":"sd","localId":"nation.大蜀"},"canonicalAddress":"sd:nation.大蜀","typeName":"Nation"}]}
+TEXT={"candidates":[{"id":{"namespace":"sd","localId":"nation.西陵"},"canonicalAddress":"sd:nation.西陵","typeName":"Nation"}]}

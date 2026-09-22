@@ -1,0 +1,7 @@
+02:54:34.499 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+SERVER=simos-shell v0.1.0-SNAPSHOT
+PROTOCOL=2025-11-25
+CALL=simos.command.submit ARGS={"type":"sd.CreateNation","payloadJson":"{\"nationId\":\"大蜀\",\"name\":\"大蜀\",\"homeRegionId\":\"大蜀\",\"adminBudgetPerTick\":10}","branch":"main","expectedRevision":1}
+IS_ERROR=true
+TEXT=[mosire:code=REJECTED]
+{"result":"rejected","reason":"Region 大蜀 无国家 tag（R13：需以 nation: 开头的 tag）","commandId":"5d51a928-536f-48a4-beaf-9d5a1135fda8","correlationId":"5d51a928-536f-48a4-beaf-9d5a1135fda8"}

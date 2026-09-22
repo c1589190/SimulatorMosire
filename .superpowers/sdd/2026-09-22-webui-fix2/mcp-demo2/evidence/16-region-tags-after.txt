@@ -1,0 +1,2 @@
+大蜀 tag= 'nation:大蜀' color= #c4a35a desc= '汉海-盆地贸易要道，四战之地' hexCount= 323
+西陵 tag= 'nation:西陵' color= #74004b desc= '' hexCount= 126

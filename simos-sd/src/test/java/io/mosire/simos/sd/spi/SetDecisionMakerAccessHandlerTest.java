@@ -59,6 +59,33 @@ class SetDecisionMakerAccessHandlerTest {
         .containsExactly("sd.IssueDirective");
   }
 
+  /**
+   * ★★ **配权不许把会话世代退回第 0 代**（与 {@link SetDecisionMakerProviderHandlerTest} 里那条"配权不得丢 providerId"
+   * 是**同一族**：重建路径漏带某个字段）。
+   *
+   * <p>判别力：重建时漏带 {@code conversationGeneration} 的实现，本用例红——而症状是"GM 配一次权，那个人的会话就倒退回去"，
+   * 再次接回一段早已作废的历史，且没有任何报错。
+   */
+  @Test
+  void keepsTheConversationGeneration() {
+    SdState base =
+        SdState.empty()
+            .withDecisionMakers(
+                Map.of(SdFixtures.DM1, SdFixtures.decisionMakerAtGeneration(SdFixtures.DM1, 2)));
+
+    SdState after =
+        applied(
+            base,
+            handle(base, "{\"decisionMakerId\":\"dm1\",\"allowedTools\":[\"sd.IssueDirective\"]}"));
+
+    assertThat(after.decisionMakers().get(SdFixtures.DM1).allowedTools())
+        .as("配权本身生效")
+        .containsExactly("sd.IssueDirective");
+    assertThat(after.decisionMakers().get(SdFixtures.DM1).conversationGeneration())
+        .as("世代 2 逐字保留")
+        .isEqualTo(2L);
+  }
+
   @Test
   void rejectsGenericWriteInAllowedTools() {
     SdState base = withDecisionMaker(SdState.empty());

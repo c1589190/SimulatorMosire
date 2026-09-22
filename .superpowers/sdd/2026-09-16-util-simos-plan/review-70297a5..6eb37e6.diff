@@ -1,0 +1,128 @@
+# Review package: 70297a5..6eb37e6
+
+## Commits
+6eb37e6 docs: T11 评审 fix round 1——去写死的数、消「已批准」歧义、复现主张加锚
+
+## Files changed
+ CLAUDE.md                                              | 2 +-
+ docs/superpowers/plans/2026-09-16-simos-master-plan.md | 9 +++++----
+ docs/superpowers/plans/2026-09-16-util-simos-plan.md   | 4 ++--
+ 3 files changed, 8 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 901d800..9d77333 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -54,21 +54,21 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos
+ | `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 可执行分解（5 任务）+ M1~M6 路线图；每阶段的推进机制见其 **§六** |
+ | `docs/superpowers/specs/2026-09-16-util-simos-design.md` | **M1 spec（已执行）**：UtilSimos 八大件、Address 语法、四条时间语义、往返框架。五项待决见其 §〇 |
+ | `docs/superpowers/plans/2026-09-16-util-simos-plan.md` | **M1 计划（已执行完毕）**：11 个任务的 bite-sized 步骤。⚠️ 其代码草图是**计划期产物**，执行期已就地校正，**spec 与 `simos-util/src` 才是权威**（分歧处均有"取代说明"） |
+ 
+ **注意粒度**：总纲是**总纲**，不是五份 spec 的合集。各模块的**内部设计**（M1 已裁决完毕；
+ `MapChangeSet` 字段清单、`Region` 如何统一 GSimulator 的三个 region 概念、时间线 DAG 存储 schema
+ 等**仍未裁决**）——总纲 §十三 有意把它们留给各模块自己的 spec。给 **M2~M6** 写 bite-sized 步骤前，
+ 先确认对应模块的待决项已裁决，否则等于编造设计。
+ 
+ **⚠️ 不要用 `@` 导入上面这些文档。** 官方语义是导入文件**在启动时展开进上下文**——导入**不省上下文**，
+-只会让每个会话白白载入 **5000+ 行**（2026-09-16 实测四份合计 5445 行）。上面用反引号书写路径
++只会让每个会话白白载入 **5000+ 行**。上面用反引号书写路径
+ （反引号 = 字面量，不触发导入），需要时按需读取。只有**必须每会话都生效**的短内容才该进本文件。
+ 
+ ## 构建与门禁
+ 
+ ```bash
+ ./mvnw verify          # Spotless + Checkstyle + SpotBugs + Surefire（M0 起即为硬门禁）
+ ./mvnw -q -Dtest=<类名> test    # 迭代时只跑相关单条用例
+ ```
+ 
+ - 只想跑**某一个模块**的用例时，`-pl <模块> -am` 会把 `-Dtest=` 带到 reactor 里每个模块，
+diff --git a/docs/superpowers/plans/2026-09-16-simos-master-plan.md b/docs/superpowers/plans/2026-09-16-simos-master-plan.md
+index 92b6954..222f7c9 100644
+--- a/docs/superpowers/plans/2026-09-16-simos-master-plan.md
++++ b/docs/superpowers/plans/2026-09-16-simos-master-plan.md
+@@ -1119,21 +1119,21 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
+ ### M1：UtilSimos 八大件（**成败点**）
+ 
+ | 项 | 内容 |
+ |---|---|
+ | **交付物** | `Address`/`AddressSegment`、`SubjectId`、`SimosTimestamp`、`RevisionId`/`BranchId`/`StateRef`、`Snapshot`、`ChangeSet`、`Command`、`SimulationState` 八个原语；`InfoSystem`；`TemporalSeries`；`Resolver` SPI；**往返不变式测试框架** |
+ | **判据** | 八大件各有单测；往返不变式框架有一个**故意漂移字段**的失败用例，证明护栏真的会响（spec §11） |
+ | **待决**（spec §十三） | 八大件完整方法签名；Address 转义与边界规则；Resolver 注册与优先级；TemporalSeries 的插值/事件语义；Facet 查询协议 |
+ | **依赖** | M0 |
+ | **状态** | ✅ **已完成**（2026-09-16；spec 五项待决于 §〇 裁决，计划 11 个任务逐个执行并过审）；提交都在 `feat/m1-util-simos` 上，**其中一部分已推送、一部分未推送**，具体见下方关账记录的"推送状态"段 |
+ 
+-**M1 关账记录（2026-09-16）**：spec `docs/superpowers/specs/2026-09-16-util-simos-design.md`（已批准）；
++**M1 关账记录（2026-09-16）**：spec `docs/superpowers/specs/2026-09-16-util-simos-design.md`（**类型形状已于上一会话批准**；**spec 本体仍「待用户评审」**）；
+ 计划 `docs/superpowers/plans/2026-09-16-util-simos-plan.md` 的 11 个任务全部执行完毕：
+ 
+ | # | 任务 | 产出 |
+ |---|---|---|
+ | 1 | 地址段类型与 canonical 渲染 | 四种段（`Namespace`/`Entity`/`Index`/`Property`）+ `AddressText` |
+ | 2 | `Address.parse` / `canonical` + 冻结样例 | 解析器 + 15 条冻结样例往返恒等 |
+ | 3 | 身份 | `SubjectId` / `ResolvedSubject` / `QueryResult` |
+ | 4 | 时间基础 | `SimosTimestamp` / `TimeRange` |
+ | 5 | 外挂属性 | `InfoEntry` / `InfoSystem` / `InMemoryInfoSystem` |
+ | 6 | 版本坐标、三个协议接口与 `SimulationState` | state 包 |
+@@ -1141,26 +1141,27 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
+ | 8 | `Resolver` SPI 与注册表 | resolve 包 |
+ | 9 | Facet 协议与注册表 | facet 包 |
+ | 10 | 往返不变式框架 + 漂移自证 | verify 包（M1 硬判据） |
+ | 11 | M1 关账 | 判据核对 + spec 回填 + 状态表同步 |
+ 
+ **`verify` 结论**（`./mvnw clean verify`，在 `54ef235` 上实测）：SimulatorMosire / UtilSimos / MapSimos /
+ SocialSimos / UnitSimos / CoreSimos **六个 reactor 模块全 `SUCCESS`**、`BUILD SUCCESS`、
+ `grep -c '^\[ERROR\]'` → **0**；`simos-util` **17 个测试类 / 156 条用例**全绿；`simos-core` 的
+ `AgentLibAvailabilityTest` **15 条**全绿；SpotBugs `BugInstance size is 0`。
+ 判据（spec §1.2）逐条核对的过程与原始输出见工作台账
+-`.superpowers/sdd/2026-09-16-util-simos-plan/task-11-report.md`；上述数字均可由 `./mvnw clean verify` 原样复现。
++`.superpowers/sdd/2026-09-16-util-simos-plan/task-11-report.md`；上述数字均可在**本段所记的提交**上由 `./mvnw clean verify` 原样复现。
+ 
+ **推送状态（2026-09-16 关账时实测）**：远程分支 `origin/feat/m1-util-simos` **不是空的**——
+ `git ls-remote --heads origin feat/m1-util-simos` → `22aad1f`，即 **M1 的 Task 1–5 已经在远程**：
+-`git rev-list --count 56836f0..origin/feat/m1-util-simos` → **20** 个提交，其中 `M1 Task` 打头的是 **17** 个
+-（Task 1–5 的实现与修复轮），另 3 个是 spec 裁决 / 构建修复 / SDD 台账入库。
++`git rev-list --count 56836f0..origin/feat/m1-util-simos` → **20** 个提交，其中提交信息里**含** `M1 Task`
++字样的有 **17** 个（14 条 `feat`/`fix`/`test`/`refactor` 代码提交 + 3 条 `docs(spec)` 裁决）——
++**是"含"不是"打头"**：`git log --oneline | grep -c '^M1 Task'` = **0**；另 3 个提交不含该字样。
+ 未推送的是其后的提交：在关账提交 `28c7e77` 上实测 `git rev-list --count '@{u}..HEAD'` → **14**
+ （**此后每追加一个提交就 +1，本段自身及其后续更正也在其中**），最早一个是
+ `0876838`（行尾 LF 修复），**M1 的 Task 6 及其后的全部工作都在这些提交里**。
+ ⇒ 这一处的**现值一律现跑**，不要引用本段写下的数——写死的计数每提交一次就变成假话。
+ 另一条独立证据：`git merge-base --is-ancestor 22aad1f HEAD` 成立，即推送只会是 fast-forward。
+ 本段所记的这个口径**曾写作"本地提交、未推送"**，2026-09-16 实测后按上述数字更正——
+ "全部未推送"**不成立**，不要照抄。
+ 
+ ### M2：MapSimos
+ 
+diff --git a/docs/superpowers/plans/2026-09-16-util-simos-plan.md b/docs/superpowers/plans/2026-09-16-util-simos-plan.md
+index 286d356..b8e08d0 100644
+--- a/docs/superpowers/plans/2026-09-16-util-simos-plan.md
++++ b/docs/superpowers/plans/2026-09-16-util-simos-plan.md
+@@ -1,24 +1,24 @@
+ # UtilSimos（M1）实现计划
+ 
+ > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+ 
+ **Goal:** 把 `simos-util` 从空模块建成 M1 交付物：地址 AST 与解析/渲染、身份、时间与版本、三个协议接口、`InfoSystem`、`TemporalSeries`、`Resolver` SPI、Facet 协议、往返不变式测试框架。
+ 
+ **Architecture:** 全部是**不可变值类型 + 两个注册表 + 一个断言工具**。地址走"两层"设计：宽容解析人类写法、canonical 唯一输出（按需加引）。跨模块可见性只经 Facet 协议，领域模块自注册、`MapSimos` 不知情。变更集的字段漂移由 `apply(diff(base,target), base).equals(target)` 的 record `equals()` 兜住——这是 L1 事故的直接对症药。
+ 
+ **Tech Stack:** Java 21、Maven（`./mvnw`）、JUnit 5 + AssertJ、google-java-format（Spotless）、Checkstyle、SpotBugs。**不引入任何新依赖**（`simos-util` 只有 Jackson databind + SLF4J）。
+ 
+-**Spec:** `docs/superpowers/specs/2026-09-16-util-simos-design.md`（M1 spec，已批准）——本计划的每一步都从它派生；总纲是 `docs/superpowers/specs/2026-09-16-simos-master-design.md`。**执行者必须同时读这两份**，尤其是 spec §三（Address）与 §九（往返框架）。
++**Spec:** `docs/superpowers/specs/2026-09-16-util-simos-design.md`（M1 spec；**类型形状已于上一会话批准**，**spec 本体仍「待用户评审」**）——本计划的每一步都从它派生；总纲是 `docs/superpowers/specs/2026-09-16-simos-master-design.md`。**执行者必须同时读这两份**，尤其是 spec §三（Address）与 §九（往返框架）。
+ 
+ > **⚠️ 全文代码草图是计划期产物，执行期已就地校正过（2026-09-16 关账时补记）。**
+-> 下面的 Java 草图**不是权威**——**spec 与已落地的 `simos-util/src` 才是权威**。已知分歧至少六处，各自在
++> 下面的 Java 草图**不是权威**——**spec 与已落地的 `simos-util/src` 才是权威**。已知分歧各自在
+ > 对应位置有**取代说明**：任务地图的 Task 2 行、以及 Task 7 Step 1 前·Step 4、Task 8 Step 1 前、
+ > Task 9 Step 1 前、Task 10 Step 1 前·Step 2 各一处。
+ > **取代说明一律保留草图原貌**：计划的写法本身是记录，抹掉它等于抹掉"spec 在执行期被磨尖过"这件事。
+ > **M2 及以后照抄本计划的草图会重蹈覆辙**——照抄 Task 9 或 Task 10 的草图**编译得过但跑不过**，理由见各处的取代说明。
+ 
+ ## Global Constraints
+ 
+ - **Java 21**（`maven.compiler.release=21`）；Maven `[3.8,)`；父 POM `io.mosire:simos-parent:0.1.0-SNAPSHOT`，**不继承** `io.mosire:mosire-parent`
+ - **依赖白名单**（enforcer 构建期强制，越界即构建失败）：compile 只有 `com.fasterxml.jackson.core:jackson-databind`、`org.slf4j:slf4j-api`；test 只有 `org.junit.jupiter:junit-jupiter:6.1.3`、`org.assertj:assertj-core:3.27.7`。**不得新增任何依赖**，不得依赖 `io.mosire:agentlib-mosire` 或任何 simos 模块
+ - **不碰文件系统**：main 与 test 源码都不得出现 `java.io` / `java.nio.file` / `Files` / `Path`

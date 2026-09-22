@@ -64,6 +64,46 @@ class SdCodecTest {
     assertThat(back.state().decisionMakers().get(SdFixtures.DM1).providerId()).contains("p-json");
   }
 
+  /**
+   * ★★ **老档兼容**（本任务最硬的一条）：**没有** {@code conversationGeneration} 字段的旧字节，必须读成**世代 0**。
+   *
+   * <p>★ 为什么这是硬要求：现场已经落盘的老检查点/老档里没有这个字段，读不回来 = **整个世界打不开**。世代 0 同时还是"会话 id 与旧格式逐字相同"那一半（老会话因此接得上）。
+   *
+   * <p>★★ **做法是把字段从真字节里删掉**，不是在测试里手写一份"看起来像老档"的 JSON：手写的那份只能证明"我写的 JSON 我能读" ——真档是**写出来的那台 mapper
+   * 写出来的**，两者不是一回事。故：先编码 ⇒ 逐字删字段（并断言命中恰好 1 次，否则说明线格式 漂移了，本用例**当场红**而不是恒真）⇒ 再解码。
+   */
+  @Test
+  void aLegacyArchiveWithoutTheGenerationFieldReadsAsGenerationZero() {
+    SdState sd =
+        SdFixtures.empty()
+            .withDecisionMakers(
+                Map.of(
+                    SdFixtures.DM1,
+                    SdFixtures.decisionMakerAtGeneration(SdFixtures.DM1, 2),
+                    SdFixtures.DM2,
+                    SdFixtures.decisionMaker(SdFixtures.DM2)));
+    SdSnapshot snapshot =
+        new SdSnapshot(
+            new StateRef(new BranchId("main"), new RevisionId(3)), SimosTimestamp.of(10), sd);
+
+    String json = CODEC.encodeSnapshot(snapshot);
+    assertThat(countOf(json, "\"conversationGeneration\":"))
+        .as("★ 先证明这个字段真的写进了字节（两个决策人各一个；写成 0 也照写）")
+        .isEqualTo(2);
+    String legacy = json.replace(",\"conversationGeneration\":2", "");
+    assertThat(countOf(legacy, "\"conversationGeneration\":"))
+        .as("删掉的恰好是 DM1 那一个（剩 DM2 的那个）；锚点没命中 ⇒ 这里是 2，本用例据此自证而不是恒真")
+        .isEqualTo(1);
+
+    SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(legacy);
+    assertThat(back.state().decisionMakers().get(SdFixtures.DM1).conversationGeneration())
+        .as("★ 老字节（没有这个字段）读回来就是世代 0——世界里没有「重置过」这件事")
+        .isZero();
+    assertThat(back.state().decisionMakers().get(SdFixtures.DM1).id())
+        .as("其余字段一个不少")
+        .isEqualTo(SdFixtures.DM1);
+  }
+
   @Test
   void changeSetRoundTripsAllFourDeltaVariants() {
     SdState full = SdFixtures.full();
@@ -120,6 +160,17 @@ class SdCodecTest {
     assertThatThrownBy(() -> CODEC.apply(changeSet, foreign, meta))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("不是 SdSnapshot");
+  }
+
+  /** 子串出现次数（老档兼容那条用来自证"真删掉了一个字段"）。 */
+  private static int countOf(String haystack, String needle) {
+    int count = 0;
+    int at = haystack.indexOf(needle);
+    while (at >= 0) {
+      count++;
+      at = haystack.indexOf(needle, at + needle.length());
+    }
+    return count;
   }
 
   private static SdState patchTarget(SdState full) {

@@ -96,8 +96,8 @@ class McpPortTopologyTest {
           "unit.ApplyCasualties");
 
   /**
-   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、**T11C 起 44 条**）：17 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit
-   * 窄写；**都不是**通用写。
+   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、**会话重置起 45 条**）：18 条 sd 窄写 + 7 条 map 窄写 + 20 条
+   * unit 窄写；**都不是**通用写。
    */
   private static final List<String> GM_NARROW_WRITES =
       concat(
@@ -105,6 +105,7 @@ class McpPortTopologyTest {
               "sd.IssueDirective",
               "sd.SubmitVerdict",
               "sd.SetDecisionMakerAccess",
+              "sd.ResetDecisionMakerConversation",
               "sd.StartDecision",
               "sd.RunDecision",
               "sd.CreateNation",

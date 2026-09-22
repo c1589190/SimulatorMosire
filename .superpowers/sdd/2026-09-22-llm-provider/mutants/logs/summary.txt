@@ -1,0 +1,3 @@
+m1 verdict=KILLED rc=1 comp=0 red_hits=3 orig=381cc2e432c8710bf5ae9e3ce35160e3 mutant=e899d9efc1ba0de787aa1452cebfc984 restore=OK
+m2 verdict=KILLED rc=1 comp=0 red_hits=3 orig=9cafa6004c1daaf4f820d021211d60ff mutant=6bf25e324db91c97447adc3411581798 restore=OK
+m3 verdict=KILLED rc=1 comp=0 red_hits=3 orig=e8d49fba2dd7c2620c1d005d1ad2a8be mutant=5d4f96a6129d1d17279400649f3398d1 restore=OK

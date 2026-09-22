@@ -1,0 +1,53 @@
+# Review package: 13b96a8..54ef235
+
+## Commits
+54ef235 fix(util): 补快照入口的往返判别力（T10 复审 Important-1）
+
+## Files changed
+ .../simos/util/verify/RoundTripAssertionsTest.java     | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+## Diff
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
+index 699f818..f69d73b 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
+@@ -102,20 +102,38 @@ class RoundTripAssertionsTest {
+         // 钉**整条 dump 行**（标签 + 该行的对象），而不是裸的字段名/词：
+         // 这样删掉实现里任何一行、或把那行拼错对象，对应 needle 必然消失。
+         .hasMessageContaining("  base      = " + base)
+         .hasMessageContaining("  target    = " + target)
+         .hasMessageContaining("  actual    = " + expectedActual)
+         .hasMessageContaining("  changeSet = " + broken)
+         // spec §9.2 要求报文含"一句定位提示"（评审判 M-1：删掉提示行原本无人察觉）。
+         .hasMessageContaining("这正是 L1 事故的形态");
+   }
+ 
++  @Test
++  void aBrokenRoundTripThroughTheSnapshotEntryIsAlsoCaught() {
++    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
++    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    // 版本戳**正确**（= base 的版本），只有 beta 漏了 —— 版本戳守卫不会再替我们拦下，
++    // 于是唯一能响的就是 `assertSnapshotRoundTrip` 自己的那次 checkApplied（impl:42）。
++    ToyChangeSet stamped =
++        new ToyChangeSet(base.ref().revision(), target.timestamp(), target.alpha(), base.beta());
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertSnapshotRoundTrip(
++                    base, target, (b, t) -> stamped, ToySnapshot::apply))
++        .isInstanceOf(AssertionError.class)
++        // 钉 `checkApplied` 独有的措辞（版本戳守卫的报文不含它），
++        // 否则"因错误的原因转红"——即被版本戳守卫拦下——也会通过。
++        .hasMessageContaining("往返不变式破裂");
++  }
++
+   @Test
+   void theFrameworkDoesNotRequireSnapshotImplementations() {
+     // spec §9.2 给 `assertRoundTrip` 的 `S` **不设上界**——它要能服务 `SimulationState` 这类非快照类型。
+     // G13（评审判 M-2）：这条性质写在实现的 Javadoc 里，此前**没有任何用例守它**——给 `S` 加回
+     // `extends Snapshot` 上界，编译照样通过、5 条用例全绿。本用例用一个**刻意不实现 `Snapshot`** 的
+     // record 调用它；一旦有人加上界，这里**编译失败**（响亮的红）。
+     PlainState base = new PlainState(1);
+     PlainState target = new PlainState(2);
+     assertThatCode(
+             () ->

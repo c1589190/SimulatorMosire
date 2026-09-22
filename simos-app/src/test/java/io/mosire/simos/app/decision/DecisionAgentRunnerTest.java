@@ -77,6 +77,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -367,6 +368,88 @@ class DecisionAgentRunnerTest {
       reopened.close();
       conversations = null;
     }
+  }
+
+  // ── 会话世代：id 由「id + 世代」派生（老格式必须逐字不变） ─────────────────────────
+
+  /**
+   * ★★ **世代 0 ⇒ 与旧格式逐字相同**（本任务最硬的一条兼容要求）。
+   *
+   * <p>★★ 期望值写的是**字面量**，不是拿同一个函数算出来的：用函数算期望值的话，「永远加后缀」的实现本用例照样绿——而现场已落盘的老会话 （{@code
+   * decision-maker:dm-fra}，本阶段验收实测）就会**全部接不上**，症状是"决策人失忆"，不是一条报错。
+   */
+  @Test
+  void generationZeroKeepsTheLegacyConversationIdByteForByte() {
+    assertThat(DecisionAgentRunner.conversationIdOf(DM_FRA))
+        .as("★ 字面量，不是同函数算出来的期望值")
+        .isEqualTo("decision-maker:dm-fra");
+  }
+
+  /**
+   * ★ **任意两对 (id, 世代) 派生出不同的会话 id**——包括 {@code id 里含分隔符} 那种边界。
+   *
+   * <p>★★ 判别力就是**格式本身**：把世代拼在 id **后面**（{@code "decision-maker:" + id + "#" + gen}）的实现在这条上红—— 那时 id
+   * 叫 {@code a#1} 的决策人（世代 0）与 id 叫 {@code a} 的（世代 1）**派生出同一个 id**，两个人共用一段会话， 而且不会有任何报错。
+   * 现格式让两族**前缀**就不同（{@code decision-maker:} vs {@code decision-maker#}）⇒ 对任意 id 都不会撞。
+   */
+  @Test
+  void noTwoIdGenerationPairingsEverCollide() {
+    Set<String> ids = Set.of("dm-fra", "a", "a#1", "a#0", "#1", "1");
+
+    Set<String> seen = new HashSet<>();
+    for (String id : ids) {
+      for (long generation : new long[] {0L, 1L, 2L}) {
+        String derived = DecisionAgentRunner.conversationIdOf(new DecisionMakerId(id), generation);
+        assertThat(seen.add(derived))
+            .as("(id=%s, 世代=%d) 派生出 %s —— 与之前某一对撞了", id, generation, derived)
+            .isTrue();
+      }
+    }
+    assertThat(seen).as("夹具自检：这一组确实产出了 %d 个不同 id", ids.size() * 3).hasSize(18);
+  }
+
+  /**
+   * ★★ **世代变了 ⇒ 下一轮真的从空上下文开始**（本任务的主行为，运行流这一层的最小判据）。
+   *
+   * <p>脚本：先用世代 0 跑一轮（落 4 条进老会话）⇒ 再用**同一个决策人、世代 1** 跑一轮 ⇒ 它的**首个请求里只有身份那一条**。
+   *
+   * <p>判别力：只把会话 id 换个写法、但 {@code run} 仍按别的键读写会话的实现，本用例红在条数上；只动了 id 却没让 runner 用它的实现， 红在"第二轮的请求是 4
+   * 条"上。
+   */
+  @Test
+  void aNewGenerationStartsFromAnEmptyContextAndLeavesTheOldOneIntact() {
+    llm.enqueue(
+        LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.text("世代 0 到此"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+    assertThat(conversations.load("decision-maker:dm-fra")).hasSize(4);
+
+    DecisionMaker reset = atGeneration(1);
+    llm.enqueue(LlmResponse.text("新会话第一句"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(reset, state());
+
+    assertThat(llm.requests().get(2).messages())
+        .as("★★ 世代 1 的首个请求里**只有身份**（世代 0 的那 4 条一条都没跟过来）")
+        .hasSize(1);
+    assertThat(roles(llm.requests().get(2).messages())).containsExactly("system");
+    assertThat(conversations.load(DecisionAgentRunner.conversationIdOf(reset)))
+        .as("新会话独立地从头长起")
+        .hasSize(2);
+    assertThat(conversations.load("decision-maker:dm-fra"))
+        .as("★★ 老会话的字节一条都没少（重置不是「擦库」）")
+        .hasSize(4);
+  }
+
+  /** 同一个决策人、只换世代（其余字段逐字相同）：reset 语义就是"id 不变、会话换代"。 */
+  private static DecisionMaker atGeneration(long generation) {
+    return new DecisionMaker(
+        DM_FRA.id(),
+        DM_FRA.affiliation(),
+        DM_FRA.allowedTools(),
+        DM_FRA.accessLimit(),
+        DM_FRA.decisionCadenceTicks(),
+        DM_FRA.providerId(),
+        generation);
   }
 
   // ── 首轮注入：空会话必须先有身份（真 LLM 实测缺陷的修法） ───────────────────────────
@@ -733,7 +816,7 @@ class DecisionAgentRunnerTest {
   }
 
   private static String conversationId() {
-    return DecisionAgentRunner.conversationIdOf(DM_FRA.id());
+    return DecisionAgentRunner.conversationIdOf(DM_FRA);
   }
 
   private static List<String> roles(List<LlmMessage> messages) {

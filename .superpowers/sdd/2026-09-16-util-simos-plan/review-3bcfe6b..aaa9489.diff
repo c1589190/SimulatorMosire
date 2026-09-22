@@ -1,0 +1,69 @@
+# Review package: 3bcfe6b..aaa9489
+
+## Commits
+aaa9489 fix(util): 转发断言收紧为同一性（T8/T9 评审 fix round 1）
+
+## Files changed
+ .../src/test/java/io/mosire/simos/util/facet/FacetRegistryTest.java   | 4 +++-
+ .../test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java  | 4 +++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/facet/FacetRegistryTest.java b/simos-util/src/test/java/io/mosire/simos/util/facet/FacetRegistryTest.java
+index e485077..f0712b6 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/facet/FacetRegistryTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/facet/FacetRegistryTest.java
+@@ -181,21 +181,23 @@ class FacetRegistryTest {
+           @Override
+           public List<FacetEntry> query(Address subject, ResolveContext ctx) {
+             seenSubjects.add(subject.canonical());
+             seenContexts.add(ctx);
+             return List.of(entry("unit", "unitsHere", List.of("U-1")));
+           }
+         });
+     ResolveContext ctx = context(); // 只取一次——断言与传入必须是**同一个**对象
+     registry.queryAll(HEX, ctx);
+     assertThat(seenSubjects).containsExactly(HEX.canonical());
+-    assertThat(seenContexts).containsExactly(ctx);
++    assertThat(seenContexts).hasSize(1); // 恰好被调用一次
++    assertThat(seenContexts.get(0)).isSameAs(ctx); // **同一个**对象：containsExactly 走 equals，
++    // 值相等的替身它放行；原样转交的意图只有同一性才钉得住
+   }
+ 
+   private static FacetProvider provider(String facetName, FacetEntry... entries) {
+     return new FacetProvider() {
+ 
+       @Override
+       public String facetName() {
+         return facetName;
+       }
+ 
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java b/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java
+index 5c1ea59..203f41c 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java
+@@ -122,21 +122,23 @@ class ResolverRegistryTest {
+           }
+ 
+           @Override
+           public QueryResult resolve(Address a, ResolveContext c) {
+             seenContexts.add(c);
+             return new QueryResult(
+                 List.of(new ResolvedSubject(new SubjectId("map", "m-1"), a.canonical(), "Toy")));
+           }
+         });
+     QueryResult result = registry.resolve(address, ctx);
+-    assertThat(seenContexts).containsExactly(ctx); // ctx 原样转交（传 null 或替身都转红）
++    assertThat(seenContexts).hasSize(1); // 恰好被调用一次
++    assertThat(seenContexts.get(0)).isSameAs(ctx); // **同一个**对象：containsExactly 走 equals，
++    // 值相等的替身它放行；原样转交的意图只有同一性才钉得住
+     assertThat(result.candidates().get(0).canonicalAddress())
+         .isEqualTo(address.canonical()); // 地址原样转交（被替换过的地址在此转红）
+   }
+ 
+   private static Resolver resolver(String namespace, String localId) {
+     return new Resolver() {
+ 
+       @Override
+       public String namespace() {
+         return namespace;

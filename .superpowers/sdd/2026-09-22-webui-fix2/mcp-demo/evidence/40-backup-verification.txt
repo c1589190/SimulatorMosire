@@ -1,0 +1,11 @@
+TS=20260921T164709Z
+DST=/tmp/sept-rich5-backup-20260921T164709Z
+src_files=4 dst_files=4
+--- md5 simos.db ---
+7521076b0e620fab0a1c8064e30a53bc  /tmp/sept-rich5/simos.db
+7521076b0e620fab0a1c8064e30a53bc  /tmp/sept-rich5-backup-20260921T164709Z/simos.db
+--- all-files diff (empty=identical) ---
+ALL_MD5_IDENTICAL
+--- du ---
+5.8M	/tmp/sept-rich5
+5.8M	/tmp/sept-rich5-backup-20260921T164709Z

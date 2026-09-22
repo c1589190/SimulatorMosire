@@ -210,7 +210,23 @@ public final class SdFixtures {
         id, new Affiliation.Nation(N1), Set.of("sd.SubmitVerdict"), AccessLimit.empty(), 1);
   }
 
-  /** 绑定了 LLM provider 引用的决策人（M11 往返夹具）。 */
+  /**
+   * 会话世代非零的决策人（往返夹具）：{@code conversationGeneration} 是"重置为新会话"那条命令写的世界事实。
+   *
+   * <p>★ **必须单独有这个夹具**：世代 0 是**每一个**旧夹具的缺省值，故"世代被打通"这件事在缺省夹具下**看不见**。
+   */
+  public static DecisionMaker decisionMakerAtGeneration(DecisionMakerId id, long generation) {
+    return new DecisionMaker(
+        id,
+        new Affiliation.Nation(N1),
+        Set.of("sd.SubmitVerdict"),
+        AccessLimit.empty(),
+        1,
+        Optional.empty(),
+        generation);
+  }
+
+  /** 绑定了 LLM provider 引用的决策人（M11 往返夹具）：世代 0。 */
   public static DecisionMaker boundDecisionMaker(DecisionMakerId id, String providerId) {
     return new DecisionMaker(
         id,
@@ -218,7 +234,8 @@ public final class SdFixtures {
         Set.of("sd.SubmitVerdict"),
         AccessLimit.empty(),
         1,
-        Optional.of(providerId));
+        Optional.of(providerId),
+        0L);
   }
 
   public static Directive directive(DirectiveId id, DecisionMakerId dm, long tick) {

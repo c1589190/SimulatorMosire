@@ -1,0 +1,6 @@
+00:46:12.795 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+SERVER=simos-shell v0.1.0-SNAPSHOT
+PROTOCOL=2025-11-25
+CALL=simos.command.submit ARGS={"type":"sd.CreateNation","payloadJson":"{\"nationId\":\"大蜀\",\"name\":\"大蜀\",\"homeRegionId\":\"大蜀\",\"adminBudgetPerTick\":10}","branch":"main","expectedRevision":5}
+IS_ERROR=false
+TEXT={"result":"committed","ref":{"branch":"main","revision":6},"commandId":"e2885108-dbea-4e86-a9c6-15af5ca4b11a","correlationId":"e2885108-dbea-4e86-a9c6-15af5ca4b11a"}

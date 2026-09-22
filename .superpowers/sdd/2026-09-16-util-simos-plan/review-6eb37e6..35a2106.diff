@@ -1,0 +1,56 @@
+# Review package: 6eb37e6..35a2106
+
+## Commits
+35a2106 fix(util): ResolverRegistryTest 两处 needle 去输入数据依赖 + 补后置条件断言
+
+## Files changed
+ .../io/mosire/simos/util/resolve/ResolverRegistryTest.java  | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java b/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java
+index 203f41c..034a775 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/resolve/ResolverRegistryTest.java
+@@ -42,30 +42,39 @@ class ResolverRegistryTest {
+                 .localId())
+         .isEqualTo("m-1");
+   }
+ 
+   @Test
+   void duplicateRegistrationIsRejected() {
+     ResolverRegistry registry = new ResolverRegistry();
+     registry.register(resolver("map", "m-1"));
+     assertThatThrownBy(() -> registry.register(resolver("map", "m-2")))
+         .isInstanceOf(IllegalArgumentException.class)
+-        .hasMessageContaining("map");
++        .hasMessageContaining("已有解析器"); // 消息**专有**文本，输入数据里不含（见下方自证 M2'）
++    // 失败的注册不得改动注册表：putIfAbsent→put 时此处读到 "m-2"，转红（见下方自证 M3'）。
++    assertThat(
++            registry
++                .resolve(Address.parse("map:Map1"), context())
++                .candidates()
++                .get(0)
++                .id()
++                .localId())
++        .isEqualTo("m-1");
+   }
+ 
+   @Test
+   void unregisteredNamespaceIsRejectedWithNoFallback() {
+     // 与 GSimulator 的"静默遮蔽"相反：没有注册就是错，不给兜底解析器。
+     ResolverRegistry registry = new ResolverRegistry();
+     assertThatThrownBy(() -> registry.resolve(Address.parse("map:Map1"), context()))
+         .isInstanceOf(IllegalArgumentException.class)
+-        .hasMessageContaining("map");
++        .hasMessageContaining("没有注册命名空间");
+   }
+ 
+   @Test
+   void blankNamespaceIsRejected() {
+     ResolverRegistry registry = new ResolverRegistry();
+     assertThatThrownBy(() -> registry.register(resolver(" ", "m-1")))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("不得为空白");
+     // null 走同一条守卫：只写 isBlank() 的实现会在此抛 NPE，本断言转红。
+     assertThatThrownBy(() -> registry.register(resolver(null, "m-1")))

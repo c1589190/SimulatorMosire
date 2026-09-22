@@ -1,0 +1,26 @@
+{
+    "id": "dm-dashu",
+    "affiliation": {
+        "kind": "nation",
+        "id": "\u5927\u8700",
+        "displayName": "\u5927\u8700",
+        "nationId": "\u5927\u8700",
+        "rootUnit": null
+    },
+    "allowedTools": [
+        "sd.IssueDirective",
+        "sd.SubmitVerdict"
+    ],
+    "cadence": 5,
+    "viewScope": {
+        "visibleRegions": 0,
+        "visibleHexes": 0,
+        "visibleUnits": 0,
+        "seeOwnUnits": false,
+        "adjudicationDisclosure": "WITHHELD",
+        "redactedFields": []
+    },
+    "due": true,
+    "lastDirectiveTick": null,
+    "ticksSinceLast": null
+}

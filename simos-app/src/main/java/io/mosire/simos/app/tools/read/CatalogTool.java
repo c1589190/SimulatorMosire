@@ -98,6 +98,8 @@ public final class CatalogTool implements AgentTool {
                   + "adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD)?"
                   + "（★ 四个可选字段：缺省 = 不改动，显式给 = 整份替换；"
                   + "accessLimit 是**额外限制**，与范围函数求交 ⇒ 只能收紧）"),
+          Map.entry(
+              "sd.ResetDecisionMakerConversation", "decisionMakerId（会话世代 +1：该决策人下一轮从空上下文重开；旧会话不删）"),
           Map.entry("sd.StartDecision", "decisionMakerId, note?"),
           Map.entry("sd.RunDecision", "decisionMakerId"),
           Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"));

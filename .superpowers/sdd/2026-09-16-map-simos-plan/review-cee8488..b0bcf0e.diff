@@ -1,0 +1,570 @@
+# Review package: cee8488..b0bcf0e
+
+## Commits
+b0bcf0e feat(map): hex 包——HexCoord 身份、唯一方向表、网格几何
+
+## Files changed
+ .../java/io/mosire/simos/map/hex/HexCoord.java     |  70 +++++++++
+ .../java/io/mosire/simos/map/hex/HexDirection.java |  54 +++++++
+ .../main/java/io/mosire/simos/map/hex/HexGrid.java |  79 +++++++++++
+ .../java/io/mosire/simos/map/hex/HexCoordTest.java | 157 +++++++++++++++++++++
+ .../io/mosire/simos/map/hex/HexDirectionTest.java  |  78 ++++++++++
+ .../java/io/mosire/simos/map/hex/HexGridTest.java  |  81 +++++++++++
+ 6 files changed, 519 insertions(+)
+
+## Diff
+diff --git a/simos-map/src/main/java/io/mosire/simos/map/hex/HexCoord.java b/simos-map/src/main/java/io/mosire/simos/map/hex/HexCoord.java
+new file mode 100644
+index 0000000..4c58c08
+--- /dev/null
++++ b/simos-map/src/main/java/io/mosire/simos/map/hex/HexCoord.java
+@@ -0,0 +1,70 @@
++package io.mosire.simos.map.hex;
++
++import java.util.List;
++
++/**
++ * 轴向坐标（axial）。**六边形格的唯一身份**。
++ *
++ * <p>cube 第三轴恒由 {@code s = -q - r} 导出，不存储。
++ *
++ * <p>{@code "q_r"} 字符串只是**序列化形式**，不是身份：{@link #toString()} 与 {@link #parse(String)} 是它的唯一两份 实现，且只在
++ * JSON 边界使用（铁律 1——地址是定位方式，ID 是身份）。
++ */
++public record HexCoord(int q, int r) implements Comparable<HexCoord> {
++
++  /** cube 第三轴。恒等式 {@code q + r + s == 0}。 */
++  public int s() {
++    return -q - r;
++  }
++
++  /**
++   * 到另一格的六边形距离（cube 曼哈顿距离的一半）。
++   *
++   * <p>GSimulator 有 4 份代数恒等的实现（Java 3 + JS 1），此处合并为唯一一份。
++   */
++  public int distanceTo(HexCoord other) {
++    return (Math.abs(q - other.q) + Math.abs(r - other.r) + Math.abs(s() - other.s())) / 2;
++  }
++
++  /** 沿一个方向走一步。 */
++  public HexCoord neighbor(HexDirection d) {
++    return new HexCoord(q + d.dq(), r + d.dr());
++  }
++
++  /** 六条邻格，**枚举序**（即边序号序）。 */
++  public List<HexCoord> neighbors() {
++    return HexDirection.ALL.stream().map(this::neighbor).toList();
++  }
++
++  @Override
++  public int compareTo(HexCoord o) {
++    int c = Integer.compare(q, o.q);
++    return c != 0 ? c : Integer.compare(r, o.r);
++  }
++
++  /** 规范字符串形式，**只在 JSON 边界使用**（身份是类型，不是这个串）。 */
++  @Override
++  public String toString() {
++    return q + "_" + r;
++  }
++
++  /**
++   * 解析 {@link #toString()} 的产物。
++   *
++   * <p>非法输入一律抛 {@link IllegalArgumentException}，但**两种来源不同**：{@code null} 与形态不符（空串、无分隔符
++   * 或分隔符在首尾）由本方法的**显式判空/判形**抛出；而 {@code "a_b"} 这类**数字字段写错**的情况，是本方法交给 {@link
++   * Integer#parseInt(String)} 抛出的 {@link NumberFormatException} 来满足的——后者是 {@link
++   * IllegalArgumentException} 的**子类**，**没有**任何一行显式检查在挡它。
++   */
++  public static HexCoord parse(String text) {
++    if (text == null) {
++      throw new IllegalArgumentException("非法坐标串: null");
++    }
++    int i = text.indexOf('_');
++    if (i <= 0 || i == text.length() - 1) {
++      throw new IllegalArgumentException("非法坐标串: " + text);
++    }
++    return new HexCoord(
++        Integer.parseInt(text.substring(0, i)), Integer.parseInt(text.substring(i + 1)));
++  }
++}
+diff --git a/simos-map/src/main/java/io/mosire/simos/map/hex/HexDirection.java b/simos-map/src/main/java/io/mosire/simos/map/hex/HexDirection.java
+new file mode 100644
+index 0000000..9c1de27
+--- /dev/null
++++ b/simos-map/src/main/java/io/mosire/simos/map/hex/HexDirection.java
+@@ -0,0 +1,54 @@
++package io.mosire.simos.map.hex;
++
++import java.util.List;
++
++/**
++ * 六条边的方向。**索引即边序号，全模块唯一。**
++ *
++ * <p>序为顺时针 {@code E, SE, SW, W, NW, NE}，与 GSimulator 的 {@code riverMask} 位序一致。
++ *
++ * <p>GSimulator 全仓有 8 份方向表（6 Java + 2 JS），归为两种互逆索引序，根因是两张主表都是 package-private、不导出
++ * API，消费方只能复制。此处合并为唯一一份。
++ */
++public enum HexDirection {
++  E(1, 0),
++  SE(0, 1),
++  SW(-1, 1),
++  W(-1, 0),
++  NW(0, -1),
++  NE(1, -1);
++
++  private final int dq;
++  private final int dr;
++
++  HexDirection(int dq, int dr) {
++    this.dq = dq;
++    this.dr = dr;
++  }
++
++  public int dq() {
++    return dq;
++  }
++
++  public int dr() {
++    return dr;
++  }
++
++  /** 反向边。由枚举序保证（恰隔 3 项），不是巧合。 */
++  public HexDirection opposite() {
++    return ALL.get((ordinal() + 3) % 6);
++  }
++
++  /** 顺时针下一方向。 */
++  public HexDirection next() {
++    return ALL.get((ordinal() + 1) % 6);
++  }
++
++  /** 逆时针下一方向。 */
++  public HexDirection prev() {
++    return ALL.get((ordinal() + 5) % 6);
++  }
++
++  /** 按枚举序的全部方向。 */
++  public static final List<HexDirection> ALL = List.of(values());
++}
+diff --git a/simos-map/src/main/java/io/mosire/simos/map/hex/HexGrid.java b/simos-map/src/main/java/io/mosire/simos/map/hex/HexGrid.java
+new file mode 100644
+index 0000000..e51537c
+--- /dev/null
++++ b/simos-map/src/main/java/io/mosire/simos/map/hex/HexGrid.java
+@@ -0,0 +1,79 @@
++package io.mosire.simos.map.hex;
++
++import java.util.HashSet;
++import java.util.Set;
++
++/**
++ * 六边形格容器。格的身份是 {@link HexCoord}，不是字符串键。
++ *
++ * <p>★ 没有 {@code gridSize} 字段：GSimulator 那个字段只做构造期范围校验、不参与取格，且到处写死 30 而真实生成半径是 80 —— 范围由本类的 {@code
++ * minQ()/maxQ()/minR()/maxR()} 导出。
++ *
++ * <p>本类当前只承载**坐标集合**（纯几何：范围导出、半径内枚举）；格的内容由 {@code map} 包的 {@code HexCell} 落地后 另行补入，届时本类改为持有 {@code
++ * Map<HexCoord, HexCell>}。
++ */
++public final class HexGrid {
++
++  private final Set<HexCoord> cells;
++
++  private HexGrid(Set<HexCoord> cells) {
++    this.cells = Set.copyOf(cells);
++  }
++
++  /** 由坐标集合建网格。构造期做**防御性拷贝**，此后改动入参集合不再影响本网格。 */
++  public static HexGrid of(Set<HexCoord> cells) {
++    return new HexGrid(cells);
++  }
++
++  /** 最小 q。**空网格抛 {@link IllegalStateException}**——没有格的网格不存在坐标范围。 */
++  public int minQ() {
++    return cells.stream().mapToInt(HexCoord::q).min().orElseThrow(HexGrid::emptyGrid);
++  }
++
++  /** 最大 q。空网格抛 {@link IllegalStateException}。 */
++  public int maxQ() {
++    return cells.stream().mapToInt(HexCoord::q).max().orElseThrow(HexGrid::emptyGrid);
++  }
++
++  /** 最小 r。空网格抛 {@link IllegalStateException}。 */
++  public int minR() {
++    return cells.stream().mapToInt(HexCoord::r).min().orElseThrow(HexGrid::emptyGrid);
++  }
++
++  /** 最大 r。空网格抛 {@link IllegalStateException}。 */
++  public int maxR() {
++    return cells.stream().mapToInt(HexCoord::r).max().orElseThrow(HexGrid::emptyGrid);
++  }
++
++  /** 是否含该格。 */
++  public boolean contains(HexCoord c) {
++    return cells.contains(c);
++  }
++
++  /** 全部格。返回的集合**不可变**（构造期已拷贝，此处的返回不再需要第二份拷贝）。 */
++  public Set<HexCoord> cells() {
++    return cells;
++  }
++
++  /**
++   * 以 center 为中心、半径 radius 的六边形球内全部坐标（含 center）。
++   *
++   * <p>cube 坐标下即枚举满足 {@code |dq| <= radius}、{@code |dr| <= radius}、{@code |ds| <= radius}（其中 {@code
++   * ds = -dq - dr}）的全部偏移，逐格加到 center 上。**radius 为负时返回空集**。
++   */
++  public static Set<HexCoord> withinRadius(HexCoord center, int radius) {
++    Set<HexCoord> ball = new HashSet<>();
++    for (int dq = -radius; dq <= radius; dq++) {
++      int from = Math.max(-radius, -dq - radius);
++      int to = Math.min(radius, -dq + radius);
++      for (int dr = from; dr <= to; dr++) {
++        ball.add(new HexCoord(center.q() + dq, center.r() + dr));
++      }
++    }
++    return Set.copyOf(ball);
++  }
++
++  private static IllegalStateException emptyGrid() {
++    return new IllegalStateException("空网格没有坐标范围");
++  }
++}
+diff --git a/simos-map/src/test/java/io/mosire/simos/map/hex/HexCoordTest.java b/simos-map/src/test/java/io/mosire/simos/map/hex/HexCoordTest.java
+new file mode 100644
+index 0000000..3edb51d
+--- /dev/null
++++ b/simos-map/src/test/java/io/mosire/simos/map/hex/HexCoordTest.java
+@@ -0,0 +1,157 @@
++package io.mosire.simos.map.hex;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.List;
++import org.junit.jupiter.api.Test;
++
++/** spec §3.1 / §3.4：坐标是身份，`"q_r"` 只是序列化形式；距离只有一份实现。 */
++class HexCoordTest {
++
++  /** 冻结样例：`(q, r)` → 规范串。这是 JSON 边界的形式，不能随手改。 */
++  @Test
++  void toStringAndParseRoundTrip() {
++    int[][] samples = {{0, 0}, {0, -1}, {-3, 7}};
++    String[] frozen = {"0_0", "0_-1", "-3_7"};
++    for (int i = 0; i < samples.length; i++) {
++      HexCoord c = new HexCoord(samples[i][0], samples[i][1]);
++      assertThat(c.toString()).as("冻结串 %d", i).isEqualTo(frozen[i]);
++      assertThat(HexCoord.parse(c.toString())).as("往返 %d", i).isEqualTo(c);
++      assertThat(HexCoord.parse(frozen[i])).as("按冻结串解析 %d", i).isEqualTo(c);
++    }
++    for (int q = -20; q <= 20; q++) {
++      for (int r = -20; r <= 20; r++) {
++        HexCoord c = new HexCoord(q, r);
++        assertThat(HexCoord.parse(c.toString())).isEqualTo(c);
++      }
++    }
++  }
++
++  /**
++   * 非法串一律 `IllegalArgumentException`，但**来源不同**：前五种里 `""`/`"_"`/`"1_"`/`"_2"` 命中的是 `parse`
++   * 的显式判形，`"a_b"` 命中的是 `Integer.parseInt` 抛出的 `NumberFormatException`（`IAE` 的子类）； `null`
++   * 命中的是显式判空——删掉判空后这里会变成 NPE，故这一行钉得住判空本身。
++   */
++  @Test
++  void parseRejectsMalformed() {
++    assertThatThrownBy(() -> HexCoord.parse("")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> HexCoord.parse("_")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> HexCoord.parse("1_")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> HexCoord.parse("_2")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> HexCoord.parse("a_b")).isInstanceOf(IllegalArgumentException.class);
++    assertThatThrownBy(() -> HexCoord.parse(null)).isInstanceOf(IllegalArgumentException.class);
++  }
++
++  @Test
++  void sAxisInvariant() {
++    for (int q = -20; q <= 20; q++) {
++      for (int r = -20; r <= 20; r++) {
++        HexCoord c = new HexCoord(q, r);
++        assertThat(q + r + c.s()).as("%s 的 cube 恒等式", c).isZero();
++      }
++    }
++  }
++
++  @Test
++  void distanceIsSymmetricAndZeroOnSelf() {
++    for (int q = -6; q <= 6; q++) {
++      for (int r = -6; r <= 6; r++) {
++        HexCoord a = new HexCoord(q, r);
++        assertThat(a.distanceTo(a)).as("%s 到自身", a).isZero();
++        for (int q2 = -6; q2 <= 6; q2++) {
++          for (int r2 = -6; r2 <= 6; r2++) {
++            HexCoord b = new HexCoord(q2, r2);
++            assertThat(a.distanceTo(b)).as("%s → %s", a, b).isEqualTo(b.distanceTo(a));
++          }
++        }
++      }
++    }
++  }
++
++  /**
++   * 与**独立写一遍**的 cube 公式（三轴最大绝对值，`max(|dq|,|dr|,|ds|)`）逐点对拍。 `distanceTo` 用的是
++   * `(|dq|+|dr|+|ds|)/2`，两种形式代数恒等但写法不同源——同源错误（比如把 `s()` 写成 `q + r`）因此会被抓住。
++   */
++  @Test
++  void distanceMatchesCubeFormula() {
++    for (int q = -6; q <= 6; q++) {
++      for (int r = -6; r <= 6; r++) {
++        HexCoord a = new HexCoord(q, r);
++        for (int q2 = -6; q2 <= 6; q2++) {
++          for (int r2 = -6; r2 <= 6; r2++) {
++            HexCoord b = new HexCoord(q2, r2);
++            assertThat(a.distanceTo(b)).as("%s → %s", a, b).isEqualTo(cubeDistanceByMax(a, b));
++          }
++        }
++      }
++    }
++  }
++
++  @Test
++  void distanceOnKnownPairs() {
++    HexCoord origin = new HexCoord(0, 0);
++    assertThat(origin.distanceTo(new HexCoord(1, 0))).isEqualTo(1);
++    assertThat(origin.distanceTo(new HexCoord(2, -1))).isEqualTo(2);
++    assertThat(origin.distanceTo(new HexCoord(-3, 3))).isEqualTo(3);
++  }
++
++  @Test
++  void neighborIsInvolutive() {
++    for (int q = -3; q <= 3; q++) {
++      for (int r = -3; r <= 3; r++) {
++        HexCoord a = new HexCoord(q, r);
++        for (HexDirection d : HexDirection.ALL) {
++          assertThat(a.neighbor(d).neighbor(d.opposite())).as("%s 沿 %s 往返", a, d).isEqualTo(a);
++        }
++      }
++    }
++  }
++
++  @Test
++  void neighborsAreSixDistinctAtDistance1() {
++    HexCoord center = new HexCoord(2, -3);
++    List<HexCoord> neighbors = center.neighbors();
++    assertThat(neighbors).hasSize(6);
++    assertThat(neighbors).doesNotHaveDuplicates();
++    for (HexCoord n : neighbors) {
++      assertThat(n.distanceTo(center)).as("%s 到中心", n).isEqualTo(1);
++    }
++  }
++
++  @Test
++  void compareToIsTotalOrder() {
++    List<HexCoord> sample =
++        List.of(
++            new HexCoord(1, -1),
++            new HexCoord(0, 0),
++            new HexCoord(1, -5),
++            new HexCoord(-2, 0),
++            new HexCoord(1, 3),
++            new HexCoord(-2, -4));
++    for (HexCoord a : sample) {
++      assertThat(a.compareTo(a)).as("%s 与自身", a).isZero();
++      for (HexCoord b : sample) {
++        int lexicographic =
++            a.q() != b.q() ? Integer.compare(a.q(), b.q()) : Integer.compare(a.r(), b.r());
++        assertThat(Integer.signum(a.compareTo(b))).as("%s 与 %s", a, b).isEqualTo(lexicographic);
++      }
++    }
++    List<HexCoord> byNaturalOrder = new ArrayList<>(sample);
++    Collections.sort(byNaturalOrder);
++    List<HexCoord> byLexicographic = new ArrayList<>(sample);
++    byLexicographic.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
++    assertThat(byNaturalOrder).isEqualTo(byLexicographic);
++  }
++
++  /** 独立于 `HexCoord.distanceTo` 的另一份写法：cube 三轴最大绝对值（cube 坐标下 x+y+z==0）。 */
++  private static int cubeDistanceByMax(HexCoord a, HexCoord b) {
++    int dq = a.q() - b.q();
++    int dr = a.r() - b.r();
++    int ds = a.s() - b.s();
++    return Math.max(Math.abs(dq), Math.max(Math.abs(dr), Math.abs(ds)));
++  }
++}
+diff --git a/simos-map/src/test/java/io/mosire/simos/map/hex/HexDirectionTest.java b/simos-map/src/test/java/io/mosire/simos/map/hex/HexDirectionTest.java
+new file mode 100644
+index 0000000..583223d
+--- /dev/null
++++ b/simos-map/src/test/java/io/mosire/simos/map/hex/HexDirectionTest.java
+@@ -0,0 +1,78 @@
++package io.mosire.simos.map.hex;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import org.junit.jupiter.api.Test;
++
++/** spec §3.2：全模块唯一的方向表，A 序（顺时针）`E, SE, SW, W, NW, NE`。 */
++class HexDirectionTest {
++
++  @Test
++  void oppositeIsInvolution() {
++    for (HexDirection d : HexDirection.ALL) {
++      assertThat(d.opposite().opposite()).as("%s 的反向的反向", d).isEqualTo(d);
++    }
++  }
++
++  /** 钉住"恰隔 3 项"不是"隔 0 项"。 */
++  @Test
++  void oppositeIsNotSelf() {
++    for (HexDirection d : HexDirection.ALL) {
++      assertThat(d.opposite()).as("%s 的反向", d).isNotEqualTo(d);
++    }
++  }
++
++  @Test
++  void nextAndPrevAreInverse() {
++    for (HexDirection d : HexDirection.ALL) {
++      assertThat(d.next().prev()).as("%s 的下一项的上一项", d).isEqualTo(d);
++      assertThat(d.prev().next()).as("%s 的上一项的下一项", d).isEqualTo(d);
++      assertThat(d.next()).as("%s 的下一项", d).isNotEqualTo(d);
++      assertThat(d.prev()).as("%s 的上一项", d).isNotEqualTo(d);
++    }
++  }
++
++  @Test
++  void allSixDistinctAndCoversEnum() {
++    assertThat(HexDirection.ALL).hasSize(6);
++    assertThat(HexDirection.ALL).doesNotHaveDuplicates();
++    assertThat(HexDirection.ALL).containsExactly(HexDirection.values());
++  }
++
++  /**
++   * ★ **唯一真值锚**：这 6 行（名字 + 偏移）是 A 序的冻结副本，来自 spec §3.2 与 GSimulator 的 `riverMask`
++   * 位序。改序、改偏移、改名字，这一条必红——它是"单一方向表"这句话的唯一真值来源。
++   */
++  @Test
++  void offsetsMatchFrozenTable() {
++    String[] names = {"E", "SE", "SW", "W", "NW", "NE"};
++    int[][] offsets = {{1, 0}, {0, 1}, {-1, 1}, {-1, 0}, {0, -1}, {1, -1}};
++    HexDirection[] dirs = HexDirection.values();
++    assertThat(dirs).hasSize(offsets.length);
++    for (int i = 0; i < offsets.length; i++) {
++      assertThat(dirs[i].name()).as("索引 %d 的名字", i).isEqualTo(names[i]);
++      assertThat(dirs[i].dq()).as("索引 %d（%s）的 dq", i, names[i]).isEqualTo(offsets[i][0]);
++      assertThat(dirs[i].dr()).as("索引 %d（%s）的 dr", i, names[i]).isEqualTo(offsets[i][1]);
++    }
++  }
++
++  @Test
++  void neighborOffsetsAreAllDistinct() {
++    Set<List<Integer>> offsets = new HashSet<>();
++    for (HexDirection d : HexDirection.ALL) {
++      offsets.add(List.of(d.dq(), d.dr()));
++    }
++    assertThat(offsets).hasSize(6);
++  }
++
++  @Test
++  void everyNeighborIsAtDistanceOne() {
++    HexCoord origin = new HexCoord(0, 0);
++    for (HexDirection d : HexDirection.ALL) {
++      assertThat(origin.neighbor(d).distanceTo(origin)).as("%s 的邻居", d).isEqualTo(1);
++    }
++  }
++}
+diff --git a/simos-map/src/test/java/io/mosire/simos/map/hex/HexGridTest.java b/simos-map/src/test/java/io/mosire/simos/map/hex/HexGridTest.java
+new file mode 100644
+index 0000000..d7e2716
+--- /dev/null
++++ b/simos-map/src/test/java/io/mosire/simos/map/hex/HexGridTest.java
+@@ -0,0 +1,81 @@
++package io.mosire.simos.map.hex;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.util.HashSet;
++import java.util.Set;
++import org.junit.jupiter.api.Test;
++
++/** spec §3.3：地图范围由 hex 集合导出（`gridSize` 已删），几何只有一份实现。 */
++class HexGridTest {
++
++  @Test
++  void boundsDerivedFromCells() {
++    HexGrid empty = HexGrid.of(Set.of());
++    assertThatThrownBy(empty::minQ).isInstanceOf(IllegalStateException.class);
++    assertThatThrownBy(empty::maxQ).isInstanceOf(IllegalStateException.class);
++    assertThatThrownBy(empty::minR).isInstanceOf(IllegalStateException.class);
++    assertThatThrownBy(empty::maxR).isInstanceOf(IllegalStateException.class);
++
++    HexGrid grid = HexGrid.of(Set.of(new HexCoord(0, 0), new HexCoord(3, -2), new HexCoord(-1, 5)));
++    assertThat(grid.minQ()).isEqualTo(-1);
++    assertThat(grid.maxQ()).isEqualTo(3);
++    assertThat(grid.minR()).isEqualTo(-2);
++    assertThat(grid.maxR()).isEqualTo(5);
++    assertThat(grid.contains(new HexCoord(-1, 5))).isTrue();
++    assertThat(grid.contains(new HexCoord(5, -1))).isFalse();
++    assertThat(grid.cells())
++        .containsExactlyInAnyOrder(new HexCoord(0, 0), new HexCoord(3, -2), new HexCoord(-1, 5));
++  }
++
++  @Test
++  void cellsWithinRadiusIsClosedBall() {
++    HexCoord center = new HexCoord(2, -3);
++    assertThat(HexGrid.withinRadius(center, 0)).containsExactly(center);
++    assertThat(HexGrid.withinRadius(center, 1)).hasSize(7);
++    assertThat(HexGrid.withinRadius(center, 2)).hasSize(19);
++    assertThat(HexGrid.withinRadius(center, -1)).isEmpty();
++  }
++
++  @Test
++  void cellsWithinRadiusAllInRange() {
++    HexCoord center = new HexCoord(-4, 1);
++    for (int radius = 0; radius <= 5; radius++) {
++      Set<HexCoord> ball = HexGrid.withinRadius(center, radius);
++      assertThat(ball).hasSize(3 * radius * radius + 3 * radius + 1);
++      for (HexCoord c : ball) {
++        assertThat(c.distanceTo(center)).as("半径 %d 内的 %s", radius, c).isLessThanOrEqualTo(radius);
++      }
++      assertThat(ball).contains(center);
++    }
++  }
++
++  /** 构造期的 `Set.copyOf` 是一道真防线：删掉它，本用例立刻红（网格会跟着入参集合一起变）。 */
++  @Test
++  void mutatingTheSourceSetDoesNotAffectTheGrid() {
++    Set<HexCoord> source = new HashSet<>();
++    source.add(new HexCoord(0, 0));
++    HexGrid grid = HexGrid.of(source);
++
++    source.add(new HexCoord(9, 9));
++    source.remove(new HexCoord(0, 0));
++
++    assertThat(grid.cells()).containsExactly(new HexCoord(0, 0));
++    assertThat(grid.contains(new HexCoord(0, 0))).isTrue();
++    assertThat(grid.contains(new HexCoord(9, 9))).isFalse();
++  }
++
++  /**
++   * 两处返回的集合都必须是不可变的（构造期拷贝 + `Set.copyOf`），否则调用方能反手改掉网格状态。
++   *
++   * <p>入参刻意用**可变**集合：若用 `Set.of(...)`（本就不可变），`cells()` 那一条会继承入参的属性而恒成立， 就算把构造期的 `Set.copyOf`
++   * 删掉也照样绿——那正是"装饰性断言"。
++   */
++  @Test
++  void returnedSetsAreUnmodifiable() {
++    HexGrid grid = HexGrid.of(new HashSet<>(Set.of(new HexCoord(0, 0), new HexCoord(1, 1))));
++    assertThat(grid.cells()).isUnmodifiable();
++    assertThat(HexGrid.withinRadius(new HexCoord(0, 0), 1)).isUnmodifiable();
++  }
++}

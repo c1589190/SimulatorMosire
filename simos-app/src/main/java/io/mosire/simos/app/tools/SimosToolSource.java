@@ -24,6 +24,7 @@ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
 import io.mosire.simos.app.tools.write.SdCancelEffectTool;
@@ -211,6 +212,8 @@ public final class SimosToolSource implements ToolSource {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
     built.add(new SetDecisionMakerAccessTool(core, initiator, mapId));
+    // 「把某个决策人的会话换一段新的」：只在 GM 桶——决策人不重置自己（那等于给自己开一个"忘掉刚才答应过什么"的按钮）。
+    built.add(new ResetDecisionMakerConversationTool(core, initiator, mapId));
     built.add(new StartDecisionTool(core, initiator, mapId));
     // T11C：触发**决策人自己**跑一轮（真 LLM + 真工具）。★ **只在 GM 桶**——决策人不触发自己（那是自环）。
     built.add(new RunDecisionTool(core, initiator, mapId, decisionAgent));

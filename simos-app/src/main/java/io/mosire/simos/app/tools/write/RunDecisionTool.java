@@ -13,6 +13,7 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.spi.RunDecisionHandler;
+import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,7 +109,9 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool {
     DecisionMakerId decisionMakerId =
         RunDecisionHandler.decisionMakerIdOf(
             ToolSupport.optionalText(context.arguments(), "payloadJson", "{}"));
-    String conversationId = DecisionAgentService.conversationIdOf(decisionMakerId);
+    // ★★ **会话 id 在失败路径上现算**（不是开头算好一个常量）：它由**世界事实**「id + 会话世代」派生，而世代会被
+    //   `sd.ResetDecisionMakerConversation` 改掉 ⇒ 早算的那个值在重置之后就作废了。成功路径用的是 turn 自带的那一个
+    //   （同源，见 DecisionTurn.conversationId），故只有这两条 catch 需要它。
     try {
       DecisionAgentRunner.DecisionTurn turn =
           decisionAgent.runRound(
@@ -118,7 +121,12 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool {
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
       // ★ 中止**不是失败到没有信息**：触发事实已落盘、这一轮的每条消息也都在会话里（运行流的保证）⇒ 如实报"因预算中止"
       //   并给出会话 id（下一 tick 从这段会话续）。轨迹本身拿不到（运行流在抛出时才中止，不返回半份账）。
-      Map<String, Object> view = baseView("aborted", committed, decisionMakerId, conversationId);
+      Map<String, Object> view =
+          baseView(
+              "aborted",
+              committed,
+              decisionMakerId,
+              conversationIdFor(committed.ref(), decisionMakerId));
       view.put("reason", "turn-budget");
       view.put("llmCalls", e.llmCalls());
       view.put("abortedByBudget", true);
@@ -126,11 +134,33 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool {
       return ToolResult.error("TOOL_ERROR", ToolSupport.json(view));
     } catch (RuntimeException e) {
       // ★ 未绑定 provider（fail-closed）/ 路由坏掉 / 决策人查无：**如实报**，绝不静默当作"跑过了"。
-      Map<String, Object> view = baseView("failed", committed, decisionMakerId, conversationId);
+      Map<String, Object> view =
+          baseView(
+              "failed",
+              committed,
+              decisionMakerId,
+              conversationIdFor(committed.ref(), decisionMakerId));
       view.put("reason", e.getClass().getSimpleName());
       view.put("abortedByBudget", false);
       view.put("detail", e.getMessage());
       return ToolResult.error("TOOL_ERROR", ToolSupport.json(view));
+    }
+  }
+
+  /**
+   * 失败路径上报的会话 id：按**世界事实**（决策人 id + 会话世代）现算。
+   *
+   * <p>★★ **不拿"id 拼前缀"糊一个出去**：重置之后那个字符串指向的是一段**早已作废**的会话，而它看起来完全正常——调用方据此做的任何
+   * 后续动作（人工排查、下一轮定位）都会被引到错的地方。
+   *
+   * <p>★ **决策人查无时如实说**（而不是编一个 id）：这一轮的失败原因本来就包含"这个人不存在"，此时**没有**会话可言。 只吞 {@link
+   * IllegalArgumentException}——那正是"查无/切片缺失"的既有信号；重放本身坏掉（别的异常）照旧冒泡出去。
+   */
+  private String conversationIdFor(StateRef ref, DecisionMakerId decisionMakerId) {
+    try {
+      return decisionAgent.conversationIdOf(ref, decisionMakerId);
+    } catch (IllegalArgumentException e) {
+      return "(无会话：该版本的世界里没有决策人 " + decisionMakerId.value() + ")";
     }
   }
 

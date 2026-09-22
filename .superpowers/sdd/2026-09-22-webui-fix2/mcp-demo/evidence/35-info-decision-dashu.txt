@@ -1,0 +1,5 @@
+SERVER=simos-shell v0.1.0-SNAPSHOT
+PROTOCOL=2025-11-25
+CALL=simos.state.facets ARGS={"address":"sd:decision.dm-dashu"}
+IS_ERROR=false
+TEXT={"entries":[]}

@@ -1,0 +1,69 @@
+package io.mosire.simos.sd.spi;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.ViewScope;
+import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.SimulationState;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * {@code sd.SetViewScope} 命令的处理器（spec §七.2，D4，N11）：GM 为某个决策人**配权**。
+ *
+ * <pre>{@code
+ * {"decisionMakerId":"dm1","viewScope":{"visibleRegions":["r1"],"visibleHexes":[{"q":1,"r":1}],
+ *  "visibleUnits":["u-1"],"seeOwnUnits":false,"adjudicationDisclosure":"PERCEPTION_ONLY",
+ *  "redactedFields":["position"]}}
+ * }</pre>
+ *
+ * <p>★ **配权本身是数据**（N11）：{@code ViewScope} 写进 {@link DecisionMaker}、随 revision 落盘 ⇒ 可回放、可回退分岔。
+ *
+ * <p>★ **GM 专用**（N11）：工具侧标 {@code sensitive=true} 走审批（D6）；本处理器只做领域校验（dm 存在）。
+ *
+ * <p>拒绝：{@code decisionMakerId} 不存在；载荷不是合法 {@link ViewScope}。
+ */
+public final class SetViewScopeHandler implements CommandHandler {
+
+  @Override
+  public String type() {
+    return "sd.SetViewScope";
+  }
+
+  @Override
+  public HandlerOutcome handle(SimulationState state, String payloadJson) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(payloadJson, "payloadJson");
+    SdState base = SdSnapshots.of(state).state();
+    try {
+      JsonNode payload = SdPayloads.parse(payloadJson);
+      DecisionMakerId id =
+          DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+      ViewScope scope = SdPayloads.requireViewScope(payload, "viewScope");
+
+      DecisionMaker existing = base.decisionMakers().get(id);
+      if (existing == null) {
+        return new HandlerOutcome.Rejected("决策人不存在: " + id.value());
+      }
+      DecisionMaker updated =
+          new DecisionMaker(
+              existing.id(),
+              existing.affiliation(),
+              existing.allowedTools(),
+              scope,
+              existing.decisionCadenceTicks(),
+              // ★ M11：配权只换 viewScope，必须**原样带回** providerId —— 否则配权会静默丢绑定。
+              existing.providerId());
+      Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
+      next.put(id, updated);
+      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(next)));
+    } catch (IllegalArgumentException e) {
+      return new HandlerOutcome.Rejected(e.getMessage());
+    }
+  }
+}

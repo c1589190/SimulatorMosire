@@ -102,8 +102,8 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 44 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
-   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44）。
+   * catalog 预期的 45 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -150,6 +150,7 @@ class McpCoverageTest {
           "sd.SetDecisionMakerAccess",
           "sd.StartDecision",
           "sd.SetDecisionMakerProvider",
+          "sd.ResetDecisionMakerConversation",
           "sd.RunDecision");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
@@ -211,6 +212,9 @@ class McpCoverageTest {
         "sd.CreateDecisionMaker",
         "{\"id\":\"dm-cov\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n-cov\"},"
             + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":1}");
+    // 「把会话换一段新的」：放在 CreateDecisionMaker **之后**（此刻 dm-cov 已存在），
+    // 且**不挪动任何已有命令的位置**——本用例逐条断言 revision 号，位置敏感。
+    MINIMAL_PAYLOADS.put("sd.ResetDecisionMakerConversation", "{\"decisionMakerId\":\"dm-cov\"}");
     MINIMAL_PAYLOADS.put("sd.PutInfo", "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}");
     MINIMAL_PAYLOADS.put(
         "sd.CreateCombat", "{\"combatId\":\"c-cov\",\"name\":\"覆盖交战\",\"participants\":[\"u-4\"]}");
@@ -319,7 +323,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 44 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 45 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -350,8 +354,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("44 条命令各推一格")
-        .isEqualTo(45L);
+        .as("45 条命令各推一格")
+        .isEqualTo(46L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -365,16 +369,21 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(45L, 7L, 9L);
+    // ★ 期望值从 **head 现取**（不写字面量）：上面的命令条数一变，写死的 revision 就会整条链错位，而症状是
+    //   "advance 冲突"——看起来像 advance 坏了，其实是这里过期了（本任务实测踩过：加一条命令后这里红）。
+    long headBeforeAdvance = shell.coreSimos().head(main()).orElseThrow().value();
+    McpSchema.CallToolResult advance = advanceWithApproval(headBeforeAdvance, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(46L);
-    System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=32");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(46L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(headBeforeAdvance + 1);
+    System.out.println(
+        "[T11-COVERAGE] tool=simos.advance result=committed revision=" + (headBeforeAdvance + 1));
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
+        .isEqualTo(headBeforeAdvance + 1);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 46L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", headBeforeAdvance + 1, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");

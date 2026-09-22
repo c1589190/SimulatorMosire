@@ -1,0 +1,3 @@
+PENDING_JSON={"pending":[{"id":"ap-6f7bbc80-8228-47b3-bbe9-c51a51d90553","tool":"simos.command.submit","classKey":"simos.command.submit","summary":"提交领域命令 type=map.UpdateRegion branch=main expected=2","digest":"sha256:04a9aa1d3aeff08f0f6c789f8ba822d1","createdAtEpochMs":1790016884055,"deadlineEpochMs":1790017184055}]}
+{"id":"ap-6f7bbc80-8228-47b3-bbe9-c51a51d90553","decision":"approve","scope":"once","by":"agent:opencode-mcp-demo2"}
+APPROVED_ID=ap-6f7bbc80-8228-47b3-bbe9-c51a51d90553

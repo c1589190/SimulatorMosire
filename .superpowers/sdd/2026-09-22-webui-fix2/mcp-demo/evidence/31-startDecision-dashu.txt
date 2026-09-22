@@ -1,0 +1,6 @@
+00:46:42.592 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+SERVER=simos-shell v0.1.0-SNAPSHOT
+PROTOCOL=2025-11-25
+CALL=sd.StartDecision ARGS={"payloadJson":"{\"decisionMakerId\":\"dm-dashu\",\"note\":\"T12 demo：大蜀开始决策\"}","branch":"main","expectedRevision":9}
+IS_ERROR=false
+TEXT={"result":"committed","ref":{"branch":"main","revision":10},"commandId":"ffc4b1e8-c6a2-42b0-a099-a29c9fce21e3","correlationId":"ffc4b1e8-c6a2-42b0-a099-a29c9fce21e3"}

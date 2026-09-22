@@ -66,6 +66,7 @@ import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
+import io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandler;
 import io.mosire.simos.sd.spi.RunDecisionHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
@@ -128,17 +129,20 @@ import org.slf4j.LoggerFactory;
 /**
  * 外壳：**唯一的装配点**（spec §3.2 的 1~7 步）。
  *
- * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），四 codec / 四十二 handler / 一
+ * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），四 codec / 全部 handler / 一
  * participant 必须由组合根注入。审批链（T6）、MCP 服务（T7）与 GUI（T8）都已接上——{@link #start} 走到"世界能提交命令、能重放、 能推进、能查询、能经
  * {@code /api} 与 MCP 工具面读写、写命令要过人审批"为止。
  *
- * <p>★ **装配清单**（spec §3.2 第 1~7 步）：四 codec（map/social/unit/sd）+ 四十二 handler + 一 participant（{@link
+ * <p>★ **装配清单**（spec §3.2 第 1~7 步）：四 codec（map/social/unit/sd）+ 全部 handler + 一 participant（{@link
  * CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 四 {@code Resolver} （map/social/unit/sd）+ 两
  * {@code FacetProvider}（unitsHere/population）→ {@link QueryService}（查询层，T3）；审批链（T6，S5：{@code
  * PendingApprovals → HttpApprovalChannel → ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior
  * 判定）→ {@link SimosToolSource}（spec §2.1：**唯一的 MCP 口 = {@link SimosToolSource.Role#GM}** = 读工具 +
  * 通用写 + 全部窄写；**条数以工具面为准**，不在此钉死）经 {@code McpSourceBridge.bind} 同步进 {@link ToolRegistry}（T5）→ {@link
  * AgentToMcpServer#startHttp}（**一次**，第 6 步，T7）→ GUI（第 7 步，T8）。
+ *
+ * <p>★ **本条刻意不钉 handler 条数**：写「四十二」的时候**实际已经是 44**（漏改过两次），而条数由下面那个注册块唯一决定、 看一眼就知道 ⇒
+ * 钉死只会制造一处没人维护的谎（与工具面注释同一条纪律）。
  *
  * <p>★ **本类不持有任何存储写路径**：{@code SqliteStore} / {@code Timeline.appendRevision} / {@code
  * CheckpointStore} 一个都不在 app 源码里（铁律 2 的结构化，R1 的扫描对象）。唯一的写入口是 {@link
@@ -268,7 +272,7 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
-   * 起壳：建 CoreSimos 并按其装配顺序注册**四 codec + 四十二 handler + 一 participant**，再装**查询层**（三个 resolver + 两个真
+   * 起壳：建 CoreSimos 并按其装配顺序注册**四 codec + 全部 handler + 一 participant**，再装**查询层**（三个 resolver + 两个真
    * facet + {@link QueryService}）。
    *
    * <p>★ {@code MovementCost} 由 app 注入（M3 口径）：{@link TerrainMovementCost} 是当前唯一实现，取它的单例 {@link
@@ -375,12 +379,15 @@ public final class Shell implements AutoCloseable {
         new SetDecisionMakerAccessHandler();
     SetDecisionMakerProviderHandler setDecisionMakerProviderHandler =
         new SetDecisionMakerProviderHandler();
+    ResetDecisionMakerConversationHandler resetDecisionMakerConversationHandler =
+        new ResetDecisionMakerConversationHandler();
     for (CommandHandler late :
         List.of(
             issueDirectiveHandler,
             submitVerdictHandler,
             setDecisionMakerAccessHandler,
-            setDecisionMakerProviderHandler)) {
+            setDecisionMakerProviderHandler,
+            resetDecisionMakerConversationHandler)) {
       handlers.add(late);
       coreSimos.register(late);
       commandTypes.add(late.type());

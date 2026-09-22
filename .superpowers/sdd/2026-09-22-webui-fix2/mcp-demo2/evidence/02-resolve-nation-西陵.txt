@@ -1,0 +1,5 @@
+SERVER=simos-shell v0.1.0-SNAPSHOT
+PROTOCOL=2025-11-25
+CALL=simos.state.resolve ARGS={"address":"sd:nation.西陵"}
+IS_ERROR=false
+TEXT={"candidates":[]}

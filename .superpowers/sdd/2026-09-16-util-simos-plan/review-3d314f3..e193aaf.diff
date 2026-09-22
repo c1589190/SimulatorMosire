@@ -1,0 +1,91 @@
+# Review package: 3d314f3..e193aaf
+
+## Commits
+e193aaf fix(util): 钉住 valueAt 守卫消息与相等/同刻语义的判别力（M1 Task 7 fix-1）
+
+## Files changed
+ .../mosire/simos/util/time/TemporalSeriesTest.java | 33 +++++++++++++++++++++-
+ 1 file changed, 32 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/time/TemporalSeriesTest.java b/simos-util/src/test/java/io/mosire/simos/util/time/TemporalSeriesTest.java
+index b902f86..61c9b0d 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/time/TemporalSeriesTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/time/TemporalSeriesTest.java
+@@ -143,23 +143,25 @@ class TemporalSeriesTest {
+         .hasMessageContaining("value");
+     assertThatThrownBy(() -> new Event<Long>(null, 1L, EventMode.SET))
+         .isInstanceOf(NullPointerException.class)
+         .hasMessageContaining("at");
+     assertThatThrownBy(() -> new Event<>(SimosTimestamp.of(0), null, EventMode.SET))
+         .isInstanceOf(NullPointerException.class)
+         .hasMessageContaining("value");
+     assertThatThrownBy(() -> new Event<Long>(SimosTimestamp.of(0), 1L, null))
+         .isInstanceOf(NullPointerException.class)
+         .hasMessageContaining("mode");
++    // 末条必须**精确**匹配（`hasMessage` 而非 `hasMessageContaining`）：守卫被删后，valueAt(null) 会在
++    // compareTo 里抛 JDK 的 helpful NPE，其消息同样含 `t`，只断前缀的写法照绿——等于没有自证。
+     assertThatThrownBy(() -> series(List.of(segment(0, 1L)), List.of()).valueAt(null))
+         .isInstanceOf(NullPointerException.class)
+-        .hasMessageContaining("t");
++        .hasMessage("t");
+   }
+ 
+   @Test
+   void aSharedAdditionInstanceMakesStructurallyIdenticalSeriesEqual() {
+     // spec §七：`addition` 是普通组件，record 的 `equals` 对函数只能按**身份**比较。
+     // 用同一个共享实例构建的两个同构序列必须相等——M2 起的往返断言拿这个当判据（铁律 5）。
+     List<Segment<Long>> segments = List.of(segment(0, 100L));
+     List<Event<Long>> events = List.of(event(5, 10L, EventMode.ADD));
+     assertThat(SegmentedSeries.of(segments, events, ADDITION))
+         .isEqualTo(SegmentedSeries.of(segments, events, ADDITION));
+@@ -181,20 +183,49 @@ class TemporalSeriesTest {
+   @Test
+   void setOnlySeriesWithNullAdditionStillCompareByValue() {
+     // `addition` 为 null 的 SET-only 序列不受身份比较影响（spec §七）。
+     assertThat(
+             SegmentedSeries.of(List.of(segment(0, 1L)), List.of(event(5, 2L, EventMode.SET)), null))
+         .isEqualTo(
+             SegmentedSeries.of(
+                 List.of(segment(0, 1L)), List.of(event(5, 2L, EventMode.SET)), null));
+   }
+ 
++  @Test
++  void seriesDifferingOnlyInSegmentsOrOnlyInEventsAreUnequal() {
++    // 补相等语义的覆盖完备性：上两条用例的两侧 `segments`/`events` **内容相同**，
++    // 故一个"丢掉 segments 或 events 的手写 equals"能通过此前全部断言。铁律 5 拿 equals 当判据，
++    // 逐组件判别力必须自证。
++    assertThat(SegmentedSeries.of(List.of(segment(0, 100L)), List.of(), ADDITION))
++        .isNotEqualTo(SegmentedSeries.of(List.of(segment(0, 2L)), List.of(), ADDITION));
++    assertThat(
++            SegmentedSeries.of(
++                List.of(segment(0, 100L)), List.of(event(5, 1L, EventMode.ADD)), ADDITION))
++        .isNotEqualTo(SegmentedSeries.of(List.of(segment(0, 100L)), List.of(), ADDITION));
++  }
++
++  @Test
++  void theSameInstantIsDecidedByCompareToNotEquals() {
++    // SimosTimestamp 的 Javadoc：判"同刻"一律用 compareTo == 0，不要用 equals
++    // （compareTo 只看 tick，record 的 equals 含 calendarLabel）。
++    TemporalSeries<Long> labelled =
++        SegmentedSeries.of(
++            List.of(segment(0, 100L), new Segment<>(SimosTimestamp.of(10, "第 10 日"), 200L)),
++            List.of(new Event<>(SimosTimestamp.of(10, "第 10 日"), 5L, EventMode.ADD)),
++            ADDITION);
++    // 序列带 label、查询不带：用 equals 的实现会把段与事件都当成"未来"而跳过 → 得 100 而非 205
++    assertThat(labelled.valueAt(SimosTimestamp.of(10))).isEqualTo(205L);
++    // 反向：序列不带 label、查询带
++    TemporalSeries<Long> plain = series(List.of(segment(0, 100L), segment(10, 200L)), List.of());
++    assertThat(plain.valueAt(SimosTimestamp.of(10, "第 10 日"))).isEqualTo(200L);
++  }
++
+   /**
+    * 捕获局部变量的 lambda 每次求值都产生**新实例**（JLS §15.27.2），故两次调用必得两个不同实例—— 不依赖 JIT 对非捕获 lambda
+    * 的按调用点缓存（那会让同一调用点的两次求值返回同一实例，前提落空）。
+    */
+   private static BinaryOperator<Long> capturingAdder() {
+     long zero = 0L;
+     return (a, b) -> a + b + zero;
+   }
+ 
+   /** 共享的加法实例：spec §七 要求含 `ADD` 的序列一律用模块级 `static final` 常量。 */

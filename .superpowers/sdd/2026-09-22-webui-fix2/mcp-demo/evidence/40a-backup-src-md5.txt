@@ -1,0 +1,4 @@
+5f4b1e5f3044c0641b65401537d113f5  ./checkpoints/main/1.json
+7521076b0e620fab0a1c8064e30a53bc  ./simos.db
+96557bc39659e0705aa6d75bc1285db8  ./simos.db-shm
+cc206342c66439c8dc70d89618ddff8c  ./simos.db-wal

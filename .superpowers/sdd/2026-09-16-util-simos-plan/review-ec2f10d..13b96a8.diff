@@ -1,0 +1,139 @@
+############ T10 fix round 1 —— 复审包（区间 ec2f10d..13b96a8） ############
+
+########## 1. 提交列表 ##########
+13b96a8 fix(util): 三态诊断与漂移定位的判别力补齐（T10 评审判 I-1/I-2/M-1/M-2）
+
+########## 2. 变更统计 ##########
+ .../util/verify/RoundTripAssertionsDriftTest.java  | 15 ++++---
+ .../simos/util/verify/RoundTripAssertionsTest.java | 52 +++++++++++++++++++---
+ 2 files changed, 55 insertions(+), 12 deletions(-)
+
+########## 3. 完整 diff（-U10） ##########
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java
+index 34bf658..17704d9 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java
+@@ -14,30 +14,35 @@ import org.junit.jupiter.api.Test;
+  * G13（护栏必须自证）：**故意漏字段的变更集必须让往返断言响**。
+  *
+  * <p>这条路一旦断，往返护栏就只是装饰——L1 事故的四个漂移字段正是死在"没有用例证明它抓得住"上。
+  */
+ class RoundTripAssertionsDriftTest {
+ 
+   @Test
+   void aChangeSetThatDropsAFieldMustBeCaught() {
+     DriftingSnapshot base = new DriftingSnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
+     DriftingSnapshot target = new DriftingSnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    // **控制器修正（T10 评审判 I-2，详见下方"控制器修正说明 ③"）**：原写的 `beta=9` / `beta=2`
++    // 两条 needle **不具备注释所声称的"定位到 beta"的能力**——报文里 base 行与 target 行是
++    // **无条件打印**的，两条 needle 分别被它们满足。评审实测 W1（把漂移从 beta 挪到 alpha）下
++    // 本用例**全绿**：断言在"红得不是 beta"的世界里没有转红。
++    // 改为钉 **actual 那一整行**。apply 的预期结果：ref 取 base 的下一版（1+1=2）、timestamp/alpha
++    // 取变更集、namespace/beta 沿袭 base ⇒ `(ref(2), of(1), "toy", 5, 2)`，它与 target `(…,5,9)`
++    // **只差 beta**——"差异出在 beta"因此由构造本身钉死，而不是由子串碰巧满足。
++    DriftingSnapshot expectedActual =
++        new DriftingSnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 2);
+     assertThatThrownBy(
+             () ->
+                 RoundTripAssertions.assertRoundTrip(
+                     base, target, DriftingSnapshot::diff, DriftingSnapshot::apply))
+         .isInstanceOf(AssertionError.class)
+-        // 钉**两侧的具体值**，不只钉字段名：报文拼的是 target 与 actual 的整份 record toString，
+-        // 只要报文里出现过 "beta" 字样（两侧的 toString 都带着它），只写 `hasMessageContaining("beta")`
+-        // 对"差异出在哪个字段"**零判别力**——ref 版本对不上时它照样满足。
+-        .hasMessageContaining("beta=9") // target 的 beta
+-        .hasMessageContaining("beta=2"); // actual（沿袭 base）的 beta —— 两者必须同时出现，才证明红的是 beta
++        .hasMessageContaining("  actual    = " + expectedActual);
+   }
+ 
+   /** 故意漂移的玩具快照：`beta` 在快照里有、在变更集里没有——L1 事故的最小重演。 */
+   record DriftingSnapshot(
+       StateRef ref, SimosTimestamp timestamp, String namespace, int alpha, int beta)
+       implements Snapshot {
+ 
+     static DriftingChangeSet diff(DriftingSnapshot base, DriftingSnapshot target) {
+       return new DriftingChangeSet(
+           base.ref().revision(), target.timestamp(), target.alpha()); // 漏了 beta
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
+index 8aa1a91..699f818 100644
+--- a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
++++ b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
+@@ -80,33 +80,71 @@ class RoundTripAssertionsTest {
+                 RoundTripAssertions.assertSnapshotRoundTrip(
+                     base, target, (ToySnapshot b, ToySnapshot t) -> null, ToySnapshot::apply))
+         .isInstanceOf(NullPointerException.class)
+         .hasMessageContaining("diff 返回 null");
+   }
+ 
+   @Test
+   void aBrokenRoundTripReportsAllThreeStates() {
+     ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
+     ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    // **控制器修正（T10 评审判 I-1，详见下方"控制器修正说明 ②"）**：原写的
++    // `.hasMessageContaining("target")` 是**空转的**，`base` 那一行则**完全没有 needle**。
++    ToyChangeSet broken =
++        new ToyChangeSet(base.ref().revision(), target.timestamp(), target.alpha(), base.beta());
++    // apply(broken, base) 的预期结果：ref 取 base 的下一版（1+1=2）、timestamp/alpha 取变更集、
++    // namespace/beta 沿袭 base ⇒ (ref(2), of(1), "toy", 5, 2)。它与 target **只差 beta 一个字段**。
++    ToySnapshot expectedActual = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 2);
+     assertThatThrownBy(
+             () ->
+                 RoundTripAssertions.assertRoundTrip(
+-                    base,
+-                    target,
+-                    (b, t) ->
+-                        new ToyChangeSet(b.ref().revision(), t.timestamp(), t.alpha(), b.beta()),
+-                    ToySnapshot::apply))
++                    base, target, (b, t) -> broken, ToySnapshot::apply))
+         .isInstanceOf(AssertionError.class)
+-        .hasMessageContaining("target")
+-        .hasMessageContaining("actual");
++        // 钉**整条 dump 行**（标签 + 该行的对象），而不是裸的字段名/词：
++        // 这样删掉实现里任何一行、或把那行拼错对象，对应 needle 必然消失。
++        .hasMessageContaining("  base      = " + base)
++        .hasMessageContaining("  target    = " + target)
++        .hasMessageContaining("  actual    = " + expectedActual)
++        .hasMessageContaining("  changeSet = " + broken)
++        // spec §9.2 要求报文含"一句定位提示"（评审判 M-1：删掉提示行原本无人察觉）。
++        .hasMessageContaining("这正是 L1 事故的形态");
++  }
++
++  @Test
++  void theFrameworkDoesNotRequireSnapshotImplementations() {
++    // spec §9.2 给 `assertRoundTrip` 的 `S` **不设上界**——它要能服务 `SimulationState` 这类非快照类型。
++    // G13（评审判 M-2）：这条性质写在实现的 Javadoc 里，此前**没有任何用例守它**——给 `S` 加回
++    // `extends Snapshot` 上界，编译照样通过、5 条用例全绿。本用例用一个**刻意不实现 `Snapshot`** 的
++    // record 调用它；一旦有人加上界，这里**编译失败**（响亮的红）。
++    PlainState base = new PlainState(1);
++    PlainState target = new PlainState(2);
++    assertThatCode(
++            () ->
++                RoundTripAssertions.assertRoundTrip(
++                    base, target, PlainState::diff, PlainState::apply))
++        .doesNotThrowAnyException();
+   }
+ 
++  /** 刻意**不**实现 `Snapshot`：证明框架对 `S` 真的没有上界。 */
++  record PlainState(long value) {
++
++    static PlainChangeSet diff(PlainState base, PlainState target) {
++      return new PlainChangeSet(new RevisionId(target.value()));
++    }
++
++    static PlainState apply(PlainChangeSet changeSet, PlainState base) {
++      return new PlainState(changeSet.baseRevision().value());
++    }
++  }
++
++  record PlainChangeSet(RevisionId baseRevision) implements ChangeSet {}
++
+   /** 玩具快照：证明框架不关心 `S` 是什么，只要它是 record 并实现 `Snapshot`。 */
+   record ToySnapshot(StateRef ref, SimosTimestamp timestamp, String namespace, int alpha, int beta)
+       implements Snapshot {
+ 
+     static ToyChangeSet diff(ToySnapshot base, ToySnapshot target) {
+       return new ToyChangeSet(
+           base.ref().revision(), target.timestamp(), target.alpha(), target.beta());
+     }
+ 
+     static ToySnapshot apply(ToyChangeSet changeSet, ToySnapshot base) {

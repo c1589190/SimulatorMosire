@@ -1,0 +1,292 @@
+### COMMITS (aaa9489..ec2f10d)
+ec2f10d feat(util): 往返不变式框架 + 漂移自证（M1 Task 10）
+
+### STAT
+ .../simos/util/verify/RoundTripAssertions.java     |  62 ++++++++++
+ .../util/verify/RoundTripAssertionsDriftTest.java  |  66 ++++++++++
+ .../simos/util/verify/RoundTripAssertionsTest.java | 136 +++++++++++++++++++++
+ 3 files changed, 264 insertions(+)
+
+### DIFF -U10
+diff --git a/simos-util/src/main/java/io/mosire/simos/util/verify/RoundTripAssertions.java b/simos-util/src/main/java/io/mosire/simos/util/verify/RoundTripAssertions.java
+new file mode 100644
+index 0000000..fe01183
+--- /dev/null
++++ b/simos-util/src/main/java/io/mosire/simos/util/verify/RoundTripAssertions.java
+@@ -0,0 +1,62 @@
++package io.mosire.simos.util.verify;
++
++import io.mosire.simos.util.state.ChangeSet;
++import io.mosire.simos.util.state.RevisionId;
++import io.mosire.simos.util.state.Snapshot;
++import java.util.Objects;
++import java.util.function.BiFunction;
++
++/**
++ * 往返不变式断言（铁律 5 / spec §九）。
++ *
++ * <p>为什么是测试而不是编译期：状态 record 加字段会让 `apply` 的全参重建**编译失败**（覆盖得了）， 但 `ChangeSet` 的字段清单漏字段**不会**编译失败——L1
++ * 事故里 `MapData` 加字段根本不会让 `MapDiff` 红。 漏掉的那一半由 record 的 `equals()` 兜住：只要断言写成 `apply(diff(base,
++ * target), base).equals(target)`，任何漏在 ChangeSet/diff/apply 里的字段都会让测试红， 不需要反射，也不随字段增长而失效。
++ *
++ * <p>本类位于 **main** 源码（M2~M4 都要用），因此不依赖 JUnit：失败以 {@link AssertionError} 抛出。
++ */
++public final class RoundTripAssertions {
++
++  private RoundTripAssertions() {}
++
++  /** 通用：任何状态类型（模块快照或整个 `SimulationState`）。 */
++  public static <S, C extends ChangeSet> void assertRoundTrip(
++      S base, S target, BiFunction<S, S, C> diff, BiFunction<C, S, S> apply) {
++    C changeSet = Objects.requireNonNull(diff.apply(base, target), "diff 返回 null");
++    checkApplied(base, target, changeSet, apply);
++  }
++
++  /** 快照专用：额外要求变更集**相对于它被施加的那个 base**——防止 diff 盖错版本戳。 */
++  public static <S extends Snapshot, C extends ChangeSet> void assertSnapshotRoundTrip(
++      S base, S target, BiFunction<S, S, C> diff, BiFunction<C, S, S> apply) {
++    C changeSet = Objects.requireNonNull(diff.apply(base, target), "diff 返回 null");
++    RevisionId declared = changeSet.baseRevision();
++    RevisionId actual = base.ref().revision();
++    if (!actual.equals(declared)) {
++      throw new AssertionError(
++          "变更集必须相对它被施加的 base：changeSet.baseRevision()="
++              + declared
++              + "，base.ref().revision()="
++              + actual);
++    }
++    checkApplied(base, target, changeSet, apply);
++  }
++
++  private static <S, C extends ChangeSet> void checkApplied(
++      S base, S target, C changeSet, BiFunction<C, S, S> apply) {
++    S applied = Objects.requireNonNull(apply.apply(changeSet, base), "apply 返回 null");
++    if (!target.equals(applied)) {
++      throw new AssertionError(
++          "往返不变式破裂：apply(diff(base, target), base) 与 target 不等。\n"
++              + "  base      = "
++              + base
++              + "\n  target    = "
++              + target
++              + "\n  actual    = "
++              + applied
++              + "\n  changeSet = "
++              + changeSet
++              + "\n提示：ChangeSet（或 diff/apply 本身）漏了 target 比 base 多出来的字段——这正是 L1 事故的形态。");
++    }
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java
+new file mode 100644
+index 0000000..34bf658
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsDriftTest.java
+@@ -0,0 +1,66 @@
++package io.mosire.simos.util.verify;
++
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import io.mosire.simos.util.state.BranchId;
++import io.mosire.simos.util.state.ChangeSet;
++import io.mosire.simos.util.state.RevisionId;
++import io.mosire.simos.util.state.Snapshot;
++import io.mosire.simos.util.state.StateRef;
++import io.mosire.simos.util.time.SimosTimestamp;
++import org.junit.jupiter.api.Test;
++
++/**
++ * G13（护栏必须自证）：**故意漏字段的变更集必须让往返断言响**。
++ *
++ * <p>这条路一旦断，往返护栏就只是装饰——L1 事故的四个漂移字段正是死在"没有用例证明它抓得住"上。
++ */
++class RoundTripAssertionsDriftTest {
++
++  @Test
++  void aChangeSetThatDropsAFieldMustBeCaught() {
++    DriftingSnapshot base = new DriftingSnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
++    DriftingSnapshot target = new DriftingSnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertRoundTrip(
++                    base, target, DriftingSnapshot::diff, DriftingSnapshot::apply))
++        .isInstanceOf(AssertionError.class)
++        // 钉**两侧的具体值**，不只钉字段名：报文拼的是 target 与 actual 的整份 record toString，
++        // 只要报文里出现过 "beta" 字样（两侧的 toString 都带着它），只写 `hasMessageContaining("beta")`
++        // 对"差异出在哪个字段"**零判别力**——ref 版本对不上时它照样满足。
++        .hasMessageContaining("beta=9") // target 的 beta
++        .hasMessageContaining("beta=2"); // actual（沿袭 base）的 beta —— 两者必须同时出现，才证明红的是 beta
++  }
++
++  /** 故意漂移的玩具快照：`beta` 在快照里有、在变更集里没有——L1 事故的最小重演。 */
++  record DriftingSnapshot(
++      StateRef ref, SimosTimestamp timestamp, String namespace, int alpha, int beta)
++      implements Snapshot {
++
++    static DriftingChangeSet diff(DriftingSnapshot base, DriftingSnapshot target) {
++      return new DriftingChangeSet(
++          base.ref().revision(), target.timestamp(), target.alpha()); // 漏了 beta
++    }
++
++    static DriftingSnapshot apply(DriftingChangeSet changeSet, DriftingSnapshot base) {
++      // 同 `ToySnapshot.apply` 的控制器修正：产出**下一个**版本，不要照抄计划的 `changeSet.baseRevision()`。
++      // 这条对本用例尤其要紧：照抄的话 applied 的 ref 会比 target 低一版，本用例**照样红**，
++      // 但红的理由里平白多了一个"ref 不匹配"——"抓到了 beta 漂移"这件事就不再被证明。
++      // 这正是"红了还要问为什么红"：红必须红在被保护的那一行上。
++      return new DriftingSnapshot(
++          new StateRef(base.ref().branch(), new RevisionId(changeSet.baseRevision().value() + 1)),
++          changeSet.timestamp(),
++          base.namespace(),
++          changeSet.alpha(),
++          base.beta()); // beta 只能沿袭 base —— 这正是漂移的形态
++    }
++  }
++
++  record DriftingChangeSet(RevisionId baseRevision, SimosTimestamp timestamp, int alpha)
++      implements ChangeSet {}
++
++  private static StateRef ref(long revision) {
++    return new StateRef(new BranchId("main"), new RevisionId(revision));
++  }
++}
+diff --git a/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
+new file mode 100644
+index 0000000..8aa1a91
+--- /dev/null
++++ b/simos-util/src/test/java/io/mosire/simos/util/verify/RoundTripAssertionsTest.java
+@@ -0,0 +1,136 @@
++package io.mosire.simos.util.verify;
++
++import static org.assertj.core.api.Assertions.assertThatCode;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import io.mosire.simos.util.state.BranchId;
++import io.mosire.simos.util.state.ChangeSet;
++import io.mosire.simos.util.state.RevisionId;
++import io.mosire.simos.util.state.Snapshot;
++import io.mosire.simos.util.state.StateRef;
++import io.mosire.simos.util.time.SimosTimestamp;
++import org.junit.jupiter.api.Test;
++
++/** spec §九：正常往返通过、盖错版本戳抛错、破裂时给得出三份 toString。 */
++class RoundTripAssertionsTest {
++
++  @Test
++  void aCorrectRoundTripPasses() {
++    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
++    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    assertThatCode(
++            () ->
++                RoundTripAssertions.assertRoundTrip(
++                    base, target, ToySnapshot::diff, ToySnapshot::apply))
++        .doesNotThrowAnyException();
++    assertThatCode(
++            () ->
++                RoundTripAssertions.assertSnapshotRoundTrip(
++                    base, target, ToySnapshot::diff, ToySnapshot::apply))
++        .doesNotThrowAnyException();
++  }
++
++  @Test
++  void aMisStampedChangeSetIsRejected() {
++    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
++    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    // 断言必须钉到**版本戳守卫自己的文案**，不能钉 "baseRevision"：盖错戳时 `apply` 会照用那个错戳，
++    // 于是兜底的往返破裂消息也会抛 AssertionError，而它拼进去的 `ToyChangeSet` 是 record，
++    // toString 形如 `ToyChangeSet[baseRevision=999, ...]` —— **同样含 "baseRevision"**。
++    // 钉 "baseRevision" 的话，删掉版本戳守卫本用例照样绿，等于空转护栏（T7 的 "t" 同一形态）。
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertSnapshotRoundTrip(
++                    base,
++                    target,
++                    (b, t) ->
++                        new ToyChangeSet(new RevisionId(999), t.timestamp(), t.alpha(), t.beta()),
++                    ToySnapshot::apply))
++        .isInstanceOf(AssertionError.class)
++        .hasMessageContaining("必须相对它被施加的 base");
++  }
++
++  @Test
++  void aNullReturningDiffOrApplyIsRejectedWithFieldLevelMessages() {
++    // G13 自证：两条 `requireNonNull` 各自都要有能证明它会响的用例。
++    // 断言用**完整短语**而非单词或单字符——单字符 needle 会被 JDK 21 的热心 NPE 消息偶然满足（T7 教训）。
++    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
++    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertRoundTrip(
++                    base, target, (ToySnapshot b, ToySnapshot t) -> null, ToySnapshot::apply))
++        .isInstanceOf(NullPointerException.class)
++        .hasMessageContaining("diff 返回 null");
++    // 删掉 apply 的守卫不会抛 NPE 而是走到 `target.equals(null)` 为假、抛 AssertionError 并指错方向——
++    // 故这里同时钉住异常类型与消息，两者任一被改都会转红。
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertRoundTrip(
++                    base, target, ToySnapshot::diff, (ToyChangeSet c, ToySnapshot b) -> null))
++        .isInstanceOf(NullPointerException.class)
++        .hasMessageContaining("apply 返回 null");
++    // `diff 返回 null` 这条守卫在**两个公开方法里各写了一遍**，上面那条只盖住了 `assertRoundTrip` 的那一份：
++    // 删掉 `assertSnapshotRoundTrip` 里的那份，全套用例照样绿——这正是本里程碑刚清理过的
++    // "同一个 `FacetRegistry` 里 `facetNames()` 钉住了、`queryAll()` 漏了"的同一形态（**同文件内的不对称即是证据**）。
++    // 删掉这份守卫的实现会走到 `changeSet.baseRevision()`，抛的是热心 NPE（消息里是 `changeSet`），
++    // 不含 "diff 返回 null"，故本断言转红。
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertSnapshotRoundTrip(
++                    base, target, (ToySnapshot b, ToySnapshot t) -> null, ToySnapshot::apply))
++        .isInstanceOf(NullPointerException.class)
++        .hasMessageContaining("diff 返回 null");
++  }
++
++  @Test
++  void aBrokenRoundTripReportsAllThreeStates() {
++    ToySnapshot base = new ToySnapshot(ref(1), SimosTimestamp.of(0), "toy", 1, 2);
++    ToySnapshot target = new ToySnapshot(ref(2), SimosTimestamp.of(1), "toy", 5, 9);
++    assertThatThrownBy(
++            () ->
++                RoundTripAssertions.assertRoundTrip(
++                    base,
++                    target,
++                    (b, t) ->
++                        new ToyChangeSet(b.ref().revision(), t.timestamp(), t.alpha(), b.beta()),
++                    ToySnapshot::apply))
++        .isInstanceOf(AssertionError.class)
++        .hasMessageContaining("target")
++        .hasMessageContaining("actual");
++  }
++
++  /** 玩具快照：证明框架不关心 `S` 是什么，只要它是 record 并实现 `Snapshot`。 */
++  record ToySnapshot(StateRef ref, SimosTimestamp timestamp, String namespace, int alpha, int beta)
++      implements Snapshot {
++
++    static ToyChangeSet diff(ToySnapshot base, ToySnapshot target) {
++      return new ToyChangeSet(
++          base.ref().revision(), target.timestamp(), target.alpha(), target.beta());
++    }
++
++    static ToySnapshot apply(ToyChangeSet changeSet, ToySnapshot base) {
++      // **控制器修正（计划草图此处有误，不要照抄计划 :2765-2781）**：计划原文写
++      // `new StateRef(base.ref().branch(), changeSet.baseRevision())`——`baseRevision()` 是 **base
++      // 的**版本，
++      // 于是 apply 产出的 ref 恒等于 base 的 ref，`target = ref(2)` **永远不可达**，
++      // 本条用例（Step 5 期望 PASS 的那条）**必然抛 AssertionError**。
++      // 已用 JVM 实证（最小等价物实跑）：target.rev=2、applied.rev=1、equals=false。
++      // 改为产出**下一个**版本：既让 `ref` 真正参与往返（把它改回 base 的版本，本用例立刻转红，
++      // 这就是 ref 那半边的 G13 自证），也与铁律 2"一 Command → 一 ChangeSet → 一 Revision"一致。
++      return new ToySnapshot(
++          new StateRef(base.ref().branch(), new RevisionId(changeSet.baseRevision().value() + 1)),
++          changeSet.timestamp(),
++          base.namespace(),
++          changeSet.alpha(),
++          changeSet.beta());
++    }
++  }
++
++  record ToyChangeSet(RevisionId baseRevision, SimosTimestamp timestamp, int alpha, int beta)
++      implements ChangeSet {}
++
++  private static StateRef ref(long revision) {
++    return new StateRef(new BranchId("main"), new RevisionId(revision));
++  }
++}

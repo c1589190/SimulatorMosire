@@ -101,6 +101,28 @@ class SetDecisionMakerProviderHandlerTest {
         .contains("p-keep");
   }
 
+  /**
+   * ★★ **换 provider 不许把会话世代退回第 0 代**（与上一条是**同一族**，只是换了个字段）。
+   *
+   * <p>判别力：重建时漏带 {@code conversationGeneration} 的实现，本用例红——而症状是"换个模型，那个人的会话就倒退回去"，
+   * 再次接回一段早已作废的历史，且没有任何报错。
+   */
+  @Test
+  void reBindingKeepsTheConversationGeneration() {
+    SdState base =
+        SdState.empty()
+            .withDecisionMakers(
+                Map.of(SdFixtures.DM1, SdFixtures.decisionMakerAtGeneration(SdFixtures.DM1, 2)));
+
+    SdState after =
+        applied(base, handle(base, "{\"decisionMakerId\":\"dm1\",\"providerId\":\"p-new\"}"));
+
+    assertThat(after.decisionMakers().get(SdFixtures.DM1).providerId()).contains("p-new");
+    assertThat(after.decisionMakers().get(SdFixtures.DM1).conversationGeneration())
+        .as("世代 2 逐字保留（换 provider 只改绑定）")
+        .isEqualTo(2L);
+  }
+
   private static SdState withDecisionMaker(SdState base) {
     return base.withDecisionMakers(
         Map.of(SdFixtures.DM1, SdFixtures.decisionMaker(SdFixtures.DM1)));

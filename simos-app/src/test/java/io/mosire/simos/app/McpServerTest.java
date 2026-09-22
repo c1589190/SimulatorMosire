@@ -97,7 +97,8 @@ class McpServerTest {
 
   /**
    * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + sd 域窄写（T10 起 +StartDecision，**M3 起 +12 条**） + **7 map
-   * 窄写**（M1） + **20 unit 窄写**（M2，用户裁定 D-1）= 56 条（spec §七.2 的 C6；T11C 起 +sd.RunDecision）。
+   * 窄写**（M1） + **20 unit 窄写**（M2，用户裁定 D-1）= 57 条（spec §七.2 的 C6；T11C 起 +sd.RunDecision；会话重置起
+   * +sd.ResetDecisionMakerConversation）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -116,6 +117,7 @@ class McpServerTest {
           "sd.IssueDirective",
           "sd.SubmitVerdict",
           "sd.SetDecisionMakerAccess",
+          "sd.ResetDecisionMakerConversation",
           "sd.StartDecision",
           "sd.RunDecision",
           "sd.CreateNation",
@@ -212,7 +214,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 56 条（C6：含通用写、16 条 sd 窄工具、7 条 map 窄写与 20 条 unit 窄写）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 57 条（C6：含通用写、17 条 sd 窄工具、7 条 map 窄写与 20 条 unit 窄写）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

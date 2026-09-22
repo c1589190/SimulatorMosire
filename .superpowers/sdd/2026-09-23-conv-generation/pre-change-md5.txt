@@ -1,0 +1,7 @@
+e1ba8109f90b091b864902bab748c318  simos-sd/src/main/java/io/mosire/simos/sd/model/DecisionMaker.java
+74670bd305554adca842ae22ac100a57  simos-sd/src/main/java/io/mosire/simos/sd/spi/SetDecisionMakerAccessHandler.java
+ac50969d8f8d6a0d0438d73efa7ec171  simos-sd/src/main/java/io/mosire/simos/sd/spi/SetDecisionMakerProviderHandler.java
+5669862aa6b9640f1669b0f9178ba7d7  simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java
+008e2acb82b392045a84e5d9d1d50b4b  simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentService.java
+0b1b6281b80c242b0f6bfe659a8b0afc  simos-app/src/main/java/io/mosire/simos/app/tools/write/RunDecisionTool.java
+2b3372a0c38ebd702264a654acd35968  simos-app/src/main/java/io/mosire/simos/app/Shell.java

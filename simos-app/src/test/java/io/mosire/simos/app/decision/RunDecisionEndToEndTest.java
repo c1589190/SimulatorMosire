@@ -136,7 +136,9 @@ class RunDecisionEndToEndTest {
           Set.of(),
           AccessLimit.empty(),
           1,
-          Optional.of(PROVIDER_ID));
+          Optional.of(PROVIDER_ID),
+          // 会话世代：夹具世界里的决策人没被重置过（世代 0 ⇒ 会话 id 就是旧格式那一个）。
+          0L);
 
   /** 未绑定 provider 的同一个人（fail-closed 的靶子）。 */
   private static final DecisionMaker DM_NO_PROVIDER =
@@ -146,7 +148,8 @@ class RunDecisionEndToEndTest {
           Set.of(),
           AccessLimit.empty(),
           1,
-          Optional.empty());
+          Optional.empty(),
+          0L);
 
   @TempDir Path tempDir;
 
