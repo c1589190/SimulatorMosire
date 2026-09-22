@@ -432,7 +432,7 @@ public final class Shell implements AutoCloseable {
         ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
     approvalChannel.markUp();
 
-    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 读工具 + 通用写 + GM 窄写（条数以工具面为准）。
+    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 9 读 + 通用写 + GM 窄写（条数以工具面为准）。
     // ★ 与 SDSimos 裁定 N9 的冲突在此端口显式记账：保留通用写是**用户裁定 D2 的取舍、不是缺陷**；
     //   N9 在决策人口（下面的 DECISION_AGENT 桶）与 DecisionMaker.allowedTools 白名单上照旧有效。
     SimosToolSource toolSource =
@@ -450,7 +450,7 @@ public final class Shell implements AutoCloseable {
     McpSourceBridge toolBridge =
         McpSourceBridge.bind(RecordingToolSource.record(toolSource, gmToolUsage), toolRegistry);
 
-    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（读工具 + 该桶自有窄写），**无**通用写、**无** sd.SetViewScope。
+    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（9 读 + 该桶自有窄写），**无**通用写、**无** sd.SetViewScope。
     SimosToolSource decisionToolSource =
         new SimosToolSource(
             coreSimos,

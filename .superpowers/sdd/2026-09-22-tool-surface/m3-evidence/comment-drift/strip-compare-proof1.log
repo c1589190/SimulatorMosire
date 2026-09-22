@@ -1,0 +1,18 @@
+=== 证明①-a  A=comment-drift/pre-SimosToolSource.java  B=simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java ===
+A 原文 md5 = 8ad2cf5cc70607ac65b0038f6160a187 (13231 字节)
+B 原文 md5 = 7b670b878229709dfbb3cd6484e163a0 (13225 字节)
+A 剥注释后 code = 9794 字节, md5=5902c5808507db9e7459f618c068e873
+B 剥注释后 code = 9794 字节, md5=5902c5808507db9e7459f618c068e873
+A 字面量合计     = 68 字节, md5=8a1f19f3816e22dea084d468dbf8a755
+B 字面量合计     = 68 字节, md5=8a1f19f3816e22dea084d468dbf8a755
+VERDICT: IDENTICAL（非注释 code 与**全部字符串/字符字面量**都逐字节相同 ⇒ 只动了注释/空白）
+rc_a=0
+=== 证明①-b  A=comment-drift/pre-Shell.java  B=simos-app/src/main/java/io/mosire/simos/app/Shell.java ===
+A 原文 md5 = 30a41e9b4b721f3f0c3133d21704945f (30914 字节)
+B 原文 md5 = ed6202d6159802c5bc208fde67db162c (30914 字节)
+A 剥注释后 code = 18537 字节, md5=d336ec406a660da0afcfd0f4b713b95a
+B 剥注释后 code = 18537 字节, md5=d336ec406a660da0afcfd0f4b713b95a
+A 字面量合计     = 585 字节, md5=6d70726d90d414ac20ae2ce7db006d0a
+B 字面量合计     = 585 字节, md5=6d70726d90d414ac20ae2ce7db006d0a
+VERDICT: IDENTICAL（非注释 code 与**全部字符串/字符字面量**都逐字节相同 ⇒ 只动了注释/空白）
+rc_b=0

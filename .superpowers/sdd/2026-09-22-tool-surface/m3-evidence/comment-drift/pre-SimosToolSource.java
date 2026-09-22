@@ -65,7 +65,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Simos 工具供给源（M5 T5，spec §7.1）：**读工具各桶共享 + 各桶自己的写面**（{@link Role}）。
+ * Simos 工具供给源（M5 T5，spec §7.1）：**9 读 + 各桶自己的写面**（{@link Role}）。
  *
  * <p>★ **它是工具清单的唯一出处**：{@code Shell} 建源后经 {@code McpSourceBridge.bind} 把这份快照同步进 {@link
  * io.mosire.agentlib.tool.ToolRegistry}，T7 再把该注册表交给 {@code
@@ -95,7 +95,7 @@ public final class SimosToolSource implements ToolSource {
      */
     DECISION_AGENT,
     /**
-     * 现有 MCP 口（T4，**D2="加"**，spec §二.5）：**EXTERNAL ∪ GM** —— 读工具共享 + 通用写（submit/advance/fork）+ GM
+     * 现有 MCP 口（T4，**D2="加"**，spec §二.5）：**EXTERNAL ∪ GM** —— 9 读共享 + 通用写（submit/advance/fork）+ GM
      * 窄写（IssueDirective/SubmitVerdict/**含** SetViewScope/StartDecision + **map 域与 unit 域的窄写**）。
      *
      * <p>★ **与 SDSimos 裁定 N9 的冲突在此端口显式记账**：N9 的原意是「专用窄工具，不给决策 Agent 通用 `simos.command.submit`」；本口
@@ -108,7 +108,7 @@ public final class SimosToolSource implements ToolSource {
   private final List<AgentTool> tools;
 
   /**
-   * 外部 MCP 桶（与既有行为逐条相同：通用写 + 读工具）。
+   * 外部 MCP 桶（与既有行为逐条相同：3 写 + 9 读）。
    *
    * @param core 唯一写入口（写工具经它提交）
    * @param query 只读门面（读工具经它读状态）
@@ -167,7 +167,7 @@ public final class SimosToolSource implements ToolSource {
    * 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此也含这些。
    *
    * <p>★ **M3（spec §八.3）：sd 域余下的写命令也在此追加**——命令类型固定、与 map/unit 窄写同形。★ **新窄写一律加在这里**， 加完**不必回来改本注**
-   * （**本注刻意不写条数**：数字是漂移源；M3 起本文件与 {@code Shell} 的工具面注释一律不钉条数）。
+   * （**本注刻意不写条数**：数字是漂移源，M2 已把本文件与 {@code Shell} 的旧计数去掉）。
    */
   private static void addGmWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
@@ -182,7 +182,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new MapDeleteRegionTool(core, initiator, mapId));
     built.add(new MapRandomizeRegionTool(core, initiator, mapId));
     built.add(new MapRegisterPathwayGroupTool(core, initiator, mapId));
-    // M2（spec §八.3）：unit 域窄写 —— 用户裁定 D-1，同一批**也挂进决策人桶**（见 addDecisionAgentWrites）。
+    // M2（spec §八.3）：unit 域 20 条窄写 —— 用户裁定 D-1，同一批**也挂进决策人桶**（见 addDecisionAgentWrites）。
     built.add(new UnitRenameTool(core, initiator, mapId));
     built.add(new UnitCreateTool(core, initiator, mapId));
     built.add(new UnitReparentTool(core, initiator, mapId));
@@ -219,14 +219,14 @@ public final class SimosToolSource implements ToolSource {
   }
 
   /**
-   * 决策 Agent 窄写（N9）：**无** `sd.SetViewScope`、**无**通用写。★ 用户裁定 D-1：unit 域窄写与 GM
+   * 决策 Agent 窄写（N9）：**无** `sd.SetViewScope`、**无**通用写。★ 用户裁定 D-1：unit 域 20 条窄写与 GM
    * 桶**同批**（它们是窄工具、命令类型固定，与 N9「不给通用写」不冲突）⇒ 两处**各自逐条**列出，便于按桶裁剪。
    */
   private static void addDecisionAgentWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
-    // M2（spec §八.3）：unit 域窄写（与 addGmWrites 同一批）。
+    // M2（spec §八.3）：unit 域 20 条窄写（与 addGmWrites 同一批）。
     built.add(new UnitRenameTool(core, initiator, mapId));
     built.add(new UnitCreateTool(core, initiator, mapId));
     built.add(new UnitReparentTool(core, initiator, mapId));

@@ -1,4 +1,4 @@
-7b670b878229709dfbb3cd6484e163a0  simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+8ad2cf5cc70607ac65b0038f6160a187  simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
 bb77a04304259ad98bddc1e7a6dc850b  simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
 205ec3f71bacb042dc9ddca36e3026db  simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
 b55a5ddce871a2a8093de93ff24da7fb  simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
