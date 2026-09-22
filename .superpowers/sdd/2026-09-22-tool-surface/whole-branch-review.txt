@@ -1,0 +1,3190 @@
+# 全分支评审包 —— ts/m1 的实现面（M2 + M3）
+
+**范围**：`40e19d2..e7e3155`（8 个提交）。
+**基线 `40e19d2` 是什么**：M1 关账提交，**已在 `origin/main` 上**——实测 `git merge-base origin/main HEAD`
+= `40e19d2` ⇒ 本分支从它分叉，故它是天然的评审起点（M1 本身不在本包范围内，已并入 main）。
+
+**本包只含 `simos-app/**` 与 `docs/**`**（38 + 1 个文件）。`.superpowers/**` 的 106 个文件是
+证据留档（变异日志、门禁日志、报告），**不是被评审的产物**；全量包 9.1 MB、在
+`.superpowers/sdd/2026-09-22-tool-surface-plan/review-40e19d2..e7e3155.diff`（已 gitignore）。
+证据按需索取，**不要通读**。
+
+**本分支做了什么（一句话）**：把域数据标准化成 `AgentTool`，让**同一份** `AgentTool` 定义同时出现在
+GM 面与 MCP 面上（同源），覆盖 **map（M1，已在 main）/ unit（M2）/ sd（M3）** 三个域——
+本包交付物是 **20 条 unit 窄写工具 + 12 条 sd 窄写工具**，以及相应的桶接线与测试。
+
+---
+
+## 你要读的文件（按优先级）
+
+| 路径 | 是什么 | 为什么要读 |
+|---|---|---|
+| `docs/superpowers/specs/2026-09-22-tool-surface-creed.md` | **本阶段的信条（binding authority）** | 判据的**唯一来源**。计划是它的论证，冲突时以它为准 |
+| `docs/superpowers/plans/2026-09-22-tool-surface-plan.md` | 计划（含 M1~M5 的分解与本轮回填） | 任务边界、统一做法模板 |
+| `.superpowers/sdd/2026-09-22-tool-surface/task-2-report.md` | M2 实现者报告 | 判据实测值 + "我未能核实的" |
+| `.superpowers/sdd/2026-09-22-tool-surface/task-3-report.md` | M3 实现者报告（**含范围声明**） | 同上 |
+| `.superpowers/sdd/2026-09-22-tool-surface/progress.md` | **SDD 台账** | 逐任务裁定、评审结论、跨任务约束。**看 §二 各 Task 段与 §三 待裁定** |
+
+## 全局约束（逐字摘自计划 §四 / 信条 §二·§六）
+
+- **铁律 2（不可协商）**：所有修改最终表示为 `Command → ChangeSet → Revision`。**不存在绕过该路径的写入口。**
+- **铁律 3**：所有领域模块只拥有自己的数据。MapSimos 永远不知道 SocialSimos / UnitSimos 存在。
+- **铁律 4**：Core 只负责组合与调度，不重新实现领域逻辑。
+- **模块边界由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——
+  越界 = 构建失败，不是 code review 的事。
+- **前置即错**：缺前置条件 ⇒ **报错**，**绝不静默兜底**。
+  第三级谱：① 抛 / ② 明确失败 / ③ 静默兜底——本轮要求全部落在 ① 或 ②，**禁止 ③**。
+- **同源**：同一条 `AgentTool` 定义必须**同时**出现在 GM 面与 MCP 面上，**不得两处各写一份**。
+- **注释与文档用中文**，与既有风格一致。
+- **门禁**：`./mvnw clean verify`（Spotless + Checkstyle + SpotBugs + Surefire + 前端 `node --test`）。
+- ★ **密钥纪律**：值绝不进日志/异常/事件/argv/env/stdio；读配置只打印路径 + 长度。
+  **一个 key 都不许进代码**（只许 `config/llm-providers.json`）。
+
+---
+
+## 已知的、**有意**的边界（评审时不要当成缺陷报）
+
+1. **`Role.EXTERNAL` 桶在生产里没有构造点**：只有 `EXTERNAL_WITH_GM` 与 `DECISION_AGENT`
+   两个桶被真的装配（`Shell.java:439` / `:455`）。`EXTERNAL` 仍被断言（测试），但**没有生产调用者**。
+   这是既有形状，非本轮引入。
+2. **`Role.EXTERNAL_WITH_GM` 保留了通用写**（`simos.command.submit` / `advance` / `fork`）。
+   这是**用户裁定 D2="加"** 的取舍，**不是缺陷**；与 SDSimos 裁定 N9 的冲突已在
+   `SimosToolSource` 与 `Shell` 的注释里**显式记账**。M5 的评估说明"只收窄工具面 ≠ 收窄写权限"，
+   要不要动**等用户裁**（控制器未替选）。
+3. **M3 只进 GM 桶**（sd 12 条不进决策人桶），**M2 进 GM + 决策人双桶**（用户裁定 D-1）。
+   差异是**有意**的，不是遗漏。
+4. **这 32 条工具是 MCP/agent 面，工作台（GUI）看不到也发不出**——
+   实测 `webui/**` 对这些命令 type 零命中；写面由 `webui/modes.js` 的 `isWriteAllowed`
+   **fail-closed** 白名单决定。**"全绿" ≠ "界面上能用"**（T10-l 口径，已写进 M3 报告抬头）。
+5. **M5 是只评估、零代码改动**——`m5-evaluation.md` 是产物，**不要期待它对应的代码变更**。
+6. **`POST /api/command`（`GuiServer.java:498` → `:782`）是第二条写入口**，接受**任意 `type`**、
+   **无审批调用**，`initiator = GUI_INITIATOR`。**这是既有形状、本轮未动**（M5 评估把它记为
+   "只收窄工具面 ≠ 收窄写权限"的证据）。**算已知开口项，不算本分支引入的缺陷**。
+
+---
+
+## 评审要求
+
+**产出**：一份按「判据 × 实测」组织的评审结论，**每条结论必须带可核对的位置**（`文件:行`）。
+**不要复述**报告里已有的结论——报告写过的，你的任务是**独立核**；核不过的才报出来。
+**没能核实的，如实写成"未能核实"**，不要写成"通过"。
+
+**重点核这几件事**（这几处是本分支最容易出错的地方）：
+
+1. **同源是否真的同源**：工具名 / `commandType()` / catalog 三者是否由**同一个常量**派生，
+   还是三处手抄一致。**手抄一致不是同源**——若有人加第 N+1 条工具只改了两处，判据能不能红？
+2. **桶算术**：`EXTERNAL_WITH_GM` 是否**真的是** `addExternalWrites + addGmWrites` 的并集
+   （而非"当前恰好相等"）。★ 注意**读工具是四个桶共享的前缀**——这个事实的连带后果是什么？
+3. **前置即错（信条核心）**：窄写工具的**域校验**是**真拒绝**还是**装饰**？
+   ★ 已知一条：`simos.command.submit`（通用写）**绕过工具层**直接进 Core ⇒
+   工具层的前置检查**不是安全边界**。那么这些前置的**真实价值**是什么？报告是否诚实交代了这一点？
+4. **测试的判别力**：新增测试里，哪些**真能杀变异体**、哪些是**恒真的装饰**？
+   ★ 台账有前例：M3 的 m2「原样形态不是被杀」（58 条用例全部 error 在 `@BeforeEach`，
+   红的不是判据本身），实现者**主动降级**该轮、另做 m2b 才取到真红。
+   核查报告在这一点上是否**降级**而非**冒充**。
+5. **有没有被"全绿"掩盖的静默失败**：本仓反复记账的一族是「**把没搜到伪装成不存在**」。
+   检查新增测试里有没有**永远为真**的断言（例如扫到自己写的空目录、用循环包一条断言、
+   `.hasSize()` 量的是自己刚构造的集合、扫隐藏目录时默认跳过）。
+
+**不要报的**：上面「已知的有意边界」6 条；`.superpowers/**` 里证据留档的格式问题；
+M4/M5 的未完成（M4 被用户裁定阻塞、M5 只评估，都是**在案**的状态）。
+
+---
+
+## 附一：提交清单（`git log --oneline 40e19d2..e7e3155`）
+
+```
+e7e3155 M3 关账：三条评审发现逐条修复 + 台账关账段 + M5 评估 + 计划回填
+1e5859e M3 评审发现 2：工具面注释去数字（9 处）+ 一条装置陷阱修复
+2cffab4 M3 报告：补记证据提交 sha fab1fa4
+fab1fa4 M3 证据留档：判据实测、变异轮与 §4.1 对账
+aba3326 M3：sd 域 12 条窄写工具（只进 GM 桶）
+7ce2cc1 docs(tool-surface): M2 关账（评审 1 轮通过）+ M3 简报 + 待用户裁定清单
+8899457 docs(tool-surface): M2 关账报告 + 一处自指取证的数字更正
+981586e feat(tool-surface): M2 unit 组 20 条窄写工具（GM + 决策人双桶，用户裁定 D-1）
+```
+
+## 附二：改动清单（--stat 40e19d2..e7e3155 -- simos-app docs）
+
+```
+ .../plans/2026-09-22-tool-surface-plan.md          |  28 +-
+ .../src/main/java/io/mosire/simos/app/Shell.java   |  21 +-
+ .../io/mosire/simos/app/tools/SimosToolSource.java | 114 +++-
+ .../mosire/simos/app/tools/read/CatalogTool.java   |   2 +-
+ .../app/tools/write/SdAddCombatStageTool.java      |  36 ++
+ .../simos/app/tools/write/SdCancelEffectTool.java  |  35 +
+ .../app/tools/write/SdCommitCombatOutcomeTool.java |  35 +
+ .../simos/app/tools/write/SdCreateArmyTool.java    |  35 +
+ .../simos/app/tools/write/SdCreateCombatTool.java  |  36 ++
+ .../app/tools/write/SdCreateDecisionMakerTool.java |  36 ++
+ .../simos/app/tools/write/SdCreateNationTool.java  |  36 ++
+ .../simos/app/tools/write/SdPutInfoTool.java       |  36 ++
+ .../app/tools/write/SdRecordCasualtiesTool.java    |  37 ++
+ .../app/tools/write/SdRegisterEffectTool.java      |  36 ++
+ .../write/SdSetDecisionMakerProviderTool.java      |  37 ++
+ .../tools/write/SdSetStageOutcomeTableTool.java    |  35 +
+ .../app/tools/write/UnitApplyCasualtiesTool.java   |  39 ++
+ .../simos/app/tools/write/UnitAttachTool.java      |  38 ++
+ .../simos/app/tools/write/UnitCancelRouteTool.java |  35 +
+ .../tools/write/UnitCreateCommandChainTool.java    |  36 ++
+ .../simos/app/tools/write/UnitCreateTool.java      |  37 ++
+ .../simos/app/tools/write/UnitDetachTool.java      |  36 ++
+ .../simos/app/tools/write/UnitDisbandTool.java     |  36 ++
+ .../app/tools/write/UnitMergeFormationTool.java    |  38 ++
+ .../simos/app/tools/write/UnitPlaceAtTool.java     |  36 ++
+ .../simos/app/tools/write/UnitPlanRouteTool.java   |  36 ++
+ .../app/tools/write/UnitPlanSparseRouteTool.java   |  36 ++
+ .../simos/app/tools/write/UnitRenameTool.java      |  38 ++
+ .../app/tools/write/UnitReparentSubtreeTool.java   |  39 ++
+ .../simos/app/tools/write/UnitReparentTool.java    |  36 ++
+ .../tools/write/UnitSetFormationOffsetTool.java    |  38 ++
+ .../app/tools/write/UnitSetRejoinTargetTool.java   |  38 ++
+ .../simos/app/tools/write/UnitSetStatusTool.java   |  38 ++
+ .../simos/app/tools/write/UnitSetStrengthTool.java |  36 ++
+ .../app/tools/write/UnitSplitFormationTool.java    |  36 ++
+ .../tools/write/UnitUpdateCommandChainTool.java    |  38 ++
+ .../io/mosire/simos/app/McpPortTopologyTest.java   |  86 ++-
+ .../java/io/mosire/simos/app/McpServerTest.java    |  41 +-
+ .../io/mosire/simos/app/tools/SimosToolsTest.java  | 704 ++++++++++++++++++++-
+ 39 files changed, 2109 insertions(+), 57 deletions(-)
+```
+
+## 附三：完整 diff（-U10）
+
+```diff
+diff --git a/docs/superpowers/plans/2026-09-22-tool-surface-plan.md b/docs/superpowers/plans/2026-09-22-tool-surface-plan.md
+index 008a07c..900b8cf 100644
+--- a/docs/superpowers/plans/2026-09-22-tool-surface-plan.md
++++ b/docs/superpowers/plans/2026-09-22-tool-surface-plan.md
+@@ -36,24 +36,37 @@
+ - ★ 前置即错：如 `AttachUnit` 目标不存在 ⇒ 报错；`DisbandUnit` 在链中 ⇒ 报错（已有守卫，要有可读理由）
+ 
+ ### M3 — sd 造世界/战斗组（12 条）
+ - ★ **归 GM 桶**（`CreateNation`/`CreateArmy`/`CreateDecisionMaker`/`CreateCombat`/…）
+ - ★★ **用户裁定**：`CreateArmy` **有对应 Nation/Army 就正常，没有就报错**
+ - ★ `SetDecisionMakerProvider` 是否也开给 GM？（倾向**开**——配 provider 是 GM 职责）
+ 
+ ### M4 — 读口补齐（面向"所有数据"）
+ - 现有 9 条读工具 vs GUI 23 端点 ⇒ 逐条列出**缺哪些**（如 `/api/sd/decision-makers`、`/api/sd/verdicts`、`/api/map/region/{id}`、`/api/map/path`、`/api/unit/{id}`、`/api/llm/providers`、`/api/gm/tool-usage` …）
+ - ★ 判定哪些**该有读工具**（★ 与"GM 能看什么"一致）、哪些**只是 GUI 内部用**（不给工具）
+-- ★ 读工具是**三桶共享**（现有 9 条即如此）⇒ 加读工具会牵动所有桶的既有断言，**先把代价核清**
++- ★ 读工具是**四桶共享**（现有 9 条即如此）⇒ 加读工具会牵动所有桶的既有断言，**先把代价核清**
++  —— ★ **本行原文写"三桶"，控制器 2026-09-22 按代码回填为"四桶"**：`Role` 有 **4** 个值
++  （`EXTERNAL`/`GM`/`DECISION_AGENT`/`EXTERNAL_WITH_GM`），`SimosToolSource.java:117` 的类内 javadoc
++  原文即「**读工具四桶共享；写面各自不同**」。⇒ 连带后果（**比"三桶"严重**）：
++  **加任何读工具，对外的 `EXTERNAL` 口也同时拿到** ⇒ M4 的真实含义是"凡持有任何一个口的人都拿到"，
++  而不是"给 GM 开个便利"。详见 `pending-rulings.md` §二 的 ★★ 与风险表。
+ 
+ ### M5 — 通用写收窄评估（★ 只评估，不改）
+ - 标准化覆盖够之后，**通用写是否收窄**？⇒ **列为开口项**，出一份评估（受益 vs 破坏 D2 取舍）
++- ✅ **评估已出（控制器 2026-09-22，零代码改动）**：`.superpowers/sdd/2026-09-22-tool-surface/m5-evaluation.md`。
++  实测要点三条：① 工具面上的"通用写"**只有 `simos.command.submit` 一条**（`advance`/`fork` 类型写死）；
++  ② **43 个生产命令类型 ↔ 43 条同名窄写工具**（`comm` 实测双射）⇒ 收窄**零命令类型损失**；
++  ③ ★★ **只收窄工具面 ≠ 收窄写权限**——`POST /api/command`（`GuiServer.java:498`→`:782`，
++  14 行方法体内**无任何审批调用**）是**第二条、且任意 `type`** 的写入口。
++  ★ 权威挂钩：spec §八.3（`2026-09-20-sd-simos-design.md:478`）原文即把外部 MCP 桶写成
++  「**保留现状或另行收敛，列为挂起**」⇒ **D-4 就是兑现这句「另行收敛」**。
++  **要不要动，等用户裁**（三档见 `pending-rulings.md` §五；**控制器未替选**）。
+ 
+ ## 三. 每条工具的**统一做法**（模板）
+ 
+ ```
+ 1. 照现成窄写形制实现 AgentTool（AbstractNarrowWriteTool 那一族）
+ 2. 前置校验：缺前置 ⇒ 抛可读理由（不静默）
+ 3. 进对应 Role 桶（SimosToolSource）
+ 4. 连带：CatalogTool.PAYLOAD_HINTS 补一条 + McpCoverageTest 补双向载荷
+ 5. 判据 + 变异（至少一条能杀掉"前置被去掉/静默兜底"的变异）
+ 6. 证据落位 + 报告（含 §我未能核实的）
+@@ -65,11 +78,24 @@
+ |---|---|---|
+ | **D-1** | unit 20 条是否也给**决策人**桶？ | **不给**（决策人只出令） |
+ | **D-2** | `SetDecisionMakerProvider` 给 GM？ | **给** |
+ | **D-3** | 读口补到多全（全部 23 端点 or 只补"GM 该看的"）？ | 先列清单再定 |
+ | **D-4** | 通用写收窄？（M5） | 只评估 |
+ | **D-5** | **导入器 tag 改 `nation:<名>`**（去掉每次建国家绕两步的坑）—— 是否并入本阶段 | **并入**（M3 的前置消除） |
+ 
+ ## 五. 历史遗留（顺带收口）
+ 
+ - ★ `nation:` tag 契约缺口（导入器 vs `NationTag.PREFIX`）⇒ 用户已倾向"改导入器"
++  —— ★★ **已升级为待用户裁定项 D-5**，见 SDD 台账 §三 与 `pending-rulings.md` §一（本阶段**不动**）
+ - ★ 前端 `expectedRevision` 过期 ⇒ **409**（是否已由 `661ac88` 修到"点一次就成"待复核）
++  —— ✅ **已复核（控制器 2026-09-22 只读实测）**：**是**，且句子里的「点一次就成」现在就有断言钉着。
++  **范围（如实记）**：`661ac88` 的收口是 **HTTP 层等价物**——真发那条 `POST /api/sd/start-decision`
++  （实测 `expectedRevision=10` 过期 ⇒ `409 {"result":"conflict","current":{"revision":11}}`，日志
++  `2026-09-22-sd-start-decision-fix/e2e/e2e.sh`），前端行为由**纯函数/替身**断言覆盖；
++  **真浏览器点过没有 = 没有**（本机 Chromium 与 Playwright 版本不匹配，是本仓长期遗留）。
++  今日字节上的锚点：`simos-app/src/test/js/decision-mode.test.cjs:327`
++  `start-decision-retries-once-after-409-with-the-fresh-head`（`:328` 注释逐字含「点一次就成」、
++  `:342` `assert.equal(h.calls.startDecision.length, 2, "409 ⇒ 恰自动重试一次")`、
++  `:345` `assert.ok(h.calls.refreshState >= 1, "409 ⇒ 必须重取 head")`）+
++  同文件「重试轮再 409 ⇒ 如实报失败、不得无限循环」那条。
++  生产侧四处 409 分支在现役前端：`app.js:400`、`timeline.js:604`、`panels.js:1019`、`panels.js:1554`。
++  ⇒ **本行收口：不再需要本阶段处理**（除上述"真浏览器未点"这一条**继承的**遗留，归入本仓 Playwright/Chromium 开口项）。
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/Shell.java b/simos-app/src/main/java/io/mosire/simos/app/Shell.java
+index 63c54f3..74511fd 100644
+--- a/simos-app/src/main/java/io/mosire/simos/app/Shell.java
++++ b/simos-app/src/main/java/io/mosire/simos/app/Shell.java
+@@ -122,22 +122,22 @@ import org.slf4j.LoggerFactory;
+  * 外壳：**唯一的装配点**（spec §3.2 的 1~7 步）。
+  *
+  * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），四 codec / 四十二 handler / 一
+  * participant 必须由组合根注入。审批链（T6）、MCP 服务（T7）与 GUI（T8）都已接上——{@link #start} 走到"世界能提交命令、能重放、 能推进、能查询、能经
+  * {@code /api} 与 MCP 工具面读写、写命令要过人审批"为止。
+  *
+  * <p>★ **装配清单**（spec §3.2 第 1~7 步）：四 codec（map/social/unit/sd）+ 四十二 handler + 一 participant（{@link
+  * CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 四 {@code Resolver} （map/social/unit/sd）+ 两
+  * {@code FacetProvider}（unitsHere/population）→ {@link QueryService}（查询层，T3）；审批链（T6，S5：{@code
+  * PendingApprovals → HttpApprovalChannel → ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior
+- * 判定）→ {@link SimosToolSource}（T4：现有口 {@code EXTERNAL_WITH_GM} 16 工具 = 3 通用写 + 4 GM 窄写 + 9 读；决策人口
+- * {@code DECISION_AGENT} 11 工具 = 2 窄写 + 9 读）经 {@code McpSourceBridge.bind} 同步进各自 {@link
++ * 判定）→ {@link SimosToolSource}（T4：现有口 {@code EXTERNAL_WITH_GM} = 通用写 + GM 窄写 + 读工具；决策人口 {@code
++ * DECISION_AGENT} = 自有窄写 + 读工具。**条数以工具面为准**，不在此钉死）经 {@code McpSourceBridge.bind} 同步进各自 {@link
+  * ToolRegistry}（T5）→ {@link AgentToMcpServer#startHttp} **两次**（现有口 + 决策人口，第 6 步，T7/T4）→ GUI（第 7
+  * 步，T8）。
+  *
+  * <p>★ **本类不持有任何存储写路径**：{@code SqliteStore} / {@code Timeline.appendRevision} / {@code
+  * CheckpointStore} 一个都不在 app 源码里（铁律 2 的结构化，R1 的扫描对象）。唯一的写入口是 {@link
+  * CoreSimos#submit(io.mosire.simos.util.state.Command)}。
+  */
+ public final class Shell implements AutoCloseable {
+ 
+   private static final Logger LOG = LoggerFactory.getLogger(Shell.class);
+@@ -154,30 +154,30 @@ public final class Shell implements AutoCloseable {
+   /** 审批等待上限（spec 未定值，M5 取 5 分钟）：到点没人答 ⇒ fail-closed 拒（AgentLib 契约）。 */
+   private static final Duration APPROVAL_TIMEOUT = Duration.ofMinutes(5);
+ 
+   private final ShellConfig config;
+   private final CoreSimos coreSimos;
+ 
+   /** 查询层（T3）：GUI 与工具集唯一的只读入口（spec §5.1）。 */
+   private final QueryService queryService;
+ 
+   /**
+-   * 工具注册表（T5/T4）：现有口 {@link SimosToolSource.Role#EXTERNAL_WITH_GM} 的 16 条工具经桥同步进此表；T7 交给 {@code
++   * 工具注册表（T5/T4）：现有口 {@link SimosToolSource.Role#EXTERNAL_WITH_GM} 的全部工具经桥同步进此表；T7 交给 {@code
+    * AgentToMcpServer}。
+    */
+   private final ToolRegistry toolRegistry;
+ 
+   /** 工具源 ↔ 注册表的同步桥（T5）：{@link #close()} 时整组下架本桥带入的工具。 */
+   private final McpSourceBridge toolBridge;
+ 
+   /**
+-   * 决策人口工具注册表（T4）：{@link SimosToolSource.Role#DECISION_AGENT} 的 11 条工具经桥同步；与 {@link #toolRegistry}
++   * 决策人口工具注册表（T4）：{@link SimosToolSource.Role#DECISION_AGENT} 的全部工具经桥同步；与 {@link #toolRegistry}
+    * 相互独立。
+    */
+   private final ToolRegistry decisionToolRegistry;
+ 
+   /** 决策人口的工具源 ↔ 注册表同步桥（T4）：{@link #close()} 时整组下架。 */
+   private final McpSourceBridge decisionToolBridge;
+ 
+   /** MCP 服务（T7，spec §7.2）：5715 的流式 HTTP 面；关闭次序里排第二（spec §3.3）。 */
+   private final AgentToMcpServer mcpServer;
+ 
+@@ -425,39 +425,39 @@ public final class Shell implements AutoCloseable {
+             null);
+     ToolCallAuthorizer toolAuthorizer =
+         ToolCallAuthorizer.of(new ToolExecutionGuard(), approvalCoordinator);
+ 
+     // 端点先真的绑上端口，再 markUp 通道（可用性认"端口在监听"，spec §3.2 第 4 步）。
+     // ★ 恒回环，**不**随 config.bindAddress() 变（AgentLib 无 host 形参；对外面是 GUI 的 /api/approvals 代理）。
+     ApprovalHttpEndpoint approvalEndpoint =
+         ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
+     approvalChannel.markUp();
+ 
+-    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 9 读 + 3 通用写 + 4 GM 窄写。
++    // 工具集（T5/T4）：现有口 = EXTERNAL ∪ GM（**D2="加"**，spec §二.5）= 读工具 + 通用写 + GM 窄写（条数以工具面为准）。
+     // ★ 与 SDSimos 裁定 N9 的冲突在此端口显式记账：保留通用写是**用户裁定 D2 的取舍、不是缺陷**；
+     //   N9 在决策人口（下面的 DECISION_AGENT 桶）与 DecisionMaker.allowedTools 白名单上照旧有效。
+     SimosToolSource toolSource =
+         new SimosToolSource(
+             coreSimos,
+             queryService,
+             config.mcpInitiator(),
+             config.mapId(),
+             commandTypes,
+             SimosToolSource.Role.EXTERNAL_WITH_GM);
+     // ★ T8：GM 交互界面的数据源——GM 口每次工具执行的留痕（工具名 + 结果），经 /api/gm/tool-usage 只读导出。
+     //   只包现有口（EXTERNAL_WITH_GM），**不包**决策人口 ⇒ 记录的就是"GM MCP 的工具使用"（spec §七.4 C22）。
+     GmToolUsage gmToolUsage = new GmToolUsage();
+     ToolRegistry toolRegistry = new ToolRegistry();
+     McpSourceBridge toolBridge =
+         McpSourceBridge.bind(RecordingToolSource.record(toolSource, gmToolUsage), toolRegistry);
+ 
+-    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（9 读 + 2 窄写），**无**通用写、**无** sd.SetViewScope。
++    // 决策人口（T4，spec §二.2/§六.4）：仅 DECISION_AGENT 桶（读工具 + 该桶自有窄写），**无**通用写、**无** sd.SetViewScope。
+     SimosToolSource decisionToolSource =
+         new SimosToolSource(
+             coreSimos,
+             queryService,
+             config.mcpInitiator(),
+             config.mapId(),
+             commandTypes,
+             SimosToolSource.Role.DECISION_AGENT);
+     ToolRegistry decisionToolRegistry = new ToolRegistry();
+     McpSourceBridge decisionToolBridge =
+@@ -634,22 +634,23 @@ public final class Shell implements AutoCloseable {
+   public int boundDecisionAgentMcpPort() {
+     return decisionMcpServer.boundPort();
+   }
+ 
+   /**
+    * MCP 调用者身份（装配期定死；spec §3.2 的 caller，S/P2-F 无 per-session 身份）。
+    *
+    * <p>★ **桶取 {@link AccessToken#DEFAULT} 而非 spec §3.2 字面的 {@code GUEST}**——这是装配期实测的**取代说明**：三条写工具
+    * （{@code command.submit}/{@code advance}/{@code fork}）的 {@code ToolSpec} 是 {@code
+    * ToolSpec.level(DEFAULT, sensitive=true, destructive=false)}，而 {@code PermissionChecker}
+-   * 在身份级别不足时**硬拒** （{@code PERMISSION_DENIED}），根本进不了审批闸。{@code GUEST} 桶下 12 条工具里的 3 条写工具全部不可达，MCP
+-   * 只能读、不能写 ⇒ 与 S3/S4 的工具面设计矛盾。{@code DEFAULT} 是**满足全部 12 条工具的最小桶**（读工具只要求 {@code GUEST}）。
++   * 在身份级别不足时**硬拒** （{@code PERMISSION_DENIED}），根本进不了审批闸。{@code GUEST} 桶下三条通用写工具 （{@code
++   * command.submit}/{@code advance}/{@code fork}）全部不可达，MCP 只能读、不能写 ⇒ 与 S3/S4 的工具面设计矛盾。{@code
++   * DEFAULT} 是**满足该工具面全部工具的最小桶**（读工具只要求 {@code GUEST}）。
+    *
+    * <p>★ **权限集须显式开 {@code sensitiveAllowed}**（写工具的敏感位在硬拒规则里"默认拒绝"）：故用 {@link
+    * AgentPermissionSet#unrestricted(AccessToken)}（含 destructive/sensitive 放行）。**放行 ≠ 免审批**：敏感工具仍走
+    * {@code ToolGate.Ask}，本壳注入的 authorizer 是带 {@code ApprovalCoordinator} 的那个（非 {@code standard()}）。
+    *
+    * <p>★ 身份取 {@link AgentIdentity#external()}（{@code external-mcp} 实例 + {@code FULL}
+    * 档）：外部客户端不是本进程派生的 Agent，审批面据它认得出"这不是我派的下级"（AgentLib 契约）。注意 AgentLib 的审批 {@code callerKey}
+    * 取的是**桶名**（{@code DEFAULT}），不是本 identity 的实例 id（T6 裁定 63 已实测）。
+    */
+   private static ToolContext mcpCaller() {
+@@ -680,23 +681,21 @@ public final class Shell implements AutoCloseable {
+    */
+   public ToolCallAuthorizer toolAuthorizer() {
+     return toolAuthorizer;
+   }
+ 
+   /** 查询门面（spec §5.1）：GUI（T8）与工具集（T5）经此读状态、解析地址、取 facet。**只读**——写面仍只有 {@link CoreSimos#submit}。 */
+   public QueryService queryService() {
+     return queryService;
+   }
+ 
+-  /**
+-   * 工具注册表（spec §7.1；T5/T4）：现有口 16 条工具（3 通用写 + 4 GM 窄写 + 9 读）的活清单，T7 交给 {@code AgentToMcpServer}。
+-   */
++  /** 工具注册表（spec §7.1；T5/T4）：现有口全部工具（通用写 + GM 窄写 + 读）的活清单，T7 交给 {@code AgentToMcpServer}。 */
+   @SuppressFBWarnings(
+       value = "EI_EXPOSE_REP",
+       justification = "spec §3.2/§7.2 要求把注册表交给 MCP 服务（T7）；它不是内部表示而是本壳的产物本身，与 coreSimos() 同法")
+   public ToolRegistry toolRegistry() {
+     return toolRegistry;
+   }
+ 
+   /**
+    * 底层门面（提交 / 重放 / 只读分支面）。★ 唯一写入口仍是 {@link CoreSimos#submit}。
+    *
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java b/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+index 164dc59..12fb213 100644
+--- a/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java
+@@ -16,31 +16,63 @@ import io.mosire.simos.app.tools.write.AdvanceTool;
+ import io.mosire.simos.app.tools.write.CommandSubmitTool;
+ import io.mosire.simos.app.tools.write.ForkTool;
+ import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+ import io.mosire.simos.app.tools.write.MapCreateRegionTool;
+ import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
+ import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
+ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
+ import io.mosire.simos.app.tools.write.MapSetEdgeTool;
+ import io.mosire.simos.app.tools.write.MapSetTerrainTool;
+ import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
++import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
++import io.mosire.simos.app.tools.write.SdCancelEffectTool;
++import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
++import io.mosire.simos.app.tools.write.SdCreateArmyTool;
++import io.mosire.simos.app.tools.write.SdCreateCombatTool;
++import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
++import io.mosire.simos.app.tools.write.SdCreateNationTool;
++import io.mosire.simos.app.tools.write.SdPutInfoTool;
++import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
++import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
++import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
++import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
+ import io.mosire.simos.app.tools.write.SetViewScopeTool;
+ import io.mosire.simos.app.tools.write.StartDecisionTool;
+ import io.mosire.simos.app.tools.write.SubmitVerdictTool;
++import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
++import io.mosire.simos.app.tools.write.UnitAttachTool;
++import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
++import io.mosire.simos.app.tools.write.UnitCreateCommandChainTool;
++import io.mosire.simos.app.tools.write.UnitCreateTool;
++import io.mosire.simos.app.tools.write.UnitDetachTool;
++import io.mosire.simos.app.tools.write.UnitDisbandTool;
++import io.mosire.simos.app.tools.write.UnitMergeFormationTool;
++import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
++import io.mosire.simos.app.tools.write.UnitPlanRouteTool;
++import io.mosire.simos.app.tools.write.UnitPlanSparseRouteTool;
++import io.mosire.simos.app.tools.write.UnitRenameTool;
++import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
++import io.mosire.simos.app.tools.write.UnitReparentTool;
++import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
++import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
++import io.mosire.simos.app.tools.write.UnitSetStatusTool;
++import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
++import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
++import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
+ import io.mosire.simos.core.CoreSimos;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Objects;
+ import java.util.Set;
+ 
+ /**
+- * Simos 工具供给源（M5 T5，spec §7.1）：**9 读 + 各桶自己的写面**（{@link Role}）。
++ * Simos 工具供给源（M5 T5，spec §7.1）：**读工具各桶共享 + 各桶自己的写面**（{@link Role}）。
+  *
+  * <p>★ **它是工具清单的唯一出处**：{@code Shell} 建源后经 {@code McpSourceBridge.bind} 把这份快照同步进 {@link
+  * io.mosire.agentlib.tool.ToolRegistry}，T7 再把该注册表交给 {@code
+  * AgentToMcpServer}。源本身**不向任何全局状态注册**（AgentLib 的 {@code ToolSource} 契约）。
+  *
+  * <p>★ **{@code onChange} 是 no-op**：本源的集合是构造期定死的静态集（没有插件式的动态增删口子），故订阅即时成立、无需变更通知。若将来工具集
+  * 变成动态的，替换这里的空实现即可（契约要求返回可关闭句柄）。
+  *
+  * <p>★ **写工具的身份与资源**：{@code initiator} 由 {@code Shell} 从 {@link
+  * io.mosire.simos.app.ShellConfig#mcpInitiator()} 注入（spec §九，R4 的断言对象）；{@code mapId} 用于 hex 工具的
+@@ -50,37 +82,40 @@ public final class SimosToolSource implements ToolSource {
+ 
+   /** 供给源标识（同一运行时内唯一；审计与按源卸载依赖它）。 */
+   public static final String ID = "simos";
+ 
+   /** 工具面按角色分载（spec §八.3，N9/N11；T4 起现有运行时口 = {@link #EXTERNAL_WITH_GM}）。 */
+   public enum Role {
+     /** 外部 MCP 客户端：保留现状（有通用写），spec §八.3 列为挂起。 */
+     EXTERNAL,
+     /** GM：配权 + 窄工具，**无通用写**（N11）。 */
+     GM,
+-    /** 决策 Agent：仅窄工具（`sd.IssueDirective` / `sd.SubmitVerdict`），**无通用写**（N9）。 */
++    /**
++     * 决策 Agent：仅窄工具（`sd.IssueDirective` / `sd.SubmitVerdict`，用户裁定 D-1 起**再含 unit
++     * 域全部窄写**），**无通用写**（N9）。
++     */
+     DECISION_AGENT,
+     /**
+-     * 现有 MCP 口（T4，**D2="加"**，spec §二.5）：**EXTERNAL ∪ GM** —— 9 读共享 + 通用写（submit/advance/fork）+ GM
+-     * 窄写（IssueDirective/SubmitVerdict/**含** SetViewScope/StartDecision + **7 条 map**）。
++     * 现有 MCP 口（T4，**D2="加"**，spec §二.5）：**EXTERNAL ∪ GM** —— 读工具共享 + 通用写（submit/advance/fork）+ GM
++     * 窄写（IssueDirective/SubmitVerdict/**含** SetViewScope/StartDecision + **map 域与 unit 域的窄写**）。
+      *
+      * <p>★ **与 SDSimos 裁定 N9 的冲突在此端口显式记账**：N9 的原意是「专用窄工具，不给决策 Agent 通用 `simos.command.submit`」；本口
+      * 保留通用写是**用户裁定 D2 的取舍、不是缺陷**（其持有者可绕过窄工具直接提交任意命令）。N9 在**决策人口**（{@link #DECISION_AGENT} 桶）与
+      * `DecisionMaker.allowedTools` 白名单上**照旧有效**。
+      */
+     EXTERNAL_WITH_GM
+   }
+ 
+   private final List<AgentTool> tools;
+ 
+   /**
+-   * 外部 MCP 桶（与既有行为逐条相同：3 写 + 9 读）。
++   * 外部 MCP 桶（与既有行为逐条相同：通用写 + 读工具）。
+    *
+    * @param core 唯一写入口（写工具经它提交）
+    * @param query 只读门面（读工具经它读状态）
+    * @param initiator 写命令的发起者（C21 的 {@code <kind>:<id>} 形态）
+    * @param mapId 本世界的 map 称谓（构造 canonical hex 地址与资源断言）
+    * @param commandTypes 已注册命令类型（与 {@code Shell} 注册的 handler 同源，catalog 读它）
+    */
+   public SimosToolSource(
+       CoreSimos core,
+       QueryService query,
+@@ -119,45 +154,106 @@ public final class SimosToolSource implements ToolSource {
+ 
+   /** EXTERNAL 桶的通用写（spec §八.3）：submit / advance / fork。 */
+   private static void addExternalWrites(
+       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+     built.add(new CommandSubmitTool(core, initiator, mapId));
+     built.add(new AdvanceTool(core, initiator, mapId));
+     built.add(new ForkTool(core, initiator));
+   }
+ 
+   /**
+-   * GM 窄写（N11）：两条决策窄工具 + 配权工具（**含** `sd.SetViewScope`）+ 「开始决策」（T10）+ **7 条 map 窄写**（M1）。
++   * GM 窄写（N11）：sd 域两条决策窄工具 + 配权工具（**含** `sd.SetViewScope`）+ 「开始决策」（T10）+ **map 域与 unit 域的窄写**。
++   *
++   * <p>★ **窄写工具进的是 GM 桶**（不是通用写、也不是决策桶）：它们的命令类型在工具里固定死，模型只能给载荷 ——与 {@code simos.command.submit}
++   * 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此也含这些。
+    *
+-   * <p>★ **7 条 map 工具进的是 GM 桶**（不是通用写、也不是决策桶）：`map.*` 命令类型在工具里固定死，模型只能给载荷 ——与 {@code
+-   * simos.command.submit} 的"自选 type"相对（spec §八.3）。{@link Role#EXTERNAL_WITH_GM} 复合口因此 也含这 7 条。
++   * <p>★ **M3（spec §八.3）：sd 域余下的写命令也在此追加**——命令类型固定、与 map/unit 窄写同形。★ **新窄写一律加在这里**， 加完**不必回来改本注**
++   * （**本注刻意不写条数**：数字是漂移源；M3 起本文件与 {@code Shell} 的工具面注释一律不钉条数）。
+    */
+   private static void addGmWrites(
+       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+     built.add(new IssueDirectiveTool(core, initiator, mapId));
+     built.add(new SubmitVerdictTool(core, initiator, mapId));
+     built.add(new SetViewScopeTool(core, initiator, mapId));
+     built.add(new StartDecisionTool(core, initiator, mapId));
+     built.add(new MapSetTerrainTool(core, initiator, mapId));
+     built.add(new MapSetEdgeTool(core, initiator, mapId));
+     built.add(new MapCreateRegionTool(core, initiator, mapId));
+     built.add(new MapUpdateRegionTool(core, initiator, mapId));
+     built.add(new MapDeleteRegionTool(core, initiator, mapId));
+     built.add(new MapRandomizeRegionTool(core, initiator, mapId));
+     built.add(new MapRegisterPathwayGroupTool(core, initiator, mapId));
++    // M2（spec §八.3）：unit 域窄写 —— 用户裁定 D-1，同一批**也挂进决策人桶**（见 addDecisionAgentWrites）。
++    built.add(new UnitRenameTool(core, initiator, mapId));
++    built.add(new UnitCreateTool(core, initiator, mapId));
++    built.add(new UnitReparentTool(core, initiator, mapId));
++    built.add(new UnitSetStrengthTool(core, initiator, mapId));
++    built.add(new UnitPlaceAtTool(core, initiator, mapId));
++    built.add(new UnitPlanRouteTool(core, initiator, mapId));
++    built.add(new UnitCancelRouteTool(core, initiator, mapId));
++    built.add(new UnitDisbandTool(core, initiator, mapId));
++    built.add(new UnitSetStatusTool(core, initiator, mapId));
++    built.add(new UnitAttachTool(core, initiator, mapId));
++    built.add(new UnitDetachTool(core, initiator, mapId));
++    built.add(new UnitReparentSubtreeTool(core, initiator, mapId));
++    built.add(new UnitSetFormationOffsetTool(core, initiator, mapId));
++    built.add(new UnitSplitFormationTool(core, initiator, mapId));
++    built.add(new UnitMergeFormationTool(core, initiator, mapId));
++    built.add(new UnitPlanSparseRouteTool(core, initiator, mapId));
++    built.add(new UnitSetRejoinTargetTool(core, initiator, mapId));
++    built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
++    built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
++    built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
++    // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
++    built.add(new SdCreateNationTool(core, initiator, mapId));
++    built.add(new SdCreateArmyTool(core, initiator, mapId));
++    built.add(new SdCreateDecisionMakerTool(core, initiator, mapId));
++    built.add(new SdPutInfoTool(core, initiator, mapId));
++    built.add(new SdCreateCombatTool(core, initiator, mapId));
++    built.add(new SdAddCombatStageTool(core, initiator, mapId));
++    built.add(new SdSetStageOutcomeTableTool(core, initiator, mapId));
++    built.add(new SdCommitCombatOutcomeTool(core, initiator, mapId));
++    built.add(new SdRecordCasualtiesTool(core, initiator, mapId));
++    built.add(new SdRegisterEffectTool(core, initiator, mapId));
++    built.add(new SdCancelEffectTool(core, initiator, mapId));
++    built.add(new SdSetDecisionMakerProviderTool(core, initiator, mapId));
+   }
+ 
+-  /** 决策 Agent 窄写（N9）：**无** `sd.SetViewScope`、**无**通用写。 */
++  /**
++   * 决策 Agent 窄写（N9）：**无** `sd.SetViewScope`、**无**通用写。★ 用户裁定 D-1：unit 域窄写与 GM
++   * 桶**同批**（它们是窄工具、命令类型固定，与 N9「不给通用写」不冲突）⇒ 两处**各自逐条**列出，便于按桶裁剪。
++   */
+   private static void addDecisionAgentWrites(
+       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+     built.add(new IssueDirectiveTool(core, initiator, mapId));
+     built.add(new SubmitVerdictTool(core, initiator, mapId));
++    // M2（spec §八.3）：unit 域窄写（与 addGmWrites 同一批）。
++    built.add(new UnitRenameTool(core, initiator, mapId));
++    built.add(new UnitCreateTool(core, initiator, mapId));
++    built.add(new UnitReparentTool(core, initiator, mapId));
++    built.add(new UnitSetStrengthTool(core, initiator, mapId));
++    built.add(new UnitPlaceAtTool(core, initiator, mapId));
++    built.add(new UnitPlanRouteTool(core, initiator, mapId));
++    built.add(new UnitCancelRouteTool(core, initiator, mapId));
++    built.add(new UnitDisbandTool(core, initiator, mapId));
++    built.add(new UnitSetStatusTool(core, initiator, mapId));
++    built.add(new UnitAttachTool(core, initiator, mapId));
++    built.add(new UnitDetachTool(core, initiator, mapId));
++    built.add(new UnitReparentSubtreeTool(core, initiator, mapId));
++    built.add(new UnitSetFormationOffsetTool(core, initiator, mapId));
++    built.add(new UnitSplitFormationTool(core, initiator, mapId));
++    built.add(new UnitMergeFormationTool(core, initiator, mapId));
++    built.add(new UnitPlanSparseRouteTool(core, initiator, mapId));
++    built.add(new UnitSetRejoinTargetTool(core, initiator, mapId));
++    built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
++    built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
++    built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
+   }
+ 
+   private static List<AgentTool> readTools(
+       CoreSimos core, QueryService query, String mapId, Set<String> commandTypes) {
+     return List.of(
+         new CatalogTool(commandTypes),
+         new StateResolveTool(query, mapId),
+         new StateFacetsTool(query, mapId),
+         new BranchListTool(core),
+         new MapOverviewTool(query, mapId),
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+index c21b3b1..988acc9 100644
+--- a/simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+@@ -65,21 +65,21 @@ public final class CatalogTool implements AgentTool {
+           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
+           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
+           Map.entry(
+               "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
+           Map.entry("sd.PutInfo", "address, key, value, note?"),
+           Map.entry("sd.CreateCombat", "combatId, name, participants[字符串...]"),
+           Map.entry(
+               "sd.AddCombatStage",
+               "combatId, stage{stageId,name,participants?,entry,exit,minDurationTicks?,"
+                   + "maxDurationTicks?,outcomes{options[{id,label,weight,casualties?}]}},"
+-                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填)"),
++                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填；非首阶段时两者都会被忽略)"),
+           Map.entry(
+               "sd.SetStageOutcomeTable",
+               "combatId, stageId, outcomes{options[{id,label,weight,casualties?}]}"),
+           Map.entry("sd.CommitCombatOutcome", "combatId, stageId, selectedOutcomeId"),
+           Map.entry(
+               "sd.RecordCasualties",
+               "combatId, stageId, deltas[{unit,personnel,equipment,lossClass(PERMANENT|RECOVERABLE)}]"),
+           Map.entry(
+               "sd.RegisterEffect",
+               "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action, createdTick?"),
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdAddCombatStageTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdAddCombatStageTool.java
+new file mode 100644
+index 0000000..efa36f9
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdAddCombatStageTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.AddCombatStage} 窄工具（M3，spec §八.3）：**给交战加阶段**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **{@code combatStateId} / {@code hex} 只在该交战的首个阶段生效**：非首阶段时给了会被**静默忽略**
++ * ——不报错、回执也看不出它有没有生效。这是**工具面上唯一的披露点**（见 {@link #description()}）。
++ */
++public final class SdAddCombatStageTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.AddCombatStage";
++
++  public SdAddCombatStageTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "加战斗阶段 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "加战斗阶段：固定 sd.AddCombatStage，载荷 {combatId, stage, combatStateId?, hex?}（combatId/stage 必填；★★ combatStateId 与 hex 只在**该交战的首个阶段**生效——非首阶段时给了会被**静默忽略**，不报错）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCancelEffectTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCancelEffectTool.java
+new file mode 100644
+index 0000000..05a33ca
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCancelEffectTool.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.CancelEffect} 窄工具（M3，spec §八.3）：**取消效果**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 只有**可取消状态**（{@code PLANNED} / {@code COMMITTED}）的效果才允许；已触发 / 已取消 / 已过期的被域层拒。
++ */
++public final class SdCancelEffectTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.CancelEffect";
++
++  public SdCancelEffectTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "取消效果 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "取消效果：固定 sd.CancelEffect，载荷 {effectId}（★ 只有可取消状态的效果才允许）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCommitCombatOutcomeTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCommitCombatOutcomeTool.java
+new file mode 100644
+index 0000000..f4433e5
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCommitCombatOutcomeTool.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.CommitCombatOutcome} 窄工具（M3，spec §八.3）：**给交战选定结局**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 结局必须落在**该阶段**的结局表里（只在别的阶段的表里也拒）；且**已选定过就不再覆盖**（N2 恰一个）。
++ */
++public final class SdCommitCombatOutcomeTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.CommitCombatOutcome";
++
++  public SdCommitCombatOutcomeTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "定结局 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "定结局：固定 sd.CommitCombatOutcome，载荷 {combatId, stageId, selectedOutcomeId}（三者全必填；★ 结局必须在该阶段的 outcomeTable 里，且**已选定过就不再覆盖**）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateArmyTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateArmyTool.java
+new file mode 100644
+index 0000000..830710d
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateArmyTool.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.CreateArmy} 窄工具（M3，spec §八.3）：**建军**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 三条前置（id 已存在 / {@code nationId} 不存在 / {@code rootUnitId} 不存在）都在**域层**判、逐条有可读文案——工具层不重复校验（同上）。
++ */
++public final class SdCreateArmyTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.CreateArmy";
++
++  public SdCreateArmyTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "建军 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "建军：固定 sd.CreateArmy，载荷 {armyId, nationId, rootUnitId, name}（四者全必填；★ nationId 与 rootUnitId 指向不存在者即被拒）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateCombatTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateCombatTool.java
+new file mode 100644
+index 0000000..1ef4dc5
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateCombatTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.CreateCombat} 窄工具（M3，spec §八.3）：**建交战**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 只建交战本身（阶段表为空）：首个 {@code sd.AddCombatStage} 才建对应的战斗状态。 {@code participants} 缺省即空集 ⇒
++ * **可建出零参与者交战**。
++ */
++public final class SdCreateCombatTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.CreateCombat";
++
++  public SdCreateCombatTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "建交战 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "建交战：固定 sd.CreateCombat，载荷 {combatId, name, participants?}（前两者必填；★ participants 缺省即空集，可建出零参与者交战）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateDecisionMakerTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateDecisionMakerTool.java
+new file mode 100644
+index 0000000..924413c
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateDecisionMakerTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.CreateDecisionMaker} 窄工具（M3，spec §八.3）：**建决策人**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ {@code allowedTools} 含通用写（{@code simos.command.submit}）即被拒（N9）；★ 创建期 {@code viewScope}
++ * 恒为空范围、本命令**不接受**该字段——传了会被**静默忽略**（无拒绝）。配权走 {@code sd.SetViewScope}。
++ */
++public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.CreateDecisionMaker";
++
++  public SdCreateDecisionMakerTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "建决策人 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "建决策人：固定 sd.CreateDecisionMaker，载荷 {id, affiliation, allowedTools, cadence}（四者全必填；★ 创建期 viewScope 恒为空范围、本命令不接受该字段，传了会被静默忽略；★ allowedTools 不得含通用写）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateNationTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateNationTool.java
+new file mode 100644
+index 0000000..71410a5
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdCreateNationTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.CreateNation} 窄工具（M3，spec §八.3）：**建国家**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **{@code homeRegionId} 指向的区域必须带 {@code nation:} 前缀的
++ * tag**（R13）——这是建国家的前置，缺它即被域层拒绝，理由原文到达调用方（工具层不重复校验：那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰）。
++ */
++public final class SdCreateNationTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.CreateNation";
++
++  public SdCreateNationTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "建国家 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "建国家：固定 sd.CreateNation，载荷 {nationId, name, homeRegionId, adminBudgetPerTick}（四者全必填；★ homeRegionId 指向的区域必须**已带 `nation:` 前缀的 tag**，否则被拒——R13）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdPutInfoTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdPutInfoTool.java
+new file mode 100644
+index 0000000..188fcc8
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdPutInfoTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.PutInfo} 窄工具（M3，spec §六/§八.3）：**写 sd 侧 INFO** 的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 写的是**感知层**（供 UI / AAR 展示），ground truth 仍由领域模块持有；地址非法 / {@code key} 空白 / {@code value}
++ * 缺失都在命令期被拒、理由原文到达调用方。
++ */
++public final class SdPutInfoTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.PutInfo";
++
++  public SdPutInfoTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "写 Info branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?}（前三者必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRecordCasualtiesTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRecordCasualtiesTool.java
+new file mode 100644
+index 0000000..11533fd
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRecordCasualtiesTool.java
+@@ -0,0 +1,37 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.RecordCasualties} 窄工具（M3，spec §八.3）：**记战损**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 上界由代码判（N3，绝不交给 AI）：{@code |Δ| <= 当前值}，越界**命令期拒绝**；**未知装备键被拒、不视作
++ * 0**（拼错键不会被静默忽略成「没这条装备」）。{@code deltas[].personnel} / {@code equipment} 缺省分别取 0 / 空表 ⇒
++ * **可写出零损失记录**。
++ */
++public final class SdRecordCasualtiesTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.RecordCasualties";
++
++  public SdRecordCasualtiesTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "记战损 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "记战损：固定 sd.RecordCasualties，载荷 {combatId, stageId, deltas[{unit, lossClass, personnel?, equipment?}]}（deltas 必须非空；★ personnel 缺省 0、equipment 缺省空表 ⇒ 可写出零损失记录；★ 未知装备键会被拒，不视作 0）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRegisterEffectTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRegisterEffectTool.java
+new file mode 100644
+index 0000000..e55d5af
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdRegisterEffectTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.RegisterEffect} 窄工具（M3，spec §八.3）：**登记效果（ECA 规则）**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ {@code trigger} / {@code action} 引用的实体**在命令期解析**，解析不到即拒（含 {@code action} 引用的命令 不在白名单）；{@code
++ * createdTick} 缺省 = **当前 tick**，回执区分不出「我给的」与「引擎填的」。
++ */
++public final class SdRegisterEffectTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.RegisterEffect";
++
++  public SdRegisterEffectTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "登记效果 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "登记效果：固定 sd.RegisterEffect，载荷 {effectId, kind, trigger, action, createdTick?}（前四者必填；★ createdTick 缺省 = 当前 tick）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetDecisionMakerProviderTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetDecisionMakerProviderTool.java
+new file mode 100644
+index 0000000..feffc31
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetDecisionMakerProviderTool.java
+@@ -0,0 +1,37 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.SetDecisionMakerProvider} 窄工具（M3）：**给决策人绑定 LLM provider 引用**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **本命令只校验 {@code providerId} 非空白，不校验 provider 是否存在**：存在性由**使用时刻**的解析强制， 解析不到即
++ * fail-closed，**绝不静默兜底**。⇒ 工具层**有意不加**存在性校验：那份校验能被 {@code simos.command.submit}
++ * 绕过（＝装饰），而「从工具面看不出写错了」这件事已写进 {@link #description()}。
++ */
++public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.SetDecisionMakerProvider";
++
++  public SdSetDecisionMakerProviderTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "配 provider branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "配 provider：固定 sd.SetDecisionMakerProvider，载荷 {decisionMakerId, providerId}（两者全必填；★★ 本命令**只校验 providerId 非空白，不校验 provider 是否存在**——存在性在**使用时刻**解析，解析不到即 fail-closed，绝不静默兜底）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetStageOutcomeTableTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetStageOutcomeTableTool.java
+new file mode 100644
+index 0000000..cb38dc0
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/SdSetStageOutcomeTableTool.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code sd.SetStageOutcomeTable} 窄工具（M3，spec §八.3）：**设某阶段的结局表**的唯一窄写面。
++ *
++ * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 结局表是**整体替换**；空表或权重 ≤0 被域层拒（N2），理由原文到达调用方。
++ */
++public final class SdSetStageOutcomeTableTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "sd.SetStageOutcomeTable";
++
++  public SdSetStageOutcomeTableTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "设阶段结局表 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "设阶段结局表：固定 sd.SetStageOutcomeTable，载荷 {combatId, stageId, outcomes}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitApplyCasualtiesTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitApplyCasualtiesTool.java
+new file mode 100644
+index 0000000..b298c9a
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitApplyCasualtiesTool.java
+@@ -0,0 +1,39 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.ApplyCasualties} 窄工具（M2，spec §八.3）：**施加战损**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 与 {@code unit.SetStrength}（整体重置兵力）是**两条不同的命令**：这里是**增量**，且必须是**负增量** （战损只减员，正增量拒）。绝对值落
++ * revision ⇒ **时间线上可回退**。
++ *
++ * <p>★★ **{@code equipment} 必填**：只报人员战损也要显式给 {@code {}}（缺字段拒，不按 0 兜底）； **未知装备键会被拒**，**不视作
++ * 0**（拼错键不会被静默忽略成"没这条装备"）。上界双向：`|Δ|` 不得超过当前值。 这些写进 {@link #description()}，让模型在调用前就看得见。
++ */
++public final class UnitApplyCasualtiesTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.ApplyCasualties";
++
++  public UnitApplyCasualtiesTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "施加战损 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "施加战损：固定 unit.ApplyCasualties，载荷 {id, personnel（负增量）, equipment{键:负增量}}（★ equipment 必填——只报人员战损也要显式给 {}；未知装备键会被拒，不视作 0）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitAttachTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitAttachTool.java
+new file mode 100644
+index 0000000..7786f9c
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitAttachTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.AttachUnit} 窄工具（M2，spec §八.3）：**合体（重新挂到父）**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **级联**：目标单位**及其全部后代**在同一刻追加 {@code attached=true} 段；只有目标换父，后代的父不动（整树迁移是 {@code
++ * unit.ReparentSubtree}）。{@code parent} 落在自己子树内（含自身）⇒ 域层拒「会成环」。
++ *
++ * <p>★ **不判"已是父"**：重挂同一父正是"合体"的语义（拆→合往返靠它），故这条**有意不拒**。
++ */
++public final class UnitAttachTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.AttachUnit";
++
++  public UnitAttachTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "合体 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "合体（同格前提下重新挂到父）：固定 unit.AttachUnit，载荷 {id, parent?}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCancelRouteTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCancelRouteTool.java
+new file mode 100644
+index 0000000..55cb0c6
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCancelRouteTool.java
+@@ -0,0 +1,35 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.CancelRoute} 窄工具（M2，spec §八.3）：**取消路线**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 单位不存在 ⇒ 域层拒（`单位不存在: <id>`）；单位本来就没有在途路线时**不拒**（本操作面不判"无变化的命令"）。
++ */
++public final class UnitCancelRouteTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.CancelRoute";
++
++  public UnitCancelRouteTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "取消路线 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "取消路线：固定 unit.CancelRoute，载荷 {id}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCreateCommandChainTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCreateCommandChainTool.java
+new file mode 100644
+index 0000000..f8f357c
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCreateCommandChainTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.CreateCommandChain} 窄工具（M2，spec §八.3）：**建命令链**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 链**没有时刻**（全标量，命令表里也没有 `at`）：成立即可用，不参与时间推进。`chainId` 已存在 ⇒ 域层拒； `commander` 必须是 `members`
++ * 之一、且 `members` 非空、不含 null、每个成员都解析得到 ⇒ 否则逐条可读拒绝。
++ */
++public final class UnitCreateCommandChainTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.CreateCommandChain";
++
++  public UnitCreateCommandChainTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "建命令链 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "建命令链：固定 unit.CreateCommandChain，载荷 {chainId, name, commander, members[]}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCreateTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCreateTool.java
+new file mode 100644
+index 0000000..f6391e1
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitCreateTool.java
+@@ -0,0 +1,37 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.CreateUnit} 窄工具（M2，spec §八.3）：**新建单位**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **{@code status?} 有缺省**（缺 ⇒ {@code MOVING}）：它与"给对 {@code MOVING}"在 revision 上无法区分。同 id 已存在 ⇒
++ * 域层拒（`单位 id 已存在: <id>`）；**重名不拒**。
++ */
++public final class UnitCreateTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.CreateUnit";
++
++  public UnitCreateTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "新建单位 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "新建单位：固定 unit.CreateUnit，载荷 {id, name, position{q,r}, member, equipment, speed,"
++        + " mobilityPerMille, parent?, status?（缺省 MOVING）}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitDetachTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitDetachTool.java
+new file mode 100644
+index 0000000..c3a9abf
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitDetachTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.DetachUnit} 窄工具（M2，spec §八.3）：**脱离父**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **只脱一个节点、不级联**：目标单位的父被清空，**它的后代仍挂在它下面**（整树迁移是 {@code unit.ReparentSubtree}）。已是根单位（父为空）⇒
++ * 域层拒「没有可脱离的父」。
++ */
++public final class UnitDetachTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.DetachUnit";
++
++  public UnitDetachTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "脱离父 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "脱离父：固定 unit.DetachUnit，载荷 {id}（已是根单位会被拒）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitDisbandTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitDisbandTool.java
+new file mode 100644
+index 0000000..78183a9
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitDisbandTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.DisbandUnit} 窄工具（M2，spec §八.3）：**解散单位**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **两条守卫只覆盖"链"与"下属"**：单位仍是某条链的 commander/成员、或在此时刻仍有下属 ⇒ 域层拒（理由带"先改链、再解散"这类 **可执行的下一步**）。 ★
++ * **悬空的回归目标不在守卫内**：本命令既不检查也不清理它（运行期兜住：目标不存在则不回归、不写任何东西）⇒ {@link #description()} 里**不得**声称它会拒绝这一项。
++ */
++public final class UnitDisbandTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.DisbandUnit";
++
++  public UnitDisbandTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "解散单位 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "解散单位：固定 unit.DisbandUnit，载荷 {id}（仍是链的 commander/成员、或仍有下属时会被拒；★ 不检查悬空的回归目标）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitMergeFormationTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitMergeFormationTool.java
+new file mode 100644
+index 0000000..ab628eb
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitMergeFormationTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.MergeFormation} 窄工具（M2，spec §八.3）：**合并编制**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **两个前置条件都写进 {@link #description()}**：① 两者**同格**（任一方的有效位置取不到 ⇒ 也拒）； ② {@code childId}
++ * 的状态**必须是 {@code MOVING}**（{@code RESTING}/{@code ENGAGED} 拒）。违反任一条 ⇒ 域层拒，理由逐条可读。
++ *
++ * <p>★ 成功路径复用「合体」的级联：{@code childId} **及其全部后代**在同一刻追加 {@code attached=true} 段。
++ */
++public final class UnitMergeFormationTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.MergeFormation";
++
++  public UnitMergeFormationTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "合并编制 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "合并编制：固定 unit.MergeFormation，载荷 {childId, parentId}（★ 必须同格且 child 状态为 MOVING）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlaceAtTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlaceAtTool.java
+new file mode 100644
+index 0000000..ac34a26
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlaceAtTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.PlaceAt} 窄工具（M2，spec §八.3）：**瞬移单位**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **{@code hex} 缺省或为 null = 撤销位置**，**不是**"不动"：这条已写进 {@link #description()}。正常编辑手段是 {@code
++ * unit.PlanRoute}，瞬移交由本工具（工作台左键瞬移已于 M7c 取消，本工具是 MCP/agent 面）。
++ */
++public final class UnitPlaceAtTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.PlaceAt";
++
++  public UnitPlaceAtTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "瞬移单位 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "瞬移单位：固定 unit.PlaceAt，载荷 {id, hex?}（★ hex 缺省或为 null = 撤销位置，不是“不动”）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlanRouteTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlanRouteTool.java
+new file mode 100644
+index 0000000..7918ff2
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlanRouteTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.PlanRoute} 窄工具（M2，spec §八.3）：**下达路线**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 载荷的 {@code waypoints} **同时当作逐格 path**：本命令要求点列本身是相邻的简单路径（稀疏路线的逐段展开是另一条命令 {@code
++ * unit.PlanSparseRoute}）。起点必须等于单位在该时刻的有效位置，否则域层拒。
++ */
++public final class UnitPlanRouteTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.PlanRoute";
++
++  public UnitPlanRouteTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "下达路线 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "下达路线：固定 unit.PlanRoute，载荷 {id, waypoints[{q,r}…]}（至少两个路径点）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlanSparseRouteTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlanSparseRouteTool.java
+new file mode 100644
+index 0000000..79bc643
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitPlanSparseRouteTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.PlanSparseRoute} 窄工具（M2，spec §八.3）：**下达稀疏路线**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 与 {@code unit.PlanRoute} 的差别在**载荷语义**：这里 {@code waypoints} 是**稀疏路点**，相邻两点之间由域层
++ * 逐段寻路展开（成本模型由装配注入，不写死）。**任一段不可达即整条被拒**，不是跳过该段——拒绝发生在**命令期**， 不留下半条路线。
++ */
++public final class UnitPlanSparseRouteTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.PlanSparseRoute";
++
++  public UnitPlanSparseRouteTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "下达稀疏路线 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "下达稀疏路线：固定 unit.PlanSparseRoute，载荷 {id, waypoints[{q,r}…]}（逐段展开；任一段不可达即整条被拒）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitRenameTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitRenameTool.java
+new file mode 100644
+index 0000000..fedf7e3
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitRenameTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.RenameUnit} 窄工具（M2，spec §八.3）：**改单位名**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷；"选什么命令"不再是可自由发挥的面。标 sensitive ⇒ 经 MCP 调用时走**审批门链**。
++ *
++ * <p>★ **前置即错**：单位存不存在由域层判（`单位不存在: <id>`），经 {@code ToolSupport.fold} 变成可读的 {@code
++ * REJECTED}；工具层不重复校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰）。
++ *
++ * <p>★ **它是 20 条里唯一的形状异类**：本命令的载荷不走共享解析器，故其载荷层文案自成一族；重名**不拒**（域层没有名字唯一性检查）。
++ */
++public final class UnitRenameTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.RenameUnit";
++
++  public UnitRenameTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "改单位名 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "单位改名：固定 unit.RenameUnit，载荷 {id, name}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitReparentSubtreeTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitReparentSubtreeTool.java
+new file mode 100644
+index 0000000..50f8162
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitReparentSubtreeTool.java
+@@ -0,0 +1,39 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.ReparentSubtree} 窄工具（M2，spec §八.3）：**整树改挂**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 给 {@code rootId} **及其全部后代**在同一刻追加 {@code parent} 段（后代的值仍是它本来的父）⇒ 与 {@code
++ * unit.ReparentUnit}（只动一个节点）是两条不同的命令。新父落在子树内（含自身）⇒ 域层拒「会成环」。
++ *
++ * <p>★★ **{@code parent} 缺省或为 null = 提升为根**（把整棵子树变成根树），**不是**"不动"：这条已写进 {@link
++ * #description()}，让模型在调用前就看得见。
++ */
++public final class UnitReparentSubtreeTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.ReparentSubtree";
++
++  public UnitReparentSubtreeTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "整树改挂 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "整树改挂：固定 unit.ReparentSubtree，载荷 {rootId, parent?}（★ parent 缺省或为 null = 提升为根，不是“不动”）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitReparentTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitReparentTool.java
+new file mode 100644
+index 0000000..27d1f13
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitReparentTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.ReparentUnit} 窄工具（M2，spec §八.3）：**改单位的父**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **{@code parent} 缺省或为 null = 清根**，**不是**"不动"：这条已写进 {@link #description()}，让模型在调用前就看得见——
++ * 少了它，模型会把"清根"当成"不改"来用（与 M1 的 `meta` 警告同族）。
++ */
++public final class UnitReparentTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.ReparentUnit";
++
++  public UnitReparentTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "改单位的父 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "改单位的父：固定 unit.ReparentUnit，载荷 {id, parent?}（★ parent 缺省或为 null = 清根，不是“不动”）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetFormationOffsetTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetFormationOffsetTool.java
+new file mode 100644
+index 0000000..492a2f1
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetFormationOffsetTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.SetFormationOffset} 窄工具（M2，spec §八.3）：**设编制偏移**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 偏移是相对父的位置修正（{@code appliedTo} 走 {@code Math.addExact} ⇒ 溢出被拒，不静默回绕）。
++ *
++ * <p>★★ **两个分量全缺 = 清除偏移**，**不是**"不动"；**只给一个分量时另一个按 0**（不是"保持原值"）。 这两条都写进 {@link
++ * #description()}，让模型在调用前就看得见。
++ */
++public final class UnitSetFormationOffsetTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.SetFormationOffset";
++
++  public UnitSetFormationOffsetTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "设编制偏移 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "设编制偏移：固定 unit.SetFormationOffset，载荷 {id, dq?, dr?}（★ 两者全缺 = 清除偏移；只给一个分量时另一个按 0）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetRejoinTargetTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetRejoinTargetTool.java
+new file mode 100644
+index 0000000..3e76f38
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetRejoinTargetTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.SetRejoinTarget} 窄工具（M2，spec §八.3）：**设回归目标**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 持久事实**只是这条引用**（`rejoinTarget`）：每个 tick 现算回归行程，不落"已归位"这类派生状态。 目标**不存在**或**是自身** ⇒ 域层拒。**状态不是
++ * {@code MOVING} 时**本引用被忽略、不回归。
++ *
++ * <p>★★ **{@code target} 缺省或为 null = 清除回归意图**，**不是**"不动"：这条已写进 {@link #description()}， 让模型在调用前就看得见。
++ */
++public final class UnitSetRejoinTargetTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.SetRejoinTarget";
++
++  public UnitSetRejoinTargetTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "设回归目标 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "设回归目标：固定 unit.SetRejoinTarget，载荷 {id, target?}（★ target 缺省或为 null = 清除回归意图）";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetStatusTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetStatusTool.java
+new file mode 100644
+index 0000000..e271e06
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetStatusTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.SetStatus} 窄工具（M2，spec §八.3）：**设定单位状态**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ 状态是**三态**（{@code MOVING} / {@code RESTING} / {@code ENGAGED}），词表外的串在载荷层就被拒（`字段 status
++ * 不是合法状态: …`），不落到域层——两者经同一条 {@code ToolSupport.fold} 折成可读的 {@code REJECTED}。
++ *
++ * <p>★ 改状态**只影响此后新下达的路线**，在途路线的速度在出发时已冻结、不回溯。
++ */
++public final class UnitSetStatusTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.SetStatus";
++
++  public UnitSetStatusTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "设定单位状态 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "设定单位状态：固定 unit.SetStatus，载荷 {id, status（MOVING|RESTING|ENGAGED）}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetStrengthTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetStrengthTool.java
+new file mode 100644
+index 0000000..058177f
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSetStrengthTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.SetStrength} 窄工具（M2，spec §八.3）：**设定单位兵力**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ **{@code member} 与 {@code equipment} 都是整份替换**（与 {@code unit.ApplyCasualties}
++ * 的"增量"是两种语义，别混用）； 两者越界（{@code member} 为负、装备值为负）由域层构造期拒。
++ */
++public final class UnitSetStrengthTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.SetStrength";
++
++  public UnitSetStrengthTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "设定单位兵力 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "设定单位兵力：固定 unit.SetStrength，载荷 {id, member, equipment}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSplitFormationTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSplitFormationTool.java
+new file mode 100644
+index 0000000..f87a4b1
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitSplitFormationTool.java
+@@ -0,0 +1,36 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.SplitFormation} 窄工具（M2，spec §八.3）：**拆分编制**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★ {@code subUnitIds} **不得为空**：至少指名一个目标，`[]` 会被域层拒（理由带**可执行的下一步**）。被指名的 子单位从 {@code rootId}
++ * 的编制里脱出（脱离一个节点、不级联，与 {@code unit.DetachUnit} 同形）。
++ */
++public final class UnitSplitFormationTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.SplitFormation";
++
++  public UnitSplitFormationTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "拆分编制 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "拆分编制：固定 unit.SplitFormation，载荷 {rootId, subUnitIds[]（不得为空）}";
++  }
++}
+diff --git a/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitUpdateCommandChainTool.java b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitUpdateCommandChainTool.java
+new file mode 100644
+index 0000000..387c52d
+--- /dev/null
++++ b/simos-app/src/main/java/io/mosire/simos/app/tools/write/UnitUpdateCommandChainTool.java
+@@ -0,0 +1,38 @@
++package io.mosire.simos.app.tools.write;
++
++import io.mosire.simos.core.CoreSimos;
++import java.util.Map;
++
++/**
++ * {@code unit.UpdateCommandChain} 窄工具（M2，spec §八.3）：**改命令链**的唯一窄写面。
++ *
++ * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
++ *
++ * <p>★★ **三个字段全缺是合法的**（载荷层面不拒），但**仍会落一条 revision**——"没改任何东西"不等于"什么都没 发生"，时间线上会多一格。这条写进 {@link
++ * #description()}，免得调用方把空改当成 cheap 的读操作。
++ *
++ * <p>★ 链不存在 ⇒ 域层拒；改了 `members` 后 `commander` 必须仍在 `members` 内（否则拒，理由带**可执行的下一步**）。
++ */
++public final class UnitUpdateCommandChainTool extends AbstractNarrowWriteTool {
++
++  public static final String NAME = "unit.UpdateCommandChain";
++
++  public UnitUpdateCommandChainTool(CoreSimos core, String initiator, String mapId) {
++    super(core, initiator, mapId);
++  }
++
++  @Override
++  protected String commandType() {
++    return NAME;
++  }
++
++  @Override
++  protected String summary(Map<String, Object> args) {
++    return "改命令链 branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
++  }
++
++  @Override
++  public String description() {
++    return "改命令链：固定 unit.UpdateCommandChain，载荷 {chainId, name?, commander?, members?}（★ 三者全缺是合法的，但会落一条 revision）";
++  }
++}
+diff --git a/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java b/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
+index ec670a6..020e80f 100644
+--- a/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
++++ b/simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java
+@@ -58,87 +58,135 @@ class McpPortTopologyTest {
+   private static final List<String> MAP_WRITES =
+       List.of(
+           "map.SetTerrain",
+           "map.SetEdge",
+           "map.CreateRegion",
+           "map.UpdateRegion",
+           "map.DeleteRegion",
+           "map.RandomizeRegion",
+           "map.RegisterPathwayGroup");
+ 
+-  /** GM 窄写（M1 起 11 条）：4 条 sd 窄写 + 7 条 map 窄写；**都不在**决策人口、也都不是通用写。 */
+-  private static final List<String> GM_NARROW_WRITES =
++  /**
++   * M2 的 20 条 unit 窄写：**同一批同时进 GM 桶与决策人桶**（用户裁定 D-1；它们是窄工具、命令类型在工具里固定死， 与 N9「不给通用写」不冲突）。★ 名单与
++   * {@code SimosToolSource} 两处登记逐条同源。
++   */
++  private static final List<String> UNIT_WRITES =
+       List.of(
+-          "sd.IssueDirective",
+-          "sd.SubmitVerdict",
+-          "sd.SetViewScope",
+-          "sd.StartDecision",
+-          "map.SetTerrain",
+-          "map.SetEdge",
+-          "map.CreateRegion",
+-          "map.UpdateRegion",
+-          "map.DeleteRegion",
+-          "map.RandomizeRegion",
+-          "map.RegisterPathwayGroup");
+-
++          "unit.RenameUnit",
++          "unit.CreateUnit",
++          "unit.ReparentUnit",
++          "unit.SetStrength",
++          "unit.PlaceAt",
++          "unit.PlanRoute",
++          "unit.CancelRoute",
++          "unit.DisbandUnit",
++          "unit.SetStatus",
++          "unit.AttachUnit",
++          "unit.DetachUnit",
++          "unit.ReparentSubtree",
++          "unit.SetFormationOffset",
++          "unit.SplitFormation",
++          "unit.MergeFormation",
++          "unit.PlanSparseRoute",
++          "unit.SetRejoinTarget",
++          "unit.CreateCommandChain",
++          "unit.UpdateCommandChain",
++          "unit.ApplyCasualties");
++
++  /** GM 窄写（M1 起 11 条、M2 起 31 条、**M3 起 43 条**）：16 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit 窄写；**都不是**通用写。 */
++  private static final List<String> GM_NARROW_WRITES =
++      concat(
++          List.of(
++              "sd.IssueDirective",
++              "sd.SubmitVerdict",
++              "sd.SetViewScope",
++              "sd.StartDecision",
++              "sd.CreateNation",
++              "sd.CreateArmy",
++              "sd.CreateDecisionMaker",
++              "sd.PutInfo",
++              "sd.CreateCombat",
++              "sd.AddCombatStage",
++              "sd.SetStageOutcomeTable",
++              "sd.CommitCombatOutcome",
++              "sd.RecordCasualties",
++              "sd.RegisterEffect",
++              "sd.CancelEffect",
++              "sd.SetDecisionMakerProvider"),
++          MAP_WRITES,
++          UNIT_WRITES);
++
++  /**
++   * 决策人桶的窄写（M2 起 22 条）：`sd.IssueDirective`/`sd.SubmitVerdict` + 20 条 unit 窄写（用户裁定 D-1）；**无** {@code
++   * sd.SetViewScope}、**无**通用写、**无** map 窄写、**无 M3 的 12 条 sd 窄写**（决策人只出令 / 判决）。
++   */
+   private static final List<String> DECISION_AGENT_WRITES =
+-      List.of("sd.IssueDirective", "sd.SubmitVerdict");
++      concat(List.of("sd.IssueDirective", "sd.SubmitVerdict"), UNIT_WRITES);
+ 
+   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
+ 
+   @TempDir Path tempDir;
+ 
+   private Shell shell;
+ 
+   @BeforeEach
+   void startShell() {
+     shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0));
+   }
+ 
+   @AfterEach
+   void stopShell() {
+     if (shell != null) {
+       shell.close();
+     }
+   }
+ 
+-  /** C6：现有口同时含通用写与 GM 十一条窄工具（D2="加"；T10 起 +sd.StartDecision，M1 起 +7 map）。 */
++  /**
++   * C6：现有口同时含通用写与 GM 四十三条窄工具（D2="加"；T10 起 +sd.StartDecision，M1 起 +7 map，M2 起 +20 unit，M3 起 +12 sd）。
++   */
+   @Test
+   void existingPortExposesExternalUnionGmToolFace() {
+     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
+       McpSchema.InitializeResult init = client.initialize();
+       assertThat(init.serverInfo().name()).isEqualTo(EXISTING_SERVER_NAME);
+ 
+       assertThat(toolNames(client))
+-          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 11 GM 窄写 = 23）")
++          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 43 GM 窄写 = 55）")
+           .containsExactlyInAnyOrderElementsOf(
+               concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
+     }
+   }
+ 
+   /** C7：决策人口仅 DECISION_AGENT 桶——无通用写、无 {@code sd.SetViewScope}、**无 7 条 map 窄写**。 */
+   @Test
+   void decisionPortExposesOnlyDecisionAgentToolFace() {
+     try (McpSyncClient client = newClient(shell.boundDecisionAgentMcpPort())) {
+       McpSchema.InitializeResult init = client.initialize();
+       assertThat(init.serverInfo().name())
+           .as("决策人口自报名与现有口不同（spec §六.4）")
+           .isEqualTo(DECISION_SERVER_NAME);
+ 
+       List<String> names = toolNames(client);
+       assertThat(names)
+-          .as("C7：决策人口 = 9 读 + 2 窄写（无 SetViewScope、无通用写、无 map 窄写）")
++          .as(
++              "C7：决策人口 = 9 读 + 22 窄写（sd.IssueDirective/sd.SubmitVerdict + 20 条 unit，用户裁定 D-1；无 SetViewScope、无通用写、无 map 窄写、无 M3 的 12 条 sd 窄写）")
+           .containsExactlyInAnyOrderElementsOf(concat(READ_TOOLS, DECISION_AGENT_WRITES));
++      // ★ 下面三条反向断言的判别力**只在与上面那份手抄常量脱钩时才显现**：
++      //   若"某条工具进了决策桶"而 DECISION_AGENT_WRITES 没跟着同步，上面那条精确匹配先红（这三条此时是冗余的）；
++      //   但若**两侧同改**——工具进桶 + 常量同步，这正是真实重构最可能的形态——精确匹配会绿，
++      //   只剩这三条守得住桶边界（M2 的 m4 变异体就是按后者造的）。
+       assertThat(names)
+-          .as("C7 反向：通用写、SetViewScope、StartDecision 与 **7 条 map 窄写**都不在决策人口")
++          .as("C7 反向①：通用写（submit/advance/fork）不在决策人口——N9 的原文")
+           .doesNotContainAnyElementsOf(GENERIC_WRITES)
++          .as("C7 反向②：sd.SetViewScope 不在决策人口（配权工具归 GM）")
+           .doesNotContain("sd.SetViewScope")
++          .as("C7 反向③：7 条 map 窄写不在决策人口（M1 的桶边界）——★ M2 的 unit 20 条**有意**两桶都有，故不在此列")
+           .doesNotContainAnyElementsOf(MAP_WRITES);
+     }
+   }
+ 
+   /** C8：两个 MCP server 同时监听、端口不同；{@code close()} 后两者都不可连。 */
+   @Test
+   void bothServersListenAndCloseReleasesBothPorts() {
+     int existingPort = shell.boundMcpPort();
+     int decisionPort = shell.boundDecisionAgentMcpPort();
+     assertThat(existingPort).as("现有口已绑定").isPositive();
+diff --git a/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java b/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
+index ee0b63e..a8d8f1c 100644
+--- a/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
++++ b/simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java
+@@ -89,48 +89,80 @@ class McpServerTest {
+ 
+   private static final UnitId U1 = new UnitId("u-1");
+   private static final int CHECKPOINT_INTERVAL = 100;
+ 
+   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
+   private static final String TEST_INITIATOR = "agent:t7-test";
+ 
+   private static final String SERVER_NAME = "simos-shell";
+ 
+   /**
+-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + 4 sd 窄写 + **7 map 窄写**（spec §七.2 的 C6；T10 起
+-   * +StartDecision，M1 起 +7 map）= 23 条。
++   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 3 通用写 + sd 域窄写（T10 起 +StartDecision，**M3 起 +12 条**） + **7 map
++   * 窄写**（M1） + **20 unit 窄写**（M2，用户裁定 D-1）= 55 条（spec §七.2 的 C6）。
+    */
+   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
+       List.of(
+           "simos.command.catalog",
+           "simos.state.resolve",
+           "simos.state.facets",
+           "simos.timeline.branches",
+           "simos.map.overview",
+           "simos.map.hex",
+           "simos.unit.list",
+           "simos.unit.get",
+           "simos.social.population",
+           "simos.command.submit",
+           "simos.advance",
+           "simos.fork",
+           "sd.IssueDirective",
+           "sd.SubmitVerdict",
+           "sd.SetViewScope",
+           "sd.StartDecision",
++          "sd.CreateNation",
++          "sd.CreateArmy",
++          "sd.CreateDecisionMaker",
++          "sd.PutInfo",
++          "sd.CreateCombat",
++          "sd.AddCombatStage",
++          "sd.SetStageOutcomeTable",
++          "sd.CommitCombatOutcome",
++          "sd.RecordCasualties",
++          "sd.RegisterEffect",
++          "sd.CancelEffect",
++          "sd.SetDecisionMakerProvider",
+           "map.SetTerrain",
+           "map.SetEdge",
+           "map.CreateRegion",
+           "map.UpdateRegion",
+           "map.DeleteRegion",
+           "map.RandomizeRegion",
+-          "map.RegisterPathwayGroup");
++          "map.RegisterPathwayGroup",
++          "unit.RenameUnit",
++          "unit.CreateUnit",
++          "unit.ReparentUnit",
++          "unit.SetStrength",
++          "unit.PlaceAt",
++          "unit.PlanRoute",
++          "unit.CancelRoute",
++          "unit.DisbandUnit",
++          "unit.SetStatus",
++          "unit.AttachUnit",
++          "unit.DetachUnit",
++          "unit.ReparentSubtree",
++          "unit.SetFormationOffset",
++          "unit.SplitFormation",
++          "unit.MergeFormation",
++          "unit.PlanSparseRoute",
++          "unit.SetRejoinTarget",
++          "unit.CreateCommandChain",
++          "unit.UpdateCommandChain",
++          "unit.ApplyCasualties");
+ 
+   private static final Duration WAIT = Duration.ofSeconds(10);
+ 
+   private static final ObjectMapper JSON = new ObjectMapper();
+ 
+   @TempDir Path tempDir;
+ 
+   private Shell shell;
+   private McpSyncClient client;
+ 
+@@ -172,21 +204,22 @@ class McpServerTest {
+ 
+   @Test
+   void initializeAndToolsListExposeExactlyTheExternalUnionGmTools() {
+     McpSchema.InitializeResult init = client.initialize();
+     assertThat(init.serverInfo().name()).as("MCP server 自报名称（spec §7.2）").isEqualTo(SERVER_NAME);
+     assertThat(shell.boundMcpPort()).as("MCP owned 形态暴露实际绑定端口").isPositive();
+ 
+     McpSchema.ListToolsResult tools = client.listTools();
+     assertThat(tools.tools())
+         .extracting(McpSchema.Tool::name)
+-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 23 条（C6：含通用写、sd 窄工具与 7 条 map 窄写）")
++        .as(
++            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 55 条（C6：含通用写、16 条 sd 窄工具、7 条 map 窄写与 20 条 unit 窄写）")
+         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
+   }
+ 
+   // ── 读：与 QueryService 直接调用逐值对拍 ────────────────────────────────
+ 
+   @Test
+   void unitListMatchesQueryServicePerValue() throws Exception {
+     client.initialize();
+ 
+     McpSchema.CallToolResult result =
+diff --git a/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java b/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+index 9281cb6..c516432 100644
+--- a/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
++++ b/simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java
+@@ -20,20 +20,52 @@ import io.mosire.simos.app.Shell;
+ import io.mosire.simos.app.ShellConfig;
+ import io.mosire.simos.app.query.QueryService.QueryTarget;
+ import io.mosire.simos.app.tools.read.CatalogTool;
+ import io.mosire.simos.app.tools.write.MapCreateRegionTool;
+ import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
+ import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
+ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
+ import io.mosire.simos.app.tools.write.MapSetEdgeTool;
+ import io.mosire.simos.app.tools.write.MapSetTerrainTool;
+ import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
++import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
++import io.mosire.simos.app.tools.write.SdCancelEffectTool;
++import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
++import io.mosire.simos.app.tools.write.SdCreateArmyTool;
++import io.mosire.simos.app.tools.write.SdCreateCombatTool;
++import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
++import io.mosire.simos.app.tools.write.SdCreateNationTool;
++import io.mosire.simos.app.tools.write.SdPutInfoTool;
++import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
++import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
++import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
++import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
++import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
++import io.mosire.simos.app.tools.write.UnitAttachTool;
++import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
++import io.mosire.simos.app.tools.write.UnitCreateCommandChainTool;
++import io.mosire.simos.app.tools.write.UnitCreateTool;
++import io.mosire.simos.app.tools.write.UnitDetachTool;
++import io.mosire.simos.app.tools.write.UnitDisbandTool;
++import io.mosire.simos.app.tools.write.UnitMergeFormationTool;
++import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
++import io.mosire.simos.app.tools.write.UnitPlanRouteTool;
++import io.mosire.simos.app.tools.write.UnitPlanSparseRouteTool;
++import io.mosire.simos.app.tools.write.UnitRenameTool;
++import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
++import io.mosire.simos.app.tools.write.UnitReparentTool;
++import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
++import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
++import io.mosire.simos.app.tools.write.UnitSetStatusTool;
++import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
++import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
++import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
+ import io.mosire.simos.core.CoreSimos;
+ import io.mosire.simos.core.state.WorldChangeSet;
+ import io.mosire.simos.core.store.CheckpointEncoder;
+ import io.mosire.simos.core.store.CheckpointStore;
+ import io.mosire.simos.core.store.SqliteStore;
+ import io.mosire.simos.core.timeline.RevisionRow;
+ import io.mosire.simos.core.timeline.Timeline;
+ import io.mosire.simos.map.GameMap;
+ import io.mosire.simos.map.HexCell;
+ import io.mosire.simos.map.MapSnapshot;
+@@ -101,98 +133,214 @@ class SimosToolsTest {
+   private static final HexCoord H11 = new HexCoord(1, 1);
+   private static final HexCoord H12 = new HexCoord(1, 2);
+   private static final HexCoord H13 = new HexCoord(1, 3);
+ 
+   private static final UnitId U1 = new UnitId("u-1");
+   private static final int CHECKPOINT_INTERVAL = 100;
+ 
+   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
+   private static final String TEST_INITIATOR = "agent:t5-test";
+ 
+-  /** 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 14 写（3 通用写 + 4 sd 窄写 + **7 map 窄写**，M1）。 */
++  /**
++   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 46 写（3 通用写 + **16 sd 窄写**（4 + M3 的 12）+ **7 map 窄写**， M1 +
++   * **20 unit 窄写**，M2）。
++   */
+   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
+       List.of(
+           "simos.command.catalog",
+           "simos.state.resolve",
+           "simos.state.facets",
+           "simos.timeline.branches",
+           "simos.map.overview",
+           "simos.map.hex",
+           "simos.unit.list",
+           "simos.unit.get",
+           "simos.social.population",
+           "simos.command.submit",
+           "simos.advance",
+           "simos.fork",
+           "sd.IssueDirective",
+           "sd.SubmitVerdict",
+           "sd.SetViewScope",
+           "sd.StartDecision",
++          "sd.CreateNation",
++          "sd.CreateArmy",
++          "sd.CreateDecisionMaker",
++          "sd.PutInfo",
++          "sd.CreateCombat",
++          "sd.AddCombatStage",
++          "sd.SetStageOutcomeTable",
++          "sd.CommitCombatOutcome",
++          "sd.RecordCasualties",
++          "sd.RegisterEffect",
++          "sd.CancelEffect",
++          "sd.SetDecisionMakerProvider",
+           "map.SetTerrain",
+           "map.SetEdge",
+           "map.CreateRegion",
+           "map.UpdateRegion",
+           "map.DeleteRegion",
+           "map.RandomizeRegion",
+-          "map.RegisterPathwayGroup");
++          "map.RegisterPathwayGroup",
++          "unit.RenameUnit",
++          "unit.CreateUnit",
++          "unit.ReparentUnit",
++          "unit.SetStrength",
++          "unit.PlaceAt",
++          "unit.PlanRoute",
++          "unit.CancelRoute",
++          "unit.DisbandUnit",
++          "unit.SetStatus",
++          "unit.AttachUnit",
++          "unit.DetachUnit",
++          "unit.ReparentSubtree",
++          "unit.SetFormationOffset",
++          "unit.SplitFormation",
++          "unit.MergeFormation",
++          "unit.PlanSparseRoute",
++          "unit.SetRejoinTarget",
++          "unit.CreateCommandChain",
++          "unit.UpdateCommandChain",
++          "unit.ApplyCasualties");
+ 
+   /**
+    * 读工具名单（9 条）：读闸**按名字选**，不用索引切片。
+    *
+    * <p>★ 索引切片（{@code subList(0, 9)}）在名单变长后**仍然合法** ⇒ 断言照绿、判别力静默流失。
+    */
+   private static final List<String> READ_TOOL_NAMES =
+       List.of(
+           "simos.command.catalog",
+           "simos.state.resolve",
+           "simos.state.facets",
+           "simos.timeline.branches",
+           "simos.map.overview",
+           "simos.map.hex",
+           "simos.unit.list",
+           "simos.unit.get",
+           "simos.social.population");
+ 
+   /**
+-   * 写工具全集（14 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
++   * 写工具全集（46 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
+    *
+    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
+    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
+    */
+   private static final List<String> WRITE_TOOL_NAMES =
+       List.of(
+           "simos.command.submit",
+           "simos.advance",
+           "simos.fork",
+           "sd.IssueDirective",
+           "sd.SubmitVerdict",
+           "sd.SetViewScope",
+           "sd.StartDecision",
++          "sd.CreateNation",
++          "sd.CreateArmy",
++          "sd.CreateDecisionMaker",
++          "sd.PutInfo",
++          "sd.CreateCombat",
++          "sd.AddCombatStage",
++          "sd.SetStageOutcomeTable",
++          "sd.CommitCombatOutcome",
++          "sd.RecordCasualties",
++          "sd.RegisterEffect",
++          "sd.CancelEffect",
++          "sd.SetDecisionMakerProvider",
+           "map.SetTerrain",
+           "map.SetEdge",
+           "map.CreateRegion",
+           "map.UpdateRegion",
+           "map.DeleteRegion",
+           "map.RandomizeRegion",
+-          "map.RegisterPathwayGroup");
++          "map.RegisterPathwayGroup",
++          "unit.RenameUnit",
++          "unit.CreateUnit",
++          "unit.ReparentUnit",
++          "unit.SetStrength",
++          "unit.PlaceAt",
++          "unit.PlanRoute",
++          "unit.CancelRoute",
++          "unit.DisbandUnit",
++          "unit.SetStatus",
++          "unit.AttachUnit",
++          "unit.DetachUnit",
++          "unit.ReparentSubtree",
++          "unit.SetFormationOffset",
++          "unit.SplitFormation",
++          "unit.MergeFormation",
++          "unit.PlanSparseRoute",
++          "unit.SetRejoinTarget",
++          "unit.CreateCommandChain",
++          "unit.UpdateCommandChain",
++          "unit.ApplyCasualties");
+ 
+   /** M1 的 7 条 map 窄写：进 **GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含），**不进** EXTERNAL 桶、**不进**决策桶。 */
+   private static final List<String> MAP_WRITE_NAMES =
+       List.of(
+           "map.SetTerrain",
+           "map.SetEdge",
+           "map.CreateRegion",
+           "map.UpdateRegion",
+           "map.DeleteRegion",
+           "map.RandomizeRegion",
+           "map.RegisterPathwayGroup");
+ 
++  /**
++   * M2 的 20 条 unit 窄写：**同一批同时进 GM 桶与决策人桶**（用户裁定 D-1）⇒ 复合口也含、EXTERNAL 桶不含。
++   *
++   * <p>★ 名单顺序与 {@code SimosToolSource.addGmWrites} / {@code addDecisionAgentWrites}
++   * 的登记顺序一致（**判据不依赖顺序**， 只为对齐可读）。
++   */
++  private static final List<String> UNIT_WRITE_NAMES =
++      List.of(
++          "unit.RenameUnit",
++          "unit.CreateUnit",
++          "unit.ReparentUnit",
++          "unit.SetStrength",
++          "unit.PlaceAt",
++          "unit.PlanRoute",
++          "unit.CancelRoute",
++          "unit.DisbandUnit",
++          "unit.SetStatus",
++          "unit.AttachUnit",
++          "unit.DetachUnit",
++          "unit.ReparentSubtree",
++          "unit.SetFormationOffset",
++          "unit.SplitFormation",
++          "unit.MergeFormation",
++          "unit.PlanSparseRoute",
++          "unit.SetRejoinTarget",
++          "unit.CreateCommandChain",
++          "unit.UpdateCommandChain",
++          "unit.ApplyCasualties");
++
++  /**
++   * M3 的 12 条 sd 窄写：**只进 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含）——**不进** EXTERNAL 桶、**也不进**决策人桶。
++   *
++   * <p>★ 与 M1 的 {@link #MAP_WRITE_NAMES} 同形；M2 的 unit 那批**两桶都有**（用户裁定 D-1），这批**不是**——决策人只出令 / 判决。
++   */
++  private static final List<String> SD_WRITE_NAMES =
++      List.of(
++          "sd.CreateNation",
++          "sd.CreateArmy",
++          "sd.CreateDecisionMaker",
++          "sd.PutInfo",
++          "sd.CreateCombat",
++          "sd.AddCombatStage",
++          "sd.SetStageOutcomeTable",
++          "sd.CommitCombatOutcome",
++          "sd.RecordCasualties",
++          "sd.RegisterEffect",
++          "sd.CancelEffect",
++          "sd.SetDecisionMakerProvider");
++
+   private static final List<String> EXPECTED_COMMAND_TYPES =
+       List.of(
+           "unit.RenameUnit",
+           "unit.CreateUnit",
+           "unit.ReparentUnit",
+           "unit.SetStrength",
+           "unit.PlaceAt",
+           "unit.PlanRoute",
+           "unit.CancelRoute",
+           "unit.DisbandUnit",
+@@ -300,20 +448,115 @@ class SimosToolsTest {
+     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
+         .as("同一批名字在 GM 桶里按名可寻")
+         .containsAll(MAP_WRITE_NAMES);
+ 
+     JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
+     assertThat(textValues(types))
+         .as("7 个 map 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
+         .containsAll(MAP_WRITE_NAMES);
+   }
+ 
++  /**
++   * ★ M2 判据 2：**名字同源**（20 条 unit 窄写）—— 每条工具钉死的命令类型 == 它在名单里登记的名字（{@code
++   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM 桶与决策人桶**里都按名可寻（用户裁定 D-1 的
++   * "同一批挂两个桶"），且 20 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达 handler）。
++   *
++   * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的已注册类型，这里当场红（M2 的 m2 变异体）。
++   */
++  @Test
++  void unitNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
++    CoreSimos core = shell.coreSimos();
++    String mapId = ShellConfig.defaults(tempDir).mapId();
++    List<AgentTool> unitTools =
++        List.of(
++            new UnitRenameTool(core, TEST_INITIATOR, mapId),
++            new UnitCreateTool(core, TEST_INITIATOR, mapId),
++            new UnitReparentTool(core, TEST_INITIATOR, mapId),
++            new UnitSetStrengthTool(core, TEST_INITIATOR, mapId),
++            new UnitPlaceAtTool(core, TEST_INITIATOR, mapId),
++            new UnitPlanRouteTool(core, TEST_INITIATOR, mapId),
++            new UnitCancelRouteTool(core, TEST_INITIATOR, mapId),
++            new UnitDisbandTool(core, TEST_INITIATOR, mapId),
++            new UnitSetStatusTool(core, TEST_INITIATOR, mapId),
++            new UnitAttachTool(core, TEST_INITIATOR, mapId),
++            new UnitDetachTool(core, TEST_INITIATOR, mapId),
++            new UnitReparentSubtreeTool(core, TEST_INITIATOR, mapId),
++            new UnitSetFormationOffsetTool(core, TEST_INITIATOR, mapId),
++            new UnitSplitFormationTool(core, TEST_INITIATOR, mapId),
++            new UnitMergeFormationTool(core, TEST_INITIATOR, mapId),
++            new UnitPlanSparseRouteTool(core, TEST_INITIATOR, mapId),
++            new UnitSetRejoinTargetTool(core, TEST_INITIATOR, mapId),
++            new UnitCreateCommandChainTool(core, TEST_INITIATOR, mapId),
++            new UnitUpdateCommandChainTool(core, TEST_INITIATOR, mapId),
++            new UnitApplyCasualtiesTool(core, TEST_INITIATOR, mapId));
++
++    assertThat(toolNames(unitTools))
++        .as("20 条 unit 窄工具的 name() == 它们各自钉死的命令类型")
++        .containsExactlyElementsOf(UNIT_WRITE_NAMES);
++    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
++        .as("同一批名字在 GM 桶里按名可寻")
++        .containsAll(UNIT_WRITE_NAMES);
++    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
++        .as("同一批名字在决策人桶里也按名可寻（用户裁定 D-1：同一批挂两个桶）")
++        .containsAll(UNIT_WRITE_NAMES);
++
++    JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
++    assertThat(textValues(types))
++        .as("20 个 unit 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
++        .containsAll(UNIT_WRITE_NAMES);
++  }
++
++  /**
++   * ★ M3 判据 2：**名字同源**（12 条 sd 窄写）—— 每条工具钉死的命令类型 == 它在名单里登记的名字（{@code
++   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM 桶与 {@code
++   * EXTERNAL_WITH_GM} 复合口**里都按名可寻， 且 12 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达
++   * handler）。
++   *
++   * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的类型，这里当场红（M3 的 m2 变异体）。与 M1/M2 同形； ★
++   * 本批**只进这两个桶**——{@code EXTERNAL} 与 {@code DECISION_AGENT} 桶的"不得含"由 {@link
++   * #roleBucketsNeverCarryGenericWrite} 按名反向断言（两处分工：这里证"在"，那里证"不在"）。
++   */
++  @Test
++  void sdNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
++    CoreSimos core = shell.coreSimos();
++    String mapId = ShellConfig.defaults(tempDir).mapId();
++    List<AgentTool> sdTools =
++        List.of(
++            new SdCreateNationTool(core, TEST_INITIATOR, mapId),
++            new SdCreateArmyTool(core, TEST_INITIATOR, mapId),
++            new SdCreateDecisionMakerTool(core, TEST_INITIATOR, mapId),
++            new SdPutInfoTool(core, TEST_INITIATOR, mapId),
++            new SdCreateCombatTool(core, TEST_INITIATOR, mapId),
++            new SdAddCombatStageTool(core, TEST_INITIATOR, mapId),
++            new SdSetStageOutcomeTableTool(core, TEST_INITIATOR, mapId),
++            new SdCommitCombatOutcomeTool(core, TEST_INITIATOR, mapId),
++            new SdRecordCasualtiesTool(core, TEST_INITIATOR, mapId),
++            new SdRegisterEffectTool(core, TEST_INITIATOR, mapId),
++            new SdCancelEffectTool(core, TEST_INITIATOR, mapId),
++            new SdSetDecisionMakerProviderTool(core, TEST_INITIATOR, mapId));
++
++    assertThat(toolNames(sdTools))
++        .as("12 条 sd 窄工具的 name() == 它们各自钉死的命令类型")
++        .containsExactlyElementsOf(SD_WRITE_NAMES);
++    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
++        .as("同一批名字在 GM 桶里按名可寻")
++        .containsAll(SD_WRITE_NAMES);
++    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM)))
++        .as("同一批名字在 EXTERNAL_WITH_GM 复合口里也按名可寻（D2 的复合面）")
++        .containsAll(SD_WRITE_NAMES);
++
++    JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
++    assertThat(textValues(types))
++        .as("12 个 sd 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
++        .containsAll(SD_WRITE_NAMES);
++  }
++
+   @Test
+   void catalogListsExactlyTheRegisteredCommandTypes() throws Exception {
+     ToolResult result = call("simos.command.catalog", Map.of());
+ 
+     assertThat(result.success()).isTrue();
+     JsonNode body = JSON.readTree(result.message());
+     assertThat(textValues(body.get("types")))
+         .as("catalog 与已注册 handler 同源（R5：catalog 列出的每个 type 都能经 submit 到达）")
+         .hasSize(EXPECTED_COMMAND_TYPES.size())
+         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
+@@ -347,47 +590,60 @@ class SimosToolsTest {
+    * {@code sd.*} 窄工具；外部 MCP 桶保留现状（有通用写）；**现有运行时口 = EXTERNAL_WITH_GM 复合桶**（通用写 ∪ GM 窄写，读共享）。
+    */
+   @Test
+   void roleBucketsNeverCarryGenericWrite() {
+     List<String> gm = toolNames(shell.toolsFor(SimosToolSource.Role.GM));
+     List<String> agent = toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
+     List<String> external = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL));
+     List<String> externalWithGm = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM));
+ 
+     assertThat(gm)
+-        .as("M1 判据 1：GM 桶无通用写，且含 7 条 map 窄写")
++        .as("M1/M2 判据 1 + M3 判据 §5.1：GM 桶无通用写，且含 sd 与 map 与 unit 三族窄写")
+         .doesNotContain("simos.command.submit")
+         .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
+-        .containsAll(MAP_WRITE_NAMES);
++        .containsAll(SD_WRITE_NAMES)
++        .containsAll(MAP_WRITE_NAMES)
++        .containsAll(UNIT_WRITE_NAMES)
++        .hasSize(52);
+     assertThat(agent)
+-        .as("M1 判据 1：决策桶**没有**任何 map 窄写（也没有通用写与 SetViewScope/StartDecision）")
++        .as(
++            "M2 判据 1 + M3 判据 §5.1：决策桶**含全部 20 条 unit 窄写**，但**没有**任何 map 窄写、**也没有 M3 的 12 条 sd 窄写**（也没有通用写与 SetViewScope/StartDecision）")
+         .doesNotContain("simos.command.submit", "sd.SetViewScope", "sd.StartDecision")
+         .contains("sd.IssueDirective", "sd.SubmitVerdict")
+-        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES);
++        .containsAll(UNIT_WRITE_NAMES)
++        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
++        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
++        .hasSize(31);
+     assertThat(external)
+-        .as("M1 判据 1：EXTERNAL 桶**没有**任何 map 窄写")
++        .as("M1/M2/M3 判据 1：EXTERNAL 桶**没有**任何 sd / map / unit 窄写（恒 9 读 + 3 通用写）")
+         .contains("simos.command.submit")
+         .doesNotContain(
+             "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
+-        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES);
++        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
++        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
++        .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
++        .hasSize(12);
+     assertThat(externalWithGm)
+-        .as("T4/D2 + M1 判据 1：现有口 = EXTERNAL ∪ GM" + "（9 读 + 3 通用写 + 4 sd 窄写 + 7 map 窄写 = 23）")
++        .as(
++            "T4/D2 + M1/M2/M3 判据 1：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 sd 窄写 + 12 sd 窄写(M3) + 7 map 窄写 + 20 unit 窄写）")
+         .contains(
+             "simos.command.submit",
+             "simos.advance",
+             "simos.fork",
+             "sd.IssueDirective",
+             "sd.SubmitVerdict",
+             "sd.SetViewScope",
+             "sd.StartDecision")
++        .containsAll(SD_WRITE_NAMES)
+         .containsAll(MAP_WRITE_NAMES)
+-        .hasSize(23);
++        .containsAll(UNIT_WRITE_NAMES)
++        .hasSize(55);
+   }
+ 
+   private static List<String> toolNames(List<AgentTool> tools) {
+     return tools.stream().map(AgentTool::name).toList();
+   }
+ 
+   /**
+    * 写闸**实际覆盖**的工具名。★★ 它从**真工具面**（{@code EXTERNAL_WITH_GM} 桶）派生、减去读名单，**不是**从名单常量取下标 切片。
+    *
+    * <p>这是 M1 修掉的那处缺陷的替代形态：原实现用 {@code subList(9, 16)}，名单加到 23 条后切片**仍然合法** ⇒ 新增的 7 条 map
+@@ -430,20 +686,70 @@ class SimosToolsTest {
+           Matcher matcher = typeReturn.matcher(Files.readString(file));
+           if (matcher.find()) {
+             types.add(matcher.group(1));
+           }
+         }
+       }
+     }
+     return types;
+   }
+ 
++  /**
++   * ★★ **M2 判据 §5.5（本任务新增的同源强判据）**：扫 {@code tools/write/*Tool.java} 把**实现了窄写工具类**的 {@code NAME}
++   * 常量抽出来，断言 **"实现了窄写工具类的集合 == GM 桶的窄写工具集合"**。
++   *
++   * <p>**它挡住的失效模式**：写了 {@code write/UnitXxxTool.java} 却**忘了接进任何桶** —— 工具面看不见它、两份手抄名单也不认识它，
++   * 于是**没有任何断言会红**（M4 侦察点名的「同源判据只覆盖命令、不覆盖工具」那个缺口）。M2 的变异 m3（孤儿工具）就是它的靶子。
++   *
++   * <p>★ **判据两侧都是"真源"**：左边 = 磁盘上的类（{@code extends AbstractNarrowWriteTool} 是**必须**的过滤条件 —— {@code
++   * AdvanceTool}/{@code CommandSubmitTool}/{@code ForkTool} 同样住在 {@code tools/write/} 且各有 {@code
++   * NAME}， 但它们是**通用写**、不继承基类）；右边 = **真工具面**（{@code shell.toolsFor(GM)} 减读名单），不是手抄常量。
++   *
++   * <p>★ **先断言扫描非空且条数正确**：扫到 0 个或漏文件是「扫描器静默」陷阱，会让"空 == 空"恒真（本仓已踩过）。
++   */
++  @Test
++  void everyNarrowWriteToolClassIsWiredIntoTheGmBucket() throws Exception {
++    Set<String> implemented = narrowWriteToolNamesFromSources();
++    assertThat(implemented).as("扫描必须恰为 43 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(43);
++
++    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
++        .as("GM 桶 ∖ 读名单必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
++        .filteredOn(name -> !READ_TOOL_NAMES.contains(name))
++        .containsExactlyInAnyOrderElementsOf(implemented);
++  }
++
++  /**
++   * 从 {@code tools/write/*Tool.java} 抽继承了 {@link AbstractNarrowWriteTool} 的类的 {@code NAME} 常量。
++   *
++   * <p>★ 路径是**相对模块目录**（surefire 的工作目录是 {@code simos-app/}），故主树与 worktree 里都成立；★ 类名后缀 {@code
++   * Tool.java} 连基类自己也会被走到 —— 靠 {@code extends AbstractNarrowWriteTool} 这条把基类排除掉（基类没有 {@code NAME}，
++   * 也没有这条继承）。
++   */
++  private static Set<String> narrowWriteToolNamesFromSources() throws IOException {
++    Path root = Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write");
++    Pattern nameConstant = Pattern.compile("String\\s+NAME\\s*=\\s*\"([^\"]+)\"");
++    Set<String> names = new LinkedHashSet<>();
++    try (Stream<Path> files = Files.walk(root)) {
++      for (Path file :
++          files.filter(path -> path.getFileName().toString().endsWith("Tool.java")).toList()) {
++        String source = Files.readString(file);
++        if (!source.contains("extends AbstractNarrowWriteTool")) {
++          continue;
++        }
++        Matcher matcher = nameConstant.matcher(source);
++        assertThat(matcher.find()).as("%s 继承了窄写基类却抽不到 NAME 常量（扫描器要当场响，不许静默跳过）", file).isTrue();
++        names.add(matcher.group(1));
++      }
++    }
++    return names;
++  }
++
+   @Test
+   void readsAreAllowGatedAndDeclareTheirResources() {
+     // ★ 按**名字**选，不用索引切片（切片在名单变长后仍合法 ⇒ 判别力静默流失）。
+     for (String name : READ_TOOL_NAMES) {
+       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
+       assertThat(tool.spec()).as("%s 是常规读工具", name).isEqualTo(ToolSpec.DEFAULT);
+       assertThat(tool.gate(context(tool, Map.of()))).as("%s 直放", name).isEqualTo(ToolGate.ALLOW);
+     }
+     assertThat(shell.toolRegistry().find("simos.state.resolve").orElseThrow().resources())
+         .isEqualTo(ToolSupport.ALL_READ);
+@@ -639,20 +945,394 @@ class SimosToolsTest {
+   }
+ 
+   @Test
+   void mapRegisterPathwayGroupToolSurfacesTheDomainRejectionForAMalformedColor() throws Exception {
+     assertDomainRejectedAndHeadUnchanged(
+         MapRegisterPathwayGroupTool.NAME,
+         "{\"id\":\"t1-canal\",\"name\":\"运河\",\"color\":\"red\"}",
+         "color 必须是 #RRGGBB 形式");
+   }
+ 
++  // ── M2 判据 4：前置即错——20 条 unit 窄写各一条「坏载荷 ⇒ 可读 REJECTED 且 head 不变」────────
++  //    ★ 与 M1 同裁决：拒绝文案已在（载荷层 / 域层），工具层**不重复校验**——那份校验能被
++  //      simos.command.submit 绕过 ⇒ 是装饰。本任务的义务是**证明理由真的到达调用方**。
++  //    ★ **每条各一个用例**：写成循环里断 20 次时，变异杀掉一条其余十九条照样绿（判别力被稀释）。
++  //    ★ 断的是**完整消息片段**（如「字段 status 不是合法状态」），不是字段 token——只判 token 判不出是哪一层拒的
++  //      （域层的兜底消息往往也含同一个字段名，T4/T10-b 那一族的坑）。
++
++  @Test
++  void unitRenameToolSurfacesTheDomainRejectionForAnUnknownUnit() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitRenameTool.NAME, "{\"id\":\"nope\",\"name\":\"新名\"}", "单位不存在");
++  }
++
++  @Test
++  void unitCreateToolSurfacesTheDomainRejectionForADuplicateId() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitCreateTool.NAME,
++        "{\"id\":\"u-1\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":1},\"member\":1,"
++            + "\"equipment\":{},\"speed\":2,\"mobilityPerMille\":500}",
++        "单位 id 已存在");
++  }
++
++  @Test
++  void unitReparentToolSurfacesTheDomainRejectionForAnUnknownParent() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitReparentTool.NAME, "{\"id\":\"u-1\",\"parent\":\"nope\"}", "父单位不存在");
++  }
++
++  @Test
++  void unitSetStrengthToolSurfacesTheDomainRejectionForANegativeMember() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitSetStrengthTool.NAME,
++        "{\"id\":\"u-1\",\"member\":-1,\"equipment\":{}}",
++        "member 必须 ≥ 0");
++  }
++
++  @Test
++  void unitPlaceAtToolSurfacesTheDomainRejectionForAnUnknownUnit() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitPlaceAtTool.NAME, "{\"id\":\"nope\",\"hex\":{\"q\":1,\"r\":1}}", "单位不存在");
++  }
++
++  @Test
++  void unitPlanRouteToolSurfacesTheDomainRejectionForASingleWaypoint() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitPlanRouteTool.NAME,
++        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1}]}",
++        "waypoints 至少两个");
++  }
++
++  @Test
++  void unitCancelRouteToolSurfacesTheDomainRejectionForAnUnknownUnit() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(UnitCancelRouteTool.NAME, "{\"id\":\"nope\"}", "单位不存在");
++  }
++
++  /** ★ 坏载荷 = **单位仍是链的 commander**：先经**同一条窄工具**真建一条链，再解散它的 commander。 */
++  @Test
++  void unitDisbandToolSurfacesTheDomainRejectionForAUnitThatIsStillAChainCommander()
++      throws Exception {
++    ToolResult chained =
++        callNarrowWrite(
++            UnitCreateCommandChainTool.NAME,
++            "{\"chainId\":\"c-1\",\"name\":\"一路\",\"commander\":\"u-1\",\"members\":[\"u-1\"]}",
++            1L);
++    assertThat(chained.success()).as(chained.message()).isTrue();
++    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
++        .as("建链成功 ⇒ head 前进一步")
++        .isEqualTo(2L);
++
++    assertDomainRejectedAndHeadUnchanged(UnitDisbandTool.NAME, "{\"id\":\"u-1\"}", "仍是链");
++  }
++
++  /**
++   * ★ 词表外的状态串**在载荷层就被拒**（`UnitPayloads.requireStatus`），不落到域层 ⇒ 断的是**载荷层的完整消息**。
++   *
++   * <p>★ 这条**特意不取 domain 那条兜底文案**：`status` 这个 token 在域层消息里也会出现 ⇒ 只判 token 判不出是哪一层拒的。
++   */
++  @Test
++  void unitSetStatusToolSurfacesThePayloadRejectionForAnUnknownStatusWord() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitSetStatusTool.NAME, "{\"id\":\"u-1\",\"status\":\"NOT_A_STATUS\"}", "字段 status 不是合法状态");
++  }
++
++  @Test
++  void unitAttachToolSurfacesTheDomainRejectionForACyclicParent() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitAttachTool.NAME, "{\"id\":\"u-1\",\"parent\":\"u-1\"}", "会成环");
++  }
++
++  @Test
++  void unitDetachToolSurfacesTheDomainRejectionForAnAlreadyRootUnit() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(UnitDetachTool.NAME, "{\"id\":\"u-1\"}", "已是根单位");
++  }
++
++  @Test
++  void unitReparentSubtreeToolSurfacesTheDomainRejectionForACyclicParent() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitReparentSubtreeTool.NAME, "{\"rootId\":\"u-1\",\"parent\":\"u-1\"}", "会成环");
++  }
++
++  @Test
++  void unitSetFormationOffsetToolSurfacesTheDomainRejectionForAnUnknownUnit() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitSetFormationOffsetTool.NAME, "{\"id\":\"nope\",\"dq\":1,\"dr\":-1}", "单位不存在");
++  }
++
++  @Test
++  void unitSplitFormationToolSurfacesTheDomainRejectionForAnEmptySubUnitList() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitSplitFormationTool.NAME, "{\"rootId\":\"u-1\",\"subUnitIds\":[]}", "subUnitIds 不得为空");
++  }
++
++  /** ★ 坏载荷 = **两个不同格的单位**：先真建 u-2 到 `(1,2)`，再让它与 `(1,1)` 的 u-1 合体。 */
++  @Test
++  void unitMergeFormationToolSurfacesTheDomainRejectionForTwoUnitsOnDifferentHexes()
++      throws Exception {
++    ToolResult created =
++        callNarrowWrite(
++            UnitCreateTool.NAME,
++            "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},\"member\":1,"
++                + "\"equipment\":{},\"speed\":2,\"mobilityPerMille\":500}",
++            1L);
++    assertThat(created.success()).as(created.message()).isTrue();
++
++    assertDomainRejectedAndHeadUnchanged(
++        UnitMergeFormationTool.NAME, "{\"childId\":\"u-2\",\"parentId\":\"u-1\"}", "只有同格才能合体");
++  }
++
++  /** ★ 坏载荷 = **中段不可达**：本夹具只有 `(1,1)/(1,2)/(1,3)` 三格，第三点 `(5,5)` 在图外。 */
++  @Test
++  void unitPlanSparseRouteToolSurfacesTheDomainRejectionForAnUnreachableSegment() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitPlanSparseRouteTool.NAME,
++        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2},{\"q\":5,\"r\":5}]}",
++        "稀疏路线的段不可达");
++  }
++
++  @Test
++  void unitSetRejoinTargetToolSurfacesTheDomainRejectionForASelfTarget() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitSetRejoinTargetTool.NAME, "{\"id\":\"u-1\",\"target\":\"u-1\"}", "回归目标不得是自身");
++  }
++
++  /** ★ 坏载荷 = **chainId 已存在**：先经同一条窄工具真建一条链，再用同一个 id 建第二次。 */
++  @Test
++  void unitCreateCommandChainToolSurfacesTheDomainRejectionForADuplicateChainId() throws Exception {
++    String payload =
++        "{\"chainId\":\"c-1\",\"name\":\"一路\",\"commander\":\"u-1\",\"members\":[\"u-1\"]}";
++    ToolResult created = callNarrowWrite(UnitCreateCommandChainTool.NAME, payload, 1L);
++    assertThat(created.success()).as(created.message()).isTrue();
++    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
++        .as("建链成功 ⇒ head 前进一步")
++        .isEqualTo(2L);
++
++    assertDomainRejectedAndHeadUnchanged(UnitCreateCommandChainTool.NAME, payload, "链 id 已存在");
++  }
++
++  @Test
++  void unitUpdateCommandChainToolSurfacesTheDomainRejectionForAnUnknownChain() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitUpdateCommandChainTool.NAME, "{\"chainId\":\"nope\",\"name\":\"新名\"}", "链不存在");
++  }
++
++  /** ★ 坏载荷 = **未知装备键**：P14 明写不视作 0（`personnel` 给 0，确保先撞的是装备那一关）。 */
++  @Test
++  void unitApplyCasualtiesToolSurfacesTheDomainRejectionForAnUnknownEquipmentKey()
++      throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        UnitApplyCasualtiesTool.NAME,
++        "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"没这个装备\":-1}}",
++        "未知装备键");
++  }
++
++  // ── M3 判据 4：前置即错——12 条 sd 窄写各一条「坏载荷 ⇒ 可读 REJECTED 且 head 不变」──────────
++  //    ★ 与 M1/M2 同裁决：拒绝文案已在（载荷层 / 域层），工具层**不重复校验**——那份校验能被
++  //      simos.command.submit 绕过 ⇒ 是装饰。本任务的义务是**证明理由真的到达调用方**。
++  //    ★ **每条各一个用例**：写成循环里断 12 次时，变异杀掉一条其余十一条照样绿（判别力被稀释）。
++  //    ★ **每条都先造出使该前置可达的状态**：跳过前置去撞另一个错，断言就退化成判别的前置。
++  //    ★ 断的是**完整消息片段**（如「action 引用的阶段不存在」），不是字段 token——只判 token
++  //      判不出是哪一层拒的（域层的兜底文案往往也含同一个字段名）。
++
++  /** ★ 坏载荷 = **homeRegion 无 `nation:` 前缀 tag**（R13）：先经真窄写建一个 tag 为 `plain` 的区域。 */
++  @Test
++  void sdCreateNationToolSurfacesTheDomainRejectionForARegionWithoutANationTag() throws Exception {
++    ToolResult region =
++        callNarrowWrite(
++            MapCreateRegionTool.NAME,
++            "{\"regionId\":\"t3-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}],"
++                + "\"meta\":{\"tag\":\"plain\"}}",
++            1L);
++    assertThat(region.success()).as(region.message()).isTrue();
++
++    assertDomainRejectedAndHeadUnchanged(
++        SdCreateNationTool.NAME,
++        "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
++            + "\"adminBudgetPerTick\":10}",
++        "无国家 tag");
++  }
++
++  /** ★ 坏载荷 = **nationId 不存在**（本夹具里没有任何国家）；存在性检查在 nationId 上先撞。 */
++  @Test
++  void sdCreateArmyToolSurfacesTheDomainRejectionForAnUnknownNation() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        SdCreateArmyTool.NAME,
++        "{\"armyId\":\"a1\",\"nationId\":\"没有这个国家\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}",
++        "nationId 不存在");
++  }
++
++  /**
++   * ★ 坏载荷 = **allowedTools 里含通用写**（N9）：先经真窄写造出 `nation:n1` tag 的区域与国家，使 affiliation 检查通过——
++   * 否则断言会退化成判「affiliation 目标不存在」。
++   */
++  @Test
++  void sdCreateDecisionMakerToolSurfacesTheDomainRejectionForAGenericWriteInAllowedTools()
++      throws Exception {
++    ToolResult region =
++        callNarrowWrite(
++            MapCreateRegionTool.NAME,
++            "{\"regionId\":\"t3-region\",\"name\":\"甲区\",\"hexes\":[{\"q\":1,\"r\":1}],"
++                + "\"meta\":{\"tag\":\"nation:n1\"}}",
++            1L);
++    assertThat(region.success()).as(region.message()).isTrue();
++    ToolResult nation =
++        callNarrowWrite(
++            SdCreateNationTool.NAME,
++            "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
++                + "\"adminBudgetPerTick\":10}",
++            2L);
++    assertThat(nation.success())
++        .as("前置可达：带 `nation:` tag 的区域能建出国家 —— %s", nation.message())
++        .isTrue();
++
++    assertDomainRejectedAndHeadUnchanged(
++        SdCreateDecisionMakerTool.NAME,
++        "{\"id\":\"dm-1\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
++            + "\"allowedTools\":[\"simos.command.submit\"],\"cadence\":5}",
++        "不得含通用写");
++  }
++
++  /** ★ 坏载荷 = **地址连两段都没有**：`Address.parse` 的原文理由是地址语法的前置（载荷层）。 */
++  @Test
++  void sdPutInfoToolSurfacesThePayloadRejectionForAMalformedAddress() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        SdPutInfoTool.NAME, "{\"address\":\"nope\",\"key\":\"k\",\"value\":\"v\"}", "地址至少两段");
++  }
++
++  /** ★ 坏载荷 = **combatId 已存在**：先经同一条窄工具真建一个交战，再用同一个 id 建第二次。 */
++  @Test
++  void sdCreateCombatToolSurfacesTheDomainRejectionForADuplicateId() throws Exception {
++    String payload = "{\"combatId\":\"c1\",\"name\":\"战役甲\",\"participants\":[\"u-1\"]}";
++    ToolResult created = callNarrowWrite(SdCreateCombatTool.NAME, payload, 1L);
++    assertThat(created.success()).as(created.message()).isTrue();
++    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
++        .as("第一次建交战成功 ⇒ head 前进一步")
++        .isEqualTo(2L);
++
++    assertDomainRejectedAndHeadUnchanged(SdCreateCombatTool.NAME, payload, "交战已存在");
++  }
++
++  /** ★ 坏载荷 = **combatId 不存在**：`stage` 本身**必须合法**（载荷解析在交战查询之前），否则拒的是载荷层而不是这一关。 */
++  @Test
++  void sdAddCombatStageToolSurfacesTheDomainRejectionForAnUnknownCombat() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        SdAddCombatStageTool.NAME,
++        "{\"combatId\":\"c-nope\",\"stage\":{\"stageId\":\"s1\",\"name\":\"阶段一\","
++            + "\"outcomes\":{\"options\":[{\"id\":\"opt-a\",\"label\":\"甲\",\"weight\":1}]}}}",
++        "交战不存在");
++  }
++
++  /** ★ 坏载荷 = **stageId 不在该交战里**：先造出「有交战、有首阶段」的状态。 */
++  @Test
++  void sdSetStageOutcomeTableToolSurfacesTheDomainRejectionForAnUnknownStage() throws Exception {
++    seedCombatWithFirstStage();
++
++    assertDomainRejectedAndHeadUnchanged(
++        SdSetStageOutcomeTableTool.NAME,
++        "{\"combatId\":\"c1\",\"stageId\":\"s-nope\","
++            + "\"outcomes\":{\"options\":[{\"id\":\"opt-b\",\"label\":\"乙\",\"weight\":1}]}}",
++        "阶段不存在");
++  }
++
++  /** ★ 坏载荷 = **结局不在该阶段的 outcomeTable 里**（N2）：首阶段的表里只有 `opt-a`，提交 `opt-b`。 */
++  @Test
++  void sdCommitCombatOutcomeToolSurfacesTheDomainRejectionForAnOutcomeOutsideTheTable()
++      throws Exception {
++    seedCombatWithFirstStage();
++
++    assertDomainRejectedAndHeadUnchanged(
++        SdCommitCombatOutcomeTool.NAME,
++        "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"selectedOutcomeId\":\"opt-b\"}",
++        "结局不在该阶段的 outcomeTable 里");
++  }
++
++  /** ★ 坏载荷 = **未知装备键**（P14：不视作 0）；`personnel` 给 0 确保先撞的是装备那一关。 */
++  @Test
++  void sdRecordCasualtiesToolSurfacesTheDomainRejectionForAnUnknownEquipmentKey() throws Exception {
++    seedCombatWithFirstStage();
++
++    assertDomainRejectedAndHeadUnchanged(
++        SdRecordCasualtiesTool.NAME,
++        "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"deltas\":[{\"unit\":\"u-1\",\"personnel\":0,"
++            + "\"equipment\":{\"没这个装备\":-1},\"lossClass\":\"PERMANENT\"}]}",
++        "未知装备键");
++  }
++
++  /**
++   * ★ 坏载荷 = **action 引用的阶段不存在**：`Action.SetStage` 先查 CombatState（首阶段兼建的那个 `cs-1` 在），再查阶段——所以 `cs-1`
++   * 必须真存在，否则拒的是「CombatState 不存在」那一关。
++   *
++   * <p>★★ **两个内层 id 必须写成对象形态 `{"value":"…"}`、不能写标量**——这是**当场实测**的线格式约束，不是笔误：
++   * `CombatStateId`/`CombatStageId` 是单 `String` record 且无 `@JsonCreator`，写成 `"cs-1"` 时 Jackson
++   * 在**载荷层** 就报 {@code no String-argument constructor/factory method to deserialize from String
++   * value ('cs-1')}， 于是拒绝理由变成载荷层那句、断言会退化成判另一个前置（改回标量即红在此）。★ 该缺口属 **sd 域**（本任务不改
++   * `simos-sd`），已记入报告「我未能核实的」。
++   */
++  @Test
++  void sdRegisterEffectToolSurfacesTheDomainRejectionForAStageThatDoesNotExist() throws Exception {
++    seedCombatWithFirstStage();
++
++    assertDomainRejectedAndHeadUnchanged(
++        SdRegisterEffectTool.NAME,
++        "{\"effectId\":\"e-1\",\"kind\":\"SCHEDULED\","
++            + "\"trigger\":{\"@class\":\"at_or_after_tick\",\"tick\":5},"
++            + "\"action\":{\"@class\":\"set_stage\",\"combatState\":{\"value\":\"cs-1\"},"
++            + "\"stage\":{\"value\":\"s-nope\"}}}",
++        "action 引用的阶段不存在");
++  }
++
++  /** ★ 坏载荷 = **effectId 不存在**（无需前置：效果表本来就是空的）。 */
++  @Test
++  void sdCancelEffectToolSurfacesTheDomainRejectionForAnUnknownEffect() throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        SdCancelEffectTool.NAME, "{\"effectId\":\"e-nope\"}", "效果不存在");
++  }
++
++  /**
++   * ★ 坏载荷 = **decisionMakerId 不存在**；`providerId` 是一个**从没登记过**的值。
++   *
++   * <p>★★ **§4 的判据在这一条上兑现**：本工具**不写 provider 存在性校验**——理由不是「某条既有用例会红」，而是那条校验落在工具层 **能被 {@code
++   * simos.command.submit} 绕过 ⇒ 是装饰**。故这里的拒绝理由**只能**来自域层的 decisionMaker 查询，而 `providerId`
++   * 照旧原样落到域层（登记与否由绑定期的真实消费者裁决）。
++   */
++  @Test
++  void sdSetDecisionMakerProviderToolSurfacesTheDomainRejectionForAnUnknownDecisionMaker()
++      throws Exception {
++    assertDomainRejectedAndHeadUnchanged(
++        SdSetDecisionMakerProviderTool.NAME,
++        "{\"decisionMakerId\":\"dm-nope\",\"providerId\":\"p-never-registered\"}",
++        "决策人不存在");
++  }
++
++  /**
++   * M3 判据 4 的共用前置：经**真窄写**建一个交战 + 它的第一个阶段（首阶段兼建 {@code CombatState cs-1}，见 C1-a 的取代说明）。
++   *
++   * <p>★ 只用同一条工具链造状态、不塞夹具——这样「前置可达」本身也被走到（与 M1 的 {@code
++   * mapCreateRegionToolSurfacesTheDomainRejectionForADuplicateId} 同法）。
++   */
++  private void seedCombatWithFirstStage() throws Exception {
++    ToolResult combat =
++        callNarrowWrite(SdCreateCombatTool.NAME, "{\"combatId\":\"c1\",\"name\":\"战役甲\"}", 1L);
++    assertThat(combat.success()).as(combat.message()).isTrue();
++    ToolResult stage =
++        callNarrowWrite(
++            SdAddCombatStageTool.NAME,
++            "{\"combatId\":\"c1\",\"combatStateId\":\"cs-1\",\"hex\":{\"q\":1,\"r\":1},"
++                + "\"stage\":{\"stageId\":\"s1\",\"name\":\"阶段一\","
++                + "\"outcomes\":{\"options\":[{\"id\":\"opt-a\",\"label\":\"甲\",\"weight\":1}]}}}",
++            2L);
++    assertThat(stage.success()).as(stage.message()).isTrue();
++    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
++        .as("交战 + 首阶段各留一条 revision")
++        .isEqualTo(3L);
++  }
++
+   /**
+    * 窄写调用形态：{@code payloadJson} + {@code branch=main} + {@code expectedRevision}（类型由工具钉死，schema
+    * 里没有）。
+    */
+   private ToolResult callNarrowWrite(String toolName, String payloadJson, long expectedRevision) {
+     Map<String, Object> args = new LinkedHashMap<>();
+     args.put("payloadJson", payloadJson);
+     args.put("branch", "main");
+     args.put("expectedRevision", expectedRevision);
+     return call(toolName, args);
+```
