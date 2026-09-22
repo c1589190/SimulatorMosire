@@ -400,7 +400,13 @@ public final class ToolSupport {
     };
   }
 
-  private static Map<String, Object> committedView(
+  /**
+   * 提交成功的那种视图（{@code result/ref/commandId/correlationId}）。
+   *
+   * <p>★ **公开的理由**（T11C）：{@code sd.RunDecision} 在**同一条结果**里既要报提交结局、又要报这一轮的轨迹 （{@link #fold}
+   * 折的是"只有结局"的那一份）⇒ 它要把这四个字段当**构造块**嵌进自己的视图，而不是再手拼一遍 （手拼一条就会与这里漂移：字段名、id 取哪个，两处各说各话且没有症状）。
+   */
+  public static Map<String, Object> committedView(
       StateRef ref, String commandId, String correlationId) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("result", "committed");

@@ -95,7 +95,10 @@ class McpPortTopologyTest {
           "unit.UpdateCommandChain",
           "unit.ApplyCasualties");
 
-  /** GM 窄写（M1 起 11 条、M2 起 31 条、**M3 起 43 条**）：16 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit 窄写；**都不是**通用写。 */
+  /**
+   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、**T11C 起 44 条**）：17 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit
+   * 窄写；**都不是**通用写。
+   */
   private static final List<String> GM_NARROW_WRITES =
       concat(
           List.of(
@@ -103,6 +106,7 @@ class McpPortTopologyTest {
               "sd.SubmitVerdict",
               "sd.SetViewScope",
               "sd.StartDecision",
+              "sd.RunDecision",
               "sd.CreateNation",
               "sd.CreateArmy",
               "sd.CreateDecisionMaker",
@@ -136,7 +140,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 9 + 通用写 3 + 全部窄写 43 = 55）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 9 + 通用写 3 + 全部窄写 44 = 56）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -144,7 +148,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（9 读 + 3 通用写 + 43 窄写 = 55）")
+          .as("J1：唯一口 = GM 组（9 读 + 3 通用写 + 44 窄写 = 56）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
     }

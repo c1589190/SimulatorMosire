@@ -1,0 +1,29 @@
+=================== T11C 变异轮 t11c-m7 — 2026-09-22T22:30:04+08:00 ===================
+round=t11c-m7
+target=simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentService.java
+module=simos-app selector=RunDecisionEndToEndTest#aRunawayModelIsReportedAsAbortedByBudget
+expect_red_pattern=but was: "failed"
+expect_report_glob=RunDecisionEndToEndTest
+--- ① 干净世界：原件另存 + 基线 md5 ---
+baseline_md5=008e2acb82b392045a84e5d9d1d50b4b
+--- ② 落变异体（按**目标类名**推入，不按变异体名） ---
+mutant_md5=40cdebe5f4980c8bef9334602dccab23
+mutant_differs_from_baseline=true
+--- ③ 清掉该用例的旧报告（本轮必须有本轮的） ---
+removed_stale_report_glob=RunDecisionEndToEndTest
+--- ④ 跑测试 ---
+maven_rc=1
+compilation_errors=0
+report_files=/home/cna/SimulatorMosire/simos-app/target/surefire-reports/io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt
+report_is_fresh=true
+report_line=Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.948 s <<< FAILURE! -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+tests=1 failures=1 errors=0
+expect_pattern_hits_report=1 expect_pattern_hits_maven_log=2
+--- 红点断言名（本题的红是哪几条） ---
+  red: [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.948 s <<< FAILURE! -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+  red: [ERROR] io.mosire.simos.app.decision.RunDecisionEndToEndTest.aRunawayModelIsReportedAsAbortedByBudget -- Time elapsed: 0.881 s <<< FAILURE!
+--- ⑤ 逐字节还原 ---
+restored_md5=008e2acb82b392045a84e5d9d1d50b4b
+restored_identical=true
+round_seconds=5
+VERDICT_t11c-m7=KILLED

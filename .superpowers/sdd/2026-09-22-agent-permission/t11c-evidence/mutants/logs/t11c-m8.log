@@ -1,0 +1,82 @@
+=================== T11C 变异轮 t11c-m8 — 2026-09-22T22:30:16+08:00 ===================
+round=t11c-m8
+target=simos-sd/src/main/java/io/mosire/simos/sd/spi/RunDecisionHandler.java
+module=simos-sd selector=RunDecisionHandlerTest
+expect_red_pattern=key 逐字
+expect_report_glob=RunDecisionHandlerTest
+--- ① 干净世界：原件另存 + 基线 md5 ---
+baseline_md5=25a74a8416e04c6a85a889b8acdf0ad0
+--- ② 落变异体（按**目标类名**推入，不按变异体名） ---
+mutant_md5=85af8c94cd933cc6d7bcc9f2eb771c98
+mutant_differs_from_baseline=true
+--- ③ 清掉该用例的旧报告（本轮必须有本轮的） ---
+removed_stale_report_glob=RunDecisionHandlerTest
+--- ④ 跑测试 ---
+maven_rc=1
+compilation_errors=0
+report_files=/home/cna/SimulatorMosire/simos-sd/target/surefire-reports/io.mosire.simos.sd.spi.RunDecisionHandlerTest.txt
+report_is_fresh=true
+report_line=Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.176 s <<< FAILURE! -- in io.mosire.simos.sd.spi.RunDecisionHandlerTest
+tests=7 failures=1 errors=0
+expect_pattern_hits_report=0 expect_pattern_hits_maven_log=0
+--- 红点断言名（本题的红是哪几条） ---
+  red: [ERROR] Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.176 s <<< FAILURE! -- in io.mosire.simos.sd.spi.RunDecisionHandlerTest
+  red: [ERROR] io.mosire.simos.sd.spi.RunDecisionHandlerTest.sharesTheAddressAndValueFormatWithStartDecision -- Time elapsed: 0.005 s <<< FAILURE!
+void_reason=red_but_pattern_missed（红了，但预期红点正则没命中 ⇒ 本轮作废，改正则后重跑）
+--- ⑤ 逐字节还原 ---
+restored_md5=25a74a8416e04c6a85a889b8acdf0ad0
+restored_identical=true
+round_seconds=3
+VERDICT_t11c-m8=VOID
+=================== T11C 变异轮 t11c-m8 — 2026-09-22T22:30:45+08:00 ===================
+round=t11c-m8
+target=simos-sd/src/main/java/io/mosire/simos/sd/spi/RunDecisionHandler.java
+module=simos-sd selector=RunDecisionHandlerTest
+expect_red_pattern=两条记录的 key 必须
+expect_report_glob=RunDecisionHandlerTest
+--- ① 干净世界：原件另存 + 基线 md5 ---
+baseline_md5=25a74a8416e04c6a85a889b8acdf0ad0
+--- ② 落变异体（按**目标类名**推入，不按变异体名） ---
+mutant_md5=85af8c94cd933cc6d7bcc9f2eb771c98
+mutant_differs_from_baseline=true
+--- ③ 清掉该用例的旧报告（本轮必须有本轮的） ---
+removed_stale_report_glob=RunDecisionHandlerTest
+--- ④ 跑测试 ---
+maven_rc=1
+compilation_errors=1
+report_files=（无）
+void_reason=compilation_error（红的理由是编译，不是断言 ⇒ 本轮作废，不许当 KILLED）
+--- ⑤ 逐字节还原 ---
+restored_md5=25a74a8416e04c6a85a889b8acdf0ad0
+restored_identical=true
+round_seconds=2
+VERDICT_t11c-m8=VOID
+=================== T11C 变异轮 t11c-m8 — 2026-09-22T22:32:00+08:00 ===================
+round=t11c-m8
+target=simos-sd/src/main/java/io/mosire/simos/sd/spi/RunDecisionHandler.java
+module=simos-sd selector=RunDecisionHandlerTest
+expect_red_pattern=两条记录的 key 必须
+expect_report_glob=RunDecisionHandlerTest
+--- ① 干净世界：原件另存 + 基线 md5 ---
+baseline_md5=25a74a8416e04c6a85a889b8acdf0ad0
+--- ② 落变异体（按**目标类名**推入，不按变异体名） ---
+mutant_md5=85af8c94cd933cc6d7bcc9f2eb771c98
+mutant_differs_from_baseline=true
+--- ③ 清掉该用例的旧报告（本轮必须有本轮的） ---
+removed_stale_report_glob=RunDecisionHandlerTest
+--- ④ 跑测试 ---
+maven_rc=1
+compilation_errors=0
+report_files=/home/cna/SimulatorMosire/simos-sd/target/surefire-reports/io.mosire.simos.sd.spi.RunDecisionHandlerTest.txt
+report_is_fresh=true
+report_line=Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.181 s <<< FAILURE! -- in io.mosire.simos.sd.spi.RunDecisionHandlerTest
+tests=7 failures=1 errors=0
+expect_pattern_hits_report=1 expect_pattern_hits_maven_log=2
+--- 红点断言名（本题的红是哪几条） ---
+  red: [ERROR] Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.181 s <<< FAILURE! -- in io.mosire.simos.sd.spi.RunDecisionHandlerTest
+  red: [ERROR] io.mosire.simos.sd.spi.RunDecisionHandlerTest.sharesTheAddressAndValueFormatWithStartDecision -- Time elapsed: 0.006 s <<< FAILURE!
+--- ⑤ 逐字节还原 ---
+restored_md5=25a74a8416e04c6a85a889b8acdf0ad0
+restored_identical=true
+round_seconds=4
+VERDICT_t11c-m8=KILLED

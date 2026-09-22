@@ -1,0 +1,191 @@
+package io.mosire.simos.app.decision;
+
+import io.mosire.agentlib.llm.LlmClient;
+import io.mosire.agentlib.store.ConversationStore;
+import io.mosire.agentlib.tool.ToolRegistry;
+import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.llm.LlmProviderResolver;
+import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.StateRef;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * **决策人 agent 运行流的装配点**（T11C）：把 {@link DecisionAgentRunner} 接进壳——「让某个决策人跑一轮」真会调 LLM。
+ *
+ * <p>★ **它解决的真实缺口**：{@link DecisionAgentRunner} 已交付并关账（判据 J11），但**全仓只有测试调用它**—— 没有生产调用者。本类是那个"接线"，与
+ * {@code DecisionAdjudicationService} 同形（同一个壳、同一条 provider 解析链）。
+ *
+ * <p>★ **为什么每轮现建 runner 而不是持有一个**：{@link DecisionAgentRunner} 的 {@code llmClient} 是**按决策人
+ * providerId 解析出来的**（不同的决策人可以绑不同的 provider），而 providerId 是**世界事实**（随 revision 变）⇒
+ * 只能在**使用时刻**解析。runner 的其余分量（调用者工厂 / 工具面 / 会话存储 / mapId）与本服务同生命周期，故此处只是"拼起来"。
+ *
+ * <p>★★ **fail-closed 的第一道在这里**（与 {@link LlmProviderResolver} 的第二道分工）：
+ *
+ * <ul>
+ *   <li>本类管**世界事实**那一半：{@code providerId} 为空（未绑定）⇒ **抛**，绝不落到"某个默认 provider"；
+ *   <li>{@link LlmProviderResolver} 管**配置**那一半：名字在当前路由表里查无 ⇒ 抛**点名该 id** 的错，绝不换一条能用的顶上； 路由在场但坏掉 ⇒
+ *       AgentLib 的异常原样冒泡。
+ * </ul>
+ *
+ * 两道各自有位：{@code DecisionMaker.providerId} 是"不透明的基础设施引用"（见其类注），**使用时刻必须 fail-closed**，
+ * 而"有没有绑"是**世界**说了算（不该问配置）。故本类的检查**不可被注入的客户端来源绕开**——{@link LlmClients} 的替身（用例里的 {@code
+ * FakeLlmClient}）只替掉"怎么造客户端"，替不掉"该不该跑"。
+ *
+ * <p>★ **状态是入参、不是字段**：范围函数与工具读的都是"此刻的世界"，故 {@link #runRound} 每轮从 {@code core.replay} 取（与 {@code
+ * DecisionAdjudicationService} 同法）。
+ */
+public final class DecisionAgentService {
+
+  private static final Logger LOG = LoggerFactory.getLogger(DecisionAgentService.class);
+
+  /** 会话库文件名（落 {@code <store>} 下，与 {@code simos.db} 同目录 ⇒ 跨进程重启沿用同一段会话）。 */
+  public static final String CONVERSATIONS_FILE_NAME = "conversations.db";
+
+  /**
+   * **决策人的 LLM 客户端来源**（providerId ⇒ AgentLib 客户端）：生产路径 = {@code
+   * LlmProviderResolver::agentLibClientFor}；用例 = 一个回放的 {@code FakeLlmClient}。
+   *
+   * <p>★ **它是"怎么造客户端"的接缝，不是"该不该跑"的开关**：未绑定的判定在 {@link #runRound} 里（见类注）， 无论实现是谁都绕不过去。
+   */
+  @FunctionalInterface
+  public interface LlmClients {
+
+    /**
+     * @param providerId 决策人绑定的 provider id（**非空**——空值在 {@link #runRound} 就被拒了）
+     * @return 该 provider 的 AgentLib 客户端
+     * @throws RuntimeException 名字查无 / 路由坏掉（生产路径 fail-closed，不兜底）
+     */
+    LlmClient clientFor(String providerId);
+  }
+
+  private final CoreSimos core;
+  private final LlmClients llmClients;
+  private final DecisionCallerFactory callerFactory;
+  private final ToolRegistry decisionTools;
+  private final ConversationStore conversations;
+  private final String mapId;
+  private final int maxLlmCalls;
+
+  /**
+   * @param core 唯一写入口（读状态经它的只读 {@code replay}；写仍只发生在运行流内部的 {@code CoreSimos.submit}）
+   * @param llmClients providerId ⇒ 客户端（生产路径 = {@link LlmProviderResolver}）
+   * @param callerFactory 决策人调用者工厂（范围**每次现算**；其 {@code whitelist()} 同时是"给模型看的工具面"的来源）
+   * @param decisionTools **决策人桶**的注册表（工具面与执行都从它取）
+   * @param conversations 会话存储（跨 tick / 跨重启沿用同一段会话）
+   * @param mapId 本世界的 map 称谓（范围函数要它拼资源前缀）
+   */
+  public DecisionAgentService(
+      CoreSimos core,
+      LlmClients llmClients,
+      DecisionCallerFactory callerFactory,
+      ToolRegistry decisionTools,
+      ConversationStore conversations,
+      String mapId) {
+    this(
+        core,
+        llmClients,
+        callerFactory,
+        decisionTools,
+        conversations,
+        mapId,
+        DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS);
+  }
+
+  /** 显式给回合上限的形态（用例要测"跑飞会被中止"就得把它压小）。 */
+  public DecisionAgentService(
+      CoreSimos core,
+      LlmClients llmClients,
+      DecisionCallerFactory callerFactory,
+      ToolRegistry decisionTools,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls) {
+    this.core = Objects.requireNonNull(core, "core");
+    this.llmClients = Objects.requireNonNull(llmClients, "llmClients");
+    this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
+    this.decisionTools = Objects.requireNonNull(decisionTools, "decisionTools");
+    this.conversations = Objects.requireNonNull(conversations, "conversations");
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.maxLlmCalls = maxLlmCalls;
+  }
+
+  /**
+   * **让某个决策人在给定的世界版本上跑一轮**（LLM ↔ 工具，直到模型不再请求工具调用）。
+   *
+   * <p>★ **决策人取自那个版本的世界**（不是调用方手里那份）：这样"跑的是谁"与"它看到的世界"必然同源， 且调用方只需给 id + 坐标（窄工具的载荷正是这两样）。
+   *
+   * @param branch 分支
+   * @param revision 世界版本（权威取值点 —— 工具在**触发事实落盘之后**用新 head 调这里）
+   * @param decisionMakerId 决策人 id（查无 ⇒ 抛）
+   * @return 本轮的账（见 {@link DecisionAgentRunner.DecisionTurn}）
+   * @throws IllegalArgumentException 该版本的世界里没有这个决策人（或 sd 切片缺失——装配故障）
+   * @throws IllegalStateException 该决策人**未绑定** LLM provider（fail-closed，见类注）
+   * @throws DecisionAgentRunner.TurnBudgetExceeded 撞上回合预算
+   */
+  public DecisionAgentRunner.DecisionTurn runRound(
+      BranchId branch, RevisionId revision, DecisionMakerId decisionMakerId) {
+    Objects.requireNonNull(branch, "branch");
+    Objects.requireNonNull(revision, "revision");
+    Objects.requireNonNull(decisionMakerId, "decisionMakerId");
+    SimulationState state = core.replay(new StateRef(branch, revision));
+    DecisionMaker maker = ToolSupport.sdState(state).decisionMakers().get(decisionMakerId);
+    if (maker == null) {
+      throw new IllegalArgumentException("决策人不存在: " + decisionMakerId.value());
+    }
+    LlmClient client = llmClients.clientFor(requireProviderId(maker));
+    DecisionAgentRunner runner =
+        new DecisionAgentRunner(
+            callerFactory, decisionTools, client, conversations, mapId, maxLlmCalls);
+    try {
+      DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
+      // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
+      //   （内容在轨迹与会话里，且**绝不打密钥**——本行没有任何配置值）。
+      LOG.info(
+          "决策人 agent 一轮完成 decisionMakerId={} model={} llmCalls={} toolCalls={} conversationId={}",
+          maker.id().value(),
+          client.model(),
+          turn.llmCalls(),
+          turn.toolInvocations().size(),
+          turn.conversationId());
+      return turn;
+    } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
+      LOG.warn(
+          "决策人 agent 撞上回合预算 decisionMakerId={} model={} llmCalls={}",
+          maker.id().value(),
+          client.model(),
+          e.llmCalls());
+      throw e;
+    }
+  }
+
+  /** 本轮会话的 id（触发工具在**失败**路径上也要报它：中止/未绑定时历史仍已落盘，下一轮可续）。 */
+  public static String conversationIdOf(DecisionMakerId decisionMakerId) {
+    return DecisionAgentRunner.conversationIdOf(decisionMakerId);
+  }
+
+  /**
+   * ★★ **fail-closed 的第一道**（见类注）：未绑定 ⇒ **抛**，**绝不**落到某个默认 provider。
+   *
+   * <p>★ 判据是 {@code Optional} 的**空**（"世界说没绑"）而不是字符串空白：{@code DecisionMaker} 的构造期不变式已保证 "空白必用 {@code
+   * Optional.empty()} 表达"，故字符串那一半由 sd 模型层守着，本类不重复判。
+   */
+  private static String requireProviderId(DecisionMaker maker) {
+    return maker
+        .providerId()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    LlmProviderResolver.E_UNBOUND
+                        + ": 决策人 "
+                        + maker.id().value()
+                        + " 未绑定 LLM provider（providerId 为空）——本项绝不落到默认 provider"));
+  }
+}

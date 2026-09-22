@@ -15,6 +15,7 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.sd.spi.DecisionSignature;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -136,8 +137,7 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   }
 
   @Override
-  public ToolResult execute(ToolContext context) {
-    String id = UUID.randomUUID().toString();
+  public final ToolResult execute(ToolContext context) {
     // ★ 署名先于资源判：它最便宜、也最具体（"换个资源就行"与"换个署名就行"是两条不同的纠正方向）。
     Optional<String> violation = signatureViolation(context);
     if (violation.isPresent()) {
@@ -145,17 +145,7 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
     }
     try {
       ToolSupport.requireAll(context, Operation.WRITE, writeResources(context));
-      Map<String, Object> args = context.arguments();
-      CommandEnvelope command =
-          new CommandEnvelope(
-              id,
-              id,
-              initiator,
-              new BranchId(ToolSupport.requiredText(args, "branch")),
-              new RevisionId(ToolSupport.requiredLong(args, "expectedRevision")),
-              commandType(),
-              ToolSupport.optionalText(args, "payloadJson", "{}"));
-      return ToolSupport.fold(core.submit(command), id, id);
+      return afterSubmit(context, submit(context));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -169,4 +159,50 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
           "TOOL_ERROR", "命令提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
   }
+
+  /**
+   * 落一条本工具固定类型的命令（信封与命令 id 的**唯一生成点**）：命令 id == correlationId，`branch`/`expectedRevision`
+   * 取自载荷（乐观并发，C26 的信封）。
+   *
+   * @throws IllegalArgumentException 载荷缺 `branch`/`expectedRevision`（坏输入，由 {@link #execute} 折成
+   *     {@code BAD_REQUEST}）
+   */
+  protected final SubmittedCommand submit(ToolContext context) {
+    String id = UUID.randomUUID().toString();
+    Map<String, Object> args = context.arguments();
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            initiator,
+            new BranchId(ToolSupport.requiredText(args, "branch")),
+            new RevisionId(ToolSupport.requiredLong(args, "expectedRevision")),
+            commandType(),
+            ToolSupport.optionalText(args, "payloadJson", "{}"));
+    return new SubmittedCommand(id, core.submit(command));
+  }
+
+  /**
+   * **提交之后的扩展点**（T11C 新增）：缺省把结局折成工具结果（绝大多数窄工具就到此为止）。
+   *
+   * <p>★ **为什么要这个钩子**：`sd.RunDecision` 的动作**发生在触发事实落盘之后**（它触发的那一轮决策要读到**新 head** 的世界）。 基类的
+   * `execute` 是 {@code final} ⇒ 子类不可能绕过署名判定/资源断言/错误折叠这三段（那是**收紧**：以前一个子类覆写 `execute`
+   * 就能把三段全丢掉），只能从这一个明写的口子往下接。
+   *
+   * <p>★ **本钩子里抛出的异常会落到 {@link #execute} 的 `RuntimeException` 分支**（消息写成"命令提交失败"——对"落盘后做事" 的工具并不贴切）⇒
+   * 需要**自己的失败语义**的子类应当在本方法内自行 catch 并折成 {@code ToolResult.error}。
+   *
+   * @param submitted 本次提交的账（命令 id + 三结局之一）
+   */
+  protected ToolResult afterSubmit(ToolContext context, SubmittedCommand submitted) {
+    return ToolSupport.fold(submitted.result(), submitted.commandId(), submitted.commandId());
+  }
+
+  /**
+   * 一次提交的账。
+   *
+   * @param commandId 命令 id（= correlationId，信封的唯一生成点给的）
+   * @param result 三结局（committed / conflict / rejected）
+   */
+  protected record SubmittedCommand(String commandId, CommandResult result) {}
 }

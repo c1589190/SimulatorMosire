@@ -1,0 +1,29 @@
+=================== T11C 变异轮 t11c-m4 — 2026-09-22T22:29:30+08:00 ===================
+round=t11c-m4
+target=simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java
+module=simos-app selector=DecisionCallerFactoryTest,RunDecisionEndToEndTest#theTriggerToolIsOnlyInTheGmBucket
+expect_red_pattern=to contain exactly in any order|GM 面（= 运行时 MCP 口）含触发工具
+expect_report_glob=DecisionCallerFactoryTest
+--- ① 干净世界：原件另存 + 基线 md5 ---
+baseline_md5=ef5b7a8d6e0a14490c607c6d9f588f19
+--- ② 落变异体（按**目标类名**推入，不按变异体名） ---
+mutant_md5=6bb0614ab73d189a6ee77a328719dab4
+mutant_differs_from_baseline=true
+--- ③ 清掉该用例的旧报告（本轮必须有本轮的） ---
+removed_stale_report_glob=DecisionCallerFactoryTest
+--- ④ 跑测试 ---
+maven_rc=1
+compilation_errors=0
+report_files=/home/cna/SimulatorMosire/simos-app/target/surefire-reports/io.mosire.simos.app.access.DecisionCallerFactoryTest.txt
+report_is_fresh=true
+report_line=Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.739 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionCallerFactoryTest
+tests=8 failures=1 errors=0
+expect_pattern_hits_report=1 expect_pattern_hits_maven_log=2
+--- 红点断言名（本题的红是哪几条） ---
+  red: [ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.739 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionCallerFactoryTest
+  red: [ERROR] io.mosire.simos.app.access.DecisionCallerFactoryTest.theWhitelistIsExactlyTheReadToolsPlusTheTwoDecisionWrites -- Time elapsed: 0.076 s <<< FAILURE!
+--- ⑤ 逐字节还原 ---
+restored_md5=ef5b7a8d6e0a14490c607c6d9f588f19
+restored_identical=true
+round_seconds=6
+VERDICT_t11c-m4=KILLED

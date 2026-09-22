@@ -14,11 +14,14 @@ import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
+import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.gm.RecordingToolSource;
 import io.mosire.simos.app.gui.GuiServer;
@@ -63,6 +66,7 @@ import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
+import io.mosire.simos.sd.spi.RunDecisionHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.SetViewScopeHandler;
@@ -212,6 +216,12 @@ public final class Shell implements AutoCloseable {
   /** 决策编排（T3）：把 {@code AdjudicatorRunner} 接进壳——「开始决策」真的会跑 LLM 判决。 */
   private final DecisionAdjudicationService decisionAdjudicationService;
 
+  /** 决策人 agent 运行流（T11C）：{@code sd.RunDecision} 触发的那一轮（真 LLM + 真工具）。 */
+  private final DecisionAgentService decisionAgentService;
+
+  /** 决策人的会话存储（T11C）：落 {@code <store>/conversations.db} ⇒ 跨 tick / 跨重启沿用同一段会话。 */
+  private final SqliteConversationStore decisionConversations;
+
   private volatile boolean closed;
 
   private Shell(
@@ -232,7 +242,9 @@ public final class Shell implements AutoCloseable {
       List<DecisionChannel> decisionChannels,
       Set<String> commandTypes,
       AgentLibLlmConfig llmConfig,
-      DecisionAdjudicationService decisionAdjudicationService) {
+      DecisionAdjudicationService decisionAdjudicationService,
+      DecisionAgentService decisionAgentService,
+      SqliteConversationStore decisionConversations) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.queryService = queryService;
@@ -251,6 +263,8 @@ public final class Shell implements AutoCloseable {
     this.commandTypes = Set.copyOf(commandTypes);
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
+    this.decisionAgentService = decisionAgentService;
+    this.decisionConversations = decisionConversations;
   }
 
   /**
@@ -270,6 +284,22 @@ public final class Shell implements AutoCloseable {
    * @throws IllegalStateException GUI 绑定失败（端口被占等）
    */
   public static Shell start(ShellConfig config) {
+    return start(config, null);
+  }
+
+  /**
+   * 同 {@link #start(ShellConfig)}，但可**显式注入决策人 agent 的 LLM 客户端来源**（T11C）。
+   *
+   * <p>★ **为什么有这条缝**：{@code sd.RunDecision} 触发的那一轮要**真调 LLM**，而本仓的用例纪律是"测试不打真网络" ⇒ 用例要能把 {@code
+   * FakeLlmClient} 注入**真壳**（真 MCP 口、真审批链、真工具面、真 store），而不是另搭一套 装配——那样测到的就不是"壳接到哪里"了。
+   *
+   * <p>★ **它只替得掉"怎么造客户端"**：未绑定 provider 的 fail-closed 判定在 {@link DecisionAgentService} 里（世界事实那一半），
+   * 注入什么实现都绕不过去；生产路径（{@code null}）用 {@link LlmProviderResolver}（配置那一半也 fail-closed）。
+   *
+   * @param decisionLlmClients {@code null} ⇒ 生产路径（按决策人 {@code providerId} 解析真 provider）
+   */
+  public static Shell start(
+      ShellConfig config, DecisionAgentService.LlmClients decisionLlmClients) {
     Objects.requireNonNull(config, "config");
     CoreSimos coreSimos =
         new CoreSimos(
@@ -322,7 +352,8 @@ public final class Shell implements AutoCloseable {
                 new CommitOutcomeHandler(),
                 new RecordCasualtiesHandler(),
                 new CancelEffectHandler(),
-                new StartDecisionHandler()));
+                new StartDecisionHandler(),
+                new RunDecisionHandler()));
     Set<String> drainableCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       if (!handler.type().startsWith("sd.")) {
@@ -413,6 +444,36 @@ public final class Shell implements AutoCloseable {
         ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
     approvalChannel.markUp();
 
+    // ★ T11C：决策人 agent 运行流的装配（三样在它之前就绪：带审批的 authorizer、provider 解析链、查询层）。
+    //   ① 权限组走**同一个** authorizer（决策人的两条窄写是敏感工具 ⇒ 没有审批编排器就永远进不了工具体）；
+    //   ② 工具面取**决策人桶**（与白名单同源：DecisionToolDefs.requireAll 对不上就当场炸）；
+    //   ③ 会话落 <store> 下（与 simos.db 同层 ⇒ 跨进程重启沿用同一段会话）。
+    DecisionCallerFactory decisionCallerFactory = DecisionCallerFactory.defaults(toolAuthorizer);
+    ToolRegistry decisionTools = new ToolRegistry();
+    decisionTools.registerAll(
+        new SimosToolSource(
+                coreSimos,
+                queryService,
+                config.mcpInitiator(),
+                config.mapId(),
+                commandTypes,
+                SimosToolSource.Role.DECISION_AGENT)
+            .listTools());
+    // ★ 决策人桶**不带**触发工具（决策人不触发自己，那是自环）⇒ 这里用不带运行流的那条构造器。
+    SqliteConversationStore decisionConversations =
+        SqliteConversationStore.open(
+            config.storeDir().resolve(DecisionAgentService.CONVERSATIONS_FILE_NAME));
+    DecisionAgentService decisionAgentService =
+        new DecisionAgentService(
+            coreSimos,
+            decisionLlmClients == null
+                ? llmProviderResolver::agentLibClientFor
+                : decisionLlmClients,
+            decisionCallerFactory,
+            decisionTools,
+            decisionConversations,
+            config.mapId());
+
     // 工具集（spec §2.1）：MCP 口 = **GM 组** = 读工具 + 通用写 + 全部窄写（条数以工具面为准）；
     //   GM 组的权限集是显式构造的那一份（gmCaller 的 resourceScopes 逐命名空间表态），不再是 unrestricted 的空资源图。
     SimosToolSource toolSource =
@@ -422,7 +483,8 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             commandTypes,
-            SimosToolSource.Role.GM);
+            SimosToolSource.Role.GM,
+            decisionAgentService);
     // ★ T8：GM 交互界面的数据源——GM 口每次工具执行的留痕（工具名 + 结果），经 /api/gm/tool-usage 只读导出。
     //   只包 GM 组的源 ⇒ 记录的就是"GM MCP 的工具使用"（spec §七.4 C22）。
     GmToolUsage gmToolUsage = new GmToolUsage();
@@ -518,7 +580,9 @@ public final class Shell implements AutoCloseable {
         decisionChannels,
         commandTypes,
         llmConfig,
-        decisionAdjudicationService);
+        decisionAdjudicationService,
+        decisionAgentService,
+        decisionConversations);
   }
 
   /** 当前世界里的决策人（作为渠道可代表的 actor；空库 ⇒ 空集）。 */
@@ -552,7 +616,13 @@ public final class Shell implements AutoCloseable {
    */
   public List<AgentTool> toolsFor(SimosToolSource.Role role) {
     return new SimosToolSource(
-            coreSimos, queryService, config.mcpInitiator(), config.mapId(), commandTypes, role)
+            coreSimos,
+            queryService,
+            config.mcpInitiator(),
+            config.mapId(),
+            commandTypes,
+            role,
+            decisionAgentService)
         .listTools();
   }
 
@@ -725,10 +795,20 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
+   * 决策人 agent 运行流（T11C）：测试/调试面读回装配实况（{@code sd.RunDecision} 那条路内部就是它）。
+   *
+   * <p>★ 与 {@link #decisionAdjudicationService()} 同法（不加 {@code EI_EXPOSE_REP} 抑制：它是本壳的产物，不是内部表示）。
+   */
+  public DecisionAgentService decisionAgentService() {
+    return decisionAgentService;
+  }
+
+  /**
    * 关闭：GUI → MCP → 工具桥 → 审批端点 → 审批通道 → {@link CoreSimos}（spec §3.3 的次序）。幂等。
    *
    * <p>★ spec §3.3 的完整次序是 GUI → MCP → 审批端点 → 审批通道 → CoreSimos；工具桥是 app 内的注册表卸载，插在 MCP 与审批之间不改变
-   * 端口/线程的释放次序（MCP 先 {@code closeGracefully} 再停 server 由 AgentLib 契约实现）。
+   * 端口/线程的释放次序（MCP 先 {@code closeGracefully} 再停 server 由 AgentLib 契约实现）。★ **决策人会话库**（T11C）是 app 自己的
+   * 存储（不占端口、不参与 spec §3.3 的次序），与 CoreSimos 同批关（都在最后）。
    */
   @Override
   public void close() {
@@ -741,6 +821,7 @@ public final class Shell implements AutoCloseable {
     toolBridge.close();
     approvalEndpoint.close();
     approvalChannel.close();
+    decisionConversations.close();
     coreSimos.close();
   }
 }

@@ -102,8 +102,8 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 43 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
-   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43）。
+   * catalog 预期的 44 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -149,7 +149,8 @@ class McpCoverageTest {
           "sd.SubmitVerdict",
           "sd.SetViewScope",
           "sd.StartDecision",
-          "sd.SetDecisionMakerProvider");
+          "sd.SetDecisionMakerProvider",
+          "sd.RunDecision");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -264,6 +265,9 @@ class McpCoverageTest {
     // M11：决策人绑定 provider（同样放最后；dm-cov 已在 sd.CreateDecisionMaker 建好）⇒ 不移动前面的 revision 号。
     MINIMAL_PAYLOADS.put(
         "sd.SetDecisionMakerProvider", "{\"decisionMakerId\":\"dm-cov\",\"providerId\":\"p-cov\"}");
+    // T11C：触发一轮决策人 agent 的那条**命令**（窄工具走的是另一条路：命令落盘之后才真跑 LLM）。
+    //   同样放最后（dm-cov 早已建好）⇒ 不移动前面各命令的 revision 号。
+    MINIMAL_PAYLOADS.put("sd.RunDecision", "{\"decisionMakerId\":\"dm-cov\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -315,7 +319,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 43 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 44 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -346,8 +350,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("43 条命令各推一格")
-        .isEqualTo(44L);
+        .as("44 条命令各推一格")
+        .isEqualTo(45L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -361,16 +365,16 @@ class McpCoverageTest {
     assertThat(units.units().get(new UnitId("u-2")).member()).isEqualTo(50);
 
     // 4. simos.advance 经 MCP 可达且有效。
-    McpSchema.CallToolResult advance = advanceWithApproval(44L, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceWithApproval(45L, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(45L);
+    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(46L);
     System.out.println("[T11-COVERAGE] tool=simos.advance result=committed revision=32");
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(45L);
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(46L);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", 45L, "mcp-branch");
+    McpSchema.CallToolResult fork = forkWithApproval("main", 46L, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");

@@ -1,0 +1,30 @@
+=================== T11C 变异轮 t11c-m6 — 2026-09-22T22:29:59+08:00 ===================
+round=t11c-m6
+target=simos-app/src/main/java/io/mosire/simos/app/tools/write/RunDecisionTool.java
+module=simos-app selector=RunDecisionEndToEndTest#aStaleRevisionConflictsAndTheRoundDoesNotRun
+expect_red_pattern=JsonParseException|Unrecognized token
+expect_report_glob=RunDecisionEndToEndTest
+--- ① 干净世界：原件另存 + 基线 md5 ---
+baseline_md5=0b1b6281b80c242b0f6bfe659a8b0afc
+--- ② 落变异体（按**目标类名**推入，不按变异体名） ---
+mutant_md5=c5582381beff80e2fde3deed0b3b3829
+mutant_differs_from_baseline=true
+--- ③ 清掉该用例的旧报告（本轮必须有本轮的） ---
+removed_stale_report_glob=RunDecisionEndToEndTest
+--- ④ 跑测试 ---
+maven_rc=1
+compilation_errors=0
+report_files=/home/cna/SimulatorMosire/simos-app/target/surefire-reports/io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt
+report_is_fresh=true
+report_line=Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.819 s <<< FAILURE! -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+tests=1 failures=0 errors=1
+expect_pattern_hits_report=2 expect_pattern_hits_maven_log=3
+--- 红点断言名（本题的红是哪几条） ---
+  red: [ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.819 s <<< FAILURE! -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+  red: [ERROR] io.mosire.simos.app.decision.RunDecisionEndToEndTest.aStaleRevisionConflictsAndTheRoundDoesNotRun -- Time elapsed: 0.752 s <<< ERROR!
+  red: [ERROR]   RunDecisionEndToEndTest.aStaleRevisionConflictsAndTheRoundDoesNotRun:315->errorBody:418 » JsonParse Unrecognized token '命令提交失败': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')
+--- ⑤ 逐字节还原 ---
+restored_md5=0b1b6281b80c242b0f6bfe659a8b0afc
+restored_identical=true
+round_seconds=5
+VERDICT_t11c-m6=KILLED

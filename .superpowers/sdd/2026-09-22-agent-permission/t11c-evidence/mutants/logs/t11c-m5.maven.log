@@ -1,0 +1,627 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/8]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 19 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 98 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 56 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.decision.RunDecisionEndToEndTest
+22:29:51.781 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 55 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.SetViewScope, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 55 个，未外发 0 个 []
+22:29:51.871 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46399/（静态 /webui，同源，无 CORS 头）
+22:29:51.872 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-16271612782971391700 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=55 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46039 guiPort=46399 approvalPort=46177
+22:29:51.953 INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-11-25, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=Java SDK MCP Client, title=null, version=0.15.0, description=null, icons=null, websiteUrl=null]
+22:29:51.979 INFO  io.modelcontextprotocol.client.LifecycleInitializer - Server response with Protocol: 2025-11-25, Capabilities: ServerCapabilities[completions=null, experimental=null, logging=LoggingCapabilities[], prompts=null, resources=null, tools=ToolCapabilities[listChanged=true]], Info: Implementation[name=simos-shell, title=null, version=0.1.0-SNAPSHOT, description=null, icons=null, websiteUrl=null] and Instructions null
+22:29:52.020 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46177）
+22:29:52.021 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.769 s <<< FAILURE! -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+[ERROR] io.mosire.simos.app.decision.RunDecisionEndToEndTest.theTriggerToolIsOnlyInTheGmBucket -- Time elapsed: 0.698 s <<< FAILURE!
+java.lang.AssertionError: 
+[GM 面（= 运行时 MCP 口）含触发工具] 
+Expecting ArrayList:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "simos.command.submit",
+    "simos.advance",
+    "simos.fork",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision",
+    "map.SetTerrain",
+    "map.SetEdge",
+    "map.CreateRegion",
+    "map.UpdateRegion",
+    "map.DeleteRegion",
+    "map.RandomizeRegion",
+    "map.RegisterPathwayGroup",
+    "unit.RenameUnit",
+    "unit.CreateUnit",
+    "unit.ReparentUnit",
+    "unit.SetStrength",
+    "unit.PlaceAt",
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.DisbandUnit",
+    "unit.SetStatus",
+    "unit.AttachUnit",
+    "unit.DetachUnit",
+    "unit.ReparentSubtree",
+    "unit.SetFormationOffset",
+    "unit.SplitFormation",
+    "unit.MergeFormation",
+    "unit.PlanSparseRoute",
+    "unit.SetRejoinTarget",
+    "unit.CreateCommandChain",
+    "unit.UpdateCommandChain",
+    "unit.ApplyCasualties",
+    "sd.CreateNation",
+    "sd.CreateArmy",
+    "sd.CreateDecisionMaker",
+    "sd.PutInfo",
+    "sd.CreateCombat",
+    "sd.AddCombatStage",
+    "sd.SetStageOutcomeTable",
+    "sd.CommitCombatOutcome",
+    "sd.RecordCasualties",
+    "sd.RegisterEffect",
+    "sd.CancelEffect",
+    "sd.SetDecisionMakerProvider"]
+to contain:
+  ["sd.RunDecision"]
+but could not find the following element(s):
+  ["sd.RunDecision"]
+
+	at io.mosire.simos.app.decision.RunDecisionEndToEndTest.theTriggerToolIsOnlyInTheGmBucket(RunDecisionEndToEndTest.java:355)
+
+[INFO] Running io.mosire.simos.app.tools.SimosToolsTest
+22:29:52.092 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 55 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.SetViewScope, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 55 个，未外发 0 个 []
+22:29:52.099 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45791/（静态 /webui，同源，无 CORS 头）
+22:29:52.099 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-3691469332004919750 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=55 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45041 guiPort=45791 approvalPort=45005
+22:29:52.106 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45005）
+22:29:52.106 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.077 s <<< FAILURE! -- in io.mosire.simos.app.tools.SimosToolsTest
+[ERROR] io.mosire.simos.app.tools.SimosToolsTest.everyNarrowWriteToolClassIsWiredIntoTheGmBucket -- Time elapsed: 0.077 s <<< FAILURE!
+java.lang.AssertionError: 
+[GM 组 ∖ 读名单 ∖ 通用写必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）] 
+Expecting actual:
+  ["sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision",
+    "map.SetTerrain",
+    "map.SetEdge",
+    "map.CreateRegion",
+    "map.UpdateRegion",
+    "map.DeleteRegion",
+    "map.RandomizeRegion",
+    "map.RegisterPathwayGroup",
+    "unit.RenameUnit",
+    "unit.CreateUnit",
+    "unit.ReparentUnit",
+    "unit.SetStrength",
+    "unit.PlaceAt",
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.DisbandUnit",
+    "unit.SetStatus",
+    "unit.AttachUnit",
+    "unit.DetachUnit",
+    "unit.ReparentSubtree",
+    "unit.SetFormationOffset",
+    "unit.SplitFormation",
+    "unit.MergeFormation",
+    "unit.PlanSparseRoute",
+    "unit.SetRejoinTarget",
+    "unit.CreateCommandChain",
+    "unit.UpdateCommandChain",
+    "unit.ApplyCasualties",
+    "sd.CreateNation",
+    "sd.CreateArmy",
+    "sd.CreateDecisionMaker",
+    "sd.PutInfo",
+    "sd.CreateCombat",
+    "sd.AddCombatStage",
+    "sd.SetStageOutcomeTable",
+    "sd.CommitCombatOutcome",
+    "sd.RecordCasualties",
+    "sd.RegisterEffect",
+    "sd.CancelEffect",
+    "sd.SetDecisionMakerProvider"]
+to contain exactly in any order:
+  ["sd.CancelEffect",
+    "sd.CommitCombatOutcome",
+    "sd.CreateCombat",
+    "sd.SubmitVerdict",
+    "unit.ReparentUnit",
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.SetFormationOffset",
+    "unit.UpdateCommandChain",
+    "sd.StartDecision",
+    "unit.MergeFormation",
+    "sd.IssueDirective",
+    "sd.SetDecisionMakerProvider",
+    "map.RandomizeRegion",
+    "map.RegisterPathwayGroup",
+    "sd.RecordCasualties",
+    "unit.SplitFormation",
+    "sd.CreateArmy",
+    "unit.SetStatus",
+    "unit.AttachUnit",
+    "sd.SetViewScope",
+    "sd.RegisterEffect",
+    "sd.RunDecision",
+    "sd.AddCombatStage",
+    "sd.CreateNation",
+    "unit.ApplyCasualties",
+    "unit.CreateUnit",
+    "unit.PlanSparseRoute",
+    "sd.SetStageOutcomeTable",
+    "unit.DetachUnit",
+    "unit.SetRejoinTarget",
+    "map.CreateRegion",
+    "map.SetTerrain",
+    "unit.SetStrength",
+    "map.DeleteRegion",
+    "map.UpdateRegion",
+    "map.SetEdge",
+    "unit.PlaceAt",
+    "sd.CreateDecisionMaker",
+    "unit.DisbandUnit",
+    "unit.CreateCommandChain",
+    "unit.RenameUnit",
+    "unit.ReparentSubtree",
+    "sd.PutInfo"]
+but could not find the following elements:
+  ["sd.RunDecision"]
+
+	at io.mosire.simos.app.tools.SimosToolsTest.everyNarrowWriteToolClassIsWiredIntoTheGmBucket(SimosToolsTest.java:711)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   RunDecisionEndToEndTest.theTriggerToolIsOnlyInTheGmBucket:355 [GM 面（= 运行时 MCP 口）含触发工具] 
+Expecting ArrayList:
+  ["simos.command.catalog",
+    "simos.state.resolve",
+    "simos.state.facets",
+    "simos.timeline.branches",
+    "simos.map.overview",
+    "simos.map.hex",
+    "simos.unit.list",
+    "simos.unit.get",
+    "simos.social.population",
+    "simos.command.submit",
+    "simos.advance",
+    "simos.fork",
+    "sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision",
+    "map.SetTerrain",
+    "map.SetEdge",
+    "map.CreateRegion",
+    "map.UpdateRegion",
+    "map.DeleteRegion",
+    "map.RandomizeRegion",
+    "map.RegisterPathwayGroup",
+    "unit.RenameUnit",
+    "unit.CreateUnit",
+    "unit.ReparentUnit",
+    "unit.SetStrength",
+    "unit.PlaceAt",
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.DisbandUnit",
+    "unit.SetStatus",
+    "unit.AttachUnit",
+    "unit.DetachUnit",
+    "unit.ReparentSubtree",
+    "unit.SetFormationOffset",
+    "unit.SplitFormation",
+    "unit.MergeFormation",
+    "unit.PlanSparseRoute",
+    "unit.SetRejoinTarget",
+    "unit.CreateCommandChain",
+    "unit.UpdateCommandChain",
+    "unit.ApplyCasualties",
+    "sd.CreateNation",
+    "sd.CreateArmy",
+    "sd.CreateDecisionMaker",
+    "sd.PutInfo",
+    "sd.CreateCombat",
+    "sd.AddCombatStage",
+    "sd.SetStageOutcomeTable",
+    "sd.CommitCombatOutcome",
+    "sd.RecordCasualties",
+    "sd.RegisterEffect",
+    "sd.CancelEffect",
+    "sd.SetDecisionMakerProvider"]
+to contain:
+  ["sd.RunDecision"]
+but could not find the following element(s):
+  ["sd.RunDecision"]
+
+[ERROR]   SimosToolsTest.everyNarrowWriteToolClassIsWiredIntoTheGmBucket:711 [GM 组 ∖ 读名单 ∖ 通用写必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）] 
+Expecting actual:
+  ["sd.IssueDirective",
+    "sd.SubmitVerdict",
+    "sd.SetViewScope",
+    "sd.StartDecision",
+    "map.SetTerrain",
+    "map.SetEdge",
+    "map.CreateRegion",
+    "map.UpdateRegion",
+    "map.DeleteRegion",
+    "map.RandomizeRegion",
+    "map.RegisterPathwayGroup",
+    "unit.RenameUnit",
+    "unit.CreateUnit",
+    "unit.ReparentUnit",
+    "unit.SetStrength",
+    "unit.PlaceAt",
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.DisbandUnit",
+    "unit.SetStatus",
+    "unit.AttachUnit",
+    "unit.DetachUnit",
+    "unit.ReparentSubtree",
+    "unit.SetFormationOffset",
+    "unit.SplitFormation",
+    "unit.MergeFormation",
+    "unit.PlanSparseRoute",
+    "unit.SetRejoinTarget",
+    "unit.CreateCommandChain",
+    "unit.UpdateCommandChain",
+    "unit.ApplyCasualties",
+    "sd.CreateNation",
+    "sd.CreateArmy",
+    "sd.CreateDecisionMaker",
+    "sd.PutInfo",
+    "sd.CreateCombat",
+    "sd.AddCombatStage",
+    "sd.SetStageOutcomeTable",
+    "sd.CommitCombatOutcome",
+    "sd.RecordCasualties",
+    "sd.RegisterEffect",
+    "sd.CancelEffect",
+    "sd.SetDecisionMakerProvider"]
+to contain exactly in any order:
+  ["sd.CancelEffect",
+    "sd.CommitCombatOutcome",
+    "sd.CreateCombat",
+    "sd.SubmitVerdict",
+    "unit.ReparentUnit",
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.SetFormationOffset",
+    "unit.UpdateCommandChain",
+    "sd.StartDecision",
+    "unit.MergeFormation",
+    "sd.IssueDirective",
+    "sd.SetDecisionMakerProvider",
+    "map.RandomizeRegion",
+    "map.RegisterPathwayGroup",
+    "sd.RecordCasualties",
+    "unit.SplitFormation",
+    "sd.CreateArmy",
+    "unit.SetStatus",
+    "unit.AttachUnit",
+    "sd.SetViewScope",
+    "sd.RegisterEffect",
+    "sd.RunDecision",
+    "sd.AddCombatStage",
+    "sd.CreateNation",
+    "unit.ApplyCasualties",
+    "unit.CreateUnit",
+    "unit.PlanSparseRoute",
+    "sd.SetStageOutcomeTable",
+    "unit.DetachUnit",
+    "unit.SetRejoinTarget",
+    "map.CreateRegion",
+    "map.SetTerrain",
+    "unit.SetStrength",
+    "map.DeleteRegion",
+    "map.UpdateRegion",
+    "map.SetEdge",
+    "unit.PlaceAt",
+    "sd.CreateDecisionMaker",
+    "unit.DisbandUnit",
+    "unit.CreateCommandChain",
+    "unit.RenameUnit",
+    "unit.ReparentSubtree",
+    "sd.PutInfo"]
+but could not find the following elements:
+  ["sd.RunDecision"]
+
+[INFO] 
+[ERROR] Tests run: 2, Failures: 2, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.450 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.209 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.024 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.020 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.024 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.053 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.023 s]
+[INFO] SimosApp ........................................... FAILURE [  3.512 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.390 s
+[INFO] Finished at: 2026-09-22T22:29:52+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

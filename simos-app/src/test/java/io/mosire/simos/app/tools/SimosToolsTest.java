@@ -162,6 +162,7 @@ class SimosToolsTest {
           "sd.SubmitVerdict",
           "sd.SetViewScope",
           "sd.StartDecision",
+          "sd.RunDecision",
           "sd.CreateNation",
           "sd.CreateArmy",
           "sd.CreateDecisionMaker",
@@ -242,6 +243,7 @@ class SimosToolsTest {
               "sd.SubmitVerdict",
               "sd.SetViewScope",
               "sd.StartDecision",
+              "sd.RunDecision",
               "sd.CreateNation",
               "sd.CreateArmy",
               "sd.CreateDecisionMaker",
@@ -386,6 +388,7 @@ class SimosToolsTest {
           "sd.SubmitVerdict",
           "sd.SetViewScope",
           "sd.StartDecision",
+          "sd.RunDecision",
           "sd.SetDecisionMakerProvider");
 
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -569,7 +572,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 43 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 44 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
    * Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -580,8 +583,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 43 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(43);
+        .as("扫描必须恰为 44 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(44);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -605,17 +608,22 @@ class SimosToolsTest {
             "★ J1（spec §2.1）：GM 桶 = 运行时 MCP 口（用户裁定：MCP 与 GM 同权限级，想改什么改什么）"
                 + " ⇒ 通用写**在**其中，且 sd/map/unit 三族窄写逐条都在")
         .contains("simos.command.submit", "simos.advance", "simos.fork")
-        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
+        .contains(
+            "sd.IssueDirective",
+            "sd.SubmitVerdict",
+            "sd.SetViewScope",
+            "sd.StartDecision",
+            "sd.RunDecision")
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(55);
+        .hasSize(56);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
                 + "只留两条决策行为（sd.IssueDirective / sd.SubmitVerdict）")
         .doesNotContain("simos.command.submit", "simos.advance", "simos.fork")
-        .doesNotContain("sd.SetViewScope", "sd.StartDecision")
+        .doesNotContain("sd.SetViewScope", "sd.StartDecision", "sd.RunDecision")
         .contains("sd.IssueDirective", "sd.SubmitVerdict")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
@@ -693,7 +701,7 @@ class SimosToolsTest {
   @Test
   void everyNarrowWriteToolClassIsWiredIntoTheGmBucket() throws Exception {
     Set<String> implemented = narrowWriteToolNamesFromSources();
-    assertThat(implemented).as("扫描必须恰为 43 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(43);
+    assertThat(implemented).as("扫描必须恰为 44 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(44);
 
     // ★ GM 组还含 3 条通用写（J1 起）：窄写扫描器按 tools/write 目录扫源码，扫不到它们 ⇒ 不扣掉就是"名单对不上"的假红。
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
