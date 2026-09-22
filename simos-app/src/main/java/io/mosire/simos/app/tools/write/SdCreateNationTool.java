@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * {@code sd.CreateNation} 窄工具（M3，spec §八.3）：**建国家**的唯一窄写面。
  *
- * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
+ * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ **{@code homeRegionId} 指向的区域必须带 {@code nation:} 前缀的
  * tag**（R13）——这是建国家的前置，缺它即被域层拒绝，理由原文到达调用方（工具层不重复校验：那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰）。

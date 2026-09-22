@@ -66,33 +66,48 @@ public final class ToolSupport {
   /** 地图/区域/单格资源所属的命名空间（{@code ToolSupport} 的路径助手与范围函数共用这一处定义）。 */
   public static final String MAP_NAMESPACE = "map";
 
+  /** 人口资源所属的命名空间（与 {@link #SOCIAL_READ} 的声明同源）。 */
+  public static final String SOCIAL_NAMESPACE = "social";
+
+  /** 单位资源所属的命名空间（与 {@link #UNIT_READ} 的声明同源）。 */
+  public static final String UNIT_NAMESPACE = "unit";
+
+  /**
+   * sd 域资源所属的命名空间（{@code sd.<kind>/<id>}）。
+   *
+   * <p>★ 今天**没有工具在 {@code ResourceManifest} 里声明它**（sd 窄写走的是 {@link #ALL_WRITE} 的 map/unit/social）——
+   * 它存在的理由是**权限表态**：GM 组的可达面按四个命名空间逐条表态（{@link io.mosire.simos.app.Shell#gmCaller()}），
+   * 第五个命名空间出现时那条表态会与这里对不上。
+   */
+  public static final String SD_NAMESPACE = "sd";
+
   /** 读工具的资源声明（spec §7.1：map+soc+unit READ_ONLY）。 */
   public static final ResourceManifest ALL_READ =
       ResourceManifest.of(
           Map.of(
-              "map", ResourcePolicy.READ_ONLY,
-              "social", ResourcePolicy.READ_ONLY,
-              "unit", ResourcePolicy.READ_ONLY));
+              MAP_NAMESPACE, ResourcePolicy.READ_ONLY,
+              SOCIAL_NAMESPACE, ResourcePolicy.READ_ONLY,
+              UNIT_NAMESPACE, ResourcePolicy.READ_ONLY));
 
   /** 单命名空间读声明（map.overview / map.hex）。 */
   public static final ResourceManifest MAP_READ =
-      ResourceManifest.of("map", ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(MAP_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   /** 单命名空间读声明（unit.list / unit.get）。 */
   public static final ResourceManifest UNIT_READ =
-      ResourceManifest.of("unit", ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(UNIT_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   /** 单命名空间读声明（social.population）。 */
   public static final ResourceManifest SOCIAL_READ =
-      ResourceManifest.of("social", ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(SOCIAL_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   /** 写工具的资源声明（spec §7.1：三命名空间 UNRESTRICTED）。 */
   public static final ResourceManifest ALL_WRITE =
       ResourceManifest.of(
           Map.of(
-              "map", ResourcePolicy.UNRESTRICTED,
-              "social", ResourcePolicy.UNRESTRICTED,
-              "unit", ResourcePolicy.UNRESTRICTED));
+              MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   // ── 资源路径语法（spec §3.3；AgentLib 对领域实体一无所知，故此处是唯一定义点）──────────────
   //
@@ -112,26 +127,26 @@ public final class ToolSupport {
 
   /** 单位资源：{@code unit:<unitId>}（无子路径——单位本身就是资源）。 */
   public static ResourceId resourceUnit(String unitId) {
-    return ResourceId.of("unit", unitId);
+    return ResourceId.of(UNIT_NAMESPACE, unitId);
   }
 
   /** sd 资源：{@code sd:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
   public static ResourceId resourceSd(String kind, String id) {
-    return ResourceId.of("sd", kind + "/" + id);
+    return ResourceId.of(SD_NAMESPACE, kind + "/" + id);
   }
 
   // ── 资源断言（AgentTool 契约：真正读写前调 require，工具只调不判）──────────────────────
 
   public static void requireMapRead(ToolContext context, String mapId) {
-    context.resources().require(Operation.READ, ResourceId.of("map", mapId));
+    context.resources().require(Operation.READ, ResourceId.of(MAP_NAMESPACE, mapId));
   }
 
   public static void requireUnitRead(ToolContext context) {
-    context.resources().require(Operation.READ, ResourceId.of("unit", "*"));
+    context.resources().require(Operation.READ, ResourceId.of(UNIT_NAMESPACE, "*"));
   }
 
   public static void requireSocialRead(ToolContext context) {
-    context.resources().require(Operation.READ, ResourceId.of("social", "*"));
+    context.resources().require(Operation.READ, ResourceId.of(SOCIAL_NAMESPACE, "*"));
   }
 
   public static void requireAllRead(ToolContext context, String mapId) {
@@ -141,9 +156,9 @@ public final class ToolSupport {
   }
 
   public static void requireAllWrite(ToolContext context, String mapId) {
-    context.resources().require(Operation.WRITE, ResourceId.of("map", mapId));
-    context.resources().require(Operation.WRITE, ResourceId.of("unit", "*"));
-    context.resources().require(Operation.WRITE, ResourceId.of("social", "*"));
+    context.resources().require(Operation.WRITE, ResourceId.of(MAP_NAMESPACE, mapId));
+    context.resources().require(Operation.WRITE, ResourceId.of(UNIT_NAMESPACE, "*"));
+    context.resources().require(Operation.WRITE, ResourceId.of(SOCIAL_NAMESPACE, "*"));
   }
 
   // ── 参数解析（模型给的 JSON 参数；坏输入折 ToolResult.error，不抛给管线）────────────────

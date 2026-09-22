@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * {@code map.SetEdge} 窄工具（M1，spec §八.3）：**GM 改连通性**的唯一窄写面。
  *
- * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
+ * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ **{@code mode} 没有默认值**（域层 {@code EdgeOperations} 只收 {@code replace}/{@code merge}）：缺字段 ⇒
  * {@code Rejected}，不兜一个"看着合理"的模式。{@code kind} 必须在状态的通路组词表内（fail-closed）。

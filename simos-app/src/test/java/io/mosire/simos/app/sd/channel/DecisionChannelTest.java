@@ -85,7 +85,7 @@ class DecisionChannelTest {
   @Test
   void nonLandingPointCommandIsRejected() {
     CoreSimos core = start();
-    DecisionChannel channel = new McpDecisionChannel(core, () -> Set.of(DM1));
+    DecisionChannel channel = new CliDecisionChannel(core, () -> Set.of(DM1));
 
     assertThatThrownBy(() -> channel.submit(DM1, request("simos.command.submit", "{}")))
         .isInstanceOf(IllegalArgumentException.class)

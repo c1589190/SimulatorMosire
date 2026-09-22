@@ -13,12 +13,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ **R9（spec §11 末行）的生命周期验收（M5 T11；T4 扩到四口）**：{@link Shell#close()} 之后**四个端口**（GUI / MCP / 决策人
- * MCP / 审批）全部释放， 且**无停驻的非守护线程**。
+ * ★★ **R9（spec §11 末行）的生命周期验收（M5 T11；T4 曾扩到四口，**2026-09-22 随决策人 MCP 口撤销回到三口**）**： {@link
+ * Shell#close()} 之后**三个端口**（GUI / MCP / 审批）全部释放， 且**无停驻的非守护线程**。
  *
  * <p>★ **判别力来源**：端口释放用"再绑一次"证——{@code close()} 漏掉任何一次 {@code stop}/{@code closeGracefully}，
  * 对应端口仍被监听，{@code ServerSocket.bind} 当场 {@code EADDRINUSE}（{@code SO_REUSEADDR} 不允两个监听者同占一个地址）。 这正是
- * 变异体 {@code m1}（去掉 {@code Shell.close()} 里的一次关闭）与 T4 的 {@code m3}（漏关第二个 MCP server）的咬点。
+ * 变异体 {@code m1}（去掉 {@code Shell.close()} 里的一次关闭）的咬点。
  *
  * <p>★ 线程检查取 {@code close()} 前后**非守护线程集合的差**（以 {@code threadId:name} 标识，避免同名线程相互遮蔽）——
  * 只要求"本壳新建的线程都收干净"，不误伤 JVM/JUnit 既有的常驻线程。
@@ -33,24 +33,21 @@ class ShellLifecycleTest {
   @TempDir Path tempDir;
 
   @Test
-  void closeReleasesAllFourPortsAndLeavesNoLingeringNonDaemonThreads() {
+  void closeReleasesAllThreePortsAndLeavesNoLingeringNonDaemonThreads() {
     Set<String> threadsBefore = nonDaemonThreads();
 
-    Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0));
+    Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
     int guiPort = shell.boundGuiPort();
     int mcpPort = shell.boundMcpPort();
-    int decisionPort = shell.boundDecisionAgentMcpPort();
     int approvalPort = shell.boundApprovalPort();
     assertThat(guiPort).as("GUI 端口已绑定").isPositive();
     assertThat(mcpPort).as("MCP 端口已绑定").isPositive();
-    assertThat(decisionPort).as("决策人 MCP 端口已绑定").isPositive();
     assertThat(approvalPort).as("审批端口已绑定").isPositive();
 
     shell.close();
 
     assertEventuallyRebindable("GUI", guiPort, shell);
     assertEventuallyRebindable("MCP", mcpPort, shell);
-    assertEventuallyRebindable("决策人 MCP", decisionPort, shell);
     assertEventuallyRebindable("审批", approvalPort, shell);
 
     Set<String> leaked = awaitDrainedNonDaemonThreads(threadsBefore, THREAD_DRAIN_WAIT);

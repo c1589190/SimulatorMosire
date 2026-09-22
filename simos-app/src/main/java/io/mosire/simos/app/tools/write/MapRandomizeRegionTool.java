@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * {@code map.RandomizeRegion} 窄工具（M1，spec §八.3）：**GM 随机化区域地形**的唯一窄写面。
  *
- * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
+ * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ **{@code seed} 没有默认值**：缺字段 ⇒ 域层 {@code requireLong} 当场拒。静默兜 0 会把"两次随机化不可复现"
  * 从一条被拒的载荷变成一次合法但不可解释的写。空 {@code hexes} 亦拒（域层文案含具体命令名，可判别）。

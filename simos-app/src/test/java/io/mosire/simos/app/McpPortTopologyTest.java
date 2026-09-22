@@ -1,43 +1,46 @@
 package io.mosire.simos.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.store.SqliteStore;
+import io.mosire.simos.sd.channel.DecisionChannel;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ **T4 端口拓扑验收（spec §二.2 / §七.2 的 C6~C9）**：现有 MCP 口 = {@code EXTERNAL ∪ GM}；新决策人口 = 仅 {@code
- * DECISION_AGENT}。用**真 MCP SDK 客户端**经真 socket 分别连两口，逐条核 {@code tools/list} 与"工具不存在"。
+ * ★★ **端口拓扑验收（spec §2.1/§四.3，2026-09-22 重写）**：**只有一个 MCP 口**，它就是 **GM 组**（读 + 通用写 + 全部窄写）； 决策人**不暴露
+ * MCP**（它的权限靠进程内现算的权限组表达，见 {@code DecisionCallerFactory}）。用**真 MCP SDK 客户端**经真 socket 核 {@code
+ * tools/list}，并逐条核"决策人口不再监听"与"渠道回到三条"。
  *
- * <p>★ **判别力来源**：两口的 expected 集合是**逐条冻结**的（不是"含某些"）——现有口丢掉 GM 窄工具、或决策人口错挂通用写，都在 {@code
- * containsExactlyInAnyOrderElementsOf} 上当场红。C9 的"工具不存在"用 SDK 的 {@link McpError}（协议层 {@code Unknown
- * tool: invalid_tool_name}）证，**不是**"存在但被业务拒"。
+ * <p>★ **判别力来源**：工具面的 expected 集合是**逐条冻结**的（不是"含某些"）——口上丢掉任何一条窄工具都在 {@code
+ * containsExactlyInAnyOrderElementsOf} 上当场红。
  *
- * <p>★ **权限边界 = 端口级、不是认证级**（spec §二.3）：本用例只证"两口工具面不同"，**不**证两个身份安全隔离——全仓无多用户认证， 谁连得上端口就有该口的工具面。
+ * <p>★ **口径变更**（取代 T4 的"两口拆分"）：旧设计拿**端口**当权限边界（{@code EXTERNAL_WITH_GM} 一口、{@code DECISION_AGENT}
+ * 一口），用户 2026-09-22 裁定「MCP 和 GM Agent 处于同一权限级」+「决策人没有暴露 MCP」⇒ 端口拓扑回到**一口一模式**， 决策人改由 {@code
+ * DecisionCallerFactory} 的权限组约束。
  *
- * <p>夹具最简：空 store 起壳即可（{@code Shell.start} 不要求创世），四端口全 0 由 OS 分配。
+ * <p>夹具最简：空 store 起壳即可（{@code Shell.start} 不要求创世），端口全 0 由 OS 分配。
  */
 class McpPortTopologyTest {
 
-  private static final String EXISTING_SERVER_NAME = "simos-shell";
-  private static final String DECISION_SERVER_NAME = "simos-shell-decision";
+  private static final String SERVER_NAME = "simos-shell";
+
+  /**
+   * T4 时代的决策人端口缺省（5717）。★ **这里有意写字面量**：那条配置项（{@code ShellConfig.decisionAgentMcpPort}）已随 T7
+   * 拔掉，故"那个口没人监听"这件事只能对着**历史缺省值**证 —— 它正是旧实现会绑的那个口。
+   */
+  private static final int T4_DECISION_PORT = 5717;
 
   private static final List<String> READ_TOOLS =
       List.of(
@@ -66,8 +69,8 @@ class McpPortTopologyTest {
           "map.RegisterPathwayGroup");
 
   /**
-   * M2 的 20 条 unit 窄写：**同一批同时进 GM 桶与决策人桶**（用户裁定 D-1；它们是窄工具、命令类型在工具里固定死， 与 N9「不给通用写」不冲突）。★ 名单与
-   * {@code SimosToolSource} 两处登记逐条同源。
+   * M2 的 20 条 unit 窄写：**只在 GM 组**（= 唯一的 MCP 口）。★ 旧 D-1 裁定曾让它们也挂决策人桶，**2026-09-22 已撤销**（用户：
+   * 「决策人不能直接改地图等数据」）。★ 名单与 {@code SimosToolSource.addGmWrites} 的登记逐条同源。
    */
   private static final List<String> UNIT_WRITES =
       List.of(
@@ -115,13 +118,6 @@ class McpPortTopologyTest {
           MAP_WRITES,
           UNIT_WRITES);
 
-  /**
-   * 决策人桶的窄写（M2 起 22 条）：`sd.IssueDirective`/`sd.SubmitVerdict` + 20 条 unit 窄写（用户裁定 D-1）；**无** {@code
-   * sd.SetViewScope}、**无**通用写、**无** map 窄写、**无 M3 的 12 条 sd 窄写**（决策人只出令 / 判决）。
-   */
-  private static final List<String> DECISION_AGENT_WRITES =
-      concat(List.of("sd.IssueDirective", "sd.SubmitVerdict"), UNIT_WRITES);
-
   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
 
   @TempDir Path tempDir;
@@ -130,7 +126,7 @@ class McpPortTopologyTest {
 
   @BeforeEach
   void startShell() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
   }
 
   @AfterEach
@@ -140,100 +136,54 @@ class McpPortTopologyTest {
     }
   }
 
-  /**
-   * C6：现有口同时含通用写与 GM 四十三条窄工具（D2="加"；T10 起 +sd.StartDecision，M1 起 +7 map，M2 起 +20 unit，M3 起 +12 sd）。
-   */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 9 + 通用写 3 + 全部窄写 43 = 55）。 */
   @Test
-  void existingPortExposesExternalUnionGmToolFace() {
+  void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
       McpSchema.InitializeResult init = client.initialize();
-      assertThat(init.serverInfo().name()).isEqualTo(EXISTING_SERVER_NAME);
+      assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("C6：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 43 GM 窄写 = 55）")
+          .as("J1：唯一口 = GM 组（9 读 + 3 通用写 + 43 窄写 = 55）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
     }
   }
 
-  /** C7：决策人口仅 DECISION_AGENT 桶——无通用写、无 {@code sd.SetViewScope}、**无 7 条 map 窄写**。 */
+  /** ★ J2：**决策人不再暴露 MCP** —— T4 时代的决策人端口（5717）在本壳起来时**无人监听**。 */
   @Test
-  void decisionPortExposesOnlyDecisionAgentToolFace() {
-    try (McpSyncClient client = newClient(shell.boundDecisionAgentMcpPort())) {
-      McpSchema.InitializeResult init = client.initialize();
-      assertThat(init.serverInfo().name())
-          .as("决策人口自报名与现有口不同（spec §六.4）")
-          .isEqualTo(DECISION_SERVER_NAME);
-
-      List<String> names = toolNames(client);
-      assertThat(names)
-          .as(
-              "C7：决策人口 = 9 读 + 22 窄写（sd.IssueDirective/sd.SubmitVerdict + 20 条 unit，用户裁定 D-1；无 SetViewScope、无通用写、无 map 窄写、无 M3 的 12 条 sd 窄写）")
-          .containsExactlyInAnyOrderElementsOf(concat(READ_TOOLS, DECISION_AGENT_WRITES));
-      // ★ 下面三条反向断言的判别力**只在与上面那份手抄常量脱钩时才显现**：
-      //   若"某条工具进了决策桶"而 DECISION_AGENT_WRITES 没跟着同步，上面那条精确匹配先红（这三条此时是冗余的）；
-      //   但若**两侧同改**——工具进桶 + 常量同步，这正是真实重构最可能的形态——精确匹配会绿，
-      //   只剩这三条守得住桶边界（M2 的 m4 变异体就是按后者造的）。
-      assertThat(names)
-          .as("C7 反向①：通用写（submit/advance/fork）不在决策人口——N9 的原文")
-          .doesNotContainAnyElementsOf(GENERIC_WRITES)
-          .as("C7 反向②：sd.SetViewScope 不在决策人口（配权工具归 GM）")
-          .doesNotContain("sd.SetViewScope")
-          .as("C7 反向③：7 条 map 窄写不在决策人口（M1 的桶边界）——★ M2 的 unit 20 条**有意**两桶都有，故不在此列")
-          .doesNotContainAnyElementsOf(MAP_WRITES);
-    }
+  void theDecisionAgentPortIsNotBoundAnyMore() {
+    assertThat(shell.boundMcpPort()).as("唯一的 MCP 口已绑定").isPositive();
+    assertThat(canBind(T4_DECISION_PORT))
+        .as(
+            "J2：决策人端口（%d，T4 的缺省值）必须**可绑定** —— 旧实现会在这里起第二个 AgentToMcpServer。"
+                + "若红了先分清两种情形：① 本壳又把它绑上了（T7 回退）；② 机器上有别的进程占着这个口（环境干扰，看 lsof）",
+            T4_DECISION_PORT)
+        .isTrue();
   }
 
-  /** C8：两个 MCP server 同时监听、端口不同；{@code close()} 后两者都不可连。 */
+  /** ★ J2：决策提交渠道**回到三条**（GUI / CLI / Http）——{@code McpDecisionChannel} 已随 T7 删除。 */
   @Test
-  void bothServersListenAndCloseReleasesBothPorts() {
-    int existingPort = shell.boundMcpPort();
-    int decisionPort = shell.boundDecisionAgentMcpPort();
-    assertThat(existingPort).as("现有口已绑定").isPositive();
-    assertThat(decisionPort).as("决策人口已绑定").isPositive();
-    assertThat(decisionPort).as("C8：两口必须不同").isNotEqualTo(existingPort);
+  void decisionChannelsAreBackToTheGuiCliAndHttpThree() {
+    assertThat(shell.decisionChannels().stream().map(DecisionChannel::channelId))
+        .as("渠道清单：mcp 渠道不得再出现（决策人不经 MCP）")
+        .containsExactlyInAnyOrder("gui", "cli", "http");
+  }
 
-    try (McpSyncClient existing = newClient(existingPort);
-        McpSyncClient decision = newClient(decisionPort)) {
-      existing.initialize();
-      decision.initialize();
-      assertThat(toolNames(existing)).contains("sd.SetViewScope");
-      assertThat(toolNames(decision)).doesNotContain("sd.SetViewScope");
+  /** C8 的替代形态：{@code close()} 后唯一的 MCP 口可重新绑定（漏关即 {@code EADDRINUSE}）。 */
+  @Test
+  void closeReleasesTheSingleMcpPort() {
+    int mcpPort = shell.boundMcpPort();
+    assertThat(mcpPort).as("唯一的 MCP 口已绑定").isPositive();
+
+    try (McpSyncClient client = newClient(mcpPort)) {
+      client.initialize();
+      assertThat(toolNames(client)).contains("sd.SetViewScope");
     }
 
     shell.close();
 
-    assertEventuallyRebindable("现有口", existingPort);
-    assertEventuallyRebindable("决策人口", decisionPort);
-  }
-
-  /** C9：端口是唯一边界——决策人口调 {@code simos.command.submit} ⇒ 工具不存在（协议层 Unknown tool），且不留 revision。 */
-  @Test
-  void decisionPortHasNoGenericWriteSoSubmitIsUnknownTool() throws Exception {
-    long revisionsBefore = revisionRowCount();
-
-    try (McpSyncClient decision = newClient(shell.boundDecisionAgentMcpPort())) {
-      decision.initialize();
-      assertThatThrownBy(
-              () ->
-                  decision.callTool(
-                      new McpSchema.CallToolRequest(
-                          "simos.command.submit",
-                          Map.of(
-                              "type",
-                              "unit.RenameUnit",
-                              "payloadJson",
-                              "{\"id\":\"u-1\",\"name\":\"x\"}",
-                              "branch",
-                              "main",
-                              "expectedRevision",
-                              1L))))
-          .as("C9：决策人口没有通用写 ⇒ 协议层工具不存在（不是『存在但被拒』）")
-          .isInstanceOf(McpError.class)
-          .hasMessageContaining("Unknown tool");
-    }
-
-    assertThat(revisionRowCount()).as("工具不存在 ⇒ 不可能留下 revision").isEqualTo(revisionsBefore);
+    assertEventuallyRebindable("唯一的 MCP 口", mcpPort);
   }
 
   // ────────────────────────────── 助手 ──────────────────────────────
@@ -257,20 +207,7 @@ class McpPortTopologyTest {
     return java.util.Arrays.stream(groups).flatMap(List::stream).toList();
   }
 
-  /** 独立 store 读 {@code revisions} 行数（C9 的"不留 revision"按行断言）。 */
-  private long revisionRowCount() {
-    try (SqliteStore store = SqliteStore.open(tempDir.resolve(CoreSimos.DB_FILE_NAME))) {
-      return store.inTransaction(
-          connection -> {
-            try (var statement = connection.createStatement();
-                var rows = statement.executeQuery("SELECT COUNT(*) FROM revisions")) {
-              return rows.next() ? rows.getLong(1) : 0L;
-            }
-          });
-    }
-  }
-
-  /** 轮询到端口可重新绑定（{@code close()} 漏关第二个 server 即在此红）。 */
+  /** 轮询到端口可重新绑定（{@code close()} 漏关 MCP server 即在此红）。 */
   private static void assertEventuallyRebindable(String label, int port) {
     long deadline = System.nanoTime() + PORT_RELEASE_WAIT.toNanos();
     boolean bound = false;

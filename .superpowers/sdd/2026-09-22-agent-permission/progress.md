@@ -67,16 +67,35 @@
 - `ScopeFenceTest` 里 `anEmptyScopeMapIsNotADenial` / `anExplicitNoneDeniesAndTripsThePreGate` 断言的是
   **AgentLib 自己的语义**（钉住依赖行为），**不是**本产物的护栏、没有针对性变异体。
 
+## 一之四 ★ T5-T8 带回的两条**实测发现**（控制器裁定）
+
+**发现 1：决策人今天根本出不了令 —— 写工具的粗断言撞细围栏。**
+实现者探针实测：`sd.IssueDirective` 走通审批后**死在资源层**，拒因原文
+`WRITE map:Map1 不在调用者的可达面内: 调用者可达=Map1/region/701`。
+根因：`AbstractNarrowWriteTool` 的 `requireAllWrite` 要 `map:<mapId>`（**粗**），而国家范围是**区域级前缀**（**细**）
+⇒ 粗断言撞细围栏 = **整调被拒**（spec §5.2 第 2 条）。
+⇒ **裁定：T10 范围扩大** —— 不只改读工具，**写工具的断言也必须成对改细**。
+这是 **T11B（决策人运行流）的硬前置**：不修则决策人连出令都出不了。
+
+**发现 2：`ResourceDeniedException` 被工具自己吞掉、拒因被降级。**
+`AbstractNarrowWriteTool.execute` 的 `catch (RuntimeException)` 把 `require` 抛的拒因折成 `TOOL_ERROR`
+⇒ `ToolCallAuthorizer` 边界上的 `catch (ResourceDeniedException) → RESOURCE_DENIED` **永远收不到**
+⇒ 模型看到的是"命令提交失败"而不是"换个资源就行"——AgentLib 特意分的两个码的意图**丢失**。
+⇒ **裁定：并入 T10 修**（在 `catch (RuntimeException)` **之前**加
+`catch (ResourceDeniedException e) { throw e; }`）。两条都会改动写工具族 ⇒ 按裁定 42 **连带重跑**受影响变异轮，同轮做完省一轮。
+
+★ **如实记**（不是缺陷）：实现者自陈 **T7 的 TDD 红轮没在实现前采到**（测试改动与实现同轮落地），
+替代证据是变异轮 m5/m7 在**最终字节**上证明那两条守卫会红——与 T5/T6/T8 的"先红后绿"**不同强度**，别当同等证据用。
+★ 另一条**接缝**：决策人 caller 在生产路径上**还没有调用者**（T11B 才装配），且 `Shell` 已不再持有
+`DECISION_AGENT` 注册表 ⇒ T11B 需要时用 `shell.toolsFor(Role.DECISION_AGENT)` 或自建注册表。
+
 ## 二 任务状态
 
 | 任务 | 状态 | 备注 |
 |---|---|---|
 | **T1** unit `visionRadius` | ✅ **已完成** | 门禁 **1478**（基线 1449，unit +28 / app +1）；**11 变异体全 KILLED**（`maven_rc=1`×11、SURVIVED 0、`restored_identical=True`×11）；证据 `t1-evidence/`（`verify-final.log` md5 `cb509d96…` 与报告自报逐字相同） |
 | **T2+T3+T4** 路径语法 + 两个范围函数 | ✅ **已完成** | 打包一派（三者紧耦合）；门禁 **1512**（+34 恰为 5 个新用例类）；**9 变异体全 KILLED**、0 存活、0 VOID；证据 `t234-evidence/`。裁定见 §一之三 |
-| T5 GM 组 | ⏸ | |
-| T6 决策人 caller | ⏸ | 含 J9 两调用者判别用例 |
-| T7 撤 5717 + `McpDecisionChannel` | ⏸ | |
-| T8 决策人工具面收窄（撤 unit 21 条写） | ⏸ | 撤销 M2 的 D-1 |
+| **T5~T8** 权限组落地（GM 组 + 决策人 caller + 撤 5717 + 收窄工具面） | ✅ **已完成** | 门禁 **1521**（+9）；**8 变异体全 KILLED**；证据 `t5t8-evidence/`。★ **带回两条实测发现**，裁定见 §一之四 |
 | T9 sd `accessLimit` 取代 `viewScope` | ⏸ | **最大的一块**：影响面实测 **main 25 + test 24 文件、224 处引用** ⇒ 拆 9a/9b/9c 三步派单（见 plan） |
 | T10 读工具按 scope 过滤 | ⏸ | 含改 `unit`/`social` 的字面量 `"*"` 断言 |
 | T11 邻国 / hex 归属国家 | ⏸ | |

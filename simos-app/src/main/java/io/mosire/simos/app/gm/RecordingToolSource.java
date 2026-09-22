@@ -14,8 +14,9 @@ import java.util.Objects;
 /**
  * 工具源装饰器（T8）：把委托源的每个工具**执行**记进 {@link GmToolUsage}，其余语义逐字转交。
  *
- * <p>★ **只包一个口**：{@code Shell} 只用它包现有 MCP 口（{@code EXTERNAL_WITH_GM}）的源 ⇒ 记录的就是"GM MCP 的工具使用"， 决策人
- * MCP 口（{@code DECISION_AGENT}）**不包**、不混入。
+ * <p>★ **只包一个源**：{@code Shell} 只把它套在 GM 组（{@link
+ * io.mosire.simos.app.tools.SimosToolSource.Role#GM}，= 运行时 MCP 口）的源上 ⇒ 记录的就是"GM MCP 的工具使用"。决策人**不经
+ * MCP**（spec §四.3：决策人没有暴露 MCP），故不存在"另一个口混入"的问题。
  *
  * <p>★ **只碰 {@code execute}**：{@code name}/{@code description}/{@code jsonSchema}/{@code
  * spec}/{@code gate}/ {@code resources}/{@code ledgerArgs} 全部原样转交——工具面（{@code

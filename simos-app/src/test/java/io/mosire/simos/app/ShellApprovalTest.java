@@ -114,7 +114,7 @@ class ShellApprovalTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -126,8 +126,7 @@ class ShellApprovalTest {
                 base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
-                base.bindAddress(),
-                base.decisionAgentMcpPort()));
+                base.bindAddress()));
   }
 
   @AfterEach

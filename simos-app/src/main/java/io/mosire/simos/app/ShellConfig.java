@@ -27,9 +27,6 @@ import java.util.Objects;
  *     0.0.0.0} 供反代场景（此前两个面硬编码回环、无法配）。★ **审批端点不在此列**——AgentLib 的 {@code ApprovalHttpEndpoint}
  *     把回环写成了编译期常量（其类注写明"不提供改绑地址的入口"），故审批端口恒回环；对外面是 GUI 的 {@code /api/approvals} 透传代理，见 {@link
  *     io.mosire.simos.app.Shell}
- * @param decisionAgentMcpPort 决策人 MCP 服务端口（缺省 {@value #DEFAULT_DECISION_AGENT_MCP_PORT}；T4，spec
- *     §二.2/§六.4）。 与 {@code mcpPort} 的差别只是**工具面**（该口仅 {@code DECISION_AGENT} 桶，spec §七.2 的 C7）；★
- *     两口之间是**端口级** 边界、不是认证级（全仓无多用户认证，spec §二.3）
  */
 public record ShellConfig(
     Path storeDir,
@@ -40,15 +37,13 @@ public record ShellConfig(
     int approvalPort,
     String mcpInitiator,
     String mapId,
-    String bindAddress,
-    int decisionAgentMcpPort) {
+    String bindAddress) {
 
   public static final int DEFAULT_CHECKPOINT_INTERVAL = 100;
   public static final int DEFAULT_GUI_PORT = 5711;
   public static final int DEFAULT_MCP_PORT = 5715;
   public static final String DEFAULT_MCP_PATH = "/mcp";
   public static final int DEFAULT_APPROVAL_PORT = 5713;
-  public static final int DEFAULT_DECISION_AGENT_MCP_PORT = 5717;
   public static final String DEFAULT_MCP_INITIATOR = "agent:external-mcp";
   public static final String DEFAULT_MAP_ID = "Map1";
 
@@ -61,16 +56,14 @@ public record ShellConfig(
       throw new IllegalArgumentException(
           "checkpointInterval 必须 ≥ 1（C19 第①项的取模周期）: " + checkpointInterval);
     }
-    if (guiPort < 0 || mcpPort < 0 || approvalPort < 0 || decisionAgentMcpPort < 0) {
+    if (guiPort < 0 || mcpPort < 0 || approvalPort < 0) {
       throw new IllegalArgumentException(
           "端口不得为负（0 = 随机端口，见 spec §3.1）: gui="
               + guiPort
               + " mcp="
               + mcpPort
               + " approval="
-              + approvalPort
-              + " decisionAgentMcp="
-              + decisionAgentMcpPort);
+              + approvalPort);
     }
     mcpPath = requireText(mcpPath, "mcpPath");
     mcpInitiator = requireText(mcpInitiator, "mcpInitiator");
@@ -79,7 +72,7 @@ public record ShellConfig(
   }
 
   /**
-   * 全部取缺省值的配置（端口 = spec 的四个默认值），只指定存储目录与 map 称谓留待覆盖。
+   * 全部取缺省值的配置（端口 = spec 的三个默认值），只指定存储目录与 map 称谓留待覆盖。
    *
    * <p>★ 缺省 {@code mapId} 用 {@value #DEFAULT_MAP_ID}：{@code ShellMain} 无 {@code --map-id} 参数（T1
    * 范围只四个 开关），故命令行路径拿到的就是它。
@@ -94,13 +87,11 @@ public record ShellConfig(
         DEFAULT_APPROVAL_PORT,
         DEFAULT_MCP_INITIATOR,
         DEFAULT_MAP_ID,
-        DEFAULT_BIND_ADDRESS,
-        DEFAULT_DECISION_AGENT_MCP_PORT);
+        DEFAULT_BIND_ADDRESS);
   }
 
-  /** 仅替换四个端口，其余原样（测试用 {@code 0} 取随机端口时最常用）。 */
-  public ShellConfig withPorts(
-      int guiPort, int mcpPort, int approvalPort, int decisionAgentMcpPort) {
+  /** 仅替换三个端口，其余原样（测试用 {@code 0} 取随机端口时最常用）。 */
+  public ShellConfig withPorts(int guiPort, int mcpPort, int approvalPort) {
     return new ShellConfig(
         storeDir,
         checkpointInterval,
@@ -110,8 +101,7 @@ public record ShellConfig(
         approvalPort,
         mcpInitiator,
         mapId,
-        bindAddress,
-        decisionAgentMcpPort);
+        bindAddress);
   }
 
   /** 仅替换 GUI / MCP 的绑定地址，其余原样（M10；测试绑非回环地址时最常用）。 */
@@ -125,8 +115,7 @@ public record ShellConfig(
         approvalPort,
         mcpInitiator,
         mapId,
-        bindAddress,
-        decisionAgentMcpPort);
+        bindAddress);
   }
 
   private static String requireText(String value, String name) {

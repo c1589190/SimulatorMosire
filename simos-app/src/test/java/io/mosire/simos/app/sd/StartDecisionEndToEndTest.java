@@ -124,7 +124,7 @@ class StartDecisionEndToEndTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -136,8 +136,7 @@ class StartDecisionEndToEndTest {
                 base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
-                base.bindAddress(),
-                base.decisionAgentMcpPort()));
+                base.bindAddress()));
   }
 
   @AfterEach
@@ -228,13 +227,10 @@ class StartDecisionEndToEndTest {
   @Test
   void decisionAgentPortHasNoStartDecisionTool() {
     assertThat(names(shell.toolsFor(SimosToolSource.Role.GM)))
-        .as("GM 桶有「开始决策」窄工具")
+        .as("GM 组（= MCP 口）有「开始决策」窄工具")
         .contains(StartDecisionTool.NAME);
     assertThat(names(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
-        .as("C18③：决策人 Agent 口**没有** sd.StartDecision（它不参与「开始决策」）")
-        .doesNotContain(StartDecisionTool.NAME);
-    assertThat(names(shell.toolsFor(SimosToolSource.Role.EXTERNAL)))
-        .as("外部通用桶也没有（它不认识 sd.* 窄工具）")
+        .as("C18③：决策人组**没有** sd.StartDecision（它不参与「开始决策」）")
         .doesNotContain(StartDecisionTool.NAME);
   }
 

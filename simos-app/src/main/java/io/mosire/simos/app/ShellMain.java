@@ -13,12 +13,12 @@ import org.slf4j.LoggerFactory;
 /**
  * 可执行入口（spec §3.4；计划 T1 Step 4）：解析命令行 → 起壳 → 打印生效配置 → 阻塞到 SIGINT → 关闭。
  *
- * <p>★ **解析七个开关**（计划 T1 Step 4 的四个 + T9b 新增 {@code --demo} + M10 新增 {@code --bind-address} + T4 新增
- * {@code --decision-agent-mcp-port}）：{@code --store <dir>}（必填）、 {@code --demo}（空库时种演示世界）、{@code
- * --gui-port N}、{@code --mcp-port N}、{@code --approval-port N}、{@code --decision-agent-mcp-port
- * N}（后四者缺省取自 {@link ShellConfig}）、{@code --bind-address <host>}（GUI / MCP / 决策人 MCP 的绑定地址，缺省 {@code
- * 127.0.0.1}； ★ 审批端点恒回环，见 {@link ShellConfig#bindAddress()}）。{@code mcpPath} / {@code mcpInitiator}
- * / {@code mapId} / {@code checkpointInterval} 暂无开关，取缺省——启用它们的口子在 T6/T7/T8 接审批/MCP/GUI 时再开。
+ * <p>★ **解析六个开关**（计划 T1 Step 4 的四个 + T9b 新增 {@code --demo} + M10 新增 {@code --bind-address}；T4 的
+ * {@code --decision-agent-mcp-port} **已随决策人 MCP 口撤销而拔掉**，见 {@link #parse})：{@code --store
+ * <dir>}（必填）、 {@code --demo}（空库时种演示世界）、{@code --gui-port N}、{@code --mcp-port N}、{@code
+ * --approval-port N} （三者缺省取自 {@link ShellConfig}）、{@code --bind-address <host>}（GUI / MCP 的绑定地址，缺省
+ * {@code 127.0.0.1}； ★ 审批端点恒回环，见 {@link ShellConfig#bindAddress()}）。{@code mcpPath} / {@code
+ * mcpInitiator} / {@code mapId} / {@code checkpointInterval} 暂无开关，取缺省。
  *
  * <p>★ **分发形态（M10）**：既是 {@code java -cp} / {@code ./mvnw -pl simos-app exec:java} 的入口，也是 {@code
  * maven-shade-plugin} 产出的 {@code simos-app-*-shaded.jar} 的 {@code Main-Class}： {@code java -jar
@@ -47,7 +47,7 @@ public final class ShellMain {
       LOG.error("参数错误：{}", e.getMessage());
       LOG.error(
           "用法：--store <dir> [--demo] [--gui-port N] [--mcp-port N] [--approval-port N]"
-              + " [--decision-agent-mcp-port N] [--bind-address <host>]");
+              + " [--bind-address <host>]");
       return;
     }
     run(parsed.config(), parsed.demo());
@@ -65,7 +65,6 @@ public final class ShellMain {
     int guiPort = ShellConfig.DEFAULT_GUI_PORT;
     int mcpPort = ShellConfig.DEFAULT_MCP_PORT;
     int approvalPort = ShellConfig.DEFAULT_APPROVAL_PORT;
-    int decisionAgentMcpPort = ShellConfig.DEFAULT_DECISION_AGENT_MCP_PORT;
     String bindAddress = ShellConfig.DEFAULT_BIND_ADDRESS;
     for (int i = 0; i < args.length; i++) {
       switch (args[i]) {
@@ -75,9 +74,6 @@ public final class ShellMain {
         case "--mcp-port" -> mcpPort = port(value(args, ++i, "--mcp-port"), "--mcp-port");
         case "--approval-port" ->
             approvalPort = port(value(args, ++i, "--approval-port"), "--approval-port");
-        case "--decision-agent-mcp-port" ->
-            decisionAgentMcpPort =
-                port(value(args, ++i, "--decision-agent-mcp-port"), "--decision-agent-mcp-port");
         case "--bind-address" -> bindAddress = value(args, ++i, "--bind-address");
         default -> throw new IllegalArgumentException("未知参数: " + args[i]);
       }
@@ -95,8 +91,7 @@ public final class ShellMain {
             approvalPort,
             ShellConfig.DEFAULT_MCP_INITIATOR,
             ShellConfig.DEFAULT_MAP_ID,
-            bindAddress,
-            decisionAgentMcpPort),
+            bindAddress),
         demo);
   }
 
@@ -115,7 +110,7 @@ public final class ShellMain {
       }
       LOG.info(
           "Simos Shell 已启动: store={} checkpointInterval={} 模块数={} bindAddress={} guiPort={}"
-              + " mcpPort={} mcpPath={} approvalPort={} decisionAgentMcpPort={} mapId={}",
+              + " mcpPort={} mcpPath={} approvalPort={} mapId={}",
           config.storeDir(),
           config.checkpointInterval(),
           shell.registeredModuleCount(),
@@ -124,7 +119,6 @@ public final class ShellMain {
           shell.boundMcpPort(),
           config.mcpPath(),
           config.approvalPort(),
-          shell.boundDecisionAgentMcpPort(),
           config.mapId());
       LOG.info("WebUI 就绪（点击打开）：http://127.0.0.1:{}/", shell.boundGuiPort());
       CountDownLatch stop = new CountDownLatch(1);

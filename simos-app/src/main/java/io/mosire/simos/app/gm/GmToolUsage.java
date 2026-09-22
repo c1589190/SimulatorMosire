@@ -10,8 +10,8 @@ import java.util.Objects;
 /**
  * GM MCP 工具使用记录（T8，spec §七.4 C22）：**进程内、有界、只读导出**。
  *
- * <p>★ **它是什么**：GM 口（现有 MCP 口 {@code EXTERNAL_WITH_GM}，T4）上**每个工具执行**的一条留痕——工具名 + 结果（成功 / 失败码）+
- * 时刻。GM 交互界面（{@code GET /api/gm/tool-usage}）读它。
+ * <p>★ **它是什么**：GM 口（= 运行时 MCP 口，spec §2.1）上**每个工具执行**的一条留痕——工具名 + 结果（成功 / 失败码）+ 时刻。GM 交互界面（{@code
+ * GET /api/gm/tool-usage}）读它。
  *
  * <p>★ **它不是什么**：**不是世界状态**、不落盘、不进 {@code Command → ChangeSet → Revision}（铁律 2）——工具调用是
  * <b>观测面</b>，不是可回放的世界事实；进程重启即清空。业务上的持久事实仍由 {@code revisions}/{@code events} 承载。

@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * {@code map.UpdateRegion} 窄工具（M1，spec §八.3）：**GM 改区域**的唯一窄写面。
  *
- * <p>★ **只在 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
+ * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★★ **{@code meta} 是整体替换**：给了 {@code meta} 就把 {@code color}/{@code tag}/{@code
  * description}/{@code annexedBy} 四键**给全**——只给一个键会静默清掉其余三个（域层 {@code RegionMeta} 不是逐键合并）。这条已写进

@@ -141,10 +141,10 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 9 读 + 46 写（3 通用写 + **16 sd 窄写**（4 + M3 的 12）+ **7 map 窄写**， M1 +
-   * **20 unit 窄写**，M2）。
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 9 读 + 46 写（3 通用写 + **16 sd 窄写**（4 + M3 的 12）+ **7 map
+   * 窄写**，M1 + **20 unit 窄写**，M2）。
    */
-  private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
+  private static final List<String> GM_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
           "simos.state.resolve",
@@ -220,61 +220,69 @@ class SimosToolsTest {
           "simos.social.population");
 
   /**
-   * 写工具全集（46 条）：{@link #READ_TOOL_NAMES} 在 {@link #EXTERNAL_UNION_GM_TOOL_NAMES} 里的**补集**。
+   * 通用写（3 条，spec §八.3）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
+   *
+   * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
+   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 3 条从差集里扣掉。
+   */
+  private static final List<String> GENERIC_WRITE_NAMES =
+      List.of("simos.command.submit", "simos.advance", "simos.fork");
+
+  /**
+   * 写工具全集（46 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
    *
    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
    */
   private static final List<String> WRITE_TOOL_NAMES =
-      List.of(
-          "simos.command.submit",
-          "simos.advance",
-          "simos.fork",
-          "sd.IssueDirective",
-          "sd.SubmitVerdict",
-          "sd.SetViewScope",
-          "sd.StartDecision",
-          "sd.CreateNation",
-          "sd.CreateArmy",
-          "sd.CreateDecisionMaker",
-          "sd.PutInfo",
-          "sd.CreateCombat",
-          "sd.AddCombatStage",
-          "sd.SetStageOutcomeTable",
-          "sd.CommitCombatOutcome",
-          "sd.RecordCasualties",
-          "sd.RegisterEffect",
-          "sd.CancelEffect",
-          "sd.SetDecisionMakerProvider",
-          "map.SetTerrain",
-          "map.SetEdge",
-          "map.CreateRegion",
-          "map.UpdateRegion",
-          "map.DeleteRegion",
-          "map.RandomizeRegion",
-          "map.RegisterPathwayGroup",
-          "unit.RenameUnit",
-          "unit.CreateUnit",
-          "unit.ReparentUnit",
-          "unit.SetStrength",
-          "unit.PlaceAt",
-          "unit.PlanRoute",
-          "unit.CancelRoute",
-          "unit.DisbandUnit",
-          "unit.SetStatus",
-          "unit.AttachUnit",
-          "unit.DetachUnit",
-          "unit.ReparentSubtree",
-          "unit.SetFormationOffset",
-          "unit.SplitFormation",
-          "unit.MergeFormation",
-          "unit.PlanSparseRoute",
-          "unit.SetRejoinTarget",
-          "unit.CreateCommandChain",
-          "unit.UpdateCommandChain",
-          "unit.ApplyCasualties");
+      concat(
+          GENERIC_WRITE_NAMES,
+          List.of(
+              "sd.IssueDirective",
+              "sd.SubmitVerdict",
+              "sd.SetViewScope",
+              "sd.StartDecision",
+              "sd.CreateNation",
+              "sd.CreateArmy",
+              "sd.CreateDecisionMaker",
+              "sd.PutInfo",
+              "sd.CreateCombat",
+              "sd.AddCombatStage",
+              "sd.SetStageOutcomeTable",
+              "sd.CommitCombatOutcome",
+              "sd.RecordCasualties",
+              "sd.RegisterEffect",
+              "sd.CancelEffect",
+              "sd.SetDecisionMakerProvider",
+              "map.SetTerrain",
+              "map.SetEdge",
+              "map.CreateRegion",
+              "map.UpdateRegion",
+              "map.DeleteRegion",
+              "map.RandomizeRegion",
+              "map.RegisterPathwayGroup",
+              "unit.RenameUnit",
+              "unit.CreateUnit",
+              "unit.ReparentUnit",
+              "unit.SetStrength",
+              "unit.PlaceAt",
+              "unit.PlanRoute",
+              "unit.CancelRoute",
+              "unit.DisbandUnit",
+              "unit.SetStatus",
+              "unit.AttachUnit",
+              "unit.DetachUnit",
+              "unit.ReparentSubtree",
+              "unit.SetFormationOffset",
+              "unit.SplitFormation",
+              "unit.MergeFormation",
+              "unit.PlanSparseRoute",
+              "unit.SetRejoinTarget",
+              "unit.CreateCommandChain",
+              "unit.UpdateCommandChain",
+              "unit.ApplyCasualties"));
 
-  /** M1 的 7 条 map 窄写：进 **GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含），**不进** EXTERNAL 桶、**不进**决策桶。 */
+  /** M1 的 7 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（用户 2026-09-22：决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
       List.of(
           "map.SetTerrain",
@@ -286,10 +294,10 @@ class SimosToolsTest {
           "map.RegisterPathwayGroup");
 
   /**
-   * M2 的 20 条 unit 窄写：**同一批同时进 GM 桶与决策人桶**（用户裁定 D-1）⇒ 复合口也含、EXTERNAL 桶不含。
+   * M2 的 20 条 unit 窄写：**只进 GM 组**（= MCP 口）——旧 D-1 裁定曾让它们也挂决策人桶，**2026-09-22 已撤销**
+   * （用户：「决策人不能直接改地图等数据」）。
    *
-   * <p>★ 名单顺序与 {@code SimosToolSource.addGmWrites} / {@code addDecisionAgentWrites}
-   * 的登记顺序一致（**判据不依赖顺序**， 只为对齐可读）。
+   * <p>★ 名单顺序与 {@code SimosToolSource.addGmWrites} 的登记顺序一致（**判据不依赖顺序**，只为对齐可读）。
    */
   private static final List<String> UNIT_WRITE_NAMES =
       List.of(
@@ -315,9 +323,9 @@ class SimosToolsTest {
           "unit.ApplyCasualties");
 
   /**
-   * M3 的 12 条 sd 窄写：**只进 GM 桶**（故 {@code EXTERNAL_WITH_GM} 复合口也含）——**不进** EXTERNAL 桶、**也不进**决策人桶。
+   * M3 的 12 条 sd 窄写：**只进 GM 组**（= MCP 口）——**不进**决策人组。
    *
-   * <p>★ 与 M1 的 {@link #MAP_WRITE_NAMES} 同形；M2 的 unit 那批**两桶都有**（用户裁定 D-1），这批**不是**——决策人只出令 / 判决。
+   * <p>★ 与 M1 的 {@link #MAP_WRITE_NAMES} 同形；M2 的 unit 那批 2026-09-22 起**也**只在 GM 组——决策人只出令 / 判决。
    */
   private static final List<String> SD_WRITE_NAMES =
       List.of(
@@ -389,7 +397,7 @@ class SimosToolsTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -401,8 +409,7 @@ class SimosToolsTest {
                 base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
-                base.bindAddress(),
-                base.decisionAgentMcpPort()));
+                base.bindAddress()));
   }
 
   @AfterEach
@@ -418,7 +425,7 @@ class SimosToolsTest {
   void registryContainsExactlyTheExternalUnionGmTools() {
     assertThat(shell.toolRegistry().list())
         .extracting(AgentTool::name)
-        .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
+        .containsExactlyInAnyOrderElementsOf(GM_TOOL_NAMES);
   }
 
   /**
@@ -496,8 +503,8 @@ class SimosToolsTest {
         .as("同一批名字在 GM 桶里按名可寻")
         .containsAll(UNIT_WRITE_NAMES);
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
-        .as("同一批名字在决策人桶里也按名可寻（用户裁定 D-1：同一批挂两个桶）")
-        .containsAll(UNIT_WRITE_NAMES);
+        .as("★ 判据 J3：决策人桶里**没有**任何 unit 窄写（用户 2026-09-22：决策人不能直接改地图等数据）")
+        .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES);
 
     JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
     assertThat(textValues(types))
@@ -507,13 +514,12 @@ class SimosToolsTest {
 
   /**
    * ★ M3 判据 2：**名字同源**（12 条 sd 窄写）—— 每条工具钉死的命令类型 == 它在名单里登记的名字（{@code
-   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM 桶与 {@code
-   * EXTERNAL_WITH_GM} 复合口**里都按名可寻， 且 12 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达
-   * handler）。
+   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM 桶与 {@code GM 组（= MCP 口）}
+   * 里都按名可寻， 且 12 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达 handler）。
    *
    * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的类型，这里当场红（M3 的 m2 变异体）。与 M1/M2 同形； ★
-   * 本批**只进这两个桶**——{@code EXTERNAL} 与 {@code DECISION_AGENT} 桶的"不得含"由 {@link
-   * #roleBucketsNeverCarryGenericWrite} 按名反向断言（两处分工：这里证"在"，那里证"不在"）。
+   * 本批**只进 GM 组**——{@code DECISION_AGENT} 桶的"不得含"由 {@link #roleBucketsNeverCarryGenericWrite}
+   * 按名反向断言（两处分工：这里证"在"，那里证"不在"）。
    */
   @Test
   void sdNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
@@ -540,8 +546,8 @@ class SimosToolsTest {
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
         .as("同一批名字在 GM 桶里按名可寻")
         .containsAll(SD_WRITE_NAMES);
-    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM)))
-        .as("同一批名字在 EXTERNAL_WITH_GM 复合口里也按名可寻（D2 的复合面）")
+    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
+        .as("同一批名字在 GM 组（= MCP 口）里也按名可寻")
         .containsAll(SD_WRITE_NAMES);
 
     JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
@@ -587,56 +593,34 @@ class SimosToolsTest {
 
   /**
    * ★ D6 判据（N9/N11）+ T4（D2="加"）：工具面按角色分载——**GM 与决策 Agent 桶都没有通用写** {@code simos.command.submit}，都有
-   * {@code sd.*} 窄工具；外部 MCP 桶保留现状（有通用写）；**现有运行时口 = EXTERNAL_WITH_GM 复合桶**（通用写 ∪ GM 窄写，读共享）。
+   * {@code sd.*} 窄工具；**运行时 MCP 口 = GM 组**（通用写 ∪ 全部窄写，读共享）；**决策人组只有两条决策窄写**（J3）。
    */
   @Test
   void roleBucketsNeverCarryGenericWrite() {
     List<String> gm = toolNames(shell.toolsFor(SimosToolSource.Role.GM));
     List<String> agent = toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
-    List<String> external = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL));
-    List<String> externalWithGm = toolNames(shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM));
 
     assertThat(gm)
-        .as("M1/M2 判据 1 + M3 判据 §5.1：GM 桶无通用写，且含 sd 与 map 与 unit 三族窄写")
-        .doesNotContain("simos.command.submit")
+        .as(
+            "★ J1（spec §2.1）：GM 桶 = 运行时 MCP 口（用户裁定：MCP 与 GM 同权限级，想改什么改什么）"
+                + " ⇒ 通用写**在**其中，且 sd/map/unit 三族窄写逐条都在")
+        .contains("simos.command.submit", "simos.advance", "simos.fork")
         .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(52);
+        .hasSize(55);
     assertThat(agent)
         .as(
-            "M2 判据 1 + M3 判据 §5.1：决策桶**含全部 20 条 unit 窄写**，但**没有**任何 map 窄写、**也没有 M3 的 12 条 sd 窄写**（也没有通用写与 SetViewScope/StartDecision）")
-        .doesNotContain("simos.command.submit", "sd.SetViewScope", "sd.StartDecision")
+            "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
+                + "只留两条决策行为（sd.IssueDirective / sd.SubmitVerdict）")
+        .doesNotContain("simos.command.submit", "simos.advance", "simos.fork")
+        .doesNotContain("sd.SetViewScope", "sd.StartDecision")
         .contains("sd.IssueDirective", "sd.SubmitVerdict")
-        .containsAll(UNIT_WRITE_NAMES)
-        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
-        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
-        .hasSize(31);
-    assertThat(external)
-        .as("M1/M2/M3 判据 1：EXTERNAL 桶**没有**任何 sd / map / unit 窄写（恒 9 读 + 3 通用写）")
-        .contains("simos.command.submit")
-        .doesNotContain(
-            "sd.IssueDirective", "sd.SubmitVerdict", "sd.SetViewScope", "sd.StartDecision")
-        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
-        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
-        .hasSize(12);
-    assertThat(externalWithGm)
-        .as(
-            "T4/D2 + M1/M2/M3 判据 1：现有口 = EXTERNAL ∪ GM（9 读 + 3 通用写 + 4 sd 窄写 + 12 sd 窄写(M3) + 7 map 窄写 + 20 unit 窄写）")
-        .contains(
-            "simos.command.submit",
-            "simos.advance",
-            "simos.fork",
-            "sd.IssueDirective",
-            "sd.SubmitVerdict",
-            "sd.SetViewScope",
-            "sd.StartDecision")
-        .containsAll(SD_WRITE_NAMES)
-        .containsAll(MAP_WRITE_NAMES)
-        .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(55);
+        .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
+        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
+        .hasSize(11);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -644,13 +628,13 @@ class SimosToolsTest {
   }
 
   /**
-   * 写闸**实际覆盖**的工具名。★★ 它从**真工具面**（{@code EXTERNAL_WITH_GM} 桶）派生、减去读名单，**不是**从名单常量取下标 切片。
+   * 写闸**实际覆盖**的工具名。★★ 它从**真工具面**（GM 组）派生、减去读名单，**不是**从名单常量取下标 切片。
    *
    * <p>这是 M1 修掉的那处缺陷的替代形态：原实现用 {@code subList(9, 16)}，名单加到 23 条后切片**仍然合法** ⇒ 新增的 7 条 map
    * 写工具完全不被写闸覆盖、且没有任何症状。现在覆盖集从工具面派生，退化成切片会当场红。
    */
   private List<String> writeFaceCoveredByTheWriteGate() {
-    return shell.toolsFor(SimosToolSource.Role.EXTERNAL_WITH_GM).stream()
+    return shell.toolsFor(SimosToolSource.Role.GM).stream()
         .map(AgentTool::name)
         .filter(name -> !READ_TOOL_NAMES.contains(name))
         .toList();
@@ -711,9 +695,11 @@ class SimosToolsTest {
     Set<String> implemented = narrowWriteToolNamesFromSources();
     assertThat(implemented).as("扫描必须恰为 43 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(43);
 
+    // ★ GM 组还含 3 条通用写（J1 起）：窄写扫描器按 tools/write 目录扫源码，扫不到它们 ⇒ 不扣掉就是"名单对不上"的假红。
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
-        .as("GM 桶 ∖ 读名单必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
+        .as("GM 组 ∖ 读名单 ∖ 通用写必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
         .filteredOn(name -> !READ_TOOL_NAMES.contains(name))
+        .filteredOn(name -> !GENERIC_WRITE_NAMES.contains(name))
         .containsExactlyInAnyOrderElementsOf(implemented);
   }
 
@@ -774,7 +760,7 @@ class SimosToolsTest {
     assertThat(READ_TOOL_NAMES).as("读名单与写名单互斥").doesNotContainAnyElementsOf(WRITE_TOOL_NAMES);
     assertThat(Stream.concat(READ_TOOL_NAMES.stream(), WRITE_TOOL_NAMES.stream()).toList())
         .as("读名单 + 写名单 == 现有口全名单（完整）：名单加项却没登记到任一侧，这里红")
-        .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
+        .containsExactlyInAnyOrderElementsOf(GM_TOOL_NAMES);
     for (String name : covered) {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
       assertThat(tool.spec().sensitive()).as("%s 是敏感写", name).isTrue();
@@ -1548,5 +1534,11 @@ class SimosToolsTest {
 
   private static StateRef ref(String branch, long revision) {
     return new StateRef(new BranchId(branch), new RevisionId(revision));
+  }
+
+  /** 把若干名单拼成一条（varargs；本文件的名单常量拼接用）。 */
+  @SafeVarargs
+  private static List<String> concat(List<String>... groups) {
+    return Stream.of(groups).flatMap(List::stream).toList();
   }
 }

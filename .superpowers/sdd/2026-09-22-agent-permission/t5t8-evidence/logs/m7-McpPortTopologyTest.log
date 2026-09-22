@@ -1,0 +1,11 @@
+----------------------------------------------------------------
+round=m7 tests=McpPortTopologyTest
+started=1790079129 ended=1790079134 rc=1
+compilation_errors=0 cannot_find_symbol=0
+report_files=1 stale_reports_ignored=0
+file=simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java baseline_md5=c1090c0e16edefc96ea8c61872b6225d mutant_md5=c1090c0e16edefc96ea8c61872b6225d restored_md5=c1090c0e16edefc96ea8c61872b6225d
+file=simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java baseline_md5=f7f4bd31467e2527c25211de03e92534 mutant_md5=f7f4bd31467e2527c25211de03e92534 restored_md5=f7f4bd31467e2527c25211de03e92534
+file=simos-app/src/main/java/io/mosire/simos/app/Shell.java baseline_md5=ae76e9d93a73f9e7c0be96a5d51b74b5 mutant_md5=53e0a81858af582df9ef01484c39dce4 restored_md5=ae76e9d93a73f9e7c0be96a5d51b74b5
+restored_identical=1
+red_points= Tests run: 4, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.950 s <<< FAILURE! io.mosire.simos.app.McpPortTopologyTest.decisionChannelsAreBackToTheGuiCliAndHttpThree
+verdict=KILLED

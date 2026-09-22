@@ -26,11 +26,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * GM MCP 工具使用只读面端到端验收（T8，spec §七.4 C22）：起真 {@link Shell}（四端口全 0），用 JDK {@link HttpClient} 打真 HTTP。
+ * GM MCP 工具使用只读面端到端验收（T8，spec §七.4 C22）：起真 {@link Shell}（端口全 0），用 JDK {@link HttpClient} 打真 HTTP。
  *
- * <p>★ **数据源是真的**：{@code /api/gm/tool-usage} 读的是 {@code Shell} 给 GM 口（{@code
- * EXTERNAL_WITH_GM}）工具源套上的 记录装饰器（{@link io.mosire.simos.app.gm.RecordingToolSource}）留下的痕迹。夹具经**真
- * authorizer + 真工具注册表**执行工具 （与 MCP {@code tools/call} 同一条调用路径），故断言的是"工具真的被用过 ⇒ 端点真的看得到"。
+ * <p>★ **数据源是真的**：{@code /api/gm/tool-usage} 读的是 {@code Shell} 给 GM 组（= 运行时 MCP 口，spec §2.1）的
+ * 工具源套上的记录装饰器（{@link io.mosire.simos.app.gm.RecordingToolSource}）留下的痕迹。夹具经**真 authorizer + 真工具注册表**
+ * 执行工具 （与 MCP {@code tools/call} 同一条调用路径），故断言的是"工具真的被用过 ⇒ 端点真的看得到"。
  *
  * <p>★ **口径边界**（记入报告）：被权限硬拒 / 审批未放行 / **工具不存在**的调用**不记**——记录发生在 {@code AgentTool.execute}，
  * 那些在执行之前就被 {@code ToolCallAuthorizer} 挡下了（本类 {@link #doesNotRecordCallsThatNeverReachATool} 钉住这条）。
@@ -49,7 +49,7 @@ class GmToolUsageApiTest {
 
   @BeforeEach
   void startShell() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
     port = shell.boundGuiPort();
     client = HttpClient.newHttpClient();
   }
