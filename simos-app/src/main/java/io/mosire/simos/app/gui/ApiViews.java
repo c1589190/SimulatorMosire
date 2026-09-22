@@ -1,5 +1,7 @@
 package io.mosire.simos.app.gui;
 
+import io.mosire.simos.app.access.DecisionScopeView;
+import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.map.City;
@@ -588,6 +590,10 @@ final class ApiViews {
     // M11：绑定的 LLM provider 引用（null = 未绑定，不拿空串顶替）。providerId 是不透明 id，sd 不解释其内容。
     view.put("providerId", maker.providerId().orElse(null));
     view.put("accessLimit", accessLimit(maker.accessLimit()));
+    // ★ 会话世代与派生出的会话 id（世界事实 → 纯函数派生，见 DecisionAgentRunner.conversationIdOf）：
+    //   GM 据此知道"这个人换过几次会话"。派生**走那个唯一拼写点**，不在这里另拼一份（拼错了不报错、只失忆）。
+    view.put("conversationGeneration", maker.conversationGeneration());
+    view.put("conversationId", DecisionAgentRunner.conversationIdOf(maker));
     SdQueryService.PendingSignal pending = info.pending();
     view.put("due", pending.due());
     view.put("lastDirectiveTick", pending.lastDirectiveTick());
@@ -613,6 +619,81 @@ final class ApiViews {
     view.put("redactedFields", sorted(limit.redactedFields()));
     view.put("adjudicationDisclosure", limit.adjudicationDisclosure().name());
     return view;
+  }
+
+  /**
+   * 决策人的**现算可见范围**视图：{@code GET /api/sd/decision-makers/{id}/scope} 的体。
+   *
+   * <p>★★ **与 {@link #accessLimit} 摘要的分工**：那个报"GM 配了什么"（限制原文的计数），这个报"**算出来收到了多少**"
+   * ——限制是**交集**的一半，另一半是范围函数（随世界状态变：国家圈地、军队移动）。GM 要判断"我这条限制管不管用"， 只有这一个端点能回答。
+   *
+   * <p>★ {@code affiliation} 直接复用 {@link #decisionMaker} 的那一块：两级范围（国家/军队）在前端就靠它分辨， 各拼一份会分叉。
+   *
+   * <p>★ {@code unparsedPrefixes} **照原样送出**（不吞）：认不出形状的 {@code map} 前缀仍是生效的限制，只是投影不出区域/格 ——吞掉它会让 GM
+   * 把"我没看懂"读成"没生效"。
+   */
+  static Map<String, Object> decisionScope(
+      SdQueryService.DecisionMakerInfo info, StateRef ref, DecisionScopeView view) {
+    Map<String, Object> maker = decisionMaker(info);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("decisionMakerId", maker.get("id"));
+    body.put("affiliation", maker.get("affiliation"));
+    body.put("branch", ref.branch().value());
+    body.put("revision", ref.revision().value());
+    body.put("visible", visibleScope(view));
+    body.put("namespaces", namespaceSummaries(view));
+    body.put("unparsedPrefixes", view.unparsedPrefixes());
+    return body;
+  }
+
+  /** 范围里"看得见什么"（区域 / 格 / 边界 / 单位）——全是**解码好的**事实，前端不再自己算。 */
+  private static Map<String, Object> visibleScope(DecisionScopeView view) {
+    Map<String, Object> visible = new LinkedHashMap<>();
+    List<String> regionIds = new ArrayList<>();
+    for (RegionId id : view.regions()) {
+      regionIds.add(id.value());
+    }
+    visible.put("regionIds", regionIds);
+    List<List<Integer>> hexes = new ArrayList<>();
+    for (HexCoord coord : view.hexes()) {
+      hexes.add(List.of(coord.q(), coord.r()));
+    }
+    visible.put("hexes", hexes);
+    visible.put("hexCount", view.hexCount());
+    visible.put("offMapHexCount", view.offMapHexCount());
+    List<String> unitIds = new ArrayList<>();
+    for (UnitId id : view.units()) {
+      unitIds.add(id.value());
+    }
+    visible.put("unitIds", unitIds);
+    visible.put(
+        "boundingBox",
+        view.boundingBox()
+            .map(
+                box -> {
+                  Map<String, Object> out = new LinkedHashMap<>();
+                  out.put("minQ", box.minQ());
+                  out.put("maxQ", box.maxQ());
+                  out.put("minR", box.minR());
+                  out.put("maxR", box.maxR());
+                  return (Object) out;
+                })
+            .orElse(null));
+    return visible;
+  }
+
+  /** 各命名空间的前缀摘要（含"不限"标记）——GM 据此看"限制原文长什么样"。 */
+  private static Map<String, Object> namespaceSummaries(DecisionScopeView view) {
+    Map<String, Object> out = new LinkedHashMap<>();
+    for (Map.Entry<String, DecisionScopeView.NamespaceSummary> entry :
+        view.namespaces().entrySet()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("unrestricted", entry.getValue().unrestricted());
+      item.put("prefixCount", entry.getValue().prefixes().size());
+      item.put("prefixes", entry.getValue().prefixes());
+      out.put(entry.getKey(), item);
+    }
+    return out;
   }
 
   /**

@@ -209,6 +209,14 @@
     detail.appendChild(app.el("dd", { text: app.text(formatValue(value)) }));
   }
 
+  /** 追加一行**由别的文件回填**的读数（带 id 锚点）：跨文件只经这一个 DOM 锚点，不互相持有状态。 */
+  function appendLiveRow(detail, label, id, text) {
+    detail.appendChild(app.el("dt", { text: label }));
+    var dd = app.el("dd", { text: text });
+    dd.setAttribute("id", id);
+    detail.appendChild(dd);
+  }
+
   /** 只读读数里的浮点数去掉二进制尾巴（0.6000000000000001 → 0.6）；整数/文本原样。 */
   function formatValue(value) {
     if (typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value)) {
@@ -607,6 +615,15 @@
     { id: "provider", label: "Provider 配置" },
   ];
 
+  /**
+   * 「可见范围（现算）」那一行的 **DOM 锚点 id**（**唯一拼写点**）。
+   *
+   * <p>★ 为什么要跨文件：这一行的**内容**来自只读端点 `/api/sd/decision-makers/{id}/scope`，而拉它并画高亮的是
+   * `map.js`（可见范围高亮与区域高亮共用同一层渲染）。两个文件只经这一个 id 交接，不互相持有状态、也不各拉一次
+   * ——各拉一次就是"同一件事两份实现"的开端。
+   */
+  var DECISION_SCOPE_SUMMARY_ID = "decision-scope-summary";
+
   /** 子页状态（fail-closed）：未知 id ⇒ `{ok:false, id:null, label:null}`（不兜成第一个子页）。 */
   function decisionSubpageState(id) {
     for (var i = 0; i < DECISION_SUBPAGES.length; i++) {
@@ -937,6 +954,16 @@
           }
         : null,
       pending: pendingStatusText(maker ? maker.due : null),
+      // ★ 会话世代 + 派生出的会话 id（服务端 `conversationGeneration` / `conversationId`，T9 之后的世界事实）：
+      //   GM 据此知道"这个人换过几次会话"。缺字段 ⇒ 显式"—"（不编造"第 0 代"）。
+      conversationGeneration:
+        maker && maker.conversationGeneration !== null && maker.conversationGeneration !== undefined
+          ? maker.conversationGeneration
+          : "—",
+      conversationId:
+        maker && maker.conversationId !== null && maker.conversationId !== undefined
+          ? maker.conversationId
+          : "—",
     };
   }
 
@@ -1074,7 +1101,11 @@
     } else {
       appendRow(dl, "accessLimit", "—");
     }
+    appendRow(dl, "会话世代", fields.conversationGeneration);
+    appendRow(dl, "会话 id", fields.conversationId);
     appendRow(dl, "待决状态", fields.pending);
+    // ★ 这一行由 map.js 回填（它才是拉 `/scope` 的那个文件）：内容 = "可见 N 格 / M 区域（国家级|军队级）"。
+    appendLiveRow(dl, "可见范围（现算）", DECISION_SCOPE_SUMMARY_ID, "载入中…");
     if (note) {
       appendRow(dl, "来源", note);
     }
@@ -1126,6 +1157,11 @@
           }
           app.clear(container);
           appendDecisionMakerDetail(container, maker, "右栏列表");
+          // ★ 重画把「可见范围」那一行重置成了占位文本 ⇒ 让 map.js 把最近算好的摘要写回来
+          //   （两处写同一个值，谁后落地都收敛）。
+          if (window.SimosMap && window.SimosMap.republishDecisionScopeSummary) {
+            window.SimosMap.republishDecisionScopeSummary();
+          }
           setStartDecisionTarget(maker);
           setDecisionViewStatus("决策人 " + maker.id + " · " + targetLabel(), "ok");
         })
@@ -1225,28 +1261,23 @@
   var decisionRightToken = 0;
   var decisionRightKey = null;
   var decisionRightMakers = null;
-  var decisionOverviewRegions = null;
   var decisionApprovalToken = 0;
   var decisionApprovalKey = null;
   var lastDecisionSubpage = null;
 
+  /**
+   * 右栏列表点一个决策人 ⇒ 聚焦它，**并清掉区域高亮**（可见范围的高亮改由 map.js 按 `/scope` 现算画）。
+   *
+   * <p>★★ **旧实现是第二份真相**：国家决策人按 `affiliation.id` 在**前端**从 overview 重算"该 tag 的全部区域"
+   * 并整片高亮；军队决策人则只选中根单位、**什么都不画**。两者都不随 GM 的 `accessLimit` 变——GM 把某人的可见范围
+   * 收窄到一个区域之后，界面照样画整片国土：**看起来对、其实是假的**（且不会报错）。
+   *
+   * <p>★ 军队级不再改选中单位（`setSelection` 会清掉 focus，两者互斥）：聚焦决策人后，它的根单位由左栏
+   * `affiliation.rootUnit` 显示、位置由可见范围高亮覆盖——即"它看得见哪一圈"正是用户要看的东西。
+   */
   function selectDecisionMakerFromList(maker) {
-    var affiliation = maker.affiliation || {};
-    if (affiliation.kind === "nation") {
-      app.setDecisionMakerFocus(maker.id);
-      var ids =
-        window.SimosMap && window.SimosMap.nationRegionIds
-          ? window.SimosMap.nationRegionIds(decisionOverviewRegions || [], "nation:" + affiliation.id)
-          : [];
-      app.setHighlightRegions(ids);
-      return;
-    }
     app.setHighlightRegions([]);
-    if (affiliation.rootUnit !== null && affiliation.rootUnit !== undefined) {
-      app.setSelection({ kind: "unit", id: String(affiliation.rootUnit) });
-    } else {
-      app.setDecisionMakerFocus(maker.id);
-    }
+    app.setDecisionMakerFocus(maker.id);
   }
 
   function drawDecisionList(state) {
@@ -1325,7 +1356,6 @@
           return;
         }
         decisionRightMakers = results[0].decisionMakers || [];
-        decisionOverviewRegions = results[1].regions || [];
         drawDecisionList(state);
       })
       .catch(function (e) {
@@ -1625,6 +1655,7 @@
     UNTAGGED_LABEL: UNTAGGED_LABEL,
     // ★ T7：决策模式的纯函数（门禁直接断言；无 DOM/IO）——子页、分类分组、国家/单位解析、待决文本。
     DECISION_SUBPAGES: DECISION_SUBPAGES,
+    DECISION_SCOPE_SUMMARY_ID: DECISION_SCOPE_SUMMARY_ID,
     decisionSubpageState: decisionSubpageState,
     decisionSubpageVisibility: decisionSubpageVisibility,
     // ★ M11′：Provider 配置页的纯函数（表单 → 载荷 / 掩码视图 / 绑定载荷）。

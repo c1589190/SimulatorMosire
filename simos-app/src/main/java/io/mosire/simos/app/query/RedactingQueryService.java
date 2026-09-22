@@ -1,5 +1,6 @@
 package io.mosire.simos.app.query;
 
+import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
@@ -92,6 +93,26 @@ public final class RedactingQueryService {
       return Optional.empty();
     }
     return Optional.of(DecisionCallerFactory.readContextFor(scopeFunctions, maker, state, mapId));
+  }
+
+  /**
+   * actor 的**现算可见范围**（未经解码的 {@code ResourceScopeMap}）：范围函数 ∩ GM 额外限制；actor 不存在 ⇒ 空。
+   *
+   * <p>★★ **这是"GM 能看见某人能看见什么"的唯一数据源**——GUI 的范围端点、决策人每次工具调用、{@code as=} 读路径 三者都收敛到 {@link
+   * DecisionCallerFactory#resourceScopesFor} 这一个方法上。**不要**在调用方另算一份：两份范围 **都不会报错**，只会慢慢漂移，而漂移的后果是"GM
+   * 看到的范围"与"决策人实际的权力"分叉。
+   *
+   * <p>★ 返回空（actor 不存在）与"空范围"是**不同**的东西：前者是"这个人不存在"（端点据此 404），后者是"这个人此刻什么都看不见"。
+   */
+  public Optional<ResourceScopeMap> computedScopeOf(DecisionMakerId actor, QueryTarget target) {
+    Objects.requireNonNull(actor, "actor");
+    SimulationState state = query.stateAt(target);
+    DecisionMaker maker = sdState(target).decisionMakers().get(actor);
+    if (maker == null) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        DecisionCallerFactory.resourceScopesFor(scopeFunctions, maker, state, mapId));
   }
 
   /** 裁剪后的地图总览：只保留可见 hex / region / city，并按 {@code redactedFields} 剔除命名字段。 */

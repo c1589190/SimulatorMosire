@@ -7,7 +7,9 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
+import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
@@ -113,6 +115,15 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_MAKERS_PATH = "/api/sd/decision-makers";
 
   private static final String DECISION_MAKER_DETAIL_PREFIX = DECISION_MAKERS_PATH + "/";
+
+  /**
+   * 决策人**现算可见范围**（只读）：{@code /api/sd/decision-makers/{id}/scope}。
+   *
+   * <p>★ 它落在详情前缀**之下**（{@code …/{id}/scope}），故在 {@link #handleApi} 里必须**先于** {@link
+   * #isDecisionMakerDetail} 判——后者是"前缀 + 非空"的粗判，会把本路径一并吞掉（吞掉后的症状是 "拿 {id}/scope 当 id 去查详情"⇒
+   * 404，看起来像端点没接）。
+   */
+  private static final String DECISION_MAKER_SCOPE_SUFFIX = "/scope";
 
   /** 审批代理路径：{@code /api/approvals} 或 {@code /api/approvals/{id}}（原样转给 AgentLib 端点）。 */
   private static final String APPROVAL_PATH = "/api/approvals";
@@ -463,6 +474,11 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return llmProvidersReply();
     }
+    // ★ 必须在 isDecisionMakerDetail 之前：`/api/sd/decision-makers/{id}/scope` 也满足那个粗判。
+    if (isDecisionMakerScope(path)) {
+      rejectAs(path, asPresent);
+      return decisionMakerScopeReply(params, decisionMakerIdOfScopePath(path));
+    }
     if (isDecisionMakerDetail(path)) {
       rejectAs(path, asPresent);
       return decisionMakerReply(
@@ -565,6 +581,27 @@ public final class GuiServer implements AutoCloseable {
   private static boolean isDecisionMakerDetail(String path) {
     return path.startsWith(DECISION_MAKER_DETAIL_PREFIX)
         && path.length() > DECISION_MAKER_DETAIL_PREFIX.length();
+  }
+
+  /**
+   * 决策人现算范围：{@code /api/sd/decision-makers/{id}/scope}（**含** {@code /scope}、且 id 非空）。
+   *
+   * <p>★ 三个条件缺一不可：少了 id 非空这一条，{@code …/decision-makers//scope} 会被当成 id 为空去查（得到一个语焉不详的 404，
+   * 而不是"路径里没有 id"）。
+   */
+  private static boolean isDecisionMakerScope(String path) {
+    return path.startsWith(DECISION_MAKER_DETAIL_PREFIX)
+        && path.endsWith(DECISION_MAKER_SCOPE_SUFFIX)
+        && path.length()
+            > DECISION_MAKER_DETAIL_PREFIX.length() + DECISION_MAKER_SCOPE_SUFFIX.length();
+  }
+
+  /** 从范围路径里取出决策人 id（去掉前缀与 {@code /scope} 后缀，再 url 解码）。 */
+  private static String decisionMakerIdOfScopePath(String path) {
+    return urlDecode(
+        path.substring(
+            DECISION_MAKER_DETAIL_PREFIX.length(),
+            path.length() - DECISION_MAKER_SCOPE_SUFFIX.length()));
   }
 
   /** 审批代理路径：{@code /api/approvals}（列表/GET）与 {@code /api/approvals/{id}}（决议/POST）。 */
@@ -763,6 +800,32 @@ public final class GuiServer implements AutoCloseable {
         .decisionMaker(makerId, target(params))
         .map(info -> Reply.of(200, ApiViews.decisionMaker(info)))
         .orElseGet(() -> Reply.of(404, Map.of("error", "decision maker not found", "id", id)));
+  }
+
+  /**
+   * 决策人**现算可见范围**（只读）：{@code GET /api/sd/decision-makers/{id}/scope}；不存在 ⇒ 404。
+   *
+   * <p>★★ **它回答的是 {@link ApiViews#decisionMaker} 答不出的那个问题**：决策人实际能看见什么 = 范围函数现算 ∩ GM 的 {@code
+   * accessLimit}（随世界状态变）。GM 因此第一次能在界面上核对"我配的权到底收成了多少"。
+   *
+   * <p>★ **同源**：范围取 {@link RedactingQueryService#computedScopeOf}（内部就是决策人工具链与 {@code as=} 读路径共用的
+   * 那一个 {@code resourceScopesFor}），解码取 {@link DecisionScopeView}——**本层不算范围**。
+   *
+   * <p>★ **为什么拒 {@code as=}**（与 {@code /api/sd/decision-makers} 同口径）：本端点是**配置面**，不是数据面。{@code as=}
+   * 的语义是"以某人的视角读世界"；把它接在这里，等于**用甲的身份读出乙的可见边界**（乙的国土、军队位置、视野圈）—— 而这份边界恰恰是
+   * 甲**无权知道**的情报。接反了不会报错，只会静默泄露；故 fail-closed。
+   */
+  private Reply decisionMakerScopeReply(Map<String, String> params, String id) {
+    DecisionMakerId makerId = DecisionMakerId.parse(id);
+    QueryTarget target = target(params);
+    Optional<SdQueryService.DecisionMakerInfo> info = sdQueryService.decisionMaker(makerId, target);
+    Optional<ResourceScopeMap> scopes = redactingQueryService.computedScopeOf(makerId, target);
+    if (info.isEmpty() || scopes.isEmpty()) {
+      return Reply.of(404, Map.of("error", "decision maker not found", "id", id));
+    }
+    SimulationState state = queryService.stateAt(target);
+    DecisionScopeView view = DecisionScopeView.of(scopes.get(), ApiViews.gameMap(state), mapId);
+    return Reply.of(200, ApiViews.decisionScope(info.get(), state.meta().ref(), view));
   }
 
   /**

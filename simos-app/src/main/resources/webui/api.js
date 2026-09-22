@@ -212,6 +212,16 @@
     return getJson(withTarget("/sd/decision-makers/" + encodeURIComponent(id), target));
   }
 
+  /**
+   * 决策人**现算可见范围**（只读）：{decisionMakerId,affiliation,branch,revision,visible,namespaces,unparsedPrefixes}。
+   *
+   * <p>★ 这是"这个决策人此刻看得见什么"的**唯一**数据源（服务端范围函数 ∩ GM 的 accessLimit）。
+   * 前端**不得**自己从 overview 推一遍——那份推出来的东西不随 accessLimit 变，看起来对、其实是假的。
+   */
+  function decisionMakerScope(id, target) {
+    return getJson(withTarget("/sd/decision-makers/" + encodeURIComponent(id) + "/scope", target));
+  }
+
   function population(q, r, target) {
     return getJson(withTarget("/social/population?q=" + Number(q) + "&r=" + Number(r), target));
   }
@@ -357,6 +367,7 @@
     unit: unit,
     decisionMakers: decisionMakers,
     decisionMaker: decisionMaker,
+    decisionMakerScope: decisionMakerScope,
     population: population,
     cachedMapOverview: cachedMapOverview,
     cachedUnits: cachedUnits,

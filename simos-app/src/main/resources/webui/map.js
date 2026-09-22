@@ -2164,6 +2164,10 @@
     regionLoadToken: 0,
     regionHighlightToken: 0,
     regionFocusColor: null,
+    // ★ 决策人可见范围层：token 挡过期轮次；decisionScope 是最近一次算好的计划（debug/断言用）。
+    decisionScopeToken: 0,
+    decisionScope: null,
+    lastDecisionFocus: undefined,
   };
 
   function targetKey() {
@@ -2667,6 +2671,157 @@
     return reloadRegionHighlight(focus ? [focus] : [], REGION_EDIT_HIGHLIGHT);
   }
 
+  // ── 决策人可见范围高亮（只读端点 `/api/sd/decision-makers/{id}/scope`）─────────────
+  // ★ 为什么要有这一层：决策人"看得见什么"= 服务端范围函数现算 ∩ GM 的 accessLimit。
+  //   旧实现是**前端**按 affiliation 从 overview 自己推（国家的区域全高亮），军队级则什么都不画
+  //   —— 那是第二份真相：GM 用 accessLimit 收窄过的范围，界面照样画整片国土。
+  // ★ 与本层的写入者（区域高亮）互斥：两处都写 setHighlightHexes（按格键去重、先写者胜）
+  //   ⇒ 决策模式下 `highlightRegions` 恒为空（点决策人时清掉，见 panels.js）。
+  var DECISION_SCOPE_COLOR = "#3fa9ff";
+  // ★ 两级范围的**渲染**分界：按**格数**分，不按 affiliation —— 决定"画出来看不看得清"的是格数。
+  //   军队级（视野圈）R=1 是 7 格、R=2 是 19 格；国家级（整片国土）几百到几千格。64 稳稳落在中间。
+  var DECISION_SCOPE_SMALL_MAX = 64;
+  var DECISION_SCOPE_ALPHA_SMALL = 0.42; // 格少 ⇒ 逐格实心，范围圈看得清
+  var DECISION_SCOPE_ALPHA_LARGE = 0.2; // 格多 ⇒ 压淡，否则整片国土盖死地形
+
+  /** 「国家级 / 军队级」的中文标签（纯函数）。 */
+  function decisionScopeLevelLabel(kind) {
+    if (kind === "nation") {
+      return "国家级";
+    }
+    if (kind === "army") {
+      return "军队级";
+    }
+    return kind ? String(kind) : "未知归属";
+  }
+
+  /**
+   * ★ 纯函数：可见范围响应 ⇒ 地图高亮计划（**无 DOM、无 IO**，可直接单测）。
+   *
+   * <p>输入是 `GET /api/sd/decision-makers/{id}/scope` 的体。格集**只来自服务端**（`visible.hexes`）——
+   * 前端不补、不猜、不从 overview 推。`visible.hexCount` 含图外格，故文案报的是它、而画的是 `hexes`。
+   */
+  function buildDecisionScopeHighlight(scope) {
+    var visible = scope ? scope.visible : null;
+    var kind = scope && scope.affiliation ? scope.affiliation.kind : null;
+    var level = decisionScopeLevelLabel(kind);
+    if (!visible) {
+      return {
+        entries: [],
+        outlines: [],
+        hexCount: 0,
+        level: level,
+        summary: "可见范围：未知（" + level + "）",
+      };
+    }
+    var raw = Array.isArray(visible.hexes) ? visible.hexes : [];
+    var hexes = [];
+    for (var i = 0; i < raw.length; i += 1) {
+      var hex = raw[i];
+      if (!hex || hex.length !== 2) {
+        continue;
+      }
+      hexes.push({ q: Number(hex[0]), r: Number(hex[1]) });
+    }
+    var small = hexes.length <= DECISION_SCOPE_SMALL_MAX;
+    var alpha = small ? DECISION_SCOPE_ALPHA_SMALL : DECISION_SCOPE_ALPHA_LARGE;
+    var entries = [];
+    for (var j = 0; j < hexes.length; j += 1) {
+      entries.push({
+        key: hexes[j].q + "_" + hexes[j].r,
+        color: DECISION_SCOPE_COLOR,
+        alpha: alpha,
+      });
+    }
+    var regionCount = Array.isArray(visible.regionIds) ? visible.regionIds.length : 0;
+    var count = typeof visible.hexCount === "number" ? visible.hexCount : hexes.length;
+    var summary = "可见 " + count + " 格 / " + regionCount + " 区域（" + level + "）";
+    var offMap = typeof visible.offMapHexCount === "number" ? visible.offMapHexCount : 0;
+    if (offMap > 0) {
+      // ★ 图外的格如实说出来：范围内但图上不存在的格，既不画、也不假装没有。
+      summary += "，其中 " + offMap + " 格在图上不存在";
+    }
+    return {
+      entries: entries,
+      outlines: [
+        { id: "decision-scope", color: DECISION_SCOPE_COLOR, alpha: small ? 1 : 0.7, hexes: hexes },
+      ],
+      hexCount: count,
+      level: level,
+      summary: summary,
+    };
+  }
+
+  /** 把摘要写进左栏那一行（跨文件只经这**一个 DOM 锚点**，两边不互相持有状态）。 */
+  function publishDecisionScopeSummary(text) {
+    var id =
+      window.SimosPanels && window.SimosPanels.DECISION_SCOPE_SUMMARY_ID
+        ? window.SimosPanels.DECISION_SCOPE_SUMMARY_ID
+        : null;
+    var node = id ? app.byId(id) : null;
+    if (node) {
+      node.textContent = text;
+    }
+  }
+
+  /**
+   * 把**最近一次算好的**摘要重新写回那一行（供 panels.js 在重画详情后调用）。
+   *
+   * <p>★ 为什么需要它：两处都在异步里写 DOM——panels 重画左栏详情时会把那一行重置成"载入中…"，若它晚于本层的
+   * 回填落地，摘要就会被退回占位文本且**不再有事件来修**（状态没变 ⇒ 不会再算一次）。两处都写**同一个值** ⇒ 收敛。
+   */
+  function republishDecisionScopeSummary() {
+    publishDecisionScopeSummary(host.decisionScope ? host.decisionScope.summary : "载入中…");
+  }
+
+  /**
+   * 拉当前聚焦决策人的**现算**可见范围并高亮（决策模式、子页「决策人查看」）。
+   *
+   * <p>★ 只有本函数写决策范围层；无焦点 ⇒ 清空（清空也走这里，避免"上一轮的高亮挂在屏幕上"）。
+   * ★ 过期轮次丢弃（模式/焦点/token 三重叠）：慢的那轮晚到会把新选择覆盖回旧态。
+   */
+  async function reloadDecisionScopeHighlight() {
+    var state = app.getState();
+    if (!state || state.mode !== "decision") {
+      // ★ 不碰高亮层：区域模式的填充归 reloadHighlights（模式切换时它会清）。
+      host.decisionScope = null;
+      return null;
+    }
+    var focus = state.decisionMakerFocus || null;
+    if (!focus) {
+      host.decisionScope = null;
+      active.setHighlightHexes([]);
+      active.setRegionOutlines([]);
+      publishDecisionScopeSummary("—");
+      return null;
+    }
+    var token = ++host.decisionScopeToken;
+    var body;
+    try {
+      body = await api.decisionMakerScope(focus, app.target());
+    } catch (e) {
+      if (token !== host.decisionScopeToken) {
+        return null;
+      }
+      host.decisionScope = null;
+      publishDecisionScopeSummary("拉取失败：" + e.message);
+      return null;
+    }
+    if (
+      app.getState().mode !== "decision" ||
+      (app.getState().decisionMakerFocus || null) !== focus ||
+      token !== host.decisionScopeToken
+    ) {
+      return null;
+    }
+    var plan = buildDecisionScopeHighlight(body);
+    host.decisionScope = plan;
+    active.setHighlightHexes(plan.entries);
+    active.setRegionOutlines(plan.outlines);
+    publishDecisionScopeSummary(plan.summary);
+    return plan;
+  }
+
 
   /** 目标坐标变了 ⇒ 地图/单位/区域填充全部按新 revision 重取（取数一律带 withTarget）。 */
   function scheduleTargetReload() {
@@ -2682,6 +2837,8 @@
       } else {
         reloadHighlights();
       }
+      // ★ 范围是**按 revision 现算**的 ⇒ 换了目标就得重取（否则画的是上一版世界的范围）。
+      reloadDecisionScopeHighlight();
     }, 120);
   }
 
@@ -2705,6 +2862,13 @@
     if (host.lastRegionFocus !== focus) {
       host.lastRegionFocus = focus;
       onRegionFocusChanged(focus);
+    }
+    // ★ 决策人可见范围层：焦点换了就重拉（含"清空焦点 ⇒ 清高亮"）。放在区域高亮分支**之后**：
+    //   `reloadHighlights()` 在决策模式下走的是零请求清空路径（同步）⇒ 本层随后写，不会被它擦掉。
+    var dmFocus = state.decisionMakerFocus || null;
+    if (host.lastDecisionFocus !== dmFocus) {
+      host.lastDecisionFocus = dmFocus;
+      reloadDecisionScopeHighlight();
     }
     if (host.lastMode !== state.mode) {
       host.lastMode = state.mode;
@@ -5216,6 +5380,8 @@
     fadeRegionColor: fadeRegionColor,
     // ★ M8 T9：区域高亮计划（纯函数）——区域查看与区域编辑共用；门禁直接对它下断言。
     buildRegionHighlightPlan: buildRegionHighlightPlan,
+    // ★ 决策人可见范围的高亮计划（纯函数）：输入是 /scope 的响应体，输出画什么、什么颜色、什么透明度。
+    buildDecisionScopeHighlight: buildDecisionScopeHighlight,
     // ★ V3：拥有该 hex 的最顶层区域（定义序末位，纯函数）——门禁直接断言"取末位、不重排"。
     topRegionId: topRegionId,
     // ★ T7：决策模式的国家 tag ⇒ 区域集合（纯函数，C12）——门禁直接断言"集合相等、不是子集"。
@@ -5396,8 +5562,23 @@
             return tag !== null;
           })
           .sort(),
+        // ★ 可见范围层：最近一次算好的计划（画了几格 / 几级 / 摘要原文）——可断言。
+        scope: host.decisionScope
+          ? {
+              level: host.decisionScope.level,
+              hexCount: host.decisionScope.hexCount,
+              painted: host.decisionScope.entries.length,
+              summary: host.decisionScope.summary,
+            }
+          : null,
       };
     },
+    /** 重取当前焦点的可见范围（e2e/调试用；生产路径由状态变化自动触发）。 */
+    reloadDecisionScope: function () {
+      return reloadDecisionScopeHighlight();
+    },
+    /** 把最近算好的摘要重新写回「可见范围（现算）」那一行（panels.js 重画详情后调用）。 */
+    republishDecisionScopeSummary: republishDecisionScopeSummary,
     regionPaintForTest: function (hexes, op) {
       if (op) {
         host.regionOp = op === "remove" ? "remove" : "add";
