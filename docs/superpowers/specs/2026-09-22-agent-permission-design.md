@@ -35,6 +35,7 @@
 | **J8** | **配权命令取代旧机制** | 新命令成为 GM 唯一的配权入口；旧的 `viewScope` 一套（命令 + 字段 + 读侧过滤）从生产路径消失 |
 | **J9** | **资源维不空转** | 至少一条「同一工具、同一参数、两个调用者，一个放过一个拒」的用例 —— **这是资源维不是装饰的唯一证明** |
 | **J10** | **门禁与护栏** | `./mvnw clean verify` 绿；每条新护栏自带**故意违规用例 + 变异轮**（本仓既有纪律） |
+| **J11** | **决策人自己调工具 + 上下文沿用** | 决策人经 LLM **多轮工具调用**读世界（不是被动收简报）；同一决策人**跨 tick 的会话连续**（历史落 `ConversationStore`，可查、可回放） |
 
 ---
 
@@ -112,6 +113,50 @@
   ⇒ 直接 `tool.execute(ctx)` 会让**每个** Simos 工具 `RESOURCE_DENIED`（因为它们都调 `require`）。
 - **不开 MCP**：C3 决定了 MCP 口表达不了"每个决策人一份权限"；而范围随世界状态变（见 §三）
   ⇒ **进程内现算**是唯一可行路径 —— 用户的"不暴露 MCP"因此不只是权限收敛，是**实现上的必然**。
+
+### 2.3 决策人 agent 运行流（用户 2026-09-22：「要决策人自己调工具、带上下文」）
+
+**现状**（实测）：决策人的 LLM 路径是**单轮**——`AdjudicatorRunner` 把"简报 + 输出 schema"喂给模型、
+收一段 JSON（`DecisionAdjudicator.adjudicate`），**既无工具调用、也无跨 tick 上下文**。
+⇒ 本节的运行流是**新做**的，不是改造。
+
+**AgentLib 侧的事实**（决定"自建 or 改隔壁"）：
+
+| 需要的能力 | AgentLib 有吗 | 在哪 |
+|---|---|---|
+| LLM 调用（带工具定义） | ✅ `LlmClient.chat(LlmRequest)`，`LlmRequest.tools()` | `agentlib/llm` |
+| 模型返回工具调用 | ✅ `LlmResponse.toolCall(...)` / `assistantMessage()` | 同上 |
+| 消息与会话持久化 | ✅ `ConversationStore` + `SqliteConversationStore`（`append`/`load`/`compact`） | `agentlib/store` |
+| 工具执行（含权限、审批） | ✅ `ToolCallAuthorizer.execute(...)` | `agentlib/tool` |
+| **循环本身**（LLM ↔ 工具 ↔ 历史） | ❌ **没有** | —— **在 `BrainMosire`**：`brain/runtime/AgentPipeline.java` |
+
+★ **不改 AgentLib**：`AgentPipeline` 的核心依赖（`AgentConfig`/`ContextAssembler`/`Compactor`/
+`CompactSummarySlot`/`TurnResult`）**全是 Brain 自己的类**，搬不动；而 AgentLib 的定位就是设施库、
+**运行流属于应用层**（Brain 的先例）。⇒ Simos 在 **app 层**自建一个精简循环。
+
+**形态**：
+
+```
+conversationId = "decision-maker:" + <DecisionMakerId>        ← 每个决策人一条会话
+每 tick（决策 cadence 到点）跑一次 run：
+    history = conversationStore.load(cid)
+    while (true):
+        resp = llmClient.chat(new LlmRequest(history, toolDefs(决策人可见的工具)))
+        if (resp 不含 toolCall) break
+        result = toolCallAuthorizer.execute(registry, toolName, 决策人的 ToolContext)  ← ★ 权限在这层强制
+        history += [resp.assistantMessage(), toolResultMessage(result)]
+        conversationStore.append(cid, ...)                     ← ★ 跨 tick 沿用的载体
+    收尾：决策产出经 `sd.IssueDirective` / `sd.SubmitVerdict` 落 revision（铁律 2 不破）
+```
+
+**三条要点**：
+
+1. **工具面 = 决策人权限组下的工具**（§2.2 的 caller 现算权限集）⇒ 决策人"能调什么工具"与"能看什么数据"
+   由同一套 AgentLib 权限机制表达，**不是**靠提示词自律。
+2. **会话落 `ConversationStore`**（`SqliteConversationStore` 落 `<store>` 下）⇒ 进程重启后同一决策人仍
+   接得上；`conversationId` 由决策人 id 派生，**不隐式取全局状态**。
+3. **不做** Brain 那套（子 agent、技能、压缩档位、bash 工具）—— Simos 的决策人是"游戏里的 AI 玩家"，
+   需求面窄得多；将来若两者都成熟，再议是否抽到 AgentLib 共用（**那时才动隔壁**）。
 
 ---
 

@@ -270,6 +270,27 @@
 
 ---
 
+## Task 11B: 决策人 agent 运行流（LLM + 工具 + 会话）
+
+**Files:**
+- Create: `simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java`（循环 + 会话）
+- Create: `.../decision/DecisionToolDefs.java`（把决策人可见的 `AgentTool` 转成 `ToolDef`）
+- Test: `.../decision/DecisionAgentRunnerTest.java`
+
+**Interfaces:**
+- Consumes: `DecisionCallerFactory`（Task 6）、AgentLib 的 `ConversationStore` / `LlmClient` / `ToolCallAuthorizer`。
+- Produces: `DecisionAgentRunner.run(DecisionMaker dm, SimulationState state)` —— 跑一轮：LLM ↔ 工具，直到模型不再请求工具调用。
+
+- [ ] **Step 1: 写失败测试**（用 AgentLib 的 `FakeLlmClient` 注入一段"先 toolCall、后纯文本"的脚本）——
+  断言：① 工具**真的被执行**（有可观察副作用）；② 会话追加了 assistant 与 tool-result 两条消息；
+  ③ **第二次 `run` 时 `load(cid)` 能看到上一轮的历史**（**J11 的上下文沿用**）。
+- [ ] **Step 2: 跑测试确认失败**。
+- [ ] **Step 3: 实现循环**（`while(true)` + `chat` + `authorizer.execute` + 追加历史）。
+- [ ] **Step 4: 接 `SqliteConversationStore`**（落 `<store>` 下）＋ 一条"换新 store 实例仍读得到同一 cid 的历史"的用例。
+- [ ] **Step 5: 跑测试 + 提交**。
+
+---
+
 ## Task 12: 护栏、端到端与关账
 
 - [ ] **Step 1: 补齐 J1~J9 的判据用例**（逐条点名 spec §〇 的表）。
@@ -297,6 +318,7 @@
 | J8 配权取代 | T9 |
 | J9 资源维不空转 | T6 Step 1 |
 | J10 门禁与护栏 | T12 |
+| J11 决策人自己调工具 + 上下文沿用 | T11B |
 
 **未覆盖项（有意）**：地形遮挡（用户裁定⑥：纯半径）；AgentLib 的 per-session 身份（需改外部仓库，非 Simos 能补）；
 "除 X 外"否定语义（`ResourceScope` 无此能力）。
@@ -308,3 +330,22 @@
 - **T2/T10 动读工具断言** ⇒ 必须与围栏配置**成对上线**（否则表现为"某 role 突然什么都读不到"）。
 - **一次只准有一个 Maven 在跑**（本机 nproc=8，但"agent 与 Maven 并存"未测 ⇒ 保守串行）。
 - 门禁耗时本机实测 75 s（nproc=8），不受 600 s 线约束。
+
+---
+
+## 验收（用户 2026-09-22 指定的**真实流程**，改造完成后执行）
+
+**手段**：真 LLM（仓库 `config/llm-providers.json` 的 `mosire-flash` = `121.40.130.178:3000/v1` /
+`deepseek-flash`）＋ **Python 模拟的外部 agent 环境连 MCP**（控制器自己用 bash 起 MCP 客户端，不经 GUI/HTTP 捷径）。
+
+**流程（必须真跑，不是推演）**：
+
+1. **GM 侧（经 MCP）**：找一个国家 → 创建一个军事单位 → 建**两个**决策人（国家决策人 + 军队决策人）。
+2. **决策人侧**：让这两个决策人作决策 —— 具体是让它们经决策系统**报告"自己能看见什么"**。
+3. **判定**：在 MCP 里为这些决策判定 —— **正确 ⇒ 设决策为成功；权限出问题 ⇒ 失败**。
+4. **上下文沿用**：用 MCP 推进时间线，在**不同 tick 让同一个决策人 agent 用同一上下文**做多轮工具调用与决策
+   （★ 若当前系统没有跨 tick 的上下文沿用机制，这一条会把它暴露出来——属**预期发现**，如实记录再定修法）。
+5. **闭环**：发现的问题**当场修、重跑**，直到没有新发现；全程留痕（脚本、日志、判定依据）。
+
+**要盯的三件事**（用户点名）：GM 工具调用是否正常 · 决策人工具权限是否正确（含"看不到不该看的"）·
+决策提交是否可行、有没有 bug。
