@@ -159,7 +159,49 @@
 | **1** | ★ **真 LLM 首轮直接失败**：`sd.RunDecision` 返 `result=failed, llmCalls=0, reason=LlmException, detail="…HTTP 400: field messages is required"`——首次请求 `messages` **为空**（首轮会话空且无 system prompt）。★ 错误**被正确报告**（不是静默） | **真缺陷** ⇒ ✅ **已修**（`c884a22`：注入并**落盘**决策人身份 system 消息，6 变异体全杀、门禁 1589） |
 | **2** | 富世界的区域 tag 是**字面量 `'Nation'`**（**无 `nation:` 前缀**）⇒ `sd.CreateNation` 的 homeRegion 前置**不满足**、**建不了国家**——正是 M6 的 D-5 连带①预言的"先有鸡还是先有蛋" | **既有缺口**（D-5 未裁未做）；本轮验收用 `map.UpdateRegion` 手动补前缀绕过 |
 | **3** | ★ **工具名含 `.` 被 LLM 端点拒**（修 #1 后暴露）：`Invalid 'tools[0].***.name': … '^[a-zA-Z0-9_-]+$'` | **真缺陷** ⇒ ✅ **已修**（`7d519f0`：送出 `.`→`_` 转义 + 回来映射 + 碰撞响亮失败；5 变异体全杀、门禁 1602） |
-| **4** | ★ **真 LLM 跑通整条链，但两处要调优**：模型自述「single nation `osman`, one region (**573 hexes**), one unit `u-army1` … **neighbor polity `cicilia`**」⇒ 权限/派生信息全对；出令用了 `sd.RegisterEffect` ⇒ 被 `DirectiveWhitelist` **正确拒绝**（防递归）；重试时 **8 次预算用尽** ⇒ `abortedByBudget`（设计如此、不静默） | **调优**（非缺陷）：① 预算对真模型偏紧；② prompt 未告知"commands 不得含 `sd.*`" ⇒ 已派单 |
+| **4** | ★ **真 LLM 跑通整条链，但两处要调优**：模型自述「single nation `osman`, one region (**573 hexes**), one unit `u-army1` … **neighbor polity `cicilia`**」⇒ 权限/派生信息全对；出令用了 `sd.RegisterEffect` ⇒ 被 `DirectiveWhitelist` **正确拒绝**（防递归）；重试时 **8 次预算用尽** ⇒ `abortedByBudget`（设计如此、不静默） | **调优**（非缺陷）：① 预算对真模型偏紧；② prompt 未告知"commands 不得含 `sd.*`" ⇒ ✅ **已修**（`8aa409a`：预算 8→20 + prompt 补"sd. 开头一律被拒"；4 变异体全杀、门禁 1605） |
+| **5** | ★ **多轮对话必须回传 `reasoning_content`**：第二轮（带历史）返回 `HTTP 400: The reasoning_content in the thinking mode must be passed back to the API`——AgentLib 的 `LlmResponse` **有** `reasoning()`（永不丢失），但 **`LlmMessage` 是 `(role, content)` 两分量、没有承载它的位置** ⇒ 发送侧发不出。**只有多轮才暴露**（第一轮无历史） | **AgentLib 的能力缺口**（**非** Simos 用法问题）⇒ 按用户授权**改隔壁**：加承载位 + `assistantMessage()` 带上 + 发送侧有才发；再 install 到 `~/.m2`、**提交并推送到远程** |
+
+### ★★★ 验收最终结果（2026-09-22 收口）—— **全部达成**
+
+**跨 tick 上下文沿用（用户点名的最后一项）—— 实测通过，铁证在案**：
+
+- **第 1 轮** `dm-osman`：`committed`、llmCalls=7、**23 条工具调用**、出令（head 21→23）；
+- **第 2 轮**（同会话、同 tick）：`committed`、**llmCalls=1、0 条工具调用** —— 它**没有重新勘察**，
+  直接凭记忆答复，且**逐字记得上一轮**：「已出令：`d-osman-001`…两道领域命令
+  `unit.PlanSparseRoute`（(-6,-74)→(-2,-74)→(2,-74)→(6,-75)→(10,-76)）与 `unit.SetStatus`(MOVING)。
+  结果 `committed`，main head 22→23」
+  ⇒ **上下文真的在用**（验证的是"喂进去了"，不是"存下来了"）。
+
+**证据**：`e2e/acceptance-evidence/`（`conversations.db` + `transcript.json` 32 条 + `shell.log`）；
+会话里 **8 条消息带 `reasoning`** ⇒ AgentLib 的修复真的落盘生效。
+
+**发现 #5 的处置**：按用户授权**改隔壁 AgentLib**（`LlmMessage` 加 reasoning 分量 + `assistantMessage()`
+构造期挂回 + 发送侧"有才发" + 存储往返；6 变异体全杀）⇒ **install 到 `~/.m2`**（md5 `40cf1ccd…`）
+⇒ **提交 `7efc9d9` 并推送 `origin/main`**（纯快进）。**Simos 侧零改动**（实测：全工程 test-compile rc=0、
+`DecisionAgentRunnerTest` 15/15 绿、真 provider 多轮探针通过）。
+★ **老会话仍 400**（已落盘的历史里没有 reasoning，回放时补不上）——实测确认；处置 = **换会话 id 重开**
+（已验证有效）。
+
+**验收工具**（都在 `e2e/`，**标准库自写**）：`mcp_client.py`（MCP 客户端）、`auto_approver.py`（自动批准器）、
+`acceptance-evidence/`（证据）。
+
+### ★★ 验收结果（2026-09-22，真 LLM + 真 MCP）—— **核心目标全部达成**
+
+| 验收项（用户点名） | 实测结果 |
+|---|---|
+| **GM 工具调用** | ✅ 56 条工具经 MCP 全通（建区域/国家/单位/军队/两个决策人/provider 绑定，head 2→9） |
+| **决策人工具权限** | ✅ **实测生效**：国家决策人 `map.overview` 只得 **573 格**（本国国土，**非**全图 59223）；军队决策人只得 **7 格**（视野圈） |
+| **决策人自己调工具** | ✅ 一轮 **24~25 条工具调用**（catalog / branches / overview / unit.list / unit.get / map.hex / facets / resolve / population） |
+| **决策提交** | ✅ **两个决策人都成功出令**：`dm-osman`（head **13→15**，`unit.PlanRoute` + `unit.SetStatus`）、`dm-army1`（head **15→17**，同款） |
+| **J5 邻国** | ✅ 模型原话「neighbor polity **cicilia**」 |
+| **J6 归属国** | ✅ `map.hex` 带 `nation`；军队决策人自述「中心 4 格有主、西侧 3 格无主」 |
+| **两类范围函数分叉** | ✅ 同一世界同一轮：国家 **573 格** vs 军队 **7 格** |
+| **失败可见 / 跑飞兜底** | ✅ 被拒时模型看到 `REJECTED` + 中文理由；预算用尽 ⇒ `abortedByBudget`（**不静默**） |
+| **跨 tick 上下文** | ⚠️ 会话逐条落 `conversations.db`；时间线推进 **tick 0→2** 成功；**第二轮撞上发现 #5**（见下） |
+
+★ 另一处小实测：`simos.advance` 的参数是**顶层**（`{branch, expectedRevision, from, to}`），
+**不是** `payloadJson`（与 `sd.*` 窄工具不同）——第一次我传错、被 JSON schema 校验挡下（错误可读）。
 
 ★★ **验收已实测成立的东西**（真 LLM + 真 MCP，这是本阶段最关键的一组正面证据）：
 
