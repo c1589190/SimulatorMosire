@@ -568,7 +568,7 @@ class SimosToolsTest {
    * Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
    * <p>★ 扫描范围是 surefire 工作目录（模块根 {@code simos-app/}）⇒ 相对路径 {@code ../simos-unit/src/main/java} 在主树与
-   * worktree 里都成立；**非空自证**：文件数必须恰为 30（扫到 0 个是"扫描器静默"陷阱，不是通过）。
+   * worktree 里都成立；**非空自证**：条数由紧随的 {@code hasSize} 断言钉住（扫到 0 个是"扫描器静默"陷阱，不是通过）。
    */
   @Test
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
