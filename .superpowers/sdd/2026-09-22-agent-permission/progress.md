@@ -158,7 +158,20 @@
 |---|---|---|
 | **1** | ★ **真 LLM 首轮直接失败**：`sd.RunDecision` 返 `result=failed, llmCalls=0, reason=LlmException, detail="…HTTP 400: field messages is required"`——首次请求 `messages` **为空**（首轮会话空且无 system prompt）。★ 错误**被正确报告**（不是静默） | **真缺陷** ⇒ ✅ **已修**（`c884a22`：注入并**落盘**决策人身份 system 消息，6 变异体全杀、门禁 1589） |
 | **2** | 富世界的区域 tag 是**字面量 `'Nation'`**（**无 `nation:` 前缀**）⇒ `sd.CreateNation` 的 homeRegion 前置**不满足**、**建不了国家**——正是 M6 的 D-5 连带①预言的"先有鸡还是先有蛋" | **既有缺口**（D-5 未裁未做）；本轮验收用 `map.UpdateRegion` 手动补前缀绕过 |
-| **3** | ★ **工具名含 `.` 被 LLM 端点拒**（修 #1 后暴露）：`Invalid 'tools[0].***.name': string does not match pattern '^[a-zA-Z0-9_-]+$'`——Simos 工具名形如 `simos.map.hex` / `sd.IssueDirective`，而端点只收字母数字/下划线/连字符 | **真缺陷** ⇒ 已派单修（送出时 `.`→`_` 转义 + 回来映射回真名 + 碰撞**响亮失败**） |
+| **3** | ★ **工具名含 `.` 被 LLM 端点拒**（修 #1 后暴露）：`Invalid 'tools[0].***.name': … '^[a-zA-Z0-9_-]+$'` | **真缺陷** ⇒ ✅ **已修**（`7d519f0`：送出 `.`→`_` 转义 + 回来映射 + 碰撞响亮失败；5 变异体全杀、门禁 1602） |
+| **4** | ★ **真 LLM 跑通整条链，但两处要调优**：模型自述「single nation `osman`, one region (**573 hexes**), one unit `u-army1` … **neighbor polity `cicilia`**」⇒ 权限/派生信息全对；出令用了 `sd.RegisterEffect` ⇒ 被 `DirectiveWhitelist` **正确拒绝**（防递归）；重试时 **8 次预算用尽** ⇒ `abortedByBudget`（设计如此、不静默） | **调优**（非缺陷）：① 预算对真模型偏紧；② prompt 未告知"commands 不得含 `sd.*`" ⇒ 已派单 |
+
+★★ **验收已实测成立的东西**（真 LLM + 真 MCP，这是本阶段最关键的一组正面证据）：
+
+- 决策人**自己调工具**：一轮里 8 次 LLM 调用、多次工具调用（catalog / branches / overview / unit.list /
+  unit.get / map.hex / facets / resolve / population），**不是被动收简报**（J11 ①）；
+- **权限过滤真的生效**：`simos.map.overview` 给的是 **`hexCount=573`**（本国国土），**不是全图 59223**；
+- **J5 邻国**：模型自己报告了 `neighbor polity cicilia`；
+- **J6 归属国**：`simos.map.hex` 的返回带 `nation`；
+- **工具名线格式**：会话里是 `simos_map_hex` 这类线名，且映射回真名执行成功；
+- **失败对模型可见**：出令被拒时它拿到 `REJECTED` + 中文理由（**不静默**）；
+- **跑飞有兜底**：预算用尽 ⇒ `abortedByBudget=true`（**不静默截断**）；
+- **跨 tick 上下文**：会话逐条落 `conversations.db`（35 条在案）。
 
 ## 四 本阶段的环境事实（本机实测，避免照抄别台）
 

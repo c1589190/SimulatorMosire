@@ -1,0 +1,22 @@
+### round=m4-rule-prefix-is-wire-style
+note=规则里把命令类型前缀 `sd.` 写成工具线名式的 `sd_`（混层）
+target=simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java
+baseline_md5=5669862aa6b9640f1669b0f9178ba7d7
+replacement_hits=1
+mutant_md5=ef37bceb09ecddc2abf9ca742157dc61
+mutant_differs_from_baseline=True
+reports_deleted_before_run=['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt', 'io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt']
+mvn_rc=1
+compilation_errors=0
+report_files=2 ['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt', 'io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt']
+red_points:
+  - Tests run: 15, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.377 s <<< FAILURE!
+  - io.mosire.simos.app.decision.DecisionAgentRunnerTest.theIdentityMessageStatesTheNoSelfReferencingCommandsRule
+  -     Expecting actual:
+  -     to contain:
+  -       ^ 断言的目标串: "sd."
+  -       @io.mosire.simos.app.decision.DecisionAgentRunnerTest.theIdentityMessageStatesTheNoSelfReferencingCommandsRule(DecisionAgentRunnerTest.java:454)
+verdict=KILLED
+restored_md5=5669862aa6b9640f1669b0f9178ba7d7
+restored_identical=True
+elapsed_s=9.7

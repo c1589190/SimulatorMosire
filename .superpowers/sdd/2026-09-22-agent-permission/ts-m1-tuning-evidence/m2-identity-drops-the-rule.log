@@ -1,0 +1,22 @@
+### round=m2-identity-drops-the-rule
+note=身份消息删掉【出令的 commands 放什么】整段
+target=simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java
+baseline_md5=5669862aa6b9640f1669b0f9178ba7d7
+replacement_hits=1
+mutant_md5=85467c578503627ea48c5043d3336cc9
+mutant_differs_from_baseline=True
+reports_deleted_before_run=['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt', 'io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt']
+mvn_rc=1
+compilation_errors=0
+report_files=2 ['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt', 'io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt']
+red_points:
+  - Tests run: 15, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.293 s <<< FAILURE!
+  - io.mosire.simos.app.decision.DecisionAgentRunnerTest.theIdentityMessageStatesTheNoSelfReferencingCommandsRule
+  -     Expecting actual:
+  -     to contain:
+  -       ^ 断言的目标串: "commands"
+  -       @io.mosire.simos.app.decision.DecisionAgentRunnerTest.theIdentityMessageStatesTheNoSelfReferencingCommandsRule(DecisionAgentRunnerTest.java:453)
+verdict=KILLED
+restored_md5=5669862aa6b9640f1669b0f9178ba7d7
+restored_identical=True
+elapsed_s=7.2

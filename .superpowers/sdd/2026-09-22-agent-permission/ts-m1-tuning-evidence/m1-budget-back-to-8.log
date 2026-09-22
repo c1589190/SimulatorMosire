@@ -1,0 +1,24 @@
+### round=m1-budget-back-to-8
+note=预算改回 8（现场那个不够用的数）
+target=simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java
+baseline_md5=5669862aa6b9640f1669b0f9178ba7d7
+replacement_hits=1
+mutant_md5=8cf35fce05c7fb65d893e7f17ddb46a9
+mutant_differs_from_baseline=True
+reports_deleted_before_run=['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt', 'io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt']
+mvn_rc=1
+compilation_errors=0
+report_files=2 ['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt', 'io.mosire.simos.app.decision.RunDecisionEndToEndTest.txt']
+red_points:
+  - Tests run: 15, Failures: 1, Errors: 1, Skipped: 0, Time elapsed: 1.256 s <<< FAILURE!
+  - io.mosire.simos.app.decision.DecisionAgentRunnerTest.theDefaultBudgetFitsTheObservedSurveyThenRetrySequence
+  -       @io.mosire.simos.app.decision.DecisionAgentRunner.run(DecisionAgentRunner.java:268)
+  -       @io.mosire.simos.app.decision.DecisionAgentRunnerTest.theDefaultBudgetFitsTheObservedSurveyThenRetrySequence(DecisionAgentRunnerTest.java:604)
+  - io.mosire.simos.app.decision.DecisionAgentRunnerTest.theDefaultBudgetIsTheNumberTheLiveRunArithmeticYields
+  -     expected: 20
+  -     but was: 8
+  -       @io.mosire.simos.app.decision.DecisionAgentRunnerTest.theDefaultBudgetIsTheNumberTheLiveRunArithmeticYields(DecisionAgentRunnerTest.java:643)
+verdict=KILLED
+restored_md5=5669862aa6b9640f1669b0f9178ba7d7
+restored_identical=True
+elapsed_s=7.1

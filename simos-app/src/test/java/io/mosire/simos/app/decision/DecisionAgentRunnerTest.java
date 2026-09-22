@@ -118,6 +118,14 @@ class DecisionAgentRunnerTest {
   private static final HexCoord H12 = new HexCoord(1, 2);
   private static final UnitId U1 = new UnitId("u-1");
 
+  /** 现场实测里模型第一次出令给的那一条：{@code sd.RegisterEffect} —— **自指**，{@code DirectiveWhitelist} 必拒。 */
+  private static final String SELF_REFERENCING_COMMAND =
+      "{\"type\":\"sd.RegisterEffect\",\"payloadJson\":\"{}\"}";
+
+  /** 一条**非 sd 的领域命令**：身份消息新补的那条规则指示的形态，重试时用它（证明按规则重试走得通）。 */
+  private static final String DOMAIN_COMMAND =
+      "{\"type\":\"unit.RenameUnit\",\"payloadJson\":\"{}\"}";
+
   private static final DecisionMaker DM_FRA =
       new DecisionMaker(
           new DecisionMakerId("dm-fra"),
@@ -418,6 +426,38 @@ class DecisionAgentRunnerTest {
   }
 
   /**
+   * ★★ **身份消息必须交代「出令的 {@code commands} 不得含 {@code sd.*}」**（真 LLM 实测缺陷的修法，2026-09-22）。
+   *
+   * <p>★ **缺陷现场**（不是推断）：决策人 {@code dm-osman} 勘察完之后**第一次出令就用了** {@code sd.RegisterEffect} —— 那是
+   * {@code sd} 自指，被 {@code DirectiveWhitelist} **正确拒绝**（防无限递归）。它此前**无从得知**这条规则：身份消息只说 "出令用 {@code
+   * sd_IssueDirective}、载荷字段见 catalog"，**没有一个字说 commands 里不许放 sd 前缀的类型**。代价是**白烧一轮**
+   * ——而那一轮预算已经见底（同一次现场的另一条发现）。
+   *
+   * <p>★ **断言方式刻意不依赖任何清单**：只钉这条规则的**两半**——① 受管对象是**命令类型**那一层（写作 {@code commands}）； ② 被禁的是 {@code
+   * sd.} 这个**前缀**（不是某个具体命令名）。故日后 sd 命令族增删、catalog 里多一条少一条，本用例都不动。
+   *
+   * <p>★ **为什么钉 {@code "sd."}（点）而不是 {@code "sd_"}**：点号是**命令类型**的命名空间分隔符（{@code
+   * DirectiveWhitelist.isSdSelfReference} 判的正是它，现场那次拒绝的理由正文逐字是「决策命令不得自指 sd.*（防无限递归）:
+   * sd.RegisterEffect」）；下划线是**工具名**的线格式转义产物（{@code sd_IssueDirective}）——两者混为一谈就等于教错了层。
+   * 判别力也在这里：现有正文里有 {@code sd_IssueDirective} 却**没有** {@code sd.}，故 {@code contains("sd.")} 不是恒真。
+   */
+  @Test
+  void theIdentityMessageStatesTheNoSelfReferencingCommandsRule() {
+    llm.enqueue(LlmResponse.text("收到"));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    String text = textOf(llm.requests().get(0).messages().get(0));
+    assertThat(text)
+        .as("★ commands 里不得放 sd 前缀的命令类型（防无限递归）——不说这条，真模型第一次出令必然被拒、白烧一轮")
+        .contains("commands")
+        .contains("sd.");
+    assertThat(text)
+        .as("★ 但**不许**把禁令写成真名（模型眼里的工具名一律是线格式，见身份消息的类注）")
+        .doesNotContain("sd.RegisterEffect");
+  }
+
+  /**
    * ★★ **只注入一次**：第二轮从会话里取回它，不得再追加一条。
    *
    * <p>★ 判别力（变异实测）："每轮都注入"的变异体把身份**追加到尾部**，于是第二轮的首个请求成了 {@code system, assistant,
@@ -515,6 +555,92 @@ class DecisionAgentRunnerTest {
     assertThat(conversations.load(conversationId()))
         .as("★ 中止不丢上下文：已发生的消息逐条落盘（含首条身份），下一 tick 可续")
         .hasSize(5);
+  }
+
+  /**
+   * ★★ **现场重放：默认预算必须装得下「勘察 → 出令被拒 → 重读 → 重发 → 收口」**（真 LLM 实测缺陷的修法，2026-09-22）。
+   *
+   * <p>★ **现场**（不是推断）：决策人 {@code dm-osman} 在**最小世界**（1 国 / 1 区域 / **573 格** / 1 单位）上跑一轮， **7 次勘察 +
+   * 1 次出令**就把 8 次预算用满；出令因 {@code sd.RegisterEffect} 自指被正确拒绝后， 它**正要重读状态再试**时预算耗尽 ⇒ {@code
+   * abortedByBudget}（设计如此、**不静默截断**，这点是对的）。⇒ **8 是「最小世界的勘察成本本身」**，连一次重试都装不下。
+   *
+   * <p>★ 本用例按现场**逐调用重放**（7 勘察 + 1 被拒出令 + 1 重读 + 1 重发 + 1 收口 = **11** 次），用**默认构造器** （不给显式上限）：预算是 8
+   * 时，第 9 次调用**之前**就会抛 {@code TurnBudgetExceeded}，本用例必红。
+   *
+   * <p>★ **承重断言是「跑完了」这件事本身**（不抛、且重试那条真的落了 revision）——不是"读到一个常量等于某个数"。 那条值断言在 {@link
+   * #theDefaultBudgetIsTheNumberTheLiveRunArithmeticYields} 里另有一条，两条各管一件事。
+   *
+   * <p>★ 重试那条用的是**非 sd 的领域命令**（{@code unit.RenameUnit}）：这正是身份消息新补的那条规则所指示的形态，故本用例
+   * **顺带证明"按新规则重试真的走得通"**——不是只证明"预算变大了"。
+   */
+  @Test
+  void theDefaultBudgetFitsTheObservedSurveyThenRetrySequence() {
+    long headBefore = head();
+    llm.enqueue(
+        // ── 7 次勘察（现场那 7 次摸工具面）
+        LlmResponse.toolCall("s1", "simos_command_catalog", Map.of()),
+        LlmResponse.toolCall("s2", "simos_timeline_branches", Map.of()),
+        LlmResponse.toolCall("s3", "simos_map_overview", Map.of()),
+        LlmResponse.toolCall("s4", "simos_unit_list", Map.of()),
+        LlmResponse.toolCall("s5", "simos_unit_get", Map.of("id", U1.value())),
+        LlmResponse.toolCall("s6", "simos_map_hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("s7", "simos_state_facets", Map.of("address", "map:" + MAP_ID)),
+        // ── 第 8 次：出令，用**自指**命令 ⇒ 被白名单正确拒绝（现场那一笔）
+        LlmResponse.toolCall(
+            "d1",
+            "sd_IssueDirective",
+            directiveArgs(headBefore, "d-1", "[" + SELF_REFERENCING_COMMAND + "]")),
+        // ── 现场正好停在这一步：它要重读状态、再出一次令
+        LlmResponse.toolCall("s8", "simos_timeline_branches", Map.of()),
+        LlmResponse.toolCall(
+            "d2",
+            "sd_IssueDirective",
+            directiveArgs(headBefore, "d-2", "[" + DOMAIN_COMMAND + "]")),
+        LlmResponse.text("已按重读到的 head 改用领域命令重新出令"));
+
+    // ★ 默认构造器（不给显式上限）——测的就是 DEFAULT_MAX_LLM_CALLS 那个数
+    DecisionAgentRunner.DecisionTurn turn =
+        new DecisionAgentRunner(factory(), decisionRegistry(), llm, conversations, MAP_ID)
+            .run(DM_FRA, state());
+
+    assertThat(turn.llmCalls())
+        .as("★ 11 次调用全部走完（7 勘察 + 被拒出令 + 重读 + 重发 + 收口）；预算是 8 时这里根本走不到")
+        .isEqualTo(11);
+    assertThat(turn.toolInvocations())
+        .as("★ 10 次工具调用（11 次 LLM 调用里最后一次是**收口文本**、不带工具）——勘察读 + 两次出令")
+        .hasSize(10);
+    assertThat(turn.toolInvocations().get(7).success()).as("★ 自指那条被拒（现场实测的正确行为，本用例不改它）").isFalse();
+    assertThat(turn.toolInvocations().get(7).resultSummary()).contains("自指");
+    assertThat(turn.toolInvocations().get(9).success())
+        .as("★ 按身份消息新补的规则改用领域命令后**真的出令成功**——不只是「预算变大」")
+        .isTrue();
+    assertThat(head()).as("★ 只落一条 revision：被拒那条不留痕、重试那条留下").isEqualTo(headBefore + 1);
+  }
+
+  /**
+   * ★ **默认回合预算就是现场算出来的那个数**（{@code 20}）：这是一条**带算术的裁定**，不是实现细节 ⇒ 不许静默改动。
+   *
+   * <p>★ 算术（每一项都取**上界**，依据是 2026-09-22 的真 LLM 现场）：
+   *
+   * <ol>
+   *   <li>勘察 <b>14</b> = 实测 <b>7</b> × 2——实测那 7 次是**最小世界**新会话首轮"把整个工具面摸一遍"的量（catalog / branches /
+   *       overview / unit.list / unit.get / map.hex / facets / …），世界变大只会更多；
+   *   <li>出令 <b>1</b>；
+   *   <li>重试 <b>4</b> = 2 轮 × (重读状态 + 重发令)——两种被拒理由（{@code commands} 自指 / {@code expectedRevision}
+   *       过期）各留一轮；
+   *   <li>收口 <b>1</b>（工具轮之后模型还要一次纯文本轮才算完，既有用例 {@code
+   *       theRunnerReallyExecutesTheToolsTheModelAsksFor} 实测的就是这个形态）。
+   * </ol>
+   *
+   * <p>★ 合计 <b>20</b>。**下界是 11**（现场那次撞墙的序列长度）——那个下界由 {@link
+   * #theDefaultBudgetFitsTheObservedSurveyThenRetrySequence} 在**行为层**另证一次； 本用例钉的是「别把这条决定改掉而不重新算一遍」，
+   * 它的判别力在**值**本身（改数就红），不在行为上。两者缺一不可：只有行为断言则"悄悄降到 11"能过，只有值断言则"降到 11 恰好还够用"这件事无人证明。
+   */
+  @Test
+  void theDefaultBudgetIsTheNumberTheLiveRunArithmeticYields() {
+    assertThat(DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS)
+        .as("勘察 14 + 出令 1 + 重试 4 + 收口 1 = 20（算术见本用例注释与常量注释）")
+        .isEqualTo(20);
   }
 
   // ────────────────────────────── 助手 ──────────────────────────────
@@ -637,11 +763,26 @@ class DecisionAgentRunnerTest {
   }
 
   private static Map<String, Object> directiveArgs(long expectedRevision) {
+    return directiveArgs(expectedRevision, "d-1", "[]");
+  }
+
+  /**
+   * 出令载荷（可带 {@code commands}）——现场重放要它：那条自指的与那条合法的各要一份。
+   *
+   * @param directiveId 指令 id（两次尝试各用一个，免与"指令 id 已存在"的拒绝理由混起来）
+   * @param commandsJson {@code commands} 数组的**原样 JSON 文本**（空集合传 {@code "[]"}）
+   */
+  private static Map<String, Object> directiveArgs(
+      long expectedRevision, String directiveId, String commandsJson) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put(
         "payloadJson",
-        "{\"directiveId\":\"d-1\",\"decisionMakerId\":\"dm-fra\",\"tick\":7,"
-            + "\"intentInfo\":\"向北推进\",\"commands\":[]}");
+        "{\"directiveId\":\""
+            + directiveId
+            + "\",\"decisionMakerId\":\"dm-fra\",\"tick\":7,"
+            + "\"intentInfo\":\"向北推进\",\"commands\":"
+            + commandsJson
+            + "}");
     args.put("branch", "main");
     args.put("expectedRevision", expectedRevision);
     return args;
