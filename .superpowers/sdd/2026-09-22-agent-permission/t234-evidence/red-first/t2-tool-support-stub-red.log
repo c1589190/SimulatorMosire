@@ -1,0 +1,65 @@
+[ERROR] Tests run: 6, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.134 s <<< FAILURE! -- in io.mosire.simos.app.tools.AccessPathsTest
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.sdPathsAreKindThenId -- Time elapsed: 0.113 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "sd:nation/FRA"
+ but was: "sd:FRA"
+	at io.mosire.simos.app.tools.AccessPathsTest.sdPathsAreKindThenId(AccessPathsTest.java:55)
+
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment -- Time elapsed: 0.003 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "demo/region/701"
+ but was: "demo"
+	at io.mosire.simos.app.tools.AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment(AccessPathsTest.java:26)
+
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.thePiecesComposeIntoAPrefixThatAllowsItsOwnResource -- Time elapsed: 0.002 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[相邻格是不同的资源] 
+Expecting value to be false but was true
+	at io.mosire.simos.app.tools.AccessPathsTest.thePiecesComposeIntoAPrefixThatAllowsItsOwnResource(AccessPathsTest.java:78)
+
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "demo/hex/-5_-59"
+ but was: "demo"
+	at io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns(AccessPathsTest.java:35)
+
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated -- Time elapsed: 0 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "Map1/hex/3_12"
+ but was: "Map1"
+	at io.mosire.simos.app.tools.AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated(AccessPathsTest.java:41)
+
+[ERROR] Failures: 
+[ERROR]   AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns:35 
+expected: "demo/hex/-5_-59"
+ but was: "demo"
+[ERROR]   AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated:41 
+expected: "Map1/hex/3_12"
+ but was: "Map1"
+[ERROR]   AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment:26 
+expected: "demo/region/701"
+ but was: "demo"
+[ERROR]   AccessPathsTest.sdPathsAreKindThenId:55 
+expected: "sd:nation/FRA"
+ but was: "sd:FRA"
+[ERROR]   AccessPathsTest.thePiecesComposeIntoAPrefixThatAllowsItsOwnResource:78 [相邻格是不同的资源] 
+Expecting value to be false but was true
+[ERROR] Tests run: 6, Failures: 5, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

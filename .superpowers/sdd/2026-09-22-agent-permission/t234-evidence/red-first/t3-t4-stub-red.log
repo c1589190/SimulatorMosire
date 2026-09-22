@@ -1,0 +1,307 @@
+[ERROR] Tests run: 7, Failures: 6, Errors: 0, Skipped: 0, Time elapsed: 0.074 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly -- Time elapsed: 0.034 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly(DecisionScopeFunctionsTest.java:55)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.aCustomFunctionCanBeRegisteredWithoutTouchingTheCallSite -- Time elapsed: 0.008 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[注册表用的是注册表里的那份，不是硬编码的 instanceof] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/region/custom"]
+but could not find the following elements:
+  ["demo/region/custom"]
+
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.aCustomFunctionCanBeRegisteredWithoutTouchingTheCallSite(DecisionScopeFunctionsTest.java:92)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.theScopeFollowsTheAffiliationOnly -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  []
+not to be equal to:
+  []
+
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.theScopeFollowsTheAffiliationOnly(DecisionScopeFunctionsTest.java:104)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation -- Time elapsed: 0 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation(DecisionScopeFunctionsTest.java:68)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[国家范围不是逐格给的] 
+Expecting value to be false but was true
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation(DecisionScopeFunctionsTest.java:45)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[别的 mapId 的资源够不着] 
+Expecting value to be false but was true
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix(DecisionScopeFunctionsTest.java:120)
+
+[ERROR] Tests run: 7, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.012 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest
+[ERROR] io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[受限范围不得退化成 unlimited()] 
+Expecting value to be false but was true
+	at io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation(NationScopeTest.java:54)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/region/701"]
+but could not find the following elements:
+  ["demo/region/701"]
+
+	at io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse(NationScopeTest.java:42)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/region/201"]
+but could not find the following elements:
+  ["demo/region/201"]
+
+	at io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion(NationScopeTest.java:47)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap -- Time elapsed: 0.004 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+	at io.mosire.simos.app.access.NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap(NationScopeTest.java:78)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+	at io.mosire.simos.app.access.NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing(NationScopeTest.java:94)
+
+[ERROR] Tests run: 9, Failures: 9, Errors: 0, Skipped: 0, Time elapsed: 0.016 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+[位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）] 
+Expected size: 7 but was: 0 in:
+[]
+	at io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField(ArmyScopeTest.java:137)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed -- Time elapsed: 0.002 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be false but was true
+	at io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed(ArmyScopeTest.java:63)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+	at io.mosire.simos.app.access.ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing(ArmyScopeTest.java:163)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes -- Time elapsed: 0 s <<< FAILURE!
+java.lang.AssertionError: 
+[R=2 ⇒ 3R²+3R+1 = 19 格] 
+Expected size: 19 but was: 0 in:
+[]
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes(ArmyScopeTest.java:90)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/hex/1_1"]
+but could not find the following elements:
+  ["demo/hex/1_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex(ArmyScopeTest.java:80)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+	at io.mosire.simos.app.access.ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll(ArmyScopeTest.java:155)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: 
+[(1,1) 时看得见原格、看不见 (2,2)] 
+Expecting ArrayList:
+  []
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet(ArmyScopeTest.java:110)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting ArrayList:
+  []
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes(ArmyScopeTest.java:183)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+[(1,1) 起半径 1 的六角球 = 7 格] 
+Expecting actual:
+  []
+to contain exactly in any order:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+but could not find the following elements:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours(ArmyScopeTest.java:48)
+
+[ERROR] Failures: 
+[ERROR]   ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing:163 
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+[ERROR]   ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll:155 
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+[ERROR]   ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:137 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）] 
+Expected size: 7 but was: 0 in:
+[]
+[ERROR]   ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed:63 
+Expecting value to be false but was true
+[ERROR]   ArmyScopeTest.movingTheArmyChangesTheVisibleSet:110 [(1,1) 时看得见原格、看不见 (2,2)] 
+Expecting ArrayList:
+  []
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+[ERROR]   ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours:48 [(1,1) 起半径 1 的六角球 = 7 格] 
+Expecting actual:
+  []
+to contain exactly in any order:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+but could not find the following elements:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+
+[ERROR]   ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes:90 [R=2 ⇒ 3R²+3R+1 = 19 格] 
+Expected size: 19 but was: 0 in:
+[]
+[ERROR]   ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex:80 [R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/hex/1_1"]
+but could not find the following elements:
+  ["demo/hex/1_1"]
+
+[ERROR]   ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes:183 
+Expecting ArrayList:
+  []
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+[ERROR]   DecisionScopeFunctionsTest.aCustomFunctionCanBeRegisteredWithoutTouchingTheCallSite:92 [注册表用的是注册表里的那份，不是硬编码的 instanceof] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/region/custom"]
+but could not find the following elements:
+  ["demo/region/custom"]
+
+[ERROR]   DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation:68 
+Expecting code to raise a throwable.
+[ERROR]   DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly:55 
+Expecting code to raise a throwable.
+[ERROR]   DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:45 [国家范围不是逐格给的] 
+Expecting value to be false but was true
+[ERROR]   DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix:120 [别的 mapId 的资源够不着] 
+Expecting value to be false but was true
+[ERROR]   DecisionScopeFunctionsTest.theScopeFollowsTheAffiliationOnly:104 
+Expecting actual:
+  []
+not to be equal to:
+  []
+
+[ERROR]   NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing:94 
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+[ERROR]   NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:42 [FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/region/701"]
+but could not find the following elements:
+  ["demo/region/701"]
+
+[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:78 
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: ResourceScope[unrestricted=true, prefixes=[]]
+[ERROR]   NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation:54 [受限范围不得退化成 unlimited()] 
+Expecting value to be false but was true
+[ERROR]   NationScopeTest.theOtherNationSeesTheOtherRegion:47 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["demo/region/201"]
+but could not find the following elements:
+  ["demo/region/201"]
+
+[ERROR] Tests run: 23, Failures: 20, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

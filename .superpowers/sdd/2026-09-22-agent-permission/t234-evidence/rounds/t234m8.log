@@ -1,0 +1,311 @@
+[ERROR] Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.148 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation -- Time elapsed: 0.005 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[军队归属 ⇒ 逐格前缀] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation(DecisionScopeFunctionsTest.java:44)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix(DecisionScopeFunctionsTest.java:115)
+
+[ERROR] Tests run: 9, Failures: 7, Errors: 0, Skipped: 0, Time elapsed: 0.016 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField -- Time elapsed: 0.005 s <<< FAILURE!
+java.lang.AssertionError: 
+[位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）] 
+Expecting ArrayList:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain:
+  ["demo/hex/1_1", "demo/hex/2_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1", "demo/hex/2_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField(ArmyScopeTest.java:131)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed(ArmyScopeTest.java:63)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+[R=2 ⇒ 3R²+3R+1 = 19 格] 
+Expecting ArrayList:
+  ["demo/hex/-1/1",
+    "demo/hex/-1/2",
+    "demo/hex/-1/3",
+    "demo/hex/0/0",
+    "demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/0/3",
+    "demo/hex/1/-1",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/1/3",
+    "demo/hex/2/-1",
+    "demo/hex/2/0",
+    "demo/hex/2/1",
+    "demo/hex/2/2",
+    "demo/hex/3/-1",
+    "demo/hex/3/0",
+    "demo/hex/3/1"]
+to contain:
+  ["demo/hex/2_2", "demo/hex/3_0", "demo/hex/3_1"]
+but could not find the following element(s):
+  ["demo/hex/2_2", "demo/hex/3_0", "demo/hex/3_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes(ArmyScopeTest.java:86)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex -- Time elapsed: 0.002 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）] 
+Expecting actual:
+  ["demo/hex/1/1"]
+to contain exactly (and in same order):
+  ["demo/hex/1_1"]
+but some elements were not found:
+  ["demo/hex/1_1"]
+and others were not expected:
+  ["demo/hex/1/1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex(ArmyScopeTest.java:76)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[(1,1) 时看得见原格、看不见 (2,2)] 
+Expecting ArrayList:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet(ArmyScopeTest.java:105)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes -- Time elapsed: 0 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting ArrayList:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes(ArmyScopeTest.java:177)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[(1,1) 起半径 1 的六角球 = 7 格] 
+Expecting actual:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain exactly in any order:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+elements not found:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+and elements not expected:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours(ArmyScopeTest.java:47)
+
+[ERROR] Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.006 s <<< FAILURE! -- in io.mosire.simos.app.tools.AccessPathsTest
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "demo/hex/-5_-59"
+ but was: "demo/hex/-5/-59"
+	at io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns(AccessPathsTest.java:34)
+
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated -- Time elapsed: 0 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "Map1/hex/3_12"
+ but was: "Map1/hex/3/12"
+	at io.mosire.simos.app.tools.AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated(AccessPathsTest.java:40)
+
+[ERROR] Failures: 
+[ERROR]   ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:131 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）] 
+Expecting ArrayList:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain:
+  ["demo/hex/1_1", "demo/hex/2_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1", "demo/hex/2_1"]
+
+[ERROR]   ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed:63 
+Expecting value to be true but was false
+[ERROR]   ArmyScopeTest.movingTheArmyChangesTheVisibleSet:105 [(1,1) 时看得见原格、看不见 (2,2)] 
+Expecting ArrayList:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+[ERROR]   ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours:47 [(1,1) 起半径 1 的六角球 = 7 格] 
+Expecting actual:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain exactly in any order:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+elements not found:
+  ["demo/hex/1_1",
+    "demo/hex/2_1",
+    "demo/hex/2_0",
+    "demo/hex/1_0",
+    "demo/hex/0_1",
+    "demo/hex/0_2",
+    "demo/hex/1_2"]
+and elements not expected:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+
+[ERROR]   ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes:86 [R=2 ⇒ 3R²+3R+1 = 19 格] 
+Expecting ArrayList:
+  ["demo/hex/-1/1",
+    "demo/hex/-1/2",
+    "demo/hex/-1/3",
+    "demo/hex/0/0",
+    "demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/0/3",
+    "demo/hex/1/-1",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/1/3",
+    "demo/hex/2/-1",
+    "demo/hex/2/0",
+    "demo/hex/2/1",
+    "demo/hex/2/2",
+    "demo/hex/3/-1",
+    "demo/hex/3/0",
+    "demo/hex/3/1"]
+to contain:
+  ["demo/hex/2_2", "demo/hex/3_0", "demo/hex/3_1"]
+but could not find the following element(s):
+  ["demo/hex/2_2", "demo/hex/3_0", "demo/hex/3_1"]
+
+[ERROR]   ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex:76 [R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）] 
+Expecting actual:
+  ["demo/hex/1/1"]
+to contain exactly (and in same order):
+  ["demo/hex/1_1"]
+but some elements were not found:
+  ["demo/hex/1_1"]
+and others were not expected:
+  ["demo/hex/1/1"]
+
+[ERROR]   ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes:177 
+Expecting ArrayList:
+  ["demo/hex/0/1",
+    "demo/hex/0/2",
+    "demo/hex/1/0",
+    "demo/hex/1/1",
+    "demo/hex/1/2",
+    "demo/hex/2/0",
+    "demo/hex/2/1"]
+to contain:
+  ["demo/hex/1_1"]
+but could not find the following element(s):
+  ["demo/hex/1_1"]
+
+[ERROR]   DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:44 [军队归属 ⇒ 逐格前缀] 
+Expecting value to be true but was false
+[ERROR]   DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix:115 
+Expecting value to be true but was false
+[ERROR]   AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns:34 
+expected: "demo/hex/-5_-59"
+ but was: "demo/hex/-5/-59"
+[ERROR]   AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated:40 
+expected: "Map1/hex/3_12"
+ but was: "Map1/hex/3/12"
+[ERROR] Tests run: 34, Failures: 11, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

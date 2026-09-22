@@ -1,0 +1,57 @@
+[ERROR] Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.017 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest
+[ERROR] io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）] 
+Expecting actual:
+  ["demo/region/701", "demo/region/702"]
+to contain exactly (and in same order):
+  ["demo/region/701"]
+but some elements were not expected:
+  ["demo/region/702"]
+
+	at io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse(NationScopeTest.java:41)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+['nation:FRAX' 的国家不是 FRA —— 前缀匹配会把 702 误收进来] 
+Expecting
+  ["demo/region/701", "demo/region/702"]
+not to contain
+  ["demo/region/702"]
+but found
+  ["demo/region/702"]
+
+	at io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix(NationScopeTest.java:65)
+
+[ERROR] Failures: 
+[ERROR]   NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:41 [FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）] 
+Expecting actual:
+  ["demo/region/701", "demo/region/702"]
+to contain exactly (and in same order):
+  ["demo/region/701"]
+but some elements were not expected:
+  ["demo/region/702"]
+
+[ERROR]   NationScopeTest.theTagMustMatchExactlyNotAsAPrefix:65 ['nation:FRAX' 的国家不是 FRA —— 前缀匹配会把 702 误收进来] 
+Expecting
+  ["demo/region/701", "demo/region/702"]
+not to contain
+  ["demo/region/702"]
+but found
+  ["demo/region/702"]
+
+[ERROR] Tests run: 34, Failures: 2, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

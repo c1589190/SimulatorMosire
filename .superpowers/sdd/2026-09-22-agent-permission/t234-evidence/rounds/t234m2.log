@@ -1,0 +1,139 @@
+[ERROR] Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.153 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation -- Time elapsed: 0.005 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[国家归属 ⇒ 区域级前缀] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation(DecisionScopeFunctionsTest.java:42)
+
+[ERROR] Tests run: 7, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.013 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest
+[ERROR] io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation(NationScopeTest.java:54)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse -- Time elapsed: 0.003 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）] 
+Expecting actual:
+  ["demo/701"]
+to contain exactly (and in same order):
+  ["demo/region/701"]
+but some elements were not found:
+  ["demo/region/701"]
+and others were not expected:
+  ["demo/701"]
+
+	at io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse(NationScopeTest.java:41)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.aNullTagRegionIsNotAnyonesTerritory -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[正向锚点：自己那条必须在] 
+Expecting ArrayList:
+  ["demo/701"]
+to contain:
+  ["demo/region/701"]
+but could not find the following element(s):
+  ["demo/region/701"]
+
+	at io.mosire.simos.app.access.NationScopeTest.aNullTagRegionIsNotAnyonesTerritory(NationScopeTest.java:72)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting actual:
+  ["demo/201"]
+to contain exactly (and in same order):
+  ["demo/region/201"]
+but some elements were not found:
+  ["demo/region/201"]
+and others were not expected:
+  ["demo/201"]
+
+	at io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion(NationScopeTest.java:46)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[正向锚点：自己那条必须在（否则'不含 702'在空范围下恒真）] 
+Expecting ArrayList:
+  ["demo/701"]
+to contain:
+  ["demo/region/701"]
+but could not find the following element(s):
+  ["demo/region/701"]
+
+	at io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix(NationScopeTest.java:63)
+
+[ERROR] Tests run: 5, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.007 s <<< FAILURE! -- in io.mosire.simos.app.access.ScopeFenceTest
+[ERROR] io.mosire.simos.app.access.ScopeFenceTest.oneResourceTwoCallersOnePassesOneIsDenied -- Time elapsed: 0.003 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[FRA 的区域：本国决策人读得到] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.ScopeFenceTest.oneResourceTwoCallersOnePassesOneIsDenied(ScopeFenceTest.java:68)
+
+[ERROR] io.mosire.simos.app.access.ScopeFenceTest.aCoarseAssertionAgainstAFineFenceIsDeniedWholeCall -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.ScopeFenceTest.aCoarseAssertionAgainstAFineFenceIsDeniedWholeCall(ScopeFenceTest.java:96)
+
+[ERROR] Failures: 
+[ERROR]   DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:42 [国家归属 ⇒ 区域级前缀] 
+Expecting value to be true but was false
+[ERROR]   NationScopeTest.aNullTagRegionIsNotAnyonesTerritory:72 [正向锚点：自己那条必须在] 
+Expecting ArrayList:
+  ["demo/701"]
+to contain:
+  ["demo/region/701"]
+but could not find the following element(s):
+  ["demo/region/701"]
+
+[ERROR]   NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:41 [FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）] 
+Expecting actual:
+  ["demo/701"]
+to contain exactly (and in same order):
+  ["demo/region/701"]
+but some elements were not found:
+  ["demo/region/701"]
+and others were not expected:
+  ["demo/701"]
+
+[ERROR]   NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation:54 
+Expecting value to be true but was false
+[ERROR]   NationScopeTest.theOtherNationSeesTheOtherRegion:46 
+Expecting actual:
+  ["demo/201"]
+to contain exactly (and in same order):
+  ["demo/region/201"]
+but some elements were not found:
+  ["demo/region/201"]
+and others were not expected:
+  ["demo/201"]
+
+[ERROR]   NationScopeTest.theTagMustMatchExactlyNotAsAPrefix:63 [正向锚点：自己那条必须在（否则'不含 702'在空范围下恒真）] 
+Expecting ArrayList:
+  ["demo/701"]
+to contain:
+  ["demo/region/701"]
+but could not find the following element(s):
+  ["demo/region/701"]
+
+[ERROR]   ScopeFenceTest.aCoarseAssertionAgainstAFineFenceIsDeniedWholeCall:96 
+Expecting value to be true but was false
+[ERROR]   ScopeFenceTest.oneResourceTwoCallersOnePassesOneIsDenied:68 [FRA 的区域：本国决策人读得到] 
+Expecting value to be true but was false
+[ERROR] Tests run: 34, Failures: 8, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

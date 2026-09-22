@@ -1,0 +1,228 @@
+[ERROR] Tests run: 7, Failures: 0, Errors: 3, Skipped: 0, Time elapsed: 0.148 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.theScopeFollowsTheAffiliationOnly -- Time elapsed: 0.077 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.theScopeFollowsTheAffiliationOnly(DecisionScopeFunctionsTest.java:97)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation -- Time elapsed: 0.003 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.allows(String)" because "nationScope" is null
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation(DecisionScopeFunctionsTest.java:42)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.allows(String)" because "scope" is null
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix(DecisionScopeFunctionsTest.java:115)
+
+[ERROR] Tests run: 7, Failures: 2, Errors: 5, Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest
+[ERROR] io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation -- Time elapsed: 0 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.unrestricted()" because "mapScope" is null
+	at io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation(NationScopeTest.java:53)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse -- Time elapsed: 0 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse(NationScopeTest.java:39)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.aNullTagRegionIsNotAnyonesTerritory -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.NationScopeTest.aNullTagRegionIsNotAnyonesTerritory(NationScopeTest.java:70)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion(NationScopeTest.java:46)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[表过态（不是空图）] 
+Expecting actual:
+  ["maps"]
+to contain exactly (and in same order):
+  ["map"]
+but some elements were not found:
+  ["map"]
+and others were not expected:
+  ["maps"]
+
+	at io.mosire.simos.app.access.NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap(NationScopeTest.java:81)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing -- Time elapsed: 0.004 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: null
+	at io.mosire.simos.app.access.NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing(NationScopeTest.java:98)
+
+[ERROR] io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix(NationScopeTest.java:61)
+
+[ERROR] Tests run: 5, Failures: 4, Errors: 0, Skipped: 0, Time elapsed: 0.007 s <<< FAILURE! -- in io.mosire.simos.app.access.ScopeFenceTest
+[ERROR] io.mosire.simos.app.access.ScopeFenceTest.oneResourceTwoCallersOnePassesOneIsDenied -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[FRA 的区域：本国决策人读得到] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.ScopeFenceTest.oneResourceTwoCallersOnePassesOneIsDenied(ScopeFenceTest.java:68)
+
+[ERROR] io.mosire.simos.app.access.ScopeFenceTest.armyScopeIsAlsoARealFence -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.ScopeFenceTest.armyScopeIsAlsoARealFence(ScopeFenceTest.java:82)
+
+[ERROR] io.mosire.simos.app.access.ScopeFenceTest.aCoarseAssertionAgainstAFineFenceIsDeniedWholeCall -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.ScopeFenceTest.aCoarseAssertionAgainstAFineFenceIsDeniedWholeCall(ScopeFenceTest.java:96)
+
+[ERROR] io.mosire.simos.app.access.ScopeFenceTest.anExplicitNoneDeniesAndTripsThePreGate -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[显式 deny-all 还让**声明式前置闸**响（够不着任何声明面 ⇒ 连审批都不问）] 
+Expecting Optional to contain a value but it was empty.
+	at io.mosire.simos.app.access.ScopeFenceTest.anExplicitNoneDeniesAndTripsThePreGate(ScopeFenceTest.java:124)
+
+[ERROR] Tests run: 9, Failures: 2, Errors: 7, Skipped: 0, Time elapsed: 0.013 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField(ArmyScopeTest.java:128)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.unrestricted()" because "mapScope" is null
+	at io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed(ArmyScopeTest.java:62)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: null
+	at io.mosire.simos.app.access.ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing(ArmyScopeTest.java:155)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes -- Time elapsed: 0.002 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes(ArmyScopeTest.java:83)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex(ArmyScopeTest.java:74)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[表过态（不是空图）] 
+Expecting actual:
+  ["maps"]
+to contain exactly (and in same order):
+  ["map"]
+but some elements were not found:
+  ["map"]
+and others were not expected:
+  ["maps"]
+
+	at io.mosire.simos.app.access.ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll(ArmyScopeTest.java:147)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet(ArmyScopeTest.java:103)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes(ArmyScopeTest.java:174)
+
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+	at io.mosire.simos.app.access.ScopeFixtures.prefixes(ScopeFixtures.java:257)
+	at io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours(ArmyScopeTest.java:45)
+
+[ERROR] Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.008 s <<< FAILURE! -- in io.mosire.simos.app.tools.AccessPathsTest
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment -- Time elapsed: 0 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "map"
+ but was: "maps"
+	at io.mosire.simos.app.tools.AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment(AccessPathsTest.java:24)
+
+[ERROR] io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "map"
+ but was: "maps"
+	at io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns(AccessPathsTest.java:33)
+
+[ERROR] Failures: 
+[ERROR]   ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing:155 
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: null
+[ERROR]   ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll:147 [表过态（不是空图）] 
+Expecting actual:
+  ["maps"]
+to contain exactly (and in same order):
+  ["map"]
+but some elements were not found:
+  ["map"]
+and others were not expected:
+  ["maps"]
+
+[ERROR]   NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing:98 
+expected: ResourceScope[unrestricted=false, prefixes=[]]
+ but was: null
+[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:81 [表过态（不是空图）] 
+Expecting actual:
+  ["maps"]
+to contain exactly (and in same order):
+  ["map"]
+but some elements were not found:
+  ["map"]
+and others were not expected:
+  ["maps"]
+
+[ERROR]   ScopeFenceTest.aCoarseAssertionAgainstAFineFenceIsDeniedWholeCall:96 
+Expecting value to be true but was false
+[ERROR]   ScopeFenceTest.anExplicitNoneDeniesAndTripsThePreGate:124 [显式 deny-all 还让**声明式前置闸**响（够不着任何声明面 ⇒ 连审批都不问）] 
+Expecting Optional to contain a value but it was empty.
+[ERROR]   ScopeFenceTest.armyScopeIsAlsoARealFence:82 
+Expecting value to be true but was false
+[ERROR]   ScopeFenceTest.oneResourceTwoCallersOnePassesOneIsDenied:68 [FRA 的区域：本国决策人读得到] 
+Expecting value to be true but was false
+[ERROR]   AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns:33 
+expected: "map"
+ but was: "maps"
+[ERROR]   AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment:24 
+expected: "map"
+ but was: "maps"
+[ERROR] Errors: 
+[ERROR]   ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:128 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed:62 NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.unrestricted()" because "mapScope" is null
+[ERROR]   ArmyScopeTest.movingTheArmyChangesTheVisibleSet:103 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours:45 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes:83 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex:74 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes:174 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:42 NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.allows(String)" because "nationScope" is null
+[ERROR]   DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix:115 NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.allows(String)" because "scope" is null
+[ERROR]   DecisionScopeFunctionsTest.theScopeFollowsTheAffiliationOnly:97 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   NationScopeTest.aNullTagRegionIsNotAnyonesTerritory:70 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:39 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation:53 NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.unrestricted()" because "mapScope" is null
+[ERROR]   NationScopeTest.theOtherNationSeesTheOtherRegion:46 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR]   NationScopeTest.theTagMustMatchExactlyNotAsAPrefix:61 » NullPointer Cannot invoke "io.mosire.agentlib.permission.ResourceScope.prefixes()" because the return value of "io.mosire.agentlib.permission.ResourceScopeMap.declaredScope(String)" is null
+[ERROR] Tests run: 34, Failures: 10, Errors: 15, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

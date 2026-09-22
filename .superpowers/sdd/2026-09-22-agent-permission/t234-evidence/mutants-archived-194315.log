@@ -1,0 +1,241 @@
+
+==============================================================================
+run_start=2026-09-22 19:39:18 script_md5=8747d5149ca7a518a7960b75efb330d4
+mutants=8 classes=AccessPathsTest,NationScopeTest,ArmyScopeTest,DecisionScopeFunctionsTest
+==============================================================================
+CLEAN round=19:39:20 rc=1 compilation_errors=0
+CLEAN reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.152 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.022 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+CLEAN_FAILED —— 基线不是全绿，装置拒绝继续（pristine 快照会没有意义）
+
+==============================================================================
+===== t234m1 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java
+note=NationScope 的 tag 匹配退化成**前缀匹配**（把 nation:FRAX 当成 FRA）
+expect=nationScopeCoversItsOwnRegionsAndNothingElse / theTagMustMatchExactlyNotAsAPrefix
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=dfbd584efb3eeafb31d53a0850f40d29
+pristine_md5=dfbd584efb3eeafb31d53a0850f40d29
+anchor_occurrence=1
+mutant_md5=5f2a97bd67f17deaff24e8a7f812bde7
+bytes_changed=True
+round_at=19:40:02 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.150 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.016 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=2 errors=0
+RED: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.016 s <<< FAILURE!
+RED: io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse
+RED: io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix
+RED_DETAIL: NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:41 [FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）]
+RED_DETAIL: NationScopeTest.theTagMustMatchExactlyNotAsAPrefix:65 ['nation:FRAX' 的国家不是 FRA —— 前缀匹配会把 702 误收进来]
+restored_md5=dfbd584efb3eeafb31d53a0850f40d29
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m2 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java
+note=区域前缀**少拼一段**（写成 <mapId>/<rid>，丢掉 region 段）
+expect=逐字断言（demo/region/701）与 allows 同时红
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=dfbd584efb3eeafb31d53a0850f40d29
+pristine_md5=dfbd584efb3eeafb31d53a0850f40d29
+anchor_occurrence=1
+mutant_md5=21bfb75d41e617ecccc39d56abc77540
+bytes_changed=True
+round_at=19:40:06 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.149 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.013 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=6 errors=0
+RED: Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.149 s <<< FAILURE!
+RED: io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation
+RED: Tests run: 7, Failures: 5, Errors: 0, Skipped: 0, Time elapsed: 0.013 s <<< FAILURE!
+RED: io.mosire.simos.app.access.NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation
+RED: io.mosire.simos.app.access.NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse
+RED: io.mosire.simos.app.access.NationScopeTest.aNullTagRegionIsNotAnyonesTerritory
+RED: io.mosire.simos.app.access.NationScopeTest.theOtherNationSeesTheOtherRegion
+RED: io.mosire.simos.app.access.NationScopeTest.theTagMustMatchExactlyNotAsAPrefix
+RED_DETAIL: DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:42 [国家归属 ⇒ 区域级前缀]
+RED_DETAIL: NationScopeTest.aNullTagRegionIsNotAnyonesTerritory:72 [正向锚点：自己那条必须在]
+RED_DETAIL: NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:41 [FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）]
+RED_DETAIL: NationScopeTest.scopeAllowsItsOwnRegionAndRefusesTheOtherNation:54
+RED_DETAIL: NationScopeTest.theOtherNationSeesTheOtherRegion:46
+RED_DETAIL: NationScopeTest.theTagMustMatchExactlyNotAsAPrefix:63 [正向锚点：自己那条必须在（否则'不含 702'在空范围下恒真）]
+restored_md5=dfbd584efb3eeafb31d53a0850f40d29
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m3 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java
+note=无匹配区域时给**空图**（"本层不表态"，回落成放行）而不是显式 none()
+expect=noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap / aNationWhoseRegionsAllDisappearedSeesNothing
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=dfbd584efb3eeafb31d53a0850f40d29
+pristine_md5=dfbd584efb3eeafb31d53a0850f40d29
+anchor_occurrence=1
+mutant_md5=5eea031d0dabf8b89646e6c4373fc716
+bytes_changed=True
+round_at=19:40:10 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.153 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.023 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=2 errors=0
+RED: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.023 s <<< FAILURE!
+RED: io.mosire.simos.app.access.NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap
+RED: io.mosire.simos.app.access.NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing
+RED_DETAIL: NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing:98
+RED_DETAIL: NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:81 [表过态（不是空图）]
+restored_md5=dfbd584efb3eeafb31d53a0850f40d29
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m4 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/DecisionScopeFunction.java
+note=scopeOfPrefixes 对空集返回 **unlimited()**（『哪里都不许』退化成『哪里都行』）
+expect=两个 deny-all 用例（Nation 的 noMatchingRegion… / Army 的 anUnknownArmy…）
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=8fb985e8e6b0d4fcd6d6071eed3e85fa
+pristine_md5=8fb985e8e6b0d4fcd6d6071eed3e85fa
+anchor_occurrence=1
+mutant_md5=d72fe1436b5faa0c4a4f1aa627522640
+bytes_changed=True
+round_at=19:40:14 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.135 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.019 s <<< FAILURE! -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=2 errors=0
+RED: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.019 s <<< FAILURE!
+RED: io.mosire.simos.app.access.NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap
+RED: io.mosire.simos.app.access.NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing
+RED_DETAIL: NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing:98
+RED_DETAIL: NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:82
+restored_md5=8fb985e8e6b0d4fcd6d6071eed3e85fa
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m5 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/DecisionScopeFunctions.java
+note=未注册的归属类型**静默回落**到某个默认实现（不响亮失败）
+expect=anUnregisteredAffiliationTypeFailsLoudly / anEmptyRegistryFailsLoudlyForEveryAffiliation
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=7bc57dfb2162f3e4e70bdb1c7bf67964
+pristine_md5=7bc57dfb2162f3e4e70bdb1c7bf67964
+anchor_occurrence=1
+mutant_md5=bf05d97e1b923a4ca9742f5f8518c99f
+bytes_changed=True
+round_at=19:40:18 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.142 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=2 errors=0
+RED: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.142 s <<< FAILURE!
+RED: io.mosire.simos.app.access.DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly
+RED: io.mosire.simos.app.access.DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation
+RED_DETAIL: DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation:66
+RED_DETAIL: DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly:58 [未注册 ⇒ 抛，绝不静默给全量]
+restored_md5=7bc57dfb2162f3e4e70bdb1c7bf67964
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m6 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/ArmyScope.java
+note=视野半径 **+1**（半径语义偏一格）
+expect=radiusOneSeesItselfPlusTheSixNeighbours（7→19）等半径用例
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=8397a225dfbeab41b30ed8caa6ca4619
+pristine_md5=8397a225dfbeab41b30ed8caa6ca4619
+anchor_occurrence=1
+mutant_md5=d16ddd146f74ddf79c8da2af3355ea3a
+bytes_changed=True
+round_at=19:40:22 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 7, Errors: 0, Skipped: 0, Time elapsed: 0.023 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.138 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=7 errors=0
+RED: Tests run: 9, Failures: 7, Errors: 0, Skipped: 0, Time elapsed: 0.023 s <<< FAILURE!
+RED: io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField
+RED: io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed
+RED: io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes
+RED: io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex
+RED: io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet
+RED: io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes
+RED: io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours
+RED_DETAIL: ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:130 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）]
+RED_DETAIL: ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed:65 [距离 2 ⇒ 圈外]
+RED_DETAIL: ArmyScopeTest.movingTheArmyChangesTheVisibleSet:106 [(1,1) 时看得见原格、看不见 (2,2)]
+RED_DETAIL: ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours:47 [(1,1) 起半径 1 的六角球 = 7 格]
+RED_DETAIL: ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes:85 [R=2 ⇒ 3R²+3R+1 = 19 格]
+RED_DETAIL: ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex:76 [R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）]
+RED_DETAIL: ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes:178
+restored_md5=8397a225dfbeab41b30ed8caa6ca4619
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m7 =====
+file=simos-app/src/main/java/io/mosire/simos/app/access/ArmyScope.java
+note=位置**自己重算**（读 unit.position() 而不是 effectivePosition）
+expect=armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField（编队夹具下两实现分叉）
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=8397a225dfbeab41b30ed8caa6ca4619
+pristine_md5=8397a225dfbeab41b30ed8caa6ca4619
+anchor_occurrence=1
+mutant_md5=61d9f7ea3b87c392f4676ce8c58776eb
+bytes_changed=True
+round_at=19:40:25 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.016 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.136 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=1 errors=0
+RED: Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.016 s <<< FAILURE!
+RED: io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField
+RED_DETAIL: ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:130 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）]
+restored_md5=8397a225dfbeab41b30ed8caa6ca4619
+restored_identical=True
+verdict=KILLED
+
+==============================================================================
+===== t234m8 =====
+file=simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java
+note=hex 路径的坐标分隔符写成 `/` 而不是 `_`（围栏语法漂移）
+expect=AccessPathsTest 的逐字断言（含负坐标）
+script_md5=d09026b8416209c952437d0fa9cd8cf1
+baseline_md5=631f60e0e2128e2b5f4cea8593146efa
+pristine_md5=631f60e0e2128e2b5f4cea8593146efa
+anchor_occurrence=1
+mutant_md5=5a5e457c4a9d21b50b0647980474b2c9
+bytes_changed=True
+round_at=19:40:29 maven_rc=1
+compilation_errors=0
+surefire_fresh_reports=['io.mosire.simos.app.access.ArmyScopeTest.txt: Tests run: 9, Failures: 7, Errors: 0, Skipped: 0, Time elapsed: 0.019 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest', 'io.mosire.simos.app.access.DecisionScopeFunctionsTest.txt: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.150 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest', 'io.mosire.simos.app.access.NationScopeTest.txt: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.app.access.NationScopeTest', 'io.mosire.simos.app.tools.AccessPathsTest.txt: Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.005 s <<< FAILURE! -- in io.mosire.simos.app.tools.AccessPathsTest']
+totals: failures=11 errors=0
+RED: Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.150 s <<< FAILURE!
+RED: io.mosire.simos.app.access.DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation
+RED: io.mosire.simos.app.access.DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix
+RED: Tests run: 9, Failures: 7, Errors: 0, Skipped: 0, Time elapsed: 0.019 s <<< FAILURE!
+RED: io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField
+RED: io.mosire.simos.app.access.ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed
+RED: io.mosire.simos.app.access.ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes
+RED: io.mosire.simos.app.access.ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex
+RED: io.mosire.simos.app.access.ArmyScopeTest.movingTheArmyChangesTheVisibleSet
+RED: io.mosire.simos.app.access.ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes
+RED: io.mosire.simos.app.access.ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours
+RED: Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.005 s <<< FAILURE!
+RED: io.mosire.simos.app.tools.AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns
+RED: io.mosire.simos.app.tools.AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated
+RED_DETAIL: ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:131 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）]
+RED_DETAIL: ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed:63
+RED_DETAIL: ArmyScopeTest.movingTheArmyChangesTheVisibleSet:105 [(1,1) 时看得见原格、看不见 (2,2)]
+RED_DETAIL: ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours:47 [(1,1) 起半径 1 的六角球 = 7 格]
+RED_DETAIL: ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes:86 [R=2 ⇒ 3R²+3R+1 = 19 格]
+RED_DETAIL: ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex:76 [R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）]
+RED_DETAIL: ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes:177
+RED_DETAIL: DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:44 [军队归属 ⇒ 逐格前缀]
+RED_DETAIL: DecisionScopeFunctionsTest.theMapIdIsPartOfEveryPrefix:115
+RED_DETAIL: AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns:34
+RED_DETAIL: AccessPathsTest.hexPathOnPositiveCoordinatesIsStillUnderscoreSeparated:40
+restored_md5=631f60e0e2128e2b5f4cea8593146efa
+restored_identical=True
+verdict=KILLED
+
+------------------------------------------------------------------------------
+SUMMARY t234m1=KILLED t234m2=KILLED t234m3=KILLED t234m4=KILLED t234m5=KILLED t234m6=KILLED t234m7=KILLED t234m8=KILLED
+killed=8 survived=0 void=0

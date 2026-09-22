@@ -1,0 +1,47 @@
+[ERROR] Tests run: 7, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.145 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly -- Time elapsed: 0.035 s <<< FAILURE!
+java.lang.AssertionError: 
+[未注册 ⇒ 抛，绝不静默给全量] 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalStateException
+but was:
+  java.lang.IllegalArgumentException: NationScope 只服务 Affiliation.Nation，收到 io.mosire.simos.sd.model.Affiliation$Army（分派由 DecisionScopeFunctions 负责）
+	at io.mosire.simos.app.access.NationScope.scopesFor(NationScope.java:49)
+	at io.mosire.simos.app.access.DecisionScopeFunctions.scopesFor(DecisionScopeFunctions.java:71)
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.lambda$anUnregisteredAffiliationTypeFailsLoudly$0(DecisionScopeFunctionsTest.java:55)
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly(DecisionScopeFunctionsTest.java:58)
+
+[ERROR] io.mosire.simos.app.access.DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation(DecisionScopeFunctionsTest.java:66)
+
+[ERROR] Failures: 
+[ERROR]   DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation:66 
+Expecting code to raise a throwable.
+[ERROR]   DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly:58 [未注册 ⇒ 抛，绝不静默给全量] 
+Expecting actual throwable to be an instance of:
+  java.lang.IllegalStateException
+but was:
+  java.lang.IllegalArgumentException: NationScope 只服务 Affiliation.Nation，收到 io.mosire.simos.sd.model.Affiliation$Army（分派由 DecisionScopeFunctions 负责）
+	at io.mosire.simos.app.access.NationScope.scopesFor(NationScope.java:49)
+	at io.mosire.simos.app.access.DecisionScopeFunctions.scopesFor(DecisionScopeFunctions.java:71)
+	at io.mosire.simos.app.access.DecisionScopeFunctionsTest.lambda$anUnregisteredAffiliationTypeFailsLoudly$0(DecisionScopeFunctionsTest.java:55)
+	...(86 remaining lines not displayed - this can be changed with Assertions.setMaxStackTraceElementsDisplayed)
+[ERROR] Tests run: 34, Failures: 2, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app

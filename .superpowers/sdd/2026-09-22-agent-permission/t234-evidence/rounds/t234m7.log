@@ -1,0 +1,27 @@
+[ERROR] Tests run: 9, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.017 s <<< FAILURE! -- in io.mosire.simos.app.access.ArmyScopeTest
+[ERROR] io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField -- Time elapsed: 0.005 s <<< FAILURE!
+java.lang.AssertionError: 
+[位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）] 
+Expected size: 7 but was: 0 in:
+[]
+	at io.mosire.simos.app.access.ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField(ArmyScopeTest.java:130)
+
+[ERROR] Failures: 
+[ERROR]   ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:130 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）] 
+Expected size: 7 but was: 0 in:
+[]
+[ERROR] Tests run: 34, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
