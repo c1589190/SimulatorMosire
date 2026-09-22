@@ -205,9 +205,11 @@ D-5 的文本写的是 `nation:<名>`，但代码契约是 `NationTag.tagFor(Nat
 | **M4**（读口补齐） | ⏸ **阻塞在你**（§二）——**这是本阶段唯一挡住继续推进的裁定项** |
 | **M5**（通用写收窄评估） | ✅ **评估已出**（`m5-evaluation.md`）——**零代码改动**，**等你裁**（§五） |
 
-★ **推送状态（2026-09-22 更新）**：`origin/ts/m1` == 本地 `HEAD` == **`e7e3155`**（实测
-`git rev-list --left-right --count origin/ts/m1...HEAD` = **`0 0`**）；推送前实测
-`origin/ts/m1` = `7ce2cc1`、`0 5`、且是 HEAD 的祖先 ⇒ **纯快进、未 force**。
+★ **推送状态（2026-09-22 更新）**：`origin/ts/m1` == 本地 `HEAD` == **`f63e325`**（实测
+`git rev-list --left-right --count origin/ts/m1...HEAD` = **`0 0`**）。两次推送**都是纯快进、未 force**：
+① `7ce2cc1..e7e3155`（推送前实测 `origin/ts/m1` = `7ce2cc1`、`0 5`、是 HEAD 的祖先）；
+② `e7e3155..f63e325`（推送前实测 `origin/ts/m1` = `e7e3155`、`0 1`、是 HEAD 的祖先）。
+`f63e325` 的内容 = 本文件 §六 刷新 + 全分支评审包入库 + `CLAUDE.md` 两处更正，**无生产代码改动**。
 ★ **`origin/main` 仍是 `40e19d2`**（M1 关账点，也是本分支的 `merge-base`）——**没动**。
 口径见 `CLAUDE.md`：**`main` 平时落后于 feature 分支，你说推就推**。
 本次你说的是「提交并推送」⇒ 我推的是 **feature 分支 `ts/m1`**；
@@ -215,7 +217,8 @@ D-5 的文本写的是 `nation:<名>`，但代码契约是 `NationTag.tagFor(Nat
 
 ★ **全分支评审（final whole-branch review）已派发**：范围 `40e19d2..e7e3155`（8 提交），
 基准 `40e19d2` 是 `origin/main` 上的 M1 关账点、也是本分支分叉点 ⇒ 天然起点。
-评审包 `.superpowers/sdd/2026-09-22-tool-surface/whole-branch-review.txt`（157 KB，
+评审包 `.superpowers/sdd/2026-09-22-tool-surface/whole-branch-review.txt`（157,569 B，
 只含 `simos-app/**` 与 `docs/**`；106 个证据留档文件已在包内声明为**不在评审视野**）。
+**已入库**（提交 `f63e325`；该路径被 `.superpowers/sdd/.gitignore` 命中 ⇒ 用 `git add -f`）。
 **运行在最强模型上**（SDD 硬要求：终审不在会话默认模型上跑）。结论回来前不追加轮次。
 
