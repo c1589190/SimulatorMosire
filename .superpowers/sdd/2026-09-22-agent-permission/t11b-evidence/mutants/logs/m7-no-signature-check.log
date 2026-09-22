@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T13:57:18Z
+mutant         : m7-no-signature-check
+guard          : 不校验署名（决策人 A 可以落一条署名 B 的 directive）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java': '8353984bf55e0f63f0939016fbcee109'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java': 'e3b70147ef253111240b69380734404d'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java': '8353984bf55e0f63f0939016fbcee109'}
+restored_identical: True
+compilation_errors: 0
+report_files   : 75
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::Tests run: 21, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.474 s <<< FAILURE!', 'io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aDecisionMakerCannotSignSomeoneElsesName', 'io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::Tests run: 21, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.474 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest']
+verdict        : KILLED

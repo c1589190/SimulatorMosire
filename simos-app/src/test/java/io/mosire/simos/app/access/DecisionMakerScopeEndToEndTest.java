@@ -261,6 +261,63 @@ class DecisionMakerScopeEndToEndTest {
         .containsExactlyInAnyOrder("u-1", "u-3");
   }
 
+  // ── 读：派生信息（T11）—— 邻国（J5）与逐格归属国家（J6）────────────────────────────
+
+  /**
+   * ★★ **判据 J5**：国家决策人的视图里带**邻国**——本国（FRA，区域 701 覆盖 {@code (1,1)/(1,2)}）与 GER 的区域 201（{@code
+   * (1,3)}）在 {@code (1,2)}–{@code (1,3)} 这条边上六角相邻。
+   */
+  @Test
+  void aNationDecisionMakerSeesItsNeighbouringNations() throws Exception {
+    JsonNode body = body(dmCall("simos.map.overview", DM_FRA, Map.of()));
+
+    assertThat(strings(body.get("neighbors")))
+        .as("本国的邻国：GER（区域 201 与区域 701 六角相邻）")
+        .containsExactly("GER");
+  }
+
+  /** ★★ **判据 J6**：军队决策人看到的每个格都带**归属国家**——它自己的范围是**逐格**前缀（没有任何区域级前缀）， 故这一项是它唯一能知道"这块地归谁"的途径。 */
+  @Test
+  void anArmyDecisionMakerSeesTheOwningNationOfEachVisibleHex() throws Exception {
+    JsonNode own = body(dmCall("simos.map.hex", DM_ARMY, Map.of("q", 1, "r", 1)));
+
+    assertThat(strings(own.get("nation"))).as("(1,1) 落在区域 701（nation:FRA）里").containsExactly("FRA");
+
+    JsonNode neutral = body(dmCall("simos.map.hex", DM_ARMY, Map.of("q", 2, "r", 1)));
+    assertThat(strings(neutral.get("nation"))).as("(2,1) 不属于任何区域 ⇒ 空列表（不是缺字段，也不是某个默认国家）").isEmpty();
+  }
+
+  /**
+   * ★ **反方向**：{@code neighbors} 是**国家决策人**才有的字段（spec §3.4 的字段表）——军队决策人**不给**。
+   *
+   * <p>用**字段缺席**而不是空列表：`"你不是国家决策人"` 与 `"你没有邻国"` 是两件事，空列表会把后者当成唯一解释。
+   */
+  @Test
+  void anArmyDecisionMakerGetsNoNeighbourField() throws Exception {
+    JsonNode body = body(dmCall("simos.map.overview", DM_ARMY, Map.of()));
+
+    assertThat(body.has("neighbors")).as("军队决策人那一行要的是逐格归属国家，不是邻国标识").isFalse();
+    assertThat(body.get("hexes")).as("但总览本身照常给（只少一项，不是整调被拒）").isNotEmpty();
+  }
+
+  /** ★ 同上：不设限的调用者（GM）没有"本国"这个概念 ⇒ 也不给这一项。 */
+  @Test
+  void anUnlimitedCallerGetsNoNeighbourField() throws Exception {
+    JsonNode body = body(callAsUnlimited("simos.map.overview", Map.of()));
+
+    assertThat(body.has("neighbors")).as("GM 的视图没有决策人视角的派生字段").isFalse();
+    assertThat(body.get("hexCount").asInt()).as("其余项逐字不变").isEqualTo(4);
+  }
+
+  /** ★ **不泄露**：越界格仍然只在"不存在"那条模板上被拒——归属国家不会从拒因或任何字段里漏出去。 */
+  @Test
+  void theOwningNationOfAnOutOfScopeHexIsNeverRevealed() {
+    ToolResult outside = dmCall("simos.map.hex", DM_ARMY, Map.of("q", 1, "r", 3));
+
+    assertThat(outside.code()).isEqualTo("NOT_FOUND");
+    assertThat(outside.message()).as("与「格不存在」逐字同款，且不含任何国家信息").isEqualTo("六角格不存在: 1_3");
+  }
+
   // ── 读：地址解析与 facet 不回落全量 ─────────────────────────────────────────────────
 
   /** ★ "解析不出/不可见 ⇒ 空"，**不许**回全量：越界区域的候选为空，本国区域的候选照常给。 */
@@ -304,6 +361,40 @@ class DecisionMakerScopeEndToEndTest {
     RevisionRow row = latestRevision();
     assertThat(row.commandType()).isEqualTo("sd.IssueDirective");
     assertThat(row.initiator()).as("发起者仍是装配期定的那个（决策人不自报身份）").isEqualTo(INITIATOR);
+  }
+
+  /**
+   * ★★ **不许冒名**（T11B 修的洞，spec N16「渠道不得冒称任意 actor」的同一族）：决策人 {@code dm-fra} 落一条**署名 {@code dm-ger}**
+   * 的 directive ⇒ 拒。
+   *
+   * <p>★ **判别力在"head 不动"上**：这条载荷在**修之前是真的会提交成功**的（资源断言取自身份、不取自载荷 ⇒ 署名 B 照样通过）， 故"没留
+   * revision"才是这条用例的承重断言；只断言 {@code success()==false} 会放过"换了别的原因拒"。
+   */
+  @Test
+  void aDecisionMakerCannotSignSomeoneElsesName() throws Exception {
+    long headBefore = head();
+    ToolResult result =
+        dmCall("sd.IssueDirective", DM_FRA, directiveArgs(headBefore, "d-forged", "dm-ger"));
+
+    assertThat(result.success()).as("以别人名义落决策 ⇒ 拒").isFalse();
+    assertThat(result.code()).isEqualTo("REJECTED");
+    assertThat(result.message()).contains("dm-fra").contains("dm-ger");
+    assertThat(head()).as("★ 被拒的写不留 revision（洞的形态就是这条 revision 落了盘）").isEqualTo(headBefore);
+  }
+
+  /**
+   * ★ **反方向**：GM（身份不是决策人）**不受此限**——"GM 可以为任意决策人落决策"是既有的、有意的授权，不是漏洞。
+   *
+   * <p>缺了这一条，把校验写成"载荷署名必须存在且等于身份"就会把 GM 那条路一起堵死，而下面的用例全绿。
+   */
+  @Test
+  void anUnlimitedCallerMaySignForAnyDecisionMaker() throws Exception {
+    long headBefore = head();
+    ToolResult result =
+        callAsUnlimited("sd.IssueDirective", directiveArgs(headBefore, "d-by-gm", "dm-fra"));
+
+    assertThat(result.success()).as("GM 为 dm-fra 落决策：照旧放行（拒因：%s）", result.message()).isTrue();
+    assertThat(head()).isEqualTo(headBefore + 1);
   }
 
   /** ★ 反方向：不设限的调用者（GM）**照旧**能出令——写工具的资源声明换细之后 GM 侧行为不变。 */
@@ -613,6 +704,15 @@ class DecisionMakerScopeEndToEndTest {
 
   private static List<String> candidates(ToolResult resolve) throws Exception {
     return JSON.readTree(resolve.message()).get("candidates").findValuesAsText("canonicalAddress");
+  }
+
+  /** 一个 JSON 字符串数组的逐值读出（T11：{@code neighbors} 是字符串数组，不是对象数组）。 */
+  private static List<String> strings(JsonNode array) {
+    List<String> out = new java.util.ArrayList<>();
+    for (JsonNode item : array) {
+      out.add(item.asText());
+    }
+    return out;
   }
 
   private static List<String> values(JsonNode array, String field) {

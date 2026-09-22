@@ -4,6 +4,8 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.NeighborNations;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.GameMap;
@@ -67,7 +69,12 @@ public final class MapOverviewTool implements AgentTool {
               mapId,
               map,
               coord -> ToolSupport.hexVisible(context, mapId, map, coord),
-              region -> ToolSupport.regionVisible(context, mapId, region)));
+              region -> ToolSupport.regionVisible(context, mapId, region),
+              // ★ **邻国标识**（T11，spec §3.4：国家决策人的字段表里有它）：只有解得出"本国"时才给。
+              //   军队决策人给空（它那一行要的是**逐格的归属国家**，由 map.hex 的 nation 给——两条信息不同源）；
+              //   GM 也给空（它没有"本国"这个概念，而这一项在 spec 里就是**决策人视角**的字段）。
+              DecisionCallerFactory.viewerNationOf(context, state)
+                  .map(nation -> NeighborNations.of(map, nation))));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }

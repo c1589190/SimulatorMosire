@@ -18,6 +18,8 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -47,6 +49,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -466,6 +469,27 @@ public final class ToolSupport {
       GameMap map,
       Predicate<HexCoord> hexVisible,
       Predicate<RegionId> regionVisible) {
+    return mapOverview(mapId, map, hexVisible, regionVisible, Optional.empty());
+  }
+
+  /**
+   * **带派生信息**的总览（T11，spec §3.4 的字段级可见性）：
+   *
+   * <ul>
+   *   <li>{@code neighbors}（邻国标识）——**只有"本国"存在时才给**（{@code Optional} 空 ⇒ 整个字段不出现）。 调用方（{@code
+   *       MapOverviewTool}）从**调用者身份**解出本国；解不出来（GM / 军队决策人 / 认不出身份的调用者）就**不给**这一项 ——
+   *       fail-closed：判不了"你是谁"就不给派生信息，而不是"反正没害处"地给一份。
+   * </ul>
+   *
+   * <p>★ **只加这一项、不逐格加 {@code nation}**：总览在 GM 眼里是**整张真图**（19441 格），逐格加派生字段会把 M9 辛苦压下来的 载荷重新吹大（M9 实测
+   * overview 227,377 → 78,648 B）。逐格的归属国家归 {@code map.hex}（一次一格，见 {@code MapHexTool}）。
+   */
+  public static Map<String, Object> mapOverview(
+      String mapId,
+      GameMap map,
+      Predicate<HexCoord> hexVisible,
+      Predicate<RegionId> regionVisible,
+      Optional<Set<String>> neighbors) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("mapId", mapId);
 
@@ -510,6 +534,9 @@ public final class ToolSupport {
     }
     view.put("cities", cities);
     view.put("terrainTypes", new ArrayList<>(map.terrainTypes().keySet()));
+    // ★ 邻国：**字段缺席**（不是空列表）——"你不是国家决策人"与"你没有邻国"是两件事，
+    //   用空列表会把后者当成唯一解释（spec §3.4：这一项是**国家决策人**才有的字段）。
+    neighbors.ifPresent(value -> view.put("neighbors", new ArrayList<>(value)));
     return view;
   }
 
@@ -640,5 +667,20 @@ public final class ToolSupport {
           "social 模块切片不是 SocialSnapshot：" + snapshot.getClass().getName());
     }
     return socialSnapshot.data();
+  }
+
+  /**
+   * sd 切片（T11）：视图层要按**调用者的决策人身份**决定给不给派生信息（邻国），而决策人住在 sd 切片里。
+   *
+   * <p>★ **缺切片/类型不对 = 装配故障，当场炸**（与上面三个同口径，T6 裁定："装配故障当场炸不静默兜底"）： sd 切片对可推进世界是必需的（{@code DemoWorld}
+   * 与各 app 夹具都补了它），静默返回空会把装配错误伪装成"这个决策人没有归属"。
+   */
+  public static SdState sdState(SimulationState state) {
+    Snapshot snapshot =
+        state.module("sd").orElseThrow(() -> new IllegalArgumentException("状态里没有 sd 模块切片——装配故障"));
+    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
+      throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
+    }
+    return sdSnapshot.state();
   }
 }

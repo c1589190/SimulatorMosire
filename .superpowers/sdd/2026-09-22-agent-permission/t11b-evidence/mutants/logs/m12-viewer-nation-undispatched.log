@@ -1,0 +1,14 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T14:04:14Z
+mutant         : m12-viewer-nation-undispatched
+guard          : 邻国不过身份分派（军队决策人也拿到这一项）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java': 'ef5b7a8d6e0a14490c607c6d9f588f19'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java': 'bdf2dcb436cfc4251cafd27b30f0394f'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java': 'ef5b7a8d6e0a14490c607c6d9f588f19'}
+restored_identical: True
+compilation_errors: 0
+target_module  : app
+report_files   : 75 (app=54 sd=21)
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::Tests run: 21, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.531 s <<< FAILURE!', 'io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerGetsNoNeighbourField', 'io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::Tests run: 21, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.531 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest']
+verdict        : KILLED

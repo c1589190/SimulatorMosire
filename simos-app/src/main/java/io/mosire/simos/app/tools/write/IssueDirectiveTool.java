@@ -4,10 +4,13 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.sd.spi.DecisionSignature;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@code sd.IssueDirective} 窄工具（spec §八.3，N9）：决策人出令的**唯一**写面。
@@ -63,5 +66,19 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return decisionWriteResources(context);
+  }
+
+  /**
+   * ★★ **不许冒名**（T11B）：载荷里的 {@code decisionMakerId} 必须与**调用者身份**一致。
+   *
+   * <p>资源那一层管不到这件事——决策人 A 的可达面就是 {@code sd:decision-maker/A} 这一条前缀，而"署名 B"的载荷**照样通过**它
+   * （断言取自身份、不取自载荷，见 {@link #decisionWriteResources}），落盘后就是一条冒名的 directive。 规则本体住在 sd 域（{@link
+   * DecisionSignature}），这里只是把它接上身份。
+   */
+  @Override
+  protected Optional<String> signatureViolation(ToolContext context) {
+    return DecisionSignature.violation(
+        DecisionCallerFactory.decisionMakerIdOf(context.identity()),
+        ToolSupport.optionalText(context.arguments(), "payloadJson", "{}"));
   }
 }

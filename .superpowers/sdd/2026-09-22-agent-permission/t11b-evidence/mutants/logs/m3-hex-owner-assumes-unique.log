@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T13:53:55Z
+mutant         : m3-hex-owner-assumes-unique
+guard          : 归属国假定唯一（只回第一个区域的国家 ⇒ M8-U1 多对多被抹掉）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/access/HexOwner.java': '7b5cc11140a59496eb3ccde6a0e0f316'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/access/HexOwner.java': '95388bcfc9fffa644905511a09b1d9c2'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/access/HexOwner.java': '7b5cc11140a59496eb3ccde6a0e0f316'}
+restored_identical: True
+compilation_errors: 0
+report_files   : 75
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.access.HexOwnerTest.txt::Tests run: 7, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.012 s <<< FAILURE!', 'io.mosire.simos.app.access.HexOwnerTest.txt::io.mosire.simos.app.access.HexOwnerTest.aNationIdThatIsAPrefixOfAnotherIsNotConfused', 'io.mosire.simos.app.access.HexOwnerTest.txt::io.mosire.simos.app.access.HexOwnerTest.aHexInsideTwoNationRegionsBelongsToBothNations', 'io.mosire.simos.app.access.HexOwnerTest.txt::io.mosire.simos.app.access.HexOwnerTest.theResultIsSortedSoTheViewIsDeterministic', 'io.mosire.simos.app.access.HexOwnerTest.txt::Tests run: 7, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.012 s <<< FAILURE! -- in io.mosire.simos.app.access.HexOwnerTest']
+verdict        : KILLED

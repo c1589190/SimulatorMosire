@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T13:56:30Z
+mutant         : m6-runner-ignores-history
+guard          : 运行流不喂历史（load(cid) 读了但不用 ⇒ 跨 tick 断掉）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java': '5035011c97bc42650e0d6f6608afba24'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java': 'd9a2ec754e5133523220653c6bedd57f'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java': '5035011c97bc42650e0d6f6608afba24'}
+restored_identical: True
+compilation_errors: 0
+report_files   : 75
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.616 s <<< FAILURE!', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::io.mosire.simos.app.decision.DecisionAgentRunnerTest.aFreshStoreInstanceStillCarriesTheConversation', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::io.mosire.simos.app.decision.DecisionAgentRunnerTest.theNextRunSeesThePreviousRunsHistory', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.616 s <<< FAILURE! -- in io.mosire.simos.app.decision.DecisionAgentRunnerTest']
+verdict        : KILLED

@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T13:55:38Z
+mutant         : m5-runner-fakes-tool-execution
+guard          : 工具不真执行、只回一段编好的结果（「看起来在调工具」）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java': '5035011c97bc42650e0d6f6608afba24'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java': '71b5add84d52801cd8537763cdef4d5f'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java': '5035011c97bc42650e0d6f6608afba24'}
+restored_identical: True
+compilation_errors: 0
+report_files   : 75
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::Tests run: 6, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.587 s <<< FAILURE!', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::io.mosire.simos.app.decision.DecisionAgentRunnerTest.aToolThatIsNotEvenRegisteredIsRejected', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::io.mosire.simos.app.decision.DecisionAgentRunnerTest.theRunnerReallyExecutesTheToolsTheModelAsksFor', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::io.mosire.simos.app.decision.DecisionAgentRunnerTest.aToolOutsideTheDecisionWhitelistIsRejectedByThePermissionSet', 'io.mosire.simos.app.decision.DecisionAgentRunnerTest.txt::Tests run: 6, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.587 s <<< FAILURE! -- in io.mosire.simos.app.decision.DecisionAgentRunnerTest']
+verdict        : KILLED

@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T13:58:23Z
+mutant         : m9-tool-defs-silent-gap
+guard          : 白名单缺项不再响亮失败（静默少给工具）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionToolDefs.java': '3680e1d837aa40b51b7a353b59957f7f'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionToolDefs.java': '246044fcaccd3cdab5aa4a469fed4eee'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/decision/DecisionToolDefs.java': '3680e1d837aa40b51b7a353b59957f7f'}
+restored_identical: True
+compilation_errors: 0
+report_files   : 75
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.decision.DecisionToolDefsTest.txt::Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.008 s <<< FAILURE!', 'io.mosire.simos.app.decision.DecisionToolDefsTest.txt::io.mosire.simos.app.decision.DecisionToolDefsTest.aMissingWhitelistedToolIsAnAssemblyFaultNotASilentGap', 'io.mosire.simos.app.decision.DecisionToolDefsTest.txt::Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.008 s <<< FAILURE! -- in io.mosire.simos.app.decision.DecisionToolDefsTest']
+verdict        : KILLED

@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T13:57:32Z
+mutant         : m8-signature-always-violation
+guard          : 署名判据写反（本人也拒 ⇒ 决策人出不了令）
+baseline_md5   : {'simos-sd/src/main/java/io/mosire/simos/sd/spi/DecisionSignature.java': '35d3d06c4fc55edecd60bee7e2d65aa4'}
+mutant_md5     : {'simos-sd/src/main/java/io/mosire/simos/sd/spi/DecisionSignature.java': '5586be51f500d85b1c515bda613178fa'}
+restored_md5   : {'simos-sd/src/main/java/io/mosire/simos/sd/spi/DecisionSignature.java': '35d3d06c4fc55edecd60bee7e2d65aa4'}
+restored_identical: True
+compilation_errors: 0
+report_files   : 21
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.sd.spi.DecisionSignatureTest.txt::Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.008 s <<< FAILURE!', 'io.mosire.simos.sd.spi.DecisionSignatureTest.txt::io.mosire.simos.sd.spi.DecisionSignatureTest.signingOnesOwnNameIsNotAViolation', 'io.mosire.simos.sd.spi.DecisionSignatureTest.txt::Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.008 s <<< FAILURE! -- in io.mosire.simos.sd.spi.DecisionSignatureTest']
+verdict        : KILLED

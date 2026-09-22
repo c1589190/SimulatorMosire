@@ -1,0 +1,14 @@
+────────────────────────────────────────────────────────────────────────
+round_utc      : 2026-09-22T14:01:37Z
+mutant         : m1-neighbours-include-own-nation
+guard          : 邻国把本国算进去（'不含本国'那条判据）
+baseline_md5   : {'simos-app/src/main/java/io/mosire/simos/app/access/NeighborNations.java': '93b1bb8c6093bcfa86d415181594bd54'}
+mutant_md5     : {'simos-app/src/main/java/io/mosire/simos/app/access/NeighborNations.java': 'd9a1ab518e77e642e40a586b5dfaf868'}
+restored_md5   : {'simos-app/src/main/java/io/mosire/simos/app/access/NeighborNations.java': '93b1bb8c6093bcfa86d415181594bd54'}
+restored_identical: True
+compilation_errors: 0
+target_module  : app
+report_files   : 75 (app=54 sd=21)
+maven_rc       : 1
+red_assertions : ['io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::Tests run: 21, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.475 s <<< FAILURE!', 'io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesItsNeighbouringNations', 'io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.txt::Tests run: 21, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.475 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest', 'io.mosire.simos.app.access.NeighborNationsTest.txt::Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.003 s <<< FAILURE!', 'io.mosire.simos.app.access.NeighborNationsTest.txt::io.mosire.simos.app.access.NeighborNationsTest.neighboursAreTheOtherNationsWhoseRegionsShareAnEdgeWithOurs', 'io.mosire.simos.app.access.NeighborNationsTest.txt::Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.003 s <<< FAILURE! -- in io.mosire.simos.app.access.NeighborNationsTest']
+verdict        : KILLED
