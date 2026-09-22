@@ -193,8 +193,8 @@ class RunDecisionEndToEndTest {
   @Test
   void aGmCanDriveOneRealRoundThroughMcpAndReadBackTheTrace() throws Exception {
     llm.enqueue(
-        LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
-        LlmResponse.toolCall("call-2", "sd.IssueDirective", directiveArgs(2L)),
+        LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("call-2", "sd_IssueDirective", directiveArgs(2L)),
         LlmResponse.text("已按计划出令"));
 
     McpSchema.CallToolResult result = callWithApproval(runDecisionArgs(DM_ID, 1L));
@@ -261,7 +261,7 @@ class RunDecisionEndToEndTest {
   @Test
   void theSecondRoundContinuesTheSameConversation() throws Exception {
     llm.enqueue(
-        LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
         LlmResponse.text("第一轮到此"));
     assertThat(callWithApproval(runDecisionArgs(DM_ID, 1L)).isError()).isFalse();
 
@@ -340,7 +340,7 @@ class RunDecisionEndToEndTest {
   @Test
   void aRunawayModelIsReportedAsAbortedByBudget() throws Exception {
     for (int i = 0; i < DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS; i++) {
-      llm.enqueue(LlmResponse.toolCall("call-" + i, "simos.map.hex", Map.of("q", 1, "r", 1)));
+      llm.enqueue(LlmResponse.toolCall("call-" + i, "simos_map_hex", Map.of("q", 1, "r", 1)));
     }
 
     McpSchema.CallToolResult result = callWithApproval(runDecisionArgs(DM_ID, 1L));

@@ -1,0 +1,89 @@
+=== round=m1-no-escape file=simos-app/src/main/java/io/mosire/simos/app/llm/LlmToolNames.java
+baseline_md5=afad14fce4c281c5bada443920d31598
+mutant_md5=50601eae58933df6e7fbb940c5aa58f8
+maven_rc=1
+compilation_errors=0
+report_files=3
+--- 红点（本轮断言名，去重）---
+DecisionAgentRunnerTest.aFreshStoreInstanceStillCarriesTheConversation:342->runner:523 » IllegalState 工具名转义后仍不合供应商�
+DecisionAgentRunnerTest.aNameThatIsNeitherAWireNameNorAToolIsRejectedReadably:260->runner:523 » IllegalState 工具名转义后仍不合供
+DecisionAgentRunnerTest.aRealNameThatIsNotAWireNameStillReachesTheRegistryUnchanged:294->runner:523 » IllegalState 工具名转义后仍不
+DecisionAgentRunnerTest.aRunawayModelIsStoppedByTheTurnBudget:509->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+DecisionAgentRunnerTest.aToolOutsideTheDecisionWhitelistIsRejectedByThePermissionSet:464->runner:523 » IllegalState 工具名转义后仍�
+DecisionAgentRunnerTest.aToolThatIsNotEvenRegisteredIsRejected:488->runner:523 » IllegalState 工具名转义后仍不合供应商文法（
+DecisionAgentRunnerTest.anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest:379->runner:523 » IllegalState 工具名转义后仍
+DecisionAgentRunnerTest.theIdentityMessageIsNotInjectedTwiceOnLaterRounds:429->runner:523 » IllegalState 工具名转义后仍不合供应�
+DecisionAgentRunnerTest.theIdentityMessageNamesTheArmyForAnArmyDecisionMaker:410->runner:523 » IllegalState 工具名转义后仍不合供�
+DecisionAgentRunnerTest.theNextRunSeesThePreviousRunsHistory:317->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+DecisionAgentRunnerTest.theRunnerReallyExecutesTheToolsTheModelAsksFor:186->runner:523 » IllegalState 工具名转义后仍不合供应商�
+DecisionAgentRunnerTest.theToolNamesSentToTheModelAreWireSafe:234->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+LlmToolNamesTest.aDefOutsideTheTableIsAnAssemblyFault:138 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: simo
+LlmToolNamesTest.aLoneNameNeverCollidesWithItself:98 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: map.SetEd
+LlmToolNamesTest.anEscapedNameCollidingWithAnotherRealNameIsAnAssemblyFault:91 
+LlmToolNamesTest.anUnknownWireNameIsEmpty:113 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: sd.IssueDirectiv
+LlmToolNamesTest.escapingReplacesIllegalCharactersInsteadOfDroppingThem:56 
+LlmToolNamesTest.everyWireNameMapsBackToItsRealName:44 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: sd.Issu
+LlmToolNamesTest.everyWireNameMatchesTheProviderPattern:35 [★★ 每一条都匹配供应商的函数名文法（这就是现场那个 400
+LlmToolNamesTest.theFaultMessageIsReproducible:155 
+LlmToolNamesTest.twoNamesEscapingToTheSameWireNameAreAnAssemblyFault:76 
+LlmToolNamesTest.wireDefsChangeOnlyTheName:125 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: simos.map.hex -
+RunDecisionEndToEndTest.aGmCanDriveOneRealRoundThroughMcpAndReadBackTheTrace:202 [[mosire:code=TOOL_ERROR]
+RunDecisionEndToEndTest.aRunawayModelIsReportedAsAbortedByBudget:350 
+RunDecisionEndToEndTest.theSecondRoundContinuesTheSameConversation:266 
+DecisionAgentRunnerTest.aFreshStoreInstanceStillCarriesTheConversation:342->runner:523 » IllegalState 工具名转义后仍不合供应商�
+DecisionAgentRunnerTest.aNameThatIsNeitherAWireNameNorAToolIsRejectedReadably:260->runner:523 » IllegalState 工具名转义后仍不合供
+DecisionAgentRunnerTest.aRealNameThatIsNotAWireNameStillReachesTheRegistryUnchanged:294->runner:523 » IllegalState 工具名转义后仍不
+DecisionAgentRunnerTest.aRunawayModelIsStoppedByTheTurnBudget:509->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+DecisionAgentRunnerTest.aToolOutsideTheDecisionWhitelistIsRejectedByThePermissionSet:464->runner:523 » IllegalState 工具名转义后仍�
+DecisionAgentRunnerTest.aToolThatIsNotEvenRegisteredIsRejected:488->runner:523 » IllegalState 工具名转义后仍不合供应商文法（
+DecisionAgentRunnerTest.anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest:379->runner:523 » IllegalState 工具名转义后仍
+DecisionAgentRunnerTest.theIdentityMessageIsNotInjectedTwiceOnLaterRounds:429->runner:523 » IllegalState 工具名转义后仍不合供应�
+DecisionAgentRunnerTest.theIdentityMessageNamesTheArmyForAnArmyDecisionMaker:410->runner:523 » IllegalState 工具名转义后仍不合供�
+DecisionAgentRunnerTest.theNextRunSeesThePreviousRunsHistory:317->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+DecisionAgentRunnerTest.theRunnerReallyExecutesTheToolsTheModelAsksFor:186->runner:523 » IllegalState 工具名转义后仍不合供应商�
+DecisionAgentRunnerTest.theToolNamesSentToTheModelAreWireSafe:234->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+LlmToolNamesTest.aDefOutsideTheTableIsAnAssemblyFault:138 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: simo
+LlmToolNamesTest.aLoneNameNeverCollidesWithItself:98 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: map.SetEd
+LlmToolNamesTest.anEscapedNameCollidingWithAnotherRealNameIsAnAssemblyFault:91 
+LlmToolNamesTest.anUnknownWireNameIsEmpty:113 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: sd.IssueDirectiv
+LlmToolNamesTest.escapingReplacesIllegalCharactersInsteadOfDroppingThem:56 
+LlmToolNamesTest.everyWireNameMapsBackToItsRealName:44 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: sd.Issu
+LlmToolNamesTest.everyWireNameMatchesTheProviderPattern:35 [★★ 每一条都匹配供应商的函数名文法（这就是现场那个 400
+LlmToolNamesTest.theFaultMessageIsReproducible:155 
+LlmToolNamesTest.twoNamesEscapingToTheSameWireNameAreAnAssemblyFault:76 
+LlmToolNamesTest.wireDefsChangeOnlyTheName:125 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: simos.map.hex -
+RunDecisionEndToEndTest.aGmCanDriveOneRealRoundThroughMcpAndReadBackTheTrace:202 [[mosire:code=TOOL_ERROR]
+RunDecisionEndToEndTest.aRunawayModelIsReportedAsAbortedByBudget:350 
+RunDecisionEndToEndTest.theSecondRoundContinuesTheSameConversation:266 
+DecisionAgentRunnerTest.aFreshStoreInstanceStillCarriesTheConversation:342->runner:523 » IllegalState 工具名转义后仍不合供应商�
+DecisionAgentRunnerTest.aNameThatIsNeitherAWireNameNorAToolIsRejectedReadably:260->runner:523 » IllegalState 工具名转义后仍不合供
+DecisionAgentRunnerTest.aRealNameThatIsNotAWireNameStillReachesTheRegistryUnchanged:294->runner:523 » IllegalState 工具名转义后仍不
+DecisionAgentRunnerTest.aRunawayModelIsStoppedByTheTurnBudget:509->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+DecisionAgentRunnerTest.aToolOutsideTheDecisionWhitelistIsRejectedByThePermissionSet:464->runner:523 » IllegalState 工具名转义后仍�
+DecisionAgentRunnerTest.aToolThatIsNotEvenRegisteredIsRejected:488->runner:523 » IllegalState 工具名转义后仍不合供应商文法（
+DecisionAgentRunnerTest.anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest:379->runner:523 » IllegalState 工具名转义后仍
+DecisionAgentRunnerTest.theIdentityMessageIsNotInjectedTwiceOnLaterRounds:429->runner:523 » IllegalState 工具名转义后仍不合供应�
+DecisionAgentRunnerTest.theIdentityMessageNamesTheArmyForAnArmyDecisionMaker:410->runner:523 » IllegalState 工具名转义后仍不合供�
+DecisionAgentRunnerTest.theNextRunSeesThePreviousRunsHistory:317->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+DecisionAgentRunnerTest.theRunnerReallyExecutesTheToolsTheModelAsksFor:186->runner:523 » IllegalState 工具名转义后仍不合供应商�
+DecisionAgentRunnerTest.theToolNamesSentToTheModelAreWireSafe:234->runner:523 » IllegalState 工具名转义后仍不合供应商文法（�
+LlmToolNamesTest.aDefOutsideTheTableIsAnAssemblyFault:138 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: simo
+LlmToolNamesTest.aLoneNameNeverCollidesWithItself:98 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: map.SetEd
+LlmToolNamesTest.anEscapedNameCollidingWithAnotherRealNameIsAnAssemblyFault:91 
+LlmToolNamesTest.anUnknownWireNameIsEmpty:113 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: sd.IssueDirectiv
+LlmToolNamesTest.escapingReplacesIllegalCharactersInsteadOfDroppingThem:56 
+LlmToolNamesTest.everyWireNameMapsBackToItsRealName:44 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: sd.Issu
+LlmToolNamesTest.everyWireNameMatchesTheProviderPattern:35 [★★ 每一条都匹配供应商的函数名文法（这就是现场那个 400
+LlmToolNamesTest.theFaultMessageIsReproducible:155 
+LlmToolNamesTest.twoNamesEscapingToTheSameWireNameAreAnAssemblyFault:76 
+LlmToolNamesTest.wireDefsChangeOnlyTheName:125 » IllegalState 工具名转义后仍不合供应商文法（装配故障）: simos.map.hex -
+RunDecisionEndToEndTest.aGmCanDriveOneRealRoundThroughMcpAndReadBackTheTrace:202 [[mosire:code=TOOL_ERROR]
+RunDecisionEndToEndTest.aRunawayModelIsReportedAsAbortedByBudget:350 
+RunDecisionEndToEndTest.theSecondRoundContinuesTheSameConversation:266 
+--- 本轮 Tests run 行 ---
+[ERROR] Tests run: 6, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 1.574 s <<< FAILURE! -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+[ERROR] Tests run: 12, Failures: 0, Errors: 12, Skipped: 0, Time elapsed: 0.949 s <<< FAILURE! -- in io.mosire.simos.app.decision.DecisionAgentRunnerTest
+[ERROR] Tests run: 10, Failures: 5, Errors: 5, Skipped: 0, Time elapsed: 0.010 s <<< FAILURE! -- in io.mosire.simos.app.llm.LlmToolNamesTest
+restored_md5=afad14fce4c281c5bada443920d31598
+restored_identical=true
+verdict=KILLED

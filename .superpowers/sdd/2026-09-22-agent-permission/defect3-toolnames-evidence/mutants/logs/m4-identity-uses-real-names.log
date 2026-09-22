@@ -1,0 +1,17 @@
+=== round=m4-identity-uses-real-names file=simos-app/src/main/java/io/mosire/simos/app/decision/DecisionAgentRunner.java
+baseline_md5=98de2d92e2a52986491f35c9df78222d
+mutant_md5=d18ba057078ceb074443a2e88eb61029
+maven_rc=1
+compilation_errors=0
+report_files=3
+--- 红点（本轮断言名，去重）---
+DecisionAgentRunnerTest.anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest:391 [任务：范围由系统强制 + 先查看再决
+DecisionAgentRunnerTest.anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest:391 [任务：范围由系统强制 + 先查看再决
+DecisionAgentRunnerTest.anEmptyConversationGetsTheIdentityMessageBeforeTheFirstRequest:391 [任务：范围由系统强制 + 先查看再决
+--- 本轮 Tests run 行 ---
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.770 s -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+[ERROR] Tests run: 12, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.048 s <<< FAILURE! -- in io.mosire.simos.app.decision.DecisionAgentRunnerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.app.llm.LlmToolNamesTest
+restored_md5=98de2d92e2a52986491f35c9df78222d
+restored_identical=true
+verdict=KILLED

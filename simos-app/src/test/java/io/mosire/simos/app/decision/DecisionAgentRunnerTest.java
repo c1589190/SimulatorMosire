@@ -14,6 +14,7 @@ import io.mosire.agentlib.llm.LlmClient;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.llm.LlmRequest;
 import io.mosire.agentlib.llm.LlmResponse;
+import io.mosire.agentlib.llm.ToolDef;
 import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
@@ -177,8 +178,8 @@ class DecisionAgentRunnerTest {
   void theRunnerReallyExecutesTheToolsTheModelAsksFor() throws Exception {
     long headBefore = head();
     llm.enqueue(
-        LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
-        LlmResponse.toolCall("call-2", "sd.IssueDirective", directiveArgs(headBefore)),
+        LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("call-2", "sd_IssueDirective", directiveArgs(headBefore)),
         LlmResponse.text("已按计划出令"));
 
     DecisionAgentRunner.DecisionTurn turn =
@@ -215,6 +216,92 @@ class DecisionAgentRunnerTest {
     assertThat(toolResults(history).get(0).isError()).isFalse();
   }
 
+  // ── 线格式：送给模型的工具名必须匹配供应商的函数名文法 ──────────────────────────
+
+  /**
+   * ★★ **真 LLM 实测缺陷的判据**（2026-09-22）：送给模型的工具名必须匹配 {@code ^[a-zA-Z0-9_-]+$}。
+   *
+   * <p>★ **缺陷现场**（不是推断）：Simos 的工具名形如 {@code simos.map.hex} / {@code sd.IssueDirective}，含 {@code
+   * .}；OpenAI 兼容端点直接拒（{@code HTTP 400: Invalid 'tools[0].function.name': string does not match
+   * pattern ... '^[a-zA-Z0-9_-]+$'}）⇒ 一轮决策**一次都没发出去**。
+   *
+   * <p>★ 断言取**发出去的请求本身**（{@code llm.requests()}），不是某个内部表：只有请求里的字节是真的， 别的都是"我们以为发出去的是什么"。
+   */
+  @Test
+  void theToolNamesSentToTheModelAreWireSafe() {
+    llm.enqueue(LlmResponse.text("收到"));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    List<String> sent = llm.requests().get(0).tools().stream().map(ToolDef::name).toList();
+    assertThat(sent).as("工具面一条不少（转义不得把工具弄丢）").hasSize(DecisionCallerFactory.WHITELIST.size());
+    assertThat(sent)
+        .as("★★ 每一条都匹配供应商的函数名文法——旧形态（含 .）在这里必红")
+        .allMatch(name -> name.matches("^[a-zA-Z0-9_-]+$"));
+    assertThat(sent)
+        .as("★ 转义规则是 `.` → `_`（不是删掉点：`simosmaphex` 也匹配文法，却读不出层级、且更容易撞名）")
+        .contains("simos_map_hex", "sd_IssueDirective");
+  }
+
+  /**
+   * ★★ **模型叫了一个名字表里没有、注册表里也没有的名字 ⇒ 可读拒绝**（判据：模型要能看懂它**叫错了名**）。
+   *
+   * <p>★ 正文里必须有**它给的那个名字**：只说"调用失败"等于把"你叫的是谁"这件事抹掉，模型下一轮还会照叫。
+   *
+   * <p>★ 这条走的是**既有路径**（AgentLib {@code ToolExecutionGuard} 的 {@code TOOL_NOT_FOUND}），本层不新造拒绝理由。
+   */
+  @Test
+  void aNameThatIsNeitherAWireNameNorAToolIsRejectedReadably() {
+    long headBefore = head();
+    llm.enqueue(
+        LlmResponse.toolCall("call-x", "simos.made.up", Map.of("q", 1)), LlmResponse.text("换个办法"));
+
+    DecisionAgentRunner.DecisionTurn turn =
+        runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    assertThat(turn.toolInvocations()).hasSize(1);
+    DecisionAgentRunner.ToolInvocation call = turn.toolInvocations().get(0);
+    assertThat(call.success()).isFalse();
+    assertThat(call.code()).isEqualTo("TOOL_NOT_FOUND");
+    assertThat(call.resultSummary())
+        .as("★ 拒因正文里带着**模型给的那个名字**——它据此才知道自己叫错了名")
+        .contains("simos.made.up");
+    assertThat(call.toolName())
+        .as("★ 账里记的是**它说的那个名字**（这一笔的事实就是「模型叫了这个」；线名才是供应商方言的产物）")
+        .isEqualTo("simos.made.up");
+    assertThat(toolResults(conversations.load(conversationId())).get(0).error())
+        .as("失败也回灌给模型（含码与它给的名字）")
+        .contains("simos.made.up");
+    assertThat(head()).as("拒掉的调用不留 revision").isEqualTo(headBefore);
+  }
+
+  /**
+   * ★★ **过不了名字表、但注册表里真有的名字，本层不抢着拒**（真实名**原样**交给权限链）。
+   *
+   * <p>★ **为什么不在这里判"名字不在表里"**：本层的表是从"白名单 ∩ 注册表"建的 ⇒ **凡是能过表的都在白名单里**
+   * （权限组必放行）。若本层抢先拒，则"工具真的在注册表里、只是权限组不放它"这条既有判据就**再也测不到**（见 {@link
+   * #aToolOutsideTheDecisionWhitelistIsRejectedByThePermissionSet}）——那等于用一个更弱的理由顶掉一个更强的判据。
+   *
+   * <p>★ **顺带保住一件事**：修这个缺陷之前落盘的老会话里，身份消息说的是真实名（那时模型看不见线名）；放行原话意味着**老会话不必作废** （模型照旧话叫得动），而新会话一律说线名。
+   */
+  @Test
+  void aRealNameThatIsNotAWireNameStillReachesTheRegistryUnchanged() {
+    llm.enqueue(
+        LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.text("用真名也叫得动"));
+
+    DecisionAgentRunner.DecisionTurn turn =
+        runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    assertThat(turn.toolInvocations().get(0).success()).isTrue();
+    assertThat(toolResults(conversations.load(conversationId())).get(0).content())
+        .as("真的跑到了那个工具上（真世界的值）")
+        .contains("desert");
+    assertThat(turn.toolInvocations().get(0).toolName())
+        .as("表里没有它 ⇒ 账里记原话")
+        .isEqualTo("simos.map.hex");
+  }
+
   // ── 判据 3：跨 tick 会话沿用 ─────────────────────────────────────────────────────
 
   /**
@@ -225,7 +312,7 @@ class DecisionAgentRunnerTest {
   @Test
   void theNextRunSeesThePreviousRunsHistory() {
     llm.enqueue(
-        LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
         LlmResponse.text("第一轮到此"));
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
@@ -250,7 +337,7 @@ class DecisionAgentRunnerTest {
   @Test
   void aFreshStoreInstanceStillCarriesTheConversation() {
     llm.enqueue(
-        LlmResponse.toolCall("call-1", "simos.map.hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
         LlmResponse.text("第一轮到此"));
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
     conversations.close();
@@ -297,11 +384,15 @@ class DecisionAgentRunnerTest {
     String text = textOf(first.get(0));
     assertThat(text).as("身份：决策人 id + 归属（含 id）").contains(DM_FRA.id().value()).contains("FRA");
     assertThat(text)
-        .as("任务：范围由系统强制 + 先查看再决策 + 出令与载荷提示 + expectedRevision 的来源")
-        .contains("sd.IssueDirective")
-        .contains("simos.command.catalog")
-        .contains("simos.timeline.branches")
-        .contains("expectedRevision");
+        .as(
+            "任务：范围由系统强制 + 先查看再决策 + 出令与载荷提示 + expectedRevision 的来源；"
+                + "★ 名字一律是**线格式**（模型眼里的那个写法），说真名等于让它去叫一个看不见的名字")
+        .contains("sd_IssueDirective")
+        .contains("simos_command_catalog")
+        .contains("simos_timeline_branches")
+        .contains("expectedRevision")
+        .doesNotContain("sd.IssueDirective")
+        .doesNotContain("simos.command.catalog");
     assertThat(text)
         .as(
             "★ 正文里一个数字都没有：这条消息**永久落盘**（写进去就不再更新）⇒ 里面不能有 head/revision/tick 这类会漂的值；夹具的决策人 id 与归属 id 都不含数字")
@@ -411,8 +502,8 @@ class DecisionAgentRunnerTest {
   @Test
   void aRunawayModelIsStoppedByTheTurnBudget() {
     llm.enqueue(
-        LlmResponse.toolCall("c1", "simos.map.hex", Map.of("q", 1, "r", 1)),
-        LlmResponse.toolCall("c2", "simos.map.hex", Map.of("q", 1, "r", 2)),
+        LlmResponse.toolCall("c1", "simos_map_hex", Map.of("q", 1, "r", 1)),
+        LlmResponse.toolCall("c2", "simos_map_hex", Map.of("q", 1, "r", 2)),
         LlmResponse.text("永远到不了"));
 
     DecisionAgentRunner runaway = runner(decisionRegistry(), 2);

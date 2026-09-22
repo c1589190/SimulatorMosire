@@ -156,8 +156,9 @@
 
 | # | 发现 | 性质 |
 |---|---|---|
-| **1** | ★ **真 LLM 首轮直接失败**：`sd.RunDecision` 返 `result=failed, llmCalls=0, reason=LlmException, detail="LLM 供应商返回 HTTP 400: field messages is required"`——首次请求 `messages` **为空**（首轮会话空且无 system prompt）。★ 错误**被正确报告**（不是静默），这一点 T11C 的设计是对的 | **真缺陷**，已派单修（注入**落盘**的身份 system 消息） |
+| **1** | ★ **真 LLM 首轮直接失败**：`sd.RunDecision` 返 `result=failed, llmCalls=0, reason=LlmException, detail="…HTTP 400: field messages is required"`——首次请求 `messages` **为空**（首轮会话空且无 system prompt）。★ 错误**被正确报告**（不是静默） | **真缺陷** ⇒ ✅ **已修**（`c884a22`：注入并**落盘**决策人身份 system 消息，6 变异体全杀、门禁 1589） |
 | **2** | 富世界的区域 tag 是**字面量 `'Nation'`**（**无 `nation:` 前缀**）⇒ `sd.CreateNation` 的 homeRegion 前置**不满足**、**建不了国家**——正是 M6 的 D-5 连带①预言的"先有鸡还是先有蛋" | **既有缺口**（D-5 未裁未做）；本轮验收用 `map.UpdateRegion` 手动补前缀绕过 |
+| **3** | ★ **工具名含 `.` 被 LLM 端点拒**（修 #1 后暴露）：`Invalid 'tools[0].***.name': string does not match pattern '^[a-zA-Z0-9_-]+$'`——Simos 工具名形如 `simos.map.hex` / `sd.IssueDirective`，而端点只收字母数字/下划线/连字符 | **真缺陷** ⇒ 已派单修（送出时 `.`→`_` 转义 + 回来映射回真名 + 碰撞**响亮失败**） |
 
 ## 四 本阶段的环境事实（本机实测，避免照抄别台）
 

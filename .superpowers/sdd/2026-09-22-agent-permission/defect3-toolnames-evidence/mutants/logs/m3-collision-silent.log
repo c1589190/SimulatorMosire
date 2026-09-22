@@ -1,0 +1,23 @@
+=== round=m3-collision-silent file=simos-app/src/main/java/io/mosire/simos/app/llm/LlmToolNames.java
+baseline_md5=afad14fce4c281c5bada443920d31598
+mutant_md5=f6b0aa66237bd7f9b717adbdb06a340a
+maven_rc=1
+compilation_errors=0
+report_files=3
+--- 红点（本轮断言名，去重）---
+LlmToolNamesTest.anEscapedNameCollidingWithAnotherRealNameIsAnAssemblyFault:88 
+LlmToolNamesTest.theFaultMessageIsReproducible:151->catchMessage:161 本该抛
+LlmToolNamesTest.twoNamesEscapingToTheSameWireNameAreAnAssemblyFault:73 
+LlmToolNamesTest.anEscapedNameCollidingWithAnotherRealNameIsAnAssemblyFault:88 
+LlmToolNamesTest.theFaultMessageIsReproducible:151->catchMessage:161 本该抛
+LlmToolNamesTest.twoNamesEscapingToTheSameWireNameAreAnAssemblyFault:73 
+LlmToolNamesTest.anEscapedNameCollidingWithAnotherRealNameIsAnAssemblyFault:88 
+LlmToolNamesTest.theFaultMessageIsReproducible:151->catchMessage:161 本该抛
+LlmToolNamesTest.twoNamesEscapingToTheSameWireNameAreAnAssemblyFault:73 
+--- 本轮 Tests run 行 ---
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.696 s -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.022 s -- in io.mosire.simos.app.decision.DecisionAgentRunnerTest
+[ERROR] Tests run: 10, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.010 s <<< FAILURE! -- in io.mosire.simos.app.llm.LlmToolNamesTest
+restored_md5=afad14fce4c281c5bada443920d31598
+restored_identical=true
+verdict=KILLED
