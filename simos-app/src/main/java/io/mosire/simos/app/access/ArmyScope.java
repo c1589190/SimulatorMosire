@@ -14,6 +14,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
+import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -33,7 +34,11 @@ import java.util.TreeSet;
  *
  * <p>★ **算不出来就是"看不见"**（deny-all，fail-closed）：军队不在 sd 切片里、单位根不在 unit 切片里、 单位没有有效位置（"不知道在哪"）三种情形都给
  * {@code ResourceScope.none()}—— 与 {@code RedactingQueryService} 对未知
- * actor/军队的既有口径一致（那里同样给空集，不是给全量）。
+ * actor/军队的既有口径一致（那里同样给空集，不是给全量）。★ T10 起 deny-all 覆盖**三个**命名空间（只 deny map 会让 unit/social 回落工具缺省 ⇒
+ * 静默全放行）。
+ *
+ * <p>★ **T10 补齐的三维**：{@code map} = 圈内格（逐格前缀）、{@code social} = 圈内格（人口按 hex）、{@code unit} =
+ * 位置落在圈内的单位——后两者与国家实现**同一套口径**（"范围内的格/格上的单位"），只是"范围"从区域换成视野圈。
  */
 public final class ArmyScope implements DecisionScopeFunction {
 
@@ -69,15 +74,37 @@ public final class ArmyScope implements DecisionScopeFunction {
     }
 
     Set<String> prefixes = new TreeSet<>(); // ★ 有序：范围内容与球内迭代序无关（HashSet 不保序）
-    for (HexCoord coord : HexGrid.withinRadius(center.get(), root.visionRadius())) {
+    Set<String> socialPrefixes = new TreeSet<>();
+    Set<HexCoord> circle = new TreeSet<>(HexGrid.withinRadius(center.get(), root.visionRadius()));
+    for (HexCoord coord : circle) {
       prefixes.add(ToolSupport.resourceHex(mapId, coord.q(), coord.r()).path());
+      // social：圈内格（spec §3.3 的 social 路径是 <q>_<r>，不带 mapId）
+      socialPrefixes.add(ToolSupport.resourceSocial(coord.q(), coord.r()).path());
     }
+
+    // unit：**位置落在圈内的单位**——与国家实现同一套口径（"看得见的格上的单位"），只是"范围"从区域换成视野圈。
+    Set<String> unitPrefixes = new TreeSet<>();
+    SimosTimestamp at = state.meta().timestamp();
+    for (Unit unit : units.units().values()) {
+      Optional<HexCoord> position = units.effectivePosition(unit.id(), at);
+      if (position.isPresent() && circle.contains(position.get())) {
+        unitPrefixes.add(ToolSupport.resourceUnit(unit.id().value()).path());
+      }
+    }
+
+    // ★ 三个命名空间**都要表态**（同 NationScope）：只配 map ⇒ unit/social 回落工具缺省 ⇒ 静默全放行。
     return ResourceScopeMap.of(
-        ToolSupport.MAP_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(prefixes));
+            ToolSupport.MAP_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(prefixes))
+        .withNamespace(
+            ToolSupport.UNIT_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(unitPrefixes))
+        .withNamespace(
+            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes));
   }
 
   private static ResourceScopeMap denyAll() {
-    return ResourceScopeMap.of(ToolSupport.MAP_NAMESPACE, ResourceScope.none());
+    return ResourceScopeMap.of(ToolSupport.MAP_NAMESPACE, ResourceScope.none())
+        .withNamespace(ToolSupport.UNIT_NAMESPACE, ResourceScope.none())
+        .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none());
   }
 
   /** sd 切片（缺切片/类型不对 = 装配故障，当场炸——与 {@code ToolSupport#unitState} 同口径）。 */

@@ -5,10 +5,8 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.GameMap;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +16,8 @@ import java.util.Map;
  * {@code simos.map.overview}（spec §7.1 读工具）：地图只读总览（格、区域、城市、地形类型）。
  *
  * <p>经 {@link QueryService#stateAt} 取目标状态 → map 切片；坐标一律 {@code {q,r}}。
+ *
+ * <p>★ **部分可见**（T10）：逐区域 / 逐格按**调用者现算的范围**筛，越界的不进结果——**整调拒**在这里是错的语义 （一个决策人只是看不见别国的区域，不是禁止它看地图）。
  */
 public final class MapOverviewTool implements AgentTool {
 
@@ -25,12 +25,10 @@ public final class MapOverviewTool implements AgentTool {
   public static final String NAME = "simos.map.overview";
 
   private final QueryService query;
-  private final RedactingQueryService redacting;
   private final String mapId;
 
   public MapOverviewTool(QueryService query, String mapId) {
     this.query = query;
-    this.redacting = new RedactingQueryService(query);
     this.mapId = mapId;
   }
 
@@ -47,7 +45,6 @@ public final class MapOverviewTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>(ToolSupport.targetProps());
-    props.put("actor", ToolSupport.prop("string", "决策人 id（给出则按该决策人的 viewScope 脱敏；缺省 = GM 全量）"));
     return ToolSupport.schema(props, List.of());
   }
 
@@ -59,16 +56,18 @@ public final class MapOverviewTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireMapRead(context, mapId);
       Map<String, Object> args = context.arguments();
       var target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
-      String actor = ToolSupport.optionalText(args, "actor", null);
-      if (actor != null) {
-        return ToolSupport.ok(redacting.mapOverview(new DecisionMakerId(actor), target, mapId));
-      }
       SimulationState state = query.stateAt(target);
       GameMap map = ToolSupport.gameMap(state);
-      return ToolSupport.ok(ToolSupport.mapOverview(mapId, map));
+      // ★ **按调用者现算的可见性逐项筛**（T10）：身份与范围都从 ToolContext 来（不再有自报 `actor` 参数——
+      //   那条路**可省略**、省略即拿全量，限制纯自愿，spec §1.3 第 1 条）。
+      return ToolSupport.ok(
+          ToolSupport.mapOverview(
+              mapId,
+              map,
+              coord -> ToolSupport.hexVisible(context, mapId, map, coord),
+              region -> ToolSupport.regionVisible(context, mapId, region)));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }

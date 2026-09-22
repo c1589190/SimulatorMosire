@@ -1,0 +1,151 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m1-overview-unfiltered",
+  "guard": "总览不过滤直接回全量",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/read/MapOverviewTool.java",
+  "baseline_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "mutant_md5": "9e19bb3b07c00521e360773771f428f3",
+  "restored_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "restored_identical": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:173 [只剩本国区域（701），GER 的 201 不进结果]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m1-overview-unfiltered",
+  "guard": "总览不过滤直接回全量",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/read/MapOverviewTool.java",
+  "baseline_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "mutant_md5": "9e19bb3b07c00521e360773771f428f3",
+  "restored_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "c23f0187d72c96fb82d789062b8f1367",
+  "prod_digest_restored": "7b421696b07c50c026efc2cdd9ebc0c1",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:173 [只剩本国区域（701），GER 的 201 不进结果]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m1-overview-unfiltered",
+  "guard": "总览不过滤直接回全量",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/read/MapOverviewTool.java",
+  "baseline_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "mutant_md5": "9e19bb3b07c00521e360773771f428f3",
+  "restored_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "808f554d584623e6362091bd7a4c5443",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:173 [只剩本国区域（701），GER 的 201 不进结果]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m1-overview-unfiltered",
+  "guard": "总览不过滤直接回全量",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/read/MapOverviewTool.java",
+  "baseline_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "mutant_md5": "9e19bb3b07c00521e360773771f428f3",
+  "restored_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "c22fd38961781fa91c1f73a7bf7af493",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:173 [只剩本国区域（701），GER 的 201 不进结果]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m1-overview-unfiltered",
+  "guard": "总览不过滤直接回全量",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/read/MapOverviewTool.java",
+  "baseline_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "mutant_md5": "9e19bb3b07c00521e360773771f428f3",
+  "restored_md5": "d651f62f8e665a3ec8437d13a7fdf864",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "c22fd38961781fa91c1f73a7bf7af493",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:175 [只剩本国区域（701），GER 的 201 不进结果]"
+  ]
+}

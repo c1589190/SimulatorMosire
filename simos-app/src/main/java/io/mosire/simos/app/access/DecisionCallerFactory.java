@@ -4,11 +4,13 @@ import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.permission.CommandMode;
+import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
@@ -24,6 +26,7 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -70,6 +73,9 @@ public final class DecisionCallerFactory {
 
   /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
   public static final String INSTANCE_ID_PREFIX = "decision-maker:";
+
+  /** {@code sd} 域里"决策人"这一类资源（spec §3.3：{@code sd: decision-maker/<id> · nation/<id> · …}）。 */
+  public static final String DECISION_MAKER_KIND = "decision-maker";
 
   /** 决策人的派生目标（进身份的 {@code goal}，只进内存态提示面与审批提示，不进事件库）。 */
   public static final String GOAL = "在受限可见范围内做出决策：出令（sd.IssueDirective）与裁决（sd.SubmitVerdict）";
@@ -121,7 +127,10 @@ public final class DecisionCallerFactory {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(mapId, "mapId");
-    ResourceScopeMap computed = scopeFunctions.scopesFor(dm, state, mapId);
+    ResourceScopeMap computed =
+        scopeFunctions
+            .scopesFor(dm, state, mapId)
+            .withNamespace(ToolSupport.SD_NAMESPACE, selfDecisionScope(dm));
     return ToolContext.of(
         AccessToken.DEFAULT,
         AgentPermissionSet.builder(AccessToken.DEFAULT)
@@ -130,6 +139,43 @@ public final class DecisionCallerFactory {
             .resourceScopes(gmAccessLimit == null ? computed : computed.narrowTo(gmAccessLimit))
             .build(),
         AgentIdentity.subagent(INSTANCE_ID_PREFIX + dm.id().value(), CommandMode.LIMITED, GOAL, 1));
+  }
+
+  /**
+   * ★★ **决策人的 sd 域 = 它自己的决策域**（{@code sd:decision-maker/<自己的 id>}，T10）。
+   *
+   * <p>**为什么必须有这一条**：两条决策窄写（{@code sd.IssueDirective} / {@code sd.SubmitVerdict}）是
+   * **决策行为**，不是"直接改地图/单位数据"（用户 2026-09-22 原话：「决策人不能直接改地图等数据」——下指令、交判决是它的**本职**， spec §2.2
+   * 把这两条放进决策人白名单就是这条意思）。它们过去的资源声明是基类缺省的"三命名空间粗断言" ⇒ 粗断言撞细围栏，决策人**连出令都出不了**（T5-T8 实测发现 1）。
+   *
+   * <p>**为什么按 id 配前缀、而不是"不限"**：决策人只能**以自己名义**下决策。给 {@code unlimited()} 会让"谁都能以别人的名义落一条
+   * directive"变成权限上允许的事——前缀恰好只覆盖自己那一条路径。
+   *
+   * <p>★ 与工具侧的**成对关系**：这里是**围栏**（可达面），{@code IssueDirectiveTool#writeResources} 是**断言**
+   * （要写的具体资源，从调用者身份推出）。两处必须同源——只改一处 = 要么整调被拒（旧形态），要么围栏形同虚设。
+   */
+  private static ResourceScope selfDecisionScope(DecisionMaker dm) {
+    return ResourceScope.of(decisionDomainOf(dm.id().value()));
+  }
+
+  /** 决策人自己的决策域路径（{@code decision-maker/<id>}）——**唯一拼写点**（工具侧也从这里取）。 */
+  public static String decisionDomainOf(String decisionMakerId) {
+    return ToolSupport.resourceSd(DECISION_MAKER_KIND, decisionMakerId).path();
+  }
+
+  /**
+   * 从身份里取出"这是我（哪个决策人）"：{@code AgentIdentity.instanceId()} 形如 {@code decision-maker:<id>} （与 {@link
+   * #INSTANCE_ID_PREFIX} 同源、也是会话 id 的来源）。非决策人身份（如 GM 的 {@code external-mcp}）⇒ 空。
+   *
+   * <p>★ **为什么从身份取、不从载荷取**：载荷是**模型自己写的**（spec §1.3 第 1 条的"自报"形态）；宿主要判"这次调用是谁在做" 只能看宿主已知的东西（spec
+   * §4.3：身份从 {@code ToolContext} 来，不由参数自报）。
+   */
+  public static Optional<String> decisionMakerIdOf(AgentIdentity identity) {
+    Objects.requireNonNull(identity, "identity");
+    String instanceId = identity.instanceId();
+    return instanceId.startsWith(INSTANCE_ID_PREFIX)
+        ? Optional.of(instanceId.substring(INSTANCE_ID_PREFIX.length()))
+        : Optional.empty();
   }
 
   /**

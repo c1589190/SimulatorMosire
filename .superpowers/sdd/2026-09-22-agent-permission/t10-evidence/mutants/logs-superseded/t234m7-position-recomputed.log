@@ -1,0 +1,32 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m7-position-recomputed",
+  "guard": "位置自己重算（读 unit.position() 而不是 effectivePosition）",
+  "note": "锚点仍在，原样重放",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/ArmyScope.java",
+  "baseline_md5": "49c44f6e987e7c34132545daf0ac3dec",
+  "mutant_md5": "a9b7dc06a92ae510025be9f8da8afaa4",
+  "restored_md5": "49c44f6e987e7c34132545daf0ac3dec",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "2c5c6fdbc67edf462387190256c53ecb",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:130 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）]"
+  ]
+}

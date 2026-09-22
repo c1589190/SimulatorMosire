@@ -60,7 +60,6 @@ public final class MapHexTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireMapRead(context, mapId);
       Map<String, Object> args = context.arguments();
       int q = (int) ToolSupport.requiredLong(args, "q");
       int r = (int) ToolSupport.requiredLong(args, "r");
@@ -69,7 +68,9 @@ public final class MapHexTool implements AgentTool {
       GameMap map = ToolSupport.gameMap(state);
       HexCoord coord = new HexCoord(q, r);
       HexCell cell = map.hexes().get(coord);
-      if (cell == null) {
+      // ★ **不可见与不存在必须长得一模一样**（T10）：两条都走这一支，拒因**逐字相同**——
+      //   否则"这个格存在但你看不到"这件事会从拒因里漏出去。
+      if (cell == null || !ToolSupport.hexVisible(context, mapId, map, coord)) {
         return ToolResult.error("NOT_FOUND", "六角格不存在: " + q + "_" + r);
       }
       List<FacetEntry> facets = query.facets(ToolSupport.canonicalHex(mapId, q, r), target);

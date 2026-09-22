@@ -1,0 +1,39 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t5t8m3-decision-scopes-unlimited",
+  "guard": "决策人的 resourceScopes 被 unlimited() 覆盖 —— 范围函数白算",
+  "note": "锚点未被 T10 改动，原样重放",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java",
+  "baseline_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "mutant_md5": "b620f0a2535da36bb0115047faf4a2e5",
+  "restored_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "c5cf067c4158909867c2a5e1d0e71bf5",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionCallerFactoryTest.aDecisionMakerCanReadWhatItsOwnScopeCoversAndNotWhatOthersCover:124 [别国区域：拒]",
+    "[ERROR]   DecisionCallerFactoryTest.sameToolSameArgumentsTwoDecisionMakersOnePassesOneIsDenied:88 [同一工具、同一参数：GER 够不着 FRA 的区域]",
+    "[ERROR]   DecisionCallerFactoryTest.theGmSuppliedLimitIsIntersectedNotReplaced:314 [★ 交集：GM 的限制**不能**把范围放大回 FRA 自己的 701（701 ∩ 201 = 空）]",
+    "[ERROR]   DecisionCallerFactoryTest.theScopeIsRecomputedPerCallSoWorldChangesMoveTheFence:279 [世界①：GER 只够得着 201]",
+    "[ERROR]   DecisionCallerFactoryTest.theToolContextFlavouredEntryPointIsAlsoGatedByTheSameChain:167 [GER 读 701：拒]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:300 [出令必须成（拒因：工具对该命名空间的缺省策略是 read-only（调用者未表态），写操作被拒: sd:decision-maker/dm-fra）]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aHexOutsideTheScopeIsIndistinguishableFromAMissingHex:196 [GER 的格：不是成功]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:175 [只剩本国区域（701），GER 的 201 不进结果]"
+  ]
+}

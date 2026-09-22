@@ -4,6 +4,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
@@ -109,6 +110,10 @@ public final class CommandSubmitTool implements AgentTool {
       return ToolSupport.fold(core.submit(command), id, id);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
+    } catch (ResourceDeniedException e) {
+      // ★ 与 AbstractNarrowWriteTool 同一条（T10）：资源拒因必须原样逃到 ToolCallAuthorizer 的边界，
+      //   折成 TOOL_ERROR 会让模型看到"命令提交失败"而看不到"换个资源就行"。
+      throw e;
     } catch (RuntimeException e) {
       return ToolResult.error(
           "TOOL_ERROR", "命令提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());

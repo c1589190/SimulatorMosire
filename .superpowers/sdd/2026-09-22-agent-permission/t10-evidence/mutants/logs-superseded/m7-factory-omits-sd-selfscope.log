@@ -1,0 +1,122 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m7-factory-omits-sd-selfscope",
+  "guard": "决策人没有 sd 自身决策域 ⇒ 出不了令",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java",
+  "baseline_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "mutant_md5": "68d27d4d3837ef283c2f294cb68b691a",
+  "restored_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "98cea0d9b95692b93ae5c5161b67498c",
+  "prod_digest_restored": "7b421696b07c50c026efc2cdd9ebc0c1",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 0,
+  "verdict": "SURVIVED",
+  "red_points": []
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m7-factory-omits-sd-selfscope",
+  "guard": "决策人没有 sd 自身决策域 ⇒ 出不了令",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java",
+  "baseline_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "mutant_md5": "68d27d4d3837ef283c2f294cb68b691a",
+  "restored_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "b5b5f35abb25ea41d2ad38369a5ff255",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:298 [出令必须成（拒因：工具对该命名空间的缺省策略是 read-only（调用者未表态），写操作被拒: sd:decision-maker/dm-fra）]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m7-factory-omits-sd-selfscope",
+  "guard": "决策人没有 sd 自身决策域 ⇒ 出不了令",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java",
+  "baseline_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "mutant_md5": "68d27d4d3837ef283c2f294cb68b691a",
+  "restored_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "8376569f8f561057394f21e2223ac4cd",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:298 [出令必须成（拒因：工具对该命名空间的缺省策略是 read-only（调用者未表态），写操作被拒: sd:decision-maker/dm-fra）]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m7-factory-omits-sd-selfscope",
+  "guard": "决策人没有 sd 自身决策域 ⇒ 出不了令",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java",
+  "baseline_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "mutant_md5": "68d27d4d3837ef283c2f294cb68b691a",
+  "restored_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "8376569f8f561057394f21e2223ac4cd",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:300 [出令必须成（拒因：工具对该命名空间的缺省策略是 read-only（调用者未表态），写操作被拒: sd:decision-maker/dm-fra）]"
+  ]
+}

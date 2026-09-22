@@ -1,0 +1,39 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m2-region-prefix-missing-segment",
+  "guard": "区域前缀少拼一段（写成 <mapId>/<rid>，丢掉 region 段）",
+  "note": "",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java",
+  "baseline_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "mutant_md5": "58f435fc3c6bc1aa59a1993825f02e54",
+  "restored_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "a6d533e42d7ce36a8d4cd9359a64e294",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionCallerFactoryTest.aDecisionMakerCanReadWhatItsOwnScopeCoversAndNotWhatOthersCover:112 [本国区域：过]",
+    "[ERROR]   DecisionCallerFactoryTest.sameToolSameArgumentsTwoDecisionMakersOnePassesOneIsDenied:81 [FRA 自己的区域：读得到（READ map:demo/region/701 不在调用者的可达面内: 调用者可达=demo/701（这是显式表态，不是'未表态'））]",
+    "[ERROR]   DecisionCallerFactoryTest.theScopeIsRecomputedPerCallSoWorldChangesMoveTheFence:279 [世界①：GER 只够得着 201]",
+    "[ERROR]   DecisionCallerFactoryTest.theToolContextFlavouredEntryPointIsAlsoGatedByTheSameChain:165 [FRA 读 701：过]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:208->body:598 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:175 [只剩本国区域（701），GER 的 201 不进结果]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:273 [本国区域：解析得到]",
+    "[ERROR]   DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:42 [国家归属 ⇒ 区域级前缀]"
+  ]
+}

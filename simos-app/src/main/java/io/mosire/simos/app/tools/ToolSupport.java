@@ -11,11 +11,13 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.map.City;
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -32,6 +34,7 @@ import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.facet.FacetEntry;
+import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -43,6 +46,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * 工具集的共享助手（M5 T5）：参数解析、资源断言、领域视图与 {@link ToolResult} 折叠。
@@ -130,35 +135,138 @@ public final class ToolSupport {
     return ResourceId.of(UNIT_NAMESPACE, unitId);
   }
 
+  /**
+   * 人口资源：{@code social:<q>_<r>}（spec §3.3 的 social 路径语法，**不带 mapId**——人口按格取，地图只有一张）。
+   *
+   * <p>★ 与 {@link #resourceHex} 是**同一个格**的两种货币：地图维的格用于"这块地形/这些 facet 你看不看得见"，
+   * 人口维的格用于"这格的人口读数你看不看得见"。二者的可见集由范围函数从**同一组格**派生（spec §3.2）， 故"同格口径"在两侧同时成立。
+   */
+  public static ResourceId resourceSocial(int q, int r) {
+    return ResourceId.of(SOCIAL_NAMESPACE, q + "_" + r);
+  }
+
   /** sd 资源：{@code sd:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
   public static ResourceId resourceSd(String kind, String id) {
     return ResourceId.of(SD_NAMESPACE, kind + "/" + id);
   }
 
   // ── 资源断言（AgentTool 契约：真正读写前调 require，工具只调不判）──────────────────────
+  //
+  // ★ **T10 起不再有"粗断言"**：`map:<mapId>` / `unit:"*"` / `social:"*"` 这三种写法在**受限调用者**身上
+  // 一律判否（`ResourceScope` 是段边界前缀匹配 ⇒ `Map1/region/701` 不含 `Map1`），于是"粗断言 + 细围栏 =
+  // **整调被拒**"（spec §5.2 第 2 条）——决策人曾因此**连一条读工具都过不去**（T5-T8 实测）。
+  // ⇒ 读侧一律改成：**逐项 `allows` 筛**（部分可见）；要"整调拒"的地方用 `require` + **细粒度**资源。
 
-  public static void requireMapRead(ToolContext context, String mapId) {
-    context.resources().require(Operation.READ, ResourceId.of(MAP_NAMESPACE, mapId));
-  }
-
-  public static void requireUnitRead(ToolContext context) {
-    context.resources().require(Operation.READ, ResourceId.of(UNIT_NAMESPACE, "*"));
-  }
-
-  public static void requireSocialRead(ToolContext context) {
-    context.resources().require(Operation.READ, ResourceId.of(SOCIAL_NAMESPACE, "*"));
-  }
-
-  public static void requireAllRead(ToolContext context, String mapId) {
-    requireMapRead(context, mapId);
-    requireUnitRead(context);
-    requireSocialRead(context);
+  /** 通用写（三个命名空间的粗断言）：{@code simos.command.submit} / {@code simos.advance} 与窄写基类的缺省声明。 */
+  public static List<ResourceId> allWriteResources(String mapId) {
+    return List.of(
+        ResourceId.of(MAP_NAMESPACE, mapId),
+        ResourceId.of(UNIT_NAMESPACE, "*"),
+        ResourceId.of(SOCIAL_NAMESPACE, "*"));
   }
 
   public static void requireAllWrite(ToolContext context, String mapId) {
-    context.resources().require(Operation.WRITE, ResourceId.of(MAP_NAMESPACE, mapId));
-    context.resources().require(Operation.WRITE, ResourceId.of(UNIT_NAMESPACE, "*"));
-    context.resources().require(Operation.WRITE, ResourceId.of(SOCIAL_NAMESPACE, "*"));
+    requireAll(context, Operation.WRITE, allWriteResources(mapId));
+  }
+
+  /** 逐条断言（细粒度资源的统一入口；`allows`/`require` 只在这一处成对出现）。 */
+  public static void requireAll(
+      ToolContext context, Operation operation, List<ResourceId> resources) {
+    for (ResourceId id : resources) {
+      context.resources().require(operation, id);
+    }
+  }
+
+  // ── 可见性判定（T10，"部分可见"的筛在工具里：AgentLib 只给断言原语，C2）─────────────────
+  //
+  // ★ 为什么用 `allows` 而不全用 `require`：`require` 是**整调拒**（抛异常 ⇒ 整个工具调用失败），而读侧要的是
+  // **部分可见**（读工具一次覆盖一片：越界的那几项不进结果，剩下的照给）。spec §5.2 第 1 条要的"资源维不是装饰"，
+  // 靠的正是这两条路各自有判别力用例。
+
+  /** 某区域是否可见：{@code map:<mapId>/region/<rid>}。 */
+  public static boolean regionVisible(ToolContext context, String mapId, RegionId regionId) {
+    return context.resources().allows(Operation.READ, resourceRegion(mapId, regionId.value()));
+  }
+
+  /** 某单位是否可见：{@code unit:<unitId>}。 */
+  public static boolean unitVisible(ToolContext context, UnitId unitId) {
+    return context.resources().allows(Operation.READ, resourceUnit(unitId.value()));
+  }
+
+  /** 某格的人口是否可见：{@code social:<q>_<r>}（见 {@link #resourceSocial}）。 */
+  public static boolean populationVisible(ToolContext context, HexCoord coord) {
+    return context.resources().allows(Operation.READ, resourceSocial(coord.q(), coord.r()));
+  }
+
+  /**
+   * 某格是否可见 —— ★★ **两条通道取并集，这是本任务最容易配错的一处**：
+   *
+   * <ol>
+   *   <li>该格**自身**的资源 {@code map:<mapId>/hex/<q>_<r>}（军队决策人的范围就是这种逐格前缀）；
+   *   <li>该格所属的**某个区域**的资源 {@code map:<mapId>/region/<rid>}（国家决策人的范围是**区域级**前缀 —— spec §3.3 硬要求
+   *       1：真档 59223 hex ⇒ 国家范围只能按区域组织，**不逐格枚举**）。
+   * </ol>
+   *
+   * <p>★ **只看 ①** 会让国家决策人**连本国的格都读不到**（区域级前缀不含 hex 路径）；**只看 ②** 会让军队决策人
+   * 读不到自己的视野格。两条通道各自落在自己的判据上（`DecisionMakerScopeEndToEndTest` 两类决策人各一条）。
+   *
+   * <p>★ 并集**不放大权限**：两条通道各自都是调用者可达面内的资源（`allows` 逐条判过），不是"绕过判定的后门"。
+   */
+  public static boolean hexVisible(ToolContext context, String mapId, GameMap map, HexCoord coord) {
+    if (context.resources().allows(Operation.READ, resourceHex(mapId, coord.q(), coord.r()))) {
+      return true;
+    }
+    for (RegionId owner : map.regionIndex().regionOf(coord)) {
+      if (regionVisible(context, mapId, owner)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * "解析出的主体"是否可见（{@code simos.state.resolve} / {@code simos.state.facets} 的筛依据）。
+   *
+   * <p>★ **按主体的命名空间映射到资源**（spec §3.3 的路径语法）。映射不出来的形态一律**不可见**（fail-closed）—— "判不了就放行"正是本轮要消灭的形态。
+   *
+   * <p>★ 各命名空间的 localId 形态来自各自的 resolver（实测）：{@code map} → mapId（根主体）、{@code map.hex} → {@code
+   * q_r}、{@code map.region} → 区域 id、{@code map.city} → 城市 id、{@code social}/{@code social.hex} →
+   * mapId / {@code q_r}、{@code unit} → 单位 id、{@code sd} → {@code <kind>.<name>}。
+   */
+  public static boolean subjectVisible(
+      ToolContext context, String mapId, GameMap map, ResolvedSubject subject) {
+    String namespace = subject.id().namespace();
+    String localId = subject.id().localId();
+    return switch (namespace) {
+      case "map" ->
+          context.resources().allows(Operation.READ, ResourceId.of(MAP_NAMESPACE, localId));
+      case "map.hex" -> hexVisible(context, mapId, map, HexCoord.parse(localId));
+      case "map.region" -> regionVisible(context, mapId, RegionId.parse(localId));
+      case "map.city" ->
+          cityHex(map, localId).map(c -> hexVisible(context, mapId, map, c)).orElse(false);
+      case "social", "social.hex" ->
+          context.resources().allows(Operation.READ, ResourceId.of(SOCIAL_NAMESPACE, localId));
+      case "unit" -> unitVisible(context, new UnitId(localId));
+      case "sd" -> sdVisible(context, localId);
+      default -> false;
+    };
+  }
+
+  /** 城市的格（{@code map.city} 主体没有自己的资源路径 ⇒ 按它所在的那一格判，与 `map.overview` 的 cities 同口径）。 */
+  private static Optional<HexCoord> cityHex(GameMap map, String cityId) {
+    City city = map.cities().get(CityId.parse(cityId));
+    return city == null ? Optional.empty() : Optional.of(city.at());
+  }
+
+  /** {@code sd:<kind>/<id>}（localId 形如 {@code nation.FRA}、含子路径时取首段为 kind）。 */
+  private static boolean sdVisible(ToolContext context, String localId) {
+    int dot = localId.indexOf('.');
+    if (dot <= 0 || dot == localId.length() - 1) {
+      return false;
+    }
+    return context
+        .resources()
+        .allows(Operation.READ, resourceSd(localId.substring(0, dot), localId.substring(dot + 1)));
   }
 
   // ── 参数解析（模型给的 JSON 参数；坏输入折 ToolResult.error，不抛给管线）────────────────
@@ -342,23 +450,44 @@ public final class ToolSupport {
     return view;
   }
 
+  /** 不过滤的总览（既有调用点：{@code RedactingQueryService} 自己的脱敏路径）。 */
   public static Map<String, Object> mapOverview(String mapId, GameMap map) {
+    return mapOverview(mapId, map, any -> true, any -> true);
+  }
+
+  /**
+   * **按可见性过滤**的总览（T10）：逐项判可见性，**越界的不进结果**（不是整调拒）。
+   *
+   * <p>★ 口径：格与区域各按**自己的**资源判；城市没有自己的资源路径（spec §3.3 未定义 city 前缀）⇒ 按它**所在的那一格**判。 {@code hexCount}
+   * 也取**可见格数**——回全量会连"地图多大"一起泄露。{@code terrainTypes} 是词表（不是逐格事实），原样给。
+   */
+  public static Map<String, Object> mapOverview(
+      String mapId,
+      GameMap map,
+      Predicate<HexCoord> hexVisible,
+      Predicate<RegionId> regionVisible) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("mapId", mapId);
-    view.put("hexCount", map.hexes().size());
 
-    List<Map<String, Object>> hexes = new ArrayList<>(map.hexes().size());
+    List<Map<String, Object>> hexes = new ArrayList<>();
     Map<HexCoord, String> terrainIndex = map.terrainIndex();
     for (Map.Entry<HexCoord, HexCell> entry : map.hexes().entrySet()) {
+      if (!hexVisible.test(entry.getKey())) {
+        continue;
+      }
       Map<String, Object> hex = hexCoord(entry.getKey());
       hex.put("terrain", terrainIndex.get(entry.getKey()));
       hex.put("height", entry.getValue().height());
       hexes.add(hex);
     }
+    view.put("hexCount", hexes.size());
     view.put("hexes", hexes);
 
-    List<Map<String, Object>> regions = new ArrayList<>(map.regions().size());
+    List<Map<String, Object>> regions = new ArrayList<>();
     for (Region region : map.regions().values()) {
+      if (!regionVisible.test(region.id())) {
+        continue;
+      }
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("id", region.id().value());
       item.put("name", region.name());
@@ -367,8 +496,11 @@ public final class ToolSupport {
     }
     view.put("regions", regions);
 
-    List<Map<String, Object>> cities = new ArrayList<>(map.cities().size());
+    List<Map<String, Object>> cities = new ArrayList<>();
     for (City city : map.cities().values()) {
+      if (!hexVisible.test(city.at())) {
+        continue;
+      }
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("id", city.id().value());
       item.put("name", city.name());
@@ -382,8 +514,17 @@ public final class ToolSupport {
   }
 
   public static List<Map<String, Object>> units(UnitState units, SimosTimestamp at, GameMap map) {
+    return units(units, at, map, any -> true);
+  }
+
+  /** **按可见性过滤**的单位清单（T10）：越界的单位不进结果（与 {@code unit.get} 的"不可见 ⇒ NOT_FOUND"同一口径）。 */
+  public static List<Map<String, Object>> units(
+      UnitState units, SimosTimestamp at, GameMap map, Predicate<UnitId> unitVisible) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
     for (Unit unit : units.units().values()) {
+      if (!unitVisible.test(unit.id())) {
+        continue;
+      }
       out.add(unit(unit, units, at, map));
     }
     return out;

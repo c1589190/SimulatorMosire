@@ -1,0 +1,149 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m3-write-hook-open",
+  "guard": "写工具缺省资源声明被改成放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "5df3e5368506828228b0b3eb57bedd0d",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 0,
+  "verdict": "SURVIVED",
+  "red_points": []
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m3-write-hook-open",
+  "guard": "写工具缺省资源声明被改成放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "5df3e5368506828228b0b3eb57bedd0d",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "c88729a0a1fa7f15839cdb5a21c37c28",
+  "prod_digest_restored": "7b421696b07c50c026efc2cdd9ebc0c1",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:389 [粗断言（map:Map1）撞细围栏（区域级前缀）⇒ 整调被拒]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m3-write-hook-open",
+  "guard": "写工具缺省资源声明被改成放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "5df3e5368506828228b0b3eb57bedd0d",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "28f42a83f59d178dfdf5583482470bf6",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:389 [粗断言（map:Map1）撞细围栏（区域级前缀）⇒ 整调被拒]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m3-write-hook-open",
+  "guard": "写工具缺省资源声明被改成放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "5df3e5368506828228b0b3eb57bedd0d",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "f2920477a030c48649369d85510c5d63",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:389 [粗断言（map:Map1）撞细围栏（区域级前缀）⇒ 整调被拒]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m3-write-hook-open",
+  "guard": "写工具缺省资源声明被改成放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "5df3e5368506828228b0b3eb57bedd0d",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "f2920477a030c48649369d85510c5d63",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:391 [粗断言（map:Map1）撞细围栏（区域级前缀）⇒ 整调被拒]"
+  ]
+}

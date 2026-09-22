@@ -54,13 +54,13 @@ public final class UnitGetTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireUnitRead(context);
       Map<String, Object> args = context.arguments();
       UnitId id = new UnitId(ToolSupport.requiredText(args, "id"));
       SimulationState state = query.stateAt(ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH));
       UnitState units = ToolSupport.unitState(state);
       Unit unit = units.units().get(id);
-      if (unit == null) {
+      // ★ **不可见与不存在同款**（T10）：拒因逐字相同，不泄露"有这个单位但你看不到"。
+      if (unit == null || !ToolSupport.unitVisible(context, id)) {
         return ToolResult.error("NOT_FOUND", "单位不存在: " + id.value());
       }
       return ToolSupport.ok(

@@ -1,0 +1,33 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t5t8m4-whitelist-regains-a-write",
+  "guard": "决策人白名单放回一条写工具（unit.RenameUnit）",
+  "note": "锚点未被 T10 改动，原样重放",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java",
+  "baseline_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "mutant_md5": "a1d07b45ff9945b257a90a7c8fe14676",
+  "restored_md5": "5afa055f9b67f9eb477530ba930319dc",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "407a6c75d3ed57c36f6295b5bf755b74",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionCallerFactoryTest.decisionMakerCannotCallUnitDomainWrites:196 [拒在**工具名级**（白名单），不是资源级——资源级拒会让人以为『换个资源就行』]",
+    "[ERROR]   DecisionCallerFactoryTest.theWhitelistIsExactlyTheReadToolsPlusTheTwoDecisionWrites:222 [白名单 == 决策人桶的工具面（读 + 两条决策窄写）]"
+  ]
+}

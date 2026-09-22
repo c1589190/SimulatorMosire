@@ -1,0 +1,100 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m8-directive-coarse-declaration",
+  "guard": "决策窄工具退回粗断言 ⇒ 整调被拒",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/IssueDirectiveTool.java",
+  "baseline_md5": "2d20d885139de086af3150bb94bc8c8b",
+  "mutant_md5": "ab6b1c6147c1d431131aba436f81b107",
+  "restored_md5": "2d20d885139de086af3150bb94bc8c8b",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "0570661cf1fb7e530b3f7919407a54ca",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:298 [出令必须成（拒因：工具未声明资源命名空间（未声明即拒，工具不得自行放行）: WRITE map:Map1）]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:345",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.anUnlimitedCallerCanStillIssueADirective:312->callAsUnlimited:463 » ResourceDenied 工具未声明资源命名空间（未声明即拒，工具不得自行放行）: WRITE map:Map1"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m8-directive-coarse-declaration",
+  "guard": "决策窄工具退回粗断言 ⇒ 整调被拒",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/IssueDirectiveTool.java",
+  "baseline_md5": "38de30376bc0de848f85e45e41accc89",
+  "mutant_md5": "c20e831ffc3e3e72d2a67cfecb1bcba9",
+  "restored_md5": "38de30376bc0de848f85e45e41accc89",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "33db4280d1dc3cebf5565dcf92aa355d",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:298 [出令必须成（拒因：工具未声明资源命名空间（未声明即拒，工具不得自行放行）: WRITE map:Map1）]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:345",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.anUnlimitedCallerCanStillIssueADirective:312->callAsUnlimited:463 » ResourceDenied 工具未声明资源命名空间（未声明即拒，工具不得自行放行）: WRITE map:Map1"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m8-directive-coarse-declaration",
+  "guard": "决策窄工具退回粗断言 ⇒ 整调被拒",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/IssueDirectiveTool.java",
+  "baseline_md5": "38de30376bc0de848f85e45e41accc89",
+  "mutant_md5": "c20e831ffc3e3e72d2a67cfecb1bcba9",
+  "restored_md5": "38de30376bc0de848f85e45e41accc89",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "33db4280d1dc3cebf5565dcf92aa355d",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:300 [出令必须成（拒因：工具未声明资源命名空间（未声明即拒，工具不得自行放行）: WRITE map:Map1）]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:347",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt:422",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.anUnlimitedCallerCanStillIssueADirective:314->callAsUnlimited:527 » ResourceDenied 工具未声明资源命名空间（未声明即拒，工具不得自行放行）: WRITE map:Map1"
+  ]
+}

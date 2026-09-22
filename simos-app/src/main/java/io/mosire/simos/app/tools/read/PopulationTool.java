@@ -54,14 +54,15 @@ public final class PopulationTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireSocialRead(context);
       Map<String, Object> args = context.arguments();
       HexCoord coord =
           new HexCoord(
               (int) ToolSupport.requiredLong(args, "q"), (int) ToolSupport.requiredLong(args, "r"));
       SimulationState state = query.stateAt(ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH));
       PopulationSeries series = ToolSupport.socialData(state).populations().get(coord);
-      if (series == null) {
+      // ★ **人口按格判可见性**（T10；spec §3.3 的 social 路径 = `<q>_<r>`，见 ToolSupport#resourceSocial）；
+      //   不可见与"该格没有人口序列"同款——拒因逐字相同，不泄露"有数但你看不到"。
+      if (series == null || !ToolSupport.populationVisible(context, coord)) {
         return ToolResult.error("NOT_FOUND", "该格没有人口序列: " + coord.q() + "_" + coord.r());
       }
       return ToolSupport.ok(ToolSupport.population(coord, series, state.meta().timestamp()));

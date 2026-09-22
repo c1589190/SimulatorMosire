@@ -5,7 +5,9 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.map.GameMap;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import java.util.ArrayList;
@@ -57,14 +59,17 @@ public final class StateResolveTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireAllRead(context, mapId);
       Map<String, Object> args = context.arguments();
-      QueryResult result =
-          query.resolve(
-              ToolSupport.requiredText(args, "address"),
-              ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH));
+      QueryTarget target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
+      QueryResult result = query.resolve(ToolSupport.requiredText(args, "address"), target);
+      // ★ **筛掉不可见的主体**（T10）：**不是**回全量、也**不是**整调拒——解析得到的候选与"这个地址解析不出东西"
+      //   必须分不开（否则"存在但你看不到"会从候选数里漏出去）。
+      GameMap map = ToolSupport.gameMap(query.stateAt(target));
       List<Map<String, Object>> candidates = new ArrayList<>(result.candidates().size());
       for (ResolvedSubject subject : result.candidates()) {
+        if (!ToolSupport.subjectVisible(context, mapId, map, subject)) {
+          continue;
+        }
         Map<String, Object> id = new LinkedHashMap<>();
         id.put("namespace", subject.id().namespace());
         id.put("localId", subject.id().localId());

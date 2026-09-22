@@ -1,0 +1,33 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m5-registry-silent-fallback",
+  "guard": "未注册的归属类型静默回落到某个默认实现（不响亮失败）",
+  "note": "文件未被 T10 改动，原样重放",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/DecisionScopeFunctions.java",
+  "baseline_md5": "7bc57dfb2162f3e4e70bdb1c7bf67964",
+  "mutant_md5": "bf05d97e1b923a4ca9742f5f8518c99f",
+  "restored_md5": "7bc57dfb2162f3e4e70bdb1c7bf67964",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "65eb08b23f7f80f1bc95e9c48b6795ae",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionScopeFunctionsTest.anEmptyRegistryFailsLoudlyForEveryAffiliation:66",
+    "[ERROR]   DecisionScopeFunctionsTest.anUnregisteredAffiliationTypeFailsLoudly:58 [未注册 ⇒ 抛，绝不静默给全量]"
+  ]
+}

@@ -5,8 +5,11 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.map.GameMap;
 import io.mosire.simos.util.facet.FacetEntry;
+import io.mosire.simos.util.identity.ResolvedSubject;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,17 +59,32 @@ public final class StateFacetsTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireAllRead(context, mapId);
       Map<String, Object> args = context.arguments();
-      List<FacetEntry> entries =
-          query.facets(
-              ToolSupport.requiredText(args, "address"),
-              ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH));
+      String address = ToolSupport.requiredText(args, "address");
+      QueryTarget target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
       Map<String, Object> view = new LinkedHashMap<>();
+      // ★ **不可见的主体 ⇒ 空**（T10）：与"非 canonical 地址"（本就返回空列表）**同款**——
+      //   调用方分不开"这个地址没内容"和"这段内容你看不到"，而全量返回正是要消灭的那条路。
+      if (!anyCandidateVisible(context, address, target)) {
+        view.put("entries", List.of());
+        return ToolSupport.ok(view);
+      }
+      List<FacetEntry> entries = query.facets(address, target);
       view.put("entries", ToolSupport.facets(entries));
       return ToolSupport.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** facet 的可见性按**地址解析出的主体**判（facet 自己挂在那个主体上，资源也就随它）。 */
+  private boolean anyCandidateVisible(ToolContext context, String address, QueryTarget target) {
+    GameMap map = ToolSupport.gameMap(query.stateAt(target));
+    for (ResolvedSubject subject : query.resolve(address, target).candidates()) {
+      if (ToolSupport.subjectVisible(context, mapId, map, subject)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

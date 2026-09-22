@@ -1,0 +1,156 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m4-swallow-resource-denied",
+  "guard": "ResourceDeniedException 又被吞回 TOOL_ERROR",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "ef9a3e671f9ef374f561e3cd97f39f5c",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:344 [★ 拒因是资源级；折成 TOOL_ERROR 就等于把 AgentLib 特意分的两个码的意图丢了]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m4-swallow-resource-denied",
+  "guard": "ResourceDeniedException 又被吞回 TOOL_ERROR",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "ef9a3e671f9ef374f561e3cd97f39f5c",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "aed9253d735a0af2690c760e9e4ca2e6",
+  "prod_digest_restored": "7b421696b07c50c026efc2cdd9ebc0c1",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:344 [★ 拒因是资源级；折成 TOOL_ERROR 就等于把 AgentLib 特意分的两个码的意图丢了]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:390"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m4-swallow-resource-denied",
+  "guard": "ResourceDeniedException 又被吞回 TOOL_ERROR",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "ef9a3e671f9ef374f561e3cd97f39f5c",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "8b92f17b168b8c93c1d46d54470d818d",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:344 [★ 拒因是资源级；折成 TOOL_ERROR 就等于把 AgentLib 特意分的两个码的意图丢了]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:390"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m4-swallow-resource-denied",
+  "guard": "ResourceDeniedException 又被吞回 TOOL_ERROR",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "ef9a3e671f9ef374f561e3cd97f39f5c",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "77a5f3d7abfed003e83ae18b2ae69bd0",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:344 [★ 拒因是资源级；折成 TOOL_ERROR 就等于把 AgentLib 特意分的两个码的意图丢了]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:390"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m4-swallow-resource-denied",
+  "guard": "ResourceDeniedException 又被吞回 TOOL_ERROR",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java",
+  "baseline_md5": "77cd86b1355c23ba192dc18d661912af",
+  "mutant_md5": "ef9a3e671f9ef374f561e3cd97f39f5c",
+  "restored_md5": "77cd86b1355c23ba192dc18d661912af",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "77a5f3d7abfed003e83ae18b2ae69bd0",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:346 [★ 拒因是资源级；折成 TOOL_ERROR 就等于把 AgentLib 特意分的两个码的意图丢了]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt:421 [sd.IssueDirective：拒因是资源级（缺省策略 read-only），不是静默放行]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:392"
+  ]
+}

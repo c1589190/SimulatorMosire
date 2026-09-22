@@ -1,0 +1,39 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m8-hex-path-separator-drift",
+  "guard": "hex 路径的坐标分隔符写成 / 而不是 _（围栏语法漂移）",
+  "note": "锚点未被 T10 改动，原样重放",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java",
+  "baseline_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "mutant_md5": "6f625dd5bec4882faef5c7c6a764185f",
+  "restored_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "109487eba2e3419ec846f4024d87e764",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   ArmyScopeTest.armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField:131 [位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）]",
+    "[ERROR]   ArmyScopeTest.hexesOutsideTheRadiusAreNotAllowed:63",
+    "[ERROR]   ArmyScopeTest.movingTheArmyChangesTheVisibleSet:105 [(1,1) 时看得见原格、看不见 (2,2)]",
+    "[ERROR]   ArmyScopeTest.radiusOneSeesItselfPlusTheSixNeighbours:47 [(1,1) 起半径 1 的六角球 = 7 格]",
+    "[ERROR]   ArmyScopeTest.radiusTwoGrowsTheBallToNineteenHexes:86 [R=2 ⇒ 3R²+3R+1 = 19 格]",
+    "[ERROR]   ArmyScopeTest.radiusZeroSeesOnlyItsOwnHex:76 [R=0 ⇒ 只看自身格（半径是输入，不是写死的 1 或 2）]",
+    "[ERROR]   ArmyScopeTest.twoArmiesPointingAtDifferentUnitsSeeDifferentHexes:214",
+    "[ERROR]   DecisionScopeFunctionsTest.dispatchIsByTheRuntimeTypeOfTheAffiliation:44 [军队归属 ⇒ 逐格前缀]"
+  ]
+}

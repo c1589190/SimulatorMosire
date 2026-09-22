@@ -1,0 +1,8 @@
+d651f62f8e665a3ec8437d13a7fdf864  simos-app/src/main/java/io/mosire/simos/app/tools/read/MapOverviewTool.java
+69ce7f8a73275eee8b00087572e08bc1  simos-app/src/main/java/io/mosire/simos/app/tools/read/MapHexTool.java
+77cd86b1355c23ba192dc18d661912af  simos-app/src/main/java/io/mosire/simos/app/tools/write/AbstractNarrowWriteTool.java
+b356595f6a2b84a85e416881c24bdd75  simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java
+3b222b97664be07c6c868cf1e0447a81  simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java
+5afa055f9b67f9eb477530ba930319dc  simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java
+2d20d885139de086af3150bb94bc8c8b  simos-app/src/main/java/io/mosire/simos/app/tools/write/IssueDirectiveTool.java
+2e99be1272269a958672316e32d9f0f5  simos-app/src/test/java/io/mosire/simos/app/access/DecisionMakerScopeEndToEndTest.java

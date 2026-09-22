@@ -78,9 +78,65 @@ class NationScopeTest {
   void noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap() {
     ResourceScopeMap scopes = scopesFor("XXX");
 
-    assertThat(scopes.namespaces()).as("表过态（不是空图）").containsExactly("map");
+    assertThat(scopes.namespaces())
+        .as("★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）")
+        .containsExactlyInAnyOrder("map", "social", "unit");
     assertThat(scopes.declaredScope("map")).isEqualTo(ResourceScope.none());
     assertThat(scopes.declaredScope("map").allows("demo/region/701")).isFalse();
+    assertThat(scopes.declaredScope("unit")).as("没圈地就没单位").isEqualTo(ResourceScope.none());
+    assertThat(scopes.declaredScope("social")).as("没圈地就没人口").isEqualTo(ResourceScope.none());
+  }
+
+  /**
+   * ★ **T10 的细粒度化**（spec §3.2）：{@code unit} 命名空间 = **按单位位置落在本国区域内算**， {@code social} 命名空间 =
+   * **本国区域内的 hex 前缀**（人口按 hex 取）。
+   *
+   * <p>★ 判别力靠**三类都在场**：本国单位（进）、别国单位（不进）、**不知道在哪**的单位（不进）—— 只放"本国单位"一条会把"全放行"与"正确"都判成绿。
+   */
+  @Test
+  void theUnitNamespaceCoversOnlyUnitsStandingInsideItsOwnRegions() {
+    SimulationState state =
+        ScopeFixtures.state(
+            ScopeFixtures.mapOf(
+                ScopeFixtures.nationRegion("701", "FRA", new HexCoord(1, 1)),
+                ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
+            ScopeFixtures.units(
+                ScopeFixtures.unit("u-1", new HexCoord(1, 1)),
+                ScopeFixtures.unit("u-2", new HexCoord(1, 2)),
+                ScopeFixtures.positionlessUnit("u-3")),
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+
+    ResourceScopeMap scopes =
+        DecisionScopeFunctions.defaults()
+            .scopesFor(ScopeFixtures.nationDm("dm-FRA", "FRA"), state, ScopeFixtures.MAP_ID);
+
+    ResourceScope unitScope = scopes.declaredScope("unit");
+    assertThat(unitScope.unrestricted()).as("受限范围不得退化成 unlimited()").isFalse();
+    assertThat(unitScope.allows("u-1")).as("站在本国区域 701 里").isTrue();
+    assertThat(unitScope.allows("u-2")).as("站在 GER 的 201 里").isFalse();
+    assertThat(unitScope.allows("u-3")).as("不知道在哪 ⇒ 看不见（fail-closed）").isFalse();
+  }
+
+  /** ★ {@code social} 命名空间：本国区域内的 hex ⇒ 前缀 {@code <q>_<r>}（spec §3.3 的 social 路径语法）。 */
+  @Test
+  void theSocialNamespaceCoversTheHexesOfItsOwnRegionsOnly() {
+    SimulationState state =
+        ScopeFixtures.state(
+            ScopeFixtures.mapOf(
+                ScopeFixtures.nationRegion("701", "FRA", new HexCoord(1, 1), new HexCoord(2, 1)),
+                ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
+            ScopeFixtures.units(),
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+
+    ResourceScopeMap scopes =
+        DecisionScopeFunctions.defaults()
+            .scopesFor(ScopeFixtures.nationDm("dm-FRA", "FRA"), state, ScopeFixtures.MAP_ID);
+
+    ResourceScope socialScope = scopes.declaredScope("social");
+    assertThat(socialScope.unrestricted()).isFalse();
+    assertThat(socialScope.allows("1_1")).as("701 覆盖的格").isTrue();
+    assertThat(socialScope.allows("2_1")).as("701 覆盖的格").isTrue();
+    assertThat(socialScope.allows("1_2")).as("GER 的 201 覆盖的格").isFalse();
   }
 
   @Test

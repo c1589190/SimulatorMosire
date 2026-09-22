@@ -1,0 +1,31 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m10-verdict-default-policy-open",
+  "guard": "同 m9，落在 SubmitVerdictTool（两条工具各被自己的变异体红）",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/write/SubmitVerdictTool.java",
+  "baseline_md5": "27a2b26afd2e8476fe693cf47ee9a217",
+  "mutant_md5": "e3156ab51cd9415b83d93084832a4c15",
+  "restored_md5": "27a2b26afd2e8476fe693cf47ee9a217",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "8794679eabc6a005776a4457bf7e9a4a",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt:421 [sd.SubmitVerdict：拒因是资源级（缺省策略 read-only），不是静默放行]"
+  ]
+}

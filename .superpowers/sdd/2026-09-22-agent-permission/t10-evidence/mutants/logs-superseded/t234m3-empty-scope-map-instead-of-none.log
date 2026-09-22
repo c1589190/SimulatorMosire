@@ -1,0 +1,33 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m3-empty-scope-map-instead-of-none",
+  "guard": "无匹配区域时给空图（本层不表态⇒回落放行）而不是显式 none()",
+  "note": "重派生：T10 把返回值改成三命名空间链，原锚点（单命名空间）不复存在",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java",
+  "baseline_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "mutant_md5": "61d4f20573bee314d703e8753d35ec12",
+  "restored_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "3196cb52d20e40637f96393bcac34d4f",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing:154",
+    "[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:83 [★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）]"
+  ]
+}

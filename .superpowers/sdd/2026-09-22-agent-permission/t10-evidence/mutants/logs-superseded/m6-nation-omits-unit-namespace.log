@@ -1,0 +1,99 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m6-nation-omits-unit-namespace",
+  "guard": "范围函数不表态 unit ⇒ 回落工具缺省 ⇒ 静默全放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java",
+  "baseline_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "mutant_md5": "62935e7528b7e576236852e12e1dedbf",
+  "restored_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "2e7ed51c954df9ca1547143bcd7a6320",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation:218 [u-1 在 701 内；u-2 属 GER、u-3 在无区域的中立格]",
+    "[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:83 [★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）]",
+    "[ERROR]   NationScopeTest.theUnitNamespaceCoversOnlyUnitsStandingInsideItsOwnRegions:114 NullPointer Cannot invoke \"io.mosire.agentlib.permission.ResourceScope.unrestricted()\" because \"unitScope\" is n"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m6-nation-omits-unit-namespace",
+  "guard": "范围函数不表态 unit ⇒ 回落工具缺省 ⇒ 静默全放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java",
+  "baseline_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "mutant_md5": "62935e7528b7e576236852e12e1dedbf",
+  "restored_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "3ac5f107fdbf0fe6c20c96536f933bf4",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation:218 [u-1 在 701 内；u-2 属 GER、u-3 在无区域的中立格]",
+    "[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:83 [★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）]",
+    "[ERROR]   NationScopeTest.theUnitNamespaceCoversOnlyUnitsStandingInsideItsOwnRegions:114 NullPointer Cannot invoke \"io.mosire.agentlib.permission.ResourceScope.unrestricted()\" because \"unitScope\" is n"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m6-nation-omits-unit-namespace",
+  "guard": "范围函数不表态 unit ⇒ 回落工具缺省 ⇒ 静默全放行",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java",
+  "baseline_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "mutant_md5": "62935e7528b7e576236852e12e1dedbf",
+  "restored_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "3ac5f107fdbf0fe6c20c96536f933bf4",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation:220 [u-1 在 701 内；u-2 属 GER、u-3 在无区域的中立格]",
+    "[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:83 [★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）]",
+    "[ERROR]   NationScopeTest.theUnitNamespaceCoversOnlyUnitsStandingInsideItsOwnRegions:114 NullPointer Cannot invoke \"io.mosire.agentlib.permission.ResourceScope.unrestricted()\" because \"unitScope\" is n"
+  ]
+}

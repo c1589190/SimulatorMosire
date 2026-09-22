@@ -5,9 +5,7 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -18,6 +16,8 @@ import java.util.Map;
  * {@code simos.unit.list}（spec §7.1 读工具）：单位列表（每个带 head 时刻的有效位置）。
  *
  * <p>位置走 {@link UnitState#effectivePosition}（向父取），与 facet / GUI 同口径。
+ *
+ * <p>★ **部分可见**（T10）：逐单位按调用者现算的范围筛，越界的不进结果。
  */
 public final class UnitListTool implements AgentTool {
 
@@ -25,11 +25,9 @@ public final class UnitListTool implements AgentTool {
   public static final String NAME = "simos.unit.list";
 
   private final QueryService query;
-  private final RedactingQueryService redacting;
 
   public UnitListTool(QueryService query) {
     this.query = query;
-    this.redacting = new RedactingQueryService(query);
   }
 
   @Override
@@ -45,7 +43,6 @@ public final class UnitListTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>(ToolSupport.targetProps());
-    props.put("actor", ToolSupport.prop("string", "决策人 id（给出则按该决策人的 viewScope 脱敏；缺省 = GM 全量）"));
     return ToolSupport.schema(props, List.of());
   }
 
@@ -57,18 +54,19 @@ public final class UnitListTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireUnitRead(context);
       Map<String, Object> args = context.arguments();
       var target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
-      String actor = ToolSupport.optionalText(args, "actor", null);
-      if (actor != null) {
-        return ToolSupport.ok(Map.of("units", redacting.units(new DecisionMakerId(actor), target)));
-      }
       SimulationState state = query.stateAt(target);
       UnitState units = ToolSupport.unitState(state);
       Map<String, Object> view = new LinkedHashMap<>();
+      // ★ **逐单位按调用者现算的范围筛**（T10）：越界的单位不进结果（与 `unit.get` 的 NOT_FOUND 同一口径）。
       view.put(
-          "units", ToolSupport.units(units, state.meta().timestamp(), ToolSupport.gameMap(state)));
+          "units",
+          ToolSupport.units(
+              units,
+              state.meta().timestamp(),
+              ToolSupport.gameMap(state),
+              unitId -> ToolSupport.unitVisible(context, unitId)));
       return ToolSupport.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());

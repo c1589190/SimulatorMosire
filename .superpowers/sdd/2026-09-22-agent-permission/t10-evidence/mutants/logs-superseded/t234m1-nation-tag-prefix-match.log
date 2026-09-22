@@ -1,0 +1,33 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m1-nation-tag-prefix-match",
+  "guard": "NationScope 的 tag 匹配退化成前缀匹配（把 nation:FRAX 当成 FRA）",
+  "note": "重派生：原锚点 `if (nationTag.equals(...))` 在 T10 改成早退形态后不复存在",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/access/NationScope.java",
+  "baseline_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "mutant_md5": "963a5bbb8c2a8ef113deef86c36bdfe8",
+  "restored_md5": "3b222b97664be07c6c868cf1e0447a81",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "3c52b4d0cc5ed5336a721cad41d28bad",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   NationScopeTest.nationScopeCoversItsOwnRegionsAndNothingElse:41 [FRA 的范围只有 701（GER 的 201 与别的 tag 都不在内）]",
+    "[ERROR]   NationScopeTest.theTagMustMatchExactlyNotAsAPrefix:65 ['nation:FRAX' 的国家不是 FRA —— 前缀匹配会把 702 误收进来]"
+  ]
+}

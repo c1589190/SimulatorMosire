@@ -1,0 +1,39 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "t234m9-map-namespace-drift",
+  "guard": "MAP_NAMESPACE 漂移（助手与工具声明的命名空间不再同源）",
+  "note": "锚点未被 T10 改动，原样重放",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java",
+  "baseline_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "mutant_md5": "da61deffd78ea53731f81f75952b2b07",
+  "restored_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "0a3e60c1227ae09bdc52a4efbe9a1168",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   GmPermissionGroupTest.gmCallerDeclaresEveryNamespaceInsteadOfLeavingTheResourceDimensionSilent:43 [★ J1：资源维**表过态**（空图 = 不表态 = 判定走缺省分支恒放行，见 spec §1.1）]",
+    "[ERROR]   ArmyScopeTest.anArmyOnAPositionlessUnitSeesNothing:192",
+    "[ERROR]   ArmyScopeTest.anUnknownArmyIsAnExplicitDenyAll:149 [★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）]",
+    "[ERROR]   NationScopeTest.aNationWhoseRegionsAllDisappearedSeesNothing:154",
+    "[ERROR]   NationScopeTest.noMatchingRegionIsAnExplicitDenyAllNotAnEmptyMap:83 [★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）]",
+    "[ERROR]   ScopeFenceTest.anEmptyScopeMapIsNotADenial:112 [不表态 ⇒ 放行（配错方向就是静默放宽）]",
+    "[ERROR]   AccessPathsTest.hexPathKeepsTheUnderscoreSeparatorAndNegativeSigns:33",
+    "[ERROR]   AccessPathsTest.regionPathUsesTheMapNamespaceAndARegionSegment:24"
+  ]
+}

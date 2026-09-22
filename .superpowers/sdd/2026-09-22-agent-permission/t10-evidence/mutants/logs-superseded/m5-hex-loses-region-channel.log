@@ -1,0 +1,132 @@
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m5-hex-loses-region-channel",
+  "guard": "hexVisible 丢掉区域通道（国家决策人读不到本国的格）",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java",
+  "baseline_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "mutant_md5": "caa7205ba713de831709d26cb50c5fe3",
+  "restored_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "e65c0c4c9773499691ce4c4e90a9fde0",
+  "prod_digest_restored": "7b421696b07c50c026efc2cdd9ebc0c1",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:206->body:534 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:174 [只剩本国区域覆盖的格]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:280 [本国格的 facet 照常给]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m5-hex-loses-region-channel",
+  "guard": "hexVisible 丢掉区域通道（国家决策人读不到本国的格）",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java",
+  "baseline_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "mutant_md5": "caa7205ba713de831709d26cb50c5fe3",
+  "restored_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "restored_identical": true,
+  "tests_digest": "de28a808724d0daa78c7c3d83e219b43",
+  "prod_digest_mutated": "b34fd57b41d737e26adc98e2e5991674",
+  "prod_digest_restored": "0514748237fd1e5c223603079d206153",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:206->body:534 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:174 [只剩本国区域覆盖的格]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:280 [本国格的 facet 照常给]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m5-hex-loses-region-channel",
+  "guard": "hexVisible 丢掉区域通道（国家决策人读不到本国的格）",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java",
+  "baseline_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "mutant_md5": "caa7205ba713de831709d26cb50c5fe3",
+  "restored_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "restored_identical": true,
+  "tests_digest": "0c18d6a323c22ea6088aa130dc8d4f61",
+  "prod_digest_mutated": "74cd865793a983e63bf039897b3ef37e",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:206->body:534 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:174 [只剩本国区域覆盖的格]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:280 [本国格的 facet 照常给]"
+  ]
+}
+
+
+===== 装置补记（自指）=====
+{
+  "id": "m5-hex-loses-region-channel",
+  "guard": "hexVisible 丢掉区域通道（国家决策人读不到本国的格）",
+  "target": "simos-app/src/main/java/io/mosire/simos/app/tools/ToolSupport.java",
+  "baseline_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "mutant_md5": "caa7205ba713de831709d26cb50c5fe3",
+  "restored_md5": "b356595f6a2b84a85e416881c24bdd75",
+  "restored_identical": true,
+  "tests_digest": "3b438dd67b00568d76bff5a64049a8ee",
+  "prod_digest_mutated": "74cd865793a983e63bf039897b3ef37e",
+  "prod_digest_restored": "89a4bc6b24460cbacafd836b53a95987",
+  "prod_only_target_changed": true,
+  "compilation_errors": 0,
+  "report_files": 50,
+  "reports_sample": [
+    "io.mosire.simos.app.AppWritePathGuardTest.txt",
+    "io.mosire.simos.app.BindAddressTest.txt",
+    "io.mosire.simos.app.GmPermissionGroupTest.txt",
+    "io.mosire.simos.app.McpCoverageTest.txt",
+    "io.mosire.simos.app.McpPortTopologyTest.txt",
+    "io.mosire.simos.app.McpServerTest.txt"
+  ],
+  "maven_rc": 1,
+  "verdict": "KILLED",
+  "red_points": [
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:208->body:598 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:176 [只剩本国区域覆盖的格]",
+    "[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:282 [本国格的 facet 照常给]"
+  ]
+}
