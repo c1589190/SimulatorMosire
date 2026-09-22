@@ -93,10 +93,11 @@ public final class CatalogTool implements AgentTool {
               "verdictId, breakpoint(D1|D3|D6), subject(sd:combat.*), payload(JSON 文本),"
                   + " meta{model,promptVersion,inputBriefDigest}"),
           Map.entry(
-              "sd.SetViewScope",
-              "decisionMakerId, viewScope{visibleRegions[],visibleHexes[{q,r}],visibleUnits[],"
-                  + "seeOwnUnits,adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD),"
-                  + "redactedFields[]}"),
+              "sd.SetDecisionMakerAccess",
+              "decisionMakerId, allowedTools[]?, accessLimit{命名空间:[前缀…]}?, redactedFields[]?,"
+                  + "adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD)?"
+                  + "（★ 四个可选字段：缺省 = 不改动，显式给 = 整份替换；"
+                  + "accessLimit 是**额外限制**，与范围函数求交 ⇒ 只能收紧）"),
           Map.entry("sd.StartDecision", "decisionMakerId, note?"),
           Map.entry("sd.RunDecision", "decisionMakerId"),
           Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"));

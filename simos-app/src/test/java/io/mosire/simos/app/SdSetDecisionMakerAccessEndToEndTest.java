@@ -6,14 +6,14 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.ViewScope;
-import io.mosire.simos.sd.spi.SetViewScopeHandler;
+import io.mosire.simos.sd.model.DisclosurePolicy;
+import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -32,10 +32,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * D4 端到端（N11）：{@code sd.SetViewScope} 经真 {@code CoreSimos.submit} **写入 revision**（revisions 行 +1），
- * 重放后 {@code ViewScope} 仍逐值在；未知 dm ⇒ 拒绝且 head 不动。
+ * T9 端到端（N11，取代 D4 的 {@code sd.SetViewScope} 版）：{@code sd.SetDecisionMakerAccess} 经真 {@code
+ * CoreSimos.submit} **写入 revision**（revisions 行 +1），重放后 {@code AccessLimit} 仍逐值在；未知 dm ⇒ 拒绝且 head
+ * 不动。
+ *
+ * <p>★ **断言逐条换成了新语义**（不是删掉几条）：旧用例断言"可见格被写进去了"（{@code visibleHexes} 含 (2,3)）；新命令写的是 **前缀 +
+ * 披露档**，故断言换成前缀逐值与披露档逐值。
  */
-class SdSetViewScopeEndToEndTest {
+class SdSetDecisionMakerAccessEndToEndTest {
 
   private static final BranchId MAIN = new BranchId("main");
 
@@ -51,7 +55,7 @@ class SdSetViewScopeEndToEndTest {
   }
 
   @Test
-  void setViewScopeIsARevisionAndSurvivesReplay() {
+  void setAccessLimitIsARevisionAndSurvivesReplay() {
     CoreSimos core = start();
     CommandResult result = core.submit(envelope(1, payload("dm1")));
     assertThat(result).isInstanceOf(CommandResult.Committed.class);
@@ -60,8 +64,11 @@ class SdSetViewScopeEndToEndTest {
     assertThat(core.revisions(MAIN)).as("写入产生一条 revision 行").hasSize(2);
 
     SdState replayed = sdState(core, 2);
-    assertThat(replayed.decisionMakers().get(new DecisionMakerId("dm1")).viewScope().visibleHexes())
-        .containsExactly(new HexCoord(2, 3));
+    AccessLimit limit = replayed.decisionMakers().get(new DecisionMakerId("dm1")).accessLimit();
+    assertThat(limit.prefixesByNamespace().get("map"))
+        .as("前缀逐值活过落盘-重放（铁律 2/5）")
+        .containsExactly("Map1/region/r1");
+    assertThat(limit.adjudicationDisclosure()).isEqualTo(DisclosurePolicy.FULL);
   }
 
   @Test
@@ -77,7 +84,7 @@ class SdSetViewScopeEndToEndTest {
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new SdCodec());
-    core.register(new SetViewScopeHandler());
+    core.register(new SetDecisionMakerAccessHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
@@ -94,15 +101,15 @@ class SdSetViewScopeEndToEndTest {
         "gm:test",
         MAIN,
         new RevisionId(expectedRevision),
-        "sd.SetViewScope",
+        "sd.SetDecisionMakerAccess",
         payload);
   }
 
   private static String payload(String dm) {
     return "{\"decisionMakerId\":\""
         + dm
-        + "\",\"viewScope\":{\"visibleHexes\":[{\"q\":2,\"r\":3}],"
-        + "\"adjudicationDisclosure\":\"FULL\"}}";
+        + "\",\"accessLimit\":{\"map\":[\"Map1/region/r1\"]},"
+        + "\"adjudicationDisclosure\":\"FULL\"}";
   }
 
   private static SimulationState genesis() {
@@ -110,7 +117,7 @@ class SdSetViewScopeEndToEndTest {
     DecisionMakerId dm1 = new DecisionMakerId("dm1");
     DecisionMaker maker =
         new DecisionMaker(
-            dm1, new Affiliation.Nation(new NationId("n1")), Set.of(), ViewScope.empty(), 1);
+            dm1, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
     SdState sd = SdState.empty().withDecisionMakers(Map.of(dm1, maker));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),

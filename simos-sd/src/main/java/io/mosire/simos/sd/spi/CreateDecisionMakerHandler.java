@@ -3,9 +3,9 @@ package io.mosire.simos.sd.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -26,7 +26,9 @@ import java.util.Set;
  * <p>★ 拒绝：id 已存在；{@code affiliation} 目标不存在；{@code allowedTools} 含**通用写**（{@link
  * SdCommandNames#SIMOS_COMMAND_SUBMIT}）⇒ 拒绝（N9）。
  *
- * <p>★ **创建期 {@code viewScope} 恒为空范围**：配权由 GM 专用的 {@code sd.SetViewScope}（D4）写入，创建期不解析它（spec §七.2）。
+ * <p>★ **创建期 {@code accessLimit} 恒为"无额外限制"**（{@link AccessLimit#empty()}）：可见范围由 app 层的范围函数 现算，GM
+ * 配的是**额外收紧**——创建期不解析它，配权由 GM 专用的 {@code sd.SetDecisionMakerAccess} 写入（spec §4.2）。 这**不是**旧 {@code
+ * viewScope.empty()} 那种 deny-all：新语义下空限制 = 不收紧，否则新建的决策人当场变瞎。
  */
 public final class CreateDecisionMakerHandler implements CommandHandler {
 
@@ -57,7 +59,7 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
             "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）");
       }
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
-      next.put(id, new DecisionMaker(id, affiliation, allowedTools, ViewScope.empty(), cadence));
+      next.put(id, new DecisionMaker(id, affiliation, allowedTools, AccessLimit.empty(), cadence));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

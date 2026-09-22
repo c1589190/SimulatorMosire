@@ -104,7 +104,7 @@ class McpPortTopologyTest {
           List.of(
               "sd.IssueDirective",
               "sd.SubmitVerdict",
-              "sd.SetViewScope",
+              "sd.SetDecisionMakerAccess",
               "sd.StartDecision",
               "sd.RunDecision",
               "sd.CreateNation",
@@ -182,7 +182,7 @@ class McpPortTopologyTest {
 
     try (McpSyncClient client = newClient(mcpPort)) {
       client.initialize();
-      assertThat(toolNames(client)).contains("sd.SetViewScope");
+      assertThat(toolNames(client)).contains("sd.SetDecisionMakerAccess");
     }
 
     shell.close();

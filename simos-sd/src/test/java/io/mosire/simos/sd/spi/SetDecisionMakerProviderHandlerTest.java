@@ -30,9 +30,9 @@ class SetDecisionMakerProviderHandlerTest {
     assertThat(maker.allowedTools())
         .as("绑定不动其他字段")
         .isEqualTo(SdFixtures.decisionMaker(SdFixtures.DM1).allowedTools());
-    assertThat(maker.viewScope())
-        .as("绑定不动 viewScope")
-        .isEqualTo(SdFixtures.decisionMaker(SdFixtures.DM1).viewScope());
+    assertThat(maker.accessLimit())
+        .as("绑定不动 accessLimit")
+        .isEqualTo(SdFixtures.decisionMaker(SdFixtures.DM1).accessLimit());
     assertThat(maker.decisionCadenceTicks()).isEqualTo(1);
   }
 
@@ -85,16 +85,16 @@ class SetDecisionMakerProviderHandlerTest {
   }
 
   @Test
-  void settingViewScopeAfterBindingKeepsTheProvider() {
-    // ★ 变异靶子 m2：SetViewScopeHandler 重建 DecisionMaker 时必须带回 providerId，否则配权静默丢绑定。
+  void settingAccessAfterBindingKeepsTheProvider() {
+    // ★ 变异靶子 m2：SetDecisionMakerAccessHandler 重建 DecisionMaker 时必须带回 providerId，否则配权静默丢绑定。
     SdState base = withDecisionMaker(SdState.empty());
     SdState bound =
         applied(base, handle(base, "{\"decisionMakerId\":\"dm1\",\"providerId\":\"p-keep\"}"));
     HandlerOutcome scope =
-        new SetViewScopeHandler()
+        new SetDecisionMakerAccessHandler()
             .handle(
                 SdWorlds.world(bound),
-                "{\"decisionMakerId\":\"dm1\",\"viewScope\":{\"visibleRegions\":[\"r1\"]}}");
+                "{\"decisionMakerId\":\"dm1\",\"accessLimit\":{\"map\":[\"Map1/region/r1\"]}}");
     SdState after = applied(bound, scope);
     assertThat(after.decisionMakers().get(SdFixtures.DM1).providerId())
         .as("配权不得丢 providerId")

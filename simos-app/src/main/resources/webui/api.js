@@ -207,7 +207,7 @@
     return getJson(withTarget(path, target));
   }
 
-  /** 单个决策人详情（T5，只读）：id / affiliation（含显示名）/ allowedTools / cadence / viewScope / due。 */
+  /** 单个决策人详情（T5，只读）：id / affiliation（含显示名）/ allowedTools / cadence / accessLimit / due。 */
   function decisionMaker(id, target) {
     return getJson(withTarget("/sd/decision-makers/" + encodeURIComponent(id), target));
   }

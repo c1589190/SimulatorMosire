@@ -48,11 +48,11 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -750,7 +750,7 @@ class DecisionMakerScopeEndToEndTest {
 
   private static DecisionMaker maker(String dmId, Affiliation affiliation) {
     return new DecisionMaker(
-        new DecisionMakerId(dmId), affiliation, Set.of(), ViewScope.empty(), 1);
+        new DecisionMakerId(dmId), affiliation, Set.of(), AccessLimit.empty(), 1);
   }
 
   private void seedGenesis() {

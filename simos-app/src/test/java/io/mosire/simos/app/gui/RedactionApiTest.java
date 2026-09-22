@@ -30,13 +30,14 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.model.VerdictMeta;
-import io.mosire.simos.sd.model.ViewScope;
+import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
@@ -79,8 +80,12 @@ import org.junit.jupiter.api.io.TempDir;
  * redaction 收口端到端验收（T6，spec `C28`/`C29`/`C30`）：起真 {@link Shell}（四端口全 0），用 JDK {@link HttpClient} 打真
  * HTTP。
  *
- * <p>★ **夹具直接种入创世 checkpoint**（不经命令）：T6 测的是**读路径的脱敏**，不是命令写路径；故 sd 切片里预置 5 个不同 {@code ViewScope}
- * 的决策人 + 1 条判决，让"同一端点、不同 {@code as=} ⇒ 不同数据"一次可测。
+ * <p>★ **夹具直接种入创世 checkpoint**（不经命令）：测的是**读路径的脱敏**，不是命令写路径；故 sd 切片里预置若干个不同 {@code accessLimit} /
+ * 归属的决策人 + 1 条判决，让"同一端点、不同 {@code as=} ⇒ 不同数据"一次可测。
+ *
+ * <p>★★ **T9 起可见性的来源变了**：范围函数现算（此处 = 区域 tag 为 {@code nation:n1} 的本国区域）+ GM 的 {@code
+ * accessLimit}（求交）。故夹具里 r1 的区域 tag 是 {@code nation:n1}——**没有这个 tag 的话所有 {@code as=} 都是空视图**，
+ * 而"空视图"会让一半断言**恒真**（这正是换语义时最容易踩的坑）。
  *
  * <p>★ **三条主判据**：{@code C29}（{@code redactedFields=["position"]} ⇒ 单位读数里 {@code position} 消失，另一
  * actor 仍在）；{@code C28}（{@code adjudicationDisclosure} 三档对判决内容分叉）；{@code C30}（未接 redaction 的读端点带
@@ -102,6 +107,16 @@ class RedactionApiTest {
   private static final String DM_WITHHELD = "dm-withheld";
   private static final String DM_REDACT_POSITION = "dm-redact";
   private static final String DM_NO_SCOPE = "dm-none";
+
+  /** GM 额外收紧到"unit 一个都不许"（{@code []} 是**显式** none，不是"不表态"）。 */
+  private static final String DM_NO_UNIT = "dm-no-unit";
+
+  /** GM 额外放宽到整张图（{@code map: <mapId>}）——用来证"**不能放大**"。 */
+  private static final String DM_WIDEN_ATTEMPT = "dm-widen";
+
+  /** 地图标识：与真壳同源取（{@link ShellConfig#DEFAULT_MAP_ID}），不手拼。 */
+  private static final String MAP_ID = ShellConfig.DEFAULT_MAP_ID;
+
   private static final String DM_REDACT_HEADS = "dm-state";
 
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -197,6 +212,33 @@ class RedactionApiTest {
     assertThat(none).as("空 scope 的 actor 看不到任何单位（fail-closed）").isEmpty();
   }
 
+  // ── T9：accessLimit 与范围函数求交（只能收紧、不能放大）────────────────
+
+  @Test
+  void gmAccessLimitNarrowsTheAsViewAtTheHttpLevel() throws Exception {
+    assertThat(get("/api/unit/u-1?as=" + DM_FULL).statusCode()).as("基线：看得见").isEqualTo(200);
+    assertThat(get("/api/unit/u-1?as=" + DM_NO_UNIT).statusCode())
+        .as("★ GM 把 unit 收紧成 []（显式空 = 够不着）⇒ 单位不可见")
+        .isEqualTo(404);
+    assertThat(getJson("/api/units?as=" + DM_NO_UNIT).get("units"))
+        .as("列表同样为空（两条路径同一份判据）")
+        .isEmpty();
+  }
+
+  @Test
+  void gmAccessLimitCannotWidenTheAsViewAtTheHttpLevel() throws Exception {
+    // ★ GM 写的是"整个 <mapId>"（比范围函数宽得多）⇒ 求交之后**一格都没多**：仍是范围函数给的那两条前缀。
+    JsonNode widened = getJson("/api/map/overview?as=" + DM_WIDEN_ATTEMPT);
+    JsonNode base = getJson("/api/map/overview?as=" + DM_FULL);
+
+    assertThat(widened.get("hexCount").asInt())
+        .as("★ '配得宽'不等于'看得多'（写成覆盖就会看见整张图）")
+        .isEqualTo(base.get("hexCount").asInt());
+    assertThat(get("/api/map/hex?q=1&r=3&as=" + DM_WIDEN_ATTEMPT).statusCode())
+        .as("区域外的格照样看不见")
+        .isEqualTo(404);
+  }
+
   // ── C30：可见性 fail-closed（按地址取单个实体）─────────────────────────
 
   @Test
@@ -253,7 +295,7 @@ class RedactionApiTest {
     return new StateRef(new BranchId(branch), new RevisionId(revision));
   }
 
-  /** 创世 {@code (main,1)}：三格地图 + 单位 u-1（在 H11）+ 五个不同 scope 的决策人 + 一条判决。 */
+  /** 创世 {@code (main,1)}：三格地图（r1 = 本国，含 H11）+ 单位 u-1（在 H11）+ 若干决策人 + 一条判决。 */
   private void seedGenesis() {
     try (SqliteStore seedStore = SqliteStore.open(tempDir.resolve(CoreSimos.DB_FILE_NAME))) {
       new Timeline(seedStore, CHECKPOINT_INTERVAL)
@@ -296,8 +338,14 @@ class RedactionApiTest {
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
     Map<RegionId, Region> regions = new LinkedHashMap<>();
+    // ★ T9：区域 tag 必须是 nation:N1——可见性由范围函数按 tag 现算，没有 tag 就一律空视图（断言会恒真）。
     regions.put(
-        new RegionId("r1"), Region.of(new RegionId("r1"), "区域一", Set.of(H11), RegionMeta.empty()));
+        new RegionId("r1"),
+        Region.of(
+            new RegionId("r1"),
+            "区域一",
+            Set.of(H11),
+            new RegionMeta(null, NationTag.tagFor(new NationId("n1")), null, null)));
     return new GameMap(
         hexes,
         TerrainBlocks.uniform(hexes.keySet(), desert.key()),
@@ -328,45 +376,46 @@ class RedactionApiTest {
 
   private static SdState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
+    // ★ 全部是 Nation(n1)（本国 = r1）——区别只在额外限制上，故"不同 as= ⇒ 不同数据"证的是**限制**那一维。
     makers.put(
         new DecisionMakerId(DM_FULL),
-        maker(DM_FULL, Set.of(H11), Set.of(U1), DisclosurePolicy.FULL, Set.of()));
+        maker(DM_FULL, "n1", disclosure(DisclosurePolicy.FULL, Set.of())));
     makers.put(
         new DecisionMakerId(DM_PERCEPTION),
-        maker(DM_PERCEPTION, Set.of(H11), Set.of(U1), DisclosurePolicy.PERCEPTION_ONLY, Set.of()));
+        maker(DM_PERCEPTION, "n1", disclosure(DisclosurePolicy.PERCEPTION_ONLY, Set.of())));
     makers.put(
         new DecisionMakerId(DM_WITHHELD),
-        maker(DM_WITHHELD, Set.of(H11), Set.of(U1), DisclosurePolicy.WITHHELD, Set.of()));
+        maker(DM_WITHHELD, "n1", disclosure(DisclosurePolicy.WITHHELD, Set.of())));
     makers.put(
         new DecisionMakerId(DM_REDACT_POSITION),
-        maker(
-            DM_REDACT_POSITION,
-            Set.of(H11),
-            Set.of(U1),
-            DisclosurePolicy.FULL,
-            Set.of("position")));
-    makers.put(
-        new DecisionMakerId(DM_NO_SCOPE),
-        maker(DM_NO_SCOPE, Set.of(), Set.of(), DisclosurePolicy.FULL, Set.of()));
+        maker(DM_REDACT_POSITION, "n1", disclosure(DisclosurePolicy.FULL, Set.of("position"))));
     makers.put(
         new DecisionMakerId(DM_REDACT_HEADS),
-        maker(DM_REDACT_HEADS, Set.of(H11), Set.of(U1), DisclosurePolicy.FULL, Set.of("heads")));
+        maker(DM_REDACT_HEADS, "n1", disclosure(DisclosurePolicy.FULL, Set.of("heads"))));
+    // 这个国家的 tag 谁都不带 ⇒ 范围函数给 deny-all（**不是**靠"空 accessLimit"——那是"不收紧"，方向相反）。
+    makers.put(new DecisionMakerId(DM_NO_SCOPE), maker(DM_NO_SCOPE, "n-none", AccessLimit.empty()));
+    makers.put(
+        new DecisionMakerId(DM_NO_UNIT),
+        maker(DM_NO_UNIT, "n1", AccessLimit.ofPrefixes(Map.of("unit", Set.of()))));
+    makers.put(
+        new DecisionMakerId(DM_WIDEN_ATTEMPT),
+        maker(DM_WIDEN_ATTEMPT, "n1", AccessLimit.ofPrefixes(Map.of("map", Set.of(MAP_ID)))));
     Map<VerdictId, Verdict> verdicts = new LinkedHashMap<>();
     verdicts.put(new VerdictId("v-1"), verdict("v-1"));
     return SdState.empty().withDecisionMakers(makers).withVerdicts(verdicts);
   }
 
-  private static DecisionMaker maker(
-      String id,
-      Set<HexCoord> hexes,
-      Set<UnitId> units,
-      DisclosurePolicy disclosure,
-      Set<String> redacted) {
+  /** 只改披露口径 / 字段剔除、**不额外收紧资源**（空前缀图 = 不表态）。 */
+  private static AccessLimit disclosure(DisclosurePolicy policy, Set<String> redacted) {
+    return new AccessLimit(Map.of(), redacted, policy);
+  }
+
+  private static DecisionMaker maker(String id, String nationId, AccessLimit limit) {
     return new DecisionMaker(
         new DecisionMakerId(id),
-        new Affiliation.Nation(new NationId("n1")),
+        new Affiliation.Nation(new NationId(nationId)),
         Set.of(),
-        new ViewScope(Set.of(new RegionId("r1")), hexes, units, false, disclosure, redacted),
+        limit,
         1);
   }
 

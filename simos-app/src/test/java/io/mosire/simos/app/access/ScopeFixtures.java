@@ -16,12 +16,11 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -51,17 +50,17 @@ import java.util.TreeSet;
  *
  * <p>★ **不借用生产代码当期望值**：这里的区域 tag、hex 集合、视野半径都是**字面量**，用例那边逐字断言—— 拿被测实现（或它的同源工具）生成期望值等于自己印证自己。
  */
-final class ScopeFixtures {
+public final class ScopeFixtures {
 
-  static final String MAP_ID = "demo";
-  static final BranchId MAIN = new BranchId("main");
-  static final SimosTimestamp T0 = SimosTimestamp.of(0);
+  public static final String MAP_ID = "demo";
+  public static final BranchId MAIN = new BranchId("main");
+  public static final SimosTimestamp T0 = SimosTimestamp.of(0);
 
   private ScopeFixtures() {}
 
   // ── 世界装配 ────────────────────────────────────────────────────────────────────────
 
-  static SimulationState state(GameMap map, UnitState units, SdState sd) {
+  public static SimulationState state(GameMap map, UnitState units, SdState sd) {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, T0),
@@ -73,7 +72,7 @@ final class ScopeFixtures {
   }
 
   /** 以 (1,1) 为中心、半径 2 的**全格**世界（19 格），另可叠加区域。 */
-  static GameMap mapOf(Region... regions) {
+  public static GameMap mapOf(Region... regions) {
     TerrainType desert = TerrainCatalog.of("desert");
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     for (HexCoord coord : new TreeSet<>(HexGrid.withinRadius(new HexCoord(1, 1), 2))) {
@@ -98,7 +97,7 @@ final class ScopeFixtures {
   }
 
   /** 一个区域：tag 为 {@code nation:<nationId>}（用既有的 {@link NationTag}，不手拼）。 */
-  static Region nationRegion(String regionId, String nationId, HexCoord... hexes) {
+  public static Region nationRegion(String regionId, String nationId, HexCoord... hexes) {
     return Region.of(
         new RegionId(regionId),
         "区域 " + regionId,
@@ -107,7 +106,7 @@ final class ScopeFixtures {
   }
 
   /** 一个区域：tag 为**别的**东西（不是任何国家）或**为 null**（空元数据是合法状态）。 */
-  static Region taggedRegion(String regionId, String tag, HexCoord... hexes) {
+  public static Region taggedRegion(String regionId, String tag, HexCoord... hexes) {
     return Region.of(
         new RegionId(regionId),
         "区域 " + regionId,
@@ -118,7 +117,7 @@ final class ScopeFixtures {
   // ── 单位 ────────────────────────────────────────────────────────────────────────────
 
   /** 一个**自身带位置**的单位（9 参兼容构造器 ⇒ 视野半径取缺省；要非缺省值用 {@link #unitWithVision}）。 */
-  static Unit unit(String unitId, HexCoord position) {
+  public static Unit unit(String unitId, HexCoord position) {
     return new Unit(
         new UnitId(unitId),
         "单位 " + unitId,
@@ -133,12 +132,12 @@ final class ScopeFixtures {
   }
 
   /** 一个**自身带位置**的单位 + 显式视野半径（13 参形态 ⇒ 半径补齐到规范 14 参）。 */
-  static Unit unitWithVision(String unitId, HexCoord position, int visionRadius) {
+  public static Unit unitWithVision(String unitId, HexCoord position, int visionRadius) {
     return withVision(unit(unitId, position), visionRadius);
   }
 
   /** 一个**自身无位置**、跟随父单位的单位（{@code effectivePosition} 会取到父的位置）。 */
-  static Unit attachedChild(String unitId, String parentId) {
+  public static Unit attachedChild(String unitId, String parentId) {
     return new Unit(
         new UnitId(unitId),
         "单位 " + unitId,
@@ -154,7 +153,7 @@ final class ScopeFixtures {
   }
 
   /** 一个**自身无位置且未跟随任何人**的单位（"不知道在哪"）。 */
-  static Unit positionlessUnit(String unitId) {
+  public static Unit positionlessUnit(String unitId) {
     return new Unit(
         new UnitId(unitId),
         "单位 " + unitId,
@@ -174,7 +173,7 @@ final class ScopeFixtures {
    *
    * <p>★ 逐分量带过（本仓"拷贝点丢字段"是最贵的教训形态）——这里只有半径一处**故意**改。
    */
-  static Unit withVision(Unit unit, int visionRadius) {
+  public static Unit withVision(Unit unit, int visionRadius) {
     return new Unit(
         unit.id(),
         unit.name(),
@@ -192,7 +191,7 @@ final class ScopeFixtures {
         visionRadius);
   }
 
-  static UnitState units(Unit... units) {
+  public static UnitState units(Unit... units) {
     Map<UnitId, Unit> byId = new LinkedHashMap<>();
     for (Unit unit : units) {
       byId.put(unit.id(), unit);
@@ -201,7 +200,7 @@ final class ScopeFixtures {
   }
 
   /** 一条根 + 一串兄弟（{@code @Test} 方法把 varargs 参数数组直接转手时用，避免 varargs 套 varargs）。 */
-  static UnitState units(Unit root, Unit[] others) {
+  public static UnitState units(Unit root, Unit[] others) {
     Map<UnitId, Unit> byId = new LinkedHashMap<>();
     byId.put(root.id(), root);
     for (Unit unit : others) {
@@ -213,25 +212,35 @@ final class ScopeFixtures {
   // ── 决策人与军队 ────────────────────────────────────────────────────────────────────
 
   /** 国家决策人（{@code affiliation = Nation(nationId)}）。 */
-  static DecisionMaker nationDm(String dmId, String nationId) {
+  public static DecisionMaker nationDm(String dmId, String nationId) {
     return maker(dmId, new Affiliation.Nation(new NationId(nationId)));
   }
 
   /** 军队决策人（{@code affiliation = Army(armyId)}）。 */
-  static DecisionMaker armyDm(String dmId, String armyId) {
+  public static DecisionMaker armyDm(String dmId, String armyId) {
     return maker(dmId, new Affiliation.Army(new ArmyId(armyId)));
   }
 
-  private static DecisionMaker maker(String dmId, Affiliation affiliation) {
-    // ★ viewScope 与本轮的范围函数**无关**（范围函数只读 affiliation）——它是 Task 9 要拆掉的旧机制，
-    // 这里给一个空壳让它能构造出来即可；正因为无关，"范围函数不依赖 viewScope"这件事本身也被用例覆盖：
-    // 同一个空壳配两个归属，得到的范围不同。
+  /**
+   * 带 GM **额外限制**的决策人（T9）：同一个归属再叠一份 {@code accessLimit} ⇒ 校验"只能收紧、不能放大"。
+   *
+   * <p>★ 缺省（{@link #maker}）取 {@link AccessLimit#empty()} = **不收紧**——范围函数说什么就是什么。旧夹具这里是 {@code
+   * ViewScope.empty()}（deny-all），名字像、语义**相反**，照抄会把每个决策人配成瞎子。
+   */
+  public static DecisionMaker nationDmWithLimit(String dmId, String nationId, AccessLimit limit) {
     return new DecisionMaker(
         new DecisionMakerId(dmId),
-        affiliation,
+        new Affiliation.Nation(new NationId(nationId)),
         Set.of(),
-        new ViewScope(Set.of(), Set.of(), Set.of(), false, DisclosurePolicy.FULL, Set.of()),
+        limit,
         1);
+  }
+
+  private static DecisionMaker maker(String dmId, Affiliation affiliation) {
+    // ★ accessLimit 与本轮的范围函数**无关**（范围函数只读 affiliation）——它是 GM 的**额外限制**，
+    // 这里取"不收紧"；范围函数本身的判别力由配置了真限制/不同归属的用例覆盖。
+    return new DecisionMaker(
+        new DecisionMakerId(dmId), affiliation, Set.of(), AccessLimit.empty(), 1);
   }
 
   /**
@@ -240,7 +249,7 @@ final class ScopeFixtures {
    * <p>★ 国家不是装饰：{@code SdState} 的不变量 2（引用完整性）会拒掉"军队指向不存在的国家"， 故夹具必须**先把国家放进切片**（顺序也重要：先 {@code
    * withNations} 再 {@code withArmies}）。
    */
-  static SdState sdWithArmy(String armyId, String nationId, String rootUnitId) {
+  public static SdState sdWithArmy(String armyId, String nationId, String rootUnitId) {
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
     ArmyId id = new ArmyId(armyId);
     armies.put(id, new Army(id, new NationId(nationId), new UnitId(rootUnitId), "军队 " + armyId));
@@ -253,7 +262,7 @@ final class ScopeFixtures {
   // ── 断言助手 ────────────────────────────────────────────────────────────────────────
 
   /** {@code map} 命名空间的前缀，**排序后**返回（{@code ResourceScope} 内部不保序）。 */
-  static List<String> prefixes(ResourceScopeMap scopes) {
+  public static List<String> prefixes(ResourceScopeMap scopes) {
     return new ArrayList<>(new TreeSet<>(scopes.declaredScope("map").prefixes()));
   }
 }

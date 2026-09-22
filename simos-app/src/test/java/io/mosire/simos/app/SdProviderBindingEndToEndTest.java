@@ -10,12 +10,12 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.ViewScope;
+import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
-import io.mosire.simos.sd.spi.SetViewScopeHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -35,7 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * M11 端到端：{@code sd.SetDecisionMakerProvider} 经**真** {@code CoreSimos.submit} **写进 revision**、 可
- * replay、可分岔；与 {@code sd.SetViewScope} 组合时绑定不丢。
+ * replay、可分岔；与 {@code sd.SetDecisionMakerAccess} 组合时绑定不丢。
  *
  * <p>★ 这是"绑定是**世界事实**"（铁律 2）的端到端证据：判据落在 `revisions` 行与重放出的 {@link SdState} 上，不是回显。
  */
@@ -98,7 +98,7 @@ class SdProviderBindingEndToEndTest {
   }
 
   @Test
-  void settingViewScopeAfterBindingKeepsTheProvider() {
+  void settingAccessAfterBindingKeepsTheProvider() {
     CoreSimos core = start();
     core.submit(
         envelope(
@@ -109,13 +109,15 @@ class SdProviderBindingEndToEndTest {
         core.submit(
             envelope(
                 2,
-                "sd.SetViewScope",
-                "{\"decisionMakerId\":\"dm1\",\"viewScope\":{\"visibleRegions\":[\"r1\"]}}"));
+                "sd.SetDecisionMakerAccess",
+                "{\"decisionMakerId\":\"dm1\",\"accessLimit\":{\"map\":[\"Map1/region/r1\"]}}"));
     assertThat(scope).isInstanceOf(CommandResult.Committed.class);
 
     DecisionMaker maker = sdState(core, 3).decisionMakers().get(DM1);
     assertThat(maker.providerId()).as("配权不得丢绑定").contains("p-a");
-    assertThat(maker.viewScope().visibleRegions()).containsExactly(new RegionId("r1"));
+    assertThat(maker.accessLimit().prefixesByNamespace().get("map"))
+        .as("限制逐值写入（且绑定没被配权抹掉）")
+        .containsExactly("Map1/region/r1");
   }
 
   @Test
@@ -137,7 +139,7 @@ class SdProviderBindingEndToEndTest {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new SdCodec());
     core.register(new SetDecisionMakerProviderHandler());
-    core.register(new SetViewScopeHandler());
+    core.register(new SetDecisionMakerAccessHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
@@ -164,7 +166,7 @@ class SdProviderBindingEndToEndTest {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     DecisionMaker dm =
         new DecisionMaker(
-            DM1, new Affiliation.Nation(new NationId("n1")), Set.of(), ViewScope.empty(), 1);
+            DM1, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
     SdState sd =
         SdState.empty()
             .withNations(

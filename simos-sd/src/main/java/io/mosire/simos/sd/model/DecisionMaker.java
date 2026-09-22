@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 决策人（spec §三.2）：归属（Nation / Army）+ 窄工具白名单（N9）+ viewScope（R10 / N6）+ 决策周期（N5）+ LLM provider
+ * 决策人（spec §三.2）：归属（Nation / Army）+ 窄工具白名单（N9）+ accessLimit（R10 / N6）+ 决策周期（N5）+ LLM provider
  * 引用（M11）。
  *
  * <p>★ **决策周期与命令延迟分开**（N5）：{@code decisionCadenceTicks} 是"多久能下一次决心"；命令延迟（决定→执行开始）是 **独立通道**（v1 落在
@@ -25,7 +25,7 @@ public record DecisionMaker(
     DecisionMakerId id,
     Affiliation affiliation,
     Set<String> allowedTools,
-    ViewScope viewScope,
+    AccessLimit accessLimit,
     long decisionCadenceTicks,
     Optional<String> providerId) {
 
@@ -33,16 +33,16 @@ public record DecisionMaker(
    * 5 参重载：不绑定 provider（{@code Optional.empty()}）。
    *
    * <p>★ 只应被**创建**路径使用（{@code sd.CreateDecisionMaker}）；**重建**既有决策人的处理器（如 {@link
-   * io.mosire.simos.sd.spi.SetViewScopeHandler}）**必须**传第 6 参 {@code
+   * io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler}）**必须**传第 6 参 {@code
    * existing.providerId()}，否则会静默丢绑定（M11 的变异靶子 m2）。
    */
   public DecisionMaker(
       DecisionMakerId id,
       Affiliation affiliation,
       Set<String> allowedTools,
-      ViewScope viewScope,
+      AccessLimit accessLimit,
       long decisionCadenceTicks) {
-    this(id, affiliation, allowedTools, viewScope, decisionCadenceTicks, Optional.empty());
+    this(id, affiliation, allowedTools, accessLimit, decisionCadenceTicks, Optional.empty());
   }
 
   public DecisionMaker {
@@ -52,8 +52,8 @@ public record DecisionMaker(
     if (affiliation == null) {
       throw new IllegalArgumentException("affiliation 不得为 null");
     }
-    if (viewScope == null) {
-      throw new IllegalArgumentException("viewScope 不得为 null");
+    if (accessLimit == null) {
+      throw new IllegalArgumentException("accessLimit 不得为 null（无额外限制用 AccessLimit.empty()）");
     }
     if (decisionCadenceTicks < 1) {
       throw new IllegalArgumentException("decisionCadenceTicks 必须 ≥ 1: " + decisionCadenceTicks);

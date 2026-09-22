@@ -160,7 +160,7 @@ class SimosToolsTest {
           "simos.fork",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope",
+          "sd.SetDecisionMakerAccess",
           "sd.StartDecision",
           "sd.RunDecision",
           "sd.CreateNation",
@@ -241,7 +241,7 @@ class SimosToolsTest {
           List.of(
               "sd.IssueDirective",
               "sd.SubmitVerdict",
-              "sd.SetViewScope",
+              "sd.SetDecisionMakerAccess",
               "sd.StartDecision",
               "sd.RunDecision",
               "sd.CreateNation",
@@ -386,7 +386,7 @@ class SimosToolsTest {
           "sd.CancelEffect",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope",
+          "sd.SetDecisionMakerAccess",
           "sd.StartDecision",
           "sd.RunDecision",
           "sd.SetDecisionMakerProvider");
@@ -611,7 +611,7 @@ class SimosToolsTest {
         .contains(
             "sd.IssueDirective",
             "sd.SubmitVerdict",
-            "sd.SetViewScope",
+            "sd.SetDecisionMakerAccess",
             "sd.StartDecision",
             "sd.RunDecision")
         .containsAll(SD_WRITE_NAMES)
@@ -623,7 +623,7 @@ class SimosToolsTest {
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
                 + "只留两条决策行为（sd.IssueDirective / sd.SubmitVerdict）")
         .doesNotContain("simos.command.submit", "simos.advance", "simos.fork")
-        .doesNotContain("sd.SetViewScope", "sd.StartDecision", "sd.RunDecision")
+        .doesNotContain("sd.SetDecisionMakerAccess", "sd.StartDecision", "sd.RunDecision")
         .contains("sd.IssueDirective", "sd.SubmitVerdict")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)

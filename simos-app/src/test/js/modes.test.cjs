@@ -84,7 +84,7 @@ test("decision-allows-exactly-start-decision", () => {
   for (const type of [
     "sd.IssueDirective",
     "sd.SubmitVerdict",
-    "sd.SetViewScope",
+    "sd.SetDecisionMakerAccess",
     "map.SetTerrain",
     "unit.PlanRoute",
   ]) {

@@ -57,7 +57,7 @@ public final class SetDecisionMakerProviderHandler implements CommandHandler {
               existing.id(),
               existing.affiliation(),
               existing.allowedTools(),
-              existing.viewScope(),
+              existing.accessLimit(),
               existing.decisionCadenceTicks(),
               Optional.of(providerId));
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());

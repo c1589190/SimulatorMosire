@@ -45,11 +45,11 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -134,7 +134,7 @@ class RunDecisionEndToEndTest {
           new DecisionMakerId(DM_ID),
           new Affiliation.Nation(new NationId("FRA")),
           Set.of(),
-          ViewScope.empty(),
+          AccessLimit.empty(),
           1,
           Optional.of(PROVIDER_ID));
 
@@ -144,7 +144,7 @@ class RunDecisionEndToEndTest {
           new DecisionMakerId(DM_ID),
           new Affiliation.Nation(new NationId("FRA")),
           Set.of(),
-          ViewScope.empty(),
+          AccessLimit.empty(),
           1,
           Optional.empty());
 

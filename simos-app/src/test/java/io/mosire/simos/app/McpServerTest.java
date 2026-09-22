@@ -115,7 +115,7 @@ class McpServerTest {
           "simos.fork",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope",
+          "sd.SetDecisionMakerAccess",
           "sd.StartDecision",
           "sd.RunDecision",
           "sd.CreateNation",

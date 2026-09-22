@@ -92,7 +92,7 @@ class RunDecisionHandlerTest {
     SdState base = withDecisionMaker(SdState.empty());
     SdState after = applied(base, handle(base, "{\"decisionMakerId\":\"dm1\"}"));
     assertThat(after.decisionMakers())
-        .as("触发是**感知层事实**，不改决策人本身（改它是 sd.SetViewScope / SetDecisionMakerProvider 的事）")
+        .as("触发是**感知层事实**，不改决策人本身（改它是 sd.SetDecisionMakerAccess / SetDecisionMakerProvider 的事）")
         .isEqualTo(base.decisionMakers());
   }
 

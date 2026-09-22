@@ -48,11 +48,11 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -131,7 +131,7 @@ class DecisionAgentRunnerTest {
           new DecisionMakerId("dm-fra"),
           new Affiliation.Nation(new NationId("FRA")),
           Set.of(),
-          ViewScope.empty(),
+          AccessLimit.empty(),
           1);
 
   /** 军队决策人（**只为验身份正文的军队分支**）：它不必在世界里存在——注入的那条消息只取 {@code DecisionMaker} 自己的字段、不查世界。 */
@@ -140,7 +140,7 @@ class DecisionAgentRunnerTest {
           new DecisionMakerId("dm-army"),
           new Affiliation.Army(new ArmyId("a1")),
           Set.of(),
-          ViewScope.empty(),
+          AccessLimit.empty(),
           1);
 
   @TempDir Path tempDir;

@@ -71,8 +71,8 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>★ **夹具走真命令路径**：创世 checkpoint 只种地图（一个带 {@code nation:n1} tag 的区域 + 一格）+ 单位，sd 切片为空；然后经 {@code
  * POST /api/command} 依次发 {@code sd.CreateNation} / {@code sd.CreateArmy} / {@code
- * sd.CreateDecisionMaker}（国家、军队各一） / {@code sd.SetViewScope}——列表/过滤/详情读的就是**真命令写出来的状态**，不是手搭的 sd
- * 实体。
+ * sd.CreateDecisionMaker}（国家、军队各一） / {@code
+ * sd.SetDecisionMakerAccess}——列表/过滤/详情读的就是**真命令写出来的状态**，不是手搭的 sd 实体。
  *
  * <p>★ **覆盖三条主判据**（T5）：① 空库 ⇒ {@code 200 {"decisionMakers":[]}}（非 404/500）；② {@code
  * ?affiliation=nation:<id>} / {@code army:<id>} 过滤逐值；③ 详情字段与重放出的 {@link SdState} 逐值一致。
@@ -167,18 +167,19 @@ class SdDecisionMakerApiTest {
   }
 
   @Test
-  void viewScopeIsSummarizedFromStoredScope() throws Exception {
+  void accessLimitIsSummarizedFromStoredLimit() throws Exception {
     createFixture();
 
     JsonNode nation = detailJson("dm-nation");
-    JsonNode scope = nation.get("viewScope");
+    JsonNode limit = nation.get("accessLimit");
 
-    assertThat(scope.get("visibleRegions").asInt()).isEqualTo(1);
-    assertThat(scope.get("visibleHexes").asInt()).isEqualTo(1);
-    assertThat(scope.get("visibleUnits").asInt()).isEqualTo(1);
-    assertThat(scope.get("seeOwnUnits").asBoolean()).isTrue();
-    assertThat(scope.get("adjudicationDisclosure").asText()).isEqualTo("PERCEPTION_ONLY");
-    assertThat(scope.get("redactedFields").get(0).asText()).isEqualTo("position");
+    // ★ T9：摘要是"限制说了什么"，不再是"看得见什么"——可见的是 范围函数 ∩ 本限制，本端点算不出范围函数那一半。
+    assertThat(limit.get("prefixesByNamespace").get("map").asInt())
+        .as("map 命名空间下的前缀**条数**")
+        .isEqualTo(2);
+    assertThat(limit.get("adjudicationDisclosure").asText()).isEqualTo("PERCEPTION_ONLY");
+    assertThat(limit.get("redactedFields").get(0).asText()).isEqualTo("position");
+    assertThat(nation.has("viewScope")).as("旧字段整体消失（不是留个空壳）").isFalse();
   }
 
   // ── 判据：按 affiliation 过滤 ─────────────────────────────────────────
@@ -497,10 +498,10 @@ class SdDecisionMakerApiTest {
         "{\"id\":\"dm-army\",\"affiliation\":{\"kind\":\"army\",\"id\":\"a1\"},"
             + "\"allowedTools\":[\"sd.IssueDirective\",\"sd.SubmitVerdict\"],\"cadence\":5}");
     submit(
-        "sd.SetViewScope",
-        "{\"decisionMakerId\":\"dm-nation\",\"viewScope\":{\"visibleRegions\":[\"r-nation\"],"
-            + "\"visibleHexes\":[{\"q\":1,\"r\":1}],\"visibleUnits\":[\"u-1\"],\"seeOwnUnits\":true,"
-            + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[\"position\"]}}");
+        "sd.SetDecisionMakerAccess",
+        "{\"decisionMakerId\":\"dm-nation\","
+            + "\"accessLimit\":{\"map\":[\"Map1/region/r-nation\",\"Map1/region/r-extra\"]},"
+            + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[\"position\"]}");
     submit(
         "sd.SetDecisionMakerProvider",
         "{\"decisionMakerId\":\"dm-nation\",\"providerId\":\"p-nation\"}");

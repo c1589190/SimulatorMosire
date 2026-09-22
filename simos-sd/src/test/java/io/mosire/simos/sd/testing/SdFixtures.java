@@ -13,6 +13,7 @@ import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.sd.model.Affiliation;
@@ -37,7 +38,6 @@ import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.model.VerdictMeta;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
@@ -207,7 +207,7 @@ public final class SdFixtures {
 
   public static DecisionMaker decisionMaker(DecisionMakerId id) {
     return new DecisionMaker(
-        id, new Affiliation.Nation(N1), Set.of("sd.SubmitVerdict"), ViewScope.empty(), 1);
+        id, new Affiliation.Nation(N1), Set.of("sd.SubmitVerdict"), AccessLimit.empty(), 1);
   }
 
   /** 绑定了 LLM provider 引用的决策人（M11 往返夹具）。 */
@@ -216,7 +216,7 @@ public final class SdFixtures {
         id,
         new Affiliation.Nation(N1),
         Set.of("sd.SubmitVerdict"),
-        ViewScope.empty(),
+        AccessLimit.empty(),
         1,
         Optional.of(providerId));
   }

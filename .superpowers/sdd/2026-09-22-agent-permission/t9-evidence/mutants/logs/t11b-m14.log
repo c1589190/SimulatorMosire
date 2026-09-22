@@ -1,0 +1,609 @@
+=== round=t11b-m14 module=simos-app target=simos-app/src/main/java/io/mosire/simos/app/access/DecisionCallerFactory.java tests=DecisionCallerFactoryTest,DecisionMakerScopeEndToEndTest ===
+patch=import sys
+p=sys.argv[1]; s=open(p,encoding="utf-8").read()
+old="""    return authorizer.execute(Objects.requireNonNull(registry, "registry"), toolName, ctx);"""
+new="""    return Objects.requireNonNull(registry, "registry").find(toolName).orElseThrow().execute(ctx);"""
+assert old in s
+open(p,"w",encoding="utf-8").write(s.replace(old,new,1))
+orig_md5=8b006aeadcf61519869adfb941635925
+mutant_md5=7e53f69283527ef96e327ce9f183ce81
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/8]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/8]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/8]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                                [4/8]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                  [5/8]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                  [6/8]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                    [7/8]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                   [8/8]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 19 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 99 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 57 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.access.DecisionCallerFactoryTest
+02:46:06.816 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:06.929 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45427/（静态 /webui，同源，无 CORS 头）
+02:46:06.929 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-5773539386867424618 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45457 guiPort=45427 approvalPort=46403
+02:46:06.934 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46403）
+02:46:06.936 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.006 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.011 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45809/（静态 /webui，同源，无 CORS 头）
+02:46:07.011 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-865120593161121865 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46149 guiPort=45809 approvalPort=46043
+02:46:07.013 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46043）
+02:46:07.014 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 10, Failures: 0, Errors: 4, Skipped: 0, Time elapsed: 0.834 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionCallerFactoryTest
+[ERROR] io.mosire.simos.app.access.DecisionCallerFactoryTest.sameToolSameArgumentsTwoDecisionMakersOnePassesOneIsDenied -- Time elapsed: 0.005 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest$RegionProbe.execute(DecisionCallerFactoryTest.java:434)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:329)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest.sameToolSameArgumentsTwoDecisionMakersOnePassesOneIsDenied(DecisionCallerFactoryTest.java:80)
+
+[ERROR] io.mosire.simos.app.access.DecisionCallerFactoryTest.aDecisionMakerCanReadWhatItsOwnScopeCoversAndNotWhatOthersCover -- Time elapsed: 0.002 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest$RegionProbe.execute(DecisionCallerFactoryTest.java:434)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:329)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest.aDecisionMakerCanReadWhatItsOwnScopeCoversAndNotWhatOthersCover(DecisionCallerFactoryTest.java:104)
+
+[ERROR] io.mosire.simos.app.access.DecisionCallerFactoryTest.decisionMakerCannotCallUnitDomainWrites -- Time elapsed: 0.419 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: WRITE map:demo（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.tools.ToolSupport.requireAll(ToolSupport.java:179)
+	at io.mosire.simos.app.tools.write.AbstractNarrowWriteTool.execute(AbstractNarrowWriteTool.java:147)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:329)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest.decisionMakerCannotCallUnitDomainWrites(DecisionCallerFactoryTest.java:187)
+
+[ERROR] io.mosire.simos.app.access.DecisionCallerFactoryTest.theToolContextFlavouredEntryPointIsAlsoGatedByTheSameChain -- Time elapsed: 0.001 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest$RegionProbe.execute(DecisionCallerFactoryTest.java:434)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionCallerFactoryTest.theToolContextFlavouredEntryPointIsAlsoGatedByTheSameChain(DecisionCallerFactoryTest.java:164)
+
+[INFO] Running io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest
+02:46:07.180 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.187 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45341/（静态 /webui，同源，无 CORS 头）
+02:46:07.187 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-13805574559569837665 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44745 guiPort=45341 approvalPort=46395
+02:46:07.262 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46395）
+02:46:07.263 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.330 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.337 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46365/（静态 /webui，同源，无 CORS 头）
+02:46:07.337 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-9033405411308350402 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45711 guiPort=46365 approvalPort=45719
+02:46:07.343 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45719）
+02:46:07.344 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.405 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.413 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46077/（静态 /webui，同源，无 CORS 头）
+02:46:07.414 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-13667063823006096079 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45511 guiPort=46077 approvalPort=45521
+02:46:07.420 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45521）
+02:46:07.420 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.485 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.488 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45833/（静态 /webui，同源，无 CORS 头）
+02:46:07.489 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-8556044275000907069 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46299 guiPort=45833 approvalPort=46397
+02:46:07.494 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46397）
+02:46:07.494 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.569 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.576 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44971/（静态 /webui，同源，无 CORS 头）
+02:46:07.576 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4065345675628899747 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44783 guiPort=44971 approvalPort=44957
+02:46:07.583 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44957）
+02:46:07.584 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.651 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.658 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45501/（静态 /webui，同源，无 CORS 头）
+02:46:07.659 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-8679758072279393613 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44789 guiPort=45501 approvalPort=46073
+02:46:07.667 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46073）
+02:46:07.670 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.738 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.747 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45761/（静态 /webui，同源，无 CORS 头）
+02:46:07.747 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-15389326765813937589 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46299 guiPort=45761 approvalPort=45289
+02:46:07.751 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45289）
+02:46:07.752 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.814 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.821 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46113/（静态 /webui，同源，无 CORS 头）
+02:46:07.822 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-1268814127590794821 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46041 guiPort=46113 approvalPort=46069
+02:46:07.826 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46069）
+02:46:07.827 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.889 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.897 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46003/（静态 /webui，同源，无 CORS 头）
+02:46:07.898 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-7246433644750566447 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45349 guiPort=46003 approvalPort=45951
+02:46:07.902 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45951）
+02:46:07.902 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:07.962 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:07.970 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45963/（静态 /webui，同源，无 CORS 头）
+02:46:07.971 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-44971095234582997 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45379 guiPort=45963 approvalPort=45507
+02:46:07.972 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45507）
+02:46:07.972 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.033 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.041 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45009/（静态 /webui，同源，无 CORS 头）
+02:46:08.041 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-14517040973071195916 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44983 guiPort=45009 approvalPort=45919
+02:46:08.045 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45919）
+02:46:08.046 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.106 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.114 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44731/（静态 /webui，同源，无 CORS 头）
+02:46:08.115 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-1609890741118078645 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45159 guiPort=44731 approvalPort=45917
+02:46:08.120 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45917）
+02:46:08.120 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.181 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.189 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45749/（静态 /webui，同源，无 CORS 头）
+02:46:08.190 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-14882270688742867390 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45319 guiPort=45749 approvalPort=45389
+02:46:08.194 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45389）
+02:46:08.194 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.259 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.268 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46421/（静态 /webui，同源，无 CORS 头）
+02:46:08.268 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-4332087901930299911 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46199 guiPort=46421 approvalPort=45807
+02:46:08.271 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45807）
+02:46:08.272 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.342 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.350 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:44933/（静态 /webui，同源，无 CORS 头）
+02:46:08.351 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-142121694559908704 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46085 guiPort=44933 approvalPort=45301
+02:46:08.376 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.IssueDirective commandId=b63ed375-c419-4c86-b971-cd7f88394d4e correlationId=b63ed375-c419-4c86-b971-cd7f88394d4e 新坐标=main@2
+02:46:08.378 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 45301）
+02:46:08.378 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.439 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.448 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46335/（静态 /webui，同源，无 CORS 头）
+02:46:08.448 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-8929086496081916327 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45661 guiPort=46335 approvalPort=44671
+02:46:08.452 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44671）
+02:46:08.452 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.517 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.519 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46553/（静态 /webui，同源，无 CORS 头）
+02:46:08.519 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-12964798570425805257 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45673 guiPort=46553 approvalPort=44807
+02:46:08.529 INFO  io.mosire.simos.core.command.CommandBus - 命令提交: type=sd.IssueDirective commandId=b2ceac1e-462d-411a-89b1-1a7fc6fd825c correlationId=b2ceac1e-462d-411a-89b1-1a7fc6fd825c 新坐标=main@2
+02:46:08.531 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44807）
+02:46:08.531 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.623 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.630 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45233/（静态 /webui，同源，无 CORS 头）
+02:46:08.630 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-14125336929287806947 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46653 guiPort=45233 approvalPort=46319
+02:46:08.633 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 46319）
+02:46:08.633 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.705 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.715 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46181/（静态 /webui，同源，无 CORS 头）
+02:46:08.715 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-10012375026189741671 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=44987 guiPort=46181 approvalPort=44733
+02:46:08.720 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44733）
+02:46:08.721 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.781 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.790 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:45391/（静态 /webui，同源，无 CORS 头）
+02:46:08.791 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-2255484369988417311 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=46609 guiPort=45391 approvalPort=44869
+02:46:08.794 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44869）
+02:46:08.794 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+02:46:08.854 INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 56 个 [map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RunDecision, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, simos.advance, simos.command.catalog, simos.command.submit, simos.fork, simos.map.hex, simos.map.overview, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.unit.get, simos.unit.list, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetFormationOffset, unit.SetRejoinTarget, unit.SetStatus, unit.SetStrength, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 56 个，未外发 0 个 []
+02:46:08.863 INFO  io.mosire.simos.app.gui.GuiServer - GUI 服务器已启动: http://127.0.0.1:46619/（静态 /webui，同源，无 CORS 头）
+02:46:08.863 INFO  io.mosire.simos.app.Shell - Shell 装配完成: store=/tmp/junit-11814993395670800505 checkpointInterval=100 codec=4 handler=44 participant=2 resolver=4 facet=2 tool=56 mapId=Map1 bindAddress=127.0.0.1 mcpPort=45055 guiPort=46619 approvalPort=44823
+02:46:08.867 INFO  io.mosire.agentlib.approval.ApprovalHttpEndpoint - 审批 HTTP 面已停止（端口 44823）
+02:46:08.867 INFO  io.mosire.agentlib.approval.HttpApprovalChannel - HTTP 审批通道已关闭
+[ERROR] Tests run: 21, Failures: 8, Errors: 5, Skipped: 0, Time elapsed: 1.846 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview -- Time elapsed: 0.242 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[只剩本国区域（701），GER 的 201 不进结果] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["701"]
+but could not find the following elements:
+  ["701"]
+
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview(DecisionMakerScopeEndToEndTest.java:175)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable -- Time elapsed: 0.079 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[期望成功，实际：NOT_FOUND 六角格不存在: 1_1] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.body(DecisionMakerScopeEndToEndTest.java:689)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable(DecisionMakerScopeEndToEndTest.java:208)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError -- Time elapsed: 0.076 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.tools.ToolSupport.requireAll(ToolSupport.java:179)
+	at io.mosire.simos.app.tools.write.AbstractNarrowWriteTool.execute(AbstractNarrowWriteTool.java:147)
+	at io.mosire.simos.app.gm.RecordingToolSource$RecordingTool.execute(RecordingToolSource.java:108)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError(DecisionMakerScopeEndToEndTest.java:432)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation -- Time elapsed: 0.088 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[u-1 在 701 内；u-2 属 GER、u-3 在无区域的中立格] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["u-1"]
+but could not find the following elements:
+  ["u-1"]
+
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation(DecisionMakerScopeEndToEndTest.java:220)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites -- Time elapsed: 0.080 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: WRITE map:Map1（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.tools.ToolSupport.requireAll(ToolSupport.java:179)
+	at io.mosire.simos.app.tools.write.AbstractNarrowWriteTool.execute(AbstractNarrowWriteTool.java:147)
+	at io.mosire.simos.app.gm.RecordingToolSource$RecordingTool.execute(RecordingToolSource.java:108)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites(DecisionMakerScopeEndToEndTest.java:476)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt -- Time elapsed: 0.069 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.tools.ToolSupport.requireAll(ToolSupport.java:179)
+	at io.mosire.simos.app.tools.write.AbstractNarrowWriteTool.execute(AbstractNarrowWriteTool.java:147)
+	at io.mosire.simos.app.gm.RecordingToolSource$RecordingTool.execute(RecordingToolSource.java:108)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt(DecisionMakerScopeEndToEndTest.java:508)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesGenericWrites -- Time elapsed: 0.074 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: WRITE map:Map1（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.tools.ToolSupport.requireAll(ToolSupport.java:179)
+	at io.mosire.simos.app.tools.ToolSupport.requireAllWrite(ToolSupport.java:172)
+	at io.mosire.simos.app.tools.write.CommandSubmitTool.execute(CommandSubmitTool.java:99)
+	at io.mosire.simos.app.gm.RecordingToolSource$RecordingTool.execute(RecordingToolSource.java:108)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesGenericWrites(DecisionMakerScopeEndToEndTest.java:563)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerGetsNoNeighbourField -- Time elapsed: 0.074 s <<< FAILURE!
+java.lang.AssertionError: 
+[但总览本身照常给（只少一项，不是整调被拒）] 
+Expecting actual not to be empty
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerGetsNoNeighbourField(DecisionMakerScopeEndToEndTest.java:300)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesItsVisionCircleNotItsNationsRegions -- Time elapsed: 0.073 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[(2,1) 在 u-1@(1,1) 的一环内 ⇒ 军队决策人看得见（国家决策人看不见，见上一条）] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesItsVisionCircleNotItsNationsRegions(DecisionMakerScopeEndToEndTest.java:253)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.populationIsGatedByTheSameCellScopeAsTheMap -- Time elapsed: 0.073 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[期望成功，实际：NOT_FOUND 该格没有人口序列: 1_2] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.body(DecisionMakerScopeEndToEndTest.java:689)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.populationIsGatedByTheSameCellScopeAsTheMap(DecisionMakerScopeEndToEndTest.java:234)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective -- Time elapsed: 0.099 s <<< ERROR!
+io.mosire.agentlib.permission.ResourceDeniedException: 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+	at io.mosire.agentlib.permission.ResourceAuthorizer.require(ResourceAuthorizer.java:85)
+	at io.mosire.simos.app.tools.ToolSupport.requireAll(ToolSupport.java:179)
+	at io.mosire.simos.app.tools.write.AbstractNarrowWriteTool.execute(AbstractNarrowWriteTool.java:147)
+	at io.mosire.simos.app.gm.RecordingToolSource$RecordingTool.execute(RecordingToolSource.java:108)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:312)
+	at io.mosire.simos.app.access.DecisionCallerFactory.execute(DecisionCallerFactory.java:329)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.dmCall(DecisionMakerScopeEndToEndTest.java:593)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective(DecisionMakerScopeEndToEndTest.java:355)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything -- Time elapsed: 0.085 s <<< FAILURE!
+java.lang.AssertionError: 
+[本国区域：解析得到] 
+Expected size: 1 but was: 0 in:
+[]
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything(DecisionMakerScopeEndToEndTest.java:330)
+
+[ERROR] io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesTheOwningNationOfEachVisibleHex -- Time elapsed: 0.073 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[期望成功，实际：NOT_FOUND 六角格不存在: 1_1] 
+Expecting value to be true but was false
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.body(DecisionMakerScopeEndToEndTest.java:689)
+	at io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesTheOwningNationOfEachVisibleHex(DecisionMakerScopeEndToEndTest.java:282)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:208->body:689 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1] 
+Expecting value to be true but was false
+[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:175 [只剩本国区域（701），GER 的 201 不进结果] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["701"]
+but could not find the following elements:
+  ["701"]
+
+[ERROR]   DecisionMakerScopeEndToEndTest.anArmyDecisionMakerGetsNoNeighbourField:300 [但总览本身照常给（只少一项，不是整调被拒）] 
+Expecting actual not to be empty
+[ERROR]   DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesItsVisionCircleNotItsNationsRegions:253 [(2,1) 在 u-1@(1,1) 的一环内 ⇒ 军队决策人看得见（国家决策人看不见，见上一条）] 
+Expecting value to be true but was false
+[ERROR]   DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesTheOwningNationOfEachVisibleHex:282->body:689 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1] 
+Expecting value to be true but was false
+[ERROR]   DecisionMakerScopeEndToEndTest.populationIsGatedByTheSameCellScopeAsTheMap:234->body:689 [期望成功，实际：NOT_FOUND 该格没有人口序列: 1_2] 
+Expecting value to be true but was false
+[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:330 [本国区域：解析得到] 
+Expected size: 1 but was: 0 in:
+[]
+[ERROR]   DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation:220 [u-1 在 701 内；u-2 属 GER、u-3 在无区域的中立格] 
+Expecting actual:
+  []
+to contain exactly (and in same order):
+  ["u-1"]
+but could not find the following elements:
+  ["u-1"]
+
+[ERROR] Errors: 
+[ERROR]   DecisionCallerFactoryTest.aDecisionMakerCanReadWhatItsOwnScopeCoversAndNotWhatOthersCover:104 » ResourceDenied 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionCallerFactoryTest.decisionMakerCannotCallUnitDomainWrites:187 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE map:demo（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionCallerFactoryTest.sameToolSameArgumentsTwoDecisionMakersOnePassesOneIsDenied:80 » ResourceDenied 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionCallerFactoryTest.theToolContextFlavouredEntryPointIsAlsoGatedByTheSameChain:164 » ResourceDenied 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:355->dmCall:593 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:432 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt:508 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesGenericWrites:563 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE map:Map1（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:476 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE map:Map1（工具须经唯一入口执行，不得自造上下文绕开判定）
+[INFO] 
+[ERROR] Tests run: 31, Failures: 8, Errors: 9, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.395 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.230 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.026 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.018 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.019 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.057 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.019 s]
+[INFO] SimosApp ........................................... FAILURE [  5.383 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  6.230 s
+[INFO] Finished at: 2026-09-23T02:46:08+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-app: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-app/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-app
+maven_rc=1
+COMPILATION_ERROR_lines=0
+report_files=56
+restored_md5=8b006aeadcf61519869adfb941635925
+restored_identical=True
+--- 红点（失败用例与断言行）---
+[ERROR] Tests run: 10, Failures: 0, Errors: 4, Skipped: 0, Time elapsed: 0.834 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionCallerFactoryTest
+[ERROR] Tests run: 21, Failures: 8, Errors: 5, Skipped: 0, Time elapsed: 1.846 s <<< FAILURE! -- in io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest
+[ERROR]   DecisionMakerScopeEndToEndTest.aHexInsideItsOwnRegionIsReadable:208->body:689 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1] 
+[ERROR]   DecisionMakerScopeEndToEndTest.aNationDecisionMakerSeesOnlyItsOwnRegionsAndTheirHexesInTheOverview:175 [只剩本国区域（701），GER 的 201 不进结果] 
+[ERROR]   DecisionMakerScopeEndToEndTest.anArmyDecisionMakerGetsNoNeighbourField:300 [但总览本身照常给（只少一项，不是整调被拒）] 
+[ERROR]   DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesItsVisionCircleNotItsNationsRegions:253 [(2,1) 在 u-1@(1,1) 的一环内 ⇒ 军队决策人看得见（国家决策人看不见，见上一条）] 
+[ERROR]   DecisionMakerScopeEndToEndTest.anArmyDecisionMakerSeesTheOwningNationOfEachVisibleHex:282->body:689 [期望成功，实际：NOT_FOUND 六角格不存在: 1_1] 
+[ERROR]   DecisionMakerScopeEndToEndTest.populationIsGatedByTheSameCellScopeAsTheMap:234->body:689 [期望成功，实际：NOT_FOUND 该格没有人口序列: 1_2] 
+[ERROR]   DecisionMakerScopeEndToEndTest.resolveDropsCandidatesOutsideTheScopeInsteadOfReturningEverything:330 [本国区域：解析得到] 
+[ERROR]   DecisionMakerScopeEndToEndTest.unitListAndUnitGetAreFilteredByTheNation:220 [u-1 在 701 内；u-2 属 GER、u-3 在无区域的中立格] 
+[ERROR]   DecisionCallerFactoryTest.aDecisionMakerCanReadWhatItsOwnScopeCoversAndNotWhatOthersCover:104 » ResourceDenied 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionCallerFactoryTest.decisionMakerCannotCallUnitDomainWrites:187 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE map:demo（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionCallerFactoryTest.sameToolSameArgumentsTwoDecisionMakersOnePassesOneIsDenied:80 » ResourceDenied 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionCallerFactoryTest.theToolContextFlavouredEntryPointIsAlsoGatedByTheSameChain:164 » ResourceDenied 没有资源判定者（fail-closed 拒）: READ map:demo/region/701（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.aDecisionMakerCanActuallyIssueADirective:355->dmCall:593 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.aResourceDenialInsideAWriteToolSurfacesAsResourceDeniedNotToolError:432 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt:508 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE sd:decision-maker/dm-fra（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesGenericWrites:563 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE map:Map1（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   DecisionMakerScopeEndToEndTest.theDefaultWriteResourceDeclarationStillFencesNarrowWrites:476 » ResourceDenied 没有资源判定者（fail-closed 拒）: WRITE map:Map1（工具须经唯一入口执行，不得自造上下文绕开判定）
+[ERROR]   mvn <args> -rf :simos-app
+VERDICT=KILLED

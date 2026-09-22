@@ -37,10 +37,10 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
@@ -392,7 +392,7 @@ class StartDecisionEndToEndTest {
         DM,
         new Affiliation.Nation(new NationId("n-t10")),
         Set.of("sd.SubmitVerdict"),
-        ViewScope.empty(),
+        AccessLimit.empty(),
         3,
         Optional.of("stub"));
   }

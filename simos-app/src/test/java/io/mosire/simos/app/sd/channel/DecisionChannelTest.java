@@ -12,9 +12,9 @@ import io.mosire.simos.sd.channel.DecisionRequest;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -117,7 +117,7 @@ class DecisionChannelTest {
     DecisionMakerId dm1 = new DecisionMakerId("dm1");
     DecisionMaker maker =
         new DecisionMaker(
-            dm1, new Affiliation.Nation(new NationId("n1")), Set.of(), ViewScope.empty(), 1);
+            dm1, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
     SdState sd = SdState.empty().withDecisionMakers(Map.of(dm1, maker));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),

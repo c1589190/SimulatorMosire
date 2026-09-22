@@ -122,26 +122,26 @@ class SdModelTest {
             new DecisionMakerId("dm1"),
             new Affiliation.Nation(new NationId("n1")),
             tools,
-            ViewScope.empty(),
+            AccessLimit.empty(),
             1);
     tools.add("simos.command.submit");
     assertThat(dm.allowedTools()).containsExactly("sd.SubmitVerdict");
     assertThatThrownBy(() -> dm.allowedTools().add("x"))
         .isInstanceOf(UnsupportedOperationException.class);
 
-    Set<UnitId> visibleUnits = new LinkedHashSet<>();
-    visibleUnits.add(u1);
-    ViewScope scope =
-        new ViewScope(
-            Set.of(new RegionId("r1")),
-            Set.of(new HexCoord(0, 0)),
-            visibleUnits,
-            true,
-            DisclosurePolicy.PERCEPTION_ONLY,
-            Set.of("casualties"));
-    visibleUnits.add(u2);
-    assertThat(scope.visibleUnits()).containsExactly(u1);
-    assertThatThrownBy(() -> scope.visibleUnits().add(u2))
+    Set<String> prefixes = new LinkedHashSet<>();
+    prefixes.add("Map1/region/r1");
+    Map<String, Set<String>> byNamespace = new LinkedHashMap<>();
+    byNamespace.put("map", prefixes);
+    AccessLimit limit =
+        new AccessLimit(byNamespace, Set.of("casualties"), DisclosurePolicy.PERCEPTION_ONLY);
+    prefixes.add("Map1/region/r2");
+    byNamespace.put("unit", Set.of("u-9"));
+    assertThat(limit.prefixesByNamespace().get("map")).containsExactly("Map1/region/r1");
+    assertThat(limit.prefixesByNamespace()).as("命名空间图冻在赋值处（外部 map 改了不算）").containsOnlyKeys("map");
+    assertThatThrownBy(() -> limit.prefixesByNamespace().get("map").add("x"))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> limit.prefixesByNamespace().put("x", Set.of("y")))
         .isInstanceOf(UnsupportedOperationException.class);
 
     Set<EffectId> effects = new LinkedHashSet<>();

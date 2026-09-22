@@ -147,7 +147,7 @@ class McpCoverageTest {
           "sd.CancelEffect",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
-          "sd.SetViewScope",
+          "sd.SetDecisionMakerAccess",
           "sd.StartDecision",
           "sd.SetDecisionMakerProvider",
           "sd.RunDecision");
@@ -241,11 +241,11 @@ class McpCoverageTest {
             + "\"payloadJson\":\"{\\\"id\\\":\\\"u-4\\\",\\\"personnel\\\":-1,"
             + "\\\"equipment\\\":{\\\"步枪\\\":-1}}\"}}");
     MINIMAL_PAYLOADS.put("sd.CancelEffect", "{\"effectId\":\"e-cov\"}");
-    // ── D 阶段新增的 3 条（语义合法序：SetViewScope 与 IssueDirective 需 dm-cov，SubmitVerdict 只查地址形态）──
+    // ── D 阶段新增的 3 条（语义合法序：SetDecisionMakerAccess 与 IssueDirective 需 dm-cov，SubmitVerdict 只查地址形态）──
     MINIMAL_PAYLOADS.put(
-        "sd.SetViewScope",
-        "{\"decisionMakerId\":\"dm-cov\",\"viewScope\":{\"visibleHexes\":[{\"q\":1,\"r\":1}],"
-            + "\"adjudicationDisclosure\":\"FULL\"}}");
+        "sd.SetDecisionMakerAccess",
+        "{\"decisionMakerId\":\"dm-cov\",\"accessLimit\":{\"map\":[\"Map1/region/r1\"]},"
+            + "\"adjudicationDisclosure\":\"FULL\"}");
     MINIMAL_PAYLOADS.put(
         "sd.IssueDirective",
         "{\"directiveId\":\"d-cov\",\"decisionMakerId\":\"dm-cov\",\"tick\":0,"

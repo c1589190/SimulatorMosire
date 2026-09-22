@@ -916,7 +916,8 @@
 
   /** 左栏决策人详情的字段投影（纯函数）：与 `GET /api/sd/decision-makers/{id}` 逐值一致。 */
   function decisionMakerFields(maker) {
-    var scope = maker ? maker.viewScope : null;
+    // ★ T9：`viewScope` → `accessLimit`（语义变了：不再是"绝对可见集合"，而是 GM 配的**额外限制**）。
+    var limit = maker ? maker.accessLimit : null;
     return {
       id: maker ? maker.id : null,
       affiliation: affiliationLabel(maker ? maker.affiliation : null),
@@ -925,20 +926,34 @@
         maker && Array.isArray(maker.allowedTools) && maker.allowedTools.length
           ? maker.allowedTools.join("、")
           : "（无）",
-      viewScope: scope
+      accessLimit: limit
         ? {
-            visibleRegions: scope.visibleRegions,
-            visibleHexes: scope.visibleHexes,
-            visibleUnits: scope.visibleUnits,
-            seeOwnUnits: scope.seeOwnUnits,
-            adjudicationDisclosure: scope.adjudicationDisclosure,
-            redactedFields: Array.isArray(scope.redactedFields)
-              ? scope.redactedFields.join("、")
-              : "（无）",
+            prefixesByNamespace: prefixSummary(limit.prefixesByNamespace),
+            adjudicationDisclosure: limit.adjudicationDisclosure,
+            redactedFields:
+              Array.isArray(limit.redactedFields) && limit.redactedFields.length
+                ? limit.redactedFields.join("、")
+                : "（无）",
           }
         : null,
       pending: pendingStatusText(maker ? maker.due : null),
     };
+  }
+
+  /** 前缀图摘要（纯函数）：`{命名空间: 条数}` → `map=2、unit=5`；空/缺 ⇒ `（无额外限制）`。 */
+  function prefixSummary(byNamespace) {
+    if (!byNamespace || typeof byNamespace !== "object") {
+      return "（无额外限制）";
+    }
+    var parts = Object.keys(byNamespace).sort();
+    if (!parts.length) {
+      return "（无额外限制）";
+    }
+    var out = [];
+    for (var i = 0; i < parts.length; i += 1) {
+      out.push(parts[i] + "=" + byNamespace[parts[i]]);
+    }
+    return out.join("、");
   }
 
   // ── 决策模式左栏渲染 ────────────────────────────────────────────────
@@ -1052,15 +1067,12 @@
     appendRow(dl, "归属", fields.affiliation);
     appendRow(dl, "cadence（decisionCadenceTicks）", fields.cadence);
     appendRow(dl, "allowedTools", fields.allowedTools);
-    if (fields.viewScope) {
-      appendRow(dl, "viewScope.visibleRegions", fields.viewScope.visibleRegions);
-      appendRow(dl, "viewScope.visibleHexes", fields.viewScope.visibleHexes);
-      appendRow(dl, "viewScope.visibleUnits", fields.viewScope.visibleUnits);
-      appendRow(dl, "viewScope.seeOwnUnits", fields.viewScope.seeOwnUnits);
-      appendRow(dl, "viewScope.adjudicationDisclosure", fields.viewScope.adjudicationDisclosure);
-      appendRow(dl, "viewScope.redactedFields", fields.viewScope.redactedFields);
+    if (fields.accessLimit) {
+      appendRow(dl, "accessLimit.prefixesByNamespace", fields.accessLimit.prefixesByNamespace);
+      appendRow(dl, "accessLimit.adjudicationDisclosure", fields.accessLimit.adjudicationDisclosure);
+      appendRow(dl, "accessLimit.redactedFields", fields.accessLimit.redactedFields);
     } else {
-      appendRow(dl, "viewScope", "—");
+      appendRow(dl, "accessLimit", "—");
     }
     appendRow(dl, "待决状态", fields.pending);
     if (note) {

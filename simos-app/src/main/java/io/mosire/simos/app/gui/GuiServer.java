@@ -7,6 +7,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
@@ -29,8 +30,8 @@ import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.adjudication.Judgement;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -241,7 +242,10 @@ public final class GuiServer implements AutoCloseable {
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
-    this.redactingQueryService = new RedactingQueryService(queryService);
+    // ★ T9：范围函数与决策人路径**同一份**（{@code DecisionScopeFunctions.defaults()} 是无状态注册表）——
+    //   GUI 的 as= 与 MCP 看到的可见性由同一段装配决定。
+    this.redactingQueryService =
+        new RedactingQueryService(queryService, DecisionScopeFunctions.defaults(), mapId);
     this.sdQueryService = new SdQueryService(queryService);
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.approvalBaseUrl = approvalBaseUrl;
@@ -403,7 +407,7 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/map/overview")) {
       if (asPresent) {
-        return Reply.of(200, redactingQueryService.mapOverview(actor, target(params), mapId));
+        return Reply.of(200, redactingQueryService.mapOverview(actor, target(params)));
       }
       SimulationState state = queryService.stateAt(target(params));
       return Reply.of(200, ApiViews.mapOverview(mapId, ApiViews.gameMap(state)));
@@ -479,18 +483,22 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 已接 redaction 的端点：按 actor 的 scope **递归剔除** {@code redactedFields}（{@code adjudicationDisclosure}
-   * 由判决面承载）。
+   * 已接 redaction 的端点：按 actor 的 {@code accessLimit} **递归剔除** {@code redactedFields}（{@code
+   * adjudicationDisclosure} 由判决面承载）。
+   *
+   * <p>★ **资源级的裁剪不在这里**：本方法只做**字段级**剔除。资源级（"这个 hex / 单位你看不看得见"）由各自的端点用 {@link
+   * RedactingQueryService} 的同源上下文判定——{@code /api/map/overview?as=} 走 {@code mapOverview}， {@code
+   * /api/map/hex?as=} 走 {@code seesHex}。两条路共用同一个权限组装配（T9）。
    */
   private Reply redactedIfRequested(
       boolean asPresent, DecisionMakerId actor, Map<String, String> params, Reply reply) {
     if (!asPresent) {
       return reply;
     }
-    ViewScope scope = redactingQueryService.scopeOf(actor, target(params));
+    AccessLimit limit = redactingQueryService.accessLimitOf(actor, target(params));
     return new Reply(
         reply.status(),
-        redactingQueryService.applyRedactedFields(reply.body(), scope),
+        redactingQueryService.applyRedactedFields(reply.body(), limit),
         reply.allow());
   }
 

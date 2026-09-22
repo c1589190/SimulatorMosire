@@ -18,8 +18,8 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.ViewScope;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -548,7 +548,7 @@ final class ApiViews {
   }
 
   /**
-   * 决策人列表（T5，spec §六.1）：{@code [{id,affiliation,allowedTools,cadence,viewScope,due}…]}。
+   * 决策人列表（T5，spec §六.1）：{@code [{id,affiliation,allowedTools,cadence,accessLimit,due}…]}。
    *
    * <p>★ 列表顺序**由服务端决定**（{@link SdQueryService#listDecisionMakers} 按 id 字典序）——本类只做装配，不重排，
    * 否则"同状态两次响应逐字节相同"这条前提会破。
@@ -565,7 +565,7 @@ final class ApiViews {
    * 单个决策人视图（T5，D13：**复用现有字段，不新增 sd 数据**）。
    *
    * <p>字段：{@code id} / {@code affiliation}（kind + id + 解析出的显示名 + 国家 id + 军队的根单位）/ {@code
-   * allowedTools} / {@code cadence} / {@code viewScope} 摘要 / {@code due} / {@code
+   * allowedTools} / {@code cadence} / {@code accessLimit} 摘要 / {@code due} / {@code
    * lastDirectiveTick} / {@code ticksSinceLast}。
    *
    * <p>★ **T9 起 {@code due} 是真值**（D7 公式，由 {@link SdQueryService#listDecisionMakers} / {@link
@@ -587,7 +587,7 @@ final class ApiViews {
     view.put("cadence", maker.decisionCadenceTicks());
     // M11：绑定的 LLM provider 引用（null = 未绑定，不拿空串顶替）。providerId 是不透明 id，sd 不解释其内容。
     view.put("providerId", maker.providerId().orElse(null));
-    view.put("viewScope", viewScope(maker.viewScope()));
+    view.put("accessLimit", accessLimit(maker.accessLimit()));
     SdQueryService.PendingSignal pending = info.pending();
     view.put("due", pending.due());
     view.put("lastDirectiveTick", pending.lastDirectiveTick());
@@ -595,15 +595,23 @@ final class ApiViews {
     return view;
   }
 
-  /** viewScope 摘要：可见集合的**计数** + 两个口径字段（D13：左栏要的现有数据都够，不新增 sd 字段）。 */
-  private static Map<String, Object> viewScope(ViewScope scope) {
+  /**
+   * {@code accessLimit} 摘要（T9，原 {@code viewScope} 摘要）：GM 配的**额外限制**本身。
+   *
+   * <p>★★ **不再"把限制冒充成可见集合"**：旧摘要是 {@code visibleRegions}/{@code visibleHexes} 的**计数**——那时 GM
+   * 存的就是绝对可见集合。新语义下真正可见的是 **app 层范围函数现算 ∩ 本限制**（spec §3.1/§4.2），而这个端点**算不出**它 （要读地图与单位状态）。⇒
+   * 这里只如实报"限制说了什么"：每个命名空间的前缀**条数**（真档 59223 hex 下前缀可几十条，故给计数而非全量， 与左栏的用途相称）+ 字段级剔除 +
+   * 判决披露档。要看**算出来的**范围请走 {@code /api/map/overview?as=<dm>}（那是同一套判定器的输出）。
+   */
+  private static Map<String, Object> accessLimit(AccessLimit limit) {
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("visibleRegions", scope.visibleRegions().size());
-    view.put("visibleHexes", scope.visibleHexes().size());
-    view.put("visibleUnits", scope.visibleUnits().size());
-    view.put("seeOwnUnits", scope.seeOwnUnits());
-    view.put("adjudicationDisclosure", scope.adjudicationDisclosure().name());
-    view.put("redactedFields", sorted(scope.redactedFields()));
+    Map<String, Object> counts = new LinkedHashMap<>();
+    for (Map.Entry<String, Set<String>> entry : limit.prefixesByNamespace().entrySet()) {
+      counts.put(entry.getKey(), entry.getValue().size());
+    }
+    view.put("prefixesByNamespace", counts);
+    view.put("redactedFields", sorted(limit.redactedFields()));
+    view.put("adjudicationDisclosure", limit.adjudicationDisclosure().name());
     return view;
   }
 

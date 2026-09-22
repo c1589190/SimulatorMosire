@@ -387,11 +387,9 @@ test("decision-maker-fields-project-the-server-shape", () => {
     affiliation: { kind: "nation", id: "n1", displayName: "甲国", nationId: "n1", rootUnit: null },
     allowedTools: ["sd.SubmitVerdict", "sd.IssueDirective"],
     cadence: 3,
-    viewScope: {
-      visibleRegions: 2,
-      visibleHexes: 5,
-      visibleUnits: 1,
-      seeOwnUnits: true,
+    // ★ T9：`viewScope` → `accessLimit`（语义变了：不再是"绝对可见集合"，而是 GM 配的**额外限制**）
+    accessLimit: {
+      prefixesByNamespace: { map: 2, unit: 1 },
       adjudicationDisclosure: "FULL",
       redactedFields: ["position"],
     },
@@ -402,25 +400,33 @@ test("decision-maker-fields-project-the-server-shape", () => {
   assert.equal(fields.affiliation, "国家：甲国（n1）");
   assert.equal(fields.cadence, 3);
   assert.equal(fields.allowedTools, "sd.SubmitVerdict、sd.IssueDirective");
-  assert.equal(fields.viewScope.visibleRegions, 2);
-  assert.equal(fields.viewScope.visibleHexes, 5);
-  assert.equal(fields.viewScope.visibleUnits, 1);
-  assert.equal(fields.viewScope.seeOwnUnits, true);
-  assert.equal(fields.viewScope.adjudicationDisclosure, "FULL");
-  assert.equal(fields.viewScope.redactedFields, "position");
+  assert.equal(fields.accessLimit.prefixesByNamespace, "map=2、unit=1");
+  assert.equal(fields.accessLimit.adjudicationDisclosure, "FULL");
+  assert.equal(fields.accessLimit.redactedFields, "position");
   assert.equal(fields.pending, "—", "due=null ⇒ 待决状态必须是「—」（T9 前不造假）");
-  // 空白名单 / 缺 viewScope 的降级显示。
+  // 空白名单 / 缺 accessLimit 的降级显示。
   const bare = P.decisionMakerFields({
     id: "x",
     affiliation: { kind: "army", id: "a1", displayName: "一军" },
     allowedTools: [],
     cadence: 1,
-    viewScope: null,
+    accessLimit: null,
     due: false,
   });
   assert.equal(bare.allowedTools, "（无）");
-  assert.equal(bare.viewScope, null);
+  assert.equal(bare.accessLimit, null);
   assert.equal(bare.pending, "非待决");
+  // ★ 空前缀图 = **无额外限制**（不是"—"、也不是"0 条"）：两个方向都要能看出来是"没配"还是"配了但空"。
+  const unrestricted = P.decisionMakerFields({
+    id: "y",
+    affiliation: { kind: "nation", id: "n1" },
+    allowedTools: [],
+    cadence: 1,
+    accessLimit: { prefixesByNamespace: {}, adjudicationDisclosure: "WITHHELD", redactedFields: [] },
+    due: false,
+  });
+  assert.equal(unrestricted.accessLimit.prefixesByNamespace, "（无额外限制）");
+  assert.equal(unrestricted.accessLimit.redactedFields, "（无）");
 });
 
 test("nation-region-ids-are-set-equal-not-subset", () => {

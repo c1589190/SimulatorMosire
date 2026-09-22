@@ -24,6 +24,7 @@ import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
 import io.mosire.simos.app.tools.write.UnitRenameTool;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.state.SimulationState;
 import java.time.Duration;
@@ -289,29 +290,72 @@ class DecisionCallerFactoryTest {
   }
 
   /**
-   * ★ **T9 的接缝**：GM 配的额外限制与现算范围**求交**（{@code narrowTo}）——GM 只能**额外收紧**，不能放大。
+   * ★★ **T9 的核心语义**：GM 配的 {@code accessLimit} 与现算范围**求交**（{@code narrowTo}）——GM 只能**额外收紧**，不能放大。
    *
-   * <p>本阶段 sd 域还没有 {@code accessLimit} 字段，故生产路径恒传 {@code null}；这条用例证的是"接缝一旦接上就是交集语义"。
+   * <p>限制**存在决策人身上**（{@code dm.accessLimit()}，随 revision 落盘），不再是调用方传参：GM 配"只许碰 201"，而 FRA 决策人在世界①里
+   * 只有 701 ⇒ 交集为空 = 哪里都不许。写成"**覆盖**"的实现会让它看见 201（那正是被取代的 {@code viewScope} 语义），且**不报错**。
    */
   @Test
   void theGmSuppliedLimitIsIntersectedNotReplaced() {
     DecisionCallerFactory factory = factory();
-    // GM 额外收紧：只许碰 201（FRA 决策人在世界①里只有 701 ⇒ 交集为空 = 哪里都不许）
-    io.mosire.agentlib.permission.ResourceScopeMap limit =
-        io.mosire.agentlib.permission.ResourceScopeMap.of(
-            ToolSupport.MAP_NAMESPACE,
-            io.mosire.agentlib.permission.ResourceScope.of(ScopeFixtures.MAP_ID + "/region/201"));
+    DecisionMaker narrowedDm =
+        ScopeFixtures.nationDmWithLimit(
+            "dm-FRA-narrowed",
+            "FRA",
+            AccessLimit.ofPrefixes(Map.of("map", Set.of(ScopeFixtures.MAP_ID + "/region/201"))));
 
-    ToolContext narrowed = factory.callerFor(FRA, STATE, ScopeFixtures.MAP_ID, limit);
+    ToolContext narrowed = factory.callerFor(narrowedDm, STATE, ScopeFixtures.MAP_ID);
 
     assertThat(
-            narrowed
-                .permissions()
-                .resourceScopes()
+            scopesOf(narrowed)
                 .declaredScope(ToolSupport.MAP_NAMESPACE)
                 .allows(ScopeFixtures.MAP_ID + "/region/701"))
         .as("★ 交集：GM 的限制**不能**把范围放大回 FRA 自己的 701（701 ∩ 201 = 空）")
         .isFalse();
+    assertThat(
+            scopesOf(narrowed)
+                .declaredScope(ToolSupport.MAP_NAMESPACE)
+                .allows(ScopeFixtures.MAP_ID + "/region/201"))
+        .as("★ 反向也要钉死：交集为空就是哪里都不许，不是'GM 说了算于是 201 放行'")
+        .isFalse();
+  }
+
+  /** GM 写一个**比范围宽**的命名空间值（整张地图）⇒ 交集仍是范围函数给的那两条（**不能放大**）。 */
+  @Test
+  void aBroaderGmLimitDoesNotWidenTheComputedScope() {
+    DecisionCallerFactory factory = factory();
+    DecisionMaker widerDm =
+        ScopeFixtures.nationDmWithLimit(
+            "dm-FRA-wide",
+            "FRA",
+            AccessLimit.ofPrefixes(Map.of("map", Set.of(ScopeFixtures.MAP_ID))));
+
+    ToolContext wide = factory.callerFor(widerDm, STATE, ScopeFixtures.MAP_ID);
+
+    assertThat(ScopeFixtures.prefixes(scopesOf(wide)))
+        .as("★ GM 说'整张 demo'，范围函数只给 701 ⇒ 交集仍是 701（配得宽 ≠ 看得多）")
+        .containsExactly(ScopeFixtures.MAP_ID + "/region/701");
+    assertThat(
+            scopesOf(wide)
+                .declaredScope(ToolSupport.MAP_NAMESPACE)
+                .allows(ScopeFixtures.MAP_ID + "/region/201"))
+        .as("别国的区域不会因为 GM 配得宽而露出来")
+        .isFalse();
+  }
+
+  /** 决策人的限制**不表态**（空图）⇒ 范围函数说什么就是什么（缺省必须是"不收紧"，否则新建的决策人当场变瞎）。 */
+  @Test
+  void anEmptyAccessLimitLeavesTheComputedScopeUntouched() {
+    DecisionCallerFactory factory = factory();
+
+    ToolContext plain = factory.callerFor(FRA, STATE, ScopeFixtures.MAP_ID);
+
+    assertThat(ScopeFixtures.prefixes(scopesOf(plain)))
+        .containsExactly(ScopeFixtures.MAP_ID + "/region/701");
+  }
+
+  private static io.mosire.agentlib.permission.ResourceScopeMap scopesOf(ToolContext context) {
+    return context.permissions().resourceScopes();
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────
