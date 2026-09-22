@@ -54,7 +54,8 @@ public final class UnitMoves {
             unit.status(),
             unit.attached(),
             unit.offset(),
-            unit.rejoinTarget());
+            unit.rejoinTarget(),
+            unit.visionRadius());
 
     List<HexCoord> path = movement.route().path();
     for (int i = 0; i + 1 < path.size(); i++) {

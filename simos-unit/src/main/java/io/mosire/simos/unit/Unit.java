@@ -22,7 +22,12 @@ import java.util.Optional;
  * <p>★ **Unit 扩容 T1 的四个新字段**（spec §一.3 / §三.2）：{@code status}（三态，普通字段）、{@code attached}/{@code
  * offset} （{@code Formation}：是否跟随父 + 相对父的站位，与 {@code parent} 同形的时态序列）、{@code
  * rejoinTarget}（回归意图，普通字段）。 四者的默认值必须让**旧档行为一字不变**：{@code MOVING} / {@code true} / {@code empty} /
- * {@code empty}。旧 9 参签名由下面的**兼容构造器**保留（生产拷贝点一律走 canonical 13 参形态，避免丢字段）。
+ * {@code empty}。旧 9 参签名由下面的**兼容构造器**保留（生产拷贝点一律走 canonical 形态，避免丢字段）。
+ *
+ * <p>★ **视野半径（权限阶段 Task 1 / spec §4.1）**：{@code visionRadius} = 六角圈数，**缺省 1**（用户裁定⑤），{@code 0}
+ * 表示只看自身格。**本轮只加字段**——迷雾/探测/遮挡不在本轮（用户："具体的视野功能后面再在 unit 里面写"）；它当前唯一的读者是 军队决策人的可见范围函数（{@code
+ * ArmyScope}，按军队位置 + 本半径算可见 hex）。 与 T1 四字段同一条纪律：兼容构造器取 {@link #DEFAULT_VISION_RADIUS}，**生产拷贝点一律走
+ * canonical 14 参形态**（漏传 = 静默丢字段，本仓最贵的教训形态）。
  */
 public record Unit(
     UnitId id,
@@ -37,7 +42,11 @@ public record Unit(
     UnitStatus status,
     SegmentedSeries<Boolean> attached,
     SegmentedSeries<Optional<RelativeOffset>> offset,
-    Optional<UnitId> rejoinTarget) {
+    Optional<UnitId> rejoinTarget,
+    int visionRadius) {
+
+  /** ★ **缺省视野半径**（spec §4.1 / 用户裁定⑤）= 1 圈（自身 + 六个邻格 = 7 格）。 */
+  public static final int DEFAULT_VISION_RADIUS = 1;
 
   public Unit {
     if (id == null) {
@@ -76,6 +85,9 @@ public record Unit(
     if (rejoinTarget == null) {
       throw new IllegalArgumentException("rejoinTarget 不得为 null（无回归目标用 Optional.empty()）");
     }
+    if (visionRadius < 0) {
+      throw new IllegalArgumentException("visionRadius 必须 ≥ 0: " + visionRadius);
+    }
   }
 
   /**
@@ -93,9 +105,10 @@ public record Unit(
 
   /**
    * ★ **兼容构造器**（T1，R1 的对策）：旧 9 参签名 ⇒ 以 {@code parent} 的锚段时刻造 {@code attached}/{@code offset}
-   * 的锚段，{@code status = MOVING}、{@code rejoinTarget = empty}。
+   * 的锚段，{@code status = MOVING}、{@code rejoinTarget = empty}、{@code visionRadius = }{@link
+   * #DEFAULT_VISION_RADIUS}。
    *
-   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 13 参形态——{@code
+   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 14 参形态——{@code
    * UnitOperations.copy} / {@code UnitMoves.evaluate} 的 frozen 视图 / {@code
    * UnitTimeParticipant.withPositionAndMovement} 都已改直。
    */
@@ -125,7 +138,48 @@ public record Unit(
             List.of(new Segment<>(anchorOf(parent), Optional.<RelativeOffset>empty())),
             List.of(),
             null),
-        Optional.empty());
+        Optional.empty(),
+        DEFAULT_VISION_RADIUS);
+  }
+
+  /**
+   * ★ **第二兼容构造器**（权限阶段 Task 1 / spec §4.1）：T1 的 13 参形态 ⇒ 只补 {@code visionRadius = }{@link
+   * #DEFAULT_VISION_RADIUS}。
+   *
+   * <p>**为什么需要它**：T1 那批调用点（夹具与测试里的 13 参规范形态）不是"忘了新字段"的拷贝点——{@code visionRadius}
+   * 对它们而言没有来源，取缺省正是**唯一正确**的语义。有了它，新字段不会把既有 13 参调用点逼成编译错误。
+   *
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.visionRadius()}），走 canonical 14 参。
+   */
+  public Unit(
+      UnitId id,
+      String name,
+      SegmentedSeries<Optional<UnitId>> parent,
+      SegmentedSeries<Optional<HexCoord>> position,
+      int member,
+      Map<String, Integer> equipment,
+      int speed,
+      int mobilityPerMille,
+      Optional<Movement> movement,
+      UnitStatus status,
+      SegmentedSeries<Boolean> attached,
+      SegmentedSeries<Optional<RelativeOffset>> offset,
+      Optional<UnitId> rejoinTarget) {
+    this(
+        id,
+        name,
+        parent,
+        position,
+        member,
+        equipment,
+        speed,
+        mobilityPerMille,
+        movement,
+        status,
+        attached,
+        offset,
+        rejoinTarget,
+        DEFAULT_VISION_RADIUS);
   }
 
   /** 兼容构造器的锚时刻取 {@code parent} 的首段（{@code parent} 不得为 null、构造期保证至少一段）。 */

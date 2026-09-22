@@ -14,10 +14,12 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -124,7 +126,14 @@ public final class DemoWorld {
             Map.of("步枪", 50),
             2,
             500,
-            Optional.empty());
+            Optional.empty(),
+            UnitStatus.MOVING,
+            new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+            new SegmentedSeries<>(
+                List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+            Optional.empty(),
+            // ★ 创建（不是拷贝）：视野半径取缺省 1 圈（spec §4.1 / 用户裁定⑤）。
+            Unit.DEFAULT_VISION_RADIUS);
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(UNIT, unit);
     return new UnitState(units);

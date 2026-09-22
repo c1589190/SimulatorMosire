@@ -7,11 +7,13 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.Movement;
+import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.state.BranchId;
@@ -67,6 +69,35 @@ class UnitCodecTest {
     UnitSnapshot snapshot = snapshotOf(stateOf(oneUnit("u-1", H11, true)), SimosTimestamp.of(11));
     UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
     assertThat(back).isEqualTo(snapshot);
+  }
+
+  /**
+   * ★ **视野半径（权限阶段 Task 1 / spec §4.1）的线格式往返**：非缺省值必须逐字段重建出来。
+   *
+   * <p>★ **为什么这条比内存往返强**（判据强度的说明，不是冗余）：{@code UnitChangeSet} 是 {@code FieldDelta<Unit>} 的
+   * **实体粒度**形态——差异里存的**就是 {@code Unit} 对象本身**，内存往返只是把同一个对象递回来 ⇒ 它**证不了** Unit 自己的字段没丢。只有过线（Jackson
+   * 逐分量写 + 逐分量读）才是真正的逐字段重建。
+   */
+  @Test
+  void snapshotRoundTripsANonDefaultVisionRadius() {
+    UnitSnapshot snapshot =
+        snapshotOf(stateOf(oneUnit("u-1", H11, false, 3)), SimosTimestamp.of(12));
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.state().units().get(new UnitId("u-1")).visionRadius())
+        .as("线格式必须真的带着 3 回来（不是掉回缺省 1）")
+        .isEqualTo(3);
+  }
+
+  /** 变更集也带得动视野半径：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐字段重建出目标。 */
+  @Test
+  void changeSetRoundTripsAVisionRadiusChange() {
+    UnitState base = stateOf(oneUnit("u-1", H11, false, Unit.DEFAULT_VISION_RADIUS));
+    UnitState target = stateOf(oneUnit("u-1", H11, false, 3));
+    UnitChangeSet encoded =
+        (UnitChangeSet)
+            CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, target)));
+    assertThat(UnitChangeSet.apply(encoded, base)).as("只改视野半径也必须能过线并重建（铁律 5）").isEqualTo(target);
   }
 
   /** 变更集往返：四条变体各造一条（Unchanged / Upsert / Remove / Patch），逐条过线。 */
@@ -244,6 +275,11 @@ class UnitCodecTest {
   }
 
   private static Unit oneUnit(String id, HexCoord at, boolean inTransit) {
+    return oneUnit(id, at, inTransit, Unit.DEFAULT_VISION_RADIUS);
+  }
+
+  /** 视野半径逐值给（Task 1 的往返夹具要非缺省的 3）。 */
+  private static Unit oneUnit(String id, HexCoord at, boolean inTransit, int visionRadius) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -257,7 +293,13 @@ class UnitCodecTest {
         inTransit
             ? Optional.of(
                 new Movement(new Route(List.of(H11, H12), List.of(H11, H12)), T0, 2, 1000))
-            : Optional.empty());
+            : Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        Optional.empty(),
+        visionRadius);
   }
 
   private static UnitSnapshot snapshotOf(UnitState state, SimosTimestamp timestamp) {

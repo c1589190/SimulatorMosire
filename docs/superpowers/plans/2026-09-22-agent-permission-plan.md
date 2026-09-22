@@ -211,6 +211,12 @@
 
 ## Task 9: sd 域——`accessLimit` 取代 `viewScope` + 新配权命令
 
+> ★ **影响面实测（2026-09-22）**：引用 `viewScope`/`ViewScope` 的有 **main 25 个文件 + test 24 个文件**、
+> 共 **224 处**（simos-app 28 文件 / simos-sd 15 文件）。⇒ **必须拆成三小步派单**，否则单轮改动面过大、
+> 证据无法归因：**9a** 模型与命令（`DecisionMaker`/`AccessLimit`/新 handler/载荷/codec，动 simos-sd）、
+> **9b** 读侧迁移（`RedactingQueryService`/`GuiServer`/`ApiViews`/读工具，动 simos-app）、
+> **9c** 测试迁移（24 个测试文件逐条按新语义改，**不得改成恒真**）。
+
 **Files:**
 - Modify: `simos-sd/.../model/DecisionMaker.java`（`viewScope` → `accessLimit`；`adjudicationDisclosure` 迁入）
 - Create: `simos-sd/.../model/AccessLimit.java`（**sd 自己的类型**：命名空间 → 前缀列表 + 披露档）

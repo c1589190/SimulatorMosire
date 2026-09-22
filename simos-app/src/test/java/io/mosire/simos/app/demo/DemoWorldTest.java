@@ -78,6 +78,24 @@ class DemoWorldTest {
         .hasValue(1500L);
   }
 
+  /**
+   * ★ **创建点给缺省**（spec §4.1 / 权限阶段 Task 1）：{@code DemoWorld} 的单位是**新建**的、没有视野的来源 ⇒ 给 {@link
+   * Unit#DEFAULT_VISION_RADIUS}。
+   *
+   * <p>★ 这条是 app 侧那一半；unit 侧的创建点（{@code CreateUnitHandler}）由 {@code
+   * UnitCommandHandlersTest.createUnitGivesTheDefaultVisionRadius} 把守，拷贝点由 {@code
+   * UnitVisionRadiusTest} 的 16 条把守。
+   */
+  @Test
+  void demoUnitCarriesTheDefaultVisionRadius() {
+    UnitState units = ((UnitSnapshot) state().module("unit").orElseThrow()).state();
+    Unit unit = units.units().get(new UnitId("u-1"));
+
+    assertThat(unit.visionRadius())
+        .as("新建的单位取缺省 1 圈（不是 0：0 是合法值，但它是「只看自身格」，不是缺省）")
+        .isEqualTo(Unit.DEFAULT_VISION_RADIUS);
+  }
+
   @Test
   void populationAtOneOneIsFifteenThousandAtTheDemoTick() {
     SocialData social = ((SocialSnapshot) state().module("social").orElseThrow()).data();

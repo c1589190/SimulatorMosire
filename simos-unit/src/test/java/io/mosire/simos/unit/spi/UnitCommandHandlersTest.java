@@ -263,6 +263,28 @@ class UnitCommandHandlersTest {
     assertThat(next.units().get(SpiFixture.U1)).isEqualTo(base.units().get(SpiFixture.U1));
   }
 
+  /**
+   * ★ **创建点给缺省**（spec §4.1 / 用户裁定⑤）：载荷里**没有**视野半径 ⇒ 不凭空发明输入，显式给 {@link Unit#DEFAULT_VISION_RADIUS}。
+   *
+   * <p>这是"创建 / 拷贝"两半里的前一半——后一半（拷贝点给**原值**）由 {@code UnitVisionRadiusTest} 的 16 条把守。 两半都有用例 ⇒
+   * "一律给缺省"与"一律给原值"两种简化都活不过。
+   *
+   * <p>★ 与 `defaultVisionRadiusConstantIsOne` 是**配对**的：本条只证明"创建点用了那个常量"，常量的**值** 1
+   * 由那一条钉住；两条合起来才排除"常量被悄悄改成 0"。
+   */
+  @Test
+  void createUnitGivesTheDefaultVisionRadius() {
+    UnitState next =
+        applied(
+            CREATE,
+            worldAt(T5, oneUnit()),
+            "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},\"member\":80,"
+                + "\"equipment\":{},\"speed\":3,\"mobilityPerMille\":900}");
+    assertThat(next.units().get(U2).visionRadius())
+        .as("创建点必须给缺省（不是 0、也不是随机值）")
+        .isEqualTo(Unit.DEFAULT_VISION_RADIUS);
+  }
+
   @Test
   void createUnitWithoutParentLeavesParentEmpty() {
     UnitState next =

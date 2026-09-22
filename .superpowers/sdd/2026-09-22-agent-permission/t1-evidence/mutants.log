@@ -1,0 +1,188 @@
+
+===== m1 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+note=UnitOperations.copy（拷贝）丢字段
+anchor_occurrence=0
+baseline_md5=3656801634555103f0e95a09651417f3
+mutant_md5=2b8a7f206bd7fbb14f30bf709ff8e6c6
+restored_md5=3656801634555103f0e95a09651417f3
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 6, Errors: 0, Skipped: 0, Time elapsed: 0.106 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 6, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.placeAtPreservesVisionRadius -- Time elapsed: 0.047 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.setStrengthPreservesVisionRadius -- Time elapsed: 0.001 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.applyCasualtiesPreservesVisionRadius -- Time elapsed: 0.002 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.renamePreservesVisionRadius -- Time elapsed: 0.001 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.reparentPreservesVisionRadius -- Time elapsed: 0.002 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.planRoutePreservesVisionRadius -- Time elapsed: 0.001 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.applyCasualtiesPreservesVisionRadius:157->assertCopied:331 [applyCasualties：除 [equipment, member] 外其余分量（含 visionRadius）必须原样带过]
+RED: [ERROR]   UnitVisionRadiusTest.placeAtPreservesVisionRadius:168->assertCopied:331 [placeAt：除 [position] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m2 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+note=UnitOperations.copyFormation（拷贝）丢字段
+anchor_occurrence=1
+baseline_md5=3656801634555103f0e95a09651417f3
+mutant_md5=039fc3f528cc2789321371a824ec7905
+restored_md5=3656801634555103f0e95a09651417f3
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 4, Errors: 0, Skipped: 0, Time elapsed: 0.100 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 4, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.detachUnitPreservesVisionRadius -- Time elapsed: 0.008 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.reparentSubtreePreservesVisionRadius -- Time elapsed: 0.001 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.setOffsetPreservesVisionRadius -- Time elapsed: 0.002 s <<< FAILURE!
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.attachSubtreePreservesVisionRadius -- Time elapsed: 0.001 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.attachSubtreePreservesVisionRadius:231->assertCopied:331 [attachSubtree：除 [parent, attached] 外其余分量（含 visionRadius）必须原样带过]
+RED: [ERROR]   UnitVisionRadiusTest.detachUnitPreservesVisionRadius:242->assertCopied:331 [detachUnit：除 [attached] 外其余分量（含 visionRadius）必须原样带过]
+RED: [ERROR]   UnitVisionRadiusTest.reparentSubtreePreservesVisionRadius:264->assertCopied:331 [reparentSubtree：除 [parent] 外其余分量（含 visionRadius）必须原样带过]
+RED: [ERROR]   UnitVisionRadiusTest.setOffsetPreservesVisionRadius:252->assertCopied:331 [setOffset：除 [offset] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m3 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+note=UnitOperations.withStatus（拷贝）丢字段
+anchor_occurrence=2
+baseline_md5=3656801634555103f0e95a09651417f3
+mutant_md5=e75ad6856c541e534deb4b8ed0e05de9
+restored_md5=3656801634555103f0e95a09651417f3
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.096 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.setStatusPreservesVisionRadius -- Time elapsed: 0.008 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.setStatusPreservesVisionRadius:211->assertCopied:331 [setStatus：除 [status] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m4 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/ops/UnitOperations.java
+note=UnitOperations.withRejoinTarget（拷贝）丢字段
+anchor_occurrence=0
+baseline_md5=3656801634555103f0e95a09651417f3
+mutant_md5=847f3898460c98ab53bd5b70a86c80db
+restored_md5=3656801634555103f0e95a09651417f3
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.099 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.setRejoinTargetPreservesVisionRadius -- Time elapsed: 0.007 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.setRejoinTargetPreservesVisionRadius:221->assertCopied:331 [setRejoinTarget：除 [rejoinTarget] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m5 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/move/UnitMoves.java
+note=UnitMoves.evaluate 的 frozen 视图丢字段
+anchor_occurrence=0
+baseline_md5=04bfd6758b09ab0566150451ca6f53b2
+mutant_md5=f06f0070cedaa0bf6f9bc95234305ad9
+restored_md5=04bfd6758b09ab0566150451ca6f53b2
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.101 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.frozenViewInUnitMovesPreservesVisionRadius -- Time elapsed: 0.008 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.frozenViewInUnitMovesPreservesVisionRadius:277->assertCopied:331 [UnitMoves.evaluate 的 frozen 视图（差集应为空：整份原样拷贝）：除 [] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m6 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+note=推进物化 withPositionAndMovement 丢字段
+anchor_occurrence=0
+baseline_md5=2f6cc7178388207e6dea9e383b0c89fc
+mutant_md5=6e734d85947b83ad6d3dd9bc6f32fbb0
+restored_md5=2f6cc7178388207e6dea9e383b0c89fc
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.098 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.tickMaterializationPreservesVisionRadius -- Time elapsed: 0.017 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.tickMaterializationPreservesVisionRadius:285->assertCopied:331 [推进物化 withPositionAndMovement：除 [position] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m7 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitTimeParticipant.java
+note=回归重规划 withMovement 丢字段
+anchor_occurrence=1
+baseline_md5=2f6cc7178388207e6dea9e383b0c89fc
+mutant_md5=225976cd457e69786d9a08cd50765b5c
+restored_md5=2f6cc7178388207e6dea9e383b0c89fc
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.099 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.rejoinReplanPreservesVisionRadius -- Time elapsed: 0.009 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.rejoinReplanPreservesVisionRadius:301->assertCopied:331 [回归重规划 withMovement：除 [movement] 外其余分量（含 visionRadius）必须原样带过]
+
+===== m8 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/spi/CreateUnitHandler.java
+note=CreateUnitHandler（创建）给错值 0
+anchor_occurrence=0
+baseline_md5=d0f90f2e1aad0d2e21d5a6d581c23135
+mutant_md5=77829b0a33b6d5d6646bb4b2fcd14a3b
+restored_md5=d0f90f2e1aad0d2e21d5a6d581c23135
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 78, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.259 s <<< FAILURE! -- in io.mosire.simos.unit.spi.UnitCommandHandlersTest
+summary: [ERROR] Tests run: 78, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.spi.UnitCommandHandlersTest.createUnitGivesTheDefaultVisionRadius -- Time elapsed: 0.005 s <<< FAILURE!
+RED: [ERROR]   UnitCommandHandlersTest.createUnitGivesTheDefaultVisionRadius:285 [创建点必须给缺省（不是 0、也不是随机值）]
+
+===== m10 =====
+file=simos-unit/src/main/java/io/mosire/simos/unit/Unit.java
+note=构造期校验被删（护栏自证）
+anchor_occurrence=0
+baseline_md5=30cd2caa71ee63a208d66dc106a5e366
+mutant_md5=14384e7d69c754ef0a56bd0e71d67cce
+restored_md5=30cd2caa71ee63a208d66dc106a5e366
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.100 s <<< FAILURE! -- in io.mosire.simos.unit.UnitVisionRadiusTest
+summary: [ERROR] Tests run: 24, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.UnitVisionRadiusTest.negativeRadiusIsRejected -- Time elapsed: 0.004 s <<< FAILURE!
+RED: [ERROR]   UnitVisionRadiusTest.negativeRadiusIsRejected:114
+
+===== m9 =====
+file=simos-app/src/main/java/io/mosire/simos/app/demo/DemoWorld.java
+note=DemoWorld（创建）给错值 0
+anchor_occurrence=0
+baseline_md5=3a21ca8a53bdd7924c4f877feb971294
+mutant_md5=6c69c896acb5a9998892893549c79b66
+restored_md5=3a21ca8a53bdd7924c4f877feb971294
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.086 s <<< FAILURE! -- in io.mosire.simos.app.demo.DemoWorldTest
+summary: [ERROR] Tests run: 6, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.app.demo.DemoWorldTest.demoUnitCarriesTheDefaultVisionRadius -- Time elapsed: 0.007 s <<< FAILURE!
+RED: [ERROR]   DemoWorldTest.demoUnitCarriesTheDefaultVisionRadius:96 [新建的单位取缺省 1 圈（不是 0：0 是合法值，但它是「只看自身格」，不是缺省）]
+
+===== m11 =====
+file=simos-unit/src/test/java/io/mosire/simos/unit/spi/UnitTimeParticipantTest.java
+note=不变量 3 的 hex 型判据谓词被破坏（新护栏自证）
+anchor_occurrence=0
+baseline_md5=c5c973ba0b51ec8004382326de6ad658
+mutant_md5=b7ba3581fad90c753df94b4dbddce565
+restored_md5=c5c973ba0b51ec8004382326de6ad658
+bytes_changed=True
+restored_identical=True
+compilation_errors=0
+maven_rc=1
+summary: [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.107 s <<< FAILURE! -- in io.mosire.simos.unit.spi.UnitTimeParticipantTest
+summary: [ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0
+RED: [ERROR] io.mosire.simos.unit.spi.UnitTimeParticipantTest.stateHasNoPlaceToPersistAnEndpointHex -- Time elapsed: 0.010 s <<< FAILURE!
+RED: [ERROR]   UnitTimeParticipantTest.stateHasNoPlaceToPersistAnEndpointHex:506 [★ **名单之外的牙齿**：`position` 是 Unit 上唯一能装 hex 的分量 —— 想塞「回归终点」只能塞在这里，改名换名单都绕不过]

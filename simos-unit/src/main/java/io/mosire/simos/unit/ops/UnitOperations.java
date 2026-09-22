@@ -786,8 +786,9 @@ public final class UnitOperations {
 
   /**
    * ★ **canonical 拷贝点**：9 个可变字段由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
-   * offset}/{@code rejoinTarget}）一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。 只动编队三件套（{@code
-   * parent}/{@code attached}/{@code offset}）的操作用同族的 {@link #copyFormation}。
+   * offset}/{@code rejoinTarget}）与 Task 1 的 {@code visionRadius}
+   * 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。 只动编队三件套（{@code parent}/{@code attached}/{@code
+   * offset}）的操作用同族的 {@link #copyFormation}。
    */
   private static Unit copy(
       Unit unit,
@@ -812,7 +813,8 @@ public final class UnitOperations {
         unit.status(),
         unit.attached(),
         unit.offset(),
-        unit.rejoinTarget());
+        unit.rejoinTarget(),
+        unit.visionRadius());
   }
 
   /**
@@ -838,10 +840,11 @@ public final class UnitOperations {
         unit.status(),
         attached,
         offset,
-        unit.rejoinTarget());
+        unit.rejoinTarget(),
+        unit.visionRadius());
   }
 
-  /** 只换 status、其余 12 个组件（含另外三个新字段）原样带过。 */
+  /** 只换 status、其余 13 个组件（含另外三个新字段与视野半径）原样带过。 */
   private static Unit withStatus(Unit unit, UnitStatus status) {
     return new Unit(
         unit.id(),
@@ -856,13 +859,14 @@ public final class UnitOperations {
         status,
         unit.attached(),
         unit.offset(),
-        unit.rejoinTarget());
+        unit.rejoinTarget(),
+        unit.visionRadius());
   }
 
   /**
-   * 只换 `rejoinTarget`、其余 12 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   * 只换 `rejoinTarget`、其余 13 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
    *
-   * <p>★ **不用 9 参兼容构造器**：那会把 `status`/`attached`/`offset` 一并重置成默认值（R1 的残留风险，同 {@link #copy} 的注）。
+   * <p>★ **不用兼容构造器**：那会把 `status`/`attached`/`offset`（以及视野半径）一并重置成默认值（R1 的残留风险，同 {@link #copy} 的注）。
    */
   private static Unit withRejoinTarget(Unit unit, Optional<UnitId> rejoinTarget) {
     return new Unit(
@@ -878,6 +882,7 @@ public final class UnitOperations {
         unit.status(),
         unit.attached(),
         unit.offset(),
-        rejoinTarget);
+        rejoinTarget,
+        unit.visionRadius());
   }
 }

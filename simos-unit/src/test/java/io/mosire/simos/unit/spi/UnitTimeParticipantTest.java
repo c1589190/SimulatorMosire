@@ -469,11 +469,15 @@ class UnitTimeParticipantTest {
    * ★★ 判据（spec §二.3 不变量 3 的**结构**半边）：状态里**没有**可以持久存放"终点 hex"的位置。
    *
    * <p>行为半边由 {@link #rejoinEndpointFollowsTheTargetsCurrentEffectivePosition} 钉（终点每 tick
-   * 现算、随动）；本用例钉 **类型**：`UnitState` 仍只有两个组件、`Unit` 仍只有那 13 个 —— 想加一个"回归终点 / 回归时刻"字段就会当场红。
+   * 现算、随动）；本用例钉 **类型**：`UnitState` 仍只有两个组件、`Unit` 的组件集**逐名列举** —— 想加一个"回归终点 / 回归时刻"字段就会当场红。
    *
    * <p>★ **m5 靶子**：给 `UnitState` 加第三个组件（另留一个两参构造器重载，故既有调用点照旧编译）的变异体在本用例红，**并且** 与 {@code
    * UnitRoundTripTest} 的两条一起红——那个字段谁都不读 ⇒ 回归场景的**行为层**判不出来（t7 的六条回归用例在 m5 下全绿），红的是**类型**与
    * **往返**两处。这是"等价变异体必须报两种形态"的实例（见 t7 报告 §五）。
+   *
+   * <p>★ **2026-09-22（权限阶段 Task 1）**：{@code visionRadius}（int，视野半径，spec §4.1）加进来时本用例**如期红了** ——
+   * 逐名列举的用意就是"每加一个分量都要有人过一眼"。过完的结论是它**不违反不变量 3**：半径不是位置，更不是终点 hex。 ⇒ 名单补上它； **并同时补一条不依赖名单的判据**（下面的
+   * hex 型分量检查）——只更新名单的话，下一个"忘了过眼"的人把 hex 字段**加进名单**就绕过去了， 而那正是本用例存在的理由。
    */
   @Test
   void stateHasNoPlaceToPersistAnEndpointHex() {
@@ -495,7 +499,23 @@ class UnitTimeParticipantTest {
             "status",
             "attached",
             "offset",
-            "rejoinTarget");
+            "rejoinTarget",
+            "visionRadius");
+    assertThat(hexTypedComponentNames(Unit.class))
+        .as("★ **名单之外的牙齿**：`position` 是 Unit 上唯一能装 hex 的分量 —— 想塞「回归终点」只能塞在这里，改名换名单都绕不过")
+        .containsExactly("position");
+  }
+
+  /**
+   * 分量类型里出现 {@code HexCoord} 的名字集（**按类型**判，不看名单）——不变量 3 的直接编码。
+   *
+   * <p>它比名单强的地方：名单要靠"下一个人也照规矩过眼"，本条不靠人 —— 一个叫 `endpoint`/`rejoinAt` 的 hex 字段无论如何都会在这里现形。
+   */
+  private static List<String> hexTypedComponentNames(Class<?> recordType) {
+    return Arrays.stream(recordType.getRecordComponents())
+        .filter(rc -> rc.getGenericType().getTypeName().contains("HexCoord"))
+        .map(RecordComponent::getName)
+        .toList();
   }
 
   private static List<String> componentNames(Class<?> recordType) {

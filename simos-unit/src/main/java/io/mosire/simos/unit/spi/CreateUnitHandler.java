@@ -71,7 +71,9 @@ public final class CreateUnitHandler implements CommandHandler {
               new SegmentedSeries<>(List.of(new Segment<>(at, true)), List.of(), null),
               new SegmentedSeries<>(
                   List.of(new Segment<>(at, Optional.<RelativeOffset>empty())), List.of(), null),
-              Optional.empty());
+              Optional.empty(),
+              // ★ 创建（不是拷贝）：视野半径取缺省 1 圈——载荷里没有该字段，不凭空发明输入（spec §4.1 只要求"缺省 1"）。
+              Unit.DEFAULT_VISION_RADIUS);
       UnitState next = UnitOperations.create(snapshot.state(), unit);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

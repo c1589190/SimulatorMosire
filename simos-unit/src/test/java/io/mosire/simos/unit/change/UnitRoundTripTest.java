@@ -72,6 +72,48 @@ class UnitRoundTripTest {
     assertThat(EXCLUDED_FROM_CHANGE_SET).as("UnitState 没有豁免项；要加名字必须在 diff 里现形").isEmpty();
   }
 
+  /**
+   * ★ **视野半径（权限阶段 Task 1 / spec §4.1）**：只改它也必须进变更集，且往返逐字段重建。
+   *
+   * <p>★ **这条判据的强度必须说清楚**（否则会被读成"字段丢不了"）：{@code UnitChangeSet} 是 {@code FieldDelta<Unit>}
+   * 的**实体粒度**形态——差异里存的**就是 {@code Unit} 对象本身**，所以这里的往返**证不了** {@code Unit}
+   * 自己的字段没丢（它把同一个对象递回来了）。它在这里证的是**另一半**：字段进了 record ⇒ 实体比较就分得出来 ⇒ 变更集不会 把它当"没变化"。真正的逐字段重建由 {@code
+   * UnitCodecTest.snapshotRoundTripsANonDefaultVisionRadius}（过线）把守。
+   */
+  @Test
+  void aChangedVisionRadiusAloneIsAChange() {
+    UnitState base = new UnitState(Map.of(new UnitId("u-1"), unit("u-1", 100)));
+    UnitState target =
+        new UnitState(Map.of(new UnitId("u-1"), withVisionRadius(unit("u-1", 100), 3)));
+    UnitChangeSet cs = UnitChangeSet.between(base, target);
+
+    assertThat(cs.isEmpty()).as("只改视野半径也必须让变更集非空").isFalse();
+    assertThat(cs.units().changed()).as("units 组件必须被报成非 Unchanged").isTrue();
+    assertThat(UnitChangeSet.apply(cs, base)).as("往返").isEqualTo(target);
+    assertThat(UnitChangeSet.apply(cs, base).units().get(new UnitId("u-1")).visionRadius())
+        .as("重建出来的实体带着 3（不是缺省 1）")
+        .isEqualTo(3);
+  }
+
+  /** 兼容构造器（9 参）造的夹具单位改视野半径：**只换那一个分量**，其余逐字段带过。 */
+  private static Unit withVisionRadius(Unit unit, int visionRadius) {
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.member(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget(),
+        visionRadius);
+  }
+
   @Test
   void changeSetHasExactlyTwoComponents() {
     assertThat(UnitChangeSet.class.getRecordComponents()).hasSize(2);
