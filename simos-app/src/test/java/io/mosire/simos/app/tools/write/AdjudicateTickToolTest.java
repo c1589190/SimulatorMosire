@@ -41,6 +41,7 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
@@ -773,6 +774,41 @@ class AdjudicateTickToolTest {
         .isEqualTo(DirectiveStatus.EXECUTED);
   }
 
+  // ── 判据十：作废一次裁决 = 一条 revision 的原子撤销（2026-09-23，用户裁定 (b)+B）────────────────
+
+  /**
+   * ★★ **作废的完整语义**（用户 2026-09-23：「只有生效裁决和作废裁决」，且作废要**回滚世界**）：一次作废 = **一条**
+   * revision —— 世界回到裁决之前、被它翻过的令退回待裁决、那条记录**不删**只换成 VOIDED。
+   *
+   * <p>★ 判别力：把 restore 换成"只改状态不回滚"⇒ ② 红；把记录删掉而不是翻状态 ⇒ ④ 红；把令留在 EXECUTED ⇒ ③ 红。
+   */
+  @Test
+  void voidingAnAdjudicationRollsBackTheWorldAndReturnsTheDirectiveToIssued() throws Exception {
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-army",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+    assertThat(adjudicate(WORLD_TICK).success()).isTrue();
+    long afterAdjudication = head();
+    assertThat(unitName(afterAdjudication, U1)).as("前提：裁决真的改了世界").isEqualTo("第一连改");
+
+    ToolResult result = voidAdjudication(WORLD_TICK);
+
+    assertThat(result.success()).as("作废应成功：%s", result.message()).isTrue();
+    long afterVoid = head();
+    assertThat(afterVoid).as("① 追加一条逆变更 revision（时间线只追加，不截断）").isGreaterThan(afterAdjudication);
+    assertThat(unitName(afterVoid, U1)).as("② 世界真的回到裁决之前").isNotEqualTo("第一连改");
+    SdState sd = sdAt(afterVoid);
+    assertThat(sd.directives().get(new DirectiveId("d-army")).status())
+        .as("③ 被它翻过的令退回待裁决（于是可以改判/重裁）")
+        .isEqualTo(DirectiveStatus.ISSUED);
+    List<SdInfoEntry> entries = sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK);
+    assertThat(entries).as("④ 那条记录**不删**（留痕：「第 1 版被作废」本身要看得到）").hasSize(1);
+    assertThat(entries.get(0).adjudicationStatus()).contains(AdjudicationStatus.VOIDED);
+    assertThat(SdInfoEntry.isEffective(entries.get(0))).as("⑤ 作废之后该 tick 没有生效裁决").isFalse();
+  }
+
   // ────────────────────────────── 助手 ──────────────────────────────
 
   private AdjudicateTickTool tool() {
@@ -781,6 +817,19 @@ class AdjudicateTickToolTest {
             .filter(t -> AdjudicateTickTool.NAME.equals(t.name()))
             .findFirst()
             .orElseThrow(() -> new AssertionError("GM 桶里没有 " + AdjudicateTickTool.NAME));
+  }
+
+  private ToolResult voidAdjudication(long tick) {
+    AgentTool tool =
+        shell.toolsFor(io.mosire.simos.app.tools.SimosToolSource.Role.GM).stream()
+            .filter(t -> VoidAdjudicationTool.NAME.equals(t.name()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("GM 桶里没有 " + VoidAdjudicationTool.NAME));
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("branch", "main");
+    args.put("expectedRevision", head());
+    args.put("tick", tick);
+    return tool.execute(gmContext(tool, args));
   }
 
   private ToolResult adjudicate(long tick) {

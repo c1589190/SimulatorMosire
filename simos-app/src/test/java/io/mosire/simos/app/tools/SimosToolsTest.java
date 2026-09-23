@@ -168,6 +168,7 @@ class SimosToolsTest {
           "sd.RunDecision",
           "sd.AdjudicateTick",
           "sd.RejectDirective",
+          "sd.VoidAdjudication",
           "sd.CreateNation",
           "sd.CreateArmy",
           "sd.CreateDecisionMaker",
@@ -241,7 +242,8 @@ class SimosToolsTest {
           "simos.advance",
           "simos.fork",
           "sd.AdjudicateTick",
-          "sd.RejectDirective");
+          "sd.RejectDirective",
+          "sd.VoidAdjudication");
 
   /**
    * 写工具全集（49 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
@@ -637,7 +639,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(60);
+        .hasSize(61);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"

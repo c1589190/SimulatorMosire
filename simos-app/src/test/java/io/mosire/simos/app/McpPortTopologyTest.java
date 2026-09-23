@@ -66,7 +66,8 @@ class McpPortTopologyTest {
           "simos.advance",
           "simos.fork",
           "sd.AdjudicateTick",
-          "sd.RejectDirective");
+          "sd.RejectDirective",
+          "sd.VoidAdjudication");
 
   /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
@@ -160,7 +161,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（10 读 + 5 非窄写 + 45 窄写 = 60）")
+          .as("J1：唯一口 = GM 组（10 读 + 6 非窄写 + 45 窄写 = 61）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

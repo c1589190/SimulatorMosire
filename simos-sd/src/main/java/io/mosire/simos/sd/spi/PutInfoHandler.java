@@ -126,7 +126,8 @@ public final class PutInfoHandler implements CommandHandler {
     }
   }
 
-  /** {@code tags} 可选载荷：缺席/空数组 ⇒ 空集（无主）；元素必须是决策人 id。顺序按载荷给定（保序集合）。 */  private static Set<DecisionMakerId> parseTags(JsonNode payload) {
+  /** {@code tags} 可选载荷：缺席/空数组 ⇒ 空集（无主）；元素必须是决策人 id。顺序按载荷给定（保序集合）。 */
+  private static Set<DecisionMakerId> parseTags(JsonNode payload) {
     Set<DecisionMakerId> out = new LinkedHashSet<>();
     for (String tag : SdPayloads.optionalTextSet(payload, "tags")) {
       out.add(DecisionMakerId.parse(tag));

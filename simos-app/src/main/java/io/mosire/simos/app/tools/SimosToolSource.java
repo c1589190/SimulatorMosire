@@ -17,6 +17,7 @@ import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
+import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
@@ -238,6 +239,9 @@ public final class SimosToolSource implements ToolSource {
     // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
     //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new AdjudicateTickTool(core, initiator, mapId, commandTypes, commandTargets));
+    // 2026-09-23 用户裁定「只有生效裁决和作废裁决」：把某 tick 的裁决**作废**——世界回滚 + 令退回待裁决 + 记录标 VOIDED，
+    //   一条 revision 原子（走 core.submitRestore）。★ **只在 GM 桶**；★ 也不是命令类型 ⇒ 不进 catalog。
+    built.add(new VoidAdjudicationTool(core, initiator));
     // 2026-09-23 用户裁定（"决策人一般流程"第 2 件）：GM 打回一条令 —— 理由原样**投进该决策人的会话**（复用 say 通道）
     //   + 该令标 CANCELLED，同批留审计条目。★ 只在 GM 桶；★ 也不是命令类型 ⇒ 不进 catalog。
     built.add(new RejectDirectiveTool(core, initiator, decisionAgent));
