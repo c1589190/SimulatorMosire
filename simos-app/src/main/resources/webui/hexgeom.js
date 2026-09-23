@@ -181,6 +181,87 @@
     return (index - (count - 1) / 2) * spacing;
   }
 
+  // ── 2026-09-24 交战格的特殊地图显示 ──────────────────────────────────────────
+  //
+  // 用户口径（原话）：交战状态下的两个 / 多方军队要"各列两边纵向排列，中间放个 ⚔"。
+  // 触发判据、布局、门控三件事全在本区块；都是无 DOM 的纯函数，node 里可直接断言。
+
+  /** 中央 ⚔ 与两侧列之间的世界像素横向留白（在 `markerRadius×2` 之外**再**让出的空隙）。 */
+  var COMBAT_SIDE_GAP = 6;
+
+  /**
+   * 交战格内**同一侧**相邻标记的纵向行距（世界像素）—— 与 {@link #stackSpacing} 同一口径
+   * （`2×半径 + STACK_GAP`）⇒ **> 两倍标记半径**、同列相邻圆不重叠。**纯函数**。
+   */
+  function combatRowSpacing(cellSize) {
+    return markerRadius(cellSize) * 2 + STACK_GAP;
+  }
+
+  /**
+   * 交战格的**布局门控**：屏幕上格高 ≥ {@link #STACK_MIN_SCREEN_CELL} 时才启用特殊布局。**纯函数**。
+   *
+   * <p>★ 与"同格摊开"（{@link #stackSpacing}）**同一阈值、同一理由**：`cellSize` 是世界单位且在工作台
+   * 恒定（34），随缩放变的是 `view.scale` ⇒ 必须看 `cellSize × view.scale`（屏幕上真实格高），否则
+   * 缩放到很小的时候两侧的列会整片飞出格子、⚔ 也糊成一团。**关掉时退回原来的纵向摊开/重叠。**
+   */
+  function combatLayoutEnabled(cellSize, screenCellSize) {
+    return cellSize > 0 && screenCellSize >= STACK_MIN_SCREEN_CELL;
+  }
+
+  /**
+   * 交战格内**第 index 个交战方**的标记偏移（世界像素，相对格心）。**纯函数**。
+   *
+   * <p>布局（用户要的"各列两边纵向排列、中间 ⚔"）：
+   * <ol>
+   *   <li><b>分侧</b>：`leftCount = ceil(count/2)`；`index < leftCount` ⇒ 左侧，否则右侧。
+   *       ★★ **本模型没有"阵营/同盟"概念** —— `markers` 里同格各组的顺序（= 首次出现的输入序）
+   *       是**唯一**依据，"哪方在左、哪方在右"就是**按这个顺序对半切**。不要把它误解成"左=进攻方 /
+   *       右=防守方"或任何真实阵营划分。</li>
+   *   <li><b>同侧纵向排列**不重叠**</b>：行距 = {@link #combatRowSpacing}（> 两侧的标记半径），
+   *       并以格心为中心**对称**分布 `(localIndex − (sideCount−1)/2) × 行距`（同 {@link #stackOffset}
+   *       的式子）⇒ 每侧各自关于格心上下对称。</li>
+   *   <li><b>两侧横坐标</b>：`x = ±(markerRadius×2 + COMBAT_SIDE_GAP)` —— 左侧取负、右侧取正，
+   *       中间让出的横向空间给格心的 ⚔。</li>
+   * </ol>
+   *
+   * <p>`count <= 0` ⇒ 恒 `{x:0,y:0}`。门控（{@link #combatLayoutEnabled}）**不**在本函数内，
+   * 由调用方先判定（与 `stackSpacing` 门控 `stackOffset` 同构）。
+   */
+  function combatSlot(index, count, cellSize) {
+    var n = count > 0 ? Math.floor(count) : 0;
+    if (n <= 0) {
+      return { x: 0, y: 0 };
+    }
+    var i = index < 0 ? 0 : index >= n ? n - 1 : index;
+    var leftCount = Math.ceil(n / 2);
+    var onLeft = i < leftCount;
+    var sideCount = onLeft ? leftCount : n - leftCount;
+    var localIndex = onLeft ? i : i - leftCount;
+    var radius = markerRadius(cellSize);
+    var sideX = radius * 2 + COMBAT_SIDE_GAP;
+    return {
+      x: onLeft ? -sideX : sideX,
+      y: (localIndex - (sideCount - 1) / 2) * combatRowSpacing(cellSize),
+    };
+  }
+
+  /** 中央 ⚔ 相对格心的偏移（世界像素）—— 就是格心本身。**纯函数**（独立成函数，便于测试钉住）。 */
+  function combatIconOffset() {
+    return { x: 0, y: 0 };
+  }
+
+  /**
+   * 中央 ⚔ 的**世界像素**字号。**纯函数**。
+   *
+   * <p>依据：取 `markerRadius(cellSize) × 1.4`（比标记名字大 ~40%，一眼可辨），下限 10 世界像素。
+   * 工作台 `cellSize=34` ⇒ `markerRadius=10.2` ⇒ 字号 ≈ **14.28** 世界像素；门控打开时
+   * `scale ≥ 24/34 ≈ 0.706` ⇒ 屏幕上 ≈ **10.1px**（与标记名字同档、清楚可读）。字号随格大小线性放大，
+   * 缩放拉大时不会显得过小。
+   */
+  function combatIconFontSize(cellSize) {
+    return Math.max(10, markerRadius(cellSize) * 1.4);
+  }
+
   /**
    * 单位标记的**分组**：同格的单位再按「军队根」分组，**每组只出一个标记**。**纯函数**。
    *
@@ -281,7 +362,7 @@
         groups.set(key, group);
         order.push(group);
       }
-      group.entries.push({ id: id, depth: depthOfId(id, rootId), index: index });
+      group.entries.push({ id: id, depth: depthOfId(id, rootId), index: index, status: u.status });
     });
 
     return order.map(function (group) {
@@ -295,8 +376,61 @@
         member: group.entries.map(function (entry) {
           return entry.id;
         }),
+        // ★ 2026-09-24 交战：本组**在本格的**任一单位 status === "ENGAGED" ⇒ true。
+        //   这是"显式交战信号"（用户没下发 SetStatus 时全为 RESTING ⇒ 靠同格多军队判据兜底）。
+        //   ⚠ 只认**本格**成员：某支军队的兵种在别格时，别格那组不会因根 ENGAGED 而变 true。
+        engaged: group.entries.some(function (entry) {
+          return entry.status === "ENGAGED";
+        }),
       };
     });
+  }
+
+  /**
+   * **交战格**判定（纯函数）：返回 `{"q_r": 交战方数}`，仅收录"交战格"。
+   *
+   * <p>口径（两条取**或**）：
+   * <ol>
+   *   <li>该格有 **≥2 个不同 `rootId`**（= 两支及以上不同军队同处一格，用户 tick15 的实况）；</li>
+   *   <li>该格有任一组的 `engaged === true`（某单位显式进入 `ENGAGED`，哪怕只 1 支军队）。</li>
+   * </ol>
+   * 收录时的值 = 该格的**不同 rootId 数**（= 交战方数）。★ 只有 `engaged` 而仅 1 支军队的格，
+   * 值就是 1（一个交战方 + ⚔），不是 0。
+   *
+   * <p>返回普通对象（键 `"q_r"`）而非 Map：与 renderer 里其余按格分组（`keyOf`）的用法一致，
+   * 也便于测试直接 `obj["-31_-76"]` 取值。缺 `at`/`rootId` 的组忽略。空/非数组输入 ⇒ `{}`。
+   */
+  function combatHexes(markers) {
+    var list = Array.isArray(markers) ? markers : [];
+    var byHex = new Map(); // "q_r" → {roots:Set, engaged:boolean}
+    var order = [];
+    list.forEach(function (m) {
+      if (!m || !m.at || m.at.q === undefined || m.at.r === undefined) {
+        return;
+      }
+      if (m.rootId === undefined || m.rootId === null) {
+        return;
+      }
+      var key = m.at.q + "_" + m.at.r;
+      var rec = byHex.get(key);
+      if (!rec) {
+        rec = { roots: new Set(), engaged: false };
+        byHex.set(key, rec);
+        order.push(key);
+      }
+      rec.roots.add(String(m.rootId));
+      if (m.engaged === true) {
+        rec.engaged = true;
+      }
+    });
+    var out = {};
+    order.forEach(function (key) {
+      var rec = byHex.get(key);
+      if (rec.roots.size >= 2 || rec.engaged) {
+        out[key] = rec.roots.size;
+      }
+    });
+    return out;
   }
 
   /** 让世界包围盒 fit 进 width×height（CSS px），四周留 pad。 */
@@ -382,6 +516,14 @@
     stackSpacing: stackSpacing,
     stackOffset: stackOffset,
     markerGroups: markerGroups,
+    // ★ 2026-09-24 交战格的特殊地图显示（判定 / 布局 / 门控；见上方区块注释）。
+    combatHexes: combatHexes,
+    combatRowSpacing: combatRowSpacing,
+    combatSlot: combatSlot,
+    combatIconOffset: combatIconOffset,
+    combatIconFontSize: combatIconFontSize,
+    combatLayoutEnabled: combatLayoutEnabled,
+    COMBAT_SIDE_GAP: COMBAT_SIDE_GAP,
     STACK_MIN_SCREEN_CELL: STACK_MIN_SCREEN_CELL,
     UNIT_VISIBLE_MIN_SCALE: UNIT_VISIBLE_MIN_SCALE,
   };

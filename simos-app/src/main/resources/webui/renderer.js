@@ -42,6 +42,13 @@
   // ★ 2026-09-24 修正 1：标记按**军队**分组（同格、同军队根 ⇒ 一个标记）；纯函数在 hexgeom.js
   //   （两份宿主页都引它 ⇒ map.html 不会因缺 unitTree.js 而少一个函数）。
   var markerGroups = hexGeom.markerGroups;
+  // ★ 2026-09-24 交战格的特殊地图显示（判定 / 布局 / 门控；纯函数在 hexgeom.js）。
+  var combatHexes = hexGeom.combatHexes;
+  var combatLayoutEnabled = hexGeom.combatLayoutEnabled;
+  var combatSlot = hexGeom.combatSlot;
+  var combatIconOffset = hexGeom.combatIconOffset;
+  var combatIconFontSize = hexGeom.combatIconFontSize;
+  var combatRowSpacing = hexGeom.combatRowSpacing;
   // hexcolor.js
   var FALLBACK_COLOR = hexColor.FALLBACK_COLOR;
   var REGION_FALLBACK_COLOR = hexColor.REGION_FALLBACK_COLOR;
@@ -109,6 +116,8 @@
     var unitById = {}; // String(id) → 单位（pickAt 取回 leadId 的名字）
     // ★ 2026-09-24 修正 1：**标记**=按军队分组的绘制单位，{rootId,leadId,at,member,px,py,stackSpacing}。
     //   一个首都格只有 1 个标记（整支军队），不再把根 + 各兵种铺成一长串。
+    // ★ 2026-09-24 交战：交战格上的标记额外带 {combat:true, combatCount, combatRowSpacing}，
+    //   并被 combatSlot 定位到格心左右两列（见 recomputeWorldPixels）。
     var markers = [];
     var routes = []; // 在途路线（M7b T2）：{id,movement,path:[{q,r}…]}
     var colorByTerrain = {};
@@ -226,15 +235,19 @@
     }
 
     /**
-     * 预计算**标记**的世界像素位置（px/py）。★ 2026-09-24 修正 1：
+     * 预计算**标记**的世界像素位置（px/py）。
      * 1) 先由 `markerGroups(units)`（hexgeom 纯函数）把单位**按格、再按军队根**分组 ⇒ 每组一个标记；
      *    ——首都格（根 + 各兵种同格）只出 1 个标记（代表 = 根），分遣队单独一格不会被藏掉。
-     * 2) 再把**同格的不同军队组**纵向摊开（stackOffset；格太小则保持重叠），避免选中时重叠。
-     * 摊开间距记在 `marker.stackSpacing`（0=未摊开），供 pickAt 收缩命中半径。
+     * 2) **交战格**（`combatHexes`：同格 ≥2 个不同 rootId，或任一组 engaged）上的标记改用
+     *    `combatSlot` 定位 —— 交战方各列两边、中间留给 ⚔；**代替**原来的纵向摊开。
+     *    门控 `combatLayoutEnabled`：屏幕格高不够时**不**启用特殊布局，退回下面的纵向摊开/重叠。
+     * 3) 非交战格：同格不同军队**纵向摊开**（stackOffset；格太小则保持重叠）。
+     *    摊开间距记在 `marker.stackSpacing`（0=未摊开），供 pickAt 收缩命中半径。
      * ★ 只改 markers 的 px/py ⇒ pickAt / drawUnits 自动跟随（不另造一份坐标）。
      */
     function recomputeWorldPixels() {
       markers = markerGroups(units);
+      var combat = combatHexes(markers); // "q_r" → 交战方数（仅交战格有键）
       var groups = {}; // "q_r" → 该格的全部**标记**（保持首次出现顺序 ⇒ index 稳定）
       var keys = [];
       markers.forEach(function (m) {
@@ -245,17 +258,39 @@
         }
         groups[key].push(m);
       });
+      // ★ 摊开/交战布局的门控都吃**屏幕上**的格高（cellSize 是世界单位且在**工作台恒定**，
+      //   随缩放变的是 view.scale）⇒ 必须相乘，否则缩放永远不会改变"摊不摊开/交不交战布局"。
+      var screenCell = cellSize * view.scale;
+      var combatOn = combatLayoutEnabled(cellSize, screenCell);
       keys.forEach(function (key) {
         var list = groups[key];
-        // ★ 摊开门控吃**屏幕上**的格高（cellSize 是世界单位且在**工作台恒定**，随缩放变的是 view.scale）
-        //   ⇒ 必须相乘，否则缩放永远不会改变"摊不摊开"。作用对象是**军队组**（list.length = 该格的组数）。
-        var screenCell = cellSize * view.scale;
+        var parties = combat[key] || 0;
+        var useCombat = parties > 0 && combatOn;
+        // ★ 交战布局：交战方各列两边（顺序对半切，无阵营模型），中间格心留给 ⚔。
+        if (useCombat) {
+          var rowSpacing = combatRowSpacing(cellSize);
+          list.forEach(function (m, index) {
+            var p = hexToPixel(m.at.q, m.at.r, cellSize);
+            var off = combatSlot(index, list.length, cellSize);
+            m.px = p.x + off.x;
+            m.py = p.y + off.y;
+            m.stackSpacing = 0; // 横向布局，不再纵向摊开
+            m.combat = true;
+            m.combatCount = list.length;
+            m.combatRowSpacing = rowSpacing; // pickAt 用它收窄命中（同一口径，不另造）
+          });
+          return;
+        }
+        // ★ 普通布局：同格多军队纵向摊开（格太小则重叠）。
         var spacing = stackSpacing(list.length, cellSize, screenCell);
         list.forEach(function (m, index) {
           var p = hexToPixel(m.at.q, m.at.r, cellSize);
           m.px = p.x;
           m.py = p.y + stackOffset(index, list.length, cellSize, screenCell);
           m.stackSpacing = spacing;
+          m.combat = false;
+          m.combatCount = 0;
+          m.combatRowSpacing = 0;
         });
       });
     }
@@ -624,8 +659,8 @@
     }
 
     /**
-     * ★ 2026-09-24 修正 1：画的是**军队标记**（markers），不是逐个单位。
-     * 组内**任一**单位被选中 ⇒ 高亮该组标记（选中的是某个兵种时，它所属军队的那个标记也亮）。
+     * ★ 2026-09-24 修正 1：组内**任一**单位被选中 ⇒ 高亮该组标记
+     * （选中的是某个兵种时，它所属军队的那个标记也亮）。
      */
     function isMarkerSelected(marker) {
       if (selectedUnit === null || selectedUnit === undefined) {
@@ -634,17 +669,25 @@
       return marker.member.indexOf(String(selectedUnit)) >= 0;
     }
 
+    /**
+     * ★ 2026-09-24 修正 1：画的是**军队标记**（markers）。
+     * 组内**任一**单位被选中 ⇒ 高亮该组标记（选中的是某个兵种时，它所属军队的那个标记也亮）。
+     * ★ 2026-09-24 交战：交战方的圆改用**琥珀色加粗描边**与普通（白描边）标记区分，
+     * 并在每个交战格的**格心**画一次 ⚔（不是每个标记画一次）。
+     */
     function drawUnits() {
       var radius = markerRadius(cellSize);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
+      var combatIcons = {}; // "q_r" → 格心世界坐标（每格只画一个 ⚔）
       markers.forEach(function (m) {
         ctx.beginPath();
         ctx.arc(m.px, m.py, radius, 0, Math.PI * 2);
         ctx.fillStyle = "#e8503a";
         ctx.fill();
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 2 / view.scale;
+        // ★ 交战方：琥珀色加粗描边；普通标记：白描边（保持原样）。
+        ctx.strokeStyle = m.combat ? "#ffd54a" : "#ffffff";
+        ctx.lineWidth = (m.combat ? 3 : 2) / view.scale;
         ctx.stroke();
         if (isMarkerSelected(m)) {
           ctx.beginPath();
@@ -656,7 +699,24 @@
         ctx.fillStyle = "#ffffff";
         ctx.font = Math.max(9, Math.round(radius)) + "px sans-serif";
         ctx.fillText(shortId(m.leadId), m.px, m.py);
+        if (m.combat) {
+          var key = m.at.q + "_" + m.at.r;
+          if (!combatIcons[key]) {
+            combatIcons[key] = hexToPixel(m.at.q, m.at.r, cellSize);
+          }
+        }
       });
+      // ★ 交战格：格心画一次 ⚔（在标记之上，颜色用亮黄，与红/白标记区分得开）。
+      var iconKeys = Object.keys(combatIcons);
+      if (iconKeys.length > 0) {
+        var iconOff = combatIconOffset();
+        ctx.fillStyle = "#ffcf33";
+        ctx.font = combatIconFontSize(cellSize) + "px sans-serif";
+        iconKeys.forEach(function (key) {
+          var c = combatIcons[key];
+          ctx.fillText("⚔", c.x + iconOff.x, c.y + iconOff.y);
+        });
+      }
     }
 
     /** 把一块的全部环（外环 + 洞环）追加进 Path2D；坐标由「格边长=1」乘 cellSize。 */
@@ -1058,7 +1118,15 @@
         var m = markers[i];
         // ★ 2026-09-23：摊开的标记命中半径收缩到**不超过半间距** ⇒ 不误伤纵向相邻的邻居；
         //   未摊开（stackSpacing=0，含大小格下的重叠态）保持原口径。
-        var hitRadius = m.stackSpacing > 0 ? Math.min(baseHitRadius, m.stackSpacing / 2) : baseHitRadius;
+        // ★ 2026-09-24 交战：交战格上的标记用**同一套 combatSlot 坐标**（m.px/m.py），命中半径
+        //   同样收窄到 ≤ 半行距 ⇒ 不误伤**同侧纵向**邻居。★ 两侧列相距 2×(2r+gap)≈ 2×baseHitRadius
+        //   以上 ⇒ 不会误伤**另一侧**的邻居（见报告里的数值）。
+        var hitRadius = baseHitRadius;
+        if (m.combat) {
+          hitRadius = Math.min(baseHitRadius, (m.combatRowSpacing || 0) / 2);
+        } else if (m.stackSpacing > 0) {
+          hitRadius = Math.min(baseHitRadius, m.stackSpacing / 2);
+        }
         var dx = world.x - m.px;
         var dy = world.y - m.py;
         if (dx * dx + dy * dy <= hitRadius * hitRadius) {

@@ -53,8 +53,11 @@ const REQUIRED_FILES = [
 //   2026-09-24 可用性修复起 245 → 252：unit-tree.test.cjs 新增 7 条（markerScreenVisible 视口内/外 +
 //     margin 边界 2 条 / centerViewOn 与 worldToScreen 对拍 + scale 透传 2 条 / minScale 可见性依据 1 条 /
 //     定位按钮接线 1 条 / 选择收口调用 ensureUnitVisible 1 条）。
+//   2026-09-24 交战格显示起 252 → 262：unit-tree.test.cjs 新增 10 条（combatHexes 真数据两方/单方/ENGAGED 4 条 +
+//     combatSlot 左右分列/四对方不重叠/奇数偏左 3 条 + ⚔ 格心与字号 1 条 + combatLayoutEnabled 门控 1 条 +
+//     renderer 接线静态 1 条）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 252;
+const MIN_ASSERTIONS = 262;
 
 function testFiles() {
   return fs

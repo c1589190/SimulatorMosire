@@ -31,6 +31,14 @@ const {
   worldToScreen,
   UNIT_VISIBLE_MIN_SCALE,
   STACK_MIN_SCREEN_CELL,
+  // ★ 2026-09-24 交战格的特殊地图显示（判定 / 布局 / 门控）。
+  combatHexes,
+  combatSlot,
+  combatRowSpacing,
+  combatIconOffset,
+  combatIconFontSize,
+  combatLayoutEnabled,
+  COMBAT_SIDE_GAP,
 } = loadWebui("hexgeom.js").SimosHexGeom;
 
 const UNITS = [
@@ -475,3 +483,178 @@ test("map-select-choke-point-triggers-ensureUnitVisible", () => {
     "bindActive 把 ensureUnitVisible 挂到 window.SimosMap"
   );
 });
+
+// ── 2026-09-24 交战格的特殊地图显示（hexgeom.js 纯函数 + renderer 接线）────────────────
+//
+// 用户（tick15）：德国与奥斯特两支军队合到一格、要进入交战 ⇒ 要"交战方各列两边、中间 ⚔"。
+// ★ 触发判据 = **同格 ≥2 个不同 rootId**（或任一组 engaged）——因为没有单位处于 ENGAGED（全 RESTING），
+//   只认 ENGAGED 的话用户看不出任何变化，这是必须包含"同格多军队"的现实原因。
+
+// ★ 真数据夹具（服务 5811 / 库 /tmp/simos-worldgen-demo，tick15 rev14，2026-09-24 实测）：
+//   奥斯特马克侯国-army（根，member 14800）+ 7 兵种 全在 (-31,-76)；
+//   德意志第二帝国-army（根，member 25500）也在 (-31,-76)，但它的 9 个兵种还在旧首都 (-39,-71)。
+//   ⇒ (-31,-76) 恰好 2 个不同 rootId（两个交战方）；(-39,-71) 只有 1 个 rootId（德意志兵种）。
+const AUST_ROOT = "奥斯特马克侯国-army";
+const GER_ROOT = "德意志第二帝国-army";
+const AUST_TYPES = ["亲卫", "重骑兵", "轻骑兵", "弓弩手", "重步兵", "轻步兵", "辅助兵"];
+const GER_TYPES = [
+  "重骑兵",
+  "轻骑兵",
+  "弓弩手",
+  "火绳枪手",
+  "重步兵",
+  "轻步兵",
+  "攻城兵",
+  "仆从兵",
+  "辎重兵",
+];
+const REAL_UNITS = [{ id: AUST_ROOT, parent: null, status: "RESTING", position: { q: -31, r: -76 } }]
+  .concat(
+    AUST_TYPES.map((t) => ({
+      id: "奥斯特马克侯国-" + t,
+      parent: AUST_ROOT,
+      status: "RESTING",
+      position: { q: -31, r: -76 },
+    }))
+  )
+  .concat([{ id: GER_ROOT, parent: null, status: "RESTING", position: { q: -31, r: -76 } }])
+  .concat(
+    GER_TYPES.map((t) => ({
+      id: "德意志第二帝国-" + t,
+      parent: GER_ROOT,
+      status: "RESTING",
+      position: { q: -39, r: -71 },
+    }))
+  );
+
+test("combatHexes-real-data-two-armies-sharing-one-hex-counts-two-parties", () => {
+  const groups = markerGroups(REAL_UNITS);
+  const combat = combatHexes(groups);
+  assert.equal(combat["-31_-76"], 2, "(-31,-76) 上 奥斯特马克 + 德意志 两支军队 ⇒ 恰好 2 个交战方");
+  assert.deepEqual(Object.keys(combat), ["-31_-76"], "全图只有这一个交战格");
+  assert.equal(combat["-39_-71"], undefined, "(-39,-71) 只有德意志一支军队 ⇒ 不是交战格");
+  // 顺带钉住分组本身：(-31,-76) 出 2 个标记（两支军队各一），德意志兵种那格出 1 个。
+  assert.equal(groups.filter((g) => g.at.q === -31 && g.at.r === -76).length, 2, "同格两支军队 = 两个标记");
+  assert.equal(groups.filter((g) => g.at.q === -39 && g.at.r === -71).length, 1, "德意志 9 兵种同格 = 一个标记");
+});
+
+test("combatHexes-one-root-with-many-subunits-is-not-a-combat-hex", () => {
+  // CAPITAL = 1 个根 + 7 个兵种全在 (0,0)（三国首都的真实形态）⇒ 只有 1 个 rootId ⇒ **不交战**。
+  const combat = combatHexes(markerGroups(CAPITAL));
+  assert.deepEqual(combat, {}, "同格只有 1 支军队（哪怕带 7 个兵种）⇒ 不是交战格");
+});
+
+test("combatHexes-engaged-group-makes-a-single-root-hex-a-combat-hex", () => {
+  const units = [
+    { id: "R", parent: null, status: "ENGAGED", position: { q: 0, r: 0 } },
+    { id: "R-1", parent: "R", status: "RESTING", position: { q: 0, r: 0 } },
+    { id: "R-2", parent: "R", status: "RESTING", position: { q: 0, r: 0 } },
+  ];
+  const groups = markerGroups(units);
+  assert.equal(groups.length, 1, "一支军队一个标记");
+  assert.equal(groups[0].engaged, true, "组里任一单位 ENGAGED ⇒ 组 engaged=true");
+  const combat = combatHexes(groups);
+  assert.equal(combat["0_0"], 1, "★ 只有 1 个 rootId 但有 ENGAGED ⇒ 交战格（交战方数=1）");
+});
+
+test("markerGroups-engaged-only-reflects-that-hex-and-empty-input-is-safe", () => {
+  // 德意志根 ENGAGED 在 (-31,-76)，但它的兵种 RESTING 在 (-39,-71)：
+  // engaged 只认**本格**成员 ⇒ 兵种那组不因根 ENGAGED 而变 true（口径见 hexgeom 注释）。
+  const units = [
+    { id: GER_ROOT, parent: null, status: "ENGAGED", position: { q: -31, r: -76 } },
+    { id: "德意志第二帝国-重骑兵", parent: GER_ROOT, status: "RESTING", position: { q: -39, r: -71 } },
+  ];
+  const groups = markerGroups(units);
+  const at31 = groups.find((g) => g.at.q === -31 && g.at.r === -76);
+  const at39 = groups.find((g) => g.at.q === -39 && g.at.r === -71);
+  assert.equal(at31.engaged, true, "根自己 ENGAGED ⇒ 该格组 engaged");
+  assert.equal(at39.engaged, false, "兵种 RESTING 在别格 ⇒ 那组不受根 ENGAGED 影响");
+  assert.deepEqual(combatHexes(markerGroups([])), {}, "空输入 ⇒ 无交战格");
+  assert.deepEqual(combatHexes(null), {}, "null 输入 ⇒ 无交战格");
+  assert.deepEqual(combatHexes([{ at: { q: 0, r: 0 } }]), {}, "缺 rootId 的组被忽略");
+});
+
+test("combatSlot-two-parties-one-each-side-on-the-center-row", () => {
+  const cellSize = 34; // 工作台 BASE_CELL
+  const left = combatSlot(0, 2, cellSize);
+  const right = combatSlot(1, 2, cellSize);
+  assert.ok(left.x < 0, "index 0 ⇒ 左侧（x<0）");
+  assert.ok(right.x > 0, "index 1 ⇒ 右侧（x>0）");
+  assert.equal(left.x, -right.x, "两侧 x 符号相反、大小相等");
+  assert.equal(left.y, 0, "count=2 左右各 1 个 ⇒ 都在格心中线上（y=0）");
+  assert.equal(right.y, 0);
+  // ★ x 口径：markerRadius×2 + COMBAT_SIDE_GAP（中间给 ⚔ 让出横向空间）。
+  assert.equal(Math.abs(left.x), markerRadius(cellSize) * 2 + COMBAT_SIDE_GAP, "两侧列横坐标口径");
+});
+
+test("combatSlot-four-parties-are-two-two-non-overlapping-and-symmetric", () => {
+  const cellSize = 34;
+  const slots = [0, 1, 2, 3].map((i) => combatSlot(i, 4, cellSize));
+  assert.ok(slots[0].x < 0 && slots[1].x < 0, "前 2 个在左侧");
+  assert.ok(slots[2].x > 0 && slots[3].x > 0, "后 2 个在右侧");
+  assert.equal(slots[0].x, slots[1].x, "同侧共享同一 x（成列）");
+  assert.equal(slots[2].x, slots[3].x);
+  const rowSpacing = combatRowSpacing(cellSize);
+  assert.ok(rowSpacing > 2 * markerRadius(cellSize), "行距 > 两倍标记半径 ⇒ 同侧相邻圆不重叠");
+  // 左侧两点相距一个行距（不重叠），右侧同理。
+  assert.equal(Math.abs(slots[1].y - slots[0].y), rowSpacing, "左侧行距 = rowSpacing");
+  assert.equal(Math.abs(slots[3].y - slots[2].y), rowSpacing, "右侧行距 = rowSpacing");
+  // ★ 用容差：浮点和是 1e-14 量级，写成 === 0 会假红。
+  assert.ok(Math.abs(slots[0].y + slots[1].y) < 1e-9, "左侧关于格心纵向对称");
+  assert.ok(Math.abs(slots[2].y + slots[3].y) < 1e-9, "右侧关于格心纵向对称");
+  assert.equal(slots[0].y, slots[2].y, "左右同序号在同一水平带（左第 1 与右第 1 同高）");
+  assert.equal(slots[1].y, slots[3].y, "左右同序号在同一水平带（左第 2 与右第 2 同高）");
+});
+
+test("combatSlot-odd-count-puts-the-surplus-party-on-the-left", () => {
+  const cellSize = 34;
+  // count=3 ⇒ leftCount = ceil(3/2) = 2（左 2 右 1）——"哪方在左在右"就是**按顺序对半切**（无阵营模型）。
+  assert.ok(combatSlot(0, 3, cellSize).x < 0, "index 0 左");
+  assert.ok(combatSlot(1, 3, cellSize).x < 0, "index 1 左");
+  assert.ok(combatSlot(2, 3, cellSize).x > 0, "index 2 右（多出的一个落在右侧列）");
+  const left = [0, 1].map((i) => combatSlot(i, 3, cellSize).y);
+  assert.ok(Math.abs(left[0] + left[1]) < 1e-9, "左侧 2 点关于格心对称");
+  assert.equal(combatSlot(2, 3, cellSize).y, 0, "右侧只剩 1 点 ⇒ 落在格心中线");
+  assert.deepEqual(combatSlot(0, 0, cellSize), { x: 0, y: 0 }, "count=0 ⇒ 零偏移");
+});
+
+test("combatIcon-sits-at-the-hex-center-and-its-font-is-visible-when-layout-is-on", () => {
+  assert.deepEqual(combatIconOffset(), { x: 0, y: 0 }, "⚔ 画在格心（偏移 0）");
+  const cellSize = 34;
+  assert.ok(
+    Math.abs(combatIconFontSize(cellSize) - markerRadius(cellSize) * 1.4) < 1e-9,
+    "字号 = markerRadius×1.4（下限 10）"
+  );
+  assert.ok(combatIconFontSize(200) > combatIconFontSize(cellSize), "字号随格大小线性放大");
+  // 门控打开的最小缩放（scale = STACK_MIN_SCREEN_CELL / cellSize）下，⚔ 屏幕字号仍 ≥ 10px。
+  const minScale = STACK_MIN_SCREEN_CELL / cellSize;
+  assert.ok(
+    combatIconFontSize(cellSize) * minScale >= 10,
+    "门控打开时 ⚔ 屏幕字号 " + (combatIconFontSize(cellSize) * minScale).toFixed(2) + "px ≥ 10px"
+  );
+});
+
+test("combatLayoutEnabled-gates-the-special-layout-on-screen-cell-height", () => {
+  assert.equal(combatLayoutEnabled(34, 24), true, "屏幕格高 = 阈值 ⇒ 启用（边界闭合）");
+  assert.equal(combatLayoutEnabled(34, 23.9), false, "屏幕格高 < 阈值 ⇒ 不启用（退化为原纵向摊开/重叠）");
+  assert.equal(combatLayoutEnabled(34, 0), false, "缩得太小 ⇒ 不启用");
+  assert.equal(combatLayoutEnabled(0, 100), false, "cellSize 非正 ⇒ 不启用");
+});
+
+test("renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates", () => {
+  const src = readWebui("renderer.js");
+  assert.ok(src.includes("combatHexes(markers)"), "recomputeWorldPixels 用 combatHexes 判交战格");
+  assert.ok(
+    src.includes("combatLayoutEnabled(cellSize, screenCell)"),
+    "★ 门控：屏幕格高不够时不启用特殊布局（同一 screenCell 口径）"
+  );
+  assert.ok(src.includes("combatSlot(index, list.length, cellSize)"), "交战格用 combatSlot 定位");
+  assert.ok(
+    src.includes("stackOffset(index, list.length, cellSize, screenCell)"),
+    "★ 非交战格仍走原来的纵向摊开（退回路径没被删）"
+  );
+  assert.ok(src.includes('ctx.fillText("⚔"'), "drawUnits 在格心画 ⚔");
+  assert.ok(src.includes("m.combatRowSpacing"), "pickAt 用同一 rowSpacing 收窄命中（不另造坐标）");
+  assert.ok(src.includes("ensureUnitVisible: ensureUnitVisible"), "既有导出未被本次改动破坏");
+});
+
