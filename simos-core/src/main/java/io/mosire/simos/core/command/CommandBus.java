@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,6 +92,18 @@ public final class CommandBus {
    * 同制）。★ 它**不是**第 4 种 {@code Command}（C16 的封闭集不变）——{@code submitBatch} 是 Core 的公开 API，不是命令。
    */
   public static final String BATCH_COMMAND_TYPE = "core.SubmitBatch";
+
+  /**
+   * **恢复提交**落的 revision 行的**命令类型**（2026-09-23，用户裁定「只有生效裁决和作废裁决」）：Core 自有的**第 4 个行标签**
+   * （与 {@code core.Bootstrap} / {@code core.ForkBranch} / {@code core.SubmitBatch} 同制）。
+   *
+   * <p>★ 它同样**不是**一种 {@code Command}（C16 的封闭集**不变**）：{@link #submitRestore} 是 Core 的公开 API。
+   *
+   * <p>★★ **它为什么存在**：撤销一次"已经落地的裁决"必须**把世界改回去**，而世界只按变更集累积、时间线只追加
+   * （没有 rewind），命令明文又不留痕（重演不可能）⇒ 唯一可行的形态是**追加一条逆变更 revision**。这条标签就是让审计
+   * 一眼看出"这一条没有命令来源，是一次撤销"——否则它在时间线上与普通提交长得一模一样。
+   */
+  public static final String RESTORE_COMMAND_TYPE = "core.RestoreChangeSet";
 
   /**
    * {@code namespace → codec}（{@link #submitBatch} 用）：把每条命令的变更集施加到**累积候选状态**上，后一条才能看见前一条的效果。
@@ -290,6 +303,53 @@ public final class CommandBus {
         return new BatchResult.Conflict(base, conflictAll(batch, base));
       }
       return runBatch(batch, base);
+    }
+  }
+
+  /**
+   * ★★ **按给定变更集落一条 revision**（2026-09-23）：撤销类操作的**唯一**落盘口。
+   *
+   * <p>★★ **为什么是 Core 的能力、不是模块命令**：撤销跨命名空间（map/unit/social 要回到旧值），而一个
+   * {@link CommandHandler} 只能产出**自己命名空间**的变更集（{@code HandlerOutcome.Applied(ChangeSet)}）⇒ 用模块命令
+   * 表达不了。★ 也**绝不能**做成"每个命名空间一条 Restore 命令"：那些类型会落进注册面，而决策人的可见面 = 注册面 − {@code
+   * sd.*} − 通用写 ⇒ **`map.RestoreRegion` 之类会直接漏给决策人**，等于开一个"任意改写世界"的口子。
+   *
+   * <p>★ **落盘路径复用** {@link #revisionRow}：行形状与单条/批**同一处**（不另写一份，两边就不可能漂移）。
+   * 与 {@link #commitBatch} 一样**不写事件行**（批路径也不写；事件是"命令"的链路，本方法没有命令）。
+   *
+   * <p>★ **只允许对着当前 head 提交**（{@code expectedRevision} 必须等于 head）：撤销是"把刚发生的事改回去"， 若中间还夹着别的
+   * revision，一次逆变更会把它们**一起**抹掉。调用方要回退更多，应该走分岔（{@code ForkBranch}）。
+   *
+   * @param branch 目标分支（必须存在）
+   * @param expectedRevision 调用方以为的当前 head（不等 ⇒ {@link CommandResult.Conflict}，报**真实** head）
+   * @param initiator 发起者（写进 revision 行，供审计）
+   * @param changeSet 要落盘的变更集（**空 ⇒ 拒绝**：一次什么都没改的撤销是调用方的逻辑错）
+   * @return {@link CommandResult}：{@code Committed}/{@code Rejected}/{@code Conflict}（与单条同族的三态）
+   * @throws NullPointerException 任一入参为 null
+   */
+  public CommandResult submitRestore(
+      BranchId branch, RevisionId expectedRevision, String initiator, WorldChangeSet changeSet) {
+    Objects.requireNonNull(branch, "branch");
+    Objects.requireNonNull(expectedRevision, "expectedRevision");
+    Objects.requireNonNull(initiator, "initiator");
+    Objects.requireNonNull(changeSet, "changeSet");
+    synchronized (commitLock) {
+      Optional<RevisionId> head = timeline.head(branch);
+      if (head.isEmpty()) {
+        return new CommandResult.Rejected("分支不存在: " + branch.value());
+      }
+      StateRef base = new StateRef(branch, head.get());
+      if (head.get().compareTo(expectedRevision) != 0) {
+        return new CommandResult.Conflict(base);
+      }
+      if (changeSet.modules().isEmpty()) {
+        return new CommandResult.Rejected("恢复变更集为空：撤销必须至少改一个命名空间");
+      }
+      String id = UUID.randomUUID().toString();
+      RevisionRow row =
+          revisionRow(base, id, id, initiator, RESTORE_COMMAND_TYPE, changeSet);
+      timeline.appendRevision(row);
+      return new CommandResult.Committed(new StateRef(row.branch(), row.revision()));
     }
   }
 

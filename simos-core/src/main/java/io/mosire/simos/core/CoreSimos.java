@@ -212,6 +212,31 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * ★★ **按给定变更集落一条 revision**（2026-09-23）：撤销类操作的唯一落盘口（语义与约束见 {@link
+   * CommandBus#submitRestore}）。
+   *
+   * <p>★ **Post-commit 与单条/批同口径**（C24 / C19 第①项）：提交成功且新坐标命中 checkpoint 谓词时才写（失败只 WARN，不改结局）。
+   *
+   * <p>★ **它不是一种 {@code Command}**（C16 的封闭集不变）：与 {@code submitBatch} 同族——Core 的公开 API，落一条带自己行标签
+   * （{@link CommandBus#RESTORE_COMMAND_TYPE}）的 revision。
+   */
+  public CommandResult submitRestore(
+      BranchId branch,
+      RevisionId expectedRevision,
+      String initiator,
+      WorldChangeSet changeSet) {
+    Objects.requireNonNull(branch, "branch");
+    Objects.requireNonNull(expectedRevision, "expectedRevision");
+    Objects.requireNonNull(initiator, "initiator");
+    Objects.requireNonNull(changeSet, "changeSet");
+    CommandResult result = sealedBus().submitRestore(branch, expectedRevision, initiator, changeSet);
+    if (result instanceof CommandResult.Committed committed) {
+      maybeWriteCheckpoint(committed.ref());
+    }
+    return result;
+  }
+
+  /**
    * 重放任一坐标，返回该坐标的完整状态。首次调用会**封存**装配。
    *
    * @throws IllegalArgumentException 坐标不在时间线上、或信封/变更集读不出
