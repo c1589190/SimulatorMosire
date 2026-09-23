@@ -37,6 +37,7 @@
   var hexLabel = readout.hexLabel;
   var movementReadout = readout.movementReadout;
   var unitTreeSectionVisible = readout.unitTreeSectionVisible;
+  var unitStatusText = readout.unitStatusText;
   var textOrNull = decisionModel.textOrNull;
   var valueOrDash = decisionModel.valueOrDash;
   var keyConfiguredText = decisionModel.keyConfiguredText;
@@ -332,6 +333,9 @@
           appendRow(dl, "name", unit.name);
           appendRow(dl, "人数", unit.member);
           appendRow(dl, "装备", equipmentText(unit.equipment));
+          // ★ B9：单位**自身**状态（此前 /api/unit 不发这个字段 ⇒ 这里拿不到、也不许编；该字段已补在
+          //   ApiViews.unit() / ToolSupport.unit()）。词表外原样透出，不掩成空。
+          appendRow(dl, "状态", unitStatusText(unit.status));
           // ★ B15：这两行也是"内部单位"（`speed` 是 MP/tick、`mobilityPerMille` 是 ‰ 定点）⇒ 同处换算。
           appendRow(
             dl,

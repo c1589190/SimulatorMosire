@@ -366,6 +366,8 @@ class GuiApiTest {
     JsonNode detail = getJson("/api/unit/u-1");
     assertThat(detail.get("name").asText()).isEqualTo("第一连");
     assertThat(detail.get("member").asInt()).isEqualTo(100);
+    // ★ B9：单位自身状态要真发出来（此前两处视图都没发；新建单位缺省 MOVING，见 Unit 的缺省）。
+    assertThat(detail.get("status").asText()).isEqualTo("MOVING");
     assertThat(detail.get("position").get("q").asInt()).isEqualTo(1);
   }
 

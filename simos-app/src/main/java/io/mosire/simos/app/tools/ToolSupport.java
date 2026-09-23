@@ -572,6 +572,8 @@ public final class ToolSupport {
     view.put("equipment", new LinkedHashMap<>(unit.equipment()));
     view.put("speed", unit.speed());
     view.put("mobilityPerMille", unit.mobilityPerMille());
+    // ★ B9：与 GUI 面同形地透出单位自身状态（两个视图必须同形，否则 MCP 与 GUI 会漂移）。
+    view.put("status", unit.status().name());
     view.put("parent", unit.parent().valueAt(at).map(UnitId::value).orElse(null));
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ToolSupport::hexCoord).orElse(null));

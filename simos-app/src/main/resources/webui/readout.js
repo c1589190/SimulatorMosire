@@ -253,9 +253,26 @@
     return true;
   }
 
+  // ★ B9（用户 2026-09-23 实测）：单位**自身**状态的中文标签。与 AFFILIATION_LABELS 同款——
+  //   **只做展示映射**、不改值域；未知值**原样透出**（不掩成空、也不假装认识）。
+  var UNIT_STATUS_LABELS = {
+    MOVING: "行军中",
+    RESTING: "休整中",
+    ENGAGED: "交战中",
+  };
+
+  /** 单位状态 → 人话；非字符串/空串给「—」，词表外的值原样返回（fail-visible）。 */
+  function unitStatusText(raw) {
+    if (typeof raw !== "string" || raw === "") {
+      return "—";
+    }
+    return UNIT_STATUS_LABELS[raw] || raw;
+  }
+
   window.SimosReadout = {
     UNTAGGED_LABEL: UNTAGGED_LABEL,
     IMPASSABLE_MOVE_COST: IMPASSABLE_MOVE_COST,
+    UNIT_STATUS_LABELS: UNIT_STATUS_LABELS,
     normalizeTag: normalizeTag,
     groupByTag: groupByTag,
     regionMembershipSummary: regionMembershipSummary,
@@ -266,5 +283,6 @@
     hexLabel: hexLabel,
     movementReadout: movementReadout,
     unitTreeSectionVisible: unitTreeSectionVisible,
+    unitStatusText: unitStatusText,
   };
 })();

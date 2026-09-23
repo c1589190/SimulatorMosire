@@ -478,6 +478,9 @@ final class ApiViews {
     view.put("equipment", new LinkedHashMap<>(unit.equipment()));
     view.put("speed", unit.speed());
     view.put("mobilityPerMille", unit.mobilityPerMille());
+    // ★ B9（用户 2026-09-23 实测）：单位**自身**状态（MOVING/RESTING/ENGAGED）此前两处视图都没发 ⇒
+    //   前端"这个单位是什么"里缺"状态"一项。这里是领域真值（`Unit.status()` 的普通字段）的原样透出。
+    view.put("status", unit.status().name());
     view.put("parent", unit.parent().valueAt(at).map(UnitId::value).orElse(null));
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
