@@ -42,8 +42,9 @@ import java.util.Set;
  * <p>★ **执行原文与效果分开存**（spec §三.6）：{@code intentInfo} 写进地址 {@code sd:directive.<id>} 下的 INFO 条目（key
  * 固定为 {@value #INTENT_INFO_KEY}），{@code Directive.intentInfoKey} 只记该 key；二者不互相推导。
  *
- * <p>拒绝：{@code decisionMakerId} 不存在；指令 id 已存在；**R4 违反**；{@code commands[].type} 不在白名单（或自指）； {@code
- * target} 非法；{@code effects[]} 引用的效果不存在。
+ * <p>拒绝：{@code decisionMakerId} 不存在；**载荷 {@code tick} 记在未来**（{@code tick > 世界当前 tick}，见 {@link
+ * #handle}）；指令 id 已存在；**R4 违反**；{@code commands[].type} 不在白名单（或自指）； {@code target} 非法；{@code
+ * effects[]} 引用的效果不存在。
  */
 public final class IssueDirectiveHandler implements CommandHandler {
 
@@ -79,6 +80,16 @@ public final class IssueDirectiveHandler implements CommandHandler {
 
       if (!base.decisionMakers().containsKey(decisionMakerId)) {
         return new HandlerOutcome.Rejected("决策人不存在: " + decisionMakerId.value());
+      }
+      long worldTick = state.meta().timestamp().tick();
+      if (tick > worldTick) {
+        // ★★ **令不得记在未来**（2026-09-23，用户实测撞到的真缺陷）：`tick` 是**调用方（模型）给的**，
+        //   而记录一旦落盘就**无法回改**（时间线只追加）。真实现场：模型填了 6、而世界当时是 0（后来 3）
+        //   ⇒ 记录里"上次出令在 tick 6"比世界**还晚** ⇒ `ticksSinceLast` 算出负数 ⇒ `due` 永久算错
+        //   （症状是"点开始决策没反应"，且**没有任何报错**）。
+        //   ★ **只拒"未来"，不要求"恰好等于世界 tick"**：过去的 tick 合法（补记 / 滞后一拍都说得通），
+        //     且**系统不改写调用方给的值**（不静默兜底——改了值等于让调用方以为自己写对了）。
+        return new HandlerOutcome.Rejected("令不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
       }
       if (base.directives().containsKey(id)) {
         return new HandlerOutcome.Rejected("决策已存在: " + id.value());

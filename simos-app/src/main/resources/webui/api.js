@@ -315,15 +315,64 @@
    * 命令类型由服务端写死（`sd.RunDecision` ⇒ 前端不传 type）；先落一条触发事实（revision），再让该决策人的 agent
    * 真跑一轮（真 LLM 自行调工具读世界、出令）。
    *
-   * <p>★ 返回体 = 提交结局 + **本轮轨迹**（与 GM 侧的 `sd.RunDecision` 窄工具逐字同形）：`llmCalls` / `finalText` /
-   * `toolCalls[{tool,ok,code,summary}]` / `abortedByBudget` / `conversationId`。
-   * <p>★★ **它可能等很久**：决策人出的令（`sd.IssueDirective`）是敏感写 ⇒ 各进一次**阻塞式**审批（上限 5 分钟）。
-   * 调用方必须显示"正在跑 / 可能在等审批"，不能表现得像卡死。
-   * <p>★ **轨迹不落盘**（服务端明确取舍）：换 target / 刷新之后这一轮的账就没了——它只存在于**这次响应**里。
+   * <p>★★ **它立即返回**（2026-09-23 起）：这一轮在**服务端后台**跑，请求体只回报"触发事实已落盘 + 起跑了"。
+   * 进度与结局改由 {@link runDecisionStatus} 轮询（`GET …/run-status`）——因为这一轮里决策人若出令，
+   * 那次工具调用要**阻塞式**等审批（上限 = 壳的 APPROVAL_TIMEOUT），让 HTTP 请求停在那里，界面就只能表现为卡死。
+   * <p>★ GM 经 MCP 调 `sd.RunDecision` 的那条**仍是同步**的（调用方是 agent，它能等）——两条路语义不同是**有意的**。
    */
   function runDecision(branch, expectedRevision, decisionMakerId) {
     invalidateState();
     return postJson("/sd/run-decision", {
+      branch: branch,
+      expectedRevision: expectedRevision,
+      decisionMakerId: decisionMakerId,
+    });
+  }
+
+  /**
+   * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：`GET /api/sd/decision-makers/{id}/run-status`。
+   *
+   * <p>返回体 `{decisionMakerId, running, done, llmCalls, toolCalls[{tool,ok,code,summary}], startedAt,
+   * elapsedMs, result}`；`result` 在跑完之前是 `null`，跑完是 `{status, reason, detail, finalText,
+   * conversationId}`。
+   * <p>★★ **没有记录时如实报"没有"**：`startedAt` 与 `llmCalls` 都是 `null`（**不拿 0 / false 顶替**）
+   * ——"这一轮一次模型都没调"与"本进程从没见过这个人跑"是两件事（服务端重启即失）。
+   */
+  function runDecisionStatus(decisionMakerId, target) {
+    return getJson(
+      withTarget(
+        "/sd/decision-makers/" + encodeURIComponent(decisionMakerId) + "/run-status",
+        target
+      )
+    );
+  }
+
+  /**
+   * ★ 跟决策人说一句话（2026-09-23，用户要的文本框）：`POST /api/sd/decision-makers/{id}/say`，体 {text}。
+   *
+   * <p>★ **它不是命令写**：这条消息落进**会话库**（append-only 的旁路存储），不进 revision、不改世界 ⇒ 没有 409
+   * 这一说。`branch`/`revision` 只是用来查**会话世代**（重置过的决策人落在另一段会话上）；缺省 = 服务端取主分支 head。
+   */
+  function sayToDecisionMaker(decisionMakerId, text, branch, revision) {
+    var body = { text: text };
+    if (branch !== null && branch !== undefined) {
+      body.branch = branch;
+    }
+    if (revision !== null && revision !== undefined) {
+      body.revision = revision;
+    }
+    return postJson("/sd/decision-makers/" + encodeURIComponent(decisionMakerId) + "/say", body);
+  }
+
+  /**
+   * 重置决策人的**会话上下文**（命令写，固定类型 `sd.ResetDecisionMakerConversation`，落 revision）：会话世代 +1
+   * ⇒ 下一个轮次落到**另一段新会话**上、从空上下文重新开始；旧会话**一条字节都不动**（可审计）。
+   *
+   * <p>★ 这是"重跑沿用上下文"的唯一例外口——用户在界面上点「上下文重置」才清。
+   */
+  function resetDecisionConversation(branch, expectedRevision, decisionMakerId) {
+    invalidateState();
+    return postJson("/sd/reset-decision-maker-conversation", {
       branch: branch,
       expectedRevision: expectedRevision,
       decisionMakerId: decisionMakerId,
@@ -414,6 +463,9 @@
     fork: fork,
     startDecision: startDecision,
     runDecision: runDecision,
+    runDecisionStatus: runDecisionStatus,
+    sayToDecisionMaker: sayToDecisionMaker,
+    resetDecisionConversation: resetDecisionConversation,
     approvals: approvals,
     approve: approve,
     gmToolUsage: gmToolUsage,

@@ -269,10 +269,12 @@ test("render-left-gates-the-start-button-on-due", async () => {
   await flush();
   assert.equal(h.nodes["decision-start"].disabled, false, "due=true ⇒ 可点");
   assert.equal(h.P2.startDecisionTargetId(), "dm-due", "目标 = 左栏展示的那个决策人");
-  assert.equal(h.app.byId("decision-start-status").text, "可发起（本 tick 待决）");
+  assert.equal(h.app.byId("decision-start-status").text, "随时可点 · 可发起（本 tick 待决）");
 });
 
-test("render-left-disables-the-start-button-when-not-due", async () => {
+test("render-left-keeps-the-start-button-clickable-when-not-due", async () => {
+  // ★★ 2026-09-23 用户裁定：「我在当前回合点开始决策」要**随时可点** ⇒ due 从此只是**提示**，不再 disable。
+  //   判别力：把 `button.disabled = false` 改回 `!gate.enabled`，本条即红（due=false / due=null 两个都断言了）。
   const notDue = {
     id: "dm-x",
     affiliation: { kind: "army", id: "a1", rootUnit: "u-root" },
@@ -292,9 +294,11 @@ test("render-left-disables-the-start-button-when-not-due", async () => {
     await flush();
     assert.equal(
       h.nodes["decision-start"].disabled,
-      true,
-      "due=" + JSON.stringify(maker.due) + " ⇒ 不可点"
+      false,
+      "due=" + JSON.stringify(maker.due) + " ⇒ 仍然可点（提示不拦人）"
     );
+    // ★ 提示必须**照实说**此刻不是它的窗口（不然用户以为系统在假装待决）。
+    assert.match(h.app.byId("decision-start-status").text, /^随时可点 · /);
   }
 });
 
@@ -311,6 +315,7 @@ test("start-decision-posts-the-target-when-due", async () => {
 
 test("start-decision-advances-the-cursor-on-success", async () => {
   // ★ 409 的根因之一：成功分支不推进游标 ⇒ 下一次点击仍带旧 revision。本用例钉住 setRevision 被调用。
+  //   ★ 2026-09-23 起「开始决策」是**两次世界写**（发起 + 跑一轮）⇒ 游标推进两次，末值才是真 head。
   const h = renderHarness([DUE_MAKER], {
     startDecisionResponder: () =>
       Promise.resolve({ result: "committed", ref: { branch: "main", revision: 5 } }),
@@ -321,7 +326,12 @@ test("start-decision-advances-the-cursor-on-success", async () => {
   h.P2.startDecision();
   await flush();
   await flush();
-  assert.deepEqual(h.calls.setRevision, [5], "成功 ⇒ 游标必须推进到新 head");
+  await flush();
+  assert.deepEqual(
+    h.calls.setRevision,
+    [5, 7],
+    "两次世界写各推进一次游标：发起后 5、跑一轮落盘后 7（末值 = 真 head）"
+  );
 });
 
 test("start-decision-retries-once-after-409-with-the-fresh-head", async () => {
@@ -364,7 +374,90 @@ test("start-decision-does-not-retry-beyond-once", async () => {
   assert.match(h.app.byId("decision-start-status").text, /发起失败/);
 });
 
-test("start-decision-refuses-when-target-is-not-due", async () => {
+test("a-round-runs-asynchronously-and-the-decision-lands-in-place", async () => {
+  // ★★ 2026-09-23 用户要的流程：点「开始决策」⇒ ① 发起 ② **异步**跑一轮（POST 立即返回 + 轮询 run-status）
+  //   ⇒ 跑完在**下面就地**渲染该决策人最近一次决策（决心/理由/命令清单）——**左边没有额外的"看结果"按钮**。
+  //   判别力：把 `finishAsyncRun` 里的 `loadLatestDecision` 去掉，本条即红（"结果只在状态行里"就是用户抱怨的形态）。
+  const directive = {
+    directiveId: "d-9",
+    decisionMakerId: "dm-due",
+    tick: 3,
+    target: "sd:combat.c1",
+    intentInfo: "守住北面的渡口",
+    intentInfoKey: "intent",
+    status: "ISSUED",
+    verdict: null,
+    effects: [],
+    commands: [{ type: "unit.PlanRoute", payloadJson: "{}" }],
+  };
+  const h = renderHarness([DUE_MAKER], { directives: [directive] });
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+
+  h.P2.startDecision();
+  await flush();
+  await flush();
+  await flush();
+
+  assert.equal(h.calls.startDecision.length, 1, "① 发起");
+  assert.equal(h.calls.run.length, 1, "② 接着真跑一轮（走异步窄端点）");
+  assert.equal(h.calls.run[0].decisionMakerId, "dm-due");
+  assert.match(h.app.byId("decision-run-status").text, /跑完一轮/, "结局由 run-status 报（不再由那次 POST 返回）");
+  assert.ok(
+    h.nodes["decision-progress"].children.length > 0,
+    "LLM 运行情况那一窗必须真的有行（" + JSON.stringify(h.nodes["decision-progress"].children) + "）"
+  );
+  const latest = h.nodes["decision-latest"].children.filter(
+    (n) => n.attrs && n.attrs["data-latest-directive-id"]
+  );
+  assert.equal(latest.length, 1, "跑完必须**就地**渲染决策");
+  assert.equal(latest[0].attrs["data-latest-directive-id"], "d-9");
+  const dl = latest[0].children.find((n) => n.tag === "dl");
+  const labels = dl.children.filter((n) => n.tag === "dt").map((n) => n.text);
+  assert.ok(
+    labels.some((t) => t.indexOf("决心") >= 0),
+    "决策全文必须含「决心 / 理由」行：" + JSON.stringify(labels)
+  );
+  assert.ok(
+    labels.some((t) => t.indexOf("命令清单") >= 0),
+    "决策全文必须含「命令清单」行：" + JSON.stringify(labels)
+  );
+});
+
+test("say-and-context-reset-are-two-separate-explicit-actions", async () => {
+  // ★★ 用户原话：「允许不管第一轮还是最后一轮都可以额外和决策人对话」+「只有点额外的上下文重置按键才重置」。
+  //   本条钉的是**两件事各走各的端点**：say 落会话库（不是世界写），reset 是真命令（落 revision ⇒ 推进游标）。
+  const h = renderHarness([DUE_MAKER]);
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+
+  h.app.byId("decision-say-text").value = "  守住北面的渡口  ";
+  h.P2.say();
+  await flush();
+  assert.deepEqual(
+    h.calls.say,
+    [{ decisionMakerId: "dm-due", text: "守住北面的渡口", branch: "main", revision: null }],
+    "说的话按原样送出去（两端空白裁掉），带上当前 target 以便服务端查会话世代"
+  );
+  assert.equal(h.app.byId("decision-say-text").value, "", "发出去之后清空输入框");
+
+  h.P2.resetDecisionContext();
+  await flush();
+  await flush();
+  assert.deepEqual(
+    h.calls.reset,
+    [{ branch: "main", expectedRevision: null, decisionMakerId: "dm-due" }],
+    "重置走**真命令**（窄端点，落 revision）"
+  );
+  assert.ok(h.calls.setRevision.includes(9), "重置也是世界写 ⇒ 游标必须推进到新 head");
+  assert.match(h.app.byId("decision-context-status").text, /空上下文/);
+});
+
+test("start-decision-posts-even-when-target-is-not-due", async () => {
+  // ★★ 2026-09-23 用户裁定：**不再阻断**。这条用例以前断言"非待决 ⇒ 前端不得发出写请求"，现在反过来——
+  //   due 只是提示，点了就发（判别力：把 `decideStartDecision` 里那道 due 前置加回去，本条即红）。
   const notDue = {
     id: "dm-x",
     affiliation: { kind: "army", id: "a1", rootUnit: "u-root" },
@@ -376,8 +469,11 @@ test("start-decision-refuses-when-target-is-not-due", async () => {
   await flush();
   await flush();
   h.P2.startDecision();
-  assert.deepEqual(h.calls.startDecision, [], "非待决 ⇒ 前端不得发出写请求");
-  assert.equal(h.app.byId("decision-start-status").text, "未选中可发起的决策人");
+  assert.deepEqual(
+    h.calls.startDecision,
+    [{ branch: "main", expectedRevision: null, decisionMakerId: "dm-x" }],
+    "非待决 ⇒ 照样发起（提示不拦人）"
+  );
 });
 
 test("decision-maker-fields-project-the-server-shape", () => {
@@ -468,7 +564,7 @@ test("nation-ids-of-regions-unions-distinct-nations", () => {
 function renderHarness(makers, options) {
   const opts = options || {};
   const nodes = {};
-  const calls = { startDecision: [], setRevision: [], refreshState: 0 };
+  const calls = { startDecision: [], setRevision: [], refreshState: 0, say: [], reset: [], run: [] };
   const state = { mode: "decision", selection: null, decisionMakerFocus: null, revision: null };
   function fakeNode(tag) {
     return {
@@ -556,6 +652,46 @@ function renderHarness(makers, options) {
       }
       return Promise.resolve({ result: "committed" });
     },
+    // ★ 2026-09-23：跑一轮改成**异步**（POST 立即返回 + 轮询 run-status）⇒ 替身这两条必须成对给出：
+    //   只给 runDecision 而不给 runDecisionStatus 会让轮询当场走"没有这个端点"的分支（真实浏览器里不会那样）。
+    runDecision: (branch, expectedRevision, decisionMakerId) => {
+      calls.run.push({ branch, expectedRevision, decisionMakerId });
+      return Promise.resolve({
+        result: "committed",
+        ref: { branch: "main", revision: 7 },
+        running: true,
+      });
+    },
+    // ★ 默认应答"第一次轮询就已完成"：轮询必须**当场停**（留着一个 setInterval 会让 node 进程不退出——
+    //   那正是"测试看起来过了、其实挂住"的形态）。
+    runDecisionStatus: (id) => {
+      if (opts.runDecisionStatusResponder) {
+        return opts.runDecisionStatusResponder({ id });
+      }
+      return Promise.resolve({
+        decisionMakerId: id,
+        running: false,
+        done: true,
+        llmCalls: 2,
+        toolCalls: [{ tool: "simos.map.hex", ok: true, code: "", summary: "desert" }],
+        startedAt: 1,
+        elapsedMs: 1200,
+        result: { status: "ok", conversationId: "decision-maker:" + id, finalText: "已出令" },
+      });
+    },
+    directives: () => Promise.resolve({ directives: opts.directives || [] }),
+    sayToDecisionMaker: (decisionMakerId, text, branch, revision) => {
+      calls.say.push({ decisionMakerId, text, branch, revision });
+      return Promise.resolve({
+        decisionMakerId: decisionMakerId,
+        conversationId: "decision-maker:" + decisionMakerId,
+        length: text.length,
+      });
+    },
+    resetDecisionConversation: (branch, expectedRevision, decisionMakerId) => {
+      calls.reset.push({ branch, expectedRevision, decisionMakerId });
+      return Promise.resolve({ result: "committed", ref: { branch: "main", revision: 9 } });
+    },
   };
   const mapStub = { nationIdsOfRegions: M.nationIdsOfRegions, nationRegionIds: M.nationRegionIds };
   const P2 = loadWebui("panels.js", { SimosApp: appStub, SimosApi: apiStub, SimosMap: mapStub })
@@ -637,12 +773,20 @@ test("index-html-has-six-modes-and-decision-panel", () => {
 
 test("index-html-decision-mode-has-start-decision-button", () => {
   const html = readWebui("index.html");
-  // ★ T10（三件事模型 ④）：决策模式左栏有「开始决策」入口；按钮**默认 disabled**（只在 due 为真时可点）。
+  // ★★ T10（三件事模型 ④）建了这个入口；**2026-09-23 用户裁定改形态**：不再受 due 闸门限制（随时可点）——
+  //   故按钮**不再带 disabled**，due 只作提示（判别力：把 disabled 加回去，本条即红）。
   assert.ok(html.includes('id="decision-start"'), "决策模式必须有「开始决策」按钮");
   assert.ok(html.includes("开始决策"), "按钮文案必须是「开始决策」");
   assert.ok(html.includes('id="decision-start-status"'), "必须有发起结果状态行");
   const buttonTag = html.slice(html.indexOf('id="decision-start"'), html.indexOf(">", html.indexOf('id="decision-start"')));
-  assert.ok(buttonTag.includes("disabled"), "按钮必须默认 disabled（due 闸门未过时不可点）");
+  assert.equal(buttonTag.includes("disabled"), false, "按钮不得再 disabled（due 只是提示，不拦人）");
+  // ★ 2026-09-23 新增的三个交互锚点（就地结果 / 说一句话 / 上下文重置 + 可展开的 LLM 运行情况）。
+  assert.ok(html.includes('id="decision-latest"'), "必须有一处**就地**渲染决策的挂载点");
+  assert.ok(html.includes('id="decision-say-text"'), "必须有跟决策人对话的文本框");
+  assert.ok(html.includes('id="decision-say-send"'), "必须有发送按钮");
+  assert.ok(html.includes('id="decision-context-reset"'), "必须有「上下文重置」按钮");
+  assert.ok(html.includes('id="decision-progress-toggle"'), "必须有「展开 LLM 运行情况」的开关");
+  assert.ok(html.includes('id="decision-progress"'), "必须有 LLM 运行情况的容器");
   // 撤掉的右栏审批计数不得回归（T1 的成果）。
   assert.equal(html.includes("approvals-count"), false, "右栏审批计数不得回归");
 });

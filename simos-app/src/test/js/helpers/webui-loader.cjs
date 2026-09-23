@@ -58,6 +58,11 @@ function loadWebui(name, extraGlobals) {
     fetch: () => Promise.reject(new Error("fetch not stubbed")),
     setTimeout,
     clearTimeout,
+    // ★ 2026-09-23：轮询（`setInterval`/`clearInterval`）进了面板逻辑（决策那一轮改成异步 + 轮询 run-status）
+    //   ⇒ 沙箱必须提供与浏览器同一套定时器面。**不给的后果不是"测试变红"，是 `setInterval is not defined`
+    //   把功能整条打断**（而真实浏览器里一切正常）——宿主壳与运行时差一个全局，是最难发现的那种假红/假绿。
+    setInterval,
+    clearInterval,
     URL,
   };
   Object.assign(sandbox, extraGlobals || {});
@@ -65,6 +70,8 @@ function loadWebui(name, extraGlobals) {
   win.document = documentStub;
   win.console = console;
   win.setTimeout = setTimeout;
+  win.setInterval = setInterval;
+  win.clearInterval = clearInterval;
   win.performance = performance;
   if (extraGlobals) {
     Object.keys(extraGlobals).forEach((key) => {

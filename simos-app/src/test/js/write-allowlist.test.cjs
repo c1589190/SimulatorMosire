@@ -32,7 +32,15 @@ const ALLOWED_LLM_CONFIG = [
   "/api/llm/providers/test",
 ];
 // 固定类型的**世界写**窄端点（落 revision，但前端不传 type）——逐条精确列出，与命令 allowlist 同族对待。
-const ALLOWED_NARROW_WRITES = ["/api/sd/set-decision-maker-provider"];
+const ALLOWED_NARROW_WRITES = [
+  "/api/sd/set-decision-maker-provider",
+  "/api/sd/reset-decision-maker-conversation",
+];
+// ★ 2026-09-23：「跟决策人说一句话」`POST /api/sd/decision-makers/{id}/say`——它**不是命令写**（落的是会话库，
+//   不进 revision）。路径里带 id ⇒ 扫描器看到的是**前缀字面量**，故这里按"前缀 + 必须是 /say 结尾"精确放行
+//   （比裸前缀严：`/api/sd/decision-makers/x` 这种 POST 形态不放行）。
+const SAY_PREFIX = "/api/sd/decision-makers/";
+const SAY_SUFFIX = "/say";
 // ★ T7：审批裁决面（**非命令写**）——逐条精确列出，唯一一条。
 //   决策模式的「批准/驳回」打 POST /api/approvals/{id}；它不走 Command → ChangeSet → Revision，
 //   故**不进** modes.js 的命令白名单（那只管命令类型），只在这里显式放行。
@@ -47,6 +55,8 @@ const DECLARED_WRITES = [
   "/api/llm/providers",
   "/api/llm/providers/delete",
   "/api/llm/providers/test",
+  "/api/sd/decision-makers/",
+  "/api/sd/reset-decision-maker-conversation",
   "/api/sd/run-decision",
   "/api/sd/set-decision-maker-provider",
   "/api/sd/start-decision",
@@ -57,6 +67,8 @@ const WRITE_FUNCTIONS = [
   "fork",
   "startDecision",
   "runDecision",
+  "sayToDecisionMaker",
+  "resetDecisionConversation",
   "approve",
   "saveLlmProvider",
   "deleteLlmProvider",
@@ -84,6 +96,9 @@ function isAllowedWrite(url) {
   if (ALLOWED.includes(url) || ALLOWED_LLM_CONFIG.includes(url) || ALLOWED_NARROW_WRITES.includes(url)) {
     return true;
   }
+  if (url.startsWith(SAY_PREFIX) && url.endsWith(SAY_SUFFIX)) {
+    return url.length > SAY_PREFIX.length + SAY_SUFFIX.length;
+  }
   return url.startsWith(ALLOWED_APPROVAL_PREFIX) && url.length > ALLOWED_APPROVAL_PREFIX.length;
 }
 
@@ -98,8 +113,9 @@ test("api.js-declares-exactly-the-allowed-write-endpoints", () => {
   const found = scanPostEndpoints(readWebui("api.js"));
   assert.equal(
     found.length,
-    10,
-    "扫描必须非空且恰十条（3 通用命令 + 2 决策窄写 + 1 审批 + 4 provider/绑定窄写）：" + JSON.stringify(found)
+    12,
+    "扫描必须非空且恰十二条（3 通用命令 + 2 决策窄写 + 1 会话重置窄写 + 1 会话 say + 1 审批 + 4 provider/绑定窄写）：" +
+      JSON.stringify(found)
   );
   assert.deepEqual(found, DECLARED_WRITES);
   assert.deepEqual(violations(found), []);
@@ -139,6 +155,11 @@ test("scanner-has-teeth-on-undeclared-endpoint", () => {
   assert.equal(isAllowedWrite("/api/approvals/"), false, "只有斜杠、没有 id 不放行");
   assert.equal(isAllowedWrite("/api/approvalsx/pm-1"), false, "错前缀不放行");
   assert.equal(isAllowedWrite("/api/approvals/pm-1"), true, "恰是前缀 + 非空 id ⇒ 放行");
+  // ★ say 前缀也必须是"前缀 + 非空 id + /say 后缀"（裸前缀 / 少后缀 / 空 id 都不放行）。
+  assert.equal(isAllowedWrite("/api/sd/decision-makers/"), false, "只有前缀不放行");
+  assert.equal(isAllowedWrite("/api/sd/decision-makers/dm-1"), false, "没有 /say 后缀不放行");
+  assert.equal(isAllowedWrite("/api/sd/decision-makers//say"), false, "空 id 不放行");
+  assert.equal(isAllowedWrite("/api/sd/decision-makers/dm-1/say"), true, "前缀 + id + /say ⇒ 放行");
 });
 
 test("scanner-detects-a-missing-declared-endpoint", () => {
@@ -166,6 +187,9 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   await api.fork("main", 0, "b2");
   await api.startDecision("main", 0, "dm-1");
   await api.runDecision("main", 0, "dm-1");
+  await api.sayToDecisionMaker("dm-1", "守住渡口", "main", 0);
+  await api.resetDecisionConversation("main", 0, "dm-1");
+  await api.runDecisionStatus("dm-1", { branch: "main", revision: 0 });
   await api.state();
   await api.timeline("main");
   await api.mapOverview();
@@ -198,6 +222,8 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
       "/api/llm/providers",
       "/api/llm/providers/delete",
       "/api/llm/providers/test",
+      "/api/sd/decision-makers/dm-1/say",
+      "/api/sd/reset-decision-maker-conversation",
       "/api/sd/run-decision",
       "/api/sd/set-decision-maker-provider",
       "/api/sd/start-decision",

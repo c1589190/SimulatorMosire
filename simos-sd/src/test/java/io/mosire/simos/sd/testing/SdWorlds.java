@@ -54,13 +54,29 @@ public final class SdWorlds {
     return world(sd, map(), units());
   }
 
+  /**
+   * **世界 tick 显式给定**的形态（2026-09-23 新增）。
+   *
+   * <p>★ 为什么需要它：{@code sd.IssueDirective} 的载荷自带 {@code tick}，而**令不得记在未来**是命令期硬校验 （{@code tick >
+   * 世界当前 tick} ⇒ 拒）⇒ 想测"另一 tick 再出令"这类**合法**场景，夹具的世界就必须先走到那个 tick，
+   * 否则测到的是另一条拒绝理由（而**断言照样可能过**——这正是它必须显式给的原因）。
+   */
+  public static SimulationState world(SdState sd, long tick) {
+    return world(sd, map(), units(), tick);
+  }
+
   public static SimulationState world(SdState sd, GameMap map, UnitState units) {
+    return world(sd, map, units, 0L);
+  }
+
+  public static SimulationState world(SdState sd, GameMap map, UnitState units, long tick) {
+    SimosTimestamp at = SimosTimestamp.of(tick);
     return new SimulationState(
-        new StateMeta(REF, T0),
+        new StateMeta(REF, at),
         Map.of(
-            "sd", new SdSnapshot(REF, T0, sd),
-            "map", new MapSnapshot(REF, T0, map),
-            "unit", new UnitSnapshot(REF, T0, units)),
+            "sd", new SdSnapshot(REF, at, sd),
+            "map", new MapSnapshot(REF, at, map),
+            "unit", new UnitSnapshot(REF, at, units)),
         InMemoryInfoSystem.empty());
   }
 

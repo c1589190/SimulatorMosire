@@ -996,10 +996,20 @@
     app.statusMessage(app.byId("decision-view-status"), message, tone);
   }
 
-  // ── 「开始决策」入口（T10，三件事模型 ④）────────────────────────────────
-  // ★ 目标 = 左栏当前展示的那个决策人（右栏点选 / 单位解析出的单个；国家多决策人时无单一目标 ⇒ 不可点）。
+  // ── 「开始决策」入口（T10，三件事模型 ④；2026-09-23 按用户裁定改造）────────────
+  // ★ 目标 = 左栏当前展示的那个决策人（右栏点选 / 单位解析出的单个；国家多决策人时无单一目标）。
   // ★ 写路径 = api.startDecision（POST /api/sd/start-decision 窄端点，服务端写死 sd.StartDecision）——
   //   本文件**不发通用命令写**（通用写只归 app 的 writeCommand）；审批裁决那条写另有其处（decideApproval）。
+  //
+  // ★★ **due 不再是闸门，只是提示**（用户 2026-09-23：「我在当前回合点开始决策」要随时可点）：
+  //   `startDecisionGate` 仍然算出理由（"非待决（本 tick 未到决策周期）"这类），但**不拦**——按钮不 disabled、
+  //   点了就发；理由只显示在状态行里，让用户看得见"此刻本来不是它的决策窗口"。
+  //
+  // ★★ **点一次 = 发起 + 真跑一轮**（用户要的"跑完在下面生成当前 tick 这个决策人的完整决策"）：
+  //   ① `sd.StartDecision`（原样保留：它是"开始一次决策"的世界事实，判决链挂在它后面）；
+  //   ② 接着起一轮**异步**的 `sd.RunDecision`（POST 立即返回；进度与结局靠 run-status 轮询，见下一节）。
+  //   再点一次 = 再跑一轮（用户原话：「视为不满意，让 llm 重新决策」）——**上下文沿用**，
+  //   唯一的清空手段是「上下文重置」（decideResetDecisionContext）。
   var startDecisionTarget = null;
   var lastStartGateStamp = null;
 
@@ -1012,13 +1022,19 @@
     var gate = startDecisionGate(startDecisionTarget);
     var targetId = startDecisionTarget ? String(startDecisionTarget.id) : "";
     if (button) {
-      button.disabled = !gate.enabled;
+      // ★ **不再置 disabled**（用户裁定：随时可点）。仍然要求"有目标"——没有目标时点了只能报错，
+      //   故点击路径（decideStartDecision）第一道就如实拒发；按钮本身不再替用户判断时机。
+      button.disabled = false;
       button.setAttribute("data-decision-target", targetId);
     }
-    var stamp = targetId + "|" + gate.enabled + "|" + gate.reason;
+    var stamp = targetId + "|" + gate.reason;
     if (stamp !== lastStartGateStamp) {
       lastStartGateStamp = stamp;
-      setStartDecisionStatus(gate.reason, gate.enabled ? "ok" : "muted");
+      // ★ 文案从"能不能点"改成"此刻是什么时机"：门禁不再是权限，是提示（"随时可点 · 非待决（…）"）。
+      setStartDecisionStatus(
+        "随时可点 · " + gate.reason,
+        gate.enabled ? "ok" : "muted"
+      );
     }
   }
 
@@ -1033,21 +1049,54 @@
     updateStartDecisionControl();
   }
 
-  /** 点「开始决策」：只对**待决**的当前目标发起（闸门是纯 UX 前置；服务端另做领域校验）。 */
+  /**
+   * **409（游标过期）的公用重试**：重取状态、把游标拉到服务端 {@code current.revision}，**自动重试一次**。
+   *
+   * <p>★ 抽成一处而不是每个写各写一遍：三个入口（发起 / 跑一轮 / 重置）的 409 语义完全一样，各写一遍就会有一条
+   * 漏掉 {@code setRevision} 而**没有任何症状**（下一次点击继续带旧 revision）。
+   *
+   * @param run 收到**新鲜 revision** 之后要重跑的那一步；返回 {@code null} 表示"不该重试"（调用方照常走失败分支）
+   */
+  function retryOnConflict(e, mayRetry, run) {
+    if (!mayRetry || !e || e.status !== 409) {
+      return null;
+    }
+    var current = e.body && e.body.current ? e.body.current : null;
+    return Promise.resolve()
+      .then(function () {
+        return app.refreshState ? app.refreshState(true) : null;
+      })
+      .catch(function () {
+        return null;
+      })
+      .then(function () {
+        var fresh =
+          current && current.revision !== undefined
+            ? current.revision
+            : (app.target() || {}).revision;
+        if (app.setRevision && fresh !== null && fresh !== undefined) {
+          app.setRevision(fresh);
+        }
+        return run(fresh);
+      });
+  }
+
+  /** 点「开始决策」：**不看 due**（用户要随时可点），但有目标才发得出去。 */
   function decideStartDecision() {
     var target = startDecisionTarget;
-    if (!target || !startDecisionGate(target).enabled) {
-      setStartDecisionStatus("未选中可发起的决策人", "warn");
+    if (!target || target.id === null || target.id === undefined || target.id === "") {
+      setStartDecisionStatus("未选中决策人：先在地图上点选国家区域，或点选有决策人的单位。", "warn");
       return;
     }
     var at = app.target() || {};
-    setStartDecisionStatus("发起决策 " + target.id + "…", "muted");
+    var gate = startDecisionGate(target);
+    setStartDecisionStatus("发起决策 " + target.id + "…（" + gate.reason + "）", "muted");
     attemptStartDecision(target, at.branch, at.revision, true);
   }
 
   /**
-   * 发起一次「开始决策」；★ 收到 409（游标过期）时**重取 head、把游标拉到服务端 current.revision，并自动重试一次**
-   * ⇒ 用户点一次即可成功（成功分支也会把游标推进到新 head，避免下一次点击再用旧 revision）。
+   * 发起一次「开始决策」；收到 409（游标过期）⇒ 重取 head、用服务端 {@code current.revision} **自动重试一次**
+   * ⇒ 用户点一次即可成功。成功后**接着**起一轮异步的「跑一轮」（见 {@link startAsyncRun}）。
    *
    * @param mayRetry 只允许自动重试一次（防冲突循环）；重试轮不再重试
    */
@@ -1059,35 +1108,25 @@
           app.setRevision(body.ref.revision);
         }
         setStartDecisionStatus(
-          "已发起：" + target.id + "（" + ((body && body.result) || "committed") + "）",
+          "已发起：" + target.id + "（" + ((body && body.result) || "committed") + "）——接着让它跑一轮…",
           "ok"
         );
         if (app.refreshState) {
           app.refreshState(true);
         }
-        return body;
+        // ★ 第 ② 步：真跑一轮（**异步**）。用**刚落盘的新 head** 当 expectedRevision——用旧 revision 必撞 409。
+        var nextRevision =
+          body && body.ref && body.ref.revision !== undefined ? body.ref.revision : revision;
+        var nextBranch = (body && body.ref && body.ref.branch) || branch;
+        return startAsyncRun(target, nextBranch, nextRevision, true);
       })
       .catch(function (e) {
-        if (e && e.status === 409 && mayRetry) {
-          var current = e.body && e.body.current ? e.body.current : null;
+        var retried = retryOnConflict(e, mayRetry, function (fresh) {
           setStartDecisionStatus("末端已移动（409），重取最新状态后重试…", "warn");
-          return Promise.resolve()
-            .then(function () {
-              return app.refreshState ? app.refreshState(true) : null;
-            })
-            .catch(function () {
-              return null;
-            })
-            .then(function () {
-              var fresh =
-                current && current.revision !== undefined
-                  ? current.revision
-                  : (app.target() || {}).revision;
-              if (app.setRevision && fresh !== null && fresh !== undefined) {
-                app.setRevision(fresh);
-              }
-              return attemptStartDecision(target, branch, fresh, false);
-            });
+          return attemptStartDecision(target, branch, fresh, false);
+        });
+        if (retried) {
+          return retried;
         }
         var reason = e && e.body && e.body.reason ? e.body.reason : (e && e.message) || String(e);
         setStartDecisionStatus("发起失败：" + reason, "err");
@@ -1101,22 +1140,28 @@
   //   （sd.RunDecision）做得到 ⇒ 界面上**点不出来**。本入口把它接进工作台：写仍走**窄端点**
   //   POST /api/sd/run-decision（服务端写死命令类型，前端不传 type）。
   //
-  // ★★ **它会跑很久，且可能停在"等审批"上**：这一轮里决策人若出令（sd.IssueDirective 是敏感写），那次工具调用要
-  //   **阻塞式**等审批（上限 = 壳的 APPROVAL_TIMEOUT）。故状态行一直显示"已 Ns"并点明可能在等审批
-  //   ——**不能表现为卡死**（这是本入口最容易做错的地方）。
+  // ★★ **2026-09-23 起服务端那条变成异步**（用户要的"状态标识 + 可展开进度窗"）：POST **立即返回**，
+  //   这一轮在服务端后台跑；进度与结局由 GET …/run-status **轮询**取得。
+  //   为什么必须异步：这一轮里决策人若出令（sd.IssueDirective 是敏感写），那次工具调用要**阻塞式**等审批
+  //   （上限 = 壳的 APPROVAL_TIMEOUT）⇒ 让 HTTP 请求停在那里，界面除了"卡死"没有别的表现。
   //
-  // ★★ **轨迹只显示当次返回的那一份**（服务端明确取舍：轨迹是过程观测、不是世界事实 ⇒ 不落盘）。
-  //   换 target / 刷新之后它就不在了——读数里有一行明说这件事。
+  // ★★ **轨迹只显示当次那一份**（服务端明确取舍：轨迹是过程观测、不是世界事实 ⇒ 不落盘）。
+  //   它现在同样只在**本次会话的轮询结果**里——刷新或换时间点后不再复现（读数里有一行明说这件事）。
   var runDecisionTarget = null;
   var lastRunGateStamp = null;
-  var runDecisionStartedAt = 0;
-  var runDecisionTicker = null;
+  var asyncRunTimer = null;
+  var asyncRunTargetId = null;
+  var asyncRunStatus = null;
+
+  /** 起跑前"最新一条令"的 id（跑完用来判"这一轮到底有没有产出新的令"；见 drawLatestDecision）。 */
+  var latestDirectiveIdBeforeRun = null;
 
   /**
    * 「让它跑一轮」闸门（纯函数）：有目标 + 它**绑了 provider** 才可点。
    *
    * <p>★ 未绑定 ⇒ 不可点：服务端那条路是 fail-closed（未绑定 provider **抛**，绝不落到某个默认 provider），
    * 让用户点了再等出错不如当场说清。`providerId` 取不到（undefined）与空串同判——**不猜"大概绑了"**。
+   * ★ **与「开始决策」不同**：那边用户明确要求"随时可点"（due 只作提示），这边是**装配前提**（没绑 provider 必失败）。
    */
   function runDecisionGate(maker) {
     if (!maker || maker.id === null || maker.id === undefined || maker.id === "") {
@@ -1126,35 +1171,44 @@
     if (provider === null || provider === undefined || String(provider).trim() === "") {
       return { enabled: false, reason: "未绑定 LLM provider（先到「Provider 配置」子页绑定再跑）" };
     }
-    return { enabled: true, reason: "可跑一轮（真 LLM 自行读世界、出令；耗时数十秒，可能停在等审批）" };
+    return { enabled: true, reason: "可跑一轮（真 LLM 自行读世界、出令；可能停在等审批）" };
   }
 
   function setRunDecisionStatus(message, tone) {
     app.statusMessage(app.byId("decision-run-status"), message, tone);
   }
 
-  /** 运行中的状态文案（**带秒数**）：这是"看起来没卡死"的唯一判据——秒数在动 ⇒ 这一轮还在跑。 */
-  function runningText(id) {
-    var seconds = Math.max(0, Math.round((Date.now() - runDecisionStartedAt) / 1000));
+  /**
+   * 运行中的状态文案（**秒数取自服务端的 {@code elapsedMs}**，不是本地时钟差）：这是"看起来没卡死"的唯一判据
+   * ——秒数在动 ⇒ 这一轮还在跑。
+   *
+   * <p>★ 取服务端的读数而不是本地 {@code Date.now()} 差：本地差在"请求根本没送到"时也会一直涨（那正是**假装在跑**）。
+   */
+  function runningText(id, status) {
+    var seconds = Math.max(0, Math.round(((status && status.elapsedMs) || 0) / 1000));
+    var calls = toolCallCount(status);
     return (
-      "正在跑一轮：" + id + "（已 " + seconds + "s）——真 LLM 多轮工具调用；" +
-      "若它出令（sd.IssueDirective），会在审批栏等审批（右下方通知栏 / 「审批」子页）"
+      "正在跑一轮：" + id + "（已 " + seconds + "s）· 第 " + valueOrDash(status && status.llmCalls) +
+      " 轮 LLM · 已调 " + calls + " 次工具" +
+      (calls ? "（最近 " + lastToolName(status) + "）" : "") +
+      "——若它出令（sd.IssueDirective），会在审批栏等审批（右下方通知栏 / 「审批」子页）"
     );
   }
 
-  function startRunTicker(id) {
-    stopRunTicker();
-    runDecisionStartedAt = Date.now();
-    setRunDecisionStatus(runningText(id), "muted");
-    runDecisionTicker = setInterval(function () {
-      setRunDecisionStatus(runningText(id), "muted");
-    }, 1000);
+  /** 最近一次工具调用的名字（无 ⇒ `—`；**不编造**）。 */
+  function lastToolName(status) {
+    var calls = status && Array.isArray(status.toolCalls) ? status.toolCalls : [];
+    if (!calls.length) {
+      return "—";
+    }
+    var last = calls[calls.length - 1] || {};
+    return valueOrDash(last.tool);
   }
 
-  function stopRunTicker() {
-    if (runDecisionTicker) {
-      clearInterval(runDecisionTicker);
-      runDecisionTicker = null;
+  function stopAsyncRunPolling() {
+    if (asyncRunTimer) {
+      clearInterval(asyncRunTimer);
+      asyncRunTimer = null;
     }
   }
 
@@ -1170,7 +1224,7 @@
     if (stamp !== lastRunGateStamp) {
       lastRunGateStamp = stamp;
       // ★ 正在跑的时候不让闸门文案把它盖掉（否则"已 Ns"会被门禁原因刷掉 ⇒ 看起来又像卡死）。
-      if (!runDecisionTicker) {
+      if (!asyncRunTimer) {
         setRunDecisionStatus(gate.reason, gate.enabled ? "ok" : "muted");
       }
     }
@@ -1188,93 +1242,444 @@
       return;
     }
     var at = app.target() || {};
-    clearRunTrace();
-    startRunTicker(target.id);
-    attemptRunDecision(target, at.branch, at.revision, true);
+    startAsyncRun(target, at.branch, at.revision, true);
   }
 
   /**
-   * 跑一轮；★ 收到 409（游标过期）时**重取 head、把游标拉到服务端 current.revision，并自动重试一次**（与
-   * {@link attemptStartDecision} 同制：重试的那一轮**重新**开始计时，状态行不撒谎）。
+   * **起跑一轮**（异步）：POST 窄端点（**立即返回**）⇒ 成功就开始轮询 run-status；409 ⇒ 重取 head 后自动重试一次。
+   *
+   * <p>★ 两个入口（「开始决策」的第 ② 步、「让它跑一轮」）共用它：**同一份**起跑逻辑，免得两处各写一遍
+   * 而其中一处漏掉 409/轮询。
    */
-  function attemptRunDecision(target, branch, revision, mayRetry) {
+  function startAsyncRun(target, branch, revision, mayRetry) {
+    clearRunTrace();
+    stopAsyncRunPolling();
+    asyncRunTargetId = String(target.id);
+    asyncRunStatus = null;
+    // ★ 记下"起跑前的最新一条令"：跑完才能说清"这一轮**有没有**产出新的令"——
+    //   若这一轮没出令而界面照样渲染一条旧的，用户会把它读成"这一轮的决定"（**看起来完全正常**的谎）。
+    latestDirectiveIdBeforeRun =
+      loadedDirectives && loadedDirectives.length
+        ? directiveFields(loadedDirectives[0]).directiveId
+        : null;
+    setRunDecisionStatus("正在跑一轮：" + asyncRunTargetId + "（已 0s）——已发起，等第一个进度…", "muted");
     return api
       .runDecision(branch, revision, target.id)
       .then(function (body) {
-        stopRunTicker();
         if (body && body.ref && body.ref.revision !== undefined && app.setRevision) {
           app.setRevision(body.ref.revision);
         }
-        renderRunTrace(body);
-        setRunDecisionStatus(runOutcomeText(body), runOutcomeTone(body));
+        if (body && body.running === false) {
+          // ★ 服务端未接入运行流（只落了触发事实）⇒ 如实说，**不进入轮询**（轮询会一直读到"没有记录"）。
+          setRunDecisionStatus(
+            "触发已落盘，但这一轮没有跑：" + valueOrDash(body.note || "运行流未接入"),
+            "warn"
+          );
+          return body;
+        }
+        startAsyncRunPolling(asyncRunTargetId);
         if (app.refreshState) {
           app.refreshState(true);
         }
-        // ★ 这一轮真出过令 ⇒ 决策记录多了一条，当场重取（否则用户得自己刷新才看得见）。
-        loadDecisionDirectives([target.id]);
         return body;
       })
       .catch(function (e) {
-        if (e && e.status === 409 && mayRetry) {
-          var current = e.body && e.body.current ? e.body.current : null;
+        var retried = retryOnConflict(e, mayRetry, function (fresh) {
           setRunDecisionStatus("末端已移动（409），重取最新状态后重试…", "warn");
-          return Promise.resolve()
-            .then(function () {
-              return app.refreshState ? app.refreshState(true) : null;
-            })
-            .catch(function () {
-              return null;
-            })
-            .then(function () {
-              var fresh =
-                current && current.revision !== undefined
-                  ? current.revision
-                  : (app.target() || {}).revision;
-              if (app.setRevision && fresh !== null && fresh !== undefined) {
-                app.setRevision(fresh);
-              }
-              startRunTicker(target.id);
-              return attemptRunDecision(target, fresh, false);
-            });
+          return startAsyncRun(target, branch, fresh, false);
+        });
+        if (retried) {
+          return retried;
         }
-        stopRunTicker();
+        stopAsyncRunPolling();
         var reason = e && e.body && e.body.reason ? e.body.reason : (e && e.message) || String(e);
         setRunDecisionStatus("跑一轮失败：" + reason, "err");
         return null;
       });
   }
 
-  /**
-   * 结局文案（纯函数）：**提交结局与这一轮自己的结局分开说**——服务端的 HTTP 200 只保证"触发事实已落盘"，
-   * 那一轮可能中止（预算）或没跑成（未绑定 / 路由坏 / 查无）。把它读成"跑好了"就是把两件事混成一件。
-   */
-  function runOutcomeText(body) {
-    var b = body || {};
-    if (b.result !== "committed") {
-      return "触发未落盘：" + valueOrDash(b.result) + "（这一轮没有跑）";
-    }
-    if (b.reason === "turn-budget") {
-      return "已中止：撞上回合预算（llmCalls=" + valueOrDash(b.llmCalls) + "）；历史已落盘，下一轮可续";
-    }
-    if (b.reason) {
-      return "这一轮没跑成：" + valueOrDash(b.reason) + " —— " + valueOrDash(b.detail);
-    }
-    return (
-      "跑完一轮：llmCalls=" + valueOrDash(b.llmCalls) + "，工具调用 " + toolCallCount(b) + " 次"
-    );
+  /** 开始轮询（每 1s 一次；**立刻**先取一次，不等第一个间隔）。 */
+  function startAsyncRunPolling(id) {
+    stopAsyncRunPolling();
+    asyncRunTargetId = id;
+    asyncRunTimer = setInterval(function () {
+      pollAsyncRun(id);
+    }, 1000);
+    pollAsyncRun(id);
   }
 
-  function runOutcomeTone(body) {
-    var b = body || {};
-    if (b.result !== "committed" || b.reason) {
-      return "warn";
+  /** 取一次读数：刷进度窗与状态行；跑完 ⇒ 停轮询、收尾（渲染轨迹 + 就地渲染决策）。 */
+  function pollAsyncRun(id) {
+    if (typeof api.runDecisionStatus !== "function") {
+      stopAsyncRunPolling();
+      setRunDecisionStatus("本页的 api.js 没有 run-status —— 无法知道这一轮跑到哪儿了", "warn");
+      return;
     }
-    return "ok";
+    api
+      .runDecisionStatus(id, app.target())
+      .then(function (status) {
+        if (asyncRunTargetId !== id) {
+          return; // 目标已换 ⇒ 这次读数作废（不拿甲的状态去画乙）
+        }
+        asyncRunStatus = status || null;
+        renderRunProgress(id, status);
+        var known = status && status.startedAt !== null && status.startedAt !== undefined;
+        if (!known) {
+          stopAsyncRunPolling();
+          setRunDecisionStatus(
+            "服务端没有 " + id + " 这一轮的记录（可能刚重启过）——这一轮的结果无从得知。",
+            "warn"
+          );
+          return;
+        }
+        if (status.done === true) {
+          stopAsyncRunPolling();
+          finishAsyncRun(id, status);
+          return;
+        }
+        setRunDecisionStatus(runningText(id, status), "muted");
+      })
+      .catch(function (e) {
+        if (asyncRunTargetId !== id) {
+          return;
+        }
+        stopAsyncRunPolling();
+        renderRunProgress(id, null);
+        setRunDecisionStatus("读取运行状态失败：" + ((e && e.message) || e), "err");
+      });
+  }
+
+  /** 收尾：状态行说清结局、轨迹按既有渲染画一份、**就地**渲染该决策人最近一次决策。 */
+  function finishAsyncRun(id, status) {
+    setRunDecisionStatus(runOutcomeText(status), runOutcomeTone(status));
+    renderRunTrace(runTraceFromStatus(id, status));
+    loadLatestDecision(id);
+    if (app.refreshState) {
+      app.refreshState(true);
+    }
+    // ★ 真出过令 ⇒ 决策记录多了一条，当场重取（否则用户得自己刷新才看得见）。
+    loadDecisionDirectives([id]);
+  }
+
+  /**
+   * 异步读数 ⇒ **既有轨迹渲染**要的形状（字段同名同形）。
+   *
+   * <p>★ 为什么要这么一层：轨迹渲染器（{@link runTraceFields}）原本吃的是**同步响应**的形状；异步化之后同样的字段
+   * 散在 {@code status} 与 {@code status.result} 两处。**只在这里翻译一次**，渲染器一行不改——若让渲染器两头都认，
+   * "两种形状"就会渗进渲染分支里，日后加字段必漏一处。
+   */
+  function runTraceFromStatus(id, status) {
+    var s = status || {};
+    var r = s.result || {};
+    return {
+      decisionMakerId: id,
+      conversationId: r.conversationId,
+      llmCalls: s.llmCalls,
+      abortedByBudget: r.status === "aborted",
+      finalText: r.finalText,
+      // ★ `ok` ⇒ 没有 reason（渲染器据此走"跑完了"那条），其余一律带上服务端给的理由（**不吞**）。
+      reason: r.status && r.status !== "ok" ? valueOrDash(r.reason) : null,
+      detail: r.detail,
+      toolCalls: s.toolCalls,
+      ref: null,
+    };
+  }
+
+  /**
+   * 结局文案（纯函数）：**认服务端给的那一个**（`result.status`），不在前端另算一套。
+   *
+   * <p>★ `ok` / `aborted` / `failed` 三态各自说清：中止**不是**失败到没有信息（触发事实已落盘、历史也在会话里）。
+   */
+  function runOutcomeText(status) {
+    var s = status || {};
+    var r = s.result || {};
+    if (!r.status) {
+      return "这一轮结束了，但服务端没有给出结局（读数里 result 为空）——以轨迹为准。";
+    }
+    if (r.status === "aborted") {
+      return (
+        "已中止：撞上回合预算（llmCalls=" +
+        valueOrDash(s.llmCalls) +
+        "）；历史已落盘，下一轮可续"
+      );
+    }
+    if (r.status === "failed") {
+      return "这一轮没跑成：" + valueOrDash(r.reason) + " —— " + valueOrDash(r.detail);
+    }
+    return "跑完一轮：llmCalls=" + valueOrDash(s.llmCalls) + "，工具调用 " + toolCallCount(s) + " 次";
+  }
+
+  function runOutcomeTone(status) {
+    var r = (status && status.result) || {};
+    if (r.status === "ok") {
+      return "ok";
+    }
+    return r.status ? "warn" : "muted";
   }
 
   function toolCallCount(body) {
     var calls = body && Array.isArray(body.toolCalls) ? body.toolCalls : [];
     return calls.length;
+  }
+
+  // ── LLM 运行情况（可展开，准实时）────────────────────────────────────
+  //
+  // ★★ **进度口径 = 服务端的两个真实观察点**（每轮 LLM 结束 / 每次工具调用结束），**不是逐字流式**（用户已选
+  //   "先做准实时进度"）。故这里画的每一条都对应服务端真的发生过的一件事，没有"心跳"这种编出来的行。
+
+  var progressExpanded = false;
+
+  /** 进度读数 ⇒ 行（纯函数）：未跑过 / 正在跑 / 已跑完三种形态**各不相同**（不把"没有记录"画成"0 轮 0 次"）。 */
+  function runProgressLines(id, status) {
+    var s = status || {};
+    var known = s.startedAt !== null && s.startedAt !== undefined;
+    if (!known) {
+      return {
+        empty: true,
+        lines: ["还没有 " + id + " 这一轮的记录（服务端重启后这份账会清空——它不落盘）。"],
+      };
+    }
+    var lines = [];
+    var seconds = Math.max(0, Math.round((s.elapsedMs || 0) / 1000));
+    lines.push(
+      "状态：" +
+        (s.done === true ? "已结束" : "正在跑") +
+        " · 已 " +
+        seconds +
+        "s · 第 " +
+        valueOrDash(s.llmCalls) +
+        " 轮 LLM 调用"
+    );
+    var calls = Array.isArray(s.toolCalls) ? s.toolCalls : [];
+    lines.push("工具调用：" + calls.length + " 次");
+    calls.forEach(function (call, index) {
+      var c = call || {};
+      lines.push(
+        "  " +
+          (index + 1) +
+          ". " +
+          valueOrDash(c.tool) +
+          " · " +
+          (c.ok === true ? "OK" : "失败（" + valueOrDash(c.code) + "）")
+      );
+    });
+    if (s.done === true) {
+      var r = s.result || {};
+      if (r.finalText) {
+        lines.push("收尾文本：" + String(r.finalText));
+      }
+      lines.push("会话：" + valueOrDash(r.conversationId));
+    }
+    return { empty: false, lines: lines };
+  }
+
+  function setProgressExpanded(open) {
+    progressExpanded = !!open;
+    var body = app.byId("decision-progress");
+    var button = app.byId("decision-progress-toggle");
+    if (body) {
+      body.hidden = !progressExpanded;
+    }
+    if (button) {
+      if (button.setAttribute) {
+        button.setAttribute("aria-expanded", progressExpanded ? "true" : "false");
+      }
+      button.textContent = progressExpanded ? "收起 LLM 运行情况" : "展开 LLM 运行情况";
+    }
+    renderRunProgress(asyncRunTargetId, asyncRunStatus);
+  }
+
+  /** 画进度窗（未展开时也画——展开的那一刻即刻可见，不必等下一次轮询）。 */
+  function renderRunProgress(id, status) {
+    var mount = app.byId("decision-progress");
+    if (!mount) {
+      return;
+    }
+    var plan = runProgressLines(id || "（未选中）", status);
+    app.clear(mount);
+    plan.lines.forEach(function (line) {
+      mount.appendChild(
+        app.el("div", { class: "progress-line" + (plan.empty ? " empty" : ""), text: line })
+      );
+    });
+  }
+
+  // ── 本次运行后的决策（**就地**渲染，没有"看结果"按钮）────────────────────
+  //
+  // ★★ 用户 2026-09-23：「跑完在下面生成**当前 tick** 这个决策人的完整决策（决心/理由/命令清单）；
+  //   **左边没有额外的生成结果按钮**」⇒ 结果直接画在这条路径的下方，不另设入口。
+  // ★ 取的是 `GET /api/sd/directives?decisionMakerId=<id>` 的**最新一条**（服务端按 tick 降序、同 tick 按 id 字典序）。
+  //   跑一轮若真出了令，那一条就是它这一轮落的（模型的 tick 现在被校验为**不得记在未来**）。
+  function loadLatestDecision(makerId) {
+    var mount = app.byId("decision-latest");
+    if (!mount) {
+      return;
+    }
+    if (typeof api.directives !== "function") {
+      app.clear(mount);
+      mount.appendChild(app.el("p", { class: "empty", text: "决策记录端点未接入（本页的 api.js 里没有 directives）" }));
+      return;
+    }
+    app.clear(mount);
+    mount.appendChild(app.el("p", { class: "empty", text: "载入本次运行后的决策…" }));
+    api
+      .directives(makerId, app.target())
+      .then(function (body) {
+        drawLatestDecision(mount, ((body && body.directives) || [])[0]);
+      })
+      .catch(function (e) {
+        app.clear(mount);
+        mount.appendChild(
+          app.el("p", { class: "empty", text: "决策载入失败：" + ((e && e.message) || e) })
+        );
+      });
+  }
+
+  /** 画"最新一条决策"的全文（决心 / 理由 / 命令清单）；没有 ⇒ 明说"这一轮没有产出决策"。 */
+  function drawLatestDecision(mount, directive) {
+    app.clear(mount);
+    if (!directive) {
+      mount.appendChild(
+        app.el("p", {
+          class: "empty",
+          text: "这个决策人还没有出过令（这一轮它可能没决定要做什么）——已出过的令见下方「决策记录」。",
+        })
+      );
+      return;
+    }
+    var fields = directiveFields(directive);
+    var box = app.el("div", { class: "latest-decision" });
+    box.setAttribute("data-latest-directive-id", fields.directiveId);
+    box.appendChild(
+      app.el("div", {
+        class: "latest-head",
+        text: "最近一次决策 · tick " + fields.tick + " · " + fields.directiveId + " · " + fields.status,
+      })
+    );
+    if (latestDirectiveIdBeforeRun !== null && fields.directiveId === latestDirectiveIdBeforeRun) {
+      // ★★ **这一轮没产出新的令**：绝不能把旧的那条摆在这里假装是它的产出（用户要的是"本次运行的结果"）。
+      box.appendChild(
+        app.el("p", {
+          class: "status warn latest-stale",
+          text:
+            "★ 这一轮**没有产出新的令**（服务端报的轨迹见上）——下面是它最近一次决策，不是这一轮的产出。",
+        })
+      );
+    }
+    var dl = app.el("dl", { class: "kv latest-detail" });
+    appendRow(dl, "决心 / 理由（intentInfo）", fields.intentInfo);
+    appendRow(dl, "目标", fields.target);
+    appendRow(dl, "判决", fields.verdict);
+    appendRow(dl, "效果", fields.effects);
+    appendRow(dl, "命令清单（" + fields.commands.length + "）", fields.commands.length ? "" : "（无）");
+    fields.commands.forEach(function (command, index) {
+      appendRow(dl, "  " + (index + 1) + ". " + command.type, command.payloadJson);
+    });
+    box.appendChild(dl);
+    mount.appendChild(box);
+  }
+
+  // ── 跟决策人说一句（文本框，2026-09-23）──────────────────────────────
+  //
+  // ★★ 用户原话：「还要做一个文本框在开始决策下面，允许**不管是第一轮还是最后一轮**，都可以额外和决策人进行对话」
+  //   ⇒ 内容作为**一条 user 消息**追加进它的会话（服务端 `POST …/say`），下一轮它就看得见。
+  // ★ 第一轮之前也能用：服务端会**先补身份消息**再落这句（顺序恒为 system → user），否则模型会收到一段没有
+  //   system 的上下文（那样它不知道自己是谁——与现场那次 HTTP 400 同一族的病）。
+  function setSayStatus(message, tone) {
+    app.statusMessage(app.byId("decision-say-status"), message, tone);
+  }
+
+  function sendDecisionSay() {
+    var target = startDecisionTarget;
+    if (!target || target.id === null || target.id === undefined || target.id === "") {
+      setSayStatus("未选中决策人：先点选一个国家区域或有决策人的单位。", "warn");
+      return;
+    }
+    var node = app.byId("decision-say-text");
+    var text = node && node.value !== undefined && node.value !== null ? String(node.value).trim() : "";
+    if (!text) {
+      setSayStatus("先说点什么（空消息不会发出去）。", "warn");
+      return;
+    }
+    if (typeof api.sayToDecisionMaker !== "function") {
+      setSayStatus("本页的 api.js 没有 sayToDecisionMaker（端点未接入）", "warn");
+      return;
+    }
+    var at = app.target() || {};
+    setSayStatus("发送中…", "muted");
+    api
+      .sayToDecisionMaker(target.id, text, at.branch, at.revision)
+      .then(function (body) {
+        if (node) {
+          node.value = "";
+        }
+        setSayStatus(
+          "已发送（落进会话 " +
+            valueOrDash(body && body.conversationId) +
+            "，共 " +
+            valueOrDash(body && body.length) +
+            " 字）——下一轮它就看得见。",
+          "ok"
+        );
+      })
+      .catch(function (e) {
+        var reason = e && e.body && e.body.error ? e.body.error : (e && e.message) || String(e);
+        setSayStatus("发送失败：" + reason, "err");
+      });
+  }
+
+  // ── 上下文重置（2026-09-23）────────────────────────────────────────
+  //
+  // ★★ 用户原话：「重新决策（已有决策的情况下开始决策），llm 的上下文是**沿用**而不是重置的；
+  //   **只有点额外的上下文重置按键才重置**」⇒ 重跑路径**绝不**碰会话；清空只在这一个按钮上。
+  // ★ 走**既有**的 `sd.ResetDecisionMakerConversation`（真命令、落 revision）：会话世代 +1 ⇒ 下一轮落到另一段
+  //   新会话、从空上下文开始（首轮会重新注入身份消息）；**旧会话一条字节都不动**（可审计）。
+  function setContextStatus(message, tone) {
+    app.statusMessage(app.byId("decision-context-status"), message, tone);
+  }
+
+  function decideResetDecisionContext() {
+    var target = startDecisionTarget;
+    if (!target || target.id === null || target.id === undefined || target.id === "") {
+      setContextStatus("未选中决策人：先点选一个国家区域或有决策人的单位。", "warn");
+      return;
+    }
+    var at = app.target() || {};
+    setContextStatus("正在重置 " + target.id + " 的会话上下文…", "muted");
+    attemptResetDecisionContext(target, at.branch, at.revision, true);
+  }
+
+  function attemptResetDecisionContext(target, branch, revision, mayRetry) {
+    return api
+      .resetDecisionConversation(branch, revision, target.id)
+      .then(function (body) {
+        if (body && body.ref && body.ref.revision !== undefined && app.setRevision) {
+          app.setRevision(body.ref.revision);
+        }
+        setContextStatus(
+          "已重置：" + target.id + " 的下一轮从**空上下文**开始（旧会话不删）。左栏「会话世代 / 会话 id」会随后刷新。",
+          "ok"
+        );
+        // ★ 左栏详情里的"会话世代 / 会话 id"是**世界事实** ⇒ 必须重取（不重取就会显示上一段的 id）。
+        decisionLeftKey = null;
+        renderDecisionLeft(app.getState());
+        if (app.refreshState) {
+          app.refreshState(true);
+        }
+        return body;
+      })
+      .catch(function (e) {
+        var retried = retryOnConflict(e, mayRetry, function (fresh) {
+          setContextStatus("末端已移动（409），重取最新状态后重试…", "warn");
+          return attemptResetDecisionContext(target, branch, fresh, false);
+        });
+        if (retried) {
+          return retried;
+        }
+        var reason = e && e.body && e.body.reason ? e.body.reason : (e && e.message) || String(e);
+        setContextStatus("重置失败：" + reason, "err");
+        return null;
+      });
   }
 
   /**
@@ -2096,6 +2501,21 @@
     if (runButton && runButton.addEventListener) {
       runButton.addEventListener("click", decideRunDecision);
     }
+    // ★ 2026-09-23 新增三处接线：发一句话 / 上下文重置 / 展开 LLM 运行情况。
+    var sayButton = app.byId("decision-say-send");
+    if (sayButton && sayButton.addEventListener) {
+      sayButton.addEventListener("click", sendDecisionSay);
+    }
+    var resetButton = app.byId("decision-context-reset");
+    if (resetButton && resetButton.addEventListener) {
+      resetButton.addEventListener("click", decideResetDecisionContext);
+    }
+    var progressToggle = app.byId("decision-progress-toggle");
+    if (progressToggle && progressToggle.addEventListener) {
+      progressToggle.addEventListener("click", function () {
+        setProgressExpanded(!progressExpanded);
+      });
+    }
     var providerSave = app.byId("llm-provider-save");
     if (providerSave && providerSave.addEventListener) {
       providerSave.addEventListener("click", saveLlmProviderFromForm);
@@ -2159,6 +2579,16 @@
     },
     runOutcomeText: runOutcomeText,
     runTraceFields: runTraceFields,
+    // ★ 2026-09-23：异步那一轮的读数投影（e2e/调试用）+ 三个新入口的纯函数部分。
+    runProgressLines: runProgressLines,
+    runTraceFromStatus: runTraceFromStatus,
+    runningText: runningText,
+    lastToolName: lastToolName,
+    say: sendDecisionSay,
+    resetDecisionContext: decideResetDecisionContext,
+    asyncRunTargetId: function () {
+      return asyncRunTargetId;
+    },
     directiveFields: directiveFields,
     directiveHeadline: directiveHeadline,
     decisionMakerGroups: decisionMakerGroups,

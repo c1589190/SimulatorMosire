@@ -13,6 +13,7 @@ import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.decision.DecisionAgentService;
+import io.mosire.simos.app.decision.DecisionRunRegistry;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
@@ -130,6 +131,39 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_MAKER_SCOPE_SUFFIX = "/scope";
 
   /**
+   * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/sd/decision-makers/{id}/run-status}。
+   *
+   * <p>★★ **它存在的前提是"GUI 那条跑一轮改成了异步"**：{@code POST /api/sd/run-decision} 现在**立即返回**
+   * （只在后台起跑），浏览器便只能靠轮询知道进度与结局。★ **GM 经 MCP 的那条仍是同步的**（{@code sd.RunDecision}
+   * 窄工具：调用方等到整轮结束直接拿轨迹）——两条路语义不同是**有意的**，不是不一致：MCP 的调用方是 agent，它能等； 浏览器的调用方是人，等三十秒会以为界面卡死。
+   *
+   * <p>★ **与 {@code /scope} 同款放在详情前缀之下** ⇒ 在 {@link #handleGet} 里必须**先于** {@link
+   * #isDecisionMakerDetail} 判（后者是"前缀 + 非空"的粗判，会把本路径一并吞掉）。
+   */
+  private static final String DECISION_MAKER_RUN_STATUS_SUFFIX = "/run-status";
+
+  /**
+   * **跟决策人说一句话**（2026-09-23，用户要的文本框）：{@code POST /api/sd/decision-makers/{id}/say}，体 {@code
+   * {text}}。
+   *
+   * <p>★★ **它不是命令写、也不该是**：这条消息落进 {@code ConversationStore}（append-only 的会话库，是**旁路**存储）， 不进 {@code
+   * revision}、不改世界——故**不经** {@code CoreSimos.submit}。但**必须记进"写面清单"**（前端 allowlist
+   * 逐条列出）：它是一条真写（写的是会话库），把它算成"读"会让"工作台有哪些写"这件事失真。
+   */
+  private static final String DECISION_MAKER_SAY_SUFFIX = "/say";
+
+  /**
+   * **重置某决策人的会话上下文**（2026-09-23）：{@code POST /api/sd/reset-decision-maker-conversation}，体 {@code
+   * {branch, expectedRevision, decisionMakerId}}。
+   *
+   * <p>★ **它是一条真命令**（{@code sd.ResetDecisionMakerConversation}，落 revision ⇒ 会话世代 +1）：与 {@code
+   * /api/sd/start-decision} / {@code /api/sd/run-decision} 同族窄写，命令类型由服务端写死。旧会话**一条字节都不动**
+   * （append-only、可审计），换的是"下一个轮次落到哪一段"。
+   */
+  private static final String RESET_DECISION_CONVERSATION_PATH =
+      "/api/sd/reset-decision-maker-conversation";
+
+  /**
    * **决策记录只读面**：{@code GET /api/sd/directives[?decisionMakerId=<id>]}——"这个人到底下了什么令"。
    *
    * <p>★ 与 {@code /api/sd/decision-makers/{id}/scope} **同款拒 {@code as=}**：本端点是**审计/配置面**（GM 核对"决策人
@@ -198,6 +232,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/fork",
           "/api/sd/start-decision",
           "/api/sd/run-decision",
+          RESET_DECISION_CONVERSATION_PATH,
           LLM_PROVIDERS_PATH,
           LLM_PROVIDERS_DELETE_PATH,
           LLM_PROVIDERS_TEST_PATH,
@@ -229,6 +264,13 @@ public final class GuiServer implements AutoCloseable {
    * 触发事实、不跑那一轮"）。
    */
   private final DecisionAgentService decisionAgentService;
+
+  /**
+   * 「这一轮跑到哪儿了」的进程内留痕（2026-09-23）：{@code /api/sd/run-decision} 起跑时写、{@code …/run-status} 轮询读。
+   *
+   * <p>★ **不是注入的**（与别的字段不同）：它没有任何外部依赖、也没有第二个使用者——本服务器自己起跑、自己读回； 把它挂进构造器只会让 8 个形参变 9 个，换不到任何可替换性。
+   */
+  private final DecisionRunRegistry decisionRunRegistry = new DecisionRunRegistry();
 
   /** 审批透传用（T6）：只转发，不解释语义。 */
   private final HttpClient approvalClient;
@@ -542,6 +584,12 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return decisionMakerScopeReply(params, decisionMakerIdOfScopePath(path));
     }
+    // ★ 同一条顺序纪律（也是详情前缀之下的路径）：`/run-status` 必须在 isDecisionMakerDetail 之前判。
+    if (isDecisionMakerRunStatus(path)) {
+      rejectAs(path, asPresent);
+      return decisionMakerRunStatusReply(
+          decisionMakerIdOfSuffixedPath(path, DECISION_MAKER_RUN_STATUS_SUFFIX));
+    }
     if (isDecisionMakerDetail(path)) {
       rejectAs(path, asPresent);
       return decisionMakerReply(
@@ -597,6 +645,13 @@ public final class GuiServer implements AutoCloseable {
     if (path.equals(RUN_DECISION_PATH)) {
       return runDecisionReply(exchange);
     }
+    if (path.equals(RESET_DECISION_CONVERSATION_PATH)) {
+      return resetDecisionConversationReply(exchange);
+    }
+    if (isDecisionMakerSay(path)) {
+      return sayToDecisionMakerReply(
+          exchange, decisionMakerIdOfSuffixedPath(path, DECISION_MAKER_SAY_SUFFIX));
+    }
     if (path.equals(LLM_PROVIDERS_PATH)) {
       return upsertLlmProviderReply(exchange);
     }
@@ -622,6 +677,10 @@ public final class GuiServer implements AutoCloseable {
   }
 
   private static String allowedMethod(String path) {
+    // ★ `…/say` 也是"详情前缀 + 非空"的形态 ⇒ 必须先判它，否则会被下面那条粗判读成 GET（405 的 Allow 头就写错了）。
+    if (isDecisionMakerSay(path) || path.equals(RESET_DECISION_CONVERSATION_PATH)) {
+      return "POST";
+    }
     if (GET_ROUTES.contains(path)
         || isUnitDetail(path)
         || isRegionDetail(path)
@@ -664,10 +723,33 @@ public final class GuiServer implements AutoCloseable {
 
   /** 从范围路径里取出决策人 id（去掉前缀与 {@code /scope} 后缀，再 url 解码）。 */
   private static String decisionMakerIdOfScopePath(String path) {
+    return decisionMakerIdOfSuffixedPath(path, DECISION_MAKER_SCOPE_SUFFIX);
+  }
+
+  /**
+   * 决策人**这一轮跑到哪儿了**：{@code /api/sd/decision-makers/{id}/run-status}（**含** 后缀、且 id 非空）。
+   *
+   * <p>★ 与 {@link #isDecisionMakerScope} 同一条三条件纪律（少了 id 非空那一条，空 id 会被拿去查，得到一个语焉不详的 404）。
+   */
+  private static boolean isDecisionMakerRunStatus(String path) {
+    return isDecisionMakerSuffixed(path, DECISION_MAKER_RUN_STATUS_SUFFIX);
+  }
+
+  /** **跟决策人说一句话**：{@code /api/sd/decision-makers/{id}/say}（**含** 后缀、且 id 非空）。 */
+  private static boolean isDecisionMakerSay(String path) {
+    return isDecisionMakerSuffixed(path, DECISION_MAKER_SAY_SUFFIX);
+  }
+
+  private static boolean isDecisionMakerSuffixed(String path, String suffix) {
+    return path.startsWith(DECISION_MAKER_DETAIL_PREFIX)
+        && path.endsWith(suffix)
+        && path.length() > DECISION_MAKER_DETAIL_PREFIX.length() + suffix.length();
+  }
+
+  /** 从 `前缀 + id + 后缀` 形态的路径里取出 id（url 解码）。 */
+  private static String decisionMakerIdOfSuffixedPath(String path, String suffix) {
     return urlDecode(
-        path.substring(
-            DECISION_MAKER_DETAIL_PREFIX.length(),
-            path.length() - DECISION_MAKER_SCOPE_SUFFIX.length()));
+        path.substring(DECISION_MAKER_DETAIL_PREFIX.length(), path.length() - suffix.length()));
   }
 
   /** 审批代理路径：{@code /api/approvals}（列表/GET）与 {@code /api/approvals/{id}}（决议/POST）。 */
@@ -1067,49 +1149,189 @@ public final class GuiServer implements AutoCloseable {
             "sd.RunDecision",
             MAPPER.writeValueAsString(payload));
     CommandResult result = core.submit(command);
-    if (!(result instanceof CommandResult.Committed committed) || decisionAgentService == null) {
+    if (!(result instanceof CommandResult.Committed committed)) {
       return resultReply(result);
     }
-    return Reply.of(200, runDecisionView(committed, decisionMakerId));
+    Map<String, Object> view = new LinkedHashMap<>(ApiViews.committed(committed.ref()));
+    view.put("decisionMakerId", decisionMakerId);
+    if (decisionAgentService == null) {
+      // ★ 未接入 ⇒ 退回"只落触发事实、不跑那一轮"（与旧行为同），**如实说**，不装作跑过了。
+      view.put("running", false);
+      view.put("note", "决策人运行流未接入（DecisionAgentService 缺席）——只落了触发事实，没有跑这一轮");
+      return Reply.of(200, view);
+    }
+    // ★★ **后台跑，立即返回**（2026-09-23，用户要的"状态标识 + 可展开进度窗"）：这一轮里决策人若出令，那次工具调用
+    //   会**阻塞式**等审批（上限 = 壳的 APPROVAL_TIMEOUT）⇒ 让 HTTP 请求停在那里，界面就只能表现为卡死。
+    //   进度与结局改由 `/api/sd/decision-makers/{id}/run-status` 轮询（同一个 executor：虚拟线程，一次请求一条，不饿着别处）。
+    //   ★ 用 {@code execute}（**void**）而不是 {@code submit}（返回 Future）：这一轮自己会接住全部失败并写成结局
+    //   ⇒ 没有 Future 要读；用 submit 就是把一个"异常被吞掉且无人读"的返回值凭空造出来（门禁实测报了它）。
+    StateRef ref = committed.ref();
+    decisionRunRegistry.begin(decisionMakerId);
+    view.put("running", true);
+    view.put(
+        "runStatusPath",
+        DECISION_MAKERS_PATH + "/" + decisionMakerId + DECISION_MAKER_RUN_STATUS_SUFFIX);
+    executor.execute(() -> runDecisionInBackground(ref, decisionMakerId));
+    return Reply.of(200, view);
   }
 
   /**
-   * 跑一轮并把**轨迹**装配成视图（字段名与 GM 侧窄工具逐字一致：同一件事在两处呈现同一个形状）。
+   * **在后台跑完那一轮**，并把进度与结局写进 {@link DecisionRunRegistry}（**唯一**的读出口是 run-status 端点）。
    *
-   * <p>★ **轨迹不落盘**（本任务的明确取舍）：它是**过程观测**，不是世界事实——进 revision 会污染世界状态（铁律 2 管的是世界 事实），另存一张表则要动 Core 的
-   * DDL（已关账的代码）。代价是**没有历史**：翻页/刷新之后这一轮的账就只剩会话库里的 消息，界面上不复现。故这里只报**当次返回的那一份**。
+   * <p>★★ **两条失败路径分开报**（与旧同步版的语义逐字一致，只是落点从 HTTP 响应体换成了 registry）：
+   *
+   * <ul>
+   *   <li>{@link DecisionAgentRunner.TurnBudgetExceeded} ⇒ {@code status=aborted}：**不是"失败到没有信息"**——
+   *       触发事实已落盘、消息也都在会话里，下一轮从那段续；
+   *   <li>别的 {@code RuntimeException} ⇒ {@code status=failed}：未绑定 provider（fail-closed）/ 路由坏掉 /
+   *       决策人查无 —— 如实报，**绝不静默当作"跑过了"**。
+   * </ul>
+   *
+   * <p>★ 跑在虚拟线程上、与请求线程**不同**：故这里对 {@code state} 的读取一律经 {@code core.replay}（不持有调用方的状态对象）。
    */
-  private Map<String, Object> runDecisionView(
-      CommandResult.Committed committed, String decisionMakerId) {
-    Map<String, Object> view = new LinkedHashMap<>(ApiViews.committed(committed.ref()));
-    view.put("decisionMakerId", decisionMakerId);
-    StateRef ref = committed.ref();
+  private void runDecisionInBackground(StateRef ref, String decisionMakerId) {
+    DecisionMakerId id = new DecisionMakerId(decisionMakerId);
     try {
       DecisionAgentRunner.DecisionTurn turn =
           decisionAgentService.runRound(
-              ref.branch(), ref.revision(), new DecisionMakerId(decisionMakerId));
-      view.put("conversationId", turn.conversationId());
-      view.put("llmCalls", turn.llmCalls());
-      view.put("finalText", turn.finalText().orElse(null));
-      view.put("toolCalls", toolCallsView(turn.toolInvocations()));
-      view.put("abortedByBudget", false);
-      return view;
+              ref.branch(),
+              ref.revision(),
+              id,
+              (llmCalls, invocations) ->
+                  decisionRunRegistry.progress(decisionMakerId, llmCalls, invocations));
+      decisionRunRegistry.finish(
+          decisionMakerId,
+          new DecisionRunRegistry.Outcome(
+              "ok", null, null, turn.finalText().orElse(null), turn.conversationId()));
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
-      // ★ 中止**不是失败到没有信息**：触发事实已落盘、消息也都在会话里 ⇒ 如实报"因预算中止" + 会话 id（下一轮从这段续）。
-      view.put("abortedByBudget", true);
-      view.put("reason", "turn-budget");
-      view.put("llmCalls", e.llmCalls());
-      view.put("conversationId", conversationIdFor(ref, decisionMakerId));
-      view.put("detail", e.getMessage());
-      return view;
+      decisionRunRegistry.finish(
+          decisionMakerId,
+          new DecisionRunRegistry.Outcome(
+              "aborted",
+              "turn-budget",
+              e.getMessage(),
+              null,
+              conversationIdFor(ref, decisionMakerId)));
     } catch (RuntimeException e) {
-      // ★ 未绑定 provider（fail-closed）/ 路由坏掉 / 决策人查无：如实报，绝不静默当作"跑过了"。
-      view.put("abortedByBudget", false);
-      view.put("reason", e.getClass().getSimpleName());
-      view.put("conversationId", conversationIdFor(ref, decisionMakerId));
-      view.put("detail", e.getMessage());
-      return view;
+      LOG.warn("决策人一轮在后台失败 decisionMakerId={}", decisionMakerId, e);
+      decisionRunRegistry.finish(
+          decisionMakerId,
+          new DecisionRunRegistry.Outcome(
+              "failed",
+              e.getClass().getSimpleName(),
+              e.getMessage(),
+              null,
+              conversationIdFor(ref, decisionMakerId)));
     }
+  }
+
+  /**
+   * **这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/sd/decision-makers/{id}/run-status}。
+   *
+   * <p>★ 字段与 {@code POST /api/sd/run-decision} 旧同步版的**同名同形**（{@code llmCalls} / {@code toolCalls} /
+   * {@code result}）——同一件事在两处呈现同一个形状，界面不必为"异步了"改写投影。
+   *
+   * <p>★★ **没有记录时如实报"没有"**：{@code startedAt=null} 且 {@code llmCalls=null}（**不拿 0 / false 顶替**）
+   * ——"这一轮一次模型都没调"与"本进程从没见过这个人跑"是两件事（进程重启即失，见 {@link DecisionRunRegistry} 的类注）。
+   */
+  private Reply decisionMakerRunStatusReply(String decisionMakerId) {
+    if (decisionAgentService == null) {
+      return Reply.of(503, Map.of("error", "决策人运行流未接入（DecisionAgentService 缺席）"));
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("decisionMakerId", decisionMakerId);
+    Optional<DecisionRunRegistry.RunStatus> found = decisionRunRegistry.status(decisionMakerId);
+    if (found.isEmpty()) {
+      view.put("running", false);
+      view.put("done", false);
+      view.put("llmCalls", null);
+      view.put("toolCalls", List.of());
+      view.put("startedAt", null);
+      view.put("elapsedMs", null);
+      view.put("result", null);
+      return Reply.of(200, view);
+    }
+    DecisionRunRegistry.RunStatus status = found.orElseThrow();
+    view.put("running", status.running());
+    view.put("done", status.done());
+    view.put("llmCalls", status.llmCalls());
+    view.put("toolCalls", toolCallsView(status.toolInvocations()));
+    view.put("startedAt", status.startedAtEpochMs());
+    view.put("elapsedMs", status.elapsedMs());
+    view.put("result", outcomeView(status.outcome()));
+    return Reply.of(200, view);
+  }
+
+  /** 结局视图（{@code null} = 还在跑 ⇒ **原样 null**，不造一个"空结局"出来）。 */
+  private static Object outcomeView(DecisionRunRegistry.Outcome outcome) {
+    if (outcome == null) {
+      return null;
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("status", outcome.status());
+    view.put("reason", outcome.reason());
+    view.put("detail", outcome.detail());
+    view.put("finalText", outcome.finalText());
+    view.put("conversationId", outcome.conversationId());
+    return view;
+  }
+
+  /**
+   * **跟决策人说一句话**（2026-09-23，用户要的文本框）：{@code POST /api/sd/decision-makers/{id}/say}，体 {@code
+   * {text}}（可选 {@code branch} / {@code revision}，缺省 = 主分支当前 head）。
+   *
+   * <p>★★ **它不改世界**（落会话库，不进 revision）⇒ 不经 {@code CoreSimos.submit}，故没有 409 冲突这一说：会话库是 append-only
+   * 的，追加永远成功。**版本只用来查会话世代**（重置过的人落在另一段会话上，见 {@code DecisionAgentService#appendUserMessage}）。
+   *
+   * <p>★ 默认分支是**可读的约定**（不是静默兜底）：响应体回显真实落点（{@code conversationId}），调用方看得见它写到了哪儿。
+   */
+  private Reply sayToDecisionMakerReply(HttpExchange exchange, String decisionMakerId)
+      throws IOException {
+    if (decisionAgentService == null) {
+      return Reply.of(503, Map.of("error", "决策人运行流未接入（DecisionAgentService 缺席）"));
+    }
+    JsonNode root = readBody(exchange);
+    String text = textField(root, "text");
+    BranchId branch =
+        new BranchId(root.hasNonNull("branch") ? root.get("branch").asText() : DEFAULT_BRANCH);
+    RevisionId revision =
+        root.hasNonNull("revision")
+            ? new RevisionId(longField(root, "revision"))
+            : core.head(branch)
+                .orElseThrow(
+                    () -> new IllegalArgumentException("分支没有 head，无法定位会话世代: " + branch.value()));
+    String conversationId =
+        decisionAgentService.appendUserMessage(
+            new StateRef(branch, revision), new DecisionMakerId(decisionMakerId), text);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("decisionMakerId", decisionMakerId);
+    body.put("conversationId", conversationId);
+    body.put("length", text.length());
+    return Reply.of(200, body);
+  }
+
+  /**
+   * **重置某决策人的会话上下文**（2026-09-23）：固定类型 {@code sd.ResetDecisionMakerConversation}，落 revision （与
+   * {@code /api/sd/set-decision-maker-provider} 同制）。体 {@code {branch, expectedRevision,
+   * decisionMakerId}}。
+   *
+   * <p>★ 这是界面上"下一轮从空上下文开始"的**唯一**手段（"重跑沿用上下文、只有重置才清"）。
+   */
+  private Reply resetDecisionConversationReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String id = UUID.randomUUID().toString();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("decisionMakerId", textField(root, "decisionMakerId"));
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            "sd.ResetDecisionMakerConversation",
+            MAPPER.writeValueAsString(payload));
+    return resultReply(core.submit(command));
   }
 
   /** 失败路径上报的会话 id：按**世界事实**（决策人 id + 会话世代）现算；查无 ⇒ 如实说没有会话（不编一个）。 */

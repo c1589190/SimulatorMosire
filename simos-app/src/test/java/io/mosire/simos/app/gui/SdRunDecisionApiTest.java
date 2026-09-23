@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.FakeLlmClient;
+import io.mosire.agentlib.llm.LlmClient;
+import io.mosire.agentlib.llm.LlmMessage;
+import io.mosire.agentlib.llm.LlmRequest;
 import io.mosire.agentlib.llm.LlmResponse;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
@@ -62,6 +66,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,17 +78,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 「让它跑一轮」窄写端到端验收：{@code POST /api/sd/run-decision}。
+ * 「让它跑一轮」窄写端到端验收：{@code POST /api/sd/run-decision} + 轮询 {@code GET
+ * /api/sd/decision-makers/{id}/run-status}。
  *
  * <p>★ **它补的是哪一处空白**：让某个决策人真跑一轮（真 LLM 自行读世界、出令）此前**只有 GM 的 MCP 窄工具做得到** ⇒ 界面上点不出来。本端点把同一条路接进工作台。
  *
- * <p>★ **两步走，且顺序有意义**（与 GM 侧 {@code RunDecisionTool} 同一套语义）：① 先落**触发事实**（{@code sd.RunDecision}，经
- * {@link CoreSimos#submit}，铁律 2 无例外）；② 再跑那一轮（世界版本取**刚落盘的新 head**）。 落盘失败就不跑。
+ * <p>★★ **2026-09-23 起它是异步的**（用户要的"状态标识 + 可展开进度窗"）：POST **立即返回**（体里只有"触发事实已落盘 +
+ * 起跑了"），这一轮在**服务端后台**跑，进度与结局靠 {@code …/run-status} **轮询**取得。理由是硬的：这一轮里决策人若出令 （{@code
+ * sd.IssueDirective} 是敏感写），那次工具调用要**阻塞式**等审批（上限 = 壳的 {@code APPROVAL_TIMEOUT}） ⇒ 让 HTTP
+ * 请求停在那里，界面除了"卡死"没有别的表现。★ GM 经 MCP 的那条**仍是同步**的（{@code RunDecisionEndToEndTest}
+ * 钉住它），两条路语义不同是**有意的**。
  *
- * <p>★ **唯一替身是 LLM 客户端**（{@code FakeLlmClient}，本仓纪律：测试不打真网络）：真壳、真 store、真命令处理器、
- * 真工具面、真权限链，替身只替"怎么造客户端"。
+ * <p>★ **唯一替身是 LLM 客户端**（{@link RecordingFakeLlm}，本仓纪律：测试不打真网络）：真壳、真 store、真命令处理器、
+ * 真工具面、真权限链，替身只替"怎么造客户端"。它额外记下**每次请求的 messages 条数**——那正是"重跑沿用上下文"的证据载体。
  *
- * <p>★ **本轮只留两条**（用户 2026-09-23：少做测试，写完直接编译、我直接看）：一条钉"真经 Core + 轨迹读得回"， 一条钉"未知决策人被拒 ⇒ 触发事实也落不下"。
+ * <p>★ **本类只留四条**（用户 2026-09-23：少做测试，写完直接编译、我直接看）：一条钉「异步形状 + 轨迹读得回」、一条钉「未知决策人被拒 ⇒
+ * 触发事实也落不下」、一条钉「重跑沿用上下文 / 只有重置才清」（**带对照组**）、一条钉「第一轮之前说一句话 ⇒ 身份消息仍在前」。
  */
 class SdRunDecisionApiTest {
 
@@ -116,12 +126,12 @@ class SdRunDecisionApiTest {
   private Shell shell;
   private HttpClient client;
   private int port;
-  private FakeLlmClient llm;
+  private RecordingFakeLlm llm;
 
   @BeforeEach
   void startShell() {
     seedGenesis();
-    llm = new FakeLlmClient();
+    llm = new RecordingFakeLlm();
     // ★ 注入的只是"怎么造客户端"：未绑定 provider 的 fail-closed、世界、权限、落盘全是真的。
     shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0), providerId -> llm);
     port = shell.boundGuiPort();
@@ -136,13 +146,21 @@ class SdRunDecisionApiTest {
   }
 
   @Test
-  void aRoundIsTriggeredThroughCoreAndTheTraceIsReadBackOnTheSameResponse() throws Exception {
-    // 模型先读一格（真工具、真世界）⇒ 再收口。★ 刻意**不出令**：出令是敏感写、要过阻塞式审批（见端点注释）。
+  void theRoundRunsInTheBackgroundAndTheTraceIsPolledFromRunStatus() throws Exception {
+    // ★ **跑之前**：这个人从没跑过 ⇒ run-status 如实报"没有记录"（`startedAt`/`llmCalls` 都是 null，
+    //   **不拿 0 / false 顶替**："一次都没调"与"本进程从没见过它跑"是两件事）。
+    JsonNode before = JSON.readTree(get("/api/sd/decision-makers/" + DM_ID + "/run-status").body());
+    assertThat(before.get("startedAt").isNull()).as("没跑过 ⇒ startedAt 必须 null").isTrue();
+    assertThat(before.get("llmCalls").isNull()).as("没跑过 ⇒ llmCalls 必须 null（不是 0）").isTrue();
+    assertThat(before.get("done").asBoolean()).isFalse();
+
+    // 模型先读一格（真工具、真世界）⇒ 再收口。★ 刻意**不出令**：出令是敏感写、要过阻塞式审批（见类注）。
     llm.enqueue(LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)));
     llm.enqueue(LlmResponse.text("已读图，本 tick 无动作"));
 
     HttpResponse<String> response = post("/api/sd/run-decision", runDecisionBody(DM_ID, 1L));
 
+    // ★★ **POST 只报"触发事实已落盘 + 起跑了"**：HTTP 状态码只反映**世界写**的结局；这一轮自己在后台。
     assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
     JsonNode body = JSON.readTree(response.body());
     assertThat(body.get("result").asText()).isEqualTo("committed");
@@ -150,17 +168,25 @@ class SdRunDecisionApiTest {
         .as("触发事实落在 (main,2)——**先落事实、再跑那一轮**")
         .isEqualTo(2L);
     assertThat(body.get("decisionMakerId").asText()).isEqualTo(DM_ID);
-    assertThat(body.get("conversationId").asText())
+    assertThat(body.get("running").asBoolean()).as("★ 异步：POST 返回时它还在跑").isTrue();
+    assertThat(body.has("llmCalls")).as("★ 旧同步版的轨迹字段**不再出现在 POST 的响应里**（否则「立即返回」就是假的）").isFalse();
+
+    JsonNode status = awaitDone(DM_ID);
+
+    // ★★ 轨迹（决策人调了什么、看见了什么）现在从 run-status 读回——字段与旧同步版**同名同形**。
+    assertThat(status.get("running").asBoolean()).isFalse();
+    assertThat(status.get("done").asBoolean()).isTrue();
+    assertThat(status.get("llmCalls").asInt()).as("一次工具调用 + 一次收口 = 两次模型调用（多轮，不是单轮）").isEqualTo(2);
+    assertThat(status.get("startedAt").isNull()).as("跑过了 ⇒ 有起始时刻").isFalse();
+    assertThat(status.get("elapsedMs").asLong()).as("跑完 ⇒ 时长是确定的读数").isGreaterThanOrEqualTo(0L);
+    JsonNode result = status.get("result");
+    assertThat(result.get("status").asText()).as("如实报结局（ok / aborted / failed）").isEqualTo("ok");
+    assertThat(result.get("conversationId").asText())
         .as("会话 id 按世界事实（id + 会话世代）派生")
         .isEqualTo("decision-maker:" + DM_ID);
-    assertThat(body.get("llmCalls").asInt()).as("一次工具调用 + 一次收口 = 两次模型调用（多轮，不是单轮）").isEqualTo(2);
-    assertThat(body.get("abortedByBudget").asBoolean())
-        .as("跑完了 ⇒ 这一位是**判别位**不是结论（不省字段，调用方一次判空即可）")
-        .isFalse();
-    assertThat(body.get("finalText").asText()).isEqualTo("已读图，本 tick 无动作");
+    assertThat(result.get("finalText").asText()).isEqualTo("已读图，本 tick 无动作");
 
-    // ★★ 轨迹：决策人调了什么、看见了什么——这就是"本轮报告"的载体。
-    JsonNode calls = body.get("toolCalls");
+    JsonNode calls = status.get("toolCalls");
     assertThat(calls).hasSize(1);
     assertThat(calls.get(0).get("tool").asText())
         .as("真名（平台身份），不是模型的线名 simos_map_hex")
@@ -196,9 +222,132 @@ class SdRunDecisionApiTest {
     assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(1L);
   }
 
+  /**
+   * ★★ **重跑沿用上下文，只有显式重置才清**（用户 2026-09-23 原话：「重新决策（已有决策的情况下开始决策），llm
+   * 的上下文是**沿用**而不是重置的；**只有点额外的上下文重置按键才重置**」）。
+   *
+   * <p>★★ **证据 = 每次运行"第一个请求的 {@code messages} 条数"**（不是会话库的行数）：会话库里有多少条只说明
+   * "存了"，只有请求体才有资格证明"模型**真的看到了**它们"。三轮 + 一个对照组：
+   *
+   * <ol>
+   *   <li>① 首轮（空会话）⇒ 恰 **1** 条（先注入的身份消息）；
+   *   <li>② **重跑**（同一段会话，不重置）⇒ 比 ① **多**（上一轮的消息都还在）；
+   *   <li>③ **显式重置**之后再来一轮 ⇒ 回到 **1** 条（落到了**另一段**新会话上，只有身份消息）。
+   * </ol>
+   *
+   * <p>③ 就是对照组：它把"清空"这件事**只**归到重置那一步上——若重跑偷偷清了上下文，② 会等于 ① 而不是大于 ①。
+   */
+  @Test
+  void rerunsKeepTheConversationAndOnlyAnExplicitResetClearsIt() throws Exception {
+    scriptOneRound();
+    int run1First = runOneRoundAndFirstRequestMessageCount();
+    assertThat(run1First).as("① 首轮：空会话 ⇒ 只有身份消息那一条").isEqualTo(1);
+
+    scriptOneRound();
+    int run2First = runOneRoundAndFirstRequestMessageCount();
+    assertThat(run2First).as("② **重跑沿用上下文** ⇒ 第一个请求里带着上一轮落下的消息（多于 ①）").isGreaterThan(run1First);
+
+    // ③ 对照组：显式重置（真命令、落 revision、会话世代 +1）之后，上下文才清。
+    long headBeforeReset = head();
+    HttpResponse<String> reset =
+        post("/api/sd/reset-decision-maker-conversation", resetBody(DM_ID, headBeforeReset));
+    assertThat(reset.statusCode()).as(reset.body()).isEqualTo(200);
+    assertThat(JSON.readTree(reset.body()).get("result").asText()).isEqualTo("committed");
+
+    scriptOneRound();
+    int run3First = runOneRoundAndFirstRequestMessageCount();
+    // ★ 把三个读数**打出来**（本仓既有惯例：关键测量值随测试打印，便于写报告时**引用实测值**而不是推导值）。
+    System.out.println(
+        "[CONTEXT-CONTINUITY] 每轮第一个请求的 messages 条数：首轮="
+            + run1First
+            + " 重跑="
+            + run2First
+            + " 重置后="
+            + run3First);
+    assertThat(run3First).as("③ 只有重置才清 ⇒ 下一轮落到**另一段**会话上，第一个请求又只剩身份消息").isEqualTo(1);
+    assertThat(run3First).as("对照组：与重跑那一轮形成对照").isLessThan(run2First);
+  }
+
   // ── 夹具 ─────────────────────────────────────────────────────────────
 
+  /**
+   * ★★ **第一轮之前先说一句**（用户要的文本框，2026-09-23）：{@code POST /api/sd/decision-makers/{id}/say}。
+   *
+   * <p>★★ 它钉的是一条**顺序**要求：空会话若直接落这条 user 消息，会话就不再为空 ⇒ {@code DecisionAgentRunner} 会认为身份已经说过了 ⇒
+   * 模型收到一段**没有 system 消息**的上下文（不知道自己是谁——与现场那次 {@code HTTP 400: field messages is required}
+   * 同一族的病）。故服务端必须**先补身份消息**再落这句。
+   *
+   * <p>★ 证据 = 下一轮**第一个请求**的 messages：`[system, user]`，且那条 user 正是刚说的那句话。
+   */
+  @Test
+  void sayingSomethingBeforeTheFirstRoundKeepsTheIdentityMessageFirst() throws Exception {
+    HttpResponse<String> response =
+        post("/api/sd/decision-makers/" + DM_ID + "/say", "{\"text\":\"先守住北面的渡口\"}");
+
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    JsonNode body = JSON.readTree(response.body());
+    assertThat(body.get("conversationId").asText())
+        .as("落进按世界事实派生的那段会话")
+        .isEqualTo("decision-maker:" + DM_ID);
+    assertThat(body.get("length").asInt()).isEqualTo("先守住北面的渡口".length());
+
+    scriptOneRound();
+    post("/api/sd/run-decision", runDecisionBody(DM_ID, head()));
+    awaitDone(DM_ID);
+
+    List<LlmMessage> first = llm.requests().get(0).messages();
+    assertThat(first).as("身份消息 + 用户那句话——**恰两条**").hasSize(2);
+    assertThat(first.get(0).role()).as("★ 顺序不能反：身份（system）在前").isEqualTo(LlmMessage.ROLE_SYSTEM);
+    assertThat(first.get(1).role()).isEqualTo(LlmMessage.ROLE_USER);
+    assertThat(first.get(1).content())
+        .as("模型**真的看到**了那句话（不是「存了没送」）")
+        .anyMatch(part -> part instanceof ContentPart.Text text && text.text().contains("北面的渡口"));
+  }
+
+  /** 一轮的脚本：读一格 + 收口（**不出令** ⇒ 不触发审批）。 */
+  private void scriptOneRound() {
+    llm.enqueue(LlmResponse.toolCall("call-hex", "simos_map_hex", Map.of("q", 1, "r", 1)));
+    llm.enqueue(LlmResponse.text("已读图，无动作"));
+  }
+
+  /** 跑一轮（等到 done）并返回**这一轮第一个请求**的 messages 条数。 */
+  private int runOneRoundAndFirstRequestMessageCount() throws Exception {
+    int before = llm.requestMessageCounts().size();
+    HttpResponse<String> response = post("/api/sd/run-decision", runDecisionBody(DM_ID, head()));
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    awaitDone(DM_ID);
+    assertThat(llm.requestMessageCounts().size())
+        .as("这一轮必须真的调过模型（否则下面这条读数无从谈起）")
+        .isGreaterThan(before);
+    return llm.requestMessageCounts().get(before);
+  }
+
+  /** 轮询到 {@code done=true}（**有界**：超时就抛，不无限等）。 */
+  private JsonNode awaitDone(String decisionMakerId) throws Exception {
+    for (int attempt = 0; attempt < 100; attempt++) {
+      JsonNode status =
+          JSON.readTree(get("/api/sd/decision-makers/" + decisionMakerId + "/run-status").body());
+      if (status.get("done").asBoolean()) {
+        return status;
+      }
+      Thread.sleep(50L);
+    }
+    throw new AssertionError("等不到这一轮跑完（" + decisionMakerId + "）——run-status 始终 done=false");
+  }
+
+  private long head() {
+    return shell.coreSimos().head(main()).orElseThrow().value();
+  }
+
   private static String runDecisionBody(String decisionMakerId, long expectedRevision) {
+    return "{\"branch\":\"main\",\"expectedRevision\":"
+        + expectedRevision
+        + ",\"decisionMakerId\":\""
+        + decisionMakerId
+        + "\"}";
+  }
+
+  private static String resetBody(String decisionMakerId, long expectedRevision) {
     return "{\"branch\":\"main\",\"expectedRevision\":"
         + expectedRevision
         + ",\"decisionMakerId\":\""
@@ -213,6 +362,57 @@ class SdRunDecisionApiTest {
             .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
             .build(),
         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+  }
+
+  private HttpResponse<String> get(String path) throws Exception {
+    return client.send(
+        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+            .header("Accept", "application/json")
+            .GET()
+            .build(),
+        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+  }
+
+  /**
+   * 脚本化假客户端 + **记下每次请求的 messages 条数**（"重跑沿用上下文"的证据载体）。
+   *
+   * <p>★ 只加一件事、不改语义：响应序列仍由 {@link FakeLlmClient} 逐条出队、耗空即抛（"跑飞"照旧当场暴露）。
+   */
+  private static final class RecordingFakeLlm implements LlmClient {
+
+    private final FakeLlmClient delegate = new FakeLlmClient();
+    private final List<Integer> messageCounts = new ArrayList<>();
+    private final List<LlmRequest> requests = new ArrayList<>();
+
+    void enqueue(LlmResponse response) {
+      delegate.enqueue(response);
+    }
+
+    int calls() {
+      return delegate.calls();
+    }
+
+    /** 按发生序：每次请求的 {@code messages} 条数。 */
+    List<Integer> requestMessageCounts() {
+      return List.copyOf(messageCounts);
+    }
+
+    /** 按发生序：每次请求本身（要判"模型到底看到了什么"就得看这个，不是看计数）。 */
+    List<LlmRequest> requests() {
+      return List.copyOf(requests);
+    }
+
+    @Override
+    public String model() {
+      return delegate.model();
+    }
+
+    @Override
+    public LlmResponse chat(LlmRequest request) {
+      messageCounts.add(request.messages().size());
+      requests.add(request);
+      return delegate.chat(request);
+    }
   }
 
   private static BranchId main() {

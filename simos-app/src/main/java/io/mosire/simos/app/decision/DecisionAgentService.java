@@ -1,6 +1,7 @@
 package io.mosire.simos.app.decision;
 
 import io.mosire.agentlib.llm.LlmClient;
+import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -132,9 +133,24 @@ public final class DecisionAgentService {
    */
   public DecisionAgentRunner.DecisionTurn runRound(
       BranchId branch, RevisionId revision, DecisionMakerId decisionMakerId) {
+    return runRound(branch, revision, decisionMakerId, DecisionAgentRunner.ProgressListener.NONE);
+  }
+
+  /**
+   * **同上，但把进度推给 {@code listener}**（GUI 异步跑那条用；GM 经 MCP 的那条走上面那个重载 ⇒ 行为逐字不变）。
+   *
+   * <p>★ 两条路**只有"装不装监听"这一个差别**（同一个 {@link DecisionAgentRunner} 构造器链）：若各写一份装配， 就会出现"两条路跑出两个略有差异的
+   * runner"这种**无症状**的漂移。
+   */
+  public DecisionAgentRunner.DecisionTurn runRound(
+      BranchId branch,
+      RevisionId revision,
+      DecisionMakerId decisionMakerId,
+      DecisionAgentRunner.ProgressListener listener) {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(revision, "revision");
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
+    Objects.requireNonNull(listener, "listener");
     SimulationState state = core.replay(new StateRef(branch, revision));
     DecisionMaker maker = ToolSupport.sdState(state).decisionMakers().get(decisionMakerId);
     if (maker == null) {
@@ -143,7 +159,7 @@ public final class DecisionAgentService {
     LlmClient client = llmClients.clientFor(requireProviderId(maker));
     DecisionAgentRunner runner =
         new DecisionAgentRunner(
-            callerFactory, decisionTools, client, conversations, mapId, maxLlmCalls);
+            callerFactory, decisionTools, client, conversations, mapId, maxLlmCalls, listener);
     try {
       DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
       // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
@@ -164,6 +180,42 @@ public final class DecisionAgentService {
           e.llmCalls());
       throw e;
     }
+  }
+
+  /**
+   * ★★ **往某决策人的会话里追加一条 user 消息**（2026-09-23，用户要的"文本框"）：界面上的输入框就是这条。
+   *
+   * <p>★★ **空会话要先补身份消息**（顺序不能反）：{@link DecisionAgentRunner} 只在**会话为空**时注入身份（{@code
+   * openingSystemMessage}），而"第一轮之前就先说一句话"是用户的明确要求（"不管是第一轮还是最后一轮都可以"）。若这里直接 追加 user 消息，会话就**不再为空** ⇒
+   * runner 认为身份已经说过了 ⇒ 模型收到一段**没有 system 消息**的上下文 （和现场那次 {@code HTTP 400: field messages is
+   * required} 是同一族的病：模型不知道"我是谁"）。 故这里先把身份消息落盘，再落 user 消息 ⇒ 顺序恒为 {@code system → user…}。
+   *
+   * <p>★ **不改世界**：会话库是 append-only 的旁路存储（不在 {@code revision} 里），故本方法**不**经 {@code
+   * CoreSimos.submit}——它记的不是世界事实（与 {@code /api/sd/run-decision} 的"轨迹不落盘"同一口径）。
+   *
+   * @param ref 世界版本（**用来查会话世代**：{@code sd.ResetDecisionMakerConversation} 会把它改掉）
+   * @param decisionMakerId 决策人 id（查无 ⇒ 抛，与 {@link #conversationIdOf} 同口径）
+   * @param text 用户那句话（空白 ⇒ 抛：不落一条空消息下去）
+   * @return 这条消息落进的会话 id（界面据它显示"说给哪一段会话听"）
+   * @throws IllegalArgumentException 该版本的世界里没有这个决策人；或 {@code text} 为空白
+   */
+  public String appendUserMessage(StateRef ref, DecisionMakerId decisionMakerId, String text) {
+    Objects.requireNonNull(ref, "ref");
+    Objects.requireNonNull(decisionMakerId, "decisionMakerId");
+    if (text == null || text.isBlank()) {
+      throw new IllegalArgumentException("消息不得为空");
+    }
+    DecisionMaker maker =
+        ToolSupport.sdState(core.replay(ref)).decisionMakers().get(decisionMakerId);
+    if (maker == null) {
+      throw new IllegalArgumentException("决策人不存在: " + decisionMakerId.value());
+    }
+    String conversationId = DecisionAgentRunner.conversationIdOf(maker);
+    if (conversations.load(conversationId).isEmpty()) {
+      conversations.append(conversationId, DecisionAgentRunner.openingSystemMessage(maker));
+    }
+    conversations.append(conversationId, LlmMessage.user(text));
+    return conversationId;
   }
 
   /**

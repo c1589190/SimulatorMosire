@@ -96,12 +96,39 @@ public final class DecisionAgentRunner {
    */
   public static final int DEFAULT_MAX_LLM_CALLS = 20;
 
+  /**
+   * **一轮的进度回调**（2026-09-23，GUI 准实时进度）：**每轮 LLM 结束**、**每次工具调用结束**各推一次。
+   *
+   * <p>★★ **默认 no-op ⇒ MCP 路径零影响**：GM 经 MCP 调 {@code sd.RunDecision} 那条是**同步**的（调用方等到整轮结束才拿到
+   * 轨迹），它不需要进度；GUI 那条改成了**异步 + 轮询**，进度就是从这里出去的。两条路的区别只有"装不装监听"。
+   *
+   * <p>★ **只在两个真实的观察点推**（不另设节流/心跳）：模型的每一次响应、工具的每一次执行——它们就是这一轮**仅有**的 事件。界面上的"已 Ns"由渲染方按 {@code
+   * startedAt} 自己算，本类不发定时事件（发了就会有"零进度的心跳"这种噪声）。
+   *
+   * <p>★ **回调在调用方线程上同步跑**（就是跑这一轮的那条线程）：实现方**不得**阻塞（GUI 那个只写内存）。
+   */
+  @FunctionalInterface
+  public interface ProgressListener {
+
+    /** 什么都不做的实现（默认）。 */
+    ProgressListener NONE = (llmCalls, toolInvocations) -> {};
+
+    /**
+     * @param llmCalls 到目前为止**已完成**的 LLM 调用次数（≥ 1）
+     * @param toolInvocations 到目前为止**真的执行过**的工具调用（按发生序，末条 = 刚刚那一次）
+     */
+    void progress(int llmCalls, List<ToolInvocation> toolInvocations);
+  }
+
   private final DecisionCallerFactory callerFactory;
   private final ToolRegistry registry;
   private final LlmClient llmClient;
   private final ConversationStore conversations;
   private final String mapId;
   private final int maxLlmCalls;
+
+  /** 进度回调（默认 {@link ProgressListener#NONE}；见其类注：MCP 那条同步路不装，行为逐字不变）。 */
+  private final ProgressListener progressListener;
 
   /** **送给模型的那一份工具面**（名字是线格式；描述与 schema 逐字来自真工具）。 */
   private final List<ToolDef> toolDefs;
@@ -133,6 +160,28 @@ public final class DecisionAgentRunner {
       ConversationStore conversations,
       String mapId,
       int maxLlmCalls) {
+    this(
+        callerFactory,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        maxLlmCalls,
+        ProgressListener.NONE);
+  }
+
+  /**
+   * **带进度回调**的形态（GUI 异步跑的装配点）：除多一个监听外与上面那条**逐字同形**（同一个构造器链， 不复制字段赋值——复制一份就会出现"两条路装配出两个略有差异的
+   * runner"这种无症状的漂移）。
+   */
+  public DecisionAgentRunner(
+      DecisionCallerFactory callerFactory,
+      ToolRegistry registry,
+      LlmClient llmClient,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls,
+      ProgressListener progressListener) {
     this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
@@ -142,6 +191,7 @@ public final class DecisionAgentRunner {
       throw new IllegalArgumentException("maxLlmCalls 必须为正: " + maxLlmCalls);
     }
     this.maxLlmCalls = maxLlmCalls;
+    this.progressListener = Objects.requireNonNull(progressListener, "progressListener");
     // ★★ 工具面在**装配期**建一次（不随世界变：它只取决于注册表与白名单），并当场建好名字映射：
     //   ① 白名单里有工具不在注册表 ⇒ requireAll 抛（旧行为，只是提前到构造期）；
     //   ② 转义碰撞 / 转义结果不合供应商文法 ⇒ LlmToolNames 抛（**真 LLM 实测缺陷**的护栏，2026-09-22）。
@@ -269,6 +319,12 @@ public final class DecisionAgentRunner {
             + LlmToolNames.wireNameOf(SubmitVerdictTool.NAME)
             + "。\n"
             + "\n"
+            + "【令里的 tick 是哪一个】那个字段记的是**你出令的这一刻**（世界当前所在的 tick），"
+            + "不是「这条令针对哪一刻」。**想推演将来、想把「以后某时要怎么做」写下来，那是正当的**——"
+            + "写进 intentInfo（决心与理由）里，别塞进 tick。反过来，tick 填**大于当前**的值会被系统拒绝"
+            + "（时间线只追加，记错的令改不回来），而当前 tick 一律**从工具读到的世界状态里取**，"
+            + "不要凭记忆、也不要沿用上一轮的值。\n"
+            + "\n"
             + "【出令的 commands 放什么】只放**领域命令**（改地图、动单位这一类），可用类型与载荷字段见 "
             + catalog
             + "。★ **以 sd. 开头的命令类型一律会被拒**——那是防无限自指（令不得再生成令，否则会一直递归下去），"
@@ -321,6 +377,8 @@ public final class DecisionAgentRunner {
       // ★ 先落盘再判：模型说了什么都要记（非工具轮同样是这一轮的产出）。
       conversations.append(conversationId, assistant);
       history.add(assistant);
+      // ★ 进度点 ①：本轮 LLM 已结束（工具调用还没跑）——GUI 的"第 N 轮"就是这个数。
+      progressListener.progress(llmCalls, List.copyOf(invocations));
       List<ContentPart.ToolCall> requested = toolCallsOf(assistant);
       if (requested.isEmpty()) {
         return new DecisionTurn(conversationId, llmCalls, invocations, response.textPart());
@@ -329,6 +387,8 @@ public final class DecisionAgentRunner {
         LlmMessage toolMessage = execute(dm, state, call, invocations);
         conversations.append(conversationId, toolMessage);
         history.add(toolMessage);
+        // ★ 进度点 ②：一次工具调用已结束（末条 = 刚跑完的那一个）——GUI 的"正在调 X / 调了什么"。
+        progressListener.progress(llmCalls, List.copyOf(invocations));
       }
     }
   }

@@ -197,12 +197,32 @@
           <div data-decision-subpage="view">
             <p id="decision-view-status" class="status muted">点选地图上的国家区域或有决策人的单位，查看其决策人信息。</p>
             <div id="decision-maker-detail" class="decision-maker-detail"></div>
-            <!-- T10（三件事模型 ④）：只在当前展示的决策人**本 tick 待决**（due）时可点；
-                 写走窄端点 POST /api/sd/start-decision（服务端写死 sd.StartDecision，落 revision）。 -->
-            <button type="button" id="decision-start" disabled>开始决策</button>
-            <p id="decision-start-status" class="status muted">选中一个待决的决策人后可发起。</p>
+            <!-- 2026-09-23（用户裁定）：**随时可点** —— due（本 tick 待决）从此只是**提示**，不再 disable、不再拦。
+                 点一次 = ① 发起（sd.StartDecision，落 revision）+ ② 让该决策人的 agent **异步**跑一轮
+                 （POST /api/sd/run-decision 立即返回，进度与结局靠 GET …/run-status 轮询）。
+                 再点一次 = 重新决策（**上下文沿用**，只有「上下文重置」才清）。 -->
+            <button type="button" id="decision-start">开始决策</button>
+            <p id="decision-start-status" class="status muted">选中一个决策人后可发起（随时可点；「待决」只是提示，不拦人）。</p>
+            <!-- 本次运行后的决策（决心 / 理由 / 命令清单）**就地**渲染在这里：左边没有额外的「看结果」按钮。 -->
+            <div id="decision-latest" class="decision-latest"></div>
+            <!-- 跟决策人说一句：内容作为**一条 user 消息**追加进它的会话 ⇒ 下一轮它就看得见。
+                 第一轮之前 / 第 N 轮之后都能用（空会话会先补身份消息，顺序恒为 system → user）。 -->
+            <fieldset class="decision-say" id="decision-say">
+              <legend>跟决策人说一句（可选，任意轮次都能用）</legend>
+              <textarea id="decision-say-text" rows="2" placeholder="例如：这次优先守住北面的渡口"></textarea>
+              <button type="button" id="decision-say-send">发送</button>
+            </fieldset>
+            <p id="decision-say-status" class="status muted">发出去的这句话会进该决策人的会话，下一轮它就看得见。</p>
+            <!-- 上下文重置：**唯一**会清空对话历史的手段（重跑一律沿用上下文）。走既有的
+                 sd.ResetDecisionMakerConversation（落 revision ⇒ 会话世代 +1；旧会话一条字节都不动）。 -->
+            <button type="button" id="decision-context-reset">上下文重置</button>
+            <p id="decision-context-status" class="status muted">重跑**沿用**上下文；只有点这里才清（会话世代 +1，旧会话不删）。</p>
+            <!-- LLM 运行情况（可展开）：准实时进度 = 每轮 LLM 结束 / 每次工具调用结束时刷一次（不做逐字流式）。 -->
+            <button type="button" id="decision-progress-toggle" aria-expanded="false" aria-controls="decision-progress">展开 LLM 运行情况</button>
+            <div id="decision-progress" class="decision-progress" hidden></div>
             <!-- 2026-09-23：让它跑一轮（sd.RunDecision）。写走窄端点 POST /api/sd/run-decision（服务端写死 type）。
-                 ★ 这一轮可能跑很久，且决策人出的令各进一次**阻塞式**审批 ⇒ 状态行必须一直显示"正在跑/可能在等审批"。 -->
+                 ★ 这一轮**跑在服务端后台**（HTTP 立即返回），状态行与上面那个可展开窗口显示进度。
+                 ★ 它可能停在**等审批**上（决策人出的令各进一次阻塞式审批）⇒ 状态行必须一直显示"正在跑/已 Ns"。 -->
             <button type="button" id="decision-run" disabled>让它跑一轮</button>
             <p id="decision-run-status" class="status muted">选中一个已绑定 provider 的决策人后可让它跑一轮（真 LLM 自行读世界、出令）。</p>
             <!-- 本轮轨迹（toolCalls / finalText / llmCalls）：**只显示当次返回的那一份**，不落盘、刷新即失。 -->

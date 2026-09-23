@@ -77,11 +77,21 @@ test("unit-allows-route-and-editor-writes", () => {
 });
 
 test("decision-allows-exactly-start-decision", () => {
-  // ★★ T10（spec §四.2，D5 已裁"新命令"）：决策模式的命令写；2026-09-23 起**两条**
-  //   （+ sd.RunDecision，「让它跑一轮」，走 POST /api/sd/run-decision 窄端点）。
+  // ★★ T10（spec §四.2，D5 已裁"新命令"）：决策模式的命令写；2026-09-23 起**三条**
+  //   （+ sd.RunDecision「让它跑一轮」走 POST /api/sd/run-decision、+ sd.ResetDecisionMakerConversation
+  //   「上下文重置」走 POST /api/sd/reset-decision-maker-conversation）。
   //   审批的「批准/驳回」打 POST /api/approvals/{id}（审批裁决，非命令写）⇒ **不进**本表。
-  assert.deepEqual(M.allowedWrites("decision"), ["sd.StartDecision", "sd.RunDecision"]);
+  assert.deepEqual(M.allowedWrites("decision"), [
+    "sd.StartDecision",
+    "sd.RunDecision",
+    "sd.ResetDecisionMakerConversation",
+  ]);
   assert.equal(M.isWriteAllowed("decision", "sd.StartDecision"), true);
+  assert.equal(
+    M.isWriteAllowed("decision", "sd.ResetDecisionMakerConversation"),
+    true,
+    "「上下文重置」是工作台真发出的写（窄端点，命令类型服务端写死）"
+  );
   for (const type of [
     "sd.IssueDirective",
     "sd.SubmitVerdict",

@@ -808,8 +808,16 @@ public final class Shell implements AutoCloseable {
   /**
    * 决策人 agent 运行流（T11C）：测试/调试面读回装配实况（{@code sd.RunDecision} 那条路内部就是它）。
    *
-   * <p>★ 与 {@link #decisionAdjudicationService()} 同法（不加 {@code EI_EXPOSE_REP} 抑制：它是本壳的产物，不是内部表示）。
+   * <p>★★ **本方法原先刻意不加抑制**（理由写在"它是本壳的产物、不是内部表示"上），但 2026-09-23 的门禁把它报了 （{@code
+   * EI_EXPOSE_REP}，Medium）——而**同类的** {@link #llmConfig()} 一直带着同一条抑制。按"门禁是判据"处理： 在这里补上与 {@code
+   * llmConfig()} 逐字同源的抑制，而不是改 API 形状（把运行流包一层只读壳会改变测试/调试的用法， 换不到任何真实保护——**它本来就是给测试与调试直接调的那个对象**）。
+   *
+   * <p>★ 诚实记一笔：**为什么会"同一份代码这次才报"没有查清**（本仓纪律形态 6 有先例：分析器的判定不是被分析文件的
+   * 纯函数——它随**类集**变）。本改动确实新增了同类引用（{@code DecisionRunRegistry}），但**没有证据**证明因果。
    */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "本壳要把决策人运行流交给测试/调试直接调；它不是内部表示而是本壳的产物，与 llmConfig()/toolRegistry() 同法")
   public DecisionAgentService decisionAgentService() {
     return decisionAgentService;
   }
