@@ -954,6 +954,10 @@
           }
         : null,
       pending: pendingStatusText(maker ? maker.due : null),
+      // ★ 2026-09-23：**最近一次在第几 tick 出的令**（服务端 `lastDirectiveTick` / `ticksSinceLast`，T9 起就是真值）。
+      //   从未出过令 ⇒ `—`（"没有基准"与"tick 0 出过令"是两件事，不拿 0 顶替）。
+      lastDirectiveTick: valueOrDash(maker ? maker.lastDirectiveTick : null),
+      ticksSinceLast: valueOrDash(maker ? maker.ticksSinceLast : null),
       // ★ 会话世代 + 派生出的会话 id（服务端 `conversationGeneration` / `conversationId`，T9 之后的世界事实）：
       //   GM 据此知道"这个人换过几次会话"。缺字段 ⇒ 显式"—"（不编造"第 0 代"）。
       conversationGeneration:
@@ -1018,8 +1022,14 @@
     }
   }
 
+  /**
+   * 设定两个窄写的当前目标（「开始决策」/「让它跑一轮」）——**同一个目标**，一处设两处生效。
+   *
+   * <p>★ 合成一处而不是各设一份：两者若各持有自己的目标，界面上就会出现"按钮 A 指向甲、按钮 B 指向乙"而**没有任何症状**。
+   */
   function setStartDecisionTarget(maker) {
     startDecisionTarget = maker || null;
+    setRunDecisionTarget(maker);
     updateStartDecisionControl();
   }
 
@@ -1085,6 +1095,456 @@
       });
   }
 
+  // ── 「让它跑一轮」（sd.RunDecision，2026-09-23）─────────────────────────
+  //
+  // ★★ **它补的是哪一处空白**：让某个决策人**真跑一轮**（真 LLM 自行读世界、出令）此前只有 GM 的 MCP 窄工具
+  //   （sd.RunDecision）做得到 ⇒ 界面上**点不出来**。本入口把它接进工作台：写仍走**窄端点**
+  //   POST /api/sd/run-decision（服务端写死命令类型，前端不传 type）。
+  //
+  // ★★ **它会跑很久，且可能停在"等审批"上**：这一轮里决策人若出令（sd.IssueDirective 是敏感写），那次工具调用要
+  //   **阻塞式**等审批（上限 = 壳的 APPROVAL_TIMEOUT）。故状态行一直显示"已 Ns"并点明可能在等审批
+  //   ——**不能表现为卡死**（这是本入口最容易做错的地方）。
+  //
+  // ★★ **轨迹只显示当次返回的那一份**（服务端明确取舍：轨迹是过程观测、不是世界事实 ⇒ 不落盘）。
+  //   换 target / 刷新之后它就不在了——读数里有一行明说这件事。
+  var runDecisionTarget = null;
+  var lastRunGateStamp = null;
+  var runDecisionStartedAt = 0;
+  var runDecisionTicker = null;
+
+  /**
+   * 「让它跑一轮」闸门（纯函数）：有目标 + 它**绑了 provider** 才可点。
+   *
+   * <p>★ 未绑定 ⇒ 不可点：服务端那条路是 fail-closed（未绑定 provider **抛**，绝不落到某个默认 provider），
+   * 让用户点了再等出错不如当场说清。`providerId` 取不到（undefined）与空串同判——**不猜"大概绑了"**。
+   */
+  function runDecisionGate(maker) {
+    if (!maker || maker.id === null || maker.id === undefined || maker.id === "") {
+      return { enabled: false, reason: "未选中决策人" };
+    }
+    var provider = maker.providerId;
+    if (provider === null || provider === undefined || String(provider).trim() === "") {
+      return { enabled: false, reason: "未绑定 LLM provider（先到「Provider 配置」子页绑定再跑）" };
+    }
+    return { enabled: true, reason: "可跑一轮（真 LLM 自行读世界、出令；耗时数十秒，可能停在等审批）" };
+  }
+
+  function setRunDecisionStatus(message, tone) {
+    app.statusMessage(app.byId("decision-run-status"), message, tone);
+  }
+
+  /** 运行中的状态文案（**带秒数**）：这是"看起来没卡死"的唯一判据——秒数在动 ⇒ 这一轮还在跑。 */
+  function runningText(id) {
+    var seconds = Math.max(0, Math.round((Date.now() - runDecisionStartedAt) / 1000));
+    return (
+      "正在跑一轮：" + id + "（已 " + seconds + "s）——真 LLM 多轮工具调用；" +
+      "若它出令（sd.IssueDirective），会在审批栏等审批（右下方通知栏 / 「审批」子页）"
+    );
+  }
+
+  function startRunTicker(id) {
+    stopRunTicker();
+    runDecisionStartedAt = Date.now();
+    setRunDecisionStatus(runningText(id), "muted");
+    runDecisionTicker = setInterval(function () {
+      setRunDecisionStatus(runningText(id), "muted");
+    }, 1000);
+  }
+
+  function stopRunTicker() {
+    if (runDecisionTicker) {
+      clearInterval(runDecisionTicker);
+      runDecisionTicker = null;
+    }
+  }
+
+  function updateRunDecisionControl() {
+    var button = app.byId("decision-run");
+    var gate = runDecisionGate(runDecisionTarget);
+    var targetId = runDecisionTarget ? String(runDecisionTarget.id) : "";
+    if (button) {
+      button.disabled = !gate.enabled;
+      button.setAttribute("data-decision-target", targetId);
+    }
+    var stamp = targetId + "|" + gate.enabled + "|" + gate.reason;
+    if (stamp !== lastRunGateStamp) {
+      lastRunGateStamp = stamp;
+      // ★ 正在跑的时候不让闸门文案把它盖掉（否则"已 Ns"会被门禁原因刷掉 ⇒ 看起来又像卡死）。
+      if (!runDecisionTicker) {
+        setRunDecisionStatus(gate.reason, gate.enabled ? "ok" : "muted");
+      }
+    }
+  }
+
+  function setRunDecisionTarget(maker) {
+    runDecisionTarget = maker || null;
+    updateRunDecisionControl();
+  }
+
+  function decideRunDecision() {
+    var target = runDecisionTarget;
+    if (!target || !runDecisionGate(target).enabled) {
+      setRunDecisionStatus("未选中可跑的决策人", "warn");
+      return;
+    }
+    var at = app.target() || {};
+    clearRunTrace();
+    startRunTicker(target.id);
+    attemptRunDecision(target, at.branch, at.revision, true);
+  }
+
+  /**
+   * 跑一轮；★ 收到 409（游标过期）时**重取 head、把游标拉到服务端 current.revision，并自动重试一次**（与
+   * {@link attemptStartDecision} 同制：重试的那一轮**重新**开始计时，状态行不撒谎）。
+   */
+  function attemptRunDecision(target, branch, revision, mayRetry) {
+    return api
+      .runDecision(branch, revision, target.id)
+      .then(function (body) {
+        stopRunTicker();
+        if (body && body.ref && body.ref.revision !== undefined && app.setRevision) {
+          app.setRevision(body.ref.revision);
+        }
+        renderRunTrace(body);
+        setRunDecisionStatus(runOutcomeText(body), runOutcomeTone(body));
+        if (app.refreshState) {
+          app.refreshState(true);
+        }
+        // ★ 这一轮真出过令 ⇒ 决策记录多了一条，当场重取（否则用户得自己刷新才看得见）。
+        loadDecisionDirectives([target.id]);
+        return body;
+      })
+      .catch(function (e) {
+        if (e && e.status === 409 && mayRetry) {
+          var current = e.body && e.body.current ? e.body.current : null;
+          setRunDecisionStatus("末端已移动（409），重取最新状态后重试…", "warn");
+          return Promise.resolve()
+            .then(function () {
+              return app.refreshState ? app.refreshState(true) : null;
+            })
+            .catch(function () {
+              return null;
+            })
+            .then(function () {
+              var fresh =
+                current && current.revision !== undefined
+                  ? current.revision
+                  : (app.target() || {}).revision;
+              if (app.setRevision && fresh !== null && fresh !== undefined) {
+                app.setRevision(fresh);
+              }
+              startRunTicker(target.id);
+              return attemptRunDecision(target, fresh, false);
+            });
+        }
+        stopRunTicker();
+        var reason = e && e.body && e.body.reason ? e.body.reason : (e && e.message) || String(e);
+        setRunDecisionStatus("跑一轮失败：" + reason, "err");
+        return null;
+      });
+  }
+
+  /**
+   * 结局文案（纯函数）：**提交结局与这一轮自己的结局分开说**——服务端的 HTTP 200 只保证"触发事实已落盘"，
+   * 那一轮可能中止（预算）或没跑成（未绑定 / 路由坏 / 查无）。把它读成"跑好了"就是把两件事混成一件。
+   */
+  function runOutcomeText(body) {
+    var b = body || {};
+    if (b.result !== "committed") {
+      return "触发未落盘：" + valueOrDash(b.result) + "（这一轮没有跑）";
+    }
+    if (b.reason === "turn-budget") {
+      return "已中止：撞上回合预算（llmCalls=" + valueOrDash(b.llmCalls) + "）；历史已落盘，下一轮可续";
+    }
+    if (b.reason) {
+      return "这一轮没跑成：" + valueOrDash(b.reason) + " —— " + valueOrDash(b.detail);
+    }
+    return (
+      "跑完一轮：llmCalls=" + valueOrDash(b.llmCalls) + "，工具调用 " + toolCallCount(b) + " 次"
+    );
+  }
+
+  function runOutcomeTone(body) {
+    var b = body || {};
+    if (b.result !== "committed" || b.reason) {
+      return "warn";
+    }
+    return "ok";
+  }
+
+  function toolCallCount(body) {
+    var calls = body && Array.isArray(body.toolCalls) ? body.toolCalls : [];
+    return calls.length;
+  }
+
+  /**
+   * 本轮轨迹的字段投影（纯函数，与 `POST /api/sd/run-decision` 的返回体逐字段对应）。
+   *
+   * <p>★ 缺值一律 `—`（**不拿 0 / false / 空串顶替**）：`llmCalls` 取不到与"一次都没调"是两件事。
+   */
+  function runTraceFields(body) {
+    var b = body || {};
+    var calls = Array.isArray(b.toolCalls) ? b.toolCalls : [];
+    return {
+      decisionMakerId: valueOrDash(b.decisionMakerId),
+      conversationId: valueOrDash(b.conversationId),
+      llmCalls: b.llmCalls === null || b.llmCalls === undefined ? "—" : String(b.llmCalls),
+      abortedByBudget: b.abortedByBudget === true,
+      finalText:
+        b.finalText === null || b.finalText === undefined
+          ? "（本轮没有收尾文本）"
+          : String(b.finalText),
+      revision: b.ref && b.ref.revision !== undefined ? String(b.ref.revision) : "—",
+      // ★ 这一轮**没跑成**时服务端给的两个字段（未绑 provider / 路由查无 / 查无此人 / 撞预算）：
+      //   有 reason 就说明**没有轨迹可言**——此时"工具调用 0 次"会被读成"跑得好、只是没调工具"，那是假的。
+      reason: b.reason === null || b.reason === undefined ? null : String(b.reason),
+      detail: b.detail === null || b.detail === undefined ? "—" : String(b.detail),
+      toolCalls: calls.map(function (call) {
+        var c = call || {};
+        return {
+          tool: valueOrDash(c.tool),
+          ok: c.ok === true,
+          code: valueOrDash(c.code),
+          summary: valueOrDash(c.summary),
+        };
+      }),
+    };
+  }
+
+  function clearRunTrace() {
+    var mount = app.byId("decision-run-trace");
+    if (mount) {
+      app.clear(mount);
+    }
+  }
+
+  /** 画本轮轨迹（`toolCalls` 逐个 + 收尾文本 + llmCalls）——**只画当次返回的那一份**。 */
+  function renderRunTrace(body) {
+    var mount = app.byId("decision-run-trace");
+    if (!mount) {
+      return;
+    }
+    var fields = runTraceFields(body);
+    app.clear(mount);
+    var head = app.el("div", { class: "run-trace-head" });
+    head.setAttribute("data-decision-maker-id", fields.decisionMakerId);
+    head.appendChild(
+      app.el("span", { class: "run-trace-title", text: "本轮轨迹（决策人 " + fields.decisionMakerId + "）" })
+    );
+    head.appendChild(
+      app.el("span", {
+        class: "run-trace-meta",
+        text:
+          "llmCalls=" +
+          fields.llmCalls +
+          " · 落 " +
+          fields.revision +
+          " · 会话 " +
+          fields.conversationId +
+          (fields.abortedByBudget ? " · 因预算中止" : ""),
+      })
+    );
+    mount.appendChild(head);
+    // ★★ **"没跑成"与"跑了但没调工具"必须分得开**（都是空轨迹，含义相反）：前者有 reason（服务端如实报的
+    //   失败码），后者才是真的空跑。折成同一句话会让"未绑定 provider"看起来像"跑得很顺"。
+    if (fields.reason) {
+      mount.appendChild(
+        app.el("p", {
+          class: "empty run-trace-failed",
+          text: "这一轮没跑成：" + fields.reason + " —— " + fields.detail + "（没有轨迹可看）",
+        })
+      );
+      appendRunTraceNote(mount);
+      return;
+    }
+    if (!fields.toolCalls.length) {
+      mount.appendChild(app.el("p", { class: "empty", text: "这一轮没有调用任何工具。" }));
+    }
+    fields.toolCalls.forEach(function (call, index) {
+      var row = app.el("div", { class: "run-trace-call" + (call.ok ? " ok" : " failed") });
+      row.setAttribute("data-tool", call.tool);
+      row.appendChild(
+        app.el("span", { class: "run-trace-tool", text: index + 1 + ". " + call.tool })
+      );
+      row.appendChild(
+        app.el("span", {
+          class: "run-trace-ok",
+          text: call.ok ? "OK" : "失败" + (call.code === "—" ? "" : "（" + call.code + "）"),
+        })
+      );
+      row.appendChild(app.el("pre", { class: "run-trace-summary", text: call.summary }));
+      mount.appendChild(row);
+    });
+    mount.appendChild(app.el("pre", { class: "run-trace-final", text: fields.finalText }));
+    appendRunTraceNote(mount);
+  }
+
+  /** 读数里明说这件取舍：轨迹**不落盘** ⇒ 换 target / 刷新之后它就不在了（成功/失败两条路都带上）。 */
+  function appendRunTraceNote(mount) {
+    mount.appendChild(
+      app.el("p", {
+        class: "status muted run-trace-note",
+        text: "轨迹只在这一次响应里（不落盘、不进 revision）——刷新或换时间点后不再复现；决策本身落的令见下方「决策记录」。",
+      })
+    );
+  }
+
+  // ── 决策记录（GET /api/sd/directives，2026-09-23）──────────────────────
+
+  var decisionDirectivesToken = 0;
+  var expandedDirectiveId = null;
+
+  /** 决策记录的字段投影（纯函数，与 `GET /api/sd/directives` 逐字段对应；缺值 `—`，不编造）。 */
+  function directiveFields(directive) {
+    var d = directive || {};
+    var commands = Array.isArray(d.commands) ? d.commands : [];
+    var effects = Array.isArray(d.effects) ? d.effects : [];
+    return {
+      directiveId: valueOrDash(d.directiveId),
+      decisionMakerId: valueOrDash(d.decisionMakerId),
+      tick: d.tick === null || d.tick === undefined ? "—" : String(d.tick),
+      target: d.target === null || d.target === undefined ? "（无目标）" : String(d.target),
+      // ★ 执行原文（决心的"理由"）由服务端从 sd INFO 覆盖层取回；取不到 ⇒ 显式说没有，不拿 key 名顶替。
+      intentInfo:
+        d.intentInfo === null || d.intentInfo === undefined
+          ? "（取不到执行原文）"
+          : String(d.intentInfo),
+      intentInfoKey: valueOrDash(d.intentInfoKey),
+      status: valueOrDash(d.status),
+      verdict: d.verdict === null || d.verdict === undefined ? "（无判决）" : String(d.verdict),
+      effects: effects.length ? effects.join("、") : "（无）",
+      commands: commands.map(function (command) {
+        var c = command || {};
+        return { type: valueOrDash(c.type), payloadJson: valueOrDash(c.payloadJson) };
+      }),
+    };
+  }
+
+  /** 列表项的一行摘要：`tick N · <执行原文首行>`（原文可能很长，只取首行、按字符截断）。 */
+  function directiveHeadline(directive) {
+    var fields = directiveFields(directive);
+    var firstLine = fields.intentInfo.split("\n")[0];
+    if (firstLine.length > 60) {
+      firstLine = firstLine.slice(0, 60) + "…";
+    }
+    return "tick " + fields.tick + " · " + firstLine + "（" + fields.commands.length + " 条命令）";
+  }
+
+  /** 点一条 ⇒ 展开/收起它的详情（决心/理由/命令清单）。 */
+  function toggleDirective(id) {
+    expandedDirectiveId = expandedDirectiveId === id ? null : id;
+    drawDirectiveList();
+  }
+
+  var loadedDirectives = [];
+
+  function drawDirectiveList() {
+    var mount = app.byId("decision-directives");
+    if (!mount) {
+      return;
+    }
+    var directives = loadedDirectives || [];
+    app.clear(mount);
+    if (!directives.length) {
+      mount.appendChild(app.el("p", { class: "empty", text: "这个决策人还没有出过令。" }));
+      return;
+    }
+    var list = app.el("div", { class: "directive-list" });
+    directives.forEach(function (directive) {
+      var fields = directiveFields(directive);
+      var item = app.el("div", { class: "directive-item" });
+      item.setAttribute("data-directive-id", fields.directiveId);
+      var head = app.el("button", { type: "button", class: "directive-head" });
+      head.setAttribute("data-directive-tick", fields.tick);
+      head.appendChild(app.el("span", { class: "directive-id", text: fields.directiveId }));
+      head.appendChild(
+        app.el("span", { class: "directive-headline", text: directiveHeadline(directive) })
+      );
+      head.addEventListener("click", function () {
+        toggleDirective(fields.directiveId);
+      });
+      item.appendChild(head);
+      if (expandedDirectiveId === fields.directiveId) {
+        var detail = app.el("dl", { class: "kv directive-detail" });
+        appendRow(detail, "决心 / 理由（intentInfo）", fields.intentInfo);
+        appendRow(detail, "意图 INFO key", fields.intentInfoKey);
+        appendRow(detail, "目标", fields.target);
+        appendRow(detail, "状态", fields.status);
+        appendRow(detail, "判决", fields.verdict);
+        appendRow(detail, "效果", fields.effects);
+        appendRow(
+          detail,
+          "命令清单（" + fields.commands.length + "）",
+          fields.commands.length ? "" : "（无）"
+        );
+        fields.commands.forEach(function (command, index) {
+          appendRow(detail, "  " + (index + 1) + ". " + command.type, command.payloadJson);
+        });
+        item.appendChild(detail);
+      }
+      list.appendChild(item);
+    });
+    mount.appendChild(list);
+  }
+
+  /**
+   * 载入这些决策人的决策记录（0 个 ⇒ 提示；1 个 ⇒ 拉它的；多个 ⇒ **不猜哪一个**，让用户从右栏点选）。
+   *
+   * <p>★ 未知 id ⇒ 服务端 404（**不是空列表**）：那说明这个快照里没有这个人 —— 如实显示，不折成"还没出过令"。
+   */
+  function loadDecisionDirectives(makerIds) {
+    var mount = app.byId("decision-directives");
+    if (!mount) {
+      return;
+    }
+    var ids = Array.isArray(makerIds) ? makerIds.filter(Boolean) : [];
+    var token = ++decisionDirectivesToken;
+    if (ids.length !== 1) {
+      loadedDirectives = [];
+      expandedDirectiveId = null;
+      app.clear(mount);
+      mount.appendChild(
+        app.el("p", {
+          class: "empty",
+          text: ids.length
+            ? "本格有 " + ids.length + " 个决策人；从右栏点选一个查看它的决策记录。"
+            : "选中决策人后可看它的决策记录（出过的令：决心 / 理由 / 命令清单）。",
+        })
+      );
+      return;
+    }
+    var makerId = String(ids[0]);
+    loadedDirectives = [];
+    expandedDirectiveId = null;
+    app.clear(mount);
+    // ★ **api 口不在就什么都不做**（与上面 SimosMap 那几处同口径的存在性判）：本页可能被旧版/嵌入方的
+    //   api.js 驱动，那时光是"没有这个端点"，不是"这个人没有决策记录"——两者必须可区分（后者才显示空态）。
+    if (typeof api.directives !== "function") {
+      mount.appendChild(
+        app.el("p", { class: "empty", text: "决策记录端点未接入（本页的 api.js 里没有 directives）" })
+      );
+      return;
+    }
+    mount.appendChild(app.el("p", { class: "empty", text: "载入决策记录 " + makerId + "…" }));
+    api
+      .directives(makerId, app.target())
+      .then(function (body) {
+        if (token !== decisionDirectivesToken) {
+          return;
+        }
+        loadedDirectives = (body && body.directives) || [];
+        drawDirectiveList();
+      })
+      .catch(function (e) {
+        if (token !== decisionDirectivesToken) {
+          return;
+        }
+        loadedDirectives = [];
+        app.clear(mount);
+        mount.appendChild(app.el("p", { class: "empty", text: "决策记录载入失败：" + e.message }));
+      });
+  }
+
   /** 把一个决策人的详情写进容器（`data-decision-maker-id` 供 e2e/断言锚定）。 */
   function appendDecisionMakerDetail(container, maker, note) {
     var fields = decisionMakerFields(maker);
@@ -1103,7 +1563,11 @@
     }
     appendRow(dl, "会话世代", fields.conversationGeneration);
     appendRow(dl, "会话 id", fields.conversationId);
+    appendRow(dl, "绑定的 provider", maker && maker.providerId ? maker.providerId : "（未绑定）");
     appendRow(dl, "待决状态", fields.pending);
+    // ★ 2026-09-23：这一行的**内容**（决心/理由/命令清单）在下方「决策记录」里——本行只报"最近一次在第几 tick"。
+    appendRow(dl, "最近一次出令的 tick", fields.lastDirectiveTick);
+    appendRow(dl, "距上次出令（tick）", fields.ticksSinceLast);
     // ★ 这一行由 map.js 回填（它才是拉 `/scope` 的那个文件）：内容 = "可见 N 格 / M 区域（国家级|军队级）"。
     appendLiveRow(dl, "可见范围（现算）", DECISION_SCOPE_SUMMARY_ID, "载入中…");
     if (note) {
@@ -1163,6 +1627,7 @@
             window.SimosMap.republishDecisionScopeSummary();
           }
           setStartDecisionTarget(maker);
+          loadDecisionDirectives([maker.id]);
           setDecisionViewStatus("决策人 " + maker.id + " · " + targetLabel(), "ok");
         })
         .catch(function (e) {
@@ -1170,6 +1635,7 @@
             return;
           }
           setStartDecisionTarget(null);
+          loadDecisionDirectives([]);
           setDecisionViewStatus("决策人查询失败：" + e.message, "err");
         });
       return;
@@ -1177,6 +1643,7 @@
 
     if (!selection) {
       setStartDecisionTarget(null);
+      loadDecisionDirectives([]);
       setDecisionViewStatus("点选地图上的国家区域或有决策人的单位，查看其决策人信息。", "muted");
       return;
     }
@@ -1207,6 +1674,7 @@
         if (!nationIds.length) {
           appendNoDecisionMaker(container, "该格不属于任何国家区域（无国家决策人）");
           setStartDecisionTarget(null);
+          loadDecisionDirectives([]);
           setDecisionViewStatus(hexLabel(hex) + " · 无国家区域", "muted");
           return;
         }
@@ -1217,6 +1685,11 @@
         renderDecisionMakers(container, all, "国家区域 " + nationIds.join("、"));
         // 多个国家决策人 ⇒ 无单一发起目标（不猜"哪一个"）。
         setStartDecisionTarget(all.length === 1 ? all[0] : null);
+        loadDecisionDirectives(
+          all.map(function (maker) {
+            return maker.id;
+          })
+        );
         setDecisionViewStatus(hexLabel(hex) + " · " + targetLabel(), "ok");
       });
       return;
@@ -1242,11 +1715,13 @@
         if (!maker) {
           appendNoDecisionMaker(container, "无决策人");
           setStartDecisionTarget(null);
+          loadDecisionDirectives([]);
           setDecisionViewStatus("单位 " + selection.id + " · 无决策人", "muted");
           return;
         }
         appendDecisionMakerDetail(container, maker, "单位 " + selection.id);
         setStartDecisionTarget(maker);
+        loadDecisionDirectives([maker.id]);
         setDecisionViewStatus("单位 " + selection.id + " · " + targetLabel(), "ok");
       });
       return;
@@ -1617,6 +2092,10 @@
     if (startButton && startButton.addEventListener) {
       startButton.addEventListener("click", decideStartDecision);
     }
+    var runButton = app.byId("decision-run");
+    if (runButton && runButton.addEventListener) {
+      runButton.addEventListener("click", decideRunDecision);
+    }
     var providerSave = app.byId("llm-provider-save");
     if (providerSave && providerSave.addEventListener) {
       providerSave.addEventListener("click", saveLlmProviderFromForm);
@@ -1630,6 +2109,7 @@
       bindingSave.addEventListener("click", saveDecisionMakerProviderFromForm);
     }
     updateStartDecisionControl();
+    updateRunDecisionControl();
     renderRight(app.getState());
     renderLeft(app.getState());
     renderDecision(app.getState());
@@ -1671,6 +2151,16 @@
     startDecisionTargetId: function () {
       return startDecisionTarget ? String(startDecisionTarget.id) : null;
     },
+    // ★ 2026-09-23：「让它跑一轮」（sd.RunDecision）+ 决策记录（/api/sd/directives）的纯函数投影。
+    runDecisionGate: runDecisionGate,
+    runDecision: decideRunDecision,
+    runDecisionTargetId: function () {
+      return runDecisionTarget ? String(runDecisionTarget.id) : null;
+    },
+    runOutcomeText: runOutcomeText,
+    runTraceFields: runTraceFields,
+    directiveFields: directiveFields,
+    directiveHeadline: directiveHeadline,
     decisionMakerGroups: decisionMakerGroups,
     decisionMakersForNation: decisionMakersForNation,
     decisionMakerForUnit: decisionMakerForUnit,

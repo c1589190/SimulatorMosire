@@ -3,19 +3,23 @@ package io.mosire.simos.app.query;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.Nation;
+import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -102,6 +106,87 @@ public final class SdQueryService {
     }
     makers.sort(Comparator.comparing(maker -> maker.id().value()));
     return infos(makers, sd, tickOf(state));
+  }
+
+  /**
+   * **全部决策记录**（{@code GET /api/sd/directives} 的数据源）：按 {@link #order} 排（**新的在前**）。
+   *
+   * <p>★ **它回答的是"这人到底下了什么令"**：此前 {@link DecisionMakerInfo} 只报 {@code lastDirectiveTick} / {@code
+   * ticksSinceLast}（"最近一次在第几 tick"），**内容一个字都看不到**——决策的产出其实一直在世界状态里（{@code
+   * sd.directives()}），缺的只是读它的口。
+   */
+  public List<DirectiveInfo> listDirectives(QueryTarget target) {
+    SimulationState state = query.stateAt(target);
+    return directivesOf(sdState(state), null);
+  }
+
+  /**
+   * **某个决策人的**决策记录；该决策人在这个版本的世界里查无 ⇒ {@link Optional#empty()}（调用方折成 404）。
+   *
+   * <p>★ **为什么查无是 404 而不是空列表**：空列表只表示"这个人还没出过令"，把它与"没有这个人"折成同一个响应，等于把 "没查到"伪装成"不存在"（与 {@link
+   * #decisionMaker} 同口径）。过滤 {@code ?affiliation=} 那种**集合筛**才用空列表。
+   */
+  public Optional<List<DirectiveInfo>> listDirectives(DecisionMakerId id, QueryTarget target) {
+    Objects.requireNonNull(id, "id");
+    SimulationState state = query.stateAt(target);
+    SdState sd = sdState(state);
+    if (!sd.decisionMakers().containsKey(id)) {
+      return Optional.empty();
+    }
+    return Optional.of(directivesOf(sd, id));
+  }
+
+  /**
+   * 决策记录投影 + **执行原文**：{@code intentInfo} 从 sd INFO 覆盖层取（spec §三.6：写在 {@code sd:directive.<id>}
+   * 地址下、key = 该记录自己的 {@code intentInfoKey}），取不到 ⇒ {@code null}（**显式未知**，不拿空串顶替）。
+   */
+  private static List<DirectiveInfo> directivesOf(SdState sd, DecisionMakerId only) {
+    Map<DirectiveId, Map<String, String>> infoByDirective = infoByDirective(sd);
+    List<Directive> picked = new ArrayList<>();
+    for (Directive directive : sd.directives().values()) {
+      if (only == null || directive.decisionMakerId().equals(only)) {
+        picked.add(directive);
+      }
+    }
+    picked.sort(order());
+    List<DirectiveInfo> out = new ArrayList<>(picked.size());
+    for (Directive directive : picked) {
+      String intent =
+          infoByDirective.getOrDefault(directive.id(), Map.of()).get(directive.intentInfoKey());
+      out.add(new DirectiveInfo(directive, intent));
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * 排序（**响应字节可复现**的前提）：tick **降序**（新的在前，界面要的第一条就是"最近一次"），同 tick 再按 id 字典序。
+   *
+   * <p>★ {@code SdState.directives()} 是插入序表（R4 只保证 {@code (dm,tick)} 唯一，不保证有序）⇒ 必须显式排。
+   */
+  private static Comparator<Directive> order() {
+    return Comparator.comparingLong(Directive::tick)
+        .reversed()
+        .thenComparing(directive -> directive.id().value());
+  }
+
+  /**
+   * 执行原文索引：{@code 决策 id ⇒ (INFO key ⇒ 值)}。**一次遍历**建好（每次查一条就重扫一遍 sd.info 是 O(n·m)）。
+   *
+   * <p>★ 认 {@code sourceDirective} 而**不是**自己去拼地址串：地址形态是写入方（{@code IssueDirectiveHandler}）的事，
+   * 读的一侧照它留的引用找——拼串的两处会各自"看起来对"，改名时静默失配。
+   */
+  private static Map<DirectiveId, Map<String, String>> infoByDirective(SdState sd) {
+    Map<DirectiveId, Map<String, String>> out = new LinkedHashMap<>();
+    for (List<SdInfoEntry> entries : sd.info().values()) {
+      for (SdInfoEntry entry : entries) {
+        if (entry.sourceDirective().isEmpty()) {
+          continue;
+        }
+        out.computeIfAbsent(entry.sourceDirective().get(), ignored -> new LinkedHashMap<>())
+            .put(entry.key(), String.valueOf(entry.value()));
+      }
+    }
+    return out;
   }
 
   /** 单个决策人；不存在 ⇒ {@link Optional#empty()}（调用方折成 404）。 */
@@ -216,6 +301,14 @@ public final class SdQueryService {
       String nationId,
       String rootUnit,
       PendingSignal pending) {}
+
+  /**
+   * 一条决策记录的投影：{@link Directive} 本体 + 从 sd INFO 覆盖层取回的**执行原文**。
+   *
+   * <p>★ {@code intentInfo} 取不到时为 {@code null}（**显式未知**）——它可能在（a）该记录由别处构造、没写 INFO，
+   * （b）地址被外部改坏。两种情况都不该被读成"这条决策没有理由"。
+   */
+  public record DirectiveInfo(Directive directive, String intentInfo) {}
 
   /**
    * 待决信号（T9，D7 已裁公式）的三件派生值。

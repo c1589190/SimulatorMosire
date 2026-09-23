@@ -201,6 +201,14 @@
                  写走窄端点 POST /api/sd/start-decision（服务端写死 sd.StartDecision，落 revision）。 -->
             <button type="button" id="decision-start" disabled>开始决策</button>
             <p id="decision-start-status" class="status muted">选中一个待决的决策人后可发起。</p>
+            <!-- 2026-09-23：让它跑一轮（sd.RunDecision）。写走窄端点 POST /api/sd/run-decision（服务端写死 type）。
+                 ★ 这一轮可能跑很久，且决策人出的令各进一次**阻塞式**审批 ⇒ 状态行必须一直显示"正在跑/可能在等审批"。 -->
+            <button type="button" id="decision-run" disabled>让它跑一轮</button>
+            <p id="decision-run-status" class="status muted">选中一个已绑定 provider 的决策人后可让它跑一轮（真 LLM 自行读世界、出令）。</p>
+            <!-- 本轮轨迹（toolCalls / finalText / llmCalls）：**只显示当次返回的那一份**，不落盘、刷新即失。 -->
+            <div id="decision-run-trace" class="decision-run-trace"></div>
+            <!-- 决策记录：选中决策人时列出它出过的令（点一条看详情：决心/理由/命令清单）。 -->
+            <div id="decision-directives" class="decision-directives"></div>
           </div>
 
           <div data-decision-subpage="approval" hidden>

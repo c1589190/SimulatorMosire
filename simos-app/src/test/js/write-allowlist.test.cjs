@@ -13,8 +13,15 @@ const assert = require("node:assert");
 const { loadWebui, readWebui, webuiDir } = require("./helpers/webui-loader.cjs");
 
 const API_BASE = "/api";
-// 命令写面（T10 起四条：M5 的三条 + 决策模式的窄写 /api/sd/start-decision）。
-const ALLOWED = ["/api/advance", "/api/command", "/api/fork", "/api/sd/start-decision"];
+// 命令写面（T10 起四条：M5 的三条 + 决策模式的窄写 /api/sd/start-decision；
+// 2026-09-23 起五条：+ /api/sd/run-decision「让它跑一轮」，同族窄写）。
+const ALLOWED = [
+  "/api/advance",
+  "/api/command",
+  "/api/fork",
+  "/api/sd/run-decision",
+  "/api/sd/start-decision",
+];
 // ★ M11′：LLM provider 基础设施配置（**非命令写**）——改的是 AgentLib 的 ConfigStore（`llm.routes.*` / `keys.*`），
 //   不落 revision、不进命令白名单。逐条精确列出。
 //   `/api/sd/set-decision-maker-provider` 是**命令写**吗？它是固定类型的真命令（sd.SetDecisionMakerProvider，
@@ -40,6 +47,7 @@ const DECLARED_WRITES = [
   "/api/llm/providers",
   "/api/llm/providers/delete",
   "/api/llm/providers/test",
+  "/api/sd/run-decision",
   "/api/sd/set-decision-maker-provider",
   "/api/sd/start-decision",
 ];
@@ -48,6 +56,7 @@ const WRITE_FUNCTIONS = [
   "advance",
   "fork",
   "startDecision",
+  "runDecision",
   "approve",
   "saveLlmProvider",
   "deleteLlmProvider",
@@ -89,8 +98,8 @@ test("api.js-declares-exactly-the-allowed-write-endpoints", () => {
   const found = scanPostEndpoints(readWebui("api.js"));
   assert.equal(
     found.length,
-    9,
-    "扫描必须非空且恰九条（3 通用命令 + 1 决策窄写 + 1 审批 + 4 provider/绑定窄写）：" + JSON.stringify(found)
+    10,
+    "扫描必须非空且恰十条（3 通用命令 + 2 决策窄写 + 1 审批 + 4 provider/绑定窄写）：" + JSON.stringify(found)
   );
   assert.deepEqual(found, DECLARED_WRITES);
   assert.deepEqual(violations(found), []);
@@ -156,6 +165,7 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   await api.advance("main", 0, 1, 2);
   await api.fork("main", 0, "b2");
   await api.startDecision("main", 0, "dm-1");
+  await api.runDecision("main", 0, "dm-1");
   await api.state();
   await api.timeline("main");
   await api.mapOverview();
@@ -188,6 +198,7 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
       "/api/llm/providers",
       "/api/llm/providers/delete",
       "/api/llm/providers/test",
+      "/api/sd/run-decision",
       "/api/sd/set-decision-maker-provider",
       "/api/sd/start-decision",
     ],

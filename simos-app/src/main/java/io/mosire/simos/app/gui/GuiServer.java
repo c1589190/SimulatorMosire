@@ -8,8 +8,11 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.agentlib.tool.ToolResultTruncator;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
+import io.mosire.simos.app.decision.DecisionAgentRunner;
+import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
@@ -49,6 +52,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.io.IOException;
@@ -125,6 +129,25 @@ public final class GuiServer implements AutoCloseable {
    */
   private static final String DECISION_MAKER_SCOPE_SUFFIX = "/scope";
 
+  /**
+   * **决策记录只读面**：{@code GET /api/sd/directives[?decisionMakerId=<id>]}——"这个人到底下了什么令"。
+   *
+   * <p>★ 与 {@code /api/sd/decision-makers/{id}/scope} **同款拒 {@code as=}**：本端点是**审计/配置面**（GM 核对"决策人
+   * 产出了什么"），不是数据面。{@code as=} 的语义是"以某人的视角读世界"，接在这里等于**用甲的身份读出乙下的令**—— 而决策原文（{@code
+   * intentInfo}）恰恰是裁决者与 GM 才有权看的东西。接反了不报错、只静默泄露，故 fail-closed。
+   */
+  private static final String DIRECTIVES_PATH = "/api/sd/directives";
+
+  /**
+   * **「让它跑一轮」窄写面**：{@code POST /api/sd/run-decision}——命令类型固定为 {@code sd.RunDecision}，用户路径
+   * **直接生效**（与 {@code /api/sd/start-decision} 同制；GM Agent 走 MCP 窄工具的那条才过审批门链）。
+   *
+   * <p>★★ **但这一轮的内部不是无审批的**：决策人自己出的令（{@code sd.IssueDirective}）是敏感写 ⇒ 它各自进一次审批门链， 而审批是**阻塞等待**（上限 =
+   * 壳的 {@code APPROVAL_TIMEOUT}）⇒ 本请求会在那里停住。界面必须显示"正在跑 / 可能在等审批"， **不能表现得像卡死**（前端 {@code panels.js}
+   * 的 runDecision 状态行就是为这条写的）。
+   */
+  private static final String RUN_DECISION_PATH = "/api/sd/run-decision";
+
   /** 审批代理路径：{@code /api/approvals} 或 {@code /api/approvals/{id}}（原样转给 AgentLib 端点）。 */
   private static final String APPROVAL_PATH = "/api/approvals";
 
@@ -163,6 +186,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/social/population",
           "/api/timeline",
           "/api/sd/decision-makers",
+          "/api/sd/directives",
           "/api/sd/verdicts",
           "/api/gm/tool-usage",
           LLM_PROVIDERS_PATH);
@@ -173,6 +197,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/advance",
           "/api/fork",
           "/api/sd/start-decision",
+          "/api/sd/run-decision",
           LLM_PROVIDERS_PATH,
           LLM_PROVIDERS_DELETE_PATH,
           LLM_PROVIDERS_TEST_PATH,
@@ -198,6 +223,12 @@ public final class GuiServer implements AutoCloseable {
 
   /** 决策编排（T3）：{@code /api/sd/start-decision} 提交成功后跑 LLM 判决；null = 未接入（退回"只发起、不裁决"）。 */
   private final DecisionAdjudicationService decisionAdjudicationService;
+
+  /**
+   * 决策人 agent 运行流（T11C 的装配点）：{@code /api/sd/run-decision} 提交成功后跑一轮真 LLM；null = 未接入（退回"只落
+   * 触发事实、不跑那一轮"）。
+   */
+  private final DecisionAgentService decisionAgentService;
 
   /** 审批透传用（T6）：只转发，不解释语义。 */
   private final HttpClient approvalClient;
@@ -238,6 +269,32 @@ public final class GuiServer implements AutoCloseable {
    *
    * @param llmConfig LLM provider 配置门面（{@code /api/llm/providers*} 的唯一数据源）；null = 未接入
    * @param decisionAdjudicationService 决策编排（{@code /api/sd/start-decision} 提交后跑判决）；null = 不裁决
+   *     <p>★ **本构造器刻意不设 {@code EI_EXPOSE_REP2} 抑制**：它只委派给全参那个、自己不碰字段 ⇒ 留一条"不必要的抑制" 恰好会被 SpotBugs 的
+   *     {@code US_USELESS_SUPPRESSION_ON_METHOD} 抓出来（2026-09-23 门禁实测，1 bug）。
+   */
+  public GuiServer(
+      QueryService queryService,
+      CoreSimos core,
+      String mapId,
+      String approvalBaseUrl,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      DecisionAdjudicationService decisionAdjudicationService) {
+    this(
+        queryService,
+        core,
+        mapId,
+        approvalBaseUrl,
+        gmToolUsage,
+        llmConfig,
+        decisionAdjudicationService,
+        null);
+  }
+
+  /**
+   * 全参构造（决策运行流对接版）：多一个 {@link DecisionAgentService}（{@code /api/sd/run-decision} 的那一轮）。
+   *
+   * @param decisionAgentService 决策人 agent 运行流；null = 未接入（该端点只落触发事实、不跑那一轮）
    */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP2",
@@ -249,7 +306,9 @@ public final class GuiServer implements AutoCloseable {
       String approvalBaseUrl,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
-      DecisionAdjudicationService decisionAdjudicationService) {
+      DecisionAdjudicationService decisionAdjudicationService,
+      DecisionAgentService decisionAgentService) {
+    this.decisionAgentService = decisionAgentService;
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
@@ -470,6 +529,10 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return decisionMakersReply(params);
     }
+    if (path.equals(DIRECTIVES_PATH)) {
+      rejectAs(path, asPresent);
+      return directivesReply(params);
+    }
     if (path.equals(LLM_PROVIDERS_PATH)) {
       rejectAs(path, asPresent);
       return llmProvidersReply();
@@ -530,6 +593,9 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(START_DECISION_PATH)) {
       return startDecisionReply(exchange);
+    }
+    if (path.equals(RUN_DECISION_PATH)) {
+      return runDecisionReply(exchange);
     }
     if (path.equals(LLM_PROVIDERS_PATH)) {
       return upsertLlmProviderReply(exchange);
@@ -793,6 +859,31 @@ public final class GuiServer implements AutoCloseable {
     return Reply.of(200, Map.of("decisionMakers", ApiViews.decisionMakers(makers)));
   }
 
+  /**
+   * **决策记录只读面**：{@code GET /api/sd/directives[?decisionMakerId=<id>]}。
+   *
+   * <p>★ **它补的是哪一处空白**：{@code /api/sd/decision-makers/{id}} 只报 {@code lastDirectiveTick} / {@code
+   * ticksSinceLast}——"最近一次在第几 tick"看得见，**令的内容一个字都看不见**。而 {@code Directive}（含执行原文 +
+   * 结构化命令清单）本来就在世界状态里、本来就可回放，缺的只是这一个读口（铁律 1：文档/界面是视图，不是真相的第二份）。
+   *
+   * <p>★ **未知 {@code decisionMakerId} ⇒ 404**（**不是空列表**）：空列表只表示"这个人还没出过令"，折成同一个响应会把 "没查到"伪装成"不存在"（与
+   * {@code /api/sd/decision-makers/{id}} 同口径）。不筛 ⇒ {@code 200
+   * {"directives":[…]}}（空库同样是空列表——那是**集合**语义，没有"查无"可言）。
+   */
+  private Reply directivesReply(Map<String, String> params) {
+    String raw = params.get("decisionMakerId");
+    if (raw == null || raw.isBlank()) {
+      return Reply.of(
+          200,
+          Map.of("directives", ApiViews.directives(sdQueryService.listDirectives(target(params)))));
+    }
+    DecisionMakerId makerId = DecisionMakerId.parse(raw);
+    return sdQueryService
+        .listDirectives(makerId, target(params))
+        .map(infos -> Reply.of(200, Map.of("directives", ApiViews.directives(infos))))
+        .orElseGet(() -> Reply.of(404, Map.of("error", "decision maker not found", "id", raw)));
+  }
+
   /** 决策人详情（T5）：{@code GET /api/sd/decision-makers/{id}}；不存在 ⇒ 404（与 unit/region 详情同口径）。 */
   private Reply decisionMakerReply(Map<String, String> params, String id) {
     DecisionMakerId makerId = DecisionMakerId.parse(id);
@@ -938,6 +1029,114 @@ public final class GuiServer implements AutoCloseable {
     Map<String, Object> body = new LinkedHashMap<>(ApiViews.committed(committed.ref()));
     body.put("adjudication", adjudicationView(judgements));
     return Reply.of(200, body);
+  }
+
+  /**
+   * **「让它跑一轮」窄写**：{@code POST /api/sd/run-decision}，体 {@code {branch, expectedRevision,
+   * decisionMakerId}}；命令类型由服务端写死为 {@code sd.RunDecision}（前端不传 type，与 {@link #startDecisionReply} 同制
+   * ⇒ 工作台仍没有通用写面）。
+   *
+   * <p>★★ **两步走，顺序有意义**（与 GM 侧的 {@code RunDecisionTool} 同一套语义，见其类注）：
+   *
+   * <ol>
+   *   <li>**先落触发事实**（{@code sd.RunDecision}，经 {@link CoreSimos#submit}，铁律 2 无例外）；
+   *   <li>**再跑一轮**（{@link DecisionAgentService#runRound}）——世界版本取**刚落盘的新 head**，不是调用方手里那份。
+   *       落盘失败（冲突/被拒）就不跑（不浪费一次真 LLM 调用）。
+   * </ol>
+   *
+   * <p>★★ **HTTP 状态码只反映"世界写"的结局，这一轮自己的结局在体里**（{@code result} = {@code committed} / {@code aborted}
+   * / {@code failed}）。理由：它们是**两件不同的事实**——把"这一轮没跑成"折成 4xx/5xx 会让调用方读成
+   * "什么都没发生"，而触发事实**已经在盘上了**（可回放、AAR 看得见）。这与 {@code ApiViews} 的"不省字段、调用方一次判空" 同口径。
+   *
+   * <p>★ **这一轮可能阻塞**：决策人若出令（{@code sd.IssueDirective} 是敏感写），那一次工具调用会**等审批** （上限 = 壳的 {@code
+   * APPROVAL_TIMEOUT}）⇒ 本请求停在那里。前端因此必须显示"正在跑 / 可能在等审批"。
+   */
+  private Reply runDecisionReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String decisionMakerId = textField(root, "decisionMakerId");
+    String id = UUID.randomUUID().toString();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("decisionMakerId", decisionMakerId);
+    CommandEnvelope command =
+        new CommandEnvelope(
+            id,
+            id,
+            GUI_INITIATOR,
+            new BranchId(textField(root, "branch")),
+            new RevisionId(longField(root, "expectedRevision")),
+            "sd.RunDecision",
+            MAPPER.writeValueAsString(payload));
+    CommandResult result = core.submit(command);
+    if (!(result instanceof CommandResult.Committed committed) || decisionAgentService == null) {
+      return resultReply(result);
+    }
+    return Reply.of(200, runDecisionView(committed, decisionMakerId));
+  }
+
+  /**
+   * 跑一轮并把**轨迹**装配成视图（字段名与 GM 侧窄工具逐字一致：同一件事在两处呈现同一个形状）。
+   *
+   * <p>★ **轨迹不落盘**（本任务的明确取舍）：它是**过程观测**，不是世界事实——进 revision 会污染世界状态（铁律 2 管的是世界 事实），另存一张表则要动 Core 的
+   * DDL（已关账的代码）。代价是**没有历史**：翻页/刷新之后这一轮的账就只剩会话库里的 消息，界面上不复现。故这里只报**当次返回的那一份**。
+   */
+  private Map<String, Object> runDecisionView(
+      CommandResult.Committed committed, String decisionMakerId) {
+    Map<String, Object> view = new LinkedHashMap<>(ApiViews.committed(committed.ref()));
+    view.put("decisionMakerId", decisionMakerId);
+    StateRef ref = committed.ref();
+    try {
+      DecisionAgentRunner.DecisionTurn turn =
+          decisionAgentService.runRound(
+              ref.branch(), ref.revision(), new DecisionMakerId(decisionMakerId));
+      view.put("conversationId", turn.conversationId());
+      view.put("llmCalls", turn.llmCalls());
+      view.put("finalText", turn.finalText().orElse(null));
+      view.put("toolCalls", toolCallsView(turn.toolInvocations()));
+      view.put("abortedByBudget", false);
+      return view;
+    } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
+      // ★ 中止**不是失败到没有信息**：触发事实已落盘、消息也都在会话里 ⇒ 如实报"因预算中止" + 会话 id（下一轮从这段续）。
+      view.put("abortedByBudget", true);
+      view.put("reason", "turn-budget");
+      view.put("llmCalls", e.llmCalls());
+      view.put("conversationId", conversationIdFor(ref, decisionMakerId));
+      view.put("detail", e.getMessage());
+      return view;
+    } catch (RuntimeException e) {
+      // ★ 未绑定 provider（fail-closed）/ 路由坏掉 / 决策人查无：如实报，绝不静默当作"跑过了"。
+      view.put("abortedByBudget", false);
+      view.put("reason", e.getClass().getSimpleName());
+      view.put("conversationId", conversationIdFor(ref, decisionMakerId));
+      view.put("detail", e.getMessage());
+      return view;
+    }
+  }
+
+  /** 失败路径上报的会话 id：按**世界事实**（决策人 id + 会话世代）现算；查无 ⇒ 如实说没有会话（不编一个）。 */
+  private String conversationIdFor(StateRef ref, String decisionMakerId) {
+    try {
+      return decisionAgentService.conversationIdOf(ref, new DecisionMakerId(decisionMakerId));
+    } catch (IllegalArgumentException e) {
+      return "(无会话：该版本的世界里没有决策人 " + decisionMakerId + ")";
+    }
+  }
+
+  /** 轨迹：每次工具调用一行（工具名 + 成败 + 码 + **结果摘要**，摘要按既有惯例截断）。 */
+  private static List<Map<String, Object>> toolCallsView(
+      List<DecisionAgentRunner.ToolInvocation> invocations) {
+    List<Map<String, Object>> out = new ArrayList<>(invocations.size());
+    for (DecisionAgentRunner.ToolInvocation invocation : invocations) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("tool", invocation.toolName());
+      row.put("ok", invocation.success());
+      row.put("code", invocation.code());
+      row.put(
+          "summary",
+          ToolResultTruncator.truncate(
+              invocation.resultSummary(), ToolResultTruncator.DEFAULT_MAX_CHARS));
+      out.add(row);
+    }
+    return out;
   }
 
   /** 新 head 上该决策人的当前态（绑定的 providerId 以它为准；不存在 ⇒ 领域错误）。 */

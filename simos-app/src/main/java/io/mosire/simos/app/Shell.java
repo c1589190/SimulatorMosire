@@ -538,7 +538,10 @@ public final class Shell implements AutoCloseable {
             "http://127.0.0.1:" + approvalEndpoint.boundPort(),
             gmToolUsage,
             llmConfig,
-            decisionAdjudicationService);
+            decisionAdjudicationService,
+            // ★ T11C 的运行流（不是判决定编）：/api/sd/run-decision 落地时就是拿它跑那一轮——与 GM 侧的
+            //   sd.RunDecision 窄工具**同一个实例**（同一个会话库、同一条 provider 解析链）。
+            decisionAgentService);
     boolean guiUp = false;
     try {
       guiServer.start(config.bindAddress(), config.guiPort());

@@ -222,6 +222,21 @@
     return getJson(withTarget("/sd/decision-makers/" + encodeURIComponent(id) + "/scope", target));
   }
 
+  /**
+   * **决策记录**（只读）：{directives:[{directiveId,decisionMakerId,tick,target,intentInfoKey,intentInfo,commands,effects,verdict,status}…]}。
+   *
+   * <p>★ 带 `decisionMakerId` ⇒ 只列那个人的（**未知 id ⇒ 404**，不折成空列表：空列表表示"还没出过令"）；
+   * 不带 ⇒ 全部。
+   * <p>★ 顺序由服务端定（tick 降序 ⇒ 第一条就是"最近一次"）。前端**不重排**——重排会让"同一快照两次读数一致"这条前提破。
+   */
+  function directives(decisionMakerId, target) {
+    var path = "/sd/directives";
+    if (decisionMakerId) {
+      path += "?decisionMakerId=" + encodeURIComponent(decisionMakerId);
+    }
+    return getJson(withTarget(path, target));
+  }
+
   function population(q, r, target) {
     return getJson(withTarget("/social/population?q=" + Number(q) + "&r=" + Number(r), target));
   }
@@ -293,6 +308,26 @@
       body.note = note;
     }
     return postJson("/sd/start-decision", body);
+  }
+
+  /**
+   * 「让它跑一轮」（窄写）：打 `POST /api/sd/run-decision`，体 {branch, expectedRevision, decisionMakerId}。
+   * 命令类型由服务端写死（`sd.RunDecision` ⇒ 前端不传 type）；先落一条触发事实（revision），再让该决策人的 agent
+   * 真跑一轮（真 LLM 自行调工具读世界、出令）。
+   *
+   * <p>★ 返回体 = 提交结局 + **本轮轨迹**（与 GM 侧的 `sd.RunDecision` 窄工具逐字同形）：`llmCalls` / `finalText` /
+   * `toolCalls[{tool,ok,code,summary}]` / `abortedByBudget` / `conversationId`。
+   * <p>★★ **它可能等很久**：决策人出的令（`sd.IssueDirective`）是敏感写 ⇒ 各进一次**阻塞式**审批（上限 5 分钟）。
+   * 调用方必须显示"正在跑 / 可能在等审批"，不能表现得像卡死。
+   * <p>★ **轨迹不落盘**（服务端明确取舍）：换 target / 刷新之后这一轮的账就没了——它只存在于**这次响应**里。
+   */
+  function runDecision(branch, expectedRevision, decisionMakerId) {
+    invalidateState();
+    return postJson("/sd/run-decision", {
+      branch: branch,
+      expectedRevision: expectedRevision,
+      decisionMakerId: decisionMakerId,
+    });
   }
 
   function approvals() {
@@ -368,6 +403,7 @@
     decisionMakers: decisionMakers,
     decisionMaker: decisionMaker,
     decisionMakerScope: decisionMakerScope,
+    directives: directives,
     population: population,
     cachedMapOverview: cachedMapOverview,
     cachedUnits: cachedUnits,
@@ -377,6 +413,7 @@
     advance: advance,
     fork: fork,
     startDecision: startDecision,
+    runDecision: runDecision,
     approvals: approvals,
     approve: approve,
     gmToolUsage: gmToolUsage,

@@ -69,9 +69,13 @@
       //   ★ T10 起本表有**一条**：「开始决策」（sd.StartDecision，spec §四.2 "若 D5 选新命令，则加 sd.StartDecision"）。
       //     它是真命令（落 revision，铁律 2）、由 GUI 窄端点 POST /api/sd/start-decision 发出（api.startDecision）。
       //     其余决策相关写仍不在本表：审批裁决打 /api/approvals/{id}（非命令写）；出令/配权只有 GM/决策人口。
+      //   ★ 2026-09-23 起为**两条**：加「让它跑一轮」（sd.RunDecision）——它同样先落一条真触发事实（revision），
+      //     再由服务端跑那一轮（POST /api/sd/run-decision，api.runDecision）。此前它只存在于 GM 的 MCP 工具面
+      //     ⇒ 界面上点不出来（"决策能生成"这件事只有 agent 做得到）。
+      //     ★ 它**不是**"直接出令"：出令仍由决策人自己的 sd.IssueDirective 落（各进一次审批），本条只发起那一轮。
       id: "decision",
       label: "决策",
-      writes: ["sd.StartDecision"],
+      writes: ["sd.StartDecision", "sd.RunDecision"],
     },
   ];
 

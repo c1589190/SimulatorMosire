@@ -77,9 +77,10 @@ test("unit-allows-route-and-editor-writes", () => {
 });
 
 test("decision-allows-exactly-start-decision", () => {
-  // ★★ T10（spec §四.2，D5 已裁"新命令"）：决策模式**恰有一条**命令写 = sd.StartDecision。
+  // ★★ T10（spec §四.2，D5 已裁"新命令"）：决策模式的命令写；2026-09-23 起**两条**
+  //   （+ sd.RunDecision，「让它跑一轮」，走 POST /api/sd/run-decision 窄端点）。
   //   审批的「批准/驳回」打 POST /api/approvals/{id}（审批裁决，非命令写）⇒ **不进**本表。
-  assert.deepEqual(M.allowedWrites("decision"), ["sd.StartDecision"]);
+  assert.deepEqual(M.allowedWrites("decision"), ["sd.StartDecision", "sd.RunDecision"]);
   assert.equal(M.isWriteAllowed("decision", "sd.StartDecision"), true);
   for (const type of [
     "sd.IssueDirective",

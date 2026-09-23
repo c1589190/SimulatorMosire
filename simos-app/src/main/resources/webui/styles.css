@@ -1316,6 +1316,134 @@ body.workbench-page .notify-bar.muted {
   margin: 6px 0;
 }
 
+/* 2026-09-23：让它跑一轮（sd.RunDecision）的本轮轨迹 + 决策记录（/api/sd/directives）。
+   ★ 轨迹是有体积的（工具返回原文可能很长）⇒ 摘要用 pre + 限高滚动，不把左栏撑爆。 */
+.decision-run-trace {
+  margin: 8px 0;
+}
+
+.run-trace-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.run-trace-title {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.run-trace-meta {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.run-trace-call {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  padding: 4px 6px;
+  margin-bottom: 4px;
+}
+
+.run-trace-call.failed {
+  border-color: var(--err);
+}
+
+.run-trace-tool {
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.run-trace-ok {
+  font-size: 11px;
+  color: var(--ok);
+}
+
+.run-trace-call.failed .run-trace-ok {
+  color: var(--err);
+}
+
+.run-trace-summary,
+.run-trace-final {
+  margin: 4px 0 0;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.run-trace-final {
+  color: var(--text);
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+  max-height: 90px;
+}
+
+.run-trace-note {
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+
+.decision-directives {
+  margin: 8px 0 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.directive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.directive-item {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.directive-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 4px 6px;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.directive-id {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.directive-headline {
+  font-size: 12px;
+}
+
+.directive-detail {
+  margin: 0;
+  padding: 4px 6px 6px;
+  border-top: 1px dashed var(--line);
+}
+
+.directive-detail dt {
+  font-size: 11px;
+}
+
+.directive-detail dd {
+  font-size: 11px;
+  word-break: break-all;
+}
+
 .decision-group {
   margin: 8px 0;
 }

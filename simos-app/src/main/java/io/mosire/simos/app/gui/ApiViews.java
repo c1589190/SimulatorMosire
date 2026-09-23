@@ -20,8 +20,12 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.sd.id.EffectId;
+import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.Directive;
+import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -34,6 +38,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.move.MovementState;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.move.UnitMoves;
+import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
@@ -598,6 +603,59 @@ final class ApiViews {
     view.put("due", pending.due());
     view.put("lastDirectiveTick", pending.lastDirectiveTick());
     view.put("ticksSinceLast", pending.ticksSinceLast());
+    return view;
+  }
+
+  /**
+   * 决策记录列表（{@code GET /api/sd/directives}）：每条 = 一条真 {@link Directive} + 取回的执行原文。
+   *
+   * <p>★ **顺序由服务端决定**（{@link SdQueryService#listDirectives} 按 tick 降序、同 tick 按 id 字典序）——本类只做
+   * 装配，不重排，否则"同状态两次响应逐字节相同"这条前提会破（与 {@link #decisionMakers} 同口径）。
+   */
+  static List<Map<String, Object>> directives(List<SdQueryService.DirectiveInfo> infos) {
+    List<Map<String, Object>> out = new ArrayList<>(infos.size());
+    for (SdQueryService.DirectiveInfo info : infos) {
+      out.add(directive(info));
+    }
+    return out;
+  }
+
+  /**
+   * 单条决策记录视图（字段名**以 sd 域的既有类型为准**，不另起名）： {@code directiveId} / {@code decisionMakerId} / {@code
+   * tick} / {@code target} / {@code intentInfoKey} / {@code intentInfo} / {@code commands} / {@code
+   * effects} / {@code verdict} / {@code status}。
+   *
+   * <p>★ {@code target} 是 {@link Address#canonical()}（{@code Directive.target} 是 {@code
+   * Optional<Address>}； 无目标 ⇒ {@code null}，**不拿空串顶替**）。
+   *
+   * <p>★ **{@code intentInfoKey} 与 {@code intentInfo} 两样都报**：前者是 record 里真正存着的东西（INFO 覆盖层的
+   * key），后者是照它取回来的原文。取不到原文而只报 key，界面就只能显示一个 key 名（"决策内容看不见"的老问题换个形状回来）。
+   */
+  static Map<String, Object> directive(SdQueryService.DirectiveInfo info) {
+    Directive directive = info.directive();
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("directiveId", directive.id().value());
+    view.put("decisionMakerId", directive.decisionMakerId().value());
+    view.put("tick", directive.tick());
+    view.put("target", directive.target().map(Address::canonical).orElse(null));
+    view.put("intentInfoKey", directive.intentInfoKey());
+    view.put("intentInfo", info.intentInfo());
+    List<Map<String, Object>> commands = new ArrayList<>(directive.commands().size());
+    for (DirectiveCommand command : directive.commands()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("type", command.type());
+      row.put("payloadJson", command.payloadJson());
+      commands.add(row);
+    }
+    view.put("commands", commands);
+    List<String> effects = new ArrayList<>(directive.effects().size());
+    for (EffectId effect : directive.effects()) {
+      effects.add(effect.value());
+    }
+    effects.sort(null); // 响应字节可复现（Set 的迭代序不是内容的纯函数）
+    view.put("effects", effects);
+    view.put("verdict", directive.verdict().map(VerdictId::value).orElse(null));
+    view.put("status", directive.status().name());
     return view;
   }
 
