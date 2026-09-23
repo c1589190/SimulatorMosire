@@ -66,6 +66,9 @@
   var runTraceFields = decisionModel.runTraceFields;
   var directiveFields = decisionModel.directiveFields;
   var directiveHeadline = decisionModel.directiveHeadline;
+  var decisionResultsRequest = decisionModel.decisionResultsRequest;
+  var decisionResultEntry = decisionModel.decisionResultEntry;
+  var decisionResultsView = decisionModel.decisionResultsView;
 
   var requestToken = 0;
   var lastKey = null;
@@ -1693,7 +1696,185 @@
       });
   }
 
-  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批/provider）。 */
+  // ── 决策结果子页（B12，2026-09-23）：按 tick 看不同决策人的不同结局 ──────────
+  //
+  // ★ `as` = 谁看：端点只回 `tags` 含它的条目（**可见性归服务端**，前端不筛）。默认取"当前选中的
+  //   决策人"，也可在输入框里手填（已有选中却想查别人时不被挡住）。
+  // ★ 窗口 = 只看某个 tick（或一段区间）；**绝不**无界拉全部历史 —— limit 缺省 20、上限 200。
+  // ★ 竞态/去重照既有三个子页：`token` 防串页、`key` 防同参重取（进入子页时 force 一次）。
+
+  var decisionResultsToken = 0;
+  var decisionResultsKey = null;
+
+  function setDecisionResultsStatus(message, tone) {
+    app.statusMessage(app.byId("decision-results-status"), message, tone);
+  }
+
+  /** 查谁的：输入框优先；空 ⇒ 当前聚焦 / 当前目标决策人；都没有 ⇒ 空串（交给纯函数拒）。 */
+  function decisionResultsMakerId() {
+    var typed = textOrNull(valueOf("decision-results-maker"));
+    if (typed !== null) {
+      return typed;
+    }
+    var focus = app.getState().decisionMakerFocus;
+    if (focus) {
+      return String(focus);
+    }
+    return startDecisionTarget && startDecisionTarget.id ? String(startDecisionTarget.id) : "";
+  }
+
+  function drawDecisionResultEntry(entry) {
+    var box = app.el("div", { class: "result-entry" });
+    box.setAttribute("data-result-id", entry.id);
+    var head = app.el("div", { class: "result-entry-head" });
+    head.appendChild(
+      app.el("span", {
+        class: "result-entry-id",
+        text: entry.id,
+        title: "决策结果地址（sd:adjudication.<tick>#<n>）",
+      })
+    );
+    head.appendChild(
+      app.el("span", {
+        class: "result-entry-makers",
+        text: "涉及决策人：" + (entry.makers.length ? entry.makers.join("、") : "（未标注）"),
+      })
+    );
+    head.appendChild(
+      app.el("span", {
+        class: "result-entry-at",
+        text:
+          "记录于 " +
+          entry.atBranch +
+          " rev " +
+          entry.atRevision +
+          (entry.resultRevision !== "—" ? " · 结果 revision " + entry.resultRevision : ""),
+      })
+    );
+    box.appendChild(head);
+    if (entry.parseError) {
+      // ★ 一条坏条目**不让整页空白**：如实说清它坏在哪，其它条目照常列。
+      box.appendChild(app.el("p", { class: "status err result-parse-error", text: entry.parseError }));
+      return box;
+    }
+    if (!entry.commands.length) {
+      box.appendChild(app.el("p", { class: "empty", text: "这条结果没有任何命令。" }));
+      return box;
+    }
+    var list = app.el("ul", { class: "result-command-list" });
+    entry.commands.forEach(function (command) {
+      var item = app.el("li", { class: "result-command" });
+      item.setAttribute("data-result", command.result);
+      // 命令类型：显示后端给的 type 原文（仓里没有 type→中文 的现成映射，不另造一张表）。
+      item.appendChild(app.el("span", { class: "result-command-type", text: command.type }));
+      item.appendChild(app.el("span", { class: "result-command-outcome", text: command.outcome }));
+      item.appendChild(
+        app.el("span", {
+          class: "result-command-maker",
+          text: command.decisionMakerId,
+          title: "执行这条命令的决策人（directiveId=" + command.directiveId + "）",
+        })
+      );
+      if (command.reason !== null) {
+        item.appendChild(
+          app.el("span", { class: "result-command-reason", text: "拒因：" + command.reason })
+        );
+      }
+      list.appendChild(item);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
+  function drawDecisionResults(view) {
+    var mount = app.byId("decision-results-mount");
+    if (!mount) {
+      return;
+    }
+    app.clear(mount);
+    if (view.empty) {
+      // ★ `note` = 服务端的"明确无结果"说明 ⇒ **当无结果渲染**（class=empty、正常语气），不当错误。
+      mount.appendChild(
+        app.el("p", { class: "empty", text: view.note || "该决策人在这个窗口里没有决策结果。" })
+      );
+      return;
+    }
+    view.groups.forEach(function (group) {
+      var section = app.el("div", { class: "result-tick-group" });
+      section.setAttribute("data-result-tick", group.tick);
+      var head = app.el("div", { class: "result-tick-head" });
+      head.appendChild(app.el("span", { class: "result-tick-label", text: "tick " + group.tick }));
+      head.appendChild(
+        app.el("span", { class: "result-tick-count", text: group.entries.length + " 条" })
+      );
+      section.appendChild(head);
+      group.entries.forEach(function (entry) {
+        section.appendChild(drawDecisionResultEntry(entry));
+      });
+      mount.appendChild(section);
+    });
+  }
+
+  /** 拉一页决策结果并渲染（token + key 去重，照既有子页做法）。force ⇒ 忽略同 key 缓存。 */
+  function renderDecisionResults(force) {
+    var mount = app.byId("decision-results-mount");
+    if (!mount) {
+      return;
+    }
+    var request = decisionResultsRequest({
+      as: decisionResultsMakerId(),
+      tick: valueOf("decision-results-tick"),
+      limit: valueOf("decision-results-limit"),
+    });
+    if (!request.ok) {
+      var badKey = "!" + request.reason;
+      if (!force && badKey === decisionResultsKey) {
+        return;
+      }
+      decisionResultsKey = badKey;
+      app.clear(mount);
+      setDecisionResultsStatus(request.reason, "warn");
+      return;
+    }
+    // 把"实际查的是谁"写回输入框——用户看得见，不靠猜。
+    var makerInput = app.byId("decision-results-maker");
+    if (makerInput && request.path !== decisionResultsKey) {
+      makerInput.value = decisionResultsMakerId();
+    }
+    if (!force && request.path === decisionResultsKey) {
+      return;
+    }
+    decisionResultsKey = request.path;
+    var token = ++decisionResultsToken;
+    setDecisionResultsStatus("查看决策结果…", "muted");
+    // ★ 端点也许还没落地：用 api.getJson 直打契约路径（本页取数口就是 getJson）——不新增 api.js 的方法。
+    api
+      .getJson(request.path)
+      .then(function (body) {
+        if (token !== decisionResultsToken) {
+          return;
+        }
+        var view = decisionResultsView(body);
+        drawDecisionResults(view);
+        setDecisionResultsStatus(
+          view.empty
+            ? view.note || "该决策人在这个窗口里没有决策结果。"
+            : "共 " + view.count + " 条决策结果（新的在前）。",
+          view.empty ? "muted" : "ok"
+        );
+      })
+      .catch(function (e) {
+        if (token !== decisionResultsToken) {
+          return;
+        }
+        var message = "决策结果拉取失败：" + ((e && e.message) || e);
+        app.clear(mount);
+        mount.appendChild(app.el("p", { class: "empty result-error", text: message }));
+        setDecisionResultsStatus(message, "err");
+      });
+  }
+
+  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批/provider/决策结果）。 */
   function renderDecision(state) {
     if (!state || state.mode !== "decision") {
       lastDecisionSubpage = null;
@@ -1710,6 +1891,8 @@
       renderDecisionApproval(entered);
     } else if (subpage.provider) {
       renderLlmProviders(entered);
+    } else if (subpage.results) {
+      renderDecisionResults(entered);
     }
   }
 
@@ -1877,6 +2060,23 @@
     if (bindingSave && bindingSave.addEventListener) {
       bindingSave.addEventListener("click", saveDecisionMakerProviderFromForm);
     }
+    // ★ B12：决策结果子页的「查看结果」（tick 过滤 / 最近 N 条）。按回车也当场查一次。
+    var resultsLoad = app.byId("decision-results-load");
+    if (resultsLoad && resultsLoad.addEventListener) {
+      resultsLoad.addEventListener("click", function () {
+        renderDecisionResults(true);
+      });
+    }
+    ["decision-results-maker", "decision-results-tick", "decision-results-limit"].forEach(function (id) {
+      var input = app.byId(id);
+      if (input && input.addEventListener) {
+        input.addEventListener("keydown", function (event) {
+          if (event && event.key === "Enter") {
+            renderDecisionResults(true);
+          }
+        });
+      }
+    });
     updateStartDecisionControl();
     updateRunDecisionControl();
     renderRight(app.getState());
@@ -1896,6 +2096,11 @@
     renderDecision: renderDecision,
     renderDecisionLeft: renderDecisionLeft,
     renderDecisionRight: renderDecisionRight,
+    // ★ B12：决策结果子页（e2e/调试用）+ 它的两个纯投影。
+    renderDecisionResults: renderDecisionResults,
+    decisionResultsRequest: decisionResultsRequest,
+    decisionResultEntry: decisionResultEntry,
+    decisionResultsView: decisionResultsView,
     groupByTag: groupByTag,
     normalizeTag: normalizeTag,
     movementReadout: movementReadout,

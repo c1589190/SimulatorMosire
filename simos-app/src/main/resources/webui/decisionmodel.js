@@ -12,6 +12,8 @@
     { id: "view", label: "决策人查看" },
     { id: "approval", label: "审批" },
     { id: "provider", label: "Provider 配置" },
+    // ★ B12（2026-09-23）：第 4 页「决策结果」——决策人按 tick 查看不同决策的逐条结局。
+    { id: "results", label: "决策结果" },
   ];
 
   var AFFILIATION_LABELS = { nation: "国家", army: "军队" };
@@ -278,7 +280,7 @@
   }
 
   /**
-   * 子页可见性（纯函数，无 DOM）：恰一个为 true；未知 id ⇒ **三个都 false**（fail-closed，
+   * 子页可见性（纯函数，无 DOM）：恰一个为 true；未知 id ⇒ **全部 false**（fail-closed，
    * 不把"没选"变成"选了决策人查看"——与 map.js 的 mapEditPanelVisibility 同口径）。
    */
   function decisionSubpageVisibility(id) {
@@ -287,6 +289,7 @@
       view: state.ok && state.id === "view",
       approval: state.ok && state.id === "approval",
       provider: state.ok && state.id === "provider",
+      results: state.ok && state.id === "results",
     };
   }
 
@@ -597,6 +600,202 @@
     return "tick " + fields.tick + " · " + firstLine + "（" + fields.commands.length + " 条命令）";
   }
 
+  // ── 决策结果（B12，2026-09-23）：GET /api/sd/decision-results 的纯投影 ──────────
+  //
+  // ★ `value` 是**字符串化的 JSON**（内容由裁决工具写）⇒ 前端必须 `JSON.parse` 再逐条渲染。
+  //   解析不了**不许抛**（一条坏条目不该让整页空白）⇒ 折成 parseError 文本、照常列出。
+  // ★ **可见性只由服务端定**：端点只回 `tags` 含 `as` 的条目；`tags` 为空（无主）对谁都不回。
+  //   前端**不得**再筛一遍（那就是第二份可见性），这里只做投影。
+
+  /** 查询参数里的非负整数（纯函数）：缺/空 ⇒ 不带；非法 ⇒ error（**不静默当成 0**）。 */
+  function intQuery(value, label) {
+    if (value === null || value === undefined || String(value).trim() === "") {
+      return { present: false };
+    }
+    var n = Number(value);
+    if (!isFinite(n) || Math.floor(n) !== n || n < 0) {
+      return { error: label + " 必须是非负整数。" };
+    }
+    return { present: true, value: n };
+  }
+
+  /**
+   * 决策结果查询 → 端点路径（纯函数）：
+   * `/sd/decision-results?as=…[&tick=N | &fromTick=A&toTick=B][&limit=N]`。
+   *
+   * <p>★ 窗口的**唯一**防线在这里：默认 limit=20、上限 200——超限**报错**（契约是服务端报错、不截断），
+   *   前端先拦是为了让用户当场看见，而不是收到一个语焉不详的 4xx。`tick` 与 `fromTick/toTick` 二选一。
+   * <p>★ 缺 `as` ⇒ 拒绝（这是"谁看"的查询，没有 `as` 无从谈起）。
+   */
+  function decisionResultsRequest(params) {
+    var src = params || {};
+    var as = textOrNull(src.as);
+    if (as === null) {
+      return {
+        ok: false,
+        reason: "未选中决策人：先选一个决策人（地图点选或右栏列表），再看它的决策结果。",
+      };
+    }
+    var tick = intQuery(src.tick, "tick");
+    if (tick.error) {
+      return { ok: false, reason: tick.error };
+    }
+    var from = intQuery(src.fromTick, "fromTick");
+    if (from.error) {
+      return { ok: false, reason: from.error };
+    }
+    var to = intQuery(src.toTick, "toTick");
+    if (to.error) {
+      return { ok: false, reason: to.error };
+    }
+    if (tick.present && (from.present || to.present)) {
+      return { ok: false, reason: "tick 与 fromTick/toTick 只能二选一（看一个 tick，还是看一段区间）。" };
+    }
+    if (from.present !== to.present) {
+      return { ok: false, reason: "fromTick 与 toTick 必须成对给出（区间要看两端）。" };
+    }
+    if (from.present && from.value > to.value) {
+      return { ok: false, reason: "fromTick 不得大于 toTick。" };
+    }
+    var limit = intQuery(src.limit, "limit");
+    if (limit.error) {
+      return { ok: false, reason: limit.error };
+    }
+    var limitValue = limit.present ? limit.value : 20;
+    if (limitValue < 1) {
+      return { ok: false, reason: "limit 必须是正整数（最少 1 条）。" };
+    }
+    if (limitValue > 200) {
+      return { ok: false, reason: "limit 上限是 200（服务端不截断、直接报错，请调小）。" };
+    }
+    var query = "as=" + encodeURIComponent(as);
+    if (tick.present) {
+      query += "&tick=" + tick.value;
+    } else if (from.present) {
+      query += "&fromTick=" + from.value + "&toTick=" + to.value;
+    }
+    query += "&limit=" + limitValue;
+    return { ok: true, path: "/sd/decision-results?" + query };
+  }
+
+  /**
+   * 条目"涉及的决策人"（纯函数）：优先用 `tags`（服务端的归属），缺 `tags` ⇒ 退回逐条命令的
+   * `decisionMakerId`（去重、保序）。**只投影、不筛**。
+   */
+  function decisionResultMakers(tags, commands) {
+    var out = [];
+    function push(value) {
+      var text = textOrNull(value);
+      if (text !== null && out.indexOf(text) < 0) {
+        out.push(text);
+      }
+    }
+    (Array.isArray(tags) ? tags : []).forEach(push);
+    if (!out.length) {
+      (Array.isArray(commands) ? commands : []).forEach(function (c) {
+        push(c && c.decisionMakerId);
+      });
+    }
+    return out;
+  }
+
+  /** 单条命令的结局（纯函数）：applied ⇒ 已执行；rejected ⇒ 已驳回（拒因照显）；其余如实说"未知"。 */
+  function decisionResultCommand(command) {
+    var c = command || {};
+    var result = textOrNull(c.result);
+    var reason = textOrNull(c.reason);
+    var outcome;
+    if (result === "applied") {
+      outcome = "已执行";
+    } else if (result === "rejected") {
+      outcome = "已驳回";
+    } else if (result === null) {
+      outcome = "—（后端未给结局）";
+    } else {
+      outcome = "未知结局：" + result;
+    }
+    return {
+      decisionMakerId: valueOrDash(c.decisionMakerId),
+      directiveId: valueOrDash(c.directiveId),
+      // ★ 命令类型**不造可读名**：本仓没有 `type → 中文` 的现成映射（决策记录那处也是显原文）⇒ 显示 `type` 原文。
+      type: valueOrDash(c.type),
+      result: result === null ? "—" : result,
+      outcome: outcome,
+      // 拒因：后端只可能在 rejected 时给 ⇒ 有就显、没有就 null（不拿空串/占位顶替）。
+      reason: reason,
+      ref: c.ref === null || c.ref === undefined ? "—" : String(c.ref),
+    };
+  }
+
+  /** 一条决策结果条目（纯函数，与端点逐字段对应）：`value` 解析失败 ⇒ parseError 非空、commands 为空。 */
+  function decisionResultEntry(entry) {
+    var e = entry || {};
+    var raw = e.value;
+    var body = null;
+    var parseError = null;
+    if (raw === null || raw === undefined || String(raw).trim() === "") {
+      parseError = "结果体为空（value 缺失）——无法显示逐条结局。";
+    } else {
+      try {
+        body = JSON.parse(String(raw));
+      } catch (err) {
+        parseError = "结果体不是合法 JSON：" + (err && err.message ? err.message : String(err));
+      }
+    }
+    var obj = body && typeof body === "object" ? body : {};
+    var commands = Array.isArray(obj.commands) ? obj.commands : [];
+    var tags = Array.isArray(e.tags) ? e.tags : [];
+    var at = e.at || {};
+    return {
+      tick: e.tick === null || e.tick === undefined ? "—" : String(e.tick),
+      id: valueOrDash(e.id),
+      tags: tags.map(function (tag) {
+        return String(tag);
+      }),
+      makers: decisionResultMakers(tags, commands),
+      atBranch: valueOrDash(at.branch),
+      atRevision: at.revision === null || at.revision === undefined ? "—" : String(at.revision),
+      resultRevision:
+        obj.resultRevision === null || obj.resultRevision === undefined
+          ? "—"
+          : String(obj.resultRevision),
+      commands: commands.map(decisionResultCommand),
+      parseError: parseError,
+    };
+  }
+
+  /**
+   * 响应 ⇒ 视图（纯函数）：按 tick 分组（同 tick 归一组；组序 = 首次出现序 ⇒ 服务端给的 tick 降序即"新的在前"）。
+   * ★ **不重排**（同 api.directives 口径）：同一快照两次读数必须一致。
+   * ★ `note`（服务端的"明确无结果"说明）只在**真的空**时透出，前端不当错误渲染。
+   */
+  function decisionResultsView(body) {
+    var b = body || {};
+    var list = Array.isArray(b.results) ? b.results : [];
+    var order = [];
+    var byTick = {};
+    list.forEach(function (entry) {
+      var view = decisionResultEntry(entry);
+      if (!Object.prototype.hasOwnProperty.call(byTick, view.tick)) {
+        byTick[view.tick] = [];
+        order.push(view.tick);
+      }
+      byTick[view.tick].push(view);
+    });
+    var note = null;
+    if (list.length === 0 && b.note !== null && b.note !== undefined && String(b.note).trim() !== "") {
+      note = String(b.note);
+    }
+    return {
+      empty: list.length === 0,
+      note: note,
+      count: list.length,
+      groups: order.map(function (tick) {
+        return { tick: tick, entries: byTick[tick] };
+      }),
+    };
+  }
+
   window.SimosDecisionModel = {
     DECISION_SUBPAGES: DECISION_SUBPAGES,
     AFFILIATION_LABELS: AFFILIATION_LABELS,
@@ -628,5 +827,10 @@
     runTraceFields: runTraceFields,
     directiveFields: directiveFields,
     directiveHeadline: directiveHeadline,
+    // ★ B12：决策结果子页的纯函数（查询窗口 / 逐条结局投影 / 按 tick 分组视图）。
+    decisionResultsRequest: decisionResultsRequest,
+    decisionResultCommand: decisionResultCommand,
+    decisionResultEntry: decisionResultEntry,
+    decisionResultsView: decisionResultsView,
   };
 })();

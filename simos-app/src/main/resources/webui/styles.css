@@ -1591,6 +1591,119 @@ body.workbench-page .notify-bar.muted {
   margin-top: 6px;
 }
 
+/* ══ 决策结果子页（B12，2026-09-23）══════════════════════════════════════
+   按 tick 分组的列表：组头一行说清 tick + 条数；每条命令一行说清 type / 结局 / 拒因。
+   ★ 视觉沿用决策记录那一套（panel-2 底 + line 边 + radius），不新造一套。
+   ★ 结局用色说话：applied ⇒ ok 色，rejected ⇒ err 色；未知结局不上色（不误导）。 */
+.decision-results-window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 6px 0 8px;
+}
+
+.decision-results-window .dr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.decision-results-window .dr-field input {
+  width: 9em;
+}
+
+.result-tick-group {
+  margin: 8px 0;
+}
+
+.result-tick-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 6px 0 4px;
+  font-weight: 600;
+}
+
+.result-tick-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.result-entry {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 5px 6px;
+  margin-bottom: 4px;
+}
+
+.result-entry-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.result-entry-id {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.result-command-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.result-command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.result-command-type {
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.result-command-outcome {
+  color: var(--muted);
+}
+
+.result-command[data-result="applied"] .result-command-outcome {
+  color: var(--ok);
+}
+
+.result-command[data-result="rejected"] .result-command-outcome {
+  color: var(--err);
+  font-weight: 600;
+}
+
+.result-command-maker {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.result-command-reason {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--err);
+  word-break: break-word;
+}
+
+.result-parse-error {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
 /* ══ GM 交互界面（本阶段 T8）════════════════════════════════════════════
    底栏「GM 界面」按钮打开的全屏层：只显示 GM MCP 的工具使用，不做对话。
    ★ position:fixed + 默认 hidden ⇒ 不参与文档流、不把底栏时间轴挤出视口（M7d/M7g 意图）；

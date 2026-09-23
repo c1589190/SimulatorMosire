@@ -192,7 +192,7 @@
 
         <section class="decision-panel" data-modes="decision" aria-label="决策">
           <h3>决策</h3>
-          <!-- 决策模式 = **一个模式三个子页**（spec §四.2）。子页只是本模式内的分组，不是新模式；
+          <!-- 决策模式 = **一个模式四个子页**（spec §四.2；B12 起加第 4 页「决策结果」）。子页只是本模式内的分组，不是新模式；
                可见性走 [data-decision-subpage]（app.js.applyDecisionSubpage + panels.js 的纯函数）。
                ★★ 2026-09-23（用户裁定「很烂的交互逻辑」）：原来的 **radio 组**（三块大色块 + 圆点 + 中文被折成三行）
                改成**横排 tab 条**——tab 是「切换」不是「单选」，故无圆点、无大色块；选中态沿用模式栏
@@ -206,6 +206,9 @@
                     aria-selected="false">审批</button>
             <button type="button" class="decision-tab" role="tab" data-decision-tab="provider"
                     aria-selected="false">Provider 配置</button>
+            <!-- ★ B12：第 4 页「决策结果」——决策人按 tick 查看不同决策的逐条结局（applied / rejected + 拒因）。 -->
+            <button type="button" class="decision-tab" role="tab" data-decision-tab="results"
+                    aria-selected="false">决策结果</button>
           </div>
 
           <div data-decision-subpage="view">
@@ -292,6 +295,28 @@
               </label>
               <button type="button" id="llm-binding-save">绑定（落 revision）</button>
             </fieldset>
+          </div>
+
+          <!-- ★ B12 第 4 页「决策结果」：GET /api/sd/decision-results?as=<决策人>…
+               可见性归服务端（端点只回 tags 含 as 的条目；无主条目不回任何人）——前端不筛。
+               ★ 窗口：默认看最近 20 条（limit 缺省 20、上限 200），也能只看某一 tick。
+                 读取一律**按 tick 分组、新的在前**；每条命令显示 结局（已执行 / 已驳回）+ 拒因。 -->
+          <div data-decision-subpage="results" hidden>
+            <p id="decision-results-status" class="status muted">选一个决策人（或在下面填它的 id），点「查看结果」——默认看最近 20 条，也可只看某一 tick。</p>
+            <fieldset class="decision-results-window" id="decision-results-window">
+              <legend>看谁的 / 看哪一段</legend>
+              <label class="dr-field">决策人
+                <input id="decision-results-maker" type="text" placeholder="dm1（留空 = 用当前选中的决策人）">
+              </label>
+              <label class="dr-field">只看该 tick
+                <input id="decision-results-tick" type="number" min="0" step="1" placeholder="留空 = 不限">
+              </label>
+              <label class="dr-field">最近条数
+                <input id="decision-results-limit" type="number" min="1" max="200" step="1" value="20">
+              </label>
+              <button type="button" id="decision-results-load">查看结果</button>
+            </fieldset>
+            <div id="decision-results-mount" class="decision-results"></div>
           </div>
         </section>
 

@@ -53,14 +53,14 @@ test("module-loads", () => {
 });
 
 test("subpage-ids-and-labels", () => {
-  // M11′ 起 2 → 3 子页（新增「Provider 配置」）—— 语义更新，不是削弱。
+  // M11′ 起 2 → 3 子页（新增「Provider 配置」）；B12 起 3 → 4 子页（新增「决策结果」）—— 语义更新，不是削弱。
   assert.deepEqual(
     P.DECISION_SUBPAGES.map((s) => s.id),
-    ["view", "approval", "provider"]
+    ["view", "approval", "provider", "results"]
   );
   assert.deepEqual(
     P.DECISION_SUBPAGES.map((s) => s.label),
-    ["决策人查看", "审批", "Provider 配置"]
+    ["决策人查看", "审批", "Provider 配置", "决策结果"]
   );
 });
 
@@ -79,41 +79,164 @@ test("subpage-state-is-fail-closed", () => {
     id: "provider",
     label: "Provider 配置",
   });
+  assert.deepEqual(P.decisionSubpageState("results"), {
+    ok: true,
+    id: "results",
+    label: "决策结果",
+  });
 });
 
 test("subpage-visibility-is-mutually-exclusive", () => {
-  // ★ 故意违规（m4/m8 的杀点）：三个子页**恰一个**可见；未知 ⇒ 三个都不可见。
-  const HIDDEN = { view: false, approval: false, provider: false };
+  // ★ 故意违规（m4/m8 的杀点）：四个子页**恰一个**可见；未知 ⇒ 四个都不可见。
+  //   B12 起加第 4 键 `results`——断言随子页数同步（语义更新，不是削弱）。
+  const HIDDEN = { view: false, approval: false, provider: false, results: false };
   assert.deepEqual(P.decisionSubpageVisibility("view"), {
     view: true,
     approval: false,
     provider: false,
+    results: false,
   });
   assert.deepEqual(P.decisionSubpageVisibility("approval"), {
     view: false,
     approval: true,
     provider: false,
+    results: false,
   });
   assert.deepEqual(P.decisionSubpageVisibility("provider"), {
     view: false,
     approval: false,
     provider: true,
+    results: false,
+  });
+  assert.deepEqual(P.decisionSubpageVisibility("results"), {
+    view: false,
+    approval: false,
+    provider: false,
+    results: true,
   });
   for (const bad of ["", "nope", null, undefined, 3]) {
     assert.deepEqual(
       P.decisionSubpageVisibility(bad),
       HIDDEN,
-      "未知子页必须三个都隐藏：" + JSON.stringify(bad)
+      "未知子页必须四个都隐藏：" + JSON.stringify(bad)
     );
   }
-  ["view", "approval", "provider"].forEach((id) => {
+  ["view", "approval", "provider", "results"].forEach((id) => {
     const v = P.decisionSubpageVisibility(id);
     assert.equal(
-      Number(v.view) + Number(v.approval) + Number(v.provider),
+      Number(v.view) + Number(v.approval) + Number(v.provider) + Number(v.results),
       1,
       id + " 的子页必须恰一个可见"
     );
   });
+});
+
+// ── B12「决策结果」子页的纯函数（2026-09-23）──────────────────────────────
+//
+// ★ 判别力：把 limit 上限定成"截断到 200"（而不是报错）⇒ 第一条红；把解析失败当异常抛出去
+//   ⇒ 第二条红（一条坏条目会把整页打断）；把 note 当错误/丢掉 ⇒ 第三条红。
+
+test("decision-results-request-builds-a-bounded-window", () => {
+  // 缺 as ⇒ 拒（这是"谁看"的查询，没有 as 无从谈起）。
+  assert.equal(P.decisionResultsRequest({}).ok, false);
+  assert.equal(P.decisionResultsRequest({ as: "" }).ok, false);
+  // 缺 limit ⇒ 缺省 20（默认窗口，绝不无界拉全部历史）。
+  assert.equal(P.decisionResultsRequest({ as: "dm1" }).path, "/sd/decision-results?as=dm1&limit=20");
+  // 只看某一 tick。
+  assert.equal(
+    P.decisionResultsRequest({ as: "dm1", tick: 8, limit: 5 }).path,
+    "/sd/decision-results?as=dm1&tick=8&limit=5"
+  );
+  // 区间：成对给出。
+  assert.equal(
+    P.decisionResultsRequest({ as: "dm1", fromTick: 3, toTick: 8 }).path,
+    "/sd/decision-results?as=dm1&fromTick=3&toTick=8&limit=20"
+  );
+  // ★ limit 超上限 ⇒ **报错**（契约是服务端报错、不是截断；前端先拦让用户当场看见）。
+  const over = P.decisionResultsRequest({ as: "dm1", limit: 201 });
+  assert.equal(over.ok, false);
+  assert.ok(over.reason.includes("200"));
+  // tick 与区间二选一；区间必须成对；from>to 拒；非法整数拒。
+  assert.equal(P.decisionResultsRequest({ as: "dm1", tick: 1, fromTick: 1, toTick: 2 }).ok, false);
+  assert.equal(P.decisionResultsRequest({ as: "dm1", fromTick: 1 }).ok, false);
+  assert.equal(P.decisionResultsRequest({ as: "dm1", fromTick: 9, toTick: 2 }).ok, false);
+  assert.equal(P.decisionResultsRequest({ as: "dm1", tick: -1 }).ok, false);
+  assert.equal(P.decisionResultsRequest({ as: "dm1", limit: 0 }).ok, false);
+});
+
+test("decision-results-entry-parses-value-and-never-throws", () => {
+  const entry = P.decisionResultEntry({
+    tick: 8,
+    id: "sd:adjudication.8#0",
+    tags: ["dm-a"],
+    value: JSON.stringify({
+      tick: 8,
+      resultRevision: 12,
+      commands: [
+        {
+          decisionMakerId: "dm-a",
+          directiveId: "d1",
+          type: "unit.RenameUnit",
+          result: "applied",
+          reason: "",
+          ref: "u-1",
+        },
+        {
+          decisionMakerId: "dm-b",
+          directiveId: "d2",
+          type: "map.UpdateRegion",
+          result: "rejected",
+          reason: "越权",
+          ref: "r-1",
+        },
+      ],
+    }),
+    at: { branch: "main", revision: 12 },
+  });
+  assert.equal(entry.tick, "8");
+  assert.equal(entry.id, "sd:adjudication.8#0");
+  assert.deepEqual(entry.makers, ["dm-a"]);
+  assert.equal(entry.resultRevision, "12");
+  assert.equal(entry.atBranch, "main");
+  assert.equal(entry.atRevision, "12");
+  assert.equal(entry.parseError, null);
+  assert.equal(entry.commands.length, 2);
+  // 结局读数一律人话：applied ⇒ 已执行（拒因为空 ⇒ null）；rejected ⇒ 已驳回 + 拒因。
+  assert.equal(entry.commands[0].outcome, "已执行");
+  assert.equal(entry.commands[0].reason, null);
+  assert.equal(entry.commands[1].outcome, "已驳回");
+  assert.equal(entry.commands[1].reason, "越权");
+  // ★ 坏 value 不许抛（一条坏条目不该让整页空白）：折成 parseError、commands 空。
+  const broken = P.decisionResultEntry({ tick: 9, id: "x", value: "{not json" });
+  assert.ok(broken.parseError.includes("JSON"));
+  assert.deepEqual(broken.commands, []);
+});
+
+test("decision-results-view-groups-by-tick-and-keeps-note-as-no-result", () => {
+  const body = {
+    results: [
+      { tick: 8, id: "a", tags: ["dm-a"], value: JSON.stringify({ commands: [] }) },
+      { tick: 8, id: "b", tags: ["dm-a", "dm-b"], value: JSON.stringify({ commands: [] }) },
+      { tick: 7, id: "c", tags: ["dm-a"], value: JSON.stringify({ commands: [] }) },
+    ],
+    count: 3,
+  };
+  const view = P.decisionResultsView(body);
+  assert.equal(view.empty, false);
+  assert.equal(view.count, 3);
+  // 同 tick 归一组；组序 = 服务端给的顺序（不重排）。
+  assert.deepEqual(
+    view.groups.map((g) => g.tick),
+    ["8", "7"]
+  );
+  assert.equal(view.groups[0].entries.length, 2);
+  // ★ 空结果时把服务端的 note 当"明确无结果"透出（不是错误、也不丢）。
+  const emptyView = P.decisionResultsView({ results: [], count: 0, note: "该决策人尚无裁决记录" });
+  assert.equal(emptyView.empty, true);
+  assert.equal(emptyView.note, "该决策人尚无裁决记录");
+  assert.deepEqual(emptyView.groups, []);
+  // 没有 note ⇒ null（前端用默认文案，不编造后台说明）。
+  assert.equal(P.decisionResultsView({ results: [] }).note, null);
 });
 
 test("decision-groups-put-nation-then-army-and-sort-by-id", () => {
@@ -808,13 +931,18 @@ test("index-html-has-six-modes-and-decision-panel", () => {
   // ★★ 2026-09-23 用户裁定（原话：「很烂的交互逻辑」）：radio 组改**横排 tab 条**——
   //   tab 是「切换」不是「单选」⇒ 判别力：把 radio 组改回来，下面两条即红。
   assert.ok(html.includes('role="tablist"'), "子页控件必须是 tab 条（role=tablist）");
-  ["view", "approval", "provider"].forEach((id) => {
+  ["view", "approval", "provider", "results"].forEach((id) => {
     assert.ok(html.includes('data-decision-tab="' + id + '"'), "tab 值必须在：" + id);
   });
   assert.equal(html.includes('name="decision-subpage"'), false, "radio 组不得回归（那是表单语义）");
   assert.ok(html.includes('data-decision-subpage="view"'), "子页 A 容器");
   assert.ok(html.includes('data-decision-subpage="approval"'), "子页 B 容器");
   assert.ok(html.includes('data-decision-subpage="provider"'), "子页 C 容器");
+  // ★ B12：第 4 子页容器 + 窗口控件（tick 过滤 / 最近 N 条）+ 挂载点都必须在场。
+  assert.ok(html.includes('data-decision-subpage="results"'), "子页 D 容器");
+  assert.ok(html.includes('id="decision-results-mount"'), "决策结果挂载点");
+  assert.ok(html.includes('id="decision-results-tick"'), "按 tick 过滤的输入框");
+  assert.ok(html.includes('id="decision-results-limit"'), "最近 N 条的输入框");
   // 三处挂载点（左栏详情 + 右栏列表 + 右栏审批）。
   assert.ok(html.includes('id="decision-maker-detail"'), "左栏决策人详情挂载点");
   assert.ok(html.includes('id="decision-maker-list-mount"'), "右栏分类列表挂载点");
@@ -879,7 +1007,8 @@ test("panels-js-and-app-js-delegate-subpage-visibility", () => {
 //   （圆点点得动、内容一动不动）⇒ 那正是用户说的"很烂的交互逻辑"的物理原因之一。
 //   判别力：删掉 app.js 的 `mountDecisionTabs` 接线、或 click 回调里不调 `setDecisionSubpage`，本条即红。
 
-const SUBPAGE_IDS = ["view", "approval", "provider"];
+// ★ B12 起 4 子页（第 4 页「决策结果」）——夹具与 index.html 的 tab 数保持同源。
+const SUBPAGE_IDS = ["view", "approval", "provider", "results"];
 
 function fakeTab(id) {
   const node = {
@@ -961,6 +1090,7 @@ test("tab-click-actually-switches-the-visible-subpage", () => {
   assert.equal(paneOf(panes, "approval").hidden, false, "审批容器必须可见");
   assert.equal(paneOf(panes, "view").hidden, true, "原容器必须隐藏（恰一个可见）");
   assert.equal(paneOf(panes, "provider").hidden, true, "第三容器也隐藏（恰一个可见）");
+  assert.equal(paneOf(panes, "results").hidden, true, "第四容器也隐藏（恰一个可见）");
   // 选中态：`.active` 与模式栏同一套视觉语言；aria-selected 让无障碍也说得清"现在在哪一页"。
   assert.equal(tabs[1].attrs["aria-selected"], "true");
   assert.equal(tabs[0].attrs["aria-selected"], "false");
