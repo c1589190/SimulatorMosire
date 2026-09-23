@@ -102,8 +102,8 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 45 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
-   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45）。
+   * catalog 预期的 46 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -151,7 +151,8 @@ class McpCoverageTest {
           "sd.StartDecision",
           "sd.SetDecisionMakerProvider",
           "sd.ResetDecisionMakerConversation",
-          "sd.RunDecision");
+          "sd.RunDecision",
+          "sd.SetDirectiveStatus");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -272,6 +273,10 @@ class McpCoverageTest {
     // T11C：触发一轮决策人 agent 的那条**命令**（窄工具走的是另一条路：命令落盘之后才真跑 LLM）。
     //   同样放最后（dm-cov 早已建好）⇒ 不移动前面各命令的 revision 号。
     MINIMAL_PAYLOADS.put("sd.RunDecision", "{\"decisionMakerId\":\"dm-cov\"}");
+    // 第 3 波最后一块：令的状态翻转（sd.SetDirectiveStatus）。放最后，且必须排在 sd.IssueDirective 之后
+    //   （d-cov 此刻已存在、状态 ISSUED）⇒ 不移动前面各命令的 revision 号。它是裁决内部编排用的命令类型。
+    MINIMAL_PAYLOADS.put(
+        "sd.SetDirectiveStatus", "{\"directiveId\":\"d-cov\",\"status\":\"EXECUTED\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -323,7 +328,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 45 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 46 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -354,8 +359,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("45 条命令各推一格")
-        .isEqualTo(46L);
+        .as("46 条命令各推一格")
+        .isEqualTo(47L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。

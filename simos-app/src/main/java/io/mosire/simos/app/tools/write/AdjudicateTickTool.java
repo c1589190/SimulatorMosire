@@ -28,8 +28,10 @@ import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
+import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
+import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -70,36 +72,50 @@ import java.util.UUID;
  * "随便动"）。今天有意不实现的四条见那个契约的类注。
  *
  * <p>★★ **一条 revision 是怎么落成的（本类最绕、也最关键的一段）**：决策结果必须写进**同一批**（写成两条 revision 就破了"一个 tick
- * 一条"），而决策结果的内容**要等批的结局才知道**（哪条被 handler 拒了）。故组批 = **〔过检命令…〕+〔一条 {@code
- * sd.PutInfo}：本次裁决的决策结果〕**，跑一个**收敛循环**：
+ * 一条"），而决策结果的内容**要等批的结局才知道**（哪条被 handler 拒了）。故组批 = **〔过检命令…〕+〔本 tick 每条令一条 {@code
+ * sd.SetDirectiveStatus}：状态翻转〕+〔一条 {@code sd.PutInfo}：本次裁决的决策结果〕**，跑一个**收敛循环**：
  *
  * <ul>
- *   <li>{@link BatchResult.Committed} ⇒ 成了。这一条 revision 里**同时**含"被接受的命令"与"这份决策结果"；
+ *   <li>{@link BatchResult.Committed} ⇒ 成了。这一条 revision 里**同时**含"被接受的命令""每条令的状态翻转"与"这份决策结果"；
  *   <li>{@link BatchResult.Rejected} ⇒ 从逐位对应的 {@code outcomes} 里挑出**这次才暴露的**被拒命令
  *       （前置校验覆盖不到的，如"单位不存在"），把它们**剔出**、拒因**并进**决策结果，**重试**；
  *   <li>{@link BatchResult.Conflict} ⇒ **原样上报**（带真实 head）：不许部分提交、不许改写 {@code expectedRevision} 蒙过去。
  * </ul>
  *
+ * <p>★★ **状态翻转（第 3 波最后一块）**：本 tick **每条令**在同批里带一条 {@code sd.SetDirectiveStatus}——该令的命令**全部被接受** ⇒
+ * {@code EXECUTED}，**有任一被剔除/被拒** ⇒ {@code CANCELLED}。翻转目标是**本轮步骤表**的函数（命令被剔 ⇒ 下一轮重算成 {@code
+ * CANCELLED}），故与"被剔命令不进批"同一次修订收敛。翻转**自己也受转移守卫**（{@code ISSUED → 终态}）：它若被拒（并发 /
+ * 前置状态不对），走**同一条**收敛逻辑——剔出 + 拒因写进决策结果的 {@code flips}，**不静默吞掉**。
+ *
  * <p>★ **"这次才暴露的"怎么认**：{@code CommandBus} 的整批拒绝里，**真被拒的**带自己的拒因，**被接受却随整批复原的**带 "整批未提交…"（见 {@code
  * CommandBus#rolledBack}）⇒ 本类按那个**前缀**区分（{@link #ROLLED_BACK_PREFIX}）。
  * 决策结果条目**自己**被拒时不重试——它是本批唯一的"结果载体"，剔了它就等于没记结果 ⇒ **响亮失败**。
  *
- * <p>★ **收敛性与上限**：每轮至少剔除一条 ⇒ 上限取"进批命令数 + 2"（{@link #maxAttempts}）， 到顶仍不收敛 ⇒ **响亮失败**（不静默、不降级成两条
- * revision）。
+ * <p>★ **收敛性与上限**：每轮至少剔除一条（命令或翻转）⇒ 上限取"进批命令数 + 令数 + 2"（{@link #maxAttempts}）， 到顶仍不收敛 ⇒
+ * **响亮失败**（不静默、不降级成两条 revision）。
  *
  * <p>★ **一个 tick 一条的幂等闸**：决策结果条目的 id 由**地址**（{@code sd:adjudication.<tick>}）派生（ {@code …#0}，{@link
  * SdInfoIds#synthesize}）⇒ **同一个 tick 裁决两次会撞 id 被拒**、整批不落 （而不是悄悄多出一条平行的决策结果）。
  *
- * <p>★ **不做**（有意划界）：{@code Directive.status} 的 ISSUED→EXECUTED/CANCELLED 翻转（要新命令类型，另一步）、
- * 决策人侧的**读**工具、前端决策结果子页、{@code simos.advance} 自动结算。
+ * <p>★ **不做**（有意划界）：决策人侧的**读**工具、前端决策结果子页、{@code simos.advance} 自动结算、令的"重开" （已终态不翻回）。
  *
  * <p>★ **批不发事件链**（{@code CommandBus.submitBatch} 的既有事实）：每条命令的身份只在**本次返回**的 {@code outcomes}
  * 里，事件表查不到 ⇒ 本类把逐条结局**写进决策结果条目**，那才是可回放、可审计的那份。
  */
 public final class AdjudicateTickTool implements AgentTool {
 
-  /** 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型（本步有意不新增命令类型）⇒ 不登记进 {@code PAYLOAD_HINTS}。 */
+  /**
+   * 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不登记进 {@code PAYLOAD_HINTS}（它内部用的 {@code sd.SetDirectiveStatus}
+   * 才是命令类型，由 {@code Shell} 注册）。
+   */
   public static final String NAME = "sd.AdjudicateTick";
+
+  /**
+   * 状态翻转用的命令类型。
+   *
+   * <p>★ 取自 {@link SetDirectiveStatusHandler#TYPE}（**单一来源**，不另写一个字面量）——它是裁决的内部编排，**不对外**提供窄工具。
+   */
+  private static final String STATUS_COMMAND_TYPE = SetDirectiveStatusHandler.TYPE;
 
   /**
    * 决策结果条目在 sd INFO 覆盖层里的 key。
@@ -197,8 +213,10 @@ public final class AdjudicateTickTool implements AgentTool {
     return "GM 裁决：把某 tick 里**所有决策人**的令一起判效果，一次落**一条** revision（原子）。"
         + "载荷 {branch, expectedRevision, tick}（tick **必填**，不做缺省取当前 tick）。"
         + "逐条命令先做白名单 + **按出令决策人可达面**的资源授权预检；被拒的进决策结果而不进批。"
-        + "返回 {result, ref, adjudicationId, tick, info{address,id,key}, directives[], commands[]"
-        + "（逐条 {decisionMakerId, directiveId, type, result(applied|rejected), reason, ref}）}";
+        + "同批把每条令翻成 EXECUTED（命令全被接受）/ CANCELLED（有任一被拒）。"
+        + "返回 {result, ref, adjudicationId, tick, info{address,id,key}, directives[](含 status), "
+        + "commands[]（逐条 {decisionMakerId, directiveId, type, result(applied|rejected), reason, ref}）, "
+        + "flips[]（逐条 {directiveId, decisionMakerId, status, result, reason}）}";
   }
 
   @Override
@@ -319,41 +337,74 @@ public final class AdjudicateTickTool implements AgentTool {
       }
     }
 
+    // ★ 本 tick **每条令**一条状态翻转（第 3 波最后一块）：目标在每轮按步骤表重算。
+    List<Flip> flips = new ArrayList<>();
+    for (Directive directive : directives) {
+      flips.add(new Flip(directive.id(), directive.decisionMakerId()));
+    }
+
     List<DecisionMakerId> involved =
         directives.stream().map(Directive::decisionMakerId).distinct().toList();
     long resultRevision = base.revision().value() + 1;
     int accepted = (int) steps.stream().filter(Step::inBatch).count();
-    for (int attempt = 0; attempt < maxAttempts(accepted); attempt++) {
+    int attempts = maxAttempts(accepted, flips.size());
+    for (int attempt = 0; attempt < attempts; attempt++) {
+      // batch 与 owners **逐位对应**（owners 不含末尾那条 info）⇒ 结局可按下标定位（不靠信封相等去认）。
       List<CommandEnvelope> batch = new ArrayList<>();
+      List<BatchEntry> owners = new ArrayList<>();
       for (Step step : steps) {
         if (step.inBatch()) {
           batch.add(step.envelope);
+          owners.add(step);
         }
       }
+      for (Flip flip : flips) {
+        if (!flip.inBatch()) {
+          continue; // 已被剔出（翻转自己被拒）⇒ 不重试，拒因留在决策结果的 flips 里。
+        }
+        flip.target = targetStatusFor(flip.directiveId, steps);
+        batch.add(flipEnvelope(adjudicationId, base, flip));
+        owners.add(flip);
+      }
       CommandEnvelope info =
-          infoEnvelope(adjudicationId, base, tick, involved, resultRevision, steps);
+          infoEnvelope(adjudicationId, base, tick, involved, resultRevision, steps, flips);
       batch.add(info);
 
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
-        return committedView(committed.ref(), adjudicationId, tick, involved, directives, steps);
+        return committedView(
+            committed.ref(), adjudicationId, tick, involved, directives, steps, flips);
       }
       if (result instanceof BatchResult.Conflict conflict) {
         return conflict(conflict.current(), adjudicationId, tick);
       }
-      Optional<String> nonConvergent = foldRejections((BatchResult.Rejected) result, steps);
+      Optional<String> nonConvergent = foldRejections((BatchResult.Rejected) result, owners);
       if (nonConvergent.isPresent()) {
         return ToolResult.error("TOOL_ERROR", nonConvergent.get());
       }
     }
     return ToolResult.error(
-        "TOOL_ERROR",
-        "裁决重试超过上限（" + maxAttempts(accepted) + " 次）仍未收敛：" + "每轮都会剔除至少一条被拒命令，走到这里说明剔除没有生效");
+        "TOOL_ERROR", "裁决重试超过上限（" + attempts + " 次）仍未收敛：" + "每轮都会剔除至少一条被拒命令/翻转，走到这里说明剔除没有生效");
   }
 
-  /** 收敛上限：每轮至少剔除一条被拒命令 ⇒ "进批命令数 + 2"必然够（+2 给"第一轮就全过"与"最后一轮只剩结果条目"）。 */
-  private static int maxAttempts(int acceptedCommands) {
-    return acceptedCommands + 2;
+  /** 收敛上限：每轮至少剔除一条**可剔项**（过检命令或状态翻转）⇒ "进批命令数 + 令数 + 2"必然够（+2 给"第一轮就全过"与"最后一轮只剩结果条目"）。 */
+  private static int maxAttempts(int acceptedCommands, int flips) {
+    return acceptedCommands + flips + 2;
+  }
+
+  /**
+   * 一条令在本轮的目标终态：该令的**命令全部在批**（{@code step.inBatch()}）⇒ {@code EXECUTED}，有任一被剔/被拒 ⇒ {@code
+   * CANCELLED}。
+   *
+   * <p>★ **零命令的令**：无命令可执行 ⇒ 空真值 ⇒ {@code EXECUTED}（没有任何东西被拒）。
+   */
+  private static DirectiveStatus targetStatusFor(DirectiveId directiveId, List<Step> steps) {
+    for (Step step : steps) {
+      if (step.directiveId.equals(directiveId) && !step.inBatch()) {
+        return DirectiveStatus.CANCELLED;
+      }
+    }
+    return DirectiveStatus.EXECUTED;
   }
 
   /** 该 tick 的全部令：**顺序确定化**——先按 {@code decisionMakerId}，再按 {@code directiveId}（都是字符串序）。 */
@@ -467,6 +518,26 @@ public final class AdjudicateTickTool implements AgentTool {
   }
 
   /**
+   * 一条**状态翻转**命令的信封（{@code sd.SetDirectiveStatus}）：把该令翻到 {@link Flip#target}。
+   *
+   * <p>★ {@code initiator} 用**本工具的 initiator**（GM 的裁决动作），**不是**出令决策人——翻转是裁决的产物，不是决策人自己下的命令 （尤其
+   * {@code CANCELLED} 是"它的命令被拒"的结果，挂它名下会误导）。{@code correlationId} 与同批其余命令一致 = 本次裁决 id。
+   */
+  private CommandEnvelope flipEnvelope(String adjudicationId, StateRef base, Flip flip) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("directiveId", flip.directiveId.value());
+    payload.put("status", flip.target.name());
+    return new CommandEnvelope(
+        UUID.randomUUID().toString(),
+        adjudicationId,
+        initiator,
+        base.branch(),
+        base.revision(),
+        STATUS_COMMAND_TYPE,
+        ToolSupport.json(payload));
+  }
+
+  /**
    * 决策结果条目（一条 {@code sd.PutInfo} 命令）——**与命令同批落**（这样它和命令效果在**同一条 revision** 里）。
    *
    * <p>★ **id 显式给且由地址派生**（{@code sd:adjudication.<tick>#0}）⇒ 同一个 tick 的第二裁决会撞 id 被拒 ⇒ "一个 tick
@@ -481,13 +552,14 @@ public final class AdjudicateTickTool implements AgentTool {
       long tick,
       List<DecisionMakerId> involved,
       long resultRevision,
-      List<Step> steps) {
+      List<Step> steps,
+      List<Flip> flips) {
     Address address = Address.parse(RESULT_ADDRESS_PREFIX + tick);
     String canonical = address.canonical();
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", canonical);
     payload.put("key", RESULT_KEY);
-    payload.put("value", valueJson(base.branch(), resultRevision, tick, steps));
+    payload.put("value", valueJson(base.branch(), resultRevision, tick, steps, flips));
     payload.put("id", SdInfoIds.synthesize(canonical, 0).value());
     payload.put("tags", involved.stream().map(DecisionMakerId::value).toList());
     payload.put("tick", tick);
@@ -501,9 +573,9 @@ public final class AdjudicateTickTool implements AgentTool {
         ToolSupport.json(payload));
   }
 
-  /** 决策结果的正文（JSON 字符串）：本 tick **逐条命令**的结局与拒因 + 本批落盘的坐标。 */
+  /** 决策结果的正文（JSON 字符串）：本 tick **逐条命令**的结局与拒因 + **逐条令**的状态翻转 + 本批落盘的坐标。 */
   private static String valueJson(
-      BranchId branch, long resultRevision, long tick, List<Step> steps) {
+      BranchId branch, long resultRevision, long tick, List<Step> steps, List<Flip> flips) {
     Map<String, Object> value = new LinkedHashMap<>();
     value.put("tick", tick);
     value.put("resultRevision", resultRevision);
@@ -519,19 +591,38 @@ public final class AdjudicateTickTool implements AgentTool {
       commands.add(row);
     }
     value.put("commands", commands);
+    List<Map<String, Object>> flipRows = new ArrayList<>();
+    for (Flip flip : flips) {
+      flipRows.add(flipRow(flip, branch, resultRevision));
+    }
+    value.put("flips", flipRows);
     return ToolSupport.json(value);
+  }
+
+  /** 一条翻转在决策结果里的行：目标终态 + 结局（{@code applied}/{@code rejected}）+ 拒因。 */
+  private static Map<String, Object> flipRow(Flip flip, BranchId branch, long resultRevision) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("directiveId", flip.directiveId.value());
+    row.put("decisionMakerId", flip.decisionMakerId.value());
+    row.put("status", flip.target.name());
+    row.put("result", flip.inBatch() ? "applied" : "rejected");
+    row.put("reason", flip.inBatch() ? null : flip.reason);
+    row.put("ref", flip.inBatch() ? branch.value() + "@" + resultRevision : null);
+    return row;
   }
 
   // ── 收敛：从整批拒绝里挑出"这次才暴露的"─────────────────────────────────────────────────
 
   /**
-   * 从整批拒绝里把**这次才暴露的**被拒命令剔出（并记下拒因），供下一轮重试。
+   * 从整批拒绝里把**这次才暴露的**被拒命令/翻转剔出（并记下拒因），供下一轮重试。
    *
    * <p>★ 返回非空 = **不收敛**（决策结果条目自己被拒 / 一条都没有可剔）：交调用方响亮失败。
    *
-   * <p>★ 位置对应是**契约**（{@code BatchResult} 的 outcomes 与入参逐位对应）⇒ 最后一个位置就是决策结果条目， 不靠对象相等去认它。
+   * <p>★ 位置对应是**契约**（{@code BatchResult} 的 outcomes 与入参逐位对应，且 {@code owners} 与"入参除末尾 info 之外"逐位对应）⇒
+   * 最后一个位置就是决策结果条目，其余按下标找回自己的 owner。
    */
-  private static Optional<String> foldRejections(BatchResult.Rejected rejected, List<Step> steps) {
+  private static Optional<String> foldRejections(
+      BatchResult.Rejected rejected, List<BatchEntry> owners) {
     List<CommandOutcome> outcomes = rejected.outcomes();
     int infoIndex = outcomes.size() - 1;
     CommandOutcome infoOutcome = outcomes.get(infoIndex);
@@ -546,8 +637,7 @@ public final class AdjudicateTickTool implements AgentTool {
       if (reason.isEmpty()) {
         continue;
       }
-      Step step = stepAt(steps, outcomes.get(i).command());
-      step.reason = "handler 拒绝: " + reason.orElseThrow();
+      owners.get(i).noteRejection("handler 拒绝: " + reason.orElseThrow());
       removed++;
     }
     if (removed == 0) {
@@ -565,16 +655,6 @@ public final class AdjudicateTickTool implements AgentTool {
       return Optional.of(rejected.reason());
     }
     return Optional.empty();
-  }
-
-  /** 按**信封身份**找回对应的 Step（信封是逐条新建的，批次顺序不变 ⇒ 唯一定位）。 */
-  private static Step stepAt(List<Step> steps, CommandEnvelope envelope) {
-    for (Step step : steps) {
-      if (envelope.equals(step.envelope)) {
-        return step;
-      }
-    }
-    throw new IllegalStateException("批里的信封在步骤表里找不到（批与步骤表不同源）: " + envelope.type());
   }
 
   // ── 视图 ──────────────────────────────────────────────────────────────────────────────
@@ -595,7 +675,8 @@ public final class AdjudicateTickTool implements AgentTool {
       long tick,
       List<DecisionMakerId> involved,
       List<Directive> directives,
-      List<Step> steps) {
+      List<Step> steps,
+      List<Flip> flips) {
     Map<String, Object> view =
         new LinkedHashMap<>(ToolSupport.committedView(ref, adjudicationId, adjudicationId));
     view.put("adjudicationId", adjudicationId);
@@ -606,12 +687,28 @@ public final class AdjudicateTickTool implements AgentTool {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("decisionMakerId", directive.decisionMakerId().value());
       row.put("directiveId", directive.id().value());
+      row.put("status", flipOf(flips, directive.id()).target.name());
       directiveRows.add(row);
     }
     view.put("directives", directiveRows);
     view.put("decisionMakers", involved.stream().map(DecisionMakerId::value).toList());
     view.put("commands", commandRows(ref, steps));
+    List<Map<String, Object>> flipRows = new ArrayList<>();
+    for (Flip flip : flips) {
+      flipRows.add(flipRow(flip, ref.branch(), ref.revision().value()));
+    }
+    view.put("flips", flipRows);
     return ToolResult.ok(ToolSupport.json(view));
+  }
+
+  /** 按令 id 找它的翻转（每条令恰好一条）。 */
+  private static Flip flipOf(List<Flip> flips, DirectiveId directiveId) {
+    for (Flip flip : flips) {
+      if (flip.directiveId.equals(directiveId)) {
+        return flip;
+      }
+    }
+    throw new IllegalStateException("令 " + directiveId.value() + " 没有对应的状态翻转（编排不自洽）");
   }
 
   /**
@@ -644,7 +741,17 @@ public final class AdjudicateTickTool implements AgentTool {
     return out;
   }
 
-  // ── 步骤表 ────────────────────────────────────────────────────────────────────────────
+  // ── 批内条目：步骤表与翻转 ──────────────────────────────────────────────────────────────
+
+  /** 批内一个可被剔除的条目（过检命令 {@link Step} / 状态翻转 {@link Flip}）——让收敛逻辑对两者**一视同仁**。 */
+  private interface BatchEntry {
+
+    /** 该条目**仍在最终那一批**：尚未被任何一轮剔除。 */
+    boolean inBatch();
+
+    /** 记下"该条自己被拒"的拒因（下一轮不再进批）。 */
+    void noteRejection(String reason);
+  }
 
   /**
    * 本 tick 的一条命令及其结局。
@@ -652,7 +759,7 @@ public final class AdjudicateTickTool implements AgentTool {
    * <p>★ {@code envelope} 为 null ⇔ 预检就拒了（**从未进批**）；{@code reason} 非 null ⇔ 结局是 rejected
    * （拒因即它，来自前置校验或某轮批的 handler 拒绝）。
    */
-  private static final class Step {
+  private static final class Step implements BatchEntry {
 
     private final DirectiveId directiveId;
     private final DecisionMakerId decisionMakerId;
@@ -679,8 +786,42 @@ public final class AdjudicateTickTool implements AgentTool {
      * <p>★ 同一个谓词在两处用、语义都成立：① 组批与写决策结果时 = 这条**会**生效；② 提交成功后的视图 = 这条**已**生效 ——能进最终那一批的命令，就是随那条
      * revision 一起生效的那些（批是原子的）。
      */
-    boolean inBatch() {
+    @Override
+    public boolean inBatch() {
       return envelope != null && reason == null;
+    }
+
+    @Override
+    public void noteRejection(String reason) {
+      this.reason = reason;
+    }
+  }
+
+  /**
+   * 本 tick 一条令的状态翻转（{@code sd.SetDirectiveStatus}）：目标在每轮按步骤表重算，{@code reason} 非 null ⇔ 该翻转**自己被拒**。
+   *
+   * <p>★ 与 {@link Step} 的差别：Step 的信封在建表时定死（预检拒则 null），Flip 的信封**每轮现拼**（因为目标态可能随命令被剔而变）。
+   */
+  private static final class Flip implements BatchEntry {
+
+    private final DirectiveId directiveId;
+    private final DecisionMakerId decisionMakerId;
+    private DirectiveStatus target;
+    private String reason;
+
+    Flip(DirectiveId directiveId, DecisionMakerId decisionMakerId) {
+      this.directiveId = directiveId;
+      this.decisionMakerId = decisionMakerId;
+    }
+
+    @Override
+    public boolean inBatch() {
+      return reason == null;
+    }
+
+    @Override
+    public void noteRejection(String reason) {
+      this.reason = reason;
     }
   }
 }

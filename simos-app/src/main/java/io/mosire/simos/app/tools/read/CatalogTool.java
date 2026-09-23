@@ -105,7 +105,11 @@ public final class CatalogTool implements AgentTool {
               "sd.ResetDecisionMakerConversation", "decisionMakerId（会话世代 +1：该决策人下一轮从空上下文重开；旧会话不删）"),
           Map.entry("sd.StartDecision", "decisionMakerId, note?"),
           Map.entry("sd.RunDecision", "decisionMakerId"),
-          Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"));
+          Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"),
+          Map.entry(
+              "sd.SetDirectiveStatus",
+              "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
+                  + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"));
 
   private final List<String> types;
 

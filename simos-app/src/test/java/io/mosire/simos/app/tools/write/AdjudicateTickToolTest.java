@@ -39,11 +39,13 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.spi.NationTag;
@@ -500,6 +502,177 @@ class AdjudicateTickToolTest {
         .containsExactlyInAnyOrderElementsOf(samples.keySet());
   }
 
+  // ── 判据十：状态翻转（第 3 波最后一块）——两种终态可区分、仍只有一条 revision、重放一致 ────────────
+
+  /**
+   * ★★ **本步的承重判据**：同一个 tick 两条令——一条命令**全部被接受** ⇒ {@code EXECUTED}，一条命令**被拒** ⇒ {@code CANCELLED}。
+   *
+   * <p>★ 三处判别力：
+   *
+   * <ol>
+   *   <li>**两种终态可区分**：把"全部接受 / 有一个被拒"写成同一种结局（都 {@code EXECUTED} 或都 {@code CANCELLED}）⇒ 当场红；
+   *   <li>**仍只有一条 revision**：翻转若被实现成"再 submit 一次"，head 会多 +1（或 +2）⇒ 这里红；
+   *   <li>**重放往返**：翻转是同一条 revision 里的 sd 变更，{@code replay(after)} 必须复现两个终态（不是只有内存里改过）。
+   * </ol>
+   *
+   * <p>★ 拒因来自**可达面**（{@code dm-fra} 够不着中立格上的 {@code u-3}）——这正是"被拒 ⇒ CANCELLED"的样本。
+   */
+  @Test
+  void allAcceptedCommandsYieldExecutedAndAnyRejectionYieldsCancelledInOneRevision()
+      throws Exception {
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-army",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+    issueDirective(
+        WORLD_TICK,
+        DM_FRA,
+        "d-fra",
+        commands("unit.RenameUnit", "{\"id\":\"u-3\",\"name\":\"第三连改\"}"));
+    long before = head();
+
+    ToolResult result = adjudicate(WORLD_TICK);
+
+    assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
+    long after = head();
+    assertThat(after).as("★ 两条令 + 一条决策结果 + 两条状态翻转仍**只落一条** revision").isEqualTo(before + 1);
+
+    // ★ 重放往返：终态是**落盘变更**（不是内存副作用），且两种终态可区分。
+    SdState replayed = sdAt(after);
+    assertThat(replayed.directives().get(new DirectiveId("d-army")).status())
+        .as("命令全部被接受 ⇒ EXECUTED")
+        .isEqualTo(DirectiveStatus.EXECUTED);
+    assertThat(replayed.directives().get(new DirectiveId("d-fra")).status())
+        .as("★ 有任一命令被拒 ⇒ CANCELLED（与上面那条必须不同）")
+        .isEqualTo(DirectiveStatus.CANCELLED);
+
+    // 决策结果条目里也逐条记下翻转结局（可回放、可审计的那份）。
+    JsonNode value = decisionResult(after, WORLD_TICK);
+    assertThat(flipStatusOf(value, "d-army")).isEqualTo("EXECUTED");
+    assertThat(flipStatusOf(value, "d-fra")).isEqualTo("CANCELLED");
+    assertThat(flipResultOf(value, "d-army")).isEqualTo("applied");
+    assertThat(flipResultOf(value, "d-fra")).isEqualTo("applied");
+
+    assertThat(unitName(after, U1)).as("EXECUTED 的令的命令真的落了").isEqualTo("第一连改");
+    assertThat(unitName(after, U3)).as("CANCELLED 的令的命令真的没落").isEqualTo("第三连");
+  }
+
+  /**
+   * ★ **"一个 tick 仍然只有一条 revision"的边界样本**：一条令**部分**命令被拒（handler 级，前置校验覆盖不到）⇒ 该令 {@code
+   * CANCELLED}、其余命令照落、**head 只 +1**。
+   *
+   * <p>★ 若把翻转写成"先落命令、再补一条翻转 revision"，这里 head 会多一格 ⇒ 红。
+   */
+  @Test
+  void aPartiallyRejectedDirectiveIsCancelledWhileTheRestLandInOneRevision() throws Exception {
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-army",
+        commands(
+            "unit.RenameUnit",
+            "{\"id\":\"u-1\",\"name\":\"第一连改\"}",
+            "unit.RenameUnit",
+            "{\"id\":\"u-3\",\"name\":\"\"}"));
+    long before = head();
+
+    ToolResult result = adjudicate(WORLD_TICK);
+
+    assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
+    long after = head();
+    assertThat(after).as("★ 部分被拒也仍然只落一条 revision").isEqualTo(before + 1);
+    assertThat(sdAt(after).directives().get(new DirectiveId("d-army")).status())
+        .as("有任一命令被剔 ⇒ 整条令 CANCELLED")
+        .isEqualTo(DirectiveStatus.CANCELLED);
+    assertThat(unitName(after, U1)).as("过检的那条照落").isEqualTo("第一连改");
+    assertThat(unitName(after, U3)).as("被剔的那条没落").isEqualTo("第三连");
+  }
+
+  /**
+   * ★★ **转移守卫端到端**（真 {@code CommandBus} + 真 handler）：同一条令重复翻转 / 目标值非法 / 令不存在，三条都必须**拒**且拒因
+   * **可读**；拒不留 revision。
+   *
+   * <p>★ 用**已注册的命令类型**经通用命令面提交（与裁决内部的编排同一条执行路径），故这条也钉住"翻转命令确实注册在册"。
+   */
+  @Test
+  void statusFlipGuardRejectsRepeatIllegalTargetAndMissingDirective() {
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-army",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"x\"}"));
+    issueDirective(
+        WORLD_TICK,
+        DM_FRA,
+        "d-fra",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"y\"}"));
+
+    // 正向：ISSUED → EXECUTED 成；落地可重放。
+    CommandResult first =
+        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-army\",\"status\":\"EXECUTED\"}");
+    assertThat(first).isInstanceOf(CommandResult.Committed.class);
+    assertThat(sdAt(head()).directives().get(new DirectiveId("d-army")).status())
+        .isEqualTo(DirectiveStatus.EXECUTED);
+
+    // ① 重复翻转（已终态，且还换了另一个终态）⇒ 拒，拒因写明**当前态与目标态**。
+    long headBeforeRepeat = head();
+    CommandResult repeat =
+        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-army\",\"status\":\"CANCELLED\"}");
+    assertThat(repeat).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) repeat).reason())
+        .as("★ 重复翻转被拒且拒因可读（点名当前 EXECUTED、目标 CANCELLED）")
+        .contains("不可转移")
+        .contains("EXECUTED")
+        .contains("CANCELLED");
+    assertThat(head()).as("被拒 ⇒ 零 revision").isEqualTo(headBeforeRepeat);
+
+    // ② 目标值非法（只允许两个终态；PLANNED 也不行）⇒ 拒。
+    CommandResult illegal =
+        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-fra\",\"status\":\"PLANNED\"}");
+    assertThat(illegal).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) illegal).reason()).contains("目标状态非法").contains("PLANNED");
+    assertThat(sdAt(head()).directives().get(new DirectiveId("d-fra")).status())
+        .as("被拒 ⇒ 该令还是 ISSUED")
+        .isEqualTo(DirectiveStatus.ISSUED);
+
+    // ③ 令不存在 ⇒ 拒。
+    CommandResult missing =
+        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"ghost\",\"status\":\"EXECUTED\"}");
+    assertThat(missing).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) missing).reason()).contains("决策不存在").contains("ghost");
+  }
+
+  /**
+   * ★ **翻转自己被拒 ⇒ 走收敛逻辑（剔出 + 记拒因），不许静默吞掉**。
+   *
+   * <p>造样本：先手工把一条令翻到终态（{@code EXECUTED}），再裁决它所在的 tick ⇒ 裁决要生成的翻转（{@code ISSUED → EXECUTED}）
+   * 撞上转移守卫被拒。判据三处：① 裁决仍**成**且**只落一条 revision**（翻转被剔后 info 照落，退化成"无翻转"的一批）；② 决策结果的 {@code flips}
+   * 行把它记为 {@code rejected} 且带**可读拒因**（不静默）；③ 已终态的令**不被改回**。
+   */
+  @Test
+  void aRejectedStatusFlipIsDroppedAndRecordedInsteadOfSilentlySwallowed() throws Exception {
+    long tick = 5L;
+    issueDirective(tick, DM_ARMY, "d-pre", commands());
+    assertThat(
+            submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-pre\",\"status\":\"EXECUTED\"}"))
+        .as("先把 d-pre 手工翻到终态（造出『翻转必然被拒』的前置）")
+        .isInstanceOf(CommandResult.Committed.class);
+    long before = head();
+
+    ToolResult result = adjudicate(tick);
+
+    assertThat(result.success()).as("翻转被拒不该拖垮整次裁决（实际：%s）", result.message()).isTrue();
+    long after = head();
+    assertThat(after).as("★ 翻转被剔后 info 照落，仍只一条 revision（不是零条、也不是两条）").isEqualTo(before + 1);
+    JsonNode value = decisionResult(after, tick);
+    assertThat(flipResultOf(value, "d-pre")).as("翻转自己被拒 ⇒ 记为 rejected（不静默）").isEqualTo("rejected");
+    assertThat(flipRow(value, "d-pre").get("reason").asText()).as("★ 拒因可读且点名不可转移").contains("不可转移");
+    assertThat(sdAt(after).directives().get(new DirectiveId("d-pre")).status())
+        .as("已终态的令不许被改回/改掉")
+        .isEqualTo(DirectiveStatus.EXECUTED);
+  }
+
   // ────────────────────────────── 助手 ──────────────────────────────
 
   private AdjudicateTickTool tool() {
@@ -624,6 +797,45 @@ class AdjudicateTickToolTest {
         .units()
         .get(id)
         .name();
+  }
+
+  /** 重放某个 revision 得到的 sd 状态——状态翻转是否**真落盘**的判据面（往返）。 */
+  private SdState sdAt(long revision) {
+    SimulationState state = core().replay(ref("main", revision));
+    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+  }
+
+  /** 经**真命令面**提交一条命令（期望坐标 = 当前 head）——用于转移守卫的端到端样本。 */
+  private CommandResult submit(String type, String payloadJson) {
+    return core()
+        .submit(
+            new CommandEnvelope(
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                INITIATOR,
+                main(),
+                new RevisionId(head()),
+                type,
+                payloadJson));
+  }
+
+  /** 决策结果里某条令的翻转**目标终态**。 */
+  private static String flipStatusOf(JsonNode value, String directiveId) {
+    return flipRow(value, directiveId).get("status").asText();
+  }
+
+  /** 决策结果里某条令的翻转**结局**（{@code applied}/{@code rejected}）。 */
+  private static String flipResultOf(JsonNode value, String directiveId) {
+    return flipRow(value, directiveId).get("result").asText();
+  }
+
+  private static JsonNode flipRow(JsonNode value, String directiveId) {
+    for (JsonNode row : value.get("flips")) {
+      if (directiveId.equals(row.get("directiveId").asText())) {
+        return row;
+      }
+    }
+    throw new AssertionError("决策结果里没有 " + directiveId + " 的翻转: " + value);
   }
 
   private Set<String> namespacesOfRevision(long revision) {

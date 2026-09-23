@@ -70,6 +70,7 @@ import io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandler;
 import io.mosire.simos.sd.spi.RunDecisionHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
+import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.StartDecisionHandler;
 import io.mosire.simos.sd.spi.SubmitVerdictHandler;
@@ -367,7 +368,10 @@ public final class Shell implements AutoCloseable {
                 new RecordCasualtiesHandler(),
                 new CancelEffectHandler(),
                 new StartDecisionHandler(),
-                new RunDecisionHandler()));
+                new RunDecisionHandler(),
+                // ★ 第 3 波最后一块：裁决用的状态翻转命令（sd.SetDirectiveStatus）。它不是对外窄工具——
+                //   由 sd.AdjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
+                new SetDirectiveStatusHandler()));
     Set<String> drainableCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       if (!handler.type().startsWith("sd.")) {
