@@ -227,7 +227,7 @@ class UnitVisionRadiusTest {
 
   @Test
   void attachSubtreePreservesVisionRadius() {
-    // ★ 本次改动：attach 现在要求"同格"（且会清掉子树自身位置）⇒ 让 U2 与 U1 同格（都在 H11），并把 position 计入差集。
+    // ★ 2026-09-24（偏移式加入）：attach 清自身位置**并反算 offset**（两者都进差集）；不再要求同格。
     UnitState base =
         stateOf(
             unit(U1, Optional.empty(), Optional.of(H11), RADIUS),
@@ -238,7 +238,8 @@ class UnitVisionRadiusTest {
         "attachSubtree",
         "parent",
         "attached",
-        "position");
+        "position",
+        "offset");
   }
 
   @Test

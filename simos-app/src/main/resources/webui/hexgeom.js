@@ -181,6 +181,47 @@
     return (index - (count - 1) / 2) * spacing;
   }
 
+  // ── 2026-09-24：标记文字 = 「军队名 × N」 ─────────────────────────────────────
+  //
+  // 用户反馈："我把原本位置的重骑兵移动到交战位置，这个位置就变成了轻骑兵，再移动，就变成了弓弩手"
+  // ——根因是**显示**：旧标记文字写的是"该军队在本格最靠上的单位"的短 id，平手按 /api/units 顺序，
+  // 顶上那个走了名字就滚到下一个兵种身上，看着像单位换了身份。改成写**军队名**与**成员数**后，
+  // 标记不再冒充某个兵种（选中高亮与 pickAt 命中语义都不变，仍以 leadId 为准）。
+
+  /**
+   * 军队名在标记上的最大字符数（超长 ⇒ 截断 + `…`）。**常量**。
+   *
+   * <p>依据：标记圆半径 = `markerRadius(34) = 10.2` 世界像素；门控打开的最小缩放 0.75 ⇒ 屏幕半径 ≈ 7.7px。
+   * 旧文字是 4 个字符的短 id，与圆径相称；军队名 + ` × N` 也要压在相近宽度里，故军名取 **4** 字
+   * （加 ` × N` 后总长约 8 字符），再多就会溢出到圆外、与相邻标记糊在一起。
+   */
+  var ARMY_LABEL_MAX_CHARS = 4;
+
+  /** 把一段文本压缩到至多 `maxChars` 个字符：超长 ⇒ 截掉尾部并补 `…`；非正值/未超长 ⇒ 原样。**纯函数**。 */
+  function clampLabelText(name, maxChars) {
+    var text = name === null || name === undefined ? "" : String(name);
+    var n = typeof maxChars === "number" && maxChars > 0 ? Math.floor(maxChars) : 0;
+    if (n <= 0 || text.length <= n) {
+      return text;
+    }
+    if (n === 1) {
+      return "…";
+    }
+    return text.slice(0, n - 1) + "…";
+  }
+
+  /**
+   * 标记上的文字：**「军队名 × N」**（N = 该标记在本格的成员数）。**纯函数**。
+   *
+   * <p>军队名由调用方从 `rootId` 派生（根单位的 `name`）后传入；超长按 {@link #ARMY_LABEL_MAX_CHARS}
+   * 压缩。无名（空串）⇒ 只剩 `× N`（不拿别的字段顶替、不造第二份真相）。`memberCount ≤ 0` 按 0 计。
+   */
+  function markerLabel(name, memberCount) {
+    var count = memberCount > 0 ? Math.floor(memberCount) : 0;
+    var text = clampLabelText(name, ARMY_LABEL_MAX_CHARS);
+    return text === "" ? "× " + count : text + " × " + count;
+  }
+
   // ── 2026-09-24 交战格的特殊地图显示 ──────────────────────────────────────────
   //
   // 用户口径（原话）：交战状态下的两个 / 多方军队要"各列两边纵向排列，中间放个 ⚔"。
@@ -515,6 +556,9 @@
     markerRadius: markerRadius,
     stackSpacing: stackSpacing,
     stackOffset: stackOffset,
+    // ★ 2026-09-24：标记文字「军队名 × N」（不再冒充某个兵种）。
+    markerLabel: markerLabel,
+    ARMY_LABEL_MAX_CHARS: ARMY_LABEL_MAX_CHARS,
     markerGroups: markerGroups,
     // ★ 2026-09-24 交战格的特殊地图显示（判定 / 布局 / 门控；见上方区块注释）。
     combatHexes: combatHexes,

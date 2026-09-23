@@ -39,6 +39,8 @@
   var markerRadius = hexGeom.markerRadius;
   var stackSpacing = hexGeom.stackSpacing;
   var stackOffset = hexGeom.stackOffset;
+  // ★ 2026-09-24：标记文字「军队名 × N」的纯函数（不再写 leadId 的短 id）。
+  var markerLabel = hexGeom.markerLabel;
   // ★ 2026-09-24 修正 1：标记按**军队**分组（同格、同军队根 ⇒ 一个标记）；纯函数在 hexgeom.js
   //   （两份宿主页都引它 ⇒ map.html 不会因缺 unitTree.js 而少一个函数）。
   var markerGroups = hexGeom.markerGroups;
@@ -671,9 +673,18 @@
       });
     }
 
-    function shortId(id) {
-      var text = app.text(id);
-      return text.length > 4 ? text.slice(0, 4) : text;
+    /**
+     * ★ 2026-09-24：标记文字显示的**军队名**——由 `rootId`（军队根）派生：优先根单位的 `name`；
+     * 根不在已载入的 `units` 里（无有效位置被过滤 / 悬空）⇒ 回落到 `rootId` 文本。
+     *
+     * <p>★ 为什么不再用 `leadId`：旧文字写的是"该军队在本格最靠上的单位"的短 id，代表单位一走，
+     * 名字就滚到下一个兵种 ⇒ 看着像单位换了身份。军队名是整支军队的稳定标识，不随代表单位漂移。
+     */
+    function armyNameOf(rootId) {
+      var root = unitById[String(rootId)];
+      return root && root.name !== null && root.name !== undefined && root.name !== ""
+        ? root.name
+        : app.text(rootId);
     }
 
     /**
@@ -716,7 +727,8 @@
         }
         ctx.fillStyle = "#ffffff";
         ctx.font = Math.max(9, Math.round(radius)) + "px sans-serif";
-        ctx.fillText(shortId(m.leadId), m.px, m.py);
+        // ★ 2026-09-24：「军队名 × N」（N = 该标记在本格的成员数）——不再写 leadId 的短 id（那会冒充某个兵种）。
+        ctx.fillText(markerLabel(armyNameOf(m.rootId), m.member.length), m.px, m.py);
         if (m.combat) {
           var key = m.at.q + "_" + m.at.r;
           if (!combatIcons[key]) {

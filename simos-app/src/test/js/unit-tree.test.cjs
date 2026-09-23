@@ -26,6 +26,9 @@ const {
   stackSpacing,
   markerRadius,
   markerGroups,
+  // ★ 2026-09-24：标记文字「军队名 × N」（不再冒充某个兵种）。
+  markerLabel,
+  ARMY_LABEL_MAX_CHARS,
   markerScreenVisible,
   centerViewOn,
   worldToScreen,
@@ -702,7 +705,7 @@ test("formation-buttons-pass-through-the-server-reason-without-a-second-truth", 
     "加入载荷 {id, parent}（父 = 当前父，非前端另算）"
   );
   assert.ok(src.includes('"unit.DetachUnit", { id: id }'), "脱离载荷 {id}");
-  // 服务端拒绝（如"不同格"）时 result.message 原样显示；前端不自己判定同格。
+  // 服务端拒绝（如成环 / 未知 id）时 result.message 原样显示；前端不自己判定位置（加入不再要求同格）。
   assert.ok(
     src.includes('result.ok ? "已加入编队 " + id + " → " + parent + "（进入跟随）" : result.message'),
     "★ 加入结局：成功给成功语、失败原样透出服务端理由"
@@ -711,5 +714,40 @@ test("formation-buttons-pass-through-the-server-reason-without-a-second-truth", 
     src.includes('result.ok ? "已脱离编队 " + id + "（已钉在当前位置，不再跟随父）" : result.message'),
     "★ 脱离结局：失败原样透出服务端理由"
   );
+});
+
+// ── 2026-09-24：标记文字「军队名 × N」（不再冒充某个兵种）─────────────────────────
+// 用户反馈："我把原本位置的重骑兵移动到交战位置，这个位置就变成了轻骑兵，再移动，就变成了弓弩手"
+// ——根因是显示：旧文字写的是"该军队在本格最靠上的单位"（leadId）的短 id，代表单位一走名字就滚到
+// 下一个兵种。改成写军队名 + 成员数后，标记不再冒充某个兵种。
+
+test("markerLabel-shows-the-army-name-times-member-count-and-truncates-overlong-names", () => {
+  assert.equal(markerLabel("甲部", 1), "甲部 × 1", "军队名 × N");
+  assert.equal(markerLabel("重骑兵", 8), "重骑兵 × 8", "N = 该标记在本格的成员数");
+  const long = markerLabel("某某某超长军队名称", 3);
+  assert.ok(long.endsWith("× 3"), "计数在后：" + long);
+  assert.ok(long.indexOf("…") >= 0, "超长名被压缩且带省略号：" + long);
+  assert.ok(
+    long.length < "某某某超长军队名称".length + " × 3".length,
+    "压缩后比原名 + 计数更短"
+  );
+  assert.ok(ARMY_LABEL_MAX_CHARS >= 2, "截断上限是个正数常量");
+  assert.equal(markerLabel("", 2), "× 2", "无名 ⇒ 只剩计数（不拿别的字段顶替）");
+  assert.equal(markerLabel("甲", 0), "甲 × 0", "非正成员数按 0 计");
+});
+
+test("renderer-marker-text-is-the-army-name-not-a-unit-short-id", () => {
+  const src = readWebui("renderer.js");
+  assert.ok(src.includes("markerLabel("), "drawUnits 用 markerLabel 写「军队名 × N」");
+  assert.ok(src.includes("m.member.length"), "N = 该标记的成员数");
+  assert.ok(
+    !src.includes("shortId(m.leadId)"),
+    "★ 不再用 leadId 的短 id 冒充兵种（名字不再随代表单位滚）"
+  );
+  assert.ok(!src.includes("function shortId("), "死掉的 shortId 已移除");
+  assert.ok(src.includes("markerLabel: ") === false, "markerLabel 从 hexgeom 取回，不在 renderer 里重定义");
+  assert.ok(src.includes("var markerLabel = hexGeom.markerLabel;"), "从 hexgeom 取回 markerLabel");
+  assert.ok(src.includes("pickAt: pickAt"), "命中语义不变（pickAt 仍返回 leadId）");
+  assert.ok(src.includes("isMarkerSelected(m)"), "选中高亮逻辑不变（组内任一被选中 ⇒ 高亮该组）");
 });
 

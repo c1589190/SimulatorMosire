@@ -42,7 +42,9 @@ const JS_DIR = __dirname;
 //     renderer 接线静态 1 条）。
 //   2026-09-24 编队状态起 262 → 265（unit-tree.test.cjs 新增 3 条：脱离/加入编队按钮存在与接线 / 加入按钮 disabled 随"已知是根"/
 //     提交载荷与"服务端理由原样透出"；modes.test.cjs 的 unit 白名单只加断言、条数不变）。
-const MIN_TESTS = 265;
+//   2026-09-24 标记文字起 265 → 267（unit-tree.test.cjs 新增 2 条：markerLabel「军队名 × N」含超长压缩与无名回落 /
+//     renderer 静态接线改用 markerLabel、不再写 leadId 的短 id）。
+const MIN_TESTS = 267;
 
 function discoverTests() {
   return fs

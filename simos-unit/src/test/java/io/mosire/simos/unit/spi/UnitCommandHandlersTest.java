@@ -116,8 +116,8 @@ class UnitCommandHandlersTest {
   }
 
   /**
-   * ★ **attach 的同格基线（本次改动新增）**：`u-2` 与 `u-1` **同格**（都在 `H11`）、`attached=false`；`u-3` 挂 `u-2` 下、
-   * 无自身位置。attach 现在要求"同格"（且会清掉子树自身位置）⇒ 正例必须从这个形态起步，不能用 `detachedPair`（u-2 在 H12）。
+   * ★ **attach 的"根自带位置"基线**：`u-2` 与 `u-1` **同格**（都在 `H11`）、`attached=false`；`u-3` 挂 `u-2` 下、
+   * 无自身位置。attach 会清掉子树自身位置并反算 offset（偏移式加入）；这里让 `u-2` 自带位置，`here`/`parentHere` 都可确定。
    */
   private static UnitState attachablePair() {
     return SpiFixture.unitState(
@@ -634,16 +634,18 @@ class UnitCommandHandlersTest {
         .isEqualTo(base.units().get(SpiFixture.U1));
   }
 
-  /** ★★ 判据（本次改动新增的同格前提）：不同格、或位置不可确定 ⇒ 拒（理由带"同格"）。 */
+  /**
+   * ★★ 判据（**同格前提已于 2026-09-24 撤销**）：不同格的单位在**命令边界**也能 attach——偏移式加入让它原地不动。
+   *
+   * <p>`u-2` 在 H12、`u-1` 在 H11（不同格）⇒ 旧实现在此拒"同格"，现在应 Applied 且 `u-2` 仍在 H12。
+   */
   @Test
-  void attachUnitRejectsADifferentHexOrAnIndeterminatePosition() {
-    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-1\"}"))
-        .as("u-2 在 H12、u-1 在 H11（都在图上，不同格）")
-        .contains("同格");
-    // u-3 无自身位置、detached ⇒ 位置不可确定。
-    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-3\",\"parent\":\"u-2\"}"))
-        .as("u-3 detached 且无自身位置 ⇒ 不可确定")
-        .contains("同格");
+  void attachUnitAcceptsADifferentHexAndKeepsTheUnitInPlace() {
+    UnitState next =
+        applied(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-1\"}");
+    assertThat(next.units().get(U2).parent().valueAt(T5)).as("换父发生了").contains(SpiFixture.U1);
+    assertThat(next.units().get(U2).position().valueAt(T5)).as("自身位置被清（进入跟随）").isEmpty();
+    assertThat(next.effectivePosition(U2, T5)).as("★ 原地不动：仍在其原来的 H12").contains(SpiFixture.H12);
   }
 
   @Test

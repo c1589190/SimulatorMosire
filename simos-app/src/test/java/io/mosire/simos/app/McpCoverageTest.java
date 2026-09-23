@@ -556,8 +556,8 @@ class McpCoverageTest {
             new LinkedHashMap<>(
                 Map.of(
                     U1, unit(),
-                    // ★ 本次改动：u-3 的创世位置与 CreateUnit 建的 u-2（H12）**同格**——attach 现在要求"同格"（编队只能同格
-                    //   加入），否则覆盖用例里的 unit.AttachUnit 会被域层拒。u-3 无其它位置相关断言，挪格无副作用。
+                    // ★ 2026-09-24：u-3 与 u-2（H12）同格只是历史遗留（attach 曾要求同格，现已撤销、改为偏移式加入）；
+                    //   保留同格不影响任何断言。u-3 无其它位置相关断言。
                     U3, genesisUnit(U3, "第三连", H12),
                     U4, genesisUnit(U4, "第四连", H11),
                     U5, genesisUnit(U5, "第五连", H12))));

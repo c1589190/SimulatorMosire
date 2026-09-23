@@ -76,7 +76,7 @@ test("unit-allows-route-and-editor-writes", () => {
   assert.equal(
     M.isWriteAllowed("unit", "unit.AttachUnit"),
     true,
-    "「加入编队」是工作台真写入口（同格前提在域层）"
+    "「加入编队」是工作台真写入口（偏移式加入：原地不动 + 进入跟随，不再要求同格）"
   );
   assert.equal(M.isWriteAllowed("unit", "unit.DetachUnit"), true, "「脱离编队」是工作台真写入口");
   assert.equal(M.isWriteAllowed("unit", "map.SetTerrain"), false);

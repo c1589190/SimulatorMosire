@@ -59,6 +59,17 @@ class UnitOperationsTest {
       Optional<HexCoord> position,
       boolean attached,
       UnitStatus status) {
+    return unit(id, parent, position, attached, status, 2);
+  }
+
+  /** ★ 同上，`speed` 逐节点给（"最慢者决定速度"的判据必须能用可区分的速度值：2 / 5）。 */
+  private static Unit unit(
+      String id,
+      Optional<String> parent,
+      Optional<HexCoord> position,
+      boolean attached,
+      UnitStatus status,
+      int speed) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -66,7 +77,7 @@ class UnitOperationsTest {
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
         100,
         Map.of("步枪", 50),
-        2,
+        speed,
         1000,
         Optional.empty(),
         status,
@@ -339,8 +350,8 @@ class UnitOperationsTest {
    * `effectivePosition` 的继承与偏移）。★ 三个根与 `u-other` 一律 `attached=false`：级联若溢出 `id` 的子树，会被"子树外不动"
    * 的断言抓住（缺省 `true` 会把级联整个掩盖掉）。
    *
-   * <p>★ 注意：本夹具的 `u-sub` **无自身位置且它的父在别格**（H11）——它**不能**用于 attach 正例（attach 现在要求"同格"，
-   * 且会清掉子树自身位置）。attach 正例一律用 {@link #attachableFormation()}。
+   * <p>★ 注意：本夹具的 `u-sub` **无自身位置且它的父在别格**（H11）——attach（偏移式加入）后它相对新父反算出的偏移让它留在原位； 需要"子树根自带位置"的基线时用
+   * {@link #attachableFormation()}。
    */
   private static UnitState formation(boolean subAttached, boolean leafAttached) {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
@@ -352,8 +363,8 @@ class UnitOperationsTest {
   }
 
   /**
-   * ★ **attach 的同格基线（本次改动新增）**：树形与 {@link #formation} 相同，但 `u-sub` 带**自身**位置 `H12`（= `u-other` 的格）⇒
-   * 满足 attach 的"同格"前提。`u-leaf` 仍无自身位置（用来钉级联清位）。
+   * ★ **attach 的"根自带位置"基线**：树形与 {@link #formation} 相同，但 `u-sub` 带**自身**位置 `H12`（= `u-other` 的格）⇒
+   * `here` / `parentHere` 都可确定、反算出的偏移为 (0,0)。`u-leaf` 仍无自身位置（用来钉级联清位）。
    */
   private static UnitState attachableFormation() {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
@@ -391,19 +402,21 @@ class UnitOperationsTest {
   }
 
   /**
-   * ★★ 判据（本次改动新增的同格前提）：attach 前用有效位置比较**子树根**与**新父**——不同格、或任一侧不可确定 ⇒ 拒（理由带 "同格"）。这是据方案 B 加的连带裁定（见
-   * {@code UnitOperations} 类 javadoc）。
+   * ★★ 判据（**撤销同格前提后的口径**）：attach 前**自身有效位置不可确定**（`u-sub` detached 且无自身位置）⇒ **不拒**（旧的同格前提会 拒，已撤销），但
+   * `offset` 段**原样保留**（不清、不猜、不用 (0,0) 顶替——此时无从反算）；`position` 仍被清空、`attached` 仍置 true。
    */
   @Test
-  void attachRejectsADifferentHexOrAnIndeterminatePosition() {
-    assertThatThrownBy(() -> UnitOperations.attachSubtree(formation(true, true), SUB, OTHER, T10))
-        .as("u-sub 的有效位置是 u-root 的 H11，u-other 在 H12 ⇒ 不同格")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("同格");
-    assertThatThrownBy(() -> UnitOperations.attachSubtree(formation(false, false), SUB, OTHER, T10))
-        .as("u-sub detached 且无自身位置 ⇒ 位置不可确定")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("同格");
+  void attachKeepsTheOriginalOffsetWhenThePositionIsIndeterminate() {
+    UnitState base = formation(false, false); // u-sub detached 且无自身位置 ⇒ effectivePosition 为空
+    assertThat(base.effectivePosition(SUB, T10)).isEmpty();
+
+    UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
+    assertThat(attached.units().get(SUB).attached().valueAt(T10)).as("级联照旧置 true").isTrue();
+    assertThat(attached.units().get(SUB).position().valueAt(T10)).as("位置仍被清（进入跟随）").isEmpty();
+    assertThat(attached.units().get(SUB).offset().segments())
+        .as("位置不可确定 ⇒ offset 段原样保留（不追加）")
+        .hasSize(1);
+    assertThat(attached.units().get(SUB).offset().valueAt(T10)).as("仍是原值（空）").isEmpty();
   }
 
   /** ★★ 判据（本次改动的"父动子随"）：同格 attach 后，父移到别格 ⇒ 子（含后代）的有效位置跟着过去。 */
@@ -415,6 +428,59 @@ class UnitOperationsTest {
     UnitState moved = UnitOperations.placeAt(attached, OTHER, Optional.of(H13), T20);
     assertThat(moved.effectivePosition(SUB, T20)).as("父动 ⇒ 子随").contains(H13);
     assertThat(moved.effectivePosition(LEAF, T20)).as("后代（u-leaf 仍无自身位置）也随之").contains(H13);
+  }
+
+  /**
+   * ★★ 判据（本次改动的核心，**先红后绿**的靶子）：**不同格**的子单位也能 attach——偏移式加入让它在原地不动。
+   *
+   * <p>旧的"同格前提"在这里直接抛 {@code 不同格…只有同格才能加入编队} ⇒ 本用例在旧实现下必红。两半：
+   *
+   * <ol>
+   *   <li><b>原地不动</b>：attach 后有效位置与 attach 前**相同**（清位 + 反算偏移，不瞬移）；
+   *   <li><b>进入跟随</b>：之后把新父移到别格 ⇒ 子树（含后代）跟着整体平移过去。
+   * </ol>
+   */
+  @Test
+  void attachAcrossDifferentHexesKeepsTheSubtreeInPlaceAndThenFollows() {
+    UnitState base = formation(true, true);
+    assertThat(base.effectivePosition(SUB, T10)).as("attach 前：u-sub 经 u-root 在 H11").contains(H11);
+
+    UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
+    assertThat(attached.units().get(SUB).parent().valueAt(T10)).contains(OTHER);
+    assertThat(attached.units().get(SUB).position().valueAt(T10)).as("自身位置被清（进入跟随）").isEmpty();
+    assertThat(attached.effectivePosition(SUB, T10))
+        .as("★ 原地不动：不同格 attach 后仍在 H11（旧实现在此抛「同格」）")
+        .contains(H11);
+    assertThat(attached.effectivePosition(LEAF, T10)).as("后代也在原地").contains(H11);
+
+    UnitState moved = UnitOperations.placeAt(attached, OTHER, Optional.of(H13), T20);
+    assertThat(moved.effectivePosition(SUB, T20)).as("父动 ⇒ 子随（整体平移）").contains(H12);
+    assertThat(moved.effectivePosition(LEAF, T20)).as("后代随之").contains(H12);
+  }
+
+  /**
+   * ★★ 判据（幂等性）：对一个**已经是跟随型**（无自身位置 + 已有 offset）的节点再 attach ⇒ 有效位置反算出的 offset
+   * 与原来相同、`position`/`attached` 的当刻取值也不变（同值再落一段，语义恒等）。
+   */
+  @Test
+  void attachingAnAlreadyFollowingNodeIsFieldwiseIdempotent() {
+    // u-sub 已是跟随型：无自身位置、attached=true、offset=(1,0)、父 u-root@H11 ⇒ 有效位置 H12。
+    UnitState following =
+        UnitOperations.setOffset(
+            formation(true, true), SUB, Optional.of(new RelativeOffset(1, 0)), T10);
+    Unit before = following.units().get(SUB);
+    assertThat(following.effectivePosition(SUB, T20)).contains(new HexCoord(2, 1));
+
+    UnitState reattached = UnitOperations.attachSubtree(following, SUB, ROOT, T20);
+    Unit after = reattached.units().get(SUB);
+
+    assertThat(after.offset().valueAt(T20))
+        .as("★ 反算出的 offset 与原来相同")
+        .contains(new RelativeOffset(1, 0));
+    assertThat(after.offset().valueAt(T20)).isEqualTo(before.offset().valueAt(T20));
+    assertThat(after.position().valueAt(T20)).isEqualTo(before.position().valueAt(T20));
+    assertThat(after.attached().valueAt(T20)).isEqualTo(before.attached().valueAt(T20));
+    assertThat(reattached.effectivePosition(SUB, T20)).as("有效位置逐值不变").contains(new HexCoord(2, 1));
   }
 
   /** ★ 判据（T3/P2 的既有语义）：无自身位置 + attached 的单位，父动它随——这是"跟随"的纯函数面。 */
@@ -780,6 +846,58 @@ class UnitOperationsTest {
     assertThat(merged.units().get(GRAND).attached().valueAt(T0)).as("是追加段，不是覆写").isFalse();
   }
 
+  /** 同格三单位（`u-root` / `u-child` / `u-grand`，全在 H11、MOVING），**速度逐单位给**。 */
+  private static UnitState sameHexWithSpeeds(int rootSpeed, int childSpeed, int grandSpeed) {
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(
+        ROOT,
+        unit("u-root", Optional.empty(), Optional.of(H11), false, UnitStatus.MOVING, rootSpeed));
+    units.put(
+        CHILD,
+        unit(
+            "u-child",
+            Optional.of("u-root"),
+            Optional.of(H11),
+            false,
+            UnitStatus.MOVING,
+            childSpeed));
+    units.put(
+        GRAND,
+        unit(
+            "u-grand",
+            Optional.of("u-child"),
+            Optional.of(H11),
+            false,
+            UnitStatus.MOVING,
+            grandSpeed));
+    return new UnitState(units);
+  }
+
+  /**
+   * ★★ 判据（用户："做一下合体，合体的单位速度是其中速度最低单位的速度"）：合并后**存活方**（= `parentId`，即 `u-root`）的 `speed` =
+   * **合体后整棵子树里全部单位**的 speed 最小值（含新加入的子树）。
+   *
+   * <p>三条：(a) 父快子慢 ⇒ 取慢的；(b) 父慢子快 ⇒ 仍取慢的（min 与方向无关）；(c) 最慢的是**后代** ⇒ 同样拖住存活方。 且只改
+   * `speed`——`mobilityPerMille` 本轮不动。
+   */
+  @Test
+  void mergeFormationSlowsTheSurvivorToTheSlowestInTheResultingSubtree() {
+    UnitState parentFast =
+        UnitOperations.mergeFormation(sameHexWithSpeeds(5, 2, 5), CHILD, ROOT, T10);
+    assertThat(parentFast.units().get(ROOT).speed()).as("父 5 + 子 2 ⇒ 存活方 2").isEqualTo(2);
+    assertThat(parentFast.units().get(CHILD).speed()).as("子单位速度不受影响").isEqualTo(2);
+    assertThat(parentFast.units().get(ROOT).mobilityPerMille()).as("mobility 本轮不动").isEqualTo(1000);
+
+    UnitState parentSlow =
+        UnitOperations.mergeFormation(sameHexWithSpeeds(2, 5, 5), CHILD, ROOT, T10);
+    assertThat(parentSlow.units().get(ROOT).speed()).as("父 2 + 子 5 ⇒ 仍是 2（与方向无关）").isEqualTo(2);
+
+    UnitState grandSlow =
+        UnitOperations.mergeFormation(sameHexWithSpeeds(5, 5, 2), CHILD, ROOT, T10);
+    assertThat(grandSlow.units().get(ROOT).speed()).as("最慢者在下属（2）⇒ 存活方 2").isEqualTo(2);
+    assertThat(grandSlow.units().get(GRAND).speed()).as("下属自身不变").isEqualTo(2);
+  }
+
   /** ★ 判据（spec §一.5 表）：环（`parentId` 是 `childId` 的后代）与不存在的 id 都拒。 */
   @Test
   void mergeFormationRejectsCyclesAndUnknownUnits() {
@@ -1110,7 +1228,7 @@ class UnitOperationsTest {
    */
   @Test
   void formationCommandsKeepTheChains() {
-    // ★ 本次改动：attach 现在要求"同格"，故这里换成同格树形（u-sub@H12 = u-other@H12）。
+    // 用轻量的 attachableFormation（树形足够；attach 已不要求同格，此处选它只是为省事）。
     UnitState base = chained(attachableFormation());
 
     UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);

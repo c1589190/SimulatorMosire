@@ -33,6 +33,6 @@ public final class UnitAttachTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "合体（同格前提下重新挂到父）：固定 unit.AttachUnit，载荷 {id, parent?}";
+    return "加入编队（偏移式加入：原地不动并进入跟随，不再要求同格）：固定 unit.AttachUnit，载荷 {id, parent?}";
   }
 }

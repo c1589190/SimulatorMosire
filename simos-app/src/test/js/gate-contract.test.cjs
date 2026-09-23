@@ -58,8 +58,9 @@ const REQUIRED_FILES = [
 //     renderer 接线静态 1 条）。
 //   2026-09-24 编队状态起 262 → 265：unit-tree.test.cjs 新增 3 条（脱离/加入编队按钮存在与接线 / 加入按钮 disabled 随
 //     "已知是根"三态 / 提交载荷与"服务端理由原样透出"）；modes.test.cjs 只加断言、条数不变。
+//   2026-09-24 标记文字起 265 → 267：unit-tree.test.cjs 新增 2 条（markerLabel「军队名 × N」/ renderer 静态接线不再写 leadId 短 id）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 265;
+const MIN_ASSERTIONS = 267;
 
 function testFiles() {
   return fs
