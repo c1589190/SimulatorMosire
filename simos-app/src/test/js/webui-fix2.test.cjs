@@ -58,7 +58,8 @@ test("terrainDimAlpha-is-nonzero-only-in-region-modes", () => {
 
 test("terrain-dim-is-painted-after-terrain-and-before-highlights", () => {
   // ★ U1 的承重结构：压暗必须夹在"地形"与"区域高亮"之间——否则区域填充会被一起压暗、或地形盖住它。
-  const src = readWebui("map.js");
+  // ★ M12 第二波：render 流水线已随 createRenderer 搬到 renderer.js ⇒ 静态扫描改指该文件。
+  const src = readWebui("renderer.js");
   const dim = src.indexOf("paintTerrainDim(ctx, app.getState().mode)");
   const terrain = src.indexOf("paintTerrain(ctx);");
   const highlights = src.indexOf("paintHighlights(ctx);");
@@ -68,7 +69,8 @@ test("terrain-dim-is-painted-after-terrain-and-before-highlights", () => {
 });
 
 test("terrain-dim-is-a-full-canvas-dark-scrim", () => {
-  const src = readWebui("map.js");
+  // ★ M12 第二波：paintTerrainDim 已随 createRenderer 搬到 renderer.js。
+  const src = readWebui("renderer.js");
   const start = src.indexOf("function paintTerrainDim(");
   const end = src.indexOf("function paintRegionNames(");
   assert.ok(start >= 0 && end > start, "取到 paintTerrainDim 函数体");
@@ -104,7 +106,8 @@ test("regionLabelLayout-refuses-to-guess-without-label-or-hexcount", () => {
 });
 
 test("region-name-draws-both-stroke-and-fill-with-zoom-guard", () => {
-  const src = readWebui("map.js");
+  // ★ M12 第二波：paintRegionNames / worldTransform 已随 createRenderer 搬到 renderer.js。
+  const src = readWebui("renderer.js");
   const start = src.indexOf("function paintRegionNames(");
   const end = src.indexOf("function worldTransform(");
   assert.ok(start >= 0 && end > start, "取到 paintRegionNames 函数体");
@@ -117,7 +120,8 @@ test("region-name-draws-both-stroke-and-fill-with-zoom-guard", () => {
 
 test("region-names-are-actually-invoked-in-render-order", () => {
   // ★ 函数写对了但 render 不调它 ⇒ 地图上一个名字都没有。这条钉住"真的画了"（变异体能被它杀）。
-  const src = readWebui("map.js");
+  // ★ M12 第二波：render 的绘制顺序在 renderer.js（随 createRenderer 搬走）。
+  const src = readWebui("renderer.js");
   const call = src.indexOf("paintRegionNames(ctx);");
   const outlines = src.indexOf("paintRegionOutlines(ctx);");
   const units = src.indexOf("drawUnits();");
@@ -296,7 +300,8 @@ test("region-names-only-show-in-the-two-region-modes", () => {
 });
 
 test("region-name-paint-is-gated-by-mode", () => {
-  const src = readWebui("map.js");
+  // ★ M12 第二波：paintRegionNames / regionNameLayouts 已随 createRenderer 搬到 renderer.js。
+  const src = readWebui("renderer.js");
   const start = src.indexOf("function paintRegionNames(");
   const end = src.indexOf("function paintHighlights(");
   assert.ok(start >= 0 && end > start, "取到 paintRegionNames 函数体");

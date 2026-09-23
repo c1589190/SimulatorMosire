@@ -13,6 +13,16 @@ const vm = require("node:vm");
 
 const WEBUI_DIR = path.resolve(__dirname, "../../../main/resources/webui");
 
+// ★ M12 拆分第一步：map.js 的纯几何 / 颜色 / 区域边界已搬到兄弟文件（hexgeom / hexcolor /
+//   regionShape）。浏览器里由宿主页按依赖顺序引入；node 宿主必须把这几份也灌进**同一沙箱**，
+//   否则 map.js 顶层的 `window.SimosHexGeom` 取到 undefined ⇒ 顶层"取回块"直接炸。
+//   这是"*.test.cjs 断言文件一字节不动"与"门禁仍绿"之间的唯一桥：只动本宿主壳。
+//   ★ 新增 map.js 依赖的兄弟文件时，务必同步改这张表（顺序＝引入顺序）。
+const BUNDLE_DEPS = {
+  "map.js": ["hexgeom.js", "hexcolor.js", "regionShape.js"],
+  "panels.js": ["readout.js", "decisionmodel.js"],
+};
+
 /** 取 webui 源码目录（判定用，测试里也会读它做静态扫描）。 */
 function webuiDir() {
   return WEBUI_DIR;
@@ -79,6 +89,9 @@ function loadWebui(name, extraGlobals) {
     });
   }
   vm.createContext(sandbox);
+  (BUNDLE_DEPS[name] || []).forEach((dep) => {
+    vm.runInContext(readWebui(dep), sandbox, { filename: path.join(WEBUI_DIR, dep) });
+  });
   vm.runInContext(source, sandbox, { filename: path.join(WEBUI_DIR, name) });
   return win;
 }

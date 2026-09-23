@@ -858,9 +858,11 @@ test("map-js-wires-decision-click-to-nation-highlight", () => {
 
 test("panels-js-and-app-js-delegate-subpage-visibility", () => {
   const panels = readWebui("panels.js");
+  const model = readWebui("decisionmodel.js");
   const app = readWebui("app.js");
-  // ★ fail-closed 的判定只有一份实现（panels.js），app.js 必须委托它（不得自己写一套）。
-  assert.equal((panels.match(/function decisionSubpageVisibility\(/g) || []).length, 1);
+  // ★ fail-closed 的判定只有一份实现（M12 第三波后搬到 decisionmodel.js），app.js 必须委托它（不得自己写一套）。
+  assert.equal((panels.match(/function decisionSubpageVisibility\(/g) || []).length, 0, "panels.js 不得再留一份");
+  assert.equal((model.match(/function decisionSubpageVisibility\(/g) || []).length, 1);
   assert.ok(app.includes("decisionSubpageVisibility("), "app.js 必须委托纯函数判子页可见性");
   assert.equal((app.match(/function decisionSubpageVisibility\(/g) || []).length, 0, "app.js 不得自写一份");
   // 决策模式面板不得引入**通用命令写**（那条仍是 app.writeCommand 的专属）。

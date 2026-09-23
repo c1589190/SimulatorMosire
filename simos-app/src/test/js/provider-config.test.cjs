@@ -200,10 +200,12 @@ test("provider-panel-index-html-has-the-third-subpage-and-form-anchors", () => {
 });
 
 test("provider-panel-js-has-no-second-visibility-implementation", () => {
-  // 与 decision-mode.test.cjs 同款：可见性只有 panels.js 一份。
+  // 与 decision-mode.test.cjs 同款：可见性只有一份实现（M12 第三波后位于 decisionmodel.js）。
   const panels = readWebui("panels.js");
+  const model = readWebui("decisionmodel.js");
   const app = readWebui("app.js");
-  assert.equal((panels.match(/function decisionSubpageVisibility\(/g) || []).length, 1);
+  assert.equal((panels.match(/function decisionSubpageVisibility\(/g) || []).length, 0);
+  assert.equal((model.match(/function decisionSubpageVisibility\(/g) || []).length, 1);
   assert.equal((app.match(/function decisionSubpageVisibility\(/g) || []).length, 0);
 });
 

@@ -11,12 +11,57 @@
 
   var app = window.SimosApp;
   var api = window.SimosApi;
+  // ★ M12 第三波：无状态纯函数已搬出（readout.js / decisionmodel.js，index.html 在本文件之前引入）。
+  //   此处按名取回 ⇒ **调用点与 window.SimosPanels 导出对象一字未改**。
+  var readout = window.SimosReadout;
+  var decisionModel = window.SimosDecisionModel;
+  var UNTAGGED_LABEL = readout.UNTAGGED_LABEL;
+  var IMPASSABLE_MOVE_COST = readout.IMPASSABLE_MOVE_COST;
+  var DECISION_SUBPAGES = decisionModel.DECISION_SUBPAGES;
+  var AFFILIATION_LABELS = decisionModel.AFFILIATION_LABELS;
+  var normalizeTag = readout.normalizeTag;
+  var groupByTag = readout.groupByTag;
+  var regionMembershipSummary = readout.regionMembershipSummary;
+  var formatValue = readout.formatValue;
+  var millisToMpText = readout.millisToMpText;
+  var perMilleToRateText = readout.perMilleToRateText;
+  var equipmentText = readout.equipmentText;
+  var hexLabel = readout.hexLabel;
+  var movementReadout = readout.movementReadout;
+  var unitTreeSectionVisible = readout.unitTreeSectionVisible;
+  var textOrNull = decisionModel.textOrNull;
+  var valueOrDash = decisionModel.valueOrDash;
+  var keyConfiguredText = decisionModel.keyConfiguredText;
+  var affiliationKindLabel = decisionModel.affiliationKindLabel;
+  var affiliationLabel = decisionModel.affiliationLabel;
+  var pendingStatusText = decisionModel.pendingStatusText;
+  var startDecisionGate = decisionModel.startDecisionGate;
+  var decisionMakerGroups = decisionModel.decisionMakerGroups;
+  var decisionMakersForNation = decisionModel.decisionMakersForNation;
+  var decisionMakerForUnit = decisionModel.decisionMakerForUnit;
+  var decisionMakerFields = decisionModel.decisionMakerFields;
+  var prefixSummary = decisionModel.prefixSummary;
+  var decisionSubpageState = decisionModel.decisionSubpageState;
+  var decisionSubpageVisibility = decisionModel.decisionSubpageVisibility;
+  var providerFormToPayload = decisionModel.providerFormToPayload;
+  var providerFields = decisionModel.providerFields;
+  var providerBindingPayload = decisionModel.providerBindingPayload;
+  var runDecisionGate = decisionModel.runDecisionGate;
+  var runningText = decisionModel.runningText;
+  var lastToolName = decisionModel.lastToolName;
+  var runTraceFromStatus = decisionModel.runTraceFromStatus;
+  var runOutcomeText = decisionModel.runOutcomeText;
+  var runOutcomeTone = decisionModel.runOutcomeTone;
+  var toolCallCount = decisionModel.toolCallCount;
+  var runProgressLines = decisionModel.runProgressLines;
+  var runTraceFields = decisionModel.runTraceFields;
+  var directiveFields = decisionModel.directiveFields;
+  var directiveHeadline = decisionModel.directiveHeadline;
 
   var requestToken = 0;
   var lastKey = null;
 
   // ── 右栏区域分组（M7 T6）────────────────────────────────────────────
-  var UNTAGGED_LABEL = "未标注";
   var rightToken = 0;
   var rightKey = null;
   var rightRegions = null;
@@ -28,108 +73,6 @@
   /** 取当前目标的地图总览（M9 T2：与 map.js 同走 SimosApi.cachedMapOverview）。 */
   function loadOverview() {
     return api.cachedMapOverview(app.target());
-  }
-
-  /** tag 归一化：null / undefined / 纯空白 ⇒ 「未标注」（判据④ / R4）。 */
-  function normalizeTag(tag) {
-    if (tag === null || tag === undefined) {
-      return UNTAGGED_LABEL;
-    }
-    var text = String(tag).trim();
-    return text === "" ? UNTAGGED_LABEL : text;
-  }
-
-  /**
-   * 纯函数：overview 的 regions → `[{tag, regions:[…]}, …]`。不查 IO、不碰 DOM。
-   * 桶按 tag 字典序，`未标注` 恒排最后；桶内区域按 id 排序（输出与输入顺序无关，便于逐值断言）。
-   */
-  function groupByTag(regions) {
-    var buckets = {};
-    var order = [];
-    (regions || []).forEach(function (region) {
-      if (!region || region.id === null || region.id === undefined) {
-        return;
-      }
-      var tag = normalizeTag(region.meta ? region.meta.tag : null);
-      if (!Object.prototype.hasOwnProperty.call(buckets, tag)) {
-        buckets[tag] = [];
-        order.push(tag);
-      }
-      buckets[tag].push(region);
-    });
-    order.sort(function (a, b) {
-      if (a === UNTAGGED_LABEL) {
-        return 1;
-      }
-      if (b === UNTAGGED_LABEL) {
-        return -1;
-      }
-      return a.localeCompare(b);
-    });
-    return order.map(function (tag) {
-      var list = buckets[tag].slice().sort(function (a, b) {
-        return String(a.id).localeCompare(String(b.id));
-      });
-      return { tag: tag, regions: list };
-    });
-  }
-
-  /**
-   * 纯函数（M8 T9，无 DOM/IO）：左栏"该格的从属区域"读数。
-   *   `entries` = `[{id, name, hexCount, hexes}]`（各区域自己的详情；hexes 取不到 ⇒ null/undefined）
-   * 返回 `{rows, unionCount, hexCountSum, sharedHexCount, complete}`：
-   *   `rows`            —— 每个区域**它自己的** `hexCount`（**不**做任何跨区域合并）；
-   *   `unionCount`      —— 合计 = **真并集**（逐 hex 去重，同一格多属只计一次）；
-   *   `hexCountSum`     —— 各区域 `hexCount` 之和（**只用来核对"和是否等于并集"**，绝不当作面积/并集显示）；
-   *   `sharedHexCount`  —— 被 ≥2 个区域共同拥有的格数；
-   *   `complete`        —— 有区域取不到 hex 列表 ⇒ false（这时**不给并集数字**，宁可说"不知道"）。
-   * ★★ 裁定 72.1：`hexCountSum` 与 `unionCount` 在重叠时**必然不等**（M8-U1：从属是多对多），
-   *    任何把"各区域 hexCount 求和"当并集/总面积的读法都是错的 —— 本函数是这条裁定的落地点。
-   */
-  function regionMembershipSummary(entries) {
-    var rows = [];
-    var unionKeys = [];
-    var ownersByKey = {};
-    var sum = 0;
-    var complete = true;
-    (entries || []).forEach(function (entry) {
-      if (!entry || entry.id === null || entry.id === undefined) {
-        return;
-      }
-      var hexes = Array.isArray(entry.hexes) ? entry.hexes : null;
-      if (!hexes) {
-        complete = false;
-      }
-      var count = typeof entry.hexCount === "number" ? entry.hexCount : hexes ? hexes.length : null;
-      if (typeof count === "number") {
-        sum += count;
-      }
-      (hexes || []).forEach(function (h) {
-        if (!h || h.q === null || h.q === undefined || h.r === null || h.r === undefined) {
-          return;
-        }
-        var key = h.q + "_" + h.r;
-        if (!Object.prototype.hasOwnProperty.call(ownersByKey, key)) {
-          ownersByKey[key] = 0;
-          unionKeys.push(key);
-        }
-        ownersByKey[key] += 1;
-      });
-      rows.push({ id: entry.id, name: entry.name || entry.id, hexCount: count });
-    });
-    var shared = 0;
-    unionKeys.forEach(function (key) {
-      if (ownersByKey[key] >= 2) {
-        shared += 1;
-      }
-    });
-    return {
-      rows: rows,
-      unionCount: complete ? unionKeys.length : null,
-      hexCountSum: sum,
-      sharedHexCount: complete ? shared : null,
-      complete: complete,
-    };
   }
 
   /**
@@ -247,128 +190,6 @@
     detail.appendChild(dd);
   }
 
-  /** 只读读数里的浮点数去掉二进制尾巴（0.6000000000000001 → 0.6）；整数/文本原样。 */
-  function formatValue(value) {
-    if (typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value)) {
-      return Number(value.toFixed(3));
-    }
-    return value;
-  }
-
-  /**
-   * 毫 MP ⇒ 人话（B15）：`4000` 毫 ⇒ `"4 MP"`。
-   *
-   * <p>★ 移动预算 / 每格成本 / 总成本在领域里都是**毫 MP 定点**（`UnitMoves` 口径），直接印 4000 是
-   * **内部单位泄漏** —— 一律走这里换算，**不让用户自己除 1000**。取不到 ⇒ `"—"`（不显示成 0）。
-   */
-  function millisToMpText(millis) {
-    if (millis === null || millis === undefined) {
-      return "—";
-    }
-    if (typeof millis !== "number" || !Number.isFinite(millis)) {
-      return String(millis);
-    }
-    var mp = millis / 1000;
-    return (Number.isInteger(mp) ? mp : Number(mp.toFixed(3))) + " MP";
-  }
-
-  /** ‰ 定点 ⇒ 人话（B15）：`1000` ⇒ `"1.0×（1000‰）"`（人话在前、原值括注，便于对账）。 */
-  function perMilleToRateText(perMille) {
-    if (perMille === null || perMille === undefined) {
-      return "—";
-    }
-    if (typeof perMille !== "number" || !Number.isFinite(perMille)) {
-      return String(perMille);
-    }
-    var rate = perMille / 1000;
-    return (
-      (Number.isInteger(rate) ? rate.toFixed(1) : Number(rate.toFixed(3))) + "×（" + perMille + "‰）"
-    );
-  }
-
-  /** 装备表渲染成 `键=值；…`（空表显示"（空）"）。 */
-  function equipmentText(equipment) {
-    if (!equipment) {
-      return "（空）";
-    }
-    var keys = Object.keys(equipment);
-    if (!keys.length) {
-      return "（空）";
-    }
-    return keys
-      .map(function (key) {
-        return key + "=" + equipment[key];
-      })
-      .join("；");
-  }
-
-  function hexLabel(coord) {
-    return "q=" + coord.q + ", r=" + coord.r;
-  }
-
-  var IMPASSABLE_MOVE_COST = 999;
-
-  /**
-   * 纯函数（不碰 DOM、不查 IO）：单位 + 总览 ⇒ 移动读数。
-   *
-   * 预算速率 = speedAtDeparture × 1000（毫 MP/tick，与 UnitMoves 的 budget 同式）；
-   * 每格成本 = terrainTypes[地形(目标格)].moveCost × mobilityPerMilleAtDeparture（与 TerrainMovementCost 同式）；
-   * 预计到达 tick = departedAt.tick + ceil(路线总成本 / 预算速率)——总成本 = 沿途每格成本之和。
-   */
-  function movementReadout(unit, overview) {
-    var m = unit.movement;
-    if (!m) {
-      return null;
-    }
-    var path = (m.route && m.route.path) || [];
-    var blocks = (overview && overview.blocks) || [];
-    var typeByKey = {};
-    ((overview && overview.terrainTypes) || []).forEach(function (t) {
-      typeByKey[t.key] = t;
-    });
-    function costOf(coord) {
-      if (!coord) {
-        return null;
-      }
-      var terrain =
-        window.SimosBlocks && window.SimosBlocks.terrainAt
-          ? window.SimosBlocks.terrainAt(blocks, coord.q, coord.r)
-          : null;
-      var type = typeByKey[terrain];
-      if (!type || type.moveCost >= IMPASSABLE_MOVE_COST) {
-        return null;
-      }
-      return type.moveCost * m.mobilityPerMilleAtDeparture;
-    }
-    var totalCost = 0;
-    var computable = true;
-    for (var i = 0; i + 1 < path.length; i++) {
-      var step = costOf(path[i + 1]);
-      if (step === null) {
-        computable = false;
-        break;
-      }
-      totalCost += step;
-    }
-    var rate = m.speedAtDeparture * 1000;
-    var etaTick =
-      computable && rate > 0 ? m.departedAt.tick + Math.ceil(totalCost / rate) : null;
-    return {
-      budgetPerTickMillis: rate,
-      stepCostMillis: costOf(m.nextHex),
-      totalCostMillis: computable ? totalCost : null,
-      status: m.status,
-      currentHex: m.currentHex,
-      nextHex: m.nextHex,
-      remainingMillis: m.remainingMillis,
-      etaTick: etaTick,
-      departedAtTick: m.departedAt.tick,
-      speedAtDeparture: m.speedAtDeparture,
-      mobilityPerMilleAtDeparture: m.mobilityPerMilleAtDeparture,
-      pathLength: path.length,
-    };
-  }
-
   /**
    * 把移动读数逐行写进左栏（无路线 ⇒ 一行「无」）。
    *
@@ -429,25 +250,6 @@
       perMilleToRateText(readout.mobilityPerMilleAtDeparture),
       "出发那一刻冻结的移动成本倍率：每格成本 = 地形成本 × 该值 ÷ 1000 ⇒ 1000‰ = 1.0×（越大走得越慢）。"
     );
-  }
-
-  /**
-   * 编制那节的可见性（纯函数，B8）：**该格真有单位时**才与 hex 详情并列显示。
-   *
-   * <p>★★ 2026-09-23 用户实测（**判定为真 bug**）：常规模式点一个无单位的 hex，左栏详情写着
-   * 「该处单位：无」，正下方却挂着编制树（「编制 · <单位名> <id>」）⇒ **自相矛盾**
-   * ——这格没单位，编制从哪来？编制树是**全世界的**单位树（`unitTree.js` 渲染），
-   * 与"这一格有什么"无关 ⇒ 只在**确实有单位**时露面。
-   *
-   * <p>口径：hex + **取到了**格上单位且非空 ⇒ 显示；hex + 格上无单位 ⇒ 隐藏；
-   * 选中单位 / 区域 / **什么都没选** ⇒ 显示（那时没有可矛盾的对象，编制树本来就靠它点单位）。
-   * ★ "取不到"（请求失败）**不当成"没有"** —— 调用方在失败分支里不碰可见性。
-   */
-  function unitTreeSectionVisible(selection, unitsHere) {
-    if (selection && selection.kind === "hex") {
-      return !!(unitsHere && unitsHere.length);
-    }
-    return true;
   }
 
   /** 把编制那节的可见性落到 DOM（节点缺席 ⇒ 静默跳过：旧三页 / 别的宿主页不挂它）。 */
@@ -742,12 +544,6 @@
   //   ⇒ 本模式**只读**（modes.js 的 decision.writes 恒为 []）；唯一的写是审批子页的
   //     `POST /api/approvals/{id}`（审批裁决，非命令写，单独列在 api.js / write-allowlist 里）。
 
-  var DECISION_SUBPAGES = [
-    { id: "view", label: "决策人查看" },
-    { id: "approval", label: "审批" },
-    { id: "provider", label: "Provider 配置" },
-  ];
-
   /**
    * 「可见范围（现算）」那一行的 **DOM 锚点 id**（**唯一拼写点**）。
    *
@@ -756,369 +552,6 @@
    * ——各拉一次就是"同一件事两份实现"的开端。
    */
   var DECISION_SCOPE_SUMMARY_ID = "decision-scope-summary";
-
-  /** 子页状态（fail-closed）：未知 id ⇒ `{ok:false, id:null, label:null}`（不兜成第一个子页）。 */
-  function decisionSubpageState(id) {
-    for (var i = 0; i < DECISION_SUBPAGES.length; i++) {
-      if (DECISION_SUBPAGES[i].id === id) {
-        return { ok: true, id: DECISION_SUBPAGES[i].id, label: DECISION_SUBPAGES[i].label };
-      }
-    }
-    return { ok: false, id: null, label: null };
-  }
-
-  /**
-   * 子页可见性（纯函数，无 DOM）：恰一个为 true；未知 id ⇒ **三个都 false**（fail-closed，
-   * 不把"没选"变成"选了决策人查看"——与 map.js 的 mapEditPanelVisibility 同口径）。
-   */
-  function decisionSubpageVisibility(id) {
-    var state = decisionSubpageState(id);
-    return {
-      view: state.ok && state.id === "view",
-      approval: state.ok && state.id === "approval",
-      provider: state.ok && state.id === "provider",
-    };
-  }
-
-  /**
-   * Provider 表单 → 端点载荷（纯函数，M11′ 配置页）。
-   *
-   * <p>★ **不造假**：缺 `baseUrl` / `model` / `id` 一律返回 `{ok:false, reason}` —— 绝不填默认值把空表单
-   * 变成一条"看起来有效"的 provider（同 providerFields 的口径）。`apiKey` 只在非空时带上（空 = 不改密钥）。
-   */
-  function providerFormToPayload(form) {
-    var src = form || {};
-    var id = textOrNull(src.id);
-    if (id === null) {
-      return { ok: false, reason: "id 不得为空" };
-    }
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
-      return { ok: false, reason: "id 只能以字母/数字开头，其后可含字母/数字/下划线/连字符" };
-    }
-    var baseUrl = textOrNull(src.baseUrl);
-    if (baseUrl === null) {
-      return { ok: false, reason: "baseUrl 不得为空（API 根，含 /v1，不含 /chat/completions）" };
-    }
-    var model = textOrNull(src.model);
-    if (model === null) {
-      return { ok: false, reason: "model 不得为空" };
-    }
-    var payload = { id: id, baseUrl: baseUrl, model: model };
-    var credentialsRef = textOrNull(src.credentialsRef);
-    if (credentialsRef !== null) {
-      payload.credentialsRef = credentialsRef;
-    }
-    if (src.readTimeoutMs !== null && src.readTimeoutMs !== undefined && src.readTimeoutMs !== "") {
-      var timeout = Number(src.readTimeoutMs);
-      if (!isFinite(timeout) || timeout <= 0) {
-        return { ok: false, reason: "readTimeoutMs 必须是正整数毫秒数" };
-      }
-      payload.readTimeoutMs = timeout;
-    }
-    var apiKey = textOrNull(src.apiKey);
-    if (apiKey !== null) {
-      payload.apiKey = apiKey;
-    }
-    return { ok: true, payload: payload };
-  }
-
-  /**
-   * Provider 视图 → 展示字段（纯函数，掩码，M11′）。
-   *
-   * <p>★ **`valid:false` 的坏条目照样列**（带 `errorCode`）——配置页要能看见自己写坏的那条，才谈得上去修它。
-   * `keyConfigured` 三态：true / false / `null`（取不到 ⇒ 显 `—`，**不拿 false 顶替**）。
-   */
-  function providerFields(provider) {
-    var p = provider || {};
-    if (p.valid === false) {
-      return {
-        id: p.id === null || p.id === undefined ? "—" : String(p.id),
-        valid: false,
-        errorCode: p.errorCode === null || p.errorCode === undefined ? "—" : String(p.errorCode),
-        rows: [],
-      };
-    }
-    var rows = [
-      ["baseUrl", valueOrDash(p.baseUrl)],
-      ["model", valueOrDash(p.model)],
-      ["protocol", valueOrDash(p.protocol)],
-      ["credentialsRef", valueOrDash(p.credentialsRef)],
-      ["readTimeoutMs", valueOrDash(p.readTimeoutMs)],
-      ["keyConfigured", keyConfiguredText(p.keyConfigured)],
-    ];
-    return {
-      id: p.id === null || p.id === undefined ? "—" : String(p.id),
-      valid: true,
-      errorCode: null,
-      rows: rows,
-    };
-  }
-
-  /** 三态文案：true/false 之外一律 `—`（"还没查" ≠ "不可解析"）。 */
-  function keyConfiguredText(value) {
-    if (value === true) {
-      return "可解析";
-    }
-    if (value === false) {
-      return "不可解析";
-    }
-    return "—";
-  }
-
-  /** 决策人绑定 provider 的载荷（纯函数）：两者都非空才 ok。 */
-  function providerBindingPayload(decisionMakerId, providerId) {
-    var maker = textOrNull(decisionMakerId);
-    var provider = textOrNull(providerId);
-    if (maker === null) {
-      return { ok: false, reason: "未选中决策人" };
-    }
-    if (provider === null) {
-      return { ok: false, reason: "providerId 不得为空" };
-    }
-    return { ok: true, decisionMakerId: maker, providerId: provider };
-  }
-
-  /** 非空文本或 null（不 trim 值本身之外的加工；空白一律 null）。 */
-  function textOrNull(value) {
-    if (value === null || value === undefined) {
-      return null;
-    }
-    var text = String(value).trim();
-    return text === "" ? null : text;
-  }
-
-  /** 值或 `—`（缺值不显示 `undefined`/`null` 字面量）。 */
-  function valueOrDash(value) {
-    if (value === null || value === undefined || value === "") {
-      return "—";
-    }
-    return String(value);
-  }
-
-  var AFFILIATION_LABELS = { nation: "国家", army: "军队" };
-
-  /** 归属种类 ⇒ 中文（未知种类原样返回，不静默造标签）。 */
-  function affiliationKindLabel(kind) {
-    if (kind === null || kind === undefined) {
-      return "—";
-    }
-    var key = String(kind);
-    return Object.prototype.hasOwnProperty.call(AFFILIATION_LABELS, key) ? AFFILIATION_LABELS[key] : key;
-  }
-
-  /** 归属可读文本：`国家：<显示名>（<id>）`；解析不出的字段显式 `—`（不编造）。 */
-  function affiliationLabel(affiliation) {
-    var aff = affiliation || {};
-    var name = aff.displayName === null || aff.displayName === undefined ? "—" : String(aff.displayName);
-    var id = aff.id === null || aff.id === undefined ? "—" : String(aff.id);
-    return affiliationKindLabel(aff.kind) + "：" + name + "（" + id + "）";
-  }
-
-  /**
-   * 待决状态文本（★ 三件事模型 ②）：`due` 只有 T9 才算得出来 ⇒ **null/undefined 一律「—」**。
-   * 绝不把"还没算"读成"非待决"（那会造出假的待决数据）。
-   */
-  function pendingStatusText(due) {
-    if (due === true) {
-      return "待决";
-    }
-    if (due === false) {
-      return "非待决";
-    }
-    return "—";
-  }
-
-  /**
-   * 「开始决策」按钮闸门（纯函数，T10）：三件事模型 ④ 只对**本 tick 待决**（T9 的 `due`）的决策人可点。
-   *
-   * <p>★ `due` 取不到（null/undefined）⇒ **不可点**（"还没算" ≠ "可以点"，同 pendingStatusText 口径）。
-   */
-  function startDecisionGate(maker) {
-    if (!maker || maker.id === null || maker.id === undefined || maker.id === "") {
-      return { enabled: false, reason: "未选中决策人" };
-    }
-    if (maker.due === true) {
-      return { enabled: true, reason: "可发起（本 tick 待决）" };
-    }
-    if (maker.due === false) {
-      return { enabled: false, reason: "非待决（本 tick 未到决策周期）" };
-    }
-    return { enabled: false, reason: "待决状态未知（due 缺失）" };
-  }
-
-  /**
-   * 右栏分类列表（纯函数）：`[{kind, label, makers:[…]}]`。
-   * 组序：**国家 → 军队 → 其它（按 kind 字典序）**；组内按 id 字典序；**总长度 == 输入长度**
-   * （未知 kind 归入「其它（kind）」桶，绝不静默丢弃）。
-   */
-  function decisionMakerGroups(makers) {
-    var buckets = {};
-    var kinds = [];
-    (makers || []).forEach(function (maker) {
-      if (!maker || maker.id === null || maker.id === undefined) {
-        return;
-      }
-      var kind =
-        maker.affiliation && maker.affiliation.kind !== null && maker.affiliation.kind !== undefined
-          ? String(maker.affiliation.kind)
-          : "";
-      if (!Object.prototype.hasOwnProperty.call(buckets, kind)) {
-        buckets[kind] = [];
-        kinds.push(kind);
-      }
-      buckets[kind].push(maker);
-    });
-    kinds.sort(function (a, b) {
-      var rank = function (kind) {
-        if (kind === "nation") {
-          return 0;
-        }
-        if (kind === "army") {
-          return 1;
-        }
-        // 具名但未知的种类排第 3 档；**无归属（空 kind）恒排最后**（"没有归属"不是一种归属种类）。
-        return kind === "" ? 3 : 2;
-      };
-      var ra = rank(a);
-      var rb = rank(b);
-      if (ra !== rb) {
-        return ra - rb;
-      }
-      return a.localeCompare(b);
-    });
-    return kinds.map(function (kind) {
-      var list = buckets[kind].slice().sort(function (a, b) {
-        return String(a.id).localeCompare(String(b.id));
-      });
-      var label = Object.prototype.hasOwnProperty.call(AFFILIATION_LABELS, kind)
-        ? AFFILIATION_LABELS[kind]
-        : "其它（" + kind + "）";
-      return { kind: kind, label: label, makers: list };
-    });
-  }
-
-  /** 某国家的全部决策人（纯函数）：按 affiliation.kind==="nation" + id 逐值匹配，组内按 id 字典序。 */
-  function decisionMakersForNation(makers, nationId) {
-    if (nationId === null || nationId === undefined || nationId === "") {
-      return [];
-    }
-    var want = String(nationId);
-    return (makers || [])
-      .filter(function (maker) {
-        return (
-          maker &&
-          maker.affiliation &&
-          maker.affiliation.kind === "nation" &&
-          String(maker.affiliation.id) === want
-        );
-      })
-      .sort(function (a, b) {
-        return String(a.id).localeCompare(String(b.id));
-      });
-  }
-
-  /**
-   * 某单位的决策人（纯函数）：军队决策人的 `affiliation.rootUnit` 指向**单位树的一个根**；
-   * 选中的单位若是该根的**后代**也算"有决策人"（沿 `parent` 链上溯，与单位树同一口径）。
-   * 多军队命中同一根时取 id 字典序最小者（确定性）。无命中 ⇒ null（调用方显示"无决策人"）。
-   */
-  function decisionMakerForUnit(makers, units, unitId) {
-    if (unitId === null || unitId === undefined || unitId === "") {
-      return null;
-    }
-    var byId = {};
-    (units || []).forEach(function (unit) {
-      if (unit && unit.id !== null && unit.id !== undefined) {
-        byId[String(unit.id)] = unit;
-      }
-    });
-    var armies = (makers || [])
-      .filter(function (maker) {
-        return (
-          maker &&
-          maker.affiliation &&
-          maker.affiliation.kind === "army" &&
-          maker.affiliation.rootUnit !== null &&
-          maker.affiliation.rootUnit !== undefined
-        );
-      })
-      .sort(function (a, b) {
-        return String(a.id).localeCompare(String(b.id));
-      });
-    if (!armies.length) {
-      return null;
-    }
-    var visited = {};
-    var cursor = String(unitId);
-    while (cursor && !Object.prototype.hasOwnProperty.call(visited, cursor)) {
-      visited[cursor] = true;
-      for (var i = 0; i < armies.length; i++) {
-        if (String(armies[i].affiliation.rootUnit) === cursor) {
-          return armies[i];
-        }
-      }
-      var unit = byId[cursor];
-      var parent = unit ? unit.parent : null;
-      cursor = parent === null || parent === undefined || parent === "" ? null : String(parent);
-    }
-    return null;
-  }
-
-  /** 左栏决策人详情的字段投影（纯函数）：与 `GET /api/sd/decision-makers/{id}` 逐值一致。 */
-  function decisionMakerFields(maker) {
-    // ★ T9：`viewScope` → `accessLimit`（语义变了：不再是"绝对可见集合"，而是 GM 配的**额外限制**）。
-    var limit = maker ? maker.accessLimit : null;
-    return {
-      id: maker ? maker.id : null,
-      affiliation: affiliationLabel(maker ? maker.affiliation : null),
-      cadence: maker ? maker.cadence : null,
-      allowedTools:
-        maker && Array.isArray(maker.allowedTools) && maker.allowedTools.length
-          ? maker.allowedTools.join("、")
-          : "（无）",
-      accessLimit: limit
-        ? {
-            prefixesByNamespace: prefixSummary(limit.prefixesByNamespace),
-            adjudicationDisclosure: limit.adjudicationDisclosure,
-            redactedFields:
-              Array.isArray(limit.redactedFields) && limit.redactedFields.length
-                ? limit.redactedFields.join("、")
-                : "（无）",
-          }
-        : null,
-      pending: pendingStatusText(maker ? maker.due : null),
-      // ★ 2026-09-23：**最近一次在第几 tick 出的令**（服务端 `lastDirectiveTick` / `ticksSinceLast`，T9 起就是真值）。
-      //   从未出过令 ⇒ `—`（"没有基准"与"tick 0 出过令"是两件事，不拿 0 顶替）。
-      lastDirectiveTick: valueOrDash(maker ? maker.lastDirectiveTick : null),
-      ticksSinceLast: valueOrDash(maker ? maker.ticksSinceLast : null),
-      // ★ 会话世代 + 派生出的会话 id（服务端 `conversationGeneration` / `conversationId`，T9 之后的世界事实）：
-      //   GM 据此知道"这个人换过几次会话"。缺字段 ⇒ 显式"—"（不编造"第 0 代"）。
-      conversationGeneration:
-        maker && maker.conversationGeneration !== null && maker.conversationGeneration !== undefined
-          ? maker.conversationGeneration
-          : "—",
-      conversationId:
-        maker && maker.conversationId !== null && maker.conversationId !== undefined
-          ? maker.conversationId
-          : "—",
-    };
-  }
-
-  /** 前缀图摘要（纯函数）：`{命名空间: 条数}` → `map=2、unit=5`；空/缺 ⇒ `（无额外限制）`。 */
-  function prefixSummary(byNamespace) {
-    if (!byNamespace || typeof byNamespace !== "object") {
-      return "（无额外限制）";
-    }
-    var parts = Object.keys(byNamespace).sort();
-    if (!parts.length) {
-      return "（无额外限制）";
-    }
-    var out = [];
-    for (var i = 0; i < parts.length; i += 1) {
-      out.push(parts[i] + "=" + byNamespace[parts[i]]);
-    }
-    return out.join("、");
-  }
 
   // ── 决策模式左栏渲染 ────────────────────────────────────────────────
 
@@ -1346,53 +779,8 @@
   /** 起跑前"最新一条令"的 id（跑完用来判"这一轮到底有没有产出新的令"；见 drawLatestDecision）。 */
   var latestDirectiveIdBeforeRun = null;
 
-  /**
-   * 「让它跑一轮」闸门（纯函数）：有目标 + 它**绑了 provider** 才可点。
-   *
-   * <p>★ 未绑定 ⇒ 不可点：服务端那条路是 fail-closed（未绑定 provider **抛**，绝不落到某个默认 provider），
-   * 让用户点了再等出错不如当场说清。`providerId` 取不到（undefined）与空串同判——**不猜"大概绑了"**。
-   * ★ **与「开始决策」不同**：那边用户明确要求"随时可点"（due 只作提示），这边是**装配前提**（没绑 provider 必失败）。
-   */
-  function runDecisionGate(maker) {
-    if (!maker || maker.id === null || maker.id === undefined || maker.id === "") {
-      return { enabled: false, reason: "未选中决策人" };
-    }
-    var provider = maker.providerId;
-    if (provider === null || provider === undefined || String(provider).trim() === "") {
-      return { enabled: false, reason: "未绑定 LLM provider（先到「Provider 配置」子页绑定再跑）" };
-    }
-    return { enabled: true, reason: "可跑一轮（真 LLM 自行读世界、出令；可能停在等审批）" };
-  }
-
   function setRunDecisionStatus(message, tone) {
     app.statusMessage(app.byId("decision-run-status"), message, tone);
-  }
-
-  /**
-   * 运行中的状态文案（**秒数取自服务端的 {@code elapsedMs}**，不是本地时钟差）：这是"看起来没卡死"的唯一判据
-   * ——秒数在动 ⇒ 这一轮还在跑。
-   *
-   * <p>★ 取服务端的读数而不是本地 {@code Date.now()} 差：本地差在"请求根本没送到"时也会一直涨（那正是**假装在跑**）。
-   */
-  function runningText(id, status) {
-    var seconds = Math.max(0, Math.round(((status && status.elapsedMs) || 0) / 1000));
-    var calls = toolCallCount(status);
-    return (
-      "正在跑一轮：" + id + "（已 " + seconds + "s）· 第 " + valueOrDash(status && status.llmCalls) +
-      " 轮 LLM · 已调 " + calls + " 次工具" +
-      (calls ? "（最近 " + lastToolName(status) + "）" : "") +
-      "——若它出令（sd.IssueDirective），会在审批栏等审批（右下方通知栏 / 「审批」子页）"
-    );
-  }
-
-  /** 最近一次工具调用的名字（无 ⇒ `—`；**不编造**）。 */
-  function lastToolName(status) {
-    var calls = status && Array.isArray(status.toolCalls) ? status.toolCalls : [];
-    if (!calls.length) {
-      return "—";
-    }
-    var last = calls[calls.length - 1] || {};
-    return valueOrDash(last.tool);
   }
 
   function stopAsyncRunPolling() {
@@ -1551,117 +939,12 @@
     loadDecisionDirectives([id]);
   }
 
-  /**
-   * 异步读数 ⇒ **既有轨迹渲染**要的形状（字段同名同形）。
-   *
-   * <p>★ 为什么要这么一层：轨迹渲染器（{@link runTraceFields}）原本吃的是**同步响应**的形状；异步化之后同样的字段
-   * 散在 {@code status} 与 {@code status.result} 两处。**只在这里翻译一次**，渲染器一行不改——若让渲染器两头都认，
-   * "两种形状"就会渗进渲染分支里，日后加字段必漏一处。
-   */
-  function runTraceFromStatus(id, status) {
-    var s = status || {};
-    var r = s.result || {};
-    return {
-      decisionMakerId: id,
-      conversationId: r.conversationId,
-      llmCalls: s.llmCalls,
-      abortedByBudget: r.status === "aborted",
-      finalText: r.finalText,
-      // ★ `ok` ⇒ 没有 reason（渲染器据此走"跑完了"那条），其余一律带上服务端给的理由（**不吞**）。
-      reason: r.status && r.status !== "ok" ? valueOrDash(r.reason) : null,
-      detail: r.detail,
-      toolCalls: s.toolCalls,
-      ref: null,
-    };
-  }
-
-  /**
-   * 结局文案（纯函数）：**认服务端给的那一个**（`result.status`），不在前端另算一套。
-   *
-   * <p>★ `ok` / `aborted` / `failed` 三态各自说清：中止**不是**失败到没有信息（触发事实已落盘、历史也在会话里）。
-   */
-  function runOutcomeText(status) {
-    var s = status || {};
-    var r = s.result || {};
-    if (!r.status) {
-      return "这一轮结束了，但服务端没有给出结局（读数里 result 为空）——以轨迹为准。";
-    }
-    if (r.status === "aborted") {
-      return (
-        "已中止：撞上回合预算（llmCalls=" +
-        valueOrDash(s.llmCalls) +
-        "）；历史已落盘，下一轮可续"
-      );
-    }
-    if (r.status === "failed") {
-      return "这一轮没跑成：" + valueOrDash(r.reason) + " —— " + valueOrDash(r.detail);
-    }
-    return "跑完一轮：llmCalls=" + valueOrDash(s.llmCalls) + "，工具调用 " + toolCallCount(s) + " 次";
-  }
-
-  function runOutcomeTone(status) {
-    var r = (status && status.result) || {};
-    if (r.status === "ok") {
-      return "ok";
-    }
-    return r.status ? "warn" : "muted";
-  }
-
-  function toolCallCount(body) {
-    var calls = body && Array.isArray(body.toolCalls) ? body.toolCalls : [];
-    return calls.length;
-  }
-
   // ── LLM 运行情况（可展开，准实时）────────────────────────────────────
   //
   // ★★ **进度口径 = 服务端的两个真实观察点**（每轮 LLM 结束 / 每次工具调用结束），**不是逐字流式**（用户已选
   //   "先做准实时进度"）。故这里画的每一条都对应服务端真的发生过的一件事，没有"心跳"这种编出来的行。
 
   var progressExpanded = false;
-
-  /** 进度读数 ⇒ 行（纯函数）：未跑过 / 正在跑 / 已跑完三种形态**各不相同**（不把"没有记录"画成"0 轮 0 次"）。 */
-  function runProgressLines(id, status) {
-    var s = status || {};
-    var known = s.startedAt !== null && s.startedAt !== undefined;
-    if (!known) {
-      return {
-        empty: true,
-        lines: ["还没有 " + id + " 这一轮的记录（服务端重启后这份账会清空——它不落盘）。"],
-      };
-    }
-    var lines = [];
-    var seconds = Math.max(0, Math.round((s.elapsedMs || 0) / 1000));
-    lines.push(
-      "状态：" +
-        (s.done === true ? "已结束" : "正在跑") +
-        " · 已 " +
-        seconds +
-        "s · 第 " +
-        valueOrDash(s.llmCalls) +
-        " 轮 LLM 调用"
-    );
-    var calls = Array.isArray(s.toolCalls) ? s.toolCalls : [];
-    lines.push("工具调用：" + calls.length + " 次");
-    calls.forEach(function (call, index) {
-      var c = call || {};
-      lines.push(
-        "  " +
-          (index + 1) +
-          ". " +
-          valueOrDash(c.tool) +
-          " · " +
-          (c.ok === true ? "OK" : "失败（" + valueOrDash(c.code) + "）")
-      );
-    });
-    if (s.done === true) {
-      var r = s.result || {};
-      if (r.finalText) {
-        lines.push("收尾文本：" + String(r.finalText));
-      }
-      lines.push("会话：" + valueOrDash(r.conversationId));
-    }
-    return { empty: false, lines: lines };
-  }
 
   function setProgressExpanded(open) {
     progressExpanded = !!open;
@@ -1893,40 +1176,6 @@
       });
   }
 
-  /**
-   * 本轮轨迹的字段投影（纯函数，与 `POST /api/sd/run-decision` 的返回体逐字段对应）。
-   *
-   * <p>★ 缺值一律 `—`（**不拿 0 / false / 空串顶替**）：`llmCalls` 取不到与"一次都没调"是两件事。
-   */
-  function runTraceFields(body) {
-    var b = body || {};
-    var calls = Array.isArray(b.toolCalls) ? b.toolCalls : [];
-    return {
-      decisionMakerId: valueOrDash(b.decisionMakerId),
-      conversationId: valueOrDash(b.conversationId),
-      llmCalls: b.llmCalls === null || b.llmCalls === undefined ? "—" : String(b.llmCalls),
-      abortedByBudget: b.abortedByBudget === true,
-      finalText:
-        b.finalText === null || b.finalText === undefined
-          ? "（本轮没有收尾文本）"
-          : String(b.finalText),
-      revision: b.ref && b.ref.revision !== undefined ? String(b.ref.revision) : "—",
-      // ★ 这一轮**没跑成**时服务端给的两个字段（未绑 provider / 路由查无 / 查无此人 / 撞预算）：
-      //   有 reason 就说明**没有轨迹可言**——此时"工具调用 0 次"会被读成"跑得好、只是没调工具"，那是假的。
-      reason: b.reason === null || b.reason === undefined ? null : String(b.reason),
-      detail: b.detail === null || b.detail === undefined ? "—" : String(b.detail),
-      toolCalls: calls.map(function (call) {
-        var c = call || {};
-        return {
-          tool: valueOrDash(c.tool),
-          ok: c.ok === true,
-          code: valueOrDash(c.code),
-          summary: valueOrDash(c.summary),
-        };
-      }),
-    };
-  }
-
   function clearRunTrace() {
     var mount = app.byId("decision-run-trace");
     if (mount) {
@@ -2009,42 +1258,6 @@
 
   var decisionDirectivesToken = 0;
   var expandedDirectiveId = null;
-
-  /** 决策记录的字段投影（纯函数，与 `GET /api/sd/directives` 逐字段对应；缺值 `—`，不编造）。 */
-  function directiveFields(directive) {
-    var d = directive || {};
-    var commands = Array.isArray(d.commands) ? d.commands : [];
-    var effects = Array.isArray(d.effects) ? d.effects : [];
-    return {
-      directiveId: valueOrDash(d.directiveId),
-      decisionMakerId: valueOrDash(d.decisionMakerId),
-      tick: d.tick === null || d.tick === undefined ? "—" : String(d.tick),
-      target: d.target === null || d.target === undefined ? "（无目标）" : String(d.target),
-      // ★ 执行原文（决心的"理由"）由服务端从 sd INFO 覆盖层取回；取不到 ⇒ 显式说没有，不拿 key 名顶替。
-      intentInfo:
-        d.intentInfo === null || d.intentInfo === undefined
-          ? "（取不到执行原文）"
-          : String(d.intentInfo),
-      intentInfoKey: valueOrDash(d.intentInfoKey),
-      status: valueOrDash(d.status),
-      verdict: d.verdict === null || d.verdict === undefined ? "（无判决）" : String(d.verdict),
-      effects: effects.length ? effects.join("、") : "（无）",
-      commands: commands.map(function (command) {
-        var c = command || {};
-        return { type: valueOrDash(c.type), payloadJson: valueOrDash(c.payloadJson) };
-      }),
-    };
-  }
-
-  /** 列表项的一行摘要：`tick N · <执行原文首行>`（原文可能很长，只取首行、按字符截断）。 */
-  function directiveHeadline(directive) {
-    var fields = directiveFields(directive);
-    var firstLine = fields.intentInfo.split("\n")[0];
-    if (firstLine.length > 60) {
-      firstLine = firstLine.slice(0, 60) + "…";
-    }
-    return "tick " + fields.tick + " · " + firstLine + "（" + fields.commands.length + " 条命令）";
-  }
 
   /** 点一条 ⇒ 展开/收起它的详情（决心/理由/命令清单）。 */
   function toggleDirective(id) {

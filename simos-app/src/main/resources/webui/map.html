@@ -42,6 +42,12 @@
   <script src="api.js"></script>
   <script src="app.js"></script>
   <script src="blocks.js"></script>
+  <!-- ★ M12：map.js 的纯几何/颜色/区域边界已拆出；必须在 map.js 之前按依赖顺序引入 -->
+  <script src="hexgeom.js"></script>
+  <script src="hexcolor.js"></script>
+  <script src="regionShape.js"></script>
   <script src="map.js"></script>
+  <!-- ★ M12 第二波：createRenderer 在 renderer.js；必须在 map.js 之后（取 window.SimosMapCore） -->
+  <script src="renderer.js"></script>
 </body>
 </html>
