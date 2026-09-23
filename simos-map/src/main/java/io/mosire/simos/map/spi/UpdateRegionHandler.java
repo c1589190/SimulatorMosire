@@ -38,8 +38,14 @@ public final class UpdateRegionHandler implements CommandHandler, CommandTargets
     List<String> paths = new ArrayList<>();
     paths.add(
         ResourcePaths.region(mapId, MapPayloads.requireRegionId(payload, "regionId").value()));
-    for (var coord : MapPayloads.optionalHexes(payload, "hexes")) {
-      paths.add(ResourcePaths.hex(mapId, coord.q(), coord.r()));
+    // ★ 2026-09-23 实测修：`optionalHexes` **缺字段时返回 `null`**（`null` 在 `handle` 里有语义 =
+    //   "没给 hexes ⇒ 不动 hex"，不能改成空集）⇒ 这里**必须先判空再遍历**，否则 `{regionId, meta}`
+    //   这种**合法**载荷会让本节抛 NPE（真跑时撞到：GM 裁决一条 `map.UpdateRegion` 直接 TOOL_ERROR）。
+    var hexes = MapPayloads.optionalHexes(payload, "hexes");
+    if (hexes != null) {
+      for (var coord : hexes) {
+        paths.add(ResourcePaths.hex(mapId, coord.q(), coord.r()));
+      }
     }
     return List.copyOf(paths);
   }
