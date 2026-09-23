@@ -327,7 +327,11 @@ public final class RedactingQueryService {
     return window.toTick() == null || tick <= window.toTick();
   }
 
-  /** 单条决策结果的视图；{@code at} 取**被查分支** + 该条目落盘时的 revision（{@code SdInfoEntry.at}）。 */
+  /**
+   * 单条决策结果的视图；{@code at} 取**被查分支** + 该条目**写入时所依据的基态** revision（{@code SdInfoEntry.at}）—— ★
+   * 它是写入那一步的基态（写路径取当时 {@code state.meta().ref().revision()}），**可能小于**该条目最早可见的 revision， 也**不是**被查
+   * revision。
+   */
   private static Map<String, Object> decisionResultView(SdInfoEntry entry, QueryTarget target) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("tick", entry.tick());

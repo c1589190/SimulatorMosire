@@ -103,7 +103,7 @@ class RunDecisionHandlerTest {
 
   /**
    * ★★ **跨 handler 的形制一致性**（两个触发命令写同一个地址空间、只以 key 区分）：本用例**同时**跑两个 handler， 断言两条记录落在**同一地址**、**同一
-   * {@code at}（本命令所在 revision）**、**同一 {@code value} 形制（本命令所在 tick 的字符串）**且 **key 逐字不同**。
+   * {@code at}（**写入时所依据的基态** revision——写路径取当时 {@code state.meta().ref().revision()}，**不是**"该条目首次出现的 revision"）**、**同一 {@code value} 形制（本命令所在 tick 的字符串）**且 **key 逐字不同**。
    *
    * <p>★ **为什么需要它**：两处是**各自独立实现**的（没有共用助手：改 {@code StartDecisionHandler} 会让 T10 期的变异证据作废），
    * 故"形制一致"这件事**必须有判据**——否则某一处改成记别的值时，两份事实在 AAR 里会长得不一样，而**没有任何症状**。
