@@ -1,15 +1,25 @@
 // unit-tree.test.cjs —— 单位编制倒树的纯函数（M7 T5 / spec §六）：buildTree / isBranchPoint；
 //   2026-09-23 UI 改造追加：armyOptions / subtreeOf / rootIdOf / clampPanelPosition（unitTree.js）
 //   与 stackOffset / stackSpacing（hexgeom.js，同格单位纵向摊开）。
+//   2026-09-24 修正 1/2 追加：markerGroups（hexgeom.js，标记按军队根分组）与 clampTreePan
+//   （unitTree.js，自由视图平移量夹取）+ 复位控件接线 / 无残留 scrollIntoView 的静态断言。
 "use strict";
 
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { loadWebui } = require("./helpers/webui-loader.cjs");
+const { loadWebui, readWebui } = require("./helpers/webui-loader.cjs");
 
-const { buildTree, isBranchPoint, flatten, armyOptions, subtreeOf, rootIdOf, clampPanelPosition } =
-  loadWebui("unitTree.js").SimosUnitTree;
-const { stackOffset, stackSpacing, markerRadius } = loadWebui("hexgeom.js").SimosHexGeom;
+const {
+  buildTree,
+  isBranchPoint,
+  flatten,
+  armyOptions,
+  subtreeOf,
+  rootIdOf,
+  clampPanelPosition,
+  clampTreePan,
+} = loadWebui("unitTree.js").SimosUnitTree;
+const { stackOffset, stackSpacing, markerRadius, markerGroups } = loadWebui("hexgeom.js").SimosHexGeom;
 
 const UNITS = [
   { id: "A", name: "甲部", parent: null },
@@ -218,4 +228,153 @@ test("stackSpacing-stays-zero-when-the-screen-cell-is-too-small", () => {
   assert.equal(stackSpacing(3, cellSize, tiny), 0);
   assert.ok(stackSpacing(3, cellSize, 24) > 0, "恰好到阈值 ⇒ 摊开");
   assert.equal(stackSpacing(3, cellSize, 23.9), 0, "差一点 ⇒ 不摊开（边界闭合）");
+});
+
+// ── 2026-09-24 修正 1：标记按**军队根**分组（hexgeom.js 的 markerGroups）─────────────
+// ★ 口径与 unitTree.buildTree / rootIdOf 同源（测试末尾有对拍断言钉住"不另立一套"）。
+//   "先按格、再按军队根分组，每组一个标记"——上一轮按**单位**摊开把首都格铺成一长串是错的。
+
+// 首都格：1 个根 + 它的 7 个兵种，全在同一格（三国首都的真实形态）。
+const CAPITAL = [{ id: "ROOT", name: "首都军", parent: null, position: { q: 0, r: 0 } }];
+for (let i = 1; i <= 7; i += 1) {
+  CAPITAL.push({ id: "ROOT-" + i, name: "兵种" + i, parent: "ROOT", position: { q: 0, r: 0 } });
+}
+
+// 混合：另有一支分遣队单独在 (9,9)（它的根 ROOT 仍在 (0,0)）＋ 另一国家的军队 B 与 ROOT 同格。
+const MIXED = CAPITAL.concat([
+  { id: "DET", name: "分遣队", parent: "ROOT", position: { q: 9, r: 9 } },
+  { id: "B", name: "乙军", parent: null, position: { q: 0, r: 0 } },
+  { id: "B-1", name: "乙军甲队", parent: "B", position: { q: 0, r: 0 } },
+]);
+
+test("markerGroups-collapses-a-capital-hex-to-one-army-marker", () => {
+  const groups = markerGroups(CAPITAL);
+  assert.equal(groups.length, 1, "★ 1 根 + 7 兵种同格 ⇒ 恰好 1 组（旧口径按单位摊开会给出 8）");
+  assert.equal(groups[0].rootId, "ROOT", "组 = 该军队根");
+  assert.equal(groups[0].leadId, "ROOT", "代表 = 最靠近根的根单位（整支军队）");
+  assert.deepEqual(groups[0].at, { q: 0, r: 0 }, "标记的格");
+  assert.equal(groups[0].member.length, 8, "member = 编制合计（根 + 7 兵种）");
+  assert.equal(groups[0].member[0], "ROOT", "member 按层级升序 ⇒ lead 恒在首位");
+});
+
+test("markerGroups-does-not-swallow-a-detachment-alone-in-another-hex", () => {
+  const groups = markerGroups(MIXED);
+  const det = groups.filter((g) => g.at.q === 9 && g.at.r === 9);
+  assert.equal(det.length, 1, "分遣队单独一格 ⇒ 自己一组，不被同军队的其它格合并");
+  assert.equal(det[0].rootId, "ROOT", "它仍属 ROOT 这支军队");
+  assert.equal(det[0].leadId, "DET", "组里只有它 ⇒ 代表就是它（不能被藏掉）");
+  assert.deepEqual(det[0].member, ["DET"]);
+  assert.equal(groups.length, 3, "共 3 组：(0,0)×ROOT、(0,0)×B、(9,9)×DET");
+});
+
+test("markerGroups-splits-two-armies-in-the-same-hex", () => {
+  const groups = markerGroups(MIXED).filter((g) => g.at.q === 0 && g.at.r === 0);
+  assert.deepEqual(groups.map((g) => g.rootId), ["ROOT", "B"], "同格两支军队各占一个标记（输入序）");
+  assert.deepEqual(groups.map((g) => g.leadId), ["ROOT", "B"]);
+  assert.equal(groups[0].member.length, 8, "ROOT 组 = 整支首都军");
+  assert.equal(groups[1].member.length, 2, "B 组 = 乙军（根 + 甲队）");
+});
+
+test("markerGroups-lead-is-the-shallowest-ancestor-present-on-the-hex", () => {
+  const units = [
+    { id: "R", parent: null, position: { q: 1, r: 1 } },
+    { id: "M", parent: "R", position: { q: 5, r: 5 } },
+    { id: "N", parent: "M", position: { q: 5, r: 5 } },
+  ];
+  const at55 = markerGroups(units).filter((g) => g.at.q === 5 && g.at.r === 5);
+  assert.equal(at55.length, 1, "同支军队的 M、N 同格 ⇒ 1 组");
+  assert.equal(at55[0].rootId, "R", "根仍是别格的 R");
+  assert.equal(at55[0].leadId, "M", "代表 = 组内最浅的 M（不是更深的 N）");
+  assert.deepEqual(at55[0].member, ["M", "N"], "member 按深度升序");
+});
+
+test("markerGroups-ignores-units-without-a-position-but-still-roots-through-them", () => {
+  const units = [
+    { id: "R", parent: null, position: null }, // 根没有位置（不在任何格上）
+    { id: "C", parent: "R", position: { q: 2, r: 2 } },
+  ];
+  const groups = markerGroups(units);
+  assert.equal(groups.length, 1, "只有 C 能落格 ⇒ 1 组");
+  assert.equal(groups[0].rootId, "R", "★ 根判定用**全部**单位：R 无位置，C 仍归 R（不是自己当根）");
+  assert.equal(groups[0].leadId, "C");
+});
+
+test("markerGroups-root-rule-matches-buildTree-rootIdOf", () => {
+  // 给 buildTree 的夹具每个单位配一个位置，逐一对拍"组根 == rootIdOf"（同一口径、不另立一套）。
+  const units = UNITS.map((u, i) => ({ ...u, position: { q: i % 3, r: Math.floor(i / 3) } }));
+  const rootOfUnit = new Map();
+  markerGroups(units).forEach((g) => g.member.forEach((id) => rootOfUnit.set(id, g.rootId)));
+  units.forEach((u) => {
+    assert.equal(rootOfUnit.get(String(u.id)), rootIdOf(units, u.id), u.id + " 的组根 = rootIdOf");
+  });
+});
+
+test("markerGroups-empty-and-null-input-return-no-markers", () => {
+  assert.deepEqual(markerGroups([]), []);
+  assert.deepEqual(markerGroups(null), []);
+});
+
+// ── 2026-09-24 修正 2：自由视图平移量夹取（unitTree.js 的 clampTreePan）────────────
+// 内容比视口大 ⇒ 夹在 [viewport−content, 0]；内容不比视口大 ⇒ **居中**（唯一允许值，拖不走）。
+
+test("clampTreePan-clamps-pan-when-content-overflows-the-viewport", () => {
+  const content = { width: 800, height: 600 };
+  const viewport = { width: 400, height: 300 };
+  assert.deepEqual(
+    clampTreePan({ x: -100, y: -50 }, content, viewport),
+    { x: -100, y: -50 },
+    "范围内的平移原样保留"
+  );
+  assert.deepEqual(clampTreePan({ x: 50, y: 50 }, content, viewport), { x: 0, y: 0 }, "右/下越界 ⇒ 夹到 0");
+  assert.deepEqual(
+    clampTreePan({ x: -9999, y: -9999 }, content, viewport),
+    { x: -400, y: -300 },
+    "左/上越界 ⇒ 夹到 viewport−content（内容至少露一部分）"
+  );
+});
+
+test("clampTreePan-centers-content-smaller-than-the-viewport", () => {
+  const content = { width: 100, height: 80 };
+  const viewport = { width: 400, height: 300 };
+  assert.deepEqual(
+    clampTreePan({ x: 0, y: 0 }, content, viewport),
+    { x: 150, y: 110 },
+    "内容小 ⇒ 居中 (viewport−content)/2"
+  );
+  assert.deepEqual(
+    clampTreePan({ x: -9999, y: 9999 }, content, viewport),
+    { x: 150, y: 110 },
+    "内容小时拖不走：忽略传入 pan，恒居中"
+  );
+});
+
+test("clampTreePan-tolerates-missing-and-non-finite-input", () => {
+  const content = { width: 800, height: 600 };
+  const viewport = { width: 400, height: 300 };
+  assert.deepEqual(clampTreePan(null, content, viewport), { x: 0, y: 0 }, "pan 缺失 ⇒ 按 0 再夹");
+  assert.deepEqual(
+    clampTreePan({ x: NaN, y: Infinity }, content, viewport),
+    { x: 0, y: 0 },
+    "非有限数 ⇒ 按 0（不抛、不产生 NaN 的 transform）"
+  );
+  assert.deepEqual(clampTreePan(undefined, undefined, undefined), { x: 0, y: 0 }, "全缺 ⇒ {0,0}");
+});
+
+// ── 2026-09-24 修正 2：复位控件接线 / 无残留死代码（静态扫描）──────────────────────
+
+test("unit-panel-has-a-reset-control-that-is-wired", () => {
+  assert.ok(readWebui("index.html").includes('id="unit-tree-reset"'), "index.html 里有复位按钮");
+  assert.ok(
+    readWebui("unitTree.js").includes('byId("unit-tree-reset")'),
+    "unitTree.js 里绑定了复位按钮（resetTreePan）"
+  );
+});
+
+test("unitTree-has-no-leftover-scrollIntoView-dead-code", () => {
+  // ★ 只盯**调用**（`.scrollIntoView(`），注释里提到这个词不算死代码。
+  assert.equal(
+    /\.scrollIntoView\s*\(/.test(readWebui("unitTree.js")),
+    false,
+    "自由视图下 .scrollIntoView(...) 是死代码，必须删净（focusUnit 改为设 pan 让节点可见）"
+  );
 });

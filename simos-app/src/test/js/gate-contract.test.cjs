@@ -48,8 +48,10 @@ const REQUIRED_FILES = [
 //     改为从 DECISION_SUBPAGES 派生（加子页不再需要在断言里抄一遍键名）。
 //   2026-09-23 UI 改造起 222 → 232：unit-tree.test.cjs 新增 10 条（armyOptions / subtreeOf / rootIdOf /
 //     clampPanelPosition / stackOffset（含 stackSpacing））。
+//   2026-09-24 修正 1/2 起 233 → 245：unit-tree.test.cjs 新增 12 条（markerGroups 按军队根分组 7 条 /
+//     clampTreePan 自由视图夹取 3 条 / 复位控件接线与无残留 scrollIntoView 死代码 2 条）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 233;
+const MIN_ASSERTIONS = 245;
 
 function testFiles() {
   return fs

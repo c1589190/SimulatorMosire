@@ -167,6 +167,124 @@
     return (index - (count - 1) / 2) * spacing;
   }
 
+  /**
+   * 单位标记的**分组**：同格的单位再按「军队根」分组，**每组只出一个标记**。**纯函数**。
+   *
+   * <p>★ 2026-09-24 修正 1（上一轮按**单位**摊开是错的）：根单位本身已经是"整支军队"
+   * （`member` 就是编制合计）⇒ 把它的组成元素也铺开会把首都格铺成长长一串。
+   *
+   * <p>口径（三条）：
+   * <ol>
+   *   <li>**根的判定与 `unitTree.js` 的 `buildTree` 同一口径**：`parent` 缺失 / 为 `null` /
+   *       指向**不存在的 id**（悬空）⇒ 该单位就是根；否则沿 parent 链上溯到根（带环保护）。
+   *       ★ 判定用的"已知集"是传入的**全部**单位（含没有 `position` 的）——一个根即使不在任何格上，
+   *       也不会让它的子孙被误当根。这一点与 buildTree 逐字一致（测试里与 rootIdOf 对拍钉住）。</li>
+   *   <li>**先按格分组，再按根分组**：每个 (格, 根) 出一组。这样"不同国家 / 不同父系的军队"在
+   *       同格各占一个标记（可纵向摊开、选中不重叠），而同一支军队的根 + 各兵种**合成一个**标记。</li>
+   *   <li>每组 **代表（lead）= 组内"最靠近根"的单位**（层级最浅；同层取输入序在前者）。
+   *       首都格（根 + 各兵种同格）⇒ 代表就是根；分遣队单独在一格（它的根在别处）⇒ 组里只有它
+   *       ⇒ 代表是它，**不会被藏掉**。</li>
+   * </ol>
+   *
+   * <p>返回 `[{rootId, leadId, at:{q,r}, member:[…]}]`，顺序 = **首次出现的输入序**（先格的顺序，
+   * 格内再按根的首次出现序）。`member` = **该组在本格出现的单位 id**，按层级升序、同层输入序
+   * （lead 恒在首位）——首都格时它就等于该军队的编制合计（根 + 各兵种）。
+   *
+   * <p>没有 `position`（或缺 q/r）的单位**不产生标记**（落不了格），但**仍计入已知集**参与第 1 条
+   * 的根判定；`id` 缺失的单位整体忽略。
+   *
+   * <p>★ **本文件不 `require` unitTree.js**：两份宿主页里 `hexgeom.js` 都在 `unitTree.js`（index）
+   * 或干脆没有它（map.html 不引 unitTree.js）的情况下被引入，跨文件复用会把加载顺序变成语义。
+   * 故这里复写同一**规则**，并用 `unit-tree.test.cjs` 里"markerGroups 与 rootIdOf 对拍"的断言
+   * 钉住"同一口径、不另立一套"。
+   */
+  function markerGroups(units) {
+    var list = Array.isArray(units) ? units : [];
+    var known = new Map();
+    list.forEach(function (u) {
+      if (u && u.id !== null && u.id !== undefined) {
+        known.set(String(u.id), u);
+      }
+    });
+
+    function parentIdOf(u) {
+      return u.parent === null || u.parent === undefined ? null : String(u.parent);
+    }
+
+    function rootIdOfId(startId) {
+      var current = startId;
+      var steps = 0;
+      while (steps <= known.size) {
+        var u = known.get(current);
+        if (!u) {
+          return current;
+        }
+        var pid = parentIdOf(u);
+        if (pid === null || pid === current || !known.has(pid)) {
+          return current;
+        }
+        current = pid;
+        steps += 1;
+      }
+      return current; // 环保护兜底（领域 UnitState 保证无环）
+    }
+
+    function depthOfId(startId, rootId) {
+      var current = startId;
+      var depth = 0;
+      var steps = 0;
+      while (current !== rootId && steps <= known.size) {
+        var u = known.get(current);
+        if (!u) {
+          break;
+        }
+        var pid = parentIdOf(u);
+        if (pid === null || pid === current) {
+          break;
+        }
+        current = pid;
+        depth += 1;
+        steps += 1;
+      }
+      return depth;
+    }
+
+    var groups = new Map(); // "q_r|rootId" → {rootId, at, entries:[{id,depth,index}]}
+    var order = [];
+    list.forEach(function (u, index) {
+      if (!u || u.id === null || u.id === undefined || !u.position) {
+        return;
+      }
+      if (u.position.q === undefined || u.position.r === undefined) {
+        return;
+      }
+      var id = String(u.id);
+      var rootId = rootIdOfId(id);
+      var key = u.position.q + "_" + u.position.r + "|" + rootId;
+      var group = groups.get(key);
+      if (!group) {
+        group = { rootId: rootId, at: { q: u.position.q, r: u.position.r }, entries: [] };
+        groups.set(key, group);
+        order.push(group);
+      }
+      group.entries.push({ id: id, depth: depthOfId(id, rootId), index: index });
+    });
+
+    return order.map(function (group) {
+      group.entries.sort(function (a, b) {
+        return a.depth - b.depth || a.index - b.index;
+      });
+      return {
+        rootId: group.rootId,
+        leadId: group.entries[0].id,
+        at: { q: group.at.q, r: group.at.r },
+        member: group.entries.map(function (entry) {
+          return entry.id;
+        }),
+      };
+    });
+  }
+
   /** 让世界包围盒 fit 进 width×height（CSS px），四周留 pad。 */
   function fitView(bounds, width, height, pad) {
     if (!bounds || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) {
@@ -200,6 +318,7 @@
     markerRadius: markerRadius,
     stackSpacing: stackSpacing,
     stackOffset: stackOffset,
+    markerGroups: markerGroups,
     STACK_MIN_SCREEN_CELL: STACK_MIN_SCREEN_CELL,
   };
 })();

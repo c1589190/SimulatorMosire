@@ -9,8 +9,13 @@
 //   - 浮层顶部**军队选择**（#unit-army-select，选项 = 森林的根）；树**只渲染选中那一支军队**的子树
 //     （subtreeOf 纯函数）——修掉"单看一个单位却摊出多国军队编制"。
 //   - 选中单位变化时（applyFocus）若它属于另一支军队 ⇒ **自动切到那支军队**。
+// ★ 2026-09-24 修正 2：树视口（#unit-tree-mount）改成**自由视图**——不再靠 overflow/滑条左右拉，
+//   内容层 `.tree-canvas` 用 transform: translate(pan.x, pan.y) 平移，鼠标四面八方可拖；平移量由
+//   纯函数 clampTreePan **有界**夹取（内容比视口小 ⇒ 居中），渲染/开合/resize 后都用同一函数重夹；
+//   `focusUnit` 由旧的 `scrollIntoView`（自由视图下已是死代码）改为"设 pan 让节点可见"；
+//   带一个复位按钮 #unit-tree-reset。
 // ★ 纯函数（不查 IO、不碰 DOM）⇒ 可在 Node 里用冻结夹具直接断言：buildTree / isBranchPoint /
-//   armyOptions / subtreeOf / rootIdOf / clampPanelPosition。
+//   armyOptions / subtreeOf / rootIdOf / clampPanelPosition / clampTreePan。
 
 
 (function () {
@@ -27,6 +32,12 @@
   // 浮层拖动状态与"是否已摆过初始位置"标志（首次打开时贴着左栏右缘）。
   var dragState = null;
   var panelPositioned = false;
+  // ★ 2026-09-24 修正 2：编制树改成**自由视图**——树视口（#unit-tree-mount）不滚动，内容层
+  //   `.tree-canvas` 用 `transform: translate(pan.x, pan.y)` 平移，可鼠标四面八方拖动。
+  var treePan = { x: 0, y: 0 };
+  var treeCanvas = null; // 当前内容层（render 时重建）
+  var panState = null; // {pointerId,startX,startY,originX,originY,active}：拖动平移状态
+  var PAN_DRAG_THRESHOLD = 3; // 屏幕 px：超过才认定为"拖动"（否则保留节点点击）
 
   function targetKey() {
     var t = app && app.target ? app.target() : { branch: "main", revision: null };
@@ -218,6 +229,50 @@
     };
   }
 
+  function finiteOr(value, fallback) {
+    var n = Number(value);
+    return isFinite(n) ? n : fallback;
+  }
+
+  /**
+   * 平移量的**单轴夹取**。**纯函数**。
+   *
+   * <p>内容放在 `pan` 处、占据 `[pan, pan + content]`；视口是 `[0, viewport]`。
+   * - `content > viewport` ⇒ 允许范围 `[viewport − content, 0]`（负数区间）：两端分别对应
+   *   "内容末尾贴视口末尾"与"内容开头贴视口开头"，中间任意位置都能看到内容的一部分。
+   * - `content <= viewport`（内容不比视口大）⇒ **居中**：返回唯一值 `(viewport − content) / 2`
+   *   （此时**忽略**传入的 pan ⇒ 拖不动，也不会露出"内容外的空白再被拽走"）。这是本函数写明的
+   *   "内容小于视口"口径。
+   * - 非有限 pan 按 0 处理；`content`/`viewport` 非有限按 0。
+   */
+  function clampPanAxis(value, content, viewport) {
+    var cv = Math.max(0, finiteOr(content, 0));
+    var vp = Math.max(0, finiteOr(viewport, 0));
+    if (cv <= vp) {
+      return (vp - cv) / 2; // 内容不比视口大 ⇒ 居中（唯一允许值）
+    }
+    var lo = vp - cv; // < 0
+    var n = finiteOr(value, 0);
+    return n < lo ? lo : n > 0 ? 0 : n;
+  }
+
+  /**
+   * 把树的**平移量**夹到有界范围内（CSS px 的 `translate` 量）。**纯函数**，不碰 DOM。
+   *
+   * <p>`clampTreePan(pan, contentSize, viewportSize) -> {x, y}`；两轴各自按 {@link clampPanAxis}
+   * 的口径。内容比视口小的那一轴 ⇒ 居中（拖不走）；比视口大的那一轴 ⇒ 夹在
+   * `[viewport − content, 0]`（内容始终至少露出一部分，不会整幅被拖出视野）。
+   */
+  function clampTreePan(pan, contentSize, viewportSize) {
+    var p = pan || {};
+    var c = contentSize || {};
+    var v = viewportSize || {};
+    return {
+      x: clampPanAxis(p.x, c.width, v.width),
+      y: clampPanAxis(p.y, c.height, v.height),
+    };
+  }
+
   function displayName(node) {
     return node.name === null || node.name === undefined || node.name === "" ? node.id : node.name;
   }
@@ -338,7 +393,74 @@
     return detail;
   }
 
-  /** 把选中单位在树里高亮并滚入视野（地图点单位联动，判据③/⑤）。 */
+  // ── 自由视图：平移量的量取/应用/夹取（纯夹取逻辑在 clampTreePan）────────────────────
+
+  function measureTreeViewport() {
+    var mount = app.byId("unit-tree-mount");
+    return { width: mount ? mount.clientWidth || 0 : 0, height: mount ? mount.clientHeight || 0 : 0 };
+  }
+
+  function measureTreeContent() {
+    return treeCanvas
+      ? { width: treeCanvas.offsetWidth || 0, height: treeCanvas.offsetHeight || 0 }
+      : { width: 0, height: 0 };
+  }
+
+  function applyTreePan() {
+    if (treeCanvas) {
+      treeCanvas.style.transform = "translate(" + treePan.x + "px, " + treePan.y + "px)";
+    }
+  }
+
+  /** 设置平移量并按**同一纯函数** clampTreePan 夹取（内容/视口尺寸现取）。 */
+  function setTreePan(desired) {
+    treePan = clampTreePan(desired, measureTreeContent(), measureTreeViewport());
+    applyTreePan();
+  }
+
+  /** 面板尺寸变化 / 重新渲染之后重新夹取（同一纯函数）——绝不留一个越界的 pan。 */
+  function reclampTreePan() {
+    if (!treeCanvas) {
+      return;
+    }
+    treePan = clampTreePan(treePan, measureTreeContent(), measureTreeViewport());
+    applyTreePan();
+  }
+
+  /** 复位平移：即 `{x:0,y:0}` 经 clampTreePan（内容大于视口 ⇒ 左上角对齐；小于 ⇒ 居中）。 */
+  function resetTreePan() {
+    setTreePan({ x: 0, y: 0 });
+  }
+
+  /**
+   * 让某节点可见：把 pan 平移一个增量使它落进视口（随后由 setTreePan 夹取）。
+   * ★ 2026-09-24 修正 2：取代旧的 `scrollIntoView`——自由视图没有滑条，`scrollIntoView` 已是死代码。
+   */
+  function revealNode(target) {
+    var mount = app.byId("unit-tree-mount");
+    if (!mount || !treeCanvas || !target.getBoundingClientRect) {
+      return;
+    }
+    var view = mount.getBoundingClientRect();
+    var box = target.getBoundingClientRect();
+    var dx = 0;
+    var dy = 0;
+    if (box.left < view.left) {
+      dx = view.left - box.left;
+    } else if (box.right > view.right) {
+      dx = view.right - box.right;
+    }
+    if (box.top < view.top) {
+      dy = view.top - box.top;
+    } else if (box.bottom > view.bottom) {
+      dy = view.bottom - box.bottom;
+    }
+    if (dx !== 0 || dy !== 0) {
+      setTreePan({ x: treePan.x + dx, y: treePan.y + dy });
+    }
+  }
+
+  /** 把选中单位在树里高亮并平移使其可见（地图点单位联动，判据③/⑤）。 */
   function focusUnit(id) {
     if (id === null || id === undefined) {
       return;
@@ -351,9 +473,7 @@
       return;
     }
     target.classList.add("selected");
-    if (typeof target.scrollIntoView === "function") {
-      target.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
+    revealNode(target);
   }
 
   /** 用扁平 units 渲染**选中那一支军队**的倒树（清空后重建）。其它军队的单位一个字都不渲染。 */
@@ -364,6 +484,7 @@
       return;
     }
     app.clear(mount);
+    treeCanvas = null; // 内容层随清空作废（reclampTreePan 会因此静默跳过）
     var options = armyOptions(lastUnits);
     if (!options.length) {
       selectedRootId = null;
@@ -380,9 +501,14 @@
       mount.appendChild(app.el("p", { class: "empty", text: "暂无单位。" }));
       return;
     }
+    // ★ 2026-09-24 修正 2：树挂在可平移的**内容层** .tree-canvas 上（视口 = mount，overflow:hidden）。
     var forest = app.el("div", { class: "tree-forest" });
     forest.appendChild(subtree(root));
-    mount.appendChild(forest);
+    treeCanvas = app.el("div", { class: "tree-canvas" });
+    treeCanvas.appendChild(forest);
+    mount.appendChild(treeCanvas);
+    // 重新渲染后内容尺寸可能变了 ⇒ 用**同一个纯函数**重夹，绝不留下越界的 pan。
+    reclampTreePan();
     highlightSelection();
   }
 
@@ -489,6 +615,10 @@
       positionPanelInitial(panel);
       panelPositioned = true;
     }
+    if (open) {
+      // 打开后视口才有尺寸 ⇒ 用同一纯函数重夹（隐藏期间画面尺寸量不到，pan 可能落在旧边界外）。
+      reclampTreePan();
+    }
     var button = app.byId("unit-panel-open");
     if (button) {
       button.setAttribute("aria-expanded", open ? "true" : "false");
@@ -543,7 +673,81 @@
     dragState = null;
   }
 
-  /** 绑定按钮/关闭/军队选择/拖动（元素缺席 ⇒ 静默跳过：其它宿主页不挂这套 UI）。 */
+  /**
+   * ★ 2026-09-24 修正 2：树视口内的**自由平移**（鼠标四面八方拖动）。
+   *
+   * <p>只用原生 pointer 事件 + setPointerCapture；**只有在树视口（#unit-tree-mount）内 pointerdown
+   * 才起平移**，绝不与标题栏 #unit-panel-drag 的面板拖动互相干扰。拖动超过 {@link PAN_DRAG_THRESHOLD}
+   * 才认定为拖动并捕获指针——这样"点节点选中"与"拖动平移"共存（若在 pointerdown 就捕获，节点上的
+   * click 会被吞掉、树就点不动了）。
+   */
+  function wireTreePan() {
+    var mount = app.byId("unit-tree-mount");
+    if (!mount) {
+      return;
+    }
+    mount.addEventListener("pointerdown", function (event) {
+      if (event.button !== undefined && event.button !== 0) {
+        return; // 只左键
+      }
+      panState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: treePan.x,
+        originY: treePan.y,
+        active: false,
+      };
+    });
+    mount.addEventListener("pointermove", function (event) {
+      if (!panState || event.pointerId !== panState.pointerId) {
+        return;
+      }
+      if (event.buttons === 0) {
+        // 按键已在视口外松开（pointerup 没落到 mount 上，尚未捕获）⇒ 结束，别把之后的悬停当成拖动。
+        endPan();
+        return;
+      }
+      var dx = event.clientX - panState.startX;
+      var dy = event.clientY - panState.startY;
+      if (!panState.active) {
+        if (dx * dx + dy * dy < PAN_DRAG_THRESHOLD * PAN_DRAG_THRESHOLD) {
+          return; // 还是"点击"，不进入平移
+        }
+        panState.active = true;
+        mount.classList.add("panning");
+        if (mount.setPointerCapture) {
+          mount.setPointerCapture(panState.pointerId);
+        }
+      }
+      setTreePan({ x: panState.originX + dx, y: panState.originY + dy });
+    });
+    mount.addEventListener("pointerleave", function () {
+      if (panState && !panState.active) {
+        panState = null; // 未进入拖动就离开视口 ⇒ 丢弃这次按压
+      }
+    });
+    function endPan() {
+      if (!panState) {
+        return;
+      }
+      if (panState.active && mount.releasePointerCapture) {
+        try {
+          mount.releasePointerCapture(panState.pointerId);
+        } catch (e) {
+          // 指针已释放 / 捕获不存在 —— 忽略
+        }
+      }
+      panState = null;
+      mount.classList.remove("panning");
+    }
+    mount.addEventListener("pointerup", endPan);
+    mount.addEventListener("pointercancel", endPan);
+    // 面板宽高都是 min(..., 视口) ⇒ 窗口尺寸变了视口也变，须重夹。
+    window.addEventListener("resize", reclampTreePan);
+  }
+
+  /** 绑定按钮/关闭/军队选择/复位/拖动（元素缺席 ⇒ 静默跳过：其它宿主页不挂这套 UI）。 */
   function wirePanel() {
     var openButton = app.byId("unit-panel-open");
     if (openButton) {
@@ -581,6 +785,11 @@
       handle.addEventListener("pointerup", onDragEnd);
       handle.addEventListener("pointercancel", onDragEnd);
     }
+    var resetButton = app.byId("unit-tree-reset");
+    if (resetButton) {
+      resetButton.addEventListener("click", resetTreePan);
+    }
+    wireTreePan();
   }
 
   function init() {
@@ -601,6 +810,7 @@
     subtreeOf: subtreeOf,
     rootIdOf: rootIdOf,
     clampPanelPosition: clampPanelPosition,
+    clampTreePan: clampTreePan,
     render: render,
     refresh: refresh,
     focusUnit: focusUnit,

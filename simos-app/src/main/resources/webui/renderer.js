@@ -36,6 +36,9 @@
   var markerRadius = hexGeom.markerRadius;
   var stackSpacing = hexGeom.stackSpacing;
   var stackOffset = hexGeom.stackOffset;
+  // ★ 2026-09-24 修正 1：标记按**军队**分组（同格、同军队根 ⇒ 一个标记）；纯函数在 hexgeom.js
+  //   （两份宿主页都引它 ⇒ map.html 不会因缺 unitTree.js 而少一个函数）。
+  var markerGroups = hexGeom.markerGroups;
   // hexcolor.js
   var FALLBACK_COLOR = hexColor.FALLBACK_COLOR;
   var REGION_FALLBACK_COLOR = hexColor.REGION_FALLBACK_COLOR;
@@ -99,7 +102,11 @@
     var view = { scale: 1, tx: 0, ty: 0 };
     var overview = null;
     var blocks = []; // 权威地形块（M9 T13）：{id,terrain,hexCount,boundaries:[环…]}，顶点为「格边长=1」的世界坐标
-    var units = []; // 预计算世界坐标的单位：{id,name,position,px,py}
+    var units = []; // 单位全表：{id,name,parent,position}（只读数；标记坐标在 markers 上）
+    var unitById = {}; // String(id) → 单位（pickAt 取回 leadId 的名字）
+    // ★ 2026-09-24 修正 1：**标记**=按军队分组的绘制单位，{rootId,leadId,at,member,px,py,stackSpacing}。
+    //   一个首都格只有 1 个标记（整支军队），不再把根 + 各兵种铺成一长串。
+    var markers = [];
     var routes = []; // 在途路线（M7b T2）：{id,movement,path:[{q,r}…]}
     var colorByTerrain = {};
     var fallbackWarned = false;
@@ -216,33 +223,36 @@
     }
 
     /**
-     * 预计算单位的**世界像素**位置（px/py）。★ 2026-09-23：同格单位重叠不好点 ⇒ 格子够大时以格心
-     * 为中心**等距纵向摊开**（stackOffset 纯函数）；格太小放不下就保持重叠（宁可靠军队选择器挑，
-     * 也不把标记甩出格子）。摊开间距记在 `u.stackSpacing`（0=未摊开），供 pickAt 收缩命中半径。
-     * ★ 只改 px/py ⇒ pickAt / drawUnits 自动跟随（不另造一份坐标）。
+     * 预计算**标记**的世界像素位置（px/py）。★ 2026-09-24 修正 1：
+     * 1) 先由 `markerGroups(units)`（hexgeom 纯函数）把单位**按格、再按军队根**分组 ⇒ 每组一个标记；
+     *    ——首都格（根 + 各兵种同格）只出 1 个标记（代表 = 根），分遣队单独一格不会被藏掉。
+     * 2) 再把**同格的不同军队组**纵向摊开（stackOffset；格太小则保持重叠），避免选中时重叠。
+     * 摊开间距记在 `marker.stackSpacing`（0=未摊开），供 pickAt 收缩命中半径。
+     * ★ 只改 markers 的 px/py ⇒ pickAt / drawUnits 自动跟随（不另造一份坐标）。
      */
     function recomputeWorldPixels() {
-      var groups = {}; // "q_r" → 该格的全部单位（保持 units 原顺序 ⇒ index 稳定）
+      markers = markerGroups(units);
+      var groups = {}; // "q_r" → 该格的全部**标记**（保持首次出现顺序 ⇒ index 稳定）
       var keys = [];
-      units.forEach(function (u) {
-        var key = u.position.q + "_" + u.position.r;
+      markers.forEach(function (m) {
+        var key = m.at.q + "_" + m.at.r;
         if (!groups[key]) {
           groups[key] = [];
           keys.push(key);
         }
-        groups[key].push(u);
+        groups[key].push(m);
       });
       keys.forEach(function (key) {
         var list = groups[key];
         // ★ 摊开门控吃**屏幕上**的格高（cellSize 是世界单位且在**工作台恒定**，随缩放变的是 view.scale）
-        //   ⇒ 必须相乘，否则缩放永远不会改变"摊不摊开"。
+        //   ⇒ 必须相乘，否则缩放永远不会改变"摊不摊开"。作用对象是**军队组**（list.length = 该格的组数）。
         var screenCell = cellSize * view.scale;
         var spacing = stackSpacing(list.length, cellSize, screenCell);
-        list.forEach(function (u, index) {
-          var p = hexToPixel(u.position.q, u.position.r, cellSize);
-          u.px = p.x;
-          u.py = p.y + stackOffset(index, list.length, cellSize, screenCell);
-          u.stackSpacing = spacing;
+        list.forEach(function (m, index) {
+          var p = hexToPixel(m.at.q, m.at.r, cellSize);
+          m.px = p.x;
+          m.py = p.y + stackOffset(index, list.length, cellSize, screenCell);
+          m.stackSpacing = spacing;
         });
       });
     }
@@ -328,16 +338,21 @@
           return u && u.position;
         })
         .map(function (u) {
-          var p = hexToPixel(u.position.q, u.position.r, cellSize);
           return {
             id: u.id,
             name: u.name,
+            // ★ 2026-09-24 修正 1：必须保留 parent —— markerGroups 靠它判"军队根"（与 buildTree 同口径）。
+            parent: u.parent === undefined ? null : u.parent,
             position: u.position,
-            px: p.x,
-            py: p.y,
           };
         });
-      // ★ 2026-09-23：装载即按当前 cellSize 摊开同格单位（此前只在 setCellSize 时才算 ⇒ 首次加载不摊开）。
+      unitById = {};
+      units.forEach(function (u) {
+        if (u.id !== null && u.id !== undefined) {
+          unitById[String(u.id)] = u;
+        }
+      });
+      // ★ 2026-09-23：装载即按当前 cellSize 摊开（此后只在 setCellSize 时才算）；修正 1 起摊开对象=军队组。
       recomputeWorldPixels();
       if (selectedUnit) {
         selected = positionOf(selectedUnit);
@@ -564,28 +579,39 @@
       return text.length > 4 ? text.slice(0, 4) : text;
     }
 
+    /**
+     * ★ 2026-09-24 修正 1：画的是**军队标记**（markers），不是逐个单位。
+     * 组内**任一**单位被选中 ⇒ 高亮该组标记（选中的是某个兵种时，它所属军队的那个标记也亮）。
+     */
+    function isMarkerSelected(marker) {
+      if (selectedUnit === null || selectedUnit === undefined) {
+        return false;
+      }
+      return marker.member.indexOf(String(selectedUnit)) >= 0;
+    }
+
     function drawUnits() {
       var radius = markerRadius(cellSize);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      units.forEach(function (u) {
+      markers.forEach(function (m) {
         ctx.beginPath();
-        ctx.arc(u.px, u.py, radius, 0, Math.PI * 2);
+        ctx.arc(m.px, m.py, radius, 0, Math.PI * 2);
         ctx.fillStyle = "#e8503a";
         ctx.fill();
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2 / view.scale;
         ctx.stroke();
-        if (u.id === selectedUnit) {
+        if (isMarkerSelected(m)) {
           ctx.beginPath();
-          ctx.arc(u.px, u.py, radius + 4 / view.scale, 0, Math.PI * 2);
+          ctx.arc(m.px, m.py, radius + 4 / view.scale, 0, Math.PI * 2);
           ctx.strokeStyle = "#4ea1ff";
           ctx.lineWidth = 2.5 / view.scale;
           ctx.stroke();
         }
         ctx.fillStyle = "#ffffff";
         ctx.font = Math.max(9, Math.round(radius)) + "px sans-serif";
-        ctx.fillText(shortId(u.id), u.px, u.py);
+        ctx.fillText(shortId(m.leadId), m.px, m.py);
       });
     }
 
@@ -982,20 +1008,23 @@
     function pickAt(point) {
       var world = screenToWorld(point, view);
       var baseHitRadius = Math.max(cellSize * 0.36, 10 / view.scale);
-      for (var i = units.length - 1; i >= 0; i--) {
-        var u = units[i];
-        // ★ 2026-09-23：摊开的单位命中半径收缩到**不超过半间距** ⇒ 不误伤纵向相邻的邻居；
+      // ★ 2026-09-24 修正 1：命中**军队标记**，返回其**代表单位**（leadId）的 id ——
+      //   点首都格里的兵种标记，选中的是整支军队的代表（根），与标记画的是同一个单位。
+      for (var i = markers.length - 1; i >= 0; i--) {
+        var m = markers[i];
+        // ★ 2026-09-23：摊开的标记命中半径收缩到**不超过半间距** ⇒ 不误伤纵向相邻的邻居；
         //   未摊开（stackSpacing=0，含大小格下的重叠态）保持原口径。
-        var hitRadius = u.stackSpacing > 0 ? Math.min(baseHitRadius, u.stackSpacing / 2) : baseHitRadius;
-        var dx = world.x - u.px;
-        var dy = world.y - u.py;
+        var hitRadius = m.stackSpacing > 0 ? Math.min(baseHitRadius, m.stackSpacing / 2) : baseHitRadius;
+        var dx = world.x - m.px;
+        var dy = world.y - m.py;
         if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+          var lead = unitById[m.leadId];
           return {
             kind: "unit",
-            id: u.id,
-            name: u.name,
-            q: u.position.q,
-            r: u.position.r,
+            id: m.leadId,
+            name: lead ? lead.name : null,
+            q: m.at.q,
+            r: m.at.r,
             inMap: true,
           };
         }

@@ -32,7 +32,9 @@ const JS_DIR = __dirname;
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
 //   2026-09-23 UI 改造起 222 → 232（unit-tree.test.cjs 新增 10 条：armyOptions / subtreeOf /
 //     rootIdOf / clampPanelPosition / stackOffset（含 stackSpacing）——军队选择、单军队子树、浮层夹取、同格摊开）。
-const MIN_TESTS = 233;
+//   2026-09-24 修正 1/2 起 233 → 245（unit-tree.test.cjs 新增 12 条：markerGroups 按军队根分组 7 条 /
+//     clampTreePan 自由视图夹取 3 条 / 复位控件接线与无残留 scrollIntoView 死代码 2 条）。
+const MIN_TESTS = 245;
 
 function discoverTests() {
   return fs

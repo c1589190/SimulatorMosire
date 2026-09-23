@@ -1951,7 +1951,38 @@ body.workbench-page .gm-usage-failed {
   flex: 1 1 auto;
   min-height: 0;
   margin-top: 0;
+  /* ★ 2026-09-24 修正 2：树视口改成**自由视图**——不再有滑条，改用 transform 平移。
+     - overflow:hidden：超出视口的内容裁掉（平移自己决定看哪里）。
+     - padding 移到内容层 .tree-canvas ⇒ 视口尺寸=真实可视区（clampTreePan 的 viewport）。
+     - touch-action:none + user-select:none：拖动平移时不触发页面滚动/手势、不选中文字。
+     - cursor: grab/grabbing：给出可拖的视觉提示（.panning 切 grabbing）。 */
+  padding: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.unit-panel .unit-tree.panning {
+  cursor: grabbing;
+}
+
+/* 可平移的**内容层**（unitTree.render 里创建）：一屏内容、尺寸随内容收缩（inline-block），
+   平移量写在其 transform 上。内边距保留原 .unit-panel .unit-tree 的 8px 12px 12px。 */
+.tree-canvas {
+  display: inline-block;
+  vertical-align: top;
   padding: 8px 12px 12px;
-  overflow: auto; /* 树长了在浮层内滚动（不动左栏） */
+  will-change: transform;
+}
+
+/* 自由视图下 .tree-forest 不再自己横向滚动（平移取代它）；作用域限定在浮层内，不动全局语义。 */
+.unit-panel .tree-forest {
+  overflow: visible;
+}
+
+.unit-panel-reset {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
