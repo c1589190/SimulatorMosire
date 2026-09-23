@@ -73,6 +73,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -1233,6 +1234,9 @@ public final class GuiServer implements AutoCloseable {
    *
    * <p>★ **这一轮可能阻塞**：决策人若出令（{@code sd.IssueDirective} 是敏感写），那一次工具调用会**等审批** （上限 = 壳的 {@code
    * APPROVAL_TIMEOUT}）⇒ 本请求停在那里。前端因此必须显示"正在跑 / 可能在等审批"。
+   *
+   * <p>★★ **2026-09-24（E4）：同一决策人已有一轮活着在跑 ⇒ 明确拒绝（422）**，理由可读、**不覆盖**上一轮的账。策略选"拒绝"而不是 "排队"，理由见 {@link
+   * #runDecisionReply} 内的注释。
    */
   private Reply runDecisionReply(HttpExchange exchange) throws IOException {
     JsonNode root = readBody(exchange);
@@ -1249,8 +1253,30 @@ public final class GuiServer implements AutoCloseable {
             new RevisionId(longField(root, "expectedRevision")),
             "sd.RunDecision",
             MAPPER.writeValueAsString(payload));
+    // ★★ E4 **并发闸门：先占位、再落事实**（顺序有意）：
+    //   · 占位在 submit **之前** ⇒ 被拒的那一次**不会白落一条触发事实、白涨一个 revision**（世界事实只记"真跑了的那些"）；
+    //   · 用 tryBegin 的原子"看 + 占"而不是"先查再写" ⇒ 两个并发的 POST 只有一个占得到，另一个明确被拒。
+    //   ★ 策略选**拒绝**（不是排队）：① 第二次点击的语义是"重复触发"，不是"要跑两轮"；② 每个请求的 ref 在**请求时刻**就定下，
+    //     排队会让后来那一轮对着一个**早就过期**的世界版本跑；③ 一轮里可能阻塞等审批（见类注），排队会把审批等待叠加成一条长链。
+    //     拒绝最直白，且前端拿得到可读理由（见 panels.js 的 catch ⇒ `跑一轮失败：<reason>`）。
+    final long token;
+    if (decisionAgentService != null) {
+      OptionalLong begun = decisionRunRegistry.tryBegin(decisionMakerId);
+      if (begun.isEmpty()) {
+        return Reply.of(
+            422,
+            ApiViews.rejected("该决策人已有一轮在跑（" + decisionMakerId + "）——等这一轮跑到终态（完成 / 中止 / 超时）再发起"));
+      }
+      token = begun.getAsLong();
+    } else {
+      token = 0L;
+    }
     CommandResult result = core.submit(command);
     if (!(result instanceof CommandResult.Committed committed)) {
+      // ★ 触发事实没落盘 ⇒ 这一轮**根本没跑** ⇒ 撤掉刚占的位（否则它一直显示"正在跑"，等于 E4 那条缺陷换个成因复发）。
+      if (decisionAgentService != null) {
+        decisionRunRegistry.abandon(decisionMakerId, token);
+      }
       return resultReply(result);
     }
     Map<String, Object> view = new LinkedHashMap<>(ApiViews.committed(committed.ref()));
@@ -1267,12 +1293,11 @@ public final class GuiServer implements AutoCloseable {
     //   ★ 用 {@code execute}（**void**）而不是 {@code submit}（返回 Future）：这一轮自己会接住全部失败并写成结局
     //   ⇒ 没有 Future 要读；用 submit 就是把一个"异常被吞掉且无人读"的返回值凭空造出来（门禁实测报了它）。
     StateRef ref = committed.ref();
-    decisionRunRegistry.begin(decisionMakerId);
     view.put("running", true);
     view.put(
         "runStatusPath",
         DECISION_MAKERS_PATH + "/" + decisionMakerId + DECISION_MAKER_RUN_STATUS_SUFFIX);
-    executor.execute(() -> runDecisionInBackground(ref, decisionMakerId));
+    executor.execute(() -> runDecisionInBackground(ref, decisionMakerId, token));
     return Reply.of(200, view);
   }
 
@@ -1289,8 +1314,11 @@ public final class GuiServer implements AutoCloseable {
    * </ul>
    *
    * <p>★ 跑在虚拟线程上、与请求线程**不同**：故这里对 {@code state} 的读取一律经 {@code core.replay}（不持有调用方的状态对象）。
+   *
+   * <p>★ **E4**：{@code token} 是起跑时占位发的令牌 ⇒ 只有它能把进度/结局写进**本轮**的账（上一轮迟到的线程写不进）。若这一轮 **挂死到超上限**、{@code
+   * finish} 永远不来，读状态那条路（{@code DecisionRunRegistry.status}）会把它归到超时终态。
    */
-  private void runDecisionInBackground(StateRef ref, String decisionMakerId) {
+  private void runDecisionInBackground(StateRef ref, String decisionMakerId, long token) {
     DecisionMakerId id = new DecisionMakerId(decisionMakerId);
     try {
       DecisionAgentRunner.DecisionTurn turn =
@@ -1299,14 +1327,16 @@ public final class GuiServer implements AutoCloseable {
               ref.revision(),
               id,
               (llmCalls, invocations) ->
-                  decisionRunRegistry.progress(decisionMakerId, llmCalls, invocations));
+                  decisionRunRegistry.progress(decisionMakerId, token, llmCalls, invocations));
       decisionRunRegistry.finish(
           decisionMakerId,
+          token,
           new DecisionRunRegistry.Outcome(
               "ok", null, null, turn.finalText().orElse(null), turn.conversationId()));
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
       decisionRunRegistry.finish(
           decisionMakerId,
+          token,
           new DecisionRunRegistry.Outcome(
               "aborted",
               "turn-budget",
@@ -1317,6 +1347,7 @@ public final class GuiServer implements AutoCloseable {
       LOG.warn("决策人一轮在后台失败 decisionMakerId={}", decisionMakerId, e);
       decisionRunRegistry.finish(
           decisionMakerId,
+          token,
           new DecisionRunRegistry.Outcome(
               "failed",
               e.getClass().getSimpleName(),
@@ -1334,6 +1365,10 @@ public final class GuiServer implements AutoCloseable {
    *
    * <p>★★ **没有记录时如实报"没有"**：{@code startedAt=null} 且 {@code llmCalls=null}（**不拿 0 / false 顶替**）
    * ——"这一轮一次模型都没调"与"本进程从没见过这个人跑"是两件事（进程重启即失，见 {@link DecisionRunRegistry} 的类注）。
+   *
+   * <p>★★ **E4：读这一条会顺手结算超时**——某一轮若挂死到超上限，本端点返回的是**失败终态**（{@code result.status=failed} / {@code
+   * result.reason=run-timeout}），**绝不**永远返回 {@code running=true}（结算在 {@link
+   * DecisionRunRegistry#status}，与读的时机无关）。
    */
   private Reply decisionMakerRunStatusReply(String decisionMakerId) {
     if (decisionAgentService == null) {

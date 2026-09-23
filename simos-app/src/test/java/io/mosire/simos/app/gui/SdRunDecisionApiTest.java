@@ -72,6 +72,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -94,6 +96,9 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>★ **本类只留四条**（用户 2026-09-23：少做测试，写完直接编译、我直接看）：一条钉「异步形状 + 轨迹读得回」、一条钉「未知决策人被拒 ⇒
  * 触发事实也落不下」、一条钉「重跑沿用上下文 / 只有重置才清」（**带对照组**）、一条钉「第一轮之前说一句话 ⇒ 身份消息仍在前」。
+ *
+ * <p>★ **2026-09-24（E4）新增第五条**：连点两次同一个决策人 ⇒ 第二次**明确拒绝**、第一轮的账**不被覆盖**。它是本条端点上的**真并发** 缺陷（见 {@code
+ * runDecisionReply} 的并发闸门），故落在这里；用"假 LLM 卡在第一次调用"把第一轮**摁在 running** 上，好让第二次点击 确实发生在"正在跑"的窗口里。
  */
 class SdRunDecisionApiTest {
 
@@ -220,6 +225,50 @@ class SdRunDecisionApiTest {
     assertThat(body.get("reason").asText()).contains("决策人不存在");
     assertThat(llm.calls()).as("★ 触发事实没落盘 ⇒ 一次 LLM 都不烧").isZero();
     assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(1L);
+  }
+
+  /**
+   * ★★ **E4：连点两次同一个决策人 ⇒ 第二次明确拒绝（422 + 可读原因），且第一轮的账不被覆盖**。
+   *
+   * <p>★ **怎么造出"正在跑"的窗口**：假 LLM 卡在**第一次调用**上（两个 {@code CountDownLatch}：{@code entered} 让用例知道
+   * 它真进了调用、{@code release} 由用例放行）⇒ 第二次 POST 确实发生在第一轮的运行窗口里，而不是"跑完了才点"。
+   *
+   * <p>★★ **两个判别位**（修之前必红）：① 第二次的状态码 = 200 而不是 422（旧代码没有闸门）；② 第二次用 {@code expectedRevision=2}（=
+   * 第一轮触发事实落下的 head）发 ⇒ 旧代码会**再落一条触发事实**（head→3）并 {@code begin} 覆盖第一轮的 账。故这里两条都断言死：状态码 + {@code
+   * head 仍 = 2}。
+   */
+  @Test
+  void aSecondRunForTheSameMakerIsRejectedAndDoesNotOverwriteTheFirstRound() throws Exception {
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    llm.gate(entered, release);
+    scriptOneRound();
+
+    HttpResponse<String> first = post("/api/sd/run-decision", runDecisionBody(DM_ID, 1L));
+    assertThat(first.statusCode()).as(first.body()).isEqualTo(200);
+    assertThat(entered.await(5, TimeUnit.SECONDS)).as("第一轮必须真的进了 LLM 调用（否则'正在跑'的窗口是假的）").isTrue();
+    assertThat(
+            JSON.readTree(get("/api/sd/decision-makers/" + DM_ID + "/run-status").body())
+                .get("running")
+                .asBoolean())
+        .as("第一轮此刻正在跑")
+        .isTrue();
+
+    // ★ 连点第二次：用**当前 head（2）**当 expectedRevision（否则会先撞 409 游标过期，测不到并发闸门）。
+    HttpResponse<String> second = post("/api/sd/run-decision", runDecisionBody(DM_ID, 2L));
+    assertThat(second.statusCode()).as(second.body()).isEqualTo(422);
+    JsonNode rejected = JSON.readTree(second.body());
+    assertThat(rejected.get("result").asText()).isEqualTo("rejected");
+    assertThat(rejected.get("reason").asText()).as("可读原因").contains("已有一轮在跑");
+    assertThat(head()).as("★ 被拒的那次**不许**落触发事实（head 仍是第一轮落下的 2）").isEqualTo(2L);
+
+    // 放行第一轮 ⇒ 它照常跑完，账是它自己的。
+    release.countDown();
+    JsonNode done = awaitDone(DM_ID);
+    assertThat(done.get("result").get("status").asText()).as("第一轮照常收口").isEqualTo("ok");
+    assertThat(done.get("llmCalls").asInt()).as("★ 第一轮的账没被第二次覆盖").isEqualTo(2);
+    assertThat(done.get("toolCalls")).hasSize(1);
+    assertThat(head()).as("全世界只多了第一轮那一条触发事实").isEqualTo(2L);
   }
 
   /**
@@ -384,8 +433,22 @@ class SdRunDecisionApiTest {
     private final List<Integer> messageCounts = new ArrayList<>();
     private final List<LlmRequest> requests = new ArrayList<>();
 
+    /**
+     * ★ **闸门**（E4 用例用）：非空时，每次 {@code chat} 先 {@code countDown} 那个 {@code entered} 再 {@code await}
+     * 那个 {@code release}（**有界 5s**，不让用例挂死）——用它把一轮"摁在 LLM 调用里"，好制造"正在跑"的窗口。
+     */
+    private volatile CountDownLatch entered;
+
+    private volatile CountDownLatch release;
+
     void enqueue(LlmResponse response) {
       delegate.enqueue(response);
+    }
+
+    /** 装闸门：{@code entered} 在进入 {@code chat} 时倒数，{@code release} 放行（用完 {@code 5s} 超时兜底）。 */
+    void gate(CountDownLatch entered, CountDownLatch release) {
+      this.entered = entered;
+      this.release = release;
     }
 
     int calls() {
@@ -411,6 +474,18 @@ class SdRunDecisionApiTest {
     public LlmResponse chat(LlmRequest request) {
       messageCounts.add(request.messages().size());
       requests.add(request);
+      CountDownLatch gateEntered = entered;
+      if (gateEntered != null) {
+        gateEntered.countDown();
+      }
+      CountDownLatch gateRelease = release;
+      if (gateRelease != null) {
+        try {
+          gateRelease.await(5L, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
       return delegate.chat(request);
     }
   }
