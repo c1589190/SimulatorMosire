@@ -1867,7 +1867,12 @@
         if (token !== decisionResultsToken) {
           return;
         }
-        var message = "决策结果拉取失败：" + ((e && e.message) || e);
+        // ★ 404 有两种含义，必须分开（否则用户分不清是"这个人不存在"还是"端点没部署"）：
+        //   ① 解不出决策人 ⇒ body 带 id；② 路径本身不存在 ⇒ 没有 id（照样如实报错）。
+        var message =
+          e && e.status === 404 && e.body && e.body.id
+            ? "查无此决策人：" + e.body.id + "（该 id 在这次查询里不存在）"
+            : "决策结果拉取失败：" + ((e && e.message) || e);
         app.clear(mount);
         mount.appendChild(app.el("p", { class: "empty result-error", text: message }));
         setDecisionResultsStatus(message, "err");
