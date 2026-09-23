@@ -48,11 +48,20 @@ public final class DecisionResultsTool implements AgentTool {
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "sd.DecisionResults";
 
-  /** {@code limit} 的缺省：最近 20 条（一次对话要看的那一档；也保证缺省查询有界）。 */
-  private static final int DEFAULT_LIMIT = 20;
+  /**
+   * {@code limit} 的缺省：最近 20 条（一次对话要看的那一档；也保证缺省查询有界）。
+   *
+   * <p>★ **公开是给 GUI 的决策结果子页复用**（{@code GET /api/sd/decision-results}）：那个端点与本工具是**同一份数据、两个入口**，
+   * 边界必须是同一份。GUI 另写一组 20/200 就是"两份都对、只会漂移"的老形态。
+   */
+  public static final int DEFAULT_LIMIT = 20;
 
-  /** {@code limit} 的硬上限：无界地一次吐出全部历史是本工具明确要避免的形态。 */
-  private static final int MAX_LIMIT = 200;
+  /**
+   * {@code limit} 的硬上限：无界地一次吐出全部历史是本工具明确要避免的形态。
+   *
+   * <p>★ 同 {@link #DEFAULT_LIMIT}：GUI 决策结果子页引用本常量，不另写一份。
+   */
+  public static final int MAX_LIMIT = 200;
 
   /** 本工具的资源声明：sd 只读（见类注的 fail-closed 理由）。 */
   private static final ResourceManifest SD_READ =

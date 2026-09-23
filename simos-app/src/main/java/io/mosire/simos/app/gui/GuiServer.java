@@ -21,6 +21,7 @@ import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.app.sd.DecisionAdjudicationService;
+import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -208,6 +209,19 @@ public final class GuiServer implements AutoCloseable {
   private static final String SET_DECISION_MAKER_PROVIDER_PATH =
       "/api/sd/set-decision-maker-provider";
 
+  /**
+   * 决策结果只读面（第 3 波第 3 步的前端子页桥）：{@code GET /api/sd/decision-results[?as=<dmId>]}（＋ {@code tick} 或
+   * {@code fromTick}/{@code toTick}，＋ {@code limit}）。
+   *
+   * <p>★★ **可见性只有一处**：本端点**直接调** {@link RedactingQueryService#decisionResults}——归属判据（条目 {@code
+   * tags} 含该决策人）**不许在 GUI 里重写**（两份都不会报错、只会漂移；结构性护栏见 {@code
+   * DecisionResultsVisibilityGuardTest}）。本层只做**入参校验**，不碰归属判定。
+   *
+   * <p>★ **{@code as=} 必填**（与别的读端点的"可带可不带"不同）：决策结果只有"以某决策人视角读"这一种语义——**没有 GM 全量口径**
+   * （无主结果对谁都不出现）。解不出决策人 ⇒ 404（与 {@code /api/sd/decision-makers/{id}/scope} 同款）。
+   */
+  private static final String DECISION_RESULTS_PATH = "/api/sd/decision-results";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -222,6 +236,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/sd/decision-makers",
           "/api/sd/directives",
           "/api/sd/verdicts",
+          DECISION_RESULTS_PATH,
           "/api/gm/tool-usage",
           LLM_PROVIDERS_PATH);
 
@@ -562,6 +577,9 @@ public final class GuiServer implements AutoCloseable {
               ? redactingQueryService.verdicts(actor, target(params))
               : redactingQueryService.verdicts(target(params));
       return Reply.of(200, Map.of("verdicts", views));
+    }
+    if (path.equals(DECISION_RESULTS_PATH)) {
+      return decisionResultsReply(params);
     }
     if (path.equals(GM_TOOL_USAGE_PATH)) {
       rejectAs(path, asPresent);
@@ -999,6 +1017,89 @@ public final class GuiServer implements AutoCloseable {
     SimulationState state = queryService.stateAt(target);
     DecisionScopeView view = DecisionScopeView.of(scopes.get(), ApiViews.gameMap(state), mapId);
     return Reply.of(200, ApiViews.decisionScope(info.get(), state.meta().ref(), view));
+  }
+
+  /**
+   * 决策结果子页的服务端（第 3 波第 3 步）：{@code GET /api/sd/decision-results}。响应形状 {@code
+   * {results:[{tick,id,tags,value,at{branch,revision}}], count, note?}}——与决策人读工具 {@code
+   * sd.DecisionResults} **逐字同形**（同一份数据、两个入口）。
+   *
+   * <p>★★ **本方法不判归属**：可见性（条目 {@code tags} 含该 {@code as}）由 {@link
+   * RedactingQueryService#decisionResults} 一处承担——本层只解析/校验入参。在 GUI 里再筛一道是那类"两份都自洽、只会漂移" 的写法（{@code
+   * DecisionResultsVisibilityGuardTest} 扫源码钉住这一点）。
+   *
+   * <p>★ **错误口径**：{@code as} 缺失/空白、{@code tick} 与区间同给、{@code limit} 超限或非整数 ⇒ 抛 {@link
+   * IllegalArgumentException}，由 {@link #handle} 折成 400 {@code {"error":…}}（与 {@code
+   * requiredParam}/{@code intParam} 同款）；{@code as} 非空白但解不出决策人 ⇒ 404 {@code {"error":"decision maker
+   * not found","id":…}}（与 {@link #decisionMakerScopeReply}、{@code
+   * /api/sd/directives?decisionMakerId=} 同款）。
+   */
+  private Reply decisionResultsReply(Map<String, String> params) {
+    String rawAs = requiredParam(params, "as");
+    DecisionMakerId actor = new DecisionMakerId(rawAs);
+    QueryTarget target = target(params);
+    // ★ 解不出决策人 ⇒ 与既有决策人面同款 404（**不是**空列表）。fail-closed 方向：绝不让一个不存在的 id 仅因某个
+    //   标签字符串恰好等于它而读到那条结果。
+    if (sdQueryService.decisionMaker(actor, target).isEmpty()) {
+      return Reply.of(404, Map.of("error", "decision maker not found", "id", rawAs));
+    }
+    List<Map<String, Object>> results =
+        redactingQueryService.decisionResults(actor, target, decisionResultWindow(params));
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("results", results);
+    view.put("count", results.size());
+    if (results.isEmpty()) {
+      // ★ **明确可读的"无"**（与决策人读工具同款）：让前端把"确实没有可看的"与"调用坏了"分开。
+      view.put("note", "没有可查看的决策结果（该决策人在这次查询范围里没有命中任何决策结果）");
+    }
+    return Reply.of(200, view);
+  }
+
+  /**
+   * 查询参数 → 可见窗口。★ **边界与决策人读工具同一处口径**：{@code limit} 的缺省/上限引用 {@link DecisionResultsTool}
+   * 的常量（同一个"决策结果一次最多看多少"的概念，不另写一份 20/200），互斥/方向/正数由 {@link
+   * RedactingQueryService.DecisionResultWindow} 的构造期判。
+   */
+  private static RedactingQueryService.DecisionResultWindow decisionResultWindow(
+      Map<String, String> params) {
+    Long tick = optionalLongParam(params, "tick");
+    Long fromTick = optionalLongParam(params, "fromTick");
+    Long toTick = optionalLongParam(params, "toTick");
+    requireNonNegative("tick", tick);
+    requireNonNegative("fromTick", fromTick);
+    requireNonNegative("toTick", toTick);
+    Long limit = optionalLongParam(params, "limit");
+    int bounded;
+    if (limit == null) {
+      bounded = DecisionResultsTool.DEFAULT_LIMIT;
+    } else if (limit > DecisionResultsTool.MAX_LIMIT) {
+      // ★ 超限**明确拒**（不是静默截断——静默会让前端以为拿到了全部）。
+      throw new IllegalArgumentException(
+          "limit 上限为 " + DecisionResultsTool.MAX_LIMIT + ": " + limit);
+    } else {
+      bounded = limit.intValue();
+    }
+    return new RedactingQueryService.DecisionResultWindow(tick, fromTick, toTick, bounded);
+  }
+
+  /** 可选的长整型查询参数；缺省/空白 ⇒ {@code null}，非整数 ⇒ 400（与 {@link #intParam} 同一句模板）。 */
+  private static Long optionalLongParam(Map<String, String> params, String name) {
+    String value = params.get(name);
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
+    }
+  }
+
+  /** 给了就必须 ≥ 0（与决策人读工具的同一口径；缺省不算违规）。 */
+  private static void requireNonNegative(String name, Long value) {
+    if (value != null && value < 0) {
+      throw new IllegalArgumentException("参数 " + name + " 必须 ≥ 0: " + value);
+    }
   }
 
   /**
