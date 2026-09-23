@@ -1,6 +1,7 @@
 package io.mosire.simos.social.gen;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
@@ -313,6 +314,213 @@ class SettlementGeneratorTest {
         .as("★ total 没有被静默调低：Σ city 仍严格等于 urbanTotal")
         .isEqualTo(urbanTotal);
     assertThat(plan.cities().get(0).justification()).as("缺口写进 justification，可读").contains("城市承载缺口");
+  }
+
+  // ── 9c. ★ 首都豁免稀有惩罚：非硬目标国的首都 >= 任何单座非首都城 ──
+
+  @Test
+  void capitalIsExemptFromRarityPenalty() {
+    // 先对两国都算完并打印实际数字（修前"必红"时也要一次看全两国的对比），再断言。
+    Map<String, PlannedCity> capitals = new java.util.LinkedHashMap<>();
+    Map<String, PlannedCity> largestNonCapitals = new java.util.LinkedHashMap<>();
+    Map<String, SettlementPlan> plans = new java.util.LinkedHashMap<>();
+
+    for (String name : List.of(RealNations.OSTERMARK, RealNations.HOCHLAND)) {
+      SettlementRequest request = RealNations.request(name);
+      SettlementPlan plan = SettlementGenerator.generate(request, RealNations.terrainView());
+      String capitalName = request.capital().orElseThrow().name();
+      PlannedCity capital = cityNamed(plan, capitalName);
+      PlannedCity largestNonCapital =
+          plan.cities().stream()
+              .filter(city -> !capitalName.equals(city.name()))
+              .max(Comparator.comparingLong(PlannedCity::population))
+              .orElseThrow(() -> new AssertionError(name + " 没有非首都城可比"));
+      capitals.put(name, capital);
+      largestNonCapitals.put(name, largestNonCapital);
+      plans.put(name, plan);
+      System.out.printf(
+          Locale.ROOT,
+          "CAPITAL_PENALTY %s: capital=%s(%d) largestNonCapital=%s(%d) urbanCapacity=%d shortfall=%d%n",
+          name,
+          capital.name(),
+          capital.population(),
+          largestNonCapital.name(),
+          largestNonCapital.population(),
+          plan.urbanCapacity(),
+          plan.shortfall());
+    }
+
+    for (String name : List.of(RealNations.OSTERMARK, RealNations.HOCHLAND)) {
+      PlannedCity capital = capitals.get(name);
+      PlannedCity largestNonCapital = largestNonCapitals.get(name);
+      // ★ 首都的人口由政治决定（吃 politicalCentralization 的大头），不由市场稀缺性决定 ⇒ 豁免稀有惩罚。
+      // 否则默认阈值 10 万会把非硬目标国的首都压到比普通城还小（修前实测：马尔克堡 7068 < Hochheim 20228）。
+      assertThat(capital.population())
+          .as(
+              "%s：首都 %s(%d) 必须 >= 任何单座非首都城（最大者 %s=%d，urbanCapacity=%d）",
+              name,
+              capital.name(),
+              capital.population(),
+              largestNonCapital.name(),
+              largestNonCapital.population(),
+              plans.get(name).urbanCapacity())
+          .isGreaterThanOrEqualTo(largestNonCapital.population());
+      assertThat(capital.justification()).as("%s：首都依据里须写明豁免", name).contains("首都豁免稀有惩罚");
+    }
+  }
+
+  // ── 9d. ★ 市场半径生效：catchment 不得超过该城 tier 半径内的格数（三国真档）──
+
+  @Test
+  void catchmentNeverExceedsTierRadiusOnRealNations() {
+    for (String name : RealNations.ALL) {
+      SettlementRequest request = RealNations.request(name);
+      SettlementPlan plan = SettlementGenerator.generate(request, RealNations.terrainView());
+
+      for (PlannedCity city : plan.cities()) {
+        int radius = tierRadiusUpper().get(city.tier());
+        long within =
+            request.hexes().stream().filter(hex -> city.at().distanceTo(hex) <= radius).count();
+        assertThat(city.catchmentHexes())
+            .as(
+                "%s：%s(tier=%s) 的腹地 %d 不得超过其半径 %d 内的格数 %d",
+                name, city.name(), city.tier(), city.catchmentHexes(), radius, within)
+            .isLessThanOrEqualTo((int) within);
+      }
+
+      int totalCatchment = plan.cities().stream().mapToInt(PlannedCity::catchmentHexes).sum();
+      // 对照（= 修此缺陷前的行为）：半径无界时归属多少格。有界 <= 无界；差额就是"落在所有城半径之外"的格。
+      SettlementPlan withoutBound =
+          SettlementGenerator.generate(
+              request,
+              RealNations.terrainView(),
+              SettlementParams.defaults().withTierRadiiHex(unboundedTierRadii()));
+      int unboundedCatchment =
+          withoutBound.cities().stream().mapToInt(PlannedCity::catchmentHexes).sum();
+
+      System.out.printf(
+          Locale.ROOT,
+          "CATCHMENT %s: hexes=%d cities=%d boundedCatchment=%d unboundedCatchment=%d outsideRadius=%d urbanCapacity=%d shortfall=%d%n",
+          name,
+          request.hexes().size(),
+          plan.cities().size(),
+          totalCatchment,
+          unboundedCatchment,
+          unboundedCatchment - totalCatchment,
+          plan.urbanCapacity(),
+          plan.shortfall());
+      assertThat(totalCatchment)
+          .as("%s：腹地总量不得超过格数", name)
+          .isLessThanOrEqualTo(request.hexes().size());
+      assertThat(totalCatchment)
+          .as("%s：有界腹地不得超过无界腹地", name)
+          .isLessThanOrEqualTo(unboundedCatchment);
+    }
+  }
+
+  // ── 9e. ★ 超出所有城半径的格不归属任何城 ──
+
+  @Test
+  void hexBeyondEveryRadiusBelongsToNoCity() {
+    Set<HexCoord> cluster = grid(5, 5);
+    HexCoord far = new HexCoord(200, 0); // 距簇里任何一格 > 16（最大半径上界）
+    Set<HexCoord> hexes = new LinkedHashSet<>(cluster);
+    hexes.add(far);
+
+    SyntheticTerrain terrain = new SyntheticTerrain();
+    for (HexCoord c : cluster) {
+      terrain.put(c, "plains");
+    }
+    // 孤格给 desert：承载力 0.02、交通 barren 0.35 ⇒ 分数远低于平原簇，必然不被选为城（否则它自己就是自己的腹地）。
+    terrain.put(far, "desert");
+
+    SettlementRequest request = fixture("半径国", 500_000L, 0.12, hexes);
+    SettlementPlan plan = SettlementGenerator.generate(request, terrain);
+
+    assertThat(plan.cities().stream().anyMatch(city -> city.at().equals(far)))
+        .as("孤格（desert 低分）不该被选为城")
+        .isFalse();
+    assertThat(plan.cities()).as("簇里必有城").isNotEmpty();
+
+    Map<String, Integer> radii = tierRadiusUpper();
+    int withinAnyRadius =
+        (int)
+            hexes.stream()
+                .filter(
+                    hex ->
+                        plan.cities().stream()
+                            .anyMatch(city -> city.at().distanceTo(hex) <= radii.get(city.tier())))
+                .count();
+    int totalCatchment = plan.cities().stream().mapToInt(PlannedCity::catchmentHexes).sum();
+
+    // ★ 这条是核心：归属的格数**恰好**等于"落在某座城半径内"的格数 ⇒ 半径外的格一个都没被计入。
+    assertThat(totalCatchment)
+        .as("腹地总量必须恰好等于落在某座城 tier 半径内的格数（半径外的格不归属任何城）")
+        .isEqualTo(withinAnyRadius);
+    assertThat(withinAnyRadius).as("孤格超出所有城半径 ⇒ 至少有一格不归属").isLessThan(hexes.size());
+    assertThat(far.distanceTo(new HexCoord(8, 8))).as("夹具自证：孤格确实在半径外").isGreaterThan(16);
+
+    // ★ 对照组：把半径放到无界（= 修此缺陷前的行为）⇒ 孤格**会**被归属。这条把"少掉的那一格"钉死是半径造成的，
+    //   而不是别的原因（例如孤格压根没被计数）——否则上面的等式在实现失效时也可能偶然成立。
+    SettlementPlan withoutBound =
+        SettlementGenerator.generate(
+            request, terrain, SettlementParams.defaults().withTierRadiiHex(unboundedTierRadii()));
+    int unboundedCatchment =
+        withoutBound.cities().stream().mapToInt(PlannedCity::catchmentHexes).sum();
+    assertThat(unboundedCatchment).as("对照：半径无界时孤格会被归属 ⇒ 有界时的差额确由半径造成").isEqualTo(hexes.size());
+  }
+
+  // ── 9f. ★ 半径配置缺失 ⇒ 抛（fail-closed，不静默当无界）──
+
+  @Test
+  void missingTierRadiusFailsClosed() {
+    Set<HexCoord> hexes = grid(5, 4);
+    SettlementRequest request =
+        new SettlementRequest(
+            new RegionId("缺半径国"),
+            "缺半径国",
+            100_000L,
+            0.2,
+            1.0,
+            1.1,
+            1.4,
+            FIXTURE_SEED,
+            Optional.of(CapitalAnchor.withoutTarget("Hauptstadt")),
+            hexes,
+            List.of());
+    // 只留 MarketTown：首都被提升为 MajorCity ⇒ 生成器必须因缺 MajorCity 半径而抛。
+    SettlementParams partial =
+        SettlementParams.defaults()
+            .withTierRadiiHex(
+                new SettlementParams.TierRadii(
+                    Map.of(
+                        PlannedCity.TIER_MARKET_TOWN,
+                        new SettlementParams.TierRadii.Radius(1, 2))));
+
+    assertThatThrownBy(() -> SettlementGenerator.generate(request, allPlains(hexes), partial))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("tierRadiiHex")
+        .hasMessageContaining(PlannedCity.TIER_MAJOR_CITY);
+  }
+
+  /** 配置里的半径**上界**（与 v17levant-nations.json 的 tierRadiiHex 一致；测试独立写死，不读被测实现）。 */
+  private static Map<String, Integer> tierRadiusUpper() {
+    return Map.of(
+        PlannedCity.TIER_MARKET_TOWN, 2,
+        PlannedCity.TIER_TOWN, 4,
+        PlannedCity.TIER_CITY, 8,
+        PlannedCity.TIER_MAJOR_CITY, 16);
+  }
+
+  /** 对照组用：四个等级都放到足够大的半径（= 修此缺陷前的"无界"行为）。 */
+  private static SettlementParams.TierRadii unboundedTierRadii() {
+    SettlementParams.TierRadii.Radius huge = new SettlementParams.TierRadii.Radius(1, 1_000_000);
+    return new SettlementParams.TierRadii(
+        Map.of(
+            PlannedCity.TIER_MARKET_TOWN, huge,
+            PlannedCity.TIER_TOWN, huge,
+            PlannedCity.TIER_CITY, huge,
+            PlannedCity.TIER_MAJOR_CITY, huge));
   }
 
   // ── 工具 ──

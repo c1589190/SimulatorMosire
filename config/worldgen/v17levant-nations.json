@@ -83,6 +83,25 @@
     "hexPopulationNote": "social.populations[hex] 只装**农村人口**；城市人口装在城市节点上。该 hex 的『总人口』是派生量（农村 + 落在该格的各城市），不落盘。大城市仍是 1 hex 主城 + 少量附属聚落，不在地图上膨胀。"
   },
 
+  "randomization": {
+    "_note": "★ 这是给 GM 换 seed 造同国变体用的开关，**不是史料**：文档硬值（population 623 万等）仍是 seed 无关的那一组，本块只声明『允许在多大范围内偏离它』。enabled=false ⇒ 完全等于文档值（向后兼容，逐字节同今天）；enabled=true ⇒ 每个标量在 值×(1±jitterPct) 内按 seed 取值（取值由 seed 与字段盐的哈希决定，可复现），再用 clamp 夹住 —— clamp 是硬边界，抖动不得越过。缺 jitterPct 的键视作 0（即不抖）。三国可各自用同名的 randomization 键**整体覆盖**本块（缺省继承）。population 抖动后仍是正整数；urbanizationRate 抖动后必须 ∈ (0,1)。",
+    "enabled": false,
+    "jitterPct": {
+      "population": 0.03,
+      "urbanizationRate": 0.15,
+      "agrarianSurplusRate": 0.10,
+      "commercialIntegration": 0.10,
+      "politicalCentralization": 0.12,
+      "capitalTargetPopulation": 0.10
+    },
+    "clamp": {
+      "urbanizationRate": [0.03, 0.30],
+      "agrarianSurplusRate": [0.50, 1.60],
+      "commercialIntegration": [0.60, 1.80],
+      "politicalCentralization": [0.80, 1.80]
+    }
+  },
+
   "cityNameStyle": {
     "_note": "文档地名稀缺（三国只有 3 个首都 + 零星几处），其余城市名由生成器按下面词表 + 坐标哈希取词生成（可复现）。",
     "germanic": {

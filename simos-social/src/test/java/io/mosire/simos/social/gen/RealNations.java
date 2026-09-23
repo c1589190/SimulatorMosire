@@ -131,13 +131,22 @@ final class RealNations {
   }
 
   private static String read(String relative) {
+    try {
+      return Files.readString(resourcePath(relative), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /** 冻结输入 JSON 的实际路径（生产版加载器 {@code WorldgenConfig.load(Path)} 吃它就够）。 */
+  static Path nationsFile() {
+    return resourcePath(NATIONS);
+  }
+
+  private static Path resourcePath(String relative) {
     for (Path candidate : List.of(Path.of("..", relative), Path.of(relative))) {
       if (Files.isRegularFile(candidate)) {
-        try {
-          return Files.readString(candidate, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-          throw new UncheckedIOException(e);
-        }
+        return candidate;
       }
     }
     throw new IllegalStateException(

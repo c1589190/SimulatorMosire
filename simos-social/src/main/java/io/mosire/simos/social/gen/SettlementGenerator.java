@@ -39,11 +39,14 @@ import java.util.Set;
  *   <li>最小距离抑制：两个市场镇之间 {@code hexDistance >= minMarketTownDistanceHex}，低分让位给高分（贪心、按分数降序）。
  *   <li>腹地竞争：{@code Influence = W / cost^k}，★ {@code cost = hexDistance × moveCost(目标格)}（**不是纯 hex
  *       距离**：沿河 3 格可能比翻山 1 格容易），{@code k = influenceExponent}；★ {@code W = candidateScore ×
- *       politicalMultiplier} —— 首都的政治权重让它的**影响半径**天然更大（否则高等级城只是"分得多"，而抢不到腹地，首都便当不成最大城）。
+ *       politicalMultiplier} —— 首都的政治权重让它的**影响半径**天然更大（否则高等级城只是"分得多"，而抢不到腹地，首都便当不成最大城）。 ★ 归属只在该城
+ *       tier 对应的**市场半径上界**（{@code tierRadiiHex[tier][1]}）内竞争，**超出所有城半径的格不归属任何城** —— 不计入任何 {@code
+ *       catchmentHexes}、不贡献 {@code localSurplus}（半径缺失即抛，fail-closed）。
  *   <li>{@code urbanPopulation = localSurplus × tradeMultiplier ×
  *       politicalMultiplier}；政治乘数由中央度派生，**首都吃大头** （这解释首都为何能远超本地农业承载）。
- *   <li>稀有惩罚（{@code rarityPenalty}，**只跑一轮，不迭代**）后**归一化到 urbanTotal**（最大余数法）；若 {@code Σ 城市承载 <
- *       urbanTotal}，在 {@link SettlementPlan#shortfall()} 显式报出缺口，**绝不静默调低 total**。
+ *   <li>稀有惩罚（{@code rarityPenalty}，**只跑一轮，不迭代**；★ **首都豁免**——首都人口由政治决定，不由市场稀缺性决定）后 **归一化到
+ *       urbanTotal**（最大余数法）；若 {@code Σ 城市承载 < urbanTotal}，在 {@link SettlementPlan#shortfall()}
+ *       显式报出缺口，**绝不静默调低 total**。
  *   <li>出口**断言三条不变量**：{@code Σ rural == ruralTotal}、{@code Σ city.population == urbanTotal}、{@code
  *       ruralTotal + urbanTotal == total}。
  * </ol>
@@ -237,6 +240,12 @@ public final class SettlementGenerator {
     }
 
     // ── 步骤 7：腹地竞争（cost = hexDistance × moveCost(目标格)；W = 候选分 × 政治乘数）──
+    // ★ 腹地**有界**：归属只在该城 tier 对应的市场半径**上界**内竞争；**超出所有城半径的格不归属任何城**
+    //   （不计入任何 catchmentHexes、不贡献 localSurplus）。半径缺失即抛（fail-closed，不静默当无界）。
+    int[] radius = new int[m];
+    for (int k = 0; k < m; k++) {
+      radius[k] = params.tierRadiiHex().maxHex(tier[k]);
+    }
     int[] catchment = new int[m];
     double[] localSurplus = new double[m];
     double exponent = params.influenceExponent();
@@ -250,6 +259,9 @@ public final class SettlementGenerator {
       double bestInfluence = -1.0;
       for (int k = 0; k < m; k++) {
         int distance = hex.distanceTo(hexes.get(chosen.get(k)));
+        if (distance > radius[k]) {
+          continue; // 超出该城的市场半径上界 ⇒ 不参选
+        }
         double influence;
         if (distance == 0) {
           influence = Double.POSITIVE_INFINITY; // 本格只可能属于本格的城（最小距离 2 保证唯一）
@@ -261,6 +273,9 @@ public final class SettlementGenerator {
           bestInfluence = influence;
           best = k;
         }
+      }
+      if (best < 0) {
+        continue; // 半径外：不归属任何城
       }
       catchment[best]++;
       localSurplus[best] += surplus[i];
@@ -275,11 +290,14 @@ public final class SettlementGenerator {
     }
 
     // ── 步骤 9：稀有惩罚（一轮）→ 归一化 ──
+    // ★ 首都**豁免**稀有惩罚：首都的人口由政治决定（吃 politicalCentralization 的大头、靠税赋/贸易/国家网络输送），
+    //   不由市场稀缺性决定。不豁免时默认阈值 10 万会把非硬目标国的首都压到比普通城还小（修前实测：马尔克堡 7068 < Hochheim 20228）。
     double threshold = params.rarityPenalty().threshold();
     double factor = params.rarityPenalty().factor();
     boolean[] penalized = new boolean[m];
     for (int k = 0; k < m; k++) {
-      if (raw[k] > threshold) {
+      boolean isCapital = hasCapital && k == 0;
+      if (!isCapital && raw[k] > threshold) {
         raw[k] *= factor;
         penalized[k] = true;
       }
@@ -369,6 +387,9 @@ public final class SettlementGenerator {
       sb.append("; riverEdges=").append(terrain.riverEdgesAt(hex));
       sb.append("; coastal=").append(terrain.coastal(hex));
       sb.append("; rarityPenalty=").append(penalized[k] ? "applied" : "none");
+      if (hasCapital && k == 0) {
+        sb.append("; ★首都豁免稀有惩罚（人口由政治决定，不由市场稀缺性决定）");
+      }
       if (hasCapital && k == 0) {
         CapitalAnchor anchor = request.capital().get();
         if (anchor.targetPopulation().isPresent()) {

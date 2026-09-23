@@ -15,8 +15,9 @@ import java.util.Map;
  * transportBonuses.riverJunctionEdgesAtHex = 3}、山口阈值 {@code mountainPassMoveCost = 3} / {@code
  * mountainPassNeighborMoveCost = 2}。配置只给了"可通航 = 同格 river 边 ≥ 2"。
  *
- * <p>★ **{@code tierRadiiHex} 没有进来**：冻结输入里有它，但用户给的 10 步算法里**市场半径一次都没用到**（腹地是影响力竞争算出来的，不是按半径
- * 圈地）。把它收进来只会是一个没人读的字段 —— 见交付报告"我没做/没验证的"。
+ * <p>★ **{@code tierRadiiHex} 已进来并生效**（{@link TierRadii}）：腹地归属被限制在该城 tier
+ * 对应的半径**上界**之内，超出所有城半径的格不归属任何城 （见 {@link SettlementGenerator} 步骤 7）。它曾长期是"配置里有、没人读"的字段 ——
+ * 这是修缺陷后重新收进来的。
  *
  * @param surplusRatePerTerrain 地形 → 农业剩余率（键集必须覆盖 {@link TerrainCatalog#KEYS}；{@code ocean} 为 0 ⇒
  *     海洋不分配农村人口）
@@ -30,6 +31,7 @@ import java.util.Map;
  * @param rarityPenalty 稀有惩罚："十万人级城市非常罕见"
  * @param zipfShape Zipf 形状（城市总数上限 + 各等级上限，按国家人口等比缩放）
  * @param tierUpgradeRates 三级抽样升级率（再乘 {@code commercialIntegration × politicalCentralization} 的调制）
+ * @param tierRadiiHex 各等级的市场半径（hex）；腹地归属只用到**上界**
  * @param cityNameStyle 城市名词干/后缀表（哈希取词用）
  */
 public record SettlementParams(
@@ -44,6 +46,7 @@ public record SettlementParams(
     RarityPenalty rarityPenalty,
     ZipfShape zipfShape,
     TierUpgradeRates tierUpgradeRates,
+    TierRadii tierRadiiHex,
     NameStyle cityNameStyle) {
 
   /**
@@ -105,7 +108,12 @@ public record SettlementParams(
     }
   }
 
-  /** 稀有惩罚：初算人口 &gt; {@code threshold} 的城，权重 × {@code factor}，再重算一次（只跑一轮）。 */
+  /**
+   * 稀有惩罚：初算人口 &gt; {@code threshold} 的城，权重 × {@code factor}，再重算一次（只跑一轮）。
+   *
+   * <p>★ **首都豁免**：首都的人口由政治决定（吃 {@code politicalCentralization} 的大头），不由市场稀缺性决定，故永不被惩罚 —— 否则默认 10
+   * 万阈值会把非硬目标国的首都压到比普通城还小。
+   */
   public record RarityPenalty(long threshold, double factor) {
     public RarityPenalty {
       if (threshold < 0) {
@@ -153,6 +161,59 @@ public record SettlementParams(
     }
   }
 
+  /**
+   * 各等级的市场半径（hex）：等级名 → {@code [下界, 上界]}。
+   *
+   * <p>★ **腹地归属只用上界**：一座城的腹地是该城半径上界内的格里、影响力竞争赢下的那批（见 {@link SettlementGenerator} 步骤
+   * 7）。下界只作配置语义保留（"这座城至少影响多远"），本笔不参与计算。
+   *
+   * <p>★ **缺失即抛**：{@link #maxHex(String)} 对**配置里没有的等级**抛 {@link IllegalArgumentException} ——
+   * 腹地绝不在"没有半径"时静默当无界（那是修此缺陷前的行为）。
+   */
+  public record TierRadii(Map<String, Radius> byTier) {
+
+    /** 单个等级的半径区间（hex）；{@code 1 <= minHex <= maxHex}。 */
+    public record Radius(int minHex, int maxHex) {
+      public Radius {
+        if (minHex < 1 || maxHex < minHex) {
+          throw new IllegalArgumentException(
+              "半径必须满足 1 <= minHex <= maxHex: " + minHex + "/" + maxHex);
+        }
+      }
+    }
+
+    public TierRadii {
+      if (byTier == null) {
+        throw new IllegalArgumentException("byTier 不得为 null");
+      }
+      Map<String, Radius> copy = new LinkedHashMap<>();
+      for (Map.Entry<String, Radius> entry : byTier.entrySet()) {
+        if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+          throw new IllegalArgumentException("tierRadiiHex 的等级名与半径都不得为 null/空白");
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+      byTier = Collections.unmodifiableMap(copy);
+    }
+
+    /** 该等级的市场半径**上界**；★ 缺该等级即抛（fail-closed，不静默当无界）。 */
+    public int maxHex(String tier) {
+      Radius radius = byTier.get(tier);
+      if (radius == null) {
+        throw new IllegalArgumentException(
+            "tierRadiiHex 缺少等级 " + tier + "（fail-closed：不静默当无界）。已有 " + byTier.keySet());
+      }
+      return radius.maxHex();
+    }
+
+    /** 换某等级的半径（其余不动）；用例拿它造"某等级缺失"的参数验 fail-closed。 */
+    public TierRadii withRadius(String tier, Radius radius) {
+      Map<String, Radius> copy = new LinkedHashMap<>(byTier);
+      copy.put(tier, radius);
+      return new TierRadii(copy);
+    }
+  }
+
   /** 城市名词表（哈希取词：词干 + 后缀）。 */
   public record NameStyle(List<String> stems, List<String> suffixes) {
     public NameStyle {
@@ -176,6 +237,9 @@ public record SettlementParams(
     }
     if (rarityPenalty == null || zipfShape == null || tierUpgradeRates == null) {
       throw new IllegalArgumentException("rarityPenalty/zipfShape/tierUpgradeRates 不得为 null");
+    }
+    if (tierRadiiHex == null) {
+      throw new IllegalArgumentException("tierRadiiHex 不得为 null");
     }
     if (cityNameStyle == null) {
       throw new IllegalArgumentException("cityNameStyle 不得为 null");
@@ -236,6 +300,12 @@ public record SettlementParams(
         new RarityPenalty(100_000L, 0.1),
         new ZipfShape(5_000_000L, 163L, 1L, 3L, 8L),
         new TierUpgradeRates(0.22, 0.12, 0.15),
+        new TierRadii(
+            Map.of(
+                PlannedCity.TIER_MARKET_TOWN, new TierRadii.Radius(1, 2),
+                PlannedCity.TIER_TOWN, new TierRadii.Radius(2, 4),
+                PlannedCity.TIER_CITY, new TierRadii.Radius(4, 8),
+                PlannedCity.TIER_MAJOR_CITY, new TierRadii.Radius(8, 16))),
         new NameStyle(
             List.of(
                 "Ald", "Bern", "Dank", "Eber", "Falk", "Gern", "Hag", "Ilm", "Kron", "Laut", "Mark",
@@ -261,6 +331,25 @@ public record SettlementParams(
         value,
         zipfShape,
         tierUpgradeRates,
+        tierRadiiHex,
+        cityNameStyle);
+  }
+
+  /** 换市场半径表（其余不动）；用例拿它造"某等级缺失"的参数验腹地的 fail-closed。 */
+  public SettlementParams withTierRadiiHex(TierRadii value) {
+    return new SettlementParams(
+        surplusRatePerTerrain,
+        river,
+        coastalMultiplier,
+        noiseAmplitude,
+        candidateWeights,
+        transportBonuses,
+        minMarketTownDistanceHex,
+        influenceExponent,
+        rarityPenalty,
+        zipfShape,
+        tierUpgradeRates,
+        value,
         cityNameStyle);
   }
 
