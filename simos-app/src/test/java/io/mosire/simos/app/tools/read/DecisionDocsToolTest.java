@@ -53,8 +53,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ **Docs 系统的真实验收面**：{@code sd.DecisionDocs}——决策人**只看到发给自己的**设定文档，可见性 = **显式指派
- * （{@code tags}）∪ 归属自动（{@code affiliations}）**（用户 2026-09-23 裁定）。
+ * ★★ **Docs 系统的真实验收面**：{@code sd.DecisionDocs}——决策人**只看到发给自己的**设定文档，可见性 = **显式指派 （{@code tags}）∪
+ * 归属自动（{@code affiliations}）**（用户 2026-09-23 裁定）。
  *
  * <p>★ **判别力来自"两条轴各一条、且有一个跨归属的共享文档"**：
  *
@@ -69,8 +69,8 @@ import org.junit.jupiter.api.io.TempDir;
  * 于是：{@code dm-a}（alpha）看到前两条、看不到后两条；{@code dm-c}（同为 alpha）**只**看到 {@code shared-brief}（证明归属轴
  * 真的在起作用，而不是"都能看到"）；{@code dm-b}（beta）只看到 {@code beta-brief}（证明归属轴是**按归属**、不是全局放行）。
  *
- * <p>★ **无主（两轴都空）不是"大家都能看"**：{@code secret} 对三个人都不可见（fail-closed），且用例先断言它**确实在 INFO 层里**
- * （{@code allInfoIds()}）再断言它不出现——否则"过滤器坏了"与"夹具里根本没有"分不开。
+ * <p>★ **无主（两轴都空）不是"大家都能看"**：{@code secret} 对三个人都不可见（fail-closed），且用例先断言它**确实在 INFO 层里** （{@code
+ * allInfoIds()}）再断言它不出现——否则"过滤器坏了"与"夹具里根本没有"分不开。
  *
  * <p>★ **全程走 {@link DecisionCallerFactory} 的唯一入口**（真身份 + 真权限组 + 资源前置闸），不手工拼 {@code ToolContext}。
  */
@@ -127,9 +127,7 @@ class DecisionDocsToolTest {
     assertThat(docIds(body))
         .as("★ dm-a 看到：显式指派给自己的 + 按归属（alpha）自动可见的；序 = tick 降序")
         .containsExactly("shared-brief", "alpha-brief");
-    assertThat(docIds(body))
-        .as("★ 别的国家的归属文档与空归属文档都不出现")
-        .doesNotContain("beta-brief", "secret");
+    assertThat(docIds(body)).as("★ 别的国家的归属文档与空归属文档都不出现").doesNotContain("beta-brief", "secret");
   }
 
   // ── 判据二：归属轴是**按归属**、不是全局放行；也不是"什么都看不到"──────────────
@@ -148,9 +146,7 @@ class DecisionDocsToolTest {
 
   @Test
   void aDocWithNeitherTagNorAffiliationIsInvisibleToEveryone() throws Exception {
-    assertThat(allInfoIds())
-        .as("前提：无主文档确实在 INFO 层里（否则下面的『看不到』是假象）")
-        .contains(idOf(ADDR_SECRET, 0));
+    assertThat(allInfoIds()).as("前提：无主文档确实在 INFO 层里（否则下面的『看不到』是假象）").contains(idOf(ADDR_SECRET, 0));
 
     for (DecisionMakerId dm : List.of(DM_A, DM_B, DM_C)) {
       assertThat(docIds(body(call(dm, Map.of()))))
@@ -291,7 +287,8 @@ class DecisionDocsToolTest {
   private static SimulationState genesis() {
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     nations.put(
-        new NationId("alpha"), new Nation(new NationId("alpha"), "国家 alpha", new RegionId("r1"), 0));
+        new NationId("alpha"),
+        new Nation(new NationId("alpha"), "国家 alpha", new RegionId("r1"), 0));
     nations.put(
         new NationId("beta"), new Nation(new NationId("beta"), "国家 beta", new RegionId("r1"), 0));
 
@@ -324,18 +321,12 @@ class DecisionDocsToolTest {
                 "{\"title\":\"Beta 简报\",\"body\":\"beta 全体可见\"}")));
     info.put(
         ADDR_SECRET,
-        List.of(doc(ADDR_SECRET, 0, 6, Set.of(), Set.of(), "{\"title\":\"无主\",\"body\":\"谁都不给看\"}")));
+        List.of(
+            doc(ADDR_SECRET, 0, 6, Set.of(), Set.of(), "{\"title\":\"无主\",\"body\":\"谁都不给看\"}")));
     // ★ 非文档条目：同一条 INFO 层里、同一个归属轴上属于 dm-a，但它**不是**文档地址。
     info.put(
         ADJUDICATION_ADDR,
-        List.of(
-            doc(
-                ADJUDICATION_ADDR,
-                0,
-                7,
-                Set.of(DM_A),
-                Set.of(),
-                "{\"tick\":7,\"steps\":[]}")));
+        List.of(doc(ADJUDICATION_ADDR, 0, 7, Set.of(DM_A), Set.of(), "{\"tick\":7,\"steps\":[]}")));
 
     SdState sd = SdState.empty().withNations(nations).withDecisionMakers(makers).withInfo(info);
     return ScopeFixtures.state(

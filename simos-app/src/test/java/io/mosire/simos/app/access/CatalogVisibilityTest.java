@@ -31,13 +31,13 @@ import org.junit.jupiter.api.Test;
  * ★★ **catalog 按调用者过滤（用户 2026-09-23 裁定）**：{@code simos.command.catalog} 对**管辖者**列全量、对**决策人**只列它
  * 有途径触发的类型。
  *
- * <p>★ **判别力来自"同一份注册面、两个调用者"**：本用例只喂一份**合成注册面**（都是真 {@code PAYLOAD_HINTS} 里有的类型），
- * 分别用 GM 权限组与**真**决策人权限组（走 {@link DecisionCallerFactory}）执行同一个 {@link CatalogTool}。
+ * <p>★ **判别力来自"同一份注册面、两个调用者"**：本用例只喂一份**合成注册面**（都是真 {@code PAYLOAD_HINTS} 里有的类型）， 分别用 GM
+ * 权限组与**真**决策人权限组（走 {@link DecisionCallerFactory}）执行同一个 {@link CatalogTool}。
  * "都能看到"或"都看不到"的实现在这里当场红。
  *
- * <p>★ **`sd.PutInfo` / `sd.CreateDecisionMaker` / `sd.StartDecision` / `sd.SetDecisionMakerAccess` 必须对决策人消失**
- * ——那正是用户要修的现象（旧行为下决策人照着目录去试，每一试都白烧一轮真 LLM 调用）。而 {@code map.CreateRegion} /
- * {@code unit.*} **必须留着**：它们在**令里可以嵌**（{@code DirectiveWhitelist} 的判据），只按"能不能直接调"过滤会**过窄**。
+ * <p>★ **`sd.PutInfo` / `sd.CreateDecisionMaker` / `sd.StartDecision` / `sd.SetDecisionMakerAccess`
+ * 必须对决策人消失** ——那正是用户要修的现象（旧行为下决策人照着目录去试，每一试都白烧一轮真 LLM 调用）。而 {@code map.CreateRegion} / {@code
+ * unit.*} **必须留着**：它们在**令里可以嵌**（{@code DirectiveWhitelist} 的判据），只按"能不能直接调"过滤会**过窄**。
  *
  * <p>★ **判据只读权限、不读身份**（{@link CatalogVisibility} 的类注）：本用例用"换身份不换权限"两个方向把它钉死——
  * 身份字符串会随装配漂移，权限面才是判定本身。
@@ -92,7 +92,10 @@ class CatalogVisibilityTest {
     assertThat(typesOf(body))
         .as("★ 这四条是用户要修的现象：决策人**执行不了**它们，就不该在目录里看见")
         .doesNotContain(
-            "sd.PutInfo", "sd.CreateDecisionMaker", "sd.StartDecision", "sd.SetDecisionMakerAccess");
+            "sd.PutInfo",
+            "sd.CreateDecisionMaker",
+            "sd.StartDecision",
+            "sd.SetDecisionMakerAccess");
     Set<String> hintKeys = new LinkedHashSet<>();
     body.get("payloadHints").fieldNames().forEachRemaining(hintKeys::add);
     assertThat(hintKeys)

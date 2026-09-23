@@ -328,10 +328,10 @@ public final class RedactingQueryService {
    *         <li>{@code entry.tags()} **含该 actor 自己**（显式指派，一份文档可指派给多人）；
    *         <li>{@code entry.affiliations()} **含该 actor 的归属**（同 nation/army 的决策人自动可见，不必逐个指派）。
    *       </ul>
-   *       ★ **两支都不命中 ⇒ 不可见**（fail-closed）。actor 在自己的 id 在世界里**解不出**（被删 / 身份与状态不同源）⇒
-   *       **只走 tags**（**不**把"不知道你是谁"读成"按归属放行"）；
-   *   <li>**窗口**：{@code tick} / {@code [fromTick, toTick]} 闭区间（与 {@link #decisionResults} 同一份 {@link
-   *       DecisionResultWindow} 口径）。
+   *       ★ **两支都不命中 ⇒ 不可见**（fail-closed）。actor 在自己的 id 在世界里**解不出**（被删 / 身份与状态不同源）⇒ **只走
+   *       tags**（**不**把"不知道你是谁"读成"按归属放行"）；
+   *   <li>**窗口**：{@code tick} / {@code [fromTick, toTick]} 闭区间（与 {@link #decisionResults} 同一份
+   *       {@link DecisionResultWindow} 口径）。
    * </ol>
    *
    * <p>★★ **判据为什么住在这里**：与 {@link #decisionResults} 同源的理由——INFO 条目的地址（{@code sd:doc.<docId>}）
@@ -341,9 +341,9 @@ public final class RedactingQueryService {
    *
    * <p>★ **排序 = tick 降序、同 tick 按 id 升序**（与 {@link #decisionResults} 同口径，**先排后截**）。
    *
-   * @return 每条 {@code {docId, id, tick, tags(升序), affiliations(按 kind:id 升序), key, value(原样的 Object),
-   *     note?, at{branch, revision}}}；{@code value} **不解析/不改写**（契约是裸 {@code Object}；文档正文的 JSON 结构由
-   *     工具/GUI 各自按 {@link DecisionDoc} 的口径解读）。空结果返回空列表，不抛。
+   * @return 每条 {@code {docId, id, tick, tags(升序), affiliations(按 kind:id 升序), key, value(原样的
+   *     Object), note?, at{branch, revision}}}；{@code value} **不解析/不改写**（契约是裸 {@code Object}；文档正文的
+   *     JSON 结构由 工具/GUI 各自按 {@link DecisionDoc} 的口径解读）。空结果返回空列表，不抛。
    */
   public List<Map<String, Object>> docs(
       DecisionMakerId actor, QueryTarget target, DecisionResultWindow window) {
@@ -384,16 +384,16 @@ public final class RedactingQueryService {
   /**
    * **tags 归属判据的唯一实现**：这条 INFO 是不是**显式指派给**该调用者的。
    *
-   * <p>★ 抽成一个方法**不是**为了复用省字，而是为了让"判据恰一份"成为**结构性事实**（{@code
-   * DecisionResultsVisibilityGuardTest} 用源码扫描钉住该判据形态全仓恰一处）：决策结果与文档**共用**这一支（那一端只是多了"归属"这第二支，见
-   * {@link #visible}），两支不会各自演化。
+   * <p>★ 抽成一个方法**不是**为了复用省字，而是为了让"判据恰一份"成为**结构性事实**（{@code DecisionResultsVisibilityGuardTest}
+   * 用源码扫描钉住该判据形态全仓恰一处）：决策结果与文档**共用**这一支（那一端只是多了"归属"这第二支，见 {@link #visible}），两支不会各自演化。
    */
   private static boolean taggedFor(SdInfoEntry entry, DecisionMakerId actor) {
     return entry.tags().contains(actor);
   }
 
   /** 两轴并集判可见（{@code affiliations} 那一支在解不出 actor 的归属时**不参与**，见 {@link #docs} 的类注）。 */
-  private static boolean visible(SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation) {
+  private static boolean visible(
+      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation) {
     if (taggedFor(entry, actor)) {
       return true;
     }

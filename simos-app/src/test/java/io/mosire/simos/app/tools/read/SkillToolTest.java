@@ -86,8 +86,7 @@ class SkillToolTest {
           store.resolve("a-first.md"),
           "---\n{\"id\":\"a-first\",\"title\":\"第一篇\",\"version\":2}\n---\n# 第一篇\n\n第一篇的正文\n",
           StandardCharsets.UTF_8);
-      Files.writeString(
-          store.resolve("b-second.md"), "# 第二篇\n\n第二篇的正文\n", StandardCharsets.UTF_8);
+      Files.writeString(store.resolve("b-second.md"), "# 第二篇\n\n第二篇的正文\n", StandardCharsets.UTF_8);
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }

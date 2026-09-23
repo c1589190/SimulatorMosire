@@ -19,8 +19,8 @@ import java.util.Set;
  * simos.command.submit} 到达。工具面不另立一份"支持的类型"表。
  *
  * <p>★★ **按调用者可见性过滤（用户 2026-09-23 裁定）**：清单不再对所有人一样——**GM / MCP 口看到全量**，**决策人只看到自己
- * 有途径触发的类型**（能直接调的窄工具 ∪ 令里可嵌的领域命令）。理由：旧行为下决策人看得见 {@code sd.PutInfo} /
- * {@code sd.AdjudicateTick} / {@code sd.CreateDecisionMaker} 这些**它执行不了**的类型，于是"照着目录去试"每一试都白烧一轮真 LLM
+ * 有途径触发的类型**（能直接调的窄工具 ∪ 令里可嵌的领域命令）。理由：旧行为下决策人看得见 {@code sd.PutInfo} / {@code sd.AdjudicateTick} /
+ * {@code sd.CreateDecisionMaker} 这些**它执行不了**的类型，于是"照着目录去试"每一试都白烧一轮真 LLM
  * 调用——目录在回答"系统允许你干什么"时**必须与真权限面同源**。判据本体在 {@link CatalogVisibility}（一份实现，可单测）。
  *
  * <p>★ **构造期的覆盖断言不受过滤影响**：{@link #PAYLOAD_HINTS} 仍要求覆盖**全部已注册** type（缺项即抛）——那是"声明式清单不随注册面自动

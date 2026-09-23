@@ -23,12 +23,11 @@ import java.util.Optional;
  * <p>★ **两级读法（省 token）**：不给 {@code id} ⇒ 只回**目录**（id/标题/版本）；给了 {@code id} ⇒ 回那**一篇**的正文。
  * 一次把整库正文塞进上下文是最贵的做法，而模型通常只需要其中一两篇。
  *
- * <p>★ **两桶共享**：决策人读它是本职；GM 读它是为了**写出与之一致的文档**（Docs 系统）——同一份知识，两个入口（与
- * {@code CatalogTool} 同款）。
+ * <p>★ **两桶共享**：决策人读它是本职；GM 读它是为了**写出与之一致的文档**（Docs 系统）——同一份知识，两个入口（与 {@code CatalogTool} 同款）。
  *
- * <p>★ **不在世界 revision 内**（用户裁定："存在外部方便读取、写入、修改，兼容其他外部 Agent"）：改文件**不用重启**即生效
- * （按 mtime 热更），任何外部 agent 直接用文本工具就能改。代价是**没有世界版本锚** ⇒ 本工具把
- * {@code version}/{@code source}/{@code modifiedAt} 一并返回，供审计对齐（见 {@link SkillLibrary} 的类注）。
+ * <p>★ **不在世界 revision 内**（用户裁定："存在外部方便读取、写入、修改，兼容其他外部 Agent"）：改文件**不用重启**即生效 （按 mtime 热更），任何外部
+ * agent 直接用文本工具就能改。代价是**没有世界版本锚** ⇒ 本工具把 {@code version}/{@code source}/{@code modifiedAt}
+ * 一并返回，供审计对齐（见 {@link SkillLibrary} 的类注）。
  *
  * <p>★ **它没有资源声明**（{@code ResourceManifest.NONE}，与 {@code CatalogTool} 同款）：技能不在世界里，没有"哪块资源能不能碰"
  * 这一维；它的可见性就是"能调到这个工具"。
@@ -76,12 +75,7 @@ public final class SkillTool implements AgentTool {
       if (skill.isEmpty()) {
         // ★ 明确可读的"没有这一篇"（并把目录一并给出，模型下一次调用就不用猜）——不是静默空。
         return ToolResult.error(
-            "NOT_FOUND",
-            "没有这个技能："
-                + id
-                + "（用不带 id 的调用看目录。当前有："
-                + idsOf(library.list())
-                + "）");
+            "NOT_FOUND", "没有这个技能：" + id + "（用不带 id 的调用看目录。当前有：" + idsOf(library.list()) + "）");
       }
       Map<String, Object> view = new LinkedHashMap<>();
       Skill found = skill.get();

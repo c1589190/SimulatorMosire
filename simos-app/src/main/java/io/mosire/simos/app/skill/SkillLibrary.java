@@ -22,20 +22,20 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * ★★ **Skill 库**：决策人 Agent 的**外部知识**（用户 2026-09-23 原话：「Skill 系统就是决策人应该怎么做决策的系统……
- * 要有 Skill 指导决策人 Agent 的政治经济军事常识和决策人系统允许其干什么」）。
+ * ★★ **Skill 库**：决策人 Agent 的**外部知识**（用户 2026-09-23 原话：「Skill 系统就是决策人应该怎么做决策的系统…… 要有 Skill 指导决策人
+ * Agent 的政治经济军事常识和决策人系统允许其干什么」）。
  *
- * <p>★★ **为什么是外部文件、不是 classpath 资源、也不是世界数据**（用户裁定：「最好搞成存在外部方便读取、写入、修改，还要兼容其他
- * 外部 Agent 方便进行 GM Agent 的通用修改」）：
+ * <p>★★ **为什么是外部文件、不是 classpath 资源、也不是世界数据**（用户裁定：「最好搞成存在外部方便读取、写入、修改，还要兼容其他 外部 Agent 方便进行 GM Agent
+ * 的通用修改」）：
  *
  * <ul>
  *   <li>**外部文件** ⇒ 任何外部 agent 用文本工具就能读/写/改，不必经过本仓的工具面；
- *   <li>**不在 revision 内** ⇒ 与 {@code conversations.db}、{@code agentlib/} 同族（它们是"运行环境"不是"世界事实"）。
- *       ★ 诚实边界：改 skill 会改变模型行为，但**不留下世界版本锚**（回放一段 AAR 时对不上"当时读的是哪一版"）；
- *       {@link #find} 返回的 {@code version}/{@code modifiedMillis} 就是给审计用的那一份锚；
- *   <li>**两处来源**：仓库种子 {@code config/skills/}（随仓库版本化） + store 覆盖
- *       {@code <storeDir>/skills/}。★ 同 id **store 版优先**（照 {@code AgentLibLlmConfig} 的「仓库默认 + store 覆盖」）。
- *       理由：dev 常跑临时 store，只靠 store 会"重启即失忆"；种子让默认知识可提交、可评审。
+ *   <li>**不在 revision 内** ⇒ 与 {@code conversations.db}、{@code agentlib/} 同族（它们是"运行环境"不是"世界事实"）。 ★
+ *       诚实边界：改 skill 会改变模型行为，但**不留下世界版本锚**（回放一段 AAR 时对不上"当时读的是哪一版"）； {@link #find} 返回的 {@code
+ *       version}/{@code modifiedMillis} 就是给审计用的那一份锚；
+ *   <li>**两处来源**：仓库种子 {@code config/skills/}（随仓库版本化） + store 覆盖 {@code <storeDir>/skills/}。★ 同 id
+ *       **store 版优先**（照 {@code AgentLibLlmConfig} 的「仓库默认 + store 覆盖」）。 理由：dev 常跑临时 store，只靠 store
+ *       会"重启即失忆"；种子让默认知识可提交、可评审。
  * </ul>
  *
  * <p>★ **文件格式**（Markdown + 可选的一段单行 JSON 头）：
@@ -47,11 +47,11 @@ import org.apache.logging.log4j.Logger;
  * # 正文……
  * }</pre>
  *
- * 头**可省**：省了就用文件名当 id、用正文里第一个 {@code #} 标题当 title、version 记 1。头**给了但坏了**（JSON 不合法 /
- * 围栏不闭合）⇒ 那一条**不生效**（保留上一版并记日志），绝不让"写坏一个文件"变成"整个世界打不开"。
+ * 头**可省**：省了就用文件名当 id、用正文里第一个 {@code #} 标题当 title、version 记 1。头**给了但坏了**（JSON 不合法 / 围栏不闭合）⇒
+ * 那一条**不生效**（保留上一版并记日志），绝不让"写坏一个文件"变成"整个世界打不开"。
  *
- * <p>★ **热更新**：读的时候按文件 {@code mtime} 判要不要重读 ⇒ **改文件不用重启**。★ 并发写无锁（后写覆盖前写、可能读到半写文件）⇒
- * 解析失败时**保留上一版 + 记日志**，不崩、不静默改语义。
+ * <p>★ **热更新**：读的时候按文件 {@code mtime} 判要不要重读 ⇒ **改文件不用重启**。★ 并发写无锁（后写覆盖前写、可能读到半写文件）⇒ 解析失败时**保留上一版 +
+ * 记日志**，不崩、不静默改语义。
  */
 public final class SkillLibrary {
 
@@ -76,6 +76,7 @@ public final class SkillLibrary {
 
   private final Path seedDir;
   private final Path storeDir;
+
   /** mtime 缓存：按**绝对路径**记（同一个 id 的两个来源互不干扰）；解析失败时这里留的是**上一版**。 */
   private final Map<Path, Cached> cache = new LinkedHashMap<>();
 
@@ -91,8 +92,8 @@ public final class SkillLibrary {
   }
 
   /**
-   * 两个来源可注入。★ **公开**是给测试与嵌入式用的（生产走 {@link #open(Path)}）：用例要能把两个目录都指向临时目录，
-   * 否则它会读到**仓库里真实的** {@code config/skills}（CWD 相对）——那让用例依赖"跑测试时的工作目录"，是最脆的一种夹具。
+   * 两个来源可注入。★ **公开**是给测试与嵌入式用的（生产走 {@link #open(Path)}）：用例要能把两个目录都指向临时目录， 否则它会读到**仓库里真实的** {@code
+   * config/skills}（CWD 相对）——那让用例依赖"跑测试时的工作目录"，是最脆的一种夹具。
    */
   public static SkillLibrary open(Path seedDir, Path storeDir) {
     return new SkillLibrary(seedDir, storeDir);
@@ -146,7 +147,13 @@ public final class SkillLibrary {
     List<LocatedFile> out = new ArrayList<>();
     try (Stream<Path> files = Files.list(dir)) {
       for (Path file : files.sorted().toList()) {
-        String name = file.getFileName().toString();
+        // ★ `getFileName()` 对**根路径**返回 null（SpotBugs 实测抓到的一条真缺陷）⇒ 先判空再取名字。
+        //   目录里的条目本该都有文件名，但"本该"不是"一定"：拿不到名字就跳过这一条，不让它把整次列举炸掉。
+        Path namePath = file.getFileName();
+        if (namePath == null) {
+          continue;
+        }
+        String name = namePath.toString();
         if (Files.isRegularFile(file) && name.endsWith(EXTENSION)) {
           out.add(new LocatedFile(file, name.substring(0, name.length() - EXTENSION.length())));
         }
@@ -161,9 +168,7 @@ public final class SkillLibrary {
   /** 一条候选文件：绝对路径 + 文件名派生的兜底 id。 */
   private record LocatedFile(Path path, String fileId) {}
 
-  /**
-   * 读一条技能（带 mtime 缓存与"坏文件保留上一版"）：返回 null = 这条**从来没能读成功过**（没进目录）。
-   */
+  /** 读一条技能（带 mtime 缓存与"坏文件保留上一版"）：返回 null = 这条**从来没能读成功过**（没进目录）。 */
   private Skill load(LocatedFile file) {
     Path path = file.path().toAbsolutePath();
     long mtime;

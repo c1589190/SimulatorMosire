@@ -24,24 +24,24 @@ import java.util.Map;
  * <p>★ **用户的诉求**：「Docs 系统则是限定范围到单个决策人的文档信息查看系统……为具体的决策人补全用于做决策的具体设定」。
  *
  * <p>★★ **可见性 = 喂给 {@link RedactingQueryService#docs}**（不是本类自己筛）：判据是「条目 {@code tags} 含调用者自己 **或**
- * 条目 {@code affiliations} 含调用者的归属」（用户裁定：「显式指派 + 归属自动，取并集」）。规则**只此一处**——GUI 的文档子页复用
- * 同一个方法（照 {@code sd.DecisionResults} 与决策结果子页的关系）。
+ * 条目 {@code affiliations} 含调用者的归属」（用户裁定：「显式指派 + 归属自动，取并集」）。规则**只此一处**——GUI 的文档子页复用 同一个方法（照 {@code
+ * sd.DecisionResults} 与决策结果子页的关系）。
  *
- * <p>★ **调用者身份取自宿主已知的东西**（{@code context.identity()}）——**不由载荷自报**（载荷是模型写的，让它自报等于让它自己发文档给自己）。
- * 解不出决策人 ⇒ 明确失败，不给数据。
+ * <p>★ **调用者身份取自宿主已知的东西**（{@code context.identity()}）——**不由载荷自报**（载荷是模型写的，让它自报等于让它自己发文档给自己）。 解不出决策人
+ * ⇒ 明确失败，不给数据。
  *
  * <p>★ **取不到与不可见返回同一个回答**：{@code docId} 命中不了时**不区分**"不存在"与"存在但你无权看"——否则读出的是
  * **存在性**（一个不该漏的信息）。两种情况都回"没有可查看的文档"。
  *
- * <p>★ **资源声明 = sd 只读**（与 {@link DecisionResultsTool} 同口径）：文档条目的地址（{@code sd:doc.<docId>}）不在任何决策人的可达面，
- * 拉资源断言会把全部文档判成不可见；归属由上面那条判据承担。{@code READ_ONLY} 的失效方向是 fail-closed。
+ * <p>★ **资源声明 = sd 只读**（与 {@link DecisionResultsTool} 同口径）：文档条目的地址（{@code
+ * sd:doc.<docId>}）不在任何决策人的可达面， 拉资源断言会把全部文档判成不可见；归属由上面那条判据承担。{@code READ_ONLY} 的失效方向是 fail-closed。
  *
  * <p>★ **只在决策人桶**（{@code Role.DECISION_AGENT}）：GM 侧有 GUI 的文档子页（可按任意决策人的视角预览实际可见集合）。本工具与 {@link
  * DecisionCallerFactory#WHITELIST} **两处同步**（否则 {@code DecisionToolDefs.requireAll} 当场炸）。
  *
- * <p>★ **正文约定**（{@link DecisionDoc} 的类注）：{@code value} 是**原样的 {@code Object}**——本工具**不解析**它（与 {@code
- * sd.DecisionResults} 同口径：{@code SdInfoEntry.value} 的契约是裸 {@code Object}）。按约定它是 JSON 文本，形如 {@code
- * {"title":…,"body":…,"subject":{…},"effectiveTick":…,"author":…}}；读的一方自行解读，工具不假装能解析任意值。
+ * <p>★ **正文约定**（{@link DecisionDoc} 的类注）：{@code value} 是**原样的 {@code Object}**——本工具**不解析**它（与
+ * {@code sd.DecisionResults} 同口径：{@code SdInfoEntry.value} 的契约是裸 {@code Object}）。按约定它是 JSON 文本，形如
+ * {@code {"title":…,"body":…,"subject":{…},"effectiveTick":…,"author":…}}；读的一方自行解读，工具不假装能解析任意值。
  */
 public final class DecisionDocsTool implements AgentTool {
 

@@ -224,16 +224,15 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_RESULTS_PATH = "/api/sd/decision-results";
 
   /**
-   * 决策文档只读面（Docs 系统，2026-09-23）：{@code GET /api/sd/decision-docs[?as=<dmId>]}（＋可选 {@code docId}，＋ {@code
-   * tick} 或 {@code fromTick}/{@code toTick}，＋ {@code limit}）。
+   * 决策文档只读面（Docs 系统，2026-09-23）：{@code GET /api/sd/decision-docs[?as=<dmId>]}（＋可选 {@code docId}，＋
+   * {@code tick} 或 {@code fromTick}/{@code toTick}，＋ {@code limit}）。
    *
-   * <p>★★ **本端点就是"以某个决策人的视角预览它实际能看到哪些文档"**（用户对 Docs 的原始表述是「限定范围到单个决策人的文档信息查看
-   * 系统」）：它**直接调** {@link RedactingQueryService#docs}——可见性判据（条目 {@code tags} 含该决策人 **或** {@code
-   * affiliations} 含其归属）**不许在 GUI 里重写**（两份都不会报错、只会漂移；结构性护栏见 {@code
-   * DecisionResultsVisibilityGuardTest} 的第二条扫描）。本层只做**入参校验**。
+   * <p>★★ **本端点就是"以某个决策人的视角预览它实际能看到哪些文档"**（用户对 Docs 的原始表述是「限定范围到单个决策人的文档信息查看 系统」）：它**直接调** {@link
+   * RedactingQueryService#docs}——可见性判据（条目 {@code tags} 含该决策人 **或** {@code affiliations} 含其归属）**不许在
+   * GUI 里重写**（两份都不会报错、只会漂移；结构性护栏见 {@code DecisionResultsVisibilityGuardTest} 的第二条扫描）。本层只做**入参校验**。
    *
-   * <p>★ **{@code as=} 必填**（与 decision-results 同款）：文档只有"以某决策人视角读"这一种语义——**没有 GM 全量口径**。
-   * 解不出决策人 ⇒ 404。★ 这也正是 GM 校对自己写的文档有没有发对的方法：换个 {@code as} 再看一遍。
+   * <p>★ **{@code as=} 必填**（与 decision-results 同款）：文档只有"以某决策人视角读"这一种语义——**没有 GM 全量口径**。 解不出决策人 ⇒
+   * 404。★ 这也正是 GM 校对自己写的文档有没有发对的方法：换个 {@code as} 再看一遍。
    */
   private static final String DECISION_DOCS_PATH = "/api/sd/decision-docs";
 
@@ -1076,17 +1075,17 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * 文档子页的服务端（Docs，2026-09-23）：{@code GET /api/sd/decision-docs}。响应形状 {@code
-   * {docs:[{docId,id,tick,tags,affiliations,key,value,note?,at{branch,revision}}], count, note?}}——与决策人读工具 {@code
-   * sd.DecisionDocs} **逐字同形**（同一份数据、两个入口）。
+   * {docs:[{docId,id,tick,tags,affiliations,key,value,note?,at{branch,revision}}], count,
+   * note?}}——与决策人读工具 {@code sd.DecisionDocs} **逐字同形**（同一份数据、两个入口）。
    *
    * <p>★★ **本方法不判归属**：可见性（{@code tags} 含该 {@code as} **或** {@code affiliations} 含其归属）由 {@link
    * RedactingQueryService#docs} 一处承担——本层只解析/校验入参。在 GUI 里再筛一道是那类"两份都自洽、只会漂移"的写法。
    *
-   * <p>★ **{@code docId} 给定时精确取那一篇（{@code limit} 不参与）**：否则"第 21 篇"会以"查无此文档"的形式出现（分不清"没有"
-   * 与"没取到"）。★ **取不到与不可见返回同一个回答**（不区分"不存在"与"无权看"——否则漏的是**存在性**）。
+   * <p>★ **{@code docId} 给定时精确取那一篇（{@code limit} 不参与）**：否则"第 21 篇"会以"查无此文档"的形式出现（分不清"没有" 与"没取到"）。★
+   * **取不到与不可见返回同一个回答**（不区分"不存在"与"无权看"——否则漏的是**存在性**）。
    *
-   * <p>★ **错误口径**同 {@link #decisionResultsReply}：{@code as} 缺失/空白、{@code tick} 与区间同给、{@code limit} 超限 ⇒
-   * 400；{@code as} 解不出决策人 ⇒ 404。
+   * <p>★ **错误口径**同 {@link #decisionResultsReply}：{@code as} 缺失/空白、{@code tick} 与区间同给、{@code limit}
+   * 超限 ⇒ 400；{@code as} 解不出决策人 ⇒ 404。
    */
   private Reply decisionDocsReply(Map<String, String> params) {
     String rawAs = requiredParam(params, "as");
@@ -1123,8 +1122,8 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * 查询参数 → 可见窗口（Docs）。★ 与 {@link #decisionResultWindow} 同一处口径、同一组常量（{@link
-   * DecisionResultsTool#DEFAULT_LIMIT} / {@link DecisionResultsTool#MAX_LIMIT}）；★ {@code exactDocId} 时取上限，
-   * 因为按 id 精确定位不能被 {@code limit} 截断。
+   * DecisionResultsTool#DEFAULT_LIMIT} / {@link DecisionResultsTool#MAX_LIMIT}）；★ {@code
+   * exactDocId} 时取上限， 因为按 id 精确定位不能被 {@code limit} 截断。
    */
   private static RedactingQueryService.DecisionResultWindow decisionDocWindow(
       Map<String, String> params, boolean exactDocId) {

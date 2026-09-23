@@ -41,8 +41,7 @@ class SkillLibraryTest {
 
   @Test
   void withoutAHeaderTheFileNameAndFirstHeadingAreUsed() {
-    Skill skill =
-        SkillLibrary.parse("plain", Path.of("plain.md"), "# 我的一级标题\n\n正文\n", 1L);
+    Skill skill = SkillLibrary.parse("plain", Path.of("plain.md"), "# 我的一级标题\n\n正文\n", 1L);
 
     assertThat(skill.id()).isEqualTo("plain");
     assertThat(skill.title()).isEqualTo("我的一级标题");
@@ -89,8 +88,7 @@ class SkillLibraryTest {
 
   @Test
   void aMissingDirectoryYieldsAnEmptyLibraryRatherThanAFailure() {
-    SkillLibrary library =
-        SkillLibrary.open(tempDir.resolve("nope"), tempDir.resolve("also-nope"));
+    SkillLibrary library = SkillLibrary.open(tempDir.resolve("nope"), tempDir.resolve("also-nope"));
 
     assertThat(library.list()).isEmpty();
     assertThat(library.find("anything")).isEmpty();

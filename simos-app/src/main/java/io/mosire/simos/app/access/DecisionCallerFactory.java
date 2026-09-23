@@ -69,8 +69,7 @@ public final class DecisionCallerFactory {
    * CatalogTool} 的权限过滤）是同一件事的两半：catalog 说"你能干什么"，docs 说"这一局里你该怎么做"。
    *
    * <p>★ 第 12 条是 Skill 系统的 {@link SkillTool}（**方法论与常识**，2026-09-23）——它**两桶共享**（GM 也要读同一份口径去写 Docs），
-   * 读的是外部 Markdown 库（改文件即生效，不在世界 revision 内）。三件套到此齐了：skill 说"怎么做"，docs 说"这一局的情况"，
-   * catalog 说"你能调什么"。
+   * 读的是外部 Markdown 库（改文件即生效，不在世界 revision 内）。三件套到此齐了：skill 说"怎么做"，docs 说"这一局的情况"， catalog 说"你能调什么"。
    *
    * <p>★ **一条写工具都没有**（除两条决策行为外）：用户 2026-09-22「决策人不能直接改地图等数据，只能获取有限的、被 GM 权限层限制范围的信息」——旧 D-1
    * 裁定给决策人挂的 unit 域 20 条窄写**已撤销**。指挥走 {@code sd.IssueDirective}。

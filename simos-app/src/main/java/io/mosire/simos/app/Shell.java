@@ -216,11 +216,11 @@ public final class Shell implements AutoCloseable {
   private final Set<String> commandTypes;
 
   /**
-   * Skill 库（2026-09-23）：决策人的**外部方法论与常识**（仓库种子 {@code config/skills} + store 覆盖
-   * {@code <storeDir>/skills}）。
+   * Skill 库（2026-09-23）：决策人的**外部方法论与常识**（仓库种子 {@code config/skills} + store 覆盖 {@code
+   * <storeDir>/skills}）。
    *
-   * <p>★ **由 {@code storeDir} 现推、不进装配参数**：它不在世界 revision 内（与 {@code conversations.db}、
-   * {@code agentlib/} 同族），没有"该配给哪个世界"这一维；多一个装配参数只会多一处可能传错的地方。
+   * <p>★ **由 {@code storeDir} 现推、不进装配参数**：它不在世界 revision 内（与 {@code conversations.db}、 {@code
+   * agentlib/} 同族），没有"该配给哪个世界"这一维；多一个装配参数只会多一处可能传错的地方。
    */
   private final SkillLibrary skillLibrary;
 

@@ -87,9 +87,7 @@ class SdDecisionDocsApiTest {
           .as("★ %s 看不到无主文档（两个轴都不命中 ⇒ fail-closed）", actor)
           .doesNotContain("secret");
     }
-    assertThat(infoIds())
-        .as("前提：无主文档确实在 INFO 层里（否则上面的『看不到』是假象）")
-        .contains("sd:doc.secret#0");
+    assertThat(infoIds()).as("前提：无主文档确实在 INFO 层里（否则上面的『看不到』是假象）").contains("sd:doc.secret#0");
   }
 
   // ── 判据二：docId 精确取一篇；"不存在"与"无权看"返回同一个回答 ─────────────────────
@@ -106,9 +104,7 @@ class SdDecisionDocsApiTest {
 
     String invisible = getJson(docs("dm-a") + "&docId=beta-brief").toString();
     String unknown = getJson(docs("dm-a") + "&docId=no-such-doc").toString();
-    assertThat(invisible)
-        .as("★ 两者响应逐字相同：否则读出的是『这篇文档存在』（一个不该漏的信息）")
-        .isEqualTo(unknown);
+    assertThat(invisible).as("★ 两者响应逐字相同：否则读出的是『这篇文档存在』（一个不该漏的信息）").isEqualTo(unknown);
   }
 
   // ── 判据三：错误口径 ───────────────────────────────────────────────────────────
@@ -145,7 +141,8 @@ class SdDecisionDocsApiTest {
     assertThat(body.get("docs")).as("docs 是数组").isNotNull();
     assertThat(body.get("count").asInt()).isEqualTo(body.get("docs").size());
     JsonNode row = body.get("docs").get(0);
-    for (String key : List.of("docId", "id", "tick", "tags", "affiliations", "key", "value", "at")) {
+    for (String key :
+        List.of("docId", "id", "tick", "tags", "affiliations", "key", "value", "at")) {
       assertThat(row.has(key)).as("前端契约字段 %s 必须在", key).isTrue();
     }
     assertThat(row.get("at").get("branch").asText()).isEqualTo("main");
@@ -206,8 +203,7 @@ class SdDecisionDocsApiTest {
 
   /** 真世界（genesis）里的区域 id（升序，可复现）。 */
   private List<String> regionIds() {
-    SimulationState genesis =
-        shell.coreSimos().replay(new StateRef(main(), new RevisionId(1)));
+    SimulationState genesis = shell.coreSimos().replay(new StateRef(main(), new RevisionId(1)));
     GameMap map = ((MapSnapshot) genesis.module("map").orElseThrow()).map();
     List<String> out = new ArrayList<>();
     for (RegionId id : map.regions().keySet()) {
