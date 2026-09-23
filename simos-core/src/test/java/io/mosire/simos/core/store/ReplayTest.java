@@ -141,7 +141,7 @@ class ReplayTest {
 
     // ── (main,1) 创世：变更集为空（世界由创世 checkpoint 承载，没有"更早的状态"可施加）──
     map = GameMap.empty();
-    social = new SocialData(Map.of());
+    social = new SocialData(Map.of(), Map.of());
     unit = UnitState.empty();
     mapMeta = meta(ref("main", 1), 1);
     socialMeta = meta(ref("main", 1), 1);
@@ -161,7 +161,7 @@ class ReplayTest {
 
     // ── (main,3)：social 加一个聚落 ──
     SocialData socialBefore = social;
-    social = new SocialData(Map.of(H11, population()));
+    social = new SocialData(Map.of(H11, population()), Map.of());
     socialMeta = meta(ref("main", 3), 3);
     append(
         ref("main", 3),
@@ -192,7 +192,7 @@ class ReplayTest {
 
     // ── (main,6)：social 再加一个聚落 ⇒ 它成了分岔点（C19 第②项：必有 checkpoint）──
     socialBefore = social;
-    social = new SocialData(Map.of(H11, population(), H22, population()));
+    social = new SocialData(Map.of(H11, population(), H22, population()), Map.of());
     socialMeta = meta(ref("main", 6), 6);
     append(
         ref("main", 6),
@@ -357,7 +357,8 @@ class ReplayTest {
         mapOf(
             Map.of(H11, plains(), H22, hills(), H33, plains(), H44, plains()),
             Map.of(H11, "plains", H22, "hills", H33, "plains", H44, "plains"));
-    social = new SocialData(Map.of(H11, population(), H22, population(), H44, population()));
+    social =
+        new SocialData(Map.of(H11, population(), H22, population(), H44, population()), Map.of());
     append(
         ref("main", 7),
         Optional.of(ref("main", 6)),

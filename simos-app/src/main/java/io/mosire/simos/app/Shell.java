@@ -80,6 +80,9 @@ import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
+import io.mosire.simos.social.spi.CreateCityHandler;
+import io.mosire.simos.social.spi.SetPopulationHandler;
+import io.mosire.simos.social.spi.UpdateCityHandler;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.facet.UnitsHereFacet;
 import io.mosire.simos.unit.move.TerrainMovementCost;
@@ -369,6 +372,10 @@ public final class Shell implements AutoCloseable {
                 new CreateCommandChainHandler(),
                 new UpdateCommandChainHandler(),
                 new ApplyCasualtiesHandler(),
+                // ── social（3 条）：逐格农村人口 + 城市节点。非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
+                new SetPopulationHandler(),
+                new CreateCityHandler(),
+                new UpdateCityHandler(),
                 new CreateNationHandler(),
                 new CreateArmyHandler(),
                 new CreateDecisionMakerHandler(),

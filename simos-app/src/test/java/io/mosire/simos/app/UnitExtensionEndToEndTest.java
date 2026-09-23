@@ -294,7 +294,7 @@ class UnitExtensionEndToEndTest {
                     U2, genesisUnit(U2, "第二连", H12, Optional.empty()),
                     U3, genesisUnit(U3, "第三连", H11, Optional.of(U2)),
                     U4, genesisUnit(U4, "第四连", H13, Optional.of(U3)))));
-    SocialData social = new SocialData(new LinkedHashMap<>());
+    SocialData social = new SocialData(new LinkedHashMap<>(), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

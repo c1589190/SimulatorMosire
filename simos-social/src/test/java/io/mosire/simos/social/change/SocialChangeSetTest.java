@@ -3,8 +3,10 @@ package io.mosire.simos.social.change;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.time.Segment;
@@ -13,9 +15,10 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** 人口变更集：与 {@code MapChangeSet} 同形（同键覆盖、新增、删除、又增又删 = Patch、空集）。 */
+/** 社会变更集（人口 + 城市）：与 {@code MapChangeSet} 同形（同键覆盖、新增、删除、又增又删 = Patch、空集）。 */
 class SocialChangeSetTest {
 
   private static final HexCoord H00 = new HexCoord(0, 0);
@@ -30,7 +33,69 @@ class SocialChangeSetTest {
   }
 
   private static SocialData data(Map<HexCoord, PopulationSeries> populations) {
-    return new SocialData(populations);
+    return new SocialData(populations, Map.of());
+  }
+
+  private static SocialData data(
+      Map<HexCoord, PopulationSeries> populations, Map<CityId, SocialCity> cities) {
+    return new SocialData(populations, cities);
+  }
+
+  private static SocialCity city(String id, String name, long population) {
+    return new SocialCity(new CityId(id), name, H00, Optional.empty(), population, Map.of());
+  }
+
+  // ── cities 组件：增 / 改 / 删三种都往返（铁律 5 的逐组件形态）─────────────────────────────
+
+  @Test
+  void cityAddChangeAndRemoveAllRoundTrip() {
+    CityId c1 = new CityId("c1");
+
+    SocialData withC1 = data(Map.of(), Map.of(c1, city("c1", "城甲", 100L)));
+    SocialData changed = data(Map.of(), Map.of(c1, city("c1", "城甲", 200L)));
+
+    // 增
+    SocialChangeSet add = SocialChangeSet.between(SocialData.empty(), withC1);
+    assertThat(add.cities()).isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(add.isEmpty()).isFalse();
+    assertThat(SocialChangeSet.apply(add, SocialData.empty())).isEqualTo(withC1);
+
+    // 改（同 key 不同值）
+    SocialChangeSet modify = SocialChangeSet.between(withC1, changed);
+    assertThat(modify.cities()).isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(modify.isEmpty()).isFalse();
+    assertThat(SocialChangeSet.apply(modify, withC1)).isEqualTo(changed);
+
+    // 删
+    SocialChangeSet remove = SocialChangeSet.between(withC1, SocialData.empty());
+    assertThat(remove.cities()).isInstanceOf(FieldDelta.Remove.class);
+    assertThat(SocialChangeSet.apply(remove, withC1)).isEqualTo(SocialData.empty());
+  }
+
+  /** 两个组件同时变 ⇒ 各自独立成差异，且合起来往返到 target。 */
+  @Test
+  void bothComponentsCanChangeAtOnce() {
+    SocialData base = data(Map.of(H00, population(100)), Map.of());
+    SocialData target =
+        data(Map.of(H10, population(200)), Map.of(new CityId("c1"), city("c1", "城甲", 50L)));
+
+    SocialChangeSet cs = SocialChangeSet.between(base, target);
+    assertThat(cs.isEmpty()).isFalse();
+    assertThat(cs.populations().changed()).isTrue();
+    assertThat(cs.cities().changed()).isTrue();
+    assertThat(SocialChangeSet.apply(cs, base)).isEqualTo(target);
+  }
+
+  /** 只改城市 ⇒ populations 组件保持 Unchanged（否则"只改一座城"会被误当成人口也动了）。 */
+  @Test
+  void onlyCitiesChangedLeavesPopulationsUnchanged() {
+    SocialData base = data(Map.of(H00, population(100)), Map.of());
+    SocialData target = base.withCities(Map.of(new CityId("c1"), city("c1", "城甲", 50L)));
+
+    SocialChangeSet cs = SocialChangeSet.between(base, target);
+    assertThat(cs.populations()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.cities()).isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(SocialChangeSet.apply(cs, base)).isEqualTo(target);
   }
 
   @Test

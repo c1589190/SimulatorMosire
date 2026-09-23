@@ -176,7 +176,8 @@ class StateValueEqualityTest {
             new PopulationSeries(
                 new Segment<>(T0, 10000L),
                 new SegmentedSeries<>(List.of(new Segment<>(T0, 0.02)), List.of(), null),
-                List.of())));
+                List.of())),
+        Map.of());
   }
 
   /** 单格、单地形（{@code plains}）的图：hexes 与 terrainBlocks 原子构造（P1 分割不变式）。 */

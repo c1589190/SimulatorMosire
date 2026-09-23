@@ -336,7 +336,8 @@ class ShellApprovalTest {
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
-    SocialData social = new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())));
+    SocialData social =
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

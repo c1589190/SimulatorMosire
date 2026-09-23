@@ -188,7 +188,8 @@ class MapHexEdgesApiTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, new UnitState(new LinkedHashMap<>())),
                 "social",
-                    new SocialSnapshot(ref("main", 1), T7, new SocialData(new LinkedHashMap<>())),
+                    new SocialSnapshot(
+                        ref("main", 1), T7, new SocialData(new LinkedHashMap<>(), Map.of())),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)

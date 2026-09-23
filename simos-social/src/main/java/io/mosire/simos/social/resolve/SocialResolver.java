@@ -1,5 +1,6 @@
 package io.mosire.simos.social.resolve;
 
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -18,17 +19,18 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code social:} 命名空间的地址解析器（M3 spec §3.5）。认三类地址：
+ * {@code social:} 命名空间的地址解析器（M3 spec §3.5）。认四类地址：
  *
  * <ul>
  *   <li>{@code social:<mapId>} —— 该地图的社会切片根主体（第 2 段是根主体 {@code Entity(∅,·)}）
  *   <li>{@code social:<mapId>:hex.<q>_<r>} —— 该格的人口序列；无记录 ⇒ 空候选
  *   <li>{@code social:<mapId>:[q,r]} —— 上一条的 Human 形式（Index 段恰 2 元），canonical 一律输出 {@code hex.q_r}
+ *   <li>{@code social:<mapId>:city.<id>} —— 该城市节点（类型名 {@code "SocialCity"}）；无记录 ⇒ 空候选
  * </ul>
  *
  * <p>**空候选与抛的分工**（与 {@code MapResolver} 同款）：合法但本模块不服务（其它 kind、属性段、段数 &gt; 3、
- * 没有记录的格）一律空候选；**抛只有两处**——装配故障（state 里没有 social 切片 / 切片类型不对）与认领了的 kind 里**名字解析失败**（{@link
- * HexCoord#parse} 抛它自己的 IAE，不包不吞）。
+ * 没有记录的格/城市）一律空候选；**抛只有两处**——装配故障（state 里没有 social 切片 / 切片类型不对）与认领了的 kind 里**名字解析失败**（{@link
+ * HexCoord#parse} / {@link CityId#parse} 抛它自己的 IAE，不包不吞）。
  *
  * <p>★ **canonical 只能由 {@link Address} AST 构造后调 {@code canonical()} 产出**：M1 §3.4 的按需加引规则
  * 不在本类重实现。{@code mapId} **只回显、不校验**（{@code GameMap} 没有 id 字段，M2 遗留挂起项）。
@@ -75,8 +77,20 @@ public final class SocialResolver implements Resolver {
     }
     return switch (entity.kind().get()) {
       case "hex" -> resolveHex(data, mapId, HexCoord.parse(entity.name())); // 名字非法抛它自己的 IAE
-      default -> empty(); // city.c1 等合法地址，M3 不服务
+      case "city" -> resolveCity(data, mapId, entity.name()); // 名字非法由 CityId.parse 抛
+      default -> empty(); // 其它 kind 的合法地址，本模块不服务
     };
+  }
+
+  private static QueryResult resolveCity(SocialData data, String mapId, String name) {
+    CityId id = CityId.parse(name); // 名字非法抛它自己的 IAE，不包不吞
+    if (!data.cities().containsKey(id)) {
+      return empty(); // 合法但不存在的城：空候选，不是错误
+    }
+    return single(
+        new SubjectId("social.city", id.value()),
+        entityAddress(mapId, "city", id.value()),
+        "SocialCity");
   }
 
   private static QueryResult resolveHex(SocialData data, String mapId, HexCoord hex) {

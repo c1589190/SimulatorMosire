@@ -2,9 +2,11 @@ package io.mosire.simos.social.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -16,6 +18,7 @@ import java.lang.reflect.RecordComponent;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -53,8 +56,8 @@ class SocialRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyOneComponent() {
-    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(1);
+  void changeSetHasExactlyTwoComponents() {
+    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(2);
     assertThat(componentNames(SocialChangeSet.class))
         .as("变更集的每个组件都必须在 SocialData 里有同名的 record 组件")
         .isSubsetOf(componentNames(SocialData.class));
@@ -76,6 +79,7 @@ class SocialRoundTripTest {
   private static SocialData mutate(SocialData base, String name) {
     return switch (name) {
       case "populations" -> base.withPopulations(onePopulation());
+      case "cities" -> base.withCities(oneCity());
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -83,6 +87,7 @@ class SocialRoundTripTest {
   private static boolean changedOf(SocialChangeSet cs, String name) {
     return switch (name) {
       case "populations" -> cs.populations().changed();
+      case "cities" -> cs.cities().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -103,5 +108,10 @@ class SocialRoundTripTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(SimosTimestamp.of(0), 0.02)), List.of(), null),
             List.of()));
+  }
+
+  private static Map<CityId, SocialCity> oneCity() {
+    CityId id = new CityId("c1");
+    return Map.of(id, new SocialCity(id, "城甲", H00, Optional.empty(), 5000L, Map.of()));
   }
 }

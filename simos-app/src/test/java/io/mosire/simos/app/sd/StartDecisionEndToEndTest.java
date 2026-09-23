@@ -361,7 +361,8 @@ class StartDecisionEndToEndTest {
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
-    SocialData social = new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())));
+    SocialData social =
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
     SdState sd =
         new SdState(
             Map.of(),

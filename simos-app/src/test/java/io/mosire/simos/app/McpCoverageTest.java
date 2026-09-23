@@ -102,8 +102,9 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 46 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
-   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46）。
+   * catalog 预期的 49 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
+   * 起 46 → 49）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -152,7 +153,10 @@ class McpCoverageTest {
           "sd.SetDecisionMakerProvider",
           "sd.ResetDecisionMakerConversation",
           "sd.RunDecision",
-          "sd.SetDirectiveStatus");
+          "sd.SetDirectiveStatus",
+          "social.SetPopulation",
+          "social.CreateCity",
+          "social.UpdateCity");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -277,6 +281,16 @@ class McpCoverageTest {
     //   （d-cov 此刻已存在、状态 ISSUED）⇒ 不移动前面各命令的 revision 号。它是裁决内部编排用的命令类型。
     MINIMAL_PAYLOADS.put(
         "sd.SetDirectiveStatus", "{\"directiveId\":\"d-cov\",\"status\":\"EXECUTED\"}");
+    // social（3 条）：逐格农村人口 + 城市节点。放最后 ⇒ 不移动前面各命令的 revision 号；
+    //   三条都必须产生**非空**变更集（SetPopulation 设一格人口、CreateCity 建城、UpdateCity 改它）。
+    MINIMAL_PAYLOADS.put(
+        "social.SetPopulation", "{\"entries\":[{\"q\":1,\"r\":1,\"population\":1000}]}");
+    MINIMAL_PAYLOADS.put(
+        "social.CreateCity",
+        "{\"id\":\"city-cov\",\"name\":\"覆盖城\",\"at\":{\"q\":1,\"r\":1},\"population\":500}");
+    MINIMAL_PAYLOADS.put(
+        "social.UpdateCity",
+        "{\"id\":\"city-cov\",\"name\":\"覆盖城改\",\"population\":600,\"props\":{\"tier\":1}}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -328,7 +342,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 46 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 49 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -359,8 +373,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("46 条命令各推一格")
-        .isEqualTo(47L);
+        .as("49 条命令各推一格")
+        .isEqualTo(50L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -545,7 +559,8 @@ class McpCoverageTest {
                     U3, genesisUnit(U3, "第三连", H11),
                     U4, genesisUnit(U4, "第四连", H11),
                     U5, genesisUnit(U5, "第五连", H12))));
-    SocialData social = new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())));
+    SocialData social =
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

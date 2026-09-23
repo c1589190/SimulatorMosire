@@ -139,7 +139,7 @@ class PopulationFacetTest {
   }
 
   private static ResolveContext ctx(PopulationSeries series, SimosTimestamp at) {
-    SocialData data = new SocialData(new LinkedHashMap<>(Map.of(H11, series)));
+    SocialData data = new SocialData(new LinkedHashMap<>(Map.of(H11, series)), Map.of());
     SimulationState state =
         new SimulationState(
             new StateMeta(REF, at),

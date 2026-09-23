@@ -318,7 +318,8 @@ class RedactionApiTest {
                 "map", new MapSnapshot(ref("main", 1), T7, map()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, unitState()),
                 "social",
-                    new SocialSnapshot(ref("main", 1), T7, new SocialData(new LinkedHashMap<>())),
+                    new SocialSnapshot(
+                        ref("main", 1), T7, new SocialData(new LinkedHashMap<>(), Map.of())),
                 "sd", new SdSnapshot(ref("main", 1), T7, sdState())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)

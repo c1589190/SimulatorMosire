@@ -3,9 +3,11 @@ package io.mosire.simos.social.resolve;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -21,6 +23,7 @@ import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -52,7 +55,16 @@ class SocialResolverTest {
 
   private static ResolveContext goodCtx() {
     return ctx(
-        "social", new SocialSnapshot(REF, TS, new SocialData(Map.of(H00, population(18036)))));
+        "social",
+        new SocialSnapshot(REF, TS, new SocialData(Map.of(H00, population(18036)), Map.of())));
+  }
+
+  /** 一片人口 + 一座城（{@code c1}）的切片。 */
+  private static ResolveContext ctxWithCity() {
+    CityId id = new CityId("c1");
+    SocialCity city = new SocialCity(id, "城甲", H00, Optional.empty(), 5000L, Map.of());
+    SocialData data = new SocialData(Map.of(H00, population(18036)), Map.of(id, city));
+    return ctx("social", new SocialSnapshot(REF, TS, data));
   }
 
   @Test
@@ -79,6 +91,26 @@ class SocialResolverTest {
     var result = resolver.resolve(Address.parse("social:Map1:[0,0]"), goodCtx());
     assertThat(result.candidates()).as("Human 进、canonical 出").hasSize(1);
     assertThat(result.candidates().get(0).canonicalAddress()).isEqualTo("social:Map1:hex.0_0");
+  }
+
+  @Test
+  void cityWithARecordResolves() {
+    var result = resolver.resolve(Address.parse("social:Map1:city.c1"), ctxWithCity());
+    assertThat(result.candidates()).hasSize(1);
+    assertThat(result.candidates().get(0).id().namespace()).isEqualTo("social.city");
+    assertThat(result.candidates().get(0).id().localId()).isEqualTo("c1");
+    assertThat(result.candidates().get(0).typeName()).isEqualTo("SocialCity");
+    assertThat(result.candidates().get(0).canonicalAddress()).isEqualTo("social:Map1:city.c1");
+  }
+
+  /** 合法但**不存在**的城 ⇒ 空候选，不是错误（与 hex 分支同口径）。 */
+  @Test
+  void absentCityIsAnEmptyCandidateNotAnError() {
+    assertThat(resolver.resolve(Address.parse("social:Map1:city.c404"), ctxWithCity()).candidates())
+        .isEmpty();
+    assertThat(resolver.resolve(Address.parse("social:Map1:city.c1"), goodCtx()).candidates())
+        .as("切片里没有城市表项时同样空候选")
+        .isEmpty();
   }
 
   // ── R12：空候选（合法但本模块不服务 / 不存在） ──────────────────────

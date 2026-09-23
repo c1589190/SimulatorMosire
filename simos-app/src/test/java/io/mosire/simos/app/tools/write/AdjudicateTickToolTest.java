@@ -41,8 +41,8 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.AccessLimit;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
@@ -469,12 +469,12 @@ class AdjudicateTickToolTest {
   // ── 判据八：同一个 tick 的第二次裁决落**第二条记录**（改判）；"至多一条生效"由状态承担 ──────────────
 
   /**
-   * ★★ **改判语义（2026-09-23 用户裁定「只有生效裁决和作废裁决」）**：旧口径是"一个 tick 一条"的幂等闸（id 写死
-   * {@code #0}，同 tick 再裁就撞 id 被拒）。那条闸被**有意撤掉**了——它让"作废之后重裁"根本不可能（作废把 {@code #0}
-   * 翻成 VOIDED 留在原地，重裁再写 {@code #0} 必撞）。新的模型是：一个 tick 可以留**多条**记录，**至多一条生效**。
+   * ★★ **改判语义（2026-09-23 用户裁定「只有生效裁决和作废裁决」）**：旧口径是"一个 tick 一条"的幂等闸（id 写死 {@code #0}，同 tick 再裁就撞 id
+   * 被拒）。那条闸被**有意撤掉**了——它让"作废之后重裁"根本不可能（作废把 {@code #0} 翻成 VOIDED 留在原地，重裁再写 {@code #0} 必撞）。新的模型是：一个
+   * tick 可以留**多条**记录，**至多一条生效**。
    *
-   * <p>★ 本条钉两件事：① 第二次裁决**成功**、落 {@code #1}、条目状态 {@code EFFECTIVE}；② 第一条**还在**（留痕）。
-   * ★ 判别力：把 id 改回写死 {@code #0} ⇒ 第二次撞 id 被拒 ⇒ 本条红。
+   * <p>★ 本条钉两件事：① 第二次裁决**成功**、落 {@code #1}、条目状态 {@code EFFECTIVE}；② 第一条**还在**（留痕）。 ★ 判别力：把 id 改回写死
+   * {@code #0} ⇒ 第二次撞 id 被拒 ⇒ 本条红。
    */
   @Test
   void adjudicatingTheSameTickTwiceLandsASecondRecordRatherThanBeingBlockedById() throws Exception {
@@ -529,9 +529,9 @@ class AdjudicateTickToolTest {
             "unit.UpdateCommandChain",
             "map.SetEdge",
             "map.RegisterPathwayGroup");
-    assertThat(tool.allowedCommandTypes()).as("白名单 = unit 20 + map 7").hasSize(27);
+    assertThat(tool.allowedCommandTypes()).as("白名单 = unit 20 + map 7 + social 3").hasSize(30);
 
-    // ② 其余 23 条：逐条给真载荷、钉死输出路径。
+    // ② 其余 26 条：逐条给真载荷、钉死输出路径。
     Map<String, List<String>> samples = new LinkedHashMap<>();
     samples.put("unit.RenameUnit", List.of("{\"id\":\"u-1\",\"name\":\"x\"}", "u-1"));
     samples.put(
@@ -588,6 +588,15 @@ class AdjudicateTickToolTest {
             "{\"regionId\":\"701\",\"hexes\":[{\"q\":1,\"r\":1}]}",
             MAP_ID + "/region/701",
             MAP_ID + "/hex/1_1"));
+    // social 三条：逐格人口与城市节点都按 social 命名空间的 {@code <q>_<r>} 形态给目标；
+    //   UpdateCity 的载荷不含坐标 ⇒ 目标声明为**空**（fail-closed，见 UpdateCityHandler 类注）。
+    samples.put(
+        "social.SetPopulation",
+        List.of("{\"entries\":[{\"q\":1,\"r\":1,\"population\":1}]}", "1_1"));
+    samples.put(
+        "social.CreateCity",
+        List.of("{\"id\":\"c1\",\"name\":\"n\",\"at\":{\"q\":1,\"r\":2},\"population\":1}", "1_2"));
+    samples.put("social.UpdateCity", List.of("{\"id\":\"c1\",\"name\":\"x\"}"));
 
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
@@ -597,7 +606,7 @@ class AdjudicateTickToolTest {
           .as("%s 的目标路径", type)
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
-    assertThat(samples.keySet()).as("23 条有目标的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑）").hasSize(23);
+    assertThat(samples.keySet()).as("26 条有目标声明的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑）").hasSize(26);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());
@@ -777,8 +786,8 @@ class AdjudicateTickToolTest {
   // ── 判据十：作废一次裁决 = 一条 revision 的原子撤销（2026-09-23，用户裁定 (b)+B）────────────────
 
   /**
-   * ★★ **作废的完整语义**（用户 2026-09-23：「只有生效裁决和作废裁决」，且作废要**回滚世界**）：一次作废 = **一条**
-   * revision —— 世界回到裁决之前、被它翻过的令退回待裁决、那条记录**不删**只换成 VOIDED。
+   * ★★ **作废的完整语义**（用户 2026-09-23：「只有生效裁决和作废裁决」，且作废要**回滚世界**）：一次作废 = **一条** revision ——
+   * 世界回到裁决之前、被它翻过的令退回待裁决、那条记录**不删**只换成 VOIDED。
    *
    * <p>★ 判别力：把 restore 换成"只改状态不回滚"⇒ ② 红；把记录删掉而不是翻状态 ⇒ ④ 红；把令留在 EXECUTED ⇒ ③ 红。
    */
@@ -803,7 +812,8 @@ class AdjudicateTickToolTest {
     assertThat(sd.directives().get(new DirectiveId("d-army")).status())
         .as("③ 被它翻过的令退回待裁决（于是可以改判/重裁）")
         .isEqualTo(DirectiveStatus.ISSUED);
-    List<SdInfoEntry> entries = sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK);
+    List<SdInfoEntry> entries =
+        sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK);
     assertThat(entries).as("④ 那条记录**不删**（留痕：「第 1 版被作废」本身要看得到）").hasSize(1);
     assertThat(entries.get(0).adjudicationStatus()).contains(AdjudicationStatus.VOIDED);
     assertThat(SdInfoEntry.isEffective(entries.get(0))).as("⑤ 作废之后该 tick 没有生效裁决").isFalse();
@@ -1030,7 +1040,8 @@ class AdjudicateTickToolTest {
                     U3, genesisUnit(U3, "第三连", H21))));
     SocialData social =
         new SocialData(
-            new LinkedHashMap<>(Map.of(H12, populationSeries(), H13, populationSeries())));
+            new LinkedHashMap<>(Map.of(H12, populationSeries(), H13, populationSeries())),
+            Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

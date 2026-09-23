@@ -408,7 +408,10 @@ class SimosToolsTest {
           "sd.StartDecision",
           "sd.RunDecision",
           "sd.SetDecisionMakerProvider",
-          "sd.SetDirectiveStatus");
+          "sd.SetDirectiveStatus",
+          "social.SetPopulation",
+          "social.CreateCity",
+          "social.UpdateCity");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -591,9 +594,9 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 46 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
-   * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进 {@code
-   * Shell}，或注册了一条没有实现的 type，这里都会红**。
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 49 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/social/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进
+   * {@code Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
    * <p>★ 扫描范围是 surefire 工作目录（模块根 {@code simos-app/}）⇒ 相对路径 {@code ../simos-unit/src/main/java} 在主树与
    * worktree 里都成立；**非空自证**：条数由紧随的 {@code hasSize} 断言钉住（扫到 0 个是"扫描器静默"陷阱，不是通过）。
@@ -602,8 +605,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 46 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(46);
+        .as("扫描必须恰为 49 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(49);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -696,6 +699,7 @@ class SimosToolsTest {
         List.of(
             Paths.get("..", "simos-unit", "src", "main", "java"),
             Paths.get("..", "simos-map", "src", "main", "java"),
+            Paths.get("..", "simos-social", "src", "main", "java"),
             Paths.get("..", "simos-sd", "src", "main", "java"));
     Pattern typeReturn =
         Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*\"([^\"]+)\"");
@@ -1497,7 +1501,8 @@ class SimosToolsTest {
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
-    SocialData social = new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())));
+    SocialData social =
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

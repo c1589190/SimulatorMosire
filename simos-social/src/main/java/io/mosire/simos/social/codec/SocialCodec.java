@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -20,8 +21,8 @@ import java.util.function.Function;
 /**
  * social 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code MapCodec} 同制，理由不重复——只记 social 自己的那点差异。
  *
- * <p>★ 树里的自定义键只有 {@code HexCoord} 一个（{@code populations} 的键；类型住在 simos-map，social 依赖 simos-map
- * 故够得着，铁律 3 允许）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * <p>★ 树里的自定义键有两个：{@code HexCoord}（{@code populations} 的键）与 {@code CityId}（{@code cities} 的键）；两者都住在
+ * simos-map，social 依赖 simos-map 故够得着，铁律 3 允许。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
@@ -55,6 +56,7 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("social-json-keys");
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
+    module.addKeyDeserializer(CityId.class, keyDeserializer(CityId::parse));
     return module;
   }
 

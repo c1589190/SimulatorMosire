@@ -777,7 +777,8 @@ class DecisionMakerScopeEndToEndTest {
                     U3, genesisUnit(U3, "第三连", H21))));
     SocialData social =
         new SocialData(
-            new LinkedHashMap<>(Map.of(H12, populationSeries(), H13, populationSeries())));
+            new LinkedHashMap<>(Map.of(H12, populationSeries(), H13, populationSeries())),
+            Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

@@ -71,6 +71,13 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "map.RegisterPathwayGroup", "id, name, color, description?, visible?, properties?"),
           Map.entry("map.RandomizeRegion", "hexes[{q,r}...], seed"),
+          Map.entry(
+              "social.SetPopulation",
+              "entries[{q,r,population}...]（population ≥ 0；重复坐标后出现者覆盖）,"
+                  + " anchorTick?（缺省=世界当前 tick）"),
+          Map.entry(
+              "social.CreateCity", "id, name, at{q,r}, region?（缺省=无归属）, population（≥ 0）, props?"),
+          Map.entry("social.UpdateCity", "id, name?, population?, props?（props 为合并语义）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(

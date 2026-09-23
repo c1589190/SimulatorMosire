@@ -498,7 +498,8 @@ class ResetConversationEndToEndTest {
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, genesisUnit(U1, "第一连", H11))));
-    SocialData social = new SocialData(new LinkedHashMap<>(Map.of(H12, populationSeries())));
+    SocialData social =
+        new SocialData(new LinkedHashMap<>(Map.of(H12, populationSeries())), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
