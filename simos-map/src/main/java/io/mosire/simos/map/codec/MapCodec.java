@@ -19,6 +19,7 @@ import io.mosire.simos.map.pathway.PathwayId;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
+import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
@@ -45,8 +46,11 @@ import java.util.function.Function;
  * 切块）——**不静默失败**。旧形状的**变更集**无法迁移（块切分依赖 base 全图，变更集自带信息不足）， 本类**显式抛**并给出重导入指引。
  *
  * <p>★ {@link #apply} 里的 cast 发生在这里（模块自己的地盘），Core 从不 cast、从不反射模块类型（C26）。
+ *
+ * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：把两个切片还原成 {@code GameMap} 后委托
+ * {@link MapChangeSet#between(GameMap, GameMap)}——变更集从完整状态派生（铁律 5），本类**不重新实现比较语义**。
  */
-public final class MapCodec implements ModuleCodec {
+public final class MapCodec implements ModuleCodec, ModuleDiffer {
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器（建造期一次性配齐，见 SimosObjectMapper.create 的契约）。 */
   private static final ObjectMapper MAPPER =
@@ -140,6 +144,17 @@ public final class MapCodec implements ModuleCodec {
     MapSnapshot mapBase = asMapSnapshot(base);
     GameMap next = MapChangeSet.apply((MapChangeSet) changeSet, mapBase.map());
     return new MapSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /**
+   * 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：两层下转型都在本模块地盘，语义委托 {@link MapChangeSet#between(GameMap,
+   * GameMap)}。
+   *
+   * <p>★ {@code spec}/{@code RegionIndex} 等"不进变更集"的部分**不在这里判**——那是 {@code between} 的既有职责（判决点唯一）。
+   */
+  @Override
+  public ChangeSet diff(Snapshot base, Snapshot target) {
+    return MapChangeSet.between(asMapSnapshot(base).map(), asMapSnapshot(target).map());
   }
 
   /**

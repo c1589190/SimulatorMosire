@@ -19,6 +19,7 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
+import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
@@ -40,8 +41,11 @@ import java.util.function.Function;
  * 是 util 自己的类型、且是 util 的类型在 util 接上 Jackson 的自然推论（与裁定 38 的键绑定同源）。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
+ *
+ * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
+ * SdChangeSet#between(SdState, SdState)}——10 个组件一起比，含 {@code info}。
  */
-public final class SdCodec implements ModuleCodec {
+public final class SdCodec implements ModuleCodec, ModuleDiffer {
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
   private static final ObjectMapper MAPPER =
@@ -129,6 +133,12 @@ public final class SdCodec implements ModuleCodec {
     SdSnapshot sdBase = asSdSnapshot(base);
     SdState next = SdChangeSet.apply((SdChangeSet) changeSet, sdBase.state());
     return new SdSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link SdChangeSet#between}。 */
+  @Override
+  public ChangeSet diff(Snapshot base, Snapshot target) {
+    return SdChangeSet.between(asSdSnapshot(base).state(), asSdSnapshot(target).state());
   }
 
   /** 切片下转型的唯一入口：**先验后转**，验不过当场炸。 */

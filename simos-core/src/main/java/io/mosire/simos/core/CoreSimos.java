@@ -2,6 +2,7 @@ package io.mosire.simos.core;
 
 import io.mosire.simos.core.advance.TimeAdvance;
 import io.mosire.simos.core.command.AdvanceTime;
+import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandBus;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandRegistry;
@@ -190,6 +191,27 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * **原子批量提交**（"一批命令 = 一条 revision"）：要么全成、要么全不成，语义与约束见 {@link
+   * CommandBus#submitBatch(java.util.List)}。
+   *
+   * <p>★ **首次调用也会封存装配**（同 {@link #submit}）：封存后 codec/handler 表定死，批提交才能确定地按 namespace 路由与派生。
+   *
+   * <p>★ **Post-commit 与单条同口径**（C24 / C19 第①项）：整批提交成功且新坐标命中 checkpoint 谓词时才写（失败只 WARN，不改结局）。 被拒 /
+   * 冲突**没有产生坐标**，自然没有可写的 checkpoint。
+   *
+   * @param batch 按执行顺序排好的命令（同批须共享 branch 与 expectedRevision）
+   * @return {@link BatchResult}；三种结局的 {@code outcomes} 与入参逐位对应
+   * @throws IllegalArgumentException 批为空、或批内坐标不一致
+   * @throws NullPointerException {@code batch} 或其元素为 null
+   */
+  public BatchResult submitBatch(List<CommandEnvelope> batch) {
+    Objects.requireNonNull(batch, "batch");
+    BatchResult result = sealedBus().submitBatch(batch);
+    writeBatchPostCommitCheckpoint(result);
+    return result;
+  }
+
+  /**
    * 重放任一坐标，返回该坐标的完整状态。首次调用会**封存**装配。
    *
    * @throws IllegalArgumentException 坐标不在时间线上、或信封/变更集读不出
@@ -341,7 +363,8 @@ public final class CoreSimos implements AutoCloseable {
     CommandRegistry registry = new CommandRegistry(handlers);
     TimeAdvance timeAdvance =
         new TimeAdvance(timeline, this::load, checkpoints, codecs, participants);
-    this.bus = new CommandBus(timeline, registry, timeAdvance, this::load, List.copyOf(guards));
+    this.bus =
+        new CommandBus(timeline, registry, timeAdvance, this::load, List.copyOf(guards), codecs);
     this.sealed = true;
   }
 
@@ -390,6 +413,18 @@ public final class CoreSimos implements AutoCloseable {
       return;
     }
     // AdvanceTime：真 TimeAdvance 的 ⑥ 已经写过（Task 12），本类**不重复**
+  }
+
+  /**
+   * 批提交成功后的 checkpoint（C19 第①项）：整批**新坐标**命中谓词才写。
+   *
+   * <p>★ 批只落一行 revision，故与单条信封支**同一谓词、同一个"绝不写多余文件"的纪律**（多写会让 R3 的"判定与磁盘逐条一致"反方向破）。 ★ 只有 {@link
+   * BatchResult.Committed} 有坐标；{@code Rejected} / {@code Conflict} 无坐标可写。
+   */
+  private void writeBatchPostCommitCheckpoint(BatchResult result) {
+    if (result instanceof BatchResult.Committed committed) {
+      maybeWriteCheckpoint(committed.ref());
+    }
   }
 
   /**

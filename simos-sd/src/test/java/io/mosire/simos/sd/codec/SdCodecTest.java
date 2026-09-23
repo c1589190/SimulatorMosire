@@ -209,6 +209,44 @@ class SdCodecTest {
         .hasMessageContaining("不是 SdSnapshot");
   }
 
+  /**
+   * ★ {@code SdCodec} 同时实现 {@link io.mosire.simos.util.spi.ModuleDiffer}（"一批命令 = 一条 revision"
+   * 的原子批量提交需要）： 从**两个完整状态切片**派生，语义委托 {@link SdChangeSet#between}——本类不重新实现比较（铁律 5）。
+   */
+  @Test
+  void diffDerivesTheChangeSetFromTwoFullSlices() {
+    SdSnapshot base = snapshot(SdFixtures.empty());
+    SdSnapshot target = snapshot(SdFixtures.full());
+
+    assertThat(CODEC.diff(base, target))
+        .as("diff(base, target) == SdChangeSet.between(base.state, target.state)")
+        .isEqualTo(SdChangeSet.between(base.state(), target.state()));
+    assertThat(CODEC.diff(base, base))
+        .as("全相等 ⇒ 各组件 Unchanged（仍是一份合法变更集）")
+        .isEqualTo(SdChangeSet.between(base.state(), base.state()));
+  }
+
+  /** diff 的两侧切片都必须属于本模块：转错切片 ⇒ 当场炸，不给出一份错变更集。 */
+  @Test
+  void diffRejectsForeignSlice() {
+    SdSnapshot sd = snapshot(SdFixtures.full());
+    Snapshot foreign =
+        new ForeignSlice(
+            new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
+
+    assertThatThrownBy(() -> CODEC.diff(foreign, sd))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 SdSnapshot");
+    assertThatThrownBy(() -> CODEC.diff(sd, foreign))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 SdSnapshot");
+  }
+
+  private static SdSnapshot snapshot(SdState state) {
+    return new SdSnapshot(
+        new StateRef(new BranchId("main"), new RevisionId(3)), SimosTimestamp.of(10), state);
+  }
+
   /** 子串出现次数（老档兼容那条用来自证"真删掉了一个字段"）。 */
   private static int countOf(String haystack, String needle) {
     int count = 0;

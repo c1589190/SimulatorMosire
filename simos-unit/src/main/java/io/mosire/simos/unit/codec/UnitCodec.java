@@ -12,6 +12,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
+import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
@@ -26,8 +27,11 @@ import java.util.function.Function;
  * 值处理，**不需要**也不应该注册。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
+ *
+ * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
+ * UnitChangeSet#between(UnitState, UnitState)}。
  */
-public final class UnitCodec implements ModuleCodec {
+public final class UnitCodec implements ModuleCodec, ModuleDiffer {
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
   private static final ObjectMapper MAPPER =
@@ -107,6 +111,12 @@ public final class UnitCodec implements ModuleCodec {
     UnitSnapshot unitBase = asUnitSnapshot(base);
     UnitState next = UnitChangeSet.apply((UnitChangeSet) changeSet, unitBase.state());
     return new UnitSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link UnitChangeSet#between}。 */
+  @Override
+  public ChangeSet diff(Snapshot base, Snapshot target) {
+    return UnitChangeSet.between(asUnitSnapshot(base).state(), asUnitSnapshot(target).state());
   }
 
   /**

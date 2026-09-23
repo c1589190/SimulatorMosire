@@ -15,6 +15,9 @@
  *       state
  * </ul>
  *
+ * <p>★ **后加契约**（"新增放本包"的实例）：{@link io.mosire.simos.util.spi.ModuleDiffer}——"从两个完整状态切片派生变更集"， 为「一批命令
+ * = 一条 revision」（原子批量提交）而加。它与上面三个**互不触碰**：{@code ModuleCodec} 一个字未改，各模块的 codec 只是**额外**实现它。
+ *
  * <p>为什么不拆独立的 {@code simos-spi} 模块（U12）：**没有独立消费者**。三个实现模块（map/social/unit） 都依赖 {@code
  * simos-util}，拆出去只会多一个模块、多一次版本同步，买到的是零。包分离 + 本文件即是书面约定； 真正的强制来自 {@code bannedDependencies}（模块级），而那是
  * **artifact 级**的——拆包买不到任何它给不了的 强制（ADR-1 §二）。

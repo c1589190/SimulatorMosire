@@ -11,14 +11,23 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.spi.ModuleCodec;
+import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.spi.MutationGuard;
+import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Command;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
+import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,6 +87,25 @@ public final class CommandBus {
   private final List<MutationGuard> guards;
 
   /**
+   * 批提交落的 revision 行的**命令类型**：Core 自有的第 3 个行标签（与 {@code core.Bootstrap} / {@code core.ForkBranch}
+   * 同制）。★ 它**不是**第 4 种 {@code Command}（C16 的封闭集不变）——{@code submitBatch} 是 Core 的公开 API，不是命令。
+   */
+  public static final String BATCH_COMMAND_TYPE = "core.SubmitBatch";
+
+  /**
+   * {@code namespace → codec}（{@link #submitBatch} 用）：把每条命令的变更集施加到**累积候选状态**上，后一条才能看见前一条的效果。
+   *
+   * <p>★ 可为空（既有单条提交路径不需要它）——空表时只有 {@code submitBatch} 会因缺 codec 而响亮失败，单条 {@code submit} 一字不受影响。
+   */
+  private final Map<String, ModuleCodec> codecs;
+
+  /**
+   * {@code namespace → differ}（{@link #submitBatch} 用）：由**同时实现 {@link ModuleDiffer}** 的 codec
+   * 提供，用于从 基态与候选态两整份状态**派生**那一条变更集（铁律 5）。
+   */
+  private final Map<String, ModuleDiffer> differs;
+
+  /**
    * C17 的锁：**只罩住 ③ 锁内复查与 ④ 落盘**。
    *
    * <p>★ **不罩 ① 与 ②**，理由见类注。★ 用私有 {@code Object} 而不是 {@code this}：锁对象不外泄， 外部不可能误拿本实例当锁用。
@@ -112,7 +140,7 @@ public final class CommandBus {
       CommandRegistry registry,
       AdvanceRoute advanceRoute,
       StateLoader stateLoader) {
-    this(timeline, registry, advanceRoute, stateLoader, List.of());
+    this(timeline, registry, advanceRoute, stateLoader, List.of(), List.of());
   }
 
   /**
@@ -126,11 +154,50 @@ public final class CommandBus {
       AdvanceRoute advanceRoute,
       StateLoader stateLoader,
       List<MutationGuard> guards) {
+    this(timeline, registry, advanceRoute, stateLoader, guards, List.of());
+  }
+
+  /**
+   * 带 codec 表的构造（{@link #submitBatch} 需要）。
+   *
+   * <p>★ **只加不改**：上面两个构造原样保留、等价于传空 codec 表（单条 {@code submit} 不需要 codec 表，理由见类注）。{@code CommandBus}
+   * 因此**不新增对领域类型的编译期依赖**——它只认识 {@code util.spi} 的 {@link ModuleCodec} / {@link ModuleDiffer}（铁律
+   * 4：Core 仍看不见 {@code GameMap} 之类）。
+   *
+   * @param guards 写前跨模块策略；**迭代序即调用序**；空表 = 无守卫
+   * @param codecs 各模块状态 codec；同时实现 {@link ModuleDiffer} 的会一并进入派生表。**迭代序即传入序**，namespace 重复 ⇒
+   *     当场抛（静默覆盖会让路由失去确定性）
+   * @throws IllegalArgumentException {@code codecs} 里 namespace 重复
+   */
+  public CommandBus(
+      Timeline timeline,
+      CommandRegistry registry,
+      AdvanceRoute advanceRoute,
+      StateLoader stateLoader,
+      List<MutationGuard> guards,
+      Collection<ModuleCodec> codecs) {
     this.timeline = Objects.requireNonNull(timeline, "timeline");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.advanceRoute = Objects.requireNonNull(advanceRoute, "advanceRoute");
     this.stateLoader = Objects.requireNonNull(stateLoader, "stateLoader");
     this.guards = List.copyOf(Objects.requireNonNull(guards, "guards"));
+    Objects.requireNonNull(codecs, "codecs");
+    // ★ 绝不用 Map.copyOf：它的迭代序是散列槽位序、不是内容的纯函数（M2 Task 5 实测 30 次）
+    Map<String, ModuleCodec> codecTable = new LinkedHashMap<>();
+    Map<String, ModuleDiffer> differTable = new LinkedHashMap<>();
+    for (ModuleCodec codec : codecs) {
+      Objects.requireNonNull(codec, "codecs 的元素");
+      String namespace = Objects.requireNonNull(codec.namespace(), "codec.namespace()");
+      ModuleCodec previous = codecTable.put(namespace, codec);
+      if (previous != null) {
+        throw new IllegalArgumentException("namespace 重复（路由将失去确定性）: " + namespace);
+      }
+      if (codec instanceof ModuleDiffer differ) {
+        differTable.put(namespace, differ);
+      }
+    }
+    this.codecs = Collections.unmodifiableMap(codecTable);
+    this.differs = Collections.unmodifiableMap(differTable);
   }
 
   /**
@@ -153,6 +220,250 @@ public final class CommandBus {
         "未知命令类型（Core 的封闭命令集只有 AdvanceTime / ForkBranch / CommandEnvelope，C16）: "
             + command.getClass().getName());
   }
+
+  /**
+   * **原子批量提交**：「一批命令 = 一条 revision」——要么全成、要么全不成（用户裁定：一个 tick 一条 revision）。
+   *
+   * <p>★ **不新增第 4 种 {@code Command}**：本方法是 Core 的**公开 API**（给组合根 simos-app 调用），不是命令；C16 的封闭集一个字未改。
+   *
+   * <p>★ **同一批必须共享 {@code branch} 与 {@code expectedRevision}**（一批只落一行 revision，坐标只能有一个）。不一致 ⇒
+   * {@link IllegalArgumentException}（调用方的编程错误，与"未知命令类型"同类：当场炸比"猜你想干什么"好）。
+   *
+   * <p>★ **整批在同一把锁（{@link #commitLock}）内跑**（"复用现有提交路径的锁"，不另造、不绕开）。这条**有意**地比单条 {@code submit}
+   * 更严——单条把 handler 放在锁外（见类注"handler 在锁外执行"），批量则整批占锁：因为"后一条看到的 base 必须是前一条已生效之后的状态"
+   * 需要一个**不被别的提交插进中间**的连续区间。代价是批内的慢 handler 会挡住别的提交；收益是批的原子性与顺序可见性由结构直接给出，不靠"复查 + 回滚"补偿。
+   *
+   * <p>★ **顺序是语义的一部分**：入参顺序即执行顺序。每条 handler 拿到的 {@code state} 都是**前面已生效命令累积后的候选态**（用 {@link
+   * ModuleCodec#apply} 逐条推上去）。任一条被拒**不短路**——后续命令照跑，好让调用方拿到**每一条**的结局（class 注释的不变式）。
+   *
+   * <p>★ **落盘只有一条变更集，且是派生的**：全部通过后，对每个受影响的 namespace 用 {@link ModuleDiffer#diff} 从**基态切片与候选态切片**
+   * 派生（铁律 5），装成一个保序 {@link WorldChangeSet}，经 {@code Timeline.appendRevision} 落**一行**。★
+   * **不叠加**各命令的变更集。
+   *
+   * <p>★ **冲突与分支不存在的口径与单条提交一致**：{@code head ≠ expected} ⇒ {@code Conflict(真实 head)}；分支不存在 ⇒ {@code
+   * Rejected}（没有 head 可报，不编坐标）。
+   *
+   * <p>★ **返回值**：{@link BatchResult}，三条分支的 {@code outcomes} 与入参**逐位对应**（见其类注）。
+   *
+   * @param batch 按**执行顺序**排好的命令；空清单 ⇒ {@link IllegalArgumentException}
+   * @throws IllegalArgumentException 批为空、批内坐标不一致
+   * @throws NullPointerException {@code batch} 或其元素为 null
+   * @throws IllegalStateException 某 namespace 没有 codec / codec 未实现 {@link ModuleDiffer}（装配缺项，响亮失败）
+   */
+  public BatchResult submitBatch(List<CommandEnvelope> batch) {
+    Objects.requireNonNull(batch, "batch");
+    if (batch.isEmpty()) {
+      throw new IllegalArgumentException("批量提交不得为空：一批 = 一条 revision，至少要有一条命令");
+    }
+    for (CommandEnvelope envelope : batch) {
+      Objects.requireNonNull(envelope, "batch 的元素");
+    }
+    BranchId branch = batch.get(0).branch();
+    RevisionId expected = batch.get(0).expectedRevision();
+    for (CommandEnvelope envelope : batch) {
+      if (!envelope.branch().equals(branch) || !envelope.expectedRevision().equals(expected)) {
+        throw new IllegalArgumentException(
+            "同一批命令必须共享 branch 与 expectedRevision（一批只落一行 revision，坐标只能有一个）: 首条="
+                + branch.value()
+                + "@"
+                + expected.value()
+                + "，异类="
+                + envelope.branch().value()
+                + "@"
+                + envelope.expectedRevision().value()
+                + "（type="
+                + envelope.type()
+                + "）");
+      }
+    }
+
+    // ★ 整批在同一把锁内：① 复查 head、② 逐条 handler、③ 派生变更集、④ 落一条 revision，中途没有缝（见方法注）。
+    synchronized (commitLock) {
+      Optional<RevisionId> head = timeline.head(branch);
+      if (head.isEmpty()) {
+        // 分支不存在 ⇒ 拒绝（没有 head 可报，编一个坐标出来才是错的）——与单条 CommandResult.Rejected 同口径
+        return new BatchResult.Rejected(rejectAll(batch, "分支不存在: " + branch.value()));
+      }
+      StateRef base = new StateRef(branch, head.get());
+      if (head.get().compareTo(expected) != 0) {
+        // 冲突 ⇒ 报**真实 head**，与单条 CommandResult.Conflict 同口径
+        return new BatchResult.Conflict(base, conflictAll(batch, base));
+      }
+      return runBatch(batch, base);
+    }
+  }
+
+  /**
+   * 锁内的批执行：装配基态 → 逐条 handler（累积候选态）→ 全通过则派生变更集并落**一行** revision。
+   *
+   * <p>★ 只在 {@link #commitLock} 内被调用（唯一调用点在 {@link #submitBatch}）。{@code base} 是**锁内复查过的
+   * head**，不是信封上的 expected（两者在成功路径上相等，但语义是"现在"）。
+   */
+  private BatchResult runBatch(List<CommandEnvelope> batch, StateRef base) {
+    SimulationState baseState = stateLoader.load(base);
+    // ★ 候选态的 meta 取基态的：这整批在落盘前**还不是**一个坐标——这正是"顺序可见、但对外仍未生效"的表达。
+    StateMeta meta = baseState.meta();
+    SimulationState candidate = baseState;
+    List<Pending> pending = new ArrayList<>(batch.size());
+    // 受影响的 namespace 按**首次出现序**记录（保序，落进 WorldChangeSet 即这个序）
+    LinkedHashSet<String> affected = new LinkedHashSet<>();
+    boolean anyRejected = false;
+
+    for (CommandEnvelope envelope : batch) {
+      // ★ 先查 type 在不在册（纯内存、不碰库）——与单条路径 routeEnvelope 的次序一致
+      Optional<CommandHandler> handler = registry.byType(envelope.type());
+      if (handler.isEmpty()) {
+        pending.add(new Pending(envelope, false, "未注册的命令类型: " + envelope.type()));
+        anyRejected = true;
+        continue;
+      }
+
+      // 写前守卫（A6）：按注册序、在 handler 之前；拿到的是**当前候选态**（前一条已生效）
+      Optional<String> guardRejection = Optional.empty();
+      for (MutationGuard guard : guards) {
+        guardRejection = guard.rejection(candidate, envelope.type(), envelope.payloadJson());
+        if (guardRejection.isPresent()) {
+          break;
+        }
+      }
+      if (guardRejection.isPresent()) {
+        pending.add(new Pending(envelope, false, guardRejection.get()));
+        anyRejected = true;
+        continue;
+      }
+
+      switch (handler.get().handle(candidate, envelope.payloadJson())) {
+        case HandlerOutcome.Rejected rejected -> {
+          pending.add(new Pending(envelope, false, rejected.reason()));
+          anyRejected = true;
+        }
+        case HandlerOutcome.Applied applied -> {
+          String namespace = namespaceOf(envelope.type());
+          candidate = applyToCandidate(candidate, namespace, applied.changeSet(), meta);
+          affected.add(namespace);
+          pending.add(new Pending(envelope, true, null));
+        }
+      }
+    }
+
+    if (anyRejected) {
+      // ★ 整体拒绝、不落任何 revision；每条结局齐全（被接受的标为"随整批复原"）
+      return new BatchResult.Rejected(rolledBack(pending));
+    }
+
+    // ★ 全部通过：**逐命名空间从两整份状态派生**变更集（铁律 5），不叠加各命令的变更集
+    LinkedHashMap<String, ChangeSet> modules = new LinkedHashMap<>();
+    for (String namespace : affected) {
+      ChangeSet derived =
+          differFor(namespace).diff(slice(baseState, namespace), slice(candidate, namespace));
+      modules.put(namespace, derived);
+    }
+    return commitBatch(base, pending, new WorldChangeSet(modules));
+  }
+
+  /**
+   * ④ 批的落盘：**一行** revision（多命名空间变更集）。
+   *
+   * <p>★ 行的身份三件套取**首条命令**的（信封上没有"批"自己的身份字段）；{@code command_type} 恒为 {@link #BATCH_COMMAND_TYPE}
+   * （诚实：这一行是批提交产生的，不是某一条领域命令）。时刻继承 base（裁定 35）；坐标 = base + 1。
+   */
+  private BatchResult commitBatch(StateRef base, List<Pending> pending, WorldChangeSet changeSet) {
+    CommandEnvelope lead = pending.get(0).command();
+    RevisionRow row =
+        revisionRow(
+            base,
+            lead.commandId(),
+            lead.correlationId(),
+            lead.initiator(),
+            BATCH_COMMAND_TYPE,
+            changeSet);
+    StateRef committed = new StateRef(row.branch(), row.revision());
+    timeline.appendRevision(row);
+    return new BatchResult.Committed(committed, committedAll(pending, committed));
+  }
+
+  /**
+   * 把一条命令的变更集施加到**候选态**上，返回新的候选态。
+   *
+   * <p>★ 形态与 {@code Replay.applyWorld} 同制：**只换该 namespace 的切片**，其余原样；{@link ModuleCodec#apply} 的
+   * cast 在模块自己的地盘（C26）。★ 外层 meta 保持基态的（见 {@link #runBatch} 的注）。
+   */
+  private SimulationState applyToCandidate(
+      SimulationState state, String namespace, ChangeSet changeSet, StateMeta meta) {
+    Snapshot next = codecFor(namespace).apply(changeSet, slice(state, namespace), meta);
+    LinkedHashMap<String, Snapshot> modules = new LinkedHashMap<>(state.modules());
+    modules.put(namespace, next);
+    return new SimulationState(state.meta(), modules, state.info());
+  }
+
+  /** 取某 namespace 的切片；不在当前状态里 ⇒ 状态与本批命令不同源，响亮失败。 */
+  private static Snapshot slice(SimulationState state, String namespace) {
+    return state
+        .module(namespace)
+        .orElseThrow(() -> new IllegalStateException("命名空间不在当前状态里（状态与本批命令不同源）: " + namespace));
+  }
+
+  /** namespace → codec；装配缺项 ⇒ 响亮失败（宁可炸，也不静默不施加）。 */
+  private ModuleCodec codecFor(String namespace) {
+    ModuleCodec codec = codecs.get(namespace);
+    if (codec == null) {
+      throw new IllegalStateException("命名空间没有注册 ModuleCodec（装配缺项）: " + namespace);
+    }
+    return codec;
+  }
+
+  /** namespace → differ；codec 未实现 {@link ModuleDiffer} ⇒ 响亮失败（否则"从完整状态派生"这条铁律 5 会静默失守）。 */
+  private ModuleDiffer differFor(String namespace) {
+    ModuleDiffer differ = differs.get(namespace);
+    if (differ == null) {
+      throw new IllegalStateException(
+          "命名空间 " + namespace + " 的 ModuleCodec 未实现 ModuleDiffer（submitBatch 需从完整状态派生变更集，铁律 5）");
+    }
+    return differ;
+  }
+
+  /** 批级拒绝（分支不存在）：每条都给同一拒因——不变式要求 outcomes 与入参逐位对应。 */
+  private static List<CommandOutcome> rejectAll(List<CommandEnvelope> batch, String reason) {
+    List<CommandOutcome> outcomes = new ArrayList<>(batch.size());
+    for (CommandEnvelope envelope : batch) {
+      outcomes.add(new CommandOutcome(envelope, new CommandResult.Rejected(reason)));
+    }
+    return outcomes;
+  }
+
+  /** 批级冲突：每条都是 {@code Conflict(current)}（真实 head），与单条口径一致。 */
+  private static List<CommandOutcome> conflictAll(List<CommandEnvelope> batch, StateRef current) {
+    List<CommandOutcome> outcomes = new ArrayList<>(batch.size());
+    for (CommandEnvelope envelope : batch) {
+      outcomes.add(new CommandOutcome(envelope, new CommandResult.Conflict(current)));
+    }
+    return outcomes;
+  }
+
+  /** 整批成功：每条 { Committed(批的新坐标) }——一批 = 一条 revision，故全部同一个 ref。 */
+  private static List<CommandOutcome> committedAll(List<Pending> pending, StateRef committed) {
+    List<CommandOutcome> outcomes = new ArrayList<>(pending.size());
+    for (Pending step : pending) {
+      outcomes.add(new CommandOutcome(step.command(), new CommandResult.Committed(committed)));
+    }
+    return outcomes;
+  }
+
+  /** 整批拒绝：真被拒的带真拒因；被接受却随整批复原的带"整批未提交"——批是原子的，从世界看它们都没生效。 */
+  private static List<CommandOutcome> rolledBack(List<Pending> pending) {
+    List<CommandOutcome> outcomes = new ArrayList<>(pending.size());
+    for (Pending step : pending) {
+      CommandResult result =
+          step.applied()
+              ? new CommandResult.Rejected("整批未提交：同批有命令被拒，该条已随整批复原")
+              : new CommandResult.Rejected(step.reason());
+      outcomes.add(new CommandOutcome(step.command(), result));
+    }
+    return outcomes;
+  }
+
+  /** 批内一条命令的中间结局：{@code applied} 为真时 {@code reason} 必为 null。 */
+  private record Pending(CommandEnvelope command, boolean applied, String reason) {}
 
   /**
    * {@code ForkBranch} 支（spec §3.4 冻结的语义全在 {@code Timeline.fork} 里，本方法只做结局翻译）。
@@ -346,30 +657,14 @@ public final class CommandBus {
    */
   private CommandResult commit(
       CommandEnvelope envelope, List<EventRow> trace, StateRef base, ChangeSet changeSet) {
-    RevisionRow baseRow =
-        timeline
-            .row(base)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "base 行缺席（head 刚读到、行却不在库）: "
-                            + base.branch().value()
-                            + "@"
-                            + base.revision().value()));
-    SimosTimestamp timestamp = baseRow.timestamp();
-    String changesetJson =
-        Timeline.changeSetJson(new WorldChangeSet(Map.of(namespaceOf(envelope.type()), changeSet)));
     RevisionRow row =
-        new RevisionRow(
-            envelope.branch(),
-            new RevisionId(base.revision().value() + 1),
-            Optional.of(base),
-            timestamp,
+        revisionRow(
+            base,
             envelope.commandId(),
             envelope.correlationId(),
             envelope.initiator(),
             envelope.type(),
-            changesetJson);
+            new WorldChangeSet(Map.of(namespaceOf(envelope.type()), changeSet)));
     StateRef committed = new StateRef(row.branch(), row.revision());
     // ★ 全部事件与 revision 行**同一次 appendRevision ⇒ 同一个事务**（Task 11 / spec 〇.3 第 2 条）。
     //   `committed` 的载荷要带新坐标，故它只能在 row 建好之后拼——顺序是"先建行、再补事件、再一次落盘"。
@@ -433,6 +728,42 @@ public final class CommandBus {
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("事件载荷序列化失败（字段全是 String，不该发生）", e);
     }
+  }
+
+  /**
+   * 构造一行 revision（**不落盘**）：坐标 = {@code base + 1}、parent = base、**时刻继承 base**（裁定 35：领域命令不带时刻字段），
+   * 变更集经 {@link Timeline#changeSetJson} 序列化（全仓唯一的 changeset 落盘点）。
+   *
+   * <p>★ 单条 {@link #commit} 与批 {@link #commitBatch} 共用本方法——两条落盘路径的**行形状**因此不可能漂移。
+   */
+  private RevisionRow revisionRow(
+      StateRef base,
+      String commandId,
+      String correlationId,
+      String initiator,
+      String commandType,
+      WorldChangeSet changeSet) {
+    RevisionRow baseRow =
+        timeline
+            .row(base)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "base 行缺席（head 刚读到、行却不在库）: "
+                            + base.branch().value()
+                            + "@"
+                            + base.revision().value()));
+    SimosTimestamp timestamp = baseRow.timestamp();
+    return new RevisionRow(
+        base.branch(),
+        new RevisionId(base.revision().value() + 1),
+        Optional.of(base),
+        timestamp,
+        commandId,
+        correlationId,
+        initiator,
+        commandType,
+        Timeline.changeSetJson(changeSet));
   }
 
   /** 裁定 37：{@code type} 形状已在 {@code CommandRegistry} 构造期校验过，这里直接切。 */

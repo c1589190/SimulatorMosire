@@ -137,6 +137,35 @@ class SocialCodecTest {
         .hasMessageContaining("不是 SocialSnapshot");
   }
 
+  /**
+   * ★ {@code SocialCodec} 同时实现 {@link io.mosire.simos.util.spi.ModuleDiffer}（"一批命令 = 一条 revision"
+   * 的原子批量提交需要）： 从**两个完整状态切片**派生，语义委托 {@link SocialChangeSet#between}（铁律 5，本类不重新实现比较）。
+   */
+  @Test
+  void diffDerivesTheChangeSetFromTwoFullSlices() {
+    SocialSnapshot base = snapshotOf(SocialData.empty(), SimosTimestamp.of(10));
+    SocialSnapshot target = snapshotOf(onePopulation(H00), SimosTimestamp.of(10));
+
+    assertThat(CODEC.diff(base, target))
+        .isEqualTo(SocialChangeSet.between(base.data(), target.data()));
+    assertThat(CODEC.diff(base, base))
+        .as("全相等 ⇒ 各组件 Unchanged（仍是一份合法变更集）")
+        .isEqualTo(SocialChangeSet.between(base.data(), base.data()));
+  }
+
+  /** diff 的两侧切片都必须属于本模块：转错切片 ⇒ 当场炸，不给出一份错变更集。 */
+  @Test
+  void diffRejectsForeignSlice() {
+    SocialSnapshot social = snapshotOf(onePopulation(H00), SimosTimestamp.of(10));
+    Snapshot foreign =
+        new ForeignSlice(
+            new StateRef(new BranchId("main"), new RevisionId(9)), SimosTimestamp.of(20));
+
+    assertThatThrownBy(() -> CODEC.diff(foreign, social))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("不是 SocialSnapshot");
+  }
+
   /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
   private record ForeignSlice(StateRef ref, SimosTimestamp timestamp) implements Snapshot {
 
