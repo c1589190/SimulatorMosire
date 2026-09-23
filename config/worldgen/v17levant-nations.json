@@ -1,0 +1,261 @@
+{
+  "_note": "单国人口/经济/军事初始化生成器的**冻结输入**（v17levant 三国）。本文件是生成器的唯一参数来源 —— 改这里不用重编译。带 source 的数字来自设定文档；带 _derived 标记的是拟定值（文档没有）。",
+  "_sources": [
+    "docs/worlds/v17levant/factions.md —— 三国主条目 + Turn5 结算 + Turn6 编制",
+    "docs/worlds/v17levant/narrative.md —— 地名与战役细节",
+    "docs/worlds/v17levant/internal.md —— 霍赫兰出动的兵种明细",
+    "docs/worlds/v17levant/map.md —— 三国格数与地形构成"
+  ],
+  "_era": "帝国历 1444-1446（Turn 1-11）：中世纪晚期 + 萌芽火器（火绳枪少量）+ 魔法并存",
+  "_hexCountCaveat": "文档格数与真档 region 格数不一致（德意志 478 vs 430、奥斯特马克 205 vs 138、霍赫兰 230 vs 231）。本文件一律取**真档**。",
+
+  "defaults": {
+    "_note": "生成器默认参数，三国共用；单个国家可用同名键覆盖。",
+    "surplusRatePerTerrain": {
+      "_note": "地形 -> 农业剩余率。键取 TerrainCatalog.KEYS(7 项)。用户给的『肥沃河谷 1.5 / 冲积平原 1.4 / 森林 0.4』在本词表没有对应地形 —— 用 riverMultiplier / coastalMultiplier 补足『沿河更肥』的效果。",
+      "ocean": 0.0,
+      "plains": 1.0,
+      "desert": 0.02,
+      "low_hills": 0.6,
+      "mountains": 0.1,
+      "plateau": 0.3,
+      "plateau_mountains": 0.05
+    },
+    "riverMultiplier": {
+      "_note": "该格是否触到 river 边（GameMap.edges 的 byPathway 含 kind=river）。『可通航』为启发式：同格 river 边 >= 2 视作干流。",
+      "ordinary": 1.15,
+      "navigable": 1.5,
+      "navigableRiverEdgesAtHex": 2
+    },
+    "coastalMultiplier": 1.2,
+    "noiseAmplitude": 0.15,
+    "candidateWeights": {
+      "_note": "cityCandidateScore 三项权重（用户给定 0.45/0.35/0.20）。historical 项按用户要求给得比现代模型更大 —— 中世纪路径依赖强。",
+      "surplus": 0.45,
+      "transport": 0.35,
+      "historical": 0.2
+    },
+    "transportBonus": {
+      "_note": "交通优势启发式（叠乘进 transport）。山口 = 本格 moveCost 高但邻格存在低 moveCost 的门。",
+      "riverJunction": 1.5,
+      "navigableRiver": 1.35,
+      "river": 1.15,
+      "coastal": 1.4,
+      "mountainPass": 1.3,
+      "plain": 1.0,
+      "deepMountain": 0.5,
+      "barren": 0.35
+    },
+    "tierRadiiHex": {
+      "_note": "市场半径(hex)，用户给定。MajorCity 用上界表达『跨区域』。",
+      "MarketTown": [1, 2],
+      "Town": [2, 4],
+      "City": [4, 8],
+      "MajorCity": [8, 16]
+    },
+    "minMarketTownDistanceHex": 2,
+    "influenceExponent": 2.0,
+    "travelCostNote": "cost(城,格) = hexDistance * moveCost(格) —— 不用纯 hex 距离：沿河 3 格可能比翻山 1 格容易。",
+    "rarityPenalty": {
+      "_note": "用户给定：十万人级城市非常罕见。",
+      "threshold": 100000,
+      "factor": 0.1
+    },
+    "zipfShape": {
+      "_note": "Rank-Size 目标形状（用户给的 500 万人口国家示例），按国家总人口等比缩放后作为城市权重形状。",
+      "samplePopulation": 5000000,
+      "ranks": [
+        {"count": 1, "population": 120000},
+        {"count": 2, "population": 50000},
+        {"count": 5, "population": 20000},
+        {"count": 15, "population": 8000},
+        {"count": 40, "population": 3000},
+        {"count": 100, "population": 1000}
+      ]
+    },
+    "tierUpgradeRate": {
+      "_note": "三级抽样里上一级升到下一级的基准比率，再乘 commercialIntegration / politicalCentralization 的调制。",
+      "MarketTownToTown": 0.22,
+      "TownToCity": 0.12,
+      "CityToMajorCity": 0.15
+    },
+    "politicalMultiplierNote": "UrbanPopulation = LocalSurplus * TradeMultiplier * PoliticalMultiplier。首都吃 politicalCentralization 的大头 —— 解释首都为何能远超本地农业承载（靠税赋/贸易/国家网络输送）。",
+    "hexPopulationNote": "social.populations[hex] 只装**农村人口**；城市人口装在城市节点上。该 hex 的『总人口』是派生量（农村 + 落在该格的各城市），不落盘。大城市仍是 1 hex 主城 + 少量附属聚落，不在地图上膨胀。"
+  },
+
+  "cityNameStyle": {
+    "_note": "文档地名稀缺（三国只有 3 个首都 + 零星几处），其余城市名由生成器按下面词表 + 坐标哈希取词生成（可复现）。",
+    "germanic": {
+      "stems": ["Ald", "Bern", "Dank", "Eber", "Falk", "Gern", "Hag", "Ilm", "Kron", "Laut", "Mark", "Nord", "Oster", "Raben", "Salz", "Stein", "Tann", "Ulrich", "Wald", "Zell", "Bruck", "Dorn", "Eisen", "Furt", "Grimm", "Hoch", "Jagd", "Kalt", "Linden", "Moor"],
+      "suffixes": ["burg", "berg", "stadt", "dorf", "furt", "brück", "hafen", "wald", "heim", "feld", "stein", "au", "hofen", "reuth", "münde"]
+    }
+  },
+
+  "armKits": {
+    "_note": "_derived：文档只给兵种与人数，不给装备明细。这里是拟定的每百人装备配比（key=每 100 人的件数，不足 100 人向上取整）。equipment 是 unit.CreateUnit 的 Map<String,Integer>。",
+    "重骑兵": {"战马": 110, "骑枪": 100, "板甲": 100, "马铠": 50},
+    "轻骑兵": {"战马": 105, "弓": 90, "皮甲": 100},
+    "亲卫": {"战马": 105, "骑枪": 100, "板甲": 100, "马铠": 60},
+    "弓弩手": {"弩": 100, "箭矢": 2000, "皮甲": 80},
+    "火绳枪手": {"火绳枪": 100, "火药磅": 1000, "铅弹": 800},
+    "重步兵": {"长枪": 100, "板甲": 70, "盾": 80},
+    "轻步兵": {"矛": 100, "盾": 70, "皮甲": 60},
+    "攻城兵": {"重炮": 3, "火炮": 8, "攻城器械": 20, "火药磅": 3000},
+    "辎重兵": {"马车": 15, "驮畜": 100},
+    "辅助兵": {"工具": 100, "驮畜": 40},
+    "水军": {"战船": 2, "桨船": 4, "船锚": 6}
+  },
+
+  "nations": [
+    {
+      "regionId": "德意志第二帝国",
+      "displayName": "德意志第二帝国",
+      "hexCount": 430,
+      "hexCountSource": "真档 region 实测（map.md:176-199 记 478 格，不一致，取真档）",
+      "terrainHistogram": {"plains": 350, "low_hills": 80},
+      "population": 6230000,
+      "populationSource": "factions.md:999（Turn5: 620万 -> 623万, +0.5%）",
+      "urbanizationRate": 0.12,
+      "urbanizationRateSource": "_derived（文档无；泛欧洲区间 0.08-0.18 的中上值，按『强中央王朝 + 首都 35 万』取）",
+      "agrarianSurplusRate": 1.0,
+      "commercialIntegration": 1.1,
+      "politicalCentralization": 1.4,
+      "coefficientSource": "_derived：强中央王朝（politicalCentralization 三国最高），商业中等",
+      "seed": 14440,
+      "capital": {
+        "name": "日耳曼尼亚",
+        "targetPopulation": 350000,
+        "source": "factions.md:488『首都日耳曼尼亚约 35 万』—— ★ 三国唯一的城市人口锚点，生成器对它做硬约束"
+      },
+      "documentedPlaceNames": [
+        {"name": "日耳曼尼亚", "kind": "capital", "source": "factions.md:488"},
+        {"name": "威廉港", "kind": "port", "source": "narrative.md:1470,1527"},
+        {"name": "十字路口城", "kind": "town", "source": "narrative.md:1927 从十字路口城来的粮商"},
+        {"name": "吕讷堡", "kind": "town", "source": "narrative.md（德意志密使赴吕讷堡；★ 归属存疑，可能是第三方城邦，仅备用）"}
+      ],
+      "army": {
+        "peacetime": 20000,
+        "mobilization": 25000,
+        "peacetimeSource": "factions.md:492-499（平时约 2 万）",
+        "mobilizationSource": "factions.md:999-1003（Turn5 战时约 2.5 万）",
+        "establishmentSource": "factions.md:1498-1506（Turn6 编制）",
+        "establishmentNote": "九项相加 = 25500，文档标题写 2.5 万 —— 取 25500 为编制实数，mobilization 记文档值 25000，差 500 如实保留。",
+        "establishment": {
+          "重骑兵": 3000,
+          "轻骑兵": 2000,
+          "弓弩手": 2500,
+          "火绳枪手": 500,
+          "重步兵": 6000,
+          "轻步兵": 6500,
+          "攻城兵": 800,
+          "仆从兵": 3000,
+          "辎重兵": 1200
+        }
+      }
+    },
+    {
+      "regionId": "奥斯特马克侯国",
+      "displayName": "奥斯特马克侯国",
+      "hexCount": 138,
+      "hexCountSource": "真档 region 实测（map.md:126-149 记 205 格，不一致，取真档）",
+      "terrainHistogram": {"plains": 119, "low_hills": 19},
+      "population": 3070000,
+      "populationSource": "factions.md:1090（Turn5: 310万 -> 307万, -1%）",
+      "urbanizationRate": 0.08,
+      "urbanizationRateSource": "_derived（农业 + 边疆，取区间下沿）",
+      "agrarianSurplusRate": 1.05,
+      "commercialIntegration": 0.95,
+      "politicalCentralization": 1.05,
+      "coefficientSource": "_derived：谷物出口型农业（剩余率高、商业化低），侯国体量小、中央度一般",
+      "seed": 14441,
+      "capital": {
+        "name": "马尔克堡",
+        "targetPopulation": null,
+        "source": "factions.md:832（首都马尔克堡）★ 无城市人口数字 —— 城市规模由生成器给出，无文档依据"
+      },
+      "documentedPlaceNames": [
+        {"name": "马尔克堡", "kind": "capital", "source": "factions.md:832；narrative.md:2982-2989 联军表"}
+      ],
+      "extraFacts": {
+        "_note": "文档里有、但暂不进生成器的细节（留给后续经济模型）",
+        "grainOutputTonsPerYear": [180000, 220000],
+        "grainExportTonsPerYear": [30000, 50000],
+        "cropMix": {"小麦": 0.6, "大麦": 0.2, "燕麦黑麦": 0.2},
+        "revenueMarkRange": [350000, 420000],
+        "knightManors": 300,
+        "cavalryShare": 0.15,
+        "source": "factions.md:846,854,858,868"
+      },
+      "army": {
+        "peacetime": 6500,
+        "mobilization": 14800,
+        "peacetimeSource": "factions.md:860-866（平时约 6500）",
+        "mobilizationSource": "factions.md:1090-1094（Turn5 战时约 1.48 万）",
+        "establishmentSource": "factions.md:1446-1452（Turn6 编制 1.48 万）",
+        "establishmentNote": "七项相加 = 14800，与动员数一致。",
+        "establishment": {
+          "亲卫": 800,
+          "重骑兵": 500,
+          "轻骑兵": 500,
+          "弓弩手": 1600,
+          "重步兵": 1300,
+          "轻步兵": 9300,
+          "辅助兵": 800
+        }
+      }
+    },
+    {
+      "regionId": "霍赫兰伯国",
+      "displayName": "霍赫兰伯国",
+      "hexCount": 231,
+      "hexCountSource": "真档 region 实测（map.md:351-374 记 230 格，差 1，取真档）",
+      "terrainHistogram": {"plains": 146, "low_hills": 85},
+      "population": 2530000,
+      "populationSource": "factions.md:1105（Turn5: 250万 -> 253万, +1.2%）",
+      "urbanizationRate": 0.13,
+      "urbanizationRateSource": "_derived（矿业 + 港口 + 过境贸易，取三国最高）",
+      "agrarianSurplusRate": 0.95,
+      "commercialIntegration": 1.25,
+      "politicalCentralization": 1.0,
+      "coefficientSource": "_derived：商业整合度三国最高（过境税占岁入 20%、铁占 30%），丘陵多所以农业剩余率略低",
+      "seed": 14442,
+      "capital": {
+        "name": "霍赫兰堡",
+        "targetPopulation": null,
+        "source": "factions.md:906（首都霍赫兰堡）★ 无城市人口数字"
+      },
+      "documentedPlaceNames": [
+        {"name": "霍赫兰堡", "kind": "capital", "source": "factions.md:906；narrative.md 驻霍赫兰堡"}
+      ],
+      "extraFacts": {
+        "_note": "文档里有、但暂不进生成器的细节（留给后续经济模型）",
+        "grainOutputTonsPerYear": [140000, 170000],
+        "grainExportTonsPerYear": [15000, 25000],
+        "cropMix": {"小麦": 0.45, "大麦": 0.25, "燕麦": 0.2, "黑麦": 0.1},
+        "revenueMarkRange": [300000, 380000],
+        "revenueBreakdown": {"粮税": 0.4, "铁": 0.3, "过境": 0.2, "其他": 0.1},
+        "hillsIronCopperHexes": 84,
+        "cavalryShare": 0.2,
+        "firearmsPieces": [60, 80],
+        "source": "factions.md:922,926,930,946,948"
+      },
+      "army": {
+        "peacetime": 4300,
+        "mobilization": 16200,
+        "peacetimeSource": "factions.md:936-944（平时约 4300）",
+        "mobilizationSource": "factions.md:1105-1107（Turn5 4300 -> 4600，动员 1.62 万维持）",
+        "establishmentSource": "factions.md:1472-1478（Turn6 编制 1.62 万）",
+        "establishmentNote": "七项相加 = 16200，与动员数一致。含**水军 1500**（内陆水网/近海）。",
+        "establishment": {
+          "重骑兵": 800,
+          "轻骑兵": 1200,
+          "弓弩手": 2000,
+          "重步兵": 2500,
+          "轻步兵": 7000,
+          "水军": 1500,
+          "辅助兵": 1200
+        }
+      }
+    }
+  ]
+}
