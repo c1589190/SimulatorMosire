@@ -1,4 +1,4 @@
-package io.mosire.simos.app.demo;
+package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

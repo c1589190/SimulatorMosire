@@ -1,4 +1,4 @@
-package io.mosire.simos.app.demo;
+package io.mosire.simos.app.world;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,8 +25,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 富世界（T11）：把签入的 {@code v17levant} 复刻数据集读成创世 {@link SimulationState}，供 {@code ShellMain --demo}
- * 空库首启种入。
+ * 富世界（T11）：把签入的 {@code v17levant} 复刻数据集读成创世 {@link SimulationState}，供 {@link
+ * io.mosire.simos.app.ShellMain} 在**空库首启时就地初始化**种入（没有"选世界"这一层）。
  *
  * <p>★ **资源就是 simos 的线格式**（{@code simos-app/src/main/resources/worlds/v17levant.json} 是 {@code
  * tools/gsimap_import.py} 产出的 checkpoint 信封，逐字节签入）。因此本类**不另写一套解析**：走 {@link Envelope#decode} +
@@ -52,8 +52,8 @@ public final class RichWorld {
   /**
    * 组装富世界的创世状态：坐标取自资源信封（{@code (main, 1)}）。
    *
-   * <p>{@code mapId} 只做**非空白校验**（与 {@link DemoWorld#state(String)} 同口径：{@code GameMap} 没有 id 字段，
-   * 状态里无处存它）。
+   * <p>{@code mapId} 只做**非空白校验**（与 {@link CorridorWorld#state(String)} 同口径：{@code GameMap} 没有 id
+   * 字段，状态里无处存它）。
    *
    * @param mapId 本世界的 map 称谓（非空白）
    * @throws NullPointerException {@code mapId} 为 null

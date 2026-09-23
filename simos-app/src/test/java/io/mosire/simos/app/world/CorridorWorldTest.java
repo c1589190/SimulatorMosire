@@ -1,4 +1,4 @@
-package io.mosire.simos.app.demo;
+package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,13 +22,12 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link DemoWorld} 的逐值护栏（M5 T9b）：演示世界的形状与**可断言的数字**（走廊三格 / 单位位置 / 逐边成本 1500 / 人口 15000）都钉成字面量，使
- * {@code ShellMain --demo} 的"可运行"不是口头承诺。
+ * {@link CorridorWorld} 的逐值护栏（M5 T9b）：走廊世界的形状与**可断言的数字**（走廊三格 / 单位位置 / 逐边成本 1500 / 人口 15000）都钉成字面量。
  *
  * <p>★ 全部预期值都是**当场算过的字面量**（desert moveCost=3 × mobility 500‰ ⇒ 1500；人口 10000 + round(10000×0.10×5)
  * ⇒ 15000），不是"再调一遍领域 API 对拍"——后者会把被测物的公式错误 一起复制进来。
  */
-class DemoWorldTest {
+class CorridorWorldTest {
 
   private static final SimosTimestamp T5 = SimosTimestamp.of(5);
 
@@ -37,9 +36,9 @@ class DemoWorldTest {
   private static final HexCoord H13 = new HexCoord(1, 3);
 
   @Test
-  void demoStateIsDeterministicAndCarriesTheFourSlices() {
-    SimulationState first = DemoWorld.state("Map1");
-    SimulationState second = DemoWorld.state("Map1");
+  void corridorStateIsDeterministicAndCarriesTheFourSlices() {
+    SimulationState first = CorridorWorld.state("Map1");
+    SimulationState second = CorridorWorld.state("Map1");
 
     assertThat(first).as("确定性：同参数逐字段相等").isEqualTo(second);
     assertThat(first.meta().ref()).isEqualTo(new StateRef(new BranchId("main"), new RevisionId(1)));
@@ -79,7 +78,7 @@ class DemoWorldTest {
   }
 
   /**
-   * ★ **创建点给缺省**（spec §4.1 / 权限阶段 Task 1）：{@code DemoWorld} 的单位是**新建**的、没有视野的来源 ⇒ 给 {@link
+   * ★ **创建点给缺省**（spec §4.1 / 权限阶段 Task 1）：{@code CorridorWorld} 的单位是**新建**的、没有视野的来源 ⇒ 给 {@link
    * Unit#DEFAULT_VISION_RADIUS}。
    *
    * <p>★ 这条是 app 侧那一半；unit 侧的创建点（{@code CreateUnitHandler}）由 {@code
@@ -87,7 +86,7 @@ class DemoWorldTest {
    * UnitVisionRadiusTest} 的 16 条把守。
    */
   @Test
-  void demoUnitCarriesTheDefaultVisionRadius() {
+  void corridorUnitCarriesTheDefaultVisionRadius() {
     UnitState units = ((UnitSnapshot) state().module("unit").orElseThrow()).state();
     Unit unit = units.units().get(new UnitId("u-1"));
 
@@ -97,7 +96,7 @@ class DemoWorldTest {
   }
 
   @Test
-  void populationAtOneOneIsFifteenThousandAtTheDemoTick() {
+  void populationAtOneOneIsFifteenThousandAtTheCorridorTick() {
     SocialData social = ((SocialSnapshot) state().module("social").orElseThrow()).data();
     PopulationSeries series = social.populations().get(H11);
 
@@ -109,12 +108,12 @@ class DemoWorldTest {
 
   @Test
   void blankMapIdIsRejected() {
-    assertThatThrownBy(() -> DemoWorld.state(" "))
+    assertThatThrownBy(() -> CorridorWorld.state(" "))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("空白");
   }
 
   private static SimulationState state() {
-    return DemoWorld.state("Map1");
+    return CorridorWorld.state("Map1");
   }
 }

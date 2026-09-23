@@ -1,4 +1,4 @@
-package io.mosire.simos.app.demo;
+package io.mosire.simos.app.world;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -36,17 +36,18 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * 演示世界（M5 T9b；裁定 60 的"可运行性缺口"）：{@code ShellMain --demo} 首启时种进空库的最小世界。
+ * 走廊世界（测试夹具，M5 T9b）：一个三格沙漠走廊 + 一个单位 + 一条人口序列的最小世界，供用例钉住可复现的数字 （走廊三格 / 单位位置 / 逐边成本 1500 / 人口 15000）。
  *
- * <p>★ **确定性**：无随机、无时钟——同一个 {@link #state(String)} 调用逐字段产出同一状态，因此 {@code --demo}
- * 每次启动得到的世界可复现、其值可被用例写成字面量。
+ * <p>★ **确定性**：无随机、无时钟——同一个 {@link #state(String)} 调用逐字段产出同一状态，因此其值可复现、 可被用例写成字面量。
  *
  * <p>★ **只用公开的模块/util API 构造**（不碰 Core 的存储面）：三格走廊（desert，逐边成本见 {@link #UNIT} 的 mobility 注释）+ 一个单位
  * {@code u-1} 在 {@code [1,1]} + {@code [1,1]} 上一条人口序列。
+ *
+ * <p>★ 它**不是**空库初始化种入的世界——那是 {@link RichWorld}；本类只是用例的确定性夹具。
  */
-public final class DemoWorld {
+public final class CorridorWorld {
 
-  /** 演示世界的时刻（tick=5 ⇒ {@code [1,1]} 人口 = 15000，见 {@link #populationSeries()}）。 */
+  /** 走廊世界的时刻（tick=5 ⇒ {@code [1,1]} 人口 = 15000，见 {@link #populationSeries()}）。 */
   public static final SimosTimestamp AT = SimosTimestamp.of(5);
 
   /** 走廊三格（单位在首格；desert 的 moveCost=3，单位 mobility=500‰ ⇒ 逐边 1500 毫 MP）。 */
@@ -55,7 +56,7 @@ public final class DemoWorld {
   private static final HexCoord H12 = new HexCoord(1, 2);
   private static final HexCoord H13 = new HexCoord(1, 3);
 
-  /** 演示单位 id（GUI/MCP 的示例命令都以它为对象）。 */
+  /** 走廊世界的单位 id（GUI/MCP 的示例命令都以它为对象）。 */
   private static final UnitId UNIT = new UnitId("u-1");
 
   private static final BranchId MAIN = new BranchId("main");
@@ -63,10 +64,10 @@ public final class DemoWorld {
   /** 走廊起点段（也是人口 anchor 的起点）；一切时态序列在它之前向前恒定延拓。 */
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
 
-  private DemoWorld() {}
+  private CorridorWorld() {}
 
   /**
-   * 组装演示世界的创世状态：坐标固定 {@code (main, 1)}、时刻 {@link #AT}，含 map/unit/social 三切片 （恰好覆盖 app 装配的三个 codec）。
+   * 组装走廊世界的创世状态：坐标固定 {@code (main, 1)}、时刻 {@link #AT}，含 map/unit/social 三切片 （恰好覆盖 app 装配的三个 codec）。
    *
    * <p>★ {@code mapId} 只做**非空白校验**：{@code GameMap} 没有 id 字段（M2 遗留），状态里无处存它； app 层的 mapId 仍由 {@link
    * io.mosire.simos.app.ShellConfig} 与 GUI 路由持有。留这个形参是为与 GUI 的 mapId 同一口径（将来 {@code GameMap} 补 id
