@@ -273,6 +273,24 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* ★ 第2波 B9/B17：左栏里的"带标题分节"——先「这个单位是什么」，再「在途移动」。
+   `.kv` 是两列网格；这两类子元素都跨满整行（标题一行、该节的键值组一行），
+   使一个 `<dl>` 里能并排放下多个"标题 + 键值组"的小节。 */
+.kv .kv-group-title {
+  grid-column: 1 / -1;
+  color: var(--text);
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.kv .kv-group-body {
+  grid-column: 1 / -1;
+}
+
+.kv-nested {
+  margin: 0;
+}
+
 .badge {
   display: inline-block;
   padding: 1px 7px;
@@ -1357,6 +1375,24 @@ body.workbench-page .notify-bar.muted {
 
 .decision-empty {
   margin: 6px 0;
+}
+
+/* ★ 第2波 B11：无决策人时左栏的第二段（"点了会怎样 / 下一步"），以及右栏顶部的选中态说明。 */
+.decision-empty-hint {
+  margin: 2px 0 6px;
+  font-size: 11px;
+}
+
+.decision-selection-note {
+  margin: 4px 0 8px;
+  padding: 4px 6px;
+  border-left: 2px solid var(--warn);
+  background: rgba(224, 179, 76, 0.08);
+  font-size: 11px;
+}
+
+.decision-selection-note[hidden] {
+  display: none;
 }
 
 /* 2026-09-23：让它跑一轮（sd.RunDecision）的本轮轨迹 + 决策记录（/api/sd/directives）。

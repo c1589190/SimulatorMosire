@@ -332,6 +332,9 @@
           <div data-decision-subpage="view">
             <h2>决策人</h2>
             <p class="muted">按类型分类（国家 / 军队）。点一条 ⇒ 国家：高亮其全部区域；军队：选中其根单位。</p>
+            <!-- ★ 第2波 B11（用户 2026-09-23「右边栏也没有对应显示」）：选中项**没有决策人**时，
+                 这里由 panels.js 写明"为什么没有 / 点了会怎样"，不再只列全量决策人让人看不出差别。 -->
+            <p id="decision-selection-note" class="decision-selection-note muted" hidden></p>
             <div id="decision-maker-list-mount"></div>
           </div>
           <div data-decision-subpage="approval" hidden>

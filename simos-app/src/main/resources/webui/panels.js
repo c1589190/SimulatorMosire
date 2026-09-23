@@ -158,6 +158,22 @@
   }
 
   /**
+   * 在左栏 `<dl>` 里起一个**带标题的分节**（第2波 B9/B17：把「这个单位是什么」与「在途移动」分开）。
+   *
+   * <p>结构 = `dt(标题)` + `dd > dl.kv`（内容放进**嵌套** dl）：保持 `dl > dt + dd` 的合法结构，
+   * 不走"只有 dt、没有 dd"那种非法写法。标题与正文都在 styles.css 里占满整行
+   * （`grid-column: 1 / -1`）⇒ 左栏看起来就是"小节标题 + 该节的一组键值"。
+   */
+  function appendRowGroup(detail, title, fill) {
+    var body = app.el("dd", { class: "kv-group-body" });
+    var inner = app.el("dl", { class: "kv kv-nested" });
+    fill(inner);
+    detail.appendChild(app.el("dt", { class: "kv-group-title", text: title }));
+    detail.appendChild(body);
+    body.appendChild(inner);
+  }
+
+  /**
    * 把移动读数逐行写进左栏（无路线 ⇒ 一行「无」）。
    *
    * ★★ B15（2026-09-23 用户实测）：**内部单位不进 DOM** —— 毫 MP ⇒ `"N MP"`、‰ ⇒ `"N×（N‰）"`；
@@ -307,26 +323,38 @@
         }
         var unit = results[0];
         var overview = results[1];
-        appendRow(detail, "id", unit.id);
-        appendRow(detail, "name", unit.name);
-        appendRow(detail, "parent", unit.parent === null || unit.parent === undefined ? "—" : unit.parent);
-        appendRow(detail, "position", unit.position ? hexLabel(unit.position) : "—");
-        appendRow(detail, "member", unit.member);
-        appendRow(detail, "equipment", equipmentText(unit.equipment));
-        // ★ B15：这两行也是"内部单位"（`speed` 是 MP/tick、`mobilityPerMille` 是 ‰ 定点）⇒ 同处换算。
-        appendRow(
-          detail,
-          "speed",
-          unit.speed + " MP/tick",
-          "每 tick 能用的移动点数（与「本 tick 预算」同一口径）。"
-        );
-        appendRow(
-          detail,
-          "mobilityPerMille",
-          perMilleToRateText(unit.mobilityPerMille),
-          "移动成本倍率（‰ 定点：1000‰ = 1.0×；每格成本 = 地形成本 × 该值 ÷ 1000）。"
-        );
-        appendMovementRows(detail, unit, overview);
+        // ★ 第2波 B9/B17（用户 2026-09-23 实测「鬼知道这个单位有啥项目」）：首屏**先"这个单位是什么"**，
+        //   移动信息（预计到达 / 出发 tick / 出发速度…）归入「在途移动」分节、**不再压在最上面**；
+        //   编辑表单在下面各自的 `<section>`（index.html）里 ⇒ 本函数只负责"先展示"。
+        //   ★ 下属 = 紧随其后的「编制」那一节（独立 DOM section），这里不重复渲染。
+        appendRowGroup(detail, "单位", function (dl) {
+          appendRow(dl, "id", unit.id);
+          appendRow(dl, "name", unit.name);
+          appendRow(dl, "人数", unit.member);
+          appendRow(dl, "装备", equipmentText(unit.equipment));
+          // ★ B15：这两行也是"内部单位"（`speed` 是 MP/tick、`mobilityPerMille` 是 ‰ 定点）⇒ 同处换算。
+          appendRow(
+            dl,
+            "速度",
+            unit.speed + " MP/tick",
+            "每 tick 能用的移动点数（与「本 tick 预算」同一口径）。"
+          );
+          appendRow(
+            dl,
+            "机动",
+            perMilleToRateText(unit.mobilityPerMille),
+            "移动成本倍率（‰ 定点：1000‰ = 1.0×；每格成本 = 地形成本 × 该值 ÷ 1000）。"
+          );
+          appendRow(dl, "位置", unit.position ? hexLabel(unit.position) : "—");
+          appendRow(
+            dl,
+            "上级",
+            unit.parent === null || unit.parent === undefined ? "—" : unit.parent
+          );
+        });
+        appendRowGroup(detail, "在途移动", function (dl) {
+          appendMovementRows(dl, unit, overview);
+        });
         app.statusMessage(status, "单位 " + unit.id + " · " + targetLabel(), "ok");
       })
       .catch(function (e) {
@@ -399,6 +427,21 @@
 
   function setDecisionViewStatus(message, tone) {
     app.statusMessage(app.byId("decision-view-status"), message, tone);
+  }
+
+  /**
+   * 右栏「决策人」子页顶部的**选中态说明**（第2波 B11）：说明当前选中项为何"没有决策人"、点了会怎样。
+   *
+   * <p>★ 用户原话「右边栏也没有对应显示」——左栏说了"无决策人"，右栏却只列全部决策人、看不出"你选中的这个没有"。
+   * 无说明 ⇒ 收起（`hidden`）。节点缺席（旧页 / 别的宿主）⇒ 静默跳过。
+   */
+  function setDecisionSelectionNote(text) {
+    var node = app.byId("decision-selection-note");
+    if (!node) {
+      return;
+    }
+    node.hidden = !text;
+    node.textContent = text || "";
   }
 
   // ── 「开始决策」入口（T10，三件事模型 ④；2026-09-23 按用户裁定改造）────────────
@@ -1244,9 +1287,18 @@
     container.appendChild(dl);
   }
 
-  /** 无决策人时的显式文案（C14：不静默空白）。 */
-  function appendNoDecisionMaker(container, reason) {
+  /**
+   * 无决策人时的显式文案（C14：不静默空白）。
+   *
+   * <p>★ 第2波 B11（用户 2026-09-23 实测「我都不知道点了会发生什么」）：除了"没有决策人"，
+   * 还要**明说接下来会怎样**（`hint`，可选）——例如"「开始决策」对它不可用、本版不会自动创建决策人"。
+   * `reason` 仍是**第一个直接子节点**（既有断言 `texts.includes("无决策人")` 逐字钉着它）。
+   */
+  function appendNoDecisionMaker(container, reason, hint) {
     container.appendChild(app.el("p", { class: "empty decision-empty", text: reason }));
+    if (hint) {
+      container.appendChild(app.el("p", { class: "decision-empty-hint muted", text: hint }));
+    }
   }
 
   function renderDecisionMakers(container, makers, note) {
@@ -1278,6 +1330,8 @@
     decisionLeftKey = key;
     var token = ++decisionLeftToken;
     app.clear(container);
+    // ★ 第2波 B11：右栏的"选中态说明"每轮先清掉，只有"选中项确实没有决策人"的分支才重新写。
+    setDecisionSelectionNote(null);
 
     if (focus) {
       setDecisionViewStatus("查询决策人 " + focus + "…", "muted");
@@ -1340,16 +1394,44 @@
             : [];
         app.clear(container);
         if (!nationIds.length) {
-          appendNoDecisionMaker(container, "该格不属于任何国家区域（无国家决策人）");
+          appendNoDecisionMaker(
+            container,
+            "该格不属于任何国家区域（无国家决策人）",
+            "该格不在任何国家区域内 ⇒ 没有国家决策人可发起决策。请点选属于某国的格，或改选一个单位。"
+          );
           setStartDecisionTarget(null);
           loadDecisionDirectives([]);
           setDecisionViewStatus(hexLabel(hex) + " · 无国家区域", "muted");
+          setDecisionSelectionNote(
+            "选中 " + hexLabel(hex) + "：它不属于任何国家区域 —— 没有国家决策人可发起决策。"
+          );
           return;
         }
         var all = [];
         nationIds.forEach(function (nationId) {
           all = all.concat(decisionMakersForNation(makers, nationId));
         });
+        if (!all.length) {
+          // ★ 第2波 B11：国家区域在、但没有决策人 ⇒ 同样把"点了会怎样"说清（这里也不自动建）。
+          appendNoDecisionMaker(
+            container,
+            "无决策人",
+            "该格所属的国家区域（" +
+              nationIds.join("、") +
+              "）没有决策人 ⇒ 不能发起决策。本版不会自动创建决策人；请先为该国家配置决策人。"
+          );
+          setStartDecisionTarget(null);
+          loadDecisionDirectives([]);
+          setDecisionViewStatus(hexLabel(hex) + " · 无决策人（不能发起决策）", "warn");
+          setDecisionSelectionNote(
+            "选中 " +
+              hexLabel(hex) +
+              "：所属国家区域（" +
+              nationIds.join("、") +
+              "）没有决策人 —— 不能发起决策。"
+          );
+          return;
+        }
         renderDecisionMakers(container, all, "国家区域 " + nationIds.join("、"));
         // 多个国家决策人 ⇒ 无单一发起目标（不猜"哪一个"）。
         setStartDecisionTarget(all.length === 1 ? all[0] : null);
@@ -1381,10 +1463,22 @@
         var maker = decisionMakerForUnit(makers, units, selection.id);
         app.clear(container);
         if (!maker) {
-          appendNoDecisionMaker(container, "无决策人");
+          // ★ 第2波 B11（用户 2026-09-23 实测「我都不知道点了会发生什么 / 右边栏也没有对应显示」）：
+          //   把"点了会怎样 + 下一步"说清楚；**不做**自动创建决策人（那是一次隐式写操作，与"没明说就不许写"冲突）。
+          appendNoDecisionMaker(
+            container,
+            "无决策人",
+            "该单位没有决策人 ⇒ 不能对它发起决策：左栏「开始决策」会保持禁用，点它不会有任何反应。" +
+              "本版不会自动创建决策人（那是一次隐式写）。要发起决策，请改选一个有决策人的单位，或点选国家区域。"
+          );
           setStartDecisionTarget(null);
           loadDecisionDirectives([]);
-          setDecisionViewStatus("单位 " + selection.id + " · 无决策人", "muted");
+          setDecisionViewStatus("单位 " + selection.id + " · 无决策人（不能对它发起决策）", "warn");
+          setDecisionSelectionNote(
+            "选中单位 " +
+              selection.id +
+              "：没有决策人 —— 不能对它发起决策（左栏「开始决策」保持禁用）。本版不会自动创建决策人。"
+          );
           return;
         }
         appendDecisionMakerDetail(container, maker, "单位 " + selection.id);
