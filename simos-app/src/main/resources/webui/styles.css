@@ -446,7 +446,7 @@ body.workbench-page .col-right {
   background: var(--panel);
 }
 
-/* 时间轴（M7 T3；M7b T1 列坐标 + 可见 knob + 分岔连线）：
+/* 时间轴（M7 T3；M7b T1 列坐标 + 可见 knob + 分岔连线；B7：节点＝线上一小点 + hover 详情）：
    节点 x = 左边距(label 区) + (列 − 1) × 列宽；游标 = .tl-node.active + 吸附其上的 .tl-knob。 */
 .timeline-track {
   position: relative;
@@ -466,7 +466,8 @@ body.workbench-page .col-right {
 
 .timeline-line {
   position: relative;
-  height: 34px;
+  /* B7：留出小点下方那行 tick 刻度数字的高度（原来胶囊形态 34px 就够）。 */
+  height: 40px;
   flex: 0 0 auto;
 }
 
@@ -494,30 +495,37 @@ body.workbench-page .col-right {
   font-size: 11px;
 }
 
+/* B7 节点＝线上的一个小点（胶囊标签形态退场）。点本体即圆点；节点的具体信息走 title（悬停显示）。 */
 .tl-node {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1;
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 50%;
   background: var(--panel-2);
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
 }
 
 .tl-node:hover {
-  color: var(--text);
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(78, 161, 255, 0.18);
 }
 
 .tl-node.active {
-  color: #06121f;
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 600;
+  box-shadow: 0 0 0 3px rgba(78, 161, 255, 0.25);
+}
+
+.tl-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* 分岔连线：从 parent 节点垂直指向分支 rev1（同列 ⇒ 竖线）。★ 类名独立，绝不混入 .timeline-line。 */
@@ -579,10 +587,21 @@ body.workbench-page .col-right {
   font-size: 12px;
 }
 
-/* tick 节点的内联明细（"一个节点 = 一个 tick"）：命令名 / "N 条命令"。 */
-.tl-node .tl-detail {
-  margin-left: 6px;
-  opacity: 0.8;
+/* B7：点下方那行极简的 tick 刻度数字。只是刻度——"N 条命令"这类明细被退场，改走 title 悬停（B18）。 */
+.tl-node .tl-tick {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tl-node.active .tl-tick {
+  color: var(--text);
 }
 
 .timeline-actions button:disabled {

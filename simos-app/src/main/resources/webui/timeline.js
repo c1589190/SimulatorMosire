@@ -10,6 +10,10 @@
 //   **不**直接用 tick 值——demo 从 5 起，直接当列号会留空列）。分岔对齐不变：非 main 分支的**首个 tick 节点**
 //   与其 parent 所在 tick 节点同列。★ 铁律 2 不破：每条命令仍是真 revision，只是**视觉按 tick 归并**；
 //   点一个 tick 节点 ⇒ 游标落在该 tick 的**最后一个 revision**（面板看到的是该 tick 结束时的状态）。
+// ★ B7（用户裁定，2026-09-23）：节点**形态**从"胶囊标签（tick 0 · 9 条命令）"改为
+//   "一条线 + 多个小点"，节点的具体信息改为**鼠标悬停（title）**时显示——视觉上不再铺命令明细。
+// ★ B18：读数口径随之澄清——悬停文案写成「该 tick 下 N 条命令 / N 条 revision」，
+//   **不**写成「tick N 发生了 N 次」（那会被读成"N 次决策落在 tick N"）。
 
 (function () {
   "use strict";
@@ -265,15 +269,20 @@
   // ── 渲染 ──────────────────────────────────────────────────────────
 
   /**
-   * 一个 tick 节点的 DOM（M7f T1）：显示 tick + 内联明细（单命令显示命令名，多命令显示条数），悬停 title 列出
-   * 该 tick 的每条命令；`data-tick` / `data-count` / `data-commands` / `data-first-revision` 供 e2e 断言。
+   * 一个 tick 节点的 DOM（B7 新形态）：线上一个**小点**（.tl-node 本体即圆点），点下方一行极小的 tick 刻度数字，
+   * 节点的具体信息（命令名 / rev / initiator 逐条）放 **title**——鼠标悬停即显示（不再内联铺明细）。
+   * ★ 一个节点 = 一个 tick：同 tick 的多条命令已在 groupByTick 里归并 ⇒ 这里只画**一个点**，只有 tick 变化才长新点。
+   * ★ B18 读数口径：title 与 aria-label 都写成「该 tick 下 N 条命令 / N 条 revision」，避免被读成"N 次决策落在该 tick"。
+   * `data-tick` / `data-count` / `data-commands` / `data-first-revision` 供 e2e 断言。
    * ★ `data-revision` = 该 tick 的**最后一个 revision**（游标语义：点它 = 看到该 tick 结束时的状态）。
    */
   function tickNode(branch, group) {
     var count = group.nodes.length;
-    var detail = "· " + (count === 1 ? shortCommandType(group.nodes[0].commandType) : count + " 条命令");
+    // 每条命令各产出一个 revision ⇒ 两者同数；**显式成对给出**是为了让读数无歧义（B18）。
+    var revisions = count;
+    var readout = "该 tick 下 " + count + " 条命令 / " + revisions + " 条 revision";
     var lines = group.nodes.map(function (node) {
-      return shortCommandType(node.commandType) + " · rev " + node.revision + " · " + app.text(node.initiator);
+      return "· " + shortCommandType(node.commandType) + " · rev " + node.revision + " · " + app.text(node.initiator);
     });
     var button = app.el("button", {
       type: "button",
@@ -284,10 +293,11 @@
       "data-first-revision": group.firstRevision,
       "data-count": count,
       "data-commands": group.commands.join(","),
-      title: "tick " + group.tick + "（" + count + " 条命令）\n" + lines.join("\n"),
+      "aria-label": "tick " + group.tick + " · " + readout,
+      title: "tick " + group.tick + " · " + readout + "\n" + lines.join("\n"),
     });
-    button.appendChild(app.el("span", { class: "tl-tick", text: "tick " + group.tick }));
-    button.appendChild(app.el("span", { class: "tl-detail", text: detail }));
+    // 小点本体：点下方的极简刻度数字（只是刻度，不是被退场的"胶囊"明细）。
+    button.appendChild(app.el("span", { class: "tl-tick", text: String(group.tick) }));
     button.style.left = columnX(columnOfTick(branch, group.tick)) + "px";
     return button;
   }
