@@ -7,9 +7,11 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -18,7 +20,14 @@ import java.util.Objects;
  * <p>★ **只节点**（P3 的不对称）：只把 `id` 标成 `attached=false`，子节点**不动**（子树整体的分离是 SplitFormation， T4）。`id` 已是根
  * ⇒ 拒绝（没有可脱离的父）；`id` 不存在 ⇒ 拒绝。在 base 状态时间戳追加段。
  */
-public final class DetachUnitHandler implements CommandHandler {
+public final class DetachUnitHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

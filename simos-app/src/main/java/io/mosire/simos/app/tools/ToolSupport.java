@@ -38,6 +38,7 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -117,25 +118,28 @@ public final class ToolSupport {
               SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
-  // ── 资源路径语法（spec §3.3；AgentLib 对领域实体一无所知，故此处是唯一定义点）──────────────
+  // ── 资源路径语法（spec §3.3；AgentLib 对领域实体一无所知，故 AgentLib 侧只认 (ns, path)）──
   //
   // ★ **为什么路径规划成"区域级"而不是"逐 hex"**：`ResourceScope` 的前缀是**段边界**匹配，
   // 且真档有 59223 个 hex ⇒ 逐格前缀不可行；国家决策人的范围因此按**区域**组织（几条到几十条）。
   // ★ 本仓的调用点一律**引用这些助手**，不各自拼串（拼错一段不会抛、只会静默放宽/收紧权限）。
+  // ★★ 第 3 波第 2 步起**串本身**住在共享层 {@link ResourcePaths}：各域模块的命令要声明自己的目标资源
+  //   （{@link io.mosire.simos.util.spi.CommandTargets}），而它们看不见 AgentLib ⇒ 语法必须有**一个**
+  //   三方都够得着的出处。本类只剩"把路径包成 ResourceId"这一件事（输出逐字不变）。
 
   /** 区域资源：{@code map:<mapId>/region/<regionId>}。 */
   public static ResourceId resourceRegion(String mapId, String regionId) {
-    return ResourceId.of(MAP_NAMESPACE, mapId + "/region/" + regionId);
+    return ResourceId.of(MAP_NAMESPACE, ResourcePaths.region(mapId, regionId));
   }
 
   /** 单格资源：{@code map:<mapId>/hex/<q>_<r>}（坐标分隔符是**下划线**，与 {@link #canonicalHex} 同源）。 */
   public static ResourceId resourceHex(String mapId, int q, int r) {
-    return ResourceId.of(MAP_NAMESPACE, mapId + "/hex/" + q + "_" + r);
+    return ResourceId.of(MAP_NAMESPACE, ResourcePaths.hex(mapId, q, r));
   }
 
   /** 单位资源：{@code unit:<unitId>}（无子路径——单位本身就是资源）。 */
   public static ResourceId resourceUnit(String unitId) {
-    return ResourceId.of(UNIT_NAMESPACE, unitId);
+    return ResourceId.of(UNIT_NAMESPACE, ResourcePaths.unit(unitId));
   }
 
   /**
@@ -145,12 +149,12 @@ public final class ToolSupport {
    * 人口维的格用于"这格的人口读数你看不看得见"。二者的可见集由范围函数从**同一组格**派生（spec §3.2）， 故"同格口径"在两侧同时成立。
    */
   public static ResourceId resourceSocial(int q, int r) {
-    return ResourceId.of(SOCIAL_NAMESPACE, q + "_" + r);
+    return ResourceId.of(SOCIAL_NAMESPACE, ResourcePaths.social(q, r));
   }
 
   /** sd 资源：{@code sd:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
   public static ResourceId resourceSd(String kind, String id) {
-    return ResourceId.of(SD_NAMESPACE, kind + "/" + id);
+    return ResourceId.of(SD_NAMESPACE, ResourcePaths.sd(kind, id));
   }
 
   // ── 资源断言（AgentTool 契约：真正读写前调 require，工具只调不判）──────────────────────

@@ -11,6 +11,7 @@ import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.Segment;
@@ -31,7 +32,14 @@ import java.util.Optional;
  * <p>★ 字段缺失（含 {@code position}）⇒ {@code Rejected}；重 id、父不存在、负人数等域规则违反由 {@code Unit} 构造期 / {@code
  * UnitOperations} 抛出的 {@link IllegalArgumentException} 折成拒绝。
  */
-public final class CreateUnitHandler implements CommandHandler {
+public final class CreateUnitHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：按载荷里点名的**新**单位 id 判（建之后它才存在，见契约的创建型口径）。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

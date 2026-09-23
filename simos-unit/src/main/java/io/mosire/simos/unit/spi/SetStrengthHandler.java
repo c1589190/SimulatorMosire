@@ -7,8 +7,10 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -18,7 +20,14 @@ import java.util.Objects;
  * <p>★ {@code equipment} 是**整份替换**（M3 {@code setStrength} 语义）：载荷里的键值对整体取代旧表，不是增量合并。 人数/装备范围（{@code
  * member ≥ 0}、装备值 {@code ≥ 0}）由 {@code Unit} 构造期判、折成拒绝。
  */
-public final class SetStrengthHandler implements CommandHandler {
+public final class SetStrengthHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

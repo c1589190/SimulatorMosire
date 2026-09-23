@@ -107,6 +107,7 @@ import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.state.BranchId;
@@ -116,6 +117,7 @@ import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -212,6 +214,12 @@ public final class Shell implements AutoCloseable {
   private final Set<String> commandTypes;
 
   /**
+   * {@code 命令类型 → 目标声明}（第 3 波第 2 步）：从**已注册的 handler 清单**派生——实现了 {@link CommandTargets}
+   * 的那些把自己的目标交出来。{@code sd.AdjudicateTick} 拿它判"GM 代执行的这条命令动的 是谁"；**未实现者不在表里** ⇒ 工具侧 fail-closed 拒。
+   */
+  private final Map<String, CommandTargets> commandTargets;
+
+  /**
    * LLM provider 配置（M11′ 对接版）：由 AgentLib 的 {@code ConfigStore} 承载 {@code llm.routes.*} / {@code
    * keys.*} （用户裁定「Provider 配置归 AgentLib」）。
    */
@@ -245,6 +253,7 @@ public final class Shell implements AutoCloseable {
       SdCommandDrain sdCommandDrain,
       List<DecisionChannel> decisionChannels,
       Set<String> commandTypes,
+      Map<String, CommandTargets> commandTargets,
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
@@ -265,6 +274,7 @@ public final class Shell implements AutoCloseable {
     this.sdCommandDrain = sdCommandDrain;
     this.decisionChannels = List.copyOf(decisionChannels);
     this.commandTypes = Set.copyOf(commandTypes);
+    this.commandTargets = Map.copyOf(commandTargets);
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
     this.decisionAgentService = decisionAgentService;
@@ -369,6 +379,15 @@ public final class Shell implements AutoCloseable {
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
       commandTypes.add(handler.type());
+    }
+
+    // ★ 第 3 波第 2 步：命令的**目标声明**从同一份 handler 清单派生（实现了 CommandTargets 的那些）——
+    //   与执行面同源 ⇒ 不需要另立一张会漂移的表；未实现者不在表里 ⇒ 工具侧 fail-closed 拒。
+    Map<String, CommandTargets> commandTargets = new LinkedHashMap<>();
+    for (CommandHandler handler : handlers) {
+      if (handler instanceof CommandTargets targets) {
+        commandTargets.put(handler.type(), targets);
+      }
     }
 
     // ★ D1：决策命令白名单从**注册面**推导（禁 sd 自指/通用写）⇒ 必须在上面那个循环之后、用完整的 commandTypes 构造。
@@ -491,6 +510,7 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             commandTypes,
+            commandTargets,
             SimosToolSource.Role.GM,
             decisionAgentService);
     // ★ T8：GM 交互界面的数据源——GM 口每次工具执行的留痕（工具名 + 结果），经 /api/gm/tool-usage 只读导出。
@@ -590,6 +610,7 @@ public final class Shell implements AutoCloseable {
         new SdCommandDrain(coreSimos),
         decisionChannels,
         commandTypes,
+        commandTargets,
         llmConfig,
         decisionAdjudicationService,
         decisionAgentService,
@@ -632,6 +653,7 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             commandTypes,
+            commandTargets,
             role,
             decisionAgentService)
         .listTools();

@@ -11,6 +11,7 @@ import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.move.MovementCost;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -35,7 +36,14 @@ import java.util.Objects;
  * <p>★ **删掉的话 Shell 不认这条命令**：与 {@code unit.PlanRoute} 并存的理由见 spec §二.2 末段（既有命令的"载荷必须逐格相邻"契约已被 WebUI
  * 与 e2e 引用）。
  */
-public final class PlanSparseRouteHandler implements CommandHandler {
+public final class PlanSparseRouteHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：**只**声明被规划路线的那个单位（同 {@code PlanRoute}）。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   private final MovementCost cost;
 

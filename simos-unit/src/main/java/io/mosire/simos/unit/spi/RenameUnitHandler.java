@@ -10,8 +10,10 @@ import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -33,7 +35,14 @@ import java.util.Objects;
  *
  * <p>★ **不是时间命令** ⇒ 没有 {@code TimeProposal}、没有读写集，该路径的读写集为空集（spec §9.2 末段）。
  */
-public final class RenameUnitHandler implements CommandHandler {
+public final class RenameUnitHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   /** 本类唯一的一台 mapper：共享基座出厂配置，不认识任何领域类型（载荷是扁平的 id/name 字符串对）。 */
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();

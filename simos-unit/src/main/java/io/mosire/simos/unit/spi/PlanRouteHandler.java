@@ -9,6 +9,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -25,7 +26,17 @@ import java.util.Objects;
  *
  * <p>起点必须等于该单位在 {@code at} 的有效位置（M3 口径），否则拒绝。
  */
-public final class PlanRouteHandler implements CommandHandler {
+public final class PlanRouteHandler implements CommandHandler, CommandTargets {
+
+  /**
+   * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：**只**声明被规划路线的那个单位——路线住在 {@code UnitState} 里，{@code
+   * waypoints} 是路线的值，**不是**被写的资源。
+   */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

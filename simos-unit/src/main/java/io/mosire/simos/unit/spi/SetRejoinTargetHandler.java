@@ -7,8 +7,10 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -26,7 +28,17 @@ import java.util.Optional;
  * <p>★ 拒绝一律走 {@link HandlerOutcome.Rejected}（理由由 {@link UnitOperations#setRejoinTarget} 给出，与 {@code
  * unit.SetStatus} 同一条折算路径）；**装配故障**（缺 unit 切片）才抛。
  */
-public final class SetRejoinTargetHandler implements CommandHandler {
+public final class SetRejoinTargetHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：回归单位 + **载荷点名的回归目标**（若有）。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    String id = UnitPayloads.requireText(payload, "id");
+    return UnitPayloads.optionalId(payload, "target")
+        .<List<String>>map(target -> List.of(id, target.value()))
+        .orElseGet(() -> List.of(id));
+  }
 
   @Override
   public String type() {

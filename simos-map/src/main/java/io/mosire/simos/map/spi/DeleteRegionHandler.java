@@ -5,8 +5,11 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -19,7 +22,15 @@ import java.util.Objects;
  * <p>★ 目标不存在 ⇒ {@code Rejected}（**不做静默幂等**）。删除后 {@code RegionIndex} 里每个 hex 的从属**少一个**（只属它 ⇒
  * 变成无从属），**不悬空**。
  */
-public final class DeleteRegionHandler implements CommandHandler {
+public final class DeleteRegionHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：被删的那个区域。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = MapPayloads.parse(payloadJson);
+    return List.of(
+        ResourcePaths.region(mapId, MapPayloads.requireRegionId(payload, "regionId").value()));
+  }
 
   @Override
   public String type() {

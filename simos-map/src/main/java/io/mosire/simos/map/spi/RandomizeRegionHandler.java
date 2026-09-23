@@ -5,8 +5,11 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.ops.RandomizeOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -25,7 +28,16 @@ import java.util.Set;
  * <p>★ **域规则违反以 {@code Rejected} 面世**：{@link RandomizeOperations} 的 {@link
  * IllegalArgumentException}（空选区、图外格）在本边界折成拒绝理由。
  */
-public final class RandomizeRegionHandler implements CommandHandler {
+public final class RandomizeRegionHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：{@code hexes[]} 里**每一个**格（逐条判）。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = MapPayloads.parse(payloadJson);
+    return MapPayloads.requireHexes(payload, "hexes").stream()
+        .map(coord -> ResourcePaths.hex(mapId, coord.q(), coord.r()))
+        .toList();
+  }
 
   @Override
   public String type() {

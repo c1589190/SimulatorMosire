@@ -7,9 +7,11 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -21,7 +23,15 @@ import java.util.Objects;
  * <p>★ `parent` 落在 `id` 的子树内 ⇒ 拒绝（成环，理由由 {@code UnitOperations.attachSubtree} 给出）；两个 id 有任一不存在 ⇒
  * 拒绝。在 base 状态时间戳追加段（`from = at`，M3 口径）。
  */
-public final class AttachUnitHandler implements CommandHandler {
+public final class AttachUnitHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：被挂上的单位 + 目标父，**两条都判**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(
+        UnitPayloads.requireText(payload, "id"), UnitPayloads.requireText(payload, "parent"));
+  }
 
   @Override
   public String type() {

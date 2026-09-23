@@ -54,8 +54,12 @@ class McpPortTopologyTest {
           "simos.unit.get",
           "simos.social.population");
 
-  private static final List<String> GENERIC_WRITES =
-      List.of("simos.command.submit", "simos.advance", "simos.fork");
+  /**
+   * **非窄写**的写工具（4 条）：3 条通用写（自选命令类型）+ 第 3 波第 2 步的批裁决 {@code sd.AdjudicateTick}
+   * （命令类型由它要裁决的令决定，不是固定一条）——它们都不继承 {@code AbstractNarrowWriteTool}。
+   */
+  private static final List<String> NON_NARROW_WRITES =
+      List.of("simos.command.submit", "simos.advance", "simos.fork", "sd.AdjudicateTick");
 
   /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
@@ -141,7 +145,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 9 + 通用写 3 + 全部窄写 44 = 56）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 9 + 非窄写 4 + 窄写 45 = 58）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -149,9 +153,9 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（9 读 + 3 通用写 + 44 窄写 = 56）")
+          .as("J1：唯一口 = GM 组（9 读 + 4 非窄写 + 45 窄写 = 58）")
           .containsExactlyInAnyOrderElementsOf(
-              concat(READ_TOOLS, GENERIC_WRITES, GM_NARROW_WRITES));
+              concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }
   }
 

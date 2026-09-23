@@ -141,7 +141,8 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 9 读 + 47 写（3 通用写 + **17 sd 窄写**（4 + M3 的 12 + 会话重置）+ **7
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 9 读 + 49 写（**4 非窄写**：3 通用写 + {@code
+   * sd.AdjudicateTick}，后者**不是**命令类型；+ **18 sd 窄写**（4 + M3 的 12 + 会话重置 + T11C 的 RunDecision）+ **7
    * map 窄写**，M1 + **20 unit 窄写**，M2）。
    */
   private static final List<String> GM_TOOL_NAMES =
@@ -164,6 +165,7 @@ class SimosToolsTest {
           "sd.ResetDecisionMakerConversation",
           "sd.StartDecision",
           "sd.RunDecision",
+          "sd.AdjudicateTick",
           "sd.CreateNation",
           "sd.CreateArmy",
           "sd.CreateDecisionMaker",
@@ -222,23 +224,26 @@ class SimosToolsTest {
           "simos.social.population");
 
   /**
-   * 通用写（3 条，spec §八.3）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
+   * 非窄写工具（4 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
-   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 3 条从差集里扣掉。
+   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 4 条从差集里扣掉。
+   *
+   * <p>★ 前 3 条是**通用写**（自选命令类型）；{@code sd.AdjudicateTick} 是**批裁决**——命令类型由它要裁决的令决定
+   * （不是固定一条），故同样不属于"窄写"那一族。
    */
-  private static final List<String> GENERIC_WRITE_NAMES =
-      List.of("simos.command.submit", "simos.advance", "simos.fork");
+  private static final List<String> NON_NARROW_WRITE_NAMES =
+      List.of("simos.command.submit", "simos.advance", "simos.fork", "sd.AdjudicateTick");
 
   /**
-   * 写工具全集（47 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
+   * 写工具全集（49 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
    *
    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
    */
   private static final List<String> WRITE_TOOL_NAMES =
       concat(
-          GENERIC_WRITE_NAMES,
+          NON_NARROW_WRITE_NAMES,
           List.of(
               "sd.IssueDirective",
               "sd.SubmitVerdict",
@@ -617,11 +622,12 @@ class SimosToolsTest {
             "sd.SetDecisionMakerAccess",
             "sd.ResetDecisionMakerConversation",
             "sd.StartDecision",
-            "sd.RunDecision")
+            "sd.RunDecision",
+            "sd.AdjudicateTick")
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(57);
+        .hasSize(58);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -631,7 +637,8 @@ class SimosToolsTest {
             "sd.SetDecisionMakerAccess",
             "sd.ResetDecisionMakerConversation",
             "sd.StartDecision",
-            "sd.RunDecision")
+            "sd.RunDecision",
+            "sd.AdjudicateTick")
         .contains("sd.IssueDirective", "sd.SubmitVerdict")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
@@ -711,11 +718,12 @@ class SimosToolsTest {
     Set<String> implemented = narrowWriteToolNamesFromSources();
     assertThat(implemented).as("扫描必须恰为 45 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(45);
 
-    // ★ GM 组还含 3 条通用写（J1 起）：窄写扫描器按 tools/write 目录扫源码，扫不到它们 ⇒ 不扣掉就是"名单对不上"的假红。
+    // ★ GM 组还含 4 条非窄写工具（J1 起 3 条通用写；第 3 波第 2 步 + sd.AdjudicateTick）：窄写扫描器按 tools/write
+    //   目录扫源码，扫不到它们 ⇒ 不扣掉就是"名单对不上"的假红。
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
-        .as("GM 组 ∖ 读名单 ∖ 通用写必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
+        .as("GM 组 ∖ 读名单 ∖ 非窄写写工具必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
         .filteredOn(name -> !READ_TOOL_NAMES.contains(name))
-        .filteredOn(name -> !GENERIC_WRITE_NAMES.contains(name))
+        .filteredOn(name -> !NON_NARROW_WRITE_NAMES.contains(name))
         .containsExactlyInAnyOrderElementsOf(implemented);
   }
 

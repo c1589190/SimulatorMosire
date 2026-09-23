@@ -8,9 +8,11 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -19,7 +21,17 @@ import java.util.Optional;
  *
  * <p>位置设置在 base 状态时间戳追加一条 {@code position} 段，并按 M3 语义**顺带清空在途路线**（改了位置，旧路线不再有意义）。
  */
-public final class PlaceAtHandler implements CommandHandler {
+public final class PlaceAtHandler implements CommandHandler, CommandTargets {
+
+  /**
+   * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：**只**声明被移动的那个单位——位置住在 {@code UnitState} 里， {@code
+   * hex} 只是新位置的值，**不是**被写的资源。
+   */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

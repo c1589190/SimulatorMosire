@@ -7,8 +7,12 @@ import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -24,7 +28,20 @@ import java.util.Set;
  * <p>★ payload 形态是本模块的私事（C26）：Core 只转交 {@code payloadJson} 字节串。字段坏、或域规则违反（重复 id / 空 hexes / 图外
  * hex）以 {@code Rejected} 面世，**不留 revision**。
  */
-public final class CreateRegionHandler implements CommandHandler {
+public final class CreateRegionHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：载荷点名的**新**区域（建之后它才存在）+ {@code hexes[]} 里**每一个**格。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = MapPayloads.parse(payloadJson);
+    List<String> paths = new ArrayList<>();
+    paths.add(
+        ResourcePaths.region(mapId, MapPayloads.requireRegionId(payload, "regionId").value()));
+    for (var coord : MapPayloads.requireHexes(payload, "hexes")) {
+      paths.add(ResourcePaths.hex(mapId, coord.q(), coord.r()));
+    }
+    return List.copyOf(paths);
+  }
 
   @Override
   public String type() {

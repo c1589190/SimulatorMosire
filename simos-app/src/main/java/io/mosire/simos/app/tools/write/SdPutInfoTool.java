@@ -31,6 +31,8 @@ public final class SdPutInfoTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?}（前三者必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等）";
+    return "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?, id?, tags[决策人 id…]?, tick?}"
+        + "（address/key/value 必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等；"
+        + "★ tick 缺省 = 世界当前 tick，记在未来会被拒）";
   }
 }

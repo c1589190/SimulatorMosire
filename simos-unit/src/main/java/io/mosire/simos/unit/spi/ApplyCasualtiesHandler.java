@@ -7,8 +7,10 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -21,7 +23,14 @@ import java.util.Objects;
  * <p>★ **差分不另造路径**：本条命令与其余 handler 一样，产出的变更集是 {@link UnitChangeSet#between}（**绝对值**：目标状态
  * 的新值），不是"增量"——故回退到战损前那一 revision 读回的就是战前值（时间线恢复）。
  */
-public final class ApplyCasualtiesHandler implements CommandHandler {
+public final class ApplyCasualtiesHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

@@ -7,9 +7,11 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -20,7 +22,16 @@ import java.util.Objects;
  *
  * <p>★ **不判"已是父"**：拆→合的往返里父本来就是同一个（detach 不碰 `parent`），判了会把它堵死——T3 已裁定的同一条，见 spec §一.5 表的回填注。
  */
-public final class MergeFormationHandler implements CommandHandler {
+public final class MergeFormationHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：合体的子与父，**两条都判**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(
+        UnitPayloads.requireText(payload, "childId"),
+        UnitPayloads.requireText(payload, "parentId"));
+  }
 
   @Override
   public String type() {

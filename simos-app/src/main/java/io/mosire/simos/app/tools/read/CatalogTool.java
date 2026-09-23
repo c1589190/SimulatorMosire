@@ -66,7 +66,10 @@ public final class CatalogTool implements AgentTool {
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(
               "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
-          Map.entry("sd.PutInfo", "address, key, value, note?"),
+          Map.entry(
+              "sd.PutInfo",
+              "address, key, value, note?, id?（同类型内唯一）, tags[决策人 id…]?,"
+                  + " tick?（缺省=世界当前 tick；记在未来 ⇒ 拒）"),
           Map.entry("sd.CreateCombat", "combatId, name, participants[字符串...]"),
           Map.entry(
               "sd.AddCombatStage",

@@ -26,7 +26,7 @@ import java.util.Set;
  *
  * <pre>{@code
  * {"address":"map:Map1:region.r1","key":"brief","value":"……","note":"可选",
- *  "id":"可选：显式 id（同类型内唯一）","tags":["可选：决策人 id…"]}
+ *  "id":"可选：显式 id（同类型内唯一）","tags":["可选：决策人 id…"],"tick":"可选：该条目所属 tick"}
  * }</pre>
  *
  * <p>★ **不复用全局 {@code InfoSystem}**（spec §六）：写进 {@code SdChangeSet.info} → 进 revision，可重放、受铁律 5
@@ -39,14 +39,16 @@ import java.util.Set;
  *   <li>{@code id} 缺席 ⇒ {@link SdInfoIds#synthesize}（canonical 地址 + 该地址下追加序号，注入）；给了 ⇒ 用它，并在**命令期**
  *       **重复即拒**（见下）；
  *   <li>{@code tags} 缺席 ⇒ 空集（无主）；给了 ⇒ 逐字解析成 {@link DecisionMakerId}（**不**在此校验决策人是否存在——
- *       那是后续步骤的语义，本命令只认形状）。
+ *       那是后续步骤的语义，本命令只认形状）；
+ *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
+ *       tick} ⇒ 拒，与 {@code IssueDirectiveHandler} 同口径）。**过去合法**（补记/滞后）。
  * </ul>
  *
  * <p>★ 诚实边界（spec §六 + M4 裁定 38 同口径）：{@code SdInfoEntry.value} 是**裸 {@code Object}**，结构化值的 {@code
  * equals} 往返不满足 ⇒ 判据只覆盖标量值；结构化值列为挂起项。
  *
  * <p>拒绝：地址非法（{@link Address#parse} 抛）；{@code key} 空白；{@code value} 缺失；{@code id} 空白或与既有条目**撞 id**；
- * {@code tags} 元素非法。
+ * {@code tags} 元素非法；{@code tick} 记在未来。
  */
 public final class PutInfoHandler implements CommandHandler {
 
@@ -69,7 +71,16 @@ public final class PutInfoHandler implements CommandHandler {
       Set<DecisionMakerId> tags = parseTags(payload);
       Optional<SdInfoId> explicitId = SdPayloads.optionalText(payload, "id").map(SdInfoId::parse);
       RevisionId at = state.meta().ref().revision();
-      long tick = state.meta().timestamp().tick();
+      long worldTick = state.meta().timestamp().tick();
+      // ★ 可选 tick（第 3 波第 2 步）：缺省 = 世界当前 tick（**向后兼容**，旧调用一字不变）；显式给 = 用它。
+      //   ★ 为什么允许**过去**的 tick：`IssueDirectiveHandler` 明确允许"补记/滞后"的令（只拒未来）⇒ 若这里
+      //   只收当前 tick，那些令的**决策结果**将永远归不到正确的 tick 上（制造孤儿）。语义是：命令的**效果**仍落在
+      //   当下（世界在 current tick），只是**条目带该 tick**（归属正确）。★ 未来 tick 照旧拒（与"令不得记在未来"同口径）。
+      long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      if (tick > worldTick) {
+        return new HandlerOutcome.Rejected(
+            "INFO 不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
+      }
       String mapKey = address.canonical();
       Map<String, List<SdInfoEntry>> next = new LinkedHashMap<>(base.info());
       List<SdInfoEntry> entries = new ArrayList<>(next.getOrDefault(mapKey, List.of()));

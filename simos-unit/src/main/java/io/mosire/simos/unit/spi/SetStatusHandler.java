@@ -8,8 +8,10 @@ import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -19,7 +21,14 @@ import java.util.Objects;
  * {@link IllegalArgumentException}，handler 在命令边界折成 {@code Rejected}）；单位不存在 ⇒ 拒绝。改状态**只影响此后新下达的路线**，
  * **在途不回溯**（P6：`Movement.speedAtDeparture` 出发时已冻结）。
  */
-public final class SetStatusHandler implements CommandHandler {
+public final class SetStatusHandler implements CommandHandler, CommandTargets {
+
+  /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(UnitPayloads.requireText(payload, "id"));
+  }
 
   @Override
   public String type() {

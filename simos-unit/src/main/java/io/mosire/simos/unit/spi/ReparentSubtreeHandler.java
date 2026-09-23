@@ -7,9 +7,11 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -22,7 +24,19 @@ import java.util.Optional;
  * <p>★ `parent` **可选**：缺失或 `null` ⇒ **提升为根**（P4），故这里**不**照抄 {@link AttachUnitHandler} 的
  * `orElseThrow`——那会把这唯一的降根路径堵死。`parent` 落在 `rootId` 的子树内 ⇒ 拒绝（成环）；两个 id 有任一不存在 ⇒ 拒绝。
  */
-public final class ReparentSubtreeHandler implements CommandHandler {
+public final class ReparentSubtreeHandler implements CommandHandler, CommandTargets {
+
+  /**
+   * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：子树根 + 新父。
+   *
+   * <p>★ **诚实边界**：整棵后代都会被迁移，但载荷只给根 id ⇒ 后代**不在声明里**（见契约的级联口径）。
+   */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = UnitPayloads.parse(payloadJson);
+    return List.of(
+        UnitPayloads.requireText(payload, "rootId"), UnitPayloads.requireText(payload, "parent"));
+  }
 
   @Override
   public String type() {

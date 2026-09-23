@@ -112,6 +112,47 @@ class PutInfoHandlerTest {
     assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("res-1");
   }
 
+  /**
+   * ★ 第 3 波第 2 步：{@code tick} 是**可选载荷**。
+   *
+   * <p>缺省 = **世界当前 tick**（**向后兼容**，旧调用一字不变）；**过去合法**（"补记/滞后"的令必须能把决策结果归到 自己的 tick
+   * 上，否则那些令永远没有结果）；**未来 ⇒ 拒**（与 {@code IssueDirectiveHandler}「令不得记在未来」同口径）。
+   */
+  @Test
+  void optionalTickDefaultsToTheWorldTickAndRejectsTheFuture() {
+    long worldTick = 5L;
+    SdState base = SdState.empty();
+
+    assertThat(
+            entryAt(base, worldTick, "{\"address\":\"map:Map1\",\"key\":\"k1\",\"value\":\"v\"}")
+                .tick())
+        .as("缺省 ⇒ 世界当前 tick")
+        .isEqualTo(worldTick);
+    assertThat(
+            entryAt(
+                    base,
+                    worldTick,
+                    "{\"address\":\"map:Map1\",\"key\":\"k2\",\"value\":\"v\",\"tick\":3}")
+                .tick())
+        .as("★ 过去合法（补记）")
+        .isEqualTo(3L);
+
+    HandlerOutcome future =
+        HANDLER.handle(
+            SdWorlds.world(base, worldTick),
+            "{\"address\":\"map:Map1\",\"key\":\"k3\",\"value\":\"v\",\"tick\":6}");
+    assertThat(future).as("记在未来 ⇒ 拒").isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) future).reason()).contains("未来");
+  }
+
+  /** 在指定世界 tick 下写一条并在该地址下取回第一条。 */
+  private static SdInfoEntry entryAt(SdState base, long worldTick, String payload) {
+    HandlerOutcome outcome = HANDLER.handle(SdWorlds.world(base, worldTick), payload);
+    assertThat(outcome).as("期望 Applied，实际: %s", outcome).isInstanceOf(HandlerOutcome.Applied.class);
+    SdChangeSet cs = (SdChangeSet) ((HandlerOutcome.Applied) outcome).changeSet();
+    return SdChangeSet.apply(cs, base).info().get("map:Map1").get(0);
+  }
+
   private static SdState applied(SdState base, String payload) {
     SimulationState world = SdWorlds.world(base);
     HandlerOutcome outcome = HANDLER.handle(world, payload);

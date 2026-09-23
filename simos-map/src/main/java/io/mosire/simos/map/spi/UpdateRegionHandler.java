@@ -7,8 +7,12 @@ import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -22,7 +26,23 @@ import java.util.Set;
  * <p>★ {@code hexes} 改内容 ⇒ 边界按 {@code hexes} **重算**（经 {@code Region.of}）；{@code meta}
  * 只改元数据、内容与边界不动。 改成与别的区域重叠**不报错**（M8-U1）。目标不存在 / 二者皆未给 / 空 hexes / 图外 hex ⇒ {@code Rejected}。
  */
-public final class UpdateRegionHandler implements CommandHandler {
+public final class UpdateRegionHandler implements CommandHandler, CommandTargets {
+
+  /**
+   * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：被改的区域 + {@code hexes[]}（**只在载荷给了的时候**， 与"缺省 =
+   * 不动"同口径）。
+   */
+  @Override
+  public List<String> targetPaths(String mapId, String payloadJson) {
+    var payload = MapPayloads.parse(payloadJson);
+    List<String> paths = new ArrayList<>();
+    paths.add(
+        ResourcePaths.region(mapId, MapPayloads.requireRegionId(payload, "regionId").value()));
+    for (var coord : MapPayloads.optionalHexes(payload, "hexes")) {
+      paths.add(ResourcePaths.hex(mapId, coord.q(), coord.r()));
+    }
+    return List.copyOf(paths);
+  }
 
   @Override
   public String type() {

@@ -13,6 +13,7 @@ import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
+import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.ForkTool;
@@ -62,8 +63,10 @@ import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
 import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.util.spi.CommandTargets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -114,28 +117,11 @@ public final class SimosToolSource implements ToolSource {
   private final List<AgentTool> tools;
 
   /**
-   * 缺省按 {@link Role#GM} 装配（= 运行时 MCP 口那一档）。
+   * 决策人桶的装配（**不带目标表**）：{@link Role#DECISION_AGENT} 走这条——本桶不含 {@code sd.AdjudicateTick}（它是 GM
+   * 的活），故不需要 {@link CommandTargets}，也不需要运行流。
    *
-   * @param core 唯一写入口（写工具经它提交）
-   * @param query 只读门面（读工具经它读状态）
-   * @param initiator 写命令的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（构造 canonical hex 地址与资源断言）
-   * @param commandTypes 已注册命令类型（与 {@code Shell} 注册的 handler 同源，catalog 读它）
-   * @param decisionAgent **决策人 agent 运行流的装配点**（{@code sd.RunDecision} 触发工具要它）
-   */
-  public SimosToolSource(
-      CoreSimos core,
-      QueryService query,
-      String initiator,
-      String mapId,
-      Set<String> commandTypes,
-      DecisionAgentService decisionAgent) {
-    this(core, query, initiator, mapId, commandTypes, Role.GM, decisionAgent);
-  }
-
-  /**
-   * 按角色装配（**不带决策人运行流**）：{@link Role#DECISION_AGENT} 走这条（它没有触发工具，也不需要运行流）； {@link Role#GM} 请用带
-   * {@code DecisionAgentService} 的那条——它在 GM 角色下会**当场抛**（见下）。
+   * <p>★ GM 桶请用带 {@code commandTargets} 的那条：缺了它 {@code sd.AdjudicateTick} 会因"没有任何命令有目标声明"
+   * 而**一律拒**（fail-closed，不会静默放行——但这显然不是想要的行为）。
    */
   public SimosToolSource(
       CoreSimos core,
@@ -144,12 +130,13 @@ public final class SimosToolSource implements ToolSource {
       String mapId,
       Set<String> commandTypes,
       Role role) {
-    this(core, query, initiator, mapId, commandTypes, role, null);
+    this(core, query, initiator, mapId, commandTypes, Map.of(), role, null);
   }
 
   /**
-   * 按角色装配工具面：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）。
+   * 全参装配：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）。
    *
+   * @param commandTargets {@code type → 目标声明}（**必须**由同一份已注册 handler 清单派生，见 {@link CommandTargets}）
    * @param decisionAgent **只被 {@link Role#GM} 用到**（触发工具只在 GM 面）；该角色下为 null ⇒ **当场抛**
    *     （装配故障不静默兜底），{@link Role#DECISION_AGENT} 下**无关**（它没有触发工具，也不需要运行流）
    */
@@ -159,6 +146,7 @@ public final class SimosToolSource implements ToolSource {
       String initiator,
       String mapId,
       Set<String> commandTypes,
+      Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
     Objects.requireNonNull(core, "core");
@@ -166,12 +154,20 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
     Objects.requireNonNull(commandTypes, "commandTypes");
+    Objects.requireNonNull(commandTargets, "commandTargets");
     Objects.requireNonNull(role, "role");
     List<AgentTool> built = new ArrayList<>(readTools(core, query, mapId, commandTypes));
     switch (role) {
       case GM -> {
         addGenericWrites(built, core, initiator, mapId);
-        addGmWrites(built, core, initiator, mapId, requireDecisionAgent(decisionAgent));
+        addGmWrites(
+            built,
+            core,
+            initiator,
+            mapId,
+            commandTypes,
+            commandTargets,
+            requireDecisionAgent(decisionAgent));
       }
       case DECISION_AGENT -> addDecisionAgentWrites(built, core, initiator, mapId);
     }
@@ -208,6 +204,8 @@ public final class SimosToolSource implements ToolSource {
       CoreSimos core,
       String initiator,
       String mapId,
+      Set<String> commandTypes,
+      Map<String, CommandTargets> commandTargets,
       DecisionAgentService decisionAgent) {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
@@ -217,6 +215,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new StartDecisionTool(core, initiator, mapId));
     // T11C：触发**决策人自己**跑一轮（真 LLM + 真工具）。★ **只在 GM 桶**——决策人不触发自己（那是自环）。
     built.add(new RunDecisionTool(core, initiator, mapId, decisionAgent));
+    // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
+    //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new AdjudicateTickTool(core, initiator, mapId, commandTypes, commandTargets));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));
