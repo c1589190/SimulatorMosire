@@ -209,6 +209,9 @@
             <!-- ★ B12：第 4 页「决策结果」——决策人按 tick 查看不同决策的逐条结局（applied / rejected + 拒因）。 -->
             <button type="button" class="decision-tab" role="tab" data-decision-tab="results"
                     aria-selected="false">决策结果</button>
+            <!-- ★ Docs 系统（2026-09-23）：第 5 页「文档」——**以某个决策人的视角**看它实际能读到哪些设定文档。 -->
+            <button type="button" class="decision-tab" role="tab" data-decision-tab="docs"
+                    aria-selected="false">文档</button>
           </div>
 
           <div data-decision-subpage="view">
@@ -317,6 +320,27 @@
               <button type="button" id="decision-results-load">查看结果</button>
             </fieldset>
             <div id="decision-results-mount" class="decision-results"></div>
+          </div>
+
+          <!-- ★ Docs 系统第 5 页「文档」：GET /api/sd/decision-docs?as=<决策人>…&docId?&limit=…
+               可见性归服务端（tags 含 as **或** affiliations 含 as 的归属；两轴都不命中的不回）——前端不筛。
+               ★ 本页的用处就是**预览**：换个决策人看一遍，就知道 GM 写的文档有没有发对。 -->
+          <div data-decision-subpage="docs" hidden>
+            <p id="decision-docs-status" class="status muted">选一个决策人（或在下面填它的 id），点「查看文档」——看的是**它实际能读到**的那些。</p>
+            <fieldset class="decision-docs-window" id="decision-docs-window">
+              <legend>看谁的 / 看哪一篇</legend>
+              <label class="dd-field">决策人
+                <input id="decision-docs-maker" type="text" placeholder="dm1（留空 = 用当前选中的决策人）">
+              </label>
+              <label class="dd-field">只看这一篇（docId）
+                <input id="decision-docs-id" type="text" placeholder="留空 = 列全部">
+              </label>
+              <label class="dd-field">最近条数
+                <input id="decision-docs-limit" type="number" min="1" max="200" step="1" value="20">
+              </label>
+              <button type="button" id="decision-docs-load">查看文档</button>
+            </fieldset>
+            <div id="decision-docs-mount" class="decision-docs"></div>
           </div>
         </section>
 

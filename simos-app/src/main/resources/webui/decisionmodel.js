@@ -14,6 +14,9 @@
     { id: "provider", label: "Provider 配置" },
     // ★ B12（2026-09-23）：第 4 页「决策结果」——决策人按 tick 查看不同决策的逐条结局。
     { id: "results", label: "决策结果" },
+    // ★ Docs 系统（2026-09-23）：第 5 页「文档」——**以某个决策人的视角**看它实际能读到哪些设定文档
+    //   （显式指派 ∪ 归属自动，服务端算）。
+    { id: "docs", label: "文档" },
   ];
 
   var AFFILIATION_LABELS = { nation: "国家", army: "军队" };
@@ -290,6 +293,7 @@
       approval: state.ok && state.id === "approval",
       provider: state.ok && state.id === "provider",
       results: state.ok && state.id === "results",
+      docs: state.ok && state.id === "docs",
     };
   }
 
@@ -679,6 +683,122 @@
   }
 
   /**
+   * 文档列表视图（纯函数）：`{entries, count, empty, note}`——`note` 是服务端的"明确无文档"说明，
+   * **原样带出去**（前端不另编一句，否则两端文案会漂）。
+   */
+  function decisionDocsView(body) {
+    var b = body || {};
+    var rows = Array.isArray(b.docs) ? b.docs : [];
+    return {
+      entries: rows.map(decisionDocEntry),
+      count: b.count === null || b.count === undefined ? rows.length : b.count,
+      empty: rows.length === 0,
+      note: textOrNull(b.note),
+    };
+  }
+
+  /**
+   * 文档查询 → 端点路径（纯函数，Docs 系统）：`/sd/decision-docs?as=…[&docId=… | &limit=N]`。
+   *
+   * <p>★ 缺 `as` ⇒ 拒绝：文档只有「以某决策人的视角读」这一种语义（**没有 GM 全量口径**）——
+   * 这也正是"预览某决策人实际能看到哪些文档"的做法。
+   * <p>★ `docId` 与 `limit` **不并用**：给了 docId 就是精确取那一篇（服务端此时忽略 limit），
+   * 避免"第 21 篇"以"查无此文档"的形式出现。
+   */
+  function decisionDocsRequest(params) {
+    var src = params || {};
+    var as = textOrNull(src.as);
+    if (as === null) {
+      return {
+        ok: false,
+        reason: "未选中决策人：先选一个决策人，再看它实际能读到哪些文档。",
+      };
+    }
+    var query = "as=" + encodeURIComponent(as);
+    var docId = textOrNull(src.docId);
+    if (docId !== null) {
+      return { ok: true, path: "/sd/decision-docs?" + query + "&docId=" + encodeURIComponent(docId) };
+    }
+    var limit = intQuery(src.limit, "limit");
+    if (limit.error) {
+      return { ok: false, reason: limit.error };
+    }
+    var limitValue = limit.present ? limit.value : 20;
+    if (limitValue < 1) {
+      return { ok: false, reason: "limit 必须是正整数（最少 1 条）。" };
+    }
+    if (limitValue > 200) {
+      return { ok: false, reason: "limit 上限是 200（服务端不截断、直接报错，请调小）。" };
+    }
+    return { ok: true, path: "/sd/decision-docs?" + query + "&limit=" + limitValue };
+  }
+
+  /** 归属数组 → 可读文本（`国家：n1`／`军队：a1`）；非对象项跳过（不编造）。 */
+  function decisionDocAffiliations(affiliations) {
+    var out = [];
+    (Array.isArray(affiliations) ? affiliations : []).forEach(function (aff) {
+      if (!aff || typeof aff !== "object") {
+        return;
+      }
+      out.push(affiliationKindLabel(aff.kind) + "：" + valueOrDash(aff.id));
+    });
+    return out;
+  }
+
+  /** 文档主题（`subject`）：`{kind, id}` ⇒ `地块：r1`；缺字段显式 `—`。 */
+  function decisionDocSubject(subject) {
+    var s = subject && typeof subject === "object" ? subject : {};
+    var kind = textOrNull(s.kind);
+    var id = textOrNull(s.id);
+    if (kind === null && id === null) {
+      return null;
+    }
+    return valueOrDash(kind) + "：" + valueOrDash(id);
+  }
+
+  /**
+   * 一条文档（纯函数，与端点逐字段对应）：`value` 按约定是 **JSON 文本**（`SdInfoEntry.value` 是裸
+   * `Object`，只有标量往返有保证 ⇒ 结构化内容自行序列化）。故这里**尽力**解析出 title/body/subject 供
+   * 展示；解析不了**不报错**（parseError 记因、`raw` 原样留着），因为正文的 schema 是约定不是契约。
+   */
+  function decisionDocEntry(entry) {
+    var e = entry || {};
+    var raw = e.value;
+    var payload = null;
+    var parseError = null;
+    if (raw === null || raw === undefined || String(raw).trim() === "") {
+      parseError = "正文为空（value 缺失）。";
+    } else {
+      try {
+        payload = JSON.parse(String(raw));
+      } catch (err) {
+        parseError = "正文不是合法 JSON：" + (err && err.message ? err.message : String(err));
+      }
+    }
+    var obj = payload && typeof payload === "object" ? payload : {};
+    var at = e.at || {};
+    return {
+      docId: valueOrDash(e.docId),
+      id: valueOrDash(e.id),
+      tick: e.tick === null || e.tick === undefined ? "—" : String(e.tick),
+      tags: (Array.isArray(e.tags) ? e.tags : []).map(function (tag) {
+        return String(tag);
+      }),
+      affiliations: decisionDocAffiliations(e.affiliations),
+      key: valueOrDash(e.key),
+      title: textOrNull(obj.title),
+      bodyText: textOrNull(obj.body),
+      subject: decisionDocSubject(obj.subject),
+      note: textOrNull(e.note),
+      parseError: parseError,
+      // ★ 空白 ⇒ 空串（与 parseError 的判据同一条：空白就是"没有正文"，不必留一串空格给 DOM）。
+      raw: textOrNull(raw) === null ? "" : String(raw),
+      atBranch: valueOrDash(at.branch),
+      atRevision: at.revision === null || at.revision === undefined ? "—" : String(at.revision),
+    };
+  }
+
+  /**
    * 条目"涉及的决策人"（纯函数）：优先用 `tags`（服务端的归属），缺 `tags` ⇒ 退回逐条命令的
    * `decisionMakerId`（去重、保序）。**只投影、不筛**。
    */
@@ -835,5 +955,8 @@
     decisionResultCommand: decisionResultCommand,
     decisionResultEntry: decisionResultEntry,
     decisionResultsView: decisionResultsView,
+    decisionDocsRequest: decisionDocsRequest,
+    decisionDocEntry: decisionDocEntry,
+    decisionDocsView: decisionDocsView,
   };
 })();

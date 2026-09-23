@@ -70,6 +70,9 @@
   var decisionResultsRequest = decisionModel.decisionResultsRequest;
   var decisionResultEntry = decisionModel.decisionResultEntry;
   var decisionResultsView = decisionModel.decisionResultsView;
+  var decisionDocsRequest = decisionModel.decisionDocsRequest;
+  var decisionDocEntry = decisionModel.decisionDocEntry;
+  var decisionDocsView = decisionModel.decisionDocsView;
 
   var requestToken = 0;
   var lastKey = null;
@@ -1884,7 +1887,159 @@
       });
   }
 
-  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批/provider/决策结果）。 */
+  // ── 文档子页（Docs 系统，2026-09-23）：**以某个决策人的视角**看它实际能读到哪些设定文档 ──────
+  //
+  // ★ `as` = 谁看：端点只回 `tags` 含它、**或** `affiliations` 含它归属的文档（**可见性归服务端**，前端不筛）。
+  //   本页的用处就是**预览**：换个决策人看一遍，就知道 GM 写的文档有没有发对。
+  // ★ 竞态/去重照既有四个子页：`token` 防串页、`key` 防同参重取（进入子页时 force 一次）。
+
+  var decisionDocsToken = 0;
+  var decisionDocsKey = null;
+
+  function setDecisionDocsStatus(message, tone) {
+    app.statusMessage(app.byId("decision-docs-status"), message, tone);
+  }
+
+  /** 查谁的：输入框优先；空 ⇒ 当前聚焦 / 当前目标决策人；都没有 ⇒ 空串（交给纯函数拒）。 */
+  function decisionDocsMakerId() {
+    var typed = textOrNull(valueOf("decision-docs-maker"));
+    if (typed !== null) {
+      return typed;
+    }
+    var focus = app.getState().decisionMakerFocus;
+    if (focus) {
+      return String(focus);
+    }
+    return startDecisionTarget && startDecisionTarget.id ? String(startDecisionTarget.id) : "";
+  }
+
+  function drawDecisionDoc(entry) {
+    var box = app.el("div", { class: "doc-entry" });
+    box.setAttribute("data-doc-id", entry.docId);
+    var head = app.el("div", { class: "doc-entry-head" });
+    head.appendChild(
+      app.el("span", {
+        class: "doc-entry-id",
+        text: entry.docId,
+        title: "文档地址（sd:doc.<docId>），条目 id=" + entry.id,
+      })
+    );
+    // ★ 两轴各显一栏：看得到这篇文档**是因为被指派**还是**因为归属命中**。
+    head.appendChild(
+      app.el("span", {
+        class: "doc-entry-owners",
+        text:
+          "指派给：" +
+          (entry.tags.length ? entry.tags.join("、") : "（无）") +
+          " · 归属可见：" +
+          (entry.affiliations.length ? entry.affiliations.join("、") : "（无）"),
+      })
+    );
+    head.appendChild(
+      app.el("span", {
+        class: "doc-entry-at",
+        text: entry.atBranch + " · 写入依据 rev " + entry.atRevision + " · tick " + entry.tick,
+      })
+    );
+    box.appendChild(head);
+    // 标题/正文按约定从 value 的 JSON 里取；取不到就如实说，并原样把 value 摊开（不藏、不编）。
+    box.appendChild(app.el("h4", { class: "doc-entry-title", text: entry.title || entry.docId }));
+    if (entry.subject !== null) {
+      box.appendChild(app.el("p", { class: "doc-entry-subject muted", text: "主题：" + entry.subject }));
+    }
+    if (entry.bodyText !== null) {
+      box.appendChild(app.el("div", { class: "doc-entry-body", text: entry.bodyText }));
+    }
+    if (entry.note !== null) {
+      box.appendChild(app.el("p", { class: "doc-entry-note muted", text: "备注：" + entry.note }));
+    }
+    if (entry.parseError !== null) {
+      // ★ 坏正文**不让这一条空白**：如实说清它坏在哪，原文照显（正文 schema 是约定不是契约）。
+      box.appendChild(app.el("p", { class: "status warn doc-parse-error", text: entry.parseError }));
+      box.appendChild(app.el("pre", { class: "doc-entry-raw", text: entry.raw }));
+    }
+    return box;
+  }
+
+  function drawDecisionDocs(view) {
+    var mount = app.byId("decision-docs-mount");
+    if (!mount) {
+      return;
+    }
+    app.clear(mount);
+    if (view.empty) {
+      // ★ `note` = 服务端的"明确无文档"说明 ⇒ **当无结果渲染**（class=empty、正常语气），不当错误。
+      mount.appendChild(app.el("p", { class: "empty", text: view.note || "该决策人没有可查看的文档。" }));
+      return;
+    }
+    view.entries.forEach(function (entry) {
+      mount.appendChild(drawDecisionDoc(entry));
+    });
+  }
+
+  /** 拉一页文档并渲染（token + key 去重，照既有子页做法）。force ⇒ 忽略同 key 缓存。 */
+  function renderDecisionDocs(force) {
+    var mount = app.byId("decision-docs-mount");
+    if (!mount) {
+      return;
+    }
+    var request = decisionDocsRequest({
+      as: decisionDocsMakerId(),
+      docId: valueOf("decision-docs-id"),
+      limit: valueOf("decision-docs-limit"),
+    });
+    if (!request.ok) {
+      var badKey = "!" + request.reason;
+      if (!force && badKey === decisionDocsKey) {
+        return;
+      }
+      decisionDocsKey = badKey;
+      app.clear(mount);
+      setDecisionDocsStatus(request.reason, "warn");
+      return;
+    }
+    // 把"实际查的是谁"写回输入框——用户看得见，不靠猜。
+    var makerInput = app.byId("decision-docs-maker");
+    if (makerInput && request.path !== decisionDocsKey) {
+      makerInput.value = decisionDocsMakerId();
+    }
+    if (!force && request.path === decisionDocsKey) {
+      return;
+    }
+    decisionDocsKey = request.path;
+    var token = ++decisionDocsToken;
+    setDecisionDocsStatus("查看文档…", "muted");
+    api
+      .getJson(request.path)
+      .then(function (body) {
+        if (token !== decisionDocsToken) {
+          return;
+        }
+        var view = decisionDocsView(body);
+        drawDecisionDocs(view);
+        setDecisionDocsStatus(
+          view.empty
+            ? view.note || "该决策人没有可查看的文档。"
+            : "共 " + view.count + " 篇文档（由服务端按可见性筛出）。",
+          view.empty ? "muted" : "ok"
+        );
+      })
+      .catch(function (e) {
+        if (token !== decisionDocsToken) {
+          return;
+        }
+        // ★ 404 的两种含义必须分开（同决策结果子页）：① 解不出决策人 ⇒ body 带 id；② 路径不存在。
+        var message =
+          e && e.status === 404 && e.body && e.body.id
+            ? "查无此决策人：" + e.body.id + "（该 id 在这次查询里不存在）"
+            : "文档拉取失败：" + ((e && e.message) || e);
+        app.clear(mount);
+        mount.appendChild(app.el("p", { class: "empty doc-error", text: message }));
+        setDecisionDocsStatus(message, "err");
+      });
+  }
+
+  /** 决策模式总入口：只在 decision 模式渲染（左栏详情 + 右栏列表/审批/provider/决策结果/文档）。 */
   function renderDecision(state) {
     if (!state || state.mode !== "decision") {
       lastDecisionSubpage = null;
@@ -1903,6 +2058,8 @@
       renderLlmProviders(entered);
     } else if (subpage.results) {
       renderDecisionResults(entered);
+    } else if (subpage.docs) {
+      renderDecisionDocs(entered);
     }
   }
 
@@ -2087,6 +2244,23 @@
         });
       }
     });
+    // ★ Docs 系统：文档子页的「查看文档」（换个决策人看一遍 = 预览它实际能读到哪些）。
+    var docsLoad = app.byId("decision-docs-load");
+    if (docsLoad && docsLoad.addEventListener) {
+      docsLoad.addEventListener("click", function () {
+        renderDecisionDocs(true);
+      });
+    }
+    ["decision-docs-maker", "decision-docs-id", "decision-docs-limit"].forEach(function (id) {
+      var input = app.byId(id);
+      if (input && input.addEventListener) {
+        input.addEventListener("keydown", function (event) {
+          if (event && event.key === "Enter") {
+            renderDecisionDocs(true);
+          }
+        });
+      }
+    });
     updateStartDecisionControl();
     updateRunDecisionControl();
     renderRight(app.getState());
@@ -2111,6 +2285,11 @@
     decisionResultsRequest: decisionResultsRequest,
     decisionResultEntry: decisionResultEntry,
     decisionResultsView: decisionResultsView,
+    // ★ Docs 系统（2026-09-23）：文档子页（e2e/调试用）+ 它的两个纯投影。
+    renderDecisionDocs: renderDecisionDocs,
+    decisionDocsRequest: decisionDocsRequest,
+    decisionDocEntry: decisionDocEntry,
+    decisionDocsView: decisionDocsView,
     groupByTag: groupByTag,
     normalizeTag: normalizeTag,
     movementReadout: movementReadout,

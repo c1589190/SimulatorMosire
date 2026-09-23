@@ -6,6 +6,7 @@ import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
@@ -176,6 +177,10 @@ public final class SimosToolSource implements ToolSource {
         //   **只在决策人桶**——GM 侧看不到它（GM 有 GUI 面与 sd 只读全权，不靠这条）；它的可见性判据在
         //   RedactingQueryService#decisionResults（tags 含调用者自己）。
         built.add(new DecisionResultsTool(query, mapId));
+        // ★ Docs 系统（2026-09-23）：决策人**只读**发给自己的设定文档。同样**只在决策人桶**（GM 侧有 GUI 的文档子页，
+        //   可按任意决策人的视角预览实际可见集合）；可见性判据在 RedactingQueryService#docs
+        //   （tags 含调用者自己 **或** affiliations 含调用者归属，两轴取并集）。
+        built.add(new DecisionDocsTool(query, mapId));
         addDecisionAgentWrites(built, core, initiator, mapId);
       }
     }

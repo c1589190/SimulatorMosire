@@ -53,14 +53,15 @@ test("module-loads", () => {
 });
 
 test("subpage-ids-and-labels", () => {
-  // M11′ 起 2 → 3 子页（新增「Provider 配置」）；B12 起 3 → 4 子页（新增「决策结果」）—— 语义更新，不是削弱。
+  // M11′ 起 2 → 3 子页（新增「Provider 配置」）；B12 起 3 → 4（新增「决策结果」）；
+  // Docs 系统（2026-09-23）起 4 → 5（新增「文档」）—— 语义更新，不是削弱。
   assert.deepEqual(
     P.DECISION_SUBPAGES.map((s) => s.id),
-    ["view", "approval", "provider", "results"]
+    ["view", "approval", "provider", "results", "docs"]
   );
   assert.deepEqual(
     P.DECISION_SUBPAGES.map((s) => s.label),
-    ["决策人查看", "审批", "Provider 配置", "决策结果"]
+    ["决策人查看", "审批", "Provider 配置", "决策结果", "文档"]
   );
 });
 
@@ -87,48 +88,39 @@ test("subpage-state-is-fail-closed", () => {
 });
 
 test("subpage-visibility-is-mutually-exclusive", () => {
-  // ★ 故意违规（m4/m8 的杀点）：四个子页**恰一个**可见；未知 ⇒ 四个都不可见。
-  //   B12 起加第 4 键 `results`——断言随子页数同步（语义更新，不是削弱）。
-  const HIDDEN = { view: false, approval: false, provider: false, results: false };
-  assert.deepEqual(P.decisionSubpageVisibility("view"), {
-    view: true,
-    approval: false,
-    provider: false,
-    results: false,
+  // ★ 故意违规（m4/m8 的杀点）：子页**恰一个**可见；未知 ⇒ 全部不可见。
+  //   ★ 键集与 `DECISION_SUBPAGES` **派生同步**：再加子页时只改那一处，不必在这里抄一遍键名
+  //   ——抄一遍的老写法每加一页就红一次，且「漏抄的那个键」不会被任何断言看出来。
+  const ids = P.DECISION_SUBPAGES.map((s) => s.id);
+  const HIDDEN = {};
+  ids.forEach((id) => {
+    HIDDEN[id] = false;
   });
-  assert.deepEqual(P.decisionSubpageVisibility("approval"), {
-    view: false,
-    approval: true,
-    provider: false,
-    results: false,
-  });
-  assert.deepEqual(P.decisionSubpageVisibility("provider"), {
-    view: false,
-    approval: false,
-    provider: true,
-    results: false,
-  });
-  assert.deepEqual(P.decisionSubpageVisibility("results"), {
-    view: false,
-    approval: false,
-    provider: false,
-    results: true,
+
+  ids.forEach((id) => {
+    const expected = {};
+    ids.forEach((key) => {
+      expected[key] = key === id;
+    });
+    assert.deepEqual(P.decisionSubpageVisibility(id), expected, id + " 只应打开它自己");
   });
   for (const bad of ["", "nope", null, undefined, 3]) {
     assert.deepEqual(
       P.decisionSubpageVisibility(bad),
       HIDDEN,
-      "未知子页必须四个都隐藏：" + JSON.stringify(bad)
+      "未知子页必须全部隐藏：" + JSON.stringify(bad)
     );
   }
-  ["view", "approval", "provider", "results"].forEach((id) => {
+  ids.forEach((id) => {
     const v = P.decisionSubpageVisibility(id);
-    assert.equal(
-      Number(v.view) + Number(v.approval) + Number(v.provider) + Number(v.results),
-      1,
+    assert.deepEqual(
+      ids.filter((key) => v[key] === true),
+      [id],
       id + " 的子页必须恰一个可见"
     );
   });
+  // ★ 键集自证：可见性对象的键**恰好**等于子页 id（多一个/少一个都红）。
+  assert.deepEqual(Object.keys(P.decisionSubpageVisibility("view")).sort(), ids.slice().sort());
 });
 
 // ── B12「决策结果」子页的纯函数（2026-09-23）──────────────────────────────

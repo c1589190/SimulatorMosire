@@ -26,8 +26,11 @@ const JS_DIR = __dirname;
 //   webui-fix2 V3 起 187 → 188（新增 topRegionId 的定义序末位 / 退回字典序即红 1 条）。
 //   M11′ 起 188 → 201（新增 provider-config.test.cjs 的 13 条：provider 子页/掩码/表单/绑定/端点对表）。
 //   2026-09-22 起 201 → 204（decision-mode.test.cjs 新增 3 条：开始决策成功推进游标 + 409 重取并自动重试一次 + 不无限重试）。
+//   Docs 系统 2026-09-23 起 204 → 222（新增 decision-docs.test.cjs 的 11 条：查询必须带 as / docId 与 limit 不并用 /
+//     正文尽力解析、解析不了不报错 / 两轴都显 / 视图原样带服务端的 note；另 decision-mode 与 provider-config 的子页断言
+//     改为**从 DECISION_SUBPAGES 派生**——再加子页只需改那一处，不必在断言里抄一遍键名）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 204;
+const MIN_TESTS = 222;
 
 function discoverTests() {
   return fs

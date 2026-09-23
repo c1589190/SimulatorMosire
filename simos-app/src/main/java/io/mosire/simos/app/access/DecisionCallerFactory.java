@@ -14,6 +14,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
@@ -57,10 +58,14 @@ import java.util.TreeMap;
 public final class DecisionCallerFactory {
 
   /**
-   * 决策人的工具白名单（spec §2.2）：**10 条读工具 + 两条决策行为**。
+   * 决策人的工具白名单（spec §2.2）：**11 条读工具 + 两条决策行为**。
    *
    * <p>★ 第 10 条读工具是第 3 波第 3 步的 {@link DecisionResultsTool}（决策人查看**自己**的决策结果，用户原话「允许决策人查看不同 tick
    * 的不同决策结果」）——它只挂决策人桶，读口经 {@code RedactingQueryService#decisionResults}（可见性 = 条目 tags 含自己）。
+   *
+   * <p>★ 第 11 条是 Docs 系统的 {@link DecisionDocsTool}（决策人查看**发给自己的设定文档**，2026-09-23）——同样只挂决策人桶，读口经
+   * {@code RedactingQueryService#docs}（可见性 = tags 含自己 **∪** affiliations 含自己的归属）。★ 它与"能力面"（{@code
+   * CatalogTool} 的权限过滤）是同一件事的两半：catalog 说"你能干什么"，docs 说"这一局里你该怎么做"。
    *
    * <p>★ **一条写工具都没有**（除两条决策行为外）：用户 2026-09-22「决策人不能直接改地图等数据，只能获取有限的、被 GM 权限层限制范围的信息」——旧 D-1
    * 裁定给决策人挂的 unit 域 20 条窄写**已撤销**。指挥走 {@code sd.IssueDirective}。
@@ -79,6 +84,7 @@ public final class DecisionCallerFactory {
           UnitGetTool.NAME,
           PopulationTool.NAME,
           DecisionResultsTool.NAME,
+          DecisionDocsTool.NAME,
           IssueDirectiveTool.NAME,
           SubmitVerdictTool.NAME);
 

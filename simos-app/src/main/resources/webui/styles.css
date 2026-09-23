@@ -1790,3 +1790,86 @@ body.workbench-page .gm-usage-item {
 body.workbench-page .gm-usage-failed {
   color: #ffb4b0;
 }
+
+/* ══ 文档子页（Docs 系统，2026-09-23）══════════════════════════════════════
+   一条文档 = 一个卡片：头一行说清「是哪一篇 / 为什么我看得到 / 写在哪一版」，
+   正文按**整块**摊开（长文本不挤成窄条，照 .kv-block 的口径）。
+   ★ 视觉沿用决策结果那一套（panel-2 底 + line 边 + radius），不新造一套。 */
+.decision-docs-window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 6px 0 8px;
+}
+
+.decision-docs-window .dd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.decision-docs-window .dd-field input {
+  width: 9em;
+}
+
+.doc-entry {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+
+.doc-entry-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.doc-entry-id {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.doc-entry-title {
+  margin: 4px 0 2px;
+  font-size: 13px;
+}
+
+.doc-entry-subject {
+  margin: 0 0 4px;
+  font-size: 11px;
+}
+
+/* ★ 正文整块摊开：pre-wrap 保换行、anywhere 防长串撑破面板。 */
+.doc-entry-body {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.doc-entry-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
+.doc-entry-raw {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(27, 32, 39, 0.6);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -639,7 +639,8 @@ class SimosToolsTest {
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
-                + "只留两条决策行为（sd.IssueDirective / sd.SubmitVerdict）+ 第 3 波第 3 步的只读工具 sd.DecisionResults")
+                + "只留两条决策行为（sd.IssueDirective / sd.SubmitVerdict）+ 两条只读面"
+                + "（第 3 波第 3 步的 sd.DecisionResults、Docs 系统的 sd.DecisionDocs）")
         .doesNotContain("simos.command.submit", "simos.advance", "simos.fork")
         .doesNotContain(
             "sd.SetDecisionMakerAccess",
@@ -648,11 +649,11 @@ class SimosToolsTest {
             "sd.RunDecision",
             "sd.AdjudicateTick",
             "sd.RejectDirective")
-        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.DecisionResults")
+        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.DecisionResults", "sd.DecisionDocs")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
-        .hasSize(12);
+        .hasSize(13);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {

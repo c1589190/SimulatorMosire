@@ -16,26 +16,31 @@ const P = loadWebui("panels.js").SimosPanels;
 const API = loadWebui("api.js").SimosApi;
 
 test("provider-subpage-is-registered-as-the-third-subpage", () => {
-  // ★ B12 起 3 → 4 子页（第 4 页「决策结果」追加在**末尾**）——provider 仍是**第 3**（下标 2），
-  //   本条的保护点（"Provider 配置必须是第 3 个可切换子页"）不变，只是精确数组随子页数同步。
+  // ★ B12 起 3 → 4 子页（第 4 页「决策结果」追加在**末尾**）；Docs 系统起 4 → 5（第 5 页「文档」）——
+  //   provider 仍是**第 3**（下标 2），本条的保护点（"Provider 配置必须是第 3 个可切换子页"）不变，
+  //   只是精确数组随子页数同步。
   const ids = P.DECISION_SUBPAGES.map((s) => s.id);
-  assert.deepEqual(ids, ["view", "approval", "provider", "results"]);
+  assert.deepEqual(ids, ["view", "approval", "provider", "results", "docs"]);
   assert.equal(P.DECISION_SUBPAGES[2].label, "Provider 配置");
 });
 
 test("provider-visibility-is-keyed-and-fail-closed", () => {
   // ★ 故意违规（m8 的杀点）：未知值不得兜成 view。
-  //   B12 起可见性对象多一个 `results` 键（四键恰一真）；provider 仍只由 "provider" 打开。
-  assert.deepEqual(P.decisionSubpageVisibility("provider"), {
-    view: false,
-    approval: false,
-    provider: true,
-    results: false,
+  //   ★ 键集与 `DECISION_SUBPAGES` 派生同步（多一页就多一个键，不在这里抄键名）；provider 仍只由 "provider" 打开。
+  const ids = P.DECISION_SUBPAGES.map((s) => s.id);
+  const HIDDEN = {};
+  ids.forEach((id) => {
+    HIDDEN[id] = false;
   });
+  const expected = {};
+  ids.forEach((id) => {
+    expected[id] = id === "provider";
+  });
+  assert.deepEqual(P.decisionSubpageVisibility("provider"), expected);
   for (const bad of ["", "nope", null, undefined, 0, {}]) {
     assert.deepEqual(
       P.decisionSubpageVisibility(bad),
-      { view: false, approval: false, provider: false, results: false },
+      HIDDEN,
       "未知子页必须全部隐藏：" + JSON.stringify(bad)
     );
   }

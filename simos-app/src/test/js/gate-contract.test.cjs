@@ -8,6 +8,7 @@ const assert = require("node:assert");
 
 const REQUIRED_FILES = [
   "block-codec.test.cjs",
+  "decision-docs.test.cjs",
   "decision-mode.test.cjs",
   "gate-contract.test.cjs",
   "gm-panel.test.cjs",
@@ -43,8 +44,10 @@ const REQUIRED_FILES = [
 //   webui-fix2 V3 起 187 → 188：新增 1 条（topRegionId 取定义序末位、退回字典序即红）。
 //   M11′ 起 188 → 201：新增 provider-config.test.cjs 的 13 条（provider 子页/掩码/表单/绑定/端点对表）。
 //   2026-09-22 起 201 → 204：decision-mode.test.cjs 新增 3 条（开始决策成功推进游标 / 409 重取并自动重试一次 / 不无限重试）。
+//   Docs 系统 2026-09-23 起 204 → 222：新增 decision-docs.test.cjs 的 11 条，且 decision-mode / provider-config 的子页断言
+//     改为从 DECISION_SUBPAGES 派生（加子页不再需要在断言里抄一遍键名）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 204;
+const MIN_ASSERTIONS = 222;
 
 function testFiles() {
   return fs
