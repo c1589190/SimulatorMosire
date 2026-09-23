@@ -29,14 +29,14 @@ echo "[close-check] jar=$jar store=$store gui=$gui mcp=$mcp approval=$approval"
 echo "[close-check] log=$log"
 
 # 经快照运行器起（同 tools/run-shaded.sh），规避就地重写；进程 PID 与包装脚本同（exec）。
-"$here/run-shaded.sh" "$jar" --store "$store" --demo \
+"$here/run-shaded.sh" "$jar" --store "$store" \
   --gui-port "$gui" --mcp-port "$mcp" --approval-port "$approval" > "$log" 2>&1 &
 pid=$!
 
 cleanup() { kill -TERM "$pid" 2>/dev/null || true; }
 trap cleanup EXIT
 
-# 就绪：GUI 200 **且**日志出现「WebUI 就绪」。后者不可省——`--demo` 的 bootstrapGenesis 与
+# 就绪：GUI 200 **且**日志出现「WebUI 就绪」。后者不可省——E3 起**空库就地初始化**（bootstrapGenesis）与
 # shutdown hook 注册都在 GUI 起之后（ShellMain.run 的次序），只等 GUI 200 会在种子未完成时发信号，
 # 那时 hook 还没挂上，SIGTERM 直接默认终止，日志自然没有「收到停止信号」。
 ready=0
