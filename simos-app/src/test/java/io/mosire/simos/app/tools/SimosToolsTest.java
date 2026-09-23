@@ -160,6 +160,7 @@ class SimosToolsTest {
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
+          "simos.worldgen.initialize",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
           "sd.SetDecisionMakerAccess",
@@ -228,7 +229,7 @@ class SimosToolsTest {
           "simos.skill");
 
   /**
-   * 非窄写工具（5 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
+   * 非窄写工具（7 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
    * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 5 条从差集里扣掉。
@@ -241,12 +242,13 @@ class SimosToolsTest {
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
+          "simos.worldgen.initialize",
           "sd.AdjudicateTick",
           "sd.RejectDirective",
           "sd.VoidAdjudication");
 
   /**
-   * 写工具全集（49 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
+   * 写工具全集（52 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
    *
    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
@@ -642,7 +644,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(61);
+        .hasSize(62);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"

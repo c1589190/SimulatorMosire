@@ -116,6 +116,7 @@ class McpServerTest {
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
+          "simos.worldgen.initialize",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
           "sd.SetDecisionMakerAccess",
@@ -219,8 +220,9 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 61 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写，"
-                + "以及第 3 波第 2 步的 sd.AdjudicateTick 与 2026-09-23 的 sd.RejectDirective）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 62 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写，"
+                + "以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective 与"
+                + " simos.worldgen.initialize）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

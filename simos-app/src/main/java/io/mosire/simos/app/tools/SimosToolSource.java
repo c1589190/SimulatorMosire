@@ -68,8 +68,10 @@ import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
 import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
+import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.util.spi.CommandTargets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -134,10 +136,21 @@ public final class SimosToolSource implements ToolSource {
       QueryService query,
       String initiator,
       String mapId,
+      Path worldgenConfigFile,
       Set<String> commandTypes,
       SkillLibrary skills,
       Role role) {
-    this(core, query, initiator, mapId, commandTypes, skills, Map.of(), role, null);
+    this(
+        core,
+        query,
+        initiator,
+        mapId,
+        worldgenConfigFile,
+        commandTypes,
+        skills,
+        Map.of(),
+        role,
+        null);
   }
 
   /**
@@ -148,12 +161,15 @@ public final class SimosToolSource implements ToolSource {
    *     （装配故障不静默兜底），{@link Role#DECISION_AGENT} 下**无关**（它没有触发工具，也不需要运行流）
    * @param skills Skill 库（外部 Markdown：决策方法论与常识）。★ **必填**：它是决策人"该怎么做决策"的唯一来源，
    *     装配期少一条不该退化成"模型自己猜"——故这里 {@code requireNonNull}，不搞"传 null 就不挂"的静默兜底。
+   * @param worldgenConfigFile 世界生成器冻结输入 JSON 的路径（{@code simos.worldgen.initialize} 用；app 层拼，见
+   *     {@code Shell}）。★ 只被 {@link Role#GM} 用到，但两档都要求非 null（省掉"哪档才要传"的静默分支）。
    */
   public SimosToolSource(
       CoreSimos core,
       QueryService query,
       String initiator,
       String mapId,
+      Path worldgenConfigFile,
       Set<String> commandTypes,
       SkillLibrary skills,
       Map<String, CommandTargets> commandTargets,
@@ -163,6 +179,7 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
+    Objects.requireNonNull(worldgenConfigFile, "worldgenConfigFile");
     Objects.requireNonNull(commandTypes, "commandTypes");
     Objects.requireNonNull(skills, "skills");
     Objects.requireNonNull(commandTargets, "commandTargets");
@@ -176,6 +193,7 @@ public final class SimosToolSource implements ToolSource {
             core,
             initiator,
             mapId,
+            worldgenConfigFile,
             commandTypes,
             commandTargets,
             requireDecisionAgent(decisionAgent));
@@ -225,6 +243,7 @@ public final class SimosToolSource implements ToolSource {
       CoreSimos core,
       String initiator,
       String mapId,
+      Path worldgenConfigFile,
       Set<String> commandTypes,
       Map<String, CommandTargets> commandTargets,
       DecisionAgentService decisionAgent) {
@@ -245,6 +264,10 @@ public final class SimosToolSource implements ToolSource {
     // 2026-09-23 用户裁定（"决策人一般流程"第 2 件）：GM 打回一条令 —— 理由原样**投进该决策人的会话**（复用 say 通道）
     //   + 该令标 CANCELLED，同批留审计条目。★ 只在 GM 桶；★ 也不是命令类型 ⇒ 不进 catalog。
     built.add(new RejectDirectiveTool(core, initiator, decisionAgent));
+    // 2026-09-23：GM 世界初始化 —— 把聚落生成器接到真写路径（1 条 SetPopulation + N 条 CreateCity，一批一条
+    //   revision；dryRun 只算不写）。★ 它不是某一条命令的窄封装 ⇒ 不继承 AbstractNarrowWriteTool；★
+    //   也不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。只在 GM 桶。
+    built.add(new WorldgenInitializeTool(core, initiator, worldgenConfigFile));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));

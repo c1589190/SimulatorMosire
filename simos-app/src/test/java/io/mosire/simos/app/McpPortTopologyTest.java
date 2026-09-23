@@ -56,15 +56,17 @@ class McpPortTopologyTest {
           "simos.skill");
 
   /**
-   * **非窄写**的写工具（5 条）：3 条通用写（自选命令类型）+ 第 3 波第 2 步的批裁决 {@code sd.AdjudicateTick}
-   * （命令类型由它要裁决的令决定，不是固定一条）+ GM 打回 {@code sd.RejectDirective}（同批两条既有命令 + 会话旁路写） ——它们都不继承 {@code
-   * AbstractNarrowWriteTool}。
+   * **非窄写**的写工具（7 条）：3 条通用写（自选命令类型）+ 第 3 波第 2 步的批裁决 {@code sd.AdjudicateTick}
+   * （命令类型由它要裁决的令决定，不是固定一条）+ GM 打回 {@code sd.RejectDirective}（同批两条既有命令 + 会话旁路写） + {@code
+   * sd.VoidAdjudication}（作废裁决）+ 世界初始化 {@code simos.worldgen.initialize}（一批 social 命令）——它们都不继承
+   * {@code AbstractNarrowWriteTool}。
    */
   private static final List<String> NON_NARROW_WRITES =
       List.of(
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
+          "simos.worldgen.initialize",
           "sd.AdjudicateTick",
           "sd.RejectDirective",
           "sd.VoidAdjudication");
@@ -161,7 +163,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（10 读 + 6 非窄写 + 45 窄写 = 61）")
+          .as("J1：唯一口 = GM 组（10 读 + 7 非窄写 + 45 窄写 = 62）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

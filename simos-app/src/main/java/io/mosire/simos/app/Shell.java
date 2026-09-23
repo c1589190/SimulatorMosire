@@ -120,6 +120,7 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -167,6 +168,14 @@ public final class Shell implements AutoCloseable {
 
   /** 审批等待上限（spec 未定值，M5 取 5 分钟）：到点没人答 ⇒ fail-closed 拒（AgentLib 契约）。 */
   private static final Duration APPROVAL_TIMEOUT = Duration.ofMinutes(5);
+
+  /**
+   * 世界生成器冻结输入（v17levant 三国）的路径：**相对工作目录（仓根）拼**，与 {@code SkillLibrary} 的 {@code config/skills}
+   * 同一约定。★ 路径不存在时由 {@code WorldgenConfig.load} **fail-closed**（{@code simos.worldgen.initialize}
+   * 把它折成带绝对路径的 {@code BAD_REQUEST}），不静默兜底。
+   */
+  private static final Path WORLDGEN_CONFIG_FILE =
+      Path.of("config", "worldgen", "v17levant-nations.json");
 
   private final ShellConfig config;
   private final CoreSimos coreSimos;
@@ -509,6 +518,7 @@ public final class Shell implements AutoCloseable {
                 queryService,
                 config.mcpInitiator(),
                 config.mapId(),
+                WORLDGEN_CONFIG_FILE,
                 commandTypes,
                 skillLibrary,
                 SimosToolSource.Role.DECISION_AGENT)
@@ -536,6 +546,7 @@ public final class Shell implements AutoCloseable {
             queryService,
             config.mcpInitiator(),
             config.mapId(),
+            WORLDGEN_CONFIG_FILE,
             commandTypes,
             skillLibrary,
             commandTargets,
@@ -681,6 +692,7 @@ public final class Shell implements AutoCloseable {
             queryService,
             config.mcpInitiator(),
             config.mapId(),
+            WORLDGEN_CONFIG_FILE,
             commandTypes,
             skillLibrary,
             commandTargets,
