@@ -21,6 +21,7 @@ import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
+import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
@@ -238,6 +239,11 @@ class DecisionCallerFactoryTest {
               "★ 决策人必须读得到**发给自己的设定文档**（Docs，2026-09-23）：'我是谁、我这一局该做什么'靠这条工具补全"
                   + "——缺了它，模型只能拿通用常识硬套")
           .contains(DecisionDocsTool.NAME);
+      assertThat(whitelist)
+          .as(
+              "★ 决策人必须读得到**决策方法论与常识**（Skill 系统，2026-09-23）：'怎么做政治/经济/军事决策'靠它"
+                  + "——与 catalog（'你能调什么'）合起来才是一条完整的指导")
+          .contains(SkillTool.NAME);
       assertThat(whitelist)
           .as("两条决策窄写必须在（语义就靠它们）")
           .contains(IssueDirectiveTool.NAME, SubmitVerdictTool.NAME);

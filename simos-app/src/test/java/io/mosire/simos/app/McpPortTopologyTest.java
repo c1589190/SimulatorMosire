@@ -52,7 +52,8 @@ class McpPortTopologyTest {
           "simos.map.hex",
           "simos.unit.list",
           "simos.unit.get",
-          "simos.social.population");
+          "simos.social.population",
+          "simos.skill");
 
   /**
    * **非窄写**的写工具（5 条）：3 条通用写（自选命令类型）+ 第 3 波第 2 步的批裁决 {@code sd.AdjudicateTick}
@@ -159,7 +160,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（9 读 + 5 非窄写 + 45 窄写 = 59）")
+          .as("J1：唯一口 = GM 组（10 读 + 5 非窄写 + 45 窄写 = 60）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

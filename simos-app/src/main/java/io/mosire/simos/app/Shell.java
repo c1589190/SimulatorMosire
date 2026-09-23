@@ -33,6 +33,7 @@ import io.mosire.simos.app.sd.SdCommandDrain;
 import io.mosire.simos.app.sd.channel.CliDecisionChannel;
 import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
+import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreConfig;
@@ -215,6 +216,15 @@ public final class Shell implements AutoCloseable {
   private final Set<String> commandTypes;
 
   /**
+   * Skill 库（2026-09-23）：决策人的**外部方法论与常识**（仓库种子 {@code config/skills} + store 覆盖
+   * {@code <storeDir>/skills}）。
+   *
+   * <p>★ **由 {@code storeDir} 现推、不进装配参数**：它不在世界 revision 内（与 {@code conversations.db}、
+   * {@code agentlib/} 同族），没有"该配给哪个世界"这一维；多一个装配参数只会多一处可能传错的地方。
+   */
+  private final SkillLibrary skillLibrary;
+
+  /**
    * {@code 命令类型 → 目标声明}（第 3 波第 2 步）：从**已注册的 handler 清单**派生——实现了 {@link CommandTargets}
    * 的那些把自己的目标交出来。{@code sd.AdjudicateTick} 拿它判"GM 代执行的这条命令动的 是谁"；**未实现者不在表里** ⇒ 工具侧 fail-closed 拒。
    */
@@ -255,6 +265,7 @@ public final class Shell implements AutoCloseable {
       List<DecisionChannel> decisionChannels,
       Set<String> commandTypes,
       Map<String, CommandTargets> commandTargets,
+      SkillLibrary skillLibrary,
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
@@ -275,6 +286,7 @@ public final class Shell implements AutoCloseable {
     this.sdCommandDrain = sdCommandDrain;
     this.decisionChannels = List.copyOf(decisionChannels);
     this.commandTypes = Set.copyOf(commandTypes);
+    this.skillLibrary = Objects.requireNonNull(skillLibrary, "skillLibrary");
     this.commandTargets = Map.copyOf(commandTargets);
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
@@ -479,6 +491,9 @@ public final class Shell implements AutoCloseable {
     //   ① 权限组走**同一个** authorizer（决策人的两条窄写是敏感工具 ⇒ 没有审批编排器就永远进不了工具体）；
     //   ② 工具面取**决策人桶**（与白名单同源：DecisionToolDefs.requireAll 对不上就当场炸）；
     //   ③ 会话落 <store> 下（与 simos.db 同层 ⇒ 跨进程重启沿用同一段会话）。
+    // ★ Skill 库（2026-09-23）：**装配期建一次**，两个工具面与 Shell 字段共用同一个实例
+    //   （外部 Markdown：仓库种子 config/skills + store 覆盖 <storeDir>/skills；读时按 mtime 热更）。
+    SkillLibrary skillLibrary = SkillLibrary.open(config.storeDir());
     DecisionCallerFactory decisionCallerFactory = DecisionCallerFactory.defaults(toolAuthorizer);
     ToolRegistry decisionTools = new ToolRegistry();
     decisionTools.registerAll(
@@ -488,6 +503,7 @@ public final class Shell implements AutoCloseable {
                 config.mcpInitiator(),
                 config.mapId(),
                 commandTypes,
+                skillLibrary,
                 SimosToolSource.Role.DECISION_AGENT)
             .listTools());
     // ★ 决策人桶**不带**触发工具（决策人不触发自己，那是自环）⇒ 这里用不带运行流的那条构造器。
@@ -514,6 +530,7 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             commandTypes,
+            skillLibrary,
             commandTargets,
             SimosToolSource.Role.GM,
             decisionAgentService);
@@ -615,6 +632,7 @@ public final class Shell implements AutoCloseable {
         decisionChannels,
         commandTypes,
         commandTargets,
+        skillLibrary,
         llmConfig,
         decisionAdjudicationService,
         decisionAgentService,
@@ -657,6 +675,7 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             commandTypes,
+            skillLibrary,
             commandTargets,
             role,
             decisionAgentService)

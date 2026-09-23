@@ -156,6 +156,7 @@ class SimosToolsTest {
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
+          "simos.skill",
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
@@ -222,7 +223,8 @@ class SimosToolsTest {
           "simos.map.hex",
           "simos.unit.list",
           "simos.unit.get",
-          "simos.social.population");
+          "simos.social.population",
+          "simos.skill");
 
   /**
    * 非窄写工具（5 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
@@ -635,7 +637,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(59);
+        .hasSize(60);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -653,7 +655,7 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
-        .hasSize(13);
+        .hasSize(14);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {

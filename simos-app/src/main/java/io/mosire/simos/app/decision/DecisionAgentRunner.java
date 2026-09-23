@@ -13,6 +13,7 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmToolNames;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -266,6 +267,11 @@ public final class DecisionAgentRunner {
    *
    * <p>★ **工具名取自各工具的 {@code NAME} 常量**（不是手抄的字面量）：工具改名时这条消息跟着走，"说的"与"注册的"不会错位。
    *
+   * <p>★★ **Skill 那一句是"指针"不是"内容"**（2026-09-23）：技能库是**外部文件、改了即生效**（见 {@code SkillLibrary}），
+   * 若把正文钉进这条永久消息，模型此后每一轮读到的都是**改之前**的版本，而且没有任何症状。故这里只说"用哪个工具去读、要读就读当下这一版"。
+   * ★ **代价要明说**：opening 只在**空会话**注入 ⇒ 这条新指针**已落盘的老会话看不到**（它们仍能从工具列表里看到该工具）。
+   * 要让老会话也带上它，走 {@code sd.ResetDecisionMakerConversation} **换代重开**（生成一个新会话，opening 重新注入）。
+   *
    * <p>★★ **必须交代「出令的 {@code commands} 不得含 {@code sd.*}」**（真 LLM 现场实测缺陷的修法，2026-09-22）：模型勘察完
    * **第一次出令就用了 {@code sd.RegisterEffect}**——那是 sd 自指，被 {@code DirectiveWhitelist} **正确拒绝**（防无限递归），
    * 而它此前**无从得知**这条规则（本条消息只说"出令用哪个工具、载荷字段问谁"）。代价是**白烧一轮**，且那一轮预算已见底。 ★
@@ -305,9 +311,14 @@ public final class DecisionAgentRunner {
             + "\n"
             + "【先查看】"
             + catalog
-            + " 给出可用命令类型及其载荷字段；"
+            + " 给出**你有途径触发的**命令类型及其载荷字段（范围之外的不会列出来，所以看不到 = 你不用想它）；"
             + branches
             + " 给出分支与各自的当前 head。\n"
+            + "\n"
+            + "【怎么做决策】"
+            + LlmToolNames.wireNameOf(SkillTool.NAME)
+            + " 是一份**决策方法论与常识**（政治/经济/军事的判断口径与常见误区）——不带参数先看目录，"
+            + "再按需读你要的那一两篇。★ 它是别人维护的文本，可能已经改过；**别凭记忆**，要读就读当下这一版。\n"
             + "\n"
             + "【再决策】出令用 "
             + LlmToolNames.wireNameOf(IssueDirectiveTool.NAME)

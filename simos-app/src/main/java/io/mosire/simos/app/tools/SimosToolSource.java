@@ -4,6 +4,7 @@ import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
@@ -11,6 +12,7 @@ import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
+import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
@@ -132,8 +134,9 @@ public final class SimosToolSource implements ToolSource {
       String initiator,
       String mapId,
       Set<String> commandTypes,
+      SkillLibrary skills,
       Role role) {
-    this(core, query, initiator, mapId, commandTypes, Map.of(), role, null);
+    this(core, query, initiator, mapId, commandTypes, skills, Map.of(), role, null);
   }
 
   /**
@@ -142,6 +145,8 @@ public final class SimosToolSource implements ToolSource {
    * @param commandTargets {@code type → 目标声明}（**必须**由同一份已注册 handler 清单派生，见 {@link CommandTargets}）
    * @param decisionAgent **只被 {@link Role#GM} 用到**（触发工具只在 GM 面）；该角色下为 null ⇒ **当场抛**
    *     （装配故障不静默兜底），{@link Role#DECISION_AGENT} 下**无关**（它没有触发工具，也不需要运行流）
+   * @param skills Skill 库（外部 Markdown：决策方法论与常识）。★ **必填**：它是决策人"该怎么做决策"的唯一来源，
+   *     装配期少一条不该退化成"模型自己猜"——故这里 {@code requireNonNull}，不搞"传 null 就不挂"的静默兜底。
    */
   public SimosToolSource(
       CoreSimos core,
@@ -149,6 +154,7 @@ public final class SimosToolSource implements ToolSource {
       String initiator,
       String mapId,
       Set<String> commandTypes,
+      SkillLibrary skills,
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
@@ -157,9 +163,10 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
     Objects.requireNonNull(commandTypes, "commandTypes");
+    Objects.requireNonNull(skills, "skills");
     Objects.requireNonNull(commandTargets, "commandTargets");
     Objects.requireNonNull(role, "role");
-    List<AgentTool> built = new ArrayList<>(readTools(core, query, mapId, commandTypes));
+    List<AgentTool> built = new ArrayList<>(readTools(core, query, mapId, commandTypes, skills));
     switch (role) {
       case GM -> {
         addGenericWrites(built, core, initiator, mapId);
@@ -295,7 +302,11 @@ public final class SimosToolSource implements ToolSource {
   }
 
   private static List<AgentTool> readTools(
-      CoreSimos core, QueryService query, String mapId, Set<String> commandTypes) {
+      CoreSimos core,
+      QueryService query,
+      String mapId,
+      Set<String> commandTypes,
+      SkillLibrary skills) {
     return List.of(
         new CatalogTool(commandTypes),
         new StateResolveTool(query, mapId),
@@ -305,7 +316,10 @@ public final class SimosToolSource implements ToolSource {
         new MapHexTool(query, mapId),
         new UnitListTool(query),
         new UnitGetTool(query),
-        new PopulationTool(query));
+        new PopulationTool(query),
+        // ★ Skill 系统（2026-09-23）：方法论与常识（外部 Markdown，改文件即生效）。**两桶共享**——
+        //   决策人读它是本职，GM 读它是为了写出与之一致的文档（Docs）。
+        new SkillTool(skills));
   }
 
   @Override
