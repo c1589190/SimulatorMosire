@@ -6,6 +6,7 @@ import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
@@ -169,7 +170,13 @@ public final class SimosToolSource implements ToolSource {
             commandTargets,
             requireDecisionAgent(decisionAgent));
       }
-      case DECISION_AGENT -> addDecisionAgentWrites(built, core, initiator, mapId);
+      case DECISION_AGENT -> {
+        // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
+        //   **只在决策人桶**——GM 侧看不到它（GM 有 GUI 面与 sd 只读全权，不靠这条）；它的可见性判据在
+        //   RedactingQueryService#decisionResults（tags 含调用者自己）。
+        built.add(new DecisionResultsTool(query, mapId));
+        addDecisionAgentWrites(built, core, initiator, mapId);
+      }
     }
     this.tools = List.copyOf(built);
   }

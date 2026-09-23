@@ -574,6 +574,12 @@ class DecisionAgentRunnerTest {
   void aToolOutsideTheDecisionWhitelistIsRejectedByThePermissionSet() {
     ToolRegistry gmRegistry = new ToolRegistry();
     gmRegistry.registerAll(shell.toolsFor(SimosToolSource.Role.GM));
+    // ★ 第 3 波第 3 步：决策人白名单新增了只读工具 {@code sd.DecisionResults}（**只挂决策人桶**，GM 桶没有它），
+    //   而 DecisionAgentRunner 的构造期要求"白名单 ⊆ 注册表"（DecisionToolDefs.requireAll）⇒ 补上 GM 桶缺的那条
+    //   （本用例要证的仍是"GM 桶里的通用写 simos.command.submit 不在白名单，故被权限组拒"）。
+    shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).stream()
+        .filter(tool -> gmRegistry.find(tool.name()).isEmpty())
+        .forEach(gmRegistry::register);
     long headBefore = head();
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("type", "unit.RenameUnit");
