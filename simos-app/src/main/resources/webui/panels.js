@@ -15,6 +15,15 @@
   //   此处按名取回 ⇒ **调用点与 window.SimosPanels 导出对象一字未改**。
   var readout = window.SimosReadout;
   var decisionModel = window.SimosDecisionModel;
+  // ★ M12 第四波：共享 DOM 叶子（paneldom.js）与右栏（panel-right.js）已搬出，index.html 均在本文件之前引入。
+  //   同样按名取回 ⇒ **调用点与 window.SimosPanels 导出对象一字未改**。
+  var panelDom = window.SimosPanelDom;
+  var loadOverview = panelDom.loadOverview;
+  var targetLabel = panelDom.targetLabel;
+  var appendRow = panelDom.appendRow;
+  var appendLiveRow = panelDom.appendLiveRow;
+  var valueOf = panelDom.valueOf;
+  var renderRight = window.SimosPanelRight.renderRight;
   var UNTAGGED_LABEL = readout.UNTAGGED_LABEL;
   var IMPASSABLE_MOVE_COST = readout.IMPASSABLE_MOVE_COST;
   var DECISION_SUBPAGES = decisionModel.DECISION_SUBPAGES;
@@ -22,7 +31,6 @@
   var normalizeTag = readout.normalizeTag;
   var groupByTag = readout.groupByTag;
   var regionMembershipSummary = readout.regionMembershipSummary;
-  var formatValue = readout.formatValue;
   var millisToMpText = readout.millisToMpText;
   var perMilleToRateText = readout.perMilleToRateText;
   var equipmentText = readout.equipmentText;
@@ -60,20 +68,6 @@
 
   var requestToken = 0;
   var lastKey = null;
-
-  // ── 右栏区域分组（M7 T6）────────────────────────────────────────────
-  var rightToken = 0;
-  var rightKey = null;
-  var rightRegions = null;
-  var selectedRegion = null;
-
-  // ── 地图总览共享缓存（M7b T2 → M9 T2 移入 api.js 的共享记忆化层）──
-  //   左栏 ETA / 右栏区域 / map.js 渲染共用同一份按 target 记忆化的缓存（同一 URL×target 只发一次）。
-
-  /** 取当前目标的地图总览（M9 T2：与 map.js 同走 SimosApi.cachedMapOverview）。 */
-  function loadOverview() {
-    return api.cachedMapOverview(app.target());
-  }
 
   /**
    * T9：把从属区域读数写进左栏（每个区域自己的 hexCount + **并集**合计）。
@@ -161,33 +155,6 @@
       }
       appendRegionMembership(detail, regionMembershipSummary(regions));
     });
-  }
-
-  function targetLabel() {
-    var t = app.target();
-    return t.branch + "@" + (t.revision === null || t.revision === undefined ? "head" : t.revision);
-  }
-
-  /**
-   * 追加一行读数。`hint`（可选）= 该行的**口径说明**，写进 `title=`（B16：口径不进主栏，进 tooltip）。
-   */
-  function appendRow(detail, label, value, hint) {
-    var dt = app.el("dt", { text: label });
-    var dd = app.el("dd", { text: app.text(formatValue(value)) });
-    if (hint) {
-      dt.setAttribute("title", hint);
-      dd.setAttribute("title", hint);
-    }
-    detail.appendChild(dt);
-    detail.appendChild(dd);
-  }
-
-  /** 追加一行**由别的文件回填**的读数（带 id 锚点）：跨文件只经这一个 DOM 锚点，不互相持有状态。 */
-  function appendLiveRow(detail, label, id, text) {
-    detail.appendChild(app.el("dt", { text: label }));
-    var dd = app.el("dd", { text: text });
-    dd.setAttribute("id", id);
-    detail.appendChild(dd);
   }
 
   /**
@@ -404,134 +371,6 @@
       app.statusMessage(status, "未知选择类型：" + app.text(selection.kind), "warn");
       applyUnitTreeSection(true);
     }
-  }
-
-  function regionDetail(container) {
-    var dl = app.el("dl", { class: "kv region-detail", id: "region-detail" });
-    if (!selectedRegion) {
-      appendRow(dl, "提示", "点区域看详情；点标签高亮该标签下全部区域。");
-      container.appendChild(dl);
-      return;
-    }
-    var meta = selectedRegion.meta || {};
-    appendRow(dl, "name", selectedRegion.name || selectedRegion.id);
-    appendRow(dl, "id", selectedRegion.id);
-    appendRow(dl, "hexCount", selectedRegion.hexCount);
-    appendRow(dl, "color", meta.color);
-    appendRow(dl, "tag", meta.tag);
-    appendRow(dl, "description", meta.description);
-    appendRow(dl, "annexedBy", meta.annexedBy);
-    container.appendChild(dl);
-  }
-
-  /** 用缓存的 regions + 当前 state 重画右栏（分组、高亮选中态、详情）。 */
-  function drawRight(state) {
-    var mount = app.byId("region-panel-mount");
-    if (!mount) {
-      return;
-    }
-    app.clear(mount);
-    var groups = groupByTag(rightRegions || []);
-    if (!groups.length) {
-      mount.appendChild(app.el("p", { class: "empty", text: "该快照无区域。" }));
-      return;
-    }
-    var highlighted = state.highlightRegions || [];
-    var highlightSet = {};
-    highlighted.forEach(function (id) {
-      highlightSet[id] = true;
-    });
-    // ★ M8 T10：区域编辑模式下"当前目标区域"（focus）也算选中态（它由 map.js 渲染正常色/其它淡色）。
-    var regionFocus = state.regionFocus || null;
-    groups.forEach(function (group) {
-      var ids = group.regions.map(function (region) {
-        return region.id;
-      });
-      var allActive =
-        ids.length > 0 &&
-        highlighted.length === ids.length &&
-        ids.every(function (id) {
-          return highlightSet[id];
-        });
-      var tagButton = app.el("button", {
-        type: "button",
-        class: "region-tag" + (allActive ? " active" : ""),
-        "data-tag": group.tag,
-        title: "高亮「" + group.tag + "」下全部 " + ids.length + " 个区域",
-      });
-      tagButton.appendChild(app.el("span", { class: "region-tag-name", text: group.tag }));
-      tagButton.appendChild(app.el("span", { class: "region-tag-count", text: String(ids.length) }));
-      tagButton.addEventListener("click", function () {
-        selectedRegion = null;
-        // ★ U3：点 tag ⇒ 该 tag 下所有区域**等亮度**（group）。
-        app.setHighlightRegions(ids.slice(), "group");
-      });
-      mount.appendChild(tagButton);
-
-      var list = app.el("div", { class: "region-list" });
-      group.regions.forEach(function (region) {
-        var isSelected = !!highlightSet[region.id] || region.id === regionFocus;
-        var item = app.el("button", {
-          type: "button",
-          class: "region-item" + (isSelected ? " selected" : ""),
-          "data-region-id": region.id,
-        });
-        item.appendChild(
-          app.el("span", { class: "region-name", text: app.text(region.name || region.id) })
-        );
-        item.appendChild(
-          app.el("span", { class: "region-hexcount", text: app.text(region.hexCount) + " 格" })
-        );
-        item.addEventListener("click", function () {
-          selectedRegion = region;
-          if (app.getState().mode === "region-edit") {
-            app.setRegionFocus(region.id);
-          } else {
-            // ★ U3：点单个区域 ⇒ 该区域更亮、同 tag 其他区域淡色（single）。
-            app.setHighlightRegions([region.id], "single");
-          }
-        });
-        list.appendChild(item);
-      });
-      mount.appendChild(list);
-    });
-    regionDetail(mount);
-  }
-
-  /** 右栏渲染：目标 {branch,revision} 变化才重取 overview；高亮/选择变化只重画（不重取）。 */
-  function renderRight(state) {
-    var mount = app.byId("region-panel-mount");
-    if (!mount) {
-      return;
-    }
-    state = state || app.getState();
-    var key = targetLabel();
-    if (key === rightKey) {
-      if (rightRegions !== null) {
-        drawRight(state);
-      }
-      return;
-    }
-    rightKey = key;
-    var token = ++rightToken;
-    app.clear(mount);
-    mount.appendChild(app.el("p", { class: "empty", text: "载入区域…（" + key + "）" }));
-    loadOverview()
-      .then(function (body) {
-        if (token !== rightToken) {
-          return;
-        }
-        rightRegions = body.regions || [];
-        drawRight(state);
-      })
-      .catch(function (e) {
-        if (token !== rightToken) {
-          return;
-        }
-        rightRegions = null;
-        app.clear(mount);
-        mount.appendChild(app.el("p", { class: "empty", text: "区域载入失败：" + e.message }));
-      });
   }
 
   // ═══ 决策模式（T7）：一个模式两个子页 + 决策人交互 ═══════════════════════════
@@ -1907,12 +1746,6 @@
         var reason = e && e.body && e.body.reason ? e.body.reason : (e && e.message) || String(e);
         setLlmProviderStatus("绑定失败：" + reason, "err");
       });
-  }
-
-  /** 表单字段读值（缺节点 ⇒ ""，不抛）。 */
-  function valueOf(id) {
-    var node = app.byId(id);
-    return node && node.value !== undefined ? node.value : "";
   }
 
   /** 工作台初始化：订阅状态并渲染左栏真读数 + 右栏区域分组。 */

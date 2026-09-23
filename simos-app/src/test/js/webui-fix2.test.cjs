@@ -225,9 +225,10 @@ test("topRegionId-picks-the-definition-order-last-not-the-lexicographic-max", ()
 });
 
 test("sources-split-single-vs-group-at-the-three-call-sites", () => {
-  const panels = readWebui("panels.js");
-  assert.ok(panels.indexOf('app.setHighlightRegions(ids.slice(), "group")') >= 0, "tag 点击 ⇒ group");
-  assert.ok(panels.indexOf('app.setHighlightRegions([region.id], "single")') >= 0, "右栏单项 ⇒ single");
+  // ★ M12 第四波：右栏（含 tag 点击 / 右栏单项两个调用点）已搬到 panel-right.js ⇒ 扫描对象随之改。
+  const right = readWebui("panel-right.js");
+  assert.ok(right.indexOf('app.setHighlightRegions(ids.slice(), "group")') >= 0, "tag 点击 ⇒ group");
+  assert.ok(right.indexOf('app.setHighlightRegions([region.id], "single")') >= 0, "右栏单项 ⇒ single");
   const map = readWebui("map.js");
   // ★ V3：地图点格**不再**按从属数分档（那是 U3-2，已推翻）——改为取定义序末位那一个、恒 single。
   assert.ok(map.indexOf("var top = topRegionId(regionIds)") >= 0, "地图点格取顶层（定义序末位）");

@@ -389,6 +389,9 @@
   <!-- ★ M12 第三波：panels.js 的无状态纯函数已拆出；必须在 panels.js 之前引入 -->
   <script src="readout.js"></script>
   <script src="decisionmodel.js"></script>
+  <!-- ★ M12 第四波：共享 DOM 叶子（paneldom.js）与右栏（panel-right.js）必须在 panels.js 之前按依赖顺序引入 -->
+  <script src="paneldom.js"></script>
+  <script src="panel-right.js"></script>
   <script src="panels.js"></script>
   <script src="unitTree.js"></script>
   <script src="timeline.js"></script>

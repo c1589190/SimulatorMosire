@@ -20,7 +20,9 @@ const WEBUI_DIR = path.resolve(__dirname, "../../../main/resources/webui");
 //   ★ 新增 map.js 依赖的兄弟文件时，务必同步改这张表（顺序＝引入顺序）。
 const BUNDLE_DEPS = {
   "map.js": ["hexgeom.js", "hexcolor.js", "regionShape.js"],
-  "panels.js": ["readout.js", "decisionmodel.js"],
+  // ★ M12 第四波：paneldom.js（共享 DOM 叶子）与 panel-right.js（右栏）已从 panels.js 拆出；
+  //   顺序＝引入顺序（paneldom 依赖 readout.formatValue ⇒ readout 必须最前）。
+  "panels.js": ["readout.js", "decisionmodel.js", "paneldom.js", "panel-right.js"],
 };
 
 /** 取 webui 源码目录（判定用，测试里也会读它做静态扫描）。 */
