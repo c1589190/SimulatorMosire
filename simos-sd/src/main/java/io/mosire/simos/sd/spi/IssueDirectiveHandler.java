@@ -34,8 +34,11 @@ import java.util.Set;
  *  "effects":[]}
  * }</pre>
  *
- * <p>★ **R4 硬不变量**（spec §十一.2）：({@code decisionMakerId}, {@code tick}) 唯一——本处理器在**命令期**显式校验； {@link
- * SdState} 的构造期不变量是同一规则的**状态期**后备（第二层）。
+ * <p>★★ **R4 = 末位生效，不是"唯一"**（2026-09-23 用户裁定）：同一 ({@code decisionMakerId}, {@code tick}) 允许在 **同一
+ * tick 内再出令**（"打回重写"要的正是这一条——不必先推 tick）——但**只有最新一条生效**：出令时把同 (决策人, tick) 下**仍生效** 的旧令翻成 {@link
+ * DirectiveStatus#SUPERSEDED}（终态、留痕、不再参与裁决）。 {@link SdState} 的构造期不变量是同一规则的**状态期**后备 （第二层："至多一条生效"）。
+ *
+ * <p>★ **重写 = 新的 {@link DirectiveId}**（不是改写旧令）：旧令的形状与执行原文一条不动 ⇒ 时间线可回退、可审计。
  *
  * <p>★ **白名单**（spec §四）：{@code commands[].type} 必须落在 {@link DirectiveWhitelist}；{@code sd.*}
  * 自指与通用写被明确拒绝。
@@ -44,8 +47,8 @@ import java.util.Set;
  * 固定为 {@value #INTENT_INFO_KEY}），{@code Directive.intentInfoKey} 只记该 key；二者不互相推导。
  *
  * <p>拒绝：{@code decisionMakerId} 不存在；**载荷 {@code tick} 记在未来**（{@code tick > 世界当前 tick}，见 {@link
- * #handle}）；指令 id 已存在；**R4 违反**；{@code commands[].type} 不在白名单（或自指）； {@code target} 非法；{@code
- * effects[]} 引用的效果不存在。
+ * #handle}）；指令 id 已存在；{@code commands[].type} 不在白名单（或自指）； {@code target} 非法；{@code effects[]}
+ * 引用的效果不存在。
  */
 public final class IssueDirectiveHandler implements CommandHandler {
 
@@ -95,10 +98,6 @@ public final class IssueDirectiveHandler implements CommandHandler {
       if (base.directives().containsKey(id)) {
         return new HandlerOutcome.Rejected("决策已存在: " + id.value());
       }
-      Optional<String> violation = firstR4Violation(base, decisionMakerId, tick);
-      if (violation.isPresent()) {
-        return new HandlerOutcome.Rejected(violation.get());
-      }
       Optional<String> whiteListViolation = firstWhitelistViolation(commands);
       if (whiteListViolation.isPresent()) {
         return new HandlerOutcome.Rejected(whiteListViolation.get());
@@ -140,6 +139,7 @@ public final class IssueDirectiveHandler implements CommandHandler {
               Optional.empty(),
               DirectiveStatus.ISSUED);
       Map<DirectiveId, Directive> nextDirectives = new LinkedHashMap<>(base.directives());
+      supersedeOldVersions(nextDirectives, decisionMakerId, tick);
       nextDirectives.put(id, directive);
       SdState target0 = base.withDirectives(nextDirectives).withInfo(nextInfo);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, target0));
@@ -148,20 +148,26 @@ public final class IssueDirectiveHandler implements CommandHandler {
     }
   }
 
-  private static Optional<String> firstR4Violation(
-      SdState base, DecisionMakerId decisionMakerId, long tick) {
-    for (Directive existing : base.directives().values()) {
-      if (existing.decisionMakerId().equals(decisionMakerId) && existing.tick() == tick) {
-        return Optional.of(
-            "R4 违反：决策人 "
-                + decisionMakerId.value()
-                + " 在 tick "
-                + tick
-                + " 已有决策 "
-                + existing.id().value());
+  /**
+   * **末位生效**（R4 的新形态）：把同 (决策人, tick) 下**仍生效**（{@code PLANNED}/{@code ISSUED}）的旧令翻成 {@link
+   * DirectiveStatus#SUPERSEDED}。
+   *
+   * <p>★ **只顶"生效中"的**：已终态的旧令（{@code EXECUTED}/{@code CANCELLED}/{@code SUPERSEDED}）**一条都不动**—— 尤其
+   * {@code CANCELLED}（被 GM 打回的令）必须保住自己的状态与留痕，不能被后来的重写抹掉。
+   *
+   * <p>★ **不删旧令**：只换状态。旧令的执行原文（INFO）与其命令清单留在原地 ⇒ 时间线可回退、AAR 看得到"第 1 版被第 2 版顶掉"。
+   */
+  private static void supersedeOldVersions(
+      Map<DirectiveId, Directive> nextDirectives, DecisionMakerId decisionMakerId, long tick) {
+    for (Directive existing : List.copyOf(nextDirectives.values())) {
+      if (!existing.decisionMakerId().equals(decisionMakerId) || existing.tick() != tick) {
+        continue;
+      }
+      if (existing.status() == DirectiveStatus.PLANNED
+          || existing.status() == DirectiveStatus.ISSUED) {
+        nextDirectives.put(existing.id(), existing.withStatus(DirectiveStatus.SUPERSEDED));
       }
     }
-    return Optional.empty();
   }
 
   private Optional<String> firstWhitelistViolation(List<DirectiveCommand> commands) {

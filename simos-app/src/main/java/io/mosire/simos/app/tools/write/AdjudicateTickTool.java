@@ -82,10 +82,11 @@ import java.util.UUID;
  *   <li>{@link BatchResult.Conflict} ⇒ **原样上报**（带真实 head）：不许部分提交、不许改写 {@code expectedRevision} 蒙过去。
  * </ul>
  *
- * <p>★★ **状态翻转（第 3 波最后一块）**：本 tick **每条令**在同批里带一条 {@code sd.SetDirectiveStatus}——该令的命令**全部被接受** ⇒
- * {@code EXECUTED}，**有任一被剔除/被拒** ⇒ {@code CANCELLED}。翻转目标是**本轮步骤表**的函数（命令被剔 ⇒ 下一轮重算成 {@code
- * CANCELLED}），故与"被剔命令不进批"同一次修订收敛。翻转**自己也受转移守卫**（{@code ISSUED → 终态}）：它若被拒（并发 /
- * 前置状态不对），走**同一条**收敛逻辑——剔出 + 拒因写进决策结果的 {@code flips}，**不静默吞掉**。
+ * <p>★★ **状态翻转（第 3 波最后一块）**：本 tick **每条参与裁决的令**（见 {@link #directivesAt}：被重写顶掉的 {@code SUPERSEDED}
+ * 与被打回的 {@code CANCELLED} **不参与**）在同批里带一条 {@code sd.SetDirectiveStatus}——该令的命令**全部被接受** ⇒ {@code
+ * EXECUTED}，**有任一被剔除/被拒** ⇒ {@code CANCELLED}。翻转目标是**本轮步骤表**的函数（命令被剔 ⇒ 下一轮重算成 {@code
+ * CANCELLED}），故与"被剔命令不进批"同一次修订收敛。翻转**自己也受转移守卫**（{@code ISSUED → 终态}）：它若被拒（并发 / 前置状态不对），走**同一条**
+ * 收敛逻辑——剔出 + 拒因写进决策结果的 {@code flips}，**不静默吞掉**。
  *
  * <p>★ **"这次才暴露的"怎么认**：{@code CommandBus} 的整批拒绝里，**真被拒的**带自己的拒因，**被接受却随整批复原的**带 "整批未提交…"（见 {@code
  * CommandBus#rolledBack}）⇒ 本类按那个**前缀**区分（{@link #ROLLED_BACK_PREFIX}）。
@@ -407,11 +408,28 @@ public final class AdjudicateTickTool implements AgentTool {
     return DirectiveStatus.EXECUTED;
   }
 
-  /** 该 tick 的全部令：**顺序确定化**——先按 {@code decisionMakerId}，再按 {@code directiveId}（都是字符串序）。 */
+  /**
+   * 该 tick 里**参与裁决**的令：**顺序确定化**——先按 {@code decisionMakerId}，再按 {@code directiveId}（都是字符串序）。
+   *
+   * <p>★★ **两档被排除**（2026-09-23 用户裁定"令可重写"的连带，缺了它就会**执行旧的 / 被打回的令**）：
+   *
+   * <ul>
+   *   <li>{@link DirectiveStatus#SUPERSEDED}：被同 (决策人, tick) 的**新版**顶掉的旧版——只有最新一版生效；
+   *   <li>{@link DirectiveStatus#CANCELLED}：**GM 打回**的令——它已退场，不执行、也不落世界观变更。
+   * </ul>
+   *
+   * <p>★ **其余三档仍参与**（{@code PLANNED}/{@code ISSUED}/{@code EXECUTED}）：{@code EXECUTED}
+   * 也参与是**有意**的—— 重复裁决同一个 tick 时，它要撞上"决策结果条目 id 由地址派生"那条**幂等闸**（响亮失败、零 revision），而不是被本方法**静默**
+   * 读成"这个 tick 里没有任何令"（后者给出一个**不真实**的结论，还把幂等闸的靶子抽掉）；同理，{@code PLANNED}/{@code EXECUTED}
+   * 参与，让"翻转被转移守卫拒 ⇒ 走收敛逻辑"这条防御路径**可被真样本打到**（见 {@code AdjudicateTickToolTest}）。
+   *
+   * <p>★ 判别力：把本方法改回"只按 tick 取全部令"，重写后**旧版的命令也会进批**（两条都生效）⇒ {@code
+   * AdjudicateTickToolTest.onlyTheLatestVersionOfARewrittenDirectiveIsAdjudicated} 当场红。
+   */
   private static List<Directive> directivesAt(SdState sd, long tick) {
     List<Directive> out = new ArrayList<>();
     for (Directive directive : sd.directives().values()) {
-      if (directive.tick() == tick) {
+      if (directive.tick() == tick && participatesInAdjudication(directive.status())) {
         out.add(directive);
       }
     }
@@ -419,6 +437,11 @@ public final class AdjudicateTickTool implements AgentTool {
         Comparator.comparing((Directive d) -> d.decisionMakerId().value())
             .thenComparing(d -> d.id().value()));
     return List.copyOf(out);
+  }
+
+  /** 该状态是否**参与裁决**（见 {@link #directivesAt}：只排除"被新版顶掉"与"被 GM 打回"两档）。 */
+  private static boolean participatesInAdjudication(DirectiveStatus status) {
+    return status != DirectiveStatus.SUPERSEDED && status != DirectiveStatus.CANCELLED;
   }
 
   // ── 前置校验（白名单 + 逐条资源授权）─────────────────────────────────────────────────────

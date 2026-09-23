@@ -9,8 +9,9 @@ import java.util.Set;
  * Command → ChangeSet → Revision} 路径（R9 / 铁律 2）。
  *
  * <p>★ **模块侧强制四条**（spec §十三.2，渠道不得代劳）：actor ∈ {@link #representableActors()}（{@link
- * ChannelAdmission#requireRepresentable}）；视图按 actor 的 {@code accessLimit} 由 sd 构造（N17）；1 令/tick 与发
- * revision 同事务 （落点命令自带 R4）；留痕（渠道 id + actor 进 revision 行 {@code initiator}，N18）。
+ * ChannelAdmission#requireRepresentable}）；视图按 actor 的 {@code accessLimit} 由 sd 构造（N17）；决策与发
+ * revision 同事务 （落点命令自带 R4 的**末位生效**：同一 {@code (决策人, tick)} 可重写，旧版转 {@code SUPERSEDED}）；留痕（渠道 id +
+ * actor 进 revision 行 {@code initiator}，N18）。
  *
  * <p>★ {@link #available()} 是**可选**语义（spec §十三.1 明说不强制，计划 G4）：缺省可用，装配层在端口真的监听后再打开。
  */

@@ -19,6 +19,7 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
@@ -226,6 +227,11 @@ class DecisionCallerFactoryTest {
           .as("★ 判据 J3：GM 面上**除决策人桶之外的每一条**工具都不在白名单里（写工具一条都不给）")
           .doesNotContainAnyElementsOf(
               gmFace.stream().filter(n -> !decisionFace.contains(n)).toList());
+      assertThat(whitelist)
+          .as(
+              "★ 决策人必须读得到**自己**的决策结果（2026-09-23）：'决策 → 看结果 → 再决策'的回路靠这条工具闭合"
+                  + "——缺了它，回路是断的，而模型只会觉得'我查不到'")
+          .contains(DecisionResultsTool.NAME);
       assertThat(whitelist)
           .as("两条决策窄写必须在（语义就靠它们）")
           .contains(IssueDirectiveTool.NAME, SubmitVerdictTool.NAME);

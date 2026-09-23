@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** D1 的 handler 级判据：R4 唯一性（命令期）、命令白名单（禁自指/通用写）、执行原文落 INFO。 */
+/** D1 的 handler 级判据：R4 **末位生效**（命令期，同 tick 可重写、旧版转 SUPERSEDED）、命令白名单（禁自指/通用写）、执行原文落 INFO。 */
 class IssueDirectiveHandlerTest {
 
   private static final Set<String> REGISTERED =
@@ -62,15 +62,62 @@ class IssueDirectiveHandlerTest {
         .contains(new DirectiveId("d1"));
   }
 
+  /**
+   * ★★ **重写 = 末位生效**（2026-09-23 用户裁定）：同一 ({@code dm1}, tick 3) 再出令**不被拒**，而是**产生新的一版**， 旧的转 {@code
+   * SUPERSEDED}（终态、留痕）。
+   *
+   * <p>判别力（三个方向都要钉）：
+   *
+   * <ul>
+   *   <li>"第二条被拒"（旧实现）⇒ 第一次断言红；
+   *   <li>"两条同时生效（不顶旧版）"⇒ 第三次断言红；
+   *   <li>"重写 = 改写/删除旧令"（同一个 id）⇒ 第二次断言红（两条都在、旧的那条形状与执行原文不动）。
+   * </ul>
+   */
   @Test
-  void rejectsSecondDirectiveForSameMakerAndTick() {
+  void rewritingAtTheSameTickSupersedesTheOldVersionAndIssuesTheNewOne() {
     SdState base = withDecisionMaker(SdState.empty());
     SdState afterFirst = applied(base, handleAt(base, WORLD_TICK, payload("d1", "dm1", 3, "[]")));
 
     HandlerOutcome second = handleAt(afterFirst, WORLD_TICK, payload("d2", "dm1", 3, "[]"));
 
-    assertThat(rejected(second)).contains("R4 违反").contains("dm1").contains("3").contains("d1");
-    assertThat(afterFirst.directives()).as("第一条未被第二条覆盖").hasSize(1);
+    SdState afterSecond = applied(afterFirst, second);
+    assertThat(afterSecond.directives()).as("两条都在（旧版留痕，不删）").hasSize(2);
+    assertThat(afterSecond.directives().get(new DirectiveId("d1")).status())
+        .as("★ 旧版被顶掉 ⇒ SUPERSEDED（终态）")
+        .isEqualTo(DirectiveStatus.SUPERSEDED);
+    assertThat(afterSecond.directives().get(new DirectiveId("d2")).status())
+        .as("★ 新版生效 ⇒ ISSUED")
+        .isEqualTo(DirectiveStatus.ISSUED);
+    assertThat(afterSecond.info().get("sd:directive.d1")).as("旧版的执行原文一个字都没动（重写不是改写）").hasSize(1);
+  }
+
+  /**
+   * ★ **重写不抹掉"被打回"的留痕**：一条已被 GM 打回（{@code CANCELLED}）的令**不会被后来的重写顶成** {@code
+   * SUPERSEDED}——它必须保住自己的终态与原因（否则 AAR 就看不到"这一版曾被打回"）。
+   */
+  @Test
+  void rewritingDoesNotOverwriteAnAlreadyCancelledVersion() {
+    SdState base = withDecisionMaker(SdState.empty());
+    SdState afterFirst = applied(base, handleAt(base, WORLD_TICK, payload("d1", "dm1", 3, "[]")));
+    SdState firstCancelled =
+        afterFirst.withDirectives(
+            Map.of(
+                new DirectiveId("d1"),
+                afterFirst
+                    .directives()
+                    .get(new DirectiveId("d1"))
+                    .withStatus(DirectiveStatus.CANCELLED)));
+
+    SdState afterRewrite =
+        applied(
+            firstCancelled, handleAt(firstCancelled, WORLD_TICK, payload("d2", "dm1", 3, "[]")));
+
+    assertThat(afterRewrite.directives().get(new DirectiveId("d1")).status())
+        .as("★ 已终态（CANCELLED）的旧版保持原状——不能被顶成 SUPERSEDED")
+        .isEqualTo(DirectiveStatus.CANCELLED);
+    assertThat(afterRewrite.directives().get(new DirectiveId("d2")).status())
+        .isEqualTo(DirectiveStatus.ISSUED);
   }
 
   @Test

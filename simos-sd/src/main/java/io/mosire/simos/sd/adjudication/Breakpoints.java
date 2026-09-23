@@ -25,7 +25,7 @@ import java.util.Optional;
  *
  * <p>★ **D2 为何也产判决**：spec §八.2 的 D2 行把它记为"出令"（最终落 {@code sd.IssueDirective}）。但按**三件事模型**
  * （「建议」≠「开始决策」≠「决策人出令」）， 「开始决策」触发的是**判决**（数据、落 revision、可回放），出令是**另一条**命令。故本类把 D2 的**判决记录**纳入
- * 判决面（subject = 决策人），出令仍走 {@code sd.IssueDirective}——两条路互不占名额（R4 归后者）。
+ * 判决面（subject = 决策人），出令仍走 {@code sd.IssueDirective}——两条路互不占名额（R4 的**末位生效名额**归后者）。
  *
  * <p>★ **D4/D5/D7/D8 不产判决**：它们的产出是**草案**，按 D7 的既定口径由决策 Agent / 人经 {@code sd.IssueDirective} 发出。
  */

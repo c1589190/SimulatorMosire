@@ -33,7 +33,9 @@ import java.util.Optional;
  *   <li><b>目标值只允许两个终态</b> {@code EXECUTED} / {@code CANCELLED} ⇒ {@code PLANNED}/{@code ISSUED}
  *       以及一切非法串一律拒（目标值非法：…）；
  *   <li><b>只允许 {@code ISSUED → 终态}</b>：当前不是 {@code ISSUED} ⇒ 拒——这条同时堵住"重复翻转"（已 {@code EXECUTED} /
- *       {@code CANCELLED} 的令**不得改回**，两个终态之间也不得互改）与"翻一条还没发出的 {@code PLANNED} 令"。
+ *       {@code CANCELLED} 的令**不得改回**，两个终态之间也不得互改）与"翻一条还没发出的 {@code PLANNED} 令"。★ 它**也**堵住 {@code
+ *       SUPERSEDED} 那一档：它既是终态（当前不是 {@code ISSUED} ⇒ 拒），也不在目标集里（见第 2 条）—— 该档只由 {@code
+ *       sd.IssueDirective} 内部"顶掉旧令"产生，**不是外部可设的目标**。
  * </ol>
  *
  * <p>★ 拒因写明**当前态与目标态**（可读、可核对），不写一句笼统的"状态不对"。
@@ -71,7 +73,7 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
         return new HandlerOutcome.Rejected(violation.get());
       }
       Map<DirectiveId, Directive> next = new LinkedHashMap<>(base.directives());
-      next.put(id, withStatus(directive, target));
+      next.put(id, directive.withStatus(target));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDirectives(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
@@ -104,19 +106,5 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
               + "（只允许 ISSUED → EXECUTED/CANCELLED；已终态不得改回，重复翻转即拒）");
     }
     return Optional.empty();
-  }
-
-  /** 除 {@code status} 外逐字段照抄（record 无 wither）。 */
-  private static Directive withStatus(Directive directive, DirectiveStatus status) {
-    return new Directive(
-        directive.id(),
-        directive.decisionMakerId(),
-        directive.tick(),
-        directive.target(),
-        directive.intentInfoKey(),
-        directive.commands(),
-        directive.effects(),
-        directive.verdict(),
-        status);
   }
 }

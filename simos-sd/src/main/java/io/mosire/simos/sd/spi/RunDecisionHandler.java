@@ -43,8 +43,8 @@ import java.util.Set;
  * {@link #RUN_INFO_KEY}。
  *
  * <p>★ **不写 {@code Directive}**（与 {@code sd.StartDecision} 同一条理由，见 {@link StartDecisionHandler}
- * 的类注）： R4 是「同一 {@code (decisionMakerId, tick)} 至多一条 {@code Directive}」，触发命令若占掉那个名额，它要促成的 {@code
- * sd.IssueDirective} 反而会被拒。
+ * 的类注）：触发命令若在决策人**将要出令的那个 (决策人, tick)** 上留一条 {@code Directive}，它就会成为"第 1 版"、被决策人的真出令顶成 {@code
+ * SUPERSEDED}——AAR 上凭空多一条决策人从没写过的版本。
  *
  * <p>★ **不校验 provider 绑定**：{@code DecisionMaker.providerId} 是**不透明的基础设施引用**，sd 不解释、不校验其存在性 （铁律 3
  * 的结构化，见 {@code DecisionMaker} 的类注）。绑没绑、解析不解析得到，是**使用时刻**（app 层）的事，且必须 fail-closed。

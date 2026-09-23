@@ -12,10 +12,12 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 决策（spec §三.5，R3/R4）：一个决策人在一个 tick 的**唯一**决策——含执行原文（INFO）+ 结构化命令 + 效果引用。
+ * 决策（spec §三.5，R3/R4）：一个决策人在一个 tick 的决策——含执行原文（INFO）+ 结构化命令 + 效果引用。
  *
- * <p>★ **R4 硬不变量**：({@code decisionMakerId}, {@code tick}) 唯一——由命令期 + {@code SdState}
- * 构造期**两处**校验（spec §十一.2）。 本 record 只守形状。
+ * <p>★★ **R4 的形态是"末位生效"，不是"唯一"**（2026-09-23 用户裁定）：同一 ({@code decisionMakerId}, {@code tick})
+ * 允许**出多条**（重写 = 产生新的一版），但**只有最新一条生效**——旧的在出令那一刻转 {@link DirectiveStatus#SUPERSEDED}。
+ * 不变量由命令期（{@code IssueDirectiveHandler} 顶掉旧令）+ {@code SdState} 构造期（**至多一条生效**，见 {@code
+ * requireAtMostOneActiveDirective}）**两处**校验。 本 record 只守形状。
  *
  * <p>★ **效果与执行原文无关**（spec §三.6）：{@code intentInfoKey} 与 {@code effects} **分开存**，不互相推导。
  *
@@ -70,5 +72,18 @@ public record Directive(
       effectIds.add(effect);
     }
     effects = Collections.unmodifiableSet(effectIds); // ★ 冻在赋值处
+  }
+
+  /**
+   * **仅换状态**的那一版（record 没有 wither）。
+   *
+   * <p>★ 两处调用者共用它，是为了让"除 {@code status} 外逐字段照抄"这条**只有一份**——各写一份拷贝代码时，将来 {@code Directive}
+   * 加字段必然漏掉一处，而漏掉的那处**不会报错**（拷贝出的旧构造器参数默认值），属于本仓最贵的教训那一族（铁律 5 的由来）。
+   *
+   * @param newStatus 新状态（非 null；语义合法性的判定不在这里——见 {@code DirectiveStatus} 的类注）
+   */
+  public Directive withStatus(DirectiveStatus newStatus) {
+    return new Directive(
+        id, decisionMakerId, tick, target, intentInfoKey, commands, effects, verdict, newStatus);
   }
 }

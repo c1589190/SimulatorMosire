@@ -17,6 +17,7 @@ import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
+import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.model.Nation;
@@ -73,7 +74,7 @@ public record SdState(
     lossRecords = Collections.unmodifiableMap(copyOf(lossRecords, "lossRecords"));
     info = Collections.unmodifiableMap(copyInfo(info));
 
-    requireDirectiveUniqueness(directives);
+    requireAtMostOneActiveDirective(directives);
     requireReferentialIntegrity(
         nations,
         armies,
@@ -250,10 +251,23 @@ public record SdState(
 
   // ── 构造期不变量（逐条配故意违规用例）────────────────────────────────────────────
 
-  /** 不变量 1（R4）：不存在两条 {@code Directive} 的 ({@code decisionMakerId}, {@code tick}) 相同。 */
-  private static void requireDirectiveUniqueness(Map<DirectiveId, Directive> directives) {
+  /**
+   * 不变量 1（R4 的**末位生效**形态，2026-09-23 用户裁定）：同一 ({@code decisionMakerId}, {@code tick}) 下**至多一条生效**
+   * （{@code PLANNED}/{@code ISSUED}）。
+   *
+   * <p>★★ **为什么不是"唯一"**：用户裁定「同一次决策，不管有多少细条目，都只能放在一段文本里；但是又没说**不可以打回重写**」—— 重写 = 产生新的一版（新的 {@link
+   * DirectiveId}），旧的转 {@link DirectiveStatus#SUPERSEDED}（终态，留痕但不再生效）。故同一 ({@code decisionMakerId},
+   * {@code tick}) **允许多条 Directive 并存**，只是**生效的至多一条**。
+   *
+   * <p>★ 这条不变量把"末位生效"从命令期的实现细节升级成**状态层的结构性事实**：任何绕过 {@code IssueDirectiveHandler}
+   * 的构造（测试夹具、回放、分岔）若造出两条同时生效的令，构造期当场抛。
+   */
+  private static void requireAtMostOneActiveDirective(Map<DirectiveId, Directive> directives) {
     Set<String> seen = new LinkedHashSet<>();
     for (Directive directive : directives.values()) {
+      if (!isActive(directive.status())) {
+        continue; // 终态（EXECUTED/CANCELLED/SUPERSEDED）不参与"生效名额"。
+      }
       String key = directive.decisionMakerId().value() + "@" + directive.tick();
       if (!seen.add(key)) {
         throw new IllegalArgumentException(
@@ -261,9 +275,17 @@ public record SdState(
                 + directive.decisionMakerId().value()
                 + " 在 tick "
                 + directive.tick()
-                + " 已有 Directive");
+                + " 已有一条**生效中**的 Directive"
+                + "（同一 (决策人, tick) 至多一条生效；重写应把旧令翻成 "
+                + DirectiveStatus.SUPERSEDED
+                + "）");
       }
     }
+  }
+
+  /** 该状态是否"生效中"（{@code PLANNED}/{@code ISSUED}）——"末位生效"只认这两档。 */
+  private static boolean isActive(DirectiveStatus status) {
+    return status == DirectiveStatus.PLANNED || status == DirectiveStatus.ISSUED;
   }
 
   /** 不变量 2：外键必须存在于同快照。 */

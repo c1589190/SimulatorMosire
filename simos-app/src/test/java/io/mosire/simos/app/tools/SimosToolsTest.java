@@ -141,9 +141,9 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 9 读 + 49 写（**4 非窄写**：3 通用写 + {@code
-   * sd.AdjudicateTick}，后者**不是**命令类型；+ **18 sd 窄写**（4 + M3 的 12 + 会话重置 + T11C 的 RunDecision）+ **7
-   * map 窄写**，M1 + **20 unit 窄写**，M2）。
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 9 读 + 50 写（**5 非窄写**：3 通用写 + {@code sd.AdjudicateTick} +
+   * {@code sd.RejectDirective}，后两者**不是**命令类型；+ **18 sd 窄写**（4 + M3 的 12 + 会话重置 + T11C 的
+   * RunDecision）+ **7 map 窄写**，M1 + **20 unit 窄写**，M2）。
    */
   private static final List<String> GM_TOOL_NAMES =
       List.of(
@@ -166,6 +166,7 @@ class SimosToolsTest {
           "sd.StartDecision",
           "sd.RunDecision",
           "sd.AdjudicateTick",
+          "sd.RejectDirective",
           "sd.CreateNation",
           "sd.CreateArmy",
           "sd.CreateDecisionMaker",
@@ -224,16 +225,21 @@ class SimosToolsTest {
           "simos.social.population");
 
   /**
-   * 非窄写工具（4 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
+   * 非窄写工具（5 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
-   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 4 条从差集里扣掉。
+   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 5 条从差集里扣掉。
    *
-   * <p>★ 前 3 条是**通用写**（自选命令类型）；{@code sd.AdjudicateTick} 是**批裁决**——命令类型由它要裁决的令决定
-   * （不是固定一条），故同样不属于"窄写"那一族。
+   * <p>★ 前 3 条是**通用写**（自选命令类型）；{@code sd.AdjudicateTick} 是**批裁决**——命令类型由它要裁决的令决定 （不是固定一条）；{@code
+   * sd.RejectDirective} 是**GM 打回**（同批两条既有命令 + 会话旁路写）——两者同样不属于"窄写"那一族。
    */
   private static final List<String> NON_NARROW_WRITE_NAMES =
-      List.of("simos.command.submit", "simos.advance", "simos.fork", "sd.AdjudicateTick");
+      List.of(
+          "simos.command.submit",
+          "simos.advance",
+          "simos.fork",
+          "sd.AdjudicateTick",
+          "sd.RejectDirective");
 
   /**
    * 写工具全集（49 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
@@ -624,11 +630,12 @@ class SimosToolsTest {
             "sd.ResetDecisionMakerConversation",
             "sd.StartDecision",
             "sd.RunDecision",
-            "sd.AdjudicateTick")
+            "sd.AdjudicateTick",
+            "sd.RejectDirective")
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(58);
+        .hasSize(59);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -639,7 +646,8 @@ class SimosToolsTest {
             "sd.ResetDecisionMakerConversation",
             "sd.StartDecision",
             "sd.RunDecision",
-            "sd.AdjudicateTick")
+            "sd.AdjudicateTick",
+            "sd.RejectDirective")
         .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.DecisionResults")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)

@@ -161,7 +161,8 @@ public final class SdQueryService {
   /**
    * 排序（**响应字节可复现**的前提）：tick **降序**（新的在前，界面要的第一条就是"最近一次"），同 tick 再按 id 字典序。
    *
-   * <p>★ {@code SdState.directives()} 是插入序表（R4 只保证 {@code (dm,tick)} 唯一，不保证有序）⇒ 必须显式排。
+   * <p>★ {@code SdState.directives()} 是插入序表（R4 自 2026-09-23 起是**末位生效**：同一 {@code (dm,tick)} 可有多条令，
+   * 旧版为 {@code SUPERSEDED}）⇒ 插入序**不保证**任何可读次序，必须显式排。
    */
   private static Comparator<Directive> order() {
     return Comparator.comparingLong(Directive::tick)
@@ -247,8 +248,8 @@ public final class SdQueryService {
    * D7 已裁公式：{@code due = (当前 tick − 该 dm 最近一次落 Directive 的 tick) ≥ decisionCadenceTicks}； 首次（该 dm
    * 无任何 Directive）**恒 {@code due}**。
    *
-   * <p>★ **"最近一次"取最大 tick，不取最小**：{@code SdState.directives()} 是插入序表（R4 只保证 {@code (dm,tick)}
-   * 唯一，不保证按 tick 有序）⇒ 必须显式求 max；取首个/取最小都会把周期算反。
+   * <p>★ **"最近一次"取最大 tick，不取最小**：{@code SdState.directives()} 是插入序表（R4 自 2026-09-23 起是**末位生效** ——同一
+   * {@code (dm,tick)} 可有多条令）⇒ 插入序与 tick 序无关，必须显式求 max；取首个/取最小都会把周期算反。
    *
    * <p>★ **首次用 {@code null} 表示"没有上一次"**（{@code ticksSinceLast} 是无穷大）：填 {@code 0} 或 {@code -1}
    * 会把"没有基准"伪装成一个具体间隔，下游就没法把"从未决策"与"刚决策过"区分开。

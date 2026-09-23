@@ -26,6 +26,7 @@ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
@@ -225,6 +226,9 @@ public final class SimosToolSource implements ToolSource {
     // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
     //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new AdjudicateTickTool(core, initiator, mapId, commandTypes, commandTargets));
+    // 2026-09-23 用户裁定（"决策人一般流程"第 2 件）：GM 打回一条令 —— 理由原样**投进该决策人的会话**（复用 say 通道）
+    //   + 该令标 CANCELLED，同批留审计条目。★ 只在 GM 桶；★ 也不是命令类型 ⇒ 不进 catalog。
+    built.add(new RejectDirectiveTool(core, initiator, decisionAgent));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));

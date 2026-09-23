@@ -1,5 +1,6 @@
 package io.mosire.simos.sd.state;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
@@ -15,6 +16,7 @@ import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.Directive;
+import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.Trigger;
@@ -29,15 +31,47 @@ import org.junit.jupiter.api.Test;
 /** spec §三.1 的五条构造期不变量：每条一个**故意违规**用例，构造必须抛。 */
 class SdStateInvariantTest {
 
+  /**
+   * ★★ **R4 的"末位生效"形态**（2026-09-23 用户裁定）——状态期不变量是「同一 (决策人, tick) **至多一条生效**」，不是"唯一"：
+   *
+   * <ul>
+   *   <li>两条**生效中**（{@code PLANNED}/{@code ISSUED}）的令打同一格 ⇒ 构造期当场抛（下条断言）；
+   *   <li>一条生效 + 一条**终态**（如 {@code SUPERSEDED}，重写的产物）⇒ **合法**（本用例的反方向，判别力在此：把不变量写成"唯一"
+   *       会让合法的重写产物建不出状态）。
+   * </ul>
+   */
   @Test
-  void r4DuplicateDirectiveIsRejected() {
+  void r4TwoActiveDirectivesForTheSameMakerAndTickAreRejected() {
     SdState base = SdFixtures.full();
     Map<DirectiveId, Directive> bad = new LinkedHashMap<>(base.directives());
     DirectiveId extra = new DirectiveId("d-dup");
     bad.put(extra, SdFixtures.directive(extra, SdFixtures.DM1, 0));
     assertThatThrownBy(() -> base.withDirectives(bad))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("R4 违反：决策人 dm1 在 tick 0 已有 Directive");
+        .hasMessageContaining("R4 违反：决策人 dm1 在 tick 0 已有一条**生效中**的 Directive");
+  }
+
+  /**
+   * ★ **反方向（判别力所在）**：同 (决策人, tick) 下**一条生效 + 一条已被顶掉**（{@code SUPERSEDED}）**必须建得出来**——
+   * 那正是"打回重写"后的合法形状。写成"唯一"的实现会让本用例红。
+   */
+  @Test
+  void r4SupersededOldVersionAlongsideTheNewOneIsAllowed() {
+    SdState base = SdFixtures.full();
+    Map<DirectiveId, Directive> next = new LinkedHashMap<>(base.directives());
+    next.put(
+        SdFixtures.D1,
+        SdFixtures.directive(SdFixtures.D1, SdFixtures.DM1, 0)
+            .withStatus(DirectiveStatus.SUPERSEDED));
+    DirectiveId second = new DirectiveId("d-second");
+    next.put(second, SdFixtures.directive(second, SdFixtures.DM1, 0));
+
+    SdState after = base.withDirectives(next);
+
+    assertThat(after.directives().get(SdFixtures.D1).status())
+        .as("旧版留在原地、状态是终态 SUPERSEDED（不是被删）")
+        .isEqualTo(DirectiveStatus.SUPERSEDED);
+    assertThat(after.directives().get(second).status()).isEqualTo(DirectiveStatus.PLANNED);
   }
 
   @Test

@@ -240,6 +240,95 @@ class AdjudicateTickToolTest {
 
   // ── 判据三：expectedRevision 过期 ⇒ Conflict、零 revision ─────────────────────────────
 
+  /**
+   * ★★ **重写后只有新版生效**（2026-09-23 用户裁定的"令可重写"在裁决侧的承重判据）。
+   *
+   * <p>同一 ({@code dm-army}, {@code WORLD_TICK}) 出两条令（第二条把第一条顶成 {@code SUPERSEDED}）⇒
+   * 裁决时**只有新版**的命令进批：
+   *
+   * <ul>
+   *   <li>单位名 == 新版给的名字（旧版那条命令**一条都没执行**）；
+   *   <li>决策结果里**只有新版那一条命令**、**只有新版那一条翻转**（旧版不进批、也不产生翻转——它早就是终态）；
+   *   <li>状态：{@code d-v1 = SUPERSEDED}、{@code d-v2 = EXECUTED}。
+   * </ul>
+   *
+   * <p>★ 判别力：把 {@code directivesAt} 改回"只按 tick 取"，旧版的命令会**也**进批（两条都生效 ⇒ 单位名落到旧版或结果多一行）⇒ 本用例红。
+   */
+  @Test
+  void onlyTheLatestVersionOfARewrittenDirectiveIsAdjudicated() throws Exception {
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-v1",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一版\"}"));
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-v2",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第二版\"}"));
+
+    ToolResult result = adjudicate(WORLD_TICK);
+
+    assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
+    long after = head();
+    assertThat(unitName(after, U1)).as("★ 只有新版生效（旧版那条命令一条都没执行）").isEqualTo("第二版");
+
+    JsonNode value = decisionResult(after, WORLD_TICK);
+    assertThat(value.get("commands")).as("旧版不进批、不进结果").hasSize(1);
+    assertThat(value.get("commands").get(0).get("directiveId").asText()).isEqualTo("d-v2");
+    assertThat(value.get("flips")).as("旧版不产生翻转（它已是终态 SUPERSEDED）").hasSize(1);
+    assertThat(value.get("flips").get(0).get("directiveId").asText()).isEqualTo("d-v2");
+
+    assertThat(sdAt(after).directives().get(new DirectiveId("d-v1")).status())
+        .as("旧版保持 SUPERSEDED（裁决不碰它）")
+        .isEqualTo(DirectiveStatus.SUPERSEDED);
+    assertThat(sdAt(after).directives().get(new DirectiveId("d-v2")).status())
+        .as("新版被裁决为 EXECUTED")
+        .isEqualTo(DirectiveStatus.EXECUTED);
+  }
+
+  /**
+   * ★★ **被打回的令不参与裁决**（2026-09-23 用户裁定的"GM 打回"在裁决侧的承重判据）：一条被 GM 打回（{@code CANCELLED}）的令**不执行**，
+   * 也不进决策结果；同 tick 的另一条（未被打回）照常裁决。
+   *
+   * <p>★ 判别力：把 {@code participatesInAdjudication} 改成"一律参与"，被打回那条的命令会真的执行（单位名变成"不该生效"）⇒ 本用例红。
+   */
+  @Test
+  void aRejectedDirectiveDoesNotParticipateInAdjudicationWhileItsSiblingDoes() throws Exception {
+    issueDirective(
+        WORLD_TICK,
+        DM_ARMY,
+        "d-rejected",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"不该生效\"}"));
+    assertThat(
+            submit(
+                "sd.SetDirectiveStatus",
+                "{\"directiveId\":\"d-rejected\",\"status\":\"CANCELLED\"}"))
+        .as("先把它打回（造出 CANCELLED 的前置）")
+        .isInstanceOf(CommandResult.Committed.class);
+    issueDirective(
+        WORLD_TICK,
+        DM_FRA,
+        "d-live",
+        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"该生效\"}"));
+    long before = head();
+
+    ToolResult result = adjudicate(WORLD_TICK);
+
+    assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
+    long after = head();
+    assertThat(after).as("仍只一条 revision").isEqualTo(before + 1);
+    assertThat(unitName(after, U1)).as("★ 被打回的那条没执行、没被打回的那条执行了").isEqualTo("该生效");
+
+    JsonNode value = decisionResult(after, WORLD_TICK);
+    assertThat(value.get("commands")).as("被打回的令不进批、不进结果").hasSize(1);
+    assertThat(value.get("commands").get(0).get("directiveId").asText()).isEqualTo("d-live");
+    assertThat(value.get("flips")).as("被打回的令不产生翻转").hasSize(1);
+    assertThat(sdAt(after).directives().get(new DirectiveId("d-rejected")).status())
+        .as("★ 被打回的令保持 CANCELLED（裁决不把它翻回、也不改成别的）")
+        .isEqualTo(DirectiveStatus.CANCELLED);
+  }
+
   @Test
   void aStaleExpectedRevisionIsAConflictWithZeroRevisions() throws Exception {
     issueDirective(
