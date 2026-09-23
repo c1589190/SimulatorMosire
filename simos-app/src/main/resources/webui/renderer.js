@@ -32,6 +32,10 @@
   var screenToWorld = hexGeom.screenToWorld;
   var zoomAt = hexGeom.zoomAt;
   var fitView = hexGeom.fitView;
+  // ★ 2026-09-23 同格重叠单位纵向摊开：间距/半径口径来自 hexgeom（与 drawUnits 的圆点半径同源）
+  var markerRadius = hexGeom.markerRadius;
+  var stackSpacing = hexGeom.stackSpacing;
+  var stackOffset = hexGeom.stackOffset;
   // hexcolor.js
   var FALLBACK_COLOR = hexColor.FALLBACK_COLOR;
   var REGION_FALLBACK_COLOR = hexColor.REGION_FALLBACK_COLOR;
@@ -211,11 +215,35 @@
       return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
     }
 
+    /**
+     * 预计算单位的**世界像素**位置（px/py）。★ 2026-09-23：同格单位重叠不好点 ⇒ 格子够大时以格心
+     * 为中心**等距纵向摊开**（stackOffset 纯函数）；格太小放不下就保持重叠（宁可靠军队选择器挑，
+     * 也不把标记甩出格子）。摊开间距记在 `u.stackSpacing`（0=未摊开），供 pickAt 收缩命中半径。
+     * ★ 只改 px/py ⇒ pickAt / drawUnits 自动跟随（不另造一份坐标）。
+     */
     function recomputeWorldPixels() {
+      var groups = {}; // "q_r" → 该格的全部单位（保持 units 原顺序 ⇒ index 稳定）
+      var keys = [];
       units.forEach(function (u) {
-        var p = hexToPixel(u.position.q, u.position.r, cellSize);
-        u.px = p.x;
-        u.py = p.y;
+        var key = u.position.q + "_" + u.position.r;
+        if (!groups[key]) {
+          groups[key] = [];
+          keys.push(key);
+        }
+        groups[key].push(u);
+      });
+      keys.forEach(function (key) {
+        var list = groups[key];
+        // ★ 摊开门控吃**屏幕上**的格高（cellSize 是世界单位且在**工作台恒定**，随缩放变的是 view.scale）
+        //   ⇒ 必须相乘，否则缩放永远不会改变"摊不摊开"。
+        var screenCell = cellSize * view.scale;
+        var spacing = stackSpacing(list.length, cellSize, screenCell);
+        list.forEach(function (u, index) {
+          var p = hexToPixel(u.position.q, u.position.r, cellSize);
+          u.px = p.x;
+          u.py = p.y + stackOffset(index, list.length, cellSize, screenCell);
+          u.stackSpacing = spacing;
+        });
       });
     }
 
@@ -309,6 +337,8 @@
             py: p.y,
           };
         });
+      // ★ 2026-09-23：装载即按当前 cellSize 摊开同格单位（此前只在 setCellSize 时才算 ⇒ 首次加载不摊开）。
+      recomputeWorldPixels();
       if (selectedUnit) {
         selected = positionOf(selectedUnit);
       }
@@ -386,6 +416,7 @@
 
     function fit() {
       view = computeFit();
+      recomputeWorldPixels(); // 摊开门控吃 view.scale，改缩放即须重算 px/py
       updateZoomUi();
       scheduleRender();
     }
@@ -534,7 +565,7 @@
     }
 
     function drawUnits() {
-      var radius = Math.max(6, cellSize * 0.3);
+      var radius = markerRadius(cellSize);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       units.forEach(function (u) {
@@ -950,9 +981,12 @@
     /** 屏幕 CSS 坐标 → 世界 → 命中（单位优先于格）。★ m2 保护的是这里的世界换算。 */
     function pickAt(point) {
       var world = screenToWorld(point, view);
-      var hitRadius = Math.max(cellSize * 0.36, 10 / view.scale);
+      var baseHitRadius = Math.max(cellSize * 0.36, 10 / view.scale);
       for (var i = units.length - 1; i >= 0; i--) {
         var u = units[i];
+        // ★ 2026-09-23：摊开的单位命中半径收缩到**不超过半间距** ⇒ 不误伤纵向相邻的邻居；
+        //   未摊开（stackSpacing=0，含大小格下的重叠态）保持原口径。
+        var hitRadius = u.stackSpacing > 0 ? Math.min(baseHitRadius, u.stackSpacing / 2) : baseHitRadius;
         var dx = world.x - u.px;
         var dy = world.y - u.py;
         if (dx * dx + dy * dy <= hitRadius * hitRadius) {
@@ -1542,6 +1576,8 @@
       event.preventDefault();
       var factor = Math.exp(-event.deltaY * ZOOM_WHEEL);
       view = zoomAt(view, canvasPoint(event), factor, MIN_SCALE, MAX_SCALE);
+      // ★ 摊开门控吃 view.scale ⇒ 缩放后必须重算 px/py（否则"放大到格子够大才摊开"永不生效）。
+      recomputeWorldPixels();
       updateZoomUi();
       scheduleRender();
     }
@@ -1856,6 +1892,7 @@
       },
       setView: function (next) {
         view = { scale: next.scale, tx: next.tx, ty: next.ty };
+        recomputeWorldPixels(); // 同上：scale 变了就要重算摊开
         updateZoomUi();
         scheduleRender();
       },

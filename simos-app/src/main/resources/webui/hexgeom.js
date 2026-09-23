@@ -115,6 +115,58 @@
     return { scale: next, tx: anchor.x - world.x * next, ty: anchor.y - world.y * next };
   }
 
+  /**
+   * 单位标记半径（世界像素）——renderer.drawUnits 画红圈、stackOffset 算摊开间距**共用同一口径**。
+   * ★ 两处若各写一遍，摊开间距就会与实际圆点大小脱钩（画得下/画不下会撒谎）。
+   */
+  function markerRadius(cellSize) {
+    return Math.max(6, (cellSize || 0) * 0.3);
+  }
+
+  var STACK_GAP = 2; // 相邻标记圆之间留的世界像素空隙（>0 ⇒ 不粘连可点）
+
+  /**
+   * 屏幕上格高（CSS px）小于此值 ⇒ **不摊开**。用户口径"格子较大时才纵向排列"的落实点：
+   * 工作台的 `cellSize` 是**世界**单位且恒定（34），随缩放变的是 `view.scale`，
+   * 故门控必须吃 `cellSize × view.scale`（屏幕上真实格高），否则缩放永远不会改变行为。
+   */
+  var STACK_MIN_SCREEN_CELL = 24;
+
+  /**
+   * 同格 count 个单位的**纵向摊开间距**（世界像素）；无需摊开 / 屏幕格太小 ⇒ 0。**纯函数**。
+   *
+   * <p>★ **刻意不再要求"整摞落在格内"**（2026-09-23 改）：真实数据里三国首都各挤着 8~10 个单位，
+   * 而"最外侧圆心 ≤ cellSize"要求 `((count−1)/2)·spacing ≤ cellSize`，count=8 时恒不成立 ⇒ 间距恒 0
+   * ⇒ **一个都不摊开**，用户"方便点击查看"的诉求完全落空。所以：间距只保证**相邻圆不重叠**，
+   * 允许整摞纵向伸出格子（点得到比"待在格子里"重要）。
+   *
+   * @param screenCellSize 屏幕上格高 = `cellSize × view.scale`；小于 {@link #STACK_MIN_SCREEN_CELL} ⇒ 0
+   */
+  function stackSpacing(count, cellSize, screenCellSize) {
+    if (!(count > 1) || !(cellSize > 0)) {
+      return 0;
+    }
+    if (!(screenCellSize >= STACK_MIN_SCREEN_CELL)) {
+      return 0; // 缩得太小：几个点会糊成一团，不如保持重叠
+    }
+    return markerRadius(cellSize) * 2 + STACK_GAP; // > 两半径和 ⇒ 相邻圆不重叠
+  }
+
+  /**
+   * 同格 N 个单位**纵向摊开**的偏移（世界像素，只给 y；x 不动）。**纯函数**。
+   *
+   * <p>口径：`count <= 1` 或屏幕格太小（见 {@link #stackSpacing}）⇒ 恒 0；否则以格心为中心
+   * **对称**分布 `offset(i) = (i − (count−1)/2) × spacing`：count=3 ⇒ {−spacing, 0, +spacing}
+   * （互不相同、关于 0 对称）。
+   */
+  function stackOffset(index, count, cellSize, screenCellSize) {
+    var spacing = stackSpacing(count, cellSize, screenCellSize);
+    if (spacing === 0) {
+      return 0;
+    }
+    return (index - (count - 1) / 2) * spacing;
+  }
+
   /** 让世界包围盒 fit 进 width×height（CSS px），四周留 pad。 */
   function fitView(bounds, width, height, pad) {
     if (!bounds || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) {
@@ -145,5 +197,9 @@
     screenToWorld: screenToWorld,
     zoomAt: zoomAt,
     fitView: fitView,
+    markerRadius: markerRadius,
+    stackSpacing: stackSpacing,
+    stackOffset: stackOffset,
+    STACK_MIN_SCREEN_CELL: STACK_MIN_SCREEN_CELL,
   };
 })();

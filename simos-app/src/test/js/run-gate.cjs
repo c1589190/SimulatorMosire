@@ -30,7 +30,9 @@ const JS_DIR = __dirname;
 //     正文尽力解析、解析不了不报错 / 两轴都显 / 视图原样带服务端的 note；另 decision-mode 与 provider-config 的子页断言
 //     改为**从 DECISION_SUBPAGES 派生**——再加子页只需改那一处，不必在断言里抄一遍键名）。
 //   与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——两层下界各写一个数，**改一处必须改两处**。
-const MIN_TESTS = 222;
+//   2026-09-23 UI 改造起 222 → 232（unit-tree.test.cjs 新增 10 条：armyOptions / subtreeOf /
+//     rootIdOf / clampPanelPosition / stackOffset（含 stackSpacing）——军队选择、单军队子树、浮层夹取、同格摊开）。
+const MIN_TESTS = 233;
 
 function discoverTests() {
   return fs

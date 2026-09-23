@@ -1873,3 +1873,85 @@ body.workbench-page .gm-usage-failed {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ── 编制浮层（2026-09-23 UI 改造）：左栏「查看编制」按钮 + 独立可拖动浮层 ──────────────
+   只**追加新类**：既有 .unit-tree / .tree-* 的语义一字不改（它们仍用于浮层内的倒树）。
+   浮层的开合由 unitTree.js 落 aria-expanded + [hidden]；拖动由标题栏的原生 pointer 事件驱动。 */
+
+.unit-panel-open {
+  width: 100%;
+  margin: 6px 0;
+}
+
+.unit-panel {
+  position: fixed;
+  left: 0; /* 初始位置由 unitTree.js 贴着左栏右缘设置，并夹在视口内 */
+  top: 0;
+  z-index: 5; /* 低于 GM 全屏层（.gm-overlay z-index:6）⇒ GM 打开时盖住它 */
+  /* ★ 宿主页 .wb-body 是 pointer-events:none（只有 .panel 子节点自动恢复）——本浮层是 <section>，
+     不恢复就会被"透传"、按钮/拖动全点不到。 */
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 24px));
+  height: min(640px, calc(100vh - 24px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+/* 显式写出来（同 .unit-tree-section[hidden]）：别让某条 display 规则盖掉 UA 的 [hidden] 而静默失效。 */
+.unit-panel[hidden] {
+  display: none;
+}
+
+.unit-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  cursor: move; /* 标题栏 = 拖动把手 */
+  touch-action: none; /* 拖动时不触发页面滚动/手势 */
+  user-select: none;
+}
+
+.unit-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.unit-panel-close {
+  cursor: pointer;
+}
+
+.unit-panel-army {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.unit-panel-army label {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.unit-panel-army select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.unit-panel .unit-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
+  padding: 8px 12px 12px;
+  overflow: auto; /* 树长了在浮层内滚动（不动左栏） */
+}
+
