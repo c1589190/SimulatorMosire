@@ -37,6 +37,7 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
@@ -173,7 +174,14 @@ class StartDecisionEndToEndTest {
         .as("发起记录落进 sd INFO 覆盖层（随 revision 重放）")
         .containsExactly(
             new SdInfoEntry(
-                "start", "7", Optional.of("用户发起"), new RevisionId(1), Optional.empty()));
+                new SdInfoId("sd:decision.dm-t10#0"),
+                7L,
+                Set.of(DM),
+                "start",
+                "7",
+                Optional.of("用户发起"),
+                new RevisionId(1),
+                Optional.empty()));
   }
 
   @Test

@@ -3,6 +3,7 @@ package io.mosire.simos.sd.spi;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
@@ -12,6 +13,7 @@ import io.mosire.simos.util.state.RevisionId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -39,6 +41,9 @@ class RunDecisionHandlerTest {
         .as("触发记录落进 sd:decision.<dmId> 的 INFO 覆盖层")
         .containsExactly(
             new SdInfoEntry(
+                new SdInfoId("sd:decision.dm1#0"),
+                0L,
+                Set.of(SdFixtures.DM1),
                 RunDecisionHandler.RUN_INFO_KEY,
                 "0",
                 Optional.empty(),

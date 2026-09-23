@@ -13,6 +13,7 @@ import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.EffectStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -101,7 +102,7 @@ public final class SdTimeParticipant implements TimeParticipant {
               EffectStatus.FIRED,
               effect.createdTick()));
       writes.add(effectAddress(effect.id()));
-      applyAction(effect.action(), atRevision, base, combatStates, info, reads, writes);
+      applyAction(effect.action(), atRevision, at.tick(), base, combatStates, info, reads, writes);
     }
 
     for (CombatState combatState : sortedStates(base)) {
@@ -148,6 +149,7 @@ public final class SdTimeParticipant implements TimeParticipant {
   private void applyAction(
       Action action,
       RevisionId atRevision,
+      long tick,
       SdState base,
       Map<CombatStateId, CombatState> combatStates,
       Map<String, List<SdInfoEntry>> info,
@@ -155,12 +157,20 @@ public final class SdTimeParticipant implements TimeParticipant {
       Set<String> writes) {
     switch (action) {
       case Action.PutInfo putInfo -> {
-        String key = putInfo.address().canonical();
-        List<SdInfoEntry> entries = new ArrayList<>(info.getOrDefault(key, List.of()));
+        String address = putInfo.address().canonical();
+        List<SdInfoEntry> entries = new ArrayList<>(info.getOrDefault(address, List.of()));
+        // ★ 决策结果三件套（第 3 波第 1 步）：效果写的 INFO 没有决策人上下文 ⇒ tags 空集（无主）。
         entries.add(
             new SdInfoEntry(
-                putInfo.key(), putInfo.value(), Optional.empty(), atRevision, Optional.empty()));
-        info.put(key, List.copyOf(entries));
+                SdInfoIds.synthesize(address, entries.size()),
+                tick,
+                Set.of(),
+                putInfo.key(),
+                putInfo.value(),
+                Optional.empty(),
+                atRevision,
+                Optional.empty()));
+        info.put(address, List.copyOf(entries));
         writes.add(infoAddress(putInfo.key()));
       }
       case Action.SetStage setStage -> {

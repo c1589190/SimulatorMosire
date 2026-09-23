@@ -13,6 +13,7 @@ import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.id.VerdictId;
 import java.util.List;
 import java.util.function.Function;
@@ -34,6 +35,7 @@ class SdIdTest {
     assertThat(new EffectId("e1").toString()).isEqualTo("e1");
     assertThat(new VerdictId("v1").toString()).isEqualTo("v1");
     assertThat(new LossRecordId("l1").toString()).isEqualTo("l1");
+    assertThat(new SdInfoId("map:Map1#0").toString()).isEqualTo("map:Map1#0");
 
     assertThat(NationId.parse("n1")).isEqualTo(new NationId("n1"));
     assertThat(ArmyId.parse("a1")).isEqualTo(new ArmyId("a1"));
@@ -46,6 +48,7 @@ class SdIdTest {
     assertThat(EffectId.parse("e1")).isEqualTo(new EffectId("e1"));
     assertThat(VerdictId.parse("v1")).isEqualTo(new VerdictId("v1"));
     assertThat(LossRecordId.parse("l1")).isEqualTo(new LossRecordId("l1"));
+    assertThat(SdInfoId.parse("map:Map1#0")).isEqualTo(new SdInfoId("map:Map1#0"));
   }
 
   @Test
@@ -73,7 +76,9 @@ class SdIdTest {
             VerdictId::new,
             VerdictId::parse,
             LossRecordId::new,
-            LossRecordId::parse);
+            LossRecordId::parse,
+            SdInfoId::new,
+            SdInfoId::parse);
     for (Function<String, ?> factory : factories) {
       assertThatThrownBy(() -> factory.apply(""))
           .as("空串必须被拒")

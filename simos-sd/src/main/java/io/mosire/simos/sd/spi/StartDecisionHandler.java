@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code sd.StartDecision} 命令的处理器（T10，spec §四.5，D5 已裁）：**「开始决策」= 一条真命令**。
@@ -69,10 +71,20 @@ public final class StartDecisionHandler implements CommandHandler {
       long tick = state.meta().timestamp().tick();
       RevisionId at = state.meta().ref().revision();
       String address = ADDRESS_PREFIX + decisionMakerId.value();
-      SdInfoEntry entry =
-          new SdInfoEntry(START_INFO_KEY, String.valueOf(tick), note, at, Optional.empty());
       Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
       List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(address, List.of()));
+      // ★ 决策结果三件套（第 3 波第 1 步）：id 按 (地址, 序号) 合成；tick = 本条记录所在 tick；
+      //   tags 挂**发起人**——"谁在哪个 tick 让哪个决策人开始决断"这条事实天然属于那个决策人。
+      SdInfoEntry entry =
+          new SdInfoEntry(
+              SdInfoIds.synthesize(address, entries.size()),
+              tick,
+              Set.of(decisionMakerId),
+              START_INFO_KEY,
+              String.valueOf(tick),
+              note,
+              at,
+              Optional.empty());
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 

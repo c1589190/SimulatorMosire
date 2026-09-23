@@ -3,6 +3,7 @@ package io.mosire.simos.sd.spi;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code sd.RunDecision} 命令的处理器（T11C）：**「让某个决策人的 agent 跑一轮」= 一条真命令**。
@@ -89,11 +91,19 @@ public final class RunDecisionHandler implements CommandHandler {
       long tick = state.meta().timestamp().tick();
       RevisionId at = state.meta().ref().revision();
       String address = StartDecisionHandler.ADDRESS_PREFIX + decisionMakerId.value();
-      SdInfoEntry entry =
-          new SdInfoEntry(
-              RUN_INFO_KEY, String.valueOf(tick), Optional.empty(), at, Optional.empty());
       Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
       List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(address, List.of()));
+      // ★ 决策结果三件套（第 3 波第 1 步）：与 StartDecision 同形制（同址异 key），tags 挂**被触发的决策人**。
+      SdInfoEntry entry =
+          new SdInfoEntry(
+              SdInfoIds.synthesize(address, entries.size()),
+              tick,
+              Set.of(decisionMakerId),
+              RUN_INFO_KEY,
+              String.valueOf(tick),
+              Optional.empty(),
+              at,
+              Optional.empty());
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 

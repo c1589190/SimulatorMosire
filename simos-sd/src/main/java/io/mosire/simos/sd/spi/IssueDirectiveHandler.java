@@ -9,6 +9,7 @@ import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -110,10 +111,20 @@ public final class IssueDirectiveHandler implements CommandHandler {
 
       RevisionId at = state.meta().ref().revision();
       String infoAddress = "sd:directive." + id.value();
-      SdInfoEntry entry =
-          new SdInfoEntry(INTENT_INFO_KEY, intentInfo, Optional.empty(), at, Optional.of(id));
       Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
       List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(infoAddress, List.of()));
+      // ★ 决策结果三件套（第 3 波第 1 步）：执行原文就是这条决策的**结果**，故 tick 取**令自带的 tick**（不是世界 tick——
+      //   令允许补记/滞后，见上面"令不得记在未来"的裁定；按世界 tick 归档会让同一条令随处理时刻漂移）；tags 挂**出令决策人**。
+      SdInfoEntry entry =
+          new SdInfoEntry(
+              SdInfoIds.synthesize(infoAddress, entries.size()),
+              tick,
+              Set.of(decisionMakerId),
+              INTENT_INFO_KEY,
+              intentInfo,
+              Optional.empty(),
+              at,
+              Optional.of(id));
       entries.add(entry);
       nextInfo.put(infoAddress, List.copyOf(entries));
 

@@ -7,6 +7,7 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -22,6 +23,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -62,7 +64,14 @@ class SdPutInfoEndToEndTest {
     assertThat(replayed.info().get("map:Map1:region.r1"))
         .containsExactly(
             new SdInfoEntry(
-                "brief", "hello", Optional.of("n"), new RevisionId(1), Optional.empty()));
+                new SdInfoId("map:Map1:region.r1#0"),
+                0L,
+                Set.of(),
+                "brief",
+                "hello",
+                Optional.of("n"),
+                new RevisionId(1),
+                Optional.empty()));
   }
 
   @Test

@@ -12,6 +12,7 @@ import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Action;
@@ -281,7 +282,17 @@ public final class SdFixtures {
   }
 
   public static SdInfoEntry infoEntry(String key) {
-    return new SdInfoEntry(key, "value-" + key, Optional.of("note"), REV1, Optional.empty());
+    // ★ 决策结果三件套（第 3 波第 1 步）：夹具给**非平凡**的 id / tick / tags——缺省（空集 / 0）看不见
+    //   "这几个字段被线格式/变更集打通没有"，故 tags 挂 DM1（真往返一个 DecisionMakerId 值）。
+    return new SdInfoEntry(
+        new SdInfoId("info-" + key),
+        0L,
+        Set.of(DM1),
+        key,
+        "value-" + key,
+        Optional.of("note"),
+        REV1,
+        Optional.empty());
   }
 
   public static OutcomeOption option(CombatOutcomeId id) {

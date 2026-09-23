@@ -160,7 +160,14 @@ class SdTimeParticipantTest {
                     "map:Map1",
                     java.util.List.of(
                         new io.mosire.simos.sd.model.SdInfoEntry(
-                            "k", "v", Optional.empty(), new RevisionId(1), Optional.empty()))));
+                            new io.mosire.simos.sd.id.SdInfoId("map:Map1#0"),
+                            0L,
+                            Set.of(),
+                            "k",
+                            "v",
+                            Optional.empty(),
+                            new RevisionId(1),
+                            Optional.empty()))));
     TimeProposal proposal = simulate(base, 5, 6);
     assertThat(((SdChangeSet) proposal.changeSet()).isEmpty())
         .as("R6：已 FIRED 的 PUT-INFO 效果不再追加")

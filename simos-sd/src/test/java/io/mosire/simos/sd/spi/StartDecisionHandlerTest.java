@@ -3,6 +3,7 @@ package io.mosire.simos.sd.spi;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
@@ -12,6 +13,7 @@ import io.mosire.simos.util.state.RevisionId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,8 +35,32 @@ class StartDecisionHandlerTest {
     assertThat(after.info().get("sd:decision.dm1"))
         .as("发起记录落进 sd:decision.<dmId> 的 INFO 覆盖层")
         .containsExactly(
-            new SdInfoEntry("start", "0", Optional.empty(), new RevisionId(1), Optional.empty()));
+            new SdInfoEntry(
+                new SdInfoId("sd:decision.dm1#0"),
+                0L,
+                Set.of(SdFixtures.DM1),
+                "start",
+                "0",
+                Optional.empty(),
+                new RevisionId(1),
+                Optional.empty()));
     assertThat(after.directives()).as("★ 不写 Directive ⇒ R4 名额未被占").isEmpty();
+  }
+
+  /** ★ 决策结果三件套（第 3 波第 1 步）：id 按 (canonical 地址, 序号) 合成、tick = 世界 tick、tags 挂发起人。 */
+  @Test
+  void writesTheDecisionResultTriple() {
+    SdState base = withDecisionMaker(SdState.empty());
+    SdState after = applied(base, handle(base, "{\"decisionMakerId\":\"dm1\"}"));
+
+    SdInfoEntry entry = after.info().get("sd:decision.dm1").get(0);
+    assertThat(entry.id())
+        .as("id = canonical 地址 + 追加序号（格式由这里钉住）")
+        .isEqualTo(new SdInfoId("sd:decision.dm1#0"));
+    assertThat(entry.tick()).isZero();
+    assertThat(entry.tags())
+        .as("标签挂**发起人**（DecisionMakerId，不是自由字符串）")
+        .containsExactly(SdFixtures.DM1);
   }
 
   @Test
