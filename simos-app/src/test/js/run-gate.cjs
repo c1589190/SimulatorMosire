@@ -40,7 +40,9 @@ const JS_DIR = __dirname;
 //   2026-09-24 交战格显示起 252 → 262（unit-tree.test.cjs 新增 10 条：combatHexes 真数据两方/单方/ENGAGED 4 条 +
 //     combatSlot 左右分列/四对方不重叠/奇数偏左 3 条 + ⚔ 格心与字号 1 条 + combatLayoutEnabled 门控 1 条 +
 //     renderer 接线静态 1 条）。
-const MIN_TESTS = 262;
+//   2026-09-24 编队状态起 262 → 265（unit-tree.test.cjs 新增 3 条：脱离/加入编队按钮存在与接线 / 加入按钮 disabled 随"已知是根"/
+//     提交载荷与"服务端理由原样透出"；modes.test.cjs 的 unit 白名单只加断言、条数不变）。
+const MIN_TESTS = 265;
 
 function discoverTests() {
   return fs

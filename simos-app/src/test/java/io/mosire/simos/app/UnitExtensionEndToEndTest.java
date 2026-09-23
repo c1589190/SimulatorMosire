@@ -71,6 +71,7 @@ class UnitExtensionEndToEndTest {
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
   private static final SimosTimestamp T10 = SimosTimestamp.of(10);
+  private static final SimosTimestamp T30 = SimosTimestamp.of(30);
 
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
@@ -80,6 +81,7 @@ class UnitExtensionEndToEndTest {
   private static final UnitId U2 = new UnitId("u-2");
   private static final UnitId U3 = new UnitId("u-3");
   private static final UnitId U4 = new UnitId("u-4");
+  private static final UnitId U5 = new UnitId("u-5");
 
   private static final int CHECKPOINT_INTERVAL = 100;
   private static final String INITIATOR = "player:local";
@@ -159,6 +161,51 @@ class UnitExtensionEndToEndTest {
     UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 2)));
     assertThat(state.units().get(U3).parent().valueAt(T7)).contains(U1);
     assertThat(state.units().get(U3).attached().valueAt(T7)).as("合体即 attach").isTrue();
+  }
+
+  /**
+   * ★★ 判据（本次改动的核心，"移动时跟随"在真装配 + AdvanceTime 上生效）：`u-5` 无自身位置、挂 `u-1` 下（跟随）；`u-1` 走一条
+   * 路线，`AdvanceTime` 把父的位置物化到 `to` ⇒ `u-5` 的**有效位置**跟到父的当前格。它自己**始终**无自身位置（没有第二份位置 真相）。
+   *
+   * <p>★ 它补上"只测了 {@code effectivePosition} 纯函数、没测时间参与者"的缺口：走的是真 {@code CommandBus → ChangeSet →
+   * Revision → replay}，并让 {@code UnitTimeParticipant} 真的把父的 position 段落在推进时刻上。
+   */
+  @Test
+  void followFormationTracksTheParentThroughAdvanceTime() {
+    UnitState genesis = unitSlice(shell.coreSimos().replay(ref("main", 1)));
+    assertThat(genesis.units().get(U5).position().valueAt(T7)).as("创世：跟随子单位无自身位置").isEmpty();
+    assertThat(genesis.effectivePosition(U5, T7)).as("跟随 u-1（H11）").contains(H11);
+
+    // u-1 沿走廊走：H11 → H12 → H13。
+    assertThat(
+            submit(
+                "unit.PlanRoute",
+                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}",
+                1))
+        .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+
+    // 推进足够久让 u-1 抵达 H13（advance 把父的 position 物化到 to）。
+    assertThat(
+            shell
+                .coreSimos()
+                .submit(
+                    new AdvanceTime(
+                        "cmd-advance-follow",
+                        "corr-advance-follow",
+                        INITIATOR,
+                        main(),
+                        new RevisionId(2),
+                        new TimeRange(T7, Optional.of(T30)))))
+        .isEqualTo(new CommandResult.Committed(ref("main", 3)));
+
+    UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 3)));
+    assertThat(state.effectivePosition(U1, T30)).as("父已抵达 H13").contains(H13);
+    assertThat(state.units().get(U5).position().valueAt(T30))
+        .as("★ 子单位始终无自身位置（跟随不是'复制父的位置'）")
+        .isEmpty();
+    assertThat(state.effectivePosition(U5, T30))
+        .as("★ 父动子随：AdvanceTime 后 u-5 的有效位置 == 父的当前位置")
+        .contains(H13);
   }
 
   /** ★ 判据 #6（子树迁移整体性）：`ReparentSubtree` 后**每个后代**的 parent 段都被追加（不只 root）。 */
@@ -293,7 +340,9 @@ class UnitExtensionEndToEndTest {
                     U1, genesisUnit(U1, "第一连", H11, Optional.empty()),
                     U2, genesisUnit(U2, "第二连", H12, Optional.empty()),
                     U3, genesisUnit(U3, "第三连", H11, Optional.of(U2)),
-                    U4, genesisUnit(U4, "第四连", H13, Optional.of(U3)))));
+                    U4, genesisUnit(U4, "第四连", H13, Optional.of(U3)),
+                    // ★ 本次改动：u-5 是"移动时跟随"的载体——**无自身位置**、挂 u-1 下 ⇒ 它的有效位置永远取 u-1 的当前格。
+                    U5, followerUnit(U5, "第五连（跟随）", U1))));
     SocialData social = new SocialData(new LinkedHashMap<>(), Map.of());
     SimulationState genesis =
         new SimulationState(
@@ -323,6 +372,26 @@ class UnitExtensionEndToEndTest {
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
         100,
         equipment,
+        2,
+        500,
+        Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        Optional.empty());
+  }
+
+  /** ★ 跟随单位（本次改动）：**无自身位置**、`parent` 给定、`attached=true` ⇒ 有效位置永远取父的当前格（父动子随）。 */
+  private static Unit followerUnit(UnitId id, String name, UnitId parent) {
+    return new Unit(
+        id,
+        name,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<HexCoord>empty())), List.of(), null),
+        100,
+        Map.of("步枪", 50),
         2,
         500,
         Optional.empty(),

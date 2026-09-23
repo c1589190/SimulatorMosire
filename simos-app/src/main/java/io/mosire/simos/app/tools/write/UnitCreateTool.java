@@ -31,7 +31,7 @@ public final class UnitCreateTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "新建单位：固定 unit.CreateUnit，载荷 {id, name, position{q,r}, member, equipment, speed,"
-        + " mobilityPerMille, parent?, status?（缺省 MOVING）}";
+    return "新建单位：固定 unit.CreateUnit，载荷 {id, name, position{q,r}?, member, equipment, speed,"
+        + " mobilityPerMille, parent?, status?（缺省 MOVING）}（★ 省略 position ⇒ 无自身位置、跟随父，此时须给 parent）";
   }
 }

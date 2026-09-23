@@ -115,6 +115,17 @@ class UnitCommandHandlersTest {
         unit("u-3", Optional.of("u-2"), Optional.empty(), false));
   }
 
+  /**
+   * ★ **attach 的同格基线（本次改动新增）**：`u-2` 与 `u-1` **同格**（都在 `H11`）、`attached=false`；`u-3` 挂 `u-2` 下、
+   * 无自身位置。attach 现在要求"同格"（且会清掉子树自身位置）⇒ 正例必须从这个形态起步，不能用 `detachedPair`（u-2 在 H12）。
+   */
+  private static UnitState attachablePair() {
+    return SpiFixture.unitState(
+        SpiFixture.unitWithMovement(Optional.empty()),
+        unit("u-2", Optional.empty(), Optional.of(SpiFixture.H11), false),
+        unit("u-3", Optional.of("u-2"), Optional.empty(), false));
+  }
+
   /** u-2 挂在 u-1 下、u-3 挂在 u-2 下，三者都 `attached=true`（detach 只节点与偏移的基线）。 */
   private static UnitState attachedLine() {
     return SpiFixture.unitState(
@@ -319,8 +330,33 @@ class UnitCommandHandlersTest {
         .contains("member 必须 ≥ 0");
   }
 
+  /**
+   * ★★ 判据（本次改动）：省略 {@code position} 且给 {@code parent} ⇒ 该单位**无自身位置**、进入"移动时跟随"；把父挪到别格，
+   * 它的有效位置跟过去。这就是"移动时跟随"在命令面上可达的核心判据。
+   */
   @Test
-  void createUnitRejectsMissingPosition() {
+  void createUnitWithoutPositionFollowsItsParent() {
+    UnitState created =
+        applied(
+            CREATE,
+            worldAt(T5, oneUnit()),
+            "{\"id\":\"u-2\",\"name\":\"跟随连\",\"member\":10,\"equipment\":{},\"speed\":1,"
+                + "\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
+    assertThat(created.units().get(U2).position().valueAt(T5)).as("无自身位置").isEmpty();
+    assertThat(created.effectivePosition(U2, T5)).as("跟随 u-1（H11）").contains(SpiFixture.H11);
+
+    UnitState moved =
+        applied(PLACE_AT, worldAt(T6, created), "{\"id\":\"u-1\",\"hex\":{\"q\":1,\"r\":2}}");
+    assertThat(moved.effectivePosition(U2, T6)).as("父动子随").contains(SpiFixture.H12);
+  }
+
+  /**
+   * ★ **名实修正（2026-09-24）**：本条原名 {@code createUnitRejectsMissingPosition}，但 {@code position} 自本次改动起
+   * **已可选**（省略即"无自身位置 ⇒ 跟随父"）⇒ 那名字描述的是**旧**语义，会误导后来者。 本条真正钉的是：**无 position 又无 parent**（单位不在图上）才拒 ——
+   * 而"无 position 但有 parent"是**合法**的正例 （见 {@code createUnitWithoutPositionFollowsItsParent}）。
+   */
+  @Test
+  void createUnitRejectsAPositionlessUnitWithoutParent() {
     assertThat(
             reason(
                 CREATE,
@@ -580,19 +616,34 @@ class UnitCommandHandlersTest {
 
   // ── unit.AttachUnit / unit.DetachUnit（T3 / spec §一.3 / P3） ────
 
-  /** ★ 判据（P3）：attach 级联到**全部后代**；只有 `id` 换父；子树外一字不变。 */
+  /** ★ 判据（P3 + 本次改动的"进入跟随"）：attach 级联到**全部后代**；只有 `id` 换父；子树外一字不变；**子树每个节点的自身位置被清 掉**（进入跟随）。 */
   @Test
   void attachUnitCascadesToTheWholeSubtree() {
-    UnitState base = detachedPair();
+    UnitState base = attachablePair();
     UnitState next = applied(ATTACH, worldAt(T5, base), "{\"id\":\"u-2\",\"parent\":\"u-1\"}");
     assertThat(next.units().get(U2).parent().valueAt(T5)).contains(SpiFixture.U1);
     assertThat(next.units().get(U2).attached().valueAt(T5)).isTrue();
     assertThat(next.units().get(U3).attached().valueAt(T5)).as("级联到后代").isTrue();
     assertThat(next.units().get(U3).parent().valueAt(T5)).as("后代父不动").contains(U2);
     assertThat(next.units().get(U3).attached().valueAt(SpiFixture.T0)).as("T0 仍是旧值").isFalse();
+    assertThat(next.units().get(U2).position().valueAt(T5)).as("★ u-2 的自身位置被清（进入跟随）").isEmpty();
+    assertThat(next.units().get(U3).position().valueAt(T5)).as("后代也被清位").isEmpty();
+    assertThat(next.effectivePosition(U2, T5)).as("清位后向新父取位（u-1 的 H11）").contains(SpiFixture.H11);
     assertThat(next.units().get(SpiFixture.U1))
         .as("子树外的单位一字不变")
         .isEqualTo(base.units().get(SpiFixture.U1));
+  }
+
+  /** ★★ 判据（本次改动新增的同格前提）：不同格、或位置不可确定 ⇒ 拒（理由带"同格"）。 */
+  @Test
+  void attachUnitRejectsADifferentHexOrAnIndeterminatePosition() {
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-1\"}"))
+        .as("u-2 在 H12、u-1 在 H11（都在图上，不同格）")
+        .contains("同格");
+    // u-3 无自身位置、detached ⇒ 位置不可确定。
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-3\",\"parent\":\"u-2\"}"))
+        .as("u-3 detached 且无自身位置 ⇒ 不可确定")
+        .contains("同格");
   }
 
   @Test

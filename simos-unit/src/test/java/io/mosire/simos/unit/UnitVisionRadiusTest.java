@@ -227,13 +227,18 @@ class UnitVisionRadiusTest {
 
   @Test
   void attachSubtreePreservesVisionRadius() {
-    UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), RADIUS), plain(U2));
+    // ★ 本次改动：attach 现在要求"同格"（且会清掉子树自身位置）⇒ 让 U2 与 U1 同格（都在 H11），并把 position 计入差集。
+    UnitState base =
+        stateOf(
+            unit(U1, Optional.empty(), Optional.of(H11), RADIUS),
+            unit(U2, Optional.empty(), Optional.of(H11), Unit.DEFAULT_VISION_RADIUS));
     assertCopied(
         base.units().get(U1),
         UnitOperations.attachSubtree(base, U1, U2, T1).units().get(U1),
         "attachSubtree",
         "parent",
-        "attached");
+        "attached",
+        "position");
   }
 
   @Test
@@ -243,7 +248,9 @@ class UnitVisionRadiusTest {
         base.units().get(U1),
         UnitOperations.detachUnit(base, U1, T1).units().get(U1),
         "detachUnit",
-        "attached");
+        "attached",
+        // ★ 本次改动：detach 把有效位置物化进自身 position（这里 U1 本就有位，仍追加一段）⇒ position 也是差集的一员。
+        "position");
   }
 
   @Test

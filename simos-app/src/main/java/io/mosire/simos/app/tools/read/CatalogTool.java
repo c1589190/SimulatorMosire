@@ -44,7 +44,8 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.RenameUnit", "id, name"),
           Map.entry(
               "unit.CreateUnit",
-              "id, name, position{q,r}, member, equipment, speed, mobilityPerMille, parent?"),
+              "id, name, position{q,r}?, member, equipment, speed, mobilityPerMille, parent?"
+                  + "（省略 position ⇒ 无自身位置、跟随父，此时 parent 必填）"),
           Map.entry("unit.ReparentUnit", "id, parent?（null=清根）"),
           Map.entry("unit.SetStrength", "id, member, equipment"),
           Map.entry("unit.PlaceAt", "id, hex{q,r}?（null=撤销位置）"),

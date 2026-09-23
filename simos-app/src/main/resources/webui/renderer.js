@@ -409,6 +409,24 @@
       return null;
     }
 
+    /**
+     * 单位在头时刻的**父 id**（"加入编队"按钮的父来源；与 buildTree / markerGroups 同口径，直接读服务端给的 `parent` 原值）。
+     * 三种返回值语义分明（调用方据此决定按钮态）：
+     *   · 字符串 ⇒ 有父（可用作 unit.AttachUnit 的 parent）；
+     *   · `null` ⇒ **已知它是根**（无父）⇒ "加入编队"无父可加入，按钮应禁用；
+     *   · `undefined` ⇒ 该单位尚未载入（列表还没回来 / 它无有效位置被过滤掉）⇒ **不据此禁用**（否则会把"未知"误判成"根"）。
+     */
+    function parentOf(id) {
+      if (id === null || id === undefined) {
+        return undefined;
+      }
+      var unit = unitById[String(id)];
+      if (!unit) {
+        return undefined;
+      }
+      return unit.parent === undefined ? null : unit.parent;
+    }
+
     function setCellSize(size) {
       cellSize = size;
       recomputeWorldPixels();
@@ -2028,6 +2046,7 @@
       pickAt: pickAt,
       screenPointOf: screenPointOf,
       positionOf: positionOf,
+      parentOf: parentOf,
       terrainColor: terrainColor,
       debug: debug,
       view: function () {

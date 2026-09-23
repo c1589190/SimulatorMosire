@@ -43,6 +43,11 @@ import java.util.Set;
  * <p>★ **reparent 的成环不在这里重复实现**：{@code reparent} 只校验新父存在，环由 {@link UnitState} 构造期拒绝。 **唯一的例外是
  * {@link #attachSubtree}**：P3 要求 attach 成环时给可读理由，故它在 op 内**先显式拒**（不依赖构造期的兜底消息）；T4 的 {@link
  * #reparentSubtree} 同制。
+ *
+ * <p>★★ **本次改动新增的连带裁定（方案 B）**：{@link #attachSubtree} 现在**还要求"同格"**——被 attach 的子树根与新父的有效位置
+ * 不同格、或任一不可确定 ⇒ 拒（理由可读）。这是**我加的**（规格 §一.5 / E2 只写了"只有同格才能合体"，未逐字写 attach 也要同格）， 理由见该方法的
+ * javadoc：attach 现在会**清掉子树自身位置**（进入跟随），若不同格就变成跨格瞬移，正是 §一.5 要防的"母体追子"。 与 {@link #mergeFormation}
+ * 既有的同格前置是同一不变量，两条命令口径一致。
  */
 public final class UnitOperations {
 
@@ -344,8 +349,27 @@ public final class UnitOperations {
    * attach（P3：**级联**）：把 `id` 挂到 `parent` 下，并把 `id` **及其全部后代**的 `attached` 追加 `true` 段； 只有 `id`
    * 换父，后代的 `parent` 不动（子树整体迁移是另一条命令）。
    *
+   * <p>★★ **一次 attach 同时做两件事：进入"移动时跟随"**（本次改动，原行为只有第一件）：
+   *
+   * <ol>
+   *   <li>`id` 及其全部后代的 `attached` 追加 `true`（P3 级联，原行为不变）；
+   *   <li>**并把子树每个节点的 `position` 追加 `Optional.empty()`**——清掉自身位置 ⇒ 之后 {@code
+   *       UnitState.effectivePosition} 命中"无自身位置 ⇒ 向父取"那一支，父动子随。此前 attach 只翻 `attached`、不碰
+   *       `position`，而 {@code unit.CreateUnit} 又强制每个单位带自身位置 ⇒ **"跟随"在命令面上不可达**（根单位走了、兵种留在
+   *       原地）。清位与级联同刻落段，二者是一件事的两半。
+   * </ol>
+   *
+   * <p>★★ **新增同格前提（本操作面据方案 B 额外加的裁定，规格 §一.5 / E2 未逐字写）**：
+   *
+   * <p>★ 这条是我加的，理由：若不清位，则"加入"行为上与今天无异（仍是原地不动）；若清位，则**不同格 attach 会变成跨格瞬移** ——子单位会瞬间出现在新父的位置上，正是 spec
+   * §一.5 要防的"母体追子"。两条都不可接受 ⇒ 必须补同格前提。
+   *
+   * <p>判据用 {@code effectivePosition} 比较**被 attach 的子树根 `id`** 与**新父 `parent`**：不同格、**或任一侧不可确定** ⇒ 抛
+   * {@link IllegalArgumentException}（可读理由，命令边界折成拒绝）。把子单位先移到父所在格，再 attach。
+   *
    * <p>★ **成环在 op 内先显式拒**（判据 = `parent` 落在 `id` 的子树内，含 `id` 自身）：{@link UnitState}
-   * 构造期也会拒，但那里的理由是"编制树…成环"；命令边界要给出**可读的原因**（plan §三 T3 第 1 步、spec §一.5 表）。
+   * 构造期也会拒，但那里的理由是"编制树…成环"；命令边界要给出**可读的原因**（plan §三 T3 第 1 步、spec §一.5 表）。成环检查
+   * **先于**同格检查：结构错误比位置错误更根本，且既有成环用例断言的是"子树"字样。
    *
    * <p>★ 两处**有意不拒**（裁定见 T3 台账）：`parent` 已是 `id` 当前的父不拒（重挂同一父正是 P9 的"合体 = 重新 attach"，
    * 且级联对子树仍有效）；`attached` 已是 `true` 的节点也不拒（本操作面不判"无变化命令"）。
@@ -359,31 +383,81 @@ public final class UnitOperations {
     if (subtree.contains(parent)) {
       throw new IllegalArgumentException("父单位 " + parent + " 落在 " + id + " 的子树内（含自身）：会成环");
     }
+    requireSameHexToAttach(state, id, parent, at);
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     for (UnitId member : subtree) {
       Unit current = state.units().get(member);
       // 只有根换父：后代的 parent 原样带过
       SegmentedSeries<Optional<UnitId>> parents =
           member.equals(id) ? append(current.parent(), at, Optional.of(parent)) : current.parent();
+      // ★ 子树的每个节点都清掉自身位置（含已是空的：本操作面不判"无变化"）⇒ 整棵子树进入跟随
+      SegmentedSeries<Optional<HexCoord>> cleared =
+          setOrAppend(current.position(), at, Optional.<HexCoord>empty());
       next.put(
           member,
-          copyFormation(current, parents, append(current.attached(), at, true), current.offset()));
+          copyFormation(
+              current, parents, cleared, append(current.attached(), at, true), current.offset()));
     }
     return state.withUnits(next);
   }
 
   /**
+   * 同格前提的判据（attach 专用，见 {@link #attachSubtree} 的同格段）：两侧都能定出位置且相等才放行；任一不可确定、或不同格 ⇒
+   * 抛可读理由。措辞带"同格"/"不同格"字样（命令边界照原样透给调用方）。
+   */
+  private static void requireSameHexToAttach(
+      UnitState state, UnitId id, UnitId parent, SimosTimestamp at) {
+    Optional<HexCoord> childHex = state.effectivePosition(id, at);
+    Optional<HexCoord> parentHex = state.effectivePosition(parent, at);
+    if (childHex.isEmpty() || parentHex.isEmpty()) {
+      throw new IllegalArgumentException(
+          "单位 " + id + " 或父单位 " + parent + " 在 " + at + " 没有可确定的位置：只有同格才能加入编队（先把该单位移到父单位所在格）");
+    }
+    if (!childHex.get().equals(parentHex.get())) {
+      throw new IllegalArgumentException(
+          "单位 "
+              + id
+              + " 在 "
+              + at
+              + " 位于 "
+              + childHex.get()
+              + "，与父单位 "
+              + parent
+              + " 的 "
+              + parentHex.get()
+              + " 不同格：只有同格才能加入编队（先把该单位移到父单位所在格）");
+    }
+  }
+
+  /**
    * detach（P3：**只节点**）：**只**给 `id` 追加 `attached=false` 段——子节点**不动**（与 attach 刻意不对称； 子树整体的分离是
    * SplitFormation，T4）。`id` 在 `at` 已是根 ⇒ 拒：detached 的语义是"不再跟随这个父"， 没有父就没有可脱离的编队，那是坏命令（spec §一.5 表）。
+   *
+   * <p>★ **脱离同时把当前位置物化进自身 `position`**（本次改动，与 attach 清位互为逆向的两半）：detached 且无自身位置的单位 在 {@code
+   * effectivePosition} 里**返回空**（不回退父，spec §一.4 第五情形）⇒ 从图上消失。脱离必须先"钉在当前位置"，否则 "暂时脱离独立作战"会把单位弄没。
+   *
+   * <p>★★ **必须在改 `attached` 之前算有效位置**：`effectivePosition` 的输入是**改之前**的 `state`（此刻它仍 attached、还能向
+   * 父取位）。若顺序写反（先脱离再取位）⇒ 取到空 ⇒ 单位消失。这是本操作最容易写反的一步，用例 {@code
+   * UnitOperationsTest.detachMaterializesTheCurrentPositionBeforeFlippingAttached} 专门钉它。
+   *
+   * <p>★ **脱离时当前有效位置本来就是空**（单位本就不在图上，如手工拼出的无位子树）⇒ **仍允许脱离**，`position` 段写 {@code
+   * Optional.empty()}：它本来就不在图上，脱离不会让它"更不在图上"；拒绝一条语义上无变化的命令没有价值。
    */
   public static UnitState detachUnit(UnitState state, UnitId id, SimosTimestamp at) {
     Unit unit = require(state, id);
     if (unit.parent().valueAt(at).isEmpty()) {
       throw new IllegalArgumentException("单位 " + id + " 在 " + at + " 已是根单位：没有可脱离的父");
     }
+    // ★ 顺序关键：在改 attached 之前、用**原状态**算有效位置（此刻仍 attached，能向父取位）——写反 ⇒ 取到空 ⇒ 单位消失。
+    Optional<HexCoord> here = state.effectivePosition(id, at);
     return withUnit(
         state,
-        copyFormation(unit, unit.parent(), append(unit.attached(), at, false), unit.offset()));
+        copyFormation(
+            unit,
+            unit.parent(),
+            setOrAppend(unit.position(), at, here),
+            append(unit.attached(), at, false),
+            unit.offset()));
   }
 
   /**
@@ -398,7 +472,12 @@ public final class UnitOperations {
     Unit unit = require(state, id);
     return withUnit(
         state,
-        copyFormation(unit, unit.parent(), unit.attached(), append(unit.offset(), at, offset)));
+        copyFormation(
+            unit,
+            unit.parent(),
+            unit.position(),
+            unit.attached(),
+            append(unit.offset(), at, offset)));
   }
 
   // ── 编制命令 B（T4 / spec §一.3 / §一.4 / P4 / P9） ──────────────
@@ -441,7 +520,11 @@ public final class UnitOperations {
       next.put(
           member,
           copyFormation(
-              current, append(current.parent(), at, parent), current.attached(), current.offset()));
+              current,
+              append(current.parent(), at, parent),
+              current.position(),
+              current.attached(),
+              current.offset()));
     }
     return state.withUnits(next);
   }
@@ -492,6 +575,8 @@ public final class UnitOperations {
    *
    * <p>★ 通过后**复用** {@link #attachSubtree}（spec §一.5 表把本命令的操作记作 **attach**；P3 的 attach **级联**； P9"合体
    * = 重新 attach（不销毁节点）"）：`childId` 换父 + 它**全部后代**级联 `attached=true`。级联是刻意的——合体带回来的是一支编队， 不是一个光杆节点。
+   * ★ 本次改动后 {@link #attachSubtree} 还会**清掉子树每个节点的自身位置**（进入跟随）⇒ 合体后的编队随新父移动（同格前提在此
+   * 本就被本命令自己先保证，故两条不冲突）。
    *
    * <p>★ **不判"已是父"**（与 {@link #attachSubtree} 的同一条裁定，spec §一.5 表的 T3 回填注）：{@link #detachUnit} 只翻
    * `attached`、**不碰 `parent`**，故拆→合的往返里 `childId` 的父本来就是 `parentId`；判"已是父"会把 spec §八 E2
@@ -744,6 +829,29 @@ public final class UnitOperations {
   }
 
   /**
+   * ★ **同刻后写者胜**的段写入（`position` 专用）：末段已是 `from == at` ⇒ **替换**它，否则追加。
+   *
+   * <p>为什么必须有它：{@link SegmentedSeries} 禁止同刻两段（`段必须按 from 严格升序`）。而"同一个 base 时间戳上多条命令写 同一条 `position`
+   * 序列"是**真实形态**——{@code McpCoverageTest} 逐条命令都落在同一个 tick（信封不带时刻，裁定 35）， `unit.PlaceAt` 先在 `at`
+   * 落一段、`unit.SplitFormation`（内部 detach）随后又要物化位置：若仍走 {@link #append}
+   * 直接撞严格升序。语义上同刻的第二笔写就是"覆盖此刻生效的值"，替换即正确解。
+   *
+   * <p>★ 只用于 `position`：`attached`/`parent` 仍走 {@link #append}（本次改动不扩张它们的语义；同刻重复写它们仍是既有
+   * 错误口径，不在这里顺手改）。
+   */
+  private static <T> SegmentedSeries<T> setOrAppend(
+      SegmentedSeries<T> series, SimosTimestamp at, T value) {
+    List<Segment<T>> segments = new ArrayList<>(series.segments());
+    int last = segments.size() - 1;
+    if (last >= 0 && segments.get(last).from().compareTo(at) == 0) {
+      segments.set(last, new Segment<>(at, value));
+    } else {
+      segments.add(new Segment<>(at, value));
+    }
+    return new SegmentedSeries<>(segments, series.events(), series.addition());
+  }
+
+  /**
    * `id` 及**其全部后代**（键序确定：先 `id`，再按 `units` 的键序遍历）。父图取 `at` 时刻的值，与 {@code
    * UnitState.requireNoCycleAtKeyTimes} 同一口径（父图只在段边界变化，故"在 `at` 处查一遍"即覆盖全部段）。
    */
@@ -818,20 +926,25 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **T3 的 canonical 拷贝点**：在 9 参 {@link #copy} 之上**显式**给 `attached`/`offset` 两个分量（`status`/
-   * `rejoinTarget` 仍原样带过）。三个形参类型两两不同 ⇒ 传错顺序是**编译错误**，不是静默错位；T3 的三个操作只动
-   * `parent`/`attached`/`offset`，故不走全 13 参。
+   * ★ **T3 的 canonical 拷贝点**：在 9 参 {@link #copy} 之上**显式**给 `position`/`attached`/`offset`
+   * 三个分量（`status`/ `rejoinTarget`/`visionRadius` 仍原样带过）。四个形参类型两两不同 ⇒ 传错顺序是**编译错误**，不是静默错位；编制三件套的操作
+   * （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 14 参。
+   *
+   * <p>★ **`position` 是随"移动时跟随"语义一起进来的第四个可变分量**（本次改动）：`attachSubtree` 要给子树每个节点清位（进入
+   * 跟随）、`detachUnit` 要把有效位置物化进自身 `position`（脱离后还能钉在原地）——两者都改 `position`，故它不再是"原样带过"
+   * 的那一批。`setOffset`/`reparentSubtree` 传回 `unit.position()`（不动）。
    */
   private static Unit copyFormation(
       Unit unit,
       SegmentedSeries<Optional<UnitId>> parent,
+      SegmentedSeries<Optional<HexCoord>> position,
       SegmentedSeries<Boolean> attached,
       SegmentedSeries<Optional<RelativeOffset>> offset) {
     return new Unit(
         unit.id(),
         unit.name(),
         parent,
-        unit.position(),
+        position,
         unit.member(),
         unit.equipment(),
         unit.speed(),

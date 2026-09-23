@@ -56,8 +56,10 @@ const REQUIRED_FILES = [
 //   2026-09-24 交战格显示起 252 → 262：unit-tree.test.cjs 新增 10 条（combatHexes 真数据两方/单方/ENGAGED 4 条 +
 //     combatSlot 左右分列/四对方不重叠/奇数偏左 3 条 + ⚔ 格心与字号 1 条 + combatLayoutEnabled 门控 1 条 +
 //     renderer 接线静态 1 条）。
+//   2026-09-24 编队状态起 262 → 265：unit-tree.test.cjs 新增 3 条（脱离/加入编队按钮存在与接线 / 加入按钮 disabled 随
+//     "已知是根"三态 / 提交载荷与"服务端理由原样透出"）；modes.test.cjs 只加断言、条数不变。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 262;
+const MIN_ASSERTIONS = 265;
 
 function testFiles() {
   return fs

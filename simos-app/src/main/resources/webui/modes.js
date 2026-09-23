@@ -47,6 +47,10 @@
       //   （unit-ext 是 MCP/agent-only，见 T10-l 范围声明），同样有意不列。
       //   ⇒ 不变式：**新增工作台写命令必须同步加进本表**，否则被 isWriteAllowed fail-closed 静默拒。
       //   该不变式由 modes.test.cjs 的 workbench-write-calls-are-all-whitelisted 静态扫描守卫（T10-i）。
+      //
+      // ★ 2026-09-24 编队状态起为**八条**：加 unit.AttachUnit / unit.DetachUnit——「编队状态（跟随 / 脱离独立作战）」
+      //   面板的「加入编队 / 脱离编队」两个真写入口（命令面同日把"跟随"做成可达：CreateUnit 省 position + attach 清位 +
+      //   detach 物化位置）。两条都是既有注册命令，不是新命令类型。
       writes: [
         "unit.PlanRoute",
         "unit.CancelRoute",
@@ -54,6 +58,8 @@
         "unit.SetStrength",
         "unit.DisbandUnit",
         "unit.CreateUnit",
+        "unit.AttachUnit",
+        "unit.DetachUnit",
       ],
     },
     {

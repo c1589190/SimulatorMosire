@@ -73,6 +73,12 @@ test("unit-allows-route-and-editor-writes", () => {
   assert.equal(M.isWriteAllowed("unit", "unit.SetStrength"), true);
   assert.equal(M.isWriteAllowed("unit", "unit.DisbandUnit"), true);
   assert.equal(M.isWriteAllowed("unit", "unit.CreateUnit"), true);
+  assert.equal(
+    M.isWriteAllowed("unit", "unit.AttachUnit"),
+    true,
+    "「加入编队」是工作台真写入口（同格前提在域层）"
+  );
+  assert.equal(M.isWriteAllowed("unit", "unit.DetachUnit"), true, "「脱离编队」是工作台真写入口");
   assert.equal(M.isWriteAllowed("unit", "map.SetTerrain"), false);
 });
 

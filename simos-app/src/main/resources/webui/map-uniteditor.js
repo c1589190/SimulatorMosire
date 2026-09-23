@@ -2,9 +2,10 @@
 //
 // 这一簇在 map.js 里状态最独立：只读写**共享的 host 对象**（按引用共享）与 active，
 // 不碰其它簇的可变状态。成员（原文行号见 map.js 未改动前的 2724-3066）：
-//   setEditStatus / selectedUnitId / updateRouteButtons / renderUnitEditor / resetRoute /
+//   setEditStatus / selectedUnitId / selectedUnitParentId / updateRouteButtons / renderUnitEditor / resetRoute /
 //   appendRoutePoint / submitRoute / handleContextMenu / submitPathRoute / cancelRouteFor /
-//   requireSelectedUnit / submitReparent / submitStrength / submitDisband / submitCreate / wireUnitEditor
+//   requireSelectedUnit / submitReparent / submitStrength / submitDisband / submitDetachFormation /
+//   submitAttachFormation / submitCreate / wireUnitEditor
 //
 // ★ 引入顺序：hexgeom → hexcolor → regionShape → map.js → renderer.js → map-uniteditor.js。
 //   必须在 map.js 之后（window.SimosMapCore 由 map.js 建立）。
@@ -38,6 +39,18 @@
     return selection && selection.kind === "unit" ? selection.id : null;
   }
 
+  /**
+   * 选中单位在头时刻的父 id（"加入编队"的父来源）。返回值三态见 renderer.parentOf：
+   * 字符串 = 有父、`null` = 已知是根、`undefined` = 尚未载入。缺 renderer/parentOf 时一律 undefined（当作"未知"，不禁用）。
+   */
+  function selectedUnitParentId() {
+    var id = selectedUnitId();
+    if (!id || !core.active || typeof core.active.parentOf !== "function") {
+      return undefined;
+    }
+    return core.active.parentOf(id);
+  }
+
   function updateRouteButtons() {
     var hasUnit = !!selectedUnitId();
     var send = app.byId("unit-route-send");
@@ -56,12 +69,20 @@
     if (selectedNode) {
       selectedNode.textContent = id ? "选中单位：" + id : "未选中单位";
     }
-    ["unit-reparent", "unit-strength", "unit-disband", "unit-route-toggle"].forEach(function (buttonId) {
+    ["unit-reparent", "unit-strength", "unit-disband", "unit-route-toggle", "unit-detach-formation"].forEach(function (buttonId) {
       var node = app.byId(buttonId);
       if (node) {
         node.disabled = !id;
       }
     });
+    // ★「加入编队」多一个前提：需要一个父。`parentId === null` = 已知它是根（无父可加入）⇒ 禁用并说明；
+    //   `undefined` = 该单位尚未载入 ⇒ 不禁用（不把"未知"当"根"），点下去由服务端/点击时校验兜底。
+    var attachNode = app.byId("unit-attach-formation");
+    if (attachNode) {
+      var parentId = id ? selectedUnitParentId() : null;
+      attachNode.disabled = !id || parentId === null;
+      attachNode.title = parentId === null ? "该单位已是根单位：没有可加入的父" : "";
+    }
     var routeNode = app.byId("unit-route-preview");
     if (routeNode) {
       routeNode.textContent =
@@ -285,6 +306,61 @@
     return result;
   }
 
+  /**
+   * 脱离编队（`unit.DetachUnit {id}`）：只作用于选中单位（只节点，不级联——与命令同口径）。服务端会把它**钉在当前位置**，
+   * 之后不再跟随父。拒绝理由（如"已是根单位"）**原样**显示，前端不另造一份真相。
+   */
+  async function submitDetachFormation() {
+    var id = requireSelectedUnit("脱离编队");
+    if (!id || host.editBusy) {
+      return null;
+    }
+    host.editBusy = true;
+    setEditStatus("脱离编队 " + id + " …", "muted");
+    var result = await app.writeCommand("unit.DetachUnit", { id: id });
+    host.editBusy = false;
+    setEditStatus(
+      result.ok ? "已脱离编队 " + id + "（已钉在当前位置，不再跟随父）" : result.message,
+      result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
+    );
+    return result;
+  }
+
+  /**
+   * 加入编队（`unit.AttachUnit {id, parent}`）：父 = 选中单位的**当前父**（读 `api.unit` 的 `parent`，不缓存、不造第二份真相）。
+   * 已是根 ⇒ 无父可加入，明确提示、不发写。★ **不同格由服务端拒**（编队的同格前提在域层）——这里把服务端给的理由**原样**显示，
+   * 前端**不**自己判"是否同格"（那会变成第二份真相）。
+   */
+  async function submitAttachFormation() {
+    var id = requireSelectedUnit("加入编队");
+    if (!id || host.editBusy) {
+      return null;
+    }
+    host.editBusy = true;
+    setEditStatus("加入编队 " + id + " …", "muted");
+    var parent;
+    try {
+      var unit = await api.unit(id, app.target());
+      parent = unit && unit.parent ? unit.parent : null;
+    } catch (e) {
+      host.editBusy = false;
+      setEditStatus("加入编队失败：" + (e.message || e), "err");
+      return null;
+    }
+    if (!parent) {
+      host.editBusy = false;
+      setEditStatus("单位 " + id + " 已是根单位：没有可加入的父（先给它一个上级再试）。", "warn");
+      return null;
+    }
+    var result = await app.writeCommand("unit.AttachUnit", { id: id, parent: parent });
+    host.editBusy = false;
+    setEditStatus(
+      result.ok ? "已加入编队 " + id + " → " + parent + "（进入跟随）" : result.message,
+      result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
+    );
+    return result;
+  }
+
   async function submitCreate() {
     if (host.editBusy) {
       return null;
@@ -369,6 +445,8 @@
     bind("unit-reparent", submitReparent);
     bind("unit-strength", submitStrength);
     bind("unit-disband", submitDisband);
+    bind("unit-detach-formation", submitDetachFormation);
+    bind("unit-attach-formation", submitAttachFormation);
     bind("unit-create", submitCreate);
     renderUnitEditor(app.getState());
   }
@@ -376,6 +454,7 @@
   window.SimosMapUnitEditor = {
     setEditStatus: setEditStatus,
     selectedUnitId: selectedUnitId,
+    selectedUnitParentId: selectedUnitParentId,
     updateRouteButtons: updateRouteButtons,
     renderUnitEditor: renderUnitEditor,
     resetRoute: resetRoute,
@@ -388,6 +467,8 @@
     submitReparent: submitReparent,
     submitStrength: submitStrength,
     submitDisband: submitDisband,
+    submitDetachFormation: submitDetachFormation,
+    submitAttachFormation: submitAttachFormation,
     submitCreate: submitCreate,
     wireUnitEditor: wireUnitEditor,
   };

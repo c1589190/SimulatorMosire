@@ -658,3 +658,58 @@ test("renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates", 
   assert.ok(src.includes("ensureUnitVisible: ensureUnitVisible"), "既有导出未被本次改动破坏");
 });
 
+// ── 2026-09-24 编队状态：脱离编队 / 加入编队（GUI 控件 + 接线）─────────────────────
+// ★ 用户要的"移动时跟随 / 暂时脱离独立作战"两个状态在**命令面**才可达（unit.CreateUnit 省略 position + Attach/Detach）；
+//   GUI 只做**接线**与**服务端理由原样透出**——前端不自己判"是否同格"、不造第二份真相。
+
+test("unit-panel-has-detach-and-attach-formation-controls-that-are-wired", () => {
+  const html = readWebui("index.html");
+  assert.ok(html.includes('id="unit-detach-formation"'), "index.html 有「脱离编队」按钮");
+  assert.ok(html.includes('id="unit-attach-formation"'), "index.html 有「加入编队」按钮");
+  const src = readWebui("map-uniteditor.js");
+  assert.ok(src.includes('bind("unit-detach-formation"'), "map-uniteditor.js 绑定了「脱离编队」");
+  assert.ok(src.includes('bind("unit-attach-formation"'), "map-uniteditor.js 绑定了「加入编队」");
+  assert.ok(src.includes('"unit.DetachUnit"'), "脱离发 unit.DetachUnit");
+  assert.ok(src.includes('"unit.AttachUnit"'), "加入发 unit.AttachUnit");
+  const editor = loadWebui("map-uniteditor.js").SimosMapUnitEditor;
+  assert.equal(typeof editor.submitDetachFormation, "function", "submitDetachFormation 已导出");
+  assert.equal(typeof editor.submitAttachFormation, "function", "submitAttachFormation 已导出");
+});
+
+test("attach-formation-button-disabled-follows-the-selected-units-parent", () => {
+  // 父来源 = renderer.parentOf（三态：字符串=有父 / null=已知是根 / undefined=尚未载入）。
+  assert.ok(
+    readWebui("renderer.js").includes("parentOf: parentOf"),
+    "renderer.js 导出了 parentOf"
+  );
+  const src = readWebui("map-uniteditor.js");
+  assert.ok(src.includes("core.active.parentOf("), "map-uniteditor.js 经 core.active.parentOf 取父");
+  assert.ok(
+    src.includes("attachNode.disabled = !id || parentId === null;"),
+    "★「加入编队」disabled 联动：未选中、或**已知是根**时禁用（未载入的 undefined 不误判成根）"
+  );
+  // 未选中时两个新按钮都随既有写法 disabled。
+  assert.ok(
+    src.includes('"unit-detach-formation"'),
+    "脱离编队按钮纳入「未选中即禁用」的联动"
+  );
+});
+
+test("formation-buttons-pass-through-the-server-reason-without-a-second-truth", () => {
+  const src = readWebui("map-uniteditor.js");
+  assert.ok(
+    src.includes('"unit.AttachUnit", { id: id, parent: parent }'),
+    "加入载荷 {id, parent}（父 = 当前父，非前端另算）"
+  );
+  assert.ok(src.includes('"unit.DetachUnit", { id: id }'), "脱离载荷 {id}");
+  // 服务端拒绝（如"不同格"）时 result.message 原样显示；前端不自己判定同格。
+  assert.ok(
+    src.includes('result.ok ? "已加入编队 " + id + " → " + parent + "（进入跟随）" : result.message'),
+    "★ 加入结局：成功给成功语、失败原样透出服务端理由"
+  );
+  assert.ok(
+    src.includes('result.ok ? "已脱离编队 " + id + "（已钉在当前位置，不再跟随父）" : result.message'),
+    "★ 脱离结局：失败原样透出服务端理由"
+  );
+});
+
