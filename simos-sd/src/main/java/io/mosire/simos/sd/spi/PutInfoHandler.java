@@ -42,9 +42,9 @@ import java.util.Set;
  *       **重复即拒**（见下）；
  *   <li>{@code tags} 缺席 ⇒ 空集（无主）；给了 ⇒ 逐字解析成 {@link DecisionMakerId}（**不**在此校验决策人是否存在——
  *       那是后续步骤的语义，本命令只认形状）；
- *   <li>{@code affiliations} 缺席 ⇒ 空集（不按归属发）；给了 ⇒ 逐项解析成 {@link Affiliation}（形状同
- *       {@code sd.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。 它与
- *       {@code tags} 是**并集**关系，判定不在本层（见 {@code RedactingQueryService#docs}）；
+ *   <li>{@code affiliations} 缺席 ⇒ 空集（不按归属发）；给了 ⇒ 逐项解析成 {@link Affiliation}（形状同 {@code
+ *       sd.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。
+ *       它与 {@code tags} 是**并集**关系，判定不在本层（见 {@code RedactingQueryService#docs}）；
  *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
  *       tick} ⇒ 拒，与 {@code IssueDirectiveHandler} 同口径）。**过去合法**（补记/滞后）。
  * </ul>

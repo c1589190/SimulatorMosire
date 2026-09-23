@@ -111,10 +111,10 @@ class SdCodecTest {
   }
 
   /**
-   * ★★ **老档兼容（第 3 波第 1 步 + Docs 的 affiliations）**：没有 {@code id}/{@code tick}/{@code tags}/{@code affiliations}
-   * 四个键的旧 INFO 条目字节，**必须读回来不炸**， 且缺省落在**安全的那一侧**：{@code tags = 空集}（无主 ⇒ 不进任何按决策人的归属裁决）、{@code
-   * affiliations = 空集}（不按归属发 ⇒ 老条目**不会**因为新增这一轴突然对某个国家/军队可见）、{@code tick = 0}、{@code id =
-   * legacy:<key>@<at>}（内容派生，纯函数）。
+   * ★★ **老档兼容（第 3 波第 1 步 + Docs 的 affiliations）**：没有 {@code id}/{@code tick}/{@code tags}/{@code
+   * affiliations} 四个键的旧 INFO 条目字节，**必须读回来不炸**， 且缺省落在**安全的那一侧**：{@code tags = 空集}（无主 ⇒
+   * 不进任何按决策人的归属裁决）、{@code affiliations = 空集}（不按归属发 ⇒ 老条目**不会**因为新增这一轴突然对某个国家/军队可见）、{@code tick =
+   * 0}、{@code id = legacy:<key>@<at>}（内容派生，纯函数）。
    *
    * <p>★ 做法与 {@link #aLegacyArchiveWithoutTheGenerationFieldReadsAsGenerationZero} 同源：**在真字节上删键**
    * （真档是写出来的那台 mapper 写的），先自证四个键确实在线格式里（否则本用例恒真）。
@@ -148,9 +148,7 @@ class SdCodecTest {
     var entry = back.state().info().get("map:Map1").get(0);
     assertThat(entry.key()).as("其余字段一个不少").isEqualTo("k1");
     assertThat(entry.tags()).as("★ 缺省 tags = 空集（无主，fail-closed）").isEmpty();
-    assertThat(entry.affiliations())
-        .as("★ 缺省 affiliations = 空集（不按归属发，fail-closed）")
-        .isEmpty();
+    assertThat(entry.affiliations()).as("★ 缺省 affiliations = 空集（不按归属发，fail-closed）").isEmpty();
     assertThat(entry.tick()).as("★ 缺省 tick = 0").isZero();
     assertThat(entry.id())
         .as("★ 缺省 id = 内容派生 legacy:<key>@<at>")

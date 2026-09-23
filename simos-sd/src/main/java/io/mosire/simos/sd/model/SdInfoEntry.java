@@ -26,9 +26,9 @@ import java.util.Set;
  *   <li>{@link #tick}——该条目所属 tick（不是 {@link #at} 那个 revision：二者互不换算）；
  *   <li>{@link #tags}——挂 {@link DecisionMakerId}（**与既有权限模型同构**，**不开**自由字符串标签）。**可为空集 = 无主**，
  *       天然成立，不用 {@code Optional} 包一层；
- *   <li>{@link #affiliations}（**决策文档可见性的第二轴**）——挂 {@link Affiliation}。语义是"这条 INFO 记的是**谁**的事"
- *       ⇒ 同一 nation/army 的决策人**自动**看得到，不必逐个指派。与 {@link #tags} 是**并集**关系（二者命中其一即可见），
- *       判定**只此一处**（{@code RedactingQueryService#docs}）。**可为空集 = 不按归属发**，同样不用 {@code Optional}。
+ *   <li>{@link #affiliations}（**决策文档可见性的第二轴**）——挂 {@link Affiliation}。语义是"这条 INFO 记的是**谁**的事" ⇒ 同一
+ *       nation/army 的决策人**自动**看得到，不必逐个指派。与 {@link #tags} 是**并集**关系（二者命中其一即可见）， 判定**只此一处**（{@code
+ *       RedactingQueryService#docs}）。**可为空集 = 不按归属发**，同样不用 {@code Optional}。
  * </ul>
  *
  * <p>★★ **老档兼容**（fail-closed 缺省）：本字段出现**之前**落盘的字节里没有 {@code id}/{@code tick}/{@code tags}/{@code
