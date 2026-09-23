@@ -17,13 +17,24 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.codec.SdCodec;
+import io.mosire.simos.sd.id.ArmyId;
+import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.Army;
+import io.mosire.simos.sd.model.Nation;
+import io.mosire.simos.sd.spi.CreateArmyHandler;
+import io.mosire.simos.sd.spi.CreateNationHandler;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.social.gen.NationSetup;
 import io.mosire.simos.social.gen.ResolvedNation;
 import io.mosire.simos.social.gen.SettlementGenerator;
 import io.mosire.simos.social.gen.SettlementPlan;
@@ -31,7 +42,16 @@ import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.gen.WorldgenConfig;
 import io.mosire.simos.social.spi.CreateCityHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
+import io.mosire.simos.unit.CommandChain;
+import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitSnapshot;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
+import io.mosire.simos.unit.spi.CreateCommandChainHandler;
+import io.mosire.simos.unit.spi.CreateUnitHandler;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -49,23 +69,61 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code simos.worldgen.initialize} 的端到端验收（2026-09-23）：**真世界**（{@link RichWorld} 的 v17levant 真档）+
- * **真引擎**（{@code CoreSimos.bootstrapGenesis} / {@code submitBatch} / {@code replay}）跑一次奥斯特马克侯国的竖切。
+ * **真引擎**（{@code CoreSimos.bootstrapGenesis} / {@code submitBatch} / {@code replay}）跑一次奥斯特马克侯国的竖切，
+ * 并让三国各跑一次一键初始化（含军队编制）。
  *
  * <p>★ 断言值都是**当场从冻结输入算过的字面量**（{@code total=3,070,000}、{@code urbanization=0.08} ⇒ 城市 245,600 / 农村
- * 2,824,400；真档 region 138 格且无 ocean ⇒ 逐格都有农村人口），不是"再调一遍生成器对拍"。
+ * 2,824,400；真档 region 138 格且无 ocean ⇒ 逐格都有农村人口；编制合计 14,800 =
+ * 800+500+500+1600+1300+9300+800），不是"再调一遍生成器对拍"。
  */
 class WorldgenInitializeToolTest {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final RevisionId R1 = new RevisionId(1);
+  private static final RevisionId R2 = new RevisionId(2);
   private static final String MAP_ID = "Map1";
   private static final String OSTERMARK = "奥斯特马克侯国";
+  private static final String OSTERMARK_TAG = "nation:" + OSTERMARK;
   private static final String INITIATOR = "agent:worldgen-test";
 
   private static final long OSTERMARK_TOTAL = 3_070_000L;
   private static final long OSTERMARK_RURAL = 2_824_400L;
   private static final long OSTERMARK_URBAN = 245_600L;
   private static final int OSTERMARK_HEXES = 138;
+
+  /** 奥斯特马克编制合计：800+500+500+1600+1300+9300+800。 */
+  private static final int OSTERMARK_ESTABLISHMENT = 14_800;
+
+  /**
+   * 军队编制块在**新库首跑**里追加的命令条数：1 条 {@code map.UpdateRegion}（真档 tag 是文档式 {@code "Nation"}， 不是 {@code
+   * nation:…}）+ 1 {@code sd.CreateNation} + 1 根单位 + 7 兵种 + 1 指挥链 + 1 {@code sd.CreateArmy}。
+   */
+  private static final int ARMY_COMMANDS_OSTERMARK = 12;
+
+  /** 三国配置的硬值（人口 / 城市化后城市人口 / 真档 region 格数 / 编制合计 / 兵种数 / 平时 / 动员）。 */
+  private record NationCase(
+      String regionId,
+      long population,
+      long urban,
+      int hexes,
+      int establishment,
+      int armCount,
+      int peacetime,
+      int mobilization) {}
+
+  private static final List<NationCase> NATIONS =
+      List.of(
+          new NationCase("德意志第二帝国", 6_230_000L, 747_600L, 430, 25_500, 9, 20_000, 25_000),
+          new NationCase(
+              OSTERMARK,
+              OSTERMARK_TOTAL,
+              OSTERMARK_URBAN,
+              OSTERMARK_HEXES,
+              14_800,
+              7,
+              6_500,
+              14_800),
+          new NationCase("霍赫兰伯国", 2_530_000L, 328_900L, 231, 16_200, 7, 4_300, 16_200));
 
   private static final ObjectMapper JSON = SimosObjectMapper.create();
 
@@ -159,10 +217,77 @@ class WorldgenInitializeToolTest {
       assertThat(capital.props().get("localSurplus")).isInstanceOf(Double.class);
       assertThat(capital.props().get("tier")).isInstanceOf(String.class);
 
-      // 命令条数：1 条 SetPopulation + N 条 CreateCity。
+      // ★★ 军队编制块：命令条数、region tag/颜色、单位/链/国家/军队。
       assertThat(body.get("commandCount").asInt())
-          .as("1 + N（N = 城市数）")
-          .isEqualTo(1 + social.cities().size());
+          .as("1 + N（N = 城市数）+ 军队块（UpdateRegion+CreateNation+根+7 兵种+链+Army）")
+          .isEqualTo(1 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
+
+      JsonNode armyView = body.get("army");
+      assertThat(armyView).as("dryRun=false 的摘要也带 army 段").isNotNull();
+      assertThat(armyView.get("nationId").asText()).isEqualTo(OSTERMARK);
+      assertThat(armyView.get("peacetime").asInt()).isEqualTo(6_500);
+      assertThat(armyView.get("mobilization").asInt()).isEqualTo(14_800);
+      assertThat(armyView.get("establishmentTotal").asInt()).isEqualTo(OSTERMARK_ESTABLISHMENT);
+      assertThat(armyView.get("armCount").asInt()).isEqualTo(7);
+      assertThat(armyView.get("rootUnitId").asText()).isEqualTo("奥斯特马克侯国-army");
+      assertThat(armyView.get("chainId").asText()).isEqualTo("奥斯特马克侯国-chain");
+      assertThat(armyView.get("armyId").asText()).isEqualTo("奥斯特马克侯国-army-id");
+      assertThat(armyView.get("units")).hasSize(1 + 7);
+      assertThat(armyView.get("units").get(0).get("member").asInt())
+          .isEqualTo(OSTERMARK_ESTABLISHMENT);
+      assertThat(armyView.get("units").get(0).get("id").asText()).isEqualTo("奥斯特马克侯国-army");
+
+      // ★★ region tag 变 nation:<nationId>，而 color/description/annexedBy **一字不变**（机制 2 的判据：
+      //    "只发 {tag:…}" 的实现会把 color 抹成 null ⇒ 本断言必红）。
+      Region before =
+          mapSlice(core.replay(new StateRef(MAIN, R1))).regions().get(new RegionId(OSTERMARK));
+      Region after = mapSlice(state).regions().get(new RegionId(OSTERMARK));
+      assertThat(after.meta().tag()).isEqualTo(OSTERMARK_TAG);
+      assertThat(after.meta().color()).as("区域颜色不得被抹掉").isEqualTo(before.meta().color());
+      assertThat(after.meta().color()).isEqualTo("#9c9c86"); // 真档字面量
+      assertThat(after.meta().description()).isEqualTo(before.meta().description());
+      assertThat(after.meta().annexedBy()).isEqualTo(before.meta().annexedBy());
+
+      // ★★ 编制守恒 + 单位/链/sd 一致性。
+      UnitState units = unitSlice(state);
+      Unit root = units.units().get(new UnitId("奥斯特马克侯国-army"));
+      assertThat(root).as("根单位存在").isNotNull();
+      assertThat(root.status()).as("驻防状态").isEqualTo(UnitStatus.RESTING);
+      assertThat(root.parent().valueAt(at)).as("根单位无父").isEmpty();
+      assertThat(root.equipment()).as("根单位装备为空表").isEmpty();
+      assertThat(units.units()).hasSize(1 + 7);
+      int armSum = 0;
+      for (Map.Entry<UnitId, Unit> entry : units.units().entrySet()) {
+        if (!entry.getKey().equals(root.id())) {
+          assertThat(entry.getValue().parent().valueAt(at)).contains(root.id());
+          armSum += entry.getValue().member();
+        }
+      }
+      assertThat(armSum).as("Σ 兵种单位.member").isEqualTo(OSTERMARK_ESTABLISHMENT);
+      assertThat(root.member()).as("根单位 member == Σ").isEqualTo(armSum);
+      // 装备换算示例：弓弩手 1600 人 × armKits{弩:100, 箭矢:2000, 皮甲:80} / 100。
+      assertThat(units.units().get(new UnitId("奥斯特马克侯国-弓弩手")).equipment())
+          .containsExactlyInAnyOrderEntriesOf(Map.of("弩", 1600, "箭矢", 32_000, "皮甲", 1_280));
+
+      CommandChain chain = units.commandChains().get(new CommandChainId("奥斯特马克侯国-chain"));
+      assertThat(chain).as("指挥链存在").isNotNull();
+      assertThat(chain.commander().value()).isEqualTo("奥斯特马克侯国-army");
+      assertThat(chain.members()).as("members 含根 + 全部兵种").hasSize(1 + 7);
+      assertThat(chain.members()).contains(new UnitId("奥斯特马克侯国-army"));
+
+      SdState sd = sdSlice(state);
+      assertThat(sd.nations()).hasSize(1);
+      Nation nation = sd.nations().get(NationId.parse(OSTERMARK));
+      assertThat(nation.homeRegion()).isEqualTo(new RegionId(OSTERMARK));
+      assertThat(nation.name()).isEqualTo(OSTERMARK);
+      assertThat(nation.adminBudgetPerTick()).as("行政预算置 0（本笔不臆造）").isZero();
+      assertThat(sd.armies()).hasSize(1);
+      Army army = sd.armies().get(ArmyId.parse("奥斯特马克侯国-army-id"));
+      assertThat(army.nationId()).isEqualTo(NationId.parse(OSTERMARK));
+      assertThat(army.rootUnit()).isEqualTo(root.id());
+      assertThat(units.units().get(army.rootUnit()).member())
+          .as("sd.army 的 rootUnitId 指向存在且 member == 编制合计的单位")
+          .isEqualTo(OSTERMARK_ESTABLISHMENT);
     }
 
     // ★ 重放一致：换一个**新引擎**（只装 codec）从同一个库重放 (main,2)，逐字段等于首次重放——真往返，不是同一次
@@ -216,6 +341,125 @@ class WorldgenInitializeToolTest {
     }
   }
 
+  // ── 4b. ★ 三国都能一键初始化（人口/城市 + 军队编制）──────────────────────────────────────
+
+  @Test
+  void threeNationsEachOneClickInitializeWithArmy() throws IOException {
+    // ★ 选择：三国各用一个**独立临时库**（每次都是"干净首启 ⇒ revision 1→2"），互不污染。同一库顺序跑也行（各国只动
+    //   自己的 region），但独立库能把 revision / tag 断言钉成常量、也免去"前一国已改过 meta"的干扰。
+    for (NationCase nation : NATIONS) {
+      String id = nation.regionId();
+      try (CoreSimos core = freshCore(dir("three-" + id))) {
+        ToolResult result = execute(tool(core), Map.of("nation", id, "dryRun", false));
+        assertThat(result.success()).as(id + ": " + result.message()).isTrue();
+        JsonNode body = JSON.readTree(result.message());
+        assertThat(body.get("revision").asLong()).as(id + " 只落一条 revision").isEqualTo(2L);
+
+        SimulationState state = core.replay(new StateRef(MAIN, R2));
+        SimosTimestamp at = state.meta().timestamp();
+        SocialData social = socialSlice(state);
+        long rural = social.populations().values().stream().mapToLong(s -> s.valueAt(at)).sum();
+        long urban = social.cities().values().stream().mapToLong(SocialCity::population).sum();
+        assertThat(body.get("hexCount").asInt()).as(id + " 真档 region 格数").isEqualTo(nation.hexes());
+        assertThat(rural).as(id + " 农村合计").isEqualTo(nation.population() - nation.urban());
+        assertThat(urban).as(id + " 城市合计").isEqualTo(nation.urban());
+        assertThat(rural + urban).as(id + " 总人口").isEqualTo(nation.population());
+        assertThat(social.cities()).as(id + " 有城市").isNotEmpty();
+        // 军队块条数 = UpdateRegion + CreateNation + 根单位 + 兵种数 + 指挥链 + CreateArmy = 兵种数 + 5。
+        assertThat(body.get("commandCount").asInt())
+            .as(id + " 1 + 城市数 + 军队块（兵种数 + 5）")
+            .isEqualTo(1 + body.get("cityCount").asInt() + nation.armCount() + 5);
+
+        // ★ region tag 变 nation:<nationId>，其余三个 meta 字段原样（机制 2 的判据）。
+        Region before =
+            mapSlice(core.replay(new StateRef(MAIN, R1))).regions().get(new RegionId(id));
+        Region after = mapSlice(state).regions().get(new RegionId(id));
+        assertThat(after.meta().tag()).isEqualTo("nation:" + id);
+        assertThat(after.meta().color()).as(id + " 颜色不得被抹掉").isEqualTo(before.meta().color());
+        assertThat(after.meta().description()).isEqualTo(before.meta().description());
+        assertThat(after.meta().annexedBy()).isEqualTo(before.meta().annexedBy());
+
+        // ★ 编制守恒。
+        UnitState units = unitSlice(state);
+        Unit root = units.units().get(new UnitId(id + "-army"));
+        assertThat(root).as(id + " 根单位存在").isNotNull();
+        assertThat(units.units()).as(id + " 1 根 + 兵种").hasSize(1 + nation.armCount());
+        int armSum = 0;
+        for (Unit unit : units.units().values()) {
+          if (!unit.id().equals(root.id())) {
+            armSum += unit.member();
+          }
+        }
+        assertThat(armSum).as(id + " Σ 兵种.member").isEqualTo(nation.establishment());
+        assertThat(root.member()).as(id + " 根 member == Σ").isEqualTo(nation.establishment());
+
+        JsonNode armyView = body.get("army");
+        assertThat(armyView).as(id + " 摘要带 army 段").isNotNull();
+        assertThat(armyView.get("establishmentTotal").asInt()).isEqualTo(nation.establishment());
+        assertThat(armyView.get("armCount").asInt()).isEqualTo(nation.armCount());
+        assertThat(armyView.get("peacetime").asInt()).isEqualTo(nation.peacetime());
+        assertThat(armyView.get("mobilization").asInt()).isEqualTo(nation.mobilization());
+
+        SdState sd = sdSlice(state);
+        Army army = sd.armies().get(ArmyId.parse(id + "-army-id"));
+        assertThat(army).as(id + " 军队存在").isNotNull();
+        assertThat(army.rootUnit()).isEqualTo(root.id());
+        assertThat(units.units().get(army.rootUnit()).member())
+            .as(id + " army.rootUnit 指向的根单位 member == 编制合计")
+            .isEqualTo(nation.establishment());
+        assertThat(sd.nations().get(NationId.parse(id)).adminBudgetPerTick()).isZero();
+      }
+    }
+  }
+
+  /** 德意志的「仆从兵」不在 {@code armKits} 里 ⇒ 该兵种单位装备空表（验证空 map 被 CreateUnit 接受）。 */
+  @Test
+  void armWithoutKitGetsEmptyEquipment() throws IOException {
+    try (CoreSimos core = freshCore(dir("no-kit"))) {
+      ToolResult result = execute(tool(core), Map.of("nation", "德意志第二帝国", "dryRun", false));
+
+      assertThat(result.success()).as(result.message()).isTrue();
+      UnitState units = unitSlice(core.replay(new StateRef(MAIN, R2)));
+      Unit retinue = units.units().get(new UnitId("德意志第二帝国-仆从兵"));
+      assertThat(retinue).as("仆从兵单位存在").isNotNull();
+      assertThat(retinue.member()).isEqualTo(3_000);
+      assertThat(retinue.equipment()).as("armKits 无此兵种 ⇒ 空表").isEmpty();
+    }
+  }
+
+  // ── 4c. army:false ⇒ 只做人口+城市 ────────────────────────────────────────────────────
+
+  @Test
+  void armyFalseDoesPopulationAndCitiesOnly() throws IOException {
+    try (CoreSimos core = freshCore(dir("army-false"))) {
+      ToolResult result =
+          execute(tool(core), Map.of("nation", OSTERMARK, "dryRun", false, "army", false));
+
+      assertThat(result.success()).as(result.message()).isTrue();
+      JsonNode body = JSON.readTree(result.message());
+      assertThat(body.has("army")).as("army:false ⇒ 摘要无 army 段").isFalse();
+      assertThat(body.get("revision").asLong()).isEqualTo(2L);
+
+      SimulationState state = core.replay(new StateRef(MAIN, R2));
+      SocialData social = socialSlice(state);
+      assertThat(social.cities()).isNotEmpty();
+      assertThat(body.get("commandCount").asInt())
+          .as("只 1 + 城市数（不产生任何军队块命令）")
+          .isEqualTo(1 + social.cities().size());
+
+      assertThat(sdSlice(state).nations()).as("army:false ⇒ 不建国").isEmpty();
+      assertThat(sdSlice(state).armies()).as("army:false ⇒ 不建军").isEmpty();
+      assertThat(unitSlice(state).units()).as("army:false ⇒ 不建单位").isEmpty();
+      assertThat(unitSlice(state).commandChains()).isEmpty();
+
+      Region before =
+          mapSlice(core.replay(new StateRef(MAIN, R1))).regions().get(new RegionId(OSTERMARK));
+      Region after = mapSlice(state).regions().get(new RegionId(OSTERMARK));
+      assertThat(after.meta().tag()).as("army:false ⇒ 不写 nation tag").isEqualTo("Nation");
+      assertThat(after.meta()).as("整个 meta 一字不动").isEqualTo(before.meta());
+    }
+  }
+
   // ── 5. fail-closed ──────────────────────────────────────────────────────────────────
 
   @Test
@@ -257,7 +501,7 @@ class WorldgenInitializeToolTest {
 
   // ────────────────────────────────── 夹具 ──────────────────────────────────────────────
 
-  /** 真世界 + 真引擎：四 codec + social 两条 handler + v17levant 创世（{@code (main,1)}）。 */
+  /** 真世界 + 真引擎：四 codec + 七条 handler（social 2 + 军队块 5）+ v17levant 创世（{@code (main,1)}）。 */
   private static CoreSimos freshCore(Path storeDir) {
     CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, SimosObjectMapper.create()));
     for (var codec : List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())) {
@@ -265,6 +509,12 @@ class WorldgenInitializeToolTest {
     }
     core.register(new SetPopulationHandler());
     core.register(new CreateCityHandler());
+    // ★ 军队编制块要用的五条 handler（与 Shell 的装配同源）。
+    core.register(new UpdateRegionHandler());
+    core.register(new CreateNationHandler());
+    core.register(new CreateUnitHandler());
+    core.register(new CreateCommandChainHandler());
+    core.register(new CreateArmyHandler());
     core.bootstrapGenesis(RichWorld.state(MAP_ID));
     return core;
   }
@@ -302,14 +552,35 @@ class WorldgenInitializeToolTest {
    */
   private static List<CommandEnvelope> commandBatchFor(CoreSimos core) {
     SimulationState state = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
-    GameMap map = ((MapSnapshot) state.module("map").orElseThrow()).map();
+    GameMap map = mapSlice(state);
     Region region = map.regions().get(new RegionId(OSTERMARK));
-    ResolvedNation resolved =
-        WorldgenConfig.load(configFile()).byRegionId(OSTERMARK).withHexes(region.hexes()).resolve();
+    NationSetup setup =
+        WorldgenConfig.load(configFile()).byRegionId(OSTERMARK).withHexes(region.hexes());
+    ResolvedNation resolved = setup.resolve();
     SettlementPlan plan =
         SettlementGenerator.generate(resolved.request(), TerrainView.of(map), resolved.params());
+    HexCoord at = capitalHex(plan, resolved);
     return WorldgenInitializeTool.buildBatch(
-        "batch-test", INITIATOR, MAIN, R1, region.id(), plan, resolved.request().seed());
+        "batch-test",
+        INITIATOR,
+        MAIN,
+        R1,
+        region,
+        plan,
+        resolved.request().seed(),
+        setup.army(),
+        setup.displayName(),
+        at);
+  }
+
+  /** 首都格（与工具内 {@code requireCapitalHex} 同一判据：按配置首都名在城市表里找）。 */
+  private static HexCoord capitalHex(SettlementPlan plan, ResolvedNation resolved) {
+    String name = resolved.request().capital().map(anchor -> anchor.name()).orElseThrow();
+    return plan.cities().stream()
+        .filter(city -> name.equals(city.name()))
+        .findFirst()
+        .map(city -> city.at())
+        .orElseThrow(() -> new AssertionError("生成的聚落表里没有首都 " + name));
   }
 
   private static SocialData socialAt(CoreSimos core, long revision) {
@@ -321,6 +592,23 @@ class WorldgenInitializeToolTest {
         (SocialSnapshot)
             state.module("social").orElseThrow(() -> new AssertionError("状态里没有 social 切片"));
     return slice.data();
+  }
+
+  private static GameMap mapSlice(SimulationState state) {
+    return ((MapSnapshot) state.module("map").orElseThrow(() -> new AssertionError("状态里没有 map 切片")))
+        .map();
+  }
+
+  private static UnitState unitSlice(SimulationState state) {
+    UnitSnapshot slice =
+        (UnitSnapshot) state.module("unit").orElseThrow(() -> new AssertionError("状态里没有 unit 切片"));
+    return slice.state();
+  }
+
+  private static SdState sdSlice(SimulationState state) {
+    SdSnapshot slice =
+        (SdSnapshot) state.module("sd").orElseThrow(() -> new AssertionError("状态里没有 sd 切片"));
+    return slice.state();
   }
 
   /** 冻结输入的路径：surefire 工作目录是 {@code simos-app/} ⇒ 主树是 {@code ../config/...}。 */

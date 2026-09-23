@@ -25,6 +25,9 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.spi.NationTag;
+import io.mosire.simos.social.gen.ArmyPlan;
 import io.mosire.simos.social.gen.NationSetup;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.ResolvedNation;
@@ -83,7 +86,31 @@ import java.util.UUID;
  * BAD_REQUEST}（带绝对路径与可读原因）；{@code dryRun=false} 但 branch 不存在 / 没有 head ⇒ {@code REJECTED}；提交冲突 ⇒
  * {@code CONFLICT}（带真实 head）。
  *
- * <p>★ **资源声明**：只写 social 命名空间（{@code social:*}）。它是 GM 工具，不在决策人桶里。
+ * <p>★★ **军队编制块（2026-09-23，{@code army} 缺省真）**：在**同一个批**里按固定顺序追加（{@link #appendArmyCommands}）——
+ *
+ * <ol>
+ *   <li>{@code map.UpdateRegion}（**仅当**当前 region 的 tag 不是 {@code nation:<nationId>}）：{@code
+ *       sd.CreateNation} 要求 homeRegion 有国家 tag（{@code NationTag.PREFIX}），而真档三国 region 的 tag 是文档式
+ *       {@code "Nation"} （不带前缀）⇒ 必须先改 tag。★★ 该命令的 {@code meta} 是**整体替换**（{@code
+ *       MapPayloads.optionalMeta} 只读 color/tag/description/annexedBy 四个字段，未写的清成 null）⇒ 本工具**从当前
+ *       region 原样回填 color / description / annexedBy**、只换 tag（只发 {@code {tag:…}} 会把区域颜色抹掉）；tag 已是目标值
+ *       ⇒ **跳过**（幂等）。
+ *   <li>{@code sd.CreateNation}（{@code nationId = regionId 字面值}）。★ {@code adminBudgetPerTick} **置
+ *       0**：行政预算属后续 政治-经济模型，冻结输入**没有**它的依据，本笔不臆造（{@code Nation} 允许 0）。
+ *   <li>**根单位**一条 + **每个兵种一条** {@code unit.CreateUnit}：{@code member} 取编制人数、{@code equipment} 按
+ *       {@code armKits} 的"每百人件数"换算（{@code ceil(人数 × 件数 / 100)}，键名原样）、{@code speed}/{@code
+ *       mobilityPerMille} 取 {@link #ARMY_SPEED}/{@link #ARMY_MOBILITY_PER_MILLE}、{@code status =
+ *       RESTING}、兵种单位的 {@code parent} 指向根单位。
+ *   <li>{@code unit.CreateCommandChain}：{@code commander = 根单位}，{@code members}
+ *       **含根单位与全部兵种单位**（{@code CommandChain} 构造期硬要求 {@code commander ∈ members}）。
+ *   <li>{@code sd.CreateArmy}：{@code rootUnitId = 根单位}。
+ * </ol>
+ *
+ * <p>★ 同批内 handler 看到的是**累计候选态**（{@code CommandBus.runBatch} 的 candidate 逐条演进）⇒ {@code
+ * UpdateRegion} 在前、{@code CreateNation} 在后即可通过校验，且**整批仍只落一条 revision**（不拆两条）。
+ *
+ * <p>★ **资源声明**：写四个命名空间（{@code map}/{@code social}/{@code unit}/{@code sd}，见 {@link
+ * #WORLDGEN_WRITE}）。 它是 GM 工具，不在决策人桶里。
  */
 public final class WorldgenInitializeTool implements AgentTool {
 
@@ -96,17 +123,84 @@ public final class WorldgenInitializeTool implements AgentTool {
   /** 见 {@link #SET_POPULATION_TYPE}。 */
   public static final String CREATE_CITY_TYPE = "social.CreateCity";
 
+  /** ★ 军队编制块的五条命令类型（{@code army} 为真时按 {@link #appendArmyCommands} 的顺序追加）。 */
+  public static final String UPDATE_REGION_TYPE = "map.UpdateRegion";
+
+  /** 见 {@link #UPDATE_REGION_TYPE}。 */
+  public static final String CREATE_NATION_TYPE = "sd.CreateNation";
+
+  /** 见 {@link #UPDATE_REGION_TYPE}。 */
+  public static final String CREATE_UNIT_TYPE = "unit.CreateUnit";
+
+  /** 见 {@link #UPDATE_REGION_TYPE}。 */
+  public static final String CREATE_COMMAND_CHAIN_TYPE = "unit.CreateCommandChain";
+
+  /** 见 {@link #UPDATE_REGION_TYPE}。 */
+  public static final String CREATE_ARMY_TYPE = "sd.CreateArmy";
+
+  /**
+   * ★ **中立移动量**（{@code speed} / {@code mobilityPerMille}）：冻结输入 {@code
+   * config/worldgen/v17levant-nations.json} **只给编制人数、不给行军速度**，本笔**不臆造**组织级速度。
+   *
+   * <p>{@code speed = 3}、{@code mobilityPerMille = 1000}：后者是地形成本的**恒等倍率**（{@code
+   * scale(moveCost×1000, 1000) == moveCost×1000}，移动模型下"不放大也不缩小"）；前者是无依据的中立整数，只保证 {@code
+   * effectiveSpeed ≥ 1}（三档状态都成立： RESTING 下 {@code max(1, (3×500+500)/1000) = 2}）。两者都进 {@code
+   * unit.CreateUnit} 的必填字段（{@code Unit} 构造期要求 {@code speed ≥ 1}、{@code mobilityPerMille ≥
+   * 1}），但在本笔"单位 RESTING、无路线"时**不影响编制**；真正的速度依据应由后续 移动/经济模型给出。
+   */
+  public static final int ARMY_SPEED = 3;
+
+  /** 见 {@link #ARMY_SPEED}。 */
+  public static final int ARMY_MOBILITY_PER_MILLE = 1000;
+
+  /** 初建单位的作战状态：{@code RESTING}（{@link io.mosire.simos.unit.UnitStatus} 三态之一；驻防、不移动不交战）。 */
+  public static final String ARMY_STATUS = "RESTING";
+
+  /**
+   * 军队编制单位的 id 后缀：根单位 {@code <nationId>-army}、兵种单位 {@code <nationId>-<兵种>}、链 {@code …-chain}、 军队
+   * {@code …-army-id}。
+   */
+  static final String ROOT_UNIT_SUFFIX = "-army";
+
+  /** 见 {@link #ROOT_UNIT_SUFFIX}。 */
+  static final String CHAIN_SUFFIX = "-chain";
+
+  /** 见 {@link #ROOT_UNIT_SUFFIX}。 */
+  static final String ARMY_ID_SUFFIX = "-army-id";
+
+  /** 根单位 / 军队的显示名后缀（{@code <displayName>全军}）。 */
+  static final String ARMY_NAME_SUFFIX = "全军";
+
+  /** 指挥链显示名后缀（{@code <displayName>指挥链}）。 */
+  static final String CHAIN_NAME_SUFFIX = "指挥链";
+
   /** 城市表缺省最多列几行。 */
   public static final int DEFAULT_CITY_LIMIT = 20;
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
-  /** 本工具的资源声明：只写 social（逐格人口 + 城市节点）。 */
+  /**
+   * 本工具的资源声明（2026-09-23 军队编制起）：它一次写的命名空间有四个 —— {@code social}（逐格人口 + 城市节点）、{@code map}（ {@code
+   * map.UpdateRegion} 给国家区域打 {@code nation:} tag）、{@code unit}（单位与指挥链）、{@code sd}（国家与军队）。
+   *
+   * <p>★ 四个都声明为 {@link ResourcePolicy#UNRESTRICTED}（不是 sd 窄写那族惯用的 {@code READ_ONLY}）：本工具**真的写** sd
+   * 域，声明成只读会让"调用者未表态 sd 时"回落成只读、把本工具在系统身份下整调拒掉（{@code ResourceAuthorizer} 的回退分支）。
+   */
   private static final ResourceManifest WORLDGEN_WRITE =
-      ResourceManifest.of(ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(
+          Map.of(
+              ToolSupport.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
+  /** 与 {@link #WORLDGEN_WRITE} 同源的逐命名空间粗断言（本工具是 GM 工具，调用者四个命名空间都 unlimited）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
-      List.of(ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"));
+      List.of(
+          ResourceId.of(ToolSupport.MAP_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
 
   /** 等级直方图的固定序（{@link PlannedCity#tierRank}）：MarketTown &lt; Town &lt; City &lt; MajorCity。 */
   private static final List<String> TIER_ORDER =
@@ -139,16 +233,21 @@ public final class WorldgenInitializeTool implements AgentTool {
   @Override
   public String description() {
     return "GM 世界初始化：按冻结输入（config/worldgen/v17levant-nations.json）生成一国的聚落，"
-        + "翻成 social 命令一次落**一条** revision（1 条 social.SetPopulation + 每座城一条 social.CreateCity）。"
+        + "翻成命令一次落**一条** revision（1 条 social.SetPopulation + 每座城一条 social.CreateCity；"
+        + "army 为真时再追加 map.UpdateRegion? + sd.CreateNation + 根/兵种 unit.CreateUnit + unit.CreateCommandChain"
+        + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
-        + " dryRun?(缺省 true=只算不写), branch?(缺省 main), cityLimit?(缺省 "
+        + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
+        + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
         + ")}。"
         + "返回摘要 {nation, seed, randomize, hexCount, ruralPopulation, urbanPopulation, totalPopulation,"
-        + " cityCount, tierHistogram, capital, largestCity, shortfall, urbanCapacity, cities[]}；"
+        + " cityCount, tierHistogram, capital, largestCity, shortfall, urbanCapacity, cities[], army?}；"
         + "dryRun=false 时另加 {revision, branch, commandCount}。"
         + "★ props 里的城市审计量（tier/catchmentHexes/localSurplus/tradeMultiplier/politicalMultiplier/"
-        + "justification/seed）落进 SocialCity.props。";
+        + "justification/seed）落进 SocialCity.props。"
+        + "★ army 段含 peacetime/mobilization/establishmentTotal/armCount/rootUnitId/chainId/armyId/nationId/"
+        + "各单位表；sd.CreateNation 的 adminBudgetPerTick 置 0（行政预算属后续政治-经济模型，本笔不臆造）。";
   }
 
   @Override
@@ -158,6 +257,12 @@ public final class WorldgenInitializeTool implements AgentTool {
     props.put("seed", ToolSupport.prop("integer", "随机种子；缺省 = 配置里该国的 seed"));
     props.put("randomize", ToolSupport.prop("boolean", "是否打开随机化；缺省 = 配置 randomization.enabled"));
     props.put("dryRun", ToolSupport.prop("boolean", "只算不写（缺省 true）"));
+    props.put(
+        "army",
+        ToolSupport.prop(
+            "boolean",
+            "是否连军队编制一起建（缺省 true：同一批追加 sd.CreateNation + 单位 + 指挥链 + sd.CreateArmy）；"
+                + "false = 只做人口+城市（不写国家 tag、不建国）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "cityLimit", ToolSupport.prop("integer", "返回的城市表最多列几行（缺省 " + DEFAULT_CITY_LIMIT + "）"));
@@ -184,6 +289,8 @@ public final class WorldgenInitializeTool implements AgentTool {
             + args.get("nation")
             + " dryRun="
             + args.getOrDefault("dryRun", true)
+            + " army="
+            + args.getOrDefault("army", true)
             + " branch="
             + args.getOrDefault("branch", ToolSupport.DEFAULT_BRANCH),
         AskKind.SENSITIVE);
@@ -200,6 +307,8 @@ public final class WorldgenInitializeTool implements AgentTool {
       Boolean randomizeArg = optionalBoolean(args, "randomize");
       Boolean dryRunArg = optionalBoolean(args, "dryRun");
       boolean dryRun = dryRunArg == null || dryRunArg;
+      Boolean armyArg = optionalBoolean(args, "army");
+      boolean withArmy = armyArg == null || armyArg;
       Long seedArg = ToolSupport.optionalLong(args, "seed");
       Long limitArg = ToolSupport.optionalLong(args, "cityLimit");
       if (limitArg != null && limitArg < 0) {
@@ -227,14 +336,31 @@ public final class WorldgenInitializeTool implements AgentTool {
       boolean randomize = !ValueRange.isExact(setup.totalPopulation());
 
       Map<String, Object> summary = summary(nation, seed, randomize, plan, resolved, cityLimit);
+      // ★ 驻地 = 首都格；配置里的首都不在生成的聚落表里 ⇒ fail-closed（BAD_REQUEST），不臆造坐标。
+      HexCoord armyAt = withArmy ? requireCapitalHex(plan, resolved) : null;
+      if (withArmy) {
+        summary.put(
+            "army", armySummary(region.id().value(), setup.displayName(), setup.army(), armyAt));
+      }
       if (dryRun) {
         return ToolSupport.ok(summary);
       }
 
       String batchId = UUID.randomUUID().toString();
       List<CommandEnvelope> batch =
-          buildBatch(
-              batchId, initiator, branch, head.get(), resolved.request().region(), plan, seed);
+          withArmy
+              ? buildBatch(
+                  batchId,
+                  initiator,
+                  branch,
+                  head.get(),
+                  region,
+                  plan,
+                  seed,
+                  setup.army(),
+                  setup.displayName(),
+                  armyAt)
+              : buildBatch(batchId, initiator, branch, head.get(), region.id(), plan, seed);
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
         summary.put("revision", committed.ref().revision().value());
@@ -351,6 +477,258 @@ public final class WorldgenInitializeTool implements AgentTool {
     return List.copyOf(batch);
   }
 
+  /**
+   * ★ **军队编制批**：先来 {@link #buildBatch} 的人口+城市，再按 {@link #appendArmyCommands} 的固定序追加军队块 —— 整批仍是**同一
+   * branch + 同一 expectedRevision**（⇒ 一条 revision）。
+   *
+   * @param region 真档区域（读它当前的 {@code meta.tag} 决定要不要发 {@code map.UpdateRegion}）
+   * @param army 编制（人数 + 装备配比）
+   * @param displayName 配置里的显示名（根/军队/链的名字取它）
+   * @param at 军队驻地（首都格）
+   */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      BranchId branch,
+      RevisionId expectedRevision,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      ArmyPlan army,
+      String displayName,
+      HexCoord at) {
+    List<CommandEnvelope> batch =
+        new ArrayList<>(
+            buildBatch(batchId, initiator, branch, expectedRevision, region.id(), plan, seed));
+    appendArmyCommands(
+        batch, batchId, initiator, branch, expectedRevision, region, army, displayName, at);
+    return List.copyOf(batch);
+  }
+
+  /**
+   * 把军队编制块追加进批（顺序见类注）：{@code UpdateRegion?} → {@code CreateNation} → {@code CreateUnit}(根) → {@code
+   * CreateUnit}(每兵种) → {@code CreateCommandChain} → {@code CreateArmy}。
+   *
+   * <p>★ {@code map.UpdateRegion} **仅当**当前 tag 不等于 {@code nation:<nationId>} 时追加（幂等：已是目标 tag 就不动
+   * meta， 免得白白覆盖颜色）；其余六类命令**无条件**追加（{@code sd.CreateNation} 在已建国的区域上会被 {@code CreateNationHandler}
+   * 拒「国家已存在」，这是调用方要处理的重放错误，不由本处静默跳过）。
+   */
+  private static void appendArmyCommands(
+      List<CommandEnvelope> batch,
+      String batchId,
+      String initiator,
+      BranchId branch,
+      RevisionId expectedRevision,
+      Region region,
+      ArmyPlan army,
+      String displayName,
+      HexCoord at) {
+    String nationId = region.id().value();
+    String targetTag = NationTag.tagFor(NationId.parse(nationId));
+    if (!targetTag.equals(region.meta().tag())) {
+      batch.add(
+          envelope(
+              batchId,
+              initiator,
+              branch,
+              expectedRevision,
+              UPDATE_REGION_TYPE,
+              updateRegionPayload(region, targetTag)));
+    }
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            CREATE_NATION_TYPE,
+            createNationPayload(nationId, displayName, nationId)));
+    String rootId = rootUnitId(nationId);
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            CREATE_UNIT_TYPE,
+            createUnitPayload(
+                rootId,
+                displayName + ARMY_NAME_SUFFIX,
+                at,
+                establishmentTotal(army),
+                Map.of(),
+                null)));
+    List<String> armUnitIds = new ArrayList<>(army.establishment().size());
+    for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
+      String armId = armUnitId(nationId, entry.getKey());
+      armUnitIds.add(armId);
+      batch.add(
+          envelope(
+              batchId,
+              initiator,
+              branch,
+              expectedRevision,
+              CREATE_UNIT_TYPE,
+              createUnitPayload(
+                  armId,
+                  entry.getKey(),
+                  at,
+                  entry.getValue(),
+                  equipmentFor(army, entry.getKey()),
+                  rootId)));
+    }
+    // ★ commander（根单位）必须 ∈ members（CommandChain 构造期硬约束）⇒ members 含根 + 全部兵种。
+    List<String> members = new ArrayList<>(1 + armUnitIds.size());
+    members.add(rootId);
+    members.addAll(armUnitIds);
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            CREATE_COMMAND_CHAIN_TYPE,
+            createCommandChainPayload(
+                chainId(nationId), displayName + CHAIN_NAME_SUFFIX, rootId, members)));
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            CREATE_ARMY_TYPE,
+            createArmyPayload(armyId(nationId), nationId, rootId, displayName + ARMY_NAME_SUFFIX)));
+  }
+
+  // ── 军队编制：id / 载荷 ──────────────────────────────────────────────────────────────
+
+  /** 根单位 id：{@code <nationId>-army}。 */
+  static String rootUnitId(String nationId) {
+    return nationId + ROOT_UNIT_SUFFIX;
+  }
+
+  /** 兵种单位 id：{@code <nationId>-<兵种>}。 */
+  static String armUnitId(String nationId, String arm) {
+    return nationId + "-" + arm;
+  }
+
+  /** 指挥链 id：{@code <nationId>-chain}。 */
+  static String chainId(String nationId) {
+    return nationId + CHAIN_SUFFIX;
+  }
+
+  /** 军队 id：{@code <nationId>-army-id}（与根单位 id 同前缀、不同尾，避免字符串层面的混淆）。 */
+  static String armyId(String nationId) {
+    return nationId + ARMY_ID_SUFFIX;
+  }
+
+  /** 编制合计（{@code Σ establishment}）。 */
+  static int establishmentTotal(ArmyPlan army) {
+    int total = 0;
+    for (int member : army.establishment().values()) {
+      total += member;
+    }
+    return total;
+  }
+
+  /**
+   * {@code map.UpdateRegion} 载荷：★★ **meta 是整体替换**，故把当前 color/description/annexedBy **原样回填**，只换 tag。
+   * 只发 {@code {tag:…}} 会让 {@code MapPayloads.optionalMeta} 把未写字段读成 null，**抹掉区域颜色**。
+   */
+  private static String updateRegionPayload(Region region, String tag) {
+    Map<String, Object> meta = new LinkedHashMap<>();
+    meta.put("color", region.meta().color());
+    meta.put("tag", tag);
+    meta.put("description", region.meta().description());
+    meta.put("annexedBy", region.meta().annexedBy());
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("regionId", region.id().value());
+    payload.put("meta", meta);
+    return ToolSupport.json(payload);
+  }
+
+  /**
+   * {@code sd.CreateNation} 载荷。★ {@code adminBudgetPerTick = 0}：行政预算属后续政治-经济模型，本笔**不臆造**（{@code
+   * Nation} 允许 0）。
+   */
+  private static String createNationPayload(String nationId, String name, String homeRegionId) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("nationId", nationId);
+    payload.put("name", name);
+    payload.put("homeRegionId", homeRegionId);
+    payload.put("adminBudgetPerTick", 0);
+    return ToolSupport.json(payload);
+  }
+
+  /** {@code unit.CreateUnit} 载荷（{@code parent} 为 null ⇒ 不发该键，即根单位）。 */
+  private static String createUnitPayload(
+      String id,
+      String name,
+      HexCoord at,
+      int member,
+      Map<String, Integer> equipment,
+      String parent) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("id", id);
+    payload.put("name", name);
+    payload.put("position", ToolSupport.hexCoord(at));
+    payload.put("member", member);
+    payload.put("equipment", equipment);
+    payload.put("speed", ARMY_SPEED);
+    payload.put("mobilityPerMille", ARMY_MOBILITY_PER_MILLE);
+    payload.put("status", ARMY_STATUS);
+    if (parent != null) {
+      payload.put("parent", parent);
+    }
+    return ToolSupport.json(payload);
+  }
+
+  /**
+   * {@code unit.CreateCommandChain} 载荷（{@code members} 含 commander，见 {@link #appendArmyCommands}）。
+   */
+  private static String createCommandChainPayload(
+      String chainId, String name, String commander, List<String> members) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("chainId", chainId);
+    payload.put("name", name);
+    payload.put("commander", commander);
+    payload.put("members", members);
+    return ToolSupport.json(payload);
+  }
+
+  /** {@code sd.CreateArmy} 载荷（键名以 {@code CreateArmyHandler} 为准：armyId/nationId/rootUnitId/name）。 */
+  private static String createArmyPayload(
+      String armyId, String nationId, String rootUnitId, String name) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("armyId", armyId);
+    payload.put("nationId", nationId);
+    payload.put("rootUnitId", rootUnitId);
+    payload.put("name", name);
+    return ToolSupport.json(payload);
+  }
+
+  /**
+   * 某兵种的装备表：对 {@code armKits} 的每件装备取 {@code ceil(人数 × 每百人件数 / 100)}。兵种不在 {@code armKits} 里
+   * （如德意志的「仆从兵」）⇒ 空表（{@code unit.CreateUnit} 的 {@code equipment} 允许空对象）。
+   */
+  private static Map<String, Integer> equipmentFor(ArmyPlan army, String arm) {
+    Map<String, Integer> equipment = new LinkedHashMap<>();
+    Map<String, Integer> kit = army.armKits().get(arm);
+    if (kit == null) {
+      return equipment;
+    }
+    int member = army.establishment().get(arm);
+    for (Map.Entry<String, Integer> item : kit.entrySet()) {
+      equipment.put(item.getKey(), ceilPerHundred(member, item.getValue()));
+    }
+    return equipment;
+  }
+
+  /** {@code ceil(member × perHundred / 100)}（"每 100 人的件数，不足 100 人向上取整"）。 */
+  private static int ceilPerHundred(int member, int perHundred) {
+    return Math.toIntExact((member * (long) perHundred + 99L) / 100L);
+  }
+
   /** {@code {"entries":[{q,r,population}…]}}，**按 HexCoord 排序**（键序是内容的纯函数）。 */
   static String setPopulationPayload(SettlementPlan plan) {
     List<Map.Entry<HexCoord, Long>> entries = new ArrayList<>(plan.ruralPopulation().entrySet());
@@ -460,6 +838,60 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * 军队驻地 = 配置首都所在的那一格。配置里有首都、生成器却没产出同名城 ⇒ **fail-closed**（{@link IllegalArgumentException} ⇒ {@code
+   * BAD_REQUEST}），不臆造坐标。
+   */
+  private static HexCoord requireCapitalHex(SettlementPlan plan, ResolvedNation resolved) {
+    return capitalOf(plan, resolved)
+        .map(PlannedCity::at)
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException(
+                    "配置里的首都不在生成的聚落表里（无法为军队选驻地）: "
+                        + resolved
+                            .request()
+                            .capital()
+                            .map(anchor -> anchor.name())
+                            .orElse("(无首都)")));
+  }
+
+  /**
+   * {@code army} 摘要段（{@code dryRun} 时只是不落盘）：由编制与驻地算出，各 id 与 {@link #appendArmyCommands} 逐字一致。
+   * {@code units} 表首行是根单位（{@code member = establishmentTotal}），随后每个兵种一行。
+   */
+  private static Map<String, Object> armySummary(
+      String nationId, String displayName, ArmyPlan army, HexCoord at) {
+    String rootId = rootUnitId(nationId);
+    int total = establishmentTotal(army);
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("nationId", nationId);
+    view.put("peacetime", army.peacetime());
+    view.put("mobilization", army.mobilization());
+    view.put("establishmentTotal", total);
+    view.put("armCount", army.establishment().size());
+    view.put("rootUnitId", rootId);
+    view.put("chainId", chainId(nationId));
+    view.put("armyId", armyId(nationId));
+    view.put("position", ToolSupport.hexCoord(at));
+    List<Map<String, Object>> units = new ArrayList<>(1 + army.establishment().size());
+    units.add(unitRow(rootId, displayName + ARMY_NAME_SUFFIX, total));
+    for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
+      units.add(unitRow(armUnitId(nationId, entry.getKey()), entry.getKey(), entry.getValue()));
+    }
+    view.put("units", units);
+    return view;
+  }
+
+  /** 编制单位行：{@code {id,name,member}}。 */
+  private static Map<String, Object> unitRow(String id, String name, int member) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("id", id);
+    row.put("name", name);
+    row.put("member", member);
+    return row;
   }
 
   /** 最大城（城市表已按人口降序、id 升序 ⇒ 首项即最大；空表 ⇒ null）。 */
