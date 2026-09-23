@@ -455,6 +455,47 @@ test("say-and-context-reset-are-two-separate-explicit-actions", async () => {
   assert.match(h.app.byId("decision-context-status").text, /空上下文/);
 });
 
+test("merged-button-sends-the-text-first-then-starts-and-runs", async () => {
+  // ★★ 2026-09-23 用户裁定：「发送」/「让它跑一轮」/「开始决策」**三个按钮合并成一个**。
+  //   文本框有内容 ⇒ 点一下 = ① 先 say（进它的会话）→ ② sd.StartDecision → ③ 跑一轮，**顺序固定**。
+  //   判别力：去掉 ①、或把顺序换成"先发起再 say"，本条即红——而界面上那两种做法**看不出任何差别**。
+  const h = renderHarness([DUE_MAKER]);
+  h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  h.app.byId("decision-say-text").value = "  守住北面的渡口  ";
+  h.P2.startDecision();
+  await flush();
+  await flush();
+  await flush();
+  assert.deepEqual(
+    h.calls.say,
+    [{ decisionMakerId: "dm-due", text: "守住北面的渡口", branch: "main", revision: null }],
+    "① 先把补充指示发进会话（两端空白裁掉）"
+  );
+  assert.equal(h.calls.startDecision.length, 1, "② 再发起（sd.StartDecision）");
+  assert.equal(h.calls.run.length, 1, "③ 最后跑一轮");
+  assert.equal(h.app.byId("decision-say-text").value, "", "发送成功 ⇒ 清空文本框");
+
+  // 反例：这句话**发不出去** ⇒ 当场停（不发起、不跑），且文本框里的内容保留。
+  const bad = renderHarness([DUE_MAKER], {
+    sayResponder: () => Promise.reject(new Error("会话库不可写")),
+  });
+  bad.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
+  await flush();
+  await flush();
+  bad.app.byId("decision-say-text").value = "守住北面的渡口";
+  bad.P2.startDecision();
+  await flush();
+  await flush();
+  await flush();
+  assert.equal(bad.calls.say.length, 1, "① 试过了");
+  assert.equal(bad.calls.startDecision.length, 0, "① 失败 ⇒ **不得**接着发起（指示没落进去就发起 = 谎）");
+  assert.equal(bad.calls.run.length, 0, "① 失败 ⇒ 不跑这一轮");
+  assert.equal(bad.app.byId("decision-say-text").value, "守住北面的渡口", "发失败 ⇒ 文本框内容保留");
+  assert.match(bad.app.byId("decision-start-status").text, /已停下/);
+});
+
 test("start-decision-posts-even-when-target-is-not-due", async () => {
   // ★★ 2026-09-23 用户裁定：**不再阻断**。这条用例以前断言"非待决 ⇒ 前端不得发出写请求"，现在反过来——
   //   due 只是提示，点了就发（判别力：把 `decideStartDecision` 里那道 due 前置加回去，本条即红）。
@@ -682,6 +723,9 @@ function renderHarness(makers, options) {
     directives: () => Promise.resolve({ directives: opts.directives || [] }),
     sayToDecisionMaker: (decisionMakerId, text, branch, revision) => {
       calls.say.push({ decisionMakerId, text, branch, revision });
+      if (opts.sayResponder) {
+        return opts.sayResponder({ call: calls.say.length, decisionMakerId: decisionMakerId, text: text });
+      }
       return Promise.resolve({
         decisionMakerId: decisionMakerId,
         conversationId: "decision-maker:" + decisionMakerId,
@@ -761,10 +805,16 @@ test("index-html-has-six-modes-and-decision-panel", () => {
   // 左栏决策面板 + 子页控件。
   assert.ok(html.includes('data-modes="decision"'), "必须有 data-modes=decision 的面板");
   assert.ok(html.includes('id="decision-subpages"'), "子页控件必须在");
-  assert.ok(html.includes('name="decision-subpage"'), "子页用 radio group");
-  assert.ok(html.includes('value="view"') && html.includes('value="approval"'), "两个子页值都在");
+  // ★★ 2026-09-23 用户裁定（原话：「很烂的交互逻辑」）：radio 组改**横排 tab 条**——
+  //   tab 是「切换」不是「单选」⇒ 判别力：把 radio 组改回来，下面两条即红。
+  assert.ok(html.includes('role="tablist"'), "子页控件必须是 tab 条（role=tablist）");
+  ["view", "approval", "provider"].forEach((id) => {
+    assert.ok(html.includes('data-decision-tab="' + id + '"'), "tab 值必须在：" + id);
+  });
+  assert.equal(html.includes('name="decision-subpage"'), false, "radio 组不得回归（那是表单语义）");
   assert.ok(html.includes('data-decision-subpage="view"'), "子页 A 容器");
   assert.ok(html.includes('data-decision-subpage="approval"'), "子页 B 容器");
+  assert.ok(html.includes('data-decision-subpage="provider"'), "子页 C 容器");
   // 三处挂载点（左栏详情 + 右栏列表 + 右栏审批）。
   assert.ok(html.includes('id="decision-maker-detail"'), "左栏决策人详情挂载点");
   assert.ok(html.includes('id="decision-maker-list-mount"'), "右栏分类列表挂载点");
@@ -783,7 +833,12 @@ test("index-html-decision-mode-has-start-decision-button", () => {
   // ★ 2026-09-23 新增的三个交互锚点（就地结果 / 说一句话 / 上下文重置 + 可展开的 LLM 运行情况）。
   assert.ok(html.includes('id="decision-latest"'), "必须有一处**就地**渲染决策的挂载点");
   assert.ok(html.includes('id="decision-say-text"'), "必须有跟决策人对话的文本框");
-  assert.ok(html.includes('id="decision-say-send"'), "必须有发送按钮");
+  // ★★ 2026-09-23 用户裁定：「发送」/「让它跑一轮」/「开始决策」**三个按钮合并成一个** ⇒
+  //   独立的「发送」与「让它跑一轮」按钮**不得存在**（文本框与运行状态行留着，按钮没了）。
+  //   判别力：把任一按钮加回 index.html，本条即红。
+  assert.equal(html.includes('id="decision-say-send"'), false, "「发送」按钮已并入「开始决策」");
+  assert.equal(html.includes('id="decision-run"'), false, "「让它跑一轮」按钮已并入「开始决策」");
+  assert.ok(html.includes('id="decision-run-status"'), "这一轮的进度/结局状态行必须还在");
   assert.ok(html.includes('id="decision-context-reset"'), "必须有「上下文重置」按钮");
   assert.ok(html.includes('id="decision-progress-toggle"'), "必须有「展开 LLM 运行情况」的开关");
   assert.ok(html.includes('id="decision-progress"'), "必须有 LLM 运行情况的容器");
@@ -814,4 +869,99 @@ test("panels-js-and-app-js-delegate-subpage-visibility", () => {
   assert.match(panels, /api\s*\.\s*startDecision\(/, "panels.js 必须经 api.startDecision 发起");
   assert.ok(panels.includes('addEventListener("click", decideStartDecision)'), "按钮必须绑定发起动作");
   assert.equal(app.includes("sd.StartDecision"), false, "app.js 仍不得含 StartDecision（窄端点专用）");
+});
+
+// ── 子页 tab 条（2026-09-23 用户裁定：radio 组 → 横排 tab 条）──────────────────
+//
+// ★★ 本条钉的是**接线本身**：tab 必须真的能切。旧 radio 组从头到尾**没有一个 addEventListener**
+//   （圆点点得动、内容一动不动）⇒ 那正是用户说的"很烂的交互逻辑"的物理原因之一。
+//   判别力：删掉 app.js 的 `mountDecisionTabs` 接线、或 click 回调里不调 `setDecisionSubpage`，本条即红。
+
+const SUBPAGE_IDS = ["view", "approval", "provider"];
+
+function fakeTab(id) {
+  const node = {
+    attrs: { "data-decision-tab": id, "aria-selected": id === "view" ? "true" : "false" },
+    classes: new Set(),
+    listeners: [],
+    getAttribute(name) {
+      return node.attrs[name] === undefined ? null : node.attrs[name];
+    },
+    setAttribute(name, value) {
+      node.attrs[name] = String(value);
+    },
+    classList: {
+      toggle(name, on) {
+        if (on) {
+          node.classes.add(name);
+        } else {
+          node.classes.delete(name);
+        }
+      },
+    },
+    addEventListener(type, fn) {
+      if (type === "click") {
+        node.listeners.push(fn);
+      }
+    },
+    click() {
+      node.listeners.slice().forEach((fn) => fn({}));
+    },
+  };
+  return node;
+}
+
+function fakePane(id) {
+  const node = {
+    hidden: false,
+    attrs: { "data-decision-subpage": id },
+    getAttribute(name) {
+      return node.attrs[name] === undefined ? null : node.attrs[name];
+    },
+  };
+  return node;
+}
+
+function paneOf(panes, id) {
+  return panes.find((pane) => pane.getAttribute("data-decision-subpage") === id);
+}
+
+test("tab-click-actually-switches-the-visible-subpage", () => {
+  const tabs = SUBPAGE_IDS.map(fakeTab);
+  const panes = SUBPAGE_IDS.map(fakePane);
+  const bar = {
+    querySelectorAll: (selector) => (selector === "[data-decision-tab]" ? tabs : []),
+  };
+  const doc = {
+    getElementById: (id) => (id === "decision-subpages" ? bar : null),
+    querySelector: () => null,
+    querySelectorAll: (selector) => {
+      if (selector === "[data-decision-tab]") {
+        return tabs;
+      }
+      if (selector === "[data-decision-subpage]") {
+        return panes;
+      }
+      return [];
+    },
+    addEventListener() {},
+    createElement: () => fakePane("x"),
+    body: { getAttribute: () => null, setAttribute() {} },
+  };
+  const A2 = loadWebui("app.js", { document: doc, SimosPanels: P }).SimosApp;
+  A2.mountDecisionTabs();
+  A2.applyDecisionSubpage();
+  assert.equal(paneOf(panes, "view").hidden, false, "初始子页（view）必须可见");
+
+  tabs[1].click(); // 点「审批」
+
+  assert.equal(A2.getState().decisionSubpage, "approval", "点 tab ⇒ 状态切到该子页");
+  assert.equal(paneOf(panes, "approval").hidden, false, "审批容器必须可见");
+  assert.equal(paneOf(panes, "view").hidden, true, "原容器必须隐藏（恰一个可见）");
+  assert.equal(paneOf(panes, "provider").hidden, true, "第三容器也隐藏（恰一个可见）");
+  // 选中态：`.active` 与模式栏同一套视觉语言；aria-selected 让无障碍也说得清"现在在哪一页"。
+  assert.equal(tabs[1].attrs["aria-selected"], "true");
+  assert.equal(tabs[0].attrs["aria-selected"], "false");
+  assert.equal(tabs[1].classes.has("active"), true, "选中的 tab 必须高亮");
+  assert.equal(tabs[0].classes.has("active"), false, "旧的 tab 必须掉高亮");
 });

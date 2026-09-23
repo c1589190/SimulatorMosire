@@ -171,8 +171,11 @@
 
   /**
    * 决策模式子页可见性（T7）：`[data-decision-subpage]` 节点恰一个可见（左栏详情 + 右栏列表同源切换）。
-   * ★ fail-closed：判定走 panels.js 的纯函数 `decisionSubpageVisibility`（未知子页 ⇒ 两个都不显示）；
+   * ★ fail-closed：判定走 panels.js 的纯函数 `decisionSubpageVisibility`（未知子页 ⇒ 三个都不显示）；
    *   该纯函数缺席（旧三页不加载 panels.js）或未知值 ⇒ **全部 hidden**，绝不兜成"显示第一个"。
+   *
+   * <p>★ 2026-09-23：tab 条（`[data-decision-tab]`）的选中态与上面**同源**——两处各判一次的话，
+   * "内容切了、高亮没切"会在界面上留下**没有任何症状**的错位。
    */
   function applyDecisionSubpage() {
     var visibility =
@@ -186,6 +189,26 @@
         node.hidden = !(visibility && visibility[key]);
       }
     );
+    Array.prototype.forEach.call(document.querySelectorAll("[data-decision-tab]"), function (tab) {
+      var key = tab.getAttribute("data-decision-tab");
+      // 未知子页 ⇒ 一个都不选中（与三容器全隐藏一致，不静默兜成第一个）。
+      var active = !!(visibility && visibility[key]);
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+  }
+
+  /** 接线决策子页 tab 条（点一下 = 切子页，落点仍是 setDecisionSubpage ⇒ applyDecisionSubpage）。 */
+  function mountDecisionTabs() {
+    var bar = byId("decision-subpages");
+    if (!bar || !bar.querySelectorAll) {
+      return;
+    }
+    Array.prototype.forEach.call(bar.querySelectorAll("[data-decision-tab]"), function (tab) {
+      tab.addEventListener("click", function () {
+        setDecisionSubpage(tab.getAttribute("data-decision-tab"));
+      });
+    });
   }
 
   /** 接线模式栏按钮；禁用的（归 M8）不接线。 */
@@ -435,6 +458,7 @@
     pollState();
     if (byId("mode-bar")) {
       mountModeBar();
+      mountDecisionTabs();
       if (window.SimosPanels && window.SimosPanels.init) {
         window.SimosPanels.init();
       }
@@ -503,6 +527,7 @@
     applyMode: applyMode,
     applyDecisionSubpage: applyDecisionSubpage,
     mountModeBar: mountModeBar,
+    mountDecisionTabs: mountDecisionTabs,
     target: target,
     refreshState: refreshState,
     setServerState: setServerState,

@@ -1005,9 +1005,13 @@
   //   `startDecisionGate` 仍然算出理由（"非待决（本 tick 未到决策周期）"这类），但**不拦**——按钮不 disabled、
   //   点了就发；理由只显示在状态行里，让用户看得见"此刻本来不是它的决策窗口"。
   //
-  // ★★ **点一次 = 发起 + 真跑一轮**（用户要的"跑完在下面生成当前 tick 这个决策人的完整决策"）：
-  //   ① `sd.StartDecision`（原样保留：它是"开始一次决策"的世界事实，判决链挂在它后面）；
-  //   ② 接着起一轮**异步**的 `sd.RunDecision`（POST 立即返回；进度与结局靠 run-status 轮询，见下一节）。
+  // ★★ **点一次 = （有补充指示时先发它）+ 发起 + 真跑一轮**（用户要的"跑完在下面生成当前 tick 这个
+  //   决策人的完整决策"）：
+  //   ① 文本框非空 ⇒ 先把那句话作为一条 user 消息发进它的会话（POST …/say，append-only、不改世界）；
+  //   ② `sd.StartDecision`（原样保留：它是"开始一次决策"的世界事实，判决链挂在它后面）；
+  //   ③ 接着起一轮**异步**的 `sd.RunDecision`（POST 立即返回；进度与结局靠 run-status 轮询，见下一节）。
+  //   ★★ 2026-09-23（用户裁定）：「发送」/「让它跑一轮」/「开始决策」**三个按钮合并成这一个**——
+  //   故 `#decision-run` 与 `#decision-say-send` 两个按钮已从 index.html 退场（**端点一个都没动**）。
   //   再点一次 = 再跑一轮（用户原话：「视为不满意，让 llm 重新决策」）——**上下文沿用**，
   //   唯一的清空手段是「上下文重置」（decideResetDecisionContext）。
   var startDecisionTarget = null;
@@ -1081,7 +1085,21 @@
       });
   }
 
-  /** 点「开始决策」：**不看 due**（用户要随时可点），但有目标才发得出去。 */
+  /**
+   * 点「开始决策」：**不看 due**（用户要随时可点），但有目标才发得出去。
+   *
+   * <p>★★ 2026-09-23（用户裁定）：**三个按钮合并成一个**（「发送」/「让它跑一轮」/「开始决策」）。
+   * 一次点击按**固定顺序**做三件事，两种情形：
+   *
+   * <ul>
+   *   <li>文本框**空** ⇒ 与合并前逐字一致：`sd.StartDecision`（发起）→ 异步跑一轮；
+   *   <li>文本框**有内容** ⇒ ① 先把这句作为一条 user 消息发进它的会话，**成功之后**才 ② 发起、③ 跑一轮。
+   * </ul>
+   *
+   * <p>★ 顺序不能反：这一轮读的是**会话**（以及挂在发起后面的判决链）——话没落进去就发起，
+   * "带着补充指示跑一轮"当场变成谎，而界面上**看不出任何差别**。
+   * ★ ① 失败 ⇒ **当场停**（不接着 ②③）：把用户写的指示静默丢掉比不跑更坏；文本框里的内容保留着（不清空）。
+   */
   function decideStartDecision() {
     var target = startDecisionTarget;
     if (!target || target.id === null || target.id === undefined || target.id === "") {
@@ -1090,8 +1108,30 @@
     }
     var at = app.target() || {};
     var gate = startDecisionGate(target);
-    setStartDecisionStatus("发起决策 " + target.id + "…（" + gate.reason + "）", "muted");
-    attemptStartDecision(target, at.branch, at.revision, true);
+    if (!decisionSayText()) {
+      setStartDecisionStatus("发起决策 " + target.id + "…（" + gate.reason + "）", "muted");
+      attemptStartDecision(target, at.branch, at.revision, true);
+      return;
+    }
+    // 情形 B：先发那句话（第 ① 步），成了才发起。
+    setStartDecisionStatus(
+      "发起决策 " + target.id + "…（先发文本框里的补充指示；" + gate.reason + "）",
+      "muted"
+    );
+    sendDecisionSay().then(function (sent) {
+      if (!sent || !sent.ok) {
+        setStartDecisionStatus(
+          "已停下：补充指示没发出去（" +
+            ((sent && sent.reason) || "未知原因") +
+            "），这一轮没有发起——文本框里的内容还在。",
+          "err"
+        );
+        return null;
+      }
+      // ★ 重取游标：say 那一跳可能已经刷新过状态（游标过期时），用**当前**的 branch/revision 才不撞 409。
+      var fresh = app.target() || {};
+      return attemptStartDecision(target, fresh.branch, fresh.revision, true);
+    });
   }
 
   /**
@@ -1589,30 +1629,49 @@
     app.statusMessage(app.byId("decision-say-status"), message, tone);
   }
 
+  /** 文本框里的补充指示（**两端空白裁掉**；无文本框 / 空 ⇒ 空串）。合并后的「开始决策」据此判走哪条情形。 */
+  function decisionSayText() {
+    var node = app.byId("decision-say-text");
+    return node && node.value !== undefined && node.value !== null ? String(node.value).trim() : "";
+  }
+
+  /** 清空文本框（那句话真的送出去之后才清）。 */
+  function clearSayText() {
+    var node = app.byId("decision-say-text");
+    if (node) {
+      node.value = "";
+    }
+  }
+
+  /**
+   * 把文本框里的那句话发出去（**唯一实现**）：内容作为**一条 user 消息**进该决策人的会话。
+   *
+   * <p>★ 返回值是 `{ok, body}` / `{ok:false, reason}` 而不是"只写状态行"：合并后的「开始决策」要按
+   * "这一句到底发出去没有"决定**要不要接着发起**（见 {@link decideStartDecision}）——只写状态行的话，
+   * 调用方只能靠读 DOM 判，那是把判定建在渲染上。
+   * ★ 与 `SimosPanels.say()`（e2e/调试入口）共用它，免得两处各写一份而其中一处漏掉空文本守卫。
+   */
   function sendDecisionSay() {
     var target = startDecisionTarget;
     if (!target || target.id === null || target.id === undefined || target.id === "") {
       setSayStatus("未选中决策人：先点选一个国家区域或有决策人的单位。", "warn");
-      return;
+      return Promise.resolve({ ok: false, reason: "未选中决策人" });
     }
-    var node = app.byId("decision-say-text");
-    var text = node && node.value !== undefined && node.value !== null ? String(node.value).trim() : "";
+    var text = decisionSayText();
     if (!text) {
-      setSayStatus("先说点什么（空消息不会发出去）。", "warn");
-      return;
+      setSayStatus("文本框是空的（没有补充指示要发）。", "warn");
+      return Promise.resolve({ ok: false, reason: "文本框是空的" });
     }
     if (typeof api.sayToDecisionMaker !== "function") {
       setSayStatus("本页的 api.js 没有 sayToDecisionMaker（端点未接入）", "warn");
-      return;
+      return Promise.resolve({ ok: false, reason: "端点未接入" });
     }
     var at = app.target() || {};
     setSayStatus("发送中…", "muted");
-    api
+    return api
       .sayToDecisionMaker(target.id, text, at.branch, at.revision)
       .then(function (body) {
-        if (node) {
-          node.value = "";
-        }
+        clearSayText();
         setSayStatus(
           "已发送（落进会话 " +
             valueOrDash(body && body.conversationId) +
@@ -1621,10 +1680,12 @@
             " 字）——下一轮它就看得见。",
           "ok"
         );
+        return { ok: true, body: body };
       })
       .catch(function (e) {
         var reason = e && e.body && e.body.error ? e.body.error : (e && e.message) || String(e);
         setSayStatus("发送失败：" + reason, "err");
+        return { ok: false, reason: reason };
       });
   }
 
@@ -2493,18 +2554,12 @@
 
   /** 工作台初始化：订阅状态并渲染左栏真读数 + 右栏区域分组。 */
   function init() {
+    // ★★ 2026-09-23（用户裁定）：决策模式只剩**一个**写按钮（`#decision-start`，合并了原来的
+    //   「发送」与「让它跑一轮」）⇒ 这里只接它一根线。`decideRunDecision` / `sendDecisionSay`
+    //   仍在（分别由「开始决策」的第 ③① 步调用，并作为 e2e/调试入口挂在 SimosPanels 上）。
     var startButton = app.byId("decision-start");
     if (startButton && startButton.addEventListener) {
       startButton.addEventListener("click", decideStartDecision);
-    }
-    var runButton = app.byId("decision-run");
-    if (runButton && runButton.addEventListener) {
-      runButton.addEventListener("click", decideRunDecision);
-    }
-    // ★ 2026-09-23 新增三处接线：发一句话 / 上下文重置 / 展开 LLM 运行情况。
-    var sayButton = app.byId("decision-say-send");
-    if (sayButton && sayButton.addEventListener) {
-      sayButton.addEventListener("click", sendDecisionSay);
     }
     var resetButton = app.byId("decision-context-reset");
     if (resetButton && resetButton.addEventListener) {

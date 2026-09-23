@@ -186,33 +186,46 @@
 
         <section class="decision-panel" data-modes="decision" aria-label="决策">
           <h3>决策</h3>
-          <!-- 决策模式 = **一个模式两个子页**（spec §四.2）。子页只是本模式内的分组，不是新模式；
-               可见性走 [data-decision-subpage]（app.js.applyDecisionSubpage + panels.js 的纯函数）。 -->
-          <div class="decision-subpages" id="decision-subpages" role="radiogroup" aria-label="决策子页">
-            <label><input type="radio" name="decision-subpage" value="view" checked> 决策人查看</label>
-            <label><input type="radio" name="decision-subpage" value="approval"> 审批</label>
-            <label><input type="radio" name="decision-subpage" value="provider"> Provider 配置</label>
+          <!-- 决策模式 = **一个模式三个子页**（spec §四.2）。子页只是本模式内的分组，不是新模式；
+               可见性走 [data-decision-subpage]（app.js.applyDecisionSubpage + panels.js 的纯函数）。
+               ★★ 2026-09-23（用户裁定「很烂的交互逻辑」）：原来的 **radio 组**（三块大色块 + 圆点 + 中文被折成三行）
+               改成**横排 tab 条**——tab 是「切换」不是「单选」，故无圆点、无大色块；选中态沿用模式栏
+               （#mode-bar .mode.active：--accent 底 + 深色字），不新造视觉语言。
+               ★ tab 按钮带 data-decision-tab（**不是** data-decision-subpage——后者是**内容容器**的属性，
+                 两者同名会让 tab 自己也被 applyDecisionSubpage 当容器隐藏掉）。 -->
+          <div class="decision-tabs" id="decision-subpages" role="tablist" aria-label="决策子页">
+            <button type="button" class="decision-tab" role="tab" data-decision-tab="view"
+                    aria-selected="true">决策人查看</button>
+            <button type="button" class="decision-tab" role="tab" data-decision-tab="approval"
+                    aria-selected="false">审批</button>
+            <button type="button" class="decision-tab" role="tab" data-decision-tab="provider"
+                    aria-selected="false">Provider 配置</button>
           </div>
 
           <div data-decision-subpage="view">
             <p id="decision-view-status" class="status muted">点选地图上的国家区域或有决策人的单位，查看其决策人信息。</p>
             <div id="decision-maker-detail" class="decision-maker-detail"></div>
-            <!-- 2026-09-23（用户裁定）：**随时可点** —— due（本 tick 待决）从此只是**提示**，不再 disable、不再拦。
-                 点一次 = ① 发起（sd.StartDecision，落 revision）+ ② 让该决策人的 agent **异步**跑一轮
-                 （POST /api/sd/run-decision 立即返回，进度与结局靠 GET …/run-status 轮询）。
+            <!-- ★★ 2026-09-23（用户裁定）：**三个按钮合并成一个**——「发送」/「让它跑一轮」/「开始决策」
+                 从此只有这一个。点一下按**固定顺序**做三件事：
+                   ① 若下面的文本框非空：先把这条补充指示作为**一条 user 消息**发给该决策人（POST …/say）
+                   ② sd.StartDecision（落 revision；判决链挂在它后面）
+                   ③ 起一轮**异步**的 sd.RunDecision（POST 立即返回，进度与结局靠 GET …/run-status 轮询）
+                 ★ 文本框留空 ⇒ 跳过 ①，行为与合并前的「开始决策」逐字一致。
+                 ★ ① 没发出去 ⇒ **当场停**（不接着 ②③）：带着指示跑却把指示丢了，界面上看不出差别。
                  再点一次 = 重新决策（**上下文沿用**，只有「上下文重置」才清）。 -->
             <button type="button" id="decision-start">开始决策</button>
             <p id="decision-start-status" class="status muted">选中一个决策人后可发起（随时可点；「待决」只是提示，不拦人）。</p>
             <!-- 本次运行后的决策（决心 / 理由 / 命令清单）**就地**渲染在这里：左边没有额外的「看结果」按钮。 -->
             <div id="decision-latest" class="decision-latest"></div>
-            <!-- 跟决策人说一句：内容作为**一条 user 消息**追加进它的会话 ⇒ 下一轮它就看得见。
+            <!-- 给决策人的补充指示（可选）：**没有独立的发送按钮**——内容随上面那个「开始决策」一并带出去，
+                 且在**跑这一轮之前**落进它的会话（服务端 POST …/say；会话库是 append-only，不改世界）。
                  第一轮之前 / 第 N 轮之后都能用（空会话会先补身份消息，顺序恒为 system → user）。 -->
             <fieldset class="decision-say" id="decision-say">
-              <legend>跟决策人说一句（可选，任意轮次都能用）</legend>
-              <textarea id="decision-say-text" rows="2" placeholder="例如：这次优先守住北面的渡口"></textarea>
-              <button type="button" id="decision-say-send">发送</button>
+              <legend>给决策人的补充指示（可选）</legend>
+              <textarea id="decision-say-text" rows="2"
+                        placeholder="留空 = 直接开始；写了就会在跑这一轮之前发给它（例如：这次优先守住北面的渡口）"></textarea>
             </fieldset>
-            <p id="decision-say-status" class="status muted">发出去的这句话会进该决策人的会话，下一轮它就看得见。</p>
+            <p id="decision-say-status" class="status muted">这里写的内容会在你点「开始决策」时先发给该决策人（进它的会话，下一轮它就看得见），然后才发起并跑这一轮；留空则不额外发消息。</p>
             <!-- 上下文重置：**唯一**会清空对话历史的手段（重跑一律沿用上下文）。走既有的
                  sd.ResetDecisionMakerConversation（落 revision ⇒ 会话世代 +1；旧会话一条字节都不动）。 -->
             <button type="button" id="decision-context-reset">上下文重置</button>
@@ -220,10 +233,9 @@
             <!-- LLM 运行情况（可展开）：准实时进度 = 每轮 LLM 结束 / 每次工具调用结束时刷一次（不做逐字流式）。 -->
             <button type="button" id="decision-progress-toggle" aria-expanded="false" aria-controls="decision-progress">展开 LLM 运行情况</button>
             <div id="decision-progress" class="decision-progress" hidden></div>
-            <!-- 2026-09-23：让它跑一轮（sd.RunDecision）。写走窄端点 POST /api/sd/run-decision（服务端写死 type）。
-                 ★ 这一轮**跑在服务端后台**（HTTP 立即返回），状态行与上面那个可展开窗口显示进度。
+            <!-- 2026-09-23：「让它跑一轮」的**按钮**已并入「开始决策」（sd.RunDecision 仍照发）。
+                 这两行留着报**这一轮**本身的进度与轨迹：这一轮跑在服务端后台（HTTP 立即返回），
                  ★ 它可能停在**等审批**上（决策人出的令各进一次阻塞式审批）⇒ 状态行必须一直显示"正在跑/已 Ns"。 -->
-            <button type="button" id="decision-run" disabled>让它跑一轮</button>
             <p id="decision-run-status" class="status muted">选中一个已绑定 provider 的决策人后可让它跑一轮（真 LLM 自行读世界、出令）。</p>
             <!-- 本轮轨迹（toolCalls / finalText / llmCalls）：**只显示当次返回的那一份**，不落盘、刷新即失。 -->
             <div id="decision-run-trace" class="decision-run-trace"></div>

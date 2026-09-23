@@ -1271,7 +1271,7 @@ body.workbench-page .notify-bar.muted {
   color: var(--muted);
 }
 
-/* ── 决策模式（T7）：一个模式两个子页（决策人查看 / 审批）+ 决策人分类列表 ──
+/* ── 决策模式（T7）：一个模式三个子页（决策人查看 / 审批 / Provider 配置）+ 决策人分类列表 ──
    子页可见性由 app.js.applyDecisionSubpage 切 `hidden`（判定走 panels.js 的 fail-closed 纯函数）；
    这里只负责布局与选中态，不含任何"哪个子页该显示"的逻辑。 */
 .decision-panel {
@@ -1280,30 +1280,39 @@ body.workbench-page .notify-bar.muted {
   padding-top: 8px;
 }
 
-.decision-subpages {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  margin: 4px 0 6px;
+/* 2026-09-23（用户裁定「很烂的交互逻辑」）：决策子页从 **radio 组** 改成 **横排 tab 条**。
+   ① 文字不再竖排 —— `white-space: nowrap` 让每个标签**整体**换行（窄了折到下一行），绝不把"决策人查看"折成三行；
+   ② 不再是大块占位 —— 内边距收到与模式栏（.mode-bar .mode）同级，三条并排只占一行高；
+   ③ 没有 radio 圆点 —— tab 是「切换」，不是「单选」（表单语义已随 radio 一起去掉）；
+   ④ 选中态**沿用模式栏那一套**（.mode-bar .mode.active：--accent 底 + #06121f 字 + 600 字重）——
+      同一个界面里两处"当前在哪一页"必须是同一种视觉语言，不新造一套。 */
+.decision-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 8px;
 }
 
-.decision-subpages label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 5px 6px;
+.decision-tabs .decision-tab {
+  padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text);
+  white-space: nowrap;
+  color: var(--muted);
   background: var(--panel-2);
   border: 1px solid var(--line);
 }
 
-.decision-subpages label:has(input:checked) {
+.decision-tabs .decision-tab:hover {
+  color: var(--text);
   border-color: var(--accent);
-  background: var(--panel);
-  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.decision-tabs .decision-tab.active {
+  color: #06121f;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .decision-maker-detail .decision-maker {

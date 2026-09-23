@@ -179,7 +179,10 @@ test("provider-endpoints-are-exported-and-call-the-declared-paths", async () => 
 
 test("provider-panel-index-html-has-the-third-subpage-and-form-anchors", () => {
   const html = readWebui("index.html");
-  assert.ok(html.includes('value="provider"'), "第三个 radio 必须在场");
+  // ★ 2026-09-23 用户裁定：子页选择器由 **radio 组**改成**横排 tab 条** ⇒ 第三个入口的锚点
+  //   从 `value="provider"` 改成 `data-decision-tab="provider"`（**语义更新，不是削弱**：
+  //   它仍钉住"Provider 配置必须是三个可切换子页之一"，只是承载控件换了形态）。
+  assert.ok(html.includes('data-decision-tab="provider"'), "第三个 tab 必须在场");
   assert.ok(html.includes('data-decision-subpage="provider"'), "第三子页容器必须在场");
   for (const anchor of [
     "llm-provider-list",
