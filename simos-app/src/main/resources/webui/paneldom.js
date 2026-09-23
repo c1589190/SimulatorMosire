@@ -54,11 +54,25 @@
     return node && node.value !== undefined ? node.value : "";
   }
 
+  /**
+   * 追加一段**全宽内容**（`label` 一行 + `text` 占满整行）——给"一行读不完"的值用（长正文 / payload JSON）。
+   *
+   * ★ **为什么需要它**：`.kv` 是 `fit-content(140px) minmax(0, 1fr)` 的**两列网格** ⇒ 长文本会被塞进
+   *   右边那窄列、挤成又窄又高的一竖条（B12 实测：「决心 / 理由（intentInfo）」那一大段根本读不了）。
+   *   本变体让 `dt`/`dd` 都 `grid-column: 1 / -1` 占满整行（**同 `.kv-group-title` 的既有先例**），
+   *   并靠 CSS 的 `white-space: pre-wrap` **保留原文里的换行**（这些正文本来就是分段的）。
+   */
+  function appendBlock(detail, label, text) {
+    detail.appendChild(app.el("dt", { class: "kv-block-label", text: label }));
+    detail.appendChild(app.el("dd", { class: "kv-block", text: app.text(formatValue(text)) }));
+  }
+
   window.SimosPanelDom = {
     loadOverview: loadOverview,
     targetLabel: targetLabel,
     appendRow: appendRow,
     appendLiveRow: appendLiveRow,
+    appendBlock: appendBlock,
     valueOf: valueOf,
   };
 })();

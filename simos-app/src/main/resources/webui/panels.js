@@ -22,6 +22,7 @@
   var targetLabel = panelDom.targetLabel;
   var appendRow = panelDom.appendRow;
   var appendLiveRow = panelDom.appendLiveRow;
+  var appendBlock = panelDom.appendBlock;
   var valueOf = panelDom.valueOf;
   var renderRight = window.SimosPanelRight.renderRight;
   var UNTAGGED_LABEL = readout.UNTAGGED_LABEL;
@@ -929,13 +930,14 @@
       );
     }
     var dl = app.el("dl", { class: "kv latest-detail" });
-    appendRow(dl, "决心 / 理由（intentInfo）", fields.intentInfo);
+    // ★ B12：正文与 payload 是"一行读不完"的长文本 ⇒ 走**全宽块**（两列 kv 会把它们挤成又窄又高的一竖条）
+    appendBlock(dl, "决心 / 理由（intentInfo）", fields.intentInfo);
     appendRow(dl, "目标", fields.target);
     appendRow(dl, "判决", fields.verdict);
     appendRow(dl, "效果", fields.effects);
     appendRow(dl, "命令清单（" + fields.commands.length + "）", fields.commands.length ? "" : "（无）");
     fields.commands.forEach(function (command, index) {
-      appendRow(dl, "  " + (index + 1) + ". " + command.type, command.payloadJson);
+      appendBlock(dl, "  " + (index + 1) + ". " + command.type, command.payloadJson);
     });
     box.appendChild(dl);
     mount.appendChild(box);
@@ -1184,7 +1186,8 @@
       item.appendChild(head);
       if (expandedDirectiveId === fields.directiveId) {
         var detail = app.el("dl", { class: "kv directive-detail" });
-        appendRow(detail, "决心 / 理由（intentInfo）", fields.intentInfo);
+        // ★ B12：同 latest-detail —— 长正文 / payload 走全宽块
+        appendBlock(detail, "决心 / 理由（intentInfo）", fields.intentInfo);
         appendRow(detail, "意图 INFO key", fields.intentInfoKey);
         appendRow(detail, "目标", fields.target);
         appendRow(detail, "状态", fields.status);
@@ -1196,7 +1199,7 @@
           fields.commands.length ? "" : "（无）"
         );
         fields.commands.forEach(function (command, index) {
-          appendRow(detail, "  " + (index + 1) + ". " + command.type, command.payloadJson);
+          appendBlock(detail, "  " + (index + 1) + ". " + command.type, command.payloadJson);
         });
         item.appendChild(detail);
       }

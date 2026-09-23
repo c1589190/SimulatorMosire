@@ -287,6 +287,26 @@ textarea {
   grid-column: 1 / -1;
 }
 
+/* ★ B12：`.kv` 里的**全宽块**——给"一行读不完"的值（长正文 / payload JSON）用。
+   两列网格（`fit-content(140px) minmax(0,1fr)`）会把长文本挤成又窄又高的一竖条 ⇒ 这两类子元素
+   跨满整行（同 `.kv-group-body` 的先例）；`pre-wrap` 保留原文换行（这些正文本来就分段）。 */
+.kv .kv-block-label {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.kv .kv-block {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .kv-nested {
   margin: 0;
 }
