@@ -20,6 +20,13 @@ const WEBUI_DIR = path.resolve(__dirname, "../../../main/resources/webui");
 //   ★ 新增 map.js 依赖的兄弟文件时，务必同步改这张表（顺序＝引入顺序）。
 const BUNDLE_DEPS = {
   "map.js": ["hexgeom.js", "hexcolor.js", "regionShape.js"],
+  // ★ M12 第五波：单位编辑宿主（map-uniteditor.js）与旧页/工作台 chrome（map-hostpage.js）自 map.js
+  //   顶层搬出，浏览器里排在 map.js 之后（取 map.js 建立的 window.SimosMapCore）。map.js 对它们只做
+  //   **惰性** window.SimosMapXxx 调用（同 window.SimosCreateRenderer 手法）⇒ 二者**不能**列进
+  //   "map.js" 的依赖（否则会先于 map.js 执行、取不到 SimosMapCore）。反过来若 node 宿主直接
+  //   loadWebui 这两份，则须先灌 map.js 及其依赖。
+  "map-uniteditor.js": ["hexgeom.js", "hexcolor.js", "regionShape.js", "map.js"],
+  "map-hostpage.js": ["hexgeom.js", "hexcolor.js", "regionShape.js", "map.js"],
   // ★ M12 第四波：paneldom.js（共享 DOM 叶子）与 panel-right.js（右栏）已从 panels.js 拆出；
   //   顺序＝引入顺序（paneldom 依赖 readout.formatValue ⇒ readout 必须最前）。
   "panels.js": ["readout.js", "decisionmodel.js", "paneldom.js", "panel-right.js"],

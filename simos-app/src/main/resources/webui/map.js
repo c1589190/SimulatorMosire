@@ -354,6 +354,12 @@
     }
   }
 
+  /** ★ M12 第五波：map.js 仍是 regionNamesEnabled 这个可变绑定的所有者；工作台浮层（现居
+   *   map-hostpage.js）经 window.SimosMapCore.setRegionNamesEnabled 写回，避免取快照。 */
+  function setRegionNamesEnabled(value) {
+    regionNamesEnabled = !!value;
+  }
+
   // ── 决策模式（T7）：国家 tag ⇒ 区域集合（C12）────────────────────────────────
   //
   // ★ R13（SDSimos spec）："国家区域" = `meta.tag` 以 `nation:` 开头的 Region；tag 值恒为
@@ -856,7 +862,7 @@
       host.lastMode = state.mode;
       active.setBrushHexes([]);
       if (state.mode !== "unit") {
-        resetRoute();
+        window.SimosMapUnitEditor.resetRoute();
         host.routeMode = false;
         var routeToggle = app.byId("unit-route-toggle");
         if (routeToggle) {
@@ -902,12 +908,12 @@
 
   function workbenchSelect(pick) {
     var mode = app.getState().mode;
-    var selId = selectedUnitId();
+    var selId = window.SimosMapUnitEditor.selectedUnitId();
     // ★ M7e T1（用户裁定，§2「一下选中、两下取消」）：左键点**已选中**的单位标记 ⇒ 取消移动；
     //   未选中则只是选中它。不点单位、点已选中单位**当前所在格**同样取消移动。
     if (pick.kind === "unit") {
       if (mode === "unit" && selId === pick.id) {
-        cancelRouteFor(pick.id);
+        window.SimosMapUnitEditor.cancelRouteFor(pick.id);
         return;
       }
       // ★ 第2波 B10（用户 2026-09-23 实测）：工作台里**点地图上的单位 ⇒ 自动切到「单位移动编辑」模式**
@@ -923,7 +929,7 @@
       }
       app.setSelection({ kind: "unit", id: pick.id });
       if (mode === "unit") {
-        resetRoute();
+        window.SimosMapUnitEditor.resetRoute();
       }
       return;
     }
@@ -938,12 +944,12 @@
     if (mode === "unit" && selId) {
       var pos = active.positionOf(selId);
       if (pos && pos.q === pick.q && pos.r === pick.r) {
-        cancelRouteFor(selId);
+        window.SimosMapUnitEditor.cancelRouteFor(selId);
         return;
       }
     }
     if (mode === "unit" && selId && host.routeMode) {
-      appendRoutePoint(pick.q, pick.r);
+      window.SimosMapUnitEditor.appendRoutePoint(pick.q, pick.r);
       return; // 保持单位选中：继续加路线点
     }
     // ★ M7c T1（用户裁定）：左键点格**不再瞬移**（unit.PlaceAt 已从本路径移除）——落到常规 hex 选中；
@@ -2721,518 +2727,10 @@
     return out;
   }
 
-  function setEditStatus(message, tone) {
-    app.statusMessage(app.byId("unit-edit-status"), message, tone);
-  }
-
-  function selectedUnitId() {
-    var selection = app.getState().selection;
-    return selection && selection.kind === "unit" ? selection.id : null;
-  }
-
-  function updateRouteButtons() {
-    var hasUnit = !!selectedUnitId();
-    var send = app.byId("unit-route-send");
-    var clear = app.byId("unit-route-clear");
-    if (send) {
-      send.disabled = !hasUnit || host.routePath.length < 1 || host.editBusy;
-    }
-    if (clear) {
-      clear.disabled = host.routePath.length < 1;
-    }
-  }
-
-  function renderUnitEditor(state) {
-    var id = selectedUnitId();
-    var selectedNode = app.byId("unit-edit-selected");
-    if (selectedNode) {
-      selectedNode.textContent = id ? "选中单位：" + id : "未选中单位";
-    }
-    ["unit-reparent", "unit-strength", "unit-disband", "unit-route-toggle"].forEach(function (buttonId) {
-      var node = app.byId(buttonId);
-      if (node) {
-        node.disabled = !id;
-      }
-    });
-    var routeNode = app.byId("unit-route-preview");
-    if (routeNode) {
-      routeNode.textContent =
-        "路线：" + (host.routePath.length ? host.routePath.map(coordText).join(" → ") : "（未选）");
-    }
-    updateRouteButtons();
-  }
-
-  function resetRoute() {
-    host.routePath = [];
-    renderUnitEditor(app.getState());
-  }
-
-  function appendRoutePoint(q, r) {
-    var point = { q: q, r: r };
-    var anchor = host.routePath.length
-      ? host.routePath[host.routePath.length - 1]
-      : active.positionOf(selectedUnitId());
-    if (!anchor) {
-      setEditStatus("先点选一个单位，再点相邻格下路线。", "warn");
-      return;
-    }
-    if (!isAdjacent(anchor, point)) {
-      setEditStatus("路线必须逐格相邻：" + coordText(anchor) + " 与 " + coordText(point) + " 不相邻", "warn");
-      return;
-    }
-    if (host.routePath.some(function (p) {
-      return p.q === q && p.r === r;
-    })) {
-      setEditStatus("路线不得有重复格：" + coordText(point), "warn");
-      return;
-    }
-    host.routePath.push(point);
-    setEditStatus("已加路线点 " + coordText(point) + "（共 " + host.routePath.length + " 格）", "muted");
-    renderUnitEditor(app.getState());
-  }
-
-  /** 路线式移动：waypoints = [单位当前位置, ...逐格点列]（起点必须==当前位置，PlanRoute 域规则）。 */
-  async function submitRoute() {
-    var id = selectedUnitId();
-    if (host.editBusy || !id || host.routePath.length < 1) {
-      return null;
-    }
-    host.editBusy = true;
-    setEditStatus("下路线 " + id + " …", "muted");
-    var waypoints;
-    try {
-      var unit = await api.unit(id, app.target());
-      if (!unit.position) {
-        throw new Error("单位 " + id + " 当前没有位置，无法下路线");
-      }
-      waypoints = [{ q: unit.position.q, r: unit.position.r }].concat(host.routePath);
-    } catch (e) {
-      host.editBusy = false;
-      setEditStatus("下路线失败：" + (e.message || e), "err");
-      return null;
-    }
-    var result = await app.writeCommand("unit.PlanRoute", { id: id, waypoints: waypoints });
-    host.editBusy = false;
-    if (result.ok) {
-      resetRoute();
-      setEditStatus("已下路线 " + id + "（" + (waypoints.length - 1) + " 格）—— 点「创建节点」推进时间，单位才会出发", "ok");
-    } else {
-      setEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  /**
-   * 右键寻路移动（M7b T3，S3 的 HoI4 语义）：**仅** `unit` 模式 + 已选中单位时消费右键；服务端 A* 算路后经
-   * `app.writeCommand("unit.PlanRoute", …)` 提交（**替换**原路线）。其它模式/未选单位 ⇒ 返回 false（不 preventDefault、
-   * 更不发任何写请求——只读模式不得被污染，R8）。
-   */
-  function handleContextMenu(pick) {
-    // ★ §七 判据 7：区域编辑（套索/逐格）与地图编辑（刷地形）的右键由 pointer 事件消费——
-    //   这里只抑制原生菜单，绝不落到 unit.PlanRoute，也不改选中态。常规 / 单位移动编辑的右键行为**不变**。
-    var contextMode = app.getState().mode;
-    if (contextMode === "region-edit" || contextMode === "map-edit") {
-      return true;
-    }
-    // ★ M7e T1（用户原话）：右键点**空白/图外/无格** ⇒ 取消选中；**不发任何写、不清路线**（路线归左键取消）。
-    if (!pick || !pick.inMap) {
-      app.setSelection(null);
-      return true;
-    }
-    if (app.getState().mode !== "unit") {
-      return false;
-    }
-    var id = selectedUnitId();
-    if (!id) {
-      return false;
-    }
-    submitPathRoute(id, pick.q, pick.r);
-    return true;
-  }
-
-  /** 右键寻路：GET /api/map/path（只读）⇒ reachable 才发 unit.PlanRoute；不可达/已在目标格 ⇒ 明确提示、不发写。 */
-  async function submitPathRoute(id, q, r) {
-    if (host.editBusy) {
-      return null;
-    }
-    host.editBusy = true;
-    setEditStatus("寻路 " + id + " → " + coordText({ q: q, r: r }) + " …", "muted");
-    var body;
-    try {
-      body = await api.mapPath(id, q, r, app.target());
-    } catch (e) {
-      host.editBusy = false;
-      setEditStatus("寻路失败：" + (e.message || e), "err");
-      return null;
-    }
-    var path = (body && body.path) || [];
-    if (!body || !body.reachable || path.length < 1) {
-      host.editBusy = false;
-      setEditStatus("不可达：" + id + " → " + coordText({ q: q, r: r }), "warn");
-      return null;
-    }
-    if (path.length < 2) {
-      host.editBusy = false;
-      setEditStatus("已在目标格 " + coordText({ q: q, r: r }) + "（未改路线）", "muted");
-      return null;
-    }
-    var result = await app.writeCommand("unit.PlanRoute", { id: id, waypoints: path });
-    host.editBusy = false;
-    if (result.ok) {
-      setEditStatus("已下路线 " + id + "（" + (path.length - 1) + " 格，替换原路线）—— 点「创建节点」推进时间，单位才会出发", "ok");
-    } else {
-      setEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  /** 取消移动（M7e T1）：真命令 `unit.CancelRoute {id}`，经 app.writeCommand（→ /api/command，R8 allowlist）。 */
-  async function cancelRouteFor(id) {
-    if (!id || host.editBusy) {
-      return null;
-    }
-    host.editBusy = true;
-    setEditStatus("取消移动 " + id + " …", "muted");
-    var result = await app.writeCommand("unit.CancelRoute", { id: id });
-    host.editBusy = false;
-    if (result.ok) {
-      setEditStatus("已取消 " + id + " 的移动（路线已清）", "ok");
-    } else {
-      setEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  function requireSelectedUnit(actionLabel) {
-    var id = selectedUnitId();
-    if (!id) {
-      setEditStatus("先点选一个单位再" + actionLabel + "。", "warn");
-    }
-    return id;
-  }
-
-  async function submitReparent() {
-    var id = requireSelectedUnit("改上级");
-    if (!id || host.editBusy) {
-      return null;
-    }
-    var input = app.byId("unit-reparent-parent");
-    var raw = input ? input.value.trim() : "";
-    host.editBusy = true;
-    setEditStatus("改上级 " + id + " …", "muted");
-    var result = await app.writeCommand("unit.ReparentUnit", { id: id, parent: raw === "" ? null : raw });
-    host.editBusy = false;
-    setEditStatus(
-      result.ok ? "已改上级 " + id + " → " + (raw === "" ? "（根）" : raw) : result.message,
-      result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
-    );
-    return result;
-  }
-
-  async function submitStrength() {
-    var id = requireSelectedUnit("改编制");
-    if (!id || host.editBusy) {
-      return null;
-    }
-    var memberInput = app.byId("unit-strength-member");
-    var member = Number(memberInput ? memberInput.value : NaN);
-    if (!Number.isInteger(member) || member < 0) {
-      setEditStatus("人数必须是 ≥ 0 的整数。", "warn");
-      return null;
-    }
-    var equipment;
-    try {
-      equipment = parseEquipmentText(app.byId("unit-strength-equipment").value);
-    } catch (e) {
-      setEditStatus(e.message, "warn");
-      return null;
-    }
-    host.editBusy = true;
-    setEditStatus("改编制 " + id + " …", "muted");
-    var result = await app.writeCommand("unit.SetStrength", { id: id, member: member, equipment: equipment });
-    host.editBusy = false;
-    setEditStatus(
-      result.ok ? "已改编制 " + id + "（人数 " + member + "）" : result.message,
-      result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
-    );
-    return result;
-  }
-
-  async function submitDisband() {
-    var id = requireSelectedUnit("解散");
-    if (!id || host.editBusy) {
-      return null;
-    }
-    host.editBusy = true;
-    setEditStatus("解散 " + id + " …", "muted");
-    var result = await app.writeCommand("unit.DisbandUnit", { id: id });
-    host.editBusy = false;
-    if (result.ok) {
-      resetRoute();
-      app.setSelection(null); // 被解散的单位不再存在，选中态必须清掉（否则下一次点格会拿它当移动目标）
-      setEditStatus("已解散 " + id, "ok");
-    } else {
-      setEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  async function submitCreate() {
-    if (host.editBusy) {
-      return null;
-    }
-    var id = app.byId("unit-create-id").value.trim();
-    var name = app.byId("unit-create-name").value.trim();
-    var q = Number(app.byId("unit-create-q").value);
-    var r = Number(app.byId("unit-create-r").value);
-    var member = Number(app.byId("unit-create-member").value);
-    var speed = Number(app.byId("unit-create-speed").value);
-    var mobility = Number(app.byId("unit-create-mobility").value);
-    var parent = app.byId("unit-create-parent").value.trim();
-    if (!id || !name || !Number.isInteger(q) || !Number.isInteger(r)) {
-      setEditStatus("新建单位需要 id、名称、整数 q/r。", "warn");
-      return null;
-    }
-    if (
-      !Number.isInteger(member) ||
-      member < 0 ||
-      !Number.isInteger(speed) ||
-      speed < 1 ||
-      !Number.isInteger(mobility) ||
-      mobility < 1
-    ) {
-      setEditStatus("新建单位：人数 ≥ 0、速度 ≥ 1、机动‰ ≥ 1。", "warn");
-      return null;
-    }
-    var equipment;
-    try {
-      equipment = parseEquipmentText(app.byId("unit-create-equipment").value);
-    } catch (e) {
-      setEditStatus(e.message, "warn");
-      return null;
-    }
-    var payload = {
-      id: id,
-      name: name,
-      position: { q: q, r: r },
-      member: member,
-      equipment: equipment,
-      speed: speed,
-      mobilityPerMille: mobility,
-    };
-    if (parent !== "") {
-      payload.parent = parent;
-    }
-    host.editBusy = true;
-    setEditStatus("创建 " + id + " …", "muted");
-    var result = await app.writeCommand("unit.CreateUnit", payload);
-    host.editBusy = false;
-    setEditStatus(
-      result.ok ? "已创建 " + id : result.message,
-      result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
-    );
-    return result;
-  }
-
-  function wireUnitEditor() {
-    var routeToggle = app.byId("unit-route-toggle");
-    if (routeToggle) {
-      routeToggle.addEventListener("click", function () {
-        host.routeMode = !host.routeMode;
-        routeToggle.textContent = "路线模式：" + (host.routeMode ? "开" : "关");
-        resetRoute();
-        setEditStatus(
-          host.routeMode ? "路线模式：依次点相邻格连成路径，再点「下路线」。" : "路线模式已关。",
-          "muted"
-        );
-      });
-    }
-    var bind = function (buttonId, handler) {
-      var node = app.byId(buttonId);
-      if (node) {
-        node.addEventListener("click", handler);
-      }
-    };
-    bind("unit-route-send", submitRoute);
-    bind("unit-route-clear", function () {
-      resetRoute();
-      setEditStatus("已清除路线点。", "muted");
-    });
-    bind("unit-reparent", submitReparent);
-    bind("unit-strength", submitStrength);
-    bind("unit-disband", submitDisband);
-    bind("unit-create", submitCreate);
-    renderUnitEditor(app.getState());
-  }
-
-  // ── 旧页 /map 的格详情（M5 T9 行为保留）────────────────────────────────
-
-  function oldPageSelect(pick) {
-    if (pick.kind === "unit") {
-      active.setSelected({ q: pick.q, r: pick.r });
-      loadHex(pick.q, pick.r, "单位 " + app.text(pick.id) + "：" + app.text(pick.name));
-      return;
-    }
-    if (!pick.inMap) {
-      app.statusMessage(
-        app.byId("hex-status"),
-        "该位置无格（q=" + pick.q + ", r=" + pick.r + "）",
-        "warn"
-      );
-      return;
-    }
-    active.setSelected({ q: pick.q, r: pick.r });
-    loadHex(pick.q, pick.r);
-  }
-
-  async function loadHex(q, r, statusLabel) {
-    var status = app.byId("hex-status");
-    if (!status) {
-      return;
-    }
-    app.statusMessage(
-      status,
-      statusLabel || "查询 q=" + q + ", r=" + r + " …",
-      statusLabel ? "ok" : "muted"
-    );
-    try {
-      var body = await api.mapHex(q, r, app.target());
-      showHex(body, statusLabel);
-    } catch (e) {
-      app.statusMessage(status, "查询失败：" + e.message, "err");
-      app.clear(app.byId("hex-facets"));
-    }
-  }
-
-  function showHex(body, statusLabel) {
-    var detail = app.clear(app.byId("hex-detail"));
-    var status = app.byId("hex-status");
-    if (!detail || !status) {
-      return;
-    }
-    app.statusMessage(status, statusLabel || "q=" + body.q + ", r=" + body.r, "ok");
-    [
-      ["q", body.q],
-      ["r", body.r],
-      ["terrain", body.terrain],
-      ["height", body.height],
-    ].forEach(function (pair) {
-      detail.appendChild(app.el("dt", { text: pair[0] }));
-      detail.appendChild(app.el("dd", { text: app.text(pair[1]) }));
-    });
-
-    var facetsNode = app.clear(app.byId("hex-facets"));
-    if (!facetsNode) {
-      return;
-    }
-    var facets = body.facets || [];
-    if (!facets.length) {
-      facetsNode.appendChild(app.el("p", { class: "empty", text: "该格无 facet。" }));
-      return;
-    }
-    var table = app.el("table", null, [
-      app.el("thead", null, [
-        app.el("tr", null, [
-          app.el("th", { text: "namespace" }),
-          app.el("th", { text: "label" }),
-          app.el("th", { text: "type" }),
-          app.el("th", { text: "value" }),
-        ]),
-      ]),
-      app.el(
-        "tbody",
-        null,
-        facets.map(function (f) {
-          return app.el("tr", null, [
-            app.el("td", { text: app.text(f.namespace) }),
-            app.el("td", { text: app.text(f.label) }),
-            app.el("td", { text: app.text(f.typeName) }),
-            app.el("td", { text: app.text(f.value) }),
-          ]);
-        })
-      ),
-    ]);
-    facetsNode.appendChild(table);
-  }
-
   // ── 启动 ──────────────────────────────────────────────────────────────
-
-  function bindActive(renderer) {
-    window.SimosMap.screenPointOf = renderer.screenPointOf;
-    window.SimosMap.hexAtScreen = renderer.pickAt;
-    window.SimosMap.unitPosition = renderer.positionOf;
-    window.SimosMap.render = renderer.render;
-    window.SimosMap.debug = renderer.debug;
-    window.SimosMap.resetView = renderer.fit;
-    window.SimosMap.benchStages = renderer.benchStages;
-    window.SimosMap.benchTerrainVariants = renderer.benchTerrainVariants;
-    window.SimosMap.benchChunkSweep = renderer.benchChunkSweep;
-    window.SimosMap.perfConfig = renderer.perfConfig;
-    window.SimosMap.computeFit = renderer.computeFit;
-    window.SimosMap.currentView = renderer.view;
-    window.SimosMap.setView = renderer.setView;
-    window.SimosMap.terrainColor = renderer.terrainColor;
-    window.SimosMap.isReady = renderer.isReady;
-  }
-
-  /** "回到世界中心 / 适配视图"（M7g T1）：重新 fit 一次并立刻重画。 */
-  function resetToWorldCenter() {
-    if (!active) {
-      return;
-    }
-    active.fit();
-    active.render();
-  }
-
-  /** 折叠/展开一个浮层栏：按钮 aria-pressed + 文案随栏的 hidden 同步（可断言）。 */
-  function wirePanelToggle(buttonId, panelId) {
-    var button = app.byId(buttonId);
-    var panel = app.byId(panelId);
-    if (!button || !panel) {
-      return;
-    }
-    var label = panelId === "left-panel" ? "左栏" : "右栏";
-    var sync = function () {
-      var collapsed = panel.hidden;
-      button.setAttribute("aria-pressed", collapsed ? "true" : "false");
-      button.textContent = (collapsed ? "展开" : "收起") + label;
-    };
-    button.addEventListener("click", function () {
-      panel.hidden = !panel.hidden;
-      sync();
-    });
-    sync();
-  }
-
-  /** 工作台浮层控件接线（M7g T1）：回中心按钮 + 左右栏折叠 + Home 快捷键。 */
-  function wireWorkbenchControls() {
-    var reset = app.byId("view-reset");
-    if (reset) {
-      reset.addEventListener("click", resetToWorldCenter);
-    }
-    wirePanelToggle("panel-toggle-left", "left-panel");
-    wirePanelToggle("panel-toggle-right", "right-panel");
-    // ★ U2：区域名开关（默认开；本机记忆）——切换后立刻重画。
-    var nameToggle = app.byId("region-name-toggle");
-    if (nameToggle) {
-      nameToggle.checked = regionNamesEnabled;
-      nameToggle.addEventListener("change", function () {
-        regionNamesEnabled = !!nameToggle.checked;
-        persistRegionNamesEnabled(regionNamesEnabled);
-        active.render();
-      });
-    }
-    window.addEventListener("keydown", function (event) {
-      var tag = event.target && event.target.tagName ? event.target.tagName : "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        return;
-      }
-      if (event.key === "Home") {
-        event.preventDefault();
-        resetToWorldCenter();
-      }
-    });
-  }
+  //   ★ M12 第五波：单位移动/编辑宿主搬到 map-uniteditor.js、旧页 /map 与工作台浮层 chrome 搬到
+   //   map-hostpage.js（均在**本文件之后**引入）。这里经 window.SimosMapUnitEditor /
+   //   window.SimosMapHostPage 惰性调用——与 map.js 调用 window.SimosCreateRenderer 同一手法。
 
   function initHost() {
     var isWorkbench = !!app.byId("mode-bar");
@@ -3249,8 +2747,8 @@
     }
     active = window.SimosCreateRenderer(canvas, {
       isWorkbench: isWorkbench,
-      onSelect: isWorkbench ? workbenchSelect : oldPageSelect,
-      onContextMenu: isWorkbench ? handleContextMenu : undefined,
+      onSelect: isWorkbench ? workbenchSelect : window.SimosMapHostPage.oldPageSelect,
+      onContextMenu: isWorkbench ? window.SimosMapUnitEditor.handleContextMenu : undefined,
       // ★ §七：刷写不再由左键触发（左键恒为平移）；右键（区域 Shift+右键 / 地形 / 连边）由回调落一条命令。
       onPaintCommit: isWorkbench
         ? function (hexes) {
@@ -3269,7 +2767,7 @@
       onDotDragCommit: isWorkbench ? onDotDragCommit : undefined,
     });
     host.isWorkbench = isWorkbench;
-    bindActive(active);
+    window.SimosMapHostPage.bindActive(active);
     active.resize();
     if (!isWorkbench) {
       active.fit();
@@ -3277,13 +2775,13 @@
     active.render();
 
     if (isWorkbench) {
-      wireWorkbenchControls();
+      window.SimosMapHostPage.wireWorkbenchControls();
       app.onStateChange(onStateChange);
       onStateChange(app.getState());
-      wireUnitEditor();
+      window.SimosMapUnitEditor.wireUnitEditor();
       wireMapEditor();
       wireRegionEditor();
-      app.onStateChange(renderUnitEditor);
+      app.onStateChange(window.SimosMapUnitEditor.renderUnitEditor);
       window.addEventListener("resize", function () {
         active.resize();
         active.render();
@@ -3322,6 +2820,12 @@
   window.SimosMapCore = {
     app: app,
     api: api,
+    // ★ M12 第五波：搬出的宿主文件（map-uniteditor.js / map-hostpage.js）需要的纯函数与状态写入口。
+    coordText: coordText,
+    isAdjacent: isAdjacent,
+    parseEquipmentText: parseEquipmentText,
+    persistRegionNamesEnabled: persistRegionNamesEnabled,
+    setRegionNamesEnabled: setRegionNamesEnabled,
     hexColor: hexColor,
     host: host,
     perfConfig: perfConfig,
@@ -3356,6 +2860,13 @@
     enumerable: true,
     get: function () {
       return regionNamesEnabled;
+    },
+  });
+  // ★ M12 第五波：active 是可变绑定（initHost 里才赋值），搬出的宿主文件必须实时读 ⇒ getter。
+  Object.defineProperty(window.SimosMapCore, "active", {
+    enumerable: true,
+    get: function () {
+      return active;
     },
   });
 
