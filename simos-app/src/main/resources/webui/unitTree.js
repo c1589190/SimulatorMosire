@@ -747,7 +747,40 @@
     window.addEventListener("resize", reclampTreePan);
   }
 
-  /** 绑定按钮/关闭/军队选择/复位/拖动（元素缺席 ⇒ 静默跳过：其它宿主页不挂这套 UI）。 */
+  /**
+   * ★ 2026-09-24 可用性修复：「定位到该军队」按钮 —— 把地图居中到当前军队并抬到可见缩放。
+   *
+   * <p>目标是**选中单位**（若它属于当前这支军队，最贴近用户当下关注的点），否则回落到
+   * **军队根**（首都格 = 该军队主标记所在）。地图渲染器经 `window.SimosMapCore.active` 实时取
+   * （unitTree.js 排在 hexgeom/map.js 之前，加载期不能取快照）。
+   *
+   * <p>这是**显式动作** ⇒ `force=true`：即使该单位已在眼前也居中（用户点了就该有反馈）。
+   */
+  function locateCurrentArmy() {
+    var renderer = window.SimosMapCore && window.SimosMapCore.active;
+    if (!renderer || typeof renderer.ensureUnitVisible !== "function") {
+      return false;
+    }
+    var state = app && app.getState ? app.getState() : null;
+    var selection = state ? state.selection : null;
+    var selectedId =
+      selection && selection.kind === "unit" && rootIdOf(lastUnits, selection.id) === selectedRootId
+        ? selection.id
+        : null;
+    var targetId = selectedId !== null ? selectedId : selectedRootId;
+    if (targetId === null || targetId === undefined) {
+      return false;
+    }
+    var pos = renderer.positionOf(targetId);
+    if (!pos) {
+      return false;
+    }
+    var minScale = window.SimosHexGeom ? window.SimosHexGeom.UNIT_VISIBLE_MIN_SCALE : undefined;
+    renderer.ensureUnitVisible(pos.q, pos.r, minScale, true);
+    return true;
+  }
+
+  /** 绑定按钮/关闭/军队选择/定位/复位/拖动（元素缺席 ⇒ 静默跳过：其它宿主页不挂这套 UI）。 */
   function wirePanel() {
     var openButton = app.byId("unit-panel-open");
     if (openButton) {
@@ -784,6 +817,10 @@
       handle.addEventListener("pointermove", onDragMove);
       handle.addEventListener("pointerup", onDragEnd);
       handle.addEventListener("pointercancel", onDragEnd);
+    }
+    var locateButton = app.byId("unit-locate");
+    if (locateButton) {
+      locateButton.addEventListener("click", locateCurrentArmy);
     }
     var resetButton = app.byId("unit-tree-reset");
     if (resetButton) {

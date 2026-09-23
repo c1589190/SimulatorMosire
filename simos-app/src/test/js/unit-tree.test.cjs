@@ -3,6 +3,8 @@
 //   与 stackOffset / stackSpacing（hexgeom.js，同格单位纵向摊开）。
 //   2026-09-24 修正 1/2 追加：markerGroups（hexgeom.js，标记按军队根分组）与 clampTreePan
 //   （unitTree.js，自由视图平移量夹取）+ 复位控件接线 / 无残留 scrollIntoView 的静态断言。
+//   2026-09-24 可用性修复追加：markerScreenVisible / centerViewOn（hexgeom.js，选中单位时"该不该居中、
+//   居到哪"）+ UNIT_VISIBLE_MIN_SCALE 的可见性依据 + 定位按钮接线 / 选择收口调用 ensureUnitVisible 的静态断言。
 "use strict";
 
 const { test } = require("node:test");
@@ -19,7 +21,17 @@ const {
   clampPanelPosition,
   clampTreePan,
 } = loadWebui("unitTree.js").SimosUnitTree;
-const { stackOffset, stackSpacing, markerRadius, markerGroups } = loadWebui("hexgeom.js").SimosHexGeom;
+const {
+  stackOffset,
+  stackSpacing,
+  markerRadius,
+  markerGroups,
+  markerScreenVisible,
+  centerViewOn,
+  worldToScreen,
+  UNIT_VISIBLE_MIN_SCALE,
+  STACK_MIN_SCREEN_CELL,
+} = loadWebui("hexgeom.js").SimosHexGeom;
 
 const UNITS = [
   { id: "A", name: "甲部", parent: null },
@@ -376,5 +388,90 @@ test("unitTree-has-no-leftover-scrollIntoView-dead-code", () => {
     /\.scrollIntoView\s*\(/.test(readWebui("unitTree.js")),
     false,
     "自由视图下 .scrollIntoView(...) 是死代码，必须删净（focusUnit 改为设 pan 让节点可见）"
+  );
+});
+
+// ── 2026-09-24 可用性修复：选中单位时居中（hexgeom.js 纯函数 + 定位按钮接线）──────────
+// ★ 用户："我没找到单位在哪"：默认 fit 世界 ⇒ 标记是亚像素。markerScreenVisible 判"该不该拉过去"、
+//   centerViewOn 算"拉到哪"；两者是唯一判据（与 worldToScreen/screenToWorld 同一符号约定）。
+
+const VP = { width: 1000, height: 800 };
+const MARGIN = 24;
+
+test("markerScreenVisible-true-inside-and-false-outside-the-viewport", () => {
+  assert.equal(markerScreenVisible({ x: 500, y: 400 }, VP, MARGIN), true, "正中 ⇒ 可见");
+  assert.equal(markerScreenVisible({ x: -1, y: 400 }, VP, MARGIN), false, "左出界 ⇒ 不可见");
+  assert.equal(markerScreenVisible({ x: VP.width + 1, y: 400 }, VP, MARGIN), false, "右出界 ⇒ 不可见");
+  assert.equal(markerScreenVisible({ x: 500, y: -1 }, VP, MARGIN), false, "上出界 ⇒ 不可见");
+  assert.equal(markerScreenVisible({ x: 500, y: VP.height + 1 }, VP, MARGIN), false, "下出界 ⇒ 不可见");
+});
+
+test("markerScreenVisible-respects-the-margin-band-boundary", () => {
+  // ★ margin 是**内缩**语义：点距四边都 ≥ margin 才算"看得舒服"；边界闭合（恰好等于 ⇒ 可见）。
+  assert.equal(markerScreenVisible({ x: MARGIN, y: MARGIN }, VP, MARGIN), true, "左上恰在边界 ⇒ 可见");
+  assert.equal(
+    markerScreenVisible({ x: VP.width - MARGIN, y: VP.height - MARGIN }, VP, MARGIN),
+    true,
+    "右下恰在边界 ⇒ 可见"
+  );
+  assert.equal(markerScreenVisible({ x: MARGIN - 1, y: 400 }, VP, MARGIN), false, "比边界更贴左 ⇒ 不可见");
+  assert.equal(markerScreenVisible({ x: 500, y: VP.height - MARGIN + 1 }, VP, MARGIN), false, "比边界更贴下 ⇒ 不可见");
+  assert.equal(markerScreenVisible({ x: 5, y: 400 }, VP, 0), true, "margin=0 ⇒ 纯视口内（5 ≥ 0）");
+});
+
+test("centerViewOn-centers-the-world-point-under-worldToScreen", () => {
+  // ★ 用渲染器**同一套** worldToScreen 反解 ⇒ 若 tx/ty 符号写反（screen = world×scale − t）本断言必红。
+  const cases = [
+    [{ x: 0, y: 0 }, 0.75],
+    [{ x: 1234.5, y: -678.25 }, 2],
+    [{ x: -99999, y: 88888 }, 0.03],
+  ];
+  for (const [world, scale] of cases) {
+    const next = centerViewOn(world, VP, scale);
+    const screen = worldToScreen(world, next);
+    assert.ok(Math.abs(screen.x - VP.width / 2) < 1e-9, "世界点 x 落在视口中心");
+    assert.ok(Math.abs(screen.y - VP.height / 2) < 1e-9, "世界点 y 落在视口中心");
+  }
+});
+
+test("centerViewOn-passes-the-scale-through-unchanged", () => {
+  assert.equal(centerViewOn({ x: 10, y: 20 }, VP, 0.75).scale, 0.75, "scale 原样透传");
+  assert.equal(centerViewOn({ x: 10, y: 20 }, VP, 12).scale, 12, "不夹取，原样透传（含 MAX_SCALE）");
+  // 与 fitView 同式：世界原点居中 ⇒ tx=w/2, ty=h/2。
+  assert.deepEqual(centerViewOn({ x: 0, y: 0 }, VP, 1), { scale: 1, tx: 500, ty: 400 });
+});
+
+test("UNIT_VISIBLE_MIN_SCALE-makes-the-marker-measurably-visible", () => {
+  // ★ minScale 的取值依据：标记屏幕半径 = markerRadius(cellSize) × scale 必须肉眼可见（≥4px），
+  //   且屏幕格高 ≥ STACK_MIN_SCREEN_CELL ⇒ 同格多军队会摊开。
+  const cellSize = 34; // 工作台 BASE_CELL
+  const screenRadius = markerRadius(cellSize) * UNIT_VISIBLE_MIN_SCALE;
+  assert.ok(screenRadius >= 4, "标记屏幕半径 " + screenRadius + "px ≥ 4 ⇒ 肉眼可见");
+  assert.ok(
+    cellSize * UNIT_VISIBLE_MIN_SCALE >= STACK_MIN_SCREEN_CELL,
+    "屏幕格高 " + cellSize * UNIT_VISIBLE_MIN_SCALE + "px ≥ " + STACK_MIN_SCREEN_CELL + " ⇒ 同格多军队摊开"
+  );
+});
+
+test("unit-panel-has-a-locate-control-that-is-wired", () => {
+  assert.ok(readWebui("index.html").includes('id="unit-locate"'), "index.html 里有「定位到该军队」按钮");
+  assert.ok(
+    readWebui("unitTree.js").includes('byId("unit-locate")'),
+    "unitTree.js 里绑定了定位按钮（locateCurrentArmy）"
+  );
+});
+
+test("map-select-choke-point-triggers-ensureUnitVisible", () => {
+  assert.ok(
+    readWebui("map.js").includes("active.ensureUnitVisible("),
+    "map.js 的选择收口（选中单位分支）调用了 ensureUnitVisible"
+  );
+  assert.ok(
+    readWebui("renderer.js").includes("ensureUnitVisible: ensureUnitVisible"),
+    "renderer.js 导出了 ensureUnitVisible"
+  );
+  assert.ok(
+    readWebui("map-hostpage.js").includes("renderer.ensureUnitVisible"),
+    "bindActive 把 ensureUnitVisible 挂到 window.SimosMap"
   );
 });

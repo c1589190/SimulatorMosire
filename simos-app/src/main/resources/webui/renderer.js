@@ -32,6 +32,9 @@
   var screenToWorld = hexGeom.screenToWorld;
   var zoomAt = hexGeom.zoomAt;
   var fitView = hexGeom.fitView;
+  // ★ 2026-09-24 可用性修复：选中/定位单位时判断"眼见为实"并居中（纯函数在 hexgeom.js）。
+  var markerScreenVisible = hexGeom.markerScreenVisible;
+  var centerViewOn = hexGeom.centerViewOn;
   // ★ 2026-09-23 同格重叠单位纵向摊开：间距/半径口径来自 hexgeom（与 drawUnits 的圆点半径同源）
   var markerRadius = hexGeom.markerRadius;
   var stackSpacing = hexGeom.stackSpacing;
@@ -434,6 +437,47 @@
       recomputeWorldPixels(); // 摊开门控吃 view.scale，改缩放即须重算 px/py
       updateZoomUi();
       scheduleRender();
+    }
+
+    // ★ 2026-09-24 可用性修复：单位标记"已可见"的边界余量（CSS px）。点须距四边 ≥ 此值才算看得舒服；
+    //   贴边/出界 ⇒ 视为不可见并把它居中。取 24 ≈ 一枚标记在 UNIT_VISIBLE_MIN_SCALE 下的屏幕直径
+    //   （2×10.2×0.75≈15.3）再留些余量。
+    var MARKER_VISIBLE_MARGIN = 24;
+
+    /**
+     * ★ 2026-09-24 可用性修复（用户："我没找到单位在哪"）：选中/定位一个单位时**保证它可见**。
+     *
+     * <p>默认视图是"fit 整个世界"（59223 格）⇒ `view.scale` 极小 ⇒ 标记半径（世界约 10.2）在屏幕上是
+     * **亚像素**，肉眼看不见，也没有"跳到某单位"的入口。本方法把该格居中并抬到可用缩放。
+     *
+     * <p>**短路**（`force` 为假时）：标记已可见（{@link markerScreenVisible}，留 {@link MARKER_VISIBLE_MARGIN}）
+     * 且 `view.scale ≥ minScale` ⇒ **什么都不做、返回 false**。这是为了"在地图上点一个本来就在眼前的
+     * 标记 ⇒ 视图纹丝不动"（否则会把用户拽一下）。**出界**或**缩放过小** ⇒ 才
+     * `view = centerViewOn(该格世界像素, 视口CSS尺寸, max(view.scale, minScale))`。
+     *
+     * <p>`force = true`（显式"定位到该军队"按钮）⇒ 跳过短路，无条件居中（呼应明确动作）。
+     *
+     * @param q,r     该单位所在格（轴向坐标）
+     * @param minScale 抬到的下限 `view.scale`；非有限按 0（即只居中、不放大）
+     * @param force    是否强制居中（无视"已可见"）
+     * @return boolean 是否真的改了视图
+     */
+    function ensureUnitVisible(q, r, minScale, force) {
+      var world = hexToPixel(q, r, cellSize);
+      var viewport = { width: cssW, height: cssH };
+      var wanted = typeof minScale === "number" && isFinite(minScale) ? minScale : 0;
+      if (!force) {
+        var screen = worldToScreen(world, view);
+        if (view.scale >= wanted && markerScreenVisible(screen, viewport, MARKER_VISIBLE_MARGIN)) {
+          return false; // 已可见且缩放够 ⇒ 不碰视图（地图点选已可见标记不发生任何位移）
+        }
+      }
+      // scale 用 max(现有, 下限)：已放得更大就保持，不缩小。
+      view = centerViewOn(world, viewport, Math.max(view.scale, wanted));
+      recomputeWorldPixels(); // 摊开门控吃 view.scale，改缩放即须重算 px/py
+      updateZoomUi();
+      scheduleRender();
+      return true;
     }
 
     function resize() {
@@ -1909,6 +1953,8 @@
       setEditTool: setEditTool,
       fit: fit,
       computeFit: computeFit,
+      // ★ 2026-09-24 可用性修复：选中/定位单位时把它居中并抬到可见缩放（见方法注释）。
+      ensureUnitVisible: ensureUnitVisible,
       resize: resize,
       render: render,
       pickAt: pickAt,

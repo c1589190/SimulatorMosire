@@ -124,6 +124,8 @@
     window.SimosMap.render = renderer.render;
     window.SimosMap.debug = renderer.debug;
     window.SimosMap.resetView = renderer.fit;
+    // ★ 2026-09-24 可用性修复：选中/定位单位 ⇒ 居中并抬到可见缩放（照 resetView/setView 写法挂出）。
+    window.SimosMap.ensureUnitVisible = renderer.ensureUnitVisible;
     window.SimosMap.benchStages = renderer.benchStages;
     window.SimosMap.benchTerrainVariants = renderer.benchTerrainVariants;
     window.SimosMap.benchChunkSweep = renderer.benchChunkSweep;

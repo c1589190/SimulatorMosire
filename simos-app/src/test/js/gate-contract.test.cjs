@@ -50,8 +50,11 @@ const REQUIRED_FILES = [
 //     clampPanelPosition / stackOffset（含 stackSpacing））。
 //   2026-09-24 修正 1/2 起 233 → 245：unit-tree.test.cjs 新增 12 条（markerGroups 按军队根分组 7 条 /
 //     clampTreePan 自由视图夹取 3 条 / 复位控件接线与无残留 scrollIntoView 死代码 2 条）。
+//   2026-09-24 可用性修复起 245 → 252：unit-tree.test.cjs 新增 7 条（markerScreenVisible 视口内/外 +
+//     margin 边界 2 条 / centerViewOn 与 worldToScreen 对拍 + scale 透传 2 条 / minScale 可见性依据 1 条 /
+//     定位按钮接线 1 条 / 选择收口调用 ensureUnitVisible 1 条）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 245;
+const MIN_ASSERTIONS = 252;
 
 function testFiles() {
   return fs

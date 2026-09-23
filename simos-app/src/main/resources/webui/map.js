@@ -128,6 +128,8 @@
     editBusy: false,
     brushTerrain: null,
     paletteSignature: null,
+    // ★ 2026-09-24 可用性修复：上次已为其"保证可见"的选中单位 id（选中项换了才重新居中，见 onStateChange）。
+    lastEnsuredUnitId: null,
     mapEditBusy: false,
     mapEditTool: "terrain",
     mapEditSubtool: "terrain",
@@ -898,8 +900,20 @@
     var sel = state.selection;
     if (sel && sel.kind === "unit") {
       active.setSelectedUnit(sel.id);
-      active.setSelected(active.positionOf(sel.id));
+      var selPos = active.positionOf(sel.id);
+      active.setSelected(selPos);
+      // ★ 2026-09-24 可用性修复（用户："我没找到单位在哪"）：选中一个单位时，若它不在眼前
+      //   （出界）或缩放过小（标记是亚像素），把它居中并抬到可用缩放。这是**任何来源**的选择变化
+      //   （地图点选 / 树点选 / 右栏）的唯一收口。
+      //   · 只在"选中项换了"时做：否则每一次无关的 state 变化（切模式/换高亮/revision 更新）都会把
+      //     用户手动拖走的视图重新拽回该单位。
+      //   · 在地图上点一个**本就在眼前**的标记 ⇒ ensureUnitVisible 内部短路，视图纹丝不动。
+      if (selPos && host.lastEnsuredUnitId !== sel.id) {
+        host.lastEnsuredUnitId = sel.id;
+        active.ensureUnitVisible(selPos.q, selPos.r, hexGeom.UNIT_VISIBLE_MIN_SCALE);
+      }
     } else {
+      host.lastEnsuredUnitId = null;
       active.setSelectedUnit(null);
       active.setSelected(sel && sel.kind === "hex" ? { q: sel.q, r: sel.r } : null);
     }

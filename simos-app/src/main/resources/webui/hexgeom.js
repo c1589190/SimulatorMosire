@@ -133,6 +133,20 @@
   var STACK_MIN_SCREEN_CELL = 24;
 
   /**
+   * ★ 2026-09-24 可用性修复：选中/定位一个单位时，"抬到"的最小缩放（`view.scale`，屏px/世界px）。
+   *
+   * <p>依据（工作台的 `cellSize` 恒为 34，即 map.js 的 BASE_CELL）：
+   * - `markerRadius(34) = max(6, 34×0.3) = 10.2` 世界像素 ⇒ 标记屏幕半径 = `10.2 × scale`；
+   * - 肉眼"看得见"的半径下限取 3~4 CSS px ⇒ `scale ≥ 0.39`；
+   * - 又要求同格多军队能**摊开**（`cellSize × scale ≥ STACK_MIN_SCREEN_CELL=24`）⇒ `scale ≥ 24/34 ≈ 0.706`。
+   *
+   * <p>取 **0.75**：标记屏幕半径 ≈ 7.65 px（约为下限的两倍，清楚可辨），屏幕格高 = 34×0.75 = 25.5
+   * ≥ 24 ⇒ 摊开门控打开，同格的多支军队会分开、每个都点得到。默认"fit 整个世界"时 scale≈0.04~0.08，
+   * 标记是亚像素 ⇒ 正是"我没找到单位在哪"的物理原因，本阈值就是要把它抬到看得见的档位。
+   */
+  var UNIT_VISIBLE_MIN_SCALE = 0.75;
+
+  /**
    * 同格 count 个单位的**纵向摊开间距**（世界像素）；无需摊开 / 屏幕格太小 ⇒ 0。**纯函数**。
    *
    * <p>★ **刻意不再要求"整摞落在格内"**（2026-09-23 改）：真实数据里三国首都各挤着 8~10 个单位，
@@ -298,6 +312,53 @@
     return { scale: scale, tx: width / 2 - cx * scale, ty: height / 2 - cy * scale };
   }
 
+  /**
+   * 一个屏幕点（CSS px）是否**可见**：落在视口内、且距四边都 ≥ margin。**纯函数**。
+   *
+   * <p>口径（与 {@link #worldToScreen} 的输出同系 —— 传入的就是它的结果）：
+   * - `viewport` = 画布的 **CSS 像素**尺寸 `{width, height}`（与 renderer 的 `cssW/cssH` 同口径）；
+   * - `margin` ≥ 0 表示"至少要离边这么远才算看得舒服"（**内缩**语义）：命中区间是
+   *   `[margin, width−margin] × [margin, height−margin]`，**边界闭合**（恰好等于 margin ⇒ 可见）；
+   * - `margin` 缺省/非有限按 0（= 纯视口内）；点缺省/非有限 ⇒ false（fail-closed：当作不可见，交由调用方居中）。
+   *
+   * <p>★ 用**内缩**而非"把视口撑大 margin"：后者会把"刚好在屏幕外一点点"也算可见 ⇒ 反而不再居中，
+   * 与"出界就居中"的诉求相反。
+   */
+  function markerScreenVisible(screenPoint, viewport, margin) {
+    if (!screenPoint || !viewport) {
+      return false;
+    }
+    var x = screenPoint.x;
+    var y = screenPoint.y;
+    if (!isFinite(x) || !isFinite(y)) {
+      return false;
+    }
+    var m = typeof margin === "number" && isFinite(margin) ? margin : 0;
+    return x >= m && x <= viewport.width - m && y >= m && y <= viewport.height - m;
+  }
+
+  /**
+   * 把世界点**居中**到视口，返回新的视图 `{scale, tx, ty}`（`scale` 原样透传，不夹取）。**纯函数**。
+   *
+   * <p>★ 符号口径与 {@link #worldToScreen}（`screen = world × scale + t`）**逐字一致**：
+   * 要求该世界点的屏幕落点 = 视口中心 ⇒
+   * `tx = viewport.width/2 − worldPoint.x × scale`、`ty = viewport.height/2 − worldPoint.y × scale`。
+   * 这与 {@link #fitView} 居中包围盒用的是同一式子（`tx = w/2 − cx·scale`）——**不另立一套符号**。
+   * `viewport` 是 CSS 像素 ⇒ `tx/ty` 也是 CSS 像素。
+   *
+   * <p>反解恒等式（测试据此钉住符号）：`worldToScreen(worldPoint, centerViewOn(worldPoint, vp, s))`
+   * 必等于 `{x: vp.width/2, y: vp.height/2}`。
+   */
+  function centerViewOn(worldPoint, viewport, scale) {
+    var vp = viewport || { width: 0, height: 0 };
+    var p = worldPoint || { x: 0, y: 0 };
+    return {
+      scale: scale,
+      tx: vp.width / 2 - p.x * scale,
+      ty: vp.height / 2 - p.y * scale,
+    };
+  }
+
   window.SimosHexGeom = {
     MIN_SCALE: MIN_SCALE,
     MAX_SCALE: MAX_SCALE,
@@ -315,10 +376,13 @@
     screenToWorld: screenToWorld,
     zoomAt: zoomAt,
     fitView: fitView,
+    markerScreenVisible: markerScreenVisible,
+    centerViewOn: centerViewOn,
     markerRadius: markerRadius,
     stackSpacing: stackSpacing,
     stackOffset: stackOffset,
     markerGroups: markerGroups,
     STACK_MIN_SCREEN_CELL: STACK_MIN_SCREEN_CELL,
+    UNIT_VISIBLE_MIN_SCALE: UNIT_VISIBLE_MIN_SCALE,
   };
 })();

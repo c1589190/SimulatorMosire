@@ -1986,3 +1986,9 @@ body.workbench-page .gm-usage-failed {
   white-space: nowrap;
 }
 
+/* ★ 2026-09-24 可用性修复：「定位到该军队」按钮（与复位视图同栏、同为不收缩的窄按钮）。 */
+.unit-panel-locate {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
