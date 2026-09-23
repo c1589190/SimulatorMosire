@@ -177,6 +177,7 @@ class StartDecisionEndToEndTest {
                 new SdInfoId("sd:decision.dm-t10#0"),
                 7L,
                 Set.of(DM),
+                Set.of(),
                 "start",
                 "7",
                 Optional.of("用户发起"),

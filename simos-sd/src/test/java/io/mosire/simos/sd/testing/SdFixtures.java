@@ -288,6 +288,7 @@ public final class SdFixtures {
         new SdInfoId("info-" + key),
         0L,
         Set.of(DM1),
+        Set.of(),
         key,
         "value-" + key,
         Optional.of("note"),

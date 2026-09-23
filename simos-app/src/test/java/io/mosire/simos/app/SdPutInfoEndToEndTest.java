@@ -67,6 +67,7 @@ class SdPutInfoEndToEndTest {
                 new SdInfoId("map:Map1:region.r1#0"),
                 0L,
                 Set.of(),
+                Set.of(),
                 "brief",
                 "hello",
                 Optional.of("n"),

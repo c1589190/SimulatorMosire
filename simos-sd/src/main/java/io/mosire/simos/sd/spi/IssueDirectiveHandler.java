@@ -119,6 +119,7 @@ public final class IssueDirectiveHandler implements CommandHandler {
               SdInfoIds.synthesize(infoAddress, entries.size()),
               tick,
               Set.of(decisionMakerId),
+              Set.of(),
               INTENT_INFO_KEY,
               intentInfo,
               Optional.empty(),

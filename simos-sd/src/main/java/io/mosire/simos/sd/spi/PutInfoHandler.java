@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.SdInfoId;
+import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
@@ -26,7 +27,8 @@ import java.util.Set;
  *
  * <pre>{@code
  * {"address":"map:Map1:region.r1","key":"brief","value":"……","note":"可选",
- *  "id":"可选：显式 id（同类型内唯一）","tags":["可选：决策人 id…"],"tick":"可选：该条目所属 tick"}
+ *  "id":"可选：显式 id（同类型内唯一）","tags":["可选：决策人 id…"],"tick":"可选：该条目所属 tick",
+ *  "affiliations":[{"kind":"nation","id":"shanghai"}]}
  * }</pre>
  *
  * <p>★ **不复用全局 {@code InfoSystem}**（spec §六）：写进 {@code SdChangeSet.info} → 进 revision，可重放、受铁律 5
@@ -40,6 +42,9 @@ import java.util.Set;
  *       **重复即拒**（见下）；
  *   <li>{@code tags} 缺席 ⇒ 空集（无主）；给了 ⇒ 逐字解析成 {@link DecisionMakerId}（**不**在此校验决策人是否存在——
  *       那是后续步骤的语义，本命令只认形状）；
+ *   <li>{@code affiliations} 缺席 ⇒ 空集（不按归属发）；给了 ⇒ 逐项解析成 {@link Affiliation}（形状同
+ *       {@code sd.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。 它与
+ *       {@code tags} 是**并集**关系，判定不在本层（见 {@code RedactingQueryService#docs}）；
  *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
  *       tick} ⇒ 拒，与 {@code IssueDirectiveHandler} 同口径）。**过去合法**（补记/滞后）。
  * </ul>
@@ -48,7 +53,7 @@ import java.util.Set;
  * equals} 往返不满足 ⇒ 判据只覆盖标量值；结构化值列为挂起项。
  *
  * <p>拒绝：地址非法（{@link Address#parse} 抛）；{@code key} 空白；{@code value} 缺失；{@code id} 空白或与既有条目**撞 id**；
- * {@code tags} 元素非法；{@code tick} 记在未来。
+ * {@code tags}/{@code affiliations} 元素非法；{@code tick} 记在未来。
  */
 public final class PutInfoHandler implements CommandHandler {
 
@@ -69,6 +74,7 @@ public final class PutInfoHandler implements CommandHandler {
       Object value = SdPayloads.requireValue(payload, "value");
       Optional<String> note = SdPayloads.optionalText(payload, "note");
       Set<DecisionMakerId> tags = parseTags(payload);
+      Set<Affiliation> affiliations = SdPayloads.optionalAffiliationSet(payload, "affiliations");
       Optional<SdInfoId> explicitId = SdPayloads.optionalText(payload, "id").map(SdInfoId::parse);
       RevisionId at = state.meta().ref().revision();
       long worldTick = state.meta().timestamp().tick();
@@ -90,7 +96,8 @@ public final class PutInfoHandler implements CommandHandler {
         //   无论哪种，命令期响亮拒绝（不留 revision）——不让"唯一 id"在数据模型里被静默破坏。
         return new HandlerOutcome.Rejected("INFO 条目 id 已存在: " + id.value());
       }
-      SdInfoEntry entry = new SdInfoEntry(id, tick, tags, key, value, note, at, Optional.empty());
+      SdInfoEntry entry =
+          new SdInfoEntry(id, tick, tags, affiliations, key, value, note, at, Optional.empty());
       entries.add(entry);
       next.put(mapKey, List.copyOf(entries));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(next)));

@@ -163,6 +163,7 @@ class SdTimeParticipantTest {
                             new io.mosire.simos.sd.id.SdInfoId("map:Map1#0"),
                             0L,
                             Set.of(),
+                            Set.of(),
                             "k",
                             "v",
                             Optional.empty(),

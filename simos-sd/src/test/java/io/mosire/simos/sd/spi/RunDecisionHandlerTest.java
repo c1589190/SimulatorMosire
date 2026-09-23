@@ -44,6 +44,7 @@ class RunDecisionHandlerTest {
                 new SdInfoId("sd:decision.dm1#0"),
                 0L,
                 Set.of(SdFixtures.DM1),
+                Set.of(),
                 RunDecisionHandler.RUN_INFO_KEY,
                 "0",
                 Optional.empty(),

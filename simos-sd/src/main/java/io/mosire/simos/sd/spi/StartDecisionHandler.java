@@ -81,6 +81,7 @@ public final class StartDecisionHandler implements CommandHandler {
               SdInfoIds.synthesize(address, entries.size()),
               tick,
               Set.of(decisionMakerId),
+              Set.of(),
               START_INFO_KEY,
               String.valueOf(tick),
               note,

@@ -4,6 +4,7 @@ import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
+import io.mosire.simos.app.docs.DecisionDoc;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
@@ -13,6 +14,7 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
+import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -297,7 +299,7 @@ public final class RedactingQueryService {
         continue;
       }
       for (SdInfoEntry entry : at.getValue()) {
-        if (entry.tags().contains(actor) && inWindow(entry.tick(), window)) {
+        if (taggedFor(entry, actor) && inWindow(entry.tick(), window)) {
           matched.add(entry);
         }
       }
@@ -313,6 +315,130 @@ public final class RedactingQueryService {
       }
       out.add(decisionResultView(entry, target));
     }
+    return List.copyOf(out);
+  }
+
+  /**
+   * ★★ **某个决策人自己能看的文档（Docs）**：在 sd 的 INFO 覆盖层里取**地址是文档地址**的条目（判据 = {@link
+   * DecisionDoc#docIdOf}，不是字符串前缀），逐条按两个判据筛——
+   *
+   * <ol>
+   *   <li>★ **可见性 = 两轴并集**（用户 2026-09-23 裁定「显式指派 + 归属自动，取并集」）：
+   *       <ul>
+   *         <li>{@code entry.tags()} **含该 actor 自己**（显式指派，一份文档可指派给多人）；
+   *         <li>{@code entry.affiliations()} **含该 actor 的归属**（同 nation/army 的决策人自动可见，不必逐个指派）。
+   *       </ul>
+   *       ★ **两支都不命中 ⇒ 不可见**（fail-closed）。actor 在自己的 id 在世界里**解不出**（被删 / 身份与状态不同源）⇒
+   *       **只走 tags**（**不**把"不知道你是谁"读成"按归属放行"）；
+   *   <li>**窗口**：{@code tick} / {@code [fromTick, toTick]} 闭区间（与 {@link #decisionResults} 同一份 {@link
+   *       DecisionResultWindow} 口径）。
+   * </ol>
+   *
+   * <p>★★ **判据为什么住在这里**：与 {@link #decisionResults} 同源的理由——INFO 条目的地址（{@code sd:doc.<docId>}）
+   * **不在任何决策人的可达面**（决策人的 sd 域只是 {@code sd:decision-maker/<自己>}）⇒ 用 {@link ToolSupport}
+   * 的资源谓词判会把**全部**文档判成不可见。故"这条 INFO 记的是谁的事"是**独立的可见性轴**。它**只此一处**：GUI 的文档子页与决策人读工具
+   * 都走本方法，各写一份时两边都不报错、只会漂移。
+   *
+   * <p>★ **排序 = tick 降序、同 tick 按 id 升序**（与 {@link #decisionResults} 同口径，**先排后截**）。
+   *
+   * @return 每条 {@code {docId, id, tick, tags(升序), affiliations(按 kind:id 升序), key, value(原样的 Object),
+   *     note?, at{branch, revision}}}；{@code value} **不解析/不改写**（契约是裸 {@code Object}；文档正文的 JSON 结构由
+   *     工具/GUI 各自按 {@link DecisionDoc} 的口径解读）。空结果返回空列表，不抛。
+   */
+  public List<Map<String, Object>> docs(
+      DecisionMakerId actor, QueryTarget target, DecisionResultWindow window) {
+    Objects.requireNonNull(actor, "actor");
+    Objects.requireNonNull(window, "window");
+    SdState sd = sdState(target);
+    DecisionMaker maker = sd.decisionMakers().get(actor);
+    Affiliation affiliation = maker == null ? null : maker.affiliation();
+    List<MatchedDoc> matched = new ArrayList<>();
+    for (Map.Entry<String, List<SdInfoEntry>> at : sd.info().entrySet()) {
+      Optional<String> docId = DecisionDoc.docIdOf(at.getKey());
+      if (docId.isEmpty()) {
+        continue;
+      }
+      for (SdInfoEntry entry : at.getValue()) {
+        if (visible(entry, actor, affiliation) && inWindow(entry.tick(), window)) {
+          matched.add(new MatchedDoc(docId.get(), entry));
+        }
+      }
+    }
+    matched.sort(
+        Comparator.comparingLong((MatchedDoc doc) -> doc.entry().tick())
+            .reversed()
+            .thenComparing(doc -> doc.entry().id().value()));
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (MatchedDoc doc : matched) {
+      if (out.size() >= window.limit()) {
+        break;
+      }
+      out.add(docView(doc, target));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 命中的一条文档：**docId 与条目成对保留**——docId 来自地址（{@code sd.info()} 的键），条目本身不带它。 */
+  private record MatchedDoc(String docId, SdInfoEntry entry) {}
+
+  /**
+   * **tags 归属判据的唯一实现**：这条 INFO 是不是**显式指派给**该调用者的。
+   *
+   * <p>★ 抽成一个方法**不是**为了复用省字，而是为了让"判据恰一份"成为**结构性事实**（{@code
+   * DecisionResultsVisibilityGuardTest} 用源码扫描钉住该判据形态全仓恰一处）：决策结果与文档**共用**这一支（那一端只是多了"归属"这第二支，见
+   * {@link #visible}），两支不会各自演化。
+   */
+  private static boolean taggedFor(SdInfoEntry entry, DecisionMakerId actor) {
+    return entry.tags().contains(actor);
+  }
+
+  /** 两轴并集判可见（{@code affiliations} 那一支在解不出 actor 的归属时**不参与**，见 {@link #docs} 的类注）。 */
+  private static boolean visible(SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation) {
+    if (taggedFor(entry, actor)) {
+      return true;
+    }
+    return affiliation != null && entry.affiliations().contains(affiliation);
+  }
+
+  /** 单条文档的视图（{@code at} 口径同 {@link #decisionResultView}）。 */
+  private static Map<String, Object> docView(MatchedDoc doc, QueryTarget target) {
+    SdInfoEntry entry = doc.entry();
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("docId", doc.docId());
+    view.put("id", entry.id().value());
+    view.put("tick", entry.tick());
+    view.put("tags", entry.tags().stream().map(DecisionMakerId::value).sorted().toList());
+    view.put("affiliations", affiliationViews(entry.affiliations()));
+    view.put("key", entry.key());
+    view.put("value", entry.value());
+    entry.note().ifPresent(note -> view.put("note", note));
+    Map<String, Object> at = new LinkedHashMap<>();
+    at.put("branch", target.branch().value());
+    at.put("revision", entry.at().value());
+    view.put("at", at);
+    return view;
+  }
+
+  /** 归属视图：{@code {kind, id}}，按 {@code kind:id} 升序（响应字节可复现）。 */
+  private static List<Map<String, Object>> affiliationViews(Set<Affiliation> affiliations) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (Affiliation affiliation : affiliations) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      switch (affiliation) {
+        case Affiliation.Nation nation -> {
+          view.put("kind", "nation");
+          view.put("id", nation.nationId().value());
+        }
+        case Affiliation.Army army -> {
+          view.put("kind", "army");
+          view.put("id", army.armyId().value());
+        }
+      }
+      out.add(view);
+    }
+    out.sort(
+        Comparator.comparing(
+            view -> String.valueOf(view.get("kind")) + ":" + String.valueOf(view.get("id"))));
     return List.copyOf(out);
   }
 

@@ -40,6 +40,15 @@ class DecisionResultsVisibilityGuardTest {
    */
   private static final String OWNERSHIP_TOKEN = "tags().contains(";
 
+  /**
+   * **文档可见性的第二轴**（Docs，2026-09-23）的代码形态：{@code SdInfoEntry.affiliations} 的成员判定。同样**只许一处**，
+   * 同样落在 {@link RedactingQueryService}（{@code docs} 走的那个 {@code visible} 私有方法）。
+   *
+   * <p>★ 与 {@link #OWNERSHIP_TOKEN} 是**一条规则的两支**：文档可见 = tags 命中 ∪ 归属命中（并集）。两支都只此一处 ⇒
+   * 决策结果子页/文档子页/两个读工具拿到的可见集合不可能漂移。
+   */
+  private static final String AFFILIATION_TOKEN = "affiliations().contains(";
+
   /** 唯一合法落点（FQN → 仓库相对路径）。 */
   private static final String RULE_OWNER =
       "simos-app/src/main/java/io/mosire/simos/app/query/RedactingQueryService.java";
@@ -54,6 +63,39 @@ class DecisionResultsVisibilityGuardTest {
         .anyMatch(path -> path.getFileName().toString().equals("RedactingQueryService.java"))
         .anyMatch(path -> path.getFileName().toString().equals("DecisionResultsTool.java"));
 
+    assertThat(occurrences(sources, OWNERSHIP_TOKEN))
+        .as(
+            "★ 归属判据（%s）全仓 src/main 恰一份，且只在 RedactingQueryService——"
+                + "工具（如 DecisionResultsTool）或任何别处不得再筛一道（第二份不会报错、只会漂移）",
+            OWNERSHIP_TOKEN)
+        .containsExactly(entry(RULE_OWNER, 1L));
+  }
+
+  /**
+   * ★★ **文档可见性的"第二轴"（归属）同样只许有一份实现**（Docs，2026-09-23）。
+   *
+   * <p>判据本体 = 「INFO 条目的 {@code affiliations} 含调用者自己的归属」，规则 = {@code tags 命中 ∪ 归属命中}。实现在 {@link
+   * RedactingQueryService#docs}。与上面那条同源的理由：GUI 的文档子页与决策人读工具都走同一个方法，各写一份时两边都不报错、只会漂移。
+   */
+  @Test
+  void theAffiliationsVisibilityRuleIsImplementedExactlyOnceAndOnlyInRedactingQueryService() {
+    List<Path> sources = allMainSources();
+
+    assertThat(sources)
+        .as("扫描必须非空且含关键文件（扫到 0 个 = 路径写错，护栏恒真）")
+        .hasSizeGreaterThanOrEqualTo(20)
+        .anyMatch(path -> path.getFileName().toString().equals("RedactingQueryService.java"));
+
+    assertThat(occurrences(sources, AFFILIATION_TOKEN))
+        .as(
+            "★ 归属轴判据（%s）全仓 src/main 恰一份，且只在 RedactingQueryService——"
+                + "工具或别处不得再筛一道（第二份不会报错、只会漂移）",
+            AFFILIATION_TOKEN)
+        .containsExactly(entry(RULE_OWNER, 1L));
+  }
+
+  /** 逐文件数某 token 的**非注释行**出现次数（只保留命中过的文件，便于 {@code containsExactly} 比全貌）。 */
+  private static Map<String, Long> occurrences(List<Path> sources, String token) {
     Map<String, Long> hits = new LinkedHashMap<>();
     for (Path file : sources) {
       long count = 0;
@@ -61,9 +103,7 @@ class DecisionResultsVisibilityGuardTest {
         if (isCommentLine(line)) {
           continue;
         }
-        for (int i = line.indexOf(OWNERSHIP_TOKEN);
-            i >= 0;
-            i = line.indexOf(OWNERSHIP_TOKEN, i + 1)) {
+        for (int i = line.indexOf(token); i >= 0; i = line.indexOf(token, i + 1)) {
           count++;
         }
       }
@@ -71,13 +111,7 @@ class DecisionResultsVisibilityGuardTest {
         hits.put(relative(file), count);
       }
     }
-
-    assertThat(hits)
-        .as(
-            "★ 归属判据（%s）全仓 src/main 恰一份，且只在 RedactingQueryService——"
-                + "工具（如 DecisionResultsTool）或任何别处不得再筛一道（第二份不会报错、只会漂移）",
-            OWNERSHIP_TOKEN)
-        .containsExactly(entry(RULE_OWNER, 1L));
+    return hits;
   }
 
   // ── 源码扫描的底座 ────────────────────────────────────────────────────────────

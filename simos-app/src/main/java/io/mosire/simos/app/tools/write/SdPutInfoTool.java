@@ -31,8 +31,11 @@ public final class SdPutInfoTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?, id?, tags[决策人 id…]?, tick?}"
-        + "（address/key/value 必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等；"
+    return "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?, id?, tags[决策人 id…]?,"
+        + " affiliations[{\"kind\":\"nation\"|\"army\",\"id\":…}…]?, tick?}"
+        + "（address/key/value 必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等"
+        + "（要存结构化内容请自行序列化成 JSON 字符串）；"
+        + "★ tags 与 affiliations 是决策文档可见性的两轴，**取并集**（命中其一即可见、都空 = 谁都不给看）；"
         + "★ tick 缺省 = 世界当前 tick，记在未来会被拒）";
   }
 }

@@ -304,6 +304,7 @@ class DecisionResultsToolTest {
         SdInfoIds.synthesize(canonicalAddress, ordinal),
         tick,
         tags,
+        Set.of(),
         "result",
         "{\"marker\":\"" + marker + "\"}",
         Optional.empty(),

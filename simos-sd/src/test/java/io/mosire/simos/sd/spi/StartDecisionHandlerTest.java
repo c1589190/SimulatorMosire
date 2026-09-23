@@ -39,6 +39,7 @@ class StartDecisionHandlerTest {
                 new SdInfoId("sd:decision.dm1#0"),
                 0L,
                 Set.of(SdFixtures.DM1),
+                Set.of(),
                 "start",
                 "0",
                 Optional.empty(),

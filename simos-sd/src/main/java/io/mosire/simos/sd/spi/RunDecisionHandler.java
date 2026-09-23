@@ -99,6 +99,7 @@ public final class RunDecisionHandler implements CommandHandler {
               SdInfoIds.synthesize(address, entries.size()),
               tick,
               Set.of(decisionMakerId),
+              Set.of(),
               RUN_INFO_KEY,
               String.valueOf(tick),
               Optional.empty(),

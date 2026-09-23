@@ -111,12 +111,13 @@ class SdCodecTest {
   }
 
   /**
-   * ★★ **老档兼容（第 3 波第 1 步）**：没有 {@code id}/{@code tick}/{@code tags} 三个键的旧 INFO 条目字节，**必须读回来不炸**，
-   * 且缺省落在**安全的那一侧**：{@code tags = 空集}（无主 ⇒ 不进任何按决策人的归属裁决）、{@code tick = 0}、 {@code id =
+   * ★★ **老档兼容（第 3 波第 1 步 + Docs 的 affiliations）**：没有 {@code id}/{@code tick}/{@code tags}/{@code affiliations}
+   * 四个键的旧 INFO 条目字节，**必须读回来不炸**， 且缺省落在**安全的那一侧**：{@code tags = 空集}（无主 ⇒ 不进任何按决策人的归属裁决）、{@code
+   * affiliations = 空集}（不按归属发 ⇒ 老条目**不会**因为新增这一轴突然对某个国家/军队可见）、{@code tick = 0}、{@code id =
    * legacy:<key>@<at>}（内容派生，纯函数）。
    *
    * <p>★ 做法与 {@link #aLegacyArchiveWithoutTheGenerationFieldReadsAsGenerationZero} 同源：**在真字节上删键**
-   * （真档是写出来的那台 mapper 写的），先自证三个键确实在线格式里（否则本用例恒真）。
+   * （真档是写出来的那台 mapper 写的），先自证四个键确实在线格式里（否则本用例恒真）。
    */
   @Test
   void aLegacyArchiveWithoutTheDecisionResultKeysReadsWithFailClosedDefaults() throws Exception {
@@ -127,7 +128,7 @@ class SdCodecTest {
             new StateRef(new BranchId("main"), new RevisionId(3)), SimosTimestamp.of(10), sd);
 
     String json = CODEC.encodeSnapshot(snapshot);
-    // 删键：解析成树 ⇒ 先**自证**三个键确实在线格式里（真档是写出来的那台 mapper 写的）⇒ 再逐条目删。
+    // 删键：解析成树 ⇒ 先**自证**四个键确实在线格式里（真档是写出来的那台 mapper 写的）⇒ 再逐条目删。
     ObjectMapper treeMapper = SimosObjectMapper.create();
     JsonNode root = treeMapper.readTree(json);
     ObjectNode info = (ObjectNode) root.get("state").get("info");
@@ -135,9 +136,11 @@ class SdCodecTest {
     assertThat(entryNode.has("id")).as("★ 先证明 id 键真的写进字节").isTrue();
     assertThat(entryNode.has("tick")).as("★ 先证明 tick 键真的写进字节").isTrue();
     assertThat(entryNode.has("tags")).as("★ 先证明 tags 键真的写进字节").isTrue();
+    assertThat(entryNode.has("affiliations")).as("★ 先证明 affiliations 键真的写进字节").isTrue();
     entryNode.remove("id");
     entryNode.remove("tick");
     entryNode.remove("tags");
+    entryNode.remove("affiliations");
     String legacy = treeMapper.writeValueAsString(root);
     assertThat(countOf(legacy, "\"tags\":")).as("删干净了（tags 只出现在 INFO 条目上）").isZero();
 
@@ -145,6 +148,9 @@ class SdCodecTest {
     var entry = back.state().info().get("map:Map1").get(0);
     assertThat(entry.key()).as("其余字段一个不少").isEqualTo("k1");
     assertThat(entry.tags()).as("★ 缺省 tags = 空集（无主，fail-closed）").isEmpty();
+    assertThat(entry.affiliations())
+        .as("★ 缺省 affiliations = 空集（不按归属发，fail-closed）")
+        .isEmpty();
     assertThat(entry.tick()).as("★ 缺省 tick = 0").isZero();
     assertThat(entry.id())
         .as("★ 缺省 id = 内容派生 legacy:<key>@<at>")
