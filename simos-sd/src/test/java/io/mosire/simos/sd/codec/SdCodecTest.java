@@ -137,9 +137,7 @@ class SdCodecTest {
     assertThat(entryNode.has("tick")).as("★ 先证明 tick 键真的写进字节").isTrue();
     assertThat(entryNode.has("tags")).as("★ 先证明 tags 键真的写进字节").isTrue();
     assertThat(entryNode.has("affiliations")).as("★ 先证明 affiliations 键真的写进字节").isTrue();
-    assertThat(entryNode.has("adjudicationStatus"))
-        .as("★ 先证明 adjudicationStatus 键真的写进字节")
-        .isTrue();
+    assertThat(entryNode.has("adjudicationStatus")).as("★ 先证明 adjudicationStatus 键真的写进字节").isTrue();
     entryNode.remove("id");
     entryNode.remove("tick");
     entryNode.remove("tags");

@@ -284,8 +284,8 @@ public final class RedactingQueryService {
    * 一条），id 只是把"将来万一出现"定死成可复现的次序。**先排后截** ⇒ {@code limit} 截到的是**最近的 N 条**。
    *
    * <p>★ **只回生效的裁决**（2026-09-23，用户裁定「只有生效裁决和作废裁决」）：{@code adjudicationStatus = VOIDED}
-   * 的条目**一条都不回**——它对应的世界变更已被撤销、令已退回待裁决，列出来只会让决策人按一条不作准的结局行动。
-   * 每条带上 {@code status} 字段（当前恒 {@code EFFECTIVE}，留给读面显式化用）。
+   * 的条目**一条都不回**——它对应的世界变更已被撤销、令已退回待裁决，列出来只会让决策人按一条不作准的结局行动。 每条带上 {@code status} 字段（当前恒 {@code
+   * EFFECTIVE}，留给读面显式化用）。
    *
    * <p>★ **空结果返回空列表**（不是异常、也不是"什么都没有"的含混）：调用方据此给出**明确可读**的"没有可查看的决策结果"。
    *
@@ -306,7 +306,9 @@ public final class RedactingQueryService {
         // ★ 2026-09-23（用户裁定「只有生效裁决和作废裁决」）：**作废的不算结果**——它对应的世界变更已被撤销、
         //   令已退回待裁决，把它列成"我的决策结果"会让决策人按一条不再作准的结局行动。
         //   判定入口是 SdInfoEntry#isEffective 这一个方法（缺省=生效：老档那批当时都生效）。
-        if (!SdInfoEntry.isEffective(entry) || !taggedFor(entry, actor) || !inWindow(entry.tick(), window)) {
+        if (!SdInfoEntry.isEffective(entry)
+            || !taggedFor(entry, actor)
+            || !inWindow(entry.tick(), window)) {
           continue;
         }
         matched.add(entry);

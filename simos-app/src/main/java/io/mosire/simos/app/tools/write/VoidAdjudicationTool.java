@@ -40,32 +40,30 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ {@code sd.VoidAdjudication}（**只在 GM 桶**，2026-09-23）：把某一 tick 的裁决**作废**——世界回滚、令退回待裁决、
- * 记录标作废。
+ * ★★ {@code sd.VoidAdjudication}（**只在 GM 桶**，2026-09-23）：把某一 tick 的裁决**作废**——世界回滚、令退回待裁决、 记录标作废。
  *
  * <p>★★ **用户的模型**：「只有生效裁决和作废裁决」。一个 tick 可以留多条裁决记录，**至多一条生效**；作废是那"另一档"。
  *
  * <p>★★ **一次作废 = 一条 revision，原子**（这是本类的全部要害）：
  *
  * <ol>
- *   <li>**map / unit / social 走逆变更**：{@code XChangeSet.between(当前, 基态)} —— 就是"把世界改回裁决之前"。
- *       ★ 逆变更集是**白拿**的（同一个 {@code between} 换个参数序）；不需要命令明文（那东西根本没留痕，
- *       见 {@code CommandBus#RESTORE_COMMAND_TYPE} 的类注）；
- *   <li>**sd 不做逆变更、只做显式改写**：那条记录翻成 {@link AdjudicationStatus#VOIDED}（**不删**——留痕：
- *       "第 1 版被作废"这件事本身要看得到），把它翻过的令**退回 {@code ISSUED}**（从基态取回它们当时的记录，
- *       比"构造一个 ISSUED"更忠实：基态里就是它们原本的样子）；
+ *   <li>**map / unit / social 走逆变更**：{@code XChangeSet.between(当前, 基态)} —— 就是"把世界改回裁决之前"。 ★
+ *       逆变更集是**白拿**的（同一个 {@code between} 换个参数序）；不需要命令明文（那东西根本没留痕， 见 {@code
+ *       CommandBus#RESTORE_COMMAND_TYPE} 的类注）；
+ *   <li>**sd 不做逆变更、只做显式改写**：那条记录翻成 {@link AdjudicationStatus#VOIDED}（**不删**——留痕： "第 1
+ *       版被作废"这件事本身要看得到），把它翻过的令**退回 {@code ISSUED}**（从基态取回它们当时的记录， 比"构造一个 ISSUED"更忠实：基态里就是它们原本的样子）；
  *   <li>把两半合成**一个** {@link WorldChangeSet}，交给 {@code core.submitRestore} —— 一条 revision 落地。
  * </ol>
  *
- * <p>★★ **为什么"令退回 ISSUED"不走 {@code sd.SetDirectiveStatus}**：那条命令的守卫只放 {@code ISSUED → EXECUTED/CANCELLED}
- * （终态不得翻回），**它是对的、不许放开**——放开之后任何路径都能把已执行的令改回去。作废是在 restore 的**变更集**里直接改写
- * sd 状态，而 {@code submitRestore} 只有 Core 的公开 API 一条入口（本工具是唯一调用方）。
+ * <p>★★ **为什么"令退回 ISSUED"不走 {@code sd.SetDirectiveStatus}**：那条命令的守卫只放 {@code ISSUED →
+ * EXECUTED/CANCELLED} （终态不得翻回），**它是对的、不许放开**——放开之后任何路径都能把已执行的令改回去。作废是在 restore 的**变更集**里直接改写 sd
+ * 状态，而 {@code submitRestore} 只有 Core 的公开 API 一条入口（本工具是唯一调用方）。
  *
  * <p>★ **只允许作废"仍是最新一条 revision"的裁决**（tip-only）：逆变更是"当前 → 基态"，中间若还夹着别的 revision，
  * 一次撤销会把它们**一起**抹掉。非最新 ⇒ **响亮拒绝**并提示先 {@code simos.fork}。
  *
- * <p>★ **它不是一个命令类型**（与 {@code sd.AdjudicateTick} 同族）：固定的是"作废某一 tick"这一件事，载荷只有坐标 ⇒
- * 不进 catalog、不进令白名单，决策人够不着。
+ * <p>★ **它不是一个命令类型**（与 {@code sd.AdjudicateTick} 同族）：固定的是"作废某一 tick"这一件事，载荷只有坐标 ⇒ 不进
+ * catalog、不进令白名单，决策人够不着。
  */
 public final class VoidAdjudicationTool implements AgentTool {
 
@@ -138,8 +136,10 @@ public final class VoidAdjudicationTool implements AgentTool {
       Map<String, Object> args = context.arguments();
       // ★ 与 sd.AdjudicateTick 同款：expectedRevision 是**独立载荷**（不是 ToolSupport.target 的 revision）
       //   ——作废必须对着调用方以为的那个 head 来，缺了它就没有"坐标没变"这一层保护。
-      BranchId branch = new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
-      StateRef target = new StateRef(branch, new RevisionId(ToolSupport.requiredLong(args, "expectedRevision")));
+      BranchId branch =
+          new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
+      StateRef target =
+          new StateRef(branch, new RevisionId(ToolSupport.requiredLong(args, "expectedRevision")));
       Long tickArg = ToolSupport.optionalLong(args, "tick");
       if (tickArg == null || tickArg < 0) {
         return ToolResult.error("BAD_REQUEST", "tick 必填且 ≥ 0");
@@ -149,7 +149,8 @@ public final class VoidAdjudicationTool implements AgentTool {
       StateRef head = currentHead(target);
       if (!head.revision().equals(target.revision())) {
         return ToolResult.error(
-            "CONFLICT", "head 已变：你给的是 " + target.revision().value() + "，现在是 " + head.revision().value());
+            "CONFLICT",
+            "head 已变：你给的是 " + target.revision().value() + "，现在是 " + head.revision().value());
       }
       SimulationState current = core.replay(head);
       SdState currentSd = sdOf(current);
@@ -179,8 +180,7 @@ public final class VoidAdjudicationTool implements AgentTool {
       SimulationState base = core.replay(source);
       WorldChangeSet changeSet = changeSet(current, currentSd, base, currentSd, entry, address);
 
-      var outcome =
-          core.submitRestore(head.branch(), head.revision(), initiator, changeSet);
+      var outcome = core.submitRestore(head.branch(), head.revision(), initiator, changeSet);
       if (outcome instanceof io.mosire.simos.core.command.CommandResult.Committed committed) {
         Map<String, Object> view =
             new LinkedHashMap<>(ToolSupport.committedView(committed.ref(), NAME, NAME));
@@ -195,7 +195,8 @@ public final class VoidAdjudicationTool implements AgentTool {
             "CONFLICT", "坐标已变，作废未落：真实 head = " + conflict.current().revision().value());
       }
       return ToolResult.error(
-          "TOOL_ERROR", "作废被拒：" + ((io.mosire.simos.core.command.CommandResult.Rejected) outcome).reason());
+          "TOOL_ERROR",
+          "作废被拒：" + ((io.mosire.simos.core.command.CommandResult.Rejected) outcome).reason());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
@@ -204,8 +205,7 @@ public final class VoidAdjudicationTool implements AgentTool {
   /**
    * 合成那**一个**变更集：map/unit/social 逆变更 + sd 显式改写（详见类注）。
    *
-   * <p>★ 四个命名空间**恒在**（本世界四个模块都在）——不做"只放变了的"，因为零变更的 delta（{@code Unchanged}）
-   * 施加下去是恒等，省它只会多一处分支。
+   * <p>★ 四个命名空间**恒在**（本世界四个模块都在）——不做"只放变了的"，因为零变更的 delta（{@code Unchanged}） 施加下去是恒等，省它只会多一处分支。
    */
   private static WorldChangeSet changeSet(
       SimulationState current,

@@ -78,6 +78,7 @@ class DecisionResultsToolTest {
   private static final String ADDR_7 = address(7);
   private static final String ADDR_8 = address(8);
   private static final String ADDR_9 = address(9);
+
   /** 一条**被作废**的裁决条目（2026-09-23）：它 tags 含 dm-a，但状态是 VOIDED ⇒ 不该算结果。 */
   private static final String ADDR_10 = address(10);
 
@@ -190,9 +191,7 @@ class DecisionResultsToolTest {
 
   @Test
   void aVoidedAdjudicationIsNeverAReadableResult() throws Exception {
-    assertThat(allInfoIds())
-        .as("前提：作废条目确实在 INFO 层里（否则下面的『看不到』是假象）")
-        .contains(idOf(ADDR_10, 0));
+    assertThat(allInfoIds()).as("前提：作废条目确实在 INFO 层里（否则下面的『看不到』是假象）").contains(idOf(ADDR_10, 0));
 
     for (DecisionMakerId dm : List.of(DM_A, DM_B, DM_C)) {
       assertThat(ids(body(call(dm, Map.of()))))

@@ -116,18 +116,18 @@ public record SdInfoEntry(
   }
 
   /**
-   * **这条裁决是不是生效的**（2026-09-23）：{@link #adjudicationStatus} 缺席 = **生效**（老档那批当时都生效，语义为真），
-   * 显式 {@link AdjudicationStatus#VOIDED} = 不生效。
+   * **这条裁决是不是生效的**（2026-09-23）：{@link #adjudicationStatus} 缺席 = **生效**（老档那批当时都生效，语义为真）， 显式 {@link
+   * AdjudicationStatus#VOIDED} = 不生效。
    *
    * <p>★ 判据放在**类型上**（不是散在读面与工具里各写一遍）：作废工具要"找该 tick 的生效条目"、读面要"作废的不算结果"，
    * 两处问的是同一件事；各写一遍时**两边都不会报错**，只会漂。
    *
    * <p>★ **只对 {@code sd:adjudication.*} 条目有意义**：普通 INFO 条目恒缺省 ⇒ 恒"生效"。拿它筛别的条目等于恒真。
    *
-   * <p>★★ **它必须是 {@code static}、且必须收条目作参数**（不是 {@code entry.isEffective()}）：record 上任何
-   * {@code isXxx()} 形状的实例方法都会被 Jackson 当成**属性 getter** ⇒ 序列化时多写一个 {@code "effective"} 字段，
-   * 而 `SdInfoEntry` 的编解码**不接受**这个字段（"Unrecognized field"）⇒ 整条变更集 JSON 非法、replay 当场挂
-   * （真踩过：一次全量测试 13 条红）。static 方法不是属性，绕开这条。
+   * <p>★★ **它必须是 {@code static}、且必须收条目作参数**（不是 {@code entry.isEffective()}）：record 上任何 {@code
+   * isXxx()} 形状的实例方法都会被 Jackson 当成**属性 getter** ⇒ 序列化时多写一个 {@code "effective"} 字段， 而 `SdInfoEntry`
+   * 的编解码**不接受**这个字段（"Unrecognized field"）⇒ 整条变更集 JSON 非法、replay 当场挂 （真踩过：一次全量测试 13 条红）。static
+   * 方法不是属性，绕开这条。
    */
   public static boolean isEffective(SdInfoEntry entry) {
     Objects.requireNonNull(entry, "entry");

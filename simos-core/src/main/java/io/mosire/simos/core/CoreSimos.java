@@ -212,8 +212,7 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
-   * ★★ **按给定变更集落一条 revision**（2026-09-23）：撤销类操作的唯一落盘口（语义与约束见 {@link
-   * CommandBus#submitRestore}）。
+   * ★★ **按给定变更集落一条 revision**（2026-09-23）：撤销类操作的唯一落盘口（语义与约束见 {@link CommandBus#submitRestore}）。
    *
    * <p>★ **Post-commit 与单条/批同口径**（C24 / C19 第①项）：提交成功且新坐标命中 checkpoint 谓词时才写（失败只 WARN，不改结局）。
    *
@@ -221,15 +220,13 @@ public final class CoreSimos implements AutoCloseable {
    * （{@link CommandBus#RESTORE_COMMAND_TYPE}）的 revision。
    */
   public CommandResult submitRestore(
-      BranchId branch,
-      RevisionId expectedRevision,
-      String initiator,
-      WorldChangeSet changeSet) {
+      BranchId branch, RevisionId expectedRevision, String initiator, WorldChangeSet changeSet) {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(expectedRevision, "expectedRevision");
     Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(changeSet, "changeSet");
-    CommandResult result = sealedBus().submitRestore(branch, expectedRevision, initiator, changeSet);
+    CommandResult result =
+        sealedBus().submitRestore(branch, expectedRevision, initiator, changeSet);
     if (result instanceof CommandResult.Committed committed) {
       maybeWriteCheckpoint(committed.ref());
     }

@@ -32,12 +32,11 @@ import org.junit.jupiter.api.io.TempDir;
  * ★★ **恢复提交**（{@link CommandBus#submitRestore}，2026-09-23）：撤销类操作的唯一落盘口。
  *
  * <p>它存在的理由与形状见 {@link CommandBus#RESTORE_COMMAND_TYPE}：时间线只追加、命令明文不留痕 ⇒ 撤销只能**追加一条逆变更
- * revision**。本用例钉住四件事：① 恰好落一条、行标签是自己那一个、变更集**逐值读得回**；② 坐标不新鲜 ⇒
- * {@code Conflict} 且**不落行**；③ 分支不存在 ⇒ {@code Rejected} 且不落行；④ 空变更集 ⇒ {@code Rejected}（一次什么都没改的
- * 撤销是调用方的逻辑错，不该留一条空 revision 让审计去猜）。
+ * revision**。本用例钉住四件事：① 恰好落一条、行标签是自己那一个、变更集**逐值读得回**；② 坐标不新鲜 ⇒ {@code Conflict} 且**不落行**；③ 分支不存在 ⇒
+ * {@code Rejected} 且不落行；④ 空变更集 ⇒ {@code Rejected}（一次什么都没改的 撤销是调用方的逻辑错，不该留一条空 revision 让审计去猜）。
  *
- * <p>★ 玩具 codec 与 {@code CommandBusBatchTest} 同制（test 侧不计 R1）：{@code apply} = 加后截断、{@code diff} = target −
- * base，于是"逆变更"就是同一个 codec 上一次负增量 —— 撤销的算术不需要真模块也能验。
+ * <p>★ 玩具 codec 与 {@code CommandBusBatchTest} 同制（test 侧不计 R1）：{@code apply} = 加后截断、{@code diff} =
+ * target − base，于是"逆变更"就是同一个 codec 上一次负增量 —— 撤销的算术不需要真模块也能验。
  */
 class CommandBusRestoreTest {
 
@@ -86,7 +85,10 @@ class CommandBusRestoreTest {
     public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
       ToySnapshot before = (ToySnapshot) base;
       return new ToySnapshot(
-          newMeta.ref(), newMeta.timestamp(), namespace, before.v() + ((ToyChangeSet) changeSet).v());
+          newMeta.ref(),
+          newMeta.timestamp(),
+          namespace,
+          before.v() + ((ToyChangeSet) changeSet).v());
     }
 
     @Override
@@ -145,7 +147,10 @@ class CommandBusRestoreTest {
 
     CommandResult result =
         bus.submitRestore(
-            main(), new RevisionId(99), "gm:test", new WorldChangeSet(Map.of("alpha", new ToyChangeSet(-2))));
+            main(),
+            new RevisionId(99),
+            "gm:test",
+            new WorldChangeSet(Map.of("alpha", new ToyChangeSet(-2))));
 
     assertThat(result).isInstanceOf(CommandResult.Conflict.class);
     assertThat(((CommandResult.Conflict) result).current())
@@ -192,7 +197,9 @@ class CommandBusRestoreTest {
     SimulationState state =
         new SimulationState(
             new StateMeta(ref("main", 1), SimosTimestamp.of(0L, "弘光元年")),
-            Map.of("alpha", new ToySnapshot(ref("main", 1), SimosTimestamp.of(0L, "弘光元年"), "alpha", 0)),
+            Map.of(
+                "alpha",
+                new ToySnapshot(ref("main", 1), SimosTimestamp.of(0L, "弘光元年"), "alpha", 0)),
             InMemoryInfoSystem.empty());
     return new CommandBus(
         timeline,

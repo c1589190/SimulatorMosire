@@ -100,7 +100,16 @@ public final class PutInfoHandler implements CommandHandler {
       }
       SdInfoEntry entry =
           new SdInfoEntry(
-              id, tick, tags, affiliations, key, value, note, at, Optional.empty(), adjudicationStatus);
+              id,
+              tick,
+              tags,
+              affiliations,
+              key,
+              value,
+              note,
+              at,
+              Optional.empty(),
+              adjudicationStatus);
       entries.add(entry);
       next.put(mapKey, List.copyOf(entries));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(next)));
@@ -110,8 +119,8 @@ public final class PutInfoHandler implements CommandHandler {
   }
 
   /**
-   * {@code adjudicationStatus} 可选载荷（2026-09-23）：缺席 ⇒ 空（**普通 INFO 条目不参与裁决状态**，老档也走这条）；
-   * 给了 ⇒ 必须恰好是 {@code EFFECTIVE|VOIDED}（**不收自由字符串**——状态要能被读面与不变量断言，不接受拼写漂移）。
+   * {@code adjudicationStatus} 可选载荷（2026-09-23）：缺席 ⇒ 空（**普通 INFO 条目不参与裁决状态**，老档也走这条）； 给了 ⇒ 必须恰好是
+   * {@code EFFECTIVE|VOIDED}（**不收自由字符串**——状态要能被读面与不变量断言，不接受拼写漂移）。
    */
   private static Optional<AdjudicationStatus> parseAdjudicationStatus(JsonNode payload) {
     Optional<String> text = SdPayloads.optionalText(payload, "adjudicationStatus");
@@ -121,8 +130,7 @@ public final class PutInfoHandler implements CommandHandler {
     try {
       return Optional.of(AdjudicationStatus.valueOf(text.get().trim()));
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          "adjudicationStatus 只允许 EFFECTIVE|VOIDED: " + text.get());
+      throw new IllegalArgumentException("adjudicationStatus 只允许 EFFECTIVE|VOIDED: " + text.get());
     }
   }
 
