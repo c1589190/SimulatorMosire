@@ -86,6 +86,7 @@ public final class StartDecisionHandler implements CommandHandler {
               String.valueOf(tick),
               note,
               at,
+              Optional.empty(),
               Optional.empty());
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));

@@ -137,10 +137,14 @@ class SdCodecTest {
     assertThat(entryNode.has("tick")).as("★ 先证明 tick 键真的写进字节").isTrue();
     assertThat(entryNode.has("tags")).as("★ 先证明 tags 键真的写进字节").isTrue();
     assertThat(entryNode.has("affiliations")).as("★ 先证明 affiliations 键真的写进字节").isTrue();
+    assertThat(entryNode.has("adjudicationStatus"))
+        .as("★ 先证明 adjudicationStatus 键真的写进字节")
+        .isTrue();
     entryNode.remove("id");
     entryNode.remove("tick");
     entryNode.remove("tags");
     entryNode.remove("affiliations");
+    entryNode.remove("adjudicationStatus");
     String legacy = treeMapper.writeValueAsString(root);
     assertThat(countOf(legacy, "\"tags\":")).as("删干净了（tags 只出现在 INFO 条目上）").isZero();
 
@@ -149,6 +153,9 @@ class SdCodecTest {
     assertThat(entry.key()).as("其余字段一个不少").isEqualTo("k1");
     assertThat(entry.tags()).as("★ 缺省 tags = 空集（无主，fail-closed）").isEmpty();
     assertThat(entry.affiliations()).as("★ 缺省 affiliations = 空集（不按归属发，fail-closed）").isEmpty();
+    assertThat(entry.adjudicationStatus())
+        .as("★ 缺省 adjudicationStatus = 空（老档那批裁决当时都生效 ⇒ 读侧按生效判，见 AdjudicationStatus）")
+        .isEmpty();
     assertThat(entry.tick()).as("★ 缺省 tick = 0").isZero();
     assertThat(entry.id())
         .as("★ 缺省 id = 内容派生 legacy:<key>@<at>")

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.SdInfoId;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
@@ -75,6 +76,7 @@ public final class PutInfoHandler implements CommandHandler {
       Optional<String> note = SdPayloads.optionalText(payload, "note");
       Set<DecisionMakerId> tags = parseTags(payload);
       Set<Affiliation> affiliations = SdPayloads.optionalAffiliationSet(payload, "affiliations");
+      Optional<AdjudicationStatus> adjudicationStatus = parseAdjudicationStatus(payload);
       Optional<SdInfoId> explicitId = SdPayloads.optionalText(payload, "id").map(SdInfoId::parse);
       RevisionId at = state.meta().ref().revision();
       long worldTick = state.meta().timestamp().tick();
@@ -97,7 +99,8 @@ public final class PutInfoHandler implements CommandHandler {
         return new HandlerOutcome.Rejected("INFO 条目 id 已存在: " + id.value());
       }
       SdInfoEntry entry =
-          new SdInfoEntry(id, tick, tags, affiliations, key, value, note, at, Optional.empty());
+          new SdInfoEntry(
+              id, tick, tags, affiliations, key, value, note, at, Optional.empty(), adjudicationStatus);
       entries.add(entry);
       next.put(mapKey, List.copyOf(entries));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(next)));
@@ -106,8 +109,24 @@ public final class PutInfoHandler implements CommandHandler {
     }
   }
 
-  /** {@code tags} 可选载荷：缺席/空数组 ⇒ 空集（无主）；元素必须是决策人 id。顺序按载荷给定（保序集合）。 */
-  private static Set<DecisionMakerId> parseTags(JsonNode payload) {
+  /**
+   * {@code adjudicationStatus} 可选载荷（2026-09-23）：缺席 ⇒ 空（**普通 INFO 条目不参与裁决状态**，老档也走这条）；
+   * 给了 ⇒ 必须恰好是 {@code EFFECTIVE|VOIDED}（**不收自由字符串**——状态要能被读面与不变量断言，不接受拼写漂移）。
+   */
+  private static Optional<AdjudicationStatus> parseAdjudicationStatus(JsonNode payload) {
+    Optional<String> text = SdPayloads.optionalText(payload, "adjudicationStatus");
+    if (text.isEmpty()) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(AdjudicationStatus.valueOf(text.get().trim()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "adjudicationStatus 只允许 EFFECTIVE|VOIDED: " + text.get());
+    }
+  }
+
+  /** {@code tags} 可选载荷：缺席/空数组 ⇒ 空集（无主）；元素必须是决策人 id。顺序按载荷给定（保序集合）。 */  private static Set<DecisionMakerId> parseTags(JsonNode payload) {
     Set<DecisionMakerId> out = new LinkedHashSet<>();
     for (String tag : SdPayloads.optionalTextSet(payload, "tags")) {
       out.add(DecisionMakerId.parse(tag));

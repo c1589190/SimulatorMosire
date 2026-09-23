@@ -29,6 +29,9 @@ import java.util.Set;
  *   <li>{@link #affiliations}（**决策文档可见性的第二轴**）——挂 {@link Affiliation}。语义是"这条 INFO 记的是**谁**的事" ⇒ 同一
  *       nation/army 的决策人**自动**看得到，不必逐个指派。与 {@link #tags} 是**并集**关系（二者命中其一即可见）， 判定**只此一处**（{@code
  *       RedactingQueryService#docs}）。**可为空集 = 不按归属发**，同样不用 {@code Optional}。
+ *   <li>{@link #adjudicationStatus}（**裁决的生效 / 作废**，2026-09-23 用户原话「只有生效裁决和作废裁决」）——只对 {@code
+ *       sd:adjudication.*} 条目有意义；缺省 {@code empty()} = 老档（那时都生效）。★ 一个 tick 可以留**多条**裁决记录，但**至多一条
+ *       {@link AdjudicationStatus#EFFECTIVE}**；作废时那条记录**不删**，只换状态（与令的 {@code SUPERSEDED} 同族留痕）。
  * </ul>
  *
  * <p>★★ **老档兼容**（fail-closed 缺省）：本字段出现**之前**落盘的字节里没有 {@code id}/{@code tick}/{@code tags}/{@code
@@ -52,7 +55,8 @@ public record SdInfoEntry(
     Object value,
     Optional<String> note,
     RevisionId at,
-    Optional<DirectiveId> sourceDirective) {
+    Optional<DirectiveId> sourceDirective,
+    Optional<AdjudicationStatus> adjudicationStatus) {
 
   /** 老档迁移 id 的前缀（见类注：区分"内容派生的旧 id"与写路径合成的 {@code 地址#序号}）。 */
   public static final String LEGACY_ID_PREFIX = "legacy:";
@@ -72,6 +76,11 @@ public record SdInfoEntry(
     }
     if (sourceDirective == null) {
       throw new IllegalArgumentException("sourceDirective 不得为 null（无来源用 Optional.empty()）");
+    }
+    // ★ 老档兼容（旧字节没有这个键）：缺省 = 生效（见 AdjudicationStatus 的类注：那时的裁决都是生效的）。
+    //   普通 INFO 条目也走这条缺省 ⇒ 它恒为 Optional.empty()，本字段只对 sd:adjudication.* 条目有意义。
+    if (adjudicationStatus == null) {
+      adjudicationStatus = Optional.empty();
     }
     if (tick < 0) {
       throw new IllegalArgumentException("tick 必须 ≥ 0: " + tick);

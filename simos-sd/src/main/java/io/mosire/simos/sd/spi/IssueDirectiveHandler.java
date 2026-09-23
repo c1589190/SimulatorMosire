@@ -124,7 +124,8 @@ public final class IssueDirectiveHandler implements CommandHandler {
               intentInfo,
               Optional.empty(),
               at,
-              Optional.of(id));
+              Optional.of(id),
+              Optional.empty());
       entries.add(entry);
       nextInfo.put(infoAddress, List.copyOf(entries));
 

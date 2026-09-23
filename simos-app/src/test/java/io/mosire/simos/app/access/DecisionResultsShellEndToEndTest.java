@@ -275,6 +275,7 @@ class DecisionResultsShellEndToEndTest {
         "{\"marker\":\"" + marker + "\"}",
         Optional.empty(),
         new RevisionId(1),
+        Optional.empty(),
         Optional.empty());
   }
 

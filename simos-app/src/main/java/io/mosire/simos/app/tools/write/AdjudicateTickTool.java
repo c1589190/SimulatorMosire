@@ -26,10 +26,10 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.state.SdState;
@@ -95,8 +95,10 @@ import java.util.UUID;
  * <p>★ **收敛性与上限**：每轮至少剔除一条（命令或翻转）⇒ 上限取"进批命令数 + 令数 + 2"（{@link #maxAttempts}）， 到顶仍不收敛 ⇒
  * **响亮失败**（不静默、不降级成两条 revision）。
  *
- * <p>★ **一个 tick 一条的幂等闸**：决策结果条目的 id 由**地址**（{@code sd:adjudication.<tick>}）派生（ {@code …#0}，{@link
- * SdInfoIds#synthesize}）⇒ **同一个 tick 裁决两次会撞 id 被拒**、整批不落 （而不是悄悄多出一条平行的决策结果）。
+ * <p>★★ **改判语义（2026-09-23 改）**：原来是"一个 tick 一条"的幂等闸（条目 id 由地址派生、写死 {@code #0}，同 tick 再裁就撞
+ * id 被拒）。用户裁定「**只有生效裁决和作废裁决**」之后，改成：一个 tick 可以留**多条**记录，**至多一条生效**
+ * （{@code AdjudicationStatus}）——作废把旧的翻成 {@code VOIDED}，重裁自然落成 {@code #1}。★ 因此**不再**由构造保证幂等；
+ * 想要"改判"的正确姿势是先前那个 {@code void} 掉。
  *
  * <p>★ **不做**（有意划界）：决策人侧的**读**工具、前端决策结果子页、{@code simos.advance} 自动结算、令的"重开" （已终态不翻回）。
  *
@@ -563,8 +565,10 @@ public final class AdjudicateTickTool implements AgentTool {
   /**
    * 决策结果条目（一条 {@code sd.PutInfo} 命令）——**与命令同批落**（这样它和命令效果在**同一条 revision** 里）。
    *
-   * <p>★ **id 显式给且由地址派生**（{@code sd:adjudication.<tick>#0}）⇒ 同一个 tick 的第二裁决会撞 id 被拒 ⇒ "一个 tick
-   * 一条"由**构造**保证，不靠调用方自觉。
+   * <p>★★ **id 不再显式给**（2026-09-23 改）：原来写死 {@code #0} 是为了让"一个 tick 一条由构造保证"，但那让**作废之后没法重裁**
+   * ——作废把 {@code #0} 翻成 VOIDED 留在原地，重裁再写 {@code #0} 就撞 id 被拒。现在交给 {@code sd.PutInfo} 的合成
+   * （{@code 地址#该地址下条目数}）⇒ 同 tick 的第二条自然落成 {@code #1}，"至多一条生效"改由
+   * {@link io.mosire.simos.sd.model.AdjudicationStatus}（新条 EFFECTIVE、旧条被作废成 VOIDED）承担。
    *
    * <p>★ {@code value} 是 **JSON 字符串**（{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证 ⇒
    * 结构化内容必须自己序列化）。
@@ -583,7 +587,8 @@ public final class AdjudicateTickTool implements AgentTool {
     payload.put("address", canonical);
     payload.put("key", RESULT_KEY);
     payload.put("value", valueJson(base.branch(), resultRevision, tick, steps, flips));
-    payload.put("id", SdInfoIds.synthesize(canonical, 0).value());
+    // ★ 生效裁决：本条是这一 tick 当前的生效记录（旧的那条在作废时已被翻成 VOIDED）。
+    payload.put("adjudicationStatus", AdjudicationStatus.EFFECTIVE.name());
     payload.put("tags", involved.stream().map(DecisionMakerId::value).toList());
     payload.put("tick", tick);
     return new CommandEnvelope(
@@ -735,17 +740,17 @@ public final class AdjudicateTickTool implements AgentTool {
   }
 
   /**
-   * 决策结果条目的坐标（地址 + 显式 id + key）——后续"决策人读工具"按 tick + 标签查的另一半钥匙。
+   * 决策结果条目的坐标（地址 + key）——后续"决策人读工具"按 tick + 标签查的另一半钥匙。
    *
-   * <p>地址与 id 都是 **tick 的纯函数**（与 {@link #infoEnvelope} 同一段拼法）⇒ 这里复算是安全的；
-   * 不反过来解析自己刚拼的载荷（那是绕路，且解析失败时的行为没法自证）。
+   * <p>★★ **不再复算 id**（2026-09-23 改）：条目 id 现在是「该地址下的**第 n 条**」的合成结果，**不是 tick 的纯函数**
+   * （作废之后重裁会落 {@code #1}）。这里若照旧写死 {@code #0}，回给调用方的就是一个**会漂的错值**——不如不给。
    */
   private static Map<String, Object> infoView(long tick) {
     String canonical = Address.parse(RESULT_ADDRESS_PREFIX + tick).canonical();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("address", canonical);
-    view.put("id", SdInfoIds.synthesize(canonical, 0).value());
     view.put("key", RESULT_KEY);
+    view.put("idNote", "条目 id = 该地址下的第 n 条（同一 tick 改判会落 #1、#2…），**不是 tick 的纯函数**");
     return view;
   }
 

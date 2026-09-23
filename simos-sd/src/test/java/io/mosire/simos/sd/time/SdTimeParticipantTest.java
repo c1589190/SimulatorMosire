@@ -168,6 +168,7 @@ class SdTimeParticipantTest {
                             "v",
                             Optional.empty(),
                             new RevisionId(1),
+                            Optional.empty(),
                             Optional.empty()))));
     TimeProposal proposal = simulate(base, 5, 6);
     assertThat(((SdChangeSet) proposal.changeSet()).isEmpty())

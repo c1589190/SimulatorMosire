@@ -14,6 +14,7 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DisclosurePolicy;
@@ -283,6 +284,10 @@ public final class RedactingQueryService {
    * 拿到的第一条就是"最近那次裁决"）。同 tick 在**今天的写路径下不可能出现两条**（{@code sd.AdjudicateTick} 按地址派生 id 保证 一个 tick
    * 一条），id 只是把"将来万一出现"定死成可复现的次序。**先排后截** ⇒ {@code limit} 截到的是**最近的 N 条**。
    *
+   * <p>★ **只回生效的裁决**（2026-09-23，用户裁定「只有生效裁决和作废裁决」）：{@code adjudicationStatus = VOIDED}
+   * 的条目**一条都不回**——它对应的世界变更已被撤销、令已退回待裁决，列出来只会让决策人按一条不作准的结局行动。
+   * 每条带上 {@code status} 字段（当前恒 {@code EFFECTIVE}，留给读面显式化用）。
+   *
    * <p>★ **空结果返回空列表**（不是异常、也不是"什么都没有"的含混）：调用方据此给出**明确可读**的"没有可查看的决策结果"。
    *
    * @return 每条 {@code {tick, id, tags(升序), value(原样的 Object), at{branch, revision}}}；{@code value}
@@ -299,9 +304,13 @@ public final class RedactingQueryService {
         continue;
       }
       for (SdInfoEntry entry : at.getValue()) {
-        if (taggedFor(entry, actor) && inWindow(entry.tick(), window)) {
-          matched.add(entry);
+        // ★ 2026-09-23（用户裁定「只有生效裁决和作废裁决」）：**作废的不算结果**——它对应的世界变更已被撤销、
+        //   令已退回待裁决，把它列成"我的决策结果"会让决策人按一条不再作准的结局行动。
+        //   判定入口是 isEffective（缺省=生效：老档那批当时都生效）。
+        if (!isEffective(entry) || !taggedFor(entry, actor) || !inWindow(entry.tick(), window)) {
+          continue;
         }
+        matched.add(entry);
       }
     }
     matched.sort(
@@ -380,6 +389,17 @@ public final class RedactingQueryService {
 
   /** 命中的一条文档：**docId 与条目成对保留**——docId 来自地址（{@code sd.info()} 的键），条目本身不带它。 */
   private record MatchedDoc(String docId, SdInfoEntry entry) {}
+
+  /**
+   * **这条裁决是不是生效的**（2026-09-23）：{@code adjudicationStatus} 缺席 = 生效（老档那批当时都生效，语义为真），
+   * 显式 {@code VOIDED} = 不生效。
+   *
+   * <p>★ 抽成一个方法是为了让"生效判据"有名字、有唯一落点（下一处要用它时不会再手搓一遍 `!VOIDED.equals(...)`）。
+   */
+  private static boolean isEffective(SdInfoEntry entry) {
+    return entry.adjudicationStatus().orElse(AdjudicationStatus.EFFECTIVE)
+        != AdjudicationStatus.VOIDED;
+  }
 
   /**
    * **tags 归属判据的唯一实现**：这条 INFO 是不是**显式指派给**该调用者的。
@@ -462,6 +482,9 @@ public final class RedactingQueryService {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("tick", entry.tick());
     view.put("id", entry.id().value());
+    view.put(
+        "status",
+        entry.adjudicationStatus().orElse(AdjudicationStatus.EFFECTIVE).name());
     view.put("tags", entry.tags().stream().map(DecisionMakerId::value).sorted().toList());
     view.put("value", entry.value());
     Map<String, Object> at = new LinkedHashMap<>();

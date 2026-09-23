@@ -49,6 +49,7 @@ class RunDecisionHandlerTest {
                 "0",
                 Optional.empty(),
                 new RevisionId(1),
+                Optional.empty(),
                 Optional.empty()));
     assertThat(after.directives()).as("★ 不写 Directive ⇒ R4 名额未被占（决策人自己照常出令）").isEmpty();
   }

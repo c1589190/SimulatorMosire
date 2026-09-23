@@ -360,6 +360,7 @@ class DecisionDocsToolTest {
         value,
         Optional.empty(),
         new RevisionId(1),
+        Optional.empty(),
         Optional.empty());
   }
 }

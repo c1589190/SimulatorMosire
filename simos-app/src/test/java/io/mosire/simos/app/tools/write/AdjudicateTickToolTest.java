@@ -465,33 +465,44 @@ class AdjudicateTickToolTest {
     assertThat(unitName(after, U1)).as("效果落在当下").isEqualTo("补记改");
   }
 
-  // ── 判据八：同一个 tick 裁决两次 ⇒ 响亮失败、零 revision（"一个 tick 一条"的幂等闸）─────────────────
+  // ── 判据八：同一个 tick 的第二次裁决落**第二条记录**（改判）；"至多一条生效"由状态承担 ──────────────
 
   /**
-   * ★ **"一个 tick 一条"由构造保证**：决策结果条目的 id 由**地址**派生（{@code sd:adjudication.<tick>#0}）⇒ 同一个 tick
-   * 的第二次裁决会**撞 id 被拒** ⇒ 本工具**响亮失败**（不静默多落一条平行的决策结果、也不丢掉结果硬提交）。
+   * ★★ **改判语义（2026-09-23 用户裁定「只有生效裁决和作废裁决」）**：旧口径是"一个 tick 一条"的幂等闸（id 写死
+   * {@code #0}，同 tick 再裁就撞 id 被拒）。那条闸被**有意撤掉**了——它让"作废之后重裁"根本不可能（作废把 {@code #0}
+   * 翻成 VOIDED 留在原地，重裁再写 {@code #0} 必撞）。新的模型是：一个 tick 可以留**多条**记录，**至多一条生效**。
    *
-   * <p>★ 判别力：把 id 改成合成的追加序号（{@code #0/#1}）或干脆不显式给 ⇒ 第二次会**成**、head 再 +1 ⇒ 这条红。
+   * <p>★ 本条钉两件事：① 第二次裁决**成功**、落 {@code #1}、条目状态 {@code EFFECTIVE}；② 第一条**还在**（留痕）。
+   * ★ 判别力：把 id 改回写死 {@code #0} ⇒ 第二次撞 id 被拒 ⇒ 本条红。
    */
   @Test
-  void adjudicatingTheSameTickTwiceFailsLoudlyWithoutASecondRevision() throws Exception {
+  void adjudicatingTheSameTickTwiceLandsASecondRecordRatherThanBeingBlockedById() throws Exception {
     issueDirective(
         WORLD_TICK,
         DM_ARMY,
         "d-army",
         commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+    // 先把第一次裁决作废（不然世界已是改后的样子，第二次的命令会在错误的基态上试）——但本用例只证"能不能落第二条"，
+    // 故直接再裁一次：命令会因"名字已经是第一连改"而无实际变更，这不影响本条要证的东西。
     assertThat(adjudicate(WORLD_TICK).success()).isTrue();
     long afterFirst = head();
 
     ToolResult second = adjudicate(WORLD_TICK);
 
-    assertThat(second.success()).as("第二次必须响亮失败").isFalse();
-    assertThat(second.code()).isEqualTo("TOOL_ERROR");
-    assertThat(second.message()).as("拒因点名是**决策结果条目**被拒（不是某条命令的问题）").contains("决策结果条目被拒");
-    assertThat(head()).as("零 revision：既不落第二条结果，也没有「只落命令不落结果」的半截提交").isEqualTo(afterFirst);
-    assertThat(decisionResult(afterFirst, WORLD_TICK).get("resultRevision").asLong())
-        .as("第一次那份决策结果仍指着它自己那条 revision")
-        .isEqualTo(afterFirst);
+    assertThat(second.success()).as("第二次不再被幂等闸挡下（旧口径反过来会红）").isTrue();
+    assertThat(head()).as("落了第二条 revision").isGreaterThan(afterFirst);
+
+    String address = AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK;
+    SimulationState state = core().replay(ref("main", head()));
+    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    List<SdInfoEntry> entries = sd.info().get(address);
+    assertThat(entries).as("同 tick 两条记录都在（留痕）").hasSize(2);
+    assertThat(entries.stream().map(e -> e.id().value()))
+        .as("★ id 是「该地址下第 n 条」，不是写死的 #0")
+        .containsExactly(address + "#0", address + "#1");
+    assertThat(entries.get(1).adjudicationStatus())
+        .as("★ 新落的那条是**生效**裁决（旧的那条的作废由 void 路径负责，不在本工具职责内）")
+        .contains(io.mosire.simos.sd.model.AdjudicationStatus.EFFECTIVE);
   }
 
   // ── 判据九：目标声明清单（缺口可见，不静默）────────────────────────────────────────────

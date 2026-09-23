@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.SdInfoId;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
@@ -36,6 +37,45 @@ class PutInfoHandlerTest {
     SdState next =
         applied(SdState.empty(), "{\"address\":\"map:Map1\",\"key\":\"strength\",\"value\":7}");
     assertThat(next.info().get("map:Map1").get(0).value()).isEqualTo(7);
+  }
+
+  // ── 裁决的生效 / 作废（2026-09-23，用户裁定「只有生效裁决和作废裁决」）────────────────
+
+  @Test
+  void putInfoCarriesAnAdjudicationStatusAndRejectsAnythingElse() {
+    // ★ 缺省 = 空（普通 INFO 条目不参与裁决状态；老档走同一条）——见 AdjudicationStatus 的类注。
+    SdState plain = applied(SdState.empty(), "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}");
+    assertThat(plain.info().get("map:Map1").get(0).adjudicationStatus()).isEmpty();
+
+    SdState effective =
+        applied(
+            SdState.empty(),
+            "{\"address\":\"sd:adjudication.1\",\"key\":\"result\",\"value\":\"{}\","
+                + "\"adjudicationStatus\":\"EFFECTIVE\"}");
+    assertThat(effective.info().get("sd:adjudication.1").get(0).adjudicationStatus())
+        .contains(AdjudicationStatus.EFFECTIVE);
+
+    // ★ 状态**不收自由字符串**（拼写漂移会让读面与不变量都不可断言）⇒ 非法值当场拒。
+    HandlerOutcome bad =
+        HANDLER.handle(
+            SdWorlds.world(SdState.empty()),
+            "{\"address\":\"sd:adjudication.1\",\"key\":\"result\",\"value\":\"{}\","
+                + "\"adjudicationStatus\":\"MAYBE\"}");
+    assertThat(bad).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) bad).reason()).contains("EFFECTIVE|VOIDED");
+  }
+
+  @Test
+  void theSecondEntryAtTheSameAddressGetsTheNextOrdinalId() {
+    // ★ 这条**是"作废之后能重裁"的使能条件**：id 由地址 + 该地址下的条目数合成（不是写死 #0），
+    //   否则作废把 #0 翻成 VOIDED 留在原地之后，重裁再写 #0 会撞 id 被拒。
+    SdState first =
+        applied(SdState.empty(), "{\"address\":\"sd:adjudication.1\",\"key\":\"result\",\"value\":\"{}\"}");
+    SdState second =
+        applied(first, "{\"address\":\"sd:adjudication.1\",\"key\":\"result\",\"value\":\"{}\"}");
+
+    assertThat(second.info().get("sd:adjudication.1").stream().map(e -> e.id().value()))
+        .containsExactly("sd:adjudication.1#0", "sd:adjudication.1#1");
   }
 
   @Test

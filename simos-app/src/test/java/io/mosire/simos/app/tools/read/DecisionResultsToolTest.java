@@ -23,6 +23,7 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
+import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -77,6 +78,8 @@ class DecisionResultsToolTest {
   private static final String ADDR_7 = address(7);
   private static final String ADDR_8 = address(8);
   private static final String ADDR_9 = address(9);
+  /** 一条**被作废**的裁决条目（2026-09-23）：它 tags 含 dm-a，但状态是 VOIDED ⇒ 不该算结果。 */
+  private static final String ADDR_10 = address(10);
 
   /** 一条**不是**决策结果的** INFO 条目（证明本工具不是把整个 INFO 层吐出来）。 */
   private static final String DIRECTIVE_ADDR = "sd:directive.d-1";
@@ -180,6 +183,21 @@ class DecisionResultsToolTest {
       assertThat(ids(body(call(dm, Map.of()))))
           .as("★ %s 的结果里不得出现非裁决地址的条目", dm.value())
           .doesNotContain(idOf(DIRECTIVE_ADDR, 0));
+    }
+  }
+
+  // ── 判据七：作废的裁决**不算结果**（2026-09-23，用户裁定「只有生效裁决和作废裁决」）──────────
+
+  @Test
+  void aVoidedAdjudicationIsNeverAReadableResult() throws Exception {
+    assertThat(allInfoIds())
+        .as("前提：作废条目确实在 INFO 层里（否则下面的『看不到』是假象）")
+        .contains(idOf(ADDR_10, 0));
+
+    for (DecisionMakerId dm : List.of(DM_A, DM_B, DM_C)) {
+      assertThat(ids(body(call(dm, Map.of()))))
+          .as("★ %s：作废的裁决不回（它的世界变更已被撤销、令已退回待裁决）", dm.value())
+          .doesNotContain(idOf(ADDR_10, 0));
     }
   }
 
@@ -288,6 +306,7 @@ class DecisionResultsToolTest {
             entry(ADDR_7, 0, 7, Set.of(DM_A), "A@7"), entry(ADDR_7, 1, 7, Set.of(DM_B), "B@7")));
     info.put(ADDR_8, List.of(entry(ADDR_8, 0, 8, Set.of(DM_A, DM_B), "AB@8")));
     info.put(ADDR_9, List.of(entry(ADDR_9, 0, 9, Set.of(), "unowned@9")));
+    info.put(ADDR_10, List.of(voidedEntry(ADDR_10, 0, 10, Set.of(DM_A))));
     info.put(DIRECTIVE_ADDR, List.of(entry(DIRECTIVE_ADDR, 0, 7, Set.of(DM_A), "directive@7")));
 
     SdState sd =
@@ -296,6 +315,22 @@ class DecisionResultsToolTest {
         ScopeFixtures.mapOf(ScopeFixtures.nationRegion("r1", "alpha", H11)),
         ScopeFixtures.units(ScopeFixtures.unitWithVision("u-a", H11, 1)),
         sd);
+  }
+
+  /** 一条**作废**的裁决条目：tags 照给，但状态是 VOIDED（读面必须把它挡在"结果"之外）。 */
+  private static SdInfoEntry voidedEntry(
+      String canonicalAddress, int ordinal, long tick, Set<DecisionMakerId> tags) {
+    return new SdInfoEntry(
+        SdInfoIds.synthesize(canonicalAddress, ordinal),
+        tick,
+        tags,
+        Set.of(),
+        "result",
+        "{\"marker\":\"voided@\" + tick}",
+        Optional.empty(),
+        new RevisionId(1),
+        Optional.empty(),
+        Optional.of(AdjudicationStatus.VOIDED));
   }
 
   private static SdInfoEntry entry(
@@ -309,6 +344,7 @@ class DecisionResultsToolTest {
         "{\"marker\":\"" + marker + "\"}",
         Optional.empty(),
         new RevisionId(1),
+        Optional.empty(),
         Optional.empty());
   }
 }
