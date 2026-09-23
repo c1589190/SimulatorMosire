@@ -132,9 +132,21 @@
     };
   }
 
-  /** T9：把从属区域读数写进左栏（每个区域自己的 hexCount + **并集**合计；口径写在标签里）。 */
+  /**
+   * T9：把从属区域读数写进左栏（每个区域自己的 hexCount + **并集**合计）。
+   *
+   * ★★ B16（2026-09-23 用户实测）：**实现口径不进主栏** —— 主栏只留结论（「N 格（M 个区域）」），
+   * 口径（并集 / 逐 hex 去重 / 重叠格只计一次）一律移进 `title=` tooltip。
+   * ★ 口径本身**一个字没改**：`region-view.test.cjs` 的
+   * `page-层-shows-the-union-and-never-a-summed-total` 仍钉着「写进 DOM 的必须是并集、求和值绝不进 DOM」。
+   */
   function appendRegionMembership(detail, summary) {
-    detail.appendChild(app.el("dt", { text: "从属区域（各区域自己的 hexCount，不合并不求和）" }));
+    detail.appendChild(
+      app.el("dt", {
+        text: "从属区域",
+        title: "每个区域各自显示它自己的格数；区域之间不合并、不求和（一个格可以同时属于多个区域）。",
+      })
+    );
     var box = app.el("dd", {
       class: "region-membership",
       id: "hex-region-membership",
@@ -155,7 +167,12 @@
       box.appendChild(line);
     });
     detail.appendChild(box);
-    detail.appendChild(app.el("dt", { text: "合计（并集：逐 hex 去重，重叠格只计一次）" }));
+    detail.appendChild(
+      app.el("dt", {
+        text: "合计",
+        title: "所有从属区域的并集：逐 hex 去重，重叠格（同时属于多个区域的格）只计一次。",
+      })
+    );
     var total = app.el("dd", {
       class: "region-membership-total",
       id: "hex-region-union",
@@ -164,17 +181,21 @@
     if (summary.complete) {
       total.setAttribute("data-union-count", String(summary.unionCount));
       total.setAttribute("data-shared-hex-count", String(summary.sharedHexCount));
-      total.textContent =
-        summary.unionCount +
-        " 格（并集，逐 hex 去重；" +
-        summary.rows.length +
-        " 个区域，重叠 " +
-        summary.sharedHexCount +
-        " 格只计一次）";
+      total.textContent = summary.unionCount + " 格（" + summary.rows.length + " 个区域）";
+      total.setAttribute(
+        "title",
+        "并集：逐 hex 去重，重叠 " +
+          summary.sharedHexCount +
+          " 格只计一次（不是各区域格数之和）。"
+      );
     } else {
       total.setAttribute("data-union-count", "");
       total.setAttribute("data-shared-hex-count", "");
-      total.textContent = "—（有区域未取到 hex 列表，不计算合计；不拿求和顶替）";
+      total.textContent = "—（有区域读不到格列表）";
+      total.setAttribute(
+        "title",
+        "有区域读不到它的格列表 ⇒ 算不出并集，这里不显示数字（不拿各区域格数之和顶替）。"
+      );
     }
     detail.appendChild(total);
   }
@@ -204,9 +225,18 @@
     return t.branch + "@" + (t.revision === null || t.revision === undefined ? "head" : t.revision);
   }
 
-  function appendRow(detail, label, value) {
-    detail.appendChild(app.el("dt", { text: label }));
-    detail.appendChild(app.el("dd", { text: app.text(formatValue(value)) }));
+  /**
+   * 追加一行读数。`hint`（可选）= 该行的**口径说明**，写进 `title=`（B16：口径不进主栏，进 tooltip）。
+   */
+  function appendRow(detail, label, value, hint) {
+    var dt = app.el("dt", { text: label });
+    var dd = app.el("dd", { text: app.text(formatValue(value)) });
+    if (hint) {
+      dt.setAttribute("title", hint);
+      dd.setAttribute("title", hint);
+    }
+    detail.appendChild(dt);
+    detail.appendChild(dd);
   }
 
   /** 追加一行**由别的文件回填**的读数（带 id 锚点）：跨文件只经这一个 DOM 锚点，不互相持有状态。 */
@@ -223,6 +253,37 @@
       return Number(value.toFixed(3));
     }
     return value;
+  }
+
+  /**
+   * 毫 MP ⇒ 人话（B15）：`4000` 毫 ⇒ `"4 MP"`。
+   *
+   * <p>★ 移动预算 / 每格成本 / 总成本在领域里都是**毫 MP 定点**（`UnitMoves` 口径），直接印 4000 是
+   * **内部单位泄漏** —— 一律走这里换算，**不让用户自己除 1000**。取不到 ⇒ `"—"`（不显示成 0）。
+   */
+  function millisToMpText(millis) {
+    if (millis === null || millis === undefined) {
+      return "—";
+    }
+    if (typeof millis !== "number" || !Number.isFinite(millis)) {
+      return String(millis);
+    }
+    var mp = millis / 1000;
+    return (Number.isInteger(mp) ? mp : Number(mp.toFixed(3))) + " MP";
+  }
+
+  /** ‰ 定点 ⇒ 人话（B15）：`1000` ⇒ `"1.0×（1000‰）"`（人话在前、原值括注，便于对账）。 */
+  function perMilleToRateText(perMille) {
+    if (perMille === null || perMille === undefined) {
+      return "—";
+    }
+    if (typeof perMille !== "number" || !Number.isFinite(perMille)) {
+      return String(perMille);
+    }
+    var rate = perMille / 1000;
+    return (
+      (Number.isInteger(rate) ? rate.toFixed(1) : Number(rate.toFixed(3))) + "×（" + perMille + "‰）"
+    );
   }
 
   /** 装备表渲染成 `键=值；…`（空表显示"（空）"）。 */
@@ -308,7 +369,13 @@
     };
   }
 
-  /** 把移动读数逐行写进左栏（无路线 ⇒ 一行「无」）。 */
+  /**
+   * 把移动读数逐行写进左栏（无路线 ⇒ 一行「无」）。
+   *
+   * ★★ B15（2026-09-23 用户实测）：**内部单位不进 DOM** —— 毫 MP ⇒ `"N MP"`、‰ ⇒ `"N×（N‰）"`；
+   * 「那 1000 是怎么来的」这类口径一律进 `title=`。用户看到的就该是他能直接拿来推演的数，
+   * 不该自己在脑子里除 1000（原样印 4000 就是内部单位泄漏）。
+   */
   function appendMovementRows(detail, unit, overview) {
     var readout = movementReadout(unit, overview);
     if (!readout) {
@@ -317,24 +384,32 @@
     }
     appendRow(detail, "movement", "有");
     appendRow(detail, "路线格数", readout.pathLength);
-    appendRow(detail, "本 tick 预算（毫 MP）", readout.budgetPerTickMillis);
     appendRow(
       detail,
-      "路线每格成本（毫 MP）",
-      readout.stepCostMillis === null ? "—" : readout.stepCostMillis
+      "本 tick 预算",
+      millisToMpText(readout.budgetPerTickMillis),
+      "本 tick 可用的移动点数 = 出发速度 × 1 tick（领域内部是毫 MP 定点，这里已换算成 MP）。"
     );
     appendRow(
       detail,
-      "路线总成本（毫 MP）",
-      readout.totalCostMillis === null ? "—" : readout.totalCostMillis
+      "路线每格成本",
+      millisToMpText(readout.stepCostMillis),
+      "进入下一格要花的移动点数 = 该格地形成本 × 出发机动。"
+    );
+    appendRow(
+      detail,
+      "路线总成本",
+      millisToMpText(readout.totalCostMillis),
+      "整条路线各格成本之和（逐格相加，不含起点那一格）。"
     );
     appendRow(detail, "status", readout.status);
     appendRow(detail, "currentHex", readout.currentHex ? hexLabel(readout.currentHex) : "—");
     appendRow(detail, "nextHex", readout.nextHex ? hexLabel(readout.nextHex) : "—");
     appendRow(
       detail,
-      "remainingMillis",
-      readout.remainingMillis === null ? "—" : readout.remainingMillis
+      "进入下一格还需",
+      millisToMpText(readout.remainingMillis),
+      "走完当前这一格还欠的移动点数（欠清才进下一格；已抵达 / 需重规划 ⇒ 空）。"
     );
     appendRow(
       detail,
@@ -342,8 +417,45 @@
       readout.etaTick === null ? "—（需重规划）" : readout.etaTick
     );
     appendRow(detail, "出发 tick", readout.departedAtTick);
-    appendRow(detail, "出发速度（毫 MP/tick）", readout.speedAtDeparture * 1000);
-    appendRow(detail, "出发机动‰", readout.mobilityPerMilleAtDeparture);
+    appendRow(
+      detail,
+      "出发速度",
+      readout.speedAtDeparture + " MP/tick",
+      "出发那一刻冻结的速度：每 tick 能用的移动点数（在途改状态不回溯）。"
+    );
+    appendRow(
+      detail,
+      "出发机动",
+      perMilleToRateText(readout.mobilityPerMilleAtDeparture),
+      "出发那一刻冻结的移动成本倍率：每格成本 = 地形成本 × 该值 ÷ 1000 ⇒ 1000‰ = 1.0×（越大走得越慢）。"
+    );
+  }
+
+  /**
+   * 编制那节的可见性（纯函数，B8）：**该格真有单位时**才与 hex 详情并列显示。
+   *
+   * <p>★★ 2026-09-23 用户实测（**判定为真 bug**）：常规模式点一个无单位的 hex，左栏详情写着
+   * 「该处单位：无」，正下方却挂着编制树（「编制 · <单位名> <id>」）⇒ **自相矛盾**
+   * ——这格没单位，编制从哪来？编制树是**全世界的**单位树（`unitTree.js` 渲染），
+   * 与"这一格有什么"无关 ⇒ 只在**确实有单位**时露面。
+   *
+   * <p>口径：hex + **取到了**格上单位且非空 ⇒ 显示；hex + 格上无单位 ⇒ 隐藏；
+   * 选中单位 / 区域 / **什么都没选** ⇒ 显示（那时没有可矛盾的对象，编制树本来就靠它点单位）。
+   * ★ "取不到"（请求失败）**不当成"没有"** —— 调用方在失败分支里不碰可见性。
+   */
+  function unitTreeSectionVisible(selection, unitsHere) {
+    if (selection && selection.kind === "hex") {
+      return !!(unitsHere && unitsHere.length);
+    }
+    return true;
+  }
+
+  /** 把编制那节的可见性落到 DOM（节点缺席 ⇒ 静默跳过：旧三页 / 别的宿主页不挂它）。 */
+  function applyUnitTreeSection(visible) {
+    var node = app.byId("unit-tree-section");
+    if (node) {
+      node.hidden = !visible;
+    }
   }
 
   function renderHex(selection, token) {
@@ -367,6 +479,8 @@
           return u.position && u.position.q === selection.q && u.position.r === selection.r;
         });
         var population = results[2];
+        // ★ B8：这一格到底有没有单位，**就在这里**算出来 ⇒ 编制那节的可见性同处落地（同一份口径，不在别处再判一次）。
+        applyUnitTreeSection(unitTreeSectionVisible(selection, unitsHere));
         var terrainText = hex.terrain;
         if (hex.terrainType && hex.terrainType.name) {
           terrainText = hex.terrain + "（" + hex.terrainType.name + "）";
@@ -395,7 +509,8 @@
           "人口",
           population && population.population !== null && population.population !== undefined
             ? population.population
-            : "无序列"
+            : "无人口数据",
+          "该格的人口数（社会模块的数据）；这一版世界没接入人口序列时显示「无人口数据」。"
         );
         app.statusMessage(status, hexLabel(hex) + " · " + targetLabel(), "ok");
       })
@@ -429,8 +544,19 @@
         appendRow(detail, "position", unit.position ? hexLabel(unit.position) : "—");
         appendRow(detail, "member", unit.member);
         appendRow(detail, "equipment", equipmentText(unit.equipment));
-        appendRow(detail, "speed", unit.speed);
-        appendRow(detail, "mobilityPerMille", unit.mobilityPerMille);
+        // ★ B15：这两行也是"内部单位"（`speed` 是 MP/tick、`mobilityPerMille` 是 ‰ 定点）⇒ 同处换算。
+        appendRow(
+          detail,
+          "speed",
+          unit.speed + " MP/tick",
+          "每 tick 能用的移动点数（与「本 tick 预算」同一口径）。"
+        );
+        appendRow(
+          detail,
+          "mobilityPerMille",
+          perMilleToRateText(unit.mobilityPerMille),
+          "移动成本倍率（‰ 定点：1000‰ = 1.0×；每格成本 = 地形成本 × 该值 ÷ 1000）。"
+        );
         appendMovementRows(detail, unit, overview);
         app.statusMessage(status, "单位 " + unit.id + " · " + targetLabel(), "ok");
       })
@@ -459,15 +585,22 @@
     if (!selection) {
       app.clear(detail);
       app.statusMessage(status, "点选地图或单位以查看详情。", "muted");
+      // ★ B8：什么都没选 ⇒ 没有可矛盾的对象，编制树是主要的单位入口，照常显示。
+      applyUnitTreeSection(true);
       return;
     }
     if (selection.kind === "hex") {
+      // ★ B8：hex 分支的可见性**故意不在这里判** —— 要先知道"这格到底有没有单位"，而那是 renderHex
+      //   取数之后才知道的（在那里落地）。在此之前保持原状，免得"取数中先隐藏、拿到单位又弹回来"那种无谓的闪。
       renderHex(selection, token);
     } else if (selection.kind === "unit") {
+      // ★ B8：选中单位 ⇒ 立刻显示（编制树里正要高亮它，没有什么可矛盾的，不必等取数）。
+      applyUnitTreeSection(true);
       renderUnit(selection, token);
     } else {
       app.clear(detail);
       app.statusMessage(status, "未知选择类型：" + app.text(selection.kind), "warn");
+      applyUnitTreeSection(true);
     }
   }
 
@@ -1021,22 +1154,39 @@
     app.statusMessage(app.byId("decision-start-status"), message, tone);
   }
 
+  /**
+   * 没选中决策人时按钮的提示语（B14）。
+   *
+   * <p>★ 与 `index.html` 里 `#decision-start-status` 的**初始文案逐字相同**：初始态显示的这一句，
+   * 和 `init()` 之后 `updateStartDecisionControl()` 落到实处的那一句必须是同一个 —— 两处各写一份，
+   * 界面上就会出现"脚本没跑起来时说 A、跑起来说 B"这种只有肉眼才看得出的错位。
+   */
+  var NO_TARGET_HINT = "先选一个决策人：在地图上点选国家区域，或点选有决策人的单位，再点这里。";
+
   function updateStartDecisionControl() {
     var button = app.byId("decision-start");
     var gate = startDecisionGate(startDecisionTarget);
-    var targetId = startDecisionTarget ? String(startDecisionTarget.id) : "";
+    var hasTarget = !!(
+      startDecisionTarget &&
+      startDecisionTarget.id !== null &&
+      startDecisionTarget.id !== undefined &&
+      startDecisionTarget.id !== ""
+    );
+    var targetId = hasTarget ? String(startDecisionTarget.id) : "";
     if (button) {
-      // ★ **不再置 disabled**（用户裁定：随时可点）。仍然要求"有目标"——没有目标时点了只能报错，
-      //   故点击路径（decideStartDecision）第一道就如实拒发；按钮本身不再替用户判断时机。
-      button.disabled = false;
+      // ★★ B14（2026-09-23 用户实测）：**没目标 ⇒ 禁用** —— 禁用与提示语必须是同一件事的两面
+      //   （原状是"按钮可点 + 状态行写『随时可点 · 未选中决策人』"，点下去只打印一句警告 = **假的可点**）。
+      // ★ 有目标 ⇒ **永远可点**（2026-09-23 用户裁定「我在当前回合点开始决策」要随时可点）：
+      //   `due` 只是提示、**不拦人** —— 这一条没变，见下面那句状态文案。
+      button.disabled = !hasTarget;
       button.setAttribute("data-decision-target", targetId);
     }
     var stamp = targetId + "|" + gate.reason;
     if (stamp !== lastStartGateStamp) {
       lastStartGateStamp = stamp;
-      // ★ 文案从"能不能点"改成"此刻是什么时机"：门禁不再是权限，是提示（"随时可点 · 非待决（…）"）。
+      // ★ 有目标时的文案从"能不能点"改成"此刻是什么时机"：门禁不再是权限，是提示（"随时可点 · 非待决（…）"）。
       setStartDecisionStatus(
-        "随时可点 · " + gate.reason,
+        hasTarget ? "随时可点 · " + gate.reason : NO_TARGET_HINT,
         gate.enabled ? "ok" : "muted"
       );
     }
@@ -2605,6 +2755,11 @@
     groupByTag: groupByTag,
     normalizeTag: normalizeTag,
     movementReadout: movementReadout,
+    // ★ B15/B16：左栏读数的单位换算与口径投影（纯函数）——「内部单位不进 DOM」由它们承重。
+    millisToMpText: millisToMpText,
+    perMilleToRateText: perMilleToRateText,
+    // ★ B8：编制那节的可见性（纯函数）——「无单位 hex 不得挂着编制树」由它承重。
+    unitTreeSectionVisible: unitTreeSectionVisible,
     // ★ M8 T9：左栏"从属区域"读数（纯函数）——门禁直接对它下断言（并集 ≠ 求和）。
     regionMembershipSummary: regionMembershipSummary,
     UNTAGGED_LABEL: UNTAGGED_LABEL,

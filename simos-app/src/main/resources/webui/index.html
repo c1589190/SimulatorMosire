@@ -40,8 +40,14 @@
         <h2>详情</h2>
         <p id="left-status" class="muted">点选地图或单位以查看详情。</p>
         <dl class="kv" id="selection-detail"></dl>
-        <h3>编制</h3>
-        <div id="unit-tree-mount" class="unit-tree"></div>
+        <!-- ★★ B8（2026-09-23 用户实测，判定为真 bug）：编制这节**只在该格真有单位时**才与 hex 详情并列显示
+             —— 否则会出现「该处单位：无」正下方挂着「编制 <单位名> <id>」这种自相矛盾。
+             可见性由 panels.js 的纯函数 unitTreeSectionVisible 判定、落在这节的 hidden 上
+             （人话：选中一个没单位的格 ⇒ 整节收起来；选中单位 / 什么都没选 / 格子确有单位 ⇒ 显示）。 -->
+        <section class="unit-tree-section" id="unit-tree-section">
+          <h3>编制</h3>
+          <div id="unit-tree-mount" class="unit-tree"></div>
+        </section>
 
         <section class="unit-editor" data-modes="unit" aria-label="单位移动与编辑">
           <h3>单位移动与编辑</h3>
@@ -213,8 +219,12 @@
                  ★ 文本框留空 ⇒ 跳过 ①，行为与合并前的「开始决策」逐字一致。
                  ★ ① 没发出去 ⇒ **当场停**（不接着 ②③）：带着指示跑却把指示丢了，界面上看不出差别。
                  再点一次 = 重新决策（**上下文沿用**，只有「上下文重置」才清）。 -->
+            <!-- ★★ B14（2026-09-23 用户实测）：**没选中决策人 ⇒ 这个按钮是禁用的**，状态行写「先选一个决策人…」
+                 —— 禁用与提示语必须是同一件事的两面（原状是"可点 + 写着未选中决策人"= 假的可点）。
+                 ★ 有目标时**照旧随时可点**（due 只是提示、不拦人）。按钮的 disabled 由 panels.js 的
+                 updateStartDecisionControl 落地；下面这句初始文案与它的 NO_TARGET_HINT **逐字相同**。 -->
             <button type="button" id="decision-start">开始决策</button>
-            <p id="decision-start-status" class="status muted">选中一个决策人后可发起（随时可点；「待决」只是提示，不拦人）。</p>
+            <p id="decision-start-status" class="status muted">先选一个决策人：在地图上点选国家区域，或点选有决策人的单位，再点这里。</p>
             <!-- 本次运行后的决策（决心 / 理由 / 命令清单）**就地**渲染在这里：左边没有额外的「看结果」按钮。 -->
             <div id="decision-latest" class="decision-latest"></div>
             <!-- 给决策人的补充指示（可选）：**没有独立的发送按钮**——内容随上面那个「开始决策」一并带出去，

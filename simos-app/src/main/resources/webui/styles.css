@@ -422,6 +422,21 @@ body.workbench-page .col-right {
   margin-top: 6px;
 }
 
+/* ★ 附带修（B16 同一块的排版缺陷，2026-09-23 浏览器截图实测）：区域名与格数是两个 inline span、
+   中间**没有任何间距** ⇒ 界面上挤成一个词「特兰西瓦尼亚侯国173 格」。给这一行加上基线对齐 + 8px 间距。 */
+.region-membership-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* ★★ B8：编制那节（无单位的 hex 被选中时整节隐藏 —— 见 panels.js 的 unitTreeSectionVisible）。
+   显式写出来而不是只靠 UA 的 `[hidden]`：哪天这节被某条规则设成 display:flex/block，UA 那条就被盖掉，
+   隐藏会**静默失效**（界面上看得出、断言看不见）。 */
+.unit-tree-section[hidden] {
+  display: none;
+}
+
 .timeline-bar {
   display: flex;
   align-items: center;
