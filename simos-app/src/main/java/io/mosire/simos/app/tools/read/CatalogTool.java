@@ -3,6 +3,7 @@ package io.mosire.simos.app.tools.read;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.access.CatalogVisibility;
 import io.mosire.simos.app.tools.ToolSupport;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,6 +17,14 @@ import java.util.Set;
  *
  * <p>★ **判据②（R5）的载体**：清单与 {@code Shell} 实际注册的 handler **同源**（构造期注入），故 catalog 列出的每个 type 都能经 {@code
  * simos.command.submit} 到达。工具面不另立一份"支持的类型"表。
+ *
+ * <p>★★ **按调用者可见性过滤（用户 2026-09-23 裁定）**：清单不再对所有人一样——**GM / MCP 口看到全量**，**决策人只看到自己
+ * 有途径触发的类型**（能直接调的窄工具 ∪ 令里可嵌的领域命令）。理由：旧行为下决策人看得见 {@code sd.PutInfo} /
+ * {@code sd.AdjudicateTick} / {@code sd.CreateDecisionMaker} 这些**它执行不了**的类型，于是"照着目录去试"每一试都白烧一轮真 LLM
+ * 调用——目录在回答"系统允许你干什么"时**必须与真权限面同源**。判据本体在 {@link CatalogVisibility}（一份实现，可单测）。
+ *
+ * <p>★ **构造期的覆盖断言不受过滤影响**：{@link #PAYLOAD_HINTS} 仍要求覆盖**全部已注册** type（缺项即抛）——那是"声明式清单不随注册面自动
+ * 延伸"的护栏，与"列给谁看"是两件事。
  *
  * <p>★ **不给 Core 加新面**（spec §7.1 原文）：Core 不暴露 {@code CommandRegistry.types()}，清单由 app 持有。
  */
@@ -112,6 +121,7 @@ public final class CatalogTool implements AgentTool {
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"));
 
   private final List<String> types;
+  private final CatalogVisibility visibility;
 
   /**
    * @param commandTypes 已注册命令类型（与 {@code Shell} 注册的 handler 同源）；本类只读它
@@ -130,6 +140,8 @@ public final class CatalogTool implements AgentTool {
       throw new IllegalArgumentException("已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: " + missing);
     }
     this.types = List.copyOf(sorted);
+    // ★ 可见性判据与注册面**同一份输入**（不是另一张表）：过滤规则见 CatalogVisibility 的类注。
+    this.visibility = new CatalogVisibility(Set.copyOf(sorted));
   }
 
   @Override
@@ -139,7 +151,9 @@ public final class CatalogTool implements AgentTool {
 
   @Override
   public String description() {
-    return "列出本世界已注册的全部命令类型及其载荷字段提示（simos.command.submit 的 type/payloadJson 依据）";
+    return "列出本世界已注册的命令类型及其载荷字段提示（simos.command.submit 的 type/payloadJson 依据）。"
+        + "★ 返回的是**你有途径触发的**那些：管辖者看到全部；决策人只看到能直接调用的类型与**令里可以嵌入**的领域命令"
+        + "（令里禁 sd. 自指，故 sd.* 只有能直接调的那两条会出现）";
   }
 
   @Override
@@ -149,10 +163,16 @@ public final class CatalogTool implements AgentTool {
 
   @Override
   public ToolResult execute(ToolContext context) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("types", types);
-    Map<String, Object> hints = new LinkedHashMap<>();
+    List<String> visible = new ArrayList<>();
     for (String type : types) {
+      if (visibility.visible(type, context)) {
+        visible.add(type);
+      }
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("types", List.copyOf(visible));
+    Map<String, Object> hints = new LinkedHashMap<>();
+    for (String type : visible) {
       // 构造期已断言本表覆盖全部 type（T10-j），此处不再兜底成空串（缺项不静默）。
       hints.put(type, PAYLOAD_HINTS.get(type));
     }
