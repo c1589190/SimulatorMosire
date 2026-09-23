@@ -177,7 +177,9 @@ test("suboptions-are-not-new-modes", () => {
 });
 
 test("map-js-gates-every-map-write-with-the-matching-type", () => {
-  const source = readWebui("map.js");
+  // ★ M12 第六波：地图编辑模式的宿主 UI（含全部 map-edit 写点）已搬到 map-mapeditor.js ⇒
+  //   本扫描随宿主层改指该文件（保护不变：每个地图写点都过 mapEditWriteGate 且命令类型逐字匹配）。
+  const source = readWebui("map-mapeditor.js");
   // 三个写点各自的门控（命令类型逐字匹配）= C2 的静态半边。
   assert.ok(source.includes('mapEditWriteGate(host.mapEditTool, "map.SetTerrain")'));
   assert.ok(source.includes('mapEditWriteGate(host.mapEditTool, "map.RandomizeRegion")'));
@@ -189,6 +191,9 @@ test("map-js-gates-every-map-write-with-the-matching-type", () => {
 });
 
 test("page-delegates-to-the-single-guard-implementation", () => {
+  // ★ M12 第六波：写门/白名单这两个**纯函数**留在 map.js（唯一实现处的扫描对象不变）；
+  //   而「页面必须委托它们、不得自己重写判断」的调用点已随地图编辑宿主搬到 map-mapeditor.js
+  //   ⇒ 那三条 .includes 随宿主层改指该文件（保护不变：页面层必须出现这些调用）。
   const source = readWebui("map.js");
   assert.equal(
     (source.match(/function mapEditWriteAllowed\(/g) || []).length,
@@ -196,7 +201,8 @@ test("page-delegates-to-the-single-guard-implementation", () => {
     "写命令白名单只能有一处实现"
   );
   assert.equal((source.match(/function mapEditWriteGate\(/g) || []).length, 1, "写门只能有一处实现");
-  assert.ok(source.includes("setMapEditSubtool("), "子选项切换必须走 setMapEditSubtool");
-  assert.ok(source.includes("mapEditSubtoolOf("), "工具归属必须走 mapEditSubtoolOf");
-  assert.ok(source.includes("mapEditPanelVisibility("), "面板可见性必须走 mapEditPanelVisibility");
+  const hostLayer = readWebui("map-mapeditor.js");
+  assert.ok(hostLayer.includes("setMapEditSubtool("), "子选项切换必须走 setMapEditSubtool");
+  assert.ok(hostLayer.includes("mapEditSubtoolOf("), "工具归属必须走 mapEditSubtoolOf");
+  assert.ok(hostLayer.includes("mapEditPanelVisibility("), "面板可见性必须走 mapEditPanelVisibility");
 });

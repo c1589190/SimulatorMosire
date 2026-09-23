@@ -428,6 +428,10 @@
   <script src="hexcolor.js"></script>
   <script src="regionShape.js"></script>
   <script src="map.js"></script>
+  <!-- ★ M12 第六波：地图编辑/区域编辑两簇宿主 UI 拆出；必须在 map.js 之后（取 window.SimosMapCore）、
+       renderer.js 之前（renderer.js 加载期要取 core.renderEdgeKindOptions） -->
+  <script src="map-mapeditor.js"></script>
+  <script src="map-regioneditor.js"></script>
   <!-- ★ M12 第二波：createRenderer 在 renderer.js；必须在 map.js 之后（取 window.SimosMapCore） -->
   <script src="renderer.js"></script>
   <!-- ★ M12 第五波：单位编辑宿主 / 旧页+工作台 chrome 拆出；必须在 map.js 之后（取 window.SimosMapCore） -->

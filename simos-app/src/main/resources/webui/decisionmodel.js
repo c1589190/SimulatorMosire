@@ -754,7 +754,10 @@
       }),
       makers: decisionResultMakers(tags, commands),
       atBranch: valueOrDash(at.branch),
+      // ★ `at.revision` = **这次写入所依据的基态 revision**（不是"这条属于哪一版"；可能小于它最早可见的
+      //   revision，也不等于被查的 revision）⇒ 调用方按「写入依据」显示，不拿它当版本号。
       atRevision: at.revision === null || at.revision === undefined ? "—" : String(at.revision),
+      // `resultRevision` 来自 value 自身（裁决工具写的"结果落盘 revision"），按原文显示。
       resultRevision:
         obj.resultRevision === null || obj.resultRevision === undefined
           ? "—"

@@ -1743,12 +1743,14 @@
     head.appendChild(
       app.el("span", {
         class: "result-entry-at",
+        // ★★ 口径（gui-endpoint 实测）：`at.revision` 是**这次写入所依据的基态 revision**，**不是**
+        //   "这条结果属于哪一版"（它可能小于该条目最早可见的 revision，也不会等于被查的 revision）
+        //   ⇒ 标注成「写入依据 rev」，**绝不**拿它当版本号。`resultRevision` 来自 value 自身，按原文标注。
         text:
-          "记录于 " +
           entry.atBranch +
-          " rev " +
+          " · 写入依据 rev " +
           entry.atRevision +
-          (entry.resultRevision !== "—" ? " · 结果 revision " + entry.resultRevision : ""),
+          (entry.resultRevision !== "—" ? " · 结果 rev " + entry.resultRevision : ""),
       })
     );
     box.appendChild(head);

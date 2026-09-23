@@ -27,6 +27,13 @@ const BUNDLE_DEPS = {
   //   loadWebui 这两份，则须先灌 map.js 及其依赖。
   "map-uniteditor.js": ["hexgeom.js", "hexcolor.js", "regionShape.js", "map.js"],
   "map-hostpage.js": ["hexgeom.js", "hexcolor.js", "regionShape.js", "map.js"],
+  // ★ M12 第六波：地图编辑模式宿主（map-mapeditor.js）与区域编辑模式宿主（map-regioneditor.js）自
+  //   map.js 顶层搬出，浏览器里排在 map.js 之后、renderer.js 之前（取 map.js 建立的
+  //   window.SimosMapCore；map-mapeditor.js 还要赶在 renderer.js 之前把 core.renderEdgeKindOptions
+  //   挂回）。同 map-uniteditor.js：它们**不能**列进 "map.js" 的依赖（会先于 map.js 执行、取不到
+  //   SimosMapCore）；反过来 node 宿主若要直接 loadWebui 这两份，则须先灌 map.js 及其依赖。
+  "map-mapeditor.js": ["hexgeom.js", "hexcolor.js", "regionShape.js", "map.js"],
+  "map-regioneditor.js": ["hexgeom.js", "hexcolor.js", "regionShape.js", "map.js"],
   // ★ M12 第四波：paneldom.js（共享 DOM 叶子）与 panel-right.js（右栏）已从 panels.js 拆出；
   //   顺序＝引入顺序（paneldom 依赖 readout.formatValue ⇒ readout 必须最前）。
   "panels.js": ["readout.js", "decisionmodel.js", "paneldom.js", "panel-right.js"],

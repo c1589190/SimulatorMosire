@@ -141,17 +141,23 @@ test("randomizeSelectionState-rejects-an-empty-selection", () => {
 test("page-层-uses-the-guards-instead-of-re-implementing-them", () => {
   // ★ 源代码级自证：宿主层**只能**通过这些纯函数判断（免得页面上长出第二份判断，
   //   那样变异体能杀掉纯函数却杀不掉页面行为 —— 断言就成了装饰）。
-  const source = readWebui("map.js");
-  assert.ok(source.indexOf("edgeModeState(edgeModeValue())") >= 0, "连边提交要走 edgeModeState");
-  assert.ok(source.indexOf("parseSeedInput(") >= 0, "seed 要走 parseSeedInput");
-  assert.ok(source.indexOf("randomizeSelectionState(") >= 0, "选区要走 randomizeSelectionState");
-  assert.ok(source.indexOf("edgeChainResult(") >= 0, "轨迹要走 edgeChainResult");
-  assert.ok(source.indexOf("edgeDeletePlan(") >= 0, "删边要走 edgeDeletePlan");
-  assert.ok(source.indexOf("edgeHitAtWorldPoint(") >= 0, "命中要走 edgeHitAtWorldPoint");
+  // ★ M12 第六波：连边/圈选随机化/删边的**宿主写点**已随地图编辑模式搬到 map-mapeditor.js
+  //   ⇒ 涉及写载荷的 5 条（edgeModeState(edgeModeValue()) / parseSeedInput( /
+  //   randomizeSelectionState( / edgeDeletePlan( / mode: …）与反向 seed 断言改指该文件；
+  //   edgeChainResult( / edgeHitAtWorldPoint( 仍是 map.js 的纯函数（后者由 renderer.js 经 core
+  //   调用），故这两条留在 map.js 扫描。每条的保护不变。
+  const host = readWebui("map-mapeditor.js");
+  const pure = readWebui("map.js");
+  assert.ok(host.indexOf("edgeModeState(edgeModeValue())") >= 0, "连边提交要走 edgeModeState");
+  assert.ok(host.indexOf("parseSeedInput(") >= 0, "seed 要走 parseSeedInput");
+  assert.ok(host.indexOf("randomizeSelectionState(") >= 0, "选区要走 randomizeSelectionState");
+  assert.ok(pure.indexOf("edgeChainResult(") >= 0, "轨迹要走 edgeChainResult");
+  assert.ok(host.indexOf("edgeDeletePlan(") >= 0, "删边要走 edgeDeletePlan");
+  assert.ok(pure.indexOf("edgeHitAtWorldPoint(") >= 0, "命中要走 edgeHitAtWorldPoint");
   // 反向：写载荷的 mode **只能**来自 guard / 删边计划，不许硬写。
-  assert.ok(/mode:\s*modeState\.mode/.test(source), "连边 mode 来自 edgeModeState");
-  assert.ok(/mode:\s*plan\.mode/.test(source), "删边 mode 来自 edgeDeletePlan");
-  assert.equal(/seed:\s*0\b/.test(source), false, "不许把 seed 硬写成 0");
+  assert.ok(/mode:\s*modeState\.mode/.test(host), "连边 mode 来自 edgeModeState");
+  assert.ok(/mode:\s*plan\.mode/.test(host), "删边 mode 来自 edgeDeletePlan");
+  assert.equal(/seed:\s*0\b/.test(host), false, "不许把 seed 硬写成 0");
 });
 
 test("parseEdgeKey-round-trips-and-rejects-malformed-keys", () => {

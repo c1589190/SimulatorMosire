@@ -170,14 +170,16 @@
       var needFit = !active.isReady() || host.fittedBranch !== branch;
       active.setData(body);
       host.overviewRegions = body.regions || [];
-      renderTerrainPalette(body.terrainTypes || []);
+      // ★ M12 第六波：地图编辑/区域编辑两簇的宿主 UI 已搬到 map-mapeditor.js / map-regioneditor.js。
+      //   本文件对它们只做**惰性** window.SimosMapEditor.* / window.SimosMapRegionEditor.* 调用。
+      window.SimosMapEditor.renderTerrainPalette(body.terrainTypes || []);
       await reloadUnits();
       var mode = app.getState().mode;
       if (mode === "map-edit" || mode === "region-edit") {
-        renderRegionInfo(app.getState().selection);
+        window.SimosMapEditor.renderRegionInfo(app.getState().selection);
       }
       if (mode === "region-edit") {
-        renderRegionEditor();
+        window.SimosMapRegionEditor.renderRegionEditor();
         reloadRegionEditHighlight();
         refreshFocusHexes();
       }
@@ -849,7 +851,7 @@
     var focus = state.regionFocus || null;
     if (host.lastRegionFocus !== focus) {
       host.lastRegionFocus = focus;
-      onRegionFocusChanged(focus);
+      window.SimosMapRegionEditor.onRegionFocusChanged(focus);
     }
     // ★ 决策人可见范围层：焦点换了就重拉（含"清空焦点 ⇒ 清高亮"）。放在区域高亮分支**之后**：
     //   `reloadHighlights()` 在决策模式下走的是零请求清空路径（同步）⇒ 本层随后写，不会被它擦掉。
@@ -874,10 +876,10 @@
         host.regionDraft = {};
         host.regionDeleteArmed = false;
         active.setDraftHexes([]);
-        renderRegionEditor();
+        window.SimosMapRegionEditor.renderRegionEditor();
         reloadRegionEditHighlight();
         refreshFocusHexes();
-        renderRegionInfo(state.selection);
+        window.SimosMapEditor.renderRegionInfo(state.selection);
       } else {
         active.setDraftHexes([]);
         active.clearFocusHexes();
@@ -886,9 +888,9 @@
           if (host.mapEditTool === "randomize") {
             active.setDraftHexes(host.randomizeSelection);
           }
-          renderRegionInfo(state.selection);
+          window.SimosMapEditor.renderRegionInfo(state.selection);
         } else {
-          clearRegionInfo();
+          window.SimosMapEditor.clearRegionInfo();
         }
         reloadHighlights();
       }
@@ -902,7 +904,7 @@
       active.setSelected(sel && sel.kind === "hex" ? { q: sel.q, r: sel.r } : null);
     }
     if (state.mode === "map-edit" || state.mode === "region-edit") {
-      renderRegionInfo(sel);
+      window.SimosMapEditor.renderRegionInfo(sel);
     }
   }
 
@@ -1012,1302 +1014,9 @@
     }
   }
 
-  // ── 地图编辑模式（M8 T7 框架 + T8 调色板/拖刷/区域信息）──────────────────
-  //
-  // ★ 写路径唯一：全部经 app.writeCommand（模式白名单在 app.js 的 writeCommand 里把关：map-edit 允许
-  //   map.SetTerrain / SetEdge / RandomizeRegion；本单只实现 SetTerrain，另两条 UI 置灰）。
-  // ★ 拖刷语义（Q5）：一次拖动收集**去重后的 hex 集合**，松手发**一条** map.SetTerrain（不是每格一条）。
-
-  function setMapEditStatus(message, tone) {
-    app.statusMessage(app.byId("brush-status"), message, tone);
-  }
-
-  function setRegionInfoStatus(message, tone) {
-    app.statusMessage(app.byId("region-info-status"), message, tone);
-  }
-
-  function appendInfoRow(detail, label, value) {
-    detail.appendChild(app.el("dt", { text: label }));
-    detail.appendChild(
-      app.el("dd", { text: value === null || value === undefined ? "—" : String(value) })
-    );
-  }
-
-  /** `/api/map/hex` 的 `edges`（入射边 + 其 pathway 标注键）⇒ 一行可读文本；无入射边 ⇒ `"无"`。 */
-  function edgeSummaryText(edges) {
-    var list = Array.isArray(edges) ? edges : [];
-    if (!list.length) {
-      return "无";
-    }
-    return list
-      .map(function (edge) {
-        var pathways = Array.isArray(edge.pathways) ? edge.pathways : [];
-        return edge.edge + (pathways.length ? "[" + pathways.join(",") + "]" : "[]");
-      })
-      .join("；");
-  }
-
-  function textOrNull(id) {
-    var node = app.byId(id);
-    var raw = node ? node.value || "" : "";
-    raw = raw.trim();
-    return raw === "" ? null : raw;
-  }
-
-  /** 地形调色板：**只列** /api/map/overview 的 terrainTypes（后端权威词表，绝不硬编码）。 */
-  function renderTerrainPalette(types) {
-    var mount = app.byId("terrain-palette");
-    if (!mount) {
-      return;
-    }
-    var list = types || [];
-    var signature = list
-      .map(function (type) {
-        return type.key;
-      })
-      .join(",");
-    if (signature !== host.paletteSignature) {
-      host.paletteSignature = signature;
-      app.clear(mount);
-      list.forEach(function (type) {
-        var button = app.el("button", {
-          type: "button",
-          class: "terrain-swatch",
-          "data-terrain": type.key,
-          title: app.text(type.name) + "（" + type.key + "）",
-        });
-        var dot = app.el("span", { class: "terrain-swatch-dot" });
-        dot.style.backgroundColor = type.color;
-        button.appendChild(dot);
-        button.appendChild(app.el("span", { class: "terrain-swatch-label", text: type.key }));
-        button.addEventListener("click", function () {
-          selectTerrain(type.key);
-        });
-        mount.appendChild(button);
-      });
-      if (signature.indexOf(host.brushTerrain || "") < 0) {
-        host.brushTerrain = null;
-      }
-    }
-    updatePaletteSelection();
-    app.statusMessage(
-      app.byId("terrain-palette-status"),
-      "词表 " + list.length + " 类：" + (signature || "（空）"),
-      "muted"
-    );
-  }
-
-  function selectTerrain(key) {
-    if (host.brushTerrain === key) {
-      host.brushTerrain = null;
-      updatePaletteSelection();
-      setMapEditStatus("已取消地形选择：左键恢复为平移/选中。", "muted");
-      return;
-    }
-    host.brushTerrain = key;
-    updatePaletteSelection();
-    setMapEditStatus("已选地形 " + key + "：右键在地图上拖动涂抹（多格 ⇒ 一条 map.SetTerrain）；左键=平移。", "ok");
-  }
-
-  function updatePaletteSelection() {
-    var mount = app.byId("terrain-palette");
-    if (!mount) {
-      return;
-    }
-    Array.prototype.forEach.call(mount.querySelectorAll("button[data-terrain]"), function (button) {
-      button.classList.toggle("active", button.getAttribute("data-terrain") === host.brushTerrain);
-    });
-  }
-
-  /** 计划要画的地形（e2e/调试用；null = 未选）。 */
-  function paletteKeys() {
-    var mount = app.byId("terrain-palette");
-    if (!mount) {
-      return [];
-    }
-    return Array.prototype.map.call(mount.querySelectorAll("button[data-terrain]"), function (button) {
-      return button.getAttribute("data-terrain");
-    });
-  }
-
-  /** 拖刷松手回调：把去重后的 hex 集合发**一条** map.SetTerrain；错例原文显示、不重试。 */
-  async function commitBrush(hexes) {
-    if (host.mapEditBusy) {
-      return null;
-    }
-    if (!mapEditWriteGate(host.mapEditTool, "map.SetTerrain").ok) {
-      setMapEditStatus("当前不是「地形」编辑线 ⇒ **未发出任何写命令**。", "warn");
-      active.setBrushHexes([]);
-      return null;
-    }
-    if (!host.brushTerrain) {
-      setMapEditStatus("先选一种地形再涂抹。", "warn");
-      active.setBrushHexes([]);
-      return null;
-    }
-    if (!hexes || !hexes.length) {
-      return null;
-    }
-    host.mapEditBusy = true;
-    setMapEditStatus(
-      "提交 map.SetTerrain：" + hexes.length + " 格 → " + host.brushTerrain + " …",
-      "muted"
-    );
-    var result = await app.writeCommand("map.SetTerrain", {
-      hexes: hexes,
-      terrain: host.brushTerrain,
-    });
-    host.mapEditBusy = false;
-    active.setBrushHexes([]);
-    var last = hexes[hexes.length - 1];
-    if (last) {
-      app.setSelection({ kind: "hex", q: last.q, r: last.r });
-    }
-    if (result.ok) {
-      setMapEditStatus(
-        "已改 " + hexes.length + " 格为 " + host.brushTerrain + "（一条命令，head 已前进）",
-        "ok"
-      );
-    } else {
-      setMapEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  // ── 连通性（河流/道路）+ 圈选随机化（M8 T11）───────────────────────────────
-  //
-  // ★ 按键模型不变（M8-R 用户裁定）：左键恒为平移；右键按**当前工具**分派。
-  // ★ 三条护栏都在纯函数里（`edgeChainEdges` / `edgeModeState` / `parseSeedInput` /
-  //   `randomizeSelectionState`，见文件顶部），宿主只负责"不 ok 就不发命令 + 给可见提示"。
-
-  function setMapEditToolStatus(message, tone) {
-    app.statusMessage(app.byId("map-edit-tool-status"), message, tone);
-  }
-
-  function setEdgeStatus(message, tone) {
-    app.statusMessage(app.byId("edge-status"), message, tone);
-  }
-
-  function setRandomizeStatus(message, tone) {
-    app.statusMessage(app.byId("randomize-status"), message, tone);
-  }
-
-  /** 显示/隐藏一条**可见提示**（护栏不 ok 时用；空文本 ⇒ 隐藏）。 */
-  function setWarning(id, message) {
-    var node = app.byId(id);
-    if (!node) {
-      return;
-    }
-    node.textContent = message || "";
-    node.hidden = !message;
-  }
-
-  /** 把一个 radio 组里 value 匹配的那个置为 checked（找不到就什么都不做——不静默改别的）。 */
-  function checkRadio(groupId, name, value) {
-    var group = app.byId(groupId);
-    if (!group) {
-      return;
-    }
-    Array.prototype.forEach.call(group.querySelectorAll('input[name="' + name + '"]'), function (input) {
-      input.checked = input.value === value;
-    });
-  }
-
-  /** 读一个 radio 组里被选中的值；无组/无选中 ⇒ `null`。 */
-  function checkedRadioValue(groupId, name) {
-    var group = app.byId(groupId);
-    var value = null;
-    if (group) {
-      Array.prototype.forEach.call(group.querySelectorAll('input[name="' + name + '"]'), function (input) {
-        if (input.checked) {
-          value = input.value;
-        }
-      });
-    }
-    return value;
-  }
-
-  /** 给一个 radio 组挂 change 监听：仅在选中时回调该值（照既有工具组的写法）。 */
-  function wireRadioGroup(groupId, name, onPick) {
-    var group = app.byId(groupId);
-    if (!group) {
-      return;
-    }
-    Array.prototype.forEach.call(group.querySelectorAll('input[name="' + name + '"]'), function (input) {
-      input.addEventListener("change", function () {
-        if (input.checked) {
-          onPick(input.value);
-        }
-      });
-    });
-  }
-
-  /** 把两个 radio 组（子选项 / 线内工具）都同步到 host 状态。 */
-  function syncMapEditRadios() {
-    checkRadio("map-edit-subtools", "map-edit-subtool", host.mapEditSubtool);
-    checkRadio("terrain-tool-select", "map-edit-terrain-tool", host.mapEditTool);
-    checkRadio("edge-kind-select", "map-edit-edge-kind", host.mapEditTool);
-  }
-
-  /**
-   * ★ T3：依据**已注册组**重建 `#edge-kind-select` 的候选（服务端 overview.pathwayGroups 权威；默认 river/road）。
-   * 重建后必须**重新挂** change 监听（innerHTML 换掉旧节点 ⇒ 旧监听一并消失）。标签取组的 `name`。
-   */
-  function renderEdgeKindOptions() {
-    var mount = app.byId("edge-kind-select");
-    if (!mount) {
-      return;
-    }
-    var kinds = registeredEdgeKindList();
-    var labelOf = {};
-    (host.overviewGroups || []).forEach(function (group) {
-      if (group && group.id) {
-        labelOf[group.id] = group.name || group.id;
-      }
-    });
-    mount.textContent = "";
-    kinds.forEach(function (kind) {
-      var label = document.createElement("label");
-      var input = document.createElement("input");
-      input.type = "radio";
-      input.name = "map-edit-edge-kind";
-      input.value = kind;
-      label.appendChild(input);
-      label.appendChild(document.createTextNode(" " + (labelOf[kind] || kind)));
-      mount.appendChild(label);
-    });
-    wireRadioGroup("edge-kind-select", "map-edit-edge-kind", function (value) {
-      selectMapEditTool(value);
-    });
-    checkRadio("edge-kind-select", "map-edit-edge-kind", host.mapEditTool);
-  }
-
-  /** 选一条编辑线（地形 / 连通性）：未知值 ⇒ 落到「地形」；线内工具跨线 ⇒ 落到该线默认工具。 */
-  function setMapEditSubtool(value) {
-    var subtool = mapEditSubtoolState(value).ok ? value : "terrain";
-    host.mapEditSubtool = subtool;
-    var tool = host.mapEditTool;
-    if (mapEditSubtoolOf(tool) !== subtool) {
-      tool = mapEditSubtoolDefaultTool(subtool);
-    }
-    selectMapEditTool(tool);
-  }
-
-  /** 选本线内的一个工具：切换可见控件组 + 重设右键分派（渲染器侧）+ 恢复该工具的选区。 */
-  function selectMapEditTool(value) {
-    // ★ T3：合法工具 = 地形组（terrain/randomize）+ **已注册的连通性组**（默认 river/road，自定义 canal …）；
-    //   其它一律落到 terrain（fail-closed，不把未知串当工具）。
-    var tool = mapEditSubtoolOf(value) ? value : "terrain";
-    host.mapEditTool = tool;
-    host.mapEditSubtool = mapEditSubtoolOf(tool) || "terrain";
-    if (active && active.setEditTool) {
-      active.setEditTool(tool);
-    }
-    var panels = mapEditPanelVisibility(tool);
-    var terrainControls = app.byId("terrain-tool-controls");
-    if (terrainControls) {
-      terrainControls.hidden = !panels.terrain;
-    }
-    var edgeControls = app.byId("edge-controls");
-    if (edgeControls) {
-      edgeControls.hidden = !panels.connectivity;
-    }
-    var randomizeControls = app.byId("randomize-controls");
-    if (randomizeControls) {
-      randomizeControls.hidden = !panels.randomize;
-    }
-    setWarning("edge-mode-warning", "");
-    setWarning("randomize-warning", "");
-    if (tool === "randomize") {
-      active.setBrushHexes([]);
-      active.setDraftHexes(host.randomizeSelection);
-      renderRandomizeStatus();
-    } else {
-      active.setDraftHexes([]);
-      active.setBrushHexes([]);
-    }
-    if (tool === "terrain") {
-      setMapEditToolStatus("编辑线：地形（地形刷）—— 右键拖动涂抹；左键=平移地图。", "muted");
-    } else if (tool === "randomize") {
-      setMapEditToolStatus("编辑线：地形（圈选随机化）—— 右键拖动圈选；左键=平移地图。", "muted");
-    } else {
-      setMapEditToolStatus(
-        "编辑线：连通性（" +
-          edgeKindLabel(tool) +
-          "）—— 右键拖动连起相邻两格（一条 map.SetEdge）；左键点/拖命中边即删；空白处左键=平移地图。",
-        "muted"
-      );
-      renderEdgeControls();
-    }
-    syncMapEditRadios();
-  }
-
-  /** `#edge-mode` 的当前值（空串 = 未选）。 */
-  function edgeModeValue() {
-    var node = app.byId("edge-mode");
-    return node && typeof node.value === "string" ? node.value : "";
-  }
-
-  /** 依据 `#edge-mode` 的当前值刷新提示（★ 未选时**必须**有可见提示）。 */
-  function renderEdgeControls() {
-    var state = edgeModeState(edgeModeValue());
-    if (state.ok) {
-      setWarning("edge-mode-warning", "");
-      setEdgeStatus("语义 " + state.mode + "：右键拖动连边。", "muted");
-    } else {
-      setWarning("edge-mode-warning", "未选 replace/merge：右键拖动不会发出任何写命令。");
-      setEdgeStatus("先在上面选 replace 或 merge。", "warn");
-    }
-  }
-
-  /** 连边松手：**先过护栏**（未选 mode / 非连通性线 ⇒ 一条命令都不发），再一次 app.writeCommand。 */
-  async function commitEdge(chain) {
-    active.setBrushHexes([]);
-    if (host.mapEditBusy) {
-      return null;
-    }
-    if (!mapEditWriteGate(host.mapEditTool, "map.SetEdge").ok) {
-      setEdgeStatus("当前不是「连通性」编辑线 ⇒ **未发出任何写命令**。", "warn");
-      return null;
-    }
-    var edges = (chain && chain.edges) || [];
-    var path = (chain && chain.path) || [];
-    var kind = host.mapEditTool; // 已是已注册组（selectMapEditTool 的 fail-closed 保证）
-    var modeState = edgeModeState(edgeModeValue());
-    if (!modeState.ok) {
-      // ★ Q2 的 UI 侧：**不预选、不兜默认**——用户没选就一个字节都不发。
-      setWarning("edge-mode-warning", "未选 replace/merge：右键拖动不会发出任何写命令。");
-      setEdgeStatus(
-        "未选连通性语义 ⇒ **未发出任何写命令**（本次拖动 " +
-          edges.length +
-          " 条边已丢弃；轨迹 " +
-          path.length +
-          " 格）。",
-        "warn"
-      );
-      return null;
-    }
-    if (!edges.length) {
-      setEdgeStatus(
-        "非相邻/缺格的两格连不成边 ⇒ **未发出任何写命令**（轨迹 " + path.length + " 格）。",
-        "warn"
-      );
-      return null;
-    }
-    host.mapEditBusy = true;
-    setEdgeStatus("提交 map.SetEdge：" + kind + " × " + edges.length + " 条（" + modeState.mode + "）…", "muted");
-    var result = await app.writeCommand("map.SetEdge", {
-      kind: kind,
-      edges: edges,
-      mode: modeState.mode,
-    });
-    host.mapEditBusy = false;
-    if (result.ok) {
-      setEdgeStatus(
-        "已改 " +
-          kind +
-          " " +
-          edges.length +
-          " 条边（" +
-          modeState.mode +
-          "，一条命令，head 已前进）" +
-          (chain && chain.nonAdjacent ? "；非相邻/缺格段已跳过" : ""),
-        "ok"
-      );
-      await refreshRegionInfoNow();
-    } else {
-      setEdgeStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  /**
-   * ★ 左键删边（T3）：把"该 kind 的其余边"作为 {@code replace} 载荷发一条 map.SetEdge（命令面没有删单条边的命令）。
-   * 删到一条不剩 ⇒ **不伪造命令**、给可见提示（{@code edgeDeletePlan} 的 `last-edge`）。
-   */
-  async function commitEdgeDelete(kind, deletedKeys) {
-    if (host.mapEditBusy) {
-      return null;
-    }
-    if (!mapEditWriteGate(kind, "map.SetEdge").ok) {
-      setEdgeStatus("当前不是「连通性」编辑线 ⇒ **未发出任何写命令**。", "warn");
-      return null;
-    }
-    var plan = edgeDeletePlan(kind, host.overviewEdges, deletedKeys);
-    if (!plan.ok) {
-      setEdgeStatus(
-        "无法删除最后一条 " + kind + "：命令面 replace 不接受空集 ⇒ **未发出任何写命令**。",
-        "warn"
-      );
-      return null;
-    }
-    host.mapEditBusy = true;
-    setEdgeStatus("删除 " + kind + " " + (deletedKeys || []).length + " 条边（replace 其余 " + plan.edges.length + " 条）…", "muted");
-    var result = await app.writeCommand("map.SetEdge", {
-      kind: plan.kind,
-      edges: plan.edges,
-      mode: plan.mode,
-    });
-    host.mapEditBusy = false;
-    if (result.ok) {
-      setEdgeStatus("已删 " + (deletedKeys || []).length + " 条 " + kind + "（一条命令，head 已前进）", "ok");
-      await refreshRegionInfoNow();
-    } else {
-      setEdgeStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  /** 圈选松手：选区**持久显示**、**不发命令**（命令由「执行随机化」按钮发）。 */
-  function commitRandomizeSelection(hexes) {
-    var state = randomizeSelectionState(hexes);
-    host.randomizeSelection = state.hexes;
-    active.setBrushHexes([]);
-    active.setDraftHexes(host.randomizeSelection);
-    setWarning("randomize-warning", "");
-    renderRandomizeStatus();
-    return null;
-  }
-
-  function renderRandomizeStatus() {
-    var count = host.randomizeSelection.length;
-    var node = app.byId("randomize-seed");
-    var seedState = parseSeedInput(node ? node.value : "");
-    setRandomizeStatus(
-      "选区 " + count + " 格；seed " + (seedState.ok ? seedState.seed : "（未填/非法）") + "。",
-      count && seedState.ok ? "ok" : "muted"
-    );
-  }
-
-  /** 「执行随机化」：**先过两条护栏**（空选区 / seed 非整数 ⇒ 一条命令都不发），再一次 writeCommand。 */
-  async function submitRandomize() {
-    if (host.mapEditBusy) {
-      return null;
-    }
-    if (!mapEditWriteGate(host.mapEditTool, "map.RandomizeRegion").ok) {
-      setWarning("randomize-warning", "当前不是「地形」编辑线 ⇒ **未发出任何写命令**。");
-      setRandomizeStatus("不在「地形」编辑线 ⇒ 未发出任何写命令。", "warn");
-      return null;
-    }
-    var selState = randomizeSelectionState(host.randomizeSelection);
-    if (!selState.ok) {
-      setWarning("randomize-warning", "选区为空：先在图上右键拖动圈选，**没有发出任何写命令**。");
-      setRandomizeStatus("选区为空 ⇒ 未发出任何写命令。", "warn");
-      return null;
-    }
-    var seedNode = app.byId("randomize-seed");
-    var seedState = parseSeedInput(seedNode ? seedNode.value : "");
-    if (!seedState.ok) {
-      setWarning("randomize-warning", "seed 必须是整数（Java long）：**没有发出任何写命令**。");
-      setRandomizeStatus("seed 非法 ⇒ 未发出任何写命令。", "warn");
-      return null;
-    }
-    setWarning("randomize-warning", "");
-    host.mapEditBusy = true;
-    setRandomizeStatus(
-      "提交 map.RandomizeRegion：" + selState.hexes.length + " 格，seed " + seedState.seed + " …",
-      "muted"
-    );
-    var result = await app.writeCommand("map.RandomizeRegion", {
-      hexes: selState.hexes,
-      seed: seedState.seed,
-    });
-    host.mapEditBusy = false;
-    if (result.ok) {
-      setRandomizeStatus(
-        "已随机化 " + selState.hexes.length + " 格（seed " + seedState.seed + "，一条命令，head 已前进）",
-        "ok"
-      );
-      await refreshRegionInfoNow();
-    } else {
-      setRandomizeStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    return result;
-  }
-
-  /** 写命令落地后立刻重取一次区域信息面板（否则缓存键不变、面板停留在旧值）。 */
-  async function refreshRegionInfoNow() {
-    var selection = app.getState().selection;
-    if (!selection || selection.kind !== "hex") {
-      return;
-    }
-    host.regionInfoKey = null;
-    renderRegionInfo(selection);
-  }
-
-  function clearRegionInfo() {
-    host.regionInfoKey = null;
-    app.clear(app.byId("region-info-detail"));
-    var editor = app.byId("region-meta-editor");
-    if (editor) {
-      editor.hidden = true;
-    }
-  }
-
-  /** 区域信息面板（M8 T8；T10 起 map-edit 与 region-edit 共用）：显示所选 hex 的多值 regions 与地形。 */
-  function renderRegionInfo(selection) {
-    if (!app.byId("region-info-detail")) {
-      return;
-    }
-    var mode = app.getState().mode;
-    if (mode !== "map-edit" && mode !== "region-edit") {
-      return;
-    }
-    if (!selection || selection.kind !== "hex") {
-      clearRegionInfo();
-      if (mode === "region-edit" && host.regionFocus) {
-        fillRegionMetaEditor([host.regionFocus]);
-        setRegionInfoStatus("区域编辑目标：" + host.regionFocus, "muted");
-      } else {
-        setRegionInfoStatus("点选一个格子查看其所属区域与地形。", "muted");
-      }
-      return;
-    }
-    var key = selection.q + "," + selection.r + "@" + targetKey();
-    if (key === host.regionInfoKey) {
-      return;
-    }
-    host.regionInfoKey = key;
-    setRegionInfoStatus("查询 (" + selection.q + "," + selection.r + ") …", "muted");
-    api
-      .mapHex(selection.q, selection.r, app.target())
-      .then(function (hex) {
-        if (key !== host.regionInfoKey) {
-          return;
-        }
-        var detail = app.clear(app.byId("region-info-detail"));
-        var terrainText = hex.terrain;
-        if (hex.terrainType && hex.terrainType.name) {
-          terrainText = hex.terrain + "（" + hex.terrainType.name + "）";
-        }
-        appendInfoRow(detail, "q", hex.q);
-        appendInfoRow(detail, "r", hex.r);
-        appendInfoRow(detail, "terrain", terrainText);
-        var regions = Array.isArray(hex.regions) ? hex.regions : [];
-        appendInfoRow(detail, "regions", regions.length ? regions.join("、") : "无区域");
-        appendInfoRow(detail, "连通性", edgeSummaryText(hex.edges));
-        fillRegionMetaEditor(regions);
-        setRegionInfoStatus(
-          "(" + hex.q + "," + hex.r + ") · " + regions.length + " 个区域",
-          "ok"
-        );
-      })
-      .catch(function (e) {
-        if (key !== host.regionInfoKey) {
-          return;
-        }
-        clearRegionInfo();
-        setRegionInfoStatus("查询失败：" + e.message, "err");
-      });
-  }
-
-  function fillRegionMetaEditor(regionIds) {
-    var editor = app.byId("region-meta-editor");
-    var select = app.byId("region-meta-target");
-    if (!editor || !select) {
-      return;
-    }
-    if (!regionIds.length) {
-      editor.hidden = true;
-      return;
-    }
-    editor.hidden = false;
-    var previous = select.value;
-    app.clear(select);
-    regionIds.forEach(function (id) {
-      select.appendChild(app.el("option", { value: id, text: id }));
-    });
-    select.value = regionIds.indexOf(previous) >= 0 ? previous : regionIds[0];
-    loadRegionMeta(select.value);
-  }
-
-  async function loadRegionMeta(id) {
-    if (!id) {
-      return;
-    }
-    try {
-      var region = await api.mapRegion(id, app.target());
-      var meta = region.meta || {};
-      app.byId("region-meta-color").value = meta.color || "";
-      app.byId("region-meta-tag").value = meta.tag || "";
-      app.byId("region-meta-description").value = meta.description || "";
-      app.byId("region-meta-annexedby").value = meta.annexedBy || "";
-    } catch (e) {
-      setRegionInfoStatus("区域元数据载入失败：" + e.message, "warn");
-    }
-  }
-
-  /** 只改 meta（不带 hexes）⇒ map.UpdateRegion；区域内容不动。 */
-  async function submitRegionMeta() {
-    if (host.mapEditBusy) {
-      return null;
-    }
-    var select = app.byId("region-meta-target");
-    var id = select ? select.value : "";
-    if (!id) {
-      setRegionInfoStatus("先选一个区域。", "warn");
-      return null;
-    }
-    var meta = {
-      color: textOrNull("region-meta-color"),
-      tag: textOrNull("region-meta-tag"),
-      description: textOrNull("region-meta-description"),
-      annexedBy: textOrNull("region-meta-annexedby"),
-    };
-    host.mapEditBusy = true;
-    setRegionInfoStatus("提交元数据 " + id + " …", "muted");
-    var result = await app.writeCommand("map.UpdateRegion", { regionId: id, meta: meta });
-    host.mapEditBusy = false;
-    setRegionInfoStatus(
-      result.ok ? "已更新 " + id + " 的元数据" : result.message,
-      result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
-    );
-    return result;
-  }
-
-  function wireMapEditor() {
-    var submit = app.byId("region-meta-submit");
-    if (submit) {
-      submit.addEventListener("click", submitRegionMeta);
-    }
-    var select = app.byId("region-meta-target");
-    if (select) {
-      select.addEventListener("change", function () {
-        loadRegionMeta(select.value);
-      });
-    }
-    // ★ T2：三个单选组——编辑线（地形/连通性）、地形线内工具、连通性线内类型。
-    wireRadioGroup("map-edit-subtools", "map-edit-subtool", function (value) {
-      setMapEditSubtool(value);
-    });
-    wireRadioGroup("terrain-tool-select", "map-edit-terrain-tool", function (value) {
-      selectMapEditTool(value);
-    });
-    wireRadioGroup("edge-kind-select", "map-edit-edge-kind", function (value) {
-      selectMapEditTool(value);
-    });
-    // ★ replace/merge 选择器：**初始为空串（无预选）**，切换只刷新提示与 host 记录。
-    var modeNode = app.byId("edge-mode");
-    if (modeNode) {
-      modeNode.addEventListener("change", function () {
-        host.edgeMode = modeNode.value;
-        renderEdgeControls();
-      });
-    }
-    var seedNode = app.byId("randomize-seed");
-    if (seedNode) {
-      seedNode.addEventListener("input", renderRandomizeStatus);
-    }
-    var randomizeSubmit = app.byId("randomize-submit");
-    if (randomizeSubmit) {
-      randomizeSubmit.addEventListener("click", submitRandomize);
-    }
-    setMapEditSubtool(host.mapEditSubtool);
-  }
-
-  // ── 区域编辑模式（M8 T10）：绘新区域 / 改已有区域 hex / 删除（二次确认）────────
-  //
-  // ★ M8-U1：重叠是**正常状态**，前端绝不加"禁止重叠"的校验或提示（那是缺陷不是贴心）。
-  // ★ 写路径唯一：三条命令都经 app.writeCommand（白名单在 app.js 的 writeCommand 把关）。
-  // ★ 选区（draft）由渲染器的持久选区层画（松手后仍显示）；拖动中的预览复用 T8 刷子机制。
-
-  function regionDraftList() {
-    return Object.keys(host.regionDraft).map(function (key) {
-      return host.regionDraft[key];
-    });
-  }
-
-  function setRegionEditStatus(message, tone) {
-    app.statusMessage(app.byId("region-edit-status"), message, tone);
-  }
-
-  function renderRegionEditor() {
-    var draftNode = app.byId("region-edit-draft");
-    if (draftNode) {
-      draftNode.textContent = "临时选区：" + regionDraftList().length + " 格";
-    }
-    var focusNode = app.byId("region-edit-focus");
-    if (focusNode) {
-      focusNode.textContent = host.regionFocus || "未选中";
-    }
-    var delName = app.byId("region-delete-name");
-    if (delName) {
-      delName.textContent = host.regionFocus || "—";
-    }
-    var opSelect = app.byId("region-edit-op");
-    if (opSelect) {
-      opSelect.value = host.regionOp;
-    }
-    var confirm = app.byId("region-delete-confirm");
-    if (confirm) {
-      confirm.hidden = !host.regionDeleteArmed;
-    }
-    var updateBtn = app.byId("region-update-submit");
-    if (updateBtn) {
-      updateBtn.disabled = !host.regionFocus || host.regionEditBusy;
-    }
-    var loadBtn = app.byId("region-edit-load");
-    if (loadBtn) {
-      loadBtn.disabled = !host.regionFocus;
-    }
-    var mergeBtn = app.byId("region-merge");
-    if (mergeBtn) {
-      mergeBtn.disabled = !host.regionFocus || host.regionEditBusy;
-    }
-    var excludeBtn = app.byId("region-exclude");
-    if (excludeBtn) {
-      excludeBtn.disabled = !host.regionFocus || host.regionEditBusy;
-    }
-    var deleteBtn = app.byId("region-delete");
-    if (deleteBtn) {
-      deleteBtn.disabled = !host.regionFocus;
-    }
-    var conflict = app.byId("region-name-conflict");
-    if (conflict) {
-      conflict.hidden = !host.regionNameConflict;
-      if (host.regionNameConflict) {
-        var conflictMsg = app.byId("region-name-conflict-msg");
-        if (conflictMsg) {
-          conflictMsg.textContent =
-            "名称「" +
-            host.regionNameConflict.name +
-            "」已存在（regionId=" +
-            host.regionNameConflict.existingId +
-            "）——请选择：";
-        }
-      }
-    }
-  }
-
-  /** 新区域 id 的**建议值**（可改）：取未被占用的 `region-<n>`（Q3：RegionId 由调用方给）。 */
-  function suggestRegionId() {
-    var used = {};
-    (host.overviewRegions || []).forEach(function (region) {
-      if (region && region.id !== undefined && region.id !== null) {
-        used[String(region.id)] = true;
-      }
-    });
-    for (var n = 1; n < 10000; n++) {
-      var candidate = "region-" + n;
-      if (!used[candidate]) {
-        return candidate;
-      }
-    }
-    return "region-new";
-  }
-
-  function newRegionDraft() {
-    if (app.getState().mode !== "region-edit") {
-      return;
-    }
-    host.regionDraft = {};
-    host.regionOp = "add";
-    host.regionDeleteArmed = false;
-    app.setRegionFocus(null);
-    active.setBrushOp(host.regionOp);
-    active.setDraftHexes([]);
-    active.clearFocusHexes();
-    var idInput = app.byId("region-create-id");
-    if (idInput && !idInput.value.trim()) {
-      idInput.value = suggestRegionId();
-    }
-    var nameInput = app.byId("region-create-name");
-    if (nameInput && !nameInput.value.trim()) {
-      nameInput.value = "新区域";
-    }
-    renderRegionEditor();
-    reloadRegionEditHighlight();
-    setRegionEditStatus(
-      "★ 右键拖动=套索创建（flood fill 内部）；Shift+右键拖动=逐格画/擦（临时选区，供合并/剔除）；左键拖动=平移。重叠不报错。",
-      "muted"
-    );
-  }
-
-  function clearRegionDraft() {
-    host.regionDraft = {};
-    active.setDraftHexes([]);
-    renderRegionEditor();
-    setRegionEditStatus("选区已清空。", "muted");
-  }
-
-  async function loadFocusIntoDraft() {
-    if (!host.regionFocus) {
-      setRegionEditStatus("先在右栏选一个区域。", "warn");
-      return null;
-    }
-    var region = await fetchRegionCached(host.regionFocus);
-    host.regionDraft = {};
-    (region.hexes || []).forEach(function (h) {
-      host.regionDraft[h.q + "_" + h.r] = { q: h.q, r: h.r };
-    });
-    active.setDraftHexes(regionDraftList());
-    renderRegionEditor();
-    setRegionEditStatus("已载入 " + host.regionFocus + " 的 " + regionDraftList().length + " 格到选区。", "muted");
-    return regionDraftList();
-  }
-
-  /** Shift+右键逐格画/擦松手：把涂抹的格按当前操作并入/移出**临时选区**（**不发写**，选区只是编辑草稿）。 */
-  function commitRegionPaint(painted) {
-    if (app.getState().mode !== "region-edit") {
-      return null;
-    }
-    var op = host.regionOp;
-    (painted || []).forEach(function (h) {
-      if (!h || h.q === undefined || h.r === undefined) {
-        return;
-      }
-      var key = h.q + "_" + h.r;
-      if (op === "remove") {
-        delete host.regionDraft[key];
-      } else {
-        host.regionDraft[key] = { q: h.q, r: h.r };
-      }
-    });
-    active.setBrushHexes([]);
-    active.setDraftHexes(regionDraftList());
-    var last = painted && painted.length ? painted[painted.length - 1] : null;
-    if (last) {
-      app.setSelection({ kind: "hex", q: last.q, r: last.r });
-    }
-    renderRegionEditor();
-    setRegionEditStatus(
-      (op === "remove" ? "已移除 " : "已加入 ") +
-        (painted ? painted.length : 0) +
-        " 格（选区共 " +
-        regionDraftList().length +
-        " 格）",
-      "muted"
-    );
-    return { ok: true, draftCount: regionDraftList().length };
-  }
-
-  /** 在左栏已有的区域名里找 trim 后精确同名的区域；返回 overview 条目或 null。 */
-  function findSameNameRegion(name) {
-    var wanted = String(name || "").trim();
-    if (!wanted) {
-      return null;
-    }
-    var found = null;
-    (host.overviewRegions || []).forEach(function (region) {
-      if (found || !region) {
-        return;
-      }
-      var other = String(region.name === undefined || region.name === null ? "" : region.name).trim();
-      if (other === wanted) {
-        found = region;
-      }
-    });
-    return found;
-  }
-
-  /** 某个 regionId 是否已被占用（用于「新建同名区域」时换一个不同的 id）。 */
-  function regionIdExists(id) {
-    var used = false;
-    (host.overviewRegions || []).forEach(function (region) {
-      if (region && String(region.id) === String(id)) {
-        used = true;
-      }
-    });
-    return used;
-  }
-
-  /**
-   * ★ M8-S §9.2：建区前**先查同名**（左栏 overview 的已有区域名）。同名 ⇒ 挂起并弹二选一，
-   * **不静默新建、不静默合并**；只有用户点选后才发**恰一条**命令。
-   */
-  async function requestCreateRegion(id, name, hexes) {
-    var same = findSameNameRegion(name);
-    if (same) {
-      host.regionNameConflict = {
-        id: id,
-        name: name,
-        hexes: hexes.slice(),
-        existingId: String(same.id),
-        existingName: String(same.name),
-      };
-      renderRegionEditor();
-      setRegionEditStatus(
-        "名称「" + name + "」已存在（regionId=" + same.id + "）：请选择「新建同名区域」或「合并到同名已有区域」。未发任何命令。",
-        "warn"
-      );
-      return { ok: false, pending: true };
-    }
-    return submitCreateRegionNow(id, name, hexes);
-  }
-
-  /** 真正落一条 map.CreateRegion（不含同名检测）。 */
-  async function submitCreateRegionNow(id, name, hexes) {
-    if (host.regionEditBusy) {
-      return null;
-    }
-    host.regionEditBusy = true;
-    host.regionNameConflict = null;
-    setRegionEditStatus("提交 map.CreateRegion " + id + "（" + hexes.length + " 格）…", "muted");
-    var result = await app.writeCommand("map.CreateRegion", { regionId: id, name: name, hexes: hexes });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      setRegionEditStatus("已创建 " + id + "（" + hexes.length + " 格，重叠允许）—— head 已前进", "ok");
-      app.setRegionFocus(id);
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    renderRegionEditor();
-    return result;
-  }
-
-  /** 重名提示选 (i)：**新建同名区域**——用不同的 id 发**恰 1 条** map.CreateRegion（同 name）。 */
-  async function resolveNameConflictCreateNew() {
-    var pending = host.regionNameConflict;
-    if (!pending || host.regionEditBusy) {
-      return null;
-    }
-    var id = pending.id;
-    if (!id || regionIdExists(id)) {
-      id = suggestRegionId();
-      var idInput = app.byId("region-create-id");
-      if (idInput) {
-        idInput.value = id;
-      }
-    }
-    return submitCreateRegionNow(id, pending.name, pending.hexes);
-  }
-
-  /** 重名提示选 (ii)：**合并到同名已有区域**——恰 1 条 map.UpdateRegion{hexes: 已有 ∪ 新建}。 */
-  async function resolveNameConflictMerge() {
-    var pending = host.regionNameConflict;
-    if (!pending || host.regionEditBusy) {
-      return null;
-    }
-    host.regionEditBusy = true;
-    host.regionNameConflict = null;
-    setRegionEditStatus("合并到同名区域 " + pending.existingId + " …", "muted");
-    var existing = await fetchRegionCached(pending.existingId);
-    var hexes = unionHexes(existing.hexes || [], pending.hexes);
-    var result = await app.writeCommand("map.UpdateRegion", { regionId: pending.existingId, hexes: hexes });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      host.regionDraft = {};
-      active.setDraftHexes([]);
-      host.regionCache = {};
-      setRegionEditStatus(
-        "已把 " + pending.hexes.length + " 格并入 " + pending.existingId + "（并集共 " + hexes.length + " 格）—— head 已前进",
-        "ok"
-      );
-      app.setRegionFocus(pending.existingId);
-      await refreshFocusHexes();
-      reloadRegionEditHighlight();
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    renderRegionEditor();
-    return result;
-  }
-
-  /** 重名提示取消：清挂起，**零写**。 */
-  function cancelNameConflict() {
-    host.regionNameConflict = null;
-    renderRegionEditor();
-    setRegionEditStatus("已取消（未发任何命令）。", "muted");
-  }
-
-  /** 新建区域：一条 map.CreateRegion{regionId,name,hexes}。★ 同名先弹二选一（§9.2）。 */
-  async function submitCreateRegion() {
-    var idNode = app.byId("region-create-id");
-    var nameNode = app.byId("region-create-name");
-    var id = idNode ? idNode.value.trim() : "";
-    var name = nameNode ? nameNode.value.trim() : "";
-    var hexes = regionDraftList();
-    if (!id) {
-      setRegionEditStatus("请填写 regionId（Q3：由调用方指定，可改建议值）。", "warn");
-      return null;
-    }
-    if (!name) {
-      setRegionEditStatus("请填写区域名称。", "warn");
-      return null;
-    }
-    return requestCreateRegion(id, name, hexes);
-  }
-
-  /** 改已有区域 hex 集合：一条 map.UpdateRegion{regionId,hexes}（meta 编辑器走 T8 的路径，不在此重写）。 */
-  async function submitUpdateRegion() {
-    if (host.regionEditBusy) {
-      return null;
-    }
-    var id = host.regionFocus;
-    if (!id) {
-      setRegionEditStatus("先在右栏选一个区域（或在「新建区域」后改）。", "warn");
-      return null;
-    }
-    var hexes = regionDraftList();
-    host.regionEditBusy = true;
-    setRegionEditStatus("提交 map.UpdateRegion " + id + "（hex 集合 " + hexes.length + " 格）…", "muted");
-    var result = await app.writeCommand("map.UpdateRegion", { regionId: id, hexes: hexes });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      setRegionEditStatus("已更新 " + id + " 的 hex 集合（" + hexes.length + " 格）—— head 已前进", "ok");
-      host.regionCache = {};
-      await refreshFocusHexes();
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    renderRegionEditor();
-    return result;
-  }
-
-  /**
-   * ★ M8-R 判据 1：右键拖动套索 ⇒ 一条 map.CreateRegion。hexes = 客户端 flood fill 结果
-   * （内部 ∪ 套索墙）；regionId/name 取创建表单（空则用可改的建议值）。**重叠不报错**。
-   */
-  async function onLassoCommit(hexes) {
-    if (app.getState().mode !== "region-edit" || host.regionEditBusy) {
-      return null;
-    }
-    if (!hexes || !hexes.length) {
-      setRegionEditStatus("套索为空或不闭合（至少 3 个格），未创建。", "warn");
-      return null;
-    }
-    var idInput = app.byId("region-create-id");
-    var nameInput = app.byId("region-create-name");
-    var id = idInput ? idInput.value.trim() : "";
-    var name = nameInput ? nameInput.value.trim() : "";
-    if (!id) {
-      id = suggestRegionId();
-      if (idInput) {
-        idInput.value = id;
-      }
-    }
-    if (!name) {
-      name = "新区域";
-      if (nameInput) {
-        nameInput.value = name;
-      }
-    }
-    // ★ §9.2：同名先弹二选一（不静默新建/合并）；不同名则落一条 CreateRegion。
-    return requestCreateRegion(id, name, hexes);
-  }
-
-  /** ★ M8-R 判据 3：拖边界小点 ⇒ 一条 map.UpdateRegion，hex 集合即拖动后的焦点集合。 */
-  async function onDotDragCommit(hexes) {
-    if (app.getState().mode !== "region-edit" || host.regionEditBusy) {
-      return null;
-    }
-    var id = host.regionFocus;
-    if (!id) {
-      return null;
-    }
-    if (!hexes || !hexes.length) {
-      setRegionEditStatus("该拖动会让 " + id + " 变空，已阻止（未发命令）。", "warn");
-      return null;
-    }
-    host.regionEditBusy = true;
-    setRegionEditStatus("小点拖动 ⇒ 提交 map.UpdateRegion " + id + "（" + hexes.length + " 格）…", "muted");
-    var result = await app.writeCommand("map.UpdateRegion", { regionId: id, hexes: hexes });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      setRegionEditStatus("已更新 " + id + "（" + hexes.length + " 格）—— head 已前进", "ok");
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    host.regionCache = {};
-    await refreshFocusHexes();
-    reloadRegionEditHighlight();
-    renderRegionEditor();
-    return result;
-  }
-
-  function unionHexes(base, extra) {
-    var out = {};
-    (base || []).forEach(function (h) {
-      out[h.q + "_" + h.r] = { q: h.q, r: h.r };
-    });
-    (extra || []).forEach(function (h) {
-      out[h.q + "_" + h.r] = { q: h.q, r: h.r };
-    });
-    return Object.keys(out).map(function (key) {
-      return out[key];
-    });
-  }
-
-  function differenceHexes(base, remove) {
-    var drop = {};
-    (remove || []).forEach(function (h) {
-      drop[h.q + "_" + h.r] = true;
-    });
-    return (base || []).filter(function (h) {
-      return !drop[h.q + "_" + h.r];
-    });
-  }
-
-  /** ★ M8-R 判据 4：合并 = 临时选区 ∪ 焦点区域 ⇒ 一条 map.UpdateRegion{hexes: union}。 */
-  async function submitRegionMerge() {
-    if (host.regionEditBusy) {
-      return null;
-    }
-    var id = host.regionFocus;
-    if (!id) {
-      setRegionEditStatus("先在右栏选一个区域。", "warn");
-      return null;
-    }
-    var base = await fetchRegionCached(id);
-    var hexes = unionHexes(base.hexes, regionDraftList());
-    if (!hexes.length) {
-      setRegionEditStatus("并集为空，未发命令。", "warn");
-      return null;
-    }
-    host.regionEditBusy = true;
-    setRegionEditStatus("合并 " + id + " ∪ 临时选区（" + hexes.length + " 格）…", "muted");
-    var result = await app.writeCommand("map.UpdateRegion", { regionId: id, hexes: hexes });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      host.regionDraft = {};
-      active.setDraftHexes([]);
-      host.regionCache = {};
-      setRegionEditStatus("已合并 " + id + "（" + hexes.length + " 格）—— head 已前进", "ok");
-      await refreshFocusHexes();
-      reloadRegionEditHighlight();
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    renderRegionEditor();
-    return result;
-  }
-
-  /** ★ M8-R 判据 5：剔除 = 焦点区域 − 临时选区 ⇒ 一条 map.UpdateRegion{hexes: difference}。 */
-  async function submitRegionSubtract() {
-    if (host.regionEditBusy) {
-      return null;
-    }
-    var id = host.regionFocus;
-    if (!id) {
-      setRegionEditStatus("先在右栏选一个区域。", "warn");
-      return null;
-    }
-    var base = await fetchRegionCached(id);
-    var hexes = differenceHexes(base.hexes, regionDraftList());
-    if (!hexes.length) {
-      setRegionEditStatus("差集为空（会清空 " + id + "，服务端拒绝空 hexes），未发命令。", "warn");
-      return null;
-    }
-    host.regionEditBusy = true;
-    setRegionEditStatus("剔除 " + id + " − 临时选区（余 " + hexes.length + " 格）…", "muted");
-    var result = await app.writeCommand("map.UpdateRegion", { regionId: id, hexes: hexes });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      host.regionDraft = {};
-      active.setDraftHexes([]);
-      host.regionCache = {};
-      setRegionEditStatus("已剔除 " + id + "（余 " + hexes.length + " 格）—— head 已前进", "ok");
-      await refreshFocusHexes();
-      reloadRegionEditHighlight();
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    renderRegionEditor();
-    return result;
-  }
-
-  function armRegionDelete() {
-    if (!host.regionFocus) {
-      setRegionEditStatus("先在右栏选一个区域。", "warn");
-      return;
-    }
-    host.regionDeleteArmed = true;
-    renderRegionEditor();
-    setRegionEditStatus("删除不可撤销：点「确认删除」才真正发出 map.DeleteRegion。", "warn");
-  }
-
-  function cancelRegionDelete() {
-    host.regionDeleteArmed = false;
-    renderRegionEditor();
-    setRegionEditStatus("已取消删除。", "muted");
-  }
-
-  /** 删除区域：只有**二次确认后**才发一条 map.DeleteRegion（未确认前零写）。 */
-  async function submitDeleteRegion() {
-    var id = host.regionFocus;
-    if (!id || host.regionEditBusy || !host.regionDeleteArmed) {
-      return null;
-    }
-    host.regionDeleteArmed = false;
-    host.regionEditBusy = true;
-    renderRegionEditor();
-    setRegionEditStatus("提交 map.DeleteRegion " + id + " …", "muted");
-    var result = await app.writeCommand("map.DeleteRegion", { regionId: id });
-    host.regionEditBusy = false;
-    if (result.ok) {
-      setRegionEditStatus("已删除 " + id + " —— head 已前进", "ok");
-      host.regionDraft = {};
-      active.setDraftHexes([]);
-      app.setRegionFocus(null);
-    } else {
-      setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
-    }
-    renderRegionEditor();
-    return result;
-  }
-
-  /**
-   * 目标区域变化：把它的 hex 推给"边界小点层"（仅选中区域画点），并刷新 meta 编辑器与淡色高亮。
-   * ★ 临时选区（draft）**不**自动载入区域 hex——选区是给"合并/剔除"用的独立草稿，
-   *   载入整份区域会让并集恒等于原区域（要整份替换走「把目标区域 hex 载入选区」）。
-   */
-  function onRegionFocusChanged(focus) {
-    host.regionFocus = focus || null;
-    host.regionDeleteArmed = false;
-    host.regionInfoKey = null;
-    renderRegionEditor();
-    if (app.getState().mode !== "region-edit") {
-      return;
-    }
-    host.regionDraft = {};
-    active.setDraftHexes([]);
-    if (!host.regionFocus) {
-      active.clearFocusHexes();
-      reloadRegionEditHighlight();
-      setRegionEditStatus("未选中区域：点「新建区域」或从右栏选一个已有区域。", "muted");
-      return;
-    }
-    refreshFocusHexes().then(function (region) {
-      if (!region || host.regionFocus !== focus) {
-        return;
-      }
-      setRegionEditStatus(
-        "已选中 " + focus + "（" + (region.hexes || []).length + " 格）：边界小点可拖动增删；右键拖动=套索，Shift+右键拖动=逐格画擦，左键拖动=平移。",
-        "muted"
-      );
-    });
-    reloadRegionEditHighlight();
-  }
-
-  function wireRegionEditor() {
-    var bind = function (id, handler) {
-      var node = app.byId(id);
-      if (node) {
-        node.addEventListener("click", handler);
-      }
-    };
-    bind("region-edit-new", newRegionDraft);
-    bind("region-edit-clear", clearRegionDraft);
-    bind("region-edit-load", loadFocusIntoDraft);
-    bind("region-create-submit", submitCreateRegion);
-    bind("region-name-conflict-new", resolveNameConflictCreateNew);
-    bind("region-name-conflict-merge", resolveNameConflictMerge);
-    bind("region-name-conflict-cancel", cancelNameConflict);
-    bind("region-update-submit", submitUpdateRegion);
-    bind("region-merge", submitRegionMerge);
-    bind("region-exclude", submitRegionSubtract);
-    bind("region-delete", armRegionDelete);
-    bind("region-delete-yes", submitDeleteRegion);
-    bind("region-delete-cancel", cancelRegionDelete);
-    var opSelect = app.byId("region-edit-op");
-    if (opSelect) {
-      opSelect.addEventListener("change", function () {
-        host.regionOp = opSelect.value === "remove" ? "remove" : "add";
-        active.setBrushOp(host.regionOp);
-        renderRegionEditor();
-      });
-    }
-  }
+  // ★ M12 第六波：地图编辑模式的宿主 UI 已搬到 map-mapeditor.js、区域编辑模式已搬到
+  //   map-regioneditor.js（两者都在本文件之后、renderer.js 之前引入）。本文件对它们只做
+  //   **惰性** window.SimosMapEditor.* / window.SimosMapRegionEditor.* 调用（同 SimosMapUnitEditor 手法）。
 
   // ── 单位移动与编辑模式（M7 T7，判据⑤ / R8）────────────────────────────
   //
@@ -2645,17 +1354,6 @@
     return registeredEdgeKinds.indexOf(kind) >= 0;
   }
 
-  /** kind 的可见标签：优先用服务端组名，回退内置中文，再回退原串（不静默成空）。 */
-  function edgeKindLabel(kind) {
-    var groups = host.overviewGroups || [];
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i] && groups[i].id === kind) {
-        return groups[i].name || kind;
-      }
-    }
-    return kind === "river" ? "河流" : kind === "road" ? "道路" : kind;
-  }
-
   /**
    * `#edge-mode` 的取值 → 写命令要用的 `mode`。★ **无默认**：只有显式的 `"merge"` / `"replace"` 才 `ok`；
    * 空串、未知值、非字符串一律 `{ok:false}` ⇒ 调用方**不得发命令**（只给可见提示）。
@@ -2753,18 +1451,18 @@
       onPaintCommit: isWorkbench
         ? function (hexes) {
             if (app.getState().mode === "region-edit") {
-              return commitRegionPaint(hexes);
+              return window.SimosMapRegionEditor.commitRegionPaint(hexes);
             }
             if (host.mapEditTool === "randomize") {
-              return commitRandomizeSelection(hexes);
+              return window.SimosMapEditor.commitRandomizeSelection(hexes);
             }
-            return commitBrush(hexes);
+            return window.SimosMapEditor.commitBrush(hexes);
           }
         : undefined,
-      onEdgeCommit: isWorkbench ? commitEdge : undefined,
-      onEdgeDeleteCommit: isWorkbench ? commitEdgeDelete : undefined,
-      onLassoCommit: isWorkbench ? onLassoCommit : undefined,
-      onDotDragCommit: isWorkbench ? onDotDragCommit : undefined,
+      onEdgeCommit: isWorkbench ? window.SimosMapEditor.commitEdge : undefined,
+      onEdgeDeleteCommit: isWorkbench ? window.SimosMapEditor.commitEdgeDelete : undefined,
+      onLassoCommit: isWorkbench ? window.SimosMapRegionEditor.onLassoCommit : undefined,
+      onDotDragCommit: isWorkbench ? window.SimosMapRegionEditor.onDotDragCommit : undefined,
     });
     host.isWorkbench = isWorkbench;
     window.SimosMapHostPage.bindActive(active);
@@ -2779,8 +1477,8 @@
       app.onStateChange(onStateChange);
       onStateChange(app.getState());
       window.SimosMapUnitEditor.wireUnitEditor();
-      wireMapEditor();
-      wireRegionEditor();
+      window.SimosMapEditor.wireMapEditor();
+      window.SimosMapRegionEditor.wireRegionEditor();
       app.onStateChange(window.SimosMapUnitEditor.renderUnitEditor);
       window.addEventListener("resize", function () {
         active.resize();
@@ -2848,13 +1546,27 @@
     terrainDimAlpha: terrainDimAlpha,
     regionNamesVisible: regionNamesVisible,
     regionLabelLayout: regionLabelLayout,
-    renderEdgeKindOptions: renderEdgeKindOptions,
     mapEditSubtoolOf: mapEditSubtoolOf,
     edgeChainResult: edgeChainResult,
     edgeChainEdges: edgeChainEdges,
     parseEdgeKey: parseEdgeKey,
     edgeHitAtWorldPoint: edgeHitAtWorldPoint,
     setRegisteredEdgeKinds: setRegisteredEdgeKinds,
+    // ★ M12 第六波：搬到 map-mapeditor.js / map-regioneditor.js 的两簇宿主 UI 需要的纯函数与
+    //   基础设施。renderEdgeKindOptions 不在此列——它由 map-mapeditor.js 挂回本对象（见该文件尾）。
+    targetKey: targetKey,
+    mapEditWriteGate: mapEditWriteGate,
+    mapEditPanelVisibility: mapEditPanelVisibility,
+    mapEditSubtoolState: mapEditSubtoolState,
+    mapEditSubtoolDefaultTool: mapEditSubtoolDefaultTool,
+    edgeModeState: edgeModeState,
+    edgeDeletePlan: edgeDeletePlan,
+    parseSeedInput: parseSeedInput,
+    randomizeSelectionState: randomizeSelectionState,
+    registeredEdgeKindList: registeredEdgeKindList,
+    fetchRegionCached: fetchRegionCached,
+    refreshFocusHexes: refreshFocusHexes,
+    reloadRegionEditHighlight: reloadRegionEditHighlight,
   };
   Object.defineProperty(window.SimosMapCore, "regionNamesEnabled", {
     enumerable: true,
@@ -2966,17 +1678,18 @@
     },
     mapEditDebug: function () {
       var debug = active && active.debug ? active.debug() : {};
-      var subtool = checkedRadioValue("map-edit-subtools", "map-edit-subtool");
+      // ★ M12 第六波：这些 DOM 只读投影已搬到 map-mapeditor.js ⇒ 经 window.SimosMapEditor 惰性取。
+      var subtool = window.SimosMapEditor.checkedRadioValue("map-edit-subtools", "map-edit-subtool");
       var tool =
         subtool === "connectivity"
-          ? checkedRadioValue("edge-kind-select", "map-edit-edge-kind")
-          : checkedRadioValue("terrain-tool-select", "map-edit-terrain-tool");
+          ? window.SimosMapEditor.checkedRadioValue("edge-kind-select", "map-edit-edge-kind")
+          : window.SimosMapEditor.checkedRadioValue("terrain-tool-select", "map-edit-terrain-tool");
       var edgeControls = app.byId("edge-controls");
       var randomizeControls = app.byId("randomize-controls");
       var seedNode = app.byId("randomize-seed");
       return {
         mode: app.getState().mode,
-        paletteKeys: paletteKeys(),
+        paletteKeys: window.SimosMapEditor.paletteKeys(),
         selectedTerrain: host.brushTerrain,
         brushHexCount: debug.brushHexCount || 0,
         painting: !!debug.painting,
@@ -2987,7 +1700,7 @@
         // ★ T2 新增：二级子选项（编辑线）的 DOM 投影 + host 记录。
         subtool: subtool,
         hostSubtool: host.mapEditSubtool,
-        edgeMode: edgeModeValue(),
+        edgeMode: window.SimosMapEditor.edgeModeValue(),
         edgeControlsVisible: !!edgeControls && edgeControls.hidden === false,
         randomizeControlsVisible: !!randomizeControls && randomizeControls.hidden === false,
         edgeModeWarning: (function () {
@@ -3008,7 +1721,7 @@
       if (terrain !== undefined) {
         host.brushTerrain = terrain;
       }
-      return commitBrush(hexes || []);
+      return window.SimosMapEditor.commitBrush(hexes || []);
     },
     regionEditDebug: function () {
       var debug = active && active.debug ? active.debug() : {};
@@ -3131,7 +1844,7 @@
         host.regionOp = op === "remove" ? "remove" : "add";
         active.setBrushOp(host.regionOp);
       }
-      return commitRegionPaint(hexes || []);
+      return window.SimosMapRegionEditor.commitRegionPaint(hexes || []);
     },
     // ★ M8-R：e2e 独立复核用（真套索/flood 与边界点可对拍）。
     hexExists: function (q, r) {
