@@ -24,15 +24,10 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.unit.Movement;
-import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
-import io.mosire.simos.unit.move.MovementState;
-import io.mosire.simos.unit.move.TerrainMovementCost;
-import io.mosire.simos.unit.move.UnitMoves;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -577,48 +572,6 @@ public final class ToolSupport {
   public static Map<String, Object> unit(
       Unit unit, UnitState units, SimosTimestamp at, GameMap map) {
     return ApiViews.unit(unit, units, at, map);
-  }
-
-  /**
-   * 在途移动视图（M7b T2），与 GUI 面 **同形**：无路线 ⇒ {@code null}；有 ⇒ 路线 + 由 {@link UnitMoves#evaluate}
-   * 现算的在途状态。工具面不重写预算/成本算法（不造第二份真相）。
-   */
-  private static Object movement(Unit unit, SimosTimestamp at, GameMap map) {
-    if (unit.movement().isEmpty()) {
-      return null;
-    }
-    Movement movement = unit.movement().orElseThrow();
-    MovementState state = UnitMoves.evaluate(unit, at, map, TerrainMovementCost.INSTANCE);
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("route", route(movement.route()));
-    view.put("departedAt", timestamp(movement.departedAt()));
-    view.put("speedAtDeparture", movement.speedAtDeparture());
-    view.put("mobilityPerMilleAtDeparture", movement.mobilityAtDeparture());
-    view.put("status", state.status().name());
-    view.put("currentHex", hexCoord(state.currentHex()));
-    view.put("nextHex", state.nextHex().map(ToolSupport::hexCoord).orElse(null));
-    view.put(
-        "remainingMillis",
-        state.remainingEdgeCostMillis().isPresent()
-            ? state.remainingEdgeCostMillis().getAsLong()
-            : null);
-    return view;
-  }
-
-  /** 路线视图，与 GUI 面同形：{@code {waypoints:[{q,r}…], path:[{q,r}…]}}。 */
-  private static Map<String, Object> route(Route route) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("waypoints", hexCoords(route.waypoints()));
-    view.put("path", hexCoords(route.path()));
-    return view;
-  }
-
-  private static List<Map<String, Object>> hexCoords(List<HexCoord> coords) {
-    List<Map<String, Object>> out = new ArrayList<>(coords.size());
-    for (HexCoord coord : coords) {
-      out.add(hexCoord(coord));
-    }
-    return out;
   }
 
   public static List<Map<String, Object>> facets(List<FacetEntry> entries) {
