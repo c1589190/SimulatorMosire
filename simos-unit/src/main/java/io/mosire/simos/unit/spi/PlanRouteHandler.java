@@ -20,9 +20,9 @@ import java.util.Objects;
  * {@code unit.PlanRoute} 命令的处理器（spec §四）：{@code id, waypoints[{q,r}…]}。
  *
  * <p>★ **载荷只给 waypoints，不给 path**（spec §四原文）⇒ 本 handler 把 {@code waypoints} 同时当作 {@link Route} 的
- * {@code path}：即要求点列本身是**逐格相邻的简单路径**。这是 spec 载荷与 M3 {@code Route}（waypoints 为 path
- * 子序列、可含中间格）之间唯一的可重建口径——相邻性与个数由 {@code Route} 构造期判、折成拒绝。需要"waypoints 少而 path 多"的稀疏路径时须先补载荷字段（记入
- * t4-report 取代说明候选）。
+ * {@code path}：即要求点列本身是**逐格相邻**的走法（**允许回到已走过的格**——巡逻环线，2026-09-24 裁定）。这是 spec 载荷与 M3 {@code
+ * Route}（waypoints 为 path 子序列、可含中间格）之间唯一的可重建口径——相邻性与个数由 {@code Route} 构造期判、折成拒绝。需要"waypoints 少而
+ * path 多"的稀疏路径时须先补载荷字段（记入 t4-report 取代说明候选）。
  *
  * <p>起点必须等于该单位在 {@code at} 的有效位置（M3 口径），否则拒绝。
  */

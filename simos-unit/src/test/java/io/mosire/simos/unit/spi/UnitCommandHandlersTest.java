@@ -695,6 +695,34 @@ class UnitCommandHandlersTest {
   }
 
   /** ★ 判据（P3）：detach **只节点**——子节点不动；`parent` 也不动。 */
+  /**
+   * ★★ 判据（**live 跑出来的**：三国在 tick 0 出"先 detach 再下路线"的令，三条 detach 全被拒）： **同一 tick
+   * 内的改编是"覆盖"而不是"拒"**（`setOrAppend`，后写者胜）。
+   *
+   * <p>装置：夹具的 `attached`/`parent` 段就在 `SpiFixture.T0`，而命令也落在同一刻 ⇒ 旧写法（`append`）会抛 {@code 段必须按 from
+   * 严格升序（同刻两段无法判定谁生效）}；现在应当 Applied，且序列里**只有一段**（覆盖）。
+   *
+   * <p>★ 判别力：把 `detachUnit`/`attachSubtree` 改回 `append` ⇒ 本用例当场红（抛异常 ⇒ 不是 Applied）。
+   */
+  @Test
+  void aFormationEditAtTheSameTickAsTheExistingSegmentOverwritesInsteadOfFailing() {
+    UnitState detached =
+        applied(DETACH, worldAt(SpiFixture.T0, attachedLine()), "{\"id\":\"u-2\"}");
+    assertThat(detached.units().get(U2).attached().valueAt(SpiFixture.T0))
+        .as("同刻覆盖 ⇒ 此刻即 false")
+        .isFalse();
+    assertThat(detached.units().get(U2).attached().segments()).as("只有一段（覆盖，不是追加）").hasSize(1);
+
+    UnitState reattached =
+        applied(ATTACH, worldAt(SpiFixture.T0, detached), "{\"id\":\"u-2\",\"parent\":\"u-1\"}");
+    assertThat(reattached.units().get(U2).attached().valueAt(SpiFixture.T0)).isTrue();
+    assertThat(reattached.units().get(U2).attached().segments()).hasSize(1);
+    assertThat(reattached.units().get(U2).parent().valueAt(SpiFixture.T0)).contains(SpiFixture.U1);
+    assertThat(reattached.units().get(U2).parent().segments())
+        .as("parent 也走同刻覆盖（夹具本是 T0 一段）")
+        .hasSize(1);
+  }
+
   @Test
   void detachUnitTouchesOnlyTheNode() {
     UnitState base = attachedLine();
@@ -1354,19 +1382,24 @@ class UnitCommandHandlersTest {
   }
 
   /**
-   * ★★ 判据（**R4** / m4 靶子）：跨段回头 ⇒ 拼接出的 `path` 有重复格 ⇒ `Route` 构造期拒，理由带"重复"。
+   * ★★ 判据（**2026-09-24 新裁定取代 R4**）：命令边界也接受**环线**——`(1,1) → (1,3) → (1,1)` 是一条正当的巡逻一圈。
    *
-   * <p>`(1,1) → (1,3) → (1,1)`：两段各自都是简单路径，拼起来才重复。★ m4（拼接时顺手去重）在本用例红——去重后 `path` 的首尾与 `waypoints` 不符
-   * ⇒ 拒的理由变成"首尾"，不是"重复"。
+   * <p>★ 旧口径在这里判"重复格 ⇒ 拒"。现在应 Applied，且落下来的 `path` 是去程 + 回程。
    */
   @Test
-  void planSparseRouteRejectsACrossSegmentRepeat() {
-    assertThat(
-            reason(
-                PLAN_SPARSE,
-                worldAt(T5, oneUnit()),
-                "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3},{\"q\":1,\"r\":1}]}"))
-        .contains("重复");
+  void planSparseRouteAcceptsALoopThatComesBackToTheStart() {
+    UnitState next =
+        applied(
+            PLAN_SPARSE,
+            worldAt(T5, oneUnit()),
+            "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3},{\"q\":1,\"r\":1}]}");
+
+    Route route = next.units().get(SpiFixture.U1).movement().orElseThrow().route();
+    assertThat(route.path())
+        .as("去程 + 回程")
+        .containsExactly(
+            SpiFixture.H11, SpiFixture.H12, SpiFixture.H13, SpiFixture.H12, SpiFixture.H11);
+    assertThat(route.waypoints()).containsExactly(SpiFixture.H11, SpiFixture.H13, SpiFixture.H11);
   }
 
   /** ★★ 判据（§二.2 / **m3 靶子**）：起点 ≠ 单位在 `at` 的位置 ⇒ 拒（既有 `planRoute` 校验，本轮不动它）。 */

@@ -8,8 +8,8 @@ import java.util.Map;
  *
  * <p>★ **进 GM 桶与决策人桶**（用户裁定 D-1）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
- * <p>★ 载荷的 {@code waypoints} **同时当作逐格 path**：本命令要求点列本身是相邻的简单路径（稀疏路线的逐段展开是另一条命令 {@code
- * unit.PlanSparseRoute}）。起点必须等于单位在该时刻的有效位置，否则域层拒。
+ * <p>★ 载荷的 {@code waypoints} **同时当作逐格 path**：本命令要求点列本身逐格相邻（**可以回到走过的格**——巡逻环线； 稀疏路线的逐段展开是另一条命令
+ * {@code unit.PlanSparseRoute}）。起点必须等于单位在该时刻的有效位置，否则域层拒。
  */
 public final class UnitPlanRouteTool extends AbstractNarrowWriteTool {
 

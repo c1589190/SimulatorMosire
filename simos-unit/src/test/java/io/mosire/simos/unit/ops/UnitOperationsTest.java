@@ -1470,23 +1470,27 @@ class UnitOperationsTest {
   }
 
   /**
-   * ★★ 判据（**R4** / m4 靶子）：跨段回头 ⇒ 拼接出的 `path` 有重复格 ⇒ `Route` 构造期拒，消息带"重复"。
+   * ★★ 判据（**2026-09-24 新裁定取代 R4**："巡逻环线肯定是要支持的"）：跨段**回头**（环线）**允许**， 展开出的 `path` 就是"走一圈回来"的那条走法。
    *
-   * <p>`[H11, H13, H11]`：两段各自都是简单路径（A\* 单段产物天然无重复），**拼起来**才重复——正是 R4 说的那种情形。
+   * <p>★ 旧口径（R4）在这里判"重复格 ⇒ 拒"；现在只看三件事：首尾与 `waypoints` 一致、`waypoints` 是子序列、逐格相邻。 `[H11, H13, H11]`
+   * 恰好同时满足 ⇒ 放行，且 `path` = `[H11, H12, H13, H12, H11]`（去程 + 回程）。
    */
   @Test
-  void planSparseRouteRejectsACrossSegmentRepeat() {
-    assertThatThrownBy(
-            () ->
-                UnitOperations.planSparseRoute(
-                    twoUnits(),
-                    BRIGADE,
-                    sparseMap(),
-                    List.of(H11, H13, H11),
-                    TerrainMovementCost.INSTANCE,
-                    T10))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("重复");
+  void planSparseRouteAllowsALoopThatComesBackToTheStart() {
+    UnitState planned =
+        UnitOperations.planSparseRoute(
+            twoUnits(),
+            BRIGADE,
+            sparseMap(),
+            List.of(H11, H13, H11),
+            TerrainMovementCost.INSTANCE,
+            T10);
+
+    Route route = planned.units().get(BRIGADE).movement().orElseThrow().route();
+    assertThat(route.path())
+        .as("去程 H11→H12→H13，回程 H13→H12→H11")
+        .containsExactly(H11, H12, H13, H12, H11);
+    assertThat(route.waypoints()).containsExactly(H11, H13, H11);
   }
 
   /** ★ 判据（§二.2 步骤 3）：`waypoints` 恰好逐格相邻时，稀疏命令与既有 `planRoute` 落下来的路线**逐值相同**。 */

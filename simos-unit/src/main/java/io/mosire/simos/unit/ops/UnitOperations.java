@@ -65,7 +65,7 @@ public final class UnitOperations {
     return withUnit(state, unit);
   }
 
-  /** 改编：追加一条 `parent` 段（`from = at`）。同刻已有段 ⇒ 由严格升序校验抛。 */
+  /** 改编：落一条 `parent` 段（`from = at`）。**同刻已有段 ⇒ 覆盖**（后写者胜，见 {@link #setOrAppend}）。 */
   public static UnitState reparent(
       UnitState state, UnitId id, Optional<UnitId> newParent, SimosTimestamp at) {
     Objects.requireNonNull(newParent, "newParent");
@@ -76,7 +76,7 @@ public final class UnitOperations {
         copy(
             unit,
             unit.name(),
-            append(unit.parent(), at, newParent),
+            setOrAppend(unit.parent(), at, newParent),
             unit.position(),
             unit.member(),
             unit.equipment(),
@@ -302,7 +302,8 @@ public final class UnitOperations {
    * <p>★ **段不可达 ⇒ 抛**（P12）：{@link PathFinder#findPath} 的空值在这里折成 {@link IllegalArgumentException}
    * （调用方 {@code PlanSparseRouteHandler} 再折成命令拒绝），**绝不**静默截断或跳段。
    *
-   * <p>★ **跨段重复格不由本方法兜底**：A\* 单段产物是简单路径，但两段拼接后可能出现重复格，此时 {@link Route} 的构造期不变量会抛（裁定 R4），消息里带"重复"。
+   * <p>★★ **跨段重复格是正当的**（2026-09-24 新裁定：「巡逻环线肯定是要支持的」）：两段拼接后回到已走过的格 （`H11→H13→H11`）会展开成"去程 + 回程"的
+   * `path`，{@link Route} **接受**它（旧口径 R4 在此拒，已作废）。
    */
   public static List<HexCoord> expandSparsePath(
       GameMap map, Unit unit, List<HexCoord> waypoints, MovementCost cost) {
@@ -474,7 +475,9 @@ public final class UnitOperations {
       Unit current = state.units().get(member);
       // 只有根换父：后代的 parent 原样带过
       SegmentedSeries<Optional<UnitId>> parents =
-          member.equals(id) ? append(current.parent(), at, Optional.of(parent)) : current.parent();
+          member.equals(id)
+              ? setOrAppend(current.parent(), at, Optional.of(parent))
+              : current.parent();
       // ★ v2：位置、offset 都**原样带过**（跟随已取消 ⇒ 没有"进入跟随"要清位/反算的东西）。
       next.put(
           member,
@@ -482,15 +485,16 @@ public final class UnitOperations {
               current,
               parents,
               current.position(),
-              append(current.attached(), at, true),
+              setOrAppend(current.attached(), at, true),
               current.offset()));
     }
     return state.withUnits(next);
   }
 
   /**
-   * detach（P3：**只节点**）：**只**给 `id` 追加 `attached=false` 段——子节点**不动**（与 attach 刻意不对称； 子树整体的分离是
-   * SplitFormation，T4）：脱离之后 `id` 就是**它自己那一支的顶层**（它带着自己的下挂走）。
+   * detach（P3：**只节点**）：**只**给 `id` 落一条 `attached=false` 段（同刻已有段 ⇒ 覆盖，见 {@link
+   * #setOrAppend}）——子节点**不动**（与 attach 刻意不对称； 子树整体的分离是 SplitFormation，T4）：脱离之后 `id`
+   * 就是**它自己那一支的顶层**（它带着自己的下挂走）。
    *
    * <p>★★ **v2 起不再"物化位置"**（2026-09-24）：旧写法要在翻 `attached` 之前把有效位置写进自身 `position`，理由是 "detached
    * 且无自身位置 ⇒ 有效位置为空 ⇒ 单位从图上消失"。**跟随取消之后这条前提没了**：每个单位的位置永远是自己的，
@@ -509,7 +513,7 @@ public final class UnitOperations {
             unit,
             unit.parent(),
             unit.position(),
-            append(unit.attached(), at, false),
+            setOrAppend(unit.attached(), at, false),
             unit.offset()));
   }
 
@@ -575,7 +579,7 @@ public final class UnitOperations {
           member,
           copyFormation(
               current,
-              append(current.parent(), at, parent),
+              setOrAppend(current.parent(), at, parent),
               current.position(),
               current.attached(),
               current.offset()));
@@ -913,7 +917,8 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **同刻后写者胜**的段写入（`position` 与 `offset` 专用）：末段已是 `from == at` ⇒ **替换**它，否则追加。
+   * ★ **同刻后写者胜**的段写入（**全部改编类字段**：`position`/`offset`/`attached`/`parent`）：末段已是 `from == at` ⇒
+   * **替换**它，否则追加。
    *
    * <p>为什么必须有它：{@link SegmentedSeries} 禁止同刻两段（`段必须按 from 严格升序`）。而"同一个 base 时间戳上多条命令写 同一条 `position`
    * 序列"是**真实形态**——{@code McpCoverageTest} 逐条命令都落在同一个 tick（信封不带时刻，裁定 35）， `unit.PlaceAt` 先在 `at`
@@ -923,7 +928,10 @@ public final class UnitOperations {
    * <p>★ **`offset` 于 2026-09-24 加入本列**：{@link #attachSubtree}（偏移式加入）与 {@link #setOffset} 也会在同刻写
    * `offset` （{@code McpCoverageTest} 里 attach 之后紧跟 SetFormationOffset），故它同样走本方法。
    *
-   * <p>★ **`attached`/`parent` 仍走 {@link #append}**（本次改动不扩张它们的语义；同刻重复写它们仍是既有错误口径，不在这里顺手改）。
+   * <p>★★ **`attached`/`parent` 于 2026-09-24 稍后也加入本列**（**live 跑出来的**，不是顺手扩张）：三国决策人在 **tick 0** 出令"先
+   * `unit.DetachUnit` 再下路线"，三条 detach 全被拒——创世段就在 tick 0、命令也落在 tick 0 ⇒ `段必须按 from
+   * 严格升序（同刻两段无法判定谁生效）`。世界不推进时间时，**任何第二条改编都会撞**。语义与上面 那条一致：同刻的第二笔写就是"覆盖此刻生效的归属"，替换即正确解。⇒ {@link
+   * #attachSubtree} / {@link #detachUnit} / {@link #reparent} / {@link #reparentSubtree} 全部改走本方法。
    */
   private static <T> SegmentedSeries<T> setOrAppend(
       SegmentedSeries<T> series, SimosTimestamp at, T value) {
