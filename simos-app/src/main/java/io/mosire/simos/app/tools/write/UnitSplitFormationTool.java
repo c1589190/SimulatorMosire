@@ -31,6 +31,8 @@ public final class UnitSplitFormationTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "拆分编制：固定 unit.SplitFormation，载荷 {rootId, subUnitIds[]（不得为空）}";
+    return "拆分编制：固定 unit.SplitFormation，载荷 {rootId, subUnitIds[]（不得为空）}——"
+        + "把指名的下挂单位从这支编制里摘出来。★ 摘出来之后它们成为**独立单位**（可以自己下路线；它们自己的下挂仍跟着它们走），"
+        + "这是「派一支部队单独行动」的正道（没拆的成员不能自己移动）";
   }
 }

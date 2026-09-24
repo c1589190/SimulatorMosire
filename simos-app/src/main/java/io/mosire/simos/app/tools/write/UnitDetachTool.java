@@ -31,6 +31,7 @@ public final class UnitDetachTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "脱离父：固定 unit.DetachUnit，载荷 {id}（已是根单位会被拒）";
+    return "脱离父：固定 unit.DetachUnit，载荷 {id}（没有父的单位会被拒——它本来就是顶层）。"
+        + "脱离后 id 成为**独立单位**，可以自己下路线（它的下挂仍跟着它走）";
   }
 }

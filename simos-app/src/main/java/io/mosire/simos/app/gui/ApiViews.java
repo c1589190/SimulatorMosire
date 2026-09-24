@@ -494,8 +494,14 @@ public final class ApiViews {
     return out;
   }
 
-  /** 单位详情：冻结字段 + {@code parent}（head 时刻）+ **有效位置**（head 时刻，向父取）+ **在途移动视图**。 */
-  static Map<String, Object> unit(Unit unit, UnitState units, SimosTimestamp at, GameMap map) {
+  /**
+   * 单位详情：冻结字段 + {@code parent}（head 时刻）+ **位置**（head 时刻）+ **在途移动视图** + **编制视图**（v2）。
+   *
+   * <p>★★ **两边共用这一份**（AGENT.md §8.3 的纪律）：MCP 读工具（{@code simos.unit.list} / {@code simos.unit.get}）经
+   * {@code ToolSupport.unit} 直接调本方法 ⇒ 新字段**一处加、两面同形**（原先两处各写一份，加字段就得记得改两处）。
+   */
+  public static Map<String, Object> unit(
+      Unit unit, UnitState units, SimosTimestamp at, GameMap map) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", unit.id().value());
     view.put("name", unit.name());
@@ -510,6 +516,13 @@ public final class ApiViews {
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
     view.put("movement", movement(unit, at, map));
+    // ★★ 编制 v2（2026-09-24）：`attached` = 我是不是跟别人一起走；`formationRootId` = 该对谁下令；
+    //   `formationSize` / `formationSpeed` = 这一支多大、一起走多快（= 支内 `effectiveSpeed` 最小值，含状态折算）。
+    //   三者都在 UnitState 那一个取数点算（不在这里另写遍历——两份遍历迟早给出两个不同的集合）。
+    view.put("attached", unit.attached().valueAt(at));
+    view.put("formationRootId", units.formationRoot(unit.id(), at).map(UnitId::value).orElse(null));
+    view.put("formationSize", units.formationMembers(unit.id(), at).size());
+    view.put("formationSpeed", units.formationSpeed(unit.id(), at));
     return view;
   }
 

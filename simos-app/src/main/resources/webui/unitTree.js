@@ -81,6 +81,10 @@
         id: String(unit.id),
         name: unit.name === undefined ? null : unit.name,
         parent: unit.parent === undefined ? null : unit.parent,
+        // ★ 编制 v2（2026-09-24）：服务端已算好的三件事照带（前端不重算 = 不造第二份真相）。
+        attached: unit.attached === true,
+        formationRootId: unit.formationRootId === undefined ? null : unit.formationRootId,
+        formationSize: unit.formationSize === undefined ? 1 : unit.formationSize,
         children: [],
         depth: 0,
         descendantCount: 0,
@@ -345,6 +349,24 @@
     });
     box.appendChild(app.el("span", { class: "tree-node-name", text: displayName(node) }));
     box.appendChild(app.el("span", { class: "tree-node-id", text: node.id }));
+    // ★ 编制 v2：一眼看出"它是跟别人一起走的，还是自己作主的"——前者不能单独移动（要选顶层或先拆出来）。
+    if (node.parent !== null && node.parent !== undefined && node.attached) {
+      box.appendChild(
+        app.el("span", {
+          class: "tree-node-formation attached",
+          text: "随行",
+          title: "与 " + (node.formationRootId || "上一级") + " 一同移动：移动请选顶层，或先脱离编队",
+        })
+      );
+    } else {
+      box.appendChild(
+        app.el("span", {
+          class: "tree-node-formation independent",
+          text: "独立",
+          title: node.formationSize > 1 ? "顶层：可带动整支 " + node.formationSize + " 个单位一起移动" : "独立单位：可自行移动",
+        })
+      );
+    }
     box.addEventListener("click", function () {
       selectNode(node);
     });

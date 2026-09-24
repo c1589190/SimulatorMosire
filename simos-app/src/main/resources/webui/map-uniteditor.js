@@ -51,12 +51,39 @@
     return core.active.parentOf(id);
   }
 
+  /**
+   * 选中单位的**编制视图**（未载入 ⇒ undefined）。缺 renderer/formationOf 时返回 undefined（当作"未知"，不禁用移动）。
+   */
+  function selectedFormation(id) {
+    if (!id || !core.active || typeof core.active.formationOf !== "function") {
+      return undefined;
+    }
+    return core.active.formationOf(id);
+  }
+
+  /**
+   * ★★ **只读判据（编制 v2）：它是不是"与别人一同移动的成员"**——是则**不能自己移动**。
+   *
+   * <p>规则与服务端同源（`UnitOperations.requireTopOfFormation`）：`attached=true` 且顶层不是它自己 ⇒ 成员。
+   * 界面拿它禁用"下路线"，并告诉用户该对谁下令（顶层）或先拆出来。
+   *
+   * <p>★ 纯函数：`formation` 未载入（undefined）或 `rootId` 缺失 ⇒ `false`（**不把"未知"当"成员"**，不然界面会莫名禁用）。
+   */
+  function isFormationMember(formation, id) {
+    if (!formation) {
+      return false;
+    }
+    return formation.attached === true && !!formation.rootId && formation.rootId !== id;
+  }
+
   function updateRouteButtons() {
-    var hasUnit = !!selectedUnitId();
+    var id = selectedUnitId();
+    var hasUnit = !!id;
+    var member = isFormationMember(selectedFormation(id), id);
     var send = app.byId("unit-route-send");
     var clear = app.byId("unit-route-clear");
     if (send) {
-      send.disabled = !hasUnit || host.routePath.length < 1 || host.editBusy;
+      send.disabled = !hasUnit || member || host.routePath.length < 1 || host.editBusy;
     }
     if (clear) {
       clear.disabled = host.routePath.length < 1;
@@ -69,12 +96,33 @@
     if (selectedNode) {
       selectedNode.textContent = id ? "选中单位：" + id : "未选中单位";
     }
-    ["unit-reparent", "unit-strength", "unit-disband", "unit-route-toggle", "unit-detach-formation"].forEach(function (buttonId) {
+    var formation = id ? selectedFormation(id) : undefined;
+    var member = isFormationMember(formation, id);
+    ["unit-reparent", "unit-strength", "unit-disband", "unit-detach-formation"].forEach(function (buttonId) {
       var node = app.byId(buttonId);
       if (node) {
         node.disabled = !id;
       }
     });
+    // ★★ 编制 v2（2026-09-24）：**成员不能自己移动**——按钮禁用，并在状态行点名顶层与两条出路。
+    var routeToggle = app.byId("unit-route-toggle");
+    if (routeToggle) {
+      routeToggle.disabled = !id || member;
+      routeToggle.title = member
+        ? "该单位是与 " + formation.rootId + " 一同移动的编制成员：请选中 " + formation.rootId + " 移动整支，或先「脱离编队」"
+        : "";
+    }
+    if (id && member) {
+      setEditStatus(
+        "该单位属于 " + formation.rootId + " 的编制（与它一同移动）：要移动请选中 " + formation.rootId + "，或先「脱离编队」再机动。",
+        "warn"
+      );
+    } else if (id && formation && formation.size > 1) {
+      setEditStatus(
+        "这一支共 " + formation.size + " 个单位 · 整支速度 " + formation.speed + "（最慢者决定）。",
+        "muted"
+      );
+    }
     // ★「加入编队」多一个前提：需要一个父。`parentId === null` = 已知它是根（无父可加入）⇒ 禁用并说明；
     //   `undefined` = 该单位尚未载入 ⇒ 不禁用（不把"未知"当"根"），点下去由服务端/点击时校验兜底。
     var attachNode = app.byId("unit-attach-formation");
@@ -455,6 +503,8 @@
     setEditStatus: setEditStatus,
     selectedUnitId: selectedUnitId,
     selectedUnitParentId: selectedUnitParentId,
+    selectedFormation: selectedFormation,
+    isFormationMember: isFormationMember,
     updateRouteButtons: updateRouteButtons,
     renderUnitEditor: renderUnitEditor,
     resetRoute: resetRoute,

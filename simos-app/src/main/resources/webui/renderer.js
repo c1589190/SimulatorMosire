@@ -430,6 +430,29 @@
       return unit.parent === undefined ? null : unit.parent;
     }
 
+    /**
+     * 编制视图（**编制 v2 / 2026-09-24**）：`{attached, rootId, size, speed}`；未载入 ⇒ `undefined`。
+     *
+     * ★ 服务端已把三件事算好（`ApiViews.unit` 与 MCP 读口同源）：`attached`（我是不是跟别人一起走）、
+     *   `formationRootId`（这一支的顶层 —— 该对它下令移动）、`formationSize`/`formationSpeed`（这一支多大、一起走多快）。
+     *   前端不重算这些（重算就是第二份真相）。
+     */
+    function formationOf(id) {
+      if (id === null || id === undefined) {
+        return undefined;
+      }
+      var unit = unitById[String(id)];
+      if (!unit) {
+        return undefined;
+      }
+      return {
+        attached: unit.attached === true,
+        rootId: unit.formationRootId === undefined ? null : unit.formationRootId,
+        size: unit.formationSize === undefined ? 1 : unit.formationSize,
+        speed: unit.formationSpeed === undefined ? unit.speed : unit.formationSpeed,
+      };
+    }
+
     function setCellSize(size) {
       cellSize = size;
       recomputeWorldPixels();
@@ -2068,6 +2091,7 @@
       screenPointOf: screenPointOf,
       positionOf: positionOf,
       parentOf: parentOf,
+      formationOf: formationOf,
       terrainColor: terrainColor,
       debug: debug,
       view: function () {

@@ -8,6 +8,7 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.map.City;
@@ -567,22 +568,15 @@ public final class ToolSupport {
     return out;
   }
 
+  /**
+   * 单位视图（MCP 读工具的载体）。
+   *
+   * <p>★★ **委托给 {@link ApiViews#unit}**（2026-09-24 合一）：GUI 与 MCP 两面此前各写一份同形视图，加字段就得记得改两处 ——AGENT.md
+   * §8.3 的纪律是"共用同一份视图层（ApiViews）"。这里只留转调，不再有第二份字段清单。
+   */
   public static Map<String, Object> unit(
       Unit unit, UnitState units, SimosTimestamp at, GameMap map) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("id", unit.id().value());
-    view.put("name", unit.name());
-    view.put("member", unit.member());
-    view.put("equipment", new LinkedHashMap<>(unit.equipment()));
-    view.put("speed", unit.speed());
-    view.put("mobilityPerMille", unit.mobilityPerMille());
-    // ★ B9：与 GUI 面同形地透出单位自身状态（两个视图必须同形，否则 MCP 与 GUI 会漂移）。
-    view.put("status", unit.status().name());
-    view.put("parent", unit.parent().valueAt(at).map(UnitId::value).orElse(null));
-    view.put(
-        "position", units.effectivePosition(unit.id(), at).map(ToolSupport::hexCoord).orElse(null));
-    view.put("movement", movement(unit, at, map));
-    return view;
+    return ApiViews.unit(unit, units, at, map);
   }
 
   /**

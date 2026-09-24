@@ -33,6 +33,7 @@ public final class UnitMergeFormationTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "合并编制：固定 unit.MergeFormation，载荷 {childId, parentId}（★ 必须同格且 child 状态为 MOVING）";
+    return "合并编制：固定 unit.MergeFormation，载荷 {childId, parentId}（★ 必须**同格**且 child 状态为 MOVING）——"
+        + "合并后 child 的整棵子树编入 parent 那一支、一起移动；存活方是 parentId，其 speed 取合并后整支的最慢者";
   }
 }

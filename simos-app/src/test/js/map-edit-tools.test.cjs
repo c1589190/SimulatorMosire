@@ -269,3 +269,23 @@ test("registered-edge-kinds-default-then-follow-the-server", () => {
   // 复原，避免污染同文件后续用例。
   M.setRegisteredEdgeKinds(["river", "road"]);
 });
+
+// ── 编制 v2（2026-09-24）：成员不能自己移动——纯判据与服务端 requireTopOfFormation 同源 ──
+
+const U = loadWebui("map-uniteditor.js").SimosMapUnitEditor;
+
+test("isFormationMember-true-only-for-an-attached-child", () => {
+  // attached=true 且顶层不是自己 ⇒ 成员（不能自己移动）
+  assert.equal(U.isFormationMember({ attached: true, rootId: "u-1" }, "u-2"), true);
+  // 顶层自己（rootId === id）⇒ 可以移动
+  assert.equal(U.isFormationMember({ attached: false, rootId: "u-1" }, "u-1"), false);
+  // 有归属但独立（attached=false）⇒ 也是顶层，可以移动
+  assert.equal(U.isFormationMember({ attached: false, rootId: "u-2" }, "u-2"), false);
+});
+
+test("isFormationMember-never-blocks-on-unknown-state", () => {
+  // ★ 未载入 / 缺字段 ⇒ false（**不把"未知"当"成员"**，否则界面会莫名禁用移动）
+  assert.equal(U.isFormationMember(undefined, "u-2"), false);
+  assert.equal(U.isFormationMember({ attached: true, rootId: null }, "u-2"), false);
+  assert.equal(U.isFormationMember({}, "u-2"), false);
+});

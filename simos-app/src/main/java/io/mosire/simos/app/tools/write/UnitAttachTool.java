@@ -33,6 +33,7 @@ public final class UnitAttachTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "加入编队（偏移式加入：原地不动并进入跟随，不再要求同格）：固定 unit.AttachUnit，载荷 {id, parent?}";
+    return "加入编队：固定 unit.AttachUnit，载荷 {id, parent?}（★ 必须**同格**：编制 v2 起「一同移动」的前提就是同格，"
+        + "不同格会被拒）。加入后 id 及其下挂随 parent 那一支一起移动（整支速度取最慢者）";
   }
 }

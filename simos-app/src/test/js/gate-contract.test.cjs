@@ -64,7 +64,10 @@ const REQUIRED_FILES = [
 //   2026-09-24 圈选随机化起 268 → 270：map-edit-tools.test.cjs 新增 2 条（randomizeRecipeState / 两个地形下拉与载荷来源）。
 //   2026-09-24 区域名按屏幕可见范围起 270 → 271：webui-fix2.test.cjs 新增 1 条（regionNamePlan 的视口裁剪）。
 //   2026-09-24 编制正向化起 271 → 275：unit-tree.test.cjs 新增 4 条（根在顶 2 + 竖直可拖/两轴独立/preferredTreePan）。
-const MIN_ASSERTIONS = 275;
+//   2026-09-24 编制 v2（取消跟随 / 同格成编 / 顶层带动）起 275 → 279：unit-tree.test.cjs 新增 2 条
+//     （节点带出 attached/formationRootId/formationSize 与缺字段时的缺省）；map-edit-tools.test.cjs 新增 2 条
+//     （isFormationMember 的成员判定与"未知状态不拦"）。
+const MIN_ASSERTIONS = 279;
 
 function testFiles() {
   return fs

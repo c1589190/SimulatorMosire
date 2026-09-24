@@ -936,3 +936,26 @@ test("renderer-marker-text-is-the-army-name-not-a-unit-short-id", () => {
   assert.ok(src.includes("isMarkerSelected(m)"), "选中高亮逻辑不变（组内任一被选中 ⇒ 高亮该组）");
 });
 
+// ── 编制 v2（2026-09-24）：节点带出 attached/formationRootId/formationSize ──────────────
+
+test("buildTree-carries-the-formation-fields-verbatim", () => {
+  const status = flatten(
+    buildTree([
+      { id: "u-1", name: "全军", parent: null, attached: false, formationRootId: "u-1", formationSize: 2 },
+      { id: "u-2", name: "第一连", parent: "u-1", attached: true, formationRootId: "u-1", formationSize: 2 },
+    ])
+  );
+  const byId = new Map(status.map((n) => [n.id, n]));
+  assert.equal(byId.get("u-1").attached, false, "顶层 attached=false");
+  assert.equal(byId.get("u-2").attached, true, "成员 attached=true");
+  assert.equal(byId.get("u-2").formationRootId, "u-1", "顶层 id 照带（界面据此点名「该对谁下令」）");
+  assert.equal(byId.get("u-1").formationSize, 2, "整支规模照带");
+});
+
+test("buildTree-defaults-the-formation-fields-when-the-server-does-not-send-them", () => {
+  // ★ 老服务端 / 老档：字段缺席 ⇒ attached=false、formationRootId=null、formationSize=1（**不猜**）。
+  const status = flatten(buildTree([{ id: "u-9", name: "独苗", parent: null }]));
+  assert.equal(status[0].attached, false);
+  assert.equal(status[0].formationRootId, null);
+  assert.equal(status[0].formationSize, 1);
+});

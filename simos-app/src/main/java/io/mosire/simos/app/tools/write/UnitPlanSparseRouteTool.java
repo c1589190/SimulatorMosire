@@ -31,6 +31,8 @@ public final class UnitPlanSparseRouteTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "下达稀疏路线：固定 unit.PlanSparseRoute，载荷 {id, waypoints[{q,r}…]}（逐段展开；任一段不可达即整条被拒）";
+    return "下达稀疏路线：固定 unit.PlanSparseRoute，载荷 {id, waypoints[{q,r}…]}"
+        + "（逐段展开；任一段不可达即整条被拒；★ 首点必须是该单位**当前所在格**）。"
+        + "★★ 只有编制**顶层**能下路线：成员会被拒（理由点名顶层）——改对顶层下令，或先 SplitFormation / DetachUnit 拆出来";
   }
 }

@@ -31,6 +31,9 @@ public final class UnitPlanRouteTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "下达路线：固定 unit.PlanRoute，载荷 {id, waypoints[{q,r}…]}（至少两个路径点）";
+    return "下达路线：固定 unit.PlanRoute，载荷 {id, waypoints[{q,r}…]}（至少两个路径点；"
+        + "★ 首点必须是该单位**当前所在格**，写成邻格会被拒）。"
+        + "★★ 只有编制**顶层**能下路线：与别人一同移动的成员会被拒（理由点名顶层）——"
+        + "要么改对顶层下令（整支一起跟着走），要么先用 unit.SplitFormation / unit.DetachUnit 把它拆成独立单位";
   }
 }
