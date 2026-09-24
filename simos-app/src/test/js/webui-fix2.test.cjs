@@ -115,7 +115,56 @@ test("region-name-draws-both-stroke-and-fill-with-zoom-guard", () => {
   assert.ok(body.indexOf("strokeText(") >= 0, "黑描边（保证在深色压暗上也读得出）");
   assert.ok(body.indexOf("fillText(") >= 0, "白字填充");
   assert.ok(body.indexOf("view.scale < REGION_NAME_MIN_SCALE") >= 0, "低缩放不画（避免 97 个标签堆叠）");
-  assert.ok(body.indexOf("regionLabelLayout(") >= 0, "位置/字号走纯函数（可单测）");
+  // ★ 2026-09-24（用户报障「启动就加载所有区域名，非常卡」）：落点+裁剪走纯函数 regionNamePlan，
+  //   paintRegionNames 只画它给的计划；**不再**在绘制循环里直接对全表算布局。
+  assert.ok(body.indexOf("regionNamePlan(") >= 0, "位置/字号/可见性走纯函数（可单测）");
+  assert.equal(
+    body.indexOf("regionLabelLayout("),
+    -1,
+    "绘制循环里不得再出现全表布局调用（裁剪必须只剩 regionNamePlan 一处实现）"
+  );
+  assert.ok(body.indexOf("REGION_NAME_VISIBLE_MARGIN") >= 0, "视口裕量是个具名常量（不散落魔数）");
+});
+
+test("regionNamePlan-culls-by-viewport-like-hex-rendering", () => {
+  // ★ 用户口径：「改成和 hex 一样的**根据屏幕所见范围**渲染」。
+  //   视口 100×100、scale=1、tx=ty=0 ⇒ 屏幕坐标 = 世界坐标（cellSize 用 1 便于手算）。
+  const viewport = { width: 100, height: 100 };
+  const onScreen = { id: "r-in", name: "里", hexCount: 100, label: { q: 0, r: 0 } };
+  const offScreen = { id: "r-out", name: "外", hexCount: 100, label: { q: 1000, r: 0 } };
+  const view = { scale: 1, tx: 0, ty: 0 };
+
+  const plan = M.regionNamePlan([onScreen, offScreen], view, viewport, 64, 1);
+  assert.equal(plan.length, 1, "屏幕外的区域名不得进计划（原实现会把 252 个全画一遍）");
+  assert.equal(plan[0].text, "里");
+  // ★ x/y 必须是**世界坐标**（不含视图平移）：取一个带平移的 view，(0,0) 格的落点仍应是 (0,0)。
+  //   若实现把屏幕坐标塞进来，下面的 50/20 就会漏出来（而调用方已在世界变换里画 ⇒ 会二次平移）。
+  const shifted = M.regionNamePlan([onScreen], { scale: 1, tx: 50, ty: 20 }, viewport, 64, 1);
+  assert.equal(shifted.length, 1);
+  assert.equal(shifted[0].x, 0);
+  assert.equal(shifted[0].y, 0);
+
+  // 裕量边界：屏幕 x = −60（视口左外 60px，< 64 的裕量）⇒ 仍画；再远到 −100 ⇒ 不画。
+  // （世界原点在该 view 下的屏幕 x 恰等于 tx ⇒ 用 tx 直接摆位置，别绕 hexToPixel。）
+  const nearEdge = { id: "r-near", name: "近", hexCount: 100, label: { q: 0, r: 0 } };
+  const planNear = M.regionNamePlan([nearEdge], { scale: 1, tx: -60, ty: 0 }, viewport, 64, 1);
+  assert.equal(planNear.length, 1, "裕量内（屏幕外 60px < 64）仍画 ⇒ 拖动时标签不会忽隐忽现");
+  const planFar = M.regionNamePlan([nearEdge], { scale: 1, tx: -100, ty: 0 }, viewport, 64, 1);
+  assert.equal(planFar.length, 0, "裕量外（屏幕外 100px）不画");
+
+  // 缺 label / hexCount≤0 / 空名 ⇒ 本来就不该有落点（沿用 regionLabelLayout 的口径）。
+  const planBad = M.regionNamePlan(
+    [{ id: "x", hexCount: 5, name: "无label" }, { id: "y", label: { q: 0, r: 0 }, hexCount: 0, name: "零格" }],
+    view,
+    viewport,
+    64,
+    1
+  );
+  assert.deepEqual(planBad, [], "没有落点的区域不进计划");
+  // 退化输入不抛。
+  assert.deepEqual(M.regionNamePlan(null, view, viewport, 64, 1), []);
+  assert.deepEqual(M.regionNamePlan([onScreen], null, viewport, 64, 1), []);
+  assert.deepEqual(M.regionNamePlan([onScreen], { scale: 0, tx: 0, ty: 0 }, viewport, 64, 1), []);
 });
 
 test("region-names-are-actually-invoked-in-render-order", () => {

@@ -66,6 +66,12 @@
   var REGION_DIM_MODES = ["region", "region-edit"];
   // ★ U2：区域名的最小缩放阈值（世界视图 scale≈0.06 时 97 个标签会堆叠成噪声）。
   var REGION_NAME_MIN_SCALE = 0.25;
+  /**
+   * ★ 2026-09-24（用户报障）：「区域查看/编辑模式下，**启动就加载图上所有区域名称字段，导致非常卡**，
+   * 改成和 hex 一样的**根据屏幕所见范围**渲染」。⇒ 区域名只画屏幕可见范围内的那些（外加这个裕量，
+   * 免得边界上的标签在拖动时忽隐忽现）。量级取字号上限（40px）加上描边与拖动的余量。
+   */
+  var REGION_NAME_VISIBLE_MARGIN = 64;
   // ★ V2：区域名**只在区域查看/区域编辑两个模式**显示（常规模式下用户实测"区域名称也被显示了"）。
   //   开关（regionNamesEnabled）仍保留，但只在两模式内生效。
   var REGION_NAME_MODES = ["region", "region-edit"];
@@ -320,6 +326,53 @@
       fontSize: Math.max(8, Math.min(40, Math.sqrt(hexCount) * 1.8)) / scale,
       text: String(text),
     };
+  }
+
+  /**
+   * ★ 2026-09-24：区域名的**可见计划**——只产出**屏幕可见范围内**（外加 {@code margin}）的标签。
+   *
+   * <p>由来：用户报「区域查看/编辑模式下，启动就加载图上所有区域名称字段，导致非常卡，改成和 hex 一样的
+   * 根据屏幕所见范围渲染」。原实现每帧对**全部**区域（真档 252 个）算落点 + 逐条 stroke/fill 文字，与视口无关；
+   * 现在按屏幕坐标裁剪，每帧只画屏幕上那几条 ⇒ 帧开销与**可见区域数**成正比，而不是与全图区域数成正比。
+   *
+   * <p>★ **视口判据写在这里、不复用 {@code markerScreenVisible}**：那个函数的口径是"把视口**内缩** margin"
+   * （单位标记要判断"是不是足够靠里 ⇒ 需要重新居中"），而这里要的恰恰相反——**外扩** margin（屏幕上再往外
+   * 一点也留着，免得拖动时边界标签忽隐忽现）。两者共用会靠一个负 margin 掩饰，读的人多半会看反。
+   *
+   * <p>纯函数（无 DOM/IO）：落点配方仍是 {@link #regionLabelLayout}（质心 hex + 字号 ∝√格数 ÷ zoom），
+   * 本函数只多做两件事：把落点换成屏幕坐标、按视口裁掉看不到的。
+   *
+   * @param regions `/api/map/overview` 的 `regions[]`（含 `label` 质心 hex 与 `hexCount`）
+   * @param view 当前视图 `{scale,tx,ty}`（世界像素 → 屏幕像素）
+   * @param viewport 视口 `{width,height}`（CSS px）
+   * @param margin 视口**外**的裕量（px）；`undefined` ⇒ {@link #REGION_NAME_VISIBLE_MARGIN}
+   * @param cellSize 每格边长（px，世界尺度；renderer 的当前值）
+   * @return `[{text,fontSize,x,y}…]`，`x/y` 是**世界坐标**（调用方已在世界变换里画，不必再换算）
+   */
+  function regionNamePlan(regions, view, viewport, margin, cellSize) {
+    var out = [];
+    if (!view || !(view.scale > 0) || !viewport) {
+      return out;
+    }
+    var slack = typeof margin === "number" && margin >= 0 ? margin : REGION_NAME_VISIBLE_MARGIN;
+    (regions || []).forEach(function (region) {
+      var layout = regionLabelLayout(region, view.scale);
+      if (!layout) {
+        return;
+      }
+      var world = hexToPixel(layout.q, layout.r, cellSize);
+      var screen = worldToScreen(world, view);
+      if (
+        screen.x < -slack ||
+        screen.y < -slack ||
+        screen.x > viewport.width + slack ||
+        screen.y > viewport.height + slack
+      ) {
+        return;
+      }
+      out.push({ text: layout.text, fontSize: layout.fontSize, x: world.x, y: world.y });
+    });
+    return out;
   }
 
   /** 区域的 tag（逐字，null 保留）——调色板条目用 `tag`、overview 条目用 `meta.tag`，两处都读。 */
@@ -1584,6 +1637,8 @@
     terrainDimAlpha: terrainDimAlpha,
     regionNamesVisible: regionNamesVisible,
     regionLabelLayout: regionLabelLayout,
+    regionNamePlan: regionNamePlan,
+    REGION_NAME_VISIBLE_MARGIN: REGION_NAME_VISIBLE_MARGIN,
     mapEditSubtoolOf: mapEditSubtoolOf,
     edgeChainResult: edgeChainResult,
     edgeChainEdges: edgeChainEdges,
@@ -1700,6 +1755,8 @@
     terrainDimAlpha: terrainDimAlpha,
     regionNamesVisible: regionNamesVisible,
     regionLabelLayout: regionLabelLayout,
+    regionNamePlan: regionNamePlan,
+    REGION_NAME_VISIBLE_MARGIN: REGION_NAME_VISIBLE_MARGIN,
     regionTag: regionTag,
     hexDistance: hexDistance,
     isAdjacent: isAdjacent,

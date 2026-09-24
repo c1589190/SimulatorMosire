@@ -48,7 +48,9 @@ const JS_DIR = __dirname;
 //     SetEdge 拒绝）；另 5 条既有断言随子选项模型扩容（tools 含 bucket、面板可见性多一个 bucket 键、index.html 控件）。
 //   2026-09-24 圈选随机化起 268 → 270（map-edit-tools.test.cjs 新增 2 条：randomizeRecipeState 的两侧必填/等值合法
 //     9 组边界 + 随机化面板两个地形下拉与"载荷两侧只能来自 guard"的静态扫描）。
-const MIN_TESTS = 270;
+//   2026-09-24 区域名按屏幕可见范围起 270 → 271（webui-fix2.test.cjs 新增 1 条：regionNamePlan 的视口裁剪
+//     与"x/y 是世界坐标"判别；同一条静态用例改指新接线 —— 绘制循环里不得再出现全表布局调用）。
+const MIN_TESTS = 271;
 
 function discoverTests() {
   return fs

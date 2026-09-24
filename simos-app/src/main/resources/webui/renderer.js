@@ -81,7 +81,8 @@
   var remainingPath = core.remainingPath;
   var terrainDimAlpha = core.terrainDimAlpha;
   var regionNamesVisible = core.regionNamesVisible;
-  var regionLabelLayout = core.regionLabelLayout;
+  var regionNamePlan = core.regionNamePlan;
+  var REGION_NAME_VISIBLE_MARGIN = core.REGION_NAME_VISIBLE_MARGIN;
   var renderEdgeKindOptions = core.renderEdgeKindOptions;
   var mapEditSubtoolOf = core.mapEditSubtoolOf;
   var edgeChainResult = core.edgeChainResult;
@@ -806,30 +807,38 @@
     /**
      * ★ U2：区域名（配方照 GSimulator `render.js:348-364`）：质心居中、字号 ∝√格数 ÷ zoom、
      * 黑描边白字。位置来自 `overview.regions[].label`（服务端质心 hex）。
+     *
+     * <p>★★ 2026-09-24（用户报障「启动就加载所有区域名，非常卡，改成和 hex 一样按屏幕所见范围渲染」）：
+     * 逐帧只画**屏幕可见范围内**的标签 —— 落点与裁剪走纯函数 {@code regionNamePlan}（map.js，可单测），
+     * 本函数只负责把计划画出来。原来这里是"遍历全部区域、逐条 stroke/fill"。
      */
     function paintRegionNames(targetCtx) {
       regionNameDraws = 0;
       if (!regionNamesVisible(mode) || view.scale < REGION_NAME_MIN_SCALE) {
         return;
       }
-      var drawn = 0;
-      (host.overviewRegions || []).forEach(function (region) {
-        var layout = regionLabelLayout(region, view.scale);
-        if (!layout) {
-          return;
-        }
-        var point = hexToPixel(layout.q, layout.r, cellSize);
-        targetCtx.font = "bold " + layout.fontSize + "px sans-serif";
-        targetCtx.textAlign = "center";
-        targetCtx.textBaseline = "middle";
-        targetCtx.lineWidth = 3 / view.scale;
-        targetCtx.strokeStyle = "rgba(0, 0, 0, 0.85)";
-        targetCtx.strokeText(layout.text, point.x, point.y);
-        targetCtx.fillStyle = "#ffffff";
-        targetCtx.fillText(layout.text, point.x, point.y);
-        drawn += 1;
+      var plan = regionNamePlan(
+        host.overviewRegions || [],
+        view,
+        { width: cssW, height: cssH },
+        REGION_NAME_VISIBLE_MARGIN,
+        cellSize
+      );
+      if (!plan.length) {
+        return;
+      }
+      // ★ 与位置无关的 ctx 状态只设一次（原实现每条都重设一遍）。
+      targetCtx.textAlign = "center";
+      targetCtx.textBaseline = "middle";
+      targetCtx.lineWidth = 3 / view.scale;
+      targetCtx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      targetCtx.fillStyle = "#ffffff";
+      plan.forEach(function (label) {
+        targetCtx.font = "bold " + label.fontSize + "px sans-serif";
+        targetCtx.strokeText(label.text, label.x, label.y);
+        targetCtx.fillText(label.text, label.x, label.y);
       });
-      regionNameDraws = drawn;
+      regionNameDraws = plan.length;
     }
 
     /**
@@ -2081,21 +2090,27 @@
         var data = ctx.getImageData(Math.round(cssX * dpr), Math.round(cssY * dpr), 1, 1).data;
         return { r: data[0], g: data[1], b: data[2], a: data[3] };
       },
-      /** ★ U2：当前应画的区域名及其屏幕落点（只读投影，供 `regionNameDebug` 取色）。 */
+      /**
+       * ★ U2：当前应画的区域名及其屏幕落点（只读投影，供 `regionNameDebug` 取色）。
+       *
+       * <p>★ 2026-09-24：与**绘制同源**（同一个 {@code regionNamePlan} 的可见性裁剪）——否则调试里数的条数
+       * 与屏幕上真正画出来的会分叉（那正是"投影不是证据"的形态）。
+       */
       regionNameLayouts: function () {
-        var out = [];
         if (!regionNamesVisible(mode) || view.scale < REGION_NAME_MIN_SCALE) {
-          return out;
+          return [];
         }
-        (host.overviewRegions || []).forEach(function (region) {
-          var layout = regionLabelLayout(region, view.scale);
-          if (!layout) {
-            return;
-          }
-          var screen = worldToScreen(hexToPixel(layout.q, layout.r, cellSize), view);
-          out.push({ text: layout.text, screenX: screen.x, screenY: screen.y });
+        var plan = regionNamePlan(
+          host.overviewRegions || [],
+          view,
+          { width: cssW, height: cssH },
+          REGION_NAME_VISIBLE_MARGIN,
+          cellSize
+        );
+        return plan.map(function (label) {
+          var screen = worldToScreen({ x: label.x, y: label.y }, view);
+          return { text: label.text, screenX: screen.x, screenY: screen.y };
         });
-        return out;
       },
     };
   }
