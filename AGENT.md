@@ -272,6 +272,11 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
   保留但**不再影响任何计算**。
 - ★ 决策人**要派兵单独出去，必须先拆**（`unit.SplitFormation` / `unit.DetachUnit`）；三条令里"给下挂单位下路线"
   这种写法会被正当拒绝（三国那轮实测就是这么撞上的——见 `.superpowers` 之外的本节）。
+- ★★ **同一 tick 内的"改编"是覆盖、不是拒**（`setOrAppend`，后写者胜）：创世段就在 tick 0、命令也落在 tick 0 ⇒
+  第二条写会撞 `SegmentedSeries` 的"段必须按 from 严格升序"。**世界不推进时间时，任何第二次改编都会撞**——
+  这是 live 跑出来的（三国在 tick 0 的 `unit.DetachUnit` 全被拒）。`attach`/`detach`/`reparent*` 都已走同刻覆盖。
+- ★ **巡逻环线允许**（2026-09-24 裁定）：`Route.path` 可以回到已走过的格（`waypoints` 末点可等于首点），
+  **走完一圈即停**（不是永久巡逻）。旧不变量"path 不得有重复格（R4）"已作废。
 - 设计原文与取代声明：`docs/superpowers/specs/2026-09-24-formation-v2-design.md`。
 
 ### 8.6 换设备自检（本机踩过的坑，按序做）
