@@ -91,7 +91,12 @@ final class MoveFixture {
         GenerationSpec.defaults(0L));
   }
 
-  /** 判据二的单位：speed = 2 MP/小时、mobility ‰500、位置 {@code [1,1]}、无在途路线。 */
+  /**
+   * 判据二的单位：speed = 2 **MP/小时**、mobility ‰500、位置 {@code [1,1]}、无在途路线。
+   *
+   * <p>★ 日制（2026-09-24 裁定：1 tick = 1 天）：速度单位是 MP/小时，**一天预算 = speed × 1000 × 24 = 48000 毫 MP**
+   * （本夹具的速度仅被路径/成本用例用作机动性载体；行走节奏的用例在 {@code UnitMovesTest} 里自取速度）。
+   */
   static Unit unit() {
     return new Unit(
         U_F82A,

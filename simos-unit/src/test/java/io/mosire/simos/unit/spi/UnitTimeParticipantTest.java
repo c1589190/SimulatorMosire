@@ -49,14 +49,18 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link UnitTimeParticipant}（spec §9.1）。
  *
- * <p>夹具算术：预算 = {@code speedAtDeparture × 1000 × Δ刻} = 2000·Δ；走廊每段成本 1500 ⇒ Δ=1 时 IN_TRANSIT 在
- * {@code [1,2]}（余 1000），Δ=2 时 ARRIVED 在 {@code [1,3]}。
+ * <p>夹具算术（**日制，2026-09-24 裁定：1 tick = 1 天**）：日预算 = {@code speedAtDeparture × 1000 × 24 × Δ天} =
+ * 48000·Δ（speed = 2 MP/小时）；走廊每段成本 48000（= 整整一天的路）⇒ Δ=1 时 IN_TRANSIT 在 {@code [1,2]}（余 48000），Δ=2 时
+ * ARRIVED 在 {@code [1,3]}。
  */
 class UnitTimeParticipantTest {
 
   private static final CommandChainId CHAIN = new CommandChainId("c-1");
 
-  /** 每段 1500 毫 MP 的固定成本 + 全程记账（形态 4 的"原样转交"就钉在记账上）。 */
+  /**
+   * 每段 48000 毫 MP（= speed 2 MP/小时的**一整天**预算）的固定成本 + 全程记账（形态 4 的"原样转交"就钉在记账上）。 ★ 日制重标定：旧口径的"1500/刻"在
+   * 1 tick = 1 天之下等价于"48000/天"——这样"每天恰走一格"的节奏不变。
+   */
   private static final class RecordingCost implements MovementCost {
 
     final List<String> edges = new ArrayList<>();
@@ -70,7 +74,7 @@ class UnitTimeParticipantTest {
       if (to.equals(impassableTo)) {
         return OptionalLong.empty();
       }
-      return OptionalLong.of(1500);
+      return OptionalLong.of(48000);
     }
 
     @Override
@@ -234,7 +238,7 @@ class UnitTimeParticipantTest {
   private static final UnitId U2 = new UnitId("u-2");
 
   /**
-   * 认图界的成本替身（T7）：图内每条边 1500 毫 MP；**图外的边**与 {@code blockedFrom→blockedTo} 那条 ⇒ 空。
+   * 认图界的成本替身（T7）：图内每条边 48000 毫 MP（= speed 2 的一整天预算）；**图外的边**与 {@code blockedFrom→blockedTo} 那条 ⇒ 空。
    *
    * <p>★ 与 {@link RecordingCost} 的差别只有"认图界"这一条：`RecordingCost` 对任何 {@code to} 都报价 ⇒ A\* 可以绕出
    * 图外再绕回来，"封掉一条边"根本封不住 —— 那样就造不出"在图上但不可达"的夹具（而"不可达 ⇒ 不回归"是本轮的一条判据）。
@@ -252,7 +256,7 @@ class UnitTimeParticipantTest {
       if (to.equals(blockedTo) && from.equals(blockedFrom)) {
         return OptionalLong.empty();
       }
-      return OptionalLong.of(1500);
+      return OptionalLong.of(48000);
     }
 
     @Override
@@ -314,7 +318,7 @@ class UnitTimeParticipantTest {
    * ★★ 判据（spec §二.3 不变量 3 / P8 / **m1 靶子**）：大编制移动后回归终点**随动** —— 终点 == 目标**当前**的 {@code
    * effectivePosition}，不是上一 tick 物化出来的旧格。
    *
-   * <p>夹具算术（与既有一致：每边 1500、预算 2000/刻 ⇒ 每刻一格）：大编制 `u-2` 从 H11 出发，第 1 刻物化在 H12、第 2 刻抵达 H13；回归方 `u-1`
+   * <p>夹具算术（日制重标定：每边 48000、日预算 48000 ⇒ 每天一格）：大编制 `u-2` 从 H11 出发，第 1 天物化在 H12、第 2 天抵达 H13；回归方 `u-1`
    * 带着"回归 u-2"的意图停在 H11，每 tick 重规划 ⇒ 第 1 刻拿到 [H11,H12]、第 2 刻拿到 [H12,H13]。
    *
    * <p>★ m1（终点取自**第一趟物化之前**的那份状态 ⇒ 等价于"把终点冻结在已有的那份 hex 上"）在本用例红：第 1 刻的目标 位置会读成 H11（= u-1 自己所在格，起点

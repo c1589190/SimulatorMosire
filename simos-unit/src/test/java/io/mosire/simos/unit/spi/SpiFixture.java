@@ -51,7 +51,7 @@ final class SpiFixture {
     return new Route(List.of(H11, H13), List.of(H11, H12, H13));
   }
 
-  /** T0 出发、speed = 2 MP/刻、mobility ‰500 的在途行程。 */
+  /** T0 出发、speed = 2 **MP/小时**、mobility ‰500 的在途行程（日制：一天预算 = 2×1000×24 = 48000 毫 MP）。 */
   static Movement inFlight() {
     return new Movement(corridor(), T0, 2, 500);
   }

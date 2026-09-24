@@ -19,6 +19,10 @@ import java.util.Optional;
  *
  * <p>★ {@code position} 允许为空（"不知道在哪"），无则向父取 / 叠加偏移（{@link UnitState#effectivePosition}）。
  *
+ * <p>★ **速度量纲（2026-09-24 日制裁定）**：{@code speed} 的单位是 **MP/小时**（数值语义即此，不是 MP/tick）。日制下 **一天的行程预算 =
+ * {@code speed × 1000 × 24} 毫 MP**（常数见 {@link io.mosire.simos.unit.move.UnitMoves#HOURS_PER_DAY}）；
+ * 速度**不**预先折算成"每日"——换算只在 {@code UnitMoves.evaluate} 的预算公式里做一处。
+ *
  * <p>★ **Unit 扩容 T1 的四个新字段**（spec §一.3 / §三.2）：{@code status}（三态，普通字段）、{@code attached}/{@code
  * offset} （{@code Formation}：是否跟随父 + 相对父的站位，与 {@code parent} 同形的时态序列）、{@code
  * rejoinTarget}（回归意图，普通字段）。 四者的默认值必须让**旧档行为一字不变**：{@code MOVING} / {@code true} / {@code empty} /

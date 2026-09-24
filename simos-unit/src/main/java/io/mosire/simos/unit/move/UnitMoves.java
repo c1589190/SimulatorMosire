@@ -13,13 +13,27 @@ import java.util.OptionalLong;
 /**
  * 按时间戳物化移动（M3 spec §4.5）：**纯函数**，不写回状态（写回属 M4 的两阶段推进，spec 偏离 5）。
  *
- * <p>预算模型：`budget = speedAtDeparture × 1000 × (at.tick − departedAt.tick)`（毫 MP），沿 `path` 逐段付；
- * 付不起的那一段 ⇒ `IN_TRANSIT` 并给出余量；全付清 ⇒ `ARRIVED`。
+ * <p>★ **日制预算模型（2026-09-24 用户裁定，取代旧的"1 tick = 1 小时"口径）**：速度以**小时**为基准 （{@code speedAtDeparture}
+ * 的单位是 **MP/小时**），而推进的一刻度是一**天**——一天按 24 小时流结算，故 `budget = speedAtDeparture × 1000 × HOURS_PER_DAY
+ * × (at.tick − departedAt.tick)`（毫 MP，`Δtick` 以**天**计； 中间量走 `long`）。这里只在公式里补 24 而**不改 {@code
+ * Unit.speed} 的数值**：MP/小时 是速度的自然量纲（设计稿 §3 的旧小时速度也就无需 ×24 换算），日预算由 {@link #HOURS_PER_DAY} 一处表达。
+ *
+ * <p>沿 `path` **逐格按地形成本付费**：付不起下一格时**允许停在两格之间**——位置仍是最后一个已付清的格，差量留在 `IN_TRANSIT` 的
+ * `remainingEdgeCostMillis` 里（"向进入下一格之前取整"）。`evaluate` 是"从出发时刻起按总预算重算"的 纯函数 ⇒ **余量天然跨日保留**（同一条行程在
+ * `Δtick = 2` 时从出发起算的总预算里仍含着第 1 天没花掉的那部分）。 全付清 ⇒ `ARRIVED`。
  *
  * <p>★ **机动性冻结口在此**：成本函数从 `Unit` 上读 `mobilityPerMille()`，而在途行程必须用 `mobilityAtDeparture` ⇒
  * 本类**副本一份单位**再调成本函数（不是改 `MovementCost` 的签名）。
  */
 public final class UnitMoves {
+
+  /**
+   * ★ **日制裁定的一部分**：一 tick = 一天 = 24 小时，行进的日预算 = {@code speedAtDeparture × 1000 × 本值}（毫 MP）。
+   *
+   * <p>为什么常量放在**公式里**而不把 `Unit.speed` 的数值改成"MP/日"：速度的自然量纲是 MP/小时（设计稿 §3 的旧小时速度
+   * 无需换算），"一天多少预算"是**时间语义**而非单位换算——把 24 收在这一处，日制若再变（如半天 tick）只改这里。
+   */
+  public static final int HOURS_PER_DAY = 24;
 
   private UnitMoves() {}
 
@@ -39,7 +53,11 @@ public final class UnitMoves {
     if (at.compareTo(movement.departedAt()) < 0) {
       throw new IllegalArgumentException("查询时刻早于出发时刻: " + at + " < " + movement.departedAt());
     }
-    long budget = movement.speedAtDeparture() * 1000L * (at.tick() - movement.departedAt().tick());
+    long budget =
+        movement.speedAtDeparture()
+            * 1000L
+            * HOURS_PER_DAY
+            * (at.tick() - movement.departedAt().tick());
     Unit frozen =
         new Unit(
             unit.id(),

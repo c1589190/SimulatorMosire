@@ -485,7 +485,7 @@ class UnitVisionRadiusTest {
     @Override
     public OptionalLong costMillis(HexCoord from, HexCoord to, Unit unit, GameMap map) {
       seen.add(unit);
-      return OptionalLong.of(1500);
+      return OptionalLong.of(48000);
     }
 
     @Override
@@ -494,12 +494,12 @@ class UnitVisionRadiusTest {
     }
   }
 
-  /** 每段固定 1500：Δ=1 时 speed 2 的预算 2000 ⇒ 走得动一格。 */
+  /** 每段固定 48000：日制下 speed 2 的**一天预算** = 48000（1 tick = 1 天）⇒ 走得动一格、且仍在途（movement 不被清）。 */
   private static final class FixedCost implements MovementCost {
 
     @Override
     public OptionalLong costMillis(HexCoord from, HexCoord to, Unit unit, GameMap map) {
-      return OptionalLong.of(1500);
+      return OptionalLong.of(48000);
     }
 
     @Override
