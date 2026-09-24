@@ -69,22 +69,23 @@ class SdCommandDrainTest {
     assertThat(core.submit(registerEffect(2, "e2", 100, boundPayload())).getClass())
         .as("e2 的 trigger 远未达成 ⇒ 推进后仍是 PLANNED")
         .isEqualTo(CommandResult.Committed.class);
-    assertThat(core.submit(advance(3, 0, 5))).isInstanceOf(CommandResult.Committed.class);
+    // ★ 日制裁定：一次推进恰好一天 ⇒ 到 tick 5 要连续提交 5 次单日推进（revision 3 → 8）。
+    long atTick5 = advanceDays(3, 5);
     long beforeDrain = revisionRowCount();
-    assertThat(unitMember(core, 4)).as("推进本身不改 unit").isEqualTo(100);
+    assertThat(unitMember(core, atTick5)).as("推进本身不改 unit").isEqualTo(100);
 
     List<CommandResult> drained = new SdCommandDrain(core).drainAfterAdvance(MAIN);
 
     assertThat(drained).hasSize(1);
     assertThat(drained.get(0)).isInstanceOf(CommandResult.Committed.class);
     assertThat(revisionRowCount()).as("跨模块效果落成真 revision").isEqualTo(beforeDrain + 1);
-    assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(5L);
-    assertThat(unitMember(core, 5)).as("unit 真的改了").isEqualTo(90);
-    System.out.println("[C5] drain committed revision=5 member=90");
+    assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(atTick5 + 1);
+    assertThat(unitMember(core, atTick5 + 1)).as("unit 真的改了").isEqualTo(90);
+    System.out.println("[C5] drain committed revision=" + (atTick5 + 1) + " member=90");
 
     List<CommandResult> again = new SdCommandDrain(core).drainAfterAdvance(MAIN);
     assertThat(again).as("幂等：重复 drain 不重复提交（e2 仍 PLANNED、e1 已 drain）").isEmpty();
-    assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(5L);
+    assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(atTick5 + 1);
     assertThat(revisionRowCount()).isEqualTo(beforeDrain + 1);
   }
 
@@ -93,7 +94,8 @@ class SdCommandDrainTest {
     CoreSimos core = start();
     core.submit(
         registerEffect(1, "e1", 5, "{\"id\":\"u-1\",\"personnel\":-9999,\"equipment\":{}}"));
-    core.submit(advance(2, 0, 5));
+    // ★ 日制裁定：到 tick 5 = 连续 5 次单日推进（revision 2 → 7）。
+    long atTick5 = advanceDays(2, 5);
     long beforeDrain = revisionRowCount();
 
     List<CommandResult> drained = new SdCommandDrain(core).drainAfterAdvance(MAIN);
@@ -101,8 +103,8 @@ class SdCommandDrainTest {
     assertThat(drained).hasSize(1);
     assertThat(drained.get(0)).as("越界战损被 unit 侧拒绝").isInstanceOf(CommandResult.Rejected.class);
     assertThat(revisionRowCount()).as("被拒不写行 ⇒ 无半写 revision").isEqualTo(beforeDrain);
-    assertThat(unitMember(core, 3)).as("unit 未改（中间态）").isEqualTo(100);
-    assertThat(effectStatus(core, 3, "e1")).as("sd 已记 effect FIRED（中间态）").isEqualTo("FIRED");
+    assertThat(unitMember(core, atTick5)).as("unit 未改（中间态）").isEqualTo(100);
+    assertThat(effectStatus(core, atTick5, "e1")).as("sd 已记 effect FIRED（中间态）").isEqualTo("FIRED");
     List<CommandResult> retry = new SdCommandDrain(core).drainAfterAdvance(MAIN);
     assertThat(retry).as("被拒的指令下次 drain 会重试（不静默丢弃）").hasSize(1);
     System.out.println(
@@ -154,6 +156,21 @@ class SdCommandDrainTest {
         MAIN,
         new RevisionId(expectedRevision),
         new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to))));
+  }
+
+  /**
+   * 从创世 tick 0 起快进 {@code days} 天（日制裁定：一次推进**恰好一天** ⇒ 连续 {@code days} 次单日推进，每次用上一次的新 {@code
+   * expectedRevision}）。返回推进后的 head。
+   */
+  private long advanceDays(long expectedRevision, int days) {
+    long head = expectedRevision;
+    for (long tick = 0; tick < days; tick++) {
+      assertThat(core.submit(advance(head, tick, tick + 1)))
+          .as("推进第 %d 天（tick %d → %d）", tick + 1, tick, tick + 1)
+          .isInstanceOf(CommandResult.Committed.class);
+      head++;
+    }
+    return head;
   }
 
   private static CommandEnvelope envelope(long expectedRevision, String type, String payload) {

@@ -76,25 +76,32 @@ class SdCombatEndToEndTest {
     assertThat(submit(3, "sd.AddCombatStage", addStage(S2, 5, 9, "o2")))
         .isInstanceOf(CommandResult.Committed.class);
 
-    assertThat(core.submit(advance(4, 0, 4))).isInstanceOf(CommandResult.Committed.class);
-    assertThat(currentStage(5)).as("AtOrAfterTick(5) 到点前不动").isEqualTo(S1);
+    // ★ 日制裁定：一次推进恰好一天 ⇒ 到 tick 4 要连续提交 4 次单日推进（revision 4 → 8）。
+    long beforeCrossing = advanceDays(4, 0, 4);
+    assertThat(currentStage(beforeCrossing)).as("AtOrAfterTick(5) 到点前不动（tick 4）").isEqualTo(S1);
 
-    assertThat(core.submit(advance(5, 4, 5))).isInstanceOf(CommandResult.Committed.class);
-    assertThat(currentStage(6)).as("到点后推进到下一阶段").isEqualTo(S2);
-    System.out.println("[C6] condition-driven: rev5=s1 rev6=s2");
+    // 再一天：tick 4 → 5，跨过 entry=5 的门槛（revision 8 → 9）。
+    long afterCrossing = advanceDays(beforeCrossing, 4, 1);
+    assertThat(currentStage(afterCrossing)).as("到点后推进到下一阶段").isEqualTo(S2);
+    System.out.println(
+        "[C6] condition-driven: rev" + beforeCrossing + "=s1 rev" + afterCrossing + "=s2");
 
-    assertThat(sdState(5)).as("同一坐标两次 Replay 逐字段相同").isEqualTo(sdState(5));
-    assertThat(new SdCodec().encodeSnapshot(sdSnapshot(5)))
+    assertThat(sdState(beforeCrossing))
+        .as("同一坐标两次 Replay 逐字段相同")
+        .isEqualTo(sdState(beforeCrossing));
+    assertThat(new SdCodec().encodeSnapshot(sdSnapshot(beforeCrossing)))
         .as("同一坐标两次编码逐字节相同")
-        .isEqualTo(new SdCodec().encodeSnapshot(sdSnapshot(5)));
+        .isEqualTo(new SdCodec().encodeSnapshot(sdSnapshot(beforeCrossing)));
     System.out.println("[C6] frozen: two replays byte-identical");
 
-    assertThat(submit(6, "sd.CommitCombatOutcome", commit(S2, "o2")))
+    assertThat(submit(afterCrossing, "sd.CommitCombatOutcome", commit(S2, "o2")))
         .isInstanceOf(CommandResult.Committed.class);
-    assertThat(selectedOutcome(7)).contains("o2");
-    CommandResult repeat = submit(7, "sd.CommitCombatOutcome", commit(S2, "o2"));
+    assertThat(selectedOutcome(afterCrossing + 1)).contains("o2");
+    CommandResult repeat = submit(afterCrossing + 1, "sd.CommitCombatOutcome", commit(S2, "o2"));
     assertThat(repeat).as("恰一个：已选过不覆盖").isInstanceOf(CommandResult.Rejected.class);
-    assertThat(core.head(MAIN).orElseThrow().value()).as("被拒不留 revision").isEqualTo(7L);
+    assertThat(core.head(MAIN).orElseThrow().value())
+        .as("被拒不留 revision")
+        .isEqualTo(afterCrossing + 1);
     System.out.println("[C6] exactly-one: selected o2 then rejected second");
   }
 
@@ -162,6 +169,22 @@ class SdCombatEndToEndTest {
         MAIN,
         new RevisionId(expectedRevision),
         new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to))));
+  }
+
+  /**
+   * 快进 {@code days} 天（日制裁定：Core 一次推进**恰好一天** ⇒ "快进 N 天" = 连续提交 N 次单日推进，每次用上一次返回的 新 {@code
+   * expectedRevision}；revision 号逐个 +1、时间戳逐个 +1）。返回推进后的 head。
+   */
+  private long advanceDays(long expectedRevision, long fromTick, int days) {
+    long head = expectedRevision;
+    for (int i = 0; i < days; i++) {
+      long from = fromTick + i;
+      assertThat(core.submit(advance(head, from, from + 1)))
+          .as("推进第 %d 天（tick %d → %d）", i + 1, from, from + 1)
+          .isInstanceOf(CommandResult.Committed.class);
+      head++;
+    }
+    return head;
   }
 
   private SdSnapshot sdSnapshot(long revision) {

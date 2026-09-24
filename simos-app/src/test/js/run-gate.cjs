@@ -52,7 +52,10 @@ const JS_DIR = __dirname;
 //     与"x/y 是世界坐标"判别；同一条静态用例改指新接线 —— 绘制循环里不得再出现全表布局调用）。
 //   2026-09-24 编制正向化起 271 → 275（unit-tree.test.cjs：根在顶的行为级用例 2 条 + 竖直可拖/两轴独立/
 //     preferredTreePan 3 条，其中旧的"小内容钉死居中"1 条按新口径重写）。
-const MIN_TESTS = 279;
+//   2026-09-24 日制裁定（1 tick = 1 天）起 279 → 284：timeline.test.cjs 新增 3 条（逐日循环：N=2 恰两次调用 +
+//     第 2 天用第 1 天返回的新 revision / to 恒 = from+1 / 失败立即停并报"第 i+1 天停下" / 状态文案）；新增
+//     readout.test.cjs 2 条（日预算 ×1000×24 = 48000 / etaTick 天数口径）。
+const MIN_TESTS = 284;
 
 function discoverTests() {
   return fs

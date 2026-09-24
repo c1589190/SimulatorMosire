@@ -181,7 +181,8 @@ class ShellEndToEndTest {
     assertThat(agentCorrelation).isNotBlank();
 
     // ── 再跑一条真 simos.advance ⇒ revision 4（断言冻结事件链）──────────────────────────
-    McpSchema.CallToolResult advanceResult = advanceViaMcp(3L, 7L, 9L);
+    //   ★ 日制裁定：to 必须 = from + 1（一次推进恰好一天）⇒ 7 → 8（旧口径的 7 → 9 已不合法）。
+    McpSchema.CallToolResult advanceResult = advanceViaMcp(3L, 7L, 8L);
     assertThat(advanceResult.isError()).as(wireText(advanceResult)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advanceResult));
     assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(4L);

@@ -198,9 +198,9 @@
     appendRow(detail, "路线格数", readout.pathLength);
     appendRow(
       detail,
-      "本 tick 预算",
+      "每天预算",
       millisToMpText(readout.budgetPerTickMillis),
-      "本 tick 可用的移动点数 = 出发速度 × 1 tick（领域内部是毫 MP 定点，这里已换算成 MP）。"
+      "每天的移动点数预算 = 出发速度（MP/小时）× 24（一天 = 24 小时；领域内部是毫 MP 定点，这里已换算成 MP）。"
     );
     appendRow(
       detail,
@@ -232,8 +232,8 @@
     appendRow(
       detail,
       "出发速度",
-      readout.speedAtDeparture + " MP/tick",
-      "出发那一刻冻结的速度：每 tick 能用的移动点数（在途改状态不回溯）。"
+      readout.speedAtDeparture + " MP/小时",
+      "出发那一刻冻结的速度：每小时能用的移动点数（一天 = 24 小时的预算；在途改状态不回溯）。"
     );
     appendRow(
       detail,
@@ -343,12 +343,12 @@
           // ★ B9：单位**自身**状态（此前 /api/unit 不发这个字段 ⇒ 这里拿不到、也不许编；该字段已补在
           //   ApiViews.unit() / ToolSupport.unit()）。词表外原样透出，不掩成空。
           appendRow(dl, "状态", unitStatusText(unit.status));
-          // ★ B15：这两行也是"内部单位"（`speed` 是 MP/tick、`mobilityPerMille` 是 ‰ 定点）⇒ 同处换算。
+          // ★ B15：这两行也是"内部单位"（`speed` 是 MP/小时、`mobilityPerMille` 是 ‰ 定点）⇒ 同处换算。
           appendRow(
             dl,
             "速度",
-            unit.speed + " MP/tick",
-            "每 tick 能用的移动点数（与「本 tick 预算」同一口径）。"
+            unit.speed + " MP/小时",
+            "每小时能用的移动点数（一天 = 24 小时的预算；与「每天预算」同一口径）。"
           );
           appendRow(
             dl,

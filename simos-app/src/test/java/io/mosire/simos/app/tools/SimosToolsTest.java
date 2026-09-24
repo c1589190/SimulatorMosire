@@ -1106,7 +1106,8 @@ class SimosToolsTest {
     args.put("branch", "main");
     args.put("expectedRevision", 1);
     args.put("from", 7L);
-    args.put("to", 9L);
+    // ★ 日制裁定：一次 AdvanceTime 恰好一天 ⇒ to 必须 = from + 1（旧口径的 9 已不合法）。
+    args.put("to", 8L);
 
     ToolResult result = call("simos.advance", args);
 
@@ -1118,6 +1119,28 @@ class SimosToolsTest {
       RevisionRow row =
           new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", head)).orElseThrow();
       assertThat(row.initiator()).isEqualTo(TEST_INITIATOR);
+    }
+  }
+
+  /**
+   * ★ 日制裁定（设计稿 §3）：{@code simos.advance} 的 {@code to} **缺省 = from + 1**（本工具推进一天） ⇒ 不传 {@code to}
+   * 也必须提交，且落盘那一行的世界时间戳恰好 = {@code from + 1}。 判别力：把工具改回"缺省 = 无上界"（旧口径）⇒ Core 第 0 项拒（缺 to 无上界）⇒ 本条红。
+   */
+  @Test
+  void advanceToolDefaultsToExactlyOneDay() throws Exception {
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("branch", "main");
+    args.put("expectedRevision", 1);
+    args.put("from", 7L); // ★ 刻意不传 to
+
+    ToolResult result = call("simos.advance", args);
+
+    assertThat(result.success()).as(result.message()).isTrue();
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      long head = shell.coreSimos().head(main()).orElseThrow().value();
+      RevisionRow row =
+          new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", head)).orElseThrow();
+      assertThat(row.timestamp().tick()).as("缺省 to = from + 1 ⇒ 世界只前进一天（7 → 8）").isEqualTo(8L);
     }
   }
 

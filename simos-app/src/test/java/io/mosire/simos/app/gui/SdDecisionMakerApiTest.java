@@ -365,21 +365,21 @@ class SdDecisionMakerApiTest {
         .isFalse();
   }
 
-  /** C16：推进一 tick 只加 revision，**不产生**任何决策标记；due 随 tick 更新。 */
+  /** C16：推进只加 revision、**不产生**任何决策标记；due 随 tick 更新。 */
   @Test
   void advancingTimeChangesDueWithoutCreatingDecisionMarkers() throws Exception {
     pendingFixture();
     int directivesBefore = replayedSdState().directives().size();
     long revisionBefore = shell.coreSimos().head(main()).orElseThrow().value();
 
-    advance(7, 9);
+    advance(7, 9); // 日制：两次单日推进（7→8、8→9）
 
     assertThat(replayedSdState().directives().size())
         .as("推进不得产生决策标记（C16）")
         .isEqualTo(directivesBefore);
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("推进本身恰加一条 revision")
-        .isEqualTo(revisionBefore + 1);
+        .as("两次单日推进各留一条 revision ⇒ 共 +2")
+        .isEqualTo(revisionBefore + 2);
     JsonNode waiting = detailJson("dm-wait");
     assertThat(waiting.get("ticksSinceLast").asLong()).isEqualTo(2L);
     assertThat(waiting.get("due").asBoolean()).as("2 < 5 ⇒ 仍非待决").isFalse();
@@ -469,16 +469,26 @@ class SdDecisionMakerApiTest {
             + ",\"intentInfo\":\"向北推进\",\"commands\":[],\"effects\":[]}");
   }
 
+  /**
+   * 推进 {@code from} → {@code to}（两端都是 **tick**）。
+   *
+   * <p>★ 2026-09-24 日制裁定：Core 一次 {@code AdvanceTime} **恰好一天**（{@code to == from + 1}），"快进 N 天"由调用方
+   * **连续提交 N 次单日推进**编排——每次用上一次返回的新 {@code expectedRevision}（revision 号逐个 +1、时间戳逐个 +1）。
+   */
   private void advance(long from, long to) throws Exception {
-    long expected = shell.coreSimos().head(main()).orElseThrow().value();
-    Map<String, Object> request = new LinkedHashMap<>();
-    request.put("from", from);
-    request.put("to", to);
-    request.put("branch", "main");
-    request.put("expectedRevision", expected);
-    HttpResponse<String> response = post("/api/advance", JSON.writeValueAsString(request));
-    assertThat(response.statusCode()).as("推进 %d→%d: %s", from, to, response.body()).isEqualTo(200);
-    assertThat(JSON.readTree(response.body()).get("result").asText()).isEqualTo("committed");
+    for (long day = from; day < to; day++) {
+      long expected = shell.coreSimos().head(main()).orElseThrow().value();
+      Map<String, Object> request = new LinkedHashMap<>();
+      request.put("from", day);
+      request.put("to", day + 1);
+      request.put("branch", "main");
+      request.put("expectedRevision", expected);
+      HttpResponse<String> response = post("/api/advance", JSON.writeValueAsString(request));
+      assertThat(response.statusCode())
+          .as("推进 %d→%d: %s", day, day + 1, response.body())
+          .isEqualTo(200);
+      assertThat(JSON.readTree(response.body()).get("result").asText()).isEqualTo("committed");
+    }
   }
 
   /** 经真命令路径种入：n1 国 + a1 军（根单位 u-1）+ 两个决策人 + 给国家决策人配权。 */

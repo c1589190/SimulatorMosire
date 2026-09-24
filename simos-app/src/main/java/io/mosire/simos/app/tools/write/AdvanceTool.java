@@ -26,8 +26,10 @@ import java.util.UUID;
 /**
  * {@code simos.advance}（spec §7.1 写工具）：时间推进（{@code AdvanceTime}）。
  *
- * <p>构造 {@link AdvanceTime}（身份三件套由本类填：新 UUID × 2 + 注入 initiator）→ {@link CoreSimos#submit} →
- * 结局折叠。{@code to} 缺省 = 自 {@code from} 起无上界的区间。
+ * <p>构造 {@link AdvanceTime}（身份三件套由本类填：新 UUID × 2 + 注入 initiator）→ {@link CoreSimos#submit} → 结局折叠。
+ *
+ * <p>★ 2026-09-24 日制裁定（设计稿 §3）：{@code 1 tick = 1 天}，本工具**推进一天**——{@code to} 缺省 = {@code from +
+ * 1}，显式给 {@code to} 时也必须恰好一天（多日由调用方连续提交 N 次编排）。
  */
 public final class AdvanceTool implements AgentTool {
 
@@ -54,7 +56,7 @@ public final class AdvanceTool implements AgentTool {
 
   @Override
   public String description() {
-    return "推进时间：{branch, expectedRevision, from, to?} → AdvanceTime";
+    return "推进一天：{branch, expectedRevision, from, to?} → AdvanceTime（to 缺省 = from + 1，必须恰好一天）";
   }
 
   @Override
@@ -63,7 +65,7 @@ public final class AdvanceTool implements AgentTool {
     props.put("branch", ToolSupport.prop("string", "分支名"));
     props.put("expectedRevision", ToolSupport.prop("integer", "期望的 base revision（乐观并发）"));
     props.put("from", ToolSupport.prop("integer", "区间起点 tick（左闭）"));
-    props.put("to", ToolSupport.prop("integer", "区间终点 tick（右开；缺省 = 无上界）"));
+    props.put("to", ToolSupport.prop("integer", "区间终点 tick（右开；缺省 = from + 1 ⇒ 恰好一天）"));
     return ToolSupport.schema(props, List.of("branch", "expectedRevision", "from"));
   }
 
@@ -82,14 +84,14 @@ public final class AdvanceTool implements AgentTool {
     Map<String, Object> args = context.arguments();
     return new ToolGate.Ask(
         name(),
-        "推进时间 branch="
+        "推进一天（to 缺省 = from + 1，必须恰好一天）branch="
             + args.get("branch")
             + " expected="
             + args.get("expectedRevision")
             + " from="
             + args.get("from")
             + " to="
-            + args.get("to"),
+            + (ToolSupport.has(args, "to") ? args.get("to") : args.get("from") + " + 1（缺省）"),
         AskKind.SENSITIVE);
   }
 
@@ -100,12 +102,9 @@ public final class AdvanceTool implements AgentTool {
       ToolSupport.requireAllWrite(context, mapId);
       Map<String, Object> args = context.arguments();
       long from = ToolSupport.requiredLong(args, "from");
-      TimeRange range =
-          ToolSupport.has(args, "to")
-              ? new TimeRange(
-                  SimosTimestamp.of(from),
-                  Optional.of(SimosTimestamp.of(ToolSupport.requiredLong(args, "to"))))
-              : TimeRange.since(SimosTimestamp.of(from));
+      // ★ 日制裁定：一次 AdvanceTime 恰好一天——to 缺省 = from + 1（不再构造无上界开区间）。
+      long to = ToolSupport.has(args, "to") ? ToolSupport.requiredLong(args, "to") : from + 1;
+      TimeRange range = new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)));
       AdvanceTime command =
           new AdvanceTime(
               id,

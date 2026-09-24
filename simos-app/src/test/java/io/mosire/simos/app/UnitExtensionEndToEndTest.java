@@ -71,7 +71,10 @@ class UnitExtensionEndToEndTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
-  private static final SimosTimestamp T10 = SimosTimestamp.of(10);
+
+  /** ★ 日制裁定：一次推进恰好一天 ⇒ 回归用例只推 T7 → T8（旧口径的 T10 多日区间已不合法）。 */
+  private static final SimosTimestamp T8 = SimosTimestamp.of(8);
+
   private static final SimosTimestamp T30 = SimosTimestamp.of(30);
 
   private static final HexCoord H11 = new HexCoord(1, 1);
@@ -194,20 +197,10 @@ class UnitExtensionEndToEndTest {
                 1))
         .isEqualTo(new CommandResult.Committed(ref("main", 2)));
 
-    assertThat(
-            shell
-                .coreSimos()
-                .submit(
-                    new AdvanceTime(
-                        "cmd-advance-carry",
-                        "corr-advance-carry",
-                        INITIATOR,
-                        main(),
-                        new RevisionId(2),
-                        new TimeRange(T7, Optional.of(T30)))))
-        .isEqualTo(new CommandResult.Committed(ref("main", 3)));
+    // ★ 日制裁定：一次推进恰好一天 ⇒ T7 → T30 要连续提交 23 次单日推进（revision 2 → 25，时间戳逐个 +1）。
+    long advanced = advanceDays(2, T7.tick(), 23);
 
-    UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 3)));
+    UnitState state = unitSlice(shell.coreSimos().replay(ref("main", advanced)));
     assertThat(state.effectivePosition(U1, T30)).as("顶层已抵达 H13").contains(H13);
     assertThat(state.effectivePosition(U5, T30)).as("★ 整支一起到同一格：成员也被搬到 H13").contains(H13);
     assertThat(state.units().get(U5).movement()).as("★ 被带着走的成员没有自己的行程（它不自己走）").isEmpty();
@@ -215,7 +208,7 @@ class UnitExtensionEndToEndTest {
 
     // ★★ 读口（GUI 与 MCP 同源的那一份）：**成员那一行报的"整支"是从顶层量的**，不是它自己的子树。
     //   否则"轻骑兵"会显示成一支 1 个单位的编队——读的人（模型/界面）会据此误判。
-    SimulationState simAtT30 = shell.coreSimos().replay(ref("main", 3));
+    SimulationState simAtT30 = shell.coreSimos().replay(ref("main", advanced));
     Map<String, Object> memberView =
         ApiViews.unit(state.units().get(U5), state, T30, ApiViews.gameMap(simAtT30));
     assertThat(memberView.get("formationRootId")).isEqualTo("u-1");
@@ -291,7 +284,9 @@ class UnitExtensionEndToEndTest {
     // 目标 u-2 从 (1,2) 移到 (1,3)。
     assertThat(submit("unit.PlaceAt", "{\"id\":\"u-2\",\"hex\":{\"q\":1,\"r\":3}}", 2))
         .isEqualTo(new CommandResult.Committed(ref("main", 3)));
-    // 推进一步：participant 第二趟现算回归路线。
+    // 推进一步（★ 日制裁定：一次推进恰好一天，T7 → T8）：participant 第二趟现算回归路线。
+    //   ★ 只推一天是**判据本身的要求**：回归路线在**本刻**装载（departedAt = 推进终点），若连续推多日，第 2 天就会真的
+    //     走完 H11→H13 而把 position 落到 H13——"回归不瞬移"这条只能在装载它的那一刻断言。
     assertThat(
             shell
                 .coreSimos()
@@ -302,7 +297,7 @@ class UnitExtensionEndToEndTest {
                         INITIATOR,
                         main(),
                         new RevisionId(3),
-                        new TimeRange(T7, Optional.of(T10)))))
+                        new TimeRange(T7, Optional.of(T8)))))
         .isEqualTo(new CommandResult.Committed(ref("main", 4)));
 
     UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 4)));
@@ -311,7 +306,7 @@ class UnitExtensionEndToEndTest {
     List<HexCoord> path = u1.movement().orElseThrow().route().path();
     assertThat(path).as("终点指目标的**当前**格 (1,3)，不是旧格 (1,2)").containsExactly(H11, H12, H13);
     assertThat(path.get(path.size() - 1)).as("★ 终点 = 目标当前格（冻结旧 hex 的实现会指 H12）").isEqualTo(H13);
-    assertThat(u1.position().valueAt(T10)).as("回归不瞬移：只写 movement，不碰 position").contains(H11);
+    assertThat(u1.position().valueAt(T8)).as("回归不瞬移：只写 movement，不碰 position").contains(H11);
   }
 
   /** ★ 判据 #12 + #15（战损 delta / 时间线恢复）：`100 + (−30) = 70`，且回退到战损前 revision 取回战前值。 */
@@ -355,6 +350,34 @@ class UnitExtensionEndToEndTest {
     UnitSnapshot slice =
         (UnitSnapshot) state.module("unit").orElseThrow(() -> new AssertionError("状态里没有 unit 切片"));
     return slice.state();
+  }
+
+  /**
+   * 快进 {@code days} 天（★ 日制裁定：一次推进**恰好一天** ⇒ "快进 N 天" = 连续提交 N 次单日推进，每次用上一次返回的 新 {@code
+   * expectedRevision}；revision 号逐个 +1、时间戳逐个 +1）。返回推进后的 head。
+   */
+  private long advanceDays(long expectedRevision, long fromTick, int days) {
+    long head = expectedRevision;
+    for (int i = 0; i < days; i++) {
+      long from = fromTick + i;
+      CommandResult result =
+          shell
+              .coreSimos()
+              .submit(
+                  new AdvanceTime(
+                      "cmd-advance-" + from,
+                      "corr-advance-" + from,
+                      INITIATOR,
+                      main(),
+                      new RevisionId(head),
+                      new TimeRange(
+                          SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(from + 1)))));
+      assertThat(result)
+          .as("推进第 %d 天（tick %d → %d）", i + 1, from, from + 1)
+          .isEqualTo(new CommandResult.Committed(ref("main", head + 1)));
+      head++;
+    }
+    return head;
   }
 
   private void seedGenesis() {

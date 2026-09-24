@@ -60,8 +60,9 @@ import org.junit.jupiter.api.io.TempDir;
  *       SocialCodec}/{@code UnitCodec} + 真 {@code RenameUnitHandler} 经 {@link Shell} 的 {@link
  *       CoreSimos} 提交一条 {@code unit.RenameUnit} ⇒ {@code Committed}，且重放出的**名字逐字等于载荷**（不是"没报错"）。
  *   <li>{@link #advanceThroughTheShellMovesTheUnitAndReplays}：真 {@code UnitTimeParticipant}（注入
- *       {@code TerrainMovementCost}）把带在途移动的单位从 {@code [1,1]} 推到 {@code [1,3]}（走廊每段 1500 毫 MP，预算
- *       4000） ⇒ {@code Committed}，位置与 {@code movement} **逐值断言**。
+ *       {@code TerrainMovementCost}）把带在途移动的单位从 {@code [1,1]} 推到 {@code [1,3]}（走廊每段 1500 毫 MP；日制裁定
+ *       下一天预算 = {@code speed × 1000 × 24 × Δ天} = {@code 2 × 1000 × 24 = 48000} 毫 MP，付清两段共 3000） ⇒
+ *       {@code Committed}，位置与 {@code movement} **逐值断言**。
  *   <li>{@link #branchesAndHeadAreUsableThroughTheShell}：{@code branches()/head()} 经壳可用（T2 的只读面接上）。
  *   <li>{@link #closeReleasesTheStoreAndIsIdempotent}：{@code close()} 幂等、库文件在位。
  * </ol>
@@ -75,7 +76,9 @@ import org.junit.jupiter.api.io.TempDir;
 class ShellSmokeTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
-  private static final SimosTimestamp T2 = T0.plus(2);
+
+  /** ★ 日制裁定：一次 {@code AdvanceTime} 恰好一天 ⇒ 终点只能是 {@code T0 + 1}（旧口径的 {@code T2} 多日区间已不合法）。 */
+  private static final SimosTimestamp T1 = T0.plus(1);
 
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
@@ -138,8 +141,8 @@ class ShellSmokeTest {
           .isEqualTo(new CommandResult.Committed(ref("main", 2)));
 
       Unit advanced = unitOf(shell.coreSimos().replay(ref("main", 2)));
-      assertThat(advanced.position().valueAt(T2))
-          .as("① 已抵达 ⇒ position 段写入抵达点 [1,3]（预算 4000 付清两段 1500）")
+      assertThat(advanced.position().valueAt(T1))
+          .as("① 已抵达 ⇒ position 段写入抵达点 [1,3]（日制一天预算 2×1000×24 = 48000，付清两段 1500+1500 = 3000）")
           .contains(H13);
       assertThat(advanced.movement()).as("① 已抵达 ⇒ movement 真的清了").isEmpty();
       assertThat(advanced.position().valueAt(T0)).as("① 起点段仍是 [1,1]（历史不改写）").contains(H11);
@@ -242,7 +245,7 @@ class ShellSmokeTest {
     return new Route(List.of(H11, H13), List.of(H11, H12, H13));
   }
 
-  /** T0 出发、speed = 2 MP/刻、mobility ‰500 的在途行程。 */
+  /** T0 出发、speed = 2 MP/小时、mobility ‰500 的在途行程（日制：一天预算 = 2 × 1000 × 24 = 48000 毫 MP）。 */
   private static Movement inFlight() {
     return new Movement(corridor(), T0, 2, 500);
   }
@@ -273,6 +276,7 @@ class ShellSmokeTest {
         payloadJson);
   }
 
+  /** ★ 日制裁定：{@code to} 必须 = {@code from + 1}（一次推进恰好一天），故只推一天 T0 → T1。 */
   private static AdvanceTime advance(long expectedRevision) {
     return new AdvanceTime(
         "cmd-advance",
@@ -280,7 +284,7 @@ class ShellSmokeTest {
         INITIATOR,
         main(),
         new RevisionId(expectedRevision),
-        new TimeRange(T0, Optional.of(T2)));
+        new TimeRange(T0, Optional.of(T1)));
   }
 
   private Path dbFile() {

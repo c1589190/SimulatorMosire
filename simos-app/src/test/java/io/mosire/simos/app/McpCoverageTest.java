@@ -390,8 +390,9 @@ class McpCoverageTest {
     // 4. simos.advance 经 MCP 可达且有效。
     // ★ 期望值从 **head 现取**（不写字面量）：上面的命令条数一变，写死的 revision 就会整条链错位，而症状是
     //   "advance 冲突"——看起来像 advance 坏了，其实是这里过期了（本任务实测踩过：加一条命令后这里红）。
+    // ★ 日制裁定：to 必须 = from + 1（一次推进恰好一天）；世界时间戳创世即为 7 ⇒ 7 → 8。
     long headBeforeAdvance = shell.coreSimos().head(main()).orElseThrow().value();
-    McpSchema.CallToolResult advance = advanceViaMcp(headBeforeAdvance, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceViaMcp(headBeforeAdvance, 7L, 8L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");

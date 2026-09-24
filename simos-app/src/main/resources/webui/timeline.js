@@ -2,6 +2,8 @@
 // ★ 无框架、无构建、同源、零依赖（spec §8.1）。
 // ★ 只读预览（R1）：拖动/点节点**只**改状态机的 {branch, revision}，不发任何写请求。
 // ★ 写只经 window.SimosApi.advance / fork（服务端唯一入口 CoreSimos.submit）。
+// ★ 2026-09-24 日制裁定：1 tick = 1 天，Core 的 AdvanceTime **一次恰好一天** ⇒ "推进 N 天"必须由前端
+//   **逐日循环**提交 N 次（advanceByDays），每次 to = from + 1、expectedRevision 用上一条返回的新 revision。
 // ★ 末端判定（U1）是纯函数 isAtTip(state, branchHeads)：只有游标在分支末端时才允许写。
 // ★ M7b T1：节点 x 不再靠 flex 流，改为按列算：x = 左边距 + (列 − 1) × 列宽；
 //   非 main 分支首个节点对齐其 parent 所在列，并画一条垂直分岔连线（.tl-fork-link，**不复用** .timeline-line）。
@@ -621,13 +623,13 @@
     }
   }
 
-  /** "推进 N tick"输入框的原始文本（trim 后）。 */
+  /** "推进 N 天"输入框的原始文本（trim 后）。 */
   function advanceInputValue() {
     var input = app.byId("timeline-advance-n");
     return input ? String(input.value).trim() : "";
   }
 
-  /** 解析"推进 N tick"：合法（≥1 的整数）⇒ N；否则 null（空 / 非数字 / 小数 / 0 / 负）。 */
+  /** 解析"推进 N 天"：合法（≥1 的整数）⇒ N；否则 null（空 / 非数字 / 小数 / 0 / 负）。 */
   function readAdvanceSteps() {
     var raw = advanceInputValue();
     var n = Number(raw);
@@ -637,8 +639,84 @@
     return n;
   }
 
+  /** 推进失败的原因文本（人话）：优先服务端 reason，其次 409「末端已移动」，再次 error.message。 */
+  function advanceErrorReason(error) {
+    if (!error) {
+      return "未知原因";
+    }
+    var body = error.body;
+    if (body && body.reason) {
+      return body.reason;
+    }
+    if (error.status === 409) {
+      return "末端已移动";
+    }
+    return error.message || String(error);
+  }
+
   /**
-   * 推进 N tick（POST /api/advance；from=当前末端 tick，to=from+N）。N 取自"推进 N tick"数字输入，默认 1。
+   * 逐日推进（★ 2026-09-24 日制裁定：1 tick = 1 天，Core 的 {@code AdvanceTime} 一次恰好一天）：
+   * 连续提交 {@code days} 次，每次 {@code to = from + 1}，且 {@code expectedRevision} 用**上一条**返回的
+   * 新 revision 编排。`advance` 缺省取 {@code window.SimosApi.advance}（页面路径），测试可注入假实现。
+   *
+   * <p>返回 `{ok, advancedDays, stoppedAtDay, error}`：任一天被拒/冲突 ⇒ **立即停**，
+   * `advancedDays` = 已成功的天数（绝不把失败那天算进"已推进"）。
+   */
+  async function advanceByDays(opts) {
+    var advance = opts.advance || (window.SimosApi && window.SimosApi.advance);
+    if (typeof advance !== "function") {
+      return {
+        ok: false,
+        advancedDays: 0,
+        stoppedAtDay: 1,
+        error: new Error("本页没有 advance 端点"),
+      };
+    }
+    var revision = opts.expectedRevision;
+    var day = opts.fromDay;
+    for (var i = 0; i < opts.days; i++) {
+      var body;
+      try {
+        body = await advance(opts.branch, revision, day, day + 1);
+      } catch (error) {
+        return { ok: false, advancedDays: i, stoppedAtDay: i + 1, error: error };
+      }
+      var ref = body && body.ref;
+      if (!ref || ref.revision === null || ref.revision === undefined) {
+        // 取不到新 revision ⇒ 不能编造、也不能带着旧 revision 继续（否则下一天必冲突）。
+        return {
+          ok: false,
+          advancedDays: i,
+          stoppedAtDay: i + 1,
+          error: new Error("推进返回里没有新 revision"),
+        };
+      }
+      revision = Number(ref.revision);
+      day = day + 1;
+    }
+    return { ok: true, advancedDays: opts.days, stoppedAtDay: null, error: null };
+  }
+
+  /** 推进结局 → 状态栏文案（纯函数，可单测）：成功「已推进 N 天（X → X+N）」；失败「已推进 i 天、在第 i+1 天停下（原因）」。 */
+  function advanceStatusText(outcome, fromDay, days) {
+    if (outcome.ok) {
+      return "已推进 " + days + " 天（" + fromDay + " → " + (fromDay + days) + "）";
+    }
+    return (
+      "已推进 " +
+      outcome.advancedDays +
+      " 天、在第 " +
+      outcome.stoppedAtDay +
+      " 天停下（" +
+      advanceErrorReason(outcome.error) +
+      "）"
+    );
+  }
+
+  /**
+   * 推进 N 天：**逐日循环**——POST /api/advance 共 N 次，每次 to = from + 1、expectedRevision 用上一条返回的
+   * 新 revision（★ 日制裁定：一次 AdvanceTime 恰好一天，快进只能由调用方连续提交）。任一天被拒/冲突 ⇒ 立即停，
+   * 状态栏如实报"已推进 i 天、在第 i+1 天停下（原因）"并刷新（**不**把已提交天数报成全部）。
    * ★ 非法 N：明确提示且**不发写**（U1 的末端检查同样先跑）。
    */
   async function onCreate() {
@@ -647,9 +725,9 @@
     if (model.busy || !isAtTip(state, heads)) {
       return;
     }
-    var steps = readAdvanceSteps();
-    if (steps === null) {
-      showStatus("推进步数必须是 ≥1 的整数（当前：" + (advanceInputValue() || "空") + "）", "err");
+    var days = readAdvanceSteps();
+    if (days === null) {
+      showStatus("推进天数必须是 ≥1 的整数（当前：" + (advanceInputValue() || "空") + "）", "err");
       return;
     }
     var head = heads[state.branch];
@@ -660,8 +738,13 @@
     }
     setBusy(true);
     try {
-      await window.SimosApi.advance(state.branch, head, tick, tick + steps);
-      showStatus("已推进 " + steps + " tick（" + tick + " → " + (tick + steps) + "）", "ok");
+      var outcome = await advanceByDays({
+        branch: state.branch,
+        expectedRevision: head,
+        fromDay: tick,
+        days: days,
+      });
+      showStatus(advanceStatusText(outcome, tick, days), outcome.ok ? "ok" : "err");
       await refresh(true);
       var newHead = model.heads[app.getState().branch];
       if (newHead !== null && newHead !== undefined) {
@@ -748,6 +831,8 @@
     tickIndex: tickIndex,
     tickOfRevision: tickOfRevision,
     readAdvanceSteps: readAdvanceSteps,
+    advanceByDays: advanceByDays,
+    advanceStatusText: advanceStatusText,
     orderedBranches: orderedBranches,
     COL_WIDTH: COL_WIDTH,
     LABEL_WIDTH: LABEL_WIDTH,

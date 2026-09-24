@@ -1263,11 +1263,9 @@ public final class GuiServer implements AutoCloseable {
     JsonNode root = readBody(exchange);
     String id = UUID.randomUUID().toString();
     long from = longField(root, "from");
-    TimeRange range =
-        root.hasNonNull("to")
-            ? new TimeRange(
-                SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(longField(root, "to"))))
-            : TimeRange.since(SimosTimestamp.of(from));
+    // ★ 2026-09-24 日制裁定：一次 AdvanceTime 恰好一天——to 缺省 = from + 1（不再构造无上界开区间）。
+    long to = root.hasNonNull("to") ? longField(root, "to") : from + 1;
+    TimeRange range = new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)));
     AdvanceTime command =
         new AdvanceTime(
             id,

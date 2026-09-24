@@ -176,9 +176,11 @@
   /**
    * 纯函数（不碰 DOM、不查 IO）：单位 + 总览 ⇒ 移动读数。
    *
-   * 预算速率 = speedAtDeparture × 1000（毫 MP/tick，与 UnitMoves 的 budget 同式）；
+   * 预算速率 = speedAtDeparture × 1000 × 24（毫 MP/天 = MP/小时 × 24；一天 = 24 小时，与 UnitMoves 的
+   * budget 同式）；
    * 每格成本 = terrainTypes[地形(目标格)].moveCost × mobilityPerMilleAtDeparture（与 TerrainMovementCost 同式）；
-   * 预计到达 tick = departedAt.tick + ceil(路线总成本 / 预算速率)——总成本 = 沿途每格成本之和。
+   * 预计到达 tick = departedAt.tick + ceil(路线总成本 / 预算速率)——**天数口径**（1 tick = 1 天，值就是"从出发起
+   * 多少天/日"），总成本 = 沿途每格成本之和。
    */
   function movementReadout(unit, overview) {
     var m = unit.movement;
@@ -215,7 +217,8 @@
       }
       totalCost += step;
     }
-    var rate = m.speedAtDeparture * 1000;
+    // ★ 2026-09-24 日制裁定：speed 单位是 MP/小时，一天 = 24 小时 ⇒ 日预算 = speed × 1000 × 24（毫 MP/天）。
+    var rate = m.speedAtDeparture * 1000 * 24;
     var etaTick =
       computable && rate > 0 ? m.departedAt.tick + Math.ceil(totalCost / rate) : null;
     return {

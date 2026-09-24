@@ -19,6 +19,7 @@ const REQUIRED_FILES = [
   "notifications.test.cjs",
   "pending-signal.test.cjs",
   "provider-config.test.cjs",
+  "readout.test.cjs",
   "region-boundary.test.cjs",
   "region-view.test.cjs",
   "timeline.test.cjs",
@@ -67,7 +68,10 @@ const REQUIRED_FILES = [
 //   2026-09-24 编制 v2（取消跟随 / 同格成编 / 顶层带动）起 275 → 279：unit-tree.test.cjs 新增 2 条
 //     （节点带出 attached/formationRootId/formationSize 与缺字段时的缺省）；map-edit-tools.test.cjs 新增 2 条
 //     （isFormationMember 的成员判定与"未知状态不拦"）。
-const MIN_ASSERTIONS = 279;
+//   2026-09-24 日制裁定（1 tick = 1 天）起 279 → 284：timeline.test.cjs 新增 3 条（逐日循环：N=2 恰两次调用 +
+//     第 2 天用第 1 天返回的新 revision / to 恒 = from+1 / 失败立即停并报"第 i+1 天停下" / 状态文案）；新增
+//     readout.test.cjs 2 条（日预算 ×1000×24 = 48000 / etaTick 天数口径）。
+const MIN_ASSERTIONS = 284;
 
 function testFiles() {
   return fs
