@@ -820,6 +820,46 @@ class DecisionAgentRunnerTest {
   }
 
   /**
+   * ★★ **回归：一个回合里要了多个工具时，图片消息必须排在所有 tool 消息之后**（真网关实测的 400，2026-09-24）。
+   *
+   * <p>★★ **这条用例的由来是现场失败**：第一次真跑决策人，模型一个回合里一次要了 5 个工具 （`simos_map_render` + `simos_map_hex`
+   * ×4）。我原来的写法把图片消息**紧跟在它那条 tool 消息后面**发出去， 于是历史成了 {@code assistant(tool_calls) → tool → user(图) →
+   * tool …}，真网关当场拒： {@code HTTP 400: An assistant message with 'tool_calls' must be followed by
+   * tool messages responding to each 'tool_call_id'. (insufficient tool messages following
+   * tool_calls message)}。
+   *
+   * <p>★★ **为什么单工具用例查不出它**：只有一个工具调用时，"紧跟其后"与"排在最后"是同一个位置 ⇒ 两种写法都绿。
+   * 所以本用例**必须**让模型一次要两个工具，并用"图片消息之前不许再出现 tool 消息"这条**结构判据**钉住顺序 （回放式的假客户端不校验协议，光看内容看不出来）。
+   */
+  @Test
+  void theImageMessageComesAfterEveryToolMessageOfTheSameTurn() {
+    // ★ 要证的是"一个 assistant 里**多个** tool_call"那种形态，故直接拼一条含两个 tool_call 的响应
+    //   （`LlmResponse.toolCall(...)` 只给单个 —— 用它的话两次调用分属两轮，"紧跟其后"与"排在最后"就又是同一个位置了）。
+    LlmResponse twoCalls =
+        new LlmResponse(
+            LlmMessage.assistant(
+                List.of(
+                    new ContentPart.ToolCall(
+                        "call-1", "simos_map_render", Map.of("q", 1, "r", 1, "format", "image")),
+                    new ContentPart.ToolCall("call-2", "simos_map_hex", Map.of("q", 1, "r", 1)))),
+            "fake-model",
+            LlmResponse.UNKNOWN_TOKENS,
+            LlmResponse.UNKNOWN_TOKENS);
+    llm.enqueue(twoCalls, LlmResponse.text("看过了"));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, true)
+        .run(DM_FRA, state());
+
+    List<LlmMessage> afterTools = llm.requests().get(1).messages();
+    assertThat(roles(afterTools))
+        .as("一个回合两个工具 + 一张图 ⇒ system, assistant(2 个 tool_call), tool, tool, user(图)")
+        .containsExactly("system", "assistant", "tool", "tool", "user");
+    assertThat(afterTools.get(afterTools.size() - 1).content())
+        .as("★ 图片消息是这一回合的最后一条（排在**所有** tool 消息之后）")
+        .anyMatch(ContentPart.Image.class::isInstance);
+  }
+
+  /**
    * ★★ **开场快照（P4）**：空会话首轮，身份之后紧跟一条图片消息；**只在空会话注入一次**。
    *
    * <p>★ 顺序判据落在 {@code roles(...)} 的**逐字相等**上：{@code [system, user]}（图片消息是 user）——

@@ -497,32 +497,41 @@ public final class DecisionAgentRunner {
       if (requested.isEmpty()) {
         return new DecisionTurn(conversationId, llmCalls, invocations, response.textPart());
       }
+      List<LlmMessage> imageMessages = new ArrayList<>();
       for (ContentPart.ToolCall call : requested) {
-        // ★ 一次工具调用可能产出**多条**消息：tool 消息（永远有）+ 图片消息（有图且有视觉能力时，P4）。
-        //   顺序不能反：图片消息说的是"上一条工具结果的图"，排在它的 tool 消息之前就成了一段无头的话。
-        for (LlmMessage message : execute(dm, state, call, invocations)) {
-          conversations.append(conversationId, message);
-          history.add(message);
-        }
+        // ★ 一次工具调用产出两条消息：tool 消息（永远有）+ 图片消息（有图且有视觉能力时，P4）。
+        ToolExecution execution = execute(dm, state, call, invocations);
+        conversations.append(conversationId, execution.toolMessage());
+        history.add(execution.toolMessage());
+        execution.imageMessage().ifPresent(imageMessages::add);
         // ★ 进度点 ②：一次工具调用已结束（末条 = 刚跑完的那一个）——GUI 的"正在调 X / 调了什么"。
         progressListener.progress(llmCalls, List.copyOf(invocations));
+      }
+      // ★★ **图片消息一律排在本回合所有 tool 消息之后**（真网关实测的硬约束，2026-09-24）：
+      //   OpenAI 兼容线要求"assistant(tool_calls) 后面必须紧跟回应**每一个** tool_call_id 的 tool 消息"，
+      //   中间插一条 user 就是 `HTTP 400: An assistant message with 'tool_calls' must be followed by tool
+      //   messages responding to each 'tool_call_id'`。★ 一个回合里模型**一次要多个工具**是常态
+      //   （实测那轮一次要了 5 个：map_render + map_hex×4），所以"图紧跟它那条 tool 消息"是错的形态，
+      //   而**回放式的假客户端看不见这个约束**（它不校验协议）——只有真网关会拒。
+      for (LlmMessage imageMessage : imageMessages) {
+        conversations.append(conversationId, imageMessage);
+        history.add(imageMessage);
       }
     }
   }
 
   /**
-   * 执行**一次**模型请求的工具调用，并把它折成**要落盘/回灌的那些消息**（P4：可能不止一条）。
+   * 执行**一次**模型请求的工具调用：落 tool 消息、记账，并（有图且有视觉能力时）另备一条图片消息。
    *
    * <p>★ **失败也回灌**（{@code ToolResult.error} 的码与文本原样进 {@code error}/{@code content}，{@code
    * isError()} 为真）：AgentLib 特意把 {@code RESOURCE_DENIED} / {@code APPROVAL_DENIED}
    * 与别的失败分开，就是为了让模型**知道该换个 资源还是换个参数**——把它折成一句"调用失败"是把这个意图丢掉（T10 实测发现 2 的同一条道理）。
    *
-   * <p>★★ **为什么返回一列表而不是一条**（P4）：{@code tool} 角色的 {@code content} 只接受字符串，带图是 AgentLib 的**响亮 CONFIG
-   * 错**（不是被忽略）⇒ 图片只能另起一条 {@code user} 消息。列表的顺序即落盘顺序：{@code [tool, (user 图片)]}。
-   *
-   * @return 本条工具调用要追加进会话的消息（**至少一条**：tool 消息）
+   * <p>★★ **为什么图片是"另备"而不是"紧跟着发"**（P4，真网关实测的硬约束）：{@code tool} 角色的 {@code content} 只接受字符串（带图是
+   * AgentLib 的响亮 CONFIG 错），故图必须另起一条 {@code user} 消息；但**它的位置由 {@code run} 定**—— 必须等本回合**所有** tool
+   * 消息落完再发，否则真网关直接 400（见 {@code run} 里那段注释）。
    */
-  private List<LlmMessage> execute(
+  private ToolExecution execute(
       DecisionMaker dm,
       SimulationState state,
       ContentPart.ToolCall call,
@@ -553,12 +562,15 @@ public final class DecisionAgentRunner {
             result.success()
                 ? new ContentPart.ToolResult(call.id(), call.name(), feedback, null)
                 : new ContentPart.ToolResult(call.id(), call.name(), null, feedback));
-    Optional<LlmMessage> images = imagesMessage(result);
-    if (images.isEmpty()) {
-      return List.of(toolMessage);
-    }
-    return List.of(toolMessage, images.get());
+    return new ToolExecution(toolMessage, imagesMessage(result));
   }
+
+  /**
+   * 一次工具调用的产物：**回灌的 tool 消息**（永远有）+ **另备的图片消息**（可选）。
+   *
+   * <p>★ 图片消息的位置由 {@link #run} 决定（必须排在本回合所有 tool 消息之后），故这里只是"备好"，不负责落盘顺序。
+   */
+  private record ToolExecution(LlmMessage toolMessage, Optional<LlmMessage> imageMessage) {}
 
   /**
    * 工具结果里的**图片资产** ⇒ 一条 {@code user} 图片消息（P4）。

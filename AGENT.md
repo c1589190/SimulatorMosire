@@ -252,6 +252,9 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
   配在 `<store>/agentlib/config.json`（GUI 的 provider 页能看见 `vision`，但**不编辑**它）。
 - **工具反馈带图**：`simos.map.render` 的 `assetId` 由运行流折成一条**额外的 user 图片消息**（tool 角色带图是
   AgentLib 的响亮 CONFIG 错）⇒ 图随下一轮请求发给模型。
+  ★★ **图片消息必须排在本回合「所有」tool 消息之后**（真网关实测：一个是回合里模型一次要了 5 个工具，
+  中间插一条 user 会被拒 `HTTP 400: An assistant message with 'tool_calls' must be followed by tool messages…`）；
+  回放式假客户端**不校验协议**、看不见这个约束，只有真网关会拒。
   ★ **成本提醒**：图片分片落进会话历史后会**每一轮都重发**（base64），会话越长越贵——目前不做裁剪，知悉即可。
 - **开场快照**：`--opening-snapshot` 开（缺省**关**）⇒ 决策人会话**首次为空**时，先给它一张本国首府区域的渲染图
   （军队归属的决策人**没有**快照，取景语义未裁决）。开关开着而路由无视觉能力 ⇒ 跳过 + 日志一行 warn（不静默）。
