@@ -131,8 +131,10 @@ class UnitStateTest {
 
   // ── R7 ──────────────────────────────────────────────────────────
 
+  // ── 位置（编制 v2：**就是自己的位置**，不再向父取） ──────────────
+
   @Test
-  void effectivePositionPrefersOwnThenWalksToParent() {
+  void effectivePositionIsTheUnitsOwnPositionAndNeverTheParents() {
     Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
     Unit child = unit("c", Optional.of("p"), Optional.empty(), T0);
     Map<UnitId, Unit> units = new LinkedHashMap<>();
@@ -141,7 +143,12 @@ class UnitStateTest {
     UnitState state = new UnitState(units);
 
     assertThat(state.effectivePosition(new UnitId("p"), T0)).contains(H22);
-    assertThat(state.effectivePosition(new UnitId("c"), T0)).as("自身无位置 ⇒ 向父取").contains(H22);
+    assertThat(state.effectivePosition(new UnitId("c"), T0))
+        .as("★★ v2：没有自己的位置 ⇒ 空（旧语义「向父取」已作废——跟随取消了）")
+        .isEmpty();
+    assertThat(state.effectivePosition(new UnitId("c"), T0))
+        .as("父在图上不等于我在图上：位置不是继承来的")
+        .isNotEqualTo(Optional.of(H22));
   }
 
   @Test
@@ -166,23 +173,7 @@ class UnitStateTest {
 
   // ── spec §一.4 五行情形的取代/共存 ────────────────────────────────
 
-  /** 行 2：attached=true、自身无位置、offset 非空 ⇒ 父的有效位置 ⊕ offset（**不等于**父位）。 */
-  @Test
-  void attachedChildWithoutPositionAddsOffsetToParentPosition() {
-    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
-    Unit child =
-        formedUnit(
-            "c", Optional.of("p"), Optional.empty(), true, Optional.of(new RelativeOffset(2, -1)));
-    UnitState state = stateOf(parent, child);
-
-    HexCoord expected = new RelativeOffset(2, -1).appliedTo(H22);
-    assertThat(state.effectivePosition(new UnitId("c"), T0)).as("父位 ⊕ offset").contains(expected);
-    assertThat(state.effectivePosition(new UnitId("c"), T0))
-        .as("不是父位本身")
-        .isNotEqualTo(Optional.of(H22));
-  }
-
-  /** 行 5：attached=false、自身无位置 ⇒ 空（**不回退**父位，spec §一.4 的取代）。 */
+  /** 行 5：attached=false、自身无位置 ⇒ 空（v2 下这条与 attached=true 同结果，见上面那条合并用例）。 */
   @Test
   void detachedChildWithoutPositionDoesNotFallBackToParent() {
     Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
@@ -203,30 +194,120 @@ class UnitStateTest {
     assertThat(state.effectivePosition(new UnitId("c"), T0)).contains(H11);
   }
 
-  /** 行 3 的回归条：attached=true、offset 为空 ⇒ 父位（与 M3 今天逐字相同）。 */
-  @Test
-  void attachedChildWithEmptyOffsetIsAByteForByteRegression() {
-    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
-    Unit child = formedUnit("c", Optional.of("p"), Optional.empty(), true, Optional.empty());
-    UnitState state = stateOf(parent, child);
+  // ── 编制 v2（2026-09-24）：顶层 / 整支 / 整支速度 ────────────────
 
-    assertThat(state.effectivePosition(new UnitId("c"), T0)).contains(H22);
+  /**
+   * ★★ **attached 与 offset 都不再影响位置**（旧五行情形的行 2/3/5 合并成这一条）：无自身位置 ⇒ 空，无论 `attached` 是什么、`offset`
+   * 多花哨。
+   *
+   * <p>★ 判别力：把 `effectivePosition` 改回"向父取"（或让 offset 参与）⇒ 本用例当场红。
+   */
+  @Test
+  void withoutItsOwnPositionAUnitHasNoPositionNoMatterWhatAttachedOrOffsetSay() {
+    Unit parent = unit("p", Optional.empty(), Optional.of(H22), T0);
+    Unit attachedWithOffset =
+        formedUnit(
+            "c1", Optional.of("p"), Optional.empty(), true, Optional.of(new RelativeOffset(2, -1)));
+    Unit attachedNoOffset =
+        formedUnit("c2", Optional.of("p"), Optional.empty(), true, Optional.empty());
+    Unit detached = formedUnit("c3", Optional.of("p"), Optional.empty(), false, Optional.empty());
+    UnitState state = stateOf(parent, attachedWithOffset, attachedNoOffset, detached);
+
+    for (String id : new String[] {"c1", "c2", "c3"}) {
+      assertThat(state.effectivePosition(new UnitId(id), T0))
+          .as("单位 " + id + "：位置不是继承来的（attached/offset 都不参与）")
+          .isEmpty();
+    }
+    assertThat(state.effectivePosition(new UnitId("p"), T0)).contains(H22); // 父自身不受影响
   }
 
-  /** offset 沿父链复合：孙子 = 祖父位 ⊕ 父偏移 ⊕ 自己偏移。 */
+  /**
+   * ★★ **顶层判定**（编制 v2 的核心查询）：沿 parent 上溯，遇到 `attached=false` 就停；**无父者一律算顶层**。
+   *
+   * <p>★ 三个案例各自的判别力：① 全链 attached ⇒ 顶层是最上面那个；② 中间一个 attached=false ⇒ 它自己就是顶层
+   * （"有归属但独立"，用户那句「即使这个单位有归属，也可以自动移动」）；③ 无父 + attached=true（worldgen 造出的军根） ⇒ 仍然算顶层（否则本局的军队根本动不了）。
+   */
   @Test
-  void offsetsComposeUpTheParentChain() {
-    Unit grand = unit("g", Optional.empty(), Optional.of(H22), T0);
-    Unit parent =
-        formedUnit(
-            "p", Optional.of("g"), Optional.empty(), true, Optional.of(new RelativeOffset(1, 0)));
-    Unit child =
-        formedUnit(
-            "c", Optional.of("p"), Optional.empty(), true, Optional.of(new RelativeOffset(0, 2)));
-    UnitState state = stateOf(grand, parent, child);
+  void formationRootStopsAtTheFirstIndependentOrParentlessAncestor() {
+    Unit root = formedUnit("r", Optional.empty(), Optional.of(H22), false, Optional.empty());
+    Unit mid = formedUnit("m", Optional.of("r"), Optional.of(H22), true, Optional.empty());
+    Unit leaf = formedUnit("l", Optional.of("m"), Optional.of(H22), true, Optional.empty());
+    Unit freeRider = formedUnit("f", Optional.of("m"), Optional.of(H22), false, Optional.empty());
+    Unit sub = formedUnit("s", Optional.of("f"), Optional.of(H22), true, Optional.empty());
+    Unit legacyRoot = formedUnit("g", Optional.empty(), Optional.of(H22), true, Optional.empty());
+    UnitState state = stateOf(root, mid, leaf, freeRider, sub, legacyRoot);
 
-    HexCoord expected = new RelativeOffset(0, 2).appliedTo(new RelativeOffset(1, 0).appliedTo(H22));
-    assertThat(state.effectivePosition(new UnitId("c"), T0)).contains(expected);
+    assertThat(state.formationRoot(new UnitId("l"), T0)).contains(new UnitId("r"));
+    assertThat(state.formationRoot(new UnitId("m"), T0)).contains(new UnitId("r"));
+    assertThat(state.formationRoot(new UnitId("f"), T0))
+        .as("有归属（parent=m）但 attached=false ⇒ 它自己就是顶层")
+        .contains(new UnitId("f"));
+    assertThat(state.formationRoot(new UnitId("s"), T0))
+        .as("顶层是它那个「独立」的父")
+        .contains(new UnitId("f"));
+    assertThat(state.formationRoot(new UnitId("g"), T0))
+        .as("★ 无父 + attached=true（worldgen 现状）仍算顶层")
+        .contains(new UnitId("g"));
+    assertThat(state.formationRoot(new UnitId("nobody"), T0)).isEmpty();
+  }
+
+  /**
+   * ★★ **整支成员**：自己 + 经 `attached=true` 链可达的后代；**detached 的后代另起一支**（不在本支里）。
+   *
+   * <p>★ 判别力：把遍历改成"所有后代都算"（不看 attached）⇒ 期望值里 `f`/`s` 会多出来 ⇒ 红。
+   */
+  @Test
+  void formationMembersIncludeOnlyWhatFollowsThroughAttachedLinks() {
+    Unit root = formedUnit("r", Optional.empty(), Optional.of(H22), false, Optional.empty());
+    Unit mid = formedUnit("m", Optional.of("r"), Optional.of(H22), true, Optional.empty());
+    Unit leaf = formedUnit("l", Optional.of("m"), Optional.of(H22), true, Optional.empty());
+    Unit independent = formedUnit("f", Optional.of("m"), Optional.of(H22), false, Optional.empty());
+    Unit follower = formedUnit("s", Optional.of("f"), Optional.of(H22), true, Optional.empty());
+    UnitState state = stateOf(root, mid, leaf, independent, follower);
+
+    assertThat(state.formationMembers(new UnitId("r"), T0))
+        .as("r 带着 m 与 l；f 是独立的、它带着 s（不属于 r 那一支）")
+        .containsExactlyInAnyOrder(new UnitId("r"), new UnitId("m"), new UnitId("l"));
+    assertThat(state.formationMembers(new UnitId("f"), T0))
+        .containsExactlyInAnyOrder(new UnitId("f"), new UnitId("s"));
+    assertThat(state.formationMembers(new UnitId("nobody"), T0)).isEmpty();
+  }
+
+  /**
+   * ★★ **整支速度 = 支内 `effectiveSpeed` 的最小值，含状态折算**（用户 2026-09-24 选的口径）。
+   *
+   * <p>装置：`speed` 都是 4，但那个下挂单位是 **RESTING**（折算 = ×500/1000 ⇒ 2）；MOVING 自己 = 4 ⇒ 整支速度 = 2。★
+   * 判别力：把口径换成"不含状态折算"（直接比 `speed`）⇒ 期望 4 ⇒ 红。
+   */
+  @Test
+  void formationSpeedTakesTheSlowestEffectiveSpeedIncludingStatus() {
+    Unit root = movingUnit("r", Optional.empty(), 4, UnitStatus.MOVING);
+    Unit fast = movingUnit("m", Optional.of("r"), 4, UnitStatus.MOVING);
+    Unit resting = movingUnit("l", Optional.of("m"), 4, UnitStatus.RESTING);
+    UnitState state = stateOf(root, fast, resting);
+
+    assertThat(state.formationSpeed(new UnitId("r"), T0))
+        .as("RESTING 的下挂折算成半速 ⇒ 整支 2")
+        .isEqualTo(2);
+    assertThat(state.formationSpeed(new UnitId("l"), T0)).as("从中间节点问也一样").isEqualTo(2);
+  }
+
+  private static Unit movingUnit(String id, Optional<String> parent, int speed, UnitStatus status) {
+    return new Unit(
+        new UnitId(id),
+        "单位 " + id,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, parent.map(UnitId::new))), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H22))), List.of(), null),
+        100,
+        Map.of(),
+        speed,
+        1000,
+        Optional.empty(),
+        status,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        Optional.empty());
   }
 
   // ── commandChains（spec §一.2 / §一.6 不变量 1、2） ────────────────

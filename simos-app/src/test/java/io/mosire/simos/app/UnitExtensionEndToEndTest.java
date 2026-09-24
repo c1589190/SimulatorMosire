@@ -155,26 +155,35 @@ class UnitExtensionEndToEndTest {
         .as("被拒 ⇒ head 不动")
         .isEqualTo(1L);
 
-    // u-3@(1,1) 与 u-1@(1,1) 同格 + MOVING ⇒ 过。
-    assertThat(submit("unit.MergeFormation", "{\"childId\":\"u-3\",\"parentId\":\"u-1\"}", 1))
+    // ★ 编制 v2：合体把 child 的**整支**带回来 ⇒ 整支都要同格。u-3 的下属 u-4 在 (1,3) ⇒ 先把它挪到 (1,1)。
+    assertThat(submit("unit.PlaceAt", "{\"id\":\"u-4\",\"hex\":{\"q\":1,\"r\":1}}", 1))
         .isEqualTo(new CommandResult.Committed(ref("main", 2)));
-    UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 2)));
+
+    // u-3@(1,1) 与 u-1@(1,1) 同格 + MOVING ⇒ 过。
+    assertThat(submit("unit.MergeFormation", "{\"childId\":\"u-3\",\"parentId\":\"u-1\"}", 2))
+        .isEqualTo(new CommandResult.Committed(ref("main", 3)));
+    UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 3)));
     assertThat(state.units().get(U3).parent().valueAt(T7)).contains(U1);
     assertThat(state.units().get(U3).attached().valueAt(T7)).as("合体即 attach").isTrue();
   }
 
   /**
-   * ★★ 判据（本次改动的核心，"移动时跟随"在真装配 + AdvanceTime 上生效）：`u-5` 无自身位置、挂 `u-1` 下（跟随）；`u-1` 走一条
-   * 路线，`AdvanceTime` 把父的位置物化到 `to` ⇒ `u-5` 的**有效位置**跟到父的当前格。它自己**始终**无自身位置（没有第二份位置 真相）。
+   * ★★ 判据（**编制 v2 的核心，真装配 + 真 {@code AdvanceTime}**）：**顶层一动，整支一起到同一格**。
    *
-   * <p>★ 它补上"只测了 {@code effectivePosition} 纯函数、没测时间参与者"的缺口：走的是真 {@code CommandBus → ChangeSet →
-   * Revision → replay}，并让 {@code UnitTimeParticipant} 真的把父的 position 段落在推进时刻上。
+   * <p>装置：`u-1`（顶层，`H11`）带成员 `u-5`（同格、`attached=true`）。给 `u-1` 一条 `H11 → H12 → H13` 的路线， 推进到 `T30`
+   * ⇒ 顶层抵达 `H13`，**成员 `u-5` 也被搬到 `H13`**（它自己的 `position` 段一起更新），且成员**没有自己的行程**。
+   *
+   * <p>★ 这条取代了旧的"跟随"用例：旧语义靠 `effectivePosition` 向父取位（成员始终无自身位置）；v2 取消跟随，
+   * 改为推进时**显式**把整支搬到同一格——所以这里断言的是**成员自己的位置**变了，而不是某个查询的副作用。
+   *
+   * <p>★ 判别力：把推进器里的"整支一起搬"那段去掉 ⇒ 成员的 `position` 停在 `H11` ⇒ 本条红。
    */
   @Test
-  void followFormationTracksTheParentThroughAdvanceTime() {
+  void advancingTheTopCarriesTheWholeFormationToTheSameHex() {
     UnitState genesis = unitSlice(shell.coreSimos().replay(ref("main", 1)));
-    assertThat(genesis.units().get(U5).position().valueAt(T7)).as("创世：跟随子单位无自身位置").isEmpty();
-    assertThat(genesis.effectivePosition(U5, T7)).as("跟随 u-1（H11）").contains(H11);
+    assertThat(genesis.units().get(U5).position().valueAt(T7)).as("创世：u-5 与 u-1 同格").contains(H11);
+    assertThat(genesis.units().get(U5).attached().valueAt(T7)).as("u-5 是 u-1 那一支的成员").isTrue();
+    assertThat(genesis.formationRoot(U5, T7)).contains(U1);
 
     // u-1 沿走廊走：H11 → H12 → H13。
     assertThat(
@@ -184,14 +193,13 @@ class UnitExtensionEndToEndTest {
                 1))
         .isEqualTo(new CommandResult.Committed(ref("main", 2)));
 
-    // 推进足够久让 u-1 抵达 H13（advance 把父的 position 物化到 to）。
     assertThat(
             shell
                 .coreSimos()
                 .submit(
                     new AdvanceTime(
-                        "cmd-advance-follow",
-                        "corr-advance-follow",
+                        "cmd-advance-carry",
+                        "corr-advance-carry",
                         INITIATOR,
                         main(),
                         new RevisionId(2),
@@ -199,13 +207,34 @@ class UnitExtensionEndToEndTest {
         .isEqualTo(new CommandResult.Committed(ref("main", 3)));
 
     UnitState state = unitSlice(shell.coreSimos().replay(ref("main", 3)));
-    assertThat(state.effectivePosition(U1, T30)).as("父已抵达 H13").contains(H13);
-    assertThat(state.units().get(U5).position().valueAt(T30))
-        .as("★ 子单位始终无自身位置（跟随不是'复制父的位置'）")
-        .isEmpty();
-    assertThat(state.effectivePosition(U5, T30))
-        .as("★ 父动子随：AdvanceTime 后 u-5 的有效位置 == 父的当前位置")
-        .contains(H13);
+    assertThat(state.effectivePosition(U1, T30)).as("顶层已抵达 H13").contains(H13);
+    assertThat(state.effectivePosition(U5, T30)).as("★ 整支一起到同一格：成员也被搬到 H13").contains(H13);
+    assertThat(state.units().get(U5).movement()).as("★ 被带着走的成员没有自己的行程（它不自己走）").isEmpty();
+    assertThat(state.units().get(U5).attached().valueAt(T30)).as("它仍是那一支的成员").isTrue();
+  }
+
+  /**
+   * ★★ 判据（**成员不许自己走**，真装配 + 命令面）：给成员 `u-5` 下路线 ⇒ 被拒，理由**点名顶层**并给出两条出路。
+   *
+   * <p>★ 判别力：去掉 `requireTopOfFormation` 闸门 ⇒ 这条命令会被提交、head 前进 ⇒ 本用例红。
+   */
+  @Test
+  void planningARouteForAMemberIsRejectedWithTheTopNamed() {
+    CommandResult rejected =
+        submit(
+            "unit.PlanRoute",
+            "{\"id\":\"u-5\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2}]}",
+            1);
+
+    assertThat(rejected).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) rejected).reason())
+        .as("理由点名顶层 + 指路（拆分/脱离）")
+        .contains("顶层")
+        .contains("u-1")
+        .contains("unit.SplitFormation");
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
+        .as("被拒 ⇒ 不留 revision")
+        .isEqualTo(1L);
   }
 
   /** ★ 判据 #6（子树迁移整体性）：`ReparentSubtree` 后**每个后代**的 parent 段都被追加（不只 root）。 */
@@ -341,8 +370,8 @@ class UnitExtensionEndToEndTest {
                     U2, genesisUnit(U2, "第二连", H12, Optional.empty()),
                     U3, genesisUnit(U3, "第三连", H11, Optional.of(U2)),
                     U4, genesisUnit(U4, "第四连", H13, Optional.of(U3)),
-                    // ★ 本次改动：u-5 是"移动时跟随"的载体——**无自身位置**、挂 u-1 下 ⇒ 它的有效位置永远取 u-1 的当前格。
-                    U5, followerUnit(U5, "第五连（跟随）", U1))));
+                    // ★ 编制 v2：u-5 是 u-1 那一支的成员，带自己的位置（与 u-1 同格）——"整支一起搬"的载体。
+                    U5, memberUnit(U5, "第五连（随行）", U1, H11))));
     SocialData social = new SocialData(new LinkedHashMap<>(), Map.of());
     SimulationState genesis =
         new SimulationState(
@@ -383,13 +412,17 @@ class UnitExtensionEndToEndTest {
   }
 
   /** ★ 跟随单位（本次改动）：**无自身位置**、`parent` 给定、`attached=true` ⇒ 有效位置永远取父的当前格（父动子随）。 */
-  private static Unit followerUnit(UnitId id, String name, UnitId parent) {
+  /**
+   * ★ 编制 v2（2026-09-24）：u-5 是 u-1 那一支的**成员**，**带自己的位置**（与 u-1 同格 `H11`）。
+   *
+   * <p>★ 旧夹具让它"无自身位置 ⇒ 向父取位"（跟随）；跟随取消后那种单位**不在图上**，也就没法验"整支一起搬"， 故这里给它自己的位置。
+   */
+  private static Unit memberUnit(UnitId id, String name, UnitId parent, HexCoord position) {
     return new Unit(
         id,
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
-        new SegmentedSeries<>(
-            List.of(new Segment<>(T0, Optional.<HexCoord>empty())), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
         100,
         Map.of("步枪", 50),
         2,

@@ -77,8 +77,9 @@ class UnitsHereFacetTest {
     assertThat(query(state, "map:Map1:hex.1_2")).isEmpty();
   }
 
+  /** ★★ 判据（**编制 v2 取代了"位置继承"**）：**没有自身位置的单位不出现在任何格子上**（旧语义"向父取位"已作废）。 */
   @Test
-  void childWithoutOwnPositionInheritsParentHex() {
+  void aChildWithoutItsOwnPositionAppearsNowhere() {
     UnitState state =
         unitState(
             unit(U1, "第一连", Optional.of(H11), Optional.empty()),
@@ -86,7 +87,20 @@ class UnitsHereFacetTest {
 
     assertThat(query(state, "map:Map1:hex.1_1"))
         .extracting(FacetEntry::value)
-        .as("u-2 自身无位置 ⇒ effectivePosition 向父取，应出现在父所在的格子")
+        .as("u-2 没有自己的位置 ⇒ 它不属于任何格（位置不是继承来的）")
+        .containsExactly("unit:u-1");
+  }
+
+  /** ★ 判据（v2）：同属一支编制（同格）的单位**各带自己的位置**，于是两个都出现在那一格。 */
+  @Test
+  void aChildOnTheSameHexAppearsInThatHexToo() {
+    UnitState state =
+        unitState(
+            unit(U1, "第一连", Optional.of(H11), Optional.empty()),
+            unit(U2, "第一连.1排", Optional.of(H11), Optional.of(U1)));
+
+    assertThat(query(state, "map:Map1:hex.1_1"))
+        .extracting(FacetEntry::value)
         .containsExactly("unit:u-1", "unit:u-2");
   }
 

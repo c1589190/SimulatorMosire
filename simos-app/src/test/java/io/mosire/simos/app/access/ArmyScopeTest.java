@@ -112,21 +112,29 @@ class ArmyScopeTest {
   }
 
   /**
-   * ★ 位置的**口径**：军队根单位自身无位置、跟随父单位时，{@code effectivePosition} 给父的位置（含偏移）， 而单位自己的 {@code position}
-   * 字段是空 ⇒ 两种实现**在这里分叉**。
+   * ★★ 判据（**编制 v2 取代了"位置继承"**）：军队根单位**没有自己的位置** ⇒ 它不在图上 ⇒ 视野**空**（fail-closed）。
    *
-   * <p>★ 半径取**根单位**的（它是"这支军队"），不是父单位的——夹具把父的半径设成 3 来钉住这一点。
+   * <p>★ 旧语义下这里会"向父取位"给出 7 格；v2 起位置是各单位自己的 ⇒ 根单位没有位置就是看不见任何格。
    */
   @Test
-  void armyPositionComesFromEffectivePositionNotFromTheUnitsOwnField() {
+  void anArmyWhoseRootUnitHasNoPositionSeesNothing() {
     Unit top = ScopeFixtures.withVision(ScopeFixtures.unit("u-top", H11), 3);
     Unit child = ScopeFixtures.attachedChild("u-child", "u-top");
     assertThat(child.position().valueAt(ScopeFixtures.T0)).as("夹具前提：根单位自身没有位置").isEmpty();
 
-    ResourceScopeMap scopes = scopesOf(stateWith(child, top));
+    assertThat(ScopeFixtures.prefixes(scopesOf(stateWith(child, top))))
+        .as("v2：位置不是继承来的 ⇒ 没有位置就是一片都看不见（fail-closed，不是「看得见父的格」）")
+        .isEmpty();
+  }
 
-    assertThat(ScopeFixtures.prefixes(scopes))
-        .as("位置取自 effectivePosition（父单位所在的 (1,1)），半径取自根单位（1 而不是父的 3）")
+  /** ★ 判据：军队根单位**自带位置** ⇒ 视野以它为中心，且半径取**根单位**自己的（同格另一单位半径更大也不影响）。 */
+  @Test
+  void armyVisionComesFromTheRootUnitsOwnPositionAndRadius() {
+    Unit root = ScopeFixtures.unitWithVision("u-child", H11, 1);
+    Unit biggerNeighbour = ScopeFixtures.unitWithVision("u-top", H11, 3);
+
+    assertThat(ScopeFixtures.prefixes(scopesOf(stateWith(root, biggerNeighbour))))
+        .as("位置取根自己的 (1,1)、半径取根单位的 1（同格那个半径 3 的**不影响**）")
         .hasSize(7)
         .contains("demo/hex/1_1", "demo/hex/2_1")
         .doesNotContain("demo/hex/3_3");

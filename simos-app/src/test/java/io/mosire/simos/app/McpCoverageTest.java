@@ -164,19 +164,22 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"一改\"}");
     MINIMAL_PAYLOADS.put(
         "unit.SetStrength", "{\"id\":\"u-1\",\"member\":120,\"equipment\":{\"步枪\":60}}");
+    // ★★ 编制 v2（2026-09-24）：**只有顶层能下路线** ⇒ 路线类命令必须排在 ReparentUnit **之前**
+    //   （reparent 之后 u-1 就是 u-2 那一支的成员了，成员下路线会被域层正当拒绝）。
+    //   起点也随之前移：此刻 u-1 还在创世格 (1,1)，PlaceAt 之后才到 (1,2)。
+    MINIMAL_PAYLOADS.put(
+        "unit.PlanRoute", "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2}]}");
+    MINIMAL_PAYLOADS.put(
+        "unit.PlanSparseRoute",
+        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":3}]}");
+    MINIMAL_PAYLOADS.put("unit.CancelRoute", "{\"id\":\"u-1\"}");
     MINIMAL_PAYLOADS.put("unit.ReparentUnit", "{\"id\":\"u-1\",\"parent\":\"u-2\"}");
     MINIMAL_PAYLOADS.put("unit.PlaceAt", "{\"id\":\"u-1\",\"hex\":{\"q\":1,\"r\":2}}");
-    MINIMAL_PAYLOADS.put(
-        "unit.PlanRoute", "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}");
-    MINIMAL_PAYLOADS.put("unit.CancelRoute", "{\"id\":\"u-1\"}");
     // ── T9 新增的 12 条：顺序即语义合法序（须排在 DisbandUnit 之前，u-1 才还在）──
     MINIMAL_PAYLOADS.put("unit.SetStatus", "{\"id\":\"u-1\",\"status\":\"RESTING\"}");
     MINIMAL_PAYLOADS.put("unit.SetRejoinTarget", "{\"id\":\"u-1\",\"target\":\"u-2\"}");
     MINIMAL_PAYLOADS.put(
         "unit.ApplyCasualties", "{\"id\":\"u-1\",\"personnel\":-10,\"equipment\":{\"步枪\":-5}}");
-    MINIMAL_PAYLOADS.put(
-        "unit.PlanSparseRoute",
-        "{\"id\":\"u-1\",\"waypoints\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}]}");
     MINIMAL_PAYLOADS.put(
         "unit.CreateCommandChain",
         "{\"chainId\":\"c-1\",\"name\":\"第一链\",\"commander\":\"u-2\",\"members\":[\"u-2\"]}");

@@ -201,23 +201,25 @@ class UnitOperationsTest {
     assertThat(state.units().get(BRIGADE).position().valueAt(T10)).contains(H12);
   }
 
+  /**
+   * ★★ 判据（起点校验 + **v2 的"只许顶层"闸门**）：顶层可以下路线（起点必须等于它自己的位置）；成员被拒（理由点名顶层）。
+   *
+   * <p>★ v2 起有两条独立的拒绝：**不是顶层**（先判，理由带顶层 id）与**位置不可确定**（后判）。故本用例分三段各自钉一条。
+   */
   @Test
-  void planRouteRequiresAStartThatMatchesTheEffectivePosition() {
+  void planRouteRequiresATopUnitAndAStartThatMatchesItsOwnPosition() {
     Route route = new Route(List.of(H11, H12), List.of(H11, H12));
     UnitState state = UnitOperations.planRoute(twoUnits(), BRIGADE, route, T10);
     assertThat(state.units().get(BRIGADE).movement()).isPresent();
     assertThat(state.units().get(BRIGADE).movement().orElseThrow().route()).isEqualTo(route);
 
-    // ★ R-11-a 取代说明：计划断言"COMPANY 整链无位置 ⇒ 抛"不成立——COMPANY 无自身位置，
-    // 但 effectivePosition 会沿父链继承 BRIGADE 的 H11（Task 6 的 R7 语义），起点对得上 ⇒ 应成功。
-    // 正例钉住继承语义：
-    assertThat(
-            UnitOperations.planRoute(twoUnits(), COMPANY, route, T10)
-                .units()
-                .get(COMPANY)
-                .movement())
-        .isPresent();
-    // "无位置 ⇒ 抛"的真靶子：u-lost 整链（自身与父）都无位置 ⇒ 抛。
+    // ★ v2：u-company 是 u-brigade 那一支的成员（attached=true、有父）⇒ 不许自己走，理由点名顶层。
+    assertThatThrownBy(() -> UnitOperations.planRoute(twoUnits(), COMPANY, route, T10))
+        .as("成员不能自己下路线")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("顶层")
+        .hasMessageContaining("u-brigade");
+    // 同一条也适用于"没有位置的顶层"：先过闸门，再被位置校验拒。
     assertThatThrownBy(() -> UnitOperations.planRoute(withLost(), LOST, route, T10))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("位置");
@@ -230,6 +232,32 @@ class UnitOperationsTest {
     assertThatThrownBy(
             () -> UnitOperations.planRoute(twoUnits(), new UnitId("u-ghost"), route, T10))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  /**
+   * ★★ 判据（v2 的**整支速度**在命令面上的落点）：路线装载的 `speedAtDeparture` = 支内 `effectiveSpeed` 最小值。
+   *
+   * <p>装置：顶层 `u-root`（speed 5、MOVING ⇒ 5）带一个**慢的休整中**下属（speed 5、RESTING ⇒ 折算 2） ⇒ 装载速度必须是
+   * 2（而不是顶层自己的 5）。★ 判别力：把装载改回 `unit.effectiveSpeed()` ⇒ 红。
+   */
+  @Test
+  void planRouteLoadsTheFormationsSlowestEffectiveSpeed() {
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(
+        ROOT, unit("u-root", Optional.empty(), Optional.of(H11), false, UnitStatus.MOVING, 5));
+    units.put(
+        SUB, unit("u-sub", Optional.of("u-root"), Optional.of(H11), true, UnitStatus.RESTING, 5));
+    UnitState top = new UnitState(units);
+    Route route = new Route(List.of(H11, H12), List.of(H11, H12));
+
+    assertThat(top.formationSpeed(ROOT, T10))
+        .as("前提：MOVING 的 5 折算成 5，RESTING 的 5 折算成 3 ⇒ 整支 3")
+        .isEqualTo(3);
+
+    UnitState planned = UnitOperations.planRoute(top, ROOT, route, T10);
+    assertThat(planned.units().get(ROOT).movement().orElseThrow().speedAtDeparture())
+        .as("★ 整支最慢：装载的是 3，而不是顶层自己的 5")
+        .isEqualTo(3);
   }
 
   @Test
@@ -346,41 +374,55 @@ class UnitOperationsTest {
   private static final UnitId OTHER = new UnitId("u-other");
 
   /**
-   * 三层树 `u-root → u-sub → u-leaf` + 独立根 `u-other`；除 `parent` 外只有 `u-root` 有位置（`H11`，子节点无自身位置 ⇒ 可判
-   * `effectivePosition` 的继承与偏移）。★ 三个根与 `u-other` 一律 `attached=false`：级联若溢出 `id` 的子树，会被"子树外不动"
-   * 的断言抓住（缺省 `true` 会把级联整个掩盖掉）。
+   * 三层树 `u-root → u-sub → u-leaf` + 独立根 `u-other`。★★ **编制 v2 起每个单位都有自己的位置**（位置不再继承）：
+   * `u-root`/`u-sub`/`u-leaf` 都在 `H11`（同属一支 ⇒ 同格），`u-other` 在 `H12`（**不同格** ⇒ 联编会被拒的那条路）。
    *
-   * <p>★ 注意：本夹具的 `u-sub` **无自身位置且它的父在别格**（H11）——attach（偏移式加入）后它相对新父反算出的偏移让它留在原位； 需要"子树根自带位置"的基线时用
-   * {@link #attachableFormation()}。
+   * <p>★ 三个根与 `u-other` 一律 `attached=false`：级联若溢出 `id` 的子树，会被"子树外不动"的断言抓住。
    */
   private static UnitState formation(boolean subAttached, boolean leafAttached) {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(ROOT, unit("u-root", Optional.empty(), Optional.of(H11), false));
     units.put(OTHER, unit("u-other", Optional.empty(), Optional.of(H12), false));
-    units.put(SUB, unit("u-sub", Optional.of("u-root"), Optional.empty(), subAttached));
-    units.put(LEAF, unit("u-leaf", Optional.of("u-sub"), Optional.empty(), leafAttached));
+    units.put(SUB, unit("u-sub", Optional.of("u-root"), Optional.of(H11), subAttached));
+    units.put(LEAF, unit("u-leaf", Optional.of("u-sub"), Optional.of(H11), leafAttached));
     return new UnitState(units);
   }
 
   /**
-   * ★ **attach 的"根自带位置"基线**：树形与 {@link #formation} 相同，但 `u-sub` 带**自身**位置 `H12`（= `u-other` 的格）⇒
-   * `here` / `parentHere` 都可确定、反算出的偏移为 (0,0)。`u-leaf` 仍无自身位置（用来钉级联清位）。
+   * ★ **同格**基线（attach 允许的那条路）：树形同 {@link #formation}，但 `u-sub`/`u-leaf` 都在 `H12`（= `u-other` 的格） ⇒
+   * 整棵子树与新父同格，attach 通过。
    */
   private static UnitState attachableFormation() {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(ROOT, unit("u-root", Optional.empty(), Optional.of(H11), false));
     units.put(OTHER, unit("u-other", Optional.empty(), Optional.of(H12), false));
     units.put(SUB, unit("u-sub", Optional.of("u-root"), Optional.of(H12), false));
+    units.put(LEAF, unit("u-leaf", Optional.of("u-sub"), Optional.of(H12), false));
+    return new UnitState(units);
+  }
+
+  /**
+   * ★ **位置不可确定**的树（v2 里 attach 会因此被拒）：`u-sub`/`u-leaf` 都没有自身位置 ⇒ 无法判定"同格"。
+   *
+   * <p>★ 旧夹具（"无位置 ⇒ 向父取位"）在 v2 下不再成立，故这个形态现在唯一的用途就是钉这条拒绝。
+   */
+  private static UnitState unlocatedFormation() {
+    Map<UnitId, Unit> units = new LinkedHashMap<>();
+    units.put(ROOT, unit("u-root", Optional.empty(), Optional.of(H11), false));
+    units.put(OTHER, unit("u-other", Optional.empty(), Optional.of(H12), false));
+    units.put(SUB, unit("u-sub", Optional.of("u-root"), Optional.empty(), false));
     units.put(LEAF, unit("u-leaf", Optional.of("u-sub"), Optional.empty(), false));
     return new UnitState(units);
   }
 
   /**
-   * ★★ 判据（P3 + 本次改动的"进入跟随"）：attach **级联**——`id` 与其全部后代都 `attached=true`；只有 `id` 换父，后代的 `parent`
-   * 不动；**子树每个节点的自身位置都被清掉**（进入"移动时跟随"）。
+   * ★★ 判据（P3 级联 + **v2 的"不清位"**）：attach **级联**——`id` 与其全部后代都 `attached=true`；只有 `id` 换父，后代的
+   * `parent` 不动；★★ **每个节点的自身位置一个字都不动**（v2：跟随取消 ⇒ 没有"清位进入跟随"这回事）。
+   *
+   * <p>★ 判别力：把 `attachSubtree` 改回"清位 + 反算 offset"⇒ 位置段数/位置值那两条断言当场红。
    */
   @Test
-  void attachCascadesAttachedToTheWholeSubtreeAndClearsPositions() {
+  void attachCascadesAttachedToTheWholeSubtreeAndKeepsEveryPosition() {
     UnitState base = attachableFormation();
     UnitState state = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
 
@@ -391,107 +433,107 @@ class UnitOperationsTest {
     assertThat(state.units().get(ROOT).attached().valueAt(T10)).as("原父不在子树内").isFalse();
     assertThat(state.units().get(OTHER).parent().valueAt(T10)).as("新父不动").isEmpty();
     assertThat(state.units().get(SUB).attached().valueAt(T0)).as("T0 仍是旧值（追加段）").isFalse();
-    // ★ 本次改动的核心：attach 把子树每个节点的自身位置清掉 ⇒ 进入跟随
-    assertThat(state.units().get(SUB).position().valueAt(T10)).as("u-sub 的自身位置被清（进入跟随）").isEmpty();
-    assertThat(state.units().get(LEAF).position().valueAt(T10)).as("后代也被清位").isEmpty();
-    assertThat(state.effectivePosition(SUB, T10)).as("清位后向新父取位（u-other 的 H12）").contains(H12);
-    assertThat(state.units().get(SUB).position().segments()).as("是追加段，不是覆写").hasSize(2);
+    // ★ v2 的核心：位置不动、也不落新的 position 段（没有"进入跟随"要清的东西）
+    assertThat(state.units().get(SUB).position().valueAt(T10)).as("u-sub 的位置不动").contains(H12);
+    assertThat(state.units().get(LEAF).position().valueAt(T10)).as("后代的位置也不动").contains(H12);
+    assertThat(state.units().get(SUB).position().segments()).as("位置段没有新增").hasSize(1);
+    assertThat(state.units().get(SUB).offset().segments()).as("offset 也不落段（v2 不再反算）").hasSize(1);
+    assertThat(state.effectivePosition(SUB, T10)).contains(H12);
     assertThat(base.units().get(SUB).parent().segments()).as("纯函数：旧状态不变").hasSize(1);
     assertThat(base.units().get(SUB).attached().segments()).hasSize(1);
     assertThat(base.units().get(SUB).position().segments()).as("纯函数：旧状态不变").hasSize(1);
   }
 
   /**
-   * ★★ 判据（**撤销同格前提后的口径**）：attach 前**自身有效位置不可确定**（`u-sub` detached 且无自身位置）⇒ **不拒**（旧的同格前提会 拒，已撤销），但
-   * `offset` 段**原样保留**（不清、不猜、不用 (0,0) 顶替——此时无从反算）；`position` 仍被清空、`attached` 仍置 true。
+   * ★★ 判据（v2 的**同格**前提）：子树里有节点**位置不可确定** ⇒ 拒（判不出"同格"就不能编入同一支编制）， 理由里带"不同格"与"(不可确定)"。
+   *
+   * <p>★ 判别力：把同格校验去掉（或只查根不查子树）⇒ 本用例红。
    */
   @Test
-  void attachKeepsTheOriginalOffsetWhenThePositionIsIndeterminate() {
-    UnitState base = formation(false, false); // u-sub detached 且无自身位置 ⇒ effectivePosition 为空
+  void attachRejectsASubtreeMemberWhosePositionIsIndeterminate() {
+    UnitState base = unlocatedFormation();
+    assertThat(base.effectivePosition(SUB, T10)).as("前提：u-sub 没有位置").isEmpty();
+
+    assertThatThrownBy(() -> UnitOperations.attachSubtree(base, SUB, OTHER, T10))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不同格")
+        .hasMessageContaining("不可确定");
+    assertThat(base.units().get(SUB).attached().segments()).as("拒绝 ⇒ 状态一字不变").hasSize(1);
+  }
+
+  /**
+   * ★★ **只许顶层移动**（v2 的核心闸门，engine 面）：attach 之后 `u-sub` 成了 `u-other` 那一支的成员 ⇒ 对它 `planRoute`
+   * 被拒（理由**点名顶层** u-other）；对顶层 `u-other` 则允许。
+   *
+   * <p>★ 判别力：去掉 `requireTopOfFormation` ⇒ 第一条断言变成"没抛" ⇒ 红。
+   */
+  @Test
+  void afterAttachOnlyTheTopOfThatFormationMayPlanARoute() {
+    UnitState attached = UnitOperations.attachSubtree(attachableFormation(), SUB, OTHER, T10);
+    Route route = new Route(List.of(H12, H13), List.of(H12, H13));
+
+    assertThatThrownBy(() -> UnitOperations.planRoute(attached, SUB, route, T10))
+        .as("成员自己不能走")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("顶层")
+        .hasMessageContaining("u-other")
+        .hasMessageContaining("拆");
+    assertThatThrownBy(() -> UnitOperations.planRoute(attached, LEAF, route, T10))
+        .as("孙节点同样被拒（顶层仍是 u-other）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("u-other");
+
+    UnitState planned = UnitOperations.planRoute(attached, OTHER, route, T10);
+    assertThat(planned.units().get(OTHER).movement()).as("顶层可以下路线（整支由它带动）").isPresent();
+  }
+
+  /**
+   * ★★ 判据（v2 的核心，**先红后绿**的靶子）：**不同格 ⇒ 拒**（旧实现允许"偏移式加入"，那条已作废）。
+   *
+   * <p>★ 判别力：去掉同格校验 ⇒ 本用例红。
+   */
+  @Test
+  void attachAcrossDifferentHexesIsRejected() {
+    UnitState base = formation(true, true); // u-sub/u-leaf 在 H11，u-other 在 H12
+    assertThat(base.effectivePosition(SUB, T10)).contains(H11);
+
+    assertThatThrownBy(() -> UnitOperations.attachSubtree(base, SUB, OTHER, T10))
+        .as("不同格：编制 v2 起「一同移动」的前提就是同格")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不同格")
+        .hasMessageContaining("同一支编制");
+    assertThat(base.units().get(SUB).parent().segments()).as("拒绝 ⇒ 状态一字不变").hasSize(1);
+    assertThat(base.units().get(SUB).attached().segments()).hasSize(1);
+  }
+
+  /** ★ 判据（幂等性）：对**已经在该父下**的子树再 attach 一次 ⇒ 各字段当刻取值不变（位置、offset 都不再被动过）。 */
+  @Test
+  void attachingAnAlreadyAttachedSubtreeIsFieldwiseIdempotent() {
+    UnitState once = UnitOperations.attachSubtree(attachableFormation(), SUB, OTHER, T10);
+    Unit before = once.units().get(SUB);
+
+    UnitState twice = UnitOperations.attachSubtree(once, SUB, OTHER, T20);
+    Unit after = twice.units().get(SUB);
+
+    assertThat(after.attached().valueAt(T20)).isTrue();
+    assertThat(after.position().valueAt(T20)).isEqualTo(before.position().valueAt(T20));
+    assertThat(after.position().segments()).as("位置段没有新增").hasSize(1);
+    assertThat(after.offset().valueAt(T20)).isEqualTo(before.offset().valueAt(T20));
+    assertThat(twice.effectivePosition(SUB, T20)).contains(H12);
+  }
+
+  /**
+   * ★★ 判据（v2 取代了"跟随"）：**无自身位置 ⇒ 空，父动也带不出一个位置来**（旧语义"父动子随"已作废）。
+   *
+   * <p>★ 判别力：把 `effectivePosition` 改回"向父取" ⇒ 第二条断言红。
+   */
+  @Test
+  void aUnitWithoutItsOwnPositionHasNoPositionEvenWhenItsParentMoves() {
+    UnitState base = unlocatedFormation();
     assertThat(base.effectivePosition(SUB, T10)).isEmpty();
 
-    UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
-    assertThat(attached.units().get(SUB).attached().valueAt(T10)).as("级联照旧置 true").isTrue();
-    assertThat(attached.units().get(SUB).position().valueAt(T10)).as("位置仍被清（进入跟随）").isEmpty();
-    assertThat(attached.units().get(SUB).offset().segments())
-        .as("位置不可确定 ⇒ offset 段原样保留（不追加）")
-        .hasSize(1);
-    assertThat(attached.units().get(SUB).offset().valueAt(T10)).as("仍是原值（空）").isEmpty();
-  }
-
-  /** ★★ 判据（本次改动的"父动子随"）：同格 attach 后，父移到别格 ⇒ 子（含后代）的有效位置跟着过去。 */
-  @Test
-  void attachThenParentMovesAndTheSubtreeFollows() {
-    UnitState attached = UnitOperations.attachSubtree(attachableFormation(), SUB, OTHER, T10);
-    assertThat(attached.effectivePosition(SUB, T10)).contains(H12);
-
-    UnitState moved = UnitOperations.placeAt(attached, OTHER, Optional.of(H13), T20);
-    assertThat(moved.effectivePosition(SUB, T20)).as("父动 ⇒ 子随").contains(H13);
-    assertThat(moved.effectivePosition(LEAF, T20)).as("后代（u-leaf 仍无自身位置）也随之").contains(H13);
-  }
-
-  /**
-   * ★★ 判据（本次改动的核心，**先红后绿**的靶子）：**不同格**的子单位也能 attach——偏移式加入让它在原地不动。
-   *
-   * <p>旧的"同格前提"在这里直接抛 {@code 不同格…只有同格才能加入编队} ⇒ 本用例在旧实现下必红。两半：
-   *
-   * <ol>
-   *   <li><b>原地不动</b>：attach 后有效位置与 attach 前**相同**（清位 + 反算偏移，不瞬移）；
-   *   <li><b>进入跟随</b>：之后把新父移到别格 ⇒ 子树（含后代）跟着整体平移过去。
-   * </ol>
-   */
-  @Test
-  void attachAcrossDifferentHexesKeepsTheSubtreeInPlaceAndThenFollows() {
-    UnitState base = formation(true, true);
-    assertThat(base.effectivePosition(SUB, T10)).as("attach 前：u-sub 经 u-root 在 H11").contains(H11);
-
-    UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
-    assertThat(attached.units().get(SUB).parent().valueAt(T10)).contains(OTHER);
-    assertThat(attached.units().get(SUB).position().valueAt(T10)).as("自身位置被清（进入跟随）").isEmpty();
-    assertThat(attached.effectivePosition(SUB, T10))
-        .as("★ 原地不动：不同格 attach 后仍在 H11（旧实现在此抛「同格」）")
-        .contains(H11);
-    assertThat(attached.effectivePosition(LEAF, T10)).as("后代也在原地").contains(H11);
-
-    UnitState moved = UnitOperations.placeAt(attached, OTHER, Optional.of(H13), T20);
-    assertThat(moved.effectivePosition(SUB, T20)).as("父动 ⇒ 子随（整体平移）").contains(H12);
-    assertThat(moved.effectivePosition(LEAF, T20)).as("后代随之").contains(H12);
-  }
-
-  /**
-   * ★★ 判据（幂等性）：对一个**已经是跟随型**（无自身位置 + 已有 offset）的节点再 attach ⇒ 有效位置反算出的 offset
-   * 与原来相同、`position`/`attached` 的当刻取值也不变（同值再落一段，语义恒等）。
-   */
-  @Test
-  void attachingAnAlreadyFollowingNodeIsFieldwiseIdempotent() {
-    // u-sub 已是跟随型：无自身位置、attached=true、offset=(1,0)、父 u-root@H11 ⇒ 有效位置 H12。
-    UnitState following =
-        UnitOperations.setOffset(
-            formation(true, true), SUB, Optional.of(new RelativeOffset(1, 0)), T10);
-    Unit before = following.units().get(SUB);
-    assertThat(following.effectivePosition(SUB, T20)).contains(new HexCoord(2, 1));
-
-    UnitState reattached = UnitOperations.attachSubtree(following, SUB, ROOT, T20);
-    Unit after = reattached.units().get(SUB);
-
-    assertThat(after.offset().valueAt(T20))
-        .as("★ 反算出的 offset 与原来相同")
-        .contains(new RelativeOffset(1, 0));
-    assertThat(after.offset().valueAt(T20)).isEqualTo(before.offset().valueAt(T20));
-    assertThat(after.position().valueAt(T20)).isEqualTo(before.position().valueAt(T20));
-    assertThat(after.attached().valueAt(T20)).isEqualTo(before.attached().valueAt(T20));
-    assertThat(reattached.effectivePosition(SUB, T20)).as("有效位置逐值不变").contains(new HexCoord(2, 1));
-  }
-
-  /** ★ 判据（T3/P2 的既有语义）：无自身位置 + attached 的单位，父动它随——这是"跟随"的纯函数面。 */
-  @Test
-  void aUnitWithoutItsOwnPositionFollowsItsParent() {
-    UnitState base = twoUnits();
-    assertThat(base.effectivePosition(COMPANY, T10))
-        .as("u-company 无自身位置 ⇒ 取父 u-brigade 的 H11")
-        .contains(H11);
-    UnitState moved = UnitOperations.placeAt(base, BRIGADE, Optional.of(H12), T20);
-    assertThat(moved.effectivePosition(COMPANY, T20)).as("父动子随").contains(H12);
+    UnitState moved = UnitOperations.placeAt(base, ROOT, Optional.of(H12), T20);
+    assertThat(moved.effectivePosition(SUB, T20)).as("位置不是继承来的：父换了格，它还是「不知在哪」").isEmpty();
   }
 
   /** ★ 判据：成环 ⇒ op 内**先显式拒**（可读理由），状态不变。 */
@@ -539,9 +581,9 @@ class UnitOperationsTest {
   void detachRejectsARootAndUnknownUnits() {
     UnitState base = formation(true, true);
     assertThatThrownBy(() -> UnitOperations.detachUnit(base, ROOT, T10))
-        .as("根没有可脱离的父")
+        .as("没有父 ⇒ 它本来就是顶层，没有可脱离的编制")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("已是根");
+        .hasMessageContaining("没有父");
     assertThatThrownBy(() -> UnitOperations.detachUnit(base, OTHER, T10))
         .as("另一个根同判")
         .isInstanceOf(IllegalArgumentException.class);
@@ -550,85 +592,87 @@ class UnitOperationsTest {
         .hasMessageContaining("单位不存在");
   }
 
-  /** ★ 判据（P2）：attached + 无自身位置 + offset ⇒ 有效位置 = 父位 ⊕ 偏移；清偏移 ⇒ 回父位。 */
+  /**
+   * ★★ 判据（**v2 的核心之一**）：`setOffset` 仍落段，但**不再影响任何位置计算**（「跟随」取消了，偏移没有使用者）。
+   *
+   * <p>★ 判别力：把 `effectivePosition` 改回"父位 ⊕ offset" ⇒ 第一条断言红。
+   */
   @Test
-  void anOffsetShiftsTheEffectivePositionOfAnAttachedChild() {
+  void setOffsetStillWritesItsSegmentButNoLongerMovesAnything() {
     UnitState base = formation(true, true);
-    assertThat(base.effectivePosition(SUB, T10)).as("无偏移 ⇒ 父位").contains(H11);
+    assertThat(base.effectivePosition(SUB, T10)).contains(H11);
 
     UnitState shifted =
         UnitOperations.setOffset(base, SUB, Optional.of(new RelativeOffset(1, 0)), T10);
-    assertThat(shifted.effectivePosition(SUB, T10)).contains(new HexCoord(2, 1));
-    assertThat(shifted.effectivePosition(LEAF, T10))
-        .as("沿父链传播（u-leaf 无自身位置）")
-        .contains(new HexCoord(2, 1));
+    assertThat(shifted.effectivePosition(SUB, T10)).as("v2：偏移不参与位置计算（仍在自己的 H11）").contains(H11);
+    assertThat(shifted.effectivePosition(LEAF, T10)).as("更不会沿父链传播").contains(H11);
+    assertThat(shifted.units().get(SUB).offset().segments()).as("段照落（纯记账）").hasSize(2);
 
     UnitState cleared =
         UnitOperations.setOffset(shifted, SUB, Optional.<RelativeOffset>empty(), T20);
-    assertThat(cleared.effectivePosition(SUB, T20)).as("清偏移 ⇒ 回父位").contains(H11);
-    assertThat(cleared.effectivePosition(SUB, T10)).as("T10 的历史值不受影响").contains(new HexCoord(2, 1));
-    assertThat(shifted.units().get(SUB).offset().segments()).as("追加段").hasSize(2);
+    assertThat(cleared.units().get(SUB).offset().segments()).as("清偏移也照落段").hasSize(3);
+    assertThat(cleared.effectivePosition(SUB, T20)).contains(H11);
     assertThat(base.units().get(SUB).offset().segments()).as("纯函数：旧状态不变").hasSize(1);
   }
 
-  /** ★ 判据（P2）：offset **不强制落在地图内**（这是相对父的站位，不是绝对坐标）。 */
+  /** ★ 判据：（v2）越界的偏移值也照记不误——它已经不影响位置，故"是否落在地图内"不再是判据。 */
   @Test
-  void anOffsetIsNotRequiredToStayInsideTheMap() {
+  void anOffsetIsRecordedVerbatimEvenThoughItCannotAffectAnything() {
     UnitState state =
         UnitOperations.setOffset(
             formation(true, true), SUB, Optional.of(new RelativeOffset(-9999, 9999)), T10);
-    assertThat(state.effectivePosition(SUB, T10)).contains(new HexCoord(1 - 9999, 1 + 9999));
+    assertThat(state.units().get(SUB).offset().valueAt(T10))
+        .contains(new RelativeOffset(-9999, 9999));
+    assertThat(state.effectivePosition(SUB, T10)).as("位置仍是自己的（偏移不再参与）").contains(H11);
   }
 
-  /**
-   * ★ 判据：detached + 无自身位置 ⇒ 空（不回退父）；即便带着偏移也仍是空。
-   *
-   * <p>★ **本次改动后就地校正**：detach 现在会把有效位置**物化进自身 `position`** ⇒ 这个形态**不再能经 `detachUnit` 造出**
-   * （脱离后它自己有位置了）。但该 UnitState 级不变量仍然成立（spec §一.4 第五情形），故**直接构造**该形态来钉它， 不依赖任何命令路径。
-   */
+  /** ★ 判据（v2）：**没有位置就是没有位置**——与 `attached` 无关、与父在不在图上无关。 */
   @Test
   void aDetachedNodeWithoutItsOwnPositionHasNoEffectivePosition() {
-    UnitState detached = formation(false, false); // u-sub/u-leaf 都 attached=false 且无自身位置
+    UnitState detached = unlocatedFormation(); // u-sub/u-leaf 都没自身位置
     assertThat(detached.effectivePosition(SUB, T10)).isEmpty();
-    assertThat(detached.effectivePosition(LEAF, T10)).as("u-leaf 也 detached 且无位可给").isEmpty();
+    assertThat(detached.effectivePosition(LEAF, T10)).isEmpty();
 
     UnitState shifted =
         UnitOperations.setOffset(detached, SUB, Optional.of(new RelativeOffset(1, 0)), T20);
-    assertThat(shifted.effectivePosition(SUB, T20)).as("detached 即便有偏移也不回退父").isEmpty();
+    assertThat(shifted.effectivePosition(SUB, T20)).as("带偏移也仍是空").isEmpty();
   }
 
   /**
-   * ★★ 判据（本次改动的核心之一）：detach 把**脱离前**的有效位置物化进自身 `position`——顺序不能在改 `attached` 之后取位。
+   * ★★ 判据（**v2 的"detach 不动物理状态"**）：脱离只翻 `attached`——**位置一个字都不动**（旧实现要"先算有效位置再物化"，
+   * 那条顺序陷阱随「跟随」一起消失了）。
    *
-   * <p>判据两半：(a) 脱离后有效位置 == 脱离前的位置（若顺序写反 ⇒ 取到空 ⇒ 这里红）；(b) 父再移动，它**不动**（已不再跟随）。 `u-sub` 无自身位置、经父
-   * `u-root` 取 H11 ⇒ 正好检验"先算后翻"。
+   * <p>判据两半：(a) 脱离后有效位置与脱离前**相同**（它本来就有自己的位置）；(b) 父再移动，它不动。
    */
   @Test
-  void detachMaterializesTheCurrentPositionBeforeFlippingAttached() {
+  void detachOnlyFlipsTheFlagAndLeavesThePositionAlone() {
     UnitState base = formation(true, true);
-    assertThat(base.effectivePosition(SUB, T10)).as("脱离前：经父取位").contains(H11);
+    assertThat(base.effectivePosition(SUB, T10)).contains(H11);
 
     UnitState detached = UnitOperations.detachUnit(base, SUB, T10);
     assertThat(detached.units().get(SUB).position().valueAt(T10))
-        .as("把位置写进了自身 position")
+        .as("位置没有被动过（也没有新增段）")
         .contains(H11);
-    assertThat(detached.effectivePosition(SUB, T10))
-        .as("★ 脱离后仍在原格（顺序写反 ⇒ 取到空 ⇒ 这里必红）")
-        .contains(H11);
+    assertThat(detached.units().get(SUB).position().segments()).hasSize(1);
+    assertThat(detached.effectivePosition(SUB, T10)).contains(H11);
 
     UnitState moved = UnitOperations.placeAt(detached, ROOT, Optional.of(H12), T20);
-    assertThat(moved.effectivePosition(SUB, T20)).as("脱离后父动它不动").contains(H11);
+    assertThat(moved.effectivePosition(SUB, T20)).as("父动它不动（它已独立）").contains(H11);
     assertThat(moved.effectivePosition(LEAF, T20))
-        .as("u-leaf 仍跟随 u-sub ⇒ 也留在 H11（不随 u-root 去 H12）")
+        .as("u-leaf 仍跟在 u-sub 那一支里 ⇒ 也留在 H11")
         .contains(H11);
   }
 
   /** ★ 判据（本次改动的边界）：脱离时当前有效位置**本来就空**（不在图上的子树）⇒ 仍允许，`position` 段写空。 */
+  /** ★ 判据（v2）：脱离**不写位置** ⇒ 本来就没有位置的单位，脱离之后仍然"不知在哪"（不会被凭空钉上一格）。 */
   @Test
-  void detachOfAnOffMapNodeKeepsItOffMap() {
-    UnitState base = formation(false, false); // u-sub detached、无自身位置 ⇒ 有效位置空；但它有父 ⇒ detach 不拒
+  void detachOfAnUnlocatedNodeKeepsItUnlocated() {
+    UnitState base = unlocatedFormation(); // u-sub 无自身位置；但它有父 ⇒ detach 不拒
     UnitState detached = UnitOperations.detachUnit(base, SUB, T10);
     assertThat(detached.units().get(SUB).position().valueAt(T10)).isEmpty();
+    assertThat(detached.units().get(SUB).position().segments())
+        .as("v2：detach 不再物化位置 ⇒ position 段没有新增")
+        .hasSize(1);
     assertThat(detached.effectivePosition(SUB, T10)).isEmpty();
   }
 
@@ -686,7 +730,9 @@ class UnitOperationsTest {
         .hasSize(2);
     assertThat(state.units().get(ROOT).parent().segments()).as("子树外不动").hasSize(1);
     assertThat(state.units().get(OTHER).parent().segments()).as("新父不动").hasSize(1);
-    assertThat(state.effectivePosition(LEAF, T20)).as("整树跟着新父走（H12）").contains(H12);
+    assertThat(state.effectivePosition(LEAF, T20))
+        .as("★ v2：换编制归属**不改位置**（也没有「跟随」这回事了：它仍在自己的 H11）")
+        .contains(H11);
     assertThat(state.units().get(ROOT)).as("原父一字不变").isEqualTo(base.units().get(ROOT));
     assertThat(base.units().get(SUB).parent().segments()).as("纯函数：旧状态不变").hasSize(1);
     assertThat(base.units().get(LEAF).parent().segments()).as("纯函数：旧状态不变").hasSize(1);
@@ -736,8 +782,9 @@ class UnitOperationsTest {
     assertThat(state.units().get(SUB).parent().valueAt(T10)).as("不再是谁的下属").isEmpty();
     assertThat(state.units().get(LEAF).parent().valueAt(T10)).as("后代仍挂 u-sub").contains(SUB);
     assertThat(state.units().get(LEAF).parent().segments()).as("后代也落段").hasSize(2);
-    assertThat(state.effectivePosition(SUB, T20)).as("无父 ⇒ 位置来源断了").isEmpty();
-    assertThat(state.effectivePosition(LEAF, T20)).as("后代随之无位可继承").isEmpty();
+    assertThat(state.effectivePosition(SUB, T20)).as("v2：位置是自己的，与有没有父无关 ⇒ 仍在 H11").contains(H11);
+    assertThat(state.effectivePosition(LEAF, T20)).as("后代同理").contains(H11);
+    assertThat(state.formationRoot(SUB, T20)).as("提升为根之后它就是顶层（可自己移动）").contains(SUB);
   }
 
   /** ★ 判据（P3 不对称）：拆**只节点**——被拆的节点 `attached=false`，它**自己的后代不动**；`parent` 也不动。 */
@@ -793,9 +840,9 @@ class UnitOperationsTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得为空");
     assertThatThrownBy(() -> UnitOperations.splitFormation(base, ROOT, List.of(ROOT), T10))
-        .as("root 自身在子树内，但它在 at 已是根 ⇒ 由 detachUnit 拒（操作面不新增守卫）")
+        .as("root 自身在子树内，但它没有父 ⇒ 由 detachUnit 拒（操作面不新增守卫）")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("已是根");
+        .hasMessageContaining("没有父");
     assertThat(base.units().get(SUB).attached().segments()).as("拒绝 ⇒ 状态一字不变").hasSize(1);
   }
 
@@ -826,8 +873,8 @@ class UnitOperationsTest {
         .as("u-sub 的有效位置是 u-root 的 H11，u-other 在 H12（都在移动，仍拒）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("同格");
-    assertThatThrownBy(() -> UnitOperations.mergeFormation(formation(false, false), SUB, ROOT, T10))
-        .as("u-sub 已 detached 且无自身位置 ⇒ 位置不可确定")
+    assertThatThrownBy(() -> UnitOperations.mergeFormation(unlocatedFormation(), SUB, ROOT, T10))
+        .as("u-sub 无自身位置 ⇒ 位置不可确定（v2：没有继承这回事）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("同格");
   }
@@ -954,7 +1001,9 @@ class UnitOperationsTest {
    * 链不构成层级，没有环要防）、**链外对照**（`u-other` 不在任何链里）。
    */
   private static UnitState chained() {
-    return chained(formation(true, true));
+    // ★ v2：用 attachableFormation（同格基线）——本夹具上的 chain 用例要跑一条合法的 attach 与一条 planRoute，
+    //   两者在 v2 下都有前提（attach 要同格、planRoute 要顶层）。
+    return chained(attachableFormation());
   }
 
   /** 在给定编制树之上加两条链（T5-U2 的"改单位字段不得清链"判据可换不同树形复用）。 */
@@ -1228,7 +1277,7 @@ class UnitOperationsTest {
    */
   @Test
   void formationCommandsKeepTheChains() {
-    // 用轻量的 attachableFormation（树形足够；attach 已不要求同格，此处选它只是为省事）。
+    // 用 attachableFormation（同格基线）：v2 下 attach 要求整棵子树与新父同格。
     UnitState base = chained(attachableFormation());
 
     UnitState attached = UnitOperations.attachSubtree(base, SUB, OTHER, T10);
@@ -1265,7 +1314,7 @@ class UnitOperationsTest {
         .isEqualTo(chains);
     assertThat(
             UnitOperations.planRoute(
-                    base, SUB, new Route(List.of(H11, H12), List.of(H11, H12)), T10)
+                    base, SUB, new Route(List.of(H12, H13), List.of(H12, H13)), T10)
                 .commandChains())
         .as("planRoute")
         .isEqualTo(chains);

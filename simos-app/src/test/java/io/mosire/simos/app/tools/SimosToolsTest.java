@@ -1317,7 +1317,7 @@ class SimosToolsTest {
 
   @Test
   void unitDetachToolSurfacesTheDomainRejectionForAnAlreadyRootUnit() throws Exception {
-    assertDomainRejectedAndHeadUnchanged(UnitDetachTool.NAME, "{\"id\":\"u-1\"}", "已是根单位");
+    assertDomainRejectedAndHeadUnchanged(UnitDetachTool.NAME, "{\"id\":\"u-1\"}", "没有父");
   }
 
   @Test

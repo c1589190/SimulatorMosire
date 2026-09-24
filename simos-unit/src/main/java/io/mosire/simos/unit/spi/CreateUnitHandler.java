@@ -29,15 +29,17 @@ import java.util.Optional;
  * <p>★ **初始段时刻 = base 状态时间戳**（{@code state.meta().timestamp()}）：信封不带时刻（C22/裁定 35）， {@code parent} 与
  * {@code position} 两条时态序列的 anchor 段都落在这一刻——与其余时间命令同一口径。
  *
- * <p>★★ **{@code position} 可选（本次改动）**：省略（或 {@code null}）⇒ 该单位**无自身位置**（{@code position} 段写 {@code
- * Optional.empty()}）⇒ 它按 {@code attached + parent} 向父取位，即**"移动时跟随"**。这是让"跟随"在命令面上可 达的唯一入口：此前 {@code
- * position} 必填、且没有任何命令能清掉自身位置，故单位永远命中"自身有位置"那一支、父动子不动。
+ * <p>★★ **{@code position} 与 {@code parent} 的关系（编制 v2，2026-09-24）**：跟随取消后，{@code position} 不再是"可省略
+ * ⇒ 向父取"，而是**每个单位自己的位置**。两条规则：
  *
- * <p>★★ **省略 {@code position} 时 {@code parent} 必填**：无父又无自身位置 = 单位不在图上，是坏输入 ⇒ 拒绝（理由带 "position"
- * 字样，便于命令边界读）。给了 {@code position} ⇒ 行为与今天**逐字相同**（向后兼容）。
+ * <ol>
+ *   <li><b>无 {@code parent} ⇒ 它是顶层</b>：{@code attached=false}，{@code position} **必填**（无父又无位置 =
+ *       不在图上，坏输入）。
+ *   <li><b>有 {@code parent} ⇒ 它编入那一支</b>：{@code attached=true}；若同时给了 {@code position}，**必须与父同格**
+ *       （裁定：「有且只有单位在同一格子时生效」）——不同格 ⇒ 拒。
+ * </ol>
  *
- * <p>★ 其余字段缺失 ⇒ {@code Rejected}；重 id、父不存在、负人数等域规则违反由 {@code Unit} 构造期 / {@code UnitOperations} 抛出的
- * {@link IllegalArgumentException} 折成拒绝。
+ * <p>★ 因此"同一支编制里的单位都同格"是**创建期就成立**的不变量（`attach`/`merge` 两条路也各自判同格）。
  */
 public final class CreateUnitHandler implements CommandHandler, CommandTargets {
 
@@ -69,12 +71,29 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
       int speed = UnitPayloads.requireInt(payload, "speed");
       int mobilityPerMille = UnitPayloads.requireInt(payload, "mobilityPerMille");
       Optional<UnitId> parent = UnitPayloads.optionalId(payload, "parent");
+      SimosTimestamp at = state.meta().timestamp();
       if (position.isEmpty() && parent.isEmpty()) {
         throw new IllegalArgumentException(
             "字段 position 缺失且未给 parent：无父又无自身位置的单位不在图上（要么给 position，要么给 parent）");
       }
+      // ★ 编制 v2：有父 ⇒ 编入那一支（attached=true），且给位置时必须与父同格（"只有同格才能一同移动"）。
+      boolean attached = parent.isPresent();
+      if (parent.isPresent() && position.isPresent()) {
+        Optional<HexCoord> parentHex = snapshot.state().effectivePosition(parent.get(), at);
+        if (parentHex.isEmpty() || !parentHex.get().equals(position.get())) {
+          throw new IllegalArgumentException(
+              "单位 "
+                  + id
+                  + " 的位置 "
+                  + position.get()
+                  + " 与父 "
+                  + parent.get()
+                  + " 的 "
+                  + parentHex.map(HexCoord::toString).orElse("(不可确定)")
+                  + " 不同格：只有同格的单位才能编入同一支编制");
+        }
+      }
       UnitStatus status = UnitPayloads.optionalStatus(payload, "status").orElse(UnitStatus.MOVING);
-      SimosTimestamp at = state.meta().timestamp();
       Unit unit =
           new Unit(
               id,
@@ -87,7 +106,7 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               mobilityPerMille,
               Optional.empty(),
               status,
-              new SegmentedSeries<>(List.of(new Segment<>(at, true)), List.of(), null),
+              new SegmentedSeries<>(List.of(new Segment<>(at, attached)), List.of(), null),
               new SegmentedSeries<>(
                   List.of(new Segment<>(at, Optional.<RelativeOffset>empty())), List.of(), null),
               Optional.empty(),

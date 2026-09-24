@@ -116,22 +116,28 @@ class UnitCommandHandlersTest {
   }
 
   /**
-   * ★ **attach 的"根自带位置"基线**：`u-2` 与 `u-1` **同格**（都在 `H11`）、`attached=false`；`u-3` 挂 `u-2` 下、
-   * 无自身位置。attach 会清掉子树自身位置并反算 offset（偏移式加入）；这里让 `u-2` 自带位置，`here`/`parentHere` 都可确定。
+   * ★ **attach 的同格基线**（编制 v2）：`u-1`/`u-2`/`u-3` **都在 `H11`**、`attached=false` （`u-2` 挂空父、`u-3` 挂
+   * `u-2`）⇒ 整棵子树与新父同格，attach 通过。
+   *
+   * <p>★ v2 起每个单位都带**自己的**位置（位置不再继承）⇒ 夹具必须逐个给位置，否则连"同格"都判不出来。
    */
   private static UnitState attachablePair() {
     return SpiFixture.unitState(
         SpiFixture.unitWithMovement(Optional.empty()),
         unit("u-2", Optional.empty(), Optional.of(SpiFixture.H11), false),
-        unit("u-3", Optional.of("u-2"), Optional.empty(), false));
+        unit("u-3", Optional.of("u-2"), Optional.of(SpiFixture.H11), false));
   }
 
-  /** u-2 挂在 u-1 下、u-3 挂在 u-2 下，三者都 `attached=true`（detach 只节点与偏移的基线）。 */
+  /**
+   * u-2 挂在 u-1 下、u-3 挂在 u-2 下，三者都 `attached=true`、**都在 H11**（detach 只节点与偏移的基线）。
+   *
+   * <p>★ v2：位置各归各的 ⇒ 这里逐个给位置（同格 ⇒ 是一支合法的编制）。
+   */
   private static UnitState attachedLine() {
     return SpiFixture.unitState(
         SpiFixture.unitWithMovement(Optional.empty()),
-        unit("u-2", Optional.of("u-1"), Optional.empty(), true),
-        unit("u-3", Optional.of("u-2"), Optional.empty(), true));
+        unit("u-2", Optional.of("u-1"), Optional.of(SpiFixture.H11), true),
+        unit("u-3", Optional.of("u-2"), Optional.of(SpiFixture.H11), true));
   }
 
   /**
@@ -249,7 +255,8 @@ class UnitCommandHandlersTest {
         applied(
             CREATE,
             worldAt(T5, base),
-            "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},"
+            // ★ v2：有 parent ⇒ 必须与父同格（u-1 在 H11）⇒ 这里的位置也用 H11。
+            "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":1},"
                 + "\"member\":80,\"equipment\":{\"炮\":4},\"speed\":3,\"mobilityPerMille\":900,"
                 + "\"parent\":\"u-1\"}");
 
@@ -269,7 +276,8 @@ class UnitCommandHandlersTest {
     assertThat(created.parent().segments().get(0).value()).contains(SpiFixture.U1);
     assertThat(created.position().segments()).hasSize(1);
     assertThat(created.position().segments().get(0).from()).isEqualTo(T5);
-    assertThat(created.position().segments().get(0).value()).contains(SpiFixture.H12);
+    assertThat(created.position().segments().get(0).value()).contains(SpiFixture.H11);
+    assertThat(created.attached().valueAt(T5)).as("★ v2：有父 ⇒ 编入那一支（attached=true）").isTrue();
     // 既存单位原样带过
     assertThat(next.units().get(SpiFixture.U1)).isEqualTo(base.units().get(SpiFixture.U1));
   }
@@ -331,11 +339,13 @@ class UnitCommandHandlersTest {
   }
 
   /**
-   * ★★ 判据（本次改动）：省略 {@code position} 且给 {@code parent} ⇒ 该单位**无自身位置**、进入"移动时跟随"；把父挪到别格，
-   * 它的有效位置跟过去。这就是"移动时跟随"在命令面上可达的核心判据。
+   * ★★ 判据（**v2 取代了"移动时跟随"**）：省略 `position` 且给 `parent` ⇒ 该单位是那一支的**成员**（`attached=true`），
+   * 但**没有自己的位置 ⇒ 它不在图上**（旧语义"向父取位"已作废）；父挪到别格也不会把它带出一个位置来。
+   *
+   * <p>★ 判别力：把 `effectivePosition` 改回"向父取" ⇒ 两条位置断言红。
    */
   @Test
-  void createUnitWithoutPositionFollowsItsParent() {
+  void createUnitWithoutPositionIsAMemberThatIsNotOnTheMap() {
     UnitState created =
         applied(
             CREATE,
@@ -343,11 +353,26 @@ class UnitCommandHandlersTest {
             "{\"id\":\"u-2\",\"name\":\"跟随连\",\"member\":10,\"equipment\":{},\"speed\":1,"
                 + "\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
     assertThat(created.units().get(U2).position().valueAt(T5)).as("无自身位置").isEmpty();
-    assertThat(created.effectivePosition(U2, T5)).as("跟随 u-1（H11）").contains(SpiFixture.H11);
+    assertThat(created.units().get(U2).attached().valueAt(T5)).as("编入 u-1 那一支").isTrue();
+    assertThat(created.effectivePosition(U2, T5)).as("★ v2：不在图上（位置不是继承来的）").isEmpty();
 
     UnitState moved =
         applied(PLACE_AT, worldAt(T6, created), "{\"id\":\"u-1\",\"hex\":{\"q\":1,\"r\":2}}");
-    assertThat(moved.effectivePosition(U2, T6)).as("父动子随").contains(SpiFixture.H12);
+    assertThat(moved.effectivePosition(U2, T6)).as("父挪走也带不出位置").isEmpty();
+  }
+
+  /** ★★ 判据（**v2 的正面**）：有 `parent` 且 `position` **与父同格** ⇒ Applied，且该单位带着**自己的位置**（不是继承）。 */
+  @Test
+  void createUnitWithAParentOnTheSameHexIsApplied() {
+    UnitState created =
+        applied(
+            CREATE,
+            worldAt(T5, oneUnit()),
+            "{\"id\":\"u-2\",\"name\":\"同格连\",\"position\":{\"q\":1,\"r\":1},"
+                + "\"member\":10,\"equipment\":{},\"speed\":1,"
+                + "\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
+    assertThat(created.units().get(U2).attached().valueAt(T5)).isTrue();
+    assertThat(created.effectivePosition(U2, T5)).contains(SpiFixture.H11);
   }
 
   /**
@@ -616,7 +641,7 @@ class UnitCommandHandlersTest {
 
   // ── unit.AttachUnit / unit.DetachUnit（T3 / spec §一.3 / P3） ────
 
-  /** ★ 判据（P3 + 本次改动的"进入跟随"）：attach 级联到**全部后代**；只有 `id` 换父；子树外一字不变；**子树每个节点的自身位置被清 掉**（进入跟随）。 */
+  /** ★★ 判据（P3 级联 + **v2 的不清位**）：attach 级联到**全部后代**；只有 `id` 换父；子树外一字不变；**位置一个字都不动**。 */
   @Test
   void attachUnitCascadesToTheWholeSubtree() {
     UnitState base = attachablePair();
@@ -626,26 +651,30 @@ class UnitCommandHandlersTest {
     assertThat(next.units().get(U3).attached().valueAt(T5)).as("级联到后代").isTrue();
     assertThat(next.units().get(U3).parent().valueAt(T5)).as("后代父不动").contains(U2);
     assertThat(next.units().get(U3).attached().valueAt(SpiFixture.T0)).as("T0 仍是旧值").isFalse();
-    assertThat(next.units().get(U2).position().valueAt(T5)).as("★ u-2 的自身位置被清（进入跟随）").isEmpty();
-    assertThat(next.units().get(U3).position().valueAt(T5)).as("后代也被清位").isEmpty();
-    assertThat(next.effectivePosition(U2, T5)).as("清位后向新父取位（u-1 的 H11）").contains(SpiFixture.H11);
+    assertThat(next.units().get(U2).position().valueAt(T5))
+        .as("★ v2：位置不动")
+        .contains(SpiFixture.H11);
+    assertThat(next.units().get(U3).position().valueAt(T5)).as("后代的位置也不动").contains(SpiFixture.H11);
+    assertThat(next.units().get(U2).position().segments()).as("位置段没有新增").hasSize(1);
+    assertThat(next.effectivePosition(U2, T5)).contains(SpiFixture.H11);
     assertThat(next.units().get(SpiFixture.U1))
         .as("子树外的单位一字不变")
         .isEqualTo(base.units().get(SpiFixture.U1));
   }
 
   /**
-   * ★★ 判据（**同格前提已于 2026-09-24 撤销**）：不同格的单位在**命令边界**也能 attach——偏移式加入让它原地不动。
+   * ★★ 判据（**v2 的同格前提在命令边界生效**）：`u-2` 在 `H12`、`u-1` 在 `H11` ⇒ 拒（"偏移式加入"已随跟随一起作废）。
    *
-   * <p>`u-2` 在 H12、`u-1` 在 H11（不同格）⇒ 旧实现在此拒"同格"，现在应 Applied 且 `u-2` 仍在 H12。
+   * <p>★ 判别力：把 `attachSubtree` 的同格校验去掉 ⇒ 本用例红。
    */
   @Test
-  void attachUnitAcceptsADifferentHexAndKeepsTheUnitInPlace() {
-    UnitState next =
-        applied(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-1\"}");
-    assertThat(next.units().get(U2).parent().valueAt(T5)).as("换父发生了").contains(SpiFixture.U1);
-    assertThat(next.units().get(U2).position().valueAt(T5)).as("自身位置被清（进入跟随）").isEmpty();
-    assertThat(next.effectivePosition(U2, T5)).as("★ 原地不动：仍在其原来的 H12").contains(SpiFixture.H12);
+  void attachUnitRejectsADifferentHex() {
+    assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{\"id\":\"u-2\",\"parent\":\"u-1\"}"))
+        .as("不同格不能编入同一支编制")
+        .contains("不同格");
+    // ★ 状态不变（只读拒绝）：u-2 仍是 detached 的空父
+    UnitState base = detachedPair();
+    assertThat(base.units().get(U2).attached().valueAt(T5)).isFalse();
   }
 
   @Test
@@ -678,13 +707,19 @@ class UnitCommandHandlersTest {
 
   @Test
   void detachUnitRejectsARootAndUnknownUnits() {
-    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{\"id\":\"u-1\"}")).contains("已是根");
+    assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{\"id\":\"u-1\"}"))
+        .as("没有父 ⇒ 本来就是顶层")
+        .contains("没有父");
     assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{\"id\":\"u-404\"}")).contains("单位不存在");
   }
 
   // ── unit.SetFormationOffset（T3 / spec §一.3 / P2） ──────────────
 
-  /** ★ 判据（P2）：设偏移 ⇒ 有效位置 = 父位 ⊕ 偏移；两分量皆缺 ⇒ 清偏移 ⇒ 回父位。 */
+  /**
+   * ★★ 判据（**v2：偏移只落段、不再影响位置**）：设偏移 ⇒ `offset` 段有值，但有效位置**不变**；两分量皆缺 ⇒ 清偏移。
+   *
+   * <p>★ 判别力：把 `effectivePosition` 改回"父位 ⊕ 偏移" ⇒ 第一条位置断言红。
+   */
   @Test
   void setFormationOffsetAppliesAndClears() {
     UnitState base = attachedLine();
@@ -692,13 +727,13 @@ class UnitCommandHandlersTest {
         applied(SET_OFFSET, worldAt(T5, base), "{\"id\":\"u-3\",\"dq\":1,\"dr\":0}");
     assertThat(shifted.units().get(U3).offset().valueAt(T5)).contains(new RelativeOffset(1, 0));
     assertThat(shifted.effectivePosition(U3, T5))
-        .as("u-3 无自身位置 ⇒ 父位 ⊕ 偏移")
-        .contains(new HexCoord(2, 1));
+        .as("v2：偏移不参与位置计算（仍是它自己的 H11）")
+        .contains(SpiFixture.H11);
 
     UnitState cleared = applied(SET_OFFSET, worldAt(T6, shifted), "{\"id\":\"u-3\"}");
     assertThat(cleared.units().get(U3).offset().valueAt(T6)).as("两者皆缺 ⇒ 清").isEmpty();
-    assertThat(cleared.effectivePosition(U3, T6)).as("清偏移 ⇒ 回父位").contains(SpiFixture.H11);
-    assertThat(cleared.effectivePosition(U3, T5)).as("T5 的历史值不受影响").contains(new HexCoord(2, 1));
+    assertThat(cleared.effectivePosition(U3, T6)).contains(SpiFixture.H11);
+    assertThat(cleared.effectivePosition(U3, T5)).as("位置本来就没被偏移动过").contains(SpiFixture.H11);
   }
 
   /** ★ 只给一个分量 ⇒ 另一个按 0 补（部分更新，不是清）。 */
@@ -849,8 +884,8 @@ class UnitCommandHandlersTest {
     assertThat(reason(SPLIT, world, "{\"rootId\":\"u-404\",\"subUnitIds\":[\"u-3\"]}"))
         .contains("单位不存在");
     assertThat(reason(SPLIT, world, "{\"rootId\":\"u-1\",\"subUnitIds\":[\"u-1\"]}"))
-        .as("root 自己且已是根 ⇒ 用 detach 的既有理由，不新增守卫")
-        .contains("已是根");
+        .as("root 自己没有父 ⇒ 用 detach 的既有理由，不新增守卫")
+        .contains("没有父");
     assertThat(reason(SPLIT, world, "{\"rootId\":\"u-1\",\"subUnitIds\":[]}")).contains("不得为空");
     assertThat(unitSlice(world)).as("拒绝 ⇒ 一字不变").isEqualTo(attachedLine());
   }

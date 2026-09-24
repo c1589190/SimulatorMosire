@@ -115,15 +115,35 @@ public final class UnitTimeParticipant implements TimeParticipant {
         continue; // 无在途 Movement ⇒ 不进变更集（spec §9.1 第 3 行）
       }
       Movement inFlight = unit.movement().orElseThrow();
+      // ★ 编制 v2（2026-09-24）：**只有顶层会自己走**。成员若（老档/手工状态）带着自己的 movement，**不推进它**
+      //   ——它的位置由顶层带动（见下面那段"整支一起搬"）。这条判定让"谁在动"与 `planRoute` 的闸门**同源**，
+      //   也把"同一支里两个单位各走各的"这种形态从推进器里排除掉。
+      UnitId root = snapshot.state().formationRoot(unit.id(), to.get()).orElse(unit.id());
+      if (!root.equals(unit.id())) {
+        continue;
+      }
       MovementState materialized = UnitMoves.evaluate(unit, to.get(), map, cost);
       boolean arrived = materialized.status() == MovementStatus.ARRIVED;
       Optional<Movement> nextMovement = arrived ? Optional.empty() : Optional.of(inFlight);
-      units.put(
-          unit.id(),
-          withPositionAndMovement(unit, to.get(), materialized.currentHex(), nextMovement));
+      HexCoord here = materialized.currentHex();
+      units.put(unit.id(), withPositionAndMovement(unit, to.get(), here, nextMovement));
       String unitAddress = unitAddress(unit.id());
       reads.add(unitAddress);
       writes.add(unitAddress);
+      // ── ★★ 编制 v2：整支一起搬（顶层动 ⇒ 它那一支的成员一起到**同一格**） ─────────────────────
+      //   跟随取消后，"一起移动"不再靠 effectivePosition 的继承，而是**显式**把成员的位置一起写出来：
+      //   这样"整支始终同格"是个看得见的事实，而不是某条查询规则的副作用。
+      //   ★ 成员自己的在途行程一并清掉——它正被带着走，再留一条自己的路线只会变成一句过期的决心。
+      for (UnitId member : snapshot.state().formationMembers(root, to.get())) {
+        if (member.equals(root)) {
+          continue;
+        }
+        units.put(
+            member, withPositionAndMovement(units.get(member), to.get(), here, Optional.empty()));
+        String memberAddress = unitAddress(member);
+        reads.add(memberAddress);
+        writes.add(memberAddress);
+      }
       for (HexCoord hex : inFlight.route().path()) {
         reads.add(hexAddress(mapId, hex));
       }
@@ -147,7 +167,13 @@ public final class UnitTimeParticipant implements TimeParticipant {
           withMovement(
               units.get(unit.id()),
               Optional.of(
-                  new Movement(route, to.get(), unit.effectiveSpeed(), unit.mobilityPerMille()))));
+                  new Movement(
+                      route,
+                      to.get(),
+                      // ★ 编制 v2：回归也是一次"整支一起走"⇒ 速度用整支最慢（与 planRoute 同口径）；
+                      //   而 rejoinRoute 已把成员挡在外面（只有顶层会走到这里）。
+                      materialized.formationSpeed(unit.id(), to.get()),
+                      unit.mobilityPerMille()))));
       String unitAddress = unitAddress(unit.id());
       reads.add(unitAddress);
       writes.add(unitAddress);

@@ -209,10 +209,26 @@ public final class UnitOperations {
             Optional.empty()));
   }
 
-  /** 下达路线：路线起点必须等于该单位在 `at` 的 {@code effectivePosition}（无位置 ⇒ 抛）。 */
+  /**
+   * 下达路线：**只有编制顶层能下**（编制 v2），路线起点必须等于该单位在 `at` 的 {@code effectivePosition}（无位置 ⇒ 抛）。
+   *
+   * <p>★★ **v2 的两条改动**（2026-09-24）：
+   *
+   * <ol>
+   *   <li><b>只许顶层</b>（{@link #requireTopOfFormation}）：与别人一同移动的编制成员**不能**自己走——它一动就会与整支脱节。
+   *       用户原话：「如果选中一个有依附/一同移动的单位，且不是最父单位，那么提示应当控制顶层进行移动或拆分」。拒绝理由**点名顶层 id**
+   *       并给出两条出路，模型据此才知道下一步该发什么命令。
+   *   <li><b>速度取整支最慢</b>：装载的 {@code speedAtDeparture} = {@code state.formationSpeed(...)}（整支里
+   *       {@code effectiveSpeed} 的最小值，含状态折算）——用户原话「这个单位有下挂单位总速度为下挂单位中最慢者速度」。 以前这里是 {@code
+   *       unit.effectiveSpeed()}（只看自己）⇒ 一支里塞个慢兵种也不影响行程，那与"一同移动"的直觉相反。
+   * </ol>
+   *
+   * <p>★ 起点校验保留：路线必须从**它现在所在的格**开始（这条不因 v2 而松）。
+   */
   public static UnitState planRoute(UnitState state, UnitId id, Route route, SimosTimestamp at) {
     Objects.requireNonNull(route, "route");
     Unit unit = require(state, id);
+    UnitId root = requireTopOfFormation(state, id, at);
     HexCoord start =
         state
             .effectivePosition(id, at)
@@ -233,7 +249,32 @@ public final class UnitOperations {
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
-            Optional.of(new Movement(route, at, unit.effectiveSpeed(), unit.mobilityPerMille()))));
+            Optional.of(
+                new Movement(route, at, state.formationSpeed(root, at), unit.mobilityPerMille()))));
+  }
+
+  /**
+   * **只许顶层移动**的闸门（编制 v2）：返回该单位的顶层 id；它若不是顶层 ⇒ 抛，理由**点名顶层**并给出两条出路。
+   *
+   * <p>★ 顶层判定见 {@code UnitState.formationRoot}：沿 {@code parent} 上溯到 `attached=false` 或**无父**为止。 ⇒
+   * "有归属但独立"的单位（有 parent、`attached=false`）**是顶层**，它可以自己走（用户那句「即使这个单位有归属，也可以自动移动」）。
+   */
+  private static UnitId requireTopOfFormation(UnitState state, UnitId id, SimosTimestamp at) {
+    UnitId root =
+        state.formationRoot(id, at).orElseThrow(() -> new IllegalArgumentException("单位不存在: " + id));
+    if (!root.equals(id)) {
+      throw new IllegalArgumentException(
+          "单位 "
+              + id
+              + " 是与其它单位一同移动的编制成员（这一支的顶层是 "
+              + root
+              + "）：只有顶层能下路线——要么对 "
+              + root
+              + " 下令（整支一起走），要么先用 unit.SplitFormation 或 unit.DetachUnit 把 "
+              + id
+              + " 拆成独立单位再下路线");
+    }
+    return root;
   }
 
   /**
@@ -380,6 +421,23 @@ public final class UnitOperations {
    * attach ⇒ 反算出的偏移与原来相同、各字段当刻取值不变（**幂等**，见用例 {@code
    * attachingAnAlreadyFollowingNodeIsFieldwiseIdempotent}）。
    */
+  /**
+   * 把 `id` 及其**全部后代**编入 `parent` 那一支「一同移动」的编制（**编制 v2**，2026-09-24 取代"偏移式加入 + 进入跟随"）。
+   *
+   * <p>★★ **v2 的两条硬改动**（用户 2026-09-24 原话：「把跟随功能取消掉吧，如果要合并到同一一同移动的编制， **有且只有单位在同一格子时生效**」）：
+   *
+   * <ol>
+   *   <li><b>必须同格</b>：`id` 的整棵子树里**每一个**即将 `attached=true` 的节点，都必须与 `parent` 同格（任一不可确定
+   *       也拒）。旧写法允许"不同格也能加入"（`8a005b7`）——那是为"跟随"服务的，**已作废**。
+   *   <li><b>不再清位、不再反算 offset</b>：跟随取消了 ⇒ 位置各归各的（每个单位的位置永远是自己的，见 {@code
+   *       UnitState.effectivePosition}），`offset` 不再参与任何计算（字段保留只为不破老档往返）。
+   * </ol>
+   *
+   * <p>★ 仍然级联：编入的是**一支编队**，不是一个光杆节点（每个后代都落一条 `attached=true` 段）。
+   *
+   * <p>★ 两处**有意不拒**（沿用 T3 台账）：`parent` 已是 `id` 当前的父不拒（重挂同一父是"合体 = 重新 attach"的形态）； `attached` 已是
+   * `true` 的节点不拒（本操作面不判"无变化命令"）。
+   */
   public static UnitState attachSubtree(
       UnitState state, UnitId id, UnitId parent, SimosTimestamp at) {
     Objects.requireNonNull(parent, "parent");
@@ -389,78 +447,68 @@ public final class UnitOperations {
     if (subtree.contains(parent)) {
       throw new IllegalArgumentException("父单位 " + parent + " 落在 " + id + " 的子树内（含自身）：会成环");
     }
+    Optional<HexCoord> parentHex = state.effectivePosition(parent, at);
+    if (parentHex.isEmpty()) {
+      throw new IllegalArgumentException("单位 " + parent + " 在 " + at + " 没有可确定的位置：编制必须同格才能编入");
+    }
+    // ★ v2：整棵子树逐一校验同格（不是只查根）——编入之后它们都"与父一起走"，而"一起走"的前提就是此刻同格。
+    for (UnitId member : subtree) {
+      Optional<HexCoord> memberHex = state.effectivePosition(member, at);
+      if (memberHex.isEmpty() || !memberHex.get().equals(parentHex.get())) {
+        throw new IllegalArgumentException(
+            "单位 "
+                + member
+                + " 在 "
+                + at
+                + " 位于 "
+                + memberHex.map(HexCoord::toString).orElse("(不可确定)")
+                + "，与 "
+                + parent
+                + " 的 "
+                + parentHex.get()
+                + " 不同格：只有同格的单位才能编入同一支编制");
+      }
+    }
     Map<UnitId, Unit> next = new LinkedHashMap<>(state.units());
     for (UnitId member : subtree) {
       Unit current = state.units().get(member);
       // 只有根换父：后代的 parent 原样带过
       SegmentedSeries<Optional<UnitId>> parents =
           member.equals(id) ? append(current.parent(), at, Optional.of(parent)) : current.parent();
-      // ★ 先算后改：here / parentHere 一律取**原状态**在 at 的值（此刻父子仍带原有的位置语义）。
-      Optional<HexCoord> here = state.effectivePosition(member, at);
-      Optional<HexCoord> parentHere =
-          followedParent(state, id, parent, member, at)
-              .flatMap(followed -> state.effectivePosition(followed, at));
-      // ★ 两侧都可确定 ⇒ 反算偏移落段（原地不动）；否则 offset 原样保留（不清、不猜）。
-      //   同刻后写者胜（setOrAppend）：attach 与 SetFormationOffset 可能落在同一 tick。
-      SegmentedSeries<Optional<RelativeOffset>> offsets = current.offset();
-      if (here.isPresent() && parentHere.isPresent()) {
-        offsets =
-            setOrAppend(
-                current.offset(),
-                at,
-                Optional.of(
-                    new RelativeOffset(
-                        here.get().q() - parentHere.get().q(),
-                        here.get().r() - parentHere.get().r())));
-      }
-      // ★ 子树的每个节点都清掉自身位置（含已是空的：本操作面不判"无变化"）⇒ 整棵子树进入跟随
-      SegmentedSeries<Optional<HexCoord>> cleared =
-          setOrAppend(current.position(), at, Optional.<HexCoord>empty());
+      // ★ v2：位置、offset 都**原样带过**（跟随已取消 ⇒ 没有"进入跟随"要清位/反算的东西）。
       next.put(
           member,
-          copyFormation(current, parents, cleared, append(current.attached(), at, true), offsets));
+          copyFormation(
+              current,
+              parents,
+              current.position(),
+              append(current.attached(), at, true),
+              current.offset()));
     }
     return state.withUnits(next);
   }
 
   /**
-   * attach 后 `member` **将跟随的父亲**：根 `id` ⇒ 新父 `parent`；后代 ⇒ 它本来的父（取 `at` 时刻的值，后代不改挂）。
-   *
-   * <p>★ 反算偏移必须用它（不是用 `member` 加入**前**的父）：根换了父，若拿旧父算偏移，加入后就不会落在原地（见 {@link #attachSubtree}
-   * 的"将跟随的父亲"段）。
-   */
-  private static Optional<UnitId> followedParent(
-      UnitState state, UnitId id, UnitId parent, UnitId member, SimosTimestamp at) {
-    return member.equals(id) ? Optional.of(parent) : parentAt(state, member, at);
-  }
-
-  /**
    * detach（P3：**只节点**）：**只**给 `id` 追加 `attached=false` 段——子节点**不动**（与 attach 刻意不对称； 子树整体的分离是
-   * SplitFormation，T4）。`id` 在 `at` 已是根 ⇒ 拒：detached 的语义是"不再跟随这个父"， 没有父就没有可脱离的编队，那是坏命令（spec §一.5 表）。
+   * SplitFormation，T4）：脱离之后 `id` 就是**它自己那一支的顶层**（它带着自己的下挂走）。
    *
-   * <p>★ **脱离同时把当前位置物化进自身 `position`**（本次改动，与 attach 清位互为逆向的两半）：detached 且无自身位置的单位 在 {@code
-   * effectivePosition} 里**返回空**（不回退父，spec §一.4 第五情形）⇒ 从图上消失。脱离必须先"钉在当前位置"，否则 "暂时脱离独立作战"会把单位弄没。
+   * <p>★★ **v2 起不再"物化位置"**（2026-09-24）：旧写法要在翻 `attached` 之前把有效位置写进自身 `position`，理由是 "detached
+   * 且无自身位置 ⇒ 有效位置为空 ⇒ 单位从图上消失"。**跟随取消之后这条前提没了**：每个单位的位置永远是自己的，
+   * 脱离只是换一个编制身份，位置一个字都不用动（故也没有"先算后改"的顺序陷阱了）。
    *
-   * <p>★★ **必须在改 `attached` 之前算有效位置**：`effectivePosition` 的输入是**改之前**的 `state`（此刻它仍 attached、还能向
-   * 父取位）。若顺序写反（先脱离再取位）⇒ 取到空 ⇒ 单位消失。这是本操作最容易写反的一步，用例 {@code
-   * UnitOperationsTest.detachMaterializesTheCurrentPositionBeforeFlippingAttached} 专门钉它。
-   *
-   * <p>★ **脱离时当前有效位置本来就是空**（单位本就不在图上，如手工拼出的无位子树）⇒ **仍允许脱离**，`position` 段写 {@code
-   * Optional.empty()}：它本来就不在图上，脱离不会让它"更不在图上"；拒绝一条语义上无变化的命令没有价值。
+   * <p>★ `id` 在 `at` 没有父 ⇒ 拒：它本来就是顶层（没有"从谁的编制里出来"这件事），这是坏命令。
    */
   public static UnitState detachUnit(UnitState state, UnitId id, SimosTimestamp at) {
     Unit unit = require(state, id);
     if (unit.parent().valueAt(at).isEmpty()) {
-      throw new IllegalArgumentException("单位 " + id + " 在 " + at + " 已是根单位：没有可脱离的父");
+      throw new IllegalArgumentException("单位 " + id + " 在 " + at + " 没有父：它本来就是顶层，无需脱离编制");
     }
-    // ★ 顺序关键：在改 attached 之前、用**原状态**算有效位置（此刻仍 attached，能向父取位）——写反 ⇒ 取到空 ⇒ 单位消失。
-    Optional<HexCoord> here = state.effectivePosition(id, at);
     return withUnit(
         state,
         copyFormation(
             unit,
             unit.parent(),
-            setOrAppend(unit.position(), at, here),
+            unit.position(),
             append(unit.attached(), at, false),
             unit.offset()));
   }
@@ -468,12 +516,9 @@ public final class UnitOperations {
   /**
    * 相对偏移（spec §一.3 / P2）：追加一条 `offset` 段（`Optional.empty()` = 清除偏移）。
    *
-   * <p>★ **不强制落在地图内**（P2）：它是"相对父的站位"，父位在图界、子偏移越界是合法组合；形状合法性由 {@link RelativeOffset} 与 payload
-   * 层保证，本操作**不看地图**（`simos-unit` 的地图只经 `effectivePosition` 的语义参与）。
-   *
-   * <p>★ **同刻重复写用后写者胜**（走 {@link #setOrAppend}，2026-09-24）：{@link #attachSubtree} 现在也会在 `at` 落
-   * `offset` 段（偏移式加入），故"同一刻先 attach、后 SetFormationOffset"是**真实形态**（{@code McpCoverageTest} 逐条命令都落同一
-   * tick）； 仍用 {@code append} 会撞 {@code SegmentedSeries} 的严格升序。语义上同刻的第二笔写就是"覆盖此刻生效的偏移"，替换即正确解。
+   * <p>★★ **编制 v2 起它不再影响任何计算**（2026-09-24，「取消跟随」的连带）：`offset` 原本只服务"跟随时的相对站位" （{@code
+   * effectivePosition} 里"向父取 ⊕ offset"那一支），而那一支已作废 ⇒ 本命令变成**纯记账**。字段与命令都**保留**
+   * （不破老档往返、不改工具面），但工具描述里如实标了"v2 起无作用"——**不静默**。
    */
   public static UnitState setOffset(
       UnitState state, UnitId id, Optional<RelativeOffset> offset, SimosTimestamp at) {
@@ -539,8 +584,13 @@ public final class UnitOperations {
   }
 
   /**
-   * 拆分（T4 / spec §一.3 / §一.5 表）：`subUnitIds` 里的每个单位都必须在 `rootId` 在 `at` 的**子树内**，然后逐个 {@link
+   * ★ 拆分（T4 / spec §一.3 / §一.5 表）：`subUnitIds` 里的每个单位都必须在 `rootId` 在 `at` 的**子树内**，然后逐个 {@link
    * #detachUnit}——**只节点**（P3 的不对称：拆下来的节点**自己的后代不动**，与 detach 同一口径）。
+   *
+   * <p>★★ **编制 v2 下这条命令的地位变了**（2026-09-24）：跟随取消后，"派一支部队出去独立行动"的**唯一**正道就是拆分——拆出来的
+   * 节点成为**它自己那一支的顶层**（`attached=false`），于是它可以自己下路线（它的下挂 `attached=true` 的后代仍跟着它走）；
+   * 而**没拆的成员不能自己走**（{@link #planRoute} 会拒）。⇒ 它与 {@link #planRoute} 的拒绝理由里那句"先用 SplitFormation 或
+   * DetachUnit 拆成独立单位"是**成对**的：一条拦、一条放。
    *
    * <p>★ 每个目标两查（spec §一.5 表把"不存在"与"不在 root 子树"列为两条独立的拒绝理由）：不存在 ⇒ `单位不存在`；存在但不在子树内 ⇒
    * `不在…子树内`。`subUnitIds` 为空 ⇒ 拒——指不到任何目标的拆分是坏命令。
@@ -584,8 +634,8 @@ public final class UnitOperations {
    *
    * <p>★ 通过后**复用** {@link #attachSubtree}（spec §一.5 表把本命令的操作记作 **attach**；P3 的 attach **级联**； P9"合体
    * = 重新 attach（不销毁节点）"）：`childId` 换父 + 它**全部后代**级联 `attached=true`。级联是刻意的——合体带回来的是一支编队， 不是一个光杆节点。
-   * {@link #attachSubtree} 还会清掉子树每个节点的自身位置并**反算偏移**（进入跟随）；因本命令**自己先保证了同格**，反算出的偏移恒为
-   * (0,0)（父子同格），合体后编队随新父移动、不漂移。
+   * ★ **编制 v2 起 `attachSubtree` 也要求同格**（跟随取消后，"一同移动"的前提就是同格）⇒ 本命令的同格前置与它**同向**， 两处都在判、理由各有措辞（本条 =
+   * "只有同格才能合体"，attach 那条 = "只有同格的单位才能编入同一支编制"）。
    *
    * <p>★★ **最慢者决定速度**（2026-09-24 新增，用户："合体的单位速度是其中速度最低单位的速度"）：
    *
@@ -808,6 +858,11 @@ public final class UnitOperations {
     }
     if (unit.status() != UnitStatus.MOVING) {
       return Optional.empty(); // 裁定 U5：RESTING/ENGAGED 不自动回归（引用不清，回到 MOVING 后恢复）
+    }
+    // ★ 编制 v2：**只有顶层能自己走**（回归也是一次自主移动）⇒ 与 planRoute 同一闸门（这里只"跳过"不抛：本方法的
+    //   契约是"给不出路线就空"，抛会把它变成一条会炸的查询）。
+    if (state.formationRoot(id, at).filter(root -> !root.equals(id)).isPresent()) {
+      return Optional.empty();
     }
     Optional<HexCoord> start = state.effectivePosition(id, at);
     Optional<HexCoord> goal = state.effectivePosition(unit.rejoinTarget().get(), at);
