@@ -970,7 +970,7 @@ class SimosToolsTest {
   void mapRandomizeRegionToolSurfacesTheDomainRejectionForAnEmptySelection() throws Exception {
     assertDomainRejectedAndHeadUnchanged(
         MapRandomizeRegionTool.NAME,
-        "{\"hexes\":[],\"seed\":7}",
+        "{\"hexes\":[],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":7}",
         "hexes 不得为空：一条 map.RandomizeRegion 至少要选一格");
   }
 

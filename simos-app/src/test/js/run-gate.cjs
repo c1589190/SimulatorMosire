@@ -46,7 +46,9 @@ const JS_DIR = __dirname;
 //     renderer 静态接线改用 markerLabel、不再写 leadId 的短 id）。
 //   2026-09-24 油漆桶起 267 → 268（map-edit-suboptions.test.cjs 新增 1 条：bucket 走地形线写门（SetTerrain 放行 /
 //     SetEdge 拒绝）；另 5 条既有断言随子选项模型扩容（tools 含 bucket、面板可见性多一个 bucket 键、index.html 控件）。
-const MIN_TESTS = 268;
+//   2026-09-24 圈选随机化起 268 → 270（map-edit-tools.test.cjs 新增 2 条：randomizeRecipeState 的两侧必填/等值合法
+//     9 组边界 + 随机化面板两个地形下拉与"载荷两侧只能来自 guard"的静态扫描）。
+const MIN_TESTS = 270;
 
 function discoverTests() {
   return fs

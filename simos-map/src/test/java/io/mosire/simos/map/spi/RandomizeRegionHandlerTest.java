@@ -30,6 +30,10 @@ import org.junit.jupiter.api.Test;
 /**
  * {@code map.RandomizeRegion} 命令边界：载荷解析、成功折 {@code Applied}、坏载荷/域规则折 {@code Rejected}。 ★ 首重 **缺
  * {@code seed} ⇒ 拒绝**（没有默认值）。
+ *
+ * <p>★ 2026-09-24 起：{@code terrainA}/{@code terrainB} **也是必填**（用户报「不管点哪个地形都只能替换为沙漠和平原」——
+ * 根因是两边都写死在域层）。本类既有 {@code plains}/{@code desert} 的正例，也有**非旧配方**（{@code plateau}/{@code
+ * low_hills}）的判别用例与三组缺字段负例。
  */
 class RandomizeRegionHandlerTest {
 
@@ -47,7 +51,9 @@ class RandomizeRegionHandlerTest {
 
     HandlerOutcome outcome =
         HANDLER.handle(
-            stateOf(base), "{\"hexes\":[{\"q\":0,\"r\":0},{\"q\":1,\"r\":0}],\"seed\":7}");
+            stateOf(base),
+            "{\"hexes\":[{\"q\":0,\"r\":0},{\"q\":1,\"r\":0}],\"terrainA\":\"plains\","
+                + "\"terrainB\":\"desert\",\"seed\":7}");
 
     GameMap after =
         MapChangeSet.apply((MapChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), base);
@@ -58,22 +64,55 @@ class RandomizeRegionHandlerTest {
     assertThat(changed).as("随机化确实改了地形（防恒真）").isTrue();
   }
 
+  /**
+   * ★★ **两种地形来自载荷**（用户报障的 handler 层杀点）：给 {@code plateau}/{@code low_hills} ⇒ 选区内只会出现这两种。 夹具初值是
+   * {@code mountains} ⇒ "handler 忽略这两个字段、用旧固定配方"的实现当场红。
+   */
+  @Test
+  void appliesTheTwoTerrainsFromThePayload() {
+    GameMap base = graphOf();
+    Set<HexCoord> selection = Set.of(new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
+
+    HandlerOutcome outcome =
+        HANDLER.handle(
+            stateOf(base),
+            "{\"hexes\":[{\"q\":0,\"r\":0},{\"q\":1,\"r\":0},{\"q\":0,\"r\":1}],"
+                + "\"terrainA\":\"plateau\",\"terrainB\":\"low_hills\",\"seed\":7}");
+    GameMap after =
+        MapChangeSet.apply((MapChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), base);
+
+    for (HexCoord hex : selection) {
+      assertThat(after.terrainAt(hex)).as("载荷给的两侧之一: %s", hex).isIn("plateau", "low_hills");
+    }
+    for (HexCoord hex : base.hexes().keySet()) {
+      if (!selection.contains(hex)) {
+        assertThat(after.terrainAt(hex)).as("选区外不动: %s", hex).isEqualTo("mountains");
+      }
+    }
+  }
+
   // ── 负例 ────────────────────────────────────────────────────────────────────
 
   /** ★ 缺 {@code seed} ⇒ 拒绝（**不许给默认值**）。 */
   @Test
   void rejectsPayloadWithoutSeed() {
-    assertRejected("{\"hexes\":[{\"q\":0,\"r\":0}]}", "字段 seed 必须是整数");
+    // ★ 两种地形先给全，才测得到"缺 seed"这一条（handler 的解析次序：hexes → terrainA → terrainB → seed）。
+    assertRejected(
+        "{\"hexes\":[{\"q\":0,\"r\":0}],\"terrainA\":\"plains\",\"terrainB\":\"desert\"}",
+        "字段 seed 必须是整数");
   }
 
   @Test
   void rejectsEmptyHexes() {
-    assertRejected("{\"hexes\":[],\"seed\":7}", "hexes 不得为空");
+    assertRejected(
+        "{\"hexes\":[],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":7}", "hexes 不得为空");
   }
 
   @Test
   void rejectsHexOutsideTheMap() {
-    assertRejected("{\"hexes\":[{\"q\":9,\"r\":9}],\"seed\":7}", "hex 不在图上: 9_9");
+    assertRejected(
+        "{\"hexes\":[{\"q\":9,\"r\":9}],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":7}",
+        "hex 不在图上: 9_9");
   }
 
   @Test
@@ -81,9 +120,22 @@ class RandomizeRegionHandlerTest {
     assertRejected("not json", "payload 不是合法 JSON");
     assertRejected("[1,2,3]", "payload 必须是 JSON 对象");
     assertRejected("{\"seed\":7}", "字段 hexes 必须是 [{q,r}…] 数组");
-    assertRejected("{\"hexes\":[{\"q\":0,\"r\":0}],\"seed\":\"7\"}", "字段 seed 必须是整数");
-    assertRejected("{\"hexes\":[{\"q\":0,\"r\":0}],\"seed\":1.5}", "字段 seed 必须是整数");
+    assertRejected(
+        "{\"hexes\":[{\"q\":0,\"r\":0}],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":\"7\"}",
+        "字段 seed 必须是整数");
+    assertRejected(
+        "{\"hexes\":[{\"q\":0,\"r\":0}],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":1.5}",
+        "字段 seed 必须是整数");
     assertRejected("{\"hexes\":[1],\"seed\":7}", "的元素必须是 {q,r} 对象");
+    // ★ 两种地形与 seed 同权：缺任一侧都拒（**无默认值**）。
+    assertRejected(
+        "{\"hexes\":[{\"q\":0,\"r\":0}],\"terrainB\":\"desert\",\"seed\":7}", "字段 terrainA 必须是字符串");
+    assertRejected(
+        "{\"hexes\":[{\"q\":0,\"r\":0}],\"terrainA\":\"plains\",\"seed\":7}", "字段 terrainB 必须是字符串");
+    // ★ 词表外地形由域层拒（消息是词表自己的，不包不吞）。
+    assertRejected(
+        "{\"hexes\":[{\"q\":0,\"r\":0}],\"terrainA\":\"forest\",\"terrainB\":\"desert\",\"seed\":7}",
+        "未知地形类型: forest");
   }
 
   // ── 圈选顺序不进结果 ────────────────────────────────────────────────────────
@@ -125,7 +177,8 @@ class RandomizeRegionHandlerTest {
           .append(hexes.get(i).r())
           .append('}');
     }
-    return json.append("],\"seed\":7}").toString();
+    // ★ 两种地形随载荷给（2026-09-24）：固定用 plains/desert；本用例只关心**数组序**不进结果。
+    return json.append("],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":7}").toString();
   }
 
   /** 跑一遍真 handler，返回应用后块表的**序列化字节**（比 toString 更强：含边界数值）。 */

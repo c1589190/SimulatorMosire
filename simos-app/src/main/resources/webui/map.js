@@ -1413,6 +1413,24 @@
   }
 
   /**
+   * ★ 圈选随机化的**两种地形**（2026-09-24 用户裁定，「我无法选择两个想要的随机化地形」）。
+   *
+   * <p>两侧都必须**显式给**：任一为空/空白 ⇒ `{ok:false}`（宿主据此**一条命令都不发**；命令面同样无默认值
+   * ⇒ 前端不发明例）。★ `A === B` 是**合法**输入（占比退化 ⇒ 整区同地形），那是"把这一片全换成某种地形"
+   * 的正路，不是错误——故选一样的两侧**不**判错。
+   *
+   * <p>纯函数（无 DOM/IO）：本体供 node --test 直接断言；宿主只负责"不 ok 就不发命令 + 给可见提示"。
+   */
+  function randomizeRecipeState(a, b) {
+    var terrainA = typeof a === "string" ? a.trim() : "";
+    var terrainB = typeof b === "string" ? b.trim() : "";
+    if (!terrainA || !terrainB) {
+      return { ok: false, terrainA: null, terrainB: null };
+    }
+    return { ok: true, terrainA: terrainA, terrainB: terrainB };
+  }
+
+  /**
    * 解析装备文本 `名=整数；名=整数`（分隔符 `;` `；` 或换行）⇒ `{名:整数}`；空串 ⇒ `{}`（清空语义）。
    * 坏输入抛 Error（消息含出错片段），由调用方显示——不静默丢字段。
    */
@@ -1583,6 +1601,7 @@
     edgeDeletePlan: edgeDeletePlan,
     parseSeedInput: parseSeedInput,
     randomizeSelectionState: randomizeSelectionState,
+    randomizeRecipeState: randomizeRecipeState,
     registeredEdgeKindList: registeredEdgeKindList,
     fetchRegionCached: fetchRegionCached,
     refreshFocusHexes: refreshFocusHexes,
@@ -1642,6 +1661,7 @@
     edgeModeState: edgeModeState,
     parseSeedInput: parseSeedInput,
     randomizeSelectionState: randomizeSelectionState,
+    randomizeRecipeState: randomizeRecipeState,
     // ★ T2：地图编辑二级子选项（地形 / 连通性）的纯函数与写门控（C1/C2）——门禁直接断言。
     MAP_EDIT_SUBTOOLS: MAP_EDIT_SUBTOOLS,
     mapEditSubtoolState: mapEditSubtoolState,
@@ -1732,6 +1752,15 @@
           return node && !node.hidden ? node.textContent : "";
         })(),
         randomizeSeedText: seedNode ? seedNode.value : null,
+        // ★ 2026-09-24：随机化的两种地形（来自两个下拉；供 e2e/调试看"到底发了哪两种"）。
+        randomizeTerrainA: (function () {
+          var node = app.byId("randomize-terrain-a");
+          return node ? node.value : null;
+        })(),
+        randomizeTerrainB: (function () {
+          var node = app.byId("randomize-terrain-b");
+          return node ? node.value : null;
+        })(),
         randomizeSelection: host.randomizeSelection.map(function (hex) {
           return { q: hex.q, r: hex.r };
         }),

@@ -30,12 +30,21 @@ import org.junit.jupiter.api.Test;
  * ★★ {@code map.RandomizeRegion} 的领域操作面（M8 spec §二，S5）：任意选区 + 调用方 seed，**确定性**（同 seed 逐字节相同、不同 seed
  * 直方图不同）、只改地形不动高度、空选区/图外格拒绝。
  *
- * <p>夹具初始地形一律取 {@code mountains}——与固定配方的 {@code plains}/{@code desert} 都不同，使每次指派都**真的改变**地形。
+ * <p>夹具初始地形一律取 {@code mountains}——与本类多数用例的 A/B（{@code plains}/{@code desert}）都不同，使每次指派都**真的改变**地形。
  * 选区规模取半径 10（331 格）⇒ 两 seed "逐格巧合全同"的概率可忽略（实测差异见本类断言里的字面值）。
  */
 class RandomizeOperationsTest {
 
   private static final String THIRD = "mountains";
+
+  /**
+   * 本类多数用例用的两种地形 = **原固定配方的值**（plains / desert）。★ 这不是"配方还在"，而是**有意锚住**下面那几张 冻结的种子表（直方图逐值 /
+   * 块表逐值）——换一组 A/B 就会换掉全部字面值，而那几张表的价值正在于"跨时间同一输入同一结果"。 「两种地形真的由调用方决定」另有一条专门的用例（见 {@link
+   * #theCallersTwoTerrainsAreTheOnlyOnesWritten}）。
+   */
+  private static final String A = "plains";
+
+  private static final String B = "desert";
 
   private static final int RADIUS = 10;
 
@@ -51,8 +60,8 @@ class RandomizeOperationsTest {
     GameMap base = graphOf(RADIUS, THIRD);
     Set<HexCoord> selection = selectionOf(base);
 
-    GameMap first = apply(base, RandomizeOperations.randomize(base, selection, SEED));
-    GameMap second = apply(base, RandomizeOperations.randomize(base, selection, SEED));
+    GameMap first = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
+    GameMap second = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
 
     assertThat(second.terrainBlocks().toString()).isEqualTo(first.terrainBlocks().toString());
     assertThat(SimosObjectMapper.create().writeValueAsString(second.terrainBlocks()))
@@ -78,8 +87,8 @@ class RandomizeOperationsTest {
     GameMap base = graphOf(RADIUS, THIRD);
     Set<HexCoord> selection = selectionOf(base);
 
-    GameMap first = apply(base, RandomizeOperations.randomize(base, selection, SEED));
-    GameMap second = apply(base, RandomizeOperations.randomize(base, selection, SEED));
+    GameMap first = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
+    GameMap second = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
 
     assertThat(histogram(second)).as("同 seed 两次直方图逐值相同").isEqualTo(histogram(first));
   }
@@ -90,8 +99,8 @@ class RandomizeOperationsTest {
     GameMap base = graphOf(RADIUS, THIRD);
     Set<HexCoord> selection = selectionOf(base);
 
-    GameMap of7 = apply(base, RandomizeOperations.randomize(base, selection, SEED));
-    GameMap of8 = apply(base, RandomizeOperations.randomize(base, selection, OTHER_SEED));
+    GameMap of7 = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
+    GameMap of8 = apply(base, RandomizeOperations.randomize(base, selection, A, B, OTHER_SEED));
 
     Map<String, Integer> h7 = histogram(of7);
     Map<String, Integer> h8 = histogram(of8);
@@ -105,7 +114,7 @@ class RandomizeOperationsTest {
   void blockTableOrderIsTheCanonicalBlockIdOrder() {
     GameMap base = graphOf(RADIUS, THIRD);
 
-    MapChangeSet cs = RandomizeOperations.randomize(base, selectionOf(base), SEED);
+    MapChangeSet cs = RandomizeOperations.randomize(base, selectionOf(base), A, B, SEED);
 
     assertThat(upsertKeys(cs.terrainBlocks()).stream().map(BlockId::parse).toList())
         .as("变更集里 upsert 的块键序 == BlockId 规范全序（HashMap 装块 ⇒ 乱序）")
@@ -135,7 +144,7 @@ class RandomizeOperationsTest {
     int[] blocks = {24, 25, 24, 21, 27, 28, 23, 28};
 
     for (int i = 0; i < seeds.length; i++) {
-      GameMap after = apply(base, RandomizeOperations.randomize(base, selection, seeds[i]));
+      GameMap after = apply(base, RandomizeOperations.randomize(base, selection, A, B, seeds[i]));
       assertThat(histogram(after))
           .as("seed=%d 的地形直方图逐值", seeds[i])
           .containsExactly(
@@ -152,8 +161,8 @@ class RandomizeOperationsTest {
     GameMap base = graphOf(RADIUS, THIRD);
     Set<HexCoord> selection = selectionOf(base);
 
-    GameMap of1 = apply(base, RandomizeOperations.randomize(base, selection, 1L));
-    GameMap of5 = apply(base, RandomizeOperations.randomize(base, selection, 5L));
+    GameMap of1 = apply(base, RandomizeOperations.randomize(base, selection, A, B, 1L));
+    GameMap of5 = apply(base, RandomizeOperations.randomize(base, selection, A, B, 5L));
 
     assertThat(histogram(of1)).as("seed=1 与 seed=5 的直方图实测确实相同").isEqualTo(histogram(of5));
     assertThat(of5.terrainBlocks().size())
@@ -166,7 +175,7 @@ class RandomizeOperationsTest {
   void seedSevenBlockTableIsFrozenPerValue() {
     GameMap base = graphOf(RADIUS, THIRD);
 
-    GameMap after = apply(base, RandomizeOperations.randomize(base, selectionOf(base), SEED));
+    GameMap after = apply(base, RandomizeOperations.randomize(base, selectionOf(base), A, B, SEED));
 
     assertThat(after.terrainBlocks().keySet().stream().map(BlockId::toString).toList())
         .containsExactly(
@@ -231,7 +240,7 @@ class RandomizeOperationsTest {
 
   /** 按给定选区随机化后，块表的**序列化字节**（比 {@code toString} 更强：含边界数值）。 */
   private static String blocksJson(GameMap base, Set<HexCoord> selection) throws Exception {
-    GameMap after = apply(base, RandomizeOperations.randomize(base, selection, SEED));
+    GameMap after = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
     return SimosObjectMapper.create().writeValueAsString(after.terrainBlocks());
   }
 
@@ -256,7 +265,7 @@ class RandomizeOperationsTest {
     Set<HexCoord> outside = new LinkedHashSet<>(base.hexes().keySet());
     outside.removeAll(selection);
 
-    GameMap after = apply(base, RandomizeOperations.randomize(base, selection, SEED));
+    GameMap after = apply(base, RandomizeOperations.randomize(base, selection, A, B, SEED));
 
     int touched = 0;
     for (HexCoord hex : selection) {
@@ -280,7 +289,7 @@ class RandomizeOperationsTest {
   void onlyTheTerrainBlocksComponentChanges() {
     GameMap base = graphOf(RADIUS, THIRD);
 
-    MapChangeSet cs = RandomizeOperations.randomize(base, selectionOf(base), SEED);
+    MapChangeSet cs = RandomizeOperations.randomize(base, selectionOf(base), A, B, SEED);
 
     assertThat(cs.terrainBlocks()).isNotInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.hexes()).isInstanceOf(FieldDelta.Unchanged.class);
@@ -292,13 +301,70 @@ class RandomizeOperationsTest {
     assertThat(cs.edges()).isInstanceOf(FieldDelta.Unchanged.class);
   }
 
+  // ── ★ 两种地形由调用方决定（2026-09-24 用户报障的杀点）────────────────────────
+
+  /**
+   * ★★ **调用方给什么地形，就只写什么地形**（用户报障：「不管我在上面点击哪个地形，都只能把这片圈着的区域替换为沙漠和平原」）。
+   *
+   * <p>判别力：夹具初值 {@code mountains}，本用例给 A={@code plateau}、B={@code low_hills}，且这两者与原固定配方的 {@code
+   * plains}/{@code desert} **都不同** ⇒ 拿"固定配方"的实现跑，直方图会是 plains/desert 而其断言当场红。
+   */
+  @Test
+  void theCallersTwoTerrainsAreTheOnlyOnesWritten() {
+    GameMap base = graphOf(RADIUS, THIRD);
+    Set<HexCoord> selection = selectionOf(base);
+
+    GameMap after =
+        apply(base, RandomizeOperations.randomize(base, selection, "plateau", "low_hills", SEED));
+
+    Map<String, Integer> hist = histogram(after);
+    assertThat(hist)
+        .as("选区内只会出现调用方给的两种地形 + 选区外的 mountains")
+        .containsOnlyKeys(THIRD, "plateau", "low_hills");
+    assertThat(hist.get("plateau")).as("A 侧确有格（防恒真）").isPositive();
+    assertThat(hist.get("low_hills")).as("B 侧确有格（防恒真）").isPositive();
+    assertThat(hist).as("★ 固定配方（plains/desert）不得再出现").doesNotContainKeys("plains", "desert");
+    for (HexCoord hex : selection) {
+      assertThat(after.terrainAt(hex)).as("选区内格 %s", hex).isIn("plateau", "low_hills");
+    }
+  }
+
+  /** ★ A == B 是**合法**输入（占比退化 ⇒ 整区同地形）——这是"想把一片全换成某种地形"的正路。 */
+  @Test
+  void identicalTerrainsDegenerateToAUniformFill() {
+    GameMap base = graphOf(RADIUS, THIRD);
+    Set<HexCoord> selection = selectionOf(base);
+
+    GameMap after =
+        apply(base, RandomizeOperations.randomize(base, selection, "plateau", "plateau", SEED));
+
+    for (HexCoord hex : selection) {
+      assertThat(after.terrainAt(hex)).as("选区全域同地形: %s", hex).isEqualTo("plateau");
+    }
+    assertThat(histogram(after)).containsOnlyKeys(THIRD, "plateau");
+  }
+
+  /** 词表外地形（任一侧）⇒ 拒绝，消息是**词表自己的**（不包不吞），且两条路径都验。 */
+  @Test
+  void rejectingTerrainOutsideTheCatalog() {
+    GameMap base = graphOf(RADIUS, THIRD);
+    Set<HexCoord> selection = selectionOf(base);
+
+    assertThatThrownBy(() -> RandomizeOperations.randomize(base, selection, "forest", B, SEED))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("未知地形类型: forest");
+    assertThatThrownBy(() -> RandomizeOperations.randomize(base, selection, A, "swamp", SEED))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("未知地形类型: swamp");
+  }
+
   // ── 负例 ────────────────────────────────────────────────────────────────────
 
   @Test
   void rejectsEmptySelection() {
     GameMap base = graphOf(RADIUS, THIRD);
 
-    assertThatThrownBy(() -> RandomizeOperations.randomize(base, Set.of(), SEED))
+    assertThatThrownBy(() -> RandomizeOperations.randomize(base, Set.of(), A, B, SEED))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("hexes 不得为空：一条 map.RandomizeRegion 至少要选一格");
   }
@@ -308,7 +374,7 @@ class RandomizeOperationsTest {
     GameMap base = graphOf(RADIUS, THIRD);
 
     assertThatThrownBy(
-            () -> RandomizeOperations.randomize(base, Set.of(new HexCoord(9999, 9999)), SEED))
+            () -> RandomizeOperations.randomize(base, Set.of(new HexCoord(9999, 9999)), A, B, SEED))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("hex 不在图上: 9999_9999");
   }

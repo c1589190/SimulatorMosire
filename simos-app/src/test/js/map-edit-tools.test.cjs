@@ -124,6 +124,55 @@ test("parseSeedInput-does-not-fall-back-to-zero", () => {
   assert.equal(M.parseSeedInput("9007199254740992").ok, false);
 });
 
+test("randomizeRecipeState-requires-both-terrains-and-allows-equal-pair", () => {
+  // ★ 2026-09-24 用户报障的护栏：「我无法选择两个想要的随机化地形」⇒ 两种地形都由调用方给，
+  //   **缺任一侧 ⇒ 不 ok**（宿主据此一条命令都不发；命令面同样无默认值）。
+  assert.equal(M.randomizeRecipeState("", "desert").ok, false);
+  assert.equal(M.randomizeRecipeState("plains", "").ok, false);
+  assert.equal(M.randomizeRecipeState("", "").ok, false);
+  assert.equal(M.randomizeRecipeState(null, "desert").ok, false);
+  assert.equal(M.randomizeRecipeState("plains", undefined).ok, false);
+  assert.equal(M.randomizeRecipeState(7, "desert").ok, false);
+  assert.equal(M.randomizeRecipeState({}, []).ok, false);
+  assert.equal(M.randomizeRecipeState("   ", "desert").ok, false);
+  assert.deepEqual(M.randomizeRecipeState("", "desert"), { ok: false, terrainA: null, terrainB: null });
+  // 正常：两侧都给 ⇒ ok，且**去掉首尾空白**（判据与 node 侧 trim 同口径）。
+  assert.deepEqual(M.randomizeRecipeState(" plateau ", "low_hills"), {
+    ok: true,
+    terrainA: "plateau",
+    terrainB: "low_hills",
+  });
+  // ★ A === B 是**合法**输入（占比退化 ⇒ 整区同地形）——"把这片全换成某种地形"的正路，不得判错。
+  assert.deepEqual(M.randomizeRecipeState("plateau", "plateau"), {
+    ok: true,
+    terrainA: "plateau",
+    terrainB: "plateau",
+  });
+});
+
+test("randomize-panel-has-two-terrain-pickers-fed-by-the-authoritative-vocabulary", () => {
+  const html = readWebui("index.html");
+  // 两个下拉必须在 randomize 面板里、且在 edge-controls 之前（与既有的"地形容器内"同一条纪律）。
+  const randomizeAt = html.indexOf('id="randomize-controls"');
+  const edgeAt = html.indexOf('id="edge-controls"');
+  const aAt = html.indexOf('id="randomize-terrain-a"');
+  const bAt = html.indexOf('id="randomize-terrain-b"');
+  assert.ok(randomizeAt >= 0 && aAt > randomizeAt && bAt > aAt && bAt < edgeAt, "两个地形下拉都在随机化面板内");
+  assert.ok(html.indexOf('<option value="">（未选）</option>') >= 0, "两侧都从「未选」起（无默认值）");
+  // ★ 候选取自 /api/map/overview 的权威词表（与调色板同源）——静态证明"填词表的那条路"存在。
+  const host = readWebui("map-mapeditor.js");
+  assert.ok(host.indexOf("function renderRandomizeTerrainOptions(") >= 0, "宿主必须实现下拉填充");
+  assert.ok(host.indexOf("renderRandomizeTerrainOptions(list)") >= 0, "调色板拿到词表时要顺带填随机化下拉");
+  assert.ok(host.indexOf('"randomize-terrain-a"') >= 0, "A 下拉按 id 取");
+  assert.ok(host.indexOf('"randomize-terrain-b"') >= 0, "B 下拉按 id 取");
+  assert.ok(host.indexOf("function randomizeTerrainValue(") >= 0, "取值集中在一处（不散落两遍 DOM 读）");
+  // ★ 提交载荷的两侧只能来自 guard 的结果，不许硬写地形。
+  assert.ok(host.indexOf("terrainA: recipe.terrainA") >= 0, "载荷的 terrainA 来自 randomizeRecipeState");
+  assert.ok(host.indexOf("terrainB: recipe.terrainB") >= 0, "载荷的 terrainB 来自 randomizeRecipeState");
+  assert.equal(/terrainA:\s*"/.test(host), false, "不许把地形硬写成字面量");
+  assert.equal(/terrainB:\s*"/.test(host), false, "不许把地形硬写成字面量");
+});
+
 test("randomizeSelectionState-rejects-an-empty-selection", () => {
   // ★ 故意违规：空选区不该产出载荷（命令面同样拒绝空 hexes，前端不发明例）。
   assert.equal(M.randomizeSelectionState([]).ok, false);
@@ -151,6 +200,7 @@ test("page-层-uses-the-guards-instead-of-re-implementing-them", () => {
   assert.ok(host.indexOf("edgeModeState(edgeModeValue())") >= 0, "连边提交要走 edgeModeState");
   assert.ok(host.indexOf("parseSeedInput(") >= 0, "seed 要走 parseSeedInput");
   assert.ok(host.indexOf("randomizeSelectionState(") >= 0, "选区要走 randomizeSelectionState");
+  assert.ok(host.indexOf("randomizeRecipeState(") >= 0, "两种地形要走 randomizeRecipeState");
   assert.ok(pure.indexOf("edgeChainResult(") >= 0, "轨迹要走 edgeChainResult");
   assert.ok(host.indexOf("edgeDeletePlan(") >= 0, "删边要走 edgeDeletePlan");
   assert.ok(pure.indexOf("edgeHitAtWorldPoint(") >= 0, "命中要走 edgeHitAtWorldPoint");

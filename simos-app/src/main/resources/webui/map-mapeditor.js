@@ -40,6 +40,7 @@
   var edgeDeletePlan = core.edgeDeletePlan;
   var parseSeedInput = core.parseSeedInput;
   var randomizeSelectionState = core.randomizeSelectionState;
+  var randomizeRecipeState = core.randomizeRecipeState;
   var registeredEdgeKindList = core.registeredEdgeKindList;
   // ★ active 是可变绑定：函数体里出现的一律写作 core.active（见文件头）。
 
@@ -121,6 +122,8 @@
       }
     }
     updatePaletteSelection();
+    // ★ 随机化的两个地形下拉与调色板同源（同一份权威词表）——在词表变时重建它们。
+    renderRandomizeTerrainOptions(list);
     app.statusMessage(
       app.byId("terrain-palette-status"),
       "词表 " + list.length + " 类：" + (signature || "（空）"),
@@ -637,13 +640,62 @@
     var count = host.randomizeSelection.length;
     var node = app.byId("randomize-seed");
     var seedState = parseSeedInput(node ? node.value : "");
+    var recipe = randomizeRecipeState(randomizeTerrainValue("randomize-terrain-a"), randomizeTerrainValue("randomize-terrain-b"));
     setRandomizeStatus(
-      "选区 " + count + " 格；seed " + (seedState.ok ? seedState.seed : "（未填/非法）") + "。",
-      count && seedState.ok ? "ok" : "muted"
+      "选区 " + count + " 格；seed " + (seedState.ok ? seedState.seed : "（未填/非法）") + "；地形 " +
+        (recipe.ok
+          ? recipe.terrainA + " / " + recipe.terrainB + (recipe.terrainA === recipe.terrainB ? "（同一种 ⇒ 整区同地形）" : "")
+          : "（两侧都要选）") + "。",
+      count && seedState.ok && recipe.ok ? "ok" : "muted"
     );
   }
 
-  /** 「执行随机化」：**先过两条护栏**（空选区 / seed 非整数 ⇒ 一条命令都不发），再一次 writeCommand。 */
+  /** 一个下拉的当前值（缺元素 ⇒ 空串，当"未选"处理）。 */
+  function randomizeTerrainValue(id) {
+    var node = app.byId(id);
+    return node && typeof node.value === "string" ? node.value : "";
+  }
+
+  /**
+   * ★ 用**权威词表**填两个地形下拉（2026-09-24：随机化的两种地形由调用方给，原先写死在域层）。
+   *
+   * <p>词表来自 `/api/map/overview` 的 `terrainTypes`（与调色板同一份，**绝不硬编码**）；切换时**保住已选值**（仍在表里就留着）。
+   * 首项是「（未选）」——没有默认值，与命令面的 fail-closed 同口径。
+   */
+  function renderRandomizeTerrainOptions(types) {
+    var list = types || [];
+    var signature = list
+      .map(function (type) {
+        return type.key;
+      })
+      .join(",");
+    if (signature === host.randomizeTerrainSignature) {
+      return;
+    }
+    host.randomizeTerrainSignature = signature;
+    ["randomize-terrain-a", "randomize-terrain-b"].forEach(function (id) {
+      var select = app.byId(id);
+      if (!select) {
+        return;
+      }
+      var keep = select.value;
+      select.textContent = "";
+      var none = app.el("option", { value: "" });
+      none.textContent = "（未选）";
+      select.appendChild(none);
+      list.forEach(function (type) {
+        var option = app.el("option", { value: type.key });
+        option.textContent = type.name ? type.key + "（" + type.name + "）" : type.key;
+        select.appendChild(option);
+      });
+      select.value = signature.indexOf(keep) >= 0 ? keep : "";
+    });
+    renderRandomizeStatus();
+  }
+
+  /**
+   * 「执行随机化」：**先过三条护栏**（空选区 / seed 非整数 / 两种地形未选全 ⇒ 一条命令都不发），再一次 writeCommand。
+   */
   async function submitRandomize() {
     if (host.mapEditBusy) {
       return null;
@@ -666,20 +718,36 @@
       setRandomizeStatus("seed 非法 ⇒ 未发出任何写命令。", "warn");
       return null;
     }
+    var recipe = randomizeRecipeState(
+      randomizeTerrainValue("randomize-terrain-a"),
+      randomizeTerrainValue("randomize-terrain-b")
+    );
+    if (!recipe.ok) {
+      setWarning(
+        "randomize-warning",
+        "两种地形都要选（A 与 B）：**没有发出任何写命令**。想整片换成单一地形时，两侧选同一种即可。"
+      );
+      setRandomizeStatus("地形未选全 ⇒ 未发出任何写命令。", "warn");
+      return null;
+    }
     setWarning("randomize-warning", "");
     host.mapEditBusy = true;
     setRandomizeStatus(
-      "提交 map.RandomizeRegion：" + selState.hexes.length + " 格，seed " + seedState.seed + " …",
+      "提交 map.RandomizeRegion：" + selState.hexes.length + " 格，地形 " + recipe.terrainA + " / " +
+        recipe.terrainB + "，seed " + seedState.seed + " …",
       "muted"
     );
     var result = await app.writeCommand("map.RandomizeRegion", {
       hexes: selState.hexes,
+      terrainA: recipe.terrainA,
+      terrainB: recipe.terrainB,
       seed: seedState.seed,
     });
     host.mapEditBusy = false;
     if (result.ok) {
       setRandomizeStatus(
-        "已随机化 " + selState.hexes.length + " 格（seed " + seedState.seed + "，一条命令，head 已前进）",
+        "已随机化 " + selState.hexes.length + " 格（" + recipe.terrainA + " / " + recipe.terrainB + "，seed " +
+          seedState.seed + "，一条命令，head 已前进）",
         "ok"
       );
       await refreshRegionInfoNow();
@@ -862,6 +930,12 @@
     if (seedNode) {
       seedNode.addEventListener("input", renderRandomizeStatus);
     }
+    ["randomize-terrain-a", "randomize-terrain-b"].forEach(function (id) {
+      var select = app.byId(id);
+      if (select) {
+        select.addEventListener("change", renderRandomizeStatus);
+      }
+    });
     var thresholdNode = app.byId("bucket-threshold");
     if (thresholdNode) {
       thresholdNode.addEventListener("input", renderBucketStatus);
@@ -898,6 +972,7 @@
     commitEdgeDelete: commitEdgeDelete,
     commitRandomizeSelection: commitRandomizeSelection,
     renderRandomizeStatus: renderRandomizeStatus,
+    renderRandomizeTerrainOptions: renderRandomizeTerrainOptions,
     commitFill: commitFill,
     renderBucketStatus: renderBucketStatus,
     refreshRegionInfoNow: refreshRegionInfoNow,

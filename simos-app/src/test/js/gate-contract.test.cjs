@@ -61,7 +61,8 @@ const REQUIRED_FILES = [
 //   2026-09-24 标记文字起 265 → 267：unit-tree.test.cjs 新增 2 条（markerLabel「军队名 × N」/ renderer 静态接线不再写 leadId 短 id）。
 //   2026-09-24 油漆桶起 267 → 268：map-edit-suboptions.test.cjs 新增 1 条（bucket 的门控：SetTerrain 放行 / SetEdge 拒绝）。
 //   ★ 与 run-gate.cjs 的 MIN_TESTS 同值，改一处必须改两处。
-const MIN_ASSERTIONS = 268;
+//   2026-09-24 圈选随机化起 268 → 270：map-edit-tools.test.cjs 新增 2 条（randomizeRecipeState / 两个地形下拉与载荷来源）。
+const MIN_ASSERTIONS = 270;
 
 function testFiles() {
   return fs

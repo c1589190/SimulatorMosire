@@ -71,7 +71,7 @@ public final class CatalogTool implements AgentTool {
           Map.entry("map.SetEdge", "kind, edges[字符串...], mode"),
           Map.entry(
               "map.RegisterPathwayGroup", "id, name, color, description?, visible?, properties?"),
-          Map.entry("map.RandomizeRegion", "hexes[{q,r}...], seed"),
+          Map.entry("map.RandomizeRegion", "hexes[{q,r}...], terrainA, terrainB, seed"),
           Map.entry(
               "social.SetPopulation",
               "entries[{q,r,population}...]（population ≥ 0；重复坐标后出现者覆盖）,"

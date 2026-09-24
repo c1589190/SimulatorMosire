@@ -205,7 +205,9 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("map.DeleteRegion", "{\"regionId\":\"r-cov\"}");
     MINIMAL_PAYLOADS.put(
         "map.SetEdge", "{\"kind\":\"river\",\"edges\":[\"1_1|1_2\"],\"mode\":\"merge\"}");
-    MINIMAL_PAYLOADS.put("map.RandomizeRegion", "{\"hexes\":[{\"q\":1,\"r\":1}],\"seed\":7}");
+    MINIMAL_PAYLOADS.put(
+        "map.RandomizeRegion",
+        "{\"hexes\":[{\"q\":1,\"r\":1}],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":7}");
     MINIMAL_PAYLOADS.put(
         "sd.CreateNation",
         "{\"nationId\":\"n-cov\",\"name\":\"覆盖国\",\"homeRegionId\":\"r-nation\","

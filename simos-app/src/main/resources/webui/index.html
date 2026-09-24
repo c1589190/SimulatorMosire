@@ -120,12 +120,24 @@
             <p id="brush-status" class="status muted">选一种地形后，<b>右键</b>在地图上拖动涂抹；松手提交一条 map.SetTerrain（多格合成一条）。<b>左键=平移地图</b>。</p>
 
             <div class="map-edit-params" id="randomize-controls" hidden>
+              <!-- 2026-09-24：两种随机化地形由你选（原先写死在域层 ⇒ 点哪个地形都只会出沙漠/平原）。
+                   两侧选同一种 = 把这片整片换成那一种。选项来自 /api/map/overview 的权威词表。 -->
+              <label class="mp-field">地形 A（占比 50%）
+                <select id="randomize-terrain-a">
+                  <option value="">（未选）</option>
+                </select>
+              </label>
+              <label class="mp-field">地形 B（其余格）
+                <select id="randomize-terrain-b">
+                  <option value="">（未选）</option>
+                </select>
+              </label>
               <label class="mp-field">seed（整数）
                 <input id="randomize-seed" type="text" inputmode="numeric" placeholder="必填">
               </label>
               <button type="button" id="randomize-submit">执行随机化</button>
               <p id="randomize-warning" class="status warn" hidden></p>
-              <p id="randomize-status" class="status muted"><b>右键拖动</b>圈选任意选区（可多格、松手后仍显示），再填 seed 执行；<b>左键=平移地图</b>。</p>
+              <p id="randomize-status" class="status muted"><b>右键拖动</b>圈选任意选区（可多格、松手后仍显示），再选两种地形 + 填 seed 执行；<b>左键=平移地图</b>。</p>
             </div>
 
             <!-- 油漆桶（2026-09-24）：右键点一格 ⇒ 该格所在的**整块连通同地形**一次换成调色板选中地形。
