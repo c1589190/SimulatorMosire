@@ -21,6 +21,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.GmAutoApproveGate;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.gm.RecordingToolSource;
@@ -213,6 +214,12 @@ public final class Shell implements AutoCloseable {
   /** 工具调用唯一入口（T6）：**带审批**（非 {@code standard()}），T7 交给 {@code startHttp}。 */
   private final ToolCallAuthorizer toolAuthorizer;
 
+  /**
+   * ★ GM 面（MCP 口）的 authorizer：与 {@link #toolAuthorizer} **同一套权限/资源判定**，唯一差别是审批链上挂的是 {@link
+   * GmAutoApproveGate}（无脑过，2026-09-24 用户裁定）。装配自检与用例的读回口径，不是对外 API。
+   */
+  private final ToolCallAuthorizer gmToolAuthorizer;
+
   /** 已注册模块 codec 的个数（map/social/unit/sd）；由实际注册动作数出来，不是写死的常量。 */
   private final int registeredModuleCount;
 
@@ -272,6 +279,7 @@ public final class Shell implements AutoCloseable {
       ApprovalCoordinator approvalCoordinator,
       ApprovalHttpEndpoint approvalEndpoint,
       ToolCallAuthorizer toolAuthorizer,
+      ToolCallAuthorizer gmToolAuthorizer,
       int registeredModuleCount,
       SdCommandDrain sdCommandDrain,
       List<DecisionChannel> decisionChannels,
@@ -294,6 +302,7 @@ public final class Shell implements AutoCloseable {
     this.approvalCoordinator = approvalCoordinator;
     this.approvalEndpoint = approvalEndpoint;
     this.toolAuthorizer = toolAuthorizer;
+    this.gmToolAuthorizer = gmToolAuthorizer;
     this.registeredModuleCount = registeredModuleCount;
     this.sdCommandDrain = sdCommandDrain;
     this.decisionChannels = List.copyOf(decisionChannels);
@@ -494,8 +503,21 @@ public final class Shell implements AutoCloseable {
             pendingApprovals,
             APPROVAL_TIMEOUT,
             null);
+    // ★★ 2026-09-24 用户裁定：「为啥这种 GM 级命令要额外审批？改成 MCP/GM Agent **无脑过**」。
+    //    ⇒ **GM 面（MCP 口）另起一条链**：只挂 GmAutoApproveGate（直接批准），不再进「待批 → 人点」。
+    //    决策人那条链（上面的 approvalCoordinator）**一个字不改**：出令仍要 GM 在「决策 → 审批」点头。
+    //    ★ 为什么按链分而不是按请求分：两张面的 caller 桶都是 DEFAULT，从 ApprovalRequest 上分不开（见该类注）。
+    ApprovalCoordinator gmApprovalCoordinator =
+        new ApprovalCoordinator(
+            List.of(new GmAutoApproveGate()),
+            List.of(approvalChannel),
+            pendingApprovals,
+            APPROVAL_TIMEOUT,
+            null);
     ToolCallAuthorizer toolAuthorizer =
         ToolCallAuthorizer.of(new ToolExecutionGuard(), approvalCoordinator);
+    ToolCallAuthorizer gmToolAuthorizer =
+        ToolCallAuthorizer.of(new ToolExecutionGuard(), gmApprovalCoordinator);
 
     // 端点先真的绑上端口，再 markUp 通道（可用性认"端口在监听"，spec §3.2 第 4 步）。
     // ★ 恒回环，**不**随 config.bindAddress() 变（AgentLib 无 host 形参；对外面是 GUI 的 /api/approvals 代理）。
@@ -574,7 +596,7 @@ public final class Shell implements AutoCloseable {
               MCP_SERVER_NAME,
               MCP_SERVER_VERSION,
               gmCaller(),
-              toolAuthorizer);
+              gmToolAuthorizer);
       mcpUp = true;
     } finally {
       if (!mcpUp) {
@@ -645,6 +667,7 @@ public final class Shell implements AutoCloseable {
         approvalCoordinator,
         approvalEndpoint,
         toolAuthorizer,
+        gmToolAuthorizer,
         codecs.size(),
         new SdCommandDrain(coreSimos),
         decisionChannels,
@@ -733,8 +756,9 @@ public final class Shell implements AutoCloseable {
    * command.submit}/{@code advance}/{@code fork}）全部不可达，MCP 只能读、不能写 ⇒ 与 S3/S4 的工具面设计矛盾。{@code
    * DEFAULT} 是**满足该工具面全部工具的最小桶**（读工具只要求 {@code GUEST}）。
    *
-   * <p>★ **放行 ≠ 免审批**：敏感工具仍走 {@code ToolGate.Ask}，本壳注入的 authorizer 是带 {@code ApprovalCoordinator}
-   * 的那个（非 {@code standard()}）。
+   * <p>★ **放行 = 免审批（2026-09-24 用户裁定，取代此前的"放行 ≠ 免审批"）**：敏感工具的 {@code ToolGate.Ask} 在 **GM 面**由
+   * {@link GmAutoApproveGate} **直接批准**（不再进「待批 → 人点」）；决策人那条链**不变**， 其 {@code Ask} 仍落 {@code
+   * ConfirmGate}。
    *
    * <p>★ 身份取 {@link AgentIdentity#external()}（{@code external-mcp} 实例 + {@code FULL}
    * 档）：外部客户端不是本进程派生的 Agent，审批面据它认得出"这不是我派的下级"（AgentLib 契约）。注意 AgentLib 的审批 {@code callerKey}
@@ -797,6 +821,11 @@ public final class Shell implements AutoCloseable {
    */
   public ToolCallAuthorizer toolAuthorizer() {
     return toolAuthorizer;
+  }
+
+  /** ★ GM 面（MCP 口）的 authorizer：审批链上挂 {@code GmAutoApproveGate}（无脑过）。 */
+  public ToolCallAuthorizer gmToolAuthorizer() {
+    return gmToolAuthorizer;
   }
 
   /** 查询门面（spec §5.1）：GUI（T8）与工具集（T5）经此读状态、解析地址、取 facet。**只读**——写面仍只有 {@link CoreSimos#submit}。 */

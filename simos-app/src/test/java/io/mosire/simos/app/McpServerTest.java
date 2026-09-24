@@ -8,9 +8,6 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.mosire.agentlib.approval.ApprovalDecision;
-import io.mosire.agentlib.approval.ApprovalRequest;
-import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
@@ -282,42 +279,39 @@ class McpServerTest {
     }
   }
 
-  // ── 写：审批经真 MCP 传输（R3），提交后 initiator 逐字（R4 端到端）───────
+  // ── 写：经真 MCP 传输**无脑过**（2026-09-24 用户裁定），提交后 initiator 逐字（R4 端到端）──
 
+  /**
+   * ★★ 原用例（{@code writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator}）随用户裁定作废： 「为啥这种 GM
+   * 级命令要额外审批？改成 MCP/GM Agent **无脑过**」。
+   *
+   * <p>现在钉的是新口径：真 MCP 客户端调写工具 ⇒ **不进待批、不等任何人**，一次调用直接落 revision；
+   * 且连发两次都如此（不是"批一次管一会儿"）。「要批的那条链」是**决策人链**，判据在 {@code ShellApprovalTest} / {@code
+   * RunDecisionEndToEndTest}。
+   */
   @Test
-  void writeToolBlocksOnApprovalThenCommitsWithConfiguredInitiator() throws Exception {
+  void writeToolGoesThroughWithoutApprovalAndCommitsWithConfiguredInitiator() throws Exception {
     client.initialize();
 
-    // 第一轮：DENY ⇒ APPROVAL_DENIED 且 head 不动（未审批 / 被拒的写不得留下 revision）
-    Future<McpSchema.CallToolResult> denied = startRename("未批准的改名");
-    String deniedId = awaitPendingId(denied);
-    assertThat(deniedId)
-        .as("R3 via MCP：写工具必须先进审批（MCP 客户端调它不得绕过审批闸）——未出现待审批项即为闸门/身份桶失效")
-        .isNotNull();
-    assertThat(shell.pendingApprovals().decide(deniedId, ApprovalDecision.DENY, "test:gui"))
-        .isTrue();
-    McpSchema.CallToolResult deniedResult = denied.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-    assertThat(deniedResult.isError()).isTrue();
-    assertThat(wireText(deniedResult))
-        .startsWith("[mosire:code=" + ToolCallAuthorizer.APPROVAL_DENIED + "]");
-    assertThat(head()).as("被拒的 MCP 写不得留下 revision").isEqualTo(1L);
+    // 第一次：直接提交、revision 前进、待批表里一条都没有
+    Future<McpSchema.CallToolResult> first = startRename("经 MCP 直接改名");
+    McpSchema.CallToolResult firstResult = first.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+    assertThat(firstResult.isError()).as(wireText(firstResult)).isFalse();
+    assertThat(shell.pendingApprovals().pending())
+        .as("★ GM 面（真 MCP 客户端）不得登记待批项 —— 要批的链是决策人链")
+        .isEmpty();
 
-    // 第二轮：APPROVE_ONCE ⇒ 提交、revision 前进、initiator 逐字
-    Future<McpSchema.CallToolResult> approved = startRename("经 MCP 批准后改名");
-    String approvedId = awaitPendingId(approved);
-    assertThat(approvedId).as("放行轮：写工具也应进审批").isNotNull();
-    assertThat(
-            shell.pendingApprovals().decide(approvedId, ApprovalDecision.APPROVE_ONCE, "test:gui"))
-        .isTrue();
+    // 第二次：同样直接过（换新的 head）
+    Future<McpSchema.CallToolResult> approved = startRename("经 MCP 第二次改名");
     McpSchema.CallToolResult approvedResult = approved.get(WAIT.toSeconds(), TimeUnit.SECONDS);
     assertThat(approvedResult.isError()).as(wireText(approvedResult)).isFalse();
     JsonNode body = JSON.readTree(wireText(approvedResult));
     assertThat(body.get("result").asText()).isEqualTo("committed");
     assertThat(body.get("ref").get("branch").asText()).isEqualTo("main");
-    assertThat(body.get("ref").get("revision").asLong()).isEqualTo(2L);
+    assertThat(body.get("ref").get("revision").asLong()).as("第二次 ⇒ (main,3)").isEqualTo(3L);
 
     try (SqliteStore store = SqliteStore.open(dbFile())) {
-      RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
+      RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 3)).orElseThrow();
       assertThat(row.initiator())
           .as("MCP 写命令的 initiator 恰是 ShellConfig.mcpInitiator（R4 端到端）")
           .isEqualTo(TEST_INITIATOR);
@@ -328,8 +322,8 @@ class McpServerTest {
         client.callTool(new McpSchema.CallToolRequest("simos.unit.list", Map.of()));
     JsonNode units = JSON.readTree(wireText(readBack)).get("units");
     assertThat(units.get(0).get("name").asText())
-        .as("放行后的改名经 MCP 读回真的生效（不是「没报错」）")
-        .isEqualTo("经 MCP 批准后改名");
+        .as("直过后的改名经 MCP 读回真的生效（不是「没报错」）")
+        .isEqualTo("经 MCP 第二次改名");
   }
 
   // ────────────────────────────── 夹具 ──────────────────────────────
@@ -344,33 +338,18 @@ class McpServerTest {
     return McpClient.sync(transport).build();
   }
 
-  /** 在虚拟线程上经**真 MCP 传输**提交 {@code simos.command.submit}（改名）；调用阻塞在审批闸上。 */
+  /** 在虚拟线程上经**真 MCP 传输**提交 {@code simos.command.submit}（改名）；GM 面 ⇒ 无脑过、不阻塞。 */
   private Future<McpSchema.CallToolResult> startRename(String newName) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("type", "unit.RenameUnit");
     args.put("payloadJson", "{\"id\":\"u-1\",\"name\":\"" + newName + "\"}");
     args.put("branch", "main");
-    args.put("expectedRevision", 1L);
+    // ★ 每次取**当前** head（本用例连发两次写：第一次 1→2、第二次 2→3）。
+    args.put("expectedRevision", head());
     McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(CommandSubmitTool.NAME, args);
     FutureTask<McpSchema.CallToolResult> task = new FutureTask<>(() -> client.callTool(request));
     Thread.ofVirtual().name("t7-mcp-write").start(task);
     return task;
-  }
-
-  /** 等写工具进审批并返回登记 id；写工具在登记之前就跑完（= 未审批即执行 / 被硬拒）则返回 {@code null}——R3 的禁止形态。 */
-  private String awaitPendingId(Future<McpSchema.CallToolResult> call) throws InterruptedException {
-    long deadline = System.nanoTime() + WAIT.toNanos();
-    while (System.nanoTime() < deadline) {
-      List<ApprovalRequest> pending = shell.pendingApprovals().pending();
-      if (!pending.isEmpty()) {
-        return pending.get(0).id();
-      }
-      if (call.isDone()) {
-        return null;
-      }
-      Thread.sleep(10);
-    }
-    throw new AssertionError("MCP 写工具既未进审批、也未结束（" + WAIT + " 内）——审批链装配异常");
   }
 
   private static String canonicalHex(int q, int r) {

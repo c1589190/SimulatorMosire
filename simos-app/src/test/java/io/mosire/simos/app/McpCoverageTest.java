@@ -8,8 +8,6 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.mosire.agentlib.approval.ApprovalDecision;
-import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -62,9 +60,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -355,7 +350,7 @@ class McpCoverageTest {
     long expectedRevision = 1L;
     for (Map.Entry<String, String> entry : MINIMAL_PAYLOADS.entrySet()) {
       McpSchema.CallToolResult result =
-          submitWithApproval(entry.getKey(), entry.getValue(), expectedRevision);
+          submitViaMcp(entry.getKey(), entry.getValue(), expectedRevision);
       assertThat(result.isError())
           .as("type=%s 必须经 MCP 可提交并生效: %s", entry.getKey(), wireText(result))
           .isFalse();
@@ -393,7 +388,7 @@ class McpCoverageTest {
     // ★ 期望值从 **head 现取**（不写字面量）：上面的命令条数一变，写死的 revision 就会整条链错位，而症状是
     //   "advance 冲突"——看起来像 advance 坏了，其实是这里过期了（本任务实测踩过：加一条命令后这里红）。
     long headBeforeAdvance = shell.coreSimos().head(main()).orElseThrow().value();
-    McpSchema.CallToolResult advance = advanceWithApproval(headBeforeAdvance, 7L, 9L);
+    McpSchema.CallToolResult advance = advanceViaMcp(headBeforeAdvance, 7L, 9L);
     assertThat(advance.isError()).as(wireText(advance)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advance));
     assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
@@ -404,7 +399,7 @@ class McpCoverageTest {
         .isEqualTo(headBeforeAdvance + 1);
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkWithApproval("main", headBeforeAdvance + 1, "mcp-branch");
+    McpSchema.CallToolResult fork = forkViaMcp("main", headBeforeAdvance + 1, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");
@@ -421,8 +416,7 @@ class McpCoverageTest {
     // 6. 反向：坏载荷 ⇒ REJECTED 且不留 revision（按行数计）。
     long revisionsBefore = revisionRowCount();
     long headBefore = shell.coreSimos().head(main()).orElseThrow().value();
-    McpSchema.CallToolResult bad =
-        submitWithApproval("unit.RenameUnit", "{\"id\":\"u-2\"}", headBefore);
+    McpSchema.CallToolResult bad = submitViaMcp("unit.RenameUnit", "{\"id\":\"u-2\"}", headBefore);
     assertThat(bad.isError()).as("缺 name 的载荷必须被拒（不得静默提交）: %s", wireText(bad)).isTrue();
     assertThat(wireText(bad)).startsWith("[mosire:code=REJECTED]");
     JsonNode badBody = JSON.readTree(wireText(bad).substring("[mosire:code=REJECTED]".length()));
@@ -445,61 +439,49 @@ class McpCoverageTest {
     return out;
   }
 
-  private McpSchema.CallToolResult submitWithApproval(
+  private McpSchema.CallToolResult submitViaMcp(
       String type, String payloadJson, long expectedRevision) throws Exception {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("type", type);
     args.put("payloadJson", payloadJson);
     args.put("branch", "main");
     args.put("expectedRevision", expectedRevision);
-    return callWithApproval(CommandSubmitTool.NAME, args);
+    return callViaMcp(CommandSubmitTool.NAME, args);
   }
 
-  private McpSchema.CallToolResult advanceWithApproval(long expectedRevision, long from, long to)
+  private McpSchema.CallToolResult advanceViaMcp(long expectedRevision, long from, long to)
       throws Exception {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("branch", "main");
     args.put("expectedRevision", expectedRevision);
     args.put("from", from);
     args.put("to", to);
-    return callWithApproval("simos.advance", args);
+    return callViaMcp("simos.advance", args);
   }
 
-  private McpSchema.CallToolResult forkWithApproval(
-      String source, long expectedRevision, String target) throws Exception {
+  private McpSchema.CallToolResult forkViaMcp(String source, long expectedRevision, String target)
+      throws Exception {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("source", source);
     args.put("expectedRevision", expectedRevision);
     args.put("newBranch", target);
-    return callWithApproval("simos.fork", args);
+    return callViaMcp("simos.fork", args);
   }
 
-  /** 经真 MCP 传输调用写工具；等它进审批 ⇒ {@code APPROVE_ONCE} ⇒ 取结果。 */
-  private McpSchema.CallToolResult callWithApproval(String toolName, Map<String, Object> args)
+  /**
+   * 经真 MCP 传输调用写工具（**GM 面 ⇒ 无脑过**，2026-09-24 用户裁定）：直接取结果，并**自证没登记待批**。
+   *
+   * <p>★ 原实现是"等它进审批 ⇒ 批一次 ⇒ 取结果"——那条口径已被用户裁定作废；现在这一层保护反过来： 一旦哪条 MCP 写又被挂进待批（链配错 / 有人把
+   * GmAutoApproveGate 摘了），本方法当场红。
+   */
+  private McpSchema.CallToolResult callViaMcp(String toolName, Map<String, Object> args)
       throws Exception {
-    McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(toolName, args);
-    FutureTask<McpSchema.CallToolResult> task = new FutureTask<>(() -> client.callTool(request));
-    Thread.ofVirtual().name("t11-mcp-call").start(task);
-    String id = awaitPendingId(task);
-    assertThat(id).as("%s 必须先进审批", toolName).isNotNull();
-    assertThat(shell.pendingApprovals().decide(id, ApprovalDecision.APPROVE_ONCE, "test:gui"))
-        .isTrue();
-    return task.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-  }
-
-  private String awaitPendingId(Future<McpSchema.CallToolResult> call) throws InterruptedException {
-    long deadline = System.nanoTime() + WAIT.toNanos();
-    while (System.nanoTime() < deadline) {
-      List<ApprovalRequest> pending = shell.pendingApprovals().pending();
-      if (!pending.isEmpty()) {
-        return pending.get(0).id();
-      }
-      if (call.isDone()) {
-        return null;
-      }
-      Thread.sleep(10);
-    }
-    throw new AssertionError("MCP 写工具既未进审批、也未结束（" + WAIT + " 内）——审批链装配异常");
+    McpSchema.CallToolResult result =
+        client.callTool(new McpSchema.CallToolRequest(toolName, args));
+    assertThat(shell.pendingApprovals().pending())
+        .as("%s：GM 面不得登记待批项（MCP/GM Agent 无脑过；要批的那条链是决策人链）", toolName)
+        .isEmpty();
+    return result;
   }
 
   /** 独立 store 读 {@code revisions} 行数（"拒绝不留 revision"的按行断言）。 */

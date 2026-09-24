@@ -8,8 +8,6 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.mosire.agentlib.approval.ApprovalDecision;
-import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.observe.EventTypes;
@@ -64,9 +62,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -175,8 +170,7 @@ class ShellEndToEndTest {
     // ── Agent 路径：经真 MCP 传输提交同一命令（unit.RenameUnit）⇒ revision 3 ──────────────
     String agentName = "Agent改的名";
     McpSchema.CallToolResult agentResult =
-        submitWithApproval(
-            "unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"" + agentName + "\"}", 2L);
+        submitViaMcp("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"" + agentName + "\"}", 2L);
     assertThat(agentResult.isError()).as(wireText(agentResult)).isFalse();
     JsonNode agentBody = JSON.readTree(wireText(agentResult));
     assertThat(agentBody.get("result").asText()).isEqualTo("committed");
@@ -187,7 +181,7 @@ class ShellEndToEndTest {
     assertThat(agentCorrelation).isNotBlank();
 
     // ── 再跑一条真 simos.advance ⇒ revision 4（断言冻结事件链）──────────────────────────
-    McpSchema.CallToolResult advanceResult = advanceWithApproval(3L, 7L, 9L);
+    McpSchema.CallToolResult advanceResult = advanceViaMcp(3L, 7L, 9L);
     assertThat(advanceResult.isError()).as(wireText(advanceResult)).isFalse();
     JsonNode advanceBody = JSON.readTree(wireText(advanceResult));
     assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(4L);
@@ -264,52 +258,40 @@ class ShellEndToEndTest {
 
   // ────────────────────────────── MCP 助手 ──────────────────────────────
 
-  private McpSchema.CallToolResult submitWithApproval(
+  private McpSchema.CallToolResult submitViaMcp(
       String type, String payloadJson, long expectedRevision) throws Exception {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("type", type);
     args.put("payloadJson", payloadJson);
     args.put("branch", "main");
     args.put("expectedRevision", expectedRevision);
-    return callWithApproval(CommandSubmitTool.NAME, args);
+    return callViaMcp(CommandSubmitTool.NAME, args);
   }
 
-  private McpSchema.CallToolResult advanceWithApproval(long expectedRevision, long from, long to)
+  private McpSchema.CallToolResult advanceViaMcp(long expectedRevision, long from, long to)
       throws Exception {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("branch", "main");
     args.put("expectedRevision", expectedRevision);
     args.put("from", from);
     args.put("to", to);
-    return callWithApproval("simos.advance", args);
+    return callViaMcp("simos.advance", args);
   }
 
-  /** 经真 MCP 传输调用写工具；等它进审批 ⇒ {@code APPROVE_ONCE} ⇒ 取结果（R3 的行为面）。 */
-  private McpSchema.CallToolResult callWithApproval(String toolName, Map<String, Object> args)
+  /**
+   * 经真 MCP 传输调用写工具（**GM 面 ⇒ 无脑过**，2026-09-24 用户裁定）：直接取结果，并自证没登记待批。
+   *
+   * <p>★ 取代原"等它进审批 ⇒ 批一次 ⇒ 取结果"（那条口径已作废）。要批的那条链是**决策人链**， 其判据在 {@code ShellApprovalTest} 与 {@code
+   * RunDecisionEndToEndTest}。
+   */
+  private McpSchema.CallToolResult callViaMcp(String toolName, Map<String, Object> args)
       throws Exception {
-    McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(toolName, args);
-    FutureTask<McpSchema.CallToolResult> task = new FutureTask<>(() -> client.callTool(request));
-    Thread.ofVirtual().name("t11-mcp-write").start(task);
-    String id = awaitPendingId(task);
-    assertThat(id).as("写工具必须先进审批（MCP 客户端不得绕过审批闸）").isNotNull();
-    assertThat(shell.pendingApprovals().decide(id, ApprovalDecision.APPROVE_ONCE, "test:gui"))
-        .isTrue();
-    return task.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-  }
-
-  private String awaitPendingId(Future<McpSchema.CallToolResult> call) throws InterruptedException {
-    long deadline = System.nanoTime() + WAIT.toNanos();
-    while (System.nanoTime() < deadline) {
-      List<ApprovalRequest> pending = shell.pendingApprovals().pending();
-      if (!pending.isEmpty()) {
-        return pending.get(0).id();
-      }
-      if (call.isDone()) {
-        return null;
-      }
-      Thread.sleep(10);
-    }
-    throw new AssertionError("MCP 写工具既未进审批、也未结束（" + WAIT + " 内）——审批链装配异常");
+    McpSchema.CallToolResult result =
+        client.callTool(new McpSchema.CallToolRequest(toolName, args));
+    assertThat(shell.pendingApprovals().pending())
+        .as("%s：GM 面不得登记待批项（MCP/GM Agent 无脑过）", toolName)
+        .isEmpty();
+    return result;
   }
 
   private McpSyncClient newClient() {

@@ -248,10 +248,10 @@ class RunDecisionEndToEndTest {
           .hasSize(6);
     }
 
-    // ★★ 审批面：**决策人自己出的令也过了审批门链**（不是"在运行流里偷偷写"）——两处敏感写各答了一次。
-    assertThat(approvals)
-        .as("外层触发 + 内层决策人的 sd.IssueDirective 各进了一次审批")
-        .contains(RunDecisionTool.NAME, "sd.IssueDirective");
+    // ★★ 审批面（2026-09-24 用户裁定后的口径）：**决策人自己出的令仍要审批**（不是"在运行流里偷偷写"），
+    //   而**外层触发（GM 面）不再审批**（无脑过）——两条链的区别在这一行里看得见。
+    assertThat(approvals).as("内层决策人的 sd.IssueDirective 进了审批").contains("sd.IssueDirective");
+    assertThat(approvals).as("外层 GM 触发不进审批（无脑过）").doesNotContain(RunDecisionTool.NAME);
   }
 
   // ── 判据 3：跨 tick 会话沿用 ────────────────────────────────────────────────────
@@ -392,8 +392,9 @@ class RunDecisionEndToEndTest {
    * 经真 MCP 传输调用写工具，并**把这一轮里出现的每一条审批都答成"批一次"** ⇒ 取结果。
    *
    * <p>★★ **为什么要循环答，而不是只答一条**：一轮里**不止一条**敏感写——外层是触发本身（{@code sd.RunDecision}），
-   * 内层还有决策人**自己**出的令（{@code sd.IssueDirective}，经同一条 {@code ToolCallAuthorizer}
-   * 走审批门链）。只答第一条的写法会**卡死在内层那一条上**（T11C 首次运行实测：20 秒超时，正是这条）。 这本身是**要如实记下的行为**：决策人的写**不绕过审批**。
+   * 内层还有决策人**自己**出的令（{@code sd.IssueDirective}）——它走的是**决策人链**（仍要人批，2026-09-24 用户裁定 只免了 GM
+   * 面）。故本助手仍循环应答内层的审批；只答第一条的写法会**卡死在内层那一条上**（T11C 首次运行实测： 20 秒超时，正是这条）。**外层触发（GM 面）不再进审批** ⇒
+   * 本助手的循环对它是空转，断言见方法末。
    *
    * @return 工具结果（{@link #approvals} 里留着本轮答过哪些审批——用例据此断言"内层写也进了审批"）
    */
@@ -419,7 +420,9 @@ class RunDecisionEndToEndTest {
       }
       Thread.sleep(10);
     }
-    assertThat(approvals).as("敏感写必须先进审批（一条都没进 ⇒ 审批链装配异常）").isNotEmpty();
+    // ★★ 2026-09-24 用户裁定「MCP/GM Agent 无脑过」：**外层触发（GM 面）不再进审批**；
+    //   内层决策人自己出的令仍走决策人链 ⇒ 该进还得进（下面 trace 用例正面断言它进了）。
+    assertThat(approvals).as("GM 面的外层触发不得进审批（进了 = 两条链配反了）").doesNotContain(RunDecisionTool.NAME);
     return task.get(WAIT.toSeconds(), TimeUnit.SECONDS);
   }
 

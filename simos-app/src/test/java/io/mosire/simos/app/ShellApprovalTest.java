@@ -73,8 +73,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 审批装配验收（M5 T6，spec §7.3/S5/R3）：写工具**未审批不得执行**，审批放行才提交；5711 的 {@code /api/approvals} 是 AgentLib
- * 端点的**透传代理**（语义不复制）。
+ * 审批装配验收（M5 T6，spec §7.3/S5/R3）。
+ *
+ * <p>★★ **2026-09-24 用户裁定（本类随之重写，取代原"写工具未审批不得执行"的单链口径）**： 「为啥这种 GM 级命令要额外审批？改成 MCP/GM Agent
+ * **无脑过**」。 ⇒ 装配改成**两条链**：
+ *
+ * <ul>
+ *   <li><b>GM 面</b>（{@code AgentToMcpServer} + {@code Shell#gmToolAuthorizer()}）：敏感工具的 {@code
+ *       ToolGate.Ask} 由 {@link io.mosire.simos.app.access.GmAutoApproveGate} **直接批准** ——
+ *       不进待批、不需要人点；
+ *   <li><b>决策人链</b>（{@code Shell#toolAuthorizer()}，由 {@code DecisionCallerFactory} 注入）：{@code Ask}
+ *       照旧落 {@code ConfirmGate} ⇒ 出令仍要人在「决策 → 审批」点头（那条链的判据在 {@code
+ *       DecisionMakerScopeEndToEndTest}/{@code RunDecisionEndToEndTest}，本类不重复）。
+ * </ul>
+ *
+ * 本类用**同一个工具 + 同一个 context、只换 authorizer** 把这条差别钉死：换链即换行为 ⇒ "按链分而不是按请求分" 不是措辞（两张面的 caller 桶都是
+ * {@code DEFAULT}，从请求上分不开）。
+ *
+ * <p>5711 的 {@code /api/approvals} 仍是 AgentLib 端点的**透传代理**（语义不复制）——那条用**合成待批项**验，
+ * 与"谁会被门拦"解耦（代理的题目是透传，不是闸门）。
  *
  * <p>★ **{@code APPROVE_SESSION} 的收窄（本用例的实测口径）**：审批请求的 {@code callerKey} 取自 {@code
  * ToolContext.caller().name()}，即 {@link AccessToken} 的**桶名**（{@code GUEST/DEFAULT/SYSTEM}），**不是**
@@ -139,37 +156,50 @@ class ShellApprovalTest {
   // ── R3：未审批的写不得执行；放行后提交 ────────────────────────────────
 
   @Test
-  void unapprovedWriteIsDeniedAndApprovedWriteCommits() throws Exception {
-    // 第一轮：DENY ⇒ APPROVAL_DENIED 且 head 不动（未审批的写不得产生 revision）
-    Future<ToolResult> denied = startRename("未批准的改名");
-    String deniedId = awaitPendingId(denied);
-    assertThat(deniedId).as("R3：写工具必须先进审批（不得未经审批就执行）——未出现待审批项即为闸门失效").isNotNull();
-    assertThat(shell.pendingApprovals().decide(deniedId, ApprovalDecision.DENY, "test:gui"))
-        .isTrue();
-    ToolResult deniedResult = denied.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-    assertThat(deniedResult.success()).isFalse();
-    assertThat(deniedResult.code()).isEqualTo(ToolCallAuthorizer.APPROVAL_DENIED);
-    assertThat(head()).as("R3：未审批 / 被拒的写调用不得留下 revision").isEqualTo(1L);
+  void gmChainSkipsApprovalWhileDecisionChainStillAsks() throws Exception {
+    // ★ 两轮对照：**同一个工具（simos.command.submit）+ 同一个 context（gmCaller 形态），只换 authorizer**。
+    //   GM 面 ⇒ 直接提交（无待批项）；决策人链 ⇒ 待批、由人放行后才提交。
 
-    // 第二轮：APPROVE_ONCE ⇒ 写提交、revision 前进
-    Future<ToolResult> approved = startRename("批准后的第一连");
-    String approvedId = awaitPendingId(approved);
-    assertThat(approvedId).as("放行轮：写工具也应进审批").isNotNull();
-    assertThat(
-            shell.pendingApprovals().decide(approvedId, ApprovalDecision.APPROVE_ONCE, "test:gui"))
-        .isTrue();
-    ToolResult approvedResult = approved.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-    assertThat(approvedResult.success()).as(approvedResult.message()).isTrue();
-    assertThat(head()).as("放行后 revision 前进到 2").isEqualTo(2L);
-
+    // ── 第一轮：GM 面（MCP 口的链）——无脑过 ───────────────────────────────
+    Future<ToolResult> gmCall = startRename(shell.gmToolAuthorizer(), "GM 面直接改名");
+    ToolResult gmResult = gmCall.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+    assertThat(gmResult.success()).as(gmResult.message()).isTrue();
+    assertThat(shell.pendingApprovals().pending()).as("★ GM 面不得留下待批项（无脑过的判据：既不阻塞、也不登记）").isEmpty();
+    assertThat(head()).as("GM 面的写直接前进到 2").isEqualTo(2L);
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
       assertThat(row.initiator()).as("MCP 写命令的 initiator 恰是配置值").isEqualTo(TEST_INITIATOR);
       assertThat(row.commandType()).isEqualTo("unit.RenameUnit");
     }
     assertThat(unitName(shell.coreSimos().replay(ref("main", 2))))
-        .as("放行后的改名真的生效（不是「没报错」）")
-        .isEqualTo("批准后的第一连");
+        .as("GM 面的改名真的生效（不是「没报错」）")
+        .isEqualTo("GM 面直接改名");
+
+    // ── 第二轮：决策人链——仍要人批（同工具、同 context、只换链）──────────────
+    Future<ToolResult> decisionCall = startRename(shell.toolAuthorizer(), "决策人链要批的改名");
+    String pendingId = awaitPendingId(decisionCall);
+    assertThat(pendingId).as("决策人链上同类敏感写**必须**进审批（否则两条链的差别就没了）").isNotNull();
+    assertThat(head()).as("待批期间 head 不动").isEqualTo(2L);
+    assertThat(
+            shell.pendingApprovals().decide(pendingId, ApprovalDecision.APPROVE_ONCE, "test:gui"))
+        .isTrue();
+    ToolResult decisionResult = decisionCall.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+    assertThat(decisionResult.success()).as(decisionResult.message()).isTrue();
+    assertThat(head()).as("放行后 revision 前进到 3").isEqualTo(3L);
+    assertThat(unitName(shell.coreSimos().replay(ref("main", 3))))
+        .as("放行后的改名真的生效")
+        .isEqualTo("决策人链要批的改名");
+  }
+
+  /** ★ 反向判别：GM 面的链**不会**因为"有人在待批"而恢复成要批 —— 连跑三次仍然零待批、次次直接提交。 */
+  @Test
+  void gmChainStaysApprovalFreeOnRepeatedCalls() throws Exception {
+    for (int i = 0; i < 3; i++) {
+      Future<ToolResult> call = startRename(shell.gmToolAuthorizer(), "第" + (i + 1) + "次直过");
+      assertThat(call.get(WAIT.toSeconds(), TimeUnit.SECONDS).success()).isTrue();
+      assertThat(shell.pendingApprovals().pending()).as("第 %d 次调用也不得登记待批", i + 1).isEmpty();
+    }
+    assertThat(head()).as("三次都真的落了 revision").isEqualTo(4L);
   }
 
   // ── 代理：透传 AgentLib 端点的 200/409/404/405 ────────────────────────
@@ -178,8 +208,23 @@ class ShellApprovalTest {
   void approvalProxyForwardsListDecisionConflictAndUnknown() throws Exception {
     assertThat(shell.boundApprovalPort()).as("审批端点真的绑定在监听（spec §3.2 第 4 步）").isPositive();
 
-    Future<ToolResult> call = startRename("代理批准的第一连");
-    String id = awaitPendingId(call);
+    // ★ 合成一条待批项（不经工具链）：代理的题目是**透传语义**，不该依赖"哪条链会拦"。
+    String id =
+        shell
+            .pendingApprovals()
+            .submit(
+                new ApprovalRequest(
+                    "ap-proxy-synthetic",
+                    CommandSubmitTool.NAME,
+                    CommandSubmitTool.NAME,
+                    "代理用例的合成待批项",
+                    "sha256:synthetic",
+                    System.currentTimeMillis(),
+                    System.currentTimeMillis() + WAIT.toMillis(),
+                    AccessToken.DEFAULT.name(),
+                    "agent:proxy-test",
+                    io.mosire.agentlib.approval.AskKind.SENSITIVE,
+                    null));
     assertThat(id).isNotNull();
 
     JsonNode pending = getJson(shell.boundGuiPort(), "/api/approvals").get("pending");
@@ -227,9 +272,7 @@ class ShellApprovalTest {
         .as("Allow 头原样透传")
         .isEqualTo("POST");
 
-    ToolResult result = call.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-    assertThat(result.success()).as(result.message()).isTrue();
-    assertThat(head()).isEqualTo(2L);
+    assertThat(head()).as("代理用例不落任何 revision（它只动待批登记表）").isEqualTo(1L);
   }
 
   @Test
@@ -256,12 +299,13 @@ class ShellApprovalTest {
    * <p>调用者桶 = {@link AccessToken#DEFAULT}（写工具 spec 要求该级别），身份 = 外部 MCP 面（{@link
    * AgentIdentity#external()}）；权限集全放行（含 sensitive）以穿过硬拒闸，把判定交给审批闸。
    */
-  private Future<ToolResult> startRename(String newName) {
+  private Future<ToolResult> startRename(ToolCallAuthorizer authorizer, String newName) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("type", "unit.RenameUnit");
     args.put("payloadJson", "{\"id\":\"u-1\",\"name\":\"" + newName + "\"}");
     args.put("branch", "main");
-    args.put("expectedRevision", 1L);
+    // ★ 每次取**当前** head：本类的用例会连发多条写（GM 面直过 / 决策人链放行），写死 1 只对第一条成立。
+    args.put("expectedRevision", head());
     ToolContext context =
         new ToolContext(
             AccessToken.DEFAULT,
@@ -271,10 +315,7 @@ class ShellApprovalTest {
             AgentIdentity.external());
     FutureTask<ToolResult> task =
         new FutureTask<>(
-            () ->
-                shell
-                    .toolAuthorizer()
-                    .execute(shell.toolRegistry(), CommandSubmitTool.NAME, context));
+            () -> authorizer.execute(shell.toolRegistry(), CommandSubmitTool.NAME, context));
     Thread.ofVirtual().name("t6-write-call").start(task);
     return task;
   }

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
@@ -90,7 +89,8 @@ import org.junit.jupiter.api.io.TempDir;
  * <ul>
  *   <li>① 用户经 GUI（{@code POST /api/sd/start-decision}，{@code initiator="player:gui"}）⇒ **直接落
  *       revision**，不经审批；
- *   <li>② GM Agent 经 GM MCP 口（真 {@link ToolCallAuthorizer} + 审批链）⇒ **未批不落 revision**、批准后 +1；
+ *   <li>② GM Agent 经 GM MCP 口（真 {@link ToolCallAuthorizer}）⇒ **直接生效、不进审批**（★ 2026-09-24 用户裁定
+ *       「MCP/GM Agent 无脑过」；原口径"未批不落 revision、批准后 +1"已作废，见 {@code GmAutoApproveGate}）；
  *   <li>③ 决策人 Agent 口**没有**该工具（它不参与"开始决策"）。
  * </ul>
  *
@@ -199,37 +199,34 @@ class StartDecisionEndToEndTest {
     assertThat(head()).as("拒绝是原子的：head 不动").isEqualTo(1L);
   }
 
-  // ── ② GM Agent 路径：过审批门链 ────────────────────────────────────────
+  // ── ② GM Agent 路径：**无脑过**（2026-09-24 用户裁定，取代"过审批门链"）──────────
 
+  /**
+   * ★★ 原用例（{@code gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval}）随用户裁定作废： 「为啥这种 GM
+   * 级命令要额外审批？改成 MCP/GM Agent **无脑过**」。
+   *
+   * <p>现在钉的是**新口径**：GM 口的写工具**不进待批、不需人点**，一次调用直接落 revision；且连发两次也一样
+   * （不靠"有人批过"这种一次性状态）。决策人那条链**仍要批**，判据在 {@code ShellApprovalTest}（本类不重复）。
+   */
   @Test
-  void gmAgentPathIsDeniedWithoutApprovalAndCommitsAfterApproval() throws Exception {
-    // 第一轮：DENY ⇒ APPROVAL_DENIED 且 head 不动（未审批的写不得产生 revision）。
-    Future<ToolResult> denied = startDecisionViaGmPort();
-    String deniedId = awaitPendingId(denied);
-    assertThat(deniedId).as("C18②：GM 口的写工具必须先进审批（未出现待审批项 = 闸门失效）").isNotNull();
-    assertThat(shell.pendingApprovals().decide(deniedId, ApprovalDecision.DENY, "test:gui"))
-        .isTrue();
-    ToolResult deniedResult = denied.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-    assertThat(deniedResult.success()).isFalse();
-    assertThat(deniedResult.code()).isEqualTo(ToolCallAuthorizer.APPROVAL_DENIED);
-    assertThat(head()).as("未批准 ⇒ 不落 revision").isEqualTo(1L);
-
-    // 第二轮：APPROVE_ONCE ⇒ 提交 +1。
-    Future<ToolResult> approved = startDecisionViaGmPort();
-    String approvedId = awaitPendingId(approved);
-    assertThat(approvedId).as("放行轮：写工具也应进审批").isNotNull();
-    assertThat(
-            shell.pendingApprovals().decide(approvedId, ApprovalDecision.APPROVE_ONCE, "test:gui"))
-        .isTrue();
-    ToolResult approvedResult = approved.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-    assertThat(approvedResult.success()).as(approvedResult.message()).isTrue();
-    assertThat(head()).as("C18②：批准后 revision +1").isEqualTo(2L);
+  void gmAgentPathCommitsDirectlyWithoutApproval() throws Exception {
+    Future<ToolResult> first = startDecisionViaGmPort(1L);
+    ToolResult firstResult = first.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+    assertThat(firstResult.success()).as(firstResult.message()).isTrue();
+    assertThat(shell.pendingApprovals().pending()).as("★ GM 口不得留下待批项（无脑过的判据）").isEmpty();
+    assertThat(head()).as("GM 口一次调用直接前进到 2").isEqualTo(2L);
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
       assertThat(row.initiator()).as("GM MCP 写命令的 initiator 恰是配置值").isEqualTo(TEST_INITIATOR);
       assertThat(row.commandType()).isEqualTo("sd.StartDecision");
     }
     assertThat(sdState(2).info().get("sd:decision.dm-t10")).hasSize(1);
+
+    // 再发一次：同样直接过（不是"批一次管一会儿"），只是这次要拿新的 head。
+    Future<ToolResult> second = startDecisionViaGmPort(2L);
+    assertThat(second.get(WAIT.toSeconds(), TimeUnit.SECONDS).success()).isTrue();
+    assertThat(shell.pendingApprovals().pending()).as("第二次也不得登记待批").isEmpty();
+    assertThat(head()).isEqualTo(3L);
   }
 
   // ── ③ 决策人人口：没有该工具 ──────────────────────────────────────────
@@ -277,15 +274,16 @@ class StartDecisionEndToEndTest {
   // ────────────────────────────── 夹具 ──────────────────────────────
 
   /**
-   * 在虚拟线程上经**真 {@code toolAuthorizer}** 执行 GM MCP 口的 {@code sd.StartDecision}（走审批门链）。
+   * 在虚拟线程上经**GM 面**的 {@code gmToolAuthorizer} 执行 GM MCP 口的 {@code sd.StartDecision}（无脑过）。
    *
-   * <p>调用者桶 = {@link AccessToken#DEFAULT}（写工具 spec 要求该级别）、身份 = 外部 MCP 面；权限集全放行以穿过硬拒闸，把判定交给审批闸。
+   * <p>调用者桶 = {@link AccessToken#DEFAULT}（写工具 spec 要求该级别）、身份 = 外部 MCP 面；权限集全放行以穿过硬拒闸，
+   * 判定落在**审批链**上——而 GM 面那条链是 {@code GmAutoApproveGate}（直接批准）。
    */
-  private Future<ToolResult> startDecisionViaGmPort() {
+  private Future<ToolResult> startDecisionViaGmPort(long expectedRevision) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("payloadJson", "{\"decisionMakerId\":\"dm-t10\",\"note\":\"GM 发起\"}");
     args.put("branch", "main");
-    args.put("expectedRevision", 1L);
+    args.put("expectedRevision", expectedRevision);
     ToolContext context =
         new ToolContext(
             AccessToken.DEFAULT,
@@ -297,7 +295,7 @@ class StartDecisionEndToEndTest {
         new FutureTask<>(
             () ->
                 shell
-                    .toolAuthorizer()
+                    .gmToolAuthorizer()
                     .execute(shell.toolRegistry(), StartDecisionTool.NAME, context));
     Thread.ofVirtual().name("t10-write-call").start(task);
     return task;

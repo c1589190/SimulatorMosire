@@ -203,7 +203,7 @@ class ResetConversationEndToEndTest {
         .as("第 1+2 轮共 5 条（身份 + 第 1 轮的 3 条 + 第 2 轮的收口）")
         .hasSize(5);
 
-    // ── 重置：GM 经真 MCP 口发命令（走真审批链） ──
+    // ── 重置：GM 经真 MCP 口发命令（2026-09-24 用户裁定后：**无脑过**，不进审批） ──
     long beforeReset = head();
     JsonNode reset =
         body(callWithApproval(ResetDecisionMakerConversationTool.NAME, resetArgs(head())));
@@ -387,7 +387,11 @@ class ResetConversationEndToEndTest {
       }
       Thread.sleep(10);
     }
-    assertThat(approvals).as("敏感写必须先进审批（一条都没进 ⇒ 审批链装配异常）").isNotEmpty();
+    // ★★ 2026-09-24 用户裁定「MCP/GM Agent 无脑过」：GM 面的两条（外层触发 sd.RunDecision / 重置
+    //   sd.ResetDecisionMakerConversation）**都不该进审批**；进来的只可能是决策人自己出的令（本类的桩不出令）。
+    assertThat(approvals)
+        .as("GM 面的工具不得进审批（进了 = 两条链配反了）")
+        .doesNotContain(RunDecisionTool.NAME, ResetDecisionMakerConversationTool.NAME);
     return task.get(WAIT.toSeconds(), TimeUnit.SECONDS);
   }
 
