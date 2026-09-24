@@ -50,7 +50,9 @@ const JS_DIR = __dirname;
 //     9 组边界 + 随机化面板两个地形下拉与"载荷两侧只能来自 guard"的静态扫描）。
 //   2026-09-24 区域名按屏幕可见范围起 270 → 271（webui-fix2.test.cjs 新增 1 条：regionNamePlan 的视口裁剪
 //     与"x/y 是世界坐标"判别；同一条静态用例改指新接线 —— 绘制循环里不得再出现全表布局调用）。
-const MIN_TESTS = 271;
+//   2026-09-24 编制正向化起 271 → 275（unit-tree.test.cjs：根在顶的行为级用例 2 条 + 竖直可拖/两轴独立/
+//     preferredTreePan 3 条，其中旧的"小内容钉死居中"1 条按新口径重写）。
+const MIN_TESTS = 275;
 
 function discoverTests() {
   return fs

@@ -36,6 +36,8 @@
   //   `.tree-canvas` 用 `transform: translate(pan.x, pan.y)` 平移，可鼠标四面八方拖动。
   var treePan = { x: 0, y: 0 };
   var treeCanvas = null; // 当前内容层（render 时重建）
+  // ★ 2026-09-24：首屏是否已摆过位置（首屏/复位用 preferredTreePan；之后尊重用户拖到哪就是哪）。
+  var treePanPlaced = false;
   var panState = null; // {pointerId,startX,startY,originX,originY,active}：拖动平移状态
   var PAN_DRAG_THRESHOLD = 3; // 屏幕 px：超过才认定为"拖动"（否则保留节点点击）
 
@@ -240,20 +242,41 @@
    * <p>内容放在 `pan` 处、占据 `[pan, pan + content]`；视口是 `[0, viewport]`。
    * - `content > viewport` ⇒ 允许范围 `[viewport − content, 0]`（负数区间）：两端分别对应
    *   "内容末尾贴视口末尾"与"内容开头贴视口开头"，中间任意位置都能看到内容的一部分。
-   * - `content <= viewport`（内容不比视口大）⇒ **居中**：返回唯一值 `(viewport − content) / 2`
-   *   （此时**忽略**传入的 pan ⇒ 拖不动，也不会露出"内容外的空白再被拽走"）。这是本函数写明的
-   *   "内容小于视口"口径。
+   * - `content <= viewport`（内容不比视口大）⇒ 允许范围 `[0, viewport − content]`：内容**始终完整可见**，
+   *   但**可以在视口内自由摆放**（贴左/贴上到贴右/贴下之间任意位置）。
+   *   ★ 2026-09-24 用户报障「查看编制还是只能左右拖动」：原口径是"内容小时**钉死居中**、拖不动"，
+   *   而树在竖直方向通常比视口矮（层数少）⇒ 竖直方向永远拖不动。现在两轴各自可按上式移动
+   *   （默认位置仍由 {@link #preferredTreePan} 给出：小则居中、大则贴左上）。
    * - 非有限 pan 按 0 处理；`content`/`viewport` 非有限按 0。
    */
   function clampPanAxis(value, content, viewport) {
     var cv = Math.max(0, finiteOr(content, 0));
     var vp = Math.max(0, finiteOr(viewport, 0));
+    var n = finiteOr(value, 0);
     if (cv <= vp) {
-      return (vp - cv) / 2; // 内容不比视口大 ⇒ 居中（唯一允许值）
+      var hi = vp - cv; // ≥ 0：内容贴右/贴下时刚好完整可见
+      return n < 0 ? 0 : n > hi ? hi : n;
     }
     var lo = vp - cv; // < 0
-    var n = finiteOr(value, 0);
     return n < lo ? lo : n > 0 ? 0 : n;
+  }
+
+  /**
+   * **首选**平移量（首屏摆放与「复位视图」共用）：内容比视口小的那一轴居中，否则贴起始边（0）。
+   * **纯函数**。原先是 `clampPanAxis` 对"内容小"返回唯一值（居中）⇒ 复位与首屏都落在居中；
+   * 现在夹取放开了自由度，居中这件事挪到这里显式表达（否则默认会变成贴左上）。
+   */
+  function preferredTreePan(contentSize, viewportSize) {
+    var c = contentSize || {};
+    var v = viewportSize || {};
+    var cw = Math.max(0, finiteOr(c.width, 0));
+    var ch = Math.max(0, finiteOr(c.height, 0));
+    var vw = Math.max(0, finiteOr(v.width, 0));
+    var vh = Math.max(0, finiteOr(v.height, 0));
+    return {
+      x: cw <= vw ? (vw - cw) / 2 : 0,
+      y: ch <= vh ? (vh - ch) / 2 : 0,
+    };
   }
 
   /**
@@ -334,19 +357,24 @@
     return box;
   }
 
-  /** 一个子树的倒置布局：**子行在上、节点在下**（根在下、下级向上生长）。 */
+  /**
+   * 一个子树的**自上而下**布局：**节点在上、子行在下**（根在顶、下级向下生长）。
+   *
+   * <p>★ 2026-09-24 用户报障：「理论上应该在最顶部的根单位错误显示在了子单位的下面（只测了两层）」——
+   * 原实现是**倒树**（子行在前、节点在后 ⇒ 根落在最下面）。用户口径为准：根在顶。
+   */
   function subtree(node) {
     var wrap = app.el("div", { class: "tree-subtree" });
+    wrap.appendChild(nodeBox(node));
+    if (node.branch) {
+      wrap.appendChild(branchDetail(node));
+    }
     if (node.children.length) {
       var row = app.el("div", { class: "tree-children" });
       node.children.forEach(function (child) {
         row.appendChild(subtree(child));
       });
       wrap.appendChild(row);
-    }
-    wrap.appendChild(nodeBox(node));
-    if (node.branch) {
-      wrap.appendChild(branchDetail(node));
     }
     return wrap;
   }
@@ -427,9 +455,9 @@
     applyTreePan();
   }
 
-  /** 复位平移：即 `{x:0,y:0}` 经 clampTreePan（内容大于视口 ⇒ 左上角对齐；小于 ⇒ 居中）。 */
+  /** 复位平移：回到**首选**位置（内容比视口小的轴居中、否则贴起始边）——夹取已放开自由度，居中在此显式表达。 */
   function resetTreePan() {
-    setTreePan({ x: 0, y: 0 });
+    setTreePan(preferredTreePan(measureTreeContent(), measureTreeViewport()));
   }
 
   /**
@@ -508,7 +536,13 @@
     treeCanvas.appendChild(forest);
     mount.appendChild(treeCanvas);
     // 重新渲染后内容尺寸可能变了 ⇒ 用**同一个纯函数**重夹，绝不留下越界的 pan。
-    reclampTreePan();
+    // ★ 首屏（或复位后首次）摆到首选位置；之后**尊重用户拖到哪就是哪**（不再每次渲染都居中）。
+    if (!treePanPlaced) {
+      resetTreePan();
+      treePanPlaced = true;
+    } else {
+      reclampTreePan();
+    }
     highlightSelection();
   }
 
@@ -848,6 +882,7 @@
     rootIdOf: rootIdOf,
     clampPanelPosition: clampPanelPosition,
     clampTreePan: clampTreePan,
+    preferredTreePan: preferredTreePan,
     render: render,
     refresh: refresh,
     focusUnit: focusUnit,

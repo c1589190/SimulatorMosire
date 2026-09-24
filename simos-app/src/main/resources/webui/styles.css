@@ -697,13 +697,15 @@ body.workbench-page .col-right {
   position: relative;
   display: flex;
   flex-direction: row;
-  align-items: flex-end;
+  /* ★ 2026-09-24：树改成**正向**（根在顶、子在下）⇒ 兄弟子树顶端对齐在横梁之下
+     （原倒树用 flex-end 让子树底端对齐）。 */
+  align-items: flex-start;
   justify-content: center;
   gap: 10px;
   padding-top: 10px;
 }
 
-/* 兄弟之间的横梁 + 每个子树向上的短竖线（倒树的连接线）。 */
+/* 兄弟之间的横梁 + 每个子树向下的短竖线（正向树的连接线：横梁在子行上沿、竖线接进每个子节点）。 */
 .tree-children::before {
   content: "";
   position: absolute;

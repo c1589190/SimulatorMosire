@@ -5,6 +5,8 @@
 //   （unitTree.js，自由视图平移量夹取）+ 复位控件接线 / 无残留 scrollIntoView 的静态断言。
 //   2026-09-24 可用性修复追加：markerScreenVisible / centerViewOn（hexgeom.js，选中单位时"该不该居中、
 //   居到哪"）+ UNIT_VISIBLE_MIN_SCALE 的可见性依据 + 定位按钮接线 / 选择收口调用 ensureUnitVisible 的静态断言。
+//   ★ 2026-09-24 编制正向化追加：根在顶（subtree 的 DOM 序，行为级：注入假 SimosApp 后真跑 render 检查结构）
+//   + 竖直可拖（clampPanAxis 对"内容比视口小"的那一轴从"钉死居中"改成"视口内自由摆放"）+ preferredTreePan。
 "use strict";
 
 const { test } = require("node:test");
@@ -20,6 +22,7 @@ const {
   rootIdOf,
   clampPanelPosition,
   clampTreePan,
+  preferredTreePan,
 } = loadWebui("unitTree.js").SimosUnitTree;
 const {
   stackOffset,
@@ -340,6 +343,148 @@ test("markerGroups-empty-and-null-input-return-no-markers", () => {
 // ── 2026-09-24 修正 2：自由视图平移量夹取（unitTree.js 的 clampTreePan）────────────
 // 内容比视口大 ⇒ 夹在 [viewport−content, 0]；内容不比视口大 ⇒ **居中**（唯一允许值，拖不走）。
 
+// ── 2026-09-24 编制正向化：根在顶（**行为级**：注入假宿主后真跑 render 检查 DOM 结构）──────
+
+/** 最小 DOM 假件：够 render() 用（el/appendChild/style/classList/客户端尺寸）。 */
+function fakeNode(tag, attrs) {
+  return {
+    tag: tag,
+    attrs: attrs || {},
+    children: [],
+    style: {},
+    hidden: false,
+    textContent: "",
+    offsetWidth: 0,
+    offsetHeight: 0,
+    classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    },
+    addEventListener() {},
+    setAttribute() {},
+    querySelectorAll() {
+      return [];
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, right: 0, bottom: 0 };
+    },
+  };
+}
+
+/** 用假 SimosApp 装载 unitTree.js（顶层 `var app = window.SimosApp` ⇒ 必须在装载前注入）。 */
+function loadTreeWithFakeHost() {
+  const mount = fakeNode("div", {});
+  mount.clientWidth = 400;
+  mount.clientHeight = 300;
+  const app = {
+    el: function (tag, attrs, children) {
+      const node = fakeNode(tag, attrs);
+      (children || []).forEach(function (child) {
+        node.appendChild(child);
+      });
+      return node;
+    },
+    clear: function (node) {
+      node.children = [];
+      node.textContent = "";
+    },
+    byId: function (id) {
+      return id === "unit-tree-mount" ? mount : null;
+    },
+    getState: function () {
+      return { selection: null };
+    },
+    setSelection: function () {},
+    text: function (value) {
+      return value;
+    },
+    target: function () {
+      return { branch: "main", revision: null };
+    },
+  };
+  const tree = loadWebui("unitTree.js", { SimosApp: app, SimosApi: {} }).SimosUnitTree;
+  return { tree: tree, mount: mount };
+}
+
+/** 取一个子树包装里"根节点方块"与"子行"的下标（找不到 ⇒ -1）。 */
+function nodeIndexOf(wrap) {
+  return wrap.children.findIndex(function (child) {
+    return String(child.attrs.class || "").indexOf("tree-node") >= 0;
+  });
+}
+
+function childrenRowIndexOf(wrap) {
+  return wrap.children.findIndex(function (child) {
+    return String(child.attrs.class || "").indexOf("tree-children") >= 0;
+  });
+}
+
+test("subtree-puts-the-root-above-its-children", () => {
+  // ★ 用户原话：「理论上应该在最顶部的根单位错误显示在了子单位的下面（只测试了两层，鬼知道第三层会发生什么）」
+  //   ⇒ 两层 + 三层各验一遍；判别力：倒树实现下 nodeIndexOf 会 > childrenRowIndexOf（甚至子行在第 0 位）。
+  const { tree, mount } = loadTreeWithFakeHost();
+  tree.render([
+    { id: "root", name: "根", parent: null },
+    { id: "a", name: "甲", parent: "root" },
+    { id: "b", name: "乙", parent: "root" },
+  ]);
+
+  const wrap = mount.children[0].children[0].children[0]; // mount > tree-canvas > tree-forest > 该军队的 subtree
+  const nodeAt = nodeIndexOf(wrap);
+  const rowAt = childrenRowIndexOf(wrap);
+  assert.equal(nodeAt, 0, "根的单位方块必须在最上面（第一个孩子）");
+  assert.equal(wrap.children[0].attrs["data-unit-id"], "root", "第一位就是根单位");
+  assert.ok(rowAt > nodeAt, "子行必须排在根之后（倒树实现下这条当场红）");
+
+  // 两层：子行里每个子树的**第一位同样是它自己**（同一口径递归成立）。
+  const row = wrap.children[rowAt];
+  assert.deepEqual(
+    row.children.map(function (child) {
+      return child.children[0].attrs["data-unit-id"];
+    }),
+    ["a", "b"],
+    "每个子树的第一个孩子是它自己的单位方块"
+  );
+});
+
+test("subtree-keeps-root-on-top-through-three-levels", () => {
+  // 三层链：root → a → a1。逐层下钻，每一层都必须是"节点在前、子行在后"。
+  const { tree, mount } = loadTreeWithFakeHost();
+  tree.render([
+    { id: "root", name: "根", parent: null },
+    { id: "a", name: "甲", parent: "root" },
+    { id: "a1", name: "甲一", parent: "a" },
+  ]);
+
+  let wrap = mount.children[0].children[0].children[0];
+  const seen = [];
+  for (let depth = 0; depth < 3; depth++) {
+    const nodeAt = nodeIndexOf(wrap);
+    const rowAt = childrenRowIndexOf(wrap);
+    const node = wrap.children[nodeAt];
+    seen.push({ id: node.attrs["data-unit-id"], depth: node.attrs["data-depth"], nodeAt: nodeAt, rowAt: rowAt });
+    if (rowAt < 0) {
+      break; // 叶子层：没有子行
+    }
+    wrap = wrap.children[rowAt].children[0];
+  }
+  assert.deepEqual(
+    seen.map(function (s) {
+      return s.id;
+    }),
+    ["root", "a", "a1"],
+    "逐层下钻应依次是 root → a → a1"
+  );
+  seen.forEach(function (s, i) {
+    assert.equal(s.nodeAt, 0, "第 " + i + " 层：节点方块在最上");
+    if (s.rowAt >= 0) {
+      assert.ok(s.rowAt > s.nodeAt, "第 " + i + " 层：子行在节点之后");
+    }
+    assert.equal(Number(s.depth), i, "第 " + i + " 层的 depth 字段");
+  });
+});
+
 test("clampTreePan-clamps-pan-when-content-overflows-the-viewport", () => {
   const content = { width: 800, height: 600 };
   const viewport = { width: 400, height: 300 };
@@ -356,19 +501,59 @@ test("clampTreePan-clamps-pan-when-content-overflows-the-viewport", () => {
   );
 });
 
-test("clampTreePan-centers-content-smaller-than-the-viewport", () => {
+test("clampTreePan-lets-small-content-move-freely-inside-the-viewport", () => {
+  // ★ 2026-09-24 用户报障：「查看编制还是只能左右拖动」——原口径是"内容比视口小 ⇒ 钉死居中、拖不动"，
+  //   而树在竖直方向通常比视口矮 ⇒ 竖直永远拖不动。新口径：该轴范围 [0, viewport−content]
+  //   （内容**始终完整可见**，但可在视口内自由摆放）。两轴各自判。
   const content = { width: 100, height: 80 };
   const viewport = { width: 400, height: 300 };
+  // ★ 判别力：旧实现恒返回居中 (150,110)；下面这两条在新口径下必须**不是**同一个值。
+  assert.deepEqual(clampTreePan({ x: 0, y: 0 }, content, viewport), { x: 0, y: 0 }, "贴左上也可以（不再是唯一值）");
   assert.deepEqual(
-    clampTreePan({ x: 0, y: 0 }, content, viewport),
+    clampTreePan({ x: 150, y: 110 }, content, viewport),
     { x: 150, y: 110 },
-    "内容小 ⇒ 居中 (viewport−content)/2"
+    "居中位置仍在允许范围内（复位仍能居中）"
   );
   assert.deepEqual(
-    clampTreePan({ x: -9999, y: 9999 }, content, viewport),
-    { x: 150, y: 110 },
-    "内容小时拖不走：忽略传入 pan，恒居中"
+    clampTreePan({ x: -5, y: -5 }, content, viewport),
+    { x: 0, y: 0 },
+    "越到内容外的空白 ⇒ 夹回 0"
   );
+  assert.deepEqual(
+    clampTreePan({ x: 9999, y: 9999 }, content, viewport),
+    { x: 300, y: 220 },
+    "另一端的越界 ⇒ 夹到 viewport−content（内容仍完整可见）"
+  );
+});
+
+test("clampTreePan-mixes-both-axes-independently", () => {
+  // 一轴内容大（可拖出边界）、一轴内容小（视口内自由摆放）——两轴各按各的口径，互不牵连。
+  const content = { width: 800, height: 80 };
+  const viewport = { width: 400, height: 300 };
+  assert.deepEqual(
+    clampTreePan({ x: -100, y: 50 }, content, viewport),
+    { x: -100, y: 50 },
+    "横轴：内容大 ⇒ 负数区间内原样；纵轴：内容小 ⇒ [0,220] 内原样"
+  );
+  assert.deepEqual(clampTreePan({ x: -100, y: 9999 }, content, viewport), { x: -100, y: 220 });
+});
+
+test("preferredTreePan-centers-only-the-axis-that-fits", () => {
+  // 首屏摆放 / 「复位视图」的首选值：能装下的轴居中，装不下的轴贴起始边（0）。
+  assert.deepEqual(preferredTreePan({ width: 100, height: 80 }, { width: 400, height: 300 }), {
+    x: 150,
+    y: 110,
+  });
+  assert.deepEqual(preferredTreePan({ width: 800, height: 600 }, { width: 400, height: 300 }), {
+    x: 0,
+    y: 0,
+  });
+  assert.deepEqual(
+    preferredTreePan({ width: 800, height: 80 }, { width: 400, height: 300 }),
+    { x: 0, y: 110 },
+    "两轴各自判"
+  );
+  assert.deepEqual(preferredTreePan(undefined, undefined), { x: 0, y: 0 }, "缺参数不抛");
 });
 
 test("clampTreePan-tolerates-missing-and-non-finite-input", () => {
