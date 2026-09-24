@@ -16,6 +16,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
 import io.mosire.simos.map.ops.TerrainOperations;
 import io.mosire.simos.map.spi.SetTerrainHandler;
+import io.mosire.simos.map.terrain.TerrainHeights;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -69,13 +70,17 @@ class MapSetTerrainEndToEndTest {
     GameMap expected = MapChangeSet.apply(cs, genesisMap);
     assertThat(afterMap).as("重放读回的图 == 独立重建的期望图").isEqualTo(expected);
 
-    // ── 地形逐值 + 高度逐值不变 ────────────────────────────────────────────────
+    // ── 地形逐值 + 高度：目标格写成沙漠涂色高度、其余逐值不变（2026-09-24 起高度随地形一起写）──
     for (HexCoord hex : genesisMap.hexes().keySet()) {
       String want = TARGETS.contains(hex) ? "desert" : "plains";
       assertThat(afterMap.terrainAt(hex)).as("格 %s 的地形逐值对上", hex).isEqualTo(want);
+      double wantHeight =
+          TARGETS.contains(hex)
+              ? TerrainHeights.paintHeight("desert")
+              : genesisMap.hexes().get(hex).height();
       assertThat(afterMap.hexes().get(hex).height())
-          .as("格 %s 的高度不变", hex)
-          .isEqualTo(genesisMap.hexes().get(hex).height());
+          .as("格 %s 的高度（目标格 = 沙漠涂色高度，其余不变）", hex)
+          .isEqualTo(wantHeight);
     }
 
     // ── 块仍是合法分割 ────────────────────────────────────────────────────────

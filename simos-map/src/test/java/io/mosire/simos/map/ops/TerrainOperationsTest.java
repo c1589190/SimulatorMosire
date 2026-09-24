@@ -13,6 +13,7 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.map.terrain.TerrainHeights;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.ArrayList;
@@ -36,12 +37,14 @@ class TerrainOperationsTest {
 
   private static final HexCoord H2 = new HexCoord(2, 0);
 
-  // ── 正常：改 1 格 / 改多格（只改地形、不动高度）────────────────────────────────
+  // ── 正常：改 1 格 / 改多格（**地形与高度一起写**，2026-09-24 用户裁定）──────────
 
-  /** 改一格：目标格地形变、其余不变、高度逐值不变；{@code hexes} 组件不因地形改动而变。 */
+  /** 改一格：目标格地形变、**高度写成该地形的涂色高度**、未列的格逐值不变；{@code hexes} 组件随之非 Unchanged。 */
   @Test
-  void changingOneHexTouchesOnlyItsTerrainAndLeavesHeightsAlone() {
+  void changingOneHexWritesBothTerrainAndThePaintHeight() {
     GameMap base = graphOf(List.of(H0, H1, H2), Map.of(H0, "plains", H1, "plains", H2, "plains"));
+    double h0 = base.hexes().get(H0).height();
+    double h2 = base.hexes().get(H2).height();
 
     MapChangeSet cs = TerrainOperations.setTerrain(base, Set.of(H1), "desert");
     GameMap after = MapChangeSet.apply(cs, base);
@@ -49,21 +52,37 @@ class TerrainOperationsTest {
     assertThat(after.terrainAt(H0)).isEqualTo("plains");
     assertThat(after.terrainAt(H1)).isEqualTo("desert");
     assertThat(after.terrainAt(H2)).isEqualTo("plains");
-    for (HexCoord hex : base.hexes().keySet()) {
-      assertThat(after.hexes().get(hex).height())
-          .as("高度逐值不变: %s", hex)
-          .isEqualTo(base.hexes().get(hex).height());
-    }
-    assertThat(cs.hexes()).as("地形改动不进 hexes 组件（它只承载高度）").isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(after.hexes().get(H1).height())
+        .as("目标格高度 = 沙漠的涂色高度（= 平原带中点 + 0.005）")
+        .isEqualTo(TerrainHeights.paintHeight("desert"));
+    assertThat(after.hexes().get(H0).height()).as("未列的格高度逐值不变").isEqualTo(h0);
+    assertThat(after.hexes().get(H2).height()).as("未列的格高度逐值不变").isEqualTo(h2);
+    assertThat(cs.hexes())
+        .as("高度随地形一起写 ⇒ hexes 组件非 Unchanged")
+        .isNotInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.terrainBlocks())
         .as("地形改动必须进 terrainBlocks 组件")
         .isNotInstanceOf(FieldDelta.Unchanged.class);
   }
 
-  /** 一条命令改多格：载荷里的每一格都生效，未列的格不变。 */
+  /** **幂等**：对已是对目标地形（且高度已是涂色高度）的格再涂一次 ⇒ 8 个组件全 Unchanged（不白落一条 revision）。 */
+  @Test
+  void repaintingTheSameTerrainIsAnExactNoOp() {
+    GameMap base = graphOf(List.of(H0), Map.of(H0, "plains"));
+    GameMap painted =
+        MapChangeSet.apply(TerrainOperations.setTerrain(base, Set.of(H0), "desert"), base);
+
+    MapChangeSet again = TerrainOperations.setTerrain(painted, Set.of(H0), "desert");
+
+    assertThat(again.hexes()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(again.terrainBlocks()).isInstanceOf(FieldDelta.Unchanged.class);
+  }
+
+  /** 一条命令改多格：载荷里的每一格都生效（地形 + 高度），未列的格不变。 */
   @Test
   void changingMultipleHexesAppliesToEachOfThem() {
     GameMap base = graphOf(List.of(H0, H1, H2), Map.of(H0, "plains", H1, "plains", H2, "plains"));
+    double h1 = base.hexes().get(H1).height();
 
     MapChangeSet cs = TerrainOperations.setTerrain(base, Set.of(H0, H2), "mountains");
     GameMap after = MapChangeSet.apply(cs, base);
@@ -71,6 +90,11 @@ class TerrainOperationsTest {
     assertThat(after.terrainAt(H0)).isEqualTo("mountains");
     assertThat(after.terrainAt(H1)).isEqualTo("plains");
     assertThat(after.terrainAt(H2)).isEqualTo("mountains");
+    assertThat(after.hexes().get(H0).height())
+        .as("两格都写到山地的涂色高度")
+        .isEqualTo(TerrainHeights.paintHeight("mountains"));
+    assertThat(after.hexes().get(H2).height()).isEqualTo(TerrainHeights.paintHeight("mountains"));
+    assertThat(after.hexes().get(H1).height()).as("未列的格高度逐值不变").isEqualTo(h1);
   }
 
   // ── 重切分：合并与拆分 ──────────────────────────────────────────────────────
