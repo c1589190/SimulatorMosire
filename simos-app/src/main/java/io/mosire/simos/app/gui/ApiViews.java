@@ -818,8 +818,8 @@ public final class ApiViews {
     return unitSnapshot.state();
   }
 
-  /** social 切片。 */
-  static SocialData socialData(SimulationState state) {
+  /** social 切片（GUI / MCP 读工具 / 渲染层共用同一份提取）。 */
+  public static SocialData socialData(SimulationState state) {
     Snapshot snapshot =
         state
             .module("social")

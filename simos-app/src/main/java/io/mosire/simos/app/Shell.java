@@ -29,6 +29,8 @@ import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.render.ArtifactStore;
+import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.app.sd.SdCommandDrain;
 import io.mosire.simos.app.sd.channel.CliDecisionChannel;
@@ -243,6 +245,12 @@ public final class Shell implements AutoCloseable {
    */
   private final SkillLibrary skillLibrary;
 
+  /** 渲染服务（P3）：三面共用（决策人 / MCP 工具 / GUI 出图）；工件库与它同源（一个实例，别处不要再 new）。 */
+  private final RenderService renderService;
+
+  /** 工件库：渲染产出的 PNG（内容寻址）——同时也是 AgentLib 的资产解析器（工具结果的 assetId 指这里）。 */
+  private final ArtifactStore artifactStore;
+
   /**
    * {@code 命令类型 → 目标声明}（第 3 波第 2 步）：从**已注册的 handler 清单**派生——实现了 {@link CommandTargets}
    * 的那些把自己的目标交出来。{@code sd.AdjudicateTick} 拿它判"GM 代执行的这条命令动的 是谁"；**未实现者不在表里** ⇒ 工具侧 fail-closed 拒。
@@ -286,6 +294,8 @@ public final class Shell implements AutoCloseable {
       Set<String> commandTypes,
       Map<String, CommandTargets> commandTargets,
       SkillLibrary skillLibrary,
+      RenderService renderService,
+      ArtifactStore artifactStore,
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
@@ -308,6 +318,8 @@ public final class Shell implements AutoCloseable {
     this.decisionChannels = List.copyOf(decisionChannels);
     this.commandTypes = Set.copyOf(commandTypes);
     this.skillLibrary = Objects.requireNonNull(skillLibrary, "skillLibrary");
+    this.renderService = Objects.requireNonNull(renderService, "renderService");
+    this.artifactStore = Objects.requireNonNull(artifactStore, "artifactStore");
     this.commandTargets = Map.copyOf(commandTargets);
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
@@ -532,6 +544,10 @@ public final class Shell implements AutoCloseable {
     // ★ Skill 库（2026-09-23）：**装配期建一次**，两个工具面与 Shell 字段共用同一个实例
     //   （外部 Markdown：仓库种子 config/skills + store 覆盖 <storeDir>/skills；读时按 mtime 热更）。
     SkillLibrary skillLibrary = SkillLibrary.open(config.storeDir());
+    // ★ P3（2026-09-24）：渲染产出的 PNG 落 <store>/artifacts（内容寻址；同一张图只存一份）。
+    //   渲染服务三面共用（决策人链路 / MCP 工具 / GUI 出图路由）——键 = revision + 参数指纹。
+    ArtifactStore artifactStore = new ArtifactStore(config.storeDir().resolve("artifacts"));
+    RenderService renderService = new RenderService(queryService, artifactStore);
     DecisionCallerFactory decisionCallerFactory = DecisionCallerFactory.defaults(toolAuthorizer);
     ToolRegistry decisionTools = new ToolRegistry();
     decisionTools.registerAll(
@@ -543,6 +559,7 @@ public final class Shell implements AutoCloseable {
                 WORLDGEN_CONFIG_FILE,
                 commandTypes,
                 skillLibrary,
+                renderService,
                 SimosToolSource.Role.DECISION_AGENT)
             .listTools());
     // ★ 决策人桶**不带**触发工具（决策人不触发自己，那是自环）⇒ 这里用不带运行流的那条构造器。
@@ -571,6 +588,7 @@ public final class Shell implements AutoCloseable {
             WORLDGEN_CONFIG_FILE,
             commandTypes,
             skillLibrary,
+            renderService,
             commandTargets,
             SimosToolSource.Role.GM,
             decisionAgentService);
@@ -596,7 +614,8 @@ public final class Shell implements AutoCloseable {
               MCP_SERVER_NAME,
               MCP_SERVER_VERSION,
               gmCaller(),
-              gmToolAuthorizer);
+              gmToolAuthorizer,
+              artifactStore);
       mcpUp = true;
     } finally {
       if (!mcpUp) {
@@ -674,6 +693,8 @@ public final class Shell implements AutoCloseable {
         commandTypes,
         commandTargets,
         skillLibrary,
+        renderService,
+        artifactStore,
         llmConfig,
         decisionAdjudicationService,
         decisionAgentService,
@@ -699,6 +720,16 @@ public final class Shell implements AutoCloseable {
     return actors;
   }
 
+  /** 工件库（P3）：渲染产出的 PNG（内容寻址）——GUI 出图路由与测试都从这里取字节。 */
+  public ArtifactStore artifactStore() {
+    return artifactStore;
+  }
+
+  /** 渲染服务（P3）：三个消费面共用。 */
+  public RenderService renderService() {
+    return renderService;
+  }
+
   /** 决策提交渠道（D5）：测试与运维读回装配的四条渠道。 */
   public List<DecisionChannel> decisionChannels() {
     return decisionChannels;
@@ -718,6 +749,7 @@ public final class Shell implements AutoCloseable {
             WORLDGEN_CONFIG_FILE,
             commandTypes,
             skillLibrary,
+            renderService,
             commandTargets,
             role,
             decisionAgentService)

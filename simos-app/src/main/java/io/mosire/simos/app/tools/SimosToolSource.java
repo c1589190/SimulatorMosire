@@ -4,6 +4,7 @@ import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
@@ -15,6 +16,7 @@ import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.MapPathTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
+import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
@@ -144,6 +146,7 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       SkillLibrary skills,
+      RenderService renderService,
       Role role) {
     this(
         core,
@@ -153,6 +156,7 @@ public final class SimosToolSource implements ToolSource {
         worldgenConfigFile,
         commandTypes,
         skills,
+        renderService,
         Map.of(),
         role,
         null);
@@ -177,6 +181,7 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       SkillLibrary skills,
+      RenderService renderService,
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
@@ -190,7 +195,8 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(commandTargets, "commandTargets");
     Objects.requireNonNull(role, "role");
     List<AgentTool> built =
-        new ArrayList<>(readToolsFor(readTools(core, query, mapId, commandTypes, skills), role));
+        new ArrayList<>(
+            readToolsFor(readTools(core, query, mapId, commandTypes, skills, renderService), role));
     switch (role) {
       case GM -> {
         addGenericWrites(built, core, initiator, mapId);
@@ -339,7 +345,8 @@ public final class SimosToolSource implements ToolSource {
       QueryService query,
       String mapId,
       Set<String> commandTypes,
-      SkillLibrary skills) {
+      SkillLibrary skills,
+      RenderService renderService) {
     return List.of(
         new CatalogTool(commandTypes),
         new StateResolveTool(query, mapId),
@@ -356,6 +363,8 @@ public final class SimosToolSource implements ToolSource {
         new UnitListTool(query),
         new UnitGetTool(query),
         new PopulationTool(query),
+        // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
+        new MapRenderTool(query, renderService, mapId),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
         new DecisionMakersTool(query),
         new DecisionMakerTool(query),

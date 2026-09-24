@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
+import io.mosire.agentlib.llm.ToolAsset;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.permission.ResourceAuthorizer;
@@ -19,6 +20,10 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.render.ArtifactStore;
+import io.mosire.simos.app.render.RenderCache;
+import io.mosire.simos.app.render.RenderRequest;
+import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.write.MapCreateRegionTool;
 import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
@@ -170,6 +175,8 @@ class SimosToolsTest {
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
           "simos.skill",
+          // ★ P3（2026-09-24）：把世界渲染成图（四桶共享；图片随结果出站）。
+          "simos.map.render",
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
@@ -245,7 +252,9 @@ class SimosToolsTest {
           "simos.social.population",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
-          "simos.skill");
+          "simos.skill",
+          // ★ P3（2026-09-24）：把世界渲染成图（四桶共享——决策人也要"看图"）。
+          "simos.map.render");
 
   /**
    * ★ **只给 GM 桶的读工具**（2026-09-24 M4）：标了 {@code GmOnlyRead} 的那些。
@@ -672,7 +681,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(67);
+        .hasSize(68);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -692,7 +701,7 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
         .as("★ M4：GM-only 读工具（地形探测 / 别人的底牌）不得进决策人桶")
-        .hasSize(16);
+        .hasSize(17);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -829,6 +838,10 @@ class SimosToolsTest {
             new Case("simos.unit.get", Map.of("id", U1.value()), "id"),
             new Case("simos.social.population", Map.of("q", 1L, "r", 1L), "population"),
             new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
+            new Case(
+                "simos.map.render",
+                Map.of("q", 1L, "r", 1L, "radius", 1L, "format", "text"),
+                "summary"),
             new Case("simos.skill", Map.of(), "skills"));
     List<String> covered = new ArrayList<>();
     for (Case c : cases) {
@@ -849,6 +862,64 @@ class SimosToolsTest {
     assertThat(covered)
         .as("本表必须逐条覆盖读工具全集（新增读工具却没加进本表 ⇒ 红）")
         .containsExactlyInAnyOrderElementsOf(READ_TOOL_NAMES);
+  }
+
+  /**
+   * ★ P3（2026-09-24）：{@code simos.map.render} 出图 → 工件可解析（**同一份字节**）→ 同参同 revision **同一 assetId**。
+   *
+   * <p>判别性：把 {@code assetDocIds} 从结果里丢掉（图不再随结果出站）⇒ 首条必红；把缓存键里的参数指纹去掉（只按 revision 缓存）⇒ "半径 2 应给出不同
+   * id"必红。
+   */
+  @Test
+  void mapRenderProducesAnImageAssetWithStableIdentity() throws Exception {
+    ToolResult first =
+        call("simos.map.render", Map.of("q", 1L, "r", 1L, "radius", 1L, "format", "image"));
+    assertThat(first.success()).as(first.message()).isTrue();
+    JsonNode body = JSON.readTree(first.message());
+    String assetId = body.get("assetId").asText();
+    assertThat(assetId).hasSize(64);
+    assertThat(first.assetDocIds()).as("图片资产必须随结果出站（否则 MCP / 决策人两面都拿不到图）").containsExactly(assetId);
+
+    ToolAsset asset = shell.artifactStore().resolve(assetId).orElseThrow();
+    assertThat(asset.mediaType()).isEqualTo("image/png");
+    assertThat(asset.bytes()).startsWith((byte) 0x89, (byte) 'P', (byte) 'N', (byte) 'G');
+
+    ToolResult again =
+        call("simos.map.render", Map.of("q", 1L, "r", 1L, "radius", 1L, "format", "image"));
+    assertThat(JSON.readTree(again.message()).get("assetId").asText())
+        .as("同参数同 revision ⇒ 同一张图 ⇒ 同一 assetId")
+        .isEqualTo(assetId);
+
+    ToolResult wider =
+        call("simos.map.render", Map.of("q", 1L, "r", 1L, "radius", 2L, "format", "image"));
+    assertThat(JSON.readTree(wider.message()).get("assetId").asText())
+        .as("参数不同 ⇒ 另一张图 ⇒ 另一个 id")
+        .isNotEqualTo(assetId);
+  }
+
+  /** ★ P3：图超预算时**自动降采样**（边长折半），直到进预算或触到最小边长——绝不把一张大图塞进上下文预算。 */
+  @Test
+  void renderServiceDownscalesImagesThatExceedTheByteBudget() {
+    RenderService tight =
+        new RenderService(
+            shell.queryService(),
+            new RenderCache(4),
+            new ArtifactStore(tempDir.resolve("budget-artifacts")),
+            900);
+
+    RenderService.Rendered rendered =
+        tight.renderImage(QueryTarget.head(main()), RenderRequest.map(H11, 3));
+
+    boolean withinBudget = rendered.byteSize() <= 900;
+    boolean atMinimumSide =
+        rendered.width() == RenderRequest.MIN_SIDE || rendered.height() == RenderRequest.MIN_SIDE;
+    assertThat(withinBudget || atMinimumSide)
+        .as(
+            "降采样要么进了预算、要么已到最小边长（实际 %d×%d，%d 字节）",
+            rendered.width(), rendered.height(), rendered.byteSize())
+        .isTrue();
+    assertThat(rendered.width()).isLessThanOrEqualTo(RenderRequest.DEFAULT_SIDE);
+    assertThat(rendered.assetId()).isPresent();
   }
 
   /**

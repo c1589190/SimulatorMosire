@@ -19,6 +19,7 @@ import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
+import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
@@ -94,6 +95,8 @@ public final class DecisionCallerFactory {
           //   ★ 另三条新读口（map.path / sd.decision-makers / sd.decision-maker）**有意不在**本白名单里：
           //   它们标了 GmOnlyRead（地形探测 / 别人的底牌），只进 GM 桶。
           TimelineRevisionsTool.NAME,
+          // ★ P3（2026-09-24）：把世界渲染成图（决策人也要"看图"——这是"图像生成→喂给 LLM"在决策人面的入口）
+          MapRenderTool.NAME,
           MapRegionTool.NAME,
           DecisionResultsTool.NAME,
           DecisionDocsTool.NAME,

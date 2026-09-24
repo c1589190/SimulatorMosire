@@ -116,6 +116,8 @@ class McpServerTest {
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
           "simos.skill",
+          // ★ P3（2026-09-24）：把世界渲染成图。
+          "simos.map.render",
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
@@ -227,6 +229,33 @@ class McpServerTest {
                 + "以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective 与"
                 + " simos.worldgen.initialize）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
+  }
+
+  /**
+   * ★ P3（2026-09-24）：{@code simos.map.render} 的图片资产经**真 MCP 传输**出站为 {@link
+   * McpSchema.ImageContent}—— 外面的大模型据此"看图"（"图像生成 → 喂给 LLM"在 MCP 面的出口）。
+   */
+  @Test
+  void mapRenderShipsTheImageAsImageContentOverTheWire() throws Exception {
+    client.initialize();
+
+    McpSchema.CallToolResult result =
+        client.callTool(
+            new McpSchema.CallToolRequest(
+                "simos.map.render", Map.of("q", 1, "r", 1, "radius", 1, "format", "image")));
+    assertThat(result.isError()).as(wireText(result)).isFalse();
+    String assetId = JSON.readTree(wireText(result)).get("assetId").asText();
+    assertThat(assetId).hasSize(64);
+
+    List<McpSchema.Content> images =
+        result.content().stream().filter(McpSchema.ImageContent.class::isInstance).toList();
+    assertThat(images).as("图片资产必须出成一个 image content 块").hasSize(1);
+    McpSchema.ImageContent image = (McpSchema.ImageContent) images.get(0);
+    assertThat(image.mimeType()).isEqualTo("image/png");
+    byte[] bytes = shell.artifactStore().resolve(assetId).orElseThrow().bytes();
+    assertThat(image.data())
+        .as("线上的 base64 必须与工件库里的字节逐字节一致（同一份字节只渲染一次）")
+        .isEqualTo(java.util.Base64.getEncoder().encodeToString(bytes));
   }
 
   // ── 读：与 QueryService 直接调用逐值对拍 ────────────────────────────────
