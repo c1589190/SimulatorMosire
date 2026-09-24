@@ -11,8 +11,10 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmToolNames;
+import io.mosire.simos.app.render.ArtifactStore;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
@@ -22,8 +24,11 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * **决策人 agent 运行流**（spec §2.3，判据 **J11**）：让决策人**自己调工具**读世界，并且**跨 tick 沿用同一段会话**。
@@ -62,11 +67,50 @@ import java.util.Optional;
  * OpenAI 兼容端点只收 {@code ^[a-zA-Z0-9_-]+$} ⇒ 整份请求被拒（{@code HTTP 400}，{@code llmCalls=0}）。故本类在**装配期**
  * 用 {@link LlmToolNames} 建一张双向名表：送出去的是转义名（{@code simos_map_hex}），模型回来的名字**映射回真实名**再进权限链。
  * 碰撞与非法转义都在装配期**响亮失败**（绝不静默挑一个——猜错就是执行了另一个工具）。
+ *
+ * <p>★★ **P4（2026-09-24）：工具结果里的图真的发给模型**。在此之前 {@link #execute} 只把工具结果的**文本**折成回灌消息， {@code
+ * ToolResult.assetDocIds()}（渲染出来的 PNG 引用）**被整个丢掉** ⇒ 决策人永远看不见图。现在：
+ *
+ * <ul>
+ *   <li>有图且**该 provider 有视觉能力**（{@link DecisionAgentRunner} 的 {@code vision}，来自路由配置）⇒ 除 tool 消息外
+ *       **另发一条 {@code user} 图片消息**（★ tool 角色带图是 AgentLib 的响亮 CONFIG 错，故必须另起一条）；
+ *   <li>没有视觉能力 ⇒ **一张都不发**（发过去只会换一个 400；文本摘要本来就在 tool 消息里，且渲染工具的 {@code format=auto}
+ *       会按同一个能力位回落成字符图，见 {@link MapRenderTool#VISION_CONFIG_KEY}）；
+ *   <li>**开场快照**（{@link OpeningSnapshot}，装配方按开关给）：空会话时在身份消息之后补一条图片消息，让决策人"先看一眼世界"。
+ * </ul>
+ *
+ * <p>★ **图片是引用式的**（{@link ContentPart.Image} 只带 mediaType + assetId，字节在工件库里）：故这条消息落进会话库之后 **跨 tick
+ * / 跨重启都能原样回放**，而请求体里的大小由发送那一刻的解析决定。
  */
 public final class DecisionAgentRunner {
 
+  private static final Logger LOG = LoggerFactory.getLogger(DecisionAgentRunner.class);
+
   /** 会话 id 前缀（与 {@link DecisionCallerFactory#INSTANCE_ID_PREFIX} 同源：都按决策人派生）。 */
   public static final String CONVERSATION_ID_PREFIX = DecisionCallerFactory.INSTANCE_ID_PREFIX;
+
+  /**
+   * **开场快照**（P4）：给某个决策人产出一条"世界长这样"的图片消息（空会话首轮注入）。
+   *
+   * <p>★★ **为什么由装配方给、不由本类自己渲染**：取景中心与图层取决于领域知识（国家 → 首府区域 → 取景格），渲染要走 {@code RenderService}
+   * 与查询面——那都是 app 层的既有件，塞进"循环"里会让本类同时认识地图、社交、单位与渲染（它现在的全部世界知识 仅限 {@code SimulationState} 这个不透明句柄）。
+   *
+   * <p>★★ **"关"只能用 {@link #NONE} 表达**（引用比较，见 {@link #openingSnapshotMessage}）：若装配方自己写一个等价的
+   * lambda，本类就分不出"开关关着"与"开着但这次没出图"，而那两件事**该不该留下痕迹是不同的**（后者要说明为什么没出图）。
+   */
+  @FunctionalInterface
+  public interface OpeningSnapshot {
+
+    /** 什么都不给（默认 = 开关关着）。 */
+    OpeningSnapshot NONE = (dm, state) -> Optional.empty();
+
+    /**
+     * @param dm 这一轮的决策人（取景通常要看它的归属：国家 → 首府区域）
+     * @param state 此刻的世界（**入参、不是字段**：快照必须画的是"这一轮看到的世界"）
+     * @return 图片消息（{@code user} 角色，含 {@link ContentPart.Image}）；没有可给的就空
+     */
+    Optional<LlmMessage> forDecisionMaker(DecisionMaker dm, SimulationState state);
+  }
 
   /**
    * 一轮 {@code run} 允许的最大 LLM 调用次数（**本实现自设的兜底**，spec 未规定）。
@@ -131,6 +175,20 @@ public final class DecisionAgentRunner {
   /** 进度回调（默认 {@link ProgressListener#NONE}；见其类注：MCP 那条同步路不装，行为逐字不变）。 */
   private final ProgressListener progressListener;
 
+  /** **该 provider 有没有视觉能力**（P4，见类注）：决定工具结果里的图发不发、开场快照注不注。 */
+  private final boolean vision;
+
+  /** 开场快照（P4，见 {@link OpeningSnapshot}）：装配方按开关给；默认 {@link OpeningSnapshot#NONE}（关）。 */
+  private final OpeningSnapshot openingSnapshot;
+
+  /**
+   * **本次调用透传给工具的宿主编排配置**（P4）：目前只有一项——有没有视觉能力。
+   *
+   * <p>★ 它与 {@link #vision} **同源、在构造期算一次**：两处各拼一次（一处判断发不发图、一处拼给工具）就会出现"图不发、
+   * 工具却以为有视觉能力"（或反过来）这种无症状的错位。
+   */
+  private final Map<String, Object> toolConfig;
+
   /** **送给模型的那一份工具面**（名字是线格式；描述与 schema 逐字来自真工具）。 */
   private final List<ToolDef> toolDefs;
 
@@ -174,6 +232,8 @@ public final class DecisionAgentRunner {
   /**
    * **带进度回调**的形态（GUI 异步跑的装配点）：除多一个监听外与上面那条**逐字同形**（同一个构造器链， 不复制字段赋值——复制一份就会出现"两条路装配出两个略有差异的
    * runner"这种无症状的漂移）。
+   *
+   * <p>★ 这条走**无视觉能力、不开快照**的缺省（既有调用点的行为逐字不变）：要图片通路请走全参那条。
    */
   public DecisionAgentRunner(
       DecisionCallerFactory callerFactory,
@@ -183,6 +243,39 @@ public final class DecisionAgentRunner {
       String mapId,
       int maxLlmCalls,
       ProgressListener progressListener) {
+    this(
+        callerFactory,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        maxLlmCalls,
+        progressListener,
+        false,
+        OpeningSnapshot.NONE);
+  }
+
+  /**
+   * **全参**（P4 生产路径）：另给"该 provider 有没有视觉能力"与开场快照来源。
+   *
+   * <p>★ 新增项一律**往后排**（老调用点不用动），且四个位置参数的类型互不相同（{@code int} / {@code ProgressListener} / {@code
+   * boolean} / {@code OpeningSnapshot}）⇒ 传错位会被编译器挡住。
+   *
+   * @param vision 该 provider 的模型有没有视觉能力（{@code
+   *     LlmRouteLoader.capabilities(...).vision()}）：它**同时**决定 "工具结果里的图发不发"与"渲染工具的 {@code auto}
+   *     落在图还是字符图"（两处同源，见 {@link #toolConfig}）
+   * @param openingSnapshot 空会话首轮要不要补一张世界图（装配方按开关给；{@link OpeningSnapshot#NONE} = 关）
+   */
+  public DecisionAgentRunner(
+      DecisionCallerFactory callerFactory,
+      ToolRegistry registry,
+      LlmClient llmClient,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls,
+      ProgressListener progressListener,
+      boolean vision,
+      OpeningSnapshot openingSnapshot) {
     this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
@@ -193,6 +286,9 @@ public final class DecisionAgentRunner {
     }
     this.maxLlmCalls = maxLlmCalls;
     this.progressListener = Objects.requireNonNull(progressListener, "progressListener");
+    this.vision = vision;
+    this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
+    this.toolConfig = Map.of(MapRenderTool.VISION_CONFIG_KEY, vision);
     // ★★ 工具面在**装配期**建一次（不随世界变：它只取决于注册表与白名单），并当场建好名字映射：
     //   ① 白名单里有工具不在注册表 ⇒ requireAll 抛（旧行为，只是提前到构造期）；
     //   ② 转义碰撞 / 转义结果不合供应商文法 ⇒ LlmToolNames 抛（**真 LLM 实测缺陷**的护栏，2026-09-22）。
@@ -367,6 +463,13 @@ public final class DecisionAgentRunner {
       LlmMessage opening = openingSystemMessage(dm);
       conversations.append(conversationId, opening);
       history.add(opening);
+      // ★★ P4：身份之后补一条**开场快照**（世界长这样）。★ 顺序不可反——先有"你是谁"，再有"你在哪"；
+      //   而且这条只在**空会话**注入一次（与身份同一条判据），第二轮起就在历史里了。
+      Optional<LlmMessage> snapshot = openingSnapshotMessage(dm, state);
+      if (snapshot.isPresent()) {
+        conversations.append(conversationId, snapshot.get());
+        history.add(snapshot.get());
+      }
     }
     List<ToolInvocation> invocations = new ArrayList<>();
     int llmCalls = 0;
@@ -395,9 +498,12 @@ public final class DecisionAgentRunner {
         return new DecisionTurn(conversationId, llmCalls, invocations, response.textPart());
       }
       for (ContentPart.ToolCall call : requested) {
-        LlmMessage toolMessage = execute(dm, state, call, invocations);
-        conversations.append(conversationId, toolMessage);
-        history.add(toolMessage);
+        // ★ 一次工具调用可能产出**多条**消息：tool 消息（永远有）+ 图片消息（有图且有视觉能力时，P4）。
+        //   顺序不能反：图片消息说的是"上一条工具结果的图"，排在它的 tool 消息之前就成了一段无头的话。
+        for (LlmMessage message : execute(dm, state, call, invocations)) {
+          conversations.append(conversationId, message);
+          history.add(message);
+        }
         // ★ 进度点 ②：一次工具调用已结束（末条 = 刚跑完的那一个）——GUI 的"正在调 X / 调了什么"。
         progressListener.progress(llmCalls, List.copyOf(invocations));
       }
@@ -405,13 +511,18 @@ public final class DecisionAgentRunner {
   }
 
   /**
-   * 执行**一次**模型请求的工具调用，并把它折成回灌给模型的那条 tool 消息。
+   * 执行**一次**模型请求的工具调用，并把它折成**要落盘/回灌的那些消息**（P4：可能不止一条）。
    *
    * <p>★ **失败也回灌**（{@code ToolResult.error} 的码与文本原样进 {@code error}/{@code content}，{@code
    * isError()} 为真）：AgentLib 特意把 {@code RESOURCE_DENIED} / {@code APPROVAL_DENIED}
    * 与别的失败分开，就是为了让模型**知道该换个 资源还是换个参数**——把它折成一句"调用失败"是把这个意图丢掉（T10 实测发现 2 的同一条道理）。
+   *
+   * <p>★★ **为什么返回一列表而不是一条**（P4）：{@code tool} 角色的 {@code content} 只接受字符串，带图是 AgentLib 的**响亮 CONFIG
+   * 错**（不是被忽略）⇒ 图片只能另起一条 {@code user} 消息。列表的顺序即落盘顺序：{@code [tool, (user 图片)]}。
+   *
+   * @return 本条工具调用要追加进会话的消息（**至少一条**：tool 消息）
    */
-  private LlmMessage execute(
+  private List<LlmMessage> execute(
       DecisionMaker dm,
       SimulationState state,
       ContentPart.ToolCall call,
@@ -423,8 +534,9 @@ public final class DecisionAgentRunner {
     //   凡是能过名字表的都在白名单里），等于用一个更弱的理由顶掉一个更强的判据。
     String toolName = toolNames.realNameOf(call.name()).orElse(call.name());
     // ★ 唯一入口：callerFor **每次现算**（世界变了范围就变），执行走 authorizer 的五段判定链。
+    //   ★ toolConfig 是本轮的宿主编排（目前只有"有没有视觉能力"一项）：渲染工具的 auto 靠它选形态。
     ToolResult result =
-        callerFactory.execute(registry, toolName, dm, state, mapId, call.arguments());
+        callerFactory.execute(registry, toolName, dm, state, mapId, call.arguments(), toolConfig);
     // ★★ **同一段文本两处用**（T11C）：既回灌给模型，也记进本轮的账（{@code resultSummary}）——
     //   `sd.RunDecision` 的轨迹就是靠它报告"决策人看见了什么"。两处若各拼一次，轨迹与实际回灌的
     //   内容就会**各说各话**，而没有任何症状。
@@ -436,10 +548,58 @@ public final class DecisionAgentRunner {
     //   该换个资源（RESOURCE_DENIED）还是换个参数（BAD_REQUEST）。
     //   ★ 这里的 name 一律回**模型自己给的那个写法**（`call.name()`），不回真实名：这段 transcript 要说的是
     //   "模型说了什么、我们回了什么"，两边用同一个拼写才不会自相矛盾（且 AgentLib 不发这个字段，见 appendMessage）。
-    return LlmMessage.tool(
-        result.success()
-            ? new ContentPart.ToolResult(call.id(), call.name(), feedback, null)
-            : new ContentPart.ToolResult(call.id(), call.name(), null, feedback));
+    LlmMessage toolMessage =
+        LlmMessage.tool(
+            result.success()
+                ? new ContentPart.ToolResult(call.id(), call.name(), feedback, null)
+                : new ContentPart.ToolResult(call.id(), call.name(), null, feedback));
+    Optional<LlmMessage> images = imagesMessage(result);
+    if (images.isEmpty()) {
+      return List.of(toolMessage);
+    }
+    return List.of(toolMessage, images.get());
+  }
+
+  /**
+   * 工具结果里的**图片资产** ⇒ 一条 {@code user} 图片消息（P4）。
+   *
+   * <p>★★ **两条硬约束都在这里兑现**：① 图片**不能**附在 tool 消息上（AgentLib 的 {@code appendMessage} 对 {@code tool}
+   * 角色带图**响亮抛 CONFIG**——它不静默丢图，所以我们也不能指望它替我们兜底）；② 没有视觉能力时**一张都不发**—— 发过去只会从供应商换一个 400，而工具结果的文本摘要在
+   * tool 消息里本来就有（渲染工具还会按同一个能力位回落成字符图， 见 {@code MapRenderTool.VISION_CONFIG_KEY}）。
+   *
+   * <p>★ **媒体类型取 {@code ArtifactStore.PNG_MEDIA_TYPE}**：工件库当前只存 PNG（其类注写明"扩展时把类型写进 id/清单"）⇒
+   * 与"本库只存一种"这个既有事实同源，不在这里另立一张 id→类型 的表。
+   */
+  private Optional<LlmMessage> imagesMessage(ToolResult result) {
+    List<String> assetIds = result.assetDocIds();
+    if (!vision || assetIds.isEmpty()) {
+      return Optional.empty();
+    }
+    List<ContentPart> parts = new ArrayList<>(assetIds.size() + 1);
+    parts.add(new ContentPart.Text("（下面是上一次工具结果里的图片）"));
+    for (String assetId : assetIds) {
+      parts.add(new ContentPart.Image(ArtifactStore.PNG_MEDIA_TYPE, assetId));
+    }
+    return Optional.of(new LlmMessage(LlmMessage.ROLE_USER, parts));
+  }
+
+  /**
+   * 空会话首轮的**开场快照**（P4）：装配方按开关给（{@link OpeningSnapshot}）。
+   *
+   * <p>★ **"开关关着"与"开着但没给图"要分得开**：前者一个字都不留，后者说明原因（路由没有视觉能力）——否则运维打开开关却什么都没发生， 而日志里没有任何一行能解释为什么。这也是
+   * {@link OpeningSnapshot#NONE} 必须是**同一个常量实例**（引用比较）的原因。
+   *
+   * <p>★ **注在身份消息之后**：顺序恒为 {@code system → user…}（本类的既有不变式，见 {@code run} 的注释）。
+   */
+  private Optional<LlmMessage> openingSnapshotMessage(DecisionMaker dm, SimulationState state) {
+    if (openingSnapshot == OpeningSnapshot.NONE) {
+      return Optional.empty();
+    }
+    if (!vision) {
+      LOG.warn("开场快照开关已开，但决策人 {} 绑的路由没有视觉能力 ⇒ 本轮跳过（图发过去只会换来一个 400）", dm.id().value());
+      return Optional.empty();
+    }
+    return openingSnapshot.forDecisionMaker(dm, state);
   }
 
   /**

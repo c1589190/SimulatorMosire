@@ -160,9 +160,28 @@ public final class DecisionCallerFactory {
    * 逐字复原，不需要调用方另外传一份（"两份真相"是漏配的来源）。
    */
   public ToolContext callerFor(DecisionMaker dm, SimulationState state, String mapId) {
-    return ToolContext.of(
+    return callerFor(dm, state, mapId, Map.of());
+  }
+
+  /**
+   * 同上，另给**本次调用的宿主编排配置**（进 {@link ToolContext#config()}）。
+   *
+   * <p>★★ **它是什么、不是什么**（P4，2026-09-24）：这是 AgentLib 设计好的**宿主通道**——工具可以按"宿主此刻怎么部署的"
+   * 调整自己的默认行为，而不是把部署事实写进世界或写进永久消息。目前**唯一的键是 {@code vision}**（该决策人绑的路由有没有视觉能力）， 用来让 {@code
+   * simos.map.render} 的 {@code format=auto} 真的按"有视觉能力就发图"回落（见 {@code MapRenderTool}）。
+   *
+   * <p>★ **它不是权限**：配置不改可达面、不替代 {@code accessLimit}；工具**不得**把它的值当成许可（许可只从 {@code permissions()} 来）。
+   *
+   * <p>★ **键缺席 = 工具各自的历史行为**（{@code MapRenderTool} 那边是"出图"）：既有调用点走上面那个重载， 行为逐字不变。
+   */
+  public ToolContext callerFor(
+      DecisionMaker dm, SimulationState state, String mapId, Map<String, Object> toolConfig) {
+    // ★ 直接拼五参（AgentLib 的 ToolContext 没有 withConfig）：config 是唯一被替换的分量，其余与 callerFor 同源。
+    return new ToolContext(
         AccessToken.DEFAULT,
         permissionsFor(dm, state, mapId),
+        toolConfig,
+        Map.of(),
         AgentIdentity.subagent(INSTANCE_ID_PREFIX + dm.id().value(), CommandMode.LIMITED, GOAL, 1));
   }
 
@@ -351,7 +370,22 @@ public final class DecisionCallerFactory {
       SimulationState state,
       String mapId,
       Map<String, Object> args) {
-    ToolContext caller = callerFor(dm, state, mapId);
+    return execute(registry, toolName, dm, state, mapId, args, Map.of());
+  }
+
+  /**
+   * 同上，另给**宿主编排配置**（与 {@link #callerFor(DecisionMaker, SimulationState, String, Map)} 同一个 map，
+   * 见其类注：目前唯一用途是让渲染工具按视觉能力选 {@code auto} 的落点）。
+   */
+  public ToolResult execute(
+      ToolRegistry registry,
+      String toolName,
+      DecisionMaker dm,
+      SimulationState state,
+      String mapId,
+      Map<String, Object> args,
+      Map<String, Object> toolConfig) {
+    ToolContext caller = callerFor(dm, state, mapId, toolConfig);
     // ★ 参数装进上下文（工具从 context.arguments() 读）；其余分量逐字来自 callerFor。
     return execute(
         registry,

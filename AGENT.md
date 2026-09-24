@@ -245,7 +245,19 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
 - ★ **GUI 与 MCP 读工具共用同一份视图**（`app/gui/ApiViews` 是公开的视图层）——别再各写一份
   （那正是"同一资源的两个形状"的由来，见 `.superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md` §二-6）。
 
-### 8.4 换设备自检（本机踩过的坑，按序做）
+### 8.4 图片通路（让决策人 / 外部 agent「看图」）
+
+- **发不发图由路由的能力位定**：`llm.routes.<name>.capabilities.vision=true`（缺省 **false**）。决策人绑哪条路由
+  ⇒ 它能不能收图；**且同一个位**还决定 `simos.map.render` 的 `format=auto` 落在图还是字符图。
+  配在 `<store>/agentlib/config.json`（GUI 的 provider 页能看见 `vision`，但**不编辑**它）。
+- **工具反馈带图**：`simos.map.render` 的 `assetId` 由运行流折成一条**额外的 user 图片消息**（tool 角色带图是
+  AgentLib 的响亮 CONFIG 错）⇒ 图随下一轮请求发给模型。
+  ★ **成本提醒**：图片分片落进会话历史后会**每一轮都重发**（base64），会话越长越贵——目前不做裁剪，知悉即可。
+- **开场快照**：`--opening-snapshot` 开（缺省**关**）⇒ 决策人会话**首次为空**时，先给它一张本国首府区域的渲染图
+  （军队归属的决策人**没有**快照，取景语义未裁决）。开关开着而路由无视觉能力 ⇒ 跳过 + 日志一行 warn（不静默）。
+- MCP 面（外部 agent）出图是另一条：工具的图片资产由 `AgentToMcpServer` 出成 `ImageContent`（P1）。
+
+### 8.5 换设备自检（本机踩过的坑，按序做）
 
 1. `git status` 看 `core.autocrlf`——曾把整棵工作树 checkout 成 CRLF，`mvnw` 的 shebang 变 `#!/bin/sh\r`
    导致 Maven 完全起不来、Spotless 全红。仓库已用 `.gitattributes` 钉死 LF。

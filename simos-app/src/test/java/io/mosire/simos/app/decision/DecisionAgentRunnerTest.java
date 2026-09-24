@@ -74,6 +74,7 @@ import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -83,6 +84,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -145,6 +147,15 @@ class DecisionAgentRunnerTest {
           1);
 
   @TempDir Path tempDir;
+
+  /**
+   * 开场快照用例里那个**假** assetId：形状合法（工件库只收 {@code [0-9a-f]{64}}）但**不在库里**。
+   *
+   * <p>★ 用假 id 是有意的：那几条用例验的是"**快照消息注没注进请求**"，而不是"渲染出没出图"（后者由 {@link
+   * #theNationOpeningSnapshotRendersTheHomeRegionAroundItsLabelHex} 用真渲染件单独证）。真发送路径（解析字节）不在
+   * 这两条用例的射程内——它们用的是回放的 {@code FakeLlmClient}，不会发出去。
+   */
+  private static final String FAKE_ASSET_ID = "0".repeat(64);
 
   private Shell shell;
   private SqliteConversationStore conversations;
@@ -732,10 +743,213 @@ class DecisionAgentRunnerTest {
         .isEqualTo(20);
   }
 
+  // ────────────────────────────── 图片通路（P4，2026-09-24） ──────────────────────────────
+
+  /**
+   * ★★ **P4 主判据（正）**：有视觉能力时，工具结果里的图片资产**真的随请求发给模型**。
+   *
+   * <p>装置：让模型调 {@code simos_map_render}（真渲染工具、真工件库）⇒ 它回的 {@code ToolResult.assetDocIds()} 非空 ⇒
+   * 下一次请求里必须多出一条 **user 图片消息**。
+   *
+   * <p>★★ **三处一起断言，缺一条这条判据就是假的**：① 那是一条 {@code user} 消息（{@code tool} 角色带图是 AgentLib 的响亮 CONFIG 错）；②
+   * 里面是 {@link ContentPart.Image}（不是一段描述图的话）；③ 那个 {@code assetId} **能经工件库解析出真正的 PNG
+   * 字节**（"字段在"不等于"图在"——解析不到就只是一串 sha256）。
+   */
+  @Test
+  void withVisionTheImagesInToolResultsReachTheModelAsAUserImageMessage() {
+    llm.enqueue(
+        LlmResponse.toolCall("call-1", "simos_map_render", Map.of("q", 1, "r", 1)),
+        LlmResponse.text("看过了"));
+
+    DecisionAgentRunner.DecisionTurn turn =
+        runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, true)
+            .run(DM_FRA, state());
+
+    assertThat(turn.toolInvocations()).hasSize(1);
+    assertThat(turn.toolInvocations().get(0).success()).as("真渲染工具应当在两格世界上成功").isTrue();
+    assertThat(turn.toolInvocations().get(0).resultSummary()).contains("assetId");
+
+    // ★ 第 2 次请求 = 工具轮之后：tool 消息 + 图片消息都已在历史里。
+    List<LlmMessage> afterTool = llm.requests().get(1).messages();
+    assertThat(roles(afterTool)).endsWith("tool", "user");
+    LlmMessage imageMessage = afterTool.get(afterTool.size() - 1);
+    ContentPart.Image image = imagePartOf(imageMessage);
+    assertThat(image.mediaType()).isEqualTo("image/png");
+    assertThat(shell.artifactStore().resolve(image.assetId()))
+        .as("★★ 引用必须解析得到字节——否则模型收到的是一个查无此物的 id")
+        .isPresent();
+    assertThat(pngOf(image.assetId()))
+        .as("PNG 魔数：工件库里那份字节真的是一张 PNG")
+        .startsWith(0x89, 'P', 'N', 'G');
+  }
+
+  /**
+   * ★★ **P4 主判据（反）**：**没有**视觉能力时，一张图都不许发——**即使工具真的产出了**一张图。
+   *
+   * <p>★★ **为什么载荷要显式写 {@code format=image}**（这一点是本用例的要害）：{@code auto} 在无视觉能力的路由上会**回落成 字符图**（不产工件，见
+   * {@code MapRenderTool}）⇒ 用 auto 的话"没发图"**证明不了任何东西**（压根没有图可发，断言恒真）。 显式要 image ⇒ 工具真产出了图、结果里带着
+   * {@code assetId}，而运行流**仍然**没把它附进消息——那才是"vision 门控真的在拦"。
+   *
+   * <p>★ 判别力：把 {@code imagesMessage} 里的 {@code vision} 判断去掉（或写反）⇒ 本用例当场红。
+   */
+  @Test
+  void withoutVisionNoImageIsEverSentEvenWhenTheToolProducedOne() {
+    llm.enqueue(
+        LlmResponse.toolCall(
+            "call-1", "simos_map_render", Map.of("q", 1, "r", 1, "format", "image")),
+        LlmResponse.text("看过了"));
+
+    DecisionAgentRunner.DecisionTurn turn =
+        runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, false)
+            .run(DM_FRA, state());
+
+    assertThat(turn.toolInvocations().get(0).success()).isTrue();
+    assertThat(turn.toolInvocations().get(0).resultSummary())
+        .as("前置条件：工具这次**真的产出了图**（否则本用例恒真、没有判别力）")
+        .contains("assetId");
+    for (LlmRequest request : llm.requests()) {
+      for (LlmMessage message : request.messages()) {
+        assertThat(message.content())
+            .as("无视觉能力的路由上不得出现任何图片分片（发过去只会换一个 400）")
+            .noneMatch(ContentPart.Image.class::isInstance);
+      }
+    }
+    assertThat(toolResults(llm.requests().get(1).messages()))
+        .as("回灌的 tool 消息里仍有文本摘要 + assetId（图片是附加，不是替代）")
+        .anySatisfy(result -> assertThat(result.content()).as("工具结果正文").contains("assetId"));
+  }
+
+  /**
+   * ★★ **开场快照（P4）**：空会话首轮，身份之后紧跟一条图片消息；**只在空会话注入一次**。
+   *
+   * <p>★ 顺序判据落在 {@code roles(...)} 的**逐字相等**上：{@code [system, user]}（图片消息是 user）——
+   * 反了就会变成"你连自己是谁都还不知道，先看一张图"。
+   */
+  @Test
+  void theOpeningSnapshotIsAttachedOnceRightAfterTheIdentityMessage() {
+    llm.enqueue(LlmResponse.text("看到了"));
+    DecisionAgentRunner.OpeningSnapshot snapshot =
+        (dm, state) ->
+            Optional.of(
+                new LlmMessage(
+                    LlmMessage.ROLE_USER,
+                    List.of(
+                        new ContentPart.Text("【开场快照】"),
+                        new ContentPart.Image("image/png", FAKE_ASSET_ID))));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, true, snapshot)
+        .run(DM_FRA, state());
+    assertThat(roles(llm.requests().get(0).messages())).containsExactly("system", "user");
+    assertThat(imagePartOf(llm.requests().get(0).messages().get(1)).assetId())
+        .isEqualTo(FAKE_ASSET_ID);
+
+    // ★ 第二轮（会话已有历史）不得再注一次：否则每一轮都白花一张图的钱。
+    llm.enqueue(LlmResponse.text("还是看到了"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, true, snapshot)
+        .run(DM_FRA, state());
+    assertThat(roles(llm.requests().get(1).messages()))
+        .as("第二轮请求 = 历史里的 [system, user(快照), assistant]（本轮的 assistant 要等请求之后才落）")
+        .containsExactly("system", "user", "assistant");
+    assertThat(
+            llm.requests().get(1).messages().stream()
+                .filter(
+                    message ->
+                        message.content().stream().anyMatch(ContentPart.Image.class::isInstance))
+                .count())
+        .as("整个第二轮请求里带图的消息仍只有历史里那一张（快照没有第二次注入）")
+        .isEqualTo(1);
+  }
+
+  /**
+   * ★ **开关开着但路由没有视觉能力**：跳过（不注一条 resolving 不了的图片消息），且**不是静默**——留一行 warn。
+   *
+   * <p>★ 判别力：把 {@code openingSnapshotMessage} 里的 {@code !vision} 那一支去掉 ⇒ 首轮会多出一条带图的 user 消息 ⇒ 本用例红。
+   */
+  @Test
+  void theOpeningSnapshotIsSkippedWithoutVision() {
+    llm.enqueue(LlmResponse.text("看到了"));
+    DecisionAgentRunner.OpeningSnapshot snapshot =
+        (dm, state) ->
+            Optional.of(
+                new LlmMessage(
+                    LlmMessage.ROLE_USER,
+                    List.of(new ContentPart.Image("image/png", FAKE_ASSET_ID))));
+
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, false, snapshot)
+        .run(DM_FRA, state());
+
+    assertThat(roles(llm.requests().get(0).messages()))
+        .as("无视觉能力 ⇒ 首轮只有身份那条 system（快照被跳过）")
+        .containsExactly("system");
+  }
+
+  /**
+   * ★★ **国家决策人的开场快照真的能出图**（{@link NationOpeningSnapshot} 的端到端）：国家 FRA 的首府区域是 701 （{@code
+   * (1,1)/(1,2)} 两格）⇒ 取景中心 = 最北偏西那格 {@code (1,1)}，图能渲染、字节能解析。
+   */
+  @Test
+  void theNationOpeningSnapshotRendersTheHomeRegionAroundItsLabelHex() throws Exception {
+    Optional<LlmMessage> message =
+        new NationOpeningSnapshot(shell.renderService()).forDecisionMaker(DM_FRA, state());
+
+    assertThat(message).as("国家决策人 + 世界里真有那个首府区域 ⇒ 应当出图").isPresent();
+    LlmMessage user = message.get();
+    assertThat(user.role()).isEqualTo("user");
+    assertThat(textOf(user)).as("图上要说清这是什么、以及中心在哪一格").contains("1,1");
+    ContentPart.Image image = imagePartOf(user);
+    assertThat(ImageIO.read(new ByteArrayInputStream(pngOf(image.assetId()))))
+        .as("★ 解析出来的字节要真能被解成一张图（不是看起来像 PNG 的垃圾）")
+        .isNotNull();
+  }
+
+  /** 军队决策人**本批不给**开场快照（如实记：取景语义未裁决，见 NationOpeningSnapshot 的类注）。 */
+  @Test
+  void theNationOpeningSnapshotGivesNothingForAnArmyDecisionMaker() {
+    assertThat(new NationOpeningSnapshot(shell.renderService()).forDecisionMaker(DM_ARMY, state()))
+        .isEmpty();
+  }
+
   // ────────────────────────────── 助手 ──────────────────────────────
 
   private DecisionAgentRunner runner(ToolRegistry registry, int maxLlmCalls) {
-    return new DecisionAgentRunner(factory(), registry, llm, conversations, MAP_ID, maxLlmCalls);
+    return runner(registry, maxLlmCalls, false, DecisionAgentRunner.OpeningSnapshot.NONE);
+  }
+
+  private DecisionAgentRunner runner(ToolRegistry registry, int maxLlmCalls, boolean vision) {
+    return runner(registry, maxLlmCalls, vision, DecisionAgentRunner.OpeningSnapshot.NONE);
+  }
+
+  private DecisionAgentRunner runner(
+      ToolRegistry registry,
+      int maxLlmCalls,
+      boolean vision,
+      DecisionAgentRunner.OpeningSnapshot openingSnapshot) {
+    return new DecisionAgentRunner(
+        factory(),
+        registry,
+        llm,
+        conversations,
+        MAP_ID,
+        maxLlmCalls,
+        DecisionAgentRunner.ProgressListener.NONE,
+        vision,
+        openingSnapshot);
+  }
+
+  /** 一条消息里**唯一**的那张图片分片（没有就当场失败——"字段在不在"这件事本身是判据）。 */
+  private static ContentPart.Image imagePartOf(LlmMessage message) {
+    List<ContentPart.Image> images =
+        message.content().stream()
+            .filter(ContentPart.Image.class::isInstance)
+            .map(ContentPart.Image.class::cast)
+            .toList();
+    assertThat(images).as("这条消息里应当恰好有一张图").hasSize(1);
+    return images.get(0);
+  }
+
+  /** 工件库里的那份字节（解析不到 ⇒ 当场失败）。 */
+  private byte[] pngOf(String assetId) {
+    return shell.artifactStore().resolve(assetId).orElseThrow().bytes();
   }
 
   /** 决策人桶（{@code Role.DECISION_AGENT}）的注册表——生产路径交的就是这个。 */

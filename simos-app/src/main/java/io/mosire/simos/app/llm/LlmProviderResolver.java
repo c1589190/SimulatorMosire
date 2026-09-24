@@ -8,6 +8,7 @@ import io.mosire.agentlib.llm.LlmRequest;
 import io.mosire.agentlib.llm.LlmResponse;
 import io.mosire.agentlib.llm.LlmRouteAssembler;
 import io.mosire.agentlib.llm.ModelRoute;
+import io.mosire.agentlib.llm.ToolAssetResolver;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
 import io.mosire.simos.sd.adjudication.LlmDecisionAdjudicator;
@@ -61,13 +62,63 @@ public final class LlmProviderResolver {
   /**
    * {@code providerId} ⇒ AgentLib 的 {@link LlmClient}。
    *
+   * <p>★ 这条**不带工件解析器**（{@link ToolAssetResolver#none()}）：它给的是**不产图/不附图**的那条路（判决 {@code
+   * llmClientFor} 与配置面自检）。要附图请走 {@link #providerFor}。
+   *
    * @throws IllegalStateException providerId 空（未绑定）或查无（路由表里没有这个名字）
    * @throws ConfigException 路由在场但读不动（AgentLib 的错误码原样上报）
    */
   public LlmClient agentLibClientFor(String providerId) {
+    return agentLibClientFor(providerId, ToolAssetResolver.none());
+  }
+
+  /**
+   * 同上，但**带上工件解析器**：消息里出现 {@link io.mosire.agentlib.llm.ContentPart.Image}（引用式图片分片）时，
+   * 发送侧在那一刻按它解析字节、拼 data-URI。
+   *
+   * <p>★★ **为什么 resolver 必须在这一层注入**：AgentLib 的装配器不给 resolver 时用的是 {@link
+   * ToolAssetResolver#none()}，而**消息里真带图时它会响亮抛 CONFIG**（不静默丢图）⇒ 决策人链路一旦把图附进消息，
+   * 少了这一个形参就是每一次调用都失败。它是"图能不能出站"的唯一开关，故与客户端**同一条装配**里给。
+   *
+   * @param assets 工件解析器（生产路径 = {@code ArtifactStore}）
+   */
+  public LlmClient agentLibClientFor(String providerId, ToolAssetResolver assets) {
+    Objects.requireNonNull(assets, "assets");
     String id = requireRouteId(providerId);
     requireKnownRoute(id);
-    return LlmRouteAssembler.client(config.configStore(), id, AccessToken.SYSTEM);
+    // ★ 一条装配路径（不再按 resolver 是不是 none() 分岔）：两条分支只会让"生产走哪条"变成没人在意的细节，
+    //   而少一条分支就少一处"改了一处忘了另一处"。
+    ModelRoute route = io.mosire.agentlib.llm.LlmRouteLoader.load(config.configStore(), id);
+    return LlmRouteAssembler.client(
+        route,
+        new io.mosire.agentlib.llm.ConfigApiKeySource(
+            config.configStore(), route.credentialsRef(), AccessToken.SYSTEM),
+        assets);
+  }
+
+  /**
+   * {@code providerId} ⇒ **客户端 + 能力**（P4）：决策人链路要的那一个值（见 {@link ProviderLlm} 的类注）。
+   *
+   * <p>★ 能力读法与客户端装配**同一个 id、同一套 fail-closed**（{@link #requireRouteId} + {@link
+   * #requireKnownRoute}）：查无就抛、绝不换一条能用的顶上。
+   *
+   * @param assets 工件解析器（生产路径 = {@code ArtifactStore}）
+   * @throws IllegalStateException providerId 空或查无（同 {@link #agentLibClientFor(String)}）
+   */
+  public ProviderLlm providerFor(String providerId, ToolAssetResolver assets) {
+    return new ProviderLlm(agentLibClientFor(providerId, assets), visionOf(providerId));
+  }
+
+  /**
+   * 该 provider 的模型有没有视觉能力（{@code llm.routes.<name>.capabilities.vision}，缺席 = false）。
+   *
+   * <p>★ **它决定"图附不附"**（见 {@code DecisionAgentRunner}）：路由没声明视觉能力时有图也不发——发过去是供应商 400，
+   * 而不发仍能拿到工具结果的文本摘要（`simos.map.render` 的 {@code auto} 会回落成字符图）。
+   */
+  public boolean visionOf(String providerId) {
+    String id = requireRouteId(providerId);
+    requireKnownRoute(id);
+    return io.mosire.agentlib.llm.LlmRouteLoader.capabilities(config.configStore(), id).vision();
   }
 
   /** 路由表里必须有这个名字；没有 ⇒ 抛**点名该 id** 的异常（绝不回退到别的 provider）。 */

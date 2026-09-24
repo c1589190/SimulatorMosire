@@ -1,11 +1,11 @@
 package io.mosire.simos.app.decision;
 
-import io.mosire.agentlib.llm.LlmClient;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmProviderResolver;
+import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -51,20 +51,23 @@ public final class DecisionAgentService {
   public static final String CONVERSATIONS_FILE_NAME = "conversations.db";
 
   /**
-   * **决策人的 LLM 客户端来源**（providerId ⇒ AgentLib 客户端）：生产路径 = {@code
-   * LlmProviderResolver::agentLibClientFor}；用例 = 一个回放的 {@code FakeLlmClient}。
+   * **决策人的 LLM 客户端来源**（providerId ⇒ 客户端 **+ 它有没有视觉能力**）：生产路径 = {@code
+   * LlmProviderResolver::providerFor}（绑上工件解析器）；用例 = 一个回放的 {@code FakeLlmClient}。
    *
-   * <p>★ **它是"怎么造客户端"的接缝，不是"该不该跑"的开关**：未绑定的判定在 {@link #runRound} 里（见类注）， 无论实现是谁都绕不过去。
+   * <p>★★ **它是"怎么造客户端"的接缝，不是"该不该跑"的开关**：未绑定的判定在 {@link #runRound} 里（见类注）， 无论实现是谁都绕不过去。
+   *
+   * <p>★★ **P4 起它多带回一个能力位**（{@link ProviderLlm}）：链路的图片通路要同时知道"往哪发"与"发不发图"，而这两件事
+   * **同住一份路由配置**——分两处各查一次就会漂移（改了一处漏了另一处，两种方向都不会报装配错，见 {@link ProviderLlm} 的类注）。
    */
   @FunctionalInterface
   public interface LlmClients {
 
     /**
      * @param providerId 决策人绑定的 provider id（**非空**——空值在 {@link #runRound} 就被拒了）
-     * @return 该 provider 的 AgentLib 客户端
+     * @return 该 provider 的客户端**与其能力**（客户端必须是带工件解析器的那条：消息里有图时发送侧要按引用取字节）
      * @throws RuntimeException 名字查无 / 路由坏掉（生产路径 fail-closed，不兜底）
      */
-    LlmClient clientFor(String providerId);
+    ProviderLlm providerFor(String providerId);
   }
 
   private final CoreSimos core;
@@ -76,8 +79,16 @@ public final class DecisionAgentService {
   private final int maxLlmCalls;
 
   /**
+   * **开场快照来源**（P4）：装配方按开关给（{@code Shell} 用渲染件与"国家→首府区域"的取景规则实现）。
+   *
+   * <p>★ 缺省 {@link DecisionAgentRunner.OpeningSnapshot#NONE} = 关：不装就是既有行为，且**关与"开着但没出图"分得开** （见
+   * {@code DecisionAgentRunner.openingSnapshotMessage} 的注释）。
+   */
+  private final DecisionAgentRunner.OpeningSnapshot openingSnapshot;
+
+  /**
    * @param core 唯一写入口（读状态经它的只读 {@code replay}；写仍只发生在运行流内部的 {@code CoreSimos.submit}）
-   * @param llmClients providerId ⇒ 客户端（生产路径 = {@link LlmProviderResolver}）
+   * @param llmClients providerId ⇒ 客户端 + 能力（生产路径 = {@link LlmProviderResolver}）
    * @param callerFactory 决策人调用者工厂（范围**每次现算**；其 {@code whitelist()} 同时是"给模型看的工具面"的来源）
    * @param decisionTools **决策人桶**的注册表（工具面与执行都从它取）
    * @param conversations 会话存储（跨 tick / 跨重启沿用同一段会话）
@@ -109,6 +120,27 @@ public final class DecisionAgentService {
       ConversationStore conversations,
       String mapId,
       int maxLlmCalls) {
+    this(
+        core,
+        llmClients,
+        callerFactory,
+        decisionTools,
+        conversations,
+        mapId,
+        maxLlmCalls,
+        DecisionAgentRunner.OpeningSnapshot.NONE);
+  }
+
+  /** **全参**（P4 生产路径）：另给开场快照来源（{@link DecisionAgentRunner.OpeningSnapshot}；{@code NONE} = 关）。 */
+  public DecisionAgentService(
+      CoreSimos core,
+      LlmClients llmClients,
+      DecisionCallerFactory callerFactory,
+      ToolRegistry decisionTools,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls,
+      DecisionAgentRunner.OpeningSnapshot openingSnapshot) {
     this.core = Objects.requireNonNull(core, "core");
     this.llmClients = Objects.requireNonNull(llmClients, "llmClients");
     this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
@@ -116,6 +148,7 @@ public final class DecisionAgentService {
     this.conversations = Objects.requireNonNull(conversations, "conversations");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.maxLlmCalls = maxLlmCalls;
+    this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
   }
 
   /**
@@ -156,18 +189,29 @@ public final class DecisionAgentService {
     if (maker == null) {
       throw new IllegalArgumentException("决策人不存在: " + decisionMakerId.value());
     }
-    LlmClient client = llmClients.clientFor(requireProviderId(maker));
+    ProviderLlm provider = llmClients.providerFor(requireProviderId(maker));
+    // ★★ P4：vision 与快照都从这一个值里出（能力与客户端同源，见 LlmClients 的类注）——图发不发、
+    //   渲染工具的 auto 落在图还是字符图、开场快照注不注，三处**同一位**说了算。
     DecisionAgentRunner runner =
         new DecisionAgentRunner(
-            callerFactory, decisionTools, client, conversations, mapId, maxLlmCalls, listener);
+            callerFactory,
+            decisionTools,
+            provider.client(),
+            conversations,
+            mapId,
+            maxLlmCalls,
+            listener,
+            provider.vision(),
+            openingSnapshot);
     try {
       DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
       // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
       //   （内容在轨迹与会话里，且**绝不打密钥**——本行没有任何配置值）。
       LOG.info(
-          "决策人 agent 一轮完成 decisionMakerId={} model={} llmCalls={} toolCalls={} conversationId={}",
+          "决策人 agent 一轮完成 decisionMakerId={} model={} vision={} llmCalls={} toolCalls={} conversationId={}",
           maker.id().value(),
-          client.model(),
+          provider.client().model(),
+          provider.vision(),
           turn.llmCalls(),
           turn.toolInvocations().size(),
           turn.conversationId());
@@ -176,7 +220,7 @@ public final class DecisionAgentService {
       LOG.warn(
           "决策人 agent 撞上回合预算 decisionMakerId={} model={} llmCalls={}",
           maker.id().value(),
-          client.model(),
+          provider.client().model(),
           e.llmCalls());
       throw e;
     }

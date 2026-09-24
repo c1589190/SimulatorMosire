@@ -47,7 +47,7 @@ public final class ShellMain {
       LOG.error("参数错误：{}", e.getMessage());
       LOG.error(
           "用法：--store <dir> [--gui-port N] [--mcp-port N] [--approval-port N]"
-              + " [--bind-address <host>]");
+              + " [--bind-address <host>] [--opening-snapshot]");
       return;
     }
     run(config);
@@ -65,6 +65,7 @@ public final class ShellMain {
     int mcpPort = ShellConfig.DEFAULT_MCP_PORT;
     int approvalPort = ShellConfig.DEFAULT_APPROVAL_PORT;
     String bindAddress = ShellConfig.DEFAULT_BIND_ADDRESS;
+    boolean openingSnapshot = ShellConfig.DEFAULT_OPENING_SNAPSHOT;
     for (int i = 0; i < args.length; i++) {
       switch (args[i]) {
         case "--store" -> store = Path.of(value(args, ++i, "--store"));
@@ -73,6 +74,8 @@ public final class ShellMain {
         case "--approval-port" ->
             approvalPort = port(value(args, ++i, "--approval-port"), "--approval-port");
         case "--bind-address" -> bindAddress = value(args, ++i, "--bind-address");
+        // ★ 无值开关（P4）：它不开取值，故不在 value(...) 那一族里。
+        case "--opening-snapshot" -> openingSnapshot = true;
         default -> throw new IllegalArgumentException("未知参数: " + args[i]);
       }
     }
@@ -88,7 +91,8 @@ public final class ShellMain {
         approvalPort,
         ShellConfig.DEFAULT_MCP_INITIATOR,
         ShellConfig.DEFAULT_MAP_ID,
-        bindAddress);
+        bindAddress,
+        openingSnapshot);
   }
 
   /**

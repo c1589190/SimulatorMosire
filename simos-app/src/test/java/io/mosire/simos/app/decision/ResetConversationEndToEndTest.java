@@ -20,6 +20,7 @@ import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
@@ -159,7 +160,7 @@ class ResetConversationEndToEndTest {
     storeDir = tempDir;
     seedGenesis();
     llm = new RecordingLlmClient();
-    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::client);
+    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider);
     client = newClient();
   }
 
@@ -599,9 +600,10 @@ class ResetConversationEndToEndTest {
     private final List<LlmRequest> requests = new ArrayList<>();
 
     /** 注入进壳的那条缝：providerId 是**真的**（壳按世界事实解析出来），只是客户端由本替身提供。 */
-    LlmClient client(String providerId) {
+    ProviderLlm provider(String providerId) {
       assertThat(providerId).as("★ 壳解析出的 providerId 必须与夹具里绑的一致").isEqualTo(PROVIDER_ID);
-      return this;
+      // ★ 本用例集不验图片通路：如实给"没有视觉能力"（图一张都不该发，见 DecisionAgentRunner 的类注）。
+      return new ProviderLlm(this, false);
     }
 
     void enqueue(LlmResponse... responses) {

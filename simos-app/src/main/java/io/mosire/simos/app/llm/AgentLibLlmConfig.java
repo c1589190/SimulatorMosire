@@ -79,6 +79,13 @@ public final class AgentLibLlmConfig {
 
   private static final String KEY_ROUTES = "routes";
 
+  /**
+   * 路由里承载**能力描述**的子结点名（AgentLib 的口径：{@code llm.routes.<name>.capabilities.*}）。
+   *
+   * <p>★ 本类**不解释**它的内容（那是 {@code LlmRouteLoader} 的事），只在重写路由时**原样搬运**它——见 {@link #upsertRoute}。
+   */
+  private static final String KEY_CAPABILITIES = "capabilities";
+
   /** 承载密钥值的段（AgentLib 口径：{@code keys.<name>}）。 */
   private static final String SECTION_KEYS = "keys";
 
@@ -274,6 +281,14 @@ public final class AgentLibLlmConfig {
       route.put("credentialsRef", credentialsRef);
     }
     route.put("timeoutMs", readTimeoutMs);
+    // ★★ **把既有的 capabilities 原样搬过来**（P4，2026-09-24）：本方法**不管理能力位**，而 {@code configStore.put}
+    //   是"整体替换该结点"⇒ 不搬的话，在配置页上保存一次路由就会把 {@code capabilities.vision} 抹掉。症状是
+    //   **决策人忽然收不到图了，而配置页看上去一切正常**（那种"改了 A、坏在 B"的形态正是本仓最贵的一类）。
+    //   能力位目前由直接编辑 config.json 写入（将来若有能力编辑面，也应经由它、而不是顺手在这里默认值化）。
+    JsonNode existing = configStore.get(SECTION_LLM, KEY_ROUTES + "." + name).orElse(null);
+    if (existing != null && existing.get(KEY_CAPABILITIES) != null) {
+      route.set(KEY_CAPABILITIES, existing.get(KEY_CAPABILITIES));
+    }
     configStore.put(SECTION_LLM, KEY_ROUTES + "." + name, route, SYSTEM, null, ROUTES_FILE_SCHEMA);
   }
 
@@ -467,6 +482,9 @@ public final class AgentLibLlmConfig {
     view.put("reasoning", caps.reasoning());
     view.put("maxContext", caps.maxContext());
     view.put("maxOutput", caps.maxOutput());
+    // ★ P4（2026-09-24）：vision 也报出来。它是**决策人链路是否发图**的唯一依据（见 ProviderLlm）——
+    //   配了却在界面上看不见，就等于让运维无法回答"这个人为什么收不到图"。
+    view.put("vision", caps.vision());
     return view;
   }
 

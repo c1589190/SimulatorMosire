@@ -25,6 +25,7 @@ import io.mosire.simos.app.render.RenderCache;
 import io.mosire.simos.app.render.RenderRequest;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.write.MapCreateRegionTool;
 import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
 import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
@@ -897,6 +898,45 @@ class SimosToolsTest {
         .isNotEqualTo(assetId);
   }
 
+  /**
+   * ★★ P4（2026-09-24）：{@code format=auto} **按宿主编排的视觉能力**选形态。
+   *
+   * <p>装置：同一个工具、同一份世界，只换 {@code ToolContext.config} 里的那一位（决策人链路由运行流按该决策人绑的路由注入）。
+   *
+   * <p>判别性：把 {@code resolveFormat} 里 auto 的能力判断去掉（回到"无条件出图"）⇒ 第一条断言当场红；把"键缺席 = 出图" 改成"键缺席 = 字符图"⇒
+   * 第三条红（那正是**其它调用点行为漂移**的形态：GUI / MCP / 用例谁都没注这个键）。
+   */
+  @Test
+  void mapRenderAutoFollowsTheHostsVisionCapability() throws Exception {
+    Map<String, Object> frame = Map.of("q", 1L, "r", 1L, "radius", 1L);
+
+    ToolResult blind =
+        call("simos.map.render", frame, Map.of(MapRenderTool.VISION_CONFIG_KEY, false));
+    assertThat(blind.success()).as(blind.message()).isTrue();
+    assertThat(JSON.readTree(blind.message()).get("format").asText())
+        .as("★ 无视觉能力 ⇒ auto 落到字符图（否则模型只会拿到一句「PNG 已生成」）")
+        .isEqualTo("text");
+    assertThat(blind.assetDocIds()).as("字符图不产工件").isEmpty();
+
+    ToolResult sighted =
+        call("simos.map.render", frame, Map.of(MapRenderTool.VISION_CONFIG_KEY, true));
+    assertThat(JSON.readTree(sighted.message()).get("format").asText()).isEqualTo("image");
+    assertThat(sighted.assetDocIds()).as("有视觉能力 ⇒ 出图并随结果出站").hasSize(1);
+
+    ToolResult absent = call("simos.map.render", frame);
+    assertThat(JSON.readTree(absent.message()).get("format").asText())
+        .as("★ 键缺席 = 历史行为（出图）：GUI / MCP / 用例不注这个键 ⇒ 形态逐字不变")
+        .isEqualTo("image");
+
+    Map<String, Object> explicitText = new LinkedHashMap<>(frame);
+    explicitText.put("format", "text");
+    ToolResult asked =
+        call("simos.map.render", explicitText, Map.of(MapRenderTool.VISION_CONFIG_KEY, true));
+    assertThat(JSON.readTree(asked.message()).get("format").asText())
+        .as("调用者明确要 text ⇒ 能力位不覆盖它")
+        .isEqualTo("text");
+  }
+
   /** ★ P3：图超预算时**自动降采样**（边长折半），直到进预算或触到最小边长——绝不把一张大图塞进上下文预算。 */
   @Test
   void renderServiceDownscalesImagesThatExceedTheByteBudget() {
@@ -1676,12 +1716,25 @@ class SimosToolsTest {
   // ────────────────────────────── 夹具 ──────────────────────────────
 
   private ToolResult call(String toolName, Map<String, Object> args) {
+    return call(toolName, args, Map.of());
+  }
+
+  /**
+   * 带**宿主编排配置**的调用（P4：{@code ToolContext.config} 通道；键见 {@code MapRenderTool#VISION_CONFIG_KEY}）。
+   */
+  private ToolResult call(
+      String toolName, Map<String, Object> args, Map<String, Object> toolConfig) {
     AgentTool tool = shell.toolRegistry().find(toolName).orElseThrow();
-    return tool.execute(context(tool, args));
+    return tool.execute(context(tool, args, toolConfig));
   }
 
   private static ToolContext context(AgentTool tool, Map<String, Object> args) {
-    return new ToolContext(AccessToken.SYSTEM, AgentPermissionSet.system(), Map.of(), args)
+    return context(tool, args, Map.of());
+  }
+
+  private static ToolContext context(
+      AgentTool tool, Map<String, Object> args, Map<String, Object> toolConfig) {
+    return new ToolContext(AccessToken.SYSTEM, AgentPermissionSet.system(), toolConfig, args)
         .withResources(ResourceAuthorizer.of(AgentPermissionSet.system(), tool.resources()));
   }
 

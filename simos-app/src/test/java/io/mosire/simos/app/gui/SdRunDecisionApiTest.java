@@ -12,6 +12,7 @@ import io.mosire.agentlib.llm.LlmRequest;
 import io.mosire.agentlib.llm.LlmResponse;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -138,7 +139,11 @@ class SdRunDecisionApiTest {
     seedGenesis();
     llm = new RecordingFakeLlm();
     // ★ 注入的只是"怎么造客户端"：未绑定 provider 的 fail-closed、世界、权限、落盘全是真的。
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0), providerId -> llm);
+    shell =
+        Shell.start(
+            ShellConfig.defaults(tempDir).withPorts(0, 0, 0),
+            // ★ 本用例集不验图片通路：如实给"没有视觉能力"（图一张都不该发，见 DecisionAgentRunner 的类注）。
+            providerId -> new ProviderLlm(llm, false));
     port = shell.boundGuiPort();
     client = HttpClient.newHttpClient();
   }

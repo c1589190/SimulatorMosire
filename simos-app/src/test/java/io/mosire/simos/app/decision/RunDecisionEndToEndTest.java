@@ -19,6 +19,7 @@ import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.UnitRenameTool;
@@ -478,7 +479,7 @@ class RunDecisionEndToEndTest {
     seedGenesis(maker);
     llm = new RecordingLlmClient();
     // ★ 真壳 + 注入的 LLM 客户端来源（生产路径传 null ⇒ 按决策人的 providerId 解析真 provider）。
-    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::client);
+    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider);
     client = newClient();
   }
 
@@ -633,10 +634,22 @@ class RunDecisionEndToEndTest {
     private final FakeLlmClient delegate = new FakeLlmClient();
     private final List<LlmRequest> requests = new ArrayList<>();
 
+    /**
+     * 这条 provider 有没有视觉能力（P4）：**缺省 false**（图一张都不发），要验图片通路的用例先把它打开。
+     *
+     * <p>★ 它模拟的是"路由配置里 {@code capabilities.vision}"这一条**配置事实**——所以它挂在"provider ⇒ 客户端 + 能力"
+     * 那条缝上（{@link #provider}），而不是让某个用例去改 runner 的形参。
+     */
+    private boolean vision;
+
+    void withVision(boolean enabled) {
+      this.vision = enabled;
+    }
+
     /** 注入进壳的那条缝：providerId 是**真的**（壳按世界事实解析出来），只是客户端由本替身提供。 */
-    LlmClient client(String providerId) {
+    ProviderLlm provider(String providerId) {
       assertThat(providerId).as("★ 壳解析出的 providerId 必须与夹具里绑的一致").isEqualTo(PROVIDER_ID);
-      return this;
+      return new ProviderLlm(this, vision);
     }
 
     void enqueue(LlmResponse... responses) {

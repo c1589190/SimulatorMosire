@@ -22,7 +22,9 @@ import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.GmAutoApproveGate;
+import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.decision.DecisionAgentService;
+import io.mosire.simos.app.decision.NationOpeningSnapshot;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.gm.RecordingToolSource;
 import io.mosire.simos.app.gui.GuiServer;
@@ -570,12 +572,19 @@ public final class Shell implements AutoCloseable {
         new DecisionAgentService(
             coreSimos,
             decisionLlmClients == null
-                ? llmProviderResolver::agentLibClientFor
+                // ★★ P4：生产路径给的是「客户端 + 能力」一个值（{@link LlmProviderResolver#providerFor}）——
+                //   客户端**带工件解析器**（图在这个实例里出站），能力位一起带出来（图发不发由它定）。
+                ? providerId -> llmProviderResolver.providerFor(providerId, artifactStore)
                 : decisionLlmClients,
             decisionCallerFactory,
             decisionTools,
             decisionConversations,
-            config.mapId());
+            config.mapId(),
+            DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS,
+            // ★ P4 开场快照：**开关关着就一个字节都不装**（传 NONE ⇒ 运行流那边分得出"没开"与"开了没出图"）。
+            config.openingSnapshot()
+                ? new NationOpeningSnapshot(renderService)
+                : DecisionAgentRunner.OpeningSnapshot.NONE);
 
     // 工具集（spec §2.1）：MCP 口 = **GM 组** = 读工具 + 通用写 + 全部窄写（条数以工具面为准）；
     //   GM 组的权限集是显式构造的那一份（gmCaller 的 resourceScopes 逐命名空间表态），不再是 unrestricted 的空资源图。

@@ -43,6 +43,17 @@ public final class MapRenderTool implements AgentTool {
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.map.render";
 
+  /**
+   * **宿主编排配置的键：调用者的模型有没有视觉能力**（P4，2026-09-24）——它决定 {@code format=auto} 的落点。
+   *
+   * <p>★★ **为什么这个事实走 {@code ToolContext.config} 而不是写进别处**：它是**部署事实**（这条路由的模型有没有眼睛）， 既不是世界状态（不能落
+   * revision），也不是永久不变量（不能钉进决策人的开场消息里——改配置就成了一句谎，而且没有任何症状）。 AgentLib 的 {@code ToolContext.config}
+   * 正是给"宿主此刻怎么部署的"准备的通道，由决策人运行流按**该决策人绑的路由**逐次注入。
+   *
+   * <p>★ **键缺席 = 出图**（历史行为）：其它调用点（GUI 读、用例、MCP 面）不注这个键，故它们看到的形态逐字不变。
+   */
+  public static final String VISION_CONFIG_KEY = "vision";
+
   /** 缺省半径（4 ⇒ 61 格：看图足够、token 友好）。 */
   private static final int DEFAULT_RADIUS = 4;
 
@@ -67,7 +78,8 @@ public final class MapRenderTool implements AgentTool {
   @Override
   public String description() {
     return "把世界渲染成图：中心(q,r) 或 regionId + radius(1-10)，可选图层 terrain/regions/cities/units/population；"
-        + "format=auto|image|text（text = 字符图回落）。图片随结果一并提供，文本摘要永远在。";
+        + "format=auto|image|text（auto 缺省：你的模型能看图就出图，不能就给你一张字符图；"
+        + "text 恒为字符图）。图片随结果一并提供，文本摘要永远在。";
   }
 
   @Override
@@ -82,7 +94,8 @@ public final class MapRenderTool implements AgentTool {
         ToolSupport.prop("array", "图层，可多选：terrain / regions / cities / units / population（缺省前四者）"));
     props.put("width", ToolSupport.prop("integer", "画布宽 64..1024（缺省 768）"));
     props.put("height", ToolSupport.prop("integer", "画布高 64..1024（缺省 768）"));
-    props.put("format", ToolSupport.prop("string", "auto（缺省，出图）| image | text（字符图）"));
+    props.put(
+        "format", ToolSupport.prop("string", "auto（缺省：按你的模型有没有视觉能力选图/字符图）| image | text（字符图）"));
     return ToolSupport.schema(props, List.of());
   }
 
@@ -102,7 +115,7 @@ public final class MapRenderTool implements AgentTool {
 
       HexCoord center = resolveCenter(args, map);
       int radius = resolveRadius(args);
-      String format = resolveFormat(args);
+      String format = resolveFormat(args, context.config());
 
       if ("text".equals(format)) {
         RenderService.Rendered rendered = render.renderText(target, center, radius);
@@ -156,8 +169,13 @@ public final class MapRenderTool implements AgentTool {
     throw new IllegalArgumentException("必须给中心：q + r，或 regionId");
   }
 
-  /** 区域的"取景中心"：最北（r 最小）偏西（q 最小）的一格——确定性、可预期，且落在区域里。 */
-  static HexCoord labelHex(Region region) {
+  /**
+   * 区域的"取景中心"：最北（r 最小）偏西（q 最小）的一格——确定性、可预期，且落在区域里。
+   *
+   * <p>★ **公开给"开场快照"复用**（P4）：决策人首轮那张"我的国土"图按 {@code homeRegion} 取景，必须与按 {@code regionId}
+   * 调本工具**落在同一个中心格**上——否则人（与模型）看到的图与它自己再调一次得到的图会是两个取景。
+   */
+  public static HexCoord labelHex(Region region) {
     return region.hexes().stream()
         .min(Comparator.comparingInt(HexCoord::r).thenComparingInt(HexCoord::q))
         .orElseThrow(() -> new IllegalArgumentException("区域没有格: " + region.id().value()));
@@ -192,14 +210,33 @@ public final class MapRenderTool implements AgentTool {
     return RenderLayer.parseAll(names);
   }
 
-  private static String resolveFormat(Map<String, Object> args) {
+  /**
+   * 形态选择：{@code auto} = **宿主编排说这个模型有视觉能力就出图、否则回落字符图**（见 {@link #VISION_CONFIG_KEY}）。
+   *
+   * <p>★★ **为什么 {@code auto} 必须真的看能力**（P4，2026-09-24）：它原先无条件出图 ⇒ 绑在无视觉能力模型上的决策人调一次 {@code
+   * auto}，拿到的是一句"PNG 已生成（assetId=…）"——**几乎没有信息量**，而它本可以拿到一张字符图。这正是"回落形态"
+   * 存在的意义：不看能力位就等于把一个只会看文本的调用者引到空手而归。
+   *
+   * <p>★ **显式 {@code image}/{@code text} 一律照办**（能力位不覆盖调用者的明确要求）：调用方要什么给什么，选错是它的事。
+   */
+  private static String resolveFormat(Map<String, Object> args, Map<String, Object> config) {
     String format =
         ToolSupport.optionalText(args, "format", "auto").trim().toLowerCase(Locale.ROOT);
     return switch (format) {
-      case "auto", "image" -> "image";
+      case "auto" -> visionEnabled(config) ? "image" : "text";
+      case "image" -> "image";
       case "text" -> "text";
       default -> throw new IllegalArgumentException("format 只能是 auto / image / text: " + format);
     };
+  }
+
+  /** 宿主编排注入的视觉能力；**键缺席 ⇒ true**（其它调用点的历史行为是出图，见 {@link #VISION_CONFIG_KEY}）。 */
+  private static boolean visionEnabled(Map<String, Object> config) {
+    Object vision = config.get(VISION_CONFIG_KEY);
+    if (vision instanceof Boolean enabled) {
+      return enabled;
+    }
+    return true;
   }
 
   private static Map<String, Object> view(

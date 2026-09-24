@@ -27,6 +27,8 @@ import java.util.Objects;
  *     0.0.0.0} 供反代场景（此前两个面硬编码回环、无法配）。★ **审批端点不在此列**——AgentLib 的 {@code ApprovalHttpEndpoint}
  *     把回环写成了编译期常量（其类注写明"不提供改绑地址的入口"），故审批端口恒回环；对外面是 GUI 的 {@code /api/approvals} 透传代理，见 {@link
  *     io.mosire.simos.app.Shell}
+ * @param openingSnapshot **开场快照开关**（P4，缺省 {@value #DEFAULT_OPENING_SNAPSHOT}）：开 ⇒ 决策人的会话首次为空时，
+ *     先给它发一张本国所在区域的渲染图（只在有视觉能力的路由上生效）。见 {@link #withOpeningSnapshot}
  */
 public record ShellConfig(
     Path storeDir,
@@ -37,7 +39,8 @@ public record ShellConfig(
     int approvalPort,
     String mcpInitiator,
     String mapId,
-    String bindAddress) {
+    String bindAddress,
+    boolean openingSnapshot) {
 
   public static final int DEFAULT_CHECKPOINT_INTERVAL = 100;
   public static final int DEFAULT_GUI_PORT = 5711;
@@ -49,6 +52,43 @@ public record ShellConfig(
 
   /** GUI / MCP 的缺省绑定地址：回环（M10；不裸暴露，反代场景显式传 {@code 0.0.0.0}）。 */
   public static final String DEFAULT_BIND_ADDRESS = "127.0.0.1";
+
+  /**
+   * **开场快照**的缺省（P4）：**关**。
+   *
+   * <p>★ 为什么缺省是关：它给决策人的会话**永久**加一条图片消息（每轮请求都会重发它），是一条会持续花钱的行为； 而"决策人自己调 {@code simos.map.render}
+   * 看图"这条路本来就是通的。要开就显式开（{@code --opening-snapshot}）。
+   */
+  public static final boolean DEFAULT_OPENING_SNAPSHOT = false;
+
+  /**
+   * **9 参兼容构造**（P4）：{@code openingSnapshot} 取 {@value #DEFAULT_OPENING_SNAPSHOT}。
+   *
+   * <p>★ 它存在的理由很实在：那个开关是**新加的第 10 个分量**，而库内已有 13 处按 9 参装配（多数在测试里）。加一个形参就让 13
+   * 个与本次改动无关的地方各改一行，换不到任何东西；把它们钉在"新特性缺省关"上，正是我们要的语义。
+   */
+  public ShellConfig(
+      Path storeDir,
+      int checkpointInterval,
+      int guiPort,
+      int mcpPort,
+      String mcpPath,
+      int approvalPort,
+      String mcpInitiator,
+      String mapId,
+      String bindAddress) {
+    this(
+        storeDir,
+        checkpointInterval,
+        guiPort,
+        mcpPort,
+        mcpPath,
+        approvalPort,
+        mcpInitiator,
+        mapId,
+        bindAddress,
+        DEFAULT_OPENING_SNAPSHOT);
+  }
 
   public ShellConfig {
     Objects.requireNonNull(storeDir, "storeDir");
@@ -87,7 +127,8 @@ public record ShellConfig(
         DEFAULT_APPROVAL_PORT,
         DEFAULT_MCP_INITIATOR,
         DEFAULT_MAP_ID,
-        DEFAULT_BIND_ADDRESS);
+        DEFAULT_BIND_ADDRESS,
+        DEFAULT_OPENING_SNAPSHOT);
   }
 
   /** 仅替换三个端口，其余原样（测试用 {@code 0} 取随机端口时最常用）。 */
@@ -101,7 +142,8 @@ public record ShellConfig(
         approvalPort,
         mcpInitiator,
         mapId,
-        bindAddress);
+        bindAddress,
+        openingSnapshot);
   }
 
   /** 仅替换 GUI / MCP 的绑定地址，其余原样（M10；测试绑非回环地址时最常用）。 */
@@ -115,7 +157,28 @@ public record ShellConfig(
         approvalPort,
         mcpInitiator,
         mapId,
-        bindAddress);
+        bindAddress,
+        openingSnapshot);
+  }
+
+  /**
+   * 仅替换**开场快照开关**，其余原样（P4）。
+   *
+   * <p>★ 开它只对**有视觉能力**的路由有效：路由没声明 {@code capabilities.vision=true} 时运行流会跳过并留一行 warn （见 {@code
+   * DecisionAgentRunner.openingSnapshotMessage}）——即"开了却没出图"是**看得见**的，不是静默。
+   */
+  public ShellConfig withOpeningSnapshot(boolean enabled) {
+    return new ShellConfig(
+        storeDir,
+        checkpointInterval,
+        guiPort,
+        mcpPort,
+        mcpPath,
+        approvalPort,
+        mcpInitiator,
+        mapId,
+        bindAddress,
+        enabled);
   }
 
   private static String requireText(String value, String name) {
