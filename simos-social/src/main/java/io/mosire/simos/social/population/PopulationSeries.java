@@ -19,9 +19,13 @@ import java.util.function.BinaryOperator;
  * = 上一段末的人口）、事件在其时刻立刻改变基数。 故 {@link #segments()} 只声明 anchor 这一件分段常量，增长率的分段货真价实地活在 {@link #growth()}
  * 里。
  *
+ * <p>★ **增长率量纲（2026-09-24 日制裁定）**：{@code growth} 里的 {@code rate} 是**每 tick** 的增长率（{@code valueAt} 里
+ * {@code width = to.tick() - from.tick()} 即其时间步）。日制下 **tick = 天 ⇒ rate 即每日增长率**（数值语义不变）。★
+ * 旧小时档导入时**必须重新标定 rate**，**不能把旧 {@code growth} 原值当日增长率**（设计稿 §3）。
+ *
  * <p>★ **不缓存**（C1）：每次 {@link #valueAt} 从 anchor 现算，复杂度 O(段数 + 事件数)。
  *
- * <p>★ 本类型**不物化 per-tick 网格**：tick 网格是"当前段 + 查询点"的纯函数，不是数据结构。
+ * <p>★ 本类型**不物化 per-tick 网格**：tick 网格（日制下即 per-day 网格）是"当前段 + 查询点"的纯函数，不是数据结构。
  */
 public record PopulationSeries(
     Segment<Long> anchor, SegmentedSeries<Double> growth, List<Event<Long>> events)

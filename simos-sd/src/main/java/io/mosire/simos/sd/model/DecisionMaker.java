@@ -10,8 +10,8 @@ import java.util.Set;
  * 决策人（spec §三.2）：归属（Nation / Army）+ 窄工具白名单（N9）+ accessLimit（R10 / N6）+ 决策周期（N5）+ LLM provider
  * 引用（M11）。
  *
- * <p>★ **决策周期与命令延迟分开**（N5）：{@code decisionCadenceTicks} 是"多久能下一次决心"；命令延迟（决定→执行开始）是 **独立通道**（v1 落在
- * {@code Effect.readyAtTick}，见 spec §〇.3）。
+ * <p>★ **决策周期与命令延迟分开**（N5）：{@code decisionCadenceTicks} 是"**隔多少天**能下一次决心"（单位：日，2026-09-24
+ * 日制裁定）；命令延迟（决定→执行开始）是 **独立通道**（v1 落在 {@code Effect.readyAtTick}，见 spec §〇.3）。
  *
  * <p>★ **{@code providerId} 只是一个不透明的基础设施引用**（M11）：它指向 app / AgentLib 侧 LLM provider 配置里的一条记录， sd
  * **不解释、不校验其存在性**（配置归 AgentLib / app，sd 看不见——铁律 3 的结构化）。空 {@link Optional} = 未绑定。

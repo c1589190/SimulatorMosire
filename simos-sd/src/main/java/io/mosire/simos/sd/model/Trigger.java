@@ -30,7 +30,7 @@ import java.util.List;
 })
 public sealed interface Trigger {
 
-  /** 时间到达（或已过）某 tick（{@code >=}，不是"恰在"）。 */
+  /** 世界日到达（或已过）某天（{@code >=}，不是"恰在"；单位：日，2026-09-24 日制裁定）。 */
   record AtOrAfterTick(long tick) implements Trigger {
 
     public AtOrAfterTick {
@@ -40,7 +40,7 @@ public sealed interface Trigger {
     }
   }
 
-  /** 自某参照点起再经过若干 tick。 */
+  /** 自某参照点起再经过若干**天**（单位：日，2026-09-24 日制裁定）。 */
   record AfterTicks(long ticks) implements Trigger {
 
     public AfterTicks {

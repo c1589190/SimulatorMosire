@@ -7,6 +7,8 @@ import io.mosire.simos.sd.id.EffectId;
  *
  * <p>★ **效果与执行原文无关**（spec §三.6）：{@code Directive.intentInfoKey} 与 {@code action} 分开存，不互相推导。 ★
  * **效果引用合法性（地址 + 命令白名单）由代码校验，绝不交给 AI**（§八.4），校验在命令期（C4）。
+ *
+ * <p>★ {@code createdTick} = 效果创建时的**世界日**（单位：日，2026-09-24 日制裁定；结构不变）。
  */
 public record Effect(
     EffectId id,

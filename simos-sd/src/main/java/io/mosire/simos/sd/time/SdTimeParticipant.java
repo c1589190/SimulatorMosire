@@ -44,6 +44,9 @@ import java.util.Set;
  * <p>★ {@code simulate} 是**纯函数**：用 {@code range.to} 求值 {@code Effect.trigger}（R6 延期效果）与 {@code
  * CombatStage.exit}（N1 阶段推进），产出**本模块** {@code SdChangeSet}。**绝不放进 ③Resolve**。
  *
+ * <p>★ **时间量纲（2026-09-24 日制裁定）**：{@code range.to.tick()} 是**世界日**（全局 1 tick = 1 天）⇒ 求值里 {@code
+ * at.tick()} 与参照点的差值即**日数**。
+ *
  * <p>★ **能力边界**：只写 sd（跨模块效果落成 {@code Action.EnqueueUnitCommand}，由 app 层 {@code SdCommandDrain} 落真
  * revision，spec §五.3）；只读 unit 切片。
  *

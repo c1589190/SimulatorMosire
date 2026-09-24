@@ -29,7 +29,8 @@ import java.util.Objects;
  * ≥ 0}。**坐标重复：后出现者覆盖先出现者，不报错**（见 {@link SocialPayloads#requireEntries}）。
  *
  * <p>★ **人口先静止**：本命令建出的 {@link PopulationSeries} 增长率 0、无事件，{@code anchor} 落在 {@code anchorTick} （缺省
- * = {@code state.meta().timestamp()}）。增长率模型留给后续 Social 工作。
+ * = {@code state.meta().timestamp()}；单位：日，2026-09-24 日制裁定）。★ 该增长率是**每日**增长率（量纲见 {@link
+ * PopulationSeries}）。增长率模型留给后续 Social 工作。
  *
  * <p>★ **目标资源**（{@link CommandTargets}）：{@code entries[]} 里**每一个**格，路径取 social 命名空间的既有形态 {@link
  * ResourcePaths#social(int, int)}（{@code <q>_<r>}，**不带 mapId**）——与读侧 {@code populationVisible}

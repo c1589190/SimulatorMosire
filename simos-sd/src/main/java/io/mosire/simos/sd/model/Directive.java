@@ -12,7 +12,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 决策（spec §三.5，R3/R4）：一个决策人在一个 tick 的决策——含执行原文（INFO）+ 结构化命令 + 效果引用。
+ * 决策（spec §三.5，R3/R4）：一个决策人在一个**世界日**（{@code tick}，单位：日，2026-09-24 日制裁定）的决策——含执行原文（INFO）+ 结构化命令 +
+ * 效果引用。
  *
  * <p>★★ **R4 的形态是"末位生效"，不是"唯一"**（2026-09-23 用户裁定）：同一 ({@code decisionMakerId}, {@code tick})
  * 允许**出多条**（重写 = 产生新的一版），但**只有最新一条生效**——旧的在出令那一刻转 {@link DirectiveStatus#SUPERSEDED}。

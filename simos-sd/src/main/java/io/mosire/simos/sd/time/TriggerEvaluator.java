@@ -12,7 +12,11 @@ import java.util.Objects;
  * 条件求值（spec §三.3 N1 / §三.6 R6）：**纯函数**，数据驱动，不硬编码 Java 分支。
  *
  * <p>★ v1 语义：{@code ThresholdKills} = **全体损失记录里的人员损失绝对值之和**（sd 没有独立击杀计数；损失记录即事实来源）。 {@code
- * AfterTicks(n)} = 相对参照点 {@code sinceTick} 再经过 n tick（效果用其 {@code createdTick}，阶段用 0）。
+ * AfterTicks(n)} = 相对参照点 {@code sinceTick} 再经过 n **天**（效果用其 {@code createdTick}，阶段用 0）；{@code
+ * AtOrAfterTick(t)} = 世界日 t 到达或已过。
+ *
+ * <p>★ **时间量纲（2026-09-24 日制裁定）**：{@code tick} 的单位就是**天**（全局 1 tick = 1 天）⇒ 经过的 tick 数即**日数**、绝对
+ * tick 即**世界日**。
  */
 public final class TriggerEvaluator {
 

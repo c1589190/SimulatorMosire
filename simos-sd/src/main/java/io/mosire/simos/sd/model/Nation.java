@@ -9,7 +9,9 @@ import io.mosire.simos.sd.id.NationId;
  * <p>★ {@code homeRegion} 指向的 {@code Region} 必须存在且有**国家 tag**（R13）——这是 §九 跨模块守卫（不可删区域）的判据来源。 存在性与
  * tag 的校验在**命令期**（{@code sd.CreateNation}），本 record 只守形状与字段不变量。
  *
- * <p>★ {@code adminBudgetPerTick} 承载"行政能力 ⇒ 用行政余额限制"（brainstorm §4）；{@code 0} = 本 tick 无行政能力，合法。
+ * <p>★ {@code adminBudgetPerTick} 承载"行政能力 ⇒ 用行政余额限制"（brainstorm §4）：它是**每日**行政动作预算（单位：日，2026-09-24
+ * 日制裁定）—— **不是国库余额**，且**当前没有任何消费方**（财政余额将归 POLITICAL_ECONOMY_DESIGN.md §7 的 ledger 切片）；{@code 0} =
+ * 本日无行政能力，合法。
  */
 public record Nation(NationId id, String name, RegionId homeRegion, int adminBudgetPerTick) {
 

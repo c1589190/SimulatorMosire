@@ -23,6 +23,9 @@ import java.util.Objects;
  * }</pre>
  *
  * <p>★ 拒绝：id 已存在；{@code homeRegionId} 不存在；该 Region **无国家 tag**（R13，{@link NationTag}）。
+ *
+ * <p>★ {@code adminBudgetPerTick} 是**每日**行政动作预算（单位：日，2026-09-24 日制裁定；非国库余额，**当前无消费方**——见 {@link
+ * Nation}）。
  */
 public final class CreateNationHandler implements CommandHandler {
 
