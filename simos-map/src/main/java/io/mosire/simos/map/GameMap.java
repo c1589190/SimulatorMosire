@@ -16,6 +16,7 @@ import io.mosire.simos.map.region.RegionIndex;
 import io.mosire.simos.map.terrain.TerrainType;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -187,13 +188,31 @@ public record GameMap(
    * @throws IllegalArgumentException {@code hex} 不在图上 或（不变式被破坏时）无主
    */
   public String terrainAt(HexCoord hex) {
+    return blockAt(hex).terrain();
+  }
+
+  /**
+   * ★ 该格所在地形块的**成员格**（自然序，派生、不缓存）。
+   *
+   * <p>用途：前端"油漆桶"要把**整个连通同地形块**一次换成另一种地形——它得先知道这块有多大（超量确认）与都由哪些格组成 （一条 {@code map.SetTerrain} 的
+   * {@code hexes[]}）。**只暴露成员格，不暴露块的形状**（{@link BlockId}/{@link TerrainBlock} 仍是本模块的内部表示，见 {@link
+   * #terrainAt} 的说明）。
+   *
+   * @throws IllegalArgumentException {@code hex} 不在图上 或（不变式被破坏时）无主
+   */
+  public List<HexCoord> terrainBlockHexes(HexCoord hex) {
+    return List.copyOf(blockAt(hex).hexes());
+  }
+
+  /** {@link #terrainAt} 与 {@link #terrainBlockHexes} 的**唯一一处**反查（两处各写一遍必然漂移）。 */
+  private TerrainBlock blockAt(HexCoord hex) {
     Objects.requireNonNull(hex, "hex");
     if (!hexes.containsKey(hex)) {
       throw new IllegalArgumentException("图里没有这个 hex: " + hex);
     }
     for (TerrainBlock block : terrainBlocks.values()) {
       if (block.hexes().contains(hex)) {
-        return block.terrain();
+        return block;
       }
     }
     // 分割不变式保证到不了这里；真到了说明不变式被绕过，宁抛不静默。

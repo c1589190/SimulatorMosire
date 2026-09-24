@@ -569,6 +569,57 @@ class GameMapTest {
   }
 
   /**
+   * ★ {@code terrainBlockHexes}（2026-09-24，前端油漆桶的取块口）：回的必须是**整块**成员格（不是那一格），且与 {@code terrainAt}
+   * 同源；图外格与 {@code terrainAt} 同口径抛。
+   */
+  @Test
+  void terrainBlockHexesReturnsTheWholeConnectedBlock() {
+    Set<HexCoord> strip = Set.of(new HexCoord(1, 1), new HexCoord(1, 2), new HexCoord(1, 3));
+    GameMap m =
+        graphOf(
+            Set.of(new HexCoord(1, 1), new HexCoord(1, 2), new HexCoord(1, 3), new HexCoord(5, 5)));
+
+    assertThat(m.terrainBlockHexes(new HexCoord(1, 2)))
+        .as("★ 点中间那格 ⇒ 整块三格（只回一格即红）")
+        .containsExactlyInAnyOrderElementsOf(strip);
+    assertThat(m.terrainBlockHexes(new HexCoord(1, 2)))
+        .as("自然序（前端把这份序原样喂回一条 map.SetTerrain）")
+        .isSortedAccordingTo(Comparator.naturalOrder());
+    assertThat(m.terrainBlockHexes(new HexCoord(5, 5)))
+        .as("孤立格自成一块")
+        .containsExactly(new HexCoord(5, 5));
+    assertThatThrownBy(() -> m.terrainBlockHexes(new HexCoord(99, 99)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("图里没有这个 hex");
+  }
+
+  /** 小块夹具：{@code (5,5)} 孤立 {@code desert}，其余格一律 {@code plains}（相邻者连成一块）。 */
+  private static GameMap graphOf(Set<HexCoord> hexes) {
+    Map<HexCoord, HexCell> cells = new LinkedHashMap<>();
+    for (HexCoord hex : hexes) {
+      boolean isolated = hex.equals(new HexCoord(5, 5));
+      cells.put(hex, new HexCell(isolated ? 0.38 : 0.15));
+    }
+    Map<HexCoord, String> byHex = new LinkedHashMap<>();
+    for (HexCoord hex : hexes) {
+      byHex.put(hex, hex.equals(new HexCoord(5, 5)) ? "desert" : "plains");
+    }
+    Map<String, TerrainType> types = new LinkedHashMap<>();
+    types.put("plains", TerrainCatalog.of("plains"));
+    types.put("desert", TerrainCatalog.of("desert"));
+    return new GameMap(
+        cells,
+        TerrainBlocks.split(byHex),
+        Map.of(),
+        Map.of(),
+        types,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        GenerationSpec.defaults(0L));
+  }
+
+  /**
    * ★ **边界不派生、它是 {@code Region} 的组件**（U2）：取边界的路只有 {@code regions().get(id).boundary()} 这一条 ——
    * {@code boundaryOf} 那类"同一概念的第二条路"已被删掉（它与索引的地位正好相反，别混）。
    */

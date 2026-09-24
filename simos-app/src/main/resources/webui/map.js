@@ -1062,7 +1062,7 @@
 
   /** 两条编辑线：id + 中文标签 + 该线的工具集（顺序即面板内工具顺序）。 */
   var MAP_EDIT_SUBTOOLS = [
-    { id: "terrain", label: "地形", tools: ["terrain", "randomize"] },
+    { id: "terrain", label: "地形", tools: ["terrain", "randomize", "bucket"] },
     { id: "connectivity", label: "连通性", tools: ["river", "road"] },
   ];
 
@@ -1120,8 +1120,9 @@
 
   /**
    * ★ C1：工具 ⇒ 三个面板的可见性（子选项**互斥**的唯一判定；宿主据此设 `hidden`）。
-   * 有效工具下「地形」与「连通性」**恰一个**为 true；`randomize` 面板仅圈选随机化时可见。
-   * 未知工具 ⇒ 三者全 false（fail-closed，不露任何面板）。
+   * 有效工具下「地形」与「连通性」**恰一个**为 true；`randomize` 面板仅圈选随机化时可见、
+   * `bucket` 面板仅油漆桶时可见（两者都在地形线内，故 `terrain` 同时为 true）。
+   * 未知工具 ⇒ 全 false（fail-closed，不露任何面板）。
    */
   function mapEditPanelVisibility(tool) {
     var subtool = mapEditSubtoolOf(tool);
@@ -1129,6 +1130,7 @@
       terrain: subtool === "terrain",
       connectivity: subtool === "connectivity",
       randomize: tool === "randomize",
+      bucket: tool === "bucket",
     };
   }
 
@@ -1469,6 +1471,10 @@
             }
             if (host.mapEditTool === "randomize") {
               return window.SimosMapEditor.commitRandomizeSelection(hexes);
+            }
+            // ★ 油漆桶（2026-09-24）：只认**第一格**（点一下即整块替换），拖出来的其余格忽略。
+            if (host.mapEditTool === "bucket") {
+              return window.SimosMapEditor.commitFill(hexes[0]);
             }
             return window.SimosMapEditor.commitBrush(hexes);
           }

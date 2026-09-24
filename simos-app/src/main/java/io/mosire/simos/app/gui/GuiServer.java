@@ -557,6 +557,11 @@ public final class GuiServer implements AutoCloseable {
     if (path.equals("/api/map/hex")) {
       return mapHexReply(params, actor, asPresent);
     }
+    if (path.equals("/api/map/block")) {
+      // ★ 未接 redaction：块是地图结构（与 /api/map/path 同口径），而它服务的是 GM 的编辑动作（油漆桶取块）。
+      rejectAs(path, asPresent);
+      return mapBlockReply(params);
+    }
     if (path.equals("/api/map/path")) {
       rejectAs(path, asPresent);
       return mapPathReply(params);
@@ -823,6 +828,26 @@ public final class GuiServer implements AutoCloseable {
     meta.put("revision", revision.value());
     meta.put("timestamp", ApiViews.timestamp(state.meta().timestamp()));
     return meta;
+  }
+
+  /**
+   * 该格所在的**地形块**（整块成员格 + 大小）：前端「油漆桶」的取块口（2026-09-24）。
+   *
+   * <p>★ 与 {@code /api/map/hex} 的 404 同形：不在图上的格 ⇒ 404，不区分"图外"与"不存在"。
+   */
+  private Reply mapBlockReply(Map<String, String> params) {
+    int q = intParam(params, "q");
+    int r = intParam(params, "r");
+    HexCoord coord = new HexCoord(q, r);
+    SimulationState state = queryService.stateAt(target(params));
+    GameMap map = ApiViews.gameMap(state);
+    if (!map.hexes().containsKey(coord)) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "hex not found");
+      return Reply.of(404, body);
+    }
+    return Reply.of(
+        200, ApiViews.mapBlock(coord, map.terrainAt(coord), map.terrainBlockHexes(coord)));
   }
 
   private Reply mapHexReply(Map<String, String> params, DecisionMakerId actor, boolean asPresent) {

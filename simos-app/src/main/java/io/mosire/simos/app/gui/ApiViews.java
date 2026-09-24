@@ -371,6 +371,24 @@ final class ApiViews {
   }
 
   /**
+   * 单格所在的**地形块**（整块）：{@code {q,r,terrain,hexCount,hexes:[{q,r}…]}}。
+   *
+   * <p>用途：前端「油漆桶」——把**整块连通同地形**一次换成另一种地形：先看有多大（{@code hexCount} 供超量确认）， 再把 {@code hexes} 原样喂给一条
+   * {@code map.SetTerrain}。{@code hexes} 顺序 = 块自身的自然序（不另排序，前端与后端看到同一个序）。
+   */
+  static Map<String, Object> mapBlock(HexCoord coord, String terrain, List<HexCoord> hexes) {
+    Map<String, Object> view = hexCoord(coord);
+    view.put("terrain", terrain);
+    view.put("hexCount", hexes.size());
+    List<Map<String, Object>> out = new ArrayList<>(hexes.size());
+    for (HexCoord hex : hexes) {
+      out.add(hexCoord(hex));
+    }
+    view.put("hexes", out);
+    return view;
+  }
+
+  /**
    * 入射到 {@code coord} 的边（M8 T11）：{@code [{edge:"1_1|1_2", pathways:["river","road"]}]}。
    *
    * <p>★ **两种排序都是为了可复现**：边按 {@link EdgeRef} 自然序（`(q,r)`，**不是字符串序**——`1_10` 与 `1_2`

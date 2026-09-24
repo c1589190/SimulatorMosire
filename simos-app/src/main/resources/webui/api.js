@@ -190,6 +190,15 @@
     return getJson(withTarget("/map/hex?q=" + Number(q) + "&r=" + Number(r), target));
   }
 
+  /**
+   * 该格所在的**地形块**（整块）：{@code {q,r,terrain,hexCount,hexes:[{q,r}…]}}（2026-09-24，油漆桶取块口）。
+   *
+   * <p>★ 与 {@link mapHex} 同款只读端点；`as=` 视角参数**不被接受**（端点未接 redaction，fail-closed）。
+   */
+  function mapBlock(q, r, target) {
+    return getJson(withTarget("/map/block?q=" + Number(q) + "&r=" + Number(r), target));
+  }
+
   function units(target) {
     return getJson(withTarget("/units", target));
   }
@@ -445,6 +454,7 @@
     facets: facets,
     mapOverview: mapOverview,
     mapHex: mapHex,
+    mapBlock: mapBlock,
     mapRegion: mapRegion,
     mapPath: mapPath,
     units: units,

@@ -44,7 +44,9 @@ const JS_DIR = __dirname;
 //     提交载荷与"服务端理由原样透出"；modes.test.cjs 的 unit 白名单只加断言、条数不变）。
 //   2026-09-24 标记文字起 265 → 267（unit-tree.test.cjs 新增 2 条：markerLabel「军队名 × N」含超长压缩与无名回落 /
 //     renderer 静态接线改用 markerLabel、不再写 leadId 的短 id）。
-const MIN_TESTS = 267;
+//   2026-09-24 油漆桶起 267 → 268（map-edit-suboptions.test.cjs 新增 1 条：bucket 走地形线写门（SetTerrain 放行 /
+//     SetEdge 拒绝）；另 5 条既有断言随子选项模型扩容（tools 含 bucket、面板可见性多一个 bucket 键、index.html 控件）。
+const MIN_TESTS = 268;
 
 function discoverTests() {
   return fs

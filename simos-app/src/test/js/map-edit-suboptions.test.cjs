@@ -46,14 +46,14 @@ test("subtool-state-is-fail-closed", () => {
   assert.equal(terrain.ok, true);
   assert.equal(terrain.id, "terrain");
   assert.equal(terrain.label, "地形");
-  assert.deepEqual(terrain.tools, ["terrain", "randomize"]);
+  assert.deepEqual(terrain.tools, ["terrain", "randomize", "bucket"]);
   assert.deepEqual(M.mapEditSubtoolState("connectivity").tools, ["river", "road"]);
 });
 
 test("subtool-tools-return-a-snapshot-and-default-tool", () => {
   const copy = M.mapEditSubtoolTools("terrain");
   copy.push("river");
-  assert.deepEqual(M.mapEditSubtoolTools("terrain"), ["terrain", "randomize"]);
+  assert.deepEqual(M.mapEditSubtoolTools("terrain"), ["terrain", "randomize", "bucket"]);
   assert.deepEqual(M.mapEditSubtoolTools("connectivity"), ["river", "road"]);
   assert.deepEqual(M.mapEditSubtoolTools("nope"), []);
   assert.equal(M.mapEditSubtoolDefaultTool("terrain"), "terrain");
@@ -64,6 +64,7 @@ test("subtool-tools-return-a-snapshot-and-default-tool", () => {
 test("mapEditSubtoolOf-maps-tools-and-rejects-unknown", () => {
   assert.equal(M.mapEditSubtoolOf("terrain"), "terrain");
   assert.equal(M.mapEditSubtoolOf("randomize"), "terrain");
+  assert.equal(M.mapEditSubtoolOf("bucket"), "terrain");
   assert.equal(M.mapEditSubtoolOf("river"), "connectivity");
   assert.equal(M.mapEditSubtoolOf("road"), "connectivity");
   // ★ 未知工具 ⇒ null（不兜默认）。
@@ -123,32 +124,56 @@ test("panel-visibility-is-mutually-exclusive", () => {
     terrain: true,
     connectivity: false,
     randomize: false,
+    bucket: false,
   });
   assert.deepEqual(M.mapEditPanelVisibility("randomize"), {
     terrain: true,
     connectivity: false,
     randomize: true,
+    bucket: false,
+  });
+  assert.deepEqual(M.mapEditPanelVisibility("bucket"), {
+    terrain: true,
+    connectivity: false,
+    randomize: false,
+    bucket: true,
   });
   assert.deepEqual(M.mapEditPanelVisibility("river"), {
     terrain: false,
     connectivity: true,
     randomize: false,
+    bucket: false,
   });
   assert.deepEqual(M.mapEditPanelVisibility("road"), {
     terrain: false,
     connectivity: true,
     randomize: false,
+    bucket: false,
   });
-  ["terrain", "randomize", "river", "road"].forEach((tool) => {
+  ["terrain", "randomize", "bucket", "river", "road"].forEach((tool) => {
     const v = M.mapEditPanelVisibility(tool);
     assert.equal(Number(v.terrain) + Number(v.connectivity), 1, tool + " 的编辑线面板必须恰一个可见");
+    assert.equal(
+      Number(v.randomize) + Number(v.bucket) <= 1,
+      true,
+      tool + " 的两块地形线子面板不得同时可见"
+    );
   });
-  // 未知工具 ⇒ 三者全 false（fail-closed，不露任何面板）。
+  // 未知工具 ⇒ 全 false（fail-closed，不露任何面板）。
   assert.deepEqual(M.mapEditPanelVisibility("canal"), {
     terrain: false,
     connectivity: false,
     randomize: false,
+    bucket: false,
   });
+});
+
+test("bucket-writes-go-through-the-terrain-line-gate", () => {
+  // ★ 油漆桶走的是**同一条** map.SetTerrain（块成员格显式列在载荷里）⇒ 白名单与门控都必须放行它；
+  //   而连通性写必须仍然被拒（它属于另一条线）。
+  assert.equal(M.mapEditWriteGate("bucket", "map.SetTerrain").ok, true);
+  assert.equal(M.mapEditWriteGate("bucket", "map.SetEdge").ok, false);
+  assert.equal(M.mapEditWriteAllowed("terrain", "map.SetTerrain"), true);
 });
 
 test("index-html-has-suboption-control-and-grouped-panels", () => {
@@ -166,6 +191,12 @@ test("index-html-has-suboption-control-and-grouped-panels", () => {
   const randomizeAt = html.indexOf('id="randomize-controls"');
   const edgeAt = html.indexOf('id="edge-controls"');
   assert.ok(terrainAt >= 0 && randomizeAt > terrainAt && edgeAt > randomizeAt, "randomize 控件必须在「地形」容器内");
+  // ★ 油漆桶（2026-09-24）同样在「地形」容器内：工具 radio + 阈值输入 + 状态行。
+  assert.ok(html.includes('value="bucket"'), "油漆桶工具 radio 必须在");
+  const bucketAt = html.indexOf('id="bucket-controls"');
+  assert.ok(bucketAt > terrainAt && bucketAt < edgeAt, "油漆桶控件必须在「地形」容器内");
+  assert.ok(html.includes('id="bucket-threshold"'), "超量确认阈值输入必须在");
+  assert.ok(html.includes('id="bucket-status"'), "油漆桶状态行必须在");
 });
 
 test("suboptions-are-not-new-modes", () => {
@@ -188,6 +219,13 @@ test("map-js-gates-every-map-write-with-the-matching-type", () => {
   assert.ok(source.includes('writeCommand("map.SetTerrain"'));
   assert.ok(source.includes('writeCommand("map.RandomizeRegion"'));
   assert.ok(source.includes('writeCommand("map.SetEdge"'));
+  // ★ 油漆桶（2026-09-24）：宿主必须实现 commitFill，且渲染器分派（在 map.js）必须真的连到它 ——
+  //   少了任何一半，"点了没反应"在纯函数层是测不出来的。
+  assert.ok(source.includes("function commitFill("));
+  assert.ok(source.includes("commitFill: commitFill"));
+  const mapSource = readWebui("map.js");
+  assert.ok(mapSource.includes("window.SimosMapEditor.commitFill(hexes[0])"));
+  assert.ok(mapSource.includes('host.mapEditTool === "bucket"'));
 });
 
 test("page-delegates-to-the-single-guard-implementation", () => {

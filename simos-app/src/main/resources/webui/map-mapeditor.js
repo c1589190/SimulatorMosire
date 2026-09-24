@@ -133,11 +133,15 @@
       host.brushTerrain = null;
       updatePaletteSelection();
       setMapEditStatus("已取消地形选择：左键恢复为平移/选中。", "muted");
-      return;
+    } else {
+      host.brushTerrain = key;
+      updatePaletteSelection();
+      setMapEditStatus("已选地形 " + key + "：右键在地图上拖动涂抹（多格 ⇒ 一条 map.SetTerrain）；左键=平移。", "ok");
     }
-    host.brushTerrain = key;
-    updatePaletteSelection();
-    setMapEditStatus("已选地形 " + key + "：右键在地图上拖动涂抹（多格 ⇒ 一条 map.SetTerrain）；左键=平移。", "ok");
+    // ★ 油漆桶面板会把"目标地形"写进状态行 ⇒ 换地形后要跟着刷新（其余工具不显示它）。
+    if (host.mapEditTool === "bucket") {
+      renderBucketStatus();
+    }
   }
 
   function updatePaletteSelection() {
@@ -205,6 +209,122 @@
     return result;
   }
 
+  // ── 油漆桶（2026-09-24）：右键点一格 ⇒ 整块连通同地形一次换成调色板选中的地形 ──────
+  //
+  // ★ 为什么是"整块"：地形在 simos 里就是**连通块**（`GameMap.terrainBlocks`，同地形六邻连通分量），
+  //   而用户看到的"一段连续色块"正是块的多边形 ⇒ 油漆桶 = 换这一整块，不需要前端自己 flood fill。
+  // ★ 取块走只读端点 `/api/map/block`（块不是逐格数据，前端拿不到成员格）；写仍走**同一条** map.SetTerrain
+  //   （载荷的 hexes[] 就是整块成员格 ⇒ 复盘时每格都看得见，不引"紧凑写法"这第二条路）。
+
+  /** 超量确认阈值（格）的缺省值：块比它大就先弹一次确认。 */
+  var BUCKET_CONFIRM_THRESHOLD_DEFAULT = 200;
+
+  /**
+   * `#bucket-threshold` 的当前值。**空白/非正/非数 ⇒ 回缺省值**（阈值只是"何时多问一句"，
+   * 不是安全门；回缺省比"拒绝整块"更不挡路，且当前状态行会把生效值显示出来）。
+   */
+  function bucketThreshold() {
+    var node = app.byId("bucket-threshold");
+    var raw = node && typeof node.value === "string" ? node.value.trim() : "";
+    var value = Number(raw);
+    if (raw === "" || !isFinite(value) || value < 1) {
+      return BUCKET_CONFIRM_THRESHOLD_DEFAULT;
+    }
+    return Math.floor(value);
+  }
+
+  /** 油漆桶面板的当前状态：生效阈值 + 目标地形（未选地形 ⇒ 右键不发命令）。 */
+  function renderBucketStatus() {
+    var threshold = bucketThreshold();
+    var terrain = host.brushTerrain;
+    setBucketStatus(
+      "阈值 " + threshold + " 格（块更大时先确认）；" +
+        (terrain ? "目标地形 " + terrain + "。右键点地图任意一格。"
+                 : "先在调色板选一种地形。"),
+      terrain ? "ok" : "warn"
+    );
+  }
+
+  /**
+   * 油漆桶落点：取该格所在地形块 ⇒（超阈值则确认）⇒ 一条 `map.SetTerrain`。
+   *
+   * <p>★ 只认**第一格**：本工具是"点一下换一块"，拖动没有意义（地图上拖出的其余格由调用方丢弃）。
+   * ★ 三处都不发命令并给出可见提示：非地形线 / 未选地形 / 取块失败 / 块已是对目标地形 / 用户取消确认。
+   */
+  async function commitFill(pick) {
+    core.active.setBrushHexes([]);
+    if (host.mapEditBusy) {
+      return null;
+    }
+    if (!pick || typeof pick.q !== "number" || typeof pick.r !== "number") {
+      return null;
+    }
+    if (!mapEditWriteGate(host.mapEditTool, "map.SetTerrain").ok) {
+      setBucketStatus("当前不是「地形」编辑线 ⇒ **未发出任何写命令**。", "warn");
+      return null;
+    }
+    if (!host.brushTerrain) {
+      setBucketStatus("先在调色板选一种地形，再右键点地图取块。", "warn");
+      return null;
+    }
+    host.mapEditBusy = true;
+    setBucketStatus("取块 " + pick.q + "_" + pick.r + " …", "muted");
+    var block;
+    try {
+      block = await api.mapBlock(pick.q, pick.r, app.target());
+    } catch (e) {
+      host.mapEditBusy = false;
+      setBucketStatus("取块失败：" + (e && e.message ? e.message : e), "err");
+      return null;
+    }
+    var count = Number(block && block.hexCount) || 0;
+    var threshold = bucketThreshold();
+    if (!count || !block.hexes || !block.hexes.length) {
+      host.mapEditBusy = false;
+      setBucketStatus("这一块没有可写的格 ⇒ **未发出任何写命令**。", "warn");
+      return null;
+    }
+    if (block.terrain === host.brushTerrain) {
+      host.mapEditBusy = false;
+      setBucketStatus(
+        "该块已经是 " + block.terrain + "（" + count + " 格）⇒ **未发出任何写命令**。",
+        "muted"
+      );
+      return null;
+    }
+    if (count > threshold) {
+      var go = window.confirm(
+        "整块替换确认\n\n该块是 " + block.terrain + "，共 " + count + " 格（> 阈值 " +
+          threshold + "）。\n要把整块换成 " + host.brushTerrain + " 吗？"
+      );
+      if (!go) {
+        host.mapEditBusy = false;
+        setBucketStatus(
+          "已取消：该块 " + count + " 格 > 阈值 " + threshold + " ⇒ **未发出任何写命令**。",
+          "warn"
+        );
+        return null;
+      }
+    }
+    setBucketStatus("提交 map.SetTerrain：" + count + " 格 → " + host.brushTerrain + " …", "muted");
+    var result = await app.writeCommand("map.SetTerrain", {
+      hexes: block.hexes,
+      terrain: host.brushTerrain,
+    });
+    host.mapEditBusy = false;
+    if (result.ok) {
+      app.setSelection({ kind: "hex", q: pick.q, r: pick.r });
+      setBucketStatus(
+        "已把整块 " + count + " 格（原 " + block.terrain + "）换成 " + host.brushTerrain +
+          "（一条命令，head 已前进）",
+        "ok"
+      );
+    } else {
+      setBucketStatus(result.message, result.kind === "rejected" ? "err" : "warn");
+    }
+    return result;
+  }
+
   // ── 连通性（河流/道路）+ 圈选随机化（M8 T11）───────────────────────────────
   //
   // ★ 按键模型不变（M8-R 用户裁定）：左键恒为平移；右键按**当前工具**分派。
@@ -221,6 +341,10 @@
 
   function setRandomizeStatus(message, tone) {
     app.statusMessage(app.byId("randomize-status"), message, tone);
+  }
+
+  function setBucketStatus(message, tone) {
+    app.statusMessage(app.byId("bucket-status"), message, tone);
   }
 
   /** 显示/隐藏一条**可见提示**（护栏不 ok 时用；空文本 ⇒ 隐藏）。 */
@@ -347,6 +471,10 @@
     if (randomizeControls) {
       randomizeControls.hidden = !panels.randomize;
     }
+    var bucketControls = app.byId("bucket-controls");
+    if (bucketControls) {
+      bucketControls.hidden = !panels.bucket;
+    }
     setWarning("edge-mode-warning", "");
     setWarning("randomize-warning", "");
     if (tool === "randomize") {
@@ -361,6 +489,12 @@
       setMapEditToolStatus("编辑线：地形（地形刷）—— 右键拖动涂抹；左键=平移地图。", "muted");
     } else if (tool === "randomize") {
       setMapEditToolStatus("编辑线：地形（圈选随机化）—— 右键拖动圈选；左键=平移地图。", "muted");
+    } else if (tool === "bucket") {
+      setMapEditToolStatus(
+        "编辑线：地形（油漆桶）—— 右键点一格，把**整块**同地形换成调色板选中的地形；左键=平移地图。",
+        "muted"
+      );
+      renderBucketStatus();
     } else {
       setMapEditToolStatus(
         "编辑线：连通性（" +
@@ -490,8 +624,7 @@
   }
 
   /** 圈选松手：选区**持久显示**、**不发命令**（命令由「执行随机化」按钮发）。 */
-  function commitRandomizeSelection(hexes) {
-    var state = randomizeSelectionState(hexes);
+  function commitRandomizeSelection(hexes) {    var state = randomizeSelectionState(hexes);
     host.randomizeSelection = state.hexes;
     core.active.setBrushHexes([]);
     core.active.setDraftHexes(host.randomizeSelection);
@@ -729,6 +862,10 @@
     if (seedNode) {
       seedNode.addEventListener("input", renderRandomizeStatus);
     }
+    var thresholdNode = app.byId("bucket-threshold");
+    if (thresholdNode) {
+      thresholdNode.addEventListener("input", renderBucketStatus);
+    }
     var randomizeSubmit = app.byId("randomize-submit");
     if (randomizeSubmit) {
       randomizeSubmit.addEventListener("click", submitRandomize);
@@ -761,6 +898,8 @@
     commitEdgeDelete: commitEdgeDelete,
     commitRandomizeSelection: commitRandomizeSelection,
     renderRandomizeStatus: renderRandomizeStatus,
+    commitFill: commitFill,
+    renderBucketStatus: renderBucketStatus,
     refreshRegionInfoNow: refreshRegionInfoNow,
     clearRegionInfo: clearRegionInfo,
     renderRegionInfo: renderRegionInfo,
