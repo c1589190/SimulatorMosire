@@ -53,6 +53,9 @@ public final class RenderModelBuilder {
   static final List<String> POPULATION_SCALE =
       List.of("#F7FBFF", "#C6DBEF", "#6BAED6", "#2171B5", "#08306B");
 
+  /** "该格没有人口数据"的中性色——**必须与色阶最浅档拉开**：把"无数据"画成"人口极低"是这张图最容易撒的谎 （第一版实测就长这样：三大国之外的格白得发亮，看着像"人口 0"）。 */
+  static final String NO_DATA_COLOR = "#39404A";
+
   /** 画布留白比例（四周各留 4%，给图例与边格留气口）。 */
   private static final double MARGIN_RATIO = 0.92;
 
@@ -80,10 +83,15 @@ public final class RenderModelBuilder {
 
     List<RenderModel.HexShape> shapes = new ArrayList<>(visible.size());
     for (HexCoord coord : visible) {
-      String color =
-          request.layers().contains(RenderLayer.POPULATION)
-              ? POPULATION_SCALE.get(populationBucket(populations.get(coord), populationMax))
-              : terrainColor(map, coord);
+      String color;
+      if (request.layers().contains(RenderLayer.POPULATION)) {
+        color =
+            populations.get(coord) == null
+                ? NO_DATA_COLOR
+                : POPULATION_SCALE.get(populationBucket(populations.get(coord), populationMax));
+      } else {
+        color = terrainColor(map, coord);
+      }
       shapes.add(
           new RenderModel.HexShape(
               coord, viewport.pixelX(coord), viewport.pixelY(coord), viewport.hexSize(), color));
@@ -126,7 +134,7 @@ public final class RenderModelBuilder {
     }
 
     List<RenderModel.LegendEntry> legend =
-        buildLegend(map, visible, request.layers(), populationMax);
+        buildLegend(map, visible, request.layers(), populationMax, populations);
     String title =
         "中心 (" + request.center().q() + "," + request.center().r() + ") · 半径 " + request.radius();
     String subtitle =
@@ -244,7 +252,11 @@ public final class RenderModelBuilder {
   }
 
   private static List<RenderModel.LegendEntry> buildLegend(
-      GameMap map, List<HexCoord> visible, Set<RenderLayer> layers, long populationMax) {
+      GameMap map,
+      List<HexCoord> visible,
+      Set<RenderLayer> layers,
+      long populationMax,
+      Map<HexCoord, Long> populations) {
     List<RenderModel.LegendEntry> out = new ArrayList<>();
     if (layers.contains(RenderLayer.POPULATION)) {
       long[] thresholds = populationThresholds(populationMax);
@@ -258,6 +270,9 @@ public final class RenderModelBuilder {
           new RenderModel.LegendEntry(
               "> " + thresholds[thresholds.length - 1] + " 人",
               POPULATION_SCALE.get(POPULATION_SCALE.size() - 1)));
+      if (visible.stream().anyMatch(coord -> !populations.containsKey(coord))) {
+        out.add(new RenderModel.LegendEntry("无数据", NO_DATA_COLOR));
+      }
     } else {
       Map<String, RenderModel.LegendEntry> byKey = new TreeMap<>();
       for (HexCoord coord : visible) {

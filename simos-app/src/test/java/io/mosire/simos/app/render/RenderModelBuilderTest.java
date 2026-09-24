@@ -131,6 +131,24 @@ class RenderModelBuilderTest {
         .anySatisfy(label -> assertThat(label).contains("人"));
   }
 
+  /**
+   * ★ 无人口数据的格用**中性灰**、且图例写明"无数据"——第一版实测把"无数据"画成了色阶最浅档（"0–6 人"）， 读图的人会以为那里人口极低。判别性：把 no-data
+   * 分支去掉（回落到 {@code populationBucket(null,...)=0}）本用例必红。
+   */
+  @Test
+  void hexesWithoutPopulationDataGetANeutralColorAndALegendEntry() {
+    RenderRequest request =
+        new RenderRequest(RenderFixtures.CENTER, 1, EnumSet.of(RenderLayer.POPULATION), SIDE, SIDE);
+    RenderModel model = build(request);
+
+    // 夹具：只有中心/东邻/东南邻有人口序列，其余四格没有
+    assertThat(model.hexes())
+        .filteredOn(hex -> hex.at().equals(new HexCoord(0, -1)))
+        .singleElement()
+        .satisfies(hex -> assertThat(hex.fillColor()).isEqualTo(RenderModelBuilder.NO_DATA_COLOR));
+    assertThat(model.legend()).extracting(RenderModel.LegendEntry::label).contains("无数据");
+  }
+
   /** 地形图例按"视野里真实出现的地形"给，不列没出现过的。 */
   @Test
   void terrainLegendListsOnlyTerrainPresentInView() {
