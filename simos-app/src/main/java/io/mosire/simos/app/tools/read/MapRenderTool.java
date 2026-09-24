@@ -62,12 +62,10 @@ public final class MapRenderTool implements AgentTool {
 
   private final QueryService query;
   private final RenderService render;
-  private final String mapId;
 
-  public MapRenderTool(QueryService query, RenderService render, String mapId) {
+  public MapRenderTool(QueryService query, RenderService render) {
     this.query = Objects.requireNonNull(query, "query");
     this.render = Objects.requireNonNull(render, "render");
-    this.mapId = Objects.requireNonNull(mapId, "mapId");
   }
 
   @Override

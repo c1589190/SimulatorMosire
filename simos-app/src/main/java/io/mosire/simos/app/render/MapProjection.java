@@ -81,8 +81,11 @@ public final class MapProjection {
    * 六邻方向（E/NE/NW/W/SW/SE）——与前端 {@code DIR_VECTORS} 同序同值。
    *
    * <p>顺序不是随意排的：{@link #edgeCornerIndexes(int)} 按同一序号给出"与邻格共享的那条边"，两者必须成对改。
+   *
+   * <p>★ 可见性 = 包内（SpotBugs MS_PKGPROTECT）：只有本包的 {@code RenderModelBuilder} 与 {@link
+   * #edgeCornerIndexes(int)} 用它，没有包外消费者；数组内容**只读**（别在别处改它的元素）。
    */
-  public static final int[][] DIR_VECTORS = {
+  static final int[][] DIR_VECTORS = {
     {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {-1, 1}, {0, 1},
   };
 

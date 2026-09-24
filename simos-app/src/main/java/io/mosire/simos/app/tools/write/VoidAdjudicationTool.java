@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools.write;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.approval.AskKind;
@@ -279,7 +280,7 @@ public final class VoidAdjudicationTool implements AgentTool {
       JsonNode node = MAPPER.readTree(text);
       JsonNode field = node.get(RESULT_REVISION_FIELD);
       return field != null && field.isNumber() ? Optional.of(field.asLong()) : Optional.empty();
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       return Optional.empty();
     }
   }
@@ -303,7 +304,7 @@ public final class VoidAdjudicationTool implements AgentTool {
         }
       }
       return List.copyOf(out);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       return List.of();
     }
   }

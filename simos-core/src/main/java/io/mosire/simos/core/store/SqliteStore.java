@@ -160,10 +160,15 @@ public final class SqliteStore implements AutoCloseable {
       closeSilently(connection);
       throw new IllegalStateException("打开 SQLite 存储失败: " + dbFile, e);
     } catch (RuntimeException e) {
-      // ★ 时间基门禁（旧档/异基）抛的是 RuntimeException：此时连接同样已建立，必须回收，
-      //   否则"拒绝打开"会顺手泄漏一个连接与它的 WAL 句柄。原异常原样上抛（它带着拒因，别包）。
+      // ★ 时间基门禁（旧档/异基）抛的是运行时异常：此时连接同样已建立，必须回收，
+      //   否则"拒绝打开"会顺手泄漏一个连接与它的 WAL 句柄。
+      //   ★ 不能写 `throw e`：SpotBugs 的 THROWS_METHOD_THROWS_RUNTIMEEXCEPTION（SEI CERT ERR07-J）
+      //   只放行"抛新实例"；门禁的拒因文案**逐字保留**（测试按它断言），原异常挂在 cause 上不丢。
       closeSilently(connection);
-      throw e;
+      if (e instanceof IllegalStateException) {
+        throw new IllegalStateException(e.getMessage(), e);
+      }
+      throw new IllegalStateException("打开 SQLite 存储失败（initialize 期运行时异常）: " + dbFile, e);
     }
   }
 

@@ -364,7 +364,7 @@ public final class SimosToolSource implements ToolSource {
         new UnitGetTool(query),
         new PopulationTool(query),
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
-        new MapRenderTool(query, renderService, mapId),
+        new MapRenderTool(query, renderService),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
         new DecisionMakersTool(query),
         new DecisionMakerTool(query),

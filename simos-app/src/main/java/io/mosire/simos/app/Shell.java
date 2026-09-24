@@ -7,6 +7,7 @@ import io.mosire.agentlib.approval.AutoApproveGate;
 import io.mosire.agentlib.approval.ConfirmGate;
 import io.mosire.agentlib.approval.HttpApprovalChannel;
 import io.mosire.agentlib.approval.PendingApprovals;
+import io.mosire.agentlib.llm.ToolAssetResolver;
 import io.mosire.agentlib.mcp.AgentToMcpServer;
 import io.mosire.agentlib.mcp.McpSourceBridge;
 import io.mosire.agentlib.permission.AccessToken;
@@ -729,8 +730,19 @@ public final class Shell implements AutoCloseable {
     return actors;
   }
 
-  /** 工件库（P3）：渲染产出的 PNG（内容寻址）——GUI 出图路由与测试都从这里取字节。 */
-  public ArtifactStore artifactStore() {
+  /**
+   * 工件库（P3）：渲染产出的 PNG（内容寻址）——GUI 出图路由与测试都从这里取字节。
+   *
+   * <p>★ 返回类型是 **AgentLib 的只读面** {@link ToolAssetResolver}（只有 {@code resolve}），不是 {@code
+   * ArtifactStore} 本体：写入口（{@code putPng}）只归 {@code RenderService} 的装配链，外部拿不到它 ⇔ 也就无从绕过内容寻址。 这同时消掉了
+   * SpotBugs 的 EI_EXPOSE_REP（对外暴露可变内部表示的旧形态）。
+   */
+  // ★ SpotBugs 的 EI_EXPOSE_REP 按**字段类型**判（字段仍是 ArtifactStore，本类内部要用它的写面），
+  //   而对外暴露的**声明类型**已经是只读接口 ⇒ 调用方无致变途径。豁免写在这一处。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "对外返回只读接口 ToolAssetResolver（无致变方法）；ArtifactStore 的写面仅本类内部使用")
+  public ToolAssetResolver artifactStore() {
     return artifactStore;
   }
 

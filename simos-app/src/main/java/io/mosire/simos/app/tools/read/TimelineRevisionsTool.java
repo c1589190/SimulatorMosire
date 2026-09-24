@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools.read;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
@@ -36,6 +37,9 @@ public final class TimelineRevisionsTool implements AgentTool {
 
   private final CoreSimos core;
 
+  // ★ CoreSimos 是本工具的唯一读入口（只调 head/replay 等只读面），不是"可变内部表示外泄"：
+  //   与同族的写工具（AdvanceTool 的 EI_EXPOSE_REP2）同口径豁免。
+  @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "CoreSimos 是共享读入口（只调只读面），非内部表示外泄")
   public TimelineRevisionsTool(CoreSimos core) {
     this.core = core;
   }

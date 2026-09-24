@@ -304,11 +304,9 @@ public final class WorldgenInitializeTool implements AgentTool {
       String nation = ToolSupport.requiredText(args, "nation");
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
-      Boolean randomizeArg = optionalBoolean(args, "randomize");
-      Boolean dryRunArg = optionalBoolean(args, "dryRun");
-      boolean dryRun = dryRunArg == null || dryRunArg;
-      Boolean armyArg = optionalBoolean(args, "army");
-      boolean withArmy = armyArg == null || armyArg;
+      Optional<Boolean> randomizeArg = optionalBoolean(args, "randomize");
+      boolean dryRun = optionalBoolean(args, "dryRun").orElse(true);
+      boolean withArmy = optionalBoolean(args, "army").orElse(true);
       Long seedArg = ToolSupport.optionalLong(args, "seed");
       Long limitArg = ToolSupport.optionalLong(args, "cityLimit");
       if (limitArg != null && limitArg < 0) {
@@ -391,13 +389,13 @@ public final class WorldgenInitializeTool implements AgentTool {
    * 加载冻结输入。{@code randomize == null} ⇒ 原样加载（配置里的开关说了算）；否则写一份 {@code randomization.enabled=<值>}
    * 的**临时副本**再加载（不改原档，见类注）。
    */
-  private WorldgenConfig loadConfig(Boolean randomize) {
-    if (randomize == null) {
+  private WorldgenConfig loadConfig(Optional<Boolean> randomize) {
+    if (randomize.isEmpty()) {
       return WorldgenConfig.load(worldgenConfigFile);
     }
     Path variant;
     try {
-      variant = writeConfigVariant(worldgenConfigFile, randomize);
+      variant = writeConfigVariant(worldgenConfigFile, randomize.get());
     } catch (IOException e) {
       throw new IllegalArgumentException("写随机化配置临时副本失败: " + worldgenConfigFile.toAbsolutePath(), e);
     }
@@ -951,21 +949,27 @@ public final class WorldgenInitializeTool implements AgentTool {
     return reasons.isEmpty() ? "整批被拒（无逐条拒因）" : String.join("；", reasons);
   }
 
-  /** 可选布尔：{@code null} 缺席；接受布尔或 {@code "true"}/{@code "false"} 字符串。 */
-  private static Boolean optionalBoolean(Map<String, Object> args, String name) {
+  /**
+   * 可选布尔：{@link Optional#empty()} = 参数**缺席**（与显式 {@code false} 明确区分——三个调用点都靠这个三态决定
+   * "用配置缺省"还是"按给定值覆盖"）；接受布尔或 {@code "true"}/{@code "false"} 字符串。
+   *
+   * <p>★ 返回 {@code Optional} 而不是可空的 {@code Boolean}（SpotBugs NP_BOOLEAN_RETURN_NULL 的修法）：三态语义
+   * 留在类型里，调用方漏处理"缺席"会编译不过，而不是在运行时把 {@code null} 当 {@code false} 用。
+   */
+  private static Optional<Boolean> optionalBoolean(Map<String, Object> args, String name) {
     Object value = args.get(name);
     if (value == null) {
-      return null;
+      return Optional.empty();
     }
     if (value instanceof Boolean bool) {
-      return bool;
+      return Optional.of(bool);
     }
     if (value instanceof String text && !text.isBlank()) {
       if ("true".equalsIgnoreCase(text.trim())) {
-        return true;
+        return Optional.of(true);
       }
       if ("false".equalsIgnoreCase(text.trim())) {
-        return false;
+        return Optional.of(false);
       }
     }
     throw new IllegalArgumentException("参数 " + name + " 必须是布尔值");

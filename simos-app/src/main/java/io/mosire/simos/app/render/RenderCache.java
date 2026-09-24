@@ -1,5 +1,6 @@
 package io.mosire.simos.app.render;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +41,11 @@ public final class RenderCache {
    * @param render 现算器（只在未命中时被调用，且同一键同时只有一个线程在算）
    * @return PNG 字节（同一实例；调用方<b>不得</b>改它的内容）
    */
+  // ★ 转发语义：渲染失败必须**原样**上抛（同一实例、同一类型）——换一个新实例会改掉调用方按类型/身份
+  //   分类处理的依据（例如统一的 BadRequest 折叠靠类型判），故此处刻意 rethrow，不用 SpotBugs 的替代写法。
+  @SuppressFBWarnings(
+      value = "THROWS_METHOD_THROWS_RUNTIMEEXCEPTION",
+      justification = "转发语义：同一实例原样上抛，包装会改变调用方的类型判据")
   public byte[] get(String key, Supplier<byte[]> render) {
     if (key == null || key.isBlank()) {
       throw new IllegalArgumentException("缓存键不得为空白");
@@ -85,6 +91,11 @@ public final class RenderCache {
     }
   }
 
+  /** 等已在飞的渲染结果：失败按**原类型**上抛（{@link CompletionException} 的 cause 若是运行时异常，剥出来原样抛）。 */
+  // 同上：转发语义，见 get 上的说明。
+  @SuppressFBWarnings(
+      value = "THROWS_METHOD_THROWS_RUNTIMEEXCEPTION",
+      justification = "转发语义：把在飞渲染的失败按原类型上抛，包装会改变调用方的类型判据")
   private static byte[] await(CompletableFuture<byte[]> running) {
     try {
       return running.join();
