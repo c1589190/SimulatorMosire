@@ -48,11 +48,17 @@ class McpPortTopologyTest {
           "simos.state.resolve",
           "simos.state.facets",
           "simos.timeline.branches",
+          // ★ 工具面 M4（2026-09-24）：五条新读口（三条 GM-only，见下）。
+          "simos.timeline.revisions",
           "simos.map.overview",
           "simos.map.hex",
+          "simos.map.region",
+          "simos.map.path",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
+          "simos.sd.decision-makers",
+          "simos.sd.decision-maker",
           "simos.skill");
 
   /**
@@ -163,7 +169,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（10 读 + 7 非窄写 + 45 窄写 = 62）")
+          .as("J1：唯一口 = GM 组（15 读 + 7 非窄写 + 45 窄写 = 67）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

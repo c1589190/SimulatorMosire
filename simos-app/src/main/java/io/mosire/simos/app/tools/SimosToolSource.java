@@ -8,13 +8,18 @@ import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
+import io.mosire.simos.app.tools.read.DecisionMakerTool;
+import io.mosire.simos.app.tools.read.DecisionMakersTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
+import io.mosire.simos.app.tools.read.MapPathTool;
+import io.mosire.simos.app.tools.read.MapRegionTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
+import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
@@ -184,7 +189,8 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(skills, "skills");
     Objects.requireNonNull(commandTargets, "commandTargets");
     Objects.requireNonNull(role, "role");
-    List<AgentTool> built = new ArrayList<>(readTools(core, query, mapId, commandTypes, skills));
+    List<AgentTool> built =
+        new ArrayList<>(readToolsFor(readTools(core, query, mapId, commandTypes, skills), role));
     switch (role) {
       case GM -> {
         addGenericWrites(built, core, initiator, mapId);
@@ -339,14 +345,42 @@ public final class SimosToolSource implements ToolSource {
         new StateResolveTool(query, mapId),
         new StateFacetsTool(query, mapId),
         new BranchListTool(core),
+        // ★ 工具面 M4（2026-09-24）：补五条缺口的读口 —— 时间轴节点清单 / 区域详情 / 寻路试算 /
+        //   决策人清单 / 决策人详情。（`timeline.branches` 只给"有哪些分支、head 在哪"，看不到节点；sd 侧此前
+        //   只能 CreateDecisionMaker 写、写完看不见。）
+        new TimelineRevisionsTool(core),
         new MapOverviewTool(query, mapId),
         new MapHexTool(query, mapId),
+        new MapRegionTool(query, mapId),
+        new MapPathTool(query),
         new UnitListTool(query),
         new UnitGetTool(query),
         new PopulationTool(query),
+        // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
+        new DecisionMakersTool(query),
+        new DecisionMakerTool(query),
         // ★ Skill 系统（2026-09-23）：方法论与常识（外部 Markdown，改文件即生效）。**两桶共享**——
         //   决策人读它是本职，GM 读它是为了写出与之一致的文档（Docs）。
         new SkillTool(skills));
+  }
+
+  /**
+   * ★★ **读工具的桶归属**（2026-09-24，工具面 M4）：默认四桶共享（结构默认），显式标了 {@link GmOnlyRead} 的**只进 GM 桶**。
+   *
+   * <p>为什么需要它：M4 侦察报告逐条核过，有几条读口照抄 GUI 会**越过决策人的可见范围**（{@code map.path} 是地形探测、{@code
+   * sd.decision-makers} 是别人的底牌）。creed 五要求"哪个工具归哪个桶要**写出来**"， 而当时无处可写 —— 本方法就是那个"写出来的地方"。
+   */
+  private static List<AgentTool> readToolsFor(List<AgentTool> all, Role role) {
+    if (role == Role.GM) {
+      return all;
+    }
+    List<AgentTool> shared = new ArrayList<>(all.size());
+    for (AgentTool tool : all) {
+      if (!(tool instanceof GmOnlyRead)) {
+        shared.add(tool);
+      }
+    }
+    return List.copyOf(shared);
   }
 
   @Override

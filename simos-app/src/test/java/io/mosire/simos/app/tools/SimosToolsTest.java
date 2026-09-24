@@ -73,6 +73,9 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.Region;
+import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
@@ -103,6 +106,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -135,6 +139,10 @@ class SimosToolsTest {
   private static final HexCoord H13 = new HexCoord(1, 3);
 
   private static final UnitId U1 = new UnitId("u-1");
+
+  /** M4 夹具里的区域（两格：H11+H12）。 */
+  private static final RegionId REGION = new RegionId("r-m4");
+
   private static final int CHECKPOINT_INTERVAL = 100;
 
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
@@ -151,11 +159,16 @@ class SimosToolsTest {
           "simos.state.resolve",
           "simos.state.facets",
           "simos.timeline.branches",
+          "simos.timeline.revisions",
           "simos.map.overview",
           "simos.map.hex",
+          "simos.map.region",
+          "simos.map.path",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
+          "simos.sd.decision-makers",
+          "simos.sd.decision-maker",
           "simos.skill",
           "simos.command.submit",
           "simos.advance",
@@ -221,12 +234,27 @@ class SimosToolsTest {
           "simos.state.resolve",
           "simos.state.facets",
           "simos.timeline.branches",
+          // ★ 工具面 M4（2026-09-24）：五条新读口（前两条四桶共享，后三条只给 GM 桶）。
+          "simos.timeline.revisions",
           "simos.map.overview",
           "simos.map.hex",
+          "simos.map.region",
+          "simos.map.path",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
+          "simos.sd.decision-makers",
+          "simos.sd.decision-maker",
           "simos.skill");
+
+  /**
+   * ★ **只给 GM 桶的读工具**（2026-09-24 M4）：标了 {@code GmOnlyRead} 的那些。
+   *
+   * <p>判据在 {@link #roleBucketsNeverCarryGenericWrite}：决策人桶**不得**含这三条 （{@code map.path}
+   * 是地形探测、另两条是别人的底牌——见 M4 侦察报告 §二）。
+   */
+  private static final List<String> GM_ONLY_READ_NAMES =
+      List.of("simos.map.path", "simos.sd.decision-makers", "simos.sd.decision-maker");
 
   /**
    * 非窄写工具（7 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
@@ -644,7 +672,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(62);
+        .hasSize(67);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -662,7 +690,9 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
-        .hasSize(14);
+        .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
+        .as("★ M4：GM-only 读工具（地形探测 / 别人的底牌）不得进决策人桶")
+        .hasSize(16);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -771,6 +801,109 @@ class SimosToolsTest {
       }
     }
     return names;
+  }
+
+  /**
+   * ★★ 工具面 M4（2026-09-24）判据 ①：**每条读工具都真被调一次**（可达 + 最小形状）。
+   *
+   * <p>由来：M4 侦察报告 §四-1 实测——现有 15 条守卫**全在名字集合层**，没有一条真的调过读工具 ⇒ 一条读工具可以有正确的名字、正确的 {@code
+   * spec()}，却**形状错 / 抛异常 / 压根不可达**而全绿。 本用例把那张表补上：逐条按**名字**调（不是索引切片），断言"不报错 + 最小形状键在场"。
+   *
+   * <p>★ 覆盖面自证在末行：表格必须**逐条覆盖** {@link #READ_TOOL_NAMES}——新增读工具却没进本表 ⇒ 当场红。
+   */
+  @Test
+  void everyReadToolIsReachableAndAnswersWithItsMinimalShape() throws Exception {
+    record Case(String tool, Map<String, Object> args, String key) {}
+    List<Case> cases =
+        List.of(
+            new Case("simos.command.catalog", Map.of(), "types"),
+            new Case("simos.state.resolve", Map.of("address", hexAddress()), "candidates"),
+            new Case("simos.state.facets", Map.of("address", hexAddress()), "entries"),
+            new Case("simos.timeline.branches", Map.of(), "branches"),
+            new Case("simos.timeline.revisions", Map.of(), "nodes"),
+            new Case("simos.map.overview", Map.of(), "hexCount"),
+            new Case("simos.map.hex", Map.of("q", 1L, "r", 1L), "terrain"),
+            new Case("simos.map.region", Map.of("regionId", REGION.value()), "hexCount"),
+            new Case("simos.map.path", Map.of("unit", U1.value(), "q", 1L, "r", 2L), "reachable"),
+            new Case("simos.unit.list", Map.of(), "units"),
+            new Case("simos.unit.get", Map.of("id", U1.value()), "id"),
+            new Case("simos.social.population", Map.of("q", 1L, "r", 1L), "population"),
+            new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
+            new Case("simos.skill", Map.of(), "skills"));
+    List<String> covered = new ArrayList<>();
+    for (Case c : cases) {
+      shell.toolRegistry().find(c.tool()).orElseThrow(); // 前置：名字必须真在注册表里
+      ToolResult result = call(c.tool(), c.args());
+      assertThat(result.success()).as("%s 必须可达且不报错: %s", c.tool(), result.message()).isTrue();
+      assertThat(JSON.readTree(result.message()).has(c.key()))
+          .as("%s 的最小形状里必须有键 %s（形状错 ⇒ 这里红）", c.tool(), c.key())
+          .isTrue();
+      covered.add(c.tool());
+    }
+    // 需要特定实体的那条：未知 id ⇒ 可读的 NOT_FOUND（同样是**真调用**，不是跳过）
+    ToolResult missing = call("simos.sd.decision-maker", Map.of("decisionMakerId", "dm-m4-none"));
+    assertThat(missing.success()).as("未知决策人不得静默给空对象").isFalse();
+    assertThat(missing.code()).isEqualTo("NOT_FOUND");
+    covered.add("simos.sd.decision-maker");
+
+    assertThat(covered)
+        .as("本表必须逐条覆盖读工具全集（新增读工具却没加进本表 ⇒ 红）")
+        .containsExactlyInAnyOrderElementsOf(READ_TOOL_NAMES);
+  }
+
+  /**
+   * ★★ 工具面 M4（2026-09-24）判据 ②：**同源**——磁盘上每个 {@code *Tool.java} 的 {@code NAME} 都必须出现在
+   * 某个桶里（防"写了工具类却忘了注册"）。
+   *
+   * <p>由来：M4 侦察报告 §四-2 实测——catalog 那条"扫源码求同源"的强判据**只覆盖命令类型** （{@code
+   * *Handler.java}），对工具面**没有任何等价物** ⇒ 加一条 {@code read/*Tool.java} 却忘了加进 {@code SimosToolSource}
+   * 不会红。
+   *
+   * <p>口径：扫 {@code tools/read} 与 {@code tools/write} 两目录，抽 {@code NAME = "…"}；断言 **扫描到的名字 ⊆
+   * 两个桶的并集**，且**GM 桶里没有源码里不存在的名字**（双向：既不漏注册、也没有幽灵条目）。
+   */
+  @Test
+  void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
+    Set<String> onDisk = toolNamesFromSources();
+    assertThat(onDisk).as("扫描必须真扫到东西（扫到 0 是『扫描器静默』陷阱）").hasSizeGreaterThanOrEqualTo(60);
+
+    List<String> union =
+        Stream.concat(
+                toolNames(shell.toolsFor(SimosToolSource.Role.GM)).stream(),
+                toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)).stream())
+            .distinct()
+            .toList();
+
+    assertThat(onDisk).as("★ 磁盘上的每个 *Tool.java 都要挂在某个桶里（类写了却忘了注册 ⇒ 这里红）").isSubsetOf(union);
+    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
+        .as("反向：GM 桶里不得有源码里不存在的名字（幽灵条目）")
+        .isSubsetOf(onDisk);
+  }
+
+  /** 扫 {@code tools/read} + {@code tools/write} 的 {@code NAME = "…"}（M4 同源判据用）。 */
+  private static Set<String> toolNamesFromSources() throws IOException {
+    List<Path> roots =
+        List.of(
+            Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "read"),
+            Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write"));
+    Pattern nameConstant = Pattern.compile("String NAME = \"([^\"]+)\"");
+    Set<String> names = new LinkedHashSet<>();
+    for (Path root : roots) {
+      try (Stream<Path> files = Files.walk(root)) {
+        for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+          Matcher matcher = nameConstant.matcher(Files.readString(file));
+          if (matcher.find()) {
+            names.add(matcher.group(1));
+          }
+        }
+      }
+    }
+    return names;
+  }
+
+  /** 夹具里那个 hex 的规范地址（{@code resolve}/{@code facets} 用）。 */
+  private static String hexAddress() {
+    return "map:Map1:hex:1_1";
   }
 
   @Test
@@ -1557,10 +1690,13 @@ class SimosToolsTest {
     hexes.put(H13, new HexCell(0.5));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
+    // ★ M4（2026-09-24）：夹具带一个区域——`simos.map.region` 要有东西可读（此前这张图 regions 为空）。
+    Map<RegionId, Region> regions =
+        Map.of(REGION, Region.of(REGION, "M4 区", Set.of(H11, H12), RegionMeta.empty()));
     return new GameMap(
         hexes,
         TerrainBlocks.uniform(hexes.keySet(), desert.key()),
-        Map.of(),
+        regions,
         Map.of(),
         terrainTypes,
         Map.of(),

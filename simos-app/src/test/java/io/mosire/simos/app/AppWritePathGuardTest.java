@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +32,15 @@ class AppWritePathGuardTest {
 
   private static final Path MODULE_MAIN = Paths.get("src/main/java");
 
-  /** 三个禁止出现的存储/时间线写面符号（spec §十一 R1）。 */
+  /**
+   * 三个禁止出现的存储/时间线写面符号（spec §十一 R1）。
+   *
+   * <p>★ **按标识符匹配，不按子串**（2026-09-24 精确化）：判据是"不得引用这几个类型"， 而子串匹配会把**以它们开头的别的标识符**一起打红——实测：新增读工具
+   * {@code TimelineRevisionsTool} （类名含 {@code Timeline}）撞了本条，而它引用的是 {@code
+   * CoreSimos.revisions(...)}（合法只读面）、 与 {@code io.mosire.simos.core.timeline.Timeline}（存储写面）无关。 ⇒
+   * 合成 {@code \b符号\b}：{@code Timeline} 命中，{@code TimelineRevisionsTool} 不命中。 ★ 本条的边界由 {@link
+   * #forbiddenSymbolsMatchIdentifiersNotSubstrings} 自证。
+   */
   private static final List<String> FORBIDDEN =
       List.of("SqliteStore", "Timeline", "CheckpointStore");
 
@@ -48,11 +57,37 @@ class AppWritePathGuardTest {
     for (Path source : sources) {
       String code = stripComments(read(source));
       for (String needle : FORBIDDEN) {
-        assertThat(code)
-            .as("%s 不得出现 %s（铁律 2：唯一写入口是 CoreSimos.submit）", source.getFileName(), needle)
-            .doesNotContain(needle);
+        assertThat(forbiddenPattern(needle).matcher(code).find())
+            .as(
+                "%s 不得引用 %s（铁律 2：唯一写入口是 CoreSimos.submit；按标识符匹配，见 FORBIDDEN 的说明）",
+                source.getFileName(), needle)
+            .isFalse();
       }
     }
+  }
+
+  /** 禁止符号的**标识符**判据（词边界）：{@code Timeline} 命中、{@code TimelineRevisionsTool} 不命中。 */
+  private static Pattern forbiddenPattern(String symbol) {
+    return Pattern.compile("\\b" + Pattern.quote(symbol) + "\\b");
+  }
+
+  /** ★ 上述精确化的**边界自证**：正例命中、以同名前缀开头的别的标识符不命中。 */
+  @Test
+  void forbiddenSymbolsMatchIdentifiersNotSubstrings() {
+    assertThat(forbiddenPattern("Timeline").matcher("new Timeline(store, n)").find())
+        .as("真引用 ⇒ 命中")
+        .isTrue();
+    assertThat(
+            forbiddenPattern("Timeline")
+                .matcher("import io.mosire.simos.core.timeline.Timeline;")
+                .find())
+        .as("类型引用 ⇒ 命中")
+        .isTrue();
+    assertThat(forbiddenPattern("Timeline").matcher("new TimelineRevisionsTool(core)").find())
+        .as("以同名前缀开头的别的标识符 ⇒ 不命中（否则新增工具类会被误伤）")
+        .isFalse();
+    assertThat(forbiddenPattern("SqliteStore").matcher("SqliteStore.open(path)").find()).isTrue();
+    assertThat(forbiddenPattern("SqliteStore").matcher("NotSqliteStoreX").find()).isFalse();
   }
 
   /** 去注释器的边界自证：注释里的串被去掉，代码（含字符串字面量）里的串保留。 */

@@ -63,8 +63,15 @@ import java.util.Set;
  * PopulationSeries#valueAt(SimosTimestamp)}，与 facet 同口径（GUI 不造第二份真相）。
  *
  * <p>★ **不碰存储、不碰时间线**：本类是纯函数，R1 的扫描对象之一（main 源码不得出现 store/timeline 写面）。
+ *
+ * <p>★★ **2026-09-24（工具面 M4）：本类同时是 MCP 读工具的视图层** —— GUI 端点与 {@code app.tools.read} 下的读工具**共用同一份**
+ * view builder（{@link #timeline} / {@link #regionDetail} / {@link #pathResult} / {@link
+ * #decisionMakers} / {@link #decisionMaker} 等）。理由：侦察报告 {@code
+ * .superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md} 实测过"同一资源的两个形状"（GUI 与 MCP 各写一份视图 ⇒
+ * 语义安全品发散，无判据能发现）。共用一份 = 形状发散在**结构上**不可能，而不是靠人记得。 故类与上述方法从包内可见提升为 {@code public}（仍是 app
+ * 层内部的类型，不外发）。
  */
-final class ApiViews {
+public final class ApiViews {
 
   private ApiViews() {}
 
@@ -148,7 +155,7 @@ final class ApiViews {
    * 时间轴节点清单（spec §3.1，M7 T1）：{@code {branch,head,nodes:[…]}}。节点**不含 {@code changesetJson}**（体积大且对
    * UI 无用），{@code parent} 为 {@code {branch,revision}} 或 {@code null}。
    */
-  static Map<String, Object> timeline(BranchId branch, long head, List<RevisionRow> rows) {
+  public static Map<String, Object> timeline(BranchId branch, long head, List<RevisionRow> rows) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("branch", branch.value());
     view.put("head", head);
@@ -429,7 +436,7 @@ final class ApiViews {
    * <p>★ {@code hexes} 按 {@code (q,r)} 升序——{@link Region#hexes()} 是 {@code Set.copyOf}（迭代序不稳定），
    * 不排序的响应字节不可复现，测试也钉不住。
    */
-  static Map<String, Object> regionDetail(Region region) {
+  public static Map<String, Object> regionDetail(Region region) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", region.id().value());
     view.put("name", region.name());
@@ -559,7 +566,7 @@ final class ApiViews {
    * 的 {@code waypoints}（该命令把 waypoints 当 path 用，见 {@code PlanRouteHandler}）。不可达 ⇒ {@code
    * reachable=false} 且 {@code path=[]}（不省略字段，前端一次判空即可）。
    */
-  static Map<String, Object> pathResult(boolean reachable, List<HexCoord> path) {
+  public static Map<String, Object> pathResult(boolean reachable, List<HexCoord> path) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("reachable", reachable);
     view.put("path", hexCoords(reachable ? path : List.of()));
@@ -581,7 +588,8 @@ final class ApiViews {
    * <p>★ 列表顺序**由服务端决定**（{@link SdQueryService#listDecisionMakers} 按 id 字典序）——本类只做装配，不重排，
    * 否则"同状态两次响应逐字节相同"这条前提会破。
    */
-  static List<Map<String, Object>> decisionMakers(List<SdQueryService.DecisionMakerInfo> infos) {
+  public static List<Map<String, Object>> decisionMakers(
+      List<SdQueryService.DecisionMakerInfo> infos) {
     List<Map<String, Object>> out = new ArrayList<>(infos.size());
     for (SdQueryService.DecisionMakerInfo info : infos) {
       out.add(decisionMaker(info));
@@ -600,7 +608,7 @@ final class ApiViews {
    * SdQueryService#decisionMaker} 算出），不再有占位：首次（无任何 Directive）⇒ {@code true}， {@code
    * lastDirectiveTick}/{@code ticksSinceLast} 为 {@code null}。
    */
-  static Map<String, Object> decisionMaker(SdQueryService.DecisionMakerInfo info) {
+  public static Map<String, Object> decisionMaker(SdQueryService.DecisionMakerInfo info) {
     DecisionMaker maker = info.maker();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", maker.id().value());
@@ -786,7 +794,7 @@ final class ApiViews {
   }
 
   /** map 切片（缺席或类型不对是装配故障，不是"没有候选"）。 */
-  static GameMap gameMap(SimulationState state) {
+  public static GameMap gameMap(SimulationState state) {
     Snapshot snapshot =
         state
             .module("map")
@@ -798,7 +806,7 @@ final class ApiViews {
   }
 
   /** unit 切片。 */
-  static UnitState unitState(SimulationState state) {
+  public static UnitState unitState(SimulationState state) {
     Snapshot snapshot =
         state
             .module("unit")
