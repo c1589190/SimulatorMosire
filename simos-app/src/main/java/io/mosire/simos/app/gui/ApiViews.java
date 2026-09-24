@@ -52,6 +52,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -517,12 +518,16 @@ public final class ApiViews {
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
     view.put("movement", movement(unit, at, map));
     // ★★ 编制 v2（2026-09-24）：`attached` = 我是不是跟别人一起走；`formationRootId` = 该对谁下令；
-    //   `formationSize` / `formationSpeed` = 这一支多大、一起走多快（= 支内 `effectiveSpeed` 最小值，含状态折算）。
-    //   三者都在 UnitState 那一个取数点算（不在这里另写遍历——两份遍历迟早给出两个不同的集合）。
+    //   `formationSize` / `formationSpeed` = **这一支**（从顶层算）多大、一起走多快（= 支内 `effectiveSpeed`
+    // 最小值，含状态折算）。
+    //   ★★ **规模与速度一律从顶层量**（不是从"我自己"这个子树量）：`轻骑兵` 那一行若报"1 个单位"，
+    //   读的人（模型/界面）会以为它是一支独立的单兵编队——同一个字段在两行里必须说同一件事。
+    Optional<UnitId> rootId = units.formationRoot(unit.id(), at);
     view.put("attached", unit.attached().valueAt(at));
-    view.put("formationRootId", units.formationRoot(unit.id(), at).map(UnitId::value).orElse(null));
-    view.put("formationSize", units.formationMembers(unit.id(), at).size());
-    view.put("formationSpeed", units.formationSpeed(unit.id(), at));
+    view.put("formationRootId", rootId.map(UnitId::value).orElse(null));
+    view.put(
+        "formationSize", rootId.map(root -> units.formationMembers(root, at).size()).orElse(1));
+    view.put("formationSpeed", rootId.map(root -> units.formationSpeed(root, at)).orElse(0));
     return view;
   }
 

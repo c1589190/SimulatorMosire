@@ -2,6 +2,7 @@ package io.mosire.simos.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
@@ -211,6 +212,15 @@ class UnitExtensionEndToEndTest {
     assertThat(state.effectivePosition(U5, T30)).as("★ 整支一起到同一格：成员也被搬到 H13").contains(H13);
     assertThat(state.units().get(U5).movement()).as("★ 被带着走的成员没有自己的行程（它不自己走）").isEmpty();
     assertThat(state.units().get(U5).attached().valueAt(T30)).as("它仍是那一支的成员").isTrue();
+
+    // ★★ 读口（GUI 与 MCP 同源的那一份）：**成员那一行报的"整支"是从顶层量的**，不是它自己的子树。
+    //   否则"轻骑兵"会显示成一支 1 个单位的编队——读的人（模型/界面）会据此误判。
+    SimulationState simAtT30 = shell.coreSimos().replay(ref("main", 3));
+    Map<String, Object> memberView =
+        ApiViews.unit(state.units().get(U5), state, T30, ApiViews.gameMap(simAtT30));
+    assertThat(memberView.get("formationRootId")).isEqualTo("u-1");
+    assertThat(memberView.get("formationSize")).as("从顶层量 ⇒ 2（u-1 与 u-5），不是 u-5 自己的 1").isEqualTo(2);
+    assertThat(memberView.get("attached")).isEqualTo(true);
   }
 
   /**
