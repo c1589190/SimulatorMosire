@@ -15,7 +15,11 @@
 | 1a-4 | sd/social 日语义文案 | **完成** | 11 个文件 javadoc/注释改日；sd+social 186/186（控制器自验） |
 | 1a-5 | app/前端/MCP 快进改逐日 | **完成** | `AdvanceTool`/`GuiServer` 的 `to` 缺省 = `from+1`；`timeline.js` 逐日循环（N 天 = N 条命令、逐条用新 revision、失败即停并报第几天）；`readout.js` 速率 ×24；`panels.js`/`index.html` 文案；前端门禁 284/284 PASS |
 | 1a-6 | app Java 测试重标定 + `clean verify` 关账 | **完成** | 8 个 app 测试类改逐日循环/重算期望；`clean verify` **BUILD SUCCESS**（7 模块全绿：1948 tests / 0 fail / 0 err / 0 skip；Spotless+Checkstyle+SpotBugs+前端门禁+shade 守卫） |
-| 1b-1..5 | 多模块提案 + 六切片创世 | 未开始 | — |
+| 1b-1 | 通用多模块提案（WorldTimeProposal） | **完成**（提交 `6dc0df2`） | util 新 record + `TimeParticipant.simulateWorld` 默认实现 + `TimeAdvance` 逐模块校验/每模块一条事件 + resolver 支持多切片（同模块两参与者 ⇒ 拒；汇总按 namespace 字典序）；core 213/213、`clean verify` 绿 |
+| 1b-2 | `simos-economy-api` 模块 | 未开始 | 待设计：六个切片共用的稳定 ID / `ActorRef` / `CommodityId` / `EconomicEvent` / `TransferIntent`——**类型形状要按模块过一遍再落笔**（照名词硬写 = 编造设计，AGENT.md §〇 末条） |
+| 1b-3 | 五个有状态模块骨架 | 未开始 | 各模块 Data/Snapshot/ChangeSet/Codec/Resolver + 往返测试（照 social 模板） |
+| 1b-4 | 六切片创世 + 未激活语义 | 未开始 | `WorldgenInitializeTool`/`RichWorld` 写六切片空快照；`ledger.economyMeta`；缺切片拒绝推进 |
+| 1b-5 | `EconomyDayCoordinator` 骨架 + 装配 | 未开始 | 设计稿 §9 步骤序（首版各步空实现）；`Shell` 注册六个 codec/handler/resolver |
 
 ## 关账数字（2026-09-24 22:04 本轮 `clean verify`）
 
@@ -43,6 +47,20 @@ util 170 / map 379 / social 130 / unit 304 / core 206 / sd 186 / app 573 = **194
 
 - `60eed41` docs: 设计稿入库（用户 2026-09-24 置于根目录，本计划以其为绑定权威）
 - `9639af1` feat(core): 日制底座（1a-1 + 1a-2 + 计划/台账）
+- `f5d4989` feat(unit): 日制移动 —— speed 语义=MP/小时，日预算 = ×24 小时
+- `a513c7e` feat(app): 逐日推进（MCP/GUI/前端）+ 移动量纲文案 + app 测试重标定
+- `02e601b` docs(sd,social): tick 语义统一为"日"（纯文案）
+- `78acd6d` fix(core,app): 清掉 simos-app 既存的 9 条 SpotBugs（基线证明在提交信息里）
+- `abb2cbc` docs(sdd): 日制底座（1a）台账关账
+- `6dc0df2` feat(util,core): 通用多模块提案（WorldTimeProposal）—— 1b-1
+
+## 1b-1 关账补充（2026-09-24 22:11）
+
+- `clean verify` 全模块 **BUILD SUCCESS**（7 模块；shade 守卫 6247 条目）。
+- 设计取舍（落在提交信息里）：**两个参与者改同一模块 ⇒ 直接拒**（Core 无法合并两份不透明变更集），报告用
+  `module:<ns>` 合成地址；汇总 map 从"保入参序"改为 **TreeMap 字典序**（输出只是内容的函数）。
+- 子 Agent 观察（本机）：**后台子 Agent 会被环境杀**（三个同时终止、零产出）；**前台子 Agent 可用**（unit/app/sd-social
+  三个任务都由前台子 Agent 完成并自证）。后续派单请用前台、一次一个。
 
 
 ## 实施留痕
