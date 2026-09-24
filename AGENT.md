@@ -260,7 +260,21 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
   （军队归属的决策人**没有**快照，取景语义未裁决）。开关开着而路由无视觉能力 ⇒ 跳过 + 日志一行 warn（不静默）。
 - MCP 面（外部 agent）出图是另一条：工具的图片资产由 `AgentToMcpServer` 出成 `ImageContent`（P1）。
 
-### 8.5 换设备自检（本机踩过的坑，按序做）
+### 8.5 编制与移动（v2，2026-09-24 裁定）
+
+- **`parent` = 编制归属；`attached` = 是否与父同属一支"一同移动"的编制**（不再表示"位置由父继承"）。
+- **顶层**：沿 `parent` 上溯到 `attached=false` 或**无父**的那个单位。**只有顶层能移动**；它一动，整支
+  （全部 `attached=true` 的后代）**一起到同一格**（推进器显式搬），**速度取支内 `effectiveSpeed` 最小值**（含状态折算）。
+- 成员自己下路线 ⇒ 拒，理由**点名顶层** + 指路（控制顶层 / 拆出来）。
+- **进入编制必须同格**（`attach` / `merge` / `createUnit` 各自判）——这就是"跟随"取消后的代替品：
+  **要合并就回同格**，不再有"不同格偏移式加入"。
+- **位置永远是各单位的自己的**：没有位置 = 不知在哪（**不再向父取位**）。`offset` 与 `unit.SetFormationOffset`
+  保留但**不再影响任何计算**。
+- ★ 决策人**要派兵单独出去，必须先拆**（`unit.SplitFormation` / `unit.DetachUnit`）；三条令里"给下挂单位下路线"
+  这种写法会被正当拒绝（三国那轮实测就是这么撞上的——见 `.superpowers` 之外的本节）。
+- 设计原文与取代声明：`docs/superpowers/specs/2026-09-24-formation-v2-design.md`。
+
+### 8.6 换设备自检（本机踩过的坑，按序做）
 
 1. `git status` 看 `core.autocrlf`——曾把整棵工作树 checkout 成 CRLF，`mvnw` 的 shebang 变 `#!/bin/sh\r`
    导致 Maven 完全起不来、Spotless 全红。仓库已用 `.gitattributes` 钉死 LF。
