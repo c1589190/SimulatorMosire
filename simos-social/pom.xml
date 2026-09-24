@@ -29,6 +29,16 @@
     <dependency>
       <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
     </dependency>
+
+    <!-- ★ 2026-09-24 补（跑 clean verify 时发现本模块有 3 条 SpotBugs 判据）：
+         `gen/ArmyPlan` 的 EI_EXPOSE_REP 与 `gen/ValueRange` 的两处 FE_FLOATING_POINT_EQUALITY
+         都是**误报**（前者：两张表已逐层复制 + unmodifiableMap；后者：`min == max` 判的是"区间被 clamp 压成一点"这一语义），
+         有意豁免需要 @SuppressFBWarnings，其注解住在 spotbugs-annotations 里。
+         ★ 与 simos-app/pom.xml 的同一条 provided 依赖同款（照其先例；版本与 spotbugs 插件同代）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
   </dependencies>
 
   <build>

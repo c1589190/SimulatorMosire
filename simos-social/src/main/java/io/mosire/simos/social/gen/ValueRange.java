@@ -1,5 +1,7 @@
 package io.mosire.simos.social.gen;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * 一个标量的**文档值 ± 抖动 + 硬夹紧**区间：由 seed 决定取区间里的哪一点。
  *
@@ -62,7 +64,19 @@ public record ValueRange(double documented, double jitterPct, double clampMin, d
     return clamp(documented * (1.0 + jitterPct));
   }
 
-  /** 是否恰好一点（{@code min == max}）。**静态谓词**（本仓不许 {@code isXxx()} 实例方法）。 */
+  /**
+   * 是否恰好一点（{@code min == max}）。**静态谓词**（本仓不许 {@code isXxx()} 实例方法）。
+   *
+   * <p>★★ **{@code ==} 在这里是语义，不是"用等号替代容差"的疏忽**（故就地豁免 SpotBugs 的 {@code
+   * FE_FLOATING_POINT_EQUALITY}）：{@link #min()} 与 {@link #max()} 是**同一个** {@code clamp} 纯函数在
+   * 两个端点上算出来的，恒等时逐位相同 ⇒ 问"是不是同一个点"正是要表达的意思。改成容差比较会把"这个区间被 {@code clamp}
+   * 压成了一个点"读成"很接近"，而定档/取值的分支就好落在那条边上。
+   *
+   * <p>★ 全类**只有这一处**浮点相等比较（{@link #resolve} 也走这里），故豁免面就只有这一个方法。
+   */
+  @SuppressFBWarnings(
+      value = "FE_FLOATING_POINT_EQUALITY",
+      justification = "min()/max() 由同一个 clamp 纯函数算出；== 判的是'区间是否被压成一个点'这一语义，不是数值容差比较")
   public static boolean isExact(ValueRange range) {
     return range.min() == range.max();
   }
@@ -73,10 +87,8 @@ public record ValueRange(double documented, double jitterPct, double clampMin, d
    * @param salt 用途盐：同一国家的不同标量必须给互不相同的盐，否则"人口大的变体恰好也是城市化率高的变体"这类伪相关会系统性偏置
    */
   public double resolve(long seed, long salt) {
-    double lower = min();
-    double upper = max();
-    if (lower == upper) {
-      return lower; // 恰好一点（含 enabled=false 的文档值）
+    if (isExact(this)) {
+      return min(); // 恰好一点（含 enabled=false 的文档值）
     }
     double unit = unit(splitmix64(seed ^ salt));
     return clamp(documented * (1.0 + jitterPct * (2.0 * unit - 1.0)));

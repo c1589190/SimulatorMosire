@@ -1,5 +1,6 @@
 package io.mosire.simos.social.gen;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,6 +24,12 @@ import java.util.Map;
  * @param establishment 编制表（兵种 → 人数）；值都 &ge; 0
  * @param armKits 装备配比表（兵种 → （装备名 → 每百人件数））；值都 &ge; 0
  */
+// ★ 豁免 EI_EXPOSE_REP（2026-09-24，跑 clean verify 时发现）：紧凑构造器已把两张表**逐层复制**并包成
+//   unmodifiableMap（见 copyCounts），故访问器返回的既不是调用方的原对象、也改不动 ⇒ 真正的"暴露内部表示"不存在。
+//   SpotBugs 看不穿私有 helper（copyCounts）的返回值是不变量，故按类豁免；理由写在这里，不动语义。
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "两张表在紧凑构造器里已逐层复制 + unmodifiableMap（copyCounts）；SpotBugs 看不穿该私有 helper 的返回值")
 public record ArmyPlan(
     int peacetime,
     int mobilization,
