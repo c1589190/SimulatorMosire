@@ -1,7 +1,8 @@
 # AGENT.md —— 本仓常驻上下文 + 多 agent 共用工作树的规矩
 
 > ★★ **2026-09-24 起，本文件是唯一常驻文档**：原 `CLAUDE.md`（133KB，历史台账为主）**已废弃**——
-> 它那部分内容并没有丢：逐条里程碑在 **git 历史**、`docs/superpowers/**`（spec/plan）与
+> 其中**仍要遵守的纪律**（判别力的载体形态 / 评审体量上限 / 密钥纪律 / 换设备自检 …）已并入本文件
+> （§三 / §五 / §八）；逐条里程碑与完整事故叙述在 **git 历史**、`docs/superpowers/**`（spec/plan）与
 > `.superpowers/sdd/**`（SDD 台账与证据）里都留着。**新文档一律写这里。**
 >
 > 下文每条规矩后面都附**为什么**——它们几乎都是**真发生过的损失**，不是洁癖。
@@ -42,6 +43,9 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 - 上表的边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，不是 code review 的事。
 - 跨模块可见性走 **Facet**，不走反向依赖："某个 hex 上有哪些单位"**不能**写成 `MapManager.getUnitsAt(hex)`；
   Util 提供 Facet 协议，各领域模块自己注册提供者，MapSimos 对这些扩展完全不知情。
+- ★ **命令跨模块边界是"不透明载荷"**（ADR-1，2026-09-18）：Core 只认信封的 `type` 字符串，不 `instanceof`、
+  不 switch 类型；新增契约一律放 `io.mosire.simos.util.spi`，既有契约**原地不动**。
+- ★ 写新阶段的 bite-sized 步骤前，**先确认该模块的待决项已裁决**——否则等于编造设计。
 
 ### 文档地图（★ 不要用 `@` 导入——导入会在启动时把文件展开进上下文，白载 5000+ 行）
 
@@ -94,6 +98,36 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 4. 本会话反复用到的一条：**门禁沙箱不执行 `initHost`/`initDecision`** ⇒ "搬走函数但别处还留着裸调用点"
    这类漏改**门禁查不出来、只在运行时炸**。搬函数后必须**静态审计裸引用**。
 
+**判别力的载体形态（摘要）**：完整叙述（每例的装置、数字、由来）在 `git show 6808aad^:CLAUDE.md` 的「纪律」节，
+这里只留仍要遵守的判据：
+
+- **"我验过了"与"我记得是这样"必须分开**：写给别人当依据的每个 Expected / 事实 / 出处都要有**当场跑过的痕迹**
+  ——不写没实测过的期望输出；不把工具的静默假阴性当"不存在"；不把推导出来的风险当既成事实。
+- **变异体先自证再跑**：编一份原件作参照、比 md5，证明落盘的确实与原件字节不同；变异体按**目标类名**推入
+  （按变异文件名拷入 ⇒ "红"变成编译错误，不算数）；每轮先把工作目录恢复成**干净世界**（重编原件 + 比 md5）。
+- **`target/` 下的一切都不还原**（`.class`、`surefire-reports/*.txt`）⇒ 读 surefire 数字**先跑干净轮**，
+  并核对报告 mtime 落在本轮；别拿"上次留下的绿/红"当本轮结论。
+- **红要红在被保护的那行上**（红的理由不对不算数）；**没红也要问为什么没红**（可能根本没跑到：
+  `--details=none` 全通过时不打汇总行）。
+- **夹具规模决定判别力**：用冻结字面量钉 `Map.copyOf`/`Set.copyOf` 保序时，3 键实测 7%~40% 恰好落回插入序
+  （假绿），4~6 键 0/30 ⇒ 键数要当场量，别凭"看起来不像巧合"。
+- **`mtime` 不是"字节变了"的判据，md5 才是**：变异轮还原时 `cp` 重写文件、字节一个没变 ⇒
+  mtime 新不能判旧证据失效；反过来也不能因为 mtime 新就重跑。
+- **拒收判据与接收判据都要有真样本**：Maven 3.9 写的是 `[INFO] BUILD FAILURE`，只认 `[ERROR]` 的正则
+  会把跑完的红轮判成"没跑完"（把"有"伪装成"没有"）。
+- **命中 0 先怀疑自己的正则 / 读取，别先怀疑被测物**：`grep -cE 'spotless.*SUCCESS'` 返回 0，
+  而 Spotless 其实跑遍了 6 个模块；核对脚本读到空串要先断言非空再下结论。
+- **分析器的判定不是被分析文件的纯函数**：同一份逐字节相同的 `UnitCodec.java`，SpotBugs 在 `c76b2b6` 的类集下报 0、
+  在 `684c757` 下报 2；`spotbugs:check` 直调不跑生命周期、不编译，在没编译过的树里 rc=0 无提示通过
+  ⇒ 要跑门禁就 `verify`；见绿先问"它分析了几个类"。
+- **装置的输入会静默改变被测对象**：Playwright `page.fill` 会把页面滚下去 ⇒ 随后的 `mouse.click` 落在视口外、
+  **无任何报错**；点击后必须断言"它真的发生了"（选中态 / 状态文案变了）。
+- **装了护栏要在它真正会被用到的每种环境形态下各证一次**（主树 / worktree / 从模块目录起跑）：
+  同一份仓源扫描器在主树扫到 44 个文件、在 worktree 扫到 0 个（绝对路径含 `.claude`）⇒ 断言恒真、全绿、无症状；
+  **只在主树测过等于没测**。★ 装了护栏却不跑 = 装饰（自建装置不在 CI 里同罪）。
+- **自建装置要自指**：把"这一轮跑的是哪份字节（md5）"追加进日志本身；引用自记要取**本名轮**那一块
+  （同名日志里会留作废轮）。
+
 ## 四、台账/计划 vs 代码：**机制性描述一律回代码核**
 
 本会话发现**至少 4 处**"计划/台账措辞 ≠ 代码实际"，都足以让人做错方向：
@@ -106,6 +140,12 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 | "`at.revision` = 该条目落盘时的 revision" | 实为**写入所依据的基态** revision（可能小于首次可见的 revision） |
 
 ⇒ **凡要用到台账里的机制描述，先去代码确认**；发现不符**报出来**，别照着措辞硬做。
+
+★ **SDD 的 workspace 目录名由脚本从计划文件名推导，可能与台账实际目录不一致**：本阶段计划是
+`2026-09-22-tool-surface-plan.md`，脚本推导出 `.superpowers/sdd/2026-09-22-tool-surface-plan/`，
+而**真正的台账**在 `.superpowers/sdd/2026-09-22-tool-surface/`（无 `-plan` 后缀，开工时手工建的）。
+⇒ 接手前先 `ls .superpowers/sdd/`；别据"脚本目录里没有 `progress.md`"判定无台账——那会被读成
+"本计划没有台账 ⇒ 从头开始"，把已关账的任务全部重派（SDD 技能原文称之为**观察到的最贵的失败**）。
 
 ## 五、提交与协作
 
@@ -121,6 +161,18 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 3. 已确认的发现，**若修复比描述还短，当场修**，别 park 成 issue。
 4. `.superpowers/sdd/**` 与 `docs/**` 的历史台账行是**留痕**：**不篡改**；要更正就**追加**标注。
    （`CLAUDE.md` 已于 2026-09-24 退役 ⇒ 它的历史行在 git 里，同样不回头改。）
+5. **该推就推**：私有仓库，用户 2026-09-17 原话「你爱推就推反正是私有仓库」。★ 曾有一条"不擅自推送"
+   是控制器**自造**的规矩、用户从未说过，却被冠以"用户裁定"写进 6 个文件、一路挡着推送——已撤。
+   ⇒ **自造的规矩别冒充用户裁定**；引用裁定要能指出原话与日期。
+6. ★ **评审的体量不得压过代码本身**（用户 2026-09-17 原话：「别他妈一个模块跑几轮十几轮评审，
+   这个代码没多少，评审用的上下文比项目大了」）：单个模块开发任务的**评审不超过 3 轮**
+   （数的是"发现问题 / 判是否可关账"的独立派发）；第 3 轮仍不收敛，由控制器当场裁定，
+   未决项记成带裁定的遗留条目往下走。
+   不许为评审自建重型装置（评审包 / 限域重审 / md5 清单 / 多轮取证表格——M2 Task 1 上失控的形态：
+   一个 hex 包留痕比它的代码长一个数量级）；**代码量小时，控制器自己读 diff 就是评审**；
+   实现者自带的变异自证已经是"测试"，不要在外面再套一层去复现它；**台账记裁定与结论，不记取证过程**。
+7. **密钥纪律**：值绝不进日志 / 异常 / 事件 / argv / env / stdio；读配置只打印**路径 + 长度**。
+8. 注释与文档**用中文**，与既有风格一致。
 
 ## 六、前端（无 npm、无打包器、纯 `<script>`）
 
@@ -138,14 +190,18 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 ```bash
 node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-gate.cjs，当前 275）
 ./mvnw test -pl simos-app -am                    # 全量测试（含前端门禁那一步；不动 jar）
-./mvnw -q -Dspotless.check.skip=true -DskipTests package 2>/dev/null   # 见 §八「打包」——本仓无 shade 开关
+./mvnw -q -Dspotless.check.skip=true -DskipTests package 2>/dev/null   # 见 §二「产物」——本仓无 shade 开关
 ./mvnw clean verify                              # ★ 关账：Spotless+Checkstyle+SpotBugs+Surefire+前端门禁
 ```
 
 ★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
 ★ 迭代时只跑相关单条：`./mvnw -q -Dtest=<类名> -Dsurefire.failIfNoSpecifiedTests=false test -pl <模块> -am`。
+★ 中文 Javadoc 的折行由 **google-java-format**（Spotless）决定：**不要手工调行宽**（手工断行处会留下接缝空格），
+改完跑 `./mvnw -q spotless:apply`；`~/ProjectMosire` 同为该形态。
 
 ## 八、环境与运维（本机实测；换机器先看这一节）
+
+- 工具链：**Java 21**；Maven `[3.8,)`；父 POM 是 `io.mosire:simos-parent`，**不继承** `io.mosire:mosire-parent`。
 
 ### 8.1 起一个实例 / 判活 / 收工
 
@@ -205,3 +261,8 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
    绕法：`tr -d '\r' < 脚本 > /tmp/x.sh && bash /tmp/x.sh <参数>`。
 5. **门禁耗时会压着工具 600s 上限**：越过会被摘到后台，而"后台 × 内存压力"可能被杀。
    **"被杀"既不是红也不是绿**（不能算过）；跑 `clean verify` 前先确认没有别的 Maven 在跑。
+6. **"按外壳 / 按树 / 按机器"的东西别照抄**：子代理类型与模型（在 Claude Code 里照抄 opencode 的
+   `deepseek-flash-go` 会直接报 `not found`；那条禁令的对象是**那个模型 V4 Flash**，不是"不许派子代理"——
+   该派就派、用本外壳的默认类型）、`~/.m2`、`.superpowers/.gitignore` 同族 ⇒ 换外壳 / 换 worktree 先核一遍再照抄。
+   ★ 本仓常同时有主检出与 worktree，**同名文件分属不同分支**（`CLAUDE.md` 曾是重灾区：拿主检出的绝对路径去改，
+   编辑成功了、改的却是另一棵树里的旧版）⇒ 改文件一律用**本树**的绝对路径，改完 `git status` 确认变的是本树。
