@@ -78,8 +78,10 @@ class RichWorldTest {
             Map.entry("mountains", 1096L));
     assertThat(histogram.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(59223L);
     assertThat(map.terrainTypes().keySet())
-        .as("只用到的 5 类（plateau/plateau_mountains 未被源档用到）")
-        .containsExactlyInAnyOrder("ocean", "plains", "desert", "low_hills", "mountains");
+        .as(
+            "在用的 5 类（ocean/plains/desert/low_hills/mountains）+ 平缓高原 plateau（★ 2026-09-24 用户裁定："
+                + "世界词表恒带 plateau，否则调色板里画不出高原；高原山地不纳入世界词表）")
+        .containsExactly("ocean", "plains", "desert", "low_hills", "mountains", "plateau");
   }
 
   @Test

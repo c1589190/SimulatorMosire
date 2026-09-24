@@ -13,6 +13,9 @@
   * 标准库 only；零 Java 改动。
   * 只吃 **root full map**（含 parentNodeId/changed 的是 MapDiff，一律拒）。
   * 任何映射表外的在用 terrain key ⇒ 报错退出（fail-closed，不猜语义）。
+  * ★ **输出 `terrainTypes` = 在用的 ∪ `ALWAYS_EMITTED_TERRAIN_KEYS`**（2026-09-24 起含 `plateau`）：
+    调色板只列世界词表里的地形，只输出在用者会让「平缓高原」永远画不出来。
+    高度：地形带中点；★ 沙漠取**平原中点 + 0.005**（与 simos 侧 `TerrainHeights.paintHeight` 同口径）。
   * 丢弃的键各自打印一行理由，不静默。
   * ★ **连通性融合优先级**（T11 / spec §五.2 / 裁定 D12）：`edges`（权威）> `edgeTags` > `riverMask`。
     - `edges` 非空 ⇒ 直映（M6 行为）；
@@ -104,9 +107,22 @@ TERRAIN_CATALOG = {
 }
 
 #: 缺失 height 的推导：所映射到的 simos 地形高度带的**中点**（确定性）。
+#: ★ 2026-09-24：沙漠改为**平原带中点 + 0.005**（与 simos 侧 TerrainHeights.paintHeight 同一口径——
+#:   涂色与导入必须写出同一个数，否则同一格因来源不同读出两个高度）。
 def representative_height(simos_key):
     t = TERRAIN_CATALOG[simos_key]
+    if simos_key == "desert":
+        plains = TERRAIN_CATALOG["plains"]
+        return (plains["minHeight"] + plains["maxHeight"]) / 2.0 + 0.005
     return (t["minHeight"] + t["maxHeight"]) / 2.0
+
+
+#: ★ 2026-09-24：世界词表**恒带**的地形（即便本档没有一格用它）。
+#:   由来：用户要用手绘/油漆桶补画「平缓高原」，而调色板只列世界词表里有的地形 ⇒
+#:   若按"只输出在用者"，高原就**永远画不出来**（词表外 ⇒ 调色板没有；硬画又会缺颜色与移动成本）。
+#:   `plateau_mountains`（高原山地）**有意不在此列**：用户裁定「山就是山，不用区分高原山地与平缓高原」，
+#:   它是生成器内部的最高带，不作为世界地形。
+ALWAYS_EMITTED_TERRAIN_KEYS = ("plateau",)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. 六角几何：HexDirection / HexVertex / RegionBoundary 的精确移植
@@ -474,11 +490,11 @@ def build_map_payload(data, report):
             "height": representative_height(simos_key),
         }
 
-    # ── terrainTypes：只用到的（键序 = TerrainCatalog.KEYS 的高度升序） ──
+    # ── terrainTypes：在用的 + ALWAYS_EMITTED（键序 = TerrainCatalog.KEYS 的高度升序） ──
     terrain_types = {}
     for key in ("ocean", "plains", "desert", "low_hills", "mountains", "plateau",
                 "plateau_mountains"):
-        if key in used_simos:
+        if key in used_simos or key in ALWAYS_EMITTED_TERRAIN_KEYS:
             terrain_types[key] = dict(TERRAIN_CATALOG[key])
 
     # ── provinces → regions ──
@@ -633,7 +649,8 @@ def print_report(input_path, out_dir, report, rejected=None):
         print("    {:<9} -> {:<14} {:>6} 格   代表高度={}{}".format(
             old_key, simos_key, report["old_key_counts"][old_key],
             representative_height(simos_key), flag))
-    print("[gsimap_import] 输出 terrainTypes 键集: {}".format(report["terrain_types_keys"]))
+    print("[gsimap_import] 输出 terrainTypes 键集: {}（= 在用者 ∪ {})".format(
+        report["terrain_types_keys"], list(ALWAYS_EMITTED_TERRAIN_KEYS)))
     print("[gsimap_import] LOSSY 映射（★ 有损：simos 词表无对应，合并入 plains）:")
     if report["lossy_counts"]:
         for old_key, count in sorted(report["lossy_counts"].items()):
@@ -652,7 +669,7 @@ def print_report(input_path, out_dir, report, rejected=None):
         report["edges"], report["edge_source"],
         report["edge_tags_hexes"], report["river_mask_hexes"]))
     print("[gsimap_import] 合成项       : spec 为 GenerationSpec.defaults(0) 的占位；"
-          "height 为所映射地形高度带中点")
+          "height 为所映射地形高度带中点（★ 沙漠取平原中点 + 0.005，2026-09-24）")
     print("[gsimap_import] 结果         : OK")
     print("=" * 72)
 
