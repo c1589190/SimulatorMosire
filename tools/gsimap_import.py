@@ -290,6 +290,19 @@ INDEX_DDLS = [
     "CREATE INDEX IF NOT EXISTS idx_events_correlation_id_seq ON events (correlation_id, seq)",
 ]
 
+#: 库级语义标签（2026-09-24 日制裁定）：SqliteStore.ensureTimeBase 对"已有 revision 但无标签"的库 fail-closed，
+#: 故导入器产出的库必须自带标签。
+STORE_META_DDL = """
+CREATE TABLE IF NOT EXISTS store_meta (
+  key   TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL
+)
+"""
+
+TIME_BASE_DAY = "DAY"
+
+FORMAT_VERSION_DAY_BASE = "1"
+
 
 class ImportRejected(Exception):
     """fail-closed 拒绝（退出码非 0）。"""
@@ -597,9 +610,11 @@ def build_checkpoint(map_obj):
     })
 
     # 模块表按 namespace 字典序（map < social < unit），与 CheckpointEncoder 的 TreeMap 一致
+    # ★ timeBase 是 2026-09-24 日制裁定的**必填**标签（Envelope.decode 缺它即拒）：新档一律 DAY。
     envelope = {
         "ref": {"branch": BRANCH, "revision": REVISION},
         "timestamp": ts,
+        "timeBase": "DAY",
         "modules": {"map": map_payload, "social": social_payload, "unit": unit_payload},
         "info": {"bySubject": {}},
     }
@@ -607,7 +622,7 @@ def build_checkpoint(map_obj):
 
 
 def write_db(db_path):
-    """建 2 表 4 索引 + 恰一行创世 revision。"""
+    """建 2 表 4 索引 + store_meta 时间基标签 + 恰一行创世 revision。"""
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     try:
@@ -617,8 +632,15 @@ def write_db(db_path):
         cur.execute("PRAGMA foreign_keys = ON")
         cur.execute(REVISIONS_DDL)
         cur.execute(EVENTS_DDL)
+        cur.execute(STORE_META_DDL)
         for ddl in INDEX_DDLS:
             cur.execute(ddl)
+        cur.execute(
+            "INSERT INTO store_meta (key, value) VALUES (?, ?)",
+            ("time_base", TIME_BASE_DAY))
+        cur.execute(
+            "INSERT INTO store_meta (key, value) VALUES (?, ?)",
+            ("format_version", FORMAT_VERSION_DAY_BASE))
         cur.execute(
             "INSERT INTO revisions (branch, revision, parent_branch, parent_revision, tick,"
             " calendar_label, command_id, correlation_id, initiator, command_type,"

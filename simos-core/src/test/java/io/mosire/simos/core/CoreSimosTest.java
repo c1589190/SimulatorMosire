@@ -272,11 +272,11 @@ class CoreSimosTest {
       core.register(TOY_CODEC);
       core.register(new ToyParticipant("toy"));
 
-      assertThat(core.submit(advance("cmd-a1", 1L, 0L, 5L)))
+      assertThat(core.submit(advance("cmd-a1", 1L, 0L, 1L)))
           .isEqualTo(new CommandResult.Committed(ref("main", 2)));
-      assertThat(core.submit(advance("cmd-a2", 2L, 5L, 6L)))
+      assertThat(core.submit(advance("cmd-a2", 2L, 1L, 2L)))
           .isEqualTo(new CommandResult.Committed(ref("main", 3)));
-      assertThat(core.submit(advance("cmd-a3", 3L, 6L, 7L)))
+      assertThat(core.submit(advance("cmd-a3", 3L, 2L, 3L)))
           .isEqualTo(new CommandResult.Committed(ref("main", 4)));
 
       assertThat(checkpointFile(ref("main", 4)))
@@ -285,8 +285,8 @@ class CoreSimosTest {
 
       SimulationState expected =
           new SimulationState(
-              new StateMeta(ref("main", 4), SimosTimestamp.of(7L)),
-              Map.of("toy", new ToySnapshot(ref("main", 4), SimosTimestamp.of(7L), "toy", 3)),
+              new StateMeta(ref("main", 4), SimosTimestamp.of(3L)),
+              Map.of("toy", new ToySnapshot(ref("main", 4), SimosTimestamp.of(3L), "toy", 3)),
               InMemoryInfoSystem.empty());
       assertThat(core.replay(ref("main", 4)))
           .as("推进终点必须能从它自己的 checkpoint 重放出来")

@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -13,6 +14,9 @@ import java.sql.Statement;
  * SQLite 存储底座（spec §6.1，U16 甲）：一个库、两张表（{@code revisions} + {@code events}），同库同事务——
  * "落盘"与"留痕"不可能不一致。表 schema 以 spec §3.2 / §6.1 为准（冻结）：2 表 + 4 索引， 全部 {@code IF NOT EXISTS} 幂等
  * DDL，旧库打开时自动补建。
+ *
+ * <p>★ 2026-09-24 日制裁定后**多了一张 {@code store_meta}**（键值对，不是领域表）：它只存库级语义标签 {@code time_base}（见 {@link
+ * #ensureTimeBase}）与格式版本。没有标签且已有 revision 的库**拒绝打开**——旧小时档 不静默按天读。
  *
  * <p>并发模型（C23，照 agentlib 的形态）：一个连接 + 全部公开方法走同一把私有锁。锁用私有 {@code Object} 而非 {@code synchronized}
  * 修饰符：实例经静态工厂 {@link #open} 暴露，用类自带锁会让外部持锁者干扰内部互斥 （SpotBugs USO_UNSAFE_METHOD_SYNCHRONIZATION）。
@@ -80,6 +84,31 @@ public final class SqliteStore implements AutoCloseable {
   private static final String EVENTS_CORRELATION_INDEX =
       "CREATE INDEX IF NOT EXISTS idx_events_correlation_id_seq ON events (correlation_id, seq)";
 
+  /**
+   * 库级元数据（2026-09-24 日制裁定新增）：{@code time_base} 是**时间语义的标签**，与 {@link Envelope#TIME_BASE_DAY}
+   * 同源。它不是第三个领域表——它只回答"这个库的 tick 是小时还是天"这一个问题。
+   */
+  private static final String STORE_META_DDL =
+      """
+      CREATE TABLE IF NOT EXISTS store_meta (
+        key   TEXT NOT NULL PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+      """;
+
+  /** 时间基标签的键名（值见 {@link Envelope#TIME_BASE_DAY}）。 */
+  static final String TIME_BASE_KEY = "time_base";
+
+  /** 格式版本：日制底座落地的第一版；将来改 schema 再逐版加。 */
+  private static final String FORMAT_VERSION_KEY = "format_version";
+
+  private static final String FORMAT_VERSION_DAY_BASE = "1";
+
+  private static final String SELECT_TIME_BASE =
+      "SELECT value FROM store_meta WHERE key = '" + TIME_BASE_KEY + "'";
+
+  private static final String ANY_REVISION_EXISTS = "SELECT EXISTS(SELECT 1 FROM revisions)";
+
   private static final String PRAGMA_JOURNAL_MODE_WAL = "PRAGMA journal_mode = WAL";
   private static final String PRAGMA_BUSY_TIMEOUT = "PRAGMA busy_timeout = 5000";
   private static final String PRAGMA_FOREIGN_KEYS_ON = "PRAGMA foreign_keys = ON";
@@ -130,6 +159,11 @@ public final class SqliteStore implements AutoCloseable {
       // 且会用"关闭存储失败"顶掉这里的原异常
       closeSilently(connection);
       throw new IllegalStateException("打开 SQLite 存储失败: " + dbFile, e);
+    } catch (RuntimeException e) {
+      // ★ 时间基门禁（旧档/异基）抛的是 RuntimeException：此时连接同样已建立，必须回收，
+      //   否则"拒绝打开"会顺手泄漏一个连接与它的 WAL 句柄。原异常原样上抛（它带着拒因，别包）。
+      closeSilently(connection);
+      throw e;
     }
   }
 
@@ -144,7 +178,66 @@ public final class SqliteStore implements AutoCloseable {
       statement.execute(EVENTS_DDL);
       statement.execute(EVENTS_TYPE_CORRELATION_INDEX);
       statement.execute(EVENTS_CORRELATION_INDEX);
+      statement.execute(STORE_META_DDL);
+      ensureTimeBase(statement);
     }
+  }
+
+  /**
+   * 时间基门禁（2026-09-24 日制裁定，POLITICAL_ECONOMY_DESIGN.md §3）——**旧档 fail-closed，不静默按天读**：
+   *
+   * <ul>
+   *   <li>已有 {@code time_base} 标签：必须是 {@link Envelope#TIME_BASE_DAY}，否则拒绝打开（异基/未知基）。
+   *   <li>没有标签：<b>空库</b>（{@code revisions} 零行）⇒ 就地打标为日制——还没有任何语义事实，打标不改变任何东西； <b>非空库</b> ⇒
+   *       抛异常。2026-09-24 之前的档其 {@code tick} 代表小时，按天重放会把"持续 24 小时"读成 "持续 24 天"，而库里已有 revision
+   *       说明这种语义已经落进事实。
+   * </ul>
+   *
+   * <p>★ 之所以把门禁放在 {@code open} 而不是某个 loader：这是**库级**的语义属性，读、写、重放、分叉都要经过它；
+   * 只挡读会让旧库被新引擎写坏（正是本裁定要防的那类不可逆操作）。
+   */
+  private static void ensureTimeBase(Statement statement) throws SQLException {
+    String existing = null;
+    try (ResultSet rows = statement.executeQuery(SELECT_TIME_BASE)) {
+      if (rows.next()) {
+        existing = rows.getString(1);
+      }
+    }
+    if (existing != null) {
+      if (!Envelope.TIME_BASE_DAY.equals(existing)) {
+        throw new IllegalStateException(
+            "该 store 的时间基不是日制（time_base="
+                + existing
+                + "）：本引擎只认 "
+                + Envelope.TIME_BASE_DAY
+                + "（2026-09-24 日制裁定，POLITICAL_ECONOMY_DESIGN.md §3）");
+      }
+      return;
+    }
+
+    boolean anyRevision;
+    try (ResultSet rows = statement.executeQuery(ANY_REVISION_EXISTS)) {
+      anyRevision = rows.next() && rows.getInt(1) != 0;
+    }
+    if (anyRevision) {
+      throw new IllegalStateException(
+          "该 store 没有时间基标签（time_base）且已有 revision ⇒ 疑似 2026-09-24 日制裁定之前的旧档（1 tick = 1 小时）。"
+              + "新引擎拒绝按天打开它（重放会把小时语义读成天语义）；请改用新 store 目录，或等待离线迁移工具"
+              + "（POLITICAL_ECONOMY_DESIGN.md §3）");
+    }
+
+    statement.execute(
+        "INSERT INTO store_meta (key, value) VALUES ('"
+            + TIME_BASE_KEY
+            + "', '"
+            + Envelope.TIME_BASE_DAY
+            + "')");
+    statement.execute(
+        "INSERT INTO store_meta (key, value) VALUES ('"
+            + FORMAT_VERSION_KEY
+            + "', '"
+            + FORMAT_VERSION_DAY_BASE
+            + "')");
   }
 
   /**

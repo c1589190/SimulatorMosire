@@ -79,12 +79,53 @@ class EnvelopeTest {
     String json =
         "{\"ref\":{\"branch\":\"main\",\"revision\":1},"
             + "\"timestamp\":{\"tick\":1,\"calendarLabel\":null},"
+            + "\"timeBase\":\"DAY\","
             + "\"modules\":{\"map\":{\"nested\":true}},"
             + "\"info\":{}}";
 
     assertThatThrownBy(() -> Envelope.decode(json))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("C26");
+  }
+
+  /** ★ 时间基（2026-09-24 日制裁定）：encode 必带 {@code timeBase=DAY}（与 store_meta 同源同值）。 */
+  @Test
+  void encodeWritesTheDayTimeBaseLabel() {
+    var root = Envelope.encode(metaAt(1, 1), Map.of(), "{}");
+
+    assertThat(root.get("timeBase").asText())
+        .as("新档一律带日制标签——旧档在 decode 侧 fail-closed 的对照面")
+        .isEqualTo(Envelope.TIME_BASE_DAY);
+  }
+
+  /**
+   * ★★ 缺 {@code timeBase} = **日制裁定之前的旧档** ⇒ 拒读，不静默按天读：旧档的 tick 代表小时， 按天重放会把"持续 24 小时"读成"持续 24
+   * 天"（设计稿 §3）。
+   */
+  @Test
+  void decodeRejectsLegacyEnvelopeWithoutTimeBase() {
+    String legacy =
+        "{\"ref\":{\"branch\":\"main\",\"revision\":1},"
+            + "\"timestamp\":{\"tick\":1,\"calendarLabel\":null},"
+            + "\"modules\":{},\"info\":{}}";
+
+    assertThatThrownBy(() -> Envelope.decode(legacy))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("timeBase");
+  }
+
+  /** 标签存在但不是 DAY（异基/未知基）⇒ 同样拒。 */
+  @Test
+  void decodeRejectsNonDayTimeBase() {
+    String hourly =
+        "{\"ref\":{\"branch\":\"main\",\"revision\":1},"
+            + "\"timestamp\":{\"tick\":1,\"calendarLabel\":null},"
+            + "\"timeBase\":\"HOUR\","
+            + "\"modules\":{},\"info\":{}}";
+
+    assertThatThrownBy(() -> Envelope.decode(hourly))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("DAY");
   }
 
   @Test

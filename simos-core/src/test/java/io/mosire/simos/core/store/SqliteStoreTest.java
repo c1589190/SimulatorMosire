@@ -23,8 +23,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * SqliteStore 的护栏自证：schema 形态（2 表 4 索引 + 三条 PRAGMA）、R2（外键真的生效）、 R13（事务原子性，不留残行）、C23（单连接 +
- * 私有锁互斥）、打开/关闭的幂等与收尾。
+ * SqliteStore 的护栏自证：schema 形态（2 张领域表 + store_meta 标签表 + 4 索引 + 三条 PRAGMA）、R2（外键真的生效）、
+ * R13（事务原子性，不留残行）、C23（单连接 + 私有锁互斥）、打开/关闭的幂等与收尾、**日制时间基门禁**（2026-09-24）。
  *
  * <p>全部 SQL 直写（不经 Timeline）：Task 5 是存储底座，上游类型还不存在也不该存在。
  */
@@ -44,9 +44,9 @@ class SqliteStoreTest {
     store.close();
   }
 
-  /** spec §3.2 + §6.1 的冻结 schema：恰 2 表 + 4 索引，多一张少一张都算漂移。 */
+  /** spec §3.2 + §6.1 的冻结 schema + 日制裁定的 store_meta：恰 3 表 + 4 索引，多一张少一张都算漂移。 */
   @Test
-  void schemaIsExactlyTwoTablesAndFourIndexes() {
+  void schemaIsExactlyThreeTablesAndFourIndexes() {
     List<String> names =
         store.inTransaction(
             conn -> {
@@ -69,7 +69,62 @@ class SqliteStoreTest {
             "idx_events_type_correlation_id_seq",
             "idx_revisions_correlation",
             "idx_revisions_parent",
-            "revisions");
+            "revisions",
+            "store_meta");
+  }
+
+  /** ★ 日制裁定：空库首启就地打标 {@code time_base=DAY} + {@code format_version}（空库还没有语义事实，打标不改任何东西）。 */
+  @Test
+  void freshStoreIsLabeledAsDayBased() {
+    assertThat(storeMeta("time_base")).isEqualTo(Envelope.TIME_BASE_DAY);
+    assertThat(storeMeta("format_version")).isEqualTo("1");
+  }
+
+  /**
+   * ★★ **旧档门禁**：已有 revision 却没有 {@code time_base} 标签 ⇒ 打开即拒（旧档的 tick 代表小时， 按天重放会把"持续 24 小时"读成"持续 24
+   * 天"）。造法：正常建库 → 插一行 revision → 删掉标签两行， 模拟日制裁定之前的库（它根本没有 store_meta 表）。
+   */
+  @Test
+  void legacyStoreWithRevisionsButNoTimeBaseIsRejectedAtOpen() {
+    Path db = tempDir.resolve("legacy.db");
+    SqliteStore legacy = SqliteStore.open(db);
+    legacy.inTransaction(
+        conn -> {
+          insertRevision(conn, "main", 1, null, null);
+          return null;
+        });
+    legacy.inTransaction(
+        conn -> {
+          try (Statement s = conn.createStatement()) {
+            s.execute("DELETE FROM store_meta");
+          }
+          return null;
+        });
+    legacy.close();
+
+    assertThatThrownBy(() -> SqliteStore.open(db))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("time_base")
+        .hasMessageContaining("旧档");
+  }
+
+  /** 标签存在但值不是 DAY（异基）⇒ 同样拒绝打开。 */
+  @Test
+  void storeWithANonDayTimeBaseIsRejectedAtOpen() {
+    Path db = tempDir.resolve("hourly.db");
+    SqliteStore hourly = SqliteStore.open(db);
+    hourly.inTransaction(
+        conn -> {
+          try (Statement s = conn.createStatement()) {
+            s.execute("UPDATE store_meta SET value = 'HOUR' WHERE key = 'time_base'");
+          }
+          return null;
+        });
+    hourly.close();
+
+    assertThatThrownBy(() -> SqliteStore.open(db))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("DAY");
   }
 
   /** 打开时的三条 PRAGMA 都真的在生效（WAL / busy_timeout / 外键）。 */
@@ -199,6 +254,20 @@ class SqliteStoreTest {
     assertThatThrownBy(() -> store.inTransaction(conn -> 1L))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("已关闭");
+  }
+
+  /** 读一条 store_meta（键不存在 ⇒ null）。 */
+  private String storeMeta(String key) {
+    return store.inTransaction(
+        conn -> {
+          try (PreparedStatement ps =
+              conn.prepareStatement("SELECT value FROM store_meta WHERE key = ?")) {
+            ps.setString(1, key);
+            try (ResultSet rs = ps.executeQuery()) {
+              return rs.next() ? rs.getString(1) : null;
+            }
+          }
+        });
   }
 
   /** PRAGMA 读一律经 store 的连接（连接是私有的，测试没有别的路可走）。 */

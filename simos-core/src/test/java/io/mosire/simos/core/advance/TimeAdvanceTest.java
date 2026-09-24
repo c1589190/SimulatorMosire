@@ -210,7 +210,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha"), new ToyCodec("beta")),
             List.of(beta, alpha), // ★ 注册序与字典序**相反**
-            ref -> state(1L, 5L, "alpha", "beta"));
+            ref -> state(1L, 9L, "alpha", "beta"));
 
     CommandResult result = route.run(advanceCmd(commandId, correlationId, 1L, 10L));
 
@@ -259,18 +259,18 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha"), new ToyCodec("beta")),
             List.of(participant("alpha"), participant("beta")),
-            ref -> state(1L, 5L, "alpha", "beta"));
+            ref -> state(1L, 9L, "alpha", "beta"));
     TimeAdvance reversed =
         route(
             List.of(new ToyCodec("beta"), new ToyCodec("alpha")),
             List.of(participant("beta"), participant("alpha")),
-            ref -> state(1L, 5L, "alpha", "beta"));
+            ref -> state(1L, 9L, "alpha", "beta"));
 
     forward.run(advanceCmd("cmd-f", "corr-f", 1L, 10L));
     // ★ 第二次推进的期望坐标必须是 **2**：第一次已经把 head 推到 2 了。写 1 会走 ① 的过期检查，
     //   结局是 Conflict **没有 proposal 事件** ⇒ 拿到空列表，与第一次的 [alpha,beta] 一比就红——
     //   而那个红是**夹具错**，不是产品错（本用例首轮实测正是如此，在此留痕以免后人重踩）。
-    reversed.run(advanceCmd("cmd-r", "corr-r", 2L, 20L));
+    reversed.run(advanceCmd("cmd-r", "corr-r", 2L, 10L));
 
     assertThat(namespacesOfProposals("corr-r")).isEqualTo(namespacesOfProposals("corr-f"));
     assertThat(namespacesOfProposals("corr-f")).containsExactly("alpha", "beta");
@@ -292,7 +292,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha"), new ToyCodec("beta")),
             List.of(alpha, beta),
-            ref -> state(1L, 5L, "alpha", "beta"));
+            ref -> state(1L, 9L, "alpha", "beta"));
 
     CommandResult result = route.run(advanceCmd("cmd-ww", "corr-ww", 1L, 10L));
 
@@ -333,7 +333,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha"), new ToyCodec("beta")),
             List.of(reader, writer),
-            ref -> state(1L, 5L, "alpha", "beta"));
+            ref -> state(1L, 9L, "alpha", "beta"));
 
     CommandResult result = route.run(advanceCmd("cmd-rw", "corr-rw", 1L, 10L));
 
@@ -370,7 +370,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha")), // ★ 没有 "ghost" 的 codec
             List.of(participant("ghost")),
-            ref -> state(1L, 5L, "ghost"));
+            ref -> state(1L, 9L, "ghost"));
 
     CommandResult result = route.run(advanceCmd("cmd-ghost", "corr-ghost", 1L, 10L));
 
@@ -430,6 +430,95 @@ class TimeAdvanceTest {
     assertThat(timeline.row(ref("main", 2))).isEmpty();
   }
 
+  /**
+   * ★★ **第 0 项的第二条：跨多日 ⇒ Rejected**（2026-09-24 日制裁定，POLITICAL_ECONOMY_DESIGN.md §3）。
+   *
+   * <p>与"缺 to"同一条纪律：这一条是**纯语法**判定，排在查库之前——装配器与参与者一被调到就抛。 快进不在 Core：调用方要"走 3 天"，就连提 3 次单日推进。
+   */
+  @Test
+  void multiDayAdvanceIsRejectedBeforeAnythingElseRuns() {
+    seedMain(2L);
+    StateLoader neverLoad =
+        ref -> {
+          throw new AssertionError("跨多日的推进不该走到 ① 的装配状态");
+        };
+    TimeParticipant neverSimulate =
+        new TimeParticipant() {
+          @Override
+          public String namespace() {
+            return "alpha";
+          }
+
+          @Override
+          public TimeProposal simulate(SimulationState state, TimeRange range) {
+            throw new AssertionError("跨多日的推进不该走到 ② 的 simulate");
+          }
+        };
+    TimeAdvance route = route(List.of(new ToyCodec("alpha")), List.of(neverSimulate), neverLoad);
+
+    CommandResult result =
+        route.run(
+            new AdvanceTime(
+                "cmd-3day",
+                "corr-3day",
+                "player:local",
+                main(),
+                new RevisionId(1L),
+                new TimeRange(
+                    SimosTimestamp.of(9L), Optional.of(SimosTimestamp.of(12L))))); // ★ 3 天
+
+    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) result).reason()).contains("恰好一天");
+    assertThat(types("corr-3day"))
+        .as("★ 只该有 received + rejected——单日步长在 started/proposal 之前")
+        .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_REJECTED);
+    assertThat(timeline.row(ref("main", 2))).isEmpty();
+  }
+
+  /**
+   * ★★ **连续性：range.from 与 base 的时间戳不符 ⇒ Rejected**（同一条日制裁定）。
+   *
+   * <p>这一条要 base 才知道，故排在 ① 之后、② 之前；参与者上的自爆装置钉住"**在 simulate 之前**就拒了" ——否则一个把校验挪到 ④
+   * 之后的实现照样绿，而那时本日全部经济步骤已经算过一遍。
+   */
+  @Test
+  void advanceThatDoesNotStartFromTheCurrentWorldDayIsRejected() {
+    seedMain(2L);
+    TimeParticipant neverSimulate =
+        new TimeParticipant() {
+          @Override
+          public String namespace() {
+            return "alpha";
+          }
+
+          @Override
+          public TimeProposal simulate(SimulationState state, TimeRange range) {
+            throw new AssertionError("from 与 base 不符的推进不该走到 ② 的 simulate");
+          }
+        };
+    // base 在日 9，命令却从日 5 起 ⇒ 中间 4 天没有被结算，必须拒
+    TimeAdvance route =
+        route(
+            List.of(new ToyCodec("alpha")), List.of(neverSimulate), ref -> state(1L, 9L, "alpha"));
+
+    CommandResult result =
+        route.run(
+            new AdvanceTime(
+                "cmd-gap",
+                "corr-gap",
+                "player:local",
+                main(),
+                new RevisionId(1L),
+                new TimeRange(SimosTimestamp.of(5L), Optional.of(SimosTimestamp.of(6L)))));
+
+    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) result).reason()).contains("当前世界日");
+    assertThat(types("corr-gap"))
+        .as("★ 只该有 received + rejected")
+        .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_REJECTED);
+    assertThat(timeline.row(ref("main", 2))).isEmpty();
+  }
+
   /** ★ **Validate 第 4 项 / C28**：codec 照抄 base 的坐标 ⇒ 当场 {@code Rejected}（不产生 revision）。 */
   @Test
   void codecThatCopiesTheBaseCoordinatesIsRejected() {
@@ -437,7 +526,7 @@ class TimeAdvanceTest {
     ToyCodec copyBaseMeta = new ToyCodec("alpha");
     copyBaseMeta.copyBaseMeta = true;
     TimeAdvance route =
-        route(List.of(copyBaseMeta), List.of(participant("alpha")), ref -> state(1L, 5L, "alpha"));
+        route(List.of(copyBaseMeta), List.of(participant("alpha")), ref -> state(1L, 9L, "alpha"));
 
     CommandResult result = route.run(advanceCmd("cmd-stale", "corr-stale", 1L, 10L));
 
@@ -455,7 +544,7 @@ class TimeAdvanceTest {
     ToyCodec exploding = new ToyCodec("alpha");
     exploding.throwOnApply = true;
     TimeAdvance route =
-        route(List.of(exploding), List.of(participant("alpha")), ref -> state(1L, 5L, "alpha"));
+        route(List.of(exploding), List.of(participant("alpha")), ref -> state(1L, 9L, "alpha"));
 
     CommandResult result = route.run(advanceCmd("cmd-apply", "corr-apply", 1L, 10L));
 
@@ -470,7 +559,7 @@ class TimeAdvanceTest {
     ToyCodec exploding = new ToyCodec("alpha");
     exploding.throwOnEncodeChangeSet = true;
     TimeAdvance route =
-        route(List.of(exploding), List.of(participant("alpha")), ref -> state(1L, 5L, "alpha"));
+        route(List.of(exploding), List.of(participant("alpha")), ref -> state(1L, 9L, "alpha"));
 
     CommandResult result = route.run(advanceCmd("cmd-enc", "corr-enc", 1L, 10L));
 
@@ -488,7 +577,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha")),
             List.of(participant("alpha")),
-            ref -> state(1L, 5L, "alpha"));
+            ref -> state(1L, 9L, "alpha"));
 
     CommandResult result = route.run(advanceCmd("cmd-stale-head", "corr-sh", 1L + 1L, 10L));
 
@@ -507,7 +596,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha")),
             List.of(participant("alpha")),
-            ref -> state(1L, 5L, "alpha"));
+            ref -> state(1L, 9L, "alpha"));
 
     CommandResult result =
         route.run(
@@ -541,7 +630,7 @@ class TimeAdvanceTest {
           // ★ 抢先提交一笔同坐标的 (main, 2)：head 从此动到 2
           timeline.appendRevision(
               revisionRow(ref("main", 2), Optional.of(ref("main", 1)), "cmd-racer", "corr-racer"));
-          return state(1L, 5L, "alpha");
+          return state(1L, 9L, "alpha");
         };
     TimeAdvance route = route(List.of(new ToyCodec("alpha")), List.of(participant("alpha")), racer);
 
@@ -575,7 +664,7 @@ class TimeAdvanceTest {
     StateLoader saboteur =
         ref -> {
           store.close(); // head 检查已完成；这一笔之后 head 一动不动
-          return state(1L, 5L, "alpha");
+          return state(1L, 9L, "alpha");
         };
     TimeAdvance route =
         route(List.of(new ToyCodec("alpha")), List.of(participant("alpha")), saboteur);
@@ -607,7 +696,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha"), new ToyCodec("beta")),
             List.of(participant("alpha")), // ★ 只推进 alpha；beta 是"没被提到"的那个
-            ref -> state(1L, 5L, "alpha", "beta"));
+            ref -> state(1L, 9L, "alpha", "beta"));
 
     assertThat(route.run(advanceCmd("cmd-ckpt", "corr-ckpt", 1L, 10L)))
         .isInstanceOf(CommandResult.Committed.class);
@@ -634,7 +723,7 @@ class TimeAdvanceTest {
     assertThat(alpha.v()).as("变更集真的被 apply 了").isEqualTo(1);
 
     assertThat(beta.ref()).as("★ 没被提到的模块**保留自己的坐标**（不改它，正是 R4 成立的前提）").isEqualTo(ref("main", 1));
-    assertThat(beta.timestamp()).isEqualTo(SimosTimestamp.of(5L));
+    assertThat(beta.timestamp()).isEqualTo(SimosTimestamp.of(9L));
     assertThat(beta.v()).isEqualTo(0);
   }
 
@@ -646,7 +735,7 @@ class TimeAdvanceTest {
         route(
             List.of(new ToyCodec("alpha")),
             List.of(participant("alpha")),
-            ref -> state(1L, 5L, "alpha"));
+            ref -> state(1L, 9L, "alpha"));
 
     assertThat(route.run(advanceCmd("cmd-nockpt", "corr-nc", 1L, 10L)))
         .isInstanceOf(CommandResult.Committed.class);
@@ -660,7 +749,7 @@ class TimeAdvanceTest {
   @Test
   void duplicateNamespacesAreRejectedAtConstruction() {
     seedMain(2L);
-    StateLoader loader = ref -> state(1L, 5L, "alpha");
+    StateLoader loader = ref -> state(1L, 9L, "alpha");
 
     assertThatThrownBy(
             () ->

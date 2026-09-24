@@ -65,6 +65,11 @@ import org.slf4j.LoggerFactory;
  * 里），{@code submit} 的 {@code AdvanceTime} 那一支直接 {@code return advanceRoute.run(...)} ⇒
  * "命令接收/拒绝/冲突/提交"这四项**这一支一条都不会被记**。故三条结局各记一行 INFO，一条命令**恰好一行**。 日志纪律与 {@code CommandBus}
  * 同口径：不落载荷明文，只记结构信息。
+ *
+ * <p>★★ **一天一步（2026-09-24 日制裁定，见 POLITICAL_ECONOMY_DESIGN.md §3）**：本类只执行**所有模块共用**的单日 步长规则，两条：①
+ * 纯语法——{@code range.to == range.from + 1}（与"缺 to ⇒ 拒"同在 ④ 第 0 项，不查库）； ② 连续性——{@code range.from.tick
+ * == base 状态的时间戳 tick}（要 base 才知道，故排在装配状态之后、simulate 之前）。 **"快进 N 天"的编排不在 Core**：GUI/MCP 连续提交 N
+ * 次、每次用上一次返回的新 {@code expectedRevision}， 中途失败便停在已提交的那一天。
  */
 public final class TimeAdvance implements AdvanceRoute {
 
@@ -142,6 +147,15 @@ public final class TimeAdvance implements AdvanceRoute {
       return rejected(cmd, trace, "推进必须有上界（range.to 缺失）：AdvanceTime 是写操作，语义上不允许开区间");
     }
 
+    // ★ 第 0 项的第二条（同一层的纯语法判定）：**一天一步**。一次 AdvanceTime 结算恰好一天，
+    //   "快进 N 天"由 app（GUI/MCP）连续提交 N 次、每次用上一次返回的新 expectedRevision 编排——
+    //   Core 不认识"快进"这个词，也不替调用方拆分区间（拆了就成了 Core 里的编排）。
+    long fromTick = cmd.range().from().tick();
+    long toTick = cmd.range().to().orElseThrow().tick();
+    if (toTick != fromTick + 1) {
+      return rejected(cmd, trace, "推进必须恰好一天（to 必须 = from + 1）: from=" + fromTick + "，to=" + toTick);
+    }
+
     // ① Prepare：入口乐观并发检查（C17 的同一条）。AdvanceTime 不过信封支 ⇒ 这里必须自己查一次，
     //   否则"期望坐标"这个参数对本命令形同虚设。
     Optional<RevisionId> head = timeline.head(cmd.branch());
@@ -165,6 +179,18 @@ public final class TimeAdvance implements AdvanceRoute {
         participants.size());
 
     SimulationState state = stateLoader.load(base);
+
+    // ★ 连续性（一天一步的第二条）：range.from 必须等于 base 的时间戳。只比 tick，不比 calendarLabel
+    //   ——label 是显示信息（如"正午"），客户端的 from 通常不带 label；把它纳入相等判据会让合法推进被拒。
+    if (cmd.range().from().tick() != state.meta().timestamp().tick()) {
+      return rejected(
+          cmd,
+          trace,
+          "推进必须从当前世界日出发（range.from = base 的时间戳）: from="
+              + cmd.range().from().tick()
+              + "，base="
+              + state.meta().timestamp().tick());
+    }
 
     // ② Propose：**纯函数**，每个参与者拿到的都是同一份 base（C25：顺序不影响结果）
     List<TimeProposal> proposals = new ArrayList<>();

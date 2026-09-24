@@ -21,6 +21,7 @@ import java.util.Optional;
  *
  * <pre>{ "ref": {"branch":"main","revision":100},
  *   "timestamp": {"tick":480,"calendarLabel":null},
+ *   "timeBase": "DAY",
  *   "modules": { "map": "&lt;载荷 JSON 文本，原样内嵌&gt;", "social": "…", "unit": "…" },
  *   "info": { … } }</pre>
  *
@@ -38,6 +39,12 @@ import java.util.Optional;
  * 3），本类是信封层的独立小消费者，不经它。
  */
 public final class Envelope {
+
+  /**
+   * 日制时间基标签（2026-09-24 日制裁定，POLITICAL_ECONOMY_DESIGN.md §3）：信封的 {@code timeBase} 与 SQLite 的 {@code
+   * store_meta.time_base} **共用这一个字面量**——两处必须说同一种时间语义，不同源就会出现"库按天读、档按小时写"的错配。
+   */
+  public static final String TIME_BASE_DAY = "DAY";
 
   /** 只碰信封自己的四个字段；配置保持默认——这里没有需要定制的 feature。 */
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -65,6 +72,9 @@ public final class Envelope {
     timestamp.put("tick", meta.timestamp().tick());
     // 无 label 落成 JSON null（spec §6.3 的示例形态），有 label 落成文本
     timestamp.put("calendarLabel", meta.timestamp().calendarLabel().orElse(null));
+
+    // ★ 时间基标签（日制裁定）：新档一律带；旧档（无此字段）在 decode 侧 fail-closed，不静默按天读
+    root.put("timeBase", TIME_BASE_DAY);
 
     ObjectNode modules = root.putObject("modules");
     for (Map.Entry<String, String> entry : moduleJson.entrySet()) {
@@ -106,6 +116,18 @@ public final class Envelope {
         new SimosTimestamp(
             requireLong(timestamp, "tick"),
             label == null || label.isNull() ? Optional.empty() : Optional.of(label.asText()));
+
+    // ★ 时间基（日制裁定）：**缺字段 = 旧格式** ⇒ fail-closed。旧档的 tick 数值代表小时，
+    //   按天读会把"持续 24 小时"读成"持续 24 天"；宁可拒读，也不静默劣化（设计稿 §3）。
+    JsonNode timeBase = root.get("timeBase");
+    if (timeBase == null || !timeBase.isTextual()) {
+      throw new IllegalArgumentException(
+          "信封缺 timeBase（时间基标签）：日制裁定（2026-09-24）之前的旧档不予读取，请换新库或等离线迁移工具（POLITICAL_ECONOMY_DESIGN.md §3）");
+    }
+    if (!TIME_BASE_DAY.equals(timeBase.asText())) {
+      throw new IllegalArgumentException(
+          "信封的 timeBase 不是 " + TIME_BASE_DAY + "（实得 " + timeBase.asText() + "）：本引擎只读日制档");
+    }
 
     ObjectNode modulesNode = requireObject(root, "modules");
     Map<String, String> modules = new LinkedHashMap<>();

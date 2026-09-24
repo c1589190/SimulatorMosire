@@ -75,9 +75,9 @@ import org.junit.jupiter.api.io.TempDir;
  * movement}）——**不用 {@code UnitTimeParticipant} 自己**，否则"期望"与"被测"同源，等于自证。
  *
  * <p>★ 夹具算术与 {@code simos-unit} 的 {@code SpiFixture} 同口径（**不能** import 领域模块的测试类）： 走廊 {@code
- * [1,1]→[1,2]→[1,3]}；单位 {@code u-1} 在 {@code [1,1]} 出发、{@code speedAtDeparture=2}、{@code
- * mobility=500}；每段成本 1500 毫 MP。推进 {@code T0 → T0+2} ⇒ 预算 4000 付清两段（3000）⇒ **ARRIVED 在 {@code
- * [1,3]}**。
+ * [1,1]→[1,2]→[1,3]}；单位 {@code u-1} 在 {@code [1,1]} 出发、{@code speedAtDeparture=3}、{@code
+ * mobility=500}；每段成本 1500 毫 MP。推进 {@code T0 → T0+1}（**恰好一天**，日制裁定）⇒ 预算 3000 付清两段（3000）⇒ **ARRIVED 在
+ * {@code [1,3]}**（×24 的日预算落地后只会更宽，结论不变）。
  *
  * <p>★ 夹具与 {@code ReplayTest}/{@code CoreSimosTest} 同法：先独立打开 store 种创世行 {@code (main,1)} + 写创世
  * checkpoint（含 {@code map} 与 {@code unit} 两个切片），关掉它，**然后**才构造 {@link CoreSimos}。
@@ -85,7 +85,9 @@ import org.junit.jupiter.api.io.TempDir;
 class RealmEffectEndToEndTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
-  private static final SimosTimestamp T2 = T0.plus(2);
+
+  /** 推进一天后的时刻（日制裁定：一次 AdvanceTime 恰好一天，多日再不许一次提交）。 */
+  private static final SimosTimestamp T1 = T0.plus(1);
 
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
@@ -96,7 +98,7 @@ class RealmEffectEndToEndTest {
   /** {@code GameMap} 没有 id（M2/M3 挂起项），mapId 由装配提供——本世界说它叫 {@code Map1}。 */
   private static final String MAP_ID = "Map1";
 
-  /** 走廊每段的固定成本（毫 MP）。预算 = {@code speedAtDeparture × 1000 × Δ刻} = 2000·Δ。 */
+  /** 走廊每段的固定成本（毫 MP）。预算 = {@code speedAtDeparture × 1000 × Δ刻} = 3000·Δ（speed=3）；日制 ×24 后只会更宽。 */
   private static final long EDGE_MILLIS = 1500L;
 
   /** 推进的 correlationId：判据二的链路 key（本类不复用判据二，只用它定位提案事件）。 */
@@ -143,7 +145,7 @@ class RealmEffectEndToEndTest {
       // ── ① 逐值：位置真的变了、movement 真的清了 ──────────────────────────────────────────
       advanced = core.replay(ref("main", 2));
       Unit movedUnit = unitOf(advanced);
-      assertThat(movedUnit.position().valueAt(T2))
+      assertThat(movedUnit.position().valueAt(T1))
           .as("① 已抵达 ⇒ position 段写入抵达点 [1,3]")
           .contains(H13);
       assertThat(movedUnit.movement()).as("① 已抵达 ⇒ movement 真的清了").isEmpty();
@@ -152,21 +154,21 @@ class RealmEffectEndToEndTest {
 
       // ── ② 差分对拍：独立重建期望状态（M3 纯函数 + spec §9.1 规则，不经 DB、不经被测参与者）──────
       GameMap genesisMap = mapOf(genesis);
-      MovementState materialized = UnitMoves.evaluate(genesisUnit, T2, genesisMap, cost());
+      MovementState materialized = UnitMoves.evaluate(genesisUnit, T1, genesisMap, cost());
       assertThat(materialized.status())
           .as("差分前提：M3 纯函数判为 ARRIVED（否则期望状态建错，红点会离题）")
           .isEqualTo(MovementStatus.ARRIVED);
       assertThat(materialized.currentHex()).as("M3 纯函数给出的抵达点").isEqualTo(H13);
       assertThat(materialized.nextHex()).as("ARRIVED 不得带下一格").isEmpty();
 
-      Unit expectedUnit = appendArrivalSegment(genesisUnit, T2, materialized.currentHex());
+      Unit expectedUnit = appendArrivalSegment(genesisUnit, T1, materialized.currentHex());
       UnitState expectedUnits = new UnitState(new LinkedHashMap<>(Map.of(U1, expectedUnit)));
       expected =
           new SimulationState(
-              new StateMeta(ref("main", 2), T2),
+              new StateMeta(ref("main", 2), T1),
               Map.of(
                   "map", new MapSnapshot(ref("main", 1), T0, genesisMap),
-                  "unit", new UnitSnapshot(ref("main", 2), T2, expectedUnits)),
+                  "unit", new UnitSnapshot(ref("main", 2), T1, expectedUnits)),
               InMemoryInfoSystem.empty());
 
       assertThat(advanced).as("② 重放结果必须等于独立重建的期望状态（推进结果与重放结果的 equals 对拍）").isEqualTo(expected);
@@ -174,7 +176,7 @@ class RealmEffectEndToEndTest {
       // ── C28：单位切片带新坐标；map 切片原封不动（重放的增量语义）────────────────────────────
       UnitSnapshot unitSlice = (UnitSnapshot) advanced.module("unit").orElseThrow();
       assertThat(unitSlice.ref()).as("单位切片带新 ref（C28）").isEqualTo(ref("main", 2));
-      assertThat(unitSlice.timestamp()).as("单位切片带新时刻（C28）").isEqualTo(T2);
+      assertThat(unitSlice.timestamp()).as("单位切片带新时刻（C28）").isEqualTo(T1);
 
       MapSnapshot mapSlice = (MapSnapshot) advanced.module("map").orElseThrow();
       assertThat(mapSlice.ref()).as("map 没被任何提案改动 ⇒ 保留创世坐标（重放是增量的）").isEqualTo(ref("main", 1));
@@ -275,9 +277,9 @@ class RealmEffectEndToEndTest {
     return new Route(List.of(H11, H13), List.of(H11, H12, H13));
   }
 
-  /** T0 出发、speed = 2 MP/刻、mobility ‰500 的在途行程。 */
+  /** T0 出发、speed = 3 MP/刻、mobility ‰500 的在途行程（3×1000×1 ≥ 1500+1500 ⇒ 一天内抵达）。 */
   private static Movement inFlight() {
-    return new Movement(corridor(), T0, 2, 500);
+    return new Movement(corridor(), T0, 3, 500);
   }
 
   /** 一个有在途行程的单位（其余字段照 {@code SpiFixture}）。 */
@@ -368,7 +370,7 @@ class RealmEffectEndToEndTest {
         "player:local",
         main(),
         new RevisionId(expectedRevision),
-        new TimeRange(T0, Optional.of(T2)));
+        new TimeRange(T0, Optional.of(T1)));
   }
 
   private Path dbFile() {
