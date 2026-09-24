@@ -16,7 +16,8 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
-import io.mosire.simos.util.spi.TimeProposal;
+import io.mosire.simos.util.spi.WorldTimeProposal;
+import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -46,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * <pre>
  * ① Prepare     查 head（乐观并发）→ 装配 base；参与者清单**构造期**已按 namespace 字典序定死（C25 / 裁定 44）
  * ② Propose     逐个 simulate → TimeProposal
- * ③ Resolve     {@link TimeProposalResolver}（写-写 ⇒ 拒；读-写 ⇒ 留痕放行）
+ * ③ Resolve     {@link TimeProposalResolver}（写-写 ⇒ 拒；读-写 ⇒ 留痕放行；多切片提案按模块逐项查）
  * ④ Validate    五项机械校验（spec §5.4；第 0 项在 ① 之前——它不查库）
  * ⑤ Commit      1 行 revision + **全部**事件，一个事务
  * ⑥ Post-commit **只剩写 checkpoint** 一件事（失败不影响已落盘的事实）
@@ -192,14 +193,19 @@ public final class TimeAdvance implements AdvanceRoute {
               + state.meta().timestamp().tick());
     }
 
-    // ② Propose：**纯函数**，每个参与者拿到的都是同一份 base（C25：顺序不影响结果）
-    List<TimeProposal> proposals = new ArrayList<>();
+    // ② Propose：**纯函数**，每个参与者拿到的都是同一份 base（C25：顺序不影响结果）。
+    //   ★ 只调 simulateWorld：单模块参与者的默认实现把 simulate 的结果包成单模块提案（既有模块零改动）。
+    List<WorldTimeProposal> proposals = new ArrayList<>();
     for (TimeParticipant participant : participants) {
-      proposals.add(participant.simulate(state, cmd.range()));
+      WorldTimeProposal proposal = participant.simulateWorld(state, cmd.range());
+      if (proposal == null) {
+        return rejected(cmd, trace, "参与者的提案为 null（装配错误）: " + participant.namespace());
+      }
+      proposals.add(proposal);
     }
     trace.add(started(cmd, newMeta));
-    for (TimeProposal proposal : proposals) {
-      trace.add(proposalEvent(cmd, proposal));
+    for (WorldTimeProposal proposal : proposals) {
+      trace.addAll(proposalEvents(cmd, proposal));
     }
 
     // ③ Resolve
@@ -294,63 +300,69 @@ public final class TimeAdvance implements AdvanceRoute {
    * 成功"。那个"非空时"在 Core 里**不可实现**——{@code ChangeSet} 是**标记接口**（实测：接口体为空）， **没有
    * `isEmpty()`**；三个模块的变更集各自有 `public boolean isEmpty()`（裁定 39 记过它们被 Jackson 内省成属性 `empty`），但要调到它就得
    * {@code instanceof} 领域类型——**ADR-1 明令禁止**。 ⇒ 本类**无条件**校验编码，**严格更严**（空变更集若编不出来，那本身就该拒）。
+   *
+   * <p>★★ **逐模块校验（多切片提案，2026-09-24 日制裁定）**：一个参与者可以带多个模块的变更集，四项校验对 {@code moduleChanges}
+   * 的**每一个键**各跑一遍——任一模块不过 ⇒ **整日提案被拒**，六切片都不落盘（原子性就在这里）。
    */
   private Validation validate(
-      SimulationState state, List<TimeProposal> proposals, StateMeta newMeta) {
+      SimulationState state, List<WorldTimeProposal> proposals, StateMeta newMeta) {
     Map<String, Snapshot> applied = new LinkedHashMap<>();
-    for (TimeProposal proposal : proposals) {
-      String namespace = proposal.namespace();
+    for (WorldTimeProposal proposal : proposals) {
+      for (Map.Entry<String, ChangeSet> moduleChange : proposal.moduleChanges().entrySet()) {
+        String namespace = moduleChange.getKey();
+        ChangeSet changeSet = moduleChange.getValue();
 
-      // 第 1 项：namespace 有已注册的 ModuleCodec
-      ModuleCodec codec = codecs.get(namespace);
-      if (codec == null) {
-        return Validation.fail("未注册的 namespace（无 ModuleCodec）: " + namespace);
-      }
+        // 第 1 项：namespace 有已注册的 ModuleCodec
+        ModuleCodec codec = codecs.get(namespace);
+        if (codec == null) {
+          return Validation.fail("未注册的 namespace（无 ModuleCodec）: " + namespace);
+        }
 
-      // 第 2 项：变更集编得出来
-      try {
-        codec.encodeChangeSet(proposal.changeSet());
-      } catch (RuntimeException e) {
-        return Validation.fail("变更集落不了盘（encodeChangeSet 抛）: namespace=" + namespace + " 原因=" + e);
-      }
+        // 第 2 项：变更集编得出来
+        try {
+          codec.encodeChangeSet(changeSet);
+        } catch (RuntimeException e) {
+          return Validation.fail("变更集落不了盘（encodeChangeSet 抛）: namespace=" + namespace + " 原因=" + e);
+        }
 
-      // 第 3 项：codec.apply(cs, baseSnapshot) 不抛
-      Optional<Snapshot> moduleBase = state.module(namespace);
-      if (moduleBase.isEmpty()) {
-        return Validation.fail("base 状态里没有该 namespace 的快照: " + namespace);
-      }
-      Snapshot appliedSnapshot;
-      try {
-        appliedSnapshot = codec.apply(proposal.changeSet(), moduleBase.get(), newMeta);
-      } catch (RuntimeException e) {
-        return Validation.fail("codec.apply 抛异常: namespace=" + namespace + " 原因=" + e);
-      }
-      if (appliedSnapshot == null) {
-        return Validation.fail("codec.apply 返回 null: " + namespace);
-      }
+        // 第 3 项：codec.apply(cs, baseSnapshot) 不抛
+        Optional<Snapshot> moduleBase = state.module(namespace);
+        if (moduleBase.isEmpty()) {
+          return Validation.fail("base 状态里没有该 namespace 的快照: " + namespace);
+        }
+        Snapshot appliedSnapshot;
+        try {
+          appliedSnapshot = codec.apply(changeSet, moduleBase.get(), newMeta);
+        } catch (RuntimeException e) {
+          return Validation.fail("codec.apply 抛异常: namespace=" + namespace + " 原因=" + e);
+        }
+        if (appliedSnapshot == null) {
+          return Validation.fail("codec.apply 返回 null: " + namespace);
+        }
 
-      // 第 4 项：namespace() 与键一致，且 ref()/timestamp() == newMeta
-      //   ★ 核对的是 Snapshot.ref() 与 Snapshot.timestamp()——StateMeta 只有这两件，**没有独立的 tick 字段**
-      //     （台账"给 Task 12 的两条形状更正"实测）。
-      if (!namespace.equals(appliedSnapshot.namespace())) {
-        return Validation.fail(
-            "apply 后的快照 namespace 与键不一致: 键=" + namespace + " 快照=" + appliedSnapshot.namespace());
+        // 第 4 项：namespace() 与键一致，且 ref()/timestamp() == newMeta
+        //   ★ 核对的是 Snapshot.ref() 与 Snapshot.timestamp()——StateMeta 只有这两件，**没有独立的 tick 字段**
+        //     （台账"给 Task 12 的两条形状更正"实测）。
+        if (!namespace.equals(appliedSnapshot.namespace())) {
+          return Validation.fail(
+              "apply 后的快照 namespace 与键不一致: 键=" + namespace + " 快照=" + appliedSnapshot.namespace());
+        }
+        if (!newMeta.ref().equals(appliedSnapshot.ref())
+            || !newMeta.timestamp().equals(appliedSnapshot.timestamp())) {
+          return Validation.fail(
+              "apply 后的快照没被填入新的坐标（codec 照抄了 base 的）: namespace="
+                  + namespace
+                  + " 期望="
+                  + newMeta.ref()
+                  + "@"
+                  + newMeta.timestamp()
+                  + " 实得="
+                  + appliedSnapshot.ref()
+                  + "@"
+                  + appliedSnapshot.timestamp());
+        }
+        applied.put(namespace, appliedSnapshot);
       }
-      if (!newMeta.ref().equals(appliedSnapshot.ref())
-          || !newMeta.timestamp().equals(appliedSnapshot.timestamp())) {
-        return Validation.fail(
-            "apply 后的快照没被填入新的坐标（codec 照抄了 base 的）: namespace="
-                + namespace
-                + " 期望="
-                + newMeta.ref()
-                + "@"
-                + newMeta.timestamp()
-                + " 实得="
-                + appliedSnapshot.ref()
-                + "@"
-                + appliedSnapshot.timestamp());
-      }
-      applied.put(namespace, appliedSnapshot);
     }
     return Validation.ok(applied);
   }
@@ -429,22 +441,29 @@ public final class TimeAdvance implements AdvanceRoute {
   }
 
   /**
-   * 一条模块提案。
+   * 一个参与者的**每模块**一条提案事件（多切片参与者 ⇒ 每模块一条，载荷带 {@code participant} 以便事后分辨 "这个 namespace
+   * 是谁提的"；单模块参与者照旧只落一条）。
    *
-   * <p>★ {@code reads}/{@code writes} **按字典序**（C15 / 裁定 44 的第二个落点）——它们来自 {@code TimeProposal} 的
-   * {@code Set}，而 {@code Set} 的迭代序不是键集的纯函数。故在此**显式排序**。
+   * <p>★ {@code reads}/{@code writes} **按字典序**（C15 / 裁定 44 的第二个落点）——它们来自 {@code WorldTimeProposal}
+   * 的 {@code Set}，而 {@code Set} 的迭代序不是键集的纯函数。故在此**显式排序**。每个模块事件带的是**参与者整份** 读写集（不按模块拆：拆开只会制造重复，见
+   * {@code WorldTimeProposal} 的类注释）。
    *
    * <p>★★ **载荷里没有变更集摘要，这是有意的，别来"补"**：§7.1 那句"参数摘要复用 {@code Digest}——不记明文"针对的是
    * **会泄露领域载荷明文的**载荷（如信封支的 {@code payloadDigest}）。本载荷的字段全是 canonical 地址串与 namespace，
    * **没有明文可藏**；而要为它算出摘要就得先 {@code encodeChangeSet}，那道编码在 ④ 才做、判定归属也在那里。
    * 硬塞一个"摘要"出来只会得到一个**名字叫摘要、内容却不是摘要**的假字段——那正是本项目最贵的那类事故形态。
    */
-  private static EventRow proposalEvent(AdvanceTime cmd, TimeProposal proposal) {
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("namespace", proposal.namespace());
-    payload.put("reads", sorted(proposal.reads()));
-    payload.put("writes", sorted(proposal.writes()));
-    return event(EventTypes.MODULE_PROPOSAL, cmd, json(payload));
+  private static List<EventRow> proposalEvents(AdvanceTime cmd, WorldTimeProposal proposal) {
+    List<EventRow> events = new ArrayList<>();
+    for (String namespace : proposal.moduleChanges().keySet()) {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("participant", proposal.participantId());
+      payload.put("namespace", namespace);
+      payload.put("reads", sorted(proposal.reads()));
+      payload.put("writes", sorted(proposal.writes()));
+      events.add(event(EventTypes.MODULE_PROPOSAL, cmd, json(payload)));
+    }
+    return events;
   }
 
   /**

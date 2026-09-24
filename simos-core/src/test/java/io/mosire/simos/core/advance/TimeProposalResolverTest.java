@@ -3,10 +3,11 @@ package io.mosire.simos.core.advance;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.core.state.WorldChangeSet;
-import io.mosire.simos.util.spi.TimeProposal;
+import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.ChangeSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -30,16 +31,27 @@ class TimeProposalResolverTest {
     return new LinkedHashSet<>(List.of(values));
   }
 
-  private static TimeProposal proposal(String namespace, Set<String> reads, Set<String> writes) {
-    return new TimeProposal(namespace, new ToyChangeSet(1), reads, writes);
+  /** 单切片参与者的同形包装（模块键 = 它自己的身份名）——旧用例的构造点全部走这里。 */
+  private static WorldTimeProposal proposal(
+      String namespace, Set<String> reads, Set<String> writes) {
+    return new WorldTimeProposal(namespace, Map.of(namespace, new ToyChangeSet(1)), reads, writes);
+  }
+
+  /** 多切片参与者：一次带多个模块的变更集（1b-1 的新契约）。 */
+  private static WorldTimeProposal multi(
+      String participantId,
+      Map<String, ChangeSet> moduleChanges,
+      Set<String> reads,
+      Set<String> writes) {
+    return new WorldTimeProposal(participantId, moduleChanges, reads, writes);
   }
 
   // ── 写-写：拒绝（R9 的判定来源）─────────────────────────────────────────────────────
 
   @Test
   void writeWriteIntersectionIsBlocked() {
-    TimeProposal left = proposal("alpha", Set.of(), addresses("alpha:x1", "shared:x9"));
-    TimeProposal right = proposal("beta", Set.of(), addresses("beta:y1", "shared:x9"));
+    WorldTimeProposal left = proposal("alpha", Set.of(), addresses("alpha:x1", "shared:x9"));
+    WorldTimeProposal right = proposal("beta", Set.of(), addresses("beta:y1", "shared:x9"));
 
     TimeProposalResolver.Outcome outcome = TimeProposalResolver.resolve(List.of(left, right));
 
@@ -80,8 +92,8 @@ class TimeProposalResolverTest {
    */
   @Test
   void onlyTheReverseReadWriteDirectionIsReported() {
-    TimeProposal writer = proposal("beta", Set.of(), addresses("beta:x1"));
-    TimeProposal reader = proposal("alpha", addresses("beta:x1"), Set.of());
+    WorldTimeProposal writer = proposal("beta", Set.of(), addresses("beta:x1"));
+    WorldTimeProposal reader = proposal("alpha", addresses("beta:x1"), Set.of());
 
     TimeProposalResolver.Outcome outcome = TimeProposalResolver.resolve(List.of(writer, reader));
 
@@ -104,8 +116,8 @@ class TimeProposalResolverTest {
    */
   @Test
   void bothReadWriteDirectionsAreReportedAsTwoWarnings() {
-    TimeProposal alpha = proposal("alpha", addresses("beta:y"), addresses("alpha:x"));
-    TimeProposal beta = proposal("beta", addresses("alpha:x"), addresses("beta:y"));
+    WorldTimeProposal alpha = proposal("alpha", addresses("beta:y"), addresses("alpha:x"));
+    WorldTimeProposal beta = proposal("beta", addresses("alpha:x"), addresses("beta:y"));
 
     List<AdvanceConflict> warnings =
         ((TimeProposalResolver.Outcome.Resolved) TimeProposalResolver.resolve(List.of(alpha, beta)))
@@ -120,7 +132,7 @@ class TimeProposalResolverTest {
   /** ★ **自交不算冲突**：同一参与者先读后写自己那块，是它自己的事，不该留下任何警告。 */
   @Test
   void aParticipantsOwnReadsAndWritesDoNotConflictWithItself() {
-    TimeProposal solo = proposal("alpha", addresses("alpha:x"), addresses("alpha:x"));
+    WorldTimeProposal solo = proposal("alpha", addresses("alpha:x"), addresses("alpha:x"));
 
     TimeProposalResolver.Outcome outcome = TimeProposalResolver.resolve(List.of(solo));
 
@@ -143,9 +155,9 @@ class TimeProposalResolverTest {
    */
   @Test
   void conflictAddressesAreSortedLexicographicallyEvenWhenGivenOutOfOrder() {
-    TimeProposal reader =
+    WorldTimeProposal reader =
         proposal("zulu", addresses("shared:x3", "shared:x1", "shared:x4", "shared:x2"), Set.of());
-    TimeProposal writer =
+    WorldTimeProposal writer =
         proposal("alpha", Set.of(), addresses("shared:x4", "shared:x2", "shared:x3", "shared:x1"));
 
     AdvanceConflict warning =
@@ -165,18 +177,87 @@ class TimeProposalResolverTest {
   // ── 汇总与决定论 ───────────────────────────────────────────────────────────────────
 
   @Test
-  void mergedChangeSetKeepsTheGivenNamespaceOrderAndEveryProposal() {
-    TimeProposal alpha = proposal("alpha", Set.of(), Set.of());
-    TimeProposal beta = proposal("beta", Set.of(), Set.of());
+  void mergedChangeSetIsSortedByNamespaceRegardlessOfInputOrder() {
+    WorldTimeProposal alpha = proposal("alpha", Set.of(), Set.of());
+    WorldTimeProposal beta = proposal("beta", Set.of(), Set.of());
 
-    WorldChangeSet changeSet =
+    WorldChangeSet forward =
         ((TimeProposalResolver.Outcome.Resolved) TimeProposalResolver.resolve(List.of(alpha, beta)))
             .changeSet();
+    WorldChangeSet reversed =
+        ((TimeProposalResolver.Outcome.Resolved) TimeProposalResolver.resolve(List.of(beta, alpha)))
+            .changeSet();
 
-    assertThat(changeSet.modules().keySet())
-        .as("汇总保留入参顺序（调用方给的是 C25 的字典序 ⇒ 落盘即字典序）")
+    assertThat(forward.modules().keySet())
+        .as("汇总按 namespace 字典序（输出只是**内容**的函数）")
         .containsExactly("alpha", "beta");
-    assertThat(changeSet.modules().get("alpha")).isEqualTo(new ToyChangeSet(1));
+    assertThat(reversed.modules().keySet())
+        .as("★ 入参逆序 ⇒ 落盘序相同（TreeMap 的兑现；旧实现'保入参序'会让两个字节不同的 changeset_json）")
+        .containsExactly("alpha", "beta");
+    assertThat(forward.modules().get("alpha")).isEqualTo(new ToyChangeSet(1));
+  }
+
+  /** ★ **多切片参与者**（1b-1 的新契约）：一个提案带多个模块的变更集 ⇒ 逐模块进汇总（按字典序）。 */
+  @Test
+  void multiModuleProposalContributesEveryModuleToTheMergedChangeSet() {
+    WorldTimeProposal economy =
+        multi(
+            "economy",
+            Map.of("ledger", new ToyChangeSet(7), "production", new ToyChangeSet(8)),
+            Set.of(),
+            Set.of());
+
+    WorldChangeSet changeSet =
+        ((TimeProposalResolver.Outcome.Resolved) TimeProposalResolver.resolve(List.of(economy)))
+            .changeSet();
+
+    assertThat(changeSet.modules().keySet()).containsExactly("ledger", "production");
+    assertThat(changeSet.modules().get("ledger")).isEqualTo(new ToyChangeSet(7));
+    assertThat(changeSet.modules().get("production")).isEqualTo(new ToyChangeSet(8));
+  }
+
+  /**
+   * ★★ **两个参与者改同一模块 ⇒ 拒绝整次推进，哪怕地址不相交**：Core 手里的 {@code ChangeSet} 是**不透明**的
+   * （ADR-1/C26），没有能力把两份变更集合并成一个（见 {@link TimeProposalResolver} 类注释第 1 条）。 报告里用 {@value
+   * TimeProposalResolver#MODULE_CLASH_PREFIX} 前缀的**合成地址**标记这类冲突。
+   */
+  @Test
+  void twoParticipantsTouchingTheSameModuleAreBlockedEvenWithDisjointAddresses() {
+    WorldTimeProposal left =
+        multi("economy", Map.of("ledger", new ToyChangeSet(1)), Set.of(), addresses("ledger:a1"));
+    WorldTimeProposal right =
+        multi("banking", Map.of("ledger", new ToyChangeSet(2)), Set.of(), addresses("ledger:b1"));
+
+    TimeProposalResolver.Outcome outcome = TimeProposalResolver.resolve(List.of(left, right));
+
+    assertThat(outcome).isInstanceOf(TimeProposalResolver.Outcome.Blocked.class);
+    AdvanceConflict conflict = ((TimeProposalResolver.Outcome.Blocked) outcome).conflict();
+    assertThat(conflict.kind()).isEqualTo(AdvanceConflict.WRITE_WRITE);
+    assertThat(conflict.namespaces()).containsExactly("economy", "banking");
+    assertThat(conflict.addresses())
+        .as("写地址不相交，但模块名相同 ⇒ 用 module: 前缀的合成地址标记")
+        .containsExactly(TimeProposalResolver.MODULE_CLASH_PREFIX + "ledger");
+  }
+
+  /** ★ 多切片参与者的读-写风险按**参与者**整体比对（读方/写方身份 = participantId）。 */
+  @Test
+  void multiModuleProposalParticipatesInReadWriteWarningsWithItsParticipantId() {
+    WorldTimeProposal owner =
+        multi("owner", Map.of("property", new ToyChangeSet(1)), Set.of(), addresses("property:p1"));
+    WorldTimeProposal observer =
+        multi(
+            "observer", Map.of("market", new ToyChangeSet(1)), addresses("property:p1"), Set.of());
+
+    List<AdvanceConflict> warnings =
+        ((TimeProposalResolver.Outcome.Resolved)
+                TimeProposalResolver.resolve(List.of(owner, observer)))
+            .warnings();
+
+    assertThat(warnings).hasSize(1);
+    assertThat(warnings.get(0).namespaces())
+        .as("有向：[读方 observer, 写方 owner]")
+        .containsExactly("observer", "owner");
+    assertThat(warnings.get(0).addresses()).containsExactly("property:p1");
   }
 
   /**
@@ -187,9 +268,9 @@ class TimeProposalResolverTest {
    */
   @Test
   void warningsOrderIsAFunctionOfContentNotOfInputOrder() {
-    TimeProposal alpha = proposal("alpha", addresses("beta:y"), addresses("alpha:x"));
-    TimeProposal beta = proposal("beta", addresses("alpha:x"), addresses("beta:y"));
-    TimeProposal gamma = proposal("gamma", addresses("alpha:x"), Set.of());
+    WorldTimeProposal alpha = proposal("alpha", addresses("beta:y"), addresses("alpha:x"));
+    WorldTimeProposal beta = proposal("beta", addresses("alpha:x"), addresses("beta:y"));
+    WorldTimeProposal gamma = proposal("gamma", addresses("alpha:x"), Set.of());
 
     List<AdvanceConflict> forward =
         ((TimeProposalResolver.Outcome.Resolved)

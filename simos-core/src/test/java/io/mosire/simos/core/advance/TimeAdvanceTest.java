@@ -21,6 +21,7 @@ import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.TimeProposal;
+import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
@@ -169,6 +170,50 @@ class TimeAdvanceTest {
 
   private static ToyParticipant participant(String namespace) {
     return new ToyParticipant(namespace, Set.of(), Set.of());
+  }
+
+  /**
+   * 多切片参与者（1b-1 的新契约）：一个提案带**多个模块**的变更集。
+   *
+   * <p>★ **有意不实现 `simulate`**：Core 若哪天改回按单切片入口调参与者，默认实现会抛 {@link UnsupportedOperationException} ⇒
+   * 当场红，而不是悄悄只推一个模块。
+   */
+  private static final class ToyWorldParticipant implements TimeParticipant {
+
+    private final String participantId;
+    private final Map<String, ChangeSet> moduleChanges;
+    private final Set<String> reads;
+    private final Set<String> writes;
+
+    ToyWorldParticipant(
+        String participantId,
+        Map<String, ChangeSet> moduleChanges,
+        Set<String> reads,
+        Set<String> writes) {
+      this.participantId = participantId;
+      this.moduleChanges = moduleChanges;
+      this.reads = reads;
+      this.writes = writes;
+    }
+
+    @Override
+    public String namespace() {
+      return participantId;
+    }
+
+    @Override
+    public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
+      return new WorldTimeProposal(participantId, moduleChanges, reads, writes);
+    }
+  }
+
+  /** 保序的模块表（`Map.of` 的迭代序不是内容的纯函数——断言"先 alpha 后 beta"必须自己钉序）。 */
+  private static Map<String, ChangeSet> modules(String... namespaces) {
+    LinkedHashMap<String, ChangeSet> modules = new LinkedHashMap<>();
+    for (String namespace : namespaces) {
+      modules.put(namespace, new ToyChangeSet(1));
+    }
+    return modules;
   }
 
   @TempDir Path tempDir;
@@ -358,6 +403,109 @@ class TimeAdvanceTest {
             EventTypes.TIMELINE_CONFLICT,
             EventTypes.TIME_ADVANCE_FINISHED,
             EventTypes.COMMAND_COMMITTED);
+  }
+
+  // ── 多切片提案（1b-1：WorldTimeProposal + 逐模块校验 + 原子性）────────────────────────
+
+  /** ★ 多切片参与者：每模块一条提案事件，两份变更集都进同一条 revision 的 changeset_json。 */
+  @Test
+  void multiSliceParticipantCommitsEveryModuleAndEmitsOneProposalEventPerModule() {
+    seedMain(2L);
+    TimeAdvance route =
+        route(
+            List.of(new ToyCodec("alpha"), new ToyCodec("beta")),
+            List.of(
+                new ToyWorldParticipant("economy", modules("alpha", "beta"), Set.of(), Set.of())),
+            ref -> state(1L, 9L, "alpha", "beta"));
+
+    CommandResult result = route.run(advanceCmd("cmd-multi", "corr-multi", 1L, 10L));
+
+    assertThat(result).isEqualTo(new CommandResult.Committed(ref("main", 2)));
+    assertThat(types("corr-multi"))
+        .as("一个参与者两模块 ⇒ two module.proposal（每模块一条）")
+        .containsExactly(
+            EventTypes.COMMAND_RECEIVED,
+            EventTypes.TIME_ADVANCE_STARTED,
+            EventTypes.MODULE_PROPOSAL,
+            EventTypes.MODULE_PROPOSAL,
+            EventTypes.TIME_ADVANCE_FINISHED,
+            EventTypes.COMMAND_COMMITTED);
+    assertThat(namespacesOfProposals("corr-multi"))
+        .as("事件按参与者给出的模块顺序（参与者自己负责确定性）")
+        .containsExactly("alpha", "beta");
+    assertThat(timeline.row(ref("main", 2)).orElseThrow().changesetJson())
+        .as("★ 两份变更集进同一条 revision 的 changeset_json")
+        .contains("\"alpha\"")
+        .contains("\"beta\"");
+  }
+
+  /**
+   * ★★ **两个参与者改同一模块 ⇒ 拒绝整次推进**（哪怕写地址不相交）：Core 手里的 {@code ChangeSet} 不透明， 没有能力合并两份；报告里用 {@code
+   * module:<ns>} 合成地址标记。
+   */
+  @Test
+  void twoParticipantsTouchingTheSameModuleAreRejectedAsAWhole() {
+    seedMain(2L);
+    TimeAdvance route =
+        route(
+            List.of(new ToyCodec("alpha")),
+            List.of(
+                new ToyWorldParticipant("economy", modules("alpha"), Set.of(), Set.of()),
+                new ToyWorldParticipant("rival", modules("alpha"), Set.of(), Set.of())),
+            ref -> state(1L, 9L, "alpha"));
+
+    CommandResult result = route.run(advanceCmd("cmd-clash", "corr-clash", 1L, 10L));
+
+    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) result).reason()).contains("写-写");
+    assertThat(timeline.row(ref("main", 2))).as("拒绝是原子的").isEmpty();
+    JsonNode payload = json(conflictPayload("corr-clash"));
+    assertThat(payload.get("namespaces").toString())
+        .as("参与者身份按构造期字典序：[economy, rival]")
+        .isEqualTo("[\"economy\",\"rival\"]");
+    assertThat(payload.get("addresses").toString())
+        .as("模块 clash 的合成地址")
+        .isEqualTo("[\"module:alpha\"]");
+  }
+
+  /** 多切片提案里**任一个**模块没有注册 codec ⇒ 整次拒绝（消息点名那个 namespace）。 */
+  @Test
+  void multiSliceProposalWithAnUnregisteredModuleIsRejected() {
+    seedMain(2L);
+    TimeAdvance route =
+        route(
+            List.of(new ToyCodec("alpha")), // 没有 ghost 的 codec
+            List.of(
+                new ToyWorldParticipant("economy", modules("alpha", "ghost"), Set.of(), Set.of())),
+            ref -> state(1L, 9L, "alpha", "ghost"));
+
+    CommandResult result = route.run(advanceCmd("cmd-mixghost", "corr-mixghost", 1L, 10L));
+
+    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) result).reason()).contains("ghost");
+    assertThat(timeline.row(ref("main", 2))).isEmpty();
+  }
+
+  /** ★★ **原子性**：多切片提案里一个模块的 {@code apply} 抛 ⇒ **整日提案被拒**，另一个已经算好的模块 也不许落盘（六切片一起提交的语义）。 */
+  @Test
+  void oneFailingModuleRejectsTheWholeDayProposalAtomically() {
+    seedMain(2L);
+    ToyCodec exploding = new ToyCodec("beta");
+    exploding.throwOnApply = true;
+    TimeAdvance route =
+        route(
+            List.of(new ToyCodec("alpha"), exploding),
+            List.of(
+                new ToyWorldParticipant("economy", modules("alpha", "beta"), Set.of(), Set.of())),
+            ref -> state(1L, 9L, "alpha", "beta"));
+
+    CommandResult result = route.run(advanceCmd("cmd-atomic", "corr-atomic", 1L, 10L));
+
+    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) result).reason()).contains("beta");
+    assertThat(timeline.row(ref("main", 2)))
+        .as("★ alpha 那份也不落盘：revision 一行都没有 ⇒ 六切片一起保持基态")
+        .isEmpty();
   }
 
   // ── ④ Validate 的五项（R14 + m3 + C28）─────────────────────────────────────────────

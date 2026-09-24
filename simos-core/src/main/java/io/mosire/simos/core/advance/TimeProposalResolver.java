@@ -1,14 +1,15 @@
 package io.mosire.simos.core.advance;
 
 import io.mosire.simos.core.state.WorldChangeSet;
-import io.mosire.simos.util.spi.TimeProposal;
+import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.ChangeSet;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -25,15 +26,29 @@ import java.util.TreeSet;
  * 写方]}），A、B 互相读对方写的会留下**两条**。 变异体 m1（只查一个方向）打的就是这里——**用例必须构造出"只有反方向命中"的场景**，否则该变异恒绿。
  *
  * <p>★ **自交不算冲突**：同一参与者的 {@code reads ∩ writes} 是它自己的事（它先读后写自己那块），跳过。
+ *
+ * <p>★★ **多切片参与者（2026-09-24 日制裁定）带来的两条新规则**：
+ *
+ * <ol>
+ *   <li><b>模块 clash 也算写-写</b>：两个**不同参与者**的 {@code moduleChanges} 有同名 namespace ⇒ 拒绝整次推进 ——Core 手里的
+ *       {@code ChangeSet} 是**不透明**的（ADR-1/C26），它**没有能力**把两份变更集合并成一个。冲突报告里 这类冲突用 {@value
+ *       #MODULE_CLASH_PREFIX} 前缀的合成地址标记（真实 canonical 地址从 `namespace:...` 起头， 不会撞上这个形状）。
+ *   <li><b>汇总按 namespace 字典序</b>（{@link TreeMap}）：{@code changeset_json} 是要逐字节可比、可重放的，
+ *       而"保持入参顺序"把决定论押在调用方的排序纪律上；TreeMap 让输出**只是内容的函数**。单模块参与者时代两者等价
+ *       （入参本来就是字典序），多切片时代它能挡住"参与者内部模块顺序不同 ⇒ 落盘字节不同"。
+ * </ol>
  */
 public final class TimeProposalResolver {
+
+  /** "两个参与者改同一模块"在冲突报告里的合成地址前缀（模块名 clash 不是某个具体地址，但必须落进 addresses 才可读）。 */
+  public static final String MODULE_CLASH_PREFIX = "module:";
 
   private TimeProposalResolver() {}
 
   /** ③ 的结局：只有这两支，没有第三种。 */
   public sealed interface Outcome {
 
-    /** 有写-写相交 ⇒ **拒绝整次推进**。 */
+    /** 有写-写相交（地址相交，或两个参与者改同一模块） ⇒ **拒绝整次推进**。 */
     record Blocked(AdvanceConflict conflict) implements Outcome {
       public Blocked {
         Objects.requireNonNull(conflict, "conflict");
@@ -43,7 +58,7 @@ public final class TimeProposalResolver {
     /**
      * 可推进。
      *
-     * @param changeSet 汇总后的世界变更集（按入参顺序插入 ⇒ 调用方给的是 C25 的字典序，落盘即字典序）
+     * @param changeSet 汇总后的世界变更集（**按 namespace 字典序**，与入参顺序无关 ⇒ 落盘即字典序）
      * @param warnings 读-写相交的留痕，**已按 (namespaces, addresses) 字典序定序**（决定论）
      */
     record Resolved(WorldChangeSet changeSet, List<AdvanceConflict> warnings) implements Outcome {
@@ -55,33 +70,40 @@ public final class TimeProposalResolver {
   }
 
   /**
-   * @param proposals 提案清单。★ 调用方须已按 namespace **字典序**排好（C25）——汇总出的 {@link WorldChangeSet}
-   *     保留这个顺序，而它会被原样落进 {@code changeset_json}
+   * @param proposals 提案清单。★ 调用方须已按参与者身份**定序**（C25；{@code TimeAdvance} 在构造期按字典序排） ——{@link
+   *     Outcome.Blocked} 的 {@code namespaces} 是**有向关系**、**不排序**（见 {@link AdvanceConflict}），
+   *     故"谁是左、谁是右"由这个入参序决定；而汇总出的 {@link WorldChangeSet} 与入参序无关。
    */
-  public static Outcome resolve(List<TimeProposal> proposals) {
+  public static Outcome resolve(List<WorldTimeProposal> proposals) {
     Objects.requireNonNull(proposals, "proposals");
 
     // ── 写-写：任意两两（i<j 天然排除了"自己和自己"，即"自交不算冲突"）──────────────────
     for (int i = 0; i < proposals.size(); i++) {
       for (int j = i + 1; j < proposals.size(); j++) {
-        TimeProposal left = proposals.get(i);
-        TimeProposal right = proposals.get(j);
-        Set<String> shared = intersection(left.writes(), right.writes());
-        if (!shared.isEmpty()) {
+        WorldTimeProposal left = proposals.get(i);
+        WorldTimeProposal right = proposals.get(j);
+        Set<String> sharedAddresses = intersection(left.writes(), right.writes());
+        Set<String> sharedModules =
+            intersection(left.moduleChanges().keySet(), right.moduleChanges().keySet());
+        if (!sharedAddresses.isEmpty() || !sharedModules.isEmpty()) {
+          List<String> addresses = new ArrayList<>(sharedAddresses);
+          for (String namespace : sharedModules) {
+            addresses.add(MODULE_CLASH_PREFIX + namespace);
+          }
           return new Outcome.Blocked(
               new AdvanceConflict(
                   AdvanceConflict.WRITE_WRITE,
-                  List.of(left.namespace(), right.namespace()),
-                  List.copyOf(shared)));
+                  List.of(left.participantId(), right.participantId()),
+                  addresses));
         }
       }
     }
 
     // ── 读-写：**有向**对，两个方向各查一次 ────────────────────────────────────────────
     List<AdvanceConflict> warnings = new ArrayList<>();
-    for (TimeProposal reader : proposals) {
-      for (TimeProposal writer : proposals) {
-        if (reader.namespace().equals(writer.namespace())) {
+    for (WorldTimeProposal reader : proposals) {
+      for (WorldTimeProposal writer : proposals) {
+        if (reader.participantId().equals(writer.participantId())) {
           continue; // 自交不算冲突
         }
         Set<String> shared = intersection(reader.reads(), writer.writes());
@@ -89,7 +111,7 @@ public final class TimeProposalResolver {
           warnings.add(
               new AdvanceConflict(
                   AdvanceConflict.READ_WRITE,
-                  List.of(reader.namespace(), writer.namespace()),
+                  List.of(reader.participantId(), writer.participantId()),
                   List.copyOf(shared)));
         }
       }
@@ -108,10 +130,18 @@ public final class TimeProposalResolver {
               : compareElementWise(left.addresses(), right.addresses());
         });
 
-    // ── 汇总 ─────────────────────────────────────────────────────────────────────────
-    LinkedHashMap<String, ChangeSet> modules = new LinkedHashMap<>();
-    for (TimeProposal proposal : proposals) {
-      modules.put(proposal.namespace(), proposal.changeSet());
+    // ── 汇总：按 namespace 字典序（见类注释：输出只是内容的函数）────────────────────────
+    TreeMap<String, ChangeSet> modules = new TreeMap<>();
+    for (WorldTimeProposal proposal : proposals) {
+      for (Map.Entry<String, ChangeSet> entry : proposal.moduleChanges().entrySet()) {
+        ChangeSet previous = modules.put(entry.getKey(), entry.getValue());
+        if (previous != null) {
+          // 写-写检查已经拦下"两个参与者改同一模块"；走到这里 = 上面的检查漏了 ⇒ 宁可当场炸，
+          // 也不要静默丢掉一份变更集（那会落出一条"看着正常、内容缺一块"的 revision）。
+          throw new IllegalStateException(
+              "同一推进里两个参与者改同一模块（写-写检查应已拦截，此处是最后一道闸）: namespace=" + entry.getKey());
+        }
+      }
     }
     return new Outcome.Resolved(new WorldChangeSet(modules), warnings);
   }
