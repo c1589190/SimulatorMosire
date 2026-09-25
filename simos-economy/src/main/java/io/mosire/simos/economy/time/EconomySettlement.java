@@ -44,8 +44,10 @@ import java.util.Set;
  * <p>★★ **周期末追加**（{@code progressDays + 1 == cycleDays} 那一天，同一次日结算里）：
  *
  * <ol>
- *   <li>**产出**：{@code 实际投入亩 × 7 粮/亩 × 1000 毫粮/粮}。实际投入亩 = {@code min(可用亩, 平均每日实际劳动 × 7
- *       亩/劳动)}，**取小后向下取整到亩**（{@link #LAND_MU_PER_LABOR} / {@link #MILLI_PER_GRAIN}）。
+ *   <li>**产出**：{@code 实际投入亩 × 亩产 × 1000 毫粮/粮}（亩产取自 {@code outputPerUnit}，标定值 67 粮/亩 —— v2 spec
+ *       §10.3）。实际投入亩 = {@code min(可用亩, 平均每日实际劳动 × 7 亩/劳动)}，**取小后向下取整到亩**（{@link #LAND_MU_PER_LABOR}
+ *       / {@link #MILLI_PER_GRAIN}）。 ★ 注意两个 7 无关：{@link #LAND_MU_PER_LABOR}（一标准劳动能种几**亩**）一直是 7；
+ *       「每亩几**粮**」是标定值 67（v1 曾是 7，两者数值巧合，极易误读成漏改）。
  *   <li>**生产消耗**：扣 {@code 15%}（种子/牲畜/工具）——**明文记入本期流水**（{@link FlowRow#consumed()}），不静默丢弃。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
  *       / 1000}（**定点整数、残差按槽位 id 序分派、Σ行得 = 剩余产出**）。

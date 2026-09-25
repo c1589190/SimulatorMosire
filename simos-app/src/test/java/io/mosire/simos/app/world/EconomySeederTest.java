@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -159,8 +160,10 @@ class EconomySeederTest {
   void everyHexKeepsItsLandAndLandFollowsTerrainCoefficient() throws Exception {
     JsonNode payload = payload();
 
-    long plainsLand = 1000L * 1000L; // muPerHex 1000 亩 × 1000 千分亩/亩 × 系数 1.0
-    long hillsLand = plainsLand * 600L / 1000L; // 低丘系数 0.6
+    // ★ 由标定常量推出，故标定值一改这里自动跟随（v2 spec §10.3 定案 A）
+    long plainsLand = EconomySeeder.MU_PER_HEX * 1000L;
+    long hillsLand =
+        plainsLand * EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("low_hills")) / 1000L;
     assertThat(sumOfNested(classes(entry(payload, 0, 0), "farm@0_0"), "meansOfProduction", "LAND"))
         .as("平原：Σ 土地 == 格土地")
         .isEqualTo(plainsLand);
@@ -300,12 +303,71 @@ class EconomySeederTest {
   }
 
   @Test
-  void terrainCoefficientOnlyKnowsPlainAndLowHills() {
-    assertThat(EconomySeeder.terrainCoefPerMille("plains")).isEqualTo(1000);
-    assertThat(EconomySeeder.terrainCoefPerMille("low_hills")).isEqualTo(600);
-    assertThatThrownBy(() -> EconomySeeder.terrainCoefPerMille("desert"))
+  void arablePerMilleComesFromTheTerrainCatalogNotALocalTable() {
+    // ★ 满可耕地 = 平原的产能档；这一条同时钉住"map 改了平原产能 ⇒ 经济侧立刻知道"
+    assertThat(EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("plains"))).isEqualTo(1000);
+    assertThat(EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("low_hills")))
+        .as("低丘 = 2/3（v1 手挑的 600‰ 没有依据：真相在 map 的 food）")
+        .isEqualTo(666);
+    assertThat(EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("plateau")))
+        .as("平缓高原 = 1/3")
+        .isEqualTo(333);
+  }
+
+  @Test
+  void zeroFoodTerrainsGetZeroArableLandInsteadOfThrowing() {
+    // ★ v1 的 fail-closed：这三种地形一律抛 ⇒ 沙漠/山地格一旦有人口，整批 worldgen 回滚（人口+城市+军队一起）
+    for (String terrain : List.of("desert", "mountains", "ocean")) {
+      assertThat(EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf(terrain)))
+          .as("%s 必须得 0 而不是抛", terrain)
+          .isZero();
+    }
+  }
+
+  @Test
+  void unknownTerrainStillFailsClosed() {
+    // ★ 0 与"不认识"是两件事：前者是合法产能，后者是坏数据
+    assertThatThrownBy(() -> EconomySeeder.foodOf("swamp"))
+        .as("未知地形必须抛，不许当 0")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("desert");
+        .hasMessageContaining("未知地形类型");
+  }
+
+  @Test
+  void fullArableFoodMatchesTheCatalogPlain() {
+    assertThat(EconomySeeder.foodOf("plains"))
+        .as("FOOD_AT_FULL_ARABLE 必须等于 map 里平原的产能档；map 改了这里就要红")
+        .isEqualTo(3);
+  }
+
+  /**
+   * ★★ **真档量级下的自给率**（v2 spec §1.1.1 / §九 V2 判据 ④；plan1 Task 7 Step 1 点名的用例）。
+   *
+   * <pre>
+   * 需粮   = 14,806 人 × 83 毫粮/人·日 × 120 日 = 147,467,760 毫粮/格/周期
+   * 净产   = 3,100 亩 × 67 粮/亩 × 1000 毫粮/粮 × 0.85 = 176,545,000 毫粮/格/周期
+   * 自给率 = 176,545,000 × 1000 ÷ 147,467,760 = 1197‰（区间 1100~1300‰）
+   * </pre>
+   *
+   * <p>真档每格人口 11,830,000 ÷ 799 = 14,806 人；亩产与每格亩数是**拍出来的假设**，必须被这条钉住。 标定前（v1 的 1,000 亩 × 7
+   * 粮/亩）这条是**红的**：自给率 = 5,950,000 × 1000 ÷ 147,467,760 = **40‰**。
+   *
+   * <p>★ 取 120%（而非刚好 100%）是因为农业还要养城市人口与军队，而手工业现产 0。
+   */
+  @Test
+  void realScaleHexIsSelfSufficientWithinTheCalibratedBand() {
+    long populationPerHex = 11_830_000L / 799L; // = 14,806
+    long needMilli =
+        populationPerHex * EconomySeeder.dailyGrainMilli(1L) * EconomySeeder.CYCLE_DAYS;
+    long grossMilli =
+        EconomySeeder.MU_PER_HEX
+            * EconomySeeder.GRAIN_OUTPUT_PER_MU
+            * EconomyVocabulary.MILLI_PER_GRAIN;
+    long netMilli = grossMilli * 850L / 1000L; // 饲料 + 折旧 = 15%
+    long perMille = netMilli * 1000L / needMilli;
+
+    assertThat(populationPerHex).as("真档每格人口").isEqualTo(14_806L);
+    assertThat(perMille).as("自给率必须落在 1100~1300‰（标定目标 1197‰）；标定前这里是 ~40‰").isBetween(1100L, 1300L);
   }
 
   @Test

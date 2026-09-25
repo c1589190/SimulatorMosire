@@ -35,7 +35,7 @@ import java.util.OptionalLong;
  * {"mapId":"Map1","rulesVersion":"aggregate-v1","entries":[
  *   {"q":0,"r":0,"industries":[
  *     {"id":"farm@0_0","name":"农业","regime":"feudal","cycleDays":120,"progressDays":0,
- *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":7},
+ *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67},
  *      "cycleLaborMilli":0,
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"peasant","name":"贫农","laborParticipationPerMille":950}],

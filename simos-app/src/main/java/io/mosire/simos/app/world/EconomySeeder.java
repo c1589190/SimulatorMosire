@@ -5,6 +5,8 @@ import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -54,20 +56,30 @@ public final class EconomySeeder {
   /** 农业周期（天）：§十"单位"行"周期 = 120 天"（手工业同取 120：表里只有这一个周期值）。 */
   public static final int CYCLE_DAYS = 120;
 
-  /** 每格土地基准（亩）：§十"土地"行 {@code muPerHex 默认 1000 亩/格}。 */
-  public static final long MU_PER_HEX = 1000L;
+  /**
+   * 每格土地基准（亩）：**量纲标定值**（v2 spec §10.3 定案 A，由 1,000 改来）。
+   *
+   * <p>★ 依据：真档每格 14,806 人 × 9,960 毫粮/周期 = 147,468 粮/格/周期需粮； 3,100 亩 × 67 粮/亩 × 0.85 = 176,545 ⇒ 自给率
+   * **119.7%**（余粮给城市人口与军队）。 ★ 格面积是**纯经济假设**（{@code HexCell} 只存 height），与地图无关。
+   */
+  public static final long MU_PER_HEX = 3_100L;
 
   /** 千分亩/亩（土地的量纲是千分亩，§7）。 */
   private static final long MILLI_MU_PER_MU = 1000L;
 
-  /** 地形系数：平原 1.0（§十"土地"行）。 */
-  public static final int COEF_PLAINS_PER_MILLE = 1000;
+  /**
+   * 满可耕地的产能档（= {@code TerrainCatalog} 里平原的 {@code food}）：{@link #arablePerMilleOf} 的分母。
+   *
+   * <p>★ 有一条用例把它钉到 map（`fullArableFoodMatchesTheCatalogPlain`）：map 改了平原产能，这里就要红。
+   */
+  private static final int FOOD_AT_FULL_ARABLE = 3;
 
-  /** 地形系数：低丘 0.6（§十"土地"行）。 */
-  public static final int COEF_LOW_HILLS_PER_MILLE = 600;
-
-  /** 农业每亩毛产（粮）：§十"土地"行 / §3.1 的 {@code outputPerUnit}（农业 = 每亩 7 粮）。 */
-  public static final long GRAIN_OUTPUT_PER_MU = 7L;
+  /**
+   * 农业每亩毛产（粮）：**量纲标定值**（v2 spec §10.3 定案 A，由 7 改来）。
+   *
+   * <p>67 粮/亩 = 134 斤/亩，是**前现代北方旱地小麦的量级**；v1 的 7（= 14 斤/亩）低约 10 倍。
+   */
+  public static final long GRAIN_OUTPUT_PER_MU = 67L;
 
   /**
    * 初始阶层比例（‰）：§十"初始阶层比例"行 贫农 450 / 中农 350 / 富农 150 / 地主 50。
@@ -185,7 +197,7 @@ public final class EconomySeeder {
 
   /** 农业（**恒有**，§十）：人口 = 该格农村人口；土地 = {@code muPerHex × 地形系数}；制度 = 封建租佃。 */
   private static Map<String, Object> agriculture(HexCoord hex, long population, String terrain) {
-    long landMilliMu = MU_PER_HEX * MILLI_MU_PER_MU * terrainCoefPerMille(terrain) / 1000L;
+    long landMilliMu = MU_PER_HEX * MILLI_MU_PER_MU * arablePerMilleOf(foodOf(terrain)) / 1000L;
     long[] people = splitByShares(population, CLASS_SHARE_PER_MILLE);
     long[] land = splitProportional(landMilliMu, people);
     List<Map<String, Object>> classes = new ArrayList<>(CLASS_IDS.length);
@@ -280,14 +292,22 @@ public final class EconomySeeder {
 
   // ── 口径换算（纯函数，可单测）─────────────────────────────────────────────────────────
 
-  /** 地形系数（‰）：平原 1.0 / 低丘 0.6（§十"土地"行）；其余地形 fail-closed（这三个国家的有产格只有这两种）。 */
-  static int terrainCoefPerMille(String terrainKey) {
-    return switch (terrainKey) {
-      case "plains" -> COEF_PLAINS_PER_MILLE;
-      case "low_hills" -> COEF_LOW_HILLS_PER_MILLE;
-      default ->
-          throw new IllegalArgumentException("地形 " + terrainKey + " 没有土地系数依据（§十 只给了 平原/低丘）⇒ 拒绝臆造");
-    };
+  /**
+   * 每格可耕地系数（千分）：由 **map 的** {@link TerrainType#food()} 折算，**不自建地形表**。
+   *
+   * <p>★ 为什么不自建：v1 在 economy 侧另写了一份**两档**表（平原 1.0 / 低丘 0.6），而 map 的 {@code TerrainType} 早就有**六档**
+   * {@code food}（平原 3 / 低丘 2 / 平缓高原 1 / 沙漠 0 / 山地 0 / 海洋 0）—— 同一个事实两处， 且 map 那份更细。真相只能有一个拼写点。
+   *
+   * <p>★ **为什么不抛**：{@code food == 0} 是**合法产能**（沙漠/山地/海洋），得 0 亩即可；抛会把"这格不产粮" 误报成"数据坏了"。（v1
+   * 对非平原/低丘一律抛 ⇒ 地形直方图一变就整批 worldgen 回滚。）
+   */
+  public static int arablePerMilleOf(int food) {
+    return food * 1000 / FOOD_AT_FULL_ARABLE;
+  }
+
+  /** 地形 key → map 的产能档；未知地形由 {@link TerrainCatalog#of} fail-closed 抛（不许当 0）。 */
+  public static int foodOf(String terrainKey) {
+    return TerrainCatalog.of(terrainKey).food();
   }
 
   /**

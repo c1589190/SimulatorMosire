@@ -219,8 +219,14 @@ class WorldgenInitializeToolTest {
               economy.classes().values().stream()
                   .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L))
                   .sum())
-          .as("Σ 土地 = 平原 119 格 × 1000 亩 + 低丘 19 格 × 600 亩（千分亩）")
-          .isEqualTo(plains * 1_000L * 1_000L + lowHills * 1_000L * 600L);
+          .as("Σ 土地 = 平原 119 格 + 低丘 19 格，各按标定的每格亩数与地形系数（千分亩）")
+          .isEqualTo(
+              plains * EconomySeeder.MU_PER_HEX * 1_000L
+                  + lowHills
+                      * EconomySeeder.MU_PER_HEX
+                      * 1_000L
+                      * EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("low_hills"))
+                      / 1000L);
       assertThat(
               economy.classes().values().stream()
                   .mapToLong(row -> row.naturalNeeds().getOrDefault(GRAIN, 0L))

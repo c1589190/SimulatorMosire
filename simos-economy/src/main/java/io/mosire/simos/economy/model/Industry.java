@@ -41,7 +41,7 @@ import java.util.Set;
  * @param progressDays 当前进度（天）；必须 ∈ [0, cycleDays]
  * @param dailyInputPerUnit 每单位生产资料每日原料需求（可为空 map）；键值非空、逐值 ≥ 0
  * @param dailyLaborPerUnit 每单位生产资料每日劳动需求（千分劳动）；不得为负
- * @param outputPerUnit 周期末每单位生产资料的基准产出（农业 = 每亩 7 粮）；键值非空、逐值 ≥ 0
+ * @param outputPerUnit 周期末每单位生产资料的基准产出（农业 = 每亩 67 粮，v2 spec §10.3 标定值）；键值非空、逐值 ≥ 0
  * @param slots 该制度允许的阶层槽位；非空、id 不重复（**不含人口占比**）
  * @param allocation 制度分配函数（版本化参数；本类不执行它）
  * @param cycleLaborMilli 本周期**累计的实际投入劳动**（千分劳动·日）：日结算每天把 Σ(行 {@code laborMilli ×

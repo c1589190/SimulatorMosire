@@ -39,11 +39,11 @@ import java.util.OptionalLong;
  * <table>
  *   <caption>格与人口</caption>
  *   <tr><th>格</th><th>地形</th><th>农村人口</th><th>城市人口</th><th>产业</th><th>土地（亩）</th><th>初始粮</th></tr>
- *   <tr><td>(0,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
- *   <tr><td>(1,0)</td><td>低丘</td><td>500</td><td>—</td><td>农业</td><td>600</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
- *   <tr><td>(2,0)</td><td>平原</td><td>0</td><td>300</td><td>农业 + 手工业</td><td>1000（农业无地系数的城市格不产出）</td><td>按阶层天数</td></tr>
- *   <tr><td>(3,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>地主 0、富农 60 天 + 20 万</td></tr>
- *   <tr><td>(4,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>地主 0、其余恰 1 天</td></tr>
+ *   <tr><td>(0,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
+ *   <tr><td>(1,0)</td><td>低丘</td><td>500</td><td>—</td><td>农业</td><td>2,064</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
+ *   <tr><td>(2,0)</td><td>平原</td><td>0</td><td>300</td><td>农业 + 手工业</td><td>3,100（农业无地系数的城市格不产出）</td><td>按阶层天数</td></tr>
+ *   <tr><td>(3,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>地主 0、富农 60 天 + 20 万</td></tr>
+ *   <tr><td>(4,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>地主 0、其余恰 1 天</td></tr>
  * </table>
  *
  * <p>★ 缺口的两种形态（e2e 用例 b）：
@@ -64,12 +64,14 @@ public final class EconomyTestWorld {
   /** 农业周期（天）：与 {@code EconomySeeder.CYCLE_DAYS} 同源（120）。 */
   public static final long CYCLE_DAYS = EconomySeeder.CYCLE_DAYS;
 
-  /** 平原（(0,0)/(3,0)/(4,0) 的农业格）：土地 1000 亩。 */
+  /** 平原（(0,0)/(3,0)/(4,0) 的农业格）：土地 = {@link EconomySeeder#MU_PER_HEX} 亩（现标定 3,100 亩）。 */
   public static final long PLAINS_LAND_MILLI_MU = EconomySeeder.MU_PER_HEX * 1000L;
 
-  /** 低丘（(1,0)）：地形系数 0.6 ⇒ 土地 600 亩。 */
+  /** 低丘（(1,0)）：map 的 food 2 ⇒ 可耕地 2/3 ⇒ 土地 2,064 亩（现标定）。 */
   public static final long HILLS_LAND_MILLI_MU =
-      PLAINS_LAND_MILLI_MU * EconomySeeder.COEF_LOW_HILLS_PER_MILLE / 1000L;
+      PLAINS_LAND_MILLI_MU
+          * EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("low_hills"))
+          / 1000L;
 
   /** 有粮可借的缺口格（3,0）：地主 0 库存 / 富农多 20 万毫粮。 */
   public static final long LENDER_HEX_POPULATION = 1000L;
