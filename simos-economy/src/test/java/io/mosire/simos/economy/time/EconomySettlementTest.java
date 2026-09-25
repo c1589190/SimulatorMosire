@@ -143,6 +143,75 @@ class EconomySettlementTest {
   }
 
   /**
+   * ★★ **饿死惩罚（字面量算例，用户 2026-09-25 点名）**：一行 100 人、周期 3 天、库存只够 **1 天**（8,300 毫粮）⇒ 后 2 天缺粮。
+   *
+   * <pre>
+   * needTotal     = 100 × 83 × 3              = 24,900
+   * unmetNeed     = 2 × 8,300                 = 16,600   （周期末流水里的缺口）
+   * faminePerMille= 16,600 × 1000 / 24,900    = 666      （向下取整）
+   * deaths        = 100 × 666 / 1000 × 200/1000 = 13       （20% 致死率）
+   * 人口 100 → 87；劳动 58,000 × 87 / 100      = 50,460    （同比例缩）
+   * </pre>
+   *
+   * <p>★ 判别力：把 {@link EconomySettlement#FAMINE_MORTALITY_PER_MILLE} 当 0 用 ⇒ {@code
+   * deaths=0}、人口/劳动不变 ⇒ 本条红。
+   */
+  @Test
+  void famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle() {
+    EconomyData next = EconomySettlement.settle(famineFixture(100L * 83L), 0L, 3L);
+
+    ClassRow row = next.classes().get(PEASANT_KEY);
+    FlowRow flow = next.flows().get(PEASANT_KEY);
+
+    assertThat(flow.unmetNeed()).as("缺口 = 缺的那两天 = 2 × 8,300").isEqualTo(16_600L);
+    assertThat(flow.deaths()).as("100 × 666/1000 × 200/1000 = 13").isEqualTo(13L);
+    assertThat(row.population()).as("人口 100 → 87").isEqualTo(87L);
+    assertThat(row.laborMilli()).as("劳动同比例缩：58,000 × 87/100").isEqualTo(50_460L);
+
+    // ★ 结算后的不变量（§六）：人口不为负、死亡 ≤ 当期人口、劳动 ≥ 0。
+    assertThat(row.population()).isGreaterThanOrEqualTo(0L);
+    assertThat(flow.deaths()).isLessThanOrEqualTo(100L);
+    assertThat(row.laborMilli()).isGreaterThanOrEqualTo(0L);
+  }
+
+  /** ★ 判别力对照：储备够吃满整个周期 ⇒ 无缺口、无死亡、人口与劳动纹丝不动。 */
+  @Test
+  void noFamineWhenReservesCoverTheWholeCycle() {
+    EconomyData next = EconomySettlement.settle(famineFixture(3L * 100L * 83L), 0L, 3L);
+
+    ClassRow row = next.classes().get(PEASANT_KEY);
+    FlowRow flow = next.flows().get(PEASANT_KEY);
+
+    assertThat(flow.unmetNeed()).as("一天不缺").isZero();
+    assertThat(flow.deaths()).as("无人饿死").isZero();
+    assertThat(row.population()).as("人口不变").isEqualTo(100L);
+    assertThat(row.laborMilli()).as("劳动不变").isEqualTo(58_000L);
+  }
+
+  /**
+   * ★★ **多周期口径：{@code unmetNeed} 是"本期"的，不是"累计"的**（否则第 2 周期的饿死比例会把第 1 周期的旧缺口算进去）。
+   *
+   * <p>同一个 3 天周期跑**两轮**（{@code settle 0→6}）：第 1 周期末（第 3 天）缺口 16,600、死 13、人口 87；第 2 周期 87 人 每天吃
+   * 7,221 毫粮，收获为 0 ⇒ 第 4~6 天全缺，缺口 = 3 × 7,221 = 21,663，**不含**第 1 周期的 16,600。 {@code faminePerMille
+   * = 21,663 × 1000 / (87 × 83 × 3 = 21,663) = 1000} ⇒ {@code deaths = 87 × 1000/1000 × 200/1000 =
+   * 17}。
+   */
+  @Test
+  void unmetNeedResetsEachCycleSoTheSecondFamineUsesOnlyItsOwnGap() {
+    EconomyData next = EconomySettlement.settle(famineFixture(100L * 83L), 0L, 6L);
+
+    ClassRow row = next.classes().get(PEASANT_KEY);
+    FlowRow flow = next.flows().get(PEASANT_KEY);
+
+    assertThat(flow.unmetNeed())
+        .as("第 2 周期缺口 = 3 × 87 × 83 = 21,663（**不含**第 1 周期的 16,600）")
+        .isEqualTo(21_663L);
+    assertThat(flow.deaths()).as("累计死亡 = 13（第 1 周期）+ 17（第 2 周期）").isEqualTo(30L);
+    assertThat(row.population()).as("87 → 70").isEqualTo(70L);
+    assertThat(row.laborMilli()).as("50,460 × 70 / 87 = 40,600").isEqualTo(40_600L);
+  }
+
+  /**
    * ★ **残差按槽位 id 序补足**（"Σ行得 = 剩余产出"的定点整数保证）：权重和 &lt; 1000 时余下的单位按索引序补齐， 一项不丢。
    *
    * <p>★ 判别力：去掉 {@code distributeResidue}，这两条的 Σ 会小于 total。
@@ -205,6 +274,46 @@ class EconomySettlementTest {
         List.of(),
         Map.of(GRAIN, population * 83L),
         Map.of());
+  }
+
+  /**
+   * **饿死夹具**：一格、一个农业产业（周期 3 天）、**一行 100 人贫农**（投入率 1000、劳动 58,000）、**不占地**（⇒ 收获恒 0，饿死是唯一变量）、库存 =
+   * {@code stock} 毫粮。
+   */
+  private static EconomyData famineFixture(long stock) {
+    List<ClassSlot> slots = List.of(new ClassSlot(PEASANT, "贫农", 1000));
+    Industry farm =
+        new Industry(
+            FARM,
+            "农业",
+            new RegimeId("feudal"),
+            3L,
+            0L,
+            Map.of(),
+            0L,
+            Map.of(GRAIN, 7L),
+            slots,
+            new AllocationRule.Split(700, 300),
+            0L);
+    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    industries.put(FARM, farm);
+    ClassRow row =
+        new ClassRow(
+            PEASANT_KEY,
+            100L,
+            58_000L,
+            1000,
+            Map.of(),
+            Map.of(GRAIN, stock),
+            0L,
+            List.of(),
+            Map.of(GRAIN, 8_300L),
+            Map.of());
+    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    classes.put(PEASANT_KEY, row);
+    EconomyMeta meta =
+        new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
+    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
   }
 
   private static long grainOf(EconomyData data, ClassKey key) {

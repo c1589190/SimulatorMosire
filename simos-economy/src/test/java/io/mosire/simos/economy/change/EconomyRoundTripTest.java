@@ -174,6 +174,6 @@ class EconomyRoundTripTest {
   }
 
   static FlowRow flowRow() {
-    return new FlowRow(KEY, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L);
+    return new FlowRow(KEY, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
   }
 }

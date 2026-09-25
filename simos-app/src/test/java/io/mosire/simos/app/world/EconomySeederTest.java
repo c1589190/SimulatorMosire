@@ -174,25 +174,62 @@ class EconomySeederTest {
         .allSatisfy(node -> assertThat(node.get("meansOfProduction")).as("手工业不占地").isEmpty());
   }
 
-  // ── 日耗与库存（§十"消费"83 毫粮/人·日、库存 60 天）────────────────────────────────────
+  // ── 日耗与库存（§十"消费"83 毫粮/人·日；初始库存 = 按阶层天数）────────────────────────────
 
+  /**
+   * 日耗恒为 {@code 人口 × 83}；初始库存按 **{@link EconomySeeder#INITIAL_RATION_DAYS_BY_CLASS}** 的阶层天数分别配 （贫
+   * 30/中 60/富 120/地 250）——**取代旧的"全世界一律 60 天"口径**（那一口径下同格没人有余粮）。
+   *
+   * <p>★ 逐值：平原纯农村 1000 人的四行（450/350/150/50）储备 = 83 × (450×30 + 350×60 + 150×120 + 50×250) = 83 ×
+   * 65,000 = **5,395,000**（旧口径 = 83 × 60,000 = 4,980,000 ⇒ 本条与旧口径判别）。
+   */
   @Test
-  void dailyNeedIsEightyThreeMilliGrainPerPersonAndStockIsSixtyDays() throws Exception {
+  void dailyNeedIsEightyThreePerPersonAndStockFollowsTheClassDayTable() throws Exception {
     JsonNode payload = payload();
 
     List<JsonNode> farm = classes(entry(payload, 0, 0), "farm@0_0");
     assertThat(sumOfNested(farm, "naturalNeeds", "grain")).as("1000 人 × 83").isEqualTo(83_000L);
-    assertThat(sumOfNested(farm, "goods", "grain")).as("83 × 60 天").isEqualTo(4_980_000L);
+    assertThat(sumOfNested(farm, "goods", "grain")).as("按阶层天数：83 × 65,000").isEqualTo(5_395_000L);
+    assertThat(sumOfNested(farm, "goods", "grain"))
+        .as("★ 判别力：与旧口径（人人 60 天 = 83 × 60,000）必须不同，否则参数表没被用到")
+        .isNotEqualTo(4_980_000L);
+    // 逐行：储备 == 人口 × 83 × 该行槽位的天数。
     for (JsonNode row : farm) {
       long population = row.get("population").asLong();
+      long days = EconomySeeder.initialRationDays(row.get("slot").asText());
       assertThat(row.get("naturalNeeds").get("grain").asLong())
           .as("逐值：日耗 == 人口 × 83")
           .isEqualTo(population * 83L);
+      assertThat(row.get("goods").get("grain").asLong())
+          .as("逐值：储备 == 人口 × 83 × 天数（%s）", row.get("slot").asText())
+          .isEqualTo(population * 83L * days);
     }
 
     List<JsonNode> craft = classes(entry(payload, 1, 0), "craft@1_0");
     assertThat(sumOfNested(craft, "naturalNeeds", "grain")).as("200 人 × 83").isEqualTo(16_600L);
-    assertThat(sumOfNested(craft, "goods", "grain")).isEqualTo(16_600L * 60L);
+    assertThat(sumOfNested(craft, "goods", "grain"))
+        .as("200 人按 90/70/30/10 分 ⇒ 83 × (90×30 + 70×60 + 30×120 + 10×250) = 83 × 13,000")
+        .isEqualTo(1_079_000L);
+  }
+
+  /**
+   * ★★ **初始储备按阶层差异化的字面量用例**（用户 2026-09-25 点名：「每个地块给每个阶层一定量粮食储备」）：给定 1000 人， 贫农 30 天、地主 250
+   * 天各逐值。判别力：把参数表改成全世界一律 60 天 ⇒ 4,980,000 / 4,980,000 ⇒ 本条当场红。
+   */
+  @Test
+  void initialReservesAreLiteralPerClassDayCounts() {
+    assertThat(EconomySeeder.initialRationDays("peasant")).as("贫农 30 天").isEqualTo(30);
+    assertThat(EconomySeeder.initialRationDays("middle")).as("中农 60 天").isEqualTo(60);
+    assertThat(EconomySeeder.initialRationDays("rich")).as("富农 120 天").isEqualTo(120);
+    assertThat(EconomySeeder.initialRationDays("landlord")).as("地主 250 天").isEqualTo(250);
+
+    assertThat(EconomySeeder.rationMilli(1000L, "peasant"))
+        .as("1000 贫农 × 83 × 30")
+        .isEqualTo(2_490_000L);
+    assertThat(EconomySeeder.rationMilli(1000L, "landlord"))
+        .as("1000 地主 × 83 × 250")
+        .isEqualTo(20_750_000L);
+    assertThat(EconomySeeder.rationMilli(0L, "landlord")).as("0 人 ⇒ 0 储备").isZero();
   }
 
   /** 有效劳动：人口 × 580 千分劳动（D4 默认 0-14/15-59/60+ = 350/550/100‰ × 0/1000/300‰）。 */
@@ -276,6 +313,8 @@ class EconomySeederTest {
     assertThat(EconomySeeder.laborMilli(1000L)).isEqualTo(580_000L);
     assertThat(EconomySeeder.laborMilli(0L)).isZero();
     assertThat(EconomySeeder.dailyGrainMilli(1000L)).isEqualTo(83_000L);
-    assertThat(EconomySeeder.rationMilli(1000L)).isEqualTo(4_980_000L);
+    assertThat(EconomySeeder.rationMilli(1000L, "middle"))
+        .as("中农仍是 60 天（旧口径的锚点）")
+        .isEqualTo(4_980_000L);
   }
 }

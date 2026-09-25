@@ -431,6 +431,6 @@ class EconomyCodecTest {
   }
 
   private static FlowRow flowRow(ClassKey key) {
-    return new FlowRow(key, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L);
+    return new FlowRow(key, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
   }
 }

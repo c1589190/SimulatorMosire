@@ -111,13 +111,24 @@ class EconomyInvariantsTest {
   /** ★ 不变量 3 的流水侧（§3.3）：{@code flows} 的键必须与 {@code FlowRow.key} 一致。 */
   @Test
   void rejectsFlowsKeyNotMatchingRowKey() {
-    FlowRow row = new FlowRow(LANDLORD_KEY, 10L, Map.of(), 0L, 0L, 0L, 0L, 10L);
+    FlowRow row = new FlowRow(LANDLORD_KEY, 10L, Map.of(), 0L, 0L, 0L, 0L, 10L, 0L, 0L);
     assertThatThrownBy(
             () ->
                 new EconomyData(
                     Optional.of(meta()), Map.of(), Map.of(), Map.of(), Map.of(PEASANT_KEY, row)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("FlowRow.key");
+  }
+
+  /** ★ 不变量（2026-09-25 新增字段）：未满足需求与饿死数都不得为负（存量非负口径的流水侧）。 */
+  @Test
+  void rejectsNegativeUnmetNeedOrDeaths() {
+    assertThatThrownBy(() -> new FlowRow(PEASANT_KEY, 0L, Map.of(), 0L, 0L, 0L, 0L, 0L, -1L, 0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unmetNeed");
+    assertThatThrownBy(() -> new FlowRow(PEASANT_KEY, 0L, Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, -1L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("deaths");
   }
 
   /** ★ 不变量 4（§6.3 的上界）：{@code participationPerMille ∈ [0, 1000]}。 */

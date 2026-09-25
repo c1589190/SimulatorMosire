@@ -38,7 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
  * ★★ **R3a 日结算 + R4a 周期收获与分配**的端到端验收：真 {@link EconomyCodec} + 真 {@link EconomyTimeParticipant} + 真
  * store + {@link EconomyTestWorld}（5 格），全部经 {@code CoreSimos.submit(AdvanceTime)} 逐日推进。断言**逐值**。
  *
- * <p>★ 五条判据（用户点名 a~e）：日耗 / 缺口借粮 / 周期收获 / 守恒 / 多格独立。
+ * <p>★ 判据（用户点名 a~g）：日耗 / 缺口借粮 / 周期收获 / 守恒 / 多格独立 / 等价性 / **饿死惩罚**。
  *
  * <p>★ 夹具账面（{@link EconomyTestWorld}）：(0,0) 平原 1000 人 1000 亩 / (1,0) 低丘 500 人 600 亩 / (2,0) 只有城市
  * 300 人 / (3,0) 平原 1000 人（有粮可借）/ (4,0) 平原 1000 人（无粮可借）。
@@ -140,7 +140,9 @@ class EconomySettlementEndToEndTest {
     try (CoreSimos core = freshCore()) {
       advance(core, 119);
       EconomyData beforeHarvest = economy(core);
-      assertThat(hexGrain(beforeHarvest, 0, 0)).as("第 119 天 (0,0) 已吃完（60 天后见底）").isZero();
+      assertThat(hexGrain(beforeHarvest, 0, 0))
+          .as("第 119 天 (0,0) 已吃完（按阶层配的储备 = 该格 65 天口粮，第 66 天见底）")
+          .isZero();
       assertThat(farm(beforeHarvest, FARM_0).progressDays()).isEqualTo(119L);
       assertThat(farm(beforeHarvest, FARM_0).cycleLaborMilli())
           .as("周期劳动累计 = 119 天 × 498,800 千分劳动")
@@ -185,7 +187,7 @@ class EconomySettlementEndToEndTest {
       advance(core, 118);
       EconomyData beforeHarvest = economy(core);
       advance(core, 1);
-      assertConserved(beforeHarvest, economy(core), "第 120 天（日耗 + 收获）");
+      assertConserved(beforeHarvest, economy(core), "第 120 天（日耗 + 收获 + 饿死）");
     }
   }
 
@@ -274,6 +276,45 @@ class EconomySettlementEndToEndTest {
     }
   }
 
+  // ── (g) 饿死：第一周期末出现死亡 ⇒ 第二周期需求随之下降 ───────────────────────────────
+
+  /**
+   * ★★ **饿死惩罚的端到端验收（用户 2026-09-25 点名）**：(0,0) 1000 人按阶层配储备 = 该格 **65 天**口粮 ⇒ 第 66~120 天全缺 ⇒
+   * **第一周期末（第 120 天）出现死亡**；第二周期人口少了 ⇒ {@code 需求 = 人口 × 83 × 120} 随之下降。多格（本夹具 5 格）各自独立结算。
+   *
+   * <p>★ 第一周期字面量（(0,0) 四行 450/350/150/50）：缺 55 天 ⇒ 每行 {@code faminePerMille = 55/120 = 458‰}，死亡
+   * 41/32/13/4 = **90**；人口 1000 → 910。
+   *
+   * <p>★ 判别力：把 {@code FAMINE_MORTALITY_PER_MILLE} 当 0 用 ⇒ 第 1 周期死亡 0、人口不变 ⇒ 本条红（配套纯函数算例在 {@code
+   * EconomySettlementTest}）。
+   */
+  @Test
+  void famineAtTheFirstCycleEndLowersTheNextCyclesNeed() {
+    try (CoreSimos core = freshCore()) {
+      EconomyData initial = economy(core);
+      long need1 = hexNeed(initial, 0, 0);
+
+      advanceRange(core, 0L, 120L); // 一次推进到第 1 个周期末（§十一 等价性由 (f) 单独守）
+      EconomyData cycle1 = economy(core);
+
+      long deaths1 = hexDeaths(cycle1, 0, 0);
+      long population1 = hexPopulation(cycle1, 0, 0);
+      assertThat(deaths1).as("(0,0) 第一周期末饿死 90 人").isEqualTo(90L);
+      assertThat(population1).as("人口 1000 → 910").isEqualTo(910L);
+      assertThat(hexNeed(cycle1, 0, 0))
+          .as("第二周期需求 = 减少后的人口 × 83 × 120")
+          .isEqualTo(910L * 83L * 120L);
+      assertThat(hexNeed(cycle1, 0, 0)).as("第二周期需求 < 第一周期需求（人口少了）").isLessThan(need1);
+
+      advanceRange(core, 120L, 240L); // 到第 2 个周期末
+      EconomyData cycle2 = economy(core);
+      long deaths2 = hexDeaths(cycle2, 0, 0) - deaths1;
+      assertThat(deaths2).as("第二周期继续饿死（收获垫底后仍缺）").isGreaterThan(0L);
+      assertThat(deaths2).as("第二周期死亡 < 第一周期（人少了、需求小了）").isLessThan(deaths1);
+      assertThat(hexPopulation(cycle2, 0, 0)).as("人口继续下降").isLessThan(population1);
+    }
+  }
+
   // ── 夹具 ───────────────────────────────────────────────────────────────────────────
 
   private CoreSimos freshCore() {
@@ -311,6 +352,23 @@ class EconomySettlementEndToEndTest {
       head++;
       from++;
     }
+  }
+
+  /** **一次**推进 {@code (from, to]}（§十一：一条 revision；用于跨整个周期的大步，等价性由 (f) 守）。 */
+  private static void advanceRange(CoreSimos core, long from, long to) {
+    long head = core.head(MAIN).orElseThrow().value();
+    CommandResult result =
+        core.submit(
+            new AdvanceTime(
+                "cmd-advance-" + from,
+                "corr-advance-" + from,
+                "player:test",
+                MAIN,
+                new RevisionId(head),
+                new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)))));
+    assertThat(result)
+        .as("一次推进 %d 天（tick %d → %d）", to - from, from, to)
+        .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1))));
   }
 
   private static EconomyData economy(CoreSimos core) {
@@ -352,6 +410,37 @@ class EconomySettlementEndToEndTest {
     return hexGrain(before, q, r) - hexGrain(after, q, r);
   }
 
+  /** 某格 Σ 人口。 */
+  private static long hexPopulation(EconomyData data, int q, int r) {
+    return rowsAt(data, q, r).stream().mapToLong(ClassRow::population).sum();
+  }
+
+  /** 某格本周期总需求（毫粮）= Σ 行（人口 × 83 × 该行产业周期天数）。 */
+  private static long hexNeed(EconomyData data, int q, int r) {
+    long total = 0L;
+    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
+      long cycleDays = data.industries().get(id).cycleDays();
+      for (ClassKey key : classKeysOf(data, id)) {
+        total += data.classes().get(key).population() * DAILY_MILLI * cycleDays;
+      }
+    }
+    return total;
+  }
+
+  /** 某格 Σ 饿死人口（取各行流水的累计 {@code deaths}）。 */
+  private static long hexDeaths(EconomyData data, int q, int r) {
+    long total = 0L;
+    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
+      for (ClassKey key : classKeysOf(data, id)) {
+        FlowRow flow = data.flows().get(key);
+        if (flow != null) {
+          total += flow.deaths();
+        }
+      }
+    }
+    return total;
+  }
+
   private static long totalPopulation(EconomyData data) {
     return data.classes().values().stream().mapToLong(ClassRow::population).sum();
   }
@@ -388,7 +477,8 @@ class EconomySettlementEndToEndTest {
   }
 
   /**
-   * 守恒（§6.1 的账要平）：粮库存的减少 == **本次推进**的流水消费 − 本次推进的流水所得；人口逐值不变。
+   * 守恒（§6.1 的账要平）：粮库存的减少 == **本次推进**的流水消费 − 本次推进的流水所得；**人口**则满足 §六 的逐格守恒 ——{@code Σ人口变化 ==
+   * −Σ死亡}（2026-09-25 起：周期末的饿死会让总人口下降，这条取代旧的"人口逐值不变"）。
    *
    * <p>★ 流水**跨日/跨推进累加**（§十一，{@code FlowRow} 是"本期累计发生额"）⇒ 本次推进的发生额取 {@code after.flows() −
    * before.flows()} 的差，而不是 {@code after.flows()} 本身（否则 119 天的累计会把第 120 天的一天账淹没）。
@@ -399,7 +489,10 @@ class EconomySettlementEndToEndTest {
     assertThat(totalGrain(before) - totalGrain(after))
         .as("%s：库存减少 == 本期流水消费 − 本期流水所得（损耗/产出都显式落账）", what)
         .isEqualTo(consumed - income);
-    assertThat(totalPopulation(after)).as("%s：人口守恒", what).isEqualTo(totalPopulation(before));
+    long deaths = flowDeaths(after) - flowDeaths(before);
+    assertThat(totalPopulation(after))
+        .as("%s：Σ人口变化 == −Σ死亡（逐格守恒；未死则人口不变）", what)
+        .isEqualTo(totalPopulation(before) - deaths);
   }
 
   /** Σ 各行的粮消费（毫粮）。 */
@@ -407,6 +500,11 @@ class EconomySettlementEndToEndTest {
     return data.flows().values().stream()
         .mapToLong(flow -> flow.consumed().getOrDefault(GRAIN, 0L))
         .sum();
+  }
+
+  /** Σ 各行的饿死人口（人）。 */
+  private static long flowDeaths(EconomyData data) {
+    return data.flows().values().stream().mapToLong(FlowRow::deaths).sum();
   }
 
   /** Σ 各行的流水所得。 */

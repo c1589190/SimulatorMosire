@@ -15,12 +15,14 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 /**
  * ★★ **R3a 日结算 + R4a 周期收获与制度分配**（聚合式经济重设计 §四 的日/周期步骤，v1 口径）——纯函数：拿 {@link EconomyData} 交**新**的
@@ -31,8 +33,8 @@ import java.util.OptionalLong;
  * <ol>
  *   <li>**消费**：每行扣粮 {@code population × 83 毫粮}（{@link #DAILY_GRAIN_MILLI_PER_PERSON}，§十"消费"行）。
  *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（地主 → 富农 → 中农 的顺序，从有粮的行的**当日盈余**划转），借到的记一条 {@link Debt}（本金 = 借到量、利率
- *       {@code 20‰}、{@code dueCycle = 当前周期 + 1}、标的 = 粮）；**没粮可借 ⇒ 只留未满足的自然需求（{@code naturalNeeds}
- *       与实得的差），不造粮也不造债**。
+ *       {@code 20‰}、{@code dueCycle = 当前周期 + 1}、标的 = 粮）；**借完仍补不上**的部分记入本行流水的 {@code
+ *       unmetNeed}（毫粮、逐日累加，供周期末的饿死惩罚）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
  *   <li>**劳动投入**：本产业当日实际劳动 = Σ(行 {@code laborMilli × participationPerMille / 1000}) —— 累加进 {@link
  *       Industry#cycleLaborMilli()}（供收获时算劳动瓶颈）。
@@ -46,6 +48,9 @@ import java.util.OptionalLong;
  *   <li>**生产消耗**：扣 {@code 15%}（种子/牲畜/工具）——**明文记入本期流水**（{@link FlowRow#consumed()}），不静默丢弃。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
  *       / 1000}（**定点整数、残差按槽位 id 序分派、Σ行得 = 剩余产出**）。
+ *   <li>**饿死惩罚**（2026-09-25 用户点名）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@link
+ *       #FAMINE_MORTALITY_PER_MILLE}（200‰）致死；人口减少、有效劳动同比例缩，死亡数记入 {@link FlowRow#deaths()}。
+ *       **顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
  *   <li>产出进各行粮库存；{@code progressDays} 归零、周期劳动清零、{@link EconomyMeta#lastClosedCycle()} +1。
  * </ol>
  *
@@ -77,6 +82,17 @@ public final class EconomySettlement {
 
   /** 同格借粮的每周期利率（千分数）：20‰。 */
   public static final int BORROW_RATE_PER_MILLE_PER_CYCLE = 20;
+
+  /**
+   * ★★ **饿死惩罚的致死率**（版本化常量，2026-09-25 用户点名）：在"**饿满整个生产周期的那部分比例**"里，死 **200‰（20%）**。
+   *
+   * <p>口径（与 {@link #settleOneDay} 的周期末一致）：先把本周期逐日累加的未满足需求 {@code unmetNeed} 折成 {@code
+   * faminePerMille = unmetNeed / 本周期总需求}（封顶 1000‰），再在这一比例的人口里按本常量致死。故 {@code deaths = 人口 ×
+   * faminePerMille / 1000 × FAMINE_MORTALITY_PER_MILLE / 1000}。
+   *
+   * <p>★ 改这个数 = 改规则口径（记入 {@code rulesVersion}），不写死进公式。
+   */
+  public static final int FAMINE_MORTALITY_PER_MILLE = 200;
 
   /** 粮食商品 id（§十"单位"行：粮 = 1 公斤；本轮只结算这一种商品）。 */
   public static final CommodityId GRAIN = new CommodityId("grain");
@@ -145,14 +161,22 @@ public final class EconomySettlement {
     LinkedHashMap<ClassKey, Long> borrowing = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> income = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> productionLoss = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Long> unmetToday = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Long> deathsToday = new LinkedHashMap<>();
 
-    // ── 1~2. 消费 + 同格缺口（借粮 / 记缺口）────────────────────────────────────────────
-    settleHexes(rows, debts, consumedGrain, borrowing, day, dueCycle);
+    // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
+    settleHexes(rows, debts, consumedGrain, borrowing, unmetToday, day, dueCycle);
 
-    // ── 3~4. 进度 + 劳动投入；周期末追加收获与分配 ─────────────────────────────────────
+    // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
     boolean anyCycleClosed = false;
+    Set<IndustryId> newCycleIndustries = new HashSet<>();
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
+      // ★ 新一轮周期的第一天：progressDays 归 0（创世亦然）⇒ 该产业各行流的 unmetNeed 归零，
+      //   使饿死比例按**本周期**缺口算，而非把上一周期的旧缺口带上。
+      if (industry.progressDays() == 0L) {
+        newCycleIndustries.add(id);
+      }
       List<ClassKey> keys = classKeysOf(rows, id);
       long laborToday = 0L;
       for (ClassKey key : keys) {
@@ -164,8 +188,21 @@ public final class EconomySettlement {
       long nextProgress = progressed;
       long nextCycleLabor = cycledLabor;
       if (progressed == industry.cycleDays()) {
-        // ── 周期末：产出 / 生产消耗 / 制度分配 ──
+        // ── 周期末：产出 / 生产消耗 / 制度分配 —— 再算饿死（分配/收获不受死亡影响，本期产出照分给幸存者）──
         harvest(industry, rows, keys, cycledLabor, income, productionLoss);
+        for (ClassKey key : keys) {
+          long carried =
+              newCycleIndustries.contains(id) || flows.get(key) == null
+                  ? 0L
+                  : flows.get(key).unmetNeed();
+          applyFamine(
+              rows,
+              deathsToday,
+              key,
+              rows.get(key),
+              carried + unmetToday.getOrDefault(key, 0L),
+              industry.cycleDays());
+        }
         nextProgress = 0L;
         nextCycleLabor = 0L;
         anyCycleClosed = true;
@@ -182,11 +219,28 @@ public final class EconomySettlement {
       long earned = income.getOrDefault(key, 0L);
       long borrowed = borrowing.getOrDefault(key, 0L);
       long netSurplus = earned - grainConsumed; // income − 消费 − 税(0) − 利息(0)
+      long dayUnmet = unmetToday.getOrDefault(key, 0L);
+      long dayDeaths = deathsToday.getOrDefault(key, 0L);
       // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
-      flows.merge(
+      //   ★ unmetNeed 是**周期口径**：新周期的第一天把它归零（否则第 2 周期的饿死比例会带上第 1 周期的旧缺口）。
+      //   ★ deaths 与其它发生额一样**跨周期累加**（它是"累计死了多少人"，不是当期存量）。
+      FlowRow acc = flows.get(key);
+      long carriedUnmet =
+          acc == null || newCycleIndustries.contains(key.industry()) ? 0L : acc.unmetNeed();
+      long carriedDeaths = acc == null ? 0L : acc.deaths();
+      flows.put(
           key,
-          new FlowRow(key, earned, consumed, 0L, 0L, borrowed, 0L, netSurplus),
-          EconomySettlement::mergeFlow);
+          new FlowRow(
+              key,
+              (acc == null ? 0L : acc.income()) + earned,
+              mergeConsumed(acc, consumed),
+              acc == null ? 0L : acc.taxPaid(),
+              acc == null ? 0L : acc.interestDue(),
+              (acc == null ? 0L : acc.newBorrowing()) + borrowed,
+              acc == null ? 0L : acc.repaid(),
+              (acc == null ? 0L : acc.netSurplus()) + netSurplus,
+              carriedUnmet + dayUnmet,
+              carriedDeaths + dayDeaths));
     }
 
     OptionalLong lastClosed =
@@ -204,7 +258,8 @@ public final class EconomySettlement {
   // ── 消费 + 同格借粮 ─────────────────────────────────────────────────────────────────
 
   /**
-   * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（地主 → 富农 → 中农 的当日盈余），借到的记债。
+   * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（地主 → 富农 → 中农 的当日盈余），借到的记债；**仍补不上的** 记入未满足需求（{@code
+   * unmetNeed}，供周期末的饿死惩罚用）。
    *
    * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表）。
    */
@@ -213,6 +268,7 @@ public final class EconomySettlement {
       LinkedHashMap<DebtId, Debt> debts,
       LinkedHashMap<ClassKey, Long> consumedGrain,
       LinkedHashMap<ClassKey, Long> borrowing,
+      LinkedHashMap<ClassKey, Long> unmetNeed,
       long day,
       long dueCycle) {
     Map<String, List<ClassKey>> hexToRows = rowsByHex(rows.keySet());
@@ -281,7 +337,10 @@ public final class EconomySettlement {
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
         }
-        // remaining > 0 ⇒ 没人有粮：不造粮、不造债（缺口 = naturalNeeds − 实得，留在两处字段的差里）。
+        // remaining > 0 ⇒ 没人有粮：不造粮、不造债；记入**未满足需求**（周期末据此算饿死比例）。
+        if (remaining > 0L) {
+          unmetNeed.merge(debtor, remaining, Long::sum);
+        }
       }
     }
   }
@@ -346,21 +405,55 @@ public final class EconomySettlement {
     }
   }
 
-  /** 本期流水的**逐日累加**：同一 (格, 阶层) 的当天发生额并入本期发生额（`consumed` 逐商品求和）。 */
-  private static FlowRow mergeFlow(FlowRow acc, FlowRow day) {
+  /**
+   * ★★ **周期末的饿死惩罚**（2026-09-25 用户点名；§四 周期结算的追加步骤）：把本周期逐日累加的未满足需求 {@code cycleUnmet}
+   * 折成"**饿满整个周期的那个比例**"，再在这一比例的人口里按 {@link #FAMINE_MORTALITY_PER_MILLE} 致死。
+   *
+   * <pre>
+   * long needTotal = population × 83 × cycleDays;                       // 本周期总需求（毫粮）
+   * int  faminePerMille = needTotal == 0 ? 0 : min(1000, cycleUnmet × 1000 / needTotal);
+   * long deaths = population × faminePerMille / 1000 × 200 / 1000;      // 200‰
+   * </pre>
+   *
+   * <p>★ 人口减少后，**有效劳动按同一比例缩**（{@code labor = labor × (population − deaths) / population}；{@code
+   * population == 0} ⇒ {@code labor = 0}，**不除零**）；死亡数记入本行流水（{@code deaths}）。**死亡不回溯产出**：
+   * 本周期收获已在调用方先行分配（照分给幸存者）。
+   *
+   * <p>★ 不变量：{@code faminePerMille ≤ 1000} 且致死率 {@code ≤ 1000‰} ⇒ {@code deaths ≤
+   * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link ClassRow} 再兜一层）。
+   */
+  private static void applyFamine(
+      LinkedHashMap<ClassKey, ClassRow> rows,
+      LinkedHashMap<ClassKey, Long> deaths,
+      ClassKey key,
+      ClassRow row,
+      long cycleUnmet,
+      long cycleDays) {
+    long needTotal = row.population() * DAILY_GRAIN_MILLI_PER_PERSON * cycleDays;
+    int faminePerMille =
+        needTotal == 0L ? 0 : (int) Math.min(1000L, cycleUnmet * 1000L / needTotal);
+    long dead = row.population() * faminePerMille / 1000L * FAMINE_MORTALITY_PER_MILLE / 1000L;
+    if (dead <= 0L) {
+      return;
+    }
+    long population = row.population();
+    long nextPopulation = population - dead; // faminePerMille ≤ 1000 且致死率 ≤ 1000‰ ⇒ 必 ≥ 0
+    long nextLabor =
+        population == 0L ? 0L : row.laborMilli() * nextPopulation / population; // 同比例缩，不除零
+    rows.put(key, withPopulationAndLabor(row, nextPopulation, nextLabor));
+    deaths.merge(key, dead, Long::sum);
+  }
+
+  /** 本期流水 {@code consumed} 的**逐日累加**（逐商品求和；{@code acc} 为空 ⇒ 直接用当天的表）。 */
+  private static Map<CommodityId, Long> mergeConsumed(FlowRow acc, Map<CommodityId, Long> day) {
+    if (acc == null) {
+      return day;
+    }
     LinkedHashMap<CommodityId, Long> consumed = new LinkedHashMap<>(acc.consumed());
-    for (Map.Entry<CommodityId, Long> e : day.consumed().entrySet()) {
+    for (Map.Entry<CommodityId, Long> e : day.entrySet()) {
       consumed.merge(e.getKey(), e.getValue(), Long::sum);
     }
-    return new FlowRow(
-        acc.key(),
-        acc.income() + day.income(),
-        consumed,
-        acc.taxPaid() + day.taxPaid(),
-        acc.interestDue() + day.interestDue(),
-        acc.newBorrowing() + day.newBorrowing(),
-        acc.repaid() + day.repaid(),
-        acc.netSurplus() + day.netSurplus());
+    return consumed;
   }
 
   /**
@@ -479,6 +572,21 @@ public final class EconomySettlement {
         row.goods(),
         row.money(),
         debts,
+        row.naturalNeeds(),
+        row.effectiveDemand());
+  }
+
+  /** 换人口与有效劳动（饿死惩罚用；其余字段原样带过）。 */
+  private static ClassRow withPopulationAndLabor(ClassRow row, long population, long laborMilli) {
+    return new ClassRow(
+        row.key(),
+        population,
+        laborMilli,
+        row.participationPerMille(),
+        row.meansOfProduction(),
+        row.goods(),
+        row.money(),
+        row.debts(),
         row.naturalNeeds(),
         row.effectiveDemand());
   }

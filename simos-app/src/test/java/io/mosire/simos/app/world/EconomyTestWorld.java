@@ -39,9 +39,9 @@ import java.util.OptionalLong;
  * <table>
  *   <caption>格与人口</caption>
  *   <tr><th>格</th><th>地形</th><th>农村人口</th><th>城市人口</th><th>产业</th><th>土地（亩）</th><th>初始粮</th></tr>
- *   <tr><td>(0,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>60 天口粮</td></tr>
- *   <tr><td>(1,0)</td><td>低丘</td><td>500</td><td>—</td><td>农业</td><td>600</td><td>60 天口粮</td></tr>
- *   <tr><td>(2,0)</td><td>平原</td><td>0</td><td>300</td><td>农业 + 手工业</td><td>1000（农业无地系数的城市格不产出）</td><td>60 天口粮</td></tr>
+ *   <tr><td>(0,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
+ *   <tr><td>(1,0)</td><td>低丘</td><td>500</td><td>—</td><td>农业</td><td>600</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
+ *   <tr><td>(2,0)</td><td>平原</td><td>0</td><td>300</td><td>农业 + 手工业</td><td>1000（农业无地系数的城市格不产出）</td><td>按阶层天数</td></tr>
  *   <tr><td>(3,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>地主 0、富农 60 天 + 20 万</td></tr>
  *   <tr><td>(4,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>1000</td><td>地主 0、其余恰 1 天</td></tr>
  * </table>
@@ -120,7 +120,7 @@ public final class EconomyTestWorld {
     return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
   }
 
-  /** 初始库存口径（毫粮）：普通行 = 60 天口粮；两种缺口形态见枚举。 */
+  /** 初始库存口径（毫粮）：普通行 = 按阶层天数（贫 30/中 60/富 120/地 250）；两种缺口形态见枚举。 */
   private enum Stock {
     NORMAL,
     /** 地主 0、富农 60 天 + 20 万（同格有人可借）。 */
@@ -176,7 +176,7 @@ public final class EconomyTestWorld {
     long need = EconomySeeder.dailyGrainMilli(population);
     long goods =
         switch (stock) {
-          case NORMAL -> EconomySeeder.rationMilli(population);
+          case NORMAL -> EconomySeeder.rationMilli(population, slot);
           case LANDLORD_ZERO_RICH_SURPLUS ->
               "landlord".equals(slot)
                   ? 0L

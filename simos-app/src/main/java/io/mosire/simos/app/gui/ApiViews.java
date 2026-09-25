@@ -512,7 +512,10 @@ public final class ApiViews {
     return view;
   }
 
-  /** 本期流水（§3.3 表 3）的读侧形：所得 / 消费 / 新借 / 偿还 / 净盈余（税与利息 v1 恒 0）。{@code flow} 为 null ⇒ 全 0（该行本期无事）。 */
+  /**
+   * 本期流水（§3.3 表 3）的读侧形：所得 / 消费 / 新借 / 偿还 / 净盈余 / **未满足需求 / 饿死**（税与利息 v1 恒 0）。{@code flow} 为 null ⇒
+   * 全 0（该行本期无事）。
+   */
   private static Map<String, Object> flowView(FlowRow flow) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("income", flow == null ? 0L : flow.income());
@@ -522,6 +525,8 @@ public final class ApiViews {
     view.put("newBorrowing", flow == null ? 0L : flow.newBorrowing());
     view.put("repaid", flow == null ? 0L : flow.repaid());
     view.put("netSurplus", flow == null ? 0L : flow.netSurplus());
+    view.put("unmetNeed", flow == null ? 0L : flow.unmetNeed());
+    view.put("deaths", flow == null ? 0L : flow.deaths());
     return view;
   }
 

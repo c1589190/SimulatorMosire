@@ -14,9 +14,13 @@ import java.util.Map;
  * <p>★ **量纲**（§7）：货币类字段按**最小币值**；{@code consumed} 按**最小计量单位**。{@code income} 的实物部分按当周期
  * **"粮值"折算**（口径入 {@code rulesVersion}，§7），故它只是一个数、不落成第二份真相。
  *
+ * <p>★★ **未满足需求与饿死（2026-09-25 新增）**：{@code unmetNeed} = 本周期**需求 − 实得**的逐日累加（毫粮）， 是饿死判据的输入；{@code
+ * deaths} = 本周期因饿死而减少的人口（人）。两者都由 {@code EconomySettlement} 写入：{@code unmetNeed}
+ * 在**周期末**被用于算饿死比例后**归零**（下一周期从 0 重新累加， 故它随周期重置），{@code deaths} 则与其它流水一样跨周期累加。
+ *
  * <p>★ **不变量（构造期判）**：{@code income}/{@code taxPaid}/{@code interestDue}/{@code newBorrowing}/{@code
- * repaid} 均 {@code ≥ 0}；{@code consumed} 键值非空、逐值 {@code ≥ 0}。**{@code netSurplus} 允许为负** ——
- * 它是"本期盈余/赤字" （§3.3 注释：income − 消费 − 税 − 利息），赤字是其正常取值，故**不设下界**。
+ * repaid}/{@code unmetNeed}/{@code deaths} 均 {@code ≥ 0}；{@code consumed} 键值非空、逐值 {@code ≥
+ * 0}。**{@code netSurplus} 允许为负** —— 它是"本期盈余/赤字" （§3.3 注释：income − 消费 − 税 − 利息），赤字是其正常取值，故**不设下界**。
  *
  * <p>★ {@code consumed} 保序不可变（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用
  * {@code Map.copyOf}**），冻结写在字段赋值处。
@@ -29,6 +33,8 @@ import java.util.Map;
  * @param newBorrowing 本期新借入；不得为负
  * @param repaid 本期偿还；不得为负
  * @param netSurplus 本期净盈余（income − 消费 − 税 − 利息；**可为负 = 赤字**）
+ * @param unmetNeed 本周期未满足的需求（= Σ 每日「需求 − 实得」，毫粮）；不得为负；**周期末用于饿死判据后归零**
+ * @param deaths 本周期饿死的人口（人）；不得为负
  */
 public record FlowRow(
     ClassKey key,
@@ -38,7 +44,9 @@ public record FlowRow(
     long interestDue,
     long newBorrowing,
     long repaid,
-    long netSurplus) {
+    long netSurplus,
+    long unmetNeed,
+    long deaths) {
 
   public FlowRow {
     if (key == null) {
@@ -61,6 +69,12 @@ public record FlowRow(
     }
     if (repaid < 0) {
       throw new IllegalArgumentException("FlowRow.repaid 不得为负: " + repaid);
+    }
+    if (unmetNeed < 0) {
+      throw new IllegalArgumentException("FlowRow.unmetNeed 不得为负: " + unmetNeed);
+    }
+    if (deaths < 0) {
+      throw new IllegalArgumentException("FlowRow.deaths 不得为负: " + deaths);
     }
     Map<CommodityId, Long> consumedCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : consumed.entrySet()) {

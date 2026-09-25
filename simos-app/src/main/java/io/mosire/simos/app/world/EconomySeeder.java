@@ -1,6 +1,7 @@
 package io.mosire.simos.app.world;
 
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -81,6 +82,22 @@ public final class EconomySeeder {
   /** 阶层槽位展示名（与 {@link #CLASS_SHARE_PER_MILLE} 同序；包内可见的理由见上）。 */
   static final String[] CLASS_NAMES = {"贫农", "中农", "富农", "地主"};
 
+  /**
+   * ★★ **初始粮食储备的按阶层天数表**（版本化参数，2026-09-25 用户点名）：键 = 阶层槽位，值 = **每人几天的口粮**。
+   *
+   * <p>★★ **为什么要按阶层差异化**：旧口径给全世界每一行都配同一份 60 天口粮 ⇒ 同格里**谁都没有余粮**（人人都恰好吃到自己那份），
+   * 于是同格借粮链**空转**、缺粮**没有任何后果**。贫农最薄（30 天）、地主最厚（250 天）后，地主/富农手里天然有可贷的余粮， 贫农先见底 ⇒ 同格借贷与（{@code
+   * EconomySettlement} 的）饿死惩罚才有落点。
+   *
+   * <p>★ 改这张表 = 改初始资源分布 ⇒ 记入 {@link #RULES_VERSION} 的口径（版本化，不写死在公式里）。
+   */
+  public static final Map<ClassSlotId, Integer> INITIAL_RATION_DAYS_BY_CLASS =
+      Map.of(
+          new ClassSlotId(CLASS_IDS[0]), 30, // 贫农：最薄（先见底 ⇒ 缺口/借粮/饿死都从它起）
+          new ClassSlotId(CLASS_IDS[1]), 60, // 中农：与旧口径同（60 天）
+          new ClassSlotId(CLASS_IDS[2]), 120, // 富农：有余粮可贷
+          new ClassSlotId(CLASS_IDS[3]), 250); // 地主：最厚（同格主要债权人）
+
   /** 槽位劳动投入率上限（‰）：{@code ClassSlot} 的既定口径（贫农 950 / 中农 900 / 富农 750 / 地主 100）。 */
   static final int[] CLASS_LABOR_PER_MILLE = {950, 900, 750, 100};
 
@@ -92,9 +109,6 @@ public final class EconomySeeder {
 
   /** 每人每日口粮（毫粮）：§十"消费"行 每人每农业周期 10 粮 ⇒ 83 毫粮/人·日。 */
   public static final long DAILY_GRAIN_MILLI_PER_PERSON = 83L;
-
-  /** 初始库存（天口粮）：§十"初始库存"行 60 天。 */
-  public static final int INITIAL_RATION_DAYS = 60;
 
   /** 粮食商品的 id（§十"单位"行：粮 = 1 公斤；本轮只种这一种商品）。 */
   public static final String COMMODITY_GRAIN = "grain";
@@ -243,7 +257,8 @@ public final class EconomySeeder {
 
   /**
    * 一个阶层行（与 §3.2 {@code ClassRow} 逐字段对应）：有效劳动 = 人口 × 年龄系数（§十"D4 默认"）、自然需求 = 人口 × 83 毫粮
-   * （§十"消费"）、初始库存 = 60 天口粮、货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   * （§十"消费"）、初始库存 = {@code 人口 × 83 毫粮 × 该阶层天数}（{@link #INITIAL_RATION_DAYS_BY_CLASS}，**按阶层差异化**）、
+   * 货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
    */
   private static Map<String, Object> classRow(
       String slot, long population, int participationPerMille, Map<String, Object> means) {
@@ -253,7 +268,7 @@ public final class EconomySeeder {
     row.put("laborMilli", laborMilli(population));
     row.put("participationPerMille", participationPerMille);
     row.put("meansOfProduction", means);
-    row.put("goods", Map.of(COMMODITY_GRAIN, rationMilli(population)));
+    row.put("goods", Map.of(COMMODITY_GRAIN, rationMilli(population, slot)));
     row.put("money", 0);
     row.put("debts", List.of());
     row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, dailyGrainMilli(population)));
@@ -291,9 +306,18 @@ public final class EconomySeeder {
     return population * DAILY_GRAIN_MILLI_PER_PERSON;
   }
 
-  /** 初始库存（毫粮）：60 天口粮（§十"初始库存"行）。 */
-  public static long rationMilli(long population) {
-    return dailyGrainMilli(population) * INITIAL_RATION_DAYS;
+  /** 某阶层"每人几天的口粮"（版本化参数表 {@link #INITIAL_RATION_DAYS_BY_CLASS}）；查不到 ⇒ fail-closed（拒绝臆造）。 */
+  public static int initialRationDays(String slot) {
+    Integer days = INITIAL_RATION_DAYS_BY_CLASS.get(new ClassSlotId(slot));
+    if (days == null) {
+      throw new IllegalArgumentException("阶层槽位 " + slot + " 不在初始口粮天数表里（拒绝臆造）");
+    }
+    return days;
+  }
+
+  /** 初始库存（毫粮）：{@code 人口 × 83 毫粮 × 该阶层天数}（{@link #INITIAL_RATION_DAYS_BY_CLASS}）。 */
+  public static long rationMilli(long population, String slot) {
+    return dailyGrainMilli(population) * initialRationDays(slot);
   }
 
   /**

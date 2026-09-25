@@ -10,6 +10,7 @@ import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.RichWorld;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
@@ -499,8 +500,9 @@ class WorldgenInitializeToolTest {
    * <p>★ 判别力：把 {@code EconomySeedHandler} 的"按格判"改回"按库判"（{@code meta} 非空即拒），第二条 {@code execute} 会返回
    * {@code REJECTED} 且整批（含第二国人口/城市/军队）回滚 ⇒ 本条及其后的数值断言一起红。
    *
-   * <p>★ 字面量（两国真档硬值）：格数 138 + 231 = 369；经济人口 3,070,000 + 2,530,000 = **5,600,000**；初始库存 = 5,600,000
-   * × 83 毫粮/人·日 × 60 天 = **27,888,000,000** 毫粮（且 meta 的激活日仍是创世日 0，不被第二国覆盖）。
+   * <p>★ 字面量（两国真档硬值）：格数 138 + 231 = 369；经济人口 3,070,000 + 2,530,000 = **5,600,000**；初始库存 = 按阶层天数 （贫
+   * 30/中 60/富 120/地 250）逐行配 ⇒ {@code Σ 行人口 × 83 × 该行天数}（旧的"人人 60 天 = 人口 × 83 × 60"口径已被取代，
+   * 两者**必须不同**；且 meta 的激活日仍是创世日 0，不被第二国覆盖）。
    */
   @Test
   void twoNationsSeedIntoTheSameEconomySlice() throws IOException {
@@ -527,8 +529,11 @@ class WorldgenInitializeToolTest {
           .as("两国经济人口合计（3,070,000 + 2,530,000）")
           .isEqualTo(firstNation.population() + secondNation.population());
       assertThat(grainTotal(economy))
-          .as("两国初始库存合计 = 人口 × 83 × 60")
-          .isEqualTo((firstNation.population() + secondNation.population()) * 83L * 60L);
+          .as("两国初始库存合计 = Σ 行（人口 × 83 × 该阶层天数）")
+          .isEqualTo(rationTotal(economy));
+      assertThat(grainTotal(economy))
+          .as("★ 判别力：与旧口径（人人 60 天）必须不同，否则阶层天数表没被用到")
+          .isNotEqualTo((firstNation.population() + secondNation.population()) * 83L * 60L);
       assertThat(economy.meta().orElseThrow().activatedDay()).as("meta 不覆盖：激活日仍是创世日 0").isZero();
       assertThat(economy.meta().orElseThrow().mapId()).isEqualTo(MAP_ID);
     }
@@ -538,7 +543,7 @@ class WorldgenInitializeToolTest {
 
   /**
    * ★★ **R3a 的真实世界验收**：三国各自（独立库，因一次性播种）一键初始化 ⇒ 逐日推进 10 天 ⇒ 该国粮库存合计减少**恰为** {@code 人口 × 83 毫粮 ×
-   * 10}。初始库存 = 60 天口粮 ⇒ 10 天内无人见底（也无人借粮）⇒ 每日实吃 = 日耗。
+   * 10}。初始库存按阶层天数（最薄的贫农也有 30 天）⇒ 10 天内无人见底（也无人借粮）⇒ 每日实吃 = 日耗。
    *
    * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 期望减少 11,830,000 × 830 =
    * 9,818,900,000。
@@ -609,6 +614,16 @@ class WorldgenInitializeToolTest {
   private static long grainTotal(EconomyData economy) {
     return economy.classes().values().stream()
         .mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L))
+        .sum();
+  }
+
+  /** 按**阶层天数口径**（{@link EconomySeeder#INITIAL_RATION_DAYS_BY_CLASS}）算出的初始库存合计（毫粮）。 */
+  private static long rationTotal(EconomyData economy) {
+    return economy.classes().values().stream()
+        .mapToLong(
+            row ->
+                EconomySeeder.dailyGrainMilli(row.population())
+                    * EconomySeeder.initialRationDays(row.key().slot().value()))
         .sum();
   }
 
