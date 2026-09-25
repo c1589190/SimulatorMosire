@@ -128,6 +128,15 @@
     return cachedGet("/sd/decision-makers", target);
   }
 
+  /**
+   * ★ R2a：逐格经济读数（`GET /api/economy/hex?q=&r=`，与 MCP 的 `simos.economy.hex` 同一份视图）。
+   *
+   * <p>按 (q,r)×target 记忆化：hex 详情面板每次点选都要读它，同一格重复点选不该重复发请求。
+   */
+  function cachedEconomyHex(q, r, target) {
+    return cachedGet("/economy/hex?q=" + Number(q) + "&r=" + Number(r), target);
+  }
+
   // ── /api/state 合流（M9 T2）：启动期 pollState 与 timeline 各拉一次 ⇒ 去重。
   //   TTL 只罩"刚刚解析过"的极短窗口（启动同拍）；写命令开头发起 invalidateState()（epoch+1），
   //   使写后的 state() 既不读旧缓存、也不搭上写前已发出的在途请求 ⇒ 必读到新 head。
@@ -486,6 +495,8 @@
     cachedUnits: cachedUnits,
     cachedCombats: cachedCombats,
     cachedDecisionMakers: cachedDecisionMakers,
+    // ★ R2a：逐格经济读数（hex 详情面板的"经济"段）。
+    cachedEconomyHex: cachedEconomyHex,
     invalidateState: invalidateState,
     submitCommand: submitCommand,
     advance: advance,

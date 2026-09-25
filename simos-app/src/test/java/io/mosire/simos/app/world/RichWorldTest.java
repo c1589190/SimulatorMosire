@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -55,7 +56,8 @@ class RichWorldTest {
     assertThat(first).as("确定性：同参数逐字段相等").isEqualTo(second);
     assertThat(first.meta().ref()).isEqualTo(new StateRef(MAIN, R1));
     assertThat(first.meta().timestamp().tick()).as("资源信封的 tick").isZero();
-    assertThat(first.modules().keySet()).containsExactlyInAnyOrder("map", "social", "unit", "sd");
+    assertThat(first.modules().keySet())
+        .containsExactlyInAnyOrder("map", "social", "unit", "sd", "economy");
     assertThat(first.info()).as("C26：绝不录 Info").isEqualTo(InMemoryInfoSystem.empty());
   }
 
@@ -145,6 +147,7 @@ class RichWorldTest {
       core.register(new SocialCodec());
       core.register(new UnitCodec());
       core.register(new SdCodec());
+      core.register(new EconomyCodec());
 
       SimulationState genesis = RichWorld.state("Map1");
       core.bootstrapGenesis(genesis);
@@ -165,6 +168,7 @@ class RichWorldTest {
       core.register(new SocialCodec());
       core.register(new UnitCodec());
       core.register(new SdCodec());
+      core.register(new EconomyCodec());
 
       core.bootstrapGenesis(RichWorld.state("Map1"));
       assertThatThrownBy(() -> core.bootstrapGenesis(RichWorld.state("Map1")))

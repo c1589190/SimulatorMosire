@@ -5,6 +5,19 @@ import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.core.timeline.RevisionRow;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.model.AssetKind;
+import io.mosire.simos.economy.model.ClassKey;
+import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -64,6 +77,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * JSON 视图装配（M5 T8）：把领域类型转成 GUI 直读的 {@link Map} / {@link List} 树，**只读、无副作用**。
@@ -352,6 +366,152 @@ public final class ApiViews {
     view.put("moveCost", type.moveCost());
     view.put("description", type.description());
     return view;
+  }
+
+  /**
+   * ★★ **经济切片该格的读数**（R2a 的 G1 读口）——GUI（{@code GET /api/economy/hex}）与 MCP 读工具（{@code
+   * simos.economy.hex}）**共用这一份**（AGENT.md §8.3：不许在路由层另拼一份视图）。
+   *
+   * <p>★ **逐值、可复现**：该格的产业按 {@code IndustryId} 字典序、每产业的阶层行按**槽位 id** 字典序、库存/需求表按键字典序
+   * 发出——状态里的插入序不是内容的纯函数，跟着它走响应字节会抖。
+   *
+   * <p>★ **该格的产业怎么认出来**：经 {@link IndustryHexKeys#at}（"产业属于哪一格"的**唯一拼写点**）；本方法**不**自己拼/拆 id。
+   *
+   * <p>★ **未激活**（§6.6：{@code meta} 空）或该格没有产业 ⇒ 各聚合量为 0、{@code industries} 为空数组——**不 404**：
+   * "这一格没有经济数据"与"这一格不存在"是两件事，前者要能在界面上看见。
+   */
+  public static Map<String, Object> economyHex(HexCoord coord, EconomyData data) {
+    Map<String, Object> view = hexCoord(coord);
+    view.put("activated", data.meta().isPresent());
+    long population = 0L;
+    long laborMilli = 0L;
+    long landMilliMu = 0L;
+    long money = 0L;
+    long debtPrincipal = 0L;
+    long debtCount = 0L;
+    Map<String, Long> goods = new TreeMap<>();
+    List<Map<String, Object>> industries = new ArrayList<>();
+    for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
+      Industry industry = data.industries().get(id);
+      List<Map<String, Object>> classes = new ArrayList<>();
+      for (ClassKey key : classKeysOf(data, id)) {
+        ClassRow row = data.classes().get(key);
+        population += row.population();
+        laborMilli += row.laborMilli();
+        landMilliMu += row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L);
+        money += row.money();
+        mergeInto(goods, row.goods());
+        for (DebtId debtId : row.debts()) {
+          Debt debt = data.debts().get(debtId);
+          if (debt != null) {
+            debtCount++;
+            debtPrincipal += debt.principal();
+          }
+        }
+        classes.add(classRowView(key, row));
+      }
+      industries.add(industryView(industry, classes));
+    }
+    view.put("population", population);
+    view.put("laborMilli", laborMilli);
+    view.put("landMilliMu", landMilliMu);
+    view.put("goods", goods);
+    view.put("money", money);
+    view.put("debtCount", debtCount);
+    view.put("debtPrincipal", debtPrincipal);
+    view.put("industries", industries);
+    return view;
+  }
+
+  /** 该产业在本格的阶层行键，**按槽位 id 字典序**（可复现；见 {@link #economyHex}）。 */
+  private static List<ClassKey> classKeysOf(EconomyData data, IndustryId industry) {
+    List<ClassKey> keys = new ArrayList<>();
+    for (ClassKey key : data.classes().keySet()) {
+      if (key.industry().equals(industry)) {
+        keys.add(key);
+      }
+    }
+    keys.sort(Comparator.comparing(key -> key.slot().value()));
+    return keys;
+  }
+
+  /** 一个产业（§3.1 的读侧：制度 / 周期 / 进度 / 分配函数 / 槽位）与该产业的阶层行。 */
+  private static Map<String, Object> industryView(
+      Industry industry, List<Map<String, Object>> classes) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", industry.id().value());
+    view.put("name", industry.name());
+    view.put("regime", industry.regime().value());
+    view.put("cycleDays", industry.cycleDays());
+    view.put("progressDays", industry.progressDays());
+    view.put("allocation", allocationView(industry.allocation()));
+    List<Map<String, Object>> slots = new ArrayList<>(industry.slots().size());
+    for (ClassSlot slot : industry.slots()) {
+      Map<String, Object> slotView = new LinkedHashMap<>();
+      slotView.put("id", slot.id().value());
+      slotView.put("name", slot.name());
+      slotView.put("laborParticipationPerMille", slot.laborParticipationPerMille());
+      slots.add(slotView);
+    }
+    view.put("slots", slots);
+    view.put("classes", classes);
+    return view;
+  }
+
+  /** 制度分配函数（§5 的两种形状逐字段；不含任何"算出来的"结果——那是 R4 的活）。 */
+  private static Map<String, Object> allocationView(AllocationRule rule) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    if (rule instanceof AllocationRule.Split split) {
+      view.put("kind", "split");
+      view.put("meansWeightPerMille", split.meansWeightPerMille());
+      view.put("laborWeightPerMille", split.laborWeightPerMille());
+      return view;
+    }
+    AllocationRule.WageFirst wage = (AllocationRule.WageFirst) rule;
+    view.put("kind", "wage_first");
+    view.put("wagePerLaborMilli", wage.wagePerLaborMilli());
+    Map<String, Long> residual = new TreeMap<>();
+    for (Map.Entry<CommodityId, Long> entry : wage.ownerResidual().entrySet()) {
+      residual.put(entry.getKey().value(), entry.getValue());
+    }
+    view.put("ownerResidual", residual);
+    return view;
+  }
+
+  /** 一个阶层行（§3.2 逐字段：人口 / 有效劳动 / 投入率 / 土地 / 库存 / 货币 / 债务 / 两类需求）。 */
+  private static Map<String, Object> classRowView(ClassKey key, ClassRow row) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("slot", key.slot().value());
+    view.put("population", row.population());
+    view.put("laborMilli", row.laborMilli());
+    view.put("participationPerMille", row.participationPerMille());
+    view.put("landMilliMu", row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L));
+    view.put("goods", sortedCommodities(row.goods()));
+    view.put("money", row.money());
+    List<String> debts = new ArrayList<>(row.debts().size());
+    for (DebtId debt : row.debts()) {
+      debts.add(debt.value());
+    }
+    view.put("debts", debts);
+    view.put("naturalNeeds", sortedCommodities(row.naturalNeeds()));
+    view.put("effectiveDemand", sortedCommodities(row.effectiveDemand()));
+    return view;
+  }
+
+  /** 商品表按键字典序（可复现）。 */
+  private static Map<String, Long> sortedCommodities(Map<CommodityId, Long> source) {
+    Map<String, Long> out = new TreeMap<>();
+    for (Map.Entry<CommodityId, Long> entry : source.entrySet()) {
+      out.put(entry.getKey().value(), entry.getValue());
+    }
+    return out;
+  }
+
+  /** 把一个商品表并入目标（键字典序由 {@link TreeMap} 保证）。 */
+  private static void mergeInto(Map<String, Long> target, Map<CommodityId, Long> source) {
+    for (Map.Entry<CommodityId, Long> entry : source.entrySet()) {
+      target.merge(entry.getKey().value(), entry.getValue(), Long::sum);
+    }
   }
 
   /**
@@ -1020,5 +1180,18 @@ public final class ApiViews {
           "social 模块切片不是 SocialSnapshot：" + snapshot.getClass().getName());
     }
     return socialSnapshot.data();
+  }
+
+  /** economy 切片（R2a 起 GUI 与 MCP 读工具共用同一份提取；缺席或类型不对是装配故障）。 */
+  public static EconomyData economyData(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module("economy")
+            .orElseThrow(() -> new IllegalArgumentException("状态里没有 economy 模块切片——装配故障，不是\"没有候选\""));
+    if (!(snapshot instanceof EconomySnapshot economySnapshot)) {
+      throw new IllegalArgumentException(
+          "economy 模块切片不是 EconomySnapshot：" + snapshot.getClass().getName());
+    }
+    return economySnapshot.data();
   }
 }

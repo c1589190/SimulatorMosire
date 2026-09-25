@@ -11,6 +11,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
@@ -85,6 +86,14 @@ public final class ToolSupport {
    * 第五个命名空间出现时那条表态会与这里对不上。
    */
   public static final String SD_NAMESPACE = "sd";
+
+  /**
+   * 经济资源所属的命名空间（R2a 起：{@code economy:<q>_<r>}，与 {@code ResourcePaths#economy} 同源）。
+   *
+   * <p>★ 它同时出现在两处表态里：{@code simos.economy.hex} 的 {@link #ECONOMY_READ} 与 GM 组的逐命名空间范围 （{@code
+   * Shell#gmPermissionSet}）——新命名空间不加进后者，GM 面就会回落成"未表态"分支。
+   */
+  public static final String ECONOMY_NAMESPACE = "economy";
 
   /** 读工具的资源声明（spec §7.1：map+soc+unit READ_ONLY）。 */
   public static final ResourceManifest ALL_READ =
@@ -644,5 +653,15 @@ public final class ToolSupport {
       throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
     }
     return sdSnapshot.state();
+  }
+
+  /** economy 切片（R2a）：与 GUI 同一份提取（{@link ApiViews#economyData}），缺切片/类型不对 = 装配故障。 */
+  public static EconomyData economyData(SimulationState state) {
+    return ApiViews.economyData(state);
+  }
+
+  /** 逐格经济读数（R2a）：**与 GUI 的 {@code /api/economy/hex} 逐字节同形**（同一份 {@link ApiViews#economyHex}）。 */
+  public static Map<String, Object> economyHex(HexCoord coord, EconomyData data) {
+    return ApiViews.economyHex(coord, data);
   }
 }

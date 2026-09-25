@@ -14,6 +14,7 @@ import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionMakerTool;
 import io.mosire.simos.app.tools.read.DecisionMakersTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
+import io.mosire.simos.app.tools.read.EconomyHexTool;
 import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
 import io.mosire.simos.app.tools.read.MapBlockTool;
@@ -300,10 +301,10 @@ public final class SimosToolSource implements ToolSource {
     // 2026-09-23 用户裁定（"决策人一般流程"第 2 件）：GM 打回一条令 —— 理由原样**投进该决策人的会话**（复用 say 通道）
     //   + 该令标 CANCELLED，同批留审计条目。★ 只在 GM 桶；★ 也不是命令类型 ⇒ 不进 catalog。
     built.add(new RejectDirectiveTool(core, initiator, decisionAgent));
-    // 2026-09-23：GM 世界初始化 —— 把聚落生成器接到真写路径（1 条 SetPopulation + N 条 CreateCity，一批一条
-    //   revision；dryRun 只算不写）。★ 它不是某一条命令的窄封装 ⇒ 不继承 AbstractNarrowWriteTool；★
+    // 2026-09-23：GM 世界初始化 —— 把聚落生成器接到真写路径（1 条 SetPopulation + N 条 CreateCity + 1 条 economy.Seed，
+    //   一批一条 revision；dryRun 只算不写）。★ 它不是某一条命令的窄封装 ⇒ 不继承 AbstractNarrowWriteTool；★
     //   也不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。只在 GM 桶。
-    built.add(new WorldgenInitializeTool(core, initiator, worldgenConfigFile));
+    built.add(new WorldgenInitializeTool(core, initiator, mapId, worldgenConfigFile));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));
@@ -392,6 +393,9 @@ public final class SimosToolSource implements ToolSource {
         new UnitListTool(query),
         new UnitGetTool(query),
         new PopulationTool(query),
+        // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
+        //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
+        new EconomyHexTool(query, mapId),
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
         new MapRenderTool(query, renderService),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。

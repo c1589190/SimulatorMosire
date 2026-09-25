@@ -251,6 +251,105 @@
     }
   }
 
+  /**
+   * ★ R2a（2026-09-25）：**该格经济读数的显示行**（纯函数——门禁直接对它下断言，不碰 DOM / 不发请求）。
+   *
+   * <p>输入 = `GET /api/economy/hex` 的体（或 null = 取不到）。输出 = `[{label,value,hint}]`，由调用方逐行落 DOM。
+   * ★ **不做任何二次解释**：人口 / 有效劳动 / 土地 / 库存 / 货币 / 负债 / 制度 / 周期进度一律照服务端的值发（GUI 不造第二份真相）。
+   * 缺字段（旧后端）折成 0 / "无"，不抛。
+   */
+  function economyReadoutRows(economy) {
+    if (!economy) {
+      return [{ label: "经济", value: "无数据", hint: "该端点取不到数据（后端未接入或请求失败）。" }];
+    }
+    if (!economy.activated) {
+      return [{ label: "经济", value: "未激活", hint: "这一版世界还没播种经济状态（economy 切片的 meta 为空）。" }];
+    }
+    var rows = [
+      {
+        label: "经济人口",
+        value: numberOrZero(economy.population),
+        hint: "该格经济状态里各阶层行的人口之和（= 农村 + 城市人口）。",
+      },
+      {
+        label: "有效劳动",
+        value: numberOrZero(economy.laborMilli),
+        hint: "千分劳动 = 人口 × 年龄系数（0-14/15-59/60+ 占比 350/550/100‰ × 系数 0/1000/300‰ ⇒ 每人 580‰）。",
+      },
+      {
+        label: "土地",
+        value: numberOrZero(economy.landMilliMu) + " 千分亩",
+        hint: "该格农业各阶层行占有的土地（千分亩）；1000 亩/格 × 地形系数（平原 1.0 / 低丘 0.6）。",
+      },
+      {
+        label: "库存",
+        value: commodityText(economy.goods),
+        hint: "最小计量单位（粮 = 公斤）。初始 = 60 天口粮。",
+      },
+      {
+        label: "货币",
+        value: numberOrZero(economy.money),
+        hint: "最小币值（银马克）；创世时没有依据 ⇒ 0。",
+      },
+      {
+        label: "负债",
+        value: debtText(economy),
+        hint: "债务本金合计（min 币值 / 实物债按标的）；本轮不建模债务 ⇒ 恒为 0。",
+      },
+    ];
+    var industries = economy.industries || [];
+    if (!industries.length) {
+      rows.push({ label: "产业", value: "无", hint: "这一格没有产业（未播种 / 无人的格）。" });
+      return rows;
+    }
+    industries.forEach(function (industry) {
+      rows.push({
+        label: "产业 " + (industry.name || industry.id),
+        value:
+          (industry.regime || "—") +
+          " · 周期 " +
+          numberOrZero(industry.progressDays) +
+          "/" +
+          numberOrZero(industry.cycleDays),
+        hint:
+          "制度 = " +
+          (industry.regime || "—") +
+          "；周期进度 = 当前进度（天）/ 生产周期（天）。产出与分配是后续增量（R4a），本轮不结算。",
+      });
+    });
+    return rows;
+  }
+
+  /** 缺失/非数 ⇒ 0（显示层不抛）。 */
+  function numberOrZero(value) {
+    return typeof value === "number" ? value : 0;
+  }
+
+  /** 商品库存表的可读文本（键字典序；空 ⇒ "无"）。 */
+  function commodityText(goods) {
+    if (!goods) {
+      return "无";
+    }
+    var keys = Object.keys(goods).sort();
+    if (!keys.length) {
+      return "无";
+    }
+    return keys
+      .map(function (key) {
+        return key + " " + goods[key];
+      })
+      .join("、");
+  }
+
+  /** 负债文本："<本金>（<笔数> 笔）" / 无债 ⇒ "无"。 */
+  function debtText(economy) {
+    var count = numberOrZero(economy.debtCount);
+    if (count <= 0) {
+      return "无";
+    }
+    return numberOrZero(economy.debtPrincipal) + "（" + count + " 笔）";
+  }
+
   function renderHex(selection, token) {
     var status = app.byId("left-status");
     var detail = app.clear(app.byId("selection-detail"));
@@ -264,6 +363,10 @@
       }),
       // ★ 2026-09-24 交战：真实交战记录（该格有没有被记录为交战格）。取不到不拖垮整条详情。
       api.cachedCombats(app.target()).catch(function () {
+        return null;
+      }),
+      // ★ R2a：该格的经济读数（取不到/未激活都不拖垮整条详情，由投影函数决定显示什么）。
+      api.cachedEconomyHex(selection.q, selection.r, app.target()).catch(function () {
         return null;
       }),
     ])
@@ -320,6 +423,11 @@
             : "无人口数据",
           "该格的人口数（社会模块的数据）；这一版世界没接入人口序列时显示「无人口数据」。"
         );
+        // ★ R2a（2026-09-25）：该格的**经济读数**（/api/economy/hex，与 MCP 的 simos.economy.hex 同一份视图）。
+        //   形状与口径全在纯函数 economyReadoutRows 里（门禁直接对它下断言），这里只落 DOM。
+        economyReadoutRows(results[4]).forEach(function (row) {
+          appendRow(detail, row.label, row.value, row.hint);
+        });
         app.statusMessage(status, hexLabel(hex) + " · " + targetLabel(), "ok");
       })
       .catch(function (e) {
@@ -2361,6 +2469,8 @@
     perMilleToRateText: perMilleToRateText,
     // ★ B8：编制那节的可见性（纯函数）——「无单位 hex 不得挂着编制树」由它承重。
     unitTreeSectionVisible: unitTreeSectionVisible,
+    // ★ R2a：该格经济读数的显示行（纯函数）——「经济读数逐值来自服务端」由它承重。
+    economyReadoutRows: economyReadoutRows,
     // ★ M8 T9：左栏"从属区域"读数（纯函数）——门禁直接对它下断言（并集 ≠ 求和）。
     regionMembershipSummary: regionMembershipSummary,
     UNTAGGED_LABEL: UNTAGGED_LABEL,

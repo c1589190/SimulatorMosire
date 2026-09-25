@@ -72,6 +72,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -179,6 +182,8 @@ class SimosToolsTest {
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
+          // ★ R2a（2026-09-25）：逐格经济读数（四桶共享；GUI /api/economy/hex 的对应读口）。
+          "simos.economy.hex",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
           "simos.skill",
@@ -268,7 +273,9 @@ class SimosToolsTest {
           "simos.map.block",
           "simos.sd.verdicts",
           "simos.gm.tool-usage",
-          "simos.llm.providers");
+          "simos.llm.providers",
+          // ★ R2a（2026-09-25）：逐格经济读数（四桶共享）。
+          "simos.economy.hex");
 
   /**
    * ★ **只给 GM 桶的读工具**（2026-09-24 M4 起，2026-09-25 扩充）：标了 {@code GmOnlyRead} 的那些。
@@ -473,7 +480,8 @@ class SimosToolsTest {
           "sd.SetDirectiveStatus",
           "social.SetPopulation",
           "social.CreateCity",
-          "social.UpdateCity");
+          "social.UpdateCity",
+          "economy.Seed");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -667,8 +675,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 49 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(49);
+        .as("扫描必须恰为 50 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(50);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -704,7 +712,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(73);
+        .hasSize(74);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -724,7 +732,7 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
         .as("★ M4：GM-only 读工具（地形探测 / 别人的底牌 / 模型原始输出 / 观测与配置）不得进决策人桶")
-        .hasSize(18);
+        .hasSize(19);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -764,7 +772,10 @@ class SimosToolsTest {
             Paths.get("..", "simos-unit", "src", "main", "java"),
             Paths.get("..", "simos-map", "src", "main", "java"),
             Paths.get("..", "simos-social", "src", "main", "java"),
-            Paths.get("..", "simos-sd", "src", "main", "java"));
+            Paths.get("..", "simos-sd", "src", "main", "java"),
+            // ★ R2a：economy 也实现了 CommandHandler（economy.Seed）⇒ 扫描根必须含它，
+            //   否则"注册面 == 实现面"这条强判据会把新命令读成"多出来的"。
+            Paths.get("..", "simos-economy", "src", "main", "java"));
     Pattern typeReturn =
         Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*\"([^\"]+)\"");
     Set<String> types = new LinkedHashSet<>();
@@ -861,6 +872,7 @@ class SimosToolsTest {
             new Case("simos.unit.list", Map.of(), "units"),
             new Case("simos.unit.get", Map.of("id", U1.value()), "id"),
             new Case("simos.social.population", Map.of("q", 1L, "r", 1L), "population"),
+            new Case("simos.economy.hex", Map.of("q", 1L, "r", 1L), "industries"),
             new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
             new Case("simos.sd.combats", Map.of(), "combats"),
             new Case("simos.sd.verdicts", Map.of(), "verdicts"),
@@ -1060,6 +1072,11 @@ class SimosToolsTest {
         .isEqualTo(ResourceManifest.of("unit", ResourcePolicy.READ_ONLY));
     assertThat(shell.toolRegistry().find("simos.social.population").orElseThrow().resources())
         .isEqualTo(ResourceManifest.of("social", ResourcePolicy.READ_ONLY));
+    assertThat(shell.toolRegistry().find("simos.economy.hex").orElseThrow().resources())
+        .as("economy 是数据、map 是视野判据（hexVisible）——两个命名空间都要表态")
+        .isEqualTo(
+            ResourceManifest.of(
+                Map.of("economy", ResourcePolicy.READ_ONLY, "map", ResourcePolicy.READ_ONLY)));
     assertThat(shell.toolRegistry().find("simos.command.catalog").orElseThrow().resources())
         .isEqualTo(ResourceManifest.NONE);
     assertThat(shell.toolRegistry().find("simos.timeline.branches").orElseThrow().resources())
@@ -1819,14 +1836,21 @@ class SimosToolsTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                // ★ R2a：经济切片在场（本夹具未激活 ⇒ simos.economy.hex 应给 activated=false、空 industries）。
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec())));
   }
 
   private static Unit unit() {

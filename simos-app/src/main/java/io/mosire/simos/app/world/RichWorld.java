@@ -3,6 +3,9 @@ package io.mosire.simos.app.world;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.core.store.Envelope;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -80,14 +83,26 @@ public final class RichWorld {
         "sd",
         ignored ->
             new SdSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), SdState.empty()));
+    // ★ R2a：同 sd 的先例——v17levant 档早于 economy 模块，而"日推进/命令总线要求切片在场"（CommandBus 的
+    //   slice() 找不到命名空间会响亮失败）⇒ 这里补一个**未激活**的空 economy 切片（meta 空 = §6.6 的未激活语义）。
+    modules.computeIfAbsent(
+        "economy",
+        ignored ->
+            new EconomySnapshot(
+                decoded.meta().ref(), decoded.meta().timestamp(), EconomyData.empty()));
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
-  /** 四个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
+  /** 五个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
   private static Map<String, ModuleCodec> codecTable() {
     Map<String, ModuleCodec> codecs = new LinkedHashMap<>();
     for (ModuleCodec codec :
-        List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())) {
+        List.of(
+            new MapCodec(),
+            new SocialCodec(),
+            new UnitCodec(),
+            new SdCodec(),
+            new EconomyCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

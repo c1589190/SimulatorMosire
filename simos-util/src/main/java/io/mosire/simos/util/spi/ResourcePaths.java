@@ -59,6 +59,16 @@ public final class ResourcePaths {
     return q + COORD_SEPARATOR + r;
   }
 
+  /**
+   * 经济：{@code <q>_<r>}（**不带 mapId**——经济状态按格取，与 {@link #social(int, int)} 同款）。
+   *
+   * <p>★ **为什么与人口同形**：R2a 起每个有人的格各得一份 {@code economy} 状态（聚合式经济重设计 §十），它的可寻址单位就是"格"， 地图只有一张（{@code
+   * mapId} 由 {@code EconomyMeta.mapId} 另存）⇒ 路径里再带一段 mapId 只会多一处可能写歪的拼写。
+   */
+  public static String economy(int q, int r) {
+    return q + COORD_SEPARATOR + r;
+  }
+
   /** sd 域：{@code <kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
   public static String sd(String kind, String id) {
     Objects.requireNonNull(kind, "kind");

@@ -14,6 +14,20 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.ClassSlotId;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.model.AssetKind;
+import io.mosire.simos.economy.model.ClassKey;
+import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -509,6 +523,84 @@ class GuiApiTest {
     assertThat(body.get("at").get("tick").asLong()).isEqualTo(T7.tick());
   }
 
+  /** ★ R2a：一格一产业的确定性经济状态（断言值都是这里写下的字面量）。 */
+  private static EconomyData economyData() {
+    IndustryId farm = new IndustryId("farm@1_1");
+    ClassSlotId peasant = new ClassSlotId("peasant");
+    Industry industry =
+        new Industry(
+            farm,
+            "农业",
+            new RegimeId("feudal"),
+            120L,
+            33L,
+            Map.of(),
+            0L,
+            Map.of(new CommodityId("grain"), 7L),
+            List.of(new ClassSlot(peasant, "贫农", 950)),
+            new AllocationRule.Split(700, 300));
+    ClassRow row =
+        new ClassRow(
+            new ClassKey(farm, peasant),
+            100L,
+            58_000L,
+            950,
+            Map.of(AssetKind.LAND, 1_000_000L),
+            Map.of(new CommodityId("grain"), 498_000L),
+            12L,
+            List.of(),
+            Map.of(new CommodityId("grain"), 8_300L),
+            Map.of());
+    return new EconomyData(
+        java.util.Optional.of(
+            new EconomyMeta(
+                "Map1",
+                7L,
+                java.util.OptionalLong.empty(),
+                "aggregate-v1",
+                java.util.Optional.empty())),
+        Map.of(farm, industry),
+        Map.of(new ClassKey(farm, peasant), row),
+        Map.of(),
+        Map.of());
+  }
+
+  /** ★ R2a 的 G1 读口：{@code GET /api/economy/hex} 逐值给读数，与 MCP 的 {@code simos.economy.hex} 共用一份视图。 */
+  @Test
+  void economyHexReportsPerHexReadingsAndRejectsAs() throws Exception {
+    JsonNode body = getJson("/api/economy/hex?q=1&r=1");
+
+    assertThat(body.get("activated").asBoolean()).isTrue();
+    assertThat(body.get("population").asLong()).isEqualTo(100L);
+    assertThat(body.get("laborMilli").asLong()).isEqualTo(58_000L);
+    assertThat(body.get("landMilliMu").asLong()).isEqualTo(1_000_000L);
+    assertThat(body.get("goods").get("grain").asLong()).isEqualTo(498_000L);
+    assertThat(body.get("money").asLong()).isEqualTo(12L);
+    assertThat(body.get("debtCount").asLong()).isZero();
+    assertThat(body.get("debtPrincipal").asLong()).isZero();
+    JsonNode industry = body.get("industries").get(0);
+    assertThat(industry.get("id").asText()).isEqualTo("farm@1_1");
+    assertThat(industry.get("regime").asText()).isEqualTo("feudal");
+    assertThat(industry.get("cycleDays").asLong()).isEqualTo(120L);
+    assertThat(industry.get("progressDays").asLong()).as("周期进度").isEqualTo(33L);
+    assertThat(industry.get("allocation").get("meansWeightPerMille").asInt()).isEqualTo(700);
+    JsonNode row = industry.get("classes").get(0);
+    assertThat(row.get("slot").asText()).isEqualTo("peasant");
+    assertThat(row.get("naturalNeeds").get("grain").asLong()).as("日耗").isEqualTo(8_300L);
+
+    // 该格没有产业：200 + 空 industries（不是 404 —— "没数据"与"不存在"是两件事）。
+    // ★ activated 是**切片级**标志（经济是否激活），不是"这一格有没有数据"。
+    JsonNode empty = getJson("/api/economy/hex?q=1&r=2");
+    assertThat(empty.get("activated").asBoolean()).isTrue();
+    assertThat(empty.get("industries")).isEmpty();
+    assertThat(empty.get("population").asLong()).isZero();
+
+    // 不在图上的格 ⇒ 404（与 /api/map/hex 同形）。
+    assertThat(get("/api/economy/hex?q=9&r=9").statusCode()).isEqualTo(404);
+    // 未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。
+    assertThat(get("/api/economy/hex?q=1&r=1&as=dm-1").statusCode()).isEqualTo(400);
+  }
+
   // ── 写端点（R4：initiator 由独立 store + Timeline 读回）────────────────
 
   @Test
@@ -648,14 +740,21 @@ class GuiApiTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                // ★ R2a：经济切片带一份可断言的读数（一格一产业一阶层行）。
+                "economy", new EconomySnapshot(ref("main", 1), T7, economyData())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec())));
   }
 
   private static Unit unit() {

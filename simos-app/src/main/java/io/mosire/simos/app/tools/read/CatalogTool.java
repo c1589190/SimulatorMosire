@@ -79,6 +79,14 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "social.CreateCity", "id, name, at{q,r}, region?（缺省=无归属）, population（≥ 0）, props?"),
           Map.entry("social.UpdateCity", "id, name?, population?, props?（props 为合并语义）"),
+          Map.entry(
+              "economy.Seed",
+              "mapId, rulesVersion, entries[{q,r,industries[{id,name,regime,cycleDays,progressDays?,"
+                  + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,allocation(@class=split|wage_first),"
+                  + "slots[{id,name,laborParticipationPerMille}],"
+                  + "classes[{slot,population,laborMilli,participationPerMille,meansOfProduction?,goods?,"
+                  + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]}]"
+                  + "（★ 一次种一格或多格；meta 非空 = 经济已激活 ⇒ 拒）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(

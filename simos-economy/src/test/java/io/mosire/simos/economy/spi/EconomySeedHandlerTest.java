@@ -1,0 +1,196 @@
+package io.mosire.simos.economy.spi;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.ClassSlotId;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.AssetKind;
+import io.mosire.simos.economy.model.ClassKey;
+import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.StateMeta;
+import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalLong;
+import org.junit.jupiter.api.Test;
+
+/**
+ * {@code economy.Seed} 命令边界（R2a）：正例逐值 + 已激活拒绝 + 悬空槽位拒绝 + 负值拒绝 + 目标路径。
+ *
+ * <p>夹具是**真 {@link SimulationState} + 只有 economy 切片**（不打 DB），形态照 social 侧 {@code
+ * SetPopulationHandlerTest}。
+ */
+class EconomySeedHandlerTest {
+
+  private static final EconomySeedHandler HANDLER = new EconomySeedHandler();
+  private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
+  private static final SimosTimestamp T7 = SimosTimestamp.of(7);
+
+  private static final IndustryId FARM = new IndustryId("farm@0_0");
+
+  /** 一段最小合法载荷：一格、一个农业产业（封建租佃）、两个槽位两条阶层行。 */
+  private static final String PAYLOAD =
+      "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":0,\"r\":0,"
+          + "\"industries\":[{\"id\":\"farm@0_0\",\"name\":\"农业\",\"regime\":\"feudal\","
+          + "\"cycleDays\":120,\"progressDays\":0,\"dailyInputPerUnit\":{},\"dailyLaborPerUnit\":0,"
+          + "\"outputPerUnit\":{\"grain\":7},"
+          + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,\"laborWeightPerMille\":300},"
+          + "\"slots\":[{\"id\":\"peasant\",\"name\":\"贫农\",\"laborParticipationPerMille\":950},"
+          + "{\"id\":\"landlord\",\"name\":\"地主\",\"laborParticipationPerMille\":100}],"
+          + "\"classes\":[{\"slot\":\"peasant\",\"population\":450,\"laborMilli\":261000,"
+          + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":900000},"
+          + "\"goods\":{\"grain\":2241000},\"money\":0,\"debts\":[],\"naturalNeeds\":{\"grain\":37350},"
+          + "\"effectiveDemand\":{}},"
+          + "{\"slot\":\"landlord\",\"population\":50,\"laborMilli\":29000,"
+          + "\"participationPerMille\":100,\"meansOfProduction\":{\"LAND\":100000},"
+          + "\"goods\":{\"grain\":249000}}]}]}]}";
+
+  @Test
+  void typeIsEconomySeed() {
+    assertThat(HANDLER.type()).isEqualTo("economy.Seed");
+  }
+
+  /** 正例：与 §3 的 record 字段**逐值**对应（元信息 / 产业 / 阶层行）。 */
+  @Test
+  void seedsEveryFieldValueForValue() {
+    EconomyData after = apply(PAYLOAD, EconomyData.empty(), T7);
+
+    EconomyMeta meta = after.meta().orElseThrow();
+    assertThat(meta.mapId()).isEqualTo("Map1");
+    assertThat(meta.rulesVersion()).isEqualTo("aggregate-v1");
+    assertThat(meta.activatedDay()).as("激活日 = 世界当前 tick").isEqualTo(7L);
+    assertThat(meta.lastClosedCycle()).isEqualTo(OptionalLong.empty());
+    assertThat(meta.migrationSource()).isEqualTo(Optional.empty());
+
+    Industry industry = after.industries().get(FARM);
+    assertThat(after.industries()).hasSize(1);
+    assertThat(industry.name()).isEqualTo("农业");
+    assertThat(industry.regime().value()).isEqualTo("feudal");
+    assertThat(industry.cycleDays()).isEqualTo(120L);
+    assertThat(industry.progressDays()).isZero();
+    assertThat(industry.outputPerUnit()).containsEntry(new CommodityId("grain"), 7L);
+    assertThat(industry.dailyInputPerUnit()).isEmpty();
+    assertThat(industry.dailyLaborPerUnit()).isZero();
+    assertThat(industry.slots())
+        .extracting(slot -> slot.id().value())
+        .containsExactly("peasant", "landlord");
+
+    ClassKey peasant = new ClassKey(FARM, new ClassSlotId("peasant"));
+    ClassRow row = after.classes().get(peasant);
+    assertThat(after.classes()).hasSize(2);
+    assertThat(row.population()).isEqualTo(450L);
+    assertThat(row.laborMilli()).isEqualTo(261_000L);
+    assertThat(row.participationPerMille()).isEqualTo(950);
+    assertThat(row.meansOfProduction()).containsEntry(AssetKind.LAND, 900_000L);
+    assertThat(row.goods()).containsEntry(new CommodityId("grain"), 2_241_000L);
+    assertThat(row.money()).isZero();
+    assertThat(row.debts()).as("本轮无债务").isEmpty();
+    assertThat(row.naturalNeeds()).containsEntry(new CommodityId("grain"), 37_350L);
+    assertThat(row.effectiveDemand()).isEmpty();
+    assertThat(after.debts()).as("债务表本轮恒空").isEmpty();
+    assertThat(after.flows()).as("周期流水留待 R3a").isEmpty();
+    // 缺省字段（地主行没给 debts/naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
+    ClassRow landlord = after.classes().get(new ClassKey(FARM, new ClassSlotId("landlord")));
+    assertThat(landlord.money()).isZero();
+    assertThat(landlord.debts()).isEmpty();
+    assertThat(landlord.naturalNeeds()).isEmpty();
+    assertThat(landlord.effectiveDemand()).isEmpty();
+  }
+
+  /** ★ 已激活（meta 非空）⇒ 拒，理由**点名"已激活"**（不静默覆盖既有经济状态）。 */
+  @Test
+  void rejectsWhenAlreadyActivated() {
+    EconomyData activated =
+        EconomyData.empty()
+            .withMeta(
+                Optional.of(
+                    new EconomyMeta(
+                        "Map1", 3L, OptionalLong.empty(), "aggregate-v1", Optional.empty())));
+
+    HandlerOutcome outcome = HANDLER.handle(state(activated, T7), PAYLOAD);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .contains(EconomySeedHandler.ALREADY_ACTIVATED_MARKER)
+        .contains("已激活");
+  }
+
+  /** ★ 悬空槽位：阶层行引用了该产业 slots 里没有的槽位 ⇒ 拒（EconomyData 的构造期守卫）。 */
+  @Test
+  void rejectsClassRowForASlotTheIndustryDoesNotAllow() {
+    String payload = PAYLOAD.replace("\"slot\":\"landlord\"", "\"slot\":\"ghost\"");
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("槽位");
+  }
+
+  /** ★ 逐值校验：负人口 ⇒ 拒（`ClassRow` 的构造期守卫）。 */
+  @Test
+  void rejectsNegativePopulation() {
+    String payload = PAYLOAD.replace("\"population\":450", "\"population\":-450");
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("population");
+  }
+
+  /** 非空债务数组 ⇒ 拒（§十 明确"不做债务"；免得落下一批指向空债务表的悬空引用）。 */
+  @Test
+  void rejectsDebtsBecauseThisRoundDoesNotModelThem() {
+    String payload = PAYLOAD.replace("\"debts\":[]", "\"debts\":[\"debt-1\"]");
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("债务");
+  }
+
+  /** 环载荷（不是 JSON / 不是对象）⇒ 拒，不抛到命令边界之外。 */
+  @Test
+  void rejectsMalformedPayload() {
+    assertThat(HANDLER.handle(state(EconomyData.empty(), T7), "not json"))
+        .isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(HANDLER.handle(state(EconomyData.empty(), T7), "[]"))
+        .isInstanceOf(HandlerOutcome.Rejected.class);
+  }
+
+  /** 目标资源：载荷里**每一个**格各一条 {@code <q>_<r>}（GM 代执行时的越权判据）。 */
+  @Test
+  void targetPathsAreOnePerEntryHex() {
+    String twoEntries =
+        "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":["
+            + "{\"q\":1,\"r\":2,\"industries\":[]},{\"q\":-3,\"r\":4,\"industries\":[]}]}";
+
+    assertThat(HANDLER.targetPaths("Map1", twoEntries)).containsExactly("1_2", "-3_4");
+  }
+
+  // ── 夹具 ────────────────────────────────────────────────────────────────────────────
+
+  private static EconomyData apply(String payload, EconomyData base, SimosTimestamp at) {
+    HandlerOutcome.Applied applied =
+        (HandlerOutcome.Applied) HANDLER.handle(state(base, at), payload);
+    return EconomyChangeSet.apply((EconomyChangeSet) applied.changeSet(), base);
+  }
+
+  private static SimulationState state(EconomyData data, SimosTimestamp timestamp) {
+    return new SimulationState(
+        new StateMeta(REF, timestamp),
+        Map.of("economy", new EconomySnapshot(REF, timestamp, data)),
+        InMemoryInfoSystem.empty());
+  }
+}

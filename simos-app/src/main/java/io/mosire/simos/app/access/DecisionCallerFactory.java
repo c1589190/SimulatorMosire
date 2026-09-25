@@ -16,6 +16,7 @@ import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
+import io.mosire.simos.app.tools.read.EconomyHexTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
@@ -103,6 +104,9 @@ public final class DecisionCallerFactory {
           DecisionDocsTool.NAME,
           // ★ 工具面补齐（2026-09-25）：交战记录是**世界状态**（四桶共享）⇒ 决策人也该看得见。
           SdCombatsTool.NAME,
+          // ★ R2a（2026-09-25）：逐格经济读数是**世界状态**（四桶共享，同 combats 的判据）——决策人要看得见
+          //   辖地的产出与库存；它走 ToolSupport.hexVisible 收窄视野，故不越界。
+          EconomyHexTool.NAME,
           SkillTool.NAME,
           IssueDirectiveTool.NAME,
           SubmitVerdictTool.NAME);

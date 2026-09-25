@@ -57,7 +57,9 @@ const JS_DIR = __dirname;
 //     readout.test.cjs 2 条（日预算 ×1000×24 = 48000 / etaTick 天数口径）。
 //   2026-09-24 真实交战记录起 284 → 287：unit-tree.test.cjs 新增 3 条（记录格无单位标记 ⇒ 值 ≥1 的字面量 /
 //     旧两条推断仍在且与记录叠加 / 记录格与旧计数取较大者）。
-const MIN_TESTS = 287;
+//   2026-09-25 R2a（经济生成 + G1 读口）起 287 → 295：新增 economy-panel.test.cjs 的 8 条
+//     （见 gate-contract.test.cjs 的 MIN_ASSERTIONS 同款说明）。
+const MIN_TESTS = 295;
 
 function discoverTests() {
   return fs

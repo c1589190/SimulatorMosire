@@ -16,6 +16,7 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -139,6 +140,14 @@ public final class WorldgenInitializeTool implements AgentTool {
   public static final String CREATE_ARMY_TYPE = "sd.CreateArmy";
 
   /**
+   * ★ R2a（2026-09-25）：经济切片播种命令 —— 一次把该国的**全部格**种进 economy 切片（§十"验收目标 A"）。
+   *
+   * <p>它与人口/城市**同批**（同一 branch + 同一 expectedRevision ⇒ 一条 revision），载荷由 {@link
+   * io.mosire.simos.app.world.EconomySeeder} 从**已经算好的** {@code SettlementPlan} + 真地图地形算出。
+   */
+  public static final String SEED_ECONOMY_TYPE = "economy.Seed";
+
+  /**
    * ★ **中立移动量**（{@code speed} / {@code mobilityPerMille}）：冻结输入 {@code
    * config/worldgen/v17levant-nations.json} **只给编制人数、不给行军速度**，本笔**不臆造**组织级速度。
    *
@@ -180,10 +189,11 @@ public final class WorldgenInitializeTool implements AgentTool {
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
   /**
-   * 本工具的资源声明（2026-09-23 军队编制起）：它一次写的命名空间有四个 —— {@code social}（逐格人口 + 城市节点）、{@code map}（ {@code
-   * map.UpdateRegion} 给国家区域打 {@code nation:} tag）、{@code unit}（单位与指挥链）、{@code sd}（国家与军队）。
+   * 本工具的资源声明（2026-09-23 军队编制起，R2a 起五域）：它一次写的命名空间有五个 —— {@code social}（逐格人口 + 城市节点）、 {@code map}（
+   * {@code map.UpdateRegion} 给国家区域打 {@code nation:} tag）、{@code unit}（单位与指挥链）、{@code sd}（国家与军队）、
+   * {@code economy}（R2a 起：逐格经济状态）。
    *
-   * <p>★ 四个都声明为 {@link ResourcePolicy#UNRESTRICTED}（不是 sd 窄写那族惯用的 {@code READ_ONLY}）：本工具**真的写** sd
+   * <p>★ 五个都声明为 {@link ResourcePolicy#UNRESTRICTED}（不是 sd 窄写那族惯用的 {@code READ_ONLY}）：本工具**真的写** sd
    * 域，声明成只读会让"调用者未表态 sd 时"回落成只读、把本工具在系统身份下整调拒掉（{@code ResourceAuthorizer} 的回退分支）。
    */
   private static final ResourceManifest WORLDGEN_WRITE =
@@ -192,15 +202,17 @@ public final class WorldgenInitializeTool implements AgentTool {
               ToolSupport.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
-  /** 与 {@link #WORLDGEN_WRITE} 同源的逐命名空间粗断言（本工具是 GM 工具，调用者四个命名空间都 unlimited）。 */
+  /** 与 {@link #WORLDGEN_WRITE} 同源的逐命名空间粗断言（本工具是 GM 工具，调用者五个命名空间都 unlimited）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
           ResourceId.of(ToolSupport.MAP_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"));
 
   /** 等级直方图的固定序（{@link PlannedCity#tierRank}）：MarketTown &lt; Town &lt; City &lt; MajorCity。 */
   private static final List<String> TIER_ORDER =
@@ -212,16 +224,20 @@ public final class WorldgenInitializeTool implements AgentTool {
 
   private final CoreSimos core;
   private final String initiator;
+  private final String mapId;
   private final Path worldgenConfigFile;
 
   /**
    * @param core 唯一写入口（本工具走 {@code submitBatch}）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
+   * @param mapId 本世界的 map 称谓（R2a 起要进 {@code economy.Seed} 载荷的 {@code mapId}，落进 {@code EconomyMeta}）
    * @param worldgenConfigFile 冻结输入 JSON 的路径（**由 app 层拼**，见 {@code Shell}；本类不拼仓库相对路径）
    */
-  public WorldgenInitializeTool(CoreSimos core, String initiator, Path worldgenConfigFile) {
+  public WorldgenInitializeTool(
+      CoreSimos core, String initiator, String mapId, Path worldgenConfigFile) {
     this.core = Objects.requireNonNull(core, "core");
     this.initiator = Objects.requireNonNull(initiator, "initiator");
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.worldgenConfigFile = Objects.requireNonNull(worldgenConfigFile, "worldgenConfigFile");
   }
 
@@ -233,7 +249,8 @@ public final class WorldgenInitializeTool implements AgentTool {
   @Override
   public String description() {
     return "GM 世界初始化：按冻结输入（config/worldgen/v17levant-nations.json）生成一国的聚落，"
-        + "翻成命令一次落**一条** revision（1 条 social.SetPopulation + 每座城一条 social.CreateCity；"
+        + "翻成命令一次落**一条** revision（1 条 social.SetPopulation + 每座城一条 social.CreateCity"
+        + " + 1 条 economy.Seed（R2a：逐格经济状态）；"
         + "army 为真时再追加 map.UpdateRegion? + sd.CreateNation + 根/兵种 unit.CreateUnit + unit.CreateCommandChain"
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
@@ -350,15 +367,17 @@ public final class WorldgenInitializeTool implements AgentTool {
               ? buildBatch(
                   batchId,
                   initiator,
+                  mapId,
                   branch,
                   head.get(),
+                  map,
                   region,
                   plan,
                   seed,
                   setup.army(),
                   setup.displayName(),
                   armyAt)
-              : buildBatch(batchId, initiator, branch, head.get(), region.id(), plan, seed);
+              : buildBatch(batchId, initiator, mapId, branch, head.get(), map, region, plan, seed);
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
         summary.put("revision", committed.ref().revision().value());
@@ -440,20 +459,26 @@ public final class WorldgenInitializeTool implements AgentTool {
 
   /**
    * 把一次生成的计划翻成命令批：**1 条** {@code social.SetPopulation}（全部农村人口，键序按 {@link HexCoord} 排序）+ **每座城一条**
-   * {@code social.CreateCity}。命令顺序 = 先人口后城市（可读、可复现）。
+   * {@code social.CreateCity} + **1 条** {@code economy.Seed}（R2a：该国全部格的初始经济状态）。命令顺序 = 先人口、后城市、最后经济
+   * （可读、可复现）。
    *
    * <p>★ 同批共享 {@code branch}/{@code expectedRevision}（{@link CoreSimos#submitBatch} 的硬约束）；{@code
    * correlationId} 用同一个 {@code batchId}（一条初始化链），{@code commandId} 各自新取。
+   *
+   * @param mapId 本世界的 map 称谓（进 {@code EconomyMeta}）
+   * @param map 真地图（{@link EconomySeeder} 取逐格地形系数用）
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
       String initiator,
+      String mapId,
       BranchId branch,
       RevisionId expectedRevision,
-      RegionId region,
+      GameMap map,
+      Region region,
       SettlementPlan plan,
       long seed) {
-    List<CommandEnvelope> batch = new ArrayList<>(1 + plan.cities().size());
+    List<CommandEnvelope> batch = new ArrayList<>(2 + plan.cities().size());
     batch.add(
         envelope(
             batchId,
@@ -470,14 +495,22 @@ public final class WorldgenInitializeTool implements AgentTool {
               branch,
               expectedRevision,
               CREATE_CITY_TYPE,
-              createCityPayload(region, city, seed)));
+              createCityPayload(region.id(), city, seed)));
     }
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            SEED_ECONOMY_TYPE,
+            EconomySeeder.payload(mapId, plan, map)));
     return List.copyOf(batch);
   }
 
   /**
-   * ★ **军队编制批**：先来 {@link #buildBatch} 的人口+城市，再按 {@link #appendArmyCommands} 的固定序追加军队块 —— 整批仍是**同一
-   * branch + 同一 expectedRevision**（⇒ 一条 revision）。
+   * ★ **军队编制批**：先来 {@link #buildBatch} 的人口+城市+经济，再按 {@link #appendArmyCommands} 的固定序追加军队块 ——
+   * 整批仍是**同一 branch + 同一 expectedRevision**（⇒ 一条 revision）。
    *
    * @param region 真档区域（读它当前的 {@code meta.tag} 决定要不要发 {@code map.UpdateRegion}）
    * @param army 编制（人数 + 装备配比）
@@ -487,8 +520,10 @@ public final class WorldgenInitializeTool implements AgentTool {
   static List<CommandEnvelope> buildBatch(
       String batchId,
       String initiator,
+      String mapId,
       BranchId branch,
       RevisionId expectedRevision,
+      GameMap map,
       Region region,
       SettlementPlan plan,
       long seed,
@@ -497,7 +532,8 @@ public final class WorldgenInitializeTool implements AgentTool {
       HexCoord at) {
     List<CommandEnvelope> batch =
         new ArrayList<>(
-            buildBatch(batchId, initiator, branch, expectedRevision, region.id(), plan, seed));
+            buildBatch(
+                batchId, initiator, mapId, branch, expectedRevision, map, region, plan, seed));
     appendArmyCommands(
         batch, batchId, initiator, branch, expectedRevision, region, army, displayName, at);
     return List.copyOf(batch);

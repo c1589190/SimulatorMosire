@@ -119,6 +119,8 @@ class McpServerTest {
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
+          // ★ R2a（2026-09-25）：逐格经济读数（四桶共享）。
+          "simos.economy.hex",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
           "simos.skill",
@@ -231,7 +233,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 73 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写，"
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 74 条（C6：含通用写、sd 窄工具、7 条 map 窄写、20 条 unit 窄写与 1 条 economy 读口，"
                 + "以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective 与"
                 + " simos.worldgen.initialize、2026-09-25 补的五条读口）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);

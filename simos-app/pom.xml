@@ -41,6 +41,10 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
     </dependency>
+    <!-- ★ 聚合式经济（R1/R2a）：codec/resolver/命令 handler 与读口视图（§十"验收目标 A"）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy</artifactId>
+    </dependency>
     <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
          SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
     <dependency>

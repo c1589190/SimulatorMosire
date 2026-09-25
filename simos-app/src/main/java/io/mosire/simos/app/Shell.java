@@ -46,6 +46,9 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.resolve.EconomyResolver;
+import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -378,7 +381,8 @@ public final class Shell implements AutoCloseable {
                 config.storeDir(), config.checkpointInterval(), SimosObjectMapper.create()));
 
     List<ModuleCodec> codecs =
-        List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec());
+        List.of(
+            new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec(), new EconomyCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -417,6 +421,8 @@ public final class Shell implements AutoCloseable {
                 new SetPopulationHandler(),
                 new CreateCityHandler(),
                 new UpdateCityHandler(),
+                // ── economy（1 条，R2a）：一次播种某国全部格的初始经济状态（§十"验收目标 A"）──
+                new EconomySeedHandler(),
                 new CreateNationHandler(),
                 new CreateArmyHandler(),
                 new CreateDecisionMakerHandler(),
@@ -493,6 +499,9 @@ public final class Shell implements AutoCloseable {
     resolverRegistry.register(new SocialResolver());
     resolverRegistry.register(new UnitResolver());
     resolverRegistry.register(new SdResolver());
+    // ★ R2a：economy 自己的地址解析器（economy:<mapId>[:industry.<id> | :debt.<id> | :class.<i>.<s> |
+    // :flow.<i>.<s>]）。
+    resolverRegistry.register(new EconomyResolver());
 
     FacetRegistry facetRegistry = new FacetRegistry();
     facetRegistry.register(new UnitsHereFacet());
@@ -867,7 +876,9 @@ public final class Shell implements AutoCloseable {
                     ToolSupport.MAP_NAMESPACE, ResourceScope.unlimited(),
                     ToolSupport.SOCIAL_NAMESPACE, ResourceScope.unlimited(),
                     ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited(),
-                    ToolSupport.SD_NAMESPACE, ResourceScope.unlimited())))
+                    ToolSupport.SD_NAMESPACE, ResourceScope.unlimited(),
+                    // ★ R2a：第六个命名空间（economy:<q>_<r>）——不在这里表态，GM 面就落到"未表态"分支。
+                    ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited())))
         .build();
   }
 

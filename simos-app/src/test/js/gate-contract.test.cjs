@@ -10,6 +10,7 @@ const REQUIRED_FILES = [
   "block-codec.test.cjs",
   "decision-docs.test.cjs",
   "decision-mode.test.cjs",
+  "economy-panel.test.cjs",
   "gate-contract.test.cjs",
   "gm-panel.test.cjs",
   "map-edit-suboptions.test.cjs",
@@ -73,7 +74,9 @@ const REQUIRED_FILES = [
 //     readout.test.cjs 2 条（日预算 ×1000×24 = 48000 / etaTick 天数口径）。
 //   2026-09-24 真实交战记录起 284 → 287：unit-tree.test.cjs 新增 3 条（记录格无单位标记 ⇒ 值 ≥1 /
 //     旧两条推断仍在且与记录叠加 / 记录格与旧计数取较大者）。
-const MIN_ASSERTIONS = 287;
+//   2026-09-25 R2a（经济生成 + G1 读口）起 287 → 295：新增 economy-panel.test.cjs 的 8 条
+//     （经济读数逐值投影 / 制度与周期进度 / 无产业 / 未激活 / 无数据 / 缺字段降级 / 取数层接线与缓存 / 面板接线静态扫描）。
+const MIN_ASSERTIONS = 295;
 
 function testFiles() {
   return fs

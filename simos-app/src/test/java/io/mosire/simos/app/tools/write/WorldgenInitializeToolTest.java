@@ -14,6 +14,15 @@ import io.mosire.simos.app.world.RichWorld;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.AssetKind;
+import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -62,8 +71,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -82,6 +93,10 @@ class WorldgenInitializeToolTest {
   private static final RevisionId R1 = new RevisionId(1);
   private static final RevisionId R2 = new RevisionId(2);
   private static final String MAP_ID = "Map1";
+
+  /** §十"单位"行：粮 = 1 公斤，商品 id 取 {@code grain}（与 {@code EconomySeeder.COMMODITY_GRAIN} 同源）。 */
+  private static final CommodityId GRAIN = new CommodityId("grain");
+
   private static final String OSTERMARK = "奥斯特马克侯国";
   private static final String OSTERMARK_TAG = "nation:" + OSTERMARK;
   private static final String INITIATOR = "agent:worldgen-test";
@@ -177,6 +192,53 @@ class WorldgenInitializeToolTest {
       assertThat(rural + urban).as("总人口").isEqualTo(OSTERMARK_TOTAL);
       assertThat(social.cities()).isNotEmpty();
 
+      // ★★ R2a：同一批里落下的 economy.Seed —— 经济侧逐格有状态、人口/土地/日耗守恒。
+      //   奥斯特马克真档只有 plains(119) + low_hills(19)（配置 terrainHistogram）⇒ 逐格都有农村人口。
+      EconomyData economy = economySlice(state);
+      assertThat(economy.meta()).as("创世即激活（meta 非空）").isPresent();
+      assertThat(economy.meta().orElseThrow().mapId()).isEqualTo(MAP_ID);
+      assertThat(economy.meta().orElseThrow().activatedDay())
+          .as("激活日 = 世界当前 tick")
+          .isEqualTo(at.tick());
+      assertThat(economyHexCount(economy)).as("该国每一格各得一份经济状态").isEqualTo(OSTERMARK_HEXES);
+      assertThat(economy.industries())
+          .as("农业恒有，城市格再加手工业")
+          .hasSize(OSTERMARK_HEXES + social.cities().size());
+      assertThat(economy.classes().values().stream().mapToLong(ClassRow::population).sum())
+          .as("经济侧人口 == 社会侧人口（农村 + 城市）")
+          .isEqualTo(OSTERMARK_TOTAL);
+      long plains = 119L;
+      long lowHills = 19L;
+      assertThat(
+              economy.classes().values().stream()
+                  .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L))
+                  .sum())
+          .as("Σ 土地 = 平原 119 格 × 1000 亩 + 低丘 19 格 × 600 亩（千分亩）")
+          .isEqualTo(plains * 1_000L * 1_000L + lowHills * 1_000L * 600L);
+      assertThat(
+              economy.classes().values().stream()
+                  .mapToLong(row -> row.naturalNeeds().getOrDefault(GRAIN, 0L))
+                  .sum())
+          .as("Σ 日耗 = 人口 × 83 毫粮")
+          .isEqualTo(OSTERMARK_TOTAL * 83L);
+      System.out.println(
+          "[WORLDGEN-ECONOMY] nation="
+              + OSTERMARK
+              + " hexes="
+              + economyHexCount(economy)
+              + " industries="
+              + economy.industries().size()
+              + " population="
+              + economy.classes().values().stream().mapToLong(ClassRow::population).sum()
+              + " landMilliMu="
+              + economy.classes().values().stream()
+                  .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L))
+                  .sum()
+              + " dailyGrainMilli="
+              + economy.classes().values().stream()
+                  .mapToLong(row -> row.naturalNeeds().getOrDefault(GRAIN, 0L))
+                  .sum());
+
       SocialCity capital =
           social.cities().values().stream()
               .filter(city -> "马尔克堡".equals(city.name()))
@@ -219,8 +281,9 @@ class WorldgenInitializeToolTest {
 
       // ★★ 军队编制块：命令条数、region tag/颜色、单位/链/国家/军队。
       assertThat(body.get("commandCount").asInt())
-          .as("1 + N（N = 城市数）+ 军队块（UpdateRegion+CreateNation+根+7 兵种+链+Army）")
-          .isEqualTo(1 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
+          .as(
+              "2 + N（N = 城市数；2 = SetPopulation + economy.Seed）+ 军队块（UpdateRegion+CreateNation+根+7 兵种+链+Army）")
+          .isEqualTo(2 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
 
       JsonNode armyView = body.get("army");
       assertThat(armyView).as("dryRun=false 的摘要也带 army 段").isNotNull();
@@ -347,6 +410,9 @@ class WorldgenInitializeToolTest {
   void threeNationsEachOneClickInitializeWithArmy() throws IOException {
     // ★ 选择：三国各用一个**独立临时库**（每次都是"干净首启 ⇒ revision 1→2"），互不污染。同一库顺序跑也行（各国只动
     //   自己的 region），但独立库能把 revision / tag 断言钉成常量、也免去"前一国已改过 meta"的干扰。
+    //   ★ R2a：经济切片是"已激活即拒"的**一次性播种**⇒ 同一个库里连播三国会被第二国正当拒绝。故这里逐国累计
+    //     "该国有经济状态的格数"，末尾断言三国之和 == 799（G1 验收目标 A 的格数判据）。
+    long economyHexTotal = 0L;
     for (NationCase nation : NATIONS) {
       String id = nation.regionId();
       try (CoreSimos core = freshCore(dir("three-" + id))) {
@@ -367,8 +433,8 @@ class WorldgenInitializeToolTest {
         assertThat(social.cities()).as(id + " 有城市").isNotEmpty();
         // 军队块条数 = UpdateRegion + CreateNation + 根单位 + 兵种数 + 指挥链 + CreateArmy = 兵种数 + 5。
         assertThat(body.get("commandCount").asInt())
-            .as(id + " 1 + 城市数 + 军队块（兵种数 + 5）")
-            .isEqualTo(1 + body.get("cityCount").asInt() + nation.armCount() + 5);
+            .as(id + " 2 + 城市数（SetPopulation + economy.Seed）+ 军队块（兵种数 + 5）")
+            .isEqualTo(2 + body.get("cityCount").asInt() + nation.armCount() + 5);
 
         // ★ region tag 变 nation:<nationId>，其余三个 meta 字段原样（机制 2 的判据）。
         Region before =
@@ -408,8 +474,18 @@ class WorldgenInitializeToolTest {
             .as(id + " army.rootUnit 指向的根单位 member == 编制合计")
             .isEqualTo(nation.establishment());
         assertThat(sd.nations().get(NationId.parse(id)).adminBudgetPerTick()).isZero();
+
+        // ★★ R2a：经济侧逐格有状态，且**经济人口 == 社会总人口**；三国累计格数在循环外断言。
+        EconomyData economy = economySlice(state);
+        assertThat(economy.meta()).as(id + " 创世即激活经济").isPresent();
+        assertThat(economyHexCount(economy)).as(id + " 每格都有经济状态").isEqualTo(nation.hexes());
+        assertThat(economy.classes().values().stream().mapToLong(ClassRow::population).sum())
+            .as(id + " 经济侧人口 == 社会侧总人口")
+            .isEqualTo(nation.population());
+        economyHexTotal += economyHexCount(economy);
       }
     }
+    assertThat(economyHexTotal).as("三国 799 格各得一份 economy 状态（430 + 138 + 231）").isEqualTo(799L);
   }
 
   /** 德意志的「仆从兵」不在 {@code armKits} 里 ⇒ 该兵种单位装备空表（验证空 map 被 CreateUnit 接受）。 */
@@ -444,8 +520,8 @@ class WorldgenInitializeToolTest {
       SocialData social = socialSlice(state);
       assertThat(social.cities()).isNotEmpty();
       assertThat(body.get("commandCount").asInt())
-          .as("只 1 + 城市数（不产生任何军队块命令）")
-          .isEqualTo(1 + social.cities().size());
+          .as("只 2 + 城市数（SetPopulation + economy.Seed；不产生任何军队块命令）")
+          .isEqualTo(2 + social.cities().size());
 
       assertThat(sdSlice(state).nations()).as("army:false ⇒ 不建国").isEmpty();
       assertThat(sdSlice(state).armies()).as("army:false ⇒ 不建军").isEmpty();
@@ -489,7 +565,7 @@ class WorldgenInitializeToolTest {
   void missingConfigFileFailsClosed() throws IOException {
     try (CoreSimos core = freshCore(dir("missing-config"))) {
       AgentTool tool =
-          new WorldgenInitializeTool(core, INITIATOR, Path.of("没有这个文件", "nations.json"));
+          new WorldgenInitializeTool(core, INITIATOR, MAP_ID, Path.of("没有这个文件", "nations.json"));
       ToolResult result = execute(tool, Map.of("nation", OSTERMARK, "dryRun", false));
 
       assertThat(result.success()).isFalse();
@@ -501,14 +577,24 @@ class WorldgenInitializeToolTest {
 
   // ────────────────────────────────── 夹具 ──────────────────────────────────────────────
 
-  /** 真世界 + 真引擎：四 codec + 七条 handler（social 2 + 军队块 5）+ v17levant 创世（{@code (main,1)}）。 */
+  /**
+   * 真世界 + 真引擎：五 codec + 八条 handler（social 2 + 军队块 5 + economy 1）+ v17levant 创世（{@code (main,1)}）。
+   */
   private static CoreSimos freshCore(Path storeDir) {
     CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, SimosObjectMapper.create()));
-    for (var codec : List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())) {
+    for (var codec :
+        List.of(
+            new MapCodec(),
+            new SocialCodec(),
+            new UnitCodec(),
+            new SdCodec(),
+            new EconomyCodec())) {
       core.register(codec);
     }
     core.register(new SetPopulationHandler());
     core.register(new CreateCityHandler());
+    // ★ R2a：经济播种（与 Shell 的装配同源）。
+    core.register(new EconomySeedHandler());
     // ★ 军队编制块要用的五条 handler（与 Shell 的装配同源）。
     core.register(new UpdateRegionHandler());
     core.register(new CreateNationHandler());
@@ -522,14 +608,20 @@ class WorldgenInitializeToolTest {
   /** 只装 codec 的新引擎（重放不需要 handler）：用来验"从落盘重放 == 首次重放"。 */
   private static CoreSimos codecOnly(Path storeDir) {
     CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, SimosObjectMapper.create()));
-    for (var codec : List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())) {
+    for (var codec :
+        List.of(
+            new MapCodec(),
+            new SocialCodec(),
+            new UnitCodec(),
+            new SdCodec(),
+            new EconomyCodec())) {
       core.register(codec);
     }
     return core;
   }
 
   private static AgentTool tool(CoreSimos core) {
-    return new WorldgenInitializeTool(core, INITIATOR, configFile());
+    return new WorldgenInitializeTool(core, INITIATOR, MAP_ID, configFile());
   }
 
   private static ToolResult execute(AgentTool tool, Map<String, Object> args) {
@@ -563,8 +655,10 @@ class WorldgenInitializeToolTest {
     return WorldgenInitializeTool.buildBatch(
         "batch-test",
         INITIATOR,
+        MAP_ID,
         MAIN,
         R1,
+        map,
         region,
         plan,
         resolved.request().seed(),
@@ -609,6 +703,23 @@ class WorldgenInitializeToolTest {
     SdSnapshot slice =
         (SdSnapshot) state.module("sd").orElseThrow(() -> new AssertionError("状态里没有 sd 切片"));
     return slice.state();
+  }
+
+  /** economy 切片（R2a）。 */
+  private static EconomyData economySlice(SimulationState state) {
+    EconomySnapshot slice =
+        (EconomySnapshot)
+            state.module("economy").orElseThrow(() -> new AssertionError("状态里没有 economy 切片"));
+    return slice.data();
+  }
+
+  /** 经济侧**有状态的格数**：从产业 id 里取出格键去重（"产业属于哪一格"走唯一拼写点 {@link IndustryHexKeys}）。 */
+  private static long economyHexCount(EconomyData data) {
+    Set<String> hexes = new LinkedHashSet<>();
+    for (IndustryId id : data.industries().keySet()) {
+      IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);
+    }
+    return hexes.size();
   }
 
   /** 冻结输入的路径：surefire 工作目录是 {@code simos-app/} ⇒ 主树是 {@code ../config/...}。 */

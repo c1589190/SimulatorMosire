@@ -43,7 +43,8 @@ class CorridorWorldTest {
     assertThat(first).as("确定性：同参数逐字段相等").isEqualTo(second);
     assertThat(first.meta().ref()).isEqualTo(new StateRef(new BranchId("main"), new RevisionId(1)));
     assertThat(first.meta().timestamp()).isEqualTo(T5);
-    assertThat(first.modules().keySet()).containsExactlyInAnyOrder("map", "unit", "social", "sd");
+    assertThat(first.modules().keySet())
+        .containsExactlyInAnyOrder("map", "unit", "social", "sd", "economy");
   }
 
   @Test

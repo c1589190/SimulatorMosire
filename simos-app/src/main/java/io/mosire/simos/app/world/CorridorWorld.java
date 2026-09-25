@@ -1,5 +1,7 @@
 package io.mosire.simos.app.world;
 
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -89,7 +91,9 @@ public final class CorridorWorld {
             "map", new MapSnapshot(at, AT, corridorMap()),
             "unit", new UnitSnapshot(at, AT, unitState()),
             "social", new SocialSnapshot(at, AT, socialData()),
-            "sd", new SdSnapshot(at, AT, SdState.empty())),
+            "sd", new SdSnapshot(at, AT, SdState.empty()),
+            // ★ R2a：命令总线要求切片在场（缺 economy 时 slice() 会响亮失败）⇒ 空/未激活的 economy 切片。
+            "economy", new EconomySnapshot(at, AT, EconomyData.empty())),
         InMemoryInfoSystem.empty());
   }
 

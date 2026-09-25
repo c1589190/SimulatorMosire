@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -51,6 +52,7 @@ class T12InfoRedlineTest {
       core.register(new SocialCodec());
       core.register(new UnitCodec());
       core.register(new SdCodec());
+      core.register(new EconomyCodec());
 
       SimulationState genesis = RichWorld.state("Map1");
       core.bootstrapGenesis(genesis);
@@ -62,7 +64,7 @@ class T12InfoRedlineTest {
 
       // 装置自证：先证明这个状态**真的装着世界**，否则"info 为空"可能只是"没读到任何东西"。
       assertThat(replayed.modules().keySet())
-          .containsExactlyInAnyOrder("map", "social", "unit", "sd");
+          .containsExactlyInAnyOrder("map", "social", "unit", "sd", "economy");
 
       InfoSystem info = replayed.info();
       assertThat(info).as("C26：全局 Info 段（InfoSystem）一条都没有").isEqualTo(InMemoryInfoSystem.empty());

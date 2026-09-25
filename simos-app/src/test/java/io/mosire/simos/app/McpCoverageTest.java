@@ -16,6 +16,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -151,7 +154,9 @@ class McpCoverageTest {
           "sd.SetDirectiveStatus",
           "social.SetPopulation",
           "social.CreateCity",
-          "social.UpdateCity");
+          "social.UpdateCity",
+          // ★ R2a：经济播种（一次种一格；放最后 ⇒ 不移动前面各命令的 revision 号）。
+          "economy.Seed");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -291,6 +296,19 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "social.UpdateCity",
         "{\"id\":\"city-cov\",\"name\":\"覆盖城改\",\"population\":600,\"props\":{\"tier\":1}}");
+    // ★ R2a（2026-09-25）：经济播种。放最后 ⇒ 不移动前面各命令的 revision 号；
+    //   一格一产业两槽位两行（必须产生**非空**变更集）。
+    MINIMAL_PAYLOADS.put(
+        "economy.Seed",
+        "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":1,\"r\":1,"
+            + "\"industries\":[{\"id\":\"farm@1_1\",\"name\":\"农业\",\"regime\":\"feudal\","
+            + "\"cycleDays\":120,\"outputPerUnit\":{\"grain\":7},"
+            + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,"
+            + "\"laborWeightPerMille\":300},"
+            + "\"slots\":[{\"id\":\"peasant\",\"name\":\"贫农\","
+            + "\"laborParticipationPerMille\":950}],"
+            + "\"classes\":[{\"slot\":\"peasant\",\"population\":100,\"laborMilli\":58000,"
+            + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":1000000}}]}]}]}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -342,7 +360,7 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 49 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 50 个 handler 同源")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
         .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
@@ -373,8 +391,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("49 条命令各推一格")
-        .isEqualTo(50L);
+        .as("50 条命令各推一格")
+        .isEqualTo(51L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -558,14 +576,21 @@ class McpCoverageTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                // ★ R2a：经济切片在场（economy.Seed 要往它上面施加变更集）。
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec())));
   }
 
   private static Unit unit() {
