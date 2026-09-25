@@ -419,7 +419,11 @@ class EconomyDebtTest {
     addHex(industries, classes, FARM_KIND, 0, 0, cycleDays, peasantJar, landlordJar);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    // ★ R2：本文件的产业**不产粮**（{@code outputPerUnit} 为空）⇒ 劳动投入的多少不改变任何一个字面量
+    //   （收获恒 0、瓶颈无从谈起）⇒ 配额表留空即可。★ 空配额是**合法状态**（劳动是分配来的：没人发配额 = 没人上山干活），
+    //   不是"兜底"——本文件断言的债务与利息与劳动无关。
+    return new EconomyData(
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   /** {@code hexes} 格（同一形态：贫农缸空、地主缸厚）—— 供上界用例。 */
@@ -431,7 +435,8 @@ class EconomyDebtTest {
     }
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    return new EconomyData(
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   /**

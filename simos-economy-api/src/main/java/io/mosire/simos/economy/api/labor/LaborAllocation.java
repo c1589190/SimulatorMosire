@@ -1,0 +1,72 @@
+package io.mosire.simos.economy.api.labor;
+
+import io.mosire.simos.economy.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
+
+/**
+ * ★★ **一次劳动分配**（第三阶段设计稿 §四）："**这批人**把**这么多**劳动供给**这个主体**，在这个周期里"。
+ *
+ * <pre>
+ * PopulationGroup ──→ LaborSupply ──→ LaborAllocation ──→ ProductionProcess
+ * </pre>
+ *
+ * <p>★★ **它存在的理由**（设计稿 §一.2 实测的空洞）：此前"劳动投入"是**按产业各自累加**的（每格 farm 与 craft 各带一份人口与劳动、 互不知道对方）⇒
+ * 同一批人可以**被两个产业各算一次满额**，而全仓没有任何一处能表达"这批人的劳动投入之和不得超过其可用劳动"。 本类型把那笔投入**显式记成一条关系**：{@code group}（谁出的）→
+ * {@code actor}（谁收的），于是"同一批人供给多个产业"与"总和守恒" 都成了**可判**的事实。
+ *
+ * <p>★★ **跨切片引用一律走不透明 {@link ActorRef}**（{@link ActorRef} 的设计意图原文："跨模块引用任何经济主体**而不依赖它所在的切片**"）：
+ * 本模块**不认识** {@code PopulationGroup}（social 的类型）—— 只认它的稳定身份 {@link PeopleLotId}。方向是 {@code social →
+ * economy-api}（设计稿 §八.1 明文允许），不是反过来。
+ *
+ * <p>★ **{@code laborMilli} 的口径（一处容易读错的地方，写清楚）**：它是**本批次承诺投入该主体的劳动**，单位 = 千分劳动·日， 与 {@code
+ * Industry.cycleLaborMilli} 逐日累加的口径**同侧**。本轮创世时它由 {@code EconomySeeder} 从"该池的有效劳动" 算出（该池的年龄性别构成 ×
+ * 各阶层投入率 —— 与该产业当日实际投入**逐值同源**），故"结算的当日劳动取自本表"与改前逐值相同。 ★ 它**不是** {@link
+ * LaborSupply#availableLabor()}（那是**毛容量**）：承诺量 ≤ 容量，这正是 {@code Σ allocated ≤ available}
+ * 那条不变量能成立的原因。
+ *
+ * <p>★ **{@code period} = 发放周期**（世界周期序号，从 1 起）：本轮配额是**常设**的（跨周期不变，见 {@code EconomySettlement}
+ * 的取用口径），故它现在由**构造期守卫**读（"该批次的供给记录必须与它同期"，见 {@code EconomyData}）；将来有了"按周期重发配额" 的命令，再按 {@code
+ * (group, period)} 分桶判上限（设计稿 §四原文："同一 group 在同一 period 内所有 allocation 之和不得超上限"）。
+ *
+ * <p>★ **不变量（构造期判）**：{@code id}/{@code group}/{@code actor} 非 null；{@code activity} 非空白； {@code
+ * laborMilli ≥ 0}（0 = 空配额，合法：见 {@code PopulationGroup.count} 的同款理由）；{@code period ≥ 0}。
+ *
+ * @param id 稳定身份（由产出方给短名；不含 {@code "."}，见 {@link LaborAllocationId}）
+ * @param group 出劳动的人口批次（**人口的真值源在 social**；本类型只持它的稳定身份）
+ * @param actor 收劳动的经济主体（本轮 = 产业 {@code farm@q_r} / {@code craft@q_r}，或家户）
+ * @param activity 这笔劳动**干什么**（调用方的词，本层不解释：{@code farm} / {@code craft} / {@code weaving}…） ★
+ *     **本轮没有消费方读它**：结算按 {@code actor} 归集、读口也按 {@code actor} 合计 —— 这一维是设计稿 §四 钉死的**形状** （R3 的"耕作 /
+ *     织布"才用它区分同一主体的不同活动），故**如实记下"暂时没人读"**，不假装它在用（本仓禁的从来不是"值暂时无用"， 而是"**看起来在记、其实永远不被读**却没人说"）。
+ * @param laborMilli 承诺投入的劳动（千分劳动·日）；不得为负
+ * @param period 发放周期（世界周期序号）；不得为负
+ */
+public record LaborAllocation(
+    LaborAllocationId id,
+    PeopleLotId group,
+    ActorRef actor,
+    String activity,
+    long laborMilli,
+    long period) {
+
+  public LaborAllocation {
+    if (id == null) {
+      throw new IllegalArgumentException("LaborAllocation.id 不得为 null");
+    }
+    if (group == null) {
+      throw new IllegalArgumentException("LaborAllocation.group 不得为 null");
+    }
+    if (actor == null) {
+      throw new IllegalArgumentException("LaborAllocation.actor 不得为 null");
+    }
+    if (activity == null || activity.isBlank()) {
+      throw new IllegalArgumentException("LaborAllocation.activity 不得为空白");
+    }
+    if (laborMilli < 0L) {
+      throw new IllegalArgumentException("LaborAllocation.laborMilli 不得为负: " + laborMilli);
+    }
+    if (period < 0L) {
+      throw new IllegalArgumentException("LaborAllocation.period 不得为负: " + period);
+    }
+  }
+}

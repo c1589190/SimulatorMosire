@@ -608,9 +608,13 @@ public final class ToolSupport {
    *
    * <p>★ 参数从 {@code (coord, series, at)} 换成 {@code (data, coord, at)}：R1.5 的视图要读**批次**（年龄/性别/城乡），
    * 而序列只是其中一项（旧账口径的那一项）。"该格没有人口序列 ⇒ 抛"由 {@code ApiViews} 一处判。
+   *
+   * <p>★ **R2 起还要一片 economy**（T0 的口径：{@code population} = 有批次 ⇒ 批次求和 / 无批次 ⇒ 回退旧序列； T4 的 {@code
+   * labor} 块：该格各主体占用劳动 / 可用劳动 / 占用率）——两者都在同一个响应里，故经济切片与 social 一起传进来。
    */
-  public static Map<String, Object> population(SocialData data, HexCoord coord, SimosTimestamp at) {
-    return ApiViews.population(data, coord, at);
+  public static Map<String, Object> population(
+      SocialData data, EconomyData economy, HexCoord coord, SimosTimestamp at) {
+    return ApiViews.population(data, economy, coord, at);
   }
 
   public static GameMap gameMap(SimulationState state) {

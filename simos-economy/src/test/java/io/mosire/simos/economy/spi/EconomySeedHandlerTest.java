@@ -6,9 +6,15 @@ import static org.assertj.core.api.Assertions.entry;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -65,6 +71,22 @@ class EconomySeedHandlerTest {
       PAYLOAD.replace("\"q\":0,\"r\":0", "\"q\":1,\"r\":0").replace("farm@0_0", "farm@1_0");
 
   /**
+   * ★★ **R2：带劳动表的同一份载荷**（一条供给 + 一条配额；配额 250,000 ≤ 可用 290,000）。
+   *
+   * <p>★ 它是"逐格声明"的形态（两张新表都挂在 {@code entries[]} 的那一格下，与 {@code industries} 同款）： 格是命令目标与权限的粒度。
+   */
+  private static final String PAYLOAD_WITH_LABOR =
+      PAYLOAD.replace(
+          "\"goods\":{\"grain\":249000}}]}]}]}",
+          "\"goods\":{\"grain\":249000}}]}],"
+              + "\"laborSupply\":[{\"group\":\"rural:0_0:MALE:1\",\"period\":1,"
+              + "\"grossLaborMilli\":290000,\"servedLaborMilli\":0,\"committedLaborMilli\":0}],"
+              + "\"allocations\":[{\"id\":\"alloc-farm@0_0-rural:0_0:MALE:1\","
+              + "\"group\":\"rural:0_0:MALE:1\","
+              + "\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
+              + "\"activity\":\"farm\",\"laborMilli\":250000,\"period\":1}]}]}");
+
+  /**
    * ★★ `WageFirst`（资本主义工业）在 v1 没有结算实现 ⇒ 必须**播种期**拒（v2 spec §八.4）。
    *
    * <p>判别力：v1 允许它入库，直到某个收获日才在 `EconomySettlement.harvest` 里抛 `UnsupportedOperationException` ——
@@ -92,6 +114,123 @@ class EconomySeedHandlerTest {
   @Test
   void typeIsEconomySeed() {
     assertThat(HANDLER.type()).isEqualTo("economy.Seed");
+  }
+
+  // ── R2：劳动供给与配额（第三阶段设计稿 §四）────────────────────────────────────────
+
+  /** ★ 正例：两张新表**逐值**落盘（供给的毛额/两项扣除、配额的 actor/活动/量/周期）。 */
+  @Test
+  void seedsLaborSupplyAndAllocationsValueForValue() {
+    EconomyData after = apply(PAYLOAD_WITH_LABOR, EconomyData.empty(), T7);
+
+    PeopleLotId lot = new PeopleLotId("rural:0_0:MALE:1");
+    assertThat(after.laborSupply()).containsOnlyKeys(lot);
+    LaborSupply supply = after.laborSupply().get(lot);
+    assertThat(supply.period()).as("创世 = 第 1 周期").isEqualTo(1L);
+    assertThat(supply.grossLaborMilli()).isEqualTo(290_000L);
+    assertThat(supply.servedLaborMilli()).as("本轮恒 0，但字段在").isZero();
+    assertThat(supply.committedLaborMilli()).isZero();
+    assertThat(supply.availableLabor()).as("毛额 − 已服役 − 已承诺").isEqualTo(290_000L);
+
+    assertThat(after.allocations()).hasSize(1);
+    LaborAllocation allocation =
+        after.allocations().get(new LaborAllocationId("alloc-farm@0_0-rural:0_0:MALE:1"));
+    assertThat(allocation.group()).isEqualTo(lot);
+    assertThat(allocation.actor()).isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
+    assertThat(allocation.activity()).isEqualTo("farm");
+    assertThat(allocation.laborMilli()).isEqualTo(250_000L);
+    assertThat(allocation.period()).isEqualTo(1L);
+  }
+
+  /**
+   * ★ **旧载荷（没有这两张表）照旧能播**：缺省 = 空表（与 {@code classes} 同款）。
+   *
+   * <p>★ 这不是"静默兜底"：没有配额的产业当日劳动为 0 —— 那是新口径的直接后果（劳动是**分配**来的）， 而真档路径由 {@code EconomySeeder}
+   * 恒给全（{@code EconomySeederTest} 逐格钉住它的载荷里有非空配额）。
+   */
+  @Test
+  void legacyPayloadWithoutLaborTablesSeedsEmptyOnes() {
+    EconomyData after = apply(PAYLOAD, EconomyData.empty(), T7);
+
+    assertThat(after.industries()).as("产业照旧落盘").hasSize(1);
+    assertThat(after.laborSupply()).isEmpty();
+    assertThat(after.allocations()).isEmpty();
+  }
+
+  /** ★ **没有供给的配额 ⇒ 命令边界拒**（没有供给的配额没有上限 —— 那等于把不变量留成后门）。 */
+  @Test
+  void rejectsAQuotaWithoutItsSupply() {
+    String payload =
+        PAYLOAD_WITH_LABOR.replace(
+            "\"laborSupply\":[{\"group\":\"rural:0_0:MALE:1\",\"period\":1,"
+                + "\"grossLaborMilli\":290000,\"servedLaborMilli\":0,\"committedLaborMilli\":0}],",
+            "\"laborSupply\":[],");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("拒因点名那条配额与那个批次")
+        .contains("没有劳动供给记录")
+        .contains("rural:0_0:MALE:1");
+  }
+
+  /** ★ **配额之和超过可用劳动 ⇒ 命令边界拒**（"同一批人的劳动不得被两个产业各算一次满额"）。 */
+  @Test
+  void rejectsAQuotaThatExceedsTheAvailableLabor() {
+    String payload = PAYLOAD_WITH_LABOR.replace("\"laborMilli\":250000", "\"laborMilli\":290001");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("超过其可用劳动");
+  }
+
+  /** ★ **词表外的 actor 种类 ⇒ 命令边界拒**（并列出合法值：静默收下会让"写错主体种类"变成运行时幽灵）。 */
+  @Test
+  void rejectsAnActorKindOutsideTheVocabulary() {
+    String payload = PAYLOAD_WITH_LABOR.replace("\"kind\":\"ESTATE\"", "\"kind\":\"MANOR\"");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("拒因列出词表")
+        .contains("未知 ActorKind")
+        .contains("ESTATE");
+  }
+
+  /** ★ actor 的 id 不是已存在的产业 ⇒ 构造期拒（拼错产业 id 会让当日劳动静默变 0）。 */
+  @Test
+  void rejectsAnActorThatIsNotAnExistingIndustry() {
+    String payload = PAYLOAD_WITH_LABOR.replace("\"id\":\"farm@0_0\"}", "\"id\":\"farm@0_1\"}");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("对应关系不成立");
+  }
+
+  /** ★ 追加第二国时，两张新表**按格一并追加**（与产业/阶层行同一套判重口径）。 */
+  @Test
+  void appendsTheLaterNationsLaborTables() {
+    EconomyData first = apply(PAYLOAD_WITH_LABOR, EconomyData.empty(), T7);
+    String later =
+        PAYLOAD_WITH_LABOR
+            .replace("\"q\":0,\"r\":0", "\"q\":1,\"r\":0")
+            .replace("farm@0_0", "farm@1_0")
+            .replace("rural:0_0:MALE:1", "rural:1_0:MALE:1")
+            .replace("alloc-farm@0_0-", "alloc-farm@1_0-");
+
+    EconomyData both = apply(later, first, SimosTimestamp.of(9));
+
+    assertThat(both.allocations()).as("两国的配额都在").hasSize(2);
+    assertThat(both.laborSupply()).as("两国的供给都在").hasSize(2);
+    assertThat(both.industries()).hasSize(2);
   }
 
   /** 正例：与 §3 的 record 字段**逐值**对应（元信息 / 产业 / 阶层行）。 */

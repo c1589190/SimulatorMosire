@@ -2,10 +2,16 @@ package io.mosire.simos.app.world;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -119,25 +125,39 @@ public final class EconomyTestWorld {
   public static EconomyData data() {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
+    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     // (0,0) 平原 1000 人 / (1,0) 低丘 500 人 / (2,0) 只有城市 300 人。
-    farm(industries, classes, 0, 0, 1000L, PLAINS_LAND_MILLI_MU, Stock.NORMAL);
-    farm(industries, classes, 1, 0, 500L, HILLS_LAND_MILLI_MU, Stock.NORMAL);
-    farm(industries, classes, 2, 0, 0L, PLAINS_LAND_MILLI_MU, Stock.NORMAL);
-    craft(industries, classes, 2, 0, 300L);
+    farm(industries, classes, supply, allocations, 0, 0, 1000L, PLAINS_LAND_MILLI_MU, Stock.NORMAL);
+    farm(industries, classes, supply, allocations, 1, 0, 500L, HILLS_LAND_MILLI_MU, Stock.NORMAL);
+    farm(industries, classes, supply, allocations, 2, 0, 0L, PLAINS_LAND_MILLI_MU, Stock.NORMAL);
+    craft(industries, classes, supply, allocations, 2, 0, 300L);
     // (3,0) 有粮可借 / (4,0) 无粮可借。
     farm(
         industries,
         classes,
+        supply,
+        allocations,
         3,
         0,
         LENDER_HEX_POPULATION,
         PLAINS_LAND_MILLI_MU,
         Stock.LANDLORD_ZERO_RICH_SURPLUS);
-    farm(industries, classes, 4, 0, 1000L, PLAINS_LAND_MILLI_MU, Stock.LANDLORD_ZERO_OTHERS_EXACT);
+    farm(
+        industries,
+        classes,
+        supply,
+        allocations,
+        4,
+        0,
+        1000L,
+        PLAINS_LAND_MILLI_MU,
+        Stock.LANDLORD_ZERO_OTHERS_EXACT);
     EconomyMeta meta =
         new EconomyMeta(
             MAP_ID, 0L, OptionalLong.empty(), EconomySeeder.RULES_VERSION, Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    return new EconomyData(
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), supply, allocations);
   }
 
   /** 初始库存口径（毫粮）：普通行 = 按阶层天数（贫 30/中 60/富 120/地 250）；两种缺口形态见枚举。 */
@@ -152,6 +172,8 @@ public final class EconomyTestWorld {
   private static void farm(
       Map<IndustryId, Industry> industries,
       Map<ClassKey, ClassRow> classes,
+      Map<PeopleLotId, LaborSupply> supply,
+      Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
       int r,
       long population,
@@ -165,12 +187,15 @@ public final class EconomyTestWorld {
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
       addRow(classes, id, i, people[i], Map.of(AssetKind.LAND, land[i]), stock);
     }
+    addLabor(supply, allocations, id, ActorKind.ESTATE, EconomySeeder.FARM, people, population);
   }
 
   /** 手工业（城市格追加，§十）：不占地 ⇒ 劳动瓶颈下实际投入亩 = 0（v1 不产出，如实记在报告里）。 */
   private static void craft(
       Map<IndustryId, Industry> industries,
       Map<ClassKey, ClassRow> classes,
+      Map<PeopleLotId, LaborSupply> supply,
+      Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
       int r,
       long population) {
@@ -182,6 +207,59 @@ public final class EconomyTestWorld {
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
       addRow(classes, id, i, people[i], Map.of(), Stock.NORMAL);
     }
+    addLabor(supply, allocations, id, ActorKind.WORKSHOP, EconomySeeder.CRAFT, people, population);
+  }
+
+  /**
+   * ★★ **R2：给一格的产业发配额 + 给它的批次发供给**（本夹具没有真的批次 ⇒ 批次 id 按真档的命名约定**合成**一条， 见 {@code PopulationLots}
+   * 的拼法）。
+   *
+   * <p>★★ **配额量必须逐值等于改口径前的当日劳动**：{@code Σ_i 行劳动_i × 投入率_i ÷ 1000}，其中行劳动 = {@code people[i] × 池毛劳动 ÷
+   * 池人数} —— 那正是 {@link EconomySeeder#industryDailyLabor(long[], long, long)}（**同一个算式**，本类不另写一套）。
+   * 不这么算，本类的端到端字面量（收获、瓶颈、库存）会全变。
+   *
+   * <p>★ 供给的**毛额**取该格该池的毛劳动（= {@code 人口 × 580‰}，与行的口径同源）⇒ 配额 ≤ 毛额恒成立 （{@code Σ 投入率} 那一路只会让它变小）。
+   */
+  private static void addLabor(
+      Map<PeopleLotId, LaborSupply> supply,
+      Map<LaborAllocationId, LaborAllocation> allocations,
+      IndustryId industry,
+      ActorKind kind,
+      String activity,
+      long[] people,
+      long population) {
+    long grossLabor = EconomySeeder.laborMilli(population);
+    if (grossLabor <= 0L) {
+      return; // 零人口的格（(2,0) 的农业）：没有可支配劳动 ⇒ 不发供给也不发配额
+    }
+    long daily = EconomySeeder.industryDailyLabor(people, grossLabor, population);
+    if (daily <= 0L) {
+      return;
+    }
+    PeopleLotId lot = syntheticLot(industry);
+    supply.put(lot, new LaborSupply(lot, EconomySeeder.FIRST_PERIOD, grossLabor, 0L, 0L));
+    allocations.put(
+        allocationId(industry),
+        new LaborAllocation(
+            allocationId(industry),
+            lot,
+            new ActorRef(kind, industry.value()),
+            activity,
+            daily,
+            EconomySeeder.FIRST_PERIOD));
+  }
+
+  /** 合成批次 id：与真档的命名约定同形（{@code rural:<q>_<r>:MALE:1} / {@code urban:c-<q>_<r>:FEMALE:1}）。 */
+  private static PeopleLotId syntheticLot(IndustryId industry) {
+    String hex = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
+    return new PeopleLotId(
+        industry.value().startsWith(EconomySeeder.FARM)
+            ? "rural:" + hex + ":MALE:1"
+            : "urban:c-" + hex + ":FEMALE:1");
+  }
+
+  private static LaborAllocationId allocationId(IndustryId industry) {
+    return new LaborAllocationId("alloc-" + industry.value() + "-testworld");
   }
 
   private static void addRow(

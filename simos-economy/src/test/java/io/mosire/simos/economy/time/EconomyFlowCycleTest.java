@@ -3,9 +3,15 @@ package io.mosire.simos.economy.time;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -58,6 +64,14 @@ class EconomyFlowCycleTest {
 
   /** 一行的缸（毫粮）：够 240 天口粮（2,000,000）还剩得多 ⇒ 本文件里"缺口/饿死"都不是变量。 */
   private static final long JAR = 3_000_000L;
+
+  /** ★ R2 的夹具：本文件的配额都挂在同一个批次上（一格一批人 ⇒ 供给一条、配额一条）。 */
+  private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  private static final LaborAllocationId ALLOCATION = new LaborAllocationId("alloc-0-farm@0_0");
+
+  /** ★ 创世配额的发放周期（与 {@code EconomySeeder.FIRST_PERIOD} 同值：周期序号从 1 起）。 */
+  private static final long FIRST_PERIOD = 1L;
 
   /** 一整个周期的毛产（毫粮）= 实际投入亩 × 亩产 × 1000（单行 ⇒ 流水所得 = 毛产）。 */
   private static final long CYCLE_GROSS =
@@ -233,6 +247,24 @@ class EconomyFlowCycleTest {
     classes.put(PEASANT_KEY, row);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    // ★★ R2：当日劳动取自**配额表**（不再从"行 laborMilli × 投入率"算）⇒ 夹具必须发一条 = 该日劳动的配额。
+    //   本文件的瓶颈是**土地**（300 亩 < 劳动可经营 406 亩），但劳动为 0 会把劳动瓶颈压到 0 亩 ⇒
+    //   cycledLabor 一起变 0、收获恒 0 ⇒ 本文件的字面量（CYCLE_GROSS 那一族）全变。
+    return new EconomyData(
+        Optional.of(meta),
+        industries,
+        classes,
+        Map.of(),
+        Map.of(),
+        Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, LABOR_MILLI, 0L, 0L)),
+        Map.of(
+            ALLOCATION,
+            new LaborAllocation(
+                ALLOCATION,
+                LOT,
+                new ActorRef(ActorKind.ESTATE, FARM.value()),
+                "farm",
+                LABOR_MILLI,
+                FIRST_PERIOD)));
   }
 }

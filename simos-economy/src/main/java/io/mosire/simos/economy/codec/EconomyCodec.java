@@ -10,6 +10,8 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -23,12 +25,13 @@ import java.util.function.Function;
 /**
  * economy 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code LedgerCodec} 同制，理由不重复——只记 economy 自己的那点差异。
  *
- * <p>★ 树里的自定义键有四个：{@code IndustryId}（{@code industries} 的键）、{@code ClassKey}（{@code classes}/{@code
+ * <p>★ 树里的自定义键有六个：{@code IndustryId}（{@code industries} 的键）、{@code ClassKey}（{@code classes}/{@code
  * flows} 的键）、{@code DebtId}（{@code debts} 的键）与 {@code CommodityId}（{@code Industry.outputPerUnit} /
  * {@code ClassRow.goods} / {@code naturalNeeds} / {@code effectiveDemand} / {@code
- * FlowRow.consumed} / {@code AllocationRule.WageFirst.ownerResidual} 的键）。四者都住在 {@code
- * simos-economy-api}（{@code ClassKey} 住本模块的 {@code model}），economy 依赖它故够得着（铁律 3 允许）。键反序列化器照裁定 16
- * 在**本模块** 注册，不进共享基座。
+ * FlowRow.consumed} / {@code AllocationRule.WageFirst.ownerResidual} 的键），以及 **R2 的两个**：{@code
+ * PeopleLotId} （{@code laborSupply} 的键）与 {@code LaborAllocationId}（{@code allocations} 的键）。六者都住在
+ * {@code simos-economy-api}（{@code ClassKey} 住本模块的 {@code model}），economy 依赖它故够得着（铁律 3
+ * 允许）。键反序列化器照裁定 16 在**本模块** 注册，不进共享基座。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code meansOfProduction}）走 Jackson
  * **默认的枚举键** 绑定（按 {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse}
@@ -69,6 +72,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(ClassKey.class, keyDeserializer(ClassKey::parse));
     module.addKeyDeserializer(DebtId.class, keyDeserializer(DebtId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
+    // ★ R2 起是两张新表的键：laborSupply（PeopleLotId → LaborSupply）与 allocations（LaborAllocationId
+    //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
+    module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
+    module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
     return module;
   }
 

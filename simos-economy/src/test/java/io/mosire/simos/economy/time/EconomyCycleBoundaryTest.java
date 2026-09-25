@@ -3,9 +3,15 @@ package io.mosire.simos.economy.time;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -42,6 +48,14 @@ class EconomyCycleBoundaryTest {
   private static final long LAND_MILLI_MU = 3_100_000L; // 3,100 亩（千分亩）
   private static final long GRAIN_PER_MU = 67L;
 
+  /** ★ R2 的夹具：一格一批人 ⇒ 供给一条、配额一条（{@link #fullCycleFixture} 与 {@link #zeroPopulationFixture} 共用）。 */
+  private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  private static final LaborAllocationId ALLOCATION = new LaborAllocationId("alloc-0-farm@0_0");
+
+  /** ★ 创世配额的发放周期（与 {@code EconomySeeder.FIRST_PERIOD} 同值：周期序号从 1 起）。 */
+  private static final long FIRST_PERIOD = 1L;
+
   /** 夹具：一个"周期已满"的产业（{@code progressDays == cycleDays}），一行 100 人， 周期累计劳动已按整周期记满（供收获算平均日劳动）。 */
   private static EconomyData fullCycleFixture() {
     long dailyLabor = 58_000L * 950L / 1000L; // 有效劳动 58,000 千分劳动 × 投入率 950‰
@@ -77,7 +91,20 @@ class EconomyCycleBoundaryTest {
         Map.of(FARM, farm),
         Map.of(PEASANT_KEY, row),
         Map.of(),
-        Map.of());
+        Map.of(),
+        // ★★ R2：当日劳动**取自配额表**（不再从"行 laborMilli × 投入率"算）⇒ 夹具必须发一条 = 该日劳动的配额，
+        //   否则 {@code cycledLabor} 为 0 ⇒ 劳动瓶颈算出 0 亩 ⇒ 本文件全部字面量（388 亩那条链）一起变。
+        //   ★ 58,000 是**毛额**（供给的上限），55,100 是**这条配额承诺投入的量**（= 58,000 × 950‰）。
+        Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, 58_000L, 0L, 0L)),
+        Map.of(
+            ALLOCATION,
+            new LaborAllocation(
+                ALLOCATION,
+                LOT,
+                new ActorRef(ActorKind.ESTATE, FARM.value()),
+                "farm",
+                dailyLabor,
+                FIRST_PERIOD)));
   }
 
   @Test
@@ -151,6 +178,9 @@ class EconomyCycleBoundaryTest {
    * <p>★ 为什么必须连 {@code cycleLaborMilli}（周期累计劳动）一起清零：**它才是"本周期实际投了多少劳动" 的权威记录**（挂在产业上的累加器），行里的
    * {@code laborMilli} 只喂"当日增量"。 只清行不清累加器 ⇒ 已记为投下的劳动不会被抹掉，照样有产出 —— 那是**正确行为**，不是 bug
    * （本用例第一版就踩了这个前提：期望"无人口 ⇒ 不产粮"，实测产了 31,925,750 毫粮）。
+   *
+   * <p>★★ **R2 起还要清掉配额与供给**（同一条教训换了机制）：当日劳动现在取自**配额表**，故"把行清空、却留着配额"照样有产出 ——
+   * 本条要显式造出的正是这个形态：得清**三处**（行、周期累加器、配额），少一处就测不出"无人口 ⇒ 不产粮"。
    */
   private static EconomyData zeroPopulationFixture() {
     EconomyData base = fullCycleFixture();
@@ -186,6 +216,11 @@ class EconomyCycleBoundaryTest {
                     row.money(),
                     row.debts(),
                     row.naturalNeeds(),
-                    row.effectiveDemand())));
+                    row.effectiveDemand())))
+        // ★ R2：第三处 —— 配额与供给一起清空（见方法注释：三者少一个，"无人口 ⇒ 不产粮"就测不出来）。
+        //   ★ **次序有讲究**：先清配额再清供给 —— 反过来会在中间态造出"有配额、没供给"的非法状态，
+        //     构造期守卫当场抛（那条守卫是**对的**：没有供给的配额没有上限）。
+        .withAllocations(Map.of())
+        .withLaborSupply(Map.of());
   }
 }

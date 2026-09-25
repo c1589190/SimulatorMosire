@@ -6,12 +6,17 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.PopulationSource;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
+import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -117,6 +122,70 @@ public record SocialData(
   }
 
   // ── 派生量（★ 一律现算，别找地方存 —— 见类注）────────────────────────────────────────
+
+  /**
+   * ★★ **该格有没有批次**（R2 的 T0：读口口径的判据）：不是"人数是否为 0" —— 创世给**零人口的格**也落 {@code count=0} 的批次 （见 {@code
+   * PopulationSeeder} 的类注），那是"有批次、且为 0"，读口该报 {@code 0} 而**不是**回退旧序列。
+   *
+   * <p>★ 于是本方法判的是"这一格的人口账**归哪一套**"：有批次 ⇒ 批次是唯一真值源；没有 ⇒ 只剩旧序列（随包 bootstrap 世界 {@code
+   * worlds/v17levant.json} 与升级前落盘的每条 revision 就是这一形态）。
+   */
+  public boolean hasGroupsAt(HexCoord residence) {
+    if (residence == null) {
+      throw new IllegalArgumentException("residence 不得为 null");
+    }
+    for (PopulationGroup group : groups.values()) {
+      if (residence.equals(group.residence())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 该格的批次（保序：与 {@link #groups()} 的插入序同序 —— 创世落盘序是确定性的）。 */
+  public List<PopulationGroup> groupsAt(HexCoord residence) {
+    if (residence == null) {
+      throw new IllegalArgumentException("residence 不得为 null");
+    }
+    List<PopulationGroup> out = new ArrayList<>();
+    for (PopulationGroup group : groups.values()) {
+      if (residence.equals(group.residence())) {
+        out.add(group);
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * ★★ **该格人口的读口口径**（R2 的 T0，控制器已裁定）：**有批次 ⇒ 批次求和（真值源）；无批次 ⇒ 回退旧序列**。
+   *
+   * <p>★★ **为什么不是"一律用批次"**：批次是设计稿 §二 定的真值源，但随包的 bootstrap 世界（{@code
+   * worlds/v17levant.json}）**只有旧序列** —— 一律读批次会让"世界还没初始化"看起来像"这一格没人"（0 与"没有数据"在界面上长得一模一样）。
+   * 故回退是**口径的一部分**，而"用的是哪一个"必须**读得出来**（{@link PopulationHeadline#source()}）—— 否则两个口径的数字共用一个名字，正是
+   * R1.5 留下的"同一资源两个形状"。
+   *
+   * <p>★ **唯一拼写点**：GUI 的 {@code GET /api/social/population}、MCP 的 {@code simos.social.population} 与
+   * {@code PopulationFacet}（{@code /api/facets}）都调本方法 —— 四张面孔一个口径（R1.5 的教训：facet 仍报农村序列）。
+   *
+   * @param series 该格的农村人口序列（**回退**时读它）；不得为 null
+   * @param at 回退时的取值时刻
+   */
+  public PopulationHeadline headlinePopulationAt(
+      HexCoord residence, PopulationSeries series, SimosTimestamp at) {
+    if (residence == null) {
+      throw new IllegalArgumentException("residence 不得为 null");
+    }
+    if (series == null) {
+      throw new IllegalArgumentException("series 不得为 null（回退旧序列时要读它）");
+    }
+    if (at == null) {
+      throw new IllegalArgumentException("at 不得为 null");
+    }
+    if (hasGroupsAt(residence)) {
+      return new PopulationHeadline(populationAt(residence), PopulationSource.BATCHES);
+    }
+    return new PopulationHeadline(series.valueAt(at), PopulationSource.LEGACY_SERIES);
+  }
 
   /**
    * 该格的**人口总量**（现算）：Σ 落在该格的各 {@link PopulationGroup} 的 {@code count}（农村 + 城镇）。

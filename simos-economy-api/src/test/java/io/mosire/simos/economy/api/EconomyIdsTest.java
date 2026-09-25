@@ -16,6 +16,7 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.EconomicRuleId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketId;
 import io.mosire.simos.economy.api.id.OrderId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -69,11 +70,13 @@ class EconomyIdsTest {
           new IdKind("IndustryId", IndustryId::new, IndustryId::parse),
           new IdKind("ClassSlotId", ClassSlotId::new, ClassSlotId::parse),
           new IdKind("RegimeId", RegimeId::new, RegimeId::parse),
-          new IdKind("DebtId", DebtId::new, DebtId::parse));
+          new IdKind("DebtId", DebtId::new, DebtId::parse),
+          // ★ R2：劳动分配表的主键（第三阶段设计稿 §四）。
+          new IdKind("LaborAllocationId", LaborAllocationId::new, LaborAllocationId::parse));
 
   @Test
   void everyIdCoversTheThreePieceContract() {
-    assertThat(IDS).as("清单必须覆盖全部 20 个 ID（漏一个 = 那一类没有护栏）").hasSize(20);
+    assertThat(IDS).as("清单必须覆盖全部 21 个 ID（漏一个 = 那一类没有护栏）").hasSize(21);
 
     for (IdKind id : IDS) {
       String what = id.name();
@@ -111,12 +114,25 @@ class EconomyIdsTest {
     }
   }
 
+  /**
+   * ★★ **逐值断言**（R2 由四档扩到七档）：扩枚举是 {@code LaborAllocation.actor} 选了 {@code ActorRef} 的代价 （第三阶段设计稿
+   * §八.1 明写"要扩枚举 + 同步改 {@code EconomyIdsTest} 的逐值断言"），故本条就是那份"连带改"。
+   *
+   * <p>★ 前四档的**次序与拼写一字不动**（它们已进过 JSON：{@code LedgerCodec} 写 {@code kind} 用 {@code name()}）；
+   * 新增三档追加在**末尾**，理由同上——插在中间会让"词表位置"这种没进线格式的东西产生 diff 噪声。
+   */
   @Test
-  void actorKindCoversTheFourDocumentedKinds() {
+  void actorKindCoversTheSevenDocumentedKinds() {
     assertThat(ActorKind.values())
-        .as("设计稿 §2/§4/§5/§7 的四类主体：人口批次、单位、政府、组织者")
+        .as("设计稿 §2/§4/§5/§7 的四类主体 + R2 的生产关系三类（家户/庄园/作坊）")
         .containsExactly(
-            ActorKind.PEOPLE_LOT, ActorKind.UNIT, ActorKind.GOVERNMENT, ActorKind.ORGANIZATION);
+            ActorKind.PEOPLE_LOT,
+            ActorKind.UNIT,
+            ActorKind.GOVERNMENT,
+            ActorKind.ORGANIZATION,
+            ActorKind.HOUSEHOLD,
+            ActorKind.ESTATE,
+            ActorKind.WORKSHOP);
   }
 
   @Test
@@ -127,7 +143,10 @@ class EconomyIdsTest {
         .hasMessageContaining("PEOPLE_LOT")
         .hasMessageContaining("UNIT")
         .hasMessageContaining("GOVERNMENT")
-        .hasMessageContaining("ORGANIZATION");
+        .hasMessageContaining("ORGANIZATION")
+        .hasMessageContaining("HOUSEHOLD")
+        .hasMessageContaining("ESTATE")
+        .hasMessageContaining("WORKSHOP");
 
     assertThatThrownBy(() -> ActorKind.parse(null))
         .as("null 种类即抛")

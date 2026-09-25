@@ -3,10 +3,16 @@ package io.mosire.simos.economy.time;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -38,6 +44,11 @@ class EconomySettlementTest {
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
   private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+
+  /** ★ R2 的夹具：本文件的配额都挂在同一个批次上（一格一批人 ⇒ 供给一条、配额一条）。 */
+  private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  private static final LaborAllocationId ALLOCATION = new LaborAllocationId("alloc-0-farm@0_0");
 
   private static final long PEASANT_POPULATION = 100L;
   private static final long LANDLORD_POPULATION = 10L;
@@ -368,7 +379,33 @@ class EconomySettlementTest {
     classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0, 300L, 8_300L));
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    // ★★ R2：当日劳动的来源是配额表（见 {@link #famineFixture} 的同款注释）。本夹具的当日劳动 = 贫农 58,000（投入率
+    //   1000‰）+ 地主 0（投入率 0‰）= 58,000 ⇒ 发一条 58,000 的配额，逐值不变。
+    return new EconomyData(
+        Optional.of(meta),
+        industries,
+        classes,
+        Map.of(),
+        Map.of(),
+        Map.of(LOT, supply(LOT, 58_000L)),
+        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)));
+  }
+
+  /**
+   * 一条劳动供给（R2 的夹具）：毛额 = {@code grossLaborMilli}，两项扣除 0 ⇒ 可用劳动 = 毛额。
+   *
+   * <p>★ 第 1 周期（{@code period = 1}）：创世的正在进行的周期恒为 {@code lastClosedCycle(空) + 1 = 1}，
+   * 且配额与供给**必须同期**（{@code EconomyData} 的构造期守卫按月判）。
+   */
+  static LaborSupply supply(PeopleLotId group, long grossLaborMilli) {
+    return new LaborSupply(group, 1L, grossLaborMilli, 0L, 0L);
+  }
+
+  /** 一条劳动配额（R2 的夹具）：{@code laborMilli} 归 {@code actor}（= 产业 id），活动名同产业种类。 */
+  static LaborAllocation allocation(
+      LaborAllocationId id, PeopleLotId group, IndustryId industry, long laborMilli) {
+    return new LaborAllocation(
+        id, group, new ActorRef(ActorKind.ESTATE, industry.value()), "farm", laborMilli, 1L);
   }
 
   private static ClassRow row(
@@ -425,7 +462,17 @@ class EconomySettlementTest {
     classes.put(PEASANT_KEY, row);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    // ★★ R2：**当日劳动的来源是配额表**（不再是"行 laborMilli × 投入率"）⇒ 本夹具必须发一条配额，
+    //   否则"当日劳动 = 58,000"那条断言会读成 0（那是**新口径的直接后果**，不是兜底可修的东西）。
+    //   ★ 配额量 = 58,000 = 贫农 100 人 × 580‰ × 投入率 1000‰ + 地主 10 人的投入率 0‰（见 fixture 的两个槽位）。
+    return new EconomyData(
+        Optional.of(meta),
+        industries,
+        classes,
+        Map.of(),
+        Map.of(),
+        Map.of(LOT, supply(LOT, 58_000L)),
+        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)));
   }
 
   private static long grainOf(EconomyData data, ClassKey key) {

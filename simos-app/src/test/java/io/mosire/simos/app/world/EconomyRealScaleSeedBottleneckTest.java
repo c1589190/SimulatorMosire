@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -26,6 +29,7 @@ import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,6 +100,75 @@ class EconomyRealScaleSeedBottleneckTest {
 
   private static long rowLandMu(ClassRow row) {
     return row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L;
+  }
+
+  // ── ①′ R2：真档规模上"行"与"配额"逐值对拍（改口径不改数）────────────────────────────
+
+  /**
+   * ★★ **R2（T3）：真档规模上，产业当日的劳动 = 该产业配额之和 == 各行折算出的日劳动**。
+   *
+   * <pre>
+   * Σ 配额   = 播种器发的那些 LaborAllocation 的 laborMilli 之和
+   * Σ 行折算 = Σ_i 行 laborMilli_i × 槽位投入率_i ÷ 1000     （**改口径前的当日劳动**）
+   * 结算后    = Industry.cycleLaborMilli（第 1 天）
+   * </pre>
+   *
+   * <p>★★ **它是"真档数字一个都不变"最直接的一条判据**：三处逐值相等 ⇒ 收获的劳动瓶颈、平均日劳动、投入面积全都不动 （本文件其余关于种子瓶颈的字面量也因此站得住）。★
+   * 判别力：三者中任何一处改口径而另两处没跟上，本条当场红。
+   */
+  @Test
+  void theRealScaleQuotasEqualTheRowsAndTheSettledDailyLabor() {
+    EconomyData seeded = realScaleHex();
+    IndustryId farm = IndustryHexKeys.id(EconomySeeder.FARM, 0, 0);
+
+    long quotaSum = 0L;
+    for (LaborAllocation allocation : seeded.allocations().values()) {
+      assertThat(allocation.actor().id()).as("真档的配额都归那个农业产业").isEqualTo(farm.value());
+      quotaSum += allocation.laborMilli();
+    }
+    long rowSum = 0L;
+    for (ClassRow row : farmRows(seeded)) {
+      rowSum += row.laborMilli() * row.participationPerMille() / 1000L;
+    }
+    assertThat(quotaSum).as("① 配额之和 == ② 各行折算的日劳动（改口径不改数）").isEqualTo(rowSum);
+
+    EconomyData afterOneDay = EconomySettlement.settle(seeded, 0L, 1L);
+    assertThat(afterOneDay.industries().get(farm).cycleLaborMilli())
+        .as("③ 结算第 1 天累加的就是这个数（劳动投入取自配额表）")
+        .isEqualTo(quotaSum);
+  }
+
+  /**
+   * ★ **每条配额都在它的批次可支配劳动的范围内**（真档规模上的守恒；{@code Σ ≤ available} 逐组成立）。
+   *
+   * <p>★ 判别力：播种器若把同一批人的劳动同时算给两个产业（或忘了按毛额折算），本条的 {@code ≤} 会红。
+   */
+  @Test
+  void everyRealScaleQuotaStaysWithinItsBatch() {
+    EconomyData seeded = realScaleHex();
+
+    Map<PeopleLotId, Long> allocated = new HashMap<>();
+    for (LaborAllocation allocation : seeded.allocations().values()) {
+      allocated.merge(allocation.group(), allocation.laborMilli(), Long::sum);
+    }
+    assertThat(allocated).as("有配额 ⇒ 必有供给").isNotEmpty();
+    for (Map.Entry<PeopleLotId, Long> entry : allocated.entrySet()) {
+      LaborSupply supply = seeded.laborSupply().get(entry.getKey());
+      assertThat(supply).as("批次 %s 必须有供给记录", entry.getKey()).isNotNull();
+      assertThat(entry.getValue())
+          .as("批次 %s：Σ 配额 ≤ 可用劳动", entry.getKey())
+          .isLessThanOrEqualTo(supply.availableLabor());
+      assertThat(allocationPeriod(seeded, entry.getKey())).as("配额与供给同期").isEqualTo(supply.period());
+    }
+  }
+
+  private static long allocationPeriod(EconomyData data, PeopleLotId group) {
+    for (LaborAllocation allocation : data.allocations().values()) {
+      if (allocation.group().equals(group)) {
+        return allocation.period();
+      }
+    }
+    throw new AssertionError("没有配额: " + group);
   }
 
   // ── ① 真档真的配了种子、且真的扣了（满种）────────────────────────────────────────────

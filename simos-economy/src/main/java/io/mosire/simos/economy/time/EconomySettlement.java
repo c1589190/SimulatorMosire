@@ -4,6 +4,8 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -44,8 +46,10 @@ import java.util.Set;
  *       {@link #debtIdOf}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见
  *       {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
- *   <li>**劳动投入**：本产业当日实际劳动 = Σ(行 {@code laborMilli × participationPerMille / 1000}) —— 累加进 {@link
- *       Industry#cycleLaborMilli()}（供收获时算劳动瓶颈）。
+ *   <li>**劳动投入**：本产业当日实际劳动 = **该产业名下全部 {@code LaborAllocation} 的 {@code laborMilli} 之和**（R2
+ *       改口径；改前是"Σ(行 {@code laborMilli × participationPerMille / 1000})"，两者在创世逐值相同）—— 累加进 {@link
+ *       Industry#cycleLaborMilli()}（供收获时算劳动瓶颈）。★ 于是"同一批人的劳动"**只有一处真相**：配额表；而"配额之和 ≤
+ *       该批次的可用劳动"是状态的不变量（{@code EconomyData} 构造期判）。
  * </ol>
  *
  * <p>★★ **周期末追加**（{@code progressDays + 1 == cycleDays} 那一天，同一次日结算里）：
@@ -282,6 +286,8 @@ public final class EconomySettlement {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>(base.industries());
     LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>(base.classes());
     LinkedHashMap<DebtId, Debt> debts = new LinkedHashMap<>(base.debts());
+    // ★ R2：劳动配额表**只读不写**（结算从它求当日劳动，但配额由命令层发）⇒ 不需要工作副本，直接读 base 的。
+    Map<LaborAllocationId, LaborAllocation> allocations = base.allocations();
 
     // 逐行当日发生额（流水的事后组装）。
     LinkedHashMap<ClassKey, Long> consumedGrain = new LinkedHashMap<>();
@@ -309,6 +315,10 @@ public final class EconomySettlement {
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
     boolean anyCycleClosed = false;
     Set<IndustryId> newCycleIndustries = new HashSet<>();
+    // ★★ **R2：当日劳动的唯一来源 = 劳动分配表**（第三阶段设计稿 §四）。按 actor id 归集一次（O(配额条数)），
+    //   再逐产业取用 —— 产业 id 与 actor id 的对应关系由 EconomyData 的构造期守卫判死
+    //   （产业型主体必须指名已存在的产业、非产业型主体不得与产业 id 撞名）。
+    Map<String, Long> laborByActor = laborByActor(allocations);
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
       // ★ 新一轮周期的第一天：progressDays 归 0（创世亦然）⇒ 该产业各行流水**整行从 0 重记**（§八.5）。
@@ -318,11 +328,10 @@ public final class EconomySettlement {
         newCycleIndustries.add(id);
       }
       List<ClassKey> keys = classKeysOf(rows, id);
-      long laborToday = 0L;
-      for (ClassKey key : keys) {
-        ClassRow row = rows.get(key);
-        laborToday += row.laborMilli() * row.participationPerMille() / 1000L;
-      }
+      // ★★ **当日实际劳动取自该产业名下的全部配额**（不再从"本产业各行 laborMilli × participation"独立算）：
+      //   改口径前那两处是同一个数的两种算法（构造性相等、零断言守护）⇒ 同一批人可以被两个产业各算一次满额。
+      //   现在配额之和 ≤ 该批次的可用劳动是**状态的不变量**（EconomyData 构造期判），故"劳动不能凭空重复"成立。
+      long laborToday = laborByActor.getOrDefault(id.value(), 0L);
       long cycledLabor = industry.cycleLaborMilli() + laborToday;
       long progressed = industry.progressDays() + 1L;
       long nextProgress = progressed;
@@ -410,7 +419,15 @@ public final class EconomySettlement {
             lastClosed,
             meta.rulesVersion(),
             meta.migrationSource());
-    return new EconomyData(Optional.of(nextMeta), industries, rows, debts, flows);
+    // ★ R2：劳动供给表与配额表**原样带过**（结算不改它们：配额属命令层，供给属 social 的人口真值源）。
+    return new EconomyData(
+        Optional.of(nextMeta),
+        industries,
+        rows,
+        debts,
+        flows,
+        base.laborSupply(),
+        base.allocations());
   }
 
   // ── 播种（周期的第一天）──────────────────────────────────────────────────────────────
@@ -704,6 +721,12 @@ public final class EconomySettlement {
       ClassRow row = rows.get(keys.get(i));
       rowLand[i] = row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L);
       totalLandMilliMu += rowLand[i];
+      // ★★ **R2 起这两件事分家，写清楚各自的角色**（免得后来者以为其中一个是漏改的旧算法）：
+      //   · `rowLabor`（= 行 laborMilli × 投入率）**只喂分配权重** —— 它回答"本产业的产出在**阶层之间**怎么分"
+      //     （贫农出多少工 vs 地主出多少工），是阶层关系，不是"这个产业投了多少劳动"；
+      //   · 产业**总共**投了多少劳动由 `cycledLabor`（= 劳动分配表的配额之和，见 settleOneDay）承担 —— 它回答
+      //     "劳动瓶颈允许多大耕种面积"。
+      //   创世时两者逐值相等（配额就是按这条链算出来的），故改口径不改数。
       rowLabor[i] = row.laborMilli() * row.participationPerMille() / 1000L;
       totalLabor += rowLabor[i];
     }
@@ -771,6 +794,11 @@ public final class EconomySettlement {
    *
    * <p>★ 不变量：{@code faminePerMille ≤ 1000} 且致死率 {@code ≤ 1000‰} ⇒ {@code deaths ≤
    * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link ClassRow} 再兜一层）。
+   *
+   * <p>★★ **R2 起一处如实记下的不齐**：本节缩的是**行**的 {@code laborMilli}（阶层关系的那一份），而产业的当日劳动自 R2
+   * 起取自**劳动分配表**（配额属于**批次**，批次的人口住在 social）。故"饿死之后劳动同比例缩"这条在**配额侧暂时不生效** —— 配额要跟着缩，得先把死亡回写人口（R4
+   * 的出生/死亡），那时"批次的人数变少 ⇒ 可用劳动变少"才会自然传导。 ★ **可观测性**：默认致死率 {@code 0‰}（本仓默认路径一个都不死）⇒
+   * 这处不齐只在非默认路径（注入致死率的用例）里可见； 端到端与真档数字不受影响。★ 本节的**分配**行为（人口、劳动、死亡数）一个字节都没变 —— 缩的仍是同一行、同一个比例。
    */
   private static void applyFamine(
       LinkedHashMap<ClassKey, ClassRow> rows,
@@ -878,6 +906,28 @@ public final class EconomySettlement {
   }
 
   // ── 分组与排序 ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * ★★ **按 actor id 归集全部劳动配额**（R2；第三阶段设计稿 §四）：{@code actor id → 承诺投入的劳动之和}。
+   *
+   * <p>★ **归属的唯一判据就是 {@code actor.id()}**：产业型主体的 id 就是该产业的 {@link IndustryId}（{@code EconomyData}
+   * 的构造期守卫把这个对应关系判死 —— 产业型（庄园/作坊）必须指名已存在的产业，非产业型（家户）不得与产业 id 撞名）。
+   * 于是"这一格的劳动被哪个产业占了多少"在结算侧**不需要**额外的映射表。
+   *
+   * <p>★ **本轮配额是常设的**（跨周期不变）：{@code LaborAllocation.period()} 是"哪一周期发的"，
+   * 由构造期守卫判它必须与供给记录同期；"按周期重发配额"（设计稿 §四 的"同一 period 内"）要等产生它的命令落地，届时这里改成取当前周期的那些配额。
+   *
+   * <p>★ **非产业型主体（家户）的配额照归集**：它不进任何产业的 {@code cycleLaborMilli}（家户织布是 R3 的配方）， 但**照进守恒与读口** ——
+   * 不是"记了没人看"的字段：它是 {@code Σ allocated ≤ available} 那条不变量的一部分（少算它，家户的配额就成了第二个可凭空重复的来源）。
+   */
+  private static Map<String, Long> laborByActor(
+      Map<LaborAllocationId, LaborAllocation> allocations) {
+    Map<String, Long> byActor = new LinkedHashMap<>();
+    for (LaborAllocation allocation : allocations.values()) {
+      byActor.merge(allocation.actor().id(), allocation.laborMilli(), Long::sum);
+    }
+    return byActor;
+  }
 
   /** 该产业的阶层行键，**按槽位 id 字典序**（可复现；也是最大余数法"同余数按下标序"的那个下标序）。 */
   private static List<ClassKey> classKeysOf(Map<ClassKey, ClassRow> rows, IndustryId id) {

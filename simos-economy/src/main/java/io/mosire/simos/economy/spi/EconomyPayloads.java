@@ -4,11 +4,17 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -43,7 +49,12 @@ import java.util.OptionalLong;
  *      "classes":[{"slot":"peasant","population":450,"laborMilli":261000,
  *                  "participationPerMille":950,"meansOfProduction":{"LAND":450000},
  *                  "goods":{"grain":2241000},"money":0,"debts":[],
- *                  "naturalNeeds":{"grain":37350},"effectiveDemand":{}}]}]}]}
+ *                  "naturalNeeds":{"grain":37350},"effectiveDemand":{}}]}],
+ *    "laborSupply":[{"group":"rural:0_0:MALE:1","period":1,"grossLaborMilli":261000,
+ *                    "servedLaborMilli":0,"committedLaborMilli":0}],
+ *    "allocations":[{"id":"alloc-0-farm@0_0","group":"rural:0_0:MALE:1",
+ *                    "actor":{"kind":"ESTATE","id":"farm@0_0"},"activity":"farm",
+ *                    "laborMilli":261000,"period":1}]}]}
  * }</pre>
  *
  * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世**（带可读中文原因）：形状/类型不对在本层判，**数值语义**（人口/土地/劳动 ≥
@@ -106,6 +117,9 @@ final class EconomyPayloads {
     }
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
+    Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
+    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       requireInt(entry, "q");
@@ -123,10 +137,66 @@ final class EconomyPayloads {
           }
         }
       }
+      // ★ R2：该格各批次的劳动供给（可支配劳动的上限）—— 缺省 ⇒ 空表（与 classes 同款）。
+      //   ★ 空表**不是静默兜底**：没有供给记录的批次就不可能有配额（EconomyData 的构造期守卫按月判），
+      //     而没有配额的产业当日劳动为 0 —— 那是新口径的直接后果（劳动是**分配**来的），不是"忘了算"。
+      for (JsonNode node : optionalArray(entry, "laborSupply")) {
+        LaborSupply supply = laborSupply(node);
+        if (laborSupply.putIfAbsent(supply.group(), supply) != null) {
+          throw new IllegalArgumentException("同一份载荷里劳动供给重复: " + supply.group());
+        }
+      }
+      // ★ R2：该格各批次的劳动配额（谁把多少劳动给了谁）。
+      for (JsonNode node : optionalArray(entry, "allocations")) {
+        LaborAllocation allocation = allocation(node);
+        if (allocations.putIfAbsent(allocation.id(), allocation) != null) {
+          throw new IllegalArgumentException("同一份载荷里劳动分配重复: " + allocation.id());
+        }
+      }
     }
     EconomyMeta meta =
         new EconomyMeta(mapId, at.tick(), OptionalLong.empty(), rulesVersion, Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
+    return new EconomyData(
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), laborSupply, allocations);
+  }
+
+  // ── 劳动供给 / 劳动分配（R2，设计稿 §四）──────────────────────────────────────────────
+
+  /**
+   * 一份劳动供给：{@code {group, period, grossLaborMilli, servedLaborMilli?, committedLaborMilli?}}。
+   *
+   * <p>★ **毛额由载荷给**（不由本层从人口算）：人口与年龄性别住在 social 的 {@code PopulationGroup}，economy 编译期不认识它 （设计稿
+   * §二/§八.1）—— 算出毛额的是 {@code EconomySeeder}（它以 R1 已落地的年龄×性别系数表折算）。
+   */
+  private static LaborSupply laborSupply(JsonNode node) {
+    return new LaborSupply(
+        PeopleLotId.parse(requireText(node, "group")),
+        requireLong(node, "period"),
+        requireLong(node, "grossLaborMilli"),
+        // ★ 两项扣除缺省 0（本轮的形态）：它们**不是可有可无**的字段，只是值为 0 ——
+        //   LaborSupply 照减（见其类注），故载荷给非 0 时逐值生效。
+        optionalLong(node, "servedLaborMilli", 0L),
+        optionalLong(node, "committedLaborMilli", 0L));
+  }
+
+  /**
+   * 一条劳动配额：{@code {id, group, actor:{kind,id}, activity, laborMilli, period}}。
+   *
+   * <p>★ {@code actor.kind} 走 {@link ActorKind#parse} 的**词表**（词表外的种类即抛并列出合法值）； {@code actor.id}
+   * 与产业的对应关系由 {@code EconomyData} 的构造期守卫判死（不在这里重复实现）。
+   */
+  private static LaborAllocation allocation(JsonNode node) {
+    JsonNode actor = optionalObject(node, "actor");
+    if (actor == null) {
+      throw new IllegalArgumentException("劳动分配的字段 actor 必须是对象: " + node);
+    }
+    return new LaborAllocation(
+        LaborAllocationId.parse(requireText(node, "id")),
+        PeopleLotId.parse(requireText(node, "group")),
+        new ActorRef(ActorKind.parse(requireText(actor, "kind")), requireText(actor, "id")),
+        requireText(node, "activity"),
+        requireLong(node, "laborMilli"),
+        requireLong(node, "period"));
   }
 
   // ── 产业 / 阶层行 ────────────────────────────────────────────────────────────────────

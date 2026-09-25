@@ -5,11 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
@@ -38,10 +44,11 @@ import org.junit.jupiter.api.Test;
  * economy 模块的 JSON 往返守卫（照 {@code LedgerCodecTest} 同制，夹具是 economy 自己的）。
  *
  * <p>★ 覆盖：{@code Optional<EconomyMeta>} 两侧向（未激活 / 已激活）、{@code OptionalLong}（{@code lastClosedCycle}
- * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、四个自定义键（{@code IndustryId}/{@code
- * ClassKey}/{@code DebtId}/{@code CommodityId}）、{@code AssetKind} 的**枚举键**、{@code AllocationRule} 的
- * **sealed 多态**（{@code Split}/{@code WageFirst} 各一）、{@code FieldDelta} 四变体、
- * 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点），以及旧档缺键的兼容。
+ * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、**六个**自定义键（{@code IndustryId}/{@code
+ * ClassKey}/{@code DebtId}/{@code CommodityId} + R2 的 {@code PeopleLotId}/{@code
+ * LaborAllocationId}）、{@code AssetKind} 的**枚举键**、{@code AllocationRule} 的 **sealed 多态**（{@code
+ * Split}/{@code WageFirst} 各一）、{@code FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty}
+ * 不进线格式"的观察点），以及旧档缺键的兼容。
  */
 class EconomyCodecTest {
 
@@ -56,6 +63,12 @@ class EconomyCodecTest {
   private static final DebtId D2 = new DebtId("debt-2");
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CommodityId CLOTH = new CommodityId("cloth");
+
+  /** ★ R2 的夹具：本文件共用同一个批次与同一条配额（码的是"表"的往返，不是配额的经济含义）。 */
+  private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  private static final LaborAllocationId ALLOCATION =
+      new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
 
   private static final EconomyCodec CODEC = new EconomyCodec();
 
@@ -311,7 +324,10 @@ class EconomyCodecTest {
     assertThat(back.classes()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.debts()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.flows()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("五个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+    // ★ R2：两张劳动表也是同款（旧档里没有这两个键 ⇒ Unchanged，不是 null）
+    assertThat(back.laborSupply()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.allocations()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.isEmpty()).as("七个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
     assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(EconomyData.empty());
   }
 
@@ -326,7 +342,7 @@ class EconomyCodecTest {
 
   // ── 夹具 ──
 
-  /** 非平凡数据：四张表都非空、两层自定义键、各 Optional 的有值侧至少出现一次、两种 AllocationRule 都在。 */
+  /** 非平凡数据：**七张表都非空**、两层自定义键、各 Optional 的有值侧至少出现一次、两种 AllocationRule 都在。 */
   private static EconomyData fullData() {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, 0L));
@@ -340,11 +356,22 @@ class EconomyCodecTest {
     Map<ClassKey, FlowRow> flows = new LinkedHashMap<>();
     flows.put(PEASANT_KEY, flowRow(PEASANT_KEY));
     flows.put(LANDLORD_KEY, flowRow(LANDLORD_KEY));
-    return new EconomyData(Optional.of(meta()), industries, classes, debts, flows);
+    // ★★ R2：两张劳动表也**非空** —— 它们各有**一个自定义键类型**（PeopleLotId / LaborAllocationId）要过
+    //   JSON 的键反序列化器；空表会让那两个注册项**永远不被走到**（"注册了却测不到"= 假覆盖）。
+    Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
+    laborSupply.put(LOT, new LaborSupply(LOT, 1L, 60_000L, 1_000L, 500L)); // ★ 两项扣除取非 0
+    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+    allocations.put(
+        ALLOCATION,
+        new LaborAllocation(
+            ALLOCATION, LOT, new ActorRef(ActorKind.ESTATE, FARM.value()), "farm", 58_000L, 1L));
+    return new EconomyData(
+        Optional.of(meta()), industries, classes, debts, flows, laborSupply, allocations);
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {
-    return new EconomyData(Optional.of(meta()), industries, Map.of(), Map.of(), Map.of());
+    return new EconomyData(
+        Optional.of(meta()), industries, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   private static Map<IndustryId, Industry> oneIndustry() {

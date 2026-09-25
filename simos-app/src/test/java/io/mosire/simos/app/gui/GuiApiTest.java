@@ -16,11 +16,16 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
@@ -119,6 +124,32 @@ class GuiApiTest {
   /** H11 上的那座城（只用来拼批次 id 的 {@code urban:<cityId>:} 前缀；本夹具的 social.cities 为空）。 */
   private static final CityId CITY_1_1 = new CityId("c-1_1");
 
+  /** ★ R2：H12 上的那座城（同上：只为拼批次 id；H12 是"第二个有批次的格"，挡"忘了按格筛落点"）。 */
+  private static final CityId CITY_1_2 = new CityId("c-1_2");
+
+  // ── R2 的劳动夹具字面量（读口 T4 的期望值全部由这几个数推出，算式写在用例里）────────────────
+  //
+  // 每人的年龄×性别劳动系数（R1 的表：未成年 0‰ / 青壮 1000‰ / 老年 300‰，默认两性同表）：
+  //   H11：农村女 20 岁 200 人 = 200,000；农村男 70 岁 50 人 = 15,000；城镇女 30 岁 700 人 = 700,000
+  //        （未成年两批的毛劳动为 0 ⇒ 不发供给，见 EconomySeeder.appendLabor 的口径）
+  //   H12：农村女 20 岁 30 人 = 30,000；农村男 70 岁 5 人 = 1,500；城镇女 30 岁 60 人 = 60,000
+  private static final long H11_RURAL_FEMALE_ADULT = 200_000L;
+  private static final long H11_RURAL_MALE_ELDER = 15_000L;
+  private static final long H11_URBAN_FEMALE_ADULT = 700_000L;
+  private static final long H12_RURAL_FEMALE_ADULT = 30_000L;
+  private static final long H12_RURAL_MALE_ELDER = 1_500L;
+  private static final long H12_URBAN_FEMALE_ADULT = 60_000L;
+
+  /** ★ R2 的 actor 身份：两个产业（农业 = 庄园、手工业 = 作坊）+ 两个家户（H11 / H12 各一）。 */
+  private static final String FARM_1_1 = "farm@1_1";
+
+  private static final String WORKSHOP_1_1 = "workshop@1_1";
+  private static final String HOUSEHOLD_1_1 = "1_1";
+  private static final String HOUSEHOLD_1_2 = "1_2";
+
+  /** ★ 创世配额的发放周期（与 {@code EconomySeeder.FIRST_PERIOD} 同值：周期序号从 1 起）。 */
+  private static final long FIRST_PERIOD = 1L;
+
   private static final ObjectMapper JSON = new ObjectMapper();
 
   @TempDir Path tempDir;
@@ -182,8 +213,11 @@ class GuiApiTest {
     assertThat(unit.get("typeName").asText()).isEqualTo("Unit");
     assertThat(unit.get("value").asText()).isEqualTo("unit:u-1");
     assertThat(body.get("entries").get(1).get("namespace").asText()).isEqualTo("social");
+    // ★ R2（T0）：facet 与人口读口**同源**（SocialData.headlinePopulationAt）⇒ 有批次的格回报**批次求和**，
+    //   不再是农村序列的取值。算式：Σ 该格批次 = 100 + 200 + 50 + 300 + 700 = 1,350（见 mixedGroups）。
     assertThat(body.get("entries").get(1).get("value").asLong())
-        .isEqualTo(populationSeries().valueAt(T7));
+        .as("facet 与 /api/social/population 的 population 是同一个数（R1.5 留下的'两个形状'就此收口）")
+        .isEqualTo(1_350L);
   }
 
   @Test
@@ -527,17 +561,46 @@ class GuiApiTest {
     return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
   }
 
+  /**
+   * ★★ **R2（T0）：{@code population} 的口径 = 批次求和，且来源跟着数字一起发**。
+   *
+   * <p>★ 算式：该格（H11）有批次 ⇒ {@code population} = {@code Σ 批次 count} = 100 + 200 + 50 + 300 + 700 =
+   * **1,350**，{@code source = "batches"}。★ 期望值**不再是**农村序列的取值（11,400）——那是**回退口径**，由 {@link
+   * #populationFallsBackToTheLegacySeriesWhenTheHexHasNoBatches()} 单独钉。
+   */
   @Test
-  void populationMatchesTheSeriesValueAtHead() throws Exception {
+  void populationComesFromTheBatchesWhenTheHexHasThem() throws Exception {
     JsonNode body = getJson("/api/social/population?q=1&r=1");
 
-    assertThat(body.get("population").asLong()).isEqualTo(populationSeries().valueAt(T7));
+    assertThat(body.get("population").asLong()).as("Σ 批次（真值源）").isEqualTo(1_350L);
+    assertThat(body.get("source").asText()).as("来源必须读得出来（T0 新增的一维）").isEqualTo("batches");
     assertThat(body.get("at").get("tick").asLong()).isEqualTo(T7.tick());
   }
 
   /**
+   * ★★ **R2（T0）的另一半：该格没有批次 ⇒ 回退旧序列**（H13 有序列、没有批次 —— 随包 bootstrap 世界 {@code worlds/v17levant.json}
+   * 与升级前的每条 revision 就是这一形态）。
+   *
+   * <p>★ 判别力：把口径写成"一律读批次"（或"一律读序列"）⇒ 本条的 11,400 / {@code legacySeries} 与上一条的 1,350 / {@code
+   * batches} **总有一条红** —— 两条用例合起来才是完整口径。
+   */
+  @Test
+  void populationFallsBackToTheLegacySeriesWhenTheHexHasNoBatches() throws Exception {
+    JsonNode body = getJson("/api/social/population?q=1&r=3");
+
+    assertThat(body.get("population").asLong())
+        .as("没有批次 ⇒ 回退农村序列在 head 的取值（不是 0）")
+        .isEqualTo(populationSeries().valueAt(T7));
+    assertThat(body.get("source").asText()).isEqualTo("legacySeries");
+    assertThat(body.get("groups").get("total").asLong()).as("确实没有批次").isZero();
+    assertThat(body.get("labor").get("availableMilli").asLong()).as("没有批次 ⇒ 没有可用劳动").isZero();
+    assertThat(body.get("labor").get("actors")).as("没有批次 ⇒ 没有主体").isEmpty();
+  }
+
+  /**
    * ★★ **R1.5 的核心判据：读口把面打开** —— {@code /api/social/population} 不再"只读农村序列"，同一响应里给出批次的现算读数 （总数 / 城乡 /
-   * 年龄档 / 性别）。R1 之后这些数据在状态里，而**报表里看不见**，本条就是那个"看得见"的验收。
+   * 年龄档 / 性别）；R2 又在这份体上加了 **{@code source}**（口径来源）与 **{@code labor}**（劳动分配，见 {@link
+   * #populationExposesTheLaborAllocationPerActor()}）。
    *
    * <p>★ 期望值全部由 {@link #mixedGroups()} 的算式推出（1,350 = 1,000 城镇 + 350 农村；男 450 / 女 900； 0-14 400 /
    * 15-59 900 / 60+ 50），**逐值**断言，不是"非空""大于 0"这类关系断言。
@@ -546,13 +609,13 @@ class GuiApiTest {
    *
    * <ul>
    *   <li>"只看农村"（R1.5 之前的实现）⇒ {@code total}/{@code urban}/{@code ageBrackets}/{@code sex} 一起错；
-   *   <li>"只看某一格"（装配时漏筛落点）⇒ 本格数字多算（H11 之外没有批次，故这条由 social 侧的用例承担）；
+   *   <li>"只看某一格"（装配时漏筛落点）⇒ 本格数字多算（H11/H12 都有批次 ⇒ 本夹具**挡得住**；R1.5 时只有 H11， 这条由 social 侧的用例承担）；
    *   <li>"档位写死在批次上（读 {@code ageAtAnchorDays} 而不走 {@code ageDaysAt(tick)}）"⇒ 本夹具锚点 T0 / head T7 相差
    *       7 天且离边界很远，**本条不会红**——那条判别力由 {@code SocialDataTest} 的跨边界用例承担（如实记，不在这里声称）；
    *   <li>"把 {@code urban}/{@code rural} 的键接反" ⇒ 1,350 / 1,000 / 350 三条一起红。
    * </ul>
    *
-   * <p>★ **键序**也钉住（GUI 与 MCP 的响应必须逐字节稳定）：{@code q,r,at,population,groups} + {@code
+   * <p>★ **键序**也钉住（GUI 与 MCP 的响应必须逐字节稳定）：{@code q,r,at,population,source,groups,labor} + {@code
    * total,urban,rural,ageBrackets,sex} + 档名/性别按词表序。
    */
   @Test
@@ -560,11 +623,10 @@ class GuiApiTest {
     JsonNode body = getJson("/api/social/population?q=1&r=1");
 
     assertThat(fieldNames(body))
-        .as("顶层键序（旧的 population 保留、新的 groups 追加在它之后）")
-        .containsExactly("q", "r", "at", "population", "groups");
-    assertThat(body.get("population").asLong())
-        .as("旧账那一项不许动：农村序列在 head 的取值")
-        .isEqualTo(populationSeries().valueAt(T7));
+        .as("顶层键序（population 之后紧跟它的来源 source，再是批次块，最后是 R2 的劳动块）")
+        .containsExactly("q", "r", "at", "population", "source", "groups", "labor");
+    assertThat(body.get("population").asLong()).as("R2（T0）：口径 = 批次求和（真值源）").isEqualTo(1_350L);
+    assertThat(body.get("source").asText()).as("来源 = 批次").isEqualTo("batches");
 
     JsonNode groups = body.get("groups");
     assertThat(fieldNames(groups))
@@ -597,8 +659,79 @@ class GuiApiTest {
   }
 
   /**
+   * ★★ **R2（T4）：劳动分配维读得出来** —— 按格：该格可用劳动 / 各主体占用劳动 / 占用率。
+   *
+   * <p>★★ **期望值全部由 {@link #laborSupply()} 与 {@link #laborAllocations()} 的字面量推出**（算式写在那两个夹具的注释里）：
+   *
+   * <pre>
+   * H11：可用 = 200,000（农村女 20 岁）+ 15,000（农村男 70 岁）+ 700,000（城镇女 30 岁） = 915,000
+   *      已分配 = 120,000 + 60,000 + 20,000 + 15,000 + 500,000                          = 715,000
+   *      占用率 = 715,000 × 1000 ÷ 915,000 = 781（向下取整；留 200,000 未分配 ⇒ 不是 1000‰）
+   *      各主体（按 kind,id 序）：ESTATE|farm@1_1 = 135,000、HOUSEHOLD|1_1 = 20,000、WORKSHOP|workshop@1_1 = 560,000
+   * H12：可用 = 30,000 + 1,500 + 60,000 = 91,500；已分配 = 80,000 ⇒ 占用率 874（家户 1_2 一个主体）
+   * </pre>
+   *
+   * <p>★★ **判别力（逐条对着一种坏实现；夹具刻意混合是前提）**：
+   *
+   * <ul>
+   *   <li>"只看第一个产业 / 只认农业" ⇒ 715,000 会变 135,000、主体表只剩一项 ⇒ 红；
+   *   <li>"每批次只取第一条配额"（`break` 提前）⇒ 635,000 ⇒ 红；
+   *   <li>"只认产业、漏掉家户" ⇒ 695,000 ⇒ 红；
+   *   <li>"忘了按格筛落点"（把所有配额加一起）⇒ H11 读到 795,000、H12 读到 715,000 ⇒ 两条都红；
+   *   <li>"占用率写死 1000‰ / 用别的分母" ⇒ 781 与 874 两个非平凡值一起挡。
+   * </ul>
+   */
+  @Test
+  void populationExposesTheLaborAllocationPerActor() throws Exception {
+    JsonNode labor = getJson("/api/social/population?q=1&r=1").get("labor");
+
+    assertThat(fieldNames(labor))
+        .as("劳动块的键序（可用 / 已分配 / 占用率 / 主体表）")
+        .containsExactly("availableMilli", "allocatedMilli", "utilizationPerMille", "actors");
+    assertThat(labor.get("availableMilli").asLong()).as("Σ 该格各批次的可用劳动").isEqualTo(915_000L);
+    assertThat(labor.get("allocatedMilli").asLong()).as("Σ 该格各批次的全部配额").isEqualTo(715_000L);
+    assertThat(labor.get("utilizationPerMille").asLong())
+        .as("715,000 × 1000 ÷ 915,000 = 781（向下取整；不是 1000‰ ⇒ 挡住'写死满分'的实现）")
+        .isEqualTo(781L);
+
+    JsonNode actors = labor.get("actors");
+    assertThat(actors).as("三个主体：农业产业 / 家户 / 手工业产业").hasSize(3);
+    assertThat(fieldNames(actors.get(0))).containsExactly("kind", "id", "laborMilli");
+    // ★ 同一批次（农村女 20 岁）的三条配额落在三个主体上：农业 120,000 + 手工业 60,000 + 家户 20,000。
+    assertThat(actors.get(0).get("kind").asText()).isEqualTo("ESTATE");
+    assertThat(actors.get(0).get("id").asText()).isEqualTo(FARM_1_1);
+    assertThat(actors.get(0).get("laborMilli").asLong())
+        .as("120,000（农村女）+ 15,000（农村男 70 岁）")
+        .isEqualTo(135_000L);
+    assertThat(actors.get(1).get("kind").asText())
+        .as("家户也进表（漏掉它 ⇒ 已分配少 20,000）")
+        .isEqualTo("HOUSEHOLD");
+    assertThat(actors.get(1).get("id").asText()).isEqualTo(HOUSEHOLD_1_1);
+    assertThat(actors.get(1).get("laborMilli").asLong()).isEqualTo(20_000L);
+    assertThat(actors.get(2).get("kind").asText()).isEqualTo("WORKSHOP");
+    assertThat(actors.get(2).get("id").asText()).isEqualTo(WORKSHOP_1_1);
+    assertThat(actors.get(2).get("laborMilli").asLong())
+        .as("60,000（农村女）+ 500,000（城镇女）")
+        .isEqualTo(560_000L);
+
+    // ★★ **按格筛落点**：H12 的配额（80,000）不进 H11 的数，H11 的也不进 H12 的数。
+    JsonNode other = getJson("/api/social/population?q=1&r=2").get("labor");
+    assertThat(other.get("availableMilli").asLong()).isEqualTo(91_500L);
+    assertThat(other.get("allocatedMilli").asLong()).as("只有 H12 的两条配额").isEqualTo(80_000L);
+    assertThat(other.get("utilizationPerMille").asLong())
+        .as("80,000 × 1000 ÷ 91,500 = 874")
+        .isEqualTo(874L);
+    assertThat(other.get("actors")).hasSize(1);
+    assertThat(other.get("actors").get(0).get("kind").asText()).isEqualTo("HOUSEHOLD");
+    assertThat(other.get("actors").get(0).get("id").asText()).isEqualTo(HOUSEHOLD_1_2);
+    assertThat(other.get("actors").get(0).get("laborMilli").asLong()).isEqualTo(80_000L);
+  }
+
+  /**
    * ★ **读口没有变宽**：没有人口序列的格依旧 404（R1.5 加的三个派生量只跟着**已有**的 {@code social:<q>_<r>} 资源走，不新开面）。H14
    * 在地图上但不属于任何区域、也**没有人口序列**。
+   *
+   * <p>★ R2 的劳动块同理：它是**人口资源的一维**（"这批人的劳动被谁占了多少"），判据仍是 R1.5 那一条（该格有序列 + 该格人口可见）， 没有新开权限面（T4 的原文）。
    */
   @Test
   void populationStill404sForAHexWithoutASeries() throws Exception {
@@ -614,9 +747,20 @@ class GuiApiTest {
     return names;
   }
 
-  /** ★ R2a：一格一产业的确定性经济状态（断言值都是这里写下的字面量）。 */
+  /**
+   * ★★ R2a 一格一产业 + **R2 的劳动配额**（断言值都是这里写下的字面量）。
+   *
+   * <p>★★ **R2 的刻意混合**（本夹具承担 T4 读口的判别力，逐条写在 {@link #laborAllocations()} 与 {@link #laborSupply()}
+   * 的注释里）：H11 的**同一个批次**同时挂**三条**配额（农业产业 + 手工业产业 + 家户）， 且 H12 另有配额 ——
+   * 于是"只看第一个产业""只看第一条配额""忘了按格筛落点"三种坏实现都会**逐值**红。
+   *
+   * <p>★ **两个产业都在 (1,1)**：{@code workshop@1_1} 只有槽位、没有阶层行（本轮手工业不产出，夹具只借它的**身份**当 第二个"各产业占用劳动"的落点）。★
+   * 产业 id 排序 = {@code craft...} 之外的字典序 ⇒ 取名 {@code workshop@1_1} 让 {@code farm@1_1} 仍排在 {@code
+   * industries[0]}（既有断言一字不动）。
+   */
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId("farm@1_1");
+    IndustryId workshop = new IndustryId("workshop@1_1");
     ClassSlotId peasant = new ClassSlotId("peasant");
     Industry industry =
         new Industry(
@@ -653,10 +797,30 @@ class GuiApiTest {
                 java.util.OptionalLong.empty(),
                 "aggregate-v1",
                 java.util.Optional.empty())),
-        Map.of(farm, industry),
+        Map.of(farm, industry, workshop, workshopIndustry(workshop)),
         Map.of(new ClassKey(farm, peasant), row),
         Map.of(),
-        Map.of());
+        Map.of(),
+        laborSupply(),
+        laborAllocations());
+  }
+
+  /** 第二个产业（手工业 = 作坊）：只借身份（无阶层行 ⇒ 无人口/劳动，读口多一条空产业）。 */
+  private static Industry workshopIndustry(IndustryId id) {
+    return new Industry(
+        id,
+        "手工业",
+        new RegimeId("handicraft"),
+        120L,
+        0L,
+        Map.of(),
+        0L,
+        Map.of(),
+        Map.of(),
+        List.of(new ClassSlot(new ClassSlotId("peasant"), "贫农", 950)),
+        new AllocationRule.Split(400, 600),
+        0L,
+        0L);
   }
 
   /** ★ R2a 的 G1 读口：{@code GET /api/economy/hex} 逐值给读数，与 MCP 的 {@code simos.economy.hex} 共用一份视图。 */
@@ -826,10 +990,15 @@ class GuiApiTest {
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
     // ★★ R1.5：H11 挂**刻意混合**的批次（男女 × 城乡 × 三档各非零，见 mixedGroups）——读口那条用例靠它避免假绿。
-    //   H11 是本夹具里**唯一**有人口序列的格，故"每一个有批次的格都混合"这条要求在本夹具上成立。
+    //   ★ R2：**H12 也挂一批**（同样混合，见 {@link #mixedGroups()}）⇒ 两个格有批次，R1.5 那条"每个有批次的格都混合"照旧成立，
+    //     而 T4 的劳动读口多了一条"按格筛落点"的判别力。
+    //   ★ H13 **只有序列、没有批次**：R2（T0）的回退口径（legacySeries）就靠它钉住。
     SocialData social =
         new SocialData(
-            new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), mixedGroups());
+            new LinkedHashMap<>(
+                Map.of(H11, populationSeries(), H12, populationSeries(), H13, populationSeries())),
+            Map.of(),
+            mixedGroups());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -886,22 +1055,138 @@ class GuiApiTest {
    */
   private static Map<PeopleLotId, PopulationGroup> mixedGroups() {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
-    addLot(groups, PopulationLots.rural(H11, Sex.MALE, "0"), Sex.MALE, 100L, 5L * YEAR_DAYS);
-    addLot(groups, PopulationLots.rural(H11, Sex.FEMALE, "1"), Sex.FEMALE, 200L, 20L * YEAR_DAYS);
-    addLot(groups, PopulationLots.rural(H11, Sex.MALE, "2"), Sex.MALE, 50L, 70L * YEAR_DAYS);
-    addLot(groups, PopulationLots.urban(CITY_1_1, Sex.MALE, "0"), Sex.MALE, 300L, 10L * YEAR_DAYS);
+    addLot(groups, H11, PopulationLots.rural(H11, Sex.MALE, "0"), Sex.MALE, 100L, 5L * YEAR_DAYS);
     addLot(
-        groups, PopulationLots.urban(CITY_1_1, Sex.FEMALE, "1"), Sex.FEMALE, 700L, 30L * YEAR_DAYS);
+        groups, H11, PopulationLots.rural(H11, Sex.FEMALE, "1"), Sex.FEMALE, 200L, 20L * YEAR_DAYS);
+    addLot(groups, H11, PopulationLots.rural(H11, Sex.MALE, "2"), Sex.MALE, 50L, 70L * YEAR_DAYS);
+    addLot(
+        groups,
+        H11,
+        PopulationLots.urban(CITY_1_1, Sex.MALE, "0"),
+        Sex.MALE,
+        300L,
+        10L * YEAR_DAYS);
+    addLot(
+        groups,
+        H11,
+        PopulationLots.urban(CITY_1_1, Sex.FEMALE, "1"),
+        Sex.FEMALE,
+        700L,
+        30L * YEAR_DAYS);
+    // ★★ R2：**第二个有批次的格**（H12）—— 同样刻意混合（男女 × 城乡 × 三档），用途见 {@link #laborAllocations()}：
+    //   它让"忘了按格筛落点"的实现**逐值**红（只加 H11 的话，全世界的配额恰好都在 H11，"不筛"与"筛了"同值 ⇒ 假绿）。
+    addLot(groups, H12, PopulationLots.rural(H12, Sex.MALE, "0"), Sex.MALE, 10L, 5L * YEAR_DAYS);
+    addLot(
+        groups, H12, PopulationLots.rural(H12, Sex.FEMALE, "1"), Sex.FEMALE, 30L, 20L * YEAR_DAYS);
+    addLot(groups, H12, PopulationLots.rural(H12, Sex.MALE, "2"), Sex.MALE, 5L, 70L * YEAR_DAYS);
+    addLot(
+        groups, H12, PopulationLots.urban(CITY_1_2, Sex.MALE, "0"), Sex.MALE, 20L, 10L * YEAR_DAYS);
+    addLot(
+        groups,
+        H12,
+        PopulationLots.urban(CITY_1_2, Sex.FEMALE, "1"),
+        Sex.FEMALE,
+        60L,
+        30L * YEAR_DAYS);
     return groups;
   }
 
   private static void addLot(
       Map<PeopleLotId, PopulationGroup> groups,
+      HexCoord hex,
       PeopleLotId id,
       Sex sex,
       long count,
       long ageAtAnchorDays) {
-    groups.put(id, new PopulationGroup(id, H11, sex, count, ageAtAnchorDays, T0.tick()));
+    groups.put(id, new PopulationGroup(id, hex, sex, count, ageAtAnchorDays, T0.tick()));
+  }
+
+  /**
+   * ★★ **R2 的劳动供给**（T4 读口的分母）：逐批次一条，毛额 = 人数 × 年龄性别系数（H11/H12 各三条，算式见常量区的清单）。
+   *
+   * <p>★ 未成年批次**不发**（毛劳动 0）：与 {@code EconomySeeder.appendLabor} 的口径同一处理由（0 的配额只是噪声）。
+   */
+  private static Map<PeopleLotId, LaborSupply> laborSupply() {
+    Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
+    addSupply(supply, PopulationLots.rural(H11, Sex.FEMALE, "1"), H11_RURAL_FEMALE_ADULT);
+    addSupply(supply, PopulationLots.rural(H11, Sex.MALE, "2"), H11_RURAL_MALE_ELDER);
+    addSupply(supply, PopulationLots.urban(CITY_1_1, Sex.FEMALE, "1"), H11_URBAN_FEMALE_ADULT);
+    addSupply(supply, PopulationLots.rural(H12, Sex.FEMALE, "1"), H12_RURAL_FEMALE_ADULT);
+    addSupply(supply, PopulationLots.rural(H12, Sex.MALE, "2"), H12_RURAL_MALE_ELDER);
+    addSupply(supply, PopulationLots.urban(CITY_1_2, Sex.FEMALE, "1"), H12_URBAN_FEMALE_ADULT);
+    return supply;
+  }
+
+  private static void addSupply(
+      Map<PeopleLotId, LaborSupply> supply, PeopleLotId group, long grossLaborMilli) {
+    supply.put(group, new LaborSupply(group, FIRST_PERIOD, grossLaborMilli, 0L, 0L));
+  }
+
+  /**
+   * ★★ **R2 的劳动配额**（T4 读口的分子）：**刻意混合**的夹具，逐条说明它挡的是哪一种坏实现。
+   *
+   * <pre>
+   * H11（可用 915,000 = 200,000 + 15,000 + 700,000）：
+   *   农村女 20 岁 200 人 → 农业 120,000 + 手工业 60,000 + 家户 20,000   ← **同一批次三条配额、两个产业**
+   *   农村男 70 岁  50 人 → 农业  15,000
+   *   城镇女 30 岁 700 人 → 手工业 500,000                                ← 留 200,000 未分配（占用率因此不是 1000‰）
+   *   ⇒ 已分配 715,000 / 可用 915,000 / 占用率 715,000×1000÷915,000 = 781（向下取整）
+   *   ⇒ 各主体：{@code ESTATE|farm@1_1 135,000}、{@code HOUSEHOLD|1_1 20,000}、{@code WORKSHOP|workshop@1_1 560,000}
+   * H12（可用 91,500）：农村女 20 岁 30,000 + 城镇女 30 岁 60,000 → 家户 1_2 = 80,000 ⇒ 占用率 874
+   * </pre>
+   *
+   * <p>★★ **判别力（逐条对应一种坏实现）**：
+   *
+   * <ul>
+   *   <li>"**只看第一个产业**"（每条配额只算头一个 actor / 只认农业）⇒ 715,000 会变成 135,000 ⇒ 红；
+   *   <li>"**每批次只取第一条配额**"（`break` 写早了）⇒ 635,000 ⇒ 红；
+   *   <li>"**只认产业、漏掉家户**"⇒ 695,000 ⇒ 红；
+   *   <li>"**忘了按格筛落点**"（把全世界的配额加一起）⇒ H11 读到 795,000、H12 读到 715,000 ⇒ 两条都红；
+   *   <li>"**占用率写成固定 1000‰ / 或拿 available 当分母以外的数**"⇒ 781 与 874 两个非平凡值一起挡。
+   * </ul>
+   */
+  private static Map<LaborAllocationId, LaborAllocation> laborAllocations() {
+    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+    PeopleLotId ruralAdult = PopulationLots.rural(H11, Sex.FEMALE, "1");
+    PeopleLotId ruralElder = PopulationLots.rural(H11, Sex.MALE, "2");
+    PeopleLotId urbanAdult = PopulationLots.urban(CITY_1_1, Sex.FEMALE, "1");
+    // ★ 同一批次（农村女 20 岁）**三条配额**：两个产业 + 一个家户。
+    addAllocation(allocations, ruralAdult, FARM_1_1, ActorKind.ESTATE, "farm", 120_000L);
+    addAllocation(allocations, ruralAdult, WORKSHOP_1_1, ActorKind.WORKSHOP, "craft", 60_000L);
+    addAllocation(allocations, ruralAdult, HOUSEHOLD_1_1, ActorKind.HOUSEHOLD, "weaving", 20_000L);
+    addAllocation(allocations, ruralElder, FARM_1_1, ActorKind.ESTATE, "farm", 15_000L);
+    addAllocation(allocations, urbanAdult, WORKSHOP_1_1, ActorKind.WORKSHOP, "craft", 500_000L);
+    // H12：第二个有批次的格（挡"忘了按格筛落点"）——它的劳动全部给本格的家户（本格没有产业）。
+    addAllocation(
+        allocations,
+        PopulationLots.rural(H12, Sex.FEMALE, "1"),
+        HOUSEHOLD_1_2,
+        ActorKind.HOUSEHOLD,
+        "weaving",
+        20_000L);
+    addAllocation(
+        allocations,
+        PopulationLots.urban(CITY_1_2, Sex.FEMALE, "1"),
+        HOUSEHOLD_1_2,
+        ActorKind.HOUSEHOLD,
+        "weaving",
+        60_000L);
+    return allocations;
+  }
+
+  /** 一条配额：id 由 {@code (actor, 批次)} 确定性拼出（与 {@code EconomySeeder.allocationId} 同形）。 */
+  private static void addAllocation(
+      Map<LaborAllocationId, LaborAllocation> allocations,
+      PeopleLotId group,
+      String actorId,
+      ActorKind kind,
+      String activity,
+      long laborMilli) {
+    LaborAllocationId id = new LaborAllocationId("alloc-" + actorId + "-" + group.value());
+    allocations.put(
+        id,
+        new LaborAllocation(
+            id, group, new ActorRef(kind, actorId), activity, laborMilli, FIRST_PERIOD));
   }
 
   /** 与 {@code QueryServiceTest.populationSeries()} 同款：anchor 10000、growth 2%→1%→−3%、t=45 减 800。 */

@@ -1040,11 +1040,16 @@ public final class GuiServer implements AutoCloseable {
       return Reply.of(404, body);
     }
     // ★ R1.5：视图带上了**批次**（年龄结构 / 性别 / 城乡）——体仍由 ApiViews 一处装配（不在路由层另拼）。
+    //   ★ R2（T0/T4）：同一个响应里还有**口径来源**（batches / legacySeries）与**劳动分配**一维；
+    //     权限判定**一个字没动**（仍是"该格有人口序列 + 该格人口可见"），不另造更宽的判据。
     return redactedIfRequested(
         asPresent,
         actor,
         params,
-        Reply.of(200, ApiViews.population(social, coord, state.meta().timestamp())));
+        Reply.of(
+            200,
+            ApiViews.population(
+                social, ApiViews.economyData(state), coord, state.meta().timestamp())));
   }
 
   /**

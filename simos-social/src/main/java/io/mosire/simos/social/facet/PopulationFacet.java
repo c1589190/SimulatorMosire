@@ -21,9 +21,13 @@ import java.util.Optional;
  * <p>★ **subject 形态**与 {@link io.mosire.simos.unit.facet.UnitsHereFacet} 逐字同款（{@code
  * map:<mapId>:hex.<q>_<r>}），判定同样只走 {@link Address} AST。非该形态、或该格没有人口序列 ⇒ **空列表**。
  *
- * <p>★ **值直接来自领域 API**：{@code SocialData.populations().get(hex).valueAt(ctx.at())}——本类不重算人口、不缓存。
- * {@code value} 是 {@link Number}（{@code Long}，JSON 友好；spec §〇.3-5 的类型契约），label 是 hex 的展示形（{@code
- * q_r}）。
+ * <p>★★ **R2 的 T0：值与 GUI/MCP 的人口读口同一个口径、同一处实现**（{@code SocialData.headlinePopulationAt}）： 有批次 ⇒
+ * 批次求和（真值源）；无批次 ⇒ 回退农村人口序列。改口径之前本 facet 报的是**农村序列** —— 那是"同一资源两个形状"的最后残迹 （{@code
+ * /api/social/population} 报批次、{@code /api/facets} 报序列，同一个 {@code population} 名下两个数）。 ★ 于是本类**不再**自己
+ * {@code valueAt}：它转调那一份派生量，"facet 与读口不一致"在结构上不可能。
+ *
+ * <p>★ **来源（批次 / 旧序列）不进 facet 条目**：{@link FacetEntry} 的形状是 (namespace, label, typeName, value)，
+ * 为它加一维等于改共用契约；"用的是哪套账"由人口读口的 {@code source} 字段承担（R2 的 T0 明列的落点）。
  *
  * <p>★ 两个模块各自实现同一段 subject 解析，**不共享 helper**：铁律 3——simos-social 不知道 simos-unit，且 map-hex 只是
  * 地址形态（util 层不认识 map 的 {@link HexCoord}）。
@@ -54,7 +58,8 @@ public final class PopulationFacet implements FacetProvider {
     if (series == null) {
       return List.of(); // 合法的一格，但本世界没有它的人口序列：空列表，不是错误
     }
-    long value = series.valueAt(ctx.at());
+    // ★ R2（T0）：值与 GUI/MCP 的人口读口**同一个口径、同一处实现** —— 本类不再自己 valueAt。
+    long value = data.headlinePopulationAt(hex.get(), series, ctx.at()).value();
     return List.of(new FacetEntry(SOCIAL_NAMESPACE, hex.get().toString(), "Population", value));
   }
 

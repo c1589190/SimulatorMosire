@@ -2,10 +2,14 @@ package io.mosire.simos.social.facet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -41,6 +45,48 @@ class PopulationFacetTest {
   @Test
   void facetNameIsPopulation() {
     assertThat(FACET.facetName()).isEqualTo("population");
+  }
+
+  /**
+   * ★★ **R2（T0）：facet 与人口读口同源** —— 有批次的格报**批次求和**（真值源），没有批次的格才回退序列。
+   *
+   * <p>★★ **为什么这条非有不可**：R1.5 留下的正是"**同一资源两个形状**" —— {@code /api/social/population} 报批次求和、 而 {@code
+   * /api/facets} 报农村序列，两个数共用一个 {@code population} 名字。本条的期望值**手算**得出（该格一条 100 人的批次 vs 序列在 T0 的
+   * 10,000）⇒ 谁把 facet 改回 {@code series.valueAt} 就当场红。
+   */
+  @Test
+  void facetFollowsTheBatchesWhenTheHexHasThem() {
+    PeopleLotId lot = PopulationLots.rural(H11, Sex.MALE, "1");
+    SocialData data =
+        new SocialData(
+            new LinkedHashMap<>(Map.of(H11, seed())),
+            Map.of(),
+            Map.of(lot, new PopulationGroup(lot, H11, Sex.MALE, 100L, 0L, 0L)));
+    SimulationState state =
+        new SimulationState(
+            new StateMeta(REF, T0),
+            Map.of("social", new SocialSnapshot(REF, T0, data)),
+            InMemoryInfoSystem.empty());
+
+    List<FacetEntry> entries =
+        FACET.query(Address.parse("map:Map1:hex.1_1"), new ResolveContext(state, T0));
+
+    assertThat(entries).hasSize(1);
+    assertThat(entries.get(0).value())
+        .as("该格有批次 ⇒ Σ 批次 = 100（**不是**序列在 T0 的 10,000）")
+        .isEqualTo(100L);
+  }
+
+  /**
+   * ★ **没有批次的格照旧回退序列**（R1.5 之前的行为，也正是随包 bootstrap 世界的形态）—— 与上面那条合起来 才是完整的 R2
+   * 口径：两条各钉一半，谁把口径写成"一律读批次/一律读序列"，总有一条红。
+   */
+  @Test
+  void facetFallsBackToTheSeriesForAHexWithoutBatches() {
+    List<FacetEntry> entries = FACET.query(Address.parse("map:Map1:hex.1_1"), ctx(seed(), T0));
+
+    assertThat(entries).hasSize(1);
+    assertThat(entries.get(0).value()).as("没有批次 ⇒ 序列在 T0 的取值").isEqualTo(seed().valueAt(T0));
   }
 
   // ── 对拍：逐值等于领域 API ──────────────────────────────────────────

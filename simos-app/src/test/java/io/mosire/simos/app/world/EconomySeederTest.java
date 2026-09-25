@@ -273,6 +273,161 @@ class EconomySeederTest {
     assertThat(sumOf(farm, "laborMilli")).isEqualTo(1000L * 580L);
   }
 
+  // ── R2：劳动供给与配额（第三阶段设计稿 §四）────────────────────────────────────────
+
+  /**
+   * ★★ **R2（T3 的播种侧）：每个产业拿到的配额之和 == 该产业"改口径前的当日劳动"** —— 后者正是 {@code EconomySettlement} 每天的 {@code
+   * Σ(行 laborMilli × participationPerMille ÷ 1000)}， 而 R2 起它取自配额表。**两者逐值相等就是"真档数字一个都不变"的全部理由**。
+   *
+   * <pre>
+   * 平原纯农村（1000 人）：行 laborMilli = 450/350/150/50 × 580，槽位投入率 = 950/900/750/100‰
+   *   ⇒ 261,000×950‰ + 203,000×900‰ + 87,000×750‰ + 29,000×100‰
+   *   = 247,950 + 182,700 + 65,250 + 2,900 = **498,800**
+   * 批次的毛劳动（= 供给的毛额）：每性别 500 人 ⇒ 未成年 175（系数 0，不发）、青壮 275（×1000‰）、老年 50（×300‰）
+   *   ⇒ 每性别 2 条配额，权重 275,000 / 15,000 ⇒ 按权重切 498,800 ⇒ 236,500 / 12,900（Σ 精确）
+   * </pre>
+   */
+  @Test
+  void everyIndustryQuotaSumEqualsTheDailyLaborItReplaces() throws Exception {
+    JsonNode entry = entry(payload(), 0, 0);
+    List<JsonNode> allocations = toList(entry.get("allocations"));
+
+    assertThat(allocations).as("纯农村格：4 条配额（男女 × 青壮/老年各一条；未成年批次毛劳动 0 ⇒ 不发）").hasSize(4);
+    assertThat(allocations)
+        .extracting(node -> node.get("laborMilli").asLong())
+        .as("按毛劳动权重切 498,800（Σ 精确，一个人不丢）")
+        .containsExactly(236_500L, 12_900L, 236_500L, 12_900L);
+    assertThat(sumOf(allocations, "laborMilli")).as("Σ 配额 == 该产业改口径前的当日劳动").isEqualTo(498_800L);
+  }
+
+  /**
+   * ★★ **同一份载荷里"行"与"配额"逐值对拍**（三个格、两个产业）：{@code Σ 配额 == Σ(行 laborMilli × 槽位投入率 ÷ 1000)}。
+   *
+   * <p>★ 这是"改口径不等于改数"的**跨表示**判据：行给的是"产出在阶层之间怎么分"，配额给的是"这个产业投了多少" ——
+   * 两者在真档必须相等（同一份人口、同一条折算链），否则真档的收获瓶颈当场变（那就是"真档数字变了"）。
+   */
+  @Test
+  void everyQuotaSumMatchesItsIndustryRowsInEveryHex() throws Exception {
+    JsonNode payload = payload();
+
+    for (JsonNode entry : payload.get("entries")) {
+      for (JsonNode industry : entry.get("industries")) {
+        String id = industry.get("id").asText();
+        assertThat(
+                sumOf(
+                    toList(entry.get("allocations")).stream()
+                        .filter(node -> node.get("actor").get("id").asText().equals(id))
+                        .toList(),
+                    "laborMilli"))
+            .as("%s：配额之和必须等于该产业各行折算出的当日劳动", id)
+            .isEqualTo(rowBasedDailyLabor(entry, id));
+      }
+    }
+  }
+
+  /** 某产业"改口径前的当日劳动"（从**同一份载荷的行**算，故它是跨表示对拍而不是"再调一遍生成器"）。 */
+  private static long rowBasedDailyLabor(JsonNode entry, String industryId) {
+    Map<String, Integer> slotParticipation = new LinkedHashMap<>();
+    for (JsonNode industry : entry.get("industries")) {
+      if (industry.get("id").asText().equals(industryId)) {
+        for (JsonNode slot : industry.get("slots")) {
+          slotParticipation.put(
+              slot.get("id").asText(), slot.get("laborParticipationPerMille").asInt());
+        }
+      }
+    }
+    long total = 0L;
+    for (JsonNode row : classes(entry, industryId)) {
+      total +=
+          row.get("laborMilli").asLong() * slotParticipation.get(row.get("slot").asText()) / 1000L;
+    }
+    return total;
+  }
+
+  /**
+   * ★★ **每条配额都有一份同期的供给，且配额之和不超过该批次的可用劳动**（本阶段最重要的不变量的播种侧对照）。
+   *
+   * <p>★ 判别力：播种器若把"毛额"写成配额的**同一个数**（不做 950/900/750/100‰ 的折算），{@code Σ 配额 = Σ 毛额} 仍会通过本条 ⇒
+   * 但会被上一条（498,800）挡住；反过来，若配额算成了两倍（同一批次重复记账），本条的 {@code ≤} 当场红。
+   */
+  @Test
+  void everyQuotaHasAMatchingSupplyAndStaysWithinIt() throws Exception {
+    JsonNode payload = payload();
+
+    for (JsonNode entry : payload.get("entries")) {
+      Map<String, Long> available = new LinkedHashMap<>();
+      Map<String, Long> periodOf = new LinkedHashMap<>();
+      for (JsonNode supply : toList(entry.get("laborSupply"))) {
+        String group = supply.get("group").asText();
+        available.put(
+            group,
+            supply.get("grossLaborMilli").asLong()
+                - supply.get("servedLaborMilli").asLong()
+                - supply.get("committedLaborMilli").asLong());
+        periodOf.put(group, supply.get("period").asLong());
+      }
+      Map<String, Long> allocated = new LinkedHashMap<>();
+      for (JsonNode allocation : toList(entry.get("allocations"))) {
+        String group = allocation.get("group").asText();
+        assertThat(available).as("每条配额都必须有同期的供给：%s", group).containsKey(group);
+        assertThat(allocation.get("period").asLong())
+            .as("配额与供给必须同期：%s", group)
+            .isEqualTo(periodOf.get(group));
+        allocated.merge(group, allocation.get("laborMilli").asLong(), Long::sum);
+      }
+      for (Map.Entry<String, Long> entryAllocated : allocated.entrySet()) {
+        assertThat(entryAllocated.getValue())
+            .as("%s：Σ 配额 ≤ 可用劳动（可分配但不能凭空重复）", entryAllocated.getKey())
+            .isLessThanOrEqualTo(available.get(entryAllocated.getKey()));
+      }
+      assertThat(allocated).as("有配额必有供给 ⇒ 两张表的键集相同").hasSameSizeAs(available);
+    }
+  }
+
+  /** ★ 创世的初始配额是"该批次 1000‰ 归它的乡土产业"：农村 → 农业（庄园）、城镇 → 手工业（作坊）。 */
+  @Test
+  void genesisQuotasGoToTheHomeIndustryOfEachPool() throws Exception {
+    JsonNode payload = payload();
+
+    for (JsonNode entry : payload.get("entries")) {
+      for (JsonNode allocation : toList(entry.get("allocations"))) {
+        String group = allocation.get("group").asText();
+        String actor = allocation.get("actor").get("id").asText();
+        boolean rural = group.startsWith("rural:");
+        assertThat(actor)
+            .as("农村批次 → 农业、城镇批次 → 手工业（创世只发一条：1000‰ 归乡土产业）")
+            .isEqualTo(
+                rural
+                    ? "farm@" + entry.get("q").asInt() + "_" + entry.get("r").asInt()
+                    : "craft@" + entry.get("q").asInt() + "_" + entry.get("r").asInt());
+        assertThat(allocation.get("actor").get("kind").asText())
+            .isEqualTo(rural ? "ESTATE" : "WORKSHOP");
+        assertThat(allocation.get("activity").asText()).isEqualTo(rural ? "farm" : "craft");
+        assertThat(allocation.get("period").asLong()).isEqualTo(EconomySeeder.FIRST_PERIOD);
+      }
+    }
+  }
+
+  /**
+   * ★ **没有人的产业不发配额**（0 的配额只是噪声）：(2,0) 的农村人口为 0 ⇒ 农业的日劳动为 0 ⇒ 农业名下一条配额都没有； 该格的城市批次照发（它们供给 {@code
+   * craft@2_0}）。
+   *
+   * <p>★ 判别力：把"0 也发一条"写成无条件发（例如漏掉 {@code total <= 0} 的短路）⇒ 本条的 {@code isEmpty} 那条红。
+   */
+  @Test
+  void hexesWithoutPeopleGetNoQuotasForThatIndustry() throws Exception {
+    JsonNode entry = entry(payload(), 2, 0);
+
+    assertThat(rowBasedDailyLabor(entry, "farm@2_0"))
+        .as("该格农业行人口为 0 ⇒ 日劳动 0（对照见 everyHexKeepsItsPopulationAcrossItsIndustries）")
+        .isZero();
+    assertThat(toList(entry.get("allocations")))
+        .as("农业没有配额；只有城市批次供 craft")
+        .isNotEmpty()
+        .allSatisfy(
+            node -> assertThat(node.get("actor").get("id").asText()).isEqualTo("craft@2_0"));
+  }
+
   // ── 形状与可复现 ─────────────────────────────────────────────────────────────────────
 
   @Test

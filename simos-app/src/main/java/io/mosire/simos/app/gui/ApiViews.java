@@ -10,6 +10,9 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -52,6 +55,8 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
@@ -935,45 +940,54 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ **该格的人口读口**（R1.5 把面打开）：{@code {q,r,at,population,groups}} —— GUI 的 {@code GET
-   * /api/social/population} 与 MCP 读工具 {@code simos.social.population} **共用这一份**（AGENT.md
+   * ★★ **该格的人口读口**（R1.5 把面打开 + R2 的 T0/T4）：{@code {q,r,at,population,source,groups,labor}} —— GUI 的
+   * {@code GET /api/social/population} 与 MCP 读工具 {@code simos.social.population} **共用这一份**（AGENT.md
    * §8.3：不许在路由层/工具层另拼一份）。
    *
-   * <p>★★ **两个数字并排，各标各的口径**（谱系写清楚，别让后来者以为其中一个坏了）：
+   * <p>★★ **R2 的 T0 改了口径**（控制器已裁定）：{@code population} **不再**是"农村序列的取值"，而是 **有批次 ⇒ 批次求和（真值源）；无批次 ⇒
+   * 回退旧序列**，并用 {@code source}（{@code batches} / {@code legacySeries}） 标明用的是哪一个（判据与算式在 {@link
+   * SocialData#headlinePopulationAt} 一处）。★ 回退不是"兜底逻辑"，而是口径的一部分： 随包 bootstrap 的 {@code
+   * worlds/v17levant.json} 与升级前的每条 revision **只有旧序列**，一律读批次会让"世界还没初始化"看起来像"这格没人"。
    *
-   * <ul>
-   *   <li>{@code population} —— **旧账**：该格的 <b>农村</b> 人口序列在 {@code at} 时刻的取值（{@link
-   *       PopulationSeries#valueAt}；R1.5 之前本端点只有它）；
-   *   <li>{@code groups} —— **新账（R1 起人口的真值源）**：该格各 {@link
-   *       io.mosire.simos.social.population.PopulationGroup} 的现算读数 —— {@code total}（Σ 各批次 =
-   *       城乡之和）、{@code urban}/{@code rural}、{@code ageBrackets}（{@code 0-14 / 15-59 / 60+}，**用
-   *       {@code ageDaysAt(at.tick())} 现算**，不存档位）、{@code sex}（{@code MALE}/{@code FEMALE}）。
-   * </ul>
+   * <p>★ **四张面孔一个口径**：本方法、{@code PopulationFacet}（{@code /api/facets}、{@code simos.map.facets}）与
+   * MCP 的 {@code simos.social.population} 全部转调同一份派生量 —— R1.5 留下的"facet
+   * 报农村序列、端点报批次"那处**同一资源两个形状**就此收口。
    *
-   * <p>★ **两者在创世构造性相等**（R1 的验收：逐格 {@code Σ group == 农村序列 + 该格各城人口}），并排发出来是为了让<b>漂移可见</b>
-   * ——此前"只读农村序列"这一件事把城市人口与年龄性别一起挡在了面外（设计稿 §一.1 实测：首都格报 15,191 而经济侧合计 365,191）。
-   *
-   * <p>★★ **{@code groups.total} 是与经济侧对拍的那一侧**（R1.5 的 T3）：它和 {@link #economyHex} 的 {@code
-   * population} （该格各阶层行 {@code ClassRow.population} 之和）在创世逐格相等 ⇒ 两个相邻响应就能读出"两侧人口一致"。
-   *
-   * <p>★ **键序固定**（{@code q,r,at,population,groups}；块内 {@code
-   * total,urban,rural,ageBrackets,sex}；年龄档按词表序、 性别按词表序）：同状态两次响应逐字节相同，是 GUI/MCP 的既有前提。
+   * <p>★ **键序固定**（{@code q,r,at,population,source,groups,labor}；{@code groups} 内 {@code
+   * total,urban,rural,ageBrackets,sex}；{@code labor} 内 {@code
+   * availableMilli,allocatedMilli,utilizationPerMille,actors}； 年龄档按词表序、性别按词表序、{@code actors} 按
+   * (kind,id) 序）：同状态两次响应逐字节相同，是 GUI/MCP 的既有前提。
    *
    * <p>★ **该格没有人口序列 ⇒ 抛**（fail-closed）：调用方（路由 / 读工具）本就在此之前把它折成 {@code NOT_FOUND}， 走不到这里；静默给一个 0
    * 会让"id 拼错 / 格不存在"看起来像"这格没人"。
    *
-   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日）
+   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日），也是回退旧序列时的取值时刻
+   * @param economy 经济切片（R2 的 T4：劳动分配读口要从它取"这一格的劳动被哪个主体占了多少"）
    */
-  public static Map<String, Object> population(SocialData data, HexCoord coord, SimosTimestamp at) {
+  public static Map<String, Object> population(
+      SocialData data, EconomyData economy, HexCoord coord, SimosTimestamp at) {
     Map<String, Object> view = hexCoord(coord);
     view.put("at", timestamp(at));
     PopulationSeries series = data.populations().get(coord);
     if (series == null) {
       throw new IllegalArgumentException("该格没有人口序列: " + coord.q() + "_" + coord.r());
     }
-    view.put("population", series.valueAt(at));
-    UrbanRural urbanRural = data.urbanRuralAt(coord);
+    // ★ R2（T0）：口径与来源**同源产生**（同一个方法返回两件）——先判来源再取值，两处各写一次就会漂。
+    PopulationHeadline headline = data.headlinePopulationAt(coord, series, at);
+    view.put("population", headline.value());
+    view.put("source", headline.source().key());
+    Map<String, Object> groups = groupsView(data, coord, at);
+    view.put("groups", groups);
+    // ★ R2（T4）：劳动分配一维（各主体占用劳动 / 该格可用劳动 / 占用率）。
+    view.put("labor", laborView(data, economy, coord));
+    return view;
+  }
+
+  /** {@code groups} 块（R1.5 的形状，一字不动）：{@code total,urban,rural,ageBrackets,sex}。 */
+  private static Map<String, Object> groupsView(
+      SocialData data, HexCoord coord, SimosTimestamp at) {
     Map<String, Object> groups = new LinkedHashMap<>();
+    UrbanRural urbanRural = data.urbanRuralAt(coord);
     groups.put("total", urbanRural.total());
     groups.put("urban", urbanRural.urban());
     groups.put("rural", urbanRural.rural());
@@ -987,8 +1001,74 @@ public final class ApiViews {
       sex.put(entry.getKey().name(), entry.getValue());
     }
     groups.put("sex", sex);
-    view.put("groups", groups);
+    return groups;
+  }
+
+  /**
+   * ★★ **该格的劳动分配读口**（R2 的 T4）：{@code {availableMilli,allocatedMilli,utilizationPerMille,actors}}。
+   *
+   * <pre>
+   * availableMilli        = Σ 该格各批次供给记录的 availableLabor()   // = 毛额 − 已服役 − 已承诺
+   * allocatedMilli        = Σ 该格各批次的全部劳动配额
+   * utilizationPerMille   = available == 0 ? 0 : allocated × 1000 ÷ available   // 整数、向下取整
+   * actors                = [{kind,id,laborMilli}…] 该格各主体收到的劳动之和（**产业**就在其中：actor.id 即产业 id）
+   * </pre>
+   *
+   * <p>★★ **"这一格的劳动被哪个产业占了多少"因此读得出来**（R2 的 T3 明列的判据）：{@code actors} 逐主体列出占用劳动， 而"占用率"把 {@code
+   * allocated} 与 {@code available} 并排 —— 同一批人被两个产业各算一次满额时，占用率会**超过 1000‰**
+   * （构造期守卫已经不允许这种状态，故它是"状态坏了"的可见信号）。
+   *
+   * <p>★ **归属靠 social 的批次落点**（{@code residence}），不靠 id 前缀解析：配额的行内只有 {@code group}（不透明 id），
+   * 而"这个批次住在哪一格"是 {@code SocialData} 的事 —— 视图层不猜 id 的拼法（那是 {@code PopulationLots} 的私事）。
+   *
+   * <p>★ **权限**：本块与人口块在**同一个响应**里，判据仍是 R1.5 那一条（该格有 {@code populations} 序列 + 该格人口可见），
+   * **不**新开更宽的判据（T4 的原文）。★ economy 切片缺席 ⇒ 装配故障当场炸（与 {@link #economyData} 同口径），不静默给 0。
+   *
+   * <p>★ **空态**：该格没有任何批次 ⇒ 三个数都是 0、{@code actors} 为空数组（不是缺键）——{@code legacySeries} 那一形态的读口照样成形。
+   */
+  private static Map<String, Object> laborView(
+      SocialData data, EconomyData economy, HexCoord coord) {
+    List<PopulationGroup> groups = data.groupsAt(coord);
+    long available = 0L;
+    for (PopulationGroup group : groups) {
+      LaborSupply supply = economy.laborSupply().get(group.id());
+      if (supply != null) {
+        available += supply.availableLabor();
+      }
+    }
+    long allocated = 0L;
+    Map<String, long[]> byActor = new TreeMap<>(); // 键 = "KIND|id"（字典序可复现），值 = [劳动量]
+    for (LaborAllocation allocation : economy.allocations().values()) {
+      if (!belongsTo(coord, data, allocation.group())) {
+        continue;
+      }
+      allocated += allocation.laborMilli();
+      String key = allocation.actor().kind().name() + "|" + allocation.actor().id();
+      long[] slot = byActor.computeIfAbsent(key, ignored -> new long[1]);
+      slot[0] += allocation.laborMilli();
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("availableMilli", available);
+    view.put("allocatedMilli", allocated);
+    // ★ 占用率 = 已分配 ÷ 可用（整数、向下取整）；可用为 0 ⇒ 0（不做除零，也不臆造 1000‰）。
+    view.put("utilizationPerMille", available == 0L ? 0L : allocated * 1000L / available);
+    List<Map<String, Object>> actors = new ArrayList<>(byActor.size());
+    for (Map.Entry<String, long[]> entry : byActor.entrySet()) {
+      int bar = entry.getKey().indexOf('|');
+      Map<String, Object> actor = new LinkedHashMap<>();
+      actor.put("kind", entry.getKey().substring(0, bar));
+      actor.put("id", entry.getKey().substring(bar + 1));
+      actor.put("laborMilli", entry.getValue()[0]);
+      actors.add(actor);
+    }
+    view.put("actors", actors);
     return view;
+  }
+
+  /** 该批次是不是住在这一格（视图层只读 {@code groups} 的落点，不解析 id 的拼法）。 */
+  private static boolean belongsTo(HexCoord coord, SocialData data, PeopleLotId group) {
+    PopulationGroup lot = data.groups().get(group);
+    return lot != null && coord.equals(lot.residence());
   }
 
   /**

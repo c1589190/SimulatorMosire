@@ -32,6 +32,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -787,14 +790,24 @@ class DecisionMakerScopeEndToEndTest {
                 "map", new MapSnapshot(ref("main", 1), T7, fourHexMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdWithOneNationOneArmy())),
+                "sd", new SdSnapshot(ref("main", 1), T7, sdWithOneNationOneArmy()),
+                // ★ R2：人口读口现在还要一片 economy（T4 的劳动分配维 / T0 的 `source` 在同一响应里）⇒
+                //   服务该端点的世界必须装配经济切片 —— 与 unit/sd 同款（缺切片 = 装配故障，不静默兜底）。
+                //   ★ 本夹具给**未激活**的空经济（`EconomyData.empty()`）：它足够回答"这一格的劳动配额为空"，
+                //     而本类的判据是**权限**（可见/不可见），不是劳动的数字。
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec())));
   }
 
   /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 两个决策人（国家 / 军队各一）。 */

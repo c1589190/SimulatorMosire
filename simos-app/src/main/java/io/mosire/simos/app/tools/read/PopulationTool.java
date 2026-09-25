@@ -43,8 +43,9 @@ public final class PopulationTool implements AgentTool {
 
   @Override
   public String description() {
-    return "查某格在 head 时刻的人口：population（农村序列取值）+ groups（批次现算：total/urban/rural、"
-        + "年龄档 0-14·15-59·60+、性别 MALE/FEMALE）";
+    return "查某格在 head 时刻的人口：population（有批次 ⇒ 批次求和；无批次 ⇒ 回退农村序列，见 source）"
+        + " + groups（批次现算：total/urban/rural、年龄档 0-14·15-59·60+、性别 MALE/FEMALE）"
+        + " + labor（劳动分配：availableMilli/allocatedMilli/utilizationPerMille + 各主体占用劳动 actors）";
   }
 
   @Override
@@ -78,7 +79,10 @@ public final class PopulationTool implements AgentTool {
           || !ToolSupport.populationVisible(context, coord)) {
         return ToolResult.error("NOT_FOUND", "该格没有人口序列: " + coord.q() + "_" + coord.r());
       }
-      return ToolSupport.ok(ToolSupport.population(social, coord, state.meta().timestamp()));
+      // ★ R2：劳动分配一维（T4）与口径来源（T0）都在同一个体里 ⇒ 经济切片与 social 一起喂给同一份视图。
+      return ToolSupport.ok(
+          ToolSupport.population(
+              social, ToolSupport.economyData(state), coord, state.meta().timestamp()));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }

@@ -9,8 +9,10 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.PopulationSource;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.util.time.Segment;
@@ -486,5 +488,91 @@ class SocialDataTest {
     assertThat(data.urbanRuralAt(H10)).isEqualTo(new UrbanRural(22L, 11L));
     assertThat(data.urbanRuralAt(H99)).as("0 人批次 ⇒ (0,0)").isEqualTo(new UrbanRural(0L, 0L));
     assertThat(data.urbanRuralAt(H01)).as("没有批次 ⇒ (0,0)，不是异常").isEqualTo(new UrbanRural(0L, 0L));
+  }
+
+  // ── R2（T0）：人口读口的口径与来源 ──────────────────────────────────────────────────
+
+  /**
+   * ★★ **有批次 ⇒ 批次求和（真值源）**：这是 R2 起 {@code population} 的**主口径**。
+   *
+   * <p>★ 判别力：H00 的批次和是 1,350，而它的**序列**在 ANCHOR 时刻是 100 ⇒ "一律读序列"（R1.5 之前的实现）与 "读批次但不标来源"都会在值或
+   * {@code source} 上红。
+   */
+  @Test
+  void headlinePopulationComesFromTheBatchesWhenTheHexHasThem() {
+    SocialData data = mixedData();
+
+    assertThat(data.hasGroupsAt(H00)).as("H00 有批次").isTrue();
+    assertThat(data.headlinePopulationAt(H00, population(), SimosTimestamp.of(ANCHOR)))
+        .as("Σ 批次 = 1,000 城镇 + 350 农村")
+        .isEqualTo(new PopulationHeadline(1_350L, PopulationSource.BATCHES));
+  }
+
+  /**
+   * ★★ **无批次 ⇒ 回退旧序列**（随包 bootstrap 世界与升级前的每条 revision 只有序列）：回退是**口径的一部分**， 不是兜底 ——
+   * 一律读批次会把"世界还没初始化"显示成"这格没人"。
+   *
+   * <p>★ 判别力：H01 有序列、**一条批次都没有** ⇒ 值必须等于序列在查询时刻的取值、来源必须是 {@code legacySeries}； 把口径写成"一律读批次"⇒ 这里读到 0
+   * ⇒ 红。
+   */
+  @Test
+  void headlinePopulationFallsBackToTheLegacySeriesWhenTheHexHasNoBatches() {
+    SocialData data = mixedData();
+    PopulationSeries series = population();
+
+    assertThat(data.hasGroupsAt(H01)).as("H01 没有批次").isFalse();
+    assertThat(data.headlinePopulationAt(H01, series, SimosTimestamp.of(ANCHOR)))
+        .as("回退口径：序列在查询时刻的取值")
+        .isEqualTo(
+            new PopulationHeadline(
+                series.valueAt(SimosTimestamp.of(ANCHOR)), PopulationSource.LEGACY_SERIES));
+  }
+
+  /**
+   * ★★ **"有批次"判的是批次在不在，不是"人数是否为 0"**：H99 有 6 条 {@code count=0} 的批次（创世播种器对零人口的格 就长这样）⇒ 读数是
+   * 0，但**来源仍是批次**（"这格确实没人"与"这格没有数据"是两件事）。
+   *
+   * <p>★ 判别力：把判据写成"批次求和 &gt; 0 才用批次" ⇒ 本条读到 {@code legacySeries} 与序列的 100 ⇒ 红。
+   */
+  @Test
+  void zeroCountBatchesStillCountAsBatches() {
+    SocialData data = mixedData();
+
+    assertThat(data.hasGroupsAt(H99)).as("H99 有批次（只是每批 0 人）").isTrue();
+    assertThat(data.headlinePopulationAt(H99, population(), SimosTimestamp.of(ANCHOR)))
+        .isEqualTo(new PopulationHeadline(0L, PopulationSource.BATCHES));
+  }
+
+  /** ★ {@link SocialData#groupsAt} 逐条给出该格的批次（保序 = 与 {@code groups} 的插入序同序）。 */
+  @Test
+  void groupsAtListsThatHexesBatchesInInsertionOrder() {
+    SocialData data = mixedData();
+
+    assertThat(data.groupsAt(H00))
+        .extracting(group -> group.id().value())
+        .containsExactly(
+            "rural:0_0:MALE:0",
+            "rural:0_0:FEMALE:1",
+            "rural:0_0:MALE:2",
+            "urban:c1:FEMALE:1",
+            "urban:c1:MALE:0");
+    assertThat(data.groupsAt(H01)).as("没有批次 ⇒ 空表（不是异常）").isEmpty();
+    assertThat(data.groupsAt(H99)).as("0 人批次也是批次").hasSize(6);
+  }
+
+  /** ★ 两个新入口都拒 null（与其余派生量同款：静默给 0 会让"参数拼错"看起来像"这格没人"）。 */
+  @Test
+  void headlineAndGroupsAtRejectNulls() {
+    SocialData data = mixedData();
+
+    assertThatThrownBy(() -> data.hasGroupsAt(null)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> data.groupsAt(null)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> data.headlinePopulationAt(null, population(), SimosTimestamp.of(0)))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> data.headlinePopulationAt(H00, null, SimosTimestamp.of(0)))
+        .as("回退要读序列 ⇒ 它不得为 null")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> data.headlinePopulationAt(H00, population(), null))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

@@ -4,11 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -48,6 +54,12 @@ class EconomyRoundTripTest {
   private static final DebtId D1 = new DebtId("debt-1");
   private static final CommodityId GRAIN = new CommodityId("grain");
 
+  /** ★ R2：劳动供给与配额的夹具身份（一格一批人 ⇒ 供给一条、配额一条）。 */
+  private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  private static final LaborAllocationId ALLOCATION =
+      new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
+
   /** ★ 唯一的豁免集合：v1 的 EconomyData 没有"不进变更集"的组件 ⇒ 必须是空集，且被单独钉死。 */
   private static final Set<String> EXCLUDED_FROM_CHANGE_SET = Set.of();
 
@@ -74,8 +86,8 @@ class EconomyRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyFiveComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(5);
+  void changeSetHasExactlySevenComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(7);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -110,6 +122,12 @@ class EconomyRoundTripTest {
               .withDebts(Map.of(D1, debt()));
       case "flows" ->
           base.withIndustries(Map.of(FARM, industry(FARM, 0L))).withFlows(Map.of(KEY, flowRow()));
+      // ★ R2 的两个新组件：都自带"支撑记录"（供给挂批次、配额挂产业 —— 两条都是构造期守卫判死的对应关系）。
+      case "laborSupply" -> base.withLaborSupply(Map.of(LOT, laborSupply()));
+      case "allocations" ->
+          base.withIndustries(Map.of(FARM, industry(FARM, 0L)))
+              .withLaborSupply(Map.of(LOT, laborSupply()))
+              .withAllocations(Map.of(ALLOCATION, laborAllocation()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -121,6 +139,8 @@ class EconomyRoundTripTest {
       case "classes" -> cs.classes().changed();
       case "debts" -> cs.debts().changed();
       case "flows" -> cs.flows().changed();
+      case "laborSupply" -> cs.laborSupply().changed();
+      case "allocations" -> cs.allocations().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -190,5 +210,16 @@ class EconomyRoundTripTest {
 
   static FlowRow flowRow() {
     return new FlowRow(KEY, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
+  }
+
+  /** ★ R2 的配额夹具：批次 {@link #LOT} 把 60,000 千分劳动供给产业 {@code FARM}（actor id = 产业 id）。 */
+  static LaborAllocation laborAllocation() {
+    return new LaborAllocation(
+        ALLOCATION, LOT, new ActorRef(ActorKind.ESTATE, FARM.value()), "farm", 60_000L, 1L);
+  }
+
+  /** ★ R2 的供给夹具：毛额 60,000 ⇒ 配额恰好用满（{@code Σ allocated ≤ available} 取等号）。 */
+  static LaborSupply laborSupply() {
+    return new LaborSupply(LOT, 1L, 60_000L, 0L, 0L);
   }
 }

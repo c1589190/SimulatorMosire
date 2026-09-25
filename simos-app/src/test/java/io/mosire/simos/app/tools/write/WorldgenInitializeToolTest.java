@@ -22,10 +22,13 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AssetKind;
+import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.time.EconomyTimeParticipant;
@@ -458,10 +461,11 @@ class WorldgenInitializeToolTest {
       long hexes = 0L;
       long socialGrandTotal = 0L;
       long economyGrandTotal = 0L;
+      long hexAllocated = 0L;
       String firstMismatch = "";
       for (Map.Entry<HexCoord, PopulationSeries> entry : social.populations().entrySet()) {
         HexCoord hex = entry.getKey();
-        Map<String, Object> socialView = ApiViews.population(social, hex, at);
+        Map<String, Object> socialView = ApiViews.population(social, economy, hex, at);
         Map<String, Object> economyView = ApiViews.economyHex(hex, economy);
         Object groupsRaw = socialView.get("groups");
         assertThat(groupsRaw)
@@ -472,6 +476,27 @@ class WorldgenInitializeToolTest {
         assertThat((List<?>) economyView.get("industries"))
             .as("%s：economy 侧这一格必须真有产业（否则 0 == 0 是假绿）", hex)
             .isNotEmpty();
+        // ★★ R2：**有人的格必须有劳动配额**（否则该格当日劳动为 0 ⇒ 劳动瓶颈把投入面积压成 0 ⇒ 产量静默变 0）。
+        //   归属靠 social 的批次落点（不解析 id 拼法），与读口同一套口径。
+        long allocatedHere = 0L;
+        for (LaborAllocation allocation : economy.allocations().values()) {
+          PopulationGroup lot = social.groups().get(allocation.group());
+          if (lot != null && hex.equals(lot.residence())) {
+            allocatedHere += allocation.laborMilli();
+          }
+        }
+        assertThat(allocatedHere)
+            .as("%s：这一格（%d 人）必须有劳动配额 —— 真档路径不许'忘了发配额'", hex, socialSide)
+            .isPositive();
+        hexAllocated += allocatedHere;
+        // ★★ R2：**逐产业**对拍"配额之和 == 各行折算出的当日劳动"（真档 138 格、每格 1~2 个产业）。
+        //   后者正是改口径前 EconomySettlement 每天累加的那个数 ⇒ 两者逐值相等 = **真档数字一个都不变**
+        //   （收获的劳动瓶颈、平均日劳动、投入面积全都不动）。
+        for (IndustryId industryId : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
+          assertThat(quotaSumOf(economy, industryId))
+              .as("%s：配额之和必须等于该产业各行折算出的当日劳动（改口径不改数）", industryId)
+              .isEqualTo(rowBasedDailyLabor(economy, industryId));
+        }
         if (socialSide != economySide && firstMismatch.isEmpty()) {
           firstMismatch = hex + " social=" + socialSide + " economy=" + economySide;
         }
@@ -486,6 +511,8 @@ class WorldgenInitializeToolTest {
           .as("social 侧合计 == 全国总人口（量级锚：不是 0 == 0 那种空过）")
           .isEqualTo(OSTERMARK_TOTAL);
       assertThat(economyGrandTotal).as("economy 侧合计 == 全国总人口").isEqualTo(OSTERMARK_TOTAL);
+      // ★ R2：配额不只是"某些格有"——逐格都非零，且总量是量级锚（不是 0 == 0 那种空过）。
+      assertThat(hexAllocated).as("全国劳动配额合计（千分劳动·日）必须为正").isPositive();
       // ★ 两个量级锚各自都非零，且**有一格是城市格**（城市人口在两边的两条池子里都算过）——138 格里必然有城。
       assertThat(social.cities()).as("真档有城 ⇒ 逐格里含城镇批次（否则本用例只验了农村）").isNotEmpty();
       System.out.println(
@@ -1110,6 +1137,38 @@ class WorldgenInitializeToolTest {
       IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);
     }
     return hexes.size();
+  }
+
+  // ── R2：真档的"行 vs 配额"对拍（只在断言消息里用，算的是**两个独立可算**的量）──────────────
+
+  /** 某产业名下全部配额的 {@code laborMilli} 之和。 */
+  private static long quotaSumOf(EconomyData data, IndustryId industry) {
+    long total = 0L;
+    for (LaborAllocation allocation : data.allocations().values()) {
+      if (allocation.actor().id().equals(industry.value())) {
+        total += allocation.laborMilli();
+      }
+    }
+    return total;
+  }
+
+  /** 某产业**各行折算出的当日劳动**（= 改口径前结算每天累加的那个数）。 */
+  private static long rowBasedDailyLabor(EconomyData data, IndustryId industry) {
+    Industry node = data.industries().get(industry);
+    long total = 0L;
+    for (Map.Entry<ClassKey, ClassRow> entry : data.classes().entrySet()) {
+      if (!entry.getKey().industry().equals(industry)) {
+        continue;
+      }
+      int participation =
+          node.slots().stream()
+              .filter(slot -> slot.id().equals(entry.getKey().slot()))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("槽位不在该产业里: " + entry.getKey()))
+              .laborParticipationPerMille();
+      total += entry.getValue().laborMilli() * participation / 1000L;
+    }
+    return total;
   }
 
   /** 冻结输入的路径：surefire 工作目录是 {@code simos-app/} ⇒ 主树是 {@code ../config/...}。 */

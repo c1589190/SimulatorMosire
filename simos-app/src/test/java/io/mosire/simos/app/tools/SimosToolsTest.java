@@ -1746,8 +1746,9 @@ class SimosToolsTest {
         .isEqualTo(expected.candidates().get(0).typeName());
 
     ToolResult population = call("simos.social.population", Map.of("q", 1, "r", 1));
-    assertThat(JSON.readTree(population.message()).get("population").asLong())
-        .isEqualTo(populationSeries().valueAt(T7));
+    // ★ R2（T0）：口径 = 有批次 ⇒ 批次求和（H11 有批次 ⇒ Σ = 1,350，算式见 mixedGroups），
+    //   不再是农村序列的取值（那是**回退**口径，由 GuiApiTest 的 H13 那条用例钉）。
+    assertThat(JSON.readTree(population.message()).get("population").asLong()).isEqualTo(1_350L);
 
     ToolResult list = call("simos.unit.list", Map.of());
     JsonNode units = JSON.readTree(list.message()).get("units");
@@ -1782,7 +1783,10 @@ class SimosToolsTest {
     // 同一个函数（GUI 的 /api/social/population 调的就是它）⇒ 两边的体必须逐字段相同。
     Map<String, Object> expected =
         ApiViews.population(
-            ApiViews.socialData(shell.queryService().stateAt(QueryTarget.head(main()))), H11, T7);
+            ApiViews.socialData(shell.queryService().stateAt(QueryTarget.head(main()))),
+            ApiViews.economyData(shell.queryService().stateAt(QueryTarget.head(main()))),
+            H11,
+            T7);
     // ★ 比**文本**而不是比 JsonNode：工具面的体是 Jackson 序列化过的（小整数被读成 IntNode），而期望树是
     //   `valueToTree(Long)`（LongNode）——同一份 JSON 的两种节点类型，逐节点比会假红（本用例实测踩过一次）。
     //   比文本同时还钉住了**键序**（两边都是 LinkedHashMap 保序）。
@@ -1806,6 +1810,18 @@ class SimosToolsTest {
     assertThat(groups.get("ageBrackets").get("60+").asLong()).as("男 70 岁 50").isEqualTo(50L);
     assertThat(groups.get("sex").get("MALE").asLong()).as("男 100 + 50 + 300").isEqualTo(450L);
     assertThat(groups.get("sex").get("FEMALE").asLong()).as("女 200 + 700").isEqualTo(900L);
+
+    // ★★ R2：MCP 读口也带住了新两维 —— T0 的**口径来源**与 T4 的**劳动块**。
+    //   ★ 本夹具的经济切片是**未激活**的（{@code EconomyData.empty()}，见 seedGenesis 的注释）⇒ 劳动块全 0：
+    //     它证明的是"**工具面确实带了这一维**"（漏了 `labor` 键 ⇒ 这里 NPE ⇒ 红），
+    //     而**逐值的**劳动判别力在 GuiApiTest 的富夹具上（那边有真实配额：715,000 / 915,000 / 781）。
+    assertThat(body.get("source").asText()).as("T0：来源 = 批次").isEqualTo("batches");
+    JsonNode labor = body.get("labor");
+    assertThat(labor).as("劳动块必须在（R2 的 T4）").isNotNull();
+    assertThat(labor.get("availableMilli").asLong()).as("未激活的经济 ⇒ 没有供给记录").isZero();
+    assertThat(labor.get("allocatedMilli").asLong()).isZero();
+    assertThat(labor.get("utilizationPerMille").asLong()).as("可用为 0 ⇒ 占用率 0（不做除零）").isZero();
+    assertThat(labor.get("actors")).isEmpty();
   }
 
   /** M7b T2 判据：MCP 读面与 GUI 同形——有路线 ⇒ movement 对象；无路线 ⇒ null。 */

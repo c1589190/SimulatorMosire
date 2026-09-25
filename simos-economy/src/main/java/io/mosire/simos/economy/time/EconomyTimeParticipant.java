@@ -4,6 +4,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.util.address.Address;
@@ -87,6 +88,12 @@ public final class EconomyTimeParticipant implements TimeParticipant {
       reads.add(classAddress(key));
       writes.add(classAddress(key));
     }
+    // ★ R2：结算**读**劳动分配表（当日劳动 = 该产业名下全部配额之和）但它**不改**它（配额由命令层发），
+    //   故只进读集。★ 供给表（laborSupply）连读都不读 —— 它服务的是状态构造期的那条不变量
+    //   （Σ allocated ≤ available），不在日结算里；未读的就不该进读写集（"声明了却永远不碰"是装饰）。
+    for (LaborAllocationId id : base.allocations().keySet()) {
+      reads.add(allocationAddress(id));
+    }
 
     Optional<SimosTimestamp> to = range.to();
     EconomyData target;
@@ -140,6 +147,11 @@ public final class EconomyTimeParticipant implements TimeParticipant {
 
   private String debtAddress(DebtId id) {
     return entityAddress("debt", id.value());
+  }
+
+  /** 劳动分配（R2）：{@code economy:<mapId>:allocation.<id>}。 */
+  private String allocationAddress(LaborAllocationId id) {
+    return entityAddress("allocation", id.value());
   }
 
   private String entityAddress(String kind, String localId) {

@@ -1,7 +1,9 @@
 package io.mosire.simos.app.world;
 
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.id.ClassSlotId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -29,7 +31,12 @@ import java.util.function.Function;
  * PopulationLots#isUrban}）。**不再读 {@link io.mosire.simos.social.gen.SettlementPlan}** —— 两条命令读同一份列表，
  * "Σ group == 经济侧总人口"因此是构造性成立的。本类只做"分配 / 换算"，不做人口估计。
  *
- * <p>★★ **性别进入劳动折算**（T4 的判据）：每人的千分劳动按 {@code 批次.sex() × 年龄档} 取系数 （{@link
+ * <p>★★ **R2 起"这个批次属于哪个产业"不再隐含在批次上，而由 {@code LaborAllocation} 表达**（第三阶段设计稿 §四）：本类 **同时**产出该格的
+ * {@code laborSupply}（各批次的毛劳动与两项扣除）与 {@code allocations}（各批次把多少劳动给了哪个主体 —— 创世 = "农村批次 → 农业（庄园）/
+ * 城镇批次 → 手工业（作坊）"的 1000‰ 配额）。★ 配额之和**逐值等于**改口径前的当日劳动 （见 {@link
+ * #industryDailyLabor}），故本轮**改的是结构、不是取值**。
+ *
+ * <p>★★ **性别进入劳动折算**（R1 的 T4 判据）：每人的千分劳动按 {@code 批次.sex() × 年龄档} 取系数 （{@link
  * #AGE_LABOR_COEF_BY_SEX}，默认两性同表、可按性别覆盖）。人口按"性别 × 年龄"分组这件事由批次承载 （设计稿 §十.6）。
  *
  * <p>★★ **两个守恒在出口成立**（用例逐值断言）：
@@ -63,6 +70,15 @@ public final class EconomySeeder {
 
   /** 农业周期（天）：§十"单位"行"周期 = 120 天"（手工业同取 120：表里只有这一个周期值）。 */
   public static final int CYCLE_DAYS = 120;
+
+  /**
+   * ★★ **创世配额的发放周期**（R2，设计稿 §四）：{@code 1}。
+   *
+   * <p>★ **为什么是常量而不是"世界当前周期"**：{@code EconomyMeta} 的 {@code lastClosedCycle} 在创世为空 ⇒ 正在进行的周期恒为
+   * {@code 0 + 1 = 1}；而且**配额与供给必须同期**（{@code EconomyData} 的构造期守卫按月判），两者由同一条载荷给出 ⇒
+   * 无论哪一国先播、隔多久播，这个数都自洽。★ 本轮配额**常设**（跨周期不变），"按周期重发配额"是后续轮次的命令。
+   */
+  public static final long FIRST_PERIOD = 1L;
 
   /**
    * 每格土地基准（亩）：**量纲标定值**（v2 spec §10.3 定案 A，由 1,000 改来）。
@@ -231,15 +247,28 @@ public final class EconomySeeder {
     for (HexCoord hex : hexes) {
       List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
       List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
+      IndustryId farmId = IndustryHexKeys.id(FARM, hex.q(), hex.r());
+      IndustryId craftId = IndustryHexKeys.id(CRAFT, hex.q(), hex.r());
       List<Map<String, Object>> industries = new ArrayList<>(2);
       industries.add(agriculture(hex, ruralPool, terrainOf.apply(hex)));
-      if (populationOf(urbanPool) > 0L) {
+      boolean hasCraft = populationOf(urbanPool) > 0L;
+      if (hasCraft) {
         industries.add(handicraft(hex, urbanPool));
+      }
+      // ★★ **R2：该格的劳动供给与配额**（第三阶段设计稿 §四）—— 创世按"农村批次 → 农业（庄园）/ 城镇批次 →
+      //   手工业（作坊）"初始化 1000‰ 的配额；**结构上**允许同一批次拆成多条（见 {@link #appendLabor} 的注释）。
+      List<Map<String, Object>> laborSupply = new ArrayList<>();
+      List<Map<String, Object>> allocations = new ArrayList<>();
+      appendLabor(laborSupply, allocations, ruralPool, farmId, ActorKind.ESTATE, FARM);
+      if (hasCraft) {
+        appendLabor(laborSupply, allocations, urbanPool, craftId, ActorKind.WORKSHOP, CRAFT);
       }
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
       entry.put("industries", industries);
+      entry.put("laborSupply", laborSupply);
+      entry.put("allocations", allocations);
       entries.add(entry);
     }
     Map<String, Object> payload = new LinkedHashMap<>();
@@ -256,6 +285,139 @@ public final class EconomySeeder {
       total += group.count();
     }
     return total;
+  }
+
+  // ── 劳动供给与配额（R2；第三阶段设计稿 §四）──────────────────────────────────────────
+
+  /**
+   * ★★ **该池的"产业日劳动"**：{@code Σ_i (行劳动_i × 槽位投入率_i ÷ 1000)}，其中 {@code 行劳动_i = 该槽位人数_i × 池毛劳动 ÷
+   * 池人数}（与 {@link #classRow} 写进载荷的那两个数**同一个算法**）。
+   *
+   * <pre>
+   * 人数     people    = splitByShares(Σcount, CLASS_SHARE_PER_MILLE)      // 450/350/150/50
+   * 行劳动   rowLabor_i = people[i] × poolLabor ÷ poolCount                 // 阶层间"年龄性别同分布"
+   * 日劳动   Σ_i rowLabor_i × CLASS_LABOR_PER_MILLE[i] ÷ 1000              // 贫农 950‰ … 地主 100‰
+   * </pre>
+   *
+   * ★★ **这条算式不是新口径，是"改口径前的结算**逐字**复刻**：R2 之前 {@code EconomySettlement} 每天的 {@code laborToday} 就是
+   * {@code Σ(行 laborMilli × participationPerMille ÷ 1000)}，而两个乘数都由本类写进载荷 ⇒
+   * 本方法算出的数**恰好**等于改口径前每一天累加进 {@code Industry.cycleLaborMilli()} 的那个数。R2 把它改从"劳动配额表"取 （见 {@code
+   * EconomySettlement.laborByActor}），故**配额之和必须逐值等于这个数** —— 这就是真档数字一个都不变的原因。
+   *
+   * <p>★ 为什么**在这里**（生成器）算而不是在结算里算：结算看不见人口（economy 不认识 social 的 {@code PopulationGroup}），
+   * 而"人有多少劳动"这件事只能从人口推；创世一次算好、落成配额，正是 R1 那条"app 一次算出、同一份喂两条命令"的接缝的延续。
+   */
+  static long industryDailyLabor(List<PopulationGroup> pool) {
+    return industryDailyLabor(
+        splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE),
+        laborMilli(pool),
+        populationOf(pool));
+  }
+
+  /**
+   * 同上，但**按"已切好的阶层人数 + 池毛劳动 + 池人数"**给（不读批次）—— 服务**手搭的夹具** （{@code EconomyTestWorld} 那类没有 {@link
+   * PopulationGroup} 的世界：它用 {@link #laborMilli(long)} 的窄口径造行）。
+   *
+   * <p>★ 与 {@link #industryDailyLabor(List)} **是同一个算式**（后者只是先切人、再转调本方法）⇒
+   * "真档的配额之和"与"手搭世界的配额之和"不可能漂开。
+   */
+  static long industryDailyLabor(long[] people, long poolLabor, long poolCount) {
+    long total = 0L;
+    for (int i = 0; i < CLASS_IDS.length; i++) {
+      total += rowLaborMilli(people[i], poolLabor, poolCount) * CLASS_LABOR_PER_MILLE[i] / 1000L;
+    }
+    return total;
+  }
+
+  /** 一个批次的**毛劳动**（千分劳动）：{@code 人数 × 年龄×性别系数} —— {@link #laborMilli(List)} 的单批次形态。 */
+  static long grossLaborMilli(PopulationGroup group) {
+    return group.count() * perCapitaLaborPerMille(group);
+  }
+
+  /**
+   * ★★ **给一个产业发配额 + 给该池各批次发供给**（R2）：把 {@link #industryDailyLabor} 按各批次的**毛劳动**成比例切给它们 （最大余数法，{@code
+   * Σ 配额 == 该产业日劳动}）。
+   *
+   * <pre>
+   * 配额(batch → 产业) = 该产业日劳动 × 该批次毛劳动 ÷ Σ毛劳动     // Σ == 该产业日劳动（精确）
+   * 供给(batch)        = { 毛额 = 毛劳动, 已服役 = 0, 已承诺 = 0 }  // availableLabor = 毛劳动
+   * </pre>
+   *
+   * <p>★★ **"同一批次可以供给多个产业"在这里是结构上成立的**：本方法只写"某一 (批次, 产业) 对"的一条配额，同一批次被另一个产业 再调用一次就会拿到**第二条**配额 —— 而
+   * {@code Σ 配额 ≤ 该批次的可用劳动} 由 {@code EconomyData} 的构造期守卫判死。 ★ 创世只发**一条**（该批次 1000‰
+   * 归它的乡土产业），但没有任何结构阻止"农村批次 → 农业 0.8 + 手工业 0.2"。
+   *
+   * <p>★ **零毛劳动的批次不发配额也不发供给**（未成年批次：D4 preset 的系数为 0）：发一条 0 的配额只是噪声， 而"没发配额"与"发了 0
+   * 的配额"在结算与读口上**逐值同效**（两者都贡献 0）。★ 池的日劳动为 0 时同样不发（该池的批次没活干）。
+   *
+   * @param laborSupply 出参：本格的供给行（每批次至多一条）
+   * @param allocations 出参：本格的配额行（每 (批次, 产业) 一条）
+   * @param industry 收劳动的那个产业（{@code actor.id} 就是它 —— 见 {@code EconomyData} 的构造期守卫）
+   * @param kind 该产业的制度身份（农业 = {@link ActorKind#ESTATE} 庄园、手工业 = {@link ActorKind#WORKSHOP} 作坊）
+   * @param activity 这笔劳动干什么（本仓当前用产业种类标签：{@code farm} / {@code craft}）
+   */
+  static void appendLabor(
+      List<Map<String, Object>> laborSupply,
+      List<Map<String, Object>> allocations,
+      List<PopulationGroup> pool,
+      IndustryId industry,
+      ActorKind kind,
+      String activity) {
+    long total = industryDailyLabor(pool);
+    if (total <= 0L) {
+      return;
+    }
+    List<PopulationGroup> workers = new ArrayList<>(pool.size());
+    List<Long> weights = new ArrayList<>(pool.size());
+    for (PopulationGroup group : pool) {
+      long gross = grossLaborMilli(group);
+      if (gross > 0L) {
+        workers.add(group);
+        weights.add(gross);
+      }
+    }
+    if (workers.isEmpty()) {
+      return; // 池里没有能干活的人（毛劳动全 0）⇒ 日劳动必为 0，上面已经挡掉；这里是防御性的第二道
+    }
+    long[] weightArray = new long[weights.size()];
+    for (int i = 0; i < weightArray.length; i++) {
+      weightArray[i] = weights.get(i);
+    }
+    long[] shares = splitProportional(total, weightArray); // Σ shares == total（最大余数法，一个人不丢）
+    for (int i = 0; i < workers.size(); i++) {
+      PopulationGroup group = workers.get(i);
+      Map<String, Object> supply = new LinkedHashMap<>();
+      supply.put("group", group.id().value());
+      supply.put("period", FIRST_PERIOD);
+      supply.put("grossLaborMilli", weightArray[i]);
+      // ★ 两项扣除本轮恒 0，但字段在（设计稿 §四 的公式是三项相减；LaborSupply 照减）。
+      supply.put("servedLaborMilli", 0L);
+      supply.put("committedLaborMilli", 0L);
+      laborSupply.add(supply);
+
+      Map<String, Object> allocation = new LinkedHashMap<>();
+      allocation.put("id", allocationId(industry, group));
+      allocation.put("group", group.id().value());
+      Map<String, Object> actor = new LinkedHashMap<>();
+      actor.put("kind", kind.name());
+      actor.put("id", industry.value());
+      allocation.put("actor", actor);
+      allocation.put("activity", activity);
+      allocation.put("laborMilli", shares[i]);
+      allocation.put("period", FIRST_PERIOD);
+      allocations.add(allocation);
+    }
+  }
+
+  /**
+   * 配额 id 的**唯一拼写点**：{@code alloc-<产业 id>-<批次 id>}。
+   *
+   * <p>★ **确定性**：{@code (产业, 批次)} 的纯函数 ⇒ 同一对必然给出同一个 id（重放/分支可比），且同一对不会重复。 ★ **不含 {@code "."}**：产业
+   * id 形如 {@code farm@0_0}、批次 id 形如 {@code rural:0_0:MALE:1}，两者都不含点 ⇒ 地址 {@code
+   * economy:<mapId>:allocation.<id>} 不会被 {@code AddressParser} 在第一个点处截断。
+   */
+  static String allocationId(IndustryId industry, PopulationGroup group) {
+    return "alloc-" + industry.value() + "-" + group.id().value();
   }
 
   // ── 两个产业 ─────────────────────────────────────────────────────────────────────────

@@ -3,11 +3,17 @@ package io.mosire.simos.economy.time;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -69,6 +75,17 @@ class EconomySowingTest {
 
   /** 一行的地（千分亩）：400,000 千分亩 = 400 亩。 */
   private static final long LAND_MILLI_MU = 400_000L;
+
+  /** ★ R2 的夹具：本文件的配额都挂在同一个批次上（一格一批人 ⇒ 供给一条、配额一条）。 */
+  private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  private static final LaborAllocationId ALLOCATION = new LaborAllocationId("alloc-0-farm@0_0");
+
+  /** ★ 创世配额的发放周期（与 {@code EconomySeeder.FIRST_PERIOD} 同值：周期序号从 1 起）。 */
+  private static final long FIRST_PERIOD = 1L;
+
+  /** 该批次的**毛劳动**（= 供给的上限）与**承诺投入**（= 配额）：本夹具两者同值（投入率 1000‰）。 */
+  private static final long LABOR_MILLI = POPULATION * LABOR_PER_PERSON; // 232,000
 
   private static final long FULL_SEED = (LAND_MILLI_MU / 1000L) * SEED_PER_MU; // 40,000
 
@@ -169,12 +186,33 @@ class EconomySowingTest {
         0L);
   }
 
-  /** 一份经济状态。★ 两张表都用 {@code LinkedHashMap}（迭代序是内容的纯函数）。 */
+  /**
+   * 一份经济状态。★ 两张表都用 {@code LinkedHashMap}（迭代序是内容的纯函数）。
+   *
+   * <p>★★ **R2：当日劳动取自配额表**（不再从"行 laborMilli × 投入率"算）⇒ 本文件的夹具必须发一条配额， 否则 {@code cycledLabor = 0} ⇒
+   * 劳动可经营亩数 0 ⇒ 收获恒 0，全部收获字面量一起变。 ★ 配额量 = {@code 232,000} （= {@link #POPULATION} 400 人 × {@link
+   * #LABOR_PER_PERSON} 580‰ × 投入率 1000‰；地主行的投入率 0‰ 且人口 0，贡献 0）。
+   */
   private static EconomyData data(
       Map<ClassKey, ClassRow> rows, Map<IndustryId, Industry> industries) {
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(Optional.of(meta), industries, rows, Map.of(), Map.of());
+    return new EconomyData(
+        Optional.of(meta),
+        industries,
+        rows,
+        Map.of(),
+        Map.of(),
+        Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, LABOR_MILLI, 0L, 0L)),
+        Map.of(
+            ALLOCATION,
+            new LaborAllocation(
+                ALLOCATION,
+                LOT,
+                new ActorRef(ActorKind.ESTATE, FARM.value()),
+                "farm",
+                LABOR_MILLI,
+                FIRST_PERIOD)));
   }
 
   /** 一格、一个农业产业、**一行贫农**（地 {@link #LAND_MILLI_MU} 千分亩）、周期 {@value #CYCLE_DAYS} 天。 */
