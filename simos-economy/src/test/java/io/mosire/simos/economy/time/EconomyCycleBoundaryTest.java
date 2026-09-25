@@ -14,6 +14,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -95,10 +96,13 @@ class EconomyCycleBoundaryTest {
     //   毛产      = 388 × 67 × 1000 = 25,996,000 毫粮
     //   生产消耗  = 25,996,000 × (饲料 0‰ + 折旧 30‰) ÷ 1000 = 779,880 ⇒ 净 25,216,120
     //   单行 ⇒ Split 权重 = (700×1000 + 300×1000) ÷ 1000 = 1000 ⇒ 全部归它
-    //   库存      = 10,000,000 − 当日口粮 8,300 + 25,216,120 = 35,207,820
+    //   库存      = 10,000,000 − 第 1 天口粮 8,333 + 25,216,120 = 35,207,787
+    //   ★ 口粮 = {@link EconomyVocabulary#dailyRationMilli}(100, 1) = floor(100 × 10,000 ÷ 120) =
+    // 8,333
+    //     （口径 = 每人每 120 天 10 粮，累计口粮的逐日差分；不再是"每人每日 83"）
     assertThat(next.classes().get(PEASANT_KEY).goods().get(EconomySettlement.GRAIN))
         .as("吃一天 + 收获一次后的粮库存（毫粮）")
-        .isEqualTo(35_207_820L);
+        .isEqualTo(10_000_000L - EconomyVocabulary.dailyRationMilli(100L, 1L) + 25_216_120L);
   }
 
   @Test

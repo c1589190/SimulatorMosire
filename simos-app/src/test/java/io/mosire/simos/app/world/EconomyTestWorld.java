@@ -14,6 +14,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -79,9 +80,9 @@ public final class EconomyTestWorld {
   /** 借粮利率（‰）：§四 / 用户口径 20‰。 */
   public static final int BORROW_RATE_PER_MILLE = 20;
 
-  /** 有粮可借格的地主缺口（毫粮）= 50 人 × 83。 */
+  /** 有粮可借格的地主缺口（毫粮）= 50 人**第 1 天**的口粮（{@link EconomyVocabulary#dailyRationMilli}，逐日差分）。 */
   public static final long LENDER_HEX_LANDLORD_DEFICIT =
-      50L * EconomySeeder.DAILY_GRAIN_MILLI_PER_PERSON;
+      EconomyVocabulary.dailyRationMilli(50L, 1L);
 
   /** 富农那一格的额外存粮（毫粮）：够它按 20‰ 借给地主很多天。 */
   public static final long RICH_EXTRA_GRAIN_MILLI = 200_000L;
@@ -175,15 +176,23 @@ public final class EconomyTestWorld {
       Stock stock) {
     String slot = EconomySeeder.CLASS_IDS[index];
     ClassKey key = new ClassKey(industry, new ClassSlotId(slot));
-    long need = EconomySeeder.dailyGrainMilli(population);
+    // ★★ **第 1 天**的需求（逐日差分；不是"每人每日的量 × 人口"）—— 这一格从第 1 天起就是"恰好"形态。
+    long firstDayNeed = EconomyVocabulary.dailyRationMilli(population, 1L);
+    // ★ 多日储备一律用**累计**函数表达（60 天 = cumulativeRationMilli(人口, 60)），不许写成"人口 × 一天的量 × 60"。
     long goods =
         switch (stock) {
           case NORMAL -> EconomySeeder.rationMilli(population, slot);
           case LANDLORD_ZERO_RICH_SURPLUS ->
               "landlord".equals(slot)
                   ? 0L
-                  : ("rich".equals(slot) ? need * 60L + RICH_EXTRA_GRAIN_MILLI : need * 60L);
-          case LANDLORD_ZERO_OTHERS_EXACT -> "landlord".equals(slot) ? 0L : need;
+                  : ("rich".equals(slot)
+                      ? EconomyVocabulary.cumulativeRationMilli(population, 60L)
+                          + RICH_EXTRA_GRAIN_MILLI
+                      : EconomyVocabulary.cumulativeRationMilli(population, 60L));
+          case LANDLORD_ZERO_OTHERS_EXACT ->
+              "landlord".equals(slot)
+                  ? 0L
+                  : EconomyVocabulary.cumulativeRationMilli(population, 1L);
         };
     classes.put(
         key,
@@ -196,7 +205,7 @@ public final class EconomyTestWorld {
             goods > 0L ? Map.of(GRAIN, goods) : Map.of(),
             0L,
             List.of(),
-            Map.of(GRAIN, need),
+            Map.of(GRAIN, firstDayNeed),
             Map.of()));
   }
 

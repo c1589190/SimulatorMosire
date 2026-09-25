@@ -14,6 +14,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -34,10 +35,12 @@ import java.util.Set;
  * <ol>
  *   <li>**播种**：周期的第一天（{@code progressDays == 0}）先扣种子（{@link #sowIfCycleStart}）——**先于当天消费** （{@link
  *       #PLANTING_DRAWS_BEFORE_CONSUMPTION}，v2 spec §3.2）。种子粮与口粮是同一个商品，优先性来自**时点**。
- *   <li>**消费**：每行扣粮 {@code population × 83 毫粮}（{@link #DAILY_GRAIN_MILLI_PER_PERSON}，§十"消费"行）。
+ *   <li>**消费**：每行扣当天口粮 {@code EconomyVocabulary.dailyRationMilli(人口, 绝对日号)}（= 累计口粮的**逐日差分**， 口径"每人每
+ *       120 天 10 粮"，v2 spec §八.6），**并把该数写进** {@link ClassRow#naturalNeeds()}（§八.8"读数与结算同源"
+ *       的**一条真相**：读口直接读它，不再各算一遍）。
  *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（地主 → 富农 → 中农 的顺序，从有粮的行的**当日盈余**划转），借到的记一条 {@link Debt}（本金 = 借到量、利率
  *       {@code 20‰}、{@code dueCycle = 当前周期 + 1}、标的 = 粮）；**借完仍补不上**的部分记入本行流水的 {@code
- *       unmetNeed}（毫粮、逐日累加，供周期末的饿死惩罚）。
+ *       unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见 {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
  *   <li>**劳动投入**：本产业当日实际劳动 = Σ(行 {@code laborMilli × participationPerMille / 1000}) —— 累加进 {@link
  *       Industry#cycleLaborMilli()}（供收获时算劳动瓶颈）。
@@ -55,12 +58,22 @@ import java.util.Set;
  *       #DEPRECIATION_PER_MILLE}）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
  *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
- *       / 1000}（**定点整数、残差按槽位 id 序分派、Σ行得 = 剩余产出**）。
- *   <li>**饿死惩罚**（2026-09-25 用户点名）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@link
- *       #FAMINE_MORTALITY_PER_MILLE}（200‰）致死；人口减少、有效劳动同比例缩，死亡数记入 {@link FlowRow#deaths()}。
- *       **顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
+ *       / 1000}（**定点整数、残差按最大余数法分派、Σ行得 = 剩余产出**，§八.7）。
+ *   <li>**饿死判据**（2026-09-25 用户点名；**默认不致命**）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@code
+ *       famineMortalityPerMille}（**默认 {@link #FAMINE_MORTALITY_PER_MILLE} = 0‰**）致死；人口减少、有效劳动同比例缩，
+ *       死亡数记入 {@link FlowRow#deaths()}。**顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
  *   <li>产出进各行粮库存；{@code progressDays} 归零、周期劳动清零、{@link EconomyMeta#lastClosedCycle()} +1。
  * </ol>
+ *
+ * <p>★★ **本期流水按周期清零，清零点在"新周期第一天"**（§八.5）：
+ *
+ * <ul>
+ *   <li>**关账日读得到整周期**：{@code progressDays + 1 == cycleDays} 那一支**自己**就产生本周期最大的一笔所得（收获的毛产分配） ⇒
+ *       在那里清零等于把刚收获的那笔当场抹掉（关账日读到的 {@code income} 会变成 0）。
+ *   <li>**次日从 0 起**：{@code progressDays == 0}（新周期第一天，含创世）时该行流水**整行从 0 重记** —— 语义 = spec 原文的"周期结算后
+ *       **归档/清零**"（关账日归档、次日清零）。{@code unmetNeed}/{@code deaths} 与其它字段同口径（都是"本期"的量）。
+ *   <li>**等价性不受影响**（§十一）：清零点由 {@code progressDays} 决定，而它是**天数的纯函数** ⇒ 一次推 N 天与 N 次单日清在同一处。
+ * </ul>
  *
  * <p>★ **税（v1 明确不做）**：{@code government} 切片还不存在 ⇒ **不造假账**（{@code FlowRow.taxPaid} 恒 0；R7
  * 与政府切片一起做）。 市场定价、阶层流动、产业转换、矿业、日原料消耗同样不做（§四 的后续增量）。
@@ -75,15 +88,6 @@ import java.util.Set;
  * <p>★ **未激活**（{@code meta} 空）：原样返回（不做任何公式，§6.6）。
  */
 public final class EconomySettlement {
-
-  /**
-   * 每人每日口粮（毫粮）：§十"消费"行（每人每农业周期 10 粮 ÷ 120 天 ⇒ 83 毫粮/人·日）。
-   *
-   * <p>★ **唯一拼写点在** {@link io.mosire.simos.util.economy.EconomyVocabulary}（v2 spec §六）：v1 里 app 与
-   * economy 各写了一份 83 且无护栏。此处保留同名常量供既有测试引用，**值来自词表**。
-   */
-  public static final long DAILY_GRAIN_MILLI_PER_PERSON =
-      EconomyVocabulary.DAILY_GRAIN_MILLI_PER_PERSON;
 
   /** 1 粮 = 1000 毫粮（§7：库存按最小计量单位；{@code outputPerUnit} 是「粮/亩」⇒ 入账前要换算）。 */
   public static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_GRAIN;
@@ -114,15 +118,27 @@ public final class EconomySettlement {
   public static final int BORROW_RATE_PER_MILLE_PER_CYCLE = 20;
 
   /**
-   * ★★ **饿死惩罚的致死率**（版本化常量，2026-09-25 用户点名）：在"**饿满整个生产周期的那部分比例**"里，死 **200‰（20%）**。
+   * ★★ **饿死判据的致死率默认值**（千分数）：**0‰（默认不致命）**。
    *
-   * <p>口径（与 {@link #settleOneDay} 的周期末一致）：先把本周期逐日累加的未满足需求 {@code unmetNeed} 折成 {@code
-   * faminePerMille = unmetNeed / 本周期总需求}（封顶 1000‰），再在这一比例的人口里按本常量致死。故 {@code deaths = 人口 ×
-   * faminePerMille / 1000 × FAMINE_MORTALITY_PER_MILLE / 1000}。
+   * <p>★★ **为 0 是"先不做饿死人系统"，不是"删掉机制"**（v2 spec §1.3 + 用户 2026-09-25 两句话并读：
+   * 「可以先不做什么饿死人系统、青黄不接系统」+「项目代码应当是自由的」）：**缺口照记**（{@link FlowRow#unmetNeed()}，
+   * 逐日累计且读口可见），**致死率是一个旋钮** —— 旋钮做成**包内可见的入参**而不是"常量 + {@code if}"： {@code static final int = 0} 配
+   * {@code if (常量 != 0)} 会让非 0 那一支成为**编译期死代码**，任何用例都到不了它 （v2 spec §3.2 与 plan2
+   * 偏离③点名的同族：**看起来在、其实永远走不到**）。
    *
-   * <p>★ 改这个数 = 改规则口径（记入 {@code rulesVersion}），不写死进公式。
+   * <p>★ **旋钮的入口**：{@link #settle(EconomyData, long, long, int)} 与 {@link
+   * #settleOneDay(EconomyData, long, LinkedHashMap, boolean, int)}（包内可见）；公开入口 {@link
+   * #settle(EconomyData, long, long)} 恒喂本默认值。 非 0 那条路由 {@code
+   * EconomySettlementTest.famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle}
+   * **逐值**钉住（不是死分支）。
+   *
+   * <p>★ 口径：先把本周期逐日累加的 {@code unmetNeed} 折成 {@code faminePerMille = unmetNeed / 本周期总需求}（封顶
+   * 1000‰），再在这一比例的人口里按致死率致死 ⇒ {@code deaths = 人口 × faminePerMille / 1000 × 致死率 / 1000}。
+   *
+   * <p>★ 改这个数 = 改规则口径（记入 {@code rulesVersion}），不写死进公式。**V7 参数目录（spec §四）落地后**它迁入 {@code economy}
+   * 切片的参数表、成为 GM 可调（spec §1.3：致死率是"判断结果"⇒ 必须可调，默认取保守值）。
    */
-  public static final int FAMINE_MORTALITY_PER_MILLE = 200;
+  public static final int FAMINE_MORTALITY_PER_MILLE = 0;
 
   /**
    * ★★ **播种是否先于当日消费扣种**（v2 spec §3.2 的行为预设；用户 2026-09-25 定案：先用常量，默认 {@code true}）。
@@ -165,6 +181,19 @@ public final class EconomySettlement {
    * @throws IllegalArgumentException {@code toTick < fromTick + 1}（至少一天）
    */
   public static EconomyData settle(EconomyData base, long fromTick, long toTick) {
+    return settle(base, fromTick, toTick, FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * 同 {@link #settle(EconomyData, long, long)}，但**致死率可注入**（**包内可见**的旋钮，见 {@link
+   * #FAMINE_MORTALITY_PER_MILLE}）。
+   *
+   * <p>★ 公开入口恒喂默认值；本重载服务用例（"改成非 0 ⇒ 死亡逐值可预测"必须**真的走得到**）与将来的 V7 参数目录。
+   *
+   * @param famineMortalityPerMille 致死率（千分数；∈ [0, 1000] ⇒ 死亡 ≤ 需求未被满足的那部分人口）
+   */
+  static EconomyData settle(
+      EconomyData base, long fromTick, long toTick, int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     if (base.meta().isEmpty()) {
       return base; // 未激活：不做任何公式（§6.6）
@@ -176,26 +205,15 @@ public final class EconomySettlement {
     LinkedHashMap<ClassKey, FlowRow> flows = new LinkedHashMap<>(base.flows());
     EconomyData data = base;
     for (long day = fromTick + 1L; day <= toTick; day++) {
-      data = settleOneDay(data, day, flows);
+      data =
+          settleOneDay(
+              data, day, flows, PLANTING_DRAWS_BEFORE_CONSUMPTION, famineMortalityPerMille);
     }
     return data.withFlows(flows);
   }
 
   /**
-   * 结算**一天**（含"这一天若是周期末则追加周期结算"），把当天发生额并入调用方传入的**跨日累加器** {@code flows}。
-   *
-   * @param base 结算前的经济状态（**已激活**；{@link #settle} 已判过 meta）
-   * @param day 推进到的世界日（1 tick = 1 天）；**只用于债务 id 的去重**（{@code debt-<day>-<seq>}），不参与任何公式
-   * @param flows 本期流水的逐日累加器（跨日持有、**就地更新**；由 {@link #settle} 在循环结束后统一带回）
-   * @return 结算后的新状态（{@code flows} 由 {@link #settle} 在循环结束后统一挂上）
-   */
-  private static EconomyData settleOneDay(
-      EconomyData base, long day, LinkedHashMap<ClassKey, FlowRow> flows) {
-    return settleOneDay(base, day, flows, PLANTING_DRAWS_BEFORE_CONSUMPTION);
-  }
-
-  /**
-   * 结算**一天**（**次序可注入**）：日流程 = {@code 播种（周期第一天）→ 消费/同格借粮 → 进度/劳动/周期末收获分配}。
+   * 结算**一天**（**次序可注入**、致死率取默认值）：日流程 = {@code 播种（周期第一天）→ 消费/同格借粮 → 进度/劳动/周期末收获分配}。
    *
    * <p>★★ **为什么次序是一个参数而不是常量分支**：{@code plantingDrawsFirst == false} 的那条路是"吃饭优先、
    * 种子看运气"这个**预设**的实现（v2 spec §3.2：凡行为一律做成预设）。写成 {@code static final boolean} + {@code if}
@@ -203,13 +221,34 @@ public final class EconomySettlement {
    * #allocate}），由 {@code EconomySowingTest.drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown}
    * 逐值测到两种次序。
    *
-   * <p>★ 公开入口 {@link #settle} 恒用常量默认值（{@link #PLANTING_DRAWS_BEFORE_CONSUMPTION}）。
+   * <p>★ 公开入口 {@link #settle} 恒用常量默认值（{@link #PLANTING_DRAWS_BEFORE_CONSUMPTION} 与 {@link
+   * #FAMINE_MORTALITY_PER_MILLE}）。
+   *
+   * @param base 结算前的经济状态（**已激活**；{@link #settle} 已判过 meta）
+   * @param day 推进到的世界日（1 tick = 1 天）；参与**口粮的逐日差分**与债务 id 的去重（{@code debt-<day>-<seq>}）
+   * @param flows 本期流水的逐日累加器（跨日持有、**就地更新**；由 {@link #settle} 在循环结束后统一带回）
+   * @return 结算后的新状态（{@code flows} 由 {@link #settle} 在循环结束后统一挂上）
    */
   static EconomyData settleOneDay(
       EconomyData base,
       long day,
       LinkedHashMap<ClassKey, FlowRow> flows,
       boolean plantingDrawsFirst) {
+    return settleOneDay(base, day, flows, plantingDrawsFirst, FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * 同 {@link #settleOneDay(EconomyData, long, LinkedHashMap, boolean)}，但**致死率可注入**（**包内可见**的旋钮， 见
+   * {@link #FAMINE_MORTALITY_PER_MILLE}）—— 这条入参是"旋钮"而非"死分支"的全部理由见该常量的注释。
+   *
+   * @param famineMortalityPerMille 饿死判据的致死率（千分数；**默认 0‰ = 不致命**）
+   */
+  static EconomyData settleOneDay(
+      EconomyData base,
+      long day,
+      LinkedHashMap<ClassKey, FlowRow> flows,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille) {
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -245,8 +284,9 @@ public final class EconomySettlement {
     Set<IndustryId> newCycleIndustries = new HashSet<>();
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
-      // ★ 新一轮周期的第一天：progressDays 归 0（创世亦然）⇒ 该产业各行流的 unmetNeed 归零，
-      //   使饿死比例按**本周期**缺口算，而非把上一周期的旧缺口带上。
+      // ★ 新一轮周期的第一天：progressDays 归 0（创世亦然）⇒ 该产业各行流水**整行从 0 重记**（§八.5）。
+      //   ★ 清零点**不在关账那一支**：那一支自己产生本周期最大的一笔所得（收获的毛产分配），
+      //     在那里清零会把刚收获的那笔当场抹掉（关账日读到 income = 0，而 V5 判据要的正是关账日读到**整周期**的量）。
       if (industry.progressDays() == 0L) {
         newCycleIndustries.add(id);
       }
@@ -279,7 +319,9 @@ public final class EconomySettlement {
               key,
               rows.get(key),
               carried + unmetToday.getOrDefault(key, 0L),
-              industry.cycleDays());
+              day,
+              industry.cycleDays(),
+              famineMortalityPerMille);
         }
         nextProgress = 0L;
         nextCycleLabor = 0L;
@@ -301,12 +343,11 @@ public final class EconomySettlement {
       long dayUnmet = unmetToday.getOrDefault(key, 0L);
       long dayDeaths = deathsToday.getOrDefault(key, 0L);
       // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
-      //   ★ unmetNeed 是**周期口径**：新周期的第一天把它归零（否则第 2 周期的饿死比例会带上第 1 周期的旧缺口）。
-      //   ★ deaths 与其它发生额一样**跨周期累加**（它是"累计死了多少人"，不是当期存量）。
-      FlowRow acc = flows.get(key);
-      long carriedUnmet =
-          acc == null || newCycleIndustries.contains(key.industry()) ? 0L : acc.unmetNeed();
-      long carriedDeaths = acc == null ? 0L : acc.deaths();
+      //   ★★ **本期口径（§八.5）**：新周期的第一天（progressDays == 0，含创世）该行**整行从 0 重记** ——
+      //      上周期末的读数在**关账那一支的 revision 里**读得到（归档），次日才归零（清零）。
+      //      清零点必须落在"新周期第一天"而不是"关账那一支"：后者自己产生本周期最大的一笔所得（收获的毛产分配），
+      //      在那里清零会把刚收获的那笔当场抹掉。粒度是**按产业、按周期**，由 progressDays 决定 ⇒ 与 §十一 等价性相容。
+      FlowRow acc = newCycleIndustries.contains(key.industry()) ? null : flows.get(key);
       flows.put(
           key,
           new FlowRow(
@@ -318,8 +359,8 @@ public final class EconomySettlement {
               (acc == null ? 0L : acc.newBorrowing()) + borrowed,
               acc == null ? 0L : acc.repaid(),
               (acc == null ? 0L : acc.netSurplus()) + netSurplus,
-              carriedUnmet + dayUnmet,
-              carriedDeaths + dayDeaths));
+              (acc == null ? 0L : acc.unmetNeed()) + dayUnmet,
+              (acc == null ? 0L : acc.deaths()) + dayDeaths));
     }
 
     OptionalLong lastClosed =
@@ -403,9 +444,17 @@ public final class EconomySettlement {
 
   /**
    * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（地主 → 富农 → 中农 的当日盈余），借到的记债；**仍补不上的** 记入未满足需求（{@code
-   * unmetNeed}，供周期末的饿死惩罚用）。
+   * unmetNeed}，供周期末的饿死判据用）。
    *
    * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表）。
+   *
+   * <p>★★ **当日需求的唯一算法 + 唯一落点**（V5；v2 spec §八.6/§八.8）：
+   *
+   * <pre>
+   * need = EconomyVocabulary.dailyRationMilli(row.population(), day)   // 逐日差分，残差不丢
+   * row.naturalNeeds = { grain: need }                                 // ★ 结算写、读口读（同源）
+   * eaten = min(stock, need)；差额进 deficit（借粮/缺口）
+   * </pre>
    */
   private static void settleHexes(
       LinkedHashMap<ClassKey, ClassRow> rows,
@@ -421,14 +470,15 @@ public final class EconomySettlement {
       List<ClassKey> keys = hex.getValue();
       LinkedHashMap<ClassKey, Long> deficit = new LinkedHashMap<>();
       // ① 各自消费：扣 min(库存, 需求)；差额入 deficit。
-      //   ★ 需求的口径 = 人口 × 83（整数乘法，无除法残差）；自然需求字段（naturalNeeds）在 v1 人口不变时恒等于它，
-      //     故"缺口 = naturalNeeds − 实得"直接由字段的差可读，不必另存一份。
+      //   ★ 需求的口径 = **当天口粮**（每人每 120 天 10 粮 ⇒ 累计的逐日差分；不再有"每人每日 83"这个常量）。
+      //     并**写回** naturalNeeds ⇒ 读口的"日耗"与结算当日用的是**同一个数**（§八.8 的"一条真相"）。
       for (ClassKey key : keys) {
         ClassRow row = rows.get(key);
-        long need = row.population() * DAILY_GRAIN_MILLI_PER_PERSON;
+        long need = EconomyVocabulary.dailyRationMilli(row.population(), day);
         long stock = grainOf(row);
         long eaten = Math.min(stock, need);
-        rows.put(key, withGoodsGrain(row, stock - eaten));
+        ClassRow withNeed = withDailyNeed(row, need);
+        rows.put(key, withGoodsGrain(withNeed, stock - eaten));
         // ★ **必须 merge 不能 put**：这张累加器现在与播种步共享（播种先跑时它已经记了种子那一笔），
         //   `put` 会把种子从当日消费里抹掉 ⇒ §6.1 的守恒式当场不成立（"留种要看得见"）。
         consumedGrain.merge(key, eaten, Long::sum);
@@ -566,14 +616,18 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ **周期末的饿死惩罚**（2026-09-25 用户点名；§四 周期结算的追加步骤）：把本周期逐日累加的未满足需求 {@code cycleUnmet}
-   * 折成"**饿满整个周期的那个比例**"，再在这一比例的人口里按 {@link #FAMINE_MORTALITY_PER_MILLE} 致死。
+   * ★★ **周期末的饿死判据**（2026-09-25 用户点名；**默认不致命** —— 见 {@link
+   * #FAMINE_MORTALITY_PER_MILLE}）：把本周期逐日累加的未满足需求 {@code cycleUnmet} 折成"**饿满整个周期的那个比例**"，再在这一比例的人口里按
+   * {@code famineMortalityPerMille} 致死。
    *
    * <pre>
-   * long needTotal = population × 83 × cycleDays;                       // 本周期总需求（毫粮）
-   * int  faminePerMille = needTotal == 0 ? 0 : min(1000, cycleUnmet × 1000 / needTotal);
-   * long deaths = population × faminePerMille / 1000 × 200 / 1000;      // 200‰
+   * long cycleNeed = cumulativeRationMilli(pop, day) − cumulativeRationMilli(pop, day − cycleDays); // 本周期总需求
+   * int  faminePerMille = cycleNeed == 0 ? 0 : min(1000, cycleUnmet × 1000 / cycleNeed);
+   * long deaths = population × faminePerMille / 1000 × famineMortalityPerMille / 1000;
    * </pre>
+   *
+   * <p>★ **本周期总需求用累计函数之差**（不是 {@code 人口 × 一天的量 × 天数}）：日耗是逐日差分的，乘不出来； 而两个累计值之差**恰好**等于本周期各日口粮之和
+   * （逐日差分的望远镜求和）。
    *
    * <p>★ 人口减少后，**有效劳动按同一比例缩**（{@code labor = labor × (population − deaths) / population}；{@code
    * population == 0} ⇒ {@code labor = 0}，**不除零**）；死亡数记入本行流水（{@code deaths}）。**死亡不回溯产出**：
@@ -588,15 +642,23 @@ public final class EconomySettlement {
       ClassKey key,
       ClassRow row,
       long cycleUnmet,
-      long cycleDays) {
-    long needTotal = row.population() * DAILY_GRAIN_MILLI_PER_PERSON * cycleDays;
+      long day,
+      long cycleDays,
+      int famineMortalityPerMille) {
+    long population = row.population();
+    // ★ 本周期总需求 = 本周期**实际经过的那些天**的口粮之和 = 累计(day) − 累计(周期起点)。
+    //   ★ 周期起点取 max(0, day − cycleDays)：夹具/存档可以在"周期已满"（progressDays == cycleDays）处入场，
+    //     那时起点算到第 0 天之前 —— 而世界之前没有天，需求与缺口都只覆盖真实经过的天（两者口径一致）。
+    long cycleStart = Math.max(0L, day - cycleDays);
+    long cycleNeed =
+        EconomyVocabulary.cumulativeRationMilli(population, day)
+            - EconomyVocabulary.cumulativeRationMilli(population, cycleStart);
     int faminePerMille =
-        needTotal == 0L ? 0 : (int) Math.min(1000L, cycleUnmet * 1000L / needTotal);
-    long dead = row.population() * faminePerMille / 1000L * FAMINE_MORTALITY_PER_MILLE / 1000L;
+        cycleNeed == 0L ? 0 : (int) Math.min(1000L, cycleUnmet * 1000L / cycleNeed);
+    long dead = population * faminePerMille / 1000L * famineMortalityPerMille / 1000L;
     if (dead <= 0L) {
       return;
     }
-    long population = row.population();
     long nextPopulation = population - dead; // faminePerMille ≤ 1000 且致死率 ≤ 1000‰ ⇒ 必 ≥ 0
     long nextLabor =
         population == 0L ? 0L : row.laborMilli() * nextPopulation / population; // 同比例缩，不除零
@@ -617,47 +679,31 @@ public final class EconomySettlement {
   }
 
   /**
-   * **定点整数分配 + 残差按槽位 id 序分派**（§4 周期结算第 4 步）：{@code parts[i] = floor(total × weight[i] / 1000)}，余下的
-   * {@code total − Σparts} 个单位按索引序（= 槽位 id 序，调用方已排序）轮转补齐 ⇒ **Σparts == total**。
+   * ★★ **定点整数分配**（§4 周期结算第 4 步；v2 spec §八.7）：{@code parts[i] = total × weights[i] ÷
+   * Σ权重}，残差按**最大余数法** 分派（余数 {@code total × weights[i] mod Σ权重} 大者先得、同余数按下标序）⇒ **Σparts == total**。
    *
-   * <p>★ 这条路是"Σ行得 = 剩余产出"的唯一保证：去掉残差补齐，Σ 会小于 total（权重之和因逐项取整可 &lt; 1000）。
+   * <p>★★ **分母是 Σ权重**（这与 v1 不同：v1 的分母是恒定的 1000‰，故 {@code Σ权重 < 1000} 时那个缺口会被"人人均摊" —— 按格净产
+   * 5,950,000 算，地主实得 2,975 而按权重只该得 429，**实得是应得的 7 倍**，制度分配被摊成了平均分配）。 用 Σ权重 后，各行所得**恰好**与权重成比例（差 ≤ 1
+   * 个最小单位），残差只是"取整余数"。
+   *
+   * <p>★ **与 {@code EconomySeeder.splitProportional} 是同一个函数**（都走 {@link
+   * ProportionalSplit#byDenominator}），故 "口径统一"是一条**可执行**的事实而不是注释 —— 跨模块一致性用例逐值对拍（{@code
+   * EconomyAllocationConsistencyTest}）。
+   *
+   * @param total 待分配的总量（毫粮）；不得为负
+   * @param weights 各行的分配权重（非负；v1 = 生产资料权重 × 土地占比 + 劳动权重 × 劳动占比，量纲是千分）
    */
-  static long[] allocate(long total, long[] weights) {
-    long[] parts = new long[weights.length];
-    long assigned = 0L;
-    for (int i = 0; i < weights.length; i++) {
-      parts[i] = total * weights[i] / 1000L;
-      assigned += parts[i];
+  public static long[] allocate(long total, long[] weights) {
+    long weightSum = 0L;
+    for (long weight : weights) {
+      weightSum += weight;
     }
-    distributeResidue(parts, total - assigned);
-    return parts;
-  }
-
-  /**
-   * 把 {@code remainder} 个单位按**索引序轮转**补到 parts 上（每项先摊 {@code remainder/n}，前 {@code remainder%n} 项各多
-   * 1）。
-   */
-  private static void distributeResidue(long[] parts, long remainder) {
-    if (remainder < 0L) {
-      throw new IllegalStateException("分配残差不得为负: " + remainder);
-    }
-    int n = parts.length;
-    if (n == 0) {
-      if (remainder != 0L) {
-        throw new IllegalStateException("没有可承载的槽位，但残差 = " + remainder);
-      }
-      return;
-    }
-    long share = remainder / n;
-    long extra = remainder % n;
-    for (int i = 0; i < n; i++) {
-      parts[i] += share + (i < extra ? 1L : 0L);
-    }
+    return ProportionalSplit.byDenominator(total, weights, weightSum);
   }
 
   // ── 分组与排序 ─────────────────────────────────────────────────────────────────────
 
-  /** 该产业的阶层行键，**按槽位 id 字典序**（可复现；也是分配残差的"槽位 id 序"）。 */
+  /** 该产业的阶层行键，**按槽位 id 字典序**（可复现；也是最大余数法"同余数按下标序"的那个下标序）。 */
   private static List<ClassKey> classKeysOf(Map<ClassKey, ClassRow> rows, IndustryId id) {
     List<ClassKey> keys = new ArrayList<>();
     for (ClassKey key : rows.keySet()) {
@@ -716,6 +762,31 @@ public final class EconomySettlement {
         row.money(),
         row.debts(),
         row.naturalNeeds(),
+        row.effectiveDemand());
+  }
+
+  /**
+   * 换**当日自然需求**（毫粮；0 ⇒ 去掉该键）。
+   *
+   * <p>★★ 这是 {@link ClassRow#naturalNeeds()} 的**唯一写入点**（v2 spec §八.8 的"一条真相"）：结算每天把当日需求写进去，
+   * 读口（{@code ApiViews.economyHex} / GUI / MCP）直接读它，不再各算一遍 —— 否则人口一变（饿死、将来的任何人口变动）
+   * 同一面板上的"人口"与"日耗"就会分叉。
+   */
+  private static ClassRow withDailyNeed(ClassRow row, long need) {
+    Map<CommodityId, Long> needs = new LinkedHashMap<>();
+    if (need > 0L) {
+      needs.put(GRAIN, need);
+    }
+    return new ClassRow(
+        row.key(),
+        row.population(),
+        row.laborMilli(),
+        row.participationPerMille(),
+        row.meansOfProduction(),
+        row.goods(),
+        row.money(),
+        row.debts(),
+        needs,
         row.effectiveDemand());
   }
 

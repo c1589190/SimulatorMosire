@@ -14,9 +14,18 @@ import java.util.Map;
  * <p>★ **量纲**（§7）：货币类字段按**最小币值**；{@code consumed} 按**最小计量单位**。{@code income} 的实物部分按当周期
  * **"粮值"折算**（口径入 {@code rulesVersion}，§7），故它只是一个数、不落成第二份真相。
  *
- * <p>★★ **未满足需求与饿死（2026-09-25 新增）**：{@code unmetNeed} = 本周期**需求 − 实得**的逐日累加（毫粮）， 是饿死判据的输入；{@code
- * deaths} = 本周期因饿死而减少的人口（人）。两者都由 {@code EconomySettlement} 写入：{@code unmetNeed}
- * 在**周期末**被用于算饿死比例后**归零**（下一周期从 0 重新累加， 故它随周期重置），{@code deaths} 则与其它流水一样跨周期累加。
+ * <p>★★ **"本期"的边界（v2 spec §八.5；V5 落地）**：{@code EconomySettlement} 在**新周期的第一天**（{@code progressDays
+ * == 0}，含创世）把该行**整行从 0 重记** —— 上周期末的读数在**关账那一支的 revision 里**读得到（归档），
+ * 次日才归零（清零）。故关账日读到的是**一整个周期**的量（{@code income} 含那次收获的毛产分配），不是两个周期的累计。
+ *
+ * <p>★★ **未满足需求与饿死（2026-09-25 新增；V4 起默认不致命）**：{@code unmetNeed} = 本周期**需求 − 实得**的逐日累加（毫粮），
+ * 是饿死判据的输入；{@code deaths} = 本周期因饿死而减少的人口（人）。两者都由 {@code EconomySettlement} 写入，
+ * 且与其它字段**同口径**（本期量、新周期第一天归零）。
+ *
+ * <p>★★ **{@code deaths} 在默认路径上恒为 0**：致死率默认 {@code EconomySettlement.FAMINE_MORTALITY_PER_MILLE =
+ * 0‰} （用户 2026-09-25：「可以先不做什么饿死人系统」）⇒ **缺口照记不误**（{@code unmetNeed} 非 0 是常态），但**不死人**。 字段**保留不删**（v1
+ * spec §3.3 的形状，且致死判据落地时要用），旋钮是 {@code EconomySettlement} 的包内可见重载入参 （**不是** {@code static final} +
+ * {@code if} 的死分支）。★ 读口读到的 {@code deaths == 0} 是**结论**，不是"没在记"。
  *
  * <p>★ **不变量（构造期判）**：{@code income}/{@code taxPaid}/{@code interestDue}/{@code newBorrowing}/{@code
  * repaid}/{@code unmetNeed}/{@code deaths} 均 {@code ≥ 0}；{@code consumed} 键值非空、逐值 {@code ≥
@@ -33,8 +42,8 @@ import java.util.Map;
  * @param newBorrowing 本期新借入；不得为负
  * @param repaid 本期偿还；不得为负
  * @param netSurplus 本期净盈余（income − 消费 − 税 − 利息；**可为负 = 赤字**）
- * @param unmetNeed 本周期未满足的需求（= Σ 每日「需求 − 实得」，毫粮）；不得为负；**周期末用于饿死判据后归零**
- * @param deaths 本周期饿死的人口（人）；不得为负
+ * @param unmetNeed 本期未满足的需求（= Σ 本期每日「需求 − 实得」，毫粮）；不得为负；**新周期第一天归零**
+ * @param deaths 本期饿死的人口（人）；不得为负；**默认路径恒 0**（致死率默认 0‰，见上）
  */
 public record FlowRow(
     ClassKey key,

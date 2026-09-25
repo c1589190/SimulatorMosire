@@ -10,6 +10,7 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -27,8 +28,8 @@ import java.util.function.Function;
  * <p>★★ **两个守恒在出口成立**（用例逐值断言）：
  *
  * <ul>
- *   <li>**人口守恒**：某格的 {@code Σ 阶层行人口 == 该格人口}（= 该格农村人口 + 落在该格的城市人口）。四舍五入的残差按**槽位 id 序** 逐格分派（每个槽位最多补
- *       1 人），故不丢也不多。
+ *   <li>**人口守恒**：某格的 {@code Σ 阶层行人口 == 该格人口}（= 该格农村人口 + 落在该格的城市人口）。四舍五入的残差按**最大余数法**
+ *       逐格分派（余数大者先得、同余数按下标序，每个槽位最多补 1 人），故不丢也不多。
  *   <li>**土地守恒**：某格农业各行的 {@code Σ LAND == 该格土地}（{@code muPerHex × 地形系数}，单位千分亩）。土地按各行**人口**
  *       成比例切分；该格农业人口为 0 时整份土地记在第一个槽位（不丢总量、也不做除零）。
  * </ul>
@@ -59,10 +60,10 @@ public final class EconomySeeder {
   /**
    * 每格土地基准（亩）：**量纲标定值**（v2 spec §10.3 定案 A，由 1,000 改来）。
    *
-   * <p>★ 依据（★ V3/Task 7 后的账，v2 spec §3.4 把留种从 15% 里拆出来）：真档每格 14,806 人 × 9,960 毫粮/周期 = 147,468
+   * <p>★ 依据（★ V5 后的账：口粮口径改为"每人每 120 天 10 粮"的累计差分，残差不丢）：真档每格 14,806 人 × 10,000 毫粮/周期 = 148,060
    * 粮/格/周期需粮；毛产 3,100 亩 × 67 粮/亩 = 207,700，扣折旧 3% ⇒ 净 201,469，再减**播种日**扣的种子 24,800 ⇒ **可用 176,669**
-   * ⇒ 自给率 **119.8%**（旧口径 15% 一次扣 = 119.7% ⇒ 标定实质不变）。★ 格面积是**纯经济假设**（{@code HexCell} 只存
-   * height），与地图无关。
+   * ⇒ 自给率 **119.3%**（旧的"每人每日 83"口径需粮 147,468 ⇒ 自给率 119.8%：那 0.4% 的差正是被丢掉的残差）。 ★
+   * 格面积是**纯经济假设**（{@code HexCell} 只存 height），与地图无关。
    */
   public static final long MU_PER_HEX = 3_100L;
 
@@ -136,10 +137,6 @@ public final class EconomySeeder {
 
   /** 各年龄档的劳动系数（‰，与 {@link #AGE_SHARE_PER_MILLE} 同序）：0 / 1000 / 300。 */
   static final int[] AGE_LABOR_COEF_PER_MILLE = {0, 1000, 300};
-
-  /** 每人每日口粮（毫粮）：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
-  public static final long DAILY_GRAIN_MILLI_PER_PERSON =
-      EconomyVocabulary.DAILY_GRAIN_MILLI_PER_PERSON;
 
   /** 粮食商品的 id：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
   public static final String COMMODITY_GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
@@ -294,9 +291,9 @@ public final class EconomySeeder {
   }
 
   /**
-   * 一个阶层行（与 §3.2 {@code ClassRow} 逐字段对应）：有效劳动 = 人口 × 年龄系数（§十"D4 默认"）、自然需求 = 人口 × 83 毫粮
-   * （§十"消费"）、初始库存 = {@code 人口 × 83 毫粮 × 该阶层天数}（{@link #INITIAL_RATION_DAYS_BY_CLASS}，**按阶层差异化**）、
-   * 货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   * 一个阶层行（与 §3.2 {@code ClassRow} 逐字段对应）：有效劳动 = 人口 × 年龄系数（§十"D4 默认"）、自然需求 = **第 1 天**的口粮 （{@link
+   * #firstDayRationMilli}；结算每天会覆写它，§八.8）、初始库存 = {@code 人口 × 该阶层天数} 天口粮（{@link #rationMilli} 经
+   * {@link EconomyVocabulary#cumulativeRationMilli}，**按阶层差异化**）、货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
    */
   private static Map<String, Object> classRow(
       String slot, long population, int participationPerMille, Map<String, Object> means) {
@@ -309,7 +306,7 @@ public final class EconomySeeder {
     row.put("goods", Map.of(COMMODITY_GRAIN, rationMilli(population, slot)));
     row.put("money", 0);
     row.put("debts", List.of());
-    row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, dailyGrainMilli(population)));
+    row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, firstDayRationMilli(population)));
     row.put("effectiveDemand", Map.of());
     return row;
   }
@@ -347,9 +344,27 @@ public final class EconomySeeder {
     return population * perCapitaPerMille;
   }
 
-  /** 每人每日口粮（毫粮）：§十"消费"行。 */
-  public static long dailyGrainMilli(long population) {
-    return population * DAILY_GRAIN_MILLI_PER_PERSON;
+  /**
+   * **第 1 天**的口粮（毫粮）：{@link EconomyVocabulary#dailyRationMilli}(人口, 1) —— 创世写进 {@code naturalNeeds}
+   * 的初值。
+   *
+   * <p>★★ **为什么带"第 1 天"**（V5）：日耗不是一个常量，而是**绝对日号的函数**（累计口粮的逐日差分：10,000 毫粮/人 ÷ 120 天 除不尽， 残差必须逐日补足，见
+   * {@link EconomyVocabulary}）。★ 结算**每天**会把当天需求覆写进 {@code naturalNeeds}（spec §八.8 的"一条真相"） ⇒
+   * 这一笔只在"尚未结算过"时可见（读口/GUI 首帧）。
+   */
+  public static long firstDayRationMilli(long population) {
+    return EconomyVocabulary.dailyRationMilli(population, 1L);
+  }
+
+  /**
+   * 初始库存（毫粮）：{@code 人口} 人 **{@code 该阶层天数} 天**的口粮 = {@link
+   * EconomyVocabulary#cumulativeRationMilli}(人口, 天数)。
+   *
+   * <p>★ 口径校验：这份储备**恰好**够吃到第 {@code days} 天末（第 1..days 天的日耗之和 == 该累计值，逐日差分 telescopes）。 ★ 不许写成"人口 ×
+   * 一天的量 × 天数"—— 日耗逐日不同，乘不出来。
+   */
+  public static long rationMilli(long population, String slot) {
+    return EconomyVocabulary.cumulativeRationMilli(population, initialRationDays(slot));
   }
 
   /** 某阶层"每人几天的口粮"（版本化参数表 {@link #INITIAL_RATION_DAYS_BY_CLASS}）；查不到 ⇒ fail-closed（拒绝臆造）。 */
@@ -361,75 +376,61 @@ public final class EconomySeeder {
     return days;
   }
 
-  /** 初始库存（毫粮）：{@code 人口 × 83 毫粮 × 该阶层天数}（{@link #INITIAL_RATION_DAYS_BY_CLASS}）。 */
-  public static long rationMilli(long population, String slot) {
-    return dailyGrainMilli(population) * initialRationDays(slot);
-  }
-
   /**
    * 把 {@code total} 按 **千分比例表** 切成同长子表（§十 的"初始阶层比例"）。
    *
    * <p>★★ **分母恒为 1000‰，绝不用 Σ比例 归一化**：{@code 450/350/150/50} 之和恰为 1000，故正常情形下 {@code Σ 结果 ==
-   * total}（余数 ∈ [0, n-1]，按**槽位 id 序**逐个 +1 分派）。而**比例表被人改坏**（例如地主 50 → 100 而没重分）时 分母仍是 1000 ⇒ {@code
-   * Σ 结果 ≠ total} —— 静默归一化会把这个错误**伪装成"一切正常"**（本仓最忌的那一族）， "Σ 行人口 == 格人口"那条守恒断言因此有判别力。
+   * total}（余数 ∈ [0, n-1]，按**最大余数法**分派：余数 {@code total × 比例 mod 1000} 大者先得、同余数**按下标序**，见 {@link
+   * ProportionalSplit}）。而**比例表被人改坏**（例如地主 50 → 100 而没重分）时 分母仍是 1000 ⇒ {@code Σ 结果 ≠ total} ——
+   * 静默归一化会把这个错误**伪装成"一切正常"**（本仓最忌的那一族）， "Σ 行人口 == 格人口"那条守恒断言因此有判别力。
+   *
+   * <p>★ **不变式**：{@code Σ结果 == total} 当且仅当 {@code Σ比例 == 1000}（或残差为 0 的平凡情形）。
    */
   public static long[] splitByShares(long total, int[] sharesPerMille) {
-    if (total < 0) {
-      throw new IllegalArgumentException("splitByShares 的 total 不得为负: " + total);
-    }
-    long[] out = new long[sharesPerMille.length];
-    long assigned = 0L;
+    long[] weights = new long[sharesPerMille.length];
     for (int i = 0; i < sharesPerMille.length; i++) {
       if (sharesPerMille[i] < 0) {
         throw new IllegalArgumentException("splitByShares 的比例不得为负: " + sharesPerMille[i]);
       }
-      out[i] = total * sharesPerMille[i] / 1000L;
-      assigned += out[i];
+      weights[i] = sharesPerMille[i];
     }
-    long remainder = total - assigned;
-    for (int i = 0; i < out.length && remainder > 0; i++, remainder--) {
-      out[i]++;
-    }
-    return out;
+    return split(total, weights, 1000L);
   }
 
   /**
-   * 把 {@code total} 按**任意非负权重**成比例切成同长子表，**Σ 结果恰为 {@code total}**（余数按**下标序**逐个 +1）。
+   * 把 {@code total} 按**任意非负权重**成比例切成同长子表，**Σ 结果恰为 {@code total}**（残差按最大余数法分派）。
    *
    * <p>★ 与 {@link #splitByShares} 的分工：这里的分母是**权重之和**（权重不是千分数，如"按各行人口分土地"）； 权重全为 0（或 {@code total ==
    * 0}）时整份记在第一项（农业人口为 0 的格，土地不丢也不做除零）。
+   *
+   * <p>★★ **与 {@code EconomySettlement.allocate} 是同一个函数**（都走 {@link
+   * ProportionalSplit#byDenominator} 且分母同为 Σ权重）⇒ "分配口径统一"是**可执行的事实**，由 {@code
+   * EconomyAllocationConsistencyTest} 跨模块逐值对拍。
    */
   public static long[] splitProportional(long total, long[] weights) {
+    return split(total, weights, -1L);
+  }
+
+  /**
+   * 两个切分函数的共同实现（{@code denominator < 0} ⇒ 用 **Σ权重** 作分母，否则用给定分母）。
+   *
+   * <p>★ 校验留在两个公开入口（它们的异常消息是既有契约的一部分）；本函数只做"分母选择"。
+   */
+  private static long[] split(long total, long[] weights, long denominator) {
     if (total < 0) {
-      throw new IllegalArgumentException("splitProportional 的 total 不得为负: " + total);
-    }
-    long[] out = new long[weights.length];
-    if (weights.length == 0) {
-      if (total != 0) {
-        throw new IllegalArgumentException("splitProportional 没有可承载的槽位，但 total = " + total);
-      }
-      return out;
+      throw new IllegalArgumentException("切分的 total 不得为负: " + total);
     }
     long weightSum = 0L;
     for (long weight : weights) {
       if (weight < 0) {
-        throw new IllegalArgumentException("splitProportional 的权重不得为负: " + weight);
+        throw new IllegalArgumentException("切分的权重不得为负: " + weight);
       }
       weightSum += weight;
     }
-    if (weightSum == 0L || total == 0L) {
-      out[0] = total;
-      return out;
+    if (weights.length == 0 && total != 0L) {
+      throw new IllegalArgumentException("切分没有可承载的槽位，但 total = " + total);
     }
-    long assigned = 0L;
-    for (int i = 0; i < weights.length; i++) {
-      out[i] = total * weights[i] / weightSum;
-      assigned += out[i];
-    }
-    long remainder = total - assigned;
-    for (int i = 0; i < out.length && remainder > 0; i++, remainder--) {
-      out[i]++;
-    }
-    return out;
+    return ProportionalSplit.byDenominator(
+        total, weights, denominator < 0L ? weightSum : denominator);
   }
 }

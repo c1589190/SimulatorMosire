@@ -41,7 +41,7 @@ class EconomyVocabularyGuardTest {
           "simos-economy",
           "simos-app");
 
-  /** 词表的唯一落点（三处声明都得在这里）。 */
+  /** 词表的唯一落点（口径的两个数都得在这里）。 */
   private static final String VOCABULARY =
       "simos-util/src/main/java/io/mosire/simos/util/economy/EconomyVocabulary.java";
 
@@ -64,12 +64,19 @@ class EconomyVocabularyGuardTest {
     return hits;
   }
 
+  /**
+   * ★★ **口粮口径的两个数各恰一份**（V5 换了载体：从"每人每日 83"换成"每人每 120 天 10,000 毫粮 + 120 天"）。
+   *
+   * <p>★ 钉的是「名字 + 字面量同处一行」= **直接赋值**的那一处；引用（{@code EconomyVocabulary.RATION_…}）不含字面量， 故不会命中 ——
+   * 它们不可能漂移，不该被这条判为违规。
+   */
   @Test
-  void rationLiteralIsWrittenExactlyOnce() {
-    // ★ 钉的是「名字 + 字面量同处一行」= **直接赋值**的那一处。转发常量（= EconomyVocabulary.X）不含字面量，
-    //   故不会命中 —— 它们不可能漂移，不该被这条判为违规。
-    assertThat(occurrencesByFile("DAILY_GRAIN_MILLI_PER_PERSON = 83"))
-        .as("口粮的字面量 83 在全仓 src/main 里必须只被直接赋值一次（v1 有两处且无守卫 ⇒ 改一处即静默分叉）")
+  void rationBasisLiteralsAreWrittenExactlyOnce() {
+    assertThat(occurrencesByFile("RATION_MILLI_PER_PERSON = 10_000"))
+        .as("口径分子的字面量（10,000 毫粮/人·120 天）在全仓 src/main 里必须只被直接赋值一次")
+        .containsExactly(entry(VOCABULARY, 1L));
+    assertThat(occurrencesByFile("RATION_CYCLE_DAYS = 120"))
+        .as("口径分母（120 天）同理；★ 它与 EconomySeeder.CYCLE_DAYS 数值相同、语义无关，两者都必须是具名常量")
         .containsExactly(entry(VOCABULARY, 1L));
   }
 

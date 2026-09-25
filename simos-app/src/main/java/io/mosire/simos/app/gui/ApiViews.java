@@ -426,6 +426,10 @@ public final class ApiViews {
     view.put("landMilliMu", landMilliMu);
     view.put("goods", goods);
     // ★ R3a：该格粮库存合计与日耗合计（"看变化"的两个直接读数；单位 = 毫粮）。
+    //   ★★ **日耗读的是结算写下的 {@code ClassRow.naturalNeeds}**（V5；spec §八.8 的"读数与结算同源"）：
+    //     结算每天把**当日需求**（累计口粮的逐日差分）写进该字段，读口只是把它加起来 ⇒ 同一面板上的"人口"与"日耗"
+    //     不会再分叉。★ 代价如实记：读口显示的是"**最近一次结算那天**"的需求（两次结算之间不刷新；本方法入参没有 tick，
+    //     物理上复算不出结算当天那个数）。
     view.put("grainStock", grainStock);
     view.put("grainDailyConsumption", grainDailyConsumption);
     view.put("money", money);
@@ -516,6 +520,13 @@ public final class ApiViews {
   /**
    * 本期流水（§3.3 表 3）的读侧形：所得 / 消费 / 新借 / 偿还 / 净盈余 / **未满足需求 / 饿死**（税与利息 v1 恒 0）。{@code flow} 为 null ⇒
    * 全 0（该行本期无事）。
+   *
+   * <p>★★ **V4 起 {@code deaths} 在默认路径上恒 0**：致死率默认 {@code
+   * EconomySettlement.FAMINE_MORTALITY_PER_MILLE = 0‰}（"先不做饿死人系统"）⇒ **缺口照记**（{@code unmetNeed} 非 0
+   * 是常态），但**不死人**。字段照发不删（旋钮还在）； 读到的 0 是**结论**，不是"没在记"。 ★ 它由端到端用例钉住："缺粮 ⇒ 读口读到非 0 的 {@code
+   * unmetNeed}、且 {@code deaths == 0}、人口一个不少" （{@code EconomySettlementEndToEndTest}）。
+   *
+   * <p>★ **本期口径**（§八.5）：各字段是**本周期**的发生额，新周期第一天归零 ⇒ 关账日读到的是整周期的量（含那次收获）。
    */
   private static Map<String, Object> flowView(FlowRow flow) {
     Map<String, Object> view = new LinkedHashMap<>();

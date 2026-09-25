@@ -16,6 +16,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,8 +25,8 @@ import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link EconomySettlement} 的**纯函数**用例（R3a/R4a）：日耗 / 进度 / 劳动累计、未激活不动、以及**分配残差按槽位 id 序补足** （"Σ行得 =
- * 剩余产出"的定点整数保证）。
+ * {@link EconomySettlement} 的**纯函数**用例（R3a/R4a）：日耗（累计口粮的逐日差分）/ 进度 / 劳动累计、未激活不动、以及
+ * **分配残差按最大余数法分派**（"Σ行得 = 剩余产出"的定点整数保证）。
  *
  * <p>★ 断言值都是这里写下的字面量（手算），不是"再调一遍结算对拍"。
  */
@@ -38,6 +39,23 @@ class EconomySettlementTest {
   private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
   private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
 
+  private static final long PEASANT_POPULATION = 100L;
+  private static final long LANDLORD_POPULATION = 10L;
+
+  /**
+   * 某行**第 {@code day} 天**的口粮（毫粮）：唯一算法在 {@link EconomyVocabulary#dailyRationMilli}（累计口粮的逐日差分）。
+   *
+   * <p>★ 这里**不写**"人口 × 一天的量"：日耗逐日不同（10,000 ÷ 120 除不尽 ⇒ 第 3 天是 8,334），乘不出来。
+   */
+  private static long rationOn(long population, long day) {
+    return EconomyVocabulary.dailyRationMilli(population, day);
+  }
+
+  /** 某行**头 {@code days} 天**的口粮合计（毫粮）—— 多日口粮一律用累计函数表达。 */
+  private static long rationOver(long population, long days) {
+    return EconomyVocabulary.cumulativeRationMilli(population, days);
+  }
+
   /** 未激活（meta 空）⇒ 原样返回：一个字都不改（§6.6）。 */
   @Test
   void unactivatedEconomyIsReturnedUnchanged() {
@@ -46,25 +64,33 @@ class EconomySettlementTest {
     assertThat(EconomySettlement.settle(empty, 0L, 1L)).isSameAs(empty);
   }
 
-  /** 日结算：每行扣 人口 × 83 毫粮、progressDays +1、劳动累计加上当日实际劳动；流水记本期发生额。 */
+  /** 日结算：每行扣**当天**口粮（累计口粮的逐日差分）、progressDays +1、劳动累计加上当日实际劳动；流水记本期发生额。 */
   @Test
-  void oneDayConsumesEightyThreePerPersonAdvancesProgressAndRecordsFlows() {
+  void oneDayConsumesThatDaysRationAdvancesProgressAndRecordsFlows() {
     EconomyData base = fixture();
 
     EconomyData next = EconomySettlement.settle(base, 0L, 1L);
 
-    // 贫农 100 人：83000 − 8300 = 74700；地主 10 人：8300 − 830 = 7470。
-    assertThat(grainOf(next, PEASANT_KEY)).isEqualTo(74_700L);
-    assertThat(grainOf(next, LANDLORD_KEY)).isEqualTo(7_470L);
+    // 贫农 100 人：第 1 天口粮 = floor(100 × 10,000 ÷ 120) = 8,333 ⇒ 83,000 − 8,333 = 74,667；
+    // 地主 10 人：floor(10 × 10,000 ÷ 120) = 833 ⇒ 8,300 − 833 = 7,467。
+    assertThat(grainOf(next, PEASANT_KEY)).isEqualTo(83_000L - rationOn(PEASANT_POPULATION, 1L));
+    assertThat(grainOf(next, LANDLORD_KEY)).isEqualTo(8_300L - rationOn(LANDLORD_POPULATION, 1L));
     assertThat(next.industries().get(FARM).progressDays()).as("progressDays +1").isEqualTo(1L);
     assertThat(next.industries().get(FARM).cycleLaborMilli())
         .as("当日实际劳动 = 贫农 58000 × 1000‰ + 地主 5800 × 0‰ = 58000")
         .isEqualTo(58_000L);
 
     FlowRow peasantFlow = next.flows().get(PEASANT_KEY);
-    assertThat(peasantFlow.consumed().get(GRAIN)).as("本期消费 = 8300").isEqualTo(8_300L);
+    assertThat(peasantFlow.consumed().get(GRAIN))
+        .as("本期消费 = 第 1 天口粮")
+        .isEqualTo(rationOn(PEASANT_POPULATION, 1L));
     assertThat(peasantFlow.income()).as("无收获 ⇒ 所得 0").isZero();
-    assertThat(peasantFlow.netSurplus()).as("净盈余 = 0 − 8300").isEqualTo(-8_300L);
+    assertThat(peasantFlow.netSurplus())
+        .as("净盈余 = 0 − 第 1 天口粮")
+        .isEqualTo(-rationOn(PEASANT_POPULATION, 1L));
+    assertThat(next.classes().get(PEASANT_KEY).naturalNeeds().get(GRAIN))
+        .as("★ §八.8：结算把**当日需求**写进 naturalNeeds ⇒ 读口与结算同源")
+        .isEqualTo(rationOn(PEASANT_POPULATION, 1L));
     assertThat(peasantFlow.taxPaid()).as("v1 不收税").isZero();
     assertThat(next.meta().orElseThrow().lastClosedCycle()).as("周期未末 ⇒ 未关账").isEmpty();
   }
@@ -81,16 +107,21 @@ class EconomySettlementTest {
 
     EconomyData next = EconomySettlement.settle(base, 0L, 3L);
 
-    // 贫农：83000 − 3×8300 = 58100，净得 floor(6790×790/1000) = 5364 ⇒ 63464；
-    // 地主：8300 − 3×830 = 5810，净得 floor(6790×210/1000) = 1425，**残差 1 按槽位 id 序归 landlord** ⇒ 1426 ⇒
-    // 7236。
+    // 贫农：83,000 − 头 3 天口粮 25,000（= floor(100 × 10,000 × 3 ÷ 120)）= 58,000，净得 floor(6790×790/1000)
+    //       = 5,364（余 100）⇒ 63,364；
+    // 地主：8,300 − 头 3 天口粮 2,500（= floor(10 × 10,000 × 3 ÷ 120)）= 5,800，净得 floor(6790×210/1000) =
+    // 1,425
+    //       （余 900），**残差 1 归余数最大者 = 地主**（分母 = Σ权重 = 1000）⇒ 1,426 ⇒ 7,226。
     // ★ 剩余产出 6,790 = 毛产 7,000 − 生产损耗（饲料 0‰ + 折旧 30‰ = 210）。
-    // ★ 残差不是"丢"而是"归地主"：Σ净得 = 5364 + 1426 = 6790 = net（守恒）；本仓的残差序是**槽位 id 字典序**。
-    assertThat(grainOf(next, PEASANT_KEY)).as("3 天逐日口粮 + 第 3 天分配净得").isEqualTo(63_464L);
-    assertThat(grainOf(next, LANDLORD_KEY)).as("3 天逐日口粮 + 第 3 天分配净得（含残差 1）").isEqualTo(7_236L);
+    // ★ 残差不是"丢"而是"归地主"：Σ净得 = 5,364 + 1,426 = 6,790 = net（守恒）；残差规则是**最大余数法**（同余数按下标序）。
+    assertThat(grainOf(next, PEASANT_KEY)).as("头 3 天逐日口粮 + 第 3 天分配净得").isEqualTo(63_364L);
+    assertThat(grainOf(next, LANDLORD_KEY)).as("头 3 天逐日口粮 + 第 3 天分配净得（含残差 1）").isEqualTo(7_226L);
     assertThat(grainOf(next, PEASANT_KEY) + grainOf(next, LANDLORD_KEY))
         .as("Σ净得 + 两端日耗 = 基期库存 + net（账要平）")
-        .isEqualTo(91_300L - 3L * (8_300L + 830L) + 6_790L);
+        .isEqualTo(
+            91_300L
+                - (rationOver(PEASANT_POPULATION, 3L) + rationOver(LANDLORD_POPULATION, 3L))
+                + 6_790L);
     assertThat(next.industries().get(FARM).progressDays())
         .as("第 3 天是周期末 ⇒ progressDays 归零")
         .isZero();
@@ -110,17 +141,20 @@ class EconomySettlementTest {
    * ★★ **多日流水逐日累加**（2026-09-25 修的真 bug）：{@code settle(base, 0, 3)} 的 {@link FlowRow} 必须把 3
    * 天的发生额**累加**， 不能只留最后一天。
    *
-   * <p>字面量（夹具：贫农 100 人 / 地主 10 人，日耗 83 毫粮/人，{@code cycleDays = 3} ⇒ 第 3 天收获）：
+   * <p>字面量（夹具：贫农 100 人 / 地主 10 人，口粮 = 累计的逐日差分，{@code cycleDays = 3} ⇒ 第 3 天收获）：
    *
    * <ul>
-   *   <li>贫农 {@code consumed.grain} = 3 × 8300 + 165（分到的生产损耗） = 25,065；
-   *   <li>地主 {@code consumed.grain} = 3 × 830 + 45 = 2,535；
-   *   <li>贫农 {@code income} = 5,364 + 165 = 5,529、地主 = 1,426 + 45 = 1,471（毛产份额，**与损耗率无关**）；
-   *   <li>Σ 行 {@code consumed} − Σ 行 {@code income} = 27,600 − 7,000 = 20,600 = 基期库存 91,300 − 终态
-   *       70,700（守恒）。
+   *   <li>贫农 {@code consumed.grain} = 头 3 天口粮 25,000 + 166（分到的生产损耗） = 25,166；
+   *   <li>地主 {@code consumed.grain} = 头 3 天口粮 2,500 + 44 = 2,544；
+   *   <li>贫农 {@code income} = 5,364 + 166 = 5,530、地主 = 1,426 + 44 = 1,470（毛产份额，**与损耗率无关**）；
+   *   <li>Σ 行 {@code consumed} − Σ 行 {@code income} = 27,710 − 7,000 = 20,710 = 基期库存 91,300 − 终态
+   *       70,590（守恒）。
    * </ul>
    *
-   * <p>★ 判别力：把日循环里的累加改回"每日重建"（只留第 3 天），{@code consumed} 会掉到 8,300 + 165 = 8,465 ⇒ 本条红。
+   * <p>★ 生产损耗 210 的两份由**最大余数法**给出：地主 floor(210 × 210 ÷ 1000) = 44（余 100）、 贫农 floor(210 × 790 ÷
+   * 1000) = 165（余 900）⇒ 残差 1 归余数最大的贫农 ⇒ 166 / 44（v1 的"按下标序"会给 45 / 165）。
+   *
+   * <p>★ 判别力：把日循环里的累加改回"每日重建"（只留第 3 天），{@code consumed} 会掉到 8,334 + 166 = 8,500 ⇒ 本条红。
    */
   @Test
   void threeDayFlowAccumulatesDailyConsumption() {
@@ -128,43 +162,49 @@ class EconomySettlementTest {
 
     FlowRow peasant = next.flows().get(PEASANT_KEY);
     FlowRow landlord = next.flows().get(LANDLORD_KEY);
-    assertThat(peasant.consumed().get(GRAIN)).as("3 天日耗之和 + 贫农分到的生产损耗").isEqualTo(25_065L);
-    assertThat(landlord.consumed().get(GRAIN)).as("3 天日耗之和 + 地主分到的生产损耗").isEqualTo(2_535L);
-    assertThat(peasant.income()).as("贫农分到的收获毛产份额").isEqualTo(5_529L);
-    assertThat(landlord.income()).as("地主分到的收获毛产份额").isEqualTo(1_471L);
-    assertThat(peasant.netSurplus()).as("5,529 − 25,065").isEqualTo(-19_536L);
-    assertThat(landlord.netSurplus()).as("1,471 − 2,535").isEqualTo(-1_064L);
+    assertThat(peasant.consumed().get(GRAIN))
+        .as("头 3 天口粮之和 + 贫农分到的生产损耗")
+        .isEqualTo(rationOver(PEASANT_POPULATION, 3L) + 166L);
+    assertThat(landlord.consumed().get(GRAIN))
+        .as("头 3 天口粮之和 + 地主分到的生产损耗")
+        .isEqualTo(rationOver(LANDLORD_POPULATION, 3L) + 44L);
+    assertThat(peasant.income()).as("贫农分到的收获毛产份额").isEqualTo(5_530L);
+    assertThat(landlord.income()).as("地主分到的收获毛产份额").isEqualTo(1_470L);
+    assertThat(peasant.netSurplus()).as("5,530 − 25,166").isEqualTo(-19_636L);
+    assertThat(landlord.netSurplus()).as("1,470 − 2,544").isEqualTo(-1_074L);
     assertThat(peasant.newBorrowing()).as("库存够吃 ⇒ 无借入").isZero();
 
     long sumConsumed = peasant.consumed().get(GRAIN) + landlord.consumed().get(GRAIN);
     long sumIncome = peasant.income() + landlord.income();
     assertThat(sumConsumed - sumIncome)
         .as("Σ 行 consumed − Σ 行 income == 基期库存 − 终态库存（守恒口径一致）")
-        .isEqualTo((83_000L + 8_300L) - (63_464L + 7_236L));
+        .isEqualTo((83_000L + 8_300L) - (63_364L + 7_226L));
   }
 
   /**
-   * ★★ **饿死惩罚（字面量算例，用户 2026-09-25 点名）**：一行 100 人、周期 3 天、库存只够 **1 天**（8,300 毫粮）⇒ 后 2 天缺粮。
+   * ★★ **饿死判据（字面量算例，用户 2026-09-25 点名）**：一行 100 人、周期 3 天、库存只够 **1 天**（8,333 毫粮）⇒ 后 2 天缺粮。
+   * **致死率由包内可见的重载注入 200‰**（默认值是 0‰ = 不致命 ⇒ 这条路必须显式走到，不是死分支）。
    *
    * <pre>
-   * needTotal     = 100 × 83 × 3              = 24,900
-   * unmetNeed     = 2 × 8,300                 = 16,600   （周期末流水里的缺口）
-   * faminePerMille= 16,600 × 1000 / 24,900    = 666      （向下取整）
-   * deaths        = 100 × 666 / 1000 × 200/1000 = 13       （20% 致死率）
-   * 人口 100 → 87；劳动 58,000 × 87 / 100      = 50,460    （同比例缩）
+   * cycleNeed     = 累计(3) − 累计(0) = floor(100 × 10,000 × 3 ÷ 120)      = 25,000
+   * unmetNeed     = 第 2 天 8,333 + 第 3 天 8,334（= 25,000 − 16,666）      = 16,667
+   * faminePerMille= 16,667 × 1000 / 25,000                                  = 666   （向下取整）
+   * deaths        = 100 × 666 / 1000 × 200/1000                             = 13    （20% 致死率）
+   * 人口 100 → 87；劳动 58,000 × 87 / 100                                   = 50,460（同比例缩）
    * </pre>
    *
-   * <p>★ 判别力：把 {@link EconomySettlement#FAMINE_MORTALITY_PER_MILLE} 当 0 用 ⇒ {@code
-   * deaths=0}、人口/劳动不变 ⇒ 本条红。
+   * <p>★ 判别力：把注入的致死率当 0 用 ⇒ {@code deaths=0}、人口/劳动不变 ⇒ 本条红（默认值那条路由下一条用例钉住）。
    */
   @Test
   void famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle() {
-    EconomyData next = EconomySettlement.settle(famineFixture(100L * 83L), 0L, 3L);
+    EconomyData next = EconomySettlement.settle(famineFixture(rationOn(100L, 1L)), 0L, 3L, 200);
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
 
-    assertThat(flow.unmetNeed()).as("缺口 = 缺的那两天 = 2 × 8,300").isEqualTo(16_600L);
+    assertThat(flow.unmetNeed())
+        .as("缺口 = 缺的那两天 = 25,000 − 8,333")
+        .isEqualTo(rationOver(100L, 3L) - rationOn(100L, 1L));
     assertThat(flow.deaths()).as("100 × 666/1000 × 200/1000 = 13").isEqualTo(13L);
     assertThat(row.population()).as("人口 100 → 87").isEqualTo(87L);
     assertThat(row.laborMilli()).as("劳动同比例缩：58,000 × 87/100").isEqualTo(50_460L);
@@ -175,10 +215,38 @@ class EconomySettlementTest {
     assertThat(row.laborMilli()).isGreaterThanOrEqualTo(0L);
   }
 
-  /** ★ 判别力对照：储备够吃满整个周期 ⇒ 无缺口、无死亡、人口与劳动纹丝不动。 */
+  /**
+   * ★★ **默认路径：缺口照记、一个人都不死**（V4 的验收判据；用户 2026-09-25「可以先不做什么饿死人系统」）。
+   *
+   * <p>同一个夹具、同一个区间，唯一区别是**走公开入口**（致死率 = 默认 0‰）⇒ {@code unmetNeed} 一样非 0（缺口不是没在记）， 但 {@code deaths =
+   * 0}、人口与有效劳动**纹丝不动**。
+   *
+   * <p>★ 判别力：把默认值改回 200 ⇒ 人口掉到 87 ⇒ 本条红。
+   */
+  @Test
+  void theDefaultRationGapIsRecordedWithoutKillingAnyone() {
+    EconomyData base = famineFixture(rationOn(100L, 1L));
+
+    EconomyData next = EconomySettlement.settle(base, 0L, 3L); // 公开入口：致死率 = 默认 0‰
+
+    ClassRow row = next.classes().get(PEASANT_KEY);
+    FlowRow flow = next.flows().get(PEASANT_KEY);
+    assertThat(flow.unmetNeed())
+        .as("缺口照记（= 后两天没吃到的那部分）")
+        .isEqualTo(rationOver(100L, 3L) - rationOn(100L, 1L));
+    assertThat(flow.deaths()).as("★ 默认 0‰：一个人都不死").isZero();
+    assertThat(row.population()).as("人口一个不少").isEqualTo(100L);
+    assertThat(row.laborMilli()).as("有效劳动纹丝不动").isEqualTo(58_000L);
+  }
+
+  /**
+   * ★ 判别力对照：储备**够吃满整个周期** ⇒ 无缺口、无死亡、人口与劳动纹丝不动。★ 这条**显式传 200‰**：即便致死率开着， 只要口粮一天不缺就没人死 ——
+   * 它证明"没死人"不是因为致死率被关掉，而是因为缺口真是 0。
+   */
   @Test
   void noFamineWhenReservesCoverTheWholeCycle() {
-    EconomyData next = EconomySettlement.settle(famineFixture(3L * 100L * 83L), 0L, 3L);
+    // 储备恰好 = 头 3 天的口粮合计（逐日差分的 telescoping：Σ 日耗 == cumulativeRationMilli(100, 3)）
+    EconomyData next = EconomySettlement.settle(famineFixture(rationOver(100L, 3L)), 0L, 3L, 200);
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
@@ -192,22 +260,24 @@ class EconomySettlementTest {
   /**
    * ★★ **多周期口径：{@code unmetNeed} 是"本期"的，不是"累计"的**（否则第 2 周期的饿死比例会把第 1 周期的旧缺口算进去）。
    *
-   * <p>同一个 3 天周期跑**两轮**（{@code settle 0→6}）：第 1 周期末（第 3 天）缺口 16,600、死 13、人口 87；第 2 周期 87 人 每天吃
-   * 7,221 毫粮，收获为 0 ⇒ 第 4~6 天全缺，缺口 = 3 × 7,221 = 21,663，**不含**第 1 周期的 16,600。 {@code faminePerMille
-   * = 21,663 × 1000 / (87 × 83 × 3 = 21,663) = 1000} ⇒ {@code deaths = 87 × 1000/1000 × 200/1000 =
-   * 17}。
+   * <p>同一个 3 天周期跑**两轮**（{@code settle 0→6}，致死率 200‰）：第 1 周期末（第 3 天）缺口 16,667、死 13、人口 87； 第 2 周期 87
+   * 人每天吃 7,250 毫粮（= floor(87×10,000×4÷120) − floor(87×10,000×3÷120)），收获为 0 ⇒ 第 4~6 天全缺， 缺口 =
+   * 累计(87,6) − 累计(87,3) = 21,750，**不含**第 1 周期的 16,667 {@code faminePerMille = 21,750 × 1000 /
+   * 21,750 = 1000‰} ⇒ {@code deaths = 87 × 1000/1000 × 200/1000 = 17}。
+   *
+   * <p>★★ **{@code deaths} 也是本期口径**（§八.5：整行按周期清零）⇒ 第 6 天读到的是**第 2 周期**的 17，不是 13 + 17 = 30。
    */
   @Test
   void unmetNeedResetsEachCycleSoTheSecondFamineUsesOnlyItsOwnGap() {
-    EconomyData next = EconomySettlement.settle(famineFixture(100L * 83L), 0L, 6L);
+    EconomyData next = EconomySettlement.settle(famineFixture(rationOn(100L, 1L)), 0L, 6L, 200);
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
 
     assertThat(flow.unmetNeed())
-        .as("第 2 周期缺口 = 3 × 87 × 83 = 21,663（**不含**第 1 周期的 16,600）")
-        .isEqualTo(21_663L);
-    assertThat(flow.deaths()).as("累计死亡 = 13（第 1 周期）+ 17（第 2 周期）").isEqualTo(30L);
+        .as("第 2 周期缺口 = 累计(87,6) − 累计(87,3)（**不含**第 1 周期的 16,667）")
+        .isEqualTo(rationOver(87L, 6L) - rationOver(87L, 3L));
+    assertThat(flow.deaths()).as("本期（第 2 周期）死亡 = 17；累计口径已废（§八.5）").isEqualTo(17L);
     assertThat(row.population()).as("87 → 70").isEqualTo(70L);
     assertThat(row.laborMilli()).as("50,460 × 70 / 87 = 40,600").isEqualTo(40_600L);
   }
@@ -241,25 +311,34 @@ class EconomySettlementTest {
   }
 
   /**
-   * ★ **残差按槽位 id 序补足**（"Σ行得 = 剩余产出"的定点整数保证）：权重和 &lt; 1000 时余下的单位按索引序补齐， 一项不丢。
+   * ★★ **分配 = 按权重定点切分 + 最大余数法分派残差**（v2 spec §八.7）：分母是 **Σ权重** ⇒ 各行所得**恰好**与权重成比例，
+   * 残差只是取整余数（不再"人人均摊"）。
    *
-   * <p>★ 判别力：去掉 {@code distributeResidue}，这两条的 Σ 会小于 total。
+   * <p>★ 判别力（变异实测）：把分母改回恒定的 1000‰（v1 口径）⇒ 变的是**逐行值**（第四行拿 217,175 ≈ 按权重应得的 7 倍）⇒ 本条的 {@code
+   * containsExactly} 与"≈ 按权重应得"两条红。 ★ 注意 **Σ 仍 == total**（均摊口径照样不丢总量）⇒ 判据必须落在**逐行值**上。
    */
   @Test
-  void allocateDistributesResidueInSlotOrderKeepingTheTotal() {
+  void allocateDistributesResidueByLargestRemainderKeepingTheTotal() {
     assertThat(EconomySettlement.allocate(1_000L, new long[] {333L, 333L, 333L}))
-        .as("Σ权重 = 999 ⇒ 残差 1 落在第一个槽位")
+        .as("Σ权重 = 999 ⇒ 残差 1；三行余数相同（333）= 平手 ⇒ 按下标序给第一项")
         .containsExactly(334L, 333L, 333L);
     assertThat(EconomySettlement.allocate(7L, new long[] {600L, 400L}))
-        .as("7 × 600‰ = 4.2 ⇒ 4、7 × 400‰ = 2.8 ⇒ 2，残差 1 落在第一个槽位")
-        .containsExactly(5L, 2L);
+        .as("7 × 600 ÷ 1000 = 4 余 200、7 × 400 ÷ 1000 = 2 余 800 ⇒ **余数大者先得**（第二项）")
+        .containsExactly(4L, 3L);
     long[] parts = EconomySettlement.allocate(5_950_000L, new long[] {464L, 354L, 144L, 36L});
     assertThat(parts[0] + parts[1] + parts[2] + parts[3])
-        .as("Σ行得 == 剩余产出（权重和为 998 ⇒ 残差 11,900 按槽位 id 序补足）")
+        .as("Σ行得 == 剩余产出（分母 = Σ权重 = 998 ⇒ Σparts == total 精确）")
         .isEqualTo(5_950_000L);
+    // 余数：第一项 5,950,000 × 464 mod 998 = 664（最大）、第四项 258、第二项 42、第三项 34 ⇒ 残差 1 归第一项。
     assertThat(parts)
-        .as("残差按索引序轮转摊到四个槽位")
-        .containsExactly(2_763_775L, 2_109_275L, 859_775L, 217_175L);
+        .as("四行各自 ≈ 按权重应得（差 ≤ 1）；残差 1 归**余数最大**的第一行")
+        .containsExactly(2_766_333L, 2_110_521L, 858_517L, 214_629L);
+    // ★★ §八.7 的原始病灶：v1 把 Σ权重 的缺口（2‰ ⇒ 11,900 毫粮）**平均分给每一行** ⇒ 第四行（权重 36‰）实得
+    //    214,200 + 2,975 = 217,175，而它按权重只该得 5,950,000 × 36 ÷ 998 = 214,629.26 ⇒ 实得是应得的 7 倍。
+    assertThat(parts[3])
+        .as("第四行实得 == 按权重应得（向下取整），不再是「均摊后远高于权重」的那一份")
+        .isEqualTo(5_950_000L * 36L / 998L);
+    assertThat(parts[3]).as("★ 判别力：旧口径（分母 1000‰ + 人手均摊）会给出 217,175，两者必须不同").isNotEqualTo(217_175L);
   }
 
   // ── 夹具：一格、一个农业产业（3 天周期）、贫农 + 地主两行 ─────────────────────────────
@@ -285,8 +364,8 @@ class EconomySettlementTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(PEASANT_KEY, row(PEASANT_KEY, 100L, 58_000L, 1000, 700L, 83_000L));
-    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, 10L, 5_800L, 0, 300L, 8_300L));
+    classes.put(PEASANT_KEY, row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000, 700L, 83_000L));
+    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0, 300L, 8_300L));
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     return new EconomyData(Optional.of(meta), industries, classes, Map.of(), Map.of());
@@ -303,7 +382,7 @@ class EconomySettlementTest {
         Map.of(GRAIN, goods),
         0L,
         List.of(),
-        Map.of(GRAIN, population * 83L),
+        Map.of(GRAIN, rationOn(population, 1L)),
         Map.of());
   }
 
@@ -340,7 +419,7 @@ class EconomySettlementTest {
             Map.of(GRAIN, stock),
             0L,
             List.of(),
-            Map.of(GRAIN, 8_300L),
+            Map.of(GRAIN, rationOn(100L, 1L)),
             Map.of());
     Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(PEASANT_KEY, row);

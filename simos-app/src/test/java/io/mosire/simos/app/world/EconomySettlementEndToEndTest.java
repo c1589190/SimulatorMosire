@@ -2,6 +2,7 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -18,8 +19,9 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.EconomyTimeParticipant;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -30,6 +32,7 @@ import io.mosire.simos.util.time.TimeRange;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,8 +51,32 @@ class EconomySettlementEndToEndTest {
   private static final BranchId MAIN = new BranchId("main");
   private static final int CHECKPOINT_INTERVAL = 100;
 
-  /** 消费口径（毫粮/人·日）：取结算侧的公开常量（§十，83）。 */
-  private static final long DAILY_MILLI = EconomySettlement.DAILY_GRAIN_MILLI_PER_PERSON;
+  /**
+   * 某行**第 {@code day} 天**的口粮（毫粮）：唯一算法在 {@link EconomyVocabulary#dailyRationMilli} （口径 = 每人每 120 天
+   * 10 粮 ⇒ 累计的**逐日差分**，残差不丢）。
+   *
+   * <p>★ 本文件**不写**"人口 × 每天的量"：日耗逐日不同，乘不出来；多日一律走 {@link EconomyVocabulary#cumulativeRationMilli}。
+   */
+  private static long rationOn(long population, long day) {
+    return EconomyVocabulary.dailyRationMilli(population, day);
+  }
+
+  /**
+   * 一格的**当日实吃**（毫粮）= Σ 行 {@code dailyRationMilli(行人口, day)}。
+   *
+   * <p>★ 必须**逐行求和**（不能写成 {@code dailyRationMilli(格人口, day)}）：向下取整在每一行各发生一次， 两者可以差 1（例：1000 人 第 1
+   * 天逐行 83,332 vs 整格 83,333）。
+   */
+  private static long hexDayNeed(EconomyData data, int q, int r, long day) {
+    return rowsAt(data, q, r).stream().mapToLong(row -> rationOn(row.population(), day)).sum();
+  }
+
+  /** 一格的**累计**口粮（毫粮，头 {@code days} 天）= Σ 行累计（多日口粮的唯一写法）。 */
+  private static long hexRationOver(EconomyData data, int q, int r, long days) {
+    return rowsAt(data, q, r).stream()
+        .mapToLong(row -> EconomyVocabulary.cumulativeRationMilli(row.population(), days))
+        .sum();
+  }
 
   private static final IndustryId FARM_0 = IndustryHexKeys.id(EconomySeeder.FARM, 0, 0);
   private static final IndustryId FARM_1 = IndustryHexKeys.id(EconomySeeder.FARM, 1, 0);
@@ -85,38 +112,66 @@ class EconomySettlementEndToEndTest {
 
   @TempDir Path tempDir;
 
-  // ── (a) 日耗：推进 1 天 ⇒ 每格粮库存减少 人口 × 83 毫粮；推进 N 天 ⇒ N× ──────────────────
+  // ── (a) 日耗：推进 1 天 ⇒ 每格粮库存减少 Σ行「第 1 天口粮」；推进 N 天 ⇒ 头 N 天的累计 ──────
 
+  /**
+   * ★★ **日耗 = Σ 行 {@link EconomyVocabulary#dailyRationMilli}(行人口, 第 1 天)**（口径 = 每人每 120 天 10 粮，
+   * 累计的逐日差分）。
+   *
+   * <p>★ 逐行求和，**不是** {@code dailyRationMilli(格人口, 1)}：向下取整在每行各发生一次（1000 人：逐行 83,332 vs 整格 83,333）。
+   */
   @Test
-  void oneDayConsumesPopulationTimesEightyThreePerHex() {
+  void oneDayConsumesEachRowsFirstDayRationPerHex() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
       advance(core, 1);
       EconomyData after = economy(core);
 
-      assertThat(hexDecrease(before, after, 0, 0)).as("(0,0) 1000 × 83").isEqualTo(83_000L);
-      assertThat(hexDecrease(before, after, 1, 0)).as("(1,0) 500 × 83").isEqualTo(41_500L);
-      assertThat(hexDecrease(before, after, 2, 0)).as("(2,0) 300 × 83").isEqualTo(24_900L);
+      assertThat(hexDecrease(before, after, 0, 0))
+          .as("(0,0) 450/350/150/50 四行各自第 1 天口粮之和")
+          .isEqualTo(hexDayNeed(before, 0, 0, 1L));
+      assertThat(hexDecrease(before, after, 1, 0))
+          .as("(1,0) 500 人四行之和")
+          .isEqualTo(hexDayNeed(before, 1, 0, 1L));
+      assertThat(hexDecrease(before, after, 2, 0))
+          .as("(2,0) 只有城市的 300 人（手工业行）")
+          .isEqualTo(hexDayNeed(before, 2, 0, 1L));
       assertThat(hexDecrease(before, after, 3, 0))
-          .as("(3,0) 1000 × 83（地主缺口由富农借粮补上 ⇒ 全格仍恰好吃掉 1000 × 83）")
-          .isEqualTo(83_000L);
+          .as("(3,0) 地主缺口由富农借粮补上 ⇒ 全格仍恰好吃满各自的口粮")
+          .isEqualTo(hexDayNeed(before, 3, 0, 1L));
       assertThat(hexDecrease(before, after, 4, 0))
-          .as("(4,0) 无粮可借 ⇒ 只吃掉 83000 − 50×83 = 78,850（未满足的部分不凭空造粮）")
-          .isEqualTo(78_850L);
+          .as("(4,0) 无粮可借 ⇒ 地主那 50 人的口粮吃不到（未满足的部分不凭空造粮）")
+          .isEqualTo(hexDayNeed(before, 4, 0, 1L) - rationOn(50L, 1L));
+      assertThat(hexDayNeed(before, 4, 0, 1L) - rationOn(50L, 1L))
+          .as("★ 绝对锚：(4,0) 只能吃掉非地主那 950 人的第 1 天口粮（地主 50 人 = 4,166 全缺）")
+          .isEqualTo(79_166L);
+      assertThat(hexDayNeed(before, 0, 0, 1L))
+          .as("★ 绝对锚：(0,0) 1000 人第 1 天逐行合计（= 83,332，比整格的 83,333 少 1）")
+          .isEqualTo(83_332L);
 
       assertThat(totalPopulation(after)).as("推进不改人口").isEqualTo(totalPopulation(before));
     }
   }
 
+  /**
+   * ★ 推进 N 天 ⇒ 吃掉的是**头 N 天的累计口粮**（{@link EconomyVocabulary#cumulativeRationMilli}）—— 不是 {@code N ×
+   * 一天}。
+   */
   @Test
-  void nDaysConsumeNTimesTheDailyAmountPerHex() {
+  void nDaysConsumeTheCumulativeRationOfThoseDaysPerHex() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
       advance(core, 5);
       EconomyData after = economy(core);
 
-      assertThat(hexDecrease(before, after, 0, 0)).as("5 × 1000 × 83").isEqualTo(5L * 83_000L);
-      assertThat(hexDecrease(before, after, 1, 0)).as("5 × 500 × 83").isEqualTo(5L * 41_500L);
+      assertThat(hexDecrease(before, after, 0, 0))
+          .as("(0,0) 头 5 天累计（= 416,666；旧的 5 × 83,000 = 415,000 会丢掉残差）")
+          .isEqualTo(hexRationOver(before, 0, 0, 5L));
+      assertThat(hexRationOver(before, 0, 0, 5L)).as("★ 绝对锚").isEqualTo(416_666L);
+      assertThat(hexDecrease(before, after, 1, 0))
+          .as("(1,0) 头 5 天累计（= 208,332）")
+          .isEqualTo(hexRationOver(before, 1, 0, 5L));
+      assertThat(hexRationOver(before, 1, 0, 5L)).as("★ 绝对锚").isEqualTo(208_332L);
     }
   }
 
@@ -128,12 +183,14 @@ class EconomySettlementEndToEndTest {
       advance(core, 1);
       EconomyData after = economy(core);
 
-      // (3,0)：地主（50 人）缺 50 × 83 = 4150；富农当日有余粮 ⇒ 恰好一条实物债。
+      // (3,0)：地主（50 人）缺第 1 天口粮 4,166（= dailyRationMilli(50, 1)）；富农当日有余粮 ⇒ 恰好一条实物债。
       ClassKey landlordKey = new ClassKey(FARM_3, LANDLORD);
       ClassRow landlord = after.classes().get(landlordKey);
       assertThat(landlord.debts()).as("地主背上一条债务").hasSize(1);
       Debt debt = after.debts().get(landlord.debts().get(0));
-      assertThat(debt.principal()).as("本金 = 缺口 = 50 × 83").isEqualTo(4_150L);
+      assertThat(debt.principal())
+          .as("本金 = 缺口 = 该行第 1 天的口粮")
+          .isEqualTo(EconomyTestWorld.LENDER_HEX_LANDLORD_DEFICIT);
       assertThat(debt.debtor()).isEqualTo(landlordKey);
       assertThat(debt.creditor()).as("债权人 = 同格有粮的富农").isEqualTo(new ClassKey(FARM_3, RICH));
       assertThat(debt.commodity()).as("实物债（粮）").contains(GRAIN);
@@ -179,7 +236,7 @@ class EconomySettlementEndToEndTest {
           .isEqualTo(PLAINS_HARVEST_NET);
       assertThat(
               sumHarvestIncome(afterHarvest, FARM_0) - harvestProductionLoss(afterHarvest, FARM_0))
-          .as("Σ行得（净）= 剩余产出（分配残差按槽位 id 序补足，不丢总量）")
+          .as("Σ行得（净）= 剩余产出（分配残差按最大余数法分派、分母 = Σ权重 ⇒ 不丢总量）")
           .isEqualTo(PLAINS_HARVEST_NET);
       assertThat(harvestProductionLoss(afterHarvest, FARM_0))
           .as("生产损耗（饲料 0‰ + 折旧 30‰）明文记入本期流水（不静默丢弃）")
@@ -208,7 +265,7 @@ class EconomySettlementEndToEndTest {
       advance(core, 118);
       EconomyData beforeHarvest = economy(core);
       advance(core, 1);
-      assertConserved(beforeHarvest, economy(core), "第 120 天（日耗 + 收获 + 饿死）");
+      assertConserved(beforeHarvest, economy(core), "第 120 天（日耗 + 收获）");
     }
   }
 
@@ -223,8 +280,8 @@ class EconomySettlementEndToEndTest {
 
       long decrease0 = hexDecrease(before, afterOneDay, 0, 0);
       long decrease1 = hexDecrease(before, afterOneDay, 1, 0);
-      assertThat(decrease0).as("(0,0) = 1000 × 83").isEqualTo(1_000L * DAILY_MILLI);
-      assertThat(decrease1).as("(1,0) = 500 × 83").isEqualTo(500L * DAILY_MILLI);
+      assertThat(decrease0).as("(0,0) = Σ行第 1 天口粮").isEqualTo(hexDayNeed(before, 0, 0, 1L));
+      assertThat(decrease1).as("(1,0) = Σ行第 1 天口粮").isEqualTo(hexDayNeed(before, 1, 0, 1L));
       assertThat(decrease0).as("两格日耗必须不相等（否则 isEqualTo 可能恒真）").isNotEqualTo(decrease1);
 
       advance(core, 119);
@@ -298,7 +355,9 @@ class EconomySettlementEndToEndTest {
           .isEqualTo(dailyData);
       // ★ 流水**也纳入**这份终态比较，且非平凡：150 天的发生额逐日累加（不是"两边都只留最后一天"的平凡相等）。
       assertThat(onceData.flows()).as("一次 150 天与 150 次单日的流水逐值相同").isEqualTo(dailyData.flows());
-      assertThat(flowConsumed(onceData)).as("流水已跨日累加（远大于一天的口粮）").isGreaterThan(10L * DAILY_MILLI);
+      assertThat(flowConsumed(onceData))
+          .as("流水已跨日累加（远大于一天的口粮）")
+          .isGreaterThan(10L * rationOn(hexPopulation(onceData, 0, 0), 1L));
 
       // ★ 再钉一条可读的绝对日数字：150 天只跨过第 120 天一次 ⇒ 关账周期 1、周期进度 30。
       assertThat(onceData.meta().orElseThrow().lastClosedCycle())
@@ -311,47 +370,89 @@ class EconomySettlementEndToEndTest {
     }
   }
 
-  // ── (g) 饿死：第一周期末出现死亡 ⇒ 第二周期需求随之下降 ───────────────────────────────
+  // ── (g) 缺口：默认不致命（V4）——缺口读得到、一个人不少；标定后的收获结束青黄不接 ────────────
 
   /**
-   * ★★ **饿死惩罚的端到端验收（用户 2026-09-25 点名）**：(0,0) 1000 人按阶层配储备 = 该格 **65 天**口粮 ⇒ 第 66~120 天全缺 ⇒
-   * **第一周期末（第 120 天）出现死亡**；第二周期人口少了 ⇒ {@code 需求 = 人口 × 83 × 120} 随之下降。多格（本夹具 5 格）各自独立结算。
+   * ★★ **V4 端到端**：(0,0) 1000 人按阶层配储备（= 该格 **65 天**口粮）⇒ 第 66~120 天全缺 ⇒ 第一周期末有**缺口**， 但**默认致死率 0‰ ⇒
+   * 一个人都不死**（用户 2026-09-25：「可以先不做什么饿死人系统」）。
    *
-   * <p>★ 第一周期字面量（(0,0) 四行 450/350/150/50）：缺 55 天 ⇒ 每行 {@code faminePerMille = 55/120 = 458‰}，死亡
-   * 41/32/13/4 = **90**；人口 1000 → 910。
+   * <p>★★ 同一条用例把 **V5 的 §八.8 读口**也验收掉：读口（{@link ApiViews#economyHex}）的 {@code
+   * grainDailyConsumption} == 结算当天写下的自然需求之和；流水的 {@code unmetNeed} 非 0、{@code deaths} == 0。
    *
-   * <p>★ **量纲标定之后第二周期不再饿死**：第 120 天的收获净产 201,469 粮/格 **远超**第二周期需求 9,063.6 粮/格（910 人 × 83 × 120）⇒
-   * 青黄不接到此结束。标定前（1,000 亩 × 7 粮/亩）收获只够约 4% 的需求 ⇒ 那里 `deaths2` 必 > 0、本条必红。
-   *
-   * <p>★ 判别力：把 {@code FAMINE_MORTALITY_PER_MILLE} 当 0 用 ⇒ 第 1 周期死亡 0、人口不变 ⇒ 本条红（配套纯函数算例在 {@code
-   * EconomySettlementTest}）。
+   * <p>★ 第二周期（第 121~240 天）：第 120 天的收获净产 201,469 粮/格 **远超**第二周期需求 10,000 粮/格（1000 人 × 10,000） ⇒
+   * **青黄不接已过**（第二周期缺口 == 0）。标定前（1,000 亩 × 7 粮/亩）收获只够约 4% 的需求 ⇒ 那里这条必红。
    */
   @Test
-  void theFirstLeanSeasonStarvesButTheCalibratedHarvestEndsIt() {
+  void theFirstLeanSeasonLeavesAGapInTheLedgerButKillsNoOne() {
     try (CoreSimos core = freshCore()) {
       EconomyData initial = economy(core);
       long need1 = hexNeed(initial, 0, 0);
 
       advanceRange(core, 0L, 120L); // 一次推进到第 1 个周期末（§十一 等价性由 (f) 单独守）
       EconomyData cycle1 = economy(core);
+      // ★ 读口（同一份状态）：缺粮 ⇒ unmetNeed 非 0，deaths == 0（默认不致命）
+      Map<String, Object> readout1 = ApiViews.economyHex(new HexCoord(0, 0), cycle1);
 
-      long deaths1 = hexDeaths(cycle1, 0, 0);
-      long population1 = hexPopulation(cycle1, 0, 0);
-      assertThat(deaths1).as("(0,0) 第一周期末饿死 90 人").isEqualTo(90L);
-      assertThat(population1).as("人口 1000 → 910").isEqualTo(910L);
+      // 第一周期实吃 = 整缸（该格储备只够 65 天，第 66 天见底 ⇒ 一滴不剩）⇒ 缺口 = 需求 − 缸。
+      assertThat(hexUnmet(cycle1, 0, 0))
+          .as("(0,0) 第一周期的缺口 = Σ行需求 − 整缸库存（缸只够 65 天，之后全缺）")
+          .isEqualTo(need1 - hexStock(initial, 0, 0));
+      assertThat(hexUnmet(cycle1, 0, 0)).as("缺口确实非 0（「缺粮」这件事被记下来了）").isPositive();
+      assertThat(hexDeaths(cycle1, 0, 0)).as("★ 默认 0‰：一个人都不死").isZero();
+      assertThat(hexPopulation(cycle1, 0, 0)).as("人口 1000 一个不少").isEqualTo(1000L);
+      assertThat(flowUnmet(readout1)).as("★ 读口读到非 0 的 unmetNeed（缺口不是「没在记」）").isPositive();
+      assertThat(flowDeaths(readout1)).as("★ 读口读到 deaths == 0（结论，不是静默字段）").isZero();
+
       assertThat(hexNeed(cycle1, 0, 0))
-          .as("第二周期需求 = 减少后的人口 × 83 × 120")
-          .isEqualTo(910L * 83L * 120L);
-      assertThat(hexNeed(cycle1, 0, 0)).as("第二周期需求 < 第一周期需求（人口少了）").isLessThan(need1);
+          .as("第二周期需求 = 人口 × 10,000（人口未变）")
+          .isEqualTo(1_000L * EconomyVocabulary.RATION_MILLI_PER_PERSON);
+      assertThat(hexNeed(cycle1, 0, 0)).as("人口没少 ⇒ 需求与第一周期相同").isEqualTo(need1);
 
       advanceRange(core, 120L, 240L); // 到第 2 个周期末
       EconomyData cycle2 = economy(core);
-      long deaths2 = hexDeaths(cycle2, 0, 0) - deaths1;
-      // ★ 量纲标定（v2 spec §10.3 定案 A）之后：收获净产 201,469 粮/格 **远超**需求 9,960 粮/格 ⇒
-      //   **青黄不接已过**，第二周期不再饿死 —— 这正是 v1 spec §十 验收判据 3 想要的
-      //   "库存曲线：青黄不接 → 收获"。标定前（1,000 亩 × 7 粮/亩）这里必红：收获只够 4% 的需求。
-      assertThat(deaths2).as("第二周期不死人：标定后的收获远超需求 ⇒ 青黄不接已过").isZero();
-      assertThat(hexPopulation(cycle2, 0, 0)).as("人口不再下降（已恢复）").isEqualTo(population1);
+
+      assertThat(hexUnmet(cycle2, 0, 0)).as("★ 青黄不接已过：第二周期一天不缺").isZero();
+      assertThat(hexGrain(cycle2, 0, 0)).as("缸被收获填满").isPositive();
+      assertThat(hexDeaths(cycle2, 0, 0)).as("两个周期都没死人").isZero();
+      assertThat(hexPopulation(cycle2, 0, 0)).as("人口始终 1000").isEqualTo(1000L);
+    }
+  }
+
+  // ── (h) §八.8：读口与结算同源（日耗 == 结算当日实吃）────────────────────────────────────
+
+  /**
+   * ★★ **读口的"日耗"就是结算写下的那个数**（v2 spec §八.8 的"一条真相"）：{@code ApiViews.economyHex(coord,
+   * data).grainDailyConsumption} == Σ 行 {@code ClassRow.naturalNeeds[grain]} == 结算当天逐行算出的需求之和 ==
+   * **该格当天的实际消费**（储备够的格：实吃 == 需求）。
+   *
+   * <p>★ 判别力：把结算侧"写回 naturalNeeds"那一步删掉 ⇒ 读口会读创世时的旧值（第 1 天的 83,332）⇒ 第 2 天这条红。
+   */
+  @Test
+  void theReadoutDailyConsumptionIsTheSameNumberSettlementUsed() {
+    try (CoreSimos core = freshCore()) {
+      EconomyData before = economy(core);
+      advance(core, 1);
+      EconomyData day1 = economy(core);
+      advance(core, 1);
+      EconomyData day2 = economy(core);
+
+      Map<String, Object> readout1 = ApiViews.economyHex(new HexCoord(0, 0), day1);
+      Map<String, Object> readout2 = ApiViews.economyHex(new HexCoord(0, 0), day2);
+      long readDay1 = ((Number) readout1.get("grainDailyConsumption")).longValue();
+      long readDay2 = ((Number) readout2.get("grainDailyConsumption")).longValue();
+
+      assertThat(readDay1).as("第 1 天的读口日耗 == Σ 行当日需求").isEqualTo(hexDayNeed(day1, 0, 0, 1L));
+      assertThat(readDay2).as("第 2 天的读口日耗 == Σ 行当日需求").isEqualTo(hexDayNeed(day2, 0, 0, 2L));
+      assertThat(readDay2)
+          .as("★ 判别力：第 2 天的数必须 ≠ 第 1 天读到的数（否则「天天覆写」与「写一次就不动」分不出来）")
+          .isNotEqualTo(readDay1);
+      // ★ 读口日耗 == 结算当日实吃：该格储备够（65 天）⇒ 实吃 == 需求 == 库存减少。
+      assertThat(hexDecrease(before, day1, 0, 0))
+          .as("(0,0) 第 1 天库存减少 == 读口日耗（同源）")
+          .isEqualTo(readDay1);
+      assertThat(hexDecrease(day1, day2, 0, 0))
+          .as("(0,0) 第 2 天库存减少 == 读口日耗（同源；旧的「人口 × 83」会给 83,000）")
+          .isEqualTo(readDay2);
     }
   }
 
@@ -450,18 +551,66 @@ class EconomySettlementEndToEndTest {
     return hexGrain(before, q, r) - hexGrain(after, q, r);
   }
 
+  /** 某格 Σ 行粮库存（毫粮）。 */
+  private static long hexStock(EconomyData data, int q, int r) {
+    return rowsAt(data, q, r).stream().mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L)).sum();
+  }
+
+  /** 某格 Σ 行本周期未满足需求（毫粮）—— 本期口径（§八.5：新周期第一天归零）。 */
+  private static long hexUnmet(EconomyData data, int q, int r) {
+    long total = 0L;
+    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
+      for (ClassKey key : classKeysOf(data, id)) {
+        FlowRow flow = data.flows().get(key);
+        if (flow != null) {
+          total += flow.unmetNeed();
+        }
+      }
+    }
+    return total;
+  }
+
+  /** 读口视图（{@link ApiViews#economyHex}）里该格 Σ 行的 {@code unmetNeed}。 */
+  private static long flowUnmet(Map<String, Object> hexView) {
+    return sumRowFlows(hexView, "unmetNeed");
+  }
+
+  /** 读口视图里该格 Σ 行的 {@code deaths}。 */
+  private static long flowDeaths(Map<String, Object> hexView) {
+    return sumRowFlows(hexView, "deaths");
+  }
+
+  /** 读口视图里 {@code industries[].classes[].flow[field]} 的合计（读口把 flow 整份挂在每一行上）。 */
+  private static long sumRowFlows(Map<String, Object> hexView, String field) {
+    long total = 0L;
+    for (Object industry : (List<?>) hexView.get("industries")) {
+      Map<?, ?> industryView = (Map<?, ?>) industry;
+      for (Object row : (List<?>) industryView.get("classes")) {
+        Map<?, ?> flow = (Map<?, ?>) ((Map<?, ?>) row).get("flow");
+        total += ((Number) flow.get(field)).longValue();
+      }
+    }
+    return total;
+  }
+
   /** 某格 Σ 人口。 */
   private static long hexPopulation(EconomyData data, int q, int r) {
     return rowsAt(data, q, r).stream().mapToLong(ClassRow::population).sum();
   }
 
-  /** 某格本周期总需求（毫粮）= Σ 行（人口 × 83 × 该行产业周期天数）。 */
+  /**
+   * 某格本周期总需求（毫粮）= Σ 行 {@link EconomyVocabulary#cumulativeRationMilli}(行人口, 该行产业的周期天数)。
+   *
+   * <p>★ **不许写成"人口 × 一天的量 × 天数"**：日耗是逐日差分，乘不出来；累计函数才是口径的载体。
+   */
   private static long hexNeed(EconomyData data, int q, int r) {
     long total = 0L;
     for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
       long cycleDays = data.industries().get(id).cycleDays();
       for (ClassKey key : classKeysOf(data, id)) {
-        total += data.classes().get(key).population() * DAILY_MILLI * cycleDays;
+        total +=
+            EconomyVocabulary.cumulativeRationMilli(
+                data.classes().get(key).population(), cycleDays);
       }
     }
     return total;
@@ -522,6 +671,9 @@ class EconomySettlementEndToEndTest {
    *
    * <p>★ 流水**跨日/跨推进累加**（§十一，{@code FlowRow} 是"本期累计发生额"）⇒ 本次推进的发生额取 {@code after.flows() −
    * before.flows()} 的差，而不是 {@code after.flows()} 本身（否则 119 天的累计会把第 120 天的一天账淹没）。
+   *
+   * <p>★ **人口那一条只对"窗口不跨周期末"成立**（§八.5 起 {@code deaths} 是**本期**口径：新周期第一天归零）： 本文件的两处调用（第 1 天、第 119→120
+   * 天）都落在同一个周期内，故差值法成立。
    */
   private static void assertConserved(EconomyData before, EconomyData after, String what) {
     long consumed = flowConsumed(after) - flowConsumed(before);

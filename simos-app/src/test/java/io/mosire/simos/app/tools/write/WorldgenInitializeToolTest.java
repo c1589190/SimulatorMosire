@@ -65,6 +65,7 @@ import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.spi.CreateCommandChainHandler;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -227,12 +228,18 @@ class WorldgenInitializeToolTest {
                       * 1_000L
                       * EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("low_hills"))
                       / 1000L);
-      assertThat(
-              economy.classes().values().stream()
-                  .mapToLong(row -> row.naturalNeeds().getOrDefault(GRAIN, 0L))
-                  .sum())
-          .as("Σ 日耗 = 人口 × 83 毫粮")
-          .isEqualTo(OSTERMARK_TOTAL * 83L);
+      long seededNaturalNeeds =
+          economy.classes().values().stream()
+              .mapToLong(row -> row.naturalNeeds().getOrDefault(GRAIN, 0L))
+              .sum();
+      assertThat(seededNaturalNeeds)
+          .as("Σ 日耗 == Σ 行第 1 天的口粮（逐行取整；播种器写的就是这个）")
+          .isEqualTo(rationOverDays(economy, 1L));
+      assertThat(seededNaturalNeeds)
+          .as("量级锚：整格口径是 floor(总人口 × 10,000 ÷ 120)，逐行之和只可能更小（每行最多少 1）")
+          .isBetween(
+              EconomyVocabulary.dailyRationMilli(OSTERMARK_TOTAL, 1L) - economy.classes().size(),
+              EconomyVocabulary.dailyRationMilli(OSTERMARK_TOTAL, 1L));
       System.out.println(
           "[WORLDGEN-ECONOMY] nation="
               + OSTERMARK
@@ -423,6 +430,9 @@ class WorldgenInitializeToolTest {
     // ★ 选择：三国各用一个**独立临时库**（每次都是"干净首启 ⇒ revision 1→2"），把 revision / tag 断言钉成常量。
     //   ★ 同库连播三国的回归护栏见 {@link #twoNationsSeedIntoTheSameEconomySlice()}（economy.Seed 已改"按格追加"）。
     long economyHexTotal = 0L;
+    long rationGrandTotal = 0L;
+    long sownGrandTotal = 0L;
+    long decreaseGrandTotal = 0L;
     for (NationCase nation : NATIONS) {
       String id = nation.regionId();
       try (CoreSimos core = freshCore(dir("three-" + id))) {
@@ -535,10 +545,10 @@ class WorldgenInitializeToolTest {
           .as("两国经济人口合计（3,070,000 + 2,530,000）")
           .isEqualTo(firstNation.population() + secondNation.population());
       assertThat(grainTotal(economy))
-          .as("两国初始库存合计 = Σ 行（人口 × 83 × 该阶层天数）")
+          .as("两国初始库存合计 = Σ 行 cumulativeRationMilli(人口, 该阶层天数)")
           .isEqualTo(rationTotal(economy));
       assertThat(grainTotal(economy))
-          .as("★ 判别力：与旧口径（人人 60 天）必须不同，否则阶层天数表没被用到")
+          .as("★ 判别力：与旧口径（人人 60 天 × 每人每日 83）必须不同，否则阶层天数表没被用到")
           .isNotEqualTo((firstNation.population() + secondNation.population()) * 83L * 60L);
       assertThat(economy.meta().orElseThrow().activatedDay()).as("meta 不覆盖：激活日仍是创世日 0").isZero();
       assertThat(economy.meta().orElseThrow().mapId()).isEqualTo(MAP_ID);
@@ -558,12 +568,15 @@ class WorldgenInitializeToolTest {
    * <p>★ 种子量**不从常量推**（满种 = 每格 {@code MU_PER_HEX × SEED_MILLI_PER_MU} 只在**付得起**的格上成立；真档里人口薄的格储备也薄 ⇒
    * 扣不满，第三路瓶颈正是在那些格上真的起作用）⇒ 用一条**独立可算**的规则从推进前的账面算出：逐行 {@code min(该行库存, 该行亩数 × 每亩需种)}。
    *
-   * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 口粮项 = 11,830,000 × 830 =
-   * 9,818,900,000（逐国的口粮项在循环里各自断言）。
+   * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 口粮项 = Σ 行 {@code
+   * cumulativeRationMilli(行人口, 10)} ≈ 9,858,333,333（**逐行**向下取整；"总人口 × 一天的量 × 10"表达不了它）。
    */
   @Test
   void advancingTenDaysConsumesPopulationTimesEightyThreeAcrossThreeNations() throws IOException {
     long economyHexTotal = 0L;
+    long rationGrandTotal = 0L;
+    long sownGrandTotal = 0L;
+    long decreaseGrandTotal = 0L;
     for (NationCase nation : NATIONS) {
       String id = nation.regionId();
       try (CoreSimos core = freshCoreWithEconomy(dir("advance-" + id))) {
@@ -576,6 +589,8 @@ class WorldgenInitializeToolTest {
         assertThat(population).as(id + " 经济人口 == 社会总人口").isEqualTo(nation.population());
         long grainBefore = grainTotal(economy);
         long sown = expectedSownOnTheSowingDay(economy);
+        // ★ 头 10 天的口粮 = Σ 行 cumulativeRationMilli(行人口, 10)（**逐行**向下取整 ⇒ 不能写成"总人口 × 一天的量"）。
+        long ration10 = rationOverDays(economy, 10L);
         long landMu =
             economy.classes().values().stream()
                 .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L)
@@ -590,16 +605,32 @@ class WorldgenInitializeToolTest {
             .as(id + "：扣到的种子 ≤ Σ地亩 × 每亩需种（第三路只**缩**面积，永不放大）")
             .isLessThanOrEqualTo(landMu * EconomySeeder.SEED_MILLI_PER_MU);
         assertThat(grainBefore - grainAfter)
-            .as("%s：推进 10 天 ⇒ 粮库存减少 = 人口 × 83 × 10（口粮）+ 播种日扣的种子 %d", id, sown)
-            .isEqualTo(population * 83L * 10L + sown);
+            .as("%s：推进 10 天 ⇒ 粮库存减少 = 头 10 天口粮（逐行累计）%d + 播种日扣的种子 %d", id, ration10, sown)
+            .isEqualTo(ration10 + sown);
+        rationGrandTotal += ration10;
+        sownGrandTotal += sown;
+        decreaseGrandTotal += grainBefore - grainAfter;
         economyHexTotal += economyHexCount(economySlice(after));
       }
     }
     assertThat(economyHexTotal).as("三国 799 格都真的经结算推进过").isEqualTo(799L);
-    // 三国合计：11,830,000 × 830 = 9,818,900,000（逐国的口粮项在循环里各自断言）。
-    assertThat(NATIONS.stream().mapToLong(NationCase::population).sum() * 83L * 10L)
-        .as("Σ(三国人口 × 83 × 10)")
-        .isEqualTo(9_818_900_000L);
+    // ★ 三国**合计**的账面（不再是"11,830,000 × 830"这种把常数乘一遍的算术）：实际库存减少 == 逐行累计口粮 + 扣到的种子。
+    //   逐行的向下取整让"总人口 × 一天的量"这条路彻底不可用 —— 合计必须由行级数据累加而来。
+    assertThat(decreaseGrandTotal)
+        .as("Σ(三国 10 天库存减少) == Σ 逐行口粮累计 + Σ 扣到的种子")
+        .isEqualTo(rationGrandTotal + sownGrandTotal);
+    assertThat(rationGrandTotal)
+        .as("口粮项的量级锚：11,830,000 人 × 10 天 ≈ 985,833,333 毫粮（逐行取整 ⇒ 略小于它，且差值 < 行数）")
+        .isBetween(
+            11_830_000L
+                    * 10L
+                    * EconomyVocabulary.RATION_MILLI_PER_PERSON
+                    / EconomyVocabulary.RATION_CYCLE_DAYS
+                - 4_000L,
+            11_830_000L
+                * 10L
+                * EconomyVocabulary.RATION_MILLI_PER_PERSON
+                / EconomyVocabulary.RATION_CYCLE_DAYS);
   }
 
   /**
@@ -649,6 +680,13 @@ class WorldgenInitializeToolTest {
     }
   }
 
+  /** 某国全部阶层行**头 {@code days} 天**的口粮合计（毫粮）= Σ 行累计口粮（多日口粮的唯一写法）。 */
+  private static long rationOverDays(EconomyData economy, long days) {
+    return economy.classes().values().stream()
+        .mapToLong(row -> EconomyVocabulary.cumulativeRationMilli(row.population(), days))
+        .sum();
+  }
+
   /** 某国全部阶层行的粮库存合计（毫粮）。 */
   private static long grainTotal(EconomyData economy) {
     return economy.classes().values().stream()
@@ -656,13 +694,16 @@ class WorldgenInitializeToolTest {
         .sum();
   }
 
-  /** 按**阶层天数口径**（{@link EconomySeeder#INITIAL_RATION_DAYS_BY_CLASS}）算出的初始库存合计（毫粮）。 */
+  /**
+   * 按**阶层天数口径**（{@link EconomySeeder#INITIAL_RATION_DAYS_BY_CLASS}）算出的初始库存合计（毫粮）： 逐行 {@link
+   * EconomyVocabulary#cumulativeRationMilli}(人口, 该阶层天数) —— **累计**函数，不是"人口 × 一天的量 × 天数"。
+   */
   private static long rationTotal(EconomyData economy) {
     return economy.classes().values().stream()
         .mapToLong(
             row ->
-                EconomySeeder.dailyGrainMilli(row.population())
-                    * EconomySeeder.initialRationDays(row.key().slot().value()))
+                EconomyVocabulary.cumulativeRationMilli(
+                    row.population(), EconomySeeder.initialRationDays(row.key().slot().value())))
         .sum();
   }
 
