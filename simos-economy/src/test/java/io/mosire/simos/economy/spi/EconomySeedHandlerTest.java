@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.spi;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -61,6 +62,31 @@ class EconomySeedHandlerTest {
   /** 第二国的载荷：与 {@link #PAYLOAD} 同形、但落在**另一格**（{@code 1_0}）——验证"已激活后按格追加"。 */
   private static final String LATER_NATION_PAYLOAD =
       PAYLOAD.replace("\"q\":0,\"r\":0", "\"q\":1,\"r\":0").replace("farm@0_0", "farm@1_0");
+
+  /**
+   * ★★ `WageFirst`（资本主义工业）在 v1 没有结算实现 ⇒ 必须**播种期**拒（v2 spec §八.4）。
+   *
+   * <p>判别力：v1 允许它入库，直到某个收获日才在 `EconomySettlement.harvest` 里抛 `UnsupportedOperationException` ——
+   * 那个异常穿出 `EconomyTimeParticipant.simulateWorld`， 让整条 `AdvanceTime` revision 失败（既不是 `Rejected`
+   * 也不是降级）。
+   *
+   * <p>★ 为什么拒在**载荷**这一层而不是 `Industry` 构造期：构造期拒会让 `WageFirst` 这个 **状态形状**（spec §五 的第四种制度）不可表达，连带
+   * `EconomyCodecTest` 的 `wage_first` 多态往返夹具无法构造 ⇒ 丢一条 JSON 分支的覆盖。播种期拒已堵住命令路径，且不砍覆盖。
+   */
+  @Test
+  void wageFirstAllocationIsRejectedAtSeedTime() {
+    String payload =
+        PAYLOAD.replace(
+            "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,"
+                + "\"laborWeightPerMille\":300}",
+            "\"allocation\":{\"@class\":\"wage_first\",\"wagePerLaborMilli\":1000,"
+                + "\"ownerResidual\":{\"grain\":30}}");
+    assertThat(payload).as("替换必须真的发生（否则本用例测的是 split 那条路）").isNotEqualTo(PAYLOAD);
+    assertThatThrownBy(() -> EconomyPayloads.toData(EconomyPayloads.parse(payload), T7))
+        .as("v1 不支持的分配函数必须在播种期拒（v2 spec §八.4）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Split");
+  }
 
   @Test
   void typeIsEconomySeed() {

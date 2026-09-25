@@ -161,6 +161,16 @@ final class EconomyPayloads {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("allocation 形状不对（见 AllocationRule）: " + allocation, e);
     }
+    // ★ v2 spec §八.4：v1 的周期结算只实现了 AllocationRule.Split（小农/封建租佃/手工业）。
+    //   WageFirst（资本主义工业）是后续增量 —— 必须在**播种期**拒，而不是等某个收获日
+    //   在 EconomySettlement.harvest 里抛 UnsupportedOperationException：那个异常会穿出
+    //   EconomyTimeParticipant.simulateWorld，让整条 AdvanceTime revision 失败。
+    //   ★ 为什么拒在这里而不是 Industry 构造期：构造期拒会让 WageFirst 这个**状态形状**
+    //     （spec §五 的第四种制度）变得不可表达，连带 EconomyCodecTest 的 wage_first 多态
+    //     往返夹具无法构造 ⇒ 丢一条 JSON 分支的覆盖。播种期拒已堵住命令路径，且不砍覆盖。
+    if (!(rule instanceof AllocationRule.Split)) {
+      throw new IllegalArgumentException("v1 的周期分配只支持 AllocationRule.Split（v2 spec §八.4）：" + rule);
+    }
     return new Industry(
         id,
         name,
