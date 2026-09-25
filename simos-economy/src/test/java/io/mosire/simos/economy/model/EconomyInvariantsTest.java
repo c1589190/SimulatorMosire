@@ -130,7 +130,8 @@ class EconomyInvariantsTest {
   /** ★ 不变量 3 的流水侧（§3.3）：{@code flows} 的键必须与 {@code FlowRow.key} 一致。 */
   @Test
   void rejectsFlowsKeyNotMatchingRowKey() {
-    FlowRow row = new FlowRow(LANDLORD_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 10L, 0L, 0L);
+    FlowRow row =
+        new FlowRow(LANDLORD_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 10L, Map.of(), 0L, 0L);
     assertThatThrownBy(
             () ->
                 new EconomyData(
@@ -145,17 +146,40 @@ class EconomyInvariantsTest {
         .hasMessageContaining("FlowRow.key");
   }
 
-  /** ★ 不变量（2026-09-25 新增字段）：未满足需求与饿死数都不得为负（存量非负口径的流水侧）。 */
+  /**
+   * ★ 不变量（2026-09-25 新增字段；**R4 起 unmetNeed 逐商品**）：未满足需求（逐值）与饿死数都不得为负（存量非负口径的流水侧）。
+   *
+   * <p>★ R4 补第三条：**出生也不得为负**（与死亡对称的那一项）。
+   */
   @Test
   void rejectsNegativeUnmetNeedOrDeaths() {
     assertThatThrownBy(
-            () -> new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, -1L, 0L))
+            () ->
+                new FlowRow(
+                    PEASANT_KEY,
+                    Map.of(),
+                    Map.of(),
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    Map.of(GRAIN, -1L),
+                    0L,
+                    0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unmetNeed");
     assertThatThrownBy(
-            () -> new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, -1L))
+            () ->
+                new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), -1L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("deaths");
+    assertThatThrownBy(
+            () ->
+                new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, -1L))
+        .as("★ R4：出生与死亡对称 ⇒ 两侧都不许为负")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("births");
   }
 
   /**
@@ -167,10 +191,22 @@ class EconomyInvariantsTest {
   void rejectsNegativeIncomeQuantity() {
     assertThatThrownBy(
             () ->
-                new FlowRow(PEASANT_KEY, Map.of(GRAIN, -1L), Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, 0L))
+                new FlowRow(
+                    PEASANT_KEY,
+                    Map.of(GRAIN, -1L),
+                    Map.of(),
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    Map.of(),
+                    0L,
+                    0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("income");
-    assertThatThrownBy(() -> new FlowRow(PEASANT_KEY, null, Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, 0L))
+    assertThatThrownBy(
+            () -> new FlowRow(PEASANT_KEY, null, Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("income");
   }

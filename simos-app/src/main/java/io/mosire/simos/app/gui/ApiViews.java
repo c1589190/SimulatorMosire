@@ -1,6 +1,7 @@
 package io.mosire.simos.app.gui;
 
 import io.mosire.simos.app.access.DecisionScopeView;
+import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
@@ -563,8 +564,11 @@ public final class ApiViews {
     view.put("newBorrowing", flow == null ? 0L : flow.newBorrowing());
     view.put("repaid", flow == null ? 0L : flow.repaid());
     view.put("netSurplus", flow == null ? 0L : flow.netSurplus());
-    view.put("unmetNeed", flow == null ? 0L : flow.unmetNeed());
+    // ★★ **R4：{@code unmetNeed} 也逐商品**（spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）
+    //   ⇒ 读口必须把两种缺口**各自发出来**（加成一个数就再也分不开了）。键序同样走 sortedCommodities。
+    view.put("unmetNeed", flow == null ? Map.of() : sortedCommodities(flow.unmetNeed()));
     view.put("deaths", flow == null ? 0L : flow.deaths());
+    view.put("births", flow == null ? 0L : flow.births()); // ★ R4：与 deaths 对称的那一项
     return view;
   }
 
@@ -998,6 +1002,16 @@ public final class ApiViews {
     view.put("groups", groups);
     // ★ R2（T4）：劳动分配一维（各主体占用劳动 / 该格可用劳动 / 占用率）。
     view.put("labor", laborView(data, economy, coord));
+    // ★★ R4（T3）：**危机红灯** —— 这一格有没有触发生活资料/社会再生产危机，以及**是哪一类**（不是概率）。
+    //   ★ 它挂在本读口上（**沿用既有权限判定**：该格有 populations 序列 + 人口可见），不另开更宽的判据。
+    List<Map<String, Object>> crisis = new ArrayList<>();
+    for (CrisisMonitor.Light light : CrisisMonitor.lightsAt(coord, economy, data, at.tick())) {
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("kind", light.kind().name());
+      entry.put("evidence", new LinkedHashMap<>(light.evidence()));
+      crisis.add(entry);
+    }
+    view.put("crisis", crisis);
     return view;
   }
 
@@ -1019,6 +1033,20 @@ public final class ApiViews {
       sex.put(entry.getKey().name(), entry.getValue());
     }
     groups.put("sex", sex);
+    // ★★ R4：**生理压力**一维（"缺粮不直接对应死亡人数，而是累积压力"的读口落点）：人均压力 + 最大值。
+    //   ★ 两个数都从这里读得到，且**逐格**给（压力是批次的属性，但读口按格汇总才有用）。
+    long stressSum = 0L;
+    long stressMax = 0L;
+    long stressed = 0L;
+    for (PopulationGroup group : data.groupsAt(coord)) {
+      stressSum += group.physiologicalStress() * group.count();
+      stressMax = Math.max(stressMax, group.physiologicalStress());
+      stressed += group.count();
+    }
+    Map<String, Object> stress = new LinkedHashMap<>();
+    stress.put("average", stressed == 0L ? 0L : stressSum / stressed);
+    stress.put("max", stressMax);
+    groups.put("physiologicalStress", stress);
     return groups;
   }
 

@@ -213,8 +213,8 @@ class EconomySettlementTest {
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
 
-    assertThat(flow.unmetNeed())
-        .as("缺口 = 缺的那两天 = 25,000 − 8,333")
+    assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
+        .as("缺口 = 缺的那两天 = 25,000 − 8,333（★ R4 起 unmetNeed 逐商品，本条只说**粮**那一维）")
         .isEqualTo(rationOver(100L, 3L) - rationOn(100L, 1L));
     assertThat(flow.deaths()).as("100 × 666/1000 × 200/1000 = 13").isEqualTo(13L);
     assertThat(row.population()).as("人口 100 → 87").isEqualTo(87L);
@@ -242,8 +242,8 @@ class EconomySettlementTest {
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
-    assertThat(flow.unmetNeed())
-        .as("缺口照记（= 后两天没吃到的那部分）")
+    assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
+        .as("缺口照记（= 后两天没吃到的那部分；★ R4 起 unmetNeed 逐商品，本条只说粮那一维）")
         .isEqualTo(rationOver(100L, 3L) - rationOn(100L, 1L));
     assertThat(flow.deaths()).as("★ 默认 0‰：一个人都不死").isZero();
     assertThat(row.population()).as("人口一个不少").isEqualTo(100L);
@@ -262,7 +262,11 @@ class EconomySettlementTest {
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
 
-    assertThat(flow.unmetNeed()).as("一天不缺").isZero();
+    assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L)).as("一天不缺").isZero();
+    assertThat(flow.unmetNeed())
+        .as("★★ R4（T2）：这张表**多了布那一维** —— 该夹具没有织机 ⇒ 布一点没得到 ⇒ 布那一维非 0（R3 时它根本不在表里）")
+        .containsKey(EconomySettlement.CLOTH);
+    assertThat(flow.unmetNeed().getOrDefault(EconomySettlement.CLOTH, 0L)).isPositive();
     assertThat(flow.deaths()).as("无人饿死").isZero();
     assertThat(row.population()).as("人口不变").isEqualTo(100L);
     assertThat(row.laborMilli()).as("劳动不变").isEqualTo(58_000L);
@@ -285,8 +289,8 @@ class EconomySettlementTest {
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
 
-    assertThat(flow.unmetNeed())
-        .as("第 2 周期缺口 = 累计(87,6) − 累计(87,3)（**不含**第 1 周期的 16,667）")
+    assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
+        .as("第 2 周期缺口 = 累计(87,6) − 累计(87,3)（**不含**第 1 周期的 16,667；★ R4 起只读粮那一维）")
         .isEqualTo(rationOver(87L, 6L) - rationOver(87L, 3L));
     assertThat(flow.deaths()).as("本期（第 2 周期）死亡 = 17；累计口径已废（§八.5）").isEqualTo(17L);
     assertThat(row.population()).as("87 → 70").isEqualTo(70L);

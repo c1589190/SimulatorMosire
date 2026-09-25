@@ -63,6 +63,48 @@ public final class PopulationLots {
   }
 
   /**
+   * ★★ **生育结算月**的细分短名（R4）：{@code b<结算月序号>}（{@code b} = born）。
+   *
+   * <p>★ 它让"当月出生的人"各自成批（同性别、同年龄 0 天、同锚点 ⇒ 属性确实完全相同），从而**年龄结构随推进演化**； 而**同一批母亲**在该月生的孩子汇进同一条批次（见
+   * {@code PopulationDynamics.appendBirths}）。
+   */
+  public static String bornCohort(long nowTick, long settlementDays) {
+    if (nowTick < 0L || settlementDays < 1L) {
+      throw new IllegalArgumentException(
+          "结算日必须 ≥ 0、结算周期必须 ≥ 1: " + nowTick + " / " + settlementDays);
+    }
+    return "b" + (nowTick / settlementDays);
+  }
+
+  /**
+   * ★★ **一个新生批次的 id**（R4）：{@code <母亲批次 id 的前缀><性别>:b<结算月序号>}。
+   *
+   * <pre>
+   * rural:0_0:FEMALE:1  ──(MALE, 第 360 天)──→  rural:0_0:MALE:b12
+   * urban:c-0_0:FEMALE:1 ─(FEMALE, 第 360 天)─→  urban:c-0_0:FEMALE:b12
+   * </pre>
+   *
+   * <p>★★ **为什么按"母亲的前缀"而不是另起一套命名**：{@link #isUrban} 与 {@code SocialData#urbanPopulationAt(CityId)}
+   * 都按 id 的**前缀**归属 —— 另起一套会让"城里生的人"在城乡归属上凭空变成农村人（而那条归属正是经济侧分池的依据）。 前缀 = 母亲 id
+   * 去掉最后一段（细分），故"住在哪、属于哪座城"自动继承，**不需要第二个字段**。
+   */
+  public static PeopleLotId born(PopulationGroup mother, Sex sex, String cohort) {
+    if (mother == null) {
+      throw new IllegalArgumentException("mother 不得为 null");
+    }
+    if (sex == null) {
+      throw new IllegalArgumentException("sex 不得为 null");
+    }
+    String id = mother.id().value();
+    int lastSeparator = id.lastIndexOf(':');
+    if (lastSeparator < 0) {
+      throw new IllegalArgumentException("母亲批次的 id 必须形如 <前缀>:<性别>:<细分>（R4 的新生批次按前缀继承城乡归属）: " + id);
+    }
+    return PeopleLotId.parse(
+        id.substring(0, lastSeparator + 1) + sex.name() + ":" + requireCohort(cohort));
+  }
+
+  /**
    * 某城的城镇批次 id 的**公共前缀**：{@code urban:<cityId>:}。{@link
    * io.mosire.simos.social.SocialData#urbanPopulationAt(CityId)} 按它归属（前缀含结尾分隔符 ⇒ {@code c-1} 不会吞掉
    * {@code c-12} 的批次）。

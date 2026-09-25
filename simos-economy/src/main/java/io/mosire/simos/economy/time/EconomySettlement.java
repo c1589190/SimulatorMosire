@@ -5,7 +5,10 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -22,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -209,6 +213,15 @@ public final class EconomySettlement {
   /** 粮食商品 id（§十"单位"行：粮 = 1 公斤；本轮只结算这一种商品）。唯一拼写点在 {@link EconomyVocabulary}。 */
   public static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
+  /**
+   * ★★ **布的商品 id**（R4 的 T2）：{@code cloth} —— 唯一拼写点同样在 {@link EconomyVocabulary}。
+   *
+   * <p>★★ **R4 起它是"真的被消费"的那种商品**（R3 只把它的需求写进了 {@code naturalNeeds}，形状有了但不消费、不进任何判据）： 每天的衣着需求（每人每
+   * 365 天 1 匹）**从库存里扣**，缺口进 {@code unmetNeed} 的**布那一维** —— 与粮**同一套记账**、但**各自一条**（spec
+   * §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）。
+   */
+  public static final CommodityId CLOTH = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
+
   /** **借粮优先序**（§四 第 8 步 / 用户口径）：地主 → 富农 → 中农。★ **贫农不在放贷序列**里（v1 明文：它没有余粮可贷）； 只有这三个槽位的行才可能是债权人。 */
   private static final List<String> LENDER_SLOT_PRIORITY = List.of("landlord", "rich", "middle");
 
@@ -310,22 +323,27 @@ public final class EconomySettlement {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>(base.industries());
     LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>(base.classes());
     LinkedHashMap<DebtId, Debt> debts = new LinkedHashMap<>(base.debts());
-    // ★ R2：劳动配额表**只读不写**（结算从它求当日劳动，但配额由命令层发）⇒ 不需要工作副本，直接读 base 的。
-    Map<LaborAllocationId, LaborAllocation> allocations = base.allocations();
+    // ★★ **R2：劳动配额表**——日结算**读**它（当日劳动的唯一来源），R4 起在**饿死**那一步**按存活比例缩**它
+    //   （见 {@link #scaleLaborOfIndustry}："人死了劳动没减"这条旧账的收口）⇒ 需要工作副本。
+    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations =
+        new LinkedHashMap<>(base.allocations());
+    LinkedHashMap<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>(base.laborSupply());
 
     // 逐行当日发生额（流水的事后组装）。★ R3 起两张实物表都是**逐商品**的（{@link FlowRow#income()} 由标量改成 Map）。
     LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> borrowing = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Map<CommodityId, Long>> income = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Map<CommodityId, Long>> productionLoss = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, Long> unmetToday = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Map<CommodityId, Long>> unmetToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> deathsToday = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Long> birthsToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> interestToday = new LinkedHashMap<>(); // 周期末计息那一笔（§7.1③）
 
     // ── 0. 现扣周期投入（周期的第一天）：**在当天吃饭之前**把种子/原料划走（v2 spec §3.2）──────
     //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
+    //   ★★ R4（T0）：这一步里**先做一次同格取材**（把田里的纤维搬到织机上），再各扣各的（见 drawCycleInputs）。
     if (plantingDrawsFirst) {
-      drawCycleInputs(industries, rows, consumedGoods);
+      drawCycleInputs(industries, rows, consumedGoods, income);
     }
 
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
@@ -333,7 +351,7 @@ public final class EconomySettlement {
         industries, rows, debts, consumedGoods, borrowing, unmetToday, day, currentCycle, dueCycle);
 
     if (!plantingDrawsFirst) {
-      drawCycleInputs(industries, rows, consumedGoods);
+      drawCycleInputs(industries, rows, consumedGoods, income);
     }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
@@ -368,20 +386,34 @@ public final class EconomySettlement {
       if (progressed >= industry.cycleDays()) {
         // ── 周期末：产出 / 生产消耗 / 制度分配 —— 再算饿死（分配/收获不受死亡影响，本期产出照分给幸存者）──
         harvest(industry, rows, keys, cycledLabor, income, productionLoss);
+        long populationBefore = 0L;
+        for (ClassKey key : keys) {
+          populationBefore += rows.get(key).population();
+        }
         for (ClassKey key : keys) {
           long carried =
               newCycleIndustries.contains(id) || flows.get(key) == null
                   ? 0L
-                  : flows.get(key).unmetNeed();
+                  : flows.get(key).unmetNeed().getOrDefault(GRAIN, 0L);
           applyFamine(
               rows,
               deathsToday,
               key,
               rows.get(key),
-              carried + unmetToday.getOrDefault(key, 0L),
+              carried + unmetToday.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L),
               day,
               industry.cycleDays(),
               famineMortalityPerMille);
+        }
+        long populationAfter = 0L;
+        for (ClassKey key : keys) {
+          populationAfter += rows.get(key).population();
+        }
+        // ★★ **R4：饿死之后劳动按同比例缩 —— 而且这次真的缩到配额上**（R2 如实记下的那条旧账：
+        //   `applyFamine` 缩的是**行**劳动，而当日劳动自 R2 起取自**劳动分配表** ⇒ "人死了劳动没减"）。
+        //   本步把该产业名下的**全部配额**与对应批次的**劳动供给**按同一个存活比例缩（见 {@link #scaleLaborOfIndustry}）。
+        if (populationAfter < populationBefore) {
+          scaleLaborOfIndustry(id, populationBefore, populationAfter, allocations, laborSupply);
         }
         nextProgress = 0L;
         nextCycleLabor = 0L;
@@ -412,8 +444,9 @@ public final class EconomySettlement {
       //     但它照样进"本期盈余/赤字"：债务人**确实**比期初更穷了（欠得更多）。
       long netSurplus =
           earned.getOrDefault(GRAIN, 0L) - consumed.getOrDefault(GRAIN, 0L) - interest;
-      long dayUnmet = unmetToday.getOrDefault(key, 0L);
+      Map<CommodityId, Long> dayUnmet = unmetToday.getOrDefault(key, Map.of());
       long dayDeaths = deathsToday.getOrDefault(key, 0L);
+      long dayBirths = birthsToday.getOrDefault(key, 0L);
       // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
       //   ★★ **本期口径（§八.5）**：新周期的第一天（progressDays == 0，含创世）该行**整行从 0 重记** ——
       //      上周期末的读数在**关账那一支的 revision 里**读得到（归档），次日才归零（清零）。
@@ -431,8 +464,9 @@ public final class EconomySettlement {
               (acc == null ? 0L : acc.newBorrowing()) + borrowed,
               acc == null ? 0L : acc.repaid(),
               (acc == null ? 0L : acc.netSurplus()) + netSurplus,
-              (acc == null ? 0L : acc.unmetNeed()) + dayUnmet,
-              (acc == null ? 0L : acc.deaths()) + dayDeaths));
+              mergeGoods(acc == null ? null : acc.unmetNeed(), dayUnmet),
+              (acc == null ? 0L : acc.deaths()) + dayDeaths,
+              (acc == null ? 0L : acc.births()) + dayBirths));
     }
 
     OptionalLong lastClosed =
@@ -444,15 +478,261 @@ public final class EconomySettlement {
             lastClosed,
             meta.rulesVersion(),
             meta.migrationSource());
-    // ★ R2：劳动供给表与配额表**原样带过**（结算不改它们：配额属命令层，供给属 social 的人口真值源）。
+    // ★ R2：劳动供给表与配额表**原样带过结算的日常部分**（配额属命令层、供给属 social 的人口真值源）；
+    //   R4 起它们在**饿死**那一步会被按存活比例缩（上面的工作副本），故这里交出的是**工作副本**。
     return new EconomyData(
-        Optional.of(nextMeta),
-        industries,
-        rows,
-        debts,
-        flows,
-        base.laborSupply(),
-        base.allocations());
+        Optional.of(nextMeta), industries, rows, debts, flows, laborSupply, allocations);
+  }
+
+  // ── 人口变动回写（R4：社会侧的出生/死亡 → 经济侧的行人口、劳动配额与流水）──────────────────
+
+  /**
+   * ★★ **把一份"逐批次的出生/死亡"回写到经济侧**（R4 的接缝；**纯函数**：{@code base} 一字不改）。
+   *
+   * <pre>
+   * 对每个批次 g（只处理两侧不全为 0 的那些）：
+   *   ① 它在经济侧的"人"住在**它供给的那些产业**的行里（权重 = 各产业的行人口之和）
+   *      —— 真档里农村批次供给 农业+家庭纺织（纺织行人口为 0）⇒ 人全在农业行；城镇批次供给手工业 ⇒ 全在手工业行。
+   *   ② 出生/死亡按该权重摊到行上；行人口 ∓、**行的 laborMilli 按存活比例缩**（新生儿不干活）
+   *   ③ 该批次名下的**全部配额与劳动供给**按同一个存活比例缩（"人死了劳动没减"的收口，见 scaleLaborOfGroup）
+   *   ④ 出生/死亡**逐行落进流水**（{@code FlowRow.births} / {@code FlowRow.deaths}）—— 人口守恒因此逐值可核
+   * </pre>
+   *
+   * <p>★★ **为什么经济侧必须跟着动**（而不是"人死了只在社会侧少几个人"）：行人口是**口粮需求**与**分配权重**的来源 （{@code
+   * dailyRationMilli(row.population, day)}）⇒ 不回写就会得到"人已经死了、饭还照吃"这种更糟的账。
+   *
+   * <p>★★ **为什么配额要按 #③ 缩两次也不同**：{@code applyFamine}（直接按缺口处死的那条路径）缩的是**产业**那一侧， 本步缩的是**批次**那一侧 ——
+   * 两条路径各自知道自己死了谁，各自缩自己那份账。两者都落在同一条不变量上 （{@code Σ allocated ≤ available}）。
+   *
+   * <p>★ **没有劳动配额的批次摊不出去**（{@code industriesOf} 里没有它）：本轮的世界里创世给每个批次都发了配额 （{@code
+   * EconomySeeder}），故这条路径只服务"手工搭的、没有配额的状态"——那种状态本来也没有可缩的劳动。
+   *
+   * @param changes 逐批次的出生/死亡（social 侧的月度结算产物；键 = 批次身份）
+   */
+  public static EconomyData applyPopulationChange(EconomyData base, List<LotChange> changes) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(changes, "changes");
+    if (changes.isEmpty()) {
+      return base;
+    }
+    LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>(base.classes());
+    LinkedHashMap<ClassKey, FlowRow> flows = new LinkedHashMap<>(base.flows());
+    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations =
+        new LinkedHashMap<>(base.allocations());
+    LinkedHashMap<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>(base.laborSupply());
+    // 批次 → 它供给的产业（保序、去重；只认**真的落在某个产业上**的 actor，见 EconomyData 的构造期守卫）。
+    Map<PeopleLotId, List<IndustryId>> industriesOf = new LinkedHashMap<>();
+    for (LaborAllocation allocation : base.allocations().values()) {
+      IndustryId industryId = new IndustryId(allocation.actor().id());
+      if (!base.industries().containsKey(industryId)) {
+        continue;
+      }
+      List<IndustryId> list =
+          industriesOf.computeIfAbsent(allocation.group(), k -> new ArrayList<>());
+      if (!list.contains(industryId)) {
+        list.add(industryId);
+      }
+    }
+    for (LotChange change : changes) {
+      if (change.isEmpty()) {
+        continue;
+      }
+      List<IndustryId> targets = industriesOf.getOrDefault(change.group(), List.of());
+      if (targets.isEmpty()) {
+        // ★★ **兜底：摊到"它住的那一格"的产业行上**（见 {@link LotChange} 的类注）—— 没有劳动配额的批次
+        //   （0-14 岁那一档：劳动系数 0 ⇒ 创世不发配额）照样要吃饭、照样会死；不摊它，那一格的阶层行就会
+        //   "人少了、饭照吃"，而两侧的人口账当场对不上（实测：真档一年差 23,452 人，全部是未成年那一档）。
+        targets = industriesAt(base, change.at());
+        if (targets.isEmpty()) {
+          continue; // 该格本来就没有任何经济状态（世界还没播种到这里）⇒ 没有可摊的行
+        }
+      }
+      long[] industryPopulations = new long[targets.size()];
+      for (int i = 0; i < targets.size(); i++) {
+        for (ClassKey key : classKeysOf(rows, targets.get(i))) {
+          industryPopulations[i] += rows.get(key).population();
+        }
+      }
+      long populationBefore = 0L;
+      for (long population : industryPopulations) {
+        populationBefore += population;
+      }
+      long[] birthsByIndustry = allocate(change.births(), industryPopulations);
+      long[] deathsByIndustry = allocate(change.deaths(), industryPopulations);
+      for (int i = 0; i < targets.size(); i++) {
+        List<ClassKey> keys = classKeysOf(rows, targets.get(i));
+        long[] rowPopulations = new long[keys.size()];
+        for (int j = 0; j < keys.size(); j++) {
+          rowPopulations[j] = rows.get(keys.get(j)).population();
+        }
+        long[] birthsParts = allocate(birthsByIndustry[i], rowPopulations);
+        long[] deathsParts = allocate(deathsByIndustry[i], rowPopulations);
+        for (int j = 0; j < keys.size(); j++) {
+          ClassKey key = keys.get(j);
+          ClassRow row = rows.get(key);
+          long population = row.population();
+          if (population <= 0L) {
+            continue;
+          }
+          long remaining = population - deathsParts[j]; // deathsParts ≤ row 人口（按人口权重切，见 allocate）
+          long labor = row.laborMilli() * remaining / population; // 死亡同比例缩；出生不加劳动
+          rows.put(
+              key, withPopulationAndLabor(row, remaining + birthsParts[j], Math.max(0L, labor)));
+          if (birthsParts[j] != 0L || deathsParts[j] != 0L) {
+            flows.put(key, withLifecycle(flows.get(key), key, birthsParts[j], deathsParts[j]));
+          }
+        }
+      }
+      scaleLaborOfGroup(
+          change.group(),
+          populationBefore,
+          populationBefore - change.deaths(),
+          allocations,
+          laborSupply);
+    }
+    return new EconomyData(
+        base.meta(), base.industries(), rows, base.debts(), flows, laborSupply, allocations);
+  }
+
+  /** 某一格的全部产业（保序：产业表的插入序）。 */
+  private static List<IndustryId> industriesAt(
+      EconomyData base, io.mosire.simos.map.hex.HexCoord at) {
+    List<IndustryId> found = new ArrayList<>();
+    for (IndustryId id : base.industries().keySet()) {
+      if (IndustryHexKeys.hexKeyOf(id)
+          .filter(hex -> hex.equals(IndustryHexKeys.hexKey(at.q(), at.r())))
+          .isPresent()) {
+        found.add(id);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * 追加一条流水行的人口变动（{@code births}/{@code deaths}）——**保留**该行本期的其它发生额（不覆盖）。
+   *
+   * <p>★ 流水行缺席（该行本期还没有任何发生额）⇒ 以一条全零的流水起步：{@code FlowRow} 的其余字段本来就有合法零值， 而"这一行这个月死了人"必须**读得出来**。
+   */
+  private static FlowRow withLifecycle(FlowRow flow, ClassKey key, long births, long deaths) {
+    FlowRow base =
+        flow == null
+            ? new FlowRow(key, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L)
+            : flow;
+    return new FlowRow(
+        base.key(),
+        base.income(),
+        base.consumed(),
+        base.taxPaid(),
+        base.interestDue(),
+        base.newBorrowing(),
+        base.repaid(),
+        base.netSurplus(),
+        base.unmetNeed(),
+        base.deaths() + deaths,
+        base.births() + births);
+  }
+
+  /**
+   * ★★ **把某个产业名下全部劳动配额（及对应批次的劳动供给）按存活比例缩**（R4 对 R2 那条旧账的收口）。
+   *
+   * <pre>
+   * ratio = after ÷ before          // 该产业各阶层行的**人口**之和，饿死前 → 饿死后
+   * 每条配额的 laborMilli        × ratio ÷ 1000 → 同比例缩
+   * 每条供给的 grossLaborMilli   × ratio ÷ 1000 → 同比例缩（⇒ Σ allocated ≤ available 仍然成立）
+   * </pre>
+   *
+   * <p>★★ **为什么两侧都要缩**：那条不变量是 {@code Σ allocated ≤ available}，而 {@code available} 就是供给的毛额减两项扣除 ——
+   * 只缩配额、不缩供给，缩法对了但账对不上；只缩供给、不缩配额，则会造出"配额超过可支配劳动"的**非法状态** （{@code EconomyData} 的构造期守卫当场拒 ⇒
+   * 整次推进回滚）。
+   *
+   * <p>★ **比例取整的方向安全**：{@code Σ floor(a_i × r) ≤ floor(Σ a_i × r) ≤ floor(available × r) =
+   * available'} ⇒ 收缩后不变量自动成立，不需要"再夹一次"。
+   *
+   * <p>★ **它只覆盖"人死了"这一侧**：出生**不放大**配额（新生儿不干活，且"劳动力增长"要走发配额的命令层，不是结算顺手改）。
+   *
+   * @param before 饿死前该产业的行人口之和；必须 &gt; 0（为 0 时没有可缩的东西，调用方先挡）
+   */
+  private static void scaleLaborOfIndustry(
+      IndustryId industryId,
+      long before,
+      long after,
+      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<PeopleLotId, LaborSupply> laborSupply) {
+    if (before <= 0L || after >= before) {
+      return;
+    }
+    for (LaborAllocationId allocationId : new ArrayList<>(allocations.keySet())) {
+      LaborAllocation allocation = allocations.get(allocationId);
+      if (!allocation.actor().id().equals(industryId.value())) {
+        continue; // 只缩"喂这个产业的"那些配额（别的产业的劳动没死）
+      }
+      long scaled = allocation.laborMilli() * after / before;
+      allocations.put(
+          allocationId,
+          new LaborAllocation(
+              allocation.id(),
+              allocation.group(),
+              allocation.actor(),
+              allocation.activity(),
+              scaled,
+              allocation.period()));
+      scaleSupply(allocation.group(), after, before, laborSupply);
+    }
+  }
+
+  /**
+   * ★★ **把一个批次在两个产业上的配额按"该批次的存活比例"缩**（R4 的出生/死亡回写路径用；与 {@link #scaleLaborOfIndustry}
+   * 同一条口径，只是键换成了批次）。
+   *
+   * <p>★ 人口真值源在 social ⇒ 本步的**唯一输入**是一份 {@code group → (出生, 死亡)} 的账（见 {@link
+   * #applyPopulationChange}）： economy 不需要认识 {@code PopulationGroup}，只需要它的稳定身份。
+   */
+  private static void scaleLaborOfGroup(
+      PeopleLotId group,
+      long before,
+      long after,
+      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<PeopleLotId, LaborSupply> laborSupply) {
+    if (before <= 0L || after >= before) {
+      return;
+    }
+    for (LaborAllocationId allocationId : new ArrayList<>(allocations.keySet())) {
+      LaborAllocation allocation = allocations.get(allocationId);
+      if (!allocation.group().equals(group)) {
+        continue;
+      }
+      long scaled = allocation.laborMilli() * after / before;
+      allocations.put(
+          allocationId,
+          new LaborAllocation(
+              allocation.id(),
+              allocation.group(),
+              allocation.actor(),
+              allocation.activity(),
+              scaled,
+              allocation.period()));
+    }
+    scaleSupply(group, after, before, laborSupply);
+  }
+
+  /** 一个批次的劳动供给毛额按存活比例缩（{@code served}/{@code committed} 原样带过：它们与人口无关）。 */
+  private static void scaleSupply(
+      PeopleLotId group,
+      long after,
+      long before,
+      LinkedHashMap<PeopleLotId, LaborSupply> laborSupply) {
+    LaborSupply supply = laborSupply.get(group);
+    if (supply == null) {
+      return;
+    }
+    laborSupply.put(
+        group,
+        new LaborSupply(
+            supply.group(),
+            supply.period(),
+            supply.grossLaborMilli() * after / before,
+            supply.servedLaborMilli(),
+            supply.committedLaborMilli()));
   }
 
   // ── 现扣周期投入（周期的第一天）────────────────────────────────────────────────────────
@@ -484,7 +764,11 @@ public final class EconomySettlement {
   private static void drawCycleInputs(
       LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<ClassKey, ClassRow> rows,
-      LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods) {
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> income) {
+    // ★★ **R4（T0）：先做一次"同格按需取材"，再各扣各的**（见 transferIntraHexInputs）——
+    //   它把**田里的纤维搬到同格的织机上**（R3 的遗留：原料原先只有创世那一次性的一份 ⇒ 第 2 周期起停工）。
+    transferIntraHexInputs(industries, rows, consumedGoods, income);
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
       if (industry.progressDays() != 0L) {
@@ -530,6 +814,194 @@ public final class EconomySettlement {
                 industry, industry.progressDays(), industry.cycleLaborMilli(), accumulated));
       }
     }
+  }
+
+  /**
+   * ★★ **同格按需取材**（R4 的 T0；R3 遗留的收口）：**织机缺 FIBER ⇒ 从同格有富余的行取**（取多少 = 缺多少，上限 = 供方的富余）。
+   *
+   * <pre>
+   * 逐格：① 算出每一行**本周期想扣多少**（{@code rowScale × inputPerUnit}，口径与现扣步同一个算式）
+   *      ② 逐商品、逐缺口行：从同格**其它产业**的富余行取 min(缺口, 富余)
+   *      富余 = max(0, 库存 − 该行自己的本周期投入需求 − （粮）该行整周期口粮)
+   * </pre>
+   *
+   * <p>★★ **它解决的是 R3 如实记下的那个遗留**：织机与作坊吃的原料原先只有**创世一次性给的**那一份（= 本格农田一个周期的纤维副产），
+   * 而"把田里的纤维搬到织机上"是**跨行的实物转移** ⇒ 第 2 个周期起织机停工、农田自己产的纤维照常累积在农业行里 （R3
+   * 报告原文）。本步之后，**每个周期**织机都能从同格农田拿到新一期的纤维 ⇒ 纺织持续。
+   *
+   * <p>★★ **对称记账**（**R2 与 V3 都栽过"单侧扣减"**，故两侧都写清楚）：
+   *
+   * <ul>
+   *   <li>**供方**：库存 −X，且 **{@code consumed} += X**（它出去的是实物，不是"债权"）；
+   *   <li>**受方**：库存 +X，且 **{@code income} += X**。
+   * </ul>
+   *
+   * <p>★★ **为什么受方那一侧也必须落账**：守恒式是 {@code Σ(前库存) − Σ(后库存) == Σ消费 − Σ所得}。只记供方的消费而不记受方的所得， 会让右边凭空多出
+   * X（而左边的库存总账是平的）⇒ 逐商品的守恒用例当场红。两侧**同时**记，X 恰好抵消，剩下的差额正好等于受方 随后真的扣掉的那一笔 —— 这就是"同一份变更集里的原子转移"在账上的样子。
+   *
+   * <p>★★ **粮不走这条通道**（**有意的收窄**）：粮的跨行流动已经有制度（同格借粮：债权人序列、余粮口径、债务记账）， 而"从同格富余的行取粮"是一条**无偿**通道 ——
+   * 两者并存会让同一批粮有两条路（一条要还、一条不用还）， 并抹平"投入各扣各的"那条阶层口径（贫农缸空 ⇒ 它的地荒着）。本轮要接的缺口本来就是**纤维**（织机的原料）。
+   *
+   * <p>★ **供方不含同一产业的行**（**有意的收窄**）："投入各扣各的"是既有口径（贫农缸空 ⇒ 它的地荒着、地主的地照种 ——
+   * 阶层差异正来自这里），让同产业的行互相补原料会把它抹平。而本轮要接的缺口本来就是**跨产业**的那一条（田里的纤维 → 织机）。
+   *
+   * <p>★ **取不到就停工**（"拒凭空造"）：本步**不造**任何东西，取不满的行照旧按它自己的库存扣 ⇒ 收获时投入那一路瓶颈自然缩小 （与 {@link #scaleOf}
+   * 的既有口径一致）。★ 遍历序 = 格（字典序）→ 槽位 → 产业（字典序）→ 行序（同前）⇒ 可复现。
+   */
+  private static void transferIntraHexInputs(
+      LinkedHashMap<IndustryId, Industry> industries,
+      LinkedHashMap<ClassKey, ClassRow> rows,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> income) {
+    // ① 只有**周期第一天**的产业才会现扣投入 ⇒ 只有它们有"取材需求"（与现扣步同一个门槛）。
+    LinkedHashMap<IndustryId, Map<CommodityId, Long>> perUnitByIndustry = new LinkedHashMap<>();
+    for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
+      if (entry.getValue().progressDays() != 0L) {
+        continue;
+      }
+      Map<CommodityId, Long> perUnit = entry.getValue().inputPerUnit();
+      if (!perUnit.isEmpty()) {
+        perUnitByIndustry.put(entry.getKey(), perUnit);
+      }
+    }
+    if (perUnitByIndustry.isEmpty()) {
+      return;
+    }
+    for (Map.Entry<String, List<ClassKey>> hex : rowsByHex(rows.keySet()).entrySet()) {
+      List<ClassKey> keys = hex.getValue();
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> need = new LinkedHashMap<>();
+      LinkedHashSet<CommodityId> commodities = new LinkedHashSet<>();
+      for (ClassKey key : keys) {
+        Map<CommodityId, Long> perUnit = perUnitByIndustry.get(key.industry());
+        if (perUnit == null) {
+          continue;
+        }
+        long rowScale = rowScaleOf(rows.get(key), industries.get(key.industry()));
+        if (rowScale == 0L) {
+          continue; // 没有产能 ⇒ 没有投入需求（真档里没有织机的行就是这一形态）
+        }
+        Map<CommodityId, Long> mine = new LinkedHashMap<>();
+        for (Map.Entry<CommodityId, Long> entry : perUnit.entrySet()) {
+          if (entry.getValue() > 0L) {
+            // ★★ **只搬它真的用得上的量**（上限 = 该商品**之外**的最紧约束）：否则搬过去也是白扔 ——
+            //   真档里城市作坊缺铁时，纤维搬过去会在现扣步被当投入扣掉而**产不出任何东西**（规模那一路是 0），
+            //   于是"从田里取纤维"变成了"把纤维倒进一个空转的作坊"。见 {@link #rowUsageScale}。
+            long usage =
+                rowUsageScale(rows.get(key), industries.get(key.industry()), entry.getKey());
+            if (usage == 0L) {
+              continue;
+            }
+            mine.put(entry.getKey(), usage * entry.getValue());
+            commodities.add(entry.getKey());
+          }
+        }
+        if (!mine.isEmpty()) {
+          need.put(key, mine);
+        }
+      }
+      if (commodities.isEmpty()) {
+        continue;
+      }
+      for (CommodityId commodity : commodities) {
+        if (commodity.equals(GRAIN)) {
+          // ★★ **粮不走这条通道**（有意的收窄）：粮的跨行流动**已经有制度** —— 同格借粮（债权人序列、余粮口径、
+          //   债务记账，R2/V6 建的）。再开一条"从同格有富余的行取粮当种子"的**无偿**通道，同一批粮就会有两条路
+          //   （一条要还、一条不用还），而"贫农缸空 ⇒ 它的地荒着、地主的地照种"那条既有口径会被抹平。
+          //   ⇒ 本轮要接的缺口本来就是**纤维**（织机的原料）：它不是口粮、没有既有制度、也没有替代通道。
+          continue;
+        }
+        for (ClassKey receiver : keys) {
+          Map<CommodityId, Long> mine = need.get(receiver);
+          if (mine == null) {
+            continue;
+          }
+          long gap =
+              mine.getOrDefault(commodity, 0L)
+                  - rows.get(receiver).goods().getOrDefault(commodity, 0L);
+          if (gap <= 0L) {
+            continue; // 自己缸里就够了 ⇒ 不取（"按需"：取多少 = 缺多少）
+          }
+          for (ClassKey supplier : keys) {
+            if (gap <= 0L) {
+              break;
+            }
+            if (supplier.industry().equals(receiver.industry())) {
+              continue; // ★ 供方不含同产业（见方法注释：那会抹平"投入各扣各的"）
+            }
+            long surplus = transferSurplusOf(rows.get(supplier), commodity, need.get(supplier));
+            if (surplus <= 0L) {
+              continue;
+            }
+            long moved = Math.min(gap, surplus);
+            rows.put(
+                supplier,
+                withGoods(
+                    rows.get(supplier),
+                    commodity,
+                    rows.get(supplier).goods().getOrDefault(commodity, 0L) - moved));
+            rows.put(
+                receiver,
+                withGoods(
+                    rows.get(receiver),
+                    commodity,
+                    rows.get(receiver).goods().getOrDefault(commodity, 0L) + moved));
+            addGoods(consumedGoods, supplier, commodity, moved); // 供方：减库存 + 记消费（不许单侧扣减）
+            addGoods(income, receiver, commodity, moved); // 受方：加库存 + 记所得（守恒式的另一侧）
+            gap -= moved;
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * ★★ **这一行的"用得上"上限**（同格取材用）：{@code min( 各 capacity 那一路 , 除该商品之外的每种投入那一路 )} ——
+   * 即"**把该商品给足**之后，这一行最多还能干多少活"。
+   *
+   * <pre>
+   * rowUsageScale(row, industry, j) = min( ⌊means[k] ÷ capacityPerUnit[k]⌋           …每种生产资料一路
+   *                                       , ⌊row.goods[j'] ÷ inputPerUnit[j']⌋  j'≠j …**除 j 之外**的每种投入一路 )
+   * </pre>
+   *
+   * <p>★★ **它挡的是一类"搬了也白搬"的浪费**（不是洁癖，是真档里量得到的）：城市作坊的配方是 {@code FIBER + IRON + LABOR + WORKSHOP →
+   * CLOTH + TOOL}，而**铁只有创世那一份** —— 第 2 个周期起铁为 0， 作坊的规模那一路恒
+   * 0（产不出任何东西）。若取材步按"作坊名义上想要多少纤维"搬，这套纤维会在现扣步被 **当投入扣掉**（consumed 记一笔）而产出为 0 ⇒
+   * 田里的纤维被倒进一个空转的作坊，织机反而拿不到料。 用本上限后，那种作坊的取材需求是 **0**，纤维留给真的用得上的织机。
+   *
+   * <p>★ **劳动那一路刻意不算进来**：周期第一天 {@code cycleLaborMilli} 还是 0，把它算进来会让**所有**产业的用得上上限 都是
+   * 0（取材永不发生）。劳动瓶颈在周期末的 {@link #scaleOf} 里照旧生效 —— 那里才是它该在的地方。
+   *
+   * <p>★ 与 {@link #rowScaleOf} 的关系：那是"该行自己的产能"，这是"该行拿到这个商品之后能干多少"（≤ 前者）。
+   */
+  private static long rowUsageScale(ClassRow row, Industry industry, CommodityId excluded) {
+    long scale = rowScaleOf(row, industry);
+    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+      if (entry.getValue() <= 0L || entry.getKey().equals(excluded)) {
+        continue;
+      }
+      scale = Math.min(scale, row.goods().getOrDefault(entry.getKey(), 0L) / entry.getValue());
+    }
+    return Math.max(0L, scale);
+  }
+
+  /**
+   * 供方的**可取材量**：{@code max(0, 库存 − 自己的本周期投入需求)}。
+   *
+   * <p>★ **粮不在本通道里**（调用方先挡掉，理由见 {@code transferIntraHexInputs}）：故这里没有"口粮保留额"那一项 ——
+   * 本通道只走**工业原料**（纤维/铁/木），它们不是任何人的口粮，也没有"余粮"语义。
+   *
+   * @param ownNeed 该供方**自己**在本周期想扣的投入（可为 null = 它不扣投入）
+   */
+  private static long transferSurplusOf(
+      ClassRow supplier, CommodityId commodity, Map<CommodityId, Long> ownNeed) {
+    long available = supplier.goods().getOrDefault(commodity, 0L);
+    if (available <= 0L) {
+      return 0L;
+    }
+    if (ownNeed != null) {
+      available -= ownNeed.getOrDefault(commodity, 0L);
+    }
+    return Math.max(0L, available);
   }
 
   /**
@@ -582,7 +1054,7 @@ public final class EconomySettlement {
       LinkedHashMap<DebtId, Debt> debts,
       LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods,
       LinkedHashMap<ClassKey, Long> borrowing,
-      LinkedHashMap<ClassKey, Long> unmetNeed,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> unmetNeed,
       long day,
       long currentCycle,
       long dueCycle) {
@@ -590,19 +1062,31 @@ public final class EconomySettlement {
     for (Map.Entry<String, List<ClassKey>> hex : hexToRows.entrySet()) {
       List<ClassKey> keys = hex.getValue();
       LinkedHashMap<ClassKey, Long> deficit = new LinkedHashMap<>();
-      // ① 各自消费：扣 min(库存, 需求)；差额入 deficit。
-      //   ★ 需求的口径 = **当天口粮**（每人每 120 天 10 粮 ⇒ 累计的逐日差分；不再有"每人每日 83"这个常量）。
+      // ① 各自消费：扣 min(库存, 需求)；差额入 deficit（粮）/ 直接记缺口（布）。
+      //   ★ 需求的口径 = **当天口粮/衣着**（每人每 120 天 10 粮、每 365 天 1 匹布 ⇒ 累计的逐日差分；不再有"每人每日 83"这个常量）。
       //     并**写回** naturalNeeds ⇒ 读口的"日耗"与结算当日用的是**同一个数**（§八.8 的"一条真相"）。
+      //   ★★ **R4（T2）：布也真的被消费**（R3 只做出形状、不消费）：库存不够就照记缺口，走同一套 unmetNeed 记账。
+      //     ★ 布**不参与同格借粮**：借贷制度在本仓只对**粮**有规则（债权人序列、余粮口径都是粮的口径）⇒ 布的缺口直接记下。
       for (ClassKey key : keys) {
-        ClassRow row = rows.get(key);
-        long need = EconomyVocabulary.dailyRationMilli(row.population(), day);
+        ClassRow row = withDailyNeed(rows.get(key), day);
+        long need = row.naturalNeeds().getOrDefault(GRAIN, 0L);
         long stock = grainOf(row);
         long eaten = Math.min(stock, need);
-        ClassRow withNeed = withDailyNeed(row, day);
-        rows.put(key, withGoods(withNeed, GRAIN, stock - eaten));
+        row = withGoods(row, GRAIN, stock - eaten);
         // ★ **必须 merge 不能 put**：这张累加器现在与现扣投入步共享（后者先跑时它已经记了种子/原料那一笔），
         //   `put` 会把投入从当日消费里抹掉 ⇒ §6.1 的守恒式当场不成立（"投入要看得见"）。
         addGoods(consumedGoods, key, GRAIN, eaten);
+        long clothNeed = row.naturalNeeds().getOrDefault(CLOTH, 0L);
+        long clothStock = row.goods().getOrDefault(CLOTH, 0L);
+        long clothGot = Math.min(clothStock, clothNeed);
+        if (clothNeed > 0L) {
+          row = withGoods(row, CLOTH, clothStock - clothGot);
+          addGoods(consumedGoods, key, CLOTH, clothGot);
+        }
+        rows.put(key, row);
+        if (clothNeed - clothGot > 0L) {
+          addGoods(unmetNeed, key, CLOTH, clothNeed - clothGot);
+        }
         if (need - eaten > 0L) {
           deficit.put(key, need - eaten);
         }
@@ -666,7 +1150,7 @@ public final class EconomySettlement {
         }
         // remaining > 0 ⇒ 没人有**余粮**：不造粮、不造债；记入**未满足需求**（周期末据此算饿死比例）。
         if (remaining > 0L) {
-          unmetNeed.merge(debtor, remaining, Long::sum);
+          addGoods(unmetNeed, debtor, GRAIN, remaining);
         }
       }
     }
@@ -904,10 +1388,13 @@ public final class EconomySettlement {
    * <p>★ 不变量：{@code faminePerMille ≤ 1000} 且致死率 {@code ≤ 1000‰} ⇒ {@code deaths ≤
    * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link ClassRow} 再兜一层）。
    *
-   * <p>★★ **R2 起一处如实记下的不齐**：本节缩的是**行**的 {@code laborMilli}（阶层关系的那一份），而产业的当日劳动自 R2
-   * 起取自**劳动分配表**（配额属于**批次**，批次的人口住在 social）。故"饿死之后劳动同比例缩"这条在**配额侧暂时不生效** —— 配额要跟着缩，得先把死亡回写人口（R4
-   * 的出生/死亡），那时"批次的人数变少 ⇒ 可用劳动变少"才会自然传导。 ★ **可观测性**：默认致死率 {@code 0‰}（本仓默认路径一个都不死）⇒
-   * 这处不齐只在非默认路径（注入致死率的用例）里可见； 端到端与真档数字不受影响。★ 本节的**分配**行为（人口、劳动、死亡数）一个字节都没变 —— 缩的仍是同一行、同一个比例。
+   * <p>★★ **R4 起这条旧账已收口**（R2 如实记过的那处不齐）：本节缩的**行**劳动之外，调用方还会把该产业名下的**全部劳动配额**
+   * 与对应批次的**劳动供给**按同一个存活比例缩（{@link #scaleLaborOfIndustry}）—— 于是"人死了劳动没减"不再成立。 ★ 另一条死亡路径（生理压力，见
+   * {@link #applyPopulationChange}）则按**批次**缩：两条路径各自缩自己那份账， 都落在同一条不变量（{@code Σ allocated ≤
+   * available}）上。
+   *
+   * <p>★ **它现在还是"直接按缺口处死"那个独立旋钮**（默认 0‰）：R4 起真正的日常死亡走生理压力那条路 （{@code PopulationDynamics}
+   * 的月度结算），本方法的致死率仍由 {@link #FAMINE_MORTALITY_PER_MILLE} 控制， 且**逐值用例仍钉着非 0 那一条路**（不是死分支）。
    */
   private static void applyFamine(
       LinkedHashMap<ClassKey, ClassRow> rows,

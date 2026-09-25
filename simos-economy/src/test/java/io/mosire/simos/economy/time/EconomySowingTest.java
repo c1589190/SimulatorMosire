@@ -264,7 +264,7 @@ class EconomySowingTest {
 
   private static long unmetOf(EconomyData data, ClassKey key) {
     FlowRow flow = data.flows().get(key);
-    return flow == null ? 0L : flow.unmetNeed();
+    return flow == null ? 0L : flow.unmetNeed().getOrDefault(GRAIN, 0L);
   }
 
   // ── ① 播种日先扣种（spec §九 V3 判据 2）────────────────────────────────────────────
@@ -678,8 +678,8 @@ class EconomySowingTest {
     FlowRow flow = next.flows().get(PEASANT_KEY);
     assertThat(next.industries().get(FARM).cycleSeedUsedMilli()).as("第 2 周期的播种日同样扣不到").isZero();
     assertThat(grainOf(next, PEASANT_KEY)).as("两个周期都颗粒无收").isZero();
-    assertThat(flow.unmetNeed())
-        .as("第 2 周期缺口 = 累计(320,4) − 累计(320,2)（本期口径，不含第 1 周期）")
+    assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
+        .as("第 2 周期缺口 = 累计(320,4) − 累计(320,2)（本期口径，不含第 1 周期；★ R4 起只读粮那一维）")
         .isEqualTo(
             EconomyVocabulary.cumulativeRationMilli(320L, 4L)
                 - EconomyVocabulary.cumulativeRationMilli(320L, 2L));

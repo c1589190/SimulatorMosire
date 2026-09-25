@@ -232,7 +232,7 @@ class ShellEndToEndTest {
           .as("Agent 写的信封链完整")
           .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_COMMITTED);
       assertThat(types(events, advanceRow.correlationId()))
-          .as("推进支的冻结序列（本壳 4 个 time participant（sd/unit/economy/social）⇒ N = 4）")
+          .as("推进支的冻结序列（本壳 3 个 time participant（unit/sd/population）⇒ 模块提案 4 条（含 economy 与 social））")
           .containsExactly(
               EventTypes.COMMAND_RECEIVED,
               EventTypes.TIME_ADVANCE_STARTED,
@@ -243,17 +243,18 @@ class ShellEndToEndTest {
               EventTypes.TIME_ADVANCE_FINISHED,
               EventTypes.COMMAND_COMMITTED);
 
-      // ── ★★ R1（T6）验收判据：**social 出现在推进日志的参与者里** ────────────────────────
-      //   ① 参与者清单（started 事件）里点名 social；
-      //   ② 每个参与者各留一条 module.proposal ⇒ 其中一条的 namespace = social；
-      //   ③ 且 social 那一条交的是**不变变更集**（R1 的推进不改任何 social 字段）。
+      // ── ★★ R4：**social 与 economy 由同一个参与者写**（`population`） ──────────────────
+      //   ① 参与者清单（started 事件）里点名 population；
+      //   ② 它的提案带**两个模块键**（economy + social）⇒ module.proposal 仍是 4 条；
+      //   ③ 本壳的世界没有批次、经济也没激活 ⇒ 两份变更集都是**不变**的（交不变变更集，不是空提案）。
+      //   ★ R1 的 T6 判据（"social 出现在推进日志里"）由 ② 承接：它不再是一个**参与者名**，而是一个**模块键**。
       List<EventRow> advanceEvents = events.byCorrelation(advanceRow.correlationId());
       JsonNode started = JSON.readTree(startedPayload(advanceEvents));
       List<String> participants = new ArrayList<>();
       started.get("participants").forEach(node -> participants.add(node.asText()));
       assertThat(participants)
-          .as("推进日志的参与者清单（T6 的验收判据）")
-          .containsExactlyInAnyOrder("unit", "sd", "economy", "social");
+          .as("推进日志的参与者清单（R4 起 economy 与 social 合为一个参与者，见 PopulationEconomyTimeParticipant）")
+          .containsExactlyInAnyOrder("unit", "sd", "population");
 
       List<EventRow> proposals =
           advanceEvents.stream()
@@ -263,11 +264,15 @@ class ShellEndToEndTest {
       for (EventRow row : proposals) {
         proposalNamespaces.add(JSON.readTree(row.payload()).get("namespace").asText());
       }
-      assertThat(proposalNamespaces).as("每个参与者各一条 module.proposal").contains("social");
+      assertThat(proposalNamespaces)
+          .as("每一个**模块**各一条 module.proposal（population 参与者带 economy + social 两个模块键）")
+          .containsExactlyInAnyOrder("unit", "sd", "economy", "social");
 
-      // ③ 不变变更集：推进之后 social 切片逐字段等于推进之前（人口在推进中"变老"是年龄的派生性质，不改状态）。
+      // ③ 本壳的世界没有人口批次、经济也未激活 ⇒ **两份变更集都是不变的**（交不变变更集，不是空提案）。
+      //   ★ R4 起 social 会真的变（生理压力/出生/死亡）—— 但**前提是有批次可算**；本壳是"世界还没初始化"那一形态，
+      //     这正是"没有数据 ⇒ 不动"该有的样子（判据由 R4 的真档用例与夹具用例承担）。
       assertThat(socialSlice(shell.coreSimos().replay(ref("main", 4))))
-          .as("social 参与推进，但 R1 里一个字段都不改（不变变更集）")
+          .as("本壳没有批次 ⇒ social 逐字段不变（不变变更集）")
           .isEqualTo(socialSlice(shell.coreSimos().replay(ref("main", 3))));
       assertThat(advanceRow.correlationId()).isEqualTo(advanceCorrelation);
     }

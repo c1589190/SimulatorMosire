@@ -818,14 +818,28 @@ class EconomySettlementEndToEndTest {
     return rowsAt(data, q, r).stream().mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L)).sum();
   }
 
-  /** 某格 Σ 行本周期未满足需求（毫粮）—— 本期口径（§八.5：新周期第一天归零）。 */
+  /** 某格 Σ 行本周期**粮**的未满足需求（毫粮）—— 本期口径（§八.5：新周期第一天归零）。★ R4 起 unmetNeed 逐商品。 */
   private static long hexUnmet(EconomyData data, int q, int r) {
     long total = 0L;
     for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
       for (ClassKey key : classKeysOf(data, id)) {
         FlowRow flow = data.flows().get(key);
         if (flow != null) {
-          total += flow.unmetNeed();
+          total += flow.unmetNeed().getOrDefault(GRAIN, 0L);
+        }
+      }
+    }
+    return total;
+  }
+
+  /** 某格 Σ 行本周期**布**的未满足需求（毫布）。★ R4（T2）：与粮**同一套记账**、但**各自一条**。 */
+  private static long hexUnmetCloth(EconomyData data, int q, int r) {
+    long total = 0L;
+    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
+      for (ClassKey key : classKeysOf(data, id)) {
+        FlowRow flow = data.flows().get(key);
+        if (flow != null) {
+          total += flow.unmetNeed().getOrDefault(EconomyTestWorld.CLOTH, 0L);
         }
       }
     }
@@ -834,7 +848,30 @@ class EconomySettlementEndToEndTest {
 
   /** 读口视图（{@link ApiViews#economyHex}）里该格 Σ 行的 {@code unmetNeed}。 */
   private static long flowUnmet(Map<String, Object> hexView) {
-    return sumRowFlows(hexView, "unmetNeed");
+    return sumRowFlowCommodity(hexView, "unmetNeed", "grain");
+  }
+
+  /** ★ R4：读口视图里该格 Σ 行的 {@code births}（与 {@code deaths} 对称的那一项）。 */
+  private static long flowBirths(Map<String, Object> hexView) {
+    return sumRowFlows(hexView, "births");
+  }
+
+  /** 读口视图里 {@code flow[field][commodity]} 的合计（★ R4 起 {@code unmetNeed} 是逐商品的表）。 */
+  private static long sumRowFlowCommodity(
+      Map<String, Object> hexView, String field, String commodity) {
+    long total = 0L;
+    for (Object industry : (List<?>) hexView.get("industries")) {
+      Map<?, ?> industryView = (Map<?, ?>) industry;
+      for (Object row : (List<?>) industryView.get("classes")) {
+        Map<?, ?> flow = (Map<?, ?>) ((Map<?, ?>) row).get("flow");
+        Object table = flow.get(field);
+        if (table instanceof Map<?, ?> byCommodity) {
+          Object value = byCommodity.get(commodity);
+          total += value == null ? 0L : ((Number) value).longValue();
+        }
+      }
+    }
+    return total;
   }
 
   /** 读口视图里该格 Σ 行的 {@code deaths}。 */

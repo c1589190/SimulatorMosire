@@ -144,16 +144,24 @@ class EconomyRealScaleClothTest {
     assertThat(clothAfterOneCycle).as("★ 判据 ②：一个周期就有布（规模由最紧约束决定 ⇒ 织机/劳动/纤维三路都参与）").isPositive();
 
     EconomyData afterOneYear = EconomySettlement.settle(shared, 0L, YEAR_DAYS);
-    assertThat(clothOf(afterOneYear))
-        .as("★ 判据 ②（原文）：推一年后该格的 CLOTH 库存 > 0")
-        .isEqualTo(clothAfterOneCycle)
-        .isPositive();
+    assertThat(clothOf(afterOneYear)).as("★ 判据 ②（原文）：推一年后该格的 CLOTH 库存 > 0").isPositive();
+    assertThat(fiberOf(afterOneCycle))
+        .as("★ 农田第 120 天真的产出了纤维（规模受**种子**那一路上限 3,098 亩 ⇒ 3,098 × 6 × 1000 × 0.97 净产）")
+        .isEqualTo(
+            3_098L
+                * EconomySeeder.FIBER_OUTPUT_PER_MU
+                * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+                * 970L
+                / 1000L);
     assertThat(fiberOf(afterOneYear))
-        .as("★★ 农田的纤维照常累积（它**内生于土地**）——而织机在第 2 个周期起停工：" + "把田里的纤维搬到织机上是 V8 的活（brief 明说本轮不做跨行实物转移）")
-        .isPositive();
+        .as("★ R4（T0）：农田的纤维**每个周期都被同格的织机取走**（不再是'自己攒着、织机停工'）⇒ 年末缸里是 0")
+        .isZero();
+    // ★★ **R4（T0）取代了 R3 那条"第 2 周期起停工"的如实记**：本格每个周期都能从农田取到新一期的纤维 ⇒
+    //   纺织**持续**，布库存逐周期增长（下一条与 {@link #weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms}
+    // 一起钉死）。
     assertThat(clothOf(afterOneYear))
-        .as("★ 非平凡：一年只跑得起**一个**周期的纺织（织机吃的是创世那份一次性纤维）")
-        .isLessThan(clothAfterOneCycle * 3L);
+        .as("★ R4（T0）：布库存**不再**只靠第 1 个周期的那一份 —— 推一年（3 个周期）拿到的是三份")
+        .isGreaterThan(clothAfterOneCycle);
   }
 
   /**
@@ -272,14 +280,10 @@ class EconomyRealScaleClothTest {
 
     assertThat(cityCloth).as("城里的布净产（35 座 × 60 匹 × 1000 × 0.97）").isEqualTo(2_037_000L);
     assertThat(clothOf(afterOneYear))
-        .as("★ 一年后的布 = 农村那一个周期 + 城市那一个周期")
-        .isEqualTo(yardCloth + cityCloth)
-        .isEqualTo(20_049_900L);
-    assertThat(clothOf(afterOneYear))
-        .as("★★ 如实记：原料是创世一次性给的 ⇒ 第 2 个周期起停工（连得上农田的是 V8 的活）")
-        .isEqualTo(clothOf(afterOneCycle));
+        .as("★ 一年后的布 = 第 1 周期的布 + 后两个周期**持续**织出来的那两份（T0 之后不再停工）")
+        .isGreaterThan(clothOf(afterOneCycle));
     assertThat(toolsOf(afterOneYear))
-        .as("★ 工具是**城市自己的第二种产品**（农村不产工具）")
+        .as("★ 工具仍然是**城市自己的第二种产品**（农村不产工具）")
         .isEqualTo(
             workshops
                 * EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE
@@ -288,6 +292,106 @@ class EconomyRealScaleClothTest {
                 / 1000L)
         .isEqualTo(169_750L);
     assertThat(toolsOf(shared)).as("非平凡：创世时一件工具都没有").isZero();
+    // ★★ **如实记（R4 之后仍然成立的那一半）**：作坊的第 2 个周期起产量为 0 —— 但原因**不再**是"没有转移通道"，
+    //   而是**它的铁只有创世那一份**（本轮无冶炼流程）⇒ 铁那一路瓶颈恒 0 ⇒ 规模 0。
+    //   ★ 取材步因此**不往它那儿搬纤维**（"只搬用得上的量"，见 EconomySettlement.rowUsageScale）——
+    //     否则纤维会被倒进一个空转的作坊（扣成 consumed 而产出为 0），织机反而拿不到料。
+    assertThat(weaveClothIncome(EconomySettlement.settle(shared, 0L, YEAR_DAYS / 3L * 2L), CRAFT))
+        .as("★ 第 2 周期起作坊产不出东西：它的铁用光了 ⇒ 规模那一路 = 0")
+        .isZero();
+  }
+
+  /**
+   * ★★ **R4（T0）：纺织**每个周期**都在织 —— 农田把新一期的纤维交给了同格的织机**（R3 遗留的收口）。
+   *
+   * <pre>
+   * 第 1 周期：织机吃创世那份纤维（= 本格农田一个周期的副产，逐行取整后 3,098 亩 × 6 × 1000 = 18,588,000）
+   *           而它**想要** 740 × 30,000 = 22,200,000 ⇒ 逐行 `min(库存, 需求)` 把 18,588,000 **扣得一分不剩**
+   *           ⇒ 纤维路 ⌊18,588,000 ÷ 30,000⌋ = 619 ⇒ 布毛产 619 × 30,000 = 18,570,000
+   * 第 2 周期：农田第 120 天收获的纤维**净产** = 3,098 亩 × 6 × 1000 × 0.97 = 18,030,360
+   *           （3,098 亩 = 收获规模被**种子**那一路卡住的那个数 —— 与第 1 周期同一个瓶颈，不是新数）
+   *           织机缸里是 0（上一周期扣光）⇒ 缺口 22,200,000 ≥ 农田那份 ⇒ 取材取走**全部** 18,030,360
+   *           ⇒ 纤维路 ⌊18,030,360 ÷ 30,000⌋ = **601** ⇒ 布毛产 601 × 30,000 = **18,030,000**
+   * 第 3 周期：同上（缸里又是 0 ⇒ 又取走农田那一份 18,030,360）⇒ 纤维路 **601** ⇒ 布毛产 **18,030,000**
+   * 作坊：第 2 周期起不产（铁用光）⇒ 不再与织机抢纤维，也不把纤维倒进空转的作坊
+   * </pre>
+   *
+   * <p>★★ **判别力（逐条对着一种坏实现）**：
+   *
+   * <ul>
+   *   <li>**不做同格取材**（R3 的旧形态）⇒ 第 2/3 周期的布毛产是 **0** ⇒ 两条断言一起红（这正是 R3 遗留的那条）；
+   *   <li>**取材不做"用得上"的上限** ⇒ 作坊把纤维取走倒掉 ⇒ 织机第 2 周期的布毛产小于 18,030,000 ⇒ 红；
+   *   <li>**取材不记供方的 consumed**（单侧扣减）⇒ 逐商品的守恒式当场不平 ⇒ 端到端那条守恒用例红。
+   * </ul>
+   */
+  @Test
+  void weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms() {
+    EconomyData shared = seeded();
+    // ★ 农田的纤维净产（取值上限）：收获的规模 3,098 亩由**种子**那一路卡住（与 R3 记的同一个瓶颈，
+    //   见本文件上方那条 3,098 的注释）⇒ 净产 = 3,098 × 6 × 1000 × 0.97 = 18,030,360 毫纤维。
+    long farmNetFiber =
+        3_098L
+            * EconomySeeder.FIBER_OUTPUT_PER_MU
+            * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+            * 970L
+            / 1000L;
+    long loomNeedPerCycle =
+        740L * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE * EconomySeeder.FIBER_MILLI_PER_CLOTH;
+
+    EconomyData cycle1 = EconomySettlement.settle(shared, 0L, 120L);
+    EconomyData cycle2 = EconomySettlement.settle(shared, 0L, 240L);
+    // ★ 第 3 个周期的**关账日**是第 360 天（不是 365）—— 关账日读得到整周期的量，次日归零（§八.5）。
+    EconomyData cycle3 = EconomySettlement.settle(shared, 0L, 360L);
+
+    assertThat(weaveClothIncome(cycle1, WEAVE)).as("第 1 周期：纤维路 619").isEqualTo(18_570_000L);
+    assertThat(weaveClothIncome(cycle2, WEAVE))
+        .as("★ 第 2 周期：织机从同格农田取到它那一份纤维 ⇒ 纤维路 601（手工推导见本方法的 javadoc）")
+        .isEqualTo(
+            601L
+                * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
+                * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT)
+        .isEqualTo(18_030_000L);
+    assertThat(weaveClothIncome(cycle3, WEAVE))
+        .as("★ 第 3 周期：仍取到农田那一份 ⇒ 纤维路 601（纺织**没有**在第 2 个周期停工）")
+        .isEqualTo(
+            601L
+                * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
+                * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT)
+        .isEqualTo(18_030_000L);
+    assertThat(farmNetFiber).as("农田一个周期的纤维净产（取材量的上限）").isEqualTo(18_030_360L);
+    assertThat(loomNeedPerCycle).as("织机满负荷一个周期要多少纤维（缺口那一侧）").isEqualTo(22_200_000L);
+
+    // ★ 布库存**逐周期增长**（这是 brief 给 R4 的真档判据 ③ 在本夹具上的形态；真档上由
+    //   WorldgenInitializeToolTest 的 R4 用例逐值钉住）。
+    assertThat(clothOf(cycle2)).as("第 2 周期末的布 > 第 1 周期末").isGreaterThan(clothOf(cycle1));
+    assertThat(clothOf(cycle3)).as("第 3 周期末的布 > 第 2 周期末").isGreaterThan(clothOf(cycle2));
+    // ★★ **布真的被消费**（R4 的 T2）：三个周期里布那一维的缺口与消费都读得出来。
+    assertThat(flowConsumed(cycle3, EconomyTestWorld.CLOTH))
+        .as("★ 判据（真档可见性 ④）：CLOTH 的 consumed 非零")
+        .isPositive();
+  }
+
+  /** 某产业本周期**布**的毛产（流水所得里布那一维）。 */
+  private static long weaveClothIncome(EconomyData data, IndustryId industry) {
+    long total = 0L;
+    for (Map.Entry<ClassKey, ClassRow> entry : data.classes().entrySet()) {
+      if (!entry.getKey().industry().equals(industry)) {
+        continue;
+      }
+      io.mosire.simos.economy.model.FlowRow flow = data.flows().get(entry.getKey());
+      if (flow != null) {
+        total += flow.income().getOrDefault(EconomyTestWorld.CLOTH, 0L);
+      }
+    }
+    return total;
+  }
+
+  /** 全格 Σ 行本周期某商品的消费（流水口径）。 */
+  private static long flowConsumed(
+      EconomyData data, io.mosire.simos.economy.api.id.CommodityId commodity) {
+    return data.flows().values().stream()
+        .mapToLong(flow -> flow.consumed().getOrDefault(commodity, 0L))
+        .sum();
   }
 
   // ── 读数 ────────────────────────────────────────────────────────────────────────────

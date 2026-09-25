@@ -4,7 +4,7 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 
 /**
- * ★★ **人口的实体**（第三阶段设计稿 §三）：一批**属性完全相同的活人** —— 住在哪、男的女的、几个人、多大了。
+ * ★★ **人口的实体**（第三阶段设计稿 §三）：一批**属性完全相同的活人** —— 住在哪、男的女的、几个人、多大了、身体状态如何。
  *
  * <p>★★ **它绝不是新版 {@code ClassRow}**（设计稿 §二 的明令）：本类型**不装** 贫农/中农/富农/地主、也不装 {@code farm}/{@code
  * craft}/{@code serf}、更不装库存货币债务。那些是**生产关系**（{@code Relation}/{@code LaborAllocation}，属
@@ -27,6 +27,10 @@ import io.mosire.simos.map.hex.HexCoord;
  * @param count 这批有几个人；**不得为负**（0 = 空批，合法：一批人整体迁走/死绝后仍可留着自己的身份）
  * @param ageAtAnchorDays **锚点时刻**的年龄（天）；不得为负
  * @param anchorTick 锚点（世界日）；不得为负
+ * @param physiologicalStress ★★ **生理压力累积**（设计稿 §三 的字段，R4 落地）：**不得为负**。
+ *     <p>★★ **它不是"饿了多少人"，而是"这批人身上积了多少亏空"**（spec §七）：缺粮/缺布的日子往上加，供给恢复后逐日消退，
+ *     只有**长期严重不足**才把它堆到足以显著抬高死亡率的量级。于是"一次五天的供应中断"与"连续半年的严重营养不足"**不会产生同样的死亡结果** —— 这正是 §九 R4
+ *     行那条判据的落点。★ 它的**日常加减**在 {@code PopulationDynamics.stressAfter}（月度结算只读它算生死）。
  */
 public record PopulationGroup(
     PeopleLotId id,
@@ -34,7 +38,24 @@ public record PopulationGroup(
     Sex sex,
     long count,
     long ageAtAnchorDays,
-    long anchorTick) {
+    long anchorTick,
+    long physiologicalStress) {
+
+  /**
+   * ★ **不带压力的 6 参构造**（= 压力 0）：创世播种、命令解析与既有夹具走的都是它。
+   *
+   * <p>★ 存在的理由：压力是**运行期才长出来的**量（创世那一刻人人没有亏空），把它塞进每一处 `new PopulationGroup(...)` 只会让 38 处调用点各写一个无意义的
+   * {@code 0L}。**默认值只有一个拼写点**（这里），未来改口径也只需改这一行。
+   */
+  public PopulationGroup(
+      PeopleLotId id,
+      HexCoord residence,
+      Sex sex,
+      long count,
+      long ageAtAnchorDays,
+      long anchorTick) {
+    this(id, residence, sex, count, ageAtAnchorDays, anchorTick, 0L);
+  }
 
   public PopulationGroup {
     if (id == null) {
@@ -55,6 +76,24 @@ public record PopulationGroup(
     if (anchorTick < 0) {
       throw new IllegalArgumentException("anchorTick 必须 ≥ 0: " + anchorTick);
     }
+    if (physiologicalStress < 0) {
+      throw new IllegalArgumentException("physiologicalStress 必须 ≥ 0: " + physiologicalStress);
+    }
+  }
+
+  /**
+   * 换一件事：人数 + 生理压力（**月度结算的唯一写点**：出生/死亡改 {@code count}，压力由逐日加减给出）。
+   *
+   * <p>★ 其余字段（身份、居所、性别、年龄锚点）**一个都不动** —— 死亡减的是同一批人的数量，不是换一批人。
+   */
+  public PopulationGroup withCountAndStress(long newCount, long newStress) {
+    return new PopulationGroup(
+        id, residence, sex, newCount, ageAtAnchorDays, anchorTick, newStress);
+  }
+
+  /** 换生理压力（其余字段原样带过）：逐日的"加一些/消退一些"。 */
+  public PopulationGroup withPhysiologicalStress(long newStress) {
+    return new PopulationGroup(id, residence, sex, count, ageAtAnchorDays, anchorTick, newStress);
   }
 
   /**

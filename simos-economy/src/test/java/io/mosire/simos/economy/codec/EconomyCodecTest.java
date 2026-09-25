@@ -484,7 +484,18 @@ class EconomyCodecTest {
 
   private static FlowRow flowRow(ClassKey key) {
     // ★ R3：income 是**逐商品**的表（两种商品，故"退回标量"的实现过不了这一条）。
+    // ★ R4：unmetNeed 也逐商品、并多一个 births（与 deaths 对称）。
     return new FlowRow(
-        key, Map.of(GRAIN, 200L, CLOTH, 15L), Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
+        key,
+        Map.of(GRAIN, 200L, CLOTH, 15L),
+        Map.of(GRAIN, 120L),
+        10L,
+        5L,
+        0L,
+        0L,
+        65L,
+        Map.of(GRAIN, 7L, CLOTH, 3L),
+        3L,
+        4L);
   }
 }

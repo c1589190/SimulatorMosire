@@ -615,23 +615,24 @@ class GuiApiTest {
    *   <li>"把 {@code urban}/{@code rural} 的键接反" ⇒ 1,350 / 1,000 / 350 三条一起红。
    * </ul>
    *
-   * <p>★ **键序**也钉住（GUI 与 MCP 的响应必须逐字节稳定）：{@code q,r,at,population,source,groups,labor} + {@code
-   * total,urban,rural,ageBrackets,sex} + 档名/性别按词表序。
+   * <p>★ **键序**也钉住（GUI 与 MCP 的响应必须逐字节稳定）：{@code q,r,at,population,source,groups,labor,crisis} +
+   * {@code total,urban,rural,ageBrackets,sex,physiologicalStress} + 档名/性别按词表序。 ★ R4 追加两块：{@code
+   * groups.physiologicalStress}（生理压力）与顶层 {@code crisis}（危机**类别**，见 {@code CrisisMonitor}）。
    */
   @Test
   void populationExposesTheBatchBreakdownsBesideTheLegacySeriesValue() throws Exception {
     JsonNode body = getJson("/api/social/population?q=1&r=1");
 
     assertThat(fieldNames(body))
-        .as("顶层键序（population 之后紧跟它的来源 source，再是批次块，最后是 R2 的劳动块）")
-        .containsExactly("q", "r", "at", "population", "source", "groups", "labor");
+        .as("顶层键序（population 之后紧跟它的来源 source，再是批次块、R2 的劳动块、R4 的危机块）")
+        .containsExactly("q", "r", "at", "population", "source", "groups", "labor", "crisis");
     assertThat(body.get("population").asLong()).as("R2（T0）：口径 = 批次求和（真值源）").isEqualTo(1_350L);
     assertThat(body.get("source").asText()).as("来源 = 批次").isEqualTo("batches");
 
     JsonNode groups = body.get("groups");
     assertThat(fieldNames(groups))
-        .as("块内键序（三个派生量：城乡 / 年龄档 / 性别）")
-        .containsExactly("total", "urban", "rural", "ageBrackets", "sex");
+        .as("块内键序（三个派生量：城乡 / 年龄档 / 性别 / R4 的生理压力）")
+        .containsExactly("total", "urban", "rural", "ageBrackets", "sex", "physiologicalStress");
     assertThat(groups.get("total").asLong()).as("Σ 批次 = 1,350（这就是与经济侧对拍的那一侧）").isEqualTo(1_350L);
     assertThat(groups.get("urban").asLong()).as("城镇：男 10 岁 300 + 女 30 岁 700").isEqualTo(1_000L);
     assertThat(groups.get("rural").asLong())

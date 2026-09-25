@@ -217,8 +217,19 @@ class EconomyRoundTripTest {
 
   static FlowRow flowRow() {
     // ★ R3：income 由标量改成**逐商品**的表（与 consumed 对称）——这里刻意给两种商品，往返要真的带上它。
+    // ★ R4：unmetNeed 也变成**逐商品**的表、并多一个与 deaths 对称的 births ⇒ 三种商品维度的账都要带上。
     return new FlowRow(
-        KEY, Map.of(GRAIN, 200L, CLOTH, 11L), Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
+        KEY,
+        Map.of(GRAIN, 200L, CLOTH, 11L),
+        Map.of(GRAIN, 120L),
+        10L,
+        5L,
+        0L,
+        0L,
+        65L,
+        Map.of(GRAIN, 7L, CLOTH, 2L),
+        3L,
+        4L);
   }
 
   /** ★ R2 的配额夹具：批次 {@link #LOT} 把 60,000 千分劳动供给产业 {@code FARM}（actor id = 产业 id）。 */

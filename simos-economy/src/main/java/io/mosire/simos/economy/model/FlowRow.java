@@ -49,8 +49,13 @@ import java.util.Map;
  * @param newBorrowing 本期新借入；不得为负
  * @param repaid 本期偿还；不得为负
  * @param netSurplus 本期净盈余（**粮口径**：income[grain] − consumed[grain] − 税 − 利息；**可为负 = 赤字**）
- * @param unmetNeed 本期未满足的需求（= Σ 本期每日「需求 − 实得」的**粮**部分，毫粮）；不得为负；**新周期第一天归零**
- * @param deaths 本期饿死的人口（人）；不得为负；**默认路径恒 0**（致死率默认 0‰，见上）
+ * @param unmetNeed 本期未满足的需求（**逐商品**：{@code 需求 − 实得} 的逐日累加，毫单位）；键值非空、逐值 ≥ 0；**新周期第一天归零**。 ★★ **R4
+ *     起是逐商品的表**（原来是一个标量，口径只有粮）：spec §七 原文"粮食不足与衣物不足对死亡的时间尺度显然不能一样" ⇒
+ *     两种缺口必须**各自读得出来**（合并成一个数就再也分不开）。形状与 {@code income}/{@code consumed} 对称。
+ * @param deaths 本期死亡的人口（人）；不得为负。★★ **R4 起它有两条来源**：① {@code applyFamine}（直接按缺口处死， 默认致死率 0‰ ⇒
+ *     默认路径不死人）；② **生理压力那条路**（{@code PopulationDynamics} 的月度结算，R4 的真正死亡来源） —— 两者都显式落在这里，故"人口守恒"逐值可核。
+ * @param births 本期出生的人口（人）；不得为负；与 {@code deaths} **对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
+ *     死亡"写不出来）
  */
 public record FlowRow(
     ClassKey key,
@@ -61,8 +66,9 @@ public record FlowRow(
     long newBorrowing,
     long repaid,
     long netSurplus,
-    long unmetNeed,
-    long deaths) {
+    Map<CommodityId, Long> unmetNeed,
+    long deaths,
+    long births) {
 
   public FlowRow {
     if (key == null) {
@@ -86,12 +92,27 @@ public record FlowRow(
     if (repaid < 0) {
       throw new IllegalArgumentException("FlowRow.repaid 不得为负: " + repaid);
     }
-    if (unmetNeed < 0) {
-      throw new IllegalArgumentException("FlowRow.unmetNeed 不得为负: " + unmetNeed);
+    if (unmetNeed == null) {
+      throw new IllegalArgumentException("FlowRow.unmetNeed 不得为 null（无缺口用空 map）");
     }
     if (deaths < 0) {
       throw new IllegalArgumentException("FlowRow.deaths 不得为负: " + deaths);
     }
+    if (births < 0) {
+      throw new IllegalArgumentException("FlowRow.births 不得为负: " + births);
+    }
+    Map<CommodityId, Long> unmetCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : unmetNeed.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("FlowRow.unmetNeed 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() < 0) {
+        throw new IllegalArgumentException(
+            "FlowRow.unmetNeed 的数量不得为负：" + entry.getKey() + " = " + entry.getValue());
+      }
+      unmetCopy.put(entry.getKey(), entry.getValue());
+    }
+    unmetNeed = Collections.unmodifiableMap(unmetCopy); // ★ 冻在赋值处
     Map<CommodityId, Long> incomeCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : income.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {

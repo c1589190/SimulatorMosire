@@ -40,6 +40,7 @@ import io.mosire.simos.app.sd.channel.CliDecisionChannel;
 import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
 import io.mosire.simos.app.skill.SkillLibrary;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreConfig;
@@ -49,7 +50,6 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
-import io.mosire.simos.economy.time.EconomyTimeParticipant;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -94,7 +94,6 @@ import io.mosire.simos.social.spi.CreateCityHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
 import io.mosire.simos.social.spi.UpdateCityHandler;
-import io.mosire.simos.social.time.SocialTimeParticipant;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.facet.UnitsHereFacet;
 import io.mosire.simos.unit.move.TerrainMovementCost;
@@ -488,15 +487,16 @@ public final class Shell implements AutoCloseable {
     }
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
-    //   ★ R3a/R4a（2026-09-25）：economy 也进了清单——每次 AdvanceTime 结算一天（消费/进度/周期收获与分配）。
-    //   ★ R1（T6）：social 也进清单 —— 它每次推进交**不变变更集**（人口在推进中"变老"是年龄的派生性质，
-    //     不需要改状态；见 SocialTimeParticipant 的类注）。
+    //   ★ R3a/R4a（2026-09-25）：economy 结算每天跑（消费/进度/周期收获与分配）。
+    //   ★★ R4：economy 与 social 的推进**由同一个参与者承担**（`population`）—— 理由见
+    //     {@code PopulationEconomyTimeParticipant} 的类注：出生/死亡要同时看两侧（年龄性别在 social、需求实得在
+    //     economy），而"同一模块只能有一个写者"与 §十一 等价性都要求**逐日的语义落在同一个参与者内部**。
+    //     故清单里不再单独注册 EconomyTimeParticipant / SocialTimeParticipant（两者的独立形态仍服务"只装一个切片"的用例）。
     List<TimeParticipant> participants =
         List.of(
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
             new SdTimeParticipant(config.mapId()),
-            new EconomyTimeParticipant(config.mapId()),
-            new SocialTimeParticipant(config.mapId()));
+            new PopulationEconomyTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }

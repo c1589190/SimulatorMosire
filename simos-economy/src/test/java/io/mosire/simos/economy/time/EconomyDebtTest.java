@@ -220,7 +220,7 @@ class EconomyDebtTest {
         .as("地主缸里剩的**恰是它第 2 天那一顿**（保留额没被贷出去）")
         .isEqualTo(lenderMealOnDayOne)
         .isEqualTo(833L);
-    assertThat(next.flows().get(LANDLORD_KEY).unmetNeed())
+    assertThat(next.flows().get(LANDLORD_KEY).unmetNeed().getOrDefault(GRAIN, 0L))
         .as("★ 地主一天都没缺（V1 的「地主先破产」不再发生）")
         .isZero();
     long lent = next.flows().get(PEASANT_KEY).newBorrowing();
@@ -229,8 +229,8 @@ class EconomyDebtTest {
         .isEqualTo(lenderJar - lenderMealOnDayOne - lenderNeed)
         .isEqualTo(167L);
     assertThat(lent).as("★ 借出量 ≤ 库存 − 本周期自需").isLessThanOrEqualTo(lenderJar - lenderNeed);
-    assertThat(next.flows().get(PEASANT_KEY).unmetNeed())
-        .as("贫农：总需求 − 借到的（缺口照记不误）")
+    assertThat(next.flows().get(PEASANT_KEY).unmetNeed().getOrDefault(GRAIN, 0L))
+        .as("贫农：总需求 − 借到的（缺口照记不误；★ R4 起 unmetNeed 逐商品，本条只说粮那一维）")
         .isEqualTo(deficitOver(2L) - lent);
   }
 

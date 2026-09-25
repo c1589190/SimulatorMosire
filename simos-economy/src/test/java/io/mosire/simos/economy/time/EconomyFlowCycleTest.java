@@ -145,8 +145,14 @@ class EconomyFlowCycleTest {
     assertThat(flow.netSurplus())
         .as("本期净盈余 = 0 − 当日口粮")
         .isEqualTo(-EconomyVocabulary.dailyRationMilli(POPULATION, CYCLE_DAYS + 1L));
-    assertThat(flow.unmetNeed()).as("本期缺口从 0 起（上周期没缺口）").isZero();
-    assertThat(flow.deaths()).as("本期死亡从 0 起；默认致死率 0‰ ⇒ 恒 0").isZero();
+    assertThat(flow.unmetNeed().getOrDefault(EconomySettlement.GRAIN, 0L))
+        .as("本期**粮**的缺口从 0 起（上周期没缺口）—— ★ R4 起 unmetNeed 逐商品，本条只说粮那一维")
+        .isZero();
+    assertThat(flow.unmetNeed().getOrDefault(EconomySettlement.CLOTH, 0L))
+        .as("★★ R4（T2）：**布也真的被消费** —— 这张表里多出来的那一维非 0（该夹具不产布；R3 时它根本不在表里）")
+        .isPositive();
+    assertThat(flow.deaths()).as("本期死亡从 0 起；致死率 0‰ ⇒ 恒 0").isZero();
+    assertThat(flow.births()).as("★ R4：出生与死亡**对称**（本期出生从 0 起）").isZero();
   }
 
   /**

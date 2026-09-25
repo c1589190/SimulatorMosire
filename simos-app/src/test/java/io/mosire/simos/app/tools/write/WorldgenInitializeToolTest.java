@@ -10,7 +10,9 @@ import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.RichWorld;
 import io.mosire.simos.core.CoreConfig;
@@ -28,7 +30,6 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
@@ -60,6 +61,7 @@ import io.mosire.simos.social.gen.SettlementGenerator;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.gen.WorldgenConfig;
+import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.spi.CreateCityHandler;
@@ -86,6 +88,7 @@ import io.mosire.simos.util.time.TimeRange;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -989,7 +992,9 @@ class WorldgenInitializeToolTest {
    * 种子}。窗口（10 天）落在**同一个周期**内 ⇒ 流水里的 {@code unmetNeed} 覆盖的就是这 10 天，不带别的周期的量。
    */
   private static long unmetTotal(EconomyData economy) {
-    return economy.flows().values().stream().mapToLong(FlowRow::unmetNeed).sum();
+    return economy.flows().values().stream()
+        .mapToLong(flow -> flow.unmetNeed().getOrDefault(GRAIN, 0L))
+        .sum();
   }
 
   /**
@@ -1091,6 +1096,213 @@ class WorldgenInitializeToolTest {
       assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(1L);
     }
   }
+
+  // ── 5. ★★ R4 的真档可见性：人第一次真的随时间变，而且纺织不再第 2 周期停工 ────────────────
+
+  /**
+   * ★★ **R4 的五条"真档可见性"判据**（brief 末尾逐条要数字）：真档**奥斯特马克 138 格**走**真 MCP 播种**， 再用**真协调器**推**一年**（12
+   * 次月度结算 = 4 个生产周期）。
+   *
+   * <pre>
+   * ① 人口变化：出生数、死亡数、年末人口（社会侧 Σ 批次），且 **年末 − 创世 == 出生 − 死亡**
+   * ② 年龄结构演化：三个年龄档的人数与创世不同（年龄推进 + 当月出生批次的可见后果）
+   * ③ 纺织持续：CLOTH 库存在**每个周期**都增长（不是只有第 1 个周期 —— R3 的遗留）
+   * ④ 布的消费：CLOTH 的 consumed 非零（R4 的 T2）
+   * ⑤ 危机红灯：触发的格给出**类别**（不是概率）
+   * </pre>
+   *
+   * <p>★★ **窗口口径**（AGENT.md §9.4）：{@code FlowRow} 的人群账与库存一样是**本周期**的量 ⇒ 出生/死亡必须
+   * **逐周期在关账日读、再加起来**；布库存则在四个关账日各读一次（判"每个周期都增长"）。
+   *
+   * <p>★ 判别力：去掉 T0 的取材步 ⇒ ③ 的第 2/3/4 周期布库存不增长 ⇒ 红；去掉出生/死亡 ⇒ ① 的出生数为 0 ⇒ 红。
+   */
+  @Test
+  void theRealWorldsPopulationMovesAndItsWeavingKeepsRunningWithinAYear() throws IOException {
+    try (CoreSimos core = freshCoreWithPopulation(dir("population-r4"))) {
+      ToolResult result = execute(tool(core), Map.of("nation", OSTERMARK, "dryRun", false));
+      assertThat(result.success()).as(result.message()).isTrue();
+
+      CommodityId cloth = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
+      SimulationState seededState = core.replay(new StateRef(MAIN, R2));
+      long populationAtGenesis = totalGroups(seededState);
+      Map<String, Long> bracketsAtGenesis = ageBrackets(seededState, 0L);
+
+      // ★★ **逐月推进**（每 30 天一条 revision），并在每次推进后读**当月新增**的出生/死亡：
+      //   流水是**本周期累计**、新周期第一天归零（§八.5）⇒ 差值法必须处理"归零"那一刻——
+      //   读到的数比上一次小 = 刚归零过 ⇒ 当月新增就是读到的那个数本身（归零后只记了这一个月）。
+      //   （★ 这一条是 AGENT.md §9.4 那类"窗口口径"陷阱的正面处置：先核窗口，再读数字。）
+      long births = 0L;
+      long deaths = 0L;
+      long clothConsumed = 0L;
+      long previousBirths = 0L;
+      long previousDeaths = 0L;
+      long previousClothConsumed = 0L;
+      Set<String> crisisKinds = new LinkedHashSet<>();
+      long[] clothByCycleClose = new long[4];
+      for (long day = 30L; day <= 360L; day += 30L) {
+        advanceRange(core, day - 30L, day);
+        SimulationState state = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
+        EconomyData economy = economySlice(state);
+        long nowBirths = totalBirths(economy);
+        long nowDeaths = totalDeaths(economy);
+        long nowCloth = flowConsumedOf(economy, cloth);
+        births += nowBirths >= previousBirths ? nowBirths - previousBirths : nowBirths;
+        deaths += nowDeaths >= previousDeaths ? nowDeaths - previousDeaths : nowDeaths;
+        clothConsumed +=
+            nowCloth >= previousClothConsumed ? nowCloth - previousClothConsumed : nowCloth;
+        previousBirths = nowBirths;
+        previousDeaths = nowDeaths;
+        previousClothConsumed = nowCloth;
+        if (day % 120L == 0L) {
+          clothByCycleClose[(int) (day / 120L) - 1] = goodsStock(economy, cloth);
+        }
+        // ⑤ 危机红灯：**逐月采样**（它是"当期"的判据 —— 第 365 天刚收获完，那时当然人人吃得饱，
+        //   真正红灯的是青黄不接的那几个月）⇒ 把整年出现过的**类别**并起来。
+        Map<io.mosire.simos.map.hex.HexCoord, List<CrisisMonitor.Light>> lights =
+            CrisisMonitor.lights(economy, socialSlice(state), day);
+        for (List<CrisisMonitor.Light> perHex : lights.values()) {
+          for (CrisisMonitor.Light light : perHex) {
+            crisisKinds.add(light.kind().name());
+          }
+        }
+      }
+      advanceRange(core, 360L, 365L);
+      clothByCycleClose[3] =
+          goodsStock(
+              economySlice(core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()))), cloth);
+      SimulationState finalState = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
+      long populationAtYearEnd = totalGroups(finalState);
+      Map<String, Long> bracketsAtYearEnd = ageBrackets(finalState, 365L);
+
+      // ① 人口变化：出生 − 死亡 == 年末 − 创世（逐值）。
+      assertThat(births).as("① 真档一年里的出生数 > 0（育龄女性批次真的生了）").isPositive();
+      assertThat(deaths).as("① 真档一年里的死亡数 > 0（缺粮的格真的死了人）").isPositive();
+      assertThat(populationAtYearEnd - populationAtGenesis)
+          .as("① 人口守恒：年末 − 创世 == 出生 − 死亡")
+          .isEqualTo(births - deaths);
+      // ② 年龄结构演化：三个档**都**与创世不同（年龄推进 + 当月出生批次的可见后果）。
+      for (String bracket : List.of("0-14", "15-59", "60+")) {
+        assertThat(bracketsAtYearEnd.get(bracket))
+            .as("② 年龄档 %s 的人数必须与创世不同", bracket)
+            .isNotEqualTo(bracketsAtGenesis.get(bracket));
+      }
+      // ③ 纺织持续：每个周期都在长。
+      assertThat(clothByCycleClose[0]).as("③ 第 1 个周期的布 > 0").isPositive();
+      assertThat(clothByCycleClose[1])
+          .as("③ 第 2 个周期的布 > 第 1 个周期（R3 的遗留：不再停工）")
+          .isGreaterThan(clothByCycleClose[0]);
+      assertThat(clothByCycleClose[2])
+          .as("③ 第 3 个周期的布 > 第 2 个周期")
+          .isGreaterThan(clothByCycleClose[1]);
+      // ★ 第 4 个周期在本用例里只走了 5 天（365 = 360 + 5）：**还没收获、只有消费** ⇒ 它的库存略低于第 3 个
+      //   周期末是正常的（"每个周期都增长"这条判据说的是**整周期**：1 → 2 → 3 三条已逐值钉住）。
+      assertThat(clothByCycleClose[3])
+          .as("③ 年末（第 4 周期第 5 天）的布仍远高于第 1 个周期末")
+          .isGreaterThan(clothByCycleClose[0]);
+      // ④ 布真的被消费。
+      assertThat(clothConsumed).as("④ CLOTH 的 consumed 非零").isPositive();
+      // ⑤ 危机红灯：真档里真的报出来过，且报的是**类别**（不是概率）。
+      List<String> kinds = new ArrayList<>(crisisKinds);
+      kinds.sort(String::compareTo);
+      assertThat(kinds).as("⑤ 真档里触发过危机红灯（按类别报，不是概率）").isNotEmpty();
+      System.out.println(
+          "[R4-VISIBILITY] 人口 创世="
+              + populationAtGenesis
+              + " 年末="
+              + populationAtYearEnd
+              + " 出生="
+              + births
+              + " 死亡="
+              + deaths
+              + " | 年龄档 创世="
+              + bracketsAtGenesis
+              + " 年末="
+              + bracketsAtYearEnd
+              + " | 布 逐周期="
+              + List.of(
+                  clothByCycleClose[0],
+                  clothByCycleClose[1],
+                  clothByCycleClose[2],
+                  clothByCycleClose[3])
+              + " 消费="
+              + clothConsumed
+              + " | 红灯类别="
+              + kinds);
+    }
+  }
+
+  /** 社会侧 Σ 批次人口（人口的真值源）。 */
+  private static long totalGroups(SimulationState state) {
+    long total = 0L;
+    for (PopulationGroup group : socialSlice(state).groups().values()) {
+      total += group.count();
+    }
+    return total;
+  }
+
+  /** 三个年龄档的人数（**现算**：批次的逐日年龄落在哪一档，不存档位）。 */
+  private static Map<String, Long> ageBrackets(SimulationState state, long tick) {
+    Map<String, Long> out = new LinkedHashMap<>();
+    for (AgeBracket bracket : AgeBracket.values()) {
+      out.put(bracket.key(), 0L);
+    }
+    for (PopulationGroup group : socialSlice(state).groups().values()) {
+      out.merge(AgeBracket.of(group.ageDaysAt(tick)).key(), group.count(), Long::sum);
+    }
+    return out;
+  }
+
+  /**
+   * 真世界 + 真引擎 + **人口—经济协调器**（R4）：它是**唯一同时看得见 social 与 economy 的参与者** （见 {@code
+   * PopulationEconomyTimeParticipant}）⇒ R4 的真档可见性必须走它。
+   */
+  private static CoreSimos freshCoreWithPopulation(Path storeDir) {
+    CoreSimos core = freshCore(storeDir);
+    core.register(new PopulationEconomyTimeParticipant(MAP_ID));
+    return core;
+  }
+
+  /** **一次**推进 {@code (from, to]}（一条 revision；日循环在协调器内部逐日跑）。 */
+  private static void advanceRange(CoreSimos core, long from, long to) {
+    long head = core.head(MAIN).orElseThrow().value();
+    CommandResult result =
+        core.submit(
+            new AdvanceTime(
+                "cmd-advance-" + from,
+                "corr-advance-" + from,
+                INITIATOR,
+                MAIN,
+                new RevisionId(head),
+                new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)))));
+    assertThat(result)
+        .as("一次推进 %d 天（tick %d → %d）", to - from, from, to)
+        .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1))));
+  }
+
+  /** 某国 Σ 行的**出生**人数（本期口径：{@code FlowRow.births}，新周期第一天归零）。 */
+  private static long totalBirths(EconomyData economy) {
+    return economy.flows().values().stream().mapToLong(flow -> flow.births()).sum();
+  }
+
+  /** 某国 Σ 行的**死亡**人数（本期口径：{@code FlowRow.deaths}，新周期第一天归零）。 */
+  private static long totalDeaths(EconomyData economy) {
+    return economy.flows().values().stream().mapToLong(flow -> flow.deaths()).sum();
+  }
+
+  /** 某国 Σ 行某商品的消费（本期口径）。 */
+  private static long flowConsumedOf(EconomyData economy, CommodityId commodity) {
+    return economy.flows().values().stream()
+        .mapToLong(flow -> flow.consumed().getOrDefault(commodity, 0L))
+        .sum();
+  }
+
+  /** 某国 Σ 行的**出生**人数（本期口径：{@code FlowRow.births}，新周期第一天归零）。 */
+
+  /** 某国 Σ 行的**死亡**人数（本期口径：{@code FlowRow.deaths}，新周期第一天归零）。 */
+
+  /** 某国 Σ 行某商品的消费（本期口径）。 */
+
+  /** 某国全部阶层行**头 {@code days} 天**的口粮合计（毫粮）= Σ 行累计口粮（多日口粮的唯一写法）。 */
 
   // ────────────────────────────────── 夹具 ──────────────────────────────────────────────
 
