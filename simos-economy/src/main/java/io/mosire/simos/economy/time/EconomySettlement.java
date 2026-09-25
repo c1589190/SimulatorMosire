@@ -13,6 +13,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -68,11 +69,17 @@ import java.util.Set;
  */
 public final class EconomySettlement {
 
-  /** 每人每日口粮（毫粮）：§十"消费"行（每人每农业周期 10 粮 ÷ 120 天 ⇒ 83 毫粮/人·日）。 */
-  public static final long DAILY_GRAIN_MILLI_PER_PERSON = 83L;
+  /**
+   * 每人每日口粮（毫粮）：§十"消费"行（每人每农业周期 10 粮 ÷ 120 天 ⇒ 83 毫粮/人·日）。
+   *
+   * <p>★ **唯一拼写点在** {@link io.mosire.simos.util.economy.EconomyVocabulary}（v2 spec §六）：v1 里 app 与
+   * economy 各写了一份 83 且无护栏。此处保留同名常量供既有测试引用，**值来自词表**。
+   */
+  public static final long DAILY_GRAIN_MILLI_PER_PERSON =
+      EconomyVocabulary.DAILY_GRAIN_MILLI_PER_PERSON;
 
   /** 1 粮 = 1000 毫粮（§7：库存按最小计量单位；{@code outputPerUnit} 是「粮/亩」⇒ 入账前要换算）。 */
-  public static final long MILLI_PER_GRAIN = 1000L;
+  public static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_GRAIN;
 
   /** 1 标准劳动（1000 千分劳动）能经营的亩数：§十 / 资料 §十 的「1 标准劳动支持 7 亩」。 */
   public static final long LAND_MU_PER_LABOR = 7L;
@@ -94,8 +101,8 @@ public final class EconomySettlement {
    */
   public static final int FAMINE_MORTALITY_PER_MILLE = 200;
 
-  /** 粮食商品 id（§十"单位"行：粮 = 1 公斤；本轮只结算这一种商品）。 */
-  public static final CommodityId GRAIN = new CommodityId("grain");
+  /** 粮食商品 id（§十"单位"行：粮 = 1 公斤；本轮只结算这一种商品）。唯一拼写点在 {@link EconomyVocabulary}。 */
+  public static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
   /** **借粮优先序**（§四 第 8 步 / 用户口径）：地主 → 富农 → 中农。★ **贫农不在放贷序列**里（v1 明文：它没有余粮可贷）； 只有这三个槽位的行才可能是债权人。 */
   private static final List<String> LENDER_SLOT_PRIORITY = List.of("landlord", "rich", "middle");

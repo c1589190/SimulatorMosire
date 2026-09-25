@@ -7,6 +7,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -107,11 +108,12 @@ public final class EconomySeeder {
   /** 各年龄档的劳动系数（‰，与 {@link #AGE_SHARE_PER_MILLE} 同序）：0 / 1000 / 300。 */
   static final int[] AGE_LABOR_COEF_PER_MILLE = {0, 1000, 300};
 
-  /** 每人每日口粮（毫粮）：§十"消费"行 每人每农业周期 10 粮 ⇒ 83 毫粮/人·日。 */
-  public static final long DAILY_GRAIN_MILLI_PER_PERSON = 83L;
+  /** 每人每日口粮（毫粮）：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
+  public static final long DAILY_GRAIN_MILLI_PER_PERSON =
+      EconomyVocabulary.DAILY_GRAIN_MILLI_PER_PERSON;
 
-  /** 粮食商品的 id（§十"单位"行：粮 = 1 公斤；本轮只种这一种商品）。 */
-  public static final String COMMODITY_GRAIN = "grain";
+  /** 粮食商品的 id：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
+  public static final String COMMODITY_GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
 
   /** 规则版本标签（§5 末条"改参数 = 改 rulesVersion"）：写入 {@code EconomyMeta}。 */
   public static final String RULES_VERSION = "aggregate-v1";

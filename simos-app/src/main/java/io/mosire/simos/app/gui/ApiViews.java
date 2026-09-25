@@ -62,6 +62,7 @@ import io.mosire.simos.unit.move.MovementState;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.move.UnitMoves;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
@@ -100,7 +101,7 @@ import java.util.TreeMap;
 public final class ApiViews {
 
   /** 粮食商品 id（与 {@code EconomySeeder.COMMODITY_GRAIN} / 结算侧同字面量：粮 = 1 公斤，库存按毫粮）。 */
-  private static final CommodityId GRAIN = new CommodityId("grain");
+  private static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
   private ApiViews() {}
 
