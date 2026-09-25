@@ -91,12 +91,12 @@ public final class EconomySettlement {
    * §十一 裁定： 一次 {@code AdvanceTime} 可以推 N 天、只落一条 revision，但**结算语义不跳日**）。
    *
    * <p>★ 每一次内部迭代 = 上面 {@link #settleOneDay} 的一天（消费 → 缺口/借粮/建债 → {@code progressDays + 1} → 到达
-   * {@code cycleDays} 就收获 + 15% 消耗 + 按 {@code Split} 分配；计息/到期不做）。**逐日**各写一份流水，最终只把**最后一天**的流水带出
-   * （{@code FlowRow} 是"本期发生额"，结算后清零——与 N 次单日推进的终态一致）。
+   * {@code cycleDays} 就收获 + 15% 消耗 + 按 {@code Split} 分配；计息/到期不做）。**流水跨日累加**：{@code flows} 提到
+   * 日循环之外，逐日把当天发生额并入本期流水，循环结束后统一建 {@link FlowRow}（否则"推进 N 天"只显示最后一天）。
    *
    * <p>★★ **等价性（§十一 的判据）**：{@code settle(base, from, from + N)} 的终态 == N 次 {@code settleOneDay}
    * 的终态。关键在**周期末**：天数是**绝对日**，不是"推进次数"——一条 100 天的推进只要跨过第 120 天那个周期末， **照样在那一天收获**（逐日循环里的 {@code
-   * day} 就是绝对世界日）。
+   * day} 就是绝对世界日）。流水同样满足：一次 N 天的累计 == N 次单日逐步并入 {@code base} 已有流水的累计。
    *
    * @param base 结算前的经济状态
    * @param fromTick 区间起点（世界日，左闭）；逐日循环从 {@code fromTick + 1} 起
@@ -112,21 +112,25 @@ public final class EconomySettlement {
     if (toTick < fromTick + 1L) {
       throw new IllegalArgumentException("economy 结算区间至少一天: from=" + fromTick + "，to=" + toTick);
     }
+    // ★ 本期流水的逐日累加器：从 base 已累计的流水起步，在日循环里逐日并入后统一带出（§十一）。
+    LinkedHashMap<ClassKey, FlowRow> flows = new LinkedHashMap<>(base.flows());
     EconomyData data = base;
     for (long day = fromTick + 1L; day <= toTick; day++) {
-      data = settleOneDay(data, day);
+      data = settleOneDay(data, day, flows);
     }
-    return data;
+    return data.withFlows(flows);
   }
 
   /**
-   * 结算**一天**（含"这一天若是周期末则追加周期结算"）。
+   * 结算**一天**（含"这一天若是周期末则追加周期结算"），把当天发生额并入调用方传入的**跨日累加器** {@code flows}。
    *
    * @param base 结算前的经济状态（**已激活**；{@link #settle} 已判过 meta）
    * @param day 推进到的世界日（1 tick = 1 天）；**只用于债务 id 的去重**（{@code debt-<day>-<seq>}），不参与任何公式
-   * @return 结算后的新状态
+   * @param flows 本期流水的逐日累加器（跨日持有、**就地更新**；由 {@link #settle} 在循环结束后统一带回）
+   * @return 结算后的新状态（{@code flows} 由 {@link #settle} 在循环结束后统一挂上）
    */
-  private static EconomyData settleOneDay(EconomyData base, long day) {
+  private static EconomyData settleOneDay(
+      EconomyData base, long day, LinkedHashMap<ClassKey, FlowRow> flows) {
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -135,7 +139,6 @@ public final class EconomySettlement {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>(base.industries());
     LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>(base.classes());
     LinkedHashMap<DebtId, Debt> debts = new LinkedHashMap<>(base.debts());
-    LinkedHashMap<ClassKey, FlowRow> flows = new LinkedHashMap<>(); // 每日重建（流水结算后清零 = 本期发生额）
 
     // 逐行当日发生额（流水的事后组装）。
     LinkedHashMap<ClassKey, Long> consumedGrain = new LinkedHashMap<>();

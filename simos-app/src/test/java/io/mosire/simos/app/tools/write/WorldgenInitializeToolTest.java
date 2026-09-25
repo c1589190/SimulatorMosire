@@ -413,10 +413,8 @@ class WorldgenInitializeToolTest {
 
   @Test
   void threeNationsEachOneClickInitializeWithArmy() throws IOException {
-    // ★ 选择：三国各用一个**独立临时库**（每次都是"干净首启 ⇒ revision 1→2"），互不污染。同一库顺序跑也行（各国只动
-    //   自己的 region），但独立库能把 revision / tag 断言钉成常量、也免去"前一国已改过 meta"的干扰。
-    //   ★ R2a：经济切片是"已激活即拒"的**一次性播种**⇒ 同一个库里连播三国会被第二国正当拒绝。故这里逐国累计
-    //     "该国有经济状态的格数"，末尾断言三国之和 == 799（G1 验收目标 A 的格数判据）。
+    // ★ 选择：三国各用一个**独立临时库**（每次都是"干净首启 ⇒ revision 1→2"），把 revision / tag 断言钉成常量。
+    //   ★ 同库连播三国的回归护栏见 {@link #twoNationsSeedIntoTheSameEconomySlice()}（economy.Seed 已改"按格追加"）。
     long economyHexTotal = 0L;
     for (NationCase nation : NATIONS) {
       String id = nation.regionId();
@@ -491,6 +489,49 @@ class WorldgenInitializeToolTest {
       }
     }
     assertThat(economyHexTotal).as("三国 799 格各得一份 economy 状态（430 + 138 + 231）").isEqualTo(799L);
+  }
+
+  // ── 4b″. ★★ 同库连播两国（本轮关键回归护栏：economy.Seed 改"按格追加"，不再"已激活即拒"）──────
+
+  /**
+   * ★★ **同库连播两国的回归护栏**：同一个库里先播奥斯特马克、再播霍赫兰（两国的格互不相同）⇒ 第二国的整批 （人口/城市/经济/军队）**不得**因"经济切片已激活"被拒回滚。
+   *
+   * <p>★ 判别力：把 {@code EconomySeedHandler} 的"按格判"改回"按库判"（{@code meta} 非空即拒），第二条 {@code execute} 会返回
+   * {@code REJECTED} 且整批（含第二国人口/城市/军队）回滚 ⇒ 本条及其后的数值断言一起红。
+   *
+   * <p>★ 字面量（两国真档硬值）：格数 138 + 231 = 369；经济人口 3,070,000 + 2,530,000 = **5,600,000**；初始库存 = 5,600,000
+   * × 83 毫粮/人·日 × 60 天 = **27,888,000,000** 毫粮（且 meta 的激活日仍是创世日 0，不被第二国覆盖）。
+   */
+  @Test
+  void twoNationsSeedIntoTheSameEconomySlice() throws IOException {
+    NationCase firstNation = NATIONS.get(1); // 奥斯特马克侯国
+    NationCase secondNation = NATIONS.get(2); // 霍赫兰伯国
+    try (CoreSimos core = freshCore(dir("same-slice"))) {
+      ToolResult firstResult =
+          execute(tool(core), Map.of("nation", firstNation.regionId(), "dryRun", false));
+      assertThat(firstResult.success()).as(firstResult.message()).isTrue();
+
+      ToolResult secondResult =
+          execute(tool(core), Map.of("nation", secondNation.regionId(), "dryRun", false));
+      assertThat(secondResult.success())
+          .as("同库连播第二国的整批不得因经济切片已激活而拒回滚: " + secondResult.message())
+          .isTrue();
+
+      assertThat(core.head(MAIN).orElseThrow().value()).as("两国各一条 revision").isEqualTo(3L);
+      EconomyData economy = economySlice(core.replay(new StateRef(MAIN, new RevisionId(3))));
+
+      assertThat(economyHexCount(economy))
+          .as("两国格数合计（138 + 231）")
+          .isEqualTo(firstNation.hexes() + secondNation.hexes());
+      assertThat(economy.classes().values().stream().mapToLong(ClassRow::population).sum())
+          .as("两国经济人口合计（3,070,000 + 2,530,000）")
+          .isEqualTo(firstNation.population() + secondNation.population());
+      assertThat(grainTotal(economy))
+          .as("两国初始库存合计 = 人口 × 83 × 60")
+          .isEqualTo((firstNation.population() + secondNation.population()) * 83L * 60L);
+      assertThat(economy.meta().orElseThrow().activatedDay()).as("meta 不覆盖：激活日仍是创世日 0").isZero();
+      assertThat(economy.meta().orElseThrow().mapId()).isEqualTo(MAP_ID);
+    }
   }
 
   // ── 4b′. ★ R3a：真实三国各推进 10 天 ⇒ 粮库存减少 = Σ(人口 × 83 × 10) ────────────────────

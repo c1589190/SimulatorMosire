@@ -1,14 +1,22 @@
 package io.mosire.simos.economy.spi;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.ClassKey;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ {@code economy.Seed} 命令的处理器（聚合式经济重设计 §十 的 R2a）：**一次把某国全部格的初始经济状态种进 economy 切片** ——一条命令、一条
@@ -18,8 +26,15 @@ import java.util.Objects;
  * 的口径算好），本类把它翻成 §3 的领域类型。理由：§八 R1 行"模块化、无公式"是 economy 切片的既定边界，而且
  * "一切数字来自场景参数"这条纪律落在生成器一处即可（两条路各算一遍必然漂移）。
  *
- * <p>★★ **{@code meta} 非空 = 已激活 ⇒ 拒**（§3.3 + §6.6）：本命令是"创世播种"，不是"增量修改"。重放同一份载荷（或对已播种的世界再播一次） 必须以
- * {@code Rejected} 面世、理由**点名"已激活"**——静默覆盖会抹掉既有经济状态且没有任何症状。
+ * <p>★★ **已激活（{@code meta} 非空）⇒ 按格追加**（user 2026-09-25 裁定，取代原"已激活即拒"）：世界有**多国**，各国先后各播一批
+ * （三国的格互不相同）——按**库**判会播完第一国就把后两国的整批（人口/城市/军队）一起挡回滚。故判据降到**格**：
+ *
+ * <ul>
+ *   <li>{@code meta} 空 ⇒ **首次播种**：整份载荷落盘并**打标**（现有逻辑保留）。
+ *   <li>{@code meta} 非空 ⇒ **逐格**判：该格（{@code q,r}，经 {@link IndustryHexKeys#hexKeyOf} 认）若已有产业/阶层行 ⇒
+ *       **拒绝并点名该格**； 否则把该格追加进现有切片。**{@code meta} 不覆盖**（保留首次的 {@code activatedDay}/{@code
+ *       rulesVersion}）。
+ * </ul>
  *
  * <p>★ **目标资源**（{@link CommandTargets}）：{@code entries[]} 里**每一个**格的 {@link
  * ResourcePaths#economy(int, int)} （{@code <q>_<r>}）——GM 代执行决策人令时据此逐条判越权（与 {@code
@@ -29,9 +44,6 @@ import java.util.Objects;
  * cycleDays}）由 §3 的领域类型与 {@link EconomyData} 构造期守卫判——**不重复实现**。两者的失败都以 {@code Rejected} 出面。
  */
 public final class EconomySeedHandler implements CommandHandler, CommandTargets {
-
-  /** 已激活时拒因里必须出现的字样（用例据此判"理由点名已激活"）。 */
-  public static final String ALREADY_ACTIVATED_MARKER = "已激活";
 
   @Override
   public String type() {
@@ -48,19 +60,51 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
-    if (base.meta().isPresent()) {
-      return new HandlerOutcome.Rejected(
-          "经济切片"
-              + ALREADY_ACTIVATED_MARKER
-              + "（meta 非空），拒绝重复播种: mapId="
-              + base.meta().orElseThrow().mapId());
-    }
+    JsonNode payload;
+    EconomyData seeded;
     try {
-      EconomyData next =
-          EconomyPayloads.toData(EconomyPayloads.parse(payloadJson), state.meta().timestamp());
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, next));
+      payload = EconomyPayloads.parse(payloadJson);
+      seeded = EconomyPayloads.toData(payload, state.meta().timestamp());
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }
+    if (base.meta().isEmpty()) {
+      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, seeded)); // 首次播种：打标
+    }
+    // ★ 已激活 ⇒ 按格追加：先逐格判重（任一格已被占用 ⇒ 整份拒绝并点名该格），再并入现有切片。
+    Set<String> occupied = occupiedHexKeys(base);
+    for (String hex : EconomyPayloads.entryHexKeys(payload)) {
+      if (occupied.contains(hex)) {
+        return new HandlerOutcome.Rejected(
+            "格 " + hex + " 已有经济状态（产业/阶层行），拒绝重复播种: mapId=" + base.meta().orElseThrow().mapId());
+      }
+    }
+    EconomyData merged =
+        new EconomyData(
+            base.meta(), // ★ 不覆盖：保留首次的 activatedDay / rulesVersion
+            merge(base.industries(), seeded.industries()),
+            merge(base.classes(), seeded.classes()),
+            base.debts(),
+            base.flows());
+    return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
+  }
+
+  /** 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从产业 id 与阶层行的产业里认（{@link IndustryHexKeys} 是唯一拼写点）。 */
+  private static Set<String> occupiedHexKeys(EconomyData base) {
+    Set<String> hexes = new LinkedHashSet<>();
+    for (IndustryId id : base.industries().keySet()) {
+      IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);
+    }
+    for (ClassKey key : base.classes().keySet()) {
+      IndustryHexKeys.hexKeyOf(key.industry()).ifPresent(hexes::add);
+    }
+    return hexes;
+  }
+
+  /** 追加表：保留 {@code base} 的插入序，再把新增项接在后面（保序不可变的纯形态仍由 {@link EconomyData} 构造期冻结）。 */
+  private static <K, V> Map<K, V> merge(Map<K, V> base, Map<K, V> added) {
+    LinkedHashMap<K, V> merged = new LinkedHashMap<>(base);
+    merged.putAll(added);
+    return merged;
   }
 }

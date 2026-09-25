@@ -101,6 +101,45 @@ class EconomySettlementTest {
         EconomySettlement.settle(
             EconomySettlement.settle(EconomySettlement.settle(base, 0L, 1L), 1L, 2L), 2L, 3L);
     assertThat(next).as("§十一：一次 3 天 == 3 次单日").isEqualTo(chained);
+    // ★ 流水也纳入终态比较（不是"两边都只留最后一天"的平凡相等）：3 天流水逐日累加后两边逐值相同。
+    assertThat(next.flows()).as("§十一：一次 3 天的流水 == 3 次单日各自并入 base 的流水").isEqualTo(chained.flows());
+  }
+
+  /**
+   * ★★ **多日流水逐日累加**（2026-09-25 修的真 bug）：{@code settle(base, 0, 3)} 的 {@link FlowRow} 必须把 3
+   * 天的发生额**累加**， 不能只留最后一天。
+   *
+   * <p>字面量（夹具：贫农 100 人 / 地主 10 人，日耗 83 毫粮/人，{@code cycleDays = 3} ⇒ 第 3 天收获）：
+   *
+   * <ul>
+   *   <li>贫农 {@code consumed.grain} = 3 × 8300 + 829（分到的生产损耗） = 25,729；
+   *   <li>地主 {@code consumed.grain} = 3 × 830 + 221 = 2,711；
+   *   <li>贫农 {@code income} = 4,700 + 829 = 5,529、地主 = 1,250 + 221 = 1,471（毛产份额）；
+   *   <li>Σ 行 {@code consumed} − Σ 行 {@code income} = 28,440 − 7,000 = 21,440 = 基期库存 91,300 − 终态
+   *       69,860（守恒）。
+   * </ul>
+   *
+   * <p>★ 判别力：把日循环里的累加改回"每日重建"（只留第 3 天），{@code consumed} 会掉到 8,300 + 829 = 9,129 ⇒ 本条红。
+   */
+  @Test
+  void threeDayFlowAccumulatesDailyConsumption() {
+    EconomyData next = EconomySettlement.settle(fixture(), 0L, 3L);
+
+    FlowRow peasant = next.flows().get(PEASANT_KEY);
+    FlowRow landlord = next.flows().get(LANDLORD_KEY);
+    assertThat(peasant.consumed().get(GRAIN)).as("3 天日耗之和 + 贫农分到的生产损耗").isEqualTo(25_729L);
+    assertThat(landlord.consumed().get(GRAIN)).as("3 天日耗之和 + 地主分到的生产损耗").isEqualTo(2_711L);
+    assertThat(peasant.income()).as("贫农分到的收获毛产份额").isEqualTo(5_529L);
+    assertThat(landlord.income()).as("地主分到的收获毛产份额").isEqualTo(1_471L);
+    assertThat(peasant.netSurplus()).as("5,529 − 25,729").isEqualTo(-20_200L);
+    assertThat(landlord.netSurplus()).as("1,471 − 2,711").isEqualTo(-1_240L);
+    assertThat(peasant.newBorrowing()).as("库存够吃 ⇒ 无借入").isZero();
+
+    long sumConsumed = peasant.consumed().get(GRAIN) + landlord.consumed().get(GRAIN);
+    long sumIncome = peasant.income() + landlord.income();
+    assertThat(sumConsumed - sumIncome)
+        .as("Σ 行 consumed − Σ 行 income == 基期库存 − 终态库存（守恒口径一致）")
+        .isEqualTo((83_000L + 8_300L) - (62_800L + 7_060L));
   }
 
   /**

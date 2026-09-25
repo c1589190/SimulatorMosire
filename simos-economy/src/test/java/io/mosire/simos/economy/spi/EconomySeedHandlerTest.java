@@ -27,7 +27,7 @@ import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code economy.Seed} 命令边界（R2a）：正例逐值 + 已激活拒绝 + 悬空槽位拒绝 + 负值拒绝 + 目标路径。
+ * {@code economy.Seed} 命令边界（R2a）：正例逐值 + 已激活后按格追加 + 重复格拒绝 + 悬空槽位拒绝 + 负值拒绝 + 目标路径。
  *
  * <p>夹具是**真 {@link SimulationState} + 只有 economy 切片**（不打 DB），形态照 social 侧 {@code
  * SetPopulationHandlerTest}。
@@ -39,6 +39,7 @@ class EconomySeedHandlerTest {
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
   private static final IndustryId FARM = new IndustryId("farm@0_0");
+  private static final IndustryId FARM2 = new IndustryId("farm@1_0");
 
   /** 一段最小合法载荷：一格、一个农业产业（封建租佃）、两个槽位两条阶层行。 */
   private static final String PAYLOAD =
@@ -56,6 +57,10 @@ class EconomySeedHandlerTest {
           + "{\"slot\":\"landlord\",\"population\":50,\"laborMilli\":29000,"
           + "\"participationPerMille\":100,\"meansOfProduction\":{\"LAND\":100000},"
           + "\"goods\":{\"grain\":249000}}]}]}]}";
+
+  /** 第二国的载荷：与 {@link #PAYLOAD} 同形、但落在**另一格**（{@code 1_0}）——验证"已激活后按格追加"。 */
+  private static final String LATER_NATION_PAYLOAD =
+      PAYLOAD.replace("\"q\":0,\"r\":0", "\"q\":1,\"r\":0").replace("farm@0_0", "farm@1_0");
 
   @Test
   void typeIsEconomySeed() {
@@ -109,22 +114,36 @@ class EconomySeedHandlerTest {
     assertThat(landlord.effectiveDemand()).isEmpty();
   }
 
-  /** ★ 已激活（meta 非空）⇒ 拒，理由**点名"已激活"**（不静默覆盖既有经济状态）。 */
+  /** ★ 已激活后**按格追加**：同一库连播两国，两批的格都在、人口/库存合计 = 两批之和，且 meta 不覆盖。 */
   @Test
-  void rejectsWhenAlreadyActivated() {
-    EconomyData activated =
-        EconomyData.empty()
-            .withMeta(
-                Optional.of(
-                    new EconomyMeta(
-                        "Map1", 3L, OptionalLong.empty(), "aggregate-v1", Optional.empty())));
+  void appendsNewHexesOfALaterNation() {
+    EconomyData first = apply(PAYLOAD, EconomyData.empty(), T7);
 
-    HandlerOutcome outcome = HANDLER.handle(state(activated, T7), PAYLOAD);
+    EconomyData both = apply(LATER_NATION_PAYLOAD, first, SimosTimestamp.of(9));
+
+    assertThat(both.industries()).as("两批的产业都在").containsKeys(FARM, FARM2);
+    assertThat(both.classes()).as("两批各 2 行").hasSize(4);
+    assertThat(both.classes().values().stream().mapToLong(ClassRow::population).sum())
+        .as("两批人口合计 = 500 + 500")
+        .isEqualTo(1_000L);
+    assertThat(
+            both.classes().values().stream()
+                .mapToLong(row -> row.goods().getOrDefault(new CommodityId("grain"), 0L))
+                .sum())
+        .as("两批库存合计 = 2,490,000 + 2,490,000")
+        .isEqualTo(4_980_000L);
+    assertThat(both.meta().orElseThrow().activatedDay()).as("meta 不覆盖：保留首次播种的激活日").isEqualTo(7L);
+  }
+
+  /** ★ 已激活后**重复格**⇒ 拒，且拒因**点名该格坐标**（不静默覆盖既有经济状态）。 */
+  @Test
+  void rejectsDuplicateHexAndNamesIt() {
+    EconomyData first = apply(PAYLOAD, EconomyData.empty(), T7);
+
+    HandlerOutcome outcome = HANDLER.handle(state(first, T7), PAYLOAD);
 
     assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
-    assertThat(((HandlerOutcome.Rejected) outcome).reason())
-        .contains(EconomySeedHandler.ALREADY_ACTIVATED_MARKER)
-        .contains("已激活");
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).as("拒因点名重复的那一格坐标").contains("0_0");
   }
 
   /** ★ 悬空槽位：阶层行引用了该产业 slots 里没有的槽位 ⇒ 拒（EconomyData 的构造期守卫）。 */

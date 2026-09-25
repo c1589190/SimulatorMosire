@@ -259,6 +259,9 @@ class EconomySettlementEndToEndTest {
       assertThat(onceData)
           .as("§十一：advance(0→150) 的终态 == 150 次单日 advance 的终态（覆盖第 120 天收获/逐日消费/债务）")
           .isEqualTo(dailyData);
+      // ★ 流水**也纳入**这份终态比较，且非平凡：150 天的发生额逐日累加（不是"两边都只留最后一天"的平凡相等）。
+      assertThat(onceData.flows()).as("一次 150 天与 150 次单日的流水逐值相同").isEqualTo(dailyData.flows());
+      assertThat(flowConsumed(onceData)).as("流水已跨日累加（远大于一天的口粮）").isGreaterThan(10L * DAILY_MILLI);
 
       // ★ 再钉一条可读的绝对日数字：150 天只跨过第 120 天一次 ⇒ 关账周期 1、周期进度 30。
       assertThat(onceData.meta().orElseThrow().lastClosedCycle())
@@ -384,16 +387,30 @@ class EconomySettlementEndToEndTest {
     return sumHarvestIncome(data, industry) - stock;
   }
 
-  /** 守恒（§6.1 的账要平）：粮库存的减少 == 流水消费 − 流水所得；人口逐值不变。 */
+  /**
+   * 守恒（§6.1 的账要平）：粮库存的减少 == **本次推进**的流水消费 − 本次推进的流水所得；人口逐值不变。
+   *
+   * <p>★ 流水**跨日/跨推进累加**（§十一，{@code FlowRow} 是"本期累计发生额"）⇒ 本次推进的发生额取 {@code after.flows() −
+   * before.flows()} 的差，而不是 {@code after.flows()} 本身（否则 119 天的累计会把第 120 天的一天账淹没）。
+   */
   private static void assertConserved(EconomyData before, EconomyData after, String what) {
-    long consumed =
-        after.flows().values().stream()
-            .mapToLong(flow -> flow.consumed().getOrDefault(GRAIN, 0L))
-            .sum();
-    long income = after.flows().values().stream().mapToLong(FlowRow::income).sum();
+    long consumed = flowConsumed(after) - flowConsumed(before);
+    long income = flowIncome(after) - flowIncome(before);
     assertThat(totalGrain(before) - totalGrain(after))
-        .as("%s：库存减少 == Σ流水消费 − Σ流水所得（损耗/产出都显式落账）", what)
+        .as("%s：库存减少 == 本期流水消费 − 本期流水所得（损耗/产出都显式落账）", what)
         .isEqualTo(consumed - income);
     assertThat(totalPopulation(after)).as("%s：人口守恒", what).isEqualTo(totalPopulation(before));
+  }
+
+  /** Σ 各行的粮消费（毫粮）。 */
+  private static long flowConsumed(EconomyData data) {
+    return data.flows().values().stream()
+        .mapToLong(flow -> flow.consumed().getOrDefault(GRAIN, 0L))
+        .sum();
+  }
+
+  /** Σ 各行的流水所得。 */
+  private static long flowIncome(EconomyData data) {
+    return data.flows().values().stream().mapToLong(FlowRow::income).sum();
   }
 }

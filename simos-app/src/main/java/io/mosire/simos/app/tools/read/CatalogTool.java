@@ -86,7 +86,8 @@ public final class CatalogTool implements AgentTool {
                   + "slots[{id,name,laborParticipationPerMille}],"
                   + "classes[{slot,population,laborMilli,participationPerMille,meansOfProduction?,goods?,"
                   + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]}]"
-                  + "（★ 一次种一格或多格；meta 非空 = 经济已激活 ⇒ 拒）"),
+                  + "（★ 一次种一格或多格；meta 空 = 首次播种并打标；meta 非空 = 按格追加，"
+                  + "若某格已有产业/阶层行则拒并点名该格坐标）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(
