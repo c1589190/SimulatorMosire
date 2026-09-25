@@ -194,7 +194,11 @@ public final class EconomySettlement {
       long progressed = industry.progressDays() + 1L;
       long nextProgress = progressed;
       long nextCycleLabor = cycledLabor;
-      if (progressed == industry.cycleDays()) {
+      // ★ v2 spec §八.3：`progressDays ∈ [0, cycleDays]` 是**闭区间**（v1 spec §3.1 原文），
+      //   cycleDays 的语义是"周期已满、待收获"。用 >= 才能把该合法状态收获掉；
+      //   用 == 会让 progressDays == cycleDays 的下一日构造出 cycleDays + 1，在 Industry 构造期抛，
+      //   异常穿出 EconomyTimeParticipant.simulateWorld ⇒ **整条推进 revision 失败**。
+      if (progressed >= industry.cycleDays()) {
         // ── 周期末：产出 / 生产消耗 / 制度分配 —— 再算饿死（分配/收获不受死亡影响，本期产出照分给幸存者）──
         harvest(industry, rows, keys, cycledLabor, income, productionLoss);
         for (ClassKey key : keys) {
