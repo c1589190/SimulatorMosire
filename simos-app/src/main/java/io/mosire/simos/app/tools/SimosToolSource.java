@@ -3,6 +3,8 @@ package io.mosire.simos.app.tools;
 import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.decision.DecisionAgentService;
+import io.mosire.simos.app.gm.GmToolUsage;
+import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
@@ -12,12 +14,17 @@ import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionMakerTool;
 import io.mosire.simos.app.tools.read.DecisionMakersTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
+import io.mosire.simos.app.tools.read.GmToolUsageTool;
+import io.mosire.simos.app.tools.read.LlmProvidersTool;
+import io.mosire.simos.app.tools.read.MapBlockTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.MapPathTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
+import io.mosire.simos.app.tools.read.SdCombatsTool;
+import io.mosire.simos.app.tools.read.SdVerdictsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
@@ -147,6 +154,8 @@ public final class SimosToolSource implements ToolSource {
       Set<String> commandTypes,
       SkillLibrary skills,
       RenderService renderService,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
       Role role) {
     this(
         core,
@@ -157,6 +166,8 @@ public final class SimosToolSource implements ToolSource {
         commandTypes,
         skills,
         renderService,
+        gmToolUsage,
+        llmConfig,
         Map.of(),
         role,
         null);
@@ -182,6 +193,8 @@ public final class SimosToolSource implements ToolSource {
       Set<String> commandTypes,
       SkillLibrary skills,
       RenderService renderService,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
@@ -192,11 +205,22 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(worldgenConfigFile, "worldgenConfigFile");
     Objects.requireNonNull(commandTypes, "commandTypes");
     Objects.requireNonNull(skills, "skills");
+    Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     Objects.requireNonNull(commandTargets, "commandTargets");
     Objects.requireNonNull(role, "role");
     List<AgentTool> built =
         new ArrayList<>(
-            readToolsFor(readTools(core, query, mapId, commandTypes, skills, renderService), role));
+            readToolsFor(
+                readTools(
+                    core,
+                    query,
+                    mapId,
+                    commandTypes,
+                    skills,
+                    renderService,
+                    gmToolUsage,
+                    llmConfig),
+                role));
     switch (role) {
       case GM -> {
         addGenericWrites(built, core, initiator, mapId);
@@ -346,7 +370,9 @@ public final class SimosToolSource implements ToolSource {
       String mapId,
       Set<String> commandTypes,
       SkillLibrary skills,
-      RenderService renderService) {
+      RenderService renderService,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig) {
     return List.of(
         new CatalogTool(commandTypes),
         new StateResolveTool(query, mapId),
@@ -360,6 +386,9 @@ public final class SimosToolSource implements ToolSource {
         new MapHexTool(query, mapId),
         new MapRegionTool(query, mapId),
         new MapPathTool(query),
+        // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
+        //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
+        new MapBlockTool(query),
         new UnitListTool(query),
         new UnitGetTool(query),
         new PopulationTool(query),
@@ -367,7 +396,15 @@ public final class SimosToolSource implements ToolSource {
         new MapRenderTool(query, renderService),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
         new DecisionMakersTool(query),
-        new DecisionMakerTool(query),
+        // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
+        new DecisionMakerTool(query, mapId),
+        // ★ 工具面补齐（2026-09-25）：交战记录（世界状态 ⇒ 四桶共享，复用 ApiViews.combats）。
+        new SdCombatsTool(query),
+        // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
+        new SdVerdictsTool(query, mapId),
+        // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
+        new GmToolUsageTool(gmToolUsage),
+        new LlmProvidersTool(llmConfig),
         // ★ Skill 系统（2026-09-23）：方法论与常识（外部 Markdown，改文件即生效）。**两桶共享**——
         //   决策人读它是本职，GM 读它是为了写出与之一致的文档（Docs）。
         new SkillTool(skills));

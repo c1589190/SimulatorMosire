@@ -110,6 +110,12 @@ class McpServerTest {
           "simos.map.hex",
           "simos.map.region",
           "simos.map.path",
+          // ★ 工具面补齐（2026-09-25）：新增五条读口（combats 四桶共享；其余四条 GM-only）。
+          "simos.map.block",
+          "simos.sd.combats",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.llm.providers",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
@@ -225,9 +231,9 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 67 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写，"
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 73 条（C6：含通用写、sd 窄工具、7 条 map 窄写与 20 条 unit 窄写，"
                 + "以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective 与"
-                + " simos.worldgen.initialize）")
+                + " simos.worldgen.initialize、2026-09-25 补的五条读口）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

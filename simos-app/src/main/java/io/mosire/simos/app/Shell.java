@@ -266,6 +266,12 @@ public final class Shell implements AutoCloseable {
    */
   private final AgentLibLlmConfig llmConfig;
 
+  /**
+   * GM 口工具使用记录（T8）：{@code /api/gm/tool-usage} 与 MCP 的 {@code simos.gm.tool-usage} 的唯一数据源； {@code
+   * RecordingToolSource} 与 GUI 共用**同一个**实例（工具面补齐 2026-09-25 起它也要在工具源装配时就绪）。
+   */
+  private final GmToolUsage gmToolUsage;
+
   /** 决策编排（T3）：把 {@code AdjudicatorRunner} 接进壳——「开始决策」真的会跑 LLM 判决。 */
   private final DecisionAdjudicationService decisionAdjudicationService;
 
@@ -300,6 +306,7 @@ public final class Shell implements AutoCloseable {
       RenderService renderService,
       ArtifactStore artifactStore,
       AgentLibLlmConfig llmConfig,
+      GmToolUsage gmToolUsage,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
       SqliteConversationStore decisionConversations) {
@@ -325,6 +332,7 @@ public final class Shell implements AutoCloseable {
     this.artifactStore = Objects.requireNonNull(artifactStore, "artifactStore");
     this.commandTargets = Map.copyOf(commandTargets);
     this.llmConfig = llmConfig;
+    this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.decisionAdjudicationService = decisionAdjudicationService;
     this.decisionAgentService = decisionAgentService;
     this.decisionConversations = decisionConversations;
@@ -551,6 +559,10 @@ public final class Shell implements AutoCloseable {
     //   渲染服务三面共用（决策人链路 / MCP 工具 / GUI 出图路由）——键 = revision + 参数指纹。
     ArtifactStore artifactStore = new ArtifactStore(config.storeDir().resolve("artifacts"));
     RenderService renderService = new RenderService(queryService, artifactStore);
+    // ★ T8：GM 交互界面的数据源——GM 口每次工具执行的留痕（工具名 + 结果），经 /api/gm/tool-usage 只读导出；
+    //   工具面补齐（2026-09-25）起它同时是 MCP 的 `simos.gm.tool-usage` 的数据源。★ **必须在两个工具源之前建**：
+    //   两档的读工具装配都要求它非 null（GM-only 读工具虽会被决策人桶过滤，仍先被构造）。
+    GmToolUsage gmToolUsage = new GmToolUsage();
     DecisionCallerFactory decisionCallerFactory = DecisionCallerFactory.defaults(toolAuthorizer);
     ToolRegistry decisionTools = new ToolRegistry();
     decisionTools.registerAll(
@@ -563,6 +575,8 @@ public final class Shell implements AutoCloseable {
                 commandTypes,
                 skillLibrary,
                 renderService,
+                gmToolUsage,
+                llmConfig,
                 SimosToolSource.Role.DECISION_AGENT)
             .listTools());
     // ★ 决策人桶**不带**触发工具（决策人不触发自己，那是自环）⇒ 这里用不带运行流的那条构造器。
@@ -599,12 +613,13 @@ public final class Shell implements AutoCloseable {
             commandTypes,
             skillLibrary,
             renderService,
+            gmToolUsage,
+            llmConfig,
             commandTargets,
             SimosToolSource.Role.GM,
             decisionAgentService);
-    // ★ T8：GM 交互界面的数据源——GM 口每次工具执行的留痕（工具名 + 结果），经 /api/gm/tool-usage 只读导出。
-    //   只包 GM 组的源 ⇒ 记录的就是"GM MCP 的工具使用"（spec §七.4 C22）。
-    GmToolUsage gmToolUsage = new GmToolUsage();
+    // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
+    //   "GM MCP 的工具使用"（spec §七.4 C22）。
     ToolRegistry toolRegistry = new ToolRegistry();
     McpSourceBridge toolBridge =
         McpSourceBridge.bind(RecordingToolSource.record(toolSource, gmToolUsage), toolRegistry);
@@ -706,6 +721,7 @@ public final class Shell implements AutoCloseable {
         renderService,
         artifactStore,
         llmConfig,
+        gmToolUsage,
         decisionAdjudicationService,
         decisionAgentService,
         decisionConversations);
@@ -771,6 +787,8 @@ public final class Shell implements AutoCloseable {
             commandTypes,
             skillLibrary,
             renderService,
+            gmToolUsage,
+            llmConfig,
             commandTargets,
             role,
             decisionAgentService)

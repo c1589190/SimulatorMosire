@@ -2,6 +2,7 @@ package io.mosire.simos.app.gui;
 
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
+import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.map.City;
@@ -393,7 +394,7 @@ public final class ApiViews {
    * <p>用途：前端「油漆桶」——把**整块连通同地形**一次换成另一种地形：先看有多大（{@code hexCount} 供超量确认）， 再把 {@code hexes} 原样喂给一条
    * {@code map.SetTerrain}。{@code hexes} 顺序 = 块自身的自然序（不另排序，前端与后端看到同一个序）。
    */
-  static Map<String, Object> mapBlock(HexCoord coord, String terrain, List<HexCoord> hexes) {
+  public static Map<String, Object> mapBlock(HexCoord coord, String terrain, List<HexCoord> hexes) {
     Map<String, Object> view = hexCoord(coord);
     view.put("terrain", terrain);
     view.put("hexCount", hexes.size());
@@ -872,7 +873,7 @@ public final class ApiViews {
    * <p>★ {@code unparsedPrefixes} **照原样送出**（不吞）：认不出形状的 {@code map} 前缀仍是生效的限制，只是投影不出区域/格 ——吞掉它会让 GM
    * 把"我没看懂"读成"没生效"。
    */
-  static Map<String, Object> decisionScope(
+  public static Map<String, Object> decisionScope(
       SdQueryService.DecisionMakerInfo info, StateRef ref, DecisionScopeView view) {
     Map<String, Object> maker = decisionMaker(info);
     Map<String, Object> body = new LinkedHashMap<>();
@@ -944,6 +945,27 @@ public final class ApiViews {
     List<String> out = new ArrayList<>(values);
     out.sort(Comparator.naturalOrder());
     return out;
+  }
+
+  /**
+   * GM 口工具使用记录的只读视图（工具面 M4，2026-09-25 起 GUI 与 MCP 共用这一份）：{@code {tool,ok,code,atEpochMs}}。
+   *
+   * <p>★ **它不是世界状态**：来源是进程内的 {@link GmToolUsage} 有界记录（进程重启即空），故与 GUI 的 {@code GET
+   * /api/gm/tool-usage} 一样**不接 redaction**；MCP 侧只给 GM 桶读这条。
+   *
+   * <p>★ 顺序由调用方给定（{@link GmToolUsage#recent()} 已是"最新在前"的不可变快照）——本层**不重排**， 与 GUI 逐字同形。
+   */
+  public static List<Map<String, Object>> gmToolUsage(List<GmToolUsage.Entry> entries) {
+    List<Map<String, Object>> views = new ArrayList<>(entries.size());
+    for (GmToolUsage.Entry entry : entries) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("tool", entry.tool());
+      item.put("ok", entry.ok());
+      item.put("code", entry.code());
+      item.put("atEpochMs", entry.atEpochMs());
+      views.add(item);
+    }
+    return List.copyOf(views);
   }
 
   /** map 切片（缺席或类型不对是装配故障，不是"没有候选"）。 */

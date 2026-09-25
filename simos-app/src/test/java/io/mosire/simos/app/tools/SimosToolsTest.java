@@ -155,9 +155,9 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 9 读 + 50 写（**5 非窄写**：3 通用写 + {@code sd.AdjudicateTick} +
-   * {@code sd.RejectDirective}，后两者**不是**命令类型；+ **18 sd 窄写**（4 + M3 的 12 + 会话重置 + T11C 的
-   * RunDecision）+ **7 map 窄写**，M1 + **20 unit 窄写**，M2）。
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 21 读 + 52 写 = 73（**7 非窄写**：3 通用写 + {@code
+   * sd.AdjudicateTick} + {@code sd.RejectDirective} + {@code sd.VoidAdjudication} + {@code
+   * simos.worldgen.initialize}，**都不是**命令类型；+ **45 窄写**：18 sd + 7 map + 20 unit）。
    */
   private static final List<String> GM_TOOL_NAMES =
       List.of(
@@ -170,6 +170,12 @@ class SimosToolsTest {
           "simos.map.hex",
           "simos.map.region",
           "simos.map.path",
+          // ★ 工具面补齐（2026-09-25）：新增五条读口（combats 四桶共享；其余四条只给 GM 桶）。
+          "simos.map.block",
+          "simos.sd.combats",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.llm.providers",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
@@ -232,7 +238,7 @@ class SimosToolsTest {
           "unit.ApplyCasualties");
 
   /**
-   * 读工具名单（9 条）：读闸**按名字选**，不用索引切片。
+   * 读工具名单（21 条）：读闸**按名字选**，不用索引切片。
    *
    * <p>★ 索引切片（{@code subList(0, 9)}）在名单变长后**仍然合法** ⇒ 断言照绿、判别力静默流失。
    */
@@ -255,16 +261,32 @@ class SimosToolsTest {
           "simos.sd.decision-maker",
           "simos.skill",
           // ★ P3（2026-09-24）：把世界渲染成图（四桶共享——决策人也要"看图"）。
-          "simos.map.render");
+          "simos.map.render",
+          // ★ 工具面补齐（2026-09-25）：combats 四桶共享；map.block / sd.verdicts / gm.tool-usage /
+          //   llm.providers 只给 GM 桶（见 GM_ONLY_READ_NAMES）。
+          "simos.sd.combats",
+          "simos.map.block",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.llm.providers");
 
   /**
-   * ★ **只给 GM 桶的读工具**（2026-09-24 M4）：标了 {@code GmOnlyRead} 的那些。
+   * ★ **只给 GM 桶的读工具**（2026-09-24 M4 起，2026-09-25 扩充）：标了 {@code GmOnlyRead} 的那些。
    *
-   * <p>判据在 {@link #roleBucketsNeverCarryGenericWrite}：决策人桶**不得**含这三条 （{@code map.path}
-   * 是地形探测、另两条是别人的底牌——见 M4 侦察报告 §二）。
+   * <p>判据在 {@link #roleBucketsNeverCarryGenericWrite}：决策人桶**不得**含这些（{@code map.path}/{@code
+   * map.block} 是地形探测、{@code sd.decision-makers}/{@code sd.decision-maker} 是别人的底牌、{@code
+   * sd.verdicts} 是模型原始输出、 {@code gm.tool-usage} 是运行时监督数据、{@code llm.providers} 是模型配置——见 M4 侦察报告 §二
+   * 与本次审计）。
    */
   private static final List<String> GM_ONLY_READ_NAMES =
-      List.of("simos.map.path", "simos.sd.decision-makers", "simos.sd.decision-maker");
+      List.of(
+          "simos.map.path",
+          "simos.sd.decision-makers",
+          "simos.sd.decision-maker",
+          "simos.map.block",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.llm.providers");
 
   /**
    * 非窄写工具（7 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
@@ -682,7 +704,7 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(68);
+        .hasSize(73);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -701,8 +723,8 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
-        .as("★ M4：GM-only 读工具（地形探测 / 别人的底牌）不得进决策人桶")
-        .hasSize(17);
+        .as("★ M4：GM-only 读工具（地形探测 / 别人的底牌 / 模型原始输出 / 观测与配置）不得进决策人桶")
+        .hasSize(18);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -835,10 +857,15 @@ class SimosToolsTest {
             new Case("simos.map.hex", Map.of("q", 1L, "r", 1L), "terrain"),
             new Case("simos.map.region", Map.of("regionId", REGION.value()), "hexCount"),
             new Case("simos.map.path", Map.of("unit", U1.value(), "q", 1L, "r", 2L), "reachable"),
+            new Case("simos.map.block", Map.of("q", 1L, "r", 1L), "hexes"),
             new Case("simos.unit.list", Map.of(), "units"),
             new Case("simos.unit.get", Map.of("id", U1.value()), "id"),
             new Case("simos.social.population", Map.of("q", 1L, "r", 1L), "population"),
             new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
+            new Case("simos.sd.combats", Map.of(), "combats"),
+            new Case("simos.sd.verdicts", Map.of(), "verdicts"),
+            new Case("simos.gm.tool-usage", Map.of(), "entries"),
+            new Case("simos.llm.providers", Map.of(), "providers"),
             new Case(
                 "simos.map.render",
                 Map.of("q", 1L, "r", 1L, "radius", 1L, "format", "text"),

@@ -21,6 +21,7 @@ import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
+import io.mosire.simos.app.tools.read.SdCombatsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
@@ -62,8 +63,8 @@ import java.util.TreeMap;
 public final class DecisionCallerFactory {
 
   /**
-   * 决策人的工具白名单（spec §2.2）：**14 条读工具 + 两条决策行为**（★ M4 起：读工具里标了 {@code GmOnlyRead}
-   * 的那三条**不在**本白名单里——它们只进 GM 桶）。
+   * 决策人的工具白名单（spec §2.2）：**共享读工具 + 两条决策行为**（★ M4 起：读工具里标了 {@code GmOnlyRead} 的那些**不在**本白名单里——它们只进
+   * GM 桶）。
    *
    * <p>★ 第 10 条读工具是第 3 波第 3 步的 {@link DecisionResultsTool}（决策人查看**自己**的决策结果，用户原话「允许决策人查看不同 tick
    * 的不同决策结果」）——它只挂决策人桶，读口经 {@code RedactingQueryService#decisionResults}（可见性 = 条目 tags 含自己）。
@@ -100,6 +101,8 @@ public final class DecisionCallerFactory {
           MapRegionTool.NAME,
           DecisionResultsTool.NAME,
           DecisionDocsTool.NAME,
+          // ★ 工具面补齐（2026-09-25）：交战记录是**世界状态**（四桶共享）⇒ 决策人也该看得见。
+          SdCombatsTool.NAME,
           SkillTool.NAME,
           IssueDirectiveTool.NAME,
           SubmitVerdictTool.NAME);

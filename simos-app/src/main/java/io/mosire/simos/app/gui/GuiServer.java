@@ -1274,16 +1274,8 @@ public final class GuiServer implements AutoCloseable {
    * 记录为空（无任何 GM 工具调用）⇒ {@code 200 {"entries":[]}}——**明确空态，不编造数据**。
    */
   private Reply gmToolUsageReply() {
-    List<Map<String, Object>> views = new ArrayList<>();
-    for (GmToolUsage.Entry entry : gmToolUsage.recent()) {
-      Map<String, Object> item = new LinkedHashMap<>();
-      item.put("tool", entry.tool());
-      item.put("ok", entry.ok());
-      item.put("code", entry.code());
-      item.put("atEpochMs", entry.atEpochMs());
-      views.add(item);
-    }
-    return Reply.of(200, Map.of("entries", views));
+    // ★ 视图住在 ApiViews（工具面 M4）：MCP 的 `simos.gm.tool-usage` 与这里共用同一份，不在两处各拼一遍形状。
+    return Reply.of(200, Map.of("entries", ApiViews.gmToolUsage(gmToolUsage.recent())));
   }
 
   // ── 写端点（全部经 CoreSimos.submit；身份 = player:gui）─────────────────────────────────

@@ -54,6 +54,13 @@ class McpPortTopologyTest {
           "simos.map.hex",
           "simos.map.region",
           "simos.map.path",
+          // ★ 工具面补齐（2026-09-25）：combats 四桶共享；map.block / sd.verdicts / gm.tool-usage /
+          // llm.providers GM-only。
+          "simos.map.block",
+          "simos.sd.combats",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.llm.providers",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
@@ -163,7 +170,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 9 + 非窄写 5 + 窄写 45 = 59）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 21 + 非窄写 7 + 窄写 45 = 73）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -171,7 +178,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（16 读 + 7 非窄写 + 45 窄写 = 68）")
+          .as("J1：唯一口 = GM 组（21 读 + 7 非窄写 + 45 窄写 = 73）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }
