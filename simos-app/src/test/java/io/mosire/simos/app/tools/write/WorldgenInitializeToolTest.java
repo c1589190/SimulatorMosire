@@ -13,7 +13,9 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.world.RichWorld;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -23,6 +25,7 @@ import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.time.EconomyTimeParticipant;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -67,6 +70,7 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,6 +78,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -486,6 +491,84 @@ class WorldgenInitializeToolTest {
       }
     }
     assertThat(economyHexTotal).as("三国 799 格各得一份 economy 状态（430 + 138 + 231）").isEqualTo(799L);
+  }
+
+  // ── 4b′. ★ R3a：真实三国各推进 10 天 ⇒ 粮库存减少 = Σ(人口 × 83 × 10) ────────────────────
+
+  /**
+   * ★★ **R3a 的真实世界验收**：三国各自（独立库，因一次性播种）一键初始化 ⇒ 逐日推进 10 天 ⇒ 该国粮库存合计减少**恰为** {@code 人口 × 83 毫粮 ×
+   * 10}。初始库存 = 60 天口粮 ⇒ 10 天内无人见底（也无人借粮）⇒ 每日实吃 = 日耗。
+   *
+   * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 期望减少 11,830,000 × 830 =
+   * 9,818,900,000。
+   */
+  @Test
+  void advancingTenDaysConsumesPopulationTimesEightyThreeAcrossThreeNations() throws IOException {
+    long economyHexTotal = 0L;
+    for (NationCase nation : NATIONS) {
+      String id = nation.regionId();
+      try (CoreSimos core = freshCoreWithEconomy(dir("advance-" + id))) {
+        ToolResult result = execute(tool(core), Map.of("nation", id, "dryRun", false));
+        assertThat(result.success()).as(id + ": " + result.message()).isTrue();
+
+        SimulationState before = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
+        EconomyData economy = economySlice(before);
+        long population = economy.classes().values().stream().mapToLong(ClassRow::population).sum();
+        assertThat(population).as(id + " 经济人口 == 社会总人口").isEqualTo(nation.population());
+        long grainBefore = grainTotal(economy);
+
+        advanceDays(core, 10);
+
+        SimulationState after = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
+        long grainAfter = grainTotal(economySlice(after));
+        assertThat(grainBefore - grainAfter)
+            .as("%s：推进 10 天 ⇒ 粮库存减少 = %d × 83 × 10", id, population)
+            .isEqualTo(population * 83L * 10L);
+        economyHexTotal += economyHexCount(economySlice(after));
+      }
+    }
+    assertThat(economyHexTotal).as("三国 799 格都真的经结算推进过").isEqualTo(799L);
+    // 三国合计：11,830,000 × 830 = 9,818,900,000（逐国的减少量在循环里各自断言）。
+    assertThat(NATIONS.stream().mapToLong(NationCase::population).sum() * 83L * 10L)
+        .as("Σ(三国人口 × 83 × 10)")
+        .isEqualTo(9_818_900_000L);
+  }
+
+  /** 真世界 + 真引擎 + **economy 参与者**（推进要用；必须在 worldgen 提交前注册，封存后 register 会抛）。 */
+  private static CoreSimos freshCoreWithEconomy(Path storeDir) {
+    CoreSimos core = freshCore(storeDir);
+    core.register(new EconomyTimeParticipant(MAP_ID));
+    return core;
+  }
+
+  /** 逐日推进 {@code days} 天（一次一天，用上一次返回的新 revision——日制裁定）。 */
+  private static void advanceDays(CoreSimos core, int days) {
+    long head = core.head(MAIN).orElseThrow().value();
+    long from = core.replay(new StateRef(MAIN, new RevisionId(head))).meta().timestamp().tick();
+    for (int i = 0; i < days; i++) {
+      CommandResult result =
+          core.submit(
+              new AdvanceTime(
+                  "cmd-advance-" + from,
+                  "corr-advance-" + from,
+                  INITIATOR,
+                  MAIN,
+                  new RevisionId(head),
+                  new TimeRange(
+                      SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(from + 1)))));
+      assertThat(result)
+          .as("推进第 %d 天（tick %d → %d）", i + 1, from, from + 1)
+          .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1))));
+      head++;
+      from++;
+    }
+  }
+
+  /** 某国全部阶层行的粮库存合计（毫粮）。 */
+  private static long grainTotal(EconomyData economy) {
+    return economy.classes().values().stream()
+        .mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L))
+        .sum();
   }
 
   /** 德意志的「仆从兵」不在 {@code armKits} 里 ⇒ 该兵种单位装备空表（验证空 map 被 CreateUnit 接受）。 */

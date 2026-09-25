@@ -538,7 +538,8 @@ class GuiApiTest {
             0L,
             Map.of(new CommodityId("grain"), 7L),
             List.of(new ClassSlot(peasant, "贫农", 950)),
-            new AllocationRule.Split(700, 300));
+            new AllocationRule.Split(700, 300),
+            0L);
     ClassRow row =
         new ClassRow(
             new ClassKey(farm, peasant),

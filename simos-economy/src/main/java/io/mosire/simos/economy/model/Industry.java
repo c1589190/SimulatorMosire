@@ -44,6 +44,9 @@ import java.util.Set;
  * @param outputPerUnit 周期末每单位生产资料的基准产出（农业 = 每亩 7 粮）；键值非空、逐值 ≥ 0
  * @param slots 该制度允许的阶层槽位；非空、id 不重复（**不含人口占比**）
  * @param allocation 制度分配函数（版本化参数；本类不执行它）
+ * @param cycleLaborMilli 本周期**累计的实际投入劳动**（千分劳动·日）：日结算每天把 Σ(行 {@code laborMilli ×
+ *     participationPerMille / 1000}) 累加进来（**供收获时用**，R3a/R4a 的日结算记账）。收获当天先加当日量再取平均 （{@code /
+ *     cycleDays} ⇒ 平均每日实际劳动，千分劳动），据此按"1 标准劳动经营 7 亩"算劳动瓶颈；周期关账后清零。不得为负。
  */
 public record Industry(
     IndustryId id,
@@ -55,7 +58,8 @@ public record Industry(
     long dailyLaborPerUnit,
     Map<CommodityId, Long> outputPerUnit,
     List<ClassSlot> slots,
-    AllocationRule allocation) {
+    AllocationRule allocation,
+    long cycleLaborMilli) {
 
   public Industry {
     if (id == null) {
@@ -88,6 +92,9 @@ public record Industry(
     }
     if (dailyLaborPerUnit < 0) {
       throw new IllegalArgumentException("Industry.dailyLaborPerUnit 不得为负: " + dailyLaborPerUnit);
+    }
+    if (cycleLaborMilli < 0) {
+      throw new IllegalArgumentException("Industry.cycleLaborMilli 不得为负: " + cycleLaborMilli);
     }
     if (slots == null) {
       throw new IllegalArgumentException("Industry.slots 不得为 null");

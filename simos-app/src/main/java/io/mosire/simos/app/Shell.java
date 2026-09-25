@@ -49,6 +49,7 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.time.EconomyTimeParticipant;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -483,10 +484,12 @@ public final class Shell implements AutoCloseable {
     }
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
+    //   ★ R3a/R4a（2026-09-25）：economy 也进了清单——每次 AdvanceTime 结算一天（消费/进度/周期收获与分配）。
     List<TimeParticipant> participants =
         List.of(
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
-            new SdTimeParticipant(config.mapId()));
+            new SdTimeParticipant(config.mapId()),
+            new EconomyTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }

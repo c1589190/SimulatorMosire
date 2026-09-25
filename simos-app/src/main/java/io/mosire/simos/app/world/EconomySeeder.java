@@ -233,6 +233,8 @@ public final class EconomySeeder {
     industry.put("dailyInputPerUnit", Map.of());
     industry.put("dailyLaborPerUnit", 0);
     industry.put("outputPerUnit", Map.of(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU));
+    // ★ R3a：周期累计实际劳动——创世 = 0（新周期尚未投入；日结算每天累加）。
+    industry.put("cycleLaborMilli", 0);
     industry.put("allocation", allocation);
     industry.put("slots", slots);
     industry.put("classes", classes);

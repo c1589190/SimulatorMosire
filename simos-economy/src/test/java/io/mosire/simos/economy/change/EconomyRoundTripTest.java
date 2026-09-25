@@ -147,7 +147,8 @@ class EconomyRoundTripTest {
         500L,
         Map.of(GRAIN, 7L),
         slots,
-        new AllocationRule.Split(700, 300));
+        new AllocationRule.Split(700, 300),
+        0L);
   }
 
   static ClassKey otherKey() {

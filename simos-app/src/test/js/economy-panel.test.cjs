@@ -24,6 +24,8 @@ const ECONOMY = {
   money: 12,
   debtCount: 0,
   debtPrincipal: 0,
+  grainStock: 498000,
+  grainDailyConsumption: 8300,
   industries: [
     {
       id: "farm@1_1",
@@ -45,6 +47,15 @@ const ECONOMY = {
           debts: [],
           naturalNeeds: { grain: 8300 },
           effectiveDemand: {},
+          flow: {
+            income: 0,
+            consumed: { grain: 8300 },
+            taxPaid: 0,
+            interestDue: 0,
+            newBorrowing: 0,
+            repaid: 0,
+            netSurplus: -8300,
+          },
         },
       ],
     },
@@ -73,7 +84,26 @@ test("regime-and-cycle-progress-come-from-the-industry", () => {
 
   const industry = row(rows, "产业 农业");
   assert.equal(industry.value, "feudal · 周期 33/120", "制度与周期进度逐值来自服务端的产业行");
-  assert.match(industry.hint, /R4a/, "提示里必须点明产出/分配是后续增量（本轮不结算）");
+  assert.match(industry.hint, /R4a/, "提示里必须点明产出/分配在周期末结算（R4a）");
+});
+
+test("grain-stock-daily-consumption-and-flow-come-from-the-server", () => {
+  const rows = P.economyReadoutRows(ECONOMY);
+
+  assert.equal(row(rows, "粮库存").value, 498000, "粮库存合计逐值来自服务端（毫粮）");
+  assert.equal(row(rows, "日耗").value, 8300, "日耗合计 = 人口 × 83（毫粮）");
+  assert.equal(
+    row(rows, "本期流水").value,
+    "所得 0 · 消费 8300 · 新借 0 · 净 -8300",
+    "本期流水由各阶层行的 flow 相加（所得/消费/新借/净盈余）"
+  );
+  assert.equal(
+    P.economyReadoutRows({ activated: true, industries: [{ id: "farm@0_0" }] }).find(
+      (r) => r.label === "本期流水"
+    ).value,
+    "无",
+    "缺 flow（旧后端）⇒ 本期流水显示「无」，不是 0"
+  );
 });
 
 test("hex-without-industry-says-no-industry", () => {

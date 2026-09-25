@@ -384,7 +384,8 @@ class EconomyCodecTest {
         500L,
         Map.of(GRAIN, 7L),
         slots,
-        new AllocationRule.Split(700, 300));
+        new AllocationRule.Split(700, 300),
+        0L);
   }
 
   /** 资本主义工业：{@code WageFirst} + 嵌套商品键（企业主剩余）。 */
@@ -403,7 +404,8 @@ class EconomyCodecTest {
         300L,
         Map.of(CLOTH, 5L),
         slots,
-        new AllocationRule.WageFirst(4L, residual));
+        new AllocationRule.WageFirst(4L, residual),
+        0L);
   }
 
   private static ClassRow classRow(ClassKey key, long population) {

@@ -59,7 +59,9 @@ const JS_DIR = __dirname;
 //     旧两条推断仍在且与记录叠加 / 记录格与旧计数取较大者）。
 //   2026-09-25 R2a（经济生成 + G1 读口）起 287 → 295：新增 economy-panel.test.cjs 的 8 条
 //     （见 gate-contract.test.cjs 的 MIN_ASSERTIONS 同款说明）。
-const MIN_TESTS = 295;
+//   2026-09-25 R3a（日结算 + 周期收获）起 295 → 296：economy-panel.test.cjs 新增 1 条
+//     （粮库存/日耗/本期流水逐值来自服务端 + 缺 flow 降级为「无」）。
+const MIN_TESTS = 296;
 
 function discoverTests() {
   return fs

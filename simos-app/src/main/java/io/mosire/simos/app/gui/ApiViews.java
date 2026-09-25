@@ -16,6 +16,7 @@ import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.City;
@@ -97,6 +98,9 @@ import java.util.TreeMap;
  * 层内部的类型，不外发）。
  */
 public final class ApiViews {
+
+  /** 粮食商品 id（与 {@code EconomySeeder.COMMODITY_GRAIN} / 结算侧同字面量：粮 = 1 公斤，库存按毫粮）。 */
+  private static final CommodityId GRAIN = new CommodityId("grain");
 
   private ApiViews() {}
 
@@ -389,6 +393,8 @@ public final class ApiViews {
     long money = 0L;
     long debtPrincipal = 0L;
     long debtCount = 0L;
+    long grainStock = 0L;
+    long grainDailyConsumption = 0L;
     Map<String, Long> goods = new TreeMap<>();
     List<Map<String, Object>> industries = new ArrayList<>();
     for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
@@ -401,6 +407,8 @@ public final class ApiViews {
         landMilliMu += row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L);
         money += row.money();
         mergeInto(goods, row.goods());
+        grainStock += row.goods().getOrDefault(GRAIN, 0L);
+        grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
         for (DebtId debtId : row.debts()) {
           Debt debt = data.debts().get(debtId);
           if (debt != null) {
@@ -408,7 +416,7 @@ public final class ApiViews {
             debtPrincipal += debt.principal();
           }
         }
-        classes.add(classRowView(key, row));
+        classes.add(classRowView(key, row, data.flows().get(key)));
       }
       industries.add(industryView(industry, classes));
     }
@@ -416,6 +424,9 @@ public final class ApiViews {
     view.put("laborMilli", laborMilli);
     view.put("landMilliMu", landMilliMu);
     view.put("goods", goods);
+    // ★ R3a：该格粮库存合计与日耗合计（"看变化"的两个直接读数；单位 = 毫粮）。
+    view.put("grainStock", grainStock);
+    view.put("grainDailyConsumption", grainDailyConsumption);
     view.put("money", money);
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
@@ -478,8 +489,10 @@ public final class ApiViews {
     return view;
   }
 
-  /** 一个阶层行（§3.2 逐字段：人口 / 有效劳动 / 投入率 / 土地 / 库存 / 货币 / 债务 / 两类需求）。 */
-  private static Map<String, Object> classRowView(ClassKey key, ClassRow row) {
+  /**
+   * 一个阶层行（§3.2 逐字段：人口 / 有效劳动 / 投入率 / 土地 / 库存 / 货币 / 债务 / 两类需求）；{@code flow} = 本期流水（R3a，可为 null）。
+   */
+  private static Map<String, Object> classRowView(ClassKey key, ClassRow row, FlowRow flow) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("slot", key.slot().value());
     view.put("population", row.population());
@@ -495,6 +508,20 @@ public final class ApiViews {
     view.put("debts", debts);
     view.put("naturalNeeds", sortedCommodities(row.naturalNeeds()));
     view.put("effectiveDemand", sortedCommodities(row.effectiveDemand()));
+    view.put("flow", flowView(flow));
+    return view;
+  }
+
+  /** 本期流水（§3.3 表 3）的读侧形：所得 / 消费 / 新借 / 偿还 / 净盈余（税与利息 v1 恒 0）。{@code flow} 为 null ⇒ 全 0（该行本期无事）。 */
+  private static Map<String, Object> flowView(FlowRow flow) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("income", flow == null ? 0L : flow.income());
+    view.put("consumed", flow == null ? Map.of() : sortedCommodities(flow.consumed()));
+    view.put("taxPaid", flow == null ? 0L : flow.taxPaid());
+    view.put("interestDue", flow == null ? 0L : flow.interestDue());
+    view.put("newBorrowing", flow == null ? 0L : flow.newBorrowing());
+    view.put("repaid", flow == null ? 0L : flow.repaid());
+    view.put("netSurplus", flow == null ? 0L : flow.netSurplus());
     return view;
   }
 

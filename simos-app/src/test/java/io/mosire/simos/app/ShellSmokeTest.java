@@ -12,6 +12,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -210,13 +213,16 @@ class ShellSmokeTest {
             Map.of(
                 "map", new MapSnapshot(ref("main", 1), T0, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T0, units),
-                "sd", new SdSnapshot(ref("main", 1), T0, SdState.empty())),
+                "sd", new SdSnapshot(ref("main", 1), T0, SdState.empty()),
+                // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
+                "economy", new EconomySnapshot(ref("main", 1), T0, EconomyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
-                genesis, List.of(new MapCodec(), new UnitCodec(), new SdCodec())));
+                genesis,
+                List.of(new MapCodec(), new UnitCodec(), new SdCodec(), new EconomyCodec())));
   }
 
   /** 三格直线走廊，地形取 {@code desert}（{@code moveCost = 3}）⇒ 配合 mobility ‰500 每段恰 1500 毫 MP。 */

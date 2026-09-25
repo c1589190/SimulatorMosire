@@ -287,6 +287,16 @@
         hint: "最小计量单位（粮 = 公斤）。初始 = 60 天口粮。",
       },
       {
+        label: "粮库存",
+        value: numberOrZero(economy.grainStock),
+        hint: "该格各阶层行的粮库存之和（毫粮；1 粮 = 1000 毫粮）——「看变化」的直接读数。",
+      },
+      {
+        label: "日耗",
+        value: numberOrZero(economy.grainDailyConsumption),
+        hint: "该格各阶层行的自然需求（粮）之和 = 人口 × 83 毫粮/人·日。",
+      },
+      {
         label: "货币",
         value: numberOrZero(economy.money),
         hint: "最小币值（银马克）；创世时没有依据 ⇒ 0。",
@@ -294,7 +304,12 @@
       {
         label: "负债",
         value: debtText(economy),
-        hint: "债务本金合计（min 币值 / 实物债按标的）；本轮不建模债务 ⇒ 恒为 0。",
+        hint: "债务条数与本金合计（实物债按标的）；v1 只在同格借粮时产生。",
+      },
+      {
+        label: "本期流水",
+        value: flowSummaryText(economy),
+        hint: "本期发生额合计（所得 / 消费 / 新借 / 净盈余，毫粮）；税与利息 v1 恒 0。",
       },
     ];
     var industries = economy.industries || [];
@@ -314,7 +329,7 @@
         hint:
           "制度 = " +
           (industry.regime || "—") +
-          "；周期进度 = 当前进度（天）/ 生产周期（天）。产出与分配是后续增量（R4a），本轮不结算。",
+          "；周期进度 = 当前进度（天）/ 生产周期（天）；进度到满那一天结算产出与制度分配（R4a）。",
       });
     });
     return rows;
@@ -348,6 +363,35 @@
       return "无";
     }
     return numberOrZero(economy.debtPrincipal) + "（" + count + " 笔）";
+  }
+
+  /**
+   * 本期流水文本：把该格各阶层行的 `flow` 相加 ⇒ "所得 X · 消费 Y · 新借 Z · 净 N"（毫粮）。
+   * 缺 `flow`（旧后端）⇒ "无"（显示层不制造"看起来有值"的空）。
+   */
+  function flowSummaryText(economy) {
+    var income = 0;
+    var consumed = 0;
+    var borrowing = 0;
+    var net = 0;
+    var any = false;
+    ((economy && economy.industries) || []).forEach(function (industry) {
+      ((industry && industry.classes) || []).forEach(function (row) {
+        var flow = row && row.flow;
+        if (!flow) {
+          return;
+        }
+        income += numberOrZero(flow.income);
+        consumed += numberOrZero((flow.consumed || {}).grain);
+        borrowing += numberOrZero(flow.newBorrowing);
+        net += numberOrZero(flow.netSurplus);
+        any = true;
+      });
+    });
+    if (!any) {
+      return "无";
+    }
+    return "所得 " + income + " · 消费 " + consumed + " · 新借 " + borrowing + " · 净 " + net;
   }
 
   function renderHex(selection, token) {

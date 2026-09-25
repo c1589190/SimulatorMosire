@@ -204,7 +204,8 @@ class EconomyInvariantsTest {
         500L,
         Map.of(GRAIN, 7L),
         slots,
-        new AllocationRule.Split(700, 300));
+        new AllocationRule.Split(700, 300),
+        0L);
   }
 
   private static Industry industryWithProgress(long progress, long cycleDays) {
@@ -218,7 +219,8 @@ class EconomyInvariantsTest {
         500L,
         Map.of(GRAIN, 7L),
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-        new AllocationRule.Split(700, 300));
+        new AllocationRule.Split(700, 300),
+        0L);
   }
 
   private static ClassRow classRow(ClassKey key) {

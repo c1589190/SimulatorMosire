@@ -36,6 +36,7 @@ import java.util.OptionalLong;
  *   {"q":0,"r":0,"industries":[
  *     {"id":"farm@0_0","name":"农业","regime":"feudal","cycleDays":120,"progressDays":0,
  *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":7},
+ *      "cycleLaborMilli":0,
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"peasant","name":"贫农","laborParticipationPerMille":950}],
  *      "classes":[{"slot":"peasant","population":450,"laborMilli":261000,
@@ -140,6 +141,8 @@ final class EconomyPayloads {
     long dailyLabor = optionalLong(node, "dailyLaborPerUnit", 0L);
     Map<CommodityId, Long> output =
         commodityMap(optionalObject(node, "outputPerUnit"), "outputPerUnit");
+    // ★ R3a：周期累计实际劳动（缺键 ⇒ 0，旧载荷兼容：生成器不写它时按"新周期、尚未投入"）。
+    long cycleLabor = optionalLong(node, "cycleLaborMilli", 0L);
     List<ClassSlot> slots = new ArrayList<>();
     for (JsonNode slot : requireArray(node, "slots")) {
       slots.add(
@@ -159,7 +162,17 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("allocation 形状不对（见 AllocationRule）: " + allocation, e);
     }
     return new Industry(
-        id, name, regime, cycleDays, progressDays, dailyInput, dailyLabor, output, slots, rule);
+        id,
+        name,
+        regime,
+        cycleDays,
+        progressDays,
+        dailyInput,
+        dailyLabor,
+        output,
+        slots,
+        rule,
+        cycleLabor);
   }
 
   private static ClassRow classRow(IndustryId industry, JsonNode node) {

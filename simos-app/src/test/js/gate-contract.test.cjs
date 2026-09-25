@@ -76,7 +76,9 @@ const REQUIRED_FILES = [
 //     旧两条推断仍在且与记录叠加 / 记录格与旧计数取较大者）。
 //   2026-09-25 R2a（经济生成 + G1 读口）起 287 → 295：新增 economy-panel.test.cjs 的 8 条
 //     （经济读数逐值投影 / 制度与周期进度 / 无产业 / 未激活 / 无数据 / 缺字段降级 / 取数层接线与缓存 / 面板接线静态扫描）。
-const MIN_ASSERTIONS = 295;
+//   2026-09-25 R3a（日结算 + 周期收获）起 295 → 296：economy-panel.test.cjs 新增 1 条
+//     （粮库存/日耗/本期流水逐值来自服务端 + 缺 flow 降级为「无」）。
+const MIN_ASSERTIONS = 296;
 
 function testFiles() {
   return fs

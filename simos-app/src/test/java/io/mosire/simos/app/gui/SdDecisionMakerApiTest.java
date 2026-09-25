@@ -14,6 +14,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -595,14 +598,21 @@ class SdDecisionMakerApiTest {
                 "social",
                     new SocialSnapshot(
                         ref("main", 1), T7, new SocialData(new LinkedHashMap<>(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec())));
   }
 
   private static GameMap nationMap() {

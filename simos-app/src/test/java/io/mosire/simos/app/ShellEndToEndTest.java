@@ -19,6 +19,9 @@ import io.mosire.simos.core.store.EventStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -77,7 +80,7 @@ import org.junit.jupiter.api.io.TempDir;
  * committed} 恰两条 = CommandEnvelope 支的冻结链）。仅当"GUI 与 MCP 走了同一条 Core 写路径"这两行才会同表同形状地出现。
  *
  * <p>★ 另跑一条真 {@code simos.advance}，断言其**冻结事件序列**（1×received + 1×started + N×proposal + 1×finished +
- * 1×committed，本壳 N = 1 个 time participant ⇒ 恰 5 条）。
+ * 1×committed，本壳 N = 3 个 time participant（sd/unit/economy）⇒ 恰 7 条）。
  *
  * <p>夹具与 {@code McpServerTest}/{@code ShellApprovalTest} 同法：独立 store 种创世 {@code (main,1)} + 含
  * map/unit/social 三切片的创世 checkpoint（state 时间戳 {@code of(7)}）；端口全 0。
@@ -228,10 +231,11 @@ class ShellEndToEndTest {
           .as("Agent 写的信封链完整")
           .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_COMMITTED);
       assertThat(types(events, advanceRow.correlationId()))
-          .as("推进支的冻结序列（本壳 2 个 time participant（sd/unit）⇒ N = 2）")
+          .as("推进支的冻结序列（本壳 3 个 time participant（sd/unit/economy）⇒ N = 3）")
           .containsExactly(
               EventTypes.COMMAND_RECEIVED,
               EventTypes.TIME_ADVANCE_STARTED,
+              EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
               EventTypes.TIME_ADVANCE_FINISHED,
@@ -363,14 +367,21 @@ class ShellEndToEndTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec())));
   }
 
   private static Unit unit() {
