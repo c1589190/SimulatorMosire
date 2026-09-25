@@ -32,6 +32,8 @@ import java.util.Set;
  * <p>★★ **一次 {@code AdvanceTime} 按区间逐日跑**（2026-09-25 §十一：一次推进 N 天，内部逐日；见 {@link #settle}）：
  *
  * <ol>
+ *   <li>**播种**：周期的第一天（{@code progressDays == 0}）先扣种子（{@link #sowIfCycleStart}）——**先于当天消费** （{@link
+ *       #PLANTING_DRAWS_BEFORE_CONSUMPTION}，v2 spec §3.2）。种子粮与口粮是同一个商品，优先性来自**时点**。
  *   <li>**消费**：每行扣粮 {@code population × 83 毫粮}（{@link #DAILY_GRAIN_MILLI_PER_PERSON}，§十"消费"行）。
  *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（地主 → 富农 → 中农 的顺序，从有粮的行的**当日盈余**划转），借到的记一条 {@link Debt}（本金 = 借到量、利率
  *       {@code 20‰}、{@code dueCycle = 当前周期 + 1}、标的 = 粮）；**借完仍补不上**的部分记入本行流水的 {@code
@@ -45,9 +47,10 @@ import java.util.Set;
  *
  * <ol>
  *   <li>**产出**：{@code 实际投入亩 × 亩产 × 1000 毫粮/粮}（亩产取自 {@code outputPerUnit}，标定值 67 粮/亩 —— v2 spec
- *       §10.3）。实际投入亩 = {@code min(可用亩, 平均每日实际劳动 × 7 亩/劳动)}，**取小后向下取整到亩**（{@link #LAND_MU_PER_LABOR}
- *       / {@link #MILLI_PER_GRAIN}）。 ★ 注意两个 7 无关：{@link #LAND_MU_PER_LABOR}（一标准劳动能种几**亩**）一直是 7；
- *       「每亩几**粮**」是标定值 67（v1 曾是 7，两者数值巧合，极易误读成漏改）。
+ *       §10.3）。实际投入亩 = {@code min(可用亩, 平均每日实际劳动 × 7 亩/劳动, 本周期扣到的种子 ÷ 每亩需种)}（v2 spec §3.1
+ *       的**三路瓶颈**），**取小后向下取整到亩**（{@link #LAND_MU_PER_LABOR} / {@link #MILLI_PER_GRAIN}）。 ★ 注意两个 7
+ *       无关：{@link #LAND_MU_PER_LABOR}（一标准劳动能种几**亩**）一直是 7； 「每亩几**粮**」是标定值 67（v1 曾是
+ *       7，两者数值巧合，极易误读成漏改）。
  *   <li>**生产消耗**：扣 {@code 15%}（种子/牲畜/工具）——**明文记入本期流水**（{@link FlowRow#consumed()}），不静默丢弃。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
  *       / 1000}（**定点整数、残差按槽位 id 序分派、Σ行得 = 剩余产出**）。
@@ -64,8 +67,8 @@ import java.util.Set;
  * #MILLI_PER_GRAIN}）；利率/权重/投入率「千分」。**一切整数运算，禁 double**。
  *
  * <p>★★ **守恒（§6.1，账要平）**：本函数不凭空造粮、不凭空销粮。把每日/每期的发生额记进 {@link FlowRow} 后，恒有 {@code Σ(推进前库存) −
- * Σ(推进后库存) == Σ(流水消费) − Σ(流水所得)}：日耗与生产消耗在 {@code consumed} 里、收获的**毛产出**在 {@code income} 里（净产出进库存，差额
- * = 生产消耗）。买/借/税等跨主体转移不改变总和（同格借贷是内部划转）。
+ * Σ(推进后库存) == Σ(流水消费) − Σ(流水所得)}：日耗、**播种扣掉的种子**与生产消耗在 {@code consumed} 里、收获的**毛产出**在 {@code income}
+ * 里（净产出进库存，差额 = 生产消耗）。买/借/税等跨主体转移不改变总和（同格借贷是内部划转）。
  *
  * <p>★ **未激活**（{@code meta} 空）：原样返回（不做任何公式，§6.6）。
  */
@@ -103,6 +106,19 @@ public final class EconomySettlement {
    */
   public static final int FAMINE_MORTALITY_PER_MILLE = 200;
 
+  /**
+   * ★★ **播种是否先于当日消费扣种**（v2 spec §3.2 的行为预设；用户 2026-09-25 定案：先用常量，默认 {@code true}）。
+   *
+   * <p>★ **V7 参数目录（spec §四）落地后，它迁入 {@code economy} 切片的参数表并成为 GM 可调**（spec §3.2：
+   * "凡行为一律做成预设"，故它**不许**被写死成"代码选一个聪明的"）。届时本常量只作默认值。
+   *
+   * <p>★ 取 {@code false} = "吃饭优先、种子看运气"：那是 GM 的选择，不是代码该替他做的判断。 无论取真取假，**播种日这个步骤都在**（spec
+   * §3.2：参数化不许改变流程形状），只是扣减次序不同。 那条"取假"的路**不是死代码**：它由 {@code
+   * EconomySowingTest.drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown} 逐值钉住（直测包内可见的 {@link
+   * #settleOneDay(EconomyData, long, LinkedHashMap, boolean)}）。
+   */
+  public static final boolean PLANTING_DRAWS_BEFORE_CONSUMPTION = true;
+
   /** 粮食商品 id（§十"单位"行：粮 = 1 公斤；本轮只结算这一种商品）。唯一拼写点在 {@link EconomyVocabulary}。 */
   public static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
@@ -115,7 +131,7 @@ public final class EconomySettlement {
    * 结算一个**区间** {@code (fromTick, toTick]}：**从 {@code fromTick + 1} 逐日跑到 {@code toTick}**（2026-09-25
    * §十一 裁定： 一次 {@code AdvanceTime} 可以推 N 天、只落一条 revision，但**结算语义不跳日**）。
    *
-   * <p>★ 每一次内部迭代 = 上面 {@link #settleOneDay} 的一天（消费 → 缺口/借粮/建债 → {@code progressDays + 1} → 到达
+   * <p>★ 每一次内部迭代 = 上面 {@link #settleOneDay} 的一天（播种 → 消费 → 缺口/借粮/建债 → {@code progressDays + 1} → 到达
    * {@code cycleDays} 就收获 + 15% 消耗 + 按 {@code Split} 分配；计息/到期不做）。**流水跨日累加**：{@code flows} 提到
    * 日循环之外，逐日把当天发生额并入本期流水，循环结束后统一建 {@link FlowRow}（否则"推进 N 天"只显示最后一天）。
    *
@@ -156,6 +172,25 @@ public final class EconomySettlement {
    */
   private static EconomyData settleOneDay(
       EconomyData base, long day, LinkedHashMap<ClassKey, FlowRow> flows) {
+    return settleOneDay(base, day, flows, PLANTING_DRAWS_BEFORE_CONSUMPTION);
+  }
+
+  /**
+   * 结算**一天**（**次序可注入**）：日流程 = {@code 播种（周期第一天）→ 消费/同格借粮 → 进度/劳动/周期末收获分配}。
+   *
+   * <p>★★ **为什么次序是一个参数而不是常量分支**：{@code plantingDrawsFirst == false} 的那条路是"吃饭优先、
+   * 种子看运气"这个**预设**的实现（v2 spec §3.2：凡行为一律做成预设）。写成 {@code static final boolean} + {@code if}
+   * 会让取假的那一支在编译期成为**死代码**，任何用例都到不了它 —— 那正是 spec §3.2 要防的"看起来在、其实永远走不到"。 故开放为**包内可见**的重载（仓库先例：{@link
+   * #allocate}），由 {@code EconomySowingTest.drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown}
+   * 逐值测到两种次序。
+   *
+   * <p>★ 公开入口 {@link #settle} 恒用常量默认值（{@link #PLANTING_DRAWS_BEFORE_CONSUMPTION}）。
+   */
+  static EconomyData settleOneDay(
+      EconomyData base,
+      long day,
+      LinkedHashMap<ClassKey, FlowRow> flows,
+      boolean plantingDrawsFirst) {
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -173,8 +208,18 @@ public final class EconomySettlement {
     LinkedHashMap<ClassKey, Long> unmetToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> deathsToday = new LinkedHashMap<>();
 
+    // ── 0. 播种（周期的第一天）：**在当天吃饭之前**把种子划走（v2 spec §3.2）──────────────
+    //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
+    if (plantingDrawsFirst) {
+      sowIfCycleStart(industries, rows, consumedGrain);
+    }
+
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
     settleHexes(rows, debts, consumedGrain, borrowing, unmetToday, day, dueCycle);
+
+    if (!plantingDrawsFirst) {
+      sowIfCycleStart(industries, rows, consumedGrain);
+    }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
     boolean anyCycleClosed = false;
@@ -196,6 +241,7 @@ public final class EconomySettlement {
       long progressed = industry.progressDays() + 1L;
       long nextProgress = progressed;
       long nextCycleLabor = cycledLabor;
+      long nextSeedUsed = industry.cycleSeedUsedMilli(); // 非关账日：原样带过
       // ★ v2 spec §八.3：`progressDays ∈ [0, cycleDays]` 是**闭区间**（v1 spec §3.1 原文），
       //   cycleDays 的语义是"周期已满、待收获"。用 >= 才能把该合法状态收获掉；
       //   用 == 会让 progressDays == cycleDays 的下一日构造出 cycleDays + 1，在 Industry 构造期抛，
@@ -218,9 +264,10 @@ public final class EconomySettlement {
         }
         nextProgress = 0L;
         nextCycleLabor = 0L;
+        nextSeedUsed = 0L; // ★ 与 cycleLaborMilli 同处清零（不清零 ⇒ 下周期的 seedCap 凭空变大）
         anyCycleClosed = true;
       }
-      industries.put(id, withProgressAndLabor(industry, nextProgress, nextCycleLabor));
+      industries.put(id, withCycleState(industry, nextProgress, nextCycleLabor, nextSeedUsed));
     }
 
     // ── 流水：每行一条（本期发生额；税/利息 v1 恒 0）──────────────────────────────────
@@ -268,6 +315,71 @@ public final class EconomySettlement {
     return new EconomyData(Optional.of(nextMeta), industries, rows, debts, flows);
   }
 
+  // ── 播种（周期的第一天）──────────────────────────────────────────────────────────────
+
+  /**
+   * ★★ **播种步**（v2 spec §3.2/§3.3）：**周期的第一天**（{@code progressDays == 0}）逐 {@link ClassRow} 从它**自己的**
+   * {@code goods} 里扣种，并把实际扣到的量累加进 {@link Industry#cycleSeedUsedMilli()}。
+   *
+   * <pre>
+   * rowLandMu = meansOfProduction[LAND] / 1000        // 千分亩 ⇒ 亩（★ 与 cycleInputPerUnit 的"毫粮/亩"同侧）
+   * seedPerMu = cycleInputPerUnit.getOrDefault(LAND, 0)// 毫粮/亩；0 ⇒ 不扣（旧档/未配种子 ⇒ 与 V2 一字不差）
+   * need      = rowLandMu × seedPerMu                 // 毫粮
+   * 库存 ≥ need ⇒ 扣 need；库存 &lt; need ⇒ **扣光库存**（⇒ 收获日的 seedCapMu 自然缩小）
+   * </pre>
+   *
+   * <p>★★ **种子各扣各的**（定案）：逐 {@code ClassRow} 从它自己的 {@code goods} 里扣，**不从全格池子扣**。
+   * 理由：与"粮住在阶层行里"一致，且能自然产生阶级差异——贫农缸空 ⇒ 它的地荒着、地主的地照种 （收获日按 {@code Σ实际扣到的种子 / seedPerMu} 算可支撑亩数）。
+   *
+   * <p>★ **扣掉的量并入当日 {@code consumedGrain}**：留种是**本期的消费**（spec §二 把"留种的计量"列在"数"里）， 记进去才能保住 §6.1 的守恒式
+   * {@code 库存减少 == Σ消费 − Σ所得}（否则配了种子的世界上那条等式不成立 ⇒ 端到端的守恒用例会变成假绿）。
+   *
+   * <p>★ **为什么不在这里扣"每日原料"**：{@code dailyInputPerUnit} 是**每日**口径，v1 仍是零读取点（spec §3.3
+   * 明说两个字段并存、语义各自清楚），不在本步范围。
+   */
+  private static void sowIfCycleStart(
+      LinkedHashMap<IndustryId, Industry> industries,
+      LinkedHashMap<ClassKey, ClassRow> rows,
+      LinkedHashMap<ClassKey, Long> consumedGrain) {
+    for (IndustryId id : new ArrayList<>(industries.keySet())) {
+      Industry industry = industries.get(id);
+      if (industry.progressDays() != 0L) {
+        continue; // 只有周期的第一天播种
+      }
+      long seedPerMu = industry.cycleInputPerUnit().getOrDefault(AssetKind.LAND, 0L);
+      if (seedPerMu == 0L) {
+        continue; // ★ 0 与"缺键"同义：不扣、不缩地 ⇒ 未配种子的产业行为与 V2 一字不差
+      }
+      long sown = 0L;
+      for (ClassKey key : classKeysOf(rows, id)) {
+        ClassRow row = rows.get(key);
+        long rowLandMu = row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L;
+        long need = rowLandMu * seedPerMu; // 毫粮（★ 亩 × 毫粮/亩）
+        if (need == 0L) {
+          continue; // 没有地 ⇒ 没有种子需求（真档里每座城的手工业行都是这一形态）
+        }
+        long stock = grainOf(row);
+        long drawn = Math.min(stock, need); // ★ 扣不动就扣光库存（seedCapMu 会跟着缩）
+        if (drawn == 0L) {
+          continue;
+        }
+        rows.put(key, withGoodsGrain(row, stock - drawn));
+        consumedGrain.merge(key, drawn, Long::sum);
+        sown += drawn;
+      }
+      if (sown > 0L) {
+        // ★★ 必须写回 industries 工作副本：收获（同一次日结算里、稍后跑）读的就是这一份累加器。
+        industries.put(
+            id,
+            withCycleState(
+                industry,
+                industry.progressDays(),
+                industry.cycleLaborMilli(),
+                industry.cycleSeedUsedMilli() + sown));
+      }
+    }
+  }
+
   // ── 消费 + 同格借粮 ─────────────────────────────────────────────────────────────────
 
   /**
@@ -298,7 +410,9 @@ public final class EconomySettlement {
         long stock = grainOf(row);
         long eaten = Math.min(stock, need);
         rows.put(key, withGoodsGrain(row, stock - eaten));
-        consumedGrain.put(key, eaten);
+        // ★ **必须 merge 不能 put**：这张累加器现在与播种步共享（播种先跑时它已经记了种子那一笔），
+        //   `put` 会把种子从当日消费里抹掉 ⇒ §6.1 的守恒式当场不成立（"留种要看得见"）。
+        consumedGrain.merge(key, eaten, Long::sum);
         if (need - eaten > 0L) {
           deficit.put(key, need - eaten);
         }
@@ -363,6 +477,11 @@ public final class EconomySettlement {
   /**
    * 周期末的产出、生产消耗与制度分配（§四 周期结算 1~5；税明确不做）。
    *
+   * <p>★★ **三路瓶颈取小**（v2 spec §3.1）：实际投入亩 = {@code min(可用亩, 劳动可经营亩, 种子可支撑亩)}。第三路 {@code seedCapMu =
+   * Industry#cycleSeedUsedMilli() / seedPerMu}（毫粮 ÷ 毫粮/亩 = 亩）读的是**本周期实际扣到的种子** （播种步 {@link
+   * #sowIfCycleStart} 的累加器）；{@code seedPerMu == 0} ⇒ **不施加这一路约束**（取 {@code
+   * availableMu}），旧档与未配种子的产业据此与 V2 逐值一致。
+   *
    * @param cycledLabor 本周期累计实际劳动（千分劳动·日）；`/cycleDays` 得**平均每日实际劳动**
    */
   private static void harvest(
@@ -386,7 +505,14 @@ public final class EconomySettlement {
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
     long availableMu = totalLandMilliMu / 1000L; // 千分亩 ⇒ 亩（向下取整）
     long ableMu = avgLaborMilli * LAND_MU_PER_LABOR / 1000L; // 劳动可经营亩数（向下取整）
-    long actualMu = Math.min(availableMu, ableMu); // 劳动瓶颈：取小后向下取整到亩
+    // ★★ **第三路瓶颈**（v2 spec §3.1/§3.2）：本周期**实际扣到的种子**能支撑多少亩。
+    //   ★ seedPerMu == 0 ⇒ **不加约束**（取 availableMu，min 里它不可能更小），**不是**"0 亩"：
+    //     旧档与未配种子的产业据此与 V2 逐值一致；写成 0 会让它们颗粒无收。
+    //   量纲：毫粮 ÷ (毫粮/亩) = 亩（与上面两路同为"亩"，故能进同一个 min）。
+    //   ★ 恒有 seedCapMu ≤ availableMu（扣到的种子最多是 Σ地亩 × seedPerMu）⇒ 第三路只会**缩**面积。
+    long seedPerMu = industry.cycleInputPerUnit().getOrDefault(AssetKind.LAND, 0L);
+    long seedCapMu = seedPerMu == 0L ? availableMu : industry.cycleSeedUsedMilli() / seedPerMu;
+    long actualMu = Math.min(availableMu, Math.min(ableMu, seedCapMu)); // 三路取小
     long perMu = industry.outputPerUnit().getOrDefault(GRAIN, 0L); // 粮/亩
     long gross = actualMu * perMu * MILLI_PER_GRAIN; // 毫粮（毛产出）
     long loss = gross * PRODUCTION_CONSUMPTION_PER_MILLE / 1000L; // 种子/牲畜/工具
@@ -604,8 +730,9 @@ public final class EconomySettlement {
         row.effectiveDemand());
   }
 
-  /** 换进度与周期劳动累计（其余字段原样带过）。 */
-  private static Industry withProgressAndLabor(Industry industry, long progress, long cycleLabor) {
+  /** 换进度、周期劳动累计与周期种子累计（其余字段原样带过）。 */
+  private static Industry withCycleState(
+      Industry industry, long progress, long cycleLabor, long cycleSeedUsed) {
     return new Industry(
         industry.id(),
         industry.name(),
@@ -619,6 +746,6 @@ public final class EconomySettlement {
         industry.slots(),
         industry.allocation(),
         cycleLabor,
-        industry.cycleSeedUsedMilli()); // ★ 透传：同上
+        cycleSeedUsed);
   }
 }
