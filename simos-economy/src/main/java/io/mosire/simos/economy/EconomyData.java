@@ -112,6 +112,29 @@ public record EconomyData(
       debtsCopy.put(entry.getKey(), entry.getValue());
     }
     debts = Collections.unmodifiableMap(debtsCopy); // ★ 冻在赋值处
+    // ★ v2 spec §八.2：两张表的**交叉引用完整性**。★ 必须等两张表都建完再判 ——
+    //   在任一段内查对方会陷入循环依赖（debts 要查 classes、classes 要查 debts），故不能靠调顺序解决。
+    //   v1 的 debts 循环只查 null ⇒ 悬空主体能安静入库，错在结算里现形、根在状态里。
+    for (Map.Entry<DebtId, Debt> entry : debtsCopy.entrySet()) {
+      Debt debt = entry.getValue();
+      if (!classesCopy.containsKey(debt.debtor()) || !classesCopy.containsKey(debt.creditor())) {
+        throw new IllegalArgumentException(
+            "债务的 debtor/creditor 必须是已存在的阶层行（v2 spec §八.2）："
+                + entry.getKey()
+                + " "
+                + debt.debtor()
+                + " → "
+                + debt.creditor());
+      }
+    }
+    for (Map.Entry<ClassKey, ClassRow> entry : classesCopy.entrySet()) {
+      for (DebtId debtId : entry.getValue().debts()) {
+        if (!debtsCopy.containsKey(debtId)) {
+          throw new IllegalArgumentException(
+              "ClassRow.debts 引用了不存在的债务（v2 spec §八.2）：" + entry.getKey() + " → " + debtId);
+        }
+      }
+    }
     Map<ClassKey, FlowRow> flowsCopy = new LinkedHashMap<>();
     for (Map.Entry<ClassKey, FlowRow> entry : flows.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {

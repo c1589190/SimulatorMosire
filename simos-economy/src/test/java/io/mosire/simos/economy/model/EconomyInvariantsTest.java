@@ -241,6 +241,95 @@ class EconomyInvariantsTest {
         Optional.of(meta()), Map.of(FARM, industry), Map.of(PEASANT_KEY, row), Map.of(), Map.of());
   }
 
+  // ── 债务引用两端（v2 spec §八.2）────────────────────────────────────────────────────
+
+  /** ★ 债务的 creditor 指向一个不在 `classes` 里的阶层行 ⇒ 必须构造期拒（v1 只查 null）。 */
+  @Test
+  void debtEndpointsMustExistInClasses() {
+    Debt dangling =
+        new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), 100L, 20, 3L, false);
+    assertThatThrownBy(
+            () ->
+                new EconomyData(
+                    Optional.of(meta()),
+                    Map.of(FARM, industryWithTwoSlots()),
+                    Map.of(PEASANT_KEY, classRowWithoutDebts(PEASANT_KEY)),
+                    Map.of(D1, dangling), // ★ classes 里没有 LANDLORD_KEY ⇒ creditor 悬空
+                    Map.of()))
+        .as("债务的 debtor/creditor 必须在 classes 里存在（v2 spec §八.2）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("债务");
+  }
+
+  /** ★ 反向：`ClassRow.debts` 里的 id 指向不存在的债务 ⇒ 必须构造期拒。 */
+  @Test
+  void classRowDebtRefsMustExistInDebts() {
+    assertThatThrownBy(
+            () ->
+                new EconomyData(
+                    Optional.of(meta()),
+                    Map.of(FARM, industryWithTwoSlots()),
+                    Map.of(PEASANT_KEY, classRowWithDebtRef(D1)),
+                    Map.of(), // ★ 债务表为空 ⇒ 行内引用的 D1 悬空
+                    Map.of()))
+        .as("ClassRow.debts 的每个 id 必须在 debts 表里存在（v2 spec §八.2）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("债务");
+  }
+
+  /** 对照：两端都在 ⇒ 必须放行（否则上面两条可能只是"一律拒"）。 */
+  @Test
+  void aWellFormedDebtIsAccepted() {
+    Debt debt = new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), 100L, 20, 3L, false);
+    EconomyData data =
+        new EconomyData(
+            Optional.of(meta()),
+            Map.of(FARM, industryWithTwoSlots()),
+            Map.of(
+                PEASANT_KEY,
+                classRowWithDebtRef(D1),
+                LANDLORD_KEY,
+                classRowWithoutDebts(LANDLORD_KEY)),
+            Map.of(D1, debt),
+            Map.of());
+    assertThat(data.debts()).as("两端都在的债务必须放行").hasSize(1);
+  }
+
+  private static Industry industryWithTwoSlots() {
+    return industryWithSlots(
+        List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)));
+  }
+
+  /** 无债务的阶层行（参与率 800 在其槽位上限之内）；`key` 必须与它在 `classes` 里的键一致。 */
+  private static ClassRow classRowWithoutDebts(ClassKey key) {
+    return new ClassRow(
+        key,
+        120L,
+        60000L,
+        800,
+        Map.of(AssetKind.LAND, 2700L),
+        Map.of(GRAIN, 300L),
+        50L,
+        List.of(),
+        Map.of(GRAIN, 40L),
+        Map.of(GRAIN, 30L));
+  }
+
+  /** 行内引用一份债务（其两端由调用方保证）。 */
+  private static ClassRow classRowWithDebtRef(DebtId debtId) {
+    return new ClassRow(
+        PEASANT_KEY,
+        120L,
+        60000L,
+        800,
+        Map.of(AssetKind.LAND, 2700L),
+        Map.of(GRAIN, 300L),
+        50L,
+        List.of(debtId),
+        Map.of(GRAIN, 40L),
+        Map.of(GRAIN, 30L));
+  }
+
   // ── 夹具 ──
 
   private static EconomyMeta meta() {

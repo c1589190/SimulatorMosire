@@ -100,8 +100,14 @@ class EconomyRoundTripTest {
       case "industries" -> base.withIndustries(Map.of(FARM, industry(FARM, 0L)));
       case "classes" ->
           base.withIndustries(Map.of(FARM, industry(FARM, 0L)))
-              .withClasses(Map.of(KEY, classRow()));
-      case "debts" -> base.withDebts(Map.of(D1, debt()));
+              .withClasses(Map.of(KEY, classRow(KEY)));
+      case "debts" ->
+          // ★ 债务的两端必须在 classes 里（v2 spec §八.2）⇒ 这个变异体必须**自带支撑的 classes**：
+          //   从 EconomyData.empty() 只改 debts 的旧形态在新不变量下无法自洽（本用例只断言
+          //   "目标组件进了变更集 + 往返相等"，多带支撑组件不破坏任何断言）。
+          base.withIndustries(Map.of(FARM, industry(FARM, 0L)))
+              .withClasses(Map.of(KEY, classRow(KEY), OTHER_KEY, classRow(OTHER_KEY)))
+              .withDebts(Map.of(D1, debt()));
       case "flows" ->
           base.withIndustries(Map.of(FARM, industry(FARM, 0L))).withFlows(Map.of(KEY, flowRow()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
@@ -158,16 +164,20 @@ class EconomyRoundTripTest {
     return OTHER_KEY;
   }
 
-  static ClassRow classRow() {
+  /**
+   * ★ 无债务的阶层行：**债务引用完整性**（v2 spec §八.2）要求行内 {@code debts} 的每个 id 都在债务表里， 故"只变异 classes
+   * 一个组件"的用例只能用不引用债务的行。
+   */
+  static ClassRow classRow(ClassKey key) {
     return new ClassRow(
-        KEY,
+        key,
         120L,
         60000L,
         800,
         Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
-        List.of(D1),
+        List.of(),
         Map.of(GRAIN, 40L),
         Map.of(GRAIN, 30L));
   }
