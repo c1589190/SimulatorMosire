@@ -9,16 +9,20 @@ import io.mosire.simos.economy.api.id.AccountId;
 import io.mosire.simos.economy.api.id.AssetId;
 import io.mosire.simos.economy.api.id.AssetRightId;
 import io.mosire.simos.economy.api.id.ClaimId;
+import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ContractId;
+import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.EconomicRuleId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketId;
 import io.mosire.simos.economy.api.id.OrderId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionCycleId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RecipeId;
+import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.TransferId;
 import java.util.List;
@@ -28,8 +32,10 @@ import org.junit.jupiter.api.Test;
 /**
  * 共用契约的稳定 ID 三件套与 {@link ActorRef} 的护栏（设计稿 §2/§3，铁律 1）。
  *
- * <p>★ **覆盖方式**：{@link #IDS} 是**逐类登记的清单**，循环对每一个 ID 断言同一组性质。清单用 {@code hasSize(16)} 钉住 ——漏登记一个 ID
+ * <p>★ **覆盖方式**：{@link #IDS} 是**逐类登记的清单**，循环对每一个 ID 断言同一组性质。清单用 {@code hasSize(20)} 钉住 ——漏登记一个 ID
  * 就等于那一类没有护栏（"数个数对张冠李戴零判别力"，但这里的清单同时是**遍历源**，少一项立刻少一类断言， 故个数断言与循环互补）。
+ *
+ * <p>★ **本轮不删旧的 16 个**（新经济设计 §1 待裁 D1）：只把新经济设计 §3 的 4 个新 ID 登记进来 ⇒ 16 + 4 = 20。 裁剪留到 D1 裁定后的独立提交。
  */
 class EconomyIdsTest {
 
@@ -37,9 +43,10 @@ class EconomyIdsTest {
   private record IdKind(String name, Function<String, ?> create, Function<String, ?> parse) {}
 
   /**
-   * 全部共用 ID——社会人口批次 1 + property 2 + production 4 + ledger 3 + market 3 + government 2 + 商品 1。
+   * 全部共用 ID——社会人口批次 1 + property 2 + production 4 + ledger 3 + market 3 + government 2 + 商品 1 +
+   * **新经济设计 4**（Industry/ClassSlot/Regime/Debt）。
    *
-   * <p>★ 就这些：设计稿 §2 未列出的 ID 一律不加（现在写形状就是编造设计）。
+   * <p>★ 就这些：设计稿 §2 未列出的 ID 一律不加（现在写形状就是编造设计）；旧的 16 个本轮一律不删（D1 裁定后再裁）。
    */
   private static final List<IdKind> IDS =
       List.of(
@@ -58,11 +65,15 @@ class EconomyIdsTest {
           new IdKind("ShipmentId", ShipmentId::new, ShipmentId::parse),
           new IdKind("GovernmentId", GovernmentId::new, GovernmentId::parse),
           new IdKind("EconomicRuleId", EconomicRuleId::new, EconomicRuleId::parse),
-          new IdKind("CommodityId", CommodityId::new, CommodityId::parse));
+          new IdKind("CommodityId", CommodityId::new, CommodityId::parse),
+          new IdKind("IndustryId", IndustryId::new, IndustryId::parse),
+          new IdKind("ClassSlotId", ClassSlotId::new, ClassSlotId::parse),
+          new IdKind("RegimeId", RegimeId::new, RegimeId::parse),
+          new IdKind("DebtId", DebtId::new, DebtId::parse));
 
   @Test
   void everyIdCoversTheThreePieceContract() {
-    assertThat(IDS).as("清单必须覆盖全部 16 个 ID（漏一个 = 那一类没有护栏）").hasSize(16);
+    assertThat(IDS).as("清单必须覆盖全部 20 个 ID（漏一个 = 那一类没有护栏）").hasSize(20);
 
     for (IdKind id : IDS) {
       String what = id.name();

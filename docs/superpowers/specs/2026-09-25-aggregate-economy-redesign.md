@@ -61,10 +61,10 @@ record Industry(
     Map<AssetKind, Long> dailyInputPerUnit,   // 每单位生产资料每日原料需求（可为空）
     long dailyLaborPerUnit,                   // 每单位生产资料每日劳动需求（千分劳动）
     Map<CommodityId, Long> outputPerUnit,     // 周期末每单位生产资料的基准产出（农业=每亩 7 粮）
-    List<ClassSlot> slots,                    // 该制度允许的阶层槽位（人口占比之和 = 1000‰）
-    AllocationRuleId allocation)              // 制度分配函数（版本化）
+    List<ClassSlot> slots,                    // 该制度允许的阶层槽位（**只含劳动投入率，不含人口占比**）
+    AllocationRule allocation)                // 制度分配函数（版本化参数随规则内联）
 
-record ClassSlot(ClassSlotId id, String name, int participationPerMille) // 劳动投入率上限（贫农 950 / 地主 100）
+record ClassSlot(ClassSlotId id, String name, int laborParticipationPerMille) // 劳动投入率（贫农 950 / 地主 100）
 
 enum AssetKind { LAND, CATTLE, TOOL, WORKSHOP, MACHINE, SHIP }          // 生产资料种类（可扩展）
 ```
@@ -154,7 +154,10 @@ sealed interface AllocationRule {
 
 1. **守恒（跨切片，协调器/命令层保证）**：商品、货币、人口的总量在每次日推进/周期结算前后守恒
    （损耗、税入政府、债务本金转移都要显式落账）。
-2. **槽位占比**：同一产业 `slots` 的人口占比之和 = 1000‰；阶层行人口之和 = 该产业人口（±1 人取整尾差按 id 分派）。
+2. **槽位与行**（2026-09-25 修正）：同一产业内**槽位 id 不重复**；每个阶层行/流水行的 `(industry, slot)` 必须
+   落在该产业 `slots` 里（**无悬空行**）；`laborParticipationPerMille ∈ [0,1000]`。
+   ★ **人口比例不另存**——它是 Σ`ClassRow.population` 的**观测**（一条真相，避免两处漂移）；
+   资料 §十八 的"阶层人口比例"因此由行派生，不是槽位字段。
 3. **投入率**：`0 ≤ participationPerMille ≤ slot.participationPerMille ≤ 1000`。
 4. **存量非负**：库存/货币/人口/有效劳动 ≥ 0；债务本金 ≥ 0。
 5. **流量不污染存量**：`FlowRow` 的任何字段都不出现在 checkpoint 的长期语义里（结算后清零）。
