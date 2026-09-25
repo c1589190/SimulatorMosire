@@ -27,6 +27,9 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -215,14 +218,21 @@ class ShellSmokeTest {
                 "unit", new UnitSnapshot(ref("main", 1), T0, units),
                 "sd", new SdSnapshot(ref("main", 1), T0, SdState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
-                "economy", new EconomySnapshot(ref("main", 1), T0, EconomyData.empty())),
+                "economy", new EconomySnapshot(ref("main", 1), T0, EconomyData.empty()),
+                // ★ R1：social 也成了时间参与者（T6）⇒ 它同样要求切片在场（缺席是装配故障，不是"无事"）。
+                "social", new SocialSnapshot(ref("main", 1), T0, SocialData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new UnitCodec(), new SdCodec(), new EconomyCodec())));
+                List.of(
+                    new MapCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new EconomyCodec(),
+                    new SocialCodec())));
   }
 
   /** 三格直线走廊，地形取 {@code desert}（{@code moveCost = 3}）⇒ 配合 mobility ‰500 每段恰 1500 毫 MP。 */

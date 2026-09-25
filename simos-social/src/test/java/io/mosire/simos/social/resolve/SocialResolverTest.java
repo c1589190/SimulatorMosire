@@ -56,14 +56,15 @@ class SocialResolverTest {
   private static ResolveContext goodCtx() {
     return ctx(
         "social",
-        new SocialSnapshot(REF, TS, new SocialData(Map.of(H00, population(18036)), Map.of())));
+        new SocialSnapshot(
+            REF, TS, new SocialData(Map.of(H00, population(18036)), Map.of(), Map.of())));
   }
 
   /** 一片人口 + 一座城（{@code c1}）的切片。 */
   private static ResolveContext ctxWithCity() {
     CityId id = new CityId("c1");
-    SocialCity city = new SocialCity(id, "城甲", H00, Optional.empty(), 5000L, Map.of());
-    SocialData data = new SocialData(Map.of(H00, population(18036)), Map.of(id, city));
+    SocialCity city = new SocialCity(id, "城甲", H00, Optional.empty(), Map.of());
+    SocialData data = new SocialData(Map.of(H00, population(18036)), Map.of(id, city), Map.of());
     return ctx("social", new SocialSnapshot(REF, TS, data));
   }
 

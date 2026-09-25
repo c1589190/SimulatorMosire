@@ -33,16 +33,20 @@ class SocialChangeSetTest {
   }
 
   private static SocialData data(Map<HexCoord, PopulationSeries> populations) {
-    return new SocialData(populations, Map.of());
+    return new SocialData(populations, Map.of(), Map.of());
   }
 
   private static SocialData data(
       Map<HexCoord, PopulationSeries> populations, Map<CityId, SocialCity> cities) {
-    return new SocialData(populations, cities);
+    return new SocialData(populations, cities, Map.of());
   }
 
-  private static SocialCity city(String id, String name, long population) {
-    return new SocialCity(new CityId(id), name, H00, Optional.empty(), population, Map.of());
+  /**
+   * 一座城。★ R1（T5）起**没有 population 参数**：城的人口是派生量（该城各批次之和），故"同 key 不同值"这条只能由 name / props 承担（旧的
+   * `city("c1", "城甲", 200L)` 在新形状下与 `100L` 那份**逐字段相同** ⇒ 差异会退化成 Unchanged）。
+   */
+  private static SocialCity city(String id, String name) {
+    return new SocialCity(new CityId(id), name, H00, Optional.empty(), Map.of());
   }
 
   // ── cities 组件：增 / 改 / 删三种都往返（铁律 5 的逐组件形态）─────────────────────────────
@@ -51,8 +55,8 @@ class SocialChangeSetTest {
   void cityAddChangeAndRemoveAllRoundTrip() {
     CityId c1 = new CityId("c1");
 
-    SocialData withC1 = data(Map.of(), Map.of(c1, city("c1", "城甲", 100L)));
-    SocialData changed = data(Map.of(), Map.of(c1, city("c1", "城甲", 200L)));
+    SocialData withC1 = data(Map.of(), Map.of(c1, city("c1", "城甲")));
+    SocialData changed = data(Map.of(), Map.of(c1, city("c1", "城乙")));
 
     // 增
     SocialChangeSet add = SocialChangeSet.between(SocialData.empty(), withC1);
@@ -77,7 +81,7 @@ class SocialChangeSetTest {
   void bothComponentsCanChangeAtOnce() {
     SocialData base = data(Map.of(H00, population(100)), Map.of());
     SocialData target =
-        data(Map.of(H10, population(200)), Map.of(new CityId("c1"), city("c1", "城甲", 50L)));
+        data(Map.of(H10, population(200)), Map.of(new CityId("c1"), city("c1", "城甲")));
 
     SocialChangeSet cs = SocialChangeSet.between(base, target);
     assertThat(cs.isEmpty()).isFalse();
@@ -90,7 +94,7 @@ class SocialChangeSetTest {
   @Test
   void onlyCitiesChangedLeavesPopulationsUnchanged() {
     SocialData base = data(Map.of(H00, population(100)), Map.of());
-    SocialData target = base.withCities(Map.of(new CityId("c1"), city("c1", "城甲", 50L)));
+    SocialData target = base.withCities(Map.of(new CityId("c1"), city("c1", "城乙")));
 
     SocialChangeSet cs = SocialChangeSet.between(base, target);
     assertThat(cs.populations()).isInstanceOf(FieldDelta.Unchanged.class);

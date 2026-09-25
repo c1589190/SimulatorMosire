@@ -91,8 +91,10 @@ import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
 import io.mosire.simos.social.spi.CreateCityHandler;
+import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
 import io.mosire.simos.social.spi.UpdateCityHandler;
+import io.mosire.simos.social.time.SocialTimeParticipant;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.facet.UnitsHereFacet;
 import io.mosire.simos.unit.move.TerrainMovementCost;
@@ -418,10 +420,12 @@ public final class Shell implements AutoCloseable {
                 new CreateCommandChainHandler(),
                 new UpdateCommandChainHandler(),
                 new ApplyCasualtiesHandler(),
-                // ── social（3 条）：逐格农村人口 + 城市节点。非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
+                // ── social（4 条）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
+                //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
                 new SetPopulationHandler(),
                 new CreateCityHandler(),
                 new UpdateCityHandler(),
+                new SeedGroupsHandler(),
                 // ── economy（1 条，R2a）：一次播种某国全部格的初始经济状态（§十"验收目标 A"）──
                 new EconomySeedHandler(),
                 new CreateNationHandler(),
@@ -485,11 +489,14 @@ public final class Shell implements AutoCloseable {
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
     //   ★ R3a/R4a（2026-09-25）：economy 也进了清单——每次 AdvanceTime 结算一天（消费/进度/周期收获与分配）。
+    //   ★ R1（T6）：social 也进清单 —— 它每次推进交**不变变更集**（人口在推进中"变老"是年龄的派生性质，
+    //     不需要改状态；见 SocialTimeParticipant 的类注）。
     List<TimeParticipant> participants =
         List.of(
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
             new SdTimeParticipant(config.mapId()),
-            new EconomyTimeParticipant(config.mapId()));
+            new EconomyTimeParticipant(config.mapId()),
+            new SocialTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }

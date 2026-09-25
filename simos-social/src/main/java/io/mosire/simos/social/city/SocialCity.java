@@ -9,15 +9,16 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 城市节点（social 侧的"城镇人口 + 城市专属机制"承载者）。
+ * 城市节点（social 侧的"城市专属机制"承载者）。
  *
  * <p>★ **与 map 侧 {@code City} 的分工**：map 的 {@code City} 是**地图维**的城市（落点、区域归属、名称），本类型是**社会维**的城市节点
- * ——承载 {@code population}（城市人口）与 {@code props} 扩展口。同一座城在两处由**同一个** {@link CityId} 串起（铁律 1：复用身份类型，
- * **不新造**）。
+ * ——承载 {@code props} 扩展口与稳定身份。同一座城在两处由**同一个** {@link CityId} 串起（铁律 1：复用身份类型， **不新造**）。
  *
- * <p>★★ **{@code population} 是城市人口（城镇部分）**，与 hex 上的**农村人口**（{@code SocialData.populations} 装的
- * {@code PopulationSeries}）**分开记**：该格的"总人口"是**派生量**（农村 + 落在该格的各城市之和），**不落盘**——把两者混进一个槽位会让
- * 城乡口径不可分、也无法按城市扩展机制。
+ * <p>★★ **R1（T5）起，城市人口不再是本类型的字段**：它是**派生量** = 该城名下各 {@link
+ * io.mosire.simos.social.population.PopulationGroup} 之和（{@link
+ * io.mosire.simos.social.SocialData#urbanPopulationAt(CityId)} 现算）。原先那个 {@code population}
+ * 字段是**第三份人口账** （农村序列一份、城市一份、经济侧一份），它只会漂移；降级成派生量之后，"城里有多少人"仍然可从 social 自己的数据算出来， 而**不需要**任何地方存它 ——
+ * 与 {@link io.mosire.simos.social.SocialData} 类注里那句明令同一条纪律（"要算总量，请**现算**，别找地方存"）。
  *
  * <p>★ {@code region} **允许为空**（{@code Optional.empty()}）="这座城不在任何区域内"。这不是缺失，是合法状态（城市落在无归属的格上）；map 侧
  * {@code City.region} 用裸 {@code null} 表达同一件事，此处按 social 侧既有形制用 {@code Optional}（显式、可 JSON 化）。
@@ -34,16 +35,10 @@ import java.util.Optional;
  * @param name 显示名；**空白即抛**
  * @param at 所在格；不得为 null
  * @param region 所属区域；**可为空**（{@code Optional.empty()} = 无归属）
- * @param population 城市人口（**城镇部分**，与 hex 上的农村人口分开）；**不得为负**
  * @param props 城市自己的属性表；保序不可变，键值都不得为 null
  */
 public record SocialCity(
-    CityId id,
-    String name,
-    HexCoord at,
-    Optional<RegionId> region,
-    long population,
-    Map<String, Object> props) {
+    CityId id, String name, HexCoord at, Optional<RegionId> region, Map<String, Object> props) {
 
   public SocialCity {
     if (id == null) {
@@ -58,9 +53,6 @@ public record SocialCity(
     if (region == null) {
       throw new IllegalArgumentException("region 不得为 null（无归属用 Optional.empty()）");
     }
-    if (population < 0) {
-      throw new IllegalArgumentException("population 必须 ≥ 0: " + population);
-    }
     if (props == null) {
       throw new IllegalArgumentException("props 不得为 null");
     }
@@ -74,18 +66,13 @@ public record SocialCity(
     props = Collections.unmodifiableMap(copy); // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的）
   }
 
-  /** 改显示名（身份、落点、人口、props 都不动）。空白名由构造器拒。 */
+  /** 改显示名（身份、落点、region、props 都不动）。空白名由构造器拒。 */
   public SocialCity withName(String value) {
-    return new SocialCity(id, value, at, region, population, props);
-  }
-
-  /** 改城市人口（负值由构造器拒）。 */
-  public SocialCity withPopulation(long value) {
-    return new SocialCity(id, name, at, region, value, props);
+    return new SocialCity(id, value, at, region, props);
   }
 
   /** 换整份 props（**不是合并**；合并语义是调用方的事，见 {@code social.UpdateCity}）。 */
   public SocialCity withProps(Map<String, Object> value) {
-    return new SocialCity(id, name, at, region, population, value);
+    return new SocialCity(id, name, at, region, value);
   }
 }

@@ -99,9 +99,8 @@ final class RenderFixtures {
             "石堡",
             EAST,
             Optional.of(new RegionId("r-test")),
-            12_000L,
             Map.of()));
-    return new SocialData(populations, cities);
+    return new SocialData(populations, cities, Map.of());
   }
 
   /** 恒定人口序列：anchor = 值、增长速率恒 0（{@code valueAt} 任意时刻都等于该值）。 */

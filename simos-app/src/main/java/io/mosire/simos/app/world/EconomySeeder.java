@@ -7,8 +7,9 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.social.gen.PlannedCity;
-import io.mosire.simos.social.gen.SettlementPlan;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -22,8 +23,13 @@ import java.util.function.Function;
  * ★★ **R2a 生成器**（聚合式经济重设计 §十「验收目标 A」）：把一次世界生成已经算好的 {@link SettlementPlan}（逐格农村人口 + 城市表）翻成**一条**
  * {@code economy.Seed} 命令的载荷。
  *
- * <p>★★ **人口一律取自 {@link SettlementPlan}，一个数都不重新派生**（§十 口径表首行）：逐格农村人口来自 {@code
- * plan.ruralPopulation()}、城市人口来自 {@code plan.cities()}。本类只做"分配 / 换算"，不做人口估计。
+ * <p>★★ **R1（T4）起人口一律取自 {@link PopulationGroup} 批次列表**（{@link PopulationSeeder#groups} 造的那一份，
+ * 同一份也喂给 {@code social.SeedGroups}）：逐格人数 = {@code Σ count}，农村/城镇两池由批次 id 的前缀分 （{@link
+ * PopulationLots#isUrban}）。**不再读 {@link io.mosire.simos.social.gen.SettlementPlan}** —— 两条命令读同一份列表，
+ * "Σ group == 经济侧总人口"因此是构造性成立的。本类只做"分配 / 换算"，不做人口估计。
+ *
+ * <p>★★ **性别进入劳动折算**（T4 的判据）：每人的千分劳动按 {@code 批次.sex() × 年龄档} 取系数 （{@link
+ * #AGE_LABOR_COEF_BY_SEX}，默认两性同表、可按性别覆盖）。人口按"性别 × 年龄"分组这件事由批次承载 （设计稿 §十.6）。
  *
  * <p>★★ **两个守恒在出口成立**（用例逐值断言）：
  *
@@ -132,11 +138,34 @@ public final class EconomySeeder {
   /** 槽位劳动投入率上限（‰）：{@code ClassSlot} 的既定口径（贫农 950 / 中农 900 / 富农 750 / 地主 100）。 */
   static final int[] CLASS_LABOR_PER_MILLE = {950, 900, 750, 100};
 
-  /** 有效劳动的年龄档（D4 默认，§十"有效劳动"行）：0-14 / 15-59 / 60+ 的人数占比（‰）。 */
+  /**
+   * 有效劳动的年龄档（D4 默认，§十"有效劳动"行）：0-14 / 15-59 / 60+ 的人数占比（‰）。
+   *
+   * <p>★ **R1 起它是"创世输入"、不再是结算口径**（设计稿 §十.2 的裁定：D4 三档降为生成期 preset）：它决定 {@link PopulationSeeder}
+   * **造出什么样的批次**（每格每性别按这三档分三批），而运行时只有逐日精度的年龄。
+   */
   static final int[] AGE_SHARE_PER_MILLE = {350, 550, 100};
 
   /** 各年龄档的劳动系数（‰，与 {@link #AGE_SHARE_PER_MILLE} 同序）：0 / 1000 / 300。 */
   static final int[] AGE_LABOR_COEF_PER_MILLE = {0, 1000, 300};
+
+  /**
+   * ★★ **年龄档 × 性别的劳动系数表**（‰）：外层键 = 性别，值 = 与 {@link #AGE_SHARE_PER_MILLE} 同序的档内系数。
+   *
+   * <p>★ **默认两性同表**（本轮判据只是"性别**进入了**折算"，不是"男女系数不同"——"男耕女织"的具体数值属 R2，
+   * 到那时才按观察调这张表）。表**可按性别覆盖**正是那个旋钮：`payload(…, 表)` 的包内可见重载收它，单测据此证明 "性别真的参与折算"（把女性系数改成 0 ⇒ 劳动逐值减半）。
+   */
+  static final Map<Sex, int[]> AGE_LABOR_COEF_BY_SEX =
+      Map.of(Sex.MALE, AGE_LABOR_COEF_PER_MILLE, Sex.FEMALE, AGE_LABOR_COEF_PER_MILLE);
+
+  /**
+   * 年龄档的**上界**（天，不含；与 {@link #AGE_SHARE_PER_MILLE} 的 {0-14, 15-59, 60+} 同口径）：15 岁、60 岁。
+   *
+   * <p>★ 批次带的是**逐日精度的年龄**，具体落在哪一档由 {@link #ageBracketOf(long)} 现算（不存档位、不许出现"档间转移"）。 ★ 它与 {@link
+   * PopulationSeeder#AGE_REPRESENTATIVE_DAYS} 必须互相自洽（代表性年龄要落在自己那一档里）， 由 {@code
+   * PopulationSeederTest} 的跨表用例钉住。
+   */
+  static final long[] AGE_BRACKET_MAX_EXCLUSIVE_DAYS = {15L * 365L, 60L * 365L};
 
   /** 粮食商品的 id：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
   public static final String COMMODITY_GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
@@ -146,12 +175,18 @@ public final class EconomySeeder {
 
   private EconomySeeder() {}
 
-  /** 走真地图：地形 key 由 {@link GameMap#terrainIndex()} 一次物化后 O(1) 查。 */
-  public static String payload(String mapId, SettlementPlan plan, GameMap map) {
+  /**
+   * ★★ **R1 的人口来源**（T4）：人口**不再从 {@link SettlementPlan} 抄**，而是从**同一份** {@link PopulationGroup}
+   * 列表按格聚合 —— 那份列表同时喂给 {@code social.SeedGroups} （{@link PopulationSeeder#payload}）。于是"**Σ group ==
+   * 经济侧总人口**"是**构造性成立**的： 两侧读的是同一份列表，不需要运行期读 social 切片（那要跨切片协调器，属后续轮次）。
+   *
+   * <p>★ 走真地图：地形 key 由 {@link GameMap#terrainIndex()} 一次物化后 O(1) 查。
+   */
+  public static String payload(String mapId, List<PopulationGroup> groups, GameMap map) {
     Map<HexCoord, String> terrain = map.terrainIndex();
     return payload(
         mapId,
-        plan,
+        groups,
         at -> {
           String key = terrain.get(at);
           if (key == null) {
@@ -164,13 +199,23 @@ public final class EconomySeeder {
   /**
    * 纯函数主入口（**包内可见**：用例塞一个 {@code hex -> "plains"} 的替身即可，不必造 {@link GameMap}）。
    *
+   * <p>★ **两池都来自批次**（不是两处各抄一份）：农村池 = {@code rural:} 前缀的批次、城镇池 = {@code urban:} 前缀的批次 （{@link
+   * PopulationLots#isUrban}）。格集 = **批次的落点集合** —— 于是"经济侧该格有没有人口"也只有一处真相。
+   *
    * @param terrainOf 逐格地形 key（真路径 = {@code map.terrainIndex()}）；未知地形 fail-closed
    */
-  static String payload(String mapId, SettlementPlan plan, Function<HexCoord, String> terrainOf) {
-    Map<HexCoord, Long> urban = urbanPopulationByHex(plan);
-    List<HexCoord> hexes = new ArrayList<>(plan.ruralPopulation().keySet());
-    for (HexCoord hex : urban.keySet()) {
-      if (!plan.ruralPopulation().containsKey(hex)) {
+  static String payload(
+      String mapId, List<PopulationGroup> groups, Function<HexCoord, String> terrainOf) {
+    Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
+    Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
+    for (PopulationGroup group : groups) {
+      Map<HexCoord, List<PopulationGroup>> target =
+          PopulationLots.isUrban(group) ? urbanByHex : ruralByHex;
+      target.computeIfAbsent(group.residence(), hex -> new ArrayList<>()).add(group);
+    }
+    List<HexCoord> hexes = new ArrayList<>(ruralByHex.keySet());
+    for (HexCoord hex : urbanByHex.keySet()) {
+      if (!ruralByHex.containsKey(hex)) {
         hexes.add(hex); // 有城市却无农村人口的格也要有经济状态（否则那座城的人口凭空消失）
       }
     }
@@ -178,12 +223,12 @@ public final class EconomySeeder {
 
     List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
     for (HexCoord hex : hexes) {
-      long rural = plan.ruralPopulation().getOrDefault(hex, 0L);
-      long city = urban.getOrDefault(hex, 0L);
+      List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
+      List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
       List<Map<String, Object>> industries = new ArrayList<>(2);
-      industries.add(agriculture(hex, rural, terrainOf.apply(hex)));
-      if (city > 0) {
-        industries.add(handicraft(hex, city));
+      industries.add(agriculture(hex, ruralPool, terrainOf.apply(hex)));
+      if (populationOf(urbanPool) > 0L) {
+        industries.add(handicraft(hex, urbanPool));
       }
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
@@ -198,28 +243,37 @@ public final class EconomySeeder {
     return ToolSupport.json(payload);
   }
 
-  /** 逐格城市人口（同一格多座城 ⇒ 相加；§十"每格人口 = 农村 + 城市"）。 */
-  private static Map<HexCoord, Long> urbanPopulationByHex(SettlementPlan plan) {
-    Map<HexCoord, Long> urban = new LinkedHashMap<>();
-    for (PlannedCity city : plan.cities()) {
-      urban.merge(city.at(), city.population(), Long::sum);
+  /** 一群批次的人数：{@code Σ count}（"每格人数"的唯一算法）。 */
+  static long populationOf(List<PopulationGroup> pool) {
+    long total = 0L;
+    for (PopulationGroup group : pool) {
+      total += group.count();
     }
-    return urban;
+    return total;
   }
 
   // ── 两个产业 ─────────────────────────────────────────────────────────────────────────
 
-  /** 农业（**恒有**，§十）：人口 = 该格农村人口；土地 = {@code muPerHex × 地形系数}；制度 = 封建租佃。 */
-  private static Map<String, Object> agriculture(HexCoord hex, long population, String terrain) {
+  /** 农业（**恒有**，§十）：人口 = 该格**农村批次**之和；土地 = {@code muPerHex × 地形系数}；制度 = 封建租佃。 */
+  private static Map<String, Object> agriculture(
+      HexCoord hex, List<PopulationGroup> pool, String terrain) {
     long landMilliMu = MU_PER_HEX * MILLI_MU_PER_MU * arablePerMilleOf(foodOf(terrain)) / 1000L;
-    long[] people = splitByShares(population, CLASS_SHARE_PER_MILLE);
+    long[] people = splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE);
     long[] land = splitProportional(landMilliMu, people);
+    long poolLabor = laborMilli(pool);
+    long poolCount = populationOf(pool);
     List<Map<String, Object>> classes = new ArrayList<>(CLASS_IDS.length);
     for (int i = 0; i < CLASS_IDS.length; i++) {
       // ★ 土地按各行人口成比例切；人口为 0 的槽位据此得 0（唯一的例外见 splitProportional：整格人口为 0 时土地记在第一槽，
       //   保住"Σ土地 == 格土地"这条守恒，不静默丢地）。
       classes.add(
-          classRow(CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], Map.of("LAND", land[i])));
+          classRow(
+              CLASS_IDS[i],
+              people[i],
+              CLASS_LABOR_PER_MILLE[i],
+              Map.of("LAND", land[i]),
+              poolLabor,
+              poolCount));
     }
     return industry(
         IndustryHexKeys.id(FARM, hex.q(), hex.r()).value(),
@@ -229,12 +283,16 @@ public final class EconomySeeder {
         Map.of("meansWeightPerMille", 700, "laborWeightPerMille", 300));
   }
 
-  /** 手工业（**城市格追加**，§十）：人口 = 该格城市人口；不占地（土地全归农业）；制度 = 手工业。 */
-  private static Map<String, Object> handicraft(HexCoord hex, long population) {
-    long[] people = splitByShares(population, CLASS_SHARE_PER_MILLE);
+  /** 手工业（**城市格追加**，§十）：人口 = 该格**城镇批次**之和；不占地（土地全归农业）；制度 = 手工业。 */
+  private static Map<String, Object> handicraft(HexCoord hex, List<PopulationGroup> pool) {
+    long[] people = splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE);
+    long poolLabor = laborMilli(pool);
+    long poolCount = populationOf(pool);
     List<Map<String, Object>> classes = new ArrayList<>(CLASS_IDS.length);
     for (int i = 0; i < CLASS_IDS.length; i++) {
-      classes.add(classRow(CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], Map.of()));
+      classes.add(
+          classRow(
+              CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], Map.of(), poolLabor, poolCount));
     }
     return industry(
         IndustryHexKeys.id(CRAFT, hex.q(), hex.r()).value(),
@@ -291,16 +349,26 @@ public final class EconomySeeder {
   }
 
   /**
-   * 一个阶层行（与 §3.2 {@code ClassRow} 逐字段对应）：有效劳动 = 人口 × 年龄系数（§十"D4 默认"）、自然需求 = **第 1 天**的口粮 （{@link
+   * 一个阶层行（与 §3.2 {@code ClassRow} 逐字段对应）：有效劳动 = 本行人口 × **该池的人均劳动** （= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷
+   * 池人口，见 {@link #laborMilli(List)}）、自然需求 = **第 1 天**的口粮 （{@link
    * #firstDayRationMilli}；结算每天会覆写它，§八.8）、初始库存 = {@code 人口 × 该阶层天数} 天口粮（{@link #rationMilli} 经
    * {@link EconomyVocabulary#cumulativeRationMilli}，**按阶层差异化**）、货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   *
+   * <p>★★ **为什么"人均"而不是"逐行按自己的年龄构成"**：阶层比例把池子切成四份，而**没有任何数据**说清各阶层的年龄/性别构成 ⇒
+   * 取池内人均（"阶层之间年龄性别同分布"这条**明说的**假设），不假装知道更多。默认系数下它与 R1 之前 `人口 × 580‰` **逐值相同**（池的年龄构成恰是 D4 preset
+   * 时人均恒为 580），故真档的既有期望值不动。
    */
   private static Map<String, Object> classRow(
-      String slot, long population, int participationPerMille, Map<String, Object> means) {
+      String slot,
+      long population,
+      int participationPerMille,
+      Map<String, Object> means,
+      long poolLaborMilli,
+      long poolCount) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("slot", slot);
     row.put("population", population);
-    row.put("laborMilli", laborMilli(population));
+    row.put("laborMilli", rowLaborMilli(population, poolLaborMilli, poolCount));
     row.put("participationPerMille", participationPerMille);
     row.put("meansOfProduction", means);
     row.put("goods", Map.of(COMMODITY_GRAIN, rationMilli(population, slot)));
@@ -332,9 +400,77 @@ public final class EconomySeeder {
   }
 
   /**
-   * 有效劳动（千分劳动）：人口 × Σ(年龄档占比 × 档内劳动系数)（§十"D4 默认"）。
+   * 年龄（天）落在哪一档（0-14 / 15-59 / 60+，与 {@link #AGE_SHARE_PER_MILLE} 同序）。
    *
-   * <p>量纲：一个人满劳动 = 1000 千分劳动 ⇒ 每人折算 580 千分劳动（= 550×1000‰ + 100×300‰）。**整数**运算，不丢精度。
+   * <p>★ **档是现算的，不存档位**（设计稿 §三：年龄运行时只有逐日精度，"档间转移"因此不存在）。 ★ 超出末档上界一律归末档（年龄没有上界）。
+   */
+  static int ageBracketOf(long ageDays) {
+    if (ageDays < 0L) {
+      throw new IllegalArgumentException("ageDays 不得为负: " + ageDays);
+    }
+    for (int bracket = 0; bracket < AGE_BRACKET_MAX_EXCLUSIVE_DAYS.length; bracket++) {
+      if (ageDays < AGE_BRACKET_MAX_EXCLUSIVE_DAYS[bracket]) {
+        return bracket;
+      }
+    }
+    return AGE_BRACKET_MAX_EXCLUSIVE_DAYS.length;
+  }
+
+  /**
+   * **一个批次的每人千分劳动**：它的性别与年龄档 → 系数（默认表；★ 表可按性别覆盖，见 {@link #AGE_LABOR_COEF_BY_SEX}）。
+   *
+   * <p>★ 量纲：一个人满劳动 = 1000 千分劳动 ⇒ 青壮 1000、老年 300、未成年 0（D4 preset）。
+   */
+  static long perCapitaLaborPerMille(PopulationGroup group) {
+    return perCapitaLaborPerMille(group, AGE_LABOR_COEF_BY_SEX);
+  }
+
+  /** 同上的**可注入表**重载（包内可见的旋钮：单测据此证明"性别真的进了折算"，见类注）。 */
+  static long perCapitaLaborPerMille(PopulationGroup group, Map<Sex, int[]> coefficientsBySex) {
+    int[] coefficients = coefficientsBySex.get(group.sex());
+    if (coefficients == null) {
+      throw new IllegalStateException("性别 " + group.sex() + " 不在劳动系数表里（拒绝臆造）");
+    }
+    return coefficients[ageBracketOf(group.ageAtAnchorDays())];
+  }
+
+  /**
+   * ★★ **有效劳动（千分劳动）= Σ 批次 (count × 该批次的每人系数)**：人口按"性别 × 年龄"分组的**唯一**折算入口 （设计稿 §四：{@code
+   * availableLabor = Σ(count × ageSexCoefficient)}）。
+   *
+   * <p>★ **性别在这里进入折算**：每人系数按 {@code group.sex()} 取表（默认两性同表 ⇒ 与 R1 之前逐值相同）。
+   */
+  static long laborMilli(List<PopulationGroup> groups) {
+    return laborMilli(groups, AGE_LABOR_COEF_BY_SEX);
+  }
+
+  /** 同上的**可注入表**重载（包内可见的旋钮：R2 的"男耕女织"与它的判别力都落在这里）。 */
+  static long laborMilli(List<PopulationGroup> groups, Map<Sex, int[]> coefficientsBySex) {
+    long total = 0L;
+    for (PopulationGroup group : groups) {
+      total += group.count() * perCapitaLaborPerMille(group, coefficientsBySex);
+    }
+    return total;
+  }
+
+  /**
+   * 某行分到的有效劳动 = 本行人口 × **池的人均劳动**（{@code poolLaborMilli ÷ poolCount}，逐行取整；池空 ⇒ 0）。
+   *
+   * <p>★ 与 R1 之前**逐值同形**：池的年龄构成恰是 D4 preset、且系数表两性同值时，{@code poolLaborMilli == poolCount × 580} ⇒
+   * 本式退化为 {@code 人口 × 580}（那就是旧口径）。整数运算，不丢精度、不做除零。
+   */
+  private static long rowLaborMilli(long population, long poolLaborMilli, long poolCount) {
+    if (poolCount == 0L) {
+      return 0L;
+    }
+    return population * poolLaborMilli / poolCount;
+  }
+
+  /**
+   * 有效劳动（千分劳动）的**窄入口**：人口 × Σ(年龄档占比 × 档内系数)（§十"D4 默认"，= 每人 580‰）。
+   *
+   * <p>★ **它不读批次**（没有批次可读时用它：{@code EconomyTestWorld} 那类手搭的夹具）。口径是"人口未按性别/年龄分组"， 故与 {@link
+   * #laborMilli(List)} 在默认 preset 下**同值**（两性同系数 ⇒ 每个性别的人均系数都是 580‰）。
    */
   public static long laborMilli(long population) {
     long perCapitaPerMille = 0L;

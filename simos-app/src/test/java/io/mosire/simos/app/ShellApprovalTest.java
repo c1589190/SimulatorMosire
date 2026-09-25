@@ -378,7 +378,7 @@ class ShellApprovalTest {
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
     SocialData social =
-        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

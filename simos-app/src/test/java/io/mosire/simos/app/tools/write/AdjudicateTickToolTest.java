@@ -530,8 +530,8 @@ class AdjudicateTickToolTest {
             "map.SetEdge",
             "map.RegisterPathwayGroup");
     assertThat(tool.allowedCommandTypes())
-        .as("白名单 = unit 20 + map 7 + social 3 + economy 1")
-        .hasSize(31);
+        .as("白名单 = unit 20 + map 7 + social 4（R1 起 +1 = social.SeedGroups）+ economy 1")
+        .hasSize(32);
 
     // ② 其余 26 条：逐条给真载荷、钉死输出路径。
     Map<String, List<String>> samples = new LinkedHashMap<>();
@@ -595,10 +595,20 @@ class AdjudicateTickToolTest {
     samples.put(
         "social.SetPopulation",
         List.of("{\"entries\":[{\"q\":1,\"r\":1,\"population\":1}]}", "1_1"));
+    // ★ R1（T5）：CreateCity 的载荷里没有 population（人口是派生量）。
     samples.put(
         "social.CreateCity",
-        List.of("{\"id\":\"c1\",\"name\":\"n\",\"at\":{\"q\":1,\"r\":2},\"population\":1}", "1_2"));
+        List.of("{\"id\":\"c1\",\"name\":\"n\",\"at\":{\"q\":1,\"r\":2}}", "1_2"));
     samples.put("social.UpdateCity", List.of("{\"id\":\"c1\",\"name\":\"x\"}"));
+    // R1（T3）：人口批次按**格**给目标（`<q>_<r>`），重复格去重。
+    samples.put(
+        "social.SeedGroups",
+        List.of(
+            "{\"entries\":[{\"id\":\"rural:1_1:MALE\",\"q\":1,\"r\":1,\"sex\":\"MALE\","
+                + "\"count\":1,\"ageDays\":1},{\"id\":\"rural:1_2:MALE\",\"q\":1,\"r\":2,"
+                + "\"sex\":\"MALE\",\"count\":1,\"ageDays\":1}]}",
+            "1_1",
+            "1_2"));
     // economy 一条（R2a）：播种按**格**给目标（{@code <q>_<r>}，与 social 同款不带 mapId）。
     samples.put(
         "economy.Seed",
@@ -615,7 +625,9 @@ class AdjudicateTickToolTest {
           .as("%s 的目标路径", type)
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
-    assertThat(samples.keySet()).as("27 条有目标声明的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑）").hasSize(27);
+    assertThat(samples.keySet())
+        .as("28 条有目标声明的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑；R1 起 +1 = social.SeedGroups）")
+        .hasSize(28);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());
@@ -1050,6 +1062,7 @@ class AdjudicateTickToolTest {
     SocialData social =
         new SocialData(
             new LinkedHashMap<>(Map.of(H12, populationSeries(), H13, populationSeries())),
+            Map.of(),
             Map.of());
     SimulationState genesis =
         new SimulationState(

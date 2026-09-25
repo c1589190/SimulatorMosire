@@ -481,6 +481,7 @@ class SimosToolsTest {
           "social.SetPopulation",
           "social.CreateCity",
           "social.UpdateCity",
+          "social.SeedGroups",
           "economy.Seed");
 
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -675,8 +676,8 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 50 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(50);
+        .as("扫描必须恰为 51 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R1 起 +1 = social.SeedGroups）")
+        .hasSize(51);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -1851,7 +1852,7 @@ class SimosToolsTest {
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
     SocialData social =
-        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

@@ -61,6 +61,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +81,7 @@ import org.junit.jupiter.api.io.TempDir;
  * committed} 恰两条 = CommandEnvelope 支的冻结链）。仅当"GUI 与 MCP 走了同一条 Core 写路径"这两行才会同表同形状地出现。
  *
  * <p>★ 另跑一条真 {@code simos.advance}，断言其**冻结事件序列**（1×received + 1×started + N×proposal + 1×finished +
- * 1×committed，本壳 N = 3 个 time participant（sd/unit/economy）⇒ 恰 7 条）。
+ * 1×committed，本壳 N = 4 个 time participant（sd/unit/economy/**social**，R1 起）⇒ 恰 8 条）。
  *
  * <p>夹具与 {@code McpServerTest}/{@code ShellApprovalTest} 同法：独立 store 种创世 {@code (main,1)} + 含
  * map/unit/social 三切片的创世 checkpoint（state 时间戳 {@code of(7)}）；端口全 0。
@@ -231,15 +232,43 @@ class ShellEndToEndTest {
           .as("Agent 写的信封链完整")
           .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_COMMITTED);
       assertThat(types(events, advanceRow.correlationId()))
-          .as("推进支的冻结序列（本壳 3 个 time participant（sd/unit/economy）⇒ N = 3）")
+          .as("推进支的冻结序列（本壳 4 个 time participant（sd/unit/economy/social）⇒ N = 4）")
           .containsExactly(
               EventTypes.COMMAND_RECEIVED,
               EventTypes.TIME_ADVANCE_STARTED,
               EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
+              EventTypes.MODULE_PROPOSAL,
               EventTypes.TIME_ADVANCE_FINISHED,
               EventTypes.COMMAND_COMMITTED);
+
+      // ── ★★ R1（T6）验收判据：**social 出现在推进日志的参与者里** ────────────────────────
+      //   ① 参与者清单（started 事件）里点名 social；
+      //   ② 每个参与者各留一条 module.proposal ⇒ 其中一条的 namespace = social；
+      //   ③ 且 social 那一条交的是**不变变更集**（R1 的推进不改任何 social 字段）。
+      List<EventRow> advanceEvents = events.byCorrelation(advanceRow.correlationId());
+      JsonNode started = JSON.readTree(startedPayload(advanceEvents));
+      List<String> participants = new ArrayList<>();
+      started.get("participants").forEach(node -> participants.add(node.asText()));
+      assertThat(participants)
+          .as("推进日志的参与者清单（T6 的验收判据）")
+          .containsExactlyInAnyOrder("unit", "sd", "economy", "social");
+
+      List<EventRow> proposals =
+          advanceEvents.stream()
+              .filter(row -> EventTypes.MODULE_PROPOSAL.equals(row.type()))
+              .toList();
+      List<String> proposalNamespaces = new ArrayList<>();
+      for (EventRow row : proposals) {
+        proposalNamespaces.add(JSON.readTree(row.payload()).get("namespace").asText());
+      }
+      assertThat(proposalNamespaces).as("每个参与者各一条 module.proposal").contains("social");
+
+      // ③ 不变变更集：推进之后 social 切片逐字段等于推进之前（人口在推进中"变老"是年龄的派生性质，不改状态）。
+      assertThat(socialSlice(shell.coreSimos().replay(ref("main", 4))))
+          .as("social 参与推进，但 R1 里一个字段都不改（不变变更集）")
+          .isEqualTo(socialSlice(shell.coreSimos().replay(ref("main", 3))));
       assertThat(advanceRow.correlationId()).isEqualTo(advanceCorrelation);
     }
 
@@ -313,6 +342,20 @@ class ShellEndToEndTest {
     return events.byCorrelation(correlationId).stream().map(EventRow::type).toList();
   }
 
+  /** {@code simos.time.advance.started} 的载荷（T6 的参与者清单在这里）。 */
+  private static String startedPayload(List<EventRow> events) {
+    return events.stream()
+        .filter(row -> EventTypes.TIME_ADVANCE_STARTED.equals(row.type()))
+        .findFirst()
+        .orElseThrow()
+        .payload();
+  }
+
+  /** social 切片（T6：参与推进但不变）。 */
+  private static SocialData socialSlice(SimulationState state) {
+    return ((SocialSnapshot) state.module("social").orElseThrow()).data();
+  }
+
   private static String wireText(McpSchema.CallToolResult result) {
     List<McpSchema.Content> content = result.content();
     return content.get(0) instanceof McpSchema.TextContent text ? text.text() : content.toString();
@@ -359,7 +402,7 @@ class ShellEndToEndTest {
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
     SocialData social =
-        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

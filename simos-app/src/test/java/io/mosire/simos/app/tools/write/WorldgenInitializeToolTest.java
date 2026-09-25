@@ -54,7 +54,10 @@ import io.mosire.simos.social.gen.SettlementGenerator;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.gen.WorldgenConfig;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.spi.CreateCityHandler;
+import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
@@ -193,12 +196,45 @@ class WorldgenInitializeToolTest {
       SimosTimestamp at = state.meta().timestamp();
 
       long rural = social.populations().values().stream().mapToLong(s -> s.valueAt(at)).sum();
-      long urban = social.cities().values().stream().mapToLong(SocialCity::population).sum();
+      // ★ R1（T5）：城的城镇人口**不再是 SocialCity 的字段** ⇒ 从该城的批次求和（派生量）。
+      long urban =
+          social.cities().values().stream()
+              .mapToLong(city -> social.urbanPopulationAt(city.id()))
+              .sum();
       assertThat(social.populations()).as("region 全部格都有农村人口（无 ocean 格）").hasSize(OSTERMARK_HEXES);
       assertThat(rural).as("农村合计").isEqualTo(OSTERMARK_RURAL);
       assertThat(urban).as("Σ city.population").isEqualTo(OSTERMARK_URBAN);
       assertThat(rural + urban).as("总人口").isEqualTo(OSTERMARK_TOTAL);
       assertThat(social.cities()).isNotEmpty();
+
+      // ── ★★ R1 验收判据（设计稿 §九 / §十.7）：**新旧人口账逐格相等** ──────────────────────────
+      //   新账 = `groups`（人口批次，人口的真值源）；旧账 = 农村序列 + 落在该格的各城人口（后者 R1 起
+      //   由 `urbanPopulationAt` 从批次派生 —— 见 T5）。两笔账必须**逐格**对得上，否则"统一人口账"是空话。
+      long groupsTotal = social.groups().values().stream().mapToLong(PopulationGroup::count).sum();
+      assertThat(groupsTotal).as("Σ group（新账）= 全国总人口").isEqualTo(OSTERMARK_TOTAL);
+      assertThat(social.groups())
+          .as("138 格 × 6（农村：3 档 × 2 性）+ 每城 6（城镇）")
+          .hasSize(OSTERMARK_HEXES * 6 + social.cities().size() * 6);
+      long mismatchedHexes = 0L;
+      for (Map.Entry<HexCoord, PopulationSeries> entry : social.populations().entrySet()) {
+        HexCoord hex = entry.getKey();
+        long oldRural = entry.getValue().valueAt(at);
+        long oldUrban =
+            social.cities().values().stream()
+                .filter(city -> city.at().equals(hex))
+                .mapToLong(city -> social.urbanPopulationAt(city.id()))
+                .sum();
+        if (social.populationAt(hex) != oldRural + oldUrban) {
+          mismatchedHexes++;
+        }
+      }
+      assertThat(mismatchedHexes).as("逐格：Σ group == 农村序列 + 该格各城人口（一格都不许差）").isZero();
+      assertThat(
+              social.groups().values().stream()
+                  .filter(group -> !social.populations().containsKey(group.residence()))
+                  .count())
+          .as("批次必须全部落在有 populations 序列的格上（§十.7 的跨组件校验在真档上的现形）")
+          .isZero();
 
       // ★★ R2a：同一批里落下的 economy.Seed —— 经济侧逐格有状态、人口/土地/日耗守恒。
       //   奥斯特马克真档只有 plains(119) + low_hills(19)（配置 terrainHistogram）⇒ 逐格都有农村人口。
@@ -266,7 +302,7 @@ class WorldgenInitializeToolTest {
               .orElseThrow(() -> new AssertionError("没有叫 马尔克堡 的首都"));
       SocialCity largest =
           social.cities().values().stream()
-              .max(Comparator.comparingLong(SocialCity::population))
+              .max(Comparator.comparingLong(city -> social.urbanPopulationAt(city.id())))
               .orElseThrow();
       assertThat(capital.id()).as("首都必须是人口最大的那座").isEqualTo(largest.id());
       assertThat(capital.region()).contains(new RegionId(OSTERMARK));
@@ -302,8 +338,9 @@ class WorldgenInitializeToolTest {
       // ★★ 军队编制块：命令条数、region tag/颜色、单位/链/国家/军队。
       assertThat(body.get("commandCount").asInt())
           .as(
-              "2 + N（N = 城市数；2 = SetPopulation + economy.Seed）+ 军队块（UpdateRegion+CreateNation+根+7 兵种+链+Army）")
-          .isEqualTo(2 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
+              "3 + N（N = 城市数；3 = SetPopulation + SeedGroups + economy.Seed）"
+                  + "+ 军队块（UpdateRegion+CreateNation+根+7 兵种+链+Army）")
+          .isEqualTo(3 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
 
       JsonNode armyView = body.get("army");
       assertThat(armyView).as("dryRun=false 的摘要也带 army 段").isNotNull();
@@ -446,7 +483,11 @@ class WorldgenInitializeToolTest {
         SimosTimestamp at = state.meta().timestamp();
         SocialData social = socialSlice(state);
         long rural = social.populations().values().stream().mapToLong(s -> s.valueAt(at)).sum();
-        long urban = social.cities().values().stream().mapToLong(SocialCity::population).sum();
+        // ★ R1（T5）：城的城镇人口**不再是 SocialCity 的字段** ⇒ 从该城的批次求和（派生量）。
+        long urban =
+            social.cities().values().stream()
+                .mapToLong(city -> social.urbanPopulationAt(city.id()))
+                .sum();
         assertThat(body.get("hexCount").asInt()).as(id + " 真档 region 格数").isEqualTo(nation.hexes());
         assertThat(rural).as(id + " 农村合计").isEqualTo(nation.population() - nation.urban());
         assertThat(urban).as(id + " 城市合计").isEqualTo(nation.urban());
@@ -454,8 +495,8 @@ class WorldgenInitializeToolTest {
         assertThat(social.cities()).as(id + " 有城市").isNotEmpty();
         // 军队块条数 = UpdateRegion + CreateNation + 根单位 + 兵种数 + 指挥链 + CreateArmy = 兵种数 + 5。
         assertThat(body.get("commandCount").asInt())
-            .as(id + " 2 + 城市数（SetPopulation + economy.Seed）+ 军队块（兵种数 + 5）")
-            .isEqualTo(2 + body.get("cityCount").asInt() + nation.armCount() + 5);
+            .as(id + " 3 + 城市数（SetPopulation + SeedGroups + economy.Seed）+ 军队块（兵种数 + 5）")
+            .isEqualTo(3 + body.get("cityCount").asInt() + nation.armCount() + 5);
 
         // ★ region tag 变 nation:<nationId>，其余三个 meta 字段原样（机制 2 的判据）。
         Region before =
@@ -787,8 +828,8 @@ class WorldgenInitializeToolTest {
       SocialData social = socialSlice(state);
       assertThat(social.cities()).isNotEmpty();
       assertThat(body.get("commandCount").asInt())
-          .as("只 2 + 城市数（SetPopulation + economy.Seed；不产生任何军队块命令）")
-          .isEqualTo(2 + social.cities().size());
+          .as("只 3 + 城市数（SetPopulation + SeedGroups + economy.Seed；不产生任何军队块命令）")
+          .isEqualTo(3 + social.cities().size());
 
       assertThat(sdSlice(state).nations()).as("army:false ⇒ 不建国").isEmpty();
       assertThat(sdSlice(state).armies()).as("army:false ⇒ 不建军").isEmpty();
@@ -860,6 +901,8 @@ class WorldgenInitializeToolTest {
     }
     core.register(new SetPopulationHandler());
     core.register(new CreateCityHandler());
+    // ★ R1（T3/T4）：人口批次的创世命令（worldgen 的命令批里有它，与 Shell 的装配同源）。
+    core.register(new SeedGroupsHandler());
     // ★ R2a：经济播种（与 Shell 的装配同源）。
     core.register(new EconomySeedHandler());
     // ★ 军队编制块要用的五条 handler（与 Shell 的装配同源）。
@@ -931,7 +974,8 @@ class WorldgenInitializeToolTest {
         resolved.request().seed(),
         setup.army(),
         setup.displayName(),
-        at);
+        at,
+        state.meta().timestamp().tick()); // ★ R1：批次的锚点 = 世界当前日（与工具内同口径）
   }
 
   /** 首都格（与工具内 {@code requireCapitalHex} 同一判据：按配置首都名在城市表里找）。 */

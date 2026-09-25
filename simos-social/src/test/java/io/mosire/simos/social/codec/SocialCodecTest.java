@@ -3,6 +3,7 @@ package io.mosire.simos.social.codec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
@@ -10,7 +11,10 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -122,7 +126,8 @@ class SocialCodecTest {
             onePopulation(H00).populations(),
             Map.of(
                 new CityId("c1"), cityWithRegion(),
-                new CityId("c2"), cityWithoutRegion()));
+                new CityId("c2"), cityWithoutRegion()),
+            Map.of());
     SocialSnapshot snapshot = snapshotOf(data, SimosTimestamp.of(10, "弘光元年"));
 
     SocialSnapshot back = (SocialSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
@@ -164,7 +169,8 @@ class SocialCodecTest {
             onePopulation(H00).populations(),
             Map.of(
                 new CityId("c1"), cityWithRegion(),
-                new CityId("c2"), cityWithoutRegion()));
+                new CityId("c2"), cityWithoutRegion()),
+            Map.of());
 
     String snapshotOnce = CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10, "弘光元年")));
     String snapshotTwice = CODEC.encodeSnapshot(CODEC.decodeSnapshot(snapshotOnce));
@@ -263,6 +269,7 @@ class SocialCodecTest {
 
     assertThat(back.data().populations()).isEmpty();
     assertThat(back.data().cities()).as("旧档没有城市 ⇒ 空表，不抛").isEmpty();
+    assertThat(back.data().groups()).as("旧档没有人口批次 ⇒ 空表，不抛（R1 唯一保留的兼容行）").isEmpty();
   }
 
   /**
@@ -278,7 +285,73 @@ class SocialCodecTest {
     SocialChangeSet back = (SocialChangeSet) CODEC.decodeChangeSet(legacy);
 
     assertThat(back.cities()).as("旧档没提城市 ⇒ Unchanged，不抛").isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("两个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+    assertThat(back.groups())
+        .as("旧档没提人口批次 ⇒ Unchanged，不抛（R1 唯一保留的兼容行）")
+        .isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.isEmpty()).as("三个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+  }
+
+  // ── R1：第三个组件 groups（人口批次）的 JSON 往返 ──────────────────────────────────────
+
+  /**
+   * ★ **快照往返**：批次的键是自定义类型 {@code PeopleLotId}（住在 economy-api）⇒ 必须有 key deserializer， 否则读回来会退化成
+   * {@code Map<String,…>} 或当场抛。夹具同时钉住 age/anchorTick 两个新字段。
+   */
+  @Test
+  void snapshotRoundTripsWithPopulationGroups() {
+    SocialSnapshot snapshot = snapshotOf(dataWithGroups(), SimosTimestamp.of(10, "弘光元年"));
+
+    SocialSnapshot back = (SocialSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+    assertThat(back).isEqualTo(snapshot);
+  }
+
+  /** 变更集往返：批次的增 / 改 / 删三条各过线，且键与值都不会退化成 Map。 */
+  @Test
+  void changeSetRoundTripsWithGroupDeltas() {
+    SocialData empty = new SocialData(onePopulation(H00).populations(), Map.of(), Map.of());
+    SocialData full = dataWithGroups();
+    // ★ 夹具：**只改男批**、女批原样留着 —— 两侧都在 ⇒ 是纯 Upsert（少留一条就会变成 Patch，那是另一条变体，
+    //   由既有 populations 的四变体用例覆盖）。
+    Map<PeopleLotId, PopulationGroup> changedGroups = new LinkedHashMap<>();
+    changedGroups.put(
+        PopulationLots.rural(H00, Sex.MALE, "1"),
+        new PopulationGroup(
+            PopulationLots.rural(H00, Sex.MALE, "1"), H00, Sex.MALE, 999L, 30L, 7L));
+    changedGroups.put(
+        PopulationLots.rural(H00, Sex.FEMALE, "1"),
+        new PopulationGroup(
+            PopulationLots.rural(H00, Sex.FEMALE, "1"), H00, Sex.FEMALE, 4_000L, 5_500L, 0L));
+    SocialData changed = new SocialData(full.populations(), full.cities(), changedGroups);
+
+    SocialChangeSet upsert = SocialChangeSet.between(empty, full);
+    SocialChangeSet modify = SocialChangeSet.between(full, changed);
+    SocialChangeSet remove = SocialChangeSet.between(full, empty);
+
+    assertThat(upsert.groups()).isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(modify.groups()).isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(remove.groups()).isInstanceOf(FieldDelta.Remove.class);
+
+    assertThat((SocialChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(upsert)))
+        .isEqualTo(upsert);
+    assertThat((SocialChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(modify)))
+        .isEqualTo(modify);
+    assertThat((SocialChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(remove)))
+        .isEqualTo(remove);
+
+    FieldDelta.Upsert<PopulationGroup> back =
+        (FieldDelta.Upsert<PopulationGroup>)
+            ((SocialChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(upsert))).groups();
+    assertThat(back.entries().get("rural:0_0:MALE:1"))
+        .as("值必须还是 PopulationGroup（键必须是 PeopleLotId）")
+        .isInstanceOf(PopulationGroup.class);
+  }
+
+  /** 字节级往返：批次的 map 也必须保序（`Map.copyOf` 会让同一份数据产出不同字节）。 */
+  @Test
+  void encodingIsByteLevelStableForGroupBearingData() {
+    String once = CODEC.encodeSnapshot(snapshotOf(dataWithGroups(), SimosTimestamp.of(10)));
+    String twice = CODEC.encodeSnapshot(CODEC.decodeSnapshot(once));
+    assertThat(twice).as("带批次的快照字节级往返").isEqualTo(once);
   }
 
   /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
@@ -301,7 +374,7 @@ class SocialCodecTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(SimosTimestamp.of(0), 0.02)), List.of(), null),
             List.of()));
-    return new SocialData(populations, Map.of());
+    return new SocialData(populations, Map.of(), Map.of());
   }
 
   private static SocialSnapshot snapshotOf(SocialData data, SimosTimestamp timestamp) {
@@ -317,16 +390,25 @@ class SocialCodecTest {
     props.put("tag", "core");
     props.put("isCapital", true);
     props.put("neighbours", List.of("c2", "c3"));
-    return new SocialCity(
-        new CityId("c1"), "城甲", H00, Optional.of(new RegionId("r1")), 12000L, props);
+    return new SocialCity(new CityId("c1"), "城甲", H00, Optional.of(new RegionId("r1")), props);
   }
 
   /** 无归属的城：{@code region = Optional.empty()} 的往返方向。 */
   private static SocialCity cityWithoutRegion() {
-    return new SocialCity(new CityId("c2"), "无主城", H11, Optional.empty(), 500L, Map.of());
+    return new SocialCity(new CityId("c2"), "无主城", H11, Optional.empty(), Map.of());
   }
 
   private static SocialData dataWithCity(SocialCity city) {
-    return new SocialData(onePopulation(H00).populations(), Map.of(city.id(), city));
+    return new SocialData(onePopulation(H00).populations(), Map.of(city.id(), city), Map.of());
+  }
+
+  /** 带两条批次的快照数据（同一格、两个性别；键序 = 插入序，供字节级往返钉住）。 */
+  private static SocialData dataWithGroups() {
+    Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    PeopleLotId male = PopulationLots.rural(H00, Sex.MALE, "1");
+    PeopleLotId female = PopulationLots.rural(H00, Sex.FEMALE, "1");
+    groups.put(male, new PopulationGroup(male, H00, Sex.MALE, 6_000L, 5_000L, 0L));
+    groups.put(female, new PopulationGroup(female, H00, Sex.FEMALE, 4_000L, 5_500L, 0L));
+    return new SocialData(onePopulation(H00).populations(), Map.of(), groups);
   }
 }

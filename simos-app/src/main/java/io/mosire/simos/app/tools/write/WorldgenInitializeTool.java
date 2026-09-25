@@ -17,6 +17,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.EconomySeeder;
+import io.mosire.simos.app.world.PopulationSeeder;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -37,6 +38,7 @@ import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.gen.ValueRange;
 import io.mosire.simos.social.gen.WorldgenConfig;
+import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -123,6 +125,12 @@ public final class WorldgenInitializeTool implements AgentTool {
 
   /** 见 {@link #SET_POPULATION_TYPE}。 */
   public static final String CREATE_CITY_TYPE = "social.CreateCity";
+
+  /**
+   * ★ R1（T4）：人口批次的创世命令 —— **一条命令落该国的全部批次**（农村 + 城镇），载荷由 {@link PopulationSeeder} 从计划算出；它与 {@code
+   * economy.Seed} 读**同一份**批次列表（见 {@link #buildBatch}）。
+   */
+  public static final String SEED_GROUPS_TYPE = "social.SeedGroups";
 
   /** ★ 军队编制块的五条命令类型（{@code army} 为真时按 {@link #appendArmyCommands} 的顺序追加）。 */
   public static final String UPDATE_REGION_TYPE = "map.UpdateRegion";
@@ -362,6 +370,8 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
 
       String batchId = UUID.randomUUID().toString();
+      // ★ R1：批次的锚点 = 提交时的**世界当前日**（由调用方一次定死，见 buildBatch 的 @param）。
+      long anchorTick = state.meta().timestamp().tick();
       List<CommandEnvelope> batch =
           withArmy
               ? buildBatch(
@@ -376,8 +386,19 @@ public final class WorldgenInitializeTool implements AgentTool {
                   seed,
                   setup.army(),
                   setup.displayName(),
-                  armyAt)
-              : buildBatch(batchId, initiator, mapId, branch, head.get(), map, region, plan, seed);
+                  armyAt,
+                  anchorTick)
+              : buildBatch(
+                  batchId,
+                  initiator,
+                  mapId,
+                  branch,
+                  head.get(),
+                  map,
+                  region,
+                  plan,
+                  seed,
+                  anchorTick);
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
         summary.put("revision", committed.ref().revision().value());
@@ -458,15 +479,22 @@ public final class WorldgenInitializeTool implements AgentTool {
   // ── 命令批的构造（**包内可见**：用例要逐字节对拍 payload，见交付报告）────────────────────
 
   /**
-   * 把一次生成的计划翻成命令批：**1 条** {@code social.SetPopulation}（全部农村人口，键序按 {@link HexCoord} 排序）+ **每座城一条**
-   * {@code social.CreateCity} + **1 条** {@code economy.Seed}（R2a：该国全部格的初始经济状态）。命令顺序 = 先人口、后城市、最后经济
-   * （可读、可复现）。
+   * 把一次生成的计划翻成命令批：**1 条** {@code social.SetPopulation}（全部农村人口序列，键序按 {@link HexCoord} 排序）+ **每座城一条**
+   * {@code social.CreateCity} + **1 条** {@code social.SeedGroups}（R1/T4：人口批次）+ **1 条** {@code
+   * economy.Seed}（R2a：该国全部格的初始经济状态）。命令顺序 = 先人口序列、后城市、再批次、最后经济（可读、可复现）。
+   *
+   * <p>★★ **R1 的接缝（T4）**：批次列表在这里**一次算出**（{@link PopulationSeeder#groups}），**同一份**喂给 {@code
+   * social.SeedGroups}（{@link PopulationSeeder#payload}）与 {@code economy.Seed} （{@link
+   * EconomySeeder#payload(String, java.util.List, GameMap)}）—— "Σ group == 经济侧总人口"因此是构造性的，
+   * **不需要**跨切片协调器（那是后续轮次的事）。
    *
    * <p>★ 同批共享 {@code branch}/{@code expectedRevision}（{@link CoreSimos#submitBatch} 的硬约束）；{@code
    * correlationId} 用同一个 {@code batchId}（一条初始化链），{@code commandId} 各自新取。
    *
    * @param mapId 本世界的 map 称谓（进 {@code EconomyMeta}）
    * @param map 真地图（{@link EconomySeeder} 取逐格地形系数用）
+   * @param anchorTick 批次的锚点（世界日）—— 见 {@link #buildBatch(String, String, String, BranchId,
+   *     RevisionId, GameMap, Region, SettlementPlan, long, long)}
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -477,8 +505,9 @@ public final class WorldgenInitializeTool implements AgentTool {
       GameMap map,
       Region region,
       SettlementPlan plan,
-      long seed) {
-    List<CommandEnvelope> batch = new ArrayList<>(2 + plan.cities().size());
+      long seed,
+      long anchorTick) {
+    List<CommandEnvelope> batch = new ArrayList<>(3 + plan.cities().size());
     batch.add(
         envelope(
             batchId,
@@ -497,6 +526,15 @@ public final class WorldgenInitializeTool implements AgentTool {
               CREATE_CITY_TYPE,
               createCityPayload(region.id(), city, seed)));
     }
+    List<PopulationGroup> groups = PopulationSeeder.groups(plan, anchorTick);
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            SEED_GROUPS_TYPE,
+            PopulationSeeder.payload(groups)));
     batch.add(
         envelope(
             batchId,
@@ -504,7 +542,7 @@ public final class WorldgenInitializeTool implements AgentTool {
             branch,
             expectedRevision,
             SEED_ECONOMY_TYPE,
-            EconomySeeder.payload(mapId, plan, map)));
+            EconomySeeder.payload(mapId, groups, map)));
     return List.copyOf(batch);
   }
 
@@ -516,6 +554,7 @@ public final class WorldgenInitializeTool implements AgentTool {
    * @param army 编制（人数 + 装备配比）
    * @param displayName 配置里的显示名（根/军队/链的名字取它）
    * @param at 军队驻地（首都格）
+   * @param anchorTick 人口批次的锚点（世界日，= 提交时的世界当前日）：批次记的是"锚点时刻的年龄"， 故必须由调用方**一次定死**，不能留给两条命令各自取
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -529,11 +568,21 @@ public final class WorldgenInitializeTool implements AgentTool {
       long seed,
       ArmyPlan army,
       String displayName,
-      HexCoord at) {
+      HexCoord at,
+      long anchorTick) {
     List<CommandEnvelope> batch =
         new ArrayList<>(
             buildBatch(
-                batchId, initiator, mapId, branch, expectedRevision, map, region, plan, seed));
+                batchId,
+                initiator,
+                mapId,
+                branch,
+                expectedRevision,
+                map,
+                region,
+                plan,
+                seed,
+                anchorTick));
     appendArmyCommands(
         batch, batchId, initiator, branch, expectedRevision, region, army, displayName, at);
     return List.copyOf(batch);
@@ -799,7 +848,8 @@ public final class WorldgenInitializeTool implements AgentTool {
     payload.put("name", city.name());
     payload.put("at", ToolSupport.hexCoord(city.at()));
     payload.put("region", region.value());
-    payload.put("population", city.population());
+    // ★ R1（T5）：**不再发 population** —— 城的城镇人口是**派生量**（该城的批次之和），
+    //   载荷里的 population 由 CreateCityHandler 明令拒收（见其类注），故这里也不该再写它。
     payload.put("props", props);
     return ToolSupport.json(payload);
   }

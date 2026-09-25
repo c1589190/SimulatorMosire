@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** {@code social.CreateCity} 命令边界：建城、重复 id 拒绝、props 保序、目标路径。 */
+/** {@code social.CreateCity} 命令边界：建城、重复 id 拒绝、props 保序、目标路径、**拒收已退役的 population 字段**（R1）。 */
 class CreateCityHandlerTest {
 
   private static final CreateCityHandler HANDLER = new CreateCityHandler();
@@ -46,16 +46,13 @@ class CreateCityHandlerTest {
   @Test
   void createsACityWithDefaultsForRegionAndProps() {
     SocialData after =
-        apply(
-            SocialData.empty(),
-            "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"population\":12000}");
+        apply(SocialData.empty(), "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0}}");
 
     SocialCity city = after.cities().get(C1);
     assertThat(city).isNotNull();
     assertThat(city.name()).isEqualTo("城甲");
     assertThat(city.at()).isEqualTo(new HexCoord(0, 0));
     assertThat(city.region()).as("region 缺省 = 无归属").isEmpty();
-    assertThat(city.population()).isEqualTo(12000L);
     assertThat(city.props()).as("props 缺省 = 空表").isEmpty();
   }
 
@@ -65,7 +62,7 @@ class CreateCityHandlerTest {
         apply(
             SocialData.empty(),
             "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":1,\"r\":2},\"region\":\"r1\","
-                + "\"population\":900,\"props\":{\"tier\":3,\"catchmentHexes\":7,\"tag\":\"core\"}}");
+                + "\"props\":{\"tier\":3,\"catchmentHexes\":7,\"tag\":\"core\"}}");
 
     SocialCity city = after.cities().get(C1);
     assertThat(city.at()).isEqualTo(new HexCoord(1, 2));
@@ -78,33 +75,30 @@ class CreateCityHandlerTest {
   @Test
   void existingIdIsRejected() {
     SocialData base =
-        apply(
-            SocialData.empty(),
-            "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"population\":1}");
-    assertThat(
-            rejected(
-                    base,
-                    "{\"id\":\"c1\",\"name\":\"另一座\",\"at\":{\"q\":5,\"r\":5},\"population\":1}")
-                .reason())
+        apply(SocialData.empty(), "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0}}");
+    assertThat(rejected(base, "{\"id\":\"c1\",\"name\":\"另一座\",\"at\":{\"q\":5,\"r\":5}}").reason())
         .contains("城市已存在");
   }
 
+  /**
+   * ★★ **R1：population 字段被明令拒收**（不是静默忽略）——城的城镇人口是派生量（该城各批次之和）， 载荷里再带它就等于把"第三份人口账"请回来。判别力：把 {@code
+   * rejectRetiredPopulation} 那一行删掉， 本用例当场红（命令会变成 Applied，且 population 被**静默丢掉**）。
+   */
   @Test
-  void negativePopulationIsRejected() {
+  void retiredPopulationFieldIsRejectedNotSilentlyIgnored() {
     assertThat(
             rejected(
                     SocialData.empty(),
-                    "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"population\":-5}")
+                    "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"population\":12000}")
                 .reason())
-        .contains("population 必须 ≥ 0");
+        .contains("不再接受 population 字段")
+        .contains("派生量");
   }
 
   @Test
   void blankNameIsRejected() {
     assertThat(
-            rejected(
-                    SocialData.empty(),
-                    "{\"id\":\"c1\",\"name\":\"  \",\"at\":{\"q\":0,\"r\":0},\"population\":1}")
+            rejected(SocialData.empty(), "{\"id\":\"c1\",\"name\":\"  \",\"at\":{\"q\":0,\"r\":0}}")
                 .reason())
         .contains("name 不得为空白");
   }
@@ -114,8 +108,7 @@ class CreateCityHandlerTest {
     assertThat(
             rejected(
                     SocialData.empty(),
-                    "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"region\":\" \","
-                        + "\"population\":1}")
+                    "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"region\":\" \"}")
                 .reason())
         .contains("RegionId 不得为空白");
   }
@@ -128,17 +121,16 @@ class CreateCityHandlerTest {
     assertThat(rejected(SocialData.empty(), "{\"id\":\"c1\",\"name\":\"n\"}").reason())
         .contains("字段 at 必须是 {q,r} 对象");
     assertThat(
-            rejected(SocialData.empty(), "{\"id\":\"c1\",\"name\":\"n\",\"at\":{\"q\":0,\"r\":0}}")
+            rejected(SocialData.empty(), "{\"id\":\"c1\",\"name\":\"n\",\"at\":{\"q\":0}}")
                 .reason())
-        .contains("字段 population 必须是整数");
+        .contains("必须有整数 q 与 r");
   }
 
   /** ★ 目标资源 = 城市落点那一格，取 social 逐格形态 {@code <q>_<r>}。 */
   @Test
   void targetPathIsTheHexTheCityWillSitOn() {
     List<String> paths =
-        HANDLER.targetPaths(
-            "Map1", "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":1,\"r\":2},\"population\":1}");
+        HANDLER.targetPaths("Map1", "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":1,\"r\":2}}");
     assertThat(paths).containsExactly("1_2");
   }
 
@@ -152,9 +144,7 @@ class CreateCityHandlerTest {
             InMemoryInfoSystem.empty());
     assertThatThrownBy(
             () ->
-                HANDLER.handle(
-                    mapOnly,
-                    "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0},\"population\":1}"))
+                HANDLER.handle(mapOnly, "{\"id\":\"c1\",\"name\":\"城甲\",\"at\":{\"q\":0,\"r\":0}}"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("social");
   }

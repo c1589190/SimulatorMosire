@@ -19,7 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** {@code social.UpdateCity} 命令边界：改名/改人口/**合并** props、未知 id 拒绝、目标路径为空（fail-closed）。 */
+/**
+ * {@code social.UpdateCity} 命令边界：改名 / **合并** props、未知 id 拒绝、目标路径为空（fail-closed）、 **拒收已退役的
+ * population 字段**（R1：人口是派生量，改它要改批次）。
+ */
 class UpdateCityHandlerTest {
 
   private static final UpdateCityHandler HANDLER = new UpdateCityHandler();
@@ -27,8 +30,8 @@ class UpdateCityHandlerTest {
   private static final HexCoord H00 = new HexCoord(0, 0);
 
   private static SocialData base(Map<String, Object> props) {
-    SocialCity city = new SocialCity(C1, "原城", H00, Optional.empty(), 100L, props);
-    return new SocialData(Map.of(), Map.of(C1, city));
+    SocialCity city = new SocialCity(C1, "原城", H00, Optional.empty(), props);
+    return new SocialData(Map.of(), Map.of(C1, city), Map.of());
   }
 
   private static SocialData apply(SocialData base, String payloadJson) {
@@ -46,9 +49,9 @@ class UpdateCityHandlerTest {
     assertThat(HANDLER.type()).isEqualTo("social.UpdateCity");
   }
 
-  /** ★ 只改名 ⇒ props 与 population **一点都不动**。 */
+  /** ★ 只改名 ⇒ props **一点都不动**（连键序都不动）。 */
   @Test
-  void renamingLeavesPropsAndPopulationUntouched() {
+  void renamingLeavesPropsUntouched() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put("tier", 1);
     props.put("tag", "core");
@@ -56,19 +59,21 @@ class UpdateCityHandlerTest {
 
     SocialCity city = after.cities().get(C1);
     assertThat(city.name()).isEqualTo("新名");
-    assertThat(city.population()).isEqualTo(100L);
     assertThat(city.props()).containsExactlyEntriesOf(props);
     assertThat(city.at()).isEqualTo(H00);
     assertThat(city.region()).isEmpty();
   }
 
+  /**
+   * ★★ **R1：population 字段被明令拒收**（不是静默忽略）——城的城镇人口是派生量 = 该城各批次之和， 要改它就得改批次（{@code
+   * social.SeedGroups}）。判别力：删掉 {@code rejectRetiredPopulation} 那一行， 本用例当场红（命令会变成
+   * Applied，人口改动被**静默丢弃**）。
+   */
   @Test
-  void changingPopulationLeavesNameAndPropsUntouched() {
-    SocialData after = apply(base(Map.of("tier", 1)), "{\"id\":\"c1\",\"population\":777}");
-    SocialCity city = after.cities().get(C1);
-    assertThat(city.population()).isEqualTo(777L);
-    assertThat(city.name()).isEqualTo("原城");
-    assertThat(city.props()).containsOnlyKeys("tier");
+  void retiredPopulationFieldIsRejectedNotSilentlyIgnored() {
+    assertThat(rejected(base(Map.of("tier", 1)), "{\"id\":\"c1\",\"population\":777}").reason())
+        .contains("不再接受 population 字段")
+        .contains("派生量");
   }
 
   /** ★ props 是**合并**语义：已有键保留、同键覆盖、新键按载荷序追加。 */
@@ -83,7 +88,6 @@ class UpdateCityHandlerTest {
     assertThat(city.props().keySet()).as("已有键序在前、新键在后").containsExactly("a", "b", "c");
     assertThat(city.props()).containsEntry("a", 1).containsEntry("b", 9).containsEntry("c", 3);
     assertThat(city.name()).isEqualTo("原城");
-    assertThat(city.population()).isEqualTo(100L);
   }
 
   @Test
@@ -99,12 +103,6 @@ class UpdateCityHandlerTest {
         (HandlerOutcome.Applied)
             HANDLER.handle(SocialSpiFixture.state(base(Map.of())), "{\"id\":\"c1\"}");
     assertThat(((SocialChangeSet) applied.changeSet()).isEmpty()).isTrue();
-  }
-
-  @Test
-  void negativePopulationIsRejected() {
-    assertThat(rejected(base(Map.of()), "{\"id\":\"c1\",\"population\":-3}").reason())
-        .contains("population 必须 ≥ 0");
   }
 
   @Test

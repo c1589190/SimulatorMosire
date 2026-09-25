@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** {@link SocialCity}：构造期守卫、props 保序不可变、三个 with。 */
+/** {@link SocialCity}：构造期守卫、props 保序不可变、两个 with（R1 起**没有** population 字段与 with）。 */
 class SocialCityTest {
 
   private static final CityId C1 = new CityId("c1");
@@ -19,7 +19,7 @@ class SocialCityTest {
   private static final RegionId R1 = new RegionId("r1");
 
   private static SocialCity city(Map<String, Object> props) {
-    return new SocialCity(C1, "城甲", H00, Optional.of(R1), 12000L, props);
+    return new SocialCity(C1, "城甲", H00, Optional.of(R1), props);
   }
 
   @Test
@@ -29,13 +29,12 @@ class SocialCityTest {
     assertThat(city.name()).isEqualTo("城甲");
     assertThat(city.at()).isEqualTo(H00);
     assertThat(city.region()).contains(R1);
-    assertThat(city.population()).isEqualTo(12000L);
   }
 
   /** {@code region} 为空是合法状态（无归属的城），不是缺失。 */
   @Test
   void emptyRegionIsLegal() {
-    SocialCity city = new SocialCity(C1, "无主城", H00, Optional.empty(), 1L, Map.of());
+    SocialCity city = new SocialCity(C1, "无主城", H00, Optional.empty(), Map.of());
     assertThat(city.region()).isEmpty();
   }
 
@@ -69,20 +68,18 @@ class SocialCityTest {
   }
 
   @Test
-  void rejectsNullsAndBlanksAndNegativePopulation() {
-    assertThatThrownBy(() -> new SocialCity(null, "n", H00, Optional.empty(), 0L, Map.of()))
+  void rejectsNullsAndBlanks() {
+    assertThatThrownBy(() -> new SocialCity(null, "n", H00, Optional.empty(), Map.of()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new SocialCity(C1, null, H00, Optional.empty(), 0L, Map.of()))
+    assertThatThrownBy(() -> new SocialCity(C1, null, H00, Optional.empty(), Map.of()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new SocialCity(C1, "  ", H00, Optional.empty(), 0L, Map.of()))
+    assertThatThrownBy(() -> new SocialCity(C1, "  ", H00, Optional.empty(), Map.of()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new SocialCity(C1, "n", null, Optional.empty(), 0L, Map.of()))
+    assertThatThrownBy(() -> new SocialCity(C1, "n", null, Optional.empty(), Map.of()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new SocialCity(C1, "n", H00, null, 0L, Map.of()))
+    assertThatThrownBy(() -> new SocialCity(C1, "n", H00, null, Map.of()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new SocialCity(C1, "n", H00, Optional.empty(), -1L, Map.of()))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new SocialCity(C1, "n", H00, Optional.empty(), 0L, null))
+    assertThatThrownBy(() -> new SocialCity(C1, "n", H00, Optional.empty(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -98,20 +95,10 @@ class SocialCityTest {
     SocialCity base = city(Map.of("tier", 2));
     SocialCity renamed = base.withName("新名");
     assertThat(renamed.name()).isEqualTo("新名");
-    assertThat(renamed.population()).isEqualTo(base.population());
     assertThat(renamed.props()).isEqualTo(base.props());
     assertThat(renamed.id()).isEqualTo(base.id());
     assertThat(renamed.at()).isEqualTo(base.at());
     assertThat(renamed.region()).isEqualTo(base.region());
-  }
-
-  @Test
-  void withPopulationChangesOnlyPopulation() {
-    SocialCity base = city(Map.of("tier", 2));
-    SocialCity updated = base.withPopulation(7L);
-    assertThat(updated.population()).isEqualTo(7L);
-    assertThat(updated.name()).isEqualTo(base.name());
-    assertThat(updated.props()).isEqualTo(base.props());
   }
 
   @Test
@@ -120,6 +107,6 @@ class SocialCityTest {
     SocialCity updated = base.withProps(Map.of("tier", 5, "extra", "x"));
     assertThat(updated.props()).containsOnlyKeys("tier", "extra");
     assertThat(updated.name()).isEqualTo(base.name());
-    assertThat(updated.population()).isEqualTo(base.population());
+    assertThat(updated.id()).isEqualTo(base.id());
   }
 }

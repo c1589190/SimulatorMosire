@@ -15,14 +15,18 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code social.UpdateCity} 命令的处理器：改城市名 / 城市人口 / props。
+ * {@code social.UpdateCity} 命令的处理器：改城市名 / props。
  *
  * <pre>{@code
- * {"id":"c1","name":"新名"?,"population":13000?,"props":{…}?}
+ * {"id":"c1","name":"新名"?,"props":{…}?}
  * }</pre>
  *
- * <p>★ **三个字段都缺省 = 不动**；id 不存在 ⇒ {@code Rejected}。{@code props} 是**合并**语义（在已有 props
- * 上叠加、同键覆盖），**不是**整份替换 ——这样"只加一个审计量"不必先把整份 props 抄回来。空名、负人口由 {@link SocialCity} 的构造期守卫拒。
+ * <p>★ **两个字段都缺省 = 不动**；id 不存在 ⇒ {@code Rejected}。{@code props} 是**合并**语义（在已有 props
+ * 上叠加、同键覆盖），**不是**整份替换 ——这样"只加一个审计量"不必先把整份 props 抄回来。空名由 {@link SocialCity} 的构造期守卫拒。
+ *
+ * <p>★★ **R1（T5）：人口不在本命令的载荷里**，旧载荷的 {@code population} 字段**明令拒收**（不是静默忽略）—— 城的城镇人口是**派生量**（该城各
+ * {@link io.mosire.simos.social.population.PopulationGroup} 之和），要改它就得改**批次** （{@code
+ * social.SeedGroups} 的覆盖语义），那才是"人口的真值源"。
  *
  * <p>★★ **目标资源**（{@link CommandTargets}）：返回**空列表**。本命令的载荷**不含坐标**（改名/改人口/props 都不需要它），而 social
  * 资源语法里 **没有 city 专属路径**（只有 {@code <q>_<r>} 的逐格路径）⇒ 从载荷判不出"要动哪一格"。按 {@link CommandTargets} 的口径，空列表
@@ -56,14 +60,11 @@ public final class UpdateCityHandler implements CommandHandler, CommandTargets {
         return new HandlerOutcome.Rejected("城市不存在: " + id);
       }
       String name = SocialPayloads.optionalText(payload, "name");
-      Long population = SocialPayloads.optionalLong(payload, "population");
+      SocialPayloads.rejectRetiredPopulation(payload, "social.UpdateCity");
       Map<String, Object> props = SocialPayloads.optionalProps(payload, "props");
       SocialCity updated = existing;
       if (name != null) {
         updated = updated.withName(name); // 空白名由 SocialCity 构造期拒
-      }
-      if (population != null) {
-        updated = updated.withPopulation(population); // 负值由 SocialCity 构造期拒
       }
       if (props != null) {
         Map<String, Object> merged = new LinkedHashMap<>(updated.props());

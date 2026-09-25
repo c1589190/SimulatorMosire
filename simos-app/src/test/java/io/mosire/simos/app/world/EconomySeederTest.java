@@ -18,8 +18,12 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link EconomySeeder} 的纯函数用例（R2a）：**3 个格**（平原纯农村 / 低丘农村+城市 / 平原只有城市）——逐值断言 人口守恒、土地守恒、日耗 = 人口 × 83
- * 毫粮。
+ * {@link EconomySeeder} 的纯函数用例（R2a；R1 起人口来源改为 {@link PopulationSeeder} 造的批次列表）：**3 个格**（平原纯农村 /
+ * 低丘农村+城市 / 平原只有城市）——逐值断言 人口守恒、土地守恒、日耗 = 人口 × 83 毫粮。
+ *
+ * <p>★ R1（T4）：播种器的输入是 {@code List<PopulationGroup>}，故夹具先经 {@code PopulationSeeder.groups(plan, 0)}
+ * 把计划翻成 批次 —— **这正是生产路径的走法**（同一个方法在 {@code WorldgenInitializeTool} 里同时喂给 social.SeedGroups 与
+ * economy.Seed）。
  *
  * <p>★ 断言值都是**手算的字面量**，不是"再调一遍生成器对拍"（本仓用例纪律）。地形由 {@code hex -> key} 替身给出，不必造 {@link
  * io.mosire.simos.map.GameMap}。
@@ -55,7 +59,8 @@ class EconomySeederTest {
   }
 
   private static JsonNode payload() throws Exception {
-    return JSON.readTree(EconomySeeder.payload("Map1", plan(), TERRAIN::get));
+    return JSON.readTree(
+        EconomySeeder.payload("Map1", PopulationSeeder.groups(plan(), 0L), TERRAIN::get));
   }
 
   private static JsonNode entry(JsonNode payload, int q, int r) {
@@ -272,8 +277,9 @@ class EconomySeederTest {
 
   @Test
   void payloadIsByteIdenticalAcrossCallsAndIsOrderedByCoordinates() throws Exception {
-    String first = EconomySeeder.payload("Map1", plan(), TERRAIN::get);
-    String second = EconomySeeder.payload("Map1", plan(), TERRAIN::get);
+    String first = EconomySeeder.payload("Map1", PopulationSeeder.groups(plan(), 0L), TERRAIN::get);
+    String second =
+        EconomySeeder.payload("Map1", PopulationSeeder.groups(plan(), 0L), TERRAIN::get);
 
     assertThat(first).as("同输入 ⇒ 逐字节相同（抓 Map 迭代序混进载荷）").isEqualTo(second);
     JsonNode payload = JSON.readTree(first);

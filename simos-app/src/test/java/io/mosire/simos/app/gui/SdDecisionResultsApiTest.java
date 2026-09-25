@@ -436,7 +436,9 @@ class SdDecisionResultsApiTest {
                 "unit", new UnitSnapshot(ref("main", 1), T7, unitState()),
                 "social",
                     new SocialSnapshot(
-                        ref("main", 1), T7, new SocialData(new LinkedHashMap<>(), Map.of())),
+                        ref("main", 1),
+                        T7,
+                        new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
                 "sd", new SdSnapshot(ref("main", 1), T7, sdState())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)

@@ -20,6 +20,14 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
+    <!-- ★ R1 / 设计稿 §八.1：人口批次的**身份**复用 economy-api 已有的 `PeopleLotId`（它注释自称"该批次的稳定身份"，
+         本阶段从"spec v2 列出的死代码"复活）。★ 这是文档**明文允许**的方向，不是破例：
+         `economy-api/package-info.java:9-11`「五个经济切片…**与 `simos-social` 可依赖本模块与 util/map**」，
+         根 `pom.xml:25-26`、`economy-api/pom.xml:16-18` 同款；故 social 的 enforcer **不拦**它
+         （反方向的 `simos-economy` 已在下面补禁）。版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>
@@ -57,8 +65,15 @@
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★ R1 / spec §八.3：本模块的 ban 列表停在 M0（2026-09-16，当时全仓只有 5 个模块），
+                         此后新增的 `simos-economy` **从未回填** ⇒ 当时 `social → economy` 不会被拦
+                         （那正是"边界可信"里的假话）。此处补禁。
+                         ★ 注意：`simos-economy-api` **不在此列、也不许加进来**——文档三处明文允许 social 依赖它
+                         （`economy-api/package-info.java:9-11`、根 `pom.xml`、`economy-api/pom.xml`），
+                         R1 的 `PopulationGroup.id` 正是复用它的 `PeopleLotId`（spec §八.1）。 -->
+                    <exclude>io.mosire:simos-economy</exclude>
                   </excludes>
-                  <message>SocialSimos 与 UnitSimos 互不依赖（spec §3.1 / G8）</message>
+                  <message>SocialSimos 与 UnitSimos 互不依赖（spec §3.1 / G8）；也不得依赖 simos-economy（R1 / spec §八.3；economy-api 例外，文档明文允许）</message>
                 </bannedDependencies>
               </rules>
             </configuration>

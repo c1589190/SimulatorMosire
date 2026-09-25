@@ -2,12 +2,16 @@ package io.mosire.simos.social.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
@@ -56,8 +60,8 @@ class SocialRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyTwoComponents() {
-    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(2);
+  void changeSetHasExactlyThreeComponents() {
+    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(3);
     assertThat(componentNames(SocialChangeSet.class))
         .as("变更集的每个组件都必须在 SocialData 里有同名的 record 组件")
         .isSubsetOf(componentNames(SocialData.class));
@@ -76,10 +80,17 @@ class SocialRoundTripTest {
     assertThat(snapshot.namespace()).isEqualTo("social");
   }
 
+  /**
+   * ★ R1 起 {@code groups} **自带支撑组件**（{@code populations}）：设计稿 §十.7 的跨组件校验要求"批次必须落在有 {@code
+   * populations} 序列的格上"，而本用例的起点是 {@link SocialData#empty()} —— 只加一个批次会当场被构造期拒。
+   * 多带一个支撑组件**不破坏本用例的任何断言**（三条断言都只盯 {@code name} 那一个组件）。 同款先例：plan2 Task 3 对 "debts" 变体的处理（单改 debts
+   * 必然非法 ⇒ 变异体自带支撑组件）。
+   */
   private static SocialData mutate(SocialData base, String name) {
     return switch (name) {
       case "populations" -> base.withPopulations(onePopulation());
       case "cities" -> base.withCities(oneCity());
+      case "groups" -> base.withPopulations(onePopulation()).withGroups(oneGroup());
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -88,6 +99,7 @@ class SocialRoundTripTest {
     return switch (name) {
       case "populations" -> cs.populations().changed();
       case "cities" -> cs.cities().changed();
+      case "groups" -> cs.groups().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -112,6 +124,14 @@ class SocialRoundTripTest {
 
   private static Map<CityId, SocialCity> oneCity() {
     CityId id = new CityId("c1");
-    return Map.of(id, new SocialCity(id, "城甲", H00, Optional.empty(), 5000L, Map.of()));
+    return Map.of(id, new SocialCity(id, "城甲", H00, Optional.empty(), Map.of()));
+  }
+
+  /** 一条 {@link PopulationGroup}：落在 {@link #H00}（与 {@link #onePopulation()} 同一格，跨组件校验才过）。 */
+  private static Map<PeopleLotId, PopulationGroup> oneGroup() {
+    return Map.of(
+        PopulationLots.rural(H00, Sex.MALE, "1"),
+        new PopulationGroup(
+            PopulationLots.rural(H00, Sex.MALE, "1"), H00, Sex.MALE, 300L, 250L, 0L));
   }
 }

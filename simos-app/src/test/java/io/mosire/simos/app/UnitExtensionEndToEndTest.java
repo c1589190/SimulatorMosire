@@ -413,7 +413,7 @@ class UnitExtensionEndToEndTest {
                     U4, genesisUnit(U4, "第四连", H13, Optional.of(U3)),
                     // ★ 编制 v2：u-5 是 u-1 那一支的成员，带自己的位置（与 u-1 同格）——"整支一起搬"的载体。
                     U5, memberUnit(U5, "第五连（随行）", U1, H11))));
-    SocialData social = new SocialData(new LinkedHashMap<>(), Map.of());
+    SocialData social = new SocialData(new LinkedHashMap<>(), Map.of(), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),

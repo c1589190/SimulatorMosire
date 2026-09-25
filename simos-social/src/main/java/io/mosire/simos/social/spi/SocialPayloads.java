@@ -3,8 +3,13 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -118,6 +123,82 @@ final class SocialPayloads {
       throw new IllegalArgumentException("entries 不得为空");
     }
     return entries;
+  }
+
+  /**
+   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?}…]} 数组 ⇒ **保序**的批次表（R1 的 {@code
+   * social.SeedGroups}）。**重复 id：后出现者覆盖先出现者，不报错**（先出现的那个位置保持）；空数组 ⇒ 抛。
+   *
+   * <p>★ **形状与类型在本层判**（{@code sex} 必须是 {@code MALE}/{@code FEMALE}、四个数值字段必须是整数且可转 long）；{@code
+   * count}/{@code ageDays} **为负由 {@link PopulationGroup} 的构造期守卫拒**（那是域规则，本层不重复实现）；{@code id} 的空白由
+   * {@link PeopleLotId#parse} 拒；批次落在没有序列的格上由 {@code SocialData} 的跨组件校验拒 —— 四者都在 handler 边界折成 {@code
+   * Rejected}。
+   *
+   * @param defaultAnchorTick 载荷没给 {@code anchorTick} 时的缺省（= 世界当前世界日）
+   */
+  static Map<PeopleLotId, PopulationGroup> requireGroupEntries(
+      JsonNode payload, long defaultAnchorTick) {
+    JsonNode value = payload.get("entries");
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException(
+          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?}…] 数组: " + payload);
+    }
+    Map<PeopleLotId, PopulationGroup> entries = new LinkedHashMap<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException(
+            "字段 entries 的元素必须是 {id,q,r,sex,count,ageDays,…} 对象: " + element);
+      }
+      PeopleLotId id = PeopleLotId.parse(requireText(element, "id"));
+      HexCoord residence = hexFrom(element, "entries");
+      Sex sex = sexFrom(element);
+      long count = requireLong(element, "count");
+      long ageDays = requireLong(element, "ageDays");
+      Long anchorTick = optionalLong(element, "anchorTick");
+      // ★ 域不变量（count/ageDays/anchorTick 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
+      entries.put(
+          id,
+          new PopulationGroup(
+              id,
+              residence,
+              sex,
+              count,
+              ageDays,
+              anchorTick == null ? defaultAnchorTick : anchorTick));
+    }
+    if (entries.isEmpty()) {
+      throw new IllegalArgumentException("entries 不得为空");
+    }
+    return entries;
+  }
+
+  /**
+   * ★★ **拒收已退役的 {@code population} 字段**（R1 / T5）：城市的城镇人口不再是 {@link SocialCity} 的字段、也不再由
+   * 建城/改城命令写入（它是**派生量** = 该城名下各批次之和）。
+   *
+   * <p>★ 为什么**明令拒**而不是静默忽略：静默忽略会让"我改了人口"变成一句**看起来成功**的假话——本仓最忌的一族。 拒因里直接指路"人口的真值源是批次"。
+   *
+   * @param type 命令类型（进拒因，便于调用方定位）
+   */
+  static void rejectRetiredPopulation(JsonNode payload, String type) {
+    JsonNode value = payload.get("population");
+    if (value != null && !value.isNull()) {
+      throw new IllegalArgumentException(
+          type
+              + " 不再接受 population 字段（R1：城的城镇人口是派生量 = 该城名下各批次之和；"
+              + "改人口请改批次：social.SeedGroups 的 id = urban:<cityId>:<SEX>:<细分>）");
+    }
+  }
+
+  /** 必填的 {@code sex} 字段：只认词表里那两个名字（大小写一致，不做宽容匹配——见 {@link Sex} 的线格式约定）。 */
+  private static Sex sexFrom(JsonNode element) {
+    String text = requireText(element, "sex");
+    try {
+      return Sex.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "字段 sex 必须是 " + Arrays.toString(Sex.values()) + ": " + text, e);
+    }
   }
 
   /**

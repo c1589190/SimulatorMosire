@@ -148,7 +148,7 @@ public final class CorridorWorld {
   private static SocialData socialData() {
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
     populations.put(H11, populationSeries());
-    return new SocialData(populations, Map.of());
+    return new SocialData(populations, Map.of(), Map.of());
   }
 
   private static PopulationSeries populationSeries() {

@@ -289,7 +289,8 @@ class TimelineTest {
             Map.of(
                 "map", MapChangeSet.between(GameMap.empty(), oneHexMap()),
                 "social",
-                    SocialChangeSet.between(new SocialData(Map.of(), Map.of()), onePopulation()),
+                    SocialChangeSet.between(
+                        new SocialData(Map.of(), Map.of(), Map.of()), onePopulation()),
                 "unit", UnitChangeSet.between(UnitState.empty(), oneUnitState())));
 
     String json = Timeline.changeSetJson(real);
@@ -353,6 +354,7 @@ class TimelineTest {
                 new Segment<>(t0, 10000L),
                 new SegmentedSeries<>(List.of(new Segment<>(t0, 0.02)), List.of(), null),
                 List.of())),
+        Map.of(),
         Map.of());
   }
 

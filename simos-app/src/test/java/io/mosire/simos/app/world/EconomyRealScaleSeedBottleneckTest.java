@@ -69,7 +69,8 @@ class EconomyRealScaleSeedBottleneckTest {
   private static EconomyData realScaleHex() {
     SettlementPlan plan =
         new SettlementPlan(Map.of(HEX, POPULATION_PER_HEX), List.of(), Map.of(), 250L, 0L);
-    String payload = EconomySeeder.payload(MAP_ID, plan, at -> "plains");
+    String payload =
+        EconomySeeder.payload(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains");
     SimulationState emptyState =
         new SimulationState(
             stateMeta(), snapshots(EconomyData.empty()), InMemoryInfoSystem.empty());

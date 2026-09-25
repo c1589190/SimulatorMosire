@@ -22,12 +22,18 @@ import java.util.Optional;
  * {@code social.CreateCity} 命令的处理器：建一个城市节点。
  *
  * <pre>{@code
- * {"id":"c1","name":"城甲","at":{"q":0,"r":0},"region":"r1"?,"population":12000,"props":{…}?}
+ * {"id":"c1","name":"城甲","at":{"q":0,"r":0},"region":"r1"?,"props":{…}?}
  * }</pre>
  *
  * <p>★ {@code region} 缺省 {@code Optional.empty()}（无归属）；{@code props} 缺省空表。id 已存在 ⇒ {@code
- * Rejected}（与 {@code map.CreateRegion}/{@code sd.CreateNation} 同口径）。空 id/name、空白 region、负
- * population 由 {@link CityId#parse} / {@link SocialCity} 的构造期守卫拒（折算成拒因）。
+ * Rejected}（与 {@code map.CreateRegion}/{@code sd.CreateNation} 同口径）。空 id/name、空白 region 由 {@link
+ * CityId#parse} / {@link SocialCity} 的构造期守卫拒（折算成拒因）。
+ *
+ * <p>★★ **R1（T5）：人口不在本命令的载荷里**（旧载荷的 {@code population} 字段**明令拒收**，不是静默忽略）。城的城镇人口是**派生量** = 该城名下各
+ * {@link io.mosire.simos.social.population.PopulationGroup} 之和（{@link
+ * io.mosire.simos.social.SocialData#urbanPopulationAt}），批次由 {@code social.SeedGroups} 落 （命名见 {@link
+ * io.mosire.simos.social.population.PopulationLots}：{@code urban:<cityId>:<SEX>:<细分>}）。
+ * 若留着那个字段又不读它，就会得到本仓最忌的那种字段："看起来在记、其实不起作用"。
  *
  * <p>★ **目标资源**（{@link CommandTargets}）：这座城**将要落在的那一格**，路径取 social 命名空间的既有形态 {@link
  * ResourcePaths#social(int, int)}（{@code <q>_<r>}）——social 资源语法里**没有** city 专属路径，故按城市所在的格判（与读侧把
@@ -60,13 +66,12 @@ public final class CreateCityHandler implements CommandHandler, CommandTargets {
       Optional<RegionId> region =
           Optional.ofNullable(SocialPayloads.optionalText(payload, "region"))
               .map(RegionId::parse); // 空白 region 由 RegionId.parse 拒
-      long population = SocialPayloads.requireLong(payload, "population");
+      SocialPayloads.rejectRetiredPopulation(payload, "social.CreateCity");
       Map<String, Object> props = SocialPayloads.optionalProps(payload, "props");
       if (base.cities().containsKey(id)) {
         return new HandlerOutcome.Rejected("城市已存在: " + id);
       }
-      SocialCity city =
-          new SocialCity(id, name, at, region, population, props == null ? Map.of() : props);
+      SocialCity city = new SocialCity(id, name, at, region, props == null ? Map.of() : props);
       Map<CityId, SocialCity> next = new LinkedHashMap<>(base.cities());
       next.put(id, city);
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, base.withCities(next)));

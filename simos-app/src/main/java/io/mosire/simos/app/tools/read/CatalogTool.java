@@ -80,6 +80,11 @@ public final class CatalogTool implements AgentTool {
               "social.CreateCity", "id, name, at{q,r}, region?（缺省=无归属）, population（≥ 0）, props?"),
           Map.entry("social.UpdateCity", "id, name?, population?, props?（props 为合并语义）"),
           Map.entry(
+              "social.SeedGroups",
+              "entries[{id, q, r, sex(MALE|FEMALE), count, ageDays, anchorTick?}...]"
+                  + "（★ 人口批次的创世入口，R1；同 id 覆盖，anchorTick 缺省=世界当前 tick；"
+                  + "批次必须落在**已有农村人口序列**的格上）"),
+          Map.entry(
               "economy.Seed",
               "mapId, rulesVersion, entries[{q,r,industries[{id,name,regime,cycleDays,progressDays?,"
                   + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,cycleInputPerUnit?(键=生产资料种类，v1 只读 LAND),"

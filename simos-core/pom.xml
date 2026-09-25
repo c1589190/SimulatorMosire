@@ -96,13 +96,28 @@
                     <!-- ★ SDSimos（A1 / R2）：Core 编译期看不见 sd。
                          v1 不为 sd 开 test-scope 的 include（sd 的端到端测试在 app 层，spec §一.3 第 3 条）。 -->
                     <exclude>io.mosire:simos-sd</exclude>
+                    <!-- ★ R1 / spec §八.3：Core 的 ban 列表同样停在 M0，此后新增的三个经济面模块
+                         （economy / economy-api / ledger）**从未回填** ⇒ 当时 `core → economy*` 不会被拦。
+                         main scope 一律禁（与 sd 同款）；`economy-api` 的 test-scope 口子见下面 includes 那段。 -->
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-economy-api</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
                   </excludes>
                   <includes>
                     <include>io.mosire:simos-map:*:*:test</include>
                     <include>io.mosire:simos-social:*:*:test</include>
                     <include>io.mosire:simos-unit:*:*:test</include>
+                    <!-- ★★ R1 **实测暴露**的一条（加完上面三条 ban 之后立刻红，不是推理）：
+                         `core(test) → social → economy-api`。R1 的 T2 让 `simos-social` 依赖 `simos-economy-api`
+                         （复用 `PeopleLotId` 作人口批次的身份**是文档明文允许的**：`economy-api/package-info.java:9-11`），
+                         而 Core 的 test classpath **本来就**依赖 social（M4 判据要端到端跑），
+                         于是 economy-api 由**传递依赖**进到 test classpath —— 这一步不可避免，除非 Core 的测试放弃 social。
+                         ⇒ 按本文件既有的「宽 exclude + 窄 include」写法开**同一口径的 test-scope 口子**（与 map/social/unit 三条同款）：
+                         **main scope 仍一条都不许有**（那才是 ADR-1 §六要守的东西；test classpath 不是产物）。
+                         ★ 这条不是"偷偷放行"：它由 enforcer 自己逼出来，且只放开 test。 -->
+                    <include>io.mosire:simos-economy-api:*:*:test</include>
                   </includes>
-                  <message>CoreSimos 的 main scope 不得依赖领域模块（ADR-1 §六）：铁律 4「Core 不重新实现领域逻辑」由结构保证。领域模块只允许在 test scope 出现</message>
+                  <message>CoreSimos 的 main scope 不得依赖领域模块（ADR-1 §六）：铁律 4「Core 不重新实现领域逻辑」由结构保证。领域模块只允许在 test scope 出现；三个经济面模块（economy/economy-api/ledger）任何 scope 都不允许（R1 / spec §八.3）</message>
                 </bannedDependencies>
               </rules>
             </configuration>

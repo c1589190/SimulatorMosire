@@ -27,6 +27,15 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-core</artifactId>
     </dependency>
+    <!-- ★ R1 / spec §八.3：本模块**用了** util（56 个 main 文件）与 economy-api（2 个）却只靠**传递依赖**
+         拿到它们——本仓早已把同款情形定性为缺陷并修过（`simos-core/pom.xml`："**依赖传递不是契约**"）。
+         此处补上显式声明。版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
     <!-- 领域类型、codec、handler、participant（装配用） -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>

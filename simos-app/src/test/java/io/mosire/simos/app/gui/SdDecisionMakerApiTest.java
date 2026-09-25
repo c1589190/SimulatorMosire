@@ -597,7 +597,9 @@ class SdDecisionMakerApiTest {
                 "unit", new UnitSnapshot(ref("main", 1), T7, nationUnitState()),
                 "social",
                     new SocialSnapshot(
-                        ref("main", 1), T7, new SocialData(new LinkedHashMap<>(), Map.of())),
+                        ref("main", 1),
+                        T7,
+                        new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
                 "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),

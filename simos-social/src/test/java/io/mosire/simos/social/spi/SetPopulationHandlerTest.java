@@ -40,7 +40,7 @@ class SetPopulationHandlerTest {
   /** ★ 只改点名的格：未点名的格**原样**（连那一份序列对象都不动）。 */
   @Test
   void setsOnlyNamedHexesAndLeavesOthersUntouched() {
-    SocialData base = new SocialData(Map.of(H00, SocialSpiFixture.still(100L)), Map.of());
+    SocialData base = new SocialData(Map.of(H00, SocialSpiFixture.still(100L)), Map.of(), Map.of());
 
     HandlerOutcome.Applied applied =
         (HandlerOutcome.Applied)

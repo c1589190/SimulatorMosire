@@ -100,9 +100,9 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 49 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * catalog 预期的 50 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
-   * 起 46 → 49）。
+   * 起 46 → 49，economy 起 49 → 50）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -155,6 +155,8 @@ class McpCoverageTest {
           "social.SetPopulation",
           "social.CreateCity",
           "social.UpdateCity",
+          // ★ R1（T3）：人口批次的创世入口。
+          "social.SeedGroups",
           // ★ R2a：经济播种（一次种一格；放最后 ⇒ 不移动前面各命令的 revision 号）。
           "economy.Seed");
 
@@ -290,12 +292,18 @@ class McpCoverageTest {
     //   三条都必须产生**非空**变更集（SetPopulation 设一格人口、CreateCity 建城、UpdateCity 改它）。
     MINIMAL_PAYLOADS.put(
         "social.SetPopulation", "{\"entries\":[{\"q\":1,\"r\":1,\"population\":1000}]}");
+    // ★ R1（T5）：CreateCity 不再接受 population（城的城镇人口是派生量）⇒ 最小载荷里没有它。
     MINIMAL_PAYLOADS.put(
-        "social.CreateCity",
-        "{\"id\":\"city-cov\",\"name\":\"覆盖城\",\"at\":{\"q\":1,\"r\":1},\"population\":500}");
+        "social.CreateCity", "{\"id\":\"city-cov\",\"name\":\"覆盖城\",\"at\":{\"q\":1,\"r\":1}}");
     MINIMAL_PAYLOADS.put(
-        "social.UpdateCity",
-        "{\"id\":\"city-cov\",\"name\":\"覆盖城改\",\"population\":600,\"props\":{\"tier\":1}}");
+        "social.UpdateCity", "{\"id\":\"city-cov\",\"name\":\"覆盖城改\",\"props\":{\"tier\":1}}");
+    // ★ R1（T3）：人口批次。必须排在 social.SetPopulation 之后（批次只能落在**已有农村序列**的格上，
+    //   设计稿 §十.7 的跨组件校验）；一格两条（两个性别）⇒ 变更集非空。
+    MINIMAL_PAYLOADS.put(
+        "social.SeedGroups",
+        "{\"entries\":[{\"id\":\"rural:1_1:MALE\",\"q\":1,\"r\":1,\"sex\":\"MALE\",\"count\":600,"
+            + "\"ageDays\":13505},{\"id\":\"rural:1_1:FEMALE\",\"q\":1,\"r\":1,"
+            + "\"sex\":\"FEMALE\",\"count\":400,\"ageDays\":13505}]}");
     // ★ R2a（2026-09-25）：经济播种。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   一格一产业两槽位两行（必须产生**非空**变更集）。
     MINIMAL_PAYLOADS.put(
@@ -391,8 +399,8 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("50 条命令各推一格")
-        .isEqualTo(51L);
+        .as("51 条命令各推一格（R1 起 +1 = social.SeedGroups）")
+        .isEqualTo(52L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -568,7 +576,7 @@ class McpCoverageTest {
                     U4, genesisUnit(U4, "第四连", H11),
                     U5, genesisUnit(U5, "第五连", H12))));
     SocialData social =
-        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of());
+        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
