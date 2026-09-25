@@ -19,6 +19,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -28,6 +29,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -46,7 +48,10 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -74,6 +79,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,6 +112,12 @@ class GuiApiTest {
 
   private static final UnitId U1 = new UnitId("u-1");
   private static final int CHECKPOINT_INTERVAL = 100;
+
+  /** 一年的天数（批次的年龄用天表示；与 {@code AgeBracket} 的边同口径）。 */
+  private static final long YEAR_DAYS = 365L;
+
+  /** H11 上的那座城（只用来拼批次 id 的 {@code urban:<cityId>:} 前缀；本夹具的 social.cities 为空）。 */
+  private static final CityId CITY_1_1 = new CityId("c-1_1");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -523,6 +535,85 @@ class GuiApiTest {
     assertThat(body.get("at").get("tick").asLong()).isEqualTo(T7.tick());
   }
 
+  /**
+   * ★★ **R1.5 的核心判据：读口把面打开** —— {@code /api/social/population} 不再"只读农村序列"，同一响应里给出批次的现算读数 （总数 / 城乡 /
+   * 年龄档 / 性别）。R1 之后这些数据在状态里，而**报表里看不见**，本条就是那个"看得见"的验收。
+   *
+   * <p>★ 期望值全部由 {@link #mixedGroups()} 的算式推出（1,350 = 1,000 城镇 + 350 农村；男 450 / 女 900； 0-14 400 /
+   * 15-59 900 / 60+ 50），**逐值**断言，不是"非空""大于 0"这类关系断言。
+   *
+   * <p>★★ **判别力（夹具刻意混合，R1 的实现者在这里栽过）**：
+   *
+   * <ul>
+   *   <li>"只看农村"（R1.5 之前的实现）⇒ {@code total}/{@code urban}/{@code ageBrackets}/{@code sex} 一起错；
+   *   <li>"只看某一格"（装配时漏筛落点）⇒ 本格数字多算（H11 之外没有批次，故这条由 social 侧的用例承担）；
+   *   <li>"档位写死在批次上（读 {@code ageAtAnchorDays} 而不走 {@code ageDaysAt(tick)}）"⇒ 本夹具锚点 T0 / head T7 相差
+   *       7 天且离边界很远，**本条不会红**——那条判别力由 {@code SocialDataTest} 的跨边界用例承担（如实记，不在这里声称）；
+   *   <li>"把 {@code urban}/{@code rural} 的键接反" ⇒ 1,350 / 1,000 / 350 三条一起红。
+   * </ul>
+   *
+   * <p>★ **键序**也钉住（GUI 与 MCP 的响应必须逐字节稳定）：{@code q,r,at,population,groups} + {@code
+   * total,urban,rural,ageBrackets,sex} + 档名/性别按词表序。
+   */
+  @Test
+  void populationExposesTheBatchBreakdownsBesideTheLegacySeriesValue() throws Exception {
+    JsonNode body = getJson("/api/social/population?q=1&r=1");
+
+    assertThat(fieldNames(body))
+        .as("顶层键序（旧的 population 保留、新的 groups 追加在它之后）")
+        .containsExactly("q", "r", "at", "population", "groups");
+    assertThat(body.get("population").asLong())
+        .as("旧账那一项不许动：农村序列在 head 的取值")
+        .isEqualTo(populationSeries().valueAt(T7));
+
+    JsonNode groups = body.get("groups");
+    assertThat(fieldNames(groups))
+        .as("块内键序（三个派生量：城乡 / 年龄档 / 性别）")
+        .containsExactly("total", "urban", "rural", "ageBrackets", "sex");
+    assertThat(groups.get("total").asLong()).as("Σ 批次 = 1,350（这就是与经济侧对拍的那一侧）").isEqualTo(1_350L);
+    assertThat(groups.get("urban").asLong()).as("城镇：男 10 岁 300 + 女 30 岁 700").isEqualTo(1_000L);
+    assertThat(groups.get("rural").asLong())
+        .as("农村：男 5 岁 100 + 女 20 岁 200 + 男 70 岁 50")
+        .isEqualTo(350L);
+    assertThat(groups.get("urban").asLong() + groups.get("rural").asLong())
+        .as("城乡两项必须相加等于 total（一个人不丢、也不重复）")
+        .isEqualTo(groups.get("total").asLong());
+
+    JsonNode ageBrackets = groups.get("ageBrackets");
+    assertThat(fieldNames(ageBrackets))
+        .as("档名与 D4 一致、按词表序")
+        .containsExactly("0-14", "15-59", "60+");
+    assertThat(ageBrackets.get("0-14").asLong()).as("农村男 5 岁 100 + 城镇男 10 岁 300").isEqualTo(400L);
+    assertThat(ageBrackets.get("15-59").asLong()).as("农村女 20 岁 200 + 城镇女 30 岁 700").isEqualTo(900L);
+    assertThat(ageBrackets.get("60+").asLong()).as("农村男 70 岁 50").isEqualTo(50L);
+
+    JsonNode sex = groups.get("sex");
+    assertThat(fieldNames(sex)).as("性别按词表序（MALE → FEMALE）").containsExactly("MALE", "FEMALE");
+    assertThat(sex.get("MALE").asLong()).as("男 100 + 50 + 300").isEqualTo(450L);
+    assertThat(sex.get("FEMALE").asLong()).as("女 200 + 700").isEqualTo(900L);
+    assertThat(sex.get("MALE").asLong() + sex.get("FEMALE").asLong())
+        .as("同一批人的三种切法：性别之和也必须等于 total")
+        .isEqualTo(groups.get("total").asLong());
+  }
+
+  /**
+   * ★ **读口没有变宽**：没有人口序列的格依旧 404（R1.5 加的三个派生量只跟着**已有**的 {@code social:<q>_<r>} 资源走，不新开面）。H14
+   * 在地图上但不属于任何区域、也**没有人口序列**。
+   */
+  @Test
+  void populationStill404sForAHexWithoutASeries() throws Exception {
+    assertThat(get("/api/social/population?q=1&r=4").statusCode())
+        .as("没有人口序列的格 ⇒ 404（不是 200 + 空 groups）")
+        .isEqualTo(404);
+  }
+
+  /** {@link JsonNode} 的字段名（保序）。 */
+  private static List<String> fieldNames(JsonNode node) {
+    List<String> names = new ArrayList<>();
+    node.fieldNames().forEachRemaining(names::add);
+    return names;
+  }
+
   /** ★ R2a：一格一产业的确定性经济状态（断言值都是这里写下的字面量）。 */
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId("farm@1_1");
@@ -734,8 +825,11 @@ class GuiApiTest {
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
+    // ★★ R1.5：H11 挂**刻意混合**的批次（男女 × 城乡 × 三档各非零，见 mixedGroups）——读口那条用例靠它避免假绿。
+    //   H11 是本夹具里**唯一**有人口序列的格，故"每一个有批次的格都混合"这条要求在本夹具上成立。
     SocialData social =
-        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
+        new SocialData(
+            new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), mixedGroups());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -772,6 +866,42 @@ class GuiApiTest {
         2,
         500,
         Optional.empty());
+  }
+
+  /**
+   * ★★ **H11 的混合批次夹具**（R1.5 的读口用例用；**每一个有批次的格**都要"男女 × 城乡 × 三档"齐全，否则 "只看农村 / 只看某一档 / 档位写死"的实现照样绿 =
+   * 假绿，R1 的实现者在这里栽过一次）：
+   *
+   * <pre>
+   * 农村 男 5 岁 100（0-14） | 农村 女 20 岁 200（15-59） | 农村 男 70 岁 50（60+）
+   * 城镇 男 10 岁 300（0-14）| 城镇 女 30 岁 700（15-59）
+   * ⇒ 城镇 1,000 / 农村 350 / 合计 1,350；男 450 / 女 900；0-14 400 / 15-59 900 / 60+ 50
+   * </pre>
+   *
+   * <p>★ 锚点 = {@code T0}（创世态的时间戳是 {@code T7}）⇒ 读口在 head 上算出来的年龄是"锚点年龄 + 7 天"， 三个档都离边界很远（7
+   * 天不会把任何人挪档）——"必须现算"由 {@code SocialDataTest} 那条跨边界的用例钉， 这里钉的是**装配**（哪个派生量发到哪个键上）。
+   *
+   * <p>★ 城镇批次的 id 前缀是 {@code urban:c-1_1:}（真正的命名规则；本夹具的 {@code SocialData.cities} 为空， 因为"城乡"只由 id
+   * 前缀判定，与"那座城登不登记"无关——与 R1 的 {@code populationAt} 用例同口径）。
+   */
+  private static Map<PeopleLotId, PopulationGroup> mixedGroups() {
+    Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    addLot(groups, PopulationLots.rural(H11, Sex.MALE, "0"), Sex.MALE, 100L, 5L * YEAR_DAYS);
+    addLot(groups, PopulationLots.rural(H11, Sex.FEMALE, "1"), Sex.FEMALE, 200L, 20L * YEAR_DAYS);
+    addLot(groups, PopulationLots.rural(H11, Sex.MALE, "2"), Sex.MALE, 50L, 70L * YEAR_DAYS);
+    addLot(groups, PopulationLots.urban(CITY_1_1, Sex.MALE, "0"), Sex.MALE, 300L, 10L * YEAR_DAYS);
+    addLot(
+        groups, PopulationLots.urban(CITY_1_1, Sex.FEMALE, "1"), Sex.FEMALE, 700L, 30L * YEAR_DAYS);
+    return groups;
+  }
+
+  private static void addLot(
+      Map<PeopleLotId, PopulationGroup> groups,
+      PeopleLotId id,
+      Sex sex,
+      long count,
+      long ageAtAnchorDays) {
+    groups.put(id, new PopulationGroup(id, H11, sex, count, ageAtAnchorDays, T0.tick()));
   }
 
   /** 与 {@code QueryServiceTest.populationSeries()} 同款：anchor 10000、growth 2%→1%→−3%、t=45 减 800。 */

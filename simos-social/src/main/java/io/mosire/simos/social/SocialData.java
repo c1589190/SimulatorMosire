@@ -4,9 +4,12 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.social.population.UrbanRural;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -158,5 +161,88 @@ public record SocialData(
       }
     }
     return total;
+  }
+
+  // ── R1.5：三个"按格切一刀"的派生量（★ 同样是现算，且**不加任何字段** —— 见设计稿 §三）──────────
+
+  /**
+   * 该格的**年龄结构**（现算）：{@link AgeBracket} 三档的人数，**键恒为全部三档**（没有人也是 0，不是缺键）。
+   *
+   * <p>★★ **人数取自批次，档位取自"锚点 + 时间差"的现算**（{@link PopulationGroup#ageDaysAt(long)} ⇒ {@link
+   * AgeBracket#of(long)}）：本方法**不读**、也不许有任何"当前档位"字段 —— 存了它，"变老"就要每天改状态，档位也变成第二份真相 （设计稿 §三
+   * 明令："任何'档间转移'都不需要——因为没有档"）。
+   *
+   * <p>★ 于是同一份批次在**不同 {@code nowTick} 上给出不同的年龄结构**——这正是"读侧就能看见年龄在走"的判据 （{@code SocialDataTest}
+   * 里有一条跨档点的用例钉它）。
+   *
+   * <p>★ 次序 = {@link AgeBracket} 词表序（{@code 0-14 → 15-59 → 60+}），与 {@link #sexRatioAt} 同款：读口的键序
+   * 是内容的纯函数，不随 map 插入序抖。
+   *
+   * @param nowTick 查询时刻（世界日）；档位由它现算
+   * @throws IllegalArgumentException {@code residence} 为 null，或某批次的年龄在该时刻为负（往回推到了"还没出生"之前—— {@link
+   *     AgeBracket#of(long)} 对负年龄 fail-closed，不静默归档）
+   */
+  public Map<AgeBracket, Long> ageStructureAt(HexCoord residence, long nowTick) {
+    if (residence == null) {
+      throw new IllegalArgumentException("residence 不得为 null");
+    }
+    Map<AgeBracket, Long> structure = new LinkedHashMap<>();
+    for (AgeBracket bracket : AgeBracket.values()) {
+      structure.put(bracket, 0L);
+    }
+    for (PopulationGroup group : groups.values()) {
+      if (residence.equals(group.residence())) {
+        AgeBracket bracket = AgeBracket.of(group.ageDaysAt(nowTick));
+        structure.put(bracket, structure.get(bracket) + group.count());
+      }
+    }
+    return Collections.unmodifiableMap(structure);
+  }
+
+  /**
+   * 该格的**性别构成**（现算）：{@code MALE} / {@code FEMALE} 的人数，**键恒为两个性别**（没有人也是 0，不是缺键）。
+   *
+   * <p>★ 它**不需要 {@code nowTick}**：批次的人数是**不随时间变**的量（随时间变的是年龄，见 {@link #ageStructureAt(HexCoord,
+   * long)}）——这与 {@link #urbanPopulationAt(CityId)} 同理。
+   */
+  public Map<Sex, Long> sexRatioAt(HexCoord residence) {
+    if (residence == null) {
+      throw new IllegalArgumentException("residence 不得为 null");
+    }
+    Map<Sex, Long> ratio = new LinkedHashMap<>();
+    for (Sex sex : Sex.values()) {
+      ratio.put(sex, 0L);
+    }
+    for (PopulationGroup group : groups.values()) {
+      if (residence.equals(group.residence())) {
+        ratio.put(group.sex(), ratio.get(group.sex()) + group.count());
+      }
+    }
+    return Collections.unmodifiableMap(ratio);
+  }
+
+  /**
+   * 该格的**城乡构成**（现算）：城镇 / 农村的人数（{@link UrbanRural}）。{@link UrbanRural#total()} 就是"该格 social
+   * 侧的人口总量"——**R1.5 把它与经济侧逐行求和并排放进读口**，"两侧人口一致"才读得出来。
+   *
+   * <p>★ 城乡**由 lot id 的前缀判**（{@link PopulationLots#isUrban(PopulationGroup)} 的**唯一**拼写点），不从落点推、
+   * 也不加"城乡"字段（设计稿 §二 的明令：{@code PopulationGroup} 绝不装标签）。
+   */
+  public UrbanRural urbanRuralAt(HexCoord residence) {
+    if (residence == null) {
+      throw new IllegalArgumentException("residence 不得为 null");
+    }
+    long urban = 0L;
+    long rural = 0L;
+    for (PopulationGroup group : groups.values()) {
+      if (residence.equals(group.residence())) {
+        if (PopulationLots.isUrban(group)) {
+          urban += group.count();
+        } else {
+          rural += group.count();
+        }
+      }
+    }
+    return new UrbanRural(urban, rural);
   }
 }

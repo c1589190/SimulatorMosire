@@ -39,7 +39,7 @@ import io.mosire.simos.sd.adjudication.Judgement;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.SocialData;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -1033,17 +1033,18 @@ public final class GuiServer implements AutoCloseable {
       return Reply.of(404, body);
     }
     SimulationState state = queryService.stateAt(target);
-    PopulationSeries series = ApiViews.socialData(state).populations().get(coord);
-    if (series == null) {
+    SocialData social = ApiViews.socialData(state);
+    if (!social.populations().containsKey(coord)) {
       Map<String, Object> body = ApiViews.hexCoord(coord);
       body.put("error", "population series not found");
       return Reply.of(404, body);
     }
+    // ★ R1.5：视图带上了**批次**（年龄结构 / 性别 / 城乡）——体仍由 ApiViews 一处装配（不在路由层另拼）。
     return redactedIfRequested(
         asPresent,
         actor,
         params,
-        Reply.of(200, ApiViews.population(coord, series, state.meta().timestamp())));
+        Reply.of(200, ApiViews.population(social, coord, state.meta().timestamp())));
   }
 
   /**

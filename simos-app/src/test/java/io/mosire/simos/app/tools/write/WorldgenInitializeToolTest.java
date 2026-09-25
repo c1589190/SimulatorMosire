@@ -10,6 +10,7 @@ import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.RichWorld;
 import io.mosire.simos.core.CoreConfig;
@@ -416,6 +417,84 @@ class WorldgenInitializeToolTest {
       assertThat(reopened.replay(new StateRef(MAIN, new RevisionId(2))))
           .as("从落盘重放 → 同样状态")
           .isEqualTo(state);
+    }
+  }
+
+  // ── 2b. ★★ R1.5 的 T3：真档 138 格**逐格**读出来"两侧人口一致"──────────────────────────
+
+  /**
+   * ★★ **"两侧人口一致"读得出来（R1.5 的 T3 验收）**：真档奥斯特马克的**每一格**，经**读口**（{@link ApiViews#population} = GUI
+   * {@code GET /api/social/population} 与 MCP {@code simos.social.population} 共用的那一份视图；{@link
+   * ApiViews#economyHex} = {@code GET /api/economy/hex} 与 {@code simos.economy.hex}
+   * 共用的那一份）各取一个数，断言**逐格相等**：
+   *
+   * <pre>
+   * social 侧 = groups.total（Σ 该格各 PopulationGroup 的 count，R1.5 新发出来的那一项）
+   * economy 侧 = population（Σ 该格各阶层行 ClassRow.population）
+   * </pre>
+   *
+   * <p>★★ **它是 R1 那条"构造性相等"的读侧对照，两条都要有**：{@code PopulationSeederTest} 守的是"**创世算得对**"
+   * （同一份批次列表喂两条命令），本条守的是"**读出来也对**"（装配、口径、单位一处没走偏）。★ 判别力因此在**读口**上：把 {@code ApiViews.population} 的
+   * {@code total} 换成"只算农村"（R1.5 之前的读口就是只读农村序列）⇒ 城市格的 {@code total} 少掉整座城 ⇒ 这些格当场红。
+   *
+   * <p>★ **不许空过**（否则"0 == 0"会假绿）：两个总量各自都钉成真档硬值 {@code 3,070,000}，且逐格要求 economy 侧有产业 （{@code
+   * industries} 非空）——"这一格没读出东西"不会伪装成"一致"。
+   *
+   * <p>★ **为什么走视图函数而不是 HTTP**：那两个视图函数**就是**两个端点的响应体（{@code GuiServer} 只做 {@code Reply.of(200,
+   * ApiViews.…)} 与权限判定，不重排字段），HTTP 那一层（入参校验 / 404 / redaction）由 {@code GuiApiTest}
+   * 用自己的小夹具覆盖（那边逐值钉了同一个块）。此处要的是**真档 138 格**，而真档跑一次 HTTP 服务器不带来额外判据。
+   */
+  @Test
+  void readSidePopulationParityHoldsForEveryHexOfTheRealWorld() throws IOException {
+    try (CoreSimos core = freshCore(dir("read-parity"))) {
+      ToolResult result = execute(tool(core), Map.of("nation", OSTERMARK, "dryRun", false));
+      assertThat(result.success()).as(result.message()).isTrue();
+
+      SimulationState state = core.replay(new StateRef(MAIN, R2));
+      SocialData social = socialSlice(state);
+      EconomyData economy = economySlice(state);
+      SimosTimestamp at = state.meta().timestamp();
+
+      long hexes = 0L;
+      long socialGrandTotal = 0L;
+      long economyGrandTotal = 0L;
+      String firstMismatch = "";
+      for (Map.Entry<HexCoord, PopulationSeries> entry : social.populations().entrySet()) {
+        HexCoord hex = entry.getKey();
+        Map<String, Object> socialView = ApiViews.population(social, hex, at);
+        Map<String, Object> economyView = ApiViews.economyHex(hex, economy);
+        Object groupsRaw = socialView.get("groups");
+        assertThat(groupsRaw)
+            .as("%s：读口必须发出 groups 块（R1.5 的 T3 就靠它那一项对拍）", hex)
+            .isInstanceOf(Map.class);
+        long socialSide = ((Number) ((Map<?, ?>) groupsRaw).get("total")).longValue();
+        long economySide = ((Number) economyView.get("population")).longValue();
+        assertThat((List<?>) economyView.get("industries"))
+            .as("%s：economy 侧这一格必须真有产业（否则 0 == 0 是假绿）", hex)
+            .isNotEmpty();
+        if (socialSide != economySide && firstMismatch.isEmpty()) {
+          firstMismatch = hex + " social=" + socialSide + " economy=" + economySide;
+        }
+        socialGrandTotal += socialSide;
+        economyGrandTotal += economySide;
+        hexes++;
+      }
+
+      assertThat(hexes).as("真档奥斯特马克的格数（每格都有农村人口序列）").isEqualTo(OSTERMARK_HEXES);
+      assertThat(firstMismatch).as("逐格：social 侧 Σ 批次 == economy 侧 Σ 各行").isEmpty();
+      assertThat(socialGrandTotal)
+          .as("social 侧合计 == 全国总人口（量级锚：不是 0 == 0 那种空过）")
+          .isEqualTo(OSTERMARK_TOTAL);
+      assertThat(economyGrandTotal).as("economy 侧合计 == 全国总人口").isEqualTo(OSTERMARK_TOTAL);
+      // ★ 两个量级锚各自都非零，且**有一格是城市格**（城市人口在两边的两条池子里都算过）——138 格里必然有城。
+      assertThat(social.cities()).as("真档有城 ⇒ 逐格里含城镇批次（否则本用例只验了农村）").isNotEmpty();
+      System.out.println(
+          "[R15-PARITY] hexes="
+              + hexes
+              + " social="
+              + socialGrandTotal
+              + " economy="
+              + economyGrandTotal);
     }
   }
 

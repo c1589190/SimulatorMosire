@@ -19,6 +19,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.render.ArtifactStore;
 import io.mosire.simos.app.render.RenderCache;
@@ -74,7 +75,9 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -93,7 +96,10 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -1751,6 +1757,57 @@ class SimosToolsTest {
     assertThat(units.get(0).get("position").get("r").asInt()).isEqualTo(1);
   }
 
+  /**
+   * ★★ **R1.5：MCP 读口与 GUI 端点发的是同一份视图** —— {@code simos.social.population} 的体（含批次的现算读数） 必须**逐字段等于**
+   * {@code ApiViews.population}（GUI 路由调的就是它）。
+   *
+   * <p>★ 判别力分工（两条各挡一件事，别混）：
+   *
+   * <ul>
+   *   <li>**逐值断言**（1,350 / 1,000 / 350 / 400·900·50 / 450·900，算式见 {@link
+   *       #mixedGroups()}）挡的是"**装配错**" ——把城乡接反、漏掉某一档、只算农村（R1.5 之前的实现就是只读农村序列）都会当场红；
+   *   <li>**与 {@code ApiViews} 的整体相等**挡的是"**面分叉**"：{@code ToolSupport.population} 曾**另有一份**四行字段清单
+   *       （R1.5 才合并成转调）——谁再照抄一份、忘了带 {@code groups} 块，这里就红（AGENT.md §8.3 的硬规矩）。
+   * </ul>
+   *
+   * <p>★ 期望值**从视图层现取**（{@code ApiViews.population}）而不是另写一份字面量表：两张表相等才有意义——作者写第二份表
+   * 就等于把"同一资源的两个形状"再抄一遍（正是本用例要禁的东西）。
+   */
+  @Test
+  void populationToolServesTheSameViewAsTheGuiRoute() throws Exception {
+    ToolResult result = call("simos.social.population", Map.of("q", 1, "r", 1));
+    assertThat(result.success()).as(result.message()).isTrue();
+    JsonNode body = JSON.readTree(result.message());
+
+    // 同一个函数（GUI 的 /api/social/population 调的就是它）⇒ 两边的体必须逐字段相同。
+    Map<String, Object> expected =
+        ApiViews.population(
+            ApiViews.socialData(shell.queryService().stateAt(QueryTarget.head(main()))), H11, T7);
+    // ★ 比**文本**而不是比 JsonNode：工具面的体是 Jackson 序列化过的（小整数被读成 IntNode），而期望树是
+    //   `valueToTree(Long)`（LongNode）——同一份 JSON 的两种节点类型，逐节点比会假红（本用例实测踩过一次）。
+    //   比文本同时还钉住了**键序**（两边都是 LinkedHashMap 保序）。
+    assertThat(body.toString())
+        .as("MCP 工具的体 == GUI 路由视图（同一份 ApiViews.population）")
+        .isEqualTo(JSON.valueToTree(expected).toString());
+
+    JsonNode groups = body.get("groups");
+    // ★ 先判"块在不在"再取值：上面那条整体相等**挡不住"两份一起变了"**（比如共享视图自己被改掉了块）——
+    //   那种情况下两边同时没有 groups 仍然相等 ⇒ 必须由逐值断言接手（本断言就是它的干净入口）。
+    assertThat(groups).as("MCP 读口必须带 groups 块（R1.5）").isNotNull();
+    assertThat(groups.get("total").asLong()).as("Σ 批次").isEqualTo(1_350L);
+    assertThat(groups.get("urban").asLong()).as("城镇 300 + 700").isEqualTo(1_000L);
+    assertThat(groups.get("rural").asLong()).as("农村 100 + 200 + 50").isEqualTo(350L);
+    assertThat(groups.get("ageBrackets").get("0-14").asLong())
+        .as("男 5 岁 100 + 男 10 岁 300")
+        .isEqualTo(400L);
+    assertThat(groups.get("ageBrackets").get("15-59").asLong())
+        .as("女 20 岁 200 + 女 30 岁 700")
+        .isEqualTo(900L);
+    assertThat(groups.get("ageBrackets").get("60+").asLong()).as("男 70 岁 50").isEqualTo(50L);
+    assertThat(groups.get("sex").get("MALE").asLong()).as("男 100 + 50 + 300").isEqualTo(450L);
+    assertThat(groups.get("sex").get("FEMALE").asLong()).as("女 200 + 700").isEqualTo(900L);
+  }
+
   /** M7b T2 判据：MCP 读面与 GUI 同形——有路线 ⇒ movement 对象；无路线 ⇒ null。 */
   @Test
   void unitReadToolsExposeMovementObjectAndNullWithoutRoute() throws Exception {
@@ -1851,8 +1908,10 @@ class SimosToolsTest {
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
+    // ★★ R1.5：H11 挂**刻意混合**的批次（男女 × 城乡 × 三档各非零，见 mixedGroups）——MCP 读口的用例靠它避免假绿。
     SocialData social =
-        new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
+        new SocialData(
+            new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), mixedGroups());
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -1902,6 +1961,38 @@ class SimosToolsTest {
             List.of(),
             null),
         List.of(new Event<>(SimosTimestamp.of(45), -800L, EventMode.ADD)));
+  }
+
+  /**
+   * ★★ **H11 的混合批次夹具**（与 {@code GuiApiTest} 同一份算式，R1.5 的读口用例用）：**每个有批次的格**都要"男女 × 城乡 ×
+   * 三档"齐全——夹具若是清一色农村，`simos.social.population` 里"只看农村"的实现照样绿（假绿）。
+   *
+   * <pre>
+   * 农村 男 5 岁 100（0-14） | 农村 女 20 岁 200（15-59） | 农村 男 70 岁 50（60+）
+   * 城镇 男 10 岁 300（0-14）| 城镇 女 30 岁 700（15-59）
+   * ⇒ total 1,350 = 城镇 1,000 + 农村 350；男 450 / 女 900；0-14 400 / 15-59 900 / 60+ 50
+   * </pre>
+   *
+   * <p>★ 锚点 = {@code T0}（本夹具的创世态时间戳是 {@code T7}）⇒ head 上现算出的年龄是"锚点年龄 + 7 天"。
+   */
+  private static Map<PeopleLotId, PopulationGroup> mixedGroups() {
+    CityId city = new CityId("c-1_1");
+    Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    addLot(groups, PopulationLots.rural(H11, Sex.MALE, "0"), Sex.MALE, 100L, 5L * 365L);
+    addLot(groups, PopulationLots.rural(H11, Sex.FEMALE, "1"), Sex.FEMALE, 200L, 20L * 365L);
+    addLot(groups, PopulationLots.rural(H11, Sex.MALE, "2"), Sex.MALE, 50L, 70L * 365L);
+    addLot(groups, PopulationLots.urban(city, Sex.MALE, "0"), Sex.MALE, 300L, 10L * 365L);
+    addLot(groups, PopulationLots.urban(city, Sex.FEMALE, "1"), Sex.FEMALE, 700L, 30L * 365L);
+    return groups;
+  }
+
+  private static void addLot(
+      Map<PeopleLotId, PopulationGroup> groups,
+      PeopleLotId id,
+      Sex sex,
+      long count,
+      long ageAtAnchorDays) {
+    groups.put(id, new PopulationGroup(id, H11, sex, count, ageAtAnchorDays, T0.tick()));
   }
 
   private static GameMap corridorMap() {

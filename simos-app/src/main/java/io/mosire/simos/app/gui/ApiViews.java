@@ -51,7 +51,10 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -931,12 +934,60 @@ public final class ApiViews {
     return view;
   }
 
-  /** 人口时序点：{@code {q,r,at,population}}。 */
-  static Map<String, Object> population(
-      HexCoord coord, PopulationSeries series, SimosTimestamp at) {
+  /**
+   * ★★ **该格的人口读口**（R1.5 把面打开）：{@code {q,r,at,population,groups}} —— GUI 的 {@code GET
+   * /api/social/population} 与 MCP 读工具 {@code simos.social.population} **共用这一份**（AGENT.md
+   * §8.3：不许在路由层/工具层另拼一份）。
+   *
+   * <p>★★ **两个数字并排，各标各的口径**（谱系写清楚，别让后来者以为其中一个坏了）：
+   *
+   * <ul>
+   *   <li>{@code population} —— **旧账**：该格的 <b>农村</b> 人口序列在 {@code at} 时刻的取值（{@link
+   *       PopulationSeries#valueAt}；R1.5 之前本端点只有它）；
+   *   <li>{@code groups} —— **新账（R1 起人口的真值源）**：该格各 {@link
+   *       io.mosire.simos.social.population.PopulationGroup} 的现算读数 —— {@code total}（Σ 各批次 =
+   *       城乡之和）、{@code urban}/{@code rural}、{@code ageBrackets}（{@code 0-14 / 15-59 / 60+}，**用
+   *       {@code ageDaysAt(at.tick())} 现算**，不存档位）、{@code sex}（{@code MALE}/{@code FEMALE}）。
+   * </ul>
+   *
+   * <p>★ **两者在创世构造性相等**（R1 的验收：逐格 {@code Σ group == 农村序列 + 该格各城人口}），并排发出来是为了让<b>漂移可见</b>
+   * ——此前"只读农村序列"这一件事把城市人口与年龄性别一起挡在了面外（设计稿 §一.1 实测：首都格报 15,191 而经济侧合计 365,191）。
+   *
+   * <p>★★ **{@code groups.total} 是与经济侧对拍的那一侧**（R1.5 的 T3）：它和 {@link #economyHex} 的 {@code
+   * population} （该格各阶层行 {@code ClassRow.population} 之和）在创世逐格相等 ⇒ 两个相邻响应就能读出"两侧人口一致"。
+   *
+   * <p>★ **键序固定**（{@code q,r,at,population,groups}；块内 {@code
+   * total,urban,rural,ageBrackets,sex}；年龄档按词表序、 性别按词表序）：同状态两次响应逐字节相同，是 GUI/MCP 的既有前提。
+   *
+   * <p>★ **该格没有人口序列 ⇒ 抛**（fail-closed）：调用方（路由 / 读工具）本就在此之前把它折成 {@code NOT_FOUND}， 走不到这里；静默给一个 0
+   * 会让"id 拼错 / 格不存在"看起来像"这格没人"。
+   *
+   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日）
+   */
+  public static Map<String, Object> population(SocialData data, HexCoord coord, SimosTimestamp at) {
     Map<String, Object> view = hexCoord(coord);
     view.put("at", timestamp(at));
+    PopulationSeries series = data.populations().get(coord);
+    if (series == null) {
+      throw new IllegalArgumentException("该格没有人口序列: " + coord.q() + "_" + coord.r());
+    }
     view.put("population", series.valueAt(at));
+    UrbanRural urbanRural = data.urbanRuralAt(coord);
+    Map<String, Object> groups = new LinkedHashMap<>();
+    groups.put("total", urbanRural.total());
+    groups.put("urban", urbanRural.urban());
+    groups.put("rural", urbanRural.rural());
+    Map<String, Object> ageBrackets = new LinkedHashMap<>();
+    for (Map.Entry<AgeBracket, Long> entry : data.ageStructureAt(coord, at.tick()).entrySet()) {
+      ageBrackets.put(entry.getKey().key(), entry.getValue());
+    }
+    groups.put("ageBrackets", ageBrackets);
+    Map<String, Object> sex = new LinkedHashMap<>();
+    for (Map.Entry<Sex, Long> entry : data.sexRatioAt(coord).entrySet()) {
+      sex.put(entry.getKey().name(), entry.getValue());
+    }
+    groups.put("sex", sex);
+    view.put("groups", groups);
     return view;
   }
 

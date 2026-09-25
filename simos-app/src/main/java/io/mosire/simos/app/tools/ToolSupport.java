@@ -24,7 +24,6 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
-import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -53,8 +52,9 @@ import java.util.function.Predicate;
 /**
  * 工具集的共享助手（M5 T5）：参数解析、资源断言、领域视图与 {@link ToolResult} 折叠。
  *
- * <p>★ **不重算领域语义**：位置一律走 {@link UnitState#effectivePosition(UnitId, SimosTimestamp)}、人口一律走 {@link
- * PopulationSeries#valueAt(SimosTimestamp)}——与 {@code ApiViews}/facet 同口径，工具面不造第二份真相。
+ * <p>★ **不重算领域语义**：位置一律走 {@link UnitState#effectivePosition(UnitId, SimosTimestamp)}、人口一律走 {@code
+ * PopulationSeries#valueAt(SimosTimestamp)}（R1.5 起该视图整体住 {@link ApiViews}，本类只转调）——与 {@code
+ * ApiViews}/facet 同口径，工具面不造第二份真相。
  *
  * <p>★ **R1 的扫描对象之一**：本类不 import 任何 store/timeline 类型，写面只有调用方传进来的 {@link
  * io.mosire.simos.core.CoreSimos#submit}。
@@ -599,12 +599,18 @@ public final class ToolSupport {
     return out;
   }
 
-  public static Map<String, Object> population(
-      HexCoord coord, PopulationSeries series, SimosTimestamp at) {
-    Map<String, Object> view = hexCoord(coord);
-    view.put("at", timestamp(at));
-    view.put("population", series.valueAt(at));
-    return view;
+  /**
+   * 人口视图（MCP 读工具 {@code simos.social.population} 的载体）。
+   *
+   * <p>★★ **委托给 {@link ApiViews#population}**（R1.5 合一，与 {@link #unit} 同一条纪律）：本方法此前**另有一份**
+   * 同形实现（四行字段清单）——于是"GUI 端点加字段、MCP 工具没加"这类漂移**结构上可能**（AGENT.md §8.3 的硬规矩是"共用同一个函数" ；m4-inventory
+   * §二-6 的"同一资源的两个形状"就是这个病）。现在只剩转调。
+   *
+   * <p>★ 参数从 {@code (coord, series, at)} 换成 {@code (data, coord, at)}：R1.5 的视图要读**批次**（年龄/性别/城乡），
+   * 而序列只是其中一项（旧账口径的那一项）。"该格没有人口序列 ⇒ 抛"由 {@code ApiViews} 一处判。
+   */
+  public static Map<String, Object> population(SocialData data, HexCoord coord, SimosTimestamp at) {
+    return ApiViews.population(data, coord, at);
   }
 
   public static GameMap gameMap(SimulationState state) {

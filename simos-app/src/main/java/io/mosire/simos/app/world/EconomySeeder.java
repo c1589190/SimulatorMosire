@@ -7,6 +7,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.Sex;
@@ -164,8 +165,13 @@ public final class EconomySeeder {
    * <p>★ 批次带的是**逐日精度的年龄**，具体落在哪一档由 {@link #ageBracketOf(long)} 现算（不存档位、不许出现"档间转移"）。 ★ 它与 {@link
    * PopulationSeeder#AGE_REPRESENTATIVE_DAYS} 必须互相自洽（代表性年龄要落在自己那一档里）， 由 {@code
    * PopulationSeederTest} 的跨表用例钉住。
+   *
+   * <p>★★ **R1.5 起本表只是 {@link AgeBracket} 的投影**（原来那两个 {@code 15L * 365L} / {@code 60L * 365L}
+   * 的字面量已搬到 social 的 {@link AgeBracket#boundedMaxExclusiveDays()} 一处）：读口（GUI/MCP）也要按 同一套边算年龄结构，而
+   * social 看不见本模块 ⇒ 边界的唯一定义处只能是 social；否则"批次按一套边造、劳动按另一套边折算、读口按第三套边显示"
+   * 会被三张表悄悄漂开（本仓最忌"注释声称一致、其实不一致"）。
    */
-  static final long[] AGE_BRACKET_MAX_EXCLUSIVE_DAYS = {15L * 365L, 60L * 365L};
+  static final long[] AGE_BRACKET_MAX_EXCLUSIVE_DAYS = AgeBracket.boundedMaxExclusiveDays();
 
   /** 粮食商品的 id：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
   public static final String COMMODITY_GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
