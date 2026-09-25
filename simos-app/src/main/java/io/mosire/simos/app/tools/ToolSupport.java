@@ -546,19 +546,20 @@ public final class ToolSupport {
     return view;
   }
 
-  public static List<Map<String, Object>> units(UnitState units, SimosTimestamp at, GameMap map) {
-    return units(units, at, map, any -> true);
+  public static List<Map<String, Object>> units(
+      UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
+    return units(units, at, map, sd, any -> true);
   }
 
   /** **按可见性过滤**的单位清单（T10）：越界的单位不进结果（与 {@code unit.get} 的"不可见 ⇒ NOT_FOUND"同一口径）。 */
   public static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, Predicate<UnitId> unitVisible) {
+      UnitState units, SimosTimestamp at, GameMap map, SdState sd, Predicate<UnitId> unitVisible) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
     for (Unit unit : units.units().values()) {
       if (!unitVisible.test(unit.id())) {
         continue;
       }
-      out.add(unit(unit, units, at, map));
+      out.add(unit(unit, units, at, map, sd));
     }
     return out;
   }
@@ -568,10 +569,12 @@ public final class ToolSupport {
    *
    * <p>★★ **委托给 {@link ApiViews#unit}**（2026-09-24 合一）：GUI 与 MCP 两面此前各写一份同形视图，加字段就得记得改两处 ——AGENT.md
    * §8.3 的纪律是"共用同一份视图层（ApiViews）"。这里只留转调，不再有第二份字段清单。
+   *
+   * <p>★ {@code sd} 供装配 {@code combat}（所属交战）——与 GUI 同一份真值（铁律 3：不在这里另推一份）。
    */
   public static Map<String, Object> unit(
-      Unit unit, UnitState units, SimosTimestamp at, GameMap map) {
-    return ApiViews.unit(unit, units, at, map);
+      Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
+    return ApiViews.unit(unit, units, at, map, sd);
   }
 
   public static List<Map<String, Object>> facets(List<FacetEntry> entries) {

@@ -262,6 +262,10 @@
       api.population(selection.q, selection.r, app.target()).catch(function () {
         return null;
       }),
+      // ★ 2026-09-24 交战：真实交战记录（该格有没有被记录为交战格）。取不到不拖垮整条详情。
+      api.cachedCombats(app.target()).catch(function () {
+        return null;
+      }),
     ])
       .then(function (results) {
         if (token !== requestToken) {
@@ -272,6 +276,8 @@
           return u.position && u.position.q === selection.q && u.position.r === selection.r;
         });
         var population = results[2];
+        // ★ 2026-09-24 交战：该格是否有**记录在案**的交战（与单位"所属交战"同一真值来源）。
+        var combatHere = combatAtHex(results[3] && results[3].combats, selection);
         // ★ B8：这一格到底有没有单位，**就在这里**算出来 ⇒ 编制那节的可见性同处落地（同一份口径，不在别处再判一次）。
         applyUnitTreeSection(unitTreeSectionVisible(selection, unitsHere));
         var terrainText = hex.terrain;
@@ -297,6 +303,15 @@
                 .join("；")
             : "无"
         );
+        if (combatHere) {
+          appendRow(detail, "交战", combatHere.name || combatHere.combatId);
+          appendRow(
+            detail,
+            "交战阶段",
+            combatHere.currentStageName || combatHere.currentStage
+          );
+          appendRow(detail, "参与方数", combatHere.participantCount);
+        }
         appendRow(
           detail,
           "人口",
@@ -313,6 +328,51 @@
         }
         app.statusMessage(status, "查询失败：" + e.message, "err");
       });
+  }
+
+  /**
+   * 单位详情里的「所属交战」一组（2026-09-24）：数据来自 `/api/unit/{id}` 的 `combat` 子对象（真实
+   * {@code CombatState} 记录，见 ApiViews.combatOf）。
+   *
+   * <p>★ **引擎不要求交战双方同格**（已核实的语义）：`atHex=false` 时明确写"本单位不在交战格（交战格在 q,r）"
+   * ——这正是"跨格也能看出属于同一场交战"这条判据在界面上落地的地方。
+   */
+  function appendCombatRows(dl, combat) {
+    if (!combat) {
+      appendRow(dl, "所属交战", "无");
+      return;
+    }
+    appendRow(dl, "所属交战", combat.name || combat.combatId);
+    appendRow(dl, "交战阶段", combat.currentStageName || combat.currentStage);
+    appendRow(
+      dl,
+      "结局",
+      combat.selectedOutcome === null || combat.selectedOutcome === undefined
+        ? "未选定"
+        : combat.selectedOutcome
+    );
+    appendRow(dl, "交战格", combat.hex ? hexLabel(combat.hex) : "—");
+    if (combat.hex && combat.atHex === false) {
+      appendRow(
+        dl,
+        "位置提示",
+        "本单位不在交战格（交战格在 " + hexLabel(combat.hex) + "）"
+      );
+    }
+  }
+
+  /** 在真实交战清单里找**落在该格**的那一场（无 ⇒ null）。hex 用 q/r 逐值比。 */
+  function combatAtHex(combats, hex) {
+    if (!Array.isArray(combats) || !hex) {
+      return null;
+    }
+    for (var i = 0; i < combats.length; i++) {
+      var c = combats[i];
+      if (c && c.hex && c.hex.q === hex.q && c.hex.r === hex.r) {
+        return c;
+      }
+    }
+    return null;
   }
 
   function renderUnit(selection, token) {
@@ -362,6 +422,9 @@
             "上级",
             unit.parent === null || unit.parent === undefined ? "—" : unit.parent
           );
+          // ★ 2026-09-24 交战：**真实交战记录**优先（此前"交战"是纯推断——记录在案的交战 GUI 一个字都没用）。
+          //   引擎不要求交战双方同格 ⇒ 单位在不在交战格必须显式说（不在时给出交战格坐标，见下方提示行）。
+          appendCombatRows(dl, unit.combat);
         });
         appendRowGroup(detail, "在途移动", function (dl) {
           appendMovementRows(dl, unit, overview);

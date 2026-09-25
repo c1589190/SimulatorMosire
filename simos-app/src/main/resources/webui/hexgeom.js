@@ -430,18 +430,19 @@
   /**
    * **交战格**判定（纯函数）：返回 `{"q_r": 交战方数}`，仅收录"交战格"。
    *
-   * <p>口径（两条取**或**）：
+   * <p>口径 = **真实交战记录 ∪ 两条推断**：
    * <ol>
-   *   <li>该格有 **≥2 个不同 `rootId`**（= 两支及以上不同军队同处一格，用户 tick15 的实况）；</li>
-   *   <li>该格有任一组的 `engaged === true`（某单位显式进入 `ENGAGED`，哪怕只 1 支军队）。</li>
+   *   <li>★ **记录在案的格**（`trueHexes`，来自 `/api/sd/combats` 的真 {@code CombatState.hex}）——**必须**是
+   *       交战格，**哪怕那格此刻一个单位标记都没有**；其值取 `max(该格不同 rootId 数, 1)`（≥1）。</li>
+   *   <li>该格有 **≥2 个不同 `rootId`**（= 两支及以上不同军队同处一格，用户 tick15 的实况）<b>——兜底</b>；</li>
+   *   <li>该格有任一组的 `engaged === true`（某单位显式进入 `ENGAGED`，哪怕只 1 支军队）<b>——兜底</b>。</li>
    * </ol>
-   * 收录时的值 = 该格的**不同 rootId 数**（= 交战方数）。★ 只有 `engaged` 而仅 1 支军队的格，
-   * 值就是 1（一个交战方 + ⚔），不是 0。
+   * 收录时的值 = 该格不同 rootId 数 与（真实格）1 的较大者。★ 只有 `engaged` 而仅 1 支军队的格，值就是 1。
    *
-   * <p>返回普通对象（键 `"q_r"`）而非 Map：与 renderer 里其余按格分组（`keyOf`）的用法一致，
-   * 也便于测试直接 `obj["-31_-76"]` 取值。缺 `at`/`rootId` 的组忽略。空/非数组输入 ⇒ `{}`。
+   * <p>`trueHexes` 两种形状都收：`{"q_r": …}` 对象，或交战数组（每项取 `.hex` / `.at` / `.q`+`.r`）。
+   * 缺 `at`/`rootId` 的组忽略。空/非数组输入 ⇒ `{}`（第二参缺省 = 只用旧两条推断，行为与从前逐字相同）。
    */
-  function combatHexes(markers) {
+  function combatHexes(markers, trueHexes) {
     var list = Array.isArray(markers) ? markers : [];
     var byHex = new Map(); // "q_r" → {roots:Set, engaged:boolean}
     var order = [];
@@ -471,7 +472,43 @@
         out[key] = rec.roots.size;
       }
     });
+    // ★ 真实交战格：记录在案 **必须** 画成交战格（值至少 1，哪怕该格 0 个 rootId）。
+    trueCombatKeys(trueHexes).forEach(function (key) {
+      var rec = byHex.get(key);
+      var parties = rec ? rec.roots.size : 0;
+      if (parties < 1) {
+        parties = 1;
+      }
+      out[key] = Math.max(out[key] || 0, parties);
+    });
     return out;
+  }
+
+  /** 把真实交战记录（对象表或数组）归一成 `"q_r"` 键列表；形状不认的条目跳过（不编坐标）。 */
+  function trueCombatKeys(trueHexes) {
+    var keys = [];
+    if (!trueHexes) {
+      return keys;
+    }
+    if (Array.isArray(trueHexes)) {
+      trueHexes.forEach(function (entry) {
+        if (!entry) {
+          return;
+        }
+        var at = entry.hex || entry.at || (entry.q !== undefined && entry.r !== undefined ? entry : null);
+        if (!at || at.q === undefined || at.r === undefined) {
+          return;
+        }
+        keys.push(at.q + "_" + at.r);
+      });
+      return keys;
+    }
+    if (typeof trueHexes === "object") {
+      Object.keys(trueHexes).forEach(function (key) {
+        keys.push(key);
+      });
+    }
+    return keys;
   }
 
   /** 让世界包围盒 fit 进 width×height（CSS px），四周留 pad。 */

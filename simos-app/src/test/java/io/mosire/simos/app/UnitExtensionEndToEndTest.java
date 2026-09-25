@@ -210,7 +210,12 @@ class UnitExtensionEndToEndTest {
     //   否则"轻骑兵"会显示成一支 1 个单位的编队——读的人（模型/界面）会据此误判。
     SimulationState simAtT30 = shell.coreSimos().replay(ref("main", advanced));
     Map<String, Object> memberView =
-        ApiViews.unit(state.units().get(U5), state, T30, ApiViews.gameMap(simAtT30));
+        ApiViews.unit(
+            state.units().get(U5),
+            state,
+            T30,
+            ApiViews.gameMap(simAtT30),
+            ApiViews.sdState(simAtT30));
     assertThat(memberView.get("formationRootId")).isEqualTo("u-1");
     assertThat(memberView.get("formationSize")).as("从顶层量 ⇒ 2（u-1 与 u-5），不是 u-5 自己的 1").isEqualTo(2);
     assertThat(memberView.get("attached")).isEqualTo(true);

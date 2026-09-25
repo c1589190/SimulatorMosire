@@ -122,6 +122,9 @@
     // ★ 2026-09-24 交战：交战格上的标记额外带 {combat:true, combatCount, combatRowSpacing}，
     //   并被 combatSlot 定位到格心左右两列（见 recomputeWorldPixels）。
     var markers = [];
+    // ★ 2026-09-24 交战：**真实记录的**交战格（`{"q_r": {…}}`，来自 `GET /api/sd/combats`）。
+    //   这是判定"哪格在交战"的**真值来源**；旧的两条推断（同格多军队 / ENGAGED）在 combatHexes 里兜底。
+    var realCombatHexes = {};
     var routes = []; // 在途路线（M7b T2）：{id,movement,path:[{q,r}…]}
     var colorByTerrain = {};
     var fallbackWarned = false;
@@ -250,7 +253,8 @@
      */
     function recomputeWorldPixels() {
       markers = markerGroups(units);
-      var combat = combatHexes(markers); // "q_r" → 交战方数（仅交战格有键）
+      // ★ 2026-09-24 交战：真实交战格 ∪ 旧两条推断（第二参为真值来源；无记录时退回旧口径）。
+      var combat = combatHexes(markers, realCombatHexes); // "q_r" → 交战方数（仅交战格有键）
       var groups = {}; // "q_r" → 该格的全部**标记**（保持首次出现顺序 ⇒ index 稳定）
       var keys = [];
       markers.forEach(function (m) {
@@ -399,6 +403,33 @@
         selected = positionOf(selectedUnit);
       }
       updateLegend();
+      scheduleRender();
+    }
+
+    /**
+     * ★ 2026-09-24 交战：装载 **真实交战记录**（`GET /api/sd/combats` 的 `combats` 数组），翻成
+     * `combatHexes` 的第二参 `{"q_r": {combatId,name,stage,stageName,outcome,participants}}`。
+     *
+     * <p>★ **记录在案的格必须画成交战格**（哪怕那格此刻一个单位标记都没有）——由 `combatHexes` 的第二参
+     * 保证；这里只做形状转换，缺 `hex` 的条目跳过（不编坐标）。与 `setUnits` 同款：装载即重算 + 重绘。
+     */
+    function setCombats(list) {
+      var table = {};
+      (Array.isArray(list) ? list : []).forEach(function (c) {
+        if (!c || !c.hex || c.hex.q === undefined || c.hex.r === undefined) {
+          return;
+        }
+        table[c.hex.q + "_" + c.hex.r] = {
+          combatId: c.combatId,
+          name: c.name,
+          stage: c.currentStage,
+          stageName: c.currentStageName,
+          outcome: c.selectedOutcome,
+          participants: c.participants || [],
+        };
+      });
+      realCombatHexes = table;
+      recomputeWorldPixels();
       scheduleRender();
     }
 
@@ -733,6 +764,18 @@
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       var combatIcons = {}; // "q_r" → 格心世界坐标（每格只画一个 ⚔）
+      // ★ 2026-09-24 交战：**真实记录的格**先占位 —— 哪怕该格一个单位标记都没有，也必须画成交战格。
+      //   与标记路径同一门控（屏幕格高不够时不启用交战显示，退化为普通视图；口径见 combatLayoutEnabled）。
+      if (combatLayoutEnabled(cellSize, cellSize * view.scale)) {
+        Object.keys(realCombatHexes).forEach(function (key) {
+          var parts = key.split("_");
+          var q = Number(parts[0]);
+          var r = Number(parts[1]);
+          if (isFinite(q) && isFinite(r)) {
+            combatIcons[key] = hexToPixel(q, r, cellSize);
+          }
+        });
+      }
       markers.forEach(function (m) {
         ctx.beginPath();
         ctx.arc(m.px, m.py, radius, 0, Math.PI * 2);
@@ -2048,6 +2091,7 @@
       canvas: canvas,
       setData: setData,
       setUnits: setUnits,
+      setCombats: setCombats,
       setCellSize: setCellSize,
       setSelected: setSelected,
       setSelectedUnit: setSelectedUnit,

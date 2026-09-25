@@ -221,11 +221,20 @@
 
   async function reloadUnits() {
     try {
-      var body = await api.cachedUnits(app.target());
-      active.setUnits((body && body.units) || []);
+      // ★ 2026-09-24 交战：单位与**真实交战记录**同批载入（renderer 从这一份聚合里读两者）。
+      //   交战取数失败**不拖垮单位列表**（各自兜成空：交战只是叠加层，没有它仍能画图）。
+      var results = await Promise.all([
+        api.cachedUnits(app.target()),
+        api.cachedCombats(app.target()).catch(function () {
+          return null;
+        }),
+      ]);
+      active.setUnits((results[0] && results[0].units) || []);
+      active.setCombats((results[1] && results[1].combats) || []);
       return null;
     } catch (e) {
       active.setUnits([]);
+      active.setCombats([]);
       return e.message;
     }
   }

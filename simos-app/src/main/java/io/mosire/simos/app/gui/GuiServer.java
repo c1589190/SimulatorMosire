@@ -236,6 +236,18 @@ public final class GuiServer implements AutoCloseable {
    */
   private static final String DECISION_DOCS_PATH = "/api/sd/decision-docs";
 
+  /**
+   * **交战只读面**（2026-09-24，用户点名的改法）：{@code GET /api/sd/combats}——把 sd 里**真实记录在案**的交战 （{@code Combat}
+   * / {@code CombatState}：交战 id、名称、hex、当前阶段、已选结局、参与单位）发给前端。
+   *
+   * <p>★★ **它补的是哪一处空白**：GUI 此前的"交战"是**纯推断**出来的（同格 ≥2 个 rootId，或任一单位 {@code
+   * ENGAGED}）——真实交战记录一个字都没用。于是"记录在案、但那格此刻一个单位标记都没有"的交战**在图上根本看不见**，
+   * 且"交战双方不同格"（引擎**允许**的语义）在界面上无法表达。本端点把真值交出来，让前端能以记录为准、旧推断降为兜底。
+   *
+   * <p>★ 与 {@code /api/sd/directives} 同款拒 {@code as=}（配置/审计面，不接视角 redaction ⇒ fail-closed）。
+   */
+  private static final String COMBATS_PATH = "/api/sd/combats";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -250,6 +262,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/sd/decision-makers",
           "/api/sd/directives",
           "/api/sd/verdicts",
+          COMBATS_PATH,
           DECISION_RESULTS_PATH,
           DECISION_DOCS_PATH,
           "/api/gm/tool-usage",
@@ -582,7 +595,12 @@ public final class GuiServer implements AutoCloseable {
       return Reply.of(
           200,
           Map.of(
-              "units", ApiViews.units(units, state.meta().timestamp(), ApiViews.gameMap(state))));
+              "units",
+              ApiViews.units(
+                  units,
+                  state.meta().timestamp(),
+                  ApiViews.gameMap(state),
+                  ApiViews.sdState(state))));
     }
     if (isUnitDetail(path)) {
       return unitReply(
@@ -615,6 +633,10 @@ public final class GuiServer implements AutoCloseable {
     if (path.equals(DIRECTIVES_PATH)) {
       rejectAs(path, asPresent);
       return directivesReply(params);
+    }
+    if (path.equals(COMBATS_PATH)) {
+      rejectAs(path, asPresent);
+      return combatsReply(params);
     }
     if (path.equals(LLM_PROVIDERS_PATH)) {
       rejectAs(path, asPresent);
@@ -963,7 +985,13 @@ public final class GuiServer implements AutoCloseable {
         actor,
         params,
         Reply.of(
-            200, ApiViews.unit(unit, units, state.meta().timestamp(), ApiViews.gameMap(state))));
+            200,
+            ApiViews.unit(
+                unit,
+                units,
+                state.meta().timestamp(),
+                ApiViews.gameMap(state),
+                ApiViews.sdState(state))));
   }
 
   private Reply populationReply(
@@ -1025,6 +1053,22 @@ public final class GuiServer implements AutoCloseable {
         .listDirectives(makerId, target(params))
         .map(infos -> Reply.of(200, Map.of("directives", ApiViews.directives(infos))))
         .orElseGet(() -> Reply.of(404, Map.of("error", "decision maker not found", "id", raw)));
+  }
+
+  /**
+   * **交战只读面**：{@code GET /api/sd/combats}。响应形状 {@code {"combats":[{combatId,combatStateId,name,hex,
+   * currentStage,currentStageName,selectedOutcome,participants,participantsAtHex,participantCount,
+   * participantsAtHexCount}…]}}。
+   *
+   * <p>★ **纯只读**（不经 {@code CoreSimos}、不写盘）；空库 ⇒ {@code 200 {"combats":[]}}（不是 404/500）。参与单位
+   * "真的在交战格"由 {@link ApiViews#combats} 用 {@code effectivePosition} 现算，本层只装配。
+   */
+  private Reply combatsReply(Map<String, String> params) {
+    SimulationState state = queryService.stateAt(target(params));
+    List<Map<String, Object>> views =
+        ApiViews.combats(
+            ApiViews.sdState(state), ApiViews.unitState(state), state.meta().timestamp());
+    return Reply.of(200, Map.of("combats", views));
   }
 
   /** 决策人详情（T5）：{@code GET /api/sd/decision-makers/{id}}；不存在 ⇒ 404（与 unit/region 详情同口径）。 */

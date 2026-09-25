@@ -762,6 +762,41 @@ test("markerGroups-engaged-only-reflects-that-hex-and-empty-input-is-safe", () =
   assert.deepEqual(combatHexes([{ at: { q: 0, r: 0 } }]), {}, "缺 rootId 的组被忽略");
 });
 
+// ── 2026-09-24 真实交战记录（用户点名）：记录在案的格**必须**是交战格，旧两条推断降为兜底 ────────
+
+test("combatHexes-recorded-hex-with-no-unit-markers-is-a-combat-hex-with-value-at-least-one", () => {
+  // ★ 判据（字面量）：真实交战格 = (5,5)、markers 里没有任何单位落在该格 ⇒ 返回里必须有 "5_5" 且值 ≥ 1。
+  const markers = markerGroups([
+    { id: "A", parent: null, status: "RESTING", position: { q: 0, r: 0 } },
+  ]);
+  const recorded = { "5_5": { name: "甲战役", stage: "s1", participants: ["u-9"] } };
+  const combat = combatHexes(markers, recorded);
+  assert.equal(combat["5_5"], 1, "★ 记录在案 ⇒ 交战格，值至少 1（该格 0 个 rootId）");
+  assert.deepEqual(Object.keys(combat), ["5_5"], "全图只有这一（记录在案的）交战格");
+});
+
+test("combatHexes-keeps-the-legacy-inference-beside-the-recorded-hexes", () => {
+  // ★ 旧两条推断**仍在**（记录只是叠加，不是替换）：同格 2 个 rootId ⇒ 值 = 2。
+  const twoArmies = [
+    { id: "A", parent: null, status: "RESTING", position: { q: 1, r: 1 } },
+    { id: "B", parent: null, status: "RESTING", position: { q: 1, r: 1 } },
+  ];
+  // 数组形的真实交战记录（每项取 .hex）也应被认。
+  const combat = combatHexes(markerGroups(twoArmies), [{ hex: { q: 5, r: 5 } }]);
+  assert.equal(combat["1_1"], 2, "★ 旧推断仍生效：同格 2 个不同 rootId ⇒ 值 2");
+  assert.equal(combat["5_5"], 1, "数组形的真实交战格也在，值 ≥ 1");
+});
+
+test("combatHexes-recorded-hex-merged-with-legacy-count-takes-the-max", () => {
+  // 记录格同时被旧推断命中（同格 2 军）⇒ 值取两者较大者 2，不被"至少 1"压回去。
+  const twoArmies = [
+    { id: "A", parent: null, status: "RESTING", position: { q: 5, r: 5 } },
+    { id: "B", parent: null, status: "RESTING", position: { q: 5, r: 5 } },
+  ];
+  const combat = combatHexes(markerGroups(twoArmies), { "5_5": {} });
+  assert.equal(combat["5_5"], 2, "记录格同时有 2 个 rootId ⇒ 值 2");
+});
+
 test("combatSlot-two-parties-one-each-side-on-the-center-row", () => {
   const cellSize = 34; // 工作台 BASE_CELL
   const left = combatSlot(0, 2, cellSize);
@@ -831,7 +866,14 @@ test("combatLayoutEnabled-gates-the-special-layout-on-screen-cell-height", () =>
 
 test("renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates", () => {
   const src = readWebui("renderer.js");
-  assert.ok(src.includes("combatHexes(markers)"), "recomputeWorldPixels 用 combatHexes 判交战格");
+  assert.ok(
+    src.includes("combatHexes(markers, realCombatHexes)"),
+    "recomputeWorldPixels 用 combatHexes 判交战格，并传入**真实交战记录**（第二参）"
+  );
+  assert.ok(
+    src.includes("setCombats: setCombats"),
+    "renderer 导出 setCombats（map.js 装载真实交战记录的唯一入口）"
+  );
   assert.ok(
     src.includes("combatLayoutEnabled(cellSize, screenCell)"),
     "★ 门控：屏幕格高不够时不启用特殊布局（同一 screenCell 口径）"

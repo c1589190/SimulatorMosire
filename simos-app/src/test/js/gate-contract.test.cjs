@@ -71,7 +71,9 @@ const REQUIRED_FILES = [
 //   2026-09-24 日制裁定（1 tick = 1 天）起 279 → 284：timeline.test.cjs 新增 3 条（逐日循环：N=2 恰两次调用 +
 //     第 2 天用第 1 天返回的新 revision / to 恒 = from+1 / 失败立即停并报"第 i+1 天停下" / 状态文案）；新增
 //     readout.test.cjs 2 条（日预算 ×1000×24 = 48000 / etaTick 天数口径）。
-const MIN_ASSERTIONS = 284;
+//   2026-09-24 真实交战记录起 284 → 287：unit-tree.test.cjs 新增 3 条（记录格无单位标记 ⇒ 值 ≥1 /
+//     旧两条推断仍在且与记录叠加 / 记录格与旧计数取较大者）。
+const MIN_ASSERTIONS = 287;
 
 function testFiles() {
   return fs

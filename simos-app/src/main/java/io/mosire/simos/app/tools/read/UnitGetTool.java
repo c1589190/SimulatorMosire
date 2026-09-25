@@ -64,7 +64,12 @@ public final class UnitGetTool implements AgentTool {
         return ToolResult.error("NOT_FOUND", "单位不存在: " + id.value());
       }
       return ToolSupport.ok(
-          ToolSupport.unit(unit, units, state.meta().timestamp(), ToolSupport.gameMap(state)));
+          ToolSupport.unit(
+              unit,
+              units,
+              state.meta().timestamp(),
+              ToolSupport.gameMap(state),
+              ToolSupport.sdState(state)));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }

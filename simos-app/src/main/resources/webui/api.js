@@ -117,6 +117,12 @@
     return cachedGet("/units", target);
   }
 
+  // ★ 2026-09-24 交战：sd 的**真实交战记录**（把"哪格在交战"从纯推断升级为以记录为准）。
+  //   与 cachedUnits 同款：按 target 记忆化，同一 URL×target 只发一次。
+  function cachedCombats(target) {
+    return cachedGet("/sd/combats", target);
+  }
+
   // ★ T7：决策人只读查询面（T5 落地的后端端点）——决策模式左栏/右栏共用，按 target 记忆化。
   function cachedDecisionMakers(target) {
     return cachedGet("/sd/decision-makers", target);
@@ -205,6 +211,17 @@
 
   function unit(id, target) {
     return getJson(withTarget("/unit/" + encodeURIComponent(id), target));
+  }
+
+  /**
+   * 交战只读面（2026-09-24）：{combats:[{combatId,combatStateId,name,hex,currentStage,currentStageName,
+   * selectedOutcome,participants,participantsAtHex,participantCount,participantsAtHexCount}…]}。
+   *
+   * <p>★ 这是"哪格在交战 / 哪支军队属于哪场交战"的**唯一真值来源**（sd 的 Combat/CombatState 记录）——
+   * 前端**不得**再从"同格 ≥2 支军队"自行推断当真值（那是兜底，只在没有记录时用）。
+   */
+  function combats(target) {
+    return getJson(withTarget("/sd/combats", target));
   }
 
   /** 决策人列表（T5，只读）：{decisionMakers:[…]}；可带 ?affiliation=nation:<id>|army:<id>。 */
@@ -459,6 +476,7 @@
     mapPath: mapPath,
     units: units,
     unit: unit,
+    combats: combats,
     decisionMakers: decisionMakers,
     decisionMaker: decisionMaker,
     decisionMakerScope: decisionMakerScope,
@@ -466,6 +484,7 @@
     population: population,
     cachedMapOverview: cachedMapOverview,
     cachedUnits: cachedUnits,
+    cachedCombats: cachedCombats,
     cachedDecisionMakers: cachedDecisionMakers,
     invalidateState: invalidateState,
     submitCommand: submitCommand,
