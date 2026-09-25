@@ -27,8 +27,15 @@
 
 ### 模块结构与依赖硬约束
 
+> ★ **本节 2026-09-26 更正**：原图 `UtilSimos → MapSimos → { SocialSimos, UnitSimos } → CoreSimos → ShellSimos(app)`
+> **已过期**——它不含 `sd` / `economy-api` / `economy` / `ledger` 四个模块（都在图之后才建），
+> 且 `ShellSimos` 已不是模块名、Core 的地位经 ADR-1 收窄（见下表）。**旧图不删，留在这里作对照**。
+
 ```
-UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  ShellSimos(app)
+util → map → { social, unit, sd }
+util → economy-api → { economy, ledger }
+core       只依赖 util（+ agentlib / sqlite-jdbc / jackson）；领域模块在 core 里**只许 test scope**
+app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯一认识所有模块的地方**
 ```
 
 | 模块 | 允许依赖 | 要点 |
@@ -37,10 +44,18 @@ UtilSimos  →  MapSimos  →  { SocialSimos, UnitSimos }  →  CoreSimos  →  
 | `simos-map` | `simos-util` | **永不** import social/unit/agentlib；**不做任何存储** |
 | `simos-social` | util + map | 不依赖 UnitSimos |
 | `simos-unit` | util + map | 不依赖 SocialSimos |
-| `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc | map/social/unit **退到 test scope** ⇒ Core **编译期看不见任何领域类型**（铁律 4 的结构化），想重新实现领域逻辑也无从下手 |
-| `simos-app`（组合根） | util+map+social+unit+core+agentlib+mcp-core+mcp-json-jackson2+jackson+日志实现 | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/` |
+| `simos-sd` | util + map + social + unit + agentlib-mosire | 领域模块的**下游**；**禁 core/app**（不得认识组合与调度）。★ 它声明了 `simos-social` 但源码**零 import**（死依赖，2026-09-26 查实） |
+| `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc | map/social/unit/**sd** **退到 test scope** ⇒ Core **编译期看不见任何领域类型**（铁律 4 的结构化），想重新实现领域逻辑也无从下手。★ 它**未禁** economy/economy-api/ledger（洞，2026-09-26 查实） |
+| `simos-economy-api` | util + map（**两者与 jackson 实际均零 import**，死依赖） | 只放**经济切片共用的稳定契约**（ID / `ActorRef` / `CommodityId`）；无 Snapshot、无存储、无公式。禁一切领域/编排模块 |
+| `simos-economy` | util + economy-api | 聚合式经济切片（产业 / 阶层行 / 债务 / 流水）。禁 social/unit/sd/core/app/agentlib/**ledger**（切片间互不依赖） |
+| `simos-ledger` | util + economy-api | ★ **建了但未接线**：不在 codec / resolver 清单、无任何 handler、无人依赖（2026-09-26 查实）。待 D1 裁"退役 or 留作存量所有者" |
+| `simos-app`（组合根） | core + map + social + unit + sd + economy + agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现 | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/`。★ 它**用了** `util`（56 个 main 文件）与 `economy-api`（2 个）却**未声明**，靠传递依赖（2026-09-26 查实；同款情形在 `simos-core/pom.xml:33-36` 曾被定性为缺陷并修过——**"依赖传递不是契约"**） |
 
 - 上表的边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，不是 code review 的事。
+  ★ **但强制是不完整的**（2026-09-26 查实）：`util/map/social/unit` 的 ban 列表停留在 **M0（2026-09-16，当时全仓只有 5 个模块）**，
+  此后新增的模块**从未回填**（`git log -S'economy' -- {util,map,social,unit,core}/pom.xml` = **0 个提交**）。
+  ⇒ 当前 `social → economy`、`social → economy-api`、`core → economy/economy-api/ledger` **都不会被拦**。
+  设计意图是**互不依赖（对称）**，实现只做了一半。
 - 跨模块可见性走 **Facet**，不走反向依赖："某个 hex 上有哪些单位"**不能**写成 `MapManager.getUnitsAt(hex)`；
   Util 提供 Facet 协议，各领域模块自己注册提供者，MapSimos 对这些扩展完全不知情。
 - ★ **命令跨模块边界是"不透明载荷"**（ADR-1，2026-09-18）：Core 只认信封的 `type` 字符串，不 `instanceof`、
