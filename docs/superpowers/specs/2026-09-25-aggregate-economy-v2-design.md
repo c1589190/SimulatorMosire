@@ -140,7 +140,7 @@ v1 的 `PRODUCTION_CONSUMPTION_PER_MILLE = 150`（15%）是**永远拿得出来�
 
 | 层 | 本质 | **决定者** | 归属 | 例子 |
 |---|---|---|---|---|
-| **物理层** | 世界如何运作 | **没有主体** | 无领域归属（世界参数） | `TerrainType.food`（地形产能）、口粮系数、每标准劳动可种亩数、饲料率、折旧率 |
+| **物理层** | 世界如何运作 | **没有主体** | 地形产能归 `map`（`TerrainType.food`）；其余住 `economy` 的 `worldParams` 子表（见 §4.1.1） | 地形产能、口粮系数、每标准劳动可种亩数、饲料率、折旧率 |
 | **制度层** | 社会如何组织 | **生产关系双方** | `economy` | `AllocationRule.Split` 权重、租佃习惯、每亩需种 |
 | **政治层** | 国家强制什么 | **国家机器** | `government`（★ 尚未存在） | 税率、关税、最低工资、地租上限、出口禁令 |
 
@@ -150,6 +150,22 @@ v1 的 `PRODUCTION_CONSUMPTION_PER_MILLE = 150`（15%）是**永远拿得出来�
 - **政治层**的逐层 = **权力层级**（国家 → 下级行政单位）；
 - **物理层**的逐层 = **空间层级**（全球 → 格）。
 ⇒ **"某国覆盖自己的亩产"是语义错误**（国家不能决定自己土地的地力）。技术进步的**正确建模是生产资料存量变化**（更多农具/机器），不是覆盖物理常数。
+
+### 4.1.1 物理层参数落在哪个切片（★ 本版自审补的洞）
+
+物理层"没有主体"，但**项目里所有状态都必须住在某个切片里**（`SimulationState.modules`）——"无主体"不等于"无处安放"。定案：
+
+- **地形产能**（`TerrainType.food` / `gold` / `stone`）**已经是 `map` 的数据**，原地不动、原地读。这是它本来的归属（地形是地图的事实）。
+- **其余物理层参数**（口粮系数、每标准劳动可种亩数、饲料率、折旧率）**住 `economy` 切片的 `worldParams`（世界参数）子表**。
+
+理由：用它们的**只有** economy 的结算公式；为它们单开一个切片，收益不足以抵消成本（新切片 = 新 codec + 新 ChangeSet + 新往返测试 + 新 enforcer 条目 + Shell 注册）。
+
+★ **但它必须在语义上与"经济主体的数据"分开**：
+- `worldParams` 是**世界参数**，不是任何主体（阶层/政府）的所有物；
+- 参数目录里它归**物理层**分区，不与制度层的分配权重混在一张表；
+- **不许**出现"经济切片里的库存/货币"那类主体语义混进 `worldParams`。
+
+★ `government` 切片落地后，**政治层参数住 `government`**，不动 `worldParams` 的边界。
 
 ### 4.2 多层作用域，就近优先
 
@@ -221,18 +237,24 @@ v1 spec §四 的结算顺序里有两步是政府的（每日第 7 步征税、
 
 ### 5.1 协议（与 `Facet` / `TimeParticipant` 同族，这是第三次用该模式）
 
-住 **`simos-util/spi`**（共同上游：谁都能看见，但没人被反向依赖）。
+住 **`simos-util/spi`**（共同上游：谁都能看见，但没人被反向依赖）。**形状照抄既有协议族**，不另造类型：
 
 ```java
-public interface EconomyClaimSource {
-  String sourceId();                                    // 稳定 id —— 决议排序用，保证可复现
+public interface SurplusClaimSource {   // ★ 不叫 ClaimSource：ledger 已有 model.Claim（债权），撞名
+                                        // 本协议是 simos-util/spi 的第 13 个协议（既有 12 个见该包）
+  String sourceId();                    // 稳定 id —— 决议排序用，保证可复现
 
-  List<Claim> claimsIn(ClaimContext ctx);               // ① 提出索取（纯读自己的基态）
+  Set<String> reads();                  // ★ 与 TimeParticipant 同款：canonical 地址，供冲突检测
+  Set<String> writes();                 //   （v1 spec §九 的读写集检查对每个 namespace 一视同仁）
 
-  Optional<ModuleChange> settle(ClaimResolution res);   // ② 按"实际满足了多少"落回**自己的切片**
+  List<SurplusClaim> claimsIn(ClaimContext ctx);        // ① 提出索取（纯读自己的基态）
+
+  Map<String, ChangeSet> settle(ClaimResolution res);   // ② 按实际满足量落回**自己的切片**
+                                                        //    namespace → ChangeSet（照 WorldTimeProposal.moduleChanges 的类型）
+                                                        //    ★ 无事也交**不变变更集**，不许交空
 }
 
-public record Claim(
+public record SurplusClaim(             // ★ 不叫 Claim：见上
     String  claimantId,        // 索取主体（政府 / 某支部队 / 地主阶层…）—— 稳定 ID
     String  commodityId,       // 商品（粮）
     long    amount,            // 数量
@@ -240,6 +262,11 @@ public record Claim(
     int     priorityPerMille,  // 优先序（千分比）
     boolean mandatory)         // 强制（税 / 军队征粮）还是契约（租 / 利息 / 工资）
 ```
+
+★ **三处照抄既有形状、不许另造**（`AGENT.md` 信条"先复用已有能力"）：
+1. per-module 变更的类型就是 **`ChangeSet`**（`io.mosire.simos.util.state.ChangeSet`），容器是 `Map<String, ChangeSet>` —— 即 [`WorldTimeProposal.java`](../../../simos-util/src/main/java/io/mosire/simos/util/spi/WorldTimeProposal.java) 第 2 个组件的类型。不要自造 `ModuleChange`。
+2. **不许用 `Optional.empty()` 表示"我没变更"** —— `WorldTimeProposal` 的构造期明令：**空提案是装配错误**，"本日无事"应交**不变变更集**（`Unchanged` 分量），否则"这一参与者是否真的参与了本次推进"会从事件里彻底消失。
+3. **必须声明 `reads` / `writes`**（canonical 地址）—— 既有 `TimeParticipant` 就是这么做的，冲突检测用它。
 
 ★ **必须是双向的**：① 只提索取不够——东西得有地方落。而 `economy` 是纯函数、**不能写别人的切片**（铁律 3）。故 ② `settle(ClaimResolution)` 让索取源**按实际满足量产出自己切片的变更集**，该变更集与 `economy` 的变更集一起进**同一份 `WorldTimeProposal`**（多切片提案），一条 revision 原子提交。
 
