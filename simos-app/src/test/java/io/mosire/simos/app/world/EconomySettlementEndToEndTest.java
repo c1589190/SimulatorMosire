@@ -218,11 +218,69 @@ class EconomySettlementEndToEndTest {
     }
   }
 
+  // ── (f) §十一 等价性（本轮核心护栏）：一次 N 天 == N 次单日，**硬断言终态逐值相等** ─────────────
+
+  /**
+   * ★★ **§十一 等价性护栏**：同一份创世，一份世界 {@code advance(0 → 150)} **一次**，另一份走 **150 次单日** advance ⇒
+   * **两份终态逐值相同**（{@link EconomyData} 整个 record 相等：产业进度/周期劳动、队伍库存/货币/债务、 债务表、流水、meta 全在内）。
+   *
+   * <p>★ 150 天刻意跨过第 **120** 天那个周期末：逐日循环必须**照样在那一天收获 + 分配**（天数是绝对日，不是"推进次数"）。 判别力：若 {@code
+   * EconomySettlement} 把一次 N 天压成"只按 to 结算一天"（或逐日循环只跑第一天）⇒ 第 120 天不收获、 逐日消费与债务都不对 ⇒ 本条红。
+   */
+  @Test
+  void oneHundredFiftyDaysInOneCommandEqualsOneHundredFiftyDailySteps() throws Exception {
+    Path onceDir = tempDir.resolve("once");
+    Path dailyDir = tempDir.resolve("daily");
+    java.nio.file.Files.createDirectories(onceDir);
+    java.nio.file.Files.createDirectories(dailyDir);
+
+    try (CoreSimos once = freshCoreAt(onceDir);
+        CoreSimos daily = freshCoreAt(dailyDir)) {
+      long head = once.head(MAIN).orElseThrow().value();
+      CommandResult oneShot =
+          once.submit(
+              new AdvanceTime(
+                  "cmd-once",
+                  "corr-once",
+                  "player:test",
+                  MAIN,
+                  new RevisionId(head),
+                  new TimeRange(SimosTimestamp.of(0), Optional.of(SimosTimestamp.of(150)))));
+      assertThat(oneShot)
+          .as("一次 150 天 ⇒ 恰落一条 revision")
+          .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1))));
+
+      advance(daily, 150); // 另一份：150 次单日（每次用上一条的新 revision）
+
+      EconomyData onceData = economy(once);
+      EconomyData dailyData = economy(daily);
+
+      // ★★ 唯一证据：两份终态**逐值相同**（不是"都没报错"）。
+      assertThat(onceData)
+          .as("§十一：advance(0→150) 的终态 == 150 次单日 advance 的终态（覆盖第 120 天收获/逐日消费/债务）")
+          .isEqualTo(dailyData);
+
+      // ★ 再钉一条可读的绝对日数字：150 天只跨过第 120 天一次 ⇒ 关账周期 1、周期进度 30。
+      assertThat(onceData.meta().orElseThrow().lastClosedCycle())
+          .as("150 天跨过第 120 天那个周期末 ⇒ 关账周期序号 1")
+          .hasValue(1L);
+      assertThat(farm(onceData, FARM_0).progressDays())
+          .as("第 120 天收获后进入第 2 周期，又走 30 天")
+          .isEqualTo(30L);
+      assertThat(farm(dailyData, FARM_0).progressDays()).isEqualTo(30L);
+    }
+  }
+
   // ── 夹具 ───────────────────────────────────────────────────────────────────────────
 
   private CoreSimos freshCore() {
+    return freshCoreAt(tempDir);
+  }
+
+  /** 在 {@code dir} 下起一个只装 economy 的真 core（两份世界对比时各用各的目录，避免共用同一个 sqlite 文件）。 */
+  private static CoreSimos freshCoreAt(Path dir) {
     CoreSimos core =
-        new CoreSimos(new CoreConfig(tempDir, CHECKPOINT_INTERVAL, SimosObjectMapper.create()));
+        new CoreSimos(new CoreConfig(dir, CHECKPOINT_INTERVAL, SimosObjectMapper.create()));
     core.register(new EconomyCodec());
     core.register(new EconomyTimeParticipant(EconomyTestWorld.MAP_ID));
     core.bootstrapGenesis(EconomyTestWorld.genesis());

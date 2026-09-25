@@ -41,8 +41,9 @@ import java.util.Set;
 /**
  * sd 侧的时间推进参与者（spec §五.2，C4）：**每个 sd 命名空间只有一个**（{@code putIfAbsent} 重复即抛）。
  *
- * <p>★ {@code simulate} 是**纯函数**：用 {@code range.to} 求值 {@code Effect.trigger}（R6 延期效果）与 {@code
- * CombatStage.exit}（N1 阶段推进），产出**本模块** {@code SdChangeSet}。**绝不放进 ③Resolve**。
+ * <p>★ {@code simulate} 是**纯函数**：**从 {@code range.from} 逐日推到 {@code range.to}**，逐日求值 {@code
+ * Effect.trigger}（R6 延期效果）与 {@code CombatStage.exit}（N1 阶段推进），产出**本模块** {@code
+ * SdChangeSet}（§十一：一次推进 N 天，内部逐日，避免一次跳日把中间该发生的阶段转换整段跳过）。**绝不放进 ③Resolve**。
  *
  * <p>★ **时间量纲（2026-09-24 日制裁定）**：{@code range.to.tick()} 是**世界日**（全局 1 tick = 1 天）⇒ 求值里 {@code
  * at.tick()} 与参照点的差值即**日数**。
@@ -76,7 +77,7 @@ public final class SdTimeParticipant implements TimeParticipant {
     if (to.isEmpty()) {
       return new TimeProposal(NAMESPACE, SdChangeSet.between(base, base), Set.of(), Set.of());
     }
-    SimosTimestamp at = to.get();
+    SimosTimestamp end = to.get();
     RevisionId atRevision = state.meta().ref().revision();
     UnitState units = unitsOf(state);
     Set<String> reads = new LinkedHashSet<>();
@@ -86,63 +87,74 @@ public final class SdTimeParticipant implements TimeParticipant {
     Map<CombatStateId, CombatState> combatStates = new LinkedHashMap<>(base.combatStates());
     Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(base.info());
 
-    for (Effect effect : sortedEffects(base)) {
-      if (effect.status() != EffectStatus.PLANNED && effect.status() != EffectStatus.COMMITTED) {
-        continue;
-      }
-      reads.add(effectAddress(effect.id()));
-      collectTriggerReads(effect.trigger(), reads);
-      if (!TriggerEvaluator.evaluate(effect.trigger(), at, base, units, effect.createdTick())) {
-        continue;
-      }
-      effects.put(
-          effect.id(),
-          new Effect(
-              effect.id(),
-              effect.kind(),
-              effect.trigger(),
-              effect.action(),
-              EffectStatus.FIRED,
-              effect.createdTick()));
-      writes.add(effectAddress(effect.id()));
-      applyAction(effect.action(), atRevision, at.tick(), base, combatStates, info, reads, writes);
-    }
+    // ★★ §十一（2026-09-25）：一次推进 N 天 ⇒ **从 from 逐日推到 to**——阶段链、AfterTicks/AtOrAfterTick、effect 触发
+    //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的阶段转换/触发整段跳过（等价性当场破）。
+    //   ★ 每天用**该日开始时的状态快照**（effects/combatStates/info 已含前几天的累计结果）求值，与"N 次单日推进"
+    //     的逐步语义逐字一致——这就是等价性的根。
+    for (long day = range.from().tick() + 1L; day <= end.tick(); day++) {
+      SimosTimestamp at = SimosTimestamp.of(day);
+      SdState todayBegin = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);
 
-    for (CombatState combatState : sortedStates(base)) {
-      Combat combat = base.combats().get(combatState.combatId());
-      CombatStage current = stageOf(combat, combatState.currentStage());
-      if (current == null || current.exit().isEmpty()) {
-        continue;
-      }
-      reads.add(stageAddress(combat.id(), current.id()));
-      for (Trigger condition : current.exit()) {
-        collectTriggerReads(condition, reads);
-      }
-      boolean satisfied = true;
-      for (Trigger condition : current.exit()) {
-        if (!TriggerEvaluator.evaluate(condition, at, base, units, 0L)) {
-          satisfied = false;
-          break;
+      for (Effect effect : sortedEffects(todayBegin)) {
+        if (effect.status() != EffectStatus.PLANNED && effect.status() != EffectStatus.COMMITTED) {
+          continue;
         }
+        reads.add(effectAddress(effect.id()));
+        collectTriggerReads(effect.trigger(), reads);
+        if (!TriggerEvaluator.evaluate(
+            effect.trigger(), at, todayBegin, units, effect.createdTick())) {
+          continue;
+        }
+        effects.put(
+            effect.id(),
+            new Effect(
+                effect.id(),
+                effect.kind(),
+                effect.trigger(),
+                effect.action(),
+                EffectStatus.FIRED,
+                effect.createdTick()));
+        writes.add(effectAddress(effect.id()));
+        applyAction(
+            effect.action(), atRevision, at.tick(), todayBegin, combatStates, info, reads, writes);
       }
-      if (!satisfied) {
-        continue;
+
+      for (CombatState combatState : sortedStates(todayBegin)) {
+        Combat combat = base.combats().get(combatState.combatId());
+        CombatStage current = stageOf(combat, combatState.currentStage());
+        if (current == null || current.exit().isEmpty()) {
+          continue;
+        }
+        reads.add(stageAddress(combat.id(), current.id()));
+        for (Trigger condition : current.exit()) {
+          collectTriggerReads(condition, reads);
+        }
+        boolean satisfied = true;
+        for (Trigger condition : current.exit()) {
+          if (!TriggerEvaluator.evaluate(condition, at, todayBegin, units, 0L)) {
+            satisfied = false;
+            break;
+          }
+        }
+        if (!satisfied) {
+          continue;
+        }
+        CombatStage next = nextStage(combat, current);
+        if (next == null) {
+          continue;
+        }
+        combatStates.put(
+            combatState.id(),
+            new CombatState(
+                combatState.id(),
+                combatState.combatId(),
+                next.id(),
+                combatState.hex(),
+                combatState.participants(),
+                combatState.selectedOutcome(),
+                combatState.losses()));
+        writes.add(stageAddress(combat.id(), next.id()));
       }
-      CombatStage next = nextStage(combat, current);
-      if (next == null) {
-        continue;
-      }
-      combatStates.put(
-          combatState.id(),
-          new CombatState(
-              combatState.id(),
-              combatState.combatId(),
-              next.id(),
-              combatState.hex(),
-              combatState.participants(),
-              combatState.selectedOutcome(),
-              combatState.losses()));
-      writes.add(stageAddress(combat.id(), next.id()));
     }
 
     SdState target = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);

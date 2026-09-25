@@ -41,6 +41,7 @@ class SdTimeParticipantTest {
   private static final CombatId C1 = new CombatId("c1");
   private static final CombatStageId S1 = new CombatStageId("s1");
   private static final CombatStageId S2 = new CombatStageId("s2");
+  private static final CombatStageId S3 = new CombatStageId("s3");
   private static final CombatStateId CS1 = new CombatStateId("cs1");
   private static final CombatOutcomeId O1 = new CombatOutcomeId("o1");
   private static final CombatOutcomeId O2 = new CombatOutcomeId("o2");
@@ -177,6 +178,40 @@ class SdTimeParticipantTest {
     assertThat(after(base, proposal).info().get("map:Map1")).hasSize(1);
   }
 
+  // ── §十一（2026-09-25）：一次推进 N 天必须**逐日**评估 ────────────────────────────────
+
+  /**
+   * ★★ **一次跨多日推进要逐日走完阶段链**：夹具 {@code s1 --AtOrAfterTick(5)--> s2 --AtOrAfterTick(6)--> s3}，推进
+   * {@code 4 → 10}。
+   *
+   * <p>★ 逐日 ⇒ 第 5 天 s1→s2、第 6 天 s2→s3（终态 **s3**）。判别力：只按 {@code to = 10} 求值一次的旧实现**只走一跳** ⇒ 终态停在 s2
+   * ⇒ 本条红。
+   */
+  @Test
+  void multiDayAdvanceWalksTheStageChainDayByDay() {
+    SdState base = chainBase();
+
+    SdState next = after(base, simulate(base, 4, 10));
+
+    assertThat(next.combatStates().get(CS1).currentStage())
+        .as("逐日推进 ⇒ 两跳都发生，到 s3（跳日的实现会停在 s2）")
+        .isEqualTo(S3);
+  }
+
+  /** ★★ §十一 的等价性判据：{@code simulate(base, 4, 10)} 的终态 == 6 次单日 simulate 的终态。 */
+  @Test
+  void multiDayAdvanceAgreesWithChainedSingleDayAdvances() {
+    SdState base = chainBase();
+
+    SdState once = after(base, simulate(base, 4, 10));
+    SdState chained = base;
+    for (long day = 4; day < 10; day++) {
+      chained = after(chained, simulate(chained, day, day + 1));
+    }
+
+    assertThat(once).as("§十一：一次 6 天 == 6 次单日（终态逐值相同）").isEqualTo(chained);
+  }
+
   // ── 夹具与助手 ───────────────────────────────────────────────────────
 
   private TimeProposal simulate(SdState base, long fromTick, long toTick) {
@@ -239,6 +274,47 @@ class SdTimeParticipantTest {
   private static OutcomeTable table(CombatOutcomeId outcome) {
     return new OutcomeTable(
         java.util.List.of(new OutcomeOption(outcome, "label", 1, new CasualtySpec(0, Map.of()))));
+  }
+
+  /** 三段阶段链 {@code s1 --AtOrAfterTick(5)--> s2 --AtOrAfterTick(6)--> s3}（§十一 逐日阶段推进的载体）。 */
+  private static SdState chainBase() {
+    CombatStage s1 =
+        new CombatStage(
+            S1,
+            "s1",
+            Set.of(),
+            java.util.List.of(),
+            java.util.List.of(new Trigger.AtOrAfterTick(5)),
+            0,
+            10,
+            table(O1));
+    CombatStage s2 =
+        new CombatStage(
+            S2,
+            "s2",
+            Set.of(),
+            java.util.List.of(new Trigger.AtOrAfterTick(5)),
+            java.util.List.of(new Trigger.AtOrAfterTick(6)),
+            0,
+            10,
+            table(O2));
+    CombatStage s3 =
+        new CombatStage(
+            S3,
+            "s3",
+            Set.of(),
+            java.util.List.of(new Trigger.AtOrAfterTick(6)),
+            java.util.List.of(),
+            0,
+            10,
+            table(O1));
+    Combat combat =
+        new Combat(
+            C1, "交战一", java.util.List.of(s1, s2, s3), Set.of(SdWorlds.ROOT_UNIT), Optional.empty());
+    CombatState state =
+        new CombatState(
+            CS1, C1, S1, SdWorlds.HEX, Set.of(SdWorlds.ROOT_UNIT), Optional.empty(), Set.of());
+    return SdState.empty().withCombats(Map.of(C1, combat)).withCombatStates(Map.of(CS1, state));
   }
 
   private static LossRecord lossRecord(int personnel) {

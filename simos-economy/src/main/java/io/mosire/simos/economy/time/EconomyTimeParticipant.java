@@ -23,8 +23,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ **economy 侧的时间推进参与者**（R3a/R4a，聚合式经济重设计 §四）：每次 {@code AdvanceTime} 推进一步，就按 v1 口径结算**一天**（消费 /
- * 缺口借粮 / 进度 / 劳动投入；周期末追加产出 / 生产消耗 / 制度分配）。
+ * ★★ **economy 侧的时间推进参与者**（R3a/R4a，聚合式经济重设计 §四）：每次 {@code AdvanceTime} 按 {@code range} **从 {@code
+ * from + 1} 逐日结算到 {@code to}**（消费 / 缺口借粮 / 进度 / 劳动投入；周期末追加产出 / 生产消耗 / 制度分配），最终只产出一份 {@code
+ * EconomyChangeSet}（§十一：一次推进 N 天、只落一条 revision）。
  *
  * <p>★ **纯函数**：拿 {@link SimulationState} 交提案，**不写状态**（{@link EconomySettlement#settle}
  * 是纯的）。每个参与者拿到的都是同一份 base（C25）⇒ 调用顺序不影响结果。
@@ -92,7 +93,8 @@ public final class EconomyTimeParticipant implements TimeParticipant {
     if (to.isEmpty()) {
       target = base; // 无上界推进：没有可结算的日，交不变提案
     } else {
-      target = EconomySettlement.settle(base, to.get().tick());
+      // ★ §十一：一次推进 N 天，结算**在参与者内部逐日**（from+1 .. to），最终只产出一份变更集。
+      target = EconomySettlement.settle(base, range.from().tick(), to.get().tick());
     }
 
     for (ClassKey key : target.flows().keySet()) {

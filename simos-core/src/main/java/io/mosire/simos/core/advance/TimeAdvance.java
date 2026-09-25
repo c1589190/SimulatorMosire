@@ -67,14 +67,25 @@ import org.slf4j.LoggerFactory;
  * "命令接收/拒绝/冲突/提交"这四项**这一支一条都不会被记**。故三条结局各记一行 INFO，一条命令**恰好一行**。 日志纪律与 {@code CommandBus}
  * 同口径：不落载荷明文，只记结构信息。
  *
- * <p>★★ **一天一步（2026-09-24 日制裁定，见 POLITICAL_ECONOMY_DESIGN.md §3）**：本类只执行**所有模块共用**的单日 步长规则，两条：①
- * 纯语法——{@code range.to == range.from + 1}（与"缺 to ⇒ 拒"同在 ④ 第 0 项，不查库）； ② 连续性——{@code range.from.tick
- * == base 状态的时间戳 tick}（要 base 才知道，故排在装配状态之后、simulate 之前）。 **"快进 N 天"的编排不在 Core**：GUI/MCP 连续提交 N
- * 次、每次用上一次返回的新 {@code expectedRevision}， 中途失败便停在已提交的那一天。
+ * <p>★★ **一次 N 天、内部逐日（2026-09-25 §十一 裁定，取代 2026-09-24 的"每天恰好一天"）**：本类只执行**所有模块共用** 的步长规则，两条：①
+ * 纯语法——{@code 1 ≤ N ≤ }{@link #MAX_ADVANCE_DAYS}（{@code N = to − from}；与"缺 to ⇒ 拒"同在 ④ 第 0 项，不查库）；②
+ * 连续性——{@code range.from.tick == base 状态的时间戳 tick}（要 base 才知道，故排在装配状态之后、 simulate 之前）。
+ *
+ * <p>★★ **结算语义不跳日**：{@code AdvanceTime} **允许一次推进 N 天、只落一条 revision**，但各参与者必须在这一次推进**内部逐日**
+ * 推进（经济：逐日消费/进度/周期末收获；SD：逐日评估触发与阶段；unit：时间预算公式本身就是跨日累计）。判据是**等价性**： {@code advance(from, from+N)}
+ * 的**终态** == N 次单日 advance 的终态（事件链可以不同：前者只有一条 revision）。
  */
 public final class TimeAdvance implements AdvanceRoute {
 
   private static final Logger LOG = LoggerFactory.getLogger(TimeAdvance.class);
+
+  /**
+   * 单次推进的**理智上限**（天）：{@code 1 ≤ N ≤ 36500}（§十一：约 100 年的日步长）。
+   *
+   * <p>★ 它挡的是"把 100 万天塞进一条 revision"这类手滑/恶意输入——一次推进内部的逐日结算成本与 N 线性， 不设上界则一条命令就能把进程拖死。越过上界 ⇒ {@code
+   * Rejected}，理由里点名这个字面量。
+   */
+  public static final long MAX_ADVANCE_DAYS = 36500L;
 
   /**
    * 事件载荷的序列化器：**独立一台**、不带 {@code @JsonTypeInfo}——载荷全是 {@code String}，没有模块类型参与， 故不需要模块 mixin（与
@@ -148,13 +159,24 @@ public final class TimeAdvance implements AdvanceRoute {
       return rejected(cmd, trace, "推进必须有上界（range.to 缺失）：AdvanceTime 是写操作，语义上不允许开区间");
     }
 
-    // ★ 第 0 项的第二条（同一层的纯语法判定）：**一天一步**。一次 AdvanceTime 结算恰好一天，
-    //   "快进 N 天"由 app（GUI/MCP）连续提交 N 次、每次用上一次返回的新 expectedRevision 编排——
-    //   Core 不认识"快进"这个词，也不替调用方拆分区间（拆了就成了 Core 里的编排）。
+    // ★ 第 0 项的第二条（同一层的纯语法判定）：**一次推进 N 天**（2026-09-25 §十一 裁定，取代"每天恰好一天"）。
+    //   一次 AdvanceTime 可以结算 N 天、只落一条 revision（N ≥ 1 且 N ≤ MAX_ADVANCE_DAYS）；越界 ⇒ 拒绝并点名上下界。
+    //   ★ "内部逐日"是各参与者的责任（Core 不懂领域语义），等价性由各模块的测试与 e2e 护栏钉死。
     long fromTick = cmd.range().from().tick();
     long toTick = cmd.range().to().orElseThrow().tick();
-    if (toTick != fromTick + 1) {
-      return rejected(cmd, trace, "推进必须恰好一天（to 必须 = from + 1）: from=" + fromTick + "，to=" + toTick);
+    long spanDays = toTick - fromTick;
+    if (spanDays < 1L || spanDays > MAX_ADVANCE_DAYS) {
+      return rejected(
+          cmd,
+          trace,
+          "推进天数须满足 1 ≤ N ≤ "
+              + MAX_ADVANCE_DAYS
+              + "（N = to − from）: from="
+              + fromTick
+              + "，to="
+              + toTick
+              + "，N="
+              + spanDays);
     }
 
     // ① Prepare：入口乐观并发检查（C17 的同一条）。AdvanceTime 不过信封支 ⇒ 这里必须自己查一次，

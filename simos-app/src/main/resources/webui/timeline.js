@@ -2,8 +2,9 @@
 // ★ 无框架、无构建、同源、零依赖（spec §8.1）。
 // ★ 只读预览（R1）：拖动/点节点**只**改状态机的 {branch, revision}，不发任何写请求。
 // ★ 写只经 window.SimosApi.advance / fork（服务端唯一入口 CoreSimos.submit）。
-// ★ 2026-09-24 日制裁定：1 tick = 1 天，Core 的 AdvanceTime **一次恰好一天** ⇒ "推进 N 天"必须由前端
-//   **逐日循环**提交 N 次（advanceByDays），每次 to = from + 1、expectedRevision 用上一条返回的新 revision。
+// ★ 2026-09-25 §十一（用户裁定，取代 2026-09-24 的"一次恰好一天"）：1 tick = 1 天，Core 的 AdvanceTime
+//   **允许一次推进 N 天**（to = from + N，1 ≤ N ≤ 36500）⇒ "推进 N 天"回到**一条命令**（to = from + steps），
+//   结算在各模块参与者内部**逐日**完成（前端不再逐日循环）。
 // ★ 末端判定（U1）是纯函数 isAtTip(state, branchHeads)：只有游标在分支末端时才允许写。
 // ★ M7b T1：节点 x 不再靠 flex 流，改为按列算：x = 左边距 + (列 − 1) × 列宽；
 //   非 main 分支首个节点对齐其 parent 所在列，并画一条垂直分岔连线（.tl-fork-link，**不复用** .timeline-line）。
@@ -655,12 +656,13 @@
   }
 
   /**
-   * 逐日推进（★ 2026-09-24 日制裁定：1 tick = 1 天，Core 的 {@code AdvanceTime} 一次恰好一天）：
-   * 连续提交 {@code days} 次，每次 {@code to = from + 1}，且 {@code expectedRevision} 用**上一条**返回的
-   * 新 revision 编排。`advance` 缺省取 {@code window.SimosApi.advance}（页面路径），测试可注入假实现。
+   * 推进 {@code days} 天（★ 2026-09-25 §十一：Core 允许 **一次 N 天** ⇒ 这里只发**一条**命令，
+   * {@code to = fromDay + days}；服务端在各模块内部逐日结算，落一条 revision）。
    *
-   * <p>返回 `{ok, advancedDays, stoppedAtDay, error}`：任一天被拒/冲突 ⇒ **立即停**，
-   * `advancedDays` = 已成功的天数（绝不把失败那天算进"已推进"）。
+   * <p>★ 请求是**原子**的：成功 ⇒ {@code advancedDays = days}；失败（被拒/冲突）⇒ 没有"推进了一半"这回事， {@code
+   * advancedDays = 0}。`advance` 缺省取 {@code window.SimosApi.advance}（页面路径），测试可注入假实现。
+   *
+   * <p>返回 `{ok, advancedDays, stoppedAtDay, error}`（形态与 1a 逐日版一致，故 {@link #advanceStatusText} 文案不变）。
    */
   async function advanceByDays(opts) {
     var advance = opts.advance || (window.SimosApi && window.SimosApi.advance);
@@ -672,27 +674,21 @@
         error: new Error("本页没有 advance 端点"),
       };
     }
-    var revision = opts.expectedRevision;
-    var day = opts.fromDay;
-    for (var i = 0; i < opts.days; i++) {
-      var body;
-      try {
-        body = await advance(opts.branch, revision, day, day + 1);
-      } catch (error) {
-        return { ok: false, advancedDays: i, stoppedAtDay: i + 1, error: error };
-      }
-      var ref = body && body.ref;
-      if (!ref || ref.revision === null || ref.revision === undefined) {
-        // 取不到新 revision ⇒ 不能编造、也不能带着旧 revision 继续（否则下一天必冲突）。
-        return {
-          ok: false,
-          advancedDays: i,
-          stoppedAtDay: i + 1,
-          error: new Error("推进返回里没有新 revision"),
-        };
-      }
-      revision = Number(ref.revision);
-      day = day + 1;
+    var body;
+    try {
+      body = await advance(opts.branch, opts.expectedRevision, opts.fromDay, opts.fromDay + opts.days);
+    } catch (error) {
+      return { ok: false, advancedDays: 0, stoppedAtDay: 1, error: error };
+    }
+    var ref = body && body.ref;
+    if (!ref || ref.revision === null || ref.revision === undefined) {
+      // 取不到新 revision ⇒ 不编造。
+      return {
+        ok: false,
+        advancedDays: 0,
+        stoppedAtDay: 1,
+        error: new Error("推进返回里没有新 revision"),
+      };
     }
     return { ok: true, advancedDays: opts.days, stoppedAtDay: null, error: null };
   }
@@ -714,9 +710,8 @@
   }
 
   /**
-   * 推进 N 天：**逐日循环**——POST /api/advance 共 N 次，每次 to = from + 1、expectedRevision 用上一条返回的
-   * 新 revision（★ 日制裁定：一次 AdvanceTime 恰好一天，快进只能由调用方连续提交）。任一天被拒/冲突 ⇒ 立即停，
-   * 状态栏如实报"已推进 i 天、在第 i+1 天停下（原因）"并刷新（**不**把已提交天数报成全部）。
+   * 推进 N 天：**一条命令**——POST /api/advance 一次，{@code to = from + N}（§十一：Core 允许一次 N 天，服务端内部逐日结算）。
+   * 被拒/冲突 ⇒ 请求是原子的（没有"推进了一半"），状态栏如实报"已推进 0 天"并刷新。
    * ★ 非法 N：明确提示且**不发写**（U1 的末端检查同样先跑）。
    */
   async function onCreate() {

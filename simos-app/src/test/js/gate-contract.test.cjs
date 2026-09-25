@@ -78,7 +78,9 @@ const REQUIRED_FILES = [
 //     （经济读数逐值投影 / 制度与周期进度 / 无产业 / 未激活 / 无数据 / 缺字段降级 / 取数层接线与缓存 / 面板接线静态扫描）。
 //   2026-09-25 R3a（日结算 + 周期收获）起 295 → 296：economy-panel.test.cjs 新增 1 条
 //     （粮库存/日耗/本期流水逐值来自服务端 + 缺 flow 降级为「无」）。
-const MIN_ASSERTIONS = 296;
+//   2026-09-25 §十一（推进允许一次 N 天，撤销前端逐日循环）起 296 → 297：timeline.test.cjs 的"逐日循环"
+//     两条改写为"一条命令 to = from + N"，并新增 1 条（返回里没有新 revision ⇒ 不编造成功），合计 +1。
+const MIN_ASSERTIONS = 297;
 
 function testFiles() {
   return fs

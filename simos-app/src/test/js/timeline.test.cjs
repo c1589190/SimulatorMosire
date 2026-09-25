@@ -125,8 +125,8 @@ test("tickIndex-finds-position", () => {
   assert.equal(T.tickIndex(groups, 9), -1);
 });
 
-// ── 逐日推进（★ 2026-09-24 日制裁定：1 tick = 1 天，Core 的 AdvanceTime 一次恰好一天）──────
-//   "推进 N 天" = 逐日循环提交 N 次；每次 to = from + 1、expectedRevision 用**上一条**返回的新 revision。
+// ── 推进 N 天（★ 2026-09-25 §十一：Core 允许一次 N 天 ⇒ 前端**一条命令** to = from + N）────────
+//   "推进 N 天" = 一次 advance 请求，to = fromDay + days；服务端在各模块内部逐日结算（前端不再逐日循环）。
 
 /** 假 SimosApi.advance：记录每次调用，并按 responder(call, n) 作答（n 从 1 起）。 */
 function advanceRecorder(responder) {
@@ -141,9 +141,9 @@ function advanceRecorder(responder) {
   return { api, calls };
 }
 
-test("advanceByDays-submits-one-day-per-call-and-chains-the-new-revision", async () => {
-  const rec = advanceRecorder((call, n) =>
-    Promise.resolve({ result: "committed", ref: { branch: "main", revision: 10 + n } })
+test("advanceByDays-submits-one-request-with-to-equals-from-plus-days", async () => {
+  const rec = advanceRecorder(() =>
+    Promise.resolve({ result: "committed", ref: { branch: "main", revision: 11 } })
   );
   const T2 = loadWebui("timeline.js", { SimosApi: rec.api }).SimosTimeline;
   const outcome = await T2.advanceByDays({
@@ -152,23 +152,16 @@ test("advanceByDays-submits-one-day-per-call-and-chains-the-new-revision", async
     fromDay: 5,
     days: 2,
   });
-  assert.equal(rec.calls.length, 2, "N=2 ⇒ 恰好两次 advance 调用（逐日提交，不是一条 to=tick+2）");
-  assert.equal(rec.calls[0].expectedRevision, 9, "第 1 天用当前 head");
-  assert.equal(rec.calls[1].expectedRevision, 11, "第 2 天必须用第 1 天返回的新 revision（10+1）");
-  rec.calls.forEach((c) => assert.equal(c.to, c.from + 1, "to 恒 = from + 1（每天恰好一天）"));
-  assert.deepEqual(
-    rec.calls.map((c) => c.from),
-    [5, 6],
-    "from 逐日推进"
-  );
+  assert.equal(rec.calls.length, 1, "N=2 ⇒ 恰好一次 advance 调用（一条命令 to = from + 2）");
+  assert.equal(rec.calls[0].expectedRevision, 9, "一次请求用当前 head");
+  assert.equal(rec.calls[0].from, 5, "from = fromDay");
+  assert.equal(rec.calls[0].to, 7, "to = from + N（5 + 2）——不是逐日提交 to = from + 1");
   assert.deepEqual(outcome, { ok: true, advancedDays: 2, stoppedAtDay: null, error: null });
 });
 
-test("advanceByDays-stops-immediately-and-reports-partial-progress", async () => {
-  const rec = advanceRecorder((call, n) =>
-    n === 1
-      ? Promise.resolve({ result: "committed", ref: { branch: "main", revision: 10 } })
-      : Promise.reject(Object.assign(new Error("被拒：区间不是恰好一天"), { status: 422 }))
+test("advanceByDays-reports-a-single-rejected-request-as-zero-progress", async () => {
+  const rec = advanceRecorder(() =>
+    Promise.reject(Object.assign(new Error("被拒：推进天数越界"), { status: 422 }))
   );
   const T2 = loadWebui("timeline.js", { SimosApi: rec.api }).SimosTimeline;
   const outcome = await T2.advanceByDays({
@@ -177,13 +170,25 @@ test("advanceByDays-stops-immediately-and-reports-partial-progress", async () =>
     fromDay: 5,
     days: 3,
   });
-  assert.equal(rec.calls.length, 2, "第 2 天失败 ⇒ 立即停，第 3 天绝不再发");
+  assert.equal(rec.calls.length, 1, "一条请求（原子）");
+  assert.equal(rec.calls[0].to, 8, "to = from + N（5 + 3）");
   assert.equal(outcome.ok, false);
-  assert.equal(outcome.advancedDays, 1, "只承认已提交的 1 天，不得报成全部 3 天");
-  assert.equal(outcome.stoppedAtDay, 2, "停在第 2 天");
+  assert.equal(outcome.advancedDays, 0, "请求被拒 ⇒ 没有『推进了一半』，已推进 0 天");
   const text = T2.advanceStatusText(outcome, 5, 3);
-  assert.match(text, /已推进 1 天/);
-  assert.match(text, /第 2 天停下/);
+  assert.match(text, /已推进 0 天/);
+});
+
+test("advanceByDays-rejects-a-response-without-a-new-revision", async () => {
+  const rec = advanceRecorder(() => Promise.resolve({ result: "committed" }));
+  const T2 = loadWebui("timeline.js", { SimosApi: rec.api }).SimosTimeline;
+  const outcome = await T2.advanceByDays({
+    branch: "main",
+    expectedRevision: 9,
+    fromDay: 5,
+    days: 2,
+  });
+  assert.equal(outcome.ok, false, "返回里没有新 revision ⇒ 不编造成功");
+  assert.equal(outcome.advancedDays, 0);
 });
 
 test("advanceStatusText-reports-server-reason-and-success-range", () => {
@@ -191,9 +196,9 @@ test("advanceStatusText-reports-server-reason-and-success-range", () => {
     ok: false,
     advancedDays: 0,
     stoppedAtDay: 1,
-    error: { body: { result: "rejected", reason: "区间不是恰好一天" } },
+    error: { body: { result: "rejected", reason: "推进必须从当前世界日出发" } },
   };
-  assert.equal(T.advanceStatusText(fail, 5, 2), "已推进 0 天、在第 1 天停下（区间不是恰好一天）");
+  assert.equal(T.advanceStatusText(fail, 5, 2), "已推进 0 天、在第 1 天停下（推进必须从当前世界日出发）");
   assert.equal(
     T.advanceStatusText({ ok: true, advancedDays: 2, stoppedAtDay: null, error: null }, 5, 2),
     "已推进 2 天（5 → 7）"

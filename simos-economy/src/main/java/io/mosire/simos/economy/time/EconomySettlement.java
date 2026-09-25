@@ -26,7 +26,7 @@ import java.util.OptionalLong;
  * ★★ **R3a 日结算 + R4a 周期收获与制度分配**（聚合式经济重设计 §四 的日/周期步骤，v1 口径）——纯函数：拿 {@link EconomyData} 交**新**的
  * {@link EconomyData}，**不写状态、不碰核心**。
  *
- * <p>★★ **每天跑一次**（每次 {@code AdvanceTime}）：
+ * <p>★★ **一次 {@code AdvanceTime} 按区间逐日跑**（2026-09-25 §十一：一次推进 N 天，内部逐日；见 {@link #settle}）：
  *
  * <ol>
  *   <li>**消费**：每行扣粮 {@code population × 83 毫粮}（{@link #DAILY_GRAIN_MILLI_PER_PERSON}，§十"消费"行）。
@@ -87,17 +87,46 @@ public final class EconomySettlement {
   private EconomySettlement() {}
 
   /**
-   * 结算**一天**（含"这一天若是周期末则追加周期结算"）。
+   * 结算一个**区间** {@code (fromTick, toTick]}：**从 {@code fromTick + 1} 逐日跑到 {@code toTick}**（2026-09-25
+   * §十一 裁定： 一次 {@code AdvanceTime} 可以推 N 天、只落一条 revision，但**结算语义不跳日**）。
+   *
+   * <p>★ 每一次内部迭代 = 上面 {@link #settleOneDay} 的一天（消费 → 缺口/借粮/建债 → {@code progressDays + 1} → 到达
+   * {@code cycleDays} 就收获 + 15% 消耗 + 按 {@code Split} 分配；计息/到期不做）。**逐日**各写一份流水，最终只把**最后一天**的流水带出
+   * （{@code FlowRow} 是"本期发生额"，结算后清零——与 N 次单日推进的终态一致）。
+   *
+   * <p>★★ **等价性（§十一 的判据）**：{@code settle(base, from, from + N)} 的终态 == N 次 {@code settleOneDay}
+   * 的终态。关键在**周期末**：天数是**绝对日**，不是"推进次数"——一条 100 天的推进只要跨过第 120 天那个周期末， **照样在那一天收获**（逐日循环里的 {@code
+   * day} 就是绝对世界日）。
    *
    * @param base 结算前的经济状态
-   * @param day 推进到的世界日（1 tick = 1 天）；**只用于债务 id 的去重**（{@code debt-<day>-<seq>}），不参与任何公式
+   * @param fromTick 区间起点（世界日，左闭）；逐日循环从 {@code fromTick + 1} 起
+   * @param toTick 区间终点（世界日，右闭）；{@code day} 绝对日，参与债务 id 去重（{@code debt-<day>-<seq>}）
    * @return 结算后的新状态；{@code meta} 空 ⇒ 原样返回
+   * @throws IllegalArgumentException {@code toTick < fromTick + 1}（至少一天）
    */
-  public static EconomyData settle(EconomyData base, long day) {
+  public static EconomyData settle(EconomyData base, long fromTick, long toTick) {
     Objects.requireNonNull(base, "base");
     if (base.meta().isEmpty()) {
       return base; // 未激活：不做任何公式（§6.6）
     }
+    if (toTick < fromTick + 1L) {
+      throw new IllegalArgumentException("economy 结算区间至少一天: from=" + fromTick + "，to=" + toTick);
+    }
+    EconomyData data = base;
+    for (long day = fromTick + 1L; day <= toTick; day++) {
+      data = settleOneDay(data, day);
+    }
+    return data;
+  }
+
+  /**
+   * 结算**一天**（含"这一天若是周期末则追加周期结算"）。
+   *
+   * @param base 结算前的经济状态（**已激活**；{@link #settle} 已判过 meta）
+   * @param day 推进到的世界日（1 tick = 1 天）；**只用于债务 id 的去重**（{@code debt-<day>-<seq>}），不参与任何公式
+   * @return 结算后的新状态
+   */
+  private static EconomyData settleOneDay(EconomyData base, long day) {
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -150,7 +179,11 @@ public final class EconomySettlement {
       long earned = income.getOrDefault(key, 0L);
       long borrowed = borrowing.getOrDefault(key, 0L);
       long netSurplus = earned - grainConsumed; // income − 消费 − 税(0) − 利息(0)
-      flows.put(key, new FlowRow(key, earned, consumed, 0L, 0L, borrowed, 0L, netSurplus));
+      // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
+      flows.merge(
+          key,
+          new FlowRow(key, earned, consumed, 0L, 0L, borrowed, 0L, netSurplus),
+          EconomySettlement::mergeFlow);
     }
 
     OptionalLong lastClosed =
@@ -308,6 +341,23 @@ public final class EconomySettlement {
       income.merge(key, netParts[i] + lossParts[i], Long::sum);
       productionLoss.merge(key, lossParts[i], Long::sum);
     }
+  }
+
+  /** 本期流水的**逐日累加**：同一 (格, 阶层) 的当天发生额并入本期发生额（`consumed` 逐商品求和）。 */
+  private static FlowRow mergeFlow(FlowRow acc, FlowRow day) {
+    LinkedHashMap<CommodityId, Long> consumed = new LinkedHashMap<>(acc.consumed());
+    for (Map.Entry<CommodityId, Long> e : day.consumed().entrySet()) {
+      consumed.merge(e.getKey(), e.getValue(), Long::sum);
+    }
+    return new FlowRow(
+        acc.key(),
+        acc.income() + day.income(),
+        consumed,
+        acc.taxPaid() + day.taxPaid(),
+        acc.interestDue() + day.interestDue(),
+        acc.newBorrowing() + day.newBorrowing(),
+        acc.repaid() + day.repaid(),
+        acc.netSurplus() + day.netSurplus());
   }
 
   /**

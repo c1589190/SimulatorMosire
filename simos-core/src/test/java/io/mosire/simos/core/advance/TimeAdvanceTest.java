@@ -579,30 +579,27 @@ class TimeAdvanceTest {
   }
 
   /**
-   * ★★ **第 0 项的第二条：跨多日 ⇒ Rejected**（2026-09-24 日制裁定，POLITICAL_ECONOMY_DESIGN.md §3）。
+   * ★★ **第 0 项的第二条：跨多日 ⇒ 接受（一次推进 N 天，§十一 裁定）**。
    *
-   * <p>与"缺 to"同一条纪律：这一条是**纯语法**判定，排在查库之前——装配器与参与者一被调到就抛。 快进不在 Core：调用方要"走 3 天"，就连提 3 次单日推进。
+   * <p>★ 2026-09-24 的"每天恰好一天"已被 2026-09-25 §十一 取代：{@code
+   * multiDayAdvanceIsRejectedBeforeAnythingElseRuns} 的场景（base 在日 9、命令 9 → 12，共 3 天）现在应当
+   * **Committed** —— 同一场景下的同一条 {@code AdvanceTime} 落**一条** revision，时间戳 = {@code to}（12）。
+   *
+   * <p>★ 同时钉住"它真的跑了"：装配器与参与者的调用计数各为 1（不能是"没报错但什么都没干"）。
    */
   @Test
-  void multiDayAdvanceIsRejectedBeforeAnythingElseRuns() {
+  void multiDayAdvanceIsAcceptedAndSettlesTheWholeSpan() {
     seedMain(2L);
-    StateLoader neverLoad =
-        ref -> {
-          throw new AssertionError("跨多日的推进不该走到 ① 的装配状态");
-        };
-    TimeParticipant neverSimulate =
-        new TimeParticipant() {
-          @Override
-          public String namespace() {
-            return "alpha";
-          }
-
-          @Override
-          public TimeProposal simulate(SimulationState state, TimeRange range) {
-            throw new AssertionError("跨多日的推进不该走到 ② 的 simulate");
-          }
-        };
-    TimeAdvance route = route(List.of(new ToyCodec("alpha")), List.of(neverSimulate), neverLoad);
+    int[] loadCalls = {0};
+    ToyParticipant alpha = participant("alpha");
+    TimeAdvance route =
+        route(
+            List.of(new ToyCodec("alpha")),
+            List.of(alpha),
+            ref -> {
+              loadCalls[0]++;
+              return state(1L, 9L, "alpha");
+            });
 
     CommandResult result =
         route.run(
@@ -615,12 +612,91 @@ class TimeAdvanceTest {
                 new TimeRange(
                     SimosTimestamp.of(9L), Optional.of(SimosTimestamp.of(12L))))); // ★ 3 天
 
-    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
-    assertThat(((CommandResult.Rejected) result).reason()).contains("恰好一天");
+    assertThat(result)
+        .as("§十一：一次推进 3 天 ⇒ Committed（不再是「恰好一天」的拒绝）")
+        .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+    assertThat(timeline.row(ref("main", 2)).orElseThrow().timestamp())
+        .as("新 revision 的时间戳 = 推进终点 to（12），不是 from + 1")
+        .isEqualTo(SimosTimestamp.of(12L));
     assertThat(types("corr-3day"))
-        .as("★ 只该有 received + rejected——单日步长在 started/proposal 之前")
+        .as("一次 N 天 = 一条完整推进链（一条 revision）")
+        .containsExactly(
+            EventTypes.COMMAND_RECEIVED,
+            EventTypes.TIME_ADVANCE_STARTED,
+            EventTypes.MODULE_PROPOSAL,
+            EventTypes.TIME_ADVANCE_FINISHED,
+            EventTypes.COMMAND_COMMITTED);
+    assertThat(loadCalls[0]).as("装配器被调一次（它真的跑了）").isEqualTo(1);
+    assertThat(alpha.simulateCalls).as("参与者被调一次（内部逐日是它的责任）").isEqualTo(1);
+  }
+
+  /**
+   * ★★ **理智上限**：{@code N > 36500} ⇒ {@code Rejected}，理由点名 {@code 36500} 这个字面量；边界 {@code N == 36500}
+   * **恰好合法**。
+   *
+   * <p>与"跨多日"同一条纪律：上限是**纯语法**判定，排在查库之前——装配器与参与者一被调到就抛。 ★ 判别力：删掉 {@code N ≤ 36500} 上限 ⇒ 第一条
+   * 断言（越界必拒）当场红。
+   */
+  @Test
+  void absurdlyLongAdvanceIsRejectedWithTheCapInTheReason() {
+    seedMain(2L);
+    StateLoader neverLoad =
+        ref -> {
+          throw new AssertionError("越界的推进不该走到 ① 的装配状态");
+        };
+    TimeParticipant neverSimulate =
+        new TimeParticipant() {
+          @Override
+          public String namespace() {
+            return "alpha";
+          }
+
+          @Override
+          public TimeProposal simulate(SimulationState state, TimeRange range) {
+            throw new AssertionError("越界的推进不该走到 ② 的 simulate");
+          }
+        };
+    TimeAdvance route = route(List.of(new ToyCodec("alpha")), List.of(neverSimulate), neverLoad);
+
+    CommandResult tooLong =
+        route.run(
+            new AdvanceTime(
+                "cmd-huge",
+                "corr-huge",
+                "player:local",
+                main(),
+                new RevisionId(1L),
+                new TimeRange(
+                    SimosTimestamp.of(9L),
+                    Optional.of(SimosTimestamp.of(9L + TimeAdvance.MAX_ADVANCE_DAYS + 1L)))));
+
+    assertThat(tooLong).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) tooLong).reason()).as("理由必须点名上限字面量").contains("36500");
+    assertThat(types("corr-huge"))
+        .as("★ 只该有 received + rejected——上限在 started/proposal 之前")
         .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_REJECTED);
     assertThat(timeline.row(ref("main", 2))).isEmpty();
+
+    // ★ 边界：N == 36500 恰好合法（上限含端点）。被拒的那次没动 head ⇒ 仍可从 revision 1 推进。
+    TimeAdvance accepting =
+        route(
+            List.of(new ToyCodec("alpha")),
+            List.of(participant("alpha")),
+            ref -> state(1L, 9L, "alpha"));
+    CommandResult atCap =
+        accepting.run(
+            new AdvanceTime(
+                "cmd-cap",
+                "corr-cap",
+                "player:local",
+                main(),
+                new RevisionId(1L),
+                new TimeRange(
+                    SimosTimestamp.of(9L),
+                    Optional.of(SimosTimestamp.of(9L + TimeAdvance.MAX_ADVANCE_DAYS)))));
+    assertThat(atCap)
+        .as("N = 36500 是合法的（上限含端点）")
+        .isEqualTo(new CommandResult.Committed(ref("main", 2)));
   }
 
   /**

@@ -43,7 +43,7 @@ class EconomySettlementTest {
   void unactivatedEconomyIsReturnedUnchanged() {
     EconomyData empty = EconomyData.empty();
 
-    assertThat(EconomySettlement.settle(empty, 1L)).isSameAs(empty);
+    assertThat(EconomySettlement.settle(empty, 0L, 1L)).isSameAs(empty);
   }
 
   /** 日结算：每行扣 人口 × 83 毫粮、progressDays +1、劳动累计加上当日实际劳动；流水记本期发生额。 */
@@ -51,7 +51,7 @@ class EconomySettlementTest {
   void oneDayConsumesEightyThreePerPersonAdvancesProgressAndRecordsFlows() {
     EconomyData base = fixture();
 
-    EconomyData next = EconomySettlement.settle(base, 1L);
+    EconomyData next = EconomySettlement.settle(base, 0L, 1L);
 
     // 贫农 100 人：83000 − 8300 = 74700；地主 10 人：8300 − 830 = 7470。
     assertThat(grainOf(next, PEASANT_KEY)).isEqualTo(74_700L);
@@ -67,6 +67,40 @@ class EconomySettlementTest {
     assertThat(peasantFlow.netSurplus()).as("净盈余 = 0 − 8300").isEqualTo(-8_300L);
     assertThat(peasantFlow.taxPaid()).as("v1 不收税").isZero();
     assertThat(next.meta().orElseThrow().lastClosedCycle()).as("周期未末 ⇒ 未关账").isEmpty();
+  }
+
+  /**
+   * ★★ **多日推进（§十一）**：{@code settle(base, 0, 3)} **逐日**跑到第 3 天 ⇒ 周期末（{@code cycleDays = 3}）收获一次；
+   * 同一次调用里 3 天的消费逐日扣、第 3 天的收获一次性入账——**终态 == 3 次单日结算**。
+   *
+   * <p>★ 判别力：若把逐日循环压成"只按 to 结算一天"（把区间当一步），第 2、3 天不消费、也不会在第 3 天收获 ⇒ 字面量与等价性两条一起红。
+   */
+  @Test
+  void multiDaySettlementClosesTheCycleOnTheAbsoluteHarvestDay() {
+    EconomyData base = fixture();
+
+    EconomyData next = EconomySettlement.settle(base, 0L, 3L);
+
+    // 贫农：83000 − 3×8300 = 58100，净得 floor(5950×790/1000) = 4700 ⇒ 62800；
+    // 地主：8300 − 3×830 = 5810，净得 floor(5950×210/1000) = 1249，**残差 1 按槽位 id 序归 landlord** ⇒ 1250 ⇒
+    // 7060。
+    // ★ 残差不是"丢"而是"归地主"：Σ净得 = 4700 + 1250 = 5950 = net（守恒）；本仓的残差序是**槽位 id 字典序**。
+    assertThat(grainOf(next, PEASANT_KEY)).as("3 天逐日口粮 + 第 3 天分配净得").isEqualTo(62_800L);
+    assertThat(grainOf(next, LANDLORD_KEY)).as("3 天逐日口粮 + 第 3 天分配净得（含残差 1）").isEqualTo(7_060L);
+    assertThat(grainOf(next, PEASANT_KEY) + grainOf(next, LANDLORD_KEY))
+        .as("Σ净得 + 两端日耗 = 基期库存 + net（账要平）")
+        .isEqualTo(91_300L - 3L * (8_300L + 830L) + 5_950L);
+    assertThat(next.industries().get(FARM).progressDays())
+        .as("第 3 天是周期末 ⇒ progressDays 归零")
+        .isZero();
+    assertThat(next.industries().get(FARM).cycleLaborMilli()).as("周期累计清零").isZero();
+    assertThat(next.meta().orElseThrow().lastClosedCycle()).as("关账周期序号 1").hasValue(1L);
+
+    // ★ 等价性（§十一）：一次 3 天 == 3 次单日（同一份终态）。
+    EconomyData chained =
+        EconomySettlement.settle(
+            EconomySettlement.settle(EconomySettlement.settle(base, 0L, 1L), 1L, 2L), 2L, 3L);
+    assertThat(next).as("§十一：一次 3 天 == 3 次单日").isEqualTo(chained);
   }
 
   /**

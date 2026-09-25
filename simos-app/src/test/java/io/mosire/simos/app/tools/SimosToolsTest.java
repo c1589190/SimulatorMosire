@@ -1150,7 +1150,7 @@ class SimosToolsTest {
     args.put("branch", "main");
     args.put("expectedRevision", 1);
     args.put("from", 7L);
-    // ★ 日制裁定：一次 AdvanceTime 恰好一天 ⇒ to 必须 = from + 1（旧口径的 9 已不合法）。
+    // ★ §十一：本用例只验"推进一天"这条基本路径（to = from + 1）；多日推进由 AdvanceTool 的 to=from+N 承担。
     args.put("to", 8L);
 
     ToolResult result = call("simos.advance", args);
@@ -1185,6 +1185,29 @@ class SimosToolsTest {
       RevisionRow row =
           new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", head)).orElseThrow();
       assertThat(row.timestamp().tick()).as("缺省 to = from + 1 ⇒ 世界只前进一天（7 → 8）").isEqualTo(8L);
+    }
+  }
+
+  /**
+   * ★ 2026-09-25 §十一：{@code simos.advance} 支持**一次推进 N 天**（{@code to = from + N}）——一条命令、一条 revision，
+   * 时间戳 = {@code to}。判别力：把工具/Core 改回"恰好一天" ⇒ 本条的 3 天区间当场被拒 ⇒ 红。
+   */
+  @Test
+  void advanceToolAcceptsAMultiDaySpanInOneCommand() throws Exception {
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("branch", "main");
+    args.put("expectedRevision", 1);
+    args.put("from", 7L);
+    args.put("to", 10L); // ★ 3 天
+
+    ToolResult result = call("simos.advance", args);
+
+    assertThat(result.success()).as(result.message()).isTrue();
+    JsonNode body = JSON.readTree(result.message());
+    assertThat(body.get("ref").get("revision").asLong()).as("一次 N 天落一条 revision").isEqualTo(2L);
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
+      assertThat(row.timestamp().tick()).as("时间戳 = to（7 → 10，一次推进 3 天）").isEqualTo(10L);
     }
   }
 

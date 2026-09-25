@@ -34,6 +34,7 @@ import io.mosire.simos.util.spi.TimeProposal;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
+import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
@@ -231,6 +232,115 @@ class UnitTimeParticipantTest {
                     .simulate(SpiFixture.singleModuleState("map", mapOnly), range))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("unit");
+  }
+
+  // ── §十一（2026-09-25）：一次 N 天 == N 次单日 ──────────────────────────────────────
+
+  /**
+   * ★★ **§十一 等价性**：{@code advance(from, from + 30)} 的终态 == 30 次单日 advance
+   * 的终态（**含"顶层带动整支一起搬"那条路径**）。
+   *
+   * <p>★ 公式本身是**时间预算**（{@code speed × Δtick}），故 {@link UnitMoves#evaluate} 直接跨日算即可；本用例把它钉死： 顶层
+   * {@code u-1} 带成员 {@code u-2}，成本替身让每段 = **20 天** ⇒ 30 天走到第二段**中途**（{@code H12}，IN_TRANSIT），
+   * 而不是"一跨就抵达"的退化形态。
+   *
+   * <p>★★ **位置的"历史"分段数允许不同**（§十一 明文：事件链可以不同）——一次 30 天只追加**一个** {@code position} 段（时刻 = to）， 逐日版追加
+   * 30 个段；两者作为"**to 时刻的状态**"（{@code valueAt(to)} 及其后的行为）**逐值相同**。故断言的是**终态视图**： {@code valueAt(to)}
+   * + {@code movement} + 全部非位置分量 + 编制链，而不是整条 {@code SegmentedSeries} 的 record 相等。
+   */
+  @Test
+  void multiDayAdvanceEqualsChainedSingleDayAdvancesIncludingTheWholeFormation() {
+    MovementCost cost = new TwentyDayPerEdgeCost();
+    UnitId member = new UnitId("u-2");
+    UnitState base = pair(rootWithMovement(), memberOf(member, U1, H11));
+
+    // 一份：一次 30 天。
+    UnitState once =
+        UnitChangeSet.apply(
+            (UnitChangeSet)
+                participantWith(cost).simulate(state(map(), base), advanceTo(30)).changeSet(),
+            base);
+
+    // 另一份：30 次单日（每次用上一刻的状态）。
+    UnitState chained = base;
+    for (long day = 0; day < 30; day++) {
+      TimeRange dayRange = new TimeRange(T0.plus(day), Optional.of(T0.plus(day + 1)));
+      TimeProposal step = participantWith(cost).simulate(state(map(), chained), dayRange);
+      chained = UnitChangeSet.apply((UnitChangeSet) step.changeSet(), chained);
+    }
+
+    SimosTimestamp t30 = T0.plus(30);
+    assertThat(once.effectivePosition(U1, t30)).as("前提：顶层 30 天走到第二段中途（H12，不是终点 H13）").contains(H12);
+    assertTerminalUnitsEqual(once, chained, t30);
+
+    // ★ 顶层带动整支一起搬：成员也被搬到 H12，且它自己没有行程。
+    assertThat(once.effectivePosition(member, t30)).as("成员随顶层到 H12").contains(H12);
+    assertThat(once.units().get(member).movement()).as("成员不自己走").isEmpty();
+    assertThat(chained.effectivePosition(member, t30)).contains(H12);
+  }
+
+  /** 终态视图逐字段相等：{@code valueAt(at)} + movement + 全部非位置分量 + 编制链（位置历史的分段数不比较，见用例注释）。 */
+  private static void assertTerminalUnitsEqual(
+      UnitState once, UnitState chained, SimosTimestamp at) {
+    assertThat(once.units().keySet()).as("同一组单位").isEqualTo(chained.units().keySet());
+    for (UnitId id : once.units().keySet()) {
+      Unit left = once.units().get(id);
+      Unit right = chained.units().get(id);
+      assertThat(left.name()).isEqualTo(right.name());
+      assertThat(left.parent()).as("parent 是归属历史，推进不改它").isEqualTo(right.parent());
+      assertThat(left.member()).isEqualTo(right.member());
+      assertThat(left.equipment()).isEqualTo(right.equipment());
+      assertThat(left.speed()).isEqualTo(right.speed());
+      assertThat(left.mobilityPerMille()).isEqualTo(right.mobilityPerMille());
+      assertThat(left.status()).isEqualTo(right.status());
+      assertThat(left.attached()).isEqualTo(right.attached());
+      assertThat(left.offset()).isEqualTo(right.offset());
+      assertThat(left.rejoinTarget()).isEqualTo(right.rejoinTarget());
+      assertThat(left.visionRadius()).isEqualTo(right.visionRadius());
+      assertThat(left.movement()).as("在途行程逐值相同").isEqualTo(right.movement());
+      assertThat(left.position().valueAt(at))
+          .as("终态位置 valueAt(to) 逐值相同（历史分段数允许不同）")
+          .isEqualTo(right.position().valueAt(at));
+    }
+    assertThat(once.commandChains()).isEqualTo(chained.commandChains());
+  }
+
+  /** 每段 20 天（48000 × 20 毫 MP）的成本替身 ⇒ 三格走廊走完要 40 天，30 天时停在第二段中途。 */
+  private static final class TwentyDayPerEdgeCost implements MovementCost {
+
+    @Override
+    public OptionalLong costMillis(HexCoord from, HexCoord to, Unit unit, GameMap map) {
+      return OptionalLong.of(48000L * 20L);
+    }
+
+    @Override
+    public long minStepCostMillis(Unit unit, GameMap map) {
+      return 1;
+    }
+  }
+
+  /** 顶层（无父、attached、带在途行程）。 */
+  private static Unit rootWithMovement() {
+    return unitWithMovement(Optional.of(inFlight()));
+  }
+
+  /** 成员：{@code parent} 给定、{@code attached=true}、带自身位置、无自身行程（"整支一起搬"的载体）。 */
+  private static Unit memberOf(UnitId id, UnitId parent, HexCoord position) {
+    return new Unit(
+        id,
+        "单位 " + id.value(),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
+        100,
+        Map.of("步枪", 50),
+        2,
+        500,
+        Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        Optional.empty());
   }
 
   // ── 回归路径（T7 / spec §二.2、§二.3 / P7 / P8 / 裁定 U5·U6） ──────────
