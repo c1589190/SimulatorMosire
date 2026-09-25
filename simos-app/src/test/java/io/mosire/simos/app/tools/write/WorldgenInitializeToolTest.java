@@ -24,6 +24,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.time.EconomyTimeParticipant;
@@ -558,8 +559,27 @@ class WorldgenInitializeToolTest {
   // ── 4b′. ★ R3a + V3：真实三国各推进 10 天 ⇒ 粮库存减少 = Σ(人口 × 83 × 10) + 播种日扣的种子 ──────
 
   /**
-   * ★★ **R3a + V3 的真实世界验收**：三国各自（独立库，因一次性播种）一键初始化 ⇒ 逐日推进 10 天 ⇒ 该国粮库存合计减少**恰为** {@code 口粮 +
-   * 播种日扣的种子}。
+   * ★★ **R3a + V3 + V6 的真实世界验收**：三国各自（独立库，因一次性播种）一键初始化 ⇒ 逐日推进 10 天 ⇒ 该国粮库存合计减少**恰为** {@code 口粮 − 缺口
+   * + 播种日扣的种子}。
+   *
+   * <p>★★ **V6 §7.1①（放贷方留口粮）之后，"口粮"那一项必须减掉缺口**：真档里 poorest 那些行**把储备播成了种子** （30 天口粮 2,500 毫粮/人 vs
+   * 每亩需种 8,000 × 人均约 0.21 亩 ≈ 1,676 毫粮/人），缸在第 10 天前后见底；V1 口径下它们 会从同格有余粮的行借到，**V6 起放贷方要留自己一整周期的口粮**
+   * ⇒ 借不到了，缺口如实记进 {@code FlowRow.unmetNeed}。守恒式因此是 {@code Δ库存 == (逐行口粮 − 缺口) + 种子}（**不是** {@code 口粮
+   * + 种子}）。
+   *
+   * <p>★★ **判别力分工（三条都是变异轮实测，别混）**：
+   *
+   * <ul>
+   *   <li>守恒式挡的是"**缺口被如实记下来**"：删掉 {@code unmetNeed.merge(...)} 那一笔 ⇒ 读数变 0 而库存真的少吃了 ⇒ 红（实测，霍赫兰伯国
+   *       {@code 2108332924 − 0 + 5000502000}）。
+   *   <li>守恒式**挡不住** §7.1① 本身：保留额改回 0（V1 口径）它**照样成立**（缺口恒 0 那一侧也满足）⇒ 绿（实测）。
+   *   <li>**"V6 的放贷规则真的生效"只由循环之后那条 {@code unmetGrandTotal > 0} 承担**（保留额改回 0 ⇒ 缺口恒 0 ⇒ 红，实测）。 ★
+   *       只留守恒式，本条对 §7.1① 就是**装饰**。
+   * </ul>
+   *
+   * <p>★ **顺带实测到一个事实**：把"借入计入缺口行 {@code consumed}"那一笔删掉，本条**仍绿** ⇒ 真档头 10 天**一笔借入都没发生**
+   * （否则等号两边会差出借入额）⇒ 缺口来自"缸空**且本格没有有真余粮的放贷方**"的行，借入那一笔的守恒语义由 {@code
+   * EconomyDebtTest.lendingIsAnInternalTransferSoTheHexLedgerStillBalances} 承担（那边删同一行 ⇒ 红）。
    *
    * <p>★★ **V3（Task 7）起，第 1 天是播种日**：{@code EconomySeeder} 给真档配了 {@code cycleInputPerUnit[LAND] =
    * 8,000 毫粮/亩} ⇒ 每格在第 1 天先扣种子（**在当天吃饭之前**，v2 spec §3.2）。故这条的字面量必须带上种子那一笔——
@@ -575,6 +595,7 @@ class WorldgenInitializeToolTest {
   void advancingTenDaysConsumesPopulationTimesEightyThreeAcrossThreeNations() throws IOException {
     long economyHexTotal = 0L;
     long rationGrandTotal = 0L;
+    long unmetGrandTotal = 0L;
     long sownGrandTotal = 0L;
     long decreaseGrandTotal = 0L;
     for (NationCase nation : NATIONS) {
@@ -600,14 +621,26 @@ class WorldgenInitializeToolTest {
 
         SimulationState after = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
         long grainAfter = grainTotal(economySlice(after));
+        // ★★ **V6 §7.1① 起必须减掉"没吃到的"那一项**：放贷方要留本周期自需 ⇒ 真档里那些"把储备播成种子、
+        //   自己缸空"的行（见下）**借不到粮**了，缺口如实记进 {@code FlowRow.unmetNeed}（缺的粮不凭空生出来，
+        //   它留在别人的缸里）。故守恒式是 **Δ库存 == Σ实吃 + Σ种子 == (逐行口粮 − 缺口) + 种子**。
+        long unmet10 = unmetTotal(economySlice(after));
         assertThat(sown).as(id + "：真档真的扣了种（V3 的第三路瓶颈由此在 799 格里读得到）").isPositive();
         assertThat(sown)
             .as(id + "：扣到的种子 ≤ Σ地亩 × 每亩需种（第三路只**缩**面积，永不放大）")
             .isLessThanOrEqualTo(landMu * EconomySeeder.SEED_MILLI_PER_MU);
         assertThat(grainBefore - grainAfter)
-            .as("%s：推进 10 天 ⇒ 粮库存减少 = 头 10 天口粮（逐行累计）%d + 播种日扣的种子 %d", id, ration10, sown)
-            .isEqualTo(ration10 + sown);
+            .as(
+                "%s：推进 10 天 ⇒ 粮库存减少 = 头 10 天口粮（逐行累计）%d − 缺口 %d + 播种日扣的种子 %d",
+                id, ration10, unmet10, sown)
+            .isEqualTo(ration10 - unmet10 + sown);
+        // ★ 逐国只钉"缺口远小于口粮"（量级）。★ **不能逐国断言 unmet10 > 0**：各国人均地力不同，
+        //   实测德意志第二帝国 10 天内缺口恰为 **0**（缸没见底）⇒ 那条会假红。判别力放在三国合计上（见循环之后）。
+        assertThat(unmet10)
+            .as(id + "：缺口远小于口粮（V6 起缺口不再被借粮抹平，但也不许被算成大头）")
+            .isLessThan(ration10 / 100L);
         rationGrandTotal += ration10;
+        unmetGrandTotal += unmet10;
         sownGrandTotal += sown;
         decreaseGrandTotal += grainBefore - grainAfter;
         economyHexTotal += economyHexCount(economySlice(after));
@@ -617,8 +650,13 @@ class WorldgenInitializeToolTest {
     // ★ 三国**合计**的账面（不再是"11,830,000 × 830"这种把常数乘一遍的算术）：实际库存减少 == 逐行累计口粮 + 扣到的种子。
     //   逐行的向下取整让"总人口 × 一天的量"这条路彻底不可用 —— 合计必须由行级数据累加而来。
     assertThat(decreaseGrandTotal)
-        .as("Σ(三国 10 天库存减少) == Σ 逐行口粮累计 + Σ 扣到的种子")
-        .isEqualTo(rationGrandTotal + sownGrandTotal);
+        .as("Σ(三国 10 天库存减少) == Σ 逐行口粮累计 − Σ 缺口 + Σ 扣到的种子")
+        .isEqualTo(rationGrandTotal - unmetGrandTotal + sownGrandTotal);
+    // ★★ **V6 §7.1① 的真档可见性**：放贷方留口粮 ⇒ 缸空的行借不到粮 ⇒ 缺口**真的出现**（不再被借粮抹平）。
+    //   ★ 为什么判在**三国合计**上：逐国可能恰为 0（实测德意志第二帝国 10 天内缸没见底）⇒ 逐国判正会假红。
+    //   ★ 上面那条守恒式**挡不住**这件事（缺口为 0 那一侧它也成立）—— 对 §7.1① 的判别力**只**落在这一条上。
+    //   实测：把 LENDER_SUBSISTENCE_RESERVE_PER_MILLE 改回 0（V1 口径）⇒ 这里恒为 0 ⇒ 本条红。
+    assertThat(unmetGrandTotal).as("★ V6 起真档也真的缺粮：三国合计在第 10 天前就出现借不到的缺口（V1 口径下恒为 0）").isPositive();
     assertThat(rationGrandTotal)
         .as("口粮项的量级锚：11,830,000 人 × 10 天 ≈ 985,833,333 毫粮（逐行取整 ⇒ 略小于它，且差值 < 行数）")
         .isBetween(
@@ -692,6 +730,16 @@ class WorldgenInitializeToolTest {
     return economy.classes().values().stream()
         .mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L))
         .sum();
+  }
+
+  /**
+   * 某国 Σ 行本周期未满足需求（毫粮）：{@code 需求 − 实得} 的逐日累加（{@code FlowRow.unmetNeed}）。
+   *
+   * <p>★ **守恒式里它是被减项**：借粮是同格内部划转、借不到的那部分**不凭空生出来**，故 {@code Δ库存 == Σ实吃 + Σ种子 == (逐行口粮 − 缺口) +
+   * 种子}。窗口（10 天）落在**同一个周期**内 ⇒ 流水里的 {@code unmetNeed} 覆盖的就是这 10 天，不带别的周期的量。
+   */
+  private static long unmetTotal(EconomyData economy) {
+    return economy.flows().values().stream().mapToLong(FlowRow::unmetNeed).sum();
   }
 
   /**

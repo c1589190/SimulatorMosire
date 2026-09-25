@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -12,6 +13,7 @@ import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -514,9 +516,10 @@ class EconomySowingTest {
    * 满产地净产（按 800 亩）= 800 × 67 × 1000 × (1 − 生产损耗) = 51,992,000
    * 分配权重：贫农 = (700 × 200‰土地 + 300 × 1000‰劳动) / 1000 = 440‰；地主 = (700 × 800‰ + 300 × 0) / 1000 = 560‰
    * 贫农得 51,992,000 × 440 / 1000 = 22,876,480；地主得 29,115,520（Σ = 净产，无残差）
-   * 贫农两天缺口由地主借出（同格借粮）：2 × 33,200 = 66,400 ⇒ 两条债务
+   * 贫农两天缺口由地主借出（同格借粮）：2 × 33,333 = 66,666 ⇒ ★ **一条**债务（§7.2 按 (周期, 债务人, 债权人) 聚合）
    * 贫农库存 = 0 − 0 − 0 + 22,876,480 = 22,876,480
-   * 地主库存 = 5,000,000 − 80,000 − 33,200 − 33,200 + 29,115,520 = 33,969,120
+   * 地主库存 = 5,000,000 − 80,000 − 33,333 − 33,333 + 29,115,520 = 33,968,854
+   * ★ 地主**0 人口** ⇒ 本周期自需 0 ⇒ 保留额 0 ⇒ "只贷余粮"这一路在它这里不缩任何量（放贷额与 V1 同值）
    * </pre>
    */
   @Test
@@ -550,11 +553,32 @@ class EconomySowingTest {
     assertThat(grainOf(next, LANDLORD_KEY))
         .as("地主：5,000,000 − 80,000 − 头两天借给贫农的口粮 + 净产的 560‰")
         .isEqualTo(5_000_000L - sownMu * SEED_PER_MU - rationOver(CYCLE_DAYS) + net * 560L / 1000L);
-    assertThat(next.classes().get(PEASANT_KEY).debts()).as("贫农两天各借一条").hasSize(2);
-    assertThat(next.debts().values())
-        .allSatisfy(
-            debt ->
-                assertThat(debt.principal()).as("每天借的量 = 当日缺口 = 当天的口粮").isEqualTo(rationOn(1L)));
+    // ★★ **V6 §7.2 债务聚合**：贫农**两天都向同一个地主借**，但同周期内同一对债权债务人**只有一条**
+    //   （旧口径是"每天一条"，本条的 2 会变成 1 —— 这正是本批要改的那件事）。
+    List<DebtId> peasantDebts = next.classes().get(PEASANT_KEY).debts();
+    assertThat(peasantDebts).as("两天的借入聚合成一条（旧口径：每天各一条 ⇒ 2 条）").hasSize(1);
+    Debt aggregated = next.debts().get(peasantDebts.get(0));
+    assertThat(aggregated.principal())
+        .as(
+            "本金递增（两天缺口之和 = 头 2 天口粮）+ 周期末计息（第 2 天就是关账日：%d × %d‰ = %d）",
+            rationOver(CYCLE_DAYS),
+            EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
+            rationOver(CYCLE_DAYS) * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L)
+        .isEqualTo(
+            rationOver(CYCLE_DAYS)
+                + rationOver(CYCLE_DAYS)
+                    * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE
+                    / 1000L);
+    assertThat(aggregated.debtor()).isEqualTo(PEASANT_KEY);
+    assertThat(aggregated.creditor()).isEqualTo(LANDLORD_KEY);
+    assertThat(aggregated.id().value())
+        .as("★ id 由 (周期, 债务人, 债权人, 商品) 确定性算出，且**不含 \".\"**（debt.<id> 在第一个点处被 AddressParser 切）")
+        .isEqualTo("debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain");
+    assertThat(next.debts()).as("整场只此一条债（聚合后条数不随天数增长）").hasSize(1);
+    assertThat(
+            EconomySettlement.settle(base, 0L, 1L).debts().values().iterator().next().principal())
+        .as("对照：第 1 天结束时本金只有一天的量 ⇒ 第 2 天确实是**累加**上去的，不是另建一条")
+        .isEqualTo(rationOn(1L));
   }
 
   /**

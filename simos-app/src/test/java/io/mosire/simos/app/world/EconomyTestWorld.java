@@ -43,16 +43,19 @@ import java.util.OptionalLong;
  *   <tr><td>(0,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
  *   <tr><td>(1,0)</td><td>低丘</td><td>500</td><td>—</td><td>农业</td><td>2,064</td><td>按阶层天数（贫 30/中 60/富 120/地 250）</td></tr>
  *   <tr><td>(2,0)</td><td>平原</td><td>0</td><td>300</td><td>农业 + 手工业</td><td>3,100（农业无地系数的城市格不产出）</td><td>按阶层天数</td></tr>
- *   <tr><td>(3,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>地主 0、富农 60 天 + 20 万</td></tr>
+ *   <tr><td>(3,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>地主 0、富农 120 天 + 20 万</td></tr>
  *   <tr><td>(4,0)</td><td>平原</td><td>1000</td><td>—</td><td>农业</td><td>3,100</td><td>地主 0、其余恰 1 天</td></tr>
  * </table>
  *
  * <p>★ 缺口的两种形态（e2e 用例 b）：
  *
  * <ul>
- *   <li>**(3,0)**：地主当天颗粒无收、富农有余粮 ⇒ 触发**同格借粮**，产生一条 {@code Debt}（本金 = 地主缺口）。
+ *   <li>**(3,0)**：地主当天颗粒无收、富农有**真余粮**（≥ 本周期自需 + 20 万）⇒ 触发**同格借粮**，产生一条 {@code Debt}（本金 = 地主缺口）。
  *   <li>**(4,0)**：地主同样缺、其余各行**恰好吃干**（消费后无余粮）⇒ **没人可借 ⇒ 不产生债务**（只留未满足的自然需求）。
  * </ul>
+ *
+ * <p>★ **V6 §7.1①（放贷方留口粮）对 (3,0) 的连带**：富农的缸从"60 天 + 20 万"抬到"**120 天 + 20 万**" —— 放贷方的可贷额 = {@code
+ * 库存 − 本周期自需 × 1000‰}，而"60 天"小于本周期自需的 120 天 ⇒ 那是**零余粮**， "有粮可借"这条叙述会当场不成立。
  */
 public final class EconomyTestWorld {
 
@@ -74,7 +77,7 @@ public final class EconomyTestWorld {
           * EconomySeeder.arablePerMilleOf(EconomySeeder.foodOf("low_hills"))
           / 1000L;
 
-  /** 有粮可借的缺口格（3,0）：地主 0 库存 / 富农多 20 万毫粮。 */
+  /** 有粮可借的缺口格（3,0）：地主 0 库存 / 富农 = **一整个周期自需 + 20 万**毫粮。 */
   public static final long LENDER_HEX_POPULATION = 1000L;
 
   /** 借粮利率（‰）：§四 / 用户口径 20‰。 */
@@ -84,8 +87,22 @@ public final class EconomyTestWorld {
   public static final long LENDER_HEX_LANDLORD_DEFICIT =
       EconomyVocabulary.dailyRationMilli(50L, 1L);
 
-  /** 富农那一格的额外存粮（毫粮）：够它按 20‰ 借给地主很多天。 */
+  /**
+   * 富农那一格的额外存粮（毫粮）：**真正的余粮** = 它自己 120 天的口粮**之外**多出来的部分。
+   *
+   * <p>★★ **V6 §7.1① 起，光是"多 20 万"不构成余粮**：放贷方必须留 {@code 本周期自需 × 1000‰}（{@code
+   * EconomySettlement.LENDER_SUBSISTENCE_RESERVE_PER_MILLE}）⇒ 富农的缸改成 {@code 一整个周期自需 + 这 20 万} （见
+   * {@link Stock#LANDLORD_ZERO_RICH_SURPLUS}），"有粮可借"这条叙述才继续成立。
+   */
   public static final long RICH_EXTRA_GRAIN_MILLI = 200_000L;
+
+  /**
+   * 有粮可借格的富农**开缸库存**（毫粮）= {@code 一整个周期自需 + RICH_EXTRA_GRAIN_MILLI} —— 与 {@link
+   * Stock#LANDLORD_ZERO_RICH_SURPLUS} 里那一支**同式**（故端到端用例的逐值期望由常量推出，不抄字面量）。
+   */
+  public static long richSurplusOpeningStock(long population) {
+    return EconomyVocabulary.cumulativeRationMilli(population, CYCLE_DAYS) + RICH_EXTRA_GRAIN_MILLI;
+  }
 
   private EconomyTestWorld() {}
 
@@ -126,7 +143,7 @@ public final class EconomyTestWorld {
   /** 初始库存口径（毫粮）：普通行 = 按阶层天数（贫 30/中 60/富 120/地 250）；两种缺口形态见枚举。 */
   private enum Stock {
     NORMAL,
-    /** 地主 0、富农 60 天 + 20 万（同格有人可借）。 */
+    /** 地主 0、富农 **120 天 + 20 万**（同格有人**有真余粮**可借）。 */
     LANDLORD_ZERO_RICH_SURPLUS,
     /** 地主 0、其余恰好吃一天（消费后无余粮 ⇒ 无人可借）。 */
     LANDLORD_ZERO_OTHERS_EXACT
@@ -182,12 +199,16 @@ public final class EconomyTestWorld {
     long goods =
         switch (stock) {
           case NORMAL -> EconomySeeder.rationMilli(population, slot);
+          // ★★ **V6 §7.1① 修夹具**：富农的缸 = **一整个周期自需**（120 天）+ 20 万。
+          //   旧夹具给的是"60 天 + 20 万"—— 在新口径下那**不是余粮**（60 天 < 本周期自需 120 天 ⇒
+          //   可贷额 = max(0, 缸 − 120 天口粮) = 0）⇒ "有粮可借"这条叙述当场不成立。
+          //   ★ **实测过**（把这一支退回旧式）：端到端用例 (a) `oneDayConsumes…` 与 (b) `deficitWithALender…`
+          //     同时红（"地主背上一条债务" / "全格仍恰好吃满各自的口粮"）⇒ 是**夹具违反新口径**，不是护栏太严。
           case LANDLORD_ZERO_RICH_SURPLUS ->
               "landlord".equals(slot)
                   ? 0L
                   : ("rich".equals(slot)
-                      ? EconomyVocabulary.cumulativeRationMilli(population, 60L)
-                          + RICH_EXTRA_GRAIN_MILLI
+                      ? richSurplusOpeningStock(population)
                       : EconomyVocabulary.cumulativeRationMilli(population, 60L));
           case LANDLORD_ZERO_OTHERS_EXACT ->
               "landlord".equals(slot)

@@ -38,9 +38,11 @@ import java.util.Set;
  *   <li>**消费**：每行扣当天口粮 {@code EconomyVocabulary.dailyRationMilli(人口, 绝对日号)}（= 累计口粮的**逐日差分**， 口径"每人每
  *       120 天 10 粮"，v2 spec §八.6），**并把该数写进** {@link ClassRow#naturalNeeds()}（§八.8"读数与结算同源"
  *       的**一条真相**：读口直接读它，不再各算一遍）。
- *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（地主 → 富农 → 中农 的顺序，从有粮的行的**当日盈余**划转），借到的记一条 {@link Debt}（本金 = 借到量、利率
- *       {@code 20‰}、{@code dueCycle = 当前周期 + 1}、标的 = 粮）；**借完仍补不上**的部分记入本行流水的 {@code
- *       unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见 {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
+ *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（地主 → 富农 → 中农 的顺序，从有粮的行的**余粮**划转 —— 余粮 = 库存 − **本周期自需** × {@link
+ *       #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000，见 {@link
+ *       #lendableOf}，**不是**"消费后的全部库存"，也不是"当日盈余"）；借到的**累加进同一条** {@link Debt}（同一周期内 同一对债权债务人只有一条，见
+ *       {@link #debtIdOf}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见
+ *       {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
  *   <li>**劳动投入**：本产业当日实际劳动 = Σ(行 {@code laborMilli × participationPerMille / 1000}) —— 累加进 {@link
  *       Industry#cycleLaborMilli()}（供收获时算劳动瓶颈）。
@@ -59,6 +61,9 @@ import java.util.Set;
  *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
  *       / 1000}（**定点整数、残差按最大余数法分派、Σ行得 = 剩余产出**，§八.7）。
+ *   <li>**计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：全部债务按 {@code principal × ratePerMillePerCycle
+ *       ÷ 1000} 计**一次**、**并入本金**（纯数学：不搬运粮、**不动任何库存**），同额记入**债务人**本行流水的 {@code interestDue} —— 见
+ *       {@link #chargeInterest}。★ **偿还行为不做**（它要"有粮才还"的判断，属 V7+）。
  *   <li>**饿死判据**（2026-09-25 用户点名；**默认不致命**）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@code
  *       famineMortalityPerMille}（**默认 {@link #FAMINE_MORTALITY_PER_MILLE} = 0‰**）致死；人口减少、有效劳动同比例缩，
  *       死亡数记入 {@link FlowRow#deaths()}。**顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
@@ -116,6 +121,26 @@ public final class EconomySettlement {
 
   /** 同格借粮的每周期利率（千分数）：20‰。 */
   public static final int BORROW_RATE_PER_MILLE_PER_CYCLE = 20;
+
+  /**
+   * ★★ **放贷方必须留口粮的千分比**（相对**本周期自需**；v2 spec §7.1 第一处，V6 落地）：**默认 1000‰**。
+   *
+   * <pre>
+   * 保留额 = cumulativeRationMilli(放贷行人口, 该行产业的 cycleDays) × 本常量 ÷ 1000   // 毫粮
+   * 可贷额 = max(0, 放贷行库存 − 保留额)
+   * </pre>
+   *
+   * <p>★★ **1000‰ 不是"不贷"，是"只贷余粮"**：放贷方先扣下**整周期**的口粮，剩下的才是余粮 —— 地主 250 天储备 − 120 天自需 = 130
+   * 天的余粮照样贷得出去。取 {@code 0} 即 V1 的现状（消费后的**全部**库存都能借出 ⇒ 地主一次把 250 天存粮全借出去、次日自己变成缺口行 ⇒ 设计意图"地主最厚 =
+   * 同格主要债权人"被反转成"**地主先破产**"）。
+   *
+   * <p>★ **一个可读的后果**：保留额按**整周期**算，却只在"借贷发生的那一天"被读 ⇒ 周期后半段会**多留** （=
+   * 那时已经用不到的那部分），周期末缸里因此可能剩粮；端到端用例按新口径逐值钉住这个数。
+   *
+   * <p>★ 它是**制度层参数**（spec §4.1：借贷规则由生产关系双方决定），但**参数目录属 V7** ⇒ 与致死率、口粮系数、 播种次序同处置：先做**具名常量**，注释写明"V7
+   * 迁入 {@code economy} 切片的参数表、成为 GM 可调、作用域 全局→国家→格/产业"。**不造半套目录**。
+   */
+  public static final int LENDER_SUBSISTENCE_RESERVE_PER_MILLE = 1000;
 
   /**
    * ★★ **饿死判据的致死率默认值**（千分数）：**0‰（默认不致命）**。
@@ -265,6 +290,7 @@ public final class EconomySettlement {
     LinkedHashMap<ClassKey, Long> productionLoss = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> unmetToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> deathsToday = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Long> interestToday = new LinkedHashMap<>(); // 周期末计息那一笔（§7.1③）
 
     // ── 0. 播种（周期的第一天）：**在当天吃饭之前**把种子划走（v2 spec §3.2）──────────────
     //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
@@ -273,7 +299,8 @@ public final class EconomySettlement {
     }
 
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
-    settleHexes(rows, debts, consumedGrain, borrowing, unmetToday, day, dueCycle);
+    settleHexes(
+        industries, rows, debts, consumedGrain, borrowing, unmetToday, day, currentCycle, dueCycle);
 
     if (!plantingDrawsFirst) {
       sowIfCycleStart(industries, rows, consumedGrain);
@@ -331,7 +358,14 @@ public final class EconomySettlement {
       industries.put(id, withCycleState(industry, nextProgress, nextCycleLabor, nextSeedUsed));
     }
 
-    // ── 流水：每行一条（本期发生额；税/利息 v1 恒 0）──────────────────────────────────
+    // ── 5. 周期末计息（§7.1③ / §四 周期结算第 6 步）────────────────────────────────────
+    //   ★ **一天只计一次**：结算日循环里可能有多个产业在同一天关账（各产业 cycleDays 可以不同）⇒ 计息挂在
+    //     "今天有产业关账"这个**日级**事实上，不在那个逐产业的 for 里（否则同格的 farm + craft 会各计一遍）。
+    if (anyCycleClosed) {
+      chargeInterest(debts, interestToday);
+    }
+
+    // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
     for (ClassKey key : rows.keySet()) {
       long grainConsumed =
           consumedGrain.getOrDefault(key, 0L) + productionLoss.getOrDefault(key, 0L);
@@ -339,7 +373,11 @@ public final class EconomySettlement {
           grainConsumed > 0L ? Map.of(GRAIN, grainConsumed) : Map.of();
       long earned = income.getOrDefault(key, 0L);
       long borrowed = borrowing.getOrDefault(key, 0L);
-      long netSurplus = earned - grainConsumed; // income − 消费 − 税(0) − 利息(0)
+      long interest = interestToday.getOrDefault(key, 0L);
+      // ★ netSurplus = income − 消费 − 税(0) − 利息（§3.3 的口径；税要等 government 切片）。
+      //   ★ 利息是**并入本金**的（没支付、粮库存不动）⇒ 它不进 consumed，守恒式（§6.1）不受影响；
+      //     但它照样进"本期盈余/赤字"：债务人**确实**比期初更穷了（欠得更多）。
+      long netSurplus = earned - grainConsumed - interest;
       long dayUnmet = unmetToday.getOrDefault(key, 0L);
       long dayDeaths = deathsToday.getOrDefault(key, 0L);
       // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
@@ -355,7 +393,7 @@ public final class EconomySettlement {
               (acc == null ? 0L : acc.income()) + earned,
               mergeConsumed(acc, consumed),
               acc == null ? 0L : acc.taxPaid(),
-              acc == null ? 0L : acc.interestDue(),
+              (acc == null ? 0L : acc.interestDue()) + interest,
               (acc == null ? 0L : acc.newBorrowing()) + borrowed,
               acc == null ? 0L : acc.repaid(),
               (acc == null ? 0L : acc.netSurplus()) + netSurplus,
@@ -443,10 +481,15 @@ public final class EconomySettlement {
   // ── 消费 + 同格借粮 ─────────────────────────────────────────────────────────────────
 
   /**
-   * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（地主 → 富农 → 中农 的当日盈余），借到的记债；**仍补不上的** 记入未满足需求（{@code
-   * unmetNeed}，供周期末的饿死判据用）。
+   * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（地主 → 富农 → 中农 的**余粮** —— 见 {@link #lendableOf}）；借到的**累加进同一条**
+   * {@link Debt}（§7.2 的聚合）；**仍补不上的** 记入未满足需求（{@code unmetNeed}，供周期末的饿死判据用）。
    *
-   * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表）。
+   * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表， **不进放贷行的
+   * {@code consumed}** —— 它出去的是"债权"不是"消费"）。故 §6.1 的守恒式在**格/全局**上成立、**逐行不成立**。
+   *
+   * <p>★★ **债务按 (周期, 债务人, 债权人, 商品) 聚合**（v2 spec §7.2）：同一对债权债务人在**同一周期内**的多次借入 **累加到同一条** {@link
+   * Debt}（本金递增），**新周期开新条** ⇒ 条数上界从 {@code O(天数 × 格子)} 降到 {@code O(周期数 × 格子 × 债权人对数)}。id 由 {@link
+   * #debtIdOf} 确定性算出（重放/分支可比）。
    *
    * <p>★★ **当日需求的唯一算法 + 唯一落点**（V5；v2 spec §八.6/§八.8）：
    *
@@ -455,17 +498,23 @@ public final class EconomySettlement {
    * row.naturalNeeds = { grain: need }                                 // ★ 结算写、读口读（同源）
    * eaten = min(stock, need)；差额进 deficit（借粮/缺口）
    * </pre>
+   *
+   * @param industries 产业表（只为取放贷行的 {@code cycleDays} 算它**本周期自需**）
+   * @param currentCycle 正在进行的**周期序号**（{@code lastClosedCycle + 1}）：进 {@code DebtId} ⇒ 跨周期必然不同、
+   *     同周期必然相同
+   * @param dueCycle 借粮的到期周期 = {@code currentCycle + 1}（只写进**新条**；老条原样带过）
    */
   private static void settleHexes(
+      LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<ClassKey, ClassRow> rows,
       LinkedHashMap<DebtId, Debt> debts,
       LinkedHashMap<ClassKey, Long> consumedGrain,
       LinkedHashMap<ClassKey, Long> borrowing,
       LinkedHashMap<ClassKey, Long> unmetNeed,
       long day,
+      long currentCycle,
       long dueCycle) {
     Map<String, List<ClassKey>> hexToRows = rowsByHex(rows.keySet());
-    int[] debtSeq = {0}; // 结算内的债务序号（与 day 一起保证 DebtId 唯一且可复现）
     for (Map.Entry<String, List<ClassKey>> hex : hexToRows.entrySet()) {
       List<ClassKey> keys = hex.getValue();
       LinkedHashMap<ClassKey, Long> deficit = new LinkedHashMap<>();
@@ -489,7 +538,10 @@ public final class EconomySettlement {
       if (deficit.isEmpty()) {
         continue;
       }
-      // ② 放贷序列：地主 → 富农 → 中农，可取"当日盈余"（消费后的余粮）；同档按产业 id 定序。
+      // ② 放贷序列：地主 → 富农 → 中农；同档按产业 id 定序。
+      //   ★★ **可取的不是"全部库存"、也不是"当日盈余"**（V1 的注释与代码相反，V6 一并修）：可取的是
+      //     **余粮 = 库存 − 本周期自需 × {@link #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000**（{@link
+      // #lendableOf}）。
       List<ClassKey> lenders = new ArrayList<>();
       for (String slot : LENDER_SLOT_PRIORITY) {
         for (ClassKey key : keys) {
@@ -498,7 +550,7 @@ public final class EconomySettlement {
           }
         }
       }
-      // ③ 逐缺口行（槽位 id 序）借：借到多少记多少债；没人有粮 ⇒ 剩下的只留作未满足的自然需求。
+      // ③ 逐缺口行（槽位 id 序）借：借到多少累加多少债；没人有**余粮** ⇒ 剩下的只留作未满足的自然需求。
       List<ClassKey> debtors = new ArrayList<>(deficit.keySet());
       debtors.sort(
           Comparator.comparing((ClassKey k) -> k.slot().value())
@@ -509,36 +561,120 @@ public final class EconomySettlement {
           if (remaining <= 0L) {
             break;
           }
-          long available = grainOf(rows.get(lender));
+          long available = lendableOf(rows.get(lender), industries);
           if (available <= 0L) {
-            continue;
+            continue; // 只剩口粮/已经没有余粮 ⇒ 不贷（V1 是在这里把全部库存贷出去）
           }
           long lent = Math.min(remaining, available);
-          rows.put(lender, withGoodsGrain(rows.get(lender), available - lent));
-          DebtId debtId = new DebtId("debt-" + day + "-" + debtSeq[0]++);
-          debts.put(
-              debtId,
-              new Debt(
-                  debtId,
-                  debtor,
-                  lender,
-                  Optional.of(GRAIN),
-                  lent,
-                  BORROW_RATE_PER_MILLE_PER_CYCLE,
-                  dueCycle,
-                  false));
-          rows.put(debtor, withExtraDebt(rows.get(debtor), debtId));
+          rows.put(lender, withGoodsGrain(rows.get(lender), grainOf(rows.get(lender)) - lent));
+          // ★★ 聚合（§7.2）：id 是 (周期, 债务人, 债权人, 商品) 的**纯函数** ⇒ 同周期内重复借入命中同一条，
+          //   本金递增；跨周期 id 必然不同 ⇒ 新条、旧条留着（保住"哪一周期借的"）。
+          DebtId debtId = debtIdOf(currentCycle, debtor, lender, Optional.of(GRAIN));
+          Debt standing = debts.get(debtId);
+          if (standing == null) {
+            debts.put(
+                debtId,
+                new Debt(
+                    debtId,
+                    debtor,
+                    lender,
+                    Optional.of(GRAIN),
+                    lent,
+                    BORROW_RATE_PER_MILLE_PER_CYCLE,
+                    dueCycle,
+                    false));
+            rows.put(debtor, withExtraDebt(rows.get(debtor), debtId)); // 行里的引用也只加一次
+          } else {
+            debts.put(debtId, withPrincipal(standing, standing.principal() + lent));
+          }
           // 借到的粮当日吃掉 ⇒ 计入当日消费。
           consumedGrain.merge(debtor, lent, Long::sum);
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
         }
-        // remaining > 0 ⇒ 没人有粮：不造粮、不造债；记入**未满足需求**（周期末据此算饿死比例）。
+        // remaining > 0 ⇒ 没人有**余粮**：不造粮、不造债；记入**未满足需求**（周期末据此算饿死比例）。
         if (remaining > 0L) {
           unmetNeed.merge(debtor, remaining, Long::sum);
         }
       }
     }
+  }
+
+  /**
+   * ★★ **放贷行的可贷额（余粮）**（v2 spec §7.1 第一处；V6 落地）：
+   *
+   * <pre>
+   * reserve  = EconomyVocabulary.cumulativeRationMilli(放贷行人口, 该行产业的 cycleDays)
+   *            × {@link #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000        // 毫粮
+   * lendable = max(0, 库存 − reserve)
+   * </pre>
+   *
+   * <p>★★ **"本周期自需"取的是整周期**（{@code cumulativeRationMilli(pop, cycleDays)}），不是"今日一餐"、也不是
+   * "消费后的全部库存"：放贷方先把这一周期自己**全部**的口粮扣下来，剩下的才是余粮。默认千分比 1000 ⇒ 保留额就是整周期口粮（"地主 250 天储备 − 120 天自需 = 130
+   * 天余粮仍贷得出去"）。
+   *
+   * <p>★ **为什么用累计函数而不是"人口 × 一天的量 × 天数"**：日耗是逐日差分，乘不出来（§八.6）； {@code cumulativeRationMilli(pop,
+   * cycleDays)} 才是"该行一整个周期的口粮"的唯一写法。
+   *
+   * <p>★ **它只读、不写**：保留额不是"冻结起来的一笔粮"，放贷行自己每天照吃不误 —— 它只是"可贷额"的下界。 ⇒
+   * 周期后半段会**多留**（那时已经用不到整周期的口粮了），这是本口径的可读后果，端到端用例逐值钉着它。
+   */
+  private static long lendableOf(ClassRow lender, Map<IndustryId, Industry> industries) {
+    long stock = grainOf(lender);
+    if (stock <= 0L) {
+      return 0L;
+    }
+    long cycleDays = industries.get(lender.key().industry()).cycleDays();
+    long reserve =
+        EconomyVocabulary.cumulativeRationMilli(lender.population(), cycleDays)
+            * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
+            / 1000L;
+    return Math.max(0L, stock - reserve);
+  }
+
+  /**
+   * ★★ **债务 id 的唯一拼写点**（v2 spec §7.2）：{@code (周期, 债务人, 债权人, 商品)} ⇒ {@code DebtId}，三条硬要求逐条满足：
+   *
+   * <ol>
+   *   <li>**确定性**：本方法是纯函数（无计数器、无时间、无迭代序）⇒ 同一元组**必然**给出同一个 id（重放/分支可比）；
+   *   <li>**不含 {@code "."}**：{@link ClassKey#toString()} 用 {@code "|"} 分隔两段，本方法另用 {@code "-"}/
+   *       {@code ">"} 分隔各段 ⇒ 拼出来**没有点**。★ 这不是审美问题：{@code AddressParser} 把 {@code debt.<id>} 读成
+   *       {@code Entity(kind="debt", name=<id>)} 时**在第一个 "." 处切**，id 里带点会把名字截断成另一个名字，
+   *       该债务的地址从此**解析不到**（{@link io.mosire.simos.economy.resolve.EconomyResolver} 只会返回空候选）；
+   *   <li>**跨周期不同**：周期号是首段 ⇒ 新周期的借入**不会覆盖**旧条（"哪一周期借的"这条信息因此保住， 供 V7+ 的到期/偿还读）。
+   * </ol>
+   *
+   * <pre>
+   * debt-c&lt;周期&gt;-&lt;债务人 industry|slot&gt;&gt;&lt;债权人 industry|slot&gt;-&lt;商品&gt;
+   * 例：debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain
+   * </pre>
+   *
+   * <p>★ **货币债（{@code commodity} 空；v1 不产生）**用同位置的哨兵段 {@code money}。
+   */
+  static DebtId debtIdOf(
+      long cycle, ClassKey debtor, ClassKey creditor, Optional<CommodityId> commodity) {
+    return new DebtId(
+        "debt-c"
+            + cycle
+            + "-"
+            + debtor
+            + ">"
+            + creditor
+            + "-"
+            + commodity.map(CommodityId::value).orElse("money"));
+  }
+
+  /** 换本金（其余字段原样带过）——聚合（本金递增）与计息（并入本金）共用。 */
+  private static Debt withPrincipal(Debt debt, long principal) {
+    return new Debt(
+        debt.id(),
+        debt.debtor(),
+        debt.creditor(),
+        debt.commodity(),
+        principal,
+        debt.ratePerMillePerCycle(),
+        debt.dueCycle(),
+        debt.defaulted());
   }
 
   // ── 周期收获与制度分配 ─────────────────────────────────────────────────────────────
@@ -664,6 +800,46 @@ public final class EconomySettlement {
         population == 0L ? 0L : row.laborMilli() * nextPopulation / population; // 同比例缩，不除零
     rows.put(key, withPopulationAndLabor(row, nextPopulation, nextLabor));
     deaths.merge(key, dead, Long::sum);
+  }
+
+  /**
+   * ★★ **周期末计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：
+   *
+   * <pre>
+   * interest = principal × ratePerMillePerCycle ÷ 1000      // 向下取整；0 ⇒ 这一条本轮不计
+   * principal' = principal + interest                       // ★ **并入本金**（复利；V1 的 dueCycle 语义不变）
+   * 债务人本行流水.interestDue += interest                   // 同一笔数，流量口径
+   * </pre>
+   *
+   * <p>★★ **一处 spec 内部张力，这里的取舍是明确的**：v1 spec §3.3 末条说「绝不用'生产成本'或'资产减少'冒充负债—— **债务只能由 借入/赊购 产生**」，而
+   * §四 周期结算第 6 步允许"计息（写新应付款或**并入本金**）"。本批取 §四： 计息**并入本金**。理由：§3.3
+   * 那条防的是"**凭空**造负债"（拿成本/折旧冒充欠款），而利息是**合同约定的真实义务** —— 它挂在一条**已经由借入产生**的债务上，不是"第二个来源"。若不计息，{@code
+   * ratePerMillePerCycle = 20} 就只是一个写进去、谁也不读的数（账面记成"债务"、语义却是**无限量无偿赈济**）。
+   *
+   * <p>★★ **它不搬运任何粮、不动任何库存**（纯数学）⇒ §6.1 的守恒式不受影响；债务人的"更穷"体现在 ①本金变大、②本行流水的 {@code interestDue}（以及
+   * {@code netSurplus}：见 {@code settleOneDay} 里那条注释）。 **债权人这一侧本批不记**：它的资产增值体现在债务表里，而 {@code
+   * FlowRow.income} 是**粮食**口径 （往里加"利息收入"会让守恒式当场不成立）⇒ 记在债权侧要等 §五 的索取源协议/市场折算（V7+）。
+   *
+   * <p>★ **偿还行为不做**（brief 明列的"留位"）：它要"有粮才还"的判断（属 spec §二 的"判"，应做成 GM 可调预设）。 {@link Debt#dueCycle()}
+   * 保留、但**当前不被任何代码读**（本仓禁"看起来在记、其实永远是 0"的静默字段， 故在 {@link Debt} 的注释里写明）。
+   *
+   * <p>★ **计息对象 = 债务表里的全部债务**（不是"本周期新借的那些"）：{@code ratePerMillePerCycle} 的字面意思
+   * 就是"每周期一次"，一条在第一周期借的债在第二周期末**照样**要再计一次（复利）。用 id 里的周期号去筛"只给新债计息" 反而会让老债从此永不生息。
+   *
+   * @param debts 债务表（就地更新：本金并入利息）
+   * @param interest 本日利息的逐行累加器（**只记债务人**那一侧）
+   */
+  private static void chargeInterest(
+      LinkedHashMap<DebtId, Debt> debts, LinkedHashMap<ClassKey, Long> interest) {
+    for (DebtId id : new ArrayList<>(debts.keySet())) {
+      Debt debt = debts.get(id);
+      long charged = debt.principal() * debt.ratePerMillePerCycle() / 1000L;
+      if (charged <= 0L) {
+        continue; // 本金小到算不出 1 毫粮（或利率 0）⇒ 本轮不记：不写"看起来在记、其实永远是 0"的流水
+      }
+      debts.put(id, withPrincipal(debt, debt.principal() + charged));
+      interest.merge(debt.debtor(), charged, Long::sum);
+    }
   }
 
   /** 本期流水 {@code consumed} 的**逐日累加**（逐商品求和；{@code acc} 为空 ⇒ 直接用当天的表）。 */
