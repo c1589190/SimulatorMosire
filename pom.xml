@@ -25,6 +25,10 @@
     <!-- ★ 1b-2：经济切片共用契约。在领域切片更上游：只依赖 util/map、不被 core 依赖，
          property/production/ledger/market/government 与 social 共用它的稳定 ID 与 ActorRef。 -->
     <module>simos-economy-api</module>
+    <!-- ★ 1b-3：账本切片（增量 2 spec §三的 v1 形状）。与 economy-api 同属经济面、在 core/app 之
+         上游：只依赖 util/economy-api，不被 core 依赖（core 的 enforcer 看不见领域类型）。
+         后续 1b-3 的 property/production/market/government 四切片同列于此。 -->
+    <module>simos-ledger</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
          它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->
     <module>simos-app</module>
@@ -78,6 +82,9 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-ledger</artifactId><version>${project.version}</version>
       </dependency>
 
       <!-- 外部依赖 -->

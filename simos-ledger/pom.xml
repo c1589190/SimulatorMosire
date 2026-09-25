@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-ledger</artifactId>
+  <name>LedgerSimos</name>
+  <description>账本切片（v1 状态形状，无公式）：账户库存与货币、应收应付的索取权、双边转移凭据（append-only 流水）+ 激活元信息。库存与货币的守恒由命令层/协调器校验。</description>
+
+  <!-- ★ POLITICAL_ECONOMY_DESIGN §2/§10 + 增量 2 spec §三：本切片只拥有账本数据。
+       依赖面 = util（FieldDelta/Snapshot/地址与解析机制）+ economy-api（AccountId/ClaimId/TransferId/
+       CommodityId/ActorRef——共用稳定 ID）+ Jackson。
+       **不依赖 map**：账本树里没有任何地图类型（本切片不认识 hex）。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+
+    <!-- ★ 与 simos-social/simos-app 的同一条 provided 依赖同款（照其先例；版本与 spotbugs 插件同代）：
+         门禁若在本地类型上报 EI_EXPOSE_REP 类误报，@SuppressFBWarnings 的注解住在这里。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                  </excludes>
+                  <message>切片之间互不依赖（POLITICAL_ECONOMY_DESIGN §2/§10）：ledger 只依赖 economy-api/util（+ map 若需要），不依赖任何别的领域切片、也不依赖 core/app/agentlib。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
