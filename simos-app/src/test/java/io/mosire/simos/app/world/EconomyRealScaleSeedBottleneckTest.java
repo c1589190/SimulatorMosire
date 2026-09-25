@@ -105,37 +105,53 @@ class EconomyRealScaleSeedBottleneckTest {
   // ── ①′ R2：真档规模上"行"与"配额"逐值对拍（改口径不改数）────────────────────────────
 
   /**
-   * ★★ **R2（T3）：真档规模上，产业当日的劳动 = 该产业配额之和 == 各行折算出的日劳动**。
+   * ★★ **R2（T3）+ R3（T4）：真档规模上，各产业的当日劳动 = 该产业的配额之和，且**两个产业的配额之和** == 各行折算出的日劳动**。
    *
    * <pre>
-   * Σ 配额   = 播种器发的那些 LaborAllocation 的 laborMilli 之和
-   * Σ 行折算 = Σ_i 行 laborMilli_i × 槽位投入率_i ÷ 1000     （**改口径前的当日劳动**）
-   * 结算后    = Industry.cycleLaborMilli（第 1 天）
+   * Σ 行折算 = Σ_i 行 laborMilli_i × 槽位投入率_i ÷ 1000        （**改口径前的当日劳动**，只有农业行）
+   * Σ 配额   = Σ 农业配额 + Σ 家庭纺织配额  ==  Σ 行折算          （R2 判据在 R3 之后的形式）
+   * 农业配额 = Σ 行折算 × (1000 − WEAVE_SHARE) ÷ 1000             （R3：同一批人的劳动拆成两条配额）
+   * 结算后    = Industry.cycleLaborMilli（第 1 天，**逐产业**）
    * </pre>
    *
-   * <p>★★ **它是"真档数字一个都不变"最直接的一条判据**：三处逐值相等 ⇒ 收获的劳动瓶颈、平均日劳动、投入面积全都不动 （本文件其余关于种子瓶颈的字面量也因此站得住）。★
-   * 判别力：三者中任何一处改口径而另两处没跟上，本条当场红。
+   * <p>★★ **它仍然是"真档数字一个都不变"最直接的一条判据**：真档种子的瓶颈（3,098 亩）与土地（3,100 亩）都**不是劳动** ⇒ 农业让出的那 100‰
+   * 不动收获一分一厘（本文件其余关于种子瓶颈的字面量因此原样站得住）。 ★ 判别力：三者中任何一处改口径而另两处没跟上，本条当场红。
    */
   @Test
   void theRealScaleQuotasEqualTheRowsAndTheSettledDailyLabor() {
     EconomyData seeded = realScaleHex();
     IndustryId farm = IndustryHexKeys.id(EconomySeeder.FARM, 0, 0);
+    IndustryId weave = IndustryHexKeys.id(EconomySeeder.WEAVE, 0, 0);
 
-    long quotaSum = 0L;
+    long farmQuota = 0L;
+    long weaveQuota = 0L;
     for (LaborAllocation allocation : seeded.allocations().values()) {
-      assertThat(allocation.actor().id()).as("真档的配额都归那个农业产业").isEqualTo(farm.value());
-      quotaSum += allocation.laborMilli();
+      if (allocation.actor().id().equals(farm.value())) {
+        farmQuota += allocation.laborMilli();
+      } else {
+        assertThat(allocation.actor().id()).as("农村那一池的配额只归农业与家庭纺织").isEqualTo(weave.value());
+        weaveQuota += allocation.laborMilli();
+      }
     }
     long rowSum = 0L;
     for (ClassRow row : farmRows(seeded)) {
       rowSum += row.laborMilli() * row.participationPerMille() / 1000L;
     }
-    assertThat(quotaSum).as("① 配额之和 == ② 各行折算的日劳动（改口径不改数）").isEqualTo(rowSum);
+    assertThat(farmQuota + weaveQuota)
+        .as("① 两条配额之和 == ② 各行折算的日劳动（改口径不改数：R2 的判据在 R3 之后的形式）")
+        .isEqualTo(rowSum);
+    assertThat(weaveQuota)
+        .as("★★ R3 的判据：农村批次**真的**把一成劳动给了纺织（非零 ⇒ 织机有活干 ⇒ 报表里看得见）")
+        .isEqualTo(rowSum * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L)
+        .isPositive();
 
     EconomyData afterOneDay = EconomySettlement.settle(seeded, 0L, 1L);
     assertThat(afterOneDay.industries().get(farm).cycleLaborMilli())
-        .as("③ 结算第 1 天累加的就是这个数（劳动投入取自配额表）")
-        .isEqualTo(quotaSum);
+        .as("③ 农业第 1 天累加的就是它那一条配额（劳动投入取自配额表）")
+        .isEqualTo(farmQuota);
+    assertThat(afterOneDay.industries().get(weave).cycleLaborMilli())
+        .as("③ 纺织第 1 天累加的是它那一条配额")
+        .isEqualTo(weaveQuota);
   }
 
   /**
@@ -180,13 +196,14 @@ class EconomyRealScaleSeedBottleneckTest {
   @Test
   void theRealScaleHexSowsEveryMuItHasMoneyForOnTheSowingDay() {
     EconomyData seeded = realScaleHex();
-    assertThat(seeded.industries()).as("一格、无城 ⇒ 恰一个农业产业").hasSize(1);
+    assertThat(seeded.industries()).as("一格、无城 ⇒ 农业 + 家庭纺织两个产业（R3 起有农村人口的格都有织机）").hasSize(2);
 
-    for (Industry industry : seeded.industries().values()) {
-      assertThat(industry.cycleInputPerUnit())
-          .as("播种器给真档配了每亩需种（产业 %s）", industry.id())
-          .containsEntry(AssetKind.LAND, EconomySeeder.SEED_MILLI_PER_MU);
-    }
+    // ★ R3：投入表的值侧带商品维度（{"LAND":{"grain":8000}}）⇒ 断言落在**内层**那张商品表上；
+    //   且只对**农业**断言（家庭纺织的投入挂在 TOOL 上、耗的是纤维，不是每亩需种）。
+    Industry farm = seeded.industries().get(IndustryHexKeys.id(EconomySeeder.FARM, 0, 0));
+    assertThat(farm.cycleInputPerUnit().get(AssetKind.LAND))
+        .as("播种器给真档的农业配了每亩需种")
+        .containsEntry(EconomySettlement.GRAIN, EconomySeeder.SEED_MILLI_PER_MU);
     long needMilli = 0L;
     for (ClassRow row : farmRows(seeded)) {
       long need = rowLandMu(row) * EconomySeeder.SEED_MILLI_PER_MU;
@@ -296,7 +313,7 @@ class EconomyRealScaleSeedBottleneckTest {
     return data.withClasses(rows);
   }
 
-  /** 把每个产业的 {@code cycleInputPerUnit} 清空（= 未配种子的对照格）；其余字段原样带过。 */
+  /** 把每个产业的 {@code cycleInputPerUnit} 清空（= 未配投入的对照格）；其余字段原样带过。 */
   private static EconomyData withoutSeedRate(EconomyData data) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     for (Map.Entry<IndustryId, Industry> entry : data.industries().entrySet()) {
@@ -309,14 +326,16 @@ class EconomyRealScaleSeedBottleneckTest {
               industry.regime(),
               industry.cycleDays(),
               industry.progressDays(),
+              industry.capacityPerUnit(),
               industry.dailyInputPerUnit(),
               industry.dailyLaborPerUnit(),
+              industry.laborPerUnit(),
               industry.outputPerUnit(),
               Map.of(),
               industry.slots(),
               industry.allocation(),
               industry.cycleLaborMilli(),
-              industry.cycleSeedUsedMilli()));
+              industry.cycleInputUsedMilli()));
     }
     return data.withIndustries(industries);
   }
@@ -334,13 +353,15 @@ class EconomyRealScaleSeedBottleneckTest {
   }
 
   /**
-   * 该格的**收获毛产**（毫粮）：流水所得合计（= 净得 + 其份额的生产损耗 = 毛产）——用一个**独立可算**的量反推投入面积， 而不是把 {@code 亩 × 亩产 × 1000}
-   * 在本文件里再抄一遍。
+   * 该格的**粮的收获毛产**（毫粮）：流水所得里**粮那一维**的合计（= 净得 + 其份额的生产损耗 = 毛产）——用一个**独立可算**的量反推投入面积， 而不是把 {@code 亩 ×
+   * 亩产 × 1000} 在本文件里再抄一遍。
+   *
+   * <p>★ R3：{@code income} 是**逐商品**的表（田里同时出粮与纤维）⇒ 必须指名粮那一维；把两种商品加在一起会得到 "粮 + 纤维"的和，本文件的每条字面量都会错。
    */
   private static long harvestGrainGross(EconomyData data) {
     long income = 0L;
     for (FlowRow flow : data.flows().values()) {
-      income += flow.income();
+      income += flow.income().getOrDefault(EconomySettlement.GRAIN, 0L);
     }
     return income;
   }

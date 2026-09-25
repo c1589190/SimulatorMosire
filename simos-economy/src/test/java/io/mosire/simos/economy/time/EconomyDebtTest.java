@@ -377,7 +377,11 @@ class EconomyDebtTest {
         next.flows().values().stream()
             .mapToLong(flow -> flow.consumed().getOrDefault(GRAIN, 0L))
             .sum();
-    long income = next.flows().values().stream().mapToLong(FlowRow::income).sum();
+    // ★ R3：income 是**逐商品**的表 ⇒ 守恒式也逐商品成立（本文件只结粮，故取 grain 那一维）。
+    long income =
+        next.flows().values().stream()
+            .mapToLong(flow -> flow.income().getOrDefault(GRAIN, 0L))
+            .sum();
     assertThat(next.flows().get(PEASANT_KEY).newBorrowing())
         .as("（非平凡：这场确实发生了借入）")
         .isEqualTo(deficitOver(CYCLE_DAYS));
@@ -463,14 +467,17 @@ class EconomyDebtTest {
             new RegimeId("feudal"),
             cycleDays,
             0L,
+            // ★ R3：产能锚（规模单位 = 1 亩）与劳动那一路照常给；产出为空 ⇒ 不产粮（理由见上）。
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
+            EconomySettlement.LABOR_MILLI_PER_MU,
             Map.of(), // ★ 不产粮（理由见上）
             Map.of(),
             List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)),
             new AllocationRule.Split(700, 300),
             0L,
-            0L));
+            Map.of()));
     classes.put(
         new ClassKey(id, PEASANT),
         row(new ClassKey(id, PEASANT), PEASANT_POPULATION, 1000, peasantJar));

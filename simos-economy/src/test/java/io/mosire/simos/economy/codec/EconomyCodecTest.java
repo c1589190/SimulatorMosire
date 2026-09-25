@@ -159,10 +159,18 @@ class EconomyCodecTest {
     assertThat(farm).isInstanceOf(Industry.class);
     assertThat(farm.outputPerUnit()).containsOnlyKeys(GRAIN);
     assertThat(farm.dailyInputPerUnit()).containsOnlyKeys(AssetKind.CATTLE);
+    // ★ R3：值侧的商品维度也必须真的过线（{"LAND":{"grain":1200}}）—— 退化成标量就在这里红。
+    assertThat(farm.dailyInputPerUnit().get(AssetKind.CATTLE)).containsEntry(GRAIN, 1L);
     assertThat(farm.allocation()).isInstanceOf(AllocationRule.Split.class);
+    assertThat(farm.capacityPerUnit()).as("★ R3 的产能锚必须过线").containsEntry(AssetKind.LAND, 1000L);
+    assertThat(farm.laborPerUnit()).as("★ R3 的劳动那一路必须过线").isEqualTo(143L);
     assertThat(farm.cycleInputPerUnit())
         .as("★ 新字段必须真的过线：空 map 与「字段没进线格式」在值层面不可区分")
-        .containsEntry(AssetKind.LAND, 1200L);
+        .containsOnlyKeys(AssetKind.LAND);
+    assertThat(farm.cycleInputPerUnit().get(AssetKind.LAND)).containsEntry(GRAIN, 1200L);
+    assertThat(farm.cycleInputUsedMilli())
+        .as("★ R3：本周期实际扣到的投入（按商品）必须过线")
+        .containsEntry(GRAIN, 400L);
     assertThat(workshop.allocation()).isInstanceOf(AllocationRule.WageFirst.class);
     AllocationRule.WageFirst wageFirst = (AllocationRule.WageFirst) workshop.allocation();
     assertThat(wageFirst.ownerResidual()).containsOnlyKeys(GRAIN, CLOTH);
@@ -413,14 +421,19 @@ class EconomyCodecTest {
         new RegimeId("tenant"),
         120L,
         progress,
-        Map.of(AssetKind.CATTLE, 1L),
+        // ★ R3（V7）：产能那一路（"单位规模"的锚）—— non-null、非空、逐值为正。
+        Map.of(AssetKind.LAND, 1000L),
+        // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分（R3 起值侧再带一层商品维度）。
+        Map.of(AssetKind.CATTLE, Map.of(GRAIN, 1L)),
         500L,
+        143L,
         Map.of(GRAIN, 7L),
-        Map.of(AssetKind.LAND, 1200L), // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分
+        // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分（R3 换型后是"生产资料 → 商品表"）。
+        Map.of(AssetKind.LAND, Map.of(GRAIN, 1200L)),
         slots,
         new AllocationRule.Split(700, 300),
         0L,
-        0L);
+        Map.of(GRAIN, 400L));
   }
 
   /** 资本主义工业：{@code WageFirst} + 嵌套商品键（企业主剩余）。 */
@@ -435,14 +448,16 @@ class EconomyCodecTest {
         new RegimeId("capitalist"),
         30L,
         0L,
-        Map.of(AssetKind.TOOL, 2L),
+        Map.of(AssetKind.WORKSHOP, 1L), // ★ 产能锚：规模单位 = 1 座工坊
+        Map.of(AssetKind.TOOL, Map.of(GRAIN, 2L)),
         300L,
+        1000L,
         Map.of(CLOTH, 5L),
         Map.of(), // ★ WageFirst 多态夹具：未配一次性投入（空 map 是合法形状）
         slots,
         new AllocationRule.WageFirst(4L, residual),
         0L,
-        0L);
+        Map.of());
   }
 
   private static ClassRow classRow(ClassKey key, long population) {
@@ -468,6 +483,8 @@ class EconomyCodecTest {
   }
 
   private static FlowRow flowRow(ClassKey key) {
-    return new FlowRow(key, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
+    // ★ R3：income 是**逐商品**的表（两种商品，故"退回标量"的实现过不了这一条）。
+    return new FlowRow(
+        key, Map.of(GRAIN, 200L, CLOTH, 15L), Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
   }
 }

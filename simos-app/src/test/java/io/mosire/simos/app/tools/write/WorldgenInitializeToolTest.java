@@ -20,6 +20,7 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -31,6 +32,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.EconomyTimeParticipant;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
@@ -85,6 +87,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -250,8 +253,8 @@ class WorldgenInitializeToolTest {
           .isEqualTo(at.tick());
       assertThat(economyHexCount(economy)).as("该国每一格各得一份经济状态").isEqualTo(OSTERMARK_HEXES);
       assertThat(economy.industries())
-          .as("农业恒有，城市格再加手工业")
-          .hasSize(OSTERMARK_HEXES + social.cities().size());
+          .as("★ R3：农业恒有 + **每个有农村人口的格再加家庭纺织** + 城市格再加手工业")
+          .hasSize(OSTERMARK_HEXES * 2 + social.cities().size());
       assertThat(economy.classes().values().stream().mapToLong(ClassRow::population).sum())
           .as("经济侧人口 == 社会侧人口（农村 + 城市）")
           .isEqualTo(OSTERMARK_TOTAL);
@@ -489,14 +492,20 @@ class WorldgenInitializeToolTest {
             .as("%s：这一格（%d 人）必须有劳动配额 —— 真档路径不许'忘了发配额'", hex, socialSide)
             .isPositive();
         hexAllocated += allocatedHere;
-        // ★★ R2：**逐产业**对拍"配额之和 == 各行折算出的当日劳动"（真档 138 格、每格 1~2 个产业）。
+        // ★★ R2（T3）+ R3（T4）：**逐池**对拍"这一池的配额之和 == 这一池各行折算出的当日劳动"（真档 138 格）。
         //   后者正是改口径前 EconomySettlement 每天累加的那个数 ⇒ 两者逐值相等 = **真档数字一个都不变**
         //   （收获的劳动瓶颈、平均日劳动、投入面积全都不动）。
+        //   ★ R3 起农村那一池的日劳动分给**两个产业**（农业 900‰ + 家庭纺织 100‰）⇒ 判据按**池**（有劳动行的那些产业）
+        //     对拍，而不是逐产业。
+        long poolQuota = 0L;
+        long poolRows = 0L;
         for (IndustryId industryId : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
-          assertThat(quotaSumOf(economy, industryId))
-              .as("%s：配额之和必须等于该产业各行折算出的当日劳动（改口径不改数）", industryId)
-              .isEqualTo(rowBasedDailyLabor(economy, industryId));
+          // ★ 配额**逐产业都要算**（家庭纺织那一路的配额是它自己的），而"行折算"只有携带人口的那几个产业有 ——
+          //   两边加起来必须相等：R3 把农村那一池的日劳动拆成两条配额，**总额不动**。
+          poolQuota += quotaSumOf(economy, industryId);
+          poolRows += rowBasedDailyLabor(economy, industryId);
         }
+        assertThat(poolQuota).as("%s：这一格的配额之和必须等于各池各行折算出的当日劳动（改口径不改数）", hex).isEqualTo(poolRows);
         if (socialSide != economySide && firstMismatch.isEmpty()) {
           firstMismatch = hex + " social=" + socialSide + " economy=" + economySide;
         }
@@ -523,6 +532,100 @@ class WorldgenInitializeToolTest {
               + " economy="
               + economyGrandTotal);
     }
+  }
+
+  /**
+   * ★★ **R3（T4/T5）的真档可见性**：真档**奥斯特马克 138 格**推**一年**（365 天 = 3 个周期）之后，
+   * 布与工具**真的在库里**，且农村批次**真的**把一成劳动给了家庭纺织。
+   *
+   * <pre>
+   * 判据 ① 农村批次有一条**非零**的纺织配额（brief 点名的那个坑：1000‰ 全给农业 ⇒ 有配额没活干 ⇒ 报表里看不见）
+   * 判据 ② 推一年后 {@code CLOTH} 库存 &gt; 0（城乡两个非土地产业都产布）
+   * 判据 ③ 推一年后 {@code TOOL} 库存 &gt; 0（城市作坊自己的第二件产品）
+   * 判据 ④ 田里同时出粮与纤维：{@code FIBER} 库存 &gt; 0（纤维内生于土地，不是凭空造的）
+   * </pre>
+   *
+   * <p>★ **为什么这条必须走真档**（与 {@code readSidePopulationParity…} 同一条理由）：织机/作坊/纤维都是按**人口与亩数**派生的 （{@code
+   * EconomySeeder} 的场景参数）⇒ 小夹具上的数字证明不了真档。★ 用**真 MCP 工具**（{@code simos.worldgen.initialize}）
+   * 播种，故这一条同时守着"生成器 → 命令载荷 → 状态"整条链。
+   */
+  @Test
+  void theRealWorldGrowsClothAndToolsWithinAYear() throws IOException {
+    try (CoreSimos core = freshCore(dir("cloth-visibility"))) {
+      ToolResult result = execute(tool(core), Map.of("nation", OSTERMARK, "dryRun", false));
+      assertThat(result.success()).as(result.message()).isTrue();
+
+      EconomyData seeded = economySlice(core.replay(new StateRef(MAIN, R2)));
+      CommodityId cloth = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
+      CommodityId tool = new CommodityId(EconomyVocabulary.TOOL_COMMODITY_ID);
+      CommodityId fiber = new CommodityId(EconomyVocabulary.FIBER_COMMODITY_ID);
+
+      // 判据 ①：农村批次给家庭纺织的配额非零。★ **逐格**核对（= 该格农村日劳动 × WEAVE_SHARE_PER_MILLE ÷ 1000）——
+      //   不能拿"全国合计 × 100‰"比：每格各向下取整一次，138 格合起来会差几十（实测差 63）。
+      Map<String, Long> weaveQuotaByHex = new LinkedHashMap<>();
+      for (LaborAllocation allocation : seeded.allocations().values()) {
+        if (allocation.actor().kind() != ActorKind.HOUSEHOLD) {
+          continue;
+        }
+        String hex =
+            IndustryHexKeys.hexKeyOf(new IndustryId(allocation.actor().id())).orElseThrow();
+        weaveQuotaByHex.merge(hex, allocation.laborMilli(), Long::sum);
+      }
+      Map<String, Long> ruralDailyByHex = new LinkedHashMap<>();
+      for (Map.Entry<ClassKey, ClassRow> entry : seeded.classes().entrySet()) {
+        // ★ 只算**农业**行：同一格的城市作坊行不属于农村那一池（按格求和会把城里那 12% 也算进来，实测差 40%）。
+        if (!entry.getKey().industry().value().startsWith(EconomySeeder.FARM)) {
+          continue;
+        }
+        String hex = IndustryHexKeys.hexKeyOf(entry.getKey().industry()).orElseThrow();
+        ruralDailyByHex.merge(
+            hex,
+            entry.getValue().laborMilli() * entry.getValue().participationPerMille() / 1000L,
+            Long::sum);
+      }
+      assertThat(weaveQuotaByHex)
+          .as("每一格有农村人口 ⇒ 每一格都要有纺织配额（不看单格的绝对值，先看覆盖）")
+          .hasSameSizeAs(ruralDailyByHex);
+      long weaveQuota = 0L;
+      long ruralDaily = 0L;
+      for (Map.Entry<String, Long> entry : ruralDailyByHex.entrySet()) {
+        assertThat(weaveQuotaByHex.get(entry.getKey()))
+            .as("★ 判据 ①：格 %s 给家庭纺织的配额 == 该格农村日劳动 × WEAVE_SHARE_PER_MILLE ÷ 1000", entry.getKey())
+            .isEqualTo(entry.getValue() * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L);
+        weaveQuota += weaveQuotaByHex.get(entry.getKey());
+        ruralDaily += entry.getValue();
+      }
+      assertThat(weaveQuota).as("★ 判据 ①：全国农村批次给家庭纺织的配额必须非零").isPositive();
+
+      EconomyData afterOneYear =
+          EconomySettlement.settle(seeded, 0L, EconomySeeder.CYCLE_DAYS * 3L);
+      long clothStock = goodsStock(afterOneYear, cloth);
+      long toolStock = goodsStock(afterOneYear, tool);
+      long fiberStock = goodsStock(afterOneYear, fiber);
+      assertThat(clothStock).as("★ 判据 ②：推一年后真档的 CLOTH 库存 > 0").isPositive();
+      assertThat(toolStock).as("★ 判据 ③：城市作坊自己的产品（工具）> 0").isPositive();
+      assertThat(fiberStock).as("★ 判据 ④：田里也在出纤维（多商品产出；它内生于土地）").isPositive();
+      assertThat(goodsStock(seeded, cloth)).as("非平凡：创世时一件布都没有").isZero();
+      System.out.println(
+          "[R3-CLOTH] 一年后：cloth="
+              + clothStock
+              + " tool="
+              + toolStock
+              + " fiber="
+              + fiberStock
+              + " 纺织配额="
+              + weaveQuota
+              + "（农村日劳动 "
+              + ruralDaily
+              + "）");
+    }
+  }
+
+  /** 真档全部行的某商品库存合计。 */
+  private static long goodsStock(EconomyData data, CommodityId commodity) {
+    return data.classes().values().stream()
+        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+        .sum();
   }
 
   // ── 3. ★ 同 seed 可复现：两个干净库的命令 payload 逐字节相同 ─────────────────────────────

@@ -769,14 +769,17 @@ class GuiApiTest {
             new RegimeId("feudal"),
             120L,
             33L,
+            // ★ R3（V7）：产能锚与劳动那一路（读口要发它们 ⇒ 夹具必须给非平凡的值，见 industryRecipeIsVisible）。
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
-            Map.of(new CommodityId("grain"), 7L),
-            Map.of(), // ★ 同本夹具的字面量：不配种子
+            143L,
+            Map.of(new CommodityId("grain"), 7L, new CommodityId("fiber"), 3L),
+            Map.of(), // ★ 同本夹具的字面量：不配投入
             List.of(new ClassSlot(peasant, "贫农", 950)),
             new AllocationRule.Split(700, 300),
             0L,
-            0L);
+            Map.of(new CommodityId("grain"), 40L));
     ClassRow row =
         new ClassRow(
             new ClassKey(farm, peasant),
@@ -813,14 +816,16 @@ class GuiApiTest {
         new RegimeId("handicraft"),
         120L,
         0L,
+        Map.of(AssetKind.WORKSHOP, 1L),
         Map.of(),
         0L,
+        1_000L,
         Map.of(),
         Map.of(),
         List.of(new ClassSlot(new ClassSlotId("peasant"), "贫农", 950)),
         new AllocationRule.Split(400, 600),
         0L,
-        0L);
+        Map.of());
   }
 
   /** ★ R2a 的 G1 读口：{@code GET /api/economy/hex} 逐值给读数，与 MCP 的 {@code simos.economy.hex} 共用一份视图。 */
@@ -842,6 +847,20 @@ class GuiApiTest {
     assertThat(industry.get("cycleDays").asLong()).isEqualTo(120L);
     assertThat(industry.get("progressDays").asLong()).as("周期进度").isEqualTo(33L);
     assertThat(industry.get("allocation").get("meansWeightPerMille").asInt()).isEqualTo(700);
+    // ★★ R3（T6）：**V7 配方读得出来**（"每单位什么"是数据 ⇒ 报表里也要看得见）：
+    //   {capacityPerUnit, inputPerUnit, laborPerUnit, outputPerUnit} + 本周期实际扣到的投入。
+    assertThat(industry.get("capacityPerUnit").get("LAND").asLong())
+        .as("单位规模 = 1 亩")
+        .isEqualTo(1_000L);
+    assertThat(industry.get("laborPerUnit").asLong()).as("每亩需劳动").isEqualTo(143L);
+    assertThat(industry.get("outputPerUnit").get("grain").asLong()).isEqualTo(7L);
+    assertThat(industry.get("outputPerUnit").get("fiber").asLong())
+        .as("★ 读口发得出**不止粮**的商品（多商品产出的读侧判据）")
+        .isEqualTo(3L);
+    assertThat(industry.get("inputPerUnit")).as("本夹具不配投入").isEmpty();
+    assertThat(industry.get("cycleInputUsedMilli").get("grain").asLong())
+        .as("★ 本周期实际扣到的投入（按商品）")
+        .isEqualTo(40L);
     JsonNode row = industry.get("classes").get(0);
     assertThat(row.get("slot").asText()).isEqualTo("peasant");
     assertThat(row.get("naturalNeeds").get("grain").asLong()).as("日耗").isEqualTo(8_300L);

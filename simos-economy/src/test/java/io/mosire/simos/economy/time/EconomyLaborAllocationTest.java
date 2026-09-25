@@ -207,13 +207,16 @@ class EconomyLaborAllocationTest {
         new RegimeId(regime),
         120L,
         0L,
+        // ★ R3：产能锚非空即可（本类只谈"投入了多少劳动"，规模与产出都不是判据）。
+        Map.of(AssetKind.LAND, 1_000L),
         Map.of(),
+        0L,
         0L,
         Map.of(),
         Map.of(),
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)),
         rule,
         0L,
-        0L);
+        Map.of());
   }
 }

@@ -33,8 +33,9 @@ import org.junit.jupiter.api.Test;
  * ★★ **V5：本期流水按周期清零 + 多日口粮残差不丢**（v2 spec §八.5/§八.6 的可执行判据）。
  *
  * <p>夹具（一格、一个农业产业、一行贫农）：周期 {@value #CYCLE_DAYS} 天（真档周期）、人口 {@value #POPULATION}、 有效劳动 {@value
- * #LABOR_MILLI}（投入率 1000‰）、地 {@value #LAND_MU} 亩（**土地是瓶颈**：劳动可经营 {@code 58,000 × 7 ÷ 1000 = 406 亩}
- * &gt; 300 亩）、亩产 {@value #YIELD_PER_MU} 粮/亩、**不配种子**（本文件只验流水与口粮）。
+ * #LABOR_MILLI}（投入率 1000‰）、地 {@value #LAND_MU} 亩（**土地是瓶颈**：劳动可经营 {@code 58,000 ÷ 每亩需劳动 143 = 405 亩}
+ * &gt; 300 亩；★ R3 前那条式子写作 {@code 58,000 × 7 ÷ 1000 = 406}，143 = ⌈1000/7⌉ 就是它的倒数形式）、亩产 {@value
+ * #YIELD_PER_MU} 粮/亩、**不配投入**（本文件只验流水与口粮）。
  *
  * <pre>
  * 一周期毛产 = 300 亩 × 67 粮/亩 × 1000 = 20,100,000 毫粮（单行 ⇒ 全归它）
@@ -100,8 +101,12 @@ class EconomyFlowCycleTest {
     EconomyData closeOfCycleOne = EconomySettlement.settle(fixture(), 0L, CYCLE_DAYS);
 
     FlowRow flow = closeOfCycleOne.flows().get(PEASANT_KEY);
-    assertThat(flow.income()).as("关账日 = 一个周期的毛产（那次收获的分配）").isEqualTo(CYCLE_GROSS);
-    assertThat(flow.income()).as("★ 不是 0（在关账那一支清零会让收获当场消失）").isNotZero();
+    assertThat(flow.income().get(EconomySettlement.GRAIN))
+        .as("关账日 = 一个周期的毛产（那次收获的分配）")
+        .isEqualTo(CYCLE_GROSS);
+    assertThat(flow.income().get(EconomySettlement.GRAIN))
+        .as("★ 不是 0（在关账那一支清零会让收获当场消失）")
+        .isNotZero();
     assertThat(flow.consumed().get(EconomySettlement.GRAIN))
         .as("本期消费 = 一周期口粮 + 本期生产损耗份额")
         .isEqualTo(CYCLE_RATION + (CYCLE_GROSS - CYCLE_NET));
@@ -112,7 +117,9 @@ class EconomyFlowCycleTest {
         EconomySettlement.settle(closeOfCycleOne, CYCLE_DAYS, 2L * CYCLE_DAYS);
 
     FlowRow second = closeOfCycleTwo.flows().get(PEASANT_KEY);
-    assertThat(second.income()).as("★ 第 2 个关账日仍是**一个**周期的量（不是两个周期的累计）").isEqualTo(CYCLE_GROSS);
+    assertThat(second.income().get(EconomySettlement.GRAIN))
+        .as("★ 第 2 个关账日仍是**一个**周期的量（不是两个周期的累计）")
+        .isEqualTo(CYCLE_GROSS);
     assertThat(closeOfCycleTwo.meta().orElseThrow().lastClosedCycle()).hasValue(2L);
   }
 
@@ -129,7 +136,9 @@ class EconomyFlowCycleTest {
     assertThat(nextDay.industries().get(FARM).cycleLaborMilli())
         .as("新周期的劳动累计从这一天的 58,000 起（上周期那 6,960,000 已清零）")
         .isEqualTo(58_000L);
-    assertThat(flow.income()).as("★ 上周期那笔收获已归档，本期所得从 0 起").isZero();
+    assertThat(flow.income().getOrDefault(EconomySettlement.GRAIN, 0L))
+        .as("★ 上周期那笔收获已归档，本期所得从 0 起")
+        .isZero();
     assertThat(flow.consumed().get(EconomySettlement.GRAIN))
         .as("本期消费只有第 %d 天的口粮（上周期的 1,603,000 已清零）", CYCLE_DAYS + 1L)
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, CYCLE_DAYS + 1L));
@@ -207,7 +216,7 @@ class EconomyFlowCycleTest {
 
     assertThat(once).as("§十一：一次 240 天的终态 == 240 次单日").isEqualTo(daily);
     assertThat(once.flows()).as("流水也逐值相同（含两次周期清零）").isEqualTo(daily.flows());
-    assertThat(once.flows().get(PEASANT_KEY).income())
+    assertThat(once.flows().get(PEASANT_KEY).income().get(EconomySettlement.GRAIN))
         .as("非平凡：终态落在一个周期末 ⇒ 所得是一个周期的量（不是 0，也不是 240 天的全部）")
         .isEqualTo(CYCLE_GROSS);
   }
@@ -221,14 +230,17 @@ class EconomyFlowCycleTest {
             new RegimeId("feudal"),
             CYCLE_DAYS,
             0L,
+            // ★ R3：产能锚（规模单位 = 1 亩）与劳动那一路照常给（二者都不是本文件的判据）。
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
+            EconomySettlement.LABOR_MILLI_PER_MU,
             Map.of(EconomySettlement.GRAIN, YIELD_PER_MU),
-            Map.of(), // ★ 不配种子：本文件只验流水与口粮，不引入第三路瓶颈
+            Map.of(), // ★ 不配种子：本文件只验流水与口粮，不引入投入那一路瓶颈
             List.of(new ClassSlot(PEASANT, "贫农", 1000)),
             new AllocationRule.Split(700, 300),
             0L,
-            0L);
+            Map.of());
     ClassRow row =
         new ClassRow(
             PEASANT_KEY,

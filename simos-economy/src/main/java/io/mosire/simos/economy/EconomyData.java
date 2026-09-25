@@ -52,7 +52,9 @@ import java.util.Set;
  * <ol>
  *   <li>**actor ↔ 产业 的对应关系**：结算按 {@code actor.id()} 把配额归到产业（"这一格的劳动被哪个产业占了多少"的唯一判据）⇒ 产业型主体（{@link
  *       ActorKind#ESTATE}/{@link ActorKind#WORKSHOP}）**必须**指名一个已存在的产业，而非产业型主体的 id **不得**与任何产业 id
- *       撞名（撞名 ⇒ 家户的配额被静默算进那个产业）；
+ *       撞名（撞名 ⇒ 家户的配额被静默算进那个产业）。★ **R3 起 {@link ActorKind#HOUSEHOLD} 是自由档**：农村家庭纺织是"家户
+ *       自己承担的一个生产过程"（spec §四）⇒ 家户的 actor id 可以命名一个产业（那时配额照进该产业的 {@code cycleLaborMilli}），
+ *       也可以不命名（那时它只是消费主体）；其余四个非产业型种类仍不许撞名；
  *   <li>**每条配额必须有一份同期的供给记录**（{@code (group, period)} 命中）：没有供给记录的配额**没有上限**——
  *       那等于把"不能凭空重复"这条判据本身留成后门。
  * </ol>
@@ -223,17 +225,29 @@ public record EconomyData(
       }
       // ① actor ↔ 产业 的**双条件**（结算按 actor id 归属劳动，故两侧都得判：产业型必须指名存在的产业；
       //    非产业型不得与产业 id 撞名 —— 撞名会让"家户的配额"静默算进那个产业）。
+      //   ★★ **R3 起 HOUSEHOLD 是"自由档"**：农村家庭纺织是一个**由家户承担的生产过程**（spec §四 的压力测试）
+      //     ⇒ 家户的 actor id **可以**命名一个产业（那时它的配额照进该产业的 cycleLaborMilli），**也可以不命名**
+      //     （那时它只是一个消费主体，配额只进守恒与读口）。这两种都是**有意为之**，故不判错。
+      //     其余非产业型（PEOPLE_LOT/UNIT/GOVERNMENT/ORGANIZATION）仍**不许**撞产业 id。
       ActorKind kind = allocation.actor().kind();
-      boolean industryKind = kind == ActorKind.ESTATE || kind == ActorKind.WORKSHOP;
+      boolean mustResolveToIndustry = kind == ActorKind.ESTATE || kind == ActorKind.WORKSHOP;
+      boolean mayResolveToIndustry = mustResolveToIndustry || kind == ActorKind.HOUSEHOLD;
       boolean resolvesToIndustry = industryIds.contains(allocation.actor().id());
-      if (industryKind != resolvesToIndustry) {
+      if (mustResolveToIndustry && !resolvesToIndustry) {
         throw new IllegalArgumentException(
             "劳动分配的 actor 与产业 id 的对应关系不成立（结算按 actor id 把配额归给产业）：kind="
                 + kind
                 + "，id="
                 + allocation.actor().id()
-                + " ⇒ "
-                + (industryKind ? "产业型主体的 id 必须是一个已存在的产业" : "非产业型主体的 id 不得与任何产业 id 相同"));
+                + " ⇒ 产业型主体的 id 必须是一个已存在的产业");
+      }
+      if (resolvesToIndustry && !mayResolveToIndustry) {
+        throw new IllegalArgumentException(
+            "劳动分配的 actor 与产业 id 的对应关系不成立（结算按 actor id 把配额归给产业）：kind="
+                + kind
+                + "，id="
+                + allocation.actor().id()
+                + " ⇒ 非产业型主体的 id 不得与任何产业 id 相同");
       }
       // ② 配额必须有**同期**的供给记录（没有供给的配额没有上限）。
       LaborSupply supply = supplyCopy.get(allocation.group());

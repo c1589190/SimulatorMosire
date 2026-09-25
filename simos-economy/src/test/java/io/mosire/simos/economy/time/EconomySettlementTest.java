@@ -95,7 +95,7 @@ class EconomySettlementTest {
     assertThat(peasantFlow.consumed().get(GRAIN))
         .as("本期消费 = 第 1 天口粮")
         .isEqualTo(rationOn(PEASANT_POPULATION, 1L));
-    assertThat(peasantFlow.income()).as("无收获 ⇒ 所得 0").isZero();
+    assertThat(peasantFlow.income()).as("无收获 ⇒ 所得一分没有（逐商品的表为空）").isEmpty();
     assertThat(peasantFlow.netSurplus())
         .as("净盈余 = 0 − 第 1 天口粮")
         .isEqualTo(-rationOn(PEASANT_POPULATION, 1L));
@@ -179,14 +179,14 @@ class EconomySettlementTest {
     assertThat(landlord.consumed().get(GRAIN))
         .as("头 3 天口粮之和 + 地主分到的生产损耗")
         .isEqualTo(rationOver(LANDLORD_POPULATION, 3L) + 44L);
-    assertThat(peasant.income()).as("贫农分到的收获毛产份额").isEqualTo(5_530L);
-    assertThat(landlord.income()).as("地主分到的收获毛产份额").isEqualTo(1_470L);
+    assertThat(peasant.income().get(GRAIN)).as("贫农分到的收获毛产份额").isEqualTo(5_530L);
+    assertThat(landlord.income().get(GRAIN)).as("地主分到的收获毛产份额").isEqualTo(1_470L);
     assertThat(peasant.netSurplus()).as("5,530 − 25,166").isEqualTo(-19_636L);
     assertThat(landlord.netSurplus()).as("1,470 − 2,544").isEqualTo(-1_074L);
     assertThat(peasant.newBorrowing()).as("库存够吃 ⇒ 无借入").isZero();
 
     long sumConsumed = peasant.consumed().get(GRAIN) + landlord.consumed().get(GRAIN);
-    long sumIncome = peasant.income() + landlord.income();
+    long sumIncome = peasant.income().get(GRAIN) + landlord.income().get(GRAIN);
     assertThat(sumConsumed - sumIncome)
         .as("Σ 行 consumed − Σ 行 income == 基期库存 − 终态库存（守恒口径一致）")
         .isEqualTo((83_000L + 8_300L) - (63_364L + 7_226L));
@@ -364,14 +364,18 @@ class EconomySettlementTest {
             new RegimeId("feudal"),
             3L,
             0L,
+            // ★ R3：产能锚（规模单位 = 1 亩）；劳动那一路给 0（不施加约束 —— 本文件的字面量是 V2 口径算好的，
+            //   而它算的是"两行合计地 3,000 亩是瓶颈"那一条链）。
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
+            0L,
             Map.of(GRAIN, 7L),
-            Map.of(), // ★ 一个都不配种子：本文件的字面量是 V2 口径算好的
+            Map.of(), // ★ 一个都不配种子：同上
             slots,
             new AllocationRule.Split(700, 300),
             0L,
-            0L);
+            Map.of());
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
@@ -436,14 +440,16 @@ class EconomySettlementTest {
             new RegimeId("feudal"),
             3L,
             0L,
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
+            0L,
             0L,
             Map.of(GRAIN, 7L),
             Map.of(), // ★ 一个都不配种子（同 {@link #fixture()}）
             slots,
             new AllocationRule.Split(700, 300),
             0L,
-            0L);
+            Map.of());
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     ClassRow row =

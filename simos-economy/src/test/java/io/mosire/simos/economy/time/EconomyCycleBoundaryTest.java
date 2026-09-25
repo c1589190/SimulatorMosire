@@ -66,14 +66,19 @@ class EconomyCycleBoundaryTest {
             new RegimeId("feudal"),
             CYCLE_DAYS,
             CYCLE_DAYS, // ★ 边界值：周期已满（合法，且 v1 会在此炸）
+            // ★ R3：产能锚 —— 规模单位 = 1 亩（每 1 亩要 1,000 千分亩）。
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
+            // ★ R3：劳动那一路 = 每亩 143 千分劳动（= ⌈1000/7⌉）—— 它就是旧口径"1 标准劳动经营 7 亩"的倒数形式，
+            //   故本文件那串 V2 字面量（388 亩）一分不动（见 aFullCycleHarvestsInsteadOfThrowing 的算式）。
+            EconomySettlement.LABOR_MILLI_PER_MU,
             Map.of(EconomySettlement.GRAIN, GRAIN_PER_MU),
-            Map.of(), // ★ 一个都不配种子：本文件的字面量是 V2 口径算好的
+            Map.of(), // ★ 一个都不配种子：同上
             List.of(new ClassSlot(PEASANT, "贫农", 950)),
             new AllocationRule.Split(700, 300),
             dailyLabor * CYCLE_DAYS, // 周期累计劳动
-            0L);
+            Map.of());
     ClassRow row =
         new ClassRow(
             PEASANT_KEY,
@@ -119,7 +124,8 @@ class EconomyCycleBoundaryTest {
     //   日劳动    = 58,000 × 950‰ = 55,100 千分劳动
     //   周期累计  = 55,100 × 120 = 6,612,000；收获当天再 +55,100 ⇒ cycledLabor = 6,667,100
     //   平均日劳动 = 6,667,100 ÷ 120 = 55,559（向下取整）
-    //   劳动可经营 = 55,559 × 7 亩/劳动 ÷ 1000 = 388 亩（**劳动是最短那块**，地有 3,100 亩）
+    //   ★ R3：劳动可经营 = 55,559 ÷ 每亩需劳动 143 = 388 亩（**劳动是最短那块**，地有 3,100 亩）
+    //     —— 与旧式 floor(55,559 × 7 ÷ 1000) = 388 逐值相同（143 = ⌈1000/7⌉ 就是那条口径的倒数形式）
     //   毛产      = 388 × 67 × 1000 = 25,996,000 毫粮
     //   生产消耗  = 25,996,000 × (饲料 0‰ + 折旧 30‰) ÷ 1000 = 779,880 ⇒ 净 25,216,120
     //   单行 ⇒ Split 权重 = (700×1000 + 300×1000) ÷ 1000 = 1000 ⇒ 全部归它
@@ -162,14 +168,16 @@ class EconomyCycleBoundaryTest {
                 farm.regime(),
                 cycleDays,
                 cycleDays,
+                farm.capacityPerUnit(),
                 farm.dailyInputPerUnit(),
                 farm.dailyLaborPerUnit(),
+                farm.laborPerUnit(),
                 farm.outputPerUnit(),
                 farm.cycleInputPerUnit(),
                 farm.slots(),
                 farm.allocation(),
                 farm.cycleLaborMilli(),
-                farm.cycleSeedUsedMilli())));
+                farm.cycleInputUsedMilli())));
   }
 
   /**
@@ -195,14 +203,16 @@ class EconomyCycleBoundaryTest {
                     farm.regime(),
                     farm.cycleDays(),
                     farm.progressDays(),
+                    farm.capacityPerUnit(),
                     farm.dailyInputPerUnit(),
                     farm.dailyLaborPerUnit(),
+                    farm.laborPerUnit(),
                     farm.outputPerUnit(),
                     farm.cycleInputPerUnit(),
                     farm.slots(),
                     farm.allocation(),
                     0L, // ★ 周期累计劳动清零
-                    farm.cycleSeedUsedMilli())))
+                    farm.cycleInputUsedMilli())))
         .withClasses(
             Map.of(
                 PEASANT_KEY,

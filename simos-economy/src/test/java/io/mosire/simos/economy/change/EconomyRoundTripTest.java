@@ -54,6 +54,9 @@ class EconomyRoundTripTest {
   private static final DebtId D1 = new DebtId("debt-1");
   private static final CommodityId GRAIN = new CommodityId("grain");
 
+  /** ★ R3：第二种商品（"所得逐商品"的那一维在往返里要真的被带上，只有一个商品的夹具挡不住"退回标量"）。 */
+  private static final CommodityId CLOTH = new CommodityId("cloth");
+
   /** ★ R2：劳动供给与配额的夹具身份（一格一批人 ⇒ 供给一条、配额一条）。 */
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
 
@@ -172,14 +175,18 @@ class EconomyRoundTripTest {
         new RegimeId("tenant"),
         120L,
         progress,
+        // ★ R3（V7）：产能那一路非空且为正（"单位规模"的锚）；这一行的规模单位 = "1 头耕牛"。
         Map.of(AssetKind.CATTLE, 1L),
+        // ★ 必须非空：空 map 与"字段没进变更集"在值层面不可区分（R3 起值侧再带一层商品维度）。
+        Map.of(AssetKind.CATTLE, Map.of(GRAIN, 1L)),
         500L,
+        7L,
         Map.of(GRAIN, 7L),
-        Map.of(AssetKind.CATTLE, 1L), // ★ 必须非空：空 map 与"字段没进变更集"在值层面不可区分
+        Map.of(AssetKind.CATTLE, Map.of(GRAIN, 1L)),
         slots,
         new AllocationRule.Split(700, 300),
         0L,
-        0L);
+        Map.of(GRAIN, 3L));
   }
 
   static ClassKey otherKey() {
@@ -209,7 +216,9 @@ class EconomyRoundTripTest {
   }
 
   static FlowRow flowRow() {
-    return new FlowRow(KEY, 200L, Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
+    // ★ R3：income 由标量改成**逐商品**的表（与 consumed 对称）——这里刻意给两种商品，往返要真的带上它。
+    return new FlowRow(
+        KEY, Map.of(GRAIN, 200L, CLOTH, 11L), Map.of(GRAIN, 120L), 10L, 5L, 0L, 0L, 65L, 7L, 3L);
   }
 
   /** ★ R2 的配额夹具：批次 {@link #LOT} 把 60,000 千分劳动供给产业 {@code FARM}（actor id = 产业 id）。 */

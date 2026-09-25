@@ -130,7 +130,7 @@ class EconomyInvariantsTest {
   /** ★ 不变量 3 的流水侧（§3.3）：{@code flows} 的键必须与 {@code FlowRow.key} 一致。 */
   @Test
   void rejectsFlowsKeyNotMatchingRowKey() {
-    FlowRow row = new FlowRow(LANDLORD_KEY, 10L, Map.of(), 0L, 0L, 0L, 0L, 10L, 0L, 0L);
+    FlowRow row = new FlowRow(LANDLORD_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 10L, 0L, 0L);
     assertThatThrownBy(
             () ->
                 new EconomyData(
@@ -148,12 +148,31 @@ class EconomyInvariantsTest {
   /** ★ 不变量（2026-09-25 新增字段）：未满足需求与饿死数都不得为负（存量非负口径的流水侧）。 */
   @Test
   void rejectsNegativeUnmetNeedOrDeaths() {
-    assertThatThrownBy(() -> new FlowRow(PEASANT_KEY, 0L, Map.of(), 0L, 0L, 0L, 0L, 0L, -1L, 0L))
+    assertThatThrownBy(
+            () -> new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, -1L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unmetNeed");
-    assertThatThrownBy(() -> new FlowRow(PEASANT_KEY, 0L, Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, -1L))
+    assertThatThrownBy(
+            () -> new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, -1L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("deaths");
+  }
+
+  /**
+   * ★★ **R3：{@code income} 逐商品**（原来是一个标量）—— 它与 {@code consumed} 对称，两条守卫逐一对应。
+   *
+   * <p>判别力：把 {@code income} 退回标量 ⇒ 本用例的构造器直接编译不过（形状层面的判别力）；把"逐值 ≥ 0"的守卫删掉 ⇒ 本用例红。
+   */
+  @Test
+  void rejectsNegativeIncomeQuantity() {
+    assertThatThrownBy(
+            () ->
+                new FlowRow(PEASANT_KEY, Map.of(GRAIN, -1L), Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, 0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("income");
+    assertThatThrownBy(() -> new FlowRow(PEASANT_KEY, null, Map.of(), 0L, 0L, 0L, 0L, 0L, 0L, 0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("income");
   }
 
   /** ★ 不变量 4（§6.3 的上界）：{@code participationPerMille ∈ [0, 1000]}。 */
@@ -341,29 +360,25 @@ class EconomyInvariantsTest {
         .hasMessageContaining("cycleInputPerUnit");
   }
 
-  /** ★ 逐值 ≥ 0（§6.4 存量非负的下界）。 */
+  /** ★ 逐值 ≥ 0（§6.4 存量非负的下界）；R3 起值侧还有一层商品维度。 */
   @Test
   void rejectsNegativeCycleInputQuantity() {
-    assertThatThrownBy(() -> industryWithCycleInput(Map.of(AssetKind.LAND, -1L)))
+    assertThatThrownBy(() -> industryWithCycleInput(Map.of(AssetKind.LAND, Map.of(GRAIN, -1L))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("cycleInputPerUnit");
   }
 
-  /** ★★ **六种键都允许**（spec §3.3：协议上不设限；v1 只让 LAND 真的被读到）。 */
+  /** ★★ **六种键都允许**（spec §3.3：协议上不设限；R3 只让农业/织机/作坊真的读到它）。 */
   @Test
   void acceptsCycleInputForAllSixAssetKinds() {
-    Industry industry =
-        industryWithCycleInput(
-            Map.of(
-                AssetKind.LAND, 100L,
-                AssetKind.CATTLE, 1L,
-                AssetKind.TOOL, 2L,
-                AssetKind.WORKSHOP, 3L,
-                AssetKind.MACHINE, 4L,
-                AssetKind.SHIP, 5L));
+    Map<AssetKind, Map<CommodityId, Long>> input = new LinkedHashMap<>();
+    for (AssetKind kind : AssetKind.values()) {
+      input.put(kind, Map.of(GRAIN, 1L));
+    }
+    Industry industry = industryWithCycleInput(input);
 
     assertThat(industry.cycleInputPerUnit())
-        .as("形状不设限（v1 读不读是结算的事）")
+        .as("形状不设限（读不读是结算的事）")
         .containsOnlyKeys(
             AssetKind.LAND,
             AssetKind.CATTLE,
@@ -373,12 +388,90 @@ class EconomyInvariantsTest {
             AssetKind.SHIP);
   }
 
+  /**
+   * ★★ **投入的分类键不必同时是产能约束**（R3）：{@code cycleInputPerUnit} 的键是"这段投入挂在哪种生产资料上"， 而 {@code
+   * capacityPerUnit} 回答"每 1 单位规模需要多少生产资料" —— 两件事。「工具的保养要耗粮」完全可以只出现在前者里。
+   */
+  @Test
+  void acceptsCycleInputForAnAssetKindWithoutCapacity() {
+    Industry industry =
+        new Industry(
+            FARM,
+            "农业",
+            new RegimeId("tenant"),
+            120L,
+            0L,
+            Map.of(AssetKind.LAND, 1000L),
+            Map.of(),
+            0L,
+            0L,
+            Map.of(GRAIN, 7L),
+            Map.of(AssetKind.SHIP, Map.of(GRAIN, 1L)), // ★ SHIP 不是产能约束，只是分类
+            List.of(new ClassSlot(PEASANT, "贫农", 1000)),
+            new AllocationRule.Split(700, 300),
+            0L,
+            Map.of());
+
+    assertThat(industry.inputPerUnit()).as("每 1 单位规模的投入 = 各分类的合计").containsEntry(GRAIN, 1L);
+  }
+
+  /** ★★ **产能那一路不得为空**（R3）：它是"单位规模"的锚，没有它规模无上界。 */
+  @Test
+  void rejectsEmptyCapacityPerUnit() {
+    assertThatThrownBy(
+            () ->
+                new Industry(
+                    FARM,
+                    "农业",
+                    new RegimeId("tenant"),
+                    120L,
+                    0L,
+                    Map.of(),
+                    Map.of(),
+                    0L,
+                    0L,
+                    Map.of(GRAIN, 7L),
+                    Map.of(),
+                    List.of(new ClassSlot(PEASANT, "贫农", 1000)),
+                    new AllocationRule.Split(700, 300),
+                    0L,
+                    Map.of()))
+        .as("capacityPerUnit 不得为空")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("capacityPerUnit");
+  }
+
+  /** ★★ **产能需求必须为正**（0 那一档恒无约束，它不是一个"约束"，是写错了）。 */
+  @Test
+  void rejectsNonPositiveCapacityRequirement() {
+    assertThatThrownBy(
+            () ->
+                new Industry(
+                    FARM,
+                    "农业",
+                    new RegimeId("tenant"),
+                    120L,
+                    0L,
+                    Map.of(AssetKind.LAND, 0L),
+                    Map.of(),
+                    0L,
+                    0L,
+                    Map.of(GRAIN, 7L),
+                    Map.of(),
+                    List.of(new ClassSlot(PEASANT, "贫农", 1000)),
+                    new AllocationRule.Split(700, 300),
+                    0L,
+                    Map.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("capacityPerUnit");
+  }
+
   /** ★ 保序不可变（冻在字段赋值处；绝不用 Map.copyOf —— 迭代序不是内容的纯函数）。 */
   @Test
   void cycleInputKeepsInsertionOrderAndIsFrozen() {
-    Map<AssetKind, Long> input = new LinkedHashMap<>();
-    input.put(AssetKind.SHIP, 5L);
-    input.put(AssetKind.LAND, 100L);
+    Map<AssetKind, Map<CommodityId, Long>> input = new LinkedHashMap<>();
+    input.put(AssetKind.SHIP, Map.of(GRAIN, 5L));
+    input.put(AssetKind.LAND, Map.of(GRAIN, 100L));
     Industry industry = industryWithCycleInput(input);
 
     assertThat(industry.cycleInputPerUnit().keySet())
@@ -387,41 +480,75 @@ class EconomyInvariantsTest {
     assertThatThrownBy(() -> industry.cycleInputPerUnit().clear())
         .as("冻在字段赋值处")
         .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> industry.capacityPerUnit().clear())
+        .as("capacityPerUnit 同样冻在字段赋值处")
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 
-  /** ★ `cycleSeedUsedMilli` 形制同 `cycleLaborMilli`：不得为负。 */
+  /** ★ `cycleInputUsedMilli` 形制同 `cycleLaborMilli`：逐商品、不得为负。 */
   @Test
-  void rejectsNegativeCycleSeedAccumulator() {
-    assertThatThrownBy(() -> industryWithCycleSeedUsed(-1L))
+  void rejectsNegativeCycleInputAccumulator() {
+    assertThatThrownBy(() -> industryWithCycleState(Map.of(), Map.of(GRAIN, -1L)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("cycleSeedUsedMilli");
+        .hasMessageContaining("cycleInputUsedMilli");
   }
 
-  /** 一个产业的槽位上限 1000‰、`cycleInputPerUnit = cycleInput`、`cycleSeedUsedMilli = 0`。 */
-  private static Industry industryWithCycleInput(Map<AssetKind, Long> cycleInput) {
-    return industryWithCycleState(cycleInput, 0L);
-  }
-
-  private static Industry industryWithCycleSeedUsed(long cycleSeedUsedMilli) {
-    return industryWithCycleState(Map.of(), cycleSeedUsedMilli);
+  /**
+   * 一个产业的槽位上限 1000‰、`cycleInputPerUnit = cycleInput`、`cycleInputUsedMilli = 累加器`。
+   *
+   * <p>★ **产能表按投入表的键现推**（每键 1）：{@code cycleInputPerUnit} 的键必须落在 {@code capacityPerUnit} 里（构造期守卫），
+   * 而本夹具测的是"投入表本身的形状"，故让产能表跟着它走 —— 不另写一份会漂的键集。
+   */
+  private static Industry industryWithCycleInput(
+      Map<AssetKind, Map<CommodityId, Long>> cycleInput) {
+    return industryWithCycleState(cycleInput, Map.of());
   }
 
   private static Industry industryWithCycleState(
-      Map<AssetKind, Long> cycleInput, long cycleSeedUsedMilli) {
+      Map<AssetKind, Map<CommodityId, Long>> cycleInput, Map<CommodityId, Long> cycleInputUsed) {
+    Map<AssetKind, Long> capacity = new LinkedHashMap<>();
+    if (cycleInput != null) {
+      for (AssetKind kind : cycleInput.keySet()) {
+        capacity.put(kind, 1L);
+      }
+    }
+    if (capacity.isEmpty()) {
+      capacity.put(AssetKind.LAND, 1L); // capacityPerUnit 不得为空（R3 的构造期守卫）
+    }
+    if (cycleInput == null) {
+      return new Industry(
+          FARM,
+          "农业",
+          new RegimeId("tenant"),
+          120L,
+          0L,
+          capacity,
+          Map.of(),
+          500L,
+          0L,
+          Map.of(GRAIN, 7L),
+          null, // ★ 本用例测的就是"null ⇒ 拒"
+          List.of(new ClassSlot(PEASANT, "贫农", 1000)),
+          new AllocationRule.Split(700, 300),
+          0L,
+          cycleInputUsed);
+    }
     return new Industry(
         FARM,
         "农业",
         new RegimeId("tenant"),
         120L,
         0L,
+        capacity,
         Map.of(),
         500L,
+        0L,
         Map.of(GRAIN, 7L),
         cycleInput,
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
         new AllocationRule.Split(700, 300),
         0L,
-        cycleSeedUsedMilli);
+        cycleInputUsed);
   }
 
   private static Industry industryWithTwoSlots() {
@@ -472,14 +599,16 @@ class EconomyInvariantsTest {
         new RegimeId("tenant"),
         120L,
         0L,
+        Map.of(AssetKind.LAND, 1000L),
         Map.of(),
         500L,
+        0L,
         Map.of(GRAIN, 7L),
         Map.of(),
         slots,
         new AllocationRule.Split(700, 300),
         0L,
-        0L);
+        Map.of());
   }
 
   private static Industry industryWithProgress(long progress, long cycleDays) {
@@ -489,14 +618,16 @@ class EconomyInvariantsTest {
         new RegimeId("tenant"),
         cycleDays,
         progress,
+        Map.of(AssetKind.LAND, 1000L),
         Map.of(),
         500L,
+        0L,
         Map.of(GRAIN, 7L),
         Map.of(),
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
         new AllocationRule.Split(700, 300),
         0L,
-        0L);
+        Map.of());
   }
 
   private static ClassRow classRow(ClassKey key) {
@@ -697,14 +828,18 @@ class EconomyInvariantsTest {
 
   /**
    * ★★ **actor ↔ 产业 的对应关系是双条件的**（结算按 {@code actor.id()} 把配额归给产业）：产业型主体（庄园/作坊）
-   * 必须指名**已存在**的产业；非产业型主体的 id **不得**与任何产业 id 撞名。
+   * 必须指名**已存在**的产业；**其余非产业型主体**的 id **不得**与任何产业 id 撞名。
    *
    * <p>★ 判别力：两条各自挡一种错 ——
    *
    * <ul>
    *   <li>拼错产业 id（{@code famr@0_0}）⇒ 当日劳动静默变 0（不报错、只少产）⇒ 第一条；
-   *   <li>家户的 id 恰好等于某产业 id ⇒ 家户的配额被静默算进那个产业 ⇒ 第二条。
+   *   <li>{@link ActorKind#ORGANIZATION} 的 id 恰好等于某产业 id ⇒ 它的配额被静默算进那个产业 ⇒ 第二条。
    * </ul>
+   *
+   * <p>★★ **R3 起这一条改由 {@code ORGANIZATION} 承担，不再由 {@code HOUSEHOLD}**：农村家庭纺织是"家户自己承担的一个生产过程" （spec
+   * §四）⇒ 家户的 actor id **可以**命名一个产业（那时它的配额照进该产业的 {@code cycleLaborMilli}）—— 那是**有意为之**， 不再是"撞名"。★
+   * 于是"撞名"这条判据必须在**其余**非产业型种类上继续被钉住（{@link #acceptsAHouseholdActorOwningAnIndustry}）。
    */
   @Test
   void rejectsActorsThatDoNotMatchAnExistingIndustry() {
@@ -721,10 +856,22 @@ class EconomyInvariantsTest {
                 economyWith(
                     laborSupply(LOT, 100_000L, 0L, 0L),
                     Map.of(
-                        ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.HOUSEHOLD, 1L))))
-        .as("非产业型主体的 id 不得与产业 id 撞名（撞名 ⇒ 家户的配额被算进那个产业）")
+                        ALLOC_A,
+                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ORGANIZATION, 1L))))
+        .as("非产业型主体（此处 = 组织）的 id 不得与产业 id 撞名（撞名 ⇒ 它的配额被算进那个产业）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("对应关系不成立");
+  }
+
+  /** ★★ **R3：家户可以"拥有"一个生产过程**（农村家庭纺织）⇒ 它的 actor id 命名一个产业时**放行**，且配额进该产业的劳动投入。 */
+  @Test
+  void acceptsAHouseholdActorOwningAnIndustry() {
+    EconomyData data =
+        economyWith(
+            laborSupply(LOT, 100_000L, 0L, 0L),
+            Map.of(ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.HOUSEHOLD, 40_000L)));
+
+    assertThat(data.allocations()).as("家户的生产过程（家户织布）放行").hasSize(1);
   }
 
   /** ★ 家户（非产业型）的 id 与产业 id 不同 ⇒ 放行：它进守恒与读口，但**不占任何产业的劳动投入**。 */

@@ -59,6 +59,11 @@ class EconomySowingTest {
   private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
 
+  /** ★ R3：另外两种商品 —— 用来证明"六档投入都允许，而只有粮那一档进本文件的粮链"。 */
+  private static final CommodityId FIBER = new CommodityId("fiber");
+
+  private static final CommodityId WOOD = new CommodityId("wood");
+
   /** 周期（天）：一天播种、一天收获 —— 算账最短，且第 2 天就能看见累加器清零。 */
   private static final long CYCLE_DAYS = 2L;
 
@@ -167,23 +172,42 @@ class EconomySowingTest {
         Map.of());
   }
 
-  /** 一个产业：两个槽位（上限 1000‰，够放本夹具的行）、`Split(700, 300)`、亩产 {@value #YIELD_PER_MU} 粮/亩。 */
+  /**
+   * **每亩下种 {@code perMu} 毫粮**（R3 换型后的形状）：{@code {"LAND":{"grain":perMu}}}。
+   *
+   * <p>★ 它是本文件"配了种子"的**唯一拼写点** —— 十几处调用都读它，改形状时不会漏掉一处。
+   */
+  private static Map<AssetKind, Map<CommodityId, Long>> seeds(long perMu) {
+    return Map.of(AssetKind.LAND, Map.of(GRAIN, perMu));
+  }
+
+  /**
+   * 一个产业：两个槽位（上限 1000‰，够放本夹具的行）、`Split(700, 300)`、亩产 {@value #YIELD_PER_MU} 粮/亩。
+   *
+   * <p>★ **R3**：产能锚 = 1 亩；劳动那一路**刻意留 0**（不施加约束）—— 本文件量的是**投入那一路瓶颈** （{@code Σ实际扣到的投入 ÷
+   * 每单位规模的投入}），劳动若也参与取小就会把它的字面量搅进来。★ 投入表按生产资料种类归类（农业 = LAND）。
+   */
   private static Industry industry(
-      IndustryId id, String name, long cycleDays, Map<AssetKind, Long> cycleInput) {
+      IndustryId id,
+      String name,
+      long cycleDays,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInput) {
     return new Industry(
         id,
         name,
         new RegimeId("feudal"),
         cycleDays,
         0L,
+        Map.of(AssetKind.LAND, 1_000L),
         Map.of(),
+        0L,
         0L,
         Map.of(GRAIN, YIELD_PER_MU),
         cycleInput,
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)),
         new AllocationRule.Split(700, 300),
         0L,
-        0L);
+        Map.of());
   }
 
   /**
@@ -216,11 +240,12 @@ class EconomySowingTest {
   }
 
   /** 一格、一个农业产业、**一行贫农**（地 {@link #LAND_MILLI_MU} 千分亩）、周期 {@value #CYCLE_DAYS} 天。 */
-  private static EconomyData farm(long stock, Map<AssetKind, Long> cycleInput) {
+  private static EconomyData farm(long stock, Map<AssetKind, Map<CommodityId, Long>> cycleInput) {
     return farm(stock, cycleInput, CYCLE_DAYS);
   }
 
-  private static EconomyData farm(long stock, Map<AssetKind, Long> cycleInput, long cycleDays) {
+  private static EconomyData farm(
+      long stock, Map<AssetKind, Map<CommodityId, Long>> cycleInput, long cycleDays) {
     LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>();
     rows.put(PEASANT_KEY, peasantRow(stock));
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
@@ -254,7 +279,7 @@ class EconomySowingTest {
    */
   @Test
   void sowingDayDrawsTheSeedBeforeTheDayIsEaten() {
-    EconomyData base = farm(JAR_TWO_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU));
+    EconomyData base = farm(JAR_TWO_DAYS, seeds(SEED_PER_MU));
 
     EconomyData day1 = EconomySettlement.settle(base, 0L, 1L);
 
@@ -282,8 +307,7 @@ class EconomySowingTest {
   /** 非播种日（`progressDays != 0`）**一次都不扣**：库存只减当日口粮。 */
   @Test
   void daysAfterTheSowingDayDrawNothing() {
-    EconomyData day1 =
-        EconomySettlement.settle(farm(JAR_TWO_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU)), 0L, 1L);
+    EconomyData day1 = EconomySettlement.settle(farm(JAR_TWO_DAYS, seeds(SEED_PER_MU)), 0L, 1L);
 
     EconomyData day2 = EconomySettlement.settle(day1, 1L, 2L);
 
@@ -305,8 +329,7 @@ class EconomySowingTest {
    */
   @Test
   void aJarThatExactlyCoversTheSeedIsDrawnToZero() {
-    EconomyData day1 =
-        EconomySettlement.settle(farm(FULL_SEED, Map.of(AssetKind.LAND, SEED_PER_MU)), 0L, 1L);
+    EconomyData day1 = EconomySettlement.settle(farm(FULL_SEED, seeds(SEED_PER_MU)), 0L, 1L);
 
     assertThat(day1.industries().get(FARM).cycleSeedUsedMilli())
         .as("恰好够 ⇒ 满种（等号归「够」这一侧）")
@@ -331,7 +354,7 @@ class EconomySowingTest {
    */
   @Test
   void drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown() {
-    EconomyData base = farm(20_000L, Map.of(AssetKind.LAND, SEED_PER_MU));
+    EconomyData base = farm(20_000L, seeds(SEED_PER_MU));
     LinkedHashMap<ClassKey, FlowRow> flowsFirst = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, FlowRow> flowsAfter = new LinkedHashMap<>();
 
@@ -355,8 +378,8 @@ class EconomySowingTest {
   /** ★★ **没配种子（空 map）或每亩需种为 0 ⇒ 播种日一字不扣**。这条是"旧档与未配种子的产业行为与 V2 完全一致"的护栏——第三路瓶颈**绝不许**把它们变成一粒无收。 */
   @Test
   void anIndustryWithoutASeedRateDrawsNothingAtAll() {
-    for (Map<AssetKind, Long> cycleInput :
-        List.of(Map.<AssetKind, Long>of(), Map.of(AssetKind.LAND, 0L))) {
+    for (Map<AssetKind, Map<CommodityId, Long>> cycleInput :
+        List.of(Map.<AssetKind, Map<CommodityId, Long>>of(), seeds(0L))) {
       EconomyData day1 = EconomySettlement.settle(farm(JAR_TWO_DAYS, cycleInput), 0L, 1L);
 
       assertThat(day1.industries().get(FARM).cycleSeedUsedMilli())
@@ -376,8 +399,8 @@ class EconomySowingTest {
     ClassKey craftPeasant = new ClassKey(CRAFT, PEASANT);
     rows.put(craftPeasant, landlessRow(craftPeasant, 1_000_000L)); // 手工业行：不占地、缸很足
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
-    industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU)));
-    industries.put(CRAFT, industry(CRAFT, "手工业", CYCLE_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU)));
+    industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, seeds(SEED_PER_MU)));
+    industries.put(CRAFT, industry(CRAFT, "手工业", CYCLE_DAYS, seeds(SEED_PER_MU)));
     EconomyData base = data(rows, industries);
 
     EconomyData day1 = EconomySettlement.settle(base, 0L, 1L);
@@ -396,7 +419,7 @@ class EconomySowingTest {
   /** ★ 一次 2 天 == 两次单日：**播种恰发生一次**（不会"每推一次就扣一遍"）。 */
   @Test
   void settlingTwoDaysAtOnceEqualsTwoSingleDayStepsWithSeeds() {
-    EconomyData base = farm(JAR_TWO_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU));
+    EconomyData base = farm(JAR_TWO_DAYS, seeds(SEED_PER_MU));
 
     EconomyData once = EconomySettlement.settle(base, 0L, 2L);
     EconomyData twice = EconomySettlement.settle(EconomySettlement.settle(base, 0L, 1L), 1L, 2L);
@@ -418,9 +441,7 @@ class EconomySowingTest {
    */
   @Test
   void aOneDayCycleSowsAndHarvestsOnTheSameDay() {
-    EconomyData next =
-        EconomySettlement.settle(
-            farm(JAR_TWO_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU), 1L), 0L, 1L);
+    EconomyData next = EconomySettlement.settle(farm(JAR_TWO_DAYS, seeds(SEED_PER_MU), 1L), 0L, 1L);
 
     assertThat(grainOf(next, PEASANT_KEY))
         .as("当天播、当天收（种子必须先扣、收获必须读到它）")
@@ -450,8 +471,7 @@ class EconomySowingTest {
             * (1000L - PRODUCTION_LOSS_PER_MILLE)
             / 1000L;
 
-    EconomyData withSeeds =
-        EconomySettlement.settle(farm(20_000L, Map.of(AssetKind.LAND, SEED_PER_MU)), 0L, 2L);
+    EconomyData withSeeds = EconomySettlement.settle(farm(20_000L, seeds(SEED_PER_MU)), 0L, 2L);
     EconomyData withoutSeeds = EconomySettlement.settle(farm(20_000L, Map.of()), 0L, 2L);
 
     assertThat(grainOf(withSeeds, PEASANT_KEY))
@@ -460,8 +480,7 @@ class EconomySowingTest {
     // ★ 实测修正（见提交说明与"偏离"报告）：`settle(…, 0, 2)` 跑满一个 2 天周期 ⇒ **关账时累加器已清零**
     //   （任务 3 的 `sowingDayDrawsTheSeedBeforeTheDayIsEaten` 已逐值钉住"关账清零"）⇒ "扣光 20,000" 这一笔
     //   只能在**播种日当天**读。故这里另跑一次单日结算取第 1 天读数（期望值不变），而不是把断言放宽成 0。
-    EconomyData sowingDay =
-        EconomySettlement.settle(farm(20_000L, Map.of(AssetKind.LAND, SEED_PER_MU)), 0L, 1L);
+    EconomyData sowingDay = EconomySettlement.settle(farm(20_000L, seeds(SEED_PER_MU)), 0L, 1L);
     assertThat(sowingDay.industries().get(FARM).cycleSeedUsedMilli())
         .as("扣光：缸里那 20,000 全变成种子（播种日当天读数；关账后归零）")
         .isEqualTo(20_000L);
@@ -474,8 +493,7 @@ class EconomySowingTest {
   /** ★★ **缸全空 ⇒ 播种日扣不到 ⇒ 颗粒无收**（"冬春吃空缸 ⇒ 减产"在单周期的极端形态）。 */
   @Test
   void anEmptyJarYieldsNothingInsteadOfTheLandBoundHarvest() {
-    EconomyData next =
-        EconomySettlement.settle(farm(0L, Map.of(AssetKind.LAND, SEED_PER_MU)), 0L, 2L);
+    EconomyData next = EconomySettlement.settle(farm(0L, seeds(SEED_PER_MU)), 0L, 2L);
 
     assertThat(next.industries().get(FARM).cycleSeedUsedMilli()).as("一颗都没扣到").isZero();
     assertThat(grainOf(next, PEASANT_KEY))
@@ -489,35 +507,52 @@ class EconomySowingTest {
   /** ★★ **`seedPerMu == 0`（键在、值是 0）不许把产量压成 0 亩**（本任务最主要的风险点）： 三元式写成 `? 0 :` 或直接除零 ⇒ 本条必红。 */
   @Test
   void aZeroSeedRateLeavesTheHarvestExactlyAsBefore() {
-    EconomyData next =
-        EconomySettlement.settle(farm(JAR_TWO_DAYS, Map.of(AssetKind.LAND, 0L)), 0L, 2L);
+    EconomyData next = EconomySettlement.settle(farm(JAR_TWO_DAYS, seeds(0L)), 0L, 2L);
 
     assertThat(grainOf(next, PEASANT_KEY))
         .as("每亩需种 0 ⇒ 这一路不施加约束（min 里它不可能更小）⇒ 与 V2 同值（缸里的种子那笔也就不扣）")
         .isEqualTo(JAR_TWO_DAYS - rationOver(CYCLE_DAYS) + FULL_HARVEST_NET);
   }
 
-  /** ★ 六种键都允许，但 **v1 只读 `LAND`**：配上其余五种不改任何数（spec §3.1"声明但不启用"）。 */
+  /**
+   * ★★ **六种键都允许**（spec §3.3：协议不设限）：R3 起投入表是"生产资料 → 商品表"，**每一档都真的被读到**，
+   * 只是**只有粮那一档**进这条链（其余五档刻意配**别的商品** ⇒ 与本文件的粮字面量无关）。
+   *
+   * <p>★ 判别力：把值侧退回标量 ⇒ 本夹具的 `cycleInputPerUnit` 编译不过；把"合计"改成"只读 LAND"也能过 ⇒ 由 {@code inputPerUnit}
+   * 的断言与下方的逐值相同断言一起挡（六档里只有 LAND 带粮 ⇒ 合计仍等于 LAND 那一档）。
+   */
   @Test
-  void allSixAssetKindsAreAcceptedButOnlyLandIsRead() {
-    LinkedHashMap<AssetKind, Long> sixKinds = new LinkedHashMap<>();
-    sixKinds.put(AssetKind.CATTLE, 1L);
-    sixKinds.put(AssetKind.TOOL, 2L);
-    sixKinds.put(AssetKind.LAND, SEED_PER_MU);
-    sixKinds.put(AssetKind.WORKSHOP, 3L);
-    sixKinds.put(AssetKind.MACHINE, 4L);
-    sixKinds.put(AssetKind.SHIP, 5L);
+  void allSixAssetKindsAreAcceptedAndOnlyTheGrainLineFeedsThisChain() {
+    LinkedHashMap<AssetKind, Map<CommodityId, Long>> sixKinds = new LinkedHashMap<>();
+    // ★ 其余五档刻意配**别的商品且量为 0**：它们的键必须被接受、且**一分不改本文件的粮字面量**
+    //   （配成非 0 的 FIBER/WOOD 会让"缺原料 ⇒ 停产"生效 ⇒ 测的就不是这件事了；真档的多商品现扣由
+    //    {@code EconomyRealScaleClothTest} 与端到端夹具覆盖）。
+    sixKinds.put(AssetKind.CATTLE, Map.of(FIBER, 0L));
+    sixKinds.put(AssetKind.TOOL, Map.of(FIBER, 0L));
+    sixKinds.put(AssetKind.LAND, Map.of(GRAIN, SEED_PER_MU));
+    sixKinds.put(AssetKind.WORKSHOP, Map.of(FIBER, 0L));
+    sixKinds.put(AssetKind.MACHINE, Map.of(FIBER, 0L));
+    sixKinds.put(AssetKind.SHIP, Map.of(WOOD, 0L));
 
     EconomyData next = EconomySettlement.settle(farm(JAR_TWO_DAYS, sixKinds), 0L, 2L);
 
     // ★ 实测修正：同 `aShortJarShrinksTheSownAreaAndCutsTheHarvest` —— 2 天结算跑满周期 ⇒ 关账清零，
-    //   "只按 LAND 扣了 40,000" 要在播种日当天读。
+    //   "只按粮那一档扣了 40,000" 要在现扣日当天读。
+    assertThat(
+            EconomySettlement.settle(farm(JAR_TWO_DAYS, sixKinds), 0L, 1L)
+                .industries()
+                .get(FARM)
+                .inputPerUnit())
+        .as("六档的投入**合计**成一张每单位规模的表（非零的那一项只来自 LAND 那一档）")
+        .containsEntry(GRAIN, SEED_PER_MU)
+        .containsEntry(FIBER, 0L)
+        .containsEntry(WOOD, 0L);
     assertThat(
             EconomySettlement.settle(farm(JAR_TWO_DAYS, sixKinds), 0L, 1L)
                 .industries()
                 .get(FARM)
                 .cycleSeedUsedMilli())
-        .as("只按 LAND 那一档扣（其余五档不进公式），播种日当天读数")
+        .as("粮那一档的现扣量（其余五档不耗粮 ⇒ 与本条无关），现扣日当天读数")
         .isEqualTo(FULL_SEED);
     assertThat(grainOf(next, PEASANT_KEY))
         .as("与只配 LAND 的同夹具逐值相同（★ 算式含扣掉的种子 40,000：期初 − 种子 − 头两天口粮 + 满产净额）")
@@ -531,8 +566,7 @@ class EconomySowingTest {
    */
   @Test
   void aHugeSeedAmountNeverOverridesTheOtherTwoBottlenecks() {
-    EconomyData next =
-        EconomySettlement.settle(farm(JAR_TWO_DAYS * 100L, Map.of(AssetKind.LAND, 1L)), 0L, 2L);
+    EconomyData next = EconomySettlement.settle(farm(JAR_TWO_DAYS * 100L, seeds(1L)), 0L, 2L);
 
     assertThat(grainOf(next, PEASANT_KEY))
         .as(
@@ -566,7 +600,7 @@ class EconomySowingTest {
     rows.put(PEASANT_KEY, peasantRow(0L, 200_000L)); // 200 亩、缸空
     rows.put(LANDLORD_KEY, landlordRow(5_000_000L, 800_000L)); // 800 亩、缸足
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
-    industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU)));
+    industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, seeds(SEED_PER_MU)));
     EconomyData base = data(rows, industries);
 
     EconomyData next = EconomySettlement.settle(base, 0L, 2L);
@@ -636,7 +670,7 @@ class EconomySowingTest {
    */
   @Test
   void theEmptySpringJarMakesTheNextSowingFailAndTheHarvestCollapse() {
-    EconomyData base = farm(0L, Map.of(AssetKind.LAND, SEED_PER_MU));
+    EconomyData base = farm(0L, seeds(SEED_PER_MU));
 
     EconomyData next = EconomySettlement.settle(base, 0L, 4L, 200);
 
@@ -664,7 +698,7 @@ class EconomySowingTest {
    */
   @Test
   void theLedgerStaysBalancedEvenWithSeedDraws() {
-    EconomyData base = farm(20_000L, Map.of(AssetKind.LAND, SEED_PER_MU));
+    EconomyData base = farm(20_000L, seeds(SEED_PER_MU));
     EconomyData next = EconomySettlement.settle(base, 0L, 2L);
 
     long stockBefore = grainOf(base, PEASANT_KEY);
@@ -674,7 +708,7 @@ class EconomySowingTest {
 
     assertThat(consumed).as("消费里含种子 20,000（留种是本期消费）").isGreaterThanOrEqualTo(20_000L);
     assertThat(stockBefore - stockAfter)
-        .as("Σ库存减少 == Σ消费 − Σ所得（毛产口径）")
-        .isEqualTo(consumed - flow.income());
+        .as("Σ库存减少 == Σ消费 − Σ所得（毛产口径；★ R3 起两边都取粮那一维）")
+        .isEqualTo(consumed - flow.income().getOrDefault(GRAIN, 0L));
   }
 }

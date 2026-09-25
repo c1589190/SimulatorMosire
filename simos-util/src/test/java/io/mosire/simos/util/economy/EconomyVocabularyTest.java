@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -121,5 +122,91 @@ class EconomyVocabularyTest {
     assertThat(PER_CYCLE % CYCLE_DAYS)
         .as("★ 除不尽（余 40）—— 所以「每人每日的口粮」在整数域里不存在，口径只能以累计/差分的形式承载")
         .isEqualTo(40L);
+  }
+
+  // ── R3（T1）：商品词表与"每商品一条需求"的形状 ────────────────────────────────────────
+
+  /**
+   * ★★ **六个商品 id 各恰一份、值互不相同**（T1 的唯一拼写点）：字面量的"恰一份"由源扫描护栏 （{@code
+   * EconomyVocabularyGuardTest}）把守，这里把**值**钉住 —— 两条互补：前者挡"第二处拼写"， 后者挡"两处拼写改成同一个值"。★ 判别力：把 {@code
+   * CLOTH_COMMODITY_ID} 写成 {@code "grain"} ⇒ 本条红。
+   */
+  @Test
+  void everyCommodityIdIsDistinct() {
+    List<String> ids =
+        List.of(
+            EconomyVocabulary.GRAIN_COMMODITY_ID,
+            EconomyVocabulary.CLOTH_COMMODITY_ID,
+            EconomyVocabulary.FIBER_COMMODITY_ID,
+            EconomyVocabulary.TOOL_COMMODITY_ID,
+            EconomyVocabulary.IRON_COMMODITY_ID,
+            EconomyVocabulary.WOOD_COMMODITY_ID);
+    assertThat(ids)
+        .as("粮 / 布 / 纤维 / 工具 / 铁 / 木：六个 id 互不相同（同名的两种商品会让守恒式莫名其妙不平）")
+        .doesNotHaveDuplicates()
+        .containsExactly("grain", "cloth", "fiber", "tool", "iron", "wood");
+  }
+
+  /** ★ 「每单位商品 = 1000 最小计量单位」是**商品无关**的口径：粮的别名与它必须同一个值。 */
+  @Test
+  void theMilliPrefixIsOneThousandForEveryCommodity() {
+    assertThat(EconomyVocabulary.MILLI_PER_COMMODITY_UNIT).isEqualTo(1_000L);
+    assertThat(EconomyVocabulary.MILLI_PER_GRAIN)
+        .as("★ 粮的别名与它同值（两者是同一件事的两个名字）")
+        .isEqualTo(EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+  }
+
+  /**
+   * ★★ **衣着口径与口粮口径刻意不同**（spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）： 粮是"每人每 120 天 10 粮"、布是"每人每 365 天 1 匹"。
+   *
+   * <p>★ 判别力：把两个周期写成同一个数（"共用一条每人每周期的量"）⇒ 本条红。
+   */
+  @Test
+  void theClothBasisIsDeliberatelyDifferentFromTheRationBasis() {
+    assertThat(EconomyVocabulary.CLOTH_MILLI_PER_PERSON).as("每人每 365 天 1 匹布").isEqualTo(1_000L);
+    assertThat(EconomyVocabulary.CLOTH_CYCLE_DAYS).as("365 天").isEqualTo(365L);
+    assertThat(EconomyVocabulary.CLOTH_CYCLE_DAYS)
+        .as("★ 两条时间尺度必须不同（同一条就表达不了「两种不足的时间尺度不一样」）")
+        .isNotEqualTo(EconomyVocabulary.RATION_CYCLE_DAYS);
+
+    // ★ 与粮同制：一整个衣着周期的 Σ 日需求 == 人口 × 1,000，精确（逐日差分，残差不丢）。
+    for (long population : List.of(1L, 7L, 1_000L, 14_806L)) {
+      long sum = 0L;
+      for (long day = 1L; day <= EconomyVocabulary.CLOTH_CYCLE_DAYS; day++) {
+        sum += EconomyVocabulary.dailyClothNeedMilli(population, day);
+      }
+      assertThat(sum)
+          .as("人口 %d：Σ(第 1..365 天) 必须恰为 人口 × 1,000 毫布", population)
+          .isEqualTo(population * EconomyVocabulary.CLOTH_MILLI_PER_PERSON);
+    }
+    // ★ 布的日需求也**逐日不同**（1,000 ÷ 365 除不尽）：第 1 天 273、第 2 天 274
+    //   （= floor(100,000 ÷ 365)、floor(200,000 ÷ 365) − 273）⇒ 它同样乘不出来，只能逐日差分。
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(100L, 1L)).isEqualTo(273L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(100L, 2L))
+        .as("★ 与第 1 天不同 ⇒ 布也走「累计 + 差分」，不是「每人每天多少」")
+        .isEqualTo(274L);
+    assertThatThrownBy(() -> EconomyVocabulary.dailyClothNeedMilli(1L, 0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("必须 ≥ 1");
+  }
+
+  /**
+   * ★★ **每商品一条需求**（T1 的形状；阈值与死亡作用留 R4）：{@code dailyNeedsMilli} 给出**保序**的两条 ——
+   * 粮在前、布在后，值与两个单商品函数逐值相同。
+   *
+   * <p>★ 判别力：只发粮一条（"需求还是标量"）⇒ 本条红。
+   */
+  @Test
+  void dailyNeedsCarryOneEntryPerCommodity() {
+    Map<String, Long> needs = EconomyVocabulary.dailyNeedsMilli(100L, 3L);
+
+    assertThat(needs.keySet())
+        .as("保序：词表序（粮、布）—— 结算把它写进 naturalNeeds，迭代序必须是内容的纯函数")
+        .containsExactly(
+            EconomyVocabulary.GRAIN_COMMODITY_ID, EconomyVocabulary.CLOTH_COMMODITY_ID);
+    assertThat(needs.get(EconomyVocabulary.GRAIN_COMMODITY_ID))
+        .isEqualTo(EconomyVocabulary.dailyRationMilli(100L, 3L));
+    assertThat(needs.get(EconomyVocabulary.CLOTH_COMMODITY_ID))
+        .isEqualTo(EconomyVocabulary.dailyClothNeedMilli(100L, 3L));
   }
 }

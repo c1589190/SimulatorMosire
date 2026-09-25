@@ -41,8 +41,9 @@ import java.util.OptionalLong;
  * {"mapId":"Map1","rulesVersion":"aggregate-v1","entries":[
  *   {"q":0,"r":0,"industries":[
  *     {"id":"farm@0_0","name":"农业","regime":"feudal","cycleDays":120,"progressDays":0,
- *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67},
- *      "cycleInputPerUnit":{"LAND":1200},"cycleSeedUsedMilli":0,
+ *      "capacityPerUnit":{"LAND":1000},"laborPerUnit":143,
+ *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67,"fiber":12},
+ *      "cycleInputPerUnit":{"LAND":{"grain":8000}},"cycleInputUsedMilli":{},
  *      "cycleLaborMilli":0,
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"peasant","name":"贫农","laborParticipationPerMille":950}],
@@ -56,6 +57,20 @@ import java.util.OptionalLong;
  *                    "actor":{"kind":"ESTATE","id":"farm@0_0"},"activity":"farm",
  *                    "laborMilli":261000,"period":1}]}]}
  * }</pre>
+ *
+ * <p>★★ **R3（V7）的两处形状变化**（spec §五）：
+ *
+ * <ul>
+ *   <li>新增 {@code capacityPerUnit}（每 1 单位规模需要多少生产资料）与 {@code laborPerUnit}（每 1 单位规模需要多少劳动） —— 它们与
+ *       {@code inputPerUnit}（由 {@code cycleInputPerUnit} 合计而来，**不进载荷**）和 {@code outputPerUnit} 一起构成
+ *       {@code Industry.recipe()} 的四个分量；
+ *   <li>两个投入表的**值侧带上商品维度**：{@code "cycleInputPerUnit":{"LAND":8000}} ⇒ {@code
+ *       "cycleInputPerUnit":{"LAND":{"grain":8000}}}（"消耗 IRON"这种话原来表达不了）； {@code
+ *       "cycleSeedUsedMilli":0} ⇒ {@code "cycleInputUsedMilli":{}}（按商品的累加器）。
+ * </ul>
+ *
+ * <p>★ **旧档兼容不在本轮范围**（spec §十.4 的裁定："旧档：重建也没关系"）：随包的 {@code worlds/v17levant.json} **不含 economy
+ * 切片**（只有 map/social/unit），故这两处形状变化不影响它能否打开。
  *
  * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世**（带可读中文原因）：形状/类型不对在本层判，**数值语义**（人口/土地/劳动 ≥
  * 0、槽位必须在该产业的 {@code slots} 里、{@code progressDays ≤ cycleDays}）交给 §3 的领域类型与 {@link EconomyData}
@@ -207,17 +222,23 @@ final class EconomyPayloads {
     RegimeId regime = RegimeId.parse(requireText(node, "regime"));
     long cycleDays = requireLong(node, "cycleDays");
     long progressDays = optionalLong(node, "progressDays", 0L);
-    Map<AssetKind, Long> dailyInput =
-        assetMap(optionalObject(node, "dailyInputPerUnit"), "dailyInputPerUnit");
+    // ★ R3（V7）：配方的两个新分量 —— "每 1 单位规模需要多少生产资料 / 多少劳动"。
+    //   ★ capacityPerUnit **必填**（它是"单位规模"的锚，没有它规模无上界）；缺键 ⇒ 空表 ⇒ 由 Industry 的构造期守卫拒。
+    Map<AssetKind, Long> capacity =
+        assetMap(optionalObject(node, "capacityPerUnit"), "capacityPerUnit");
+    long laborPerUnit = optionalLong(node, "laborPerUnit", 0L);
+    Map<AssetKind, Map<CommodityId, Long>> dailyInput =
+        assetCommodityMap(optionalObject(node, "dailyInputPerUnit"), "dailyInputPerUnit");
     long dailyLabor = optionalLong(node, "dailyLaborPerUnit", 0L);
     Map<CommodityId, Long> output =
         commodityMap(optionalObject(node, "outputPerUnit"), "outputPerUnit");
-    // ★ v2 spec §3.3：每单位生产资料**每周期一次性**投入（v1 只有 LAND = 每亩需种，单位毫粮/亩）。
-    //   缺键 ⇒ 空 map（旧载荷兼容；六种 AssetKind 都收，v1 只读 LAND）。
-    Map<AssetKind, Long> cycleInput =
-        assetMap(optionalObject(node, "cycleInputPerUnit"), "cycleInputPerUnit");
-    // ★ 本周期实际扣到的种子（毫粮）累加器；缺键 ⇒ 0（旧载荷兼容）。负值由 Industry 的构造期守卫拒。
-    long cycleSeedUsed = optionalLong(node, "cycleSeedUsedMilli", 0L);
+    // ★ v2 spec §3.3：每单位生产资料**每周期一次性**投入（农业 = 每亩需种，单位毫粮/亩）。
+    //   ★ R3 换型：值侧带上商品维度（{"LAND":{"grain":8000}}）⇒ 表达得了"消耗 IRON"。
+    Map<AssetKind, Map<CommodityId, Long>> cycleInput =
+        assetCommodityMap(optionalObject(node, "cycleInputPerUnit"), "cycleInputPerUnit");
+    // ★ 本周期实际扣到的投入（**按商品**的累加器）；缺键 ⇒ 空表。负值由 Industry 的构造期守卫拒。
+    Map<CommodityId, Long> cycleInputUsed =
+        commodityMap(optionalObject(node, "cycleInputUsedMilli"), "cycleInputUsedMilli");
     // ★ R3a：周期累计实际劳动（缺键 ⇒ 0，旧载荷兼容：生成器不写它时按"新周期、尚未投入"）。
     long cycleLabor = optionalLong(node, "cycleLaborMilli", 0L);
     List<ClassSlot> slots = new ArrayList<>();
@@ -254,14 +275,16 @@ final class EconomyPayloads {
         regime,
         cycleDays,
         progressDays,
+        capacity,
         dailyInput,
         dailyLabor,
+        laborPerUnit,
         output,
         cycleInput,
         slots,
         rule,
         cycleLabor,
-        cycleSeedUsed);
+        cycleInputUsed);
   }
 
   private static ClassRow classRow(IndustryId industry, JsonNode node) {
@@ -313,6 +336,38 @@ final class EconomyPayloads {
                     "字段 " + field + " 的键不是生产资料种类: " + entry.getKey());
               }
               out.put(kind, requireIntegral(entry.getValue(), field + "." + entry.getKey()));
+            });
+    return out;
+  }
+
+  /**
+   * 键是 {@link AssetKind} 名、**值本身又是商品表的表**（R3 换型的那两张投入表）：{@code {"LAND":{"grain":8000}}}。
+   *
+   * <p>★ 三条拒因各自给出可读的中文原因：键不认识生产资料种类、值不是对象、内层值不是整数 —— 都由本层判， 数值语义（≥ 0）交给 {@code Industry}
+   * 的构造期守卫（一处真相）。
+   */
+  private static Map<AssetKind, Map<CommodityId, Long>> assetCommodityMap(
+      JsonNode object, String field) {
+    Map<AssetKind, Map<CommodityId, Long>> out = new LinkedHashMap<>();
+    if (object == null) {
+      return out;
+    }
+    object
+        .fields()
+        .forEachRemaining(
+            entry -> {
+              AssetKind kind;
+              try {
+                kind = AssetKind.valueOf(entry.getKey());
+              } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                    "字段 " + field + " 的键不是生产资料种类: " + entry.getKey());
+              }
+              if (!entry.getValue().isObject()) {
+                throw new IllegalArgumentException(
+                    "字段 " + field + "." + entry.getKey() + " 必须是商品表（对象）: " + entry.getValue());
+              }
+              out.put(kind, commodityMap(entry.getValue(), field + "." + entry.getKey()));
             });
     return out;
   }

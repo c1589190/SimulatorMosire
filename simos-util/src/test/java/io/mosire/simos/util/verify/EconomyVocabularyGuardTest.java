@@ -93,4 +93,40 @@ class EconomyVocabularyGuardTest {
         .as("不许有模块就地写 new CommodityId(\"grain\")（v1 的 ApiViews 与 EconomySettlement 各有一处）")
         .isEmpty();
   }
+
+  /**
+   * ★★ **R3：新商品 id 也各恰一份**（T1）—— 布 / 纤维 / 工具 / 铁 / 木。
+   *
+   * <p>★ **病灶形态与粮同款**：`"cloth"` 这种字面量一旦在 economy 侧与 app 侧各写一遍，改一处即静默分叉 （"田里产的纤维"与"织机吃的纤维"会变成两种商品 ——
+   * 账面看不出来，只有守恒式会莫名其妙不平）。 ★ 判据与粮那条**逐字同款**：钉「名字 + 字面量同处一行」=
+   * **直接赋值**那一处；引用（`EconomyVocabulary.CLOTH_COMMODITY_ID`） 不含字面量，故不会命中 —— 它们不可能漂移。
+   */
+  @Test
+  void everyNewCommodityIdLiteralIsWrittenExactlyOnce() {
+    assertThat(occurrencesByFile("CLOTH_COMMODITY_ID = \"cloth\""))
+        .as("布的商品 id 字面量在全仓 src/main 里必须只被直接赋值一次")
+        .containsExactly(entry(VOCABULARY, 1L));
+    assertThat(occurrencesByFile("FIBER_COMMODITY_ID = \"fiber\""))
+        .as("纤维")
+        .containsExactly(entry(VOCABULARY, 1L));
+    assertThat(occurrencesByFile("TOOL_COMMODITY_ID = \"tool\""))
+        .as("工具")
+        .containsExactly(entry(VOCABULARY, 1L));
+    assertThat(occurrencesByFile("IRON_COMMODITY_ID = \"iron\""))
+        .as("铁")
+        .containsExactly(entry(VOCABULARY, 1L));
+    assertThat(occurrencesByFile("WOOD_COMMODITY_ID = \"wood\""))
+        .as("木")
+        .containsExactly(entry(VOCABULARY, 1L));
+  }
+
+  /** ★★ **五个新商品都不许就地写 `CommodityId("…")`**（与粮那条同款：v1 的 ApiViews 私藏第三份正是这样来的）。 */
+  @Test
+  void noModuleSpellsTheNewCommodityIdsInline() {
+    for (String id : List.of("cloth", "fiber", "tool", "iron", "wood")) {
+      assertThat(occurrencesByFile("CommodityId(\"" + id + "\")"))
+          .as("不许有模块就地写 new CommodityId(\"%s\")", id)
+          .isEmpty();
+    }
+  }
 }

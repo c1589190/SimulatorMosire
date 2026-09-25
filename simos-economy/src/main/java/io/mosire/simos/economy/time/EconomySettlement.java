@@ -15,6 +15,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.ProductionRecipe;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -55,13 +56,18 @@ import java.util.Set;
  * <p>★★ **周期末追加**（{@code progressDays + 1 == cycleDays} 那一天，同一次日结算里）：
  *
  * <ol>
- *   <li>**产出**：{@code 实际投入亩 × 亩产 × 1000 毫粮/粮}（亩产取自 {@code outputPerUnit}，标定值 67 粮/亩 —— v2 spec
- *       §10.3）。实际投入亩 = {@code min(可用亩, 平均每日实际劳动 × 7 亩/劳动, 本周期扣到的种子 ÷ 每亩需种)}（v2 spec §3.1
- *       的**三路瓶颈**），**取小后向下取整到亩**（{@link #LAND_MU_PER_LABOR} / {@link #MILLI_PER_GRAIN}）。 ★ 注意两个 7
- *       无关：{@link #LAND_MU_PER_LABOR}（一标准劳动能种几**亩**）一直是 7； 「每亩几**粮**」是标定值 67（v1 曾是
- *       7，两者数值巧合，极易误读成漏改）。
+ *   <li>★★ **规模 = 最紧约束**（**R3/V7 起泛化**，spec §五）：把原来写死在 {@code harvest} 里的"三路全是亩"换成 {@link
+ *       ProductionRecipe} 的四路归一（**每种 capacity 一路 + 劳动一路 + 每种投入一路**）：
+ *       <pre>
+ * scale = min( ⌊Σ行 meansOfProduction[k] ÷ capacityPerUnit[k]⌋  …每种生产资料一路（农业 = 土地、织机/作坊 = 件数）
+ *            , ⌊平均每日实际劳动 ÷ laborPerUnit⌋               …劳动一路
+ *            , ⌊本周期实际扣到的投入_j ÷ inputPerUnit[j]⌋        …每种投入一路（种子 / 纤维 / 铁）)
+ *       </pre>
+ *       毛产 = {@code 规模 × outputPerUnit[j] × 1000 毫/单位}（**逐商品**；亩产 67 粮/亩 是 v2 spec §10.3 的标定值，而
+ *       "每亩"从此是 {@code capacityPerUnit} 里的**数据**而不是隐式约定）。 **取小后向下取整** ⇒ 规模是整数。 ★ 某一路的"每单位需求"为
+ *       {@code 0} ⇒ **不施加那一路约束**（不是"规模 0"）—— 旧档与未配投入的产业据此与 V2 逐值一致。
  *   <li>**生产消耗**：扣 {@code 饲料 + 折旧}（{@link #FEED_PER_MILLE} + {@link
- *       #DEPRECIATION_PER_MILLE}）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
+ *       #DEPRECIATION_PER_MILLE}，**逐商品按同一千分比**）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
  *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
  *       / 1000}（**定点整数、残差按最大余数法分派、Σ行得 = 剩余产出**，§八.7）。
@@ -90,19 +96,37 @@ import java.util.Set;
  * <p>★★ **量纲（§7 + §十）**：人口「人」；劳动「千分劳动」；土地「千分亩」；粮库存「**毫粮**」（1 粮 = 1000 毫粮， {@link
  * #MILLI_PER_GRAIN}）；利率/权重/投入率「千分」。**一切整数运算，禁 double**。
  *
- * <p>★★ **守恒（§6.1，账要平）**：本函数不凭空造粮、不凭空销粮。把每日/每期的发生额记进 {@link FlowRow} 后，恒有 {@code Σ(推进前库存) −
- * Σ(推进后库存) == Σ(流水消费) − Σ(流水所得)}：日耗、**播种扣掉的种子**与生产消耗在 {@code consumed} 里、收获的**毛产出**在 {@code income}
- * 里（净产出进库存，差额 = 生产消耗）。买/借/税等跨主体转移不改变总和（同格借贷是内部划转）。
+ * <p>★★ **守恒（§6.1，账要平）**：本函数不凭空造物、也不凭空销物。把每日/每期的发生额记进 {@link FlowRow} 后，**逐商品**恒有 {@code Σ(推进前库存_j)
+ * − Σ(推进后库存_j) == Σ(流水消费_j) − Σ(流水所得_j)}：日耗、**播种日扣掉的投入**与生产消耗在 {@code consumed} 里、收获的**毛产出**在
+ * {@code income} 里（净产出进库存，差额 = 生产消耗）。买/借/税等跨主体转移不改变总和（同格借贷是内部划转）。 ★ **R3 起两种表都是逐商品的**（{@link
+ * FlowRow#income()} 由标量改成 Map）：田里同时出粮与纤维 ⇒ "一条标量"表达不了"所得是什么"。
  *
  * <p>★ **未激活**（{@code meta} 空）：原样返回（不做任何公式，§6.6）。
  */
 public final class EconomySettlement {
 
-  /** 1 粮 = 1000 毫粮（§7：库存按最小计量单位；{@code outputPerUnit} 是「粮/亩」⇒ 入账前要换算）。 */
-  public static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_GRAIN;
+  /** 1 商品单位 = 1000 最小计量单位（§7：库存按最小计量单位；{@code outputPerUnit} 是「粮/亩」⇒ 入账前要换算）。 */
+  public static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
 
-  /** 1 标准劳动（1000 千分劳动）能经营的亩数：§十 / 资料 §十 的「1 标准劳动支持 7 亩」。 */
+  /**
+   * 1 标准劳动（1000 千分劳动）能经营的亩数：§十 / 资料 §十 的「1 标准劳动支持 7 亩」。
+   *
+   * <p>★★ **R3（V7）起它只是"每亩需多少劳动"的推导源**（配方字段里放的是它的**倒数**）：{@link ProductionRecipe#laborPerUnit()}
+   * 的口径是"每 1 单位规模需要多少劳动"，而 1000 ÷ 7 除不尽 ⇒ 由 {@code EconomySeeder.LABOR_MILLI_PER_MU} 取**向上取整
+   * 143**（比旧口径略紧：每 7 亩要 1001 千分劳动而不是 1000）。 ★ 后果只落在"**劳动是瓶颈**"的格上：真档的分母是土地（可经营 51,646 亩 ≫ 3,100
+   * 亩），故真档收获一分不动。
+   */
   public static final long LAND_MU_PER_LABOR = 7L;
+
+  /**
+   * ★★ **每亩需要的劳动**（千分劳动）：{@code ⌈1000 ÷ }{@link #LAND_MU_PER_LABOR}{@code ⌉ = 143} —— 即上面那条口径的
+   * **倒数**（{@code ProductionRecipe.laborPerUnit} 要的是"每 1 单位规模需要多少劳动"）。
+   *
+   * <p>★ 唯一拼写点在这里（{@code LAND_MU_PER_LABOR} 的派生量），{@code EconomySeeder} 只是引用它写进农业配方。 取**向上取整** ⇒
+   * 比旧口径略紧（每 7 亩要 1001 千分劳动而不是 1000）。
+   */
+  public static final long LABOR_MILLI_PER_MU =
+      (1000L + LAND_MU_PER_LABOR - 1L) / LAND_MU_PER_LABOR;
 
   /**
    * ★★ **收获时的饲料消耗**（千分数）：**0‰**。
@@ -289,27 +313,27 @@ public final class EconomySettlement {
     // ★ R2：劳动配额表**只读不写**（结算从它求当日劳动，但配额由命令层发）⇒ 不需要工作副本，直接读 base 的。
     Map<LaborAllocationId, LaborAllocation> allocations = base.allocations();
 
-    // 逐行当日发生额（流水的事后组装）。
-    LinkedHashMap<ClassKey, Long> consumedGrain = new LinkedHashMap<>();
+    // 逐行当日发生额（流水的事后组装）。★ R3 起两张实物表都是**逐商品**的（{@link FlowRow#income()} 由标量改成 Map）。
+    LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> borrowing = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, Long> income = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, Long> productionLoss = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Map<CommodityId, Long>> income = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, Map<CommodityId, Long>> productionLoss = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> unmetToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> deathsToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> interestToday = new LinkedHashMap<>(); // 周期末计息那一笔（§7.1③）
 
-    // ── 0. 播种（周期的第一天）：**在当天吃饭之前**把种子划走（v2 spec §3.2）──────────────
+    // ── 0. 现扣周期投入（周期的第一天）：**在当天吃饭之前**把种子/原料划走（v2 spec §3.2）──────
     //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
     if (plantingDrawsFirst) {
-      sowIfCycleStart(industries, rows, consumedGrain);
+      drawCycleInputs(industries, rows, consumedGoods);
     }
 
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
     settleHexes(
-        industries, rows, debts, consumedGrain, borrowing, unmetToday, day, currentCycle, dueCycle);
+        industries, rows, debts, consumedGoods, borrowing, unmetToday, day, currentCycle, dueCycle);
 
     if (!plantingDrawsFirst) {
-      sowIfCycleStart(industries, rows, consumedGrain);
+      drawCycleInputs(industries, rows, consumedGoods);
     }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
@@ -336,7 +360,7 @@ public final class EconomySettlement {
       long progressed = industry.progressDays() + 1L;
       long nextProgress = progressed;
       long nextCycleLabor = cycledLabor;
-      long nextSeedUsed = industry.cycleSeedUsedMilli(); // 非关账日：原样带过
+      Map<CommodityId, Long> nextInputUsed = industry.cycleInputUsedMilli(); // 非关账日：原样带过
       // ★ v2 spec §八.3：`progressDays ∈ [0, cycleDays]` 是**闭区间**（v1 spec §3.1 原文），
       //   cycleDays 的语义是"周期已满、待收获"。用 >= 才能把该合法状态收获掉；
       //   用 == 会让 progressDays == cycleDays 的下一日构造出 cycleDays + 1，在 Industry 构造期抛，
@@ -361,10 +385,10 @@ public final class EconomySettlement {
         }
         nextProgress = 0L;
         nextCycleLabor = 0L;
-        nextSeedUsed = 0L; // ★ 与 cycleLaborMilli 同处清零（不清零 ⇒ 下周期的 seedCap 凭空变大）
+        nextInputUsed = Map.of(); // ★ 与 cycleLaborMilli 同处清零（不清零 ⇒ 下周期的投入瓶颈凭空变大）
         anyCycleClosed = true;
       }
-      industries.put(id, withCycleState(industry, nextProgress, nextCycleLabor, nextSeedUsed));
+      industries.put(id, withCycleState(industry, nextProgress, nextCycleLabor, nextInputUsed));
     }
 
     // ── 5. 周期末计息（§7.1③ / §四 周期结算第 6 步）────────────────────────────────────
@@ -376,17 +400,18 @@ public final class EconomySettlement {
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
     for (ClassKey key : rows.keySet()) {
-      long grainConsumed =
-          consumedGrain.getOrDefault(key, 0L) + productionLoss.getOrDefault(key, 0L);
-      Map<CommodityId, Long> consumed =
-          grainConsumed > 0L ? Map.of(GRAIN, grainConsumed) : Map.of();
-      long earned = income.getOrDefault(key, 0L);
+      // ★ R3：两张实物表逐商品（消费 = 现扣投入 + 日耗 + 生产损耗；所得 = 收获的毛产分配）。
+      Map<CommodityId, Long> consumed = mergeGoods(consumedGoods.get(key), productionLoss.get(key));
+      Map<CommodityId, Long> earned = income.getOrDefault(key, Map.of());
       long borrowed = borrowing.getOrDefault(key, 0L);
       long interest = interestToday.getOrDefault(key, 0L);
-      // ★ netSurplus = income − 消费 − 税(0) − 利息（§3.3 的口径；税要等 government 切片）。
+      // ★ netSurplus = income[grain] − 消费[grain] − 税(0) − 利息（§3.3 的口径；税要等 government 切片）。
+      //   ★★ **口径 = 粮**（见 {@link FlowRow#netSurplus()}）：把两种商品折成一个数需要**价格**，而市场与价格属 R4 的 V8
+      //     （本轮"不做城乡交换/市场/价格"）⇒ 硬折会编造一个本轮没有的换算率。其余商品的净额在两张表里分别读得到。
       //   ★ 利息是**并入本金**的（没支付、粮库存不动）⇒ 它不进 consumed，守恒式（§6.1）不受影响；
       //     但它照样进"本期盈余/赤字"：债务人**确实**比期初更穷了（欠得更多）。
-      long netSurplus = earned - grainConsumed - interest;
+      long netSurplus =
+          earned.getOrDefault(GRAIN, 0L) - consumed.getOrDefault(GRAIN, 0L) - interest;
       long dayUnmet = unmetToday.getOrDefault(key, 0L);
       long dayDeaths = deathsToday.getOrDefault(key, 0L);
       // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
@@ -399,8 +424,8 @@ public final class EconomySettlement {
           key,
           new FlowRow(
               key,
-              (acc == null ? 0L : acc.income()) + earned,
-              mergeConsumed(acc, consumed),
+              mergeGoods(acc == null ? null : acc.income(), earned),
+              mergeGoods(acc == null ? null : acc.consumed(), consumed),
               acc == null ? 0L : acc.taxPaid(),
               (acc == null ? 0L : acc.interestDue()) + interest,
               (acc == null ? 0L : acc.newBorrowing()) + borrowed,
@@ -430,69 +455,99 @@ public final class EconomySettlement {
         base.allocations());
   }
 
-  // ── 播种（周期的第一天）──────────────────────────────────────────────────────────────
+  // ── 现扣周期投入（周期的第一天）────────────────────────────────────────────────────────
 
   /**
-   * ★★ **播种步**（v2 spec §3.2/§3.3）：**周期的第一天**（{@code progressDays == 0}）逐 {@link ClassRow} 从它**自己的**
-   * {@code goods} 里扣种，并把实际扣到的量累加进 {@link Industry#cycleSeedUsedMilli()}。
+   * ★★ **现扣周期投入步**（v2 spec §3.2/§3.3；**R3/V7 起泛化**）：**周期的第一天**（{@code progressDays == 0}）逐 {@link
+   * ClassRow} 从它**自己的** {@code goods} 里扣 {@link ProductionRecipe#inputPerUnit()}（农业 = 种子，织机 = 纤维，作坊
+   * = 纤维 + 铁），并把实际扣到的量**按商品**累加进 {@link Industry#cycleInputUsedMilli()}。
    *
    * <pre>
-   * rowLandMu = meansOfProduction[LAND] / 1000        // 千分亩 ⇒ 亩（★ 与 cycleInputPerUnit 的"毫粮/亩"同侧）
-   * seedPerMu = cycleInputPerUnit.getOrDefault(LAND, 0)// 毫粮/亩；0 ⇒ 不扣（旧档/未配种子 ⇒ 与 V2 一字不差）
-   * need      = rowLandMu × seedPerMu                 // 毫粮
-   * 库存 ≥ need ⇒ 扣 need；库存 &lt; need ⇒ **扣光库存**（⇒ 收获日的 seedCapMu 自然缩小）
+   * rowScale  = min over k ∈ capacityPerUnit: ⌊row.meansOfProduction[k] ÷ capacityPerUnit[k]⌋   // 本行自己的规模上限
+   * need[j]   = rowScale × inputPerUnit[j]           // 该行按自己的产能**想**扣多少商品 j
+   * 库存_j ≥ need[j] ⇒ 扣 need[j]；库存_j &lt; need[j] ⇒ **扣光库存_j**（⇒ 收获日的投入那一路瓶颈自然缩小）
    * </pre>
    *
-   * <p>★★ **种子各扣各的**（定案）：逐 {@code ClassRow} 从它自己的 {@code goods} 里扣，**不从全格池子扣**。
-   * 理由：与"粮住在阶层行里"一致，且能自然产生阶级差异——贫农缸空 ⇒ 它的地荒着、地主的地照种 （收获日按 {@code Σ实际扣到的种子 / seedPerMu} 算可支撑亩数）。
+   * ★★ **旧口径逐值复刻**：{@code capacityPerUnit = {LAND: 1000}} 且 {@code inputPerUnit = {GRAIN: 8000}} 时，
+   * {@code rowScale = ⌊行土地千分亩 ÷ 1000⌋ = 行的亩数}、{@code need = 亩数 × 8000 毫粮} —— 与 V3 的两行逐值相同（880/1000
+   * 的向下取整也 同处）。
    *
-   * <p>★ **扣掉的量并入当日 {@code consumedGrain}**：留种是**本期的消费**（spec §二 把"留种的计量"列在"数"里）， 记进去才能保住 §6.1 的守恒式
-   * {@code 库存减少 == Σ消费 − Σ所得}（否则配了种子的世界上那条等式不成立 ⇒ 端到端的守恒用例会变成假绿）。
+   * <p>★★ **投入各扣各的**（定案）：逐 {@code ClassRow} 从它自己的 {@code goods} 里扣，**不从全格池子扣**。
+   * 理由：与"粮住在阶层行里"一致，且能自然产生阶级差异——贫农缸空 ⇒ 它的地荒着、地主的地照种 （收获日按 {@code Σ实际扣到的投入 / inputPerUnit} 算可支撑规模）。
    *
-   * <p>★ **为什么不在这里扣"每日原料"**：{@code dailyInputPerUnit} 是**每日**口径，v1 仍是零读取点（spec §3.3
+   * <p>★ **扣掉的量并入当日 {@code consumed}**：投入是**本期的消费**（spec §二 把"留种的计量"列在"数"里）， 记进去才能保住 §6.1 的守恒式
+   * {@code 逐商品库存减少 == Σ消费 − Σ所得}（否则配了投入的世界上那条等式不成立 ⇒ 端到端的守恒用例会变成假绿）。
+   *
+   * <p>★ **为什么不在这里扣"每日原料"**：{@code dailyInputPerUnit} 是**每日**口径，本轮仍是零读取点（spec §3.3
    * 明说两个字段并存、语义各自清楚），不在本步范围。
    */
-  private static void sowIfCycleStart(
+  private static void drawCycleInputs(
       LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<ClassKey, ClassRow> rows,
-      LinkedHashMap<ClassKey, Long> consumedGrain) {
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods) {
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
       if (industry.progressDays() != 0L) {
-        continue; // 只有周期的第一天播种
+        continue; // 只有周期的第一天扣投入
       }
-      long seedPerMu = industry.cycleInputPerUnit().getOrDefault(AssetKind.LAND, 0L);
-      if (seedPerMu == 0L) {
-        continue; // ★ 0 与"缺键"同义：不扣、不缩地 ⇒ 未配种子的产业行为与 V2 一字不差
+      Map<CommodityId, Long> perScale = industry.inputPerUnit();
+      if (perScale.isEmpty()) {
+        continue; // ★ 空表与"缺键"同义：不扣、不缩规模 ⇒ 未配投入的产业行为与 V2 一字不差
       }
-      long sown = 0L;
+      Map<CommodityId, Long> drawnTotal = new LinkedHashMap<>();
       for (ClassKey key : classKeysOf(rows, id)) {
         ClassRow row = rows.get(key);
-        long rowLandMu = row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L;
-        long need = rowLandMu * seedPerMu; // 毫粮（★ 亩 × 毫粮/亩）
-        if (need == 0L) {
-          continue; // 没有地 ⇒ 没有种子需求（真档里每座城的手工业行都是这一形态）
+        long rowScale = rowScaleOf(row, industry);
+        if (rowScale == 0L) {
+          continue; // 没有产能 ⇒ 没有投入需求（真档里每座城的手工业行都是这一形态）
         }
-        long stock = grainOf(row);
-        long drawn = Math.min(stock, need); // ★ 扣不动就扣光库存（seedCapMu 会跟着缩）
-        if (drawn == 0L) {
-          continue;
+        for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+          if (entry.getValue() == 0L) {
+            continue;
+          }
+          CommodityId commodity = entry.getKey();
+          long need = rowScale * entry.getValue(); // 毫单位（★ 单位规模 × 毫单位/单位规模）
+          long stock = row.goods().getOrDefault(commodity, 0L);
+          long drawn = Math.min(stock, need); // ★ 扣不动就扣光库存（投入那一路瓶颈会跟着缩）
+          if (drawn == 0L) {
+            continue;
+          }
+          row = withGoods(row, commodity, stock - drawn);
+          addGoods(consumedGoods, key, commodity, drawn);
+          drawnTotal.merge(commodity, drawn, Long::sum);
         }
-        rows.put(key, withGoodsGrain(row, stock - drawn));
-        consumedGrain.merge(key, drawn, Long::sum);
-        sown += drawn;
+        rows.put(key, row);
       }
-      if (sown > 0L) {
+      if (!drawnTotal.isEmpty()) {
         // ★★ 必须写回 industries 工作副本：收获（同一次日结算里、稍后跑）读的就是这一份累加器。
+        Map<CommodityId, Long> accumulated = new LinkedHashMap<>(industry.cycleInputUsedMilli());
+        for (Map.Entry<CommodityId, Long> entry : drawnTotal.entrySet()) {
+          accumulated.merge(entry.getKey(), entry.getValue(), Long::sum);
+        }
         industries.put(
             id,
             withCycleState(
-                industry,
-                industry.progressDays(),
-                industry.cycleLaborMilli(),
-                industry.cycleSeedUsedMilli() + sown));
+                industry, industry.progressDays(), industry.cycleLaborMilli(), accumulated));
       }
     }
+  }
+
+  /**
+   * **一行自己的规模上限**（= 由它**自己**的生产资料决定的那一份）：{@code min over k ∈ capacityPerUnit: ⌊means[k] ÷
+   * capacityPerUnit[k]⌋}（无产能约束 ⇒ {@link Long#MAX_VALUE}，由调用方的其它路约束兜住）。
+   *
+   * <p>★ 与收获时的产业级规模是**同一个算式**（只是把 {@code Σ行 means} 换成这一行的 {@code means}）—— 于是一行"想扣多少"
+   * 与产业"能产多少"用同一把尺。
+   */
+  private static long rowScaleOf(ClassRow row, Industry industry) {
+    // ★ capacityPerUnit 非空且逐值 > 0（构造期守卫）⇒ 循环至少跑一次、scale 必然被赋一个有限值。
+    long scale = Long.MAX_VALUE;
+    for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
+      scale =
+          Math.min(
+              scale, row.meansOfProduction().getOrDefault(entry.getKey(), 0L) / entry.getValue());
+    }
+    return scale;
   }
 
   // ── 消费 + 同格借粮 ─────────────────────────────────────────────────────────────────
@@ -525,7 +580,7 @@ public final class EconomySettlement {
       LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<ClassKey, ClassRow> rows,
       LinkedHashMap<DebtId, Debt> debts,
-      LinkedHashMap<ClassKey, Long> consumedGrain,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods,
       LinkedHashMap<ClassKey, Long> borrowing,
       LinkedHashMap<ClassKey, Long> unmetNeed,
       long day,
@@ -543,11 +598,11 @@ public final class EconomySettlement {
         long need = EconomyVocabulary.dailyRationMilli(row.population(), day);
         long stock = grainOf(row);
         long eaten = Math.min(stock, need);
-        ClassRow withNeed = withDailyNeed(row, need);
-        rows.put(key, withGoodsGrain(withNeed, stock - eaten));
-        // ★ **必须 merge 不能 put**：这张累加器现在与播种步共享（播种先跑时它已经记了种子那一笔），
-        //   `put` 会把种子从当日消费里抹掉 ⇒ §6.1 的守恒式当场不成立（"留种要看得见"）。
-        consumedGrain.merge(key, eaten, Long::sum);
+        ClassRow withNeed = withDailyNeed(row, day);
+        rows.put(key, withGoods(withNeed, GRAIN, stock - eaten));
+        // ★ **必须 merge 不能 put**：这张累加器现在与现扣投入步共享（后者先跑时它已经记了种子/原料那一笔），
+        //   `put` 会把投入从当日消费里抹掉 ⇒ §6.1 的守恒式当场不成立（"投入要看得见"）。
+        addGoods(consumedGoods, key, GRAIN, eaten);
         if (need - eaten > 0L) {
           deficit.put(key, need - eaten);
         }
@@ -583,7 +638,7 @@ public final class EconomySettlement {
             continue; // 只剩口粮/已经没有余粮 ⇒ 不贷（V1 是在这里把全部库存贷出去）
           }
           long lent = Math.min(remaining, available);
-          rows.put(lender, withGoodsGrain(rows.get(lender), grainOf(rows.get(lender)) - lent));
+          rows.put(lender, withGoods(rows.get(lender), GRAIN, grainOf(rows.get(lender)) - lent));
           // ★★ 聚合（§7.2）：id 是 (周期, 债务人, 债权人, 商品) 的**纯函数** ⇒ 同周期内重复借入命中同一条，
           //   本金递增；跨周期 id 必然不同 ⇒ 新条、旧条留着（保住"哪一周期借的"）。
           DebtId debtId = debtIdOf(currentCycle, debtor, lender, Optional.of(GRAIN));
@@ -605,7 +660,7 @@ public final class EconomySettlement {
             debts.put(debtId, withPrincipal(standing, standing.principal() + lent));
           }
           // 借到的粮当日吃掉 ⇒ 计入当日消费。
-          consumedGrain.merge(debtor, lent, Long::sum);
+          addGoods(consumedGoods, debtor, GRAIN, lent);
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
         }
@@ -699,10 +754,12 @@ public final class EconomySettlement {
   /**
    * 周期末的产出、生产消耗与制度分配（§四 周期结算 1~5；税明确不做）。
    *
-   * <p>★★ **三路瓶颈取小**（v2 spec §3.1）：实际投入亩 = {@code min(可用亩, 劳动可经营亩, 种子可支撑亩)}。第三路 {@code seedCapMu =
-   * Industry#cycleSeedUsedMilli() / seedPerMu}（毫粮 ÷ 毫粮/亩 = 亩）读的是**本周期实际扣到的种子** （播种步 {@link
-   * #sowIfCycleStart} 的累加器）；{@code seedPerMu == 0} ⇒ **不施加这一路约束**（取 {@code
-   * availableMu}），旧档与未配种子的产业据此与 V2 逐值一致。
+   * <p>★★ **规模由最紧约束决定**（R3/V7）：{@link #scaleOf} 逐路取小（每种 capacity 一路 + 劳动一路 + 每种投入一路）。 旧口径（"可用亩 /
+   * 劳动可经营亩 / 种子可支撑亩"三路）是它在 {@code capacityPerUnit = {LAND: 1000}}、{@code inputPerUnit = {GRAIN:
+   * 8000}} 下的特例。
+   *
+   * <p>★★ **产出逐商品**：{@code 毛产_j = 规模 × outputPerUnit[j] × 1000 毫/单位}，各自扣生产损耗后按**同一组权重**
+   * 分配给本产业的各行（{@code Σ行得 == 剩余产出}，残差按最大余数法）。
    *
    * @param cycledLabor 本周期累计实际劳动（千分劳动·日）；`/cycleDays` 得**平均每日实际劳动**
    */
@@ -711,42 +768,34 @@ public final class EconomySettlement {
       LinkedHashMap<ClassKey, ClassRow> rows,
       List<ClassKey> keys,
       long cycledLabor,
-      LinkedHashMap<ClassKey, Long> income,
-      LinkedHashMap<ClassKey, Long> productionLoss) {
-    long totalLandMilliMu = 0L;
-    long[] rowLand = new long[keys.size()];
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> income,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> productionLoss) {
+    ProductionRecipe recipe = industry.recipe();
+    // ★★ **分配权重**（R3 起对**所有**产业都有意义）：生产资料那一路按**该产业声明的** capacity 种类求和
+    //   （原来只有"土地"一个键 ⇒ 非土地产业的权重恒 0，产出全凭劳动那一路）。
+    long[] rowMeans = new long[keys.size()]; // 各行在**本产业所有 capacity 种类**上的份额之和（未归一）
     long[] rowLabor = new long[keys.size()];
+    long totalMeans = 0L;
     long totalLabor = 0L;
     for (int i = 0; i < keys.size(); i++) {
       ClassRow row = rows.get(keys.get(i));
-      rowLand[i] = row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L);
-      totalLandMilliMu += rowLand[i];
+      for (AssetKind kind : recipe.capacityPerUnit().keySet()) {
+        rowMeans[i] += row.meansOfProduction().getOrDefault(kind, 0L);
+      }
+      totalMeans += rowMeans[i];
       // ★★ **R2 起这两件事分家，写清楚各自的角色**（免得后来者以为其中一个是漏改的旧算法）：
       //   · `rowLabor`（= 行 laborMilli × 投入率）**只喂分配权重** —— 它回答"本产业的产出在**阶层之间**怎么分"
       //     （贫农出多少工 vs 地主出多少工），是阶层关系，不是"这个产业投了多少劳动"；
       //   · 产业**总共**投了多少劳动由 `cycledLabor`（= 劳动分配表的配额之和，见 settleOneDay）承担 —— 它回答
-      //     "劳动瓶颈允许多大耕种面积"。
+      //     "劳动瓶颈允许多大生产规模"。
       //   创世时两者逐值相等（配额就是按这条链算出来的），故改口径不改数。
       rowLabor[i] = row.laborMilli() * row.participationPerMille() / 1000L;
       totalLabor += rowLabor[i];
     }
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
-    long availableMu = totalLandMilliMu / 1000L; // 千分亩 ⇒ 亩（向下取整）
-    long ableMu = avgLaborMilli * LAND_MU_PER_LABOR / 1000L; // 劳动可经营亩数（向下取整）
-    // ★★ **第三路瓶颈**（v2 spec §3.1/§3.2）：本周期**实际扣到的种子**能支撑多少亩。
-    //   ★ seedPerMu == 0 ⇒ **不加约束**（取 availableMu，min 里它不可能更小），**不是**"0 亩"：
-    //     旧档与未配种子的产业据此与 V2 逐值一致；写成 0 会让它们颗粒无收。
-    //   量纲：毫粮 ÷ (毫粮/亩) = 亩（与上面两路同为"亩"，故能进同一个 min）。
-    //   ★ 恒有 seedCapMu ≤ availableMu（扣到的种子最多是 Σ地亩 × seedPerMu）⇒ 第三路只会**缩**面积。
-    long seedPerMu = industry.cycleInputPerUnit().getOrDefault(AssetKind.LAND, 0L);
-    long seedCapMu = seedPerMu == 0L ? availableMu : industry.cycleSeedUsedMilli() / seedPerMu;
-    long actualMu = Math.min(availableMu, Math.min(ableMu, seedCapMu)); // 三路取小
-    long perMu = industry.outputPerUnit().getOrDefault(GRAIN, 0L); // 粮/亩
-    long gross = actualMu * perMu * MILLI_PER_GRAIN; // 毫粮（毛产出）
-    // ★★ 生产消耗 = **饲料 + 农具折旧**（v2 spec §3.4：留种已移出收获扣减，改在播种日现扣）——
-    //   两项各自具名（V7 参数目录落地后各自可调），此处取**两者之和**。
-    long loss = gross * (FEED_PER_MILLE + DEPRECIATION_PER_MILLE) / 1000L;
-    long net = gross - loss; // 剩余产出（待分配）
+    long scale = scaleOf(industry, rows, keys, avgLaborMilli); // ★ 最紧约束
+    // ★★ 生产消耗 = **饲料 + 农具折旧**（v2 spec §3.4：留种已移出收获扣减，改在现扣投入步）——
+    //   两项各自具名（V7 参数目录落地后各自可调），此处取**两者之和**、**逐商品按同一千分比**（作坊的 3% 即织机磨损）。
 
     AllocationRule rule = industry.allocation();
     if (!(rule instanceof AllocationRule.Split split)) {
@@ -756,22 +805,82 @@ public final class EconomySettlement {
     }
     long[] weights = new long[keys.size()];
     for (int i = 0; i < keys.size(); i++) {
-      long meansPerMille = totalLandMilliMu == 0L ? 0L : rowLand[i] * 1000L / totalLandMilliMu;
+      long meansPerMille = totalMeans == 0L ? 0L : rowMeans[i] * 1000L / totalMeans;
       long laborPerMille = totalLabor == 0L ? 0L : rowLabor[i] * 1000L / totalLabor;
       weights[i] =
           (split.meansWeightPerMille() * meansPerMille
                   + split.laborWeightPerMille() * laborPerMille)
               / 1000L;
     }
-    long[] netParts = allocate(net, weights);
-    long[] lossParts = allocate(loss, weights);
-    for (int i = 0; i < keys.size(); i++) {
-      ClassKey key = keys.get(i);
-      rows.put(key, withGoodsGrain(rows.get(key), grainOf(rows.get(key)) + netParts[i]));
-      // 所得记**毛产出**（净得 + 其份额的生产消耗）⇒ 与 consumed 里的生产消耗配平（§6.1 的账要平）。
-      income.merge(key, netParts[i] + lossParts[i], Long::sum);
-      productionLoss.merge(key, lossParts[i], Long::sum);
+    // ★★ **逐商品产出入账**（V7 的关键一步）：毛产 = 规模 × outputPerUnit[j] × 1000 毫/单位。
+    for (Map.Entry<CommodityId, Long> output : recipe.outputPerUnit().entrySet()) {
+      CommodityId commodity = output.getKey();
+      long gross = scale * output.getValue() * MILLI_PER_GRAIN; // 毫单位（毛产出）
+      if (gross <= 0L) {
+        continue;
+      }
+      long loss = gross * (FEED_PER_MILLE + DEPRECIATION_PER_MILLE) / 1000L;
+      long net = gross - loss; // 剩余产出（待分配）
+      long[] netParts = allocate(net, weights);
+      long[] lossParts = allocate(loss, weights);
+      for (int i = 0; i < keys.size(); i++) {
+        ClassKey key = keys.get(i);
+        rows.put(
+            key,
+            withGoods(
+                rows.get(key),
+                commodity,
+                rows.get(key).goods().getOrDefault(commodity, 0L) + netParts[i]));
+        // 所得记**毛产出**（净得 + 其份额的生产消耗）⇒ 与 consumed 里的生产消耗配平（§6.1 的账要平）。
+        addGoods(income, key, commodity, netParts[i] + lossParts[i]);
+        addGoods(productionLoss, key, commodity, lossParts[i]);
+      }
     }
+  }
+
+  /**
+   * ★★ **规模 = 最紧约束**（spec §五 原文；R3/V7 把 {@code harvest} 里的"三路全是亩"泛化成"每种 capacity 一路 + 劳动一路 +
+   * 每种投入一路"）：
+   *
+   * <pre>
+   * scale = min( ⌊Σ行 meansOfProduction[k] ÷ capacityPerUnit[k]⌋  …每种生产资料一路
+   *            , ⌊平均每日实际劳动 ÷ laborPerUnit⌋               …劳动一路
+   *            , ⌊本周期实际扣到的投入_j ÷ inputPerUnit[j]⌋        …每种投入一路 )
+   * </pre>
+   *
+   * <p>★★ **每一路都可以"不施加"**（该路的"每单位需求"为 {@code 0} 或该路的表里没有这一项）：这与旧代码 {@code seedPerMu == 0 ⇒ 不加约束}
+   * 是**同一条口径** —— 旧档与未配投入/未配劳动的产业据此与 V2 逐值一致，**不是**"规模 0"（写成 0 会让它们颗粒无收）。
+   *
+   * <p>★ 整数运算、向下取整；{@code capacityPerUnit} 非空且逐值 &gt; 0（构造期守卫）⇒ 结果必有上界。
+   *
+   * @param avgLaborMilli 平均每日实际劳动（千分劳动）= 本周期配额之和 ÷ cycleDays
+   */
+  private static long scaleOf(
+      Industry industry, Map<ClassKey, ClassRow> rows, List<ClassKey> keys, long avgLaborMilli) {
+    ProductionRecipe recipe = industry.recipe();
+    long scale = Long.MAX_VALUE;
+    long[] totals = new long[AssetKind.values().length];
+    for (ClassKey key : keys) {
+      ClassRow row = rows.get(key);
+      for (Map.Entry<AssetKind, Long> entry : recipe.capacityPerUnit().entrySet()) {
+        totals[entry.getKey().ordinal()] +=
+            row.meansOfProduction().getOrDefault(entry.getKey(), 0L);
+      }
+    }
+    for (Map.Entry<AssetKind, Long> entry : recipe.capacityPerUnit().entrySet()) {
+      scale = Math.min(scale, totals[entry.getKey().ordinal()] / entry.getValue());
+    }
+    if (recipe.laborPerUnit() > 0L) {
+      scale = Math.min(scale, avgLaborMilli / recipe.laborPerUnit());
+    }
+    for (Map.Entry<CommodityId, Long> entry : recipe.inputPerUnit().entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue; // 每单位需求为 0 ⇒ 这一路不构成约束（与旧代码 seedPerMu == 0 同款）
+      }
+      long drawn = industry.cycleInputUsedMilli().getOrDefault(entry.getKey(), 0L);
+      scale = Math.min(scale, drawn / entry.getValue());
+    }
+    return scale;
   }
 
   /**
@@ -870,16 +979,39 @@ public final class EconomySettlement {
     }
   }
 
-  /** 本期流水 {@code consumed} 的**逐日累加**（逐商品求和；{@code acc} 为空 ⇒ 直接用当天的表）。 */
-  private static Map<CommodityId, Long> mergeConsumed(FlowRow acc, Map<CommodityId, Long> day) {
-    if (acc == null) {
-      return day;
+  /**
+   * 两张**逐商品**发生额表相加（{@code first} 可为 null = 无这一份；两份都保序）。
+   *
+   * <p>→ R3 的用途：① 当日的 {@code consumed} = 现扣投入 + 日耗 + 生产损耗；② 跨日把当天发生额并入本期流水（§十一）。 空表进空表出（{@code 空 +
+   * 空 == 空}），故 {@code Map.of()} 的纯形态不会退化成"一个键值为 0 的假键"。
+   */
+  private static Map<CommodityId, Long> mergeGoods(
+      Map<CommodityId, Long> first, Map<CommodityId, Long> second) {
+    if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
+      return Map.of();
     }
-    LinkedHashMap<CommodityId, Long> consumed = new LinkedHashMap<>(acc.consumed());
-    for (Map.Entry<CommodityId, Long> e : day.entrySet()) {
-      consumed.merge(e.getKey(), e.getValue(), Long::sum);
+    LinkedHashMap<CommodityId, Long> merged = new LinkedHashMap<>();
+    if (first != null) {
+      merged.putAll(first);
     }
-    return consumed;
+    if (second != null) {
+      for (Map.Entry<CommodityId, Long> entry : second.entrySet()) {
+        merged.merge(entry.getKey(), entry.getValue(), Long::sum);
+      }
+    }
+    return merged;
+  }
+
+  /** 把一笔发生额记进"逐行 × 逐商品"的累加器（{@code amount == 0} ⇒ 不落键，保持空表的纯形态）。 */
+  private static void addGoods(
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> acc,
+      ClassKey key,
+      CommodityId commodity,
+      long amount) {
+    if (amount == 0L) {
+      return;
+    }
+    acc.computeIfAbsent(key, ignored -> new LinkedHashMap<>()).merge(commodity, amount, Long::sum);
   }
 
   /**
@@ -970,13 +1102,18 @@ public final class EconomySettlement {
     return row.goods().getOrDefault(GRAIN, 0L);
   }
 
-  /** 换粮库存（0 ⇒ 去掉该键，保持"空商品表"的纯形态）。 */
-  private static ClassRow withGoodsGrain(ClassRow row, long grain) {
+  /**
+   * 换**某一种商品**的库存（{@code ≤ 0} ⇒ 去掉该键，保持"空商品表"的纯形态）。
+   *
+   * <p>★ **只动那一个键**：R3 起的行里同时住着粮、纤维、布、工具…… ⇒ 换一种商品绝不能把别的商品顺手抹掉（旧版 {@code withGoodsGrain}
+   * 只搬粮，多商品下那样写会静默清空其它商品）。
+   */
+  private static ClassRow withGoods(ClassRow row, CommodityId commodity, long amount) {
     Map<CommodityId, Long> goods = new LinkedHashMap<>(row.goods());
-    if (grain <= 0L) {
-      goods.remove(GRAIN);
+    if (amount <= 0L) {
+      goods.remove(commodity);
     } else {
-      goods.put(GRAIN, grain);
+      goods.put(commodity, amount);
     }
     return new ClassRow(
         row.key(),
@@ -992,16 +1129,22 @@ public final class EconomySettlement {
   }
 
   /**
-   * 换**当日自然需求**（毫粮；0 ⇒ 去掉该键）。
+   * 换**当日自然需求**（**逐商品**；{@code 0} 的那一项不落键）。
    *
    * <p>★★ 这是 {@link ClassRow#naturalNeeds()} 的**唯一写入点**（v2 spec §八.8 的"一条真相"）：结算每天把当日需求写进去，
    * 读口（{@code ApiViews.economyHex} / GUI / MCP）直接读它，不再各算一遍 —— 否则人口一变（饿死、将来的任何人口变动）
    * 同一面板上的"人口"与"日耗"就会分叉。
+   *
+   * <p>★★ **R3 起口径来自 {@link EconomyVocabulary#dailyNeedsMilli}**（每商品一条：粮 + 布）："粮食不足与衣物不足对死亡的时间尺度
+   * 显然不能一样"（spec §七）—— 形状先做出来，**阈值与死亡作用留 R4**（故布的缺口本轮只被记下来、不参与饿死判据）。
    */
-  private static ClassRow withDailyNeed(ClassRow row, long need) {
+  private static ClassRow withDailyNeed(ClassRow row, long day) {
     Map<CommodityId, Long> needs = new LinkedHashMap<>();
-    if (need > 0L) {
-      needs.put(GRAIN, need);
+    for (Map.Entry<String, Long> entry :
+        EconomyVocabulary.dailyNeedsMilli(row.population(), day).entrySet()) {
+      if (entry.getValue() > 0L) {
+        needs.put(new CommodityId(entry.getKey()), entry.getValue());
+      }
     }
     return new ClassRow(
         row.key(),
@@ -1048,22 +1191,24 @@ public final class EconomySettlement {
         row.effectiveDemand());
   }
 
-  /** 换进度、周期劳动累计与周期种子累计（其余字段原样带过）。 */
+  /** 换进度、周期劳动累计与周期投入累计（其余字段原样带过；★ 配方四段与两张投入表都必须透传，丢了 = 静默清零）。 */
   private static Industry withCycleState(
-      Industry industry, long progress, long cycleLabor, long cycleSeedUsed) {
+      Industry industry, long progress, long cycleLabor, Map<CommodityId, Long> cycleInputUsed) {
     return new Industry(
         industry.id(),
         industry.name(),
         industry.regime(),
         industry.cycleDays(),
         progress,
+        industry.capacityPerUnit(),
         industry.dailyInputPerUnit(),
         industry.dailyLaborPerUnit(),
+        industry.laborPerUnit(),
         industry.outputPerUnit(),
-        industry.cycleInputPerUnit(), // ★ 透传：换进度时不许把它丢了（丢了 = 静默清零）
+        industry.cycleInputPerUnit(),
         industry.slots(),
         industry.allocation(),
         cycleLabor,
-        cycleSeedUsed);
+        cycleInputUsed);
   }
 }

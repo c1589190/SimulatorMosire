@@ -459,7 +459,14 @@ public final class ApiViews {
     return keys;
   }
 
-  /** 一个产业（§3.1 的读侧：制度 / 周期 / 进度 / 分配函数 / 槽位）与该产业的阶层行。 */
+  /**
+   * 一个产业（§3.1 的读侧：制度 / 周期 / 进度 / **V7 配方** / 分配函数 / 槽位）与该产业的阶层行。
+   *
+   * <p>★★ **R3（T6）起把配方发出来**（{@code capacityPerUnit} / {@code inputPerUnit} / {@code laborPerUnit} /
+   * {@code outputPerUnit} + 本周期实际扣到的投入）：这几项原来**不在任何读口里**，而"每单位**什么**"正是 R3 变成数据的那一维 —— 不读出来，"每座作坊产
+   * N 匹布"在报表里就只是数字。★ {@code inputPerUnit} 走 {@link Industry#inputPerUnit()}（={@code
+   * cycleInputPerUnit} 的合计），**不在视图层另算一遍**。
+   */
   private static Map<String, Object> industryView(
       Industry industry, List<Map<String, Object>> classes) {
     Map<String, Object> view = new LinkedHashMap<>();
@@ -468,6 +475,15 @@ public final class ApiViews {
     view.put("regime", industry.regime().value());
     view.put("cycleDays", industry.cycleDays());
     view.put("progressDays", industry.progressDays());
+    Map<String, Object> capacity = new TreeMap<>();
+    for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
+      capacity.put(entry.getKey().name(), entry.getValue());
+    }
+    view.put("capacityPerUnit", capacity);
+    view.put("inputPerUnit", sortedCommodities(industry.inputPerUnit()));
+    view.put("laborPerUnit", industry.laborPerUnit());
+    view.put("outputPerUnit", sortedCommodities(industry.outputPerUnit()));
+    view.put("cycleInputUsedMilli", sortedCommodities(industry.cycleInputUsedMilli()));
     view.put("allocation", allocationView(industry.allocation()));
     List<Map<String, Object>> slots = new ArrayList<>(industry.slots().size());
     for (ClassSlot slot : industry.slots()) {
@@ -538,7 +554,9 @@ public final class ApiViews {
    */
   private static Map<String, Object> flowView(FlowRow flow) {
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("income", flow == null ? 0L : flow.income());
+    // ★★ **R3：{@code income} 由标量改成逐商品的表**（田里同时出粮与纤维 ⇒ "一条标量"表达不了"所得是什么"）。
+    //   形状与 {@code consumed} 对称；键序都走 {@link #sortedCommodities}（字典序，可复现）。
+    view.put("income", flow == null ? Map.of() : sortedCommodities(flow.income()));
     view.put("consumed", flow == null ? Map.of() : sortedCommodities(flow.consumed()));
     view.put("taxPaid", flow == null ? 0L : flow.taxPaid());
     view.put("interestDue", flow == null ? 0L : flow.interestDue());

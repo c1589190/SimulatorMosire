@@ -4,7 +4,9 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
@@ -62,11 +64,17 @@ public final class EconomySeeder {
   /** 手工业产业种类标签（城市格追加，§十）。 */
   public static final String CRAFT = "craft";
 
+  /** ★★ **农村家庭纺织**的产业种类标签（R3 的 T4；每个**农村**格一个）。 */
+  public static final String WEAVE = "weave";
+
   /** 农业制度：封建租佃（§十"制度"行）。 */
   public static final String REGIME_FEUDAL = "feudal";
 
   /** 手工业制度（§十"制度"行）。 */
   public static final String REGIME_HANDICRAFT = "handicraft";
+
+  /** ★★ **家户自给**制度（R3 的 T4）：农村家庭纺织的制度标签 —— 它**不是**庄园也不是作坊，是"同一批人农闲织布" （spec §四 的压力测试），故单列一档。 */
+  public static final String REGIME_HOUSEHOLD = "household";
 
   /** 农业周期（天）：§十"单位"行"周期 = 120 天"（手工业同取 120：表里只有这一个周期值）。 */
   public static final int CYCLE_DAYS = 120;
@@ -121,6 +129,99 @@ public final class EconomySeeder {
    * 播种步一字不扣 ⇒ 真档行为与 V2 逐值一致，但三路瓶颈在 799 格真实世界里**看不见**。
    */
   public static final long SEED_MILLI_PER_MU = 8_000L;
+
+  // ── R3（V7 通用生产）的配方参数：三张配方（农业 / 家庭纺织 / 城市作坊）──────────────────
+
+  /**
+   * ★★ **每亩需要的劳动**（千分劳动）：{@code 143} = {@code ⌈1000 ÷ 7⌉}（{@code
+   * EconomySettlement.LAND_MU_PER_LABOR} = 7）。
+   *
+   * <p>★★ **为什么是倒数、为什么取整**：V2 的口径是"1 标准劳动（1000 千分劳动）经营 7 亩"（乘法），而 {@code
+   * ProductionRecipe.laborPerUnit} 的口径是"每 1 单位规模需要多少劳动"（除法），两者互为倒数，而 {@code 1000 ÷ 7 = 142.857}
+   * 不是整数 ⇒ 取**向上取整 143**（比旧口径**略紧**：每 7 亩要 1001 千分劳动而不是 1000）。 ★ **后果只落在"劳动是瓶颈"的格上**：真档的分母是土地（劳动可经营
+   * 51,646 亩 ≫ 3,100 亩），故真档收获一分不动。
+   */
+  public static final long LABOR_MILLI_PER_MU = EconomySettlement.LABOR_MILLI_PER_MU;
+
+  /**
+   * ★★ **农田的纤维副产**（单位纤维/亩）：**6**。
+   *
+   * <p>★ **依据**：亚麻/秸秆是粮食作物的副产物，不占单独的地（spec §四 的 T4："**纤维内生于土地**（不凭空造）"）。 6 单位/亩 是与"每亩 67
+   * 粮"同量级的**拍出来的假设**（与前现代亩产的秸秆/纤维量级相符），它的作用是让"田里**同时**出粮与纤维"在真档里看得见。
+   *
+   * <p>★ 改它 = 改产出结构 ⇒ 记入 {@link #RULES_VERSION}。
+   */
+  public static final long FIBER_OUTPUT_PER_MU = 6L;
+
+  /**
+   * ★★ **每多少农村人有一台织机**（创世场景参数）：**20**。
+   *
+   * <p>★ 依据：前现代农村"男耕女织"——织布是**家户副业**，一台织机服务一户（一户约 5 口，而参加纺织的是其中一部分人）； 取 20
+   * 是为了让**织机、纺织劳动、纤维**三路瓶颈落在同一量级（见 {@code EconomyRealScaleClothTest} 的实测）， 从而"最紧约束"这条判据在真档里真的被走到。
+   */
+  public static final long RURAL_CAPITA_PER_LOOM = 20L;
+
+  /** ★ 每台织机每周期需要的劳动（千分劳动）：**1000**（= 1 个标准劳动，全职织布）。 */
+  public static final long LABOR_MILLI_PER_LOOM = 1_000L;
+
+  /** ★ 每台织机每周期产布（匹）：**30**（= 每 4 天 1 匹，前现代手工织机的量级）。 */
+  public static final long CLOTH_PER_LOOM_PER_CYCLE = 30L;
+
+  /**
+   * ★★ **每多少城市人有一座作坊**（创世场景参数）：**50**。
+   *
+   * <p>★ 依据：城市手工业是**专业化**生产（与农村副业不同），一座作坊（含工具、场地、匠人）服务约 50 人。
+   */
+  public static final long URBAN_CAPITA_PER_WORKSHOP = 50L;
+
+  /** ★ 每座作坊每周期需要的劳动（千分劳动）：**1000**（= 1 个标准劳动）。 */
+  public static final long LABOR_MILLI_PER_WORKSHOP = 1_000L;
+
+  /** ★ 每座作坊每周期产布（匹）：**60**（专业化生产 ⇒ 约农村织机的两倍）。 */
+  public static final long CLOTH_PER_WORKSHOP_PER_CYCLE = 60L;
+
+  /** ★ 每座作坊每周期产工具（件）：**5**。 */
+  public static final long TOOL_PER_WORKSHOP_PER_CYCLE = 5L;
+
+  /** ★★ **每匹布需要多少纤维**（毫纤维/匹）：**1,000**（= 1 单位）。织机与作坊共用同一条口径（同一门手艺）。 */
+  public static final long FIBER_MILLI_PER_CLOTH = 1_000L;
+
+  /** ★★ **每件工具需要多少铁**（毫铁/件）：**2,000**（= 2 单位）。 */
+  public static final long IRON_MILLI_PER_TOOL = 2_000L;
+
+  /** 织造的产业活动标签（{@code LaborAllocation.activity}）。 */
+  public static final String ACTIVITY_WEAVE = WEAVE;
+
+  /**
+   * ★★ **各劳动活动按性别的默认配置权重**（‰，创世 preset）——**"男耕女织"的落点**（spec §四 原文："**性别与年龄影响各类劳动活动的 默认配置权重**"）。
+   *
+   * <pre>
+   * 农业（男耕）：男 600 / 女 400      // 偏向男性
+   * 纺织（女织）：男 200 / 女 800      // 偏向女性
+   * 作坊（城市手工业）：男 500 / 女 500 // 两性均等（专业化生产，没有那份乡土分工）
+   * </pre>
+   *
+   * ★★ **它不是"女 = 纺织"的硬编码**：权重只是一张**可按活动覆盖的默认表**，配额仍是**按批次的毛劳动加权**切出来的 （{@code 权重 = 毛劳动 ×
+   * 该性别在本活动的权重}）⇒ 男人照样进纺织、女人照样种地，只是**默认配置**偏一侧。 ★ 与 {@code AGE_LABOR_COEF_BY_SEX} 同为"创世 preset"：R4
+   * 的季节性（农忙 ⇒ 农业劳动需求升 ⇒ 家庭纺织降）会重配它。
+   */
+  static final Map<String, Map<Sex, Integer>> ACTIVITY_SEX_WEIGHT_PER_MILLE =
+      Map.of(
+          FARM, Map.of(Sex.MALE, 600, Sex.FEMALE, 400),
+          WEAVE, Map.of(Sex.MALE, 200, Sex.FEMALE, 800),
+          CRAFT, Map.of(Sex.MALE, 500, Sex.FEMALE, 500));
+
+  /**
+   * ★★ **农村日劳动里分给家庭纺织的份额**（‰）：**100**。
+   *
+   * <p>★★ **这一条是本轮最容易踩的坑**（brief 点名，与 V3 的"播种器留白"同款）：若创世把农村批次 **1000‰ 全给农业**，
+   * 家庭纺织就是"**有配额、没活干**"的惰性状态 ⇒ 报表里看不见布。故创世**必须**给农村批次一条非零的纺织配额 （判据：真档推一年后 {@code CLOTH} 库存 &gt; 0
+   * 且该配额非零）。
+   *
+   * <p>★ 依据：农闲时家户投入织布的时间占全年劳动的一成左右；它是**判断结果**（spec §十一）⇒ 具名常量、可按活动调。 ★ **R4 的季节性会调它**（农忙 ⇒ 农业劳动需求升
+   * ⇒ 家庭纺织降）。
+   */
+  public static final int WEAVE_SHARE_PER_MILLE = 100;
 
   /**
    * 初始阶层比例（‰）：§十"初始阶层比例"行 贫农 450 / 中农 350 / 富农 150 / 地主 50。
@@ -189,8 +290,22 @@ public final class EconomySeeder {
    */
   static final long[] AGE_BRACKET_MAX_EXCLUSIVE_DAYS = AgeBracket.boundedMaxExclusiveDays();
 
-  /** 粮食商品的 id：唯一拼写点在 {@link EconomyVocabulary}（v2 spec §六）。 */
+  // ── 商品 id：唯一拼写点都在 {@link EconomyVocabulary}（v2 spec §六；R3 起商品不止粮）──────────
+
+  /** 粮。 */
   public static final String COMMODITY_GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
+
+  /** 布（R3；家庭纺织与城市作坊的产出）。 */
+  public static final String COMMODITY_CLOTH = EconomyVocabulary.CLOTH_COMMODITY_ID;
+
+  /** 纤维（R3；农田副产，也是织机/作坊的原料）。 */
+  public static final String COMMODITY_FIBER = EconomyVocabulary.FIBER_COMMODITY_ID;
+
+  /** 工具（R3；作坊的产出）。 */
+  public static final String COMMODITY_TOOL = EconomyVocabulary.TOOL_COMMODITY_ID;
+
+  /** 铁（R3；作坊的原料）。 */
+  public static final String COMMODITY_IRON = EconomyVocabulary.IRON_COMMODITY_ID;
 
   /** 规则版本标签（§5 末条"改参数 = 改 rulesVersion"）：写入 {@code EconomyMeta}。 */
   public static final String RULES_VERSION = "aggregate-v1";
@@ -249,19 +364,58 @@ public final class EconomySeeder {
       List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
       IndustryId farmId = IndustryHexKeys.id(FARM, hex.q(), hex.r());
       IndustryId craftId = IndustryHexKeys.id(CRAFT, hex.q(), hex.r());
-      List<Map<String, Object>> industries = new ArrayList<>(2);
-      industries.add(agriculture(hex, ruralPool, terrainOf.apply(hex)));
+      IndustryId weaveId = IndustryHexKeys.id(WEAVE, hex.q(), hex.r());
+      List<Map<String, Object>> industries = new ArrayList<>(3);
+      Map<String, Object> farm = agriculture(hex, ruralPool, terrainOf.apply(hex));
+      industries.add(farm);
+      boolean hasRural = populationOf(ruralPool) > 0L;
+      if (hasRural) {
+        // ★★ R3（T4）：农村家庭纺织 —— 配方 FIBER + LABOR + TOOL → CLOTH，由**同一批农村人**承担（见 appendAllocation）。
+        industries.add(householdWeaving(hex, ruralPool, farm));
+      }
       boolean hasCraft = populationOf(urbanPool) > 0L;
       if (hasCraft) {
         industries.add(handicraft(hex, urbanPool));
       }
       // ★★ **R2：该格的劳动供给与配额**（第三阶段设计稿 §四）—— 创世按"农村批次 → 农业（庄园）/ 城镇批次 →
-      //   手工业（作坊）"初始化 1000‰ 的配额；**结构上**允许同一批次拆成多条（见 {@link #appendLabor} 的注释）。
+      //   手工业（作坊）"初始化配额；**R3 起农村那 1000‰ 拆成"农业 900‰ + 家庭纺织 100‰"**（同一批人两条配额，
+      //   总和仍 ≤ 该批次的可用劳动 —— 由 {@code EconomyData} 的构造期守卫判死）。
+      //   ★ **供给行每池只发一次**（{@link #appendSupply}）；配额按 (池, 产业) 各发一条（{@link #appendAllocation}）。
       List<Map<String, Object>> laborSupply = new ArrayList<>();
       List<Map<String, Object>> allocations = new ArrayList<>();
-      appendLabor(laborSupply, allocations, ruralPool, farmId, ActorKind.ESTATE, FARM);
+      appendSupply(laborSupply, ruralPool);
+      appendSupply(laborSupply, urbanPool);
+      if (hasRural) {
+        long ruralDaily = industryDailyLabor(ruralPool);
+        long weaveQuota = ruralDaily * WEAVE_SHARE_PER_MILLE / 1000L;
+        // ★ 残差归农业（"农业 = ruralDaily − weaveQuota"⇒ **默认参数下**两条配额之和恒等于本池日劳动）。
+        Map<PeopleLotId, Long> budget = laborBudget(ruralPool);
+        appendAllocation(
+            allocations,
+            budget,
+            ruralPool,
+            farmId,
+            ActorKind.ESTATE,
+            FARM,
+            ruralDaily - weaveQuota);
+        appendAllocation(
+            allocations,
+            budget,
+            ruralPool,
+            weaveId,
+            ActorKind.HOUSEHOLD,
+            ACTIVITY_WEAVE,
+            weaveQuota);
+      }
       if (hasCraft) {
-        appendLabor(laborSupply, allocations, urbanPool, craftId, ActorKind.WORKSHOP, CRAFT);
+        appendAllocation(
+            allocations,
+            laborBudget(urbanPool),
+            urbanPool,
+            craftId,
+            ActorKind.WORKSHOP,
+            CRAFT,
+            industryDailyLabor(urbanPool));
       }
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
@@ -335,37 +489,80 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ **给一个产业发配额 + 给该池各批次发供给**（R2）：把 {@link #industryDailyLabor} 按各批次的**毛劳动**成比例切给它们 （最大余数法，{@code
-   * Σ 配额 == 该产业日劳动}）。
+   * ★★ **给一个池的每个批次发一条劳动供给**（R2）：{@code {group, period, grossLaborMilli, servedLaborMilli=0,
+   * committedLaborMilli=0}} —— 每批次**至多一条**（{@code EconomyData.laborSupply} 以批次 id 为键）。
    *
-   * <pre>
-   * 配额(batch → 产业) = 该产业日劳动 × 该批次毛劳动 ÷ Σ毛劳动     // Σ == 该产业日劳动（精确）
-   * 供给(batch)        = { 毛额 = 毛劳动, 已服役 = 0, 已承诺 = 0 }  // availableLabor = 毛劳动
-   * </pre>
+   * <p>★★ **为什么它与配额分家**（R3）：R2 时"一池一产业"⇒ 发配额时顺手发供给是等价的；R3 起**同一个农村池供给两个产业** （农业 +
+   * 家庭纺织），若仍由发配额的函数发供给，第二条配额会让同一批次出现**两份供给记录**（载荷解析当场拒： "同一份载荷里劳动供给重复"）。 ⇒ 供给按**池**发一次、配额按 **(池,
+   * 产业)** 各发一条，两者各自幂等。
    *
-   * <p>★★ **"同一批次可以供给多个产业"在这里是结构上成立的**：本方法只写"某一 (批次, 产业) 对"的一条配额，同一批次被另一个产业 再调用一次就会拿到**第二条**配额 —— 而
-   * {@code Σ 配额 ≤ 该批次的可用劳动} 由 {@code EconomyData} 的构造期守卫判死。 ★ 创世只发**一条**（该批次 1000‰
-   * 归它的乡土产业），但没有任何结构阻止"农村批次 → 农业 0.8 + 手工业 0.2"。
-   *
-   * <p>★ **零毛劳动的批次不发配额也不发供给**（未成年批次：D4 preset 的系数为 0）：发一条 0 的配额只是噪声， 而"没发配额"与"发了 0
-   * 的配额"在结算与读口上**逐值同效**（两者都贡献 0）。★ 池的日劳动为 0 时同样不发（该池的批次没活干）。
+   * <p>★ **零毛劳动的批次不发供给**（未成年批次：D4 preset 的系数为 0）：发一条 0 的供给只是噪声， 而"没有供给"与"毛额 0
+   * 的供给"在结算与读口上**逐值同效**（两者都贡献 0，且都发不出配额）。
    *
    * @param laborSupply 出参：本格的供给行（每批次至多一条）
-   * @param allocations 出参：本格的配额行（每 (批次, 产业) 一条）
-   * @param industry 收劳动的那个产业（{@code actor.id} 就是它 —— 见 {@code EconomyData} 的构造期守卫）
-   * @param kind 该产业的制度身份（农业 = {@link ActorKind#ESTATE} 庄园、手工业 = {@link ActorKind#WORKSHOP} 作坊）
-   * @param activity 这笔劳动干什么（本仓当前用产业种类标签：{@code farm} / {@code craft}）
    */
-  static void appendLabor(
-      List<Map<String, Object>> laborSupply,
+  static void appendSupply(List<Map<String, Object>> laborSupply, List<PopulationGroup> pool) {
+    for (PopulationGroup group : pool) {
+      long gross = grossLaborMilli(group);
+      if (gross <= 0L) {
+        continue;
+      }
+      Map<String, Object> supply = new LinkedHashMap<>();
+      supply.put("group", group.id().value());
+      supply.put("period", FIRST_PERIOD);
+      supply.put("grossLaborMilli", gross);
+      // ★ 两项扣除本轮恒 0，但字段在（设计稿 §四 的公式是三项相减；LaborSupply 照减）。
+      supply.put("servedLaborMilli", 0L);
+      supply.put("committedLaborMilli", 0L);
+      laborSupply.add(supply);
+    }
+  }
+
+  /**
+   * ★★ **给一个产业发配额**（R2；R3 起按活动加性别权重）：把 {@code total} 按各批次的**加权毛劳动**成比例切给它们 （最大余数法，{@code Σ 配额 ==
+   * total}）。
+   *
+   * <pre>
+   * 权重(batch) = 该批次毛劳动 × ACTIVITY_SEX_WEIGHT_PER_MILLE[活动][该批次性别] ÷ 1000
+   * 配额(batch) = total × 权重 ÷ Σ权重                              // Σ == total（精确，残差按最大余数法）
+   * </pre>
+   *
+   * <p>★★ **"同一批次可以供给多个产业"因此是结构上成立的**：本方法只写"某一 (批次, 产业) 对"的一条配额，同一批次被另一个活动 再调用一次就会拿到**第二条**配额。
+   * 创世给农村批次发**两条** （农业 900‰ + 家庭纺织 100‰），**这正是 spec §四 那条压力测试**（"同一批人口能否同时参与多个生产过程，并保持劳动力守恒"）。
+   *
+   * <p>★★ **性别在这里进入配置**：权重按批次性别取 {@link #ACTIVITY_SEX_WEIGHT_PER_MILLE} ⇒ 纺织的配额默认偏向女性
+   * （"男耕女织"），而**不是**"女 = 纺织"的硬编码（男人照样有一条非零的纺织配额，只是权重低）。
+   *
+   * <p>★★ **每一批次的配额受 {@code budget} 约束**（见 {@link #laborBudget}）：切出来的份额若超过该批次**剩下的**可支配劳动，
+   * 就压到上限（**多出来的部分留在预算里，也就是"分不满"** —— R2 明说配额之和可以小于可用劳动）。 ⇒ "Σ 该批次在各产业的配额 ≤
+   * 其可用劳动"**构造性成立**，不依赖"默认权重恰好不越界"。★ 这道预算是实测出来的： 把 {@link #WEAVE_SHARE_PER_MILLE} 改成 0（一个完全合理的 GM
+   * 配置）时，性别权重的偏斜加上 86% 的参与率折扣，会让男性青壮批次 分到 4,202,381 &gt; 它的可用 4,072,000 ⇒ 载荷被 {@code EconomyData}
+   * 的构造期守卫**当场拒**（世界播不出来）。
+   *
+   * <p>★ **{@code total ≤ 0} 时不发**（该池没活干，或该活动拿到的份额取整为 0）；**权重为 0 的批次也不发**（"没有配额"与"0 的配额"逐值同效）。
+   *
+   * @param allocations 出参：本格的配额行（每 (批次, 产业) 一条）
+   * @param budget 该池各批次的**剩余可支配劳动**（{@link #laborBudget}；**就地扣减**）
+   * @param total 该产业本次要切出去的劳动总量（千分劳动；= 该池日劳动 × 该活动的份额）
+   * @param industry 收劳动的那个产业（{@code actor.id} 就是它 —— 见 {@code EconomyData} 的构造期守卫）
+   * @param kind 该产业的制度身份（农业 = {@link ActorKind#ESTATE} 庄园、家庭纺织 = {@link ActorKind#HOUSEHOLD} 家户、
+   *     手工业 = {@link ActorKind#WORKSHOP} 作坊）
+   * @param activity 这笔劳动干什么（本仓当前用产业种类标签：{@code farm} / {@code weave} / {@code craft}）
+   */
+  static void appendAllocation(
       List<Map<String, Object>> allocations,
+      Map<PeopleLotId, Long> budget,
       List<PopulationGroup> pool,
       IndustryId industry,
       ActorKind kind,
-      String activity) {
-    long total = industryDailyLabor(pool);
+      String activity,
+      long total) {
     if (total <= 0L) {
       return;
+    }
+    Map<Sex, Integer> sexWeights = ACTIVITY_SEX_WEIGHT_PER_MILLE.get(activity);
+    if (sexWeights == null) {
+      throw new IllegalStateException("活动 " + activity + " 不在性别权重表里（拒绝臆造）");
     }
     List<PopulationGroup> workers = new ArrayList<>(pool.size());
     List<Long> weights = new ArrayList<>(pool.size());
@@ -373,11 +570,11 @@ public final class EconomySeeder {
       long gross = grossLaborMilli(group);
       if (gross > 0L) {
         workers.add(group);
-        weights.add(gross);
+        weights.add(gross * sexWeightOf(sexWeights, group.sex()) / 1000L);
       }
     }
     if (workers.isEmpty()) {
-      return; // 池里没有能干活的人（毛劳动全 0）⇒ 日劳动必为 0，上面已经挡掉；这里是防御性的第二道
+      return; // 池里没有能干活的人（毛劳动全 0）⇒ total 必为 0，上面已经挡掉；这里是防御性的第二道
     }
     long[] weightArray = new long[weights.size()];
     for (int i = 0; i < weightArray.length; i++) {
@@ -386,15 +583,12 @@ public final class EconomySeeder {
     long[] shares = splitProportional(total, weightArray); // Σ shares == total（最大余数法，一个人不丢）
     for (int i = 0; i < workers.size(); i++) {
       PopulationGroup group = workers.get(i);
-      Map<String, Object> supply = new LinkedHashMap<>();
-      supply.put("group", group.id().value());
-      supply.put("period", FIRST_PERIOD);
-      supply.put("grossLaborMilli", weightArray[i]);
-      // ★ 两项扣除本轮恒 0，但字段在（设计稿 §四 的公式是三项相减；LaborSupply 照减）。
-      supply.put("servedLaborMilli", 0L);
-      supply.put("committedLaborMilli", 0L);
-      laborSupply.add(supply);
-
+      // ★★ 预算约束（见方法注释）：份额超过该批次**剩下的**可支配劳动 ⇒ 压到上限，多出来的留在预算里。
+      long share = Math.min(shares[i], budget.getOrDefault(group.id(), 0L));
+      budget.put(group.id(), budget.getOrDefault(group.id(), 0L) - share);
+      if (share <= 0L) {
+        continue; // 该批次在这一活动上的权重为 0 / 取整为 0 / 预算已用尽 ⇒ 不发 0 配额
+      }
       Map<String, Object> allocation = new LinkedHashMap<>();
       allocation.put("id", allocationId(industry, group));
       allocation.put("group", group.id().value());
@@ -403,10 +597,40 @@ public final class EconomySeeder {
       actor.put("id", industry.value());
       allocation.put("actor", actor);
       allocation.put("activity", activity);
-      allocation.put("laborMilli", shares[i]);
+      allocation.put("laborMilli", share);
       allocation.put("period", FIRST_PERIOD);
       allocations.add(allocation);
     }
+  }
+
+  /**
+   * ★★ **一个池的劳动预算**：每批次的可用劳动（= {@link #grossLaborMilli}，与劳动供给的毛额**同一个数**）。
+   *
+   * <p>★★ **为什么要有它**：{@link #appendAllocation} 按"性别权重 × 毛劳动"切活动总量，而**一个池的日劳动是该池各行的 参与率折扣后的数**（≈ 毛额的
+   * 86%）—— 两个活动先后发配额时，偏重的那一性完全可能被分到超过自己那份毛额 （实测：{@link #WEAVE_SHARE_PER_MILLE} 设 0 时男性青壮批次
+   * 4,202,381 &gt; 4,072,000）。 那时载荷会被 {@code EconomyData} 的构造期守卫拒 ⇒
+   * **世界直接播不出来**。有了预算，那种配置退化成"分不满"（合法状态）。
+   *
+   * <p>★ 预算与供给的毛额同源（{@code grossLaborMilli}）⇒ "Σ 配额 ≤ availableLabor"这条不变量的两侧读的是同一个数。
+   */
+  static Map<PeopleLotId, Long> laborBudget(List<PopulationGroup> pool) {
+    Map<PeopleLotId, Long> budget = new LinkedHashMap<>();
+    for (PopulationGroup group : pool) {
+      long gross = grossLaborMilli(group);
+      if (gross > 0L) {
+        budget.put(group.id(), gross);
+      }
+    }
+    return budget;
+  }
+
+  /** 某性别在某活动上的默认权重（‰）；表缺 ⇒ fail-closed（拒绝臆造）。 */
+  static int sexWeightOf(Map<Sex, Integer> weights, Sex sex) {
+    Integer weight = weights.get(sex);
+    if (weight == null) {
+      throw new IllegalStateException("性别 " + sex + " 不在活动权重表里（拒绝臆造）");
+    }
+    return weight;
   }
 
   /**
@@ -441,47 +665,147 @@ public final class EconomySeeder {
               CLASS_LABOR_PER_MILLE[i],
               Map.of("LAND", land[i]),
               poolLabor,
-              poolCount));
+              poolCount,
+              Map.of()));
     }
     return industry(
         IndustryHexKeys.id(FARM, hex.q(), hex.r()).value(),
         "农业",
         REGIME_FEUDAL,
         classes,
-        Map.of("meansWeightPerMille", 700, "laborWeightPerMille", 300));
+        Map.of("meansWeightPerMille", 700, "laborWeightPerMille", 300),
+        // ★★ **V7 配方**：规模单位 = **亩**（每 1 亩要 1,000 千分亩，故 {@code 规模 == 行的亩数}）；
+        //   每一亩需要 {@link #LABOR_MILLI_PER_MU} 千分劳动；每亩产 67 粮 + {@link #FIBER_OUTPUT_PER_MU} 单位纤维
+        //   （**田里同时出粮与纤维** —— 纤维是副产物，故不需要新的种植流程）；每亩下种 8 粮。
+        Map.of("LAND", MILLI_MU_PER_MU),
+        LABOR_MILLI_PER_MU,
+        Map.of(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
+        Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
   }
 
-  /** 手工业（**城市格追加**，§十）：人口 = 该格**城镇批次**之和；不占地（土地全归农业）；制度 = 手工业。 */
+  /**
+   * ★★ **农村家庭纺织**（R3 的 T4；每个有农村人口的格一个）：配方 {@code FIBER + LABOR + TOOL → CLOTH}（spec §四 的压力测试），制度 =
+   * {@link #REGIME_HOUSEHOLD}，收劳动的主体是 {@link ActorKind#HOUSEHOLD} 家户。
+   *
+   * <p>★★ **它的阶层行不携带人口**（{@code population = 0}、{@code laborMilli = 0}）：本格的农村人口住在**农业行**里 （R1 的"Σ
+   * 阶层行人口 == 格人口"是构造性守恒，再给一条人口就是重复计数）。织造是**同一批人的第二份活** —— 支撐它的是**劳动配额**（农村批次 900‰ → 农业 + 100‰ →
+   * 纺织，见 {@code appendAllocation}），而不是第二份人口。
+   *
+   * <p>★★ **织机与纤维从哪来**（**留白，不是遗漏**）：创世给这四行各一份**织机**（{@link #RURAL_CAPITA_PER_LOOM} 人一台）与一份 **纤维**（=
+   * 本格农业**一个周期**的纤维副产，见 {@link #fiberStockMilli}）。★ 把它们从农业行搬到织机行是**跨行的实物转移**， 正是 spec §六
+   * V8（统一转移）的活，而 brief 明说"**不建议本轮做跨行实物转移**" ⇒ 本轮织机吃的是这份**明标为"估计来源"**的创世库存；
+   * 农业自己产的那份照常累积在农业行里（读口看得见）。★ **后果如实记**：一个周期之后织机没有原料 ⇒ 停工，等 V8 把田里的纤维送过来。
+   */
+  private static Map<String, Object> householdWeaving(
+      HexCoord hex, List<PopulationGroup> pool, Map<String, Object> farm) {
+    long looms = populationOf(pool) / RURAL_CAPITA_PER_LOOM;
+    long[] loomByClass = splitByShares(looms, CLASS_SHARE_PER_MILLE);
+    // ★ 初始纤维 = 本格农业**一个周期**的纤维副产（毫纤维）—— 与"每亩 6 单位"同源，不是另一个手写的数。
+    long[] fiberByClass = splitByShares(fiberStockMilli(farm), CLASS_SHARE_PER_MILLE);
+    List<Map<String, Object>> classes = new ArrayList<>(CLASS_IDS.length);
+    for (int i = 0; i < CLASS_IDS.length; i++) {
+      classes.add(
+          stockRow(
+              CLASS_IDS[i],
+              CLASS_LABOR_PER_MILLE[i],
+              loomByClass[i] == 0L ? Map.of() : Map.of("TOOL", loomByClass[i]),
+              fiberByClass[i] == 0L ? Map.of() : Map.of(COMMODITY_FIBER, fiberByClass[i])));
+    }
+    return industry(
+        IndustryHexKeys.id(WEAVE, hex.q(), hex.r()).value(),
+        "家庭纺织",
+        REGIME_HOUSEHOLD,
+        classes,
+        // 分配：家户自给 ⇒ 劳动权重为主（没有土地可摊；织机按户头摊）。
+        Map.of("meansWeightPerMille", 300, "laborWeightPerMille", 700),
+        Map.of("TOOL", 1L),
+        LABOR_MILLI_PER_LOOM,
+        Map.of(COMMODITY_CLOTH, CLOTH_PER_LOOM_PER_CYCLE),
+        Map.of("TOOL", Map.of(COMMODITY_FIBER, CLOTH_PER_LOOM_PER_CYCLE * FIBER_MILLI_PER_CLOTH)));
+  }
+
+  /** 本格农业**一个周期**的纤维副产（毫纤维）= Σ 农业行亩数 × {@link #FIBER_OUTPUT_PER_MU} × 1000 毫/单位。 */
+  static long fiberStockMilli(Map<String, Object> farm) {
+    long mu = 0L;
+    for (Object node : (List<?>) farm.get("classes")) {
+      Map<?, ?> row = (Map<?, ?>) node;
+      Map<?, ?> means = (Map<?, ?>) row.get("meansOfProduction");
+      Object land = means.get("LAND");
+      mu += (land == null ? 0L : ((Number) land).longValue()) / MILLI_MU_PER_MU;
+    }
+    return mu * FIBER_OUTPUT_PER_MU * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+  }
+
+  /**
+   * ★★ **城市作坊**（T5；城市格追加，§十）：人口 = 该格**城镇批次**之和；不占地（土地全归农业）；制度 = 手工业。
+   *
+   * <p>★★ **配方 = {@code FIBER + IRON + LABOR + WORKSHOP → CLOTH + TOOL}**（两条变换合在一座作坊里；"消耗 IRON"
+   * 这种话正是 R3 换型要表达的东西）—— 它同时证明两件事（spec §六 给 T5 定的目的）：**非 LAND 生产成立**、**城市能产出自己的产品**。 ★
+   * 城乡交换（布换粮）不在本轮（那要 R4 的 V8）。
+   *
+   * <p>★★ **原料从哪来**：创世给这四行各一份**初始库存**（纤维 + 铁，均明标"估计来源"）—— 与家庭纺织同一处置，理由见它的注释。 作坊的**工坊**（{@code
+   * AssetKind.WORKSHOP}）同样由创世给（{@link #URBAN_CAPITA_PER_WORKSHOP} 人一座）。
+   */
   private static Map<String, Object> handicraft(HexCoord hex, List<PopulationGroup> pool) {
     long[] people = splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE);
     long poolLabor = laborMilli(pool);
     long poolCount = populationOf(pool);
+    long workshops = populationOf(pool) / URBAN_CAPITA_PER_WORKSHOP;
+    long[] shopByClass = splitByShares(workshops, CLASS_SHARE_PER_MILLE);
+    long fiberPerShop = CLOTH_PER_WORKSHOP_PER_CYCLE * FIBER_MILLI_PER_CLOTH;
+    long ironPerShop = TOOL_PER_WORKSHOP_PER_CYCLE * IRON_MILLI_PER_TOOL;
     List<Map<String, Object>> classes = new ArrayList<>(CLASS_IDS.length);
     for (int i = 0; i < CLASS_IDS.length; i++) {
       classes.add(
           classRow(
-              CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], Map.of(), poolLabor, poolCount));
+              CLASS_IDS[i],
+              people[i],
+              CLASS_LABOR_PER_MILLE[i],
+              shopByClass[i] == 0L ? Map.of() : Map.of("WORKSHOP", shopByClass[i]),
+              poolLabor,
+              poolCount,
+              // ★ 原料库存 = 该行作坊数 × 一座作坊**一个周期**的用量（自洽：不是一个拍出来的总量）。
+              Map.of(
+                  COMMODITY_FIBER, shopByClass[i] * fiberPerShop,
+                  COMMODITY_IRON, shopByClass[i] * ironPerShop)));
     }
     return industry(
         IndustryHexKeys.id(CRAFT, hex.q(), hex.r()).value(),
         "手工业",
         REGIME_HANDICRAFT,
         classes,
-        Map.of("meansWeightPerMille", 400, "laborWeightPerMille", 600));
+        Map.of("meansWeightPerMille", 400, "laborWeightPerMille", 600),
+        Map.of("WORKSHOP", 1L),
+        LABOR_MILLI_PER_WORKSHOP,
+        Map.of(
+            COMMODITY_CLOTH,
+            CLOTH_PER_WORKSHOP_PER_CYCLE,
+            COMMODITY_TOOL,
+            TOOL_PER_WORKSHOP_PER_CYCLE),
+        Map.of("WORKSHOP", Map.of(COMMODITY_FIBER, fiberPerShop, COMMODITY_IRON, ironPerShop)));
   }
 
   /**
-   * 一个产业对象（与 §3.1 {@code Industry} 逐字段对应）。
+   * 一个产业对象（与 §3.1 {@code Industry} 逐字段对应；**R3 起含 V7 的四个配方分量**）。
    *
    * <p>{@code dailyInputPerUnit}/{@code dailyLaborPerUnit} 置 0：§十 没给这两项的依据（那是 R3a 的事），**不臆造**；
    * {@code progressDays} = 0（周期刚起）；{@code cycleDays} = {@link #CYCLE_DAYS}。
+   *
+   * @param capacityPerUnit 每 1 单位规模需要多少生产资料（农业 = 1 亩；织机/作坊 = 1 台/座）
+   * @param laborPerUnit 每 1 单位规模需要多少劳动（千分劳动）
+   * @param outputPerUnit 每 1 单位规模的产出（商品单位）
+   * @param cycleInputPerUnit 每 1 单位规模每周期消耗的商品（毫单位；按生产资料种类归类）
    */
   private static Map<String, Object> industry(
       String id,
       String name,
       String regime,
       List<Map<String, Object>> classes,
-      Map<String, Object> split) {
+      Map<String, Object> split,
+      Map<String, Object> capacityPerUnit,
+      long laborPerUnit,
+      Map<String, Object> outputPerUnit,
+      Map<String, Object> cycleInputPerUnit) {
     List<Map<String, Object>> slots = new ArrayList<>(CLASS_IDS.length);
     for (int i = 0; i < CLASS_IDS.length; i++) {
       Map<String, Object> slot = new LinkedHashMap<>();
@@ -498,18 +822,21 @@ public final class EconomySeeder {
     industry.put("regime", regime);
     industry.put("cycleDays", CYCLE_DAYS);
     industry.put("progressDays", 0);
+    // ★★ R3（V7）：配方的两个新分量 —— "每 1 单位规模需要多少生产资料 / 多少劳动"
+    //   （"每单位什么"从此是**数据**；参数目录不在本轮 ⇒ 它们仍在实例里）。
+    industry.put("capacityPerUnit", capacityPerUnit);
+    industry.put("laborPerUnit", laborPerUnit);
     industry.put("dailyInputPerUnit", Map.of());
     industry.put("dailyLaborPerUnit", 0);
-    industry.put("outputPerUnit", Map.of(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU));
-    // ★★ 一次性投入（v2 spec §3.3：**播种日**现扣的种子）：每亩 8 粮（毫粮/亩，见 {@link #SEED_MILLI_PER_MU}）。
-    //   量纲：键值是「毫粮/亩」，与 meansOfProduction 的「千分亩」差 1000 倍 —— 播种步先 /1000 换成亩再乘。
-    //   ★ 六种 AssetKind 都收（协议不设限），v1 只读 LAND（其余五种"声明但不启用"）。
+    industry.put("outputPerUnit", outputPerUnit);
+    // ★★ 一次性投入（v2 spec §3.3：**周期第一天**现扣的原料）：值侧带商品维度（R3 换型）。
+    //   量纲：键值是「毫单位 / 单位规模」，与 meansOfProduction 的「千分亩」差 1000 倍 —— 现扣步先 /1000 换成亩再乘。
     //   ★ V7 参数目录（spec §四.1 把它归**制度层**）落地后：本行改读参数（作用域 全局→国家→格/产业）。
-    industry.put("cycleInputPerUnit", Map.of("LAND", SEED_MILLI_PER_MU));
+    industry.put("cycleInputPerUnit", cycleInputPerUnit);
     // ★ R3a：周期累计实际劳动——创世 = 0（新周期尚未投入；日结算每天累加）。
     industry.put("cycleLaborMilli", 0);
-    // ★ V3：本周期实际扣到的种子（毫粮）——创世 = 0（与 cycleLaborMilli 同形制；播种日逐行累加、关账清零）。
-    industry.put("cycleSeedUsedMilli", 0);
+    // ★ R3：本周期实际扣到的投入（**按商品**）——创世 = 空表（与 cycleLaborMilli 同形制；现扣日逐行累加、关账清零）。
+    industry.put("cycleInputUsedMilli", Map.of());
     industry.put("allocation", allocation);
     industry.put("slots", slots);
     industry.put("classes", classes);
@@ -520,7 +847,8 @@ public final class EconomySeeder {
    * 一个阶层行（与 §3.2 {@code ClassRow} 逐字段对应）：有效劳动 = 本行人口 × **该池的人均劳动** （= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷
    * 池人口，见 {@link #laborMilli(List)}）、自然需求 = **第 1 天**的口粮 （{@link
    * #firstDayRationMilli}；结算每天会覆写它，§八.8）、初始库存 = {@code 人口 × 该阶层天数} 天口粮（{@link #rationMilli} 经
-   * {@link EconomyVocabulary#cumulativeRationMilli}，**按阶层差异化**）、货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   * {@link EconomyVocabulary#cumulativeRationMilli}，**按阶层差异化**）+ 逐行给出的**其它商品**（R3：作坊的原料）、货币
+   * 0、无债务、无有效需求 （§十 没有它们的依据 ⇒ 不臆造）。
    *
    * <p>★★ **为什么"人均"而不是"逐行按自己的年龄构成"**：阶层比例把池子切成四份，而**没有任何数据**说清各阶层的年龄/性别构成 ⇒
    * 取池内人均（"阶层之间年龄性别同分布"这条**明说的**假设），不假装知道更多。默认系数下它与 R1 之前 `人口 × 580‰` **逐值相同**（池的年龄构成恰是 D4 preset
@@ -532,19 +860,52 @@ public final class EconomySeeder {
       int participationPerMille,
       Map<String, Object> means,
       long poolLaborMilli,
-      long poolCount) {
+      long poolCount,
+      Map<String, Object> extraGoods) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("slot", slot);
     row.put("population", population);
     row.put("laborMilli", rowLaborMilli(population, poolLaborMilli, poolCount));
     row.put("participationPerMille", participationPerMille);
     row.put("meansOfProduction", means);
-    row.put("goods", Map.of(COMMODITY_GRAIN, rationMilli(population, slot)));
+    Map<String, Object> goods = new LinkedHashMap<>();
+    putIfPositive(goods, COMMODITY_GRAIN, rationMilli(population, slot));
+    for (Map.Entry<String, Object> entry : extraGoods.entrySet()) {
+      putIfPositive(goods, entry.getKey(), ((Number) entry.getValue()).longValue());
+    }
+    row.put("goods", goods);
     row.put("money", 0);
     row.put("debts", List.of());
     row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, firstDayRationMilli(population)));
     row.put("effectiveDemand", Map.of());
     return row;
+  }
+
+  /** 同 {@link #classRow}，但**人口与劳动都是 0**（家庭纺织的四行：人住在农业行里，见 {@code householdWeaving}）。 */
+  private static Map<String, Object> stockRow(
+      String slot,
+      int participationPerMille,
+      Map<String, Object> means,
+      Map<String, Object> goods) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("slot", slot);
+    row.put("population", 0L);
+    row.put("laborMilli", 0L);
+    row.put("participationPerMille", participationPerMille);
+    row.put("meansOfProduction", means);
+    row.put("goods", goods);
+    row.put("money", 0);
+    row.put("debts", List.of());
+    row.put("naturalNeeds", Map.of());
+    row.put("effectiveDemand", Map.of());
+    return row;
+  }
+
+  /** 只把**正的**量落进库存表（0 ⇒ 不落键，保持"空商品表"的纯形态）。 */
+  private static void putIfPositive(Map<String, Object> goods, String commodity, long amount) {
+    if (amount > 0L) {
+      goods.put(commodity, amount);
+    }
   }
 
   // ── 口径换算（纯函数，可单测）─────────────────────────────────────────────────────────

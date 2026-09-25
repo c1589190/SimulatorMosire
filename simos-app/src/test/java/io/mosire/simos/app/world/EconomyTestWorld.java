@@ -20,6 +20,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
@@ -70,6 +71,13 @@ public final class EconomyTestWorld {
 
   /** 粮食商品 id（与 {@code EconomySeeder} / 结算侧同字面量）。 */
   public static final CommodityId GRAIN = new CommodityId(EconomySeeder.COMMODITY_GRAIN);
+
+  /** ★ R3：另外三种商品 —— **田里同时出粮与纤维**、作坊出布与工具，都是本夹具的判据所在。 */
+  public static final CommodityId FIBER = new CommodityId(EconomySeeder.COMMODITY_FIBER);
+
+  public static final CommodityId CLOTH = new CommodityId(EconomySeeder.COMMODITY_CLOTH);
+  public static final CommodityId TOOL = new CommodityId(EconomySeeder.COMMODITY_TOOL);
+  public static final CommodityId IRON = new CommodityId(EconomySeeder.COMMODITY_IRON);
 
   /** 农业周期（天）：与 {@code EconomySeeder.CYCLE_DAYS} 同源（120）。 */
   public static final long CYCLE_DAYS = EconomySeeder.CYCLE_DAYS;
@@ -153,6 +161,14 @@ public final class EconomyTestWorld {
         1000L,
         PLAINS_LAND_MILLI_MU,
         Stock.LANDLORD_ZERO_OTHERS_EXACT);
+    // ★★ **R3：非土地生产**（有农村人口的格各一座家庭纺织）—— 它让"份外之地"这件事在夹具里就成立：
+    //   织机不占地、纤维与织机都不来自土地那一路，规模由**最紧约束**（劳动 vs 织机 vs 纤维）决定。
+    //   ★ 劳动那一条在 {@link #farm} 里与农业一起发（同一批农村人的 900‰/100‰）—— 一格的农村劳动只在一处决定。
+    //   ★ (2,0) 农业人口为 0 ⇒ **没有纺织**（配额为 0 ⇒ 纺织行没有活干 ⇒ 连产业都不建）。
+    weaving(industries, classes, 0, 0, 1000L);
+    weaving(industries, classes, 1, 0, 500L);
+    weaving(industries, classes, 3, 0, LENDER_HEX_POPULATION);
+    weaving(industries, classes, 4, 0, 1000L);
     EconomyMeta meta =
         new EconomyMeta(
             MAP_ID, 0L, OptionalLong.empty(), EconomySeeder.RULES_VERSION, Optional.empty());
@@ -183,14 +199,57 @@ public final class EconomyTestWorld {
     long[] people = EconomySeeder.splitByShares(population, EconomySeeder.CLASS_SHARE_PER_MILLE);
     long[] land = EconomySeeder.splitProportional(landMilliMu, people);
     industries.put(
-        id, industry(id, "农业", EconomySeeder.REGIME_FEUDAL, new AllocationRule.Split(700, 300)));
+        id,
+        industry(
+            id,
+            "农业",
+            EconomySeeder.REGIME_FEUDAL,
+            new AllocationRule.Split(700, 300),
+            // ★ R3（V7）：规模单位 = 亩；每亩 143 千分劳动；**田里同时出粮与纤维**（纤维是副产物 ⇒ 多商品产出的判据所在）。
+            Map.of(AssetKind.LAND, 1_000L),
+            EconomySettlement.LABOR_MILLI_PER_MU,
+            Map.of(
+                GRAIN, EconomySeeder.GRAIN_OUTPUT_PER_MU, FIBER, EconomySeeder.FIBER_OUTPUT_PER_MU),
+            // ★★ 必须保持空：5 格端到端夹具是"未配投入 ⇒ 投入那一路不施加约束"的对照
+            Map.of()));
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
-      addRow(classes, id, i, people[i], Map.of(AssetKind.LAND, land[i]), stock);
+      addRow(classes, id, i, people[i], Map.of(AssetKind.LAND, land[i]), stock, Map.of());
     }
-    addLabor(supply, allocations, id, ActorKind.ESTATE, EconomySeeder.FARM, people, population);
+    // ★★ **同一批农村人的劳动分成两条配额**（R3；spec §四 的压力测试）：农业 900‰ + 家庭纺织 100‰。
+    //   ★ 两条之和 = 该池的当日劳动（{@code ruralDaily}）⇒ 与 R2 的"一池一产业"逐值同源；
+    //     而"同一批次供给两个产业"在这里是**结构上**成立的（EconomyData 的构造期守卫判 Σ ≤ 可用）。
+    addSupply(supply, id, people, population);
+    long ruralDaily =
+        EconomySeeder.industryDailyLabor(people, EconomySeeder.laborMilli(population), population);
+    long weaveQuota = ruralDaily * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L;
+    addAllocation(
+        allocations,
+        id,
+        ActorKind.ESTATE,
+        EconomySeeder.FARM,
+        syntheticLot(id),
+        ruralDaily - weaveQuota);
+    if (weaveQuota > 0L) {
+      IndustryId weaveId = IndustryHexKeys.id(EconomySeeder.WEAVE, q, r);
+      addAllocation(
+          allocations,
+          weaveId,
+          ActorKind.HOUSEHOLD,
+          EconomySeeder.WEAVE,
+          syntheticLot(weaveId),
+          weaveQuota);
+    }
   }
 
-  /** 手工业（城市格追加，§十）：不占地 ⇒ 劳动瓶颈下实际投入亩 = 0（v1 不产出，如实记在报告里）。 */
+  /**
+   * ★★ **R3：城市作坊**（城市格追加，§十）：配方 {@code FIBER + IRON + LABOR + WORKSHOP → CLOTH + TOOL}。
+   *
+   * <p>★★ **它证明两件事**（spec §六 给 T5 定的目的）：**非 LAND 生产成立**（规模由"几座作坊"与劳动决定，与土地无关）、
+   * **城市能产出自己的产品**（布与工具，不是粮）。★ 城乡交换（布换粮）不在本轮。
+   *
+   * <p>★ 工坊数与原料都按 {@link EconomySeeder} 的场景参数给（{@link EconomySeeder#URBAN_CAPITA_PER_WORKSHOP} 人一座；
+   * 原料 = 该行作坊数**一个周期**的用量）⇒ 夹具与真档同一套口径，不是另一组拍出来的数。
+   */
   private static void craft(
       Map<IndustryId, Industry> industries,
       Map<ClassKey, ClassRow> classes,
@@ -201,52 +260,139 @@ public final class EconomyTestWorld {
       long population) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.CRAFT, q, r);
     long[] people = EconomySeeder.splitByShares(population, EconomySeeder.CLASS_SHARE_PER_MILLE);
+    long workshops = population / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
+    long[] shopByClass =
+        EconomySeeder.splitByShares(workshops, EconomySeeder.CLASS_SHARE_PER_MILLE);
+    long fiberPerShop = clothPerWorkshop() * EconomySeeder.FIBER_MILLI_PER_CLOTH;
+    long ironPerShop =
+        EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE * EconomySeeder.IRON_MILLI_PER_TOOL;
     industries.put(
         id,
-        industry(id, "手工业", EconomySeeder.REGIME_HANDICRAFT, new AllocationRule.Split(400, 600)));
+        industry(
+            id,
+            "手工业",
+            EconomySeeder.REGIME_HANDICRAFT,
+            new AllocationRule.Split(400, 600),
+            Map.of(AssetKind.WORKSHOP, 1L),
+            EconomySeeder.LABOR_MILLI_PER_WORKSHOP,
+            Map.of(CLOTH, clothPerWorkshop(), TOOL, EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE),
+            Map.of(AssetKind.WORKSHOP, Map.of(FIBER, fiberPerShop, IRON, ironPerShop))));
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
-      addRow(classes, id, i, people[i], Map.of(), Stock.NORMAL);
+      addRow(
+          classes,
+          id,
+          i,
+          people[i],
+          shopByClass[i] == 0L ? Map.of() : Map.of(AssetKind.WORKSHOP, shopByClass[i]),
+          Stock.NORMAL,
+          // ★ 原料库存 = 该行作坊数 × 一座作坊**一个周期**的用量（自洽，不是一个拍出来的总量）。
+          Map.of(FIBER, shopByClass[i] * fiberPerShop, IRON, shopByClass[i] * ironPerShop));
     }
-    addLabor(supply, allocations, id, ActorKind.WORKSHOP, EconomySeeder.CRAFT, people, population);
+    addSupply(supply, id, people, population);
+    addAllocation(
+        allocations,
+        id,
+        ActorKind.WORKSHOP,
+        EconomySeeder.CRAFT,
+        syntheticLot(id),
+        EconomySeeder.industryDailyLabor(people, EconomySeeder.laborMilli(population), population));
   }
 
   /**
-   * ★★ **R2：给一格的产业发配额 + 给它的批次发供给**（本夹具没有真的批次 ⇒ 批次 id 按真档的命名约定**合成**一条， 见 {@code PopulationLots}
-   * 的拼法）。
+   * ★★ **R3：农村家庭纺织**（有农村人口的格各一座）：配方 {@code FIBER + LABOR + TOOL → CLOTH}（spec §四 的压力测试）。
    *
-   * <p>★★ **配额量必须逐值等于改口径前的当日劳动**：{@code Σ_i 行劳动_i × 投入率_i ÷ 1000}，其中行劳动 = {@code people[i] × 池毛劳动 ÷
-   * 池人数} —— 那正是 {@link EconomySeeder#industryDailyLabor(long[], long, long)}（**同一个算式**，本类不另写一套）。
-   * 不这么算，本类的端到端字面量（收获、瓶颈、库存）会全变。
+   * <p>★★ **它的四行不携带人口**（{@code population = 0}、{@code laborMilli = 0}）：本格的农村人口住在**农业行**里 （R1 的"Σ
+   * 阶层行人口 == 格人口"是构造性守恒，再给一条人口就是重复计数）。织造是**同一批人的第二份活** —— 支撐它的是**劳动配额**（农村批次 900‰ → 农业 + 100‰ →
+   * 纺织），而不是第二份人口。★ 于是整份夹具的人口账一分不动。
    *
-   * <p>★ 供给的**毛额**取该格该池的毛劳动（= {@code 人口 × 580‰}，与行的口径同源）⇒ 配额 ≤ 毛额恒成立 （{@code Σ 投入率} 那一路只会让它变小）。
+   * <p>★★ **织机与纤维从哪来**：与真档同款（{@link EconomySeeder#RURAL_CAPITA_PER_LOOM} 人一台织机；纤维 = 那些织机**一个周期**的
+   * 用量）。★ 把农田的纤维**实物搬**到织机行是 V8 的活（brief 明说不建议本轮做跨行实物转移）⇒ 本夹具与真档都吃这份明标来源的库存。
    */
-  private static void addLabor(
-      Map<PeopleLotId, LaborSupply> supply,
+  private static void weaving(
+      Map<IndustryId, Industry> industries,
+      Map<ClassKey, ClassRow> classes,
+      int q,
+      int r,
+      long ruralPopulation) {
+    IndustryId id = IndustryHexKeys.id(EconomySeeder.WEAVE, q, r);
+    long looms = ruralPopulation / EconomySeeder.RURAL_CAPITA_PER_LOOM;
+    long[] loomByClass = EconomySeeder.splitByShares(looms, EconomySeeder.CLASS_SHARE_PER_MILLE);
+    long fiberPerLoom = clothPerLoom() * EconomySeeder.FIBER_MILLI_PER_CLOTH;
+    industries.put(
+        id,
+        industry(
+            id,
+            "家庭纺织",
+            EconomySeeder.REGIME_HOUSEHOLD,
+            new AllocationRule.Split(300, 700),
+            Map.of(AssetKind.TOOL, 1L),
+            EconomySeeder.LABOR_MILLI_PER_LOOM,
+            Map.of(CLOTH, clothPerLoom()),
+            Map.of(AssetKind.TOOL, Map.of(FIBER, fiberPerLoom))));
+    for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
+      addStockRow(
+          classes,
+          id,
+          i,
+          loomByClass[i] == 0L ? Map.of() : Map.of(AssetKind.TOOL, loomByClass[i]),
+          loomByClass[i] * fiberPerLoom == 0L
+              ? Map.of()
+              : Map.of(FIBER, loomByClass[i] * fiberPerLoom));
+    }
+  }
+
+  /** 每座作坊每周期产布（匹）：真档口径（{@link EconomySeeder#CLOTH_PER_WORKSHOP_PER_CYCLE}）。 */
+  private static long clothPerWorkshop() {
+    return EconomySeeder.CLOTH_PER_WORKSHOP_PER_CYCLE;
+  }
+
+  /** 每台织机每周期产布（匹）：真档口径（{@link EconomySeeder#CLOTH_PER_LOOM_PER_CYCLE}）。 */
+  private static long clothPerLoom() {
+    return EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE;
+  }
+
+  /**
+   * ★★ **供给行**（每池一条；R3 起与配额分家，见 {@code EconomySeeder.appendSupply} 的注释）：本夹具没有真的批次 ⇒ 批次 id 按真档的
+   * 命名约定**合成**（{@code PopulationLots} 的拼法）。
+   *
+   * <p>★ 毛额取该池的毛劳动（= {@code 人口 × 580‰}，与行的口径同源）⇒ 配额之和 ≤ 毛额恒成立。
+   */
+  private static void addSupply(
+      Map<PeopleLotId, LaborSupply> supply, IndustryId industry, long[] people, long population) {
+    long grossLabor = EconomySeeder.laborMilli(population);
+    if (grossLabor <= 0L) {
+      return; // 零人口的格（(2,0) 的农业）：没有可支配劳动 ⇒ 不发供给
+    }
+    PeopleLotId lot = syntheticLot(industry);
+    supply.put(lot, new LaborSupply(lot, EconomySeeder.FIRST_PERIOD, grossLabor, 0L, 0L));
+  }
+
+  /**
+   * **一条配额**：{@code (产业, 批次)} 一条，量取自 {@link EconomySeeder#industryDailyLabor(long[], long, long)}
+   * （**同一个算式**，本类不另写一套 —— 那正是"改口径前的当日劳动"，R2 的真档数字因此一个不变）。
+   */
+  private static void addAllocation(
       Map<LaborAllocationId, LaborAllocation> allocations,
       IndustryId industry,
       ActorKind kind,
       String activity,
-      long[] people,
-      long population) {
-    long grossLabor = EconomySeeder.laborMilli(population);
-    if (grossLabor <= 0L) {
-      return; // 零人口的格（(2,0) 的农业）：没有可支配劳动 ⇒ 不发供给也不发配额
-    }
-    long daily = EconomySeeder.industryDailyLabor(people, grossLabor, population);
-    if (daily <= 0L) {
+      PeopleLotId lot,
+      long laborMilli) {
+    if (laborMilli <= 0L) {
       return;
     }
-    PeopleLotId lot = syntheticLot(industry);
-    supply.put(lot, new LaborSupply(lot, EconomySeeder.FIRST_PERIOD, grossLabor, 0L, 0L));
-    allocations.put(
+    allocations.put(allocationId(industry), allocation(industry, kind, activity, lot, laborMilli));
+  }
+
+  private static LaborAllocation allocation(
+      IndustryId industry, ActorKind kind, String activity, PeopleLotId lot, long laborMilli) {
+    return new LaborAllocation(
         allocationId(industry),
-        new LaborAllocation(
-            allocationId(industry),
-            lot,
-            new ActorRef(kind, industry.value()),
-            activity,
-            daily,
-            EconomySeeder.FIRST_PERIOD));
+        lot,
+        new ActorRef(kind, industry.value()),
+        activity,
+        laborMilli,
+        EconomySeeder.FIRST_PERIOD);
   }
 
   /** 合成批次 id：与真档的命名约定同形（{@code rural:<q>_<r>:MALE:1} / {@code urban:c-<q>_<r>:FEMALE:1}）。 */
@@ -254,6 +400,7 @@ public final class EconomyTestWorld {
     String hex = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
     return new PeopleLotId(
         industry.value().startsWith(EconomySeeder.FARM)
+                || industry.value().startsWith(EconomySeeder.WEAVE)
             ? "rural:" + hex + ":MALE:1"
             : "urban:c-" + hex + ":FEMALE:1");
   }
@@ -262,13 +409,42 @@ public final class EconomyTestWorld {
     return new LaborAllocationId("alloc-" + industry.value() + "-testworld");
   }
 
+  /**
+   * 一个**不携带人口**的阶层行（R3 的家庭纺织：本格的人住在农业行里，见 {@code weaving}）：只有生产资料与库存。
+   *
+   * <p>★ 人口/劳动都是 0 ⇒ 需求也是 0（{@code naturalNeeds} 空表）⇒ 它**不进任何口粮账**，只承载"织机与原料"。
+   */
+  private static void addStockRow(
+      Map<ClassKey, ClassRow> classes,
+      IndustryId industry,
+      int index,
+      Map<AssetKind, Long> means,
+      Map<CommodityId, Long> goods) {
+    String slot = EconomySeeder.CLASS_IDS[index];
+    ClassKey key = new ClassKey(industry, new ClassSlotId(slot));
+    classes.put(
+        key,
+        new ClassRow(
+            key,
+            0L,
+            0L,
+            EconomySeeder.CLASS_LABOR_PER_MILLE[index],
+            means,
+            goods,
+            0L,
+            List.of(),
+            Map.of(),
+            Map.of()));
+  }
+
   private static void addRow(
       Map<ClassKey, ClassRow> classes,
       IndustryId industry,
       int index,
       long population,
       Map<AssetKind, Long> means,
-      Stock stock) {
+      Stock stock,
+      Map<CommodityId, Long> extraGoods) {
     String slot = EconomySeeder.CLASS_IDS[index];
     ClassKey key = new ClassKey(industry, new ClassSlotId(slot));
     // ★★ **第 1 天**的需求（逐日差分；不是"每人每日的量 × 人口"）—— 这一格从第 1 天起就是"恰好"形态。
@@ -293,6 +469,15 @@ public final class EconomyTestWorld {
                   ? 0L
                   : EconomyVocabulary.cumulativeRationMilli(population, 1L);
         };
+    Map<CommodityId, Long> openingStock = new LinkedHashMap<>();
+    if (goods > 0L) {
+      openingStock.put(GRAIN, goods);
+    }
+    for (Map.Entry<CommodityId, Long> entry : extraGoods.entrySet()) {
+      if (entry.getValue() > 0L) {
+        openingStock.put(entry.getKey(), entry.getValue());
+      }
+    }
     classes.put(
         key,
         new ClassRow(
@@ -301,14 +486,25 @@ public final class EconomyTestWorld {
             EconomySeeder.laborMilli(population),
             EconomySeeder.CLASS_LABOR_PER_MILLE[index],
             means,
-            goods > 0L ? Map.of(GRAIN, goods) : Map.of(),
+            openingStock,
             0L,
             List.of(),
             Map.of(GRAIN, firstDayNeed),
             Map.of()));
   }
 
-  private static Industry industry(IndustryId id, String name, String regime, AllocationRule rule) {
+  /**
+   * 一个产业（**R3 起带 V7 的四个配方分量**）：每个产业自己锚定"单位规模"（农业 = 亩、织机/作坊 = 台/座）， 产出是**逐商品**的表 ⇒ "每单位什么"在夹具里也是数据。
+   */
+  private static Industry industry(
+      IndustryId id,
+      String name,
+      String regime,
+      AllocationRule rule,
+      Map<AssetKind, Long> capacityPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit) {
     List<ClassSlot> slots = new ArrayList<>();
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
       slots.add(
@@ -323,13 +519,15 @@ public final class EconomyTestWorld {
         new RegimeId(regime),
         CYCLE_DAYS,
         0L,
+        capacityPerUnit,
         Map.of(),
         0L,
-        Map.of(GRAIN, EconomySeeder.GRAIN_OUTPUT_PER_MU),
-        Map.of(), // ★★ 必须保持空：5 格端到端夹具是"未配种子 ⇒ V2 行为不变"的证据
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
         slots,
         rule,
         0L,
-        0L);
+        Map.of());
   }
 }

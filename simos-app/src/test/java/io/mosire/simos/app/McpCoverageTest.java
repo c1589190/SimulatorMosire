@@ -306,11 +306,15 @@ class McpCoverageTest {
             + "\"sex\":\"FEMALE\",\"count\":400,\"ageDays\":13505}]}");
     // ★ R2a（2026-09-25）：经济播种。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   一格一产业两槽位两行（必须产生**非空**变更集）。
+    //   ★ R3（V7）：配方多了两个分量（`capacityPerUnit` = "单位规模"的锚、`laborPerUnit` = 劳动那一路），
+    //     且投入表的值侧带商品维度（`{"LAND":{"grain":8000}}`）—— 缺 `capacityPerUnit` 会被构造期守卫拒 ⇒ 命令 Rejected。
     MINIMAL_PAYLOADS.put(
         "economy.Seed",
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":1,\"r\":1,"
             + "\"industries\":[{\"id\":\"farm@1_1\",\"name\":\"农业\",\"regime\":\"feudal\","
-            + "\"cycleDays\":120,\"outputPerUnit\":{\"grain\":7},"
+            + "\"cycleDays\":120,\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
+            + "\"outputPerUnit\":{\"grain\":7,\"fiber\":2},"
+            + "\"cycleInputPerUnit\":{\"LAND\":{\"grain\":8000}},"
             + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,"
             + "\"laborWeightPerMille\":300},"
             + "\"slots\":[{\"id\":\"peasant\",\"name\":\"贫农\","

@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
@@ -81,8 +82,14 @@ class EconomySettlementEndToEndTest {
   private static final IndustryId FARM_0 = IndustryHexKeys.id(EconomySeeder.FARM, 0, 0);
   private static final IndustryId FARM_1 = IndustryHexKeys.id(EconomySeeder.FARM, 1, 0);
   private static final IndustryId FARM_3 = IndustryHexKeys.id(EconomySeeder.FARM, 3, 0);
+  private static final IndustryId CRAFT_2 = IndustryHexKeys.id(EconomySeeder.CRAFT, 2, 0);
+
+  /** R3：各格的家庭纺织（非土地生产的那一半）。 */
+  private static final IndustryId WEAVE_0 = IndustryHexKeys.id(EconomySeeder.WEAVE, 0, 0);
+
   private static final ClassSlotId LANDLORD = new ClassSlotId("landlord");
   private static final ClassSlotId RICH = new ClassSlotId("rich");
+  private static final ClassSlotId PEASANT = new ClassSlotId("peasant");
   private static final CommodityId GRAIN = EconomyTestWorld.GRAIN;
 
   /**
@@ -282,8 +289,13 @@ class EconomySettlementEndToEndTest {
           .isEqualTo(PLAINS_LENDER_LEFTOVER + rationOn(50L, 120L) + rationOn(150L, 120L));
       assertThat(farm(beforeHarvest, FARM_0).progressDays()).isEqualTo(119L);
       assertThat(farm(beforeHarvest, FARM_0).cycleLaborMilli())
-          .as("周期劳动累计 = 119 天 × 498,800 千分劳动")
-          .isEqualTo(119L * 498_800L);
+          .as(
+              "周期劳动累计 = 119 天 × **448,920** 千分劳动"
+                  + "（★ R3：农村那一池的 498,800 拆成农业 900‰ = 448,920 + 家庭纺织 100‰ = 49,880）")
+          .isEqualTo(119L * 448_920L);
+      assertThat(farm(beforeHarvest, WEAVE_0).cycleLaborMilli())
+          .as("家庭纺织那一份：119 天 × 49,880")
+          .isEqualTo(119L * 49_880L);
 
       advance(core, 1);
       EconomyData afterHarvest = economy(core);
@@ -355,24 +367,24 @@ class EconomySettlementEndToEndTest {
       assertThat(hexGrain(afterHarvest, 0, 0))
           .as("(0,0) 平原格：净产按标定公式 + 放贷方周期末尚未吃完的余量（V6 §7.1①）")
           .isEqualTo(PLAINS_HARVEST_NET + PLAINS_LENDER_LEFTOVER);
-      // ★ 低丘格的绝对值不写死：标定后它的实际投入亩由**劳动瓶颈**（而非土地）决定 ——
-      //   可用 2,064 亩，但劳动可经营亩数 = avgLabor(249,400) × LAND_MU_PER_LABOR(7) / 1000 = 1,745 亩 ⇒ 取小得
-      // 1,745。
-      //   闭式 = 1,745 亩 × 67 × 1000 × 0.97 = 113,407,550 毫粮，但它把 EconomySettlement 的劳动模型内部
-      //   （LAND_MU_PER_LABOR、580‰ 人均劳动、阶层参与率）搬进了本用例 ⇒ 标定一改就跟着碎。
+      // ★ 低丘格的绝对值不写死：标定后它的实际投入亩由**劳动瓶颈**（而非土地）决定。
       // ★ 诚实标注这条的**实际**判别力：它只挡"低丘格颗粒无收/两格用了同一条公式"这类粗错
-      //   —— 注意它**挡不住**地形系数失效（低丘土地即便按平原算，劳动瓶颈仍给出 1,745 亩 ≠ 平原的 3,100 亩，两格照样不等）。
+      //   —— 注意它**挡不住**地形系数失效（低丘土地即便按平原算，劳动瓶颈仍给出 1,569 亩 ≠ 平原的 3,100 亩，两格照样不等）。
       //   地形系数本身由**精确值**钉在别处：EconomySeederTest.everyHexKeepsItsLandAndLandFollowsTerrainCoefficient
       //   与 WorldgenInitializeToolTest 的 Σ土地 == 408,127,400 千分亩。
       // ★ (1,0) 低丘格：**劳动是瓶颈，不是土地** ——
       //   可用亩 = 3,100,000 千分亩 × 666‰ ÷ 1000 = 2,064 亩；
-      //   但 500 人 × 580‰ = 290,000 千分劳动，投入率按阶层加权 860‰ ⇒ 日劳动 249,400 千分劳动；
-      //   可经营 = 249,400 × LAND_MU_PER_LABOR(7) ÷ 1000 = 1,745 亩 < 2,064 ⇒ 实际投入 1,745 亩。
-      //   毛产 = 1,745 × 67 × 1000 = 116,915,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 113,407,550。
+      //   但 500 人 × 580‰ = 290,000 千分劳动，投入率按阶层加权 860‰ ⇒ 该池日劳动 249,400 千分劳动；
+      //   ★★ **R3 起这一池的日劳动拆成两条配额**（农业 900‰ + 家庭纺织 100‰，见 EconomyTestWorld.farm）：
+      //   农业拿 249,400 − 24,940 = **224,460** 千分劳动/日；
+      //   可经营 = 224,460 ÷ 每亩需劳动 143 = **1,569 亩** < 2,064 ⇒ 实际投入 1,569 亩。
+      //   （★ 旧口径 = floor(249,400 × 7 ÷ 1000) = 1,745 亩；1 × 143 = ⌈1000/7⌉ 的取整差在这里显现出 176 亩 ——
+      //     真档不受影响：那里土地才是瓶颈（可经营 51,646 亩 ≫ 3,100 亩）。）
+      //   毛产 = 1,569 × 67 × 1000 = 105,123,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 **101,969,310**。
       //   ★ V6 §7.1① 起再加"放贷方周期末尚未吃完的余量"（低丘地主 25 人 ⇒ 83,333，算式见 HILLS_LENDER_LEFTOVER）。
       assertThat(hexGrain(afterHarvest, 1, 0))
           .as("(1,0) 低丘格：净产按**劳动瓶颈**算（不是按地）+ 放贷方余量")
-          .isEqualTo(113_407_550L + HILLS_LENDER_LEFTOVER);
+          .isEqualTo(101_969_310L + HILLS_LENDER_LEFTOVER);
       assertThat(hexGrain(afterHarvest, 0, 0))
           .as("两格收获必须不相等（地形系数与劳动瓶颈都在起作用）")
           .isNotEqualTo(hexGrain(afterHarvest, 1, 0));
@@ -525,6 +537,184 @@ class EconomySettlementEndToEndTest {
       assertThat(hexDecrease(day1, day2, 0, 0))
           .as("(0,0) 第 2 天库存减少 == 读口日耗（同源；旧的「人口 × 83」会给 83,000）")
           .isEqualTo(readDay2);
+    }
+  }
+
+  // ── (i) R3：多商品产出 + 非土地生产（夹具刻意混合：田里同时出粮与纤维、城乡各有一个非土地产业）──────
+
+  /**
+   * ★★ **需求口径带商品维度**（R3 的 T1；spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）： 结算写进 {@code naturalNeeds}
+   * 的是**每商品一条** —— 粮与布各一条，**本轮只做形状**（阈值与死亡作用留 R4）。
+   *
+   * <pre>
+   * naturalNeeds = { grain: dailyRationMilli(人口, day), cloth: dailyClothNeedMilli(人口, day) }
+   * </pre>
+   *
+   * <p>★ 判别力：把 {@code withDailyNeed} 退回"只写粮那一条"（需求还是个标量）⇒ 本条红。
+   */
+  @Test
+  void theDailyNeedsCarryOneEntryPerCommodity() {
+    try (CoreSimos core = freshCore()) {
+      advance(core, 1);
+      EconomyData day1 = economy(core);
+      ClassRow row = day1.classes().get(new ClassKey(FARM_0, PEASANT));
+
+      assertThat(row.naturalNeeds().keySet())
+          .as("★ 每商品一条需求，且保序（词表序 = 粮、布）")
+          .containsExactly(GRAIN, EconomyTestWorld.CLOTH);
+      assertThat(row.naturalNeeds().get(EconomyTestWorld.CLOTH))
+          .as("布那一条 = 衣着口径的逐日差分（每人每 365 天 1 匹）")
+          .isEqualTo(EconomyVocabulary.dailyClothNeedMilli(row.population(), 1L))
+          .isPositive();
+      assertThat(row.naturalNeeds().get(GRAIN))
+          .as("粮那一条与旧口径逐值相同（R3 只加了维度，没动粮）")
+          .isEqualTo(EconomyVocabulary.dailyRationMilli(row.population(), 1L));
+    }
+  }
+
+  /**
+   * ★★ **田里同时出粮与纤维**（R3 的多商品产出）：一次收获后，农业行的**纤维**库存 = 规模 × 每亩纤维 × 1000 × 0.97 ——
+   * 与粮走同一条公式、同一组权重，只是商品不同。
+   *
+   * <pre>
+   * (0,0) 平原 3,100 亩 × {@link EconomySeeder#FIBER_OUTPUT_PER_MU}(6) × 1000 = 18,600,000 毫纤维（毛）
+   * 扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 18,042,000（落进农业四行的缸）
+   * </pre>
+   *
+   * <p>★ 判别力：产出键若还写死 {@code GRAIN} ⇒ 纤维一分不产、本条与下一条一起红（"只知道粮"的实现挡在这里）。
+   */
+  @Test
+  void theFieldsYieldFiberAsWellAsGrain() {
+    try (CoreSimos core = freshCore()) {
+      advance(core, 120);
+      EconomyData afterHarvest = economy(core);
+
+      long grossFiber =
+          PLAINS_HARVEST_GROSS
+              / EconomySeeder.GRAIN_OUTPUT_PER_MU
+              * EconomySeeder.FIBER_OUTPUT_PER_MU;
+      assertThat(hexGoods(afterHarvest, 0, 0, EconomyTestWorld.FIBER))
+          .as("(0,0) 农田的纤维净产 = 粮的同一公式（毛 18,600,000 × 0.97）")
+          .isEqualTo(grossFiber * 970L / 1000L);
+      assertThat(sumHarvestFiber(afterHarvest, FARM_0))
+          .as("流水所得里纤维那一维 = 毛产（与粮同一条入账口径）")
+          .isEqualTo(grossFiber);
+      assertThat(hexGrain(afterHarvest, 0, 0))
+          .as("★ 非平凡：粮与纤维**同时**落进同一批行（两条公式共用一次规模，商品各记各的）")
+          .isEqualTo(PLAINS_HARVEST_NET + PLAINS_LENDER_LEFTOVER);
+    }
+  }
+
+  /**
+   * ★★ **农村家庭纺织：同一批农村人、第二个生产过程**（spec §四 的压力测试；R3 的 T4）。
+   *
+   * <pre>
+   * 农村那一池的日劳动 498,800 拆成农业 900‰ = 448,920 + 纺织 100‰ = 49,880（同一批批次，两条配额）
+   * 纺织规模 = min(织机 50, 劳动 49,880 ÷ 1000 = 49, 纤维 1,500,000 ÷ 30,000 = 50) = **49**（劳动最紧）
+   * 产布 = 49 × {@link EconomySeeder#CLOTH_PER_LOOM_PER_CYCLE}(30) × 1000 = 1,470,000 毫布（毛）⇒ 净 1,425,900
+   * </pre>
+   *
+   * <p>★★ **判别力（逐条对着一种坏实现）**：
+   *
+   * <ul>
+   *   <li>"只看土地/只看粮"⇒ 纺织那一路的规模算不出来（它的产能是**织机**）⇒ 布恒 0 ⇒ 红；
+   *   <li>"规模不取最紧约束"（例如只看织机 ⇒ 50 台）⇒ 布 = 1,500,000 而非 1,425,900 ⇒ 红；
+   *   <li>"投入不扣"（纤维凭空用）⇒ 纤维的逐商品守恒式当场不平 ⇒ 下一条红；
+   *   <li>"农村批次只发一条配额"（农业拿满 498,800）⇒ 纺织的 cycleLaborMilli 为 0 ⇒ 规模 0 ⇒ 红。
+   * </ul>
+   */
+  @Test
+  void theRuralHouseholdWeavesClothOutOfItsOwnFiber() {
+    try (CoreSimos core = freshCore()) {
+      advance(core, 120);
+      EconomyData afterHarvest = economy(core);
+
+      assertThat(farm(afterHarvest, WEAVE_0).cycleLaborMilli()).as("关账后周期劳动清零（与农业同处）").isZero();
+      long grossCloth =
+          49L * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+      assertThat(hexGoods(afterHarvest, 0, 0, EconomyTestWorld.CLOTH))
+          .as("(0,0) 家庭纺织的布净产 = 规模 49 × 30 匹 × 1000 × 0.97")
+          .isEqualTo(grossCloth * 970L / 1000L)
+          .isPositive();
+      assertThat(sumHarvestCommodity(afterHarvest, WEAVE_0, EconomyTestWorld.CLOTH))
+          .as("★ 布是**本格产出**（不是从别处来的）：本格纺织行的流水所得 = 毛产")
+          .isEqualTo(grossCloth);
+      assertThat(farm(afterHarvest, FARM_0).cycleInputUsedMilli())
+          .as("农业的投入累加器里**没有**纤维（纤维是它的产出，不是投入）")
+          .doesNotContainKey(EconomyTestWorld.FIBER);
+    }
+  }
+
+  /**
+   * ★★ **城市作坊：非 LAND 生产成立 + 城市能产出自己的产品**（spec §六 给 T5 定的两个目的）。
+   *
+   * <pre>
+   * (2,0) 300 城市人 ⇒ 作坊 6 座（{@link EconomySeeder#URBAN_CAPITA_PER_WORKSHOP} = 50）
+   * 规模 = min(作坊 6, 劳动 149,640 ÷ 1000 = 149, 纤维 360,000 ÷ 60,000 = 6, 铁 60,000 ÷ 10,000 = 6) = **6**
+   *   ⇒ **产能（作坊）是最紧的那一路** —— 那一路上没有一寸土地
+   * 产布 = 6 × 60 × 1000 = 360,000（毛）⇒ 净 349,200；产工具 = 6 × 5 × 1000 = 30,000（毛）⇒ 净 29,100
+   * </pre>
+   *
+   * <p>★ 判别力：把规模写成"按土地算" ⇒ 该格土地为 0（土地全归农业）⇒ 城市永远产不出东西（v1 的病态）⇒ 红。
+   */
+  @Test
+  void theCityWorkshopProducesClothAndToolsWithoutAnyLand() {
+    try (CoreSimos core = freshCore()) {
+      EconomyData before = economy(core);
+      advance(core, 120);
+      EconomyData afterHarvest = economy(core);
+
+      assertThat(rowsOf(afterHarvest, CRAFT_2))
+          .as("作坊行**没有土地**（土地全归农业）")
+          .allSatisfy(row -> assertThat(row.meansOfProduction()).doesNotContainKey(AssetKind.LAND));
+      long grossCloth =
+          6L
+              * EconomySeeder.CLOTH_PER_WORKSHOP_PER_CYCLE
+              * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+      long grossTool =
+          6L
+              * EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE
+              * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+      assertThat(hexGoods(afterHarvest, 2, 0, EconomyTestWorld.CLOTH))
+          .as("(2,0) 作坊的布净产 = 6 座 × 60 匹 × 1000 × 0.97")
+          .isEqualTo(grossCloth * 970L / 1000L);
+      assertThat(hexGoods(afterHarvest, 2, 0, EconomyTestWorld.TOOL))
+          .as("(2,0) 作坊的工具净产 = 6 座 × 5 件 × 1000 × 0.97（第二件城市自己的产品）")
+          .isEqualTo(grossTool * 970L / 1000L);
+      assertThat(hexGoods(before, 2, 0, EconomyTestWorld.CLOTH))
+          .as("★ 非平凡：创世时一件布都没有（上面那个数确实是产出来的）")
+          .isZero();
+    }
+  }
+
+  /**
+   * ★★ **逐商品守恒**（§6.1 在 R3 之后的形式）：{@code Δ库存_j == Σ消费_j − Σ所得_j}，**五种商品各成立一次**。
+   *
+   * <p>★★ 这是"多商品不是装饰"的硬判据：只要结算把某一种商品的产出记进流水、却把它的投入漏在 {@code consumed} 外 （或反过来），那一种商品的等式当场不成立 —— 而
+   * v1 的守恒式**只看得见粮**，另外四种怎么错都不会红。
+   *
+   * <p>★ 窗口 = 创世 → 第 120 天（一个整周期，含两个产业的收获与作坊/织机的现扣投入）。
+   */
+  @Test
+  void everyCommodityIsConservedAcrossAFullCycle() {
+    try (CoreSimos core = freshCore()) {
+      EconomyData before = economy(core);
+      advance(core, 120);
+      EconomyData after = economy(core);
+
+      for (CommodityId commodity :
+          List.of(
+              GRAIN,
+              EconomyTestWorld.FIBER,
+              EconomyTestWorld.CLOTH,
+              EconomyTestWorld.TOOL,
+              EconomyTestWorld.IRON)) {
+        assertGoodsConserved(before, after, commodity, 1L, "第 1 个周期");
+      }
+      assertThat(flowConsumedOf(after, EconomyTestWorld.FIBER))
+          .as("★ 非平凡：这一周期里纤维**真的被消耗了**（织机与作坊的原料），否则上面的等式是恒等式")
+          .isPositive();
+      assertThat(flowIncomeOf(after, EconomyTestWorld.FIBER)).isPositive();
     }
   }
 
@@ -712,13 +902,35 @@ class EconomySettlementEndToEndTest {
         .sum();
   }
 
-  /** 一整个产业的当日所得合计（毛产出份额）。 */
+  /**
+   * 一整个产业的当日**粮**所得合计（毛产出份额）。
+   *
+   * <p>★ R3：{@code income} 是**逐商品**的表（田里同时出粮与纤维）⇒ 必须指名粮那一维；把两维相加会得到"粮 + 纤维"的和。
+   */
   private static long sumHarvestIncome(EconomyData data, IndustryId industry) {
     long sum = 0L;
     for (ClassKey key : classKeysOf(data, industry)) {
       FlowRow flow = data.flows().get(key);
       if (flow != null) {
-        sum += flow.income();
+        sum += flow.income().getOrDefault(GRAIN, 0L);
+      }
+    }
+    return sum;
+  }
+
+  /** 一整个产业的当日**纤维**所得合计（R3 的多商品产出：田里同时出粮与纤维）。 */
+  private static long sumHarvestFiber(EconomyData data, IndustryId industry) {
+    return sumHarvestCommodity(data, industry, EconomyTestWorld.FIBER);
+  }
+
+  /** 一整个产业的当日**某商品**所得合计（R3：产出逐商品，故读数也必须逐商品）。 */
+  private static long sumHarvestCommodity(
+      EconomyData data, IndustryId industry, CommodityId commodity) {
+    long sum = 0L;
+    for (ClassKey key : classKeysOf(data, industry)) {
+      FlowRow flow = data.flows().get(key);
+      if (flow != null) {
+        sum += flow.income().getOrDefault(commodity, 0L);
       }
     }
     return sum;
@@ -781,8 +993,67 @@ class EconomySettlementEndToEndTest {
     return data.flows().values().stream().mapToLong(FlowRow::deaths).sum();
   }
 
-  /** Σ 各行的流水所得。 */
+  /** Σ 各行的流水**粮**所得（★ R3：income 逐商品 ⇒ 守恒式也逐商品，本文件量的是粮那一维）。 */
   private static long flowIncome(EconomyData data) {
-    return data.flows().values().stream().mapToLong(FlowRow::income).sum();
+    return data.flows().values().stream()
+        .mapToLong(flow -> flow.income().getOrDefault(GRAIN, 0L))
+        .sum();
+  }
+
+  /** Σ 各行的流水**某商品**所得。 */
+  private static long flowIncomeOf(EconomyData data, CommodityId commodity) {
+    return data.flows().values().stream()
+        .mapToLong(flow -> flow.income().getOrDefault(commodity, 0L))
+        .sum();
+  }
+
+  /** Σ 各行的流水**某商品**消费。 */
+  private static long flowConsumedOf(EconomyData data, CommodityId commodity) {
+    return data.flows().values().stream()
+        .mapToLong(flow -> flow.consumed().getOrDefault(commodity, 0L))
+        .sum();
+  }
+
+  /**
+   * 某商品的**逐商品守恒**（§6.1 在 R3 之后的形式）：{@code Σ(推进前库存) − Σ(推进后库存) == Σ流水消费 − Σ流水所得} —— **每一种商品各成立一次**。
+   *
+   * <p>★★ 判别力：只要结算把某一种商品的产出记进了 {@code income} 而把它的投入漏在 {@code consumed} 外（或反过来）， 那条商品的等式当场不成立。★
+   * 只在**这个窗口内除日耗/收获外没有别的发生额**的商品上成立（本文件的窗口正是如此）。
+   *
+   * @param eatenOnThatDay 该商品在本次推进内**实际吃掉/消耗掉**的量（毫单位）
+   */
+  private static void assertGoodsConserved(
+      EconomyData before,
+      EconomyData after,
+      CommodityId commodity,
+      long eatenOnThatDay,
+      String what) {
+    long beforeStock = goodsTotal(before, commodity);
+    long afterStock = goodsTotal(after, commodity);
+    long consumed = flowConsumedOf(after, commodity) - flowConsumedOf(before, commodity);
+    long income = flowIncomeOf(after, commodity) - flowIncomeOf(before, commodity);
+    assertThat(beforeStock - afterStock)
+        .as("%s：%s 的库存减少 == 本期流水消费 − 本期流水所得", what, commodity.value())
+        .isEqualTo(consumed - income);
+    assertThat(eatenOnThatDay).as("%s：本次推进内该商品的显式消耗（毫单位）", what).isPositive();
+  }
+
+  /** Σ 各行的**某商品**库存。 */
+  private static long goodsTotal(EconomyData data, CommodityId commodity) {
+    return data.classes().values().stream()
+        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+        .sum();
+  }
+
+  /** 某格 **Σ 行某商品库存**（该格全部产业的行都算进来）。 */
+  private static long hexGoods(EconomyData data, int q, int r, CommodityId commodity) {
+    return rowsAt(data, q, r).stream()
+        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+        .sum();
+  }
+
+  /** 某产业的全部阶层行（R3：非土地产业的判据要看"这一行有没有土地"）。 */
+  private static List<ClassRow> rowsOf(EconomyData data, IndustryId industry) {
+    return classKeysOf(data, industry).stream().map(key -> data.classes().get(key)).toList();
   }
 }

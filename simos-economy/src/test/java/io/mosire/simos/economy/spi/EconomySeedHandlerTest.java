@@ -2,7 +2,6 @@ package io.mosire.simos.economy.spi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.entry;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -49,11 +48,20 @@ class EconomySeedHandlerTest {
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final IndustryId FARM2 = new IndustryId("farm@1_0");
 
+  /** R3 的商品词（与载荷里的字面量同字面量；用途见 {@code parsesCycleInputWithCommodityDimension…}）。 */
+  private static final CommodityId GRAIN = new CommodityId("grain");
+
+  private static final CommodityId FIBER_COMMODITY = new CommodityId("fiber");
+  private static final CommodityId WOOD_COMMODITY = new CommodityId("wood");
+
   /** 一段最小合法载荷：一格、一个农业产业（封建租佃）、两个槽位两条阶层行。 */
   private static final String PAYLOAD =
       "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":0,\"r\":0,"
           + "\"industries\":[{\"id\":\"farm@0_0\",\"name\":\"农业\",\"regime\":\"feudal\","
-          + "\"cycleDays\":120,\"progressDays\":0,\"dailyInputPerUnit\":{},\"dailyLaborPerUnit\":0,"
+          + "\"cycleDays\":120,\"progressDays\":0,"
+          // ★ R3（V7）：配方的产能锚与劳动那一路（缺 capacityPerUnit ⇒ 构造期拒 ⇒ 整条命令被 Rejected）
+          + "\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
+          + "\"dailyInputPerUnit\":{},\"dailyLaborPerUnit\":0,"
           + "\"outputPerUnit\":{\"grain\":7},"
           + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,\"laborWeightPerMille\":300},"
           + "\"slots\":[{\"id\":\"peasant\",\"name\":\"贫农\",\"laborParticipationPerMille\":950},"
@@ -376,22 +384,40 @@ class EconomySeedHandlerTest {
     assertThat(industry.cycleSeedUsedMilli()).as("旧载荷没提种子累加器 ⇒ 0").isZero();
   }
 
-  /** ★★ 两个新字段**逐值**过载荷：六种键都收、累加器读到。 */
+  /**
+   * ★★ **R3 换型后的两个字段逐值过载荷**：投入表的值侧带**商品维度**（`{"LAND":{"grain":1200,"wood":3}}`）， 累加器是**按商品**的表。
+   *
+   * <p>判别力：把值侧退回标量（`{"LAND":1200}`）⇒ 载荷解析当场拒（"必须是商品表"）⇒ 本用例红。
+   */
   @Test
-  void parsesCycleInputForAllKindsAndTheSeedAccumulator() {
+  void parsesCycleInputWithCommodityDimensionAndTheInputAccumulator() {
     String payload =
-        PAYLOAD.replace(
-            "\"dailyInputPerUnit\":{}",
-            "\"dailyInputPerUnit\":{},\"cycleInputPerUnit\":{\"LAND\":1200,\"CATTLE\":1},"
-                + "\"cycleSeedUsedMilli\":5000");
+        PAYLOAD
+            .replace(
+                "\"capacityPerUnit\":{\"LAND\":1000}",
+                "\"capacityPerUnit\":{\"LAND\":1000,\"CATTLE\":1}")
+            .replace(
+                "\"dailyInputPerUnit\":{}",
+                "\"dailyInputPerUnit\":{},"
+                    + "\"cycleInputPerUnit\":{\"LAND\":{\"grain\":1200,\"wood\":3},\"CATTLE\":{\"grain\":1}},"
+                    + "\"cycleInputUsedMilli\":{\"grain\":5000,\"fiber\":7}");
     assertThat(payload).as("替换必须真的发生（否则本用例测的是缺键那条路）").isNotEqualTo(PAYLOAD);
 
     Industry industry = apply(payload, EconomyData.empty(), T7).industries().get(FARM);
 
     assertThat(industry.cycleInputPerUnit())
-        .as("每亩需种 1200 毫粮/亩，另带一种 v1 不读的键")
-        .containsExactly(entry(AssetKind.LAND, 1200L), entry(AssetKind.CATTLE, 1L));
-    assertThat(industry.cycleSeedUsedMilli()).isEqualTo(5_000L);
+        .as("每种生产资料一路，值为**商品表**（R3 换型的那一维）")
+        .containsOnlyKeys(AssetKind.LAND, AssetKind.CATTLE);
+    assertThat(industry.cycleInputPerUnit().get(AssetKind.LAND))
+        .as("同一种生产资料下可以挂多个商品")
+        .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 1200L, WOOD_COMMODITY, 3L));
+    assertThat(industry.inputPerUnit())
+        .as("★ 每 1 单位规模的投入 = 各路的合计（派生视图）")
+        .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 1201L, WOOD_COMMODITY, 3L));
+    assertThat(industry.cycleInputUsedMilli())
+        .as("★ 本周期实际扣到的投入（按商品）")
+        .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 5_000L, FIBER_COMMODITY, 7L));
+    assertThat(industry.cycleSeedUsedMilli()).as("种子只是它在粮上的投影").isEqualTo(5_000L);
   }
 
   /** ★ 逐值校验：负的一次性投入 ⇒ 拒（`Industry` 的构造期守卫，经 handler 的 catch 折成 Rejected）。 */
@@ -400,7 +426,7 @@ class EconomySeedHandlerTest {
     String payload =
         PAYLOAD.replace(
             "\"dailyInputPerUnit\":{}",
-            "\"dailyInputPerUnit\":{},\"cycleInputPerUnit\":{\"LAND\":-1}");
+            "\"dailyInputPerUnit\":{},\"cycleInputPerUnit\":{\"LAND\":{\"grain\":-1}}");
 
     HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
 
