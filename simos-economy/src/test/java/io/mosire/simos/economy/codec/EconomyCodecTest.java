@@ -370,10 +370,13 @@ class EconomyCodecTest {
     return new EconomyMeta("m1", 7L, OptionalLong.of(3L), "rules-2026-10", Optional.empty());
   }
 
-  /** 一个合规矩的产业（两槽位占比合计 1000‰），{@code Split(700,300)}。 */
+  /**
+   * 一个合规矩的产业：两个槽位各持**劳动投入率上限**（R1.1 起不再是"人口占比"，故**不必合计 1000‰**）， {@code Split(700,300)}。上限须 ≥ 行里的
+   * {@code participationPerMille}（此处 800）= v2 spec §八.1 的不变量。
+   */
   private static Industry industry(IndustryId id, long progress) {
     List<ClassSlot> slots =
-        List.of(new ClassSlot(PEASANT, "贫农", 700), new ClassSlot(LANDLORD, "地主", 300));
+        List.of(new ClassSlot(PEASANT, "贫农", 950), new ClassSlot(LANDLORD, "地主", 900));
     return new Industry(
         id,
         "农业",

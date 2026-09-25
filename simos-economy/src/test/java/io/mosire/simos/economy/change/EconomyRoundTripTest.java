@@ -133,10 +133,13 @@ class EconomyRoundTripTest {
     return new EconomyMeta("m1", 0L, OptionalLong.empty(), "rules-r1", Optional.empty());
   }
 
-  /** 一个合规矩的产业：两个槽位占比合计 1000‰（§6.2）。 */
+  /**
+   * 一个合规矩的产业：两个槽位各持**劳动投入率上限**（R1.1 起不再是"人口占比"，故**不必合计 1000‰**）。 上限须 ≥ 行里的 {@code
+   * participationPerMille}（此处 800）= v2 spec §八.1 的不变量。
+   */
   static Industry industry(IndustryId id, long progress) {
     List<ClassSlot> slots =
-        List.of(new ClassSlot(PEASANT, "贫农", 700), new ClassSlot(LANDLORD, "地主", 300));
+        List.of(new ClassSlot(PEASANT, "贫农", 950), new ClassSlot(LANDLORD, "地主", 900));
     return new Industry(
         id,
         "农业",

@@ -85,8 +85,23 @@ public record EconomyData(
                 + "，行内 key="
                 + entry.getValue().key());
       }
-      requireSlotExists(industriesCopy, entry.getKey(), "classes");
-      classesCopy.put(entry.getKey(), entry.getValue());
+      ClassSlot slot = requireSlotExists(industriesCopy, entry.getKey(), "classes");
+      ClassRow row = entry.getValue();
+      // ★ v2 spec §八.1：`0 ≤ participationPerMille ≤ slot.laborParticipationPerMille ≤ 1000` 里，
+      //   中间那条**只有这里能判**（ClassRow 只守了 [0,1000] 两头，槽位上限要跨对象）。
+      //   不守的后果：laborMilli × participationPerMille ÷ 1000 被悄悄放大 ⇒ 劳动瓶颈、产出、
+      //   按劳动权重的分配全变大，而账面看不出来（不凭空造粮，但凭空造劳动）。
+      if (row.participationPerMille() > slot.laborParticipationPerMille()) {
+        throw new IllegalArgumentException(
+            "classes 的 participationPerMille 不得超过其槽位上限（v2 spec §八.1）："
+                + entry.getKey()
+                + " 行="
+                + row.participationPerMille()
+                + "‰ > 槽位="
+                + slot.laborParticipationPerMille()
+                + "‰");
+      }
+      classesCopy.put(entry.getKey(), row);
     }
     classes = Collections.unmodifiableMap(classesCopy); // ★ 冻在赋值处
     Map<DebtId, Debt> debtsCopy = new LinkedHashMap<>();
@@ -116,7 +131,7 @@ public record EconomyData(
    * 引用完整性（§6.2 的槽位侧，2026-09-25 修正后新增）：阶层行/流水行的 {@code (industry, slot)} 必须真落在该产业的 {@code slots}
    * 里——悬空行说明状态坏了（或有人在两个切片之间手改了键），宁可构造期当场炸。
    */
-  private static void requireSlotExists(
+  private static ClassSlot requireSlotExists(
       Map<IndustryId, Industry> industries, ClassKey key, String what) {
     Industry industry = industries.get(key.industry());
     if (industry == null) {
@@ -125,7 +140,7 @@ public record EconomyData(
     }
     for (ClassSlot slot : industry.slots()) {
       if (slot.id().equals(key.slot())) {
-        return;
+        return slot;
       }
     }
     throw new IllegalArgumentException(

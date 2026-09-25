@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.economy.EconomyData;
@@ -196,6 +197,48 @@ class EconomyInvariantsTest {
     assertThatThrownBy(() -> new AllocationRule.WageFirst(1L, Map.of(GRAIN, -1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ownerResidual");
+  }
+
+  // ── 参与率上限（v2 spec §八.1）────────────────────────────────────────────────────
+
+  /**
+   * ★ 参与率 1000‰ 的行 + 上限 950‰ 的槽位 ⇒ 必须构造期拒。
+   *
+   * <p>病灶：v1 只守了 `[0, 1000]` 两头，**中间那条 `≤ 槽位上限` 无人守** ⇒ 凭空造劳动。
+   */
+  @Test
+  void participationPerMilleMustNotExceedItsSlotCeiling() {
+    assertThatThrownBy(() -> economyWithParticipation(1000))
+        .as("参与率超槽位上限必须在构造期拒（v2 spec §八.1）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("participationPerMille")
+        .hasMessageContaining("槽位");
+  }
+
+  /** ★ 边界值：恰好等于上限 ⇒ 必须放行（把 `≤` 写成 `<` 同样是 bug）。 */
+  @Test
+  void participationPerMilleAtTheSlotCeilingIsAccepted() {
+    assertThat(economyWithParticipation(950)).isNotNull();
+  }
+
+  /** 一个产业的槽位上限 950‰；行里放 `participationPerMille` ⇒ 造一份最小 {@link EconomyData}。 */
+  private static EconomyData economyWithParticipation(int participationPerMille) {
+    Industry industry = industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)));
+    // ★ 行内 debts 置空：引用完整性守卫（v2 spec §八.2）上线后，悬空的 D1 会让这个夹具本身非法。
+    ClassRow row =
+        new ClassRow(
+            PEASANT_KEY,
+            120L,
+            60000L,
+            participationPerMille,
+            Map.of(AssetKind.LAND, 2700L),
+            Map.of(GRAIN, 300L),
+            50L,
+            List.of(),
+            Map.of(GRAIN, 40L),
+            Map.of(GRAIN, 30L));
+    return new EconomyData(
+        Optional.of(meta()), Map.of(FARM, industry), Map.of(PEASANT_KEY, row), Map.of(), Map.of());
   }
 
   // ── 夹具 ──
