@@ -545,14 +545,21 @@ class WorldgenInitializeToolTest {
     }
   }
 
-  // ── 4b′. ★ R3a：真实三国各推进 10 天 ⇒ 粮库存减少 = Σ(人口 × 83 × 10) ────────────────────
+  // ── 4b′. ★ R3a + V3：真实三国各推进 10 天 ⇒ 粮库存减少 = Σ(人口 × 83 × 10) + 播种日扣的种子 ──────
 
   /**
-   * ★★ **R3a 的真实世界验收**：三国各自（独立库，因一次性播种）一键初始化 ⇒ 逐日推进 10 天 ⇒ 该国粮库存合计减少**恰为** {@code 人口 × 83 毫粮 ×
-   * 10}。初始库存按阶层天数（最薄的贫农也有 30 天）⇒ 10 天内无人见底（也无人借粮）⇒ 每日实吃 = 日耗。
+   * ★★ **R3a + V3 的真实世界验收**：三国各自（独立库，因一次性播种）一键初始化 ⇒ 逐日推进 10 天 ⇒ 该国粮库存合计减少**恰为** {@code 口粮 +
+   * 播种日扣的种子}。
    *
-   * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 期望减少 11,830,000 × 830 =
-   * 9,818,900,000。
+   * <p>★★ **V3（Task 7）起，第 1 天是播种日**：{@code EconomySeeder} 给真档配了 {@code cycleInputPerUnit[LAND] =
+   * 8,000 毫粮/亩} ⇒ 每格在第 1 天先扣种子（**在当天吃饭之前**，v2 spec §3.2）。故这条的字面量必须带上种子那一笔——
+   * 它同时是"真档真的读到了第三路瓶颈"的证据（判别力：把播种器改回空 map ⇒ 本条的差值少掉种子那一大笔 ⇒ 红）。
+   *
+   * <p>★ 种子量**不从常量推**（满种 = 每格 {@code MU_PER_HEX × SEED_MILLI_PER_MU} 只在**付得起**的格上成立；真档里人口薄的格储备也薄 ⇒
+   * 扣不满，第三路瓶颈正是在那些格上真的起作用）⇒ 用一条**独立可算**的规则从推进前的账面算出：逐行 {@code min(该行库存, 该行亩数 × 每亩需种)}。
+   *
+   * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 口粮项 = 11,830,000 × 830 =
+   * 9,818,900,000（逐国的口粮项在循环里各自断言）。
    */
   @Test
   void advancingTenDaysConsumesPopulationTimesEightyThreeAcrossThreeNations() throws IOException {
@@ -568,22 +575,48 @@ class WorldgenInitializeToolTest {
         long population = economy.classes().values().stream().mapToLong(ClassRow::population).sum();
         assertThat(population).as(id + " 经济人口 == 社会总人口").isEqualTo(nation.population());
         long grainBefore = grainTotal(economy);
+        long sown = expectedSownOnTheSowingDay(economy);
+        long landMu =
+            economy.classes().values().stream()
+                .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L)
+                .sum();
 
         advanceDays(core, 10);
 
         SimulationState after = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
         long grainAfter = grainTotal(economySlice(after));
+        assertThat(sown).as(id + "：真档真的扣了种（V3 的第三路瓶颈由此在 799 格里读得到）").isPositive();
+        assertThat(sown)
+            .as(id + "：扣到的种子 ≤ Σ地亩 × 每亩需种（第三路只**缩**面积，永不放大）")
+            .isLessThanOrEqualTo(landMu * EconomySeeder.SEED_MILLI_PER_MU);
         assertThat(grainBefore - grainAfter)
-            .as("%s：推进 10 天 ⇒ 粮库存减少 = %d × 83 × 10", id, population)
-            .isEqualTo(population * 83L * 10L);
+            .as("%s：推进 10 天 ⇒ 粮库存减少 = 人口 × 83 × 10（口粮）+ 播种日扣的种子 %d", id, sown)
+            .isEqualTo(population * 83L * 10L + sown);
         economyHexTotal += economyHexCount(economySlice(after));
       }
     }
     assertThat(economyHexTotal).as("三国 799 格都真的经结算推进过").isEqualTo(799L);
-    // 三国合计：11,830,000 × 830 = 9,818,900,000（逐国的减少量在循环里各自断言）。
+    // 三国合计：11,830,000 × 830 = 9,818,900,000（逐国的口粮项在循环里各自断言）。
     assertThat(NATIONS.stream().mapToLong(NationCase::population).sum() * 83L * 10L)
         .as("Σ(三国人口 × 83 × 10)")
         .isEqualTo(9_818_900_000L);
+  }
+
+  /**
+   * ★ **播种日**（周期第一天）逐行扣的种子（毫粮）：v2 spec §3.2/§3.3 的规则从**推进前**的账面独立算出 —— 逐行 {@code min(该行库存, 该行亩数 ×
+   * 每亩需种)}（亩 = 千分亩 {@code / 1000}，每亩需种 = {@link EconomySeeder#SEED_MILLI_PER_MU}
+   * 毫粮/亩）。无地行（真档里每座城的手工业行）恒贡献 0。
+   *
+   * <p>★ 只对"周期尚未关账"的账成立：{@code cycleSeedUsedMilli} 在周期末清零，故推进 ≥ 1 个周期后这个式子要另算。
+   */
+  private static long expectedSownOnTheSowingDay(EconomyData economy) {
+    long sown = 0L;
+    for (ClassRow row : economy.classes().values()) {
+      long landMu = row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L;
+      sown +=
+          Math.min(row.goods().getOrDefault(GRAIN, 0L), landMu * EconomySeeder.SEED_MILLI_PER_MU);
+    }
+    return sown;
   }
 
   /** 真世界 + 真引擎 + **economy 参与者**（推进要用；必须在 worldgen 提交前注册，封存后 register 会抛）。 */

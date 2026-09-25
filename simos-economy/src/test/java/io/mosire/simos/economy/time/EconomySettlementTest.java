@@ -81,15 +81,16 @@ class EconomySettlementTest {
 
     EconomyData next = EconomySettlement.settle(base, 0L, 3L);
 
-    // 贫农：83000 − 3×8300 = 58100，净得 floor(5950×790/1000) = 4700 ⇒ 62800；
-    // 地主：8300 − 3×830 = 5810，净得 floor(5950×210/1000) = 1249，**残差 1 按槽位 id 序归 landlord** ⇒ 1250 ⇒
-    // 7060。
-    // ★ 残差不是"丢"而是"归地主"：Σ净得 = 4700 + 1250 = 5950 = net（守恒）；本仓的残差序是**槽位 id 字典序**。
-    assertThat(grainOf(next, PEASANT_KEY)).as("3 天逐日口粮 + 第 3 天分配净得").isEqualTo(62_800L);
-    assertThat(grainOf(next, LANDLORD_KEY)).as("3 天逐日口粮 + 第 3 天分配净得（含残差 1）").isEqualTo(7_060L);
+    // 贫农：83000 − 3×8300 = 58100，净得 floor(6790×790/1000) = 5364 ⇒ 63464；
+    // 地主：8300 − 3×830 = 5810，净得 floor(6790×210/1000) = 1425，**残差 1 按槽位 id 序归 landlord** ⇒ 1426 ⇒
+    // 7236。
+    // ★ 剩余产出 6,790 = 毛产 7,000 − 生产损耗（饲料 0‰ + 折旧 30‰ = 210）。
+    // ★ 残差不是"丢"而是"归地主"：Σ净得 = 5364 + 1426 = 6790 = net（守恒）；本仓的残差序是**槽位 id 字典序**。
+    assertThat(grainOf(next, PEASANT_KEY)).as("3 天逐日口粮 + 第 3 天分配净得").isEqualTo(63_464L);
+    assertThat(grainOf(next, LANDLORD_KEY)).as("3 天逐日口粮 + 第 3 天分配净得（含残差 1）").isEqualTo(7_236L);
     assertThat(grainOf(next, PEASANT_KEY) + grainOf(next, LANDLORD_KEY))
         .as("Σ净得 + 两端日耗 = 基期库存 + net（账要平）")
-        .isEqualTo(91_300L - 3L * (8_300L + 830L) + 5_950L);
+        .isEqualTo(91_300L - 3L * (8_300L + 830L) + 6_790L);
     assertThat(next.industries().get(FARM).progressDays())
         .as("第 3 天是周期末 ⇒ progressDays 归零")
         .isZero();
@@ -112,14 +113,14 @@ class EconomySettlementTest {
    * <p>字面量（夹具：贫农 100 人 / 地主 10 人，日耗 83 毫粮/人，{@code cycleDays = 3} ⇒ 第 3 天收获）：
    *
    * <ul>
-   *   <li>贫农 {@code consumed.grain} = 3 × 8300 + 829（分到的生产损耗） = 25,729；
-   *   <li>地主 {@code consumed.grain} = 3 × 830 + 221 = 2,711；
-   *   <li>贫农 {@code income} = 4,700 + 829 = 5,529、地主 = 1,250 + 221 = 1,471（毛产份额）；
-   *   <li>Σ 行 {@code consumed} − Σ 行 {@code income} = 28,440 − 7,000 = 21,440 = 基期库存 91,300 − 终态
-   *       69,860（守恒）。
+   *   <li>贫农 {@code consumed.grain} = 3 × 8300 + 165（分到的生产损耗） = 25,065；
+   *   <li>地主 {@code consumed.grain} = 3 × 830 + 45 = 2,535；
+   *   <li>贫农 {@code income} = 5,364 + 165 = 5,529、地主 = 1,426 + 45 = 1,471（毛产份额，**与损耗率无关**）；
+   *   <li>Σ 行 {@code consumed} − Σ 行 {@code income} = 27,600 − 7,000 = 20,600 = 基期库存 91,300 − 终态
+   *       70,700（守恒）。
    * </ul>
    *
-   * <p>★ 判别力：把日循环里的累加改回"每日重建"（只留第 3 天），{@code consumed} 会掉到 8,300 + 829 = 9,129 ⇒ 本条红。
+   * <p>★ 判别力：把日循环里的累加改回"每日重建"（只留第 3 天），{@code consumed} 会掉到 8,300 + 165 = 8,465 ⇒ 本条红。
    */
   @Test
   void threeDayFlowAccumulatesDailyConsumption() {
@@ -127,19 +128,19 @@ class EconomySettlementTest {
 
     FlowRow peasant = next.flows().get(PEASANT_KEY);
     FlowRow landlord = next.flows().get(LANDLORD_KEY);
-    assertThat(peasant.consumed().get(GRAIN)).as("3 天日耗之和 + 贫农分到的生产损耗").isEqualTo(25_729L);
-    assertThat(landlord.consumed().get(GRAIN)).as("3 天日耗之和 + 地主分到的生产损耗").isEqualTo(2_711L);
+    assertThat(peasant.consumed().get(GRAIN)).as("3 天日耗之和 + 贫农分到的生产损耗").isEqualTo(25_065L);
+    assertThat(landlord.consumed().get(GRAIN)).as("3 天日耗之和 + 地主分到的生产损耗").isEqualTo(2_535L);
     assertThat(peasant.income()).as("贫农分到的收获毛产份额").isEqualTo(5_529L);
     assertThat(landlord.income()).as("地主分到的收获毛产份额").isEqualTo(1_471L);
-    assertThat(peasant.netSurplus()).as("5,529 − 25,729").isEqualTo(-20_200L);
-    assertThat(landlord.netSurplus()).as("1,471 − 2,711").isEqualTo(-1_240L);
+    assertThat(peasant.netSurplus()).as("5,529 − 25,065").isEqualTo(-19_536L);
+    assertThat(landlord.netSurplus()).as("1,471 − 2,535").isEqualTo(-1_064L);
     assertThat(peasant.newBorrowing()).as("库存够吃 ⇒ 无借入").isZero();
 
     long sumConsumed = peasant.consumed().get(GRAIN) + landlord.consumed().get(GRAIN);
     long sumIncome = peasant.income() + landlord.income();
     assertThat(sumConsumed - sumIncome)
         .as("Σ 行 consumed − Σ 行 income == 基期库存 − 终态库存（守恒口径一致）")
-        .isEqualTo((83_000L + 8_300L) - (62_800L + 7_060L));
+        .isEqualTo((83_000L + 8_300L) - (63_464L + 7_236L));
   }
 
   /**
@@ -209,6 +210,34 @@ class EconomySettlementTest {
     assertThat(flow.deaths()).as("累计死亡 = 13（第 1 周期）+ 17（第 2 周期）").isEqualTo(30L);
     assertThat(row.population()).as("87 → 70").isEqualTo(70L);
     assertThat(row.laborMilli()).as("50,460 × 70 / 87 = 40,600").isEqualTo(40_600L);
+  }
+
+  /**
+   * ★★ **生产损耗拆成两项：饲料 0‰ + 农具折旧 30‰**（v2 spec §3.4；用户 2026-09-25 裁定「现定」的定案数）。
+   *
+   * <p>★★ 钉住的是"**饲料为 0 是因为不做耕牛，不是漏掉了**"（用户 2026-09-25：「耕牛系统觉得复杂现阶段就别做」）： 谁把耕牛接进来（V7
+   * 参数目录），必须连同本条与端到端的收获字面量一起改。
+   *
+   * <p>★ 判别力：把 {@code DEPRECIATION_PER_MILLE} 改成 0、或把两项之和改回 v1 的 150‰ ⇒ 本条（最后那条真档账）以及 {@code
+   * EconomySeederTest} / 端到端的收获字面量一起红。
+   */
+  @Test
+  void productionLossSplitsIntoFeedAndDepreciation() {
+    assertThat(EconomySettlement.FEED_PER_MILLE).as("饲料为 0：v1 不做耕牛（不是漏掉）").isZero();
+    assertThat(EconomySettlement.DEPRECIATION_PER_MILLE).as("农具折旧 3%").isEqualTo(30);
+    assertThat(EconomySettlement.FEED_PER_MILLE + EconomySettlement.DEPRECIATION_PER_MILLE)
+        .as("收获时扣的生产损耗 = 两项之和（v1 的 150‰ 里已把**留种**拆出去，改在播种日现扣）")
+        .isEqualTo(30);
+    // ★ 端到端那笔账的同源算式：真档一格毛产 3,100 × 67 × 1000 = 207,700,000 ⇒ 损耗 6,231,000 ⇒ 净 201,469,000
+    //   （EconomySeeder 的"自给率 1198‰"与端到端的收获字面量都建立在这个数上）。
+    //   ★ 3,100 / 67 在这里**写死**：economy 模块不许依赖 app（{@code EconomySeeder} 的常量不在本模块可见）。
+    long grossMilli = 3_100L * 67L * 1_000L;
+    assertThat(
+            grossMilli
+                * (EconomySettlement.FEED_PER_MILLE + EconomySettlement.DEPRECIATION_PER_MILLE)
+                / 1000L)
+        .as("真档一格的生产损耗（毫粮）")
+        .isEqualTo(6_231_000L);
   }
 
   /**

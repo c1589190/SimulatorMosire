@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
  * ⇒ **土地**是 V2 的基线瓶颈（故种子一缩面积就看得见，不会被劳动瓶颈掩盖）
  * 满种的种子量 = 400 亩 × 100 毫粮/亩                     = 40,000 毫粮
  * 一日口粮     = 400 × {@link EconomySettlement#DAILY_GRAIN_MILLI_PER_PERSON}(83) = 33,200 毫粮
- * 满产地净产   = 400 × 67 粮/亩 × 1000 × (1 − 15%)        = 22,780,000 毫粮
+ * 满产地净产   = 400 × 67 粮/亩 × 1000 × (1 − 饲料0‰ − 折旧30‰)  = 25,996,000 毫粮
  * </pre>
  */
 class EconomySowingTest {
@@ -67,12 +67,21 @@ class EconomySowingTest {
   private static final long DAILY_NEED =
       POPULATION * EconomySettlement.DAILY_GRAIN_MILLI_PER_PERSON; // 33,200
   private static final long FULL_SEED = (LAND_MILLI_MU / 1000L) * SEED_PER_MU; // 40,000
+
+  /**
+   * 收获时的生产损耗合计（千分）：{@link EconomySettlement#FEED_PER_MILLE} + {@link
+   * EconomySettlement#DEPRECIATION_PER_MILLE} —— 与 {@code harvest} 的 {@code loss} **同式**（两项各自具名、V7
+   * 参数化后各自可调，本算式跟着走；不在这里把 30 抄死）。
+   */
+  private static final long PRODUCTION_LOSS_PER_MILLE =
+      EconomySettlement.FEED_PER_MILLE + EconomySettlement.DEPRECIATION_PER_MILLE;
+
   private static final long FULL_HARVEST_NET =
       (LAND_MILLI_MU / 1000L)
           * YIELD_PER_MU
           * EconomySettlement.MILLI_PER_GRAIN
-          * (1000L - EconomySettlement.PRODUCTION_CONSUMPTION_PER_MILLE)
-          / 1000L; // 22,780,000
+          * (1000L - PRODUCTION_LOSS_PER_MILLE)
+          / 1000L; // 25,996,000
 
   /** 一行的贫农（人口 400 / 投入率 1000‰ / 地 {@link #LAND_MILLI_MU} 千分亩 / 缸 {@code stock} 毫粮）。 */
   private static ClassRow peasantRow(long stock) {
@@ -185,7 +194,7 @@ class EconomySowingTest {
    *
    * <pre>
    * 第 1 天（progressDays == 0 ⇒ 播种日）：扣种 400 亩 × 100 = 40,000 ⇒ 66,400；再吃 33,200 ⇒ 33,200
-   * 第 2 天：不播种，只吃 33,200 ⇒ 0；周期末收获（土地是瓶颈 400 亩）⇒ 净 22,780,000 ⇒ 22,780,000
+   * 第 2 天：不播种，只吃 33,200 ⇒ 0；周期末收获（土地是瓶颈 400 亩）⇒ 净 25,996,000 ⇒ 25,996,000
    * </pre>
    */
   @Test
@@ -224,12 +233,12 @@ class EconomySowingTest {
     EconomyData day2 = EconomySettlement.settle(day1, 1L, 2L);
 
     assertThat(consumedOf(day2, PEASANT_KEY) - consumedOf(day1, PEASANT_KEY))
-        .as("第 2 天的消费只有口粮（外加 15% 生产损耗的份额）")
+        .as("第 2 天的消费只有口粮（外加生产损耗（饲料 + 折旧）那一份）")
         .isEqualTo(
             DAILY_NEED
                 + (FULL_HARVEST_NET
-                    * EconomySettlement.PRODUCTION_CONSUMPTION_PER_MILLE
-                    / (1000L - EconomySettlement.PRODUCTION_CONSUMPTION_PER_MILLE)));
+                    * PRODUCTION_LOSS_PER_MILLE
+                    / (1000L - PRODUCTION_LOSS_PER_MILLE)));
   }
 
   /**
@@ -349,7 +358,7 @@ class EconomySowingTest {
    * <pre>
    * 第 1 天：播 40,000 ⇒ 66,400；吃 33,200 ⇒ 33,200；progressed(1) &gt;= cycleDays(1) ⇒ 收获
    *     劳动可经营 = 232,000 × 7 / 1000 = 1,624 亩；土地 400 亩；种子可支撑 = 40,000 / 100 = 400 亩 ⇒ 取 400
-   *     ⇒ 净 22,780,000 ⇒ 库存 33,200 + 22,780,000 = 22,813,200；随后关账清零
+   *     ⇒ 净 25,996,000 ⇒ 库存 33,200 + 25,996,000 = 26,029,200；随后关账清零
    * </pre>
    */
   @Test
@@ -371,8 +380,8 @@ class EconomySowingTest {
    * 20,000 / 100 = 200 亩}（&lt; 土地的 400 亩、&lt; 劳动的 1,624 亩）⇒ **种子是瓶颈**。
    *
    * <pre>
-   * 毛产 = 200 × 67 × 1000 = 13,400,000；扣 15% ⇒ 净 11,390,000
-   * 对照（同夹具**不配种子**）：土地是瓶颈 ⇒ 400 亩 ⇒ 净 22,780,000（= {@link #FULL_HARVEST_NET}）
+   * 毛产 = 200 × 67 × 1000 = 13,400,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 12,998,000
+   * 对照（同夹具**不配种子**）：土地是瓶颈 ⇒ 400 亩 ⇒ 净 25,996,000（= {@link #FULL_HARVEST_NET}）
    * </pre>
    */
   @Test
@@ -382,7 +391,7 @@ class EconomySowingTest {
         seedCapMu
             * YIELD_PER_MU
             * EconomySettlement.MILLI_PER_GRAIN
-            * (1000L - EconomySettlement.PRODUCTION_CONSUMPTION_PER_MILLE)
+            * (1000L - PRODUCTION_LOSS_PER_MILLE)
             / 1000L;
 
     EconomyData withSeeds =
@@ -414,7 +423,7 @@ class EconomySowingTest {
 
     assertThat(next.industries().get(FARM).cycleSeedUsedMilli()).as("一颗都没扣到").isZero();
     assertThat(grainOf(next, PEASANT_KEY))
-        .as("seedCapMu = 0 ⇒ 0 亩 ⇒ 不产粮（V2 会按土地 400 亩满产 22,780,000）")
+        .as("seedCapMu = 0 ⇒ 0 亩 ⇒ 不产粮（V2 会按土地 400 亩满产 25,996,000）")
         .isZero();
     assertThat(unmetOf(next, PEASANT_KEY)).as("两天全缺口 = 2 × 33,200").isEqualTo(2L * DAILY_NEED);
   }
@@ -471,5 +480,111 @@ class EconomySowingTest {
             "每亩需种 1 毫粮 ⇒ 满种只需 400 毫粮；可支撑亩 = 400 ÷ 1 = 400 亩 = 土地 ⇒ 取小仍按土地"
                 + "（库存 = 期初 − 满种 400 毫粮 − 两天口粮 + 满产净额）")
         .isEqualTo(106_400L * 100L - 400L - 2L * DAILY_NEED + FULL_HARVEST_NET);
+  }
+
+  // ── ⑥ 验收链（spec §九 V3 判据 4）与阶级差异 ────────────────────────────────────────
+
+  /**
+   * ★★ **各扣各的：贫农缸空 ⇒ 它的地荒着；地主缸足 ⇒ 它的地照种**（定案：逐 {@code ClassRow} 从它自己的 {@code goods} 里扣，不从全格池子扣）。
+   *
+   * <p>夹具：贫农（400 人 / 200 亩 / **缸空**）+ 地主（0 人 / 800 亩 / 缸 5,000,000）。周期 2 天。
+   *
+   * <pre>
+   * 播种日：贫农扣 min(0, 200 × 100 = 20,000) = 0；地主扣 800 × 100 = 80,000 ⇒ 累加器 80,000
+   * 可支撑亩 = 80,000 / 100 = 800 亩（&lt; 土地 1,000 亩、&lt; 劳动 1,624 亩）⇒ **贫农那 200 亩荒着**
+   * 满产地净产（按 800 亩）= 800 × 67 × 1000 × (1 − 生产损耗) = 51,992,000
+   * 分配权重：贫农 = (700 × 200‰土地 + 300 × 1000‰劳动) / 1000 = 440‰；地主 = (700 × 800‰ + 300 × 0) / 1000 = 560‰
+   * 贫农得 51,992,000 × 440 / 1000 = 22,876,480；地主得 29,115,520（Σ = 净产，无残差）
+   * 贫农两天缺口由地主借出（同格借粮）：2 × 33,200 = 66,400 ⇒ 两条债务
+   * 贫农库存 = 0 − 0 − 0 + 22,876,480 = 22,876,480
+   * 地主库存 = 5,000,000 − 80,000 − 33,200 − 33,200 + 29,115,520 = 33,969,120
+   * </pre>
+   */
+  @Test
+  void eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow() {
+    LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>();
+    rows.put(PEASANT_KEY, peasantRow(0L, 200_000L)); // 200 亩、缸空
+    rows.put(LANDLORD_KEY, landlordRow(5_000_000L, 800_000L)); // 800 亩、缸足
+    LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
+    industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, Map.of(AssetKind.LAND, SEED_PER_MU)));
+    EconomyData base = data(rows, industries);
+
+    EconomyData next = EconomySettlement.settle(base, 0L, 2L);
+
+    long sownMu = 800L;
+    long net =
+        sownMu
+            * YIELD_PER_MU
+            * EconomySettlement.MILLI_PER_GRAIN
+            * (1000L - PRODUCTION_LOSS_PER_MILLE)
+            / 1000L;
+    // ★ 修订 1（控制器 2026-09-25 追加）：`settle(base, 0, 2)` 跑满**一整个 2 天周期** ⇒ 关账时该累加器
+    //   **已清零**（任务 3 的 `sowingDayDrawsTheSeedBeforeTheDayIsEaten` 自己就钉着"关账清零"）。
+    //   故这里另跑一次**单日**结算读第 1 天（播种日）读数 —— **期望值 80,000 一字未改**，不许放宽成 0。
+    assertThat(EconomySettlement.settle(base, 0L, 1L).industries().get(FARM).cycleSeedUsedMilli())
+        .as("只有地主扣到了种（80,000 = 800 亩 × 100；播种日当天读数）")
+        .isEqualTo(sownMu * SEED_PER_MU);
+    assertThat(next.industries().get(FARM).cycleSeedUsedMilli()).as("关账后归零").isZero();
+    assertThat(grainOf(next, PEASANT_KEY))
+        .as("贫农：0 − 0 + 净产的 440‰（它的地荒着，但分配仍按土地权重——见\"已知约束\"）")
+        .isEqualTo(net * 440L / 1000L);
+    assertThat(grainOf(next, LANDLORD_KEY))
+        .as("地主：5,000,000 − 80,000 − 2 × 33,200（借给贫农）+ 净产的 560‰")
+        .isEqualTo(5_000_000L - sownMu * SEED_PER_MU - 2L * DAILY_NEED + net * 560L / 1000L);
+    assertThat(next.classes().get(PEASANT_KEY).debts()).as("贫农两天各借一条").hasSize(2);
+    assertThat(next.debts().values())
+        .allSatisfy(debt -> assertThat(debt.principal()).as("每天借的量 = 当日缺口").isEqualTo(DAILY_NEED));
+  }
+
+  /**
+   * ★★ **验收判据 4 逐值**：缸一直是空的 ⇒ 每个周期的播种日都扣不到 ⇒ **每个周期都颗粒无收** ⇒ 人越死越少 （"冬春吃空缸 ⇒ 播种日扣不到 ⇒
+   * 减产"的多周期形态；判别力：删掉第三路瓶颈 ⇒ 第 1 周期就满产 25,996,000， 缸被填上、没人饿死 ⇒ 本条全红）。
+   *
+   * <pre>
+   * 第 1 周期（第 1~2 天）：播 0、吃 0 ⇒ 缺口 66,400 = 全额需求 ⇒ faminePerMille = 1000‰
+   *     死 400 × 1000/1000 × 200/1000 = 80 ⇒ 人口 320、劳动 232,000 × 320/400 = 185,600
+   *     收获 = 0（seedCapMu = 0）
+   * 第 2 周期（第 3~4 天）：缸仍空 ⇒ 播 0、吃 0 ⇒ 缺口 = 2 × 320 × 83 = 53,120 = 全额需求 ⇒ 1000‰
+   *     死 320 × 200/1000 = 64 ⇒ 人口 256、劳动 185,600 × 256/320 = 148,480；收获仍 = 0
+   * </pre>
+   */
+  @Test
+  void theEmptySpringJarMakesTheNextSowingFailAndTheHarvestCollapse() {
+    EconomyData base = farm(0L, Map.of(AssetKind.LAND, SEED_PER_MU));
+
+    EconomyData next = EconomySettlement.settle(base, 0L, 4L);
+
+    ClassRow row = next.classes().get(PEASANT_KEY);
+    FlowRow flow = next.flows().get(PEASANT_KEY);
+    assertThat(next.industries().get(FARM).cycleSeedUsedMilli()).as("第 2 周期的播种日同样扣不到").isZero();
+    assertThat(grainOf(next, PEASANT_KEY)).as("两个周期都颗粒无收").isZero();
+    assertThat(flow.unmetNeed()).as("第 2 周期缺口 = 2 × 320 × 83").isEqualTo(2L * 320L * 83L);
+    assertThat(flow.deaths()).as("累计饿死 = 80 + 64").isEqualTo(80L + 64L);
+    assertThat(row.population()).as("400 → 320 → 256").isEqualTo(256L);
+    assertThat(row.laborMilli()).as("劳动同比例缩：185,600 × 256/320").isEqualTo(148_480L);
+    assertThat(next.meta().orElseThrow().lastClosedCycle()).as("两个周期都关过账").hasValue(2L);
+  }
+
+  /**
+   * ★★ **账要平**（spec §6.1 / `EconomySettlementEndToEndTest.assertConserved` 的纯函数版）： 种子扣减计入 {@code
+   * consumed} 之后，{@code Σ库存减少 == Σ消费 − Σ所得} 在**配了种子**的世界上仍成立。
+   *
+   * <p>★ 判别力：把播种步里的 {@code consumedGrain.merge(key, drawn, Long::sum)} 删掉 ⇒ 左边少了种子那一笔 （20,000）⇒
+   * 本条必红。
+   */
+  @Test
+  void theLedgerStaysBalancedEvenWithSeedDraws() {
+    EconomyData base = farm(20_000L, Map.of(AssetKind.LAND, SEED_PER_MU));
+    EconomyData next = EconomySettlement.settle(base, 0L, 2L);
+
+    long stockBefore = grainOf(base, PEASANT_KEY);
+    long stockAfter = grainOf(next, PEASANT_KEY);
+    FlowRow flow = next.flows().get(PEASANT_KEY);
+    long consumed = flow.consumed().getOrDefault(GRAIN, 0L);
+
+    assertThat(consumed).as("消费里含种子 20,000（留种是本期消费）").isGreaterThanOrEqualTo(20_000L);
+    assertThat(stockBefore - stockAfter)
+        .as("Σ库存减少 == Σ消费 − Σ所得（毛产口径）")
+        .isEqualTo(consumed - flow.income());
   }
 }

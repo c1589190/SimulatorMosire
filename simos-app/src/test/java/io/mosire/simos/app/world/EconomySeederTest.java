@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
@@ -345,12 +346,18 @@ class EconomySeederTest {
    *
    * <pre>
    * 需粮   = 14,806 人 × 83 毫粮/人·日 × 120 日 = 147,467,760 毫粮/格/周期
-   * 净产   = 3,100 亩 × 67 粮/亩 × 1000 毫粮/粮 × 0.85 = 176,545,000 毫粮/格/周期
-   * 自给率 = 176,545,000 × 1000 ÷ 147,467,760 = 1197‰（区间 1100~1300‰）
+   * 毛产   = 3,100 亩 × 67 粮/亩 × 1000 毫粮/粮 = 207,700,000 毫粮/格/周期
+   * 收获净产 = 毛产 − 生产损耗（饲料 0‰ + 折旧 30‰） = 207,700,000 − 6,231,000 = 201,469,000
+   * 播种日扣种 = 3,100 亩 × {@link EconomySeeder#SEED_MILLI_PER_MU}(8,000 毫粮/亩) = 24,800,000
+   * 可用   = 201,469,000 − 24,800,000 = 176,669,000
+   * 自给率 = 176,669,000 × 1000 ÷ 147,467,760 = 1198‰（区间 1100~1300‰；旧口径 15% 一次扣 = 1197‰）
    * </pre>
    *
    * <p>真档每格人口 11,830,000 ÷ 799 = 14,806 人；亩产与每格亩数是**拍出来的假设**，必须被这条钉住。 标定前（v1 的 1,000 亩 × 7
    * 粮/亩）这条是**红的**：自给率 = 5,950,000 × 1000 ÷ 147,467,760 = **40‰**。
+   *
+   * <p>★ V3/Task 7 起"留种"不再从 15% 里扣，而是**播种日按亩现扣**（{@code SEED_MILLI_PER_MU}）——故本算式里
+   * 它是**独立的一项**，不再是损耗率的一部分。★ 折旧那一项用**具名常量**（不写 30）：改折旧率这条跟着走。
    *
    * <p>★ 取 120%（而非刚好 100%）是因为农业还要养城市人口与军队，而手工业现产 0。
    */
@@ -363,11 +370,41 @@ class EconomySeederTest {
         EconomySeeder.MU_PER_HEX
             * EconomySeeder.GRAIN_OUTPUT_PER_MU
             * EconomyVocabulary.MILLI_PER_GRAIN;
-    long netMilli = grossMilli * 850L / 1000L; // 饲料 + 折旧 = 15%
-    long perMille = netMilli * 1000L / needMilli;
+    long harvestNetMilli =
+        grossMilli
+            * (1000L - EconomySettlement.FEED_PER_MILLE - EconomySettlement.DEPRECIATION_PER_MILLE)
+            / 1000L;
+    long seedMilli = EconomySeeder.MU_PER_HEX * EconomySeeder.SEED_MILLI_PER_MU;
+    long perMille = (harvestNetMilli - seedMilli) * 1000L / needMilli;
 
     assertThat(populationPerHex).as("真档每格人口").isEqualTo(14_806L);
-    assertThat(perMille).as("自给率必须落在 1100~1300‰（标定目标 1197‰）；标定前这里是 ~40‰").isBetween(1100L, 1300L);
+    assertThat(harvestNetMilli).as("收获净产 = 207,700,000 × 97%").isEqualTo(201_469_000L);
+    assertThat(seedMilli).as("播种日扣种 = 3,100 亩 × 8,000").isEqualTo(24_800_000L);
+    assertThat(perMille).as("自给率必须落在 1100~1300‰（标定目标 1198‰）；标定前这里是 ~40‰").isBetween(1100L, 1300L);
+  }
+
+  /**
+   * ★★ **播种器按定案数配了每亩需种**（v2 spec §3.3 的 {@code cycleInputPerUnit[LAND]}；用户 2026-09-25 裁定「现定」， 计划 2
+   * 的「修订与新增」）。
+   *
+   * <p>★ 这条**不是**"顺手多写一条断言"：{@code EconomySettlementEndToEndTest} / {@code
+   * WorldgenInitializeToolTest} / {@link EconomyRealScaleSeedBottleneckTest} 的字面量**都以这个数为前提**
+   * （真档每格满种 = 3,100 亩 × 8 粮/亩 = 24,800 粮/周期，对毛产 207,700 粮 之比 ≈ 1:8.4，落在前现代留种率 1:6~1:11 内） ⇒
+   * 谁要改它，必须**同时**重标定那些字面量；这条用例就是那个提醒。
+   */
+  @Test
+  void theSeederConfiguresTheDecidedSeedRate() throws Exception {
+    JsonNode farm = entry(payload(), 0, 0).get("industries").get(0);
+
+    assertThat(EconomySeeder.SEED_MILLI_PER_MU).as("定案：8 粮/亩（单位毫粮/亩）").isEqualTo(8_000L);
+    assertThat(farm.get("cycleInputPerUnit")).as("★ 只有 LAND 一档（其余五种 AssetKind「声明但不启用」）").hasSize(1);
+    assertThat(farm.get("cycleInputPerUnit").get("LAND").asLong())
+        .as("真档播种器写进 cycleInputPerUnit[LAND] 的每亩需种")
+        .isEqualTo(EconomySeeder.SEED_MILLI_PER_MU);
+    assertThat(farm.get("cycleSeedUsedMilli").asLong()).as("创世时尚未投入任何种子").isZero();
+    assertThat(EconomySeeder.MU_PER_HEX * EconomySeeder.SEED_MILLI_PER_MU)
+        .as("满种种子量（毫粮/格/周期）= 3,100 亩 × 8,000")
+        .isEqualTo(24_800_000L);
   }
 
   @Test

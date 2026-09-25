@@ -51,7 +51,9 @@ import java.util.Set;
  *       的**三路瓶颈**），**取小后向下取整到亩**（{@link #LAND_MU_PER_LABOR} / {@link #MILLI_PER_GRAIN}）。 ★ 注意两个 7
  *       无关：{@link #LAND_MU_PER_LABOR}（一标准劳动能种几**亩**）一直是 7； 「每亩几**粮**」是标定值 67（v1 曾是
  *       7，两者数值巧合，极易误读成漏改）。
- *   <li>**生产消耗**：扣 {@code 15%}（种子/牲畜/工具）——**明文记入本期流水**（{@link FlowRow#consumed()}），不静默丢弃。
+ *   <li>**生产消耗**：扣 {@code 饲料 + 折旧}（{@link #FEED_PER_MILLE} + {@link
+ *       #DEPRECIATION_PER_MILLE}）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
+ *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
  *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
  *       / 1000}（**定点整数、残差按槽位 id 序分派、Σ行得 = 剩余产出**）。
  *   <li>**饿死惩罚**（2026-09-25 用户点名）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@link
@@ -89,8 +91,24 @@ public final class EconomySettlement {
   /** 1 标准劳动（1000 千分劳动）能经营的亩数：§十 / 资料 §十 的「1 标准劳动支持 7 亩」。 */
   public static final long LAND_MU_PER_LABOR = 7L;
 
-  /** 生产消耗（种子/牲畜/工具）千分数：15%。 */
-  public static final int PRODUCTION_CONSUMPTION_PER_MILLE = 150;
+  /**
+   * ★★ **收获时的饲料消耗**（千分数）：**0‰**。
+   *
+   * <p>★★ **为 0 是因为 v1 不做耕牛，不是漏掉了**（用户 2026-09-25：「耕牛系统觉得复杂现阶段就别做」；v2 spec §3.1 明写「故 {@code
+   * AssetKind.CATTLE/TOOL/WORKSHOP/MACHINE/SHIP} v1 保持声明但不启用」）：没有牲口就没有饲料口径， 本常量先**存在但取值 0**，V7
+   * 参数目录落地后由参数表供给（届时耕牛一起做，这个数才有依据）。 有一条用例把它钉住（{@code
+   * EconomySettlementTest.productionLossSplitsIntoFeedAndDepreciation}）。
+   */
+  public static final int FEED_PER_MILLE = 0;
+
+  /**
+   * ★★ **收获时的农具折旧**（千分数）：**30‰（3%）**。
+   *
+   * <p>★ 来源：v1 的 15%（旧常量 {@code PRODUCTION_CONSUMPTION_PER_MILLE}，原语义里含**种子**）在本版**拆开**
+   * ——**留种**移出收获扣减、改在**播种日**以 {@code cycleInputPerUnit} 的 LAND 档现扣（v2 spec §3.4 的"最重要的口径修正"）， 剩下的
+   * 3% 即农具折旧。用户 2026-09-25 裁定「现定」的定案数（见计划 2 的「修订与新增」）。
+   */
+  public static final int DEPRECIATION_PER_MILLE = 30;
 
   /** 同格借粮的每周期利率（千分数）：20‰。 */
   public static final int BORROW_RATE_PER_MILLE_PER_CYCLE = 20;
@@ -132,8 +150,9 @@ public final class EconomySettlement {
    * §十一 裁定： 一次 {@code AdvanceTime} 可以推 N 天、只落一条 revision，但**结算语义不跳日**）。
    *
    * <p>★ 每一次内部迭代 = 上面 {@link #settleOneDay} 的一天（播种 → 消费 → 缺口/借粮/建债 → {@code progressDays + 1} → 到达
-   * {@code cycleDays} 就收获 + 15% 消耗 + 按 {@code Split} 分配；计息/到期不做）。**流水跨日累加**：{@code flows} 提到
-   * 日循环之外，逐日把当天发生额并入本期流水，循环结束后统一建 {@link FlowRow}（否则"推进 N 天"只显示最后一天）。
+   * {@code cycleDays} 就收获 + 生产消耗（{@link #FEED_PER_MILLE} + {@link #DEPRECIATION_PER_MILLE}）+ 按
+   * {@code Split} 分配；计息/到期不做）。**流水跨日累加**：{@code flows} 提到 日循环之外，逐日把当天发生额并入本期流水，循环结束后统一建 {@link
+   * FlowRow}（否则"推进 N 天"只显示最后一天）。
    *
    * <p>★★ **等价性（§十一 的判据）**：{@code settle(base, from, from + N)} 的终态 == N 次 {@code settleOneDay}
    * 的终态。关键在**周期末**：天数是**绝对日**，不是"推进次数"——一条 100 天的推进只要跨过第 120 天那个周期末， **照样在那一天收获**（逐日循环里的 {@code
@@ -515,7 +534,9 @@ public final class EconomySettlement {
     long actualMu = Math.min(availableMu, Math.min(ableMu, seedCapMu)); // 三路取小
     long perMu = industry.outputPerUnit().getOrDefault(GRAIN, 0L); // 粮/亩
     long gross = actualMu * perMu * MILLI_PER_GRAIN; // 毫粮（毛产出）
-    long loss = gross * PRODUCTION_CONSUMPTION_PER_MILLE / 1000L; // 种子/牲畜/工具
+    // ★★ 生产消耗 = **饲料 + 农具折旧**（v2 spec §3.4：留种已移出收获扣减，改在播种日现扣）——
+    //   两项各自具名（V7 参数目录落地后各自可调），此处取**两者之和**。
+    long loss = gross * (FEED_PER_MILLE + DEPRECIATION_PER_MILLE) / 1000L;
     long net = gross - loss; // 剩余产出（待分配）
 
     AllocationRule rule = industry.allocation();

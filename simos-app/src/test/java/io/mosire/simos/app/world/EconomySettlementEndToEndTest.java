@@ -60,16 +60,24 @@ class EconomySettlementEndToEndTest {
 
   /**
    * (0,0) 平原格收获净产（毫粮）：由 {@link EconomySeeder} 的**标定常量**推出，故标定值一改它自动跟随 （v2 spec §10.3 定案 A：3,100 亩 ×
-   * 67 粮/亩 × 1000 × 0.85 = 176,545,000）。
+   * 67 粮/亩 × 1000 × (1 − 饲料 0‰ − 折旧 30‰) = 201,469,000）。
+   *
+   * <p>★ **这个 5 格夹具是"未配种子"的对照**（{@link EconomyTestWorld} 的产业 `cycleInputPerUnit` 恒为空 map）：没有种子⇒
+   * 第三路瓶颈不施加约束 ⇒ 收获按土地满产。**播种日扣种那一笔不在这里**（本夹具的行储备只有 65 天口粮，付不起真档的每亩需种 ——见 {@code
+   * EconomyRealScaleSeedBottleneckTest} 的真档可见性用例）。
    *
    * <p>★ 绝对值的判别力由 `EconomySeederTest.realScaleHexIsSelfSufficientWithinTheCalibratedBand` 承担
    * （那里的自给率是硬编码区间）；这里只要"收获确实按公式发生"。
+   *
+   * <p>★★ **这个 97% 刻意写成裸数字**（{@code 970 = 1000 − 饲料 0‰ − 折旧 30‰}）：它是"15% → 3% 拆分"这条改动的 **判别力**所在——把
+   * {@code DEPRECIATION_PER_MILLE} 改成 0（或者不拆、回到 150‰ 总额）时，**实际收获**跟着变而 **本字面量**不变 ⇒
+   * 本条的库存断言当场红。（其余算式的期望值一律引用 {@code EconomySettlement} 的常量。）
    */
   private static final long PLAINS_HARVEST_NET =
-      EconomySeeder.MU_PER_HEX * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 850L / 1000L;
+      EconomySeeder.MU_PER_HEX * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 970L / 1000L;
 
   /**
-   * (0,0) 平原格的毛产（毫粮）：**独立定义**（= 亩数 × 亩产 × 1000 毫粮/粮），不由净产反推 —— 反推会把 0.85 抄两遍，
+   * (0,0) 平原格的毛产（毫粮）：**独立定义**（= 亩数 × 亩产 × 1000 毫粮/粮），不由净产反推 —— 反推会把损耗率抄两遍，
    * 生产消耗率一改就有两个地方要同步，而"毛产"本该只有一个定义。
    */
   private static final long PLAINS_HARVEST_GROSS =
@@ -165,16 +173,16 @@ class EconomySettlementEndToEndTest {
       // 实际投入亩 = min(可用 3,100 亩, 平均劳动 498,800 × LAND_MU_PER_LABOR(7) / 1000 = 3,491 亩)
       //   = 3,100 亩（**土地**是瓶颈）。★ 这里的 7 是 EconomySettlement.LAND_MU_PER_LABOR（亩/千分劳动），
       //   与亩产 67 无关 —— 两者在 v1 都是 7，改标定后只剩前者是 7，别混。
-      // 毛产 = 3,100 × 67 粮/亩 × 1000 毫粮/粮；生产消耗 15% ⇒ 净 85%。
+      // 毛产 = 3,100 × 67 粮/亩 × 1000 毫粮/粮；生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 97%。
       assertThat(hexGrain(afterHarvest, 0, 0))
-          .as("一次性产粮：库存跃升为净产出（3,100 亩 × 67 × 1000 × 0.85）")
+          .as("一次性产粮：库存跃升为净产出（3,100 亩 × 67 × 1000 × 0.97）")
           .isEqualTo(PLAINS_HARVEST_NET);
       assertThat(
               sumHarvestIncome(afterHarvest, FARM_0) - harvestProductionLoss(afterHarvest, FARM_0))
           .as("Σ行得（净）= 剩余产出（分配残差按槽位 id 序补足，不丢总量）")
           .isEqualTo(PLAINS_HARVEST_NET);
       assertThat(harvestProductionLoss(afterHarvest, FARM_0))
-          .as("15% 生产消耗明文记入本期流水（不静默丢弃）")
+          .as("生产损耗（饲料 0‰ + 折旧 30‰）明文记入本期流水（不静默丢弃）")
           .isEqualTo(PLAINS_HARVEST_GROSS - PLAINS_HARVEST_NET);
       assertThat(sumHarvestIncome(afterHarvest, FARM_0))
           .as("流水所得记毛产出 = 净 + 生产消耗")
@@ -227,7 +235,7 @@ class EconomySettlementEndToEndTest {
       // ★ 低丘格的绝对值不写死：标定后它的实际投入亩由**劳动瓶颈**（而非土地）决定 ——
       //   可用 2,064 亩，但劳动可经营亩数 = avgLabor(249,400) × LAND_MU_PER_LABOR(7) / 1000 = 1,745 亩 ⇒ 取小得
       // 1,745。
-      //   闭式 = 1,745 亩 × 67 × 1000 × 0.85 = 99,377,750 毫粮，但它把 EconomySettlement 的劳动模型内部
+      //   闭式 = 1,745 亩 × 67 × 1000 × 0.97 = 113,407,550 毫粮，但它把 EconomySettlement 的劳动模型内部
       //   （LAND_MU_PER_LABOR、580‰ 人均劳动、阶层参与率）搬进了本用例 ⇒ 标定一改就跟着碎。
       // ★ 诚实标注这条的**实际**判别力：它只挡"低丘格颗粒无收/两格用了同一条公式"这类粗错
       //   —— 注意它**挡不住**地形系数失效（低丘土地即便按平原算，劳动瓶颈仍给出 1,745 亩 ≠ 平原的 3,100 亩，两格照样不等）。
@@ -237,10 +245,10 @@ class EconomySettlementEndToEndTest {
       //   可用亩 = 3,100,000 千分亩 × 666‰ ÷ 1000 = 2,064 亩；
       //   但 500 人 × 580‰ = 290,000 千分劳动，投入率按阶层加权 860‰ ⇒ 日劳动 249,400 千分劳动；
       //   可经营 = 249,400 × LAND_MU_PER_LABOR(7) ÷ 1000 = 1,745 亩 < 2,064 ⇒ 实际投入 1,745 亩。
-      //   毛产 = 1,745 × 67 × 1000 = 116,915,000；扣 15% ⇒ 净 99,377,750。
+      //   毛产 = 1,745 × 67 × 1000 = 116,915,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 113,407,550。
       assertThat(hexGrain(afterHarvest, 1, 0))
           .as("(1,0) 低丘格：净产按**劳动瓶颈**算（不是按地）")
-          .isEqualTo(99_377_750L);
+          .isEqualTo(113_407_550L);
       assertThat(hexGrain(afterHarvest, 0, 0))
           .as("两格收获必须不相等（地形系数与劳动瓶颈都在起作用）")
           .isNotEqualTo(hexGrain(afterHarvest, 1, 0));
@@ -312,7 +320,7 @@ class EconomySettlementEndToEndTest {
    * <p>★ 第一周期字面量（(0,0) 四行 450/350/150/50）：缺 55 天 ⇒ 每行 {@code faminePerMille = 55/120 = 458‰}，死亡
    * 41/32/13/4 = **90**；人口 1000 → 910。
    *
-   * <p>★ **量纲标定之后第二周期不再饿死**：第 120 天的收获净产 176,545 粮/格 **远超**第二周期需求 9,063.6 粮/格（910 人 × 83 × 120）⇒
+   * <p>★ **量纲标定之后第二周期不再饿死**：第 120 天的收获净产 201,469 粮/格 **远超**第二周期需求 9,063.6 粮/格（910 人 × 83 × 120）⇒
    * 青黄不接到此结束。标定前（1,000 亩 × 7 粮/亩）收获只够约 4% 的需求 ⇒ 那里 `deaths2` 必 > 0、本条必红。
    *
    * <p>★ 判别力：把 {@code FAMINE_MORTALITY_PER_MILLE} 当 0 用 ⇒ 第 1 周期死亡 0、人口不变 ⇒ 本条红（配套纯函数算例在 {@code
@@ -339,7 +347,7 @@ class EconomySettlementEndToEndTest {
       advanceRange(core, 120L, 240L); // 到第 2 个周期末
       EconomyData cycle2 = economy(core);
       long deaths2 = hexDeaths(cycle2, 0, 0) - deaths1;
-      // ★ 量纲标定（v2 spec §10.3 定案 A）之后：收获净产 176,545 粮/格 **远超**需求 9,960 粮/格 ⇒
+      // ★ 量纲标定（v2 spec §10.3 定案 A）之后：收获净产 201,469 粮/格 **远超**需求 9,960 粮/格 ⇒
       //   **青黄不接已过**，第二周期不再饿死 —— 这正是 v1 spec §十 验收判据 3 想要的
       //   "库存曲线：青黄不接 → 收获"。标定前（1,000 亩 × 7 粮/亩）这里必红：收获只够 4% 的需求。
       assertThat(deaths2).as("第二周期不死人：标定后的收获远超需求 ⇒ 青黄不接已过").isZero();
@@ -498,7 +506,7 @@ class EconomySettlementEndToEndTest {
   /**
    * 一整个产业当日记入流水的生产消耗合计 = Σ流水所得 − 该产业各行当日的库存增量。
    *
-   * <p>★ 只对"(0,0) 这类收获前库存恰为 0、当日无借贷"的产业成立（该夹具正是如此）——用一个**独立可算**的差来反推消耗， 而不是把 15% 再抄一遍。
+   * <p>★ 只对"(0,0) 这类收获前库存恰为 0、当日无借贷"的产业成立（该夹具正是如此）——用一个**独立可算**的差来反推消耗， 而不是把损耗率再抄一遍。
    */
   private static long harvestProductionLoss(EconomyData data, IndustryId industry) {
     long stock = 0L;

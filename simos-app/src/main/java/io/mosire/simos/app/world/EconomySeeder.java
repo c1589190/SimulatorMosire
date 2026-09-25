@@ -59,8 +59,10 @@ public final class EconomySeeder {
   /**
    * 每格土地基准（亩）：**量纲标定值**（v2 spec §10.3 定案 A，由 1,000 改来）。
    *
-   * <p>★ 依据：真档每格 14,806 人 × 9,960 毫粮/周期 = 147,468 粮/格/周期需粮； 3,100 亩 × 67 粮/亩 × 0.85 = 176,545 ⇒ 自给率
-   * **119.7%**（余粮给城市人口与军队）。 ★ 格面积是**纯经济假设**（{@code HexCell} 只存 height），与地图无关。
+   * <p>★ 依据（★ V3/Task 7 后的账，v2 spec §3.4 把留种从 15% 里拆出来）：真档每格 14,806 人 × 9,960 毫粮/周期 = 147,468
+   * 粮/格/周期需粮；毛产 3,100 亩 × 67 粮/亩 = 207,700，扣折旧 3% ⇒ 净 201,469，再减**播种日**扣的种子 24,800 ⇒ **可用 176,669**
+   * ⇒ 自给率 **119.8%**（旧口径 15% 一次扣 = 119.7% ⇒ 标定实质不变）。★ 格面积是**纯经济假设**（{@code HexCell} 只存
+   * height），与地图无关。
    */
   public static final long MU_PER_HEX = 3_100L;
 
@@ -80,6 +82,21 @@ public final class EconomySeeder {
    * <p>67 粮/亩 = 134 斤/亩，是**前现代北方旱地小麦的量级**；v1 的 7（= 14 斤/亩）低约 10 倍。
    */
   public static final long GRAIN_OUTPUT_PER_MU = 67L;
+
+  /**
+   * ★★ **每亩需种**（**毫粮/亩** = 8 粮/亩）：真档播种器写进 {@code cycleInputPerUnit[LAND]} 的值（v2 spec §3.3； 用户
+   * 2026-09-25 裁定「现定」，计划 2 的「修订与新增」）。
+   *
+   * <p>★ **依据**：前现代留种率约 **1:6 ~ 1:11**（收获 : 留种），取中。与标定值对照：满种 = 3,100 亩 × 8 粮/亩 = **24,800
+   * 粮/格/周期**，对毛产 3,100 × 67 = **207,700 粮/格/周期** 之比 ≈ **1:8.4**，落在该区间内。
+   *
+   * <p>★★ **口径（别混量纲）**：这是**毫粮/亩**（与 {@code outputPerUnit} 的「粮/亩」、结算里按**亩**算的口径同侧）； {@code
+   * ClassRow.meansOfProduction} 的 {@code LAND} 是**千分亩**——播种步先 {@code / 1000} 换成亩再乘（差 1000 倍）。
+   *
+   * <p>★ 它让真档**第一次真的读到第三路瓶颈**（v2 spec §三 的 `seedCapMu`）：此前 {@code cycleInputPerUnit} 是空 map ⇒
+   * 播种步一字不扣 ⇒ 真档行为与 V2 逐值一致，但三路瓶颈在 799 格真实世界里**看不见**。
+   */
+  public static final long SEED_MILLI_PER_MU = 8_000L;
 
   /**
    * 初始阶层比例（‰）：§十"初始阶层比例"行 贫农 450 / 中农 350 / 富农 150 / 地主 50。
@@ -261,8 +278,15 @@ public final class EconomySeeder {
     industry.put("dailyInputPerUnit", Map.of());
     industry.put("dailyLaborPerUnit", 0);
     industry.put("outputPerUnit", Map.of(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU));
+    // ★★ 一次性投入（v2 spec §3.3：**播种日**现扣的种子）：每亩 8 粮（毫粮/亩，见 {@link #SEED_MILLI_PER_MU}）。
+    //   量纲：键值是「毫粮/亩」，与 meansOfProduction 的「千分亩」差 1000 倍 —— 播种步先 /1000 换成亩再乘。
+    //   ★ 六种 AssetKind 都收（协议不设限），v1 只读 LAND（其余五种"声明但不启用"）。
+    //   ★ V7 参数目录（spec §四.1 把它归**制度层**）落地后：本行改读参数（作用域 全局→国家→格/产业）。
+    industry.put("cycleInputPerUnit", Map.of("LAND", SEED_MILLI_PER_MU));
     // ★ R3a：周期累计实际劳动——创世 = 0（新周期尚未投入；日结算每天累加）。
     industry.put("cycleLaborMilli", 0);
+    // ★ V3：本周期实际扣到的种子（毫粮）——创世 = 0（与 cycleLaborMilli 同形制；播种日逐行累加、关账清零）。
+    industry.put("cycleSeedUsedMilli", 0);
     industry.put("allocation", allocation);
     industry.put("slots", slots);
     industry.put("classes", classes);
