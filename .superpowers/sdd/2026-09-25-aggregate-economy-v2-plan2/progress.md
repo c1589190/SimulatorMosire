@@ -62,3 +62,54 @@ Spec: docs/superpowers/specs/2026-09-25-aggregate-economy-v2-design.md（权威�
 - **Final: minor (deferred)**: `ApiViews.economyHex`/GUI/MCP 暂不暴露这两个新字段（计划明列"本计划不做"）。
 - **Final: minor (deferred)**: 未跑 `clean verify`（`spotless:check` 绑在 verify 阶段；本次由 `spotless:apply`
   反证格式合规，但未在 verify 阶段实测）。控制器统一跑。
+
+- **Task 3: Ruling: 计划骨架有真 bug（`consumedGrain.put` 覆盖种子那一笔）** ——
+  `settleHexes` 写的是 `consumedGrain.put(key, eaten)`，会把先跑的播种步 merge 进去的种子**覆盖**掉
+  ⇒ §6.1 守恒式不成立。由计划自己的用例逼出（`sowingDayDrawsTheSeedBeforeTheDayIsEaten` 期望 73,200 实得 33,200）。
+  按"修代码不改断言"处理：`put` → `merge(key, eaten, Long::sum)`。代价 if wrong：无（merge 是正确语义）。
+- **Task 4: Ruling: 计划里两处累加器断言与设计矛盾（关账清零）** ——
+  计划写 `settle(0,2)` 后 `cycleSeedUsedMilli == 20,000 / 40,000`，但 **2 天 = 一整个 2 天周期 ⇒ 关账时已清零**（Task 3 自己的绿断言就钉着它）。
+  改法：另跑一次**单日**结算读第 1 天读数，**期望值一字未改**（20,000 / 40,000），未放宽。
+- **Task 4: Ruling: 计划的两条用例预测偏多（3 处，无一处偏少）** —— 逐条记录于子代理报告；
+  最值得记的是变异轮 M1：计划说 `anIndustryWithoutASeedRateDrawsNothingAtAll` 会红，实际它只结算 1 天、走不到 harvest；
+  **但端到端 8 条里红了 3 条**（`176,545,000 → 0`）⇒ 计划的「未配种子的真档颗粒无收」由端到端**逐值验证**。
+- **Task 3+4 新增用例**：`aJarThatExactlyCoversTheSeedIsDrawnToZero`（计划 Review Focus 4 的边界，
+  计划声称由 Task 3 覆盖但实际没有）——做了**专属变异**（`stock == need ? 0 : min`）⇒ 只红这一条，证明非空转。
+- Task 3: complete (tests: `./mvnw -q test -pl simos-economy -am` → 72/0/0；变异 3 轮均 md5 逐字节还原)
+- Task 4: complete (tests: `./mvnw -q test -pl simos-economy,simos-app -am` → economy **78**/0/0、app 613/0/0；
+  变异 3 轮 + 1 补充轮，均 md5 还原；另跑 `verify -pl simos-economy -am -DskipTests` rc=0 ⇒
+  **包内可见静态重载不被 Spotless/Checkstyle/SpotBugs 挑刺**)
+- **全仓回归**：`./mvnw -q test` → **2118 用例 / 0 失败 / 0 错误**（10 模块；2105 + 新文件 13 = 2118 ✓）。
+  ★ **`EconomySettlementEndToEndTest` 文件 md5 与 plan-1 基线**逐字节一致（`fe489310b5619795caf32f6f6d582774`）
+  ⇒ "未配 `cycleInputPerUnit` ⇒ 行为与 V2 逐字一致"由**字节**证明，不只是断言。
+- **⚠ 给 Task 5 执行者的预警（子代理留）**：Task 5 的 `eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow`
+  断言 `settle(base,0,2)` 后 `cycleSeedUsedMilli == 80,000`，按现实现**必为 0**（同上关账清零）⇒ 需同样改成读播种日当天。
+
+- **Task 7: Ruling: 控制器算错两处（子代理实测更正）** ——
+  ① 控制器在计划里写"端到端字面量再减 `MU_PER_HEX × SEED_MILLI_PER_MU` = 24,800,000"，并给低丘新值 99,447,550。
+     **错**：5 格 `EconomyTestWorld` 夹具是 1,000 人/格、储备仅 5,395,000 毫粮，而满种要 24,800,000
+     ⇒ 逐行 `need > stock`。子代理做了**诊断轮**（临时给该夹具配种子）实测：第 1 天全格把口粮当种子播掉
+     （库存减少 5,395,000）、第 120 天只收获 43,803,260（674 亩）、第一周期饿死 **200/1000**
+     ⇒ (g) 的 90 人叙事、(b) 的借粮夹具、(a) 的日耗夹具全崩。
+     决定：`EconomyTestWorld` **保持未配种子**（Task 1 明令"必须保持空"），它现在扮演"**未配种子的对照格**"；
+     "配了种子"的字面量放到**真档量级**（新增用例 + worldgen 用例）。低丘格因此是 **113,407,550**，不是 99,447,550。
+  ② 控制器算真档满种 = 3,100 亩 × 8,000 = 24,800,000。**错**：`亩 = 千分亩 ÷ 1000` **向下取整**，
+     逐行 1,395+1,085+464+154 = **3,098 亩** ⇒ 满种 **24,784,000**（差 2 亩、0.06%）；收获面积同为 3,098 亩
+     （毛产 207,566,000 而非 207,700,000）。
+  代价 if wrong：无（两处都是控制器手算，实测更正后自给率仍 1197~1198‰，落在 [1100,1300] 内）。
+- **Task 5**: complete (tests: `-pl simos-economy -am` → 81 用例/0/0；变异 5-a「从全格池子扣」⇒ 只红
+  `eachClassRowDrawsItsOwnSeed…`（80,000 vs 100,000）、5-b 删种子入 `consumed` ⇒ 3 条红含守恒用例)
+- **Task 6+7**: complete，含 **M7-a**（折旧置 0）economy 3 红 + app 4 红、**M7-b**（不拆、回 150‰）
+  economy **11 红** + app 3 红、**M6-a**（播种器写回空）⇒ 播种器用例 + 真档 3 条全红。
+  全部用 Edit/Python 反向重写还原 + md5 确认（`EconomySettlement.java` = `4f0e369a…`、
+  `EconomySeeder.java` = `a9e06b16…`、`EconomyTestWorld.java` = `6119e76f…` 且 `git diff` 空）。
+- **全仓**：`./mvnw -q test` → **2126 用例 / 0 失败 / 0 错误**（10 模块；app 613→**617**、economy 78→**82**）。
+  另跑 `verify -DskipTests -pl simos-economy,simos-app -am` → rc=0（spotless:check / checkstyle / spotbugs / 前端门禁 297 / shaded-guard 全过）。
+- ★ **真档可见性已证**（Task 7 存在的理由）：`theSeederConfiguresTheDecidedSeedRate`（载荷真带 8,000）
+  + `theRealScaleHexSowsEveryMuItHasMoneyForOnTheSowingDay`（播种日扣 24,784,000）
+  + `theSownSeedIsTheBottleneckThatDecidesTheHarvestArea`（收获面积由 3,098 亩的**种子**决定而非 3,100 亩**土地**）
+  + `anEmptyJarYieldsNothingInTheRealWorldWhileTheUnseededControlStillHarvests`（缸空 ⇒ 颗粒无收；对照格满产 201,469,000）
+  + `WorldgenInitializeToolTest.advancingTenDays…`（真 799 格：10 天库存减少 15,165,876,000 = 口粮 5,170,900,000 + 播种扣种 9,994,976,000）。
+- **Final: minor (deferred)**: 未逐格断言真档 799 格"全部满种"（只断言 `sown > 0`、`≤ Σ地亩 × 8,000` 与三国 10 天守恒式）。
+- **Final: minor (deferred)**: 未跑**带测试的**全仓 `clean verify`（只跑了全仓 test + 两模块 verify -DskipTests）。
+- **Final: minor (deferred)**: "每亩需种"未接读口（GUI/MCP）与参数目录——属 V5/V7 范围。
