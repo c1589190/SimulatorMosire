@@ -16,8 +16,9 @@
 | 1a-5 | app/前端/MCP 快进改逐日 | **完成** | `AdvanceTool`/`GuiServer` 的 `to` 缺省 = `from+1`；`timeline.js` 逐日循环（N 天 = N 条命令、逐条用新 revision、失败即停并报第几天）；`readout.js` 速率 ×24；`panels.js`/`index.html` 文案；前端门禁 284/284 PASS |
 | 1a-6 | app Java 测试重标定 + `clean verify` 关账 | **完成** | 8 个 app 测试类改逐日循环/重算期望；`clean verify` **BUILD SUCCESS**（7 模块全绿：1948 tests / 0 fail / 0 err / 0 skip；Spotless+Checkstyle+SpotBugs+前端门禁+shade 守卫） |
 | 1b-1 | 通用多模块提案（WorldTimeProposal） | **完成**（提交 `6dc0df2`） | util 新 record + `TimeParticipant.simulateWorld` 默认实现 + `TimeAdvance` 逐模块校验/每模块一条事件 + resolver 支持多切片（同模块两参与者 ⇒ 拒；汇总按 namespace 字典序）；core 213/213、`clean verify` 绿 |
-| 1b-2 | `simos-economy-api` 模块 | 未开始 | 待设计：六个切片共用的稳定 ID / `ActorRef` / `CommodityId` / `EconomicEvent` / `TransferIntent`——**类型形状要按模块过一遍再落笔**（照名词硬写 = 编造设计，AGENT.md §〇 末条） |
-| 1b-3 | 五个有状态模块骨架 | 未开始 | 各模块 Data/Snapshot/ChangeSet/Codec/Resolver + 往返测试（照 social 模板） |
+| 1b-2 | `simos-economy-api` 模块 | **完成**（提交 `40f60a9`） | 16 个共用稳定 ID + `ActorRef(ActorKind,id)`；只依赖 util/map；enforcer 禁反向依赖；economy-api 5/0/0 | 待设计：六个切片共用的稳定 ID / `ActorRef` / `CommodityId` / `EconomicEvent` / `TransferIntent`——**类型形状要按模块过一遍再落笔**（照名词硬写 = 编造设计，AGENT.md §〇 末条） |
+| 1b-3 | 五个有状态模块骨架 | **进行中**：`ledger` 完成（提交 `a648a79`），余四个待做 | ledger 4 组件 + 4 FieldDelta + codec/resolver + 26 条测试（含 8 条不变量）；变异自证：transfers 分量恒 Unchanged ⇒ `everyLedgerDataComponentParticipatesInTheChangeSet` 当场红 |
+| 1b-3 前置 | 增量 2 状态形状 spec | **完成**（提交 `ebf6d0b`） | `docs/superpowers/specs/2026-09-25-increment2-population-property-ledger-design.md`（PeopleLot/property/ledger v1 形状 + 激活语义 + 三条待裁给默认值） | 各模块 Data/Snapshot/ChangeSet/Codec/Resolver + 往返测试（照 social 模板） |
 | 1b-4 | 六切片创世 + 未激活语义 | 未开始 | `WorldgenInitializeTool`/`RichWorld` 写六切片空快照；`ledger.economyMeta`；缺切片拒绝推进 |
 | 1b-5 | `EconomyDayCoordinator` 骨架 + 装配 | 未开始 | 设计稿 §9 步骤序（首版各步空实现）；`Shell` 注册六个 codec/handler/resolver |
 
@@ -53,6 +54,10 @@ util 170 / map 379 / social 130 / unit 304 / core 206 / sd 186 / app 573 = **194
 - `78acd6d` fix(core,app): 清掉 simos-app 既存的 9 条 SpotBugs（基线证明在提交信息里）
 - `abb2cbc` docs(sdd): 日制底座（1a）台账关账
 - `6dc0df2` feat(util,core): 通用多模块提案（WorldTimeProposal）—— 1b-1
+- `839b7df` feat(app): GUI 交战显示锚到真实交战记录（读口 /api/sd/combats + hexgeom 真实格优先）
+- `40f60a9` feat(economy-api): 新模块 simos-economy-api —— 16 个共用稳定 ID + ActorRef（1b-2）
+- `ebf6d0b` docs(spec): 增量 2 的 v1 状态形状（PeopleLot / property / ledger）
+- `a648a79` feat(ledger): 新切片 simos-ledger —— 账户/债权/转移凭据 + economyMeta（1b-3 第一块）
 
 ## 1b-1 关账补充（2026-09-24 22:11）
 
