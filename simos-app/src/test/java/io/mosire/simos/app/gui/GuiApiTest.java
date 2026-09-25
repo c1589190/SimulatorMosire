@@ -537,8 +537,10 @@ class GuiApiTest {
             Map.of(),
             0L,
             Map.of(new CommodityId("grain"), 7L),
+            Map.of(), // ★ 同本夹具的字面量：不配种子
             List.of(new ClassSlot(peasant, "贫农", 950)),
             new AllocationRule.Split(700, 300),
+            0L,
             0L);
     ClassRow row =
         new ClassRow(

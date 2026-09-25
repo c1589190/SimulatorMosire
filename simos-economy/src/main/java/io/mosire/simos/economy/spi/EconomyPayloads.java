@@ -36,6 +36,7 @@ import java.util.OptionalLong;
  *   {"q":0,"r":0,"industries":[
  *     {"id":"farm@0_0","name":"农业","regime":"feudal","cycleDays":120,"progressDays":0,
  *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67},
+ *      "cycleInputPerUnit":{"LAND":1200},"cycleSeedUsedMilli":0,
  *      "cycleLaborMilli":0,
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"peasant","name":"贫农","laborParticipationPerMille":950}],
@@ -141,6 +142,12 @@ final class EconomyPayloads {
     long dailyLabor = optionalLong(node, "dailyLaborPerUnit", 0L);
     Map<CommodityId, Long> output =
         commodityMap(optionalObject(node, "outputPerUnit"), "outputPerUnit");
+    // ★ v2 spec §3.3：每单位生产资料**每周期一次性**投入（v1 只有 LAND = 每亩需种，单位毫粮/亩）。
+    //   缺键 ⇒ 空 map（旧载荷兼容；六种 AssetKind 都收，v1 只读 LAND）。
+    Map<AssetKind, Long> cycleInput =
+        assetMap(optionalObject(node, "cycleInputPerUnit"), "cycleInputPerUnit");
+    // ★ 本周期实际扣到的种子（毫粮）累加器；缺键 ⇒ 0（旧载荷兼容）。负值由 Industry 的构造期守卫拒。
+    long cycleSeedUsed = optionalLong(node, "cycleSeedUsedMilli", 0L);
     // ★ R3a：周期累计实际劳动（缺键 ⇒ 0，旧载荷兼容：生成器不写它时按"新周期、尚未投入"）。
     long cycleLabor = optionalLong(node, "cycleLaborMilli", 0L);
     List<ClassSlot> slots = new ArrayList<>();
@@ -180,9 +187,11 @@ final class EconomyPayloads {
         dailyInput,
         dailyLabor,
         output,
+        cycleInput,
         slots,
         rule,
-        cycleLabor);
+        cycleLabor,
+        cycleSeedUsed);
   }
 
   private static ClassRow classRow(IndustryId industry, JsonNode node) {

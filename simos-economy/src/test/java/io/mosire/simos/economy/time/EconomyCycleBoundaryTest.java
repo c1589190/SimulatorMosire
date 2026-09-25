@@ -54,9 +54,11 @@ class EconomyCycleBoundaryTest {
             Map.of(),
             0L,
             Map.of(EconomySettlement.GRAIN, GRAIN_PER_MU),
+            Map.of(), // ★ 一个都不配种子：本文件的字面量是 V2 口径算好的
             List.of(new ClassSlot(PEASANT, "贫农", 950)),
             new AllocationRule.Split(700, 300),
-            dailyLabor * CYCLE_DAYS); // 周期累计劳动
+            dailyLabor * CYCLE_DAYS, // 周期累计劳动
+            0L);
     ClassRow row =
         new ClassRow(
             PEASANT_KEY,
@@ -132,9 +134,11 @@ class EconomyCycleBoundaryTest {
                 farm.dailyInputPerUnit(),
                 farm.dailyLaborPerUnit(),
                 farm.outputPerUnit(),
+                farm.cycleInputPerUnit(),
                 farm.slots(),
                 farm.allocation(),
-                farm.cycleLaborMilli())));
+                farm.cycleLaborMilli(),
+                farm.cycleSeedUsedMilli())));
   }
 
   /**
@@ -160,9 +164,11 @@ class EconomyCycleBoundaryTest {
                     farm.dailyInputPerUnit(),
                     farm.dailyLaborPerUnit(),
                     farm.outputPerUnit(),
+                    farm.cycleInputPerUnit(),
                     farm.slots(),
                     farm.allocation(),
-                    0L))) // ★ 周期累计劳动清零
+                    0L, // ★ 周期累计劳动清零
+                    farm.cycleSeedUsedMilli())))
         .withClasses(
             Map.of(
                 PEASANT_KEY,

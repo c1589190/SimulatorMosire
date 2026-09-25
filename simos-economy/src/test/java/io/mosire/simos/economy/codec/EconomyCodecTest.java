@@ -147,6 +147,9 @@ class EconomyCodecTest {
     assertThat(farm.outputPerUnit()).containsOnlyKeys(GRAIN);
     assertThat(farm.dailyInputPerUnit()).containsOnlyKeys(AssetKind.CATTLE);
     assertThat(farm.allocation()).isInstanceOf(AllocationRule.Split.class);
+    assertThat(farm.cycleInputPerUnit())
+        .as("★ 新字段必须真的过线：空 map 与「字段没进线格式」在值层面不可区分")
+        .containsEntry(AssetKind.LAND, 1200L);
     assertThat(workshop.allocation()).isInstanceOf(AllocationRule.WageFirst.class);
     AllocationRule.WageFirst wageFirst = (AllocationRule.WageFirst) workshop.allocation();
     assertThat(wageFirst.ownerResidual()).containsOnlyKeys(GRAIN, CLOTH);
@@ -386,8 +389,10 @@ class EconomyCodecTest {
         Map.of(AssetKind.CATTLE, 1L),
         500L,
         Map.of(GRAIN, 7L),
+        Map.of(AssetKind.LAND, 1200L), // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分
         slots,
         new AllocationRule.Split(700, 300),
+        0L,
         0L);
   }
 
@@ -406,8 +411,10 @@ class EconomyCodecTest {
         Map.of(AssetKind.TOOL, 2L),
         300L,
         Map.of(CLOTH, 5L),
+        Map.of(), // ★ WageFirst 多态夹具：未配一次性投入（空 map 是合法形状）
         slots,
         new AllocationRule.WageFirst(4L, residual),
+        0L,
         0L);
   }
 

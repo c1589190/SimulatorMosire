@@ -615,8 +615,10 @@ public final class EconomySettlement {
         industry.dailyInputPerUnit(),
         industry.dailyLaborPerUnit(),
         industry.outputPerUnit(),
+        industry.cycleInputPerUnit(), // ★ 透传：换进度时不许把它丢了（丢了 = 静默清零）
         industry.slots(),
         industry.allocation(),
-        cycleLabor);
+        cycleLabor,
+        industry.cycleSeedUsedMilli()); // ★ 透传：同上
   }
 }

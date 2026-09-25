@@ -218,8 +218,10 @@ public final class EconomyTestWorld {
         Map.of(),
         0L,
         Map.of(GRAIN, EconomySeeder.GRAIN_OUTPUT_PER_MU),
+        Map.of(), // ★★ 必须保持空：5 格端到端夹具是"未配种子 ⇒ V2 行为不变"的证据
         slots,
         rule,
+        0L,
         0L);
   }
 }

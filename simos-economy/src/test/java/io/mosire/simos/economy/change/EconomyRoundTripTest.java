@@ -155,8 +155,10 @@ class EconomyRoundTripTest {
         Map.of(AssetKind.CATTLE, 1L),
         500L,
         Map.of(GRAIN, 7L),
+        Map.of(AssetKind.CATTLE, 1L), // ★ 必须非空：空 map 与"字段没进变更集"在值层面不可区分
         slots,
         new AllocationRule.Split(700, 300),
+        0L,
         0L);
   }
 

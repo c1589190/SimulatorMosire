@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -295,6 +296,99 @@ class EconomyInvariantsTest {
     assertThat(data.debts()).as("两端都在的债务必须放行").hasSize(1);
   }
 
+  // ── 一次性投入槽与种子累加器（v2 spec §3.3）────────────────────────────────────────
+
+  /** ★ 空 map 的语义是"不用空 map"，null 是坏数据 ⇒ 构造期拒（与 dailyInputPerUnit 同制）。 */
+  @Test
+  void rejectsNullCycleInputMap() {
+    assertThatThrownBy(() -> industryWithCycleInput(null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cycleInputPerUnit");
+  }
+
+  /** ★ 逐值 ≥ 0（§6.4 存量非负的下界）。 */
+  @Test
+  void rejectsNegativeCycleInputQuantity() {
+    assertThatThrownBy(() -> industryWithCycleInput(Map.of(AssetKind.LAND, -1L)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cycleInputPerUnit");
+  }
+
+  /** ★★ **六种键都允许**（spec §3.3：协议上不设限；v1 只让 LAND 真的被读到）。 */
+  @Test
+  void acceptsCycleInputForAllSixAssetKinds() {
+    Industry industry =
+        industryWithCycleInput(
+            Map.of(
+                AssetKind.LAND, 100L,
+                AssetKind.CATTLE, 1L,
+                AssetKind.TOOL, 2L,
+                AssetKind.WORKSHOP, 3L,
+                AssetKind.MACHINE, 4L,
+                AssetKind.SHIP, 5L));
+
+    assertThat(industry.cycleInputPerUnit())
+        .as("形状不设限（v1 读不读是结算的事）")
+        .containsOnlyKeys(
+            AssetKind.LAND,
+            AssetKind.CATTLE,
+            AssetKind.TOOL,
+            AssetKind.WORKSHOP,
+            AssetKind.MACHINE,
+            AssetKind.SHIP);
+  }
+
+  /** ★ 保序不可变（冻在字段赋值处；绝不用 Map.copyOf —— 迭代序不是内容的纯函数）。 */
+  @Test
+  void cycleInputKeepsInsertionOrderAndIsFrozen() {
+    Map<AssetKind, Long> input = new LinkedHashMap<>();
+    input.put(AssetKind.SHIP, 5L);
+    input.put(AssetKind.LAND, 100L);
+    Industry industry = industryWithCycleInput(input);
+
+    assertThat(industry.cycleInputPerUnit().keySet())
+        .as("插入序即迭代序（字节级往返的前提）")
+        .containsExactly(AssetKind.SHIP, AssetKind.LAND);
+    assertThatThrownBy(() -> industry.cycleInputPerUnit().clear())
+        .as("冻在字段赋值处")
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  /** ★ `cycleSeedUsedMilli` 形制同 `cycleLaborMilli`：不得为负。 */
+  @Test
+  void rejectsNegativeCycleSeedAccumulator() {
+    assertThatThrownBy(() -> industryWithCycleSeedUsed(-1L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cycleSeedUsedMilli");
+  }
+
+  /** 一个产业的槽位上限 1000‰、`cycleInputPerUnit = cycleInput`、`cycleSeedUsedMilli = 0`。 */
+  private static Industry industryWithCycleInput(Map<AssetKind, Long> cycleInput) {
+    return industryWithCycleState(cycleInput, 0L);
+  }
+
+  private static Industry industryWithCycleSeedUsed(long cycleSeedUsedMilli) {
+    return industryWithCycleState(Map.of(), cycleSeedUsedMilli);
+  }
+
+  private static Industry industryWithCycleState(
+      Map<AssetKind, Long> cycleInput, long cycleSeedUsedMilli) {
+    return new Industry(
+        FARM,
+        "农业",
+        new RegimeId("tenant"),
+        120L,
+        0L,
+        Map.of(),
+        500L,
+        Map.of(GRAIN, 7L),
+        cycleInput,
+        List.of(new ClassSlot(PEASANT, "贫农", 1000)),
+        new AllocationRule.Split(700, 300),
+        0L,
+        cycleSeedUsedMilli);
+  }
+
   private static Industry industryWithTwoSlots() {
     return industryWithSlots(
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)));
@@ -346,8 +440,10 @@ class EconomyInvariantsTest {
         Map.of(),
         500L,
         Map.of(GRAIN, 7L),
+        Map.of(),
         slots,
         new AllocationRule.Split(700, 300),
+        0L,
         0L);
   }
 
@@ -361,8 +457,10 @@ class EconomyInvariantsTest {
         Map.of(),
         500L,
         Map.of(GRAIN, 7L),
+        Map.of(),
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
         new AllocationRule.Split(700, 300),
+        0L,
         0L);
   }
 

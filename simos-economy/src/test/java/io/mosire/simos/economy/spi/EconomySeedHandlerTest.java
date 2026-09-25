@@ -2,6 +2,7 @@ package io.mosire.simos.economy.spi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -222,6 +223,50 @@ class EconomySeedHandlerTest {
             + "{\"q\":1,\"r\":2,\"industries\":[]},{\"q\":-3,\"r\":4,\"industries\":[]}]}";
 
     assertThat(HANDLER.targetPaths("Map1", twoEntries)).containsExactly("1_2", "-3_4");
+  }
+
+  // ── 一次性投入槽与种子累加器（v2 spec §3.3）────────────────────────────────────────
+
+  /** ★★ 缺键 ⇒ 空 map / 0（旧载荷兼容：命令路径不许因为多了一个字段就把老生成器挡在门外）。 */
+  @Test
+  void legacyPayloadWithoutCycleInputStillSeedsEmptyAndZero() {
+    EconomyData after = apply(PAYLOAD, EconomyData.empty(), T7);
+
+    Industry industry = after.industries().get(FARM);
+    assertThat(industry.cycleInputPerUnit()).as("旧载荷没提一次性投入 ⇒ 空 map（不是 null、不拒）").isEmpty();
+    assertThat(industry.cycleSeedUsedMilli()).as("旧载荷没提种子累加器 ⇒ 0").isZero();
+  }
+
+  /** ★★ 两个新字段**逐值**过载荷：六种键都收、累加器读到。 */
+  @Test
+  void parsesCycleInputForAllKindsAndTheSeedAccumulator() {
+    String payload =
+        PAYLOAD.replace(
+            "\"dailyInputPerUnit\":{}",
+            "\"dailyInputPerUnit\":{},\"cycleInputPerUnit\":{\"LAND\":1200,\"CATTLE\":1},"
+                + "\"cycleSeedUsedMilli\":5000");
+    assertThat(payload).as("替换必须真的发生（否则本用例测的是缺键那条路）").isNotEqualTo(PAYLOAD);
+
+    Industry industry = apply(payload, EconomyData.empty(), T7).industries().get(FARM);
+
+    assertThat(industry.cycleInputPerUnit())
+        .as("每亩需种 1200 毫粮/亩，另带一种 v1 不读的键")
+        .containsExactly(entry(AssetKind.LAND, 1200L), entry(AssetKind.CATTLE, 1L));
+    assertThat(industry.cycleSeedUsedMilli()).isEqualTo(5_000L);
+  }
+
+  /** ★ 逐值校验：负的一次性投入 ⇒ 拒（`Industry` 的构造期守卫，经 handler 的 catch 折成 Rejected）。 */
+  @Test
+  void rejectsNegativeCycleInput() {
+    String payload =
+        PAYLOAD.replace(
+            "\"dailyInputPerUnit\":{}",
+            "\"dailyInputPerUnit\":{},\"cycleInputPerUnit\":{\"LAND\":-1}");
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("cycleInputPerUnit");
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────

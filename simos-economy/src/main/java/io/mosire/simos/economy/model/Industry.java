@@ -42,11 +42,18 @@ import java.util.Set;
  * @param dailyInputPerUnit 每单位生产资料每日原料需求（可为空 map）；键值非空、逐值 ≥ 0
  * @param dailyLaborPerUnit 每单位生产资料每日劳动需求（千分劳动）；不得为负
  * @param outputPerUnit 周期末每单位生产资料的基准产出（农业 = 每亩 67 粮，v2 spec §10.3 标定值）；键值非空、逐值 ≥ 0
+ * @param cycleInputPerUnit 每单位生产资料**每周期一次性**投入（v2 spec §3.3）。**量纲**：{@code LAND} 的键值是 **毫粮/亩**（与
+ *     {@code outputPerUnit} 的「粮/亩」、结算里按**亩**算的口径同侧）；★ 别与 {@code ClassRow.meansOfProduction} 的
+ *     {@code LAND}（**千分亩**）混——播种步里要先 {@code / 1000} 换成亩。 六种 {@link AssetKind} 键都允许（协议不设限），但 **v1
+ *     的结算只读 {@code LAND}**（= 每亩需种）； 其余五种是"声明但不启用"，与 {@code dailyInputPerUnit} 同状态。键值非空、逐值 ≥ 0。
  * @param slots 该制度允许的阶层槽位；非空、id 不重复（**不含人口占比**）
  * @param allocation 制度分配函数（版本化参数；本类不执行它）
  * @param cycleLaborMilli 本周期**累计的实际投入劳动**（千分劳动·日）：日结算每天把 Σ(行 {@code laborMilli ×
  *     participationPerMille / 1000}) 累加进来（**供收获时用**，R3a/R4a 的日结算记账）。收获当天先加当日量再取平均 （{@code /
  *     cycleDays} ⇒ 平均每日实际劳动，千分劳动），据此按"1 标准劳动经营 7 亩"算劳动瓶颈；周期关账后清零。不得为负。
+ * @param cycleSeedUsedMilli 本周期**实际扣到的种子**（毫粮）累加器，形制同 {@link #cycleLaborMilli()}： 播种日（{@code
+ *     progressDays == 0}）逐行累加、周期关账后清零。不得为负。 ★ 它同时是"留种的计量"（v2 spec §二 把留种列在**数**里）：收获日用 {@code
+ *     cycleSeedUsedMilli / cycleInputPerUnit[LAND]} 得**种子能支撑的亩数**，构成第三路瓶颈。
  */
 public record Industry(
     IndustryId id,
@@ -57,9 +64,11 @@ public record Industry(
     Map<AssetKind, Long> dailyInputPerUnit,
     long dailyLaborPerUnit,
     Map<CommodityId, Long> outputPerUnit,
+    Map<AssetKind, Long> cycleInputPerUnit,
     List<ClassSlot> slots,
     AllocationRule allocation,
-    long cycleLaborMilli) {
+    long cycleLaborMilli,
+    long cycleSeedUsedMilli) {
 
   public Industry {
     if (id == null) {
@@ -96,6 +105,9 @@ public record Industry(
     if (cycleLaborMilli < 0) {
       throw new IllegalArgumentException("Industry.cycleLaborMilli 不得为负: " + cycleLaborMilli);
     }
+    if (cycleSeedUsedMilli < 0) {
+      throw new IllegalArgumentException("Industry.cycleSeedUsedMilli 不得为负: " + cycleSeedUsedMilli);
+    }
     if (slots == null) {
       throw new IllegalArgumentException("Industry.slots 不得为 null");
     }
@@ -125,6 +137,22 @@ public record Industry(
       outputCopy.put(entry.getKey(), entry.getValue());
     }
     outputPerUnit = Collections.unmodifiableMap(outputCopy); // ★ 冻在赋值处
+    if (cycleInputPerUnit == null) {
+      throw new IllegalArgumentException("Industry.cycleInputPerUnit 不得为 null（无一次投入用空 map）");
+    }
+    Map<AssetKind, Long> cycleInputCopy = new LinkedHashMap<>();
+    for (Map.Entry<AssetKind, Long> entry : cycleInputPerUnit.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "Industry.cycleInputPerUnit 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() < 0) {
+        throw new IllegalArgumentException(
+            "Industry.cycleInputPerUnit 的数量不得为负：" + entry.getKey() + " = " + entry.getValue());
+      }
+      cycleInputCopy.put(entry.getKey(), entry.getValue());
+    }
+    cycleInputPerUnit = Collections.unmodifiableMap(cycleInputCopy); // ★ 冻在字段赋值处
     List<ClassSlot> slotsCopy = new ArrayList<>();
     Set<ClassSlotId> slotIds = new LinkedHashSet<>();
     for (ClassSlot slot : slots) {

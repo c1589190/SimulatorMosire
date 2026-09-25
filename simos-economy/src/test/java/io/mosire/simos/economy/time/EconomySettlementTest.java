@@ -248,8 +248,10 @@ class EconomySettlementTest {
             Map.of(),
             0L,
             Map.of(GRAIN, 7L),
+            Map.of(), // ★ 一个都不配种子：本文件的字面量是 V2 口径算好的
             slots,
             new AllocationRule.Split(700, 300),
+            0L,
             0L);
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
@@ -292,8 +294,10 @@ class EconomySettlementTest {
             Map.of(),
             0L,
             Map.of(GRAIN, 7L),
+            Map.of(), // ★ 一个都不配种子（同 {@link #fixture()}）
             slots,
             new AllocationRule.Split(700, 300),
+            0L,
             0L);
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);

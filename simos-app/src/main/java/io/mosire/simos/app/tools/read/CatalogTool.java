@@ -82,7 +82,8 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "economy.Seed",
               "mapId, rulesVersion, entries[{q,r,industries[{id,name,regime,cycleDays,progressDays?,"
-                  + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,allocation(@class=split|wage_first),"
+                  + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,cycleInputPerUnit?(键=生产资料种类，v1 只读 LAND),"
+                  + "cycleSeedUsedMilli?,allocation(@class=split|wage_first),"
                   + "slots[{id,name,laborParticipationPerMille}],"
                   + "classes[{slot,population,laborMilli,participationPerMille,meansOfProduction?,goods?,"
                   + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]}]"
