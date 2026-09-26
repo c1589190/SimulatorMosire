@@ -112,3 +112,27 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
   ⇒ **不声明**，等真有 api 侧类型用到 `HexCoord` 再加。
   —— **错了的代价**：Task 3 若真需要 map 类型 ⇒ 编译立刻失败，加一行依赖即可（低）。
   ⇒ 已就地改计划（Task 1 Step 2）。
+
+## 执行记录
+
+- **Task 1 dispatched**（BASE=`f870c0c`）：实现 Agent = sonnet 档；brief `task-1-brief.md`，报告 `task-1-report.md`
+  ★ 随 dispatch 带过去的裁定：**R-e**（actor-api 不声明 `simos-map`）+ "ban 列表只填本模块，回填别的模块是 Task 9 的事"
+
+### Task 1 实现报告（`4872f44`，DONE_WITH_CONCERNS）
+
+- **Ruling（计划缺陷 1 —— 变异写法）**：brief Step 5 写"加一条**不带 `<version>`** 的 `simos-app` 依赖"，
+  但那种写法在 **POM 校验阶段**就红（根 POM 的 `dependencyManagement` 不管 `simos-app`），
+  **根本走不到 enforcer** ⇒ 证明不了护栏。实现 Agent 补了 `<version>${project.version}</version>`
+  （坐标与位置一字不动）才让 enforcer 真的开火。
+  —— **为什么**：**变异必须打到被测的那一层**，否则"红"来自别处，等于没测。
+  —— **错了的代价**：低（两段红证据都留在报告里，可复核）。
+  ⇒ 后续任务若还要写变异体：**先确认它真的触发被测机制**。
+- **Ruling（计划缺陷 2 —— 逐任务验证命令不全）**：brief 的 Step 4/5 只跑 `package`，
+  而本仓 **`spotless-check` 绑在 `verify`** ⇒ 逐任务跑 `package` **看不到格式违规**，
+  违规会一路积累到阶段收尾的 `clean verify` 才炸。实现 Agent 自己补跑 `spotless:check`
+  并当场发现新文件的 javadoc 不合 google-java-format。
+  —— **为什么**：**门禁要跑在最早能发现它的地方**，不能都堆到收尾。
+  —— **错了的代价**：低（补一条命令即可）。
+  ⇒ **从 Task 2 起，每个任务的验证命令加 `spotless:check`**（本仓自己的 `spotless:apply` 修）。
+- **Task 1 评审 dispatched**：Review Package = `review-f870c0c..4872f44.diff`（1 commit / 8337 bytes），
+  评审 Agent = sonnet 档，只读

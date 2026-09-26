@@ -158,6 +158,9 @@ R1 波及 168 处 ⇒ **若 Task C 爆了，必须能判断"是新模型错"还�
 - ★★ **`-pl X -am` 与 `-Dtest=Y` 并用会在依赖模块报 `No tests matching pattern`** ⇒ 必须加
   `-Dsurefire.failIfNoSpecifiedTests=false`，**并以 surefire 报告核对真的跑了那个类**
 - **一次只能跑一个 Maven**；跑前 `pgrep -af "surefirebooter|classworlds.launcher"`
+- ★★ **逐任务的验证命令必须含 `spotless:check`**（**Task 1 实测教训**）：本仓 `spotless-check` 绑在
+  `verify`，而各任务 brief 里的命令多是 `package` ⇒ **格式违规看不到、一路积累到收尾 `clean verify` 才炸**。
+  发现违规**用本仓自己的 `./mvnw spotless:apply` 修**（**别手写折行**）。
 - **收尾前台跑 `./mvnw clean verify`**，把 Reactor 逐模块结果抄进报告
 - **注释与提交信息用中文**（`AGENT.md` §五.8）
 - **护栏必须自证**：每条新断言都要**变异自证**（改坏 ⇒ 当场红 ⇒ `Edit` 反向重写还原 ⇒ 复绿）
