@@ -186,7 +186,7 @@ brief/计划只写了"cohort 受方 ⇒ 进 `cohortIntake`、actor 受方 ⇒ �
 | `simos-economy/src/main/java/io/mosire/simos/economy/time/ProductionSettlement.java` | **新建**（470 行） | 公式表 + 次序 + R6 上限 + E14/E11 守卫 + 读口 `deferredMoneyReason` |
 | `simos-economy/src/test/java/io/mosire/simos/economy/time/ProductionSettlementTest.java` | **新建**（508 行 / 16 用例） | 逐值手算夹具（见 §八 的清单） |
 | `.superpowers/sdd/2026-09-26-s1-stage45-ownership-and-relations/task-3-report.md` | **新建** | 本文件 |
-| `.superpowers/sdd/2026-09-26-s1-stage45-ownership-and-relations/task-3-evidence/` | **新建** | **15 份**：RED ×1 / GREEN ×2 / 变异体 ×6 / 全仓 verify ×3 / md5 ×3（`git add -f` 入库：该目录被 `.superpowers/sdd/.gitignore` 的 `*` 挡着，照 T1/T2 先例） |
+| `.superpowers/sdd/2026-09-26-s1-stage45-ownership-and-relations/task-3-evidence/` | **新建** | **23 份**：RED ×1 / GREEN ×3 / 变异体 ×12（第一轮 6 + **最终字节上重证的 6**）/ 全仓 verify ×3 / md5 ×4（`git add -f` 入库：该目录被 `.superpowers/sdd/.gitignore` 的 `*` 挡着，照 T1/T2 先例） |
 
 **既有文件一字未改**（本任务 = 纯新增 ⇒ 关账点 A 的"行为未变"是**结构性**的）。★ `progress.md` 的未提交改动
 （T2 台账 + E12–E15 裁定）是控制方的账，照 T1/T2 先例**我不动、不提交**。
@@ -245,15 +245,19 @@ rc=1
 小改：货币档给出应付量 + `commodityOf` 兜一个商品。★ **这本身就是 I5.3 的强度所在**：契约（类型）与公式表
 （`deferredMoney`）**两层**各自都在挡它。
 
-**还原的逐字节证据**：`md5-baseline.txt`（两个文件的基线 md5），每条变异体用**反向 `Edit`** 还原后跑
-`md5sum -c` ⇒ 四次全 `OK`（M1 后、M2 后、M3 后、M4/M5 后、M6 后再一次），最后一次还原后复跑 ⇒ **16/16 绿**
-（`log-GREEN-2-restored.txt`，surefire 报告 mtime 落在本轮）。
+★ 上表"日志"列是**第一轮**（pre-spotless 字节）的；**最终字节**上的重证日志是同一目录的
+`log-M{1..6}-final-*.txt`（红的原因逐条相同，另附"还原后 md5 OK"）。
 
-★ **三份 md5 的时序**（免后来者误读）：`md5-baseline.txt` = **变异体还原的目标字节**（当时的两份文件）⇒
-之后 `spotless:apply` 重排了 javadoc 折行（`md5-final-post-spotless.txt`）⇒ 又为 SpotBugs 的 7 条
-`EI_EXPOSE_REP` 把不可变移到赋值处（`md5-final-post-spotbugs-fix.txt` = **最终字节**，全仓门禁跑的就是它）。
-★ 两次改动都**不是语义改动**（前者纯格式、逐行 grep 核过；后者把"助手返回的不可变 map"换成"赋值处字面包一层"，
-返回值同样不可变）；最终证据是**第三次全仓门禁**（§十）。
+**还原的逐字节证据（两轮；★ 第二轮才是落盘可核的）**：
+
+- **第一轮**（**pre-spotless** 的字节，`md5-baseline.txt`）：6 条逐条跑过、每条反向 `Edit` 还原后 `md5sum -c` 打 OK、
+  最后一次复跑 16/16 绿（`log-GREEN-2-restored.txt`）。★ **如实记**：这一轮那几次 `md5sum -c` 的**输出没有单独落盘**
+  （当时只看了 `OK`）—— 且此后 `spotless:apply` 与 SpotBugs 修复改动了字节 ⇒ 该基线已失效，**不再作为凭据**。
+- **第二轮**（**最终字节**，`md5-prefinal-mutants.txt` = `bd069f65…` / `a869202c…`，与关账点 A 那次全仓 verify 跑的
+  **是同一批字节**）：6 条**逐条重证**，每条日志里同时落盘两样东西 ——
+  ① `M* maven rc=1` + **失败断言原文**（见上表"实测"列）　② 还原后的 `md5sum -c md5-prefinal-mutants.txt` ⇒ **两份文件都 OK**；
+  日志：`log-M{1..6}-final-*.txt`。收尾再跑一次 ⇒ **16/16 绿 + BUILD SUCCESS + md5 再校验 OK**
+  （`log-GREEN-3-final-after-mutants.txt`）。★ 于是"红过、又逐字节回到了绿的字节"这件事**在证据目录里自证**。
 
 ---
 
@@ -300,6 +304,8 @@ rc=1
    助手只负责"校验 + 拷贝"；★ **没有**用 `@SuppressFBWarnings` 压 —— 压了等于把这一类问题对该类型整片关掉
    （本仓的注解位置注释也把它列为"误报"才用的兜底）。
 3. **第三次（`log-VERIFY-full-repo-3-final.txt`）：全绿**（本节上表）。
+   ★ 那次门禁跑的字节 = `md5-final-post-spotbugs-fix.txt` = `md5-prefinal-mutants.txt`
+   （`bd069f65…` / `a869202c…`）；6 条变异体随后在**同一批字节**上逐条重证并逐条还原（§九）⇒ 证据闭环。
 
 ---
 
