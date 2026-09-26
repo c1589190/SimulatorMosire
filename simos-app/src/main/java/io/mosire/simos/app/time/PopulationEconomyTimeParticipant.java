@@ -185,7 +185,14 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     for (PopulationGroup group : social.groups().values()) {
       List<IndustryId> targets = industriesOf.getOrDefault(group.id(), List.of());
       if (targets.isEmpty()) {
-        continue;
+        // ★★ B1 修复：**没有劳动配额的批次照样要吃饭、照样会挨饿** —— 按它**住的那一格**的产业行算满足率。
+        //   两类批次走到这里：0-14 档（劳动系数 0 ⇒ 创世不发配额）与**全部新生儿批次**（创世之后产生）。
+        //   与 EconomySettlement.applyPopulationChange 的兜底**共用同一个方法** —— 那个问题是同一个，
+        //   答案也只能有一个（两处各写一遍必然漂）。
+        targets = EconomySettlement.industriesAt(economy, group.residence());
+      }
+      if (targets.isEmpty()) {
+        continue; // 该格本来就没有任何经济状态（世界还没播种到这里）⇒ 没有可算的满足率
       }
       long grainNeed = 0L;
       long grainGot = 0L;

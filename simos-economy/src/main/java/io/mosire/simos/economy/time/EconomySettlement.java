@@ -594,8 +594,16 @@ public final class EconomySettlement {
         base.meta(), base.industries(), rows, base.debts(), flows, laborSupply, allocations);
   }
 
-  /** 某一格的全部产业（保序：产业表的插入序）。 */
-  private static List<IndustryId> industriesAt(
+  /**
+   * ★★ **某一格的全部产业**（保序：产业表的插入序；无则空表）。
+   *
+   * <p>★★ **两处共用**（{@code applyPopulationChange} 与 {@code
+   * io.mosire.simos.app.time.PopulationEconomyTimeParticipant#applyDailyStress}）——
+   * 抽成一个方法是因为"**没有配额的批次该按哪一格算**"这个问题**只能有一个答案**， 两处各写一遍必然漂（S1 spec §十 的原文）。
+   *
+   * <p>★ 可见性是 {@code public} 而非包内：调用方在 {@code simos-app} 的另一个包里。
+   */
+  public static List<IndustryId> industriesAt(
       EconomyData base, io.mosire.simos.map.hex.HexCoord at) {
     List<IndustryId> found = new ArrayList<>();
     for (IndustryId id : base.industries().keySet()) {

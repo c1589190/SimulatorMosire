@@ -406,6 +406,43 @@ class PopulationR4Test {
     return total;
   }
 
+  // ── ★★ B1 regression：压力与劳动配额无关 ──────────────────────────────────────────────
+
+  /**
+   * ★★ **不变量原文**（S1 spec §十）： <em>所有存在人口的 cohort 都参与生理压力计算，与其有没有 {@code LaborAllocation} 完全无关。</em>
+   *
+   * <p>★ 为什么要钉它：修 B1 之前，{@code applyDailyStress} 用 {@code industriesOf} （来自 {@code
+   * economy.allocations()}）过滤批次，**没有配额的批次直接 continue ⇒ 压力恒 0**。 两类批次从未有过配额：0-14 档的创世批次（劳动系数
+   * 0）、以及**全部新生儿批次**（创世之后产生）。
+   *
+   * <p>★ 判别力：把兜底改回 {@code continue} ⇒ 本条两条断言都红。
+   */
+  @Test
+  void everyPopulatedCohortAccumulatesStressRegardlessOfLaborQuota() {
+    Fixture after = advanced(seeded(), 180L);
+    SocialData social = after.social();
+    EconomyData economy = after.economy();
+
+    // ① 创世就有、且**没有劳动配额**的批次：0-14 档（年龄 < 15 年）
+    List<PopulationGroup> minors =
+        social.groups().values().stream()
+            .filter(g -> g.ageDaysAt(180L) < PopulationDynamics.FERTILE_MIN_DAYS)
+            .filter(g -> !economy.laborSupply().containsKey(g.id()))
+            .toList();
+    // ② 新生儿批次（id 的 cohort 段以 'b' 开头）
+    List<PopulationGroup> newborns =
+        social.groups().values().stream().filter(g -> g.id().value().contains(":b")).toList();
+
+    assertThat(minors).as("夹具前提：真的存在没有配额的未成年批次").isNotEmpty();
+    assertThat(minors.stream().mapToLong(PopulationGroup::physiologicalStress).max().orElse(0L))
+        .as("★★ 没有配额 ≠ 不挨饿：0-14 档也要累积压力")
+        .isPositive();
+    assertThat(newborns).as("夹具前提：半年里真的生了孩子").isNotEmpty();
+    assertThat(newborns.stream().mapToLong(PopulationGroup::physiologicalStress).max().orElse(0L))
+        .as("★★ 新生儿同样要累积压力（否则饥荒抑制只对创世那一代生效）")
+        .isPositive();
+  }
+
   private static PopulationGroup worstStressGroup(SocialData social, HexCoord hex) {
     PopulationGroup worst = null;
     for (PopulationGroup group : social.groupsAt(hex)) {
