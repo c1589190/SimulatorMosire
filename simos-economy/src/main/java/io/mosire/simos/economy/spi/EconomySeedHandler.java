@@ -89,7 +89,9 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★ R2：劳动供给与配额**按格追加**（与产业/阶层行同一套判重口径：该格已被占用 ⇒ 上面就拒了），
             //   故这里按表合并即可 —— 各国的批次 id 互不相同（含格/城的 id 段）。
             merge(base.laborSupply(), seeded.laborSupply()),
-            merge(base.allocations(), seeded.allocations()));
+            merge(base.allocations(), seeded.allocations()),
+            // ★ T2：第 8 个组件按同一套判重口径追加（该格已被占用 ⇒ 上面就拒了）。
+            merge(base.relations(), seeded.relations()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

@@ -461,7 +461,7 @@ class EconomyDebtTest {
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of());
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   /** 一格两行（贫农缸空 / 地主 {@code landlordJar}）、**不产粮**的产业。 */
@@ -475,7 +475,7 @@ class EconomyDebtTest {
     //   （收获恒 0、瓶颈无从谈起）⇒ 配额表留空即可。★ 空配额是**合法状态**（劳动是分配来的：没人发配额 = 没人上山干活），
     //   不是"兜底"——本文件断言的债务与利息与劳动无关。
     return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of());
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   /** {@code hexes} 格（同一形态：贫农缸空、地主缸厚）—— 供上界用例。 */
@@ -488,7 +488,7 @@ class EconomyDebtTest {
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of());
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   /**

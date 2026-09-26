@@ -441,7 +441,9 @@ class EconomySettlementTest {
         Map.of(),
         Map.of(),
         Map.of(LOT, supply(LOT, 58_000L)),
-        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)));
+        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
+        // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+        Map.of());
   }
 
   /**
@@ -501,7 +503,9 @@ class EconomySettlementTest {
         Map.of(),
         Map.of(),
         Map.of(LOT, supply(LOT, 58_000L)),
-        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)));
+        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
+        // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+        Map.of());
   }
 
   /**
@@ -589,7 +593,9 @@ class EconomySettlementTest {
         Map.of(),
         Map.of(),
         Map.of(LOT, supply(LOT, 58_000L)),
-        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)));
+        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
+        // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+        Map.of());
   }
 
   private static long grainOf(EconomyData data, ClassKey key) {

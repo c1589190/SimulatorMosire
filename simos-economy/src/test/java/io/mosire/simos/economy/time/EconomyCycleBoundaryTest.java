@@ -112,7 +112,8 @@ class EconomyCycleBoundaryTest {
                 new ActorRef(ActorKind.ESTATE, FARM.value()),
                 "farm",
                 dailyLabor,
-                FIRST_PERIOD)));
+                FIRST_PERIOD)),
+        Map.of()); // ★ T2：生产关系表（本文件只谈周期边界 ⇒ 空表 = 全归 residualOwner 的等价路径）
   }
 
   @Test

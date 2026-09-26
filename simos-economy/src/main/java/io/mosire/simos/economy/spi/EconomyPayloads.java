@@ -7,6 +7,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -16,6 +17,11 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
@@ -23,6 +29,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
@@ -75,8 +82,37 @@ import java.util.OptionalLong;
  * 切片**（只有 map/social/unit），故这两处形状变化不影响它能否打开。
  *
  * <p>★ **S1 阶段 3：{@code operator} 是可选键**（上面的样例里就带着它）。**缺键 ⇒ 按 {@code regime} 推导** （{@link
- * RegimeOperators#defaultOperator}，裁定 R1）—— 这是**载荷边缘唯一**的推导点：{@code Industry} 收了 {@code null}
+ * RegimeOperators#defaultOperator}，裁定 R1）—— 这是**载荷边缘**的推导点：{@code Industry} 收了 {@code null}
  * 是**抛**，不是补（裁定 D1）。★ 与 {@code allocations[].actor} 的口径**刻意不同**：那里缺键是**拒**、 这里是**推导**，不许合并。
+ *
+ * <p>★★ <b>S1 阶段 4+5 Task 2：{@code relation} 是可选键</b>（产业对象内的第二个推导点，形态与 {@code operator} 同款）。<b>缺键 ⇒
+ * 按 {@code regime} 推导</b>（{@link RegimeRelations#defaultRelation}，计划 R3/R8）； <b>给了 ⇒
+ * 逐值采纳</b>，但两个一致性判据在命令边界判死：
+ *
+ * <pre>{@code
+ * "relation":{
+ *   "operator":{"kind":"ESTATE","id":"farm@0_0"},        // 可选；缺 ⇒ 取产业的那个（于是必然一致）
+ *   "residualOwner":{"kind":"ESTATE","id":"farm@0_0"},   // 可选；缺 ⇒ 取 operator（自留是缺省）
+ *   "rules":[{"type":"OUTPUT_SHARE","recipient":{"cohort":"0_0|landlord"},
+ *             "basis":"GROSS_OUTPUT","ratePerMille":300,"fixedAmount":0,
+ *             "commodity":"grain","priority":10}]}                  // rules 可选（缺 ⇒ 空表 = 全归 residualOwner）
+ * }</pre>
+ *
+ * <ul>
+ *   <li>★ <b>{@code activity} <b>不是</b>载荷键</b>：关系的身份 = 它所在的**那个产业**（铁律 1 —— 同一件事不许 两处拼写）。故这里只会造出
+ *       {@code activity == 本产业 id} 的关系；
+ *   <li>★★ <b>{@code operator} 给了就必须与产业的 {@code operator} 逐值相等</b>，否则**抛**（同一件事的两处拼写
+ *       不一致时，没有哪一处能判谁对）；<b>缺省取产业的那个</b>—— ★ 不是"再调一次 {@code RegimeOperators.defaultOperator}"：两者在缺
+ *       {@code operator} 键时同值，而在**显式给了 operator** 时 只有前者自洽（否则"显式主体 + 缺 relation"会自相矛盾地被拒，I3.1
+ *       的用例正是那个形态）；
+ *   <li>★ <b>受方</b>：{@code recipient} 恰给 {@code actor}（{@code {kind,id}}）或 {@code cohort} （{@code
+ *       CohortKey} 的**规范串**，如 {@code "0_0|landlord"}）之一 —— 两个都没给 / 两个都给了 ⇒ 抛；
+ *   <li>★ <b>{@code commodity}</b>：**缺键 ⇒ 货币档**（{@code Optional.empty()}）、给了 ⇒ 实物档；两个方向都由 {@link
+ *       CompensationRule} 的构造期守卫兜底（本层不重复实现那条规则）；
+ *   <li>★ <b>{@code ratePerMille} / {@code fixedAmount} / {@code priority} 三个整数必填</b>（不在本层造缺省值：
+ *       一条规则的率/额/次序被静默补成 0，读起来是"合法的数据"，实际是"漏写了一个键"）；
+ *   <li>★ <b>空 {@code rules} 合法</b>（= 全部自留，裁定 E9 的等价路径）。
+ * </ul>
  *
  * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世**（带可读中文原因）：形状/类型不对在本层判，**数值语义**（人口/土地/劳动 ≥
  * 0、槽位必须在该产业的 {@code slots} 里、{@code progressDays ≤ cycleDays}）交给 §3 的领域类型与 {@link EconomyData}
@@ -141,6 +177,8 @@ final class EconomyPayloads {
     // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
     Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+    // ★ T2 的第 8 个组件：与 industries **同键**（关系的身份 = 它结算的那个产业）⇒ 逐产业一条，见下面的循环。
+    Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       requireInt(entry, "q");
@@ -151,6 +189,8 @@ final class EconomyPayloads {
         if (industries.putIfAbsent(id, industry) != null) {
           throw new IllegalArgumentException("同一份载荷里产业 id 重复: " + id);
         }
+        // ★ 关系与产业**同键**（上面刚判过重复）⇒ 此处不必再判一次（判重只会是一段走不到的代码）。
+        relations.put(id, relation(node, industry));
         for (JsonNode row : optionalArray(node, "classes")) {
           ClassRow classRow = classRow(id, row);
           if (classes.putIfAbsent(classRow.key(), classRow) != null) {
@@ -178,7 +218,88 @@ final class EconomyPayloads {
     EconomyMeta meta =
         new EconomyMeta(mapId, at.tick(), OptionalLong.empty(), rulesVersion, Optional.empty());
     return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), laborSupply, allocations);
+        Optional.of(meta),
+        industries,
+        classes,
+        Map.of(),
+        Map.of(),
+        laborSupply,
+        allocations,
+        relations);
+  }
+
+  // ── 生产关系（T2；计划 R3/R8）────────────────────────────────────────────────────────
+
+  /**
+   * 一个产业的 {@code relation}（可选键，见类注）：缺 ⇒ 按 {@code regime} 推导；给了 ⇒ 逐值采纳 + {@code operator} 一致性判死。
+   *
+   * <p>★ 推导时的 {@code operator} 取**产业的那个**（{@code industry.operator()}）而不是再调一次 {@link
+   * RegimeOperators#defaultOperator}：缺 {@code operator} 键时两者同值，而**显式给了 operator** 时只有
+   * 前者自洽（否则那条合法的载荷会被 R3 守卫自相矛盾地拒掉）。
+   */
+  private static ProductionRelation relation(JsonNode node, Industry industry) {
+    JsonNode relationNode = optionalObject(node, "relation");
+    if (relationNode == null) {
+      return RegimeRelations.defaultRelation(industry.regime(), industry.id(), industry.operator());
+    }
+    JsonNode operatorNode = optionalObject(relationNode, "operator");
+    ActorRef operator = operatorNode == null ? industry.operator() : actorRef(operatorNode);
+    // ★★ 载荷边缘的一致性判据（R3 的第 2 条；状态层还有同一条守卫 —— 两层都在是**有意**的，见
+    //   EconomySeedHandlerTest#rejectsARelationWhoseOperatorDisagreesWithTheIndustry 的类注：
+    //   那里钉的是**本层**的消息，否则删掉本层不会红）。
+    if (!operator.equals(industry.operator())) {
+      throw new IllegalArgumentException(
+          "relation.operator 必须与产业的 operator 一致（同一件事不许两处拼写）：关系="
+              + operator
+              + "，产业="
+              + industry.operator()
+              + "（产业 "
+              + industry.id()
+              + "）");
+    }
+    JsonNode residualNode = optionalObject(relationNode, "residualOwner");
+    ActorRef residualOwner = residualNode == null ? operator : actorRef(residualNode);
+    List<CompensationRule> rules = new ArrayList<>();
+    for (JsonNode rule : optionalArray(relationNode, "rules")) {
+      rules.add(compensationRule(rule));
+    }
+    return new ProductionRelation(industry.id(), operator, rules, residualOwner);
+  }
+
+  /**
+   * 一条补偿规则：{@code {type, recipient:{actor|cohort}, basis, ratePerMille, fixedAmount, commodity?,
+   * priority}}。
+   *
+   * <p>★ <b>受方"恰其一"</b>：两个变体都没给 / 都给了 ⇒ 抛（契约里它是**类型事实**，载荷这一层负责把它喂对）。 ★ <b>{@code commodity} 缺键 =
+   * 货币档</b>（空 {@code Optional}）—— 与 {@link CompensationRule} 的二选一守卫
+   * 同源，本层不重复判它（违反了那条守卫会由契约自己抛，消息更准）。
+   */
+  private static CompensationRule compensationRule(JsonNode node) {
+    JsonNode recipientNode = optionalObject(node, "recipient");
+    if (recipientNode == null) {
+      throw new IllegalArgumentException("补偿规则的字段 recipient 必须是对象: " + node);
+    }
+    JsonNode actorNode = optionalObject(recipientNode, "actor");
+    boolean hasCohort = recipientNode.hasNonNull("cohort");
+    if ((actorNode != null) == hasCohort) {
+      throw new IllegalArgumentException(
+          "recipient 必须恰给 actor 或 cohort 之一（"
+              + (actorNode != null ? "两个都给了" : "两个都没给")
+              + "）: "
+              + recipientNode);
+    }
+    Recipient recipient =
+        actorNode != null
+            ? new Recipient.ToActor(actorRef(actorNode))
+            : new Recipient.ToCohort(CohortKey.parse(requireText(recipientNode, "cohort")));
+    return new CompensationRule(
+        RuleType.parse(requireText(node, "type")),
+        recipient,
+        Basis.parse(requireText(node, "basis")),
+        requireInt(node, "ratePerMille"),
+        requireLong(node, "fixedAmount"),
+        optionalText(node, "commodity").map(CommodityId::parse),
+        requireInt(node, "priority"));
   }
 
   // ── 劳动供给 / 劳动分配（R2，设计稿 §四）──────────────────────────────────────────────
@@ -449,6 +570,23 @@ final class EconomyPayloads {
       return fallback;
     }
     return requireIntegral(value, field);
+  }
+
+  /**
+   * 可选的文本键：缺键 / JSON {@code null} ⇒ {@link Optional#empty()}（"空"的唯二形态）。
+   *
+   * <p>★ <b>给了但形状不对（非文本 / 空白）⇒ 抛</b>：与 {@link #optionalObject} 同款 —— "可选"说的是**可以不给**，
+   * 不是"给了什么都收"。静默把它当"没给"会让一个写错的键看起来像合法的货币规则。
+   */
+  private static Optional<String> optionalText(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isTextual() || value.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是非空字符串: " + node);
+    }
+    return Optional.of(value.asText());
   }
 
   private static long requireIntegral(JsonNode value, String field) {

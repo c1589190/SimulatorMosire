@@ -7,6 +7,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -16,6 +17,11 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
@@ -25,6 +31,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -137,8 +144,8 @@ class EconomyRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlySevenComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(7);
+  void changeSetHasExactlyEightComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(8);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -179,6 +186,13 @@ class EconomyRoundTripTest {
           base.withIndustries(Map.of(FARM, industry(FARM, 0L)))
               .withLaborSupply(Map.of(LOT, laborSupply()))
               .withAllocations(Map.of(ALLOCATION, laborAllocation()));
+      // ★ T2 的第 8 个组件：**自带支撑的产业**（跨表守卫要求 relations[key].operator() 等于
+      //   industries[key].operator()，且键 == 值内 activity）。
+      //   ★ 夹具是**非派生**值：operator 取 `HOUSEHOLD:house-7`（本文件夹具的 regime 是 `tenant`，
+      //   推导值是 `HOUSEHOLD:farm`）⇒ "把 relations 整个按 regime 重新推导"这种坏实现会读到别的值 ⇒ 红。
+      case "relations" ->
+          base.withIndustries(Map.of(FARM, industry(FARM, 0L, NON_DEFAULT_OPERATOR)))
+              .withRelations(Map.of(FARM, relation(FARM, NON_DEFAULT_OPERATOR)));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -192,6 +206,7 @@ class EconomyRoundTripTest {
       case "flows" -> cs.flows().changed();
       case "laborSupply" -> cs.laborSupply().changed();
       case "allocations" -> cs.allocations().changed();
+      case "relations" -> cs.relations().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -301,5 +316,39 @@ class EconomyRoundTripTest {
   /** ★ R2 的供给夹具：毛额 60,000 ⇒ 配额恰好用满（{@code Σ allocated ≤ available} 取等号）。 */
   static LaborSupply laborSupply() {
     return new LaborSupply(LOT, 1L, 60_000L, 0L, 0L);
+  }
+
+  /**
+   * ★★ T2 的 operator 夹具：**非派生值**（`HOUSEHOLD:house-7`；本文件 `industry` 的 regime 是 `tenant`， 推导值 =
+   * `HOUSEHOLD:farm`）—— 见 {@link #mutate} 的 `relations` 分支。
+   */
+  static final ActorRef NON_DEFAULT_OPERATOR = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
+
+  /**
+   * ★★ T2 的关系夹具：**逐值非派生**（两条规则把 E4 的两个要点各钉一条：地租**显式**给 {@code (hex, landlord)} cohort、自留由 {@code
+   * residualOwner} 表达而不是写一条 {@code SELF_RETENTION}）。
+   */
+  static ProductionRelation relation(IndustryId id, ActorRef operator) {
+    return new ProductionRelation(
+        id,
+        operator,
+        List.of(
+            new CompensationRule(
+                RuleType.OUTPUT_SHARE,
+                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), LANDLORD)),
+                Basis.GROSS_OUTPUT,
+                300,
+                0L,
+                Optional.of(GRAIN),
+                10),
+            new CompensationRule(
+                RuleType.FIXED_IN_KIND_PER_LABOR,
+                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), PEASANT)),
+                Basis.LABOR_AMOUNT,
+                0,
+                144L,
+                Optional.of(GRAIN),
+                20)),
+        operator);
   }
 }

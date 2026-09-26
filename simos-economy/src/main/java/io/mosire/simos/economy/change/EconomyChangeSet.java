@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
@@ -21,8 +22,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 7 个：{@code meta} / {@code industries} /
- * {@code classes} / {@code debts} / {@code flows} / {@code laborSupply} / {@code allocations}）。
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 8 个：{@code meta} / {@code industries} /
+ * {@code classes} / {@code debts} / {@code flows} / {@code laborSupply} / {@code allocations} /
+ * {@code relations}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -41,6 +43,10 @@ import java.util.function.Function;
  * <p>★ **R2 的两个新组件走同一份机制**（{@code laborSupply} = 每批次有多少可支配劳动、{@code allocations} = 每批次把多少给了谁）：
  * 它们是普通的"键 → 值"表，故 diff/rebuild 一字不用改——rebuild 的键解析器 = 各自的 {@code parse} （{@link PeopleLotId#parse}
  * / {@link LaborAllocationId#parse}），与 {@code ClassKey} 一族同款。
+ *
+ * <p>★ **T2 的第 8 个组件同款**（{@code relations} = 每个产业一次生产的结算规则）：键 = {@code IndustryId} （已有键反序列化器），值 =
+ * {@link ProductionRelation}（**深层**带一个 sealed 多态类型 {@code Recipient} ⇒ 它的 线格式由类型上的 Jackson
+ * 注解把守，见那个接口的类注；此处无须有任何分支）。
  */
 public record EconomyChangeSet(
     FieldDelta<EconomyMeta> meta,
@@ -49,7 +55,8 @@ public record EconomyChangeSet(
     FieldDelta<Debt> debts,
     FieldDelta<FlowRow> flows,
     FieldDelta<LaborSupply> laborSupply,
-    FieldDelta<LaborAllocation> allocations)
+    FieldDelta<LaborAllocation> allocations,
+    FieldDelta<ProductionRelation> relations)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -80,6 +87,10 @@ public record EconomyChangeSet(
     if (allocations == null) {
       allocations = new FieldDelta.Unchanged<>();
     }
+    // ★ 第 8 个组件（T2）：同一口径（旧档没提该组件，就是没动它）。
+    if (relations == null) {
+      relations = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -93,7 +104,8 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.debts(), target.debts()),
         FieldDelta.diff(base.flows(), target.flows()),
         FieldDelta.diff(base.laborSupply(), target.laborSupply()),
-        FieldDelta.diff(base.allocations(), target.allocations()));
+        FieldDelta.diff(base.allocations(), target.allocations()),
+        FieldDelta.diff(base.relations(), target.relations()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -107,7 +119,8 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.debts(), cs.debts(), DebtId::parse),
         FieldDelta.rebuild(base.flows(), cs.flows(), ClassKey::parse),
         FieldDelta.rebuild(base.laborSupply(), cs.laborSupply(), PeopleLotId::parse),
-        FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse));
+        FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse),
+        FieldDelta.rebuild(base.relations(), cs.relations(), IndustryId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -118,7 +131,8 @@ public record EconomyChangeSet(
         || debts.changed()
         || flows.changed()
         || laborSupply.changed()
-        || allocations.changed());
+        || allocations.changed()
+        || relations.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

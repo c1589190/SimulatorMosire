@@ -817,7 +817,10 @@ class GuiApiTest {
         Map.of(),
         Map.of(),
         laborSupply(),
-        laborAllocations());
+        laborAllocations(),
+        // ★ T2：第 8 个组件（生产关系表）。★ 这里刻意**留空**而不是按 regime 推：本夹具测的是 GUI 的读口
+        //   （账户/库存的视图），关系那一层不在它的断言面上；空表是合法状态（全归 residualOwner）。
+        Map.of());
   }
 
   /** 第二个产业（手工业 = 作坊）：只借身份（无阶层行 ⇒ 无人口/劳动，读口多一条空产业）。 */

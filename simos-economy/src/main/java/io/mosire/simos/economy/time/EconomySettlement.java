@@ -493,8 +493,16 @@ public final class EconomySettlement {
             meta.migrationSource());
     // ★ R2：劳动供给表与配额表**原样带过结算的日常部分**（配额属命令层、供给属 social 的人口真值源）；
     //   R4 起它们在**饿死**那一步会被按存活比例缩（上面的工作副本），故这里交出的是**工作副本**。
+    // ★ T2：生产关系表**原样带过**（本任务行为不变：{@code harvest} 还没读它 —— 那时 T4 的事）。
     return new EconomyData(
-        Optional.of(nextMeta), industries, rows, debts, flows, laborSupply, allocations);
+        Optional.of(nextMeta),
+        industries,
+        rows,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        base.relations());
   }
 
   // ── 人口变动回写（R4：社会侧的出生/死亡 → 经济侧的行人口、劳动配额与流水）──────────────────
@@ -604,7 +612,14 @@ public final class EconomySettlement {
           laborSupply);
     }
     return new EconomyData(
-        base.meta(), base.industries(), rows, base.debts(), flows, laborSupply, allocations);
+        base.meta(),
+        base.industries(),
+        rows,
+        base.debts(),
+        flows,
+        laborSupply,
+        allocations,
+        base.relations()); // ★ T2：生产关系表原样带过（人口变动不动关系）
   }
 
   /**

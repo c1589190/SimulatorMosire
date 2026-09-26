@@ -174,7 +174,17 @@ public final class EconomyTestWorld {
         new EconomyMeta(
             MAP_ID, 0L, OptionalLong.empty(), EconomySeeder.RULES_VERSION, Optional.empty());
     return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), supply, allocations);
+        Optional.of(meta),
+        industries,
+        classes,
+        Map.of(),
+        Map.of(),
+        supply,
+        allocations,
+        // ★ T2：第 8 个组件（生产关系表）。★ 本夹具走**手搭**这条路（不经载荷 ⇒ 没有"缺省推导"那一层），
+        //   而 T2 的结算**还没读它**（行为不变）⇒ 留空（空表 = 全归 residualOwner 的等价路径）。
+        //   ★ 该给什么关系由 T4 决定（那时的 harvest 才第一次读这张表）。
+        Map.of());
   }
 
   /** 初始库存口径（毫粮）：普通行 = 按阶层天数（贫 30/中 60/富 120/地 250）；两种缺口形态见枚举。 */

@@ -173,7 +173,8 @@ class EconomyLaborAllocationTest {
         Map.of(),
         Map.of(),
         supply,
-        allocations);
+        allocations,
+        Map.of()); // ★ T2：生产关系表（本文件只谈劳动配额 ⇒ 空表）
   }
 
   private static LaborAllocation allocation(

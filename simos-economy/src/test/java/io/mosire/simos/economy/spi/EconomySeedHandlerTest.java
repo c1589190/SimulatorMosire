@@ -9,6 +9,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -17,12 +18,19 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -32,6 +40,7 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -520,6 +529,182 @@ class EconomySeedHandlerTest {
 
     assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
     assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("cycleInputPerUnit");
+  }
+
+  // ── T2：载荷里的可选项 relation（第 8 个组件；计划 R3）────────────────────────────────
+
+  /**
+   * ★★ **缺 {@code relation} 键 ⇒ 在载荷边缘按 {@code regime} 推导**（同 {@code operator} 的 D1 口径）。
+   *
+   * <p>★★ <b>为什么夹具的制度是 {@code tenant} 而不是 {@code feudal}</b>（本条用例的判别力全在这里）： {@code feudal}
+   * 是登记表的**第一档** ⇒ "一律取第一条已登记档"这种坏实现<b>照样绿</b> （等价变异体，本仓踩过五次）。换成 {@code tenant}（第四档）后，那一档的规则（**1
+   * 条固定粮租**） 与第一档（**5 条：4 条给养 + 1 条 300‰ 地租**）在**条数、类型、数量**上都可观测地不同。
+   *
+   * <p>★ 期望值是**逐值字面量**（不调 {@code RegimeRelations}）—— 否则"把出厂值改掉"不会红。
+   */
+  @Test
+  void aPayloadWithoutRelationDerivesTheDefaultFromItsRegime() {
+    String payload = PAYLOAD.replace("\"regime\":\"feudal\"", "\"regime\":\"tenant\"");
+    assertThat(payload).as("替换必须真的发生（否则本用例测的是 feudal 那条路）").isNotEqualTo(PAYLOAD);
+
+    EconomyData after = apply(payload, EconomyData.empty(), T7);
+
+    assertThat(after.relations()).as("每个产业一条关系（缺键 ⇒ 推导）").hasSize(1);
+    assertThat(after.relations().get(FARM))
+        .as("★ 租佃档逐值：一条固定实物租（20,000 粮/周期）给 (0_0, landlord) cohort")
+        .isEqualTo(
+            new ProductionRelation(
+                FARM,
+                new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"),
+                List.of(
+                    new CompensationRule(
+                        RuleType.FIXED_IN_KIND_RENT,
+                        new Recipient.ToCohort(
+                            new CohortKey(new HexCoord(0, 0), SocialClassId.LANDLORD)),
+                        Basis.FIXED_AMOUNT,
+                        0,
+                        20_000_000L,
+                        Optional.of(GRAIN),
+                        10)),
+                new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0")));
+    // ★ 跨表一致性：关系里的 operator 与产业的 operator 是**同一个值**（两处拼写必须一致，构造期守卫判死）
+    assertThat(after.relations().get(FARM).operator())
+        .isEqualTo(after.industries().get(FARM).operator());
+  }
+
+  /**
+   * ★★ **给了 {@code relation} 但 {@code operator} 与产业的不一致 ⇒ 命令边界拒**（计划 R3 的第 2 条： "谁经营"不许有两处拼写）。
+   *
+   * <p>★★ <b>为什么拒因里必须点名 {@code relation.operator}</b>（"拒了"这一条断言是不够的）：同一条事实有**两层** 守卫 —— 载荷边缘（{@code
+   * EconomyPayloads}）与状态构造期（{@code EconomyData}）。删掉其中任一层，这个载荷 <b>照样</b>被拒（另一层接住）⇒
+   * "抛了"这句话<b>分不出</b>是哪一层在守。故本用例钉<b>载荷边缘那一层</b>的消息 （它开头是 {@code relation.operator}，而状态层那句开头是 {@code
+   * 关系的 operator}）。 ★★ 这不是推演：**变异体实测**（M4）发现——把载荷那层删掉后本用例曾<b>照样绿</b>（RED 缺席），补上这条判别子串后才当场红。 ★
+   * 两层都在是<b>有意</b>的：载荷层给"写错就当场拒"的可读理由，状态层兜住一切别的写入口（命令、旧档、夹具）。
+   */
+  @Test
+  void rejectsARelationWhoseOperatorDisagreesWithTheIndustry() {
+    String payload =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",",
+            "\"regime\":\"feudal\",\"relation\":{\"operator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-9\"},"
+                + "\"rules\":[]},");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("★ 拒因点名两处不一致的 operator，且必须是**载荷边缘**那一条消息（见类注）")
+        .contains("relation.operator")
+        .contains("house-9");
+  }
+
+  /**
+   * ★★ **显式给的 {@code relation} 逐值落盘**（不是被忽略、也不是被 regime 覆盖）。
+   *
+   * <p>★ 夹具是**非派生**值（550‰ + {@code middle_peasant} cohort + {@code priority 3}，与 {@code feudal} 档的
+   * 推导值 5 条规则毫无共同之处）⇒ "读了没读这个键"与"一律重新推导"两种坏实现都会红。
+   */
+  @Test
+  void anExplicitRelationIsSeededValueForValue() {
+    String payload =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",",
+            "\"regime\":\"feudal\",\"relation\":{"
+                + "\"operator\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
+                + "\"residualOwner\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
+                + "\"rules\":[{\"type\":\"OUTPUT_SHARE\","
+                + "\"recipient\":{\"cohort\":\"0_0|middle_peasant\"},"
+                + "\"basis\":\"GROSS_OUTPUT\",\"ratePerMille\":550,\"fixedAmount\":0,"
+                + "\"commodity\":\"grain\",\"priority\":3}]},");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+
+    ProductionRelation relation = apply(payload, EconomyData.empty(), T7).relations().get(FARM);
+
+    assertThat(relation)
+        .as("★ 逐值落盘（含显式 operator / residualOwner / 一条 550‰ 的规则）")
+        .isEqualTo(
+            new ProductionRelation(
+                FARM,
+                new ActorRef(ActorKind.ESTATE, "farm@0_0"),
+                List.of(
+                    new CompensationRule(
+                        RuleType.OUTPUT_SHARE,
+                        new Recipient.ToCohort(
+                            new CohortKey(new HexCoord(0, 0), new SocialClassId("middle_peasant"))),
+                        Basis.GROSS_OUTPUT,
+                        550,
+                        0L,
+                        Optional.of(GRAIN),
+                        3)),
+                new ActorRef(ActorKind.ESTATE, "farm@0_0")));
+    assertThat(relation)
+        .as("★ 前置：夹具确实**不是** feudal 档的推导值（否则本用例测不出「读没读这个键」）")
+        .isNotEqualTo(
+            RegimeRelations.defaultRelation(
+                new RegimeId("feudal"), FARM, new ActorRef(ActorKind.ESTATE, "farm@0_0")));
+  }
+
+  /**
+   * ★ 关系对象里的两个可选键：**缺 {@code operator} ⇒ 取产业的那个**（于是两处必然一致）、 **缺 {@code residualOwner} ⇒ 取
+   * operator**（自留是缺省）；{@code rules} 缺省 ⇒ 空表（全归 residualOwner，E9）。
+   */
+  @Test
+  void relationOperatorAndResidualOwnerDefaultToTheIndustrysOperator() {
+    String payload =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",", "\"regime\":\"feudal\",\"relation\":{\"rules\":[]},");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+
+    ProductionRelation relation = apply(payload, EconomyData.empty(), T7).relations().get(FARM);
+
+    assertThat(relation.operator())
+        .as("缺 operator ⇒ 产业的（feudal 的推导值）")
+        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
+    assertThat(relation.residualOwner())
+        .as("缺 residualOwner ⇒ operator（自留是缺省）")
+        .isEqualTo(relation.operator());
+    assertThat(relation.rules()).as("空 rules 合法（= 全部自留，E9 的等价路径）").isEmpty();
+  }
+
+  /** ★ 坏形状（{@code recipient} 两个变体都没给 / 都给了；{@code type} 不在词表）⇒ 命令边界拒，不静默兜底。 */
+  @Test
+  void rejectsARelationWhoseRuleShapeIsBroken() {
+    String noRecipient =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",",
+            "\"regime\":\"feudal\",\"relation\":{\"rules\":[{\"type\":\"OUTPUT_SHARE\","
+                + "\"basis\":\"GROSS_OUTPUT\",\"ratePerMille\":100,\"fixedAmount\":0,"
+                + "\"priority\":1,\"commodity\":\"grain\"}]},");
+    String bothRecipients =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",",
+            "\"regime\":\"feudal\",\"relation\":{\"rules\":[{\"type\":\"OUTPUT_SHARE\","
+                + "\"recipient\":{\"cohort\":\"0_0|landlord\",\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}},"
+                + "\"basis\":\"GROSS_OUTPUT\",\"ratePerMille\":100,\"fixedAmount\":0,"
+                + "\"priority\":1,\"commodity\":\"grain\"}]},");
+    String badType =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",",
+            "\"regime\":\"feudal\",\"relation\":{\"rules\":[{\"type\":\"SHARE\","
+                + "\"recipient\":{\"cohort\":\"0_0|landlord\"},\"basis\":\"GROSS_OUTPUT\","
+                + "\"ratePerMille\":100,\"fixedAmount\":0,\"priority\":1,\"commodity\":\"grain\"}]},");
+    assertThat(List.of(noRecipient, bothRecipients, badType))
+        .as("三个替换必须都真的发生")
+        .doesNotContain(PAYLOAD);
+
+    assertThat(reasonOf(noRecipient)).as("recipient 一个都没给 ⇒ 拒").contains("recipient");
+    assertThat(reasonOf(bothRecipients)).as("recipient 两个都给了 ⇒ 拒").contains("recipient");
+    assertThat(reasonOf(badType))
+        .as("词表外的类型 ⇒ 拒并列出合法值")
+        .contains("未登记的规则类型")
+        .contains("OUTPUT_SHARE");
+  }
+
+  private static String reasonOf(String payload) {
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+    assertThat(outcome).as("坏关系载荷必须在命令边界被拒（不是抛到边界之外）").isInstanceOf(HandlerOutcome.Rejected.class);
+    return ((HandlerOutcome.Rejected) outcome).reason();
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────

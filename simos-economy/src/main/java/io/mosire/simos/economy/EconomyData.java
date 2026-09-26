@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -30,7 +31,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **七个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的七个组件一一对应**（铁律 5）：
+ * <p>★ **八个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的八个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -59,12 +60,27 @@ import java.util.Set;
  *       那等于把"不能凭空重复"这条判据本身留成后门。
  * </ol>
  *
- * <p>★★ **缺键 = 空**（§11 的旧档兼容口径，照 {@code LedgerData} 的先例）：七个组件在本切片**都是新引入的**， 故 Jackson 绑成 null
- * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒ 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/未激活。
+ * <p>★★ **缺键 = 空**（§11 的旧档兼容口径，照 {@code LedgerData} 的先例）：八个组件在本切片**都是新引入的**， 故 Jackson 绑成 null
+ * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
+ * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/未激活。
  *
- * <p>★ **七张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **八张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
+ *
+ * <p>★★ **{@code relations} 是第 8 个组件**（S1 阶段 4+5 Task 2；计划 R3）：键 = {@code IndustryId}（ {@link
+ * ProductionRelation} 不另造 id —— 身份就是它结算的那个 {@code activity}，铁律 1），值 = 一次生产的结算规则。 ★ 两条**跨表守卫**：
+ *
+ * <ol>
+ *   <li>每个键**必须**是该格上已存在的产业（"{@code 关系指名的产业不存在}"）——否则结算时按 id 取不到产业；
+ *   <li>{@code relations[k].operator()} **必须**等于 {@code industries[k].operator()}：**同一件事不许有两处拼写**
+ *       （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）；键还**必须**等于 {@code ProductionRelation.activity()}（同
+ *       {@code classes}/{@code flows} 的"键 == 值内 key"口径）。
+ * </ol>
+ *
+ * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
+ * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
+ * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
  */
 public record EconomyData(
     Optional<EconomyMeta> meta,
@@ -73,12 +89,13 @@ public record EconomyData(
     Map<DebtId, Debt> debts,
     Map<ClassKey, FlowRow> flows,
     Map<PeopleLotId, LaborSupply> laborSupply,
-    Map<LaborAllocationId, LaborAllocation> allocations) {
+    Map<LaborAllocationId, LaborAllocation> allocations,
+    Map<IndustryId, ProductionRelation> relations) {
 
-  /** 往返用例的起点：未激活 + 七张空表。 */
+  /** 往返用例的起点：未激活 + 八张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
-        Optional.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        Optional.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   public EconomyData {
@@ -104,6 +121,11 @@ public record EconomyData(
     }
     if (allocations == null) {
       allocations = Map.of();
+    }
+    // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。
+    //   ★ 空表 = **全归 residualOwner 的等价路径**（裁定 E9）：没有规则不是坏数据，是"全部自留"。
+    if (relations == null) {
+      relations = Map.of();
     }
     Map<IndustryId, Industry> industriesCopy = new LinkedHashMap<>();
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
@@ -280,6 +302,40 @@ public record EconomyData(
                 + "（同一批人的劳动不得被两个产业各算一次满额，设计稿 §四）");
       }
     }
+    // ── 第 8 个组件：生产关系表（S1 阶段 4+5 Task 2；计划 R3）──────────────────────────────
+    Map<IndustryId, ProductionRelation> relationsCopy = new LinkedHashMap<>();
+    for (Map.Entry<IndustryId, ProductionRelation> entry : relations.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("relations 的键与值都不得为 null: " + entry.getKey());
+      }
+      relationsCopy.put(entry.getKey(), entry.getValue());
+    }
+    relations = Collections.unmodifiableMap(relationsCopy); // ★ 冻在赋值处
+    // ★★ 两条跨表守卫（见类注释）。★ 判在**构造期**：两条都是"同一件事有两处拼写"的口子，事后在结算里
+    //   "顺手算对"既不可能（那时两处已经不一致了），也把"谁对"的判断留在了一段没有能力判断的代码里。
+    for (Map.Entry<IndustryId, ProductionRelation> entry : relationsCopy.entrySet()) {
+      ProductionRelation relation = entry.getValue();
+      if (!entry.getKey().equals(relation.activity())) {
+        throw new IllegalArgumentException(
+            "relations 的键必须与 ProductionRelation.activity 一致：键="
+                + entry.getKey()
+                + "，行内 activity="
+                + relation.activity());
+      }
+      Industry industry = industriesCopy.get(entry.getKey());
+      if (industry == null) {
+        throw new IllegalArgumentException("关系指名的产业不存在: " + entry.getKey());
+      }
+      if (!relation.operator().equals(industry.operator())) {
+        throw new IllegalArgumentException(
+            "关系的 operator 必须与产业的 operator 一致（同一件事不许两处拼写）："
+                + entry.getKey()
+                + " 关系="
+                + relation.operator()
+                + "，产业="
+                + industry.operator());
+      }
+    }
   }
 
   /**
@@ -304,36 +360,46 @@ public record EconomyData(
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withMeta(Optional<EconomyMeta> value) {
-    return new EconomyData(value, industries, classes, debts, flows, laborSupply, allocations);
+    return new EconomyData(
+        value, industries, classes, debts, flows, laborSupply, allocations, relations);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withIndustries(Map<IndustryId, Industry> value) {
-    return new EconomyData(meta, value, classes, debts, flows, laborSupply, allocations);
+    return new EconomyData(meta, value, classes, debts, flows, laborSupply, allocations, relations);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withClasses(Map<ClassKey, ClassRow> value) {
-    return new EconomyData(meta, industries, value, debts, flows, laborSupply, allocations);
+    return new EconomyData(
+        meta, industries, value, debts, flows, laborSupply, allocations, relations);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withDebts(Map<DebtId, Debt> value) {
-    return new EconomyData(meta, industries, classes, value, flows, laborSupply, allocations);
+    return new EconomyData(
+        meta, industries, classes, value, flows, laborSupply, allocations, relations);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withFlows(Map<ClassKey, FlowRow> value) {
-    return new EconomyData(meta, industries, classes, debts, value, laborSupply, allocations);
+    return new EconomyData(
+        meta, industries, classes, debts, value, laborSupply, allocations, relations);
   }
 
-  /** 一个组件一个 with（R2：劳动供给表）；其余六个组件原样带过。 */
+  /** 一个组件一个 with（R2：劳动供给表）；其余七个组件原样带过。 */
   public EconomyData withLaborSupply(Map<PeopleLotId, LaborSupply> value) {
-    return new EconomyData(meta, industries, classes, debts, flows, value, allocations);
+    return new EconomyData(meta, industries, classes, debts, flows, value, allocations, relations);
   }
 
-  /** 一个组件一个 with（R2：劳动分配表）；其余六个组件原样带过。 */
+  /** 一个组件一个 with（R2：劳动分配表）；其余七个组件原样带过。 */
   public EconomyData withAllocations(Map<LaborAllocationId, LaborAllocation> value) {
-    return new EconomyData(meta, industries, classes, debts, flows, laborSupply, value);
+    return new EconomyData(meta, industries, classes, debts, flows, laborSupply, value, relations);
+  }
+
+  /** 一个组件一个 with（T2：生产关系表）；其余七个组件原样带过。 */
+  public EconomyData withRelations(Map<IndustryId, ProductionRelation> value) {
+    return new EconomyData(
+        meta, industries, classes, debts, flows, laborSupply, allocations, value);
   }
 }

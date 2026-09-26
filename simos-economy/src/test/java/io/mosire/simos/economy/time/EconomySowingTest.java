@@ -239,7 +239,8 @@ class EconomySowingTest {
                 new ActorRef(ActorKind.ESTATE, FARM.value()),
                 "farm",
                 LABOR_MILLI,
-                FIRST_PERIOD)));
+                FIRST_PERIOD)),
+        Map.of()); // ★ T2：生产关系表（本文件只谈播种 ⇒ 空表）
   }
 
   /** 一格、一个农业产业、**一行贫农**（地 {@link #LAND_MILLI_MU} 千分亩）、周期 {@value #CYCLE_DAYS} 天。 */

@@ -286,6 +286,7 @@ class EconomyFlowCycleTest {
                 new ActorRef(ActorKind.ESTATE, FARM.value()),
                 "farm",
                 LABOR_MILLI,
-                FIRST_PERIOD)));
+                FIRST_PERIOD)),
+        Map.of()); // ★ T2：生产关系表（本文件只谈周期流水 ⇒ 空表）
   }
 }

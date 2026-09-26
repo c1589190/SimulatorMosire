@@ -7,6 +7,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -16,6 +17,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +93,8 @@ class EconomyInvariantsTest {
                     Map.of(PEASANT_KEY, classRow(PEASANT_KEY)),
                     Map.of(),
                     Map.of(),
-                    // ★ R2 的两个新组件：本用例只谈阶层行的引用完整性 ⇒ 两张劳动表留空（合法状态）。
+                    // ★ R2 / T2 的新组件：本用例只谈阶层行的引用完整性 ⇒ 三条新表留空（合法状态）。
+                    Map.of(),
                     Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
@@ -102,6 +110,7 @@ class EconomyInvariantsTest {
                     Optional.of(meta()),
                     Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
                     Map.of(LANDLORD_KEY, classRow(LANDLORD_KEY)),
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of(),
@@ -123,6 +132,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ClassRow.key");
@@ -141,6 +151,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(PEASANT_KEY, row),
+                    Map.of(),
                     Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
@@ -324,6 +335,7 @@ class EconomyInvariantsTest {
         Map.of(),
         Map.of(),
         Map.of(),
+        Map.of(),
         Map.of());
   }
 
@@ -343,6 +355,7 @@ class EconomyInvariantsTest {
                     Map.of(D1, dangling), // ★ classes 里没有 LANDLORD_KEY ⇒ creditor 悬空
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .as("债务的 debtor/creditor 必须在 classes 里存在（v2 spec §八.2）")
         .isInstanceOf(IllegalArgumentException.class)
@@ -359,6 +372,7 @@ class EconomyInvariantsTest {
                     Map.of(FARM, industryWithTwoSlots()),
                     Map.of(PEASANT_KEY, classRowWithDebtRef(D1)),
                     Map.of(), // ★ 债务表为空 ⇒ 行内引用的 D1 悬空
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of()))
@@ -381,6 +395,7 @@ class EconomyInvariantsTest {
                 LANDLORD_KEY,
                 classRowWithoutDebts(LANDLORD_KEY)),
             Map.of(D1, debt),
+            Map.of(),
             Map.of(),
             Map.of(),
             Map.of());
@@ -419,6 +434,115 @@ class EconomyInvariantsTest {
     assertThat(industry.operator())
         .as("★ 判别力：它**不等于** tenant 档的默认值（HOUSEHOLD:farm）—— 否则「显式给了却仍按 regime 推」会假绿")
         .isNotEqualTo(tenantOperator());
+  }
+
+  // ── 生产关系表 relations（S1 阶段 4+5 Task 2；计划 R3）────────────────────────────
+
+  /**
+   * ★★ **两条跨表守卫逐条**（计划 R3）：键必须是已存在的产业、{@code operator} **必须**与产业的 {@code operator}
+   * 一致（"谁经营"不许有两处拼写）、键必须等于 {@code ProductionRelation.activity()}。
+   *
+   * <p>★ <b>判别力（各自哪条断言会红）</b>：
+   *
+   * <ul>
+   *   <li>把守卫放宽成"只查键在不在"（去掉 operator 相等那一句）⇒ 第二条转绿 ⇒ 红（★ 它就是 brief 的变异体①）；
+   *   <li>把"键 ∈ industries"那一句删掉 ⇒ 第一条转绿 ⇒ 红；
+   *   <li>对照条（第四条）保证前三条不是"一律拒"：一份**operator 与产业一致**的关系必须放行。
+   * </ul>
+   */
+  @Test
+  void relationsMustPointAtAnExistingIndustryAndAgreeWithItsOperator() {
+    Industry industry = industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)));
+
+    // ① 键不是已存在的产业 ⇒ 抛（结算时按 id 取不到产业）
+    assertThatThrownBy(
+            () ->
+                economyWithRelations(
+                    Map.of(FARM, industry),
+                    Map.of(OTHER_FARM, relation(OTHER_FARM, tenantOperator()))))
+        .as("关系指名的产业不存在 ⇒ 构造期拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("关系指名的产业不存在");
+
+    // ② ★★ 两处拼写不一致：产业的 operator 是 house-7、关系里写的是另一个 ⇒ 抛（守卫的主判据）
+    assertThatThrownBy(
+            () ->
+                economyWithRelations(
+                    Map.of(
+                        FARM, industryWithOperator(new ActorRef(ActorKind.HOUSEHOLD, "house-7"))),
+                    Map.of(FARM, relation(FARM, tenantOperator()))))
+        .as("★ relations[k].operator() 必须等于 industries[k].operator()（同一件事不许两处拼写）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("operator");
+
+    // ③ 键 ≠ 值内的 activity ⇒ 抛（"键 == 值内 key"与 classes/flows 同款）
+    assertThatThrownBy(
+            () ->
+                economyWithRelations(
+                    Map.of(FARM, industry), Map.of(FARM, relation(OTHER_FARM, tenantOperator()))))
+        .as("relations 的键必须与 ProductionRelation.activity 一致")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("activity");
+
+    // ④ 对照：键在、operator 一致、activity 一致 ⇒ **必须放行**（否则上面三条可能只是"一律拒"）
+    EconomyData data =
+        economyWithRelations(
+            Map.of(FARM, industry), Map.of(FARM, relation(FARM, tenantOperator())));
+    assertThat(data.relations()).as("合规矩的关系必须能入库").hasSize(1);
+    assertThat(data.relations().get(FARM).rules()).as("逐值（空表/缺条都会在这里红）").hasSize(1);
+  }
+
+  /**
+   * ★ 空的 {@code relations} 是**合法状态**（= 全归 {@code residualOwner} 的等价路径，裁定 E9）：`empty()` 与
+   * "只给产业不给关系"都必须构造得出来 —— 否则每一份 T2 之前的夹具都得凭空造一条关系。
+   */
+  @Test
+  void anEmptyRelationsTableIsAValidState() {
+    assertThat(EconomyData.empty().relations()).isEmpty();
+    assertThat(
+            new EconomyData(
+                    Optional.of(meta()),
+                    Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of())
+                .relations())
+        .as("null ⇒ 空表（缺键 = 空，同其余七个组件）")
+        .isEmpty();
+  }
+
+  /** 一份最小的经济：一个产业 + 一张关系表（其余组件留空）。 */
+  private static EconomyData economyWithRelations(
+      Map<IndustryId, Industry> industries, Map<IndustryId, ProductionRelation> relations) {
+    return new EconomyData(
+        Optional.of(meta()),
+        industries,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        relations);
+  }
+
+  /** 一条**非派生**的关系（规则内容与任何 regime 的推导值都不同：777‰ + 一条货币规则）。 */
+  private static ProductionRelation relation(IndustryId activity, ActorRef operator) {
+    return new ProductionRelation(
+        activity,
+        operator,
+        List.of(
+            new CompensationRule(
+                RuleType.OUTPUT_SHARE,
+                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), LANDLORD)),
+                Basis.GROSS_OUTPUT,
+                777,
+                0L,
+                Optional.of(GRAIN),
+                5)),
+        operator);
   }
 
   // ── 一次性投入槽与种子累加器（v2 spec §3.3）────────────────────────────────────────
@@ -1045,7 +1169,8 @@ class EconomyInvariantsTest {
         Map.of(),
         Map.of(),
         laborSupply,
-        allocations);
+        allocations,
+        Map.of());
   }
 
   private static Map<PeopleLotId, LaborSupply> laborSupply(

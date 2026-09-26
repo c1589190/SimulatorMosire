@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -17,6 +18,11 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassKey;
@@ -26,6 +32,7 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -49,6 +56,10 @@ import org.junit.jupiter.api.Test;
  * LaborAllocationId}）、{@code AssetKind} 的**枚举键**、{@code AllocationRule} 的 **sealed 多态**（{@code
  * Split}/{@code WageFirst} 各一）、{@code FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty}
  * 不进线格式"的观察点），以及旧档缺键的兼容。
+ *
+ * <p>★ T2 补第 8 个组件（{@code relations}）：它的值里嵌着**第二个 sealed 多态**（{@code Recipient}）与 {@code
+ * CompensationRule} 的 {@code Optional<CommodityId>} —— 见 {@code
+ * relationCarriesTheSealedRecipientAndTheMoneyRuleOverTheWire}。
  */
 class EconomyCodecTest {
 
@@ -183,6 +194,54 @@ class EconomyCodecTest {
     assertThat(workshop.allocation()).isInstanceOf(AllocationRule.WageFirst.class);
     AllocationRule.WageFirst wageFirst = (AllocationRule.WageFirst) workshop.allocation();
     assertThat(wageFirst.ownerResidual()).containsOnlyKeys(GRAIN, CLOTH);
+  }
+
+  /**
+   * ★★ **T2：第 8 个组件的关系表必须真的过线**，且它值里的**两个"不可能裸往返"的形状**都要被走到：
+   *
+   * <ul>
+   *   <li>{@code Recipient}（**sealed 多态**）：两个变体各一条规则（{@code ToActor} / {@code ToCohort}），
+   *       读回时"造哪个变体"只可能来自线格式（类型上的 Jackson 注解）；
+   *   <li>{@code CompensationRule.commodity} 的**空侧**（{@code Optional.empty()} = 货币档）与**有值侧**（粮） 各一条
+   *       —— 空侧写成 {@code null} 会让货币档与"字段没进线格式"无法区分。
+   * </ul>
+   *
+   * <p>★ 判别力（两条）：把 {@code Recipient} 的注解去掉 ⇒ 解码当场抛（{@code no Creators / abstract types}）⇒ 红； 把
+   * {@code compensations} 的 {@code Optional} 换成裸引用 ⇒ 空侧那条红（读回是 null 或抛）。
+   */
+  @Test
+  void relationCarriesTheSealedRecipientAndTheMoneyRuleOverTheWire() {
+    ActorRef operator = new ActorRef(ActorKind.ESTATE, FARM.value() + "@0_0");
+    EconomyData target =
+        EconomyData.empty()
+            .withIndustries(Map.of(FARM, industry(FARM, 0L)))
+            .withRelations(Map.of(FARM, relation(FARM, operator)));
+
+    EconomyChangeSet back =
+        (EconomyChangeSet)
+            CODEC.decodeChangeSet(
+                CODEC.encodeChangeSet(EconomyChangeSet.between(EconomyData.empty(), target)));
+
+    assertThat(back.relations()).isInstanceOf(FieldDelta.Upsert.class);
+    FieldDelta.Upsert<ProductionRelation> upsert =
+        (FieldDelta.Upsert<ProductionRelation>) back.relations();
+    ProductionRelation relation = upsert.entries().get("farm");
+    assertThat(relation.activity()).as("activity 过线（身份 = 它结算的那个产业）").isEqualTo(FARM);
+    assertThat(relation.operator()).isEqualTo(operator);
+    assertThat(relation.residualOwner())
+        .as("residualOwner 与 operator 是**两件事**，各自过线")
+        .isEqualTo(operator);
+    assertThat(relation.rules()).as("三条规则逐字过线").hasSize(3);
+    assertThat(relation.rules().get(0).recipient())
+        .as("★ sealed 多态变体一：读回的是 ToActor（不是 Map、不是别的变体）")
+        .isEqualTo(new Recipient.ToActor(operator));
+    assertThat(relation.rules().get(0).commodity()).contains(GRAIN);
+    assertThat(relation.rules().get(1).recipient())
+        .as("★ sealed 多态变体二：读回的是 ToCohort（`CohortKey` 的规范串过线）")
+        .isEqualTo(
+            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.LANDLORD)));
+    assertThat(relation.rules().get(2).commodity()).as("★ 货币档的**空侧**必须过线（空 = 货币是类型事实）").isEmpty();
+    assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(target);
   }
 
   /**
@@ -359,7 +418,7 @@ class EconomyCodecTest {
 
   // ── 夹具 ──
 
-  /** 非平凡数据：**七张表都非空**、两层自定义键、各 Optional 的有值侧至少出现一次、两种 AllocationRule 都在。 */
+  /** 非平凡数据：**八张表都非空**、两层自定义键、各 Optional 的有值侧至少出现一次、两种 AllocationRule 都在。 */
   private static EconomyData fullData() {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, 0L));
@@ -382,13 +441,32 @@ class EconomyCodecTest {
         ALLOCATION,
         new LaborAllocation(
             ALLOCATION, LOT, new ActorRef(ActorKind.ESTATE, FARM.value()), "farm", 58_000L, 1L));
+    // ★★ T2：第 8 个组件也**非空** —— 它的值里嵌着**一个 sealed 多态类型**（{@code Recipient}）与**一条货币规则**
+    //   （{@code commodity} 空 = `Optional` 的空侧）；空表会让那两处**永远不被走到**（"注册了却测不到"= 假覆盖）。
+    //   ★ operator 与 {@link #industry(IndustryId, long)} 的显式值**逐字相同**（跨表守卫要求两处拼写一致）。
+    Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
+    relations.put(FARM, relation(FARM, new ActorRef(ActorKind.ESTATE, FARM.value() + "@0_0")));
     return new EconomyData(
-        Optional.of(meta()), industries, classes, debts, flows, laborSupply, allocations);
+        Optional.of(meta()),
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations);
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {
     return new EconomyData(
-        Optional.of(meta()), industries, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        Optional.of(meta()),
+        industries,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 
   private static Map<IndustryId, Industry> oneIndustry() {
@@ -449,6 +527,44 @@ class EconomyCodecTest {
         //   ⇒ 往返后读到它**只可能来自线格式**，不可能来自任何推导（`id = FARM` ⇒ `ESTATE:farm@0_0`，
         //   即 `deltaValuesSurviveAsIndustryWithCommodityKeys` 里那条过线断言期望的字面量）。
         new ActorRef(ActorKind.ESTATE, id.value() + "@0_0"));
+  }
+
+  /**
+   * ★★ T2 的一条生产关系（**非派生夹具**：规则内容与 {@code RegimeRelations} 的四档都不同）。
+   *
+   * <p>★ 三条规则刻意把三个"线格式上的难点"各占一条：{@code ToActor}（变体一）、{@code ToCohort}（变体二 + {@code CohortKey}
+   * 的规范串）、货币档（{@code commodity} 的**空侧**）。
+   */
+  private static ProductionRelation relation(IndustryId id, ActorRef operator) {
+    return new ProductionRelation(
+        id,
+        operator,
+        List.of(
+            new CompensationRule(
+                RuleType.OUTPUT_SHARE,
+                new Recipient.ToActor(operator),
+                Basis.GROSS_OUTPUT,
+                300,
+                0L,
+                Optional.of(GRAIN),
+                10),
+            new CompensationRule(
+                RuleType.FIXED_IN_KIND_RENT,
+                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), LANDLORD)),
+                Basis.FIXED_AMOUNT,
+                0,
+                5_000L,
+                Optional.of(CLOTH),
+                20),
+            new CompensationRule(
+                RuleType.FIXED_MONEY_WAGE,
+                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), PEASANT)),
+                Basis.FIXED_AMOUNT,
+                0,
+                7L,
+                Optional.empty(),
+                30)),
+        operator);
   }
 
   /** 资本主义工业：{@code WageFirst} + 嵌套商品键（企业主剩余）。 */
