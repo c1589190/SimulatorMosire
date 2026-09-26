@@ -34,9 +34,6 @@ public record ActorChangeSet(FieldDelta<ActorMeta> meta, FieldDelta<Actor> actor
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
   private static final String META_KEY = "meta";
 
-  /** 规范串里种类与 id 的分隔符 —— {@link ActorRef#toString()} 用的就是它。 */
-  private static final char KIND_ID_SEPARATOR = ':';
-
   public ActorChangeSet {
     // ★ **旧档兼容**（照 LedgerChangeSet / EconomyChangeSet 的口径）：升级前落盘的这条变更集没有这些键时，
     //   Jackson 绑成 null ⇒ 缺省 = Unchanged（"一字未动"），**此处不抛** —— 读成 null 的话 isEmpty()
@@ -86,26 +83,16 @@ public record ActorChangeSet(FieldDelta<ActorMeta> meta, FieldDelta<Actor> actor
    * 规范串 → {@link ActorRef}：{@link FieldDelta#rebuild} 对<b>新出现的</b>键要一个 {@code Function<String, K>}，
    * 而键是 {@code toString()} 的产物（{@code "<KIND>:<id>"}）。
    *
-   * <p>★★ <b>为什么不直接调 {@code ActorRef.parse} 的单参形式</b>（裁定 R4）：{@code ActorRef.parse} 是<b>两参</b> 的
-   * {@code parse(kindText, idText)}，<b>不是</b> {@code toString()} 的逆（{@code "UNIT:u-1"} 喂不回去）； 而 R4
-   * 明令这个不对称<b>原封不动</b>（上移不改变它，也不许顺手"修好"——那会改读侧契约并打破既有断言）。 ⇒ 逆这一步只能在本切片里做。
+   * <p>★★ <b>逆住在上游，别处不再有第二个拼写点</b>（S1 阶段 2 修复轮）：{@link ActorRef#parseCanonical(String)} 就是 {@code
+   * toString()} 的逆，且与它同住 {@code ActorRef} 一个文件、共用同一个分隔符常量 —— 本仓"裸值 {@code toString()} + {@code
+   * static parse}"三件套的形制。本切片<b>只委托</b>：既不知道分隔符是什么， 也不判断"按第几个切"。★ 这条委托让往返**跟着上游契约走** ——
+   * 上游把规范串改了，本切片的往返测试当场红。
    *
-   * <p>★★ <b>按第一个 {@code ':'} 切</b>：{@code ActorKind} 的词表里一个 {@code ':'} 都没有，而 {@code id}
-   * 里<b>可以</b>有（例如 {@code "rural:0_0:MALE:1"}）⇒ 只有"首个分隔符"这一个切法能还原。★ 这条判别力由 {@code
-   * ActorRoundTripTest} 里那条"id 含冒号的主体"用例钉住：改成 {@code lastIndexOf} 或 {@code split(":")} 都当场红。
-   *
-   * <p>★ <b>段必须两段都非空</b>（照 {@code ClassKey#parse} 的"宁抛不静默"）：首尾是分隔符、没有分隔符，一律抛 ——
-   * 静默造一个半截的身份，比当场炸难查得多。
-   *
-   * <p>★ <b>不写 {@code null} 分支</b>：这个方法只作为 {@link FieldDelta#rebuild} 的键解析器被调用，而键来自 {@code
-   * Upsert}/{@code Remove} 的 {@code entries}/{@code keys} —— 那两个构造器自己就拒 {@code null}（见 {@link
-   * FieldDelta}），故 {@code null} 进不来。<b>不为不存在的世界写代码</b>。
+   * <p>★ <b>为什么不调 {@link ActorRef#parse(String, String)}</b>：那个两参形式<b>不是</b> {@code toString()}
+   * 的逆（{@code "UNIT:u-1"} 喂不回去），而裁定 R4 明令这个不对称<b>原封不动</b>。故补的是新增 surface {@code
+   * parseCanonical}，两参签名一字未动。
    */
   private static ActorRef parseActorKey(String text) {
-    int i = text.indexOf(KIND_ID_SEPARATOR);
-    if (i <= 0 || i == text.length() - 1) {
-      throw new IllegalArgumentException("非法 actor 键: " + text);
-    }
-    return ActorRef.parse(text.substring(0, i), text.substring(i + 1));
+    return ActorRef.parseCanonical(text);
   }
 }

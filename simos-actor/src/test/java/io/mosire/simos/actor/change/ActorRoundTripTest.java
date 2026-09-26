@@ -188,12 +188,12 @@ class ActorRoundTripTest {
   // ── 键：规范串的逆（裁定 R4 的落点） ────────────────────────────────────────────────
 
   /**
-   * ★★ <b>键的规范串逆</b>：{@code FieldDelta} 的键是 {@code toString()} 的产物（{@code "<KIND>:<id>"}），而 {@code
-   * ActorRef.parse} 是<b>两参</b>的（裁定 R4：不是 {@code toString()} 的逆，也不许"修好"）⇒ 逆这一步只能落在 {@link
-   * ActorChangeSet#parseActorKey}（私有）里。
+   * ★★ <b>键的规范串逆</b>：{@code FieldDelta} 的键是 {@code toString()} 的产物（{@code "<KIND>:<id>"}），
+   * 而它的逆住在**上游** {@link ActorRef#parseCanonical(String)}（与 {@code toString()} 同处一个文件、 共用同一个分隔符常量）——
+   * 本切片只委托，**不知道分隔符是什么、也不判断按第几个切**。
    *
-   * <p>★ <b>判别力全在夹具的 id 上</b>：{@link #HOUSEHOLD} 的 id 自带两个冒号 ⇒ 按<b>最后一个</b>冒号切、或按全部冒号切， 都当场红
-   * ——"按<b>第一个</b>冒号切"是唯一能还原的切法。★ 前置断言把这个前提也钉住：夹具改简单了，这条用例会自己响。
+   * <p>★ <b>判别力全在夹具的 id 上</b>：{@link #HOUSEHOLD} 的 id 自带两个冒号 ⇒ 上游若把切法改成按
+   * <b>最后一个</b>冒号切、或按全部冒号切，本切片的往返**当场红**。★ 前置断言把这个前提也钉住： 夹具改简单了，这条用例会自己响。
    */
   @Test
   void roundTripParsesActorKeysWhoseIdContainsColons() {
@@ -216,10 +216,14 @@ class ActorRoundTripTest {
   }
 
   /**
-   * ★ 格式不对的键<b>宁抛不静默</b>（照 {@code ClassKey#parse} 的口径）。
+   * ★ 格式不对的键<b>宁抛不静默</b>（口径照 {@code ClassKey#parse}；实现上是上游 {@link ActorRef#parseCanonical(String)}
+   * 的拒绝）。
    *
    * <p>★ 这条只在"变更集不是 {@code between} 产出的"时才可达（手搓 {@link FieldDelta.Upsert}，例如将来的 codec 读进一条坏字节）——
    * 正是那种输入最需要一句<b>指名道姓</b>的抛，而不是 {@code StringIndexOutOfBoundsException}。
+   *
+   * <p>★★ <b>断言的是上游那句话（"规范串"）而不是切片自己的词</b>：这本身就是"拼写点在上游"的<b>可执行证据</b>——
+   * 若哪天有人把逆又抄回本切片，消息文案一变，这条断言当场红。
    *
    * <p>★ 三档坏输入各打一条分支：<b>没有分隔符</b>（空串，{@code indexOf} 返回 −1）、<b>分隔符在首</b>（切出来种类为空）、 <b>分隔符在尾</b>（切出来
    * id 为空）。
@@ -231,9 +235,9 @@ class ActorRoundTripTest {
           new ActorChangeSet(null, new FieldDelta.Upsert<>(Map.of(bad, new Actor(ESTATE, "庄园"))));
 
       assertThatThrownBy(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
-          .as("坏键「%s」必须抛，且消息里点名", bad)
+          .as("坏键「%s」必须抛，且消息来自上游的规范串校验", bad)
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("非法 actor 键");
+          .hasMessageContaining("规范串");
     }
   }
 
