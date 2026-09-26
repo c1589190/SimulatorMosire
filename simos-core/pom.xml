@@ -102,6 +102,15 @@
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
+                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                         actor 切片的 main scope 一律禁（与 sd/economy 同款：Core 编译期看不见领域类型）。
+                         ★ `simos-actor-api` 是**契约层**、不是切片，本可照 `economy-api` 的形制只放开 test scope；
+                         但 Core 的测试**一处都没 import** actor-api 的契约类型（`ActorRef` / `ActorKind` /
+                         `AssetKind` / `AssetClassKey`；实测：`simos-core/src` 下引用 `io.mosire.simos.actor`
+                         的只有架构护栏里那条**路径字面量**，无 import），
+                         故它的口子由 enforcer 自己逼出来（见下面 includes 那段）——**不为对称提前开**。 -->
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
                   </excludes>
                   <includes>
                     <include>io.mosire:simos-map:*:*:test</include>
@@ -116,8 +125,16 @@
                          **main scope 仍一条都不许有**（那才是 ADR-1 §六要守的东西；test classpath 不是产物）。
                          ★ 这条不是"偷偷放行"：它由 enforcer 自己逼出来，且只放开 test。 -->
                     <include>io.mosire:simos-economy-api:*:*:test</include>
+                    <!-- ★★ Task 10 **实测**复现了上一段那条的**同一条路**（不是推理）：加完上面两条 actor 的 ban 之后
+                         立刻红，报的正是 `core → simos-social(test) → simos-economy-api → simos-actor-api`
+                         ——S1 阶段 2 把 `ActorRef`/`ActorKind` 上移到 `actor-api`，而 `economy-api` 反过来依赖它
+                         （`LaborAllocation.actor` 仍持有 `ActorRef`）⇒ `actor-api` 必然随 `economy-api` 进 test classpath。
+                         ⇒ 按**同一口径**开 test-scope 口子：这条不是"顺手放行"，是 enforcer 自己逼出来的
+                         （与 R1 那条逐字同因：**main scope 仍一条都不许有**，那才是 ADR-1 §六要守的东西）。
+                         ★ 判别力：把这条 include 删掉 ⇒ `simos-core` 的 `validate` 立刻红（本任务实测，红在 actor-api 那一行）。 -->
+                    <include>io.mosire:simos-actor-api:*:*:test</include>
                   </includes>
-                  <message>CoreSimos 的 main scope 不得依赖领域模块（ADR-1 §六）：铁律 4「Core 不重新实现领域逻辑」由结构保证。领域模块只允许在 test scope 出现；三个经济面模块（economy/economy-api/ledger）任何 scope 都不允许（R1 / spec §八.3）</message>
+                  <message>CoreSimos 的 main scope 不得依赖领域模块（ADR-1 §六）：铁律 4「Core 不重新实现领域逻辑」由结构保证。领域模块只允许在 test scope 出现；经济面三模块（economy/economy-api/ledger）与 actor 切片（simos-actor）任何 scope 都不允许（R1 / spec §八.3；actor 为 Task 10 回填）——契约层（economy-api / actor-api）的 test-scope 口子见 includes</message>
                 </bannedDependencies>
               </rules>
             </configuration>

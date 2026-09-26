@@ -45,8 +45,12 @@
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                         `simos-actor` 依赖 map（产权"到格"⇒ 它的键就是 HexCoord），地图侧永远不知道切片存在。
+                         ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
+                    <exclude>io.mosire:simos-actor</exclude>
                   </excludes>
-                  <message>MapSimos 永远不知道 SocialSimos / UnitSimos 存在，也不依赖 AgentLibMosire（spec §3.1 / G7）</message>
+                  <message>MapSimos 永远不知道 SocialSimos / UnitSimos / ActorSimos 存在，也不依赖 AgentLibMosire（spec §3.1 / G7；Task 10 回填 actor）</message>
                 </bannedDependencies>
               </rules>
             </configuration>
