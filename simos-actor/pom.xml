@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-actor</artifactId>
+  <name>ActorSimos</name>
+  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集。本任务（C 段第一块）只建身份与骨架——Actor / ActorMeta / ActorData（只两张表）/ ActorSnapshot / ActorChangeSet + 往返不变式测试；holdings 由 Task 5 增量加、accounts 由 Task 6 增量加。</description>
+
+  <!-- ★ 依赖面 = actor-api（ActorRef——共用契约层）+ util（Snapshot / ChangeSet / FieldDelta / StateRef / SimosTimestamp）。
+       ★ **本阶段不声明 simos-economy-api**：Task 6 的 GoodsAccount 真正 import CommodityId 时才加（YAGNI，
+         口径同裁定 R-e「不声明用不到的 simos-map」与 R-h「删掉零 import 的 simos-util」）。
+       ★ **不声明 jackson**：本任务的状态类型是 record + Map，零 Jackson 注解、零 import（同裁定 R-j 对 actor-api 的处置）。
+       ★ **不声明 spotbugs-annotations**：本任务的类型没有一处需要 @SuppressFBWarnings
+         （只读包装一律写在赋值处，EI_EXPOSE_REP 不报），故不声明一个用不到的类型依赖；
+         真需要时再加（在 simos-actor-api / simos-economy 里那条是**预防性**的，本模块不照抄预防性声明）。
+       ★ **不依赖 map**：actor 切片的状态树此刻没有任何地图类型（AssetHolding 要 HexCoord，属 Task 5）。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-actor-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <!-- ★★ S1 阶段 2 裁定 R2 点名的两条：actor 切片**只允许类型依赖**
+                         （可以 import CommodityId 这类契约类型），**不允许**运行时领域控制流反向流入
+                         （不许调用 economy 的结算 / ledger 的 repository）。 -->
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
+                    <!-- 与 economy 的 enforcer 同款：切片之间互不依赖，且不许认识编排层。
+                         ★ simos-economy-api **不在**禁列 —— 它是契约层，Task 6 要用它的 CommodityId。 -->
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                  </excludes>
+                  <message>只允许类型依赖，不允许运行时领域控制流反向流入（S1 阶段 2 裁定）：actor 切片只依赖 actor-api / util / economy-api，不依赖 economy、ledger（同层切片）与 social/unit/sd/core/app/agentlib。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -26,6 +26,10 @@
          它在依赖图上比 economy-api 更底层（economy-api 反过来依赖本模块），故排在 economy-api 之
          前：不声明主依赖（util / map / jackson 都不声明），不被任何领域模块**反向**依赖。 -->
     <module>simos-actor-api</module>
+    <!-- ★ S1 阶段 2（C 段）：actor 切片——Actor 身份本体 + 产权/库存（本任务只建 Actor 身份与状态树骨架）。
+         它依赖 actor-api（ActorRef）与 util（Snapshot/ChangeSet/FieldDelta），故排在 actor-api **之后**；
+         与 economy/ledger 是**兄弟切片**（互不依赖，由本模块 pom 的 enforcer 在构建期强制）。 -->
+    <module>simos-actor</module>
     <!-- ★ 1b-2：经济切片共用契约。在领域切片更上游：只依赖 util/map、不被 core 依赖，
          property/production/ledger/market/government 与 social 共用它的稳定 ID 与 ActorRef。 -->
     <module>simos-economy-api</module>
@@ -90,6 +94,9 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-actor-api</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-actor</artifactId><version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId><version>${project.version}</version>
