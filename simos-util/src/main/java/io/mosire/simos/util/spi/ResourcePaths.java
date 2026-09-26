@@ -69,6 +69,23 @@ public final class ResourcePaths {
     return q + COORD_SEPARATOR + r;
   }
 
+  /**
+   * actor：{@code <q>_<r>}（**不带 mapId**——actor 切片按格取，与 {@link #social(int, int)} / {@link
+   * #economy(int, int)} 同款）。
+   *
+   * <p>★ **为什么现在就要有它**（S1 阶段 2 Task 8）：{@code actor.Seed} 的命令目标就是**逐格**的（载荷的 {@code entries[]}，
+   * 格是命令目标与权限的粒度），而 app 侧的资源断言会把同一条路径包成 {@code ResourceId.of("actor", path)} ⇒ 两侧必须拼出**同一串**。
+   * 少了这个助手，actor 切片就得自己拼 {@code q + "_" + r} —— 那就有了**第二个拼写点**，而拼错一段**不会抛任何异常**， 只会让"该看见的看不见 /
+   * 不该看见的看得见"（见类注）。
+   *
+   * <p>★ **为什么是独立一条、而不是借用 {@link #economy(int, int)}**：两条路径虽逐字同形，但**命名空间不同** （{@code actor} /
+   * {@code economy}），而命名空间由调用方（{@code ResourceId.of(namespace, path)}）给出 ——
+   * 借用等于把两个命名空间的可寻址单位绑在一根绳上：哪天经济侧的路径变了，actor 的围栏会**静默跟着动**。
+   */
+  public static String actor(int q, int r) {
+    return q + COORD_SEPARATOR + r;
+  }
+
   /** sd 域：{@code <kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
   public static String sd(String kind, String id) {
     Objects.requireNonNull(kind, "kind");
