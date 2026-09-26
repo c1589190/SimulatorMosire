@@ -107,3 +107,8 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
 
 1. **一次只能跑一个 Maven**；跑前 `pgrep -af "surefirebooter|classworlds.launcher"`
 2. **不 `git add -A`**；按批次提交。**机械改动逐个 `Edit`**（R4 曾用脚本切片误删 10 个测试方法）
+- **Ruling（R-e，预检补扫）**：Task 1 给 `simos-actor-api` 声明 `simos-map` 依赖是**多余**的 ——
+  `AssetHolding`（要 `HexCoord`）住 **`simos-actor` 切片**，`AssetClassKey` 只用 `AssetKind` + `Map<String,String>`。
+  ⇒ **不声明**，等真有 api 侧类型用到 `HexCoord` 再加。
+  —— **错了的代价**：Task 3 若真需要 map 类型 ⇒ 编译立刻失败，加一行依赖即可（低）。
+  ⇒ 已就地改计划（Task 1 Step 2）。

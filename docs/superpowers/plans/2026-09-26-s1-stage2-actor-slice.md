@@ -220,8 +220,12 @@ spec 隐含要求但**没有任何任务覆盖**的五类，最可能咬到人�
 
 照 `simos-economy-api/pom.xml` 抄，改四处：
 - 坐标三行（`artifactId` / `name` / `description`）
-- dependencies：`simos-util` + **`simos-map`**（`AssetHolding.location` 要 `HexCoord` —— ★ 这里**不是**死依赖，
-  与 economy-api 那份不同）+ `jackson-databind` + `junit-jupiter` + `assertj-core` + `spotbugs-annotations:4.10.4:provided`
+- dependencies：**`simos-util`** + `jackson-databind` + `junit-jupiter` + `assertj-core`
+  + `spotbugs-annotations:4.10.4:provided`
+  ★ **不加 `simos-map`**（SDD 预检裁定 R-e）：`AssetHolding` 要 `HexCoord`，但它住
+  **`simos-actor`（切片）不在本 api**；`AssetClassKey` 也只用 `AssetKind` + `Map<String,String>`。
+  ⇒ 本模块**此刻**不需要 map —— 与 economy-api 那份"声明了却零 import 的死依赖"不同，
+  这里是**干脆不声明**（YAGNI）。要加就等真有 api 侧类型用到 `HexCoord` 时再加。
 - ★ **enforcer 的 ban 列表要回填本仓全部模块**（`AGENT.md:55-58` 点名批评过"新增模块从未回填"）：
   `simos-economy-api`、`simos-economy`、`simos-ledger`、`simos-social`、`simos-unit`、`simos-sd`、
   `simos-core`、`simos-app`、`agentlib-mosire` —— message 写
