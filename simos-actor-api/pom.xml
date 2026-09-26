@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-actor-api</artifactId>
+  <name>ActorApiSimos</name>
+  <description>actor 切片共用契约：ActorRef / ActorKind / AssetKind / AssetClassKey。无 Snapshot、无存储、无领域公式。</description>
+
+  <!-- ★ S1 阶段 2：actor-api 是全仓**最底层**的共用契约层 —— economy-api 反过来依赖它
+       （actor-api ← economy-api ← {economy, ledger}）。故它自己只依赖 util 与 jackson，
+       不依赖任何 simos 领域模块、不依赖 map（AssetHolding 要 HexCoord，但它住 simos-actor 切片）。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.mosire:simos-economy-api</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                  </excludes>
+                  <message>actor-api 是最底层的共用契约：只剩 util/map/jackson 可用；不许反向依赖任何领域/编排模块（economy-api/economy/ledger/social/unit/sd/core/app/agentlib 一律禁）。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
