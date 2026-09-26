@@ -377,3 +377,40 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
   —— **错了的代价**：低（真要迁移时加一个字段 + 改 codec；而 spec 已明说不会做迁移）。
   ★ **实现者把"照形制"与"照抄字段集"分开看，这个判断本身是对的** —— 它只错在把 `migrationSource`
   也当成了"形制"的一部分。**计划已就地补上这段定义**（含"为什么去掉这两样"的表）。
+
+- **Ruling（R-y，用户 2026-09-26 裁定）**：**第二次（全尺度 600 天）模拟留到「阶段 6 之后」**，
+  不在此前任何阶段跑。
+  —— **依据**：阶段 1/2 的行为不变性已被证明两次（阶段 1：799 格归一化后**逐字节相同**；
+  阶段 2：判据 I2.1 即"纯增量"、`simos-economy` 的 main 只动 import 行）⇒ 现在跑**回答不了 S1 的任何问题**。
+  —— **顺带记**：B1/B2 之后**没跑过全尺度**（只跑过最小 probe），这个缺口**用户明确选择不现在补**；
+  它与 S1 的验收跑合并到同一次。
+  —— **错了的代价**：B1/B2 的全尺度影响若与 probe 的结论不同，会在阶段 6 才暴露（那时一并看到，不会更晚）。
+  —— **落到哪**：阶段 6 的验收判据 **I6.4**（breakdown 原文）：「重跑 600 天，`rural` 育龄压力**不再全部 > 阈值**」。
+  ★ 跑的时候口径要与第一次**完全一致**（同一份 nations 配置、同样的 5 个关账日采样、同样的逐格聚合），
+  好让两条曲线能直接叠。
+
+### Task 4 实现报告（`b68fa6e` + `b65cc9c`，DONE_WITH_CONCERNS，10 文件 / +899）
+
+**数字**：`./mvnw -pl simos-actor -am verify` ⇒ **23/23 绿**（`ActorInvariantsTest` 11 + `ActorRoundTripTest` 12）；
+全仓 `clean verify` ⇒ **13/13 SUCCESS、2338 测试 / 0 失败、271 份报告 mtime 全落本轮**；SpotBugs 0。
+`ActorData` 此刻组件**恰两件**（`(Optional<ActorMeta> meta, Map<ActorRef, Actor> actors)`）—— **按"增量表"执行到位**；
+`ActorChangeSet` 两条 delta（`meta` / `actors`）。
+★ 变异自证 4 个（R2 两条 enforcer 各一 + 删 `actors` delta + `apply` 不重建）全部红在预期处，
+且**还原证据是 md5 逐字节相同**（不是"我看着像还原了"）。
+
+- **Ruling（R-z，疑虑 2 —— `ActorMeta` 的字段集够不够）**：`ActorMeta(mapId, activatedDay, rulesVersion)`
+  **足够**承接 Task 8 的 `actor.Seed`：经济侧的载荷形状是 `{"mapId":…,"rulesVersion":…,"entries":[…]}`，
+  这三个字段正是播种所需。**无需现在加字段**（真要加会在 codec/change-set 上再动一次，代价可控）。
+- **Ruling（R-aa，疑虑 3 —— 越界的"键必须 == `Actor.ref()`"不变式）**：**保留**。
+  它是 `withActor`（唯一拼写点）的**兜底**，且与 `EconomyData` 的成例一致（Map 键 == record 的键字段）。
+  **删它才是降低保护**；brief 没写不等于不许按本仓成的例加。
+- **★ 疑虑 1 我先记账、不预判**（交给评审）：R4（不许改 `ActorRef.parse` 的两参签名）**逼出了第二个拼写点** ——
+  `ActorRef.toString()` 产出 `"<KIND>:<id>"`，而 `parse` 是两参 ⇒ `FieldDelta.rebuild` 要的单参逆
+  只能落在 `ActorChangeSet.parseActorKey`（按**第一个**冒号切，因为 id 里可含冒号）。
+  —— 这是**真的第二处格式拼写**，正是本仓最反感的东西；但它**不违反 R4**（R4 禁的是改既有签名的读契约，
+  加一个新的单参方法并不改它）。⇒ **让评审先报，我再裁**（SDD 纪律：不许给评审预判）。
+  ★ **我关心的触发点**：Task 7 的 codec 与 Task 8 的 SPI 很可能**也要**这个逆 —— 若真要，债务会**增殖**。
+- **Task 4 评审 dispatched**：Review Package = `review-5e9096f..b65cc9c.diff`（3 commit / 61698 bytes，
+  其中 `068579c` 是我的文档提交），评审 Agent = sonnet 档，只读。
+  ★ 三条疑虑**全部交给评审定性**（疑虑 1 的"第二拼写点"我**未预判**）；另点名一条风险：
+  **4 个变异体是否都真的打到被测的那一层**（A 段实测教训）。
