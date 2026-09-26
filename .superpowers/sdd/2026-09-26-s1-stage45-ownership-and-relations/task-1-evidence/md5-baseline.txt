@@ -1,0 +1,7 @@
+6c3f3293fddcb0c52bdc2490707015f3  simos-economy-api/src/main/java/io/mosire/simos/economy/api/cohort/CohortKey.java
+ab8c37e1827d0945301d9fa82b6d0a39  simos-economy-api/src/main/java/io/mosire/simos/economy/api/relation/Basis.java
+c381ada47f9f07dbd2afa5bfc0c58c26  simos-economy-api/src/main/java/io/mosire/simos/economy/api/relation/CompensationRule.java
+bbbc52ab6e95a336880f43cf813c8fae  simos-economy-api/src/main/java/io/mosire/simos/economy/api/relation/ProductionRelation.java
+e33c0c54c8b4831f4cf03b87e4bcaf08  simos-economy-api/src/main/java/io/mosire/simos/economy/api/relation/Recipient.java
+a2d2cdb8814f8a2bcbee7ba68aa5cb45  simos-economy-api/src/main/java/io/mosire/simos/economy/api/relation/RuleType.java
+90ef9c645376befe1d628c1767415e40  simos-economy-api/src/test/java/io/mosire/simos/economy/api/cohort/CohortKeyTest.java
