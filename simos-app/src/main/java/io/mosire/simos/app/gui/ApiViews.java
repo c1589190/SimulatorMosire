@@ -463,7 +463,7 @@ public final class ApiViews {
   }
 
   /**
-   * 一个产业（§3.1 的读侧：制度 / 周期 / 进度 / **V7 配方** / 分配函数 / 槽位）与该产业的阶层行。
+   * 一个产业（§3.1 的读侧：制度 / **经营主体** / 周期 / 进度 / **V7 配方** / 分配函数 / 槽位）与该产业的阶层行。
    *
    * <p>★★ **R3（T6）起把配方发出来**（{@code capacityPerUnit} / {@code inputPerUnit} / {@code laborPerUnit} /
    * {@code outputPerUnit} + 本周期实际扣到的投入）：这几项原来**不在任何读口里**，而"每单位**什么**"正是 R3 变成数据的那一维 —— 不读出来，"每座作坊产
@@ -476,6 +476,15 @@ public final class ApiViews {
     view.put("id", industry.id().value());
     view.put("name", industry.name());
     view.put("regime", industry.regime().value());
+    // ★★ S1 阶段 3：把**经营主体**发出来（形状与同视图的 {@code labor.actors[]} 及写侧载荷的 {@code actor} 同形：{kind,id}）。
+    //   ★ **读的是存起来的那个主体**，不在视图层按 regime 重推一遍：推导只发生在**载荷边缘**（{@code EconomyPayloads}），
+    //     重推会把"制度只负责初始化、不负责持续约束"（spec §2.4）抹掉 —— 阶段 4 的产出归属就会落到**推出来的**主体上。
+    //   ★ **不**折算成 {@code ActorRef.toString()} 的规范串（R6：那是**键**的形制，不是读口的形制）。
+    //   ★ 两个键的次序固定为 {@code kind,id}（{@code LinkedHashMap} + 不重排 ⇒ 同状态两次响应逐字节相同）。
+    Map<String, Object> operator = new LinkedHashMap<>();
+    operator.put("kind", industry.operator().kind().name());
+    operator.put("id", industry.operator().id());
+    view.put("operator", operator);
     view.put("cycleDays", industry.cycleDays());
     view.put("progressDays", industry.progressDays());
     Map<String, Object> capacity = new TreeMap<>();

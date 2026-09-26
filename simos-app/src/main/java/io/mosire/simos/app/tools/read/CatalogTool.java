@@ -3,8 +3,10 @@ package io.mosire.simos.app.tools.read;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.app.access.CatalogVisibility;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.economy.model.RegimeOperators;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -32,6 +34,17 @@ public final class CatalogTool implements AgentTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.command.catalog";
+
+  /**
+   * {@code economy.Seed} 里 {@code operator} 缺省时的推导档位提示（**从 {@link RegimeOperators#registered()}
+   * 现取**）。
+   *
+   * <p>★ 为什么不写成字面量：{@code regime → 默认经营主体} 的**唯一拼写点**在 {@code RegimeOperators}（S1 阶段 3 的 T1）。
+   * 在这里再手抄一份 ⇒ 新登记一档制度时本提示会**静静地说谎**（正是 {@code RegimeId} 类注那种假声明的形态，裁定 D8）。 迭代序取登记表自己的序（{@code
+   * LinkedHashMap} = spec §六 的表序）⇒ 串是**内容的纯函数**；写法与 {@link #PAYLOAD_HINTS} 同口径
+   * （声明**不随**别处的表自动延伸，但这一处**本就是** 那个表的投影，所以现取才对）。
+   */
+  private static final String OPERATOR_HINT = operatorHint();
 
   /**
    * 每个已注册 type 的载荷字段提示（spec §四表；仅给人/模型看，不参与执行）。
@@ -86,14 +99,17 @@ public final class CatalogTool implements AgentTool {
                   + "批次必须落在**已有农村人口序列**的格上）"),
           Map.entry(
               "economy.Seed",
-              "mapId, rulesVersion, entries[{q,r,industries[{id,name,regime,cycleDays,progressDays?,"
+              "mapId, rulesVersion, entries[{q,r,industries[{id,name,regime,operator?{kind,id},cycleDays,progressDays?,"
                   + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,cycleInputPerUnit?(键=生产资料种类，v1 只读 LAND),"
                   + "cycleSeedUsedMilli?,allocation(@class=split|wage_first),"
                   + "slots[{id,name,laborParticipationPerMille}],"
                   + "classes[{slot,population,laborMilli,participationPerMille,meansOfProduction?,goods?,"
                   + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]}]"
                   + "（★ 一次种一格或多格；meta 空 = 首次播种并打标；meta 非空 = 按格追加，"
-                  + "若某格已有产业/阶层行则拒并点名该格坐标）"),
+                  + "若某格已有产业/阶层行则拒并点名该格坐标）"
+                  + "（★ operator 缺省 ⇒ 按 regime 推导："
+                  + OPERATOR_HINT
+                  + "）"),
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
@@ -150,6 +166,18 @@ public final class CatalogTool implements AgentTool {
               "sd.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"));
+
+  /** {@code regime→种类} 的 ` / ` 连接串（登记表序；见 {@link #OPERATOR_HINT}）。 */
+  private static String operatorHint() {
+    StringBuilder hint = new StringBuilder();
+    for (Map.Entry<String, ActorKind> entry : RegimeOperators.registered().entrySet()) {
+      if (!hint.isEmpty()) {
+        hint.append(" / ");
+      }
+      hint.append(entry.getKey()).append("→").append(entry.getValue().name());
+    }
+    return hint.toString();
+  }
 
   private final List<String> types;
   private final CatalogVisibility visibility;

@@ -4,6 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.agentlib.permission.ResourceAuthorizer;
+import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -783,6 +789,8 @@ class GuiApiTest {
             0L,
             Map.of(new CommodityId("grain"), 40L),
             // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:farm@1_1`）。
+            //   ★ 读口的判别力不在这一条上（派生值 ⇒ "按 regime 重推"的实现照样绿），而在**另一个产业**上：
+            //   `workshop@1_1` 的 operator 刻意非派生（见 workshopIndustry）。
             RegimeOperators.defaultOperator(new RegimeId("feudal"), farm));
     ClassRow row =
         new ClassRow(
@@ -830,8 +838,13 @@ class GuiApiTest {
         new AllocationRule.Split(400, 600),
         0L,
         Map.of(),
-        // ★ 通用夹具的 operator = **派生**（`handicraft` ⇒ `WORKSHOP:workshop@1_1`）。
-        RegimeOperators.defaultOperator(new RegimeId("handicraft"), id));
+        // ★★ S1 阶段 3：本产业的 operator **刻意非派生** —— `handicraft` 的推导值是 `WORKSHOP:workshop@1_1`，
+        //   而这里**种类与 id 都不是它**。理由（T3 的 D9/D12 同一条教训，**判别力来自夹具、不来自断言**）：
+        //   夹具若用派生值，"读口把 operator 按 regime 重推一遍"那种最隐蔽的坏实现在**任何断言下都绿**
+        //   —— 而那正是 I3.1「读得出」要挡的东西（阶段 4 会把产出归属算到重推出来的主体上）。
+        //   ★ 这不叫"配错制度"：制度只负责**初始化**、不负责持续约束（spec §2.4），`Industry` 也**不做**
+        //   regime↔operator 的一致性校验（裁定 R4）⇒ 作坊由家户经营是完全合法的数据。
+        new ActorRef(ActorKind.HOUSEHOLD, "house-7"));
   }
 
   /** ★ R2a 的 G1 读口：{@code GET /api/economy/hex} 逐值给读数，与 MCP 的 {@code simos.economy.hex} 共用一份视图。 */
@@ -850,6 +863,19 @@ class GuiApiTest {
     JsonNode industry = body.get("industries").get(0);
     assertThat(industry.get("id").asText()).isEqualTo("farm@1_1");
     assertThat(industry.get("regime").asText()).isEqualTo("feudal");
+    // ★★ S1 阶段 3（I3.1 的第三个面「读得出」）：经营主体**读得出来**，形状 = {kind,id}
+    //   （与同视图的 labor.actors[] 以及写侧载荷的 actor 同形；**不**是 ActorRef.toString() 的规范串 —— R6：那是**键**的形制）。
+    assertThat(industry.get("operator").get("kind").asText())
+        .as("★ S1 阶段 3：经营主体读得出来（形状与 actors[] / 写侧 actor 同形）")
+        .isEqualTo("ESTATE");
+    assertThat(industry.get("operator").get("id").asText())
+        .as("★ id 是**产业 id**，不是裸 hex（裁定 R3）")
+        .isEqualTo("farm@1_1");
+    // ★ 新增字段的**键序**要确定（读口的硬要求）：{@code {kind,id}} 与 labor.actors[] 逐字同序 ——
+    //   这里钉住它（视图层用 LinkedHashMap，**不许**换成 Map.of：它的迭代序带 per-JVM 盐，响应字节会抖）。
+    assertThat(fieldNames(industry.get("operator")))
+        .as("operator 的键序固定为 kind → id")
+        .containsExactly("kind", "id");
     assertThat(industry.get("cycleDays").asLong()).isEqualTo(120L);
     assertThat(industry.get("progressDays").asLong()).as("周期进度").isEqualTo(33L);
     assertThat(industry.get("allocation").get("meansWeightPerMille").asInt()).isEqualTo(700);
@@ -871,6 +897,19 @@ class GuiApiTest {
     assertThat(row.get("slot").asText()).isEqualTo("poor_peasant");
     assertThat(row.get("naturalNeeds").get("grain").asLong()).as("日耗").isEqualTo(8_300L);
 
+    // ★★ S1 阶段 3：第二个产业（`handicraft`）的 operator **刻意非派生**（见 workshopIndustry 的注释）——
+    //   上面对 farm 的两条断言是**派生值**（ESTATE:farm@1_1 正是 `feudal` 的推导结果），单靠它们，
+    //   "读口按 regime 重推 operator"那种实现照样绿；本条才是那个变异体的守门人：
+    //   重推的实现会在这里发 `WORKSHOP:workshop@1_1` ⇒ **种类与 id 都对不上** ⇒ 红。
+    JsonNode craft = body.get("industries").get(1);
+    assertThat(craft.get("id").asText()).as("第二产业仍是 workshop@1_1（排序不变）").isEqualTo("workshop@1_1");
+    assertThat(craft.get("operator").get("kind").asText())
+        .as("★ 非派生的 operator 原样发出（推导值会是 WORKSHOP）")
+        .isEqualTo("HOUSEHOLD");
+    assertThat(craft.get("operator").get("id").asText())
+        .as("★ 非派生 ⇒ id 是载荷里写下的那个（推导值会是 workshop@1_1）")
+        .isEqualTo("house-7");
+
     // 该格没有产业：200 + 空 industries（不是 404 —— "没数据"与"不存在"是两件事）。
     // ★ activated 是**切片级**标志（经济是否激活），不是"这一格有没有数据"。
     JsonNode empty = getJson("/api/economy/hex?q=1&r=2");
@@ -882,6 +921,52 @@ class GuiApiTest {
     assertThat(get("/api/economy/hex?q=9&r=9").statusCode()).isEqualTo(404);
     // 未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。
     assertThat(get("/api/economy/hex?q=1&r=1&as=dm-1").statusCode()).isEqualTo(400);
+  }
+
+  /**
+   * ★★ **一处改动覆盖两条读口**（`AGENT.md` §8.3 的硬规矩：GUI 与 MCP 读工具**共用** {@code ApiViews} 这一份视图； 先例 = {@code
+   * SimosToolsTest#populationToolServesTheSameViewAsTheGuiRoute}）：经**真工具调用**（{@link
+   * Shell#toolRegistry()} 里那一条、真 {@link ToolContext}）取回 MCP 那一份，与 HTTP 那一份对拍。
+   *
+   * <p>★ 判据分工（两条各挡一件事，别混）：
+   *
+   * <ul>
+   *   <li>**整体相等**挡"**面分叉**"：谁在工具层另拼一份视图（或忘了带上 {@code operator}），这里当场红；
+   *   <li>**逐值断言**挡"**两份一起变**"：整体相等在两边**同时**缺键时照样成立 —— 那是空转变异体（T3 的坑记录第③条）， 故必须另有一条取值断言把"operator
+   *       在场"钉死。
+   * </ul>
+   *
+   * <p>★ 比**文本**而不是比 {@link JsonNode}（先例同款）：同一份 JSON 的两种节点类型逐节点比会假红，而比文本同时钉住了**键序** （两边都是 {@code
+   * LinkedHashMap} 保序）。
+   */
+  @Test
+  void mcpEconomyHexServesTheSameViewAsTheGuiRoute() throws Exception {
+    JsonNode gui = getJson("/api/economy/hex?q=1&r=1");
+    AgentTool tool = shell.toolRegistry().find("simos.economy.hex").orElseThrow();
+    ToolResult result =
+        tool.execute(
+            new ToolContext(
+                    AccessToken.SYSTEM,
+                    AgentPermissionSet.system(),
+                    Map.of(),
+                    Map.of("q", 1L, "r", 1L))
+                .withResources(
+                    ResourceAuthorizer.of(AgentPermissionSet.system(), tool.resources())));
+    assertThat(result.success()).as(result.message()).isTrue();
+    JsonNode mcp = JSON.readTree(result.message());
+
+    JsonNode operator = mcp.get("industries").get(0).get("operator");
+    assertThat(operator)
+        .as("S1 阶段 3：MCP 那一份也带 operator（形状 = {kind,id}）")
+        .isEqualTo(gui.get("industries").get(0).get("operator"));
+    assertThat(operator.get("kind").asText()).isEqualTo("ESTATE");
+    assertThat(operator.get("id").asText()).isEqualTo("farm@1_1");
+    assertThat(mcp.get("industries").get(1).get("operator").get("kind").asText())
+        .as("★ 非派生的那个 operator 也走同一条路发出来（MCP 侧同样读的是存起来的主体）")
+        .isEqualTo("HOUSEHOLD");
+    assertThat(mcp.toString())
+        .as("MCP 工具的体 == GUI 端点的体（同一份 ApiViews.economyHex）")
+        .isEqualTo(gui.toString());
   }
 
   // ── 写端点（R4：initiator 由独立 store + Timeline 读回）────────────────
