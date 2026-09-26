@@ -1566,6 +1566,14 @@ public final class EconomySettlement {
    *
    * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf}）：id 里没有格键的行<b>永远不匹配</b>
    * （它没有"住在哪一格"这个事实，不许拿 {@code (0,0)} 顶替）。
+   *
+   * <p>★★ <b>I4.3 的实测（真播种器三格世界：平原 14,806 / 低丘 6,000 / 平原 9,000 + 一座城，推一个周期）</b>： {@code
+   * weave@hex|*} 的 <b>12 行全部人口 0、布逐行 0</b>（它们的 {@code laborMilli} 同样恒 0），而同一份账里三个 {@code
+   * HOUSEHOLD:weave@hex|<格>} 的 operator 账上各有布（5,403,872 / 3,911,043 / 2,610,272），布的同格落点是 {@code
+   * farm@hex|*} 四行（逐行正数，如 (0,0) 的 6,138,836 / 4,523,060 / 1,615,481 / 71,764）。 ★ 有城的格（上面那个
+   * (0,0)）里，同格**城市行**属同一 cohort ⇒ 它们按人口分到一份（实测 259,886 / 12,609,030）—— 这是"cohort = (格,
+   * 阶层)"的既定口径（{@link io.mosire.simos.economy.api.cohort.CohortKey} 本阶段**不带产业维度**，见裁定 E6），
+   * <b>不是</b>布又回到了 {@code weave} 行（那四行仍是 0）。
    */
   static List<ClassKey> classRowsOfCohort(Map<ClassKey, ClassRow> rows, CohortKey cohort) {
     List<ClassKey> matched = new ArrayList<>();
