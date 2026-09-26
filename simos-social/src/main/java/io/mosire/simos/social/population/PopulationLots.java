@@ -36,8 +36,8 @@ public final class PopulationLots {
   /**
    * 农村（村镇）批次的前缀。
    *
-   * <p>★★ <b>2026-09-27（H0.2）：前缀的唯一拼写点已搬到 {@link ResidenceKind#lotPrefix()}</b> ——
-   * 因为 {@code simos-economy} <b>看不见 {@code simos-social}</b>（铁律 3），却必须从劳动配额表的批次 id
+   * <p>★★ <b>2026-09-27（H0.2）：前缀的唯一拼写点已搬到 {@link ResidenceKind#lotPrefix()}</b> —— 因为 {@code
+   * simos-economy} <b>看不见 {@code simos-social}</b>（铁律 3），却必须从劳动配额表的批次 id
    * 推出"这批人住哪种居住类型"（家户身份键带居住维，裁定 R-N1-A）。两处各拼一份前缀 =
    * 同一个格式的两处拼写点，本仓明令禁止。本常量保留为<b>转发</b>（调用点不必改，字的来源只有一个）。
    */

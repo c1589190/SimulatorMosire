@@ -21,6 +21,7 @@ import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -366,6 +367,31 @@ public final class EconomySeeder {
       String mapId,
       List<Map<String, Object>> entries,
       Map<CohortKey, Map<CommodityId, Long>> householdStocks) {
+
+    /**
+     * ★★ <b>两张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
+     * EI_EXPOSE_REP} <b>不做跨过程分析</b>，看不出"构造器收了可变对象"之后有没有被改，
+     * 故防御性拷贝与包装必须写在<b>它看得见的地方</b>（这里），而不是抽成一个助手再调。
+     *
+     * <p>★ <b>为什么必须冻</b>：本记录是"每格两组四行的开缸余额"的<b>唯一拼写点</b>（economy 载荷与家户账本共用一份）， 一旦被外部改到，两处就会静默漂开 ——
+     * 那正是本仓最忌的"同一事实两处拼写点"。
+     */
+    public Seed {
+      if (mapId == null || mapId.isBlank()) {
+        throw new IllegalArgumentException("Seed.mapId 不得为空白");
+      }
+      List<Map<String, Object>> entriesCopy =
+          new ArrayList<>(entries == null ? List.of() : entries);
+      entries = Collections.unmodifiableList(entriesCopy);
+      Map<CohortKey, Map<CommodityId, Long>> stocksCopy = new LinkedHashMap<>();
+      if (householdStocks != null) {
+        for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : householdStocks.entrySet()) {
+          stocksCopy.put(
+              entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
+        }
+      }
+      householdStocks = Collections.unmodifiableMap(stocksCopy);
+    }
 
     /** {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} 在顶层；entries 原样）。 */
     public String economyPayload() {
@@ -1067,13 +1093,6 @@ public final class EconomySeeder {
     row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, firstDayRationMilli(population)));
     row.put("effectiveDemand", Map.of());
     return row;
-  }
-
-  /** 只把**正的**量落进库存表（0 ⇒ 不落键，保持"空商品表"的纯形态）。 */
-  private static void putIfPositive(Map<String, Object> goods, String commodity, long amount) {
-    if (amount > 0L) {
-      goods.put(commodity, amount);
-    }
   }
 
   /** 同上的**家户账本形态**（键是 {@link CommodityId}；同一口径：0 ⇒ 不落键）。★ 与上面那个同名会撞擦除 ⇒ 另起名。 */

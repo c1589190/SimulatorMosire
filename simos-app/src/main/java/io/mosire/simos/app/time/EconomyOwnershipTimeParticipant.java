@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -145,8 +146,9 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
       // ★★ 落账：当天的条目只落一次（ledger 是**一天一本**的）；落出来的新账户也要进写集。
-      if (!ledger.actorEntries().isEmpty()) {
-        books = OwnershipBooks.apply(books, ledger.actorEntries());
+      List<ActorEntry> entries = OwnershipBooks.fold(ledger);
+      if (!entries.isEmpty()) {
+        books = OwnershipBooks.apply(books, entries);
         for (GoodsAccountKey key : books.accounts().keySet()) {
           writes.add(accountAddress(key));
         }

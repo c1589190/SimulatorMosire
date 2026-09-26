@@ -17,6 +17,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -159,8 +160,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
       // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
       ProductionLedger ledger = stepper.step(day);
-      if (!ledger.actorEntries().isEmpty()) {
-        currentBooks = OwnershipBooks.apply(currentBooks, ledger.actorEntries());
+      List<ActorEntry> entries = OwnershipBooks.fold(ledger);
+      if (!entries.isEmpty()) {
+        currentBooks = OwnershipBooks.apply(currentBooks, entries);
         for (GoodsAccountKey key : currentBooks.accounts().keySet()) {
           writes.add(accountAddress(key));
         }

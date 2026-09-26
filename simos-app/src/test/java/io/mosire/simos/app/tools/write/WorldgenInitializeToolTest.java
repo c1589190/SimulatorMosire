@@ -1055,7 +1055,7 @@ class WorldgenInitializeToolTest {
       if (ledgersOut != null) {
         ledgersOut.add(ledger);
       }
-      current = OwnershipBooks.apply(current, ledger.actorEntries());
+      current = OwnershipBooks.apply(current, OwnershipBooks.fold(ledger));
       current = OwnershipBooks.landHouseholdGoods(current, stepper.householdGoods());
     }
     return new Advance(stepper.finish(), current);

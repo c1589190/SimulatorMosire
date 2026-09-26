@@ -7,6 +7,8 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -52,6 +54,41 @@ public final class OwnershipBooks {
    * @return 落账后的新状态（**只有被写到的账户被替换**，其余原样带过）
    * @throws IllegalStateException 某本账的余额会变成负数（见类注第 ③ 条）
    */
+  /**
+   * ★★ <b>把当天的账折成"产权条目"——本折算的<b>唯一拼写点</b></b>（H2 / 裁定 D2-A 的 app 侧收口）。
+   *
+   * <p>H2 起，全系统的"东西从 A 到 B"只有一种事实：{@link Transfer}（`simos-economy-api`）。 而 actor 切片的账本写入口 {@link
+   * #apply} 收的是**一腿一条**的 {@link ActorEntry}。 ⇒ 折算规则只写在这里，两个时间参与者与测试**都调它**（别处再折一遍就是同一个格式的第二处拼写点）。
+   *
+   * <p>★ <b>两样东西，两种折法</b>：
+   *
+   * <ul>
+   *   <li>{@link ProductionLedger#outputAccruals()} —— <b>产出计提</b>（净产 → operator）**原样带过**：
+   *       它**不是转移**（产出没有对端，而 {@link Transfer} 明令 `from ≠ to`）；
+   *   <li>{@link ProductionLedger#transfers()} —— 每条转移的**每个商品腿**折成**两条**条目： 付方 {@code −amount}、收方
+   *       {@code +amount}（两端同一格 = `transfer.location()`）。 ★ 货币腿本批恒空（货币是 H4 的事）⇒
+   *       只折商品腿；将来接货币时，**在这里**加一条货币路径。
+   * </ul>
+   *
+   * <p>★★ <b>别在这一步把家户账"叠加"一遍</b>：家户那一端的余额由 {@link #landHouseholdGoods} 按**副本绝对值**写回（日耗 / 投入 /
+   * 同格取材只写副本，它们不是条目） ⇒ 这里是"产权条目"的落点，那里是"家户账"的落点，两处不重叠。
+   */
+  public static List<ActorEntry> fold(ProductionLedger ledger) {
+    Objects.requireNonNull(ledger, "ledger");
+    List<ActorEntry> entries = new ArrayList<>(ledger.outputAccruals());
+    for (Transfer transfer : ledger.transfers()) {
+      for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+        long amount = leg.getValue();
+        if (amount <= 0L) {
+          continue; // 0 腿不产生条目（同既有的"实付 0 ⇒ 不产生条目"口径）
+        }
+        entries.add(new ActorEntry(transfer.from(), transfer.location(), leg.getKey(), -amount));
+        entries.add(new ActorEntry(transfer.to(), transfer.location(), leg.getKey(), amount));
+      }
+    }
+    return entries;
+  }
+
   public static ActorData apply(ActorData base, List<ActorEntry> entries) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(entries, "entries");
