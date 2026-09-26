@@ -1,0 +1,18 @@
+# I1.1 比对实录（2026-09-26 15:17）—— 由 s1a_diff.py 原样输出
+
+## 两份 dump 的指纹（dump 本体 11MB，不入库，留在 job 目录）
+2d3254b8ea1cbcaf354da4552f1f3ccd401ebc9c9aa32dc56ae9a042fe457ac0  /home/cna/.claude/jobs/s1a-stage1/base.json
+b3a9ea3bcd22e1c0e7ed398935935421a714a4f7d0d8e899f48e1347185c0caa  /home/cna/.claude/jobs/s1a-stage1/current.json
+
+## 比对输出
+tick  基线=240  现役=240  （一致 ✓）
+格数  基线=799  现役=799
+归一化命中（只施于基线）: \|peasant(?=[|>\"-])×1486, \|middle(?=[|>\"-])×1138, \|rich(?=[|>\"-])×1058, "peasant"×3598, "middle"×3598, "rich"×3598
+只出现在基线的格: []（0 个）
+只出现在现役的格: []（0 个）
+
+★ 逐格差异: 0 / 799 格
+
+★★ I1.1 成立：归一化词表之后，**逐格逐字节完全相同**（差 0）
+
+## 退出码 = 0

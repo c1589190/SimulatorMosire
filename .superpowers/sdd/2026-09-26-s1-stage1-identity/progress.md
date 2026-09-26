@@ -12,9 +12,9 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md（含 2026-09
 
 ## 任务清单
 
-- [ ] Task 1  新建 `SocialClassId`（全局阶层词表 + 词表外即抛）
-- [ ] Task 2  换装（`ClassSlot.id` / `ClassKey.slot`）+ `ClassSlotId` 退役
-- [ ] Task 3  验收（人口与劳动**逐值不变**）
+- [x] Task 1  新建 `SocialClassId`（全局阶层词表 + 词表外即抛）
+- [x] Task 2  换装（`ClassSlot.id` / `ClassKey.slot`）+ `ClassSlotId` 退役
+- [x] Task 3  验收（人口与劳动**逐值不变**）
 
 ### Task 1
 
@@ -58,3 +58,52 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md（含 2026-09
 
 ★ **修法（计划 Step 4 已授权）**：按新口径**手算重算**期望值，**不许抄实际值**；
 ★ 要注意**裸词**（`peasant` 不带引号，出现在 debt id 串里）与**变量名**（`PEASANT`）的区分 —— 只改前者。
+
+---
+
+## 追加（2026-09-26，晚）—— 上面那节「剩余」**已全部解决**，Task 2 / Task 3 完成
+
+★ 上面那节照留痕不动。下面说它**怎么解决的**、以及**过程中翻出来的新东西**。
+
+### Task 2 完成（`5a98b08` 检查点 + `0f0f74e` 收尾）
+
+**★★ 翻出一处我引入的真回归：`LENDER_SLOT_PRIORITY` 的词表没跟着换。**
+它原先是**裸词** `List.of("landlord","rich","middle")` ⇒ 换词表后 `"rich"`/`"middle"` **静默匹配不上**，
+债权序列退化成"只有地主"（中农、富农永远放不出贷）。
+- ★ **诚实边界**：不是"没人发现"—— `EconomySettlementEndToEndTest`（**simos-app**）当场就红了；
+  我先只跑了 `simos-economy` 才误以为无人覆盖。**这个误判本身写进了代码注释**（`EconomySettlement`）。
+- **修法不是改字符串，是升格类型**：`List<SocialClassId>` + 具名常量 ⇒ 写错阶层**根本编译不过**。
+
+**期望值重算（5 处 debt id 字面量）**：按 `debt-c<周期>-<债务人键>><债权人键>-<商品>` 手推，
+算式写进注释 —— **没有一处抄实际值**。
+
+**换夹具 1 处**：`EconomySeedHandlerTest.rejectsClassRowForASlotTheIndustryDoesNotAllow` 里的
+`ghost` → `middle_peasant`。理由：`ghost` 现在**根本构造不出来** ⇒ 用例会退化成"测词表校验"、**名不副实**；
+`middle_peasant` 在全局词表内但**不在本产业 slots** 里，**这才是"悬空引用"**。断言一字未改。
+
+**补判别力 2 条（各配变异自证）**：
+- `eachLenderStratumInThePriorityListCanLend`（三档逐档；★ `middle_peasant` 换装后**整仓没有任何夹具**用它做债权人）
+- `rejectsAStratumOutsideTheGlobalVocabulary`（词表外的阶层在命令边界即拒）
+
+**★ 计划自相矛盾一处**：Task 2 的测试草稿写 `isSameAs(craft.slot())`，
+但 Task 1 的实现草稿里 `parse` 是 `return new SocialClassId(text)`（每次新建实例）
+⇒ `isSameAs` **在本计划自己的实现下不可能成立**。取**自洽的那一支**：`isEqualTo`（值对象的同一性关系）。
+
+### Task 3 完成（读数在 `readings.md`）
+
+- **I1.1 ★ 成立（差 0）**：基线 `f971b66` 与现役各起一个实例、同一脚本、同一 seed、推到 tick 240
+  ⇒ 归一化词表后 **799 格逐字节完全相同**（14,476 处词表替换，其余一字未动）。
+  这条**比判据本身更强**：库存/流水/债务/危机/出生死亡**也全都逐值相同**。
+- **I1.2 未达成** —— **按计划收窄，属阶段 4**（`ClassKey → CohortKey` 与产出归 operator 是同一件事的两面）。
+  ★ 量出基线供阶段 4 对比：**1799 产业 / 7196 阶层行 = 4.00 行/产业**（斜率恰是词表大小 4）。
+- **I1.3 成立**：非注释行里 0 处。★ 顺带修掉一个真缺陷：`SocialClassId` 类注里的 `{@link ClassSlotId}`
+  在被引类型删除后是**悬空 javadoc 链接**（`clean verify` 拦不住 —— 本仓没开 javadoc lint）。
+
+**★★ 方法论自纠一条（值得记进 AGENT.md 的失败形态）**：`s1a_diff.py` 首版的规范串归一化规则
+前瞻字符集只写了 `[|>]`，漏了债权人位置后面跟的 `-`（`…|middle-grain`）⇒ **报出 170 格假差异**。
+**假差异与真差异在报告里长得一模一样** —— 若不追查，就会把"我的工具没归一化干净"读成"换装改了行为"。
+
+### 门禁
+
+`./mvnw clean verify` **BUILD SUCCESS**（11/11 模块）· **2306 测试 / 0 失败** · SpotBugs `BugInstance size is 0` ·
+**267 份 surefire 报告全部落在本轮**（fail-closed 口径）· Spotless 干净。
