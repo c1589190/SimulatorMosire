@@ -357,3 +357,23 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
      （改成 `「」`，同时把 `empty()` 的省略号伪代码改成"写成当下真能编译的那一个"）。
      —— **归类**：与 A 段那条"变异体走不到被测那一层"**同属一类**：
      **派活件的缺陷会直接变成实现者的缺陷。**⇒ 派活前自查"逐字照抄能不能编译"。
+
+- **C 段开始 —— Task 4 dispatched**（BASE=`5e9096f`）：建 `simos-actor` 切片 + `Actor`/`ActorMeta`/
+  `ActorData`（**只两张表**）/`ActorSnapshot`/`ActorChangeSet`/往返测试。实现 Agent = sonnet 档。
+  ★ 随 dispatch 带过去的裁定：**`namespace()` 恒 `"actor"`**（三处同字面）、**按"增量表"只建两张表**、
+  **`withActor` 必须有**（键从值派生只许一个拼写点）、**`Actor` 只许 `ref`+`label` 两个组件**（spec §三 禁令）、
+  **R2 两条 enforcer 护栏 + 变异自证**、**依赖只声明真 import 的**（`simos-economy-api` 留到 Task 6）、
+  **验证用 `verify` 不是 `package`**、**往返测试必须逐字段**
+  ★ 明确告知：需要改 A/B 段产物 ⇒ 报 `BLOCKED`，不许就地改
+
+- **Ruling（R-x，`ActorMeta` 的组件 —— 计划漏写，实现者提问后裁定）**：
+  `record ActorMeta(String mapId, long activatedDay, String rulesVersion)` ——
+  照 `EconomyMeta` 的**形制**，但**去掉 `lastClosedCycle`**（actor 切片没有周期）
+  **也去掉 `migrationSource`**。
+  —— **为什么去掉 `migrationSource`**：`EconomyMeta` 有它是因为**旧的经济载荷格式真的存在过**；
+  而 spec §十.4 明令「旧档重建也没关系、**不做迁移工具**」⇒ 本切片的它**永远只会是空**。
+  **不加一个永远为空的字段**（与 R-e 不声明 `simos-map`、R-h 删零 import 的 `simos-util`、
+  Task 4 不提前加两张表同一条口径）。
+  —— **错了的代价**：低（真要迁移时加一个字段 + 改 codec；而 spec 已明说不会做迁移）。
+  ★ **实现者把"照形制"与"照抄字段集"分开看，这个判断本身是对的** —— 它只错在把 `migrationSource`
+  也当成了"形制"的一部分。**计划已就地补上这段定义**（含"为什么去掉这两样"的表）。

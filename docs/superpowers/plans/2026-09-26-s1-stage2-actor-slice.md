@@ -508,6 +508,21 @@ Expected: **FAIL**（`keyOrderInQualitiesDoesNotChangeIdentity` 红 —— 两�
 ★ `Snapshot` / `ChangeSet` / `ModuleCodec` / `FieldDelta` 这些**接口本身住在 `simos-util`**，
 `simos-actor` 依赖它（Task 1 的 pom 已给 `simos-actor-api` 配好，切片照抄）。
 
+★★ **`ActorMeta` 的组件**（**计划原先漏写**，2026-09-26 实现者提问后裁定补上）：
+
+```
+record ActorMeta(String mapId, long activatedDay, String rulesVersion)
+```
+
+照 `EconomyMeta` 的形制，但**去掉两样**：
+
+| 去掉的 | 为什么 |
+|---|---|
+| `lastClosedCycle` | 那是"最后关账的**产业周期**序号" —— **actor 切片根本没有周期** |
+| ★★ `migrationSource` | `EconomyMeta` 有它是因为**旧的经济载荷格式真的存在过**；而 spec §十.4 明令「**旧档重建也没关系、不做迁移工具**」⇒ 本切片的这个字段**永远只会是空** ⇒ **不加一个永远为空的字段** |
+
+校验口径同 `EconomyMeta`：`mapId` / `rulesVersion` 非空白、`activatedDay ≥ 0`、`Optional` 不得为 null。
+
 **Files:**
 - Create: `simos-actor/src/main/java/io/mosire/simos/actor/{ActorData,ActorSnapshot,ActorMeta}.java`
 - Create: `simos-actor/.../model/Actor.java`
