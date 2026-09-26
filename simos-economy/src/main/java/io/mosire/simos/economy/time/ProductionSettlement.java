@@ -35,7 +35,6 @@ import java.util.OptionalLong;
  *   <tr><td>{@link RuleType#OUTPUT_SHARE}</td><td>{@link Basis#NET_AFTER_INPUTS}</td><td>{@code net_j × rate ÷ 1000}</td></tr>
  *   <tr><td>{@link RuleType#OUTPUT_SHARE}</td><td>{@link Basis#OPERATOR_SURPLUS}</td><td>{@code (net_j − 已付_j) × rate ÷ 1000}（★ 已付按 priority 序累计 ⇒ 次序是数据）</td></tr>
  *   <tr><td>{@link RuleType#OUTPUT_SHARE}</td><td>{@link Basis#LABOR_AMOUNT}</td><td>{@code net_j × rate ÷ 1000 × 本受方劳动 ÷ Σ劳动}（Σ 取 {@code laborOfCohort} 全体）</td></tr>
- *   <tr><td>{@link RuleType#OUTPUT_SHARE}</td><td>{@link Basis#ASSET_QUANTITY}</td><td>{@code net_j × rate ÷ 1000 × 本受方资产量 ÷ Σ资产量}（Σ 取 {@code assetOfActor} 全体）</td></tr>
  *   <tr><td>{@link RuleType#FIXED_IN_KIND_PER_LABOR}</td><td>{@link Basis#LABOR_AMOUNT}</td><td>{@code ⌊本受方劳动 ÷ 1000⌋ × fixedAmount}</td></tr>
  *   <tr><td>{@link RuleType#FIXED_IN_KIND_RENT}</td><td>{@link Basis#FIXED_AMOUNT}</td><td>{@code fixedAmount}（每周期一笔）</td></tr>
  *   <tr><td>{@code FIXED_MONEY_*}</td><td>（不读）</td><td><b>不产生任何条目</b>，进 {@code deferredMoney}（I5.3）</td></tr>
@@ -162,7 +161,6 @@ public final class ProductionSettlement {
    * @param net 本期净产（扣损耗后；毫单位）—— 它同时是<b>付款上限</b>（R6）
    * @param inputs 本期现扣投入（★ <b>本阶段没有公式读它</b>，如实记；阶段 6/7 投入改从 operator 扣时才进场）
    * @param laborOfCohort 本期各 cohort 的劳动量（{@code LABOR_AMOUNT} 那一族的分子/分母）
-   * @param assetOfActor 本期各 actor 的资产量（{@code ASSET_QUANTITY} 那一族的分子/分母）
    * @param outputPerUnit 该产业的产出表（E14 的守卫只读键）
    */
   public record Facts(
@@ -171,7 +169,6 @@ public final class ProductionSettlement {
       Map<CommodityId, Long> net,
       Map<CommodityId, Long> inputs,
       Map<CohortKey, Long> laborOfCohort,
-      Map<ActorRef, Long> assetOfActor,
       Map<CommodityId, Long> outputPerUnit) {
 
     public Facts {
@@ -185,8 +182,6 @@ public final class ProductionSettlement {
       inputs = Collections.unmodifiableMap(requireQuantities(inputs, "Facts.inputs"));
       laborOfCohort =
           Collections.unmodifiableMap(requireQuantities(laborOfCohort, "Facts.laborOfCohort"));
-      assetOfActor =
-          Collections.unmodifiableMap(requireQuantities(assetOfActor, "Facts.assetOfActor"));
       outputPerUnit =
           Collections.unmodifiableMap(requireQuantities(outputPerUnit, "Facts.outputPerUnit"));
     }
@@ -318,7 +313,7 @@ public final class ProductionSettlement {
             + " basis="
             + rule.basis()
             + "；已登记的档: OUTPUT_SHARE × {GROSS_OUTPUT, NET_AFTER_INPUTS, OPERATOR_SURPLUS,"
-            + " LABOR_AMOUNT, ASSET_QUANTITY} · FIXED_IN_KIND_PER_LABOR × LABOR_AMOUNT ·"
+            + " LABOR_AMOUNT} · FIXED_IN_KIND_PER_LABOR × LABOR_AMOUNT ·"
             + " FIXED_IN_KIND_RENT × FIXED_AMOUNT（SELF_RETENTION 与 FIXED_MONEY_* 不读 basis）");
   }
 
@@ -356,9 +351,6 @@ public final class ProductionSettlement {
               perMille(net, rate),
               laborOf(facts, rule.recipient()),
               totalOf(facts.laborOfCohort()));
-      case ASSET_QUANTITY ->
-          shareWithTotal(
-              perMille(net, rate), assetOf(facts, rule.recipient()), totalOf(facts.assetOfActor()));
       case FIXED_AMOUNT -> throw unregisteredCombination(rule);
     };
   }
@@ -389,7 +381,7 @@ public final class ProductionSettlement {
   /**
    * 按份额分：{@code 分成后的量 × 本受方量 ÷ 总量}；<b>总量为 0 ⇒ 0（不除零）</b>。
    *
-   * <p>★ 分母是<b>全体</b>（{@code laborOfCohort} / {@code assetOfActor} 的逐值之和），<b>不是</b>"全体受方" ——
+   * <p>★ 分母是<b>全体</b>（{@code laborOfCohort} 的逐值之和），<b>不是</b>"全体受方" ——
    * 制度是"这一格的产出在这些人之间怎么分"，分母当然得是这一格的全部出工/全部资产。
    */
   private static long shareWithTotal(long share, long own, long total) {
@@ -401,17 +393,6 @@ public final class ProductionSettlement {
     return switch (recipient) {
       case Recipient.ToCohort toCohort -> facts.laborOfCohort().getOrDefault(toCohort.cohort(), 0L);
       case Recipient.ToActor ignored -> 0L;
-    };
-  }
-
-  /**
-   * 本受方的<b>资产量</b>：actor 查 {@code assetOfActor}；★ cohort 不持有 {@code AssetHolding} ⇒ 0（归零，同 E11
-   * 的边界）。
-   */
-  private static long assetOf(Facts facts, Recipient recipient) {
-    return switch (recipient) {
-      case Recipient.ToActor toActor -> facts.assetOfActor().getOrDefault(toActor.actor(), 0L);
-      case Recipient.ToCohort ignored -> 0L;
     };
   }
 

@@ -163,7 +163,6 @@ class CohortKeyTest {
             Basis.NET_AFTER_INPUTS,
             Basis.OPERATOR_SURPLUS,
             Basis.LABOR_AMOUNT,
-            Basis.ASSET_QUANTITY,
             Basis.FIXED_AMOUNT);
 
     assertThat(RuleType.parse("FIXED_IN_KIND_RENT")).isEqualTo(RuleType.FIXED_IN_KIND_RENT);

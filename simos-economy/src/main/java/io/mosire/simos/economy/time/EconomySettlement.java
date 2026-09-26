@@ -1764,8 +1764,6 @@ public final class EconomySettlement {
                 netByCommodity,
                 industry.cycleInputUsedMilli(),
                 laborOfCohort(rows, location, industry.cycleDays()),
-                // ★ AssetHolding 真档未种入 ⇒ 这一档只能查到 0（如实记，见方法注释）。
-                Map.of(),
                 industry.outputPerUnit()));
     for (ProductionSettlement.ActorEntry entry : outcome.actorEntries()) {
       ledger.addEntry(entry);

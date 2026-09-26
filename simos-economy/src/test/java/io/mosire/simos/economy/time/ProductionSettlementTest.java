@@ -97,7 +97,7 @@ class ProductionSettlementTest {
   /** 一份本周期的事实（劳动账/资产账由用例按需给 —— 本构造器给空表）。 */
   private static Facts grainFacts(
       Map<CommodityId, Long> gross, Map<CommodityId, Long> net, Map<CommodityId, Long> recipe) {
-    return new Facts(HEX, gross, net, Map.of(), Map.of(), Map.of(), recipe);
+    return new Facts(HEX, gross, net, Map.of(), Map.of(), recipe);
   }
 
   private static ProductionRelation relation(CompensationRule... rules) {
@@ -253,7 +253,6 @@ class ProductionSettlementTest {
             Map.of(GRAIN, 100_000L),
             Map.of(),
             Map.of(POOR, 30_000L, LANDLORD, 10_000L),
-            Map.of(),
             GRAIN_RECIPE);
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
@@ -326,7 +325,6 @@ class ProductionSettlementTest {
             Map.of(GRAIN, 100_000L),
             Map.of(),
             Map.of(POOR, 30_500L, LANDLORD, 10_000L),
-            Map.of(),
             GRAIN_RECIPE);
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
@@ -368,31 +366,6 @@ class ProductionSettlementTest {
 
     assertThat(intake(small, LANDLORD, GRAIN)).as("固定租 = 20,000 毫粮（一笔）").isEqualTo(20_000L);
     assertThat(intake(big, LANDLORD, GRAIN)).as("★ 产出翻一千倍，租一分不变").isEqualTo(20_000L);
-  }
-
-  /** ★ {@code ASSET_QUANTITY} = 净产 × 率 ÷ 1000 × 本受方资产量 ÷ Σ资产量（Σ 取全体）。 */
-  @Test
-  void assetQuantitySharesTheOutputByEachRecipientsAssetHolding() {
-    // 作坊持 3,000、庄园持 1,000（★ 庄园不是本条的受方，但在 Σ 里）⇒ Σ = 4,000 ⇒ 作坊的份额 = 3/4
-    //   100,000 × 500 ÷ 1000 = 50,000 ⇒ 50,000 × 3,000 ÷ 4,000 = 37,500
-    Facts facts =
-        new Facts(
-            HEX,
-            Map.of(GRAIN, 100_000L),
-            Map.of(GRAIN, 100_000L),
-            Map.of(),
-            Map.of(),
-            Map.of(WORKSHOP, 3_000L, ESTATE, 1_000L),
-            GRAIN_RECIPE);
-    ProductionSettlement.Outcome outcome =
-        ProductionSettlement.settle(
-            relation(share(Basis.ASSET_QUANTITY, 500, toActor(WORKSHOP), GRAIN, 10)), facts);
-
-    assertThat(outcome.actorEntries())
-        .as("★ 分母是**全体**资产量（含非受方的庄园）；只按受方求和会给 50,000")
-        .containsExactly(
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -37_500L),
-            new ProductionSettlement.ActorEntry(WORKSHOP, HEX, GRAIN, 37_500L));
   }
 
   /** ★ 同一个 cohort 收到多条规则 ⇒ <b>累加</b>（{@code merge} 而非 {@code put}）。 */
@@ -508,7 +481,7 @@ class ProductionSettlementTest {
     assertThatThrownBy(() -> ProductionSettlement.settle(relation, null))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
-            () -> new Facts(HEX, null, Map.of(), Map.of(), Map.of(), Map.of(), GRAIN_RECIPE))
+            () -> new Facts(HEX, null, Map.of(), Map.of(), Map.of(), GRAIN_RECIPE))
         .as("★ 事实没给 = 坏数据，不是状态（同本仓各 record 的口径）")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> grainFacts(Map.of(GRAIN, -1L), Map.of(), GRAIN_RECIPE))
