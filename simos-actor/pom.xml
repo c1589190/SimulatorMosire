@@ -11,14 +11,16 @@
 
   <artifactId>simos-actor</artifactId>
   <name>ActorSimos</name>
-  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集。此刻已建身份与骨架（Actor / ActorMeta / ActorData / ActorSnapshot / ActorChangeSet + 往返不变式测试），并加上产权表：ActorData 的组件**恰是** `(meta, actors, holdings)` 三件；accounts 由 Task 6 增量加。</description>
+  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集。此刻已建身份与骨架（Actor / ActorMeta / ActorData / ActorSnapshot / ActorChangeSet + 往返不变式测试），再加上产权表与库存表：ActorData 的组件**恰是** `(meta, actors, holdings, accounts)` 四件。</description>
 
   <!-- ★ 依赖面 = actor-api（ActorRef / AssetClassKey——共用契约层）+ util（Snapshot / ChangeSet / FieldDelta / StateRef / SimosTimestamp）
        + **map（HexCoord——Task 5 起）**。
        ★ **为什么 Task 5 起真的要 map**：AssetHoldingKey 的 location 就是 HexCoord（产权是"到格"的）。
          这与 Task 1 裁定 R-e（"actor-api 不声明用不到的 simos-map"）不冲突——R-e 说的是**那时候不需要**的
          api 模块；切片此刻真 import 了 HexCoord ⇒ 声明它（口径同 R-h：不声明零 import 的依赖，也**不缺席**真 import 的依赖）。
-       ★ **本阶段仍不声明 simos-economy-api**：Task 6 的 GoodsAccount 真正 import CommodityId 时才加（YAGNI）。
+       ★ **Task 6 起真的要 economy-api**：GoodsAccount.balances 的键是 CommodityId ⇒ 声明它。
+         ★ **它不在本模块的 ban 列**：economy-api 是**共用契约层**（稳定 ID），economy 才是同层切片。
+         ★ 口径同 R-h：不声明零 import 的依赖，也**不缺席**真 import 的依赖。
        ★ **不声明 jackson**：本任务的状态类型是 record + Map，零 Jackson 注解、零 import（同裁定 R-j 对 actor-api 的处置）。
        ★ **不声明 spotbugs-annotations**：本任务的类型没有一处需要 @SuppressFBWarnings
          （只读包装一律写在赋值处，EI_EXPOSE_REP 不报），故不声明一个用不到的类型依赖；
@@ -33,6 +35,12 @@
     <!-- ★ Task 5 起：AssetHoldingKey.location 就是 HexCoord（产权"到格"）。-->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <!-- ★ Task 6 起：GoodsAccount.balances 的键就是 CommodityId（库存"按商品"）。
+         ★ simos-economy-api 是**契约层**（稳定 ID），不是切片 ⇒ 它**不在**本模块的 ban 列表里
+         （见下面 enforcer 的注释）；本切片只吃它的类型，不碰 economy 的结算控制流。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>

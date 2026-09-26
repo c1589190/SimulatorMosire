@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.AssetHolding;
 import io.mosire.simos.actor.model.AssetHoldingKey;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.Map;
@@ -14,8 +16,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * actor 状态的变更集。<b>组件与 {@link ActorData} 的 record 组件一一对应</b>（当前 3 个：{@code meta} / {@code actors} /
- * {@code holdings}；Task 6 加 {@code accounts}）。
+ * actor 状态的变更集。<b>组件与 {@link ActorData} 的 record 组件一一对应</b>（当前 4 个：{@code meta} / {@code actors} /
+ * {@code holdings} / {@code accounts}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code ActorRoundTripTest} 的<b>反射枚举</b>把守——新增状态组件若不进变更集， 那个测试自动红。
  *
@@ -32,10 +34,14 @@ import java.util.function.Function;
  *
  * <p>★ Task 5 的 {@code holdings} 走同一份机制：它是普通的"键 → 值"表（键类型 {@link AssetHoldingKey} 自带 {@code
  * toString()} + {@code parse} 这一对，见裁定 R-48-f），故 diff/rebuild 一字不用改 —— rebuild 的键解析器就是 {@link
- * AssetHoldingKey#parse}，与 {@link ActorRef} 那一路同款。
+ * AssetHoldingKey#parse}，与 {@link ActorRef} 那一路同款。★ Task 6 的 {@code accounts}（键类型 {@link
+ * GoodsAccountKey}） 照同一形制：它的 {@code parse} 就是第四路键解析器。
  */
 public record ActorChangeSet(
-    FieldDelta<ActorMeta> meta, FieldDelta<Actor> actors, FieldDelta<AssetHolding> holdings)
+    FieldDelta<ActorMeta> meta,
+    FieldDelta<Actor> actors,
+    FieldDelta<AssetHolding> holdings,
+    FieldDelta<GoodsAccount> accounts)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -54,6 +60,9 @@ public record ActorChangeSet(
     if (holdings == null) {
       holdings = new FieldDelta.Unchanged<>();
     }
+    if (accounts == null) {
+      accounts = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -63,7 +72,8 @@ public record ActorChangeSet(
     return new ActorChangeSet(
         FieldDelta.diff(metaTable(base.meta()), metaTable(target.meta())),
         FieldDelta.diff(base.actors(), target.actors()),
-        FieldDelta.diff(base.holdings(), target.holdings()));
+        FieldDelta.diff(base.holdings(), target.holdings()),
+        FieldDelta.diff(base.accounts(), target.accounts()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -73,12 +83,13 @@ public record ActorChangeSet(
     return new ActorData(
         metaOf(FieldDelta.rebuild(metaTable(base.meta()), cs.meta(), Function.identity())),
         FieldDelta.rebuild(base.actors(), cs.actors(), ActorChangeSet::parseActorKey),
-        FieldDelta.rebuild(base.holdings(), cs.holdings(), AssetHoldingKey::parse));
+        FieldDelta.rebuild(base.holdings(), cs.holdings(), AssetHoldingKey::parse),
+        FieldDelta.rebuild(base.accounts(), cs.accounts(), GoodsAccountKey::parse));
   }
 
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
-    return !(meta.changed() || actors.changed() || holdings.changed());
+    return !(meta.changed() || actors.changed() || holdings.changed() || accounts.changed());
   }
 
   /** {@code Optional<ActorMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

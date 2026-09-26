@@ -13,6 +13,9 @@ import io.mosire.simos.actor.api.asset.AssetClassKey;
 import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.AssetHolding;
 import io.mosire.simos.actor.model.AssetHoldingKey;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
@@ -37,8 +40,8 @@ import org.junit.jupiter.api.Test;
  * L283 的禁令（不许 {@code ActorRow { Money money; List<Debt> debts; }}）在结构上可判，故用反射钉死。
  *
  * <p>★ <b>往返不是"两个空对象也相等"</b>：{@link #roundTripRebuildsEveryFieldOfANonTrivialTarget()} **逐字段**断言
- * 重建结果（meta 三个组件 + 每条主体 的键 / ref / label + 每条持有的键 / owner / hex / assetClass / quantity）， 整体 {@code
- * equals} 只是最后一条。
+ * 重建结果（meta 三个组件 + 每条主体 的键 / ref / label + 每条持有的键 / owner / hex / assetClass / quantity + 每本账的键 /
+ * owner / hex 与其余额的每个商品）， 整体 {@code equals} 只是最后一条。
  */
 class ActorRoundTripTest {
 
@@ -61,6 +64,11 @@ class ActorRoundTripTest {
 
   private static final AssetClassKey ARABLE_C =
       AssetClassKey.land(Map.of("arable", "true", "quality", "C"));
+
+  /** ★ Task 6 的库存夹具：粮与布 —— 两个商品键不同 ⇒ 任何"把 balances 压成单值"的写法都会丢掉一条。 */
+  private static final CommodityId GRAIN = new CommodityId("grain");
+
+  private static final CommodityId CLOTH = new CommodityId("cloth");
 
   /** ★ 唯一的豁免集合：本切片的 {@code ActorData} 没有"不进变更集"的组件 ⇒ 必须是空集，且被单独钉死。 */
   private static final Set<String> EXCLUDED_FROM_CHANGE_SET = Set.of();
@@ -90,8 +98,8 @@ class ActorRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyThreeComponents() {
-    assertThat(ActorChangeSet.class.getRecordComponents()).hasSize(3);
+  void changeSetHasExactlyFourComponents() {
+    assertThat(ActorChangeSet.class.getRecordComponents()).hasSize(4);
     assertThat(componentNames(ActorChangeSet.class))
         .as("变更集的每个组件都必须在 ActorData 里有同名的 record 组件")
         .isSubsetOf(componentNames(ActorData.class));
@@ -145,18 +153,24 @@ class ActorRoundTripTest {
             .withActor(new Actor(ESTATE, "庄园"))
             .withActor(new Actor(HOUSEHOLD, "佃农家户"))
             .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L))
-            .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, OTHER_HEX, ARABLE_C), 3L));
+            .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, OTHER_HEX, ARABLE_C), 3L))
+            .withAccount(
+                new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 100L, CLOTH, 0L)))
+            .withAccount(
+                new GoodsAccount(new GoodsAccountKey(HOUSEHOLD, OTHER_HEX), Map.of(GRAIN, 7L)));
 
     ActorChangeSet cs = ActorChangeSet.between(base, target);
     ActorData rebuilt = ActorChangeSet.apply(cs, base);
 
-    // ① 三个组件都真的进了变更集（否则"相等"可能只是因为两边都没动）
+    // ① 四个组件都真的进了变更集（否则"相等"可能只是因为两边都没动）
     assertThat(cs.meta().changed()).as("meta 参与").isTrue();
     assertThat(cs.actors().changed()).as("actors 参与").isTrue();
     assertThat(cs.holdings().changed()).as("holdings 参与").isTrue();
+    assertThat(cs.accounts().changed()).as("accounts 参与").isTrue();
     assertThat(cs.meta()).as("空 → 有值 = Upsert").isInstanceOf(FieldDelta.Upsert.class);
     assertThat(cs.actors()).as("从空表加两条 = Upsert").isInstanceOf(FieldDelta.Upsert.class);
     assertThat(cs.holdings()).as("从空表加两条 = Upsert").isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(cs.accounts()).as("从空表加两本 = Upsert").isInstanceOf(FieldDelta.Upsert.class);
 
     // ② 逐字段：meta 的三个组件
     assertThat(rebuilt.meta()).as("meta 必须被重建出来（不是空 Optional）").isPresent();
@@ -185,6 +199,23 @@ class ActorRoundTripTest {
     assertThat(rebuilt.holdings().get(householdHolding).key().assetKey()).isEqualTo(ARABLE_C);
     assertThat(rebuilt.holdings().get(householdHolding).quantity()).isEqualTo(3L);
 
+    // ④b 逐字段：accounts 的键（两段）+ 每本账的余额表（逐个商品，含一条 0）
+    assertThat(rebuilt.accounts()).containsExactlyEntriesOf(target.accounts());
+    GoodsAccountKey estateAccount = new GoodsAccountKey(ESTATE, HEX);
+    assertThat(rebuilt.accounts().get(estateAccount).key().owner()).isEqualTo(ESTATE);
+    assertThat(rebuilt.accounts().get(estateAccount).key().location()).isEqualTo(HEX);
+    assertThat(rebuilt.accounts().get(estateAccount).balances())
+        .as("★ 逐商品断言；其中一条是 0 ⇒ 0 在往返里也不许被归一掉（库存是存量）")
+        .containsOnlyKeys(GRAIN, CLOTH)
+        .containsEntry(GRAIN, 100L)
+        .containsEntry(CLOTH, 0L);
+    GoodsAccountKey householdAccount = new GoodsAccountKey(HOUSEHOLD, OTHER_HEX);
+    assertThat(rebuilt.accounts().get(householdAccount).key().owner()).isEqualTo(HOUSEHOLD);
+    assertThat(rebuilt.accounts().get(householdAccount).key().location()).isEqualTo(OTHER_HEX);
+    assertThat(rebuilt.accounts().get(householdAccount).balances())
+        .as("另一本账的余额不许被前一本来回串（两本账各自独立）")
+        .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 7L));
+
     // ⑤ 最后才是整体相等（它不能是唯一一条：空对象也满足它）
     assertThat(rebuilt).isEqualTo(target);
   }
@@ -193,8 +224,8 @@ class ActorRoundTripTest {
    * ★ 往返的另一半：<b>删除与覆盖</b>。
    *
    * <p>★ 只测"从空表往里加"会漏掉 {@link FieldDelta} 四条变体里的 {@code Remove} 与 {@code Patch} —— 上一条用例只走到 {@code
-   * Upsert}。这一条刻意让两侧<b>又删又改</b>（三个组件各一路：{@code meta} 走 {@code Unchanged}、{@code actors} 与 {@code
-   * holdings} 各走一次 {@code Patch}）。
+   * Upsert}。这一条刻意让两侧<b>又删又改</b>（四个组件各一路：{@code meta} 走 {@code Unchanged}、{@code actors} / {@code
+   * holdings} / {@code accounts} 各走一次 {@code Patch}）。
    */
   @Test
   void roundTripAlsoRemovesAndOverwrites() {
@@ -204,18 +235,25 @@ class ActorRoundTripTest {
             .withActor(new Actor(ESTATE, "庄园"))
             .withActor(new Actor(HOUSEHOLD, "佃农家户"))
             .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L))
-            .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, HEX, ARABLE_B), 1_000L));
-    // target：撤掉家户这个主体与它的产权、给庄园改名、并把庄园的持有量减到 7,500 ⇒ 两个组件上"既删又改"
+            .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, HEX, ARABLE_B), 1_000L))
+            .withAccount(new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 100L)))
+            .withAccount(new GoodsAccount(new GoodsAccountKey(HOUSEHOLD, HEX), Map.of(GRAIN, 7L)));
+    // target：撤掉家户这个主体与它的产权/库存、给庄园改名、把庄园的持有量减到 7,500、把粮覆盖成 40
+    //   ⇒ 三个表上"既删又改"
     ActorData target =
         ActorData.empty()
             .withMeta(Optional.of(META))
             .withActor(new Actor(ESTATE, "东庄"))
-            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 7_500L));
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 7_500L))
+            .withAccount(new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 40L)));
 
     ActorChangeSet cs = ActorChangeSet.between(base, target);
     assertThat(cs.actors()).as("既删又改 ⇒ Patch（两侧都不许丢）").isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.holdings())
         .as("产权也是既删又改 ⇒ Patch（数量是**覆盖**：调用方给的是「该余额是多少」）")
+        .isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.accounts())
+        .as("库存同样是既删又改 ⇒ Patch（销掉家户那本 + 覆盖庄园那本）")
         .isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.meta())
         .as("两侧 meta 相同 ⇒ Unchanged（不是空对象）")
@@ -232,6 +270,47 @@ class ActorRoundTripTest {
     assertThat(rebuilt.holdings())
         .as("被撤掉的产权不许留在重建结果里")
         .doesNotContainKey(new AssetHoldingKey(HOUSEHOLD, HEX, ARABLE_B));
+    assertThat(rebuilt.accounts()).containsExactlyEntriesOf(target.accounts());
+    assertThat(rebuilt.accounts().get(new GoodsAccountKey(ESTATE, HEX)).balances())
+        .as("覆盖后的库存（不是 100 与 40 相加，也不是留在 100）")
+        .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 40L));
+    assertThat(rebuilt.accounts())
+        .as("被销账的那本不许留在重建结果里")
+        .doesNotContainKey(new GoodsAccountKey(HOUSEHOLD, HEX));
+    assertThat(rebuilt).isEqualTo(target);
+  }
+
+  /**
+   * ★★ <b>{@code accounts} 那一路的两个方向各一条</b>（brief：新 delta 的 {@code Remove} / 同键换值）：{@code Remove} =
+   * 这个人不在这一格了（整本账销掉）；同键换值 = 账还在、余额被<b>覆盖</b>。
+   *
+   * <p>★ <b>覆盖那一条刻意把新值写成 0</b>（不是删键）：于是它同时钉住两件事 —— 余额是"<b>该余额是多少</b>"（不是与旧值相加）， 且 <b>0
+   * 不许被归一成空表</b>（库存是存量，spec §2.5 L166）。若谁把 0 当作"没有"而丢掉该商品键，这条当场红。
+   */
+  @Test
+  void accountDeltaRoundTripsBothRemoveAndOverwrite() {
+    GoodsAccountKey estateAtHex = new GoodsAccountKey(ESTATE, HEX);
+    GoodsAccountKey householdAtHex = new GoodsAccountKey(HOUSEHOLD, HEX);
+    ActorData base =
+        ActorData.empty()
+            .withAccount(new GoodsAccount(estateAtHex, Map.of(GRAIN, 100L, CLOTH, 5L)))
+            .withAccount(new GoodsAccount(householdAtHex, Map.of(GRAIN, 7L)));
+    ActorData target =
+        ActorData.empty().withAccount(new GoodsAccount(estateAtHex, Map.of(GRAIN, 0L)));
+
+    ActorChangeSet cs = ActorChangeSet.between(base, target);
+
+    assertThat(cs.accounts()).as("既删又改 ⇒ Patch（两侧都不许丢）").isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.isEmpty()).as("这一档必须被报成「有变化」，否则它根本不会进 apply").isFalse();
+
+    ActorData rebuilt = ActorChangeSet.apply(cs, base);
+    assertThat(rebuilt.accounts()).as("被销账的那本不许留在重建结果里").doesNotContainKey(householdAtHex);
+    assertThat(rebuilt.accounts().get(estateAtHex).balances())
+        .as("★ 同键换值 = 覆盖（0 就是 0）：不是与 100 相加，也不许把 0 归一成空表")
+        .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 0L));
+    assertThat(rebuilt.accounts().get(estateAtHex).key())
+        .as("换的是余额，不是键 —— 重建后仍归在 (ESTATE, HEX) 名下")
+        .isEqualTo(estateAtHex);
     assertThat(rebuilt).isEqualTo(target);
   }
 
@@ -330,7 +409,7 @@ class ActorRoundTripTest {
     for (String bad : new String[] {"", "NO_SEPARATOR", ":farm@0_0", "ESTATE:"}) {
       ActorChangeSet handMade =
           new ActorChangeSet(
-              null, new FieldDelta.Upsert<>(Map.of(bad, new Actor(ESTATE, "庄园"))), null);
+              null, new FieldDelta.Upsert<>(Map.of(bad, new Actor(ESTATE, "庄园"))), null, null);
 
       assertThatThrownBy(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
           .as("坏键「%s」必须抛，且消息来自上游的规范串校验", bad)
@@ -350,6 +429,7 @@ class ActorRoundTripTest {
         new ActorChangeSet(
             null,
             new FieldDelta.Upsert<>(Map.of(ESTATE.toString(), new Actor(ESTATE, "庄园"))),
+            null,
             null);
 
     assertThatCode(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
@@ -398,6 +478,30 @@ class ActorRoundTripTest {
     AssetHolding overwritten = new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 7_500L);
     assertThat(once.withHolding(overwritten).holdings()).as("同一个键写两次 ⇒ 只有一条").hasSize(1);
     assertThat(once.withHolding(overwritten).holdings().get(key).quantity()).isEqualTo(7_500L);
+  }
+
+  /**
+   * ★★ <b>{@code withAccount} 的键从值派生</b>（同 {@code withActor} / {@code
+   * withHolding}，"键从值派生"只许有一个拼写点）。
+   *
+   * <p>★ 判别力同 {@code withHolding} 那条：wither <b>不接受另一个独立的键入参</b>，故"键与值各说各话"在类型上就造不出来 （绕过 wither
+   * 直接塞表的那条路由构造器挡）。
+   */
+  @Test
+  void withAccountDerivesTheKeyFromTheValue() {
+    GoodsAccount row = new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 100L));
+    ActorData once = ActorData.empty().withAccount(row);
+
+    assertThat(once.accounts()).containsExactly(Map.entry(row.key(), row));
+    GoodsAccountKey key = once.accounts().keySet().iterator().next();
+    assertThat(key.owner()).as("键的第一段 = value.key().owner()").isEqualTo(row.key().owner());
+    assertThat(key.location()).as("键的第二段 = value.key().location()").isEqualTo(row.key().location());
+
+    GoodsAccount overwritten =
+        new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 40L));
+    assertThat(once.withAccount(overwritten).accounts()).as("同一个键写两次 ⇒ 只有一本").hasSize(1);
+    assertThat(once.withAccount(overwritten).accounts().get(key).balances())
+        .containsEntry(GRAIN, 40L);
   }
 
   // ── 产权的键：规范串与它的逆（裁定 R-48-f 的落点） ────────────────────────────────
@@ -474,7 +578,7 @@ class ActorRoundTripTest {
           "", "NO_SEPARATOR", "|0_0|LAND", "ESTATE:farm@0_0||LAND", "ESTATE:farm@0_0|0_0|"
         }) {
       ActorChangeSet handMade =
-          new ActorChangeSet(null, null, new FieldDelta.Upsert<>(Map.of(bad, row)));
+          new ActorChangeSet(null, null, new FieldDelta.Upsert<>(Map.of(bad, row)), null);
 
       assertThatThrownBy(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
           .as("坏键「%s」必须抛，且是**本类**那句（点名了「产权键」的形状不合格）", bad)
@@ -499,12 +603,134 @@ class ActorRoundTripTest {
   void aWellFormedHoldingKeyIsAccepted() {
     AssetHolding row = new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 1L);
     ActorChangeSet handMade =
-        new ActorChangeSet(null, null, new FieldDelta.Upsert<>(Map.of(row.key().toString(), row)));
+        new ActorChangeSet(
+            null, null, new FieldDelta.Upsert<>(Map.of(row.key().toString(), row)), null);
 
     assertThatCode(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
         .doesNotThrowAnyException();
     assertThat(ActorChangeSet.apply(handMade, ActorData.empty()).holdings())
         .containsOnlyKeys(row.key());
+  }
+
+  // ── 库存的键：规范串与它的逆（同 R-48-f 的配对，Task 6） ──────────────────────────
+
+  /**
+   * ★★ <b>{@link GoodsAccountKey} 的"裸 {@code toString()} + 单参 {@code parse}"这一对</b>（裁定 R-48-f 在
+   * Task 6 的兑现，同 {@link AssetHoldingKey} 的先例）：{@code FieldDelta} 的键模型假定"各 key 类型自带裸 {@code
+   * toString()} + {@code static parse}"，缺了它，本切片就被迫自己写规范串的逆 —— 同一个格式就有了两处拼写点。
+   *
+   * <p>★ <b>冻结串</b>（照 map 线 {@code EdgeRef} / {@link AssetHoldingKey} 的先例）：格式一旦定下就是<b>落盘契约</b>
+   * （变更集的 key），改它必须有人当场拍板，故用字面量钉死。
+   *
+   * <p>★ <b>判别力来自夹具的 owner 自带两个冒号</b>（{@code HOUSEHOLD:rural:0_0:MALE:1}）：谁把逆写成"按某个冒号切"
+   * 或"只取冒号之后那段"，这条当场红。★ 前置断言把"恰好 1 个接缝"也钉住 —— 夹具改复杂了这条会自己响。
+   */
+  @Test
+  void accountKeyToStringIsAFrozenCanonicalLiteralAndItsOwnInverse() {
+    GoodsAccountKey key = new GoodsAccountKey(HOUSEHOLD, OTHER_HEX);
+
+    assertThat(key.toString())
+        .as("★ 冻结串：{@code <owner>|<location>}")
+        .isEqualTo("HOUSEHOLD:rural:0_0:MALE:1|1_0");
+    assertThat(key.toString().chars().filter(c -> c == '|').count())
+        .as("前置：夹具的规范串**恰 1 个接缝**（两段都不含分隔符 —— 见类注里那条已声明前提）")
+        .isEqualTo(1);
+
+    GoodsAccountKey back = GoodsAccountKey.parse(key.toString());
+    assertThat(back.owner()).as("第一段回到 ActorRef").isEqualTo(HOUSEHOLD);
+    assertThat(back.location()).as("第二段回到 HexCoord").isEqualTo(OTHER_HEX);
+    assertThat(back).isEqualTo(key);
+  }
+
+  /**
+   * ★★ <b>往返：{@code apply} 真的用 {@code GoodsAccountKey.parse} 把新键还原回来</b>（R-48-f 的用处所在）。
+   *
+   * <p>★ <b>判别力在夹具的形状上</b>：owner 的规范串自带两个冒号、地格是 {@code 1_0} ⇒ 逆若写成"按某个冒号切" 或"按 {@code _} 切"，这条当场红。★
+   * <b>但"按最后一个接缝切"这档在这条上**不会**红</b>：合法的规范串恰一个接缝，首个与末个恒同位置 ⇒
+   * 本类所有往返用例对它都不敏感（实测：把切法改成末个接缝，这些用例全绿）。那一档的判别力只在 {@link
+   * #aGoodsAccountKeyWhoseOwnerIdContainsTheSeparatorFailsLoudly()} 上。
+   */
+  @Test
+  void roundTripParsesAccountKeys() {
+    ActorData target =
+        ActorData.empty()
+            .withAccount(
+                new GoodsAccount(new GoodsAccountKey(HOUSEHOLD, OTHER_HEX), Map.of(GRAIN, 7L)));
+
+    ActorData rebuilt =
+        ActorChangeSet.apply(ActorChangeSet.between(ActorData.empty(), target), ActorData.empty());
+
+    GoodsAccountKey rebuiltKey = rebuilt.accounts().keySet().iterator().next();
+    assertThat(rebuiltKey.owner()).isEqualTo(HOUSEHOLD);
+    assertThat(rebuiltKey.location()).isEqualTo(OTHER_HEX);
+    assertThat(rebuiltKey)
+        .as("还原出来的键必须与 target 的键相等")
+        .isEqualTo(target.accounts().keySet().iterator().next());
+    assertThat(rebuilt).isEqualTo(target);
+  }
+
+  /**
+   * ★ 库存键的坏输入<b>宁抛不静默</b>（口径照 {@code ClassKey#parse} / {@link AssetHoldingKey#parse}）。
+   *
+   * <p>★ 四档各打一条分支：<b>空串</b>、<b>没有接缝</b>（{@code indexOf} 返回 −1）、<b>接缝在首</b>（切出来所有者为空）、
+   * <b>接缝在尾</b>（切出来地格段为空）。
+   *
+   * <p>★ <b>抛只可能来自 accounts 那一路</b>：手搓的变更集里其余三个组件都是 {@code Unchanged} ⇒ {@code rebuild} 拿到 {@code
+   * Unchanged} 直接返回 base、连解析器都不会被调用。
+   */
+  @Test
+  void aGoodsAccountKeyThatIsNotWellFormedIsRejected() {
+    GoodsAccount account = new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 1L));
+    for (String bad : new String[] {"", "NO_SEPARATOR", "|0_0", "ESTATE:farm@0_0|"}) {
+      ActorChangeSet handMade =
+          new ActorChangeSet(null, null, null, new FieldDelta.Upsert<>(Map.of(bad, account)));
+
+      assertThatThrownBy(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
+          .as("坏键「%s」必须抛，且是**本类**那句（点名了「库存键」的形状不合格）", bad)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("库存键");
+    }
+
+    // ★ 接缝都对、但某一段的内容非法 ⇒ 由**上游的严格解析**挡下，而不是本类自己复述一遍它的格式：
+    //   判据是消息里那个上游的词 —— 本类要是自己重写一份 ActorKind 词表 / 坐标解析，这两句断言当场红。
+    assertThatThrownBy(() -> GoodsAccountKey.parse("NOSUCHKIND:x|0_0"))
+        .as("种类的词表校验住在上游 ActorRef.parseCanonical / ActorKind.parse")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("ActorKind");
+    assertThatThrownBy(() -> GoodsAccountKey.parse("ESTATE:farm@0_0|XY"))
+        .as("坐标的解析住在上游 HexCoord.parse")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("坐标串");
+  }
+
+  /**
+   * ★★ <b>已声明前提的"方向"：违反它必须响亮地失败，绝不静默切出一个错的键</b>（类注里那条"两段都不含 {@code |}"）。
+   *
+   * <p>★ <b>为什么必须单独一条</b>：{@code "ESTATE:a|b|0_0"} 有两种读法 —— {@code owner="ESTATE:a"} + {@code
+   * location="b|0_0"}（非法地格），或 {@code owner="ESTATE:a|b"} + {@code location="0_0"}。★
+   * <b>后者正是"按最后一个接缝切" 的实现会静默造出来的那个键</b>（{@code ActorRef.parseCanonical("ESTATE:a|b")} 会照收）⇒
+   * 这条用例是"按<b>第一个</b> 接缝切"与"按最后一个接缝切"之间的判别力所在：本类的切法把 {@code b|0_0} 交给 {@code HexCoord.parse}，当场抛。
+   */
+  @Test
+  void aGoodsAccountKeyWhoseOwnerIdContainsTheSeparatorFailsLoudly() {
+    assertThatThrownBy(() -> GoodsAccountKey.parse("ESTATE:a|b|0_0"))
+        .as(
+            "按第一个接缝切 ⇒ 余下那段「b|0_0」喂不进 HexCoord.parse（NumberFormatException 也是 IllegalArgumentException）")
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  /** ★ 上一条的对照：<b>键合法时一个都不抛</b>（否则上一条的"红"可能来自 {@code apply} 的别处，读不出是哪条规则失守）。 */
+  @Test
+  void aWellFormedGoodsAccountKeyIsAccepted() {
+    GoodsAccount account = new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 1L));
+    ActorChangeSet handMade =
+        new ActorChangeSet(
+            null, null, null, new FieldDelta.Upsert<>(Map.of(account.key().toString(), account)));
+
+    assertThatCode(() -> ActorChangeSet.apply(handMade, ActorData.empty()))
+        .doesNotThrowAnyException();
+    assertThat(ActorChangeSet.apply(handMade, ActorData.empty()).accounts())
+        .containsOnlyKeys(account.key());
   }
 
   // ── 旧档兼容 ─────────────────────────────────────────────────────────────────────
@@ -515,7 +741,7 @@ class ActorRoundTripTest {
    */
   @Test
   void aChangeSetFromAnOldArchiveTreatsMissingComponentsAsUnchanged() {
-    ActorChangeSet fromOldArchive = new ActorChangeSet(null, null, null);
+    ActorChangeSet fromOldArchive = new ActorChangeSet(null, null, null, null);
 
     assertThat(fromOldArchive.isEmpty()).as("旧档没提该组件 ⇒ 就是没动它").isTrue();
     assertThat(ActorChangeSet.apply(fromOldArchive, ActorData.empty()))
@@ -531,6 +757,8 @@ class ActorRoundTripTest {
       case "actors" -> base.withActor(new Actor(ESTATE, "庄园"));
       case "holdings" ->
           base.withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L));
+      case "accounts" ->
+          base.withAccount(new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 100L)));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -540,6 +768,7 @@ class ActorRoundTripTest {
       case "meta" -> cs.meta().changed();
       case "actors" -> cs.actors().changed();
       case "holdings" -> cs.holdings().changed();
+      case "accounts" -> cs.accounts().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

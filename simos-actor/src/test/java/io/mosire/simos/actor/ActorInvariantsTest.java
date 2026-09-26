@@ -9,6 +9,9 @@ import io.mosire.simos.actor.api.asset.AssetClassKey;
 import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.AssetHolding;
 import io.mosire.simos.actor.model.AssetHoldingKey;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -39,6 +42,9 @@ class ActorInvariantsTest {
 
   private static final AssetClassKey ARABLE_B =
       AssetClassKey.land(Map.of("arable", "true", "quality", "B"));
+
+  /** ★ Task 6 的库存夹具：粮（{@code GoodsAccount} 的余额表按商品聚合）。 */
+  private static final CommodityId GRAIN = new CommodityId("grain");
 
   private static AssetHolding holding(ActorRef owner, HexCoord location, long quantity) {
     return new AssetHolding(new AssetHoldingKey(owner, location, ARABLE_B), quantity);
@@ -90,7 +96,7 @@ class ActorInvariantsTest {
   /** ★ 缺键 = 未激活（fail-closed，见 {@code ActorData} 类注释）：{@code meta} 绑成 {@code null} 不抛，收成空。 */
   @Test
   void treatsAMissingMetaKeyAsNotActivated() {
-    ActorData data = new ActorData(null, Map.of(), Map.of());
+    ActorData data = new ActorData(null, Map.of(), Map.of(), Map.of());
 
     assertThat(data.meta()).as("空 Optional = 未激活（不是 NPE）").isEmpty();
     assertThat(data).isEqualTo(ActorData.empty());
@@ -99,7 +105,7 @@ class ActorInvariantsTest {
   /** ★ 缺键 = 空表（同上）。 */
   @Test
   void treatsAMissingActorsKeyAsAnEmptyTable() {
-    ActorData data = new ActorData(Optional.of(META), null, Map.of());
+    ActorData data = new ActorData(Optional.of(META), null, Map.of(), Map.of());
 
     assertThat(data.actors()).as("缺键 ⇒ 没有主体（不是 NPE）").isEmpty();
     assertThat(data.meta()).as("未缺的那一路不许被顺手清掉").isPresent();
@@ -108,7 +114,7 @@ class ActorInvariantsTest {
   /** ★ 缺键 = 空表（同上，Task 5 的第三件）。 */
   @Test
   void treatsAMissingHoldingsKeyAsAnEmptyTable() {
-    ActorData data = new ActorData(Optional.of(META), Map.of(), null);
+    ActorData data = new ActorData(Optional.of(META), Map.of(), null, Map.of());
 
     assertThat(data.holdings()).as("缺键 ⇒ 没有产权（不是 NPE）").isEmpty();
     assertThat(data.meta()).as("未缺的那一路不许被顺手清掉").isPresent();
@@ -126,7 +132,7 @@ class ActorInvariantsTest {
     Map<ActorRef, Actor> mismatched = new LinkedHashMap<>();
     mismatched.put(HOUSEHOLD, new Actor(ESTATE, "庄园"));
 
-    assertThatThrownBy(() -> new ActorData(Optional.empty(), mismatched, Map.of()))
+    assertThatThrownBy(() -> new ActorData(Optional.empty(), mismatched, Map.of(), Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("键必须与 Actor.ref 一致");
   }
@@ -139,11 +145,14 @@ class ActorInvariantsTest {
                 new ActorData(
                     Optional.empty(),
                     Collections.singletonMap(null, new Actor(ESTATE, "庄园")),
+                    Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("都不得为 null");
     assertThatThrownBy(
-            () -> new ActorData(Optional.empty(), Collections.singletonMap(ESTATE, null), Map.of()))
+            () ->
+                new ActorData(
+                    Optional.empty(), Collections.singletonMap(ESTATE, null), Map.of(), Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("都不得为 null");
   }
@@ -162,7 +171,7 @@ class ActorInvariantsTest {
     input.put(ESTATE, new Actor(ESTATE, "庄园"));
     input.put(HOUSEHOLD, new Actor(HOUSEHOLD, "佃农家户"));
 
-    ActorData data = new ActorData(Optional.of(META), input, Map.of());
+    ActorData data = new ActorData(Optional.of(META), input, Map.of(), Map.of());
 
     assertThat(data.actors().keySet())
         .as("插入序即迭代序（字节级往返的前提）")
@@ -177,7 +186,7 @@ class ActorInvariantsTest {
   void actorsIsCopiedNotAliased() {
     Map<ActorRef, Actor> mutable = new LinkedHashMap<>();
     mutable.put(ESTATE, new Actor(ESTATE, "庄园"));
-    ActorData data = new ActorData(Optional.of(META), mutable, Map.of());
+    ActorData data = new ActorData(Optional.of(META), mutable, Map.of(), Map.of());
 
     mutable.put(HOUSEHOLD, new Actor(HOUSEHOLD, "佃农家户"));
     mutable.remove(ESTATE);
@@ -200,7 +209,7 @@ class ActorInvariantsTest {
     Map<AssetHoldingKey, AssetHolding> mismatched = new LinkedHashMap<>();
     mismatched.put(new AssetHoldingKey(HOUSEHOLD, HEX, ARABLE_B), holding(ESTATE, HEX, 1L));
 
-    assertThatThrownBy(() -> new ActorData(Optional.empty(), Map.of(), mismatched))
+    assertThatThrownBy(() -> new ActorData(Optional.empty(), Map.of(), mismatched, Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("键必须与 AssetHolding.key 一致");
   }
@@ -213,7 +222,8 @@ class ActorInvariantsTest {
                 new ActorData(
                     Optional.empty(),
                     Map.of(),
-                    Collections.singletonMap(null, holding(ESTATE, HEX, 1L))))
+                    Collections.singletonMap(null, holding(ESTATE, HEX, 1L)),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("都不得为 null");
     assertThatThrownBy(
@@ -221,7 +231,8 @@ class ActorInvariantsTest {
                 new ActorData(
                     Optional.empty(),
                     Map.of(),
-                    Collections.singletonMap(holding(ESTATE, HEX, 1L).key(), null)))
+                    Collections.singletonMap(holding(ESTATE, HEX, 1L).key(), null),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("都不得为 null");
   }
@@ -241,7 +252,7 @@ class ActorInvariantsTest {
       input.put(row.key(), row);
     }
 
-    ActorData data = new ActorData(Optional.of(META), Map.of(), input);
+    ActorData data = new ActorData(Optional.of(META), Map.of(), input, Map.of());
 
     assertThat(data.holdings().keySet())
         .as("插入序即迭代序（字节级往返的前提）")
@@ -261,7 +272,7 @@ class ActorInvariantsTest {
     Map<AssetHoldingKey, AssetHolding> mutable = new LinkedHashMap<>();
     AssetHolding kept = holding(ESTATE, HEX, 10_000L);
     mutable.put(kept.key(), kept);
-    ActorData data = new ActorData(Optional.of(META), Map.of(), mutable);
+    ActorData data = new ActorData(Optional.of(META), Map.of(), mutable, Map.of());
 
     mutable.put(holding(HOUSEHOLD, HEX, 1L).key(), holding(HOUSEHOLD, HEX, 1L));
     mutable.remove(kept.key());
@@ -269,5 +280,103 @@ class ActorInvariantsTest {
     assertThat(data.holdings())
         .as("建完之后改原 Map，状态树不受影响")
         .containsExactly(Map.entry(kept.key(), kept));
+  }
+
+  // ── accounts（Task 6 的第四件：与 holdings 同款五条，逐条对应） ──────────────────────
+
+  /** ★ 缺键 = 空表（同上，Task 6 的第四件）。 */
+  @Test
+  void treatsAMissingAccountsKeyAsAnEmptyTable() {
+    ActorData data = new ActorData(Optional.of(META), Map.of(), Map.of(), null);
+
+    assertThat(data.accounts()).as("缺键 ⇒ 没有库存（不是 NPE）").isEmpty();
+    assertThat(data.meta()).as("未缺的那一路不许被顺手清掉").isPresent();
+  }
+
+  /**
+   * ★★ <b>跨表同键不变式（库存那一路）</b>：{@code accounts} 的键必须等于 {@link GoodsAccount#key()}。
+   *
+   * <p>★ 同 {@code actors} / {@code holdings} 那两条：它是 {@code withAccount} 那个"唯一拼写点"的<b>兜底</b>——绕过
+   * wither 直接塞表（codec 读入、夹具、将来的 handler）时，也造不出"键与值各说各话"的库存。
+   */
+  @Test
+  void rejectsAnAccountKeyThatDisagreesWithTheValueKey() {
+    Map<GoodsAccountKey, GoodsAccount> mismatched = new LinkedHashMap<>();
+    mismatched.put(new GoodsAccountKey(HOUSEHOLD, HEX), account(ESTATE, HEX, 1L));
+
+    assertThatThrownBy(() -> new ActorData(Optional.empty(), Map.of(), Map.of(), mismatched))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("键必须与 GoodsAccount.key 一致");
+  }
+
+  /** ★ 键与值都不得为 {@code null}（同 {@code actors} / {@code holdings} 那两条：{@code null} 是"没有"，不是"空账"）。 */
+  @Test
+  void rejectsNullKeysAndValuesInAccounts() {
+    assertThatThrownBy(
+            () ->
+                new ActorData(
+                    Optional.empty(),
+                    Map.of(),
+                    Map.of(),
+                    Collections.singletonMap(null, account(ESTATE, HEX, 1L))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("都不得为 null");
+    assertThatThrownBy(
+            () ->
+                new ActorData(
+                    Optional.empty(),
+                    Map.of(),
+                    Map.of(),
+                    Collections.singletonMap(account(ESTATE, HEX, 1L).key(), null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("都不得为 null");
+  }
+
+  /**
+   * ★ <b>保序不可变</b>（同 {@code actors} / {@code holdings} 那两条）：插入序即迭代序 —— <b>字节级往返的前提</b>。
+   *
+   * <p>★ 4 个键：靠 {@code owner} 那一维区分（{@code location} 相同）⇒ 与 {@code actors} 那条同款、量得准。
+   */
+  @Test
+  void accountsKeepsInsertionOrderAndIsFrozen() {
+    Map<GoodsAccountKey, GoodsAccount> input = new LinkedHashMap<>();
+    for (ActorRef owner : List.of(WORKSHOP, GOV, ESTATE, HOUSEHOLD)) {
+      GoodsAccount row = account(owner, HEX, 1L);
+      input.put(row.key(), row);
+    }
+
+    ActorData data = new ActorData(Optional.of(META), Map.of(), Map.of(), input);
+
+    assertThat(data.accounts().keySet())
+        .as("插入序即迭代序（字节级往返的前提）")
+        .containsExactly(
+            new GoodsAccountKey(WORKSHOP, HEX),
+            new GoodsAccountKey(GOV, HEX),
+            new GoodsAccountKey(ESTATE, HEX),
+            new GoodsAccountKey(HOUSEHOLD, HEX));
+    assertThatThrownBy(() -> data.accounts().clear())
+        .as("冻在字段赋值处")
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  /** ★ <b>防御性拷贝</b>（同 {@code actors} / {@code holdings} 那两条）：建完之后改调用方那张表，状态树里的数不许跟着变。 */
+  @Test
+  void accountsIsCopiedNotAliased() {
+    Map<GoodsAccountKey, GoodsAccount> mutable = new LinkedHashMap<>();
+    GoodsAccount kept = account(ESTATE, HEX, 100L);
+    mutable.put(kept.key(), kept);
+    ActorData data = new ActorData(Optional.of(META), Map.of(), Map.of(), mutable);
+
+    mutable.put(account(HOUSEHOLD, HEX, 1L).key(), account(HOUSEHOLD, HEX, 1L));
+    mutable.remove(kept.key());
+
+    assertThat(data.accounts())
+        .as("建完之后改原 Map，状态树不受影响")
+        .containsExactly(Map.entry(kept.key(), kept));
+  }
+
+  /** ★ Task 6 的库存夹具：{@code (owner, location)} 两段 + 一个商品余额（粮）。 */
+  private static GoodsAccount account(ActorRef owner, HexCoord location, long grain) {
+    return new GoodsAccount(new GoodsAccountKey(owner, location), Map.of(GRAIN, grain));
   }
 }
