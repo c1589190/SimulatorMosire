@@ -23,6 +23,7 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -207,7 +208,9 @@ class EconomySowingTest {
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)),
         new AllocationRule.Split(700, 300),
         0L,
-        Map.of());
+        Map.of(),
+        // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:<本夹具的 id 参数>`）。
+        RegimeOperators.defaultOperator(new RegimeId("feudal"), id));
   }
 
   /**

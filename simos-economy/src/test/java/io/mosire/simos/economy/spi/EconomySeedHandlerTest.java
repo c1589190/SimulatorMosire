@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
@@ -21,6 +22,7 @@ import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -288,6 +290,10 @@ class EconomySeedHandlerTest {
     assertThat(after.industries()).hasSize(1);
     assertThat(industry.name()).isEqualTo("农业");
     assertThat(industry.regime().value()).isEqualTo("feudal");
+    // ★★ I3.3：既有 PAYLOAD **没有** operator 键 ⇒ 走 regime 推导（载荷边缘的缺省；Industry 自己不做推导）。
+    assertThat(industry.operator())
+        .as("缺 operator 的旧载荷按 regime 补默认值（载荷边缘）")
+        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
     assertThat(industry.cycleDays()).isEqualTo(120L);
     assertThat(industry.progressDays()).isZero();
     assertThat(industry.outputPerUnit()).containsEntry(new CommodityId("grain"), 7L);
@@ -317,6 +323,30 @@ class EconomySeedHandlerTest {
     assertThat(landlord.debts()).isEmpty();
     assertThat(landlord.naturalNeeds()).isEmpty();
     assertThat(landlord.effectiveDemand()).isEmpty();
+  }
+
+  /**
+   * ★★ **I3.1「写得进」**：载荷**显式**给了 {@code operator} ⇒ 逐值落盘，**且不等于** regime 的推导值。
+   *
+   * <p>★ 为什么必须用**非默认**值（制度 {@code feudal}，而主体是 {@code HOUSEHOLD:house-7}）：若断言的只是推导值， "读了没读这个键"就测不出来
+   * —— 一个**永远按 regime 推**的坏实现照样全绿（假绿）。它同时是"显式绑定不是标签" 在**载荷层**的证据（裁定 R4）。
+   */
+  @Test
+  void seedsAnExplicitOperatorValueForValue() {
+    String payload =
+        PAYLOAD.replace(
+            "\"regime\":\"feudal\",",
+            "\"regime\":\"feudal\",\"operator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"},");
+    assertThat(payload).as("替换必须真的发生（否则本用例测的是缺键那条路）").isNotEqualTo(PAYLOAD);
+
+    Industry industry = apply(payload, EconomyData.empty(), T7).industries().get(FARM);
+
+    assertThat(industry.operator())
+        .as("显式写下的主体逐值落盘")
+        .isEqualTo(new ActorRef(ActorKind.HOUSEHOLD, "house-7"));
+    assertThat(industry.operator())
+        .as("★ 判别力：它**不等于** regime 推导值（feudal ⇒ ESTATE:farm@0_0）")
+        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
   }
 
   /** ★ 已激活后**按格追加**：同一库连播两国，两批的格都在、人口/库存合计 = 两批之和，且 meta 不覆盖。 */

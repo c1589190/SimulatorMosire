@@ -659,7 +659,14 @@ public final class EconomySeeder {
 
   // ── 两个产业 ─────────────────────────────────────────────────────────────────────────
 
-  /** 农业（**恒有**，§十）：人口 = 该格**农村批次**之和；土地 = {@code muPerHex × 地形系数}；制度 = 封建租佃。 */
+  /**
+   * 农业（**恒有**，§十）：人口 = 该格**农村批次**之和；土地 = {@code muPerHex × 地形系数}；制度 = **领主自营庄园** （{@link
+   * #REGIME_FEUDAL}）。
+   *
+   * <p>★ 本注原写"制度 = 封建租佃" —— 那是**同词两义**：租佃（佃农家户）是另立的 {@code tenant} 档，而本方法写进载荷的是 {@link
+   * #REGIME_FEUDAL}（**领主自营庄园**）。它原与同文件里 {@code REGIME_FEUDAL} 常量注**直接矛盾**， 已在 S1 阶段 3 D8 就地改对（同 D7
+   * 的口径）。
+   */
   private static Map<String, Object> agriculture(
       HexCoord hex, List<PopulationGroup> pool, String terrain) {
     long landMilliMu = MU_PER_HEX * MILLI_MU_PER_MU * arablePerMilleOf(foodOf(terrain)) / 1000L;

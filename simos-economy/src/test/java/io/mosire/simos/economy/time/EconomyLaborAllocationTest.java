@@ -19,6 +19,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -217,6 +218,9 @@ class EconomyLaborAllocationTest {
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)),
         rule,
         0L,
-        Map.of());
+        Map.of(),
+        // ★ 通用夹具的 operator = **派生**，按**它自己的 regime 参数**（两个调用点分别传 `feudal` / `handicraft`，
+        //   两档都已登记；本类只谈劳动，故不写字面量）。
+        RegimeOperators.defaultOperator(new RegimeId(regime), id));
   }
 }

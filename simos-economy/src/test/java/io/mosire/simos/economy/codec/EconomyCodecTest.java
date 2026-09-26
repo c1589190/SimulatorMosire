@@ -26,6 +26,7 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -433,7 +434,9 @@ class EconomyCodecTest {
         slots,
         new AllocationRule.Split(700, 300),
         0L,
-        Map.of(GRAIN, 400L));
+        Map.of(GRAIN, 400L),
+        // ★ 通用夹具的 operator = **派生**（`tenant` ⇒ `HOUSEHOLD:<产业 id>`）。
+        RegimeOperators.defaultOperator(new RegimeId("tenant"), id));
   }
 
   /** 资本主义工业：{@code WageFirst} + 嵌套商品键（企业主剩余）。 */
@@ -457,7 +460,10 @@ class EconomyCodecTest {
         slots,
         new AllocationRule.WageFirst(4L, residual),
         0L,
-        Map.of());
+        Map.of(),
+        // ★★ **必须显式给**：`capitalist` **未登记**在推导表里（裁定 R1 的 fail-closed）⇒ 不许猜。
+        //   值取"经营这座工坊的那个作坊"（`WORKSHOP:<产业 id>`），与劳动侧的 actor 同字面。
+        new ActorRef(ActorKind.WORKSHOP, WORKSHOP.value()));
   }
 
   private static ClassRow classRow(ClassKey key, long population) {

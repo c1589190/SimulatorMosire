@@ -24,6 +24,7 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
@@ -186,7 +187,9 @@ class EconomyRoundTripTest {
         slots,
         new AllocationRule.Split(700, 300),
         0L,
-        Map.of(GRAIN, 3L));
+        Map.of(GRAIN, 3L),
+        // ★ 通用夹具的 operator = **派生**（`tenant` ⇒ `HOUSEHOLD:<本夹具的 id 参数>`）。
+        RegimeOperators.defaultOperator(new RegimeId("tenant"), id));
   }
 
   static ClassKey otherKey() {

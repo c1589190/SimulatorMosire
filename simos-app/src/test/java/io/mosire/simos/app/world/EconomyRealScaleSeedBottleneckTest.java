@@ -335,7 +335,9 @@ class EconomyRealScaleSeedBottleneckTest {
               industry.slots(),
               industry.allocation(),
               industry.cycleLaborMilli(),
-              industry.cycleInputUsedMilli()));
+              industry.cycleInputUsedMilli(),
+              // ★★ **重建点 ⇒ 透传**（不是重新推导）：本方法只清投入那一张表，其余字段全部原样带过。
+              industry.operator()));
     }
     return data.withIndustries(industries);
   }

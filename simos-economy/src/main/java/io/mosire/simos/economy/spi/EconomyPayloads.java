@@ -22,6 +22,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
@@ -40,7 +41,8 @@ import java.util.OptionalLong;
  * <pre>{@code
  * {"mapId":"Map1","rulesVersion":"aggregate-v1","entries":[
  *   {"q":0,"r":0,"industries":[
- *     {"id":"farm@0_0","name":"农业","regime":"feudal","cycleDays":120,"progressDays":0,
+ *     {"id":"farm@0_0","name":"农业","regime":"feudal",
+ *      "operator":{"kind":"ESTATE","id":"farm@0_0"},"cycleDays":120,"progressDays":0,
  *      "capacityPerUnit":{"LAND":1000},"laborPerUnit":143,
  *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67,"fiber":12},
  *      "cycleInputPerUnit":{"LAND":{"grain":8000}},"cycleInputUsedMilli":{},
@@ -71,6 +73,10 @@ import java.util.OptionalLong;
  *
  * <p>★ **旧档兼容不在本轮范围**（spec §十.4 的裁定："旧档：重建也没关系"）：随包的 {@code worlds/v17levant.json} **不含 economy
  * 切片**（只有 map/social/unit），故这两处形状变化不影响它能否打开。
+ *
+ * <p>★ **S1 阶段 3：{@code operator} 是可选键**（上面的样例里就带着它）。**缺键 ⇒ 按 {@code regime} 推导** （{@link
+ * RegimeOperators#defaultOperator}，裁定 R1）—— 这是**载荷边缘唯一**的推导点：{@code Industry} 收了 {@code null}
+ * 是**抛**，不是补（裁定 D1）。★ 与 {@code allocations[].actor} 的口径**刻意不同**：那里缺键是**拒**、 这里是**推导**，不许合并。
  *
  * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世**（带可读中文原因）：形状/类型不对在本层判，**数值语义**（人口/土地/劳动 ≥
  * 0、槽位必须在该产业的 {@code slots} 里、{@code progressDays ≤ cycleDays}）交给 §3 的领域类型与 {@link EconomyData}
@@ -208,7 +214,7 @@ final class EconomyPayloads {
     return new LaborAllocation(
         LaborAllocationId.parse(requireText(node, "id")),
         PeopleLotId.parse(requireText(node, "group")),
-        new ActorRef(ActorKind.parse(requireText(actor, "kind")), requireText(actor, "id")),
+        actorRef(actor),
         requireText(node, "activity"),
         requireLong(node, "laborMilli"),
         requireLong(node, "period"));
@@ -220,6 +226,14 @@ final class EconomyPayloads {
     IndustryId id = IndustryId.parse(requireText(node, "id"));
     String name = requireText(node, "name");
     RegimeId regime = RegimeId.parse(requireText(node, "regime"));
+    // ★★ S1 阶段 3：经营主体。**缺键 ⇒ 按 regime 推导**（裁定 R1/R2；与 progressDays / cycleLaborMilli
+    //   的缺省同一处口径）。★ 推导**只在这一层**发生 —— Industry 收了 null 是抛，不是补（裁定 D1）。
+    //   ★ `"operator":null` 与缺键在 Jackson 里**不可分**（optionalObject 把 isNull() 与缺键一并收成 null）
+    //   ⇒ 两者都走推导。这不是漏判：与 progressDays / cycleLaborMilli **逐字相同**。形状给错（字符串 /
+    //   数组）照旧**抛**（optionalObject 的那条拒因）。
+    JsonNode operatorNode = optionalObject(node, "operator");
+    ActorRef operatorRef =
+        operatorNode == null ? RegimeOperators.defaultOperator(regime, id) : actorRef(operatorNode);
     long cycleDays = requireLong(node, "cycleDays");
     long progressDays = optionalLong(node, "progressDays", 0L);
     // ★ R3（V7）：配方的两个新分量 —— "每 1 单位规模需要多少生产资料 / 多少劳动"。
@@ -284,7 +298,8 @@ final class EconomyPayloads {
         slots,
         rule,
         cycleLabor,
-        cycleInputUsed);
+        cycleInputUsed,
+        operatorRef);
   }
 
   private static ClassRow classRow(IndustryId industry, JsonNode node) {
@@ -389,6 +404,17 @@ final class EconomyPayloads {
   }
 
   // ── 形状助手 ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * {@code {"kind","id"}}：一个主体引用（{@code allocations[].actor} 与 {@code industries[].operator}
+   * 共用**同一个**形状与同一套解析）。
+   *
+   * <p>★ {@code kind} 走 {@link ActorKind#parse} 的**词表**（词表外的种类即抛并列出合法值）、{@code id} 不得为空白 ——
+   * 两句拒因的文案一字不改（消息是契约），故抽的是**解析**、不是文案。
+   */
+  private static ActorRef actorRef(JsonNode node) {
+    return new ActorRef(ActorKind.parse(requireText(node, "kind")), requireText(node, "id"));
+  }
 
   private static void requireEntryObject(JsonNode entry) {
     if (entry == null || !entry.isObject()) {

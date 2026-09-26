@@ -20,6 +20,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,9 @@ class EconomyCycleBoundaryTest {
             List.of(new ClassSlot(PEASANT, "贫农", 950)),
             new AllocationRule.Split(700, 300),
             dailyLabor * CYCLE_DAYS, // 周期累计劳动
-            Map.of());
+            Map.of(),
+            // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:farm@0_0`）：默认值只有一处拼写点。
+            RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     ClassRow row =
         new ClassRow(
             PEASANT_KEY,
@@ -177,7 +180,9 @@ class EconomyCycleBoundaryTest {
                 farm.slots(),
                 farm.allocation(),
                 farm.cycleLaborMilli(),
-                farm.cycleInputUsedMilli())));
+                farm.cycleInputUsedMilli(),
+                // ★★ **重建点 ⇒ 透传**（不是重新推导）：这个夹具要保留的正是"这一格原来的经营主体"。
+                farm.operator())));
   }
 
   /**
@@ -212,7 +217,9 @@ class EconomyCycleBoundaryTest {
                     farm.slots(),
                     farm.allocation(),
                     0L, // ★ 周期累计劳动清零
-                    farm.cycleInputUsedMilli())))
+                    farm.cycleInputUsedMilli(),
+                    // ★★ **重建点 ⇒ 透传**（同上）。
+                    farm.operator())))
         .withClasses(
             Map.of(
                 PEASANT_KEY,

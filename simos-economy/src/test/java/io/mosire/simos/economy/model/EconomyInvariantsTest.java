@@ -387,6 +387,40 @@ class EconomyInvariantsTest {
     assertThat(data.debts()).as("两端都在的债务必须放行").hasSize(1);
   }
 
+  // ── 经营主体 operator（S1 阶段 3 spec §2.1 + 裁定 R4）──────────────────────────────
+
+  /**
+   * ★★ 第 16 个组件与**其余 15 个同口径**：null 即抛。
+   *
+   * <p>★ 判别力：把紧凑构造器里那条守卫删掉（或在 `Industry` 里做 `null ⇒ 按 regime 推导`）⇒ 本用例红。 **缺省推导只允许发生在载荷边缘**（裁定
+   * D1）：那样 25 处构造点里任一处漏传都会**静默换成默认值、不崩**， 正是本仓最反对的形态。
+   */
+  @Test
+  void rejectsNullOperator() {
+    assertThatThrownBy(() -> industryWithOperator(null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("operator");
+  }
+
+  /**
+   * ★★ **裁定 R4：`regime` 与 `operator` 之间没有不变量** —— "operator 不是标签"的结构性证据。
+   *
+   * <p>★ 依据 spec §2.4 原文：「同一个 `feudal` 可以有 A 格地租 30% / B 格五五分成 / C 格领主直营 ——
+   * 制度可以渐变而不用先改产业类型」。加任何"一致性守卫"都会让那些差异**不可表达**，本条当场红。
+   */
+  @Test
+  void theRegimeDoesNotConstrainTheOperator() {
+    Industry industry = industryWithOperator(new ActorRef(ActorKind.ESTATE, "estate-7"));
+
+    assertThat(industry.operator().kind()).as("制度是租佃、经营主体是庄园 ⇒ 照常构造").isEqualTo(ActorKind.ESTATE);
+    assertThat(industry.operator())
+        .as("★ 显式值原样留下（逐值），没有被 regime 重新推导")
+        .isEqualTo(new ActorRef(ActorKind.ESTATE, "estate-7"));
+    assertThat(industry.operator())
+        .as("★ 判别力：它**不等于** tenant 档的默认值（HOUSEHOLD:farm）—— 否则「显式给了却仍按 regime 推」会假绿")
+        .isNotEqualTo(tenantOperator());
+  }
+
   // ── 一次性投入槽与种子累加器（v2 spec §3.3）────────────────────────────────────────
 
   /** ★ 空 map 的语义是"不用空 map"，null 是坏数据 ⇒ 构造期拒（与 dailyInputPerUnit 同制）。 */
@@ -447,7 +481,8 @@ class EconomyInvariantsTest {
             List.of(new ClassSlot(PEASANT, "贫农", 1000)),
             new AllocationRule.Split(700, 300),
             0L,
-            Map.of());
+            Map.of(),
+            tenantOperator());
 
     assertThat(industry.inputPerUnit()).as("每 1 单位规模的投入 = 各分类的合计").containsEntry(GRAIN, 1L);
   }
@@ -472,7 +507,8 @@ class EconomyInvariantsTest {
                     List.of(new ClassSlot(PEASANT, "贫农", 1000)),
                     new AllocationRule.Split(700, 300),
                     0L,
-                    Map.of()))
+                    Map.of(),
+                    tenantOperator()))
         .as("capacityPerUnit 不得为空")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("capacityPerUnit");
@@ -498,7 +534,8 @@ class EconomyInvariantsTest {
                     List.of(new ClassSlot(PEASANT, "贫农", 1000)),
                     new AllocationRule.Split(700, 300),
                     0L,
-                    Map.of()))
+                    Map.of(),
+                    tenantOperator()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("capacityPerUnit");
   }
@@ -568,7 +605,8 @@ class EconomyInvariantsTest {
           List.of(new ClassSlot(PEASANT, "贫农", 1000)),
           new AllocationRule.Split(700, 300),
           0L,
-          cycleInputUsed);
+          cycleInputUsed,
+          tenantOperator());
     }
     return new Industry(
         FARM,
@@ -585,7 +623,8 @@ class EconomyInvariantsTest {
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
         new AllocationRule.Split(700, 300),
         0L,
-        cycleInputUsed);
+        cycleInputUsed,
+        tenantOperator());
   }
 
   private static Industry industryWithTwoSlots() {
@@ -629,6 +668,42 @@ class EconomyInvariantsTest {
     return new EconomyMeta("m1", 0L, OptionalLong.empty(), "rules-r1", Optional.empty());
   }
 
+  /**
+   * 一个 {@code tenant} 档的产业（其余字段照 {@link #industryWithSlots}），**第 16 个实参由调用方给**。
+   *
+   * <p>★ 与 {@link #tenantOperator()} 分成两个入口是**故意的**：判据用例（{@link
+   * #theRegimeDoesNotConstrainTheOperator}）由此能塞进**非默认**的 operator，而通用夹具一律走派生值 —— "漏传 ⇒
+   * 重新推导"的变异体只在判据用例上现形。
+   */
+  private static Industry industryWithOperator(ActorRef operator) {
+    return new Industry(
+        FARM,
+        "农业",
+        new RegimeId("tenant"),
+        120L,
+        0L,
+        Map.of(AssetKind.LAND, 1000L),
+        Map.of(),
+        500L,
+        0L,
+        Map.of(GRAIN, 7L),
+        Map.of(),
+        List.of(new ClassSlot(PEASANT, "贫农", 1000)),
+        new AllocationRule.Split(700, 300),
+        0L,
+        Map.of(),
+        operator);
+  }
+
+  /**
+   * 通用夹具的 operator：**派生**（{@code tenant} ⇒ {@code HOUSEHOLD:farm}，regime 与 id 都取自本文件的 tenant 夹具）。
+   *
+   * <p>★ 走 {@link RegimeOperators#defaultOperator} 而不是在每处写字面量：默认值只有**一处拼写点**（裁定 R1/D3）。
+   */
+  private static ActorRef tenantOperator() {
+    return RegimeOperators.defaultOperator(new RegimeId("tenant"), FARM);
+  }
+
   private static Industry industryWithSlots(List<ClassSlot> slots) {
     return new Industry(
         FARM,
@@ -645,7 +720,8 @@ class EconomyInvariantsTest {
         slots,
         new AllocationRule.Split(700, 300),
         0L,
-        Map.of());
+        Map.of(),
+        tenantOperator());
   }
 
   private static Industry industryWithProgress(long progress, long cycleDays) {
@@ -664,7 +740,8 @@ class EconomyInvariantsTest {
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
         new AllocationRule.Split(700, 300),
         0L,
-        Map.of());
+        Map.of(),
+        tenantOperator());
   }
 
   private static ClassRow classRow(ClassKey key) {

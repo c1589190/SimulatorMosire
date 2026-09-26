@@ -18,6 +18,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -541,7 +542,9 @@ class EconomyDebtTest {
                 new ClassSlot(lenderStratum, lenderStratum.value(), 1000)),
             new AllocationRule.Split(700, 300),
             0L,
-            Map.of()));
+            Map.of(),
+            // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:<本产业的 id>`，id 由 kind/q/r 现算）。
+            RegimeOperators.defaultOperator(new RegimeId("feudal"), id)));
     classes.put(
         new ClassKey(id, PEASANT),
         row(new ClassKey(id, PEASANT), PEASANT_POPULATION, 1000, peasantJar));

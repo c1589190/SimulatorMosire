@@ -1740,6 +1740,10 @@ public final class EconomySettlement {
         industry.slots(),
         industry.allocation(),
         cycleLabor,
-        cycleInputUsed);
+        cycleInputUsed,
+        // ★★ **经营主体透传**（S1 阶段 3 Task 3 的"不丢失"面）：本方法是结算**每天**重建 Industry 的
+        //   唯一一处 ⇒ 漏传 = 每个结算日把 operator 静默丢掉/换成别的。**不许**在这里改用
+        //   `defaultOperator(...)`：那会把"漏传"退化成"重新推导"，抹掉"显式绑定"与"缺省"的区别。
+        industry.operator());
   }
 }

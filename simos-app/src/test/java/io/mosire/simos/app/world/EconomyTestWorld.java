@@ -20,6 +20,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -528,6 +529,9 @@ public final class EconomyTestWorld {
         slots,
         rule,
         0L,
-        Map.of());
+        Map.of(),
+        // ★ operator = **派生**，按**它自己的 regime 参数**（8 个调用点传的是三个已登记的 `EconomySeeder.REGIME_*`
+        //   ⇒ **不改本方法的 8 参签名**、8 个调用点零改动；默认值只有一处拼写点）。
+        RegimeOperators.defaultOperator(new RegimeId(regime), id));
   }
 }

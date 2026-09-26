@@ -21,6 +21,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -246,7 +247,9 @@ class EconomyFlowCycleTest {
             List.of(new ClassSlot(PEASANT, "贫农", 1000)),
             new AllocationRule.Split(700, 300),
             0L,
-            Map.of());
+            Map.of(),
+            // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:farm@0_0`）。
+            RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     ClassRow row =
         new ClassRow(
             PEASANT_KEY,

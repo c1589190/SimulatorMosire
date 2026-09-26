@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -88,6 +89,10 @@ import java.util.Set;
  *     播种日（{@code progressDays == 0}）逐行累加、周期关账后清零。键值非空、逐值 ≥ 0。 ★ 它同时是"投入的计量"（v2 spec §二
  *     把留种列在**数**里）：收获日用 {@code cycleInputUsedMilli[j] / inputPerUnit[j]} 得**该投入能支撑的规模**，构成投入那一路瓶颈。
  *     ★ **R3 起是 Map**（原来只有"种子"一个标量）：作坊要"消耗 FIBER 与 IRON"，一条标量表达不了两种原料
+ * @param operator ★★ 经营主体（S1 spec §2.1 的 {@code ProductionOperator}）：**谁组织这次生产**。
+ *     <p>★★ <b>它不是从 {@code regime} 派生的标签</b>（裁定 R4）：本类<b>不校验</b>两者的对应关系 —— 同一个 {@code feudal} 可以有"A
+ *     格地租 30% / B 格五五分成 / C 格领主直营"（spec §2.4）， 那些差异**在数据里**，不在类型上。缺省推导只发生在**载荷边缘**，本类<b>不做推导</b>： 收
+ *     null ⇒ 抛，与其余 15 个组件同口径。
  */
 public record Industry(
     IndustryId id,
@@ -104,7 +109,8 @@ public record Industry(
     List<ClassSlot> slots,
     AllocationRule allocation,
     long cycleLaborMilli,
-    Map<CommodityId, Long> cycleInputUsedMilli) {
+    Map<CommodityId, Long> cycleInputUsedMilli,
+    ActorRef operator) {
 
   public Industry {
     if (id == null) {
@@ -115,6 +121,14 @@ public record Industry(
     }
     if (regime == null) {
       throw new IllegalArgumentException("Industry.regime 不得为 null");
+    }
+    // ★★ **与 regime 同一族、而不是与下面那批 null 检查同批排**：两者是"这次生产由谁组织"的一对
+    //   （制度 + 经营主体），故挨着写。★ **缺省推导不在这里**（裁定 D1）：null ⇒ 抛。
+    //   若在此处 `null ⇒ RegimeOperators.defaultOperator(...)`，则 25 处构造点里任一处**漏传**都会
+    //   静默换成默认值、不崩 —— 而"显式绑定的 operator 被悄悄改回去"正是本仓最反对的形态。
+    //   代价（如实记）：**落盘于 S1 阶段 3 之前的 economy 归档打不开**（与 spec §十.4「旧档重建也没关系」一致）。
+    if (operator == null) {
+      throw new IllegalArgumentException("Industry.operator 不得为 null（缺省由载荷边缘按 regime 推导）");
     }
     if (allocation == null) {
       throw new IllegalArgumentException("Industry.allocation 不得为 null");

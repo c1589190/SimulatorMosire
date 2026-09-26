@@ -34,6 +34,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -780,7 +781,9 @@ class GuiApiTest {
             List.of(new ClassSlot(peasant, "贫农", 950)),
             new AllocationRule.Split(700, 300),
             0L,
-            Map.of(new CommodityId("grain"), 40L));
+            Map.of(new CommodityId("grain"), 40L),
+            // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:farm@1_1`）。
+            RegimeOperators.defaultOperator(new RegimeId("feudal"), farm));
     ClassRow row =
         new ClassRow(
             new ClassKey(farm, peasant),
@@ -826,7 +829,9 @@ class GuiApiTest {
         List.of(new ClassSlot(new SocialClassId("poor_peasant"), "贫农", 950)),
         new AllocationRule.Split(400, 600),
         0L,
-        Map.of());
+        Map.of(),
+        // ★ 通用夹具的 operator = **派生**（`handicraft` ⇒ `WORKSHOP:workshop@1_1`）。
+        RegimeOperators.defaultOperator(new RegimeId("handicraft"), id));
   }
 
   /** ★ R2a 的 G1 读口：{@code GET /api/economy/hex} 逐值给读数，与 MCP 的 {@code simos.economy.hex} 共用一份视图。 */

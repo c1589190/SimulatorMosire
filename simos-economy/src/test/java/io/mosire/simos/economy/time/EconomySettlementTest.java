@@ -22,6 +22,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -379,7 +380,9 @@ class EconomySettlementTest {
             slots,
             new AllocationRule.Split(700, 300),
             0L,
-            Map.of());
+            Map.of(),
+            // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:<产业 id>`）。
+            RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
@@ -453,7 +456,9 @@ class EconomySettlementTest {
             slots,
             new AllocationRule.Split(700, 300),
             0L,
-            Map.of());
+            Map.of(),
+            // ★ 通用夹具的 operator = **派生**（同上）。
+            RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     ClassRow row =
