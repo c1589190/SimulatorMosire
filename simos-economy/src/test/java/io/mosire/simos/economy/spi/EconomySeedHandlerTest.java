@@ -320,15 +320,42 @@ class EconomySeedHandlerTest {
     assertThat(((HandlerOutcome.Rejected) outcome).reason()).as("拒因点名重复的那一格坐标").contains("0_0");
   }
 
-  /** ★ 悬空槽位：阶层行引用了该产业 slots 里没有的槽位 ⇒ 拒（EconomyData 的构造期守卫）。 */
+  /**
+   * ★ 悬空阶层：阶层行引用了该产业 {@code slots} 里没有的**阶层** ⇒ 拒（{@code EconomyData} 的构造期守卫）。
+   *
+   * <p>★★ **夹具换过词（S1 阶段 1）**：原先是 {@code "slot":"ghost"}。换了全局词表之后 {@code ghost} **根本构造不出来** ——
+   * `SocialClassId` 在解析期就抛"词表外的社会阶层"，命令**还没走到**引用完整性那一步， 于是本用例会变成在测词表校验（拒因里没有"槽位"），**名不副实**。 ⇒ 改用
+   * {@code middle_peasant}：它在**全局词表内**、但**不在本产业声明的 slots**（只有 poor_peasant / landlord）里 ——
+   * 这才是"悬空引用"本身。★ 断言一字未改（仍要求拒因含"槽位"），改的是**夹具**。
+   */
   @Test
   void rejectsClassRowForASlotTheIndustryDoesNotAllow() {
-    String payload = PAYLOAD.replace("\"slot\":\"landlord\"", "\"slot\":\"ghost\"");
+    String payload = PAYLOAD.replace("\"slot\":\"landlord\"", "\"slot\":\"middle_peasant\"");
+    assertThat(payload).as("替换必须真的发生（否则本用例测的是正例那条路）").isNotEqualTo(PAYLOAD);
 
     HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
 
     assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
     assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("槽位");
+  }
+
+  /**
+   * ★★ **词表外的阶层在命令边界即拒**（S1 spec §2.6 的 fail-closed；Review Focus ①）。
+   *
+   * <p>★ 判别力：把 {@code SocialClassId} 的构造器词表校验删掉 ⇒ 这一条红（{@code ghost} 会被静默收下， 直到某天在 {@code
+   * EconomyData} 的引用完整性里才炸，甚至根本不炸 —— 若某个产业恰好也声明了同名槽位）。
+   */
+  @Test
+  void rejectsAStratumOutsideTheGlobalVocabulary() {
+    String payload = PAYLOAD.replace("\"slot\":\"landlord\"", "\"slot\":\"ghost\"");
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+
+    assertThatThrownBy(() -> EconomyPayloads.toData(EconomyPayloads.parse(payload), T7))
+        .as("词表外的阶层必须当场抛，且消息里列出合法值")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("ghost")
+        .hasMessageContaining("poor_peasant")
+        .hasMessageContaining("landlord");
   }
 
   /** ★ 逐值校验：负人口 ⇒ 拒（`ClassRow` 的构造期守卫）。 */

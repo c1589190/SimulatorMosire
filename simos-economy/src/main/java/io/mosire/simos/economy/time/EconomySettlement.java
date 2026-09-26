@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.population.LotChange;
@@ -222,8 +223,20 @@ public final class EconomySettlement {
    */
   public static final CommodityId CLOTH = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
 
-  /** **借粮优先序**（§四 第 8 步 / 用户口径）：地主 → 富农 → 中农。★ **贫农不在放贷序列**里（v1 明文：它没有余粮可贷）； 只有这三个槽位的行才可能是债权人。 */
-  private static final List<String> LENDER_SLOT_PRIORITY = List.of("landlord", "rich", "middle");
+  /**
+   * **借粮优先序**（§四 第 8 步 / 用户口径）：地主 → 富农 → 中农。★ **贫农不在放贷序列**里（v1 明文：它没有余粮可贷）； 只有这三个阶层的行才可能是债权人。
+   *
+   * <p>★★ **升格为 {@code List<SocialClassId>}`（S1 阶段 1）**：原先是裸词 {@code
+   * List.of("landlord","rich","middle")} —— 词表换成 {@code rich_peasant}/{@code middle_peasant}
+   * 之后它**不会编译报错**，只在运行时**静默匹配不上** （债权序列退化成"只有地主"）。换成具名常量后，写错阶层**根本编译不过**。
+   *
+   * <p>★ **诚实边界**：这个回归是被 `EconomySettlementEndToEndTest`（**simos-app**，夹具形态正是"地主借、富农贷"）
+   * 当场抓到的，不是"没人发现"；`simos-economy` 自己的用例全绿只是因为它的债务夹具里**只有贫农+地主两行**。 ⇒ 下面那条 {@code
+   * eachLenderStratumInThePriorityListCanLend} 补的正是本模块内的判别力（尤其是 {@code middle_peasant}
+   * 这一档：换装后全仓**没有任何夹具**用它做债权人）。
+   */
+  private static final List<SocialClassId> LENDER_SLOT_PRIORITY =
+      List.of(SocialClassId.LANDLORD, SocialClassId.RICH_PEASANT, SocialClassId.MIDDLE_PEASANT);
 
   private EconomySettlement() {}
 
@@ -1130,9 +1143,9 @@ public final class EconomySettlement {
       //     **余粮 = 库存 − 本周期自需 × {@link #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000**（{@link
       // #lendableOf}）。
       List<ClassKey> lenders = new ArrayList<>();
-      for (String slot : LENDER_SLOT_PRIORITY) {
+      for (SocialClassId slot : LENDER_SLOT_PRIORITY) {
         for (ClassKey key : keys) {
-          if (key.slot().value().equals(slot) && grainOf(rows.get(key)) > 0L) {
+          if (key.slot().equals(slot) && grainOf(rows.get(key)) > 0L) {
             lenders.add(key);
           }
         }
@@ -1233,7 +1246,7 @@ public final class EconomySettlement {
    *
    * <pre>
    * debt-c&lt;周期&gt;-&lt;债务人 industry|slot&gt;&gt;&lt;债权人 industry|slot&gt;-&lt;商品&gt;
-   * 例：debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain
+   * 例：debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain
    * </pre>
    *
    * <p>★ **货币债（{@code commodity} 空；v1 不产生）**用同位置的哨兵段 {@code money}。

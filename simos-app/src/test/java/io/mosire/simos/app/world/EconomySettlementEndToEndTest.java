@@ -245,7 +245,10 @@ class EconomySettlementEndToEndTest {
       assertThat(debt.dueCycle()).as("到期周期 = 当前周期 + 1 = 2").isEqualTo(2L);
       assertThat(debt.id().value())
           .as("★ §7.2：id 由 (周期, 债务人, 债权人, 商品) 确定性算出，且**不含 \".\"**")
-          .isEqualTo("debt-c1-farm@3_0|landlord>farm@3_0|rich-grain")
+          // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；
+          //   债务人键 = landlordKey = FARM_3|LANDLORD = "farm@3_0|landlord"（地主一词不变）
+          //   债权人键 = FARM_3|RICH = "farm@3_0|rich_peasant"（新词表）；商品 = "grain"。
+          .isEqualTo("debt-c1-farm@3_0|landlord>farm@3_0|rich_peasant-grain")
           .doesNotContain(".");
       assertThat(after.debts()).as("整场只此一条债").hasSize(1);
       assertThat(landlord.goods().getOrDefault(GRAIN, 0L)).as("地主借完就归零（它借的是缺口全额）").isZero();

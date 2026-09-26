@@ -645,7 +645,10 @@ class EconomySowingTest {
     assertThat(aggregated.creditor()).isEqualTo(LANDLORD_KEY);
     assertThat(aggregated.id().value())
         .as("★ id 由 (周期, 债务人, 债权人, 商品) 确定性算出，且**不含 \".\"**（debt.<id> 在第一个点处被 AddressParser 切）")
-        .isEqualTo("debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain");
+        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；
+        //   债务人键 = PEASANT_KEY = FARM|PEASANT = "farm@0_0" + "|" + "poor_peasant"（新词表）
+        //   债权人键 = LANDLORD_KEY = "farm@0_0|landlord"（地主一词不变）；商品 = "grain"。
+        .isEqualTo("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain");
     assertThat(next.debts()).as("整场只此一条债（聚合后条数不随天数增长）").hasSize(1);
     assertThat(
             EconomySettlement.settle(base, 0L, 1L).debts().values().iterator().next().principal())

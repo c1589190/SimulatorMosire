@@ -104,7 +104,10 @@ class EconomyDebtTest {
         .isEqualTo(deficitOver(3L));
     assertThat(next.debts().keySet().iterator().next().value())
         .as("★ id 由 (周期, 债务人, 债权人, 商品) 确定性算出")
-        .isEqualTo("debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain");
+        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；
+        //   债务人键 = PEASANT_KEY = FARM|PEASANT = "farm@0_0" + "|" + "poor_peasant"（新词表）
+        //   债权人键 = LANDLORD_KEY = "farm@0_0|landlord"（地主一词不变）；商品 = "grain"。
+        .isEqualTo("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain");
   }
 
   /**
@@ -124,8 +127,10 @@ class EconomyDebtTest {
     assertThat(next.classes().get(PEASANT_KEY).debts()).as("两个周期各一条（行内两处引用）").hasSize(2);
     assertThat(next.debts()).as("债务表两条").hasSize(2);
     long cycleOne = deficitOver(CYCLE_DAYS);
-    Debt first = next.debts().get(new DebtId("debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain"));
-    Debt second = next.debts().get(new DebtId("debt-c2-farm@0_0|peasant>farm@0_0|landlord-grain"));
+    Debt first =
+        next.debts().get(new DebtId("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
+    Debt second =
+        next.debts().get(new DebtId("debt-c2-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
     assertThat(first).as("★ 旧条没被新周期覆盖").isNotNull();
     assertThat(second).as("★ 新周期开新条（id 里的周期号不同）").isNotNull();
     assertThat(first.principal())
@@ -267,8 +272,10 @@ class EconomyDebtTest {
     long secondInterestOwn =
         secondCyclePrincipal * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
 
-    Debt first = next.debts().get(new DebtId("debt-c1-farm@0_0|peasant>farm@0_0|landlord-grain"));
-    Debt second = next.debts().get(new DebtId("debt-c2-farm@0_0|peasant>farm@0_0|landlord-grain"));
+    Debt first =
+        next.debts().get(new DebtId("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
+    Debt second =
+        next.debts().get(new DebtId("debt-c2-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
     assertThat(first.principal())
         .as("周期 1 的债在**两次**周期末各计一次（%d + %d + %d）", perCycle, firstInterest, secondInterest)
         .isEqualTo(firstAfterOne + secondInterest)
@@ -414,7 +421,47 @@ class EconomyDebtTest {
         .isEqualTo(346_798L + 339_999L);
   }
 
+  /**
+   * ★★ **放贷序列的每一档都必须真的放得出贷**（S1 阶段 1 补的判别力）。
+   *
+   * <p>★★ **它补的是什么**：{@code LENDER_SLOT_PRIORITY} 原先是裸词 {@code List.of("landlord","rich","middle")}
+   * —— 词表换成 {@code rich_peasant}/{@code middle_peasant} 之后后两档**静默匹配不上**，债权序列退化成"只有地主"。
+   * 本文件的债务夹具**只有贫农+地主两行**（放贷那行写死地主）⇒ 全绿；而 {@code middle_peasant} 这一档 **整仓没有任何夹具**用它做债权人。
+   *
+   * <p>★ 判别力（变异自证）：把 {@code LENDER_SLOT_PRIORITY} 里任一档改回旧词 ⇒ 那一轮 `hasSize(1)` 当场红 （`lenders` 为空 ⇒
+   * 一条债都不建）。
+   */
+  @Test
+  void eachLenderStratumInThePriorityListCanLend() {
+    List<SocialClassId> strata =
+        List.of(SocialClassId.LANDLORD, SocialClassId.RICH_PEASANT, SocialClassId.MIDDLE_PEASANT);
+
+    for (SocialClassId lenderStratum : strata) {
+      EconomyData next = EconomySettlement.settle(hexWithOnlyLender(lenderStratum), 0L, 1L);
+      ClassKey lenderKey = new ClassKey(FARM, lenderStratum);
+
+      assertThat(next.debts()).as("★ %s 必须真的放得出贷（匹配不上 ⇒ 这里一条债都没有）", lenderStratum).hasSize(1);
+      Debt only = next.debts().values().iterator().next();
+      assertThat(only.debtor()).as("%s 放贷时的债务人仍是贫农", lenderStratum).isEqualTo(PEASANT_KEY);
+      assertThat(only.creditor()).as("★ 债权人 = %s 那一行", lenderStratum).isEqualTo(lenderKey);
+      assertThat(only.principal())
+          .as("本金 = 第 1 天缺口（%s 缸厚，够全额）", lenderStratum)
+          .isEqualTo(deficitOn(1L));
+    }
+  }
+
   // ── 夹具 ───────────────────────────────────────────────────────────────────────────
+
+  /** 一格两行、**放贷那行的阶层可指定**（S1 阶段 1 新增：放贷序列有三档，原夹具写死地主 ⇒ 只覆盖得到一档）。 */
+  private static EconomyData hexWithOnlyLender(SocialClassId lenderStratum) {
+    LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
+    LinkedHashMap<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    addHex(industries, classes, FARM_KIND, 0, 0, CYCLE_DAYS, 0L, LANDLORD_JAR, lenderStratum);
+    EconomyMeta meta =
+        new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
+    return new EconomyData(
+        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of());
+  }
 
   /** 一格两行（贫农缸空 / 地主 {@code landlordJar}）、**不产粮**的产业。 */
   private static EconomyData hex(long cycleDays, long peasantJar, long landlordJar) {
@@ -458,6 +505,20 @@ class EconomyDebtTest {
       long cycleDays,
       long peasantJar,
       long landlordJar) {
+    addHex(industries, classes, kind, q, r, cycleDays, peasantJar, landlordJar, LANDLORD);
+  }
+
+  /** 同 {@link #addHex(Map, Map, String, int, int, long, long, long)}，但**放贷那行的阶层可指定**。 */
+  private static void addHex(
+      Map<IndustryId, Industry> industries,
+      Map<ClassKey, ClassRow> classes,
+      String kind,
+      int q,
+      int r,
+      long cycleDays,
+      long peasantJar,
+      long landlordJar,
+      SocialClassId lenderStratum) {
     IndustryId id = IndustryHexKeys.id(kind, q, r);
     industries.put(
         id,
@@ -474,14 +535,18 @@ class EconomyDebtTest {
             EconomySettlement.LABOR_MILLI_PER_MU,
             Map.of(), // ★ 不产粮（理由见上）
             Map.of(),
-            List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)),
+            // ★ 展示名直接用阶层自身的值（三档轮着用时，"地主"这种写死的名字会变成假标签）。
+            List.of(
+                new ClassSlot(PEASANT, "贫农", 1000),
+                new ClassSlot(lenderStratum, lenderStratum.value(), 1000)),
             new AllocationRule.Split(700, 300),
             0L,
             Map.of()));
     classes.put(
         new ClassKey(id, PEASANT),
         row(new ClassKey(id, PEASANT), PEASANT_POPULATION, 1000, peasantJar));
-    classes.put(new ClassKey(id, LANDLORD), row(new ClassKey(id, LANDLORD), 10L, 0, landlordJar));
+    classes.put(
+        new ClassKey(id, lenderStratum), row(new ClassKey(id, lenderStratum), 10L, 0, landlordJar));
   }
 
   private static ClassRow row(
