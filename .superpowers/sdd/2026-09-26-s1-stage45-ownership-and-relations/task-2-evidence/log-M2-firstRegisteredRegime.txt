@@ -1,0 +1,223 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] ActorApiSimos                                                      [jar]
+[INFO] EconomyApiSimos                                                    [jar]
+[INFO] EconomySimos                                                       [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] ---------------------< io.mosire:simos-actor-api >----------------------
+[INFO] Building ActorApiSimos 0.1.0-SNAPSHOT                              [4/6]
+[INFO]   from simos-actor-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-actor-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-actor-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-actor-api ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-actor-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-actor-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-actor-api ---
+[INFO] 
+[INFO] --------------------< io.mosire:simos-economy-api >---------------------
+[INFO] Building EconomyApiSimos 0.1.0-SNAPSHOT                            [5/6]
+[INFO]   from simos-economy-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy-api ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy-api ---
+[INFO] 
+[INFO] ----------------------< io.mosire:simos-economy >-----------------------
+[INFO] Building EconomySimos 0.1.0-SNAPSHOT                               [6/6]
+[INFO]   from simos-economy/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 13 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.economy.spi.EconomySeedHandlerTest
+[ERROR] Tests run: 28, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.227 s <<< FAILURE! -- in io.mosire.simos.economy.spi.EconomySeedHandlerTest
+[ERROR] io.mosire.simos.economy.spi.EconomySeedHandlerTest.aPayloadWithoutRelationDerivesTheDefaultFromItsRegime -- Time elapsed: 0.010 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[★ 租佃档逐值：一条固定实物租（20,000 粮/周期）给 (0_0, landlord) cohort] 
+expected: ProductionRelation[activity=farm@0_0, operator=HOUSEHOLD:farm@0_0, rules=[CompensationRule[type=FIXED_IN_KIND_RENT, recipient=ToCohort[cohort=0_0|landlord], basis=FIXED_AMOUNT, ratePerMille=0, fixedAmount=20000000, commodity=Optional[grain], priority=10]], residualOwner=HOUSEHOLD:farm@0_0]
+ but was: ProductionRelation[activity=farm@0_0, operator=HOUSEHOLD:farm@0_0, rules=[CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|poor_peasant], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|middle_peasant], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|rich_peasant], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|landlord], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=OUTPUT_SHARE, recipient=ToCohort[cohort=0_0|landlord], basis=GROSS_OUTPUT, ratePerMille=300, fixedAmount=0, commodity=Optional[grain], priority=20]], residualOwner=HOUSEHOLD:farm@0_0]
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.aPayloadWithoutRelationDerivesTheDefaultFromItsRegime(EconomySeedHandlerTest.java:555)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   EconomySeedHandlerTest.aPayloadWithoutRelationDerivesTheDefaultFromItsRegime:555 [★ 租佃档逐值：一条固定实物租（20,000 粮/周期）给 (0_0, landlord) cohort] 
+expected: ProductionRelation[activity=farm@0_0, operator=HOUSEHOLD:farm@0_0, rules=[CompensationRule[type=FIXED_IN_KIND_RENT, recipient=ToCohort[cohort=0_0|landlord], basis=FIXED_AMOUNT, ratePerMille=0, fixedAmount=20000000, commodity=Optional[grain], priority=10]], residualOwner=HOUSEHOLD:farm@0_0]
+ but was: ProductionRelation[activity=farm@0_0, operator=HOUSEHOLD:farm@0_0, rules=[CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|poor_peasant], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|middle_peasant], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|rich_peasant], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=FIXED_IN_KIND_PER_LABOR, recipient=ToCohort[cohort=0_0|landlord], basis=LABOR_AMOUNT, ratePerMille=0, fixedAmount=144, commodity=Optional[grain], priority=10], CompensationRule[type=OUTPUT_SHARE, recipient=ToCohort[cohort=0_0|landlord], basis=GROSS_OUTPUT, ratePerMille=300, fixedAmount=0, commodity=Optional[grain], priority=20]], residualOwner=HOUSEHOLD:farm@0_0]
+[INFO] 
+[ERROR] Tests run: 28, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.484 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.216 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.033 s]
+[INFO] ActorApiSimos ...................................... SUCCESS [  0.019 s]
+[INFO] EconomyApiSimos .................................... SUCCESS [  0.021 s]
+[INFO] EconomySimos ....................................... FAILURE [  1.731 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.590 s
+[INFO] Finished at: 2026-09-26T21:44:50+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-economy: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-economy/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-economy

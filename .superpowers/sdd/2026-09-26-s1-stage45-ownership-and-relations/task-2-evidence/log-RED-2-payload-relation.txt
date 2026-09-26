@@ -1,0 +1,275 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] ActorApiSimos                                                      [jar]
+[INFO] EconomyApiSimos                                                    [jar]
+[INFO] EconomySimos                                                       [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                  [2/6]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                   [3/6]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] ---------------------< io.mosire:simos-actor-api >----------------------
+[INFO] Building ActorApiSimos 0.1.0-SNAPSHOT                              [4/6]
+[INFO]   from simos-actor-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-actor-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-actor-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-actor-api ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-actor-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-actor-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-actor-api ---
+[INFO] 
+[INFO] --------------------< io.mosire:simos-economy-api >---------------------
+[INFO] Building EconomyApiSimos 0.1.0-SNAPSHOT                            [5/6]
+[INFO]   from simos-economy-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy-api ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy-api ---
+[INFO] 
+[INFO] ----------------------< io.mosire:simos-economy >-----------------------
+[INFO] Building EconomySimos 0.1.0-SNAPSHOT                               [6/6]
+[INFO]   from simos-economy/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.economy.spi.EconomySeedHandlerTest
+[ERROR] Tests run: 28, Failures: 4, Errors: 1, Skipped: 0, Time elapsed: 0.252 s <<< FAILURE! -- in io.mosire.simos.economy.spi.EconomySeedHandlerTest
+[ERROR] io.mosire.simos.economy.spi.EconomySeedHandlerTest.relationOperatorAndResidualOwnerDefaultToTheIndustrysOperator -- Time elapsed: 0.004 s <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "io.mosire.simos.economy.api.relation.ProductionRelation.operator()" because "relation" is null
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.relationOperatorAndResidualOwnerDefaultToTheIndustrysOperator(EconomySeedHandlerTest.java:658)
+
+[ERROR] io.mosire.simos.economy.spi.EconomySeedHandlerTest.anExplicitRelationIsSeededValueForValue -- Time elapsed: 0.010 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[★ 逐值落盘（含显式 operator / residualOwner / 一条 550‰ 的规则）] 
+expected: ProductionRelation[activity=farm@0_0, operator=ESTATE:farm@0_0, rules=[CompensationRule[type=OUTPUT_SHARE, recipient=ToCohort[cohort=0_0|middle_peasant], basis=GROSS_OUTPUT, ratePerMille=550, fixedAmount=0, commodity=Optional[grain], priority=3]], residualOwner=ESTATE:farm@0_0]
+ but was: null
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.anExplicitRelationIsSeededValueForValue(EconomySeedHandlerTest.java:624)
+
+[ERROR] io.mosire.simos.economy.spi.EconomySeedHandlerTest.rejectsARelationWhoseOperatorDisagreesWithTheIndustry -- Time elapsed: 0.015 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting actual:
+  Applied[changeSet=EconomyChangeSet[meta=Upsert[entries={meta=EconomyMeta[mapId=Map1, activatedDay=7, lastClosedCycle=OptionalLong.empty, rulesVersion=aggregate-v1, migrationSource=Optional.empty]}], industries=Upsert[entries={farm@0_0=Industry[id=farm@0_0, name=农业, regime=feudal, cycleDays=120, progressDays=0, capacityPerUnit={LAND=1000}, dailyInputPerUnit={}, dailyLaborPerUnit=0, laborPerUnit=143, outputPerUnit={grain=7}, cycleInputPerUnit={}, slots=[ClassSlot[id=poor_peasant, name=贫农, laborParticipationPerMille=950], ClassSlot[id=landlord, name=地主, laborParticipationPerMille=100]], allocation=Split[meansWeightPerMille=700, laborWeightPerMille=300], cycleLaborMilli=0, cycleInputUsedMilli={}, operator=ESTATE:farm@0_0]}], classes=Upsert[entries={farm@0_0|poor_peasant=ClassRow[key=farm@0_0|poor_peasant, population=450, laborMilli=261000, participationPerMille=950, meansOfProduction={LAND=900000}, goods={grain=2241000}, money=0, debts=[], naturalNeeds={grain=37350}, effectiveDemand={}], farm@0_0|landlord=ClassRow[key=farm@0_0|landlord, population=50, laborMilli=29000, participationPerMille=100, meansOfProduction={LAND=100000}, goods={grain=249000}, money=0, debts=[], naturalNeeds={}, effectiveDemand={}]}], debts=Unchanged[], flows=Unchanged[], laborSupply=Unchanged[], allocations=Unchanged[], relations=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.rejectsARelationWhoseOperatorDisagreesWithTheIndustry(EconomySeedHandlerTest.java:593)
+
+[ERROR] io.mosire.simos.economy.spi.EconomySeedHandlerTest.aPayloadWithoutRelationDerivesTheDefaultFromItsRegime -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: 
+[每个产业一条关系（缺键 ⇒ 推导）] 
+Expected size: 1 but was: 0 in:
+{}
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.aPayloadWithoutRelationDerivesTheDefaultFromItsRegime(EconomySeedHandlerTest.java:553)
+
+[ERROR] io.mosire.simos.economy.spi.EconomySeedHandlerTest.rejectsARelationWhoseRuleShapeIsBroken -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: 
+[坏关系载荷必须在命令边界被拒（不是抛到边界之外）] 
+Expecting actual:
+  Applied[changeSet=EconomyChangeSet[meta=Upsert[entries={meta=EconomyMeta[mapId=Map1, activatedDay=7, lastClosedCycle=OptionalLong.empty, rulesVersion=aggregate-v1, migrationSource=Optional.empty]}], industries=Upsert[entries={farm@0_0=Industry[id=farm@0_0, name=农业, regime=feudal, cycleDays=120, progressDays=0, capacityPerUnit={LAND=1000}, dailyInputPerUnit={}, dailyLaborPerUnit=0, laborPerUnit=143, outputPerUnit={grain=7}, cycleInputPerUnit={}, slots=[ClassSlot[id=poor_peasant, name=贫农, laborParticipationPerMille=950], ClassSlot[id=landlord, name=地主, laborParticipationPerMille=100]], allocation=Split[meansWeightPerMille=700, laborWeightPerMille=300], cycleLaborMilli=0, cycleInputUsedMilli={}, operator=ESTATE:farm@0_0]}], classes=Upsert[entries={farm@0_0|poor_peasant=ClassRow[key=farm@0_0|poor_peasant, population=450, laborMilli=261000, participationPerMille=950, meansOfProduction={LAND=900000}, goods={grain=2241000}, money=0, debts=[], naturalNeeds={grain=37350}, effectiveDemand={}], farm@0_0|landlord=ClassRow[key=farm@0_0|landlord, population=50, laborMilli=29000, participationPerMille=100, meansOfProduction={LAND=100000}, goods={grain=249000}, money=0, debts=[], naturalNeeds={}, effectiveDemand={}]}], debts=Unchanged[], flows=Unchanged[], laborSupply=Unchanged[], allocations=Unchanged[], relations=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.reasonOf(EconomySeedHandlerTest.java:705)
+	at io.mosire.simos.economy.spi.EconomySeedHandlerTest.rejectsARelationWhoseRuleShapeIsBroken(EconomySeedHandlerTest.java:693)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   EconomySeedHandlerTest.aPayloadWithoutRelationDerivesTheDefaultFromItsRegime:553 [每个产业一条关系（缺键 ⇒ 推导）] 
+Expected size: 1 but was: 0 in:
+{}
+[ERROR]   EconomySeedHandlerTest.anExplicitRelationIsSeededValueForValue:624 [★ 逐值落盘（含显式 operator / residualOwner / 一条 550‰ 的规则）] 
+expected: ProductionRelation[activity=farm@0_0, operator=ESTATE:farm@0_0, rules=[CompensationRule[type=OUTPUT_SHARE, recipient=ToCohort[cohort=0_0|middle_peasant], basis=GROSS_OUTPUT, ratePerMille=550, fixedAmount=0, commodity=Optional[grain], priority=3]], residualOwner=ESTATE:farm@0_0]
+ but was: null
+[ERROR]   EconomySeedHandlerTest.rejectsARelationWhoseOperatorDisagreesWithTheIndustry:593 
+Expecting actual:
+  Applied[changeSet=EconomyChangeSet[meta=Upsert[entries={meta=EconomyMeta[mapId=Map1, activatedDay=7, lastClosedCycle=OptionalLong.empty, rulesVersion=aggregate-v1, migrationSource=Optional.empty]}], industries=Upsert[entries={farm@0_0=Industry[id=farm@0_0, name=农业, regime=feudal, cycleDays=120, progressDays=0, capacityPerUnit={LAND=1000}, dailyInputPerUnit={}, dailyLaborPerUnit=0, laborPerUnit=143, outputPerUnit={grain=7}, cycleInputPerUnit={}, slots=[ClassSlot[id=poor_peasant, name=贫农, laborParticipationPerMille=950], ClassSlot[id=landlord, name=地主, laborParticipationPerMille=100]], allocation=Split[meansWeightPerMille=700, laborWeightPerMille=300], cycleLaborMilli=0, cycleInputUsedMilli={}, operator=ESTATE:farm@0_0]}], classes=Upsert[entries={farm@0_0|poor_peasant=ClassRow[key=farm@0_0|poor_peasant, population=450, laborMilli=261000, participationPerMille=950, meansOfProduction={LAND=900000}, goods={grain=2241000}, money=0, debts=[], naturalNeeds={grain=37350}, effectiveDemand={}], farm@0_0|landlord=ClassRow[key=farm@0_0|landlord, population=50, laborMilli=29000, participationPerMille=100, meansOfProduction={LAND=100000}, goods={grain=249000}, money=0, debts=[], naturalNeeds={}, effectiveDemand={}]}], debts=Unchanged[], flows=Unchanged[], laborSupply=Unchanged[], allocations=Unchanged[], relations=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR]   EconomySeedHandlerTest.rejectsARelationWhoseRuleShapeIsBroken:693->reasonOf:705 [坏关系载荷必须在命令边界被拒（不是抛到边界之外）] 
+Expecting actual:
+  Applied[changeSet=EconomyChangeSet[meta=Upsert[entries={meta=EconomyMeta[mapId=Map1, activatedDay=7, lastClosedCycle=OptionalLong.empty, rulesVersion=aggregate-v1, migrationSource=Optional.empty]}], industries=Upsert[entries={farm@0_0=Industry[id=farm@0_0, name=农业, regime=feudal, cycleDays=120, progressDays=0, capacityPerUnit={LAND=1000}, dailyInputPerUnit={}, dailyLaborPerUnit=0, laborPerUnit=143, outputPerUnit={grain=7}, cycleInputPerUnit={}, slots=[ClassSlot[id=poor_peasant, name=贫农, laborParticipationPerMille=950], ClassSlot[id=landlord, name=地主, laborParticipationPerMille=100]], allocation=Split[meansWeightPerMille=700, laborWeightPerMille=300], cycleLaborMilli=0, cycleInputUsedMilli={}, operator=ESTATE:farm@0_0]}], classes=Upsert[entries={farm@0_0|poor_peasant=ClassRow[key=farm@0_0|poor_peasant, population=450, laborMilli=261000, participationPerMille=950, meansOfProduction={LAND=900000}, goods={grain=2241000}, money=0, debts=[], naturalNeeds={grain=37350}, effectiveDemand={}], farm@0_0|landlord=ClassRow[key=farm@0_0|landlord, population=50, laborMilli=29000, participationPerMille=100, meansOfProduction={LAND=100000}, goods={grain=249000}, money=0, debts=[], naturalNeeds={}, effectiveDemand={}]}], debts=Unchanged[], flows=Unchanged[], laborSupply=Unchanged[], allocations=Unchanged[], relations=Unchanged[]]]
+to be an instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Rejected
+but was instance of:
+  io.mosire.simos.util.spi.HandlerOutcome.Applied
+[ERROR] Errors: 
+[ERROR]   EconomySeedHandlerTest.relationOperatorAndResidualOwnerDefaultToTheIndustrysOperator:658 NullPointer Cannot invoke "io.mosire.simos.economy.api.relation.ProductionRelation.operator()" because "relation" is null
+[INFO] 
+[ERROR] Tests run: 28, Failures: 4, Errors: 1, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.451 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.205 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.027 s]
+[INFO] ActorApiSimos ...................................... SUCCESS [  0.016 s]
+[INFO] EconomyApiSimos .................................... SUCCESS [  0.027 s]
+[INFO] EconomySimos ....................................... FAILURE [  0.608 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  1.416 s
+[INFO] Finished at: 2026-09-26T21:43:02+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project simos-economy: There are test failures.
+[ERROR] 
+[ERROR] See /home/cna/SimulatorMosire/simos-economy/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :simos-economy

@@ -1,0 +1,2174 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] ActorApiSimos                                                      [jar]
+[INFO] EconomyApiSimos                                                    [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] ActorSimos                                                         [jar]
+[INFO] EconomySimos                                                       [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                           [1/12]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                 [2/12]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                  [3/12]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] 
+[INFO] ---------------------< io.mosire:simos-actor-api >----------------------
+[INFO] Building ActorApiSimos 0.1.0-SNAPSHOT                             [4/12]
+[INFO]   from simos-actor-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-actor-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-actor-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-actor-api ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-actor-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-actor-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-actor-api ---
+[INFO] 
+[INFO] --------------------< io.mosire:simos-economy-api >---------------------
+[INFO] Building EconomyApiSimos 0.1.0-SNAPSHOT                           [5/12]
+[INFO]   from simos-economy-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy-api ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy-api ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy-api ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                               [6/12]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                 [7/12]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                 [8/12]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                   [9/12]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-actor >------------------------
+[INFO] Building ActorSimos 0.1.0-SNAPSHOT                               [10/12]
+[INFO]   from simos-actor/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-actor ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-actor ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-actor ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-actor ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-actor ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-actor ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-actor ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-actor ---
+[INFO] 
+[INFO] ----------------------< io.mosire:simos-economy >-----------------------
+[INFO] Building EconomySimos 0.1.0-SNAPSHOT                             [11/12]
+[INFO]   from simos-economy/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                 [12/12]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 31 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-app/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.world.EconomyRealScaleClothTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.350 s -- in io.mosire.simos.app.world.EconomyRealScaleClothTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- exec:3.4.1:exec (frontend-unit-tests) @ simos-app ---
+TAP version 13
+# Subtest: decodeBlocks-restores-vertex-world-coordinates
+ok 1 - decodeBlocks-restores-vertex-world-coordinates
+  ---
+  duration_ms: 0.712078
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-preserves-block-metadata
+ok 2 - decodeBlocks-preserves-block-metadata
+  ---
+  duration_ms: 0.09474
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-keeps-rings-closed-with-same-vertex-count
+ok 3 - decodeBlocks-keeps-rings-closed-with-same-vertex-count
+  ---
+  duration_ms: 0.100675
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-does-not-mutate-the-wire-input
+ok 4 - decodeBlocks-does-not-mutate-the-wire-input
+  ---
+  duration_ms: 0.787033
+  type: 'test'
+  ...
+# Subtest: terrainAt-reads-decoded-block-at-hex-center
+ok 5 - terrainAt-reads-decoded-block-at-hex-center
+  ---
+  duration_ms: 0.170394
+  type: 'test'
+  ...
+# Subtest: countsByTerrain-sums-decoded-hex-counts
+ok 6 - countsByTerrain-sums-decoded-hex-counts
+  ---
+  duration_ms: 0.127394
+  type: 'test'
+  ...
+# Subtest: docs-request-needs-an-actor
+ok 7 - docs-request-needs-an-actor
+  ---
+  duration_ms: 0.504836
+  type: 'test'
+  ...
+# Subtest: docs-request-with-a-doc-id-is-exact-and-carries-no-limit
+ok 8 - docs-request-with-a-doc-id-is-exact-and-carries-no-limit
+  ---
+  duration_ms: 0.10165
+  type: 'test'
+  ...
+# Subtest: docs-request-escapes-the-actor-and-defaults-the-limit
+ok 9 - docs-request-escapes-the-actor-and-defaults-the-limit
+  ---
+  duration_ms: 0.085691
+  type: 'test'
+  ...
+# Subtest: docs-request-rejects-an-out-of-range-limit
+ok 10 - docs-request-rejects-an-out-of-range-limit
+  ---
+  duration_ms: 0.07865
+  type: 'test'
+  ...
+# Subtest: doc-entry-projects-title-body-and-subject
+ok 11 - doc-entry-projects-title-body-and-subject
+  ---
+  duration_ms: 0.426178
+  type: 'test'
+  ...
+# Subtest: doc-entry-shows-both-visibility-axes
+ok 12 - doc-entry-shows-both-visibility-axes
+  ---
+  duration_ms: 0.347242
+  type: 'test'
+  ...
+# Subtest: doc-entry-keeps-the-raw-text-when-the-value-is-not-json
+ok 13 - doc-entry-keeps-the-raw-text-when-the-value-is-not-json
+  ---
+  duration_ms: 0.109881
+  type: 'test'
+  ...
+# Subtest: doc-entry-handles-a-missing-value-without-throwing
+ok 14 - doc-entry-handles-a-missing-value-without-throwing
+  ---
+  duration_ms: 0.076345
+  type: 'test'
+  ...
+# Subtest: docs-view-maps-rows-and-carries-the-server-note
+ok 15 - docs-view-maps-rows-and-carries-the-server-note
+  ---
+  duration_ms: 0.245647
+  type: 'test'
+  ...
+# Subtest: docs-view-is-empty-and-keeps-the-servers-wording
+ok 16 - docs-view-is-empty-and-keeps-the-servers-wording
+  ---
+  duration_ms: 0.189312
+  type: 'test'
+  ...
+# Subtest: docs-view-tolerates-a-malformed-body
+ok 17 - docs-view-tolerates-a-malformed-body
+  ---
+  duration_ms: 0.106282
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 18 - module-loads
+  ---
+  duration_ms: 0.732658
+  type: 'test'
+  ...
+# Subtest: subpage-ids-and-labels
+ok 19 - subpage-ids-and-labels
+  ---
+  duration_ms: 0.369281
+  type: 'test'
+  ...
+# Subtest: subpage-state-is-fail-closed
+ok 20 - subpage-state-is-fail-closed
+  ---
+  duration_ms: 0.35833
+  type: 'test'
+  ...
+# Subtest: subpage-visibility-is-mutually-exclusive
+ok 21 - subpage-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.219181
+  type: 'test'
+  ...
+# Subtest: decision-results-request-builds-a-bounded-window
+ok 22 - decision-results-request-builds-a-bounded-window
+  ---
+  duration_ms: 0.275106
+  type: 'test'
+  ...
+# Subtest: decision-results-entry-parses-value-and-never-throws
+ok 23 - decision-results-entry-parses-value-and-never-throws
+  ---
+  duration_ms: 0.222233
+  type: 'test'
+  ...
+# Subtest: decision-results-view-groups-by-tick-and-keeps-note-as-no-result
+ok 24 - decision-results-view-groups-by-tick-and-keeps-note-as-no-result
+  ---
+  duration_ms: 0.192545
+  type: 'test'
+  ...
+# Subtest: decision-groups-put-nation-then-army-and-sort-by-id
+ok 25 - decision-groups-put-nation-then-army-and-sort-by-id
+  ---
+  duration_ms: 3.741714
+  type: 'test'
+  ...
+# Subtest: decision-groups-keep-unknown-kinds-and-preserve-length
+ok 26 - decision-groups-keep-unknown-kinds-and-preserve-length
+  ---
+  duration_ms: 0.282294
+  type: 'test'
+  ...
+# Subtest: decision-makers-for-nation-matches-exactly
+ok 27 - decision-makers-for-nation-matches-exactly
+  ---
+  duration_ms: 0.275673
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-resolves-root-and-descendants
+ok 28 - decision-maker-for-unit-resolves-root-and-descendants
+  ---
+  duration_ms: 0.183212
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-is-deterministic-across-two-armies
+ok 29 - decision-maker-for-unit-is-deterministic-across-two-armies
+  ---
+  duration_ms: 0.053879
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-survives-a-parent-cycle
+ok 30 - decision-maker-for-unit-survives-a-parent-cycle
+  ---
+  duration_ms: 0.068403
+  type: 'test'
+  ...
+# Subtest: pending-status-text-never-fabricates
+ok 31 - pending-status-text-never-fabricates
+  ---
+  duration_ms: 0.041921
+  type: 'test'
+  ...
+# Subtest: affiliation-label-formats-kind-name-and-id
+ok 32 - affiliation-label-formats-kind-name-and-id
+  ---
+  duration_ms: 0.064532
+  type: 'test'
+  ...
+# Subtest: start-decision-gate-requires-due
+ok 33 - start-decision-gate-requires-due
+  ---
+  duration_ms: 0.064744
+  type: 'test'
+  ...
+# Subtest: render-left-gates-the-start-button-on-due
+ok 34 - render-left-gates-the-start-button-on-due
+  ---
+  duration_ms: 8.28896
+  type: 'test'
+  ...
+# Subtest: render-left-keeps-the-start-button-clickable-when-not-due
+ok 35 - render-left-keeps-the-start-button-clickable-when-not-due
+  ---
+  duration_ms: 6.6822
+  type: 'test'
+  ...
+# Subtest: start-decision-posts-the-target-when-due
+ok 36 - start-decision-posts-the-target-when-due
+  ---
+  duration_ms: 3.111125
+  type: 'test'
+  ...
+# Subtest: start-decision-advances-the-cursor-on-success
+ok 37 - start-decision-advances-the-cursor-on-success
+  ---
+  duration_ms: 5.588139
+  type: 'test'
+  ...
+# Subtest: start-decision-retries-once-after-409-with-the-fresh-head
+ok 38 - start-decision-retries-once-after-409-with-the-fresh-head
+  ---
+  duration_ms: 6.851661
+  type: 'test'
+  ...
+# Subtest: start-decision-does-not-retry-beyond-once
+ok 39 - start-decision-does-not-retry-beyond-once
+  ---
+  duration_ms: 7.093127
+  type: 'test'
+  ...
+# Subtest: a-round-runs-asynchronously-and-the-decision-lands-in-place
+ok 40 - a-round-runs-asynchronously-and-the-decision-lands-in-place
+  ---
+  duration_ms: 9.361833
+  type: 'test'
+  ...
+# Subtest: say-and-context-reset-are-two-separate-explicit-actions
+ok 41 - say-and-context-reset-are-two-separate-explicit-actions
+  ---
+  duration_ms: 7.082148
+  type: 'test'
+  ...
+# Subtest: merged-button-sends-the-text-first-then-starts-and-runs
+ok 42 - merged-button-sends-the-text-first-then-starts-and-runs
+  ---
+  duration_ms: 13.438108
+  type: 'test'
+  ...
+# Subtest: start-decision-posts-even-when-target-is-not-due
+ok 43 - start-decision-posts-even-when-target-is-not-due
+  ---
+  duration_ms: 3.532121
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-the-server-shape
+ok 44 - decision-maker-fields-project-the-server-shape
+  ---
+  duration_ms: 0.190572
+  type: 'test'
+  ...
+# Subtest: nation-region-ids-are-set-equal-not-subset
+ok 45 - nation-region-ids-are-set-equal-not-subset
+  ---
+  duration_ms: 0.12966
+  type: 'test'
+  ...
+# Subtest: nation-tag-helpers-ignore-non-nation-and-blank-tags
+ok 46 - nation-tag-helpers-ignore-non-nation-and-blank-tags
+  ---
+  duration_ms: 0.048461
+  type: 'test'
+  ...
+# Subtest: nation-ids-of-regions-unions-distinct-nations
+ok 47 - nation-ids-of-regions-unions-distinct-nations
+  ---
+  duration_ms: 0.145628
+  type: 'test'
+  ...
+# Subtest: render-left-shows-army-decision-maker-for-a-descendant-unit
+ok 48 - render-left-shows-army-decision-maker-for-a-descendant-unit
+  ---
+  duration_ms: 3.321506
+  type: 'test'
+  ...
+# Subtest: render-left-shows-no-decision-maker-for-an-unrelated-unit
+ok 49 - render-left-shows-no-decision-maker-for-an-unrelated-unit
+  ---
+  duration_ms: 3.400437
+  type: 'test'
+  ...
+# Subtest: render-left-shows-nation-decision-maker-for-a-nation-region-hex
+ok 50 - render-left-shows-nation-decision-maker-for-a-nation-region-hex
+  ---
+  duration_ms: 3.490943
+  type: 'test'
+  ...
+# Subtest: index-html-has-six-modes-and-decision-panel
+ok 51 - index-html-has-six-modes-and-decision-panel
+  ---
+  duration_ms: 0.29392
+  type: 'test'
+  ...
+# Subtest: index-html-decision-mode-has-start-decision-button
+ok 52 - index-html-decision-mode-has-start-decision-button
+  ---
+  duration_ms: 0.227368
+  type: 'test'
+  ...
+# Subtest: map-js-wires-decision-click-to-nation-highlight
+ok 53 - map-js-wires-decision-click-to-nation-highlight
+  ---
+  duration_ms: 0.298282
+  type: 'test'
+  ...
+# Subtest: panels-js-and-app-js-delegate-subpage-visibility
+ok 54 - panels-js-and-app-js-delegate-subpage-visibility
+  ---
+  duration_ms: 0.507384
+  type: 'test'
+  ...
+# Subtest: tab-click-actually-switches-the-visible-subpage
+ok 55 - tab-click-actually-switches-the-visible-subpage
+  ---
+  duration_ms: 0.818628
+  type: 'test'
+  ...
+# Subtest: activated-economy-yields-per-value-rows
+ok 56 - activated-economy-yields-per-value-rows
+  ---
+  duration_ms: 0.615637
+  type: 'test'
+  ...
+# Subtest: regime-and-cycle-progress-come-from-the-industry
+ok 57 - regime-and-cycle-progress-come-from-the-industry
+  ---
+  duration_ms: 0.117056
+  type: 'test'
+  ...
+# Subtest: grain-stock-daily-consumption-and-flow-come-from-the-server
+ok 58 - grain-stock-daily-consumption-and-flow-come-from-the-server
+  ---
+  duration_ms: 0.12627
+  type: 'test'
+  ...
+# Subtest: hex-without-industry-says-no-industry
+ok 59 - hex-without-industry-says-no-industry
+  ---
+  duration_ms: 0.071975
+  type: 'test'
+  ...
+# Subtest: inactive-economy-says-not-activated
+ok 60 - inactive-economy-says-not-activated
+  ---
+  duration_ms: 0.084914
+  type: 'test'
+  ...
+# Subtest: missing-payload-degrades-to-no-data
+ok 61 - missing-payload-degrades-to-no-data
+  ---
+  duration_ms: 0.050205
+  type: 'test'
+  ...
+# Subtest: missing-fields-degrade-to-zero-without-throwing
+ok 62 - missing-fields-degrade-to-zero-without-throwing
+  ---
+  duration_ms: 0.084607
+  type: 'test'
+  ...
+# Subtest: api-exposes-cached-economy-hex-hitting-the-endpoint-once
+ok 63 - api-exposes-cached-economy-hex-hitting-the-endpoint-once
+  ---
+  duration_ms: 1.375608
+  type: 'test'
+  ...
+# Subtest: hex-panel-wires-the-economy-readout
+ok 64 - hex-panel-wires-the-economy-readout
+  ---
+  duration_ms: 1.066068
+  type: 'test'
+  ...
+# Subtest: all-required-test-files-are-present
+ok 65 - all-required-test-files-are-present
+  ---
+  duration_ms: 0.781589
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 66 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 1.576296
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 67 - module-loads
+  ---
+  duration_ms: 1.319581
+  type: 'test'
+  ...
+# Subtest: toolUsageEntries-reads-two-response-shapes
+ok 68 - toolUsageEntries-reads-two-response-shapes
+  ---
+  duration_ms: 0.355388
+  type: 'test'
+  ...
+# Subtest: resultText-marks-success-and-failure
+ok 69 - resultText-marks-success-and-failure
+  ---
+  duration_ms: 0.076971
+  type: 'test'
+  ...
+# Subtest: formatEntry-includes-tool-and-result
+ok 70 - formatEntry-includes-tool-and-result
+  ---
+  duration_ms: 8.261848
+  type: 'test'
+  ...
+# Subtest: renderPlan-empty-state-is-explicit
+ok 71 - renderPlan-empty-state-is-explicit
+  ---
+  duration_ms: 0.160572
+  type: 'test'
+  ...
+# Subtest: renderPlan-keeps-server-order-and-flags
+ok 72 - renderPlan-keeps-server-order-and-flags
+  ---
+  duration_ms: 0.100608
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-gm-tool-usage
+ok 73 - renderInto-reads-exactly-one-GET-api-gm-tool-usage
+  ---
+  duration_ms: 1.044735
+  type: 'test'
+  ...
+# Subtest: renderInto-renders-server-entries-from-the-response
+ok 74 - renderInto-renders-server-entries-from-the-response
+  ---
+  duration_ms: 0.16157
+  type: 'test'
+  ...
+# Subtest: renderInto-shows-empty-state-when-server-has-none
+ok 75 - renderInto-shows-empty-state-when-server-has-none
+  ---
+  duration_ms: 0.242188
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-endpoint-unavailable
+ok 76 - renderInto-degrades-when-endpoint-unavailable
+  ---
+  duration_ms: 0.331895
+  type: 'test'
+  ...
+# Subtest: setOpen-toggles-overlay-and-aria-expanded
+ok 77 - setOpen-toggles-overlay-and-aria-expanded
+  ---
+  duration_ms: 0.115169
+  type: 'test'
+  ...
+# Subtest: mount-wires-open-close-and-refresh
+ok 78 - mount-wires-open-close-and-refresh
+  ---
+  duration_ms: 6.460384
+  type: 'test'
+  ...
+# Subtest: index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+ok 79 - index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+  ---
+  duration_ms: 0.272432
+  type: 'test'
+  ...
+# Subtest: gm-overlay-is-fixed-hidden-by-default-and-clickable
+ok 80 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+  ---
+  duration_ms: 0.307137
+  type: 'test'
+  ...
+# Subtest: gm-overlay-has-no-chat-input
+ok 81 - gm-overlay-has-no-chat-input
+  ---
+  duration_ms: 0.175214
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 82 - module-loads
+  ---
+  duration_ms: 0.517857
+  type: 'test'
+  ...
+# Subtest: subtool-ids-and-labels
+ok 83 - subtool-ids-and-labels
+  ---
+  duration_ms: 0.363161
+  type: 'test'
+  ...
+# Subtest: subtool-state-is-fail-closed
+ok 84 - subtool-state-is-fail-closed
+  ---
+  duration_ms: 0.16323
+  type: 'test'
+  ...
+# Subtest: subtool-tools-return-a-snapshot-and-default-tool
+ok 85 - subtool-tools-return-a-snapshot-and-default-tool
+  ---
+  duration_ms: 0.111788
+  type: 'test'
+  ...
+# Subtest: mapEditSubtoolOf-maps-tools-and-rejects-unknown
+ok 86 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  ---
+  duration_ms: 0.110769
+  type: 'test'
+  ...
+# Subtest: write-allowed-is-per-subtool-and-cross-line-is-denied
+ok 87 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  ---
+  duration_ms: 0.069958
+  type: 'test'
+  ...
+# Subtest: write-gate-resolves-tool-then-subtool
+ok 88 - write-gate-resolves-tool-then-subtool
+  ---
+  duration_ms: 0.132192
+  type: 'test'
+  ...
+# Subtest: panel-visibility-is-mutually-exclusive
+ok 89 - panel-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.113182
+  type: 'test'
+  ...
+# Subtest: bucket-writes-go-through-the-terrain-line-gate
+ok 90 - bucket-writes-go-through-the-terrain-line-gate
+  ---
+  duration_ms: 0.199243
+  type: 'test'
+  ...
+# Subtest: index-html-has-suboption-control-and-grouped-panels
+ok 91 - index-html-has-suboption-control-and-grouped-panels
+  ---
+  duration_ms: 0.405037
+  type: 'test'
+  ...
+# Subtest: suboptions-are-not-new-modes
+ok 92 - suboptions-are-not-new-modes
+  ---
+  duration_ms: 0.28481
+  type: 'test'
+  ...
+# Subtest: map-js-gates-every-map-write-with-the-matching-type
+ok 93 - map-js-gates-every-map-write-with-the-matching-type
+  ---
+  duration_ms: 0.395097
+  type: 'test'
+  ...
+# Subtest: page-delegates-to-the-single-guard-implementation
+ok 94 - page-delegates-to-the-single-guard-implementation
+  ---
+  duration_ms: 0.361701
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 95 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 0.488741
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 96 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.064249
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 97 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 1.032443
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 98 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.077483
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+ok 99 - edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+  ---
+  duration_ms: 0.131566
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+ok 100 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  ---
+  duration_ms: 0.073747
+  type: 'test'
+  ...
+# Subtest: edgeChainResult-reports-ending-and-skipped-non-adjacency
+ok 101 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+  ---
+  duration_ms: 0.480507
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-treats-a-missing-sample-as-no-op
+ok 102 - edgeChainEdges-treats-a-missing-sample-as-no-op
+  ---
+  duration_ms: 0.090437
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 103 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.220498
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 104 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.276077
+  type: 'test'
+  ...
+# Subtest: randomizeRecipeState-requires-both-terrains-and-allows-equal-pair
+ok 105 - randomizeRecipeState-requires-both-terrains-and-allows-equal-pair
+  ---
+  duration_ms: 0.114847
+  type: 'test'
+  ...
+# Subtest: randomize-panel-has-two-terrain-pickers-fed-by-the-authoritative-vocabulary
+ok 106 - randomize-panel-has-two-terrain-pickers-fed-by-the-authoritative-vocabulary
+  ---
+  duration_ms: 0.339827
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 107 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.082928
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 108 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 0.458327
+  type: 'test'
+  ...
+# Subtest: parseEdgeKey-round-trips-and-rejects-malformed-keys
+ok 109 - parseEdgeKey-round-trips-and-rejects-malformed-keys
+  ---
+  duration_ms: 0.118135
+  type: 'test'
+  ...
+# Subtest: edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+ok 110 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+  ---
+  duration_ms: 0.144782
+  type: 'test'
+  ...
+# Subtest: edgeDeletePlan-replaces-with-the-surviving-set
+ok 111 - edgeDeletePlan-replaces-with-the-surviving-set
+  ---
+  duration_ms: 0.078557
+  type: 'test'
+  ...
+# Subtest: registered-edge-kinds-default-then-follow-the-server
+ok 112 - registered-edge-kinds-default-then-follow-the-server
+  ---
+  duration_ms: 0.150153
+  type: 'test'
+  ...
+# Subtest: isFormationMember-true-only-for-an-attached-child
+ok 113 - isFormationMember-true-only-for-an-attached-child
+  ---
+  duration_ms: 0.042212
+  type: 'test'
+  ...
+# Subtest: isFormationMember-never-blocks-on-unknown-state
+ok 114 - isFormationMember-never-blocks-on-unknown-state
+  ---
+  duration_ms: 0.026398
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-six-exact-vectors
+ok 115 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 0.674051
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 116 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 0.090182
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 117 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.133799
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 118 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.082819
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 119 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.307907
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 120 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.112214
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 121 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.190987
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 122 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.067531
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 123 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.187137
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 124 - module-loads
+  ---
+  duration_ms: 0.990744
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 125 - mode-ids-order
+  ---
+  duration_ms: 0.316353
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 126 - mode-labels
+  ---
+  duration_ms: 0.066576
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 127 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.053472
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 128 - view-allows-no-write
+  ---
+  duration_ms: 0.131052
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 129 - region-allows-no-write
+  ---
+  duration_ms: 0.051161
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 130 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.092921
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 131 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.046275
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+ok 132 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.144563
+  type: 'test'
+  ...
+# Subtest: decision-allows-exactly-start-decision
+ok 133 - decision-allows-exactly-start-decision
+  ---
+  duration_ms: 0.19563
+  type: 'test'
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 134 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.080525
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 135 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.042598
+  type: 'test'
+  ...
+# Subtest: workbench-write-calls-are-all-whitelisted
+ok 136 - workbench-write-calls-are-all-whitelisted
+  ---
+  duration_ms: 2.509012
+  type: 'test'
+  ...
+# Subtest: whitelist-entries-are-well-formed-command-types
+ok 137 - whitelist-entries-are-well-formed-command-types
+  ---
+  duration_ms: 0.138366
+  type: 'test'
+  ...
+# Subtest: module-loads
+ok 138 - module-loads
+  ---
+  duration_ms: 0.337121
+  type: 'test'
+  ...
+# Subtest: pendingCount-reads-the-three-response-shapes
+ok 139 - pendingCount-reads-the-three-response-shapes
+  ---
+  duration_ms: 0.105521
+  type: 'test'
+  ...
+# Subtest: summaryText-shows-the-count
+ok 140 - summaryText-shows-the-count
+  ---
+  duration_ms: 0.088372
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-approvals
+ok 141 - renderInto-reads-exactly-one-GET-api-approvals
+  ---
+  duration_ms: 1.555894
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-approvals-unavailable
+ok 142 - renderInto-degrades-when-approvals-unavailable
+  ---
+  duration_ms: 0.198995
+  type: 'test'
+  ...
+# Subtest: index.html-has-notification-element-and-no-right-panel-approvals
+ok 143 - index.html-has-notification-element-and-no-right-panel-approvals
+  ---
+  duration_ms: 0.281909
+  type: 'test'
+  ...
+# Subtest: module-exports-the-pending-helpers
+ok 144 - module-exports-the-pending-helpers
+  ---
+  duration_ms: 0.392303
+  type: 'test'
+  ...
+# Subtest: pending-status-text-maps-only-real-booleans-and-never-fabricates
+ok 145 - pending-status-text-maps-only-real-booleans-and-never-fabricates
+  ---
+  duration_ms: 0.089634
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-due-into-pending
+ok 146 - decision-maker-fields-project-due-into-pending
+  ---
+  duration_ms: 0.129642
+  type: 'test'
+  ...
+# Subtest: right-list-renders-pending-from-server-due
+ok 147 - right-list-renders-pending-from-server-due
+  ---
+  duration_ms: 9.056493
+  type: 'test'
+  ...
+# Subtest: left-detail-shows-pending-from-server-due
+ok 148 - left-detail-shows-pending-from-server-due
+  ---
+  duration_ms: 3.687165
+  type: 'test'
+  ...
+# Subtest: panels-list-item-wires-server-due-into-pending-text
+ok 149 - panels-list-item-wires-server-due-into-pending-text
+  ---
+  duration_ms: 0.388128
+  type: 'test'
+  ...
+# Subtest: provider-subpage-is-registered-as-the-third-subpage
+ok 150 - provider-subpage-is-registered-as-the-third-subpage
+  ---
+  duration_ms: 0.72036
+  type: 'test'
+  ...
+# Subtest: provider-visibility-is-keyed-and-fail-closed
+ok 151 - provider-visibility-is-keyed-and-fail-closed
+  ---
+  duration_ms: 0.18913
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-rejects-missing-required-fields
+ok 152 - provider-form-to-payload-rejects-missing-required-fields
+  ---
+  duration_ms: 0.147891
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-normalizes-and-omits-empty-optional-fields
+ok 153 - provider-form-to-payload-normalizes-and-omits-empty-optional-fields
+  ---
+  duration_ms: 0.109802
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-keeps-api-key-out-of-routes-and-rejects-bad-timeout
+ok 154 - provider-form-to-payload-keeps-api-key-out-of-routes-and-rejects-bad-timeout
+  ---
+  duration_ms: 0.115776
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-sanitizes-provider-id-characters
+ok 155 - provider-form-to-payload-sanitizes-provider-id-characters
+  ---
+  duration_ms: 0.066899
+  type: 'test'
+  ...
+# Subtest: provider-fields-masks-and-does-not-fabricate-missing-values
+ok 156 - provider-fields-masks-and-does-not-fabricate-missing-values
+  ---
+  duration_ms: 0.125916
+  type: 'test'
+  ...
+# Subtest: provider-fields-keeps-broken-entries-visible-with-error-code
+ok 157 - provider-fields-keeps-broken-entries-visible-with-error-code
+  ---
+  duration_ms: 0.087032
+  type: 'test'
+  ...
+# Subtest: provider-binding-payload-requires-both-fields
+ok 158 - provider-binding-payload-requires-both-fields
+  ---
+  duration_ms: 0.171746
+  type: 'test'
+  ...
+# Subtest: provider-endpoints-are-exported-and-call-the-declared-paths
+ok 159 - provider-endpoints-are-exported-and-call-the-declared-paths
+  ---
+  duration_ms: 3.049694
+  type: 'test'
+  ...
+# Subtest: provider-panel-index-html-has-the-third-subpage-and-form-anchors
+ok 160 - provider-panel-index-html-has-the-third-subpage-and-form-anchors
+  ---
+  duration_ms: 0.262082
+  type: 'test'
+  ...
+# Subtest: provider-panel-js-has-no-second-visibility-implementation
+ok 161 - provider-panel-js-has-no-second-visibility-implementation
+  ---
+  duration_ms: 0.479567
+  type: 'test'
+  ...
+# Subtest: provider-config-does-not-touch-localstorage-or-fabricate-a-default-provider
+ok 162 - provider-config-does-not-touch-localstorage-or-fabricate-a-default-provider
+  ---
+  duration_ms: 0.377906
+  type: 'test'
+  ...
+# Subtest: daily-budget-rate-multiplies-speed-by-1000-and-24
+ok 163 - daily-budget-rate-multiplies-speed-by-1000-and-24
+  ---
+  duration_ms: 0.448382
+  type: 'test'
+  ...
+# Subtest: etaTick-stays-days-from-departure-with-the-24h-rate
+ok 164 - etaTick-stays-days-from-departure-with-the-24h-rate
+  ---
+  duration_ms: 0.446931
+  type: 'test'
+  ...
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 165 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 1.142121
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 166 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.551506
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 167 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.147785
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 168 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.808136
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 169 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 0.326106
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 170 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.297743
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 171 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.3004
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 172 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.102402
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 173 - deterministic-across-calls
+  ---
+  duration_ms: 0.414645
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-puts-focus-regions-first
+ok 174 - buildRegionHighlightPlan-puts-focus-regions-first
+  ---
+  duration_ms: 1.006232
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-highlights-every-focus-id-for-the-tag-group-path
+ok 175 - buildRegionHighlightPlan-highlights-every-focus-id-for-the-tag-group-path
+  ---
+  duration_ms: 0.185829
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+ok 176 - buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+  ---
+  duration_ms: 0.10191
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+ok 177 - buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+  ---
+  duration_ms: 0.196472
+  type: 'test'
+  ...
+# Subtest: the-two-modes-share-one-plan-and-differ-only-in-parameters
+ok 178 - the-two-modes-share-one-plan-and-differ-only-in-parameters
+  ---
+  duration_ms: 0.802259
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-shared-plan-for-both-modes
+ok 179 - page-层-uses-the-shared-plan-for-both-modes
+  ---
+  duration_ms: 0.365499
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+ok 180 - regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+  ---
+  duration_ms: 0.18189
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-keeps-three-owners-as-one-hex
+ok 181 - regionMembershipSummary-keeps-three-owners-as-one-hex
+  ---
+  duration_ms: 0.090362
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-refuses-to-guess-without-hex-lists
+ok 182 - regionMembershipSummary-refuses-to-guess-without-hex-lists
+  ---
+  duration_ms: 0.176127
+  type: 'test'
+  ...
+# Subtest: page-层-shows-the-union-and-never-a-summed-total
+ok 183 - page-层-shows-the-union-and-never-a-summed-total
+  ---
+  duration_ms: 0.487556
+  type: 'test'
+  ...
+# Subtest: debug-hooks-for-the-region-view-mode-are-exposed
+ok 184 - debug-hooks-for-the-region-view-mode-are-exposed
+  ---
+  duration_ms: 0.079364
+  type: 'test'
+  ...
+# Subtest: layout-constants-are-frozen
+ok 185 - layout-constants-are-frozen
+  ---
+  duration_ms: 0.493046
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 186 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.075829
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 187 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.095337
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 188 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.08083
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 189 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.059495
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 190 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.04842
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 191 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.09706
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 192 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.432523
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 193 - groupByTick-empty-input
+  ---
+  duration_ms: 0.141035
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 194 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.195408
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 195 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.088584
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 196 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.067047
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 197 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.065879
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 198 - tickIndex-finds-position
+  ---
+  duration_ms: 0.046255
+  type: 'test'
+  ...
+# Subtest: advanceByDays-submits-one-request-with-to-equals-from-plus-days
+ok 199 - advanceByDays-submits-one-request-with-to-equals-from-plus-days
+  ---
+  duration_ms: 1.346188
+  type: 'test'
+  ...
+# Subtest: advanceByDays-reports-a-single-rejected-request-as-zero-progress
+ok 200 - advanceByDays-reports-a-single-rejected-request-as-zero-progress
+  ---
+  duration_ms: 0.553982
+  type: 'test'
+  ...
+# Subtest: advanceByDays-rejects-a-response-without-a-new-revision
+ok 201 - advanceByDays-rejects-a-response-without-a-new-revision
+  ---
+  duration_ms: 0.472818
+  type: 'test'
+  ...
+# Subtest: advanceStatusText-reports-server-reason-and-success-range
+ok 202 - advanceStatusText-reports-server-reason-and-success-range
+  ---
+  duration_ms: 0.049864
+  type: 'test'
+  ...
+# Subtest: buildTree-depth-parent-children-per-node
+ok 203 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 0.944935
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 204 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 0.143184
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 205 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.123855
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 206 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.110333
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 207 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.063337
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 208 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.051212
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 209 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.093374
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 210 - empty-input-returns-empty-forest
+  ---
+  duration_ms: 0.04953
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 211 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.18458
+  type: 'test'
+  ...
+# Subtest: armyOptions-lists-one-option-per-forest-root
+ok 212 - armyOptions-lists-one-option-per-forest-root
+  ---
+  duration_ms: 0.211485
+  type: 'test'
+  ...
+# Subtest: subtreeOf-keeps-only-the-chosen-army
+ok 213 - subtreeOf-keeps-only-the-chosen-army
+  ---
+  duration_ms: 0.109354
+  type: 'test'
+  ...
+# Subtest: subtreeOf-unknown-or-dangling-root-returns-null-without-throwing
+ok 214 - subtreeOf-unknown-or-dangling-root-returns-null-without-throwing
+  ---
+  duration_ms: 0.050659
+  type: 'test'
+  ...
+# Subtest: rootIdOf-walks-parent-chain-to-the-army-root
+ok 215 - rootIdOf-walks-parent-chain-to-the-army-root
+  ---
+  duration_ms: 0.076779
+  type: 'test'
+  ...
+# Subtest: clampPanelPosition-pulls-a-target-back-inside-the-viewport
+ok 216 - clampPanelPosition-pulls-a-target-back-inside-the-viewport
+  ---
+  duration_ms: 0.075089
+  type: 'test'
+  ...
+# Subtest: clampPanelPosition-passes-through-a-position-already-inside
+ok 217 - clampPanelPosition-passes-through-a-position-already-inside
+  ---
+  duration_ms: 0.034639
+  type: 'test'
+  ...
+# Subtest: stackOffset-is-zero-for-a-single-unit
+ok 218 - stackOffset-is-zero-for-a-single-unit
+  ---
+  duration_ms: 0.038468
+  type: 'test'
+  ...
+# Subtest: stackOffset-symmetric-distinct-around-center-for-three
+ok 219 - stackOffset-symmetric-distinct-around-center-for-three
+  ---
+  duration_ms: 0.059544
+  type: 'test'
+  ...
+# Subtest: stackSpacing-keeps-neighbouring-circles-apart
+ok 220 - stackSpacing-keeps-neighbouring-circles-apart
+  ---
+  duration_ms: 0.026017
+  type: 'test'
+  ...
+# Subtest: stackSpacing-still-spreads-when-the-stack-cannot-fit-inside-the-cell
+ok 221 - stackSpacing-still-spreads-when-the-stack-cannot-fit-inside-the-cell
+  ---
+  duration_ms: 0.047771
+  type: 'test'
+  ...
+# Subtest: stackSpacing-stays-zero-when-the-screen-cell-is-too-small
+ok 222 - stackSpacing-stays-zero-when-the-screen-cell-is-too-small
+  ---
+  duration_ms: 0.04271
+  type: 'test'
+  ...
+# Subtest: markerGroups-collapses-a-capital-hex-to-one-army-marker
+ok 223 - markerGroups-collapses-a-capital-hex-to-one-army-marker
+  ---
+  duration_ms: 0.577015
+  type: 'test'
+  ...
+# Subtest: markerGroups-does-not-swallow-a-detachment-alone-in-another-hex
+ok 224 - markerGroups-does-not-swallow-a-detachment-alone-in-another-hex
+  ---
+  duration_ms: 0.167226
+  type: 'test'
+  ...
+# Subtest: markerGroups-splits-two-armies-in-the-same-hex
+ok 225 - markerGroups-splits-two-armies-in-the-same-hex
+  ---
+  duration_ms: 0.077691
+  type: 'test'
+  ...
+# Subtest: markerGroups-lead-is-the-shallowest-ancestor-present-on-the-hex
+ok 226 - markerGroups-lead-is-the-shallowest-ancestor-present-on-the-hex
+  ---
+  duration_ms: 0.062551
+  type: 'test'
+  ...
+# Subtest: markerGroups-ignores-units-without-a-position-but-still-roots-through-them
+ok 227 - markerGroups-ignores-units-without-a-position-but-still-roots-through-them
+  ---
+  duration_ms: 0.044057
+  type: 'test'
+  ...
+# Subtest: markerGroups-root-rule-matches-buildTree-rootIdOf
+ok 228 - markerGroups-root-rule-matches-buildTree-rootIdOf
+  ---
+  duration_ms: 0.104828
+  type: 'test'
+  ...
+# Subtest: markerGroups-empty-and-null-input-return-no-markers
+ok 229 - markerGroups-empty-and-null-input-return-no-markers
+  ---
+  duration_ms: 0.029459
+  type: 'test'
+  ...
+# Subtest: subtree-puts-the-root-above-its-children
+ok 230 - subtree-puts-the-root-above-its-children
+  ---
+  duration_ms: 1.238557
+  type: 'test'
+  ...
+# Subtest: subtree-keeps-root-on-top-through-three-levels
+ok 231 - subtree-keeps-root-on-top-through-three-levels
+  ---
+  duration_ms: 0.588162
+  type: 'test'
+  ...
+# Subtest: clampTreePan-clamps-pan-when-content-overflows-the-viewport
+ok 232 - clampTreePan-clamps-pan-when-content-overflows-the-viewport
+  ---
+  duration_ms: 0.063114
+  type: 'test'
+  ...
+# Subtest: clampTreePan-lets-small-content-move-freely-inside-the-viewport
+ok 233 - clampTreePan-lets-small-content-move-freely-inside-the-viewport
+  ---
+  duration_ms: 0.05189
+  type: 'test'
+  ...
+# Subtest: clampTreePan-mixes-both-axes-independently
+ok 234 - clampTreePan-mixes-both-axes-independently
+  ---
+  duration_ms: 0.036617
+  type: 'test'
+  ...
+# Subtest: preferredTreePan-centers-only-the-axis-that-fits
+ok 235 - preferredTreePan-centers-only-the-axis-that-fits
+  ---
+  duration_ms: 0.089494
+  type: 'test'
+  ...
+# Subtest: clampTreePan-tolerates-missing-and-non-finite-input
+ok 236 - clampTreePan-tolerates-missing-and-non-finite-input
+  ---
+  duration_ms: 0.054831
+  type: 'test'
+  ...
+# Subtest: unit-panel-has-a-reset-control-that-is-wired
+ok 237 - unit-panel-has-a-reset-control-that-is-wired
+  ---
+  duration_ms: 0.242519
+  type: 'test'
+  ...
+# Subtest: unitTree-has-no-leftover-scrollIntoView-dead-code
+ok 238 - unitTree-has-no-leftover-scrollIntoView-dead-code
+  ---
+  duration_ms: 0.130017
+  type: 'test'
+  ...
+# Subtest: markerScreenVisible-true-inside-and-false-outside-the-viewport
+ok 239 - markerScreenVisible-true-inside-and-false-outside-the-viewport
+  ---
+  duration_ms: 0.067678
+  type: 'test'
+  ...
+# Subtest: markerScreenVisible-respects-the-margin-band-boundary
+ok 240 - markerScreenVisible-respects-the-margin-band-boundary
+  ---
+  duration_ms: 0.047366
+  type: 'test'
+  ...
+# Subtest: centerViewOn-centers-the-world-point-under-worldToScreen
+ok 241 - centerViewOn-centers-the-world-point-under-worldToScreen
+  ---
+  duration_ms: 0.09029
+  type: 'test'
+  ...
+# Subtest: centerViewOn-passes-the-scale-through-unchanged
+ok 242 - centerViewOn-passes-the-scale-through-unchanged
+  ---
+  duration_ms: 0.044682
+  type: 'test'
+  ...
+# Subtest: UNIT_VISIBLE_MIN_SCALE-makes-the-marker-measurably-visible
+ok 243 - UNIT_VISIBLE_MIN_SCALE-makes-the-marker-measurably-visible
+  ---
+  duration_ms: 0.03787
+  type: 'test'
+  ...
+# Subtest: unit-panel-has-a-locate-control-that-is-wired
+ok 244 - unit-panel-has-a-locate-control-that-is-wired
+  ---
+  duration_ms: 0.213248
+  type: 'test'
+  ...
+# Subtest: map-select-choke-point-triggers-ensureUnitVisible
+ok 245 - map-select-choke-point-triggers-ensureUnitVisible
+  ---
+  duration_ms: 0.615525
+  type: 'test'
+  ...
+# Subtest: combatHexes-real-data-two-armies-sharing-one-hex-counts-two-parties
+ok 246 - combatHexes-real-data-two-armies-sharing-one-hex-counts-two-parties
+  ---
+  duration_ms: 0.183911
+  type: 'test'
+  ...
+# Subtest: combatHexes-one-root-with-many-subunits-is-not-a-combat-hex
+ok 247 - combatHexes-one-root-with-many-subunits-is-not-a-combat-hex
+  ---
+  duration_ms: 0.058884
+  type: 'test'
+  ...
+# Subtest: combatHexes-engaged-group-makes-a-single-root-hex-a-combat-hex
+ok 248 - combatHexes-engaged-group-makes-a-single-root-hex-a-combat-hex
+  ---
+  duration_ms: 0.058868
+  type: 'test'
+  ...
+# Subtest: markerGroups-engaged-only-reflects-that-hex-and-empty-input-is-safe
+ok 249 - markerGroups-engaged-only-reflects-that-hex-and-empty-input-is-safe
+  ---
+  duration_ms: 0.105444
+  type: 'test'
+  ...
+# Subtest: combatHexes-recorded-hex-with-no-unit-markers-is-a-combat-hex-with-value-at-least-one
+ok 250 - combatHexes-recorded-hex-with-no-unit-markers-is-a-combat-hex-with-value-at-least-one
+  ---
+  duration_ms: 0.075789
+  type: 'test'
+  ...
+# Subtest: combatHexes-keeps-the-legacy-inference-beside-the-recorded-hexes
+ok 251 - combatHexes-keeps-the-legacy-inference-beside-the-recorded-hexes
+  ---
+  duration_ms: 0.064876
+  type: 'test'
+  ...
+# Subtest: combatHexes-recorded-hex-merged-with-legacy-count-takes-the-max
+ok 252 - combatHexes-recorded-hex-merged-with-legacy-count-takes-the-max
+  ---
+  duration_ms: 0.082517
+  type: 'test'
+  ...
+# Subtest: combatSlot-two-parties-one-each-side-on-the-center-row
+ok 253 - combatSlot-two-parties-one-each-side-on-the-center-row
+  ---
+  duration_ms: 0.077731
+  type: 'test'
+  ...
+# Subtest: combatSlot-four-parties-are-two-two-non-overlapping-and-symmetric
+ok 254 - combatSlot-four-parties-are-two-two-non-overlapping-and-symmetric
+  ---
+  duration_ms: 0.065617
+  type: 'test'
+  ...
+# Subtest: combatSlot-odd-count-puts-the-surplus-party-on-the-left
+ok 255 - combatSlot-odd-count-puts-the-surplus-party-on-the-left
+  ---
+  duration_ms: 0.06068
+  type: 'test'
+  ...
+# Subtest: combatIcon-sits-at-the-hex-center-and-its-font-is-visible-when-layout-is-on
+ok 256 - combatIcon-sits-at-the-hex-center-and-its-font-is-visible-when-layout-is-on
+  ---
+  duration_ms: 0.056024
+  type: 'test'
+  ...
+# Subtest: combatLayoutEnabled-gates-the-special-layout-on-screen-cell-height
+ok 257 - combatLayoutEnabled-gates-the-special-layout-on-screen-cell-height
+  ---
+  duration_ms: 0.036714
+  type: 'test'
+  ...
+# Subtest: renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates
+ok 258 - renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates
+  ---
+  duration_ms: 0.301372
+  type: 'test'
+  ...
+# Subtest: unit-panel-has-detach-and-attach-formation-controls-that-are-wired
+ok 259 - unit-panel-has-detach-and-attach-formation-controls-that-are-wired
+  ---
+  duration_ms: 2.126765
+  type: 'test'
+  ...
+# Subtest: attach-formation-button-disabled-follows-the-selected-units-parent
+ok 260 - attach-formation-button-disabled-follows-the-selected-units-parent
+  ---
+  duration_ms: 0.359678
+  type: 'test'
+  ...
+# Subtest: formation-buttons-pass-through-the-server-reason-without-a-second-truth
+ok 261 - formation-buttons-pass-through-the-server-reason-without-a-second-truth
+  ---
+  duration_ms: 0.54484
+  type: 'test'
+  ...
+# Subtest: markerLabel-shows-the-army-name-times-member-count-and-truncates-overlong-names
+ok 262 - markerLabel-shows-the-army-name-times-member-count-and-truncates-overlong-names
+  ---
+  duration_ms: 0.104924
+  type: 'test'
+  ...
+# Subtest: renderer-marker-text-is-the-army-name-not-a-unit-short-id
+ok 263 - renderer-marker-text-is-the-army-name-not-a-unit-short-id
+  ---
+  duration_ms: 0.339691
+  type: 'test'
+  ...
+# Subtest: buildTree-carries-the-formation-fields-verbatim
+ok 264 - buildTree-carries-the-formation-fields-verbatim
+  ---
+  duration_ms: 0.078405
+  type: 'test'
+  ...
+# Subtest: buildTree-defaults-the-formation-fields-when-the-server-does-not-send-them
+ok 265 - buildTree-defaults-the-formation-fields-when-the-server-does-not-send-them
+  ---
+  duration_ms: 0.03837
+  type: 'test'
+  ...
+# Subtest: terrainDimAlpha-is-nonzero-only-in-region-modes
+ok 266 - terrainDimAlpha-is-nonzero-only-in-region-modes
+  ---
+  duration_ms: 0.772872
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-painted-after-terrain-and-before-highlights
+ok 267 - terrain-dim-is-painted-after-terrain-and-before-highlights
+  ---
+  duration_ms: 0.349915
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-a-full-canvas-dark-scrim
+ok 268 - terrain-dim-is-a-full-canvas-dark-scrim
+  ---
+  duration_ms: 0.263581
+  type: 'test'
+  ...
+# Subtest: pixel-sampling-hook-is-exposed-for-color-level-evidence
+ok 269 - pixel-sampling-hook-is-exposed-for-color-level-evidence
+  ---
+  duration_ms: 0.549845
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-uses-centroid-and-sqrt-font
+ok 270 - regionLabelLayout-uses-centroid-and-sqrt-font
+  ---
+  duration_ms: 0.176433
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+ok 271 - regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+  ---
+  duration_ms: 0.063959
+  type: 'test'
+  ...
+# Subtest: region-name-draws-both-stroke-and-fill-with-zoom-guard
+ok 272 - region-name-draws-both-stroke-and-fill-with-zoom-guard
+  ---
+  duration_ms: 0.276709
+  type: 'test'
+  ...
+# Subtest: regionNamePlan-culls-by-viewport-like-hex-rendering
+ok 273 - regionNamePlan-culls-by-viewport-like-hex-rendering
+  ---
+  duration_ms: 0.203552
+  type: 'test'
+  ...
+# Subtest: region-names-are-actually-invoked-in-render-order
+ok 274 - region-names-are-actually-invoked-in-render-order
+  ---
+  duration_ms: 0.333339
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-wired-and-persisted
+ok 275 - region-name-toggle-is-wired-and-persisted
+  ---
+  duration_ms: 0.517706
+  type: 'test'
+  ...
+# Subtest: regionTag-keeps-null-and-string-verbatim
+ok 276 - regionTag-keeps-null-and-string-verbatim
+  ---
+  duration_ms: 0.100784
+  type: 'test'
+  ...
+# Subtest: single-plan-brightens-focus-and-fades-only-same-tag
+ok 277 - single-plan-brightens-focus-and-fades-only-same-tag
+  ---
+  duration_ms: 0.307906
+  type: 'test'
+  ...
+# Subtest: single-focus-alpha-is-higher-than-tag-group-alpha
+ok 278 - single-focus-alpha-is-higher-than-tag-group-alpha
+  ---
+  duration_ms: 0.099756
+  type: 'test'
+  ...
+# Subtest: tag-group-plan-is-unchanged
+ok 279 - tag-group-plan-is-unchanged
+  ---
+  duration_ms: 0.118305
+  type: 'test'
+  ...
+# Subtest: setHighlightRegions-infers-kind-and-honours-explicit-kind
+ok 280 - setHighlightRegions-infers-kind-and-honours-explicit-kind
+  ---
+  duration_ms: 0.133219
+  type: 'test'
+  ...
+# Subtest: topRegionId-picks-the-definition-order-last-not-the-lexicographic-max
+ok 281 - topRegionId-picks-the-definition-order-last-not-the-lexicographic-max
+  ---
+  duration_ms: 0.060447
+  type: 'test'
+  ...
+# Subtest: sources-split-single-vs-group-at-the-three-call-sites
+ok 282 - sources-split-single-vs-group-at-the-three-call-sites
+  ---
+  duration_ms: 0.295863
+  type: 'test'
+  ...
+# Subtest: regionViewDebug-exposes-kind-and-both-alphas
+ok 283 - regionViewDebug-exposes-kind-and-both-alphas
+  ---
+  duration_ms: 0.253068
+  type: 'test'
+  ...
+# Subtest: loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+ok 284 - loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+  ---
+  duration_ms: 0.037035
+  type: 'test'
+  ...
+# Subtest: right-panel-has-data-modes-and-never-shows-in-view-mode
+ok 285 - right-panel-has-data-modes-and-never-shows-in-view-mode
+  ---
+  duration_ms: 0.306298
+  type: 'test'
+  ...
+# Subtest: side-columns-have-a-usable-stable-width
+ok 286 - side-columns-have-a-usable-stable-width
+  ---
+  duration_ms: 0.242081
+  type: 'test'
+  ...
+# Subtest: kv-value-column-is-not-squeezed-to-one-character
+ok 287 - kv-value-column-is-not-squeezed-to-one-character
+  ---
+  duration_ms: 0.125559
+  type: 'test'
+  ...
+# Subtest: region-names-only-show-in-the-two-region-modes
+ok 288 - region-names-only-show-in-the-two-region-modes
+  ---
+  duration_ms: 0.050297
+  type: 'test'
+  ...
+# Subtest: region-name-paint-is-gated-by-mode
+ok 289 - region-name-paint-is-gated-by-mode
+  ---
+  duration_ms: 0.252738
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+ok 290 - region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+  ---
+  duration_ms: 0.578298
+  type: 'test'
+  ...
+# Subtest: api.js-declares-exactly-the-allowed-write-endpoints
+ok 291 - api.js-declares-exactly-the-allowed-write-endpoints
+  ---
+  duration_ms: 0.798625
+  type: 'test'
+  ...
+# Subtest: api.js-exports-the-command-and-approval-write-functions
+ok 292 - api.js-exports-the-command-and-approval-write-functions
+  ---
+  duration_ms: 1.526913
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 293 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 2.392386
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 294 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.215238
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 295 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.181979
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 296 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 1.409027
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 297 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.155741
+  type: 'test'
+  ...
+1..297
+# tests 297
+# suites 0
+# pass 297
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 148.639691
+[frontend-gate] OK tests=297 pass=297 fail=0
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  0.445 s]
+[INFO] UtilSimos .......................................... SUCCESS [  0.223 s]
+[INFO] MapSimos ........................................... SUCCESS [  0.030 s]
+[INFO] ActorApiSimos ...................................... SUCCESS [  0.018 s]
+[INFO] EconomyApiSimos .................................... SUCCESS [  0.022 s]
+[INFO] SocialSimos ........................................ SUCCESS [  0.027 s]
+[INFO] UnitSimos .......................................... SUCCESS [  0.022 s]
+[INFO] CoreSimos .......................................... SUCCESS [  0.044 s]
+[INFO] SDSimos ............................................ SUCCESS [  0.022 s]
+[INFO] ActorSimos ......................................... SUCCESS [  0.021 s]
+[INFO] EconomySimos ....................................... SUCCESS [  0.017 s]
+[INFO] SimosApp ........................................... SUCCESS [  0.966 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  1.936 s
+[INFO] Finished at: 2026-09-26T21:48:04+08:00
+[INFO] ------------------------------------------------------------------------
