@@ -83,7 +83,8 @@ import java.util.Set;
  *       ProductionSettlement}）—— actor 受方走产权条目、**cohort 受方落消费行**（过渡形态，阶段 6 换成 {@code
  *       ConsumptionReceipt}）—— ★ 解析不到行的那一笔**留在 operator**（{@link #deliverCohortIntake}）。 ★ **旧口径的
  *       {@link AllocationRule.Split} 本阶段起不由结算读取**（载荷/编码/往返全不动）：它已是**死数据**， 删它是另一件事（计划 Review Focus
- *       ①）。
+ *       ①）。★ <b>E24（2026-09-26 裁定）</b>：cohort 受方落<b>哪些行</b>由劳动侧的配额表定池（{@link #receiverIndustriesOf}
+ *       ⇒ {@link #classRowsOfCohort}）—— 城市格上"同格同阶层但没干这份活的那一池人"不再分到。
  *   <li>**计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：全部债务按 {@code principal × ratePerMillePerCycle
  *       ÷ 1000} 计**一次**、**并入本金**（纯数学：不搬运粮、**不动任何库存**），同额记入**债务人**本行流水的 {@code interestDue} —— 见
  *       {@link #chargeInterest}。★ **偿还行为不做**（它要"有粮才还"的判断，属 V7+）。
@@ -475,6 +476,10 @@ public final class EconomySettlement {
     //   再逐产业取用 —— 产业 id 与 actor id 的对应关系由 EconomyData 的构造期守卫判死
     //   （产业型主体必须指名已存在的产业、非产业型主体不得与产业 id 撞名）。
     Map<String, Long> laborByActor = laborByActor(allocations);
+    // ★★ **E24：受方产业集** —— 与每个产业"共用劳动批次"的那些产业（含它自己），见 {@link #receiverIndustriesOf}。
+    //   一次算好（O(配额条数)），逐产业取用：cohort 入账要落的是**真出了这份劳动的那批人住的行**，
+    //   而"那批人住在哪些行"只有配额表说得出来（同格的农业行与作坊行同阶层 ⇒ 只按 (格, 阶层) 扫会分错池）。
+    Map<IndustryId, Set<IndustryId>> receiverIndustries = receiverIndustriesOf(allocations);
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
       // ★ 新一轮周期的第一天：progressDays 归 0（创世亦然）⇒ 该产业各行流水**整行从 0 重记**（§八.5）。
@@ -499,7 +504,15 @@ public final class EconomySettlement {
       //   异常穿出协调器的 simulateWorld ⇒ **整条推进 revision 失败**。
       if (progressed >= industry.cycleDays()) {
         // ── 周期末：产出 → 产权条目 + 关系规则入账 —— 再算饿死（入账不受死亡影响，本期产出照分给幸存者）──
-        harvest(industry, rows, keys, cycledLabor, income, base.relations(), ledger);
+        harvest(
+            industry,
+            rows,
+            keys,
+            cycledLabor,
+            income,
+            base.relations(),
+            receiverIndustries.getOrDefault(id, Set.of(id)),
+            ledger);
         long populationBefore = 0L;
         for (ClassKey key : keys) {
           populationBefore += rows.get(key).population();
@@ -1413,6 +1426,7 @@ public final class EconomySettlement {
    *      · 毛产 / 损耗 → ledger（I4.2 的 ΣOutput / ΣLoss）
    *      · **净产 → operator 的产权条目**（+net 一条；★ 产出离开 ClassRow 的**唯一去处**）
    * ③ 按 relation 结算（{@link ProductionSettlement}）：转出/收入 → 产权条目，cohort 入账 → **就地落到消费行**
+   *      （落谁的行由 {@link #receiverIndustriesOf} 定：**真出了这份劳动的那批人住的产业** —— E24）
    * ④ 解析不到行的 cohort 入账 ⇒ **留在 operator**（补一条 +unresolved：转出那一条恒产生，见 E17）
    * </pre>
    *
@@ -1429,6 +1443,8 @@ public final class EconomySettlement {
    *
    * @param cycledLabor 本周期累计实际劳动（千分劳动·日）；`/cycleDays` 得**平均每日实际劳动**
    * @param relations 生产关系表（键 = 产业 id；缺键 ⇒ 无规则）
+   * @param receivers **受方产业集**（{@link #receiverIndustriesOf} 里本产业那一项；缺键 ⇒ {@code {本产业}}）： cohort
+   *     入账只落这些产业的行的 —— E24 的收口，见 {@link #classRowsOfCohort}
    * @param ledger 当天的发生额累加器（毛产 / 损耗 / 产权条目 / cohort 入账 / 货币待办都进这里）
    */
   private static void harvest(
@@ -1438,6 +1454,7 @@ public final class EconomySettlement {
       long cycledLabor,
       LinkedHashMap<ClassKey, Map<CommodityId, Long>> income,
       Map<IndustryId, ProductionRelation> relations,
+      Set<IndustryId> receivers,
       ProductionLedger.Accumulator ledger) {
     ProductionRecipe recipe = industry.recipe();
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
@@ -1495,7 +1512,7 @@ public final class EconomySettlement {
     }
     for (Map.Entry<CohortKey, Map<CommodityId, Long>> intake : outcome.cohortIntake().entrySet()) {
       deliverCohortIntake(
-          rows, income, operator, location, intake.getKey(), intake.getValue(), ledger);
+          rows, income, operator, location, receivers, intake.getKey(), intake.getValue(), ledger);
     }
   }
 
@@ -1503,7 +1520,7 @@ public final class EconomySettlement {
    * ★★ <b>cohort 入账 → 消费行</b>（R5 ③ 的过渡形态；阶段 6 把它换成 {@code ConsumptionReceipt}）。
    *
    * <pre>
-   * 解析（{@link #classRowsOfCohort}，唯一拼写点）：同格 + 同 stratum + population &gt; 0
+   * 解析（{@link #classRowsOfCohort}，唯一拼写点）：**受方产业集里**的 + 同格 + 同 stratum + population &gt; 0
    * 分派：按人口比例（{@link #allocate} ⇒ Σparts == 入账额，残差不丢）
    * 落点：行的 goods += parts[i]；**income += parts[i]**（merge，不 put —— 同格两个产业给同一个 cohort 入账时要累加）
    * 解析不到行 ⇒ **留在 operator**（补一条 +unresolved）
@@ -1512,16 +1529,21 @@ public final class EconomySettlement {
    * <p>★★ <b>为什么"解析不到就补一条 +unresolved"而不是"少产生一条 −paid"</b>（E17）：付方的转出条目**恒产生** —— 否则 operator
    * 侧不扣，同一份产出在账上就有了两份（I4.1/I4.2 当场开不了账）。于是"留在 operator"必须表达成 <b>一笔对 operator 的等额转入</b>：{@code −paid
    * + unresolved == 0}，语义与"这一笔没付出去"逐值相同。
+   *
+   * <p>★★ <b>{@code receivers} 是 E24 加进来的那一维</b>（见 {@link #classRowsOfCohort}）：受方身份由 {@code (格,
+   * 阶层)} 升级成「{@code (格, 阶层)} ∩ <b>真出了这份劳动的那批人住的产业</b>」。★ 它**只换受方行、不改金额**：入账额仍由 {@link
+   * ProductionSettlement} 按规则算出（本方法只负责"这些毫单位落到谁的行上"）⇒ 逐产业的入账**总量守恒**，变的只是行间的分布。
    */
   private static void deliverCohortIntake(
       LinkedHashMap<ClassKey, ClassRow> rows,
       LinkedHashMap<ClassKey, Map<CommodityId, Long>> income,
       ActorRef operator,
       HexCoord location,
+      Set<IndustryId> receivers,
       CohortKey cohort,
       Map<CommodityId, Long> intake,
       ProductionLedger.Accumulator ledger) {
-    List<ClassKey> receivers = classRowsOfCohort(rows, cohort);
+    List<ClassKey> receiverRows = classRowsOfCohort(rows, cohort, receivers);
     for (Map.Entry<CommodityId, Long> entry : intake.entrySet()) {
       CommodityId commodity = entry.getKey();
       long amount = entry.getValue();
@@ -1529,14 +1551,14 @@ public final class EconomySettlement {
         continue;
       }
       ledger.addIntake(cohort, commodity, amount);
-      long[] populations = new long[receivers.size()];
-      for (int i = 0; i < receivers.size(); i++) {
-        populations[i] = rows.get(receivers.get(i)).population();
+      long[] populations = new long[receiverRows.size()];
+      for (int i = 0; i < receiverRows.size(); i++) {
+        populations[i] = rows.get(receiverRows.get(i)).population();
       }
       long[] parts = allocate(amount, populations); // Σparts == amount（分母 = Σ人口）
       long delivered = 0L;
-      for (int i = 0; i < receivers.size(); i++) {
-        ClassKey key = receivers.get(i);
+      for (int i = 0; i < receiverRows.size(); i++) {
+        ClassKey key = receiverRows.get(i);
         rows.put(
             key,
             withGoods(
@@ -1554,12 +1576,22 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>R7：{@code CohortKey → 消费行}的解析 —— 唯一拼写点</b>（计划 R7）：<b>同格 + 同 {@code stratum} + {@code
-   * population > 0}</b>，序按（产业 id、槽位 id）字典序（可复现）。
+   * ★★ <b>R7 + E24：{@code CohortKey → 消费行}的解析 —— 唯一拼写点</b>（计划 R7；E24 修正口径）： <b>受方产业集内 + 同格 + 同
+   * {@code stratum} + {@code population > 0}</b>，序按（产业 id、槽位 id）字典序（可复现）。
    *
-   * <p>★★ <b>{@code population > 0} 是硬条件，它承担 V3（I4.3）</b>：{@code weave@hex|*} 那四行<b>人口恒为 0</b>
+   * <p>★★ <b>E24 的修正（真缺陷，2026-09-26 裁定）</b>：改前第三、四项是"<b>同格 + 同 stratum</b>"—— <b>丢掉了 rural/urban
+   * 那一维</b>。而真档的城市格上，同一个 {@code (格, 阶层)} 上有 <b>两池人</b>： 农村批次（{@code rural:0_0:*}，住在 {@code
+   * farm@0_0|*} 行里）与城镇批次（{@code urban:c-0_0:*}，住在 {@code craft@0_0|*} 行里） ⇒ 只按"同格 +
+   * 同阶层"扫，**没织布的城市行也按人口分到一份布** （实测：城市行 1,482,085 毫，其中 weave 那份里分走 1,351,000 毫 —— 而它们一件也没织）。
+   *
+   * <p>★★ <b>新口径：受方 = 真出了这份劳动的那批人住的行</b>，而"那批人住在哪些行"<b>只有配额表说得出来</b> （{@link
+   * LaborAllocation#group()} = 批次的稳定身份；{@link #receiverIndustriesOf} 把"批次 → 它供给的产业" 摊成"产业 →
+   * 与它共用批次的产业"）。★ 这与 {@link #applyPopulationChange} ① 的"<b>它在经济侧的'人'住在它供给的那些产业的行里</b>"
+   * 是<b>同一条事实</b>，不另造机制。⇒ 家庭纺织那一份只落 <b>农业行</b>（农村批次也供给农业），作坊那一份只落 <b>作坊行</b>（城镇批次只供给作坊）。
+   *
+   * <p>★★ <b>{@code population > 0} 仍是硬条件，它承担 V3（I4.3）</b>：{@code weave@hex|*} 那四行<b>人口恒为 0</b>
    * （{@code EconomySeeder.householdWeaving} 明写"它的阶层行不携带人口"）⇒ 它们<b>永远不是</b> cohort 受方 ⇒ 织造的布
-   * 不再落它们，而落<b>织布的人</b>（同格的 {@code farm@hex|<阶层>} 行）。★ 少写这一条 ⇒ 本仓的 I4.3 判据当场失效（ 而账面完全看不出来）。
+   * 落<b>织布的人</b>（同格的 {@code farm@hex|<阶层>} 行）。★ 少写这一条 ⇒ 本仓的 I4.3 判据当场失效（ 而账面完全看不出来）。
    *
    * <p>★ <b>解析不到 ⇒ 空表</b>（调用方据此把那一笔留在 operator）：某个阶层人口为 0 是**合法状态**（ {@code splitByShares} 会造出 0
    * 人的槽位），不是坏数据 —— 故这里不抛。
@@ -1567,15 +1599,19 @@ public final class EconomySettlement {
    * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf}）：id 里没有格键的行<b>永远不匹配</b>
    * （它没有"住在哪一格"这个事实，不许拿 {@code (0,0)} 顶替）。
    *
-   * <p>★★ <b>I4.3 的实测（真播种器三格世界：平原 14,806 / 低丘 6,000 / 平原 9,000 + 一座城，推一个周期）</b>： {@code
+   * <p>★★ <b>I4.3 + E24 的实测（真播种器三格世界：平原 14,806 / 低丘 6,000 / 平原 9,000 + 一座城，推一个周期）</b>： {@code
    * weave@hex|*} 的 <b>12 行全部人口 0、布逐行 0</b>（它们的 {@code laborMilli} 同样恒 0），而同一份账里三个 {@code
-   * HOUSEHOLD:weave@hex|<格>} 的 operator 账上各有布（5,403,872 / 3,911,043 / 2,610,272），布的同格落点是 {@code
-   * farm@hex|*} 四行（逐行正数，如 (0,0) 的 6,138,836 / 4,523,060 / 1,615,481 / 71,764）。 ★ 有城的格（上面那个
-   * (0,0)）里，同格**城市行**属同一 cohort ⇒ 它们按人口分到一份（实测 259,886 / 12,609,030）—— 这是"cohort = (格,
-   * 阶层)"的既定口径（{@link io.mosire.simos.economy.api.cohort.CohortKey} 本阶段**不带产业维度**，见裁定 E6），
-   * <b>不是</b>布又回到了 {@code weave} 行（那四行仍是 0）。
+   * HOUSEHOLD:weave@hex|<格>} 的 operator 账上各有布（5,403,872 / 3,911,043 / 2,610,272）。★ 布的同格落点：<b>E24
+   * 之前</b> 是 {@code farm@hex|*} <b>与城市行一起</b>按人口分（(0,0) 的 farm 四行 6,138,836 / 4,523,060 / 1,615,481
+   * / 71,764，Σ = 12,349,141；城市行 Σ = 1,482,085 —— 它们<b>一件布也没织</b>）；<b>E24 之后</b>那一份只落 {@code
+   * farm@0_0|*} 四行 6,268,312 / 4,618,312 / 1,649,112 / 73,292（Σ = <b>12,609,028</b> = 该产业 cohort
+   * 入账的全额 12,609,030 减去两处取整），城市行<b>一分不进</b>（它们的布只剩作坊自己的 600‰ 实物工资，见 T6b 报告）。
+   *
+   * @param receivers <b>受方产业集</b>（{@link #receiverIndustriesOf} 的结果；调用方保证含本产业）：只有这些产业的行才是受方 ⇒
+   *     城市格上"没干这份活的那一池人"的行<b>不在里面</b>
    */
-  static List<ClassKey> classRowsOfCohort(Map<ClassKey, ClassRow> rows, CohortKey cohort) {
+  static List<ClassKey> classRowsOfCohort(
+      Map<ClassKey, ClassRow> rows, CohortKey cohort, Set<IndustryId> receivers) {
     List<ClassKey> matched = new ArrayList<>();
     for (Map.Entry<ClassKey, ClassRow> entry : rows.entrySet()) {
       ClassRow row = entry.getValue();
@@ -1585,6 +1621,9 @@ public final class EconomySettlement {
       ClassKey key = entry.getKey();
       if (!key.slot().equals(cohort.stratum())) {
         continue;
+      }
+      if (!receivers.contains(key.industry())) {
+        continue; // ★★ E24：受方身份的另一维 —— 只认"真出了这份劳动的那批人住的产业"的行
       }
       Optional<HexCoord> residence = IndustryHexKeys.hexKeyOf(key.industry()).map(HexCoord::parse);
       if (residence.isEmpty() || !residence.get().equals(cohort.residence())) {
@@ -1610,6 +1649,14 @@ public final class EconomySettlement {
    *
    * <p>★ 只放**非零**的行：{@code ProductionSettlement} 的 {@code laborOf} 查不到即 0，而 {@code Σ劳动} 是分母 —— 塞 0
    * 进去不改变任何一个数，只会把表弄脏（{@code weave@hex|*} 那四行正是 0）。
+   *
+   * <p>★★ <b>如实记的一条相邻边界（E24 只改了受方行，没改这一侧）</b>：本方法取的是"<b>本格</b>同槽位的全部行"， 故在城市格上它把
+   * <b>农村行与城镇行</b>的劳动<b>并进同一个</b> {@code (格, 阶层)}。<b>受方行</b>那一侧已由 E24 分开（{@link
+   * #classRowsOfCohort}）， 于是"这一格的产出在四个阶层之间怎么分"仍受另一池人的劳动<b>参与计权</b>。★ 量级（真档一格 14,806 农村 + 1,777
+   * 城镇，(0,0)， 按 {@code laborMilli × 投入率 ÷ 1000 × 120} 逐行算）：{@code Σ劳动} = <b>992,633,280</b>（其中城镇那份
+   * <b>106,335,360</b>），只算农村则是 <b>886,297,920</b> ⇒ 四个阶层的份额差 <= <b>0.04‰</b>
+   * （两池的年龄性别构成相近，故这一维在本档上几乎不动数）。★ 它不在 E24 的裁项里（那一条说的是"受方解析"），故<b>未改</b>、如实记在这里： 要收口就得让本方法也读 {@link
+   * #receiverIndustriesOf}（那会动到 {@code LABOR_AMOUNT} 的分子/分母 ⇒ 归到"改口径"那一类，要有裁定）。
    */
   static Map<CohortKey, Long> laborOfCohort(
       Map<ClassKey, ClassRow> rows, HexCoord location, long cycleDays) {
@@ -1870,6 +1917,51 @@ public final class EconomySettlement {
       byActor.merge(allocation.actor().id(), allocation.laborMilli(), Long::sum);
     }
     return byActor;
+  }
+
+  /**
+   * ★★ <b>受方产业集（裁定 E24）：{@code 产业 → 与它共用劳动批次的产业}（含它自己）</b>。
+   *
+   * <pre>
+   * ① 批次 → 它供给的产业（本方法的 industriesOf；与 {@link #applyPopulationChange} ① **同一条事实**）
+   * ② 产业 I → ⋃<sub>g ∈ G(I)</sub> industriesOf(g)   （G(I) = 配额表里 actor 是 I 的那些批次的 group）
+   * </pre>
+   *
+   * <p>★★ <b>为什么需要它</b>（E24 的收口，见 {@link #classRowsOfCohort}）：受方行是"<b>真出了这份劳动的那批人住的行</b>"，
+   * 而"那批人住在哪些行"这件事<b>只有配额表说得出来</b> —— 真档里农村批次（{@code rural:0_0:*}）同时供给 {@code farm@0_0} 与 {@code
+   * weave@0_0}，人住在 <b>农业行</b>里（织机行人口恒 0）；城镇批次（{@code urban:c-0_0:*}）只供给 {@code
+   * craft@0_0}，人住在<b>作坊行</b>里。两池在同一个城市格上 ⇒ "同格 + 同阶层"分不开它们（这正是 E24 的病根）。
+   *
+   * <p>★ <b>{@code industriesOf} 与 {@code applyPopulationChange} 逐字同款</b>（同样是"批次 → 它供给的产业"）：
+   * 不另造一套机制 —— 那条事实已经在人口回写里被用着，这里只是问它第二个问题。
+   *
+   * <p>★ <b>非产业型的 actor id 照收</b>（家户的 {@code "0_0"} 那类）：它不进任何行的匹配（行键的 {@code industry} 是产业
+   * id），留着是为了与配额表逐条对齐，不是"看起来在记、其实永远不被读"（它是集合的成员，只是匹配不上）。
+   *
+   * <p>★ <b>缺键的产业</b>（一条配额都没有）：调用方给 {@code Set.of(该产业)}（见 {@link #harvest}）—— "没有配额"等于
+   * "没有共用批次这条事实"，那时唯一说得出的受方就是它自己的行。
+   */
+  static Map<IndustryId, Set<IndustryId>> receiverIndustriesOf(
+      Map<LaborAllocationId, LaborAllocation> allocations) {
+    Map<PeopleLotId, List<IndustryId>> industriesOf = new LinkedHashMap<>();
+    for (LaborAllocation allocation : allocations.values()) {
+      IndustryId industryId = new IndustryId(allocation.actor().id());
+      List<IndustryId> list =
+          industriesOf.computeIfAbsent(allocation.group(), key -> new ArrayList<>());
+      if (!list.contains(industryId)) {
+        list.add(industryId);
+      }
+    }
+    Map<IndustryId, Set<IndustryId>> receivers = new LinkedHashMap<>();
+    for (LaborAllocation allocation : allocations.values()) {
+      Set<IndustryId> shared =
+          receivers.computeIfAbsent(
+              new IndustryId(allocation.actor().id()), key -> new LinkedHashSet<>());
+      for (IndustryId sibling : industriesOf.getOrDefault(allocation.group(), List.of())) {
+        shared.add(sibling);
+      }
+    }
+    return receivers;
   }
 
   /** 该产业的阶层行键，**按槽位 id 字典序**（可复现；也是最大余数法"同余数按下标序"的那个下标序）。 */

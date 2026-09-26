@@ -34,6 +34,11 @@ import io.mosire.simos.map.hex.HexCoord;
  * <p>★ <b>身份键的粒度如实记</b>（裁定 R7）：{@code (hex, 阶层)} 在<b>城市格</b>上会把「农村贫农」与「城镇贫农」并成<b>一个</b>
  * cohort（它们今天靠 {@code ClassKey} 的产业段区分）—— 这<b>正是</b> R9 那条未合并的身份键的残留，也是 §2.6 目标模型的样子。
  *
+ * <p>★ <b>补注（裁定 E24，2026-09-26）</b>：这一"并成一个 cohort"的残留只影响<b>身份键</b>，不影响<b>受方行</b>了 ——
+ * 落到哪些行由<b>劳动侧</b>定池（{@code LaborAllocation.group} 的批次 → 它供给的产业，见 {@code
+ * EconomySettlement.classRowsOfCohort}）：家庭纺织的 700‰ 只落<b>农业行</b>，作坊的 600‰ 只落<b>作坊行</b>。 ★
+ * 本类型的<b>形状与规范串一字未改</b>（阶段 6 的 receipt 表仍按它键）。
+ *
  * @param residence 居住格（{@code HexCoord} 是身份；「某人在哪一格」不影响它）
  * @param stratum 社会阶层（**产业无关**的人口身份，spec §2.6）
  */

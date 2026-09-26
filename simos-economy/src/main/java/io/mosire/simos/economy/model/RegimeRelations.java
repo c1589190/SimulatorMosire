@@ -73,6 +73,11 @@ import java.util.Optional;
  * operator。这也是 {@code weave@hex|*} 四行（人口恒为 0）拿不到布、而<b>真正织布的人</b>（{@code
  * farm@hex|<阶层>}）拿到布的原因（I4.3/V3）。
  *
+ * <p>★ <b>补注（裁定 E24，2026-09-26）</b>：那四条规则的<b>受方行</b>不是"同格同阶层的全部行"，而是"<b>真出了这份劳动的那批人住的行</b>" ——
+ * 由配额表（{@code LaborAllocation.group}）定池，见 {@code
+ * EconomySettlement.classRowsOfCohort}。于是城市格上：家庭纺织那一份只落 <b>农业行</b>（农村批次供农业 +
+ * 纺织），作坊那一份只落<b>作坊行</b>（城镇批次只供作坊）；本类<b>一字未改</b>（改的是行的解析，不是规则）。
+ *
  * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf} 是唯一拼写点）：{@link CohortKey#residence()} =
  * 该产业所在的格。★ <b>拿不到格键 ⇒ 抛</b>（理由：关系必须有地点）—— 静默拿 {@code (0,0)} 顶替会把所有格的关系 都指到原点那一格上。
  *
