@@ -1,0 +1,74 @@
+<![CDATA[--- I4.x 真档世界（第 120 天 = 关账日）
+  row farm@0_0|poor_peasant pop=6663 goods={grain=71059104, fiber=18030360, cloth=6268312}
+  row farm@0_0|middle_peasant pop=5182 goods={grain=52354368, cloth=4618312}
+  row farm@0_0|rich_peasant pop=2221 goods={grain=18694656, cloth=1649112}
+  row farm@0_0|landlord pop=740 goods={grain=60587558, cloth=73292}
+  row craft@0_0|poor_peasant pop=800 goods={cloth=607590}
+  row craft@0_0|middle_peasant pop=622 goods={cloth=447655}
+  row craft@0_0|rich_peasant pop=266 goods={cloth=159849}
+  row craft@0_0|landlord pop=89 goods={grain=89000, cloth=7104}
+  acct ESTATE:farm@0_0@0_0 {grain=0, fiber=0}
+  acct HOUSEHOLD:weave@0_0@0_0 {cloth=5403872}
+  acct WORKSHOP:craft@0_0@0_0 {cloth=814802, tool=169750}
+[I4.3] weaveRowsCloth=0
+[I4.3] farmRowsCloth=12609028
+[I4.3] craftRowsCloth=1222198
+[I4.3] operatorCloth=6218674
+[I4.3] operatorGrain=0
+[I4.1] actor=ESTATE:farm@0_0 commodity=grain deltaBooks=0 net=201339020 paid=201339020 (net-paid)=0 ok=true
+[I4.1] actor=ESTATE:farm@0_0 commodity=fiber deltaBooks=0 net=18030360 paid=18030360 (net-paid)=0 ok=true
+[I4.1] actor=HOUSEHOLD:weave@0_0 commodity=cloth deltaBooks=5403872 net=18012900 paid=12609028 (net-paid)=5403872 ok=true
+[I4.1] actor=WORKSHOP:craft@0_0 commodity=cloth deltaBooks=814802 net=2037000 paid=1222198 (net-paid)=814802 ok=true
+[I4.1] actor=WORKSHOP:craft@0_0 commodity=tool deltaBooks=169750 net=169750 paid=0 (net-paid)=169750 ok=true
+[I4.1] checked=15 okCount=15
+[I4.2] commodity=grain dRow=112966354 dActor=0 finalConsumption=63588666 (consumed=88372666 inputs=24784000 transferOut=0 income=201339020 cohortIntake=201339020) loss=6226980 output=207566000 left=182782000 right=182782000 residual=0
+[I4.2] commodity=fiber dRow=-2657640 dActor=0 finalConsumption=0 (consumed=20688000 inputs=20688000 transferOut=0 income=18030360 cohortIntake=18030360) loss=557640 output=18588000 left=-2100000 right=-2100000 residual=0
+[I4.2] commodity=cloth dRow=13831226 dActor=6218674 finalConsumption=0 (consumed=0 inputs=0 transferOut=0 income=13831226 cohortIntake=13831226) loss=620100 output=20670000 left=20670000 right=20670000 residual=0
+[I4.2] commodity=tool dRow=0 dActor=169750 finalConsumption=0 (consumed=0 inputs=0 transferOut=0 income=0 cohortIntake=0) loss=5250 output=175000 left=175000 right=175000 residual=0
+[I4.2] commodity=iron dRow=-350000 dActor=0 finalConsumption=0 (consumed=350000 inputs=350000 transferOut=0 income=0 cohortIntake=0) loss=0 output=0 left=-350000 right=-350000 residual=0
+[I5.1] TENANT farmRowsGrain=21356666 farmRowsCloth=12609028 operatorGrain=181339020 operatorCloth=0
+[I5.1] FEUDAL farmRowsGrain=202695686 farmRowsCloth=12609028 operatorGrain=0 operatorCloth=0
+[I5.1] distributionsDiffer=true
+--- I5.1 TENANT rows
+  row farm@0_0|poor_peasant pop=6663 goods={cloth=6268312}
+  row farm@0_0|middle_peasant pop=5182 goods={cloth=4618312}
+  row farm@0_0|rich_peasant pop=2221 goods={cloth=1649112}
+  row farm@0_0|landlord pop=740 goods={grain=21356666, cloth=73292}
+  row craft@0_0|poor_peasant pop=800 goods={cloth=607590}
+  row craft@0_0|middle_peasant pop=622 goods={cloth=447655}
+  row craft@0_0|rich_peasant pop=266 goods={cloth=159849}
+  row craft@0_0|landlord pop=89 goods={grain=89000, cloth=7104}
+  acct ESTATE:farm@0_0@0_0 {grain=181339020, fiber=18030360}
+  acct HOUSEHOLD:weave@0_0@0_0 {cloth=5403872}
+  acct WORKSHOP:craft@0_0@0_0 {cloth=814802, tool=169750}
+--- I5.1 FEUDAL rows
+  row farm@0_0|poor_peasant pop=6663 goods={grain=71059104, fiber=18030360, cloth=6268312}
+  row farm@0_0|middle_peasant pop=5182 goods={grain=52354368, cloth=4618312}
+  row farm@0_0|rich_peasant pop=2221 goods={grain=18694656, cloth=1649112}
+  row farm@0_0|landlord pop=740 goods={grain=60587558, cloth=73292}
+  row craft@0_0|poor_peasant pop=800 goods={cloth=607590}
+  row craft@0_0|middle_peasant pop=622 goods={cloth=447655}
+  row craft@0_0|rich_peasant pop=266 goods={cloth=159849}
+  row craft@0_0|landlord pop=89 goods={grain=89000, cloth=7104}
+  acct ESTATE:farm@0_0@0_0 {grain=0, fiber=0}
+  acct HOUSEHOLD:weave@0_0@0_0 {cloth=5403872}
+  acct WORKSHOP:craft@0_0@0_0 {cloth=814802, tool=169750}
+[I5.2] farmGrossGrain=207566000 farmNetGrain=201339020 lossGrain=6226980 rent30%OfGross=62269800 rent30%OfNet=60401706
+[I5.2] landlordGrainGROSS=60587558 landlordGrainNET=60587558 delta=0 expected30pctOfLoss=1868094
+[I5.2-nosub] (去掉给养那一族 ⇒ 上限不咬合) landlordGrainGROSS=63626466 landlordGrainNET=61758372 delta=1868094 expected30pctOfLoss=1868094 match=true
+--- I5.2 FEUDAL-NET rows
+  row farm@0_0|poor_peasant pop=6663 goods={grain=71059104, fiber=18030360, cloth=6268312}
+  row farm@0_0|middle_peasant pop=5182 goods={grain=52354368, cloth=4618312}
+  row farm@0_0|rich_peasant pop=2221 goods={grain=18694656, cloth=1649112}
+  row farm@0_0|landlord pop=740 goods={grain=60587558, cloth=73292}
+  row craft@0_0|poor_peasant pop=800 goods={cloth=607590}
+  row craft@0_0|middle_peasant pop=622 goods={cloth=447655}
+  row craft@0_0|rich_peasant pop=266 goods={cloth=159849}
+  row craft@0_0|landlord pop=89 goods={grain=89000, cloth=7104}
+  acct ESTATE:farm@0_0@0_0 {grain=0, fiber=0}
+  acct HOUSEHOLD:weave@0_0@0_0 {cloth=5403872}
+  acct WORKSHOP:craft@0_0@0_0 {cloth=814802, tool=169750}
+[I5.3] deferredCount(120天)=4 deferredTypes=[FIXED_MONEY_WAGE] entriesFromMoneyRules=4→货币规则只定义、不结算（待 S2）：FIXED_MONEY_WAGE → ToCohort[cohort=0_0|poor_peasant] 每周期 1000 毫钱（S1 没有 ledger ⇒ 不假装货币结算成功）
+[I5.3] deferredPerCycleExpected=4(四个阶层各一条) deferredDays=120 实际=4
+[I5.4] surplusFirst(10)+gross(20) landlordGrain=122671506 grossFirst(10)+surplus(20) landlordGrain=103990566 differ=true
+]]>

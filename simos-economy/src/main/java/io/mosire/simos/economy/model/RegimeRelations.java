@@ -259,8 +259,18 @@ public final class RegimeRelations {
     //     （{@code EconomyRealScaleClothTest} / {@code PopulationR4Test} / {@code
     // WorldgenInitializeToolTest} 三条
     //     端到端用例当场红——实现时实测到的）。★ 规则本身只**加了一条数据**：不改任何算式的形状。
-    //   ★ 分成率 1000‰ × 四个阶层 cohort（付款上限逐条咬合 ⇒ Σ实付 == 净产，按**劳动量**分给劳动者）：
+    //   ★ 分成率 1000‰ × 四个阶层 cohort（付款上限逐条咬合 ⇒ Σ实付 == 净产）：
     //     副产是"田里长出来的"，留在种地的人手里（地租那一条只对**粮**收，见上）。
+    //   ★★ **本注的一处更正（S1 阶段 4+5 Task 7 实测，2026-09-26）**：原注在此写"按**劳动量**分给劳动者"，
+    //     **那是错的** —— {@code NET_AFTER_INPUTS} 那一档的公式是 {@code net_j × rate ÷ 1000}（{@link
+    //     io.mosire.simos.economy.time.ProductionSettlement} 的公式表），**没有除劳动量那一步**
+    //     （要按劳动量分得用 {@code LABOR_AMOUNT} 那一档）。⇒ 四条规则的表序里 {@code poor_peasant} 在首，
+    //     它一条就拿到 {@code 1000‰ × 净产 == 净产}、把 R6 的上限**用满**，后三条逐值 0。
+    //     真档实测（一格 14,806 人 + 1,777 人的城，第 120 天）：农田纤维净产 18,030,360 **整份落
+    //     {@code farm@0_0|poor_peasant}**、另三行 0。★ 它对判据无影响（这一条的用途是"让同格织机取得到料"，
+    //     任何一行持有都满足取材），故本参数**一字未改**；读数与算式见
+    //     {@code
+    // .superpowers/sdd/2026-09-26-s1-stage45-ownership-and-relations/stage45-readings.md}。
     rules.addAll(
         laborCohorts(
             RuleType.OUTPUT_SHARE,
