@@ -701,7 +701,7 @@ class AssetHoldingTest {
         .as("负余额必须当场抛")
         .isInstanceOf(IllegalArgumentException.class);
     assertThat(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 0L))
-        .as("★ 0 合法：有这份产权，只是数量为 0（与"没有这份产权"是两件事）")
+        .as("★ 0 合法：有这份产权，只是数量为 0（与「没有这份产权」是两件事）")
         .isNotNull();
   }
 }
@@ -802,8 +802,9 @@ class GoodsAccountTest {
 ```
 
 ★ **测试夹具 `empty()`**（Task 5 与 Task 6 共用同一个写法）：一个 private static 方法，
-返回**未激活**的空 `ActorData` —— `new ActorData(Optional.empty(), Map.of(), Map.of(), …)`
-（组件个数按当任务的"增量表"来）。
+返回**未激活**的空 `ActorData`。★ **组件个数按当任务的"增量表"来**：
+Task 5 时是 `new ActorData(Optional.empty(), Map.of(), Map.of())`（meta + actors + holdings），
+Task 6 时再加一个 `Map.of()`（accounts）—— **写成当下真能编译的那一个**，不许照抄带省略号的伪代码。
 
 - [ ] **Step 2-3: 跑红 ⇒ 实现 ⇒ 跑绿**
 
