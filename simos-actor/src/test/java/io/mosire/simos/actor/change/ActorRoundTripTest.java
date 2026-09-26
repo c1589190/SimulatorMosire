@@ -710,6 +710,9 @@ class ActorRoundTripTest {
    * location="b|0_0"}（非法地格），或 {@code owner="ESTATE:a|b"} + {@code location="0_0"}。★
    * <b>后者正是"按最后一个接缝切" 的实现会静默造出来的那个键</b>（{@code ActorRef.parseCanonical("ESTATE:a|b")} 会照收）⇒
    * 这条用例是"按<b>第一个</b> 接缝切"与"按最后一个接缝切"之间的判别力所在：本类的切法把 {@code b|0_0} 交给 {@code HexCoord.parse}，当场抛。
+   *
+   * <p>★★ <b>本条是"按第一个接缝切"这条规则的全部判别力</b> —— 合法的规范串恰有一个接缝， 首个/末个恒同位置 ⇒
+   * <b>删掉本条</b>、把切法改成末个接缝，<b>其余全部用例仍全绿</b> ⇒ <b>规则静默失效</b>（裁定 R-ag：Task 6 的变异体 M-F 实测确认）。
    */
   @Test
   void aGoodsAccountKeyWhoseOwnerIdContainsTheSeparatorFailsLoudly() {

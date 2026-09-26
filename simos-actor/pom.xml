@@ -11,7 +11,7 @@
 
   <artifactId>simos-actor</artifactId>
   <name>ActorSimos</name>
-  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集。此刻已建身份与骨架（Actor / ActorMeta / ActorData / ActorSnapshot / ActorChangeSet + 往返不变式测试），再加上产权表与库存表：ActorData 的组件**恰是** `(meta, actors, holdings, accounts)` 四件。</description>
+  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集 + JSON 编解码（ActorCodec，namespace() = "actor"）。ActorData 的组件**恰是** `(meta, actors, holdings, accounts)` 四件；键类型各自自带"裸 toString() + 单参 parse"配对，codec 的四路键（ActorRef / AssetHoldingKey / GoodsAccountKey / 嵌套的 CommodityId）就靠这条配对过线。</description>
 
   <!-- ★ 依赖面 = actor-api（ActorRef / AssetClassKey——共用契约层）+ util（Snapshot / ChangeSet / FieldDelta / StateRef / SimosTimestamp）
        + **map（HexCoord——Task 5 起）**。
@@ -21,7 +21,11 @@
        ★ **Task 6 起真的要 economy-api**：GoodsAccount.balances 的键是 CommodityId ⇒ 声明它。
          ★ **它不在本模块的 ban 列**：economy-api 是**共用契约层**（稳定 ID），economy 才是同层切片。
          ★ 口径同 R-h：不声明零 import 的依赖，也**不缺席**真 import 的依赖。
-       ★ **不声明 jackson**：本任务的状态类型是 record + Map，零 Jackson 注解、零 import（同裁定 R-j 对 actor-api 的处置）。
+       ★ **Task 7 起真的要 jackson-databind**：ActorCodec 真 import 了 ObjectMapper / SimpleModule /
+         KeyDeserializer（Task 4~6 那句"不声明 jackson"说的是**当时**：状态类型是 record + Map，零 Jackson import）。
+         ★ 口径同 R-h：不声明零 import 的依赖，也**不缺席**真 import 的依赖。版本由父 POM 已 import 的 jackson-bom 提供。
+       ★ 领域类型仍**零 Jackson 注解**：mapper 的装配（含四路键反序列化器）全在 ActorCodec 一个文件里，
+         record / enum 走 Jackson 的默认绑定。
        ★ **不声明 spotbugs-annotations**：本任务的类型没有一处需要 @SuppressFBWarnings
          （只读包装一律写在赋值处，EI_EXPOSE_REP 不报），故不声明一个用不到的类型依赖；
          真需要时再加（在 simos-actor-api / simos-economy 里那条是**预防性**的，本模块不照抄预防性声明）。 -->
@@ -41,6 +45,11 @@
          （见下面 enforcer 的注释）；本切片只吃它的类型，不碰 economy 的结算控制流。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <!-- ★ Task 7 起：ActorCodec 真的 import Jackson（ObjectMapper / SimpleModule / KeyDeserializer /
+         JsonIgnore）。★ 版本由父 POM 已 import 的 jackson-bom 提供，不在此处写版本。 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
