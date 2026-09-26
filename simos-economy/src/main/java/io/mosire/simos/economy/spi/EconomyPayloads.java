@@ -60,7 +60,7 @@ import java.util.Set;
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"poor_peasant","name":"贫农","laborParticipationPerMille":950}]}],
  *    "classes":[{"residence":"rural","slot":"poor_peasant","population":450,"laborMilli":261000,
- *                "participationPerMille":950,"goods":{"grain":2241000},"money":0,"debts":[],
+ *                "participationPerMille":950,"money":0,"debts":[],
  *                "naturalNeeds":{"grain":37350},"effectiveDemand":{}}],
  *    "laborSupply":[{"group":"rural:0_0:MALE:1","period":1,"grossLaborMilli":261000,
  *                    "servedLaborMilli":0,"committedLaborMilli":0}],
@@ -83,6 +83,12 @@ import java.util.Set;
  *       真档里沙漠格的 {@code LAND = 0}、人口不足一厂的格 {@code TOOL = 0} 正是这一形态）。★ <b>逐值允许 0</b> （与 {@code
  *       capacityPerUnit} 的"必须 > 0"性质不同）。
  * </ol>
+ *
+ * <p>★★ <b>H1（2026-09-27，裁定 D3-C/K1）的第四处形状变化：{@code classes[].goods} 键<b>不再接受</b></b> —— 家户的商品库存住在
+ * actor 切片的 {@code GoodsAccount}（键 {@code (HouseholdActors.of(cohort), cohort.hex())}）， economy
+ * 侧只在**会话工作副本**（{@code EconomyDayStepper} 的入参）里读它。★ 与 K3 的 {@code meansOfProduction} 同款理由：
+ * 载荷里留着它而解析器静默忽略 = 创世库存凭空消失（真档表现为第 1 天全员断粮，而载荷看起来完全正常）⇒ <b>给了即抛</b>。 ★ <b>播种那一份要搬</b>：app 的 {@code
+ * HouseholdSeeder} 把它写进该家户 actor 的账户，**不再**写进行载荷。
  *
  * <p>★ <b>默认关系的居住维从哪来</b>：{@code relation} 缺键时按 {@code regime} 推，而 cohort 受方要带居住类型 —— 本类从**同一条
  * entry 的 {@code allocations}** 推（{@link ResidenceKind#ofLot}，批次前缀的唯一拼写点）： {@code 产业 →
@@ -468,16 +474,20 @@ final class EconomyPayloads {
 
   /**
    * ★★ <b>一条家户行</b>（H0：键 = 该 entry 的格 + 行上显式声明的 {@code residence} + {@code slot}）： {@code
-   * {residence, slot, population, laborMilli, participationPerMille, goods, money, debts,
-   * naturalNeeds, effectiveDemand}}。
+   * {residence, slot, population, laborMilli, participationPerMille, money, debts, naturalNeeds,
+   * effectiveDemand}}。
    *
-   * <p>★★ <b>两条 fail-closed（改前没有、H0 必须有）</b>：
+   * <p>★★ <b>三条 fail-closed（{@code goods} 那条是 H1 新增的）</b>：
    *
    * <ul>
    *   <li>{@code residence} <b>必填</b>（{@link ResidenceKind#parse}，词表外即抛）：居住维是家户身份的一维，而"行属于哪个产业"
    *       那层隐含（{@code farm}/{@code weave} = 农村）H0 之后没有了 ⇒ 按产业种类猜出来的第二份约定会与配额表漂开（见类注 ①）；
    *   <li>{@code meansOfProduction} <b>给了即抛</b>（K3）：产能搬到 {@code Industry.capacity} —— 静默忽略它 =
-   *       "看起来在记、其实被丢掉"（真档表现为全格绝收而账面看不出是谁弄丢的）。
+   *       "看起来在记、其实被丢掉"（真档表现为全格绝收而账面看不出是谁弄丢的）；
+   *   <li>★★ {@code goods} <b>给了即抛</b>（H1；裁定 D3-C/K1）：家户的商品库存住在 actor 切片的 {@code GoodsAccount}（键
+   *       {@code (HouseholdActors.of(cohort), cohort.hex())}），economy 侧只在**会话工作副本**里读它 （{@code
+   *       EconomyDayStepper} 的入参）。★ 播种那一份要**搬**过去（app 的 {@code HouseholdSeeder}）， 静默忽略它 =
+   *       创世库存凭空消失（真档表现为第 1 天全员断粮，而载荷看起来完全正常）。
    * </ul>
    */
   private static ClassRow classRow(HexCoord hex, JsonNode node) {
@@ -491,7 +501,12 @@ final class EconomyPayloads {
           "家户行不再有 meansOfProduction 键（K3：产能已搬到产业的 capacity 键，见 Industry.capacity）："
               + node.get("meansOfProduction"));
     }
-    Map<CommodityId, Long> goods = commodityMap(optionalObject(node, "goods"), "goods");
+    if (node.hasNonNull("goods")) {
+      throw new IllegalArgumentException(
+          "家户行不再有 goods 键（H1/K1：商品库存住在 actor 切片的 GoodsAccount 上，"
+              + "economy 侧只在 EconomyDayStepper 的会话工作副本里读它 —— 播种时请把它搬进该家户 actor 的账户）："
+              + node.get("goods"));
+    }
     long money = optionalLong(node, "money", 0L);
     List<DebtId> debts = new ArrayList<>();
     for (JsonNode debt : optionalArray(node, "debts")) {
@@ -507,7 +522,6 @@ final class EconomyPayloads {
         population,
         laborMilli,
         participation,
-        goods,
         money,
         debts,
         needs,

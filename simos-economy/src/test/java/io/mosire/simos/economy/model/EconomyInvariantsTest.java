@@ -250,9 +250,13 @@ class EconomyInvariantsTest {
     assertThatThrownBy(() -> classRowWithMoney(-1L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("money");
-    assertThatThrownBy(() -> classRowWithGoods(Map.of(GRAIN, -1L)))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("goods");
+    // ★★ 2026-09-27（H1/K1）：改前这里有"ClassRow.goods 逐值 ≥ 0"这一条断言。
+    //   该字段已按裁定 D3-C/K1 **整个删除**（家户的商品库存搬到 actor 切片的 GoodsAccount，economy 侧只在
+    //   EconomyDayStepper 的会话工作副本里读它），故这条断言的**主语不存在了** —— 按"不许放宽断言"的口径，
+    //   它是**整条删除**（不是改成断言别的东西，那会变成另一条用例），如实记在 H1 的变更说明里。
+    //   ★ 等价守卫在新位置仍然在，而且是**更强的形态**：会话工作副本的余额由
+    //   EconomySettlement.requireHouseholdAccounts（fail-closed）与 setStock 的口径守着 —— 负余额在
+    //   "扣"那一路根本产生不出来（一律 min(余额, 需求)），而"发放"那一路只发正数。
     // ★★ 2026-09-27（H0/K3）：改前这里有"ClassRow.meansOfProduction 逐值 ≥ 0"这一条。
     //   该字段已按裁定 K3 **删除**（产能搬到 Industry.capacity），故这条断言的**主语不存在了** ——
     //   按"不许放宽断言"的口径，它是**整条删除**（不是改成断言别的东西，那会变成另一条用例），如实记在
@@ -328,7 +332,6 @@ class EconomyInvariantsTest {
             120L,
             60000L,
             participationPerMille,
-            Map.of(GRAIN, 300L),
             50L,
             List.of(),
             Map.of(GRAIN, 40L),
@@ -775,15 +778,7 @@ class EconomyInvariantsTest {
   /** 无债务的阶层行（参与率 800 在其槽位上限之内）；`key` 必须与它在 `classes` 里的键一致。 */
   private static ClassRow classRowWithoutDebts(CohortKey key) {
     return new ClassRow(
-        key,
-        120L,
-        60000L,
-        800,
-        Map.of(GRAIN, 300L),
-        50L,
-        List.of(),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
   }
 
   /** 行内引用一份债务（其两端由调用方保证）。 */
@@ -793,7 +788,6 @@ class EconomyInvariantsTest {
         120L,
         60000L,
         800,
-        Map.of(GRAIN, 300L),
         50L,
         List.of(debtId),
         Map.of(GRAIN, 40L),
@@ -890,15 +884,7 @@ class EconomyInvariantsTest {
 
   private static ClassRow classRow(CohortKey key) {
     return new ClassRow(
-        key,
-        120L,
-        60000L,
-        800,
-        Map.of(GRAIN, 300L),
-        50L,
-        List.of(D1),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        key, 120L, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
   }
 
   private static ClassRow classRowWithParticipation(int participationPerMille) {
@@ -907,7 +893,6 @@ class EconomyInvariantsTest {
         120L,
         60000L,
         participationPerMille,
-        Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),
@@ -920,7 +905,6 @@ class EconomyInvariantsTest {
         population,
         60000L,
         800,
-        Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),
@@ -933,7 +917,6 @@ class EconomyInvariantsTest {
         120L,
         laborMilli,
         800,
-        Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),
@@ -942,29 +925,11 @@ class EconomyInvariantsTest {
 
   private static ClassRow classRowWithMoney(long money) {
     return new ClassRow(
-        PEASANT_KEY,
-        120L,
-        60000L,
-        800,
-        Map.of(GRAIN, 300L),
-        money,
-        List.of(D1),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        PEASANT_KEY, 120L, 60000L, 800, money, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
   }
 
-  private static ClassRow classRowWithGoods(Map<CommodityId, Long> goods) {
-    return new ClassRow(
-        PEASANT_KEY,
-        120L,
-        60000L,
-        800,
-        goods,
-        50L,
-        List.of(D1),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
-  }
+  // ★★ 2026-09-27（H1/K1）：改前这里有一个 classRowWithGoods(Map) 助手，喂给上面那条"负数库存被拒"。
+  //   被喂的那个字段已整个删除 ⇒ 助手一并删除（留一个没人调用的助手 = 本仓反对的"看起来在、其实没人读"）。
 
   private static Debt debtWithPrincipal(long principal) {
     return new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), principal, 20, 3L, false);

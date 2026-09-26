@@ -78,20 +78,23 @@ class EconomySettlementTest {
   void unactivatedEconomyIsReturnedUnchanged() {
     EconomyData empty = EconomyData.empty();
 
-    assertThat(EconomyFixtures.advance(empty, 0L, 1L)).isSameAs(empty);
+    assertThat(EconomyFixtures.advance(empty, EconomyFixtures.householdGoods(), 0L, 1L))
+        .isSameAs(empty);
   }
 
   /** 日结算：每行扣**当天**口粮（累计口粮的逐日差分）、progressDays +1、劳动累计加上当日实际劳动；流水记本期发生额。 */
   @Test
   void oneDayConsumesThatDaysRationAdvancesProgressAndRecordsFlows() {
-    EconomyData base = fixture();
+    EconomyFixtures.World world = fixture();
 
-    EconomyData next = EconomyFixtures.advance(base, 0L, 1L);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
 
     // 贫农 100 人：第 1 天口粮 = floor(100 × 10,000 ÷ 120) = 8,333 ⇒ 83,000 − 8,333 = 74,667；
     // 地主 10 人：floor(10 × 10,000 ÷ 120) = 833 ⇒ 8,300 − 833 = 7,467。
-    assertThat(grainOf(next, PEASANT_KEY)).isEqualTo(83_000L - rationOn(PEASANT_POPULATION, 1L));
-    assertThat(grainOf(next, LANDLORD_KEY)).isEqualTo(8_300L - rationOn(LANDLORD_POPULATION, 1L));
+    assertThat(grainOf(world.goods(), PEASANT_KEY))
+        .isEqualTo(83_000L - rationOn(PEASANT_POPULATION, 1L));
+    assertThat(grainOf(world.goods(), LANDLORD_KEY))
+        .isEqualTo(8_300L - rationOn(LANDLORD_POPULATION, 1L));
     assertThat(next.industries().get(FARM).progressDays()).as("progressDays +1").isEqualTo(1L);
     assertThat(next.industries().get(FARM).cycleLaborMilli())
         .as("当日实际劳动 = 贫农 58000 × 1000‰ + 地主 5800 × 0‰ = 58000")
@@ -120,9 +123,9 @@ class EconomySettlementTest {
    */
   @Test
   void multiDaySettlementClosesTheCycleOnTheAbsoluteHarvestDay() {
-    EconomyData base = fixture();
+    EconomyFixtures.World world = fixture();
 
-    EconomyData next = EconomyFixtures.advance(base, 0L, 3L);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
     // ★★ **T4 的口径切换**（算式写在这里，逐项可核）：产出**不再**按 `Split(700,300)` 分给两行 ——
     //   它进 `+净产 → operator` 的产权条目，再按夹具的**显式关系**（{@code OUTPUT_SHARE × LABOR_AMOUNT} 1000‰
@@ -132,9 +135,11 @@ class EconomySettlementTest {
     //   ⇒ 实付 = ⌊6,790 × 1000 ÷ 1000⌋ × 58,000 ÷ 58,000 = **6,790**（全部归贫农；付款上限 6,790 不咬合）
     //   贫农：83,000 − 头 3 天口粮 25,000（= ⌊100 × 10,000 × 3 ÷ 120⌋）+ 6,790 = **64,790**
     //   地主：8,300 − 头 3 天口粮 2,500（= ⌊10 × 10,000 × 3 ÷ 120⌋）= **5,800**（规则不付给它 ⇒ 它一分不得）
-    assertThat(grainOf(next, PEASANT_KEY)).as("头 3 天逐日口粮 + 关系实付（净产全额）").isEqualTo(64_790L);
-    assertThat(grainOf(next, LANDLORD_KEY)).as("头 3 天逐日口粮（本夹具的规则不付给地主 cohort）").isEqualTo(5_800L);
-    assertThat(grainOf(next, PEASANT_KEY) + grainOf(next, LANDLORD_KEY))
+    assertThat(grainOf(world.goods(), PEASANT_KEY)).as("头 3 天逐日口粮 + 关系实付（净产全额）").isEqualTo(64_790L);
+    assertThat(grainOf(world.goods(), LANDLORD_KEY))
+        .as("头 3 天逐日口粮（本夹具的规则不付给地主 cohort）")
+        .isEqualTo(5_800L);
+    assertThat(grainOf(world.goods(), PEASANT_KEY) + grainOf(world.goods(), LANDLORD_KEY))
         .as("★ 账仍然要平：Σ行 = 基期库存 − 两端周期口粮 + **净产**（产出换了路径，没换总量）")
         .isEqualTo(
             91_300L
@@ -147,10 +152,22 @@ class EconomySettlementTest {
     assertThat(next.meta().orElseThrow().lastClosedCycle()).as("关账周期序号 1").hasValue(1L);
 
     // ★ 等价性（§十一）：一次 3 天 == 3 次单日（同一份终态）。
+    //   ★★ H1：家户账副本是**同一份**（会话状态在链上延续）—— 每一步接着上一步的副本跑，才与"一次 3 天"可比。
+    EconomyFixtures.World chainedWorld = fixture();
     EconomyData chained =
         EconomyFixtures.advance(
-            EconomyFixtures.advance(EconomyFixtures.advance(base, 0L, 1L), 1L, 2L), 2L, 3L);
+            EconomyFixtures.advance(
+                EconomyFixtures.advance(chainedWorld.data(), chainedWorld.goods(), 0L, 1L),
+                chainedWorld.goods(),
+                1L,
+                2L),
+            chainedWorld.goods(),
+            2L,
+            3L);
     assertThat(next).as("§十一：一次 3 天 == 3 次单日").isEqualTo(chained);
+    assertThat(world.goods())
+        .as("★ H1：家户账副本也逐值相同（一次 3 天 == 3 次单日，家户那一份账同样成立）")
+        .isEqualTo(chainedWorld.goods());
     // ★ 流水也纳入终态比较（不是"两边都只留最后一天"的平凡相等）：3 天流水逐日累加后两边逐值相同。
     assertThat(next.flows()).as("§十一：一次 3 天的流水 == 3 次单日各自并入 base 的流水").isEqualTo(chained.flows());
   }
@@ -175,7 +192,8 @@ class EconomySettlementTest {
    */
   @Test
   void threeDayFlowAccumulatesDailyConsumption() {
-    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 3L);
+    EconomyFixtures.World world = fixture();
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
     FlowRow peasant = next.flows().get(PEASANT_KEY);
     FlowRow landlord = next.flows().get(LANDLORD_KEY);
@@ -215,7 +233,8 @@ class EconomySettlementTest {
    */
   @Test
   void famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle() {
-    EconomyData next = EconomyFixtures.advance(famineFixture(rationOn(100L, 1L)), 0L, 3L, 200);
+    EconomyFixtures.World world = famineFixture(rationOn(100L, 1L));
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L, 200);
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
@@ -243,9 +262,10 @@ class EconomySettlementTest {
    */
   @Test
   void theDefaultRationGapIsRecordedWithoutKillingAnyone() {
-    EconomyData base = famineFixture(rationOn(100L, 1L));
+    EconomyFixtures.World world = famineFixture(rationOn(100L, 1L));
 
-    EconomyData next = EconomyFixtures.advance(base, 0L, 3L); // 公开入口：致死率 = 默认 0‰
+    EconomyData next =
+        EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L); // 公开入口：致死率 = 默认 0‰
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
@@ -264,7 +284,8 @@ class EconomySettlementTest {
   @Test
   void noFamineWhenReservesCoverTheWholeCycle() {
     // 储备恰好 = 头 3 天的口粮合计（逐日差分的 telescoping：Σ 日耗 == cumulativeRationMilli(100, 3)）
-    EconomyData next = EconomyFixtures.advance(famineFixture(rationOver(100L, 3L)), 0L, 3L, 200);
+    EconomyFixtures.World world = famineFixture(rationOver(100L, 3L));
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L, 200);
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
@@ -291,7 +312,8 @@ class EconomySettlementTest {
    */
   @Test
   void unmetNeedResetsEachCycleSoTheSecondFamineUsesOnlyItsOwnGap() {
-    EconomyData next = EconomyFixtures.advance(famineFixture(rationOn(100L, 1L)), 0L, 6L, 200);
+    EconomyFixtures.World world = famineFixture(rationOn(100L, 1L));
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 6L, 200);
 
     ClassRow row = next.classes().get(PEASANT_KEY);
     FlowRow flow = next.flows().get(PEASANT_KEY);
@@ -388,14 +410,15 @@ class EconomySettlementTest {
         .as("夹具必须是**非默认**值：否则「漏传」会被重新推导成同一个值 ⇒ 本用例恒真")
         .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
 
-    EconomyData afterOneDay = EconomyFixtures.advance(fixtureWithOperator(household), 0L, 1L);
+    EconomyFixtures.World world = fixtureWithOperator(household);
+    EconomyData afterOneDay = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
     assertThat(afterOneDay.industries().get(FARM).operator())
         .as("★ 一日结算不得改写经营主体（defaultOperator 会给 ESTATE:farm@0_0 ⇒ 那样当场红）")
         .isEqualTo(household);
 
     // ★★ 再跑到周期末（第 3 天关账）：关账那一支把 progressDays / cycleLaborMilli 归零、cycleInputUsedMilli 清空，
     //   是同一次重建里"换的字段更多"的形状 —— 它照样不许碰 operator。
-    EconomyData afterOneCycle = EconomyFixtures.advance(afterOneDay, 1L, 3L);
+    EconomyData afterOneCycle = EconomyFixtures.advance(afterOneDay, world.goods(), 1L, 3L);
     assertThat(afterOneCycle.industries().get(FARM).progressDays())
         .as("前置：第 3 天真的是周期末（关账分支被走到）")
         .isZero();
@@ -407,7 +430,7 @@ class EconomySettlementTest {
 
   // ── 夹具：一格、一个农业产业（3 天周期）、贫农 + 地主两行 ─────────────────────────────
 
-  private static EconomyData fixture() {
+  private static EconomyFixtures.World fixture() {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
     Industry farm =
@@ -436,25 +459,31 @@ class EconomySettlementTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(PEASANT_KEY, row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000, 700L, 83_000L));
-    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0, 300L, 8_300L));
+    classes.put(PEASANT_KEY, row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000));
+    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0));
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     // ★★ R2：当日劳动的来源是配额表（见 {@link #famineFixture} 的同款注释）。本夹具的当日劳动 = 贫农 58,000（投入率
     //   1000‰）+ 地主 0（投入率 0‰）= 58,000 ⇒ 发一条 58,000 的配额，逐值不变。
-    return new EconomyData(
-        Optional.of(meta),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        Map.of(LOT, supply(LOT, 58_000L)),
-        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
-        // ★★ **T4：关系表非空** —— 产出自本阶段起不再写进阶层行（R5 ②），行里的实物只能经关系结算的 cohort 入账回来。
-        //   本夹具两行里**只有贫农有人口**（地主 10 人 … 见 {@link #row}）——
-        //   ★ 如实记：本夹具的地主**有人口**（10 人），故它**也是** cohort 受方；但那条规则只付给贫农 cohort
-        //     （受方在规则里写死）⇒ 地主这一档拿不到产出。旧口径（{@code Split(700,300)}）给它的 1,426 因此归零。
-        EconomyFixtures.laborShareToPeasant(industries));
+    // ★★ H1：期初库存进**会话工作副本**（裁定 K1）—— 与状态成对交出，唯一拼写点在这里。
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);
+    EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 8_300L);
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(LOT, supply(LOT, 58_000L)),
+            Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
+            // ★★ **T4：关系表非空** —— 产出自本阶段起不再写进阶层行（R5 ②），行里的实物只能经关系结算的 cohort 入账回来。
+            //   本夹具两行里**只有贫农有人口**（地主 10 人 … 见 {@link #row}）——
+            //   ★ 如实记：本夹具的地主**有人口**（10 人），故它**也是** cohort 受方；但那条规则只付给贫农 cohort
+            //     （受方在规则里写死）⇒ 地主这一档拿不到产出。旧口径（{@code Split(700,300)}）给它的 1,426 因此归零。
+            EconomyFixtures.laborShareToPeasant(industries)),
+        goods);
   }
 
   /**
@@ -473,7 +502,7 @@ class EconomySettlementTest {
    * <p>★ 本夹具**只**服务守门用例：它的数值与 {@link #fixture()} 不同（多了一条投入），故不共用 —— 共用会改动
    * 那一批已算好的字面量（本仓纪律：不许因新用例放宽/改写既有断言）。
    */
-  private static EconomyData fixtureWithOperator(ActorRef operator) {
+  private static EconomyFixtures.World fixtureWithOperator(ActorRef operator) {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
     Industry farm =
@@ -502,23 +531,26 @@ class EconomySettlementTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(
-        PEASANT_KEY,
-        row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000, /* land= */ 1_000L, 83_000L));
-    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0, 300L, 8_300L));
+    classes.put(PEASANT_KEY, row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000));
+    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0));
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     // ★★ R2：当日劳动的来源是配额表（同 {@link #fixture()}）：发一条 58,000 的配额。
-    return new EconomyData(
-        Optional.of(meta),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        Map.of(LOT, supply(LOT, 58_000L)),
-        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
-        // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
-        Map.of());
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);
+    EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 8_300L);
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(LOT, supply(LOT, 58_000L)),
+            Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
+            // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+            Map.of()),
+        goods);
   }
 
   /**
@@ -538,14 +570,13 @@ class EconomySettlementTest {
         id, group, new ActorRef(ActorKind.ESTATE, industry.value()), "farm", laborMilli, 1L);
   }
 
-  private static ClassRow row(
-      CohortKey key, long population, long laborMilli, int participation, long land, long goods) {
+  private static ClassRow row(CohortKey key, long population, long laborMilli, int participation) {
+    // ★★ H1：行里**没有** goods 了（裁定 K1）—— 期初库存由夹具成对交出的**会话工作副本**承载（见 EconomyFixtures.World）。
     return new ClassRow(
         key,
         population,
         laborMilli,
         participation,
-        Map.of(GRAIN, goods),
         0L,
         List.of(),
         Map.of(GRAIN, rationOn(population, 1L)),
@@ -556,7 +587,7 @@ class EconomySettlementTest {
    * **饿死夹具**：一格、一个农业产业（周期 3 天）、**一行 100 人贫农**（投入率 1000、劳动 58,000）、**不占地**（⇒ 收获恒 0，饿死是唯一变量）、库存 =
    * {@code stock} 毫粮。
    */
-  private static EconomyData famineFixture(long stock) {
+  private static EconomyFixtures.World famineFixture(long stock) {
     List<ClassSlot> slots = List.of(new ClassSlot(PEASANT, "贫农", 1000));
     Industry farm =
         new Industry(
@@ -587,7 +618,6 @@ class EconomySettlementTest {
             100L,
             58_000L,
             1000,
-            Map.of(GRAIN, stock),
             0L,
             List.of(),
             Map.of(GRAIN, rationOn(100L, 1L)),
@@ -599,19 +629,25 @@ class EconomySettlementTest {
     // ★★ R2：**当日劳动的来源是配额表**（不再是"行 laborMilli × 投入率"）⇒ 本夹具必须发一条配额，
     //   否则"当日劳动 = 58,000"那条断言会读成 0（那是**新口径的直接后果**，不是兜底可修的东西）。
     //   ★ 配额量 = 58,000 = 贫农 100 人 × 580‰ × 投入率 1000‰ + 地主 10 人的投入率 0‰（见 fixture 的两个槽位）。
-    return new EconomyData(
-        Optional.of(meta),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        Map.of(LOT, supply(LOT, 58_000L)),
-        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
-        // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
-        Map.of());
+    // ★★ H1（K1）：库存 = {@code stock}，住在**会话工作副本**里（不再写进 ClassRow）。
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, stock);
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(LOT, supply(LOT, 58_000L)),
+            Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
+            // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+            Map.of()),
+        goods);
   }
 
-  private static long grainOf(EconomyData data, CohortKey key) {
-    return data.classes().get(key).goods().getOrDefault(GRAIN, 0L);
+  /** 某家户的粮余额（★ H1：从**会话工作副本**读 —— 行里没有 {@code goods} 了）。 */
+  private static long grainOf(Map<CohortKey, Map<CommodityId, Long>> goods, CohortKey key) {
+    return EconomyFixtures.grainOf(goods, key);
   }
 }

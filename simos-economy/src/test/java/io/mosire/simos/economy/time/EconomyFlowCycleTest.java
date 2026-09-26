@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -108,7 +109,9 @@ class EconomyFlowCycleTest {
    */
   @Test
   void theClosingDayCarriesTheWholeCyclesIncome() {
-    EconomyData closeOfCycleOne = EconomyFixtures.advance(fixture(), 0L, CYCLE_DAYS);
+    EconomyFixtures.World world = fixture();
+    EconomyData closeOfCycleOne =
+        EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
     FlowRow flow = closeOfCycleOne.flows().get(PEASANT_KEY);
     assertThat(flow.income().get(EconomySettlement.GRAIN))
@@ -124,7 +127,7 @@ class EconomyFlowCycleTest {
     assertThat(closeOfCycleOne.meta().orElseThrow().lastClosedCycle()).hasValue(1L);
 
     EconomyData closeOfCycleTwo =
-        EconomyFixtures.advance(closeOfCycleOne, CYCLE_DAYS, 2L * CYCLE_DAYS);
+        EconomyFixtures.advance(closeOfCycleOne, world.goods(), CYCLE_DAYS, 2L * CYCLE_DAYS);
 
     FlowRow second = closeOfCycleTwo.flows().get(PEASANT_KEY);
     assertThat(second.income().get(EconomySettlement.GRAIN))
@@ -136,8 +139,10 @@ class EconomyFlowCycleTest {
   /** ★★ **新周期第一天整行从 0 重记**（清零点在这里，不在关账那一支）：关账日之后的**次日**读到的本期字段全部只含这一天。 */
   @Test
   void theFirstDayOfANewCycleStartsEveryFieldFromZero() {
-    EconomyData closed = EconomyFixtures.advance(fixture(), 0L, CYCLE_DAYS);
-    EconomyData nextDay = EconomyFixtures.advance(closed, CYCLE_DAYS, CYCLE_DAYS + 1L);
+    EconomyFixtures.World world = fixture();
+    EconomyData closed = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
+    EconomyData nextDay =
+        EconomyFixtures.advance(closed, world.goods(), CYCLE_DAYS, CYCLE_DAYS + 1L);
 
     FlowRow flow = nextDay.flows().get(PEASANT_KEY);
     assertThat(nextDay.industries().get(FARM).progressDays())
@@ -173,7 +178,8 @@ class EconomyFlowCycleTest {
    */
   @Test
   void oneCyclesRationIsExactlyThePopulationTimesTenThousand() {
-    EconomyData closed = EconomyFixtures.advance(fixture(), 0L, CYCLE_DAYS);
+    EconomyFixtures.World world = fixture();
+    EconomyData closed = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
     // ★ T4：`consumed` 里**只剩口粮**（生产损耗改挂 `ProductionLedger.losses()`）⇒ 不必再减那一份
     long ration = closed.flows().get(PEASANT_KEY).consumed().get(EconomySettlement.GRAIN);
@@ -188,8 +194,9 @@ class EconomyFlowCycleTest {
   /** ★★ **§八.8：结算把当日需求写进 {@code ClassRow.naturalNeeds}**（读口与结算同源）—— 且**每天**都跟着走， 不是创世写一次就不动。 */
   @Test
   void settlementRewritesTheDailyNaturalNeedOnEveryDay() {
-    EconomyData day1 = EconomyFixtures.advance(fixture(), 0L, 1L);
-    EconomyData day2 = EconomyFixtures.advance(day1, 1L, 2L);
+    EconomyFixtures.World world = fixture();
+    EconomyData day1 = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
+    EconomyData day2 = EconomyFixtures.advance(day1, world.goods(), 1L, 2L);
 
     assertThat(day1.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("第 1 天的需求")
@@ -200,7 +207,7 @@ class EconomyFlowCycleTest {
     assertThat(EconomyVocabulary.dailyRationMilli(POPULATION, 2L))
         .as("前两天口粮相等（10,000 ÷ 120 = 83.33 ⇒ 第 1、2 天各 83）⇒ 用第 3 天验'逐日不同'")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 1L));
-    EconomyData day3 = EconomyFixtures.advance(day2, 2L, 3L);
+    EconomyData day3 = EconomyFixtures.advance(day2, world.goods(), 2L, 3L);
     assertThat(day3.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("第 3 天的需求（= 25,000 − 16,666 = 8,334，比前两天多 1）")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 3L));
@@ -220,13 +227,14 @@ class EconomyFlowCycleTest {
    */
   @Test
   void twoHundredFortyDaysInOneCallEqualsTwoHundredFortySingleDays() {
-    EconomyData base = fixture();
+    EconomyFixtures.World world = fixture();
+    EconomyFixtures.World dailyWorld = fixture();
     long total = 2L * CYCLE_DAYS;
 
-    EconomyData once = EconomyFixtures.advance(base, 0L, total);
-    EconomyData daily = base;
+    EconomyData once = EconomyFixtures.advance(world.data(), world.goods(), 0L, total);
+    EconomyData daily = dailyWorld.data();
     for (long day = 1L; day <= total; day++) {
-      daily = EconomyFixtures.advance(daily, day - 1L, day);
+      daily = EconomyFixtures.advance(daily, dailyWorld.goods(), day - 1L, day);
     }
 
     assertThat(once).as("§十一：一次 240 天的终态 == 240 次单日").isEqualTo(daily);
@@ -234,10 +242,13 @@ class EconomyFlowCycleTest {
     assertThat(once.flows().get(PEASANT_KEY).income().get(EconomySettlement.GRAIN))
         .as("非平凡：终态落在一个周期末 ⇒ 入账是一个周期的量（不是 0，也不是 240 天的全部）")
         .isEqualTo(CYCLE_NET);
+    assertThat(world.goods())
+        .as("★ H1：家户账副本也逐值相同（240 次单日 == 一次 240 天，家户那一份账同样成立）")
+        .isEqualTo(dailyWorld.goods());
   }
 
   /** 一份经济状态：一格、一个农业产业（周期 {@value #CYCLE_DAYS} 天）、一行贫农（缸 {@value #JAR}、**不配种子**）。 */
-  private static EconomyData fixture() {
+  private static EconomyFixtures.World fixture() {
     Industry farm =
         new Industry(
             FARM,
@@ -266,7 +277,7 @@ class EconomyFlowCycleTest {
             POPULATION,
             LABOR_MILLI,
             1000,
-            Map.of(EconomySettlement.GRAIN, JAR),
+            // ★★ H1（K1）：缸里的粮（{@value #JAR}）不再写进行里 —— 它在**会话工作副本**里（见下面成对交出的 goods）。
             0L,
             List.of(),
             Map.of(EconomySettlement.GRAIN, EconomyVocabulary.dailyRationMilli(POPULATION, 1L)),
@@ -280,24 +291,28 @@ class EconomyFlowCycleTest {
     // ★★ R2：当日劳动取自**配额表**（不再从"行 laborMilli × 投入率"算）⇒ 夹具必须发一条 = 该日劳动的配额。
     //   本文件的瓶颈是**土地**（300 亩 < 劳动可经营 406 亩），但劳动为 0 会把劳动瓶颈压到 0 亩 ⇒
     //   cycledLabor 一起变 0、收获恒 0 ⇒ 本文件的字面量（CYCLE_GROSS 那一族）全变。
-    return new EconomyData(
-        Optional.of(meta),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, LABOR_MILLI, 0L, 0L)),
-        Map.of(
-            ALLOCATION,
-            new LaborAllocation(
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, EconomySettlement.GRAIN, JAR);
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, LABOR_MILLI, 0L, 0L)),
+            Map.of(
                 ALLOCATION,
-                LOT,
-                new ActorRef(ActorKind.ESTATE, FARM.value()),
-                "farm",
-                LABOR_MILLI,
-                FIRST_PERIOD)),
-        // ★★ **T4：关系表非空** —— 产出不再写进阶层行，行里的实物只能经关系结算的 cohort 入账回来。
-        //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）。
-        EconomyFixtures.laborShareToPeasant(industries));
+                new LaborAllocation(
+                    ALLOCATION,
+                    LOT,
+                    new ActorRef(ActorKind.ESTATE, FARM.value()),
+                    "farm",
+                    LABOR_MILLI,
+                    FIRST_PERIOD)),
+            // ★★ **T4：关系表非空** —— 产出不再写进阶层行，行里的实物只能经关系结算的 cohort 入账回来。
+            //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）。
+            EconomyFixtures.laborShareToPeasant(industries)),
+        goods);
   }
 }

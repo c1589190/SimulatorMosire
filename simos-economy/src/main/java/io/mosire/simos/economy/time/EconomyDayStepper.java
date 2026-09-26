@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.model.FlowRow;
 import java.util.Collections;
@@ -13,17 +14,33 @@ import java.util.Objects;
 /**
  * ★★ **逐日结算的会话**（R4；给 {@code simos-app} 的人口—经济协调器用）：把"一次推 N 天"的**内部日循环**开放给 **唯一同时看得见两个切片的调用方**。
  *
- * <p>★★ **为什么必须有它**（而不是把 {@code settleOneDay} 直接公开）：日循环里有一个**跨日存活的可变累加器** （本期的流水；见 {@code
- * EconomySettlement.settle} 的实现）。把它作为公开方法的入参交出去，等于把"哪一份累加器" 这件事变成调用方的责任 ——
- * 而它错了不会报错，只会让流水少记几天。本类把这个可变状态**收进一个对象**， 对外只出"推进一天 / 交回状态"两件事（与 {@code EconomySettlement.settle}
- * 的纯函数形态**共用同一份实现**： 本类的方法体就是转调它）。
+ * <p>★★ **为什么必须有它**（而不是把 {@code settleOneDay} 直接公开）：日循环里有**跨日存活的可变状态**（本期的流水累加器 + 家户账工作副本；见 {@code
+ * EconomySettlement.settle} 的实现）。把它们作为公开方法的入参交出去，等于把"哪一份累加器" 这件事变成调用方的责任 ——
+ * 而它错了不会报错，只会让流水少记几天、或者让家户凭空断粮。本类把这些可变状态**收进一个对象**， 对外只出"推进一天 / 交回状态"两件事（与 {@code
+ * EconomySettlement.settle} 的纯函数形态**共用同一份实现**： 本类的方法体就是转调它）。
  *
  * <p>★★ **谁用它、为什么它必须存在**：{@code PopulationEconomyTimeParticipant}（住在 {@code simos-app}）要在
  * **每一天**的经济结算之后读当天发生额（算生理压力）、并在月度边界把出生/死亡**回写**经济侧。若它改用 {@code EconomySettlement.settle(base,
  * from, to)} 一次算完，就再也插不进"每一天之后"这一步； 而若把它拆成"N 次独立推进"，{@code range.to} 的语义（一条 revision）与 §十一 等价性都会走样
  * —— **日循环的语义必须留在同一个调用栈里**。
  *
- * <p>★ **它是可变对象**（唯一的一个：内部持有累加器），故**不共享、不并发**：一次推进一个实例（用完即弃）。
+ * <p>★★ **{@link #householdGoods()}：家户账的会话工作副本**（H1；裁定 K1 / D3-C）。为什么它不是"第二本账"：
+ *
+ * <ul>
+ *   <li>**唯一的持久真源**是 actor 切片里该家户 actor 的 {@code GoodsAccount} （键 {@code
+ *       (HouseholdActors.of(cohort), cohort.hex())}）—— 本类**看不见**它（economy 不认识 actor 切片）；
+ *   <li>本副本由调用方（app 协调器）在推进前**从 actor 侧载入**、传进来；本类**就地更新**它（与已经持有的 {@code flows}
+ *       累加器完全同形，有先例）；推进结束后调用方把它**落回 actor**；
+ *   <li>★ **它不进 {@link EconomyData}、不进变更集、不跨 revision 存活** —— 这就是"不是第二本账"的可执行判据 （判别口径：{@code
+ *       ClassRow} 里没有 {@code goods}，守恒式里没有 {@code ΔΣRowGoods} 这一项）。
+ * </ul>
+ *
+ * <p>★★ **副本的形状与语义**（H1 冻结的接口）：{@code Map<CohortKey, Map<CommodityId, Long>>} —— 键 = 家户身份； 值 =
+ * 商品余额，<b>缺失键 = 该家户没有该商品</b>（同 {@code ClassRow.goods} 原来的口径）。★ <b>外层键的缺失是 fail-closed 的</b>： 某行
+ * {@code population > 0} 而副本里没有它的键 ⇒ 日结算**当场抛**（不许把"没有账"静默当成"库存 0" —— 那正是本仓最反对的"静默付 0"形态）。 {@code
+ * population == 0} 的行**跳过消费与投入**（它们不吃饭、不出工）⇒ 它们可以没有键。
+ *
+ * <p>★ **它是可变对象**（唯一的一个：内部持有累加器与副本引用），故**不共享、不并发**：一次推进一个实例（用完即弃）。
  *
  * <p>★ **{@link #finish()} 之前拿到的 {@link #data()} 里流水还是旧的**（累加器在会话里）：日循环结束后由 {@code finish()} 一次性挂上
  * —— 与 {@code EconomySettlement.settle} 的收尾完全同款。
@@ -35,17 +52,30 @@ public final class EconomyDayStepper {
   private EconomyData data;
   private final LinkedHashMap<CohortKey, FlowRow> flows;
 
-  /** 从 {@code base} 起步（流水累加器以 base 已累计的本期流水为起点，与 {@code settle} 同款）。 */
-  public EconomyDayStepper(EconomyData base) {
-    this(base, EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
+  /** ★★ 家户账的会话工作副本（**就地更新**；见类注。★ 调用方持有的那一份才是主人，本类只借它一程）。 */
+  private final Map<CohortKey, Map<CommodityId, Long>> householdGoods;
+
+  /**
+   * 从 {@code base} 起步，并接管**家户账的工作副本**（H1 冻结的构造器形状）。
+   *
+   * @param householdGoods 家户账工作副本：键 = 家户身份、值 = 商品余额（缺失键 = 没有该商品）；**会被就地更新**。 ★ 它必须覆盖每一个 {@code
+   *     population > 0} 的家户行（否则 {@link #step(long)} 当场抛）； {@code population == 0} 的行可以缺席。★
+   *     内层表**只读**（本类换值一律 {@code put} 一张新表，不改旧表）。
+   */
+  public EconomyDayStepper(
+      EconomyData base, Map<CohortKey, Map<CommodityId, Long>> householdGoods) {
+    this(base, householdGoods, EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
   }
 
   /**
-   * 同 {@link #EconomyDayStepper(EconomyData)}，但**播种次序可注入**（见 {@code
+   * 同 {@link #EconomyDayStepper(EconomyData, Map)}，但**播种次序可注入**（见 {@code
    * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION}）。
    */
-  public EconomyDayStepper(EconomyData base, boolean plantingDrawsFirst) {
-    this(base, plantingDrawsFirst, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  public EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      boolean plantingDrawsFirst) {
+    this(base, householdGoods, plantingDrawsFirst, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
   }
 
   /**
@@ -54,9 +84,15 @@ public final class EconomyDayStepper {
    * EconomySettlement#FAMINE_MORTALITY_PER_MILLE}：它们**不是死分支**，故必须有路真的走得到，而 {@code simos-app}
    * 的协调器只该看到公开入口那份默认值。
    */
-  EconomyDayStepper(EconomyData base, boolean plantingDrawsFirst, int famineMortalityPerMille) {
+  EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(householdGoods, "householdGoods（家户账是会话状态，必须由调用方载入）");
     this.data = base;
+    this.householdGoods = householdGoods;
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.flows = new LinkedHashMap<>(base.flows());
@@ -73,6 +109,19 @@ public final class EconomyDayStepper {
   }
 
   /**
+   * ★★ **家户账工作副本的当前值**（**只读视图**；键序 = 载入时的插入序 + 结算期新建的键）。
+   *
+   * <p>★★ **它是"当前副本"，不是"副本的副本"**：外层表被包了一层 {@code unmodifiableMap}（改它当场抛），但**内容是活的** —— 每 {@link
+   * #step(long)} 一天都变。调用方要么在两个 step 之间读它（那时它是当天的终值），要么在 {@link #finish()} 之后读它
+   * （那时它是整段推进的终值，也正是**要落回 actor 的那一份**）。
+   *
+   * <p>★ <b>内层表不可变</b>（有意的）：本类换值一律 {@code put} 一张新表，绝不改旧表 ⇒ 调用方拿到的任何一张内层快照都不会被后续结算改掉。
+   */
+  public Map<CohortKey, Map<CommodityId, Long>> householdGoods() {
+    return Collections.unmodifiableMap(householdGoods);
+  }
+
+  /**
    * ★★ **结算一天**（{@code day} 是绝对世界日）：与 {@code EconomySettlement.settleOneDay} 是**同一条实现**， 并**交回当天**的
    * {@link ProductionLedger}（S1 阶段 4+5 Task 4；裁定 E7 的核心）。
    *
@@ -80,14 +129,23 @@ public final class EconomyDayStepper {
    * 与关系规则的转出/收入），而**产权住在 {@code simos-actor}**：economy 切片刻意不认识它 （铁律 3）。⇒ "把这一天离开 {@code ClassRow}
    * 的东西交给看得见 actor 那一侧的人"就是本方法的返回值。 ★ <b>扔掉它 = 静默丢产出</b>，所以它<b>不是</b>一个可选的回调、也不是一个字段：它是返回值。
    *
-   * <p>★ 单模块用例（只装 economy 的世界）可以照旧忽略返回值 —— 那里<b>没有 actor 账户可落</b>，行侧账由 {@code harvest} 自己落完（R5 ③）。
+   * <p>★★ <b>H1 起家户的收支走两条路</b>（都在这本账里，都要落）：
+   *
+   * <ul>
+   *   <li>**日耗 / 投入 / 同格取材**：只写进 {@link #householdGoods()} 工作副本（它们不是产权条目）⇒ 由调用方**把副本落回 actor**；
+   *   <li>**关系实付给家户**：既是本返回值里的一条 {@code +paid}（{@code HouseholdActors.of(cohort)}），**也已经计进工作副本** ——
+   *       ★ 故调用方**不许把它再叠加到副本上**（叠加 = 同一笔粮记两遍）。落盘时按副本的**绝对值**写回即可。
+   * </ul>
+   *
+   * <p>★ 单模块用例（只装 economy 的世界）可以照旧忽略返回值 —— 那里<b>没有 actor 账户可落</b>，家户的账由工作副本自己记完。
    *
    * <p>★ 与 {@code settle(base, from, to)} 的等价性因此是构造性的：那边的日循环调的就是这里调的东西。★ 反过来， {@code settle} 已
-   * **fail-closed**（关账要产出就抛）—— 单模块的多日推进请走本类。
+   * **fail-closed**（它没有家户账 ⇒ 第一天就抛）—— 单模块的多日推进请走本类。
    *
-   * @return 当天的发生额（毛产 / 损耗 / 投入 / 产权条目 / cohort 入账 / 货币待办；什么都没发生 ⇒ {@link
-   *     ProductionLedger#empty()}）
+   * @return 当天的发生额（毛产 / 损耗 / 投入 / 产权条目 / 货币待办；什么都没发生 ⇒ {@link ProductionLedger#empty()}）
    * @throws IllegalArgumentException {@code day < 1}（创世是第 0 天，没有"第 0 天"这一天）
+   * @throws IllegalStateException 某个 {@code population > 0} 的家户行在 {@link #householdGoods()} 里没有键
+   *     （fail-closed：不许把"没有账"静默当成"库存 0"）
    */
   public ProductionLedger step(long day) {
     if (day < 1L) {
@@ -97,7 +155,7 @@ public final class EconomyDayStepper {
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator();
     data =
         EconomySettlement.settleOneDay(
-            data, day, flows, plantingDrawsFirst, famineMortalityPerMille, ledger);
+            data, day, flows, householdGoods, plantingDrawsFirst, famineMortalityPerMille, ledger);
     return ledger.toLedger();
   }
 
@@ -116,7 +174,7 @@ public final class EconomyDayStepper {
     flows.putAll(data.flows());
   }
 
-  /** 收尾：把累加器挂上，交出可以进变更集的**最终状态**。 */
+  /** 收尾：把累加器挂上，交出可以进变更集的**最终状态**（★ 家户账在 {@link #householdGoods()} 里，**不在**这个状态里）。 */
   public EconomyData finish() {
     data = data.withFlows(flows);
     return data;

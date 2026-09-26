@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -63,7 +64,7 @@ class EconomyCycleBoundaryTest {
   private static final long FIRST_PERIOD = 1L;
 
   /** 夹具：一个"周期已满"的产业（{@code progressDays == cycleDays}），一行 100 人， 周期累计劳动已按整周期记满（供收获算平均日劳动）。 */
-  private static EconomyData fullCycleFixture() {
+  private static EconomyFixtures.World fullCycleFixture() {
     long dailyLabor = 58_000L * 950L / 1000L; // 有效劳动 58,000 千分劳动 × 投入率 950‰
     Industry farm =
         new Industry(
@@ -95,39 +96,44 @@ class EconomyCycleBoundaryTest {
             100L,
             58_000L,
             950,
-            Map.of(EconomySettlement.GRAIN, 10_000_000L), // 10,000 粮
+            // ★★ H1（K1）：10,000 粮不再写进行里 —— 它在**会话工作副本**里（见下面成对交出的 goods）。
             0L,
             List.of(),
             Map.of(),
             Map.of());
-    return new EconomyData(
-        Optional.of(new EconomyMeta("m1", 0L, OptionalLong.empty(), "v2", Optional.empty())),
-        Map.of(FARM, farm),
-        Map.of(PEASANT_KEY, row),
-        Map.of(),
-        Map.of(),
-        // ★★ R2：当日劳动**取自配额表**（不再从"行 laborMilli × 投入率"算）⇒ 夹具必须发一条 = 该日劳动的配额，
-        //   否则 {@code cycledLabor} 为 0 ⇒ 劳动瓶颈算出 0 亩 ⇒ 本文件全部字面量（388 亩那条链）一起变。
-        //   ★ 58,000 是**毛额**（供给的上限），55,100 是**这条配额承诺投入的量**（= 58,000 × 950‰）。
-        Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, 58_000L, 0L, 0L)),
-        Map.of(
-            ALLOCATION,
-            new LaborAllocation(
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, EconomySettlement.GRAIN, 10_000_000L); // 10,000 粮
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(new EconomyMeta("m1", 0L, OptionalLong.empty(), "v2", Optional.empty())),
+            Map.of(FARM, farm),
+            Map.of(PEASANT_KEY, row),
+            Map.of(),
+            Map.of(),
+            // ★★ R2：当日劳动**取自配额表**（不再从"行 laborMilli × 投入率"算）⇒ 夹具必须发一条 = 该日劳动的配额，
+            //   否则 {@code cycledLabor} 为 0 ⇒ 劳动瓶颈算出 0 亩 ⇒ 本文件全部字面量（388 亩那条链）一起变。
+            //   ★ 58,000 是**毛额**（供给的上限），55,100 是**这条配额承诺投入的量**（= 58,000 × 950‰）。
+            Map.of(LOT, new LaborSupply(LOT, FIRST_PERIOD, 58_000L, 0L, 0L)),
+            Map.of(
                 ALLOCATION,
-                LOT,
-                new ActorRef(ActorKind.ESTATE, FARM.value()),
-                "farm",
-                dailyLabor,
-                FIRST_PERIOD)),
-        // ★★ **T4：关系表非空** —— 产出自本阶段起不再写进阶层行（R5 ②），行里的实物只能经关系结算的 cohort 入账回来。
-        //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）
-        //   ⇒ 下面"单行 ⇒ 权重 1000 ⇒ 全部归它"那条账（25,216,120）一字不改。
-        EconomyFixtures.laborShareToPeasant(Map.of(FARM, farm)));
+                new LaborAllocation(
+                    ALLOCATION,
+                    LOT,
+                    new ActorRef(ActorKind.ESTATE, FARM.value()),
+                    "farm",
+                    dailyLabor,
+                    FIRST_PERIOD)),
+            // ★★ **T4：关系表非空** —— 产出自本阶段起不再写进阶层行（R5 ②），行里的实物只能经关系结算的 cohort 入账回来。
+            //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）
+            //   ⇒ 下面"单行 ⇒ 权重 1000 ⇒ 全部归它"那条账（25,216,120）一字不改。
+            EconomyFixtures.laborShareToPeasant(Map.of(FARM, farm))),
+        goods);
   }
 
   @Test
   void aFullCycleHarvestsInsteadOfThrowing() {
-    EconomyData next = EconomyFixtures.advance(fullCycleFixture(), 0L, 1L);
+    EconomyFixtures.World world = fullCycleFixture();
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
 
     assertThat(next.industries().get(FARM).progressDays()).as("周期已满 ⇒ 收获并归零").isZero();
     assertThat(next.industries().get(FARM).cycleLaborMilli()).as("周期累计清零").isZero();
@@ -147,8 +153,8 @@ class EconomyCycleBoundaryTest {
     //   ★ 口粮 = {@link EconomyVocabulary#dailyRationMilli}(100, 1) = floor(100 × 10,000 ÷ 120) =
     // 8,333
     //     （口径 = 每人每 120 天 10 粮，累计口粮的逐日差分；不再是"每人每日 83"）
-    assertThat(next.classes().get(PEASANT_KEY).goods().get(EconomySettlement.GRAIN))
-        .as("吃一天 + 收获一次后的粮库存（毫粮）")
+    assertThat(EconomyFixtures.grainOf(world.goods(), PEASANT_KEY))
+        .as("吃一天 + 收获一次后的粮余额（毫粮）—— ★ H1：这条账现在住在**家户账工作副本**里（裁定 K1）")
         .isEqualTo(10_000_000L - EconomyVocabulary.dailyRationMilli(100L, 1L) + 25_216_120L);
   }
 
@@ -156,46 +162,52 @@ class EconomyCycleBoundaryTest {
   void aOneDayCycleHarvestsOnItsVeryFirstDayWithoutDividingByZero() {
     // Review Focus 第 8 条：cycleDays == 1 ⇒ avgLaborMilli = cycledLabor / 1，且当天即满足 progressed >=
     // cycleDays
-    EconomyData base = withCycleDays(1L);
-    EconomyData next = EconomyFixtures.advance(base, 0L, 1L);
+    EconomyFixtures.World world = withCycleDays(1L);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
     assertThat(next.industries().get(FARM).progressDays()).as("1 天周期：当天就收获并归零（且不许除零）").isZero();
   }
 
   @Test
   void aZeroPopulationHexProducesNothingAndDoesNotDivideByZero() {
     // Review Focus 第 3 条：农村人口为 0 的纯城市格（无劳动 ⇒ 投入面积 0 ⇒ 不造粮）
-    EconomyData base = zeroPopulationFixture();
-    EconomyData next = EconomyFixtures.advance(base, 0L, 1L);
-    assertThat(next.classes().get(PEASANT_KEY).goods()).as("无劳动 ⇒ 投入面积 0 ⇒ 不造粮（也不许除零）").isEmpty();
+    EconomyFixtures.World world = zeroPopulationFixture();
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
+    // ★ H1：判据不变（"不造粮"），落点从"行里的 goods"换成"该家户的账"——副本里那一张表仍然是空的。
+    assertThat(world.goods().getOrDefault(PEASANT_KEY, Map.of()))
+        .as("无劳动 ⇒ 投入面积 0 ⇒ 不造粮（也不许除零）")
+        .isEmpty();
   }
 
-  /** 换 `cycleDays` 与 `progressDays`（其余照 {@link #fullCycleFixture()}）。 */
-  private static EconomyData withCycleDays(long cycleDays) {
-    EconomyData base = fullCycleFixture();
+  /** 换 `cycleDays` 与 `progressDays`（其余照 {@link #fullCycleFixture()}；★ 家户账副本原样带过）。 */
+  private static EconomyFixtures.World withCycleDays(long cycleDays) {
+    EconomyFixtures.World world = fullCycleFixture();
+    EconomyData base = world.data();
     Industry farm = base.industries().get(FARM);
-    return base.withIndustries(
-        Map.of(
-            FARM,
-            new Industry(
-                farm.id(),
-                farm.name(),
-                farm.regime(),
-                cycleDays,
-                cycleDays,
-                farm.capacityPerUnit(),
-                // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-                farm.capacity(),
-                farm.dailyInputPerUnit(),
-                farm.dailyLaborPerUnit(),
-                farm.laborPerUnit(),
-                farm.outputPerUnit(),
-                farm.cycleInputPerUnit(),
-                farm.slots(),
-                farm.allocation(),
-                farm.cycleLaborMilli(),
-                farm.cycleInputUsedMilli(),
-                // ★★ **重建点 ⇒ 透传**（不是重新推导）：这个夹具要保留的正是"这一格原来的经营主体"。
-                farm.operator())));
+    return new EconomyFixtures.World(
+        base.withIndustries(
+            Map.of(
+                FARM,
+                new Industry(
+                    farm.id(),
+                    farm.name(),
+                    farm.regime(),
+                    cycleDays,
+                    cycleDays,
+                    farm.capacityPerUnit(),
+                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+                    farm.capacity(),
+                    farm.dailyInputPerUnit(),
+                    farm.dailyLaborPerUnit(),
+                    farm.laborPerUnit(),
+                    farm.outputPerUnit(),
+                    farm.cycleInputPerUnit(),
+                    farm.slots(),
+                    farm.allocation(),
+                    farm.cycleLaborMilli(),
+                    farm.cycleInputUsedMilli(),
+                    // ★★ **重建点 ⇒ 透传**（不是重新推导）：这个夹具要保留的正是"这一格原来的经营主体"。
+                    farm.operator()))),
+        world.goods());
   }
 
   /**
@@ -208,50 +220,56 @@ class EconomyCycleBoundaryTest {
    * <p>★★ **R2 起还要清掉配额与供给**（同一条教训换了机制）：当日劳动现在取自**配额表**，故"把行清空、却留着配额"照样有产出 ——
    * 本条要显式造出的正是这个形态：得清**三处**（行、周期累加器、配额），少一处就测不出"无人口 ⇒ 不产粮"。
    */
-  private static EconomyData zeroPopulationFixture() {
-    EconomyData base = fullCycleFixture();
+  private static EconomyFixtures.World zeroPopulationFixture() {
+    EconomyFixtures.World world = fullCycleFixture();
+    EconomyData base = world.data();
     Industry farm = base.industries().get(FARM);
     ClassRow row = base.classes().get(PEASANT_KEY);
-    return base.withIndustries(
-            Map.of(
-                FARM,
-                new Industry(
-                    farm.id(),
-                    farm.name(),
-                    farm.regime(),
-                    farm.cycleDays(),
-                    farm.progressDays(),
-                    farm.capacityPerUnit(),
-                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-                    farm.capacity(),
-                    farm.dailyInputPerUnit(),
-                    farm.dailyLaborPerUnit(),
-                    farm.laborPerUnit(),
-                    farm.outputPerUnit(),
-                    farm.cycleInputPerUnit(),
-                    farm.slots(),
-                    farm.allocation(),
-                    0L, // ★ 周期累计劳动清零
-                    farm.cycleInputUsedMilli(),
-                    // ★★ **重建点 ⇒ 透传**（同上）。
-                    farm.operator())))
-        .withClasses(
-            Map.of(
-                PEASANT_KEY,
-                new ClassRow(
+    // ★★ H1：0 人口的家户**不吃饭、不出工** ⇒ 交付一份**空账**（它可以缺席，这里显式给空表 ——
+    //   与改前"行里 goods 为空"逐字对应，"无劳动 ⇒ 不造粮"那条断言才有判别力）。
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, EconomySettlement.GRAIN, 0L);
+    return new EconomyFixtures.World(
+        base.withIndustries(
+                Map.of(
+                    FARM,
+                    new Industry(
+                        farm.id(),
+                        farm.name(),
+                        farm.regime(),
+                        farm.cycleDays(),
+                        farm.progressDays(),
+                        farm.capacityPerUnit(),
+                        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+                        farm.capacity(),
+                        farm.dailyInputPerUnit(),
+                        farm.dailyLaborPerUnit(),
+                        farm.laborPerUnit(),
+                        farm.outputPerUnit(),
+                        farm.cycleInputPerUnit(),
+                        farm.slots(),
+                        farm.allocation(),
+                        0L, // ★ 周期累计劳动清零
+                        farm.cycleInputUsedMilli(),
+                        // ★★ **重建点 ⇒ 透传**（同上）。
+                        farm.operator())))
+            .withClasses(
+                Map.of(
                     PEASANT_KEY,
-                    0L, // 人口
-                    0L, // 有效劳动
-                    row.participationPerMille(),
-                    Map.of(), // 库存清空 ⇒ "没凭空造粮"这条断言才有判别力
-                    row.money(),
-                    row.debts(),
-                    row.naturalNeeds(),
-                    row.effectiveDemand())))
-        // ★ R2：第三处 —— 配额与供给一起清空（见方法注释：三者少一个，"无人口 ⇒ 不产粮"就测不出来）。
-        //   ★ **次序有讲究**：先清配额再清供给 —— 反过来会在中间态造出"有配额、没供给"的非法状态，
-        //     构造期守卫当场抛（那条守卫是**对的**：没有供给的配额没有上限）。
-        .withAllocations(Map.of())
-        .withLaborSupply(Map.of());
+                    new ClassRow(
+                        PEASANT_KEY,
+                        0L, // 人口
+                        0L, // 有效劳动
+                        row.participationPerMille(),
+                        row.money(),
+                        row.debts(),
+                        row.naturalNeeds(),
+                        row.effectiveDemand())))
+            // ★ R2：第三处 —— 配额与供给一起清空（见方法注释：三者少一个，"无人口 ⇒ 不产粮"就测不出来）。
+            //   ★ **次序有讲究**：先清配额再清供给 —— 反过来会在中间态造出"有配额、没供给"的非法状态，
+            //     构造期守卫当场抛（那条守卫是**对的**：没有供给的配额没有上限）。
+            .withAllocations(Map.of())
+            .withLaborSupply(Map.of()),
+        goods);
   }
 }

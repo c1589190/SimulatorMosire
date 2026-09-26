@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -21,9 +22,9 @@ import java.util.OptionalLong;
  * ★★ <b>一次生产关账的结算「计算」</b>（S1 阶段 4+5 Task 3；spec §四 ①→⑤ 里"怎么分"那一步）。
  *
  * <p>★★ <b>纯函数、无 IO、无历史余额</b>：输入 = 一条关系（{@link ProductionRelation}）+ 本周期的事实（{@link Facts}）， 输出 =
- * 产权条目 + cohort 入账 + 待 S2 的货币规则（{@link Outcome}）。它<b>不碰状态</b>：账户怎么落盘是 app 协调器的事 （{@code
- * OwnershipBooks}，T5）、行怎么落是 economy 的 {@code harvest}（T4）。 ★ 所以本阶段（T3）它<b>一行行为都没改</b> —— {@code
- * harvest} 还没读关系表（那切在 T4）。
+ * 产权条目 + 待 S2 的货币规则（{@link Outcome}）。它<b>不碰状态</b>：账户怎么落盘是 app 协调器的事 （{@code
+ * OwnershipBooks}，T5）、家户的账怎么落是 economy 的 {@code harvest}（H1 起它落进会话工作副本）。 ★ 所以本阶段（T3）它<b>一行行为都没改</b>
+ * —— {@code harvest} 还没读关系表（那切在 T4）。
  *
  * <p>★★ <b>公式表（判据就是它；数量一律毫单位、整数、向下取整）</b>：
  *
@@ -52,13 +53,15 @@ import java.util.OptionalLong;
  * <b>实付 = 产出</b>（<b>不抛、不造账、不留索取权</b>）；实付为 0 的那条<b>不产生任何条目</b>。 ★ 正因为上限只看本周期，本方法<b>不需要任何历史余额</b>（→
  * {@link Facts} 里没有"期初库存"这种东西）。
  *
- * <p>★★ <b>三条落点</b>（"差别只在落到哪里"，数量公式两族共用）：
+ * <p>★★ <b>两条落点（H1 起；裁定 D1-A 的红利：所有受方都是 actor）</b>（"差别只在落到哪里"，数量公式两族共用）：
  *
  * <ul>
  *   <li><b>付方</b>恒为 {@code relation.operator()}、恒落 {@code facts.location()} 这一格 ⇒ 每条实付都产生一条
- *       <b>转出条目</b>（{@code −paid}）。★ 少了它，cohort 那边入了账而 operator 这边没扣 ⇒ 同一份产出在账上多一份；
- *   <li><b>actor 受方</b> ⇒ 再产生一条<b>收入条目</b>（{@code +paid}，同一格）—— 于是"产权侧"仍是双分录（{@code actor→actor}）；
- *   <li><b>cohort 受方</b> ⇒ 进 {@code cohortIntake}（键 = {@link CohortKey}，**不是行键**；同键<b>累加</b>）。
+ *       <b>转出条目</b>（{@code −paid}）。★ 少了它，受方那边入了账而 operator 这边没扣 ⇒ 同一份产出在账上多一份；
+ *   <li><b>受方</b>（{@code ToActor} 与 {@code ToCohort} <b>合流成同一条</b>）⇒ 再产生一条<b>收入条目</b>（{@code
+ *       +paid}，同一格）： {@code ToActor} 用规则里的 {@code actor}，{@code ToCohort} 用 {@code
+ *       HouseholdActors.of(cohort)} —— <b>家户就是那批人的 actor</b>（H1.3：改前 {@code ToCohort}
+ *       走"入账表"、再按人口分派到行，那两条路已删）。 ⇒ 于是"产权侧"仍是双分录（{@code actor→actor}），而"cohort 入账"这个中间形态<b>不再存在</b>。
  * </ul>
  *
  * <p>★★ <b>E14 的守卫（fail-closed，本类存在的理由之一）</b>：<b>规则指名的商品必须在该产业的产出表里</b> （{@link
@@ -68,6 +71,9 @@ import java.util.OptionalLong;
  *
  * <p>★ <b>未登记的 (type × basis) 组合</b>也 fail-closed（裁定 E11：组合的落点就是这张公式表）。★ 两类组合<b>不受</b>此判 —— {@code
  * FIXED_MONEY_*}（不结算）与 {@code SELF_RETENTION}（数量恒 0）：它们<b>不读 basis</b>，而"没读的字段不判"。
+ *
+ * <p>★ <b>"受方的家户行不存在"不在这里判</b>：本类是纯计算，看不见行、也看不见家户账。该判据在 {@code
+ * EconomySettlement.harvest}（那里同时看得见关系、行与会话工作副本），**fail-closed**。
  *
  * <p>★ <b>本阶段如实不做的</b>（未达成项，落点见台账）：§2.5 的超额上限（{@code receipt = min(应得, 需求)}，阶段 6）、 cohort
  * 侧索取权、跨周期结转与欠租（S2 的 ledger）。★ {@link Facts#inputs()} <b>本阶段没有任何公式读它</b>（表里没有用到它的 档）——
@@ -107,21 +113,14 @@ public final class ProductionSettlement {
   /**
    * 一次关账的结算结果。
    *
-   * @param actorEntries 产权条目，<b>按落账次序</b>（priority 升序；每条实付先付方 {@code −}、后收方 {@code +}）
-   * @param cohortIntake cohort 入账：{@code CohortKey → 商品 → 数量}（同键累加；只含实付 &gt; 0 的条目）
-   * @param deferredMoney 待 S2 的货币规则（<b>按付款次序</b>；它们<b>不</b>产生上面两样里的任何东西）
+   * @param actorEntries 产权条目，<b>按落账次序</b>（priority 升序；每条实付先付方 {@code −}、后受方 {@code +}）
+   * @param deferredMoney 待 S2 的货币规则（<b>按付款次序</b>；它们<b>不</b>产生 {@link #actorEntries()} 里的任何东西）
    */
-  public record Outcome(
-      List<ActorEntry> actorEntries,
-      Map<CohortKey, Map<CommodityId, Long>> cohortIntake,
-      List<CompensationRule> deferredMoney) {
+  public record Outcome(List<ActorEntry> actorEntries, List<CompensationRule> deferredMoney) {
 
     public Outcome {
       if (actorEntries == null) {
         throw new IllegalArgumentException("Outcome.actorEntries 不得为 null（没有条目请给空表）");
-      }
-      if (cohortIntake == null) {
-        throw new IllegalArgumentException("Outcome.cohortIntake 不得为 null（没有入账请给空 map）");
       }
       if (deferredMoney == null) {
         throw new IllegalArgumentException("Outcome.deferredMoney 不得为 null（没有待办请给空表）");
@@ -142,7 +141,6 @@ public final class ProductionSettlement {
         deferredCopy.add(rule);
       }
       deferredMoney = List.copyOf(deferredCopy);
-      cohortIntake = Collections.unmodifiableMap(freezeIntake(cohortIntake));
     }
   }
 
@@ -206,7 +204,6 @@ public final class ProductionSettlement {
     requireProducibleCommodities(ordered, relation, facts); // ★ E14：在任何数量计算之前
     Map<CommodityId, Long> paid = new LinkedHashMap<>(); // 已付（逐商品；R6 的"可用"就靠它）
     List<ActorEntry> entries = new ArrayList<>();
-    Map<CohortKey, Map<CommodityId, Long>> intake = new LinkedHashMap<>();
     List<CompensationRule> deferred = new ArrayList<>();
     for (CompensationRule rule : ordered) {
       OptionalLong due = dueAmount(rule, facts, paid);
@@ -224,14 +221,16 @@ public final class ProductionSettlement {
       paid.merge(commodity, paidNow, Long::sum);
       // ★ 转出：付方恒为 operator，恒落本格（账户 = (actor, location)）。
       entries.add(new ActorEntry(relation.operator(), facts.location(), commodity, -paidNow));
-      switch (rule.recipient()) {
-        case Recipient.ToActor toActor ->
-            entries.add(new ActorEntry(toActor.actor(), facts.location(), commodity, paidNow));
-        case Recipient.ToCohort toCohort ->
-            mergeIntake(intake, toCohort.cohort(), commodity, paidNow);
-      }
+      // ★★ H1.3：受方**只有一条路** —— 都是 actor（裁定 D1-A）。{@code ToCohort} 的家户 actor 由
+      //   {@link HouseholdActors#of(CohortKey)} 给出（家户身份的唯一拼写点，K9）。
+      ActorRef recipient =
+          switch (rule.recipient()) {
+            case Recipient.ToActor toActor -> toActor.actor();
+            case Recipient.ToCohort toCohort -> HouseholdActors.of(toCohort.cohort());
+          };
+      entries.add(new ActorEntry(recipient, facts.location(), commodity, paidNow));
     }
-    return new Outcome(entries, intake, deferred);
+    return new Outcome(entries, deferred);
   }
 
   /**
@@ -418,17 +417,6 @@ public final class ProductionSettlement {
     return paid.getOrDefault(commodity, 0L);
   }
 
-  /** cohort 入账：<b>同键累加</b>（{@code merge} 而非 {@code put} —— 同一 cohort 收到多条规则时不能互相覆盖）。 */
-  private static void mergeIntake(
-      Map<CohortKey, Map<CommodityId, Long>> intake,
-      CohortKey cohort,
-      CommodityId commodity,
-      long amount) {
-    intake
-        .computeIfAbsent(cohort, key -> new LinkedHashMap<>())
-        .merge(commodity, amount, Long::sum);
-  }
-
   /**
    * 数量表：<b>键值非 null、逐值 ≥ 0</b>，返回<b>保序的副本</b>（不可变由调用方的赋值处加 —— 见 {@link Facts} 的紧凑构造器）。
    *
@@ -448,22 +436,6 @@ public final class ProductionSettlement {
             field + " 的数量不得为负（负数不是一种数量）：" + entry.getKey() + " = " + entry.getValue());
       }
       copy.put(entry.getKey(), entry.getValue());
-    }
-    return copy;
-  }
-
-  /** cohort 入账的副本（★ 内层在这里加不可变 —— 它们经 {@code cohortIntake().get(k)} 逸出；外层在赋值处加）。 */
-  private static Map<CohortKey, Map<CommodityId, Long>> freezeIntake(
-      Map<CohortKey, Map<CommodityId, Long>> intake) {
-    Map<CohortKey, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : intake.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("Outcome.cohortIntake 的键与值都不得为 null: " + entry.getKey());
-      }
-      Map<CommodityId, Long> inner =
-          Collections.unmodifiableMap(
-              requireQuantities(entry.getValue(), "Outcome.cohortIntake 的入账"));
-      copy.put(entry.getKey(), inner);
     }
     return copy;
   }

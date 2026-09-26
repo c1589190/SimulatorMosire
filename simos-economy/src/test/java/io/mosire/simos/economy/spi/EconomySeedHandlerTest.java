@@ -93,10 +93,12 @@ class EconomySeedHandlerTest {
           // ★★ H0：家户行挂 **entry 级**，每行显式带 residence（缺键即抛 —— 不许按产业种类猜）
           + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":450,"
           + "\"laborMilli\":261000,\"participationPerMille\":950,"
-          + "\"goods\":{\"grain\":2241000},\"money\":0,\"debts\":[],\"naturalNeeds\":{\"grain\":37350},"
+          // ★★ H1（K1）：行里**没有 goods 键**了 —— 商品库存住在 actor 切片的 GoodsAccount 上，
+          //    载荷里再给一个会被 fail-closed 拒（见 EconomyPayloads.classRow 的第二条守卫）。
+          + "\"money\":0,\"debts\":[],\"naturalNeeds\":{\"grain\":37350},"
           + "\"effectiveDemand\":{}},"
           + "{\"residence\":\"rural\",\"slot\":\"landlord\",\"population\":50,\"laborMilli\":29000,"
-          + "\"participationPerMille\":100,\"goods\":{\"grain\":249000}}]}]}";
+          + "\"participationPerMille\":100}]}]}";
 
   /** 第二国的载荷：与 {@link #PAYLOAD} 同形、但落在**另一格**（{@code 1_0}）——验证"已激活后按格追加"。 */
   private static final String LATER_NATION_PAYLOAD =
@@ -109,8 +111,8 @@ class EconomySeedHandlerTest {
    */
   private static final String PAYLOAD_WITH_LABOR =
       PAYLOAD.replace(
-          "\"goods\":{\"grain\":249000}}]}]}",
-          "\"goods\":{\"grain\":249000}}],"
+          "\"participationPerMille\":100}]}]}",
+          "\"participationPerMille\":100}],"
               + "\"laborSupply\":[{\"group\":\"rural:0_0:MALE:1\",\"period\":1,"
               + "\"grossLaborMilli\":290000,\"servedLaborMilli\":0,\"committedLaborMilli\":0}],"
               + "\"allocations\":[{\"id\":\"alloc-farm@0_0-rural:0_0:MALE:1\","
@@ -334,7 +336,11 @@ class EconomySeedHandlerTest {
     //   量到的仍是同一件事（载荷声明的本格产能总量进了状态），只是落点换了。
     //   量到的仍是同一件事（两行的 900,000 + 100,000 = 1,000,000 千分亩进来了），只是落点换了。
     assertThat(after.industries().get(FARM).capacity()).containsEntry(AssetKind.LAND, 1_000_000L);
-    assertThat(row.goods()).containsEntry(new CommodityId("grain"), 2_241_000L);
+    // ★★ 2026-09-27（H1/K1）：改前这里断言"行里有 2,241,000 毫粮"（载荷的 goods 键 → ClassRow.goods）。
+    //   那个字段已按裁定 D3-C/K1 **整个删除**（家户的商品库存住在 actor 切片的 GoodsAccount 上），
+    //   而载荷里也不再接受 goods 键（给了即抛）⇒ 这条断言的**主语不存在了**：整条删除（不是放宽），如实记在 H1 的变更说明里。
+    //   ★ 同一件事的**新落点**不在本模块的载荷里：库存的播种归 app 的 HouseholdSeeder（H1.5），
+    //     它的验证在 simos-app 的播种用例里（`WorldgenInitializeToolTest` 那一族）。
     assertThat(row.money()).isZero();
     assertThat(row.debts()).as("本轮无债务").isEmpty();
     assertThat(row.naturalNeeds()).containsEntry(new CommodityId("grain"), 37_350L);
@@ -386,12 +392,10 @@ class EconomySeedHandlerTest {
     assertThat(both.classes().values().stream().mapToLong(ClassRow::population).sum())
         .as("两批人口合计 = 500 + 500")
         .isEqualTo(1_000L);
-    assertThat(
-            both.classes().values().stream()
-                .mapToLong(row -> row.goods().getOrDefault(new CommodityId("grain"), 0L))
-                .sum())
-        .as("两批库存合计 = 2,490,000 + 2,490,000")
-        .isEqualTo(4_980_000L);
+    // ★★ 2026-09-27（H1/K1）：改前这里断言"两批**库存**合计 = 4,980,000"（读 ClassRow.goods）。
+    //   库存已不在行里、载荷也不再接受 goods 键 ⇒ 这条断言的**主语不存在了**：整条删除（不是放宽）。
+    //   ★ 本条剩下的两件事（两批的格都在、人口合计 = 两批之和）与"后来那批的库存进没进账"无关 ——
+    //     后者现在由 app 侧的 HouseholdSeeder 负责（H1.5）。
     assertThat(both.meta().orElseThrow().activatedDay()).as("meta 不覆盖：保留首次播种的激活日").isEqualTo(7L);
   }
 

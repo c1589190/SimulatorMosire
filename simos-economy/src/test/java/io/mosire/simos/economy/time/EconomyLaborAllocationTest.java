@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -79,7 +80,8 @@ class EconomyLaborAllocationTest {
    */
   @Test
   void dailyLaborComesFromTheAllocationsNotFromTheClassRows() {
-    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 1L);
+    EconomyFixtures.World world = fixture();
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
 
     assertThat(next.industries().get(FARM).cycleLaborMilli())
         .as("farm 的配额之和 = 40,000（**不是**行算的 58,000）")
@@ -92,7 +94,8 @@ class EconomyLaborAllocationTest {
   /** ★ 多日推进：配额是**每天**的投入量 ⇒ N 天的累计 = N × 当日（与改口径前的口径一字不差）。 */
   @Test
   void theDailyQuotaAccumulatesOncePerSettledDay() {
-    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 3L);
+    EconomyFixtures.World world = fixture();
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
     assertThat(next.industries().get(FARM).cycleLaborMilli())
         .as("3 天 × 40,000")
@@ -105,8 +108,9 @@ class EconomyLaborAllocationTest {
   /** ★ **配额表不被结算改动**（它是命令层发的）：结算前后逐值相同（守恒之外的一条"只读"判据）。 */
   @Test
   void settlementDoesNotTouchTheAllocationTable() {
-    EconomyData base = fixture();
-    EconomyData next = EconomyFixtures.advance(base, 0L, 2L);
+    EconomyFixtures.World world = fixture();
+    EconomyData base = world.data();
+    EconomyData next = EconomyFixtures.advance(base, world.goods(), 0L, 2L);
 
     assertThat(next.allocations()).as("配额原样带过").isEqualTo(base.allocations());
     assertThat(next.laborSupply()).as("供给原样带过").isEqualTo(base.laborSupply());
@@ -119,7 +123,8 @@ class EconomyLaborAllocationTest {
    */
   @Test
   void householdQuotasDoNotFeedAnyIndustry() {
-    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 1L);
+    EconomyFixtures.World world = fixture();
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
 
     long industryLabor =
         next.industries().get(FARM).cycleLaborMilli()
@@ -140,7 +145,7 @@ class EconomyLaborAllocationTest {
    * <p>★ 行里的 {@code laborMilli} 刻意取"行算与配额不同"的值：farm 的行 = 58,000（贫农 100 人 × 580‰ × 1000‰）， craft 的行
    * = 5,800。它们现在**只喂分配权重**（"产出在阶层之间怎么分"），不再是"这个产业投了多少劳动"。
    */
-  private static EconomyData fixture() {
+  private static EconomyFixtures.World fixture() {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, "农业", "feudal", new AllocationRule.Split(700, 300)));
     industries.put(CRAFT, industry(CRAFT, "手工业", "handicraft", new AllocationRule.Split(400, 600)));
@@ -173,16 +178,25 @@ class EconomyLaborAllocationTest {
     allocations.put(
         B_CRAFT, allocation(B_CRAFT, URBAN, CRAFT, ActorKind.WORKSHOP, "craft", 55_000L));
 
-    return new EconomyData(
-        Optional.of(
-            new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty())),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        supply,
-        allocations,
-        Map.of()); // ★ T2：生产关系表（本文件只谈劳动配额 ⇒ 空表）
+    // ★★ H1（K1）：家户的商品库存在**会话工作副本**里 —— 本夹具不量库存，但两个家户都有人口
+    //   ⇒ 必须各给一张（空）账，否则日结算的 fail-closed 守卫当场抛（"有人口却没有账"）。
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(
+        goods, new CohortKey(HEX, ResidenceKind.RURAL, PEASANT), EconomySettlement.GRAIN, 0L);
+    EconomyFixtures.hold(
+        goods, new CohortKey(HEX, ResidenceKind.URBAN, LANDLORD), EconomySettlement.GRAIN, 0L);
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(
+                new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty())),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            supply,
+            allocations,
+            Map.of()), // ★ T2：生产关系表（本文件只谈劳动配额 ⇒ 空表）
+        goods);
   }
 
   private static LaborAllocation allocation(
@@ -202,7 +216,6 @@ class EconomyLaborAllocationTest {
         population,
         laborMilli,
         participation, // ★ 不占地：本类只谈"投入了多少劳动"，不谈产出
-        Map.of(),
         0L,
         List.of(),
         Map.of(),

@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -93,20 +94,21 @@ class ProductionLedgerTest {
    */
   @Test
   void theCohortGetsItsPaidShareIntoTheConsumptionRow() {
-    EconomyData base = fixture();
+    EconomyFixtures.World world = fixture();
 
-    EconomyData after = advance(base, CYCLE_DAYS);
+    EconomyData after = advance(world, CYCLE_DAYS);
 
-    // 贫农：83,000 − ⌊100 × 10,000 × 3 ÷ 120⌋ + 5,800 = 63,800
-    assertThat(grainOf(after, PEASANT_KEY))
-        .as("★ I4.3/R5：行里的实物 = 期初 − 周期口粮 + 关系实付（算式见类注）")
+    // 贫农：83,000 − ⌊100 × 10,000 × 3 ÷ 120⌋ + 6,790 = 64,790
+    assertThat(grainOf(world.goods(), PEASANT_KEY))
+        .as("★ I4.3/R5：家户账上的实物 = 期初 − 周期口粮 + 关系实付（算式见类注）")
         .isEqualTo(83_000L - 25_000L + 6_790L);
     // ★★ 不只相等：必须**严格多于**"一点没收到"的那个数 —— 否则"入账缺失"会被一个恰好相等的期望值掩盖。
-    assertThat(grainOf(after, PEASANT_KEY))
-        .as("★ 不许让 cohort 断粮：终态必须严格高于「产出离开行、且一点都没入账」的 58,000")
+    assertThat(grainOf(world.goods(), PEASANT_KEY))
+        .as("★ 不许让家户断粮：终态必须严格高于「产出离开行、且一点都没入账」的 58,000")
         .isGreaterThan(83_000L - 25_000L);
     // 地主：8,300 − ⌊10 × 10,000 × 3 ÷ 120⌋ = 5,800（本夹具没有规则付给它）
-    assertThat(grainOf(after, LANDLORD_KEY)).as("地主：期初 − 周期口粮").isEqualTo(8_300L - 2_500L);
+    assertThat(grainOf(world.goods(), LANDLORD_KEY)).as("地主：期初 − 周期口粮").isEqualTo(8_300L - 2_500L);
+    assertThat(after.classes().get(PEASANT_KEY).population()).as("人口不变（这只是账的搬移）").isEqualTo(100L);
   }
 
   /**
@@ -141,7 +143,8 @@ class ProductionLedgerTest {
    */
   @Test
   void theClosingDayLedgerCarriesGrossLossTheTwoEntriesAndTheIntake() {
-    EconomyDayStepper stepper = new EconomyDayStepper(fixture());
+    EconomyFixtures.World world = fixture();
+    EconomyDayStepper stepper = new EconomyDayStepper(world.data(), world.goods());
     List<ProductionLedger> ledgers = new ArrayList<>();
     for (long day = 1L; day <= CYCLE_DAYS; day++) {
       ledgers.add(stepper.step(day));
@@ -156,19 +159,34 @@ class ProductionLedgerTest {
     assertThat(closing.grossOf(FARM, GRAIN)).as("毛产 = 规模 1 × 7 × 1000").isEqualTo(7_000L);
     assertThat(closing.lossOf(FARM, GRAIN)).as("损耗 = 毛产 × 30‰").isEqualTo(210L);
     assertThat(closing.inputOf(FARM, GRAIN)).as("本夹具没有配投入 ⇒ 现扣投入为空").isZero();
+    // ★★ H1.3：受方（{@code ToCohort}）不再走"入账表" —— 它合流成**第三条 ActorEntry**，落在该家户的 actor 上。
     assertThat(closing.actorEntries())
-        .as("★ 恰好两条：+净产 6,790 → operator，−实付 5,800 → operator（E17：转出条目恒产生）")
+        .as(
+            "★ 恰好三条：+净产 6,790 → operator、−实付 6,790 → operator（E17：转出条目恒产生）、"
+                + "+实付 6,790 → 家户 actor（H1.3：所有受方都是 actor）")
         .containsExactly(
             new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, 6_790L),
-            new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, -6_790L));
-    assertThat(closing.cohortIntake())
-        .as("cohort 入账：受方 = (0,0)|poor_peasant，量 = 实付")
-        .containsEntry(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT), Map.of(GRAIN, 6_790L));
+            new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, -6_790L),
+            new ProductionSettlement.ActorEntry(
+                HouseholdActors.of(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT)),
+                HEX,
+                GRAIN,
+                6_790L));
     assertThat(closing.deferredMoney()).as("本夹具没有货币规则 ⇒ 待办为空").isEmpty();
     assertThat(
-            closing.actorEntries().stream().mapToLong(ProductionSettlement.ActorEntry::delta).sum())
-        .as("★★ I4.1：operator 的净增 = 净产 6,790 − 实付 6,790 = 0（输入仍从消费行扣 ⇒ Input(actor) ≡ 0）")
+            closing.actorEntries().stream()
+                .filter(entry -> entry.actor().equals(OPERATOR))
+                .mapToLong(ProductionSettlement.ActorEntry::delta)
+                .sum())
+        .as("★★ I4.1（operator 那一侧）：净增 = 净产 6,790 − 实付 6,790 = 0（投入不是它出的 ⇒ Input(actor) ≡ 0）")
         .isEqualTo(0L);
+    assertThat(
+            closing.actorEntries().stream()
+                .filter(entry -> entry.actor().kind() == ActorKind.HOUSEHOLD)
+                .mapToLong(ProductionSettlement.ActorEntry::delta)
+                .sum())
+        .as("★★ I4.1（家户那一侧）：实收 = 实付 6,790（这一笔同时计进会话工作副本与 FlowRow.income）")
+        .isEqualTo(6_790L);
   }
 
   // ── ② 多日入口 fail-closed（R4/E7）──────────────────────────────────────────────────
@@ -177,31 +195,44 @@ class ProductionLedgerTest {
    * ★★ <b>E7「路径唯一化」的落点</b>：{@link EconomySettlement#settle(EconomyData, long, long)}
    * 这个<b>多日静态入口</b>一旦跨过周期末（有产出）就 <b>fail-closed</b> —— 它没有产权落账口，产出会<b>在账上静默消失</b> （本仓最反对的形态）。
    *
+   * <p>★★ <b>H1 起这条 fail-closed 提前到"第一天之前"</b>（裁定 K1）：本入口连**家户账**都没有（它是会话状态） ⇒ 只要世界里有一个 {@code
+   * population > 0} 的家户就当场抛，消息改成"**请走 EconomyDayStepper（家户账是会话状态）**"。 于是本夹具（贫农 100 人 + 地主 10
+   * 人）撞到的是**第一层**：断言从"产权落账口"改成"家户账"（同一条判据的**新口径**， 不是放宽 —— 它照样是 {@link
+   * IllegalStateException}、照样要求消息点名正确的入口）。
+   *
+   * <p>★ 第二层（"有产出就抛"）仍在，守的是"全零人口的世界照样不许静默丢产出"：{@code settle} 里那两处判断都在。
+   *
    * <p>★ 正确的路径有两条：① {@link EconomyDayStepper}（economy 模块内的会话入口，交回当天的 {@code ProductionLedger}）； ②
    * app 协调器（同时看得见 economy + actor 的那个参与者）。消息里两条都点出来。
    */
   @Test
   void theMultiDayEntryIsFailClosedWhenACycleProducesOutput() {
-    assertThatThrownBy(() -> EconomySettlement.settle(fixture(), 0L, CYCLE_DAYS))
-        .as("★ R4/E7：多日入口没有产权落账口 ⇒ 关账要产出就当场抛（不许静默丢产出）")
+    assertThatThrownBy(() -> EconomySettlement.settle(fixture().data(), 0L, CYCLE_DAYS))
+        .as("★ H1/K1：多日入口没有家户账 ⇒ 第一天之前就当场抛（消息点名 EconomyDayStepper 这条正确路径）")
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("产权落账口");
+        .hasMessageContaining("家户账")
+        .hasMessageContaining("EconomyDayStepper");
   }
 
-  /** ★ 对照组：<b>不跨周期末</b>的区间照旧可用（第 1、2 天没有任何产业关账）—— fail-closed 的判据是"<b>要产出</b>"，不是"是多日"。 */
-  @Test
-  void theMultiDayEntryStillWorksForRangesWithoutAClosing() {
-    EconomyData after = EconomySettlement.settle(fixture(), 0L, CYCLE_DAYS - 1L);
-
-    assertThat(after.industries().get(FARM).progressDays()).as("第 2 天：周期未满").isEqualTo(2L);
-    assertThat(after.meta().orElseThrow().lastClosedCycle()).isEmpty();
-  }
+  /**
+   * ★★ <b>对照组（H1 已删 —— 主语消失，如实记）</b>：改前这里断言"不跨周期末的区间照旧可用"。
+   *
+   * <p>★★ <b>为什么整条删掉而不是重算期望值</b>：H1 起多日静态入口 {@code settle} <b>连家户账都没有</b> （裁定 K1：家户账是会话状态）——
+   * 只要世界里有一个 {@code population > 0} 的家户，它就在**第一天之前**当场抛 （见 {@code EconomySettlement.settle} 的第一层
+   * fail-closed）。⇒ "静态入口对某些区间仍可用"这件事**已经不存在**， 那条对照失去了被对照的另一半（同一入口的"关账要产出就抛"仍在，由上面那条用例守着）。 ★
+   * 本条的**判别力没有丢**：它守的"不跨周期末的推进能正常记账"由 {@code EconomySettlementTest} 与 {@code EconomyFlowCycleTest}
+   * 的会话形态用例逐值覆盖（那里每天都真的结算了）。
+   */
 
   // ── 推进（R4 的会话形态）────────────────────────────────────────────────────────────
 
-  /** 推满 {@code days} 天：**走 {@link EconomyDayStepper}**（多日静态入口已 fail-closed，见上一条）。 */
-  static EconomyData advance(EconomyData base, long days) {
-    EconomyDayStepper stepper = new EconomyDayStepper(base);
+  /**
+   * 推满 {@code days} 天：**走 {@link EconomyDayStepper}**（多日静态入口已 fail-closed，见上一条）。
+   *
+   * <p>★ H1：家户账是**会话状态**（裁定 K1）⇒ 入参是成对的 {@link EconomyFixtures.World}（状态 + 工作副本）。
+   */
+  static EconomyData advance(EconomyFixtures.World world, long days) {
+    EconomyDayStepper stepper = new EconomyDayStepper(world.data(), world.goods());
     for (long day = 1L; day <= days; day++) {
       stepper.step(day);
     }
@@ -215,7 +246,7 @@ class ProductionLedgerTest {
    *
    * <p>★ 与 {@code EconomySettlementTest.fixture()} 的差别只有"关系表非空"这一处 —— 于是本文件量到的东西<b>只可能来自关系</b>。
    */
-  private static EconomyData fixture() {
+  private static EconomyFixtures.World fixture() {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
     Industry farm =
@@ -241,8 +272,8 @@ class ProductionLedgerTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(PEASANT_KEY, row(PEASANT_KEY, 100L, PEASANT_LABOR_MILLI, 1000, 700L, 83_000L));
-    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, 10L, 5_800L, 0, 300L, 8_300L));
+    classes.put(PEASANT_KEY, row(PEASANT_KEY, 100L, PEASANT_LABOR_MILLI, 1000));
+    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, 10L, 5_800L, 0));
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     // ★ 显式关系：一条给养规则（`FIXED_IN_KIND_PER_LABOR × LABOR_AMOUNT`，粮），受方 = 该格的贫农 cohort。
@@ -257,34 +288,40 @@ class ProductionLedgerTest {
             10);
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
     relations.put(FARM, new ProductionRelation(FARM, OPERATOR, List.of(subsistence), OPERATOR));
-    return new EconomyData(
-        Optional.of(meta),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        Map.of(LOT, new LaborSupply(LOT, 1L, PEASANT_LABOR_MILLI, 0L, 0L)),
-        Map.of(
-            ALLOCATION,
-            new LaborAllocation(ALLOCATION, LOT, OPERATOR, "farm", PEASANT_LABOR_MILLI, 1L)),
-        relations);
+    // ★★ H1（K1）：期初库存进**会话工作副本** —— 与状态成对交出（唯一拼写点在这里）。
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);
+    EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 8_300L);
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(LOT, new LaborSupply(LOT, 1L, PEASANT_LABOR_MILLI, 0L, 0L)),
+            Map.of(
+                ALLOCATION,
+                new LaborAllocation(ALLOCATION, LOT, OPERATOR, "farm", PEASANT_LABOR_MILLI, 1L)),
+            relations),
+        goods);
   }
 
-  private static ClassRow row(
-      CohortKey key, long population, long laborMilli, int participation, long land, long goods) {
+  private static ClassRow row(CohortKey key, long population, long laborMilli, int participation) {
+    // ★★ H1：行里**没有** goods 了（裁定 K1）—— 期初库存见上面那份会话工作副本。
     return new ClassRow(
         key,
         population,
         laborMilli,
         participation,
-        Map.of(GRAIN, goods),
         0L,
         List.of(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(population, 1L)),
         Map.of());
   }
 
-  private static long grainOf(EconomyData data, CohortKey key) {
-    return data.classes().get(key).goods().getOrDefault(GRAIN, 0L);
+  /** 某家户的粮余额（★ H1：从**会话工作副本**读 —— 行里没有 {@code goods} 了）。 */
+  private static long grainOf(Map<CohortKey, Map<CommodityId, Long>> goods, CohortKey key) {
+    return EconomyFixtures.grainOf(goods, key);
   }
 }

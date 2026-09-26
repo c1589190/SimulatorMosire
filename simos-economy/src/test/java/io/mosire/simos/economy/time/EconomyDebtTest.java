@@ -88,7 +88,8 @@ class EconomyDebtTest {
    */
   @Test
   void borrowingOnManyDaysOfOneCycleAggregatesIntoASingleDebtWithASummedPrincipal() {
-    EconomyData next = EconomyFixtures.advance(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, 3L);
+    EconomyFixtures.World world = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
     List<DebtId> debts = next.classes().get(PEASANT_KEY).debts();
     assertThat(debts).as("三天借入聚合成**一条**（旧口径 3 条）").hasSize(1);
@@ -128,8 +129,8 @@ class EconomyDebtTest {
    */
   @Test
   void aNewCycleOpensANewDebtAndKeepsTheOldOne() {
-    EconomyData next =
-        EconomyFixtures.advance(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, CYCLE_DAYS + 3L);
+    EconomyFixtures.World world = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS + 3L);
 
     assertThat(next.classes().get(PEASANT_KEY).debts()).as("两个周期各一条（行内两处引用）").hasSize(2);
     assertThat(next.debts()).as("债务表两条").hasSize(2);
@@ -189,10 +190,11 @@ class EconomyDebtTest {
    */
   @Test
   void theSameInputTwiceYieldsTheSameDebtIdsAndPrincipals() {
-    EconomyData base = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyFixtures.World first = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyFixtures.World second = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
 
-    EconomyData once = EconomyFixtures.advance(base, 0L, 2L * CYCLE_DAYS);
-    EconomyData twice = EconomyFixtures.advance(base, 0L, 2L * CYCLE_DAYS);
+    EconomyData once = EconomyFixtures.advance(first.data(), first.goods(), 0L, 2L * CYCLE_DAYS);
+    EconomyData twice = EconomyFixtures.advance(second.data(), second.goods(), 0L, 2L * CYCLE_DAYS);
 
     assertThat(once.debts()).as("两次结算的债务表逐值相同（id 集合 + 本金）").isEqualTo(twice.debts());
     assertThat(once.debts().keySet()).as("id 集合").isEqualTo(twice.debts().keySet());
@@ -223,13 +225,14 @@ class EconomyDebtTest {
   @Test
   void theLenderKeepsAWholeCyclesSubsistenceAndNeverGoesBankruptFirst() {
     long lenderJar = 2_666L;
-    EconomyData next = EconomyFixtures.advance(hex(2L, 0L, lenderJar), 0L, 2L);
+    EconomyFixtures.World world = hex(2L, 0L, lenderJar);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 2L);
 
     long lenderNeed = EconomyVocabulary.cumulativeRationMilli(10L, 2L);
     long lenderMealOnDayOne = EconomyVocabulary.dailyRationMilli(10L, 1L);
     assertThat(lenderNeed).as("地主本周期自需").isEqualTo(1_666L);
-    assertThat(next.classes().get(LANDLORD_KEY).goods().get(GRAIN))
-        .as("地主缸里剩的**恰是它第 2 天那一顿**（保留额没被贷出去）")
+    assertThat(EconomyFixtures.grainOf(world.goods(), LANDLORD_KEY))
+        .as("地主缸里剩的**恰是它第 2 天那一顿**（保留额没被贷出去；★ H1：余额在会话工作副本里）")
         .isEqualTo(lenderMealOnDayOne)
         .isEqualTo(833L);
     assertThat(next.flows().get(LANDLORD_KEY).unmetNeed().getOrDefault(GRAIN, 0L))
@@ -268,8 +271,8 @@ class EconomyDebtTest {
    */
   @Test
   void interestAccruesOncePerCycleAndIsCapitalisedIntoThePrincipal() {
-    EconomyData next =
-        EconomyFixtures.advance(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, 2L * CYCLE_DAYS);
+    EconomyFixtures.World world = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 2L * CYCLE_DAYS);
 
     long perCycle = deficitOver(CYCLE_DAYS);
     long firstInterest = perCycle * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
@@ -317,7 +320,8 @@ class EconomyDebtTest {
    */
   @Test
   void interestIsChargedOncePerCycleEvenWhenSeveralIndustriesCloseTogether() {
-    EconomyData next = EconomyFixtures.advance(multiHex(2, CYCLE_DAYS), 0L, CYCLE_DAYS);
+    EconomyFixtures.World world = multiHex(2, CYCLE_DAYS);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
     long perCycle = deficitOver(CYCLE_DAYS);
     long once = perCycle + perCycle * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
@@ -349,9 +353,9 @@ class EconomyDebtTest {
     int hexes = 3;
     int cycles = 3;
     int days = (int) (cycles * CYCLE_DAYS);
-    EconomyData base = multiHex(hexes, CYCLE_DAYS);
+    EconomyFixtures.World world = multiHex(hexes, CYCLE_DAYS);
 
-    EconomyData next = EconomyFixtures.advance(base, 0L, days);
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, days);
 
     int slots = 2; // 贫农 + 地主（本夹具的槽位数）
     int upperBound = cycles * hexes * slots * (slots - 1);
@@ -382,11 +386,11 @@ class EconomyDebtTest {
    */
   @Test
   void lendingIsAnInternalTransferSoTheHexLedgerStillBalances() {
-    EconomyData base = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
-    EconomyData next = EconomyFixtures.advance(base, 0L, CYCLE_DAYS);
+    EconomyFixtures.World world = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    long stockBefore = grainTotal(world.goods());
+    EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
-    long stockBefore = grainTotal(base);
-    long stockAfter = grainTotal(next);
+    long stockAfter = grainTotal(world.goods());
     long consumed =
         next.flows().values().stream()
             .mapToLong(flow -> flow.consumed().getOrDefault(GRAIN, 0L))
@@ -413,12 +417,13 @@ class EconomyDebtTest {
    */
   @Test
   void twentyDaysAtOnceEqualsTwentyDailyStepsWithDebtsAndInterest() {
-    EconomyData base = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyFixtures.World world = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+    EconomyFixtures.World dailyWorld = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
 
-    EconomyData once = EconomyFixtures.advance(base, 0L, 2L * CYCLE_DAYS);
-    EconomyData chained = base;
+    EconomyData once = EconomyFixtures.advance(world.data(), world.goods(), 0L, 2L * CYCLE_DAYS);
+    EconomyData chained = dailyWorld.data();
     for (long day = 1L; day <= 2L * CYCLE_DAYS; day++) {
-      chained = EconomyFixtures.advance(chained, day - 1L, day);
+      chained = EconomyFixtures.advance(chained, dailyWorld.goods(), day - 1L, day);
     }
 
     assertThat(once).as("§十一：一次 20 天 == 20 次单日（终态逐值，含债务表）").isEqualTo(chained);
@@ -444,7 +449,8 @@ class EconomyDebtTest {
         List.of(SocialClassId.LANDLORD, SocialClassId.RICH_PEASANT, SocialClassId.MIDDLE_PEASANT);
 
     for (SocialClassId lenderStratum : strata) {
-      EconomyData next = EconomyFixtures.advance(hexWithOnlyLender(lenderStratum), 0L, 1L);
+      EconomyFixtures.World world = hexWithOnlyLender(lenderStratum);
+      EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
       CohortKey lenderKey = new CohortKey(HEX, ResidenceKind.RURAL, lenderStratum);
 
       assertThat(next.debts()).as("★ %s 必须真的放得出贷（匹配不上 ⇒ 这里一条债都没有）", lenderStratum).hasSize(1);
@@ -460,41 +466,72 @@ class EconomyDebtTest {
   // ── 夹具 ───────────────────────────────────────────────────────────────────────────
 
   /** 一格两行、**放贷那行的阶层可指定**（S1 阶段 1 新增：放贷序列有三档，原夹具写死地主 ⇒ 只覆盖得到一档）。 */
-  private static EconomyData hexWithOnlyLender(SocialClassId lenderStratum) {
+  private static EconomyFixtures.World hexWithOnlyLender(SocialClassId lenderStratum) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
-    addHex(industries, classes, FARM_KIND, 0, 0, CYCLE_DAYS, 0L, LANDLORD_JAR, lenderStratum);
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    addHex(
+        industries, classes, goods, FARM_KIND, 0, 0, CYCLE_DAYS, 0L, LANDLORD_JAR, lenderStratum);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of()),
+        goods);
   }
 
   /** 一格两行（贫农缸空 / 地主 {@code landlordJar}）、**不产粮**的产业。 */
-  private static EconomyData hex(long cycleDays, long peasantJar, long landlordJar) {
+  private static EconomyFixtures.World hex(long cycleDays, long peasantJar, long landlordJar) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
-    addHex(industries, classes, FARM_KIND, 0, 0, cycleDays, peasantJar, landlordJar);
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
+    addHex(industries, classes, goods, FARM_KIND, 0, 0, cycleDays, peasantJar, landlordJar);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     // ★ R2：本文件的产业**不产粮**（{@code outputPerUnit} 为空）⇒ 劳动投入的多少不改变任何一个字面量
     //   （收获恒 0、瓶颈无从谈起）⇒ 配额表留空即可。★ 空配额是**合法状态**（劳动是分配来的：没人发配额 = 没人上山干活），
     //   不是"兜底"——本文件断言的债务与利息与劳动无关。
-    return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of()),
+        goods);
   }
 
   /** {@code hexes} 格（同一形态：贫农缸空、地主缸厚）—— 供上界用例。 */
-  private static EconomyData multiHex(int hexes, long cycleDays) {
+  private static EconomyFixtures.World multiHex(int hexes, long cycleDays) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     for (int q = 0; q < hexes; q++) {
-      addHex(industries, classes, FARM_KIND, q, 0, cycleDays, 0L, LANDLORD_JAR);
+      addHex(industries, classes, goods, FARM_KIND, q, 0, cycleDays, 0L, LANDLORD_JAR);
     }
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
-    return new EconomyData(
-        Optional.of(meta), industries, classes, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    return new EconomyFixtures.World(
+        new EconomyData(
+            Optional.of(meta),
+            industries,
+            classes,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of()),
+        goods);
   }
 
   /**
@@ -506,19 +543,26 @@ class EconomyDebtTest {
   private static void addHex(
       Map<IndustryId, Industry> industries,
       Map<CohortKey, ClassRow> classes,
+      Map<CohortKey, Map<CommodityId, Long>> goods,
       String kind,
       int q,
       int r,
       long cycleDays,
       long peasantJar,
       long landlordJar) {
-    addHex(industries, classes, kind, q, r, cycleDays, peasantJar, landlordJar, LANDLORD);
+    addHex(industries, classes, goods, kind, q, r, cycleDays, peasantJar, landlordJar, LANDLORD);
   }
 
-  /** 同 {@link #addHex(Map, Map, String, int, int, long, long, long)}，但**放贷那行的阶层可指定**。 */
+  /**
+   * 同 {@link #addHex(Map, Map, Map, String, int, int, long, long, long)}，但**放贷那行的阶层可指定**。
+   *
+   * <p>★★ H1（K1）：缸里的粮（{@code peasantJar} / {@code landlordJar}）**不再写进行里** —— 它们进家户账**会话工作副本**
+   * （{@code goods}，就地更新）；行里只剩人口/劳动/参与率/需求。
+   */
   private static void addHex(
       Map<IndustryId, Industry> industries,
       Map<CohortKey, ClassRow> classes,
+      Map<CohortKey, Map<CommodityId, Long>> goods,
       String kind,
       int q,
       int r,
@@ -557,27 +601,27 @@ class EconomyDebtTest {
     //   两格的同阶层行是**两家户**，键必须跟着 q/r 走；写死 (0,0) 会把多格并成一行）。
     CohortKey peasantKey = new CohortKey(new HexCoord(q, r), ResidenceKind.RURAL, PEASANT);
     CohortKey lenderKey = new CohortKey(new HexCoord(q, r), ResidenceKind.RURAL, lenderStratum);
-    classes.put(peasantKey, row(peasantKey, PEASANT_POPULATION, 1000, peasantJar));
-    classes.put(lenderKey, row(lenderKey, 10L, 0, landlordJar));
+    classes.put(peasantKey, row(peasantKey, PEASANT_POPULATION, 1000));
+    classes.put(lenderKey, row(lenderKey, 10L, 0));
+    // ★★ H1：缸里的粮进**家户账工作副本**（每个有人口的家户都有一张表；0 ⇒ 空表）。
+    EconomyFixtures.hold(goods, peasantKey, GRAIN, peasantJar);
+    EconomyFixtures.hold(goods, lenderKey, GRAIN, landlordJar);
   }
 
-  private static ClassRow row(
-      CohortKey key, long population, int participationPerMille, long grainStock) {
+  private static ClassRow row(CohortKey key, long population, int participationPerMille) {
     return new ClassRow(
         key,
         population,
         population * LABOR_PER_PERSON,
         participationPerMille,
-        grainStock > 0L ? Map.of(GRAIN, grainStock) : Map.of(),
         0L,
         new ArrayList<>(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(population, 1L)),
         Map.of());
   }
 
-  private static long grainTotal(EconomyData data) {
-    return data.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L))
-        .sum();
+  /** 全部家户的粮余额之和（★ H1：从**会话工作副本**读 —— 行里没有 {@code goods} 了）。 */
+  private static long grainTotal(Map<CohortKey, Map<CommodityId, Long>> goods) {
+    return goods.values().stream().mapToLong(inner -> inner.getOrDefault(GRAIN, 0L)).sum();
   }
 }

@@ -40,24 +40,86 @@ final class EconomyFixtures {
    * 从 {@code fromTick + 1} 逐日推到 {@code toTick}，交出终态 —— 与 {@code EconomySettlement.settle(base,
    * from, to)} 的**等价路径**（那边的日循环调的就是这里调的东西）。
    *
+   * <p>★★ <b>H1：家户账是会话状态</b>（裁定 K1）⇒ 每个调用方必须自己带一份**工作副本**（{@link #householdGoods()}）进来：
+   * 它<b>就地更新</b>，推进结束后调用方从它读家户余额（{@code ClassRow} 里已经没有库存了）。
+   *
    * @param base 结算前的状态（它必须**已经在** {@code fromTick} 那一刻）
+   * @param goods 家户账工作副本（**就地更新**；每个 {@code population > 0} 的家户都必须有键，否则结算当场抛）
    */
-  static EconomyData advance(EconomyData base, long fromTick, long toTick) {
-    return advance(base, fromTick, toTick, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  static EconomyData advance(
+      EconomyData base, Map<CohortKey, Map<CommodityId, Long>> goods, long fromTick, long toTick) {
+    return advance(base, goods, fromTick, toTick, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
   }
 
-  /** 同 {@link #advance(EconomyData, long, long)}，但**致死率可注入**（{@link EconomyDayStepper} 的包内可见旋钮）。 */
+  /**
+   * 同 {@link #advance(EconomyData, Map, long, long)}，但**致死率可注入**（{@link EconomyDayStepper}
+   * 的包内可见旋钮）。
+   */
   static EconomyData advance(
-      EconomyData base, long fromTick, long toTick, int famineMortalityPerMille) {
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> goods,
+      long fromTick,
+      long toTick,
+      int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     if (base.meta().isEmpty()) {
       return base; // 未激活：不做任何公式（§6.6）—— 与 EconomySettlement.settle 的早退同款
     }
-    EconomyDayStepper stepper = new EconomyDayStepper(base, true, famineMortalityPerMille);
+    EconomyDayStepper stepper = new EconomyDayStepper(base, goods, true, famineMortalityPerMille);
     for (long day = fromTick + 1L; day <= toTick; day++) {
       stepper.step(day);
     }
     return stepper.finish();
+  }
+
+  // ── H1：家户账工作副本的夹具助手 ────────────────────────────────────────────────────
+
+  /**
+   * ★★ <b>一份夹具 = 经济状态 + 它的家户账工作副本</b>（H1；裁定 K1/K2）。
+   *
+   * <p>★★ <b>为什么必须成对交出来</b>：H1 之后"某家户有多少粮"这件事**不在** {@code EconomyData} 里（行里没有 {@code goods}）——
+   * 它住在会话工作副本里。夹具若只交出状态，每个用例都得自己再抄一遍期初库存 ⇒ 两份数字必然漂开（而漂开不会报错， 只会让期望值悄悄错）。成对交出 ⇒ "期初库存"只有一个拼写点。
+   */
+  record World(EconomyData data, Map<CohortKey, Map<CommodityId, Long>> goods) {}
+
+  /**
+   * ★★ <b>一份空的家户账工作副本</b>（H1 的会话状态；裁定 K1）：键 = 家户身份、值 = 商品余额。
+   *
+   * <p>★ 它的形状与生产代码**逐字相同**（{@code EconomyDayStepper} 的入参）—— 夹具不另造一种写法，否则"哪一份副本"这件事
+   * 会在两处各有一个答案（而写歪了不会报错，只会让字面量悄悄错）。
+   */
+  static LinkedHashMap<CohortKey, Map<CommodityId, Long>> householdGoods() {
+    return new LinkedHashMap<>();
+  }
+
+  /**
+   * 给某个家户在某商品上放一笔余额（{@code amount <= 0} ⇒ **不落键**，保持"空商品表"的纯形态）。
+   *
+   * <p>★ 同一个家户可以逐个商品调用（内层表是**替换**式更新，与生产代码的 {@code setStock} 同口径）。
+   */
+  static void hold(
+      Map<CohortKey, Map<CommodityId, Long>> goods,
+      CohortKey key,
+      CommodityId commodity,
+      long amount) {
+    LinkedHashMap<CommodityId, Long> inner = new LinkedHashMap<>(goods.getOrDefault(key, Map.of()));
+    if (amount <= 0L) {
+      inner.remove(commodity);
+    } else {
+      inner.put(commodity, amount);
+    }
+    goods.put(key, inner);
+  }
+
+  /** 某个家户在某商品上的余额（读口；没有这个键 ⇒ 0）。 */
+  static long stockOf(
+      Map<CohortKey, Map<CommodityId, Long>> goods, CohortKey key, CommodityId commodity) {
+    return goods.getOrDefault(key, Map.of()).getOrDefault(commodity, 0L);
+  }
+
+  /** 粮的余额（{@link #stockOf} 的粮特化 —— 绝大多数夹具只量粮）。 */
+  static long grainOf(Map<CohortKey, Map<CommodityId, Long>> goods, CohortKey key) {
+    return stockOf(goods, key, new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID));
   }
 
   /**

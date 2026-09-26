@@ -277,16 +277,9 @@ class EconomyRoundTripTest {
    * 一个组件"的用例只能用不引用债务的行。
    */
   static ClassRow classRow(CohortKey key) {
+    // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 GoodsAccount / 经济侧的会话工作副本里）。
     return new ClassRow(
-        key,
-        120L,
-        60000L,
-        800,
-        Map.of(GRAIN, 300L),
-        50L,
-        List.of(),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
   }
 
   static Debt debt() {
