@@ -124,6 +124,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     }
 
     Map<PeopleLotId, List<IndustryId>> industriesOf = industriesOf(economy);
+    // ★ 兜底用的**按格索引**：建一次、放在日循环外。没有配额的批次（0-14 档 + 全部新生儿）
+    //   每一个都要走兜底，而它们随新生批次逐月累积 ⇒ 在热路径上每次全表扫产业会多出
+    //   一项 O(批次 × 产业)。索引与 industriesAt 同源（见 EconomySettlement.industriesByHex）。
+    Map<String, List<IndustryId>> industriesByHex = EconomySettlement.industriesByHex(economy);
     EconomyDayStepper stepper = new EconomyDayStepper(economy);
     SocialData currentSocial = social;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
@@ -133,7 +137,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
       currentSocial =
           applyDailyStress(
-              stepper.data(), currentSocial, stepper.flows(), unmetBefore, industriesOf);
+              stepper.data(),
+              currentSocial,
+              stepper.flows(),
+              unmetBefore,
+              industriesOf,
+              industriesByHex);
       // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
       if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
         PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
@@ -176,7 +185,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       SocialData social,
       Map<ClassKey, FlowRow> flows,
       Map<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> unmetBefore,
-      Map<PeopleLotId, List<IndustryId>> industriesOf) {
+      Map<PeopleLotId, List<IndustryId>> industriesOf,
+      Map<String, List<IndustryId>> industriesByHex) {
     if (social.groups().isEmpty() || economy.classes().isEmpty()) {
       return social; // 没有批次/没有经济 ⇒ 没有可算的人
     }
@@ -189,7 +199,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         //   两类批次走到这里：0-14 档（劳动系数 0 ⇒ 创世不发配额）与**全部新生儿批次**（创世之后产生）。
         //   与 EconomySettlement.applyPopulationChange 的兜底**共用同一个方法** —— 那个问题是同一个，
         //   答案也只能有一个（两处各写一遍必然漂）。
-        targets = EconomySettlement.industriesAt(economy, group.residence());
+        targets = EconomySettlement.industriesAt(industriesByHex, group.residence());
       }
       if (targets.isEmpty()) {
         continue; // 该格本来就没有任何经济状态（世界还没播种到这里）⇒ 没有可算的满足率

@@ -54,6 +54,44 @@ class CrisisMonitorPhaseTest {
     assertThat(day60).as("★ 第 60 天同理").isEqualTo(day119);
   }
 
+  /**
+   * ★★ **关账日不是"周期第一天"** —— 分母必须取**整周期**，不能取 1 天。
+   *
+   * <p>★★ **为什么这条必须单独钉**：{@code progressDays == 0} 有**两种**截然不同的状态， 只看这个字段分不开：
+   *
+   * <table>
+   *   <caption>两种 progressDays == 0</caption>
+   *   <tr><th>状态</th><th>progressDays</th><th>FlowRow 流水</th><th>正确的分母</th></tr>
+   *   <tr><td>创世（tick 0）</td><td>0</td><td>全 0</td><td>无所谓（unmet == 0 ⇒ 满足率恒 1000‰）</td></tr>
+   *   <tr><td><b>关账那一天的 revision</b></td><td><b>0</b>（收获那一支已归零）</td>
+   *       <td><b>刚关账那一整个周期</b>（清零发生在<b>次日</b>）</td><td><b>cycleDays</b></td></tr>
+   * </table>
+   *
+   * <p>★ 第二行有两个既有用例钉着：{@code EconomyFlowCycleTest.theClosingDayCarriesTheWholeCyclesIncome} （关账后
+   * {@code progressDays} 归零、而 {@code income} 是一整个周期的毛产）与 {@code
+   * theFirstDayOfANewCycleStartsEveryFieldFromZero}（清零在**次日**）。
+   *
+   * <p>★★ **判别力**：若把分母写成"周期第 0 天按 1 天算"，本条的 {@code elapsedDays} 会是 **1** ⇒ 红。 那一版会让"整周期缺口 ÷ 1
+   * 天需求"算出 **0‰** 的满足率 ⇒ **全境假阳性红灯**。
+   */
+  @Test
+  void closingDayReadsTheWholeCycleNotOneDay() {
+    PopulationEconomyFixture.Fixture closing = advanced(seeded(), 240L); // 第 2 周期关账日
+
+    assertThat(closing.economy().industries().values().iterator().next().progressDays())
+        .as("夹具前提：关账日的 progressDays 确实已归零")
+        .isZero();
+
+    Long elapsed =
+        CrisisMonitor.lightsAt(DESERT, closing.economy(), closing.social(), closing.tick()).stream()
+            .map(light -> light.evidence().get("elapsedDays"))
+            .filter(java.util.Objects::nonNull)
+            .map(v -> ((Number) v).longValue())
+            .findFirst()
+            .orElse(null);
+    assertThat(elapsed).as("★★ 关账日：流水是整周期的 ⇒ 分母必须是 cycleDays(120)，不是 1").isEqualTo(120L);
+  }
+
   /** 沙漠格在 {@code f.tick()} 这一刻的、**由满足率判定**的红灯类别集合（见 {@link #SATISFACTION_BASED}）。 */
   private static Set<String> kindsAt(PopulationEconomyFixture.Fixture f) {
     return CrisisMonitor.lightsAt(DESERT, f.economy(), f.social(), f.tick()).stream()

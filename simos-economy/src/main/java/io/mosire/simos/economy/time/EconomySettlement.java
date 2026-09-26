@@ -605,15 +605,38 @@ public final class EconomySettlement {
    */
   public static List<IndustryId> industriesAt(
       EconomyData base, io.mosire.simos.map.hex.HexCoord at) {
-    List<IndustryId> found = new ArrayList<>();
+    return industriesAt(industriesByHex(base), at);
+  }
+
+  /**
+   * 同 {@link #industriesAt(EconomyData, HexCoord)}，但用**预建的索引** —— 热路径（逐日 × 逐批次）用这个，免得每次重建整张表。
+   *
+   * <p>★ 两个重载**共用同一行取值逻辑**："某一格有哪些产业"的答案只有一个来源。
+   */
+  public static List<IndustryId> industriesAt(
+      Map<String, List<IndustryId>> industriesByHex, io.mosire.simos.map.hex.HexCoord at) {
+    return industriesByHex.getOrDefault(IndustryHexKeys.hexKey(at.q(), at.r()), List.of());
+  }
+
+  /**
+   * ★★ **按格索引全部产业**（{@code "q_r" → 产业表}，保序：产业表的插入序）。
+   *
+   * <p>★★ **它是"某一格有哪些产业"这件事的唯一算法** —— {@link #industriesAt} 也从它取， 故两处（以及将来的第三处）不可能给出不同答案。
+   *
+   * <p>★ **为什么要单独暴露它**：调用方 {@code PopulationEconomyTimeParticipant#applyDailyStress} 在**逐日 ×
+   * 逐批次**的热路径上需要它 —— 没有配额的批次（0-14 档 + 全部新生儿）**每一个**都要 走兜底，而它们的数量随新生批次**逐月累积**（真档实测 ≈ 6,263
+   * 个）。在那儿每次全表扫产业会 多出一项 O(批次 × 产业)；**建一次索引**就没有这一项。
+   *
+   * @param base 经济状态
+   * @return 格键（{@code q_r}）→ 该格的产业（保序；无产业的格**不出现在表里**）
+   */
+  public static Map<String, List<IndustryId>> industriesByHex(EconomyData base) {
+    Map<String, List<IndustryId>> byHex = new LinkedHashMap<>();
     for (IndustryId id : base.industries().keySet()) {
-      if (IndustryHexKeys.hexKeyOf(id)
-          .filter(hex -> hex.equals(IndustryHexKeys.hexKey(at.q(), at.r())))
-          .isPresent()) {
-        found.add(id);
-      }
+      IndustryHexKeys.hexKeyOf(id)
+          .ifPresent(hex -> byHex.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(id));
     }
-    return found;
+    return byHex;
   }
 
   /**

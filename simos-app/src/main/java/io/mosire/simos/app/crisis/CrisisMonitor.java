@@ -33,7 +33,7 @@ import java.util.Map;
  *   <tr><th>spec 列的</th><th>本类的落点</th></tr>
  *   <tr><td>当前需求满足水平</td><td>{@link Kind#FOOD}/{@link Kind#CLOTH}：本周期**逐商品**的满足率（粮与布**各一条**）</td></tr>
  *   <tr><td>儿童·青壮年·老年人分别受影响程度</td><td>{@link Kind#FOOD} 的 {@code stressByAgeBracket}：各档批次的**生理压力**最大值/均值</td></tr>
- *   <tr><td>债务增长</td><td>{@link Kind#DEBT}：本期新借入 ÷ 本周期总需求</td></tr>
+ *   <tr><td>债务增长</td><td>{@link Kind#DEBT}：本期新借入 ÷ 本周期**至今**需求（与分子同基准）</td></tr>
  *   <tr><td>劳动负担</td><td>{@link Kind#LABOR_BURDEN}：该格劳动占用率（{@code Σ配额 ÷ Σ可用劳动}）</td></tr>
  *   <tr><td>相比历史基线的突变</td><td>★ **如实记：本阶段用的是"满额基线（1000‰）"** ——真正的"与历史基线相比"要一份跨周期的留痕
  *       （第二个状态组件），那超出 R4 的最小范围；本类不假装有它。</td></tr>
@@ -54,7 +54,7 @@ public final class CrisisMonitor {
     CLOTH,
     /** 社会再生产危机：本周期死亡率高于 {@link #MORTALITY_CRISIS_PER_MILLE}。 */
     MORTALITY,
-    /** 债务危机：本期新借入达到本周期总需求的 {@link #DEBT_CRISIS_PER_MILLE} 以上。 */
+    /** 债务危机：本期新借入达到本周期**至今**需求的 {@link #DEBT_CRISIS_PER_MILLE} 以上（与分子同基准）。 */
     DEBT,
     /** 劳动负担：该格劳动占用率 ≥ {@link #LABOR_BURDEN_CRISIS_PER_MILLE}。 */
     LABOR_BURDEN
@@ -205,7 +205,11 @@ public final class CrisisMonitor {
     if (grainNeed > 0L && borrowing * 1000L / grainNeed >= DEBT_CRISIS_PER_MILLE) {
       Map<String, Object> evidence = new LinkedHashMap<>();
       evidence.put("newBorrowingMilli", borrowing);
-      evidence.put("cycleNeedMilli", grainNeed);
+      // ★ 键名与语义同时更正：B2 之后这个分母是"本周期**至今**"的需求，不再是一整个周期 ——
+      //   沿用旧名 `cycleNeedMilli` 会让读的人以为它是整周期需求。
+      evidence.put("elapsedNeedMilli", grainNeed);
+      evidence.put("elapsedDays", elapsedDaysSeen);
+      evidence.put("cycleDays", cycleDaysSeen);
       lights.add(new Light(coord, Kind.DEBT, evidence));
     }
     long available = 0L;
@@ -238,7 +242,17 @@ public final class CrisisMonitor {
    */
   private static long elapsedDaysOf(EconomyData economy, ClassKey key) {
     var industry = economy.industries().get(key.industry());
-    return industry == null ? 1L : Math.max(1L, industry.progressDays());
+    if (industry == null) {
+      return 1L;
+    }
+    // ★★ **关账那一支必须取整周期**：`progressDays == 0` 有**两种**状态，只看它分不开 ——
+    //   ① 创世（tick 0）：流水全 0 ⇒ 满足率恒 1000‰，分母取哪个都一样；
+    //   ② **关账那一天的 revision**：`progressDays` 已被收获那一支归零，而 FlowRow 的清零在**次日**
+    //      ⇒ 此刻 `unmetNeed` 携带的是**刚关账那一整个周期**的量 ⇒ 分母必须是 cycleDays。
+    //   取 1 天会让"整周期缺口 ÷ 1 天需求"算出 0‰ 的满足率 ⇒ **全境假阳性红灯**。
+    //   两个既有用例钉着这件事：EconomyFlowCycleTest.theClosingDayCarriesTheWholeCyclesIncome
+    //   与 theFirstDayOfANewCycleStartsEveryFieldFromZero。
+    return industry.progressDays() == 0L ? industry.cycleDays() : industry.progressDays();
   }
 
   /** 该行所属产业的**整周期**天数（只用于 evidence 里标出相位）；不设产业 ⇒ 1。 */
