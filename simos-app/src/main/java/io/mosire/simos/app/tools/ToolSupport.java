@@ -95,6 +95,19 @@ public final class ToolSupport {
    */
   public static final String ECONOMY_NAMESPACE = "economy";
 
+  /**
+   * actor 资源所属的命名空间（S1 阶段 2 起：{@code actor:<mapId>[:actor.<KIND>.<id> | :holding.<key> |
+   * :goods.<key>]}）。
+   *
+   * <p>★★ <b>字面量 {@code "actor"} 全仓三处同字面</b>：这里、{@code ActorSnapshot.namespace()}、{@code
+   * ActorCodec.namespace()}——{@code SimulationState} 构造期校验"modules 的键 == snapshot.namespace()"，
+   * 写歪当场抛（不是静默 miss）。
+   *
+   * <p>★ 与 {@link #ECONOMY_NAMESPACE} 同款：它同时出现在两处表态里——GM 组的逐命名空间范围（{@code Shell#gmPermissionSet}）与
+   * actor 自己的工具资源声明；新命名空间不加进前者，GM 面就会回落成"未表态"分支。
+   */
+  public static final String ACTOR_NAMESPACE = "actor";
+
   /** 读工具的资源声明（spec §7.1：map+soc+unit READ_ONLY）。 */
   public static final ResourceManifest ALL_READ =
       ResourceManifest.of(

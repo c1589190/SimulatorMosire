@@ -1,5 +1,7 @@
 package io.mosire.simos.app.gui;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
@@ -1414,5 +1416,18 @@ public final class ApiViews {
           "economy 模块切片不是 EconomySnapshot：" + snapshot.getClass().getName());
     }
     return economySnapshot.data();
+  }
+
+  /** actor 切片（S1 阶段 2 起；形制同 {@link #economyData}——GUI 与 MCP 读工具共用同一份提取，缺席或类型不对是装配故障）。 */
+  public static ActorData actorData(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module("actor")
+            .orElseThrow(() -> new IllegalArgumentException("状态里没有 actor 模块切片——装配故障，不是\"没有候选\""));
+    if (!(snapshot instanceof ActorSnapshot actorSnapshot)) {
+      throw new IllegalArgumentException(
+          "actor 模块切片不是 ActorSnapshot：" + snapshot.getClass().getName());
+    }
+    return actorSnapshot.data();
   }
 }

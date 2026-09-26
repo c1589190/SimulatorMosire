@@ -44,7 +44,7 @@ class CorridorWorldTest {
     assertThat(first.meta().ref()).isEqualTo(new StateRef(new BranchId("main"), new RevisionId(1)));
     assertThat(first.meta().timestamp()).isEqualTo(T5);
     assertThat(first.modules().keySet())
-        .containsExactlyInAnyOrder("map", "unit", "social", "sd", "economy");
+        .containsExactlyInAnyOrder("map", "unit", "social", "sd", "economy", "actor");
   }
 
   @Test

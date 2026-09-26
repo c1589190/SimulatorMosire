@@ -94,6 +94,14 @@ public final class CatalogTool implements AgentTool {
                   + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]}]"
                   + "（★ 一次种一格或多格；meta 空 = 首次播种并打标；meta 非空 = 按格追加，"
                   + "若某格已有产业/阶层行则拒并点名该格坐标）"),
+          Map.entry(
+              "actor.Seed",
+              "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
+                  + "holdings[{owner{kind,id}, location{q,r}, assetKey{kind,qualities}, quantity}...],"
+                  + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"
+                  + "（★ S1 阶段 2：一次种入某地图的 actor 分片，三张表各自挂在**自己那一格**下——"
+                  + "holdings/goods 的 location 必须等于所在 entry 的 (q,r)，否则拒；"
+                  + "owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体，悬空 owner 拒）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(

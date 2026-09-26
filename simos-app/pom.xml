@@ -59,6 +59,13 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy</artifactId>
     </dependency>
+    <!-- ★ S1 阶段 2：actor 切片（R2a 的经济同款装配面 —— codec/resolver/命令 handler）。
+         ★★ 这里**显式**声明，不靠 simos-economy 的传递依赖：本 pom 上方那条 R1 注释已把"靠传递依赖拿到
+         自己 main 里直接 new 的类型"定性为**缺陷**（simos-core 的原话："依赖传递不是契约"）——
+         actor 的 ActorCodec/ActorResolver/ActorSeedHandler 全部在本模块 main 里直接 new ⇒ 同属此类。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-actor</artifactId>
+    </dependency>
     <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
          SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
     <dependency>

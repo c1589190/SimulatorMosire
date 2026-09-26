@@ -8,6 +8,7 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.observe.EventTypes;
@@ -429,7 +430,8 @@ class ShellEndToEndTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new SdCodec(),
-                    new EconomyCodec())));
+                    new EconomyCodec(),
+                    new ActorCodec())));
   }
 
   private static Unit unit() {

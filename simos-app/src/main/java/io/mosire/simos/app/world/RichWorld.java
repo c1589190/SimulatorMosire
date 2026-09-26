@@ -2,6 +2,9 @@ package io.mosire.simos.app.world;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.core.store.Envelope;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -90,10 +93,17 @@ public final class RichWorld {
         ignored ->
             new EconomySnapshot(
                 decoded.meta().ref(), decoded.meta().timestamp(), EconomyData.empty()));
+    // ★ S1 阶段 2：同 economy 的先例——v17levant 档早于 actor 模块，而"命令总线要求切片在场"（CommandBus 的
+    //   slice() 找不到命名空间会响亮失败）⇒ 补一个**未激活**的空 actor 切片（meta 空 = §6.6 的未激活语义）。
+    //   ★ 键名写死 "actor"，与 ActorSnapshot.namespace() 同字面（SimulationState 构造期会校验）。
+    modules.computeIfAbsent(
+        "actor",
+        ignored ->
+            new ActorSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), ActorData.empty()));
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
-  /** 五个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
+  /** 六个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
   private static Map<String, ModuleCodec> codecTable() {
     Map<String, ModuleCodec> codecs = new LinkedHashMap<>();
     for (ModuleCodec codec :
@@ -102,7 +112,8 @@ public final class RichWorld {
             new SocialCodec(),
             new UnitCodec(),
             new SdCodec(),
-            new EconomyCodec())) {
+            new EconomyCodec(),
+            new ActorCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

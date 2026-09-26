@@ -8,6 +8,9 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -158,7 +161,9 @@ class McpCoverageTest {
           // ★ R1（T3）：人口批次的创世入口。
           "social.SeedGroups",
           // ★ R2a：经济播种（一次种一格；放最后 ⇒ 不移动前面各命令的 revision 号）。
-          "economy.Seed");
+          "economy.Seed",
+          // ★ S1 阶段 2：actor 播种（同 economy，放最后 ⇒ 不移动前面各命令的 revision 号）。
+          "actor.Seed");
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -321,6 +326,21 @@ class McpCoverageTest {
             + "\"laborParticipationPerMille\":950}],"
             + "\"classes\":[{\"slot\":\"poor_peasant\",\"population\":100,\"laborMilli\":58000,"
             + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":1000000}}]}]}]}");
+    // ★ S1 阶段 2（2026-09-26）：actor 播种。放最后 ⇒ 不移动前面各命令的 revision 号；
+    //   一格一主体 + 一条产权 + 一本库存（必须产生**非空**变更集）。
+    //   ★ 判据来自 ActorPayloads：holdings/goods 的 location 必须**等于所在 entry 的 (q,r)**（否则拒），
+    //     owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体（悬空 owner 拒）——故这里 owner 就是
+    //     同一条载荷里声明的 estate:1_1。
+    MINIMAL_PAYLOADS.put(
+        "actor.Seed",
+        "{\"mapId\":\"Map1\",\"rulesVersion\":\"actor-v1\",\"entries\":[{\"q\":1,\"r\":1,"
+            + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\",\"label\":\"农业庄园\"}],"
+            + "\"holdings\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},"
+            + "\"location\":{\"q\":1,\"r\":1},"
+            + "\"assetKey\":{\"kind\":\"LAND\",\"qualities\":{\"quality\":\"B\"}},"
+            + "\"quantity\":10000}],"
+            + "\"goods\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},"
+            + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}}]}]}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -403,8 +423,9 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("51 条命令各推一格（R1 起 +1 = social.SeedGroups）")
-        .isEqualTo(52L);
+        .as(
+            "52 条命令各推一格（R1 起 +1 = social.SeedGroups；R2a 起 +1 = economy.Seed；S1 阶段 2 起 +1 = actor.Seed）")
+        .isEqualTo(53L);
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
@@ -590,7 +611,9 @@ class McpCoverageTest {
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
                 // ★ R2a：经济切片在场（economy.Seed 要往它上面施加变更集）。
-                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty()),
+                // ★ S1 阶段 2：actor 切片在场（actor.Seed 要往它上面施加变更集；同 economy 的先例）。
+                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -602,7 +625,8 @@ class McpCoverageTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new SdCodec(),
-                    new EconomyCodec())));
+                    new EconomyCodec(),
+                    new ActorCodec())));
   }
 
   private static Unit unit() {

@@ -2,6 +2,7 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -53,6 +54,8 @@ class T12InfoRedlineTest {
       core.register(new UnitCodec());
       core.register(new SdCodec());
       core.register(new EconomyCodec());
+      // ★ S1 阶段 2：RichWorld.state() 带 actor 切片 ⇒ codec 表必须随之长（否则 bootstrapGenesis 当场抛）。
+      core.register(new ActorCodec());
 
       SimulationState genesis = RichWorld.state("Map1");
       core.bootstrapGenesis(genesis);
@@ -64,7 +67,7 @@ class T12InfoRedlineTest {
 
       // 装置自证：先证明这个状态**真的装着世界**，否则"info 为空"可能只是"没读到任何东西"。
       assertThat(replayed.modules().keySet())
-          .containsExactlyInAnyOrder("map", "social", "unit", "sd", "economy");
+          .containsExactlyInAnyOrder("map", "social", "unit", "sd", "economy", "actor");
 
       InfoSystem info = replayed.info();
       assertThat(info).as("C26：全局 Info 段（InfoSystem）一条都没有").isEqualTo(InMemoryInfoSystem.empty());

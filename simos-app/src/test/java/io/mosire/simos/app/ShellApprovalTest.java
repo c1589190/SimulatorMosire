@@ -12,6 +12,7 @@ import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
@@ -393,7 +394,12 @@ class ShellApprovalTest {
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new SdCodec(),
+                    new ActorCodec())));
   }
 
   private static String unitName(SimulationState state) {

@@ -30,9 +30,12 @@ class GmPermissionGroupTest {
 
   @TempDir Path tempDir;
 
-  /** GM 资源可达面的四个命名空间（与工具面实际声明的命名空间同源，见 {@code ToolSupport} 的 manifest 常量）。 */
+  /**
+   * GM 资源可达面的逐命名空间表态清单（与 {@code Shell#gmPermissionSet} 实际表态的命名空间同源，见 {@code ToolSupport} 的 manifest
+   * 常量）：map / social / unit / sd / economy（R2a 起）/ actor（S1 阶段 2 起）。
+   */
   private static final List<String> GM_NAMESPACES =
-      List.of("map", "social", "unit", "sd", "economy");
+      List.of("map", "social", "unit", "sd", "economy", "actor");
 
   @Test
   void gmCallerDeclaresEveryNamespaceInsteadOfLeavingTheResourceDimensionSilent() {

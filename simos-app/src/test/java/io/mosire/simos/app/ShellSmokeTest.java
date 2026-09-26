@@ -2,6 +2,7 @@ package io.mosire.simos.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -106,8 +107,10 @@ class ShellSmokeTest {
     seedGenesis();
     try (Shell shell = Shell.start(shellConfig())) {
       assertThat(shell.registeredModuleCount())
-          .as("壳应注册 map/social/unit/sd/economy 五个 codec（R2a 起第 5 个是 EconomyCodec）")
-          .isEqualTo(5);
+          .as(
+              "壳应注册 map/social/unit/sd/economy/actor 六个 codec"
+                  + "（R2a 起第 5 个是 EconomyCodec，S1 阶段 2 起第 6 个是 ActorCodec）")
+          .isEqualTo(6);
 
       CommandResult result =
           shell.coreSimos().submit(rename(1L, "{\"id\":\"u-1\",\"name\":\"改名后的第一连\"}"));
@@ -232,7 +235,8 @@ class ShellSmokeTest {
                     new UnitCodec(),
                     new SdCodec(),
                     new EconomyCodec(),
-                    new SocialCodec())));
+                    new SocialCodec(),
+                    new ActorCodec())));
   }
 
   /** 三格直线走廊，地形取 {@code desert}（{@code moveCost = 3}）⇒ 配合 mobility ‰500 每段恰 1500 毫 MP。 */

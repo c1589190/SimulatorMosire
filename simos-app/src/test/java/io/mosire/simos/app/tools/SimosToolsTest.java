@@ -488,7 +488,9 @@ class SimosToolsTest {
           "social.CreateCity",
           "social.UpdateCity",
           "social.SeedGroups",
-          "economy.Seed");
+          "economy.Seed",
+          // ★ S1 阶段 2：actor 播种（第六个切片）。
+          "actor.Seed");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -682,8 +684,10 @@ class SimosToolsTest {
   void catalogCoversEveryCommandHandlerImplementation() throws Exception {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
-        .as("扫描必须恰为 51 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R1 起 +1 = social.SeedGroups）")
-        .hasSize(51);
+        .as(
+            "扫描必须恰为 52 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R1 起 +1 = social.SeedGroups；"
+                + "S1 阶段 2 起 +1 = actor.Seed）")
+        .hasSize(52);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -782,7 +786,9 @@ class SimosToolsTest {
             Paths.get("..", "simos-sd", "src", "main", "java"),
             // ★ R2a：economy 也实现了 CommandHandler（economy.Seed）⇒ 扫描根必须含它，
             //   否则"注册面 == 实现面"这条强判据会把新命令读成"多出来的"。
-            Paths.get("..", "simos-economy", "src", "main", "java"));
+            Paths.get("..", "simos-economy", "src", "main", "java"),
+            // ★ S1 阶段 2：actor 同款（actor.Seed）——不同步加进来，本强判据会把它读成"多出来的"。
+            Paths.get("..", "simos-actor", "src", "main", "java"));
     Pattern typeReturn =
         Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*\"([^\"]+)\"");
     Set<String> types = new LinkedHashSet<>();

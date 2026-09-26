@@ -21,6 +21,9 @@ import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
+import io.mosire.simos.actor.codec.ActorCodec;
+import io.mosire.simos.actor.resolve.ActorResolver;
+import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.GmAutoApproveGate;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -384,7 +387,14 @@ public final class Shell implements AutoCloseable {
 
     List<ModuleCodec> codecs =
         List.of(
-            new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec(), new EconomyCodec());
+            new MapCodec(),
+            new SocialCodec(),
+            new UnitCodec(),
+            new SdCodec(),
+            new EconomyCodec(),
+            // ★ S1 阶段 2：第六个切片（actor）。★ 它的 namespace() 恒 "actor" —— 必须与 ActorSnapshot.namespace()
+            //   同字面（ToolSupport.ACTOR_NAMESPACE 是第三处），写歪 SimulationState 构造期当场抛。
+            new ActorCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -427,6 +437,10 @@ public final class Shell implements AutoCloseable {
                 new SeedGroupsHandler(),
                 // ── economy（1 条，R2a）：一次播种某国全部格的初始经济状态（§十"验收目标 A"）──
                 new EconomySeedHandler(),
+                // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
+                //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
+                //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
+                new ActorSeedHandler(),
                 new CreateNationHandler(),
                 new CreateArmyHandler(),
                 new CreateDecisionMakerHandler(),
@@ -512,6 +526,9 @@ public final class Shell implements AutoCloseable {
     // ★ R2a：economy 自己的地址解析器（economy:<mapId>[:industry.<id> | :debt.<id> | :class.<i>.<s> |
     // :flow.<i>.<s>]）。
     resolverRegistry.register(new EconomyResolver());
+    // ★ S1 阶段 2：actor 自己的地址解析器（actor:<mapId>[:actor.<KIND>.<id> | :holding.<key> |
+    // :goods.<key>]）——注册它，`/api/resolve` 读口才认识第六个命名空间。
+    resolverRegistry.register(new ActorResolver());
 
     FacetRegistry facetRegistry = new FacetRegistry();
     facetRegistry.register(new UnitsHereFacet());
@@ -888,7 +905,9 @@ public final class Shell implements AutoCloseable {
                     ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited(),
                     ToolSupport.SD_NAMESPACE, ResourceScope.unlimited(),
                     // ★ R2a：第六个命名空间（economy:<q>_<r>）——不在这里表态，GM 面就落到"未表态"分支。
-                    ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited())))
+                    ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited(),
+                    // ★ S1 阶段 2：第七个命名空间（actor:<mapId>[:…]）——同款，不表态就回落"未表态"分支。
+                    ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited())))
         .build();
   }
 

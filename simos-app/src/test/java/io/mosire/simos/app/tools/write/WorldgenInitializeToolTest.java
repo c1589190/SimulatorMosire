@@ -12,6 +12,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
@@ -1307,7 +1308,8 @@ class WorldgenInitializeToolTest {
   // ────────────────────────────────── 夹具 ──────────────────────────────────────────────
 
   /**
-   * 真世界 + 真引擎：五 codec + 八条 handler（social 2 + 军队块 5 + economy 1）+ v17levant 创世（{@code (main,1)}）。
+   * 真世界 + 真引擎：六 codec + 九条 handler（social 2 + 军队块 5 + economy 1 + actor 1）+ v17levant 创世（{@code
+   * (main,1)}）。
    */
   private static CoreSimos freshCore(Path storeDir) {
     CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, SimosObjectMapper.create()));
@@ -1317,7 +1319,10 @@ class WorldgenInitializeToolTest {
             new SocialCodec(),
             new UnitCodec(),
             new SdCodec(),
-            new EconomyCodec())) {
+            new EconomyCodec(),
+            // ★ S1 阶段 2：RichWorld.state() 现在也带 actor 切片 ⇒ 本 codec 表必须跟着长
+            //   （bootstrapGenesis 的 CheckpointEncoder 要求 codec 覆盖 state 的全部 namespace，缺项当场抛）。
+            new ActorCodec())) {
       core.register(codec);
     }
     core.register(new SetPopulationHandler());
@@ -1345,7 +1350,9 @@ class WorldgenInitializeToolTest {
             new SocialCodec(),
             new UnitCodec(),
             new SdCodec(),
-            new EconomyCodec())) {
+            new EconomyCodec(),
+            // ★ S1 阶段 2：与 freshCore 同款——RichWorld 的档里有 actor 切片，codec 表要跟得上。
+            new ActorCodec())) {
       core.register(codec);
     }
     return core;

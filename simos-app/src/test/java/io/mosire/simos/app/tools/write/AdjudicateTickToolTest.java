@@ -530,8 +530,10 @@ class AdjudicateTickToolTest {
             "map.SetEdge",
             "map.RegisterPathwayGroup");
     assertThat(tool.allowedCommandTypes())
-        .as("白名单 = unit 20 + map 7 + social 4（R1 起 +1 = social.SeedGroups）+ economy 1")
-        .hasSize(32);
+        .as(
+            "白名单 = unit 20 + map 7 + social 4（R1 起 +1 = social.SeedGroups）+ economy 1"
+                + " + actor 1（S1 阶段 2 起 = actor.Seed）")
+        .hasSize(33);
 
     // ② 其余 26 条：逐条给真载荷、钉死输出路径。
     Map<String, List<String>> samples = new LinkedHashMap<>();
@@ -616,6 +618,12 @@ class AdjudicateTickToolTest {
             "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":[{\"q\":1,\"r\":1,"
                 + "\"industries\":[]}]}",
             "1_1"));
+    // actor 一条（S1 阶段 2）：播种按**格**给目标（{@code <q>_<r>}，与 economy/social 同款不带 mapId）。
+    samples.put(
+        "actor.Seed",
+        List.of(
+            "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":[{\"q\":1,\"r\":1,\"actors\":[]}]}",
+            "1_1"));
 
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
@@ -626,8 +634,10 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("28 条有目标声明的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑；R1 起 +1 = social.SeedGroups）")
-        .hasSize(28);
+        .as(
+            "29 条有目标声明的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑；R1 起 +1 = social.SeedGroups；"
+                + "S1 阶段 2 起 +1 = actor.Seed）")
+        .hasSize(29);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

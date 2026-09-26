@@ -1,5 +1,7 @@
 package io.mosire.simos.app.world;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.map.GameMap;
@@ -93,7 +95,9 @@ public final class CorridorWorld {
             "social", new SocialSnapshot(at, AT, socialData()),
             "sd", new SdSnapshot(at, AT, SdState.empty()),
             // ★ R2a：命令总线要求切片在场（缺 economy 时 slice() 会响亮失败）⇒ 空/未激活的 economy 切片。
-            "economy", new EconomySnapshot(at, AT, EconomyData.empty())),
+            "economy", new EconomySnapshot(at, AT, EconomyData.empty()),
+            // ★ S1 阶段 2：同款——actor 切片缺席时 slice("actor") 会响亮失败 ⇒ 补空/未激活切片。
+            "actor", new ActorSnapshot(at, AT, ActorData.empty())),
         InMemoryInfoSystem.empty());
   }
 
