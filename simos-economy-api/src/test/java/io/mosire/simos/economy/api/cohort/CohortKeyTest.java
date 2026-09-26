@@ -54,13 +54,12 @@ class CohortKeyTest {
   }
 
   /**
-   * ★ 上一条的**判别力补强**（同一条契约、另一组夹具）：{@code q ≠ r}、{@code r > 0}、阶层取词表末位、
-   * ★ **居住类型取另一档（{@code urban}）**。
+   * ★ 上一条的**判别力补强**（同一条契约、另一组夹具）：{@code q ≠ r}、{@code r > 0}、阶层取词表末位、 ★ **居住类型取另一档（{@code
+   * urban}）**。
    *
    * <p>★ 为什么需要它：只测 {@code (3, -2) | rural | poor_peasant} 时，「{@code toString()} 写反段」
-   * 的变异体只有一半会被抓，而「阶层段硬写首位 {@code poor_peasant}」「坐标段硬写 {@code 3_-2}」
-   * 「**居住段硬写 {@code rural}**」这类变异体<b>会存活</b> —— 夹具恰好等于它硬写的那个值。
-   * 换一组<b>非默认</b>夹具（含另一档居住类型）即可杀。
+   * 的变异体只有一半会被抓，而「阶层段硬写首位 {@code poor_peasant}」「坐标段硬写 {@code 3_-2}」 「**居住段硬写 {@code
+   * rural}**」这类变异体<b>会存活</b> —— 夹具恰好等于它硬写的那个值。 换一组<b>非默认</b>夹具（含另一档居住类型）即可杀。
    */
   @Test
   void cohortKeyRoundTripsForANonDefaultStratumAndAsymmetricCoordinates() {
@@ -78,12 +77,10 @@ class CohortKeyTest {
   }
 
   /**
-   * ★ <b>「按第一、第二个接缝切三段」是可观测的</b>：第二个接缝之后<b>整段</b>都是阶层段
-   * ⇒ 非法串的报错来自<b>阶层词表</b>，不是坐标轴、也不是居住词表。
+   * ★ <b>「按第一、第二个接缝切三段」是可观测的</b>：第二个接缝之后<b>整段</b>都是阶层段 ⇒ 非法串的报错来自<b>阶层词表</b>，不是坐标轴、也不是居住词表。
    *
-   * <p>★ 为什么只能用<b>非法</b>输入来观测它：三个分量都不含接缝 ⇒ 在<b>合法</b>串上任何切法恒等。
-   * 接缝位置因此只在 fail-closed 的<b>报错来源</b>上留下痕迹 —— 这正是本类"宁抛不静默"品质的一部分。
-   * （H0.1 之前是两段、只有一处接缝；现在是三段、两处接缝，而"尾巴整段交给阶层词表"这条性质不变。）
+   * <p>★ 为什么只能用<b>非法</b>输入来观测它：三个分量都不含接缝 ⇒ 在<b>合法</b>串上任何切法恒等。 接缝位置因此只在 fail-closed
+   * 的<b>报错来源</b>上留下痕迹 —— 这正是本类"宁抛不静默"品质的一部分。 （H0.1 之前是两段、只有一处接缝；现在是三段、两处接缝，而"尾巴整段交给阶层词表"这条性质不变。）
    */
   @Test
   void parseTreatsEverythingAfterTheSecondSeamAsTheStratum() {
@@ -98,8 +95,7 @@ class CohortKeyTest {
     assertThatThrownBy(() -> new CohortKey(null, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT))
         .as("hex 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(
-            () -> new CohortKey(new HexCoord(0, 0), null, SocialClassId.POOR_PEASANT))
+    assertThatThrownBy(() -> new CohortKey(new HexCoord(0, 0), null, SocialClassId.POOR_PEASANT))
         .as("★ 居住类型不得为 null —— 少了它，农村与城镇的同阶层家户会并账（裁定 R-N1-A）")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, null))
@@ -216,7 +212,8 @@ class CohortKeyTest {
         .containsExactlyInAnyOrder(Recipient.ToActor.class, Recipient.ToCohort.class);
 
     ActorRef estate = new ActorRef(ActorKind.ESTATE, "farm@0_0");
-    CohortKey cohort = new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD);
+    CohortKey cohort =
+        new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD);
 
     assertThat(new Recipient.ToActor(estate).actor()).isEqualTo(estate);
     assertThat(new Recipient.ToCohort(cohort).cohort()).isEqualTo(cohort);
@@ -236,7 +233,8 @@ class CohortKeyTest {
   void moneyRulesCarryNoCommodityAndInKindRulesRequireOne() {
     Recipient rec =
         new Recipient.ToCohort(
-            new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, new SocialClassId("poor_peasant")));
+            new CohortKey(
+                new HexCoord(0, 0), ResidenceKind.RURAL, new SocialClassId("poor_peasant")));
     assertThatThrownBy(
             () ->
                 new CompensationRule(
@@ -442,7 +440,8 @@ class CohortKeyTest {
             rule(
                 RuleType.FIXED_IN_KIND_RENT,
                 new Recipient.ToCohort(
-                    new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
+                    new CohortKey(
+                        new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
                 Basis.FIXED_AMOUNT,
                 0,
                 4_000L,
