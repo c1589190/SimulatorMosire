@@ -11,7 +11,7 @@
 
   <artifactId>simos-actor</artifactId>
   <name>ActorSimos</name>
-  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集。本任务（C 段第一块）只建身份与骨架——Actor / ActorMeta / ActorData（只两张表）/ ActorSnapshot / ActorChangeSet + 往返不变式测试；holdings 由 Task 5 增量加、accounts 由 Task 6 增量加。</description>
+  <description>actor 切片的领域内核（S1 spec §三 L277）：Actor 身份本体 + 产权（AssetHolding）+ 商品库存（GoodsAccount）+ 状态树/落盘切片/变更集。本任务（C 段第一块）只建身份与骨架——Actor / ActorMeta / ActorData（组件**恰是** `(meta, actors)` 两件，**不提前加** holdings/accounts）/ ActorSnapshot / ActorChangeSet + 往返不变式测试；holdings 由 Task 5 增量加、accounts 由 Task 6 增量加。</description>
 
   <!-- ★ 依赖面 = actor-api（ActorRef——共用契约层）+ util（Snapshot / ChangeSet / FieldDelta / StateRef / SimosTimestamp）。
        ★ **本阶段不声明 simos-economy-api**：Task 6 的 GoodsAccount 真正 import CommodityId 时才加（YAGNI，
