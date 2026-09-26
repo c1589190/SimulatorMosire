@@ -2,9 +2,11 @@
  * ActorSimos —— actor 切片的领域内核（S1 spec §三 L277）。
  *
  * <p>★★ <b>本切片承担什么</b>（用户裁定，spec §三 L277 原文）：{@code Actor identity · AssetHolding · Goods
- * ownership/inventory · ProductionRelation}。★ <b>本任务（C 段第一块）只落地第一项</b>：{@link
- * io.mosire.simos.actor.model.Actor}（身份本体）+ 状态树骨架；{@code AssetHolding} 由 Task 5、{@code
- * GoodsAccount} 由 Task 6、{@code ProductionRelation} 属后续阶段 —— 状态树的表按任务顺序<b>增量</b>加，每个任务自身可编译可测。
+ * ownership/inventory · ProductionRelation}。★ <b>已落地</b>（C 段逐块增量）：{@link
+ * io.mosire.simos.actor.model.Actor}（身份本体）+ 状态树骨架（{@code meta} / {@code actors}）+ <b>产权</b> （{@link
+ * io.mosire.simos.actor.model.AssetHolding}，Task 5 加：聚合键 {@code (owner, location, assetKey)}）；
+ * {@code GoodsAccount} 由 Task 6、{@code ProductionRelation} 属后续阶段 ——
+ * 状态树的表按任务顺序<b>增量</b>加，每个任务自身可编译可测。
  *
  * <p>★★ <b>本切片不吞 Money / Debt</b>（spec §三 L281-283）：债权天然是跨主体关系（{@code debtor / creditor / principal
  * / terms}），Money/credit 又是 S2 的领域 ⇒ <b>禁止</b>写 {@code ActorRow { Money money; List<Debt> debts; }}
