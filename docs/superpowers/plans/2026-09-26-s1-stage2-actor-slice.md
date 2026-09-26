@@ -508,7 +508,10 @@ Expected: **FAIL**（`keyOrderInQualitiesDoesNotChangeIdentity` 红 —— 两�
 
 **Interfaces:**
 - Produces: `record Actor(ActorRef ref, String label)`；
-  `ActorChangeSet implements ChangeSet`；`ActorSnapshot implements Snapshot`（`namespace()` 恒返回 `"actor"`）
+  `ActorChangeSet implements ChangeSet`；`ActorSnapshot implements Snapshot`（`namespace()` 恒返回 `"actor"`）；
+  ★ **三个 wither：`ActorData.withActor(Actor)`**（本任务）—— Task 5 会加 `withHolding`、
+  Task 6 会加 `withAccount`，**同一个道理**：**"键从值派生"只许有一个拼写点**。
+  若只把表暴露成 `Map`，聚合键的语义就退化成 `java.util.Map` 自己的语义，**测试恒真、判别力为零**。
 
 ★★ **`ActorData` 的三张表按任务顺序**增量**加 —— 每加一张，同一个提交里同步改
 `ActorData` 的组件列表 + `ActorChangeSet` 的字段 delta + `ActorRoundTripTest` 的往返断言**：
@@ -567,33 +570,125 @@ public record Actor(ActorRef ref, String label) { /* 校验：label 非空白 */
 - Test: `simos-actor/src/test/java/io/mosire/simos/actor/model/AssetHoldingTest.java`
 
 **Interfaces:**
+- Consumes: `ActorRef` / `AssetClassKey`（A 段，`io.mosire.simos.actor.api.*`）、`HexCoord`（`simos-map`）
 - Produces: `record AssetHoldingKey(ActorRef owner, HexCoord location, AssetClassKey assetKey)`；
-  `record AssetHolding(ActorHoldingKey key, long quantity)`
-- `ActorData.holdings: Map<AssetHoldingKey, AssetHolding>`
+  `record AssetHolding(AssetHoldingKey key, long quantity)`；
+  ★ **`ActorData.withHolding(AssetHolding)`**（往 Task 4 建的 `ActorData` 上加这一个 wither）
+- `ActorData.holdings: Map<AssetHoldingKey, AssetHolding>`（键**从值派生**，唯一拼写点在 `withHolding`）
+
+★ **测试夹具 `empty()`**：一个 private static 方法，返回**未激活**的空 `ActorData` ——
+`new ActorData(Optional.empty(), Map.of(), Map.of())`（组件个数按当任务的"增量表"来）。
+★ 本任务还需要 `ActorData.withActor(Actor)`（`ownershipAndOperationAreTwoIndependentFacts` 用到）
+—— **若 Task 4 还没给，本任务顺手加上**（它是同一个"键从值派生"的道理，不是新概念）。
+
+★★ **`withHolding` 为什么必须有**（**写测试时发现的计划缺陷**）：若只把 `holdings` 暴露成一个 `Map`，
+"聚合键是 `(owner, hex, assetClass)`"就退化成 `java.util.Map` **自己的**语义 ——
+测试会**恒真**、判别力**为零**。⇒ "键从值派生"这件事**必须只有一个拼写点**，测试才咬得住。
 
 - [ ] **Step 1: 写真值表式的测试**
 
 ```java
+class AssetHoldingTest {
+
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ActorRef HOUSEHOLD = new ActorRef(ActorKind.HOUSEHOLD, "household@0_0");
+  private static final HexCoord HEX = new HexCoord(0, 0);
+  private static final HexCoord OTHER = new HexCoord(1, 0);
+  private static final AssetClassKey ARABLE_B =
+      AssetClassKey.land(Map.of("arable", "true", "quality", "B"));
+  private static final AssetClassKey ARABLE_C =
+      AssetClassKey.land(Map.of("arable", "true", "quality", "C"));
+
   /** ★★ I2.2 前半句：聚合键是 (owner, hex, assetClass) —— 三者任一不同就是**另一份**产权。 */
   @Test
-  void theAggregationKeyIsOwnerHexAndAssetClass() { ... }
+  void theAggregationKeyIsOwnerHexAndAssetClass() {
+    ActorData all =
+        empty()
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L))
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, OTHER, ARABLE_B), 1L))
+            .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, HEX, ARABLE_B), 2L))
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_C), 3L));
+
+    assertThat(all.holdings())
+        .as("★ 原有一条 + 三条**只差一段**的 ⇒ 共 4 条（任一段不同即另一份产权）")
+        .hasSize(4);
+    assertThat(all.holdings().get(new AssetHoldingKey(ESTATE, HEX, ARABLE_B)).quantity())
+        .as("★ 原成本 10,000 必须还在 —— 没被那三条只差一段的覆盖掉")
+        .isEqualTo(10_000L);
+  }
+
+  /** ★ 同一个键写两次 ⇒ **后写覆盖前写**（调用方给的是"该余额是多少"，不是"加多少"）。 */
+  @Test
+  void writingTheSameKeyTwiceOverwrites() {
+    ActorData data =
+        empty()
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L))
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 7_500L));
+
+    assertThat(data.holdings()).as("★ 同一个 (owner, hex, assetClass) 只有一条").hasSize(1);
+    assertThat(data.holdings().values().iterator().next().quantity()).isEqualTo(7_500L);
+  }
 
   /** ★ 同一 owner 在两个 hex 各持一份 ⇒ **两条，不合并**（hex 是键的一部分）。 */
   @Test
-  void theSameOwnerAtTwoHexesHasTwoHoldings() { ... }
+  void theSameOwnerAtTwoHexesHasTwoHoldings() {
+    ActorData data =
+        empty()
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 1L))
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, OTHER, ARABLE_B), 2L));
+
+    assertThat(data.holdings())
+        .as("★ 跨格**不合并** —— 否则「某人在全境有多少地」与「这块地归谁」就混成一件事了")
+        .hasSize(2);
+  }
 
   /** ★ 同一个 hex 上，owner A 与 owner B 各持一份 ⇒ **两条**（这正是佃制的形状）。 */
   @Test
-  void twoOwnersAtTheSameHexAreTwoHoldings() { ... }
+  void twoOwnersAtTheSameHexAreTwoHoldings() {
+    ActorData data =
+        empty()
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 9_000L))
+            .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, HEX, ARABLE_B), 1_000L));
 
-  /** ★★★ I2.2 后半句的**可表达性**（R3）：owner ≠ operator 是**两条互不牵连的记录** —— 
-   *  模型里**没有任何一处**把二者绑起来（本阶段没有 operator 字段，故这条断言是"形状断言"）。 */
-  @Test
-  void ownershipAndOperationAreTwoIndependentFacts() { ... }
+    assertThat(data.holdings()).as("★ 同一格同一类地，两个 owner 各持一份").hasSize(2);
+  }
 
-  /** ★ 负数量即抛（数量是余额，不是增量）。 */
+  /**
+   * ★★★ **I2.2 后半句的"可表达性"**（裁定 R3）：owner ≠ operator 是**两条互不牵连的记录**。
+   *
+   * <p>★ 本阶段 `Industry.operator` 还不存在（属阶段 3），所以这条**只能**验"形状"：
+   * **把另一个 actor 建出来这件事，不会给任何人新增一条产权，也不会改动任何一条持有的键。**
+   */
   @Test
-  void rejectsNegativeQuantity() { ... }
+  void ownershipAndOperationAreTwoIndependentFacts() {
+    ActorData data =
+        empty()
+            .withActor(new Actor(ESTATE, "庄园"))
+            .withActor(new Actor(HOUSEHOLD, "佃农家户"))
+            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L));
+
+    assertThat(data.actors()).as("地主与佃农家户是两个 actor").hasSize(2);
+    assertThat(data.holdings().keySet())
+        .as("★ 产权只在 ESTATE 名下 —— 多一个 actor **不会**改变任何一条持有的键")
+        .containsExactly(new AssetHoldingKey(ESTATE, HEX, ARABLE_B));
+    assertThat(data.holdings().keySet())
+        .as(
+            "★★ 反向：把 HOUSEHOLD 建成 actor 之后，它名下**一条产权都没有**"
+                + "（「谁经营」与「谁拥有」在本模型里是两件事 —— 没有任何字段把二者绑起来）")
+        .noneMatch(key -> key.owner().equals(HOUSEHOLD));
+  }
+
+  /** ★ 负数量即抛（数量是余额，不是增量）；**0 是合法余额**。 */
+  @Test
+  void rejectsNegativeQuantity() {
+    assertThatThrownBy(() -> new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), -1L))
+        .as("负余额必须当场抛")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 0L))
+        .as("★ 0 合法：有这份产权，只是数量为 0（与"没有这份产权"是两件事）")
+        .isNotNull();
+  }
+}
 ```
 
 - [ ] **Step 2-3: 跑红 ⇒ 实现 ⇒ 跑绿**
@@ -616,25 +711,83 @@ public record Actor(ActorRef ref, String label) { /* 校验：label 非空白 */
 - Test: `simos-actor/src/test/java/io/mosire/simos/actor/model/GoodsAccountTest.java`
 
 **Interfaces:**
+- Consumes: `ActorRef`（A 段）、`HexCoord`（`simos-map`）、**`CommodityId`（`simos-economy-api` —— 见裁定 R2）**
 - Produces: `record GoodsAccountKey(ActorRef owner, HexCoord location)`；
-  `record GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances)`
+  `record GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances)`；
+  ★ **`ActorData.withAccount(GoodsAccount)`**（同 Task 5 的 `withHolding`，理由相同）
 - `ActorData.accounts: Map<GoodsAccountKey, GoodsAccount>`
 
 - [ ] **Step 1: 写测试**
 
 ```java
-  /** ★ 键是 (owner, hex)：同一个 owner 在两格的库存是两本账。 */
-  @Test
-  void theAccountKeyIsOwnerAndHex() { ... }
+class GoodsAccountTest {
 
-  /** ★★ **库存是存量**（spec §2.5 L166）：余额不得为负；0 余额**保留**（不是删键）——
-   *  否则"这一格这个人手里还有 0 斤粮"和"这个人不在这格"就分不开了。 */
-  @Test
-  void zeroBalanceIsKeptNotDropped() { ... }
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final HexCoord HEX = new HexCoord(0, 0);
+  private static final HexCoord OTHER = new HexCoord(1, 0);
+  private static final CommodityId GRAIN = new CommodityId("grain");
+  private static final CommodityId CLOTH = new CommodityId("cloth");
 
+  /** ★ 键是 (owner, hex)：同一个 owner 在两格的库存是**两本账**，不合并。 */
   @Test
-  void rejectsNegativeBalance() { ... }
+  void theAccountKeyIsOwnerAndHex() {
+    ActorData data =
+        empty()
+            .withAccount(new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 100L)))
+            .withAccount(new GoodsAccount(new GoodsAccountKey(ESTATE, OTHER), Map.of(GRAIN, 7L)));
+
+    assertThat(data.accounts())
+        .as("★ 跨格**不合并** —— 否则「全境有多少粮」与「这一格有多少粮」就混成一件事了")
+        .hasSize(2);
+    assertThat(data.accounts().get(new GoodsAccountKey(ESTATE, HEX)).balances().get(GRAIN))
+        .isEqualTo(100L);
+  }
+
+  /**
+   * ★★ **库存是存量**（spec §2.5 L166）：0 余额**保留**（不是删键）。
+   *
+   * <p>★ 否则「这一格这个人手里还有 0 斤粮」与「这个人根本不在这格」就**分不开**了 ——
+   * 而这两件事在阶段 4（产出落 operator）与阶段 6（消费从 receipt 来）含义完全不同。
+   */
+  @Test
+  void zeroBalanceIsKeptNotDropped() {
+    GoodsAccount account = new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 0L));
+
+    assertThat(account.balances())
+        .as("★ 0 不被归一成空表")
+        .containsEntry(GRAIN, 0L);
+    assertThat(empty().withAccount(account).accounts())
+        .as("★ 整本 0 余额的账照样在表里（键在 = 这个人在这格有账）")
+        .hasSize(1);
+  }
+
+  /** ★ 负余额即抛 —— 库存是**存量**，不是可以透支的信用。 */
+  @Test
+  void rejectsNegativeBalance() {
+    assertThatThrownBy(
+            () -> new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, -1L)))
+        .as("负余额必须当场抛")
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  /** ★ 余额表是**防御性拷贝**（外部 Map 之后被改，不许影响已建的账）。 */
+  @Test
+  void balancesAreCopiedNotAliased() {
+    Map<CommodityId, Long> mutable = new HashMap<>(Map.of(GRAIN, 5L, CLOTH, 9L));
+    GoodsAccount account = new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), mutable);
+    mutable.put(GRAIN, 999L);
+
+    assertThat(account.balances()).as("★ 建完之后改原 Map，账里的数不许跟着变").containsEntry(GRAIN, 5L);
+    assertThatThrownBy(() -> account.balances().put(GRAIN, 1L))
+        .as("★ 且账自己的表不可变")
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+}
 ```
+
+★ **测试夹具 `empty()`**（Task 5 与 Task 6 共用同一个写法）：一个 private static 方法，
+返回**未激活**的空 `ActorData` —— `new ActorData(Optional.empty(), Map.of(), Map.of(), …)`
+（组件个数按当任务的"增量表"来）。
 
 - [ ] **Step 2-3: 跑红 ⇒ 实现 ⇒ 跑绿**
 
