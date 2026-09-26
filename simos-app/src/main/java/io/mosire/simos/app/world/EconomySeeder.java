@@ -67,7 +67,10 @@ public final class EconomySeeder {
   /** ★★ **农村家庭纺织**的产业种类标签（R3 的 T4；每个**农村**格一个）。 */
   public static final String WEAVE = "weave";
 
-  /** 农业制度：封建租佃（§十"制度"行）。 */
+  /**
+   * 农业制度：**领主自营庄园**（spec §六 的 {@code feudal} 档）。★ 本注原写"封建租佃"——**同词两义**：租佃（佃农家户）是另立的 {@code tenant}
+   * 档（S1 阶段 3 D7）。
+   */
   public static final String REGIME_FEUDAL = "feudal";
 
   /** 手工业制度（§十"制度"行）。 */

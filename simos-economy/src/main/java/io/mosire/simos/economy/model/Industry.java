@@ -65,7 +65,7 @@ import java.util.Set;
  *
  * @param id 稳定身份
  * @param name 展示名
- * @param regime 生产制度（小农 / 封建租佃 / 手工业 / 家户自给 …）：决定允许哪些阶层槽位
+ * @param regime 生产制度（小农 / 领主自营庄园 / 手工业 / 家户自给 / 租佃 …）：决定允许哪些阶层槽位
  * @param cycleDays 生产周期（天）；农业 120、手工业可短；必须 ≥ 1
  * @param progressDays 当前进度（天）；必须 ∈ [0, cycleDays]
  * @param capacityPerUnit 每 1 单位规模需要的生产资料（{@code LAND} 按**千分亩**、其余按件）；键值非空、逐值 ≥ 0。空表 =

@@ -14,8 +14,9 @@ import java.util.Map;
  * R4 行）。
  *
  * <ul>
- *   <li>{@link Split} —— 小农 / 封建租佃 / 手工业：{@code (生产资料权重, 劳动权重)}，两者之和 = 1000‰ （{@code
- *       Split(500,500)} 小农、{@code Split(700,300)} 封建租佃、{@code Split(400,600)} 手工业）。
+ *   <li>{@link Split} —— 小农 / 租佃 / 手工业：{@code (生产资料权重, 劳动权重)}，两者之和 = 1000‰ （{@code Split(500,500)}
+ *       小农、{@code Split(700,300)} 租佃（佃制分成）、{@code Split(400,600)} 手工业）。★ 原先写作"封建租佃"：{@code feudal}
+ *       是**领主自营庄园**、租佃另立 {@code tenant} 档（S1 阶段 3 D7）。
  *   <li>{@link WageFirst} —— 资本主义工业：工人先拿工资（{@code wagePerLaborMilli}，千分劳动单价），剩余归企业主 （{@code
  *       ownerResidual} 按商品计）。
  * </ul>
@@ -31,7 +32,7 @@ import java.util.Map;
 public sealed interface AllocationRule {
 
   /**
-   * 按权重分配（小农 / 封建租佃 / 手工业）。
+   * 按权重分配（小农 / 租佃 / 手工业）。★ 原先写作"封建租佃"（见接口类注的 D7 说明）。
    *
    * <p>★ **不变量（构造期判）**：两个千分权重各自 {@code ≥ 0} 且**之和恰为 1000**（§6 分配口径：权重是同一 1000‰ 的两半）。
    *
