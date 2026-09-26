@@ -443,7 +443,12 @@ Expected: **FAIL** —— 编译错（`AssetClassKey` 不存在）
 public record AssetClassKey(AssetKind kind, Map<String, String> qualities) { ... }
 ```
 
-★ 同时给 `land(Map)` / `loom(Map)` 两个工厂（把 spec §2.3 的两个实例拼出来）。
+★ **只给 `land(Map)` 一个工厂**（把 spec §2.3 的点名实例 `LAND(arable, quality=B)` 拼出来）。
+
+★★ **不许**顺手加一个 `loom(Map)` 工厂把织机映射到某个 `AssetKind` ——
+`AssetKind` 的六档是 `LAND/CATTLE/TOOL/WORKSHOP/MACHINE/SHIP`，**没有 `LOOM`**，
+而 spec §2.3 的 `LOOM(handloom, tech=T1)` 只是**文档举例**。凭空发明一个映射
+正是 R1 明令禁止的"趁机改 `AssetKind` 语义"。⇒ **要就等 `AssetKind` 真的增档时再加**。
 
 - [ ] **Step 4: 跑测试确认通过** ⇒ **PASS（5/5）**
 
@@ -477,8 +482,18 @@ Expected: **FAIL**（`keyOrderInQualitiesDoesNotChangeIdentity` 红 —— 两�
 
 **Interfaces:**
 - Produces: `record Actor(ActorRef ref, String label)`；
-  `record ActorData(Optional<ActorMeta> meta, Map<ActorRef, Actor> actors, …)`；
   `ActorChangeSet implements ChangeSet`；`ActorSnapshot implements Snapshot`（`namespace()` 恒返回 `"actor"`）
+
+★★ **`ActorData` 的三张表按任务顺序**增量**加 —— 每加一张，同一个提交里同步改
+`ActorData` 的组件列表 + `ActorChangeSet` 的字段 delta + `ActorRoundTripTest` 的往返断言**：
+
+| 任务 | `ActorData` 此刻的组件 |
+|---|---|
+| **Task 4（本任务）** | `(Optional<ActorMeta> meta, Map<ActorRef, Actor> actors)` |
+| Task 5 | `+ Map<AssetHoldingKey, AssetHolding> holdings` |
+| Task 6 | `+ Map<GoodsAccountKey, GoodsAccount> accounts` |
+
+★ 这样每个任务**自身可编译、可测、可评审**（不让 Task 4 去引用还不存在的类型）。
 
 - [ ] **Step 1: 写 `Actor`（身份本体，**明确不含**资产/库存）**
 
@@ -645,7 +660,9 @@ public record Actor(ActorRef ref, String label) { /* 校验：label 非空白 */
 **Files:**
 - Modify: `simos-app/pom.xml`（显式加 `simos-actor-api` + `simos-actor` 两条）
 - Modify: `simos-app/.../Shell.java`（**5 个注册点**：第 385-390 codec / 第 393-455 handler /
-  第 507-514 resolver / 第 878 起 `gmPermissionSet` 加 `ActorToolSupport` 命名空间）
+  第 507-514 resolver / 第 878 起 `gmPermissionSet` 加 `ToolSupport.ACTOR_NAMESPACE`
+  —— ★ 并在 `ToolSupport.java` 里照 `ECONOMY_NAMESPACE`（第 96 行）的形制加这个常量，
+  **字面量必须是 `"actor"`**，与 `ActorSnapshot.namespace()` / `ActorCodec.namespace()` **三处同字面**）
 - Modify: `simos-app/.../world/RichWorld.java:88-105`（空切片 + `codecTable()`）
 - Modify: `simos-app/.../world/CorridorWorld.java:96`
 - Modify: `simos-app/.../gui/ApiViews.java`（照第 1406-1417 加 `actorData(SimulationState)`）
