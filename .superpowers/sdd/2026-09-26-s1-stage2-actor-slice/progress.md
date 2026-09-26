@@ -627,3 +627,17 @@ A 段（1–2 建模块 + 上移）· B 段（3 `AssetClassKey`）· C 段（4 `
 ★ **一处安全面变更需向用户交代**：Task 10A 给 `ToolSupport` 的 `ALL_READ` 补了 `actor` 声明，
 **缺省策略取 DENY**（不是照抄 map/social/unit 的 READ_ONLY）⇒ MCP 面（GM 组）看得见 `actor:<mapId>`，
 **决策人仍看不见**（与改前一致，**未悄悄放宽**）。
+
+---
+
+## 阶段 3 计划交付（`docs/superpowers/plans/2026-09-26-s1-stage3-operator-binding.md`，594 行 / 6 任务）
+
+计划撰写者（opus 档）报了 **6 处上游文档与代码不符** + **5 个待拍板设计点**。
+★ **5 条我全部自己裁了**（都能从 spec + 代码 + fail-closed 口径推出），裁定 D1–D7 **已就地写进计划**，
+执行者从 brief 就能看到：D1 缺省只在载荷边缘 / D2 未知 regime fail-closed / D3 默认 operator 用产业 id /
+D4 新档字面量 `tenant` / D5 不加两条守卫 / D6 改名推后到阶段 4 / D7 `feudal` 两义就地消除。
+
+★ **6 处文档不符里最值钱的两条**：
+- **spec §六 写 `ESTATE@hex`，代码里 actor id 是产业 id** ⇒ 用真 hex 会让同一个庄园有**两个 `ActorRef`**（D3 据此裁）
+- **`EconomySettlement.withCycleState` 是结算每天重建 `Industry` 的唯一一处**，breakdown 的改动面漏了它
+  ⇒ 这是"operator 不丢失"的真风险面（已在计划 T3）
