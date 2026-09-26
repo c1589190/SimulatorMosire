@@ -24,7 +24,7 @@
     <module>simos-sd</module>
     <!-- ★ S1 阶段 2：actor 切片共用契约（ActorRef / ActorKind / AssetKind / AssetClassKey）。
          它在依赖图上比 economy-api 更底层（economy-api 反过来依赖本模块），故排在 economy-api 之
-         前：只依赖 jackson，不被任何领域模块**反向**依赖。 -->
+         前：不声明主依赖（util / map / jackson 都不声明），不被任何领域模块**反向**依赖。 -->
     <module>simos-actor-api</module>
     <!-- ★ 1b-2：经济切片共用契约。在领域切片更上游：只依赖 util/map、不被 core 依赖，
          property/production/ledger/market/government 与 social 共用它的稳定 ID 与 ActorRef。 -->

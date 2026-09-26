@@ -9,10 +9,11 @@
  * / unit / sd）与 {@code simos-core} / {@code simos-app} 只许**顺着**这条方向依赖，不许反向。
  *
  * <p>★ **不许反向依赖任何领域/编排模块**：{@code pom.xml} 里的 enforcer 把 economy-api / economy / ledger / social /
- * unit / sd / core / app / agentlib 全部禁掉，可用只剩 util/jackson —— 而本模块**实际声明过的**只有 jackson （S1 阶段 2 起
- * util 与 map 都不再声明）；越界 = 构建失败，不是 code review 的事。
+ * unit / sd / core / app / agentlib 全部禁掉（enforcer **未禁**的只剩 util/jackson）—— 而本模块**一条都不声明**： util /
+ * map / jackson 都不声明；越界 = 构建失败，不是 code review 的事。
  *
- * <p>★ 注意：map 与 util 只是 enforcer **未禁**而非**需要**——本模块此刻既不用 {@code HexCoord} 也不用 util 的任何东西，
- * 故都不声明（YAGNI，裁定 R-e/R-h）；等真有 api 侧类型用到再加。
+ * <p>★ 注意：util、map 与 jackson 只是 enforcer **未禁**而非**需要**——本模块此刻既不用 {@code HexCoord}、也不用 util
+ * 的任何东西、更不用 jackson（{@code AssetClassKey} 是 record + {@code Map}，Jackson 默认就能处理，零 import），
+ * 故都不声明（YAGNI，裁定 R-e/R-h/R-j）；等真有 api 侧类型用到再加。
  */
 package io.mosire.simos.actor.api;
