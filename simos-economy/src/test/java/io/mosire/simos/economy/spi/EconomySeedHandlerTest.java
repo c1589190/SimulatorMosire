@@ -19,11 +19,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -585,10 +586,12 @@ class EconomySeedHandlerTest {
                         new Recipient.ToCohort(
                             new CohortKey(
                                 new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
-                        Basis.FIXED_AMOUNT,
+                        Pool.FIXED_AMOUNT,
+                        Weight.NONE,
                         0,
                         20_000_000L,
                         Optional.of(GRAIN),
+                        Optional.empty(),
                         10)),
                 new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0")));
     // ★ 跨表一致性：关系里的 operator 与产业的 operator 是**同一个值**（两处拼写必须一致，构造期守卫判死）
@@ -659,10 +662,12 @@ class EconomySeedHandlerTest {
                                 new HexCoord(0, 0),
                                 ResidenceKind.RURAL,
                                 new SocialClassId("middle_peasant"))),
-                        Basis.GROSS_OUTPUT,
+                        Pool.GROSS_OUTPUT,
+                        Weight.NONE,
                         550,
                         0L,
                         Optional.of(GRAIN),
+                        Optional.empty(),
                         3)),
                 new ActorRef(ActorKind.ESTATE, "farm@0_0")));
     assertThat(relation)

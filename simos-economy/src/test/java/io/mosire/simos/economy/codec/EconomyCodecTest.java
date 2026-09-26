@@ -11,6 +11,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -19,11 +20,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
@@ -75,6 +77,13 @@ class EconomyCodecTest {
   private static final DebtId D1 = new DebtId("debt-1");
   private static final DebtId D2 = new DebtId("debt-2");
   private static final CommodityId GRAIN = new CommodityId("grain");
+
+  /**
+   * ★★ H2 的币种位夹具：**独立字面量**（不引用 {@code RegimeRelations.DEFAULT_CURRENCY}）—— 往返夹具的纪律是
+   * "期望值不许从被测物派生"，引用生产的出厂值会让"币种真的过了线格式"这条断言变成自证。
+   */
+  private static final CurrencyId CURRENCY = new CurrencyId("silver");
+
   private static final CommodityId CLOTH = new CommodityId("cloth");
 
   /** ★ R2 的夹具：本文件共用同一个批次与同一条配额（码的是"表"的往返，不是配额的经济含义）。 */
@@ -548,28 +557,34 @@ class EconomyCodecTest {
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,
                 new Recipient.ToActor(operator),
-                Basis.GROSS_OUTPUT,
+                Pool.GROSS_OUTPUT,
+                Weight.NONE,
                 300,
                 0L,
                 Optional.of(GRAIN),
+                Optional.empty(),
                 10),
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_RENT,
                 new Recipient.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
-                Basis.FIXED_AMOUNT,
+                Pool.FIXED_AMOUNT,
+                Weight.NONE,
                 0,
                 5_000L,
                 Optional.of(CLOTH),
+                Optional.empty(),
                 20),
             new CompensationRule(
                 RuleType.FIXED_MONEY_WAGE,
                 new Recipient.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
-                Basis.FIXED_AMOUNT,
+                Pool.FIXED_AMOUNT,
+                Weight.NONE,
                 0,
                 7L,
                 Optional.empty(),
+                Optional.of(CURRENCY),
                 30)),
         operator);
   }

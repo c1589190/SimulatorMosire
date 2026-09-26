@@ -8,14 +8,16 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +38,13 @@ class RegimeRelationsTest {
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "farm@0_0");
   private static final CommodityId GRAIN = new CommodityId("grain");
+
+  /**
+   * ★★ H2 的币种位夹具：**独立字面量**（不引用 {@code RegimeRelations.DEFAULT_CURRENCY}）—— 往返夹具的纪律是
+   * "期望值不许从被测物派生"，引用生产的出厂值会让"币种真的过了线格式"这条断言变成自证。
+   */
+  private static final CurrencyId CURRENCY = new CurrencyId("silver");
+
   private static final CommodityId CLOTH = new CommodityId("cloth");
 
   /** ★ 纤维（农业的**副产**）：{@code feudal} 档最后四条规则给的就是它。 */
@@ -65,7 +74,13 @@ class RegimeRelationsTest {
             subsistence(SocialClassId.MIDDLE_PEASANT),
             subsistence(SocialClassId.RICH_PEASANT),
             subsistence(SocialClassId.LANDLORD),
-            grainShare(RuleType.OUTPUT_SHARE, Basis.GROSS_OUTPUT, 300, SocialClassId.LANDLORD, 20),
+            grainShare(
+                RuleType.OUTPUT_SHARE,
+                Pool.GROSS_OUTPUT,
+                Weight.NONE,
+                300,
+                SocialClassId.LANDLORD,
+                20),
             byproduct(SocialClassId.POOR_PEASANT),
             byproduct(SocialClassId.MIDDLE_PEASANT),
             byproduct(SocialClassId.RICH_PEASANT),
@@ -88,10 +103,12 @@ class RegimeRelationsTest {
     return new CompensationRule(
         RuleType.OUTPUT_SHARE,
         cohort(stratum),
-        Basis.NET_AFTER_INPUTS,
+        Pool.NET_AFTER_INPUTS,
+        Weight.NONE,
         1000,
         0L,
         Optional.of(FIBER),
+        Optional.empty(),
         30);
   }
 
@@ -165,10 +182,12 @@ class RegimeRelationsTest {
                 RuleType.FIXED_IN_KIND_RENT,
                 new Recipient.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
-                Basis.FIXED_AMOUNT,
+                Pool.FIXED_AMOUNT,
+                Weight.NONE,
                 0,
                 20_000_000L,
                 Optional.of(GRAIN),
+                Optional.empty(),
                 10));
     assertThat(relation.residualOwner()).as("佃农家户（operator）自留：余额归它").isEqualTo(relation.operator());
   }
@@ -374,10 +393,12 @@ class RegimeRelationsTest {
     return new CompensationRule(
         RuleType.FIXED_IN_KIND_PER_LABOR,
         cohort(stratum),
-        Basis.LABOR_AMOUNT,
+        Pool.NET_AFTER_INPUTS,
+        Weight.LABOR_AMOUNT,
         0,
         144L,
         Optional.of(GRAIN),
+        Optional.empty(),
         10);
   }
 
@@ -389,18 +410,33 @@ class RegimeRelationsTest {
     return new CompensationRule(
         RuleType.OUTPUT_SHARE,
         cohort(stratum),
-        Basis.LABOR_AMOUNT,
+        Pool.NET_AFTER_INPUTS,
+        Weight.LABOR_AMOUNT,
         ratePerMille,
         0L,
         Optional.of(CLOTH),
+        Optional.empty(),
         priority);
   }
 
-  /** 粮的分成档（{@code feudal} 的地租）。 */
+  /** 粮的分成档（{@code feudal} 的地租）—— ★ H2 起池与权重是两个独立的实参。 */
   private static CompensationRule grainShare(
-      RuleType type, Basis basis, int ratePerMille, SocialClassId stratum, int priority) {
+      RuleType type,
+      Pool pool,
+      Weight weight,
+      int ratePerMille,
+      SocialClassId stratum,
+      int priority) {
     return new CompensationRule(
-        type, cohort(stratum), basis, ratePerMille, 0L, Optional.of(GRAIN), priority);
+        type,
+        cohort(stratum),
+        pool,
+        weight,
+        ratePerMille,
+        0L,
+        Optional.of(GRAIN),
+        Optional.empty(),
+        priority);
   }
 
   /** 货币工资（I5.3：`commodity` **空** = 货币档 ⇒ 只定义、不结算）。 */
@@ -408,10 +444,12 @@ class RegimeRelationsTest {
     return new CompensationRule(
         RuleType.FIXED_MONEY_WAGE,
         cohort(stratum),
-        Basis.FIXED_AMOUNT,
+        Pool.FIXED_AMOUNT,
+        Weight.NONE,
         0,
         1_000L,
         Optional.empty(),
+        Optional.of(CURRENCY),
         priority);
   }
 

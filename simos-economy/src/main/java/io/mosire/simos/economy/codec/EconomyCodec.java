@@ -1,10 +1,15 @@
 package io.mosire.simos.economy.codec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
@@ -13,13 +18,18 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
+import java.io.IOException;
 import java.util.function.Function;
 
 /**
@@ -46,6 +56,15 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
   private static final ObjectMapper MAPPER =
       withChangeSetMixin(SimosObjectMapper.create(keyModule()));
+
+  /**
+   * ★★ <b>一台"不带本模块兼容层"的 mapper</b>（H2）：新形状的补偿规则交给它 —— 走 Jackson 的默认 record 绑定 （{@code Optional}
+   * 由共享基座的 {@code Jdk8Module} 管、{@code Recipient} 的多态注解跟着类型走）。
+   *
+   * <p>★ 为什么不让 {@link CompensationRuleDeserializer} 自己手写每个字段：那样"一条规则怎么从 JSON 造出来"就有了
+   * <b>第二处</b>拼写点（兼容层与默认绑定各一份，迟早漂开）。兼容层只做一件事：<b>把旧节点整形成新节点</b>。
+   */
+  private static final ObjectMapper PLAIN = SimosObjectMapper.create();
 
   /**
    * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code LedgerCodec} 同制）：Jackson 会把 {@code
@@ -75,7 +94,81 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
+    // ★★ H2：补偿规则的**旧档兼容**（旧线格式是单个 `basis`，H2 拆成 `pool` + `weight`）——见下面那个反序列化器。
+    module.addDeserializer(CompensationRule.class, new CompensationRuleDeserializer());
     return module;
+  }
+
+  /**
+   * ★★ <b>一条补偿规则的读侧兼容层</b>（H2；裁定 D5-B 的"旧档迁移在 codec 边缘"）。
+   *
+   * <p>★★ <b>它为什么必须存在</b>：关系表住在 {@code EconomyData} 里 ⇒ <b>每一条已落盘的 revision</b> 里都存着 {@code
+   * {"basis":"GROSS_OUTPUT", …}}。H2 把它拆成两个字段之后，默认的 record 绑定会当场炸（{@code basis} 是未知属性 + {@code pool}
+   * 缺失 ⇒ 构造期守卫抛）—— 那等于<b>历史 revision 全部读不回来</b>。
+   *
+   * <p>★★ <b>翻译而不是猜</b>：旧字面量经 {@code Basis.pool()} / {@code Basis.weight()} 无损映射（映射表在 {@code Basis}
+   * 的类注里）；★ <b>同时给了 {@code basis} 与 {@code pool}/{@code weight} ⇒ 抛</b>（同一件事的两处拼写不一致时， 没有哪一处能判谁对）。★
+   * 货币档缺 {@code currency} 键 ⇒ 补<b>出厂货币</b>（旧档没有这一维；唯一拼写点在 {@code
+   * RegimeRelations.DEFAULT_CURRENCY}）。
+   *
+   * <p>★ <b>新形状不在这里手写</b>：把节点整形成新形状之后交给一台<b>不带本兼容层</b>的 mapper（{@link #PLAIN}）—— 于是"一条规则怎么从 JSON
+   * 造出来"只有<b>一处</b>拼写点（Jackson 的 record 绑定），兼容层只负责改节点。
+   */
+  private static final class CompensationRuleDeserializer
+      extends JsonDeserializer<CompensationRule> {
+
+    @Override
+    public CompensationRule deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("补偿规则必须是 JSON 对象: " + raw);
+      }
+      return decodeRule(node);
+    }
+  }
+
+  /**
+   * ★ <b>旧档 → 新档的节点整形</b>（唯一读侧翻译点；见 {@link CompensationRuleDeserializer}）：
+   *
+   * <ol>
+   *   <li>有 {@code basis} ⇒ 拆成 {@code pool} + {@code weight}（并把 {@code basis} 摘掉，否则严格读入会因为未知属性炸）；
+   *   <li>货币档缺 {@code currency} ⇒ 补出厂货币（旧档的"1000 毫钱"没有说是哪种钱）；
+   *   <li>其余照旧交给 {@link #PLAIN}（Jackson 的默认 record 绑定 + 契约自己的构造期守卫）。
+   * </ol>
+   */
+  private static CompensationRule decodeRule(ObjectNode node) {
+    if (node.hasNonNull("basis")) {
+      if (node.hasNonNull("pool") || node.hasNonNull("weight")) {
+        throw new IllegalStateException(
+            "补偿规则不得同时给 basis 与 pool/weight（H2 起 pool+weight 是新档、basis 是旧档）: " + node);
+      }
+      Basis basis = Basis.parse(node.get("basis").asText());
+      ObjectNode migrated = node.deepCopy();
+      migrated.remove("basis");
+      migrated.put("pool", basis.pool().name());
+      migrated.put("weight", basis.weight().name());
+      node = migrated;
+    }
+    if (RuleType.parse(textOf(node, "type")).money() && !node.hasNonNull("currency")) {
+      ObjectNode withCurrency = node.deepCopy();
+      withCurrency.put("currency", RegimeRelations.DEFAULT_CURRENCY.value());
+      node = withCurrency;
+    }
+    try {
+      return PLAIN.treeToValue(node, CompensationRule.class);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("补偿规则解码失败: " + node, e);
+    }
+  }
+
+  /** 必填文本字段（缺键 / 非文本 ⇒ 抛；本层只服务旧档整形，故消息直说"补偿规则的字段"）。 */
+  private static String textOf(ObjectNode node, String field) {
+    JsonNode value = node.get(field);
+    if (value == null || !value.isTextual() || value.asText().isBlank()) {
+      throw new IllegalStateException("补偿规则的字段 " + field + " 必须是非空文本: " + node);
+    }
+    return value.asText();
   }
 
   private static <K> KeyDeserializer keyDeserializer(Function<String, K> parse) {

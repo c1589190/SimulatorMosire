@@ -18,6 +18,8 @@ import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -80,9 +82,11 @@ import java.util.Set;
  *   <li>**生产消耗**：扣 {@code 饲料 + 折旧}（{@link #FEED_PER_MILLE} + {@link
  *       #DEPRECIATION_PER_MILLE}，**逐商品按同一千分比**）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
  *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
- *   <li>★★ **T4 起产出不再分配进阶层行**（裁定 R5 / 计划 R4）：**净产 → operator 的产权条目**（{@link
- *       ProductionLedger#actorEntries()}），随后按该产业的 {@code relation} 逐条结算（{@link
- *       ProductionSettlement}）—— ★★ <b>H1.3 起受方只有一条落点：actor</b>（{@code ToCohort} 的家户 actor = {@code
+ *   <li>★★ **T4 起产出不再分配进阶层行**（裁定 R5 / 计划 R4）：**净产 → operator 的产出计提**（{@link
+ *       ProductionLedger#outputAccruals()}），随后按该产业的 {@code relation} 逐条结算（{@link
+ *       ProductionSettlement}）—— ★★ <b>H2 起每条实付 = 一条转移</b>（{@link ProductionLedger#transfers()}：
+ *       {@code from=operator, to=受方}，受方恒为 actor —— 裁定 D1-A），而"净产"本身<b>不是转移</b>（产出是造出来的、没有对端）。 ★★
+ *       <b>H1.3 起受方只有一条落点：actor</b>（{@code ToCohort} 的家户 actor = {@code
  *       HouseholdActors.of(cohort)}）⇒ 改前那两族（"actor 受方走产权条目 / cohort 受方落消费行"）与 {@code
  *       deliverCohortIntake} 的 {@code +unresolved} 兜底**一起删除**；家户那一笔**同时**计进会话工作副本与 {@code
  *       FlowRow.income}（见 {@link #harvest}）。★ <b>旧口径的 {@link AllocationRule.Split}
@@ -132,6 +136,11 @@ import java.util.Set;
  *   ΔΣActorGoods_j       **全部 actor 侧账本的库存变化** = 家户账副本的 ΔΣ + 其它 actor（operator）的产权条目净额
  *                        （★ H1 起**没有** {@code ΔΣRowGoods} 这一项了：行里没有商品 —— 它还在 ⇒ 还有一本账没搬完）
  * </pre>
+ *
+ * <p>★★ <b>H2 的一句补充（式子一个字没改）</b>："其它 actor 的产权条目净额"现在 = <b>产出计提</b>（{@link
+ * ProductionLedger#outputAccruals()}；{@code +净产 → operator}）<b>+ 转移腿</b>（{@link
+ * ProductionLedger#transfers()}）。★ <b>转移在总量上恒相消</b>（一条转移的两端一正一负、且必落两本账）⇒ 它<b>不改变</b>上面那一式的任何一项；
+ * 它换来的是<b>逐 actor 可对账</b>：每一笔库存换手都有凭据与制度原因（这就是"任何库存变动必有对应转移记录"那条新不变量）。
  *
  * <p>★★ **五项必须取自同一个窗口**（I4.2 的收口；这条不是废话）：前两项读的是<b>状态差</b>，中间三项读的是 <b>该窗口内各天 ledger
  * 的累加</b>与<b>同窗口的流水差</b>。任一项按别的窗口算，等式就<b>恒不成立</b>—— 上一版报告（{@code task-4-5-report.md} §2.2）正是这么栽的：它的
@@ -420,7 +429,7 @@ public final class EconomySettlement {
     LinkedHashMap<CohortKey, FlowRow> flows = new LinkedHashMap<>(base.flows());
     EconomyData data = base;
     for (long day = fromTick + 1L; day <= toTick; day++) {
-      ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator();
+      ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(day);
       data =
           settleOneDay(
               data,
@@ -531,8 +540,21 @@ public final class EconomySettlement {
     Map<CohortKey, Set<IndustryId>> industriesOfHousehold =
         industriesOfHouseholds(rows, industries, allocations);
 
+    // ★★ **H2：家户 actor 的反查表**（一天建一次）—— "这条转移的某一端是不是家户、是哪一家"这个问题
+    //   在三个落点（关系实付 / 同格取材 / 同格借粮）**只能有一个答案**，故它在这里建好、逐处传下去。
+    //   ★ 键集一天不变（人口的增减不改行的身份），故建一次就够。
+    Map<ActorRef, CohortKey> householdOfActor = householdActorsOf(rows);
+
     if (plantingDrawsFirst) {
-      drawCycleInputs(industries, rows, allocations, householdGoods, consumedGoods, income, ledger);
+      drawCycleInputs(
+          industries,
+          rows,
+          allocations,
+          householdGoods,
+          consumedGoods,
+          income,
+          householdOfActor,
+          ledger);
     }
 
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
@@ -546,10 +568,20 @@ public final class EconomySettlement {
         day,
         currentCycle,
         dueCycle,
-        cycleDaysByHousehold(rows, industries, industriesOfHousehold));
+        cycleDaysByHousehold(rows, industries, industriesOfHousehold),
+        householdOfActor,
+        ledger);
 
     if (!plantingDrawsFirst) {
-      drawCycleInputs(industries, rows, allocations, householdGoods, consumedGoods, income, ledger);
+      drawCycleInputs(
+          industries,
+          rows,
+          allocations,
+          householdGoods,
+          consumedGoods,
+          income,
+          householdOfActor,
+          ledger);
     }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
@@ -609,7 +641,15 @@ public final class EconomySettlement {
       //   异常穿出协调器的 simulateWorld ⇒ **整条推进 revision 失败**。
       if (progressed >= industry.cycleDays()) {
         // ── 周期末：产出 → 产权条目 + 关系规则入账 —— 再算饿死（入账不受死亡影响，本期产出照分给幸存者）──
-        harvest(industry, rows, cycledLabor, income, householdGoods, base.relations(), ledger);
+        harvest(
+            industry,
+            rows,
+            cycledLabor,
+            income,
+            householdGoods,
+            base.relations(),
+            householdOfActor,
+            ledger);
         long populationBefore = 0L;
         for (CohortKey key : keys) {
           populationBefore += rows.get(key).population();
@@ -1051,10 +1091,19 @@ public final class EconomySettlement {
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> income,
+      Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
     // ★★ **R4（T0）：先做一次"同格按需取材"，再各扣各的**（见 transferIntraHexInputs）——
     //   它把**农村家户缸里的纤维搬到同格的城镇家户缸里**（R3 的遗留：原料原先只有创世那一次性的一份 ⇒ 第 2 周期起停工）。
-    transferIntraHexInputs(industries, rows, allocations, householdGoods, consumedGoods, income);
+    transferIntraHexInputs(
+        industries,
+        rows,
+        allocations,
+        householdGoods,
+        consumedGoods,
+        income,
+        householdOfActor,
+        ledger);
     // ★★ **H0：份额一次算好，两个调用方共用**（现扣步要"想扣多少"，取材步还要"用得上多少"）—— 见 {@link #rowSharesOf}。
     Map<CohortKey, Map<IndustryId, Long>> shares = rowSharesOf(industries, rows, allocations);
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
@@ -1136,6 +1185,11 @@ public final class EconomySettlement {
    *   <li>**受方**：库存 +X，且 **{@code income} += X**。
    * </ul>
    *
+   * <p>★★ **H2：两侧的库存变动 = 一条 {@link Transfer}**（{@code from=供方家户, to=受方家户}，原因 {@link
+   * TransferReason#INPUT_REQUISITION}）—— 改前是就地两处 {@code setStock}。★ 账（consumed / income）**照旧各记一笔**：
+   * 它们是<b>流水读数</b>（守恒式的两侧），与转移凭据是两件事（凭据说"东西换手了"，读数说"这算谁的消费/所得"）。 ★ 唯一写会话副本的地方是 {@link
+   * #applyTransferToHouseholds}。
+   *
    * <p>★★ **为什么受方那一侧也必须落账**：守恒式是 {@code Σ(前库存) − Σ(后库存) == Σ消费 − Σ所得}。只记供方的消费而不记受方的所得， 会让右边凭空多出
    * X（而左边的库存总账是平的）⇒ 逐商品的守恒用例当场红。两侧**同时**记，X 恰好抵消，剩下的差额正好等于受方 随后真的扣掉的那一笔 —— 这就是"同一份变更集里的原子转移"在账上的样子。
    *
@@ -1154,7 +1208,9 @@ public final class EconomySettlement {
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
-      LinkedHashMap<CohortKey, Map<CommodityId, Long>> income) {
+      LinkedHashMap<CohortKey, Map<CommodityId, Long>> income,
+      Map<ActorRef, CohortKey> householdOfActor,
+      ProductionLedger.Accumulator ledger) {
     // ① 只有**周期第一天**的产业才会现扣投入 ⇒ 只有它们有"取材需求"（与现扣步同一个门槛）。
     LinkedHashMap<IndustryId, Map<CommodityId, Long>> perUnitByIndustry = new LinkedHashMap<>();
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
@@ -1251,16 +1307,16 @@ public final class EconomySettlement {
               continue;
             }
             long moved = Math.min(gap, surplus);
-            setStock(
-                householdGoods,
-                supplier,
-                commodity,
-                stockOf(householdGoods, supplier, commodity) - moved);
-            setStock(
-                householdGoods,
-                receiver,
-                commodity,
-                stockOf(householdGoods, receiver, commodity) + moved);
+            // ★★ **H2：先铸一条转移，再由唯一的 applier 落到会话副本上**（改前是就地两处 setStock）。
+            //   ★ 顺序：先读够量（moved 已算好）→ 铸凭据 → 应用；应用之后两侧库存与改前逐值相同。
+            Transfer requisition =
+                ledger.mint(
+                    HouseholdActors.of(supplier),
+                    HouseholdActors.of(receiver),
+                    receiver.hex(),
+                    Map.of(commodity, moved),
+                    TransferReason.INPUT_REQUISITION);
+            applyTransferToHouseholds(householdGoods, householdOfActor, requisition);
             addGoods(consumedGoods, supplier, commodity, moved); // 供方：减库存 + 记消费（不许单侧扣减）
             addGoods(income, receiver, commodity, moved); // 受方：加库存 + 记所得（守恒式的另一侧）
             gap -= moved;
@@ -1554,6 +1610,11 @@ public final class EconomySettlement {
    * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表， **不进放贷行的
    * {@code consumed}** —— 它出去的是"债权"不是"消费"）。故 §6.1 的守恒式在**格/全局**上成立、**逐行不成立**。
    *
+   * <p>★★ <b>H2：那一笔"放贷行扣库存、却不进它的 consumed"现在有一条转移记录相伴</b>（{@code from=放贷家户, to=借款家户}，原因 {@link
+   * TransferReason#LOAN_PRINCIPAL}）—— 改前那条**刻意的不对称**在账上无从对账（库存少了，
+   * 既不是消费、也不是转移），正是"任何库存变动必有对应转移记录"这条不变量要钉的东西。★ 借入方当天吃掉那一笔走 {@link #consumeFromHousehold}（转移 +
+   * 消费两条痕，余额净 0 —— 与改前逐值相同）。
+   *
    * <p>★★ **债务按 (周期, 债务人, 债权人, 商品) 聚合**（v2 spec §7.2）：同一对债权债务人在**同一周期内**的多次借入 **累加到同一条** {@link
    * Debt}（本金递增），**新周期开新条** ⇒ 条数上界从 {@code O(天数 × 格子)} 降到 {@code O(周期数 × 格子 × 债权人对数)}。id 由 {@link
    * #debtIdOf} 确定性算出（重放/分支可比）。
@@ -1585,7 +1646,9 @@ public final class EconomySettlement {
       long day,
       long currentCycle,
       long dueCycle,
-      Map<CohortKey, Long> cycleDaysByHousehold) {
+      Map<CohortKey, Long> cycleDaysByHousehold,
+      Map<ActorRef, CohortKey> householdOfActor,
+      ProductionLedger.Accumulator ledger) {
     Map<String, List<CohortKey>> hexToRows = rowsByHex(rows.keySet());
     for (Map.Entry<String, List<CohortKey>> hex : hexToRows.entrySet()) {
       List<CohortKey> keys = hex.getValue();
@@ -1657,7 +1720,21 @@ public final class EconomySettlement {
             continue; // 只剩口粮/已经没有余粮 ⇒ 不贷（V1 是在这里把全部库存贷出去）
           }
           long lent = Math.min(remaining, available);
-          setStock(householdGoods, lender, GRAIN, grainOf(householdGoods, lender) - lent);
+          // ★★ **H2：借粮 = 一条转移（债权人 → 债务人），再由唯一的 applier 落到副本上**。
+          //   改前只写"放贷行扣库存"这一腿 —— 那条**刻意的不对称**正是"任何库存变动必有对应转移记录"
+          //   这条不变量要钉的东西（借入方当天就吃掉，账面上只有消费与债务两条痕，看不出粮从谁那里来）。
+          Transfer loan =
+              ledger.mint(
+                  HouseholdActors.of(lender),
+                  HouseholdActors.of(debtor),
+                  debtor.hex(),
+                  Map.of(GRAIN, lent),
+                  TransferReason.LOAN_PRINCIPAL);
+          applyTransferToHouseholds(householdGoods, householdOfActor, loan);
+          // ★★ **借到的粮当日即被吃掉**：紧接在转移之后从借方副本扣掉同一笔（⇒ 借方余额净 0，
+          //   与改前逐值相同：改前根本不写借方库存，只记 consumed 与债务）。⇒ 两条痕都在：转移（粮从谁来）
+          //   与消费（粮到哪去）。
+          consumeFromHousehold(householdGoods, consumedGoods, debtor, GRAIN, lent);
           // ★★ 聚合（§7.2）：id 是 (周期, 债务人, 债权人, 商品) 的**纯函数** ⇒ 同周期内重复借入命中同一条，
           //   本金递增；跨周期 id 必然不同 ⇒ 新条、旧条留着（保住"哪一周期借的"）。
           DebtId debtId = debtIdOf(currentCycle, debtor, lender, Optional.of(GRAIN));
@@ -1678,8 +1755,7 @@ public final class EconomySettlement {
           } else {
             debts.put(debtId, withPrincipal(standing, standing.principal() + lent));
           }
-          // 借到的粮当日吃掉 ⇒ 计入当日消费（★ 借入的那一笔**不进借方余额**：它在同一天被吃掉，只留消费与债务两条痕）。
-          addGoods(consumedGoods, debtor, GRAIN, lent);
+          // ★ 借到的粮当日吃掉 ⇒ 已在上面（转移之后）计入当日消费 —— 那里是**唯一**写这一笔的地方。
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
         }
@@ -1823,6 +1899,7 @@ public final class EconomySettlement {
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> income,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<IndustryId, ProductionRelation> relations,
+      Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
     ProductionRecipe recipe = industry.recipe();
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
@@ -1848,9 +1925,11 @@ public final class EconomySettlement {
       ledger.addLoss(industry.id(), commodity, loss);
       grossByCommodity.put(commodity, gross);
       netByCommodity.put(commodity, net);
-      // ★★ **R5 ②：净产进产权条目（+净产 → operator），不再写进本产业的行**。
+      // ★★ **R5 ②：净产进产出计提（+净产 → operator），不再写进本产业的行**。
       //   ★ `location` = 该产业所在的那一格（{@link IndustryHexKeys} 是唯一拼写点）—— 账户 = (actor, location)。
-      ledger.addEntry(new ProductionSettlement.ActorEntry(operator, location, commodity, net));
+      //   ★ H2：它**不是一条转移**（产出是造出来的、没有对端；转移两端不许相等）—— 见 ActorEntry 的类注。
+      ledger.addOutputAccrual(
+          new ProductionSettlement.ActorEntry(operator, location, commodity, net));
     }
     if (netByCommodity.isEmpty()) {
       return; // 规模 0（或产出表为空）⇒ 没有产出、也没有可付的：连规则都不必结算
@@ -1863,6 +1942,7 @@ public final class EconomySettlement {
     requireCohortRows(relation, rows, location);
     // ★★ **R5 ③：按 relation 结算**（priority 序、付款上限 = 本周期收到的产出、E14 的守卫都在 {@link
     //   ProductionSettlement} 里 —— 本方法只负责"把事实递给它、把结果落到该落的地方"）。
+    //   ★ H2：**铸造口传的是当天的累加器** ⇒ 每条实付的 id 是 `tr-<day>-<seq>`（序号按天、按本账本自增）。
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation,
@@ -1872,26 +1952,109 @@ public final class EconomySettlement {
                 netByCommodity,
                 industry.cycleInputUsedMilli(),
                 laborOfCohort(rows, location, industry.cycleDays()),
-                industry.outputPerUnit()));
-    // ★★ **条目一律进 ledger**（H1.3 净简化：不再有 cohort 入账那一支要单独搬）。
-    Map<ActorRef, CohortKey> householdOfActor = new LinkedHashMap<>();
-    for (CohortKey key : rows.keySet()) {
-      householdOfActor.put(HouseholdActors.of(key), key);
-    }
-    for (ProductionSettlement.ActorEntry entry : outcome.actorEntries()) {
-      ledger.addEntry(entry);
-      // ★★ H1：**收方是家户**的那一条**同时**计进会话工作副本与流水（这两样都不是产权条目：
-      //   副本 = 下一日消费要读的余额；income = 本期的实物入账读数）。★ app 落盘时按副本的**绝对值**写回，
-      //   不许把这条 +paid 再叠加一次（叠加 = 同一笔粮记两遍；见 EconomyDayStepper#step 的类注）。
-      CohortKey cohort = householdOfActor.get(entry.actor());
-      if (cohort != null && entry.delta() > 0L) {
-        addStock(householdGoods, cohort, entry.commodity(), entry.delta());
-        addGoods(income, cohort, entry.commodity(), entry.delta());
+                industry.outputPerUnit()),
+            ledger);
+    // ★★ **H2：实付一律是转移**（每条 from=operator、to=受方）—— 铸的时候已经进了当天的账，这里只需
+    //   ① 把两端落到会话副本上（唯一 applier）② 把"收方是家户"的那一笔记进流水（实物入账读数）。
+    //   ★ app 落盘时按副本的**绝对值**写回，不许把这条 +paid 再叠加一次（叠加 = 同一笔粮记两遍；
+    //     见 EconomyDayStepper#step 的类注）。
+    for (Transfer transfer : outcome.transfers()) {
+      applyTransferToHouseholds(householdGoods, householdOfActor, transfer);
+      CohortKey cohort = householdOfActor.get(transfer.to());
+      if (cohort != null) {
+        for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+          addGoods(income, cohort, leg.getKey(), leg.getValue());
+        }
       }
+    }
+    // ★★ **S4：逐规则的实得读数**（应付 / 实付 / 欠）—— 只读、不影响守恒、不落债权。
+    for (ProductionSettlement.RuleSettlement reading : outcome.ruleSettlements()) {
+      ledger.addRuleSettlement(reading);
     }
     for (CompensationRule rule : outcome.deferredMoney()) {
       ledger.addDeferred(rule);
     }
+  }
+
+  // ── 转移的落账（H2：唯一写会话副本的地方）────────────────────────────────────────────
+
+  /**
+   * ★★ <b>把一条转移的两端落到家户账的会话工作副本上</b>（H2）—— <b>全模块唯一</b>写 {@code householdGoods} 库存的
+   * "换手"路径（另一类是消费/投入的扣减，见 {@link #consumeFromHousehold} 与 {@code drawCycleInputs}）。
+   *
+   * <p>★★ <b>为什么必须收成一个函数</b>：改前"东西换手"有三处各写各的（结算的收支条目、同格取材的两处 {@code setStock}、 借粮的单腿扣减）—— 三处各写各的 ⇒
+   * 加第四条路（市场）时没人拦得住它长成第四套写法。收成一处之后， "任何库存变动必有对应转移记录"这条不变量才有唯一的落点可审。
+   *
+   * <p>★★ <b>非家户的那一端跳过</b>（{@code householdOfActor} 里没有它）：经营者（{@code ESTATE} / {@code WORKSHOP}）
+   * 的账住在 actor 切片的 {@code GoodsAccount} 上，economy 看不见也不该写（铁律 3）⇒ 它由 app 协调器按 {@code
+   * ledger.transfers()} 落账。★ 本类**只**写自己那份会话副本。
+   *
+   * <p>★ <b>减到负数 ⇒ 当场抛</b>（fail-closed，不静默）：转移是"把已有的东西换手"，扣不动说明上游算错了 （"凭空造"与"凭空吞"都属本仓明文反对的形态）。★
+   * 货币腿本批恒空 ⇒ 这里只走商品腿；H4 真的有钱时， 货币的会话副本要在**同一处**加（只有一个落点，不会漏）。
+   */
+  private static void applyTransferToHouseholds(
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<ActorRef, CohortKey> householdOfActor,
+      Transfer transfer) {
+    CohortKey from = householdOfActor.get(transfer.from());
+    if (from != null) {
+      for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+        long stock = stockOf(householdGoods, from, leg.getKey());
+        if (stock < leg.getValue()) {
+          throw new IllegalStateException(
+              "转移把家户账扣成了负数（不许凭空吞）：家户="
+                  + from
+                  + " 商品="
+                  + leg.getKey()
+                  + " 余额="
+                  + stock
+                  + " 扣减="
+                  + leg.getValue()
+                  + "；转移="
+                  + transfer);
+        }
+        setStock(householdGoods, from, leg.getKey(), stock - leg.getValue());
+      }
+    }
+    CohortKey to = householdOfActor.get(transfer.to());
+    if (to != null) {
+      for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+        addStock(householdGoods, to, leg.getKey(), leg.getValue());
+      }
+    }
+  }
+
+  /**
+   * ★ <b>从家户副本里吃掉一笔</b>（消费 / 当日借入即食）：扣余额 + 记当日消费 —— 两条痕在**同一处**写。
+   *
+   * <p>★ 借粮那一支靠它把"借入的那一笔"当场吃掉（转移 + 消费），于是借方余额净 0（与改前的口径逐值相同： 改前根本不给借方加库存）。
+   *
+   * @param amount 想吃的量（余额不足 ⇒ 只吃余额，<b>不抛</b>：消费不是转移，"缸里有多少吃多少"是既有的口径）
+   */
+  private static void consumeFromHousehold(
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
+      CohortKey key,
+      CommodityId commodity,
+      long amount) {
+    long stock = stockOf(householdGoods, key, commodity);
+    long eaten = Math.min(stock, amount);
+    setStock(householdGoods, key, commodity, stock - eaten);
+    addGoods(consumedGoods, key, commodity, eaten);
+  }
+
+  /**
+   * ★ <b>家户 actor → 家户身份</b>的反查表（H2；一天建一次）：三个落点共用同一份 —— "这条转移的某一端是不是家户" 只能有一个答案。
+   *
+   * <p>★ 键 = {@code HouseholdActors.of(cohort)}（家户 actor id 的唯一拼写点，K9）；★ 表**不含**经营者 （它们的账在 actor
+   * 切片上，见 {@link #applyTransferToHouseholds}）。
+   */
+  private static Map<ActorRef, CohortKey> householdActorsOf(Map<CohortKey, ClassRow> rows) {
+    Map<ActorRef, CohortKey> householdOfActor = new LinkedHashMap<>();
+    for (CohortKey key : rows.keySet()) {
+      householdOfActor.put(HouseholdActors.of(key), key);
+    }
+    return householdOfActor;
   }
 
   /**

@@ -4,14 +4,16 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
@@ -101,12 +103,23 @@ import java.util.Set;
  * 逐产业的差异由载荷里的显式 {@code relation} 表达（GM 的落点）。
  *
  * <p>★ <b>次序是数据</b>：{@code priority} 小的先付。本表里给养/分成在前（10）、租与货币工资在后（20）—— ★ <b>如实记</b>：这四个档的两组 {@code
- * basis}（{@code LABOR_AMOUNT} / {@code GROSS_OUTPUT}）**都不读"已付"**， 故在当前公式表下<b>次序无数值后果</b>；它是给 {@code
- * OPERATOR_SURPLUS} 那类规则留的数据位（spec §2.4 的"次序 = 数据"）。
+ * pool}（{@code NET_AFTER_INPUTS+LABOR_AMOUNT} / {@code GROSS_OUTPUT+NONE}）**都不读"已付"**，
+ * 故在当前公式表下<b>次序无数值后果</b>；它是给 {@code OPERATOR_SURPLUS} 那类规则留的数据位（spec §2.4 的"次序 = 数据"）。
  *
  * <p>★ <b>本类无状态</b>：一张表 + 两个纯函数。装配（谁在什么时候缺省）在<b>载荷边缘</b>（{@code EconomyPayloads}），不在本类。
  */
 public final class RegimeRelations {
+
+  /**
+   * ★★ <b>出厂货币（H2 的币种位）：唯一拼写点</b>——"1000 毫钱"从今天起是"1000 毫<b>银</b>"。
+   *
+   * <p>★★ <b>它为什么必须有一个值</b>：{@code CompensationRule} 的构造期守卫判死"货币档必须有币种"（二选一）， 而出厂的四档规则表里 {@code
+   * handicraft} 就带一条货币工资 ⇒ 不给值，那一条当场构造不出来。
+   *
+   * <p>★ <b>它只是出厂值</b>（判断结果，V7 参数目录 + S2 货币口径落地后由 GM 调；届时它迁入参数表， 本常量只作默认值）。★ 载荷边缘（{@code
+   * EconomyPayloads}）读旧档缺 {@code currency} 键时也引用<b>这一个</b>拼写点 —— 同一个"出厂货币"两处各写一份，会在旧档与新档之间静默漂开。
+   */
+  public static final CurrencyId DEFAULT_CURRENCY = new CurrencyId("silver");
 
   /** 粮的商品 id（{@link EconomyVocabulary} 是唯一拼写点，本类只引用）。 */
   private static final String GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
@@ -164,7 +177,7 @@ public final class RegimeRelations {
    *
    * <p>★ 量级依据：一格一周期的毛产 ≈ {@code 207,700} 粮（{@code EconomySeeder} 的 {@code MU_PER_HEX} 3,100 亩 × 67
    * 粮/亩 —— 本模块<b>看不见</b>那个数，故只作为取值依据记在这里）⇒ 本值 ≈ 毛产的 {@code 9.6%}。 ★ 固定租<b>与产出无关</b>是本档的定义（{@code
-   * FIXED_AMOUNT} 那一档 basis 的意义）⇒ 它天生不随格的地力变； 逐格差异由载荷里的显式 {@code relation} 表达。
+   * FIXED_AMOUNT} 那一档池的意义）⇒ 它天生不随格的地力变； 逐格差异由载荷里的显式 {@code relation} 表达。
    */
   private static final long TENANT_RENT_MILLI_GRAIN = 20_000_000L;
 
@@ -233,14 +246,16 @@ public final class RegimeRelations {
     // ★★ 多居住类型 ⇒ 只有"按受方劳动加权"的那几档能展开（见类注）：其余各请求整份池，展开会重复计费 ⇒ 当场抛（不猜）。
     if (residences.size() > 1) {
       for (RuleSpec spec : specs) {
-        if (spec.basis() != Basis.LABOR_AMOUNT) {
+        if (spec.weight() != Weight.LABOR_AMOUNT) {
           throw new IllegalArgumentException(
               "默认关系表表达不了'一个产业由多种居住类型的家户供给'（"
                   + residences
                   + "）：规则 "
                   + spec.type()
                   + "×"
-                  + spec.basis()
+                  + spec.pool()
+                  + "+"
+                  + spec.weight()
                   + " 不按受方劳动加权 ⇒ 按居住类型展开会重复请求同一份产出。请改用载荷里的显式 relation（逐条写清 cohort）");
         }
       }
@@ -277,14 +292,15 @@ public final class RegimeRelations {
   /**
    * {@code feudal}（领主自营庄园）：给养（按劳动量的实物）给四个阶层 + 地租（毛产 300‰）给地主 cohort。
    *
-   * <p>★ 次序：给养 10 / 地租 20 —— 见类注（两组 {@code basis} 都不读"已付"，故次序在当前公式表下无 数值后果）。
+   * <p>★ 次序：给养 10 / 地租 20 —— 见类注（两组 {@code pool} 都不读"已付"，故次序在当前公式表下无 数值后果）。
    */
   private static List<RuleSpec> feudalRules() {
     List<RuleSpec> rules =
         new ArrayList<>(
             laborCohorts(
                 RuleType.FIXED_IN_KIND_PER_LABOR,
-                Basis.LABOR_AMOUNT,
+                Pool.NET_AFTER_INPUTS,
+                Weight.LABOR_AMOUNT,
                 0,
                 FEUDAL_SUBSISTENCE_MILLI_PER_LABOR,
                 Optional.of(GRAIN),
@@ -293,7 +309,8 @@ public final class RegimeRelations {
         new RuleSpec(
             RuleType.OUTPUT_SHARE,
             SocialClassId.LANDLORD,
-            Basis.GROSS_OUTPUT,
+            Pool.GROSS_OUTPUT,
+            Weight.NONE,
             FEUDAL_RENT_PER_MILLE,
             0L,
             Optional.of(GRAIN),
@@ -320,7 +337,8 @@ public final class RegimeRelations {
     rules.addAll(
         laborCohorts(
             RuleType.OUTPUT_SHARE,
-            Basis.NET_AFTER_INPUTS,
+            Pool.NET_AFTER_INPUTS,
+            Weight.NONE,
             FEUDAL_BYPRODUCT_SHARE_PER_MILLE,
             0L,
             Optional.of(FIBER),
@@ -332,7 +350,8 @@ public final class RegimeRelations {
   private static List<RuleSpec> householdRules() {
     return laborCohorts(
         RuleType.OUTPUT_SHARE,
-        Basis.LABOR_AMOUNT,
+        Pool.NET_AFTER_INPUTS,
+        Weight.LABOR_AMOUNT,
         HOUSEHOLD_LABOR_SHARE_PER_MILLE,
         0L,
         Optional.of(CLOTH),
@@ -345,7 +364,8 @@ public final class RegimeRelations {
         new ArrayList<>(
             laborCohorts(
                 RuleType.OUTPUT_SHARE,
-                Basis.LABOR_AMOUNT,
+                Pool.NET_AFTER_INPUTS,
+                Weight.LABOR_AMOUNT,
                 HANDICRAFT_LABOR_SHARE_PER_MILLE,
                 0L,
                 Optional.of(CLOTH),
@@ -353,7 +373,8 @@ public final class RegimeRelations {
     rules.addAll(
         laborCohorts(
             RuleType.FIXED_MONEY_WAGE,
-            Basis.FIXED_AMOUNT,
+            Pool.FIXED_AMOUNT,
+            Weight.NONE,
             0,
             HANDICRAFT_MONEY_WAGE_MILLI,
             Optional.empty(),
@@ -368,7 +389,8 @@ public final class RegimeRelations {
             new RuleSpec(
                 RuleType.FIXED_IN_KIND_RENT,
                 SocialClassId.LANDLORD,
-                Basis.FIXED_AMOUNT,
+                Pool.FIXED_AMOUNT,
+                Weight.NONE,
                 0,
                 TENANT_RENT_MILLI_GRAIN,
                 Optional.of(GRAIN),
@@ -378,14 +400,17 @@ public final class RegimeRelations {
   /** 该格**四个阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。 */
   private static List<RuleSpec> laborCohorts(
       RuleType type,
-      Basis basis,
+      Pool pool,
+      Weight weight,
       int ratePerMille,
       long fixedAmount,
       Optional<String> commodity,
       int priority) {
     List<RuleSpec> rules = new ArrayList<>(SocialClassId.all().size());
     for (SocialClassId stratum : SocialClassId.all()) {
-      rules.add(new RuleSpec(type, stratum, basis, ratePerMille, fixedAmount, commodity, priority));
+      rules.add(
+          new RuleSpec(
+              type, stratum, pool, weight, ratePerMille, fixedAmount, commodity, priority));
     }
     return Collections.unmodifiableList(rules);
   }
@@ -395,10 +420,13 @@ public final class RegimeRelations {
     return new CompensationRule(
         spec.type(),
         new Recipient.ToCohort(new CohortKey(hex, residence, spec.stratum())),
-        spec.basis(),
+        spec.pool(),
+        spec.weight(),
         spec.ratePerMille(),
         spec.fixedAmount(),
         spec.commodity().map(CommodityId::new),
+        // ★★ H2：货币档的币种**不是缺省**（构造期守卫判死"货币档必须有值"）—— 出厂值取自本类的唯一拼写点。
+        spec.type().money() ? Optional.of(DEFAULT_CURRENCY) : Optional.empty(),
         spec.priority());
   }
 
@@ -422,7 +450,8 @@ public final class RegimeRelations {
   private record RuleSpec(
       RuleType type,
       SocialClassId stratum,
-      Basis basis,
+      Pool pool,
+      Weight weight,
       int ratePerMille,
       long fixedAmount,
       Optional<String> commodity,

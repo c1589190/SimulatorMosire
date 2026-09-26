@@ -18,11 +18,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -333,19 +334,23 @@ class EconomyRoundTripTest {
                 RuleType.OUTPUT_SHARE,
                 new Recipient.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
-                Basis.GROSS_OUTPUT,
+                Pool.GROSS_OUTPUT,
+                Weight.NONE,
                 300,
                 0L,
                 Optional.of(GRAIN),
+                Optional.empty(),
                 10),
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_PER_LABOR,
                 new Recipient.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
-                Basis.LABOR_AMOUNT,
+                Pool.NET_AFTER_INPUTS,
+                Weight.LABOR_AMOUNT,
                 0,
                 144L,
                 Optional.of(GRAIN),
+                Optional.empty(),
                 20)),
         operator);
   }

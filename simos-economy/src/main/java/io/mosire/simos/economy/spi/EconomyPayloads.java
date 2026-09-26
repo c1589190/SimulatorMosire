@@ -10,6 +10,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -20,9 +21,11 @@ import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -122,7 +125,7 @@ import java.util.Set;
  *   "operator":{"kind":"ESTATE","id":"farm@0_0"},        // 可选；缺 ⇒ 取产业的那个（于是必然一致）
  *   "residualOwner":{"kind":"ESTATE","id":"farm@0_0"},   // 可选；缺 ⇒ 取 operator（自留是缺省）
  *   "rules":[{"type":"OUTPUT_SHARE","recipient":{"cohort":"0_0|landlord"},
- *             "basis":"GROSS_OUTPUT","ratePerMille":300,"fixedAmount":0,
+ *             "pool":"GROSS_OUTPUT","weight":"NONE","ratePerMille":300,"fixedAmount":0,
  *             "commodity":"grain","priority":10}]}                  // rules 可选（缺 ⇒ 空表 = 全归 residualOwner）
  * }</pre>
  *
@@ -135,8 +138,14 @@ import java.util.Set;
  *       的用例正是那个形态）；
  *   <li>★ <b>受方</b>：{@code recipient} 恰给 {@code actor}（{@code {kind,id}}）或 {@code cohort} （{@code
  *       CohortKey} 的**规范串**，如 {@code "0_0|landlord"}）之一 —— 两个都没给 / 两个都给了 ⇒ 抛；
+ *   <li>★★ <b>H2：{@code pool} × {@code weight} 是新档（裁定 D5-B），{@code basis} 是旧档</b> —— 本层是
+ *       <b>旧档兼容的那一处边缘</b>：给了 {@code basis} ⇒ 经 {@code Basis.pool()} / {@code Basis.weight()} 翻译
+ *       （旧五档的逐档映射表在 {@code Basis} 的类注里）；给了 {@code pool}（{@code weight} 缺省 {@code NONE}）⇒ 直接用。 ★
+ *       <b>两个都给了、或都没给 ⇒ 抛</b>（不猜：同一件事的两处拼写不一致时，没有哪一处能判谁对）；
  *   <li>★ <b>{@code commodity}</b>：**缺键 ⇒ 货币档**（{@code Optional.empty()}）、给了 ⇒ 实物档；两个方向都由 {@link
  *       CompensationRule} 的构造期守卫兜底（本层不重复实现那条规则）；
+ *   <li>★★ <b>{@code currency}</b>（H2 的币种位）：实物档**不得给**；货币档给了就用、<b>缺键取出厂货币</b> （{@link
+ *       RegimeRelations#DEFAULT_CURRENCY} 是唯一拼写点）—— 旧档的货币规则没有这个键，而"旧档读不回来"不是兼容，是事故 （真档播种会当场抛）；
  *   <li>★ <b>{@code ratePerMille} / {@code fixedAmount} / {@code priority} 三个整数必填</b>（不在本层造缺省值：
  *       一条规则的率/额/次序被静默补成 0，读起来是"合法的数据"，实际是"漏写了一个键"）；
  *   <li>★ <b>空 {@code rules} 合法</b>（= 全部自留，裁定 E9 的等价路径）。
@@ -310,12 +319,15 @@ final class EconomyPayloads {
   }
 
   /**
-   * 一条补偿规则：{@code {type, recipient:{actor|cohort}, basis, ratePerMille, fixedAmount, commodity?,
-   * priority}}。
+   * 一条补偿规则：{@code {type, recipient:{actor|cohort}, pool, weight?, basis?, ratePerMille,
+   * fixedAmount, commodity?, currency?, priority}}。
    *
    * <p>★ <b>受方"恰其一"</b>：两个变体都没给 / 都给了 ⇒ 抛（契约里它是**类型事实**，载荷这一层负责把它喂对）。 ★ <b>{@code commodity} 缺键 =
    * 货币档</b>（空 {@code Optional}）—— 与 {@link CompensationRule} 的二选一守卫
    * 同源，本层不重复判它（违反了那条守卫会由契约自己抛，消息更准）。
+   *
+   * <p>★★ <b>H2：{@code pool} × {@code weight} 与旧档的 {@code basis} 都收</b>（详见类注）—— 这是"旧档不许当场抛"
+   * 那条纪律的落点：真档的关系载荷全是 {@code basis}，少了这条翻译，整个真档播不出来。
    */
   private static CompensationRule compensationRule(JsonNode node) {
     JsonNode recipientNode = optionalObject(node, "recipient");
@@ -335,14 +347,82 @@ final class EconomyPayloads {
         actorNode != null
             ? new Recipient.ToActor(actorRef(actorNode))
             : new Recipient.ToCohort(CohortKey.parse(requireText(recipientNode, "cohort")));
+    RuleType type = RuleType.parse(requireText(node, "type"));
     return new CompensationRule(
-        RuleType.parse(requireText(node, "type")),
+        type,
         recipient,
-        Basis.parse(requireText(node, "basis")),
+        poolOf(node),
+        weightOf(node),
         requireInt(node, "ratePerMille"),
         requireLong(node, "fixedAmount"),
         optionalText(node, "commodity").map(CommodityId::parse),
+        currencyOf(node, type),
         requireInt(node, "priority"));
+  }
+
+  /**
+   * ★★ <b>池：新档 {@code pool}、旧档 {@code basis}（H2 之前的关系载荷全是这一形状）</b>—— 旧字面量经 {@link Basis#pool()}
+   * 翻译（映射表在 {@code Basis} 的类注里）。
+   *
+   * <p>★ <b>两个键都没给 ⇒ 抛</b>（缺一个必填字段是坏载荷，不是缺省）；★ <b>两个都给了 ⇒ 也抛</b>（不猜：同一件事的两处拼写不一致时， 没有哪一处能判谁对 —— 同
+   * {@code operator} 那条一致性强判的口径）。
+   */
+  private static Pool poolOf(JsonNode node) {
+    Optional<String> pool = optionalText(node, "pool");
+    Optional<String> basis = optionalText(node, "basis");
+    if (pool.isPresent() && basis.isPresent()) {
+      throw new IllegalArgumentException(
+          "关系规则不得同时给 pool 与 basis（H2 起 pool+weight 是新档、basis 是旧档，两者只能给一个）: " + node);
+    }
+    if (pool.isPresent()) {
+      return Pool.parse(pool.get());
+    }
+    if (basis.isPresent()) {
+      return Basis.parse(basis.get()).pool();
+    }
+    throw new IllegalArgumentException("关系规则缺 pool（H2 起的必填键；旧档写 basis）: " + node);
+  }
+
+  /** ★★ <b>权重：新档 {@code weight}（缺省 {@code NONE}）、旧档 {@code basis}</b>—— 同 {@link #poolOf} 的口径。 */
+  private static Weight weightOf(JsonNode node) {
+    Optional<String> weight = optionalText(node, "weight");
+    Optional<String> basis = optionalText(node, "basis");
+    if (weight.isPresent() && basis.isPresent()) {
+      throw new IllegalArgumentException(
+          "关系规则不得同时给 weight 与 basis（H2 起 pool+weight 是新档、basis 是旧档，两者只能给一个）: " + node);
+    }
+    if (weight.isPresent()) {
+      return Weight.parse(weight.get());
+    }
+    if (basis.isPresent()) {
+      return Basis.parse(basis.get()).weight();
+    }
+    // ★ 给了 pool 而没给 weight ⇒ NONE（"不分"是绝大多数规则的那一档；旧档走不到这里，它在上面就返回了）。
+    return Weight.NONE;
+  }
+
+  /**
+   * ★★ <b>币种（H2 的币种位）</b>：实物档不得给、货币档必须有 —— 货币档缺键时取<b>出厂货币</b> （{@link
+   * RegimeRelations#DEFAULT_CURRENCY} 是唯一拼写点）。
+   *
+   * <p>★ <b>为什么缺键是"取出厂值"而不是"抛"</b>：旧档的货币规则<b>没有这个键</b>（币种位是 H2 才有的）， 而"1000 毫钱"在旧档里本来就没有说是哪种钱 ⇒
+   * 翻译成出厂货币是**旧档兼容**，不是猜（真值随 S2 的货币口径定）。 ★ 实物档给了币种 ⇒ 抛（那是坏数据：实物不是钱）。
+   */
+  private static Optional<CurrencyId> currencyOf(JsonNode node, RuleType type) {
+    Optional<CurrencyId> currency = optionalText(node, "currency").map(CurrencyId::parse);
+    if (!type.money()) {
+      if (currency.isPresent()) {
+        throw new IllegalArgumentException(
+            "实物规则不得带 currency（"
+                + type
+                + "）：currency="
+                + currency.get()
+                + " —— 实物档恒空，币种只对货币档合法: "
+                + node);
+      }
+      return Optional.empty();
+    }
+    return currency.isPresent() ? currency : Optional.of(RegimeRelations.DEFAULT_CURRENCY);
   }
 
   // ── 劳动供给 / 劳动分配（R2，设计稿 §四）──────────────────────────────────────────────

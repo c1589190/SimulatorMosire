@@ -16,13 +16,17 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -159,31 +163,51 @@ class ProductionLedgerTest {
     assertThat(closing.grossOf(FARM, GRAIN)).as("毛产 = 规模 1 × 7 × 1000").isEqualTo(7_000L);
     assertThat(closing.lossOf(FARM, GRAIN)).as("损耗 = 毛产 × 30‰").isEqualTo(210L);
     assertThat(closing.inputOf(FARM, GRAIN)).as("本夹具没有配投入 ⇒ 现扣投入为空").isZero();
-    // ★★ H1.3：受方（{@code ToCohort}）不再走"入账表" —— 它合流成**第三条 ActorEntry**，落在该家户的 actor 上。
-    assertThat(closing.actorEntries())
-        .as(
-            "★ 恰好三条：+净产 6,790 → operator、−实付 6,790 → operator（E17：转出条目恒产生）、"
-                + "+实付 6,790 → 家户 actor（H1.3：所有受方都是 actor）")
+    // ★★ H2：产出计提**只剩一条**（+净产 → operator）—— 关系实付那一对腿已改道成一条转移。
+    assertThat(closing.outputAccruals())
+        .as("★ 产出计提恰一条：+净产 6,790 → operator（产出是造出来的，没有对端 ⇒ 不是转移）")
+        .containsExactly(new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, 6_790L));
+    // ★★ H2：实付 = 一条 `from=operator → to=家户 actor` 的转移（★ id 的 day 段 = 关账那一天 3、seq 自 1 起）。
+    assertThat(closing.transfers())
+        .as("★ 实付恰一条转移：from=operator、to=该格贫农家户、原因 = 关系实付、金额 = 实付 6,790")
         .containsExactly(
-            new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, 6_790L),
-            new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, -6_790L),
-            new ProductionSettlement.ActorEntry(
+            new Transfer(
+                new TransferId("tr-3-1"),
+                3L,
+                OPERATOR,
                 HouseholdActors.of(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT)),
                 HEX,
-                GRAIN,
-                6_790L));
+                Map.of(GRAIN, 6_790L),
+                Map.of(),
+                TransferReason.RELATION_PAYMENT,
+                Optional.empty()));
     assertThat(closing.deferredMoney()).as("本夹具没有货币规则 ⇒ 待办为空").isEmpty();
+    // ★★ S4：读数的三个数逐值报得出（应付 ⌊174,000 ÷ 1000⌋ × 100 = 17,400；实付被 R6 截到净产 6,790；
+    //   欠 = 17,400 − 6,790 = 10,610）。
+    assertThat(closing.ruleSettlements()).as("★ S4：逐规则的应付/实付/欠（只读，不落债权）").hasSize(1);
+    assertThat(closing.ruleSettlements().get(0).dueAmount()).as("应付 17,400").isEqualTo(17_400L);
+    assertThat(closing.ruleSettlements().get(0).paidNow()).as("实付 6,790").isEqualTo(6_790L);
+    assertThat(closing.ruleSettlements().get(0).owed())
+        .as("欠 = 应付 − 实付 = 10,610")
+        .isEqualTo(10_610L);
+    // ★★ I4.1（operator 那一侧）：净增 = 产出计提 6,790 − 转出（转移的 from 那一端）6,790 = 0。
     assertThat(
-            closing.actorEntries().stream()
-                .filter(entry -> entry.actor().equals(OPERATOR))
-                .mapToLong(ProductionSettlement.ActorEntry::delta)
-                .sum())
+            closing.outputAccruals().stream()
+                    .filter(entry -> entry.actor().equals(OPERATOR))
+                    .mapToLong(ProductionSettlement.ActorEntry::delta)
+                    .sum()
+                - closing.transfers().stream()
+                    .filter(transfer -> transfer.from().equals(OPERATOR))
+                    .flatMap(transfer -> transfer.goods().values().stream())
+                    .mapToLong(Long::longValue)
+                    .sum())
         .as("★★ I4.1（operator 那一侧）：净增 = 净产 6,790 − 实付 6,790 = 0（投入不是它出的 ⇒ Input(actor) ≡ 0）")
         .isEqualTo(0L);
     assertThat(
-            closing.actorEntries().stream()
-                .filter(entry -> entry.actor().kind() == ActorKind.HOUSEHOLD)
-                .mapToLong(ProductionSettlement.ActorEntry::delta)
+            closing.transfers().stream()
+                .filter(transfer -> transfer.to().kind() == ActorKind.HOUSEHOLD)
+                .flatMap(transfer -> transfer.goods().values().stream())
+                .mapToLong(Long::longValue)
                 .sum())
         .as("★★ I4.1（家户那一侧）：实收 = 实付 6,790（这一笔同时计进会话工作副本与 FlowRow.income）")
         .isEqualTo(6_790L);
@@ -281,10 +305,12 @@ class ProductionLedgerTest {
         new CompensationRule(
             RuleType.FIXED_IN_KIND_PER_LABOR,
             new Recipient.ToCohort(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT)),
-            Basis.LABOR_AMOUNT,
+            Pool.NET_AFTER_INPUTS,
+            Weight.LABOR_AMOUNT,
             0,
             SUBSISTENCE_MILLI_PER_LABOR,
             Optional.of(GRAIN),
+            Optional.empty(),
             10);
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
     relations.put(FARM, new ProductionRelation(FARM, OPERATOR, List.of(subsistence), OPERATOR));

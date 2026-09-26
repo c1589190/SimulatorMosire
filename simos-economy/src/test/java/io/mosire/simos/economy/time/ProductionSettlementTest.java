@@ -9,13 +9,18 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.Basis;
+import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.time.ProductionSettlement.Facts;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
@@ -50,6 +55,10 @@ class ProductionSettlementTest {
   private static final ActorRef WORKSHOP = new ActorRef(ActorKind.WORKSHOP, "craft@0_0");
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CommodityId CLOTH = new CommodityId("cloth");
+
+  /** H2 的币种位夹具（★ 独立字面量：不引用生产的出厂值，否则"币种在位"这条断言成了自证）。 */
+  private static final CurrencyId CURRENCY = new CurrencyId("silver");
+
   private static final CohortKey POOR =
       new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
   private static final CohortKey RICH =
@@ -70,30 +79,60 @@ class ProductionSettlementTest {
     return new Recipient.ToActor(actor);
   }
 
-  /** 一条分成规则（{@code OUTPUT_SHARE}）。 */
+  /** 一条分成规则（{@code OUTPUT_SHARE}）——★ H2 起池与权重是两个独立实参。 */
   private static CompensationRule share(
-      Basis basis, int rate, Recipient recipient, CommodityId commodity, int priority) {
+      Pool pool,
+      Weight weight,
+      int rate,
+      Recipient recipient,
+      CommodityId commodity,
+      int priority) {
     return new CompensationRule(
-        RuleType.OUTPUT_SHARE, recipient, basis, rate, 0L, Optional.of(commodity), priority);
+        RuleType.OUTPUT_SHARE,
+        recipient,
+        pool,
+        weight,
+        rate,
+        0L,
+        Optional.of(commodity),
+        Optional.empty(),
+        priority);
   }
 
   /** 一条固定额实物规则（{@code FIXED_IN_KIND_PER_LABOR} / {@code FIXED_IN_KIND_RENT}）。 */
   private static CompensationRule fixedInKind(
       RuleType type,
-      Basis basis,
+      Pool pool,
+      Weight weight,
       long amount,
       Recipient recipient,
       CommodityId commodity,
       int priority) {
     return new CompensationRule(
-        type, recipient, basis, 0, amount, Optional.of(commodity), priority);
+        type,
+        recipient,
+        pool,
+        weight,
+        0,
+        amount,
+        Optional.of(commodity),
+        Optional.empty(),
+        priority);
   }
 
-  /** 一条货币规则（{@code commodity} 必须为空 —— {@link CompensationRule} 的守卫判死）。 */
+  /** 一条货币规则（{@code commodity} 必须为空、{@code currency} 必须有值 —— {@link CompensationRule} 的守卫判死）。 */
   private static CompensationRule money(
       RuleType type, long amount, Recipient recipient, int priority) {
     return new CompensationRule(
-        type, recipient, Basis.FIXED_AMOUNT, 0, amount, Optional.empty(), priority);
+        type,
+        recipient,
+        Pool.FIXED_AMOUNT,
+        Weight.NONE,
+        0,
+        amount,
+        Optional.empty(),
+        Optional.of(CURRENCY),
+        priority);
   }
 
   /** 一份本周期的事实（劳动账/资产账由用例按需给 —— 本构造器给空表）。 */
@@ -107,24 +146,26 @@ class ProductionSettlementTest {
   }
 
   /**
-   * ★★ <b>受方是家户的那些条目，按 cohort 归集</b>（H1.3 的读法）：{@code ToCohort} 不再走"cohort 入账表"， 它与 {@code ToActor}
-   * 合流成同一条 {@link ProductionSettlement.ActorEntry}（受方 = {@code HouseholdActors.of(cohort)}） ⇒
-   * 这一族的读法就是"按家户 actor 反查 cohort 再逐商品累加"。
+   * ★★ <b>受方是家户的那些转移，按 cohort 归集</b>（H2 的读法）：每条实付是一条 {@code from=operator → to=受方} 的 {@link
+   * Transfer}（受方恒为 actor —— 裁定 D1-A；{@code ToCohort} 的家户 actor = {@code
+   * HouseholdActors.of(cohort)}） ⇒ 这一族的读法就是"按家户 actor 反查 cohort 再逐商品累加"。
    *
-   * <p>★ 反查用 {@link HouseholdActors#cohortOf}（{@code of} 的**逆函数**，身份的唯一拼写点）—— 夹具不另写一套解析。 只取 {@code
-   * delta > 0} 的那一半（{@code −paid} 是付方、不是入账）。
+   * <p>★ 反查用 {@link HouseholdActors#cohortOf}（{@code of} 的**逆函数**，身份的唯一拼写点）—— 夹具不另写一套解析。 ★ 只看
+   * {@code to} 那一端（{@code from} 是付方、不是入账）。
    */
   private static Map<CohortKey, Map<CommodityId, Long>> intakeByCohort(
       ProductionSettlement.Outcome outcome) {
     Map<CohortKey, Map<CommodityId, Long>> byCohort = new LinkedHashMap<>();
-    for (ProductionSettlement.ActorEntry entry : outcome.actorEntries()) {
-      if (entry.delta() <= 0L || entry.actor().kind() != ActorKind.HOUSEHOLD) {
+    for (Transfer transfer : outcome.transfers()) {
+      if (transfer.to().kind() != ActorKind.HOUSEHOLD) {
         continue;
       }
-      CohortKey cohort = HouseholdActors.cohortOf(entry.actor());
-      byCohort
-          .computeIfAbsent(cohort, ignored -> new LinkedHashMap<>())
-          .merge(entry.commodity(), entry.delta(), Long::sum);
+      CohortKey cohort = HouseholdActors.cohortOf(transfer.to());
+      for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+        byCohort
+            .computeIfAbsent(cohort, ignored -> new LinkedHashMap<>())
+            .merge(leg.getKey(), leg.getValue(), Long::sum);
+      }
     }
     return byCohort;
   }
@@ -133,6 +174,25 @@ class ProductionSettlementTest {
   private static long intake(
       ProductionSettlement.Outcome outcome, CohortKey cohort, CommodityId j) {
     return intakeByCohort(outcome).getOrDefault(cohort, Map.of()).getOrDefault(j, 0L);
+  }
+
+  /**
+   * ★★ <b>一条"关系实付"的转移</b>（H2 的期望值形状）：纯函数铸造口的 id = {@code tr-0-<seq>}（日号 0 = 创世、 序号自 1 起，见 {@code
+   * ProductionSettlement.settle} 的两参重载）⇒ 逐条可写死成字面量。
+   *
+   * @param sequence 付款次序里的第几条（1 起）
+   */
+  private static Transfer paid(long sequence, ActorRef to, CommodityId commodity, long amount) {
+    return new Transfer(
+        new TransferId("tr-0-" + sequence),
+        0L,
+        ESTATE,
+        to,
+        HEX,
+        Map.of(commodity, amount),
+        Map.of(),
+        TransferReason.RELATION_PAYMENT,
+        Optional.empty());
   }
 
   // ── 判据 I5.2 / I5.3 / I5.4 ──────────────────────────────────────────────────────
@@ -147,10 +207,11 @@ class ProductionSettlementTest {
     Facts facts = grainFacts(Map.of(GRAIN, 100_000L), Map.of(GRAIN, 97_000L), GRAIN_RECIPE);
     ProductionSettlement.Outcome onGross =
         ProductionSettlement.settle(
-            relation(share(Basis.GROSS_OUTPUT, 300, toCohort(POOR), GRAIN, 10)), facts);
+            relation(share(Pool.GROSS_OUTPUT, Weight.NONE, 300, toCohort(POOR), GRAIN, 10)), facts);
     ProductionSettlement.Outcome onNet =
         ProductionSettlement.settle(
-            relation(share(Basis.NET_AFTER_INPUTS, 300, toCohort(POOR), GRAIN, 10)), facts);
+            relation(share(Pool.NET_AFTER_INPUTS, Weight.NONE, 300, toCohort(POOR), GRAIN, 10)),
+            facts);
 
     assertThat(intake(onGross, POOR, GRAIN)).as("毛产的 30%").isEqualTo(30_000L);
     assertThat(intake(onNet, POOR, GRAIN)).as("净产的 30%").isEqualTo(29_100L);
@@ -173,8 +234,8 @@ class ProductionSettlementTest {
 
     ProductionSettlement.Outcome outcome = ProductionSettlement.settle(relation(rent, wage), facts);
 
-    assertThat(outcome.actorEntries()).as("★ 货币规则不产生任何产权条目（I5.3 的判别力就在这一条）").isEmpty();
-    assertThat(intakeByCohort(outcome)).as("★ cohort 也不入账（既没有 actor 条目、也就没有家户那一族）").isEmpty();
+    assertThat(outcome.transfers()).as("★ 货币规则不产生任何转移（I5.3 的判别力就在这一条）").isEmpty();
+    assertThat(intakeByCohort(outcome)).as("★ cohort 也不入账（既没有转移、也就没有家户那一族）").isEmpty();
     assertThat(outcome.deferredMoney()).as("★ 但必须**报出来**（不许静默），且按付款次序").containsExactly(wage, rent);
     assertThat(ProductionSettlement.deferredMoneyReason(wage))
         .as("★ 消息口径：读口读出「待 S2」+ 是哪一档")
@@ -197,14 +258,14 @@ class ProductionSettlementTest {
     ProductionSettlement.Outcome surplusFirst =
         ProductionSettlement.settle(
             relation(
-                share(Basis.OPERATOR_SURPLUS, 500, toCohort(POOR), GRAIN, 10),
-                share(Basis.NET_AFTER_INPUTS, 500, toCohort(LANDLORD), GRAIN, 20)),
+                share(Pool.OPERATOR_SURPLUS, Weight.NONE, 500, toCohort(POOR), GRAIN, 10),
+                share(Pool.NET_AFTER_INPUTS, Weight.NONE, 500, toCohort(LANDLORD), GRAIN, 20)),
             facts);
     ProductionSettlement.Outcome netFirst =
         ProductionSettlement.settle(
             relation(
-                share(Basis.OPERATOR_SURPLUS, 500, toCohort(POOR), GRAIN, 20),
-                share(Basis.NET_AFTER_INPUTS, 500, toCohort(LANDLORD), GRAIN, 10)),
+                share(Pool.OPERATOR_SURPLUS, Weight.NONE, 500, toCohort(POOR), GRAIN, 20),
+                share(Pool.NET_AFTER_INPUTS, Weight.NONE, 500, toCohort(LANDLORD), GRAIN, 10)),
             facts);
 
     assertThat(intake(surplusFirst, POOR, GRAIN)).isEqualTo(50_000L);
@@ -226,19 +287,17 @@ class ProductionSettlementTest {
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation(
-                share(Basis.OPERATOR_SURPLUS, 500, toCohort(POOR), GRAIN, 10),
-                share(Basis.OPERATOR_SURPLUS, 500, toCohort(LANDLORD), GRAIN, 10)),
+                share(Pool.OPERATOR_SURPLUS, Weight.NONE, 500, toCohort(POOR), GRAIN, 10),
+                share(Pool.OPERATOR_SURPLUS, Weight.NONE, 500, toCohort(LANDLORD), GRAIN, 10)),
             facts);
 
     assertThat(intake(outcome, POOR, GRAIN)).as("同 priority ⇒ 表序在前的先付").isEqualTo(50_000L);
     assertThat(intake(outcome, LANDLORD, GRAIN)).isEqualTo(25_000L);
-    assertThat(outcome.actorEntries())
-        .as("★ 落账次序 = 付款次序（转出条目按 priority 升序、同值按表序；★ H1.3：每条实付后面跟一条家户收入条目）")
+    assertThat(outcome.transfers())
+        .as("★ 落账次序 = 付款次序（每条实付 = 一条 from=operator → to=受方 的转移，按 priority 升序、同值按表序）")
         .containsExactly(
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -50_000L),
-            new ProductionSettlement.ActorEntry(HouseholdActors.of(POOR), HEX, GRAIN, 50_000L),
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -25_000L),
-            new ProductionSettlement.ActorEntry(HouseholdActors.of(LANDLORD), HEX, GRAIN, 25_000L));
+            paid(1L, HouseholdActors.of(POOR), GRAIN, 50_000L),
+            paid(2L, HouseholdActors.of(LANDLORD), GRAIN, 25_000L));
   }
 
   // ── R6 / R7 ─────────────────────────────────────────────────────────────────────
@@ -254,17 +313,15 @@ class ProductionSettlementTest {
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation(
-                share(Basis.GROSS_OUTPUT, 1000, toCohort(POOR), GRAIN, 10),
-                share(Basis.NET_AFTER_INPUTS, 1000, toCohort(LANDLORD), GRAIN, 20)),
+                share(Pool.GROSS_OUTPUT, Weight.NONE, 1000, toCohort(POOR), GRAIN, 10),
+                share(Pool.NET_AFTER_INPUTS, Weight.NONE, 1000, toCohort(LANDLORD), GRAIN, 20)),
             facts);
 
     assertThat(intake(outcome, POOR, GRAIN)).as("要 100,000、实付 97,000（截到可用量）").isEqualTo(97_000L);
     assertThat(intakeByCohort(outcome)).as("★ 付不出 ⇒ 该条归零、不产生条目（不造账）").containsOnlyKeys(POOR);
-    assertThat(outcome.actorEntries())
-        .as("★ 转出只发生了一次，且 = 净产（Σ付款 ≤ 净产）；★ H1.3：受方那一条落在该家户的 actor 上")
-        .containsExactly(
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -97_000L),
-            new ProductionSettlement.ActorEntry(HouseholdActors.of(POOR), HEX, GRAIN, 97_000L));
+    assertThat(outcome.transfers())
+        .as("★ 转移只发生了一次，且 = 净产（Σ实付 ≤ 净产）—— 第二条实付 0 ⇒ 连转移都不产生")
+        .containsExactly(paid(1L, HouseholdActors.of(POOR), GRAIN, 97_000L));
   }
 
   /** ★ <b>R7</b>：入账的键是 {@code CohortKey}；劳动账里没有的 cohort ⇒ 该条<b>归零</b>、不产生条目。 */
@@ -286,8 +343,8 @@ class ProductionSettlementTest {
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation(
-                share(Basis.LABOR_AMOUNT, 700, toCohort(POOR), GRAIN, 10),
-                share(Basis.LABOR_AMOUNT, 700, toCohort(RICH), GRAIN, 10)),
+                share(Pool.NET_AFTER_INPUTS, Weight.LABOR_AMOUNT, 700, toCohort(POOR), GRAIN, 10),
+                share(Pool.NET_AFTER_INPUTS, Weight.LABOR_AMOUNT, 700, toCohort(RICH), GRAIN, 10)),
             facts);
 
     assertThat(intakeByCohort(outcome))
@@ -308,25 +365,23 @@ class ProductionSettlementTest {
     Facts facts = grainFacts(Map.of(GRAIN, 100_000L), Map.of(GRAIN, 100_000L), GRAIN_RECIPE);
     ProductionSettlement.Outcome toCohortOutcome =
         ProductionSettlement.settle(
-            relation(share(Basis.NET_AFTER_INPUTS, 400, toCohort(POOR), GRAIN, 10)), facts);
+            relation(share(Pool.NET_AFTER_INPUTS, Weight.NONE, 400, toCohort(POOR), GRAIN, 10)),
+            facts);
     ProductionSettlement.Outcome toActorOutcome =
         ProductionSettlement.settle(
-            relation(share(Basis.NET_AFTER_INPUTS, 400, toActor(WORKSHOP), GRAIN, 10)), facts);
+            relation(share(Pool.NET_AFTER_INPUTS, Weight.NONE, 400, toActor(WORKSHOP), GRAIN, 10)),
+            facts);
 
     assertThat(intake(toCohortOutcome, POOR, GRAIN))
         .as("cohort 受方：实得 40,000 —— ★ H1.3：它现在落在**该家户的 actor 条目**上（不再是 cohortIntake 那张表）")
         .isEqualTo(40_000L);
-    assertThat(toCohortOutcome.actorEntries())
-        .as("★ 付方那一笔照样要落账（账户 = (actor, location)）—— 否则同一份产出在账上多出一份")
-        .containsExactly(
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -40_000L),
-            new ProductionSettlement.ActorEntry(HouseholdActors.of(POOR), HEX, GRAIN, 40_000L));
+    assertThat(toCohortOutcome.transfers())
+        .as("★ 付方那一端照样在转移里（账户 = (actor, location)）—— 一条转移自带两端，不会只落一侧")
+        .containsExactly(paid(1L, HouseholdActors.of(POOR), GRAIN, 40_000L));
     assertThat(intakeByCohort(toActorOutcome)).isEmpty();
-    assertThat(toActorOutcome.actorEntries())
-        .as("★ actor 受方：按落账次序 − 付方在前、+ 收方在后（同一格、同一商品）")
-        .containsExactly(
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -40_000L),
-            new ProductionSettlement.ActorEntry(WORKSHOP, HEX, GRAIN, 40_000L));
+    assertThat(toActorOutcome.transfers())
+        .as("★ actor 受方：同一条形状，只有 to 那一端不同（受方恒 actor —— 裁定 D1-A 的红利）")
+        .containsExactly(paid(1L, WORKSHOP, GRAIN, 40_000L));
   }
 
   /** ★ {@code SELF_RETENTION} 的数量恒为 <b>0</b>（不动；余额归 {@code residualOwner}）。 */
@@ -335,13 +390,25 @@ class ProductionSettlementTest {
     // ★ 判别力：这条规则的 fixedAmount 刻意取 5,000（≠ 0）—— 若有人把它接到"固定额"那一支上，这里当场红。
     Facts facts = grainFacts(Map.of(GRAIN, 100_000L), Map.of(GRAIN, 100_000L), GRAIN_RECIPE);
     CompensationRule keep =
-        fixedInKind(RuleType.SELF_RETENTION, Basis.FIXED_AMOUNT, 5_000L, toCohort(POOR), GRAIN, 10);
+        fixedInKind(
+            RuleType.SELF_RETENTION,
+            Pool.FIXED_AMOUNT,
+            Weight.NONE,
+            5_000L,
+            toCohort(POOR),
+            GRAIN,
+            10);
 
     ProductionSettlement.Outcome outcome = ProductionSettlement.settle(relation(keep), facts);
 
-    assertThat(outcome.actorEntries()).isEmpty();
+    assertThat(outcome.transfers()).isEmpty();
     assertThat(intakeByCohort(outcome)).isEmpty();
     assertThat(outcome.deferredMoney()).as("自留不是货币档（不进「待 S2」的清单）").isEmpty();
+    assertThat(outcome.ruleSettlements())
+        .as("★ S4：自留**有读数**（应付 0 / 实付 0 / 欠 0）—— 它不产生转移，但「这一条规则被算过」必须看得见")
+        .hasSize(1);
+    assertThat(outcome.ruleSettlements().get(0).dueAmount()).isZero();
+    assertThat(outcome.ruleSettlements().get(0).paidNow()).isZero();
   }
 
   /** ★ {@code FIXED_IN_KIND_PER_LABOR} = ⌊本受方劳动 ÷ 1000⌋ × fixedAmount（<b>不除以</b> Σ劳动）。 */
@@ -362,7 +429,8 @@ class ProductionSettlementTest {
             relation(
                 fixedInKind(
                     RuleType.FIXED_IN_KIND_PER_LABOR,
-                    Basis.LABOR_AMOUNT,
+                    Pool.NET_AFTER_INPUTS,
+                    Weight.LABOR_AMOUNT,
                     144L,
                     toCohort(POOR),
                     GRAIN,
@@ -381,7 +449,8 @@ class ProductionSettlementTest {
     CompensationRule rent =
         fixedInKind(
             RuleType.FIXED_IN_KIND_RENT,
-            Basis.FIXED_AMOUNT,
+            Pool.FIXED_AMOUNT,
+            Weight.NONE,
             20_000L,
             toCohort(LANDLORD),
             GRAIN,
@@ -409,10 +478,11 @@ class ProductionSettlementTest {
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation(
-                share(Basis.NET_AFTER_INPUTS, 300, toCohort(POOR), GRAIN, 10),
+                share(Pool.NET_AFTER_INPUTS, Weight.NONE, 300, toCohort(POOR), GRAIN, 10),
                 fixedInKind(
                     RuleType.FIXED_IN_KIND_RENT,
-                    Basis.FIXED_AMOUNT,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
                     1_000L,
                     toCohort(POOR),
                     GRAIN,
@@ -423,13 +493,11 @@ class ProductionSettlementTest {
     assertThat(intake(outcome, POOR, GRAIN))
         .as("30,000 + 1,000（两条规则累加到同一个家户上 —— 归集那一步走 merge）")
         .isEqualTo(31_000L);
-    assertThat(outcome.actorEntries())
-        .as("★ 两条规则各产生一对条目（转出 + 家户收入），次序照 priority")
+    assertThat(outcome.transfers())
+        .as("★ 两条规则各产生**一条**转移（不是旧口径的两条腿），次序照 priority")
         .containsExactly(
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -30_000L),
-            new ProductionSettlement.ActorEntry(HouseholdActors.of(POOR), HEX, GRAIN, 30_000L),
-            new ProductionSettlement.ActorEntry(ESTATE, HEX, GRAIN, -1_000L),
-            new ProductionSettlement.ActorEntry(HouseholdActors.of(POOR), HEX, GRAIN, 1_000L));
+            paid(1L, HouseholdActors.of(POOR), GRAIN, 30_000L),
+            paid(2L, HouseholdActors.of(POOR), GRAIN, 1_000L));
   }
 
   // ── E14 的守卫 + 契约守卫 ────────────────────────────────────────────────────────
@@ -443,7 +511,9 @@ class ProductionSettlementTest {
     assertThatThrownBy(
             () ->
                 ProductionSettlement.settle(
-                    relation(share(Basis.NET_AFTER_INPUTS, 700, toCohort(POOR), CLOTH, 10)), facts))
+                    relation(
+                        share(Pool.NET_AFTER_INPUTS, Weight.NONE, 700, toCohort(POOR), CLOTH, 10)),
+                    facts))
         .as("★ 消息里两种拼写都给出：规则指名的商品 + 该产业到底产什么")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("cloth")
@@ -453,7 +523,8 @@ class ProductionSettlementTest {
     // ★ 正对照：同一条规则换成**该产业真产**的商品 ⇒ 不抛、按公式付得出（否则上面那条红只是"什么关系都抛"）。
     ProductionSettlement.Outcome onGrain =
         ProductionSettlement.settle(
-            relation(share(Basis.NET_AFTER_INPUTS, 700, toCohort(POOR), GRAIN, 10)), facts);
+            relation(share(Pool.NET_AFTER_INPUTS, Weight.NONE, 700, toCohort(POOR), GRAIN, 10)),
+            facts);
     assertThat(intake(onGrain, POOR, GRAIN)).as("100,000 × 700 ÷ 1000").isEqualTo(70_000L);
   }
 
@@ -465,10 +536,14 @@ class ProductionSettlementTest {
     Facts sterile = grainFacts(Map.of(), Map.of(), GRAIN_RECIPE);
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
-            relation(share(Basis.NET_AFTER_INPUTS, 700, toCohort(POOR), GRAIN, 10)), sterile);
+            relation(share(Pool.NET_AFTER_INPUTS, Weight.NONE, 700, toCohort(POOR), GRAIN, 10)),
+            sterile);
 
-    assertThat(outcome.actorEntries()).isEmpty();
+    assertThat(outcome.transfers()).isEmpty();
     assertThat(intakeByCohort(outcome)).isEmpty();
+    assertThat(outcome.ruleSettlements())
+        .as("★ S4：本期产 0 ⇒ 应付的算式照样算（毛产的 700‰ = 0）、读数照报 —— 只是实付 0、没有转移")
+        .hasSize(1);
   }
 
   /** ★ <b>E11</b>：哪些组合有公式由<b>这张公式表</b>说了算 ⇒ 表里没有的档位一律 fail-closed（不猜）。 */
@@ -479,7 +554,8 @@ class ProductionSettlementTest {
     assertThatThrownBy(
             () ->
                 ProductionSettlement.settle(
-                    relation(share(Basis.FIXED_AMOUNT, 700, toCohort(POOR), GRAIN, 10)), facts))
+                    relation(share(Pool.FIXED_AMOUNT, Weight.NONE, 700, toCohort(POOR), GRAIN, 10)),
+                    facts))
         .as("★ OUTPUT_SHARE 不读固定额（「固定额的分成」在表里没有落点）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("OUTPUT_SHARE")
@@ -491,7 +567,8 @@ class ProductionSettlementTest {
                     relation(
                         fixedInKind(
                             RuleType.FIXED_IN_KIND_PER_LABOR,
-                            Basis.GROSS_OUTPUT,
+                            Pool.GROSS_OUTPUT,
+                            Weight.NONE,
                             144L,
                             toCohort(POOR),
                             GRAIN,
@@ -508,7 +585,7 @@ class ProductionSettlementTest {
   void missingOrNegativeFactsAndWrongDeferralReadsAreRejected() {
     Facts facts = grainFacts(Map.of(GRAIN, 100_000L), Map.of(GRAIN, 100_000L), GRAIN_RECIPE);
     ProductionRelation relation =
-        relation(share(Basis.NET_AFTER_INPUTS, 300, toCohort(POOR), GRAIN, 10));
+        relation(share(Pool.NET_AFTER_INPUTS, Weight.NONE, 300, toCohort(POOR), GRAIN, 10));
 
     assertThatThrownBy(() -> ProductionSettlement.settle(null, facts))
         .isInstanceOf(IllegalArgumentException.class);

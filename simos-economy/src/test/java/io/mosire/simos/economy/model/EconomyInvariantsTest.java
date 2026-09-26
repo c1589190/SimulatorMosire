@@ -18,11 +18,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -546,10 +547,12 @@ class EconomyInvariantsTest {
                 RuleType.OUTPUT_SHARE,
                 new Recipient.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
-                Basis.GROSS_OUTPUT,
+                Pool.GROSS_OUTPUT,
+                Weight.NONE,
                 777,
                 0L,
                 Optional.of(GRAIN),
+                Optional.empty(),
                 5)),
         operator);
   }

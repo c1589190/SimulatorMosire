@@ -152,7 +152,8 @@ public final class EconomyDayStepper {
       throw new IllegalArgumentException("结算的日号必须 ≥ 1（创世是第 0 天）: " + day);
     }
     // ★ 每天一个**新的**累加器：它记的是"这一天"（跨日累计会让调用方重复落账，见 ProductionLedger 的类注）。
-    ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator();
+    //   ★ H2：它同时是**转移凭据的铸造口**（id = tr-<day>-<seq>，序号按天自增）⇒ 日号必须交给它。
+    ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(day);
     data =
         EconomySettlement.settleOneDay(
             data, day, flows, householdGoods, plantingDrawsFirst, famineMortalityPerMille, ledger);

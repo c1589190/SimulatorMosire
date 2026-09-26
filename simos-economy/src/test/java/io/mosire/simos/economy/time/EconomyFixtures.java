@@ -7,11 +7,12 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
@@ -151,10 +152,12 @@ final class EconomyFixtures {
                       EconomySettlement.hexOfIndustry(id),
                       ResidenceKind.RURAL,
                       new SocialClassId(PEASANT_SLOT))),
-              Basis.LABOR_AMOUNT,
+              Pool.NET_AFTER_INPUTS,
+              Weight.LABOR_AMOUNT,
               1000,
               0L,
               Optional.of(new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID)),
+              Optional.empty(),
               10);
       relations.put(id, new ProductionRelation(id, operator, List.of(rule), operator));
     }

@@ -1,46 +1,54 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.api.transfer.TransferReason;
+import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * ★★ <b>一天结算里"离开 {@code ClassRow} 的那些发生额"</b>（S1 阶段 4+5 Task 4；spec §四 ①→⑤ 的账）。
  *
- * <p>★★ <b>它为什么必须存在</b>（本阶段最要紧的一件事）：产出<b>不再写进阶层行</b>（R5 ②）—— 它变成 <b>产权条目</b>（{@code actor} 账上的增减）。
- * 这一样<b>不是 economy 切片自己的数据</b>： 产权住在 {@code simos-actor}，而"谁把 {@code ActorEntry}
- * 落到账上"必须由<b>同时看得见两片</b>的 app 协调器来做（R4/E7）。 于是 economy 侧交出的就是它 ——
- * <b>一天一本账</b>，一个字段不少，且<b>绝不静默丢弃</b>。
+ * <p>★★ <b>它为什么必须存在</b>（本阶段最要紧的一件事）：产出<b>不再写进阶层行</b>（R5 ②）—— 它变成产权条目/转移（{@code actor}
+ * 账上的增减）。这一样<b>不是 economy 切片自己的数据</b>： 产权住在 {@code simos-actor}，而"谁把条目/转移落到账上"必须由<b>同时看得见两片</b>的
+ * app 协调器来做（R4/E7）。 于是 economy 侧交出的就是它 —— <b>一天一本账</b>，一个字段不少，且<b>绝不静默丢弃</b>。
  *
  * <p>★★ <b>它是"一天"的，不是"一个周期"的</b>（{@link EconomyDayStepper#step(long)} 的返回值）：协调器逐步 把它落到账上 ⇒
- * 若它跨日累计，调用方就会<b>重复落账</b>。需要"整周期"的读数由调用方自己按天攒（这是有意的：" 哪一份累加器"这件事只该有一个主人）。
+ * 若它跨日累计，调用方就会<b>重复落账</b>。需要"整周期"的读数由调用方自己按天攒。
  *
- * <p>★★ <b>五件</b>（逐件与判据对应；★ H1.3 删掉了原来的第六件 {@code cohortIntake}）：
+ * <p>★★ <b>七件</b>（逐件与判据对应；★ H1.3 删掉了原来的第六件 {@code cohortIntake}，★ H2 把 {@code actorEntries} 拆成"产出计提
+ * + 转移"并补上"逐规则读数"）：
  *
  * <ul>
  *   <li>{@link #gross()} 本期毛产（逐产业 × 逐商品）—— I4.2 的 {@code ΣOutput}；
  *   <li>{@link #losses()} 本期生产损耗（饲料 0‰ + 折旧 30‰）—— I4.2 的 {@code ΣLoss}； ★ 它<b>不再进 {@code
  *       FlowRow.consumed}</b>：损耗不是"谁消费了"，是"蒸发了"，在守恒式里自成一项（R1）；
  *   <li>{@link #inputs()} 本期现扣周期投入 —— I4.2 的 {@code ΣProductionInputs}。★★ <b>H1
- *       起投入从家户账（会话工作副本）扣</b> （改前从消费行扣）⇒ 它<b>仍然不是一条 {@code ActorEntry}</b>：家户的账在 economy
- *       侧是<b>会话状态</b>（K1）， "扣了多少料"直接写在那份副本上，不经过产权账；
- *   <li>{@link #actorEntries()} 产权条目（毫单位；{@code > 0} 收 / {@code < 0} 付）—— 协调器把它们落到 {@code
- *       ActorData.accounts}。★ 含两族：<b>产出</b>（{@code +净产 → operator}）与 {@link ProductionSettlement}
- *       的<b>转出/收入</b>（{@code −实付} 付方 + {@code +实付} 受方）；★★ <b>H1.3 起受方恒为 actor</b> —— {@code
- *       ToCohort} 的受方是 {@code HouseholdActors.of(cohort)}，与 {@code ToActor} 走同一条条目流 （"cohort
- *       入账"那个中间形态已删）；
- *   <li>{@link #deferredMoney()} 待 S2 的货币规则（I5.3：<b>只定义、不结算</b>，不产生上面任何一样）。
+ *       起投入从家户账（会话工作副本）扣</b> ⇒ 它<b>不是一条转移</b>：扣减已经写在副本上，而"扣了多少料"在这里读得出来；
+ *   <li>★★ {@link #transfers()} <b>当天的转移</b>（{@link Transfer}；H2 起这是全系统唯一的"东西从 A 到 B"的事实）——
+ *       含三族：<b>关系实付</b>（{@code operator → 受方}）、<b>同格取材</b>（家户 → 家户）、<b>同格借粮</b>（家户 → 家户）。 ★
+ *       协调器把它们折成 {@code (actor, location, commodity, delta)} 落到 {@code ActorData.accounts}（见 {@link
+ *       #transfers()} 的注释）；
+ *   <li>{@link #outputAccruals()} <b>产出计提</b>（{@code +净产 → operator}；{@link
+ *       ProductionSettlement.ActorEntry}）。 ★ <b>它不是一条转移</b>：产出是<b>造出来</b>的、没有对端，而转移的两端恒为 actor
+ *       且不许相等 —— 理由详见 {@link ProductionSettlement.ActorEntry}；
+ *   <li>{@link #ruleSettlements()} <b>逐规则的实得读数</b>（应付 / 实付 / 欠；裁定 S4）。★ <b>只读</b>：不影响守恒、不落债权；
+ *   <li>{@link #deferredMoney()} 待 S2/S4 的货币规则（I5.3：<b>只定义、不结算</b>，不产生上面任何一样）。
  * </ul>
  *
  * <p>★★ <b>{@link #hasOutput()} 是 fail-closed 的判据</b>（E7/R4）：{@link EconomySettlement#settle} 那类
- * <b>没有产权落账口</b>的入口，一旦某一天交出的账里有产出（毛产或产权条目）就<b>当场抛</b> —— 否则产出会<b>在账上静默消失</b>。 ★ 判据刻意<b>不含 {@code
- * inputs}</b>：投入是<b>家户账侧</b>的完整事件（扣在会话副本里、记在流水里），不经过任何外部账。 ★ <b>H1 起它还多担一层</b>：{@code settle}
- * 连家户账都没有 ⇒ 它在**第一天之前**就已经 fail-closed（见那边的消息），这条判据留着守"全零人口的世界照样不许静默丢产出"。
+ * <b>没有产权落账口</b>的入口，一旦某一天交出的账里有产出（毛产或产出计提）就<b>当场抛</b> —— 否则产出会<b>在账上静默消失</b>。 ★ 判据刻意<b>不含 {@code
+ * inputs}</b>（投入扣在家户账侧、账是完整的）、也<b>不含 {@code transfers}</b>（借粮与取材不是产出； 且那个入口可达的状态里它们恒空 —— 全零人口 ⇒
+ * 没有份额、没有缺口、没有关账）。
  *
  * <p>★ <b>三张表都保序不可变</b>：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，<b>绝不用 {@code
  * Map.copyOf}</b> —— 它的迭代序不是内容的纯函数。
@@ -49,7 +57,9 @@ public record ProductionLedger(
     Map<IndustryId, Map<CommodityId, Long>> gross,
     Map<IndustryId, Map<CommodityId, Long>> losses,
     Map<IndustryId, Map<CommodityId, Long>> inputs,
-    List<ProductionSettlement.ActorEntry> actorEntries,
+    List<ProductionSettlement.ActorEntry> outputAccruals,
+    List<Transfer> transfers,
+    List<ProductionSettlement.RuleSettlement> ruleSettlements,
     List<CompensationRule> deferredMoney) {
 
   public ProductionLedger {
@@ -59,24 +69,29 @@ public record ProductionLedger(
     gross = Collections.unmodifiableMap(freezeQuantities(gross, "gross"));
     losses = Collections.unmodifiableMap(freezeQuantities(losses, "losses"));
     inputs = Collections.unmodifiableMap(freezeQuantities(inputs, "inputs"));
-    actorEntries = actorEntries == null ? List.of() : List.copyOf(actorEntries);
+    outputAccruals = outputAccruals == null ? List.of() : List.copyOf(outputAccruals);
+    transfers = transfers == null ? List.of() : List.copyOf(transfers);
+    ruleSettlements = ruleSettlements == null ? List.of() : List.copyOf(ruleSettlements);
     deferredMoney = deferredMoney == null ? List.of() : List.copyOf(deferredMoney);
   }
 
-  /** 一天什么都没有发生（既没关账、也没有任何条目）。 */
+  /** 一天什么都没有发生（既没关账、也没有任何转移）。 */
   public static ProductionLedger empty() {
-    return new ProductionLedger(Map.of(), Map.of(), Map.of(), List.of(), List.of());
+    return new ProductionLedger(
+        Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(), List.of());
   }
 
   /**
-   * ★★ <b>这一天有没有"产出"</b>（E7/R4 的 fail-closed 判据）：有毛产、或有产权条目。
+   * ★★ <b>这一天有没有"产出"</b>（E7/R4 的 fail-closed 判据）：有毛产、或有产出计提。
    *
    * <p>★ 为什么这两样：它们正是<b>离开 {@code ClassRow} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含 {@link
-   * #inputs()}：投入扣在行里、记在流水的 {@code consumed} 里，行侧账是完整的。 ★ 为什么不含 {@link
-   * #deferredMoney()}：货币档<b>只定义、不结算</b>（I5.3），它不产生任何数量，丢不了东西。
+   * #inputs()}：投入扣在家户账（会话副本）里、记在流水的 {@code consumed} 里，账是完整的。 ★ 为什么不含 {@link
+   * #deferredMoney()}：货币档<b>只定义、不结算</b>（I5.3），它不产生任何数量，丢不了东西。 ★ 为什么不含 {@link
+   * #transfers()}：借粮与取材<b>不是产出</b>（它们是既有库存的换手）；而本判据服务的入口（多日静态 {@code settle}）
+   * 在全零人口之外<b>根本进不来</b>（第一天之前就抛），那个状态里三者恒空。
    */
   public boolean hasOutput() {
-    return !gross.isEmpty() || !actorEntries.isEmpty();
+    return !gross.isEmpty() || !outputAccruals.isEmpty();
   }
 
   /** 逐产业 × 逐商品的毛产（毫单位）。 */
@@ -97,16 +112,33 @@ public record ProductionLedger(
   /**
    * ★★ <b>一天的可变累加器</b>（包内可见）—— 日结算边跑边记，跑完 {@link #toLedger()} 冻成上面那个 record。
    *
+   * <p>★★ <b>它还管一件事：转移凭据的铸造</b>（H2）。{@link #mint} 是<b>全系统唯一分配 {@link TransferId} 的地方</b>： id =
+   * {@code "tr-<day>-<seq>"}，{@code seq} = <b>当天</b>该账本内第几条（从 1 起）⇒ 同一天同一序列必然给出同一串 id （重放/分支可比）。★
+   * 日号由构造器收（调用方知道它推进到了第几天），序号在累加器里自增 —— 两段都只有一处拼写点。
+   *
    * <p>★ 形制与 {@code settleOneDay} 里那几张"逐日累加器"同款（{@code consumedGoods} / {@code income}）：<b>可变的那一份
    * 不出包</b>，外部拿到的永远是冻好的值。
    */
-  static final class Accumulator {
+  static final class Accumulator implements ProductionSettlement.TransferMint {
 
+    private final long day;
     private final Map<IndustryId, Map<CommodityId, Long>> gross = new LinkedHashMap<>();
     private final Map<IndustryId, Map<CommodityId, Long>> losses = new LinkedHashMap<>();
     private final Map<IndustryId, Map<CommodityId, Long>> inputs = new LinkedHashMap<>();
-    private final List<ProductionSettlement.ActorEntry> actorEntries = new ArrayList<>();
+    private final List<ProductionSettlement.ActorEntry> outputAccruals = new ArrayList<>();
+    private final List<Transfer> transfers = new ArrayList<>();
+    private final List<ProductionSettlement.RuleSettlement> ruleSettlements = new ArrayList<>();
     private final List<CompensationRule> deferredMoney = new ArrayList<>();
+
+    /** 当天已铸的转移条数（{@link TransferId} 的 {@code seq} 段）。 */
+    private long transferSequence;
+
+    /**
+     * @param day 这一天是第几个世界日（进 {@link Transfer#day()} 与 id 的第二段）
+     */
+    Accumulator(long day) {
+      this.day = day;
+    }
 
     void addGross(IndustryId industry, CommodityId commodity, long amount) {
       addQuantities(gross, industry, commodity, amount);
@@ -120,12 +152,44 @@ public record ProductionLedger(
       addQuantities(inputs, industry, commodity, amount);
     }
 
-    /** 追加一条产权条目（{@code delta} 为 0 的条目在此挡掉：0 不是一条发生额）。 */
-    void addEntry(ProductionSettlement.ActorEntry entry) {
-      if (entry.delta() == 0L) {
+    /** 追加一条产出计提（{@code delta} 为 0 的条目在此挡掉：0 不是一条发生额）。 */
+    void addOutputAccrual(ProductionSettlement.ActorEntry accrual) {
+      if (accrual.delta() == 0L) {
         return;
       }
-      actorEntries.add(entry);
+      outputAccruals.add(accrual);
+    }
+
+    /**
+     * ★★ <b>铸一条转移并记进当天的账</b>（唯一分配点；见类注）。
+     *
+     * <p>★ {@code money} 与 {@code settles} 本批恒空：货币腿属 H4（I5.3 今天不产生任何货币）、清偿属 H5。
+     */
+    @Override
+    public Transfer mint(
+        ActorRef from,
+        ActorRef to,
+        HexCoord location,
+        Map<CommodityId, Long> goods,
+        TransferReason reason) {
+      Transfer transfer =
+          new Transfer(
+              new TransferId("tr-" + day + "-" + (++transferSequence)),
+              day,
+              from,
+              to,
+              location,
+              goods,
+              Map.of(),
+              reason,
+              Optional.empty());
+      transfers.add(transfer);
+      return transfer;
+    }
+
+    /** 一条逐规则的实得读数（应付 / 实付 / 欠；★ 只读）。 */
+    void addRuleSettlement(ProductionSettlement.RuleSettlement reading) {
+      ruleSettlements.add(reading);
     }
 
     /** 一条被推迟的货币规则（I5.3：只定义、不结算）。 */
@@ -134,7 +198,8 @@ public record ProductionLedger(
     }
 
     ProductionLedger toLedger() {
-      return new ProductionLedger(gross, losses, inputs, actorEntries, deferredMoney);
+      return new ProductionLedger(
+          gross, losses, inputs, outputAccruals, transfers, ruleSettlements, deferredMoney);
     }
 
     private static void addQuantities(

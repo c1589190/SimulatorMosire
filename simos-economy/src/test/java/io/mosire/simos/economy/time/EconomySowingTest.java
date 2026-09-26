@@ -386,8 +386,8 @@ class EconomySowingTest {
 
     // ★ T4：日结算现在还要交回当天的 ProductionLedger（产出离开 ClassRow 之后的落点）⇒ 累加器是必填入参；
     //   本用例只量"播种次序对行/种子的影响"（第 1 天没有任何产业关账）⇒ 两份账都应当是空的。
-    ProductionLedger.Accumulator ledgerFirst = new ProductionLedger.Accumulator();
-    ProductionLedger.Accumulator ledgerAfter = new ProductionLedger.Accumulator();
+    ProductionLedger.Accumulator ledgerFirst = new ProductionLedger.Accumulator(1L);
+    ProductionLedger.Accumulator ledgerAfter = new ProductionLedger.Accumulator(1L);
     EconomyData first =
         EconomySettlement.settleOneDay(world.data(), 1L, flowsFirst, goodsFirst, true, ledgerFirst);
     EconomyData after =
