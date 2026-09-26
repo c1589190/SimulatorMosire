@@ -25,7 +25,7 @@ import io.mosire.simos.map.hex.HexCoord;
  *
  * <p>★ <b>故 actor id 的段分隔符取 {@code ":"}</b>（与既有的批次 id 同族：{@code rural:0_0:MALE:1}），
  * 形状：{@code <q>_<r>:<residence>:<stratum>}，例 {@code 0_0:rural:poor_peasant}。
- * 它<b>不含 {@code |}</b> ⇒ 与 {@code GoodsAccountKey} / {@code AssetHoldingKey} 的接缝约定相容；
+ * 它<b>不含 {@code |}</b> ⇒ 与 {@code GoodsAccountKey} 的接缝约定相容；
  * 而 {@code ActorRef.parseCanonical} 按<b>第一个 {@code :}</b> 切 ⇒ id 里含 {@code :} 是合法的。
  *
  * <p>★ <b>种类只取 {@link ActorKind#HOUSEHOLD}</b>（裁定 S1：<b>复用</b>，不为地主/贫农各造一档）——

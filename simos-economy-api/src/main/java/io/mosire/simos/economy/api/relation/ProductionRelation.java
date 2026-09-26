@@ -34,6 +34,18 @@ import java.util.List;
  * 这一档只有夹具覆盖（未达成项，落点见台账）。★ 另：{@code SELF_RETENTION} 属<b>实物</b>档 ⇒ 它也要带 {@code commodity} （{@link
  * CompensationRule} 的二选一守卫）；若某一档只想要「余额归 residualOwner」，把它写成<b>不出现这条规则</b>即可（空表 ⇒ 全归 residualOwner）。
  *
+ * <p>★★ <b>追加标注（2026-09-27，上文一字不改）</b>：
+ *
+ * <ul>
+ *   <li><b>H0.5 / 裁定 S3</b>：{@code ASSET_QUANTITY} 随 {@code AssetHolding} <b>整块退役</b>
+ *       （实测事实：该表在真档<b>零写入者</b>、{@code harvest} 更是硬编码空表 ⇒ 收益为 0）。
+ *       ⇒ 上文把它当"资产所有者那一档"的举例、以及第 33 行那段"未在真档种入"的过渡口径，
+ *       <b>随之作废</b>；资产（土地 / 工具 / 牲畜）推迟到真需要时再加，届时以<b>产业产能</b>
+ *       （{@code Industry.capacity}）表达"用多少"，以本表的一条规则表达"谁拿收益"。
+ *   <li><b>operator 的归属（2026-09-27 裁定）</b>：{@link #operator()} 将在 <b>H3</b> 起由本表
+ *       <b>指名</b>（与"投入由谁出"合并成同一栏，裁定 C3），{@code Industry.operator} 的去留届时一并裁。
+ * </ul>
+ *
  * @param activity 这条关系结算的那个活动（身份 = 它，不另造 id）
  * @param operator 经营主体（必须与 {@code Industry.operator} 一致，跨表守卫在 {@code EconomyData}）
  * @param rules 补偿规则（**一张表、保序、不可变**；空表 = 全部自留）
