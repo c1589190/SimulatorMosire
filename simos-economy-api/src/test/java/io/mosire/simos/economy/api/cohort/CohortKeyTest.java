@@ -6,13 +6,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
@@ -41,6 +44,9 @@ class CohortKeyTest {
 
   /** 夹具商品（粮食）—— 与 {@link #CLOTH} 成对，用来测「商品是数据、不是默认值」。 */
   private static final CommodityId GRAIN = new CommodityId("grain");
+
+  /** H2 的币种位夹具（★ 只作**夹具字面量**：本模块没有任何"出厂货币"，出厂值在 {@code RegimeRelations}）。 */
+  private static final CurrencyId CURRENCY = new CurrencyId("silver");
 
   // ── 一、CohortKey：规范串与它的逆 ────────────────────────────────────────────────
 
@@ -228,7 +234,10 @@ class CohortKeyTest {
 
   // ── 四、CompensationRule：构造期守卫 ───────────────────────────────────────────
 
-  /** ★★ 货币档只定义字段、不结算（I5.3）：commodity 空 = 货币规则；实物规则必须带 commodity。 */
+  /**
+   * ★★ 货币档只定义字段、不结算（I5.3）：commodity 空 = 货币规则；实物规则必须带 commodity —— ★ <b>H2 起这条"二选一"有两对</b>：商品侧（空 ⟺
+   * 货币）与币种侧（非空 ⟺ 货币），两对互为反相、都由构造期守卫判死。
+   */
   @Test
   void moneyRulesCarryNoCommodityAndInKindRulesRequireOne() {
     Recipient rec =
@@ -240,29 +249,61 @@ class CohortKeyTest {
                 new CompensationRule(
                     RuleType.FIXED_MONEY_WAGE,
                     rec,
-                    Basis.FIXED_AMOUNT,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
                     0,
                     5_000L,
                     Optional.of(new CommodityId("grain")),
+                    Optional.of(CURRENCY),
                     10))
         .as("★ 货币规则带了商品 ⇒ 抛（二选一是类型事实，不许两处都能填）")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
                 new CompensationRule(
-                    RuleType.FIXED_IN_KIND_RENT,
+                    RuleType.FIXED_MONEY_WAGE,
                     rec,
-                    Basis.FIXED_AMOUNT,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
                     0,
                     5_000L,
+                    Optional.empty(),
+                    Optional.empty(),
+                    10))
+        .as("★ H2：货币规则没有币种 ⇒ 抛（『1000 毫钱』没说是什么钱）")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                new CompensationRule(
+                    RuleType.FIXED_IN_KIND_RENT,
+                    rec,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
+                    0,
+                    5_000L,
+                    Optional.empty(),
                     Optional.empty(),
                     10))
         .as("★ 实物规则没有商品 ⇒ 抛")
         .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                new CompensationRule(
+                    RuleType.FIXED_IN_KIND_RENT,
+                    rec,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
+                    0,
+                    5_000L,
+                    Optional.of(new CommodityId("grain")),
+                    Optional.of(CURRENCY),
+                    10))
+        .as("★ H2：实物规则带了币种 ⇒ 抛（实物不是钱）")
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   /**
-   * ★ 上一条的<b>许可面</b>（判别力来自夹具的另一半）：{@code FIXED_MONEY_*} <b>不带</b>商品时必须能构造出来。
+   * ★ 上一条的<b>许可面</b>（判别力来自夹具的另一半）：{@code FIXED_MONEY_*} <b>不带</b>商品、<b>带</b>币种时必须能构造出来。
    *
    * <p>★ 为什么必须补这一条：否则「货币规则一律抛」这种过度实现也会让上一条全绿 —— 上一条只证明了「带商品 ⇒ 抛」， 没证明「不带商品 ⇒ 收」。I5.3
    * 要的是<b>定义得住</b>（货币档在位、字段齐、待 S2 结算），不是<b>构造不出来</b>。
@@ -274,14 +315,17 @@ class CohortKeyTest {
         rule(
             RuleType.FIXED_MONEY_RENT,
             toActor,
-            Basis.FIXED_AMOUNT,
+            Pool.FIXED_AMOUNT,
+            Weight.NONE,
             0,
             5_000L,
             Optional.empty(),
+            Optional.of(CURRENCY),
             10);
 
     assertThat(rule.type()).isEqualTo(RuleType.FIXED_MONEY_RENT);
     assertThat(rule.commodity()).as("★ 货币档的商品位是空的（这就是『只定义、不结算』的字段形态）").isEmpty();
+    assertThat(rule.currency()).as("★ H2：币种位必须说清是哪一种钱（实物档那一侧恒空）").contains(CURRENCY);
     assertThat(rule.fixedAmount()).as("★ 但固定额在（字段是齐的，待 S2 的 ledger 来结算）").isEqualTo(5_000L);
   }
 
@@ -294,19 +338,36 @@ class CohortKeyTest {
 
     // ★ 边界合法：1000‰ = 全给出去；0‰ = 这一档不分成
     assertThat(
-            rule(RuleType.OUTPUT_SHARE, rec, Basis.GROSS_OUTPUT, 1_000, 0L, Optional.of(GRAIN), 0)
+            inKind(
+                    RuleType.OUTPUT_SHARE,
+                    rec,
+                    Pool.GROSS_OUTPUT,
+                    Weight.NONE,
+                    1_000,
+                    0L,
+                    Optional.of(GRAIN),
+                    0)
                 .ratePerMille())
         .isEqualTo(1_000);
     assertThat(
-            rule(RuleType.OUTPUT_SHARE, rec, Basis.GROSS_OUTPUT, 0, 0L, Optional.of(GRAIN), 0)
+            inKind(
+                    RuleType.OUTPUT_SHARE,
+                    rec,
+                    Pool.GROSS_OUTPUT,
+                    Weight.NONE,
+                    0,
+                    0L,
+                    Optional.of(GRAIN),
+                    0)
                 .ratePerMille())
         .isZero();
     // ★ 固定额档与分成档**各自**可以为 0（两个字段独立：一条固定额规则的 ratePerMille 就该是 0）
     assertThat(
-            rule(
+            inKind(
                     RuleType.FIXED_IN_KIND_RENT,
                     rec,
-                    Basis.FIXED_AMOUNT,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
                     0,
                     7_000L,
                     Optional.of(GRAIN),
@@ -316,10 +377,11 @@ class CohortKeyTest {
 
     assertThatThrownBy(
             () ->
-                rule(
+                inKind(
                     RuleType.OUTPUT_SHARE,
                     rec,
-                    Basis.GROSS_OUTPUT,
+                    Pool.GROSS_OUTPUT,
+                    Weight.NONE,
                     1_001,
                     0L,
                     Optional.of(GRAIN),
@@ -328,15 +390,24 @@ class CohortKeyTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
-                rule(RuleType.OUTPUT_SHARE, rec, Basis.GROSS_OUTPUT, -1, 0L, Optional.of(GRAIN), 0))
+                inKind(
+                    RuleType.OUTPUT_SHARE,
+                    rec,
+                    Pool.GROSS_OUTPUT,
+                    Weight.NONE,
+                    -1,
+                    0L,
+                    Optional.of(GRAIN),
+                    0))
         .as("负分成率 ⇒ 抛")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
-                rule(
+                inKind(
                     RuleType.FIXED_IN_KIND_RENT,
                     rec,
-                    Basis.FIXED_AMOUNT,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
                     0,
                     -1L,
                     Optional.of(GRAIN),
@@ -345,10 +416,11 @@ class CohortKeyTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
-                rule(
+                inKind(
                     RuleType.FIXED_IN_KIND_RENT,
                     rec,
-                    Basis.FIXED_AMOUNT,
+                    Pool.FIXED_AMOUNT,
+                    Weight.NONE,
                     0,
                     1L,
                     Optional.of(GRAIN),
@@ -356,25 +428,60 @@ class CohortKeyTest {
         .as("负 priority ⇒ 抛")
         .isInstanceOf(IllegalArgumentException.class);
 
-    assertThatThrownBy(() -> rule(null, rec, Basis.FIXED_AMOUNT, 0, 1L, Optional.of(GRAIN), 0))
+    assertThatThrownBy(
+            () -> inKind(null, rec, Pool.FIXED_AMOUNT, Weight.NONE, 0, 1L, Optional.of(GRAIN), 0))
         .as("type 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
-                rule(
+                inKind(
                     RuleType.OUTPUT_SHARE,
                     null,
-                    Basis.GROSS_OUTPUT,
+                    Pool.GROSS_OUTPUT,
+                    Weight.NONE,
                     300,
                     0L,
                     Optional.of(GRAIN),
                     0))
         .as("recipient 不得为 null（受方必须恰有一个）")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> rule(RuleType.OUTPUT_SHARE, rec, null, 300, 0L, Optional.of(GRAIN), 0))
-        .as("basis 不得为 null（否则『30% 的什么』无从回答）")
+    assertThatThrownBy(
+            () ->
+                inKind(
+                    RuleType.OUTPUT_SHARE, rec, null, Weight.NONE, 300, 0L, Optional.of(GRAIN), 0))
+        .as("pool 不得为 null（否则『从哪一层取』无从回答）")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> rule(RuleType.OUTPUT_SHARE, rec, Basis.GROSS_OUTPUT, 300, 0L, null, 0))
+    assertThatThrownBy(
+            () ->
+                inKind(
+                    RuleType.OUTPUT_SHARE,
+                    rec,
+                    Pool.GROSS_OUTPUT,
+                    null,
+                    300,
+                    0L,
+                    Optional.of(GRAIN),
+                    0))
+        .as("★ H2：weight 不得为 null（否则『池怎么分』无从回答；不分请显式给 NONE）")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                new CompensationRule(
+                    RuleType.FIXED_IN_KIND_RENT,
+                    rec,
+                    Pool.FIXED_AMOUNT,
+                    Weight.LABOR_AMOUNT,
+                    0,
+                    1L,
+                    Optional.of(GRAIN),
+                    Optional.empty(),
+                    0))
+        .as("★ H2：固定额配了权重 ⇒ 抛（固定额没有『按什么分』这一维）")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                inKind(
+                    RuleType.OUTPUT_SHARE, rec, Pool.GROSS_OUTPUT, Weight.NONE, 300, 0L, null, 0))
         .as("★ Optional 本身不得为 null（宁抛不静默：null 会退化成 NPE）")
         .isInstanceOf(IllegalArgumentException.class);
   }
@@ -389,19 +496,21 @@ class CohortKeyTest {
         new Recipient.ToCohort(
             new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD));
     CompensationRule first =
-        rule(
+        inKind(
             RuleType.FIXED_IN_KIND_RENT,
             landlord,
-            Basis.FIXED_AMOUNT,
+            Pool.FIXED_AMOUNT,
+            Weight.NONE,
             0,
             4_000L,
             Optional.of(GRAIN),
             10);
     CompensationRule second =
-        rule(
+        inKind(
             RuleType.OUTPUT_SHARE,
             landlord,
-            Basis.NET_AFTER_INPUTS,
+            Pool.NET_AFTER_INPUTS,
+            Weight.NONE,
             300,
             0L,
             Optional.of(CLOTH),
@@ -417,10 +526,11 @@ class CohortKeyTest {
     assertThat(relation.rules().get(1).commodity()).as("★ 商品是数据、不是默认值：第二条是布").contains(CLOTH);
 
     incoming.add(
-        rule(
+        inKind(
             RuleType.SELF_RETENTION,
             new Recipient.ToActor(operator),
-            Basis.OPERATOR_SURPLUS,
+            Pool.OPERATOR_SURPLUS,
+            Weight.NONE,
             0,
             0L,
             Optional.of(GRAIN),
@@ -437,12 +547,13 @@ class CohortKeyTest {
     IndustryId activity = new IndustryId("farm@0_0");
     List<CompensationRule> rules =
         List.of(
-            rule(
+            inKind(
                 RuleType.FIXED_IN_KIND_RENT,
                 new Recipient.ToCohort(
                     new CohortKey(
                         new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
-                Basis.FIXED_AMOUNT,
+                Pool.FIXED_AMOUNT,
+                Weight.NONE,
                 0,
                 4_000L,
                 Optional.of(GRAIN),
@@ -473,17 +584,18 @@ class CohortKeyTest {
   }
 
   /**
-   * ★★ 判据⑤：{@code Optional} <b>只用于</b> {@code commodity} —— 机械读法 = 「{@code CompensationRule} 的
-   * {@code Optional} 组件恰有一个、且叫 {@code commodity}」。
+   * ★★ 判据⑤（H2 重述）：{@code Optional} <b>只用于两个位置</b> —— 机械读法 = 「{@code CompensationRule} 的 {@code
+   * Optional} 组件恰是 {@code commodity} 与 {@code currency}，且各自只有一个含义」。
    *
-   * <p>★ 为什么值得一条断言：{@code commodity} 的"空"是 <b>I5.3 的信号本身</b>（空 = 货币档、待 S2）。若别处再冒出 一个 {@code
-   * Optional}，"空"就有两种含义，货币档的判别力当场消失。
+   * <p>★ 为什么值得一条断言：{@code commodity} 的"空"是 <b>I5.3 的信号本身</b>（空 = 货币档、待 S2）； {@code currency} 的"空"是
+   * <b>H2 的信号本身</b>（非空 = 货币档）—— ★★ <b>两者互为反相</b>（一个空、另一个必非空），
+   * 由构造期守卫判死，故"空"仍然<b>只有两种含义且可互相判定</b>：别处再冒出第三个 {@code Optional}，货币档的判别力才会消失。
    */
   @Test
-  void optionalAppearsOnlyOnTheCommodityComponent() {
+  void optionalAppearsOnlyOnTheCommodityAndCurrencyComponents() {
     assertThat(optionalComponents(CompensationRule.class))
-        .as("★ CompensationRule 的 Optional 组件恰有一个，且名为 commodity")
-        .containsExactly("commodity");
+        .as("★ CompensationRule 的 Optional 组件恰有两个：commodity（空 = 货币档）与 currency（非空 = 货币档），互为反相")
+        .containsExactly("commodity", "currency");
     assertThat(optionalComponents(ProductionRelation.class))
         .as("★ ProductionRelation 一个 Optional 都没有")
         .isEmpty();
@@ -500,8 +612,8 @@ class CohortKeyTest {
    * <p>★ 为什么"显式给"是必须的：地主既不是劳动者（不在 {@code laborOfCohort} 里），也不是 actor ⇒ 不显式给一条 {@code ToCohort((hex,
    * landlord))} 的规则，<b>地主 cohort 的粮源会凭空消失</b>（裁定 E4 第 2 条）。
    *
-   * <p>★ <b>E5 的落点</b>：{@code FIXED_IN_KIND_RENT} 的 {@code basis} = {@link Basis#FIXED_AMOUNT}（第 6
-   * 档）—— spec 的五个 {@code basis} 全是「每单位什么」，固定额没有单位，故没有它们的位置。
+   * <p>★ <b>E5 的落点</b>：{@code FIXED_IN_KIND_RENT} 的池 = {@link Pool#FIXED_AMOUNT}（旧档的 {@code
+   * FIXED_AMOUNT} 那一档）—— spec 的五个 {@code basis} 全是「每单位什么」，固定额没有单位，故没有它们的位置。
    */
   @Test
   void theSingleRuleListCanAddressTheLandlordCohortExplicitly() {
@@ -511,19 +623,21 @@ class CohortKeyTest {
         new Recipient.ToCohort(new CohortKey(hex, ResidenceKind.RURAL, SocialClassId.LANDLORD));
 
     CompensationRule rent =
-        rule(
+        inKind(
             RuleType.FIXED_IN_KIND_RENT,
             landlord,
-            Basis.FIXED_AMOUNT,
+            Pool.FIXED_AMOUNT,
+            Weight.NONE,
             0,
             4_000L,
             Optional.of(GRAIN),
             10);
     CompensationRule selfRetention =
-        rule(
+        inKind(
             RuleType.SELF_RETENTION,
             new Recipient.ToActor(tenantHousehold),
-            Basis.OPERATOR_SURPLUS,
+            Pool.OPERATOR_SURPLUS,
+            Weight.NONE,
             0,
             0L,
             Optional.of(GRAIN),
@@ -548,9 +662,12 @@ class CohortKeyTest {
     assertThat(((Recipient.ToCohort) relation.rules().get(0).recipient()).cohort().residence())
         .as("★ 居住类型也在键里（H0.1 新增的那一维）")
         .isEqualTo(ResidenceKind.RURAL);
-    assertThat(relation.rules().get(0).basis())
-        .as("★ E5：固定额规则的 basis 是第 6 档 FIXED_AMOUNT")
-        .isEqualTo(Basis.FIXED_AMOUNT);
+    assertThat(relation.rules().get(0).pool())
+        .as("★ E5 + H2：固定额规则的池是 FIXED_AMOUNT（旧档的第 5 档 FIXED_AMOUNT 逐值映射过来）")
+        .isEqualTo(Pool.FIXED_AMOUNT);
+    assertThat(relation.rules().get(0).weight())
+        .as("★ H2：固定额的权重不适用 ⇒ 恒 NONE")
+        .isEqualTo(Weight.NONE);
     assertThat(relation.rules().get(0).priority())
         .as("★ 次序是数据：地租（10）排在自留（20）之前 ⇒ 分成类规则按 priority 序累计")
         .isLessThan(relation.rules().get(1).priority());
@@ -561,17 +678,44 @@ class CohortKeyTest {
 
   // ── 夹具 ─────────────────────────────────────────────────────────────────────
 
-  /** 七参构造器的短名（本类要构造很多条规则，省去重复的完整签名）。 */
+  /**
+   * ★★ <b>九参构造器的短名</b>（本类要构造很多条规则，省去重复的完整签名）——H2 起 {@code basis} 换成 {@code pool} × {@code weight}
+   * 并补了币种位，故短名也从七参变九参。
+   */
   private static CompensationRule rule(
       RuleType type,
       Recipient recipient,
-      Basis basis,
+      Pool pool,
+      Weight weight,
+      int ratePerMille,
+      long fixedAmount,
+      Optional<CommodityId> commodity,
+      Optional<CurrencyId> currency,
+      int priority) {
+    return new CompensationRule(
+        type, recipient, pool, weight, ratePerMille, fixedAmount, commodity, currency, priority);
+  }
+
+  /** <b>实物规则</b>的短名：币种恒空（二选一的实物那一侧，逐值由构造期守卫判死）。 */
+  private static CompensationRule inKind(
+      RuleType type,
+      Recipient recipient,
+      Pool pool,
+      Weight weight,
       int ratePerMille,
       long fixedAmount,
       Optional<CommodityId> commodity,
       int priority) {
-    return new CompensationRule(
-        type, recipient, basis, ratePerMille, fixedAmount, commodity, priority);
+    return rule(
+        type,
+        recipient,
+        pool,
+        weight,
+        ratePerMille,
+        fixedAmount,
+        commodity,
+        Optional.empty(),
+        priority);
   }
 
   /** 判据⑤ 的机械读法：该 record 里类型为 {@link Optional} 的组件名（保序）。 */

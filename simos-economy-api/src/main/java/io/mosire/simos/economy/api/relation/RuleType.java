@@ -5,9 +5,11 @@ import java.util.Arrays;
 /**
  * ★★ <b>补偿规则的类型（六档词表）</b>：一次生产关账以后，产出按什么<b>方式</b>分给受方（spec §2.4 的「规则类型」表 + 裁定 E5）。
  *
- * <p>★ <b>与 {@code basis} 正交</b>：类型说「怎么算这一档」（自留 / 分成 / 按劳动的固定实物 / 固定实物租 / 货币工资 / 货币地租）， {@link
- * Basis} 说「数量取自哪一层」（毛产 / 净产 / 经营剩余 / 劳动量 / 资产量 / 固定额）。二者<b>都不含公式</b>：公式表住 {@code simos-economy} 的
- * {@code ProductionSettlement}（Task 3），本模块只有形状与守卫。
+ * <p>★ <b>与 {@link Pool} × {@link Weight} 正交</b>：类型说「怎么算这一档」（自留 / 分成 / 按劳动的固定实物 / 固定实物租 / 货币工资 /
+ * 货币地租），池说「数量取自哪一层」（毛产 / 净产 / 经营剩余 / 固定额），权重说「池在受方之间怎么分」 （不分 / 按劳动量 / 平均）。★ <b>H2（裁定
+ * D5-B）之前这三件事挤在一个 {@code basis} 里</b>——旧五档到新两个字段的 映射表在 {@link Basis}
+ * 的类注里（那已是<b>只服务旧档读侧</b>的兼容词表）。三者<b>都不含公式</b>：公式表住 {@code simos-economy} 的 {@code
+ * ProductionSettlement}（Task 3），本模块只有形状与守卫。
  *
  * <p>★★ <b>「货币档」这条事实的唯拼写点是 {@link #money()}</b>（裁定 I5.3「只定义、不结算」）：结算据它把规则分流进 {@code
  * deferredMoney}（不产生任何产权条目、cohort 也不入账），并明确报「待 S2」。★ <b>不许</b>在别处用字符串判断 （{@code
@@ -26,7 +28,7 @@ public enum RuleType {
    */
   SELF_RETENTION(false),
 
-  /** 产出分成：按 {@link Basis} 取一层数量，再乘 {@code ratePerMille}。 */
+  /** 产出分成：按 {@link Pool} 取一层数量、按 {@link Weight} 摊给受方，再乘 {@code ratePerMille}。 */
   OUTPUT_SHARE(false),
 
   /** 按劳动量的实物报酬（给养）：每 1000 劳动给 {@code fixedAmount}（单位由 {@code commodity} 定）。 */

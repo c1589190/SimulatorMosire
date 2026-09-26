@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.id.AssetRightId;
 import io.mosire.simos.economy.api.id.ClaimId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ContractId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.EconomicRuleId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -73,11 +74,13 @@ class EconomyIdsTest {
           new IdKind("RegimeId", RegimeId::new, RegimeId::parse),
           new IdKind("DebtId", DebtId::new, DebtId::parse),
           // ★ R2：劳动分配表的主键（第三阶段设计稿 §四）。
-          new IdKind("LaborAllocationId", LaborAllocationId::new, LaborAllocationId::parse));
+          new IdKind("LaborAllocationId", LaborAllocationId::new, LaborAllocationId::parse),
+          // ★★ H2：货币 ID（用户 2026-09-27「货币作为接口留好」）—— 与 CommodityId 同族、同形制。
+          new IdKind("CurrencyId", CurrencyId::new, CurrencyId::parse));
 
   @Test
   void everyIdCoversTheThreePieceContract() {
-    assertThat(IDS).as("清单必须覆盖全部 21 个 ID（漏一个 = 那一类没有护栏）").hasSize(21);
+    assertThat(IDS).as("清单必须覆盖全部 22 个 ID（漏一个 = 那一类没有护栏）").hasSize(22);
 
     for (IdKind id : IDS) {
       String what = id.name();
@@ -106,7 +109,7 @@ class EconomyIdsTest {
 
       // ③ toString 返回裸值（不加类型名前缀、不引号）
       //   ★ S1 阶段 1：`SocialClassId` 是**唯一带词表校验**的 id（产业无关的阶层身份，词表外即抛）
-      //     ⇒ 它用**自己的合法值**取样例；其余 20 类仍用通用样例 `u-1`。
+      //     ⇒ 它用**自己的合法值**取样例；其余各类仍用通用样例 `u-1`。
       //     这样 ①② 两条（拒 null/空白）对它照旧生效，③④ 也测得到（而不是把整条从清单里删掉）。
       String sample = "SocialClassId".equals(what) ? "poor_peasant" : "u-1";
       assertThat(id.create().apply(sample)).as("%s 的 toString 返回裸值", what).hasToString(sample);
