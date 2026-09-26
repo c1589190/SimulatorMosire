@@ -145,6 +145,8 @@ public final class CrisisMonitor {
     long population = 0L;
     long deaths = 0L;
     long borrowing = 0L;
+    long elapsedDaysSeen = 0L;
+    long cycleDaysSeen = 0L;
     for (ClassKey key : keys) {
       ClassRow row = economy.classes().get(key);
       FlowRow flow = economy.flows().get(key);
@@ -152,12 +154,17 @@ public final class CrisisMonitor {
         continue;
       }
       population += row.population();
-      long cycleDays =
-          economy.industries().containsKey(key.industry())
-              ? economy.industries().get(key.industry()).cycleDays()
-              : 1L;
-      grainNeed += EconomyVocabulary.cumulativeRationMilli(row.population(), cycleDays);
-      clothNeed += EconomyVocabulary.cumulativeClothMilli(row.population(), cycleDays);
+      // ★★ B2 修复：**分子与分母必须同基准**。
+      //   分子是"本周期**至今**累计的 unmetNeed"（FlowRow 在新周期第一天归零、此后逐日累加），
+      //   故分母必须是"本周期**至今**的需求"，而不是整周期的需求 —— 否则周期初分子只累计了几天、
+      //   分母却已按 120 天算 ⇒ 满足率被严重高估 ⇒ **一场持续危机在周期切换后会暂时读成"没有危机"**。
+      //   `cumulativeRationMilli` 的类注本就写明它是"**天的函数**（不是'周期内第几天'的函数）：
+      //   调用方传**绝对天数/绝对日号**" —— 传 cycleDays 这个常量正是误用。
+      long elapsedDays = elapsedDaysOf(economy, key);
+      elapsedDaysSeen = Math.max(elapsedDaysSeen, elapsedDays);
+      cycleDaysSeen = Math.max(cycleDaysSeen, cycleDaysOf(economy, key));
+      grainNeed += EconomyVocabulary.cumulativeRationMilli(row.population(), elapsedDays);
+      clothNeed += EconomyVocabulary.cumulativeClothMilli(row.population(), elapsedDays);
       if (flow != null) {
         grainUnmet += flow.unmetNeed().getOrDefault(commodityGrain(), 0L);
         clothUnmet += flow.unmetNeed().getOrDefault(commodityCloth(), 0L);
@@ -171,6 +178,9 @@ public final class CrisisMonitor {
       Map<String, Object> evidence = new LinkedHashMap<>();
       evidence.put("grainSatisfactionPerMille", grainSatisfaction);
       evidence.put("grainUnmetMilli", grainUnmet);
+      // ★ 相位：让读的人知道这是**部分周期**的读数（elapsedDays ≤ cycleDays）。
+      evidence.put("elapsedDays", elapsedDaysSeen);
+      evidence.put("cycleDays", cycleDaysSeen);
       // ★ "儿童·青壮年·老年人分别受影响程度"：各档批次**生理压力**的最大值（批次身上只有逐日年龄与压力）。
       evidence.put("stressByAgeBracket", stressByAgeBracket(coord, social, atTick));
       lights.add(new Light(coord, Kind.FOOD, evidence));
@@ -180,6 +190,9 @@ public final class CrisisMonitor {
       Map<String, Object> evidence = new LinkedHashMap<>();
       evidence.put("clothSatisfactionPerMille", clothSatisfaction);
       evidence.put("clothUnmetMilli", clothUnmet);
+      // ★ 相位：同 FOOD。
+      evidence.put("elapsedDays", elapsedDaysSeen);
+      evidence.put("cycleDays", cycleDaysSeen);
       lights.add(new Light(coord, Kind.CLOTH, evidence));
     }
     if (population > 0L && deaths * 1000L / population > MORTALITY_CRISIS_PER_MILLE) {
@@ -216,6 +229,22 @@ public final class CrisisMonitor {
       lights.add(new Light(coord, Kind.LABOR_BURDEN, evidence));
     }
     return List.copyOf(lights);
+  }
+
+  /**
+   * ★★ **该行所属产业在本周期"已过多少天"**（{@code Industry.progressDays}）—— B2 的分母基准。
+   *
+   * <p>★ **周期第 0 天按 1 天算**：既不除零，也不把"周期刚开始"读成"完全满足"。 不设产业（手工搭的状态）⇒ 同样返回 1。
+   */
+  private static long elapsedDaysOf(EconomyData economy, ClassKey key) {
+    var industry = economy.industries().get(key.industry());
+    return industry == null ? 1L : Math.max(1L, industry.progressDays());
+  }
+
+  /** 该行所属产业的**整周期**天数（只用于 evidence 里标出相位）；不设产业 ⇒ 1。 */
+  private static long cycleDaysOf(EconomyData economy, ClassKey key) {
+    var industry = economy.industries().get(key.industry());
+    return industry == null ? 1L : industry.cycleDays();
   }
 
   /** 满足率（‰）：{@code 需求 == 0 ⇒ 1000}；否则 {@code (需求 − 缺口) × 1000 ÷ 需求}。 */
