@@ -518,7 +518,7 @@ class CohortKeyTest {
     List<CompensationRule> incoming = new ArrayList<>(List.of(first, second));
 
     ProductionRelation relation =
-        new ProductionRelation(new IndustryId("farm@0_0"), operator, incoming, operator);
+        new ProductionRelation(new IndustryId("farm@0_0"), operator, null, incoming, operator);
 
     assertThat(relation.rules())
         .as("★ 保序：与传入次序逐一相同（次序是数据 —— Task 3 按它排 priority）")
@@ -559,26 +559,26 @@ class CohortKeyTest {
                 Optional.of(GRAIN),
                 10));
 
-    assertThatThrownBy(() -> new ProductionRelation(null, operator, rules, operator))
+    assertThatThrownBy(() -> new ProductionRelation(null, operator, null, rules, operator))
         .as("activity 不得为 null（身份 = 它结算的那个 activity，不另造 id）")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ProductionRelation(activity, null, rules, operator))
+    assertThatThrownBy(() -> new ProductionRelation(activity, null, null, rules, operator))
         .as("operator 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ProductionRelation(activity, operator, null, operator))
+    assertThatThrownBy(() -> new ProductionRelation(activity, operator, null, null, operator))
         .as("rules 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ProductionRelation(activity, operator, rules, null))
+    assertThatThrownBy(() -> new ProductionRelation(activity, operator, null, rules, null))
         .as("residualOwner 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
                 new ProductionRelation(
-                    activity, operator, Arrays.asList(rules.get(0), null), operator))
+                    activity, operator, null, Arrays.asList(rules.get(0), null), operator))
         .as("★ 逐项非空：一条 null 规则不许混进去")
         .isInstanceOf(IllegalArgumentException.class);
 
-    assertThat(new ProductionRelation(activity, operator, List.of(), operator).rules())
+    assertThat(new ProductionRelation(activity, operator, null, List.of(), operator).rules())
         .as("★ 空表合法：一条规则都没有 ⇒ 产出全部归 residualOwner（自留是缺省，不是坏数据）")
         .isEmpty();
   }
@@ -647,6 +647,7 @@ class CohortKeyTest {
         new ProductionRelation(
             new IndustryId("farm@0_0"),
             tenantHousehold,
+            null,
             List.of(rent, selfRetention),
             tenantHousehold);
 

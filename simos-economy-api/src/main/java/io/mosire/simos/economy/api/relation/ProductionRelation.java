@@ -45,13 +45,50 @@ import java.util.List;
  *       <b>指名</b>（与"投入由谁出"合并成同一栏，裁定 C3），{@code Industry.operator} 的去留届时一并裁。
  * </ul>
  *
+ * <p>★★ <b>H3（2026-09-27，裁定 C3 + operator=C）：本表多一栏 {@link #inputSupplier()}</b> ——
+ * 「这些投入由谁出」（周期第一天要扣的种子 / 纤维 / 铁从<b>谁的账</b>上划给这个产业）。
+ *
+ * <p>★★ <b>为什么单独立一栏（读者一定会问：四档的默认不都是 operator 吗？）</b>—— 问得对， {@code RegimeRelations} 的四档默认（feudal =
+ * 经营者（庄园）出 · tenant = 佃农家户出 · household = 家户自出 · handicraft = 作坊主出）<b>确实都落在 {@link
+ * #operator()}</b>（因为 operator 就是那个主体）。⇒ 这一栏的价值 <b>不是"改默认值"</b>，而是两条：
+ *
+ * <ol>
+ *   <li>★★ <b>把"谁出料"从"按人口猜"变成"制度明说"</b>：改前 {@code EconomySettlement.drawCycleInputs} 按 {@code
+ *       rowSharesOf}（该产业各行的人口占比 + 逐行向下取整）把投入需求摊给"供给该产业的家户" —— 那条口径的
+ *       <b>分摊比例是算出来的，不是谁说出来的</b>（实测后果：小夹具 6 座作坊只开 4 座、50 台织机只开 48 台、 真档年末剩 24,001,080
+ *       毫纤维）。现在"谁出"写在数据里：{@code inputSupplier} 指名的那一个主体，从<b>它自己的账</b>出；
+ *   <li>★ <b>让 GM 能配</b>：载荷里写一条显式 {@code relation} 就能表达"<b>地主出种</b>"这种制度（feudal 的默认是庄园出， 但同一个
+ *       {@code feudal} 完全可以是地主出 —— 那正是 spec §2.4"同一个制度可以有 A 格这样、B 格那样"的落点）。
+ * </ol>
+ *
+ * <p>★ <b>为什么是单一 {@link Recipient} 而不是 {@code Map<CommodityId, Recipient>}</b>（逐商品覆盖）： ①
+ * 现在没有任何一种制度需要它（"种子归地主、纤维归作坊"这种话今天无人说） —— 提前造一维就是<b>造一个永远为空的维度</b>； ②
+ * 逐商品覆盖会让"谁出料"从<b>一个</b>事实变成<b>一张表</b>，而读它的人（结算）要先把表摊平才能回答"这个产业谁出料"； ③
+ * 真要那种制度时，加这一维是<b>纯追加</b>（多一个组件 / 载荷多一个键），不会推翻今天的形状。 ⇒ 等真有制度需要它再加（本仓的一般口径：不为假想的需要造形状）。
+ *
+ * <p>★★ <b>缺省 = {@link #operator()}（本记录的构造期缺省，不是"第二个拼写点"）</b>：{@code inputSupplier == null} ⇒ 取
+ * {@code ToActor(operator)}。三个理由：① 它与四档默认<b>同值</b>（见上），故"缺省"只有这一处落点； ② <b>旧档兼容</b>：H3 之前的 relation
+ * JSON 没有这个键，Jackson 会传 null 进来 —— 在构造期补成 operator，旧档照常打开 （"旧档读不回来"不是兼容，是事故）；③ 载荷边缘（{@code
+ * EconomyPayloads}）因此<b>不必</b>再写一遍缺省。
+ *
+ * <p>★ <b>"从该主体自己的账出"的实现边界</b>（如实记，见 {@code EconomySettlement#drawCycleInputs}）：economy
+ * 切片只看得见<b>家户账</b>（会话工作副本）；若指名的供方是<b>聚合主体</b>（{@code ESTATE} / {@code WORKSHOP} / 产业型 {@code
+ * HOUSEHOLD} —— 它们的账住在 actor 切片），economy 读不到那本账 ⇒ 由**该产业名下的家户账**代理（"这个主体的 缸"=
+ * 它名下那些家户的缸），逐户按持仓量等比例、按最大余数法分派，取不满则规模缩（不凭空造）。
+ *
  * @param activity 这条关系结算的那个活动（身份 = 它，不另造 id）
  * @param operator 经营主体（必须与 {@code Industry.operator} 一致，跨表守卫在 {@code EconomyData}）
+ * @param inputSupplier ★★ <b>投入由谁出</b>（H3/C3）：周期第一天要扣的投入从<b>它的账</b>上划给该产业； <b>缺省（null）⇒ {@code
+ *     ToActor(operator)}</b>；四档的默认见 {@code RegimeRelations}
  * @param rules 补偿规则（**一张表、保序、不可变**；空表 = 全部自留）
  * @param residualOwner 余额归谁（一般是 {@code operator}；不产生任何条目）
  */
 public record ProductionRelation(
-    IndustryId activity, ActorRef operator, List<CompensationRule> rules, ActorRef residualOwner) {
+    IndustryId activity,
+    ActorRef operator,
+    Recipient inputSupplier,
+    List<CompensationRule> rules,
+    ActorRef residualOwner) {
 
   public ProductionRelation {
     if (activity == null) {
@@ -59,6 +96,10 @@ public record ProductionRelation(
     }
     if (operator == null) {
       throw new IllegalArgumentException("ProductionRelation.operator 不得为 null");
+    }
+    if (inputSupplier == null) {
+      // ★ 缺省 = 经营者（H3/C3 的默认；四档默认同值 ⇒ 这一处就是"缺省"的唯一落点，见类注）。
+      inputSupplier = new Recipient.ToActor(operator);
     }
     if (rules == null) {
       throw new IllegalArgumentException("ProductionRelation.rules 不得为 null（无规则请给空表）");
