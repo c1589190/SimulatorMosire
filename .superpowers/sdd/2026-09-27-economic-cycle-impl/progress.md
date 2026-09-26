@@ -43,7 +43,18 @@ K8 台账纠错：`ClassKey` 实测 **298 处**（main 174 / test 124），旧�
 
 ---
 
-## H1 执行设计（控制方先钉死，H0 落地后立即派单）
+## H0 跨模块接口裁定（控制方 2026-09-27；Agent C 早期上报后定案）
+
+**背景**：`economy.Seed` 的载荷形状是**跨模块接口**（`EconomySeeder` 在 app 写、`EconomyPayloads` 在 economy 读）
+⇒ 两侧不同形会「**编译绿、运行红**」。Agent C 在动手早期就上报，值得记一笔（这正是"早说省一轮"的形态）。
+
+| # | 裁定 | 理由 |
+|---|---|---|
+| **I-1** | **行从"产业节点内"搬到"格 entry 级"**，每行显式带 `"residence"`（`ResidenceKind.parse`，词表外即抛） | 行 = 家户 `(格, 居住, 阶层)`，不再由产业决定；且"只有农村人口的格"**没有 craft 产业**，城镇四行**没处挂** |
+| **I-2** | `Industry.capacity` 走产业节点的 `"capacity"` 键，★**值必须允许 0** | 沙漠格 `LAND=0`、人口 < 20 的格 `TOOL=0`；照 `capacityPerUnit` 的"必须 > 0"写**真档播不出来**。★ `capacityPerUnit` 仍 > 0（"每单位产能需要多少"，性质不同） |
+| **I-3** | ★ **class / flow 的地址局部名唯一拼写点 = `CohortKey.toString()` / `CohortKey.parse()`** | 今天 `EconomyResolver.dotted(ClassKey)` 与 **app 侧 4 处内联拼接**（`EconomyOwnershipTimeParticipant.java:109`、`PopulationEconomyTimeParticipant.java:109/110/113`）是**既有的两处拼写点**，借这次收敛掉。★ **读写集能否对上全靠这一个串**，两边不一致 ⇒ 冲突检测**静默失效** |
+
+★ 三条已转告 Agent B（`EconomyPayloads` / `EconomyResolver` 是它的文件）并回执 Agent C。
 
 > 目的：H1 是**唯一改变经济行为**的批，也是最容易失控的一批。先把形状钉死，再派活。
 
