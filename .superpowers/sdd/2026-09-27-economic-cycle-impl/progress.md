@@ -209,3 +209,36 @@ K8 台账纠错：`ClassKey` 实测 **298 处**（main 174 / test 124），旧�
 - ★ **结构**：`ClassRow` 无 `goods`；`ProductionLedger` 无 `cohortIntake`
 - ★ **真档**：改前有饭吃 ⇒ 改后仍有饭吃；`GET /api/economy/ownership` 的 `accounts` 非空、
   且**行侧应为全 0**（一本账）
+
+---
+
+## ★★ H2 关账（2026-09-27）
+
+**提交**：`9746bbe7`（economy-api 契约）· `70fe4fe9`（economy 实现）· `75e59398`（app 折算 + 三处 spotless 欠账 + 5 条 SpotBugs）
+
+**判据实测（全仓 `verify`，不是模块级）**：**BUILD SUCCESS** —— 12 模块全 SUCCESS、
+**SpotBugs 0 / Checkstyle 0 / spotless 0**、**2454 条 / 0 失败 / 0 错误 / 0 跳过**、前端门禁 **297/297**。
+★ 2454 = H1 的 2480 − **26**（退役的 `simos-ledger` 模块那 26 条，逐值对得上）。
+
+**本批最要紧的判据（新不变量）**：**任何库存变动必有对应转移记录** ——
+一个世界同时走通三条路径（3 天 7 条 `tr-1-1 … tr-3-3`），逐（家户 × 商品）
+`Δ副本 + (consumed − 取材转出) − 转移净额` ⇒ **残差全 0**。
+★ 口径：日耗与投入**不是转移**；同格取材那笔同时记进供方 `consumed`（对账时须扣除，否则同一笔算两次）。
+
+**应付/实付/欠 三数已分得开**（裁定 S4）：实测 `GROSS_OUTPUT 300‰` ⇒ **应付 30.00% / 实付 17.00% / 欠 13.00%**。
+
+### ★★ 三条流程教训（都写进 `AGENT.md` §七了）
+
+1. **阶段边界的门禁要跑「全仓 `verify`」，不是模块级**：`verify -pl X -am` 只覆盖 X 与其上游 ⇒
+   我在 `simos-social`（H0 起）与 `simos-actor`（ledger 批起）欠的格式账**跨两个批次没被发现**。
+2. **`-am` 不能省**：`verify -pl simos-app` 不带 `-am` 会用 `~/.m2` 的旧 SNAPSHOT ⇒ 报"找不到 transfer 包"的**假红**。
+3. **门禁是三项**：只跑 Spotless + Checkstyle **不等于绿** —— Agent C 的 H1 文件就这么漏过 **5 条 SpotBugs**
+   （1 条死私有方法 + 4 条 `EI_EXPOSE_REP/REP2`），由 H2 的全仓 verify 抓出、控制方在 `75e59398` 修掉。
+
+### 留给后续批次的明账（不许静默）
+
+- **"记欠开关"未实现**：`owed()` 只是读数，不产生 `Claim`/`Debt`（开关默认值在 target-design §七-4 仍未定）。
+- `Transfer.settles` 恒 `empty`：借粮产生的是 `DebtId` 不是 `ClaimId` ⇒ **H5 要让本金转移指向债权时，需先裁"用哪种 id"**。
+- `Transfer.money` 恒空（H4）；`PRODUCTION_OUTPUT`/`LOAN_REPAYMENT`/`MARKET_TRADE` 三档只入词表、今天无写者（标为留位）。
+- `hasOutput()` **刻意不含 transfers**（借粮/取材不是产出）。
+- ★ **C 的"取材取不满"仍未修**（K3 的已知代价）—— H3 的"投入由谁出"是它的正解落点。

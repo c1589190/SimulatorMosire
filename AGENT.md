@@ -266,6 +266,13 @@ node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-
 ```
 
 ★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
+★★ **追加（2026-09-27 实测踩到三次）：阶段边界的门禁要跑「全仓 `verify`」，不是模块级。**
+`verify -pl <某模块> -am` 只对**该模块及其上游**跑 Spotless/Checkstyle/SpotBugs ⇒ 我在别的模块欠的格式账
+（`simos-social` / `simos-actor`）**跨了两个批次都没被发现**，直到一次全仓 verify 才暴露。
+⇒ 三件事一起记住：① 跑了 `spotless:apply` **必须**跑 `verify`（不是 `test`）；
+② **`-am` 不能省**（`verify -pl simos-app` 不带 `-am` 会用 `~/.m2` 的旧 SNAPSHOT，报"找不到包"的**假红**）；
+③ **门禁是三项**（Spotless + Checkstyle + SpotBugs）——只跑前两项**不等于**绿（实测：5 条 SpotBugs 就是这么漏过去的）。
+★ 全仓工具（`spotless:apply`）跑完后，按 §五.1：**`git diff --name-only` 列全**再逐条确认后提交。
 ★ 迭代时只跑相关单条：`./mvnw -q -Dtest=<类名> -Dsurefire.failIfNoSpecifiedTests=false test -pl <模块> -am`。
 ★ 中文 Javadoc 的折行由 **google-java-format**（Spotless）决定：**不要手工调行宽**（手工断行处会留下接缝空格），
 改完跑 `./mvnw -q spotless:apply`；`~/ProjectMosire` 同为该形态。
