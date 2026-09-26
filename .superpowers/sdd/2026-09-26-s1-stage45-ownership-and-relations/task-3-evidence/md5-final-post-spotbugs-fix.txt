@@ -1,0 +1,2 @@
+bd069f658a2b093125bfecce7854d4d1  simos-economy/src/main/java/io/mosire/simos/economy/time/ProductionSettlement.java
+a869202c12c725177bdfa4f9550eaca4  simos-economy/src/test/java/io/mosire/simos/economy/time/ProductionSettlementTest.java
