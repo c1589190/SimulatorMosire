@@ -40,3 +40,63 @@ K8 台账纠错：`ClassKey` 实测 **298 处**（main 174 / test 124），旧�
 - I1.1：迁移前后逐格人口/劳动/需求**逐值相同**（H0 不应改变经济行为）★ H0.4 例外（K3 已认代价）
 - 结构：`ClassKey` 零残留（`grep -v AssetClassKey` = 0）；行键全部 `(格,居住,阶层)` 形状
 - 全部 `*Test` 编译通过（不许删文件来"通过"）
+
+---
+
+## H1 执行设计（控制方先钉死，H0 落地后立即派单）
+
+> 目的：H1 是**唯一改变经济行为**的批，也是最容易失控的一批。先把形状钉死，再派活。
+
+### H1.0 身份映射（**已完成**）
+
+`economy-api/cohort/HouseholdActors`：家户 actor = `ActorRef(HOUSEHOLD, "<hex>:<residence>:<stratum>")`，
+`of(CohortKey)` / `cohortOf(ActorRef)` **互逆 + fail-closed**。★ 裁定 K9（不能用 `CohortKey.toString()`，含 `|` 会撞 `GoodsAccountKey` 的接缝）。
+
+### H1.1 家户账 = actor 切片的 `GoodsAccount`（唯一持久真源）
+
+键 `(actor, hex)`；家户的 hex = `CohortKey.hex()`。**不新增账户类型**（复用 S1 已建的 `GoodsAccount`）。
+
+### H1.2 会话工作副本（裁定 K1）
+
+- `EconomyDayStepper` 新增会话态：`LinkedHashMap<CohortKey, Map<CommodityId, Long>> householdGoods`
+  —— **与它已经持有的 `flows` 累加器完全同形**（先例，不是新形态）。
+- `EconomySettlement.settleOneDay(...)` 新增该参数（**就地更新**），与 `flows` 同一待遇。
+- 协调器（`PopulationEconomyTimeParticipant`）：推进前从 actor 侧**载入** → 逐日 step → `finish()` 交出 → **逐日落回 actor**。
+- ★ **它不进 `EconomyData`、不进变更集、不跨 revision 存活** ⇒ 不是第二本账（判据：`ClassRow` 无 `goods` 且守恒式无 `ΔΣRowGoods`）。
+
+### H1.3 结算改道（★ 一处净简化）
+
+- `ProductionSettlement.Outcome.cohortIntake` **删除**：受方就是**唯一那个家户** ⇒ 直接产出
+  `ActorEntry(HouseholdActors.of(cohort), hex, commodity, +paid)`（与 actor 受方同一支）。
+- `EconomySettlement.deliverCohortIntake` **删除**（E17 的 `+unresolved` 兜底随之不再需要：
+  受方恒存在，除非该 cohort 没有 actor —— 那种情况要 **fail-closed 抛**，不许静默留账）。
+- `ProductionLedger.cohortIntake` 字段**删除**（账里只剩 毛产 / 损耗 / 投入 / 产权条目 / 货币待办）。
+
+### H1.4 消费与投入改读家户账
+
+- `settleHexes`：`grainOf(row)` → 家户账余额；同格借粮的"可贷余粮"`lendableOf` 也读家户账。
+- `drawCycleInputs` / `transferIntraHexInputs`：从**供给该产业的 cohort 的家户账**扣料
+  （供方集合 = H0.3 已建的"由配额表推 cohort"那条推导）。
+- `ClassRow.goods` **删除**（I6.1 与 I7.1 一次达成）。
+
+### H1.5 播种
+
+新增 `app/world/HouseholdSeeder`：对每个 `population > 0` 的行建一个家户 actor，
+并把该行的创世库存搬进它的 `GoodsAccount`；`ClassRow` 只留人口 / 劳动 / 参与率 / 需求 / 压力。
+
+### H1.6 守恒式去掉过渡项
+
+`ΔΣRowGoods` 那一项**从式子里删掉**（它是"两套账并存"的产物）。★ **它还在 ⇒ 还有一本账没搬完**。
+
+### H1.7 判据
+
+- 结构：`ClassRow` 无 `goods`/`money`/`debts`/`meansOfProduction`；`ProductionLedger` 无 `cohortIntake`
+- 逐值：I4.1（逐 actor 守恒）与 I4.2（全系统守恒，**无过渡项**）成立
+- 真档：**改前有饭吃 ⇒ 改后仍有饭吃**（人口不因改造而崩）
+
+### ★ 偏离（如实记）：H1.2 的"货币余额"推迟到 H4
+
+今天**没有任何货币**（`MoneyAuthority` 无实现者、`FIXED_MONEY_*` 只定义不结算），
+而 `ClassRow.money` 在 H1 里被删除 ⇒ **全仓没有任何"钱"字段**，
+"别用裸 `long`"这条纪律**空转成立**。等 H4 真要有钱时**一次定型**，
+比现在造一个恒空的钱包更省，也不会留下"看起来在记、其实没人读"的死字段（本仓明文反对）。
