@@ -16,8 +16,9 @@ import java.util.Optional;
  * （本仓「同一个东西两处各写一份」那一族）。故约定只在这里，别处一律经本类。
  *
  * <p>★ **格式 {@code <kind>@<q>_<r>}**（如 {@code farm@0_0}、{@code craft@-3_2}）：用 {@code '@'} 而**不用
- * {@code '.'}**， 因为 {@code EconomyResolver} 的阶层地址 {@code class.<industryId>.<slotId>} 是在**第一个
- * {@code '.'}** 处拆两段 （见 {@code EconomyResolver#parseClassKey}）——产业 id 里再带 {@code '.'} 会让那个拆分读歪。
+ * {@code '.'}**， 因为 {@code AddressParser} 把 {@code Entity(kind, name)} 的名字在**第一个 {@code '.'}** 处切开
+ * （H0 起 class/flow 的局部名 = {@code CohortKey} 的规范串，见 {@code EconomyResolver}）——产业 id 里再带 {@code '.'}
+ * 会让那个拆分读歪。
  *
  * <p>★ **本类无公式、无状态**：只有拼/拆/筛选三个纯函数。
  */

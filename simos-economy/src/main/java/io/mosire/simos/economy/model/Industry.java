@@ -22,6 +22,14 @@ import java.util.Set;
  *
  * <p>★ **不再是逐生产单位**（§1 取代表）：周期/进度/投入/产出函数都挂在产业这一层，复杂度不随人口或单位数线性增长。
  *
+ * <p>★★ <b>{@link #capacity()} 是 K3 的落点（2026-09-27 裁定）：本格该产业的产能总量</b>（键 = {@link AssetKind}，单位同
+ * {@link #capacityPerUnit()}：{@code LAND} 千分亩、其余件）。改前它散在各 {@code ClassRow.meansOfProduction} 里，
+ * 收获时靠 {@code Σ各行} 折出规模 —— 那是"家户持有生产资料"的形态；K2 把行变成家户之后，产能是**该格该产业的技术属性** ⇒ 只有一份总量，读它的唯一地方是 {@code
+ * EconomySettlement.scaleOf}。
+ *
+ * <p>★★ <b>为什么"逐值可以为 0"而 {@code capacityPerUnit} 必须 > 0</b>：两者性质不同 —— 前者是**存量**（沙漠格 {@code LAND =
+ * 0}、人口 &lt; 20 的格 {@code TOOL = 0} 都是真档的合法形态 ⇒ 那种产业本周期不生产），后者是**除数** （"每 1 单位规模需要多少"，为 0 就不是一个约束）。
+ *
  * <p>★★ **R3（V7）起"每单位什么"是数据**（spec §五 / §一.4）：本类新添 {@code capacityPerUnit} 与 {@code laborPerUnit}，
  * 并把两个投入表的**值侧**从"无商品维度的标量"换成 {@code Map<CommodityId, Long>}（原来表达不了"消耗 IRON"）。四个分量合起来就是 {@link
  * #recipe()}：
@@ -71,6 +79,9 @@ import java.util.Set;
  * @param progressDays 当前进度（天）；必须 ∈ [0, cycleDays]
  * @param capacityPerUnit 每 1 单位规模需要的生产资料（{@code LAND} 按**千分亩**、其余按件）；键值非空、逐值 ≥ 0。空表 =
  *     无产能约束（只受劳动与投入约束）
+ * @param capacity ★★ <b>本格该产业的产能总量</b>（K3；{@code LAND} 千分亩、其余件）：键值非空、逐值 <b>≥ 0</b>（0 = 本格没有这类产能 ⇒
+ *     {@code scaleOf} 那一路算出 0）；<b>键必须是 {@link #capacityPerUnit()} 的键的子集</b> （多出来的键没有任何"每单位需求"读它 ⇒
+ *     是死数据，构造期即抛）。缺键 = 0（该生产资料本格没有）
  * @param dailyInputPerUnit 每 1 单位规模**每日**原料需求（按生产资料种类归类）；键值非空、逐值 ≥ 0。★ **本轮仍是零读取点** （spec §3.3
  *     明说两个字段并存、语义各自清楚；"每日原料"在 §四 的后续增量里）
  * @param dailyLaborPerUnit 每 1 单位规模的每日劳动需求（千分劳动）；不得为负。★ 本轮零读取点（同上）
@@ -101,6 +112,7 @@ public record Industry(
     long cycleDays,
     long progressDays,
     Map<AssetKind, Long> capacityPerUnit,
+    Map<AssetKind, Long> capacity,
     Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
     long dailyLaborPerUnit,
     long laborPerUnit,
@@ -146,6 +158,9 @@ public record Industry(
     if (capacityPerUnit == null) {
       throw new IllegalArgumentException("Industry.capacityPerUnit 不得为 null（无产能约束用空 map）");
     }
+    if (capacity == null) {
+      throw new IllegalArgumentException("Industry.capacity 不得为 null（本格没有产能用空 map）");
+    }
     if (dailyInputPerUnit == null) {
       throw new IllegalArgumentException("Industry.dailyInputPerUnit 不得为 null（无投入用空 map）");
     }
@@ -187,6 +202,27 @@ public record Industry(
       capacityCopy.put(entry.getKey(), entry.getValue());
     }
     capacityPerUnit = Collections.unmodifiableMap(capacityCopy); // ★ 冻在赋值处
+    // ★★ K3 的产能总量：**逐值 ≥ 0**（0 是真档的合法形态：沙漠格 LAND=0、人口不足一厂的格 TOOL=0），
+    //   但**键必须落在 capacityPerUnit 里** —— 否则这个数永远不会被 scaleOf 读（"看起来在记、其实永远不被读"）。
+    Map<AssetKind, Long> capacityTotalCopy = new LinkedHashMap<>();
+    for (Map.Entry<AssetKind, Long> entry : capacity.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("Industry.capacity 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "Industry.capacity 不得为负：" + entry.getKey() + " = " + entry.getValue());
+      }
+      if (!capacityPerUnit.containsKey(entry.getKey())) {
+        throw new IllegalArgumentException(
+            "Industry.capacity 的键必须是 capacityPerUnit 的键（否则没有'每单位需求'读它 = 死数据）："
+                + entry.getKey()
+                + " ∉ "
+                + capacityPerUnit.keySet());
+      }
+      capacityTotalCopy.put(entry.getKey(), entry.getValue());
+    }
+    capacity = Collections.unmodifiableMap(capacityTotalCopy); // ★ 冻在赋值处
     Map<AssetKind, Map<CommodityId, Long>> dailyInputCopy = new LinkedHashMap<>();
     for (Map.Entry<AssetKind, Map<CommodityId, Long>> entry : dailyInputPerUnit.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {

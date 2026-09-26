@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -14,7 +16,6 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -22,6 +23,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,9 +51,12 @@ import org.junit.jupiter.api.Test;
  */
 class EconomyFlowCycleTest {
 
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = IndustryHexKeys.id("farm", 0, 0);
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
 
   /** 真档周期（天）—— 本文件的所有"周期"判据都要跨过它。 */
   private static final long CYCLE_DAYS = 120L;
@@ -242,6 +247,8 @@ class EconomyFlowCycleTest {
             0L,
             // ★ R3：产能锚（规模单位 = 1 亩）与劳动那一路照常给（二者都不是本文件的判据）。
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, LAND_MILLI_MU),
             Map.of(),
             0L,
             EconomySettlement.LABOR_MILLI_PER_MU,
@@ -259,7 +266,6 @@ class EconomyFlowCycleTest {
             POPULATION,
             LABOR_MILLI,
             1000,
-            Map.of(AssetKind.LAND, LAND_MILLI_MU),
             Map.of(EconomySettlement.GRAIN, JAR),
             0L,
             List.of(),
@@ -267,7 +273,7 @@ class EconomyFlowCycleTest {
             Map.of());
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
-    LinkedHashMap<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(PEASANT_KEY, row);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());

@@ -1,6 +1,7 @@
 package io.mosire.simos.economy;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -8,13 +9,13 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -78,6 +79,10 @@ import java.util.Set;
  *       {@code classes}/{@code flows} 的"键 == 值内 key"口径）。
  * </ol>
  *
+ * <p>★ <b>H0（2026-09-27，裁定 K2）起两表键都是家户身份 {@link CohortKey}</b>：{@code classes} 的键 = 那一行的家户（格 + 居住类型
+ * + 阶层），{@code flows} 同键。⇒ "这个产业有哪些行"不再由键的产业段回答，而由**劳动配额表**推（{@code
+ * EconomySettlement.householdKeysOf}，唯一拼写点）—— 一个家户给两个产业出劳动时，它<b>只有一行</b>（V9/I1.2）。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -85,9 +90,9 @@ import java.util.Set;
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
-    Map<ClassKey, ClassRow> classes,
+    Map<CohortKey, ClassRow> classes,
     Map<DebtId, Debt> debts,
-    Map<ClassKey, FlowRow> flows,
+    Map<CohortKey, FlowRow> flows,
     Map<PeopleLotId, LaborSupply> laborSupply,
     Map<LaborAllocationId, LaborAllocation> allocations,
     Map<IndustryId, ProductionRelation> relations) {
@@ -135,8 +140,8 @@ public record EconomyData(
       industriesCopy.put(entry.getKey(), entry.getValue());
     }
     industries = Collections.unmodifiableMap(industriesCopy); // ★ 冻在赋值处
-    Map<ClassKey, ClassRow> classesCopy = new LinkedHashMap<>();
-    for (Map.Entry<ClassKey, ClassRow> entry : classes.entrySet()) {
+    Map<CohortKey, ClassRow> classesCopy = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, ClassRow> entry : classes.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("classes 的键与值都不得为 null: " + entry.getKey());
       }
@@ -147,7 +152,7 @@ public record EconomyData(
                 + "，行内 key="
                 + entry.getValue().key());
       }
-      ClassSlot slot = requireSlotExists(industriesCopy, entry.getKey(), "classes");
+      ClassSlot slot = requireStratumAllowed(industriesCopy, entry.getKey(), "classes");
       ClassRow row = entry.getValue();
       // ★ v2 spec §八.1：`0 ≤ participationPerMille ≤ slot.laborParticipationPerMille ≤ 1000` 里，
       //   中间那条**只有这里能判**（ClassRow 只守了 [0,1000] 两头，槽位上限要跨对象）。
@@ -189,7 +194,7 @@ public record EconomyData(
                 + debt.creditor());
       }
     }
-    for (Map.Entry<ClassKey, ClassRow> entry : classesCopy.entrySet()) {
+    for (Map.Entry<CohortKey, ClassRow> entry : classesCopy.entrySet()) {
       for (DebtId debtId : entry.getValue().debts()) {
         if (!debtsCopy.containsKey(debtId)) {
           throw new IllegalArgumentException(
@@ -197,8 +202,8 @@ public record EconomyData(
         }
       }
     }
-    Map<ClassKey, FlowRow> flowsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ClassKey, FlowRow> entry : flows.entrySet()) {
+    Map<CohortKey, FlowRow> flowsCopy = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, FlowRow> entry : flows.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("flows 的键与值都不得为 null: " + entry.getKey());
       }
@@ -206,7 +211,7 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "flows 的键必须与 FlowRow.key 一致：键=" + entry.getKey() + "，行内 key=" + entry.getValue().key());
       }
-      requireSlotExists(industriesCopy, entry.getKey(), "flows");
+      requireStratumAllowed(industriesCopy, entry.getKey(), "flows");
       flowsCopy.put(entry.getKey(), entry.getValue());
     }
     flows = Collections.unmodifiableMap(flowsCopy); // ★ 冻在赋值处
@@ -339,23 +344,54 @@ public record EconomyData(
   }
 
   /**
-   * 引用完整性（§6.2 的槽位侧，2026-09-25 修正后新增）：阶层行/流水行的 {@code (industry, slot)} 必须真落在该产业的 {@code slots}
-   * 里——悬空行说明状态坏了（或有人在两个切片之间手改了键），宁可构造期当场炸。
+   * ★★ <b>家户行的结构引用完整性</b>（H0 改写；改前是 {@code (industry, slot)} 必须落在该产业的 {@code slots} 里）：家户行的键 =
+   * {@code (格, 居住类型, 阶层)}，判据换成 —— <b>该格上至少有一个产业允许这个阶层</b>；返回其中**最紧**的那个槽位（投入率上限取 min）。
+   *
+   * <p>★★ <b>为什么"该格上的任一产业"而不是"真供给它的那些产业"</b>：后者要读**劳动配额表** ⇒ 那会把"行 ↔ 配额"的引用完整性
+   * 变成一条构造期守卫，而本记录**有意不判跨表引用**（同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）：逐组件增量落盘 ⇒
+   * <b>产业/行先到、配额后到是合法写序</b>，判死它等于让"经济状态刚种下、配额还没发"的世界构造不出来。
+   *
+   * <p>★ <b>上限取 min 的理由</b>：一条家户行的 {@code participationPerMille} 是**一个数**，而它可能同时给几个产业出劳动（农村家户
+   * 既种地又织布）—— 取最紧的那个槽位 ⇒ 不会因"某个产业的上限更宽"而把劳动悄悄放大（这条守卫的全部目的）。 真档三个产业的四个槽位共用同一组参与率 ⇒ 与改前逐值相同。
+   *
+   * <p>★ <b>另有一条如实记的放宽</b>：改前还隐含"居住类型必须与产业对得上"（行键的产业段自带格），现在居住类型那一维**不在这里判** ——
+   * 它由"供给关系"决定（配额表的批次前缀，见 {@code EconomySettlement.householdKeysOf}），
+   * 而这里判不了它（要读配额表）。一条居住类型没有任何批次供给的家户行是**合法状态**（它只是不参与任何产业的生产）。
    */
-  private static ClassSlot requireSlotExists(
-      Map<IndustryId, Industry> industries, ClassKey key, String what) {
-    Industry industry = industries.get(key.industry());
-    if (industry == null) {
-      throw new IllegalArgumentException(
-          what + " 引用了不存在的产业: " + key.industry() + "（键=" + key + "）");
-    }
-    for (ClassSlot slot : industry.slots()) {
-      if (slot.id().equals(key.slot())) {
-        return slot;
+  private static ClassSlot requireStratumAllowed(
+      Map<IndustryId, Industry> industries, CohortKey key, String what) {
+    String hexKey = IndustryHexKeys.hexKey(key.hex().q(), key.hex().r());
+    ClassSlot tightest = null;
+    boolean anyIndustry = false;
+    for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
+      // ★ **没有格键的产业 id**（{@code IndustryId} 允许这种值，真档里不会出现）：说不出它在哪一格 ⇒
+      //   **不拿它来否决**（对任何格都算"可能"）。★ 反过来，带了格键的必须**逐字相等**才算命中 ——
+      //   `1_10` 与 `1_1` 因此不会互相误命中（同 {@code IndustryHexKeys.at} 的口径）。
+      if (IndustryHexKeys.hexKeyOf(entry.getKey()).filter(hexKey::equals).isEmpty()
+          && IndustryHexKeys.hexKeyOf(entry.getKey()).isPresent()) {
+        continue;
+      }
+      anyIndustry = true;
+      for (ClassSlot slot : entry.getValue().slots()) {
+        if (!slot.id().equals(key.stratum())) {
+          continue;
+        }
+        if (tightest == null
+            || slot.laborParticipationPerMille() < tightest.laborParticipationPerMille()) {
+          tightest = slot;
+        }
       }
     }
-    throw new IllegalArgumentException(
-        what + " 引用了该产业未允许的阶层槽位: " + key.slot() + " ∉ " + key.industry() + " 的 slots");
+    if (!anyIndustry) {
+      // ★ 消息保留"不存在的产业"这几个字：它是既有的判据用语（{@code EconomyInvariantsTest} 逐字钉着）。
+      throw new IllegalArgumentException(
+          what + " 引用了不存在的产业（该格上没有登记任何产业）: " + hexKey + "（键=" + key + "）");
+    }
+    if (tightest == null) {
+      throw new IllegalArgumentException(
+          what + " 引用了该格任何产业都未允许的阶层槽位: " + key.stratum() + " ∉ 格 " + hexKey + " 各产业的 slots");
+    }
+    return tightest;
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -370,7 +406,7 @@ public record EconomyData(
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
-  public EconomyData withClasses(Map<ClassKey, ClassRow> value) {
+  public EconomyData withClasses(Map<CohortKey, ClassRow> value) {
     return new EconomyData(
         meta, industries, value, debts, flows, laborSupply, allocations, relations);
   }
@@ -382,7 +418,7 @@ public record EconomyData(
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
-  public EconomyData withFlows(Map<ClassKey, FlowRow> value) {
+  public EconomyData withFlows(Map<CohortKey, FlowRow> value) {
     return new EconomyData(
         meta, industries, classes, debts, value, laborSupply, allocations, relations);
   }

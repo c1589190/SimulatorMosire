@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -47,9 +48,12 @@ class ProductionSettlementTest {
   private static final ActorRef WORKSHOP = new ActorRef(ActorKind.WORKSHOP, "craft@0_0");
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CommodityId CLOTH = new CommodityId("cloth");
-  private static final CohortKey POOR = new CohortKey(HEX, SocialClassId.POOR_PEASANT);
-  private static final CohortKey RICH = new CohortKey(HEX, SocialClassId.RICH_PEASANT);
-  private static final CohortKey LANDLORD = new CohortKey(HEX, SocialClassId.LANDLORD);
+  private static final CohortKey POOR =
+      new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
+  private static final CohortKey RICH =
+      new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.RICH_PEASANT);
+  private static final CohortKey LANDLORD =
+      new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
 
   /** 该产业的产出表：**只产粮**（★ E14 的守卫只读它的键；值不参与任何公式 ⇒ 取 1）。 */
   private static final Map<CommodityId, Long> GRAIN_RECIPE = Map.of(GRAIN, 1L);

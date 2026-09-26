@@ -7,13 +7,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
@@ -25,17 +25,17 @@ import java.util.function.Function;
 /**
  * economy 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code LedgerCodec} 同制，理由不重复——只记 economy 自己的那点差异。
  *
- * <p>★ 树里的自定义键有六个：{@code IndustryId}（{@code industries} 的键）、{@code ClassKey}（{@code classes}/{@code
- * flows} 的键）、{@code DebtId}（{@code debts} 的键）与 {@code CommodityId}（{@code Industry.outputPerUnit} /
- * {@code ClassRow.goods} / {@code naturalNeeds} / {@code effectiveDemand} / {@code
- * FlowRow.consumed} / {@code AllocationRule.WageFirst.ownerResidual} 的键），以及 **R2 的两个**：{@code
- * PeopleLotId} （{@code laborSupply} 的键）与 {@code LaborAllocationId}（{@code allocations} 的键）。六者都住在
- * {@code simos-economy-api}（{@code ClassKey} 住本模块的 {@code model}），economy 依赖它故够得着（铁律 3
- * 允许）。键反序列化器照裁定 16 在**本模块** 注册，不进共享基座。
+ * <p>★ 树里的自定义键有六个：{@code IndustryId}（{@code industries} 的键）、{@code CohortKey}（{@code
+ * classes}/{@code flows} 的键，H0 起 = <b>家户身份</b>）、{@code DebtId}（{@code debts} 的键）与 {@code
+ * CommodityId}（{@code Industry.outputPerUnit} / {@code ClassRow.goods} / {@code naturalNeeds} /
+ * {@code effectiveDemand} / {@code FlowRow.consumed} / {@code
+ * AllocationRule.WageFirst.ownerResidual} 的键），以及 **R2 的两个**：{@code PeopleLotId} （{@code
+ * laborSupply} 的键）与 {@code LaborAllocationId}（{@code allocations} 的键）。六者都住在 {@code
+ * simos-economy-api}（H0 起 {@code CohortKey} 也在那里；本模块 {@code model} 里那个两段式的旧键已按裁定 K2 删除）， economy
+ * 依赖它故够得着（铁律 3 允许）。键反序列化器照裁定 16 在**本模块** 注册，不进共享基座。
  *
- * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code meansOfProduction}）走 Jackson
- * **默认的枚举键** 绑定（按 {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse}
- * 互为逆，故只需读侧。
+ * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
+ * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
@@ -69,7 +69,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("economy-json-keys");
     module.addKeyDeserializer(IndustryId.class, keyDeserializer(IndustryId::parse));
-    module.addKeyDeserializer(ClassKey.class, keyDeserializer(ClassKey::parse));
+    module.addKeyDeserializer(CohortKey.class, keyDeserializer(CohortKey::parse));
     module.addKeyDeserializer(DebtId.class, keyDeserializer(DebtId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     // ★ R2 起是两张新表的键：laborSupply（PeopleLotId → LaborSupply）与 allocations（LaborAllocationId

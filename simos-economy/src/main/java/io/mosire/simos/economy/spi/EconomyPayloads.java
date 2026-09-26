@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -23,22 +24,24 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 /**
  * {@code economy.Seed} 命令的载荷解析助手（与 {@code SocialPayloads} / {@code MapPayloads} 同制）。
@@ -50,22 +53,41 @@ import java.util.OptionalLong;
  *   {"q":0,"r":0,"industries":[
  *     {"id":"farm@0_0","name":"农业","regime":"feudal",
  *      "operator":{"kind":"ESTATE","id":"farm@0_0"},"cycleDays":120,"progressDays":0,
- *      "capacityPerUnit":{"LAND":1000},"laborPerUnit":143,
+ *      "capacityPerUnit":{"LAND":1000},"capacity":{"LAND":3100000},"laborPerUnit":143,
  *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67,"fiber":12},
  *      "cycleInputPerUnit":{"LAND":{"grain":8000}},"cycleInputUsedMilli":{},
  *      "cycleLaborMilli":0,
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
- *      "slots":[{"id":"poor_peasant","name":"贫农","laborParticipationPerMille":950}],
- *      "classes":[{"slot":"poor_peasant","population":450,"laborMilli":261000,
- *                  "participationPerMille":950,"meansOfProduction":{"LAND":450000},
- *                  "goods":{"grain":2241000},"money":0,"debts":[],
- *                  "naturalNeeds":{"grain":37350},"effectiveDemand":{}}]}],
+ *      "slots":[{"id":"poor_peasant","name":"贫农","laborParticipationPerMille":950}]}],
+ *    "classes":[{"residence":"rural","slot":"poor_peasant","population":450,"laborMilli":261000,
+ *                "participationPerMille":950,"goods":{"grain":2241000},"money":0,"debts":[],
+ *                "naturalNeeds":{"grain":37350},"effectiveDemand":{}}],
  *    "laborSupply":[{"group":"rural:0_0:MALE:1","period":1,"grossLaborMilli":261000,
  *                    "servedLaborMilli":0,"committedLaborMilli":0}],
  *    "allocations":[{"id":"alloc-0-farm@0_0","group":"rural:0_0:MALE:1",
  *                    "actor":{"kind":"ESTATE","id":"farm@0_0"},"activity":"farm",
  *                    "laborMilli":261000,"period":1}]}]}
  * }</pre>
+ *
+ * <p>★★ <b>H0（2026-09-27，裁定 K2/K3 + R-N1-A）的三处形状变化 —— 三条都是"编译绿、运行红"的坑，逐条写清</b>：
+ *
+ * <ol>
+ *   <li>★★ <b>{@code classes} 从"产业节点内"搬到 <b>entry 级</b>，且每行多一个 {@code residence}</b>：行 = 家户 =
+ *       {@code (格, 居住类型, 阶层)}（K2）⇒ 它<b>不再属于某个产业</b>（农村家户同时供给农业与家庭纺织）。{@code q}/{@code r} 取自
+ *       entry；{@code residence} 走 {@link ResidenceKind#parse}（词表外即抛）。★ <b>为什么必须显式给</b>：改前"行属于哪个产业"
+ *       隐含了居住类型（{@code farm}/{@code weave} = 农村、{@code craft} = 城镇），H0 之后那层隐含没有了 —— 缺键就<b>抛</b>
+ *       （不许按产业种类猜：{@code weave} 的家户就是农村那四行，猜出来的第二份约定会与配额表漂开）；
+ *   <li>★★ <b>{@code meansOfProduction} 键<b>不再接受</b></b>（K3）：产能搬到 {@code Industry.capacity}。★ 留着不读
+ *       = "看起来在记、其实被静默丢掉"（真档会变成"全格没有产能 ⇒ 绝收"而无人察觉）⇒ <b>给了即抛</b>，消息点名新键；
+ *   <li>★★ <b>{@code Industry} 多一个 {@code capacity}（本格该产业的产能总量）</b>：缺键 ⇒ 空表 ⇒ 规模 0（= 本格没有产能，
+ *       真档里沙漠格的 {@code LAND = 0}、人口不足一厂的格 {@code TOOL = 0} 正是这一形态）。★ <b>逐值允许 0</b> （与 {@code
+ *       capacityPerUnit} 的"必须 > 0"性质不同）。
+ * </ol>
+ *
+ * <p>★ <b>默认关系的居住维从哪来</b>：{@code relation} 缺键时按 {@code regime} 推，而 cohort 受方要带居住类型 —— 本类从**同一条
+ * entry 的 {@code allocations}** 推（{@link ResidenceKind#ofLot}，批次前缀的唯一拼写点）： {@code 产业 →
+ * 供给它的那些批次的居住类型集合}。⇒ {@code allocations} 先解析、再推 relation。★ 这个集合**多于一种即抛** （见 {@code
+ * RegimeRelations}：非劳动加权的规则会重复计费）；空集合 ⇒ 该产业不产生 cohort 规则。
  *
  * <p>★★ **R3（V7）的两处形状变化**（spec §五）：
  *
@@ -173,7 +195,8 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("entries 不得为空");
     }
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    // ★★ H0：家户行是**entry 级**的（键 = (格, 居住类型, 阶层)），不再嵌在产业节点里 —— 见类注 ①。
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
     Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
@@ -181,8 +204,15 @@ final class EconomyPayloads {
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
-      requireInt(entry, "q");
-      requireInt(entry, "r");
+      int q = requireInt(entry, "q");
+      int r = requireInt(entry, "r");
+      HexCoord hex = new HexCoord(q, r);
+      // ★★ **H0：配额先解析**（下面推默认关系的居住类型要用它 —— 那是"这批人住哪种居住类型"的唯一来源）。
+      List<LaborAllocation> entryAllocations = new ArrayList<>();
+      for (JsonNode node : optionalArray(entry, "allocations")) {
+        entryAllocations.add(allocation(node));
+      }
+      Map<IndustryId, Set<ResidenceKind>> residencesByIndustry = residencesOf(entryAllocations);
       for (JsonNode node : requireArray(entry, "industries")) {
         Industry industry = industry(node);
         IndustryId id = industry.id();
@@ -190,12 +220,14 @@ final class EconomyPayloads {
           throw new IllegalArgumentException("同一份载荷里产业 id 重复: " + id);
         }
         // ★ 关系与产业**同键**（上面刚判过重复）⇒ 此处不必再判一次（判重只会是一段走不到的代码）。
-        relations.put(id, relation(node, industry));
-        for (JsonNode row : optionalArray(node, "classes")) {
-          ClassRow classRow = classRow(id, row);
-          if (classes.putIfAbsent(classRow.key(), classRow) != null) {
-            throw new IllegalArgumentException("同一份载荷里阶层行重复: " + classRow.key());
-          }
+        relations.put(
+            id, relation(node, industry, residencesByIndustry.getOrDefault(id, Set.of())));
+      }
+      // ★★ **H0：该格的家户行（entry 级）** —— 每行显式带 {@code residence}，键 = (格, 居住类型, 阶层)。
+      for (JsonNode row : optionalArray(entry, "classes")) {
+        ClassRow classRow = classRow(hex, row);
+        if (classes.putIfAbsent(classRow.key(), classRow) != null) {
+          throw new IllegalArgumentException("同一份载荷里家户行重复: " + classRow.key());
         }
       }
       // ★ R2：该格各批次的劳动供给（可支配劳动的上限）—— 缺省 ⇒ 空表（与 classes 同款）。
@@ -207,9 +239,8 @@ final class EconomyPayloads {
           throw new IllegalArgumentException("同一份载荷里劳动供给重复: " + supply.group());
         }
       }
-      // ★ R2：该格各批次的劳动配额（谁把多少劳动给了谁）。
-      for (JsonNode node : optionalArray(entry, "allocations")) {
-        LaborAllocation allocation = allocation(node);
+      // ★ R2：该格各批次的劳动配额（谁把多少劳动给了谁）—— ★ H0 起**已在上面先解析**（推关系的居住类型要它）。
+      for (LaborAllocation allocation : entryAllocations) {
         if (allocations.putIfAbsent(allocation.id(), allocation) != null) {
           throw new IllegalArgumentException("同一份载荷里劳动分配重复: " + allocation.id());
         }
@@ -236,11 +267,17 @@ final class EconomyPayloads {
    * <p>★ 推导时的 {@code operator} 取**产业的那个**（{@code industry.operator()}）而不是再调一次 {@link
    * RegimeOperators#defaultOperator}：缺 {@code operator} 键时两者同值，而**显式给了 operator** 时只有
    * 前者自洽（否则那条合法的载荷会被 R3 守卫自相矛盾地拒掉）。
+   *
+   * <p>★★ <b>H0：推导还要一个"这批家户住哪种居住类型"</b>（cohort 键的居住维）—— 它的**唯一来源是同一条 entry 的配额表** （{@link
+   * ResidenceKind#ofLot}），由调用方算好传进来（本方法看不见整条 entry）。★ <b>显式给了 {@code relation} 时它不参与</b>：
+   * 那时受方是载荷逐字写出的 cohort 串（自带居住段），不推导、也不校验（"载荷说什么就是什么"）。
    */
-  private static ProductionRelation relation(JsonNode node, Industry industry) {
+  private static ProductionRelation relation(
+      JsonNode node, Industry industry, Set<ResidenceKind> residences) {
     JsonNode relationNode = optionalObject(node, "relation");
     if (relationNode == null) {
-      return RegimeRelations.defaultRelation(industry.regime(), industry.id(), industry.operator());
+      return RegimeRelations.defaultRelation(
+          industry.regime(), industry.id(), industry.operator(), residences);
     }
     JsonNode operatorNode = optionalObject(relationNode, "operator");
     ActorRef operator = operatorNode == null ? industry.operator() : actorRef(operatorNode);
@@ -359,8 +396,12 @@ final class EconomyPayloads {
     long progressDays = optionalLong(node, "progressDays", 0L);
     // ★ R3（V7）：配方的两个新分量 —— "每 1 单位规模需要多少生产资料 / 多少劳动"。
     //   ★ capacityPerUnit **必填**（它是"单位规模"的锚，没有它规模无上界）；缺键 ⇒ 空表 ⇒ 由 Industry 的构造期守卫拒。
-    Map<AssetKind, Long> capacity =
+    Map<AssetKind, Long> capacityPerUnit =
         assetMap(optionalObject(node, "capacityPerUnit"), "capacityPerUnit");
+    // ★★ **H0/K3：本格该产业的产能总量**（{@code {"LAND":3100000}}）。缺键 ⇒ 空表 ⇒ 规模 0（= 本格没有产能，
+    //   真档里沙漠格的 LAND = 0、人口不足一厂的格 TOOL = 0 正是这一形态）。★ 逐值允许 0；键必须是 capacityPerUnit
+    //   的键的子集（否则那个数永远不会被 scaleOf 读 = 死数据）—— 那条守卫在 Industry 的构造期。
+    Map<AssetKind, Long> capacityTotal = assetMap(optionalObject(node, "capacity"), "capacity");
     long laborPerUnit = optionalLong(node, "laborPerUnit", 0L);
     Map<AssetKind, Map<CommodityId, Long>> dailyInput =
         assetCommodityMap(optionalObject(node, "dailyInputPerUnit"), "dailyInputPerUnit");
@@ -411,7 +452,8 @@ final class EconomyPayloads {
         regime,
         cycleDays,
         progressDays,
-        capacity,
+        capacityPerUnit,
+        capacityTotal,
         dailyInput,
         dailyLabor,
         laborPerUnit,
@@ -424,13 +466,31 @@ final class EconomyPayloads {
         operatorRef);
   }
 
-  private static ClassRow classRow(IndustryId industry, JsonNode node) {
+  /**
+   * ★★ <b>一条家户行</b>（H0：键 = 该 entry 的格 + 行上显式声明的 {@code residence} + {@code slot}）： {@code
+   * {residence, slot, population, laborMilli, participationPerMille, goods, money, debts,
+   * naturalNeeds, effectiveDemand}}。
+   *
+   * <p>★★ <b>两条 fail-closed（改前没有、H0 必须有）</b>：
+   *
+   * <ul>
+   *   <li>{@code residence} <b>必填</b>（{@link ResidenceKind#parse}，词表外即抛）：居住维是家户身份的一维，而"行属于哪个产业"
+   *       那层隐含（{@code farm}/{@code weave} = 农村）H0 之后没有了 ⇒ 按产业种类猜出来的第二份约定会与配额表漂开（见类注 ①）；
+   *   <li>{@code meansOfProduction} <b>给了即抛</b>（K3）：产能搬到 {@code Industry.capacity} —— 静默忽略它 =
+   *       "看起来在记、其实被丢掉"（真档表现为全格绝收而账面看不出是谁弄丢的）。
+   * </ul>
+   */
+  private static ClassRow classRow(HexCoord hex, JsonNode node) {
+    ResidenceKind residence = ResidenceKind.parse(requireText(node, "residence"));
     SocialClassId slot = SocialClassId.parse(requireText(node, "slot"));
     long population = requireLong(node, "population");
     long laborMilli = requireLong(node, "laborMilli");
     int participation = requireInt(node, "participationPerMille");
-    Map<AssetKind, Long> means =
-        assetMap(optionalObject(node, "meansOfProduction"), "meansOfProduction");
+    if (node.hasNonNull("meansOfProduction")) {
+      throw new IllegalArgumentException(
+          "家户行不再有 meansOfProduction 键（K3：产能已搬到产业的 capacity 键，见 Industry.capacity）："
+              + node.get("meansOfProduction"));
+    }
     Map<CommodityId, Long> goods = commodityMap(optionalObject(node, "goods"), "goods");
     long money = optionalLong(node, "money", 0L);
     List<DebtId> debts = new ArrayList<>();
@@ -443,16 +503,35 @@ final class EconomyPayloads {
     Map<CommodityId, Long> demand =
         commodityMap(optionalObject(node, "effectiveDemand"), "effectiveDemand");
     return new ClassRow(
-        new ClassKey(industry, slot),
+        new CohortKey(hex, residence, slot),
         population,
         laborMilli,
         participation,
-        means,
         goods,
         money,
         debts,
         needs,
         demand);
+  }
+
+  /**
+   * ★★ <b>产业 → 供给它的那些批次的居住类型集合</b>（{@link RegimeRelations#defaultRelation} 的第四参；见类注末段）。
+   *
+   * <p>★ <b>两个来源都是既有的唯一拼写点</b>：产业段 = {@code allocation.actor().id()}（构造期守卫判死"产业型主体必须指名已存在的产业"）、
+   * 居住类型 = {@link ResidenceKind#ofLot}（批次前缀的唯一拼写点）。本方法**不新增任何约定**。
+   *
+   * <p>★ 一条配额都没有的产业**不出现在表里**（调用方按空集处理 ⇒ 不产生 cohort 规则）。
+   */
+  private static Map<IndustryId, Set<ResidenceKind>> residencesOf(
+      List<LaborAllocation> allocations) {
+    Map<IndustryId, Set<ResidenceKind>> byIndustry = new LinkedHashMap<>();
+    for (LaborAllocation allocation : allocations) {
+      byIndustry
+          .computeIfAbsent(
+              new IndustryId(allocation.actor().id()), ignored -> new LinkedHashSet<>())
+          .add(ResidenceKind.ofLot(allocation.group()));
+    }
+    return byIndustry;
   }
 
   /** 键是 {@link AssetKind} 名的定点整数表（值非整/键不认识 ⇒ 抛）。 */

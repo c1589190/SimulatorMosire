@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -41,7 +42,8 @@ import java.util.Map;
  * <p>★ 两张商品表都保序不可变（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**），冻结写在字段赋值处。
  *
- * @param key 身份（产业 + 槽位）；在 {@code EconomyData.flows} 里必须与其 Map 键一致
+ * @param key 身份（家户 = 格 + 居住类型 + 阶层；见 {@link ClassRow} 的类注）；在 {@code EconomyData.flows} 里必须与其 Map
+ *     键一致
  * @param income 本期所得（**逐商品**，按最小计量单位）；键值非空、逐值 ≥ 0
  * @param consumed 本期消费（**逐商品**：口粮 + 留种 + 生产损耗）；键值非空、逐值 ≥ 0
  * @param taxPaid 本期纳税；不得为负
@@ -58,7 +60,7 @@ import java.util.Map;
  *     死亡"写不出来）
  */
 public record FlowRow(
-    ClassKey key,
+    CohortKey key,
     Map<CommodityId, Long> income,
     Map<CommodityId, Long> consumed,
     long taxPaid,

@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.change;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -8,7 +9,6 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -42,7 +42,7 @@ import java.util.function.Function;
  *
  * <p>★ **R2 的两个新组件走同一份机制**（{@code laborSupply} = 每批次有多少可支配劳动、{@code allocations} = 每批次把多少给了谁）：
  * 它们是普通的"键 → 值"表，故 diff/rebuild 一字不用改——rebuild 的键解析器 = 各自的 {@code parse} （{@link PeopleLotId#parse}
- * / {@link LaborAllocationId#parse}），与 {@code ClassKey} 一族同款。
+ * / {@link LaborAllocationId#parse}），与 {@link CohortKey} 一族同款。
  *
  * <p>★ **T2 的第 8 个组件同款**（{@code relations} = 每个产业一次生产的结算规则）：键 = {@code IndustryId} （已有键反序列化器），值 =
  * {@link ProductionRelation}（**深层**带一个 sealed 多态类型 {@code Recipient} ⇒ 它的 线格式由类型上的 Jackson
@@ -115,9 +115,9 @@ public record EconomyChangeSet(
     return new EconomyData(
         metaOf(FieldDelta.rebuild(metaTable(base.meta()), cs.meta(), Function.identity())),
         FieldDelta.rebuild(base.industries(), cs.industries(), IndustryId::parse),
-        FieldDelta.rebuild(base.classes(), cs.classes(), ClassKey::parse),
+        FieldDelta.rebuild(base.classes(), cs.classes(), CohortKey::parse),
         FieldDelta.rebuild(base.debts(), cs.debts(), DebtId::parse),
-        FieldDelta.rebuild(base.flows(), cs.flows(), ClassKey::parse),
+        FieldDelta.rebuild(base.flows(), cs.flows(), CohortKey::parse),
         FieldDelta.rebuild(base.laborSupply(), cs.laborSupply(), PeopleLotId::parse),
         FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse),
         FieldDelta.rebuild(base.relations(), cs.relations(), IndustryId::parse));

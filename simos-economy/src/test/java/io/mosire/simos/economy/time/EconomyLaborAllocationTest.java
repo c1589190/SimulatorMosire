@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -14,12 +16,12 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,9 @@ import org.junit.jupiter.api.Test;
  * </pre>
  */
 class EconomyLaborAllocationTest {
+
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
 
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final IndustryId CRAFT = new IndustryId("craft@0_0");
@@ -140,10 +145,13 @@ class EconomyLaborAllocationTest {
     industries.put(FARM, industry(FARM, "农业", "feudal", new AllocationRule.Split(700, 300)));
     industries.put(CRAFT, industry(CRAFT, "手工业", "handicraft", new AllocationRule.Split(400, 600)));
 
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(new ClassKey(FARM, PEASANT), row(new ClassKey(FARM, PEASANT), 100L, 58_000L, 1000));
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(
-        new ClassKey(CRAFT, LANDLORD), row(new ClassKey(CRAFT, LANDLORD), 10L, 5_800L, 1000));
+        new CohortKey(HEX, ResidenceKind.RURAL, PEASANT),
+        row(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT), 100L, 58_000L, 1000));
+    classes.put(
+        new CohortKey(HEX, ResidenceKind.URBAN, LANDLORD),
+        row(new CohortKey(HEX, ResidenceKind.URBAN, LANDLORD), 10L, 5_800L, 1000));
 
     Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
     supply.put(RURAL, new LaborSupply(RURAL, FIRST_PERIOD, 100_000L, 0L, 0L));
@@ -188,13 +196,12 @@ class EconomyLaborAllocationTest {
         id, group, new ActorRef(kind, industry.value()), activity, laborMilli, FIRST_PERIOD);
   }
 
-  private static ClassRow row(ClassKey key, long population, long laborMilli, int participation) {
+  private static ClassRow row(CohortKey key, long population, long laborMilli, int participation) {
     return new ClassRow(
         key,
         population,
         laborMilli,
-        participation,
-        Map.of(AssetKind.LAND, 0L), // ★ 不占地：本类只谈"投入了多少劳动"，不谈产出
+        participation, // ★ 不占地：本类只谈"投入了多少劳动"，不谈产出
         Map.of(),
         0L,
         List.of(),
@@ -211,6 +218,8 @@ class EconomyLaborAllocationTest {
         0L,
         // ★ R3：产能锚非空即可（本类只谈"投入了多少劳动"，规模与产出都不是判据）。
         Map.of(AssetKind.LAND, 1_000L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.LAND, 0L),
         Map.of(),
         0L,
         0L,

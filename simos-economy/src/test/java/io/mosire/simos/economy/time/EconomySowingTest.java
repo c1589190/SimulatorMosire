@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -16,7 +18,6 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -24,6 +25,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,12 +54,15 @@ import org.junit.jupiter.api.Test;
  */
 class EconomySowingTest {
 
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final IndustryId CRAFT = new IndustryId("craft@0_0");
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   /** ★ R3：另外两种商品 —— 用来证明"六档投入都允许，而只有粮那一档进本文件的粮链"。 */
@@ -135,7 +140,6 @@ class EconomySowingTest {
         POPULATION,
         POPULATION * LABOR_PER_PERSON,
         1000,
-        Map.of(AssetKind.LAND, landMilliMu),
         stock > 0L ? Map.of(GRAIN, stock) : Map.of(),
         0L,
         List.of(),
@@ -144,13 +148,12 @@ class EconomySowingTest {
   }
 
   /** **不占地**的一行（真档里每座城的手工业行都是这一形态）：无生产资料 ⇒ 种子需求恒 0。 */
-  private static ClassRow landlessRow(ClassKey key, long stock) {
+  private static ClassRow landlessRow(CohortKey key, long stock) {
     return new ClassRow(
         key,
         POPULATION,
         POPULATION * LABOR_PER_PERSON,
         1000,
-        Map.of(),
         stock > 0L ? Map.of(GRAIN, stock) : Map.of(),
         0L,
         List.of(),
@@ -165,7 +168,6 @@ class EconomySowingTest {
         0L,
         0L,
         0,
-        Map.of(AssetKind.LAND, landMilliMu),
         stock > 0L ? Map.of(GRAIN, stock) : Map.of(),
         0L,
         List.of(),
@@ -200,6 +202,8 @@ class EconomySowingTest {
         cycleDays,
         0L,
         Map.of(AssetKind.LAND, 1_000L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.LAND, LAND_MILLI_MU),
         Map.of(),
         0L,
         0L,
@@ -221,7 +225,7 @@ class EconomySowingTest {
    * #LABOR_PER_PERSON} 580‰ × 投入率 1000‰；地主行的投入率 0‰ 且人口 0，贡献 0）。
    */
   private static EconomyData data(
-      Map<ClassKey, ClassRow> rows, Map<IndustryId, Industry> industries) {
+      Map<CohortKey, ClassRow> rows, Map<IndustryId, Industry> industries) {
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     return new EconomyData(
@@ -253,23 +257,23 @@ class EconomySowingTest {
 
   private static EconomyData farm(
       long stock, Map<AssetKind, Map<CommodityId, Long>> cycleInput, long cycleDays) {
-    LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>();
     rows.put(PEASANT_KEY, peasantRow(stock));
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, "农业", cycleDays, cycleInput));
     return data(rows, industries);
   }
 
-  private static long grainOf(EconomyData data, ClassKey key) {
+  private static long grainOf(EconomyData data, CohortKey key) {
     return data.classes().get(key).goods().getOrDefault(GRAIN, 0L);
   }
 
-  private static long consumedOf(EconomyData data, ClassKey key) {
+  private static long consumedOf(EconomyData data, CohortKey key) {
     FlowRow flow = data.flows().get(key);
     return flow == null ? 0L : flow.consumed().getOrDefault(GRAIN, 0L);
   }
 
-  private static long unmetOf(EconomyData data, ClassKey key) {
+  private static long unmetOf(EconomyData data, CohortKey key) {
     FlowRow flow = data.flows().get(key);
     return flow == null ? 0L : flow.unmetNeed().getOrDefault(GRAIN, 0L);
   }
@@ -358,8 +362,8 @@ class EconomySowingTest {
   @Test
   void drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown() {
     EconomyData base = farm(20_000L, seeds(SEED_PER_MU));
-    LinkedHashMap<ClassKey, FlowRow> flowsFirst = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, FlowRow> flowsAfter = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, FlowRow> flowsFirst = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, FlowRow> flowsAfter = new LinkedHashMap<>();
 
     // ★ T4：日结算现在还要交回当天的 ProductionLedger（产出离开 ClassRow 之后的落点）⇒ 累加器是必填入参；
     //   本用例只量"播种次序对行/种子的影响"（第 1 天没有任何产业关账）⇒ 两份账都应当是空的。
@@ -403,9 +407,9 @@ class EconomySowingTest {
   /** ★ `need == 0` 的行（**没有地** ⇒ 真档里每座城的手工业行）⇒ 不扣、不累加。 */
   @Test
   void aRowWithoutLandIsNeverDrawnFrom() {
-    LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>();
     rows.put(PEASANT_KEY, peasantRow(JAR_TWO_DAYS)); // 农业行：400 亩、缸够满种 + 两天口粮
-    ClassKey craftPeasant = new ClassKey(CRAFT, PEASANT);
+    CohortKey craftPeasant = new CohortKey(HEX, ResidenceKind.URBAN, PEASANT);
     rows.put(craftPeasant, landlessRow(craftPeasant, 1_000_000L)); // 手工业行：不占地、缸很足
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, seeds(SEED_PER_MU)));
@@ -587,26 +591,39 @@ class EconomySowingTest {
   // ── ⑥ 验收链（spec §九 V3 判据 4）与阶级差异 ────────────────────────────────────────
 
   /**
-   * ★★ **各扣各的：贫农缸空 ⇒ 它的地荒着；地主缸足 ⇒ 它的地照种**（定案：逐 {@code ClassRow} 从它自己的 {@code goods} 里扣，不从全格池子扣）。
+   * ★★ **各扣各的：贫农缸空 ⇒ 它的地荒着；缸足的行 ⇒ 它的地照种**（定案：逐 {@code ClassRow} 从它自己的 {@code goods} 里扣，不从全格池子扣）。
    *
-   * <p>夹具：贫农（400 人 / 200 亩 / **缸空**）+ 地主（0 人 / 800 亩 / 缸 5,000,000）。周期 2 天。
+   * <p>夹具：贫农（400 人 / **缸空**）+ 地主（**0 人** / 缸 5,000,000）。周期 2 天。
+   *
+   * <p>★★ <b>下面这段算式是 H0（K3）之前的口径，留痕不改</b>；新口径的读数见其后的〔H0/K3 重算〕。
    *
    * <pre>
+   * 〔H0/K3 之前〕
    * 播种日：贫农扣 min(0, 200 × 100 = 20,000) = 0；地主扣 800 × 100 = 80,000 ⇒ 累加器 80,000
    * 可支撑亩 = 80,000 / 100 = 800 亩（&lt; 土地 1,000 亩、&lt; 劳动 1,624 亩）⇒ **贫农那 200 亩荒着**
    * 满产地净产（按 800 亩）= 800 × 67 × 1000 × (1 − 生产损耗) = 51,992,000
    * ★★ T4：产出**不再**按 `Split` 的"土地权重 + 劳动权重"分给两行 —— 它进 "+净产 → operator"，再按关系结算落回行：
-   *   那条规则（{@code OUTPUT_SHARE × LABOR_AMOUNT} 1000‰ 给 `(0,0)|poor_peasant` cohort）的受方**只有贫农行**
+   *   那条规则（{@code OUTPUT_SHARE × LABOR_AMOUNT} 1000‰ 给 {@code (0,0)|rural|poor_peasant} cohort）的受方**只有贫农行**
    *   （地主行**人口为 0** ⇒ 按 R7 它永远不是 cohort 受方）⇒ 实付 = 净产 × 贫农劳动 ÷ Σ劳动 = 净产 × 1 = 净产
    * 贫农两天缺口由地主借出（同格借粮）：2 × 33,333 = 66,666 ⇒ ★ **一条**债务（§7.2 按 (周期, 债务人, 债权人) 聚合）
    * 贫农库存 = 0 − 0 − 0 + 51,992,000 = 51,992,000
    * 地主库存 = 5,000,000 − 80,000 − 33,333 − 33,333 = 4,853,334（它拿不到产出 ⇒ 比 T4 之前少了 560‰ 那一份）
    * ★ 地主**0 人口** ⇒ 本周期自需 0 ⇒ 保留额 0 ⇒ "只贷余粮"这一路在它这里不缩任何量（放贷额与 V1 同值）
    * </pre>
+   *
+   * <pre>
+   * 〔H0 / K3 重算〕产能在**产业**上（{@code Industry.capacity} = 400 亩），行的"想扣多少"按**人口占比**折算：
+   * 该产业只有贫农行有人口（400 人；地主行 0 人）⇒ 贫农拿到**全部**规模 400 亩、地主拿 0
+   * 播种日：贫农想扣 400 × 100 = 40,000，而它缸空 ⇒ 实扣 **0** ⇒ 投入那一路的规模 = 0 / 100 = 0
+   *        ⇒ 规模 = min(产能 400 亩, 投入 0) = **0** ⇒ **整块地荒着**（收获 0、无产出可分）
+   * 贫农库存 = 0（借到的当日即吃掉，不进库存）· 地主库存 = 5,000,000 − 头两天借出的口粮（**无人在它的地上出工 ⇒ 一分种也不扣**）
+   * ★ 判别力仍在：改从**全格池子**扣 ⇒ 地主的 5,000,000 会被拿来下种 ⇒ 两条 `isZero()` 当场红。
+   * ★★ H3（C3 的"投入由谁出"进 relation）落地后，本用例要按那条新口径**再重算一次**。
+   * </pre>
    */
   @Test
   void eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow() {
-    LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>();
     rows.put(PEASANT_KEY, peasantRow(0L, 200_000L)); // 200 亩、缸空
     rows.put(LANDLORD_KEY, landlordRow(5_000_000L, 800_000L)); // 800 亩、缸足
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
@@ -615,26 +632,27 @@ class EconomySowingTest {
 
     EconomyData next = EconomyFixtures.advance(base, 0L, 2L);
 
-    long sownMu = 800L;
-    long net =
-        sownMu
-            * YIELD_PER_MU
-            * EconomySettlement.MILLI_PER_GRAIN
-            * (1000L - PRODUCTION_LOSS_PER_MILLE)
-            / 1000L;
+    // ★★ 裁定 K10（2026-09-27，H0/K3 的口径变化）：本夹具的**前提**是"**0 人**的地主行占 800 亩并下种" ——
+    //   那正是 K3 废除的东西（产能在**产业**上；且**没有人就没有份额**）。⇒ 同一份夹具在新口径下的读数是：
+    //   唯一有人口的贫农行拿到**全部**产业规模（= 该产业产能 400 亩），而它缸空 ⇒ **一分种也扣不出**
+    //   ⇒ 整块地荒着（收获 0）。
+    //   ★ 判别力仍在：若取材改成"从**全格池子**扣"，地主的 5,000,000 会被拿来下种 ⇒ 下面那两条 `isZero()`
+    //     当场红；若改成"无份额的行也照扣"，同款红。⇒ 它守的机构（**投入各扣各的**）没变，
+    //     变的只是"谁有份额"（H0 的口径：按人口占比；H3 起改由 relation 的"投入由谁出"决定）。
+    //   ★★ **H3（C3）落地后本用例要再重算一次** —— 记在这里，别静默。
     // ★ 修订 1（控制器 2026-09-25 追加）：`settle(base, 0, 2)` 跑满**一整个 2 天周期** ⇒ 关账时该累加器
     //   **已清零**（任务 3 的 `sowingDayDrawsTheSeedBeforeTheDayIsEaten` 自己就钉着"关账清零"）。
-    //   故这里另跑一次**单日**结算读第 1 天（播种日）读数 —— **期望值 80,000 一字未改**，不许放宽成 0。
+    //   故这里另跑一次**单日**结算读第 1 天（播种日）读数。
     assertThat(EconomyFixtures.advance(base, 0L, 1L).industries().get(FARM).cycleSeedUsedMilli())
-        .as("只有地主扣到了种（80,000 = 800 亩 × 100；播种日当天读数）")
-        .isEqualTo(sownMu * SEED_PER_MU);
+        .as("★ 缸空的行拿满份额也扣不出种（播种日当天读数；改前 = 800 亩 × 100 = 80,000）")
+        .isZero();
     assertThat(next.industries().get(FARM).cycleSeedUsedMilli()).as("关账后归零").isZero();
     assertThat(grainOf(next, PEASANT_KEY))
-        .as("贫农：0 − 0 + 关系实付（= 净产全额：受方只有它一个，own ÷ Σ劳动 = 1）")
-        .isEqualTo(net);
+        .as("★ 地荒着 ⇒ 没有产出可分；它自己也是靠**借**才吃上的（借到的当日即吃掉，不进库存）")
+        .isZero();
     assertThat(grainOf(next, LANDLORD_KEY))
-        .as("地主：5,000,000 − 80,000 − 头两天借给贫农的口粮（★ T4：它拿不到产出 —— 人口 0 ⇒ 不是 cohort 受方）")
-        .isEqualTo(5_000_000L - sownMu * SEED_PER_MU - rationOver(CYCLE_DAYS));
+        .as("地主：5,000,000 − 头两天借给贫农的口粮（★ 无人下种 ⇒ 一分种子也不扣；它人口 0 ⇒ 拿不到产出）")
+        .isEqualTo(5_000_000L - rationOver(CYCLE_DAYS));
     // ★★ **V6 §7.2 债务聚合**：贫农**两天都向同一个地主借**，但同周期内同一对债权债务人**只有一条**
     //   （旧口径是"每天一条"，本条的 2 会变成 1 —— 这正是本批要改的那件事）。
     List<DebtId> peasantDebts = next.classes().get(PEASANT_KEY).debts();
@@ -655,10 +673,10 @@ class EconomySowingTest {
     assertThat(aggregated.creditor()).isEqualTo(LANDLORD_KEY);
     assertThat(aggregated.id().value())
         .as("★ id 由 (周期, 债务人, 债权人, 商品) 确定性算出，且**不含 \".\"**（debt.<id> 在第一个点处被 AddressParser 切）")
-        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；
+        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；★ H0 起家户键 = <格>|<居住>|<阶层>；
         //   债务人键 = PEASANT_KEY = FARM|PEASANT = "farm@0_0" + "|" + "poor_peasant"（新词表）
         //   债权人键 = LANDLORD_KEY = "farm@0_0|landlord"（地主一词不变）；商品 = "grain"。
-        .isEqualTo("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain");
+        .isEqualTo("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain");
     assertThat(next.debts()).as("整场只此一条债（聚合后条数不随天数增长）").hasSize(1);
     assertThat(EconomyFixtures.advance(base, 0L, 1L).debts().values().iterator().next().principal())
         .as("对照：第 1 天结束时本金只有一天的量 ⇒ 第 2 天确实是**累加**上去的，不是另建一条")

@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -23,7 +24,6 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -58,8 +58,10 @@ class EconomyRoundTripTest {
   private static final IndustryId FARM = new IndustryId("farm");
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
-  private static final ClassKey KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey OTHER_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey KEY =
+      new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey OTHER_KEY =
+      new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD);
   private static final DebtId D1 = new DebtId("debt-1");
   private static final CommodityId GRAIN = new CommodityId("grain");
 
@@ -251,6 +253,8 @@ class EconomyRoundTripTest {
         progress,
         // ★ R3（V7）：产能那一路非空且为正（"单位规模"的锚）；这一行的规模单位 = "1 头耕牛"。
         Map.of(AssetKind.CATTLE, 1L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.CATTLE, 0L),
         // ★ 必须非空：空 map 与"字段没进变更集"在值层面不可区分（R3 起值侧再带一层商品维度）。
         Map.of(AssetKind.CATTLE, Map.of(GRAIN, 1L)),
         500L,
@@ -264,7 +268,7 @@ class EconomyRoundTripTest {
         operator);
   }
 
-  static ClassKey otherKey() {
+  static CohortKey otherKey() {
     return OTHER_KEY;
   }
 
@@ -272,13 +276,12 @@ class EconomyRoundTripTest {
    * ★ 无债务的阶层行：**债务引用完整性**（v2 spec §八.2）要求行内 {@code debts} 的每个 id 都在债务表里， 故"只变异 classes
    * 一个组件"的用例只能用不引用债务的行。
    */
-  static ClassRow classRow(ClassKey key) {
+  static ClassRow classRow(CohortKey key) {
     return new ClassRow(
         key,
         120L,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(),
@@ -335,7 +338,8 @@ class EconomyRoundTripTest {
         List.of(
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,
-                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), LANDLORD)),
+                new Recipient.ToCohort(
+                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
                 Basis.GROSS_OUTPUT,
                 300,
                 0L,
@@ -343,7 +347,8 @@ class EconomyRoundTripTest {
                 10),
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_PER_LABOR,
-                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), PEASANT)),
+                new Recipient.ToCohort(
+                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
                 Basis.LABOR_AMOUNT,
                 0,
                 144L,

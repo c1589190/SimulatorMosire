@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -37,11 +38,14 @@ import org.junit.jupiter.api.Test;
  */
 class EconomyInvariantsTest {
 
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = new IndustryId("farm");
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final DebtId D1 = new DebtId("debt-1");
 
@@ -249,9 +253,11 @@ class EconomyInvariantsTest {
     assertThatThrownBy(() -> classRowWithGoods(Map.of(GRAIN, -1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("goods");
-    assertThatThrownBy(() -> classRowWithMeans(Map.of(AssetKind.LAND, -1L)))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("meansOfProduction");
+    // ★★ 2026-09-27（H0/K3）：改前这里有"ClassRow.meansOfProduction 逐值 ≥ 0"这一条。
+    //   该字段已按裁定 K3 **删除**（产能搬到 Industry.capacity），故这条断言的**主语不存在了** ——
+    //   按"不许放宽断言"的口径，它是**整条删除**（不是改成断言别的东西，那会变成另一条用例），如实记在
+    //   H0 的变更说明里。★ 等价守卫在新位置仍然在：Industry.capacity 的构造期守卫（负值即抛）——
+    //   它在本模块目前**没有用例覆盖**（属"待补覆盖"，不是"没守卫"）。
     assertThatThrownBy(() -> debtWithPrincipal(-1L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("principal");
@@ -322,7 +328,6 @@ class EconomyInvariantsTest {
             120L,
             60000L,
             participationPerMille,
-            Map.of(AssetKind.LAND, 2700L),
             Map.of(GRAIN, 300L),
             50L,
             List.of(),
@@ -536,7 +541,8 @@ class EconomyInvariantsTest {
         List.of(
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,
-                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), LANDLORD)),
+                new Recipient.ToCohort(
+                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
                 Basis.GROSS_OUTPUT,
                 777,
                 0L,
@@ -597,6 +603,8 @@ class EconomyInvariantsTest {
             120L,
             0L,
             Map.of(AssetKind.LAND, 1000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, 2700L),
             Map.of(),
             0L,
             0L,
@@ -622,6 +630,8 @@ class EconomyInvariantsTest {
                     new RegimeId("tenant"),
                     120L,
                     0L,
+                    Map.of(),
+                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
                     Map.of(),
                     Map.of(),
                     0L,
@@ -650,6 +660,8 @@ class EconomyInvariantsTest {
                     120L,
                     0L,
                     Map.of(AssetKind.LAND, 0L),
+                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+                    Map.of(),
                     Map.of(),
                     0L,
                     0L,
@@ -721,6 +733,8 @@ class EconomyInvariantsTest {
           120L,
           0L,
           capacity,
+          // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+          Map.of(),
           Map.of(),
           500L,
           0L,
@@ -739,6 +753,8 @@ class EconomyInvariantsTest {
         120L,
         0L,
         capacity,
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(),
         Map.of(),
         500L,
         0L,
@@ -757,13 +773,12 @@ class EconomyInvariantsTest {
   }
 
   /** 无债务的阶层行（参与率 800 在其槽位上限之内）；`key` 必须与它在 `classes` 里的键一致。 */
-  private static ClassRow classRowWithoutDebts(ClassKey key) {
+  private static ClassRow classRowWithoutDebts(CohortKey key) {
     return new ClassRow(
         key,
         120L,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(),
@@ -778,7 +793,6 @@ class EconomyInvariantsTest {
         120L,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(debtId),
@@ -807,6 +821,8 @@ class EconomyInvariantsTest {
         120L,
         0L,
         Map.of(AssetKind.LAND, 1000L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.LAND, 2700L),
         Map.of(),
         500L,
         0L,
@@ -836,6 +852,8 @@ class EconomyInvariantsTest {
         120L,
         0L,
         Map.of(AssetKind.LAND, 1000L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.LAND, 2700L),
         Map.of(),
         500L,
         0L,
@@ -856,6 +874,8 @@ class EconomyInvariantsTest {
         cycleDays,
         progress,
         Map.of(AssetKind.LAND, 1000L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.LAND, 2700L),
         Map.of(),
         500L,
         0L,
@@ -868,13 +888,12 @@ class EconomyInvariantsTest {
         tenantOperator());
   }
 
-  private static ClassRow classRow(ClassKey key) {
+  private static ClassRow classRow(CohortKey key) {
     return new ClassRow(
         key,
         120L,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
@@ -888,7 +907,6 @@ class EconomyInvariantsTest {
         120L,
         60000L,
         participationPerMille,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
@@ -902,7 +920,6 @@ class EconomyInvariantsTest {
         population,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
@@ -916,7 +933,6 @@ class EconomyInvariantsTest {
         120L,
         laborMilli,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
@@ -930,7 +946,6 @@ class EconomyInvariantsTest {
         120L,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L),
         money,
         List.of(D1),
@@ -944,22 +959,7 @@ class EconomyInvariantsTest {
         120L,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         goods,
-        50L,
-        List.of(D1),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
-  }
-
-  private static ClassRow classRowWithMeans(Map<AssetKind, Long> meansOfProduction) {
-    return new ClassRow(
-        PEASANT_KEY,
-        120L,
-        60000L,
-        800,
-        meansOfProduction,
-        Map.of(GRAIN, 300L),
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),

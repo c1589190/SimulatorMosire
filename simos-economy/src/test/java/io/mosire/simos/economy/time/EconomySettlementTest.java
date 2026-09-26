@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -15,7 +17,6 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -23,6 +24,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,12 +41,15 @@ import org.junit.jupiter.api.Test;
  */
 class EconomySettlementTest {
 
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = IndustryHexKeys.id("farm", 0, 0);
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
   private static final CommodityId GRAIN = new CommodityId("grain");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
 
   /** ★ R2 的夹具：本文件的配额都挂在同一个批次上（一格一批人 ⇒ 供给一条、配额一条）。 */
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
@@ -415,6 +420,8 @@ class EconomySettlementTest {
             // ★ R3：产能锚（规模单位 = 1 亩）；劳动那一路给 0（不施加约束 —— 本文件的字面量是 V2 口径算好的，
             //   而它算的是"两行合计地 3,000 亩是瓶颈"那一条链）。
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
             0L,
@@ -428,7 +435,7 @@ class EconomySettlementTest {
             RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(PEASANT_KEY, row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000, 700L, 83_000L));
     classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0, 300L, 8_300L));
     EconomyMeta meta =
@@ -478,6 +485,8 @@ class EconomySettlementTest {
             0L,
             // ★ R3：产能锚（规模单位 = 1 亩）；劳动那一路给 0（不施加约束，同 {@link #fixture()}）。
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, 1_300L),
             Map.of(),
             0L,
             0L,
@@ -492,7 +501,7 @@ class EconomySettlementTest {
             operator);
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(
         PEASANT_KEY,
         row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000, /* land= */ 1_000L, 83_000L));
@@ -530,13 +539,12 @@ class EconomySettlementTest {
   }
 
   private static ClassRow row(
-      ClassKey key, long population, long laborMilli, int participation, long land, long goods) {
+      CohortKey key, long population, long laborMilli, int participation, long land, long goods) {
     return new ClassRow(
         key,
         population,
         laborMilli,
         participation,
-        Map.of(AssetKind.LAND, land),
         Map.of(GRAIN, goods),
         0L,
         List.of(),
@@ -558,6 +566,8 @@ class EconomySettlementTest {
             3L,
             0L,
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(),
             Map.of(),
             0L,
             0L,
@@ -577,13 +587,12 @@ class EconomySettlementTest {
             100L,
             58_000L,
             1000,
-            Map.of(),
             Map.of(GRAIN, stock),
             0L,
             List.of(),
             Map.of(GRAIN, rationOn(100L, 1L)),
             Map.of());
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(PEASANT_KEY, row);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
@@ -602,7 +611,7 @@ class EconomySettlementTest {
         Map.of());
   }
 
-  private static long grainOf(EconomyData data, ClassKey key) {
+  private static long grainOf(EconomyData data, CohortKey key) {
     return data.classes().get(key).goods().getOrDefault(GRAIN, 0L);
   }
 }

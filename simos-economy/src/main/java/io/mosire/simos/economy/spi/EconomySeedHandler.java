@@ -2,9 +2,9 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -95,14 +95,14 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 
-  /** 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从产业 id 与阶层行的产业里认（{@link IndustryHexKeys} 是唯一拼写点）。 */
+  /** 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从产业 id 与**家户行的格**里认（{@link IndustryHexKeys} 是唯一拼写点）。 */
   private static Set<String> occupiedHexKeys(EconomyData base) {
     Set<String> hexes = new LinkedHashSet<>();
     for (IndustryId id : base.industries().keySet()) {
       IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);
     }
-    for (ClassKey key : base.classes().keySet()) {
-      IndustryHexKeys.hexKeyOf(key.industry()).ifPresent(hexes::add);
+    for (CohortKey key : base.classes().keySet()) {
+      hexes.add(IndustryHexKeys.hexKey(key.hex().q(), key.hex().r()));
     }
     return hexes;
   }

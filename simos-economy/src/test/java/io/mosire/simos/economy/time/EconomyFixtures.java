@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -85,7 +86,9 @@ final class EconomyFixtures {
               RuleType.OUTPUT_SHARE,
               new Recipient.ToCohort(
                   new CohortKey(
-                      EconomySettlement.hexOfIndustry(id), new SocialClassId(PEASANT_SLOT))),
+                      EconomySettlement.hexOfIndustry(id),
+                      ResidenceKind.RURAL,
+                      new SocialClassId(PEASANT_SLOT))),
               Basis.LABOR_AMOUNT,
               1000,
               0L,

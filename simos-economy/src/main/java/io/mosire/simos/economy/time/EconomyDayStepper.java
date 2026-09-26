@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.population.LotChange;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.FlowRow;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,7 +33,7 @@ public final class EconomyDayStepper {
   private final boolean plantingDrawsFirst;
   private final int famineMortalityPerMille;
   private EconomyData data;
-  private final LinkedHashMap<ClassKey, FlowRow> flows;
+  private final LinkedHashMap<CohortKey, FlowRow> flows;
 
   /** 从 {@code base} 起步（流水累加器以 base 已累计的本期流水为起点，与 {@code settle} 同款）。 */
   public EconomyDayStepper(EconomyData base) {
@@ -68,7 +68,7 @@ public final class EconomyDayStepper {
   }
 
   /** 本期的流水累加器（**只读视图**；键序 = 行的插入序）。 */
-  public Map<ClassKey, FlowRow> flows() {
+  public Map<CohortKey, FlowRow> flows() {
     return Collections.unmodifiableMap(flows);
   }
 

@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -22,7 +23,6 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -68,8 +68,8 @@ class ProductionLedgerTest {
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
   private static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
   private static final LaborAllocationId ALLOCATION = new LaborAllocationId("alloc-0-farm@0_0");
   private static final ActorRef OPERATOR = new ActorRef(ActorKind.ESTATE, FARM.value());
@@ -163,7 +163,7 @@ class ProductionLedgerTest {
             new ProductionSettlement.ActorEntry(OPERATOR, HEX, GRAIN, -6_790L));
     assertThat(closing.cohortIntake())
         .as("cohort 入账：受方 = (0,0)|poor_peasant，量 = 实付")
-        .containsEntry(new CohortKey(HEX, PEASANT), Map.of(GRAIN, 6_790L));
+        .containsEntry(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT), Map.of(GRAIN, 6_790L));
     assertThat(closing.deferredMoney()).as("本夹具没有货币规则 ⇒ 待办为空").isEmpty();
     assertThat(
             closing.actorEntries().stream().mapToLong(ProductionSettlement.ActorEntry::delta).sum())
@@ -226,6 +226,8 @@ class ProductionLedgerTest {
             CYCLE_DAYS,
             0L,
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, 1_000L),
             Map.of(),
             0L,
             0L,
@@ -238,7 +240,7 @@ class ProductionLedgerTest {
             RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(PEASANT_KEY, row(PEASANT_KEY, 100L, PEASANT_LABOR_MILLI, 1000, 700L, 83_000L));
     classes.put(LANDLORD_KEY, row(LANDLORD_KEY, 10L, 5_800L, 0, 300L, 8_300L));
     EconomyMeta meta =
@@ -247,7 +249,7 @@ class ProductionLedgerTest {
     CompensationRule subsistence =
         new CompensationRule(
             RuleType.FIXED_IN_KIND_PER_LABOR,
-            new Recipient.ToCohort(new CohortKey(HEX, PEASANT)),
+            new Recipient.ToCohort(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT)),
             Basis.LABOR_AMOUNT,
             0,
             SUBSISTENCE_MILLI_PER_LABOR,
@@ -269,13 +271,12 @@ class ProductionLedgerTest {
   }
 
   private static ClassRow row(
-      ClassKey key, long population, long laborMilli, int participation, long land, long goods) {
+      CohortKey key, long population, long laborMilli, int participation, long land, long goods) {
     return new ClassRow(
         key,
         population,
         laborMilli,
         participation,
-        Map.of(AssetKind.LAND, land),
         Map.of(GRAIN, goods),
         0L,
         List.of(),
@@ -283,7 +284,7 @@ class ProductionLedgerTest {
         Map.of());
   }
 
-  private static long grainOf(EconomyData data, ClassKey key) {
+  private static long grainOf(EconomyData data, CohortKey key) {
     return data.classes().get(key).goods().getOrDefault(GRAIN, 0L);
   }
 }

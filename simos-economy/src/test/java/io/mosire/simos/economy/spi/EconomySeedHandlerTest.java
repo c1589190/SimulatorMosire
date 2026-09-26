@@ -10,6 +10,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -24,7 +25,6 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
@@ -58,6 +58,9 @@ class EconomySeedHandlerTest {
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final IndustryId FARM2 = new IndustryId("farm@1_0");
 
@@ -67,25 +70,33 @@ class EconomySeedHandlerTest {
   private static final CommodityId FIBER_COMMODITY = new CommodityId("fiber");
   private static final CommodityId WOOD_COMMODITY = new CommodityId("wood");
 
-  /** 一段最小合法载荷：一格、一个农业产业（封建租佃）、两个槽位两条阶层行。 */
+  /**
+   * 一段最小合法载荷：一格、一个农业产业（封建租佃）、两个槽位两条**家户行**。
+   *
+   * <p>★★ <b>2026-09-27（H0，裁定 K2/K3）的三处形状变化</b>：① {@code classes} 从产业节点内搬到 <b>entry 级</b>，每行显式带
+   * {@code residence}（行 = 家户 = 格 + 居住类型 + 阶层）；② 行上不再有 {@code meansOfProduction}（给了即抛）； ③ 产业多一个
+   * {@code capacity}（本格该产业的产能总量 = 改前 Σ各行的 meansOfProduction = 900,000 + 100,000 = 1,000,000 千分亩）。
+   */
   private static final String PAYLOAD =
       "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":0,\"r\":0,"
           + "\"industries\":[{\"id\":\"farm@0_0\",\"name\":\"农业\",\"regime\":\"feudal\","
           + "\"cycleDays\":120,\"progressDays\":0,"
           // ★ R3（V7）：配方的产能锚与劳动那一路（缺 capacityPerUnit ⇒ 构造期拒 ⇒ 整条命令被 Rejected）
-          + "\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
+          + "\"capacityPerUnit\":{\"LAND\":1000},"
+          // ★★ H0/K3：本格该产业的产能总量（缺键 ⇒ 空表 ⇒ 规模 0；逐值允许 0）
+          + "\"capacity\":{\"LAND\":1000000},\"laborPerUnit\":143,"
           + "\"dailyInputPerUnit\":{},\"dailyLaborPerUnit\":0,"
           + "\"outputPerUnit\":{\"grain\":7},"
           + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,\"laborWeightPerMille\":300},"
           + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\",\"laborParticipationPerMille\":950},"
-          + "{\"id\":\"landlord\",\"name\":\"地主\",\"laborParticipationPerMille\":100}],"
-          + "\"classes\":[{\"slot\":\"poor_peasant\",\"population\":450,\"laborMilli\":261000,"
-          + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":900000},"
+          + "{\"id\":\"landlord\",\"name\":\"地主\",\"laborParticipationPerMille\":100}]}],"
+          // ★★ H0：家户行挂 **entry 级**，每行显式带 residence（缺键即抛 —— 不许按产业种类猜）
+          + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":450,"
+          + "\"laborMilli\":261000,\"participationPerMille\":950,"
           + "\"goods\":{\"grain\":2241000},\"money\":0,\"debts\":[],\"naturalNeeds\":{\"grain\":37350},"
           + "\"effectiveDemand\":{}},"
-          + "{\"slot\":\"landlord\",\"population\":50,\"laborMilli\":29000,"
-          + "\"participationPerMille\":100,\"meansOfProduction\":{\"LAND\":100000},"
-          + "\"goods\":{\"grain\":249000}}]}]}]}";
+          + "{\"residence\":\"rural\",\"slot\":\"landlord\",\"population\":50,\"laborMilli\":29000,"
+          + "\"participationPerMille\":100,\"goods\":{\"grain\":249000}}]}]}";
 
   /** 第二国的载荷：与 {@link #PAYLOAD} 同形、但落在**另一格**（{@code 1_0}）——验证"已激活后按格追加"。 */
   private static final String LATER_NATION_PAYLOAD =
@@ -98,8 +109,8 @@ class EconomySeedHandlerTest {
    */
   private static final String PAYLOAD_WITH_LABOR =
       PAYLOAD.replace(
-          "\"goods\":{\"grain\":249000}}]}]}]}",
-          "\"goods\":{\"grain\":249000}}]}],"
+          "\"goods\":{\"grain\":249000}}]}]}",
+          "\"goods\":{\"grain\":249000}}],"
               + "\"laborSupply\":[{\"group\":\"rural:0_0:MALE:1\",\"period\":1,"
               + "\"grossLaborMilli\":290000,\"servedLaborMilli\":0,\"committedLaborMilli\":0}],"
               + "\"allocations\":[{\"id\":\"alloc-farm@0_0-rural:0_0:MALE:1\","
@@ -312,13 +323,17 @@ class EconomySeedHandlerTest {
         .extracting(slot -> slot.id().value())
         .containsExactly("poor_peasant", "landlord");
 
-    ClassKey peasant = new ClassKey(FARM, new SocialClassId("poor_peasant"));
+    CohortKey peasant = new CohortKey(HEX, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
     ClassRow row = after.classes().get(peasant);
     assertThat(after.classes()).hasSize(2);
     assertThat(row.population()).isEqualTo(450L);
     assertThat(row.laborMilli()).isEqualTo(261_000L);
     assertThat(row.participationPerMille()).isEqualTo(950);
-    assertThat(row.meansOfProduction()).containsEntry(AssetKind.LAND, 900_000L);
+    // ★★ 2026-09-27（H0/K3）：改前这里断言"行的 meansOfProduction 有 900,000 千分亩"。
+    //   那个字段已删（产能搬到产业）⇒ 断言**指向搬到的那一处**（载荷的 capacity 键 → Industry.capacity）：
+    //   量到的仍是同一件事（载荷声明的本格产能总量进了状态），只是落点换了。
+    //   量到的仍是同一件事（两行的 900,000 + 100,000 = 1,000,000 千分亩进来了），只是落点换了。
+    assertThat(after.industries().get(FARM).capacity()).containsEntry(AssetKind.LAND, 1_000_000L);
     assertThat(row.goods()).containsEntry(new CommodityId("grain"), 2_241_000L);
     assertThat(row.money()).isZero();
     assertThat(row.debts()).as("本轮无债务").isEmpty();
@@ -327,7 +342,8 @@ class EconomySeedHandlerTest {
     assertThat(after.debts()).as("债务表本轮恒空").isEmpty();
     assertThat(after.flows()).as("周期流水留待 R3a").isEmpty();
     // 缺省字段（地主行没给 debts/naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
-    ClassRow landlord = after.classes().get(new ClassKey(FARM, new SocialClassId("landlord")));
+    ClassRow landlord =
+        after.classes().get(new CohortKey(HEX, ResidenceKind.RURAL, new SocialClassId("landlord")));
     assertThat(landlord.money()).isZero();
     assertThat(landlord.debts()).isEmpty();
     assertThat(landlord.naturalNeeds()).isEmpty();
@@ -544,7 +560,10 @@ class EconomySeedHandlerTest {
    */
   @Test
   void aPayloadWithoutRelationDerivesTheDefaultFromItsRegime() {
-    String payload = PAYLOAD.replace("\"regime\":\"feudal\"", "\"regime\":\"tenant\"");
+    // ★★ 2026-09-27（H0/R-N1-A）：默认关系的 cohort 受方要带**居住类型**，而它的唯一来源是**劳动配额表**
+    //   ⇒ 本夹具必须用**带劳动表**的那一份载荷（`PAYLOAD` 没有配额 ⇒ 说不出这批家户住哪儿 ⇒ 推不出 cohort 规则）。
+    //   ★ 改的是**夹具**，不是断言：断言的仍是"缺 relation 键 ⇒ 按 regime 推出那一条固定实物租"。
+    String payload = PAYLOAD_WITH_LABOR.replace("\"regime\":\"feudal\"", "\"regime\":\"tenant\"");
     assertThat(payload).as("替换必须真的发生（否则本用例测的是 feudal 那条路）").isNotEqualTo(PAYLOAD);
 
     EconomyData after = apply(payload, EconomyData.empty(), T7);
@@ -560,7 +579,8 @@ class EconomySeedHandlerTest {
                     new CompensationRule(
                         RuleType.FIXED_IN_KIND_RENT,
                         new Recipient.ToCohort(
-                            new CohortKey(new HexCoord(0, 0), SocialClassId.LANDLORD)),
+                            new CohortKey(
+                                new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
                         Basis.FIXED_AMOUNT,
                         0,
                         20_000_000L,
@@ -614,7 +634,7 @@ class EconomySeedHandlerTest {
                 + "\"operator\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
                 + "\"residualOwner\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
                 + "\"rules\":[{\"type\":\"OUTPUT_SHARE\","
-                + "\"recipient\":{\"cohort\":\"0_0|middle_peasant\"},"
+                + "\"recipient\":{\"cohort\":\"0_0|rural|middle_peasant\"},"
                 + "\"basis\":\"GROSS_OUTPUT\",\"ratePerMille\":550,\"fixedAmount\":0,"
                 + "\"commodity\":\"grain\",\"priority\":3}]},");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
@@ -631,7 +651,10 @@ class EconomySeedHandlerTest {
                     new CompensationRule(
                         RuleType.OUTPUT_SHARE,
                         new Recipient.ToCohort(
-                            new CohortKey(new HexCoord(0, 0), new SocialClassId("middle_peasant"))),
+                            new CohortKey(
+                                new HexCoord(0, 0),
+                                ResidenceKind.RURAL,
+                                new SocialClassId("middle_peasant"))),
                         Basis.GROSS_OUTPUT,
                         550,
                         0L,
@@ -642,7 +665,10 @@ class EconomySeedHandlerTest {
         .as("★ 前置：夹具确实**不是** feudal 档的推导值（否则本用例测不出「读没读这个键」）")
         .isNotEqualTo(
             RegimeRelations.defaultRelation(
-                new RegimeId("feudal"), FARM, new ActorRef(ActorKind.ESTATE, "farm@0_0")));
+                new RegimeId("feudal"),
+                FARM,
+                new ActorRef(ActorKind.ESTATE, "farm@0_0"),
+                java.util.Set.of(ResidenceKind.RURAL)));
   }
 
   /**
@@ -680,14 +706,14 @@ class EconomySeedHandlerTest {
         PAYLOAD.replace(
             "\"regime\":\"feudal\",",
             "\"regime\":\"feudal\",\"relation\":{\"rules\":[{\"type\":\"OUTPUT_SHARE\","
-                + "\"recipient\":{\"cohort\":\"0_0|landlord\",\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}},"
+                + "\"recipient\":{\"cohort\":\"0_0|rural|landlord\",\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}},"
                 + "\"basis\":\"GROSS_OUTPUT\",\"ratePerMille\":100,\"fixedAmount\":0,"
                 + "\"priority\":1,\"commodity\":\"grain\"}]},");
     String badType =
         PAYLOAD.replace(
             "\"regime\":\"feudal\",",
             "\"regime\":\"feudal\",\"relation\":{\"rules\":[{\"type\":\"SHARE\","
-                + "\"recipient\":{\"cohort\":\"0_0|landlord\"},\"basis\":\"GROSS_OUTPUT\","
+                + "\"recipient\":{\"cohort\":\"0_0|rural|landlord\"},\"basis\":\"GROSS_OUTPUT\","
                 + "\"ratePerMille\":100,\"fixedAmount\":0,\"priority\":1,\"commodity\":\"grain\"}]},");
     assertThat(List.of(noRecipient, bothRecipients, badType))
         .as("三个替换必须都真的发生")

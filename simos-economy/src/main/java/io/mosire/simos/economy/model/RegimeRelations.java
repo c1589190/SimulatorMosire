@@ -2,6 +2,7 @@ package io.mosire.simos.economy.model;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ **{@code regime} → 默认生产关系的唯一拼写点**（S1 阶段 4+5 Task 2；spec §六 + 计划 R7/R8 + 裁定 E2/E4/E9）。
@@ -68,18 +70,31 @@ import java.util.Optional;
  * 的公式表里它的数量恒为 0 ⇒「不写这条规则」是 <b>等价路径</b>（空表 ⇒ 全归 {@code residualOwner}）。★ 于是"改回一条 {@code
  * SELF_RETENTION}"这种改动会在 {@code RegimeRelationsTest} 上当场红。
  *
- * <p>★★ <b>R7/R8：受方是 cohort，"劳动者" = 该格的四个阶层各一条规则</b>。{@code CohortKey} 的粒度是 {@code (格, 阶层)}（spec
- * §2.6），而劳动者是一个集合 ⇒ 四个阶层各一条；人口为 0 的那些 cohort <b>自然解析不到行</b>（{@code population > 0} 是硬条件）⇒ 该笔留在
- * operator。这也是 {@code weave@hex|*} 四行（人口恒为 0）拿不到布、而<b>真正织布的人</b>（{@code
- * farm@hex|<阶层>}）拿到布的原因（I4.3/V3）。
+ * <p>★★ <b>R7/R8：受方是 cohort，"劳动者" = 该格的四个阶层各一条规则</b>。{@code CohortKey} 的粒度是 {@code (格, 居住类型,
+ * 阶层)}（spec §2.6 + H0 的 R-N1-A），而劳动者是一个集合 ⇒ 四个阶层各一条；人口为 0 的那些 cohort <b>自然解析不到行</b>（{@code
+ * population > 0} 是硬条件）⇒ 该笔留在 operator。
  *
- * <p>★ <b>补注（裁定 E24，2026-09-26）</b>：那四条规则的<b>受方行</b>不是"同格同阶层的全部行"，而是"<b>真出了这份劳动的那批人住的行</b>" ——
- * 由配额表（{@code LaborAllocation.group}）定池，见 {@code
- * EconomySettlement.classRowsOfCohort}。于是城市格上：家庭纺织那一份只落 <b>农业行</b>（农村批次供农业 +
- * 纺织），作坊那一份只落<b>作坊行</b>（城镇批次只供作坊）；本类<b>一字未改</b>（改的是行的解析，不是规则）。
+ * <p>★★ <b>H0（2026-09-27，裁定 R-N1-A）起"居住类型"是受方身份的一维 —— 而本类看不见它</b>：家户 = {@code (格, 居住类型, 阶层)}，
+ * 而"这个产业的这批人住农村还是城镇"的<b>唯一事实来源是劳动配额表</b>（{@code ResidenceKind.ofLot(allocation.group())}，
+ * 批次前缀的唯一拼写点在 {@link ResidenceKind}）。⇒ 本类的 {@code defaultRelation} 多收一个 {@code Set<ResidenceKind>}
+ * （{@link #defaultRelation(RegimeId, IndustryId, ActorRef, Set)}），由**唯一同时看得见产业与配额的地方**——载荷边缘 {@code
+ * EconomyPayloads}——算好传进来。★ 本类**不猜**（不按产业种类、也不按制度推居住类型：制度与居住是两件事， 同一个 {@code feudal} 完全可以在城里）。
  *
- * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf} 是唯一拼写点）：{@link CohortKey#residence()} =
- * 该产业所在的格。★ <b>拿不到格键 ⇒ 抛</b>（理由：关系必须有地点）—— 静默拿 {@code (0,0)} 顶替会把所有格的关系 都指到原点那一格上。
+ * <p>★ <b>为什么"每个 spec × 每个居住类型"展开是对的（劳动加权那两族）</b>：{@code OUTPUT_SHARE × LABOR_AMOUNT} 与 {@code
+ * FIXED_IN_KIND_PER_LABOR} 的量都乘"本受方劳动 ÷ Σ劳动"（{@code ProductionSettlement} 的公式表）⇒ 没有人（或没有劳动）的 cohort
+ * 逐值拿 0，两个居住类型的规则**不会互相多吃**。<b>反之，不按受方劳动加权的那几档（{@code GROSS_OUTPUT} / {@code NET_AFTER_INPUTS} /
+ * {@code FIXED_AMOUNT}）各请求整份池</b> ⇒ 展开会让同一笔被要两次（第二条也会拿到它的率），
+ * 故<b>多居住类型即抛</b>（fail-closed：真档里每个产业只由一种居住类型的家户供给，这一形态本表表达不了，不猜）。 ★ 空集合 ⇒ 该产业一条 cohort 规则都不产生（没有家户
+ * ⇒ 没有劳动者；产出全归 {@code residualOwner}）。
+ *
+ * <p>★ <b>补注（裁定 E24，2026-09-26；H0
+ * 起由身份维直接表达）</b>：那四条规则的<b>受方行</b>不是"同格同阶层的全部行"，而是"<b>真出了这份劳动的那批人住的行</b>"。 H0 之前靠"受方产业集"过滤（{@code
+ * EconomySettlement.classRowsOfCohort}，已删）；H0 起 <b>居住维进了身份</b> （{@code rural} / {@code urban}）⇒ 受方
+ * = 键与规则里的 cohort 逐字相等的**那一行**，歧义消失（E24 与 E28 一并收口）。 于是城市格上：家庭纺织那一份只落 <b>农村家户行</b>（农村批次供农业 +
+ * 纺织），作坊那一份只落<b>城镇家户行</b> （城镇批次只供作坊）；本类只多了"居住类型"这一维。
+ *
+ * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf} 是唯一拼写点）：{@link CohortKey#hex()} = 该产业所在的格；
+ * 居住类型那一维由调用方按配额表给（见上）。★ <b>拿不到格键 ⇒ 抛</b>（理由：关系必须有地点）—— 静默拿 {@code (0,0)} 顶替会把所有格的关系 都指到原点那一格上。
  *
  * <p>★★ <b>出厂值（判断结果；真值由 GM 按真档观察后调，信条十二）</b>：本类的四个数值常量都是**出厂值**， 注释里写明约束算式。★ <b>商品也只能是出厂值</b>：关系表按
  * {@code regime} 推导，**看不见该产业的 {@code outputPerUnit}** ⇒ 只能按本档的典型产品取（粮档 = 农业/租佃、布档 = 家庭纺织/作坊）；
@@ -185,11 +200,14 @@ public final class RegimeRelations {
    * @param regime 生产制度；不得为 null
    * @param industry 产业（身份 + 地点都取自它）；不得为 null，且 id 里必须带格键
    * @param operator 经营主体；不得为 null
-   * @throws IllegalArgumentException 任一参数为 null、{@code regime} <b>未登记</b>（fail-closed，消息列出四档）、 或产业
-   *     id 里没有格键（关系必须有地点）
+   * @param residences <b>供给这个产业的那些家户的居住类型</b>（H0/R-N1-A；唯一来源 = 劳动配额表的批次前缀， {@code
+   *     ResidenceKind.ofLot}）；不得为 null，可为空（= 没有任何批次供给它 ⇒ 不产生 cohort 规则）。 ★
+   *     <b>多于一种即抛</b>（见类注：非劳动加权的规则会重复计费，本表表达不了那一形态）
+   * @throws IllegalArgumentException 任一参数为 null、{@code regime} <b>未登记</b>（fail-closed，消息列出四档）、产业 id
+   *     里没有格键（关系必须有地点）、或 {@code residences} 多于一种居住类型
    */
   public static ProductionRelation defaultRelation(
-      RegimeId regime, IndustryId industry, ActorRef operator) {
+      RegimeId regime, IndustryId industry, ActorRef operator, Set<ResidenceKind> residences) {
     if (regime == null) {
       throw new IllegalArgumentException("regime 不得为 null");
     }
@@ -199,15 +217,43 @@ public final class RegimeRelations {
     if (operator == null) {
       throw new IllegalArgumentException("operator 不得为 null");
     }
+    if (residences == null) {
+      throw new IllegalArgumentException("residences 不得为 null（没有任何批次供给它请给空集；居住类型的唯一来源是劳动配额表）");
+    }
+    for (ResidenceKind residence : residences) {
+      if (residence == null) {
+        throw new IllegalArgumentException("residences 不得含 null");
+      }
+    }
     List<RuleSpec> specs = BY_REGIME.get(regime.value());
     if (specs == null) {
       throw new IllegalArgumentException(
           "未登记的制度，无法推导默认生产关系：" + regime.value() + "；已登记的档: " + BY_REGIME.keySet());
     }
+    // ★★ 多居住类型 ⇒ 只有"按受方劳动加权"的那几档能展开（见类注）：其余各请求整份池，展开会重复计费 ⇒ 当场抛（不猜）。
+    if (residences.size() > 1) {
+      for (RuleSpec spec : specs) {
+        if (spec.basis() != Basis.LABOR_AMOUNT) {
+          throw new IllegalArgumentException(
+              "默认关系表表达不了'一个产业由多种居住类型的家户供给'（"
+                  + residences
+                  + "）：规则 "
+                  + spec.type()
+                  + "×"
+                  + spec.basis()
+                  + " 不按受方劳动加权 ⇒ 按居住类型展开会重复请求同一份产出。请改用载荷里的显式 relation（逐条写清 cohort）");
+        }
+      }
+    }
     HexCoord hex = hexOf(industry);
-    List<CompensationRule> rules = new ArrayList<>(specs.size());
+    List<CompensationRule> rules = new ArrayList<>(specs.size() * Math.max(1, residences.size()));
     for (RuleSpec spec : specs) {
-      rules.add(toRule(spec, hex));
+      // ★ 居住类型按 ResidenceKind.all() 的保序取（**不按 Set 的迭代序**：那会让规则表的次序成为调用方容器的函数）。
+      for (ResidenceKind residence : ResidenceKind.all()) {
+        if (residences.contains(residence)) {
+          rules.add(toRule(spec, hex, residence));
+        }
+      }
     }
     return new ProductionRelation(industry, operator, rules, operator);
   }
@@ -344,11 +390,11 @@ public final class RegimeRelations {
     return Collections.unmodifiableList(rules);
   }
 
-  /** 一条模板 → 一条真规则（受方的居住格在此绑定）。 */
-  private static CompensationRule toRule(RuleSpec spec, HexCoord hex) {
+  /** 一条模板 → 一条真规则（受方的**居住格与居住类型**在此绑定；两者都由调用方给，本类不猜）。 */
+  private static CompensationRule toRule(RuleSpec spec, HexCoord hex, ResidenceKind residence) {
     return new CompensationRule(
         spec.type(),
-        new Recipient.ToCohort(new CohortKey(hex, spec.stratum())),
+        new Recipient.ToCohort(new CohortKey(hex, residence, spec.stratum())),
         spec.basis(),
         spec.ratePerMille(),
         spec.fixedAmount(),
@@ -367,8 +413,8 @@ public final class RegimeRelations {
   }
 
   /**
-   * 一条规则模板：<b>只差"绑定到哪一格"</b>（受方的 {@code stratum} 已定，{@code residence} 在 {@link #defaultRelation}
-   * 里补上）。
+   * 一条规则模板：<b>只差"绑定到哪一格、哪种居住类型"</b>（受方的 {@code stratum} 已定，{@code hex} 与 {@code residence} 在 {@link
+   * #defaultRelation(RegimeId, IndustryId, ActorRef, Set)} 里补上）。
    *
    * <p>★ {@code commodity} 为空 = 货币档（与 {@link CompensationRule} 的"二选一是类型事实"同源：空与有值 各自对应 {@code
    * type.money()} 的一侧）。

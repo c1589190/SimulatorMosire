@@ -2,10 +2,9 @@ package io.mosire.simos.economy.resolve;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
 import io.mosire.simos.util.address.Entity;
@@ -26,16 +25,20 @@ import java.util.Objects;
  *   <li>{@code economy:<mapId>} —— 该地图的经济切片根主体（第 2 段是根主体 {@code Entity(∅,·)}）
  *   <li>{@code economy:<mapId>:industry.<id>} —— 产业（类型名 {@code "Industry"}）；无记录 ⇒ 空候选
  *   <li>{@code economy:<mapId>:debt.<id>} —— 债务（类型名 {@code "Debt"}）；无记录 ⇒ 空候选
- *   <li>{@code economy:<mapId>:class.<industryId>.<slotId>} —— 阶层行（类型名 {@code "ClassRow"}）；无记录 ⇒
- *       空候选
- *   <li>{@code economy:<mapId>:flow.<industryId>.<slotId>} —— 周期流水（类型名 {@code "FlowRow"}）；无记录 ⇒ 空候选
+ *   <li>{@code economy:<mapId>:class.<cohort>} —— 家户行（类型名 {@code "ClassRow"}）；无记录 ⇒ 空候选。 {@code
+ *       <cohort>} = {@link CohortKey#toString()} 的**规范串**（如 {@code 0_0|rural|poor_peasant}）
+ *   <li>{@code economy:<mapId>:flow.<cohort>} —— 周期流水（类型名 {@code "FlowRow"}）；无记录 ⇒ 空候选
  * </ul>
  *
- * <p>★ **class/flow 的两段在地址里以 {@code .} 相连**（§八 R1 的原文 {@code class.<industryId>.<slotId>}）：地址解析器把
- * {@code class.ag.farmer} 读成一个 {@code Entity(kind="class", name="ag.farmer")}（见 {@code
- * AddressParser}），故本类在 **第一个 {@code .}** 处拆开两段交给 {@link IndustryId#parse}/{@link
- * SocialClassId#parse}（两段都非空才认，否则按坏名字抛）。 注意这与 {@link ClassKey#toString()} 的 {@code "|"}
- * 是两套写法：后者是变更集的 key，前者是给人读的地址。
+ * <p>★★ <b>class/flow 的局部名 = {@link CohortKey} 的规范串 —— 唯一拼写点就在这里与那个类型上</b>（H0；裁定 R-N1-A）：地址解析器把
+ * {@code class.0_0|rural|poor_peasant} 读成一个 {@code Entity(kind="class",
+ * name="0_0|rural|poor_peasant")} （见 {@code AddressParser}），本类把这个名字**整份**交给 {@link
+ * CohortKey#parse}（坏名字抛它自己的 IAE，不包不吞）。
+ *
+ * <p>★★ <b>为什么不再拼 {@code <industryId>.<slotId>}</b>（改前的 {@code dotted(...)}）：① H0 起行就是家户（键 = 格 +
+ * 居住类型 + 阶层），产业段**在身份里已经不存在了**；② 那个点分串在 app 侧（时间参与者的读写集）还有第二、第三处内联拼接 —— 同一个格式的多个拼写点正是 本仓明令禁止的形态。⇒
+ * 现在只有一处：{@code CohortKey.toString()} / {@code CohortKey.parse}。 ★ 规范串里**没有 {@code '.'}**（坐标是
+ * {@code 数字_数字}、居住与阶层都是封闭词表）⇒ 不会被 {@code AddressParser} 在第一个点处截断。
  *
  * <p>**空候选与抛的分工**（与 {@code MapResolver}/{@code LedgerResolver} 同款）：合法但本模块不服务（其它 kind、属性段、 段数 &gt; 3
  * 或 = 4、Index 段、没有记录的产业/阶层/债务/流水）一律空候选；**抛只有两处**——装配故障（state 里没有 economy 切片 / 切片类型不对）与认领了的 kind
@@ -111,45 +114,25 @@ public final class EconomyResolver implements Resolver {
   }
 
   private static QueryResult resolveClassRow(EconomyData data, String mapId, String name) {
-    ClassKey key = parseClassKey(name);
+    CohortKey key = CohortKey.parse(name); // ★ 局部名 = 规范串本身（唯一拼写点），坏名字抛它自己的 IAE
     if (!data.classes().containsKey(key)) {
       return empty();
     }
     return single(
         new SubjectId("economy.class", key.toString()),
-        entityAddress(mapId, "class", dotted(key)),
+        entityAddress(mapId, "class", key.toString()),
         "ClassRow");
   }
 
   private static QueryResult resolveFlowRow(EconomyData data, String mapId, String name) {
-    ClassKey key = parseClassKey(name);
+    CohortKey key = CohortKey.parse(name);
     if (!data.flows().containsKey(key)) {
       return empty();
     }
     return single(
         new SubjectId("economy.flow", key.toString()),
-        entityAddress(mapId, "flow", dotted(key)),
+        entityAddress(mapId, "flow", key.toString()),
         "FlowRow");
-  }
-
-  /**
-   * 把地址里的 {@code <industryId>.<slotId>} 拆成 {@link ClassKey}。
-   *
-   * <p>在**第一个 {@code .}** 处拆（产业段在前）；缺分隔符、任一段为空、或多一段都按坏名字抛（认领了的 kind 不静默 miss）。 两段仍各自交给 {@link
-   * IndustryId#parse}/{@link SocialClassId#parse} 判空白。
-   */
-  private static ClassKey parseClassKey(String name) {
-    int i = name.indexOf('.');
-    if (i <= 0 || i == name.length() - 1) {
-      throw new IllegalArgumentException("非法阶层地址名（应为 <industryId>.<slotId>）: " + name);
-    }
-    return new ClassKey(
-        IndustryId.parse(name.substring(0, i)), SocialClassId.parse(name.substring(i + 1)));
-  }
-
-  /** {@link ClassKey} 的**地址写法**（点分），与 {@link ClassKey#toString()} 的 {@code "|"} 无关。 */
-  private static String dotted(ClassKey key) {
-    return key.industry().value() + "." + key.slot().value();
   }
 
   /** 切片只能从 economy 模块拿（铁律 3/4：SimulationState 没有跨模块访问器）。缺席或类型不对都是装配故障。 */

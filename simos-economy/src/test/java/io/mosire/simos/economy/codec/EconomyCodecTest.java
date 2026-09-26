@@ -9,6 +9,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -25,7 +26,6 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -52,7 +52,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★ 覆盖：{@code Optional<EconomyMeta>} 两侧向（未激活 / 已激活）、{@code OptionalLong}（{@code lastClosedCycle}
  * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、**六个**自定义键（{@code IndustryId}/{@code
- * ClassKey}/{@code DebtId}/{@code CommodityId} + R2 的 {@code PeopleLotId}/{@code
+ * CohortKey}/{@code DebtId}/{@code CommodityId} + R2 的 {@code PeopleLotId}/{@code
  * LaborAllocationId}）、{@code AssetKind} 的**枚举键**、{@code AllocationRule} 的 **sealed 多态**（{@code
  * Split}/{@code WageFirst} 各一）、{@code FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty}
  * 不进线格式"的观察点），以及旧档缺键的兼容。
@@ -68,8 +68,10 @@ class EconomyCodecTest {
   private static final IndustryId MILL = new IndustryId("mill");
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey PEASANT_KEY =
+      new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey LANDLORD_KEY =
+      new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD);
   private static final DebtId D1 = new DebtId("debt-1");
   private static final DebtId D2 = new DebtId("debt-2");
   private static final CommodityId GRAIN = new CommodityId("grain");
@@ -239,7 +241,8 @@ class EconomyCodecTest {
     assertThat(relation.rules().get(1).recipient())
         .as("★ sealed 多态变体二：读回的是 ToCohort（`CohortKey` 的规范串过线）")
         .isEqualTo(
-            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.LANDLORD)));
+            new Recipient.ToCohort(
+                new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)));
     assertThat(relation.rules().get(2).commodity()).as("★ 货币档的**空侧**必须过线（空 = 货币是类型事实）").isEmpty();
     assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(target);
   }
@@ -423,13 +426,13 @@ class EconomyCodecTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, 0L));
     industries.put(WORKSHOP, workshopIndustry());
-    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     classes.put(PEASANT_KEY, classRow(PEASANT_KEY, 120L));
     classes.put(LANDLORD_KEY, classRow(LANDLORD_KEY, 8L));
     Map<DebtId, Debt> debts = new LinkedHashMap<>();
     debts.put(D1, grainDebt());
     debts.put(D2, moneyDebt());
-    Map<ClassKey, FlowRow> flows = new LinkedHashMap<>();
+    Map<CohortKey, FlowRow> flows = new LinkedHashMap<>();
     flows.put(PEASANT_KEY, flowRow(PEASANT_KEY));
     flows.put(LANDLORD_KEY, flowRow(LANDLORD_KEY));
     // ★★ R2：两张劳动表也**非空** —— 它们各有**一个自定义键类型**（PeopleLotId / LaborAllocationId）要过
@@ -510,6 +513,8 @@ class EconomyCodecTest {
         progress,
         // ★ R3（V7）：产能那一路（"单位规模"的锚）—— non-null、非空、逐值为正。
         Map.of(AssetKind.LAND, 1000L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.LAND, 2700L),
         // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分（R3 起值侧再带一层商品维度）。
         Map.of(AssetKind.CATTLE, Map.of(GRAIN, 1L)),
         500L,
@@ -550,7 +555,8 @@ class EconomyCodecTest {
                 10),
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_RENT,
-                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), LANDLORD)),
+                new Recipient.ToCohort(
+                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
                 Basis.FIXED_AMOUNT,
                 0,
                 5_000L,
@@ -558,7 +564,8 @@ class EconomyCodecTest {
                 20),
             new CompensationRule(
                 RuleType.FIXED_MONEY_WAGE,
-                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), PEASANT)),
+                new Recipient.ToCohort(
+                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
                 Basis.FIXED_AMOUNT,
                 0,
                 7L,
@@ -579,7 +586,9 @@ class EconomyCodecTest {
         new RegimeId("capitalist"),
         30L,
         0L,
-        Map.of(AssetKind.WORKSHOP, 1L), // ★ 产能锚：规模单位 = 1 座工坊
+        Map.of(AssetKind.WORKSHOP, 1L),
+        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+        Map.of(AssetKind.WORKSHOP, 0L), // ★ 产能锚：规模单位 = 1 座工坊
         Map.of(AssetKind.TOOL, Map.of(GRAIN, 2L)),
         300L,
         1000L,
@@ -594,13 +603,12 @@ class EconomyCodecTest {
         new ActorRef(ActorKind.WORKSHOP, WORKSHOP.value()));
   }
 
-  private static ClassRow classRow(ClassKey key, long population) {
+  private static ClassRow classRow(CohortKey key, long population) {
     return new ClassRow(
         key,
         population,
         60000L,
         800,
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(GRAIN, 300L, CLOTH, 10L),
         50L,
         List.of(D1),
@@ -616,7 +624,7 @@ class EconomyCodecTest {
     return new Debt(D2, LANDLORD_KEY, PEASANT_KEY, Optional.empty(), 700L, 5, 5L, true);
   }
 
-  private static FlowRow flowRow(ClassKey key) {
+  private static FlowRow flowRow(CohortKey key) {
     // ★ R3：income 是**逐商品**的表（两种商品，故"退回标量"的实现过不了这一条）。
     // ★ R4：unmetNeed 也逐商品、并多一个 births（与 deaths 对称）。
     return new FlowRow(

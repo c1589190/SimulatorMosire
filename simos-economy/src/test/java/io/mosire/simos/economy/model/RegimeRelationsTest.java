@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -48,7 +49,8 @@ class RegimeRelationsTest {
   @Test
   void theFeudalRegimePaysSubsistenceToEveryStratumAndRentToTheLandlord() {
     ProductionRelation relation =
-        RegimeRelations.defaultRelation(new RegimeId("feudal"), FARM, ESTATE);
+        RegimeRelations.defaultRelation(
+            new RegimeId("feudal"), FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL));
 
     assertThat(relation.activity()).isEqualTo(FARM);
     assertThat(relation.operator()).isEqualTo(ESTATE);
@@ -104,7 +106,10 @@ class RegimeRelationsTest {
   void theHouseholdRegimeSharesTheClothWithTheWeaversInsteadOfRetainingEverything() {
     ProductionRelation relation =
         RegimeRelations.defaultRelation(
-            new RegimeId("household"), FARM, new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"));
+            new RegimeId("household"),
+            FARM,
+            new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"),
+            java.util.Set.of(ResidenceKind.RURAL));
 
     assertThat(relation.rules())
         .as("E2：四个阶层各一条实物分成（700‰ × LABOR_AMOUNT，给的是**布**）")
@@ -123,7 +128,10 @@ class RegimeRelationsTest {
   void theHandicraftRegimePaysAWageInClothAndDefinesButDoesNotSettleAMoneyWage() {
     ProductionRelation relation =
         RegimeRelations.defaultRelation(
-            new RegimeId("handicraft"), FARM, new ActorRef(ActorKind.WORKSHOP, "farm@0_0"));
+            new RegimeId("handicraft"),
+            FARM,
+            new ActorRef(ActorKind.WORKSHOP, "farm@0_0"),
+            java.util.Set.of(ResidenceKind.RURAL));
 
     assertThat(relation.rules())
         .containsExactly(
@@ -146,13 +154,17 @@ class RegimeRelationsTest {
   void theTenantRegimePaysAFixedRentInGrainToTheLandlordCohortOnly() {
     ProductionRelation relation =
         RegimeRelations.defaultRelation(
-            new RegimeId("tenant"), FARM, new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"));
+            new RegimeId("tenant"),
+            FARM,
+            new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"),
+            java.util.Set.of(ResidenceKind.RURAL));
 
     assertThat(relation.rules())
         .containsExactly(
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_RENT,
-                new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.LANDLORD)),
+                new Recipient.ToCohort(
+                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
                 Basis.FIXED_AMOUNT,
                 0,
                 20_000_000L,
@@ -169,10 +181,14 @@ class RegimeRelationsTest {
   @Test
   void theRentIsAddressedToTheLandlordCohortExplicitlyInBothRentPayingRegimes() {
     Recipient landlord =
-        new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.LANDLORD));
+        new Recipient.ToCohort(
+            new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD));
 
     assertThat(
-            RegimeRelations.defaultRelation(new RegimeId("feudal"), FARM, ESTATE).rules().stream()
+            RegimeRelations.defaultRelation(
+                    new RegimeId("feudal"), FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL))
+                .rules()
+                .stream()
                 // ★ 只看**粮**那一族（地租）：本条问的是"租写给谁"，副产纤维那四条不在本条的判据里。
                 .filter(
                     rule ->
@@ -183,19 +199,29 @@ class RegimeRelationsTest {
         .as("feudal 的地租：显式给 (hex, landlord) cohort")
         .containsExactly(landlord);
     assertThat(
-            RegimeRelations.defaultRelation(new RegimeId("feudal"), FARM, ESTATE).rules().stream()
+            RegimeRelations.defaultRelation(
+                    new RegimeId("feudal"), FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL))
+                .rules()
+                .stream()
                 .filter(rule -> rule.commodity().orElseThrow().equals(FIBER))
                 .map(CompensationRule::recipient)
                 .toList())
         .as("★ 副产纤维那四条**不写给地主**：它们给四个阶层 cohort（劳动分成，与地租各管一种商品）")
         .containsExactly(
-            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.POOR_PEASANT)),
-            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.MIDDLE_PEASANT)),
-            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.RICH_PEASANT)),
+            new Recipient.ToCohort(
+                new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.POOR_PEASANT)),
+            new Recipient.ToCohort(
+                new CohortKey(
+                    new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.MIDDLE_PEASANT)),
+            new Recipient.ToCohort(
+                new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.RICH_PEASANT)),
             landlord);
     assertThat(
             RegimeRelations.defaultRelation(
-                    new RegimeId("tenant"), FARM, new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"))
+                    new RegimeId("tenant"),
+                    FARM,
+                    new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"),
+                    java.util.Set.of(ResidenceKind.RURAL))
                 .rules()
                 .get(0)
                 .recipient())
@@ -211,7 +237,8 @@ class RegimeRelationsTest {
   @Test
   void everyLaborRuleAddressesOneOfTheFourStratumCohortsAtTheIndustrysHex() {
     ProductionRelation relation =
-        RegimeRelations.defaultRelation(new RegimeId("household"), FARM, ESTATE);
+        RegimeRelations.defaultRelation(
+            new RegimeId("household"), FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL));
 
     assertThat(
             relation.rules().stream()
@@ -234,14 +261,18 @@ class RegimeRelationsTest {
     CohortKey cohort =
         ((Recipient.ToCohort)
                 RegimeRelations.defaultRelation(
-                        new RegimeId("tenant"), new IndustryId("farm@3_-2"), ESTATE)
+                        new RegimeId("tenant"),
+                        new IndustryId("farm@3_-2"),
+                        ESTATE,
+                        java.util.Set.of(ResidenceKind.RURAL))
                     .rules()
                     .get(0)
                     .recipient())
             .cohort();
 
-    assertThat(cohort).isEqualTo(new CohortKey(new HexCoord(3, -2), SocialClassId.LANDLORD));
-    assertThat(cohort.toString()).as("规范串（阶段 6 的 receipt 表会拿它作键）").isEqualTo("3_-2|landlord");
+    assertThat(cohort)
+        .isEqualTo(new CohortKey(new HexCoord(3, -2), ResidenceKind.RURAL, SocialClassId.LANDLORD));
+    assertThat(cohort.toString()).as("规范串（阶段 6 的 receipt 表会拿它作键）").isEqualTo("3_-2|rural|landlord");
   }
 
   /** ★ 四档**保序**（spec §六 表序）+ 每档的标志性规则类型；未登记的制度**即抛并列出档位**（fail-closed）。 */
@@ -259,12 +290,20 @@ class RegimeRelationsTest {
                 "tenant", RuleType.FIXED_IN_KIND_RENT));
 
     assertThatThrownBy(
-            () -> RegimeRelations.defaultRelation(new RegimeId("capitalist"), FARM, ESTATE))
+            () ->
+                RegimeRelations.defaultRelation(
+                    new RegimeId("capitalist"),
+                    FARM,
+                    ESTATE,
+                    java.util.Set.of(ResidenceKind.RURAL)))
         .as("★ 未登记的制度不许猜（同 RegimeOperators 的 R1 口径）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("capitalist")
         .hasMessageContaining("tenant");
-    assertThatThrownBy(() -> RegimeRelations.defaultRelation(new RegimeId("Feudal"), FARM, ESTATE))
+    assertThatThrownBy(
+            () ->
+                RegimeRelations.defaultRelation(
+                    new RegimeId("Feudal"), FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL)))
         .as("字面量大小写敏感（本表不做归一）")
         .isInstanceOf(IllegalArgumentException.class);
   }
@@ -275,15 +314,27 @@ class RegimeRelationsTest {
     assertThatThrownBy(
             () ->
                 RegimeRelations.defaultRelation(
-                    new RegimeId("feudal"), new IndustryId("farm"), ESTATE))
+                    new RegimeId("feudal"),
+                    new IndustryId("farm"),
+                    ESTATE,
+                    java.util.Set.of(ResidenceKind.RURAL)))
         .as("产业 id 里没有 '@' ⇒ 推不出地点 ⇒ 抛（不许拿 (0,0) 顶替）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("farm");
-    assertThatThrownBy(() -> RegimeRelations.defaultRelation(null, FARM, ESTATE))
+    assertThatThrownBy(
+            () ->
+                RegimeRelations.defaultRelation(
+                    null, FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL)))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> RegimeRelations.defaultRelation(new RegimeId("feudal"), null, ESTATE))
+    assertThatThrownBy(
+            () ->
+                RegimeRelations.defaultRelation(
+                    new RegimeId("feudal"), null, ESTATE, java.util.Set.of(ResidenceKind.RURAL)))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> RegimeRelations.defaultRelation(new RegimeId("feudal"), FARM, null))
+    assertThatThrownBy(
+            () ->
+                RegimeRelations.defaultRelation(
+                    new RegimeId("feudal"), FARM, null, java.util.Set.of(ResidenceKind.RURAL)))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -299,7 +350,8 @@ class RegimeRelationsTest {
   void theFourTablesExpressSelfRetentionAsTheResidualOwner() {
     for (String regime : List.of("feudal", "household", "handicraft", "tenant")) {
       ProductionRelation relation =
-          RegimeRelations.defaultRelation(new RegimeId(regime), FARM, ESTATE);
+          RegimeRelations.defaultRelation(
+              new RegimeId(regime), FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL));
 
       assertThat(relation.residualOwner()).as("档 %s：自留 = 余额归 operator", regime).isEqualTo(ESTATE);
       assertThat(relation.rules())
@@ -365,6 +417,6 @@ class RegimeRelationsTest {
 
   /** 本文件默认那一格（{@code 0_0}）上的某个阶层 cohort。 */
   private static Recipient cohort(SocialClassId stratum) {
-    return new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), stratum));
+    return new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, stratum));
   }
 }

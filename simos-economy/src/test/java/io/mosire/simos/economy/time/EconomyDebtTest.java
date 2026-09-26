@@ -4,13 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -19,6 +20,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -45,11 +47,15 @@ import org.junit.jupiter.api.Test;
 class EconomyDebtTest {
 
   private static final String FARM_KIND = "farm";
+
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = IndustryHexKeys.id(FARM_KIND, 0, 0);
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
-  private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
+  private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
   private static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
   /** 一个周期（天）：**10** —— 够长，能在周期内读"累加到同一条"，又够短到字面量手算得动。 */
@@ -105,10 +111,10 @@ class EconomyDebtTest {
         .isEqualTo(deficitOver(3L));
     assertThat(next.debts().keySet().iterator().next().value())
         .as("★ id 由 (周期, 债务人, 债权人, 商品) 确定性算出")
-        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；
+        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；★ H0 起家户键 = <格>|<居住>|<阶层>；
         //   债务人键 = PEASANT_KEY = FARM|PEASANT = "farm@0_0" + "|" + "poor_peasant"（新词表）
         //   债权人键 = LANDLORD_KEY = "farm@0_0|landlord"（地主一词不变）；商品 = "grain"。
-        .isEqualTo("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain");
+        .isEqualTo("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain");
   }
 
   /**
@@ -129,9 +135,9 @@ class EconomyDebtTest {
     assertThat(next.debts()).as("债务表两条").hasSize(2);
     long cycleOne = deficitOver(CYCLE_DAYS);
     Debt first =
-        next.debts().get(new DebtId("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
+        next.debts().get(new DebtId("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
     Debt second =
-        next.debts().get(new DebtId("debt-c2-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
+        next.debts().get(new DebtId("debt-c2-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
     assertThat(first).as("★ 旧条没被新周期覆盖").isNotNull();
     assertThat(second).as("★ 新周期开新条（id 里的周期号不同）").isNotNull();
     assertThat(first.principal())
@@ -274,9 +280,9 @@ class EconomyDebtTest {
         secondCyclePrincipal * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
 
     Debt first =
-        next.debts().get(new DebtId("debt-c1-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
+        next.debts().get(new DebtId("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
     Debt second =
-        next.debts().get(new DebtId("debt-c2-farm@0_0|poor_peasant>farm@0_0|landlord-grain"));
+        next.debts().get(new DebtId("debt-c2-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
     assertThat(first.principal())
         .as("周期 1 的债在**两次**周期末各计一次（%d + %d + %d）", perCycle, firstInterest, secondInterest)
         .isEqualTo(firstAfterOne + secondInterest)
@@ -439,7 +445,7 @@ class EconomyDebtTest {
 
     for (SocialClassId lenderStratum : strata) {
       EconomyData next = EconomyFixtures.advance(hexWithOnlyLender(lenderStratum), 0L, 1L);
-      ClassKey lenderKey = new ClassKey(FARM, lenderStratum);
+      CohortKey lenderKey = new CohortKey(HEX, ResidenceKind.RURAL, lenderStratum);
 
       assertThat(next.debts()).as("★ %s 必须真的放得出贷（匹配不上 ⇒ 这里一条债都没有）", lenderStratum).hasSize(1);
       Debt only = next.debts().values().iterator().next();
@@ -456,7 +462,7 @@ class EconomyDebtTest {
   /** 一格两行、**放贷那行的阶层可指定**（S1 阶段 1 新增：放贷序列有三档，原夹具写死地主 ⇒ 只覆盖得到一档）。 */
   private static EconomyData hexWithOnlyLender(SocialClassId lenderStratum) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     addHex(industries, classes, FARM_KIND, 0, 0, CYCLE_DAYS, 0L, LANDLORD_JAR, lenderStratum);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
@@ -467,7 +473,7 @@ class EconomyDebtTest {
   /** 一格两行（贫农缸空 / 地主 {@code landlordJar}）、**不产粮**的产业。 */
   private static EconomyData hex(long cycleDays, long peasantJar, long landlordJar) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     addHex(industries, classes, FARM_KIND, 0, 0, cycleDays, peasantJar, landlordJar);
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
@@ -481,7 +487,7 @@ class EconomyDebtTest {
   /** {@code hexes} 格（同一形态：贫农缸空、地主缸厚）—— 供上界用例。 */
   private static EconomyData multiHex(int hexes, long cycleDays) {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     for (int q = 0; q < hexes; q++) {
       addHex(industries, classes, FARM_KIND, q, 0, cycleDays, 0L, LANDLORD_JAR);
     }
@@ -499,7 +505,7 @@ class EconomyDebtTest {
    */
   private static void addHex(
       Map<IndustryId, Industry> industries,
-      Map<ClassKey, ClassRow> classes,
+      Map<CohortKey, ClassRow> classes,
       String kind,
       int q,
       int r,
@@ -512,7 +518,7 @@ class EconomyDebtTest {
   /** 同 {@link #addHex(Map, Map, String, int, int, long, long, long)}，但**放贷那行的阶层可指定**。 */
   private static void addHex(
       Map<IndustryId, Industry> industries,
-      Map<ClassKey, ClassRow> classes,
+      Map<CohortKey, ClassRow> classes,
       String kind,
       int q,
       int r,
@@ -531,6 +537,8 @@ class EconomyDebtTest {
             0L,
             // ★ R3：产能锚（规模单位 = 1 亩）与劳动那一路照常给；产出为空 ⇒ 不产粮（理由见上）。
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, 0L),
             Map.of(),
             0L,
             EconomySettlement.LABOR_MILLI_PER_MU,
@@ -545,21 +553,21 @@ class EconomyDebtTest {
             Map.of(),
             // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:<本产业的 id>`，id 由 kind/q/r 现算）。
             RegimeOperators.defaultOperator(new RegimeId("feudal"), id)));
-    classes.put(
-        new ClassKey(id, PEASANT),
-        row(new ClassKey(id, PEASANT), PEASANT_POPULATION, 1000, peasantJar));
-    classes.put(
-        new ClassKey(id, lenderStratum), row(new ClassKey(id, lenderStratum), 10L, 0, landlordJar));
+    // ★★ H0：行的格取自**这个产业 id 的格键**（不是那个固定常量 HEX）—— 本夹具逐格建行（多格夹具里
+    //   两格的同阶层行是**两家户**，键必须跟着 q/r 走；写死 (0,0) 会把多格并成一行）。
+    CohortKey peasantKey = new CohortKey(new HexCoord(q, r), ResidenceKind.RURAL, PEASANT);
+    CohortKey lenderKey = new CohortKey(new HexCoord(q, r), ResidenceKind.RURAL, lenderStratum);
+    classes.put(peasantKey, row(peasantKey, PEASANT_POPULATION, 1000, peasantJar));
+    classes.put(lenderKey, row(lenderKey, 10L, 0, landlordJar));
   }
 
   private static ClassRow row(
-      ClassKey key, long population, int participationPerMille, long grainStock) {
+      CohortKey key, long population, int participationPerMille, long grainStock) {
     return new ClassRow(
         key,
         population,
         population * LABOR_PER_PERSON,
         participationPerMille,
-        Map.of(AssetKind.LAND, 0L),
         grainStock > 0L ? Map.of(GRAIN, grainStock) : Map.of(),
         0L,
         new ArrayList<>(),

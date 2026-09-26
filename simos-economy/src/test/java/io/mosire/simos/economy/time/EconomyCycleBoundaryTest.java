@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -14,13 +16,13 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.List;
 import java.util.Map;
@@ -42,9 +44,12 @@ import org.junit.jupiter.api.Test;
  */
 class EconomyCycleBoundaryTest {
 
+  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层；这里只有一格）。 */
+  private static final HexCoord HEX = new HexCoord(0, 0);
+
   private static final IndustryId FARM = IndustryHexKeys.id("farm", 0, 0);
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
-  private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
+  private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
   private static final long CYCLE_DAYS = 120L;
   private static final long LAND_MILLI_MU = 3_100_000L; // 3,100 亩（千分亩）
   private static final long GRAIN_PER_MU = 67L;
@@ -69,6 +74,8 @@ class EconomyCycleBoundaryTest {
             CYCLE_DAYS, // ★ 边界值：周期已满（合法，且 v1 会在此炸）
             // ★ R3：产能锚 —— 规模单位 = 1 亩（每 1 亩要 1,000 千分亩）。
             Map.of(AssetKind.LAND, 1_000L),
+            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+            Map.of(AssetKind.LAND, LAND_MILLI_MU),
             Map.of(),
             0L,
             // ★ R3：劳动那一路 = 每亩 143 千分劳动（= ⌈1000/7⌉）—— 它就是旧口径"1 标准劳动经营 7 亩"的倒数形式，
@@ -88,7 +95,6 @@ class EconomyCycleBoundaryTest {
             100L,
             58_000L,
             950,
-            Map.of(AssetKind.LAND, LAND_MILLI_MU),
             Map.of(EconomySettlement.GRAIN, 10_000_000L), // 10,000 粮
             0L,
             List.of(),
@@ -177,6 +183,8 @@ class EconomyCycleBoundaryTest {
                 cycleDays,
                 cycleDays,
                 farm.capacityPerUnit(),
+                // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+                farm.capacity(),
                 farm.dailyInputPerUnit(),
                 farm.dailyLaborPerUnit(),
                 farm.laborPerUnit(),
@@ -214,6 +222,8 @@ class EconomyCycleBoundaryTest {
                     farm.cycleDays(),
                     farm.progressDays(),
                     farm.capacityPerUnit(),
+                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
+                    farm.capacity(),
                     farm.dailyInputPerUnit(),
                     farm.dailyLaborPerUnit(),
                     farm.laborPerUnit(),
@@ -233,7 +243,6 @@ class EconomyCycleBoundaryTest {
                     0L, // 人口
                     0L, // 有效劳动
                     row.participationPerMille(),
-                    row.meansOfProduction(),
                     Map.of(), // 库存清空 ⇒ "没凭空造粮"这条断言才有判别力
                     row.money(),
                     row.debts(),
