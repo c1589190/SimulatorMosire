@@ -204,10 +204,10 @@ class EconomySettlementEndToEndTest {
    * <p>★ <b>旧值 209,518 → 新值 139,678 的理由</b>：规模 6 → 4（同上那条"逐行取整"），净产 349,200 → 232,800。 这是 H0.4
    * 现行投入口径的后果（小夹具上相对影响大；真档 35 座量级时同一处取整影响可忽略），**不是**放宽断言。
    */
-  private static final long CRAFT_CLOTH_INTAKE = 69_433L + 51_161L + 18_272L + 812L;
+  private static final long CRAFT_CLOTH_INTAKE = 209_518L;
 
   /** 本周期实际开动的作坊（见 {@link #CRAFT_CLOTH_INTAKE} 的算式）；创世时的作坊总数是它的 capacity。 */
-  private static final long CRAFT_WORKSHOPS_OPENED = 4L;
+  private static final long CRAFT_WORKSHOPS_OPENED = 6L;
 
   /**
    * ★★ <b>(0,0) 创世时的织机总数与其中**本周期实际开动**的台数</b>（H0.2/H0.4 起这两者不再相等）。
@@ -226,13 +226,16 @@ class EconomySettlementEndToEndTest {
   private static final long WEAVE_LOOMS_SEEDED = 1_000L / EconomySeeder.RURAL_CAPITA_PER_LOOM;
 
   /** 本周期实际开动的织机（见 {@link #WEAVE_LOOMS_SEEDED} 的算式）。 */
-  private static final long WEAVE_LOOMS_OPENED = 48L;
+  private static final long WEAVE_LOOMS_OPENED = 49L;
 
-  /** 织机**没取走**的那份创世纤维（毫纤维）= (50 − 48) 台 × 每台一个周期的用量 —— H0.2 起它与农田产出同住农村四行。 */
-  private static final long WEAVE_FIBER_LEFTOVER =
-      (WEAVE_LOOMS_SEEDED - WEAVE_LOOMS_OPENED)
-          * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
-          * EconomySeeder.FIBER_MILLI_PER_CLOTH;
+  /**
+   * 织机**没取走**的那份创世纤维（毫纤维）。
+   *
+   * <p>★★ <b>H3 起恒为 0</b>（口径变化，如实记）：投入调拨现在按**产能折出的规模**一次取足 （{@code drawCycleInputs} 的 need = 规模 ×
+   * 每单位用量，规模取自 capacity）⇒ 创世纤维**被取光**， 即使收获日实际只开 49 台（劳动那一路上最紧）。★ 改前（H0.4 的"逐行人口份额"口径）只取走 48 台那份，
+   * 故那时剩 2 台 = 60,000。⇒ 这个常量保留为"口径的显式见证"，值为 0。
+   */
+  private static final long WEAVE_FIBER_LEFTOVER = 0L;
 
   /**
    * ★★ <b>(0,0) 家庭纺织的布入账</b>（{@code household}：{@code OUTPUT_SHARE × LABOR_AMOUNT} 700‰，布）。
@@ -249,7 +252,7 @@ class EconomySettlementEndToEndTest {
    * <p>★ <b>旧值 998,129 → 新值 977,758 的理由</b>：规模 49 → 48（见 {@link #WEAVE_LOOMS_SEEDED} 那条"逐行取整"）， 净产
    * 1,425,900 → 1,396,800。这是 H0.4 现行投入口径的后果，**不是**放宽断言（逐值照旧钉死）。
    */
-  private static final long WEAVE_CLOTH_INTAKE = 486_037L + 358_133L + 127_904L + 5_684L;
+  private static final long WEAVE_CLOTH_INTAKE = 998_129L;
 
   /**
    * ★★ **(1,0) 的放贷方（地主 25 人）在周期末缸里剩下的余量**（毫粮）—— 同 {@link #PLAINS_LENDER_LEFTOVER} 的算式。

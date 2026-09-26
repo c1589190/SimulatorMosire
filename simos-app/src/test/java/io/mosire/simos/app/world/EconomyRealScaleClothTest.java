@@ -176,20 +176,21 @@ class EconomyRealScaleClothTest {
         .as("★ 判据 ②（原文）：推一年后该格的 CLOTH 库存 > 0")
         .isPositive();
     assertThat(fiberOf(afterOneCycle.actor(), afterOneCycle.economy()))
-        .as("★ 农田第 120 天真的产出了纤维（规模受**种子**那一路上限 3,098 亩 ⇒ 3,098 × 6 × 1000 × 0.97 净产）")
+        .as("★ 农田第 120 天真的产出了纤维（H3 起满种：产能 3,100 亩 ⇒ 3,100 × 6 × 1000 × 0.97 净产）")
         .isEqualTo(
-            3_098L
+            3_100L
                 * EconomySeeder.FIBER_OUTPUT_PER_MU
                 * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
                 * 970L
                 / 1000L);
-    // ★★ **H0.4 起这条判据的形态变了**（如实记，见 {@code EconomySettlement.rowSharesOf}）：取材的**投入需求按
-    //   "逐行份额"设上限**（⌊产能规模 × 本行人口 ÷ 该产业家户行人口⌋），而农田的纤维入账**集中在少数行** ⇒
-    //   四行合计取得到的那份**小于**缸里那份 ⇒ 每年剩下一截攒着。年末的逐值 = 24,001,080 毫纤维。
+    // ★★ **H3 起这条判据的形态又变了**（如实记，这是"取材取不满"被修好的直接读数）：
+    //   投入调拨由 {@code relation.inputSupplier} 按**产能折出的规模一次取足** ⇒ 织机把当期该取的纤维取光，
+    //   缸里只剩**逐行⌊⌋的余数**。年末的逐值 = **6,000** 毫纤维（改前口径 24,001,080 —— 因为旧口径按
+    //   "逐行人口份额"设上限，而纤维入账集中在少数行 ⇒ 取不满、逐年攒着；那条口径已被删除）。
     //   ★ 判据的另一半（"织机不停工"）由下面那条"布逐周期增长"承担 —— 它仍然成立。
     assertThat(fiberOf(afterOneYear.actor(), afterOneYear.economy()))
-        .as("年末缸里的纤维 = 3 个周期的产出 − 织机取走的那部分（H0.4 起取材取不满，见上注）")
-        .isEqualTo(24_001_080L)
+        .as("年末缸里的纤维 = 3 个周期产出取完后的⌊⌋余数（H3 起取材取满）")
+        .isEqualTo(6_000L)
         .isNotZero();
     // ★★ **R4（T0）取代了 R3 那条"第 2 周期起停工"的如实记**：本格每个周期都能从农田取到新一期的纤维 ⇒
     //   纺织**持续**，布库存逐周期增长（下一条与 {@link #weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms}
@@ -382,10 +383,12 @@ class EconomyRealScaleClothTest {
   @Test
   void weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms() {
     EconomyData shared = seeded();
-    // ★ 农田的纤维净产（取值上限）：收获的规模 3,098 亩由**种子**那一路卡住（与 R3 记的同一个瓶颈，
-    //   见本文件上方那条 3,098 的注释）⇒ 净产 = 3,098 × 6 × 1000 × 0.97 = 18,030,360 毫纤维。
+    // ★ H3（口径变化）：投入改由 relation.inputSupplier 按**产能折出的规模一次取足** ⇒ 本夹具种子够满种，
+    //   收获规模 = **产能 3,100 亩**（改前按逐行人口份额分摊、逐行⌊⌋ ⇒ 只到 3,098 亩）
+    //   ⇒ 净产 = 3,100 × 6 × 1000 × 0.97 = 18,042,000 毫纤维。★ "缺料则缩产"仍由 economy 的
+    //   EconomySowingTest（佃农缸空 ⇒ 0 亩）守着。
     long farmNetFiber =
-        3_098L
+        3_100L
             * EconomySeeder.FIBER_OUTPUT_PER_MU
             * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
             * 970L
@@ -423,7 +426,11 @@ class EconomyRealScaleClothTest {
     assertThat(weaveClothIncome(cycle3.economy(), WEAVE))
         .as("★ 第 3 周期：同样没有停工（精确值同上，如实记）")
         .isPositive();
-    assertThat(farmNetFiber).as("农田一个周期的纤维净产（取材量的上限）").isEqualTo(18_030_360L);
+    // ★ H3（口径变化，如实记）：投入调拨改由 relation.inputSupplier 按**产能折出的规模一次取足** ⇒
+    //   本夹具的种子够满种 ⇒ 农田规模 = **产能 3,100 亩**（改前按"逐行人口份额"分摊、逐行⌊⌋ ⇒ 只到 3,098 亩）。
+    //   算式：3,100 × 6 × 1000 × 0.97 = 18,042,000。
+    //   ★ "缺料则缩产"那条机构仍由 economy 的 EconomySowingTest（佃农缸空 ⇒ 0 亩）守着。
+    assertThat(farmNetFiber).as("农田一个周期的纤维净产（取材量的上限；H3 起 = 满种）").isEqualTo(18_042_000L);
     assertThat(loomNeedPerCycle).as("织机满负荷一个周期要多少纤维（缺口那一侧）").isEqualTo(22_200_000L);
 
     // ★ 布库存**逐周期增长**（这是 brief 给 R4 的真档判据 ③ 在本夹具上的形态；真档上由

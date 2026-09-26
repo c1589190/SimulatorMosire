@@ -56,10 +56,16 @@ import org.junit.jupiter.api.Test;
  * 人口 14,806 按 450/350/150/50 切 ⇒ 6,663 / 5,183 / 2,220 / 740（残差 2 按槽位 id 序补前两槽）
  * 产能 3,100,000 千分亩（= 3,100 亩 ÷ 每单位 1,000 千分亩 ⇒ 规模 = 3,100 亩）
  * 本行"想扣多少"的份额 = ⌊3,100 亩 × 本行人口 ÷ 14,806⌋ ⇒ 1,395 / 1,084 / 465 / 154 亩
- * 满种种子 = Σ(份额 × 8,000 毫粮/亩) = 3,098 亩 × 8,000 = 24,784,000 毫粮
+ * 满种种子 = Σ(份额 × 8,000 毫粮/亩) = 3,100 亩 × 8,000 = 24,800,000 毫粮
  * 各行储备（贫 30 / 中 60 / 富 120 / 地 250 天）都付得起自己那一份 ⇒ 满种（第三路**存在但不缩地**）
- * 收获：可支撑亩 = 24,784,000 ÷ 8,000 = 3,098 亩（&lt; 产能 3,100 亩、&lt; 劳动可经营 51,698 亩）⇒ **种子是那一年的瓶颈**
- * 毛产 = 3,098 × 67 × 1000 = 207,566,000 ⇒ 净（扣饲料 0‰ + 折旧 30‰）201,339,020
+ * 收获：可支撑亩 = 24,800,000 ÷ 8,000 = 3,100 亩（**＝** 产能 3,100 亩、&lt; 劳动可经营 51,698 亩）
+ * ⇒ ★★ <b>H3 起"种子"不再是瓶颈，最紧的那一路是【土地】</b>（口径变化，如实记）：改前投入按"逐行人口份额"
+ * 分摊、逐行⌊⌋ ⇒ 满种量只到 3,100 亩（比产能少 2 亩）⇒ 种子看起来是瓶颈；H3 改成由
+ * {@code relation.inputSupplier} <b>按产能规模一次取足</b> ⇒ 种子恰好够满种。
+ * ★ 而"<b>缺料 ⇒ 面积缩 ⇒ 减产</b>"这条机构<b>没有被丢掉</b>：它现在由 economy 模块的
+ * {@code EconomySowingTest.eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow} 守着
+ * （佃农家户缸空 ⇒ 0 亩、缸足 ⇒ 满种，逐值判据）。本文件因此改述为「<b>真档规模下最紧那一路是谁</b>」。
+ * 毛产 = 3,100 × 67 × 1000 = 207,566,000 ⇒ 净（扣饲料 0‰ + 折旧 30‰）201_469_000
  * </pre>
  *
  * <p>★ 缸全空时：播种日扣 0 ⇒ 可支撑 0 亩 ⇒ **颗粒无收**；而**未配种子的对照格**照常按产能满产 3,100 × 67 × 1000 × 0.97 = 201,469,000
@@ -135,8 +141,14 @@ class EconomyRealScaleSeedBottleneckTest {
    * <p>★ 与 {@code EconomySettlement.rowSharesOf} 是**同一个算式**（那里的"该产业家户行"= 由劳动配额表推出的本格农村四行）——
    * 于是"每行想扣多少种子"与这里读到的份额同源，而不是把结算的算式在本文件里再抄一遍另一套。
    */
-  private static long rowShareMu(long scaleMu, long population, long householdPopulation) {
-    return scaleMu * population / householdPopulation;
+  /**
+   * ★★ <b>H3 起没有"逐行份额"了</b>：投入调拨由 {@code relation.inputSupplier} 按**产能折出的规模一次取足** （{@code
+   * EconomySettlement.rowSharesOf} 已随 H3 删除）⇒ "这一格能播多少亩" = 产业规模本身 （上限由**供方付得起多少**决定，见下面把家户粮求和的那两处）。
+   *
+   * <p>★ 保留本助手只为让调用点读起来仍是"规模 → 亩"，**它不再按人口分摊**。
+   */
+  private static long payableMu(long scaleMu) {
+    return scaleMu;
   }
 
   /** 该格农业的规模（亩）= {@code capacity[LAND] ÷ capacityPerUnit[LAND]}（两位都是千分亩 ⇒ 结果是亩）。 */
@@ -159,7 +171,7 @@ class EconomyRealScaleSeedBottleneckTest {
    * 结算后    = Industry.cycleLaborMilli（第 1 天，**逐产业**）
    * </pre>
    *
-   * <p>★★ **它仍然是"真档数字一个都不变"最直接的一条判据**：真档种子的瓶颈（3,098 亩）与土地（3,100 亩）都**不是劳动** ⇒ 农业让出的那 100‰
+   * <p>★★ **它仍然是"真档数字一个都不变"最直接的一条判据**：真档种子的瓶颈（3,100 亩）与土地（3,100 亩）都**不是劳动** ⇒ 农业让出的那 100‰
    * 不动收获一分一厘（本文件其余关于种子瓶颈的字面量因此原样站得住）。 ★ 判别力：三者中任何一处改口径而另两处没跟上，本条当场红。
    */
   @Test
@@ -236,13 +248,11 @@ class EconomyRealScaleSeedBottleneckTest {
   // ── ① 真档真的配了种子、且真的扣了（满种）────────────────────────────────────────────
 
   /**
-   * ★★ **真档载荷里带着定案数**（8 粮/亩），且**每一行都付得起自己那份** ⇒ 播种日扣满 {@code 3,098 亩 × 8,000 = 24,784,000
+   * ★★ **真档载荷里带着定案数**（8 粮/亩），且**每一行都付得起自己那份** ⇒ 播种日扣满 {@code 3,100 亩 × 8,000 = 24,800,000
    * 毫粮}（真档的"标定实质不变"就建立在"种子买得起"这一点上）。
    *
-   * <p>★ **3,098 而非 3,100**：H0.3/K3 把产能从"行"搬到产业之后，"本行想扣多少"改成 {@code ⌊产业规模 × 本行人口 ÷ 本格农村人口⌋}（{@code
-   * EconomySettlement.rowSharesOf} 是唯一算式）—— 四行**各自**向下取整 （1,395 / 1,084 / 465 / 154），故 Σ份额 ≤ 产业规模。★
-   * 实测：H0 前那条"按行土地的千分亩折亩"也恰得 3,098（3,098 不是巧合， 是同一批人口的同一组份额），本用例因此**逐值不变**。★
-   * 方向是安全的：第三路只**缩**面积、永不放大（{@code seedCapMu ≤ availableMu}）。
+   * <p>★★ <b>H3 起：满种量 = 3,100 亩</b>（口径变化，如实记）—— 改前"逐行人口份额 + 逐行⌊⌋"只到 3,098 亩； 现在由 {@code
+   * relation.inputSupplier} 按产能规模一次取足，而真档家户付得起 ⇒ 满种。★ 方向仍安全： 第三路只**缩**面积、永不放大（付不起时按实扣算）。
    */
   @Test
   void theRealScaleHexSowsEveryMuItHasMoneyForOnTheSowingDay() {
@@ -259,20 +269,18 @@ class EconomyRealScaleSeedBottleneckTest {
     long scaleMu = farmScaleMu(seeded);
     List<ClassRow> rows = farmRows(seeded);
     ActorData books = realScaleBooks();
-    long householdPopulation = rows.stream().mapToLong(ClassRow::population).sum();
-    long needMilli = 0L;
+    // ★ H3：满种量 = 产业规模（亩）× 每亩需种 —— **不再按人口分摊**（那条公式已删）。
+    long needMilli = payableMu(scaleMu) * EconomySeeder.SEED_MILLI_PER_MU;
+    // ★ H1/H3：储备住在 actor 侧的账本上（行里没有 goods 这一栏）；供方 = relation.inputSupplier
+    //   （四档默认 = 经营者；真档经营者在创世没有账 ⇒ 结算回落到该产业名下家户账）⇒ 这里按**合计**核。
+    long payable = 0L;
     for (ClassRow row : rows) {
-      // 本行那一份种子 = 本行份额（亩）× 每亩需种（毫粮/亩）
-      long need =
-          rowShareMu(scaleMu, row.population(), householdPopulation)
-              * EconomySeeder.SEED_MILLI_PER_MU;
-      needMilli += need;
-      // ★ H1：储备住在 actor 侧的账本上（行里没有 goods 这一栏）。
-      assertThat(householdGoods(books, row.key(), EconomySettlement.GRAIN))
-          .as("行 %s 的储备必须付得起它那一份种子（%d 毫粮）", row.key(), need)
-          .isGreaterThanOrEqualTo(need);
+      payable += householdGoods(books, row.key(), EconomySettlement.GRAIN);
     }
-    assertThat(needMilli).as("满种量 = 3,098 亩 × 8,000 毫粮/亩").isEqualTo(24_784_000L);
+    assertThat(payable)
+        .as("该产业名下家户的粮合计必须付得起满种量（%d 毫粮）", needMilli)
+        .isGreaterThanOrEqualTo(needMilli);
+    assertThat(needMilli).as("满种量 = 3,100 亩 × 8,000 毫粮/亩").isEqualTo(24_800_000L);
 
     EconomyData sowingDay = EconomyOwnershipFixture.advanceEconomy(seeded, books, MAP_ID, 1L);
 
@@ -281,23 +289,18 @@ class EconomyRealScaleSeedBottleneckTest {
   }
 
   /**
-   * ★★ **收获面积由"实际扣到的种子"决定**（第三路瓶颈逐值）：可支撑 {@code 24,784,000 ÷ 8,000 = 3,098 亩}， 小于产业产能 3,100
+   * ★★ **收获面积由"实际扣到的种子"决定**（第三路瓶颈逐值）：可支撑 {@code 24,800,000 ÷ 8,000 = 3,100 亩}， 小于产业产能 3,100
    * 亩、远小于劳动可经营的 51,698 亩 ⇒ **它是那一年最短的那块**。
    *
-   * <p>★ 3,098 而非 3,100：{@code ⌊产业规模 × 本行人口 ÷ 家户人口和⌋} 是**逐行向下取整**的，四行合计少了 2 亩。第三路只**缩**
-   * 面积、永不放大（{@code seedCapMu ≤ availableMu}），这个方向是安全的。
+   * <p>★★ <b>H3 起：3,100 就是 3,100</b>（不再有"逐行取整少 2 亩"）—— 投入按产能规模一次取足。
    */
   @Test
   void theSownSeedIsTheBottleneckThatDecidesTheHarvestArea() {
     EconomyData seeded = realScaleHex();
     long scaleMu = farmScaleMu(seeded);
     List<ClassRow> rows = farmRows(seeded);
-    long householdPopulation = rows.stream().mapToLong(ClassRow::population).sum();
-    long seedCapMu = 0L;
-    for (ClassRow row : rows) {
-      seedCapMu += rowShareMu(scaleMu, row.population(), householdPopulation);
-    }
-    assertThat(seedCapMu).as("可支撑亩 = Σ 本行份额（满种时它恰等于产业规模的向下取整损失后的那份）").isEqualTo(3_098L);
+    long seedCapMu = payableMu(scaleMu); // H3：不再按人口分摊（见 payableMu 的注释）
+    assertThat(seedCapMu).as("可支撑亩 = Σ 本行份额（满种时它恰等于产业规模的向下取整损失后的那份）").isEqualTo(3_100L);
 
     EconomyOwnershipFixture.Result afterHarvest =
         EconomyOwnershipFixture.advance(
@@ -306,11 +309,17 @@ class EconomyRealScaleSeedBottleneckTest {
     // ★★ T4 起**净产**要在两处合读：行里收到的**关系入账** + {@code operator} 账上留下的那一份
     //   （账户 = {@code (ESTATE:farm@0_0, 0_0)}）。毛产 = 净产 ÷ 0.97（损耗 30‰ 只进 `ProductionLedger.losses`）。
     assertThat(harvestGrainNet(afterHarvest))
-        .as("净产 = 3,098 亩 × 67 粮/亩 × 1000 × 0.97（**按种子可支撑的亩数**，不是按 3,100 亩）")
-        .isEqualTo(3_098L * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 970L / 1000L);
+        .as("净产 = 满种 3,100 亩 × 67 粮/亩 × 1000 × 0.97（H3 起种子**付得起满种** ⇒ 最紧的是土地）")
+        .isEqualTo(3_100L * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 970L / 1000L);
+    // ★★ **判别力换了一条**（如实记，不许静默）：改前这里断言"净产 ≠ 3,100 亩那一档"，
+    //   因为种子当时卡在 3,098 亩 ⇒ 收获**小于**满种。H3 起投入按产能一次取足、而真档付得起 ⇒ 两者相等，
+    //   那条判据**失去了被对照的另一半**。⇒ 改为钉"**满种 ⇒ 净产恰等于产能那一档**"，
+    //   而"缺料 ⇒ 面积缩 ⇒ 减产"这条机构由 economy 模块的
+    //   {@code EconomySowingTest.eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow}
+    //   （佃农家户缸空 ⇒ 0 亩；缸 10,000 ⇒ 100 亩；缸足 ⇒ 400 亩，逐值）承担。
     assertThat(harvestGrainNet(afterHarvest))
-        .as("★ 判别力：若第三路没进 min（退回两路），这里会是 3,100 亩的 201,469,000")
-        .isNotEqualTo(
+        .as("★ 满种 ⇒ 净产恰等于【产能那一档】（3,100 亩）")
+        .isEqualTo(
             EconomySeeder.MU_PER_HEX * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 970L / 1000L);
   }
 

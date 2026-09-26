@@ -13,9 +13,11 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.gui.ApiViews;
@@ -36,6 +38,8 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
@@ -655,6 +659,18 @@ class WorldgenInitializeToolTest {
         .sum();
   }
 
+  /**
+   * 某个** actor 在某一格**账上某商品的余额（H3：供方可能是聚合主体而不仅是家户）；缺席 ⇒ 0。
+   *
+   * <p>★ 账户键 = {@code (actor, location)}（{@code GoodsAccountKey} 的形状）—— 这里直接按该形状拼， **不**经 {@code
+   * HouseholdActors}（那个只服务家户）。
+   */
+  private static long householdGoods(
+      ActorData books, ActorRef actor, HexCoord hex, CommodityId commodity) {
+    GoodsAccount account = books.accounts().get(new GoodsAccountKey(actor, hex));
+    return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
+  }
+
   /** 某个家户账上某商品的余额（H1）：账户键经 {@link OwnershipBooks#accountKeyOf} 拼（不复述格式）；缺席 ⇒ 0。 */
   private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
     GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
@@ -961,15 +977,16 @@ class WorldgenInitializeToolTest {
   /**
    * ★ **播种日**（周期第一天）逐行扣的种子（毫粮）：v2 spec §3.2/§3.3 的规则从**推进前**的账面独立算出。
    *
-   * <p>★★ **H0.3（K3）起产能住在产业上**（{@code ClassRow.meansOfProduction} 已删）⇒ "这一行想扣多少"不再是"它自己占有的亩数 ×
-   * 每亩需种"，而是结算那条唯一算式（见 {@code EconomySettlement.rowSharesOf}）：
+   * <p>★★ **H3 起口径变了**（如实记，这是本助手必须跟着改的原因）：投入调拨改由 {@code ProductionRelation.inputSupplier}
+   * **按产能折出的规模一次取足**，不再按"逐行人口份额"分摊 （那条 {@code rowSharesOf} 已被删除）：
    *
    * <pre>
    * 该产业规模 scale = min over k ∈ capacityPerUnit: ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋   // 农业 = ⌊千分亩 ÷ 1000⌋
-   * 本行份额 rowShare = ⌊scale × 本行人口 ÷ 该产业家户行的人口之和⌋
-   * 本行想扣的种子 = rowShare × inputPerUnit[grain]（= {@link EconomySeeder#SEED_MILLI_PER_MU} 毫粮/亩）
-   * 实扣 = min(该行粮库存, 想扣)        // 缸空 ⇒ 扣光，收获日"投入那一路"瓶颈跟着缩
+   * 想扣 = scale × inputPerUnit[grain]（= {@link EconomySeeder#SEED_MILLI_PER_MU} 毫粮/亩）
+   * 实扣 = min(供方账上的粮, 想扣)      // 供方 = relation.inputSupplier（四档默认 = 经营者）
    * </pre>
+   *
+   * <p>★ 故"缸空 ⇒ 面积缩"这条机构现在由**供方那一个主体的缸**决定，而不是"逐行各扣各的"。
    *
    * <p>★ 只算**配方里有粮**的产业（真档 = 农业；织机吃纤维、作坊吃纤维 + 铁 ⇒ 恒贡献 0）；"该产业的家户行"按**劳动配额表**认 （H0
    * 起行里没有产业了：出劳动的那批人住哪儿，就是它的家户 —— 与结算的 {@code householdKeysOf} 同一口径）⇒ 旧口径下"无地行（真档里每座城的手工业行）恒贡献
@@ -985,25 +1002,6 @@ class WorldgenInitializeToolTest {
       if (seedPerMu <= 0L) {
         continue; // 配方里没有粮 ⇒ 播种日不为它扣种子
       }
-      // ★ "该产业的家户行"：给它出劳动的那些批次是农村还是城镇（前缀 → 居住类型的唯一拼写点在 ResidenceKind）。
-      Set<ResidenceKind> residences = new LinkedHashSet<>();
-      for (LaborAllocation allocation : economy.allocations().values()) {
-        if (allocation.actor().id().equals(entry.getKey().value())) {
-          residences.add(ResidenceKind.ofLot(allocation.group()));
-        }
-      }
-      HexCoord hex = HexCoord.parse(IndustryHexKeys.hexKeyOf(entry.getKey()).orElseThrow());
-      List<ClassRow> rows = new ArrayList<>();
-      long population = 0L;
-      for (ClassRow row : economy.classes().values()) {
-        if (row.key().hex().equals(hex) && residences.contains(row.key().residence())) {
-          rows.add(row);
-          population += row.population();
-        }
-      }
-      if (population <= 0L) {
-        continue; // 这个产业没有人口 ⇒ 没有人替它出料（与 rowSharesOf 的门槛逐字一致）
-      }
       long scale = Long.MAX_VALUE;
       for (Map.Entry<AssetKind, Long> perUnit : industry.capacityPerUnit().entrySet()) {
         scale =
@@ -1013,11 +1011,33 @@ class WorldgenInitializeToolTest {
       if (scale == Long.MAX_VALUE || scale <= 0L) {
         continue; // 本格没有产能（沙漠格的 LAND = 0）⇒ 没有投入需求
       }
-      for (ClassRow row : rows) {
-        long rowShare = scale * row.population() / population; // ⌊⌋：与结算同一个算式
-        // ★ H1：库存从**家户账本**读（"本行想扣多少"仍按人口占比折算，与结算同一个算式）。
-        sown += Math.min(householdGoods(books, row.key(), GRAIN), rowShare * seedPerMu);
+      // ★ H3：供方由 relation 的 inputSupplier 指名（缺 relation ⇒ 无规则、无调拨）。
+      ProductionRelation relation = economy.relations().get(entry.getKey());
+      if (relation == null) {
+        continue;
       }
+      // ★★ 取料的**实际落点**（H3 口径）：供方若是 economy 看得见的家户账，就从那一本取；
+      //   若是**聚合主体**（真档的 ESTATE 在创世时没有 GoodsAccount）⇒ 结算回落到"该产业名下家户账"，
+      //   故这里按同一口径把那些家户的粮**求和**（不再按人口分摊、也没有逐行⌊⌋）。
+      long available;
+      if (relation.inputSupplier() instanceof Recipient.ToCohort toCohort) {
+        available = householdGoods(books, toCohort.cohort(), GRAIN);
+      } else {
+        available = 0L;
+        Set<ResidenceKind> residences = new LinkedHashSet<>();
+        for (LaborAllocation allocation : economy.allocations().values()) {
+          if (allocation.actor().id().equals(entry.getKey().value())) {
+            residences.add(ResidenceKind.ofLot(allocation.group()));
+          }
+        }
+        HexCoord hex = HexCoord.parse(IndustryHexKeys.hexKeyOf(entry.getKey()).orElseThrow());
+        for (ClassRow row : economy.classes().values()) {
+          if (row.key().hex().equals(hex) && residences.contains(row.key().residence())) {
+            available += householdGoods(books, row.key(), GRAIN);
+          }
+        }
+      }
+      sown += Math.min(available, scale * seedPerMu);
     }
     return sown;
   }
