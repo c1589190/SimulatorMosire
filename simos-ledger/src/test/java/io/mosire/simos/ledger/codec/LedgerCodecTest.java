@@ -3,8 +3,8 @@ package io.mosire.simos.ledger.codec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.actor.ActorKind;
-import io.mosire.simos.economy.api.actor.ActorRef;
+import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.AccountId;
 import io.mosire.simos.economy.api.id.ClaimId;
 import io.mosire.simos.economy.api.id.CommodityId;

@@ -15,8 +15,14 @@
 
   <!-- ★ POLITICAL_ECONOMY_DESIGN §2/§10：六个经济切片（property/production/ledger/market/government 与
        social）共用这一层，各切片只依赖 api/util/map，彼此不作源码依赖。
-       api 自己**不依赖任何 simos 领域模块**（只 util + map），故它必须排在领域的更上游。 -->
+       api 自己**不依赖任何 simos 领域模块**（只 actor-api + util + map），故它必须排在领域的更上游
+       （S1 阶段 2 起 actor-api 比它还底层）。 -->
   <dependencies>
+    <!-- ★ S1 阶段 2（裁定 R7 的 A 段）：ActorRef / ActorKind 上移到 actor-api，而 LaborAllocation.actor
+         仍持有 ActorRef ⇒ **不再拥有定义 ≠ 不再引用**，本条是编译期必需。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-actor-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>

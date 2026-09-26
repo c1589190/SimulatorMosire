@@ -1,5 +1,6 @@
 package io.mosire.simos.app.gui;
 
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -15,7 +16,6 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;

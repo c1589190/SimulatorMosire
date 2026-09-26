@@ -3,9 +3,10 @@ package io.mosire.simos.economy.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.api.actor.ActorKind;
-import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;

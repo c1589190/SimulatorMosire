@@ -2,6 +2,7 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
@@ -13,7 +14,6 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;

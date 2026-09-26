@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.model;
+package io.mosire.simos.actor.api.asset;
 
 /**
  * 生产资料种类（新经济设计 §3.1）：土地、耕牛、工具、工坊、机器、船只。**可扩展**——新增一档不改任何既有形状。

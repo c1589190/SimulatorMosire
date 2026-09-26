@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;

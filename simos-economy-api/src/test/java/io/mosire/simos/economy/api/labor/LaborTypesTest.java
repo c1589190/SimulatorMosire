@@ -3,8 +3,8 @@ package io.mosire.simos.economy.api.labor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.actor.ActorKind;
-import io.mosire.simos.economy.api.actor.ActorRef;
+import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import org.junit.jupiter.api.Test;

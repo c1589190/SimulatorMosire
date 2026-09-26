@@ -14,9 +14,15 @@
   <description>经济切片骨架（新经济设计 §3 状态形状，无公式）：产业表（制度/周期/进度/日投入/产出/阶层槽位/分配函数）、阶层行（人口/有效劳动/劳动投入率/生产资料/库存/货币/债务引用/需求）、债务表、周期流水，外加激活元信息。生产/分配/税/市场的公式属于 R2+。</description>
 
   <!-- ★ 新经济设计 §2：economy 切片独占产业表 / 阶层行 / 债务表 / 周期流水 / 分配函数。
-       依赖面 = util（FieldDelta/Snapshot/地址与解析机制）+ economy-api（IndustryId/ClassSlotId/RegimeId/
-       DebtId/CommodityId——共用稳定 ID）+ Jackson。**不依赖 map**：经济树里没有任何地图类型（本切片不认识 hex）。 -->
+       依赖面 = actor-api（AssetKind——S1 阶段 2 上移的产权基础词表）+ util（FieldDelta/Snapshot/地址与解析机制）
+       + economy-api（IndustryId/ClassSlotId/RegimeId/DebtId/CommodityId——共用稳定 ID）+ Jackson。
+       **不依赖 map**：经济树里没有任何地图类型（本切片不认识 hex）。 -->
   <dependencies>
+    <!-- ★ S1 阶段 2（裁定 R7 的 A 段）：AssetKind 上移后原先靠 economy-api 传递拿到，现按本模块的
+         "依赖传递不是契约"口径**显式**声明。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-actor-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>

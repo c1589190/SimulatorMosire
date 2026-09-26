@@ -2,8 +2,8 @@
  * LedgerSimos —— 账本切片（增量 2 spec §三 的 v1 状态形状）。
  *
  * <p><b>本切片只写自己的数据</b>：账户库存与货币、应收应付的索取权、双边转移凭据（append-only 流水），外加一份 激活元信息。{@code AccountId}/{@code
- * ClaimId}/{@code TransferId}/{@code CommodityId} 与 {@code ActorRef} 一律取自 {@code
- * simos-economy-api}（铁律 1：不在切片里另造同义 ID）。
+ * ClaimId}/{@code TransferId}/{@code CommodityId} 一律取自 {@code simos-economy-api}、{@code ActorRef}
+ * 取自更底层的 {@code simos-actor-api}（铁律 1：不在切片里另造同义 ID）。
  *
  * <p><b>守恒不在本切片</b>：每一笔转移的 {@code 买方扣款 = 卖方入账 + 政府税入账 + 运输方收入}、{@code 卖方出货 = 买方/在途入货 + 明示损耗}，
  * 以及借款"只搬现有的钱/粮、不凭空造现钞"，都由**命令层/协调器**校验，**不落成第二份真相**——本切片只留账， 不留"校验结论"。

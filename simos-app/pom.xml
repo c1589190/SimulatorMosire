@@ -29,9 +29,14 @@
     </dependency>
     <!-- ★ R1 / spec §八.3：本模块**用了** util（56 个 main 文件）与 economy-api（2 个）却只靠**传递依赖**
          拿到它们——本仓早已把同款情形定性为缺陷并修过（`simos-core/pom.xml`："**依赖传递不是契约**"）。
-         此处补上显式声明。版本由父 POM 的 dependencyManagement 提供。 -->
+         此处补上显式声明。版本由父 POM 的 dependencyManagement 提供。
+         ★ S1 阶段 2：actor-api（ActorKind 用于 EconomySeeder、AssetKind 用于 ApiViews）同属此类 ——
+         原先经 economy-api 传递拿到，一并显式声明。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-actor-api</artifactId>
     </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>

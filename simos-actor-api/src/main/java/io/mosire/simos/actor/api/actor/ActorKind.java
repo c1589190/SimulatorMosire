@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.api.actor;
+package io.mosire.simos.actor.api.actor;
 
 import java.util.Arrays;
 

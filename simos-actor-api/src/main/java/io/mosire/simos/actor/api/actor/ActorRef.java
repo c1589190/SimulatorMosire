@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.api.actor;
+package io.mosire.simos.actor.api.actor;
 
 /**
  * 经济主体引用（设计稿 §2）：**种类 + 稳定 id** 两件，跨模块引用任何经济主体而不依赖它所在的切片。

@@ -1,7 +1,7 @@
 package io.mosire.simos.app.world;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;

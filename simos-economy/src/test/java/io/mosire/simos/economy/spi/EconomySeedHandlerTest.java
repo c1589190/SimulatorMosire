@@ -3,10 +3,12 @@ package io.mosire.simos.economy.spi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.actor.ActorKind;
-import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -15,12 +17,12 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -148,6 +150,35 @@ class EconomySeedHandlerTest {
     assertThat(allocation.activity()).isEqualTo("farm");
     assertThat(allocation.laborMilli()).isEqualTo(250_000L);
     assertThat(allocation.period()).isEqualTo(1L);
+  }
+
+  /**
+   * ★★ **I2.1 的格式护栏**（上移 {@code ActorRef} 之前先钉住既有行为，裁定 R4）：载荷里的 {@code
+   * "actor":{"kind":"ESTATE","id":"farm@0_0"}} 这一串**逐值**还原，且**再编码回去仍是同一串**。
+   *
+   * <p>★ 为什么必须有它：本仓**没有** JSON 黄金夹具，{@code ActorRef} 的线格式只能靠测试钉住 —— 一旦有人给它加 Jackson 注解、把 {@code
+   * kind} 写成 ordinal、或换个字段名，线格式就变了，而"上移"这件事本身不许碰它（R1/R4）。 故它是上移**唯一**的格式护栏，且必须**先绿后搬**。
+   */
+  @Test
+  void actorRefPayloadRoundTripsValueForValue() throws Exception {
+    JsonNode payload = EconomyPayloads.parse(PAYLOAD_WITH_LABOR);
+    JsonNode actorNode = payload.at("/entries/0/allocations/0/actor");
+    assertThat(actorNode.isMissingNode()).as("载荷里必须有 actor 节点（否则本用例测的是空气）").isFalse();
+    assertThat(actorNode.toString())
+        .as("载荷字面：字段名 kind/id + 枚举 name()")
+        .isEqualTo("{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}");
+
+    // ① 载荷 → 领域类型：kind 与 id 逐值还原
+    EconomyData after = apply(PAYLOAD_WITH_LABOR, EconomyData.empty(), T7);
+    ActorRef actor =
+        after.allocations().get(new LaborAllocationId("alloc-farm@0_0-rural:0_0:MALE:1")).actor();
+    assertThat(actor.kind()).as("kind 逐值还原").isEqualTo(ActorKind.ESTATE);
+    assertThat(actor.id()).as("id 逐值还原").isEqualTo("farm@0_0");
+
+    // ② 领域类型 → JSON：再编码回去仍是同一串（SimosObjectMapper 就是落盘用的那台 mapper）
+    assertThat(SimosObjectMapper.create().writeValueAsString(actor))
+        .as("ActorRef 的线格式一字不改")
+        .isEqualTo("{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}");
   }
 
   /**

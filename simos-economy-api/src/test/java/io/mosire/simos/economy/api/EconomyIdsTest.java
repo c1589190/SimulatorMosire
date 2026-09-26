@@ -3,8 +3,6 @@ package io.mosire.simos.economy.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.actor.ActorKind;
-import io.mosire.simos.economy.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.AccountId;
 import io.mosire.simos.economy.api.id.AssetId;
 import io.mosire.simos.economy.api.id.AssetRightId;
@@ -31,7 +29,10 @@ import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 /**
- * 共用契约的稳定 ID 三件套与 {@link ActorRef} 的护栏（设计稿 §2/§3，铁律 1）。
+ * 共用契约的稳定 ID 三件套的护栏（设计稿 §2/§3，铁律 1）。
+ *
+ * <p>★ S1 阶段 2：{@code ActorRef} / {@code ActorKind} 的护栏**随类型搬到 {@code simos-actor-api}** （那边的
+ * {@code ActorTypesTest}）—— 它们的家已不在本模块，故本类也不再覆盖它们。
  *
  * <p>★ **覆盖方式**：{@link #IDS} 是**逐类登记的清单**，循环对每一个 ID 断言同一组性质。清单用 {@code hasSize(20)} 钉住 ——漏登记一个 ID
  * 就等于那一类没有护栏（"数个数对张冠李戴零判别力"，但这里的清单同时是**遍历源**，少一项立刻少一类断言， 故个数断言与循环互补）。
@@ -116,82 +117,5 @@ class EconomyIdsTest {
           .as("%s.parse 与构造器同值", what)
           .isEqualTo(id.create().apply(sample));
     }
-  }
-
-  /**
-   * ★★ **逐值断言**（R2 由四档扩到七档）：扩枚举是 {@code LaborAllocation.actor} 选了 {@code ActorRef} 的代价 （第三阶段设计稿
-   * §八.1 明写"要扩枚举 + 同步改 {@code EconomyIdsTest} 的逐值断言"），故本条就是那份"连带改"。
-   *
-   * <p>★ 前四档的**次序与拼写一字不动**（它们已进过 JSON：{@code LedgerCodec} 写 {@code kind} 用 {@code name()}）；
-   * 新增三档追加在**末尾**，理由同上——插在中间会让"词表位置"这种没进线格式的东西产生 diff 噪声。
-   */
-  @Test
-  void actorKindCoversTheSevenDocumentedKinds() {
-    assertThat(ActorKind.values())
-        .as("设计稿 §2/§4/§5/§7 的四类主体 + R2 的生产关系三类（家户/庄园/作坊）")
-        .containsExactly(
-            ActorKind.PEOPLE_LOT,
-            ActorKind.UNIT,
-            ActorKind.GOVERNMENT,
-            ActorKind.ORGANIZATION,
-            ActorKind.HOUSEHOLD,
-            ActorKind.ESTATE,
-            ActorKind.WORKSHOP);
-  }
-
-  @Test
-  void actorKindParseRejectsTextOutsideTheVocabularyAndListsLegalValues() {
-    assertThatThrownBy(() -> ActorKind.parse("NOPE"))
-        .as("词表外的种类必须即抛，且消息里列出合法值")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("PEOPLE_LOT")
-        .hasMessageContaining("UNIT")
-        .hasMessageContaining("GOVERNMENT")
-        .hasMessageContaining("ORGANIZATION")
-        .hasMessageContaining("HOUSEHOLD")
-        .hasMessageContaining("ESTATE")
-        .hasMessageContaining("WORKSHOP");
-
-    assertThatThrownBy(() -> ActorKind.parse(null))
-        .as("null 种类即抛")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> ActorKind.parse("  "))
-        .as("空白种类即抛")
-        .isInstanceOf(IllegalArgumentException.class);
-
-    assertThat(ActorKind.parse("UNIT")).isEqualTo(ActorKind.UNIT);
-  }
-
-  @Test
-  void actorRefValidatesKindAndId() {
-    assertThatThrownBy(() -> new ActorRef(null, "u-1"))
-        .as("kind 不得为 null")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ActorRef(ActorKind.UNIT, null))
-        .as("id 不得为 null")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ActorRef(ActorKind.UNIT, "  "))
-        .as("id 不得为空白")
-        .isInstanceOf(IllegalArgumentException.class);
-
-    assertThat(new ActorRef(ActorKind.UNIT, "u-1").toString()).isEqualTo("UNIT:u-1");
-  }
-
-  @Test
-  void actorRefParseHasBothRefusalReasons() {
-    // 拒因 1：kind 词表外
-    assertThatThrownBy(() -> ActorRef.parse("NOPE", "u-1"))
-        .as("kind 词表外即抛")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("PEOPLE_LOT");
-
-    // 拒因 2：id 空白
-    assertThatThrownBy(() -> ActorRef.parse("UNIT", "  "))
-        .as("id 空白即抛")
-        .isInstanceOf(IllegalArgumentException.class);
-
-    // 合法：kind 词表内 + id 非空白
-    assertThat(ActorRef.parse("GOVERNMENT", "g-1"))
-        .isEqualTo(new ActorRef(ActorKind.GOVERNMENT, "g-1"));
   }
 }

@@ -1,6 +1,6 @@
 package io.mosire.simos.economy;
 
-import io.mosire.simos.economy.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;

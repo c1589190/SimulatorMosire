@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import java.util.Collections;
 import java.util.LinkedHashMap;

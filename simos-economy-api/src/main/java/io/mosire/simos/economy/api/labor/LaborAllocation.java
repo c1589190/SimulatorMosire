@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.api.labor;
 
-import io.mosire.simos.economy.api.actor.ActorRef;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 
