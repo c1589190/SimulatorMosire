@@ -542,6 +542,7 @@ class EconomyInvariantsTest {
     return new ProductionRelation(
         activity,
         operator,
+        null,
         List.of(
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,

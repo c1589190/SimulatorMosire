@@ -129,10 +129,11 @@ import java.util.Set;
  *   ΣOutput_j            本期毛产（规模 × outputPerUnit_j × 1000；{@link ProductionLedger#gross()}）
  *   ΣProductionInputs_j  本期现扣投入（现扣步；★ H1 起**从家户账扣** ⇒ 它不再进任何行侧库存）
  *   ΣLoss_j              本期生产损耗 = 毛产 × (饲料 + 折旧)‰（{@link ProductionLedger#losses()}；★ 不在 consumed 里）
- *   ΣFinalConsumption_j  真正被吃掉的 = Σ FlowRow.consumed_j − Σ ProductionInputs_j − Σ 同格取材转出_j
- *                        （★ "转出"那一项只在**纤维**上非零 —— "粮不走这条通道"，见 {@link
- *                          #transferIntraHexInputs}；它与受方 {@code income} 里的那一笔**转入逐值相消**
- *                          ⇒ 纤维的 ΣFinalConsumption ≡ 0；受方转入的读数 = Σ FlowRow.income_j − Σ 关系实付_j）
+ *   ΣFinalConsumption_j  真正被吃掉的 = Σ FlowRow.consumed_j − Σ ProductionInputs_j
+ *                        （★★ H3：**"同格取材转出"那一项已删** —— 那条通道整块删掉了（理由见 {@link
+ *                          #drawCycleInputs} 的方法注释：它会跨主体抢料，实测把城里作坊的纤维取走进而导致
+ *                          工具产量掉到 0）。⇒ 式子少一项，**读数与结算仍然同源**：`consumed` 里现在只有
+ *                          日耗 + 现扣投入（投入在下一步减掉 ⇒ 它不算最终消费），`income` 里只有关系实付）
  *   ΔΣActorGoods_j       **全部 actor 侧账本的库存变化** = 家户账副本的 ΔΣ + 其它 actor（operator）的产权条目净额
  *                        （★ H1 起**没有** {@code ΔΣRowGoods} 这一项了：行里没有商品 —— 它还在 ⇒ 还有一本账没搬完）
  * </pre>
@@ -153,9 +154,10 @@ import java.util.Set;
  * <p>★★ **逐值算例**（5 格端到端夹具，(0,0) 平原 3,100 亩、粮；数字与算式都逐项可核）： ★
  * <b>时效标注（2026-09-27，H0/K3）</b>：下面的数字是**改前**（产能还散在各行 {@code meansOfProduction} 上、 收获规模按
  * Σ各行产能算）的实测。K3 把产能搬到 {@link Industry#capacity()} 之后，**算式形状一字未改**，但 "各行想扣多少"改按人口占比折算 ⇒
- * <b>真档数值会变</b>（K3 已认这个代价，见 {@code ClassRow} 与 {@link #rowSharesOf} 的注释）。 ★★
- * <b>时效标注（2026-09-27，H1）</b>：下面两式的**第一项已换名换物** —— {@code ΔΣRowGoods} 不再存在，同一个位置上现在是 {@code
- * ΔΣActorGoods}（家户账副本 + operator 条目）。⇒ **这些数不再当作判据，只当作"算式怎么读"的例子**。
+ * <b>真档数值会变</b>（K3 已认这个代价，见 {@code ClassRow} 的注释；★ H3 起"各行想扣多少"这条口径 <b>整块删掉</b>（改前的 {@code
+ * rowSharesOf} 已不存在），改由 relation 指名供方）。 ★★ <b>时效标注（2026-09-27，H1）</b>：下面两式的**第一项已换名换物** —— {@code
+ * ΔΣRowGoods} 不再存在，同一个位置上现在是 {@code ΔΣActorGoods}（家户账副本 + operator 条目）。⇒
+ * **这些数不再当作判据，只当作"算式怎么读"的例子**。
  *
  * <pre>
  * 窗口 = 第 119 → 120 天（收获那一天，**改前口径**，留痕不改）：
@@ -180,7 +182,7 @@ import java.util.Set;
  * <p>★★ **代数（逐项当场可核；H1 起第一项换成 actor 侧）**：
  *
  * <pre>
- * 家户： ΔΣHousehold = 关系实付收进 − 投入 − 消费        （同格取材两侧相消，见 transferIntraHexInputs）
+ * 家户： ΔΣHousehold = 关系实付收进 − 投入 − 消费        （H3：投入从**relation 指名的供方**账上出 —— 见 drawCycleInputs）
  * actor： ΔΣOperator  = 毛产 − 损耗 − 关系实付付出        （+净产 → operator，再 −实付）
  * 相加：  ΔΣActorGoods = 毛产 − 损耗 − 投入 − 消费        （实付那一项两侧相消 ⇒ 它不影响总量）
  * ⇒ ΔΣActorGoods + 消费 + 损耗 = 毛产 − 投入 ∎
@@ -533,7 +535,9 @@ public final class EconomySettlement {
 
     // ── 0. 现扣周期投入（周期的第一天）：**在当天吃饭之前**把种子/原料划走（v2 spec §3.2）──────
     //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
-    //   ★★ R4（T0）：这一步里**先做一次同格取材**（把田里的纤维搬到织机上），再各扣各的（见 drawCycleInputs）。
+    //   ★★ H3（C3）：这一步里"谁出料"由 relation.inputSupplier 说 —— 家户供方取它自己那一本账（缸不够就扣光 ⇒ 规模缩）；
+    //     聚合主体（庄园/作坊/产业型家户）的账 economy 看不见 ⇒ 由该产业名下的家户账代理；第一层取不满时同格兜底（粮除外）。
+    //     逐条口径见 {@link #drawCycleInputs} 的方法注释。
     // ★★ **H0：家户 → 它供给的产业**（从配额表推，唯一拼写点见 {@link #industriesOfHouseholds}）——
     //   本日的两处都要它：① 各行流水"本期"何时翻篇（家户没有自己的周期，见流水循环的注释）；
     //   ② 借粮的"本周期自需"要一个 cycleDays（见 {@link #cycleDaysByHousehold}）。
@@ -550,9 +554,9 @@ public final class EconomySettlement {
           industries,
           rows,
           allocations,
+          base.relations(),
           householdGoods,
           consumedGoods,
-          income,
           householdOfActor,
           ledger);
     }
@@ -577,9 +581,9 @@ public final class EconomySettlement {
           industries,
           rows,
           allocations,
+          base.relations(),
           householdGoods,
           consumedGoods,
-          income,
           householdOfActor,
           ledger);
     }
@@ -1055,57 +1059,90 @@ public final class EconomySettlement {
   // ── 现扣周期投入（周期的第一天）────────────────────────────────────────────────────────
 
   /**
-   * ★★ **现扣周期投入步**（v2 spec §3.2/§3.3；**R3/V7 起泛化**）：**周期的第一天**（{@code progressDays ==
-   * 0}）逐家户从它**自己的家户账** （H1 起 = 会话工作副本，改前 = 行里的 {@code goods}）里扣 {@link
-   * ProductionRecipe#inputPerUnit()}（农业 = 种子，织机 = 纤维，作坊 = 纤维 + 铁），并把实际扣到的量**按商品**累加进 {@link
-   * Industry#cycleInputUsedMilli()}。
+   * ★★ **现扣周期投入步**（v2 spec §3.2/§3.3；**H3 起"谁出料"由 relation 明说**，裁定 C3）：**周期的第一天**（{@code
+   * progressDays == 0}）把 {@link ProductionRecipe#inputPerUnit()}（农业 = 种子，织机 = 纤维，作坊 = 纤维 + 铁）
+   * 从<b>关系指名的那一个主体的账</b>上划给该产业，并把实际划到的量**按商品**累加进 {@link Industry#cycleInputUsedMilli()}。
    *
    * <pre>
-   * rowShareᵢ = ⌊该产业产能折出的规模 × 本行人口 ÷ 该产业家户总人口⌋   // ★ K3：本行"想扣多少"的那把尺（见 #rowSharesOf）
-   * needᵢ[j]  = rowShareᵢ × inputPerUnit[j]                          // 该行**想**扣多少商品 j
-   * 余额_j ≥ needᵢ[j] ⇒ 扣 needᵢ[j]；余额_j &lt; needᵢ[j] ⇒ **扣光余额_j**（⇒ 收获日的投入那一路瓶颈自然缩小）
+   * 供方       = relation.inputSupplier（缺 relation ⇒ 退回缺省 = operator；四档默认 = operator，见 RegimeRelations）
+   * usableScale = min( 产能那一路 , ⌊可供量_j ÷ inputPerUnit[j]⌋ …每种投入一路 )     // "不把料倒进空转的产业"
+   * need_j     = usableScale × inputPerUnit[j]                                      // ★ 整个产业的周期需求 —— 没有"人口占比"
+   * drawn_j    = min( 供方余额_j , need_j )                                         // ★ 扣不动就扣光余额（不凭空造）
    * </pre>
    *
-   * ★★ **H0/K3 的写法与代价（如实记）**：产能搬到 {@link Industry#capacity()} 之后，**行没有自己的规模上限了**。这里取 <b>"该产业的规模 ×
-   * 本行人口占该产业家户的比重"</b>（{@link #rowSharesOf} 是唯一算式）：① **总量对得上** —— {@code Σᵢ rowShareᵢ ≈ 该产业的规模} ⇒
-   * 本步请求的投入总量 ≈ 该产业一整个周期要用的料（与改前"Σ行的亩数 × 每亩用种"同量级）； ② 仍然**各扣各的**（贫农缸空 ⇒
-   * 它那一份扣不满、收获日的投入瓶颈跟着缩），故"阶层差异"没有被抹掉。 ★ <b>代价</b>：改前那份差异按**生产资料占有**表达（谁的地多谁想扣得多），现在按**人口**摊 ——
-   * "谁占有产能"这一维 本阶段**没有落点**（它属 H3 的"投入由谁出"栏）⇒ **真档的逐行扣减与收获规模会变**（K3 已认这个代价）。
+   * <p>★★ <b>改前的口径与它实测得到的病（H3 要修的就是这个）</b>：改前按 {@code rowSharesOf}（<b>该产业各行的人口占比 +
+   * 逐行向下取整</b>）把需求摊给"供给该产业的家户"，每行再各扣各的。后果实测得到：① 分摊比例是<b>算</b>出来的 —— 没有哪一处 "说"过谁出料；② 逐行向下取整把需求切碎 ⇒
+   * <b>取不满</b>：小夹具 6 座作坊只开 <b>4</b> 座、50 台织机只开 <b>48</b> 台； 真档年末剩 <b>24,001,080</b>
+   * 毫纤维（旧口径"被织机取光"不再成立）。H3 起：**谁出料写在数据里** （{@link
+   * ProductionRelation#inputSupplier()}），需求是<b>整个产业</b>的，逐户只做一次"按人口占比 + 最大余数法"的分派 （Σ分派 ==
+   * 需求，**不再逐户丢弃余数**）。
    *
-   * <p>★★ **投入各扣各的**（定案，H0 后不变）：逐**家户**从**它自己的家户账**里扣，**不从全格池子扣**。 理由：与"粮住在家里"一致，且能自然产生阶级差异——贫农缸空 ⇒
-   * 它那一份扣不满、地主缸满 ⇒ 他那份扣得满 （收获日按 {@code Σ实际扣到的投入 / inputPerUnit} 算可支撑规模）。
+   * <p>★★ <b>"从该主体自己的账出"的两处实现边界（如实记）</b>：
    *
-   * <p>★★ **H1：库存在会话工作副本里**（裁定 K1）：本方法**读它、就地扣减它**（改前读写的是 {@code ClassRow.goods}）。 ★ {@code
-   * population == 0} 的家户**跳过投入**（它们不出工 ⇒ 不替产业出料；与"份额恒 0"是同一条口径的两处表达）。
+   * <ol>
+   *   <li>★ <b>供方是家户</b>（{@code ToCohort}；或本世界现存的 {@code HOUSEHOLD} 家户 actor —— 唯一拼写点 {@code
+   *       HouseholdActors}）：就取它<b>那一本账</b>（会话工作副本，裁定 K1），需求 = <b>整份</b>，缸里不够就扣光 ⇒ 收获日投入那一路自然缩。 ★
+   *       这就是"<b>佃农穷 ⇒ 地荒</b>"：tenant 档的 operator 就是佃农家户 ⇒ 它的缸空 ⇒ 规模 0，且**没有"同层"可补** （单一主体 ⇒
+   *       ③（二）那道补齐无事可做）；
+   *   <li>★★ <b>供方是聚合主体</b>（{@code ESTATE} / {@code WORKSHOP} / 产业型 {@code HOUSEHOLD}：id 是产业 id，如
+   *       {@code farm@0_0}）：<b>economy 看不见它的账</b> —— 那本账住在 actor 切片的 {@code GoodsAccount} 上（键
+   *       {@code (actor, location)}），而会话工作副本的键是 {@link CohortKey}，装不下它（铁律 3：economy 不认识 actor 切片）。⇒
+   *       由 <b>该产业名下的家户账代理它</b>（"这个主体的缸" = 它名下那些家户的缸，与"谁供给这个产业"同一条唯一事实 {@link #householdKeysOf}）。★
+   *       这<b>不是</b>"按人口猜<b>谁</b>出料"（谁是供方已经由 relation 说了），而是"指名的主体
+   *       <b>内部</b>怎么摊"的管道口径：先按人口占比问一遍（负担按人头摊），再由**同层还有货的账**补齐 ⇒ 只要这个主体**整体**出得起，
+   *       需求就<b>一分不少</b>地筹齐（改前那种"逐行取整 ⇒ 取不满"不再发生）；
+   * </ol>
    *
-   * <p>★ **扣掉的量并入当日 {@code consumed}**：投入是**本期的消费**（spec §二 把"留种的计量"列在"数"里）， 记进去才能保住 §6.1 的守恒式
-   * {@code 逐商品库存减少 == Σ消费 − Σ所得}（否则配了投入的世界上那条等式不成立 ⇒ 端到端的守恒用例会变成假绿）。
+   * <p>★★ <b>H3 删掉的那条通道：同格取材（R4 的 T0）—— 为什么删</b>：改前 {@code transferIntraHexInputs} 会把"同格富余的
+   * 纤维"搬给缺料的家户（R4 用它把田里的纤维送到城里的作坊）。H3 把它<b>整块删掉</b>，理由两条，都是实测得到的：
    *
-   * <p>★ **为什么不在这里扣"每日原料"**：{@code dailyInputPerUnit} 是**每日**口径，本轮仍是零读取点（spec §3.3
+   * <ol>
+   *   <li>★ <b>它按 rowSharesOf 分摊</b>（"该行想要多少"），而那正是本批要消灭的口径 —— 留着它，本批的改动就只改了一半；
+   *   <li>★★ <b>它会跨主体抢料（实测）</b>：把"第一层不够就从同格别人那里补"接进本步之后，真档出现 —— 织机（农村家户的账， 自己缸里 18,600,000）按"整个产业的
+   *       740 台"去取料 ⇒ 缺口 3,600,000 ⇒ **把城里作坊自己的 2,100,000 纤维取走** ⇒ 作坊缺纤维 ⇒ 规模 0 ⇒ **工具产量 0**（{@code
+   *       EconomyRealScaleClothTest} 实测：{@code heldByOperator(CRAFT, TOOL)} 由 169,750 掉到
+   *       <b>0</b>）。⇒ "谁出料"已经由 relation 说了，取料就<b>只从那个主体的账上取</b>；跨主体的余缺调剂是**市场** 的活（H4 的同格池），不是本步的活。
+   * </ol>
+   *
+   * <p>★ <b>删掉它之后 R4 那条判据仍然成立</b>（有实测）：织机吃的纤维来自**它自己名下那些家户**（农村四行），而农田的纤维副产 经关系规则<b>正落在那些行上</b> ⇒
+   * 每个周期都拿得到新料，{@code weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms} 照旧绿（那正是 R4 的 T0
+   * 要表达的事，只是通道从"跨行搬运"变成了"同一本账"）。
+   *
+   * <p>★★ <b>"只取用得上的量"</b>：{@code usableScale} 的上限里含**除本商品之外**每种投入的可供量（改前是逐行的 {@code
+   * rowUsageScale}，H3 起按产业算一次）—— 真档里城市作坊缺铁时，纤维<b>搬过去也是白扔</b>（会在现扣步被当投入扣掉而产出为 0， 织机反而拿不到料）。★
+   * <b>劳动那一路刻意不算进来</b>：周期第一天 {@code cycleLaborMilli} 还是 0，把它算进来会让**所有**产业的 上限都是 0（取材永不发生）；劳动瓶颈在周期末的
+   * {@link #scaleOf} 里照旧生效。
+   *
+   * <p>★★ <b>落账（H3：两个主体都在家户账里时走转移）</b>—— 见 {@link #recordInputDraw}：
+   *
+   * <pre>
+   * 供方 ≠ 经营者，且经营者的账在会话副本里（"地主出种"那类）⇒ 一条 INPUT_REQUISITION 转移（供方 → 经营者），
+   *   由**唯一** applier（{@link #applyTransferToHouseholds}）落到副本上（供方 −、经营者 +），随后**在经营者账上消费掉**
+   *   这一笔（{@code consumed} 记在经营者：它是这批料的消费者）⇒ 净额：供方 −drawn、经营者 0；
+   * 其余情形（供方 == 经营者；或经营者的账不在副本里 —— 聚合主体）⇒ **不产生转移**：投入是"被生产直接吃掉"的，
+   *   按 H2 的既有口径记账（供方 −余额、{@code consumed} 记在供方、{@code ledger.addInput}）。
+   *   ★ 理由（有意的边界）：转移的收端若是 economy **看不见**的账，那条腿会落在 actor 侧而**没有任何一处把它消费掉**
+   *   （账面上"料收到了、却永远不 consumed"）⇒ 宁可不写那条转移，也不留一本对不上的账。
+   * </pre>
+   *
+   * <p>★ {@code population == 0} 的家户**不分摊**（份额恒 0 ⇒ 与"它不出工"同义 —— 与改前的门槛逐字一致），但**可以是供方** （relation
+   * 指名它，或它缸里有货要兜底同格时）：<b>出料不需要人口</b>。
+   *
+   * <p>★ **扣掉的量并入当日 {@code consumed}**：投入是**本期的消费**（spec §二 把"留种的计量"列在"数"里），记进去才能保住 §6.1
+   * 的守恒式（否则配了投入的世界上那条等式不成立 ⇒ 端到端的守恒用例会变成假绿）。
+   *
+   * <p>★ <b>为什么不在这里扣"每日原料"</b>：{@code dailyInputPerUnit} 是**每日**口径，本轮仍是零读取点（spec §3.3
    * 明说两个字段并存、语义各自清楚），不在本步范围。
    */
   private static void drawCycleInputs(
       LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<CohortKey, ClassRow> rows,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      Map<IndustryId, ProductionRelation> relations,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
-      LinkedHashMap<CohortKey, Map<CommodityId, Long>> income,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
-    // ★★ **R4（T0）：先做一次"同格按需取材"，再各扣各的**（见 transferIntraHexInputs）——
-    //   它把**农村家户缸里的纤维搬到同格的城镇家户缸里**（R3 的遗留：原料原先只有创世那一次性的一份 ⇒ 第 2 周期起停工）。
-    transferIntraHexInputs(
-        industries,
-        rows,
-        allocations,
-        householdGoods,
-        consumedGoods,
-        income,
-        householdOfActor,
-        ledger);
-    // ★★ **H0：份额一次算好，两个调用方共用**（现扣步要"想扣多少"，取材步还要"用得上多少"）—— 见 {@link #rowSharesOf}。
-    Map<CohortKey, Map<IndustryId, Long>> shares = rowSharesOf(industries, rows, allocations);
     for (IndustryId id : new ArrayList<>(industries.keySet())) {
       Industry industry = industries.get(id);
       if (industry.progressDays() != 0L) {
@@ -1115,34 +1152,87 @@ public final class EconomySettlement {
       if (perScale.isEmpty()) {
         continue; // ★ 空表与"缺键"同义：不扣、不缩规模 ⇒ 未配投入的产业行为与 V2 一字不差
       }
+      // ★★ H3：**谁出料由 relation 说**。缺 relation（合法状态：关系表里可以没有这个产业）⇒ 退回缺省 = operator
+      //   （与 ProductionRelation 的构造期缺省**同值**、同一条道理 —— 本层不发明第二份缺省）。
+      ProductionRelation relation = relations.get(id);
+      Recipient supplier =
+          relation == null ? new Recipient.ToActor(industry.operator()) : relation.inputSupplier();
+      List<CohortKey> ownKeys =
+          supplierAccountsOf(supplier, industry, rows, allocations, householdOfActor);
+      // ① 可供量（逐商品）= 供方的那些账上的余额之和（**只有这一层**，见方法注释：不跨主体取料）。
+      Map<CommodityId, Long> available = new LinkedHashMap<>();
+      for (CommodityId commodity : perScale.keySet()) {
+        long sum = 0L;
+        for (CohortKey key : ownKeys) {
+          sum += stockOf(householdGoods, key, commodity);
+        }
+        available.put(commodity, sum);
+      }
+      // ② "真的用得上"的规模（= 改前 rowUsageScale 的产业版）：产能那一路 × 每种投入一路，取小。
+      long usableScale = capacityScaleOf(industry);
+      for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+        if (entry.getValue() <= 0L) {
+          continue; // 每单位需求为 0 ⇒ 这一路不构成约束（同 scaleOf 的口径）
+        }
+        usableScale =
+            Math.min(usableScale, available.getOrDefault(entry.getKey(), 0L) / entry.getValue());
+      }
+      if (usableScale <= 0L) {
+        continue; // 一点料都筹不到（或本格没有产能）⇒ 不扣、规模自然 0 —— "地荒着"
+      }
       Map<CommodityId, Long> drawnTotal = new LinkedHashMap<>();
-      for (Map.Entry<CohortKey, Map<IndustryId, Long>> shareEntry : shares.entrySet()) {
-        Long rowScale = shareEntry.getValue().get(id);
-        if (rowScale == null || rowScale == 0L) {
-          continue; // 本行不在这个产业的家户里（或份额为 0）⇒ 没有投入需求
+      for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+        CommodityId commodity = entry.getKey();
+        long perUnit = entry.getValue();
+        if (perUnit <= 0L) {
+          continue;
         }
-        CohortKey key = shareEntry.getKey();
-        if (rows.get(key).population() <= 0L) {
-          continue; // ★ 0 人口：不出工 ⇒ 不替产业出料（份额本已恒 0，这里再显式挡一次）
-        }
-        for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
-          if (entry.getValue() == 0L) {
-            continue;
+        long remaining = usableScale * perUnit; // 毫单位（★ 单位规模 × 毫单位/单位规模）—— 整个产业本周期要用的料
+        // ③ 第一层（一）：按人口占比 + **最大余数法**分派（Σ分派 == remaining，不再逐户丢余数），逐户上限 = 它的余额。
+        for (Map.Entry<CohortKey, Long> ask :
+            apportionToHouseholds(ownKeys, rows, remaining).entrySet()) {
+          long drawn = Math.min(stockOf(householdGoods, ask.getKey(), commodity), ask.getValue());
+          if (drawn <= 0L) {
+            continue; // 缸空/不够 ⇒ 这一户出不起它那一份（下面的补齐可能从**同层的别人**那里补上）
           }
-          CommodityId commodity = entry.getKey();
-          long need = rowScale * entry.getValue(); // 毫单位（★ 单位规模 × 毫单位/单位规模）
-          long stock = stockOf(householdGoods, key, commodity);
-          long drawn = Math.min(stock, need); // ★ 扣不动就扣光库存（投入那一路瓶颈会跟着缩）
-          if (drawn == 0L) {
-            continue;
-          }
-          setStock(householdGoods, key, commodity, stock - drawn);
-          addGoods(consumedGoods, key, commodity, drawn);
-          // ★★ **T4：投入同时记进当天的 ledger**（I4.2 的 `ΣProductionInputs` 的唯一来源）。
-          //   ★ 它进的是 **ledger** 而不是"产权条目"：投入从**家户账**扣（H1）⇒ 它不产生任何 ActorEntry
-          //     （家户的账在 economy 侧是会话状态；见 ProductionLedger 的类注）。
-          ledger.addInput(id, commodity, drawn);
+          recordInputDraw(
+              ask.getKey(),
+              industry,
+              commodity,
+              drawn,
+              householdGoods,
+              consumedGoods,
+              householdOfActor,
+              ledger);
+          remaining -= drawn;
           drawnTotal.merge(commodity, drawn, Long::sum);
+        }
+        // ③ 第一层（二）：缺口由**同层还有货的账**补齐（持仓量降序、取多少 = 缺多少）。
+        //   ★★ 为什么补：relation 指名的主体是**一个**（这里是该产业名下的家户账这个整体）—— 它内部某一户缸空
+        //     不该让整个产业减产（"谁出料"已经由 relation 说了，这是"指名的主体内部怎么摊"）。
+        //   ★ "佃农穷 ⇒ 地荒"那条机构由**单一主体**那一档表达（tenant 的 operator 就是佃农家户：它就是那一本账，
+        //     没有"同层"可补 ⇒ 缸空即规模 0）—— 那一条不因本补齐而消失。
+        if (remaining > 0L) {
+          for (CohortKey key : byStockDescending(ownKeys, householdGoods, commodity)) {
+            if (remaining <= 0L) {
+              break;
+            }
+            long drawn = Math.min(stockOf(householdGoods, key, commodity), remaining);
+            if (drawn <= 0L) {
+              continue;
+            }
+            recordInputDraw(
+                key,
+                industry,
+                commodity,
+                drawn,
+                householdGoods,
+                consumedGoods,
+                householdOfActor,
+                ledger);
+            remaining -= drawn;
+            drawnTotal.merge(commodity, drawn, Long::sum);
+          }
         }
       }
       if (!drawnTotal.isEmpty()) {
@@ -1160,231 +1250,183 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ **同格按需取材**（R4 的 T0；R3 遗留的收口）：**织机缺 FIBER ⇒ 从同格有富余的行取**（取多少 = 缺多少，上限 = 供方的富余）。
+   * ★★ <b>关系指名的投入供方 → 它那一本（或那一批）账</b>（H3；两处边界见 {@link #drawCycleInputs} 的方法注释）。
    *
    * <pre>
-   * 逐格：① 算出每一行**本周期想扣多少**（{@code rowShare × inputPerUnit}；口径与现扣步**同一个算式**，见 #rowSharesOf）
-   *      ② 逐商品、逐缺口行：从同格**别的家户**的富余取 min(缺口, 富余)
-   *      富余 = max(0, 余额 − 该家户自己的本周期投入需求)
+   * ToCohort(c)                  ⇒ {c}（**必须存在**、且必须住在该产业那一格 —— 见下）
+   * ToActor(a) 且 a 是本世界现存的家户 actor ⇒ {cohortOf(a)}（唯一拼写点 HouseholdActors）
+   * ToActor(a) 其余（聚合主体：庄园/作坊/产业型家户）⇒ **该产业名下的家户账**（householdKeysOf，唯一事实）
    * </pre>
    *
-   * <p>★★ <b>H1：库存在会话工作副本里</b>（裁定 K1）—— 本方法读写 {@code householdGoods}（改前读写 {@code
-   * ClassRow.goods}）；**语义一字未改**（对称记账、只搬用得上的量、粮不走这条通道）。
-   *
-   * <p>★★ <b>H0 起供受双方都是**家户行**</b>（键 = 格 + 居住类型 + 阶层），"同产业"这条收窄随之改成 <b>"两家户不共用任何产业"</b>（真档里就是"农村家户
-   * ↔ 城镇家户"：前者种地、后者做工，两边不共产业）。
-   *
-   * <p>★★ **它解决的是 R3 如实记下的那个遗留**：织机与作坊吃的原料原先只有**创世一次性给的**那一份（= 本格农田一个周期的纤维副产），
-   * 而"把田里的纤维搬到织机上"是**跨行的实物转移** ⇒ 第 2 个周期起织机停工、农田自己产的纤维照常累积在农业行里 （R3
-   * 报告原文）。本步之后，**每个周期**织机都能从同格农田拿到新一期的纤维 ⇒ 纺织持续。
-   *
-   * <p>★★ **对称记账**（**R2 与 V3 都栽过"单侧扣减"**，故两侧都写清楚）：
+   * <p>★★ <b>两条 fail-closed（与规则受方那条同款，理由同源）</b>：
    *
    * <ul>
-   *   <li>**供方**：库存 −X，且 **{@code consumed} += X**（它出去的是实物，不是"债权"）；
-   *   <li>**受方**：库存 +X，且 **{@code income} += X**。
+   *   <li>命名的 cohort **必须有行**："这个家户不存在"只可能是配置错 —— 静默当成"缸里没有"会让账面上完全看不出问题 （本仓最反对的"静默付 0"形态）；
+   *   <li>命名的账**必须住在该产业那一格**：一条转移只有一个 {@code location}（账户 = {@code (actor, location)}），
+   *       跨格的供方说不清料从哪本账出。
    * </ul>
    *
-   * <p>★★ **H2：两侧的库存变动 = 一条 {@link Transfer}**（{@code from=供方家户, to=受方家户}，原因 {@link
-   * TransferReason#INPUT_REQUISITION}）—— 改前是就地两处 {@code setStock}。★ 账（consumed / income）**照旧各记一笔**：
-   * 它们是<b>流水读数</b>（守恒式的两侧），与转移凭据是两件事（凭据说"东西换手了"，读数说"这算谁的消费/所得"）。 ★ 唯一写会话副本的地方是 {@link
-   * #applyTransferToHouseholds}。
-   *
-   * <p>★★ **为什么受方那一侧也必须落账**：守恒式是 {@code Σ(前库存) − Σ(后库存) == Σ消费 − Σ所得}。只记供方的消费而不记受方的所得， 会让右边凭空多出
-   * X（而左边的库存总账是平的）⇒ 逐商品的守恒用例当场红。两侧**同时**记，X 恰好抵消，剩下的差额正好等于受方 随后真的扣掉的那一笔 —— 这就是"同一份变更集里的原子转移"在账上的样子。
-   *
-   * <p>★★ **粮不走这条通道**（**有意的收窄**）：粮的跨行流动已经有制度（同格借粮：债权人序列、余粮口径、债务记账）， 而"从同格富余的行取粮"是一条**无偿**通道 ——
-   * 两者并存会让同一批粮有两条路（一条要还、一条不用还）， 并抹平"投入各扣各的"那条阶层口径（贫农缸空 ⇒ 它的地荒着）。本轮要接的缺口本来就是**纤维**（织机的原料）。
-   *
-   * <p>★ **供方不得与受方共用任何产业**（**有意的收窄**，H0 的多产业版本）："投入各扣各的"是既有口径（贫农缸空 ⇒ 它那份扣不满、地主缸满 ⇒ 他那份扣得满 ——
-   * 阶层差异正来自这里），让同一个产业的家户互相补原料会把它抹平。 而本轮要接的缺口本来就是**跨产业**的那一条（田里的纤维 → 织机/作坊）。
-   *
-   * <p>★ **取不到就停工**（"拒凭空造"）：本步**不造**任何东西，取不满的行照旧按它自己的库存扣 ⇒ 收获时投入那一路瓶颈自然缩小 （与 {@link #scaleOf}
-   * 的既有口径一致）。★ 遍历序 = 格（字典序）→ 阶层 → 居住类型（行序，见 {@link #rowsByHex}）⇒ 可复现。
+   * <p>★ <b>聚合主体为何不抛</b>：它不是配置错 —— 真档三个产业的经营者（{@code ESTATE:farm@x_y} / {@code WORKSHOP:craft@x_y}
+   * / {@code HOUSEHOLD:weave@x_y}）全是这一形态（载荷边缘按 regime 推出来的），而它们的账 economy 根本看不见 ⇒ 由该产业的家户账代理（见
+   * {@link #drawCycleInputs} ②）。
    */
-  private static void transferIntraHexInputs(
-      LinkedHashMap<IndustryId, Industry> industries,
-      LinkedHashMap<CohortKey, ClassRow> rows,
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
-      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
-      LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
-      LinkedHashMap<CohortKey, Map<CommodityId, Long>> income,
-      Map<ActorRef, CohortKey> householdOfActor,
-      ProductionLedger.Accumulator ledger) {
-    // ① 只有**周期第一天**的产业才会现扣投入 ⇒ 只有它们有"取材需求"（与现扣步同一个门槛）。
-    LinkedHashMap<IndustryId, Map<CommodityId, Long>> perUnitByIndustry = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
-      if (entry.getValue().progressDays() != 0L) {
-        continue;
+  private static List<CohortKey> supplierAccountsOf(
+      Recipient supplier,
+      Industry industry,
+      Map<CohortKey, ClassRow> rows,
+      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<ActorRef, CohortKey> householdOfActor) {
+    if (supplier instanceof Recipient.ToCohort toCohort) {
+      CohortKey key = toCohort.cohort();
+      if (!rows.containsKey(key)) {
+        throw new IllegalStateException(
+            "关系指名的投入供方没有家户行（H3 fail-closed：供方的账就是它的家户账，"
+                + "把'配置错'静默当成'缸里没有'会让账面上看不出问题）：activity="
+                + industry.id()
+                + " 供方="
+                + key
+                + " 本格现有的家户="
+                + rows.keySet().stream()
+                    .filter(row -> row.hex().equals(hexOfIndustry(industry.id())))
+                    .toList());
       }
-      Map<CommodityId, Long> perUnit = entry.getValue().inputPerUnit();
-      if (!perUnit.isEmpty()) {
-        perUnitByIndustry.put(entry.getKey(), perUnit);
-      }
+      requireSupplierHex(key, industry);
+      return List.of(key);
     }
-    if (perUnitByIndustry.isEmpty()) {
-      return;
+    ActorRef actor = ((Recipient.ToActor) supplier).actor();
+    CohortKey named = householdOfActor.get(actor);
+    if (named != null) {
+      requireSupplierHex(named, industry);
+      return List.of(named);
     }
-    // ★★ **H0：份额与"家户 → 它供给的产业"都从配额表推**（唯一算式；见两个 helper 的类注）。
-    Map<CohortKey, Map<IndustryId, Long>> shares = rowSharesOf(industries, rows, allocations);
-    Map<CohortKey, Set<IndustryId>> industriesOfHousehold =
-        industriesOfHouseholds(rows, industries, allocations);
-    for (Map.Entry<String, List<CohortKey>> hex : rowsByHex(rows.keySet()).entrySet()) {
-      List<CohortKey> keys = hex.getValue();
-      LinkedHashMap<CohortKey, Map<CommodityId, Long>> need = new LinkedHashMap<>();
-      LinkedHashSet<CommodityId> commodities = new LinkedHashSet<>();
-      for (CohortKey key : keys) {
-        Map<IndustryId, Long> mineShares = shares.get(key);
-        if (mineShares == null) {
-          continue; // 这一行不给任何"本日现扣投入"的产业出劳动 ⇒ 没有投入需求
-        }
-        Map<CommodityId, Long> mine = new LinkedHashMap<>();
-        for (Map.Entry<IndustryId, Long> share : mineShares.entrySet()) {
-          Map<CommodityId, Long> perUnit = perUnitByIndustry.get(share.getKey());
-          if (perUnit == null || share.getValue() == 0L) {
-            continue;
-          }
-          Industry industry = industries.get(share.getKey());
-          for (Map.Entry<CommodityId, Long> entry : perUnit.entrySet()) {
-            if (entry.getValue() <= 0L) {
-              continue;
-            }
-            // ★★ **只搬它真的用得上的量**（上限 = 该商品**之外**的最紧约束）：否则搬过去也是白扔 ——
-            //   真档里城市作坊缺铁时，纤维搬过去会在现扣步被当投入扣掉而**产不出任何东西**（规模那一路是 0），
-            //   于是"从田里取纤维"变成了"把纤维倒进一个空转的作坊"。见 {@link #rowUsageScale}。
-            long usage =
-                rowUsageScale(
-                    householdGoods.getOrDefault(key, Map.of()),
-                    share.getValue(),
-                    industry,
-                    entry.getKey());
-            if (usage == 0L) {
-              continue;
-            }
-            mine.merge(entry.getKey(), usage * entry.getValue(), Long::sum);
-            commodities.add(entry.getKey());
-          }
-        }
-        if (!mine.isEmpty()) {
-          need.put(key, mine);
-        }
-      }
-      if (commodities.isEmpty()) {
-        continue;
-      }
-      for (CommodityId commodity : commodities) {
-        if (commodity.equals(GRAIN)) {
-          // ★★ **粮不走这条通道**（有意的收窄）：粮的跨行流动**已经有制度** —— 同格借粮（债权人序列、余粮口径、
-          //   债务记账，R2/V6 建的）。再开一条"从同格有富余的行取粮当种子"的**无偿**通道，同一批粮就会有两条路
-          //   （一条要还、一条不用还），而"贫农缸空 ⇒ 它的地荒着、地主的地照种"那条既有口径会被抹平。
-          //   ⇒ 本轮要接的缺口本来就是**纤维**（织机的原料）：它不是口粮、没有既有制度、也没有替代通道。
-          continue;
-        }
-        for (CohortKey receiver : keys) {
-          Map<CommodityId, Long> mine = need.get(receiver);
-          if (mine == null) {
-            continue;
-          }
-          long gap =
-              mine.getOrDefault(commodity, 0L) - stockOf(householdGoods, receiver, commodity);
-          if (gap <= 0L) {
-            continue; // 自己缸里就够了 ⇒ 不取（"按需"：取多少 = 缺多少）
-          }
-          for (CohortKey supplier : keys) {
-            if (gap <= 0L) {
-              break;
-            }
-            if (supplier.equals(receiver)) {
-              continue; // 自己不用给自己搬（现扣步直接从自己的库存扣）
-            }
-            if (sharesAnyIndustry(industriesOfHousehold, supplier, receiver)) {
-              continue; // ★ 供方不含**与受方共用产业**的家户（见方法注释：那会抹平"投入各扣各的"）
-            }
-            long surplus =
-                transferSurplusOf(
-                    householdGoods.getOrDefault(supplier, Map.of()), commodity, need.get(supplier));
-            if (surplus <= 0L) {
-              continue;
-            }
-            long moved = Math.min(gap, surplus);
-            // ★★ **H2：先铸一条转移，再由唯一的 applier 落到会话副本上**（改前是就地两处 setStock）。
-            //   ★ 顺序：先读够量（moved 已算好）→ 铸凭据 → 应用；应用之后两侧库存与改前逐值相同。
-            Transfer requisition =
-                ledger.mint(
-                    HouseholdActors.of(supplier),
-                    HouseholdActors.of(receiver),
-                    receiver.hex(),
-                    Map.of(commodity, moved),
-                    TransferReason.INPUT_REQUISITION);
-            applyTransferToHouseholds(householdGoods, householdOfActor, requisition);
-            addGoods(consumedGoods, supplier, commodity, moved); // 供方：减库存 + 记消费（不许单侧扣减）
-            addGoods(income, receiver, commodity, moved); // 受方：加库存 + 记所得（守恒式的另一侧）
-            gap -= moved;
-          }
-        }
-      }
+    // ★ 聚合主体：它的账在 actor 切片上（economy 看不见）⇒ 由**该产业名下的家户账**代理（见方法注释）。
+    return householdKeysOf(rows, industry.id(), allocations);
+  }
+
+  /** 命名的供方必须住在该产业那一格（一条转移只有一个 {@code location}；见 {@link #supplierAccountsOf}）。 */
+  private static void requireSupplierHex(CohortKey supplier, Industry industry) {
+    HexCoord location = hexOfIndustry(industry.id());
+    if (!supplier.hex().equals(location)) {
+      throw new IllegalStateException(
+          "关系指名的投入供方不住在这个产业那一格（H3 fail-closed：账户 = (actor, location)，"
+              + "跨格的供方说不清料从哪本账出）：activity="
+              + industry.id()
+              + " 供方="
+              + supplier
+              + " 供方的格="
+              + supplier.hex()
+              + " 产业的格="
+              + location);
     }
   }
 
   /**
-   * ★★ **这一行的"用得上"上限**（同格取材用）：{@code min( 各 capacity 那一路 , 除该商品之外的每种投入那一路 )} ——
-   * 即"**把该商品给足**之后，这一行最多还能干多少活"。
+   * ★★ <b>把一笔需求按各家的<b>人口</b>分派</b>（{@link ProportionalSplit#byDenominator}：**最大余数法** ⇒ Σ分派 ==
+   * total）。
+   *
+   * <p>★ <b>口径与改前的分界</b>：改前这件事发生在 {@code rowSharesOf} 里、且分母是"该产业家户的总人口"、**逐行向下取整后余数丢弃** ⇒
+   * 需求被切碎（实测：50 台织机只开 48 台）。现在同一件事只做一次、余数按**最大余数法**分派 ⇒ <b>总量一分不丢</b>。
+   *
+   * <p>★ 人口为 0 的家户**不进表**（份额恒 0 ⇒ 与"它不出工"同义 —— 与改前的门槛逐字一致）；Σ人口为 0 ⇒ 空表（没有人 ⇒ 没有分摊， 于是"料筹不到"由 {@code
+   * usableScale} 那一路表达）。
+   *
+   * @return 键序 = {@code keys} 的传入序（保序，可复现）
+   */
+  private static Map<CohortKey, Long> apportionToHouseholds(
+      List<CohortKey> keys, Map<CohortKey, ClassRow> rows, long total) {
+    Map<CohortKey, Long> apportioned = new LinkedHashMap<>();
+    if (keys.isEmpty() || total <= 0L) {
+      return apportioned;
+    }
+    long population = 0L;
+    for (CohortKey key : keys) {
+      population += rows.get(key).population();
+    }
+    if (population <= 0L) {
+      return apportioned;
+    }
+    long[] weights = new long[keys.size()];
+    for (int i = 0; i < keys.size(); i++) {
+      weights[i] = rows.get(keys.get(i)).population();
+    }
+    long[] parts = ProportionalSplit.byDenominator(total, weights, population);
+    for (int i = 0; i < keys.size(); i++) {
+      if (parts[i] > 0L) {
+        apportioned.put(keys.get(i), parts[i]);
+      }
+    }
+    return apportioned;
+  }
+
+  /**
+   * 第二层兜底的取用次序：**持仓量降序**（谁缸里多谁先出）；<b>并列时保持传入序</b>（{@code List.sort} 是稳定排序 ⇒ 结果是"传入序 +
+   * 持仓量"的纯函数，可复现）。
+   */
+  private static List<CohortKey> byStockDescending(
+      List<CohortKey> keys,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      CommodityId commodity) {
+    List<CohortKey> sorted = new ArrayList<>(keys);
+    sorted.sort(
+        Comparator.comparingLong((CohortKey key) -> stockOf(householdGoods, key, commodity))
+            .reversed());
+    return sorted;
+  }
+
+  /**
+   * ★★ <b>把一笔投入的划转落账</b>（H3；两条路径，见 {@link #drawCycleInputs} 的方法注释）：
    *
    * <pre>
-   * rowUsageScale(家户账, rowShare, industry, j) = min( rowShare(row, industry)        …本行在该产业规模里的份额（K3）
-   *                                                    , ⌊余额[j'] ÷ inputPerUnit[j']⌋  j'≠j …**除 j 之外**的每种投入一路 )
+   * ① 供方 ≠ 经营者，且经营者的账**在会话副本里**（"地主出种"那类）⇒ 走转移：
+   *      mint(INPUT_REQUISITION: 供方 actor → 经营者 actor) → applyTransferToHouseholds（唯一 applier：供方 −、经营者 +）
+   *      → 随后在**经营者**账上消费掉这一笔（consumed 记在经营者：它是这批料的消费者）；
+   * ② 其余情形（供方 == 经营者；或经营者的账不在副本里 —— 聚合主体）⇒ 不产生转移：
+   *      供方 −余额、consumed 记在**供方**（H2 的既有口径："日耗与投入不是转移"）。
    * </pre>
    *
-   * <p>★★ **它挡的是一类"搬了也白搬"的浪费**（不是洁癖，是真档里量得到的）：城市作坊的配方是 {@code FIBER + IRON + LABOR + WORKSHOP →
-   * CLOTH + TOOL}，而**铁只有创世那一份** —— 第 2 个周期起铁为 0， 作坊的规模那一路恒
-   * 0（产不出任何东西）。若取材步按"作坊名义上想要多少纤维"搬，这套纤维会在现扣步被 **当投入扣掉**（consumed 记一笔）而产出为 0 ⇒
-   * 田里的纤维被倒进一个空转的作坊，织机反而拿不到料。 用本上限后，那种作坊的取材需求是 **0**，纤维留给真的用得上的织机。
+   * <p>★ 两条路径的<b>共同点</b>（也是守恒式成立的关键）：被扣的账**一定**是会话副本里的那一本（或转移的两端都在副本里）， 且 {@code consumed}
+   * <b>恰好记一次</b>（记在"这批料的消费者"那本账上）⇒ {@code Σ(前库存) − Σ(后库存) == Σconsumed − Σincome} 那条逐商品守恒式两条路都成立。
    *
-   * <p>★ **劳动那一路刻意不算进来**：周期第一天 {@code cycleLaborMilli} 还是 0，把它算进来会让**所有**产业的用得上上限 都是
-   * 0（取材永不发生）。劳动瓶颈在周期末的 {@link #scaleOf} 里照旧生效 —— 那里才是它该在的地方。
-   *
-   * <p>★ 与 {@link #rowSharesOf} 的关系：那个是"该行在该产业规模里的份额"，这个是"该行拿到这个商品之后能干多少" （≤ 前者）。
-   *
-   * @param stock 该家户的当前余额（H1：会话工作副本里那一张表；缺失键 = 没有该商品）
+   * @param supplierKey 出料的那个家户（余额由此扣除）
+   * @param drawn 已经算好的实扣量（&gt; 0，且 ≤ 该家户在该商品上的余额）
    */
-  private static long rowUsageScale(
-      Map<CommodityId, Long> stock, long rowShare, Industry industry, CommodityId excluded) {
-    long scale = rowShare;
-    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
-      if (entry.getValue() <= 0L || entry.getKey().equals(excluded)) {
-        continue;
-      }
-      scale = Math.min(scale, stock.getOrDefault(entry.getKey(), 0L) / entry.getValue());
+  private static void recordInputDraw(
+      CohortKey supplierKey,
+      Industry industry,
+      CommodityId commodity,
+      long drawn,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
+      Map<ActorRef, CohortKey> householdOfActor,
+      ProductionLedger.Accumulator ledger) {
+    CohortKey operatorKey = householdOfActor.get(industry.operator());
+    // ★★ **T4：投入同时记进当天的 ledger**（I4.2 的 `ΣProductionInputs` 的唯一来源）——
+    //   它与"这东西从谁的账上出"是两件事：前者是**读数**，后者是**转移凭据**（H2 的口径）。
+    ledger.addInput(industry.id(), commodity, drawn);
+    if (operatorKey != null && !operatorKey.equals(supplierKey)) {
+      // ① 两个主体都在家户账里 ⇒ 走转移（唯一 applier 落副本），随后由经营者消费掉。
+      Transfer requisition =
+          ledger.mint(
+              HouseholdActors.of(supplierKey),
+              industry.operator(),
+              supplierKey.hex(),
+              Map.of(commodity, drawn),
+              TransferReason.INPUT_REQUISITION);
+      applyTransferToHouseholds(householdGoods, householdOfActor, requisition);
+      consumeFromHousehold(householdGoods, consumedGoods, operatorKey, commodity, drawn);
+      return;
     }
-    return Math.max(0L, scale);
-  }
-
-  /**
-   * 供方的**可取材量**：{@code max(0, 余额 − 自己的本周期投入需求)}。
-   *
-   * <p>★ **粮不在本通道里**（调用方先挡掉，理由见 {@code transferIntraHexInputs}）：故这里没有"口粮保留额"那一项 ——
-   * 本通道只走**工业原料**（纤维/铁/木），它们不是任何人的口粮，也没有"余粮"语义。
-   *
-   * @param stock 该供方的当前余额（H1：会话工作副本里那一张表）
-   * @param ownNeed 该供方**自己**在本周期想扣的投入（可为 null = 它不扣投入）
-   */
-  private static long transferSurplusOf(
-      Map<CommodityId, Long> stock, CommodityId commodity, Map<CommodityId, Long> ownNeed) {
-    long available = stock.getOrDefault(commodity, 0L);
-    if (available <= 0L) {
-      return 0L;
-    }
-    if (ownNeed != null) {
-      available -= ownNeed.getOrDefault(commodity, 0L);
-    }
-    return Math.max(0L, available);
+    // ② 其余情形：投入被生产直接吃掉（不写"给产业"的那条转移 —— 收端的账 economy 看不见，见方法注释）。
+    long stock = stockOf(householdGoods, supplierKey, commodity);
+    setStock(householdGoods, supplierKey, commodity, stock - drawn);
+    addGoods(consumedGoods, supplierKey, commodity, drawn);
   }
 
   /**
    * ★★ <b>该产业"本格产能"折出的规模</b>（K3 之后"产能"只有这一处）：{@code min over k ∈ capacityPerUnit:
    * ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋}。
    *
-   * <p>★ 与收获日的 {@link #scaleOf} 的产能那一路是**同一个算式**（只是那里还要对劳动与投入取 min）—— 于是"一行想扣多少" 与产业"能产多少"用同一把尺。
+   * <p>★ 与收获日的 {@link #scaleOf} 的产能那一路是**同一个算式**（只是那里还要对劳动与投入取 min）—— 于是"一次想扣多少" 与产业"能产多少"用同一把尺。
    */
   private static long capacityScaleOf(Industry industry) {
     // ★ capacityPerUnit 非空且逐值 > 0（构造期守卫）⇒ 循环至少跑一次、scale 必然被赋一个有限值。
@@ -1394,55 +1436,6 @@ public final class EconomySettlement {
           Math.min(scale, industry.capacity().getOrDefault(entry.getKey(), 0L) / entry.getValue());
     }
     return scale == Long.MAX_VALUE ? 0L : scale;
-  }
-
-  /**
-   * ★★ <b>（家户行 × 产业）→ 该行在该产业规模里的份额</b> —— K3 之后"本行自己的规模上限"的**唯一**表达，现扣投入步与同格取材步 共用它（改前那两处各算一遍
-   * {@code rowScale}）。
-   *
-   * <pre>
-   * rowShare(row, industry) = ⌊capacityScaleOf(industry) × row.population ÷ Σ(该产业家户行的人口)⌋
-   * </pre>
-   *
-   * <p>★★ <b>为什么是"人口占比"而不是别的东西</b>（代价见 {@link #drawCycleInputs} 的方法注释）：产能搬到产业之后，行上只剩
-   * 人口/劳动/库存三样；用人口摊是**唯一自洽且总量守恒**的口径 —— {@code Σᵢ rowShareᵢ ≤ 产业规模}（向下取整的损失 ≤ 家户数）。 ★ 家户人口为 0
-   * 的行**不出现**在这张表里（份额恒 0 ⇒ 与"它不种地"同义）。
-   *
-   * <p>★ <b>只算"本日要现扣投入的那些产业"</b>（{@code progressDays == 0} 且投入表非空）—— 与两个调用方的门槛逐字相同；
-   * 别的产业的行不进这张表（省掉无意义的计算，且让"份额"这件事的语义只有一种）。
-   */
-  private static Map<CohortKey, Map<IndustryId, Long>> rowSharesOf(
-      Map<IndustryId, Industry> industries,
-      Map<CohortKey, ClassRow> rows,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
-    Map<CohortKey, Map<IndustryId, Long>> shares = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, Industry> industryEntry : industries.entrySet()) {
-      IndustryId id = industryEntry.getKey();
-      Industry industry = industryEntry.getValue();
-      if (industry.progressDays() != 0L || industry.inputPerUnit().isEmpty()) {
-        continue;
-      }
-      long scale = capacityScaleOf(industry);
-      if (scale <= 0L) {
-        continue; // 本格没有产能（沙漠格的 LAND = 0、人口不足一厂的格 TOOL = 0）⇒ 没有投入需求
-      }
-      List<CohortKey> keys = householdKeysOf(rows, id, allocations);
-      long population = 0L;
-      for (CohortKey key : keys) {
-        population += rows.get(key).population();
-      }
-      if (population <= 0L) {
-        continue; // 这个产业没有人口 ⇒ 没有人替它出料
-      }
-      for (CohortKey key : keys) {
-        long rowShare = scale * rows.get(key).population() / population;
-        if (rowShare <= 0L) {
-          continue;
-        }
-        shares.computeIfAbsent(key, ignored -> new LinkedHashMap<>()).put(id, rowShare);
-      }
-    }
-    return shares;
   }
 
   /**
@@ -1584,21 +1577,6 @@ public final class EconomySettlement {
       byHousehold.put(key, cycleDays);
     }
     return byHousehold;
-  }
-
-  /** 两家户**是否共用至少一个产业**（同格取材的"供方不含同产业"在 H0 的多产业版本；见 {@code transferIntraHexInputs}）。 */
-  private static boolean sharesAnyIndustry(
-      Map<CohortKey, Set<IndustryId>> industriesOfHousehold, CohortKey first, CohortKey second) {
-    Set<IndustryId> mine = industriesOfHousehold.getOrDefault(first, Set.of());
-    if (mine.isEmpty()) {
-      return false;
-    }
-    for (IndustryId id : industriesOfHousehold.getOrDefault(second, Set.of())) {
-      if (mine.contains(id)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   // ── 消费 + 同格借粮 ─────────────────────────────────────────────────────────────────
@@ -2169,7 +2147,8 @@ public final class EconomySettlement {
    *
    * <p>★★ <b>K3（2026-09-27）：产能那一份改读 {@link Industry#capacity()}</b>（本格该产业的产能总量），不再 Σ 各行的 {@code
    * meansOfProduction}（那个字段已随 K2/K3 删除）。★ <b>形状不变</b>（三路取 min 一字未改），变的只是产能的来源： 改前"Σ各行"隐含"贫农缸空 ⇒
-   * 它的地荒着"的阶级差异，改后这份差异由**投入由谁出**表达（H0 阶段以人口占比折算，见 {@link #rowSharesOf}）⇒ 真档数值允许变（K3 已认）。
+   * 它的地荒着"的阶级差异，改后这份差异由**投入由谁出**表达（H3 起 = {@code relation.inputSupplier} 指名的那一个主体； ★ H0
+   * 阶段那套"按人口占比折算"的 {@code rowSharesOf} 已随本批删除）⇒ 真档数值允许变（K3 已认）。
    *
    * <p>★★ **每一路都可以"不施加"**（该路的"每单位需求"为 {@code 0} 或该路的表里没有这一项）：这与旧代码 {@code seedPerMu == 0 ⇒ 不加约束}
    * 是**同一条口径** —— 旧档与未配投入/未配劳动的产业据此与 V2 逐值一致，**不是**"规模 0"（写成 0 会让它们颗粒无收）。

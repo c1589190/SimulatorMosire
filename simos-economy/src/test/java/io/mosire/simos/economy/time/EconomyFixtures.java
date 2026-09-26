@@ -159,7 +159,7 @@ final class EconomyFixtures {
               Optional.of(new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID)),
               Optional.empty(),
               10);
-      relations.put(id, new ProductionRelation(id, operator, List.of(rule), operator));
+      relations.put(id, new ProductionRelation(id, operator, null, List.of(rule), operator));
     }
     return relations;
   }

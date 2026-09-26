@@ -7,6 +7,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
@@ -17,6 +18,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -183,10 +185,24 @@ class EconomySowingTest {
       String name,
       long cycleDays,
       Map<AssetKind, Map<CommodityId, Long>> cycleInput) {
+    return industry(id, name, cycleDays, cycleInput, new RegimeId("feudal"), null);
+  }
+
+  /**
+   * 同上，但**制度与经营者可注入**（H3/K7 用）：{@code operator == null} ⇒ 按制度推导（旧行为）； 给了 ⇒ 就用它（本文件用它造"<b>operator
+   * 就是佃农家户</b>"那一档 —— 见 {@link #eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow}）。
+   */
+  private static Industry industry(
+      IndustryId id,
+      String name,
+      long cycleDays,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInput,
+      RegimeId regime,
+      ActorRef operator) {
     return new Industry(
         id,
         name,
-        new RegimeId("feudal"),
+        regime,
         cycleDays,
         0L,
         Map.of(AssetKind.LAND, 1_000L),
@@ -201,8 +217,8 @@ class EconomySowingTest {
         new AllocationRule.Split(700, 300),
         0L,
         Map.of(),
-        // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:<本夹具的 id 参数>`）。
-        RegimeOperators.defaultOperator(new RegimeId("feudal"), id));
+        // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:<本夹具的 id 参数>`）；H3 的重载可显式注入。
+        operator == null ? RegimeOperators.defaultOperator(regime, id) : operator);
   }
 
   /**
@@ -216,6 +232,15 @@ class EconomySowingTest {
       Map<CohortKey, ClassRow> rows,
       Map<IndustryId, Industry> industries,
       Map<CohortKey, Map<CommodityId, Long>> goods) {
+    return data(rows, industries, goods, EconomyFixtures.laborShareToPeasant(industries));
+  }
+
+  /** 同上，但**关系表可注入**（H3：operator 就是某个家户时，"自留"只能由 {@code residualOwner} 表达 —— 见 K7 那条用例）。 */
+  private static EconomyFixtures.World data(
+      Map<CohortKey, ClassRow> rows,
+      Map<IndustryId, Industry> industries,
+      Map<CohortKey, Map<CommodityId, Long>> goods,
+      Map<IndustryId, ProductionRelation> relations) {
     EconomyMeta meta =
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     return new EconomyFixtures.World(
@@ -238,7 +263,9 @@ class EconomySowingTest {
             // ★★ **T4：关系表非空**（不再是"空表 = 全归 residualOwner"）—— 产出离开 ClassRow 之后，行里唯一还有实物的
             //   通道就是关系结算的 cohort 入账。本文件的夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成
             //   **逐值等于净产**（own ÷ Σ劳动 = 1）⇒ 既有的收获字面量（{@link #FULL_HARVEST_NET} 那一族）一字不改。
-            EconomyFixtures.laborShareToPeasant(industries)),
+            //   ★ H3：operator 就是受方那个家户时（tenant 档）**不能**用这条规则 —— 那会铸出一条自转移
+            //     （{@code Transfer} 的两端不得相等）⇒ 那种世界用**空规则表**（= 全归 residualOwner，裁定 E9）。
+            relations),
         goods);
   }
 
@@ -669,13 +696,29 @@ class EconomySowingTest {
   void eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow() {
     LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>();
     rows.put(PEASANT_KEY, peasantRow()); // 缸空
-    rows.put(LANDLORD_KEY, landlordRow()); // 缸足（5,000,000）
+    rows.put(LANDLORD_KEY, landlordRow()); // 缸足（5,000,000）—— 它**不是**这个产业的经营者
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
-    industries.put(FARM, industry(FARM, "农业", CYCLE_DAYS, seeds(SEED_PER_MU)));
+    // ★★ **H3/K7（2026-09-27）：这个夹具的 operator 换成"佃农家户"** —— 因为"缸空 ⇒ 地荒着"这条机构自 H3 起
+    //   由**单一主体的账**表达（裁定 C3 的原话：tenant 档的 operator 就是佃农家户），而不再是"逐行各扣各的"：
+    //   旧口径里"谁出料"是按该产业各行的人口占比**算**出来的（{@code rowSharesOf}），H3 起由 relation 明说。
+    //   ⇒ 本条判据一个字没改（缸空 ⇒ 播 0 亩 ⇒ 颗粒无收；地主那 5,000,000 **一分不被拿去下种**），
+    //   改的只是"谁是这个产业的出料人"这条前提（夹具修正，见计划 K7）。
+    //   ★ 判别力仍在：若取材改成"从**全格池子**扣"（或从"该产业名下的家户账"整体扣），地主的 5,000,000 会被拿来下种
+    //     ⇒ 下面那两条 `isZero()` 当场红。
+    //   ★ 关系表用**空规则**（= 全归 residualOwner）：operator 就是受方那个家户时，一条"付给它的规则"会铸出自转移
+    //     （{@code Transfer} 两端不得相等）—— tenant 档的"自留"本就该由 residualOwner 表达（裁定 E9）。
+    ActorRef tenant = HouseholdActors.of(PEASANT_KEY);
+    industries.put(
+        FARM, industry(FARM, "农业", CYCLE_DAYS, seeds(SEED_PER_MU), new RegimeId("tenant"), tenant));
     Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 0L);
     EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 5_000_000L);
-    EconomyFixtures.World world = data(rows, industries, goods);
+    EconomyFixtures.World world =
+        data(
+            rows,
+            industries,
+            goods,
+            Map.of(FARM, new ProductionRelation(FARM, tenant, null, List.of(), tenant)));
 
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 2L);
 
@@ -691,7 +734,11 @@ class EconomySowingTest {
     //   **已清零**（任务 3 的 `sowingDayDrawsTheSeedBeforeTheDayIsEaten` 自己就钉着"关账清零"）。
     //   故这里另跑一次**单日**结算读第 1 天（播种日）读数。
     EconomyFixtures.World sowingWorld =
-        data(rows, industries, goodsFor(PEASANT_KEY, 0L, LANDLORD_KEY, 5_000_000L));
+        data(
+            rows,
+            industries,
+            goodsFor(PEASANT_KEY, 0L, LANDLORD_KEY, 5_000_000L),
+            Map.of(FARM, new ProductionRelation(FARM, tenant, null, List.of(), tenant)));
     assertThat(
             EconomyFixtures.advance(sowingWorld.data(), sowingWorld.goods(), 0L, 1L)
                 .industries()

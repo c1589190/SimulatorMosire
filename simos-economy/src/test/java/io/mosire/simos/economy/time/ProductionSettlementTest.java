@@ -142,7 +142,7 @@ class ProductionSettlementTest {
   }
 
   private static ProductionRelation relation(CompensationRule... rules) {
-    return new ProductionRelation(FARM, ESTATE, List.of(rules), ESTATE);
+    return new ProductionRelation(FARM, ESTATE, null, List.of(rules), ESTATE);
   }
 
   /**

@@ -313,7 +313,8 @@ class ProductionLedgerTest {
             Optional.empty(),
             10);
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
-    relations.put(FARM, new ProductionRelation(FARM, OPERATOR, List.of(subsistence), OPERATOR));
+    relations.put(
+        FARM, new ProductionRelation(FARM, OPERATOR, null, List.of(subsistence), OPERATOR));
     // ★★ H1（K1）：期初库存进**会话工作副本** —— 与状态成对交出（唯一拼写点在这里）。
     Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);

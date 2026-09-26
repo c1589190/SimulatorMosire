@@ -72,6 +72,20 @@ import java.util.Set;
  * 的公式表里它的数量恒为 0 ⇒「不写这条规则」是 <b>等价路径</b>（空表 ⇒ 全归 {@code residualOwner}）。★ 于是"改回一条 {@code
  * SELF_RETENTION}"这种改动会在 {@code RegimeRelationsTest} 上当场红。
  *
+ * <p>★★ <b>H3（2026-09-27，裁定 C3 + operator=C）：四档的"投入由谁出"默认值</b> —— {@code feudal} = <b>经营者（庄园）出</b>
+ * · {@code tenant} = <b>佃农家户出</b> · {@code household} = <b>家户自出</b> · {@code handicraft} =
+ * <b>作坊主出</b>（唯一拼写点是 {@link #defaultInputSupplier}）。
+ *
+ * <p>★★ <b>如实记：这四档默认<b>同值</b> —— 都落在该档的 {@code operator} 上</b>（因为 operator 就是那个主体：庄园 / 佃农家户 / 织布的家户
+ * / 作坊主）。⇒ <b>这一栏的价值不是"改默认值"</b>，而是把"谁出料"从<b>按人口猜</b>（改前的 {@code
+ * EconomySettlement.rowSharesOf}：该产业各行人口占比 + 逐行向下取整）变成<b>制度明说</b>，并让 GM 能配（载荷里一条显式 {@code relation}
+ * 就能写"<b>地主出种</b>"这种制度 —— spec §2.4"同一个制度可以 A 格这样、B 格那样"的落点）。详见 {@code ProductionRelation} 的类注。
+ *
+ * <p>★ <b>为什么仍然做成一张"制度 → 值"的表（而不是直接在别处写 {@code ToActor(operator)}）</b>：① 四条默认是
+ * <b>制度事实</b>（"佃农出种、庄园出种"各是一句话），它们的归属地就是本类（"制度 → 默认关系"的唯一拼写点）； ② <b>未登记的制度照样
+ * fail-closed</b>（与本表其余入口同口径：新制度 = 新生产关系 ⇒ 必须显式说清谁出料）； ③ 将来某一档真的要改（例如 {@code tenant}
+ * 改成"地主出种"），改的是<b>这一处</b>，不是散在各处的调用点。
+ *
  * <p>★★ <b>R7/R8：受方是 cohort，"劳动者" = 该格的四个阶层各一条规则</b>。{@code CohortKey} 的粒度是 {@code (格, 居住类型,
  * 阶层)}（spec §2.6 + H0 的 R-N1-A），而劳动者是一个集合 ⇒ 四个阶层各一条；人口为 0 的那些 cohort <b>自然解析不到行</b>（{@code
  * population > 0} 是硬条件）⇒ 该笔留在 operator。
@@ -270,7 +284,47 @@ public final class RegimeRelations {
         }
       }
     }
-    return new ProductionRelation(industry, operator, rules, operator);
+    // ★★ H3/C3：投入的提供者由**制度**说（见 defaultInputSupplier 的类注）—— 四档默认同值（都落在 operator 上），
+    //   但"谁出料"从此是**本表的一行**，不再是结算里按人口算出来的一个比例。
+    return new ProductionRelation(
+        industry, operator, defaultInputSupplier(regime, operator), rules, operator);
+  }
+
+  /**
+   * ★★ <b>四档的"投入由谁出"默认值</b>（H3/C3 的唯一拼写点）：{@code feudal} = 经营者（庄园）出 · {@code tenant} = 佃农家户出 ·
+   * {@code household} = 家户自出 · {@code handicraft} = 作坊主出。
+   *
+   * <pre>
+   * 四档 <b>同值</b>：都返回 {@code ToActor(operator)} —— 因为 operator 就是那个主体（庄园 / 佃农家户 / 织布的家户 / 作坊主）。
+   * </pre>
+   *
+   * <p>★★ <b>为什么同值也要有这个方法</b>（读者会问"那不就是把 operator 抄一遍"）：① 这一栏的语义是<b>制度事实</b>
+   * （"佃农出种、庄园出种"各是一句话），它的归属地是"制度 → 默认关系"的唯一拼写点（本类）；② <b>未登记的档 fail-closed</b> —— 与本类其余入口同口径（新制度 =
+   * 新生产关系 ⇒ 必须显式说清谁出料），而"直接把 operator 包一层"就没有这道判； ③ 将来某一档真的要改（例如 {@code tenant}
+   * 改成"地主出种"），改的是<b>这一处</b>。
+   *
+   * <p>★ <b>另有一条更根本的理由</b>（改前口径的病）：H3 之前"谁出料"是<b>算</b>出来的 —— {@code
+   * EconomySettlement.drawCycleInputs} 把投入需求按该产业各行的人口占比摊下去、逐行向下取整。那条口径的后果实测得到（小夹具 6 座作坊只开 4 座、 50
+   * 台织机只开 48 台）。本方法把"谁出"变成<b>表里的一行</b>：默认是 operator，GM 要"地主出种"就写一条显式 {@code relation}。
+   *
+   * @param regime 生产制度；不得为 null
+   * @param operator 该产业的经营主体（H3 的四档默认都落在它身上）；不得为 null
+   * @throws IllegalArgumentException 任一参数为 null，或 {@code regime} <b>未登记</b>（fail-closed，消息列出四档）
+   */
+  public static Recipient defaultInputSupplier(RegimeId regime, ActorRef operator) {
+    if (regime == null) {
+      throw new IllegalArgumentException("regime 不得为 null");
+    }
+    if (operator == null) {
+      throw new IllegalArgumentException("operator 不得为 null（投入的默认提供者 = 经营主体）");
+    }
+    if (!BY_REGIME.containsKey(regime.value())) {
+      throw new IllegalArgumentException(
+          "未登记的制度，无法推导默认投入提供者：" + regime.value() + "；已登记的档: " + BY_REGIME.keySet());
+    }
+    // ★ 四档同值（见方法注释）：投入由**经营主体自己**出。⇒ 与 ProductionRelation 的构造期缺省同值，
+    //   两处不可能漂开（那一条是"缺键时"的补，本方法是"按制度推导时"的答，值域相同）。
+    return new Recipient.ToActor(operator);
   }
 
   /**
@@ -317,7 +371,8 @@ public final class RegimeRelations {
             20));
     // ★★ **本档的第二个典型产品：农田的副产纤维**（S1 阶段 4+5 Task 4 的实测收口）。
     //   ★ 为什么它必须在这里：产出自本阶段起**不再写进阶层行**（R5 ②），行里的实物只能经关系规则回来 ——
-    //     而"田里的纤维 → 同格织机上"是**既有能力**（R4 的 T0：{@code transferIntraHexInputs} 从**行**取材，
+    //     而"田里的纤维 → 同格织机上"是**既有能力**（R4 的 T0 曾用 {@code transferIntraHexInputs} 从**行**取材 ——
+    //     ★ H3 把那条通道删了：现在织机取的是**它自己名下那些农村家户**的账，而纤维副产正落在那些行上，见 drawCycleInputs，
     //     织机因此每个周期都拿得到料）。少了这一条，纤维会留在 {@code operator} 的账上，织机**第 2 个周期起停工**
     //     （{@code EconomyRealScaleClothTest} / {@code PopulationR4Test} / {@code
     // WorldgenInitializeToolTest} 三条

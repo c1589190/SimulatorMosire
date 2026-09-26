@@ -26,7 +26,7 @@ import java.util.Map;
  * <p>★★ <b>为什么没有 {@code meansOfProduction}</b>（裁定 K3，2026-09-27）：产能（亩/织机/作坊）是**该格该产业的技术属性**， 已搬到
  * {@link Industry#capacity()}。搬走的**代价如实记**：改前 {@code scaleOf} 用 Σ各行的产能 ⇒ 隐含"贫农缸空 ⇒
  * 它的地荒着"的阶级差异；搬走之后这条不再由产能表达，改由"投入由谁出"表达（C3，后续批次）—— 本阶段以**人口占比**折算各行"想扣多少" （见 {@code
- * EconomySettlement.rowSharesOf}），真档数值因此**允许变**。
+ * EconomySettlement.rowSharesOf}（★ H3 已删），真档数值因此**允许变**。
  *
  * <p>★ **它是存量**（§3.3 末条"存量/流量分离"）：本期的发生额在 {@link FlowRow} 里、**结算后清零**；绝不用"生产成本"或"资产减少"
  * 冒充负债——债务只能由借入/赊购产生，引用 {@link #debts} 指向债务表。

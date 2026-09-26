@@ -123,6 +123,7 @@ import java.util.Set;
  * <pre>{@code
  * "relation":{
  *   "operator":{"kind":"ESTATE","id":"farm@0_0"},        // 可选；缺 ⇒ 取产业的那个（于是必然一致）
+ *   "inputSupplier":{"cohort":"0_0|rural|landlord"},     // 可选（H3/C3）；缺 ⇒ 取 operator（四档默认同值）
  *   "residualOwner":{"kind":"ESTATE","id":"farm@0_0"},   // 可选；缺 ⇒ 取 operator（自留是缺省）
  *   "rules":[{"type":"OUTPUT_SHARE","recipient":{"cohort":"0_0|landlord"},
  *             "pool":"GROSS_OUTPUT","weight":"NONE","ratePerMille":300,"fixedAmount":0,
@@ -136,6 +137,11 @@ import java.util.Set;
  *       不一致时，没有哪一处能判谁对）；<b>缺省取产业的那个</b>—— ★ 不是"再调一次 {@code RegimeOperators.defaultOperator}"：两者在缺
  *       {@code operator} 键时同值，而在**显式给了 operator** 时 只有前者自洽（否则"显式主体 + 缺 relation"会自相矛盾地被拒，I3.1
  *       的用例正是那个形态）；
+ *   <li>★★ <b>H3：{@code inputSupplier} 是可选键</b>（"这些投入由谁出"，裁定 C3）—— 形状与 {@code recipient}
+ *       逐字同款（{@code {actor:{kind,id}}} 或 {@code {cohort:"<CohortKey 规范串>"}}，恰给其一）； <b>缺键 ⇒ 取 {@code
+ *       operator}</b>（= 四档默认，见 {@code RegimeRelations.defaultInputSupplier}）。 ★
+ *       <b>缺省不在本层另写一遍</b>：交给 {@code ProductionRelation} 的构造期缺省（旧档兼容的那一处边缘）； ★
+ *       它**不参与**上面那条一致性判据（供方与经营者**可以**是两个主体 —— 那正是"地主出种"要表达的形态）；
  *   <li>★ <b>受方</b>：{@code recipient} 恰给 {@code actor}（{@code {kind,id}}）或 {@code cohort} （{@code
  *       CohortKey} 的**规范串**，如 {@code "0_0|landlord"}）之一 —— 两个都没给 / 两个都给了 ⇒ 抛；
  *   <li>★★ <b>H2：{@code pool} × {@code weight} 是新档（裁定 D5-B），{@code basis} 是旧档</b> —— 本层是
@@ -311,11 +317,45 @@ final class EconomyPayloads {
     }
     JsonNode residualNode = optionalObject(relationNode, "residualOwner");
     ActorRef residualOwner = residualNode == null ? operator : actorRef(residualNode);
+    // ★★ **H3（裁定 C3）：投入由谁出** —— 可选键，形状与补偿规则的 recipient 逐字同款（`{actor:{kind,id}}` 或
+    //   `{cohort:"0_0|rural|landlord"}`，恰给其一）。★ **缺键 ⇒ 取 operator**（= 四档默认，见 RegimeRelations）：
+    //   这是旧档兼容的那一处边缘 —— H3 之前的 relation JSON 没有这个键，而"旧档读不回来"不是兼容，是事故。
+    //   ★ 缺省**不在这里另写一遍值**：交给 ProductionRelation 的构造期缺省（null ⇒ ToActor(operator)），
+    //     一处拼写点（本层只解析"给了什么"，不发明"没给时是什么"）。
+    JsonNode inputSupplierNode = optionalObject(relationNode, "inputSupplier");
+    Recipient inputSupplier =
+        inputSupplierNode == null ? null : recipient(inputSupplierNode, "inputSupplier");
     List<CompensationRule> rules = new ArrayList<>();
     for (JsonNode rule : optionalArray(relationNode, "rules")) {
       rules.add(compensationRule(rule));
     }
-    return new ProductionRelation(industry.id(), operator, rules, residualOwner);
+    return new ProductionRelation(industry.id(), operator, inputSupplier, rules, residualOwner);
+  }
+
+  /**
+   * ★★ <b>一个受方</b>（{@code {actor:{kind,id}}} 恰给其一，或 {@code {cohort:"<CohortKey 规范串>"}}）—— 补偿规则的
+   * {@code recipient} 与关系的 {@code inputSupplier}（H3）<b>共用本方法</b>。
+   *
+   * <p>★ <b>抽出来的是形状与拒因，不是文案</b>：两个调用点的消息里都带字段名（{@code what}），于是"哪个键写歪了"一眼可见；
+   * 少了这一步，同一套"恰其一"的规则就会在第二处再写一遍（本仓明令禁止的第二拼写点）。
+   *
+   * @param node 受方节点（非 null；调用方已确认它是对象）
+   * @param what 字段名（进错误消息；如 {@code "recipient"} / {@code "inputSupplier"}）
+   */
+  private static Recipient recipient(JsonNode node, String what) {
+    JsonNode actorNode = optionalObject(node, "actor");
+    boolean hasCohort = node.hasNonNull("cohort");
+    if ((actorNode != null) == hasCohort) {
+      throw new IllegalArgumentException(
+          what
+              + " 必须恰给 actor 或 cohort 之一（"
+              + (actorNode != null ? "两个都给了" : "两个都没给")
+              + "）: "
+              + node);
+    }
+    return actorNode != null
+        ? new Recipient.ToActor(actorRef(actorNode))
+        : new Recipient.ToCohort(CohortKey.parse(requireText(node, "cohort")));
   }
 
   /**
@@ -334,19 +374,8 @@ final class EconomyPayloads {
     if (recipientNode == null) {
       throw new IllegalArgumentException("补偿规则的字段 recipient 必须是对象: " + node);
     }
-    JsonNode actorNode = optionalObject(recipientNode, "actor");
-    boolean hasCohort = recipientNode.hasNonNull("cohort");
-    if ((actorNode != null) == hasCohort) {
-      throw new IllegalArgumentException(
-          "recipient 必须恰给 actor 或 cohort 之一（"
-              + (actorNode != null ? "两个都给了" : "两个都没给")
-              + "）: "
-              + recipientNode);
-    }
-    Recipient recipient =
-        actorNode != null
-            ? new Recipient.ToActor(actorRef(actorNode))
-            : new Recipient.ToCohort(CohortKey.parse(requireText(recipientNode, "cohort")));
+    // ★ H3 起受方的解析与关系的 inputSupplier **共用同一处**（见 recipient）：同一套"恰其一"的规则只有一个拼写点。
+    Recipient recipient = recipient(recipientNode, "recipient");
     RuleType type = RuleType.parse(requireText(node, "type"));
     return new CompensationRule(
         type,

@@ -580,6 +580,7 @@ class EconomySeedHandlerTest {
             new ProductionRelation(
                 FARM,
                 new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"),
+                null,
                 List.of(
                     new CompensationRule(
                         RuleType.FIXED_IN_KIND_RENT,
@@ -654,6 +655,7 @@ class EconomySeedHandlerTest {
             new ProductionRelation(
                 FARM,
                 new ActorRef(ActorKind.ESTATE, "farm@0_0"),
+                null,
                 List.of(
                     new CompensationRule(
                         RuleType.OUTPUT_SHARE,

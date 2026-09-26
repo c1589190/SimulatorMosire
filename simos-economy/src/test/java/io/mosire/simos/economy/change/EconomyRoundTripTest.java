@@ -329,6 +329,7 @@ class EconomyRoundTripTest {
     return new ProductionRelation(
         id,
         operator,
+        null,
         List.of(
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,
