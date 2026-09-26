@@ -1,40 +1,21 @@
 package io.mosire.simos.app.world;
 
+import static io.mosire.simos.app.world.PopulationEconomyFixture.DESERT;
+import static io.mosire.simos.app.world.PopulationEconomyFixture.advanced;
+import static io.mosire.simos.app.world.PopulationEconomyFixture.seeded;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
+import io.mosire.simos.app.world.PopulationEconomyFixture.Fixture;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.id.PeopleLotId;
-import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.spi.EconomySeedHandler;
-import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
-import io.mosire.simos.social.SocialSnapshot;
-import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationDynamics;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.util.info.InMemoryInfoSystem;
-import io.mosire.simos.util.spi.HandlerOutcome;
-import io.mosire.simos.util.spi.WorldTimeProposal;
-import io.mosire.simos.util.state.BranchId;
-import io.mosire.simos.util.state.RevisionId;
-import io.mosire.simos.util.state.SimulationState;
-import io.mosire.simos.util.state.Snapshot;
-import io.mosire.simos.util.state.StateMeta;
-import io.mosire.simos.util.state.StateRef;
-import io.mosire.simos.util.time.Segment;
-import io.mosire.simos.util.time.SegmentedSeries;
-import io.mosire.simos.util.time.SimosTimestamp;
-import io.mosire.simos.util.time.TimeRange;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -53,18 +34,6 @@ import org.junit.jupiter.api.Test;
  * 用例把它 apply 回基态（真 {@code EconomyChangeSet} / {@code SocialChangeSet}）—— 这正是 Core 的 ④ Validate 做的事。
  */
 class PopulationR4Test {
-
-  private static final String MAP_ID = "r4";
-  private static final BranchId MAIN = new BranchId("main");
-  private static final StateRef REF = new StateRef(MAIN, new RevisionId(1));
-
-  /** 有农田的格（平原）：供方（农业行的纤维）与受方（同格织机的原料）都在这里。 */
-  private static final HexCoord PLAINS = new HexCoord(0, 0);
-
-  /** 沙漠格：可耕地系数 0 ⇒ 从第 1 天起就吃不饱 —— "长期缺粮"的那一极。 */
-  private static final HexCoord DESERT = new HexCoord(1, 0);
-
-  private static final long POPULATION = 1_000L;
 
   /** 一年的天数（本仓日制，与 {@code PopulationSeeder} 同口径）。 */
   private static final long YEAR = 365L;
@@ -251,91 +220,6 @@ class PopulationR4Test {
     assertThat(daily.social().groups().keySet())
         .as("★ 连批次的键集都一样（出生批次逐月落、不多不少）")
         .isEqualTo(once.social().groups().keySet());
-  }
-
-  // ── 夹具 ────────────────────────────────────────────────────────────────────────────
-
-  /** 一份"世界"：两个格的批次 + 真播种器产出的经济状态 + 当前世界日（{@code SocialData} 本身不带时刻）。 */
-  private record Fixture(SocialData social, EconomyData economy, long tick) {}
-
-  /** 创世（day 0）：平原格与沙漠格各有 1,000 人；经济侧由**真播种器**产出。 */
-  private static Fixture seeded() {
-    List<PopulationGroup> groups = new java.util.ArrayList<>();
-    groups.addAll(PopulationSeeder.groups(plan(PLAINS), 0L));
-    groups.addAll(PopulationSeeder.groups(plan(DESERT), 0L));
-    SocialData social =
-        new SocialData(
-            Map.of(PLAINS, series(), DESERT, series()),
-            Map.<CityId, io.mosire.simos.social.city.SocialCity>of(),
-            index(groups));
-    String payload =
-        EconomySeeder.payload(MAP_ID, groups, at -> at.equals(DESERT) ? "desert" : "plains");
-    SimulationState empty =
-        new SimulationState(
-            new StateMeta(REF, SimosTimestamp.of(0)),
-            Map.of("economy", snap(EconomyData.empty(), 0L)),
-            InMemoryInfoSystem.empty());
-    HandlerOutcome outcome = new EconomySeedHandler().handle(empty, payload);
-    assertThat(outcome)
-        .as("真播种器产出的载荷必须被真 handler 接受：%s", outcome)
-        .isInstanceOf(HandlerOutcome.Applied.class);
-    EconomyData economy =
-        EconomyChangeSet.apply(
-            (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
-    return new Fixture(social, economy, 0L);
-  }
-
-  /** 从 {@code fixture} 推进 {@code days} 天：真协调器的提案 + 真变更集 apply（这正是 Core ④ 做的事）。 */
-  private static Fixture advanced(Fixture fixture, long days) {
-    long now = fixture.tick();
-    SimulationState state =
-        new SimulationState(
-            new StateMeta(REF, SimosTimestamp.of(now)),
-            Map.of(
-                "economy", snap(fixture.economy(), now),
-                "social", socialSnap(fixture.social(), now)),
-            InMemoryInfoSystem.empty());
-    WorldTimeProposal proposal =
-        new PopulationEconomyTimeParticipant(MAP_ID)
-            .simulateWorld(
-                state,
-                new TimeRange(SimosTimestamp.of(now), Optional.of(SimosTimestamp.of(now + days))));
-    EconomyData nextEconomy =
-        EconomyChangeSet.apply(
-            (EconomyChangeSet) proposal.moduleChanges().get("economy"), fixture.economy());
-    SocialData nextSocial =
-        SocialChangeSet.apply(
-            (SocialChangeSet) proposal.moduleChanges().get("social"), fixture.social());
-    return new Fixture(nextSocial, nextEconomy, now + days);
-  }
-
-  private static io.mosire.simos.social.gen.SettlementPlan plan(HexCoord hex) {
-    return new io.mosire.simos.social.gen.SettlementPlan(
-        Map.of(hex, POPULATION), List.of(), Map.of(), 250L, 0L);
-  }
-
-  private static Map<PeopleLotId, PopulationGroup> index(List<PopulationGroup> groups) {
-    Map<PeopleLotId, PopulationGroup> byId = new LinkedHashMap<>();
-    for (PopulationGroup group : groups) {
-      byId.put(group.id(), group);
-    }
-    return byId;
-  }
-
-  private static PopulationSeries series() {
-    return new PopulationSeries(
-        new Segment<>(SimosTimestamp.of(0), 0L),
-        new SegmentedSeries<Double>(
-            List.of(new Segment<>(SimosTimestamp.of(0), 0.0)), List.of(), null),
-        List.of());
-  }
-
-  private static Snapshot snap(EconomyData data, long tick) {
-    return new EconomySnapshot(REF, SimosTimestamp.of(tick), data);
-  }
-
-  private static Snapshot socialSnap(SocialData data, long tick) {
-    return new SocialSnapshot(REF, SimosTimestamp.of(tick), data);
   }
 
   /** 一年的三段账（在三个关账日各读一次本周期的人群账）+ 第 365 天的终态。 */
