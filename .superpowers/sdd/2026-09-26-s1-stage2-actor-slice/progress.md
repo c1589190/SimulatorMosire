@@ -264,3 +264,29 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
   **各自的 dispatch 之前必须先补成可执行代码**（与 Task 3 同样处理）。
 
 - **A 段关账 + Task 3 dispatched**（BASE=`7613599` 后的台账提交）：B 段开始 —— `AssetClassKey`（新建，TDD）
+
+### Task 3 实现报告（`0a2f95c`，DONE，5 文件 / +205−11）
+
+**数字**：`AssetClassKeyTest` **5/5**；全仓 `clean verify` **12/12 SUCCESS，2312 测试 / 0 失败**
+（A 段基线 2307 + 5）；SpotBugs 全 0；**269 份 surefire 报告 mtime 全落本轮**。
+★ 提交里**没有** `ActorRef`/`ActorKind`/`AssetKind`/`ActorTypesTest` ⇒ **B 段纪律（不得回头改 A 段契约）成立**。
+
+★ **变异自证做得比要求更细**：brief 的变异体（TreeMap→LinkedHashMap）**确实打到被测那一层** ——
+红在 `hasToString`（2 failures），而 `isEqualTo`/`hasSameHashCodeAs` **过了**。
+实现 Agent 还**先验了判别力**：`arable`/`quality` 的 `hashCode % 4` 都是 3，在 `Map.of` 的 4 槽表里**恒撞位**、
+两序恒相反（10 次 JVM 启动实测）—— 这是"先证明夹具真的能分辨，再拿它当判据"。
+另补三条 fail-closed 的变异（删重复键/删缺 `=`/删词表）各自红在对应断言；四个变异全部还原、grep 复查无残留。
+
+- **Ruling（R-s，疑虑 1 —— 我的示范句是错的）**：我在 R-m 里写的示范句「本模块只声明 jackson」
+  与 **R-j（删 jackson）当场冲突** ⇒ 照抄会写出**当场为假**的话。实现 Agent 按 R-j 之后的事实措辞
+  （"一条都不声明"）**是正确的**。
+  —— **为什么**：**裁定之间会互相覆盖，后一条生效**；实现者按事实写、并把冲突报上来，是对的做法。
+  —— **错了的代价**：无（措辞）。
+- **Ruling（R-t，疑虑 2）**：根 `pom.xml:27`「只依赖 jackson」被 R-j 弄假 ⇒ 一并改成"不声明主依赖"。
+  **判定可接受**（R-p 口径：随事实修正的文档引用），**可回退**。代价：低。
+- **Ruling（R-u，疑虑 4）**：SpotBugs `EI_EXPOSE_REP` 按本仓「只读包装写在赋值处」消掉，
+  **未**用 `@SuppressFBWarnings` 压制 —— ★ **这是对的**：压制注解会把一类真缺陷永久静音，
+  而本仓的 `DEFENSIVE_COPY` 口径就是要**真的**做防御性拷贝。
+- **★ 疑虑 3 交给评审判，我不预判**：实现 Agent **自陈**加了一条 brief 未列的第 7 条校验
+  （qualities 的键/值不得为空白），并说"5 条用例不依赖它" ⇒ **若真无测试覆盖，它就是未被验证的分支**。
+  —— 按 SDD 纪律**不许给评审预判**，所以我把这条**留白**，让评审自己报，再在修复环里裁。
