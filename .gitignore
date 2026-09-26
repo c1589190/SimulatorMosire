@@ -25,3 +25,6 @@ CLAUDE.local.md
 
 # 会话原始记录 —— 内容已消化进 spec/计划，留本地作溯源，不进版本库
 *-gsimulator.txt
+
+# Maven 串行化锁（tools/mvn-lock.sh 用；放在仓根以便不受 clean 影响）
+.mvn-lock.d/
