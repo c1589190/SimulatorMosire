@@ -3,7 +3,7 @@
 计划：`docs/superpowers/plans/2026-09-26-s1-stage45-ownership-and-relations.md` §Task 3
 brief：同目录 `task-3-brief.md`　★ 关账点 **A**（行为必须未变）
 
-**结论**：`ProductionSettlement`（470 行）+ `ProductionSettlementTest`（508 行 / 16 个用例）落地；
+**结论**：`ProductionSettlement`（489 行）+ `ProductionSettlementTest`（517 行 / 16 个用例）落地；
 **6 条变异体**逐条当场红、逐条 `md5sum -c` 证明还原到最终字节；全仓 `./mvnw clean verify` **BUILD SUCCESS**
 （关账点 A：**13 个模块全绿 / 2,513 个测试 0 失败** —— 本任务**只新增文件、零行为改动**）。
 ★ 全仓门禁**两次真实命中**并处置（spotless 折行、SpotBugs `EI_EXPOSE_REP` ×7）—— 见 §十。
@@ -183,8 +183,8 @@ brief/计划只写了"cohort 受方 ⇒ 进 `cohortIntake`、actor 受方 ⇒ �
 
 | 文件 | 动作 | 说明 |
 |---|---|---|
-| `simos-economy/src/main/java/io/mosire/simos/economy/time/ProductionSettlement.java` | **新建**（470 行） | 公式表 + 次序 + R6 上限 + E14/E11 守卫 + 读口 `deferredMoneyReason` |
-| `simos-economy/src/test/java/io/mosire/simos/economy/time/ProductionSettlementTest.java` | **新建**（508 行 / 16 用例） | 逐值手算夹具（见 §八 的清单） |
+| `simos-economy/src/main/java/io/mosire/simos/economy/time/ProductionSettlement.java` | **新建**（489 行） | 公式表 + 次序 + R6 上限 + E14/E11 守卫 + 读口 `deferredMoneyReason` |
+| `simos-economy/src/test/java/io/mosire/simos/economy/time/ProductionSettlementTest.java` | **新建**（517 行 / 16 用例） | 逐值手算夹具（见 §八 的清单） |
 | `.superpowers/sdd/2026-09-26-s1-stage45-ownership-and-relations/task-3-report.md` | **新建** | 本文件 |
 | `.superpowers/sdd/2026-09-26-s1-stage45-ownership-and-relations/task-3-evidence/` | **新建** | **23 份**：RED ×1 / GREEN ×3 / 变异体 ×12（第一轮 6 + **最终字节上重证的 6**）/ 全仓 verify ×3 / md5 ×4（`git add -f` 入库：该目录被 `.superpowers/sdd/.gitignore` 的 `*` 挡着，照 T1/T2 先例） |
 
