@@ -492,6 +492,22 @@ Expected: **FAIL**（`keyOrderInQualitiesDoesNotChangeIdentity` 红 —— 两�
 
 ### Task 4: `Actor` + `ActorData` + `ActorSnapshot` + `ActorChangeSet` + 往返测试
 
+★★ **每次写"照 economy 的形制"时，指的就是下面这几个文件**（**照抄形制，别自己发明**；
+本仓五件套的形状是硬约定，装配链指望它）：
+
+| 要写的东西 | 范本（照抄形制） |
+|---|---|
+| 状态树 record | `simos-economy/src/main/java/io/mosire/simos/economy/EconomyData.java` |
+| 落盘切片（`implements Snapshot` + `namespace()`） | `…/economy/EconomySnapshot.java` |
+| 变更集（`implements ChangeSet`，逐组件 `FieldDelta`） | `…/economy/change/EconomyChangeSet.java` |
+| **往返不变式测试（铁律 5）** | `…/economy/change/EconomyRoundTripTest.java` |
+| Codec（`implements ModuleCodec, ModuleDiffer`） | `…/economy/codec/EconomyCodec.java` |
+| Resolver | `…/economy/resolve/EconomyResolver.java` |
+| SPI 三件（handler / 载荷校验 / 快照取用） | `…/economy/spi/EconomySeedHandler.java`、`EconomyPayloads.java`、`EconomySnapshots.java` |
+
+★ `Snapshot` / `ChangeSet` / `ModuleCodec` / `FieldDelta` 这些**接口本身住在 `simos-util`**，
+`simos-actor` 依赖它（Task 1 的 pom 已给 `simos-actor-api` 配好，切片照抄）。
+
 **Files:**
 - Create: `simos-actor/src/main/java/io/mosire/simos/actor/{ActorData,ActorSnapshot,ActorMeta}.java`
 - Create: `simos-actor/.../model/Actor.java`

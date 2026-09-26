@@ -305,3 +305,33 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
 - ★ **Task 7 的 Step 1 仍是散文**（"照 `EconomyCodecTest`：正例 + 空态 + 非法态"）
   —— 它指了一个**具体的范本类**，且 Task 7 的真判据是 Review Focus ⑤（空 `ActorData` 往返**逐字段**相同），
   故**判定可接受**，但 dispatch 时要明写这条判据。
+
+### Task 3 评审（Spec ❌ / Task quality Approved / 1 Important · 5 Minor）
+
+★ 评审**确认**了那条跨文件否定性声明（B 段纪律）：commit 清单恰 1 条、stat 恰 5 个路径，
+**没有任何 hunk 指向** `ActorRef`/`ActorKind`/`AssetKind`/`ActorTypesTest` ⇒ **R7 成立**。
+★ 评审还**独立核实了门禁绑定**（`spotless:check` 在 verify、checkstyle 在 validate、spotbugs 在 verify）
+⇒ 印证了 A 段那条"逐任务命令必须含 spotless"的教训。
+
+**★ Important #1（进修复环）**：`AssetClassKey` 的 **7 条校验里有 3 条零测试、零变异自证**
+（`checkText` 的空白分支、`checkText` 的分隔符分支、`kind == null`）——**删掉任何一条，5/5 照样全绿**。
+其中**含分隔符那条是"可逆性"的承重墙**：没有它，`new AssetClassKey(LAND, Map.of("a|b","1"))`
+会产出规范串 `"LAND|a|b=1"`，而 `parse` **自己拒绝**它 ⇒ **构造函数造得出"自己的规范串解析不回来"的键**。
+
+- **Ruling（R-v，对 Minor #1 的处置）**：那条**拒空白**的第 7 条校验 **保留**，按"一条规则一条断言"补测试。
+  —— **为什么**：它符合本仓成例（`SocialClassId` / `ActorRef.id` 都拒空白），拒的是**退化输入**，
+  属 fail-closed 方向；**删它才是放宽**。评审指出的"零保护"是**覆盖率**问题，由本轮修复解决。
+  —— **错了的代价**：低（一条校验分支）。
+- **Ruling（R-w，评审"部分是虚的"那条不修）**：评审指出该分支**只拒全空白、不拒前后有空白**
+  ⇒ `"B"` 与 `"B "` 仍是两个身份、两条规范串。**判定：不做归一化**（trim/规范化是 brief 之外的扩张）。
+  它是一个**数据纪律**问题，**不是可逆性 bug**（两种写法各自往返都成立）。**记在案**。
+  —— **错了的代价**：低但真实 —— 上游若真塞进带空格的值，会产生"看起来一样的两份产权"。
+- **Minor 2–5 不入环**（记账，留给收尾全支评审分级）：②测试判别力耦合 `Map.of` 内部实现
+  （换 JDK 可能**静默失效**）③`parseKind` 丢 cause ④`split` 的正则转义写法可读性 ⑤测试 3 验的是
+  string→object→string 而 javadoc 的断言是 object→string→object
+
+- **Task 3: fix round 1/5**（`0a2f95c..5323e54`，1 addressed / 0 open；1 文件 / +47，**实现文件零改动**）
+  ★ 实现 Agent 的证据链很干净：三条新用例**当场就绿**（无需改实现）⇒ 印证评审说的是**覆盖率缺口、不是行为缺陷**；
+  三个变异 M-A/M-B/M-C **各自只红对应那一条**（每次 `Tests run: 8, Failures: 1`）⇒ 规则↔断言一一对应；
+  还原证据是**空的 `git diff`**。
+  ★ scoped 复评 dispatched（fix base `0a2f95c` → head `5323e54`）。
