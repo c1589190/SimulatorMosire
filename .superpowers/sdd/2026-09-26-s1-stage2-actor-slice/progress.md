@@ -136,3 +136,41 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
   ⇒ **从 Task 2 起，每个任务的验证命令加 `spotless:check`**（本仓自己的 `spotless:apply` 修）。
 - **Task 1 评审 dispatched**：Review Package = `review-f870c0c..4872f44.diff`（1 commit / 8337 bytes），
   评审 Agent = sonnet 档，只读
+
+- **Task 1: complete**（commits `f870c0c..4872f44`，review clean —— Spec ✅ / Task quality Approved / 无 Critical / 无 Important）
+  - ★ 评审确认两处偏离**都是对的、不是图省事**：R-e（未声明 `simos-map`）与版本号变异体
+    （评审**独立复核**了根因：根 pom 里 `simos-app` 只作 `<module>` 出现、`dependencyManagement` 里没有它）
+  - ★ 评审指出变异证据比 brief 要求的更强：它证明了规则**拦得住传递依赖**，
+    且顺带证明 8/9 条 exclude 字符串**真的能匹配到可解析坐标**（拼错的 exclude 是静默 no-op）
+  - ⚠️ 三条 `Cannot verify from diff` 的处置：
+    - ①「一次只能跑一个 Maven」→ 进程约束，控制方按 dispatch 纪律执行，**已解**
+    - ② 本模块未过收尾 `clean verify` → **按计划如此**，Task 9 拥有
+    - ③ `AGENT.md:41-52` 模块表还没有 `simos-actor-api` 行 → **Task 9 Step 5 拥有**（计划里已写改 `AGENT.md:28-63`），**已解**
+- **Task 1: minor (deferred)** ×6（**不进修复环**，留给收尾的全支评审分级）：
+  1. `pom.xml:25-27` 注释里「不被任何领域模块依赖」与**同句前半段**（"economy-api 反过来依赖本模块"）自相矛盾，
+     且与 `package-info.java:7-9` 冲突 ⇒ 应改成"不被任何领域模块**反向**依赖"或删掉该分句
+     ★ **该注释是本仓的边界文档，写错会传给后来人** —— 见下 Ruling R-f
+  2. `simos-actor-api/pom.xml:61` 与 `package-info.java:12` 的 message 写了"util/map/jackson 可用"，
+     但 R-e 已把 `simos-map` 排除 ⇒ 将来 grep 这句话的人会读成"这里能用 map" —— 见下 Ruling R-f
+  3. **[plan-mandated]** `pom.xml:51-59` 是**枚举式黑名单**（今天 9 个模块）⇒ 将来新增的模块**默认放行**，
+     正是 `AGENT.md:55-58` 记录的同一个失败 ⇒ 自维护写法（`io.mosire:*` + includes 白名单）更好 —— 见下 Ruling R-g
+  4. `pom.xml:53` 的 `simos-ledger` 是变异**唯一没打过**的一条（它不在 app 的传递树里），
+     正确性只靠根 pom 的 `<module>` 声明 ⇒ Task 9 补一次单行变异即可关闭 —— 见下 Ruling R-g
+  5. **[plan-mandated]** `pom.xml:20-22` 的 `simos-util` **零 import**（模块还是空的）—— brief 要求，照留；
+     等 Task 2/3 把类型搬进来后若仍无人 import 就删 —— 见下 Ruling R-h
+  6. **[plan-mandated]** brief `:39-41` 的变异 XML 不带版本号、证明不了 enforcer ⇒ **已就地改进计划**
+     （Global Constraints 加"变异必须打到被测的那一层"），实现 Agent 的偏离就是正确解
+
+- **Ruling（R-f）**：上表 Minor 1、2 是**本仓边界文档里的事实性错误**，且它们所在的文件
+  **正是 Task 2 本来就要动的**（`simos-actor-api/pom.xml` 要加依赖；根 pom 的注释紧邻 Task 1 那两行声明）。
+  ⇒ **随 Task 2 的 dispatch 一起修**（两条各一行），**不**留到收尾评审。
+  —— **为什么**：评审自己指出"写错的边界注释会传给后来人"，而 Task 2–9 每个实现 Agent 都要读这两处。
+  —— **错了的代价**：近乎零（改两条注释）。
+- **Ruling（R-g）**：Minor 3（枚举式黑名单不防将来）与 Minor 4（`simos-ledger` 那条 exclude 没被变异打过）
+  ⇒ **都归 Task 9**，因为 Task 9 本来就拥有 ban 列表回填（`util`/`map`/`social`/`unit`），
+  那时有全貌可以决定是否换成自维护写法（`io.mosire:*` + includes 白名单）。
+  —— **为什么**：Task 1 已关账且 Approved，为一个设计改进重开它是流程要避免的churn。
+  —— **错了的代价**：将来新增模块在 actor-api 里**默认放行** —— 正是 `AGENT.md:55-58` 已记的那类欠账。
+- **Ruling（R-h）**：Minor 5（`simos-actor-api` 声明了 `simos-util` 却零 import）⇒ **随 Task 2 处置**：
+  四个类型搬进来之后若仍无人 import `simos-util`，**就删掉这条依赖**（Task 2 正是让这个模块不再为空的提交）。
+  —— **错了的代价**：低（真需要时编译立刻失败，加回一行）。
