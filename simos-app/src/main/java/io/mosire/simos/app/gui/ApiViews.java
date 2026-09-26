@@ -2,6 +2,7 @@ package io.mosire.simos.app.gui;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
@@ -17,8 +18,8 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -388,10 +389,14 @@ public final class ApiViews {
    * ★★ **经济切片该格的读数**（R2a 的 G1 读口）——GUI（{@code GET /api/economy/hex}）与 MCP 读工具（{@code
    * simos.economy.hex}）**共用这一份**（AGENT.md §8.3：不许在路由层另拼一份视图）。
    *
-   * <p>★ **逐值、可复现**：该格的产业按 {@code IndustryId} 字典序、每产业的阶层行按**槽位 id** 字典序、库存/需求表按键字典序
+   * <p>★ **逐值、可复现**：该格的产业按 {@code IndustryId} 字典序、家户行按 **(居住类型, 阶层 id)** 字典序、库存/需求表按键字典序
    * 发出——状态里的插入序不是内容的纯函数，跟着它走响应字节会抖。
    *
    * <p>★ **该格的产业怎么认出来**：经 {@link IndustryHexKeys#at}（"产业属于哪一格"的**唯一拼写点**）；本方法**不**自己拼/拆 id。
+   *
+   * <p>★★ **H0.2 的两处形状变化**：① 家户行（{@code ClassRow}）**挂在格上**（键 = {@code (格, 居住类型, 阶层)}），
+   * 故 {@code classes} 是**格级**数组、每个产业对象里**没有** {@code classes}；② 土地不再在行上 ⇒ 该格的 {@code landMilliMu}
+   * 由该格产业的 {@code capacity[LAND]} 合计而来（K3），行级不再发这个恒为 0 的字段。
    *
    * <p>★ **未激活**（§6.6：{@code meta} 空）或该格没有产业 ⇒ 各聚合量为 0、{@code industries} 为空数组——**不 404**：
    * "这一格没有经济数据"与"这一格不存在"是两件事，前者要能在界面上看见。
@@ -411,26 +416,29 @@ public final class ApiViews {
     List<Map<String, Object>> industries = new ArrayList<>();
     for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
       Industry industry = data.industries().get(id);
-      List<Map<String, Object>> classes = new ArrayList<>();
-      for (ClassKey key : classKeysOf(data, id)) {
-        ClassRow row = data.classes().get(key);
-        population += row.population();
-        laborMilli += row.laborMilli();
-        landMilliMu += row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L);
-        money += row.money();
-        mergeInto(goods, row.goods());
-        grainStock += row.goods().getOrDefault(GRAIN, 0L);
-        grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
-        for (DebtId debtId : row.debts()) {
-          Debt debt = data.debts().get(debtId);
-          if (debt != null) {
-            debtCount++;
-            debtPrincipal += debt.principal();
-          }
+      // ★★ H0.3（K3）：土地不再是**行**的生产资料，而是**产业**的产能 ⇒ 该格的亩数从产业读，
+      //   行那一侧不再有这个字段（一个"恒为 0 的行级 landMilliMu"就是本仓最反对的"看起来在记"）。
+      landMilliMu += industry.capacity().getOrDefault(AssetKind.LAND, 0L);
+      industries.add(industryView(industry));
+    }
+    // ★★ H0.2：**家户行挂在格上**（键 = {@code (格, 居住类型, 阶层)}），不再属于任何产业 ⇒ 视图里它们是该格的一个数组。
+    List<Map<String, Object>> classes = new ArrayList<>();
+    for (CohortKey key : cohortKeysAt(data, coord)) {
+      ClassRow row = data.classes().get(key);
+      population += row.population();
+      laborMilli += row.laborMilli();
+      money += row.money();
+      mergeInto(goods, row.goods());
+      grainStock += row.goods().getOrDefault(GRAIN, 0L);
+      grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
+      for (DebtId debtId : row.debts()) {
+        Debt debt = data.debts().get(debtId);
+        if (debt != null) {
+          debtCount++;
+          debtPrincipal += debt.principal();
         }
-        classes.add(classRowView(key, row, data.flows().get(key)));
       }
-      industries.add(industryView(industry, classes));
+      classes.add(classRowView(key, row, data.flows().get(key)));
     }
     view.put("population", population);
     view.put("laborMilli", laborMilli);
@@ -446,19 +454,77 @@ public final class ApiViews {
     view.put("money", money);
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
+    view.put("classes", classes);
     view.put("industries", industries);
     return view;
   }
 
-  /** 该产业在本格的阶层行键，**按槽位 id 字典序**（可复现；见 {@link #economyHex}）。 */
-  private static List<ClassKey> classKeysOf(EconomyData data, IndustryId industry) {
-    List<ClassKey> keys = new ArrayList<>();
-    for (ClassKey key : data.classes().keySet()) {
-      if (key.industry().equals(industry)) {
+  /**
+   * ★★ **某格的产权读口**（H0.6）：把**行侧的家户账**与 **actor 侧的库存账**并排发出来。
+   *
+   * <pre>
+   * {"q":0,"r":0,
+   *  "accounts":[{"actor":"HOUSEHOLD:0_0:rural|poor_peasant"…→ 实为 ActorRef.toString()（{@code <KIND>:<id>}）,
+   *               "kind":"HOUSEHOLD","goods":{"grain":123,"cloth":4}}],
+   *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 GoodsAccount 的合计
+   *  "rowGoodsTotal":{"grain":456,"cloth":0}}     // 行侧：= {@link #economyHex} 里那份 Σ 行库存
+   * </pre>
+   *
+   * <p>★★ **为什么两个 total 必须一起给**（这是本视图存在的理由）：行侧的 {@code ClassRow.goods} 与 actor 侧的 {@code
+   * GoodsAccount} 是**两本不同性质的账**（前者是"这批人当期可用/持有"的视图，后者是本切片里商品余额的唯一真源），
+   * 任何一方被单独读成"全系统有多少"都是一次口径错。并排发出来 ⇒ 读的人当场看得见两者差多少，而不是靠注释提醒。
+   *
+   * <p>★ **本轮（H0）家户 actor 还没播种**（H1 的事）⇒ {@code accounts} 是空表、{@code actorGoodsTotal} 全 0 —— 那是
+   * **合法且正确**的状态，不是"读口坏了"。★ 排序：{@code accounts} 按 {@code actor} 规范串字典序、两个 total 的商品键字典序
+   * （可复现；照 {@link #economyHex} 的口径）。
+   *
+   * <p>★ {@code actor} 走 {@link ActorRef#toString()}（{@code <KIND>:<id>}）—— 本层**不自己拼 id**（家户 id 的拼法在
+   * {@code HouseholdActors}，H1）。
+   */
+  public static Map<String, Object> economyOwnership(
+      HexCoord coord, EconomyData economy, ActorData actors) {
+    Map<String, Object> view = hexCoord(coord);
+    List<GoodsAccount> atHex = new ArrayList<>();
+    for (GoodsAccount account : actors.accounts().values()) {
+      if (account.key().location().equals(coord)) {
+        atHex.add(account);
+      }
+    }
+    atHex.sort(Comparator.comparing(account -> account.key().owner().toString()));
+    List<Map<String, Object>> accounts = new ArrayList<>(atHex.size());
+    Map<String, Long> actorGoodsTotal = new TreeMap<>();
+    for (GoodsAccount account : atHex) {
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("actor", account.key().owner().toString());
+      entry.put("kind", account.key().owner().kind().name());
+      entry.put("goods", sortedCommodities(account.balances()));
+      accounts.add(entry);
+      mergeInto(actorGoodsTotal, account.balances());
+    }
+    Map<String, Long> rowGoodsTotal = new TreeMap<>();
+    for (CohortKey key : cohortKeysAt(economy, coord)) {
+      ClassRow row = economy.classes().get(key);
+      if (row != null) {
+        mergeInto(rowGoodsTotal, row.goods());
+      }
+    }
+    view.put("accounts", accounts);
+    view.put("actorGoodsTotal", actorGoodsTotal);
+    view.put("rowGoodsTotal", rowGoodsTotal);
+    return view;
+  }
+
+  /** 该格的家户行键（{@code CohortKey}），**按 (居住类型, 阶层 id) 字典序**（可复现；见 {@link #economyHex}）。 */
+  private static List<CohortKey> cohortKeysAt(EconomyData data, HexCoord coord) {
+    List<CohortKey> keys = new ArrayList<>();
+    for (CohortKey key : data.classes().keySet()) {
+      if (key.hex().equals(coord)) {
         keys.add(key);
       }
     }
-    keys.sort(Comparator.comparing(key -> key.slot().value()));
+    keys.sort(
+        Comparator.comparing((CohortKey key) -> key.residence().value())
+            .thenComparing(key -> key.stratum().value()));
     return keys;
   }
 
@@ -470,8 +536,7 @@ public final class ApiViews {
    * N 匹布"在报表里就只是数字。★ {@code inputPerUnit} 走 {@link Industry#inputPerUnit()}（={@code
    * cycleInputPerUnit} 的合计），**不在视图层另算一遍**。
    */
-  private static Map<String, Object> industryView(
-      Industry industry, List<Map<String, Object>> classes) {
+  private static Map<String, Object> industryView(Industry industry) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", industry.id().value());
     view.put("name", industry.name());
@@ -487,11 +552,18 @@ public final class ApiViews {
     view.put("operator", operator);
     view.put("cycleDays", industry.cycleDays());
     view.put("progressDays", industry.progressDays());
+    // ★★ H0.3（K3）：**本格该产业的产能总量**（承接原 {@code ClassRow.meansOfProduction}）——
+    //   读口必须发它，否则"这一格有多少亩/多少台织机"在报表里就只剩"每单位要多少"（{@code capacityPerUnit}）而算不出规模。
     Map<String, Object> capacity = new TreeMap<>();
-    for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
+    for (Map.Entry<AssetKind, Long> entry : industry.capacity().entrySet()) {
       capacity.put(entry.getKey().name(), entry.getValue());
     }
-    view.put("capacityPerUnit", capacity);
+    view.put("capacity", capacity);
+    Map<String, Object> capacityPerUnit = new TreeMap<>();
+    for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
+      capacityPerUnit.put(entry.getKey().name(), entry.getValue());
+    }
+    view.put("capacityPerUnit", capacityPerUnit);
     view.put("inputPerUnit", sortedCommodities(industry.inputPerUnit()));
     view.put("laborPerUnit", industry.laborPerUnit());
     view.put("outputPerUnit", sortedCommodities(industry.outputPerUnit()));
@@ -506,7 +578,6 @@ public final class ApiViews {
       slots.add(slotView);
     }
     view.put("slots", slots);
-    view.put("classes", classes);
     return view;
   }
 
@@ -531,15 +602,19 @@ public final class ApiViews {
   }
 
   /**
-   * 一个阶层行（§3.2 逐字段：人口 / 有效劳动 / 投入率 / 土地 / 库存 / 货币 / 债务 / 两类需求）；{@code flow} = 本期流水（R3a，可为 null）。
+   * 一个家户行（§3.2 逐字段：**居住类型** / 人口 / 有效劳动 / 投入率 / 库存 / 货币 / 债务 / 两类需求）；{@code flow} = 本期流水（R3a，可为 null）。
+   *
+   * <p>★ **没有"土地"这一项**：H0.3（K3）把生产资料搬到 {@code Industry.capacity} ⇒ 行侧只报"这本账有多少商品/多少钱/欠谁"。
    */
-  private static Map<String, Object> classRowView(ClassKey key, ClassRow row, FlowRow flow) {
+  private static Map<String, Object> classRowView(CohortKey key, ClassRow row, FlowRow flow) {
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("slot", key.slot().value());
+    // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
+    //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
+    view.put("residence", key.residence().value());
+    view.put("slot", key.stratum().value());
     view.put("population", row.population());
     view.put("laborMilli", row.laborMilli());
     view.put("participationPerMille", row.participationPerMille());
-    view.put("landMilliMu", row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L));
     view.put("goods", sortedCommodities(row.goods()));
     view.put("money", row.money());
     List<String> debts = new ArrayList<>(row.debts().size());

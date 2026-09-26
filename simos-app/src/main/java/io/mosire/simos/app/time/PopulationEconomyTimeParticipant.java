@@ -6,15 +6,18 @@ import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
@@ -28,7 +31,6 @@ import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.time.TimeRange;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -105,12 +107,15 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       reads.add(economyAddress("industry", id.value()));
       writes.add(economyAddress("industry", id.value()));
     }
-    for (ClassKey key : economy.classes().keySet()) {
-      reads.add(economyAddress("class", key.industry().value() + "." + key.slot().value()));
-      writes.add(economyAddress("class", key.industry().value() + "." + key.slot().value()));
+    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code 0_0|rural|poor_peasant}）。
+    //   键里已经没有产业 ⇒ 旧版内联拼的 {@code <industryId>.<slotId>} 既拼不出来、也不该再拼（那是**第二处拼写点**）。
+    //   ★ 与 {@code EconomyResolver} 的 class/flow 地址**必须逐字同串**：读写集的冲突检测全靠它。
+    for (CohortKey key : economy.classes().keySet()) {
+      reads.add(economyAddress("class", key.toString()));
+      writes.add(economyAddress("class", key.toString()));
     }
-    for (ClassKey key : economy.flows().keySet()) {
-      writes.add(economyAddress("flow", key.industry().value() + "." + key.slot().value()));
+    for (CohortKey key : economy.flows().keySet()) {
+      writes.add(economyAddress("flow", key.toString()));
     }
     reads.add(economyAddressRoot());
     writes.add(economyAddressRoot());
@@ -141,17 +146,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           writes);
     }
 
-    Map<PeopleLotId, List<IndustryId>> industriesOf = industriesOf(economy);
-    // ★ 兜底用的**按格索引**：建一次、放在日循环外。没有配额的批次（0-14 档 + 全部新生儿）
-    //   每一个都要走兜底，而它们随新生批次逐月累积 ⇒ 在热路径上每次全表扫产业会多出
-    //   一项 O(批次 × 产业)。索引与 industriesAt 同源（见 EconomySettlement.industriesByHex）。
-    Map<String, List<IndustryId>> industriesByHex = EconomySettlement.industriesByHex(economy);
     EconomyDayStepper stepper = new EconomyDayStepper(economy);
     SocialData currentSocial = social;
     ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
-      LinkedHashMap<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> unmetBefore =
-          unmetOf(stepper.flows());
+      LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
       // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
       ProductionLedger ledger = stepper.step(day);
       if (!ledger.actorEntries().isEmpty()) {
@@ -161,14 +160,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         }
       }
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
-      currentSocial =
-          applyDailyStress(
-              stepper.data(),
-              currentSocial,
-              stepper.flows(),
-              unmetBefore,
-              industriesOf,
-              industriesByHex);
+      currentSocial = applyDailyStress(stepper.data(), currentSocial, stepper.flows(), unmetBefore);
       // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
       if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
         PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
@@ -195,61 +187,43 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * ★★ **把当天的生活资料满足情况折成每个批次的压力**（spec §七："短期缺粮加一些、恢复供给后逐渐消退"）。
    *
    * <pre>
-   * 逐产业：粮/布的"当日需求"  = Σ该产业各行 {@code naturalNeeds[商品]}（结算当天写回的那一份 ⇒ 与结算同源）
+   * 逐家户：粮/布的"当日需求"  = Σ该家户各行 {@code naturalNeeds[商品]}（结算当天写回的那一份 ⇒ 与结算同源）
    *          粮/布的"当日实得"  = 需求 − 当日新记进 {@code FlowRow.unmetNeed[商品]} 的那一笔
-   * 逐批次：把**它供给的那些产业**汇总（权重 = 各产业的当日需求）⇒ 满足率‰ ⇒ {@link PopulationDynamics#stressAfter}
+   * 逐批次：取**它住的那一格、它那一种居住类型**的家户（四行求和）⇒ 满足率‰ ⇒ {@link PopulationDynamics#stressAfter}
    * </pre>
    *
-   * <p>★★ **批次 ↔ 产业的对应只从 {@code LaborAllocation} 来**（人供给谁，就吃谁的饭）：真档里农村批次供给 农业+家庭纺织 （纺织行人口为 0 ⇒
-   * 其需求也是 0）⇒ 满足率只由农业行决定；城镇批次供给手工业 ⇒ 同理。**没有第二张映射表。**
+   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次身上有<b>落点格</b>（{@code group.residence()}）与 <b>居住类型</b>（批次 id
+   * 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}）
+   * ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"，
+   * 那一步在"一格既有农村又有城镇"时会把两池并起来算 —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
    *
-   * <p>★ **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
+   * <p>★ **没有配额的批次照样吃饭**（0-14 档与全部新生儿）：它们的居住类型与落点格本来就在批次上 ⇒
+   * 这条兜底现在是**结构上白拿的**（旧版要为它单独查一次"该格的产业"）。
+   * ★ **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
    *
    * @param unmetBefore 当日结算**之前**的 {@code FlowRow.unmetNeed} 快照（用于取"当天新增的那一笔"）
    */
   private static SocialData applyDailyStress(
       EconomyData economy,
       SocialData social,
-      Map<ClassKey, FlowRow> flows,
-      Map<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> unmetBefore,
-      Map<PeopleLotId, List<IndustryId>> industriesOf,
-      Map<String, List<IndustryId>> industriesByHex) {
+      Map<CohortKey, FlowRow> flows,
+      Map<CohortKey, Map<CommodityId, Long>> unmetBefore) {
     if (social.groups().isEmpty() || economy.classes().isEmpty()) {
       return social; // 没有批次/没有经济 ⇒ 没有可算的人
     }
-    Map<IndustryId, long[]> byIndustry = dailyProvisioning(economy, flows, unmetBefore);
+    Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(economy, flows, unmetBefore);
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
     for (PopulationGroup group : social.groups().values()) {
-      List<IndustryId> targets = industriesOf.getOrDefault(group.id(), List.of());
-      if (targets.isEmpty()) {
-        // ★★ B1 修复：**没有劳动配额的批次照样要吃饭、照样会挨饿** —— 按它**住的那一格**的产业行算满足率。
-        //   两类批次走到这里：0-14 档（劳动系数 0 ⇒ 创世不发配额）与**全部新生儿批次**（创世之后产生）。
-        //   与 EconomySettlement.applyPopulationChange 的兜底**共用同一个方法** —— 那个问题是同一个，
-        //   答案也只能有一个（两处各写一遍必然漂）。
-        targets = EconomySettlement.industriesAt(industriesByHex, group.residence());
-      }
-      if (targets.isEmpty()) {
-        continue; // 该格本来就没有任何经济状态（世界还没播种到这里）⇒ 没有可算的满足率
-      }
-      long grainNeed = 0L;
-      long grainGot = 0L;
-      long clothNeed = 0L;
-      long clothGot = 0L;
-      for (IndustryId id : targets) {
-        long[] row = byIndustry.get(id);
-        if (row == null) {
-          continue;
-        }
-        grainNeed += row[0];
-        grainGot += row[1];
-        clothNeed += row[2];
-        clothGot += row[3];
+      // ★ 批次 → 家户：**落点格 + 居住类型**（前缀的唯一判定在 {@link ResidenceKind#ofLot}）。
+      long[] row = byHousehold.get(new HouseholdRef(group.residence(), ResidenceKind.ofLot(group.id())));
+      if (row == null) {
+        continue; // 该格没有这一组家户（世界还没播种到这里，或该池在这格没有人）⇒ 没有可算的满足率
       }
       long stress =
           PopulationDynamics.stressAfter(
               group.physiologicalStress(),
-              satisfactionPerMille(grainGot, grainNeed),
-              satisfactionPerMille(clothGot, clothNeed));
+              satisfactionPerMille(row[1], row[0]),
+              satisfactionPerMille(row[3], row[2]));
       if (stress != group.physiologicalStress()) {
         next.put(group.id(), group.withPhysiologicalStress(stress));
       }
@@ -257,33 +231,39 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     return social.withGroups(next);
   }
 
-  /** 逐产业的当日 {@code [粮需求, 粮实得, 布需求, 布实得]}（毫单位）。 */
-  private static Map<IndustryId, long[]> dailyProvisioning(
+  /** 一格 + 一种居住类型 = **一组家户**（该格那一组的四行合并读；H0.2 的对接口径）。 */
+  private record HouseholdRef(HexCoord hex, ResidenceKind residence) {}
+
+  /** 逐家户组的当日 {@code [粮需求, 粮实得, 布需求, 布实得]}（毫单位）—— 该格该居住类型的**四行求和**。 */
+  private static Map<HouseholdRef, long[]> dailyProvisioning(
       EconomyData economy,
-      Map<ClassKey, FlowRow> flows,
-      Map<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> unmetBefore) {
-    Map<IndustryId, long[]> byIndustry = new LinkedHashMap<>();
-    for (Map.Entry<ClassKey, ClassRow> entry : economy.classes().entrySet()) {
-      long[] row = byIndustry.computeIfAbsent(entry.getKey().industry(), ignored -> new long[4]);
+      Map<CohortKey, FlowRow> flows,
+      Map<CohortKey, Map<CommodityId, Long>> unmetBefore) {
+    Map<HouseholdRef, long[]> byHousehold = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, ClassRow> entry : economy.classes().entrySet()) {
+      CohortKey key = entry.getKey();
+      long[] row =
+          byHousehold.computeIfAbsent(
+              new HouseholdRef(key.hex(), key.residence()), ignored -> new long[4]);
       long grainNeed = entry.getValue().naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
       long clothNeed = entry.getValue().naturalNeeds().getOrDefault(EconomySettlement.CLOTH, 0L);
       row[0] += grainNeed;
       row[2] += clothNeed;
-      row[1] += grainNeed - dayUnmet(flows, unmetBefore, entry.getKey(), EconomySettlement.GRAIN);
-      row[3] += clothNeed - dayUnmet(flows, unmetBefore, entry.getKey(), EconomySettlement.CLOTH);
+      row[1] += grainNeed - dayUnmet(flows, unmetBefore, key, EconomySettlement.GRAIN);
+      row[3] += clothNeed - dayUnmet(flows, unmetBefore, key, EconomySettlement.CLOTH);
     }
-    return byIndustry;
+    return byHousehold;
   }
 
   /** 某行某商品**当天新增**的未满足需求（= 结算后 − 结算前）。 */
   private static long dayUnmet(
-      Map<ClassKey, FlowRow> flows,
-      Map<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> unmetBefore,
-      ClassKey key,
-      io.mosire.simos.economy.api.id.CommodityId commodity) {
+      Map<CohortKey, FlowRow> flows,
+      Map<CohortKey, Map<CommodityId, Long>> unmetBefore,
+      CohortKey key,
+      CommodityId commodity) {
     FlowRow after = flows.get(key);
     long now = after == null ? 0L : after.unmetNeed().getOrDefault(commodity, 0L);
-    Map<io.mosire.simos.economy.api.id.CommodityId, Long> before = unmetBefore.get(key);
+    Map<CommodityId, Long> before = unmetBefore.get(key);
     long was = before == null ? 0L : before.getOrDefault(commodity, 0L);
     return Math.max(0L, now - was);
   }
@@ -296,29 +276,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     return Math.min(1000L, Math.max(0L, got) * 1000L / need);
   }
 
-  /** 每个批次供给哪些产业（保序、去重；只认真的落在一个已存在产业上的 {@code actor.id}）。 */
-  private static Map<PeopleLotId, List<IndustryId>> industriesOf(EconomyData economy) {
-    Map<PeopleLotId, List<IndustryId>> byGroup = new LinkedHashMap<>();
-    for (var allocation : economy.allocations().values()) {
-      IndustryId id = new IndustryId(allocation.actor().id());
-      if (!economy.industries().containsKey(id)) {
-        continue;
-      }
-      List<IndustryId> list =
-          byGroup.computeIfAbsent(allocation.group(), ignored -> new ArrayList<>());
-      if (!list.contains(id)) {
-        list.add(id);
-      }
-    }
-    return byGroup;
-  }
-
   /** 各行的 {@code unmetNeed} 快照（当日结算前）——只读一份，供"当天新增"的差分用。 */
-  private static LinkedHashMap<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>>
-      unmetOf(Map<ClassKey, FlowRow> flows) {
-    LinkedHashMap<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> copy =
-        new LinkedHashMap<>();
-    for (Map.Entry<ClassKey, FlowRow> entry : flows.entrySet()) {
+  private static LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetOf(
+      Map<CohortKey, FlowRow> flows) {
+    LinkedHashMap<CohortKey, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, FlowRow> entry : flows.entrySet()) {
       copy.put(entry.getKey(), entry.getValue().unmetNeed());
     }
     return copy;

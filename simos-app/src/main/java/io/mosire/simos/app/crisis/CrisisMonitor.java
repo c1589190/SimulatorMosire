@@ -1,11 +1,12 @@
 package io.mosire.simos.app.crisis;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -86,19 +87,19 @@ public final class CrisisMonitor {
    */
   public static Map<HexCoord, List<Light>> lights(
       EconomyData economy, SocialData social, long atTick) {
-    Map<String, List<ClassKey>> byHex = new LinkedHashMap<>();
-    for (ClassKey key : economy.classes().keySet()) {
-      String hex = IndustryHexKeys.hexKeyOf(key.industry()).orElse(key.industry().value());
+    // ★★ H0.2：**格直接住在行键里**（{@code CohortKey.hex()}）—— 旧版要靠"行属于哪个产业、产业 id 里带哪一格"
+    //   反解两次，现在一次都不必（"行在哪一格"与"产业在哪一格"从此是两件事，各读各的）。
+    //   ★ 分组键仍是 {@code <q>_<r>} 字符串（{@link IndustryHexKeys#hexKey}），排序口径与旧版逐字相同（字典序）。
+    Map<String, List<CohortKey>> byHex = new LinkedHashMap<>();
+    for (CohortKey key : economy.classes().keySet()) {
+      String hex = IndustryHexKeys.hexKey(key.hex().q(), key.hex().r());
       byHex.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(key);
     }
     List<String> hexKeys = new ArrayList<>(byHex.keySet());
     hexKeys.sort(String::compareTo);
     Map<HexCoord, List<Light>> out = new LinkedHashMap<>();
     for (String hexKey : hexKeys) {
-      HexCoord coord = hexCoordOf(economy, hexKey);
-      if (coord == null) {
-        continue;
-      }
+      HexCoord coord = HexCoord.parse(hexKey);
       List<Light> lights = lightsAt(coord, byHex.get(hexKey), economy, social, atTick);
       if (!lights.isEmpty()) {
         out.put(coord, lights);
@@ -110,34 +111,17 @@ public final class CrisisMonitor {
   /** 单格的红灯（空清单 = 没有红灯）。 */
   public static List<Light> lightsAt(
       HexCoord coord, EconomyData economy, SocialData social, long atTick) {
-    List<ClassKey> keys = new ArrayList<>();
-    for (ClassKey key : economy.classes().keySet()) {
-      boolean here =
-          IndustryHexKeys.hexKeyOf(key.industry())
-              .filter(hex -> hex.equals(IndustryHexKeys.hexKey(coord.q(), coord.r())))
-              .isPresent();
-      if (here) {
+    List<CohortKey> keys = new ArrayList<>();
+    for (CohortKey key : economy.classes().keySet()) {
+      if (key.hex().equals(coord)) {
         keys.add(key);
       }
     }
     return lightsAt(coord, keys, economy, social, atTick);
   }
 
-  /** 从该格的任一产业 id 反解格坐标（{@code <kind>@<q>_<r>}）；无产业 ⇒ null。 */
-  private static HexCoord hexCoordOf(EconomyData economy, String hexKey) {
-    for (IndustryId id : economy.industries().keySet()) {
-      if (IndustryHexKeys.hexKeyOf(id).filter(hexKey::equals).isPresent()) {
-        String[] parts = hexKey.split("_");
-        if (parts.length == 2) {
-          return new HexCoord(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
-        }
-      }
-    }
-    return null;
-  }
-
   private static List<Light> lightsAt(
-      HexCoord coord, List<ClassKey> keys, EconomyData economy, SocialData social, long atTick) {
+      HexCoord coord, List<CohortKey> keys, EconomyData economy, SocialData social, long atTick) {
     long grainNeed = 0L;
     long grainUnmet = 0L;
     long clothNeed = 0L;
@@ -147,7 +131,7 @@ public final class CrisisMonitor {
     long borrowing = 0L;
     long elapsedDaysSeen = 0L;
     long cycleDaysSeen = 0L;
-    for (ClassKey key : keys) {
+    for (CohortKey key : keys) {
       ClassRow row = economy.classes().get(key);
       FlowRow flow = economy.flows().get(key);
       if (row == null) {
@@ -240,25 +224,42 @@ public final class CrisisMonitor {
    *
    * <p>★ **周期第 0 天按 1 天算**：既不除零，也不把"周期刚开始"读成"完全满足"。 不设产业（手工搭的状态）⇒ 同样返回 1。
    */
-  private static long elapsedDaysOf(EconomyData economy, ClassKey key) {
-    var industry = economy.industries().get(key.industry());
-    if (industry == null) {
-      return 1L;
+  private static long elapsedDaysOf(EconomyData economy, CohortKey key) {
+    long elapsed = 0L;
+    for (IndustryId id : IndustryHexKeys.at(economy.industries(), key.hex().q(), key.hex().r())) {
+      elapsed = Math.max(elapsed, phaseDaysOf(economy.industries().get(id)));
     }
-    // ★★ **关账那一支必须取整周期**：`progressDays == 0` 有**两种**状态，只看它分不开 ——
-    //   ① 创世（tick 0）：流水全 0 ⇒ 满足率恒 1000‰，分母取哪个都一样；
-    //   ② **关账那一天的 revision**：`progressDays` 已被收获那一支归零，而 FlowRow 的清零在**次日**
-    //      ⇒ 此刻 `unmetNeed` 携带的是**刚关账那一整个周期**的量 ⇒ 分母必须是 cycleDays。
-    //   取 1 天会让"整周期缺口 ÷ 1 天需求"算出 0‰ 的满足率 ⇒ **全境假阳性红灯**。
-    //   两个既有用例钉着这件事：EconomyFlowCycleTest.theClosingDayCarriesTheWholeCyclesIncome
-    //   与 theFirstDayOfANewCycleStartsEveryFieldFromZero。
-    return industry.progressDays() == 0L ? industry.cycleDays() : industry.progressDays();
+    // ★ 该格没有任何产业（手工搭的状态）⇒ 按旧口径返回 1（既不除零，也不把"周期刚开始"读成"完全满足"）。
+    return elapsed == 0L ? 1L : elapsed;
   }
 
-  /** 该行所属产业的**整周期**天数（只用于 evidence 里标出相位）；不设产业 ⇒ 1。 */
-  private static long cycleDaysOf(EconomyData economy, ClassKey key) {
-    var industry = economy.industries().get(key.industry());
-    return industry == null ? 1L : industry.cycleDays();
+  /** 该家户所属格的**整周期**天数（只用于 evidence 里标出相位）；该格没有产业 ⇒ 1。 */
+  private static long cycleDaysOf(EconomyData economy, CohortKey key) {
+    long days = 0L;
+    for (IndustryId id : IndustryHexKeys.at(economy.industries(), key.hex().q(), key.hex().r())) {
+      days = Math.max(days, economy.industries().get(id).cycleDays());
+    }
+    return days == 0L ? 1L : days;
+  }
+
+  /**
+   * ★★ **一个产业的相位天数**（B2 的分母基准；{@link #elapsedDaysOf} 与 {@link #cycleDaysOf} 共用）。
+   *
+   * <p>★ **关账那一支必须取整周期**：`progressDays == 0` 有**两种**状态，只看它分不开 ——
+   *   ① 创世（tick 0）：流水全 0 ⇒ 满足率恒 1000‰，分母取哪个都一样；
+   *   ② **关账那一天的 revision**：`progressDays` 已被收获那一支归零，而 FlowRow 的清零在**次日**
+   *      ⇒ 此刻 `unmetNeed` 携带的是**刚关账那一整个周期**的量 ⇒ 分母必须是 cycleDays。
+   *   取 1 天会让"整周期缺口 ÷ 1 天需求"算出 0‰ 的满足率 ⇒ **全境假阳性红灯**。
+   *   两个既有用例钉着这件事：EconomyFlowCycleTest.theClosingDayCarriesTheWholeCyclesIncome
+   *   与 theFirstDayOfANewCycleStartsEveryFieldFromZero。
+   *
+   * <p>★ 一个家户的相位取自**它那一格的产业**（H0.2：行键里没有产业）：同一格的产业由同一条日推进同步走 ⇒
+   * 取其中最大的那个与旧口径（逐行各取自己产业的相位、再取 max）同值。
+   */
+  private static long phaseDaysOf(Industry industry) {
+    return industry == null
+        ? 1L
+        : (industry.progressDays() == 0L ? industry.cycleDays() : industry.progressDays());
   }
 
   /** 满足率（‰）：{@code 需求 == 0 ⇒ 1000}；否则 {@code (需求 − 缺口) × 1000 ÷ 需求}。 */

@@ -121,6 +121,8 @@ class McpServerTest {
           "simos.social.population",
           // ★ R2a（2026-09-25）：逐格经济读数（四桶共享）。
           "simos.economy.hex",
+          // ★ H0.6（2026-09-27）：逐格产权读数（GM-only）。
+          "simos.economy.ownership",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
           "simos.skill",

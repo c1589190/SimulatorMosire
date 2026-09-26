@@ -310,35 +310,39 @@ class McpCoverageTest {
             + "\"ageDays\":13505},{\"id\":\"rural:1_1:FEMALE\",\"q\":1,\"r\":1,"
             + "\"sex\":\"FEMALE\",\"count\":400,\"ageDays\":13505}]}");
     // ★ R2a（2026-09-25）：经济播种。放最后 ⇒ 不移动前面各命令的 revision 号；
-    //   一格一产业两槽位两行（必须产生**非空**变更集）。
+    //   一格一产业一行（必须产生**非空**变更集）。
     //   ★ R3（V7）：配方多了两个分量（`capacityPerUnit` = "单位规模"的锚、`laborPerUnit` = 劳动那一路），
     //     且投入表的值侧带商品维度（`{"LAND":{"grain":8000}}`）—— 缺 `capacityPerUnit` 会被构造期守卫拒 ⇒ 命令 Rejected。
+    //   ★★ H0（2026-09-27，K2/K3）：`classes` 从**产业节点内**搬到**格 entry 级**，行里带 `residence`
+    //     （`rural`/`urban`，居住类型是家户身份的一维）、**删掉** `meansOfProduction`（那一项已搬到 `Industry.capacity`）；
+    //     产业的 `capacity` = **本格该产业的产能总量**（LAND 千分亩，键必须是 `capacityPerUnit` 键的子集）。
+    //     ★ 本载荷保持"必产非空变更集"的用意：一行仍落在 (1,1) 格的农村贫农上。
     MINIMAL_PAYLOADS.put(
         "economy.Seed",
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":1,\"r\":1,"
             + "\"industries\":[{\"id\":\"farm@1_1\",\"name\":\"农业\",\"regime\":\"feudal\","
-            + "\"cycleDays\":120,\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
+            + "\"cycleDays\":120,\"capacity\":{\"LAND\":1000000},"
+            + "\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
             + "\"outputPerUnit\":{\"grain\":7,\"fiber\":2},"
             + "\"cycleInputPerUnit\":{\"LAND\":{\"grain\":8000}},"
             + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,"
             + "\"laborWeightPerMille\":300},"
             + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\","
-            + "\"laborParticipationPerMille\":950}],"
-            + "\"classes\":[{\"slot\":\"poor_peasant\",\"population\":100,\"laborMilli\":58000,"
-            + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":1000000}}]}]}]}");
+            + "\"laborParticipationPerMille\":950}]}],"
+            + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":100,"
+            + "\"laborMilli\":58000,\"participationPerMille\":950}]}]}");
     // ★ S1 阶段 2（2026-09-26）：actor 播种。放最后 ⇒ 不移动前面各命令的 revision 号；
-    //   一格一主体 + 一条产权 + 一本库存（必须产生**非空**变更集）。
-    //   ★ 判据来自 ActorPayloads：holdings/goods 的 location 必须**等于所在 entry 的 (q,r)**（否则拒），
+    //   一格一主体 + 一本库存（必须产生**非空**变更集）。
+    //   ★★ H0.5（2026-09-27，裁定 S3）：产权行 `holdings[]` 随 `AssetHolding` **整块退役**
+    //     （载荷里多出来的那一键现在既不解析也不报错 —— 留着它就是"形状上说着一件模型里没有的事"）⇒ 本载荷删掉它；
+    //     本切片里唯一的那本账是 `goods`（= `GoodsAccount`，键 = (owner, location)）。
+    //   ★ 判据来自 ActorPayloads：goods 的 location 必须**等于所在 entry 的 (q,r)**（否则拒），
     //     owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体（悬空 owner 拒）——故这里 owner 就是
     //     同一条载荷里声明的 estate:1_1。
     MINIMAL_PAYLOADS.put(
         "actor.Seed",
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"actor-v1\",\"entries\":[{\"q\":1,\"r\":1,"
             + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\",\"label\":\"农业庄园\"}],"
-            + "\"holdings\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},"
-            + "\"location\":{\"q\":1,\"r\":1},"
-            + "\"assetKey\":{\"kind\":\"LAND\",\"qualities\":{\"quality\":\"B\"}},"
-            + "\"quantity\":10000}],"
             + "\"goods\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},"
             + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}}]}]}");
   }

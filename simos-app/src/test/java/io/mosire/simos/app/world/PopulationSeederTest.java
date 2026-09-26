@@ -163,10 +163,12 @@ class PopulationSeederTest {
                 "Map1", groups, hex -> hex.equals(PURE_RURAL) ? "plains" : "low_hills"));
     long economyTotal = 0L;
     for (JsonNode entry : economyPayload.get("entries")) {
-      for (JsonNode industry : entry.get("industries")) {
-        for (JsonNode row : industry.get("classes")) {
-          economyTotal += row.get("population").asLong();
-        }
+      // ★★ H0（K2/K3）：阶层行从**产业节点内**搬到**格 entry 级**（身份 = 格 + 居住类型 + 阶层）⇒ 遍历点跟着搬。
+      //   两组四行的**合计**与旧三组合计**逐值相同**：`rural` 那四行 = 旧 farm 四行（旧 weave 四行人口/劳动恒 0，
+      //   H0 起不再存在），`urban` 那四行 = 旧 craft 四行。★ 只取 `rural` 那一组会漏掉城镇那 200 人 ——
+      //   下一条断言要的是"Σ 阶层行人口 == Σ group（1600）"，故两组都要算进来。
+      for (JsonNode row : entry.get("classes")) {
+        economyTotal += row.get("population").asLong();
       }
     }
 

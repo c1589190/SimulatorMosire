@@ -8,7 +8,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassKey;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.util.address.Address;
@@ -100,13 +100,15 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       reads.add(economyAddress("industry", id.value()));
       writes.add(economyAddress("industry", id.value()));
     }
-    for (ClassKey key : economy.classes().keySet()) {
-      String localId = key.industry().value() + "." + key.slot().value();
-      reads.add(economyAddress("class", localId));
-      writes.add(economyAddress("class", localId));
+    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code 0_0|rural|poor_peasant}）。
+    //   行键里已经没有产业，旧版内联拼的 {@code <industryId>.<slotId>} 是同一格式的第二处拼写点（已删）。
+    //   ★ 必须与 {@code EconomyResolver} 的 class/flow 地址逐字同串。
+    for (CohortKey key : economy.classes().keySet()) {
+      reads.add(economyAddress("class", key.toString()));
+      writes.add(economyAddress("class", key.toString()));
     }
-    for (ClassKey key : economy.flows().keySet()) {
-      writes.add(economyAddress("flow", key.industry().value() + "." + key.slot().value()));
+    for (CohortKey key : economy.flows().keySet()) {
+      writes.add(economyAddress("flow", key.toString()));
     }
     reads.add(actorAddressRoot());
     writes.add(actorAddressRoot());

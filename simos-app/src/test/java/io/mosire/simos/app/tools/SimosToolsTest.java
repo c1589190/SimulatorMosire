@@ -167,7 +167,7 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 21 读 + 52 写 = 73（**7 非窄写**：3 通用写 + {@code
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 22 读 + 52 写 = 74（**7 非窄写**：3 通用写 + {@code
    * sd.AdjudicateTick} + {@code sd.RejectDirective} + {@code sd.VoidAdjudication} + {@code
    * simos.worldgen.initialize}，**都不是**命令类型；+ **45 窄写**：18 sd + 7 map + 20 unit）。
    */
@@ -193,6 +193,8 @@ class SimosToolsTest {
           "simos.social.population",
           // ★ R2a（2026-09-25）：逐格经济读数（四桶共享；GUI /api/economy/hex 的对应读口）。
           "simos.economy.hex",
+          // ★ H0.6（2026-09-27）：逐格产权读数（只给 GM 桶 —— 响应含 actor 侧 GoodsAccount）。
+          "simos.economy.ownership",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
           "simos.skill",
@@ -252,7 +254,7 @@ class SimosToolsTest {
           "unit.ApplyCasualties");
 
   /**
-   * 读工具名单（21 条）：读闸**按名字选**，不用索引切片。
+   * 读工具名单（22 条）：读闸**按名字选**，不用索引切片。
    *
    * <p>★ 索引切片（{@code subList(0, 9)}）在名单变长后**仍然合法** ⇒ 断言照绿、判别力静默流失。
    */
@@ -284,7 +286,9 @@ class SimosToolsTest {
           "simos.gm.tool-usage",
           "simos.llm.providers",
           // ★ R2a（2026-09-25）：逐格经济读数（四桶共享）。
-          "simos.economy.hex");
+          "simos.economy.hex",
+          // ★ H0.6（2026-09-27）：逐格产权读数（只给 GM 桶，见 GM_ONLY_READ_NAMES）。
+          "simos.economy.ownership");
 
   /**
    * ★ **只给 GM 桶的读工具**（2026-09-24 M4 起，2026-09-25 扩充）：标了 {@code GmOnlyRead} 的那些。
@@ -726,7 +730,8 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .hasSize(74);
+        .as("★ H0.6：GM 桶 = 22 读 + 52 写 = 74（新增 simos.economy.ownership 这条 GM-only 读口）")
+        .hasSize(75);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -889,6 +894,8 @@ class SimosToolsTest {
             new Case("simos.unit.get", Map.of("id", U1.value()), "id"),
             new Case("simos.social.population", Map.of("q", 1L, "r", 1L), "population"),
             new Case("simos.economy.hex", Map.of("q", 1L, "r", 1L), "industries"),
+            // ★ H0.6：产权读口的最小形状 = 三个键之一（accounts 可以为空数组 —— 那正是本轮的正确状态）。
+            new Case("simos.economy.ownership", Map.of("q", 1L, "r", 1L), "accounts"),
             new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
             new Case("simos.sd.combats", Map.of(), "combats"),
             new Case("simos.sd.verdicts", Map.of(), "verdicts"),

@@ -260,6 +260,8 @@ public final class GuiServer implements AutoCloseable {
           "/api/social/population",
           // ★ R2a（2026-09-25）：逐格经济读数（G1 最小读口，与 simos.economy.hex 共用 ApiViews.economyHex）。
           "/api/economy/hex",
+          // ★ H0.6（2026-09-27）：逐格产权读数（与 simos.economy.ownership 共用 ApiViews.economyOwnership）。
+          "/api/economy/ownership",
           "/api/timeline",
           "/api/sd/decision-makers",
           "/api/sd/directives",
@@ -616,6 +618,11 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return economyHexReply(params);
     }
+    if (path.equals("/api/economy/ownership")) {
+      // ★ H0.6：逐格产权读数——响应含 actor 侧库存账 ⇒ 与 hex 同款拒 as=（fail-closed）。
+      rejectAs(path, asPresent);
+      return economyOwnershipReply(params);
+    }
     if (path.equals(VERDICTS_PATH)) {
       List<Map<String, Object>> views =
           asPresent
@@ -899,6 +906,29 @@ public final class GuiServer implements AutoCloseable {
       return Reply.of(404, body);
     }
     return Reply.of(200, ApiViews.economyHex(coord, ApiViews.economyData(state)));
+  }
+
+  /**
+   * 逐格**产权**读数（H0.6）：{@code GET /api/economy/ownership?q=&r=&branch=&revision=}。
+   *
+   * <p>★ **视图只有一份**：体由 {@link ApiViews#economyOwnership} 装配，与 MCP 的 {@code simos.economy.ownership}
+   * **同一个函数**。本方法只做入参校验与 404 判定（与 {@link #economyHexReply} 逐款同口径：图外/不存在的格 ⇒ 404；
+   * 有格但没账 ⇒ 200 + 空 {@code accounts} 与全 0 合计 —— 那是真实读数）。
+   */
+  private Reply economyOwnershipReply(Map<String, String> params) {
+    int q = intParam(params, "q");
+    int r = intParam(params, "r");
+    HexCoord coord = new HexCoord(q, r);
+    SimulationState state = queryService.stateAt(target(params));
+    if (!ApiViews.gameMap(state).hexes().containsKey(coord)) {
+      Map<String, Object> body = ApiViews.hexCoord(coord);
+      body.put("error", "hex not found");
+      return Reply.of(404, body);
+    }
+    return Reply.of(
+        200,
+        ApiViews.economyOwnership(
+            coord, ApiViews.economyData(state), ApiViews.actorData(state)));
   }
 
   private Reply mapHexReply(Map<String, String> params, DecisionMakerId actor, boolean asPresent) {

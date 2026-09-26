@@ -26,11 +26,12 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -264,11 +265,8 @@ class WorldgenInitializeToolTest {
           .isEqualTo(OSTERMARK_TOTAL);
       long plains = 119L;
       long lowHills = 19L;
-      assertThat(
-              economy.classes().values().stream()
-                  .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L))
-                  .sum())
-          .as("Σ 土地 = 平原 119 格 + 低丘 19 格，各按标定的每格亩数与地形系数（千分亩）")
+      assertThat(farmLandMilliMu(economy))
+          .as("Σ 土地 = 平原 119 格 + 低丘 19 格，各按标定的每格亩数与地形系数（千分亩）；★ H0.3（K3）起读 farm 产业的 capacity[LAND]")
           .isEqualTo(
               plains * EconomySeeder.MU_PER_HEX * 1_000L
                   + lowHills
@@ -298,9 +296,7 @@ class WorldgenInitializeToolTest {
               + " population="
               + economy.classes().values().stream().mapToLong(ClassRow::population).sum()
               + " landMilliMu="
-              + economy.classes().values().stream()
-                  .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L))
-                  .sum()
+              + farmLandMilliMu(economy)
               + " dailyGrainMilli="
               + economy.classes().values().stream()
                   .mapToLong(row -> row.naturalNeeds().getOrDefault(GRAIN, 0L))
@@ -499,16 +495,17 @@ class WorldgenInitializeToolTest {
         // ★★ R2（T3）+ R3（T4）：**逐池**对拍"这一池的配额之和 == 这一池各行折算出的当日劳动"（真档 138 格）。
         //   后者正是改口径前 EconomySettlement 每天累加的那个数 ⇒ 两者逐值相等 = **真档数字一个都不变**
         //   （收获的劳动瓶颈、平均日劳动、投入面积全都不动）。
-        //   ★ R3 起农村那一池的日劳动分给**两个产业**（农业 900‰ + 家庭纺织 100‰）⇒ 判据按**池**（有劳动行的那些产业）
-        //     对拍，而不是逐产业。
+        //   ★ R3 起农村那一池的日劳动分给**两个产业**（农业 900‰ + 家庭纺织 100‰）⇒ 判据按**池**对拍，而不是逐产业。
+        //   ★★ H0（K2/K3）起**行里没有产业了**（键 = 格 + 居住类型 + 阶层）⇒ "池"就是**这一格的两组四行**：
+        //     配额那一侧照旧逐产业加，行那一侧按**格**加一次（旧口径下"Σ 各产业的行"逐值同数：
+        //     农村那两组合成一组，而 weave 那四行人口/劳动恒 0）。★ 若仍逐产业加行，家庭纺织会把同一批人的日劳动**双计**。
         long poolQuota = 0L;
-        long poolRows = 0L;
         for (IndustryId industryId : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
-          // ★ 配额**逐产业都要算**（家庭纺织那一路的配额是它自己的），而"行折算"只有携带人口的那几个产业有 ——
-          //   两边加起来必须相等：R3 把农村那一池的日劳动拆成两条配额，**总额不动**。
+          // ★ 配额**逐产业都要算**（家庭纺织那一路的配额是它自己的）—— 两边加起来必须相等：
+          //   R3 把农村那一池的日劳动拆成两条配额，**总额不动**。
           poolQuota += quotaSumOf(economy, industryId);
-          poolRows += rowBasedDailyLabor(economy, industryId);
         }
+        long poolRows = rowBasedDailyLabor(economy, hex);
         assertThat(poolQuota).as("%s：这一格的配额之和必须等于各池各行折算出的当日劳动（改口径不改数）", hex).isEqualTo(poolRows);
         if (socialSide != economySide && firstMismatch.isEmpty()) {
           firstMismatch = hex + " social=" + socialSide + " economy=" + economySide;
@@ -576,12 +573,14 @@ class WorldgenInitializeToolTest {
         weaveQuotaByHex.merge(hex, allocation.laborMilli(), Long::sum);
       }
       Map<String, Long> ruralDailyByHex = new LinkedHashMap<>();
-      for (Map.Entry<ClassKey, ClassRow> entry : seeded.classes().entrySet()) {
-        // ★ 只算**农业**行：同一格的城市作坊行不属于农村那一池（按格求和会把城里那 12% 也算进来，实测差 40%）。
-        if (!entry.getKey().industry().value().startsWith(EconomySeeder.FARM)) {
+      for (Map.Entry<CohortKey, ClassRow> entry : seeded.classes().entrySet()) {
+        // ★ 只算**农村四行**：H0（K2 / R-N1-A）起行 = (格, 居住类型, 阶层)，旧 farm 那四行与新 weave 那四行合成
+        //   本组的农村四行；同一格的城市作坊行是**另一组四行**，不属于农村那一池
+        //   （按格不分居住类型求和会把城里那 12% 也算进来，实测差 40%）。
+        if (entry.getKey().residence() != ResidenceKind.RURAL) {
           continue;
         }
-        String hex = IndustryHexKeys.hexKeyOf(entry.getKey().industry()).orElseThrow();
+        String hex = IndustryHexKeys.hexKey(entry.getKey().hex().q(), entry.getKey().hex().r());
         ruralDailyByHex.merge(
             hex,
             entry.getValue().laborMilli() * entry.getValue().participationPerMille() / 1000L,
@@ -879,10 +878,7 @@ class WorldgenInitializeToolTest {
         long sown = expectedSownOnTheSowingDay(economy);
         // ★ 头 10 天的口粮 = Σ 行 cumulativeRationMilli(行人口, 10)（**逐行**向下取整 ⇒ 不能写成"总人口 × 一天的量"）。
         long ration10 = rationOverDays(economy, 10L);
-        long landMu =
-            economy.classes().values().stream()
-                .mapToLong(row -> row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L)
-                .sum();
+        long landMu = farmLandMilliMu(economy) / 1_000L;
 
         advanceDays(core, 10);
 
@@ -939,18 +935,64 @@ class WorldgenInitializeToolTest {
   }
 
   /**
-   * ★ **播种日**（周期第一天）逐行扣的种子（毫粮）：v2 spec §3.2/§3.3 的规则从**推进前**的账面独立算出 —— 逐行 {@code min(该行库存, 该行亩数 ×
-   * 每亩需种)}（亩 = 千分亩 {@code / 1000}，每亩需种 = {@link EconomySeeder#SEED_MILLI_PER_MU}
-   * 毫粮/亩）。无地行（真档里每座城的手工业行）恒贡献 0。
+   * ★ **播种日**（周期第一天）逐行扣的种子（毫粮）：v2 spec §3.2/§3.3 的规则从**推进前**的账面独立算出。
    *
-   * <p>★ 只对"周期尚未关账"的账成立：{@code cycleSeedUsedMilli} 在周期末清零，故推进 ≥ 1 个周期后这个式子要另算。
+   * <p>★★ **H0.3（K3）起产能住在产业上**（{@code ClassRow.meansOfProduction} 已删）⇒ "这一行想扣多少"不再是"它自己占有的亩数 ×
+   * 每亩需种"，而是结算那条唯一算式（见 {@code EconomySettlement.rowSharesOf}）：
+   *
+   * <pre>
+   * 该产业规模 scale = min over k ∈ capacityPerUnit: ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋   // 农业 = ⌊千分亩 ÷ 1000⌋
+   * 本行份额 rowShare = ⌊scale × 本行人口 ÷ 该产业家户行的人口之和⌋
+   * 本行想扣的种子 = rowShare × inputPerUnit[grain]（= {@link EconomySeeder#SEED_MILLI_PER_MU} 毫粮/亩）
+   * 实扣 = min(该行粮库存, 想扣)        // 缸空 ⇒ 扣光，收获日"投入那一路"瓶颈跟着缩
+   * </pre>
+   *
+   * <p>★ 只算**配方里有粮**的产业（真档 = 农业；织机吃纤维、作坊吃纤维 + 铁 ⇒ 恒贡献 0）；"该产业的家户行"按**劳动配额表**认
+   * （H0 起行里没有产业了：出劳动的那批人住哪儿，就是它的家户 —— 与结算的 {@code householdKeysOf} 同一口径）⇒
+   * 旧口径下"无地行（真档里每座城的手工业行）恒贡献 0"这一条照旧成立。
+   *
+   * <p>★ 只对"周期尚未关账"的账成立：{@code cycleInputUsedMilli} 在周期末清零，故推进 ≥ 1 个周期后这个式子要另算。
    */
   private static long expectedSownOnTheSowingDay(EconomyData economy) {
     long sown = 0L;
-    for (ClassRow row : economy.classes().values()) {
-      long landMu = row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L;
-      sown +=
-          Math.min(row.goods().getOrDefault(GRAIN, 0L), landMu * EconomySeeder.SEED_MILLI_PER_MU);
+    for (Map.Entry<IndustryId, Industry> entry : economy.industries().entrySet()) {
+      Industry industry = entry.getValue();
+      long seedPerMu = industry.inputPerUnit().getOrDefault(GRAIN, 0L);
+      if (seedPerMu <= 0L) {
+        continue; // 配方里没有粮 ⇒ 播种日不为它扣种子
+      }
+      // ★ "该产业的家户行"：给它出劳动的那些批次是农村还是城镇（前缀 → 居住类型的唯一拼写点在 ResidenceKind）。
+      Set<ResidenceKind> residences = new LinkedHashSet<>();
+      for (LaborAllocation allocation : economy.allocations().values()) {
+        if (allocation.actor().id().equals(entry.getKey().value())) {
+          residences.add(ResidenceKind.ofLot(allocation.group()));
+        }
+      }
+      HexCoord hex = HexCoord.parse(IndustryHexKeys.hexKeyOf(entry.getKey()).orElseThrow());
+      List<ClassRow> rows = new ArrayList<>();
+      long population = 0L;
+      for (ClassRow row : economy.classes().values()) {
+        if (row.key().hex().equals(hex) && residences.contains(row.key().residence())) {
+          rows.add(row);
+          population += row.population();
+        }
+      }
+      if (population <= 0L) {
+        continue; // 这个产业没有人口 ⇒ 没有人替它出料（与 rowSharesOf 的门槛逐字一致）
+      }
+      long scale = Long.MAX_VALUE;
+      for (Map.Entry<AssetKind, Long> perUnit : industry.capacityPerUnit().entrySet()) {
+        scale =
+            Math.min(
+                scale, industry.capacity().getOrDefault(perUnit.getKey(), 0L) / perUnit.getValue());
+      }
+      if (scale == Long.MAX_VALUE || scale <= 0L) {
+        continue; // 本格没有产能（沙漠格的 LAND = 0）⇒ 没有投入需求
+      }
+      for (ClassRow row : rows) {
+        long rowShare = scale * row.population() / population; // ⌊⌋：与结算同一个算式
+        sown += Math.min(row.goods().getOrDefault(GRAIN, 0L), rowShare * seedPerMu);
+      }
     }
     return sown;
   }
@@ -1055,7 +1097,7 @@ class WorldgenInitializeToolTest {
         .mapToLong(
             row ->
                 EconomyVocabulary.cumulativeRationMilli(
-                    row.population(), EconomySeeder.initialRationDays(row.key().slot().value())))
+                    row.population(), EconomySeeder.initialRationDays(row.key().stratum().value())))
         .sum();
   }
 
@@ -1509,6 +1551,23 @@ class WorldgenInitializeToolTest {
     return hexes.size();
   }
 
+  /**
+   * 真档**全部农业产业**产能表里的土地合计（千分亩）—— ★ H0.3（K3）起"本格有多少亩"住在 {@code Industry.capacity} 里
+   * （旧版散在各 {@code ClassRow.meansOfProduction}，Σ 各行才等于格土地）。
+   *
+   * <p>★ 两条口径的**总量逐值相同**：播种器把同一份"地形 → 可耕地"一次写进该格 farm 产业的 {@code capacity[LAND]}
+   * （{@code EconomySeeder.agriculture}），旧口径只是把它按人口切成四份再合起来。
+   */
+  private static long farmLandMilliMu(EconomyData data) {
+    long total = 0L;
+    for (Map.Entry<IndustryId, Industry> entry : data.industries().entrySet()) {
+      if (entry.getKey().value().startsWith(EconomySeeder.FARM)) {
+        total += entry.getValue().capacity().getOrDefault(AssetKind.LAND, 0L);
+      }
+    }
+    return total;
+  }
+
   // ── R2：真档的"行 vs 配额"对拍（只在断言消息里用，算的是**两个独立可算**的量）──────────────
 
   /** 某产业名下全部配额的 {@code laborMilli} 之和。 */
@@ -1522,21 +1581,19 @@ class WorldgenInitializeToolTest {
     return total;
   }
 
-  /** 某产业**各行折算出的当日劳动**（= 改口径前结算每天累加的那个数）。 */
-  private static long rowBasedDailyLabor(EconomyData data, IndustryId industry) {
-    Industry node = data.industries().get(industry);
+  /**
+   * 某格**两组四行**折算出的当日劳动（= 改口径前结算每天累加的那个数）：{@code Σ_{本格的行} 行劳动 × 行参与率 ÷ 1000}。
+   *
+   * <p>★★ H0（K2/K3）起**行里没有产业了**（键 = 格 + 居住类型 + 阶层）：农村家户给农业与家庭纺织两个产业出劳动，却**只有一行** ⇒
+   * 这条判据按**池**（= 格）对拍，而不是逐产业 —— 否则两个产业会把同一批人的日劳动各算一遍（双计）。 旧口径下它是"Σ 各产业的四行"（farm +
+   * weave + craft 三组），两者**逐值同数**：农村那两组合成一组，而 weave 那四行人口/劳动恒 0。
+   */
+  private static long rowBasedDailyLabor(EconomyData data, HexCoord hex) {
     long total = 0L;
-    for (Map.Entry<ClassKey, ClassRow> entry : data.classes().entrySet()) {
-      if (!entry.getKey().industry().equals(industry)) {
-        continue;
+    for (ClassRow row : data.classes().values()) {
+      if (row.key().hex().equals(hex)) {
+        total += row.laborMilli() * row.participationPerMille() / 1000L;
       }
-      int participation =
-          node.slots().stream()
-              .filter(slot -> slot.id().equals(entry.getKey().slot()))
-              .findFirst()
-              .orElseThrow(() -> new AssertionError("槽位不在该产业里: " + entry.getKey()))
-              .laborParticipationPerMille();
-      total += entry.getValue().laborMilli() * participation / 1000L;
     }
     return total;
   }

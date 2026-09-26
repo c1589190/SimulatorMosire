@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetClassKey;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.AssetHolding;
-import io.mosire.simos.actor.model.AssetHoldingKey;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -35,18 +35,29 @@ import org.junit.jupiter.api.Test;
  * ★★ **I3.2：租佃档 + `AssetOwner ≠ Operator`**（S1 阶段 3 Task 5；spec §2.1「四者可以大量重合，但模型<b>不预设</b>它们必然相同。
  * 佃制（`AssetOwner ≠ Operator`）是第一个实例」、§2.3 末段、§六 末行）。
  *
- * <p>★ <b>为什么本用例只能住 {@code simos-app}</b>：产权住在 `simos-actor`（{@link AssetHolding}），经营主体住在
- * `simos-economy`（{@link Industry#operator()}）—— 两个切片<b>互不依赖</b>（enforcer 把守），<b>只有 app 同时认识两边</b>。
+ * <p>★ <b>为什么本用例只能住 {@code simos-app}</b>：所有权记录住在 `simos-actor`（{@link GoodsAccount}；★ 2026-09-27
+ * H0.5 之前是已退役的 {@code AssetHolding}），经营主体住在 `simos-economy`（{@link Industry#operator()}）—— 两个切片<b>互不依赖</b>（enforcer
+ * 把守），<b>只有 app 同时认识两边</b>。
  *
  * <p>★★ <b>佃制 = 两条互不牵连的记录</b>（spec §2.3 的原文形状，本文件的夹具逐字落实）：
  *
  * <pre>
- * ActorData.holdings()   ESTATE:farm@0_0 在第 0_0 格持有 B 等地 10,000（产权）
+ * ActorData.accounts()   ESTATE:farm@0_0 在第 0_0 格有一本账（所有权侧那条记录）
  * Industry.operator()    HOUSEHOLD:house-7（佃农家户）组织生产（经营）
  * </pre>
  *
  * <p>⇒ 本文件的断言<b>不是</b>"二者相等"，而是：<b>两条记录同时成立、且模型里没有任何东西把二者绑起来</b>。故两个方向各断言一次 ——
- * 产权侧（这些地只有庄园一个主人）与经营侧（经营者名下一条产权都没有）。
+ * 所有权侧（这一格的记录只有庄园一个主人）与经营侧（经营者名下一条记录都没有）。
+ *
+ * <p>★★ <b>追加标注（2026-09-27，H0.5 / 裁定 S3，上文一字不改）</b>：产权表（{@code AssetHolding} /
+ * {@code AssetHoldingKey} / {@code AssetClassKey}）已<b>整块退役</b> —— 实测它在生产侧<b>零写入者</b>（真档创世把 actor
+ * 起成 {@code ActorData.empty()}）、economy 侧的 {@code harvest} 更是硬编码空表 ⇒ 那条路径收益为 0。资产（土地 / 工具 /
+ * 牲畜）推迟到真需要时再加，<b>届时"用多少"以产业产能（{@code Industry.capacity}）表达、"谁拿收益"以
+ * {@code ProductionRelation} 的一条规则表达</b>。⇒ 本切片里"谁在<b>哪一格</b>持有什么"的<b>唯一</b>记录是
+ * {@link GoodsAccount}（键 = {@code (owner, location)}，与 {@code Actor} 本体<b>不嵌套</b>：资产是 Actor
+ * <b>拥有的关系</b>）—— 本用例的"所有权那一侧"由它承载，判据因此逐字保持为
+ * <b>"所有权记录 ≠ 经营记录，两者互不牵连"</b>。★ 夹具里那笔商品余额是<b>记录存在性</b>的载体，<b>不</b>冒充"这块地值多少"：
+ * 土地量那一维现在只住在 {@code Industry.capacity} 里（本用例的载荷逐字写了 {@code "capacity":{"LAND":10000}}）。
  *
  * <p>★★ <b>夹具是"非派生"的</b>（D9 / D11 / D13 的教训：<b>判别力来自夹具，不来自断言</b>）：`tenant` 档的推导值是
  * `HOUSEHOLD:farm@0_0`，而 {@link #TENANT_HOUSEHOLD} 是<b>显式</b>写进载荷的 `HOUSEHOLD:house-7` ——
@@ -85,9 +96,17 @@ class S1Stage3TenancyTest {
           + TENANT_HOUSEHOLD.id()
           + "\"}";
 
-  /** spec §2.3 点名的那个资产类：{@code LAND(arable=true, quality=B)}。 */
-  private static final AssetClassKey ARABLE_B =
-      AssetClassKey.land(Map.of("arable", "true", "quality", "B"));
+  /**
+   * ★★ H0.5 / 裁定 S3 之后本切片里"所有权那一侧"的那条记录：{@link GoodsAccount}（键 = {@code (owner, location)}）。
+   *
+   * <p>★ <b>为什么它顶得上原来的产权条目</b>：两者是同一个结构角色 —— "某人<b>在某一格</b>持有什么"的独立记录
+   * （{@code GoodsAccount} 的类注：<b>不是</b> {@code Actor} 的字段，只在 {@code key()} 里引用 {@code owner}）。
+   * ★ 土地 / 工具那一维已按 K3 搬到 {@code Industry.capacity}，<b>不</b>在本夹具里冒充。
+   */
+  private static final GoodsAccountKey ESTATE_ACCOUNT = new GoodsAccountKey(ESTATE, HEX);
+
+  /** 那本账里的一笔存量（商品由 {@link CommodityId} 点名；单位 = 最小计量单位）。★ 它只是"这本账有内容"的载体，不是地价。 */
+  private static final CommodityId GRAIN = new CommodityId("grain");
 
   /** ★★ I3.2：租佃档<b>存在</b>（登记在推导表里），且默认经营主体是<b>佃农家户</b>、不是地主。 */
   @Test
@@ -103,8 +122,11 @@ class S1Stage3TenancyTest {
   /**
    * ★★ I3.2 的核心：`AssetOwner ≠ Operator` 不只是"可表达"，在本用例里<b>已经成立</b>。
    *
-   * <p>两个正交事实各写各的：产权在 {@code ActorData.holdings}（主体 = 庄园），经营在 {@code Industry.operator} （主体 =
-   * 佃农家户）。<b>没有任何一处把二者绑起来</b>。
+   * <p>两个正交事实各写各的：所有权记录在 {@code ActorData.accounts}（主人 = 庄园），经营在 {@code Industry.operator}
+   * （主体 = 佃农家户）。<b>没有任何一处把二者绑起来</b>。
+   *
+   * <p>★ <b>H0.5 / 裁定 S3 的口径</b>（见类注）：那条"所有权记录"由产权条目换成 {@link GoodsAccount}
+   * —— 判据仍是"两条记录互不牵连"，且**逐条断言一字未删**（只换承载它的那张表）。
    */
   @Test
   void theAssetOwnerIsNotTheOperator() {
@@ -112,7 +134,7 @@ class S1Stage3TenancyTest {
     ActorData data =
         ActorData.empty()
             .withActor(new Actor(ESTATE, "庄园"))
-            .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L));
+            .withAccount(new GoodsAccount(ESTATE_ACCOUNT, Map.of(GRAIN, 10_000L)));
 
     // ── 前提：两件事各自真的成立（否则下面的断言测的是别的东西）──────────────────────────
     assertThat(industry.regime().value())
@@ -124,21 +146,21 @@ class S1Stage3TenancyTest {
     assertThat(industry.operator())
         .as("★ 前置：载荷里显式写的那个 operator 逐值活到 Industry（没有被边缘换成别的）")
         .isEqualTo(TENANT_HOUSEHOLD);
-    assertThat(data.holdings())
-        .as("★ 前置：这条产权真的在模型里 —— 否则下面的 allMatch / noneMatch 在空集上恒真，空断言不是证据")
-        .containsKey(new AssetHoldingKey(ESTATE, HEX, ARABLE_B));
+    assertThat(data.accounts())
+        .as("★ 前置：这本账真的在模型里 —— 否则下面的 allMatch / noneMatch 在空集上恒真，空断言不是证据")
+        .containsKey(ESTATE_ACCOUNT);
 
-    // ── 两个方向：产权那条记录 ────────────────────────────────────────────────────────
-    assertThat(data.holdings().keySet())
-        .as("★ 这块地归庄园 —— 「谁的地」只有一个答案")
+    // ── 两个方向：所有权那条记录 ──────────────────────────────────────────────────────
+    assertThat(data.accounts().keySet())
+        .as("★ 这一格的账归庄园 —— 「谁的东西」只有一个答案")
         .allMatch(key -> key.owner().equals(ESTATE));
 
     // ── 两个方向：经营那条记录（**反向**）──────────────────────────────────────────────
-    assertThat(data.holdings().keySet())
-        .as("★★ 反向：经营者名下**一条产权都没有** ⇒ 两个事实互不牵连")
+    assertThat(data.accounts().keySet())
+        .as("★★ 反向：经营者名下**一条记录都没有** ⇒ 两个事实互不牵连")
         .noneMatch(key -> key.owner().equals(industry.operator()));
     assertThat(industry.operator())
-        .as("★★ 同一格：地是庄园的、活是佃农家户干的（spec §2.3 的原文形状）")
+        .as("★★ 同一格：账是庄园的、活是佃农家户干的（spec §2.3 的原文形状）")
         .isNotEqualTo(ESTATE);
   }
 
@@ -156,6 +178,12 @@ class S1Stage3TenancyTest {
    * optionalArray} / {@code optionalObject}）—— 本判据只关心 {@code regime} 与 {@code
    * operator}，多填的行会把别的面的校验也拉进来。
    *
+   * <p>★★ <b>H0 的载荷新形状（2026-09-27，K2/K3）</b>：{@code classes} 从"产业节点内"搬到<b>格 entry 级</b>（行里带
+   * {@code residence}）；产业节点新增 {@code capacity} = <b>本格该产业的产能总量</b>（旧 {@code
+   * ClassRow.meansOfProduction} 的落点）。★ 本载荷两侧都<b>整段省略/保持最小</b>：省略的行不必搬家（它本来就没有行），
+   * 而 {@code capacity} 逐字写上那份"这块地有多大"（千分亩）—— 于是"用多少"这一维与"谁经营"（{@code operator}）各写各的，
+   * 与本用例的判据（两条记录互不牵连）同一形状。
+   *
    * @param operatorField {@code industries[]} 里的整段可选键（含前导逗号）；空串 = 该键<b>整段缺席</b>
    */
   private static Industry seededIndustry(String regime, String operatorField) {
@@ -167,7 +195,8 @@ class S1Stage3TenancyTest {
             + regime
             + "\""
             + operatorField
-            + ",\"cycleDays\":120,\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
+            + ",\"cycleDays\":120,\"capacity\":{\"LAND\":10000},"
+            + "\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
             + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,\"laborWeightPerMille\":300},"
             + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\",\"laborParticipationPerMille\":950}]}]}]}";
     SimulationState empty =

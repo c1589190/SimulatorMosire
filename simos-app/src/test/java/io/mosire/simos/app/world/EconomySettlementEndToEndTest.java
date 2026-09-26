@@ -17,11 +17,13 @@ import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.FlowRow;
@@ -38,6 +40,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -184,31 +187,70 @@ class EconomySettlementEndToEndTest {
   private static final long HILLS_INTAKE = 4_309_632L + 31_536_900L;
 
   /**
-   * ★★ <b>(2,0) 城市作坊的布入账</b>（{@code handicraft}：{@code OUTPUT_SHARE × LABOR_AMOUNT} 600‰，布）：
+   * ★★ <b>(2,0) 城市作坊**本周期实际开动**的座数与布入账</b>（H0.4 起这两者都不再等于"本格作坊总数"）。
    *
    * <pre>
-   * 布净产 = 6 座 × 60 匹 × 1000 × 0.97 = 349,200；分成那一笔 = ⌊349,200 × 600 ÷ 1000⌋ = 209,520
-   * 逐行 floor（{@code shareWithTotal}：分成后的量 × 本行劳动 ÷ Σ劳动；Σ劳动 = 149,640）：
-   *   贫 74,385 ⇒ ⌊209,520 × 74,385 ÷ 149,640⌋ = 104,150
-   *   中 54,810 ⇒ 76,742 · 富 19,575 ⇒ 27,408 · 地 870 ⇒ 1,218   （四条之和 = **209,518**）
-   * ★ 它比 209,520 少 2：逐行向下取整**各自发生一次** —— 这与"日耗逐行取整"是同一条口径（不是残差丢了）。
+   * 作坊总数 = 城市人口 300 ÷ URBAN_CAPITA_PER_WORKSHOP(50) = **6**（H0.3 起它是 {@code craft@2_0} 的 capacity）
+   * 实际开动 = **4**：取材时投入那一路按**逐行份额**取（{@code EconomySettlement.rowSharesOf} =
+   *            ⌊规模上限 × 本行人口 ÷ Σ该产业家户行人口⌋）⇒ 四行 2/2/0/0 座，**Σ = 4**（各行⌊⌋各发生一次，
+   *            比 6 少 2）；取到的纤维 4×60,000 = 240,000、铁 4×10,000 = 40,000 ⇒ 收获日规模 =
+   *            min(作坊 6, 劳动 148,393 ÷ 1000 = 148, 纤维 240,000 ÷ 60,000 = 4, 铁 40,000 ÷ 10,000 = 4) = **4**。
+   * ⇒ 布净产 = 4 座 × 60 匹 × 1000 × 0.97 = 232,800；600‰ 分成 = ⌊232,800 × 600 ÷ 1000⌋ = 139,680
+   *   逐行按城市四行的劳动（Σ = 174,000）切、各自取整 ⇒ 贫 69,433 · 中 51,161 · 富 18,272 · 地 812
+   * ⇒ 布入账 = **139,678**（逐行取整少 2）
    * </pre>
+   *
+   * <p>★ <b>旧值 209,518 → 新值 139,678 的理由</b>：规模 6 → 4（同上那条"逐行取整"），净产 349,200 → 232,800。
+   * 这是 H0.4 现行投入口径的后果（小夹具上相对影响大；真档 35 座量级时同一处取整影响可忽略），**不是**放宽断言。
    */
-  private static final long CRAFT_CLOTH_INTAKE = 104_150L + 76_742L + 27_408L + 1_218L;
+  private static final long CRAFT_CLOTH_INTAKE = 69_433L + 51_161L + 18_272L + 812L;
+
+  /** 本周期实际开动的作坊（见 {@link #CRAFT_CLOTH_INTAKE} 的算式）；创世时的作坊总数是它的 capacity。 */
+  private static final long CRAFT_WORKSHOPS_OPENED = 4L;
+
+
+  /**
+   * ★★ <b>(0,0) 创世时的织机总数与其中**本周期实际开动**的台数</b>（H0.2/H0.4 起这两者不再相等）。
+   *
+   * <pre>
+   * 织机总数 = 该格农村人口 1,000 ÷ RURAL_CAPITA_PER_LOOM(20) = **50**（H0.3 起它是 {@code weave@0_0} 的 capacity）
+   * 实际开动 = **48**：本周期取材时，投入那一路按**逐行份额**取（{@code EconomySettlement.rowSharesOf} =
+   *            ⌊规模上限 × 本行人口 ÷ Σ该产业家户行人口⌋）⇒ 四行 22/17/7/2 台，**Σ = 48**（各行⌊⌋各发生一次，
+   *            比 50 少 2）；取到的纤维 = 48 × 30,000 = 1,440,000，收获日规模 = min(产能 50, 劳动 49, 投入 1,440,000
+   *            ÷ 30,000 = 48) = **48** ⇒ 这一周期**投入（纤维）那一路上最紧**（改前是"整份 × 占比"后再取整 ⇒ 50，
+   *            故那时劳动 49 最紧）。
+   * </pre>
+   *
+   * <p>★ 这条"逐行取整少 2"是 H0.4 现行口径的直接后果（如实记，不是"凑数"）；真档的规模是 740 台量级 ⇒ 同一处取整的
+   * 相对影响可忽略。
+   */
+  private static final long WEAVE_LOOMS_SEEDED = 1_000L / EconomySeeder.RURAL_CAPITA_PER_LOOM;
+
+  /** 本周期实际开动的织机（见 {@link #WEAVE_LOOMS_SEEDED} 的算式）。 */
+  private static final long WEAVE_LOOMS_OPENED = 48L;
+
+  /** 织机**没取走**的那份创世纤维（毫纤维）= (50 − 48) 台 × 每台一个周期的用量 —— H0.2 起它与农田产出同住农村四行。 */
+  private static final long WEAVE_FIBER_LEFTOVER =
+      (WEAVE_LOOMS_SEEDED - WEAVE_LOOMS_OPENED)
+          * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
+          * EconomySeeder.FIBER_MILLI_PER_CLOTH;
 
   /**
    * ★★ <b>(0,0) 家庭纺织的布入账</b>（{@code household}：{@code OUTPUT_SHARE × LABOR_AMOUNT} 700‰，布）。
    *
-   * <p>★★ <b>受方是"织布的人"</b>（I4.3）：{@code weave@0_0|*} 四行**人口为 0** ⇒ 按 R7 它们永远不是 cohort 受方， 布落同格的
-   * {@code farm@0_0|*} 四行（它们才有人口）。故逐行的分母是**农业行**的劳动（Σ = 498,800）。
+   * <p>★★ <b>受方是"织布的人"</b>：H0.2 起行 = 家户，而那批人就是 {@code 0_0|rural|*} 四行（旧版挂在 {@code farm@0_0|*} 上 ——
+   * 同一批人，键换了）。故逐行的分母是**农村四行的劳动**（Σ = 498,800）。
    *
    * <pre>
-   * 布净产 = 49 座 × 30 匹 × 1000 × 0.97 = 1,425,900；分成那一笔 = ⌊1,425,900 × 700 ÷ 1000⌋ = 998,130
-   *   贫 ⌊998,130 × 247,950 ÷ 498,800⌋ = 496,163 · 中 365,594 · 富 130,569 · 地 5,803
-   * ⇒ 布入账 = **998,129**（同样少 1：逐行取整）
+   * 布净产 = 48 台 × 30 匹 × 1000 × 0.97 = 1,396,800；分成那一笔 = ⌊1,396,800 × 700 ÷ 1000⌋ = 977,760
+   *   贫 ⌊977,760 × 247,950 ÷ 498,800⌋ = 486,037 · 中 358,133 · 富 127,904 · 地 5,684
+   * ⇒ 布入账 = **977,758**（逐行取整少 2）
    * </pre>
+   *
+   * <p>★ <b>旧值 998,129 → 新值 977,758 的理由</b>：规模 49 → 48（见 {@link #WEAVE_LOOMS_SEEDED} 那条"逐行取整"），
+   * 净产 1,425,900 → 1,396,800。这是 H0.4 现行投入口径的后果，**不是**放宽断言（逐值照旧钉死）。
    */
-  private static final long WEAVE_CLOTH_INTAKE = 496_163L + 365_594L + 130_569L + 5_803L;
+  private static final long WEAVE_CLOTH_INTAKE = 486_037L + 358_133L + 127_904L + 5_684L;
 
   /**
    * ★★ **(1,0) 的放贷方（地主 25 人）在周期末缸里剩下的余量**（毫粮）—— 同 {@link #PLAINS_LENDER_LEFTOVER} 的算式。
@@ -299,7 +341,8 @@ class EconomySettlementEndToEndTest {
 
       // (3,0)：地主（50 人）缺第 1 天口粮 4,166（= dailyRationMilli(50, 1)）；富农当日有**真余粮**
       //   （120 天自需 + 20 万 —— V6 §7.1① 修夹具：60 天不构成余粮）⇒ 恰好一条实物债。
-      ClassKey landlordKey = new ClassKey(FARM_3, LANDLORD);
+      // ★ H0.2：行键 = (格, 居住类型, 阶层) —— FARM_3 那四行是**农村**家户（旧版靠"产业段"暗中携带这两维）。
+      CohortKey landlordKey = ruralKey(3, 0, LANDLORD);
       ClassRow landlord = after.classes().get(landlordKey);
       assertThat(landlord.debts()).as("地主背上一条债务").hasSize(1);
       Debt debt = after.debts().get(landlord.debts().get(0));
@@ -307,21 +350,23 @@ class EconomySettlementEndToEndTest {
           .as("本金 = 缺口 = 该行第 1 天的口粮")
           .isEqualTo(EconomyTestWorld.LENDER_HEX_LANDLORD_DEFICIT);
       assertThat(debt.debtor()).isEqualTo(landlordKey);
-      assertThat(debt.creditor()).as("债权人 = 同格有**余粮**的富农").isEqualTo(new ClassKey(FARM_3, RICH));
+      assertThat(debt.creditor())
+          .as("债权人 = 同格有**余粮**的富农")
+          .isEqualTo(ruralKey(3, 0, RICH));
       assertThat(debt.commodity()).as("实物债（粮）").contains(GRAIN);
       assertThat(debt.ratePerMillePerCycle()).as("每周期 20‰").isEqualTo(20);
       assertThat(debt.dueCycle()).as("到期周期 = 当前周期 + 1 = 2").isEqualTo(2L);
       assertThat(debt.id().value())
           .as("★ §7.2：id 由 (周期, 债务人, 债权人, 商品) 确定性算出，且**不含 \".\"**")
           // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；
-          //   债务人键 = landlordKey = FARM_3|LANDLORD = "farm@3_0|landlord"（地主一词不变）
-          //   债权人键 = FARM_3|RICH = "farm@3_0|rich_peasant"（新词表）；商品 = "grain"。
-          .isEqualTo("debt-c1-farm@3_0|landlord>farm@3_0|rich_peasant-grain")
+          //   ★ H0.2：两段键都是 {@code CohortKey.toString()}（三段规范串，带居住维）
+          //   ⇒ 债务人 = 3_0|rural|landlord、债权人 = 3_0|rural|rich_peasant；商品 = "grain"。
+          .isEqualTo("debt-c1-3_0|rural|landlord>3_0|rural|rich_peasant-grain")
           .doesNotContain(".");
       assertThat(after.debts()).as("整场只此一条债").hasSize(1);
       assertThat(landlord.goods().getOrDefault(GRAIN, 0L)).as("地主借完就归零（它借的是缺口全额）").isZero();
       // ★ 放贷方**自己没被借空**（V6 §7.1①）：富农的缸 = 120 天自需 + 20 万 − 自己第 1 天那一顿 − 借出的 4,166。
-      ClassRow richRow = after.classes().get(new ClassKey(FARM_3, RICH));
+      ClassRow richRow = after.classes().get(ruralKey(3, 0, RICH));
       assertThat(richRow.goods().getOrDefault(GRAIN, 0L))
           .as("★ 富农借出后缸里的逐值余额（保留额那一份没被借走）")
           .isEqualTo(
@@ -338,7 +383,7 @@ class EconomySettlementEndToEndTest {
       assertThat(
               after
                   .classes()
-                  .get(new ClassKey(IndustryHexKeys.id(EconomySeeder.FARM, 4, 0), LANDLORD))
+                  .get(ruralKey(4, 0, LANDLORD))
                   .debts())
           .as("无粮可借 ⇒ 不产生债务（也不凭空造粮）")
           .isEmpty();
@@ -634,7 +679,7 @@ class EconomySettlementEndToEndTest {
     try (CoreSimos core = freshCore()) {
       advance(core, 1);
       EconomyData day1 = economy(core);
-      ClassRow row = day1.classes().get(new ClassKey(FARM_0, PEASANT));
+      ClassRow row = day1.classes().get(ruralKey(0, 0, PEASANT));
 
       assertThat(row.naturalNeeds().keySet())
           .as("★ 每商品一条需求，且保序（词表序 = 粮、布）")
@@ -655,7 +700,9 @@ class EconomySettlementEndToEndTest {
    *
    * <pre>
    * (0,0) 平原 3,100 亩 × {@link EconomySeeder#FIBER_OUTPUT_PER_MU}(6) × 1000 = 18,600,000 毫纤维（毛）
-   * 扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 18,042,000（落进农业四行的缸）
+   * 扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 18,042,000（落进农村四行的缸）
+   * ★★ H0.2 起**创世的 1,500,000 毫纤维也在这四行上**（旧版在"纺织四行"上）⇒ 该格 Σ 行纤维 = 净产 + 织机没取走的
+   *    {@link #WEAVE_FIBER_LEFTOVER}(60,000)。要单独量"农田这一周期的纤维净产"，走**流水所得**那一维（下一条）。
    * </pre>
    *
    * <p>★ 判别力：产出键若还写死 {@code GRAIN} ⇒ 纤维一分不产、本条与下一条一起红（"只知道粮"的实现挡在这里）。
@@ -671,8 +718,8 @@ class EconomySettlementEndToEndTest {
               / EconomySeeder.GRAIN_OUTPUT_PER_MU
               * EconomySeeder.FIBER_OUTPUT_PER_MU;
       assertThat(hexGoods(afterHarvest, 0, 0, EconomyTestWorld.FIBER))
-          .as("(0,0) 农田的纤维净产 = 粮的同一公式（毛 18,600,000 × 0.97）")
-          .isEqualTo(grossFiber * 970L / 1000L);
+          .as("(0,0) Σ 行纤维 = 农田净产（毛 18,600,000 × 0.97）+ 织机没取走的那份创世库存")
+          .isEqualTo(grossFiber * 970L / 1000L + WEAVE_FIBER_LEFTOVER);
       assertThat(sumHarvestFiber(afterHarvest, FARM_0))
           .as("★ T4：流水所得里纤维那一维 = **关系入账**（= 纤维净产；毛产那份进不了行 —— 它已经不是行的所得了）")
           .isEqualTo(grossFiber * 970L / 1000L);
@@ -708,17 +755,27 @@ class EconomySettlementEndToEndTest {
 
       assertThat(farm(afterHarvest, WEAVE_0).cycleLaborMilli()).as("关账后周期劳动清零（与农业同处）").isZero();
       long grossCloth =
-          49L * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+          WEAVE_LOOMS_OPENED
+              * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
+              * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
       assertThat(hexGoods(afterHarvest, 0, 0, EconomyTestWorld.CLOTH))
-          .as("★★ T4/I4.3：布落在**织布的人**手里（farm@0_0|* 四行）—— 700‰ 的分成入账 998,129")
+          .as("★★ T4：布落在**织布的人**手里（H0.2 起 = 0_0|rural|* 四行）—— 700‰ 的分成入账 977,758")
           .isEqualTo(WEAVE_CLOTH_INTAKE)
           .isPositive();
-      assertThat(clothOfRowsOf(afterHarvest, WEAVE_0))
-          .as("★★ I4.3：weave 四行**一行都不持有布**（人口为 0 ⇒ 永不是 cohort 受方，R7）")
-          .allMatch(value -> value == 0L);
+      // ★★ H0.2：旧版"weave 四行一行都不持有布"那条判据**没有对象了** —— 那四行不存在（人口恒 0 ⇒ 永不是受方）。
+      //   取而代之的是**并账判据**：布落在**同一批农村人**的那一本账上，而**同格的城镇四行一分没有**。
+      assertThat(clothOfRowsAt(afterHarvest, 0, 0, ResidenceKind.RURAL))
+          .as("★★ 布的入账落在 (0,0) 的**农村四行**（= 织布的那批人；农业与纺织共用一本账 —— V9/I1.2）")
+          .allMatch(value -> value > 0L)
+          .hasSize(EconomySeeder.CLASS_IDS.length);
+      assertThat(clothOfRowsAt(afterHarvest, 0, 0, ResidenceKind.URBAN))
+          .as("★★ **同一格的城镇四行一行都不持有布**（两组账不并：`(格,居住,阶层)` 那一维就是为此而加）"
+              + "—— 该格没有城镇批次 ⇒ 那四行是空账（这正是不并账的判别力所在）")
+          .allMatch(value -> value == 0L)
+          .hasSize(EconomySeeder.CLASS_IDS.length);
       assertThat(sumHarvestCommodity(afterHarvest, WEAVE_0, EconomyTestWorld.CLOTH))
-          .as("★ 纺织**行自己**的流水所得 = 0（布不是它的所得了：它只持有织机与原料）")
-          .isZero();
+          .as("★ 纺织的**关系入账**同样落在农村四行上（行 = 家户，一个家户给两个产业出劳动也只有一个身份）")
+          .isEqualTo(WEAVE_CLOTH_INTAKE);
       assertThat(accountOf(actor(core), afterHarvest, WEAVE_0, EconomyTestWorld.CLOTH))
           .as("★ 剩下的 300‰ 留在 operator 账上（裁定 E2：'实物分成给劳动者 + 自留'）")
           .isEqualTo(grossCloth * 970L / 1000L - WEAVE_CLOTH_INTAKE);
@@ -732,10 +789,11 @@ class EconomySettlementEndToEndTest {
    * ★★ **城市作坊：非 LAND 生产成立 + 城市能产出自己的产品**（spec §六 给 T5 定的两个目的）。
    *
    * <pre>
-   * (2,0) 300 城市人 ⇒ 作坊 6 座（{@link EconomySeeder#URBAN_CAPITA_PER_WORKSHOP} = 50）
-   * 规模 = min(作坊 6, 劳动 149,640 ÷ 1000 = 149, 纤维 360,000 ÷ 60,000 = 6, 铁 60,000 ÷ 10,000 = 6) = **6**
-   *   ⇒ **产能（作坊）是最紧的那一路** —— 那一路上没有一寸土地
-   * 产布 = 6 × 60 × 1000 = 360,000（毛）⇒ 净 349,200；产工具 = 6 × 5 × 1000 = 30,000（毛）⇒ 净 29,100
+   * (2,0) 300 城市人 ⇒ 作坊 6 座（capacity）（{@link EconomySeeder#URBAN_CAPITA_PER_WORKSHOP} = 50）
+   * 规模 = min(作坊 6, 劳动 148,393 ÷ 1000 = 148, 纤维 240,000 ÷ 60,000 = 4, 铁 40,000 ÷ 10,000 = 4) = **4**
+   *   （H0.4 起"取到的投入"是逐行⌊⌋之和 ⇒ 4 —— 见 {@link #CRAFT_CLOTH_INTAKE} 的算式；★ 那一路上仍然
+   *    **没有一寸土地**：三条约束全与土地无关）
+   * 产布 = 4 × 60 × 1000 = 240,000（毛）⇒ 净 232,800；产工具 = 4 × 5 × 1000 = 20,000（毛）⇒ 净 19,400
    * </pre>
    *
    * <p>★ 判别力：把规模写成"按土地算" ⇒ 该格土地为 0（土地全归农业）⇒ 城市永远产不出东西（v1 的病态）⇒ 红。
@@ -747,19 +805,24 @@ class EconomySettlementEndToEndTest {
       advance(core, 120);
       EconomyData afterHarvest = economy(core);
 
-      assertThat(rowsOf(afterHarvest, CRAFT_2))
-          .as("作坊行**没有土地**（土地全归农业）")
-          .allSatisfy(row -> assertThat(row.meansOfProduction()).doesNotContainKey(AssetKind.LAND));
+      // ★ H0.3（K3）：作坊的产能住在**产业**上（行上不再有生产资料）⇒ "城市生产不含土地"这条判据的落点随之搬家。
+      assertThat(farm(afterHarvest, CRAFT_2).capacity())
+          .as("作坊的产能**不是土地**（土地全归农业）")
+          .doesNotContainKey(AssetKind.LAND);
+      assertThat(
+              farm(afterHarvest, IndustryHexKeys.id(EconomySeeder.FARM, 2, 0)).capacity())
+          .as("同格的土地全在**农业**产业的产能上（「谁有地」与「谁有作坊」分得开）")
+          .containsKey(AssetKind.LAND);
       long grossCloth =
-          6L
+          CRAFT_WORKSHOPS_OPENED
               * EconomySeeder.CLOTH_PER_WORKSHOP_PER_CYCLE
               * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
       long grossTool =
-          6L
+          CRAFT_WORKSHOPS_OPENED
               * EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE
               * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
       assertThat(hexGoods(afterHarvest, 2, 0, EconomyTestWorld.CLOTH))
-          .as("(2,0) 作坊的布入账 = 600‰ 分成（{@code handicraft}）× 布净产 349,200 ⇒ 逐行取整后 209,518")
+          .as("(2,0) 作坊的布入账 = 600‰ 分成（{@code handicraft}）× 布净产 232,800 ⇒ 逐行取整后 139,678")
           .isEqualTo(CRAFT_CLOTH_INTAKE);
       assertThat(accountOf(actor(core), afterHarvest, CRAFT_2, EconomyTestWorld.CLOTH))
           .as("★ 余下 400‰ 留在 operator 账上（布净产 − 分成）")
@@ -768,7 +831,7 @@ class EconomySettlementEndToEndTest {
           .as("★ T4：工具**没有规则付给 cohort** ⇒ 行里一件不进（它落 operator 的账 —— 见下一条）")
           .isZero();
       assertThat(accountOf(actor(core), afterHarvest, CRAFT_2, EconomyTestWorld.TOOL))
-          .as("(2,0) 作坊的工具净产 = 6 座 × 5 件 × 1000 × 0.97（第二件城市自己的产品，落在经营主体账上）")
+          .as("(2,0) 作坊的工具净产 = 4 座 × 5 件 × 1000 × 0.97（第二件城市自己的产品，落在经营主体账上）")
           .isEqualTo(grossTool * 970L / 1000L);
       assertThat(hexGoods(before, 2, 0, EconomyTestWorld.CLOTH))
           .as("★ 非平凡：创世时一件布都没有（上面那个数确实是产出来的）")
@@ -893,8 +956,14 @@ class EconomySettlementEndToEndTest {
   }
 
   /** 某个产业名下各行某商品的库存（逐行）。 */
-  private static List<Long> clothOfRowsOf(EconomyData data, IndustryId industry) {
-    return classKeysOf(data, industry).stream()
+  /**
+   * 某格某一组家户行持有的布（H0.2：行键 = {@code (格, 居住类型, 阶层)} ⇒ "哪一组"由这两维直接点名；
+   * ★ 它是"并账判据"的读法：同格两组账必须分得开）。
+   */
+  private static List<Long> clothOfRowsAt(
+      EconomyData data, int q, int r, ResidenceKind residence) {
+    return classKeysAt(data, new HexCoord(q, r)).stream()
+        .filter(key -> key.residence().equals(residence))
         .map(key -> data.classes().get(key).goods().getOrDefault(EconomyTestWorld.CLOTH, 0L))
         .toList();
   }
@@ -918,16 +987,45 @@ class EconomySettlementEndToEndTest {
   // ── 逐格汇总（都经 IndustryHexKeys 认"产业属于哪一格"，不自己拼 id）────────────────────
 
   private static List<ClassRow> rowsAt(EconomyData data, int q, int r) {
-    return IndustryHexKeys.at(data.industries(), q, r).stream()
-        .flatMap(id -> classKeysOf(data, id).stream().map(key -> data.classes().get(key)))
+    return classKeysAt(data, new HexCoord(q, r)).stream()
+        .map(key -> data.classes().get(key))
         .toList();
   }
 
-  private static List<ClassKey> classKeysOf(EconomyData data, IndustryId industry) {
+  /** 某格的家户行键（H0.2：行挂在**格**上；排序按 (居住类型, 阶层) ⇒ 可复现）。 */
+  private static List<CohortKey> classKeysAt(EconomyData data, HexCoord coord) {
     return data.classes().keySet().stream()
-        .filter(key -> key.industry().equals(industry))
-        .sorted(Comparator.comparing(key -> key.slot().value()))
+        .filter(key -> key.hex().equals(coord))
+        .sorted(
+            Comparator.comparing((CohortKey key) -> key.residence().value())
+                .thenComparing(key -> key.stratum().value()))
         .toList();
+  }
+
+  /**
+   * ★★ **某产业对应的家户行键**（H0.2：行键里已经没有产业）。
+   *
+   * <p>★ 事实来源是**劳动配额表**：供给这个产业的批次住哪种居住类型（{@link ResidenceKind#ofLot}，唯一拼写点）
+   * ⇒ 该格那一组四行。农村家户同时供给农业与家庭纺织 ⇒ 两者**返回同一组四行**（这正是"一个家户一份账"的形态）。
+   */
+  private static List<CohortKey> classKeysOf(EconomyData data, IndustryId industry) {
+    String hexKey = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
+    LinkedHashSet<ResidenceKind> residences = new LinkedHashSet<>();
+    for (LaborAllocation allocation : data.allocations().values()) {
+      if (allocation.actor().id().equals(industry.value())) {
+        residences.add(ResidenceKind.ofLot(allocation.group()));
+      }
+    }
+    int q = Integer.parseInt(hexKey.substring(0, hexKey.indexOf('_')));
+    int r = Integer.parseInt(hexKey.substring(hexKey.indexOf('_') + 1));
+    return classKeysAt(data, new HexCoord(q, r)).stream()
+        .filter(key -> residences.contains(key.residence()))
+        .toList();
+  }
+
+  /** 一个农村家户键（{@code (格, RURAL, 阶层)}）—— 夹具的 5 格都是"农村四行 + 城镇四行"。 */
+  private static CohortKey ruralKey(int q, int r, SocialClassId stratum) {
+    return new CohortKey(new HexCoord(q, r), ResidenceKind.RURAL, stratum);
   }
 
   private static long hexGrain(EconomyData data, int q, int r) {
@@ -946,12 +1044,10 @@ class EconomySettlementEndToEndTest {
   /** 某格 Σ 行本周期**粮**的未满足需求（毫粮）—— 本期口径（§八.5：新周期第一天归零）。★ R4 起 unmetNeed 逐商品。 */
   private static long hexUnmet(EconomyData data, int q, int r) {
     long total = 0L;
-    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
-      for (ClassKey key : classKeysOf(data, id)) {
-        FlowRow flow = data.flows().get(key);
-        if (flow != null) {
-          total += flow.unmetNeed().getOrDefault(GRAIN, 0L);
-        }
+    for (CohortKey key : classKeysAt(data, new HexCoord(q, r))) {
+      FlowRow flow = data.flows().get(key);
+      if (flow != null) {
+        total += flow.unmetNeed().getOrDefault(GRAIN, 0L);
       }
     }
     return total;
@@ -960,12 +1056,10 @@ class EconomySettlementEndToEndTest {
   /** 某格 Σ 行本周期**布**的未满足需求（毫布）。★ R4（T2）：与粮**同一套记账**、但**各自一条**。 */
   private static long hexUnmetCloth(EconomyData data, int q, int r) {
     long total = 0L;
-    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
-      for (ClassKey key : classKeysOf(data, id)) {
-        FlowRow flow = data.flows().get(key);
-        if (flow != null) {
-          total += flow.unmetNeed().getOrDefault(EconomyTestWorld.CLOTH, 0L);
-        }
+    for (CohortKey key : classKeysAt(data, new HexCoord(q, r))) {
+      FlowRow flow = data.flows().get(key);
+      if (flow != null) {
+        total += flow.unmetNeed().getOrDefault(EconomyTestWorld.CLOTH, 0L);
       }
     }
     return total;
@@ -985,15 +1079,13 @@ class EconomySettlementEndToEndTest {
   private static long sumRowFlowCommodity(
       Map<String, Object> hexView, String field, String commodity) {
     long total = 0L;
-    for (Object industry : (List<?>) hexView.get("industries")) {
-      Map<?, ?> industryView = (Map<?, ?>) industry;
-      for (Object row : (List<?>) industryView.get("classes")) {
-        Map<?, ?> flow = (Map<?, ?>) ((Map<?, ?>) row).get("flow");
-        Object table = flow.get(field);
-        if (table instanceof Map<?, ?> byCommodity) {
-          Object value = byCommodity.get(commodity);
-          total += value == null ? 0L : ((Number) value).longValue();
-        }
+    // ★ H0.2：家户行在**格级**（`classes`），不再挂在每个产业对象下。
+    for (Object row : (List<?>) hexView.get("classes")) {
+      Map<?, ?> flow = (Map<?, ?>) ((Map<?, ?>) row).get("flow");
+      Object table = flow.get(field);
+      if (table instanceof Map<?, ?> byCommodity) {
+        Object value = byCommodity.get(commodity);
+        total += value == null ? 0L : ((Number) value).longValue();
       }
     }
     return total;
@@ -1004,17 +1096,23 @@ class EconomySettlementEndToEndTest {
     return sumRowFlows(hexView, "deaths");
   }
 
-  /** 读口视图里 {@code industries[].classes[].flow[field]} 的合计（读口把 flow 整份挂在每一行上）。 */
+  /** 读口视图里 {@code classes[].flow[field]} 的合计（★ H0.2：行在格级；读口把 flow 整份挂在每一行上）。 */
   private static long sumRowFlows(Map<String, Object> hexView, String field) {
     long total = 0L;
-    for (Object industry : (List<?>) hexView.get("industries")) {
-      Map<?, ?> industryView = (Map<?, ?>) industry;
-      for (Object row : (List<?>) industryView.get("classes")) {
-        Map<?, ?> flow = (Map<?, ?>) ((Map<?, ?>) row).get("flow");
-        total += ((Number) flow.get(field)).longValue();
-      }
+    for (Object row : (List<?>) hexView.get("classes")) {
+      Map<?, ?> flow = (Map<?, ?>) ((Map<?, ?>) row).get("flow");
+      total += ((Number) flow.get(field)).longValue();
     }
     return total;
+  }
+
+  /** 该格产业的周期天数（H0.2：行不再带产业 ⇒ 相位/周期按**格**取；同格各产业同步走 ⇒ 取最大与旧口径同值）。 */
+  private static long cycleDaysAt(EconomyData data, int q, int r) {
+    long days = 0L;
+    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
+      days = Math.max(days, data.industries().get(id).cycleDays());
+    }
+    return days == 0L ? 1L : days;
   }
 
   /** 某格 Σ 人口。 */
@@ -1029,13 +1127,10 @@ class EconomySettlementEndToEndTest {
    */
   private static long hexNeed(EconomyData data, int q, int r) {
     long total = 0L;
-    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
-      long cycleDays = data.industries().get(id).cycleDays();
-      for (ClassKey key : classKeysOf(data, id)) {
-        total +=
-            EconomyVocabulary.cumulativeRationMilli(
-                data.classes().get(key).population(), cycleDays);
-      }
+    long cycleDays = cycleDaysAt(data, q, r);
+    for (CohortKey key : classKeysAt(data, new HexCoord(q, r))) {
+      total +=
+          EconomyVocabulary.cumulativeRationMilli(data.classes().get(key).population(), cycleDays);
     }
     return total;
   }
@@ -1043,12 +1138,10 @@ class EconomySettlementEndToEndTest {
   /** 某格 Σ 饿死人口（取各行流水的累计 {@code deaths}）。 */
   private static long hexDeaths(EconomyData data, int q, int r) {
     long total = 0L;
-    for (IndustryId id : IndustryHexKeys.at(data.industries(), q, r)) {
-      for (ClassKey key : classKeysOf(data, id)) {
-        FlowRow flow = data.flows().get(key);
-        if (flow != null) {
-          total += flow.deaths();
-        }
+    for (CohortKey key : classKeysAt(data, new HexCoord(q, r))) {
+      FlowRow flow = data.flows().get(key);
+      if (flow != null) {
+        total += flow.deaths();
       }
     }
     return total;
@@ -1071,7 +1164,7 @@ class EconomySettlementEndToEndTest {
    */
   private static long sumHarvestIncome(EconomyData data, IndustryId industry) {
     long sum = 0L;
-    for (ClassKey key : classKeysOf(data, industry)) {
+    for (CohortKey key : classKeysOf(data, industry)) {
       FlowRow flow = data.flows().get(key);
       if (flow != null) {
         sum += flow.income().getOrDefault(GRAIN, 0L);
@@ -1089,7 +1182,7 @@ class EconomySettlementEndToEndTest {
   private static long sumHarvestCommodity(
       EconomyData data, IndustryId industry, CommodityId commodity) {
     long sum = 0L;
-    for (ClassKey key : classKeysOf(data, industry)) {
+    for (CohortKey key : classKeysOf(data, industry)) {
       FlowRow flow = data.flows().get(key);
       if (flow != null) {
         sum += flow.income().getOrDefault(commodity, 0L);
@@ -1114,7 +1207,7 @@ class EconomySettlementEndToEndTest {
       EconomyData before, EconomyData after, IndustryId industry, long eatenOnThatDay) {
     long stockBefore = 0L;
     long stockAfter = 0L;
-    for (ClassKey key : classKeysOf(after, industry)) {
+    for (CohortKey key : classKeysOf(after, industry)) {
       stockBefore += before.classes().get(key).goods().getOrDefault(GRAIN, 0L);
       stockAfter += after.classes().get(key).goods().getOrDefault(GRAIN, 0L);
     }
@@ -1214,7 +1307,7 @@ class EconomySettlementEndToEndTest {
         .sum();
   }
 
-  /** 某产业的全部阶层行（R3：非土地产业的判据要看"这一行有没有土地"）。 */
+  /** 某产业对应的**那组家户行**（H0.2：行不再属于产业 —— 由劳动配额把"批次 → 居住类型"对上，见 {@link #classKeysOf}）。 */
   private static List<ClassRow> rowsOf(EconomyData data, IndustryId industry) {
     return classKeysOf(data, industry).stream().map(key -> data.classes().get(key)).toList();
   }

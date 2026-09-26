@@ -100,11 +100,13 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "economy.Seed",
               "mapId, rulesVersion, entries[{q,r,industries[{id,name,regime,operator?{kind,id},cycleDays,progressDays?,"
-                  + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,cycleInputPerUnit?(键=生产资料种类，v1 只读 LAND),"
+                  + "capacity?(本格该产业的产能总量，键 ⊆ capacityPerUnit 的键),"
+                  + "capacityPerUnit(每 1 单位规模要多少生产资料),"
+                  + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,cycleInputPerUnit?(键=生产资料种类),"
                   + "cycleSeedUsedMilli?,allocation(@class=split|wage_first),"
-                  + "slots[{id,name,laborParticipationPerMille}],"
-                  + "classes[{slot,population,laborMilli,participationPerMille,meansOfProduction?,goods?,"
-                  + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]}]"
+                  + "slots[{id,name,laborParticipationPerMille}]}],"
+                  + "classes[{residence(rural|urban),slot,population,laborMilli,participationPerMille,goods?,"
+                  + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}]}]"
                   + "（★ 一次种一格或多格；meta 空 = 首次播种并打标；meta 非空 = 按格追加，"
                   + "若某格已有产业/阶层行则拒并点名该格坐标）"
                   + "（★ operator 缺省 ⇒ 按 regime 推导："
@@ -113,11 +115,11 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
-                  + "holdings[{owner{kind,id}, location{q,r}, assetKey{kind,qualities}, quantity}...],"
                   + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"
-                  + "（★ S1 阶段 2：一次种入某地图的 actor 分片，三张表各自挂在**自己那一格**下——"
-                  + "holdings/goods 的 location 必须等于所在 entry 的 (q,r)，否则拒；"
-                  + "owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体，悬空 owner 拒）"),
+                  + "（★ S1 阶段 2：一次种入某地图的 actor 分片，两张表各自挂在**自己那一格**下——"
+                  + "goods 的 location 必须等于所在 entry 的 (q,r)，否则拒；"
+                  + "owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体，悬空 owner 拒）"
+                  + "（★ H0.5/裁定 S3：产权表 holdings 随 AssetHolding 整块退役 ⇒ 本切片唯一的账是 goods）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(

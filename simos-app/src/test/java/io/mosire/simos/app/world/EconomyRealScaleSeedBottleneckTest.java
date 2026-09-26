@@ -5,12 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -48,14 +49,15 @@ import org.junit.jupiter.api.Test;
  *
  * <pre>
  * 人口 14,806 按 450/350/150/50 切 ⇒ 6,663 / 5,183 / 2,220 / 740（残差 2 按槽位 id 序补前两槽）
- * 土地 3,100 亩按人口切 ⇒ 1,395,063 / 1,085,189 / 464,811 / 154,937 千分亩 ⇒ 亩（向下取整）1,395 / 1,085 / 464 / 154
- * 满种种子 = Σ(亩 × 8,000 毫粮/亩) = 3,098 亩 × 8,000 = 24,784,000 毫粮   （★ 3,098 而非 3,100：亩是向下取整的）
- * 各行储备（贫 30 / 中 60 / 富 120 / 地 250 天）都付得起自己那一份 ⇒ 满种（第三路**存在但不缩地**到 3,100 亩以外）
- * 收获：可支撑亩 = 24,784,000 ÷ 8,000 = 3,098 亩（&lt; 土地 3,100 亩、&lt; 劳动可经营 51,698 亩）⇒ **种子是那一年的瓶颈**
+ * 产能 3,100,000 千分亩（= 3,100 亩 ÷ 每单位 1,000 千分亩 ⇒ 规模 = 3,100 亩）
+ * 本行"想扣多少"的份额 = ⌊3,100 亩 × 本行人口 ÷ 14,806⌋ ⇒ 1,395 / 1,084 / 465 / 154 亩
+ * 满种种子 = Σ(份额 × 8,000 毫粮/亩) = 3,098 亩 × 8,000 = 24,784,000 毫粮
+ * 各行储备（贫 30 / 中 60 / 富 120 / 地 250 天）都付得起自己那一份 ⇒ 满种（第三路**存在但不缩地**）
+ * 收获：可支撑亩 = 24,784,000 ÷ 8,000 = 3,098 亩（&lt; 产能 3,100 亩、&lt; 劳动可经营 51,698 亩）⇒ **种子是那一年的瓶颈**
  * 毛产 = 3,098 × 67 × 1000 = 207,566,000 ⇒ 净（扣饲料 0‰ + 折旧 30‰）201,339,020
  * </pre>
  *
- * <p>★ 缸全空时：播种日扣 0 ⇒ 可支撑 0 亩 ⇒ **颗粒无收**；而**未配种子的对照格**照常按土地满产 3,100 × 67 × 1000 × 0.97 = 201,469,000
+ * <p>★ 缸全空时：播种日扣 0 ⇒ 可支撑 0 亩 ⇒ **颗粒无收**；而**未配种子的对照格**照常按产能满产 3,100 × 67 × 1000 × 0.97 = 201,469,000
  * —— 这两条并排就是"种子是第三路瓶颈"的判别力。
  */
 class EconomyRealScaleSeedBottleneckTest {
@@ -86,20 +88,44 @@ class EconomyRealScaleSeedBottleneckTest {
     return EconomyChangeSet.apply(change, EconomyData.empty());
   }
 
-  /** 该格**农业**产业的行（本夹具一格、无城 ⇒ 恰一个农业产业；不用例另有断言钉住这一点）。 */
+  /**
+   * 该格**农村家户行**（H0.2 起行 = {@code (格, 居住类型, 阶层)}，**行里没有产业了**）。
+   *
+   * <p>★ 本夹具一格、无城 ⇒ {@code (0,0)} 上的农村四行**就是**供给农业与家庭纺织的那两批人（旧版 {@code farm@0_0} 那四行逐值对应）；
+   * 该格没有城镇批次 ⇒ 没有 {@code URBAN} 行。★ 按键的 {@code hex} / {@code residence} 过滤是 H0 之后**唯一**的筛法。
+   */
   private static List<ClassRow> farmRows(EconomyData data) {
     List<ClassRow> rows = new ArrayList<>();
-    IndustryId farm = IndustryHexKeys.id(EconomySeeder.FARM, 0, 0);
-    for (Map.Entry<ClassKey, ClassRow> entry : data.classes().entrySet()) {
-      if (entry.getKey().industry().equals(farm)) {
+    for (Map.Entry<CohortKey, ClassRow> entry : data.classes().entrySet()) {
+      CohortKey key = entry.getKey();
+      if (key.hex().equals(HEX) && key.residence() == ResidenceKind.RURAL) {
         rows.add(entry.getValue());
       }
     }
     return rows;
   }
 
-  private static long rowLandMu(ClassRow row) {
-    return row.meansOfProduction().getOrDefault(AssetKind.LAND, 0L) / 1000L;
+  /**
+   * ★★ <b>该格农业"本行那一份规模"的亩数</b>（H0.3/K3 之后行上没有土地了 ⇒ 份额只能现算）。
+   *
+   * <pre>
+   * 规模 scale   = ⌊农业产业 capacity[LAND] ÷ capacityPerUnit[LAND]⌋   = 3,100 亩（唯一真相在 {@code Industry.capacity}）
+   * 本行份额      = ⌊scale × 本行人口 ÷ 该产业家户行的人口和⌋
+   * </pre>
+   *
+   * <p>★ 与 {@code EconomySettlement.rowSharesOf} 是**同一个算式**（那里的"该产业家户行"= 由劳动配额表推出的本格农村四行）——
+   * 于是"每行想扣多少种子"与这里读到的份额同源，而不是把结算的算式在本文件里再抄一遍另一套。
+   */
+  private static long rowShareMu(long scaleMu, long population, long householdPopulation) {
+    return scaleMu * population / householdPopulation;
+  }
+
+  /** 该格农业的规模（亩）= {@code capacity[LAND] ÷ capacityPerUnit[LAND]}（两位都是千分亩 ⇒ 结果是亩）。 */
+  private static long farmScaleMu(EconomyData data) {
+    Industry farm = data.industries().get(IndustryHexKeys.id(EconomySeeder.FARM, 0, 0));
+    long capacity = farm.capacity().getOrDefault(AssetKind.LAND, 0L);
+    long perUnit = farm.capacityPerUnit().getOrDefault(AssetKind.LAND, 1L);
+    return capacity / perUnit;
   }
 
   // ── ①′ R2：真档规模上"行"与"配额"逐值对拍（改口径不改数）────────────────────────────
@@ -190,8 +216,13 @@ class EconomyRealScaleSeedBottleneckTest {
   // ── ① 真档真的配了种子、且真的扣了（满种）────────────────────────────────────────────
 
   /**
-   * ★★ **真档载荷里带着定案数**（8 粮/亩），且**每一行都付得起自己那份** ⇒ 播种日扣满 {@code 3,098 亩 × 8,000 = 24,784,000
-   * 毫粮}（真档的"标定实质不变"就建立在"种子买得起"这一点上）。
+   * ★★ **真档载荷里带着定案数**（8 粮/亩），且**每一行都付得起自己那份** ⇒ 播种日扣满 {@code 3,098 亩 × 8,000 =
+   * 24,784,000 毫粮}（真档的"标定实质不变"就建立在"种子买得起"这一点上）。
+   *
+   * <p>★ **3,098 而非 3,100**：H0.3/K3 把产能从"行"搬到产业之后，"本行想扣多少"改成 {@code
+   * ⌊产业规模 × 本行人口 ÷ 本格农村人口⌋}（{@code EconomySettlement.rowSharesOf} 是唯一算式）—— 四行**各自**向下取整
+   * （1,395 / 1,084 / 465 / 154），故 Σ份额 ≤ 产业规模。★ 实测：H0 前那条"按行土地的千分亩折亩"也恰得 3,098（3,098 不是巧合，
+   * 是同一批人口的同一组份额），本用例因此**逐值不变**。★ 方向是安全的：第三路只**缩**面积、永不放大（{@code seedCapMu ≤ availableMu}）。
    */
   @Test
   void theRealScaleHexSowsEveryMuItHasMoneyForOnTheSowingDay() {
@@ -204,9 +235,14 @@ class EconomyRealScaleSeedBottleneckTest {
     assertThat(farm.cycleInputPerUnit().get(AssetKind.LAND))
         .as("播种器给真档的农业配了每亩需种")
         .containsEntry(EconomySettlement.GRAIN, EconomySeeder.SEED_MILLI_PER_MU);
+    // ★★ H0.3（K3）：规模的唯一真相在**产业的产能**上（行里已经没有土地了）。
+    long scaleMu = farmScaleMu(seeded);
+    List<ClassRow> rows = farmRows(seeded);
+    long householdPopulation = rows.stream().mapToLong(ClassRow::population).sum();
     long needMilli = 0L;
-    for (ClassRow row : farmRows(seeded)) {
-      long need = rowLandMu(row) * EconomySeeder.SEED_MILLI_PER_MU;
+    for (ClassRow row : rows) {
+      // 本行那一份种子 = 本行份额（亩）× 每亩需种（毫粮/亩）
+      long need = rowShareMu(scaleMu, row.population(), householdPopulation) * EconomySeeder.SEED_MILLI_PER_MU;
       needMilli += need;
       assertThat(row.goods().getOrDefault(EconomySettlement.GRAIN, 0L))
           .as("行 %s 的储备必须付得起它那一份种子（%d 毫粮）", row.key(), need)
@@ -221,20 +257,23 @@ class EconomyRealScaleSeedBottleneckTest {
   }
 
   /**
-   * ★★ **收获面积由"实际扣到的种子"决定**（第三路瓶颈逐值）：可支撑 {@code 24,784,000 ÷ 8,000 = 3,098 亩}， 小于土地 3,100
+   * ★★ **收获面积由"实际扣到的种子"决定**（第三路瓶颈逐值）：可支撑 {@code 24,784,000 ÷ 8,000 = 3,098 亩}， 小于产业产能 3,100
    * 亩、远小于劳动可经营的 51,698 亩 ⇒ **它是那一年最短的那块**。
    *
-   * <p>★ 3,098 而非 3,100：{@code 亩 = 千分亩 / 1000} 是**向下取整**的，四行合计少了 2 亩。第三路只**缩**面积、 永不放大（{@code
-   * seedCapMu ≤ availableMu}），这个方向是安全的。
+   * <p>★ 3,098 而非 3,100：{@code ⌊产业规模 × 本行人口 ÷ 家户人口和⌋} 是**逐行向下取整**的，四行合计少了 2 亩。第三路只**缩**
+   * 面积、永不放大（{@code seedCapMu ≤ availableMu}），这个方向是安全的。
    */
   @Test
   void theSownSeedIsTheBottleneckThatDecidesTheHarvestArea() {
     EconomyData seeded = realScaleHex();
+    long scaleMu = farmScaleMu(seeded);
+    List<ClassRow> rows = farmRows(seeded);
+    long householdPopulation = rows.stream().mapToLong(ClassRow::population).sum();
     long seedCapMu = 0L;
-    for (ClassRow row : farmRows(seeded)) {
-      seedCapMu += rowLandMu(row);
+    for (ClassRow row : rows) {
+      seedCapMu += rowShareMu(scaleMu, row.population(), householdPopulation);
     }
-    assertThat(seedCapMu).as("可支撑亩 = Σ 行亩（满种时它恰等于土地亩数的向下取整）").isEqualTo(3_098L);
+    assertThat(seedCapMu).as("可支撑亩 = Σ 本行份额（满种时它恰等于产业规模的向下取整损失后的那份）").isEqualTo(3_098L);
 
     EconomyOwnershipFixture.Result afterHarvest =
         EconomyOwnershipFixture.advance(
@@ -287,7 +326,7 @@ class EconomyRealScaleSeedBottleneckTest {
             industry -> assertThat(industry.cycleSeedUsedMilli()).as("周期已关账 ⇒ 累加器清零").isZero());
 
     assertThat(harvestGrainNet(control))
-        .as("★ 未配种子的对照格：第三路不施加约束 ⇒ 按土地 3,100 亩满产的**净额**（扣饲料 0‰ + 折旧 30‰）")
+        .as("★ 未配种子的对照格：第三路不施加约束 ⇒ 按产能 3,100 亩满产的**净额**（扣饲料 0‰ + 折旧 30‰）")
         .isEqualTo(201_469_000L);
     assertThat(hexGrain(control.economy()))
         .as("行侧的入账非零（T4 起产出两处落：行里那份 + operator 账上那份）")
@@ -331,10 +370,10 @@ class EconomyRealScaleSeedBottleneckTest {
     return modules;
   }
 
-  /** 把每一行的粮清空（"冬春把缸吃空"）；其余字段原样带过。 */
+  /** 把每一行的粮清空（"冬春把缸吃空"）；其余字段原样带过（★ H0.3：行里**没有** {@code meansOfProduction} 了）。 */
   private static EconomyData withEmptyJars(EconomyData data) {
-    LinkedHashMap<ClassKey, ClassRow> rows = new LinkedHashMap<>();
-    for (Map.Entry<ClassKey, ClassRow> entry : data.classes().entrySet()) {
+    LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, ClassRow> entry : data.classes().entrySet()) {
       ClassRow row = entry.getValue();
       rows.put(
           entry.getKey(),
@@ -343,7 +382,6 @@ class EconomyRealScaleSeedBottleneckTest {
               row.population(),
               row.laborMilli(),
               row.participationPerMille(),
-              row.meansOfProduction(),
               Map.of(),
               row.money(),
               row.debts(),
@@ -367,6 +405,8 @@ class EconomyRealScaleSeedBottleneckTest {
               industry.cycleDays(),
               industry.progressDays(),
               industry.capacityPerUnit(),
+              // ★★ H0.3（K3）：产能是**存量、是事实**，清投入这一张表不动它 ⇒ 原样透传。
+              industry.capacity(),
               industry.dailyInputPerUnit(),
               industry.dailyLaborPerUnit(),
               industry.laborPerUnit(),

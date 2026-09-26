@@ -717,4 +717,12 @@ public final class ToolSupport {
   public static Map<String, Object> economyHex(HexCoord coord, EconomyData data) {
     return ApiViews.economyHex(coord, data);
   }
+
+  /**
+   * 逐格**产权**读数（H0.6）：**与 GUI 的 {@code /api/economy/ownership} 逐字节同形**（同一份 {@link
+   * ApiViews#economyOwnership}）——它同时读 economy（行侧账）与 actor（{@code GoodsAccount}）两片，故入参是 state。
+   */
+  public static Map<String, Object> economyOwnership(HexCoord coord, SimulationState state) {
+    return ApiViews.economyOwnership(coord, ApiViews.economyData(state), ApiViews.actorData(state));
+  }
 }

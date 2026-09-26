@@ -25,6 +25,8 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -35,7 +37,6 @@ import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -765,6 +766,10 @@ class GuiApiTest {
    * <p>★ **两个产业都在 (1,1)**：{@code workshop@1_1} 只有槽位、没有阶层行（本轮手工业不产出，夹具只借它的**身份**当 第二个"各产业占用劳动"的落点）。★
    * 产业 id 排序 = {@code craft...} 之外的字典序 ⇒ 取名 {@code workshop@1_1} 让 {@code farm@1_1} 仍排在 {@code
    * industries[0]}（既有断言一字不动）。
+   *
+   * <p>★★ **H0.3（K3）**：家户行的键是 {@code (格, 居住类型, 阶层)}（{@link CohortKey}）—— 本夹具的农业家户 = H11
+   * 的农村贫农；而**土地是产业的产能**（{@code farm@1_1} 的 {@code capacity[LAND]} = 1,000,000 千分亩 =
+   * 1,000 亩），行里**没有** {@code meansOfProduction} 了。
    */
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId("farm@1_1");
@@ -779,7 +784,10 @@ class GuiApiTest {
             33L,
             // ★ R3（V7）：产能锚与劳动那一路（读口要发它们 ⇒ 夹具必须给非平凡的值，见 industryRecipeIsVisible）。
             Map.of(AssetKind.LAND, 1_000L),
-            Map.of(),
+            // ★★ H0.3（K3）：**本格该产业的产能总量**（承接原 ClassRow.meansOfProduction）——
+            //   读口把它发成 `industries[].capacity`，格级 `landMilliMu` 就是它按 LAND 的合计。
+            Map.of(AssetKind.LAND, 1_000_000L),
+            Map.of(), // ★ dailyInputPerUnit：同本夹具的字面量（不配每日原料）
             0L,
             143L,
             Map.of(new CommodityId("grain"), 7L, new CommodityId("fiber"), 3L),
@@ -792,13 +800,13 @@ class GuiApiTest {
             //   ★ 读口的判别力不在这一条上（派生值 ⇒ "按 regime 重推"的实现照样绿），而在**另一个产业**上：
             //   `workshop@1_1` 的 operator 刻意非派生（见 workshopIndustry）。
             RegimeOperators.defaultOperator(new RegimeId("feudal"), farm));
+    CohortKey peasantKey = new CohortKey(H11, ResidenceKind.RURAL, peasant);
     ClassRow row =
         new ClassRow(
-            new ClassKey(farm, peasant),
+            peasantKey,
             100L,
             58_000L,
             950,
-            Map.of(AssetKind.LAND, 1_000_000L),
             Map.of(new CommodityId("grain"), 498_000L),
             12L,
             List.of(),
@@ -813,7 +821,7 @@ class GuiApiTest {
                 "aggregate-v1",
                 java.util.Optional.empty())),
         Map.of(farm, industry, workshop, workshopIndustry(workshop)),
-        Map.of(new ClassKey(farm, peasant), row),
+        Map.of(peasantKey, row),
         Map.of(),
         Map.of(),
         laborSupply(),
@@ -832,7 +840,10 @@ class GuiApiTest {
         120L,
         0L,
         Map.of(AssetKind.WORKSHOP, 1L),
+        // ★★ H0.3（K3）：本夹具的经济侧**只造了一条农村贫农行**（城镇批次虽在 social 侧，经济侧没有对应的家户行）
+        //   ⇒ 这一格没有作坊：产能**可以为 0**，本夹具用**空表**（= 该生产资料本格没有），语义与 0 同。
         Map.of(),
+        Map.of(), // ★ dailyInputPerUnit：同本夹具的字面量（不配每日原料）
         0L,
         1_000L,
         Map.of(),
@@ -883,10 +894,18 @@ class GuiApiTest {
     assertThat(industry.get("progressDays").asLong()).as("周期进度").isEqualTo(33L);
     assertThat(industry.get("allocation").get("meansWeightPerMille").asInt()).isEqualTo(700);
     // ★★ R3（T6）：**V7 配方读得出来**（"每单位什么"是数据 ⇒ 报表里也要看得见）：
-    //   {capacityPerUnit, inputPerUnit, laborPerUnit, outputPerUnit} + 本周期实际扣到的投入。
+    //   {capacityPerUnit, capacity, inputPerUnit, laborPerUnit, outputPerUnit} + 本周期实际扣到的投入。
     assertThat(industry.get("capacityPerUnit").get("LAND").asLong())
         .as("单位规模 = 1 亩")
         .isEqualTo(1_000L);
+    // ★★ H0.3（K3）：**本格该产业的产能总量**读得出来（旧版它散在家户行的 {@code meansOfProduction} 里）——
+    //   ✗ 旧写法是 `Σ 农业行的 meansOfProduction[LAND] == 1,000,000`（行级 `landMilliMu` 字段**已删**，别再断言它）。
+    assertThat(industry.get("capacity").get("LAND").asLong())
+        .as("★★ 该格 farm 产业的 capacity.LAND == 1,000,000 千分亩（= 1,000 亩；旧值也是 1,000,000，口径从'Σ行'变成'产业一处真相'）")
+        .isEqualTo(1_000_000L);
+    assertThat(industry.has("classes"))
+        .as("★ H0.2：家户行**挂在格上** ⇒ 产业对象里不再有 classes（旧路径 `industries[].classes[]` 已废）")
+        .isFalse();
     assertThat(industry.get("laborPerUnit").asLong()).as("每亩需劳动").isEqualTo(143L);
     assertThat(industry.get("outputPerUnit").get("grain").asLong()).isEqualTo(7L);
     assertThat(industry.get("outputPerUnit").get("fiber").asLong())
@@ -896,9 +915,16 @@ class GuiApiTest {
     assertThat(industry.get("cycleInputUsedMilli").get("grain").asLong())
         .as("★ 本周期实际扣到的投入（按商品）")
         .isEqualTo(40L);
-    JsonNode row = industry.get("classes").get(0);
+    // ★★ H0.2：**格级的家户行数组**（每行多一个 `residence` 维；行里不再有 `landMilliMu`）。
+    JsonNode row = body.get("classes").get(0);
+    assertThat(row.get("residence").asText())
+        .as("★ 居住类型随行发出（农村贫农与城镇贫农是两本账）")
+        .isEqualTo("rural");
     assertThat(row.get("slot").asText()).isEqualTo("poor_peasant");
     assertThat(row.get("naturalNeeds").get("grain").asLong()).as("日耗").isEqualTo(8_300L);
+    assertThat(row.has("landMilliMu"))
+        .as("★ H0.3：行侧的发报字段**已删**（土地读产业那一份 capacity）")
+        .isFalse();
 
     // ★★ S1 阶段 3：第二个产业（`handicraft`）的 operator **刻意非派生**（见 workshopIndustry 的注释）——
     //   上面对 farm 的两条断言是**派生值**（ESTATE:farm@1_1 正是 `feudal` 的推导结果），单靠它们，
