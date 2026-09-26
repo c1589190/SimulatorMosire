@@ -146,4 +146,52 @@ deferredMoneyReason 逐字（探针原样打印）：
 
 ## 二、段 B：关账读数
 
-（本轮 `./mvnw clean verify` 的逐模块结果与测试总数 —— 见下）
+### 2.1 全仓 `./mvnw clean verify`（前台，2026-09-27 00:00–00:08）
+
+**BUILD SUCCESS，Total time 03:19 min，13 个模块全 SUCCESS**（父 + 12 个子模块）：
+
+```
+Main(3.031s) Util(5.131) Map(6.741) ActorApi(1.585) EconomyApi(2.055) Social(4.520) Unit(3.699)
+Core(13.409) SD(3.794) Actor(2.523) Ledger(2.047) Economy(3.646) App(02:26 min)
+```
+
+| 项 | 读数 |
+|---|---|
+| **测试总数** | **2518 条 / 0 失败 / 0 错误**（逐模块：199 / 379 / 16 / 23 / 188 / 305 / 215 / 188 / 129 / 26 / 175 / **675**） |
+| 与 T6b 相比 | **2518 → 2518**（★ 本任务**没有**新增任何测试 ⇒ 逐值不变） |
+| 前端门禁 | `[frontend-gate] OK tests=297 pass=297 fail=0`（下界 275，未动） |
+| SpotBugs | 逐模块 `BugInstance size is 0`（12 个模块各一条） |
+| Spotless / Checkstyle | 通过（★ 第一次 verify 因我在 `RegimeRelations` 注释里写了一行超宽的 `{@code …}` 被 **Spotless 当场拒** —— 已按 `AGENT.md` §七 跑 `spotless:apply` 修好、未手工折行） |
+| surefire 报告 mtime | 285 个 `*.txt` 落在本轮（`find … -newermt "2026-09-27 00:00"`）⇒ 计数不是上一轮的残留 |
+
+### 2.2 增量性核对（T8 Step 3）
+
+`git diff f3ff906^..HEAD --stat -- {simos-economy,simos-economy-api,simos-app}/src/main` = **20 个文件**，
+与计划的 File Structure 表**逐条对上**（含 **删除** `EconomyTimeParticipant.java`）。表外只有两处：
+`economy-api/package-info.java`（T2 的 JSON 多态注解口径）与 `EconomySeedHandler.java`（4 行，T2 交代过）—— 已在 T2 台账留痕。
+
+### 2.3 ★★ 未达成项（如实记，不许含糊成"都验过"）
+
+| 未达成 | 内容 | 落点 |
+|---|---|---|
+| **V9 / I1.2** | "同一 cohort 兼两个 activity 只有一个身份" —— **本阶段开不了账**（裁定 R9/E6：**第二次**推迟，阶段 1 → 阶段 4 → 现在） | `ClassRow` 收窄那一轮（阶段 6/7） |
+| **变异自证** | **一条都没做**（`AGENT.md` §三.0 开发期暂停执行）⇒ 本文件所有"成立"**只有读数与算式**支撑 | 收尾的统一写测试阶段 |
+| **测试未写** | 本任务**零新增测试类/方法**（2518 → 2518）；Task 7 计划里的 `S1Stage45RelationsTest` **未建** | 同上 |
+| **V4 / I6.1** | cohort 侧仍带 `goods` 字段（`ClassRow` 未收窄） | 阶段 6/7 |
+| **V8 / I6.2** | 无"超额上限"规则（`receipt = min(应得, 需求)`） | 阶段 6 |
+| **`AssetHolding` 未在真档种入** | `ASSET_QUANTITY` 那一族**恒 0**（只有夹具覆盖） | 后续轮 |
+| **`laborOfCohort` 仍并池**（裁定 E28） | 城市格上它把农村/城镇两池劳动并进同一 `(格, 阶层)` ⇒ 池内份额差 **≤ 0.04‰**；受方行已分池、**计权仍混** | 要有裁定才动（会改 `LABOR_AMOUNT` 的分子/分母） |
+
+### 2.4 ★ 已知弱项（本任务**未**处理，如实列出）
+
+1. **`EconomyRealScaleClothTest` 第 2/3 周期的断言只有 `isPositive()`**：精确的纤维路上限在产出改道后**没有闭式**，
+   条注已如实写明"精确值留给下一轮"。⇒ 那两条**不构成本阶段任何判据的证据**。
+2. ★ **新发现**：`EconomyRealScaleClothTest` 里 `fiberOf(afterOneYear)).isZero()` 这条断言当前**是绿的**，
+   但它的机制解释是"农田的纤维每个周期都被同格织机取走" —— 而本节 §1 那条更正说明：纤维**整份落在
+   `poor_peasant` 一行**（不是四行按劳动量分）。两件事不矛盾（取材从行里取，取哪一行都对），
+   但**读注释的人会以为它验的是"按劳动量分配"** ⇒ 已在源码注释里就地更正。
+3. **I5.2 在真档 feudal 参数下被 R6 上限拉平**（§1）⇒ 判据的"实得差"要在**去掉给养那一族**的世界里才读得出来；
+   真档 feudal 的给养（144 毫粮 / 千分劳动）已把净产吃到约 70% ⇒ **地租"30%"实际不是 30%**（截断到余量）。
+   这是**参数**的事（`RegimeRelations` 类注自己写着"Σ 各档分成率 ≤ 1000‰，否则…制度表达失真"），
+   取值留给 GM（信条十二），本任务**一字未改**。
+
