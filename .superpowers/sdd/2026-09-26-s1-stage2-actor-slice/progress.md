@@ -414,3 +414,216 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
   其中 `068579c` 是我的文档提交），评审 Agent = sonnet 档，只读。
   ★ 三条疑虑**全部交给评审定性**（疑虑 1 的"第二拼写点"我**未预判**）；另点名一条风险：
   **4 个变异体是否都真的打到被测的那一层**（A 段实测教训）。
+
+### Task 4 评审（Spec ✅ / Approved / 1 Important I-1 · 4 Minor · 6 ⚠️）
+
+★ 评审把 ★★ 硬约束**逐条对上代码**（两件组件 / `Actor` 两组件 / `namespace()` 字面量 / R2 两条护栏 /
+依赖清单 / 逐字段往返 / 结构断言），并**独立复核了 4 个变异体是否真打到受保护那一层** ——
+它找到了 A 段教训的复现条件：**父 POM 唯一的继承 enforcer execution 只查 Java/Maven 版本**，
+没有任何祖先规则会替模块本地的 `bannedDependencies` 打红 ⇒ M-A/M-B 的红**只能来自新护栏自己的 message**。
+
+- **Ruling（R-ab，对 Minor M-3 的处置 —— 评审误判，不采纳）**：M-3 说"仓内 Javadoc 用 `<b>`，
+  这里 3 处写了 `**…**`，生成 javadoc 会原样显示星号"。**不采纳** ——
+  `**…**` 是本仓 javadoc 的**既有风格**（`SocialClassId` / `EconomySettlement` / `AssetClassKey`
+  以及本仓大量类注都在用），**不是本任务引入的偏差**。★ 记这一笔：**评审也会误判仓内约定**，
+  控制方不能只当传声筒。
+- **Ruling（R-ac，⚠️#5）**：`b65cc9c` 是否只改了 description —— **控制方用 `git show --stat` 核实：
+  1 文件 / 1 行，只改 `<description>`** ✓（评审的评审包不含逐提交 stat，这条只能我核）。
+- **Ruling（R-ad，I-1 的处置）**：**走上游修**（评审的选项 1），**且只许加、不许改**：
+  在 `ActorRef` 加 `parseCanonical(String)`（按**第一个**冒号切、种类的词表校验、拒 null/空白/无冒号），
+  `ActorChangeSet.parseActorKey` 改一行委托、删 `KIND_ID_SEPARATOR`。
+  —— **为什么必走上游而不是"记在案"**：★ **它会增殖** —— Task 5 的 `AssetHoldingKey` 与
+  Task 6 的 `GoodsAccountKey` 都是**新的键类型**，不修的话各自再写一份逆。
+  —— **为什么它不违反 R4**：R4 禁的是**改既有签名的读契约**；本次是**新增** surface，
+  `parse(kind, id)` 的两参签名一字不动。
+  —— **错了的代价**：`ActorRef` 多一个公开方法（低）；换来的是"全仓恰一份规范串逆"。
+  ★ 评审建议附一条"全仓恰一份规范串逆"的扫描守卫 —— **本次不加**（属扩张），
+  但**Task 5/6 建新键类型时必须照同一配对**（写进它们的 dispatch）。
+- **Minor M-1（`meta` 的 Remove/Upsert 方向零覆盖）**：**不入环**，但**随 Task 5 的 dispatch 带过去** ——
+  Task 5 本来就要给 `ActorChangeSet` 加 `holdings` delta，那时顺手补这两条最自然。
+- **Minor M-2 + ⚠️#6（两处手维护的模块/变更集清单漏了新模块）**：★ 归 **Task 9 的回填清单**
+  （与 R-k 的 `simos-core` excludes 同一批）：`EconomyVocabularyGuardTest` 的 `MODULES`
+  要加 `simos-actor-api` + `simos-actor`，**并加一条 anti-drift 断言**；
+  另请核 `ArchitectureGuardsTest` 的硬编码清单是否也该纳入。
+  —— **为什么现在不修**：它是"模块创建者顺手该补的一行"，但正确修法是**自证式**（从根 pom 推导），
+  那是 Task 9 回填那一节该一次做完的事（否则又会"只修一半"）。
+- **Minor M-4**：已由 R-ac 解决（记账口径）。
+
+- **Task 4: fix round 1/5**（`b65cc9c..e7083ec`，1 addressed / 0 open；4 文件 / +123−30）
+  - I-1 落地：`ActorRef.parseCanonical` + 与 `toString()` **共用**的 `KIND_ID_SEPARATOR`
+    （分隔符拼写只剩一处），切片侧只剩一行委托。
+  - ★★ **结构性证据做得对**：切片 main 里 `':'`/`indexOf`/`lastIndexOf`/`split(`/`substring` **命中 0**，
+    并附**对照**（同一条 grep 在 `ActorRef.java` 命中 7）防"假 0"。
+    ★ 实现者还自己发现**第一次那条 grep 的正则括号不配、`ugrep` 报错被 `|| echo` 印成了"命中 0"**
+    —— **假 0 被自己抓出来重做**。这正是"结构性证明"最容易翻车的地方。
+  - ★★ **变异自证的关键一条**：**M-F**（上游切法改 `lastIndexOf`）⇒ 上游 1E + **切片往返 2E**
+    ⇒ **有判别力**；而**旧设计下改上游不会红** ⇒ **这就是"拼写点回到一处"的证据**。
+  - ★ **诚实到不计分**：**M-E**（`toString` 分隔符改 `/`）在**新旧两种设计下都会红**
+    ⇒ 只证"往返跟上游契约走"、**不证收敛** ⇒ 实现者**主动声明这条不计分**。
+  - 记账：scoped `verify` 第一次 RC=1 是 `spotless:check` 抓到"apply 之后又手改了 Javadoc 折行" ⇒ apply 复原复绿。
+  - ★ 实现者**主动补跑**了全仓 `clean verify`（理由：`actor-api` 是共用契约层，
+    `economy-api→economy/ledger→app` 不在 scoped reactor 里）⇒ **13/13、2342 tests / 0 失败**。
+
+---
+
+## ★★ 用户 2026-09-26 正式裁定：**评审 = 计划里的总验收标准**（本计划的执行方式就此变更）
+
+> 原话：「我求你别乱搞评审了，全做完直接拿模拟数据说话得了，这里正式说一下评审什么时候做：
+> 我让你整一个开发计划，会提出一个总验收标准，**总验收本身就是评审！**」
+
+**⇒ 从此刻起，本计划执行方式改为**：
+
+| 停掉的 | 保留的 |
+|---|---|
+| 逐任务派**独立评审 Agent** | **实现环节照旧派子 Agent**（用户此前要求"善用子Agent"） |
+| **修复环**（fix round / scoped re-review） | TDD、`./mvnw clean verify` 全绿、**变异自证**（这些是"能不能跑"，不是"评审"） |
+| 每做完一个任务就开一次庭 | ★ **验收 = 计划里写明的那份总验收标准**（判据 I2.1/I2.2/I2.3），由控制方**在阶段边界自己核** |
+
+★ **最终判据是模拟数据**：S1 的验收跑 = 阶段 6 之后重跑 600 天三国（裁定 R-y）。
+
+- **被停掉的那次复评**（Task 4 fix round 1 的 scoped re-review）**已按指令中止**。
+- **Task 4 的处置**：修复轮 1 已落地（`e7083ec`），**不再走复评**；其验收并入
+  **C 段边界的总验收**（与 Task 5–9 一起核 I2.1/I2.2/I2.3 + 全仓门禁）。
+- ★ **诚实记一笔（不是辩解，是给"总验收"提要求）**：已跑的三轮独立评审确实抓到过**真缺陷**
+  ——`parseActorKey` 的第二拼写点、`AssetClassKey` 三条零覆盖的校验分支、
+  以及"计划里的代码片段不是合法 Java"。⇒ **总验收标准必须覆盖到这几类**（异常分支的可达性、
+  格式的拼写点唯一性、判据逐条可点开），否则它们会静默漏过去。
+
+---
+
+## ★★ 用户 2026-09-26 正式裁定：**评审 = 计划里的总验收标准**（执行方式就此变更）
+
+> 原话：「我求你别乱搞评审了，全做完直接拿模拟数据说话得了……我让你整一个开发计划，
+> 会提出一个总验收标准，**总验收本身就是评审！**」
+
+**⇒ 从此刻起**：
+
+| 停掉的 | 保留的 |
+|---|---|
+| 逐任务派**独立评审 Agent** | **实现环节照旧派子 Agent** |
+| **修复环**（fix round / scoped re-review） | TDD、`clean verify`、**变异自证**（这些是"能不能跑"，不是"评审"） |
+| 每做完一个任务开一次庭 | ★ **验收 = 计划里写明的那套判据**（I2.1/I2.2/I2.3），在**阶段边界**由控制方自己核 |
+
+★ 最终判据是**模拟数据**：S1 的验收跑 = 阶段 6 之后重跑 600 天三国（裁定 R-y）。
+★ 正在进行的那次 scoped 复评**已按指令中止**。
+★ **Task 4 处置**：修复轮 1 已落地（`e7083ec`），**不再走复评**；验收并入 C 段边界的总验收。
+★ **诚实记一笔（不是辩解，是给"总验收"提要求）**：已跑的三轮独立评审确实抓到过**真缺陷**
+（`parseActorKey` 的第二拼写点、`AssetClassKey` 三条零覆盖的校验分支、"计划里的代码片段不是合法 Java"）
+⇒ **那套判据必须覆盖到这几类**（异常分支可达性 / 格式拼写点唯一性 / 判据逐条可点开），否则会静默漏过。
+
+## ★★ 用户 2026-09-26 第二次正式指令：**一口气干完 → 跑模拟 → 自查自改 → 只把裁决拿回来**
+
+> 原话：「自己一口气干完跑模拟，模拟结果出来你自己先检查，有问题自己改，模拟出来了，有问题需要裁决再找我」
+
+**⇒ 执行方式**：
+1. **不再中途请示**：Task 5–9（C 段）→ 阶段 3 → 阶段 4+5（**必须合并**）→ 阶段 6 → 阶段 7
+2. 然后**跑 600 天三国模拟**（口径与第一次完全一致：同一 nations 配置、同 5 个关账日、
+   同逐格聚合 —— 见 R-y）
+3. **模拟结果我自己先查、自己改**（不回头问）
+4. ★ **只有"需要裁决"的事才拿回来**（例如：改法与 spec 的既有裁定冲突、两条判据互相矛盾、
+   或者需要用户拍板的取舍）
+5. ★ **不再派独立评审 Agent、不再跑修复环**（见上一节裁定）；实现仍派子 Agent；
+   TDD / `clean verify` / 变异自证保留（那是"能不能跑"）
+6. **规划并行推进**：阶段 3 的计划**现在就开始写**（规划不跑 Maven，不与实现抢构建）
+
+- **Task 5: 完成**（`8d066eb`，9 文件 / +725−53）—— ★ **按新规程不再派评审**，验收并入 C 段边界总验收。
+  **数字**：actor 41 tests（Invariants 16 + AssetHoldingTest 6 + RoundTrip 19，Task 4 时 23 ⇒ +18）；
+  全仓 `clean verify` 13/13、**2360 tests / 0 失败**、272 份报告 mtime 全落本轮。
+  **11 个变异体**（M-A..M-K）全部先自答"规则不存在时它还会红吗"，M-C/M-D **各自只红 M-1 那条对应新用例**，还原后 md5 回基线。
+  `ActorData` 此刻 `(meta, actors, holdings)`；`AssetHoldingKey` 规范串 `<owner>|<location>|<assetKey>`，
+  **裸 `toString()` + 单参 `parse` 同处一个文件**（R-48-f 兑现），三段各自委托上游的逆。
+  ★ M-1 的覆盖缺口已补（`meta` 的 Remove / 同键换值各一条）。
+- **Ruling（R-ae，疑虑 1）**：`withHoldings(Map)` 零调用面 ⇒ **保留**。Task 8 的 `actor.Seed` 要从载荷批量构建，
+  几乎必然用到；现在删、Task 8 再加是纯 churn。**触发点：Task 8 若用不到就删。** 代价：两个无调用面的公开方法（低）。
+- **Ruling（R-af，疑虑 2）**：`AssetHoldingKey` 的逆有**已声明前提**"`ActorRef.id` 不含 `|`" ⇒ **接受**。
+  本仓 `ActorRef.id` 是 `farm@0_0` / `rural:0_0:MALE:1` 这类，不含 `|`；解析 **fail-closed**（段数不对即抛）。
+  按 R-w 先例记成"已声明前提"。代价：若真出现含 `|` 的 id，会**响亮地**失败而不是静默错切。
+
+- **Task 6: 完成**（`4976da9`，10 路径 / +705−63）—— 按新规程**不派评审**，验收并入 C 段边界。
+  actor 41 → **57 tests**；全仓 `clean verify` 13/13、**2376 / 0 失败**、SpotBugs 12 模块全 0。
+  **13 个变异体 M-A..M-M** 全红在预期处，还原后 md5 逐字节回基线。
+  `GoodsAccountKey` 规范串 `<owner>|<location>`（裸 `toString()` + 单参 `parse` 同文件）；
+  `ActorData` 组件**恰四件** `(meta, actors, holdings, accounts)`；`ActorChangeSet` 四条 delta；
+  `simos-economy-api` 依赖已加（**两道 ban 用带版本号的变异体各证一次**）；R6 逐字写进类注、零 `simos-ledger` import。
+- **★ Ruling（R-ag，疑虑 1 —— 真的护栏脆弱性）**：「按第一个接缝切」的**全部判别力压在一条用例上**：
+  M-F 实测——**删掉** `aGoodsAccountKeyWhoseOwnerIdContainsTheSeparatorFailsLoudly`、
+  把切法改成末个接缝 ⇒ **其余 56 条全绿**（合法规范串恰一个接缝，首个/末个恒同位置）。
+  ⇒ **修法**：在那条用例上写死"**本条是那规则的全部判别力，删它 = 规则静默失效**"（一行注释），
+  **随 Task 7 一起做**。代价：低（一行）。★ 这类"**判别力单点**"值得记进 AGENT.md 的失败形态。
+- **Ruling（R-ah，疑虑 2/3）**：`withAccounts(Map)` 零调用面 ⇒ 照 R-ae **保留**（触发点 Task 8）；
+  `withAccount` 的"保留旧账本"由 `theAccountKeyIsOwnerAndHex` 的 `hasSize(2)` 兼任（M-K 已证有判别力）⇒ **接受**。
+- **★ 教训复发（疑虑 4）**：M-E 第一版**红在 checkstyle 而非被测层**（已拆成 M-E1/E2 重做）；
+  M-H 预判 1 实 2、M-J 预判 3 实 7 —— 均如实记账。**"变异体必须打到被测那一层"看样子会反复复发。**
+
+- **Task 7: 完成**（`53ac4bc`，4 路径 / +979−2）。actor 57 → **82 tests**（新 `ActorCodecTest` 25 条）；
+  checkstyle 0、SpotBugs 0、enforcer 两道 ban 保持绿。
+  `namespace()` 恒 `"actor"`；**四路键反序列化器** = `ActorRef` / `AssetHoldingKey` / `GoodsAccountKey` + 嵌套的 `CommodityId`，
+  **全走各类型的 `toString()`/`parse` 配对**（只注册读侧）；领域类型**零注解**。
+  Review Focus ⑤ 用「四组件各断言一次 + 空态两种线格式 + 非吸收态」；确定性：同份两次逐字节相同 + 编解码再编码逐字节相同。
+- **Ruling（R-ai —— ★ 我的指令笔误）**：我写的 R-ag 落点 `GoodsAccountTest.java` 是错的
+  —— 那个方法**实际在 `ActorRoundTripTest.java:715`**（全仓唯一）。实现者按**意图**改在真实那处，**正确**。
+  ⇒ 记一笔：**派活件里的路径/符号名要回代码核**，猜的路径会变成实现者的歧义。
+- **Ruling（R-aj，疑虑 3 —— 等价变异体）**：M-E（`CommodityId` 的键注册器）**实测全绿**，
+  因为它是单 String 的 record，Jackson 退回"按规范构造器建键"、恰好与 `parse` 校验一字不差。
+  ⇒ **保留该注册并写明理由**（"规矩要写出来，不靠推断碰巧满足"）—— **判定正确**。
+  ★ 等价变异体是已知概念，**记录它比删掉它更有价值**。
+- **Ruling（R-ak，疑虑 2）**：本轮只跑 `-pl simos-actor -am verify`（指令给的范围）⇒
+  **C 段边界补一次全仓 `clean verify`**（本来就是 C 段总验收的一部分）。
+- ★ 另一条事实值得记：`ActorData.meta` 的 null 归一**经 codec 够不着**（Jackson 对 `Optional` 给 `empty`、从不喂 null）
+  ⇒ M-I 打错层、已换 M-I2。**"某条护栏在某个入口上不可达"是覆盖问题，不是代码缺陷。**
+
+- **Task 8: 完成**（`d19e98c`，9 文件 / +1664）。actor 82 → **129 tests**；全仓 `verify` 13/13、**2448 / 0 失败**。
+  ★★ **三个批量 wither：全用到、一个没删**（各有两处真实调用：首播装配 + 追加并表）⇒ **R-ae / R-ah 关闭**。
+  ★ **悬空 owner 判为坏状态** ⇒ 命令面当场拒（载荷 ∪ 现有状态，两趟走 ⇒ 主体可声明在别格）；
+  理由：`ActorData` 类注把存在性**明文交给命令面** + `EconomyData.requireSlotExists` 先例 + 拼错 owner 会成幽灵产权。
+  配套 3 条正/反测试 + 两个变异。同族判据：`location` 必须等于所在格（权限围栏）。**13 个变异体**，M-I 是等价变异体（如实记账）。
+  ★ `ResourcePaths.actor(int,int)` **只加不改**，并在 payloads/handler 两处真调用（否则围栏出现第二个拼写点）。
+- **Ruling（R-al，疑虑 3 —— 留痕弱点）**：`handler`/`snapshots` 的 **RED 是"回放补拍"**（写测试与写实现之间未跑红），
+  时序证据弱于当场红。⇒ **接受**（行为仍被 GREEN + 变异钉住），**但记在案**：
+  ★ **后续任务要求 RED 当场捕获**（这条与"变异体要打到被测那一层"是同一类：**证据的时序也是证据**）。
+- **Ruling（R-am，疑虑 2）**：悬空 owner 判据将来若需"主体后补"会挡路 ⇒ **现在保留**（fail-closed 是本仓口径，
+  幽灵产权比多一条声明顺序约束更糟）。**触发点**：真需要"后补主体"时降级成装配期校验。代价：低。
+- **Ruling（R-an，疑虑 1）**：`ResourcePaths.actor` 只加不改 + 两处真调用 ⇒ **接受**；
+  没照抄 economy 的内联 `entryHexKeys` 是**正确的偏离**（内联会造出第二个拼写点）。代价：低。
+
+- **Task 9: 完成**（`2121686`）—— **切片装配进组合根并判活通过**：六端点全 200、
+  `codec=6 handler=52 resolver=6 模块数=6`、`/api/resolve?address=actor:Map1` ⇒ 200、MCP catalog 含 `actor.Seed`；
+  收工走 PID（未用 `pkill -f`）。
+  ★ **它纠正了我两处指令错误且都没做多余的事**：①"加 actor 后 `外发工具` 应多于 74"**不成立**
+  （工具面是手写清单、不从 handler 派生 ⇒ 仍 74，**而这是对的**）；②brief 里的 `/api/actor/hex?q&r`
+  **是我编的**（该路由全仓不存在）⇒ 它没为迎合而新增路由，改用真实读口 `/api/resolve` 取证。
+  ★ 真连带项两件（我漏的）：`CatalogTool.PAYLOAD_HINTS` 必须加 `actor.Seed`；**实际红面是 11 个测试文件而非 4 个**
+  （根因：`RichWorld.state()` 现在带 actor 切片 ⇒ 手工注册 codec 的夹具撞 `CheckpointEncoder`）。
+- **Task 10: 完成**（`20e6e8a` / `9b558b3` / `a81ee2f` / `8439045`）—— A 收尾缺口 + B ban 回填 + C 两处清单 + D 文档更正。
+  ★★ **A：我的派活是错的 —— 只加 `subjectVisible` 分支是幻影修复**（实测正例仍红：
+  `ResourceAuthorizer` **先看工具 manifest，"未声明即拒"**）。它同文件补了 `ALL_READ` 的 actor 声明，
+  **缺省策略取 DENY**（不是照抄 map/social/unit 的 READ_ONLY —— 后者会让"未表态"整片放行，
+  并把九条读工具 + `DecisionCallerFactory` 那条路的前置闸变成永远通过）。
+  ⇒ 今天 MCP 面（GM 组）看得见 `actor:<mapId>`，**决策人仍看不见**（与改前一致，**未悄悄放宽**）。两处各有变异自证。
+  ★★ **C-5：该纳入，已纳入** —— 扫描按**文件路径**做、与 classpath 可见性无关（`simos-sd` 一直在扫描面里却不在 core 的 test classpath 上）
+  ⇒ "只覆盖 core 可见切片"不成立；实测 main 有 **8** 个 `ChangeSet` 实现者而扫描面只 5 个模块
+  ⇒ **actor/economy/ledger 一直无人守**。已扩到 12 模块 + 8 条期望路径 + anti-drift 断言。
+- **未验（Task 10 自陈，并入 C 段验收或记为后续）**：①跨进程 MCP 握手没跑（只有进程内证据）；
+  ②`actor.actor`/`holding`/`goods` 仍 fail-closed（实体级资源路径不存在，**属未裁决设计，它没编**）；
+  ③未跑 `clean verify`（**由控制方跑**）；④`util`/`map` 的 actor ban **无法用变异体证**（会成环，Maven 建模期先拦）。
+
+---
+
+## ★★★ 阶段 2 关账（2026-09-26）—— 判据由**控制方自己跑**（用户裁定的那道闸）
+
+| 判据 | 读数 | 判 |
+|---|---|---|
+| **I2.1** 既有测试全绿（本阶段是纯增量） | **2454 tests / 0 失败 / 0 错误**；279 份 surefire 报告 **0 份陈旧**（fail-closed 口径） | ✅ |
+| **I2.2** `AssetHolding` 按 `(owner, hex, assetClass)` 聚合；佃制能表达成"地主持 LAND@hex + 另一个 actor 是 operator"（两正交事实） | `AssetHoldingTest` **6/6**，含 `theAggregationKeyIsOwnerHexAndAssetClass` / `twoOwnersAtTheSameHexAreTwoHoldings` / `ownershipAndOperationAreTwoIndependentFacts` | ✅（后半句按 **R3** 只验"形状"——绑定属 I3.2） |
+| **I2.3** 上移后 `economy-api` 不再拥有 `ActorRef` | 定义命中 **0**；旧 `actor/` 包目录**已删除**；`simos-economy/model/AssetKind.java` **已删除** | ✅ |
+| 全仓门禁 | `clean verify` **13/13 模块 SUCCESS**（新增 `ActorApiSimos` + `ActorSimos`）；SpotBugs `BugInstance size is 0` | ✅ |
+
+**阶段 2 全部 10 个任务完成**（Task 1–10）：
+A 段（1–2 建模块 + 上移）· B 段（3 `AssetClassKey`）· C 段（4 `Actor`/`ActorData` · 5 `AssetHolding` · 6 `GoodsAccount`
+· 7 `ActorCodec` · 8 SPI+Resolver · 9 装配进组合根+判活 · 10 回填+文档+收尾缺口）。
+
+★ **未做的（按计划归后续阶段）**：`ProductionRelation` / `ConsumptionReceipt`（阶段 5/6）；
+`ClassKey → CohortKey`（阶段 4）；`actor.actor`/`holding`/`goods` 的实体级资源路径（**未裁决设计**，Task 10 没编）。
+★ **一处安全面变更需向用户交代**：Task 10A 给 `ToolSupport` 的 `ALL_READ` 补了 `actor` 声明，
+**缺省策略取 DENY**（不是照抄 map/social/unit 的 READ_ONLY）⇒ MCP 面（GM 组）看得见 `actor:<mapId>`，
+**决策人仍看不见**（与改前一致，**未悄悄放宽**）。
