@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.id.ClassSlotId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 
 /**
  * 阶层槽位：一个产业内**该制度允许的一个阶层**（贫农 / 中农 / 地主 …）——即"制度定义可出现的角色"。
@@ -23,7 +23,7 @@ import io.mosire.simos.economy.api.id.ClassSlotId;
  * @param name 展示名（贫农 / 中农 / 地主…）
  * @param laborParticipationPerMille 该阶层的劳动投入率（千分），∈ [0, 1000]
  */
-public record ClassSlot(ClassSlotId id, String name, int laborParticipationPerMille) {
+public record ClassSlot(SocialClassId id, String name, int laborParticipationPerMille) {
 
   public ClassSlot {
     if (id == null) {

@@ -135,7 +135,7 @@ class EconomySeederTest {
     List<JsonNode> farmA = classes(a, "farm@0_0");
     assertThat(farmA)
         .extracting(node -> node.get("slot").asText())
-        .containsExactly("peasant", "middle", "rich", "landlord");
+        .containsExactly("poor_peasant", "middle_peasant", "rich_peasant", "landlord");
     assertThat(farmA)
         .extracting(node -> node.get("population").asLong())
         .containsExactly(450L, 350L, 150L, 50L);
@@ -303,12 +303,12 @@ class EconomySeederTest {
    */
   @Test
   void initialReservesAreLiteralPerClassDayCounts() {
-    assertThat(EconomySeeder.initialRationDays("peasant")).as("贫农 30 天").isEqualTo(30);
-    assertThat(EconomySeeder.initialRationDays("middle")).as("中农 60 天").isEqualTo(60);
-    assertThat(EconomySeeder.initialRationDays("rich")).as("富农 120 天").isEqualTo(120);
+    assertThat(EconomySeeder.initialRationDays("poor_peasant")).as("贫农 30 天").isEqualTo(30);
+    assertThat(EconomySeeder.initialRationDays("middle_peasant")).as("中农 60 天").isEqualTo(60);
+    assertThat(EconomySeeder.initialRationDays("rich_peasant")).as("富农 120 天").isEqualTo(120);
     assertThat(EconomySeeder.initialRationDays("landlord")).as("地主 250 天").isEqualTo(250);
 
-    assertThat(EconomySeeder.rationMilli(1000L, "peasant"))
+    assertThat(EconomySeeder.rationMilli(1000L, "poor_peasant"))
         .as("1000 贫农 30 天 = cumulativeRationMilli(1000, 30)")
         .isEqualTo(2_500_000L);
     assertThat(EconomySeeder.rationMilli(1000L, "landlord"))
@@ -858,7 +858,7 @@ class EconomySeederTest {
     assertThat(EconomySeeder.firstDayRationMilli(1000L))
         .as("创世写下的需求 = 第 1 天口粮 = floor(1000 × 10,000 ÷ 120)")
         .isEqualTo(83_333L);
-    assertThat(EconomySeeder.rationMilli(1000L, "middle"))
+    assertThat(EconomySeeder.rationMilli(1000L, "middle_peasant"))
         .as("中农 60 天 = cumulativeRationMilli(1000, 60) = 1000 × 10,000 × 60 ÷ 120")
         .isEqualTo(5_000_000L);
   }

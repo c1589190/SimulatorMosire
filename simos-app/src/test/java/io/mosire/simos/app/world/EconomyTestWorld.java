@@ -4,12 +4,12 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -421,7 +421,7 @@ public final class EconomyTestWorld {
       Map<AssetKind, Long> means,
       Map<CommodityId, Long> goods) {
     String slot = EconomySeeder.CLASS_IDS[index];
-    ClassKey key = new ClassKey(industry, new ClassSlotId(slot));
+    ClassKey key = new ClassKey(industry, new SocialClassId(slot));
     classes.put(
         key,
         new ClassRow(
@@ -446,7 +446,7 @@ public final class EconomyTestWorld {
       Stock stock,
       Map<CommodityId, Long> extraGoods) {
     String slot = EconomySeeder.CLASS_IDS[index];
-    ClassKey key = new ClassKey(industry, new ClassSlotId(slot));
+    ClassKey key = new ClassKey(industry, new SocialClassId(slot));
     // ★★ **第 1 天**的需求（逐日差分；不是"每人每日的量 × 人口"）—— 这一格从第 1 天起就是"恰好"形态。
     long firstDayNeed = EconomyVocabulary.dailyRationMilli(population, 1L);
     // ★ 多日储备一律用**累计**函数表达（60 天 = cumulativeRationMilli(人口, 60)），不许写成"人口 × 一天的量 × 60"。
@@ -461,7 +461,7 @@ public final class EconomyTestWorld {
           case LANDLORD_ZERO_RICH_SURPLUS ->
               "landlord".equals(slot)
                   ? 0L
-                  : ("rich".equals(slot)
+                  : ("rich_peasant".equals(slot)
                       ? richSurplusOpeningStock(population)
                       : EconomyVocabulary.cumulativeRationMilli(population, 60L));
           case LANDLORD_ZERO_OTHERS_EXACT ->
@@ -509,7 +509,7 @@ public final class EconomyTestWorld {
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
       slots.add(
           new ClassSlot(
-              new ClassSlotId(EconomySeeder.CLASS_IDS[i]),
+              new SocialClassId(EconomySeeder.CLASS_IDS[i]),
               EconomySeeder.CLASS_NAMES[i],
               EconomySeeder.CLASS_LABOR_PER_MILLE[i]));
     }

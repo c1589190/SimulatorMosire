@@ -7,11 +7,11 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -64,9 +64,9 @@ class EconomySeedHandlerTest {
           + "\"dailyInputPerUnit\":{},\"dailyLaborPerUnit\":0,"
           + "\"outputPerUnit\":{\"grain\":7},"
           + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,\"laborWeightPerMille\":300},"
-          + "\"slots\":[{\"id\":\"peasant\",\"name\":\"贫农\",\"laborParticipationPerMille\":950},"
+          + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\",\"laborParticipationPerMille\":950},"
           + "{\"id\":\"landlord\",\"name\":\"地主\",\"laborParticipationPerMille\":100}],"
-          + "\"classes\":[{\"slot\":\"peasant\",\"population\":450,\"laborMilli\":261000,"
+          + "\"classes\":[{\"slot\":\"poor_peasant\",\"population\":450,\"laborMilli\":261000,"
           + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":900000},"
           + "\"goods\":{\"grain\":2241000},\"money\":0,\"debts\":[],\"naturalNeeds\":{\"grain\":37350},"
           + "\"effectiveDemand\":{}},"
@@ -264,9 +264,9 @@ class EconomySeedHandlerTest {
     assertThat(industry.dailyLaborPerUnit()).isZero();
     assertThat(industry.slots())
         .extracting(slot -> slot.id().value())
-        .containsExactly("peasant", "landlord");
+        .containsExactly("poor_peasant", "landlord");
 
-    ClassKey peasant = new ClassKey(FARM, new ClassSlotId("peasant"));
+    ClassKey peasant = new ClassKey(FARM, new SocialClassId("poor_peasant"));
     ClassRow row = after.classes().get(peasant);
     assertThat(after.classes()).hasSize(2);
     assertThat(row.population()).isEqualTo(450L);
@@ -281,7 +281,7 @@ class EconomySeedHandlerTest {
     assertThat(after.debts()).as("债务表本轮恒空").isEmpty();
     assertThat(after.flows()).as("周期流水留待 R3a").isEmpty();
     // 缺省字段（地主行没给 debts/naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
-    ClassRow landlord = after.classes().get(new ClassKey(FARM, new ClassSlotId("landlord")));
+    ClassRow landlord = after.classes().get(new ClassKey(FARM, new SocialClassId("landlord")));
     assertThat(landlord.money()).isZero();
     assertThat(landlord.debts()).isEmpty();
     assertThat(landlord.naturalNeeds()).isEmpty();

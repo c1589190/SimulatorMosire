@@ -2,9 +2,9 @@ package io.mosire.simos.economy.resolve;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
@@ -34,8 +34,8 @@ import java.util.Objects;
  * <p>★ **class/flow 的两段在地址里以 {@code .} 相连**（§八 R1 的原文 {@code class.<industryId>.<slotId>}）：地址解析器把
  * {@code class.ag.farmer} 读成一个 {@code Entity(kind="class", name="ag.farmer")}（见 {@code
  * AddressParser}），故本类在 **第一个 {@code .}** 处拆开两段交给 {@link IndustryId#parse}/{@link
- * ClassSlotId#parse}（两段都非空才认，否则按坏名字抛）。 注意这与 {@link ClassKey#toString()} 的 {@code "|"} 是两套写法：后者是变更集的
- * key，前者是给人读的地址。
+ * SocialClassId#parse}（两段都非空才认，否则按坏名字抛）。 注意这与 {@link ClassKey#toString()} 的 {@code "|"}
+ * 是两套写法：后者是变更集的 key，前者是给人读的地址。
  *
  * <p>**空候选与抛的分工**（与 {@code MapResolver}/{@code LedgerResolver} 同款）：合法但本模块不服务（其它 kind、属性段、 段数 &gt; 3
  * 或 = 4、Index 段、没有记录的产业/阶层/债务/流水）一律空候选；**抛只有两处**——装配故障（state 里没有 economy 切片 / 切片类型不对）与认领了的 kind
@@ -136,7 +136,7 @@ public final class EconomyResolver implements Resolver {
    * 把地址里的 {@code <industryId>.<slotId>} 拆成 {@link ClassKey}。
    *
    * <p>在**第一个 {@code .}** 处拆（产业段在前）；缺分隔符、任一段为空、或多一段都按坏名字抛（认领了的 kind 不静默 miss）。 两段仍各自交给 {@link
-   * IndustryId#parse}/{@link ClassSlotId#parse} 判空白。
+   * IndustryId#parse}/{@link SocialClassId#parse} 判空白。
    */
   private static ClassKey parseClassKey(String name) {
     int i = name.indexOf('.');
@@ -144,7 +144,7 @@ public final class EconomyResolver implements Resolver {
       throw new IllegalArgumentException("非法阶层地址名（应为 <industryId>.<slotId>）: " + name);
     }
     return new ClassKey(
-        IndustryId.parse(name.substring(0, i)), ClassSlotId.parse(name.substring(i + 1)));
+        IndustryId.parse(name.substring(0, i)), SocialClassId.parse(name.substring(i + 1)));
   }
 
   /** {@link ClassKey} 的**地址写法**（点分），与 {@link ClassKey#toString()} 的 {@code "|"} 无关。 */

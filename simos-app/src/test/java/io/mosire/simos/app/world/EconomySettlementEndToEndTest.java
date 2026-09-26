@@ -9,9 +9,9 @@ import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AssetKind;
 import io.mosire.simos.economy.model.ClassKey;
@@ -87,9 +87,9 @@ class EconomySettlementEndToEndTest {
   /** R3：各格的家庭纺织（非土地生产的那一半）。 */
   private static final IndustryId WEAVE_0 = IndustryHexKeys.id(EconomySeeder.WEAVE, 0, 0);
 
-  private static final ClassSlotId LANDLORD = new ClassSlotId("landlord");
-  private static final ClassSlotId RICH = new ClassSlotId("rich");
-  private static final ClassSlotId PEASANT = new ClassSlotId("peasant");
+  private static final SocialClassId LANDLORD = new SocialClassId("landlord");
+  private static final SocialClassId RICH = new SocialClassId("rich_peasant");
+  private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final CommodityId GRAIN = EconomyTestWorld.GRAIN;
 
   /**

@@ -2,9 +2,9 @@ package io.mosire.simos.app.world;
 
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.actor.ActorKind;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.GameMap;
@@ -232,7 +232,17 @@ public final class EconomySeeder {
   static final int[] CLASS_SHARE_PER_MILLE = {450, 350, 150, 50};
 
   /** 阶层槽位 id（与 {@link #CLASS_SHARE_PER_MILLE} 同序；包内可见的理由见上）。 */
-  static final String[] CLASS_IDS = {"peasant", "middle", "rich", "landlord"};
+  /**
+   * ★★ **阶层的规范值**（S1 阶段 1：改用**全局词表** {@link SocialClassId} 的值 —— 从 {@code peasant}/{@code
+   * middle}/{@code rich} 换成 {@code poor_peasant}/{@code middle_peasant}/{@code rich_peasant}）。
+   *
+   * <p>★ **顺序必须与 {@link #CLASS_LABOR_PER_MILLE} 一一对齐**（贫农 → 中农 → 富农 → 地主）。
+   *
+   * <p>★ 保持 {@code String[]}（而非换成 `List&lt;SocialClassId&gt;`）：消费点（`.length`、`CLASS_IDS[i]`、 塞进
+   * JSON 的 `slot.put("id", …)`）全部按字符串用 —— 换类型要动 15 处而**收益为零**， 词表校验已经在 {@code new
+   * SocialClassId(...)} 那一处生效。
+   */
+  static final String[] CLASS_IDS = {"poor_peasant", "middle_peasant", "rich_peasant", "landlord"};
 
   /** 阶层槽位展示名（与 {@link #CLASS_SHARE_PER_MILLE} 同序；包内可见的理由见上）。 */
   static final String[] CLASS_NAMES = {"贫农", "中农", "富农", "地主"};
@@ -246,12 +256,12 @@ public final class EconomySeeder {
    *
    * <p>★ 改这张表 = 改初始资源分布 ⇒ 记入 {@link #RULES_VERSION} 的口径（版本化，不写死在公式里）。
    */
-  public static final Map<ClassSlotId, Integer> INITIAL_RATION_DAYS_BY_CLASS =
+  public static final Map<SocialClassId, Integer> INITIAL_RATION_DAYS_BY_CLASS =
       Map.of(
-          new ClassSlotId(CLASS_IDS[0]), 30, // 贫农：最薄（先见底 ⇒ 缺口/借粮/饿死都从它起）
-          new ClassSlotId(CLASS_IDS[1]), 60, // 中农：与旧口径同（60 天）
-          new ClassSlotId(CLASS_IDS[2]), 120, // 富农：有余粮可贷
-          new ClassSlotId(CLASS_IDS[3]), 250); // 地主：最厚（同格主要债权人）
+          new SocialClassId(CLASS_IDS[0]), 30, // 贫农：最薄（先见底 ⇒ 缺口/借粮/饿死都从它起）
+          new SocialClassId(CLASS_IDS[1]), 60, // 中农：与旧口径同（60 天）
+          new SocialClassId(CLASS_IDS[2]), 120, // 富农：有余粮可贷
+          new SocialClassId(CLASS_IDS[3]), 250); // 地主：最厚（同格主要债权人）
 
   /** 槽位劳动投入率上限（‰）：{@code ClassSlot} 的既定口径（贫农 950 / 中农 900 / 富农 750 / 地主 100）。 */
   static final int[] CLASS_LABOR_PER_MILLE = {950, 900, 750, 100};
@@ -1034,7 +1044,7 @@ public final class EconomySeeder {
 
   /** 某阶层"每人几天的口粮"（版本化参数表 {@link #INITIAL_RATION_DAYS_BY_CLASS}）；查不到 ⇒ fail-closed（拒绝臆造）。 */
   public static int initialRationDays(String slot) {
-    Integer days = INITIAL_RATION_DAYS_BY_CLASS.get(new ClassSlotId(slot));
+    Integer days = INITIAL_RATION_DAYS_BY_CLASS.get(new SocialClassId(slot));
     if (days == null) {
       throw new IllegalArgumentException("阶层槽位 " + slot + " 不在初始口粮天数表里（拒绝臆造）");
     }

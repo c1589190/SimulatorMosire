@@ -2,7 +2,7 @@
  * EconomySimos —— 经济切片骨架（新经济设计 §3 的状态形状，**无公式**）。
  *
  * <p><b>本切片只写自己的数据</b>（§2）：产业表（制度/周期/进度/日投入/产出/阶层槽位/分配函数）、阶层行（人口份额/有效劳动/劳动投入率/
- * 生产资料/库存/货币/债务引用/需求）、债务表、周期流水，外加一份激活元信息。{@code IndustryId}/{@code ClassSlotId}/{@code
+ * 生产资料/库存/货币/债务引用/需求）、债务表、周期流水，外加一份激活元信息。{@code IndustryId}/{@code SocialClassId}/{@code
  * RegimeId}/{@code DebtId}/{@code CommodityId} 一律取自 {@code simos-economy-api}（铁律 1：不在切片里另造同义 ID）。
  *
  * <p><b>本切片不含任何经济公式</b>（§八 R1 行："模块化、无公式"）：产量、分配、税、市场撮合、流动全是 R2+ 的结算逻辑， {@link

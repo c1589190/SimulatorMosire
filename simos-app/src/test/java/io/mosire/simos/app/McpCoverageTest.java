@@ -317,9 +317,9 @@ class McpCoverageTest {
             + "\"cycleInputPerUnit\":{\"LAND\":{\"grain\":8000}},"
             + "\"allocation\":{\"@class\":\"split\",\"meansWeightPerMille\":700,"
             + "\"laborWeightPerMille\":300},"
-            + "\"slots\":[{\"id\":\"peasant\",\"name\":\"贫农\","
+            + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\","
             + "\"laborParticipationPerMille\":950}],"
-            + "\"classes\":[{\"slot\":\"peasant\",\"population\":100,\"laborMilli\":58000,"
+            + "\"classes\":[{\"slot\":\"poor_peasant\",\"population\":100,\"laborMilli\":58000,"
             + "\"participationPerMille\":950,\"meansOfProduction\":{\"LAND\":1000000}}]}]}]}");
   }
 

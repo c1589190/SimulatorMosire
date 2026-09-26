@@ -9,7 +9,6 @@ import io.mosire.simos.economy.api.id.AccountId;
 import io.mosire.simos.economy.api.id.AssetId;
 import io.mosire.simos.economy.api.id.AssetRightId;
 import io.mosire.simos.economy.api.id.ClaimId;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ContractId;
 import io.mosire.simos.economy.api.id.DebtId;
@@ -25,6 +24,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RecipeId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.id.TransferId;
 import java.util.List;
 import java.util.function.Function;
@@ -68,7 +68,7 @@ class EconomyIdsTest {
           new IdKind("EconomicRuleId", EconomicRuleId::new, EconomicRuleId::parse),
           new IdKind("CommodityId", CommodityId::new, CommodityId::parse),
           new IdKind("IndustryId", IndustryId::new, IndustryId::parse),
-          new IdKind("ClassSlotId", ClassSlotId::new, ClassSlotId::parse),
+          new IdKind("SocialClassId", SocialClassId::new, SocialClassId::parse),
           new IdKind("RegimeId", RegimeId::new, RegimeId::parse),
           new IdKind("DebtId", DebtId::new, DebtId::parse),
           // ★ R2：劳动分配表的主键（第三阶段设计稿 §四）。
@@ -104,13 +104,17 @@ class EconomyIdsTest {
           .isInstanceOf(IllegalArgumentException.class);
 
       // ③ toString 返回裸值（不加类型名前缀、不引号）
-      assertThat(id.create().apply("u-1")).as("%s 的 toString 返回裸值", what).hasToString("u-1");
-      assertThat(id.parse().apply("u-1")).as("%s.parse 的 toString 返回裸值", what).hasToString("u-1");
+      //   ★ S1 阶段 1：`SocialClassId` 是**唯一带词表校验**的 id（产业无关的阶层身份，词表外即抛）
+      //     ⇒ 它用**自己的合法值**取样例；其余 20 类仍用通用样例 `u-1`。
+      //     这样 ①② 两条（拒 null/空白）对它照旧生效，③④ 也测得到（而不是把整条从清单里删掉）。
+      String sample = "SocialClassId".equals(what) ? "poor_peasant" : "u-1";
+      assertThat(id.create().apply(sample)).as("%s 的 toString 返回裸值", what).hasToString(sample);
+      assertThat(id.parse().apply(sample)).as("%s.parse 的 toString 返回裸值", what).hasToString(sample);
 
       // ④ parse 与构造器同一身份（parse 不是另一个类型）
-      assertThat(id.parse().apply("u-1"))
+      assertThat(id.parse().apply(sample))
           .as("%s.parse 与构造器同值", what)
-          .isEqualTo(id.create().apply("u-1"));
+          .isEqualTo(id.create().apply(sample));
     }
   }
 

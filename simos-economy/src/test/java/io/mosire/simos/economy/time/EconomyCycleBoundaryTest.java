@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -42,7 +42,7 @@ import org.junit.jupiter.api.Test;
 class EconomyCycleBoundaryTest {
 
   private static final IndustryId FARM = IndustryHexKeys.id("farm", 0, 0);
-  private static final ClassSlotId PEASANT = new ClassSlotId("peasant");
+  private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
   private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
   private static final long CYCLE_DAYS = 120L;
   private static final long LAND_MILLI_MU = 3_100_000L; // 3,100 亩（千分亩）

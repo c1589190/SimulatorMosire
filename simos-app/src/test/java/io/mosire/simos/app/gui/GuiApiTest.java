@@ -18,12 +18,12 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -762,7 +762,7 @@ class GuiApiTest {
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId("farm@1_1");
     IndustryId workshop = new IndustryId("workshop@1_1");
-    ClassSlotId peasant = new ClassSlotId("peasant");
+    SocialClassId peasant = new SocialClassId("poor_peasant");
     Industry industry =
         new Industry(
             farm,
@@ -823,7 +823,7 @@ class GuiApiTest {
         1_000L,
         Map.of(),
         Map.of(),
-        List.of(new ClassSlot(new ClassSlotId("peasant"), "贫农", 950)),
+        List.of(new ClassSlot(new SocialClassId("poor_peasant"), "贫农", 950)),
         new AllocationRule.Split(400, 600),
         0L,
         Map.of());
@@ -863,7 +863,7 @@ class GuiApiTest {
         .as("★ 本周期实际扣到的投入（按商品）")
         .isEqualTo(40L);
     JsonNode row = industry.get("classes").get(0);
-    assertThat(row.get("slot").asText()).isEqualTo("peasant");
+    assertThat(row.get("slot").asText()).isEqualTo("poor_peasant");
     assertThat(row.get("naturalNeeds").get("grain").asLong()).as("日耗").isEqualTo(8_300L);
 
     // 该格没有产业：200 + 空 industries（不是 404 —— "没数据"与"不存在"是两件事）。

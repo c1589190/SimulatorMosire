@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -53,8 +53,8 @@ class EconomySowingTest {
 
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final IndustryId CRAFT = new IndustryId("craft@0_0");
-  private static final ClassSlotId PEASANT = new ClassSlotId("peasant");
-  private static final ClassSlotId LANDLORD = new ClassSlotId("landlord");
+  private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
+  private static final SocialClassId LANDLORD = new SocialClassId("landlord");
   private static final ClassKey PEASANT_KEY = new ClassKey(FARM, PEASANT);
   private static final ClassKey LANDLORD_KEY = new ClassKey(FARM, LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");

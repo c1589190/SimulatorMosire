@@ -6,13 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.actor.ActorKind;
 import io.mosire.simos.economy.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -245,7 +245,7 @@ final class EconomyPayloads {
     for (JsonNode slot : requireArray(node, "slots")) {
       slots.add(
           new ClassSlot(
-              ClassSlotId.parse(requireText(slot, "id")),
+              SocialClassId.parse(requireText(slot, "id")),
               requireText(slot, "name"),
               requireInt(slot, "laborParticipationPerMille")));
     }
@@ -288,7 +288,7 @@ final class EconomyPayloads {
   }
 
   private static ClassRow classRow(IndustryId industry, JsonNode node) {
-    ClassSlotId slot = ClassSlotId.parse(requireText(node, "slot"));
+    SocialClassId slot = SocialClassId.parse(requireText(node, "slot"));
     long population = requireLong(node, "population");
     long laborMilli = requireLong(node, "laborMilli");
     int participation = requireInt(node, "participationPerMille");

@@ -1,9 +1,9 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -221,7 +221,7 @@ public record Industry(
       throw new IllegalArgumentException("Industry.capacityPerUnit 不得为空（它是\"单位规模\"的锚，没有它规模无上界）");
     }
     List<ClassSlot> slotsCopy = new ArrayList<>();
-    Set<ClassSlotId> slotIds = new LinkedHashSet<>();
+    Set<SocialClassId> slotIds = new LinkedHashSet<>();
     for (ClassSlot slot : slots) {
       if (slot == null) {
         throw new IllegalArgumentException("Industry.slots 不得含 null");

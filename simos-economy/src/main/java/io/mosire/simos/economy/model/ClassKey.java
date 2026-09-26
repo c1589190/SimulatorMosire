@@ -1,10 +1,10 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.id.ClassSlotId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 
 /**
- * 阶层行的身份（新经济设计 §3.2 逐字）：{@code (IndustryId, ClassSlotId)}。
+ * 阶层行的身份（新经济设计 §3.2 逐字）：{@code (IndustryId, SocialClassId)}。
  *
  * <p>★ **它同时是两张表的键**：{@code EconomyData.classes}（阶层行）与 {@code EconomyData.flows}（周期流水）都以 本类型为键
  * ——故它必须有"裸值 {@code toString()} + {@code static parse}"（{@code FieldDelta} 的 key 由 {@code
@@ -17,7 +17,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
  * @param industry 所属产业
  * @param slot 该产业内的阶层槽位
  */
-public record ClassKey(IndustryId industry, ClassSlotId slot) {
+public record ClassKey(IndustryId industry, SocialClassId slot) {
 
   public ClassKey {
     if (industry == null) {
@@ -38,7 +38,7 @@ public record ClassKey(IndustryId industry, ClassSlotId slot) {
    * 解析 {@link #toString()} 的产物。
    *
    * <p>**段数不为 2 即抛**（宁抛不静默）：{@code null}、空串、分隔符在首尾、多一段少一段，一律 {@link
-   * IllegalArgumentException}；两段各自交给 {@link IndustryId#parse}/{@link ClassSlotId#parse}（空白即抛）。
+   * IllegalArgumentException}；两段各自交给 {@link IndustryId#parse}/{@link SocialClassId#parse}（空白即抛）。
    */
   public static ClassKey parse(String text) {
     if (text == null) {
@@ -49,6 +49,6 @@ public record ClassKey(IndustryId industry, ClassSlotId slot) {
       throw new IllegalArgumentException("非法阶层键: " + text);
     }
     return new ClassKey(
-        IndustryId.parse(text.substring(0, i)), ClassSlotId.parse(text.substring(i + 1)));
+        IndustryId.parse(text.substring(0, i)), SocialClassId.parse(text.substring(i + 1)));
   }
 }
