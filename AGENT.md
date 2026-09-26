@@ -28,12 +28,14 @@
 ### 模块结构与依赖硬约束
 
 > ★ **本节 2026-09-26 更正**：原图 `UtilSimos → MapSimos → { SocialSimos, UnitSimos } → CoreSimos → ShellSimos(app)`
-> **已过期**——它不含 `sd` / `economy-api` / `economy` / `ledger` 四个模块（都在图之后才建），
+> **已过期**——它不含 `sd` / `actor-api` / `actor` / `economy-api` / `economy` / `ledger` 六个模块（都在图之后才建），
 > 且 `ShellSimos` 已不是模块名、Core 的地位经 ADR-1 收窄（见下表）。**旧图不删，留在这里作对照**。
 
 ```
 util → map → { social, unit, sd }
-util → economy-api → { economy, ledger }
+util → economy-api → { economy, ledger }        （economy-api 还依赖 actor-api，见下一行）
+actor-api → economy-api → { economy, ledger }   （actor-api 主依赖为零；economy-api 反过来依赖它——LaborAllocation 持 ActorRef）
+util + map + economy-api → actor                （actor 切片；与 economy/ledger 是同层兄弟，互不依赖）
 core       只依赖 util（+ agentlib / sqlite-jdbc / jackson）；领域模块在 core 里**只许 test scope**
 app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯一认识所有模块的地方**
 ```
@@ -45,17 +47,23 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 | `simos-social` | util + map | 不依赖 UnitSimos |
 | `simos-unit` | util + map | 不依赖 SocialSimos |
 | `simos-sd` | util + map + social + unit + agentlib-mosire | 领域模块的**下游**；**禁 core/app**（不得认识组合与调度）。★ 它声明了 `simos-social` 但源码**零 import**（死依赖，2026-09-26 查实） |
-| `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc | map/social/unit/**sd** **退到 test scope** ⇒ Core **编译期看不见任何领域类型**（铁律 4 的结构化），想重新实现领域逻辑也无从下手。★ 它**未禁** economy/economy-api/ledger（洞，2026-09-26 查实） |
-| `simos-economy-api` | util + map（**两者与 jackson 实际均零 import**，死依赖） | 只放**经济切片共用的稳定契约**（ID / `ActorRef` / `CommodityId`）；无 Snapshot、无存储、无公式。禁一切领域/编排模块 |
+| `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc | map/social/unit/**sd** **退到 test scope** ⇒ Core **编译期看不见任何领域类型**（铁律 4 的结构化），想重新实现领域逻辑也无从下手。★ 领域面（map/social/unit/sd）与**经济面 + actor 切片**（economy/economy-api/ledger/**actor**/**actor-api**）**任何 scope 一律禁**，只有 test scope 开五条窄口子（map/social/unit/**economy-api**/**actor-api**——后两条是**传递依赖逼出来的**，见 pom 里那两段注释） |
+| `simos-actor-api` | **不声明任何主依赖**（util / map / jackson 都不声明） | actor 切片共用的**最底层契约**：`ActorRef`（种类 + **不透明** id）、`ActorKind`、`AssetKind` / `AssetClassKey`。★ 它比 `economy-api` 还底层（`economy-api` 反过来依赖它）⇒ 四个类型**与它们的测试**全是 `java.*`/junit/assertj，**零 simos import**（实测 `grep -rF 'import io.mosire'` = 0 命中；裁定 R-e/R-h/R-j 逐条删掉了用不到的声明）。禁一切领域/编排模块（economy-api/economy/ledger/social/unit/sd/core/app/agentlib） |
+| `simos-actor` | actor-api + util + map + economy-api + jackson | 聚合式 actor 切片（S1 阶段 2）：`Actor` 身份本体 + 产权（`AssetHolding`，**键到格** ⇒ 依赖 map 拿 `HexCoord`）+ 商品库存（`GoodsAccount`，键是 `CommodityId` ⇒ 依赖 economy-api）+ 状态树/落盘切片/变更集 + `ActorCodec`（`namespace() = "actor"`）。组件**恰四件**：`(meta, actors, holdings, accounts)`。禁 economy/ledger（同层切片）与 social/unit/sd/core/app/agentlib；★ economy-api 与 actor-api **不在禁列**（契约层，与 social 依赖 economy-api 同待遇） |
+| `simos-economy-api` | **actor-api** + util + map（util 与 jackson 实际**零 import**：前者是死依赖；map 只有 `LotChange` 的 `HexCoord` 一处真用） | 只放**经济切片共用的稳定契约**（各类稳定 ID / `CommodityId`）；无 Snapshot、无存储、无公式。★ `ActorRef` / `ActorKind` **已不在本模块**（上移到更底层的 `simos-actor-api`，本模块只**引用**它们——`LaborAllocation.actor`）。禁一切领域/编排模块 |
 | `simos-economy` | util + economy-api | 聚合式经济切片（产业 / 阶层行 / 债务 / 流水）。禁 social/unit/sd/core/app/agentlib/**ledger**（切片间互不依赖） |
 | `simos-ledger` | util + economy-api | ★ **建了但未接线**：不在 codec / resolver 清单、无任何 handler、无人依赖（2026-09-26 查实）。待 D1 裁"退役 or 留作存量所有者" |
 | `simos-app`（组合根） | core + map + social + unit + sd + economy + agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现 | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/`。★ 它**用了** `util`（56 个 main 文件）与 `economy-api`（2 个）却**未声明**，靠传递依赖（2026-09-26 查实；同款情形在 `simos-core/pom.xml:33-36` 曾被定性为缺陷并修过——**"依赖传递不是契约"**） |
 
 - 上表的边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，不是 code review 的事。
-  ★ **但强制是不完整的**（2026-09-26 查实）：`util/map/social/unit` 的 ban 列表停留在 **M0（2026-09-16，当时全仓只有 5 个模块）**，
-  此后新增的模块**从未回填**（`git log -S'economy' -- {util,map,social,unit,core}/pom.xml` = **0 个提交**）。
-  ⇒ 当前 `social → economy`、`social → economy-api`、`core → economy/economy-api/ledger` **都不会被拦**。
-  设计意图是**互不依赖（对称）**，实现只做了一半。
+  ★ **这份强制长期是不完整的**：`util/map/social/unit` 的 ban 列表停留在 **M0（2026-09-16，当时全仓只有 5 个模块）**，
+  此后新增的模块**长期没回填**（`git log -S'economy' -- {util,map,social,unit,core}/pom.xml` = **0 个提交**）。
+  ★★ **Task 10（2026-09-26）回填了哪些**（实测，非推演）：`core` 纳入 `simos-actor` / `simos-actor-api`（宽 exclude；
+  `actor-api` 的 test-scope 口子是**跑出来**的——`core → social(test) → economy-api → actor-api` 是传递依赖，与 R1 那条同因），
+  `util` / `map` / `social` / `unit` 各补 `simos-actor`（`simos-actor-api` 是**契约层**，与 `economy-api` 同待遇、**不在禁列**）。
+  ★★ **仍然没回填的**（如实记）：`util` / `map` / `unit` **都不拦** `economy` / `economy-api` / `ledger`
+  （`social → economy` 一条已由 R1 补上；`economy-api` 是**刻意**不拦——文档三处明文允许领域模块依赖它）。
+  ⇒ 设计意图是**互不依赖（对称）**，这一半仍未合上；要接的话按本条形制补（改 ban 列表 + 跑 `verify` 看是否被传递依赖逼出 `includes`）。
 - 跨模块可见性走 **Facet**，不走反向依赖："某个 hex 上有哪些单位"**不能**写成 `MapManager.getUnitsAt(hex)`；
   Util 提供 Facet 协议，各领域模块自己注册提供者，MapSimos 对这些扩展完全不知情。
 - ★ **命令跨模块边界是"不透明载荷"**（ADR-1，2026-09-18）：Core 只认信封的 `type` 字符串，不 `instanceof`、

@@ -18,8 +18,8 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
  *
  * <p>★★ **毛额（{@code Σ(count × 系数)}）由谁算**：**调用方**（{@code EconomySeeder}，它以 R1 已落地的年龄×性别系数表 {@code
  * AGE_LABOR_COEF_BY_SEX} 折算，**不另写一套**）。理由不是偷懒：{@code count} 与年龄性别住在 {@code PopulationGroup}
- * （**social** 的类型），而本模块（api）**只依赖 util/map** ⇒ 它**编译期不认识** {@code PopulationGroup}。设计稿 §八.1 允许的方向是
- * {@code social → economy-api}，反向的认识会当场把三层拆分拆掉。
+ * （**social** 的类型），而本模块（api）**只依赖 actor-api/util/map** ⇒ 它**编译期不认识** {@code PopulationGroup}。设计稿
+ * §八.1 允许的方向是 {@code social → economy-api}，反向的认识会当场把三层拆分拆掉。
  *
  * <p>★ **{@code period} = 这一份供给属于哪个周期**（世界周期序号，从 1 起）：配额是**按周期发的**（设计稿 §四），故供给也按期记； 本轮创世只发第 1
  * 期、且常设不改。{@code EconomyData} 用它判"每条配额都有一份**同期**的供给"（否则那条配额的上限根本无从谈起）。

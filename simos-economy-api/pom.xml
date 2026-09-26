@@ -11,7 +11,7 @@
 
   <artifactId>simos-economy-api</artifactId>
   <name>EconomyApiSimos</name>
-  <description>经济切片共用契约：稳定 ID（PeopleLot/Asset/Production/Account/Market/Government/Commodity）、ActorRef 与只读输入输出契约。无 Snapshot、无存储、无经济公式。</description>
+  <description>经济切片共用契约：稳定 ID（PeopleLot/Asset/Production/Account/Market/Government/Commodity）与只读输入输出契约。无 Snapshot、无存储、无经济公式。★ ActorRef / ActorKind 等**主体契约不在这里**——它们住在更底层的 simos-actor-api，本模块只引用、不拥有。</description>
 
   <!-- ★ POLITICAL_ECONOMY_DESIGN §2/§10：六个经济切片（property/production/ledger/market/government 与
        social）共用这一层，各切片只依赖 api/util/map，彼此不作源码依赖。
@@ -64,7 +64,7 @@
                     <exclude>io.mosire:simos-app</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                   </excludes>
-                  <message>economy-api 只放共用契约，不许反向依赖任何领域/编排模块（POLITICAL_ECONOMY_DESIGN §2/§10）：各领域只依赖 api/util/map，api 自己只依赖 util/map。</message>
+                  <message>economy-api 只放共用契约，不许反向依赖任何领域/编排模块（POLITICAL_ECONOMY_DESIGN §2/§10）：各领域只依赖 api/util/map，api 自己只依赖 actor-api/util/map（★ actor-api 是更底层的另一份契约，不是领域模块）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

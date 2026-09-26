@@ -11,7 +11,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>SimulatorMosire</name>
-  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos</description>
+  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / LedgerSimos / EconomySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENT.md 的表。</description>
 
   <modules>
     <module>simos-util</module>
@@ -30,8 +30,10 @@
          它依赖 actor-api（ActorRef）与 util（Snapshot/ChangeSet/FieldDelta），故排在 actor-api **之后**；
          与 economy/ledger 是**兄弟切片**（互不依赖，由本模块 pom 的 enforcer 在构建期强制）。 -->
     <module>simos-actor</module>
-    <!-- ★ 1b-2：经济切片共用契约。在领域切片更上游：只依赖 util/map、不被 core 依赖，
-         property/production/ledger/market/government 与 social 共用它的稳定 ID 与 ActorRef。 -->
+    <!-- ★ 1b-2：经济切片共用契约。在领域切片更上游：只依赖 actor-api/util/map、不被 core 依赖，
+         property/production/ledger/market/government 与 social 共用它的稳定 ID。
+         ★ **ActorRef 不在这份清单里**（它住在上面的 `simos-actor-api`，比本模块还底层）——本模块只**引用**它
+         （`LaborAllocation.actor`），**不拥有**定义。 -->
     <module>simos-economy-api</module>
     <!-- ★ 1b-3：账本切片（增量 2 spec §三的 v1 形状）。与 economy-api 同属经济面、在 core/app 之
          上游：只依赖 util/economy-api，不被 core 依赖（core 的 enforcer 看不见领域类型）。

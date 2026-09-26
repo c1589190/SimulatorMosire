@@ -6,7 +6,7 @@ import java.util.Arrays;
  * 经济主体的**种类**（设计稿 §2/§4/§5/§7 四类 + R2 的**生产关系三类**）：人口批次、军事单位、政府、组织者（公司/合作社等），以及 家户 / 庄园 / 作坊。
  *
  * <p>★ 这是 {@link ActorRef#kind()} 的词表，故意**不**做成引用 {@code UnitId}/{@code GovernmentId} 的 sealed 多例——
- * 那样会把共用契约层绑到各领域模块的内部类型上（设计稿 §2：api 只依赖 util/map）。
+ * 那样会把共用契约层绑到各领域模块的内部类型上（本模块不依赖任何领域模块，理由见 {@link ActorRef} 的类注）。
  *
  * <p>★★ **R2 追加的后三档**（第三阶段设计稿 §二 的三层拆分：{@code PopulationGroup} 回答"是谁"、{@code EconomicActor}
  * 回答"谁持有"、{@code LaborAllocation} 回答"人与主体是什么关系"）：原四档里**没有**家户/庄园/作坊，而"这批人的劳动给了谁" 必须能指名一个**生产主体** ——
