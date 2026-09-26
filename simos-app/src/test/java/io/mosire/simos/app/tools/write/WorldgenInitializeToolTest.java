@@ -10,12 +10,17 @@ import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.time.EconomyOwnershipTimeParticipant;
+import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.RichWorld;
@@ -343,11 +348,14 @@ class WorldgenInitializeToolTest {
       assertThat(capital.props().get("tier")).isInstanceOf(String.class);
 
       // ★★ 军队编制块：命令条数、region tag/颜色、单位/链/国家/军队。
+      // ★★ H1 重算（K7/K10：口径变了 ⇒ 重算期望值，不放宽）：
+      //   批里**多了一条命令** actor.Seed（家户 actor + 账本，与 economy.Seed 同源）⇒ 常数项 3 → 4。
+      //   算式：4（SetPopulation + SeedGroups + economy.Seed + actor.Seed）+ N（城市数）+ 军队块。
       assertThat(body.get("commandCount").asInt())
           .as(
-              "3 + N（N = 城市数；3 = SetPopulation + SeedGroups + economy.Seed）"
+              "4 + N（N = 城市数；4 = SetPopulation + SeedGroups + economy.Seed + actor.Seed）"
                   + "+ 军队块（UpdateRegion+CreateNation+根+7 兵种+链+Army）")
-          .isEqualTo(3 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
+          .isEqualTo(4 + social.cities().size() + ARMY_COMMANDS_OSTERMARK);
 
       JsonNode armyView = body.get("army");
       assertThat(armyView).as("dryRun=false 的摘要也带 army 段").isNotNull();
@@ -459,6 +467,7 @@ class WorldgenInitializeToolTest {
       SimulationState state = core.replay(new StateRef(MAIN, R2));
       SocialData social = socialSlice(state);
       EconomyData economy = economySlice(state);
+      ActorData books = actorSlice(state);
       SimosTimestamp at = state.meta().timestamp();
 
       long hexes = 0L;
@@ -469,7 +478,7 @@ class WorldgenInitializeToolTest {
       for (Map.Entry<HexCoord, PopulationSeries> entry : social.populations().entrySet()) {
         HexCoord hex = entry.getKey();
         Map<String, Object> socialView = ApiViews.population(social, economy, hex, at);
-        Map<String, Object> economyView = ApiViews.economyHex(hex, economy);
+        Map<String, Object> economyView = ApiViews.economyHex(hex, economy, books);
         Object groupsRaw = socialView.get("groups");
         assertThat(groupsRaw)
             .as("%s：读口必须发出 groups 块（R1.5 的 T3 就靠它那一项对拍）", hex)
@@ -556,7 +565,9 @@ class WorldgenInitializeToolTest {
       ToolResult result = execute(tool(core), Map.of("nation", OSTERMARK, "dryRun", false));
       assertThat(result.success()).as(result.message()).isTrue();
 
-      EconomyData seeded = economySlice(core.replay(new StateRef(MAIN, R2)));
+      SimulationState seededState = core.replay(new StateRef(MAIN, R2));
+      EconomyData seeded = economySlice(seededState);
+      ActorData seededBooks = actorSlice(seededState);
       CommodityId cloth = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
       CommodityId tool = new CommodityId(EconomyVocabulary.TOOL_COMMODITY_ID);
       CommodityId fiber = new CommodityId(EconomyVocabulary.FIBER_COMMODITY_ID);
@@ -602,17 +613,17 @@ class WorldgenInitializeToolTest {
 
       // ★ T4：多日静态入口已 fail-closed（产出要产权落账口）⇒ 走 economy 模块内的会话形态
       //   （它逐步交回当天的 ProductionLedger；本用例只量**行侧库存**，故不接那本账）。
-      EconomyData afterOneYear = advanceLocally(seeded, EconomySeeder.CYCLE_DAYS * 3L);
-      long clothStock = goodsStock(afterOneYear, cloth);
-      long toolStock = goodsStock(afterOneYear, tool);
-      long fiberStock = goodsStock(afterOneYear, fiber);
+      Advance afterOneYear = advanceLocally(seeded, seededBooks, EconomySeeder.CYCLE_DAYS * 3L);
+      long clothStock = goodsStock(afterOneYear.books(), afterOneYear.economy(), cloth);
+      long toolStock = goodsStock(afterOneYear.books(), afterOneYear.economy(), tool);
+      long fiberStock = goodsStock(afterOneYear.books(), afterOneYear.economy(), fiber);
       assertThat(clothStock).as("★ 判据 ②：推一年后真档的 CLOTH 库存 > 0").isPositive();
       // ★★ T4 起：工具**没有规则付给 cohort** ⇒ 它整份留在 operator 的账上，**行里一件不进**。
       //   本用例只读 economy 一片（没有 actor 片）⇒ 用**当天的 ledger**举证（那是产出离开 ClassRow 的账）；
       //   "operator 账上确实有 169,750"那一条由 EconomyRealScaleClothTest 的 by-operator 断言逐值钉住。
       CommodityId toolCommodity = new CommodityId(EconomySeeder.COMMODITY_TOOL);
       long toolProduced =
-          ledgersOf(seeded, EconomySeeder.CYCLE_DAYS * 3L).stream()
+          ledgersOf(seeded, seededBooks, EconomySeeder.CYCLE_DAYS * 3L).stream()
               .flatMap(ledger -> ledger.gross().values().stream())
               .mapToLong(byCommodity -> byCommodity.getOrDefault(toolCommodity, 0L))
               .sum();
@@ -621,7 +632,7 @@ class WorldgenInitializeToolTest {
           .as("★ 判据 ③：城市作坊自己的产品（工具）> 0 —— T4 起它进 ledger（落 operator 的账）")
           .isPositive();
       assertThat(fiberStock).as("★ 判据 ④：田里也在出纤维（多商品产出；它内生于土地）").isPositive();
-      assertThat(goodsStock(seeded, cloth)).as("非平凡：创世时一件布都没有").isZero();
+      assertThat(goodsStock(seededBooks, seeded, cloth)).as("非平凡：创世时一件布都没有").isZero();
       System.out.println(
           "[R3-CLOTH] 一年后：cloth="
               + clothStock
@@ -637,11 +648,17 @@ class WorldgenInitializeToolTest {
     }
   }
 
-  /** 真档全部行的某商品库存合计。 */
-  private static long goodsStock(EconomyData data, CommodityId commodity) {
-    return data.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+  /** 真档全部**家户**的某商品库存合计（H1：从 actor 侧的账本读；行里没有 goods 这一栏）。 */
+  private static long goodsStock(ActorData books, EconomyData data, CommodityId commodity) {
+    return data.classes().keySet().stream()
+        .mapToLong(key -> householdGoods(books, key, commodity))
         .sum();
+  }
+
+  /** 某个家户账上某商品的余额（H1）：账户键经 {@link OwnershipBooks#accountKeyOf} 拼（不复述格式）；缺席 ⇒ 0。 */
+  private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
+    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
+    return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
   }
 
   // ── 3. ★ 同 seed 可复现：两个干净库的命令 payload 逐字节相同 ─────────────────────────────
@@ -719,9 +736,13 @@ class WorldgenInitializeToolTest {
         assertThat(rural + urban).as(id + " 总人口").isEqualTo(nation.population());
         assertThat(social.cities()).as(id + " 有城市").isNotEmpty();
         // 军队块条数 = UpdateRegion + CreateNation + 根单位 + 兵种数 + 指挥链 + CreateArmy = 兵种数 + 5。
+        // ★★ H1 重算：多一条 actor.Seed（家户 actor + 账本）⇒ 常数项 3 → 4（见上条同款注释）。
         assertThat(body.get("commandCount").asInt())
-            .as(id + " 3 + 城市数（SetPopulation + SeedGroups + economy.Seed）+ 军队块（兵种数 + 5）")
-            .isEqualTo(3 + body.get("cityCount").asInt() + nation.armCount() + 5);
+            .as(
+                id
+                    + " 4 + 城市数（SetPopulation + SeedGroups + economy.Seed + actor.Seed）"
+                    + "+ 军队块（兵种数 + 5）")
+            .isEqualTo(4 + body.get("cityCount").asInt() + nation.armCount() + 5);
 
         // ★ region tag 变 nation:<nationId>，其余三个 meta 字段原样（机制 2 的判据）。
         Region before =
@@ -803,7 +824,9 @@ class WorldgenInitializeToolTest {
           .isTrue();
 
       assertThat(core.head(MAIN).orElseThrow().value()).as("两国各一条 revision").isEqualTo(3L);
-      EconomyData economy = economySlice(core.replay(new StateRef(MAIN, new RevisionId(3))));
+      SimulationState twoNations = core.replay(new StateRef(MAIN, new RevisionId(3)));
+      EconomyData economy = economySlice(twoNations);
+      ActorData twoNationsBooks = actorSlice(twoNations);
 
       assertThat(economyHexCount(economy))
           .as("两国格数合计（138 + 231）")
@@ -811,10 +834,10 @@ class WorldgenInitializeToolTest {
       assertThat(economy.classes().values().stream().mapToLong(ClassRow::population).sum())
           .as("两国经济人口合计（3,070,000 + 2,530,000）")
           .isEqualTo(firstNation.population() + secondNation.population());
-      assertThat(grainTotal(economy))
+      assertThat(grainTotal(twoNationsBooks, economy))
           .as("两国初始库存合计 = Σ 行 cumulativeRationMilli(人口, 该阶层天数)")
           .isEqualTo(rationTotal(economy));
-      assertThat(grainTotal(economy))
+      assertThat(grainTotal(twoNationsBooks, economy))
           .as("★ 判别力：与旧口径（人人 60 天 × 每人每日 83）必须不同，否则阶层天数表没被用到")
           .isNotEqualTo((firstNation.population() + secondNation.population()) * 83L * 60L);
       assertThat(economy.meta().orElseThrow().activatedDay()).as("meta 不覆盖：激活日仍是创世日 0").isZero();
@@ -874,8 +897,9 @@ class WorldgenInitializeToolTest {
         EconomyData economy = economySlice(before);
         long population = economy.classes().values().stream().mapToLong(ClassRow::population).sum();
         assertThat(population).as(id + " 经济人口 == 社会总人口").isEqualTo(nation.population());
-        long grainBefore = grainTotal(economy);
-        long sown = expectedSownOnTheSowingDay(economy);
+        ActorData booksBefore = actorSlice(before);
+        long grainBefore = grainTotal(booksBefore, economy);
+        long sown = expectedSownOnTheSowingDay(booksBefore, economy);
         // ★ 头 10 天的口粮 = Σ 行 cumulativeRationMilli(行人口, 10)（**逐行**向下取整 ⇒ 不能写成"总人口 × 一天的量"）。
         long ration10 = rationOverDays(economy, 10L);
         long landMu = farmLandMilliMu(economy) / 1_000L;
@@ -883,7 +907,7 @@ class WorldgenInitializeToolTest {
         advanceDays(core, 10);
 
         SimulationState after = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
-        long grainAfter = grainTotal(economySlice(after));
+        long grainAfter = grainTotal(actorSlice(after), economySlice(after));
         // ★★ **V6 §7.1① 起必须减掉"没吃到的"那一项**：放贷方要留本周期自需 ⇒ 真档里那些"把储备播成种子、
         //   自己缸空"的行（见下）**借不到粮**了，缺口如实记进 {@code FlowRow.unmetNeed}（缺的粮不凭空生出来，
         //   它留在别人的缸里）。故守恒式是 **Δ库存 == Σ实吃 + Σ种子 == (逐行口粮 − 缺口) + 种子**。
@@ -947,13 +971,13 @@ class WorldgenInitializeToolTest {
    * 实扣 = min(该行粮库存, 想扣)        // 缸空 ⇒ 扣光，收获日"投入那一路"瓶颈跟着缩
    * </pre>
    *
-   * <p>★ 只算**配方里有粮**的产业（真档 = 农业；织机吃纤维、作坊吃纤维 + 铁 ⇒ 恒贡献 0）；"该产业的家户行"按**劳动配额表**认
-   * （H0 起行里没有产业了：出劳动的那批人住哪儿，就是它的家户 —— 与结算的 {@code householdKeysOf} 同一口径）⇒
-   * 旧口径下"无地行（真档里每座城的手工业行）恒贡献 0"这一条照旧成立。
+   * <p>★ 只算**配方里有粮**的产业（真档 = 农业；织机吃纤维、作坊吃纤维 + 铁 ⇒ 恒贡献 0）；"该产业的家户行"按**劳动配额表**认 （H0
+   * 起行里没有产业了：出劳动的那批人住哪儿，就是它的家户 —— 与结算的 {@code householdKeysOf} 同一口径）⇒ 旧口径下"无地行（真档里每座城的手工业行）恒贡献
+   * 0"这一条照旧成立。
    *
    * <p>★ 只对"周期尚未关账"的账成立：{@code cycleInputUsedMilli} 在周期末清零，故推进 ≥ 1 个周期后这个式子要另算。
    */
-  private static long expectedSownOnTheSowingDay(EconomyData economy) {
+  private static long expectedSownOnTheSowingDay(ActorData books, EconomyData economy) {
     long sown = 0L;
     for (Map.Entry<IndustryId, Industry> entry : economy.industries().entrySet()) {
       Industry industry = entry.getValue();
@@ -991,7 +1015,8 @@ class WorldgenInitializeToolTest {
       }
       for (ClassRow row : rows) {
         long rowShare = scale * row.population() / population; // ⌊⌋：与结算同一个算式
-        sown += Math.min(row.goods().getOrDefault(GRAIN, 0L), rowShare * seedPerMu);
+        // ★ H1：库存从**家户账本**读（"本行想扣多少"仍按人口占比折算，与结算同一个算式）。
+        sown += Math.min(householdGoods(books, row.key(), GRAIN), rowShare * seedPerMu);
       }
     }
     return sown;
@@ -1003,24 +1028,45 @@ class WorldgenInitializeToolTest {
    * <p>★ 本用例只读**行侧**量（布/工具/纤维的库存）⇒ 交回的 {@code ProductionLedger} 在此刻意不接 （那条路要 actor 片，见 {@link
    * EconomyOwnershipTimeParticipant}）。
    */
-  private static EconomyData advanceLocally(EconomyData base, long days) {
-    EconomyDayStepper stepper = new EconomyDayStepper(base);
+  private static Advance advanceLocally(EconomyData base, ActorData books, long days) {
+    return advanceLocally(base, books, days, null);
+  }
+
+  /** ★★ <b>会话推进的返回值：两片都在</b>（H1：商品库存住在 actor 侧 ⇒ 只交回 economy 已经读不出库存）。 */
+  private record Advance(EconomyData economy, ActorData books) {}
+
+  /**
+   * 会话推进（H1 版）：家户账由 actor 侧**载入**成工作副本 → 逐日 step → 条目落 actor + 副本落回 actor。
+   *
+   * <p>★ 与 {@code EconomyOwnershipTimeParticipant} 的日循环**同一套动作**（本用例不装 core ⇒ 在此就地重演；
+   * 顺序不能反：条目先落、副本按绝对值收尾）。
+   */
+  private static Advance advanceLocally(
+      EconomyData base,
+      ActorData books,
+      long days,
+      java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgersOut) {
+    Map<CohortKey, Map<CommodityId, Long>> householdGoods =
+        OwnershipBooks.loadHouseholdGoods(base, books);
+    EconomyDayStepper stepper = new EconomyDayStepper(base, householdGoods);
+    ActorData current = books;
     for (long day = 1L; day <= days; day++) {
-      stepper.step(day);
+      io.mosire.simos.economy.time.ProductionLedger ledger = stepper.step(day);
+      if (ledgersOut != null) {
+        ledgersOut.add(ledger);
+      }
+      current = OwnershipBooks.apply(current, ledger.actorEntries());
+      current = OwnershipBooks.landHouseholdGoods(current, stepper.householdGoods());
     }
-    return stepper.finish();
+    return new Advance(stepper.finish(), current);
   }
 
   /** 同 {@link #advanceLocally}，但把**逐日的 ledger** 攒起来（T4：产出离开 ClassRow 之后就在那儿）。 */
   private static java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgersOf(
-      EconomyData base, long days) {
-    EconomyDayStepper stepper = new EconomyDayStepper(base);
+      EconomyData base, ActorData books, long days) {
     java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgers =
         new java.util.ArrayList<>();
-    for (long day = 1L; day <= days; day++) {
-      ledgers.add(stepper.step(day));
-    }
-    stepper.finish();
+    advanceLocally(base, books, days, ledgers);
     return ledgers;
   }
 
@@ -1069,10 +1115,10 @@ class WorldgenInitializeToolTest {
         .sum();
   }
 
-  /** 某国全部阶层行的粮库存合计（毫粮）。 */
-  private static long grainTotal(EconomyData economy) {
-    return economy.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L))
+  /** 某国全部家户的粮库存合计（毫粮）—— H1：从 actor 侧的账本读。 */
+  private static long grainTotal(ActorData books, EconomyData economy) {
+    return economy.classes().keySet().stream()
+        .mapToLong(key -> householdGoods(books, key, GRAIN))
         .sum();
   }
 
@@ -1132,9 +1178,10 @@ class WorldgenInitializeToolTest {
       SimulationState state = core.replay(new StateRef(MAIN, R2));
       SocialData social = socialSlice(state);
       assertThat(social.cities()).isNotEmpty();
+      // ★★ H1 重算：多一条 actor.Seed ⇒ 常数项 3 → 4（不产生任何军队块命令）。
       assertThat(body.get("commandCount").asInt())
-          .as("只 3 + 城市数（SetPopulation + SeedGroups + economy.Seed；不产生任何军队块命令）")
-          .isEqualTo(3 + social.cities().size());
+          .as("只 4 + 城市数（SetPopulation + SeedGroups + economy.Seed + actor.Seed；" + "不产生任何军队块命令）")
+          .isEqualTo(4 + social.cities().size());
 
       assertThat(sdSlice(state).nations()).as("army:false ⇒ 不建国").isEmpty();
       assertThat(sdSlice(state).armies()).as("army:false ⇒ 不建军").isEmpty();
@@ -1245,7 +1292,7 @@ class WorldgenInitializeToolTest {
           births += totalBirths(economy);
           deaths += totalDeaths(economy);
           clothConsumed += flowConsumedOf(economy, cloth);
-          clothByCycleClose[(int) (day / 120L) - 1] = goodsStock(economy, cloth);
+          clothByCycleClose[(int) (day / 120L) - 1] = goodsStock(actorSlice(state), economy, cloth);
         }
         // ⑤ 危机红灯：**逐月采样**（它是"当期"的判据 —— 第 365 天刚收获完，那时当然人人吃得饱，
         //   真正红灯的是青黄不接的那几个月）⇒ 把整年出现过的**类别**并起来。
@@ -1258,9 +1305,10 @@ class WorldgenInitializeToolTest {
         }
       }
       advanceRange(core, 360L, 365L);
+      SimulationState atYearEndState =
+          core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
       clothByCycleClose[3] =
-          goodsStock(
-              economySlice(core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()))), cloth);
+          goodsStock(actorSlice(atYearEndState), economySlice(atYearEndState), cloth);
       SimulationState finalState = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
       long populationAtYearEnd = totalGroups(finalState);
       Map<String, Long> bracketsAtYearEnd = ageBrackets(finalState, 365L);
@@ -1421,6 +1469,9 @@ class WorldgenInitializeToolTest {
     core.register(new SeedGroupsHandler());
     // ★ R2a：经济播种（与 Shell 的装配同源）。
     core.register(new EconomySeedHandler());
+    // ★★ H1：家户 actor 播种（与 Shell 的装配同源）—— 批里多了一条 {@code actor.Seed}
+    //   （商品库存的唯一真源是 actor 侧的 {@code GoodsAccount}；缺了它世界第一天的日结算就抛）。
+    core.register(new ActorSeedHandler());
     // ★ 军队编制块要用的五条 handler（与 Shell 的装配同源）。
     core.register(new UpdateRegionHandler());
     core.register(new CreateNationHandler());
@@ -1542,6 +1593,14 @@ class WorldgenInitializeToolTest {
     return slice.data();
   }
 
+  /** ★★ H1：actor 切片（家户 actor + 账本）—— 真档的商品库存读数**只能**从这里来（行里没有 goods）。 */
+  private static ActorData actorSlice(SimulationState state) {
+    ActorSnapshot slice =
+        (ActorSnapshot)
+            state.module("actor").orElseThrow(() -> new AssertionError("状态里没有 actor 切片"));
+    return slice.data();
+  }
+
   /** 经济侧**有状态的格数**：从产业 id 里取出格键去重（"产业属于哪一格"走唯一拼写点 {@link IndustryHexKeys}）。 */
   private static long economyHexCount(EconomyData data) {
     Set<String> hexes = new LinkedHashSet<>();
@@ -1552,11 +1611,11 @@ class WorldgenInitializeToolTest {
   }
 
   /**
-   * 真档**全部农业产业**产能表里的土地合计（千分亩）—— ★ H0.3（K3）起"本格有多少亩"住在 {@code Industry.capacity} 里
-   * （旧版散在各 {@code ClassRow.meansOfProduction}，Σ 各行才等于格土地）。
+   * 真档**全部农业产业**产能表里的土地合计（千分亩）—— ★ H0.3（K3）起"本格有多少亩"住在 {@code Industry.capacity} 里 （旧版散在各 {@code
+   * ClassRow.meansOfProduction}，Σ 各行才等于格土地）。
    *
-   * <p>★ 两条口径的**总量逐值相同**：播种器把同一份"地形 → 可耕地"一次写进该格 farm 产业的 {@code capacity[LAND]}
-   * （{@code EconomySeeder.agriculture}），旧口径只是把它按人口切成四份再合起来。
+   * <p>★ 两条口径的**总量逐值相同**：播种器把同一份"地形 → 可耕地"一次写进该格 farm 产业的 {@code capacity[LAND]} （{@code
+   * EconomySeeder.agriculture}），旧口径只是把它按人口切成四份再合起来。
    */
   private static long farmLandMilliMu(EconomyData data) {
     long total = 0L;
@@ -1584,9 +1643,9 @@ class WorldgenInitializeToolTest {
   /**
    * 某格**两组四行**折算出的当日劳动（= 改口径前结算每天累加的那个数）：{@code Σ_{本格的行} 行劳动 × 行参与率 ÷ 1000}。
    *
-   * <p>★★ H0（K2/K3）起**行里没有产业了**（键 = 格 + 居住类型 + 阶层）：农村家户给农业与家庭纺织两个产业出劳动，却**只有一行** ⇒
-   * 这条判据按**池**（= 格）对拍，而不是逐产业 —— 否则两个产业会把同一批人的日劳动各算一遍（双计）。 旧口径下它是"Σ 各产业的四行"（farm +
-   * weave + craft 三组），两者**逐值同数**：农村那两组合成一组，而 weave 那四行人口/劳动恒 0。
+   * <p>★★ H0（K2/K3）起**行里没有产业了**（键 = 格 + 居住类型 + 阶层）：农村家户给农业与家庭纺织两个产业出劳动，却**只有一行** ⇒ 这条判据按**池**（=
+   * 格）对拍，而不是逐产业 —— 否则两个产业会把同一批人的日劳动各算一遍（双计）。 旧口径下它是"Σ 各产业的四行"（farm + weave + craft
+   * 三组），两者**逐值同数**：农村那两组合成一组，而 weave 那四行人口/劳动恒 0。
    */
   private static long rowBasedDailyLabor(EconomyData data, HexCoord hex) {
     long total = 0L;

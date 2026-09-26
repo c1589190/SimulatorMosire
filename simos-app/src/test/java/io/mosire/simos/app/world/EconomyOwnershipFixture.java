@@ -65,13 +65,17 @@ final class EconomyOwnershipFixture {
   }
 
   /**
-   * ★ 从第 0 天推 {@code days} 天，**只交回经济侧**（本包用例大多只看行侧量：库存 / 需求 / 债务）。
+   * 从第 0 天推 {@code days} 天，**只交回经济侧**（本包用例大多只看行侧量：需求 / 债务 / 劳动）。
    *
-   * <p>★ 走的仍是**真协调器**（产权条目照落 actor 账）—— 只是那些账不在本方法的返回值里。这比绕开协调器 （只跑 {@code
+   * <p>★ 走的仍是**真协调器**（产权条目照落 actor 账、家户账按绝对值落回）—— 只是那些账不在本方法的返回值里。这比绕开协调器 （只跑 {@code
    * EconomyDayStepper}）更可信：**每一条断言量的世界都是"完整账"那个世界**。
+   *
+   * <p>★★ <b>H1 起 {@code books} 是必填的</b>（裁定 K1/D3-C）：商品库存的唯一真源是 actor 侧的 {@code
+   * GoodsAccount}，日结算的消费与投入都要读它的会话副本 ⇒ 家户 actor 缺席时协调器**当场抛** （旧版的 {@code NO_BOOKS}
+   * 常量因此删除：它代表的世界已经不存在了，留着只会把一个必炸的入参摆在手边）。
    */
-  static EconomyData advanceEconomy(EconomyData base, String mapId, long days) {
-    return advance(base, ActorData.empty(), mapId, 0L, days).economy();
+  static EconomyData advanceEconomy(EconomyData base, ActorData books, String mapId, long days) {
+    return advance(base, books, mapId, 0L, days).economy();
   }
 
   private static final BranchId MAIN = new BranchId("main");
@@ -84,7 +88,4 @@ final class EconomyOwnershipFixture {
   private static Snapshot actorSnap(ActorData data, long tick) {
     return new ActorSnapshot(REF, SimosTimestamp.of(tick), data);
   }
-
-  /** 空表（创世没有账）：本夹具刻意**不预先造账** —— 第一笔账必须由产权条目打开。 */
-  static final ActorData NO_BOOKS = ActorData.empty();
 }

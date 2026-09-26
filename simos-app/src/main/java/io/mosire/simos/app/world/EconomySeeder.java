@@ -2,7 +2,9 @@ package io.mosire.simos.app.world;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -29,6 +31,10 @@ import java.util.function.Function;
  * ★★ **R2a 生成器**（聚合式经济重设计 §十「验收目标 A」）：把一次世界生成已经算好的 {@link SettlementPlan}（逐格农村人口 + 城市表）翻成**一条**
  * {@code economy.Seed} 命令的载荷。
  *
+ * <p>★★ **H1 起它同时产出家户的创世库存**（裁定 D3-C / K1；见 {@link Seed}）：商品库存的**唯一持久真源**是 actor 切片里 家户的 {@code
+ * GoodsAccount}，故"每格两组四行的开缸余额"不再写进阶层行，而是由 {@link #openingStock} 一次算好后交回 —— {@link HouseholdSeeder}
+ * 用**同一份**结果播 {@code actor.Seed}（"一次算出、同一份喂两条命令"，与人口批次那条接缝同款）。
+ *
  * <p>★★ **R1（T4）起人口一律取自 {@link PopulationGroup} 批次列表**（{@link PopulationSeeder#groups} 造的那一份，
  * 同一份也喂给 {@code social.SeedGroups}）：逐格人数 = {@code Σ count}，农村/城镇两池由批次 id 的前缀分 （{@link
  * PopulationLots#isUrban}）。**不再读 {@link io.mosire.simos.social.gen.SettlementPlan}** —— 两条命令读同一份列表，
@@ -47,15 +53,15 @@ import java.util.function.Function;
  * <ul>
  *   <li>**人口守恒**：某格的 {@code Σ 阶层行人口 == 该格人口}（= 该格农村人口 + 落在该格的城市人口）。四舍五入的残差按**最大余数法**
  *       逐格分派（余数大者先得、同余数按下标序，每个槽位最多补 1 人），故不丢也不多。
- *   <li>**土地守恒**：某格农业产业的 {@code capacity[LAND] == 该格土地}（{@code muPerHex × 地形系数}，单位千分亩）。 ★
- *       **H0.3 起土地是"产业产能"而不是"行的生产资料"**（K3）⇒ 这条守恒从"Σ 四行 == 格土地"变成"一个数 == 格土地"，
- *       旧版那条"农业人口为 0 时整份土地记在第一个槽位"的特例**随之消失**（不再需要切分，也就没有除零与残差）。
+ *   <li>**土地守恒**：某格农业产业的 {@code capacity[LAND] == 该格土地}（{@code muPerHex × 地形系数}，单位千分亩）。 ★ **H0.3
+ *       起土地是"产业产能"而不是"行的生产资料"**（K3）⇒ 这条守恒从"Σ 四行 == 格土地"变成"一个数 == 格土地"， 旧版那条"农业人口为 0
+ *       时整份土地记在第一个槽位"的特例**随之消失**（不再需要切分，也就没有除零与残差）。
  * </ul>
  *
  * <p>★★ **H0.2：阶层行的身份 = {@code (格, 居住类型, 阶层)}**（K2；{@code CohortKey}）：**每格两组四行** —— 农村四行（人口 =
  * 农村批次之和）与城镇四行（人口 = 城镇批次之和）。旧版的第三组（{@code weave} 那四行）**不再存在**：它人口恒 0、劳动恒 0，
- * 是同一批农村人的第二本账；它承载的织机与纤维按"产能 → 产业、商品 → 家户"两条规矩各自归位（见 {@link #householdWeaving}）。
- * ★ **每个产业都不再持有 {@code classes}**：产业只说"制度 + 配方 + 本格产能"，家户账只说"这批人有多少粮/多少活"。
+ * 是同一批农村人的第二本账；它承载的织机与纤维按"产能 → 产业、商品 → 家户"两条规矩各自归位（见 {@link #householdWeaving}）。 ★ **每个产业都不再持有
+ * {@code classes}**：产业只说"制度 + 配方 + 本格产能"，家户账只说"这批人有多少粮/多少活"。
  *
  * <p>★ **参数默认值全部取自 §十 的口径表**（{@code 一切数字来自场景参数}）：它们在此以**具名常量**出现并各自注明来源—— 冻结输入 {@code
  * config/worldgen/v17levant-nations.json} 里没有这些字段，故"场景参数"就是本节钉住的默认值。
@@ -340,8 +346,46 @@ public final class EconomySeeder {
    * <p>★ 走真地图：地形 key 由 {@link GameMap#terrainIndex()} 一次物化后 O(1) 查。
    */
   public static String payload(String mapId, List<PopulationGroup> groups, GameMap map) {
+    return plan(mapId, groups, map).economyPayload();
+  }
+
+  /**
+   * ★★ <b>一次生成的<strong>内存形态</strong></b>（H1）：同一条循环的**两个**产物 —— {@code economy.Seed} 的逐格 {@code
+   * entries} 与**家户创世库存**（键 = 家户身份）。
+   *
+   * <p>★★ <b>为什么把它们放在一起</b>：H1 起"商品库存"<b>不在阶层行里</b>（{@code ClassRow} 没有 {@code goods}，裁定 D3-C/K1）——
+   * 它的持久真源是 actor 切片里该家户的 {@code GoodsAccount}。而"每格两组四行的开缸余额"（口粮按阶层天数、纤维按田亩副产、
+   * 城镇行的纤维与铁按作坊数）<b>只能算一次</b>：两处各算一遍必然漂移（本仓最忌"同一事实两处拼写点"）。故本记录是那条接缝 —— {@link #payload(String,
+   * List, GameMap)} 取 {@link #entries()}，{@link HouseholdSeeder} 取 {@link #householdStocks()}。
+   *
+   * <p>★ <b>键序是内容的纯函数</b>：entry 按 {@code (q,r)} 字典序（{@code hexes.sort}）、每组按 {@code RURAL →
+   * URBAN}、每个阶层按 {@link #CLASS_IDS} 序 —— 同一份输入两次调用逐字段相同。★ <b>账本为空的家户也在表里</b>（人口 0 的行：余额可能全 0）—— 见
+   * {@link #cohortGroup}。
+   */
+  public record Seed(
+      String mapId,
+      List<Map<String, Object>> entries,
+      Map<CohortKey, Map<CommodityId, Long>> householdStocks) {
+
+    /** {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} 在顶层；entries 原样）。 */
+    public String economyPayload() {
+      return jsonOf(mapId, entries);
+    }
+  }
+
+  /**
+   * 纯函数重载（**包内可见**：用例塞一个 {@code hex -> "plains"} 的替身即可，不必造 {@link GameMap}）—— 与真地图那条走**同一条** {@link
+   * #plan}（唯一算一次的地方）。
+   */
+  static String payload(
+      String mapId, List<PopulationGroup> groups, Function<HexCoord, String> terrainOf) {
+    return plan(mapId, groups, terrainOf).economyPayload();
+  }
+
+  /** 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List, GameMap)}。 */
+  public static Seed plan(String mapId, List<PopulationGroup> groups, GameMap map) {
     Map<HexCoord, String> terrain = map.terrainIndex();
-    return payload(
+    return plan(
         mapId,
         groups,
         at -> {
@@ -353,6 +397,15 @@ public final class EconomySeeder {
         });
   }
 
+  /** 把 {@code entries} 包成 {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} 在顶层）。 */
+  static String jsonOf(String mapId, List<Map<String, Object>> entries) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("mapId", mapId);
+    payload.put("rulesVersion", RULES_VERSION);
+    payload.put("entries", entries);
+    return ToolSupport.json(payload);
+  }
+
   /**
    * 纯函数主入口（**包内可见**：用例塞一个 {@code hex -> "plains"} 的替身即可，不必造 {@link GameMap}）。
    *
@@ -361,7 +414,7 @@ public final class EconomySeeder {
    *
    * @param terrainOf 逐格地形 key（真路径 = {@code map.terrainIndex()}）；未知地形 fail-closed
    */
-  static String payload(
+  static Seed plan(
       String mapId, List<PopulationGroup> groups, Function<HexCoord, String> terrainOf) {
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
@@ -379,6 +432,7 @@ public final class EconomySeeder {
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
 
     List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
+    Map<CohortKey, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
     for (HexCoord hex : hexes) {
       List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
       List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
@@ -450,8 +504,11 @@ public final class EconomySeeder {
       //     "这一格此刻有没有城镇人口"是另一件事（H1 的家户 actor 按 格 × 居住 × 阶层 播，形状必须与行集一致）。
       //     人口为 0 的行是**合法的空账**（人口/劳动/需求全 0），不是噪声：它是"这一格有这个家户、只是没人"。
       List<Map<String, Object>> classes = new ArrayList<>(2 * CLASS_IDS.length);
-      classes.addAll(ruralCohort(ruralPool, landMilliMu));
-      classes.addAll(urbanCohort(urbanPool, workshops));
+      // ★★ **H1：开缸库存的去处 = 家户账**（actor 侧的 {@code GoodsAccount}）。本方法把它**一次算好**并交回
+      //   （{@code Seed.householdStocks}），载荷里的阶层行**不再带 {@code goods}** —— 行里没有商品这件事
+      //   在"一本账"的判据（守恒式无 ΔΣRowGoods）里是必须的。
+      classes.addAll(ruralCohort(hex, ruralPool, landMilliMu, householdStocks));
+      classes.addAll(urbanCohort(hex, urbanPool, workshops, householdStocks));
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
@@ -461,11 +518,7 @@ public final class EconomySeeder {
       entry.put("allocations", allocations);
       entries.add(entry);
     }
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("mapId", mapId);
-    payload.put("rulesVersion", RULES_VERSION);
-    payload.put("entries", entries);
-    return ToolSupport.json(payload);
+    return new Seed(mapId, entries, householdStocks);
   }
 
   /** 一群批次的人数：{@code Σ count}（"每格人数"的唯一算法）。 */
@@ -688,8 +741,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * 农业（**恒有**，§十）：制度 = **领主自营庄园**（{@link #REGIME_FEUDAL}）；★★ **H0.3 起产能 = 本格可耕地**，
-   * 不再按人口切进四行。
+   * 农业（**恒有**，§十）：制度 = **领主自营庄园**（{@link #REGIME_FEUDAL}）；★★ **H0.3 起产能 = 本格可耕地**， 不再按人口切进四行。
    *
    * <p>★ 本注原写"制度 = 封建租佃" —— 那是**同词两义**：租佃（佃农家户）是另立的 {@code tenant} 档，而本方法写进载荷的是 {@link
    * #REGIME_FEUDAL}（**领主自营庄园**）。它原与同文件里 {@code REGIME_FEUDAL} 常量注**直接矛盾**， 已在 S1 阶段 3 D8 就地改对（同 D7
@@ -725,21 +777,19 @@ public final class EconomySeeder {
    * <p>★★ **H0.2：它不再有四行**（旧版那四行人口恒 0、劳动恒 0，是"同一批人的第二本账"）。旧版那四行上的东西**逐项去处**：
    *
    * <ul>
-   *   <li>**织机**（旧：四行各持一份 {@code meansOfProduction.TOOL}）⇒ 并成**总数**写进本产业的 {@code capacity}
-   *       （{@link #RURAL_CAPITA_PER_LOOM} 人一台）。理由：织机是**产能**（"单位规模 = 1 台织机"，见
-   *       {@code capacityPerUnit}），K3 把它从家户账上收归产业；旧版"Σ 四行 = 本格织机数"这条守恒，
-   *       现在由**一个数**直接成立；
+   *   <li>**织机**（旧：四行各持一份 {@code meansOfProduction.TOOL}）⇒ 并成**总数**写进本产业的 {@code capacity} （{@link
+   *       #RURAL_CAPITA_PER_LOOM} 人一台）。理由：织机是**产能**（"单位规模 = 1 台织机"，见 {@code capacityPerUnit}），K3
+   *       把它从家户账上收归产业；旧版"Σ 四行 = 本格织机数"这条守恒， 现在由**一个数**直接成立；
    *   <li>**纤维**（旧：四行各持一份 {@code goods.fiber}）⇒ 并入**农村四行**（见 {@link #ruralCohort}）。
-   *       理由：那是**农村池的活**（同一批人农闲织布），家户账只能记在自家户名下 —— 记在"纺织"名下等于
-   *       给同一批人开第二本账；
-   *   <li>**人口与劳动**（旧：恒 0）⇒ 本来就住在农村四行里，**一个数都不动**。农闲织布是同一批人的第二份活，
-   *       支撑它的是劳动配额那 100‰（{@link #WEAVE_SHARE_PER_MILLE}），不是第二份人口。
+   *       理由：那是**农村池的活**（同一批人农闲织布），家户账只能记在自家户名下 —— 记在"纺织"名下等于 给同一批人开第二本账；
+   *   <li>**人口与劳动**（旧：恒 0）⇒ 本来就住在农村四行里，**一个数都不动**。农闲织布是同一批人的第二份活， 支撑它的是劳动配额那 100‰（{@link
+   *       #WEAVE_SHARE_PER_MILLE}），不是第二份人口。
    * </ul>
    *
-   * <p>★★ **纤维从哪来**（**留白，不是遗漏**）：创世给这四行各一份**纤维**（= 本格农业**一个周期**的纤维副产，见
-   * {@link #fiberStockMilli}）。★ 把它从"田里"搬到"织机上"是**跨行的实物转移**，正是 spec §六 V8（统一转移）的活，
-   * 而 brief 明说"**不建议本轮做跨行实物转移**" ⇒ 本轮织机吃的是这份**明标为"估计来源"**的创世库存； 农业自己产的那份照常累积在农业行里（读口看得见）。★
-   * **后果如实记**：一个周期之后织机没有原料 ⇒ 停工，等 V8 把田里的纤维送过来。
+   * <p>★★ **纤维从哪来**（**留白，不是遗漏**）：创世给这四行各一份**纤维**（= 本格农业**一个周期**的纤维副产，见 {@link #fiberStockMilli}）。★
+   * 把它从"田里"搬到"织机上"是**跨行的实物转移**，正是 spec §六 V8（统一转移）的活， 而 brief 明说"**不建议本轮做跨行实物转移**" ⇒
+   * 本轮织机吃的是这份**明标为"估计来源"**的创世库存； 农业自己产的那份照常累积在农业行里（读口看得见）。★ **后果如实记**：一个周期之后织机没有原料 ⇒ 停工，等 V8
+   * 把田里的纤维送过来。
    */
   private static Map<String, Object> householdWeaving(HexCoord hex, long looms) {
     return industry(
@@ -760,11 +810,13 @@ public final class EconomySeeder {
    * 本格农业**一个周期**的纤维副产（毫纤维）= 本格可耕地**亩数** × {@link #FIBER_OUTPUT_PER_MU} × 1000 毫/单位。
    *
    * <p>★ **与产出那一路同源**（{@code outputPerUnit[fiber]} 就是每亩 6 单位）⇒ 这份"初始库存"是从配方推出来的，不是第二个拍出来的数。
-   * （旧版从农业四行的 {@code LAND} **逐行**换算成亩再向下取整后求和；现在直接由**产业产能**那一处算，
-   * 取整因此**逐格只发生一次** —— 两者在"格土地不是千分亩整数倍"时可能差不到一亩的量级，见 {@code EconomyRealScaleClothTest} 的实测。）
+   * （旧版从农业四行的 {@code LAND} **逐行**换算成亩再向下取整后求和；现在直接由**产业产能**那一处算， 取整因此**逐格只发生一次** ——
+   * 两者在"格土地不是千分亩整数倍"时可能差不到一亩的量级，见 {@code EconomyRealScaleClothTest} 的实测。）
    */
   static long fiberStockMilli(long landMilliMu) {
-    return landMilliMu / MILLI_MU_PER_MU * FIBER_OUTPUT_PER_MU
+    return landMilliMu
+        / MILLI_MU_PER_MU
+        * FIBER_OUTPUT_PER_MU
         * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
   }
 
@@ -782,15 +834,16 @@ public final class EconomySeeder {
    * ★★ **城市作坊**（T5；城市格追加，§十）：制度 = 手工业；★★ **H0.3 起产能 = 本格作坊总座数**。
    *
    * <p>★★ **配方 = {@code FIBER + IRON + LABOR + WORKSHOP → CLOTH + TOOL}**（两条变换合在一座作坊里；"消耗 IRON"
-   * 这种话正是 R3 换型要表达的东西）—— 它同时证明两件事（spec §六 给 T5 定的目的）：**非 LAND 生产成立**、**城市能产出自己的产品**。 ★ 城乡交换（布换粮）不在本轮（那要 R4 的 V8）。
+   * 这种话正是 R3 换型要表达的东西）—— 它同时证明两件事（spec §六 给 T5 定的目的）：**非 LAND 生产成立**、**城市能产出自己的产品**。 ★
+   * 城乡交换（布换粮）不在本轮（那要 R4 的 V8）。
    *
    * <p>★★ **H0.2：它也不再有四行**。旧版那四行上的东西**逐项去处**：
    *
    * <ul>
    *   <li>**作坊**（旧：四行各持一份 {@code meansOfProduction.WORKSHOP}）⇒ 并成**总数**写进本产业的 {@code capacity}
    *       （{@link #URBAN_CAPITA_PER_WORKSHOP} 人一座）；
-   *   <li>**原料库存：纤维 + 铁**（旧：四行各按"该行作坊数 × 一座作坊一个周期的用量"持有）⇒ 并入**城镇四行**
-   *       （见 {@link #urbanCohort}）。理由同纺织：这是**城镇池的活**，只能记在城镇家户名下；
+   *   <li>**原料库存：纤维 + 铁**（旧：四行各按"该行作坊数 × 一座作坊一个周期的用量"持有）⇒ 并入**城镇四行** （见 {@link
+   *       #urbanCohort}）。理由同纺织：这是**城镇池的活**，只能记在城镇家户名下；
    *   <li>**人口与劳动** ⇒ 搬到城镇四行，**逐值不变**（旧版就在 craft 行上，不在 weave 行上）。
    * </ul>
    *
@@ -813,7 +866,8 @@ public final class EconomySeeder {
             TOOL_PER_WORKSHOP_PER_CYCLE),
         Map.of(
             "WORKSHOP",
-            Map.of(COMMODITY_FIBER, fiberPerWorkshopMilli(), COMMODITY_IRON, ironPerWorkshopMilli())));
+            Map.of(
+                COMMODITY_FIBER, fiberPerWorkshopMilli(), COMMODITY_IRON, ironPerWorkshopMilli())));
   }
 
   /**
@@ -822,8 +876,8 @@ public final class EconomySeeder {
    * <p>{@code dailyInputPerUnit}/{@code dailyLaborPerUnit} 置 0：§十 没给这两项的依据（那是 R3a 的事），**不臆造**；
    * {@code progressDays} = 0（周期刚起）；{@code cycleDays} = {@link #CYCLE_DAYS}。
    *
-   * <p>★★ **它名下没有 {@code classes}**（H0.2）：阶层行按 {@code (格, 居住类型, 阶层)} 挂在 entry 级 —— 一个产业的
-   * {@code slots} 只说"这个制度允许哪些角色"，不再说"这些行归它"。
+   * <p>★★ **它名下没有 {@code classes}**（H0.2）：阶层行按 {@code (格, 居住类型, 阶层)} 挂在 entry 级 —— 一个产业的 {@code
+   * slots} 只说"这个制度允许哪些角色"，不再说"这些行归它"。
    *
    * @param capacity 本格该产业的**产能总量**（§3.1 的 {@code capacity}；旧版住在 {@code ClassRow.meansOfProduction}）
    * @param capacityPerUnit 每 1 单位规模需要多少生产资料（农业 = 1 亩；织机/作坊 = 1 台/座）
@@ -885,27 +939,34 @@ public final class EconomySeeder {
   /**
    * ★★ **农村四行**（一层 = 该格农村家户的四个阶层）：人口 = 该格**农村批次**之和按 {@link #CLASS_SHARE_PER_MILLE} 切。
    *
-   * <p>★ **它们同时是"农业的行"与"家庭纺织的行"**：农业与纺织是**同一批人的两份活**（900‰ + 100‰ 两条配额），
-   * 故只有一本账。
+   * <p>★ **它们同时是"农业的行"与"家庭纺织的行"**：农业与纺织是**同一批人的两份活**（900‰ + 100‰ 两条配额）， 故只有一本账。
    *
    * @param landMilliMu 本格可耕地（千分亩）—— 只用来推"本格农田一个周期的纤维副产"这份初始库存
    */
-  private static List<Map<String, Object>> ruralCohort(List<PopulationGroup> pool, long landMilliMu) {
+  private static List<Map<String, Object>> ruralCohort(
+      HexCoord hex,
+      List<PopulationGroup> pool,
+      long landMilliMu,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     // ★★ **纤维的去处**：旧版按阶层份额落在那四行**纺织行**上，H0.2 起并入**农村四行**（同一批人的同一本账）。
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), CLASS_SHARE_PER_MILLE));
-    return cohortGroup(ResidenceKind.RURAL, pool, goods);
+    return cohortGroup(hex, ResidenceKind.RURAL, pool, goods, stocks);
   }
 
   /**
    * ★★ **城镇四行**：人口 = 该格**城镇批次**之和按 {@link #CLASS_SHARE_PER_MILLE} 切（**逐值 = 旧版 craft 四行**）。
    *
-   * <p>★ **原料库存的去处**：旧版 craft 四行里的纤维与铁按"该行作坊数 × 一座作坊一个周期的用量"持有，
-   * H0.2 起并入**城镇四行**（同一批人的同一本账）—— 逐值同式，只是行键不再带产业。
+   * <p>★ **原料库存的去处**：旧版 craft 四行里的纤维与铁按"该行作坊数 × 一座作坊一个周期的用量"持有， H0.2 起并入**城镇四行**（同一批人的同一本账）、H1
+   * 起落进那四个家户的 {@code GoodsAccount}（见 {@link #openingStock}） —— 逐值同式，只是行键不再带产业、且账本搬到了 actor 侧。
    *
    * @param workshops 本格作坊总数（= 城镇人口 ÷ {@link #URBAN_CAPITA_PER_WORKSHOP}）
    */
-  private static List<Map<String, Object>> urbanCohort(List<PopulationGroup> pool, long workshops) {
+  private static List<Map<String, Object>> urbanCohort(
+      HexCoord hex,
+      List<PopulationGroup> pool,
+      long workshops,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     long[] shopByClass = splitByShares(workshops, CLASS_SHARE_PER_MILLE);
     long[] fiber = new long[CLASS_IDS.length];
     long[] iron = new long[CLASS_IDS.length];
@@ -917,53 +978,70 @@ public final class EconomySeeder {
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, fiber);
     goods.put(COMMODITY_IRON, iron);
-    return cohortGroup(ResidenceKind.URBAN, pool, goods);
+    return cohortGroup(hex, ResidenceKind.URBAN, pool, goods, stocks);
   }
 
   /**
-   * **一组四行**（同一格、同一居住类型、四个阶层）：人口按阶层比例切（Σ 恰为该池人口），有效劳动 = 该行人口 ×
-   * **该池的人均劳动**（见 {@link #classRow} 的旧注：阶层之间"年龄性别同分布"这条明说的假设）。
+   * **一组四行**（同一格、同一居住类型、四个阶层）：人口按阶层比例切（Σ 恰为该池人口），有效劳动 = 该行人口 × **该池的人均劳动**（见 {@link #classRow}
+   * 的旧注：阶层之间"年龄性别同分布"这条明说的假设）。
    *
    * <p>★ {@code goodsByClass} 是"逐商品的**逐阶层**存量表"（与 {@link #CLASS_IDS} 同序）：0 ⇒ 不落键（保持空商品表的纯形态）。
    */
   private static List<Map<String, Object>> cohortGroup(
-      ResidenceKind residence, List<PopulationGroup> pool, Map<String, long[]> goodsByClass) {
+      HexCoord hex,
+      ResidenceKind residence,
+      List<PopulationGroup> pool,
+      Map<String, long[]> goodsByClass,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     long[] people = splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE);
     long poolLabor = laborMilli(pool);
     long poolCount = populationOf(pool);
     List<Map<String, Object>> rows = new ArrayList<>(CLASS_IDS.length);
     for (int i = 0; i < CLASS_IDS.length; i++) {
-      Map<String, Object> extraGoods = new LinkedHashMap<>();
-      for (Map.Entry<String, long[]> entry : goodsByClass.entrySet()) {
-        putIfPositive(extraGoods, entry.getKey(), entry.getValue()[i]);
-      }
+      // ★★ **H1：这个家户的开缸库存 → actor 侧的账本**（键 = {@link HouseholdActors#of} 的那个家户身份）。
+      //   ★ **空账也落键**（人口 0 ⇒ 余额全 0）：读口因此读得到"这个家户在这一格有一本账"（既定口径），
+      //     而"账本为空"与"这一格没有这个家户"是两件事。
+      stocks.put(
+          new CohortKey(hex, residence, new SocialClassId(CLASS_IDS[i])),
+          openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
       rows.add(
           cohortRow(
-              residence,
-              CLASS_IDS[i],
-              people[i],
-              CLASS_LABOR_PER_MILLE[i],
-              poolLabor,
-              poolCount,
-              extraGoods));
+              residence, CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], poolLabor, poolCount));
     }
     return rows;
   }
 
   /**
-   * ★★ **一个家户行**（H0.2 起与 §3.2 {@code ClassRow} 逐字段对应，**除 {@code meansOfProduction} 外** ——
-   * 那一项已按 K3 搬到 {@code Industry.capacity}）：身份 = {@code (residence, slot)}（格由它所在的 entry 给出）；
-   * 有效劳动 = 本行人口 × **该池的人均劳动**（= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷ 池人口，见 {@link #laborMilli(List)}）、
-   * 自然需求 = **第 1 天**的口粮（{@link #firstDayRationMilli}；结算每天会覆写它，§八.8）、
-   * 初始库存 = {@code 人口 × 该阶层天数} 天口粮（{@link #rationMilli} 经 {@link EconomyVocabulary#cumulativeRationMilli}，
-   * **按阶层差异化**）+ 逐行给出的**其它商品**（R3：农村行的纤维、城镇行的纤维与铁）、货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   * ★★ <b>一个家户的创世库存</b>（H1；**行里不再有 {@code goods}** ⇒ 这是它的唯一拼写点）：口粮按阶层天数 （{@code 人口 × 该阶层天数} 天，见
+   * {@link #rationMilli}）+ 逐行给出的其它商品（R3：农村行的纤维、城镇行的纤维与铁）。
+   *
+   * <p>★ <b>只落正的量</b>（0 ⇒ 不落键，保持"空账"的纯形态）—— 与旧版 {@code row.goods} 的口径逐字相同。
+   */
+  static Map<CommodityId, Long> openingStock(
+      long population, String slot, Map<String, long[]> goodsByClass, int index) {
+    Map<CommodityId, Long> stock = new LinkedHashMap<>();
+    putStockIfPositive(stock, COMMODITY_GRAIN, rationMilli(population, slot));
+    for (Map.Entry<String, long[]> entry : goodsByClass.entrySet()) {
+      putStockIfPositive(stock, entry.getKey(), entry.getValue()[index]);
+    }
+    return stock;
+  }
+
+  /**
+   * ★★ **一个家户行**（H0.2 起与 §3.2 {@code ClassRow} 逐字段对应，**除 {@code meansOfProduction} 外** —— 那一项已按 K3
+   * 搬到 {@code Industry.capacity}）：身份 = {@code (residence, slot)}（格由它所在的 entry 给出）； 有效劳动 = 本行人口 ×
+   * **该池的人均劳动**（= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷ 池人口，见 {@link #laborMilli(List)}）、 自然需求 = **第 1
+   * 天**的口粮（{@link #firstDayRationMilli}；结算每天会覆写它，§八.8）、 货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   *
+   * <p>★★ **H1：本行没有 {@code goods}** —— 开缸库存（口粮按阶层天数 + R3 的纤维/铁）由 {@link #openingStock} 算好后 落进 actor
+   * 切片该家户的账本（{@link Seed#householdStocks()} ⇒ {@link HouseholdSeeder}）。
    *
    * <p>★★ **为什么"人均"而不是"逐行按自己的年龄构成"**：阶层比例把池子切成四份，而**没有任何数据**说清各阶层的年龄/性别构成 ⇒
    * 取池内人均（"阶层之间年龄性别同分布"这条**明说的**假设），不假装知道更多。默认系数下它与 R1 之前 `人口 × 580‰` **逐值相同**（池的年龄构成恰是 D4 preset
    * 时人均恒为 580），故真档的既有期望值不动。
    *
-   * <p>★ **人口为 0 的行**（该池在这格没人）：人口/劳动/需求全 0，库存只剩 {@code extraGoods}（若那份存量由**土地**派生 —— 如农村行的纤维，
-   * 则它仍在：**地不因没人种而消失**）。
+   * <p>★ **人口为 0 的行**（该池在这格没人）：人口/劳动/需求全 0 —— ★ 它的**开缸库存仍照算** （若那份存量由**土地**派生 ——
+   * 如农村行的纤维，则它仍在：**地不因没人种而消失**），只是记在 actor 侧的账本上（H1）。
    */
   private static Map<String, Object> cohortRow(
       ResidenceKind residence,
@@ -971,8 +1049,7 @@ public final class EconomySeeder {
       long population,
       int participationPerMille,
       long poolLaborMilli,
-      long poolCount,
-      Map<String, Object> extraGoods) {
+      long poolCount) {
     Map<String, Object> row = new LinkedHashMap<>();
     // ★★ **居住类型是身份的一维**（H0.1/R-N1-A）：少了它，同一格的农村贫农与城镇贫农会并成同一本账
     //   ⇒ "农村的余粮 + 城市的缺口"并到一起 ⇒ 城市不再饿死，但那不是因为修好了通道。
@@ -982,12 +1059,9 @@ public final class EconomySeeder {
     row.put("population", population);
     row.put("laborMilli", rowLaborMilli(population, poolLaborMilli, poolCount));
     row.put("participationPerMille", participationPerMille);
-    Map<String, Object> goods = new LinkedHashMap<>();
-    putIfPositive(goods, COMMODITY_GRAIN, rationMilli(population, slot));
-    for (Map.Entry<String, Object> entry : extraGoods.entrySet()) {
-      putIfPositive(goods, entry.getKey(), ((Number) entry.getValue()).longValue());
-    }
-    row.put("goods", goods);
+    // ★★ **H1：这里没有 {@code goods} 键**（裁定 D3-C/K1）—— 商品库存的唯一持久真源是 actor 切片里该家户的
+    //   {@code GoodsAccount}，开缸余额由 {@link #openingStock} 一次算好、经 {@link HouseholdSeeder} 落成那本账。
+    //   ★ 载荷里再写一份 = 同一事实的第二处拼写点，而且它会静默漂开（economy 侧已不再读它）。
     row.put("money", 0);
     row.put("debts", List.of());
     row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, firstDayRationMilli(population)));
@@ -999,6 +1073,14 @@ public final class EconomySeeder {
   private static void putIfPositive(Map<String, Object> goods, String commodity, long amount) {
     if (amount > 0L) {
       goods.put(commodity, amount);
+    }
+  }
+
+  /** 同上的**家户账本形态**（键是 {@link CommodityId}；同一口径：0 ⇒ 不落键）。★ 与上面那个同名会撞擦除 ⇒ 另起名。 */
+  private static void putStockIfPositive(
+      Map<CommodityId, Long> stock, String commodity, long amount) {
+    if (amount > 0L) {
+      stock.put(new CommodityId(commodity), amount);
     }
   }
 

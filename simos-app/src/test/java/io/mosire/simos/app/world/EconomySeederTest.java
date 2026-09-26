@@ -6,7 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
@@ -26,8 +30,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★★ <b>H0.2/H0.3（2026-09-27）后的载荷形状</b>：行 = <b>家户</b>，键 = {@code (格, 居住类型, 阶层)} ⇒ 每格
  * <b>两组四行</b>（农村 4 + 城镇 4）挂在 <b>entry 级</b>的 {@code classes} 上（产业节点里没有 {@code classes} 了）；
- * 亩/织机/作坊这些<b>产能</b>搬到该格对应产业的 {@code capacity}（旧版散在各行的 {@code meansOfProduction}）。
- * 旧版的第三组行（{@code weave} 那四行，人口恒 0）<b>不再存在</b>：它的纤维并入农村四行、织机成为纺织产业的产能。
+ * 亩/织机/作坊这些<b>产能</b>搬到该格对应产业的 {@code capacity}（旧版散在各行的 {@code meansOfProduction}）。 旧版的第三组行（{@code
+ * weave} 那四行，人口恒 0）<b>不再存在</b>：它的纤维并入农村四行、织机成为纺织产业的产能。
  *
  * <p>★ R1（T4）：播种器的输入是 {@code List<PopulationGroup>}，故夹具先经 {@code PopulationSeeder.groups(plan, 0)}
  * 把计划翻成 批次 —— **这正是生产路径的走法**（同一个方法在 {@code WorldgenInitializeTool} 里同时喂给 social.SeedGroups 与
@@ -39,6 +43,12 @@ import org.junit.jupiter.api.Test;
 class EconomySeederTest {
 
   private static final ObjectMapper JSON = SimosObjectMapper.create();
+
+  /** 粮（H1 起家户账本的键是 {@code CommodityId}）：与结算侧同字面量。 */
+  private static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
+
+  /** 纤维（R3：农田副产，也是织机的原料）。 */
+  private static final CommodityId FIBER = new CommodityId(EconomyVocabulary.FIBER_COMMODITY_ID);
 
   private static final HexCoord PLAINS_RURAL = new HexCoord(0, 0);
   private static final HexCoord HILLS_MIXED = new HexCoord(1, 0);
@@ -117,7 +127,51 @@ class EconomySeederTest {
     return total;
   }
 
-  /** Σ 各行某个**嵌套表**里的某键（如 {@code goods.fiber}）。 */
+  /**
+   * ★★ <b>H1：同一条 plan 交出的家户创世库存</b>（键 = 家户身份）。
+   *
+   * <p>★★ 载荷里的阶层行**不再带 {@code goods}**（裁定 D3-C/K1：商品库存的唯一真源是 actor 侧的 {@code GoodsAccount}）——
+   * 故"开缸余额"的断言改读这里，而它正是 {@link HouseholdSeeder} 拿去建账本的那一份 （{@code plan(...).householdStocks()}，与
+   * {@code economy.Seed} 同一个 plan）。
+   */
+  private static Map<CohortKey, Map<CommodityId, Long>> stocks() throws Exception {
+    return EconomySeeder.plan("Map1", PopulationSeeder.groups(plan(), 0L), TERRAIN::get)
+        .householdStocks();
+  }
+
+  /** 某格某居住类型那一组家户的某商品库存合计（H1：从上面那份账本读，逐格 = 该 entry 的 (q,r)）。 */
+  private static long sumStock(
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      JsonNode entry,
+      String residence,
+      CommodityId commodity) {
+    long total = 0L;
+    for (Map.Entry<CohortKey, Map<CommodityId, Long>> household : stocks.entrySet()) {
+      CohortKey key = household.getKey();
+      if (key.hex().equals(new HexCoord(entry.get("q").asInt(), entry.get("r").asInt()))
+          && key.residence().value().equals(residence)) {
+        total += household.getValue().getOrDefault(commodity, 0L);
+      }
+    }
+    return total;
+  }
+
+  /** 某一本家户账上某商品的余额（{@code slot} = 阶层 id；缺席 ⇒ 0）。 */
+  private static long stockOf(
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      JsonNode entry,
+      String residence,
+      String slot,
+      CommodityId commodity) {
+    CohortKey key =
+        new CohortKey(
+            new HexCoord(entry.get("q").asInt(), entry.get("r").asInt()),
+            ResidenceKind.parse(residence),
+            new SocialClassId(slot));
+    return stocks.getOrDefault(key, Map.of()).getOrDefault(commodity, 0L);
+  }
+
+  /** Σ 各行某个**嵌套表**里的某键（如 {@code naturalNeeds.grain}）。 */
   private static long sumOfNested(List<JsonNode> nodes, String group, String key) {
     long total = 0L;
     for (JsonNode node : nodes) {
@@ -130,8 +184,7 @@ class EconomySeederTest {
   }
 
   /**
-   * 某产业在本格的**产能总量**（H0.3/K3：旧版散在各行的 {@code meansOfProduction} 里、靠 Σ 还原；现在只有一个数）。
-   * 缺键 ⇒ 0（该生产资料本格没有）。
+   * 某产业在本格的**产能总量**（H0.3/K3：旧版散在各行的 {@code meansOfProduction} 里、靠 Σ 还原；现在只有一个数）。 缺键 ⇒ 0（该生产资料本格没有）。
    */
   private static long capacity(JsonNode entry, String industryId, String asset) {
     JsonNode capacity = industry(entry, industryId).get("capacity");
@@ -205,7 +258,9 @@ class EconomySeederTest {
             .isIn("rural", "urban");
         assertThat(row.get("slot").asText()).isNotBlank();
         assertThat(row.has("meansOfProduction")).as("★ H0.3：行上没有生产资料").isFalse();
-        assertThat(row.toString()).as("★ 行里没有任何产业 id（没有 `farm@` / `weave@` / `craft@`）").doesNotContain("@");
+        assertThat(row.toString())
+            .as("★ 行里没有任何产业 id（没有 `farm@` / `weave@` / `craft@`）")
+            .doesNotContain("@");
       }
     }
   }
@@ -216,11 +271,11 @@ class EconomySeederTest {
    * <p>★ 旧用例钉的三件事各归其位（**判别力一条不减**）：
    *
    * <ul>
-   *   <li>"织机总数 = 农村人口 ÷ {@link EconomySeeder#RURAL_CAPITA_PER_LOOM}（残差按最大余数法分派 ⇒ Σ 一分不丢）"
-   *       ⇒ 现在由**一个数**直接成立（{@code weave@hex} 的 {@code capacity[TOOL]}），不再需要"四行 Σ"那一步；
+   *   <li>"织机总数 = 农村人口 ÷ {@link EconomySeeder#RURAL_CAPITA_PER_LOOM}（残差按最大余数法分派 ⇒ Σ 一分不丢）" ⇒
+   *       现在由**一个数**直接成立（{@code weave@hex} 的 {@code capacity[TOOL]}），不再需要"四行 Σ"那一步；
    *   <li>"初始纤维 = 本格农田**一个周期**的纤维副产" ⇒ 同一份量、现在落在**农村四行**（同一批人的同一本账）；
-   *   <li>"那四行不带人口" ⇒ **不再是四行**：农村人口只有一本账（{@code (格,RURAL,阶层)}），
-   *       而织布仍靠**劳动配额**（900‰ 农业 + 100‰ 纺织）支撑，不是第二份人口。
+   *   <li>"那四行不带人口" ⇒ **不再是四行**：农村人口只有一本账（{@code (格,RURAL,阶层)}）， 而织布仍靠**劳动配额**（900‰ 农业 + 100‰
+   *       纺织）支撑，不是第二份人口。
    * </ul>
    *
    * <p>★ 判别力：把 {@code capacity[TOOL]} 去掉 ⇒ 纺织规模恒 0 ⇒ 真档里织不出布（{@code EconomyRealScaleClothTest} 红）；
@@ -241,7 +296,8 @@ class EconomySeederTest {
                 assertThat(node.get("population").asLong())
                     .as("农闲织布是同一批人的第二份活，不是第二份人口")
                     .isPositive());
-    assertThat(sumOfNested(rural, "goods", "fiber"))
+    // ★ H1：纤维从**家户账本**读（载荷的行里没有 goods）。
+    assertThat(sumStock(stocks(), entry, "rural", FIBER))
         .as("★★ 初始纤维 = 本格农田**一个周期**的纤维副产（明标「估计来源」；把田里的纤维搬到织机上是 V8 的活）")
         .isEqualTo(
             3_100L
@@ -316,13 +372,21 @@ class EconomySeederTest {
   @Test
   void theSeededDailyNeedIsTheFirstDaysRationAndStockFollowsTheClassDayTable() throws Exception {
     JsonNode payload = payload();
+    Map<CohortKey, Map<CommodityId, Long>> stocks = stocks();
 
-    List<JsonNode> farm = cohortRows(entry(payload, 0, 0), "rural");
+    JsonNode plainsRural = entry(payload, 0, 0);
+    List<JsonNode> farm = cohortRows(plainsRural, "rural");
     assertThat(sumOfNested(farm, "naturalNeeds", "grain"))
         .as("1000 人第 1 天的需求合计（逐行向下取整：83,332，比整格的 83,333 少 1）")
         .isEqualTo(83_332L);
-    assertThat(sumOfNested(farm, "goods", "grain")).as("按阶层天数配的储备合计").isEqualTo(5_416_666L);
-    assertThat(sumOfNested(farm, "goods", "grain"))
+    // ★★ H1：**行里没有 goods 这一栏**（载荷的阶层行不再带它）—— 开缸余额改读家户账本那一份。
+    assertThat(farm)
+        .as("阶层行里不得再有 goods 键（库存的唯一真源是 actor 侧的 GoodsAccount）")
+        .allSatisfy(row -> assertThat(row.has("goods")).isFalse());
+    assertThat(sumStock(stocks, plainsRural, "rural", GRAIN))
+        .as("按阶层天数配的储备合计")
+        .isEqualTo(5_416_666L);
+    assertThat(sumStock(stocks, plainsRural, "rural", GRAIN))
         .as("★ 判别力：与旧口径（人人 60 天）必须不同，否则参数表没被用到")
         .isNotEqualTo(4_980_000L);
     // 逐行：需求 == 该行第 1 天的口粮；储备 == 该行人口 × 该槽位天数的**累计**口粮。
@@ -332,16 +396,17 @@ class EconomySeederTest {
       assertThat(row.get("naturalNeeds").get("grain").asLong())
           .as("逐值：需求 == 该行第 1 天的口粮")
           .isEqualTo(EconomyVocabulary.dailyRationMilli(population, 1L));
-      assertThat(row.get("goods").get("grain").asLong())
+      assertThat(stockOf(stocks, plainsRural, "rural", row.get("slot").asText(), GRAIN))
           .as("逐值：储备 == cumulativeRationMilli(人口, %d 天)（%s）", days, row.get("slot").asText())
           .isEqualTo(EconomyVocabulary.cumulativeRationMilli(population, days));
     }
 
-    List<JsonNode> craft = cohortRows(entry(payload, 1, 0), "urban");
+    JsonNode hillsMixed = entry(payload, 1, 0);
+    List<JsonNode> craft = cohortRows(hillsMixed, "urban");
     assertThat(sumOfNested(craft, "naturalNeeds", "grain"))
         .as("200 人（90/70/30/10）第 1 天的需求合计")
         .isEqualTo(7_500L + 5_833L + 2_500L + 833L);
-    assertThat(sumOfNested(craft, "goods", "grain"))
+    assertThat(sumStock(stocks, hillsMixed, "urban", GRAIN))
         .as("储备合计 = Σ cumulativeRationMilli(人口, 该阶层天数)")
         .isEqualTo(1_083_333L);
   }
@@ -472,8 +537,8 @@ class EconomySeederTest {
   }
 
   /**
-   * 槽位 → 劳动投入率上限（‰）。★ 三个产业的槽位表**逐值相同**（同一套四阶层 + 950/900/750/100）⇒ 取该格任一产业即可；
-   * 这也是 H0.2 之后"哪里能查到参与率"的唯一现成来源（行上不再有产业）。
+   * 槽位 → 劳动投入率上限（‰）。★ 三个产业的槽位表**逐值相同**（同一套四阶层 + 950/900/750/100）⇒ 取该格任一产业即可； 这也是 H0.2
+   * 之后"哪里能查到参与率"的唯一现成来源（行上不再有产业）。
    */
   private static Map<String, Integer> slotParticipation(JsonNode entry) {
     Map<String, Integer> out = new LinkedHashMap<>();

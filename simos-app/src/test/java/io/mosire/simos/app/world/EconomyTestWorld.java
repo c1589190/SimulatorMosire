@@ -1,6 +1,7 @@
 package io.mosire.simos.app.world;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorMeta;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
@@ -26,8 +27,8 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
@@ -135,8 +136,10 @@ public final class EconomyTestWorld {
    * operator"这件事只有同时看得见两片的协调器（{@link
    * io.mosire.simos.app.time.EconomyOwnershipTimeParticipant}）做得到。actor 片缺席 ⇒ 协调器当场抛（装配故障）。
    *
-   * <p>★ 创世的账本是空的（{@code ActorData.empty()}）：本夹具刻意**不给 actor 预先造账** —— 第一笔账必须由产权条目
-   * 打开（那正是"键从值派生"要走的路径）。
+   * <p>★★ <b>H1：家户 actor 与它们的账本在创世就位</b>（{@link HouseholdSeeder#books}）—— 商品库存的唯一真源是 actor 侧的
+   * {@code GoodsAccount}（{@code ClassRow} 里没有 {@code goods}），而日结算的消费/投入都要读那本账 （{@code
+   * EconomyDayStepper} 的会话工作副本由它载入）⇒ 夹具必须与真播种器**同形**地起账。 ★ 账本的余额 = {@link #openingStock} 那一份（与旧版行里的
+   * {@code goods} 逐值相同）。
    */
   public static SimulationState genesis() {
     StateRef ref = new StateRef(new BranchId("main"), new RevisionId(1));
@@ -144,21 +147,96 @@ public final class EconomyTestWorld {
     Map<String, Snapshot> modules = new LinkedHashMap<>();
     EconomyData data = data();
     modules.put("economy", new EconomySnapshot(ref, at, data));
-    modules.put("actor", new ActorSnapshot(ref, at, ActorData.empty()));
+    modules.put("actor", new ActorSnapshot(ref, at, books()));
     return new SimulationState(new StateMeta(ref, at), modules, InMemoryInfoSystem.empty());
+  }
+
+  /**
+   * ★★ <b>创世的家户账本</b>（H1）：{@link HouseholdSeeder#books} 用**同一套身份**（{@code HouseholdActors}）建
+   * "每格两组四行"的 actor + 账，余额 = 本夹具写死的开缸库存（见 {@link #openingStock}）。
+   *
+   * <p>★ 与真播种路径（{@code economy.Seed} + {@code actor.Seed} 同批）**逐字段同形**：id 由契约拼、账户键 = {@code (actor,
+   * hex)}、空账也建（人口 0 的那一组）。
+   */
+  public static ActorData books() {
+    ActorData books = HouseholdSeeder.books(openingStocks());
+    return books.withMeta(Optional.of(new ActorMeta(MAP_ID, 0L, HouseholdSeeder.RULES_VERSION)));
+  }
+
+  /**
+   * 逐家户的开缸库存（**可变的新表**：会话工作副本由它拷出来，见 {@link #householdGoods()}）。
+   *
+   * <p>★ 它由 {@link #data(Map)} **同一条构造**顺手记下 ⇒ "行"与"账"逐格同源（不可能漂开）。
+   */
+  public static Map<CohortKey, Map<CommodityId, Long>> openingStocks() {
+    Map<CohortKey, Map<CommodityId, Long>> stocks = new LinkedHashMap<>();
+    data(stocks);
+    return stocks;
+  }
+
+  /**
+   * ★★ <b>会话工作副本的起点</b>（{@code EconomyDayStepper} 的入参）：开缸库存的一份**可变深拷贝**。
+   *
+   * <p>★ 每个用例各取一份：副本会被日结算**就地更新** ⇒ 共享同一份会让用例之间互相污染。
+   */
+  public static Map<CohortKey, Map<CommodityId, Long>> householdGoods() {
+    Map<CohortKey, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : openingStocks().entrySet()) {
+      copy.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
+    }
+    return copy;
   }
 
   /** 五格的经济状态（已激活；{@code lastClosedCycle} 空 = 还没关过账）。 */
   public static EconomyData data() {
+    return data(new LinkedHashMap<>());
+  }
+
+  /**
+   * 同上，但把**逐家户的开缸库存**顺手记进 {@code stocks}（H1：行里不再有 {@code goods}，库存住在 actor 账本上）。
+   *
+   * <p>★ 只有一处构造：{@link #data()} 给一张丢弃的表、{@link #openingStocks()} 收下它 ⇒ 两条路不可能漂开。
+   */
+  private static EconomyData data(Map<CohortKey, Map<CommodityId, Long>> stocks) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     // (0,0) 平原 1000 人 / (1,0) 低丘 500 人 / (2,0) 只有城市 300 人。
-    farm(industries, classes, supply, allocations, 0, 0, 1000L, PLAINS_LAND_MILLI_MU, Stock.NORMAL);
-    farm(industries, classes, supply, allocations, 1, 0, 500L, HILLS_LAND_MILLI_MU, Stock.NORMAL);
-    farm(industries, classes, supply, allocations, 2, 0, 0L, PLAINS_LAND_MILLI_MU, Stock.NORMAL);
-    craft(industries, classes, supply, allocations, 2, 0, 300L);
+    farm(
+        industries,
+        classes,
+        supply,
+        allocations,
+        0,
+        0,
+        1000L,
+        PLAINS_LAND_MILLI_MU,
+        Stock.NORMAL,
+        stocks);
+    farm(
+        industries,
+        classes,
+        supply,
+        allocations,
+        1,
+        0,
+        500L,
+        HILLS_LAND_MILLI_MU,
+        Stock.NORMAL,
+        stocks);
+    farm(
+        industries,
+        classes,
+        supply,
+        allocations,
+        2,
+        0,
+        0L,
+        PLAINS_LAND_MILLI_MU,
+        Stock.NORMAL,
+        stocks);
+    craft(industries, classes, supply, allocations, 2, 0, 300L, stocks);
     // (3,0) 有粮可借 / (4,0) 无粮可借。
     farm(
         industries,
@@ -169,7 +247,8 @@ public final class EconomyTestWorld {
         0,
         LENDER_HEX_POPULATION,
         PLAINS_LAND_MILLI_MU,
-        Stock.LANDLORD_ZERO_RICH_SURPLUS);
+        Stock.LANDLORD_ZERO_RICH_SURPLUS,
+        stocks);
     farm(
         industries,
         classes,
@@ -179,15 +258,16 @@ public final class EconomyTestWorld {
         0,
         1000L,
         PLAINS_LAND_MILLI_MU,
-        Stock.LANDLORD_ZERO_OTHERS_EXACT);
+        Stock.LANDLORD_ZERO_OTHERS_EXACT,
+        stocks);
     // ★★ **R3：非土地生产**（有农村人口的格各一座家庭纺织）—— 它让"份外之地"这件事在夹具里就成立：
     //   织机不占地、纤维与织机都不来自土地那一路，规模由**最紧约束**（劳动 vs 织机 vs 纤维）决定。
     //   ★ 劳动那一条在 {@link #farm} 里与农业一起发（同一批农村人的 900‰/100‰）—— 一格的农村劳动只在一处决定。
     //   ★ (2,0) 农业人口为 0 ⇒ **没有纺织**（配额为 0 ⇒ 纺织行没有活干 ⇒ 连产业都不建）。
-    weaving(industries, classes, 0, 0, 1000L);
-    weaving(industries, classes, 1, 0, 500L);
-    weaving(industries, classes, 3, 0, LENDER_HEX_POPULATION);
-    weaving(industries, classes, 4, 0, 1000L);
+    weaving(industries, classes, 0, 0, 1000L, stocks);
+    weaving(industries, classes, 1, 0, 500L, stocks);
+    weaving(industries, classes, 3, 0, LENDER_HEX_POPULATION, stocks);
+    weaving(industries, classes, 4, 0, 1000L, stocks);
     // ★★ H0.2：**每格两组四行**（与真播种器同形）—— 上面的构造只为"有城市人口的格"建了城镇四行，
     //   这里把缺的那一组补成**空账**（人口/劳动/需求全 0）。★ 用 {@code putIfAbsent} ⇒ 已建的那一组
     //   （(2,0) 的城镇四行）**一个数都不动**；★ 两条判据靠它才成立：① 行集逐格同形（H1 的家户 actor 按
@@ -197,10 +277,11 @@ public final class EconomyTestWorld {
         for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
           CohortKey key =
               new CohortKey(
-                  new HexCoord(q, 0),
-                  residence,
-                  new SocialClassId(EconomySeeder.CLASS_IDS[i]));
+                  new HexCoord(q, 0), residence, new SocialClassId(EconomySeeder.CLASS_IDS[i]));
           classes.putIfAbsent(key, emptyRow(key, i));
+          // ★★ H1：**空账也要有账本**（与真播种器同口径：每格两组四行各一本，余额可以全 0）——
+          //   少了它，日结算在 load 阶段就抛（"这个家户在这一格没有账"与"它的账是空的"是两件事）。
+          stocks.putIfAbsent(key, new LinkedHashMap<>());
         }
       }
     }
@@ -225,9 +306,9 @@ public final class EconomyTestWorld {
   /**
    * 逐产业按 regime 推默认关系（{@link RegimeRelations} 是唯一拼写点）。
    *
-   * <p>★ H0.2：默认关系里的 cohort 受方**必须带居住维** ⇒ 多传一份"这个产业的家户住哪种居住类型"。★ 它的事实来源是
-   * **劳动配额表的批次前缀**（{@link ResidenceKind#ofLot}，唯一拼写点）—— 真档由 {@code EconomyPayloads} 在载荷边缘算，
-   * 本夹具按同一个判据从**合成的批次 id** 取（{@link #syntheticLot}）。
+   * <p>★ H0.2：默认关系里的 cohort 受方**必须带居住维** ⇒ 多传一份"这个产业的家户住哪种居住类型"。★ 它的事实来源是 **劳动配额表的批次前缀**（{@link
+   * ResidenceKind#ofLot}，唯一拼写点）—— 真档由 {@code EconomyPayloads} 在载荷边缘算， 本夹具按同一个判据从**合成的批次 id**
+   * 取（{@link #syntheticLot}）。
    */
   private static Map<IndustryId, ProductionRelation> relations(
       Map<IndustryId, Industry> industries) {
@@ -262,7 +343,8 @@ public final class EconomyTestWorld {
       int r,
       long population,
       long landMilliMu,
-      Stock stock) {
+      Stock stock,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.FARM, q, r);
     long[] people = EconomySeeder.splitByShares(population, EconomySeeder.CLASS_SHARE_PER_MILLE);
     industries.put(
@@ -283,7 +365,7 @@ public final class EconomyTestWorld {
             // ★★ 必须保持空：5 格端到端夹具是"未配投入 ⇒ 投入那一路不施加约束"的对照
             Map.of()));
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
-      addRow(classes, ruralKey(q, r, i), i, people[i], stock, Map.of());
+      addRow(classes, ruralKey(q, r, i), i, people[i], stock, Map.of(), stocks);
     }
     // ★★ **同一批农村人的劳动分成两条配额**（R3；spec §四 的压力测试）：农业 900‰ + 家庭纺织 100‰。
     //   ★ 两条之和 = 该池的当日劳动（{@code ruralDaily}）⇒ 与 R2 的"一池一产业"逐值同源；
@@ -311,17 +393,13 @@ public final class EconomyTestWorld {
     }
   }
 
-  /**
-   * 一本**空账**（该格那一组家户在本夹具里没有人）：人口/劳动全 0、库存空、需求 = 那条 0 的粮
-   * —— ★ 与真播种器对"人口为 0 的那一组"写下的形状逐字同形（H0.2）。
-   */
+  /** 一本**空账**（该格那一组家户在本夹具里没有人）：人口/劳动全 0、库存空、需求 = 那条 0 的粮 —— ★ 与真播种器对"人口为 0 的那一组"写下的形状逐字同形（H0.2）。 */
   private static ClassRow emptyRow(CohortKey key, int index) {
     return new ClassRow(
         key,
         0L,
         0L,
         EconomySeeder.CLASS_LABOR_PER_MILLE[index],
-        Map.of(),
         0L,
         List.of(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(0L, 1L)),
@@ -331,17 +409,13 @@ public final class EconomyTestWorld {
   /** 农村家户行的键（{@code (格, RURAL, 阶层)}；H0.2 的键形状）。 */
   private static CohortKey ruralKey(int q, int r, int index) {
     return new CohortKey(
-        new HexCoord(q, r),
-        ResidenceKind.RURAL,
-        new SocialClassId(EconomySeeder.CLASS_IDS[index]));
+        new HexCoord(q, r), ResidenceKind.RURAL, new SocialClassId(EconomySeeder.CLASS_IDS[index]));
   }
 
   /** 城镇家户行的键（{@code (格, URBAN, 阶层)}）。 */
   private static CohortKey urbanKey(int q, int r, int index) {
     return new CohortKey(
-        new HexCoord(q, r),
-        ResidenceKind.URBAN,
-        new SocialClassId(EconomySeeder.CLASS_IDS[index]));
+        new HexCoord(q, r), ResidenceKind.URBAN, new SocialClassId(EconomySeeder.CLASS_IDS[index]));
   }
 
   /**
@@ -360,7 +434,8 @@ public final class EconomyTestWorld {
       Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
       int r,
-      long population) {
+      long population,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.CRAFT, q, r);
     long[] people = EconomySeeder.splitByShares(population, EconomySeeder.CLASS_SHARE_PER_MILLE);
     long workshops = population / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
@@ -391,7 +466,8 @@ public final class EconomyTestWorld {
           people[i],
           Stock.NORMAL,
           // ★ 原料库存 = 该家户分到的作坊数 × 一座作坊**一个周期**的用量（自洽，不是一个拍出来的总量）。
-          Map.of(FIBER, shopByClass[i] * fiberPerShop, IRON, shopByClass[i] * ironPerShop));
+          Map.of(FIBER, shopByClass[i] * fiberPerShop, IRON, shopByClass[i] * ironPerShop),
+          stocks);
     }
     addSupply(supply, id, people, population);
     addAllocation(
@@ -418,7 +494,8 @@ public final class EconomyTestWorld {
       Map<CohortKey, ClassRow> classes,
       int q,
       int r,
-      long ruralPopulation) {
+      long ruralPopulation,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.WEAVE, q, r);
     long looms = ruralPopulation / EconomySeeder.RURAL_CAPITA_PER_LOOM;
     long[] loomByClass = EconomySeeder.splitByShares(looms, EconomySeeder.CLASS_SHARE_PER_MILLE);
@@ -439,37 +516,24 @@ public final class EconomyTestWorld {
     // ★★ H0.2：**纤维并入农村四行**（旧版落在"家庭纺织"那四行上）—— 织布是农村池的活，账只能记在自家户名下。
     //   ★ 逐值同式：每户分到的织机数 × 一台织机一个周期的用量（夹具的"估计来源"，与真档的"田里一个周期的副产"同性质）。
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
-      mergeGoods(classes, ruralKey(q, r, i), FIBER, loomByClass[i] * fiberPerLoom);
+      mergeStock(stocks, ruralKey(q, r, i), FIBER, loomByClass[i] * fiberPerLoom);
     }
   }
 
-  /** 把一份商品并进已有家户行（H0.2 的"纤维并入农村行"用它；键不存在 ⇒ 抛，不静默新建一本账）。 */
-  private static void mergeGoods(
-      Map<CohortKey, ClassRow> classes, CohortKey key, CommodityId commodity, long amount) {
+  /** 把一份商品并进已有家户的**账本**（H0.2 的"纤维并入农村行"用它；键不存在 ⇒ 抛，不静默新建一本账）。 */
+  private static void mergeStock(
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      CohortKey key,
+      CommodityId commodity,
+      long amount) {
     if (amount <= 0L) {
       return;
     }
-    ClassRow row = classes.get(key);
-    if (row == null) {
-      throw new IllegalStateException("家户行不存在，无法并入库存: " + key);
+    Map<CommodityId, Long> stock = stocks.get(key);
+    if (stock == null) {
+      throw new IllegalStateException("家户账本不存在，无法并入库存: " + key);
     }
-    Map<CommodityId, Long> goods = new LinkedHashMap<>(row.goods());
-    goods.merge(commodity, amount, Long::sum);
-    classes.put(key, withGoods(row, goods));
-  }
-
-  /** 同内容的行、换一份库存表（{@code ClassRow} 是记录，没有 with* 访问器；本夹具只在"并入纤维"这一处用）。 */
-  private static ClassRow withGoods(ClassRow row, Map<CommodityId, Long> goods) {
-    return new ClassRow(
-        row.key(),
-        row.population(),
-        row.laborMilli(),
-        row.participationPerMille(),
-        goods,
-        row.money(),
-        row.debts(),
-        row.naturalNeeds(),
-        row.effectiveDemand());
+    stock.merge(commodity, amount, Long::sum);
   }
 
   /** 每座作坊每周期产布（匹）：真档口径（{@link EconomySeeder#CLOTH_PER_WORKSHOP_PER_CYCLE}）。 */
@@ -541,11 +605,11 @@ public final class EconomyTestWorld {
   }
 
   /**
-   * 一个**家户行**（H0.2：键 = {@code (格, 居住类型, 阶层)}；**没有 {@code meansOfProduction}** —— 产能已在
-   * {@code Industry.capacity} 上）。
+   * 一个**家户行**（H0.2：键 = {@code (格, 居住类型, 阶层)}；**没有 {@code meansOfProduction}** —— 产能已在 {@code
+   * Industry.capacity} 上）。
    *
-   * <p>★ 人口/劳动/需求全按真档口径折算：需求 = **第 1 天**的口粮（逐日差分，不是"每人每日的量 × 人口"），
-   * 初始粮 = {@link EconomySeeder#rationMilli}；{@code extraGoods} = 该家户的其它商品（纤维 / 铁）。
+   * <p>★ 人口/劳动/需求全按真档口径折算：需求 = **第 1 天**的口粮（逐日差分，不是"每人每日的量 × 人口"）， 初始粮 = {@link
+   * EconomySeeder#rationMilli}；{@code extraGoods} = 该家户的其它商品（纤维 / 铁）。
    */
   private static void addRow(
       Map<CohortKey, ClassRow> classes,
@@ -553,7 +617,8 @@ public final class EconomyTestWorld {
       int index,
       long population,
       Stock stock,
-      Map<CommodityId, Long> extraGoods) {
+      Map<CommodityId, Long> extraGoods,
+      Map<CohortKey, Map<CommodityId, Long>> stocks) {
     String slot = EconomySeeder.CLASS_IDS[index];
     // ★★ **第 1 天**的需求（逐日差分；不是"每人每日的量 × 人口"）—— 这一格从第 1 天起就是"恰好"形态。
     long firstDayNeed = EconomyVocabulary.dailyRationMilli(population, 1L);
@@ -577,6 +642,7 @@ public final class EconomyTestWorld {
                   ? 0L
                   : EconomyVocabulary.cumulativeRationMilli(population, 1L);
         };
+    // ★★ H1：开缸库存进的是**家户账本**（{@code GoodsAccount}），不是阶层行 —— 行里已经没有 {@code goods}。
     Map<CommodityId, Long> openingStock = new LinkedHashMap<>();
     if (goods > 0L) {
       openingStock.put(GRAIN, goods);
@@ -586,6 +652,7 @@ public final class EconomyTestWorld {
         openingStock.put(entry.getKey(), entry.getValue());
       }
     }
+    stocks.put(key, openingStock);
     classes.put(
         key,
         new ClassRow(
@@ -593,7 +660,6 @@ public final class EconomyTestWorld {
             population,
             EconomySeeder.laborMilli(population),
             EconomySeeder.CLASS_LABOR_PER_MILLE[index],
-            openingStock,
             0L,
             List.of(),
             Map.of(GRAIN, firstDayNeed),

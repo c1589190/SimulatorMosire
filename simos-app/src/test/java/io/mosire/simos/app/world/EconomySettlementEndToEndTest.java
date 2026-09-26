@@ -11,6 +11,7 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.time.EconomyOwnershipTimeParticipant;
+import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -200,14 +201,13 @@ class EconomySettlementEndToEndTest {
    * ⇒ 布入账 = **139,678**（逐行取整少 2）
    * </pre>
    *
-   * <p>★ <b>旧值 209,518 → 新值 139,678 的理由</b>：规模 6 → 4（同上那条"逐行取整"），净产 349,200 → 232,800。
-   * 这是 H0.4 现行投入口径的后果（小夹具上相对影响大；真档 35 座量级时同一处取整影响可忽略），**不是**放宽断言。
+   * <p>★ <b>旧值 209,518 → 新值 139,678 的理由</b>：规模 6 → 4（同上那条"逐行取整"），净产 349,200 → 232,800。 这是 H0.4
+   * 现行投入口径的后果（小夹具上相对影响大；真档 35 座量级时同一处取整影响可忽略），**不是**放宽断言。
    */
   private static final long CRAFT_CLOTH_INTAKE = 69_433L + 51_161L + 18_272L + 812L;
 
   /** 本周期实际开动的作坊（见 {@link #CRAFT_CLOTH_INTAKE} 的算式）；创世时的作坊总数是它的 capacity。 */
   private static final long CRAFT_WORKSHOPS_OPENED = 4L;
-
 
   /**
    * ★★ <b>(0,0) 创世时的织机总数与其中**本周期实际开动**的台数</b>（H0.2/H0.4 起这两者不再相等）。
@@ -221,8 +221,7 @@ class EconomySettlementEndToEndTest {
    *            故那时劳动 49 最紧）。
    * </pre>
    *
-   * <p>★ 这条"逐行取整少 2"是 H0.4 现行口径的直接后果（如实记，不是"凑数"）；真档的规模是 740 台量级 ⇒ 同一处取整的
-   * 相对影响可忽略。
+   * <p>★ 这条"逐行取整少 2"是 H0.4 现行口径的直接后果（如实记，不是"凑数"）；真档的规模是 740 台量级 ⇒ 同一处取整的 相对影响可忽略。
    */
   private static final long WEAVE_LOOMS_SEEDED = 1_000L / EconomySeeder.RURAL_CAPITA_PER_LOOM;
 
@@ -247,8 +246,8 @@ class EconomySettlementEndToEndTest {
    * ⇒ 布入账 = **977,758**（逐行取整少 2）
    * </pre>
    *
-   * <p>★ <b>旧值 998,129 → 新值 977,758 的理由</b>：规模 49 → 48（见 {@link #WEAVE_LOOMS_SEEDED} 那条"逐行取整"），
-   * 净产 1,425,900 → 1,396,800。这是 H0.4 现行投入口径的后果，**不是**放宽断言（逐值照旧钉死）。
+   * <p>★ <b>旧值 998,129 → 新值 977,758 的理由</b>：规模 49 → 48（见 {@link #WEAVE_LOOMS_SEEDED} 那条"逐行取整"）， 净产
+   * 1,425,900 → 1,396,800。这是 H0.4 现行投入口径的后果，**不是**放宽断言（逐值照旧钉死）。
    */
   private static final long WEAVE_CLOTH_INTAKE = 486_037L + 358_133L + 127_904L + 5_684L;
 
@@ -280,22 +279,24 @@ class EconomySettlementEndToEndTest {
   void oneDayConsumesEachRowsFirstDayRationPerHex() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 1);
       EconomyData after = economy(core);
+      ActorData afterBooks = actor(core);
 
-      assertThat(hexDecrease(before, after, 0, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 0, 0))
           .as("(0,0) 450/350/150/50 四行各自第 1 天口粮之和")
           .isEqualTo(hexDayNeed(before, 0, 0, 1L));
-      assertThat(hexDecrease(before, after, 1, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 1, 0))
           .as("(1,0) 500 人四行之和")
           .isEqualTo(hexDayNeed(before, 1, 0, 1L));
-      assertThat(hexDecrease(before, after, 2, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 2, 0))
           .as("(2,0) 只有城市的 300 人（手工业行）")
           .isEqualTo(hexDayNeed(before, 2, 0, 1L));
-      assertThat(hexDecrease(before, after, 3, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 3, 0))
           .as("(3,0) 地主缺口由富农借粮补上 ⇒ 全格仍恰好吃满各自的口粮")
           .isEqualTo(hexDayNeed(before, 3, 0, 1L));
-      assertThat(hexDecrease(before, after, 4, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 4, 0))
           .as("(4,0) 无粮可借 ⇒ 地主那 50 人的口粮吃不到（未满足的部分不凭空造粮）")
           .isEqualTo(hexDayNeed(before, 4, 0, 1L) - rationOn(50L, 1L));
       assertThat(hexDayNeed(before, 4, 0, 1L) - rationOn(50L, 1L))
@@ -317,14 +318,16 @@ class EconomySettlementEndToEndTest {
   void nDaysConsumeTheCumulativeRationOfThoseDaysPerHex() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 5);
       EconomyData after = economy(core);
+      ActorData afterBooks = actor(core);
 
-      assertThat(hexDecrease(before, after, 0, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 0, 0))
           .as("(0,0) 头 5 天累计（= 416,666；旧的 5 × 83,000 = 415,000 会丢掉残差）")
           .isEqualTo(hexRationOver(before, 0, 0, 5L));
       assertThat(hexRationOver(before, 0, 0, 5L)).as("★ 绝对锚").isEqualTo(416_666L);
-      assertThat(hexDecrease(before, after, 1, 0))
+      assertThat(hexDecrease(beforeBooks, before, afterBooks, after, 1, 0))
           .as("(1,0) 头 5 天累计（= 208,332）")
           .isEqualTo(hexRationOver(before, 1, 0, 5L));
       assertThat(hexRationOver(before, 1, 0, 5L)).as("★ 绝对锚").isEqualTo(208_332L);
@@ -338,6 +341,7 @@ class EconomySettlementEndToEndTest {
     try (CoreSimos core = freshCore()) {
       advance(core, 1);
       EconomyData after = economy(core);
+      ActorData afterBooks = actor(core);
 
       // (3,0)：地主（50 人）缺第 1 天口粮 4,166（= dailyRationMilli(50, 1)）；富农当日有**真余粮**
       //   （120 天自需 + 20 万 —— V6 §7.1① 修夹具：60 天不构成余粮）⇒ 恰好一条实物债。
@@ -350,9 +354,7 @@ class EconomySettlementEndToEndTest {
           .as("本金 = 缺口 = 该行第 1 天的口粮")
           .isEqualTo(EconomyTestWorld.LENDER_HEX_LANDLORD_DEFICIT);
       assertThat(debt.debtor()).isEqualTo(landlordKey);
-      assertThat(debt.creditor())
-          .as("债权人 = 同格有**余粮**的富农")
-          .isEqualTo(ruralKey(3, 0, RICH));
+      assertThat(debt.creditor()).as("债权人 = 同格有**余粮**的富农").isEqualTo(ruralKey(3, 0, RICH));
       assertThat(debt.commodity()).as("实物债（粮）").contains(GRAIN);
       assertThat(debt.ratePerMillePerCycle()).as("每周期 20‰").isEqualTo(20);
       assertThat(debt.dueCycle()).as("到期周期 = 当前周期 + 1 = 2").isEqualTo(2L);
@@ -364,27 +366,23 @@ class EconomySettlementEndToEndTest {
           .isEqualTo("debt-c1-3_0|rural|landlord>3_0|rural|rich_peasant-grain")
           .doesNotContain(".");
       assertThat(after.debts()).as("整场只此一条债").hasSize(1);
-      assertThat(landlord.goods().getOrDefault(GRAIN, 0L)).as("地主借完就归零（它借的是缺口全额）").isZero();
+      assertThat(householdGoods(afterBooks, landlordKey, GRAIN)).as("地主借完就归零（它借的是缺口全额）").isZero();
       // ★ 放贷方**自己没被借空**（V6 §7.1①）：富农的缸 = 120 天自需 + 20 万 − 自己第 1 天那一顿 − 借出的 4,166。
       ClassRow richRow = after.classes().get(ruralKey(3, 0, RICH));
-      assertThat(richRow.goods().getOrDefault(GRAIN, 0L))
+      assertThat(householdGoods(afterBooks, richRow.key(), GRAIN))
           .as("★ 富农借出后缸里的逐值余额（保留额那一份没被借走）")
           .isEqualTo(
               EconomyTestWorld.richSurplusOpeningStock(richRow.population())
                   - EconomyVocabulary.dailyRationMilli(richRow.population(), 1L)
                   - EconomyTestWorld.LENDER_HEX_LANDLORD_DEFICIT);
-      assertThat(richRow.goods().getOrDefault(GRAIN, 0L))
+      assertThat(householdGoods(afterBooks, richRow.key(), GRAIN))
           .as("★ 等价说法：缸里仍 ≥ 它本周期**剩下的**自需（借出后它照旧吃得饱）")
           .isGreaterThanOrEqualTo(
               EconomyVocabulary.cumulativeRationMilli(richRow.population(), 120L)
                   - EconomyVocabulary.cumulativeRationMilli(richRow.population(), 1L));
 
       // (4,0)：地主同样缺，但其余各行恰好吃干 ⇒ 无人可借 ⇒ 一条债都没有。
-      assertThat(
-              after
-                  .classes()
-                  .get(ruralKey(4, 0, LANDLORD))
-                  .debts())
+      assertThat(after.classes().get(ruralKey(4, 0, LANDLORD)).debts())
           .as("无粮可借 ⇒ 不产生债务（也不凭空造粮）")
           .isEmpty();
     }
@@ -397,10 +395,11 @@ class EconomySettlementEndToEndTest {
     try (CoreSimos core = freshCore()) {
       advance(core, 119);
       EconomyData beforeHarvest = economy(core);
+      ActorData beforeHarvestBooks = actor(core);
       // ★★ V6 §7.1① 起，(0,0) 在第 119 天**不再见底**：放贷方（地主）按"库存 − 本周期自需"留口粮，停贷时留下的
       //    500,000 它自己要吃到周期末 ⇒ 第 119 天还剩"它最后一顿 + 多留的那 166,666"；富农（恰好 120 天）同理还剩
       //    它第 120 天那一顿 12,500。贫农/中农早已见底（第 30 / 61 天起，且借不到粮 —— 见 PLAINS_LENDER_LEFTOVER）。
-      assertThat(hexGrain(beforeHarvest, 0, 0))
+      assertThat(hexGrain(beforeHarvestBooks, beforeHarvest, 0, 0))
           .as("第 119 天 (0,0)：只剩富农与地主**第 120 天那一顿**，外加地主多留的余量")
           .isEqualTo(PLAINS_LENDER_LEFTOVER + rationOn(50L, 120L) + rationOn(150L, 120L));
       assertThat(farm(beforeHarvest, FARM_0).progressDays()).isEqualTo(119L);
@@ -415,18 +414,21 @@ class EconomySettlementEndToEndTest {
 
       advance(core, 1);
       EconomyData afterHarvest = economy(core);
+      ActorData afterHarvestBooks = actor(core);
 
       // 实际投入亩 = min(可用 3,100 亩, 平均劳动 498,800 × LAND_MU_PER_LABOR(7) / 1000 = 3,491 亩)
       //   = 3,100 亩（**土地**是瓶颈）。★ 这里的 7 是 EconomySettlement.LAND_MU_PER_LABOR（亩/千分劳动），
       //   与亩产 67 无关 —— 两者在 v1 都是 7，改标定后只剩前者是 7，别混。
       // 毛产 = 3,100 × 67 粮/亩 × 1000 毫粮/粮；生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 97%。
       // ★ 收获当天（第 120 天）各行先照常吃自己那一顿：富农那 12,500 吃光、地主还剩 166,666（停贷后多留的余量）。
-      assertThat(hexGrain(afterHarvest, 0, 0))
+      assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
           .as("★ T4 起：库存 = **关系入账 70,929,264** + 周期末尚未吃完的 166,666（产出换了路径，总量仍是净产的分配）")
           .isEqualTo(PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER);
       // 第 120 天 (0,0) 实际吃掉的口粮：只有富农（12,500）与地主（4,167）吃得上 —— 贫农/中农借不到粮（缺口照记）。
       long eatenOnHarvestDay = rationOn(150L, 120L) + rationOn(50L, 120L);
-      assertThat(hexGrain(afterHarvest, 0, 0) - hexGrain(beforeHarvest, 0, 0))
+      assertThat(
+              hexGrain(afterHarvestBooks, afterHarvest, 0, 0)
+                  - hexGrain(beforeHarvestBooks, beforeHarvest, 0, 0))
           .as("本次推进的库存增量 = 关系入账 − 第 120 天实际吃掉的口粮（富农 12,500 + 地主 4,167）")
           .isEqualTo(PLAINS_INTAKE - eatenOnHarvestDay);
       // ★★ **生产损耗的可观测性变了**（如实记）：它**不再进 FlowRow.consumed**，只进 `ProductionLedger.losses`
@@ -435,13 +437,13 @@ class EconomySettlementEndToEndTest {
       //   逐值钉住），而"净产 = 入账 + operator 账上留下的那一份"：
       assertThat(
               sumHarvestIncome(afterHarvest, FARM_0)
-                  + accountOf(actor(core), afterHarvest, FARM_0, GRAIN))
+                  + accountOf(afterHarvestBooks, afterHarvest, FARM_0, GRAIN))
           .as("★ I4.1 的端到端形态：**净产 = 行侧入账 + operator 账上净增**")
           .isEqualTo(PLAINS_HARVEST_NET);
       assertThat(sumHarvestIncome(afterHarvest, FARM_0))
           .as("行侧所得 = 关系入账（不是毛产分成 —— T4 换的就是这条口径）")
           .isEqualTo(PLAINS_INTAKE);
-      assertThat(accountOf(actor(core), afterHarvest, FARM_0, GRAIN))
+      assertThat(accountOf(afterHarvestBooks, afterHarvest, FARM_0, GRAIN))
           .as("operator 账上剩的 = 净产 − 实付（R6 的上限之下，付出去的一分不剩给它）")
           .isEqualTo(PLAINS_HARVEST_NET - PLAINS_INTAKE);
 
@@ -459,13 +461,16 @@ class EconomySettlementEndToEndTest {
   void grainAndPopulationAreConservedAcrossADailyStepAndAHarvest() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 1);
-      assertConserved(before, economy(core), "第 1 天（纯日耗）");
+      assertConserved(beforeBooks, before, actor(core), economy(core), "第 1 天（纯日耗）");
 
       advance(core, 118);
       EconomyData beforeHarvest = economy(core);
+      ActorData beforeHarvestBooks = actor(core);
       advance(core, 1);
-      assertConserved(beforeHarvest, economy(core), "第 120 天（日耗 + 收获）");
+      assertConserved(
+          beforeHarvestBooks, beforeHarvest, actor(core), economy(core), "第 120 天（日耗 + 收获）");
     }
   }
 
@@ -475,18 +480,21 @@ class EconomySettlementEndToEndTest {
   void adjacentHexesDifferByPopulationAndEachMatchesItsOwnFormula() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 1);
       EconomyData afterOneDay = economy(core);
+      ActorData afterOneDayBooks = actor(core);
 
-      long decrease0 = hexDecrease(before, afterOneDay, 0, 0);
-      long decrease1 = hexDecrease(before, afterOneDay, 1, 0);
+      long decrease0 = hexDecrease(beforeBooks, before, afterOneDayBooks, afterOneDay, 0, 0);
+      long decrease1 = hexDecrease(beforeBooks, before, afterOneDayBooks, afterOneDay, 1, 0);
       assertThat(decrease0).as("(0,0) = Σ行第 1 天口粮").isEqualTo(hexDayNeed(before, 0, 0, 1L));
       assertThat(decrease1).as("(1,0) = Σ行第 1 天口粮").isEqualTo(hexDayNeed(before, 1, 0, 1L));
       assertThat(decrease0).as("两格日耗必须不相等（否则 isEqualTo 可能恒真）").isNotEqualTo(decrease1);
 
       advance(core, 119);
       EconomyData afterHarvest = economy(core);
-      assertThat(hexGrain(afterHarvest, 0, 0))
+      ActorData afterHarvestBooks = actor(core);
+      assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
           .as("(0,0) 平原格：**关系入账**（给养 71,424 + 地租 62,310,000）+ 放贷方周期末尚未吃完的余量")
           .isEqualTo(PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER);
       // ★ 低丘格的绝对值不写死：标定后它的实际投入亩由**劳动瓶颈**（而非土地）决定。
@@ -504,12 +512,12 @@ class EconomySettlementEndToEndTest {
       //     真档不受影响：那里土地才是瓶颈（可经营 51,646 亩 ≫ 3,100 亩）。）
       //   毛产 = 1,569 × 67 × 1000 = 105,123,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 **101,969,310**。
       //   ★ V6 §7.1① 起再加"放贷方周期末尚未吃完的余量"（低丘地主 25 人 ⇒ 83,333，算式见 HILLS_LENDER_LEFTOVER）。
-      assertThat(hexGrain(afterHarvest, 1, 0))
+      assertThat(hexGrain(afterHarvestBooks, afterHarvest, 1, 0))
           .as("(1,0) 低丘格：关系入账按**劳动瓶颈**算出的毛产推（不是按地）+ 放贷方余量")
           .isEqualTo(HILLS_INTAKE + HILLS_LENDER_LEFTOVER);
-      assertThat(hexGrain(afterHarvest, 0, 0))
+      assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
           .as("两格收获必须不相等（地形系数与劳动瓶颈都在起作用）")
-          .isNotEqualTo(hexGrain(afterHarvest, 1, 0));
+          .isNotEqualTo(hexGrain(afterHarvestBooks, afterHarvest, 1, 0));
     }
   }
 
@@ -549,6 +557,14 @@ class EconomySettlementEndToEndTest {
 
       EconomyData onceData = economy(once);
       EconomyData dailyData = economy(daily);
+      ActorData onceBooks = actor(once);
+      ActorData dailyBooks = actor(daily);
+
+      // ★★ H1：**家户账也纳入**这份等价性 —— 家户账是会话副本（{@code EconomyDayStepper.householdGoods()}），
+      //   由协调器逐日**落回 actor** ⇒ "一次 N 天 == N 次单日"必须在这本账上也逐值成立（否则副本的落盘有漏日）。
+      assertThat(onceBooks)
+          .as("§十一：家户账（actor 侧的 GoodsAccount）一次 150 天 == 150 次单日")
+          .isEqualTo(dailyBooks);
 
       // ★★ 唯一证据：两份终态**逐值相同**（不是"都没报错"）。
       assertThat(onceData)
@@ -587,19 +603,21 @@ class EconomySettlementEndToEndTest {
   void theFirstLeanSeasonLeavesAGapInTheLedgerButKillsNoOne() {
     try (CoreSimos core = freshCore()) {
       EconomyData initial = economy(core);
+      ActorData initialBooks = actor(core);
       long need1 = hexNeed(initial, 0, 0);
 
       advanceRange(core, 0L, 120L); // 一次推进到第 1 个周期末（§十一 等价性由 (f) 单独守）
       EconomyData cycle1 = economy(core);
+      ActorData cycle1Books = actor(core);
       // ★ 读口（同一份状态）：缺粮 ⇒ unmetNeed 非 0，deaths == 0（默认不致命）
-      Map<String, Object> readout1 = ApiViews.economyHex(new HexCoord(0, 0), cycle1);
+      Map<String, Object> readout1 = ApiViews.economyHex(new HexCoord(0, 0), cycle1, cycle1Books);
 
       // ★★ **V6 §7.1① 起缺口 = "需求 − 缸 + 放贷方多留的那部分"**：借不到的粮**不凭空生出来**，它留在放贷方缸里
       //   （周期末还剩 166,666，见 PLAINS_LENDER_LEFTOVER）⇒ 实吃 = 缸 − 余量，缺口比"需求 − 缸"**多**这一笔。
       //   ★ 这正是"只有真缺粮的行缺粮"：富农（恰好 120 天）与地主（250 天）都不再被借空，饿的是贫农与中农。
       assertThat(hexUnmet(cycle1, 0, 0))
           .as("(0,0) 第一周期的缺口 = Σ行需求 − 整缸库存 + 放贷方周期末尚未吃完的余量")
-          .isEqualTo(need1 - hexStock(initial, 0, 0) + PLAINS_LENDER_LEFTOVER);
+          .isEqualTo(need1 - hexStock(initialBooks, initial, 0, 0) + PLAINS_LENDER_LEFTOVER);
       assertThat(PLAINS_LENDER_LEFTOVER)
           .as("★ 绝对锚：地主 50 人停贷后那 40 天的口粮 = 166,666 毫粮")
           .isEqualTo(166_666L);
@@ -616,9 +634,10 @@ class EconomySettlementEndToEndTest {
 
       advanceRange(core, 120L, 240L); // 到第 2 个周期末
       EconomyData cycle2 = economy(core);
+      ActorData cycle2Books = actor(core);
 
       assertThat(hexUnmet(cycle2, 0, 0)).as("★ 青黄不接已过：第二周期一天不缺").isZero();
-      assertThat(hexGrain(cycle2, 0, 0)).as("缸被收获填满").isPositive();
+      assertThat(hexGrain(cycle2Books, cycle2, 0, 0)).as("缸被收获填满").isPositive();
       assertThat(hexDeaths(cycle2, 0, 0)).as("两个周期都没死人").isZero();
       assertThat(hexPopulation(cycle2, 0, 0)).as("人口始终 1000").isEqualTo(1000L);
     }
@@ -637,13 +656,16 @@ class EconomySettlementEndToEndTest {
   void theReadoutDailyConsumptionIsTheSameNumberSettlementUsed() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 1);
       EconomyData day1 = economy(core);
+      ActorData day1Books = actor(core);
       advance(core, 1);
       EconomyData day2 = economy(core);
+      ActorData day2Books = actor(core);
 
-      Map<String, Object> readout1 = ApiViews.economyHex(new HexCoord(0, 0), day1);
-      Map<String, Object> readout2 = ApiViews.economyHex(new HexCoord(0, 0), day2);
+      Map<String, Object> readout1 = ApiViews.economyHex(new HexCoord(0, 0), day1, day1Books);
+      Map<String, Object> readout2 = ApiViews.economyHex(new HexCoord(0, 0), day2, day2Books);
       long readDay1 = ((Number) readout1.get("grainDailyConsumption")).longValue();
       long readDay2 = ((Number) readout2.get("grainDailyConsumption")).longValue();
 
@@ -653,10 +675,10 @@ class EconomySettlementEndToEndTest {
           .as("★ 判别力：第 2 天的数必须 ≠ 第 1 天读到的数（否则「天天覆写」与「写一次就不动」分不出来）")
           .isNotEqualTo(readDay1);
       // ★ 读口日耗 == 结算当日实吃：该格储备够（65 天）⇒ 实吃 == 需求 == 库存减少。
-      assertThat(hexDecrease(before, day1, 0, 0))
+      assertThat(hexDecrease(beforeBooks, before, day1Books, day1, 0, 0))
           .as("(0,0) 第 1 天库存减少 == 读口日耗（同源）")
           .isEqualTo(readDay1);
-      assertThat(hexDecrease(day1, day2, 0, 0))
+      assertThat(hexDecrease(day1Books, day1, day2Books, day2, 0, 0))
           .as("(0,0) 第 2 天库存减少 == 读口日耗（同源；旧的「人口 × 83」会给 83,000）")
           .isEqualTo(readDay2);
     }
@@ -712,18 +734,19 @@ class EconomySettlementEndToEndTest {
     try (CoreSimos core = freshCore()) {
       advance(core, 120);
       EconomyData afterHarvest = economy(core);
+      ActorData afterHarvestBooks = actor(core);
 
       long grossFiber =
           PLAINS_HARVEST_GROSS
               / EconomySeeder.GRAIN_OUTPUT_PER_MU
               * EconomySeeder.FIBER_OUTPUT_PER_MU;
-      assertThat(hexGoods(afterHarvest, 0, 0, EconomyTestWorld.FIBER))
+      assertThat(hexGoods(afterHarvestBooks, afterHarvest, 0, 0, EconomyTestWorld.FIBER))
           .as("(0,0) Σ 行纤维 = 农田净产（毛 18,600,000 × 0.97）+ 织机没取走的那份创世库存")
           .isEqualTo(grossFiber * 970L / 1000L + WEAVE_FIBER_LEFTOVER);
       assertThat(sumHarvestFiber(afterHarvest, FARM_0))
           .as("★ T4：流水所得里纤维那一维 = **关系入账**（= 纤维净产；毛产那份进不了行 —— 它已经不是行的所得了）")
           .isEqualTo(grossFiber * 970L / 1000L);
-      assertThat(hexGrain(afterHarvest, 0, 0))
+      assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
           .as("★ 非平凡：粮与纤维**同时**落进同一批行（两条公式共用一次规模，商品各记各的）")
           .isEqualTo(PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER);
     }
@@ -752,31 +775,33 @@ class EconomySettlementEndToEndTest {
     try (CoreSimos core = freshCore()) {
       advance(core, 120);
       EconomyData afterHarvest = economy(core);
+      ActorData afterHarvestBooks = actor(core);
 
       assertThat(farm(afterHarvest, WEAVE_0).cycleLaborMilli()).as("关账后周期劳动清零（与农业同处）").isZero();
       long grossCloth =
           WEAVE_LOOMS_OPENED
               * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
               * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
-      assertThat(hexGoods(afterHarvest, 0, 0, EconomyTestWorld.CLOTH))
+      assertThat(hexGoods(afterHarvestBooks, afterHarvest, 0, 0, EconomyTestWorld.CLOTH))
           .as("★★ T4：布落在**织布的人**手里（H0.2 起 = 0_0|rural|* 四行）—— 700‰ 的分成入账 977,758")
           .isEqualTo(WEAVE_CLOTH_INTAKE)
           .isPositive();
       // ★★ H0.2：旧版"weave 四行一行都不持有布"那条判据**没有对象了** —— 那四行不存在（人口恒 0 ⇒ 永不是受方）。
       //   取而代之的是**并账判据**：布落在**同一批农村人**的那一本账上，而**同格的城镇四行一分没有**。
-      assertThat(clothOfRowsAt(afterHarvest, 0, 0, ResidenceKind.RURAL))
+      assertThat(clothOfRowsAt(afterHarvestBooks, afterHarvest, 0, 0, ResidenceKind.RURAL))
           .as("★★ 布的入账落在 (0,0) 的**农村四行**（= 织布的那批人；农业与纺织共用一本账 —— V9/I1.2）")
           .allMatch(value -> value > 0L)
           .hasSize(EconomySeeder.CLASS_IDS.length);
-      assertThat(clothOfRowsAt(afterHarvest, 0, 0, ResidenceKind.URBAN))
-          .as("★★ **同一格的城镇四行一行都不持有布**（两组账不并：`(格,居住,阶层)` 那一维就是为此而加）"
-              + "—— 该格没有城镇批次 ⇒ 那四行是空账（这正是不并账的判别力所在）")
+      assertThat(clothOfRowsAt(afterHarvestBooks, afterHarvest, 0, 0, ResidenceKind.URBAN))
+          .as(
+              "★★ **同一格的城镇四行一行都不持有布**（两组账不并：`(格,居住,阶层)` 那一维就是为此而加）"
+                  + "—— 该格没有城镇批次 ⇒ 那四行是空账（这正是不并账的判别力所在）")
           .allMatch(value -> value == 0L)
           .hasSize(EconomySeeder.CLASS_IDS.length);
       assertThat(sumHarvestCommodity(afterHarvest, WEAVE_0, EconomyTestWorld.CLOTH))
           .as("★ 纺织的**关系入账**同样落在农村四行上（行 = 家户，一个家户给两个产业出劳动也只有一个身份）")
           .isEqualTo(WEAVE_CLOTH_INTAKE);
-      assertThat(accountOf(actor(core), afterHarvest, WEAVE_0, EconomyTestWorld.CLOTH))
+      assertThat(accountOf(afterHarvestBooks, afterHarvest, WEAVE_0, EconomyTestWorld.CLOTH))
           .as("★ 剩下的 300‰ 留在 operator 账上（裁定 E2：'实物分成给劳动者 + 自留'）")
           .isEqualTo(grossCloth * 970L / 1000L - WEAVE_CLOTH_INTAKE);
       assertThat(farm(afterHarvest, FARM_0).cycleInputUsedMilli())
@@ -802,15 +827,16 @@ class EconomySettlementEndToEndTest {
   void theCityWorkshopProducesClothAndToolsWithoutAnyLand() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 120);
       EconomyData afterHarvest = economy(core);
+      ActorData afterHarvestBooks = actor(core);
 
       // ★ H0.3（K3）：作坊的产能住在**产业**上（行上不再有生产资料）⇒ "城市生产不含土地"这条判据的落点随之搬家。
       assertThat(farm(afterHarvest, CRAFT_2).capacity())
           .as("作坊的产能**不是土地**（土地全归农业）")
           .doesNotContainKey(AssetKind.LAND);
-      assertThat(
-              farm(afterHarvest, IndustryHexKeys.id(EconomySeeder.FARM, 2, 0)).capacity())
+      assertThat(farm(afterHarvest, IndustryHexKeys.id(EconomySeeder.FARM, 2, 0)).capacity())
           .as("同格的土地全在**农业**产业的产能上（「谁有地」与「谁有作坊」分得开）")
           .containsKey(AssetKind.LAND);
       long grossCloth =
@@ -821,19 +847,19 @@ class EconomySettlementEndToEndTest {
           CRAFT_WORKSHOPS_OPENED
               * EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE
               * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
-      assertThat(hexGoods(afterHarvest, 2, 0, EconomyTestWorld.CLOTH))
+      assertThat(hexGoods(afterHarvestBooks, afterHarvest, 2, 0, EconomyTestWorld.CLOTH))
           .as("(2,0) 作坊的布入账 = 600‰ 分成（{@code handicraft}）× 布净产 232,800 ⇒ 逐行取整后 139,678")
           .isEqualTo(CRAFT_CLOTH_INTAKE);
-      assertThat(accountOf(actor(core), afterHarvest, CRAFT_2, EconomyTestWorld.CLOTH))
+      assertThat(accountOf(afterHarvestBooks, afterHarvest, CRAFT_2, EconomyTestWorld.CLOTH))
           .as("★ 余下 400‰ 留在 operator 账上（布净产 − 分成）")
           .isEqualTo(grossCloth * 970L / 1000L - CRAFT_CLOTH_INTAKE);
-      assertThat(hexGoods(afterHarvest, 2, 0, EconomyTestWorld.TOOL))
+      assertThat(hexGoods(afterHarvestBooks, afterHarvest, 2, 0, EconomyTestWorld.TOOL))
           .as("★ T4：工具**没有规则付给 cohort** ⇒ 行里一件不进（它落 operator 的账 —— 见下一条）")
           .isZero();
-      assertThat(accountOf(actor(core), afterHarvest, CRAFT_2, EconomyTestWorld.TOOL))
+      assertThat(accountOf(afterHarvestBooks, afterHarvest, CRAFT_2, EconomyTestWorld.TOOL))
           .as("(2,0) 作坊的工具净产 = 4 座 × 5 件 × 1000 × 0.97（第二件城市自己的产品，落在经营主体账上）")
           .isEqualTo(grossTool * 970L / 1000L);
-      assertThat(hexGoods(before, 2, 0, EconomyTestWorld.CLOTH))
+      assertThat(hexGoods(beforeBooks, before, 2, 0, EconomyTestWorld.CLOTH))
           .as("★ 非平凡：创世时一件布都没有（上面那个数确实是产出来的）")
           .isZero();
     }
@@ -851,8 +877,10 @@ class EconomySettlementEndToEndTest {
   void everyCommodityIsConservedAcrossAFullCycle() {
     try (CoreSimos core = freshCore()) {
       EconomyData before = economy(core);
+      ActorData beforeBooks = actor(core);
       advance(core, 120);
       EconomyData after = economy(core);
+      ActorData afterBooks = actor(core);
 
       for (CommodityId commodity :
           List.of(
@@ -861,7 +889,7 @@ class EconomySettlementEndToEndTest {
               EconomyTestWorld.CLOTH,
               EconomyTestWorld.TOOL,
               EconomyTestWorld.IRON)) {
-        assertGoodsConserved(before, after, commodity, 1L, "第 1 个周期");
+        assertGoodsConserved(beforeBooks, before, afterBooks, after, commodity, 1L, "第 1 个周期");
       }
       assertThat(flowConsumedOf(after, EconomyTestWorld.FIBER))
           .as("★ 非平凡：这一周期里纤维**真的被消耗了**（织机与作坊的原料），否则上面的等式是恒等式")
@@ -956,16 +984,24 @@ class EconomySettlementEndToEndTest {
   }
 
   /** 某个产业名下各行某商品的库存（逐行）。 */
-  /**
-   * 某格某一组家户行持有的布（H0.2：行键 = {@code (格, 居住类型, 阶层)} ⇒ "哪一组"由这两维直接点名；
-   * ★ 它是"并账判据"的读法：同格两组账必须分得开）。
-   */
+  /** 某格某一组家户行持有的布（H0.2：行键 = {@code (格, 居住类型, 阶层)} ⇒ "哪一组"由这两维直接点名； ★ 它是"并账判据"的读法：同格两组账必须分得开）。 */
   private static List<Long> clothOfRowsAt(
-      EconomyData data, int q, int r, ResidenceKind residence) {
+      ActorData books, EconomyData data, int q, int r, ResidenceKind residence) {
     return classKeysAt(data, new HexCoord(q, r)).stream()
         .filter(key -> key.residence().equals(residence))
-        .map(key -> data.classes().get(key).goods().getOrDefault(EconomyTestWorld.CLOTH, 0L))
+        .map(key -> householdGoods(books, key, EconomyTestWorld.CLOTH))
         .toList();
+  }
+
+  /**
+   * ★★ <b>某个家户账上某商品的余额</b>（H1：商品库存的唯一真源 = actor 侧的 {@code GoodsAccount}）。
+   *
+   * <p>★ 账户键由 {@link OwnershipBooks#accountKeyOf} 拼（**本文件不复述家户 id 与账户键的形状**）；账本缺席 ⇒ 0 （该家户还没被播 ——
+   * 本文件的创世把"每格两组四行"播全了，故这条兜底只在装配故障时才走到）。
+   */
+  private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
+    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
+    return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
   }
 
   private static EconomyData economy(CoreSimos core) {
@@ -1005,8 +1041,8 @@ class EconomySettlementEndToEndTest {
   /**
    * ★★ **某产业对应的家户行键**（H0.2：行键里已经没有产业）。
    *
-   * <p>★ 事实来源是**劳动配额表**：供给这个产业的批次住哪种居住类型（{@link ResidenceKind#ofLot}，唯一拼写点）
-   * ⇒ 该格那一组四行。农村家户同时供给农业与家庭纺织 ⇒ 两者**返回同一组四行**（这正是"一个家户一份账"的形态）。
+   * <p>★ 事实来源是**劳动配额表**：供给这个产业的批次住哪种居住类型（{@link ResidenceKind#ofLot}，唯一拼写点） ⇒
+   * 该格那一组四行。农村家户同时供给农业与家庭纺织 ⇒ 两者**返回同一组四行**（这正是"一个家户一份账"的形态）。
    */
   private static List<CohortKey> classKeysOf(EconomyData data, IndustryId industry) {
     String hexKey = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
@@ -1028,17 +1064,26 @@ class EconomySettlementEndToEndTest {
     return new CohortKey(new HexCoord(q, r), ResidenceKind.RURAL, stratum);
   }
 
-  private static long hexGrain(EconomyData data, int q, int r) {
-    return rowsAt(data, q, r).stream().mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L)).sum();
+  /** 某格 Σ 家户粮库存（毫粮）—— H1：库存住在 actor 侧的账本上（{@code books}）。 */
+  private static long hexGrain(ActorData books, EconomyData data, int q, int r) {
+    return classKeysAt(data, new HexCoord(q, r)).stream()
+        .mapToLong(key -> householdGoods(books, key, GRAIN))
+        .sum();
   }
 
-  private static long hexDecrease(EconomyData before, EconomyData after, int q, int r) {
-    return hexGrain(before, q, r) - hexGrain(after, q, r);
+  private static long hexDecrease(
+      ActorData beforeBooks,
+      EconomyData before,
+      ActorData afterBooks,
+      EconomyData after,
+      int q,
+      int r) {
+    return hexGrain(beforeBooks, before, q, r) - hexGrain(afterBooks, after, q, r);
   }
 
-  /** 某格 Σ 行粮库存（毫粮）。 */
-  private static long hexStock(EconomyData data, int q, int r) {
-    return rowsAt(data, q, r).stream().mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L)).sum();
+  /** 某格 Σ 家户粮库存（毫粮）。 */
+  private static long hexStock(ActorData books, EconomyData data, int q, int r) {
+    return hexGrain(books, data, q, r);
   }
 
   /** 某格 Σ 行本周期**粮**的未满足需求（毫粮）—— 本期口径（§八.5：新周期第一天归零）。★ R4 起 unmetNeed 逐商品。 */
@@ -1151,9 +1196,10 @@ class EconomySettlementEndToEndTest {
     return data.classes().values().stream().mapToLong(ClassRow::population).sum();
   }
 
-  private static long totalGrain(EconomyData data) {
-    return data.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(GRAIN, 0L))
+  /** 全系统 Σ 家户粮库存（H1：从 actor 侧的账本读；行里已经没有 goods 这一栏）。 */
+  private static long totalGrain(ActorData books, EconomyData data) {
+    return data.classes().keySet().stream()
+        .mapToLong(key -> householdGoods(books, key, GRAIN))
         .sum();
   }
 
@@ -1204,12 +1250,17 @@ class EconomySettlementEndToEndTest {
    * @param eatenOnThatDay 该产业各行**本次推进内实际吃掉的口粮合计**（毫粮）
    */
   private static long harvestProductionLoss(
-      EconomyData before, EconomyData after, IndustryId industry, long eatenOnThatDay) {
+      ActorData beforeBooks,
+      EconomyData before,
+      ActorData afterBooks,
+      EconomyData after,
+      IndustryId industry,
+      long eatenOnThatDay) {
     long stockBefore = 0L;
     long stockAfter = 0L;
     for (CohortKey key : classKeysOf(after, industry)) {
-      stockBefore += before.classes().get(key).goods().getOrDefault(GRAIN, 0L);
-      stockAfter += after.classes().get(key).goods().getOrDefault(GRAIN, 0L);
+      stockBefore += householdGoods(beforeBooks, key, GRAIN);
+      stockAfter += householdGoods(afterBooks, key, GRAIN);
     }
     return sumHarvestIncome(after, industry) - (stockAfter - stockBefore) - eatenOnThatDay;
   }
@@ -1224,10 +1275,15 @@ class EconomySettlementEndToEndTest {
    * <p>★ **人口那一条只对"窗口不跨周期末"成立**（§八.5 起 {@code deaths} 是**本期**口径：新周期第一天归零）： 本文件的两处调用（第 1 天、第 119→120
    * 天）都落在同一个周期内，故差值法成立。
    */
-  private static void assertConserved(EconomyData before, EconomyData after, String what) {
+  private static void assertConserved(
+      ActorData beforeBooks,
+      EconomyData before,
+      ActorData afterBooks,
+      EconomyData after,
+      String what) {
     long consumed = flowConsumed(after) - flowConsumed(before);
     long income = flowIncome(after) - flowIncome(before);
-    assertThat(totalGrain(before) - totalGrain(after))
+    assertThat(totalGrain(beforeBooks, before) - totalGrain(afterBooks, after))
         .as("%s：库存减少 == 本期流水消费 − 本期流水所得（损耗/产出都显式落账）", what)
         .isEqualTo(consumed - income);
     long deaths = flowDeaths(after) - flowDeaths(before);
@@ -1278,13 +1334,15 @@ class EconomySettlementEndToEndTest {
    * @param eatenOnThatDay 该商品在本次推进内**实际吃掉/消耗掉**的量（毫单位）
    */
   private static void assertGoodsConserved(
+      ActorData beforeBooks,
       EconomyData before,
+      ActorData afterBooks,
       EconomyData after,
       CommodityId commodity,
       long eatenOnThatDay,
       String what) {
-    long beforeStock = goodsTotal(before, commodity);
-    long afterStock = goodsTotal(after, commodity);
+    long beforeStock = goodsTotal(beforeBooks, before, commodity);
+    long afterStock = goodsTotal(afterBooks, after, commodity);
     long consumed = flowConsumedOf(after, commodity) - flowConsumedOf(before, commodity);
     long income = flowIncomeOf(after, commodity) - flowIncomeOf(before, commodity);
     assertThat(beforeStock - afterStock)
@@ -1293,17 +1351,18 @@ class EconomySettlementEndToEndTest {
     assertThat(eatenOnThatDay).as("%s：本次推进内该商品的显式消耗（毫单位）", what).isPositive();
   }
 
-  /** Σ 各行的**某商品**库存。 */
-  private static long goodsTotal(EconomyData data, CommodityId commodity) {
-    return data.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+  /** Σ 各**家户**的某商品库存（H1：从 actor 侧的账本读）。 */
+  private static long goodsTotal(ActorData books, EconomyData data, CommodityId commodity) {
+    return data.classes().keySet().stream()
+        .mapToLong(key -> householdGoods(books, key, commodity))
         .sum();
   }
 
-  /** 某格 **Σ 行某商品库存**（该格全部产业的行都算进来）。 */
-  private static long hexGoods(EconomyData data, int q, int r, CommodityId commodity) {
-    return rowsAt(data, q, r).stream()
-        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+  /** 某格 **Σ 家户某商品库存**（该格两组四行都算进来）。 */
+  private static long hexGoods(
+      ActorData books, EconomyData data, int q, int r, CommodityId commodity) {
+    return classKeysAt(data, new HexCoord(q, r)).stream()
+        .mapToLong(key -> householdGoods(books, key, commodity))
         .sum();
   }
 

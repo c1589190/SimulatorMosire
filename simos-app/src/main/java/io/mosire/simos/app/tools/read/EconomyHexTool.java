@@ -58,7 +58,7 @@ public final class EconomyHexTool implements AgentTool {
 
   @Override
   public String description() {
-    return "查某格的经济读数：人口 / 有效劳动 / 土地（千分亩）/ 粮库存 / 货币 / 负债 / 各产业制度与周期进度"
+    return "查某格的经济读数：人口 / 有效劳动 / 土地（千分亩）/ 粮库存（actor 侧账本合计）/ 货币 / 负债 / 各产业制度与周期进度"
         + "（按产业 id、槽位 id 字典序发；未激活或该格无产业 ⇒ activated=false、industries 为空）";
   }
 
@@ -87,7 +87,7 @@ public final class EconomyHexTool implements AgentTool {
       if (!map.hexes().containsKey(coord) || !ToolSupport.hexVisible(context, mapId, map, coord)) {
         return ToolResult.error("NOT_FOUND", "六角格不存在: " + coord.q() + "_" + coord.r());
       }
-      return ToolSupport.ok(ToolSupport.economyHex(coord, ToolSupport.economyData(state)));
+      return ToolSupport.ok(ToolSupport.economyHex(coord, state));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }

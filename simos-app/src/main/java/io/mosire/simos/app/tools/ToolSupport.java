@@ -713,9 +713,14 @@ public final class ToolSupport {
     return ApiViews.economyData(state);
   }
 
-  /** 逐格经济读数（R2a）：**与 GUI 的 {@code /api/economy/hex} 逐字节同形**（同一份 {@link ApiViews#economyHex}）。 */
-  public static Map<String, Object> economyHex(HexCoord coord, EconomyData data) {
-    return ApiViews.economyHex(coord, data);
+  /**
+   * 逐格经济读数（R2a）：**与 GUI 的 {@code /api/economy/hex} 逐字节同形**（同一份 {@link ApiViews#economyHex}）。
+   *
+   * <p>★ <b>H1 起入参是 state</b>：行里已经没有商品（{@code ClassRow} 无 goods），商品读数只能从 actor 侧的 {@code
+   * GoodsAccount} 读 ⇒ 本视图同时要 economy 与 actor 两片（同 {@link #economyOwnership}）。
+   */
+  public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {
+    return ApiViews.economyHex(coord, ApiViews.economyData(state), ApiViews.actorData(state));
   }
 
   /**

@@ -15,20 +15,23 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code simos.economy.ownership}（H0.6 的产权读口）：某格**各家户持有什么** —— 行侧的家户库存与 actor 侧的库存账**并排**给。
+ * {@code simos.economy.ownership}（H0.6 的产权读口）：某格**各家户持有什么** —— actor 侧的库存账与行侧的商品栏**并排**给。
  *
- * <p>★★ <b>它为什么必须存在</b>（{@code AGENT.md} §9.4 同族第五次那类口径错的结构性堵法）：行侧的 {@code ClassRow.goods} 与 actor
- * 侧的 {@code GoodsAccount} 是**两本不同性质的账**，任何一方被单独读成"全系统有多少"都是一次口径错。本工具把
+ * <p>★★ <b>它为什么必须存在</b>（{@code AGENT.md} §9.4 同族第五次那类口径错的结构性堵法）：两本账被单独读成 "全系统有多少"都是一次口径错。本工具把
  * {@code actorGoodsTotal} 与 {@code rowGoodsTotal} 放进**同一个响应**（见 {@link
  * io.mosire.simos.app.gui.ApiViews#economyOwnership}）⇒ 读的人当场看得见两者差多少。
  *
- * <p>★★ <b>只在 GM 桶</b>（{@link GmOnlyRead}）：响应里含 **actor 切片的商品余额**（{@code GoodsAccount}）—— 那条面在本仓的资源表态里是
- * **缺省拒**（{@link ToolSupport#ALL_READ} 的 {@code actor} 一档就是 {@code DENY}），故本工具与 {@code sd.verdicts} 同款：
- * 不向决策人桶开。★ 本轮（H0）家户 actor 还没播种（H1 的事）⇒ {@code accounts} 是空表、{@code actorGoodsTotal} 全 0，
- * 那是**合法且正确**的状态，不是"读口坏了"。
+ * <p>★★ <b>H1 之后它同时是"一本账"的判据</b>：家户 actor 已按"格 × 两组四行"播全（真档 799 × 8 = 6392 个） ⇒ {@code accounts} /
+ * {@code actorGoodsTotal} **有数**，而 {@code rowGoodsTotal} **恒空** （{@code ClassRow} 里已经没有 {@code
+ * goods} 这一栏）—— 行侧还是全 0/非空，一眼就能看出账搬完没有。
  *
- * <p>★ <b>视图只有一份</b>：体由 {@link ToolSupport#economyOwnership}（= {@code ApiViews.economyOwnership}）装配，与 GUI 的
- * {@code GET /api/economy/ownership} **同一个函数**（{@code AGENT.md} §8.3：不许在工具里另拼一遍）。
+ * <p>★★ <b>只在 GM 桶</b>（{@link GmOnlyRead}）：响应里含 **actor 切片的商品余额**（{@code GoodsAccount}）——
+ * 那条面在本仓的资源表态里是 **缺省拒**（{@link ToolSupport#ALL_READ} 的 {@code actor} 一档就是 {@code DENY}），故本工具与
+ * {@code sd.verdicts} 同款： 不向决策人桶开。
+ *
+ * <p>★ <b>视图只有一份</b>：体由 {@link ToolSupport#economyOwnership}（= {@code
+ * ApiViews.economyOwnership}）装配，与 GUI 的 {@code GET /api/economy/ownership} **同一个函数**（{@code
+ * AGENT.md} §8.3：不许在工具里另拼一遍）。
  */
 public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
 
@@ -38,8 +41,8 @@ public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
   /**
    * 本工具声明的读命名空间：{@code economy}（行侧账与产业）与 {@code map}（**视野判据的资源**，见 {@code EconomyHexTool} 的同款声明）。
    *
-   * <p>★ <b>为什么不声明 {@code actor}</b>：它与 {@code ALL_READ} 的第 4 档同口径 —— actor 面**缺省拒**，只有显式表过态的调用者看得见；
-   * 而本工具本身只进 GM 桶（GM 的范围是 unlimited）⇒ 不给未表态的调用者留一条"声明了却放行"的口子。
+   * <p>★ <b>为什么不声明 {@code actor}</b>：它与 {@code ALL_READ} 的第 4 档同口径 —— actor
+   * 面**缺省拒**，只有显式表过态的调用者看得见； 而本工具本身只进 GM 桶（GM 的范围是 unlimited）⇒ 不给未表态的调用者留一条"声明了却放行"的口子。
    */
   private static final ResourceManifest RESOURCES =
       ResourceManifest.of(

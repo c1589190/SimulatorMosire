@@ -10,12 +10,18 @@ import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.actor.codec.ActorCodec;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -768,8 +774,8 @@ class GuiApiTest {
    * industries[0]}（既有断言一字不动）。
    *
    * <p>★★ **H0.3（K3）**：家户行的键是 {@code (格, 居住类型, 阶层)}（{@link CohortKey}）—— 本夹具的农业家户 = H11
-   * 的农村贫农；而**土地是产业的产能**（{@code farm@1_1} 的 {@code capacity[LAND]} = 1,000,000 千分亩 =
-   * 1,000 亩），行里**没有** {@code meansOfProduction} 了。
+   * 的农村贫农；而**土地是产业的产能**（{@code farm@1_1} 的 {@code capacity[LAND]} = 1,000,000 千分亩 = 1,000
+   * 亩），行里**没有** {@code meansOfProduction} 了。
    */
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId("farm@1_1");
@@ -801,13 +807,14 @@ class GuiApiTest {
             //   `workshop@1_1` 的 operator 刻意非派生（见 workshopIndustry）。
             RegimeOperators.defaultOperator(new RegimeId("feudal"), farm));
     CohortKey peasantKey = new CohortKey(H11, ResidenceKind.RURAL, peasant);
+    // ★★ H1：行里**没有商品**（{@code ClassRow} 无 goods，裁定 D3-C/K1）—— 那 498,000 毫粮住在 actor 侧的
+    //   {@code GoodsAccount} 上（见 {@link #actorData()}）；读口的 {@code goods} 就是从它读的。
     ClassRow row =
         new ClassRow(
             peasantKey,
             100L,
             58_000L,
             950,
-            Map.of(new CommodityId("grain"), 498_000L),
             12L,
             List.of(),
             Map.of(new CommodityId("grain"), 8_300L),
@@ -829,6 +836,22 @@ class GuiApiTest {
         // ★ T2：第 8 个组件（生产关系表）。★ 这里刻意**留空**而不是按 regime 推：本夹具测的是 GUI 的读口
         //   （账户/库存的视图），关系那一层不在它的断言面上；空表是合法状态（全归 residualOwner）。
         Map.of());
+  }
+
+  /**
+   * ★★ <b>H1：actor 切片（家户 actor + 它的账本）</b> —— 本夹具那一格只有**一个农村贫农行**，故账上只有一条家户。
+   *
+   * <p>★ 余额 = 旧版行里的 498,000 毫粮（{@code (H11, RURAL, poor_peasant)} 那本账）；账户键经 {@link
+   * OwnershipBooks#accountKeyOf} 拼（**本夹具不复述家户 id 的形状**）。 ★ 这也让 {@code /api/economy/hex} 的 {@code
+   * goods} 与 {@code /api/economy/ownership} 的 {@code actorGoodsTotal} **逐值同源**（两处都读 actor 侧的账本）。
+   */
+  private static ActorData actorData() {
+    SocialClassId peasant = new SocialClassId("poor_peasant");
+    CohortKey key = new CohortKey(H11, ResidenceKind.RURAL, peasant);
+    GoodsAccountKey accountKey = OwnershipBooks.accountKeyOf(key);
+    return ActorData.empty()
+        .withActor(new io.mosire.simos.actor.model.Actor(accountKey.owner(), "农村贫农家户"))
+        .withAccount(new GoodsAccount(accountKey, Map.of(new CommodityId("grain"), 498_000L)));
   }
 
   /** 第二个产业（手工业 = 作坊）：只借身份（无阶层行 ⇒ 无人口/劳动，读口多一条空产业）。 */
@@ -901,7 +924,8 @@ class GuiApiTest {
     // ★★ H0.3（K3）：**本格该产业的产能总量**读得出来（旧版它散在家户行的 {@code meansOfProduction} 里）——
     //   ✗ 旧写法是 `Σ 农业行的 meansOfProduction[LAND] == 1,000,000`（行级 `landMilliMu` 字段**已删**，别再断言它）。
     assertThat(industry.get("capacity").get("LAND").asLong())
-        .as("★★ 该格 farm 产业的 capacity.LAND == 1,000,000 千分亩（= 1,000 亩；旧值也是 1,000,000，口径从'Σ行'变成'产业一处真相'）")
+        .as(
+            "★★ 该格 farm 产业的 capacity.LAND == 1,000,000 千分亩（= 1,000 亩；旧值也是 1,000,000，口径从'Σ行'变成'产业一处真相'）")
         .isEqualTo(1_000_000L);
     assertThat(industry.has("classes"))
         .as("★ H0.2：家户行**挂在格上** ⇒ 产业对象里不再有 classes（旧路径 `industries[].classes[]` 已废）")
@@ -917,14 +941,10 @@ class GuiApiTest {
         .isEqualTo(40L);
     // ★★ H0.2：**格级的家户行数组**（每行多一个 `residence` 维；行里不再有 `landMilliMu`）。
     JsonNode row = body.get("classes").get(0);
-    assertThat(row.get("residence").asText())
-        .as("★ 居住类型随行发出（农村贫农与城镇贫农是两本账）")
-        .isEqualTo("rural");
+    assertThat(row.get("residence").asText()).as("★ 居住类型随行发出（农村贫农与城镇贫农是两本账）").isEqualTo("rural");
     assertThat(row.get("slot").asText()).isEqualTo("poor_peasant");
     assertThat(row.get("naturalNeeds").get("grain").asLong()).as("日耗").isEqualTo(8_300L);
-    assertThat(row.has("landMilliMu"))
-        .as("★ H0.3：行侧的发报字段**已删**（土地读产业那一份 capacity）")
-        .isFalse();
+    assertThat(row.has("landMilliMu")).as("★ H0.3：行侧的发报字段**已删**（土地读产业那一份 capacity）").isFalse();
 
     // ★★ S1 阶段 3：第二个产业（`handicraft`）的 operator **刻意非派生**（见 workshopIndustry 的注释）——
     //   上面对 farm 的两条断言是**派生值**（ESTATE:farm@1_1 正是 `feudal` 的推导结果），单靠它们，
@@ -1147,7 +1167,10 @@ class GuiApiTest {
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
                 // ★ R2a：经济切片带一份可断言的读数（一格一产业一阶层行）。
-                "economy", new EconomySnapshot(ref("main", 1), T7, economyData())),
+                "economy", new EconomySnapshot(ref("main", 1), T7, economyData()),
+                // ★★ H1：actor 切片（家户 actor + 账本）—— /api/economy/hex 的 goods 与
+                //   /api/economy/ownership 都从它读（商品库存的唯一真源）。
+                "actor", new ActorSnapshot(ref("main", 1), T7, actorData())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -1159,7 +1182,9 @@ class GuiApiTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new SdCodec(),
-                    new EconomyCodec())));
+                    new EconomyCodec(),
+                    // ★ H1：actor 切片在场 ⇒ 编码器表必须跟着长（否则 CheckpointEncoder 当场抛）。
+                    new ActorCodec())));
   }
 
   private static Unit unit() {

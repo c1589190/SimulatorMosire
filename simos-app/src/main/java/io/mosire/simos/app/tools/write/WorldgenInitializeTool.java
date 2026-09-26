@@ -17,6 +17,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.EconomySeeder;
+import io.mosire.simos.app.world.HouseholdSeeder;
 import io.mosire.simos.app.world.PopulationSeeder;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
@@ -156,6 +157,15 @@ public final class WorldgenInitializeTool implements AgentTool {
   public static final String SEED_ECONOMY_TYPE = "economy.Seed";
 
   /**
+   * ★★ <b>H1：家户 actor 的播种命令</b>（{@code actor.Seed}）—— 与人口/经济**同批**（同一 branch + 同一 expectedRevision
+   * ⇒ 一条 revision），载荷由 {@link HouseholdSeeder} 从 {@link EconomySeeder#plan} 交回的 **同一份**家户开缸库存算出。
+   *
+   * <p>★★ <b>为什么它必须与经济同批</b>：H1 起"商品库存"的唯一持久真源是 actor 切片的 {@code GoodsAccount} （裁定 D3-C/K1）—— 若只播
+   * economy 而不播 actor，世界起来的当天就<b>没有一本家户账</b>， 而日结算的消费与投入都要读它（{@code EconomyDayStepper} 当场抛，不静默当 0）。
+   */
+  public static final String SEED_ACTOR_TYPE = "actor.Seed";
+
+  /**
    * ★ **中立移动量**（{@code speed} / {@code mobilityPerMille}）：冻结输入 {@code
    * config/worldgen/v17levant-nations.json} **只给编制人数、不给行军速度**，本笔**不臆造**组织级速度。
    *
@@ -211,7 +221,9 @@ public final class WorldgenInitializeTool implements AgentTool {
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              // ★ H1：家户 actor（{@code actor.Seed}）—— 同 economy 的待遇（真写它，故 UNRESTRICTED）。
+              ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #WORLDGEN_WRITE} 同源的逐命名空间粗断言（本工具是 GM 工具，调用者五个命名空间都 unlimited）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
@@ -220,7 +232,8 @@ public final class WorldgenInitializeTool implements AgentTool {
           ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.SD_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"));
+          ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"));
 
   /** 等级直方图的固定序（{@link PlannedCity#tierRank}）：MarketTown &lt; Town &lt; City &lt; MajorCity。 */
   private static final List<String> TIER_ORDER =
@@ -481,12 +494,17 @@ public final class WorldgenInitializeTool implements AgentTool {
   /**
    * 把一次生成的计划翻成命令批：**1 条** {@code social.SetPopulation}（全部农村人口序列，键序按 {@link HexCoord} 排序）+ **每座城一条**
    * {@code social.CreateCity} + **1 条** {@code social.SeedGroups}（R1/T4：人口批次）+ **1 条** {@code
-   * economy.Seed}（R2a：该国全部格的初始经济状态）。命令顺序 = 先人口序列、后城市、再批次、最后经济（可读、可复现）。
+   * economy.Seed}（R2a：该国全部格的初始经济状态）+ **1 条** {@code actor.Seed}（H1：家户 actor 与它们的账本）。 命令顺序 =
+   * 先人口序列、后城市、再批次、再经济、最后家户 actor（可读、可复现）。
    *
    * <p>★★ **R1 的接缝（T4）**：批次列表在这里**一次算出**（{@link PopulationSeeder#groups}），**同一份**喂给 {@code
    * social.SeedGroups}（{@link PopulationSeeder#payload}）与 {@code economy.Seed} （{@link
    * EconomySeeder#payload(String, java.util.List, GameMap)}）—— "Σ group == 经济侧总人口"因此是构造性的，
    * **不需要**跨切片协调器（那是后续轮次的事）。
+   *
+   * <p>★★ <b>H1 的接缝（家户 actor）</b>：{@code economy.Seed} 与 {@code actor.Seed} 读的是<b>同一份</b> {@link
+   * EconomySeeder#plan}（前者要 entries、后者要 {@code householdStocks}）—— 家户的 id 由 {@code HouseholdActors}
+   * 拼（唯一拼写点），开缸库存由 {@code EconomySeeder.openingStock} 算（唯一拼写点）。
    *
    * <p>★ 同批共享 {@code branch}/{@code expectedRevision}（{@link CoreSimos#submitBatch} 的硬约束）；{@code
    * correlationId} 用同一个 {@code batchId}（一条初始化链），{@code commandId} 各自新取。
@@ -507,7 +525,7 @@ public final class WorldgenInitializeTool implements AgentTool {
       SettlementPlan plan,
       long seed,
       long anchorTick) {
-    List<CommandEnvelope> batch = new ArrayList<>(3 + plan.cities().size());
+    List<CommandEnvelope> batch = new ArrayList<>(4 + plan.cities().size());
     batch.add(
         envelope(
             batchId,
@@ -535,6 +553,10 @@ public final class WorldgenInitializeTool implements AgentTool {
             expectedRevision,
             SEED_GROUPS_TYPE,
             PopulationSeeder.payload(groups)));
+    // ★★ H1：**经济与家户 actor 同源**（裁定 D3-C/K1）—— 一条 {@link EconomySeeder#plan} 同时交出
+    //   {@code economy.Seed} 的 entries 与家户的开缸库存（后者进 {@code actor.Seed} 的账本）：
+    //   "一次算出、同一份喂两条命令"，两处各算一遍必然漂开（本仓明令禁止的"同一事实两处拼写点"）。
+    EconomySeeder.Seed seeding = EconomySeeder.plan(mapId, groups, map);
     batch.add(
         envelope(
             batchId,
@@ -542,7 +564,15 @@ public final class WorldgenInitializeTool implements AgentTool {
             branch,
             expectedRevision,
             SEED_ECONOMY_TYPE,
-            EconomySeeder.payload(mapId, groups, map)));
+            seeding.economyPayload()));
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            SEED_ACTOR_TYPE,
+            HouseholdSeeder.payload(mapId, seeding.householdStocks())));
     return List.copyOf(batch);
   }
 

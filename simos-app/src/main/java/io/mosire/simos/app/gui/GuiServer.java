@@ -905,15 +905,16 @@ public final class GuiServer implements AutoCloseable {
       body.put("error", "hex not found");
       return Reply.of(404, body);
     }
-    return Reply.of(200, ApiViews.economyHex(coord, ApiViews.economyData(state)));
+    return Reply.of(
+        200, ApiViews.economyHex(coord, ApiViews.economyData(state), ApiViews.actorData(state)));
   }
 
   /**
    * 逐格**产权**读数（H0.6）：{@code GET /api/economy/ownership?q=&r=&branch=&revision=}。
    *
    * <p>★ **视图只有一份**：体由 {@link ApiViews#economyOwnership} 装配，与 MCP 的 {@code simos.economy.ownership}
-   * **同一个函数**。本方法只做入参校验与 404 判定（与 {@link #economyHexReply} 逐款同口径：图外/不存在的格 ⇒ 404；
-   * 有格但没账 ⇒ 200 + 空 {@code accounts} 与全 0 合计 —— 那是真实读数）。
+   * **同一个函数**。本方法只做入参校验与 404 判定（与 {@link #economyHexReply} 逐款同口径：图外/不存在的格 ⇒ 404； 有格但没账 ⇒ 200 + 空
+   * {@code accounts} 与全 0 合计 —— 那是真实读数）。
    */
   private Reply economyOwnershipReply(Map<String, String> params) {
     int q = intParam(params, "q");
@@ -927,8 +928,7 @@ public final class GuiServer implements AutoCloseable {
     }
     return Reply.of(
         200,
-        ApiViews.economyOwnership(
-            coord, ApiViews.economyData(state), ApiViews.actorData(state)));
+        ApiViews.economyOwnership(coord, ApiViews.economyData(state), ApiViews.actorData(state)));
   }
 
   private Reply mapHexReply(Map<String, String> params, DecisionMakerId actor, boolean asPresent) {

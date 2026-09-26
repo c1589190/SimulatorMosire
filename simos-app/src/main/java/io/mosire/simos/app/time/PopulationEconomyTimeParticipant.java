@@ -107,7 +107,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       reads.add(economyAddress("industry", id.value()));
       writes.add(economyAddress("industry", id.value()));
     }
-    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code 0_0|rural|poor_peasant}）。
+    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code
+    // 0_0|rural|poor_peasant}）。
     //   键里已经没有产业 ⇒ 旧版内联拼的 {@code <industryId>.<slotId>} 既拼不出来、也不该再拼（那是**第二处拼写点**）。
     //   ★ 与 {@code EconomyResolver} 的 class/flow 地址**必须逐字同串**：读写集的冲突检测全靠它。
     for (CohortKey key : economy.classes().keySet()) {
@@ -146,7 +147,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           writes);
     }
 
-    EconomyDayStepper stepper = new EconomyDayStepper(economy);
+    // ★★ H1（裁定 K1）：家户账的**会话工作副本** —— 持久真源是 actor 切片的 {@code GoodsAccount}，
+    //   日结算（消费 / 投入 / 同格取材 / 关系实付入账）在副本上就地发生 ⇒ 推进前从 actor 侧载入。
+    //   ★ 载入不出来 ⇒ {@link OwnershipBooks#loadHouseholdGoods} 当场抛（真档应为"每格两组四行"一个不少）。
+    Map<CohortKey, Map<CommodityId, Long>> householdGoods =
+        OwnershipBooks.loadHouseholdGoods(economy, actor);
+    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods);
     SocialData currentSocial = social;
     ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
@@ -159,6 +165,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           writes.add(accountAddress(key));
         }
       }
+      // ★★ H1：家户账**按绝对值**落回 actor 切片（不是"再叠加一遍条目"，见 OwnershipBooks 的类注）——
+      //   日耗 / 投入 / 同格取材只写副本（它们不是产权条目），而关系实付既进条目、也已计进副本
+      //   ⇒ 这一步是它们唯一共同的落点。★ 副本是**活的**（step 就地更新）⇒ 每天重新读访问器，不缓存引用。
+      currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
       currentSocial = applyDailyStress(stepper.data(), currentSocial, stepper.flows(), unmetBefore);
       // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
@@ -167,6 +177,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         currentSocial = outcome.data();
         if (!outcome.isEmpty()) {
           stepper.applyPopulationChange(outcome.changeList());
+          // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
+          //   ★ 放在月度回写之后、且**在条目落账之后**：家户账以副本的绝对值收尾（顺序反了会把条目加两遍）。
+          currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
         }
       }
     }
@@ -193,13 +206,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * </pre>
    *
    * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次身上有<b>落点格</b>（{@code group.residence()}）与 <b>居住类型</b>（批次 id
-   * 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}）
-   * ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"，
+   * 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}） ⇒
+   * 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"，
    * 那一步在"一格既有农村又有城镇"时会把两池并起来算 —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
    *
-   * <p>★ **没有配额的批次照样吃饭**（0-14 档与全部新生儿）：它们的居住类型与落点格本来就在批次上 ⇒
-   * 这条兜底现在是**结构上白拿的**（旧版要为它单独查一次"该格的产业"）。
-   * ★ **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
+   * <p>★ **没有配额的批次照样吃饭**（0-14 档与全部新生儿）：它们的居住类型与落点格本来就在批次上 ⇒ 这条兜底现在是**结构上白拿的**（旧版要为它单独查一次"该格的产业"）。 ★
+   * **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
    *
    * @param unmetBefore 当日结算**之前**的 {@code FlowRow.unmetNeed} 快照（用于取"当天新增的那一笔"）
    */
@@ -215,7 +227,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
     for (PopulationGroup group : social.groups().values()) {
       // ★ 批次 → 家户：**落点格 + 居住类型**（前缀的唯一判定在 {@link ResidenceKind#ofLot}）。
-      long[] row = byHousehold.get(new HouseholdRef(group.residence(), ResidenceKind.ofLot(group.id())));
+      long[] row =
+          byHousehold.get(new HouseholdRef(group.residence(), ResidenceKind.ofLot(group.id())));
       if (row == null) {
         continue; // 该格没有这一组家户（世界还没播种到这里，或该池在这格没有人）⇒ 没有可算的满足率
       }

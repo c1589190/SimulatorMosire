@@ -245,16 +245,13 @@ public final class CrisisMonitor {
   /**
    * ★★ **一个产业的相位天数**（B2 的分母基准；{@link #elapsedDaysOf} 与 {@link #cycleDaysOf} 共用）。
    *
-   * <p>★ **关账那一支必须取整周期**：`progressDays == 0` 有**两种**状态，只看它分不开 ——
-   *   ① 创世（tick 0）：流水全 0 ⇒ 满足率恒 1000‰，分母取哪个都一样；
-   *   ② **关账那一天的 revision**：`progressDays` 已被收获那一支归零，而 FlowRow 的清零在**次日**
-   *      ⇒ 此刻 `unmetNeed` 携带的是**刚关账那一整个周期**的量 ⇒ 分母必须是 cycleDays。
-   *   取 1 天会让"整周期缺口 ÷ 1 天需求"算出 0‰ 的满足率 ⇒ **全境假阳性红灯**。
-   *   两个既有用例钉着这件事：EconomyFlowCycleTest.theClosingDayCarriesTheWholeCyclesIncome
-   *   与 theFirstDayOfANewCycleStartsEveryFieldFromZero。
+   * <p>★ **关账那一支必须取整周期**：`progressDays == 0` 有**两种**状态，只看它分不开 —— ① 创世（tick 0）：流水全 0 ⇒ 满足率恒
+   * 1000‰，分母取哪个都一样； ② **关账那一天的 revision**：`progressDays` 已被收获那一支归零，而 FlowRow 的清零在**次日** ⇒ 此刻
+   * `unmetNeed` 携带的是**刚关账那一整个周期**的量 ⇒ 分母必须是 cycleDays。 取 1 天会让"整周期缺口 ÷ 1 天需求"算出 0‰ 的满足率 ⇒
+   * **全境假阳性红灯**。 两个既有用例钉着这件事：EconomyFlowCycleTest.theClosingDayCarriesTheWholeCyclesIncome 与
+   * theFirstDayOfANewCycleStartsEveryFieldFromZero。
    *
-   * <p>★ 一个家户的相位取自**它那一格的产业**（H0.2：行键里没有产业）：同一格的产业由同一条日推进同步走 ⇒
-   * 取其中最大的那个与旧口径（逐行各取自己产业的相位、再取 max）同值。
+   * <p>★ 一个家户的相位取自**它那一格的产业**（H0.2：行键里没有产业）：同一格的产业由同一条日推进同步走 ⇒ 取其中最大的那个与旧口径（逐行各取自己产业的相位、再取 max）同值。
    */
   private static long phaseDaysOf(Industry industry) {
     return industry == null

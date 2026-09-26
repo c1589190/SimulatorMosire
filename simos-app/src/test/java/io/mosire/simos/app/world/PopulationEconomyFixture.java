@@ -87,15 +87,20 @@ public final class PopulationEconomyFixture {
             Map.of(PLAINS, series(), DESERT, series()),
             Map.<CityId, io.mosire.simos.social.city.SocialCity>of(),
             index(groups));
-    String payload =
-        EconomySeeder.payload(MAP_ID, groups, at -> at.equals(DESERT) ? "desert" : "plains");
+    // ★★ H1：**一次算两条命令的载荷**（真路径 = 同批的 economy.Seed + actor.Seed）——
+    //   economy 取 entries、actor 取同一份 householdStocks（家户的开缸库存只有一个拼写点）。
+    EconomySeeder.Seed seeded =
+        EconomySeeder.plan(MAP_ID, groups, at -> at.equals(DESERT) ? "desert" : "plains");
+    String payload = seeded.economyPayload();
     SimulationState empty =
         new SimulationState(
             new StateMeta(REF, SimosTimestamp.of(0)),
             Map.of(
                 "economy", snap(EconomyData.empty(), 0L),
                 // ★ T5：actor 片必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
-                "actor", actorSnap(ActorData.empty(), 0L)),
+                // ★★ H1：家户 actor 与账本也要在创世就位（商品库存的唯一真源是 actor 侧的 GoodsAccount）
+                //   —— 由**同一个 plan** 的开缸库存建（与真播种路径的 actor.Seed 同源）。
+                "actor", actorSnap(HouseholdSeeder.books(seeded.householdStocks()), 0L)),
             InMemoryInfoSystem.empty());
     HandlerOutcome outcome = new EconomySeedHandler().handle(empty, payload);
     assertThat(outcome)
@@ -104,7 +109,7 @@ public final class PopulationEconomyFixture {
     EconomyData economy =
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
-    return new Fixture(social, economy, ActorData.empty(), 0L);
+    return new Fixture(social, economy, HouseholdSeeder.books(seeded.householdStocks()), 0L);
   }
 
   /** 从 {@code fixture} 推进 {@code days} 天：真协调器的提案 + 真变更集 apply（这正是 Core ④ 做的事）。 */

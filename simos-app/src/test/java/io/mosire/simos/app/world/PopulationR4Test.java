@@ -281,8 +281,8 @@ class PopulationR4Test {
    * ★ <b>本格这一周期"织出了多少布"的可读读数（T4/T5 起）</b>：产出自本阶段起不再写进织机那四行 （它们人口为 0 ⇒ 永不是 cohort
    * 受方），布落**织布的人**（同格的农业行，I4.3）⇒ 读数取**本格行里 收到的布**（流水所得那一维），织机的行自己算 0。
    *
-   * <p>★★ <b>H0.2 的筛法</b>：家户行的键是 {@code (格, 居住类型, 阶层)}、**行里没有产业了** ⇒ "本格的织布人"只能按
-   * {@code key.hex()} + {@code key.residence()} 认（{@link PopulationEconomyFixture#PLAINS} 上的 {@link
+   * <p>★★ <b>H0.2 的筛法</b>：家户行的键是 {@code (格, 居住类型, 阶层)}、**行里没有产业了** ⇒ "本格的织布人"只能按 {@code key.hex()}
+   * + {@code key.residence()} 认（{@link PopulationEconomyFixture#PLAINS} 上的 {@link
    * ResidenceKind#RURAL} 四行 = 旧版 {@code farm@0_0} 那四行，织机的配额正落在这批人身上）。 报告口径因此与旧版逐值同源，而不再依赖"这四行恰好
    * 也是全世界的仅有几行"。
    */

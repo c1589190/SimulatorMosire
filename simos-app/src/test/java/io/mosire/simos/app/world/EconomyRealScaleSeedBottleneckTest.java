@@ -2,11 +2,16 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -73,10 +78,8 @@ class EconomyRealScaleSeedBottleneckTest {
 
   /** 一格平原、真档人口（**真播种器载荷**：{@code economy.Seed} 经真 handler 落成状态）。 */
   private static EconomyData realScaleHex() {
-    SettlementPlan plan =
-        new SettlementPlan(Map.of(HEX, POPULATION_PER_HEX), List.of(), Map.of(), 250L, 0L);
     String payload =
-        EconomySeeder.payload(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains");
+        EconomySeeder.payload(MAP_ID, PopulationSeeder.groups(realScalePlan(), 0L), at -> "plains");
     SimulationState emptyState =
         new SimulationState(
             stateMeta(), snapshots(EconomyData.empty()), InMemoryInfoSystem.empty());
@@ -89,10 +92,26 @@ class EconomyRealScaleSeedBottleneckTest {
   }
 
   /**
+   * ★★ <b>H1：同一个 plan 交出的家户账本</b>（真播种路径是 {@code economy.Seed} + {@code actor.Seed} 同批； 本夹具只走
+   * handler，故账本在这里从**同一份** {@link EconomySeeder#plan} 的 {@code householdStocks} 建）。
+   *
+   * <p>★ 与 {@link HouseholdSeeder#books} 同一条路（id 由 {@code HouseholdActors} 拼、空账也建）⇒ 与真档同形。
+   */
+  private static ActorData realScaleBooks() {
+    return HouseholdSeeder.books(
+        EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(realScalePlan(), 0L), at -> "plains")
+            .householdStocks());
+  }
+
+  private static SettlementPlan realScalePlan() {
+    return new SettlementPlan(Map.of(HEX, POPULATION_PER_HEX), List.of(), Map.of(), 250L, 0L);
+  }
+
+  /**
    * 该格**农村家户行**（H0.2 起行 = {@code (格, 居住类型, 阶层)}，**行里没有产业了**）。
    *
-   * <p>★ 本夹具一格、无城 ⇒ {@code (0,0)} 上的农村四行**就是**供给农业与家庭纺织的那两批人（旧版 {@code farm@0_0} 那四行逐值对应）；
-   * 该格没有城镇批次 ⇒ 没有 {@code URBAN} 行。★ 按键的 {@code hex} / {@code residence} 过滤是 H0 之后**唯一**的筛法。
+   * <p>★ 本夹具一格、无城 ⇒ {@code (0,0)} 上的农村四行**就是**供给农业与家庭纺织的那两批人（旧版 {@code farm@0_0} 那四行逐值对应）； 该格没有城镇批次
+   * ⇒ 没有 {@code URBAN} 行。★ 按键的 {@code hex} / {@code residence} 过滤是 H0 之后**唯一**的筛法。
    */
   private static List<ClassRow> farmRows(EconomyData data) {
     List<ClassRow> rows = new ArrayList<>();
@@ -171,7 +190,8 @@ class EconomyRealScaleSeedBottleneckTest {
         .isEqualTo(rowSum * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L)
         .isPositive();
 
-    EconomyData afterOneDay = EconomyOwnershipFixture.advanceEconomy(seeded, MAP_ID, 1L);
+    EconomyData afterOneDay =
+        EconomyOwnershipFixture.advanceEconomy(seeded, realScaleBooks(), MAP_ID, 1L);
     assertThat(afterOneDay.industries().get(farm).cycleLaborMilli())
         .as("③ 农业第 1 天累加的就是它那一条配额（劳动投入取自配额表）")
         .isEqualTo(farmQuota);
@@ -216,13 +236,13 @@ class EconomyRealScaleSeedBottleneckTest {
   // ── ① 真档真的配了种子、且真的扣了（满种）────────────────────────────────────────────
 
   /**
-   * ★★ **真档载荷里带着定案数**（8 粮/亩），且**每一行都付得起自己那份** ⇒ 播种日扣满 {@code 3,098 亩 × 8,000 =
-   * 24,784,000 毫粮}（真档的"标定实质不变"就建立在"种子买得起"这一点上）。
+   * ★★ **真档载荷里带着定案数**（8 粮/亩），且**每一行都付得起自己那份** ⇒ 播种日扣满 {@code 3,098 亩 × 8,000 = 24,784,000
+   * 毫粮}（真档的"标定实质不变"就建立在"种子买得起"这一点上）。
    *
-   * <p>★ **3,098 而非 3,100**：H0.3/K3 把产能从"行"搬到产业之后，"本行想扣多少"改成 {@code
-   * ⌊产业规模 × 本行人口 ÷ 本格农村人口⌋}（{@code EconomySettlement.rowSharesOf} 是唯一算式）—— 四行**各自**向下取整
-   * （1,395 / 1,084 / 465 / 154），故 Σ份额 ≤ 产业规模。★ 实测：H0 前那条"按行土地的千分亩折亩"也恰得 3,098（3,098 不是巧合，
-   * 是同一批人口的同一组份额），本用例因此**逐值不变**。★ 方向是安全的：第三路只**缩**面积、永不放大（{@code seedCapMu ≤ availableMu}）。
+   * <p>★ **3,098 而非 3,100**：H0.3/K3 把产能从"行"搬到产业之后，"本行想扣多少"改成 {@code ⌊产业规模 × 本行人口 ÷ 本格农村人口⌋}（{@code
+   * EconomySettlement.rowSharesOf} 是唯一算式）—— 四行**各自**向下取整 （1,395 / 1,084 / 465 / 154），故 Σ份额 ≤ 产业规模。★
+   * 实测：H0 前那条"按行土地的千分亩折亩"也恰得 3,098（3,098 不是巧合， 是同一批人口的同一组份额），本用例因此**逐值不变**。★
+   * 方向是安全的：第三路只**缩**面积、永不放大（{@code seedCapMu ≤ availableMu}）。
    */
   @Test
   void theRealScaleHexSowsEveryMuItHasMoneyForOnTheSowingDay() {
@@ -238,19 +258,23 @@ class EconomyRealScaleSeedBottleneckTest {
     // ★★ H0.3（K3）：规模的唯一真相在**产业的产能**上（行里已经没有土地了）。
     long scaleMu = farmScaleMu(seeded);
     List<ClassRow> rows = farmRows(seeded);
+    ActorData books = realScaleBooks();
     long householdPopulation = rows.stream().mapToLong(ClassRow::population).sum();
     long needMilli = 0L;
     for (ClassRow row : rows) {
       // 本行那一份种子 = 本行份额（亩）× 每亩需种（毫粮/亩）
-      long need = rowShareMu(scaleMu, row.population(), householdPopulation) * EconomySeeder.SEED_MILLI_PER_MU;
+      long need =
+          rowShareMu(scaleMu, row.population(), householdPopulation)
+              * EconomySeeder.SEED_MILLI_PER_MU;
       needMilli += need;
-      assertThat(row.goods().getOrDefault(EconomySettlement.GRAIN, 0L))
+      // ★ H1：储备住在 actor 侧的账本上（行里没有 goods 这一栏）。
+      assertThat(householdGoods(books, row.key(), EconomySettlement.GRAIN))
           .as("行 %s 的储备必须付得起它那一份种子（%d 毫粮）", row.key(), need)
           .isGreaterThanOrEqualTo(need);
     }
     assertThat(needMilli).as("满种量 = 3,098 亩 × 8,000 毫粮/亩").isEqualTo(24_784_000L);
 
-    EconomyData sowingDay = EconomyOwnershipFixture.advanceEconomy(seeded, MAP_ID, 1L);
+    EconomyData sowingDay = EconomyOwnershipFixture.advanceEconomy(seeded, books, MAP_ID, 1L);
 
     assertThat(totalSown(sowingDay)).as("播种日扣满（第三路瓶颈**存在**：它决定投入面积）").isEqualTo(needMilli);
     assertThat(totalSown(sowingDay)).as("★ 判别力：与「没配种子」（恒 0）必须不同").isNotZero();
@@ -277,7 +301,7 @@ class EconomyRealScaleSeedBottleneckTest {
 
     EconomyOwnershipFixture.Result afterHarvest =
         EconomyOwnershipFixture.advance(
-            seeded, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
+            seeded, realScaleBooks(), MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
 
     // ★★ T4 起**净产**要在两处合读：行里收到的**关系入账** + {@code operator} 账上留下的那一份
     //   （账户 = {@code (ESTATE:farm@0_0, 0_0)}）。毛产 = 净产 ÷ 0.97（损耗 30‰ 只进 `ProductionLedger.losses`）。
@@ -300,27 +324,26 @@ class EconomyRealScaleSeedBottleneckTest {
   @Test
   void anEmptyJarYieldsNothingInTheRealWorldWhileTheUnseededControlStillHarvests() {
     EconomyData seeded = realScaleHex();
-    EconomyData emptied = withEmptyJars(seeded);
-    EconomyData emptiedUnseeded = withEmptyJars(withoutSeedRate(seeded));
+    EconomyData emptied = seeded;
+    EconomyData emptiedUnseeded = withoutSeedRate(seeded);
+    // ★★ H1：**清空的是账本**（"冬春把缸吃空"）—— 行里已经没有 goods 这一栏了。
+    ActorData emptiedBooks = withEmptyJars(realScaleBooks());
+    ActorData emptiedUnseededBooks = emptiedBooks;
 
     // ★ 前提：确实清空了（否则下一条断言测的是别的东西）
-    for (ClassRow row : emptied.classes().values()) {
-      assertThat(row.goods()).as("行 %s 的缸已清空", row.key()).isEmpty();
+    for (CohortKey key : emptied.classes().keySet()) {
+      assertThat(accountBalances(emptiedBooks, key)).as("家户 %s 的缸已清空", key).isEmpty();
     }
 
     EconomyOwnershipFixture.Result starved =
         EconomyOwnershipFixture.advance(
-            emptied, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
+            emptied, emptiedBooks, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
     EconomyOwnershipFixture.Result control =
         EconomyOwnershipFixture.advance(
-            emptiedUnseeded,
-            EconomyOwnershipFixture.NO_BOOKS,
-            MAP_ID,
-            0L,
-            EconomySeeder.CYCLE_DAYS);
+            emptiedUnseeded, emptiedUnseededBooks, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
 
     assertThat(harvestGrainNet(starved)).as("扣不到种 ⇒ 0 亩 ⇒ 不产粮").isZero();
-    assertThat(hexGrain(starved.economy())).as("缸本来空、又不产粮 ⇒ 终态为 0").isZero();
+    assertThat(hexGrain(starved.actor(), starved.economy())).as("缸本来空、又不产粮 ⇒ 终态为 0").isZero();
     assertThat(starved.economy().industries().values())
         .allSatisfy(
             industry -> assertThat(industry.cycleSeedUsedMilli()).as("周期已关账 ⇒ 累加器清零").isZero());
@@ -328,8 +351,8 @@ class EconomyRealScaleSeedBottleneckTest {
     assertThat(harvestGrainNet(control))
         .as("★ 未配种子的对照格：第三路不施加约束 ⇒ 按产能 3,100 亩满产的**净额**（扣饲料 0‰ + 折旧 30‰）")
         .isEqualTo(201_469_000L);
-    assertThat(hexGrain(control.economy()))
-        .as("行侧的入账非零（T4 起产出两处落：行里那份 + operator 账上那份）")
+    assertThat(hexGrain(control.actor(), control.economy()))
+        .as("家户侧的入账非零（T4 起产出两处落：家户账上那份 + operator 账上那份）")
         .isPositive();
   }
 
@@ -370,25 +393,16 @@ class EconomyRealScaleSeedBottleneckTest {
     return modules;
   }
 
-  /** 把每一行的粮清空（"冬春把缸吃空"）；其余字段原样带过（★ H0.3：行里**没有** {@code meansOfProduction} 了）。 */
-  private static EconomyData withEmptyJars(EconomyData data) {
-    LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, ClassRow> entry : data.classes().entrySet()) {
-      ClassRow row = entry.getValue();
-      rows.put(
-          entry.getKey(),
-          new ClassRow(
-              row.key(),
-              row.population(),
-              row.laborMilli(),
-              row.participationPerMille(),
-              Map.of(),
-              row.money(),
-              row.debts(),
-              row.naturalNeeds(),
-              row.effectiveDemand()));
+  /**
+   * ★★ <b>"冬春把缸吃空"</b>（H1）：把每一本家户账的余额清空 —— ★ <b>账本本身留着</b>（0 余额保留是本仓既定口径：
+   * "这个家户在这一格有一本账"与"它现在有东西"是两件事；删掉账本会让日结算 load 时抛）。
+   */
+  private static ActorData withEmptyJars(ActorData books) {
+    LinkedHashMap<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
+    for (Map.Entry<GoodsAccountKey, GoodsAccount> entry : books.accounts().entrySet()) {
+      accounts.put(entry.getKey(), new GoodsAccount(entry.getKey(), Map.of()));
     }
-    return data.withClasses(rows);
+    return books.withAccounts(accounts);
   }
 
   /** 把每个产业的 {@code cycleInputPerUnit} 清空（= 未配投入的对照格）；其余字段原样带过。 */
@@ -422,11 +436,22 @@ class EconomyRealScaleSeedBottleneckTest {
     return data.withIndustries(industries);
   }
 
-  /** 该格 Σ 行库存（毫粮）。 */
-  private static long hexGrain(EconomyData data) {
-    return data.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(EconomySettlement.GRAIN, 0L))
+  /** 该格 Σ 家户粮库存（毫粮）—— H1：从 actor 侧的账本读。 */
+  private static long hexGrain(ActorData books, EconomyData data) {
+    return data.classes().keySet().stream()
+        .mapToLong(key -> householdGoods(books, key, EconomySettlement.GRAIN))
         .sum();
+  }
+
+  /** 某个家户账上某商品的余额（H1）；账户键经 {@link OwnershipBooks#accountKeyOf} 拼（不复述格式）。 */
+  private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
+    return accountBalances(books, key).getOrDefault(commodity, 0L);
+  }
+
+  /** 某个家户账本上的余额表（缺席 ⇒ 空表）。 */
+  private static Map<CommodityId, Long> accountBalances(ActorData books, CohortKey key) {
+    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
+    return account == null ? Map.of() : account.balances();
   }
 
   /** Σ 产业的"本周期实际扣到的种子"（毫粮；周期关账后清零）。 */

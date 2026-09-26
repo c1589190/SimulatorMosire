@@ -21,6 +21,10 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -164,6 +168,15 @@ class McpCoverageTest {
           "economy.Seed",
           // ★ S1 阶段 2：actor 播种（同 economy，放最后 ⇒ 不移动前面各命令的 revision 号）。
           "actor.Seed");
+
+  /**
+   * ★★ H1：{@code economy.Seed} 那条最小载荷在 (1,1) 落的那个家户 —— id 由 {@link HouseholdActors} 拼 （家户 id
+   * 的**唯一拼写点**；本文件不手写 {@code <hex>:<residence>:<stratum>} 那个格式）。
+   */
+  private static final String HOUSEHOLD_ID =
+      HouseholdActors.idOf(
+          new CohortKey(
+              new HexCoord(1, 1), ResidenceKind.RURAL, new SocialClassId("poor_peasant")));
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -339,11 +352,22 @@ class McpCoverageTest {
     //   ★ 判据来自 ActorPayloads：goods 的 location 必须**等于所在 entry 的 (q,r)**（否则拒），
     //     owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体（悬空 owner 拒）——故这里 owner 就是
     //     同一条载荷里声明的 estate:1_1。
+    //   ★★ H1（2026-09-27）：本载荷**必须**连家户 actor 一起播 —— 上面那条 economy.Seed 在 (1,1) 落了一行
+    //     `rural|poor_peasant`，而 H1 起"日结算要读家户账"⇒ 少了它，随后的 {@code simos.advance} 会当场抛
+    //     （"家户 actor / 账本缺失"，不静默当库存 0）。家户 id 由 {@link HouseholdActors} 拼（**唯一拼写点**，
+    //     本载荷不手写那个格式）。
     MINIMAL_PAYLOADS.put(
         "actor.Seed",
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"actor-v1\",\"entries\":[{\"q\":1,\"r\":1,"
-            + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\",\"label\":\"农业庄园\"}],"
+            + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\",\"label\":\"农业庄园\"},"
+            + "{\"kind\":\"HOUSEHOLD\",\"id\":\""
+            + HOUSEHOLD_ID
+            + "\",\"label\":\"农村贫农家户\"}],"
             + "\"goods\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},"
+            + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}},"
+            + "{\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\""
+            + HOUSEHOLD_ID
+            + "\"},"
             + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}}]}]}");
   }
 

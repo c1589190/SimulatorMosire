@@ -2,14 +2,17 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.cohort.CohortKey;
-import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
@@ -85,6 +88,21 @@ class EconomyRealScaleClothTest {
    * <p>★ 城市人口**不从农村人口里扣**：{@code SettlementPlan} 的两池是分开的（与 {@code PopulationSeeder} 的语义一致）。
    */
   private static EconomyData seeded() {
+    return seededPlanFixture().economy();
+  }
+
+  /**
+   * ★★ <b>H1：同一个 plan 交出的家户账本</b>（真路径 = {@code economy.Seed} + {@code actor.Seed} 同批； 本夹具只走 handler
+   * ⇒ 账本在这里从**同一份** plan 的 {@code householdStocks} 建）。
+   */
+  private static ActorData seededBooks() {
+    return seededPlanFixture().books();
+  }
+
+  /** 一次播种的两个产物（economy + actor），避免两处各算一遍 plan。 */
+  private record Seeded(EconomyData economy, ActorData books) {}
+
+  private static Seeded seededPlanFixture() {
     SettlementPlan plan =
         new SettlementPlan(
             Map.of(HEX, POPULATION_PER_HEX),
@@ -112,8 +130,15 @@ class EconomyRealScaleClothTest {
     assertThat(outcome)
         .as("真播种器产出的载荷必须被真 handler 接受：%s", outcome)
         .isInstanceOf(HandlerOutcome.Applied.class);
-    return EconomyChangeSet.apply(
-        (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
+    EconomyData economy =
+        EconomyChangeSet.apply(
+            (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
+    // ★ H1：家户账本由**同一份 plan** 的开缸库存建（真路径里这是同批的第二条命令 actor.Seed）。
+    ActorData books =
+        HouseholdSeeder.books(
+            EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains")
+                .householdStocks());
+    return new Seeded(economy, books);
   }
 
   // ── ① 农村：家庭纺织拿到非零配额，且真的织出布 ────────────────────────────────────────
@@ -139,14 +164,18 @@ class EconomyRealScaleClothTest {
         .as("它 = 该池日劳动 × WEAVE_SHARE_PER_MILLE ÷ 1000")
         .isEqualTo(ruralDailyLabor(shared) * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L);
 
-    EconomyData afterOneCycle =
-        EconomyOwnershipFixture.advanceEconomy(shared, MAP_ID, EconomySeeder.CYCLE_DAYS);
-    long clothAfterOneCycle = clothOf(afterOneCycle);
+    EconomyOwnershipFixture.Result afterOneCycle =
+        EconomyOwnershipFixture.advance(
+            shared, seededBooks(), MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
+    long clothAfterOneCycle = clothOf(afterOneCycle.actor(), afterOneCycle.economy());
     assertThat(clothAfterOneCycle).as("★ 判据 ②：一个周期就有布（规模由最紧约束决定 ⇒ 织机/劳动/纤维三路都参与）").isPositive();
 
-    EconomyData afterOneYear = EconomyOwnershipFixture.advanceEconomy(shared, MAP_ID, YEAR_DAYS);
-    assertThat(clothOf(afterOneYear)).as("★ 判据 ②（原文）：推一年后该格的 CLOTH 库存 > 0").isPositive();
-    assertThat(fiberOf(afterOneCycle))
+    EconomyOwnershipFixture.Result afterOneYear =
+        EconomyOwnershipFixture.advance(shared, seededBooks(), MAP_ID, 0L, YEAR_DAYS);
+    assertThat(clothOf(afterOneYear.actor(), afterOneYear.economy()))
+        .as("★ 判据 ②（原文）：推一年后该格的 CLOTH 库存 > 0")
+        .isPositive();
+    assertThat(fiberOf(afterOneCycle.actor(), afterOneCycle.economy()))
         .as("★ 农田第 120 天真的产出了纤维（规模受**种子**那一路上限 3,098 亩 ⇒ 3,098 × 6 × 1000 × 0.97 净产）")
         .isEqualTo(
             3_098L
@@ -158,14 +187,14 @@ class EconomyRealScaleClothTest {
     //   "逐行份额"设上限**（⌊产能规模 × 本行人口 ÷ 该产业家户行人口⌋），而农田的纤维入账**集中在少数行** ⇒
     //   四行合计取得到的那份**小于**缸里那份 ⇒ 每年剩下一截攒着。年末的逐值 = 24,001,080 毫纤维。
     //   ★ 判据的另一半（"织机不停工"）由下面那条"布逐周期增长"承担 —— 它仍然成立。
-    assertThat(fiberOf(afterOneYear))
+    assertThat(fiberOf(afterOneYear.actor(), afterOneYear.economy()))
         .as("年末缸里的纤维 = 3 个周期的产出 − 织机取走的那部分（H0.4 起取材取不满，见上注）")
         .isEqualTo(24_001_080L)
         .isNotZero();
     // ★★ **R4（T0）取代了 R3 那条"第 2 周期起停工"的如实记**：本格每个周期都能从农田取到新一期的纤维 ⇒
     //   纺织**持续**，布库存逐周期增长（下一条与 {@link #weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms}
     // 一起钉死）。
-    assertThat(clothOf(afterOneYear))
+    assertThat(clothOf(afterOneYear.actor(), afterOneYear.economy()))
         .as("★ R4（T0）：布库存**不再**只靠第 1 个周期的那一份 —— 推一年（3 个周期）拿到的是三份")
         .isGreaterThan(clothAfterOneCycle);
   }
@@ -198,12 +227,14 @@ class EconomyRealScaleClothTest {
     // ★★ H0.2：纤维并入**农村四行**（旧版住在"纺织四行"上）—— 那是同一批人的同一本账；
     //   而"纺织那四行一寸土地都没有"这条判据**没有对象了**（那四行已不存在，行上也不再有任何生产资料）。
     long looms = weave.capacity().getOrDefault(AssetKind.TOOL, 0L);
+    // ★ H1：纤维从**家户账本**读（行里已经没有 goods 这一栏）。
+    ActorData books = seededBooks();
     long fiber = 0L;
-    for (Map.Entry<CohortKey, ClassRow> entry : shared.classes().entrySet()) {
-      if (!entry.getKey().residence().equals(ResidenceKind.RURAL)) {
+    for (CohortKey key : shared.classes().keySet()) {
+      if (!key.residence().equals(ResidenceKind.RURAL)) {
         continue;
       }
-      fiber += entry.getValue().goods().getOrDefault(EconomyTestWorld.FIBER, 0L);
+      fiber += householdGoods(books, key, EconomyTestWorld.FIBER);
     }
     assertThat(looms).as("织机数 = 农村人口 ÷ RURAL_CAPITA_PER_LOOM").isEqualTo(740L);
     assertThat(fiber)
@@ -224,8 +255,7 @@ class EconomyRealScaleClothTest {
     assertThat(fiberCap).as("严格小于织机数与劳动可开数 ⇒ 它确实是那一年最紧的那块").isLessThan(looms);
 
     EconomyOwnershipFixture.Result afterOneCycle =
-        EconomyOwnershipFixture.advance(
-            shared, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
+        EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
     // ★★ T4：布的**净产**要两处合读（行里收到 700‰ 的分成 + operator 账上留 300‰）——
     //   `weave@hex|*` 四行人口为 0 ⇒ 布落同格 agriculture 行（I4.3），故只读 weave 行会得到 0。
     assertThat(produced(afterOneCycle, WEAVE, EconomyTestWorld.CLOTH))
@@ -277,9 +307,11 @@ class EconomyRealScaleClothTest {
     EconomyData shared = seeded();
     assertThat(shared.industries()).as("有城的格 = 农业 + 家庭纺织 + 城市作坊").containsKeys(FARM, WEAVE, CRAFT);
 
-    EconomyData afterOneCycle =
-        EconomyOwnershipFixture.advanceEconomy(shared, MAP_ID, EconomySeeder.CYCLE_DAYS);
-    EconomyData afterOneYear = EconomyOwnershipFixture.advanceEconomy(shared, MAP_ID, YEAR_DAYS);
+    ActorData books = seededBooks();
+    EconomyOwnershipFixture.Result afterOneCycle =
+        EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
+    EconomyOwnershipFixture.Result afterOneYear =
+        EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, YEAR_DAYS);
     long workshops = CITY_POPULATION / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
     long cityCloth =
         workshops
@@ -287,17 +319,16 @@ class EconomyRealScaleClothTest {
             * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
             * 970L
             / 1000L;
-    long yardCloth = clothOf(afterOneCycle) - cityCloth;
+    long yardCloth = clothOf(afterOneCycle.actor(), afterOneCycle.economy()) - cityCloth;
 
     assertThat(cityCloth).as("城里的布净产（35 座 × 60 匹 × 1000 × 0.97）").isEqualTo(2_037_000L);
-    assertThat(clothOf(afterOneYear))
+    assertThat(clothOf(afterOneYear.actor(), afterOneYear.economy()))
         .as("★ 一年后的布 = 第 1 周期的布 + 后两个周期**持续**织出来的那两份（T0 之后不再停工）")
-        .isGreaterThan(clothOf(afterOneCycle));
+        .isGreaterThan(clothOf(afterOneCycle.actor(), afterOneCycle.economy()));
     // ★ T4：工具**没有规则付给 cohort** ⇒ 它整份留在**城市作坊 operator** 的账上（行里一件不进）。
     assertThat(
             heldByOperator(
-                EconomyOwnershipFixture.advance(
-                    shared, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, YEAR_DAYS),
+                EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, YEAR_DAYS),
                 CRAFT,
                 EconomyTestWorld.TOOL))
         .as("★ 工具仍然是**城市自己的第二种产品**（农村不产工具；T4 起它落经营主体的账）")
@@ -308,15 +339,19 @@ class EconomyRealScaleClothTest {
                 * 970L
                 / 1000L)
         .isEqualTo(169_750L);
-    assertThat(toolsOf(afterOneYear)).as("行里一件工具都没有（没有规则付给 cohort）").isZero();
-    assertThat(toolsOf(shared)).as("非平凡：创世时一件工具都没有").isZero();
+    assertThat(toolsOf(afterOneYear.actor(), afterOneYear.economy()))
+        .as("家户账上一件工具都没有（没有规则付给 cohort）")
+        .isZero();
+    assertThat(toolsOf(books, shared)).as("非平凡：创世时一件工具都没有").isZero();
     // ★★ **如实记（R4 之后仍然成立的那一半）**：作坊的第 2 个周期起产量为 0 —— 但原因**不再**是"没有转移通道"，
     //   而是**它的铁只有创世那一份**（本轮无冶炼流程）⇒ 铁那一路瓶颈恒 0 ⇒ 规模 0。
     //   ★ 取材步因此**不往它那儿搬纤维**（"只搬用得上的量"，见 EconomySettlement.rowUsageScale）——
     //     否则纤维会被倒进一个空转的作坊（扣成 consumed 而产出为 0），织机反而拿不到料。
     assertThat(
             weaveClothIncome(
-                EconomyOwnershipFixture.advanceEconomy(shared, MAP_ID, YEAR_DAYS / 3L * 2L), CRAFT))
+                EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, YEAR_DAYS / 3L * 2L)
+                    .economy(),
+                CRAFT))
         .as("★ 第 2 周期起作坊产不出东西：它的铁用光了 ⇒ 规模那一路 = 0")
         .isZero();
   }
@@ -361,7 +396,7 @@ class EconomyRealScaleClothTest {
     // ★★ **逐周期串联推进**（T5）：operator 的账是**存量**（它跨周期累积）⇒ 要量"第 N 个周期产了多少"，
     //   必须拿相邻两个时点**做差**（行侧的流水本来就是本期口径，operator 那侧不是）。
     EconomyOwnershipFixture.Result cycle1 =
-        EconomyOwnershipFixture.advance(shared, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, 120L);
+        EconomyOwnershipFixture.advance(shared, seededBooks(), MAP_ID, 0L, 120L);
     EconomyOwnershipFixture.Result cycle2 =
         EconomyOwnershipFixture.advance(cycle1.economy(), cycle1.actor(), MAP_ID, 120L, 240L);
     // ★ 第 3 个周期的**关账日**是第 360 天（不是 365）—— 关账日读得到整周期的量，次日归零（§八.5）。
@@ -393,12 +428,12 @@ class EconomyRealScaleClothTest {
 
     // ★ 布库存**逐周期增长**（这是 brief 给 R4 的真档判据 ③ 在本夹具上的形态；真档上由
     //   WorldgenInitializeToolTest 的 R4 用例逐值钉住）。
-    assertThat(clothOf(cycle2.economy()))
+    assertThat(clothOf(cycle2.actor(), cycle2.economy()))
         .as("第 2 周期末的布 > 第 1 周期末")
-        .isGreaterThan(clothOf(cycle1.economy()));
-    assertThat(clothOf(cycle3.economy()))
+        .isGreaterThan(clothOf(cycle1.actor(), cycle1.economy()));
+    assertThat(clothOf(cycle3.actor(), cycle3.economy()))
         .as("第 3 周期末的布 > 第 2 周期末")
-        .isGreaterThan(clothOf(cycle2.economy()));
+        .isGreaterThan(clothOf(cycle2.actor(), cycle2.economy()));
     // ★★ **布真的被消费**（R4 的 T2）：三个周期里布那一维的缺口与消费都读得出来。
     assertThat(flowConsumed(cycle3.economy(), EconomyTestWorld.CLOTH))
         .as("★ 判据（真档可见性 ④）：CLOTH 的 consumed 非零")
@@ -501,34 +536,41 @@ class EconomyRealScaleClothTest {
 
   // ── 读数 ────────────────────────────────────────────────────────────────────────────
 
-  /** 该格 Σ 某商品库存。 */
-  private static long goodsOf(EconomyData data, CommodityId commodity) {
-    return data.classes().values().stream()
-        .mapToLong(row -> row.goods().getOrDefault(commodity, 0L))
+  /** 该格 Σ 家户某商品库存（H1：从 actor 侧的账本读；行里没有 goods 这一栏）。 */
+  private static long goodsOf(ActorData books, EconomyData data, CommodityId commodity) {
+    return data.classes().keySet().stream()
+        .mapToLong(key -> householdGoods(books, key, commodity))
         .sum();
   }
 
-  private static long clothOf(EconomyData data) {
-    return goodsOf(data, EconomyTestWorld.CLOTH);
+  private static long clothOf(ActorData books, EconomyData data) {
+    return goodsOf(books, data, EconomyTestWorld.CLOTH);
+  }
+
+  /** 某个家户账上某商品的余额（H1）：账户键经 {@link OwnershipBooks#accountKeyOf} 拼（不复述格式）；缺席 ⇒ 0。 */
+  private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
+    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
+    return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
   }
 
   /**
-   * 某**居住类型那组家户**的 Σ 某商品库存（H0.2：行里没有产业 ⇒ 改按 (格, 居住类型) 取；
-   * 农村行同时是"农业的行"与"纺织的行" ⇒ 农业与纺织共用一本账，读数也只有一个落点）。
+   * 某**居住类型那组家户**的 Σ 某商品库存（H0.2：行里没有产业 ⇒ 改按 (格, 居住类型) 取； 农村行同时是"农业的行"与"纺织的行" ⇒
+   * 农业与纺织共用一本账，读数也只有一个落点）。
    */
-  private static long goodsOf(EconomyData data, ResidenceKind residence, CommodityId commodity) {
-    return data.classes().entrySet().stream()
-        .filter(entry -> entry.getKey().residence().equals(residence))
-        .mapToLong(entry -> entry.getValue().goods().getOrDefault(commodity, 0L))
+  private static long goodsOf(
+      ActorData books, EconomyData data, ResidenceKind residence, CommodityId commodity) {
+    return data.classes().keySet().stream()
+        .filter(key -> key.residence().equals(residence))
+        .mapToLong(key -> householdGoods(books, key, commodity))
         .sum();
   }
 
-  private static long toolsOf(EconomyData data) {
-    return goodsOf(data, EconomyTestWorld.TOOL);
+  private static long toolsOf(ActorData books, EconomyData data) {
+    return goodsOf(books, data, EconomyTestWorld.TOOL);
   }
 
-  private static long fiberOf(EconomyData data) {
-    return goodsOf(data, EconomyTestWorld.FIBER);
+  private static long fiberOf(ActorData books, EconomyData data) {
+    return goodsOf(books, data, EconomyTestWorld.FIBER);
   }
 
   /** 该格**农村那一池**（农村四行）的当日劳动（改口径前那条算式：Σ 行 laborMilli × 槽位投入率 ÷ 1000）。 */

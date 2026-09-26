@@ -6,9 +6,10 @@ import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.util.address.Address;
@@ -47,8 +48,13 @@ import java.util.Optional;
  *
  * <pre>
  * 经济结算一天（{@code EconomyDayStepper.step(day)}）⇒ 它交回当天的 ProductionLedger
- * 产权落账（{@link OwnershipBooks#apply}）⇒ actor 账本 += 当天的条目
+ * 产权落账（{@link OwnershipBooks#apply}）⇒ actor 账本 += 当天的条目（operator 那一路）
+ * 家户账落回（{@link OwnershipBooks#landHouseholdGoods}）⇒ 家户账 = 会话副本的**绝对值**
  * </pre>
+ *
+ * <p>★★ <b>H1：家户账是会话副本</b>（裁定 K1 / D3-C）—— 日耗 / 投入 / 同格取材只写副本（不是产权条目）， 而关系实付给家户既是条目、也计进了副本 ⇒
+ * 两条路在"按绝对值落回"这一步合成一本账（顺序：条目先、副本后）。 ★ 本参与者因此在推进前也要从 actor 侧**载入**副本（{@link
+ * OwnershipBooks#loadHouseholdGoods}）—— 消费与投入都要读它。
  *
  * <p>★ <b>逐日而不是一次算完</b>：{@code ProductionLedger} 是<b>一天一本</b>的（见它的类注）⇒ 逐日落账才不重不漏； §十一 的"一次 N 天 == N
  * 次单日"因此也落在同一个循环里。
@@ -100,7 +106,8 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       reads.add(economyAddress("industry", id.value()));
       writes.add(economyAddress("industry", id.value()));
     }
-    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code 0_0|rural|poor_peasant}）。
+    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code
+    // 0_0|rural|poor_peasant}）。
     //   行键里已经没有产业，旧版内联拼的 {@code <industryId>.<slotId>} 是同一格式的第二处拼写点（已删）。
     //   ★ 必须与 {@code EconomyResolver} 的 class/flow 地址逐字同串。
     for (CohortKey key : economy.classes().keySet()) {
@@ -129,18 +136,25 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
           writes);
     }
 
-    EconomyDayStepper stepper = new EconomyDayStepper(economy);
+    // ★★ H1（裁定 K1）：家户账的**会话工作副本**（见 PopulationEconomyTimeParticipant 的同款接线）——
+    //   本参与者服务"有 economy + actor、没有 social"的世界，家户账照样要从 actor 侧载入。
+    Map<CohortKey, Map<CommodityId, Long>> householdGoods =
+        OwnershipBooks.loadHouseholdGoods(economy, actor);
+    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods);
     ActorData books = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
       // ★★ 落账：当天的条目只落一次（ledger 是**一天一本**的）；落出来的新账户也要进写集。
-      if (ledger.actorEntries().isEmpty()) {
-        continue;
+      if (!ledger.actorEntries().isEmpty()) {
+        books = OwnershipBooks.apply(books, ledger.actorEntries());
+        for (GoodsAccountKey key : books.accounts().keySet()) {
+          writes.add(accountAddress(key));
+        }
       }
-      books = OwnershipBooks.apply(books, ledger.actorEntries());
-      for (GoodsAccountKey key : books.accounts().keySet()) {
-        writes.add(accountAddress(key));
-      }
+      // ★★ H1：家户账**按绝对值**落回（日耗 / 投入 / 同格取材只写副本；关系实付既进条目也已进副本
+      //   ⇒ 按副本的绝对值写回，不叠加条目 —— 见 {@link OwnershipBooks#landHouseholdGoods}）。
+      //   ★ 顺序不能反：条目先落、副本收尾（反了同一笔粮会记两遍）。
+      books = OwnershipBooks.landHouseholdGoods(books, stepper.householdGoods());
     }
     EconomyData currentEconomy = stepper.finish();
     return new WorldTimeProposal(
