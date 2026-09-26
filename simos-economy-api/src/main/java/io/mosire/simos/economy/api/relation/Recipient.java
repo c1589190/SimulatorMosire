@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.api.relation;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 
@@ -19,7 +21,19 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
  * 的粮源会凭空消失（地主既不是劳动者、也不是 actor）。
  *
  * <p>★ <b>两个变体的字段各自判 null 即抛</b>（不猜）：一条「没有受方」的规则不是状态，是坏数据。
+ *
+ * <p>★★ <b>线格式：类型信息以注解钉在本接口上</b>（S1 阶段 4+5 Task 2 补；先例 = {@code FieldDelta} 的 M4 裁定 4 与 {@code
+ * AllocationRule}）。理由与那两处逐字相同：本接口是 <b>sealed 多态类型</b>，而它<b>进了状态树</b> （{@code EconomyData.relations}
+ * → {@code EconomyChangeSet} → 每一条 revision 的 JSON）⇒ 裸往返不可能： 写得出字节，读回时"要造哪个变体"没有依据（{@code no
+ * Creators / abstract types}）。**选注解而不是 mixin**： mixin 必须在本模块<b>之外</b>的每一台 mapper 上补注册（{@code
+ * EconomyCodec}、{@code Timeline} 那台…）， 忘了就是静默失效；注解跟着类型走，连裸 {@code new ObjectMapper()} 都认得。{@code
+ * Id.NAME} 而非 {@code Id.CLASS}：把 <b>短名</b>写进存档，读入侧只接受<b>本接口声明的</b>子类集（封闭）。
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Recipient.ToActor.class, name = "to_actor"),
+  @JsonSubTypes.Type(value = Recipient.ToCohort.class, name = "to_cohort"),
+})
 public sealed interface Recipient permits Recipient.ToActor, Recipient.ToCohort {
 
   /** 受方是<b>经济主体</b>（{@code ActorRef} 是身份；actor 的种类/粒度由产出方定，本层不解释）。 */
