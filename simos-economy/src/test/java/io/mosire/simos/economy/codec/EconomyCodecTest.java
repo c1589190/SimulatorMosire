@@ -26,7 +26,6 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -172,6 +171,15 @@ class EconomyCodecTest {
     assertThat(farm.cycleInputUsedMilli())
         .as("★ R3：本周期实际扣到的投入（按商品）必须过线")
         .containsEntry(GRAIN, 400L);
+    // ★★ 夹具是**非默认**值（`tenant` 的推导值是 HOUSEHOLD:farm，见 {@link #industry} 的第 16 个实参）
+    //   ⇒ 这一句只有"值真的过了线"才能满足：把 operator 从线格式里丢掉、或解码时按 regime 重新推导，
+    //   读到的都会是 `HOUSEHOLD:farm` ⇒ 当场红。
+    assertThat(farm.operator())
+        .as("★ S1 阶段 3：经营主体必须真的过线（缺它 ⇒ 往返后 operator 没了）")
+        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
+    // ★★ 夹具是**非默认**值（`tenant` 的推导值是 HOUSEHOLD:farm，见 {@link #industry} 的第 16 个实参）
+    //   ⇒ 这一句只有"值真的过了线"才能满足：把 operator 从线格式里丢掉、或解码时按 regime 重新推导，
+    //   读到的都会是 `HOUSEHOLD:farm` ⇒ 当场红。
     assertThat(workshop.allocation()).isInstanceOf(AllocationRule.WageFirst.class);
     AllocationRule.WageFirst wageFirst = (AllocationRule.WageFirst) workshop.allocation();
     assertThat(wageFirst.ownerResidual()).containsOnlyKeys(GRAIN, CLOTH);
@@ -435,8 +443,12 @@ class EconomyCodecTest {
         new AllocationRule.Split(700, 300),
         0L,
         Map.of(GRAIN, 400L),
-        // ★ 通用夹具的 operator = **派生**（`tenant` ⇒ `HOUSEHOLD:<产业 id>`）。
-        RegimeOperators.defaultOperator(new RegimeId("tenant"), id));
+        // ★★ **非默认值**（S1 阶段 3 的 D9 纪律：往返夹具**不许**用派生值）——
+        //   本夹具的 regime 是 `tenant` ⇒ 推导值 = defaultOperator(tenant, id) = `HOUSEHOLD:<产业 id>`；
+        //   这里显式给的是 `ESTATE:<产业 id>@0_0`：**kind 与推导值不同**（ESTATE ≠ HOUSEHOLD）
+        //   ⇒ 往返后读到它**只可能来自线格式**，不可能来自任何推导（`id = FARM` ⇒ `ESTATE:farm@0_0`，
+        //   即 `deltaValuesSurviveAsIndustryWithCommodityKeys` 里那条过线断言期望的字面量）。
+        new ActorRef(ActorKind.ESTATE, id.value() + "@0_0"));
   }
 
   /** 资本主义工业：{@code WageFirst} + 嵌套商品键（企业主剩余）。 */

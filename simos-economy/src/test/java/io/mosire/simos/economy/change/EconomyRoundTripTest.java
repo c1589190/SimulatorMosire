@@ -26,6 +26,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -82,6 +83,52 @@ class EconomyRoundTripTest {
       assertThat(changedOf(cs, name)).as("组件 %s 必须被 between 报成非 Unchanged", name).isTrue();
       assertThat(EconomyChangeSet.apply(cs, base)).as("组件 %s 的往返", name).isEqualTo(target);
     }
+  }
+
+  /**
+   * ★★ **I3.1「不丢失」的第二个面**（裁定 D9-1）：**显式绑定的、与制度默认值不同的** operator 参与 {@code FieldDelta<Industry>}
+   * 的差异与重建 —— 变更集既不能"看不见"它（差异退化成 {@code Unchanged}）， 也不能在重建时把它换成别的值。
+   *
+   * <p>★★ <b>为什么夹具必须是非默认值</b>：本文件其余夹具的 operator 都是**派生值** （`tenant ⇒ HOUSEHOLD:farm`）——
+   * 用派生值的话，差异与重建两边都会得到**同一个**推导值 ⇒ 断言恒真，"operator 是标签"以最隐蔽的形式复活也没人发现。本用例的 target 取
+   * `HOUSEHOLD:house-7` （同一个 kind、**不同的 id**），base 取本文件夹具的派生值 `HOUSEHOLD:farm` ⇒ 判别力落在 id 那一维上。
+   *
+   * <p>★ 判别力（两条变异体各自实测）：把 {@code between} 的差异改成"先把两边的 operator 都归一到 regime 推导值再 diff"（"operator
+   * 是标签"在**变更集层**复活）⇒ 本用例的 {@code isInstanceOf(Upsert)} 那句红 （差异退化成 {@code Unchanged}）；把 {@code
+   * Industry} 的构造期改成"operator 一律按 regime 重新推导"⇒ 本用例**前置**那句红（target 在构造期就被改写成与 base 相同）。两条都记在 T3
+   * 报告的变异自证里。
+   */
+  @Test
+  void anOperatorThatIsNotTheRegimeDefaultSurvivesTheChangeSet() {
+    ActorRef household = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
+    EconomyData base = EconomyData.empty().withIndustries(Map.of(FARM, industry(FARM, 0L)));
+    EconomyData target =
+        EconomyData.empty().withIndustries(Map.of(FARM, industry(FARM, 0L, household)));
+
+    // ★ 前置：夹具真的是"非默认"（`tenant` 的推导值是 HOUSEHOLD:farm，本用例给的是 HOUSEHOLD:house-7）——
+    //   若两者相同，本用例的每条断言都能被"重新推导"这条规则满足 ⇒ 白写。
+    assertThat(industry(FARM, 0L, household).operator())
+        .as("夹具必须是**非默认**值（`tenant` 的推导值是 HOUSEHOLD:farm）")
+        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("tenant"), FARM));
+
+    EconomyChangeSet cs = EconomyChangeSet.between(base, target);
+
+    // ★ 形状按 `FieldDelta.diff` 的**规则**推：同一个 key、值不同 ⇒ 进 upserts；base 里没有多出来的 key
+    //   ⇒ removals 为空 ⇒ 变体是 **Upsert**（不是 Unchanged、也不是 Upsert + Remove 的 Patch）。
+    assertThat(cs.industries())
+        .as("operator 变了 ⇒ 差异不许退化成 Unchanged")
+        .isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(cs.industries().changed()).as("差异必须看得见 operator").isTrue();
+    @SuppressWarnings("unchecked")
+    FieldDelta.Upsert<Industry> upserts = (FieldDelta.Upsert<Industry>) cs.industries();
+    assertThat(upserts.entries().get(FARM.value()).operator())
+        .as("★ 差异里带的就是 operator 那一维的**新值**（不是旧值、也不是推导值）")
+        .isEqualTo(household);
+    assertThat(EconomyChangeSet.apply(cs, base)).as("重建后的整份状态 == target").isEqualTo(target);
+    assertThat(EconomyChangeSet.apply(cs, base).industries().get(FARM).operator())
+        .as("★ 重建后读到的就是那一个显式主体")
+        .isEqualTo(household)
+        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("tenant"), FARM));
   }
 
   @Test
@@ -168,6 +215,17 @@ class EconomyRoundTripTest {
    * participationPerMille}（此处 800）= v2 spec §八.1 的不变量。
    */
   static Industry industry(IndustryId id, long progress) {
+    // ★ 通用夹具的 operator = **派生**（`tenant` ⇒ `HOUSEHOLD:<本夹具的 id 参数>`）：默认值只有一处拼写点。
+    return industry(id, progress, RegimeOperators.defaultOperator(new RegimeId("tenant"), id));
+  }
+
+  /**
+   * 同 {@link #industry(IndustryId, long)}，但**显式给定经营主体**。
+   *
+   * <p>★ 加这个重载是 D9 的纪律所要求的：守门用例必须能塞进**非默认**值 —— 用派生值的话， "重建点漏传 ⇒ 被重新推导"这种变异体会被推导出的**同一个值**掩盖（T2 报告
+   * §5.3）。
+   */
+  static Industry industry(IndustryId id, long progress, ActorRef operator) {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 950), new ClassSlot(LANDLORD, "地主", 900));
     return new Industry(
@@ -188,8 +246,7 @@ class EconomyRoundTripTest {
         new AllocationRule.Split(700, 300),
         0L,
         Map.of(GRAIN, 3L),
-        // ★ 通用夹具的 operator = **派生**（`tenant` ⇒ `HOUSEHOLD:<本夹具的 id 参数>`）。
-        RegimeOperators.defaultOperator(new RegimeId("tenant"), id));
+        operator);
   }
 
   static ClassKey otherKey() {

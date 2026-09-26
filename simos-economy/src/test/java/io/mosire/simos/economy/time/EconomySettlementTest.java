@@ -357,6 +357,48 @@ class EconomySettlementTest {
     assertThat(parts[3]).as("★ 判别力：旧口径（分母 1000‰ + 人手均摊）会给出 217,175，两者必须不同").isNotEqualTo(217_175L);
   }
 
+  /**
+   * ★★ **I3.1「不丢失」的守门用例**（裁定 D9-1）：**显式绑定的、与制度默认值不同的** operator，走完一日结算仍是它。
+   *
+   * <p>★★ <b>为什么夹具必须是**非默认**值</b>：本文件其余夹具的 operator 都是**派生值**（`feudal ⇒ ESTATE:farm@0_0`）——
+   * 用派生值的话，{@code withCycleState} 漏传时会被**重新推导成同一个值** ⇒ 变异体存活、断言恒真 （T2 报告 §5.3
+   * 把这条边界如实记下了，本用例正是接住它的那一条）。本用例取 `HOUSEHOLD:house-7` —— 制度是 `feudal`、经营主体是**外来的家户**，而 `feudal`
+   * 的推导值是 `ESTATE:farm@0_0`： **kind 与 id 都不同** ⇒ 读出来是它就只可能来自透传，不可能来自任何推导。
+   *
+   * <p>★★ **为什么跑满一个周期而不是只跑一天**：结算里重建 `Industry` 的只有 `withCycleState` 一处， 但有**两个调用点、三种形状** ——
+   * ①今日常规分支（{@code progressDays + 1}）；②播种日 `drawCycleInputs` 的投入累加分支 （{@link #fixtureWithOperator}
+   * 配了种子且贫农占地 = 1 个产能单位 ⇒ 真的扣得动 ⇒ 这一支被走到）； ③关账分支（{@code progressDays} / {@code cycleLaborMilli}
+   * 归零、{@code cycleInputUsedMilli} 清空）。 只跑一天只覆盖 ①②；跑满 `cycleDays = 3` 才把 ③ 也跑到。
+   *
+   * <p>★ 判别力：把 `withCycleState` 的透传改成 `null` ⇒ **构造期抛**（{@code Industry} 的守卫）； 改成
+   * `defaultOperator(industry.regime(), industry.id())` ⇒ **本用例的断言红**（读出来是 `ESTATE:farm@0_0`）。
+   * 两条都实测过（T3 报告 §变异自证）。
+   */
+  @Test
+  void anExplicitOperatorSurvivesADayOfSettlement() {
+    ActorRef household = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
+    // ★ 前置：夹具真的是"非默认"（kind 与 id 都与推导值不同）—— 否则本用例恒真，白写。
+    assertThat(household)
+        .as("夹具必须是**非默认**值：否则「漏传」会被重新推导成同一个值 ⇒ 本用例恒真")
+        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
+
+    EconomyData afterOneDay = EconomySettlement.settle(fixtureWithOperator(household), 0L, 1L);
+    assertThat(afterOneDay.industries().get(FARM).operator())
+        .as("★ 一日结算不得改写经营主体（defaultOperator 会给 ESTATE:farm@0_0 ⇒ 那样当场红）")
+        .isEqualTo(household);
+
+    // ★★ 再跑到周期末（第 3 天关账）：关账那一支把 progressDays / cycleLaborMilli 归零、cycleInputUsedMilli 清空，
+    //   是同一次重建里"换的字段更多"的形状 —— 它照样不许碰 operator。
+    EconomyData afterOneCycle = EconomySettlement.settle(afterOneDay, 1L, 3L);
+    assertThat(afterOneCycle.industries().get(FARM).progressDays())
+        .as("前置：第 3 天真的是周期末（关账分支被走到）")
+        .isZero();
+    assertThat(afterOneCycle.industries().get(FARM).operator())
+        .as("★ 关账重建同样不得改写经营主体")
+        .isEqualTo(household)
+        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
+  }
+
   // ── 夹具：一格、一个农业产业（3 天周期）、贫农 + 地主两行 ─────────────────────────────
 
   private static EconomyData fixture() {
@@ -392,6 +434,66 @@ class EconomySettlementTest {
         new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
     // ★★ R2：当日劳动的来源是配额表（见 {@link #famineFixture} 的同款注释）。本夹具的当日劳动 = 贫农 58,000（投入率
     //   1000‰）+ 地主 0（投入率 0‰）= 58,000 ⇒ 发一条 58,000 的配额，逐值不变。
+    return new EconomyData(
+        Optional.of(meta),
+        industries,
+        classes,
+        Map.of(),
+        Map.of(),
+        Map.of(LOT, supply(LOT, 58_000L)),
+        Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)));
+  }
+
+  /**
+   * ★★ **D9 的守门夹具**：与 {@link #fixture()} 同形（一格、一个农业产业、3 天周期、贫农 + 地主两行、同一批劳动）， 但**三处刻意不同**：
+   *
+   * <ul>
+   *   <li>第 16 个组件（经营主体）由**调用方给** —— 守门用例据此塞**非默认**值；
+   *   <li>**配了种子**（{@code cycleInputPerUnit} 非空，8,000 毫粮 / 亩 = v2 spec §3.3 的标定值）；
+   *   <li>**贫农占地恰好 = 1 个产能单位**（1,000 千分亩 ÷ 1,000）⇒ 播种日**真的扣得动** ⇒ 结算里 {@code drawCycleInputs} 那次
+   *       `withCycleState`（重建 Industry 的第二个调用点）**被走到**。
+   * </ul>
+   *
+   * <p>★ 两行占地**刻意不同**（贫农 1,000 / 地主 300）：地主那一行 {@code rowScale = 300 ÷ 1000 = 0} ⇒ 它不扣种子
+   * （"投入各扣各的"这条既有口径），而贫农那一行扣 1 × 8,000 = 8,000 毫粮 ⇒ 两条支路都走到。
+   *
+   * <p>★ 本夹具**只**服务守门用例：它的数值与 {@link #fixture()} 不同（多了一条投入），故不共用 —— 共用会改动
+   * 那一批已算好的字面量（本仓纪律：不许因新用例放宽/改写既有断言）。
+   */
+  private static EconomyData fixtureWithOperator(ActorRef operator) {
+    List<ClassSlot> slots =
+        List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
+    Industry farm =
+        new Industry(
+            FARM,
+            "农业",
+            new RegimeId("feudal"),
+            3L,
+            0L,
+            // ★ R3：产能锚（规模单位 = 1 亩）；劳动那一路给 0（不施加约束，同 {@link #fixture()}）。
+            Map.of(AssetKind.LAND, 1_000L),
+            Map.of(),
+            0L,
+            0L,
+            Map.of(GRAIN, 7L),
+            // ★ 种子：8,000 毫粮 / 亩（**唯一**一处与 {@link #fixture()} 不同的配方字段）。
+            Map.of(AssetKind.LAND, Map.of(GRAIN, 8_000L)),
+            slots,
+            new AllocationRule.Split(700, 300),
+            0L,
+            Map.of(),
+            // ★★ 第 16 个组件：**调用方给的**（守门用例塞非默认值）。
+            operator);
+    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    industries.put(FARM, farm);
+    Map<ClassKey, ClassRow> classes = new LinkedHashMap<>();
+    classes.put(
+        PEASANT_KEY,
+        row(PEASANT_KEY, PEASANT_POPULATION, 58_000L, 1000, /* land= */ 1_000L, 83_000L));
+    classes.put(LANDLORD_KEY, row(LANDLORD_KEY, LANDLORD_POPULATION, 5_800L, 0, 300L, 8_300L));
+    EconomyMeta meta =
+        new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty());
+    // ★★ R2：当日劳动的来源是配额表（同 {@link #fixture()}）：发一条 58,000 的配额。
     return new EconomyData(
         Optional.of(meta),
         industries,
