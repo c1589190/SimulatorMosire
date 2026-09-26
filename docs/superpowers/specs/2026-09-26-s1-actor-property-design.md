@@ -416,3 +416,48 @@ S2
 - **未做**：§六 那四档默认规则的**参数值**（地租 30% / 给养 20% 等是示例），
   按 `design-creed.md` 信条十二属"判断结果"，应由 GM 可调参数决定，**本文件不预定**。
 - **未决策**：`AssetClassKey.qualities` 具体编码哪些维度（本轮只需 `LAND(arable, quality=B)` 一个实例）。
+
+---
+
+## 追加（2026-09-26，S1 阶段 2 落计划时的裁定）—— **不改上面任何一行**
+
+★ 本节是**追加**，不是修订：上面 418 行的每一句都保持当时的样子（留痕不篡改）。
+本节记录的是**进入实现前**用户就阶段 2 计划做的裁定，按条留痕。
+
+### 追加-1：`GoodsAccount` 是**新产权模型的唯一真源**（临时裁定）
+
+> **S1 起，`GoodsAccount` 是新产权模型中商品余额的 `authoritative state`；
+> 既有 `simos-ledger.Account` 保持 legacy/unwired —— 不与 `GoodsAccount` 双写、不做镜像同步。**
+
+- **最忌讳的不是两个类同时存在**，而是两边各存一份"100 grain"而**没人知道哪份是真的**。
+- 现状明确为：`GoodsAccount` = 真源；`ledger.Account` = **旧死代码：不读、不写、不同步**；
+  去留（D1，见 `2026-09-26-population-economy-v3-design.md`）**另裁**。
+- ★ **反面纪律**：**不许**为了"复用"把 `ledger.Account` 强行拉活 —— 那会提前把 S2 的
+  `money` / `reserved` / settlement 一大坨**未裁领域**拖进 S1。
+- ★ 本条**只**划定"S1 期间谁是权威"，**不**预先决定 D1 的结论。
+
+### 追加-2：`ActorKind` / `ActorRef` / `AssetKind` 上移 = **纯机械迁移**
+
+`AssetKind` 随 `ActorRef` 一并上移到 `simos-actor-api`（理由见阶段 2 计划 §R1）——
+否则 `AssetClassKey` 的粗类型只能退化成 `String`（fail-open）或另立一套词表（同一概念两份真相）。
+
+★ **迁移纪律**：`LAND/CATTLE/TOOL/WORKSHOP/MACHINE/SHIP` 的**原值、序列化名字、解析行为一律不动**；
+「移动词表」与「重新设计资产类型」**绝不许塞进同一个提交**。
+
+### 追加-3：两条与依赖方向有关的裁定
+
+1. **R2**：`simos-actor` **可以**依赖 `simos-economy-api`（消费其发布的商品身份契约），
+   **禁止**依赖 `simos-economy` / `simos-ledger` —— 即**只允许类型依赖，不允许运行时领域控制流反向流入**。
+   护栏落在 `simos-actor/pom.xml` 的 `bannedDependencies`，**不是注释**。
+2. **R7**：阶段 2 的实现分三段**硬隔离**（搬家 / 新契约 / 新模型），每段**全仓恢复绿**才进下一段 ——
+   这样"新模型爆了"与"168 处迁移漏了"不会混成同一个失败源。
+
+### 追加-4：两处**文档事实修正**（回代码核过，2026-09-26）
+
+1. `2026-09-26-s1-stage-breakdown.md` §四「**1 → 2**：Actor 的身份键要用 `CohortKey`」**是误写** ——
+   Actor 侧身份键**全部**是 `ActorRef`；`CohortKey` 在本 spec 里只出现在**劳动侧/消费侧**。
+   那句的括注实指 `CompensationRule.recipient`，属**阶段 5/6 的结算侧**。
+   ⇒ **与阶段 1 的收窄不冲突**，阶段 2 **不建** `CohortKey`。
+2. 同 breakdown §三 阶段 2 写「`ActorRef` / `ActorKind` / `AssetClassKey` **从 `economy-api` 上移**」
+   —— 对第三项**无物可移**：`AssetClassKey` 全仓 **0 份**（只在 2 个 md 里被提及）。
+   ⇒ 阶段 2 的真实改动面是 **上移 2 个 + 新建 4 个**。
