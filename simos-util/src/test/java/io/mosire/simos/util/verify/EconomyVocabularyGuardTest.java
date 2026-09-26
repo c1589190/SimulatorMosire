@@ -9,6 +9,10 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,7 +31,14 @@ import org.junit.jupiter.api.Test;
  */
 class EconomyVocabularyGuardTest {
 
-  /** 全部模块的 {@code src/main}——漏一个模块 = 那道口子没人守。 */
+  /**
+   * 全部模块的 {@code src/main}——漏一个模块 = 那道口子没人守。
+   *
+   * <p>★★ **本清单不许手抄**（Task 10）：它此前停在"R2a 那一刻的十个模块"，S1 阶段 2 新增的 {@code simos-actor-api} / {@code
+   * simos-actor} **静默漏掉**（清单没变、用例全绿、词表缺口无人守）——这正是本清单下面那条 {@link
+   * #theScannedModuleListMatchesTheOneTheBuildDeclares()} 要拦住的事。新增模块时**两处一起加**（本清单 + 根 {@code
+   * pom.xml}），只加一处当场红。
+   */
   private static final List<String> MODULES =
       List.of(
           "simos-util",
@@ -36,14 +47,58 @@ class EconomyVocabularyGuardTest {
           "simos-unit",
           "simos-core",
           "simos-sd",
+          "simos-actor-api",
+          "simos-actor",
           "simos-economy-api",
           "simos-ledger",
           "simos-economy",
           "simos-app");
 
+  /** 根 {@code pom.xml} 里的模块声明（构建面的权威清单）。 */
+  private static final Pattern MODULE_TAG = Pattern.compile("<module>([^<]+)</module>");
+
   /** 词表的唯一落点（口径的两个数都得在这里）。 */
   private static final String VOCABULARY =
       "simos-util/src/main/java/io/mosire/simos/util/economy/EconomyVocabulary.java";
+
+  /**
+   * ★★ **扫描面自己不许漂移**（Task 10 补）：{@link #MODULES} 必须**恰恰等于**根 {@code pom.xml} 声明的 {@code <module>}
+   * 集合。
+   *
+   * <p><b>病灶形态</b>（真发生过，不是推演）：本类的 {@code MODULES} 是**手抄**的，而"全仓恰一份"的判据只能守在**被扫到的** 模块上 —— 于是 S1 阶段
+   * 2 加了两个模块之后，清单没变、用例全绿，那两片的词表口子**没人守**。手抄清单与"清单该覆盖什么"之间 没有任何东西钉住，本用例就是那根钉子。
+   *
+   * <p>★ <b>为什么钉"等于"而不是"包含"</b>：多一个（清单里有、构建面没有 ⇒ 拼错模块名，扫描其实是空的）与少一个同样是静默 失效方向；{@code
+   * containsExactlyInAnyOrderElementsOf} 两个方向一起钉，顺带把清单里的**重复项**也判红。
+   */
+  @Test
+  void theScannedModuleListMatchesTheOneTheBuildDeclares() throws IOException {
+    Set<String> declared = modulesDeclaredInRootPom();
+
+    assertThat(declared)
+        .as("★ 先证明解析器不是静默返回空（'命中 0 先怀疑自己的读取'：正则/读取坏掉时下面那条会变成恒真）")
+        .contains("simos-util", "simos-actor-api", "simos-actor", "simos-app")
+        .hasSizeGreaterThanOrEqualTo(12);
+    assertThat(MODULES)
+        .as("★★ 扫描面必须恰恰等于根 pom 的 <module> 集合——否则下个新模块还会静默漏掉")
+        .containsExactlyInAnyOrderElementsOf(declared);
+  }
+
+  /**
+   * 根 {@code pom.xml} 里声明的模块名（{@code <module>…</module>} 一行一个）。
+   *
+   * <p>★ <b>为什么正则够用、且失败模式已被上面那条非空断言兜住</b>：这份文件是本仓自己的、形态极简（一行一模块，注释里不含该标签）， 而正则解析 XML 的经典失效是**静默 0
+   * 命中**（那会让断言恒真）——故非空 + 具名模块的断言**先**跑。
+   */
+  private static Set<String> modulesDeclaredInRootPom() throws IOException {
+    String pom = RepoSourceScan.rawContent(RepoSourceScan.repoFile("pom.xml"));
+    Set<String> modules = new TreeSet<>();
+    Matcher matcher = MODULE_TAG.matcher(pom);
+    while (matcher.find()) {
+      modules.add(matcher.group(1).trim());
+    }
+    return modules;
+  }
 
   /** 逐文件数 ``token`` 出现在多少行上；只收 >0 的文件，键 = 仓库相对路径。 */
   private static Map<String, Long> occurrencesByFile(String token) {

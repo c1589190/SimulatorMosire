@@ -52,6 +52,16 @@ final class RepoSourceScan {
     return Files.readString(file);
   }
 
+  /**
+   * 仓根下的一个文件（护栏要读**清单本体**时用，例如根 {@code pom.xml} 的 {@code <module>} 集合）。
+   *
+   * <p>★ **仍然对 needle 中性**：本方法只报路径、不读内容、不判任何串——扫描护栏自己的源文件必须对 needle 呈中性这条不变。
+   * 之前没有它时，护栏只能把"本仓有哪些模块"**手抄一份**，而手抄的那份**没有任何东西钉住它**（Task 10 的病灶）。
+   */
+  static Path repoFile(String relativePath) {
+    return REPO_ROOT.resolve(relativePath).normalize();
+  }
+
   /** 相对仓根的路径（报错信息与断言消息用它，不暴露绝对路径）。 */
   static String relative(Path file) {
     return REPO_ROOT.relativize(file).toString();
