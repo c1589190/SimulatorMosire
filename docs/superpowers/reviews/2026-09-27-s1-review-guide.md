@@ -118,3 +118,28 @@
 - **不要逐行读 `EconomySettlement.java`**（1,800+ 行）：只看 `harvest` 的切换点与 `classRowsOfCohort`
 - **不要评审 `AGENT.md` 的流程条目**（§三.0 是用户裁定，已生效）
 - **不要评审阶段 6/7 的设计**（还没写）
+
+---
+
+## §7 要复制哪些文件（**47 个 / 约 676 KB**）
+
+★ **一条命令**（保留目录结构）：
+
+```bash
+cd /home/cna/SimulatorMosire
+DST=~/s1-review && rm -rf "$DST" && mkdir -p "$DST"
+xargs -a docs/superpowers/reviews/s1-review-files.txt cp --parents -t "$DST"
+```
+
+**分组清单**（同 `docs/superpowers/reviews/s1-review-files.txt`）：
+
+| 组 | 数量 | 内容 |
+|---|---|---|
+| **A 设计文档** | 8 + `AGENT.md` | 本指南 · S1 设计稿 · breakdown · 阶段 2/3/4+5 三份计划 · 两份背景设计 · `AGENT.md`（含 §三.0 裁定） |
+| **B 契约层代码** | 6 | `simos-actor-api/src/main/**` 全部 |
+| **C 切片代码** | 15 | `simos-actor/src/main/**` 全部 |
+| **D 关键新增** | 13 | `CohortKey` · `relation` 包 5 件 · `SocialClassId` · `Industry` · `RegimeOperators` · `RegimeRelations` · `ProductionSettlement` · `EconomyData` · `OwnershipBooks` · `EconomyOwnershipTimeParticipant` |
+| **E 证据与读数** | 4 | `stage45-readings.md` · `sim600-curves.md` · `report-v3.md` · `v3curve_curves.txt` |
+
+★ **不带**：测试文件（16 个 / 3,119 行 —— 那是护栏不是设计）· 6.3 MB 的逐格 dump · 逐任务的台账与报告
+（若要"当时的裁定与代价"，另加 `.superpowers/sdd/2026-09-26-s1-stage*/progress.md`）。
