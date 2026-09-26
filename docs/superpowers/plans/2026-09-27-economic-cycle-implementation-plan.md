@@ -146,6 +146,34 @@ economy 的 `EconomyDayStepper` 会话对象持有一份"家户账工作副本"*
 `of(CohortKey) → ActorRef(HOUSEHOLD, …)` 与 `cohortOf(ActorRef) → CohortKey` 的**唯一拼写点**（互逆、fail-closed）。
 ★ 控制方已实现并**编译实测 exit 0**（`-pl simos-economy-api -am`）。
 
+### K10 既有用例因"口径变化"变红时的处置（H0 实证一条，可复用）
+
+**案情**：`EconomySowingTest.eachClassRowDrawsItsOwnSeedSoTheDryRowLeavesItsLandFallow` 在 K3 之后变红 ——
+它的夹具前提是"**0 人**的地主行占 800 亩并下种"，而 K3 恰恰废除了这件事（产能在**产业**上、**没有人就没有份额**）。
+
+**裁定**：这是 **K7 说的"多数是后者"（口径错）**，不是护栏错。处置三步：
+1. **不重建夹具**（H3 的 C3"投入由谁出"会**再换一次**口径 ⇒ 现在重建是白做）；
+2. 按新口径**最小重算期望值**，并**逐条保留判别力**（本例：若取材改成"从全格池子扣"，
+   地主那 5,000,000 会被拿来下种 ⇒ 两条 `isZero()` 当场红 ⇒ 它守的"投入各扣各的"没丢）；
+3. **旧算式留痕不改**（标注"H0/K3 之前的口径"），新口径另起一段，并写明"H3 落地后要再重算一次"。
+
+### K11 取 Maven 退出码**不许接管道**（控制方本轮实测踩到）
+
+`tools/mvn-lock.sh … test -pl simos-economy | tail -25; echo "[exit=$?]"` ⇒ **`$?` 取的是 `tail` 的退出码**，
+于是一次"报告里还带 1 条红"的运行被读成了绿。
+⇒ **要么不接管道，要么显式用 `${PIPESTATUS[0]}`**；并且**仍要看 surefire 报告的真数与 mtime**（`AGENT.md` §三.1）。
+★ 这与 §三.1「不信 `rc=0` 就是过了」同族，但更靠前一步：**先得把 rc 读对**。
+
+### K12 跨模块接口三条（H0 定案，Agent C 上报后裁决）
+
+`economy.Seed` 是 **app 写、economy 读**的跨模块载荷，两侧不同形会「**编译绿、运行红**」：
+
+| # | 裁定 |
+|---|---|
+| **I-1** | **行从"产业节点内"搬到"格 entry 级"**，每行显式带 `"residence"`（`ResidenceKind.parse`，词表外即抛）—— 行 = 家户；且"只有农村人口的格"**没有 craft 产业**，城镇四行没处挂 |
+| **I-2** | `Industry.capacity` 走产业节点的 `"capacity"` 键，★**值必须允许 0**（沙漠格 `LAND=0`、人口 < 20 的格 `TOOL=0`）；`capacityPerUnit` 仍 > 0 |
+| **I-3** | ★ class / flow 的**地址局部名唯一拼写点 = `CohortKey.toString()` / `CohortKey.parse()`** —— 顺手修掉一处**既有的两处拼写点**（`EconomyResolver.dotted` + app 侧 4 处内联拼接）。★ 读写集能否对上全靠这一个串 |
+
 ### K7 既有用例变红 ⇒ 按新口径**重算**，不许删/放宽断言
 
 照 S1 先例（`AGENT.md` §9.3）：先判"护栏错"还是"夹具/口径错"，多数是后者；**修夹具或重算期望值**，
