@@ -1,5 +1,7 @@
 package io.mosire.simos.app.world;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -13,6 +15,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
@@ -21,6 +24,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -121,12 +125,23 @@ public final class EconomyTestWorld {
 
   private EconomyTestWorld() {}
 
-  /** 只带 economy 切片的创世状态（{@code (main,1)}，时刻 0）。 */
+  /**
+   * ★★ <b>T5：带 economy <b>与 actor</b> 两片的创世状态</b>（{@code (main,1)}，时刻 0）。
+   *
+   * <p>★★ <b>为什么 actor 片必须在场</b>：产出自本阶段起<b>不再写进阶层行</b> —— 它变成产权条目，而账本住在 actor 切片 ⇒ "产出落
+   * operator"这件事只有同时看得见两片的协调器（{@link
+   * io.mosire.simos.app.time.EconomyOwnershipTimeParticipant}）做得到。actor 片缺席 ⇒ 协调器当场抛（装配故障）。
+   *
+   * <p>★ 创世的账本是空的（{@code ActorData.empty()}）：本夹具刻意**不给 actor 预先造账** —— 第一笔账必须由产权条目
+   * 打开（那正是"键从值派生"要走的路径）。
+   */
   public static SimulationState genesis() {
     StateRef ref = new StateRef(new BranchId("main"), new RevisionId(1));
     SimosTimestamp at = SimosTimestamp.of(0);
     Map<String, Snapshot> modules = new LinkedHashMap<>();
-    modules.put("economy", new EconomySnapshot(ref, at, data()));
+    EconomyData data = data();
+    modules.put("economy", new EconomySnapshot(ref, at, data));
+    modules.put("actor", new ActorSnapshot(ref, at, ActorData.empty()));
     return new SimulationState(new StateMeta(ref, at), modules, InMemoryInfoSystem.empty());
   }
 
@@ -181,10 +196,23 @@ public final class EconomyTestWorld {
         Map.of(),
         supply,
         allocations,
-        // ★ T2：第 8 个组件（生产关系表）。★ 本夹具走**手搭**这条路（不经载荷 ⇒ 没有"缺省推导"那一层），
-        //   而 T2 的结算**还没读它**（行为不变）⇒ 留空（空表 = 全归 residualOwner 的等价路径）。
-        //   ★ 该给什么关系由 T4 决定（那时的 harvest 才第一次读这张表）。
-        Map.of());
+        // ★★ T4/T5：第 8 个组件（生产关系表）**非空** —— harvest 已经真的读它了。
+        //   本夹具按**每个产业自己的 regime** 推默认关系（{@link RegimeRelations#defaultRelation}），
+        //   与真播种器载荷走的是**同一条推导**（{@code EconomyPayloads.relation}）⇒ 夹具与真档不漂。
+        //   ★ 产出自此不再写进阶层行：行里的实物只经"cohort 入账"回来（R5 ③）。
+        relations(industries));
+  }
+
+  /** 逐产业按 regime 推默认关系（{@link RegimeRelations} 是唯一拼写点）。 */
+  private static Map<IndustryId, ProductionRelation> relations(
+      Map<IndustryId, Industry> industries) {
+    Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
+    for (Industry industry : industries.values()) {
+      relations.put(
+          industry.id(),
+          RegimeRelations.defaultRelation(industry.regime(), industry.id(), industry.operator()));
+    }
+    return relations;
   }
 
   /** 初始库存口径（毫粮）：普通行 = 按阶层天数（贫 30/中 60/富 120/地 250）；两种缺口形态见枚举。 */

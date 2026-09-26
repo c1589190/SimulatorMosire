@@ -31,6 +31,7 @@ import java.util.Objects;
 public final class EconomyDayStepper {
 
   private final boolean plantingDrawsFirst;
+  private final int famineMortalityPerMille;
   private EconomyData data;
   private final LinkedHashMap<ClassKey, FlowRow> flows;
 
@@ -44,9 +45,20 @@ public final class EconomyDayStepper {
    * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION}）。
    */
   public EconomyDayStepper(EconomyData base, boolean plantingDrawsFirst) {
+    this(base, plantingDrawsFirst, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * ★ 先播种还是先吃饭（{@code plantingDrawsFirst}）**与致死率都可注入**（**包内可见**）—— 两个旋钮的理由逐字见 {@link
+   * EconomySettlement#PLANTING_DRAWS_BEFORE_CONSUMPTION} 与 {@link
+   * EconomySettlement#FAMINE_MORTALITY_PER_MILLE}：它们**不是死分支**，故必须有路真的走得到，而 {@code simos-app}
+   * 的协调器只该看到公开入口那份默认值。
+   */
+  EconomyDayStepper(EconomyData base, boolean plantingDrawsFirst, int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     this.data = base;
     this.plantingDrawsFirst = plantingDrawsFirst;
+    this.famineMortalityPerMille = famineMortalityPerMille;
     this.flows = new LinkedHashMap<>(base.flows());
   }
 
@@ -61,17 +73,32 @@ public final class EconomyDayStepper {
   }
 
   /**
-   * **结算一天**（{@code day} 是绝对世界日）：与 {@code EconomySettlement.settleOneDay} 是**同一条实现**。
+   * ★★ **结算一天**（{@code day} 是绝对世界日）：与 {@code EconomySettlement.settleOneDay} 是**同一条实现**， 并**交回当天**的
+   * {@link ProductionLedger}（S1 阶段 4+5 Task 4；裁定 E7 的核心）。
    *
-   * <p>★ 与 {@code settle(base, from, to)} 的等价性因此是构造性的：那边的日循环调的就是这里调的东西。
+   * <p>★★ **为什么必须交回它**（而不是"结算完就完事"）：产出自本阶段起<b>不再写进阶层行</b> —— 它变成产权条目 （{@code +净产 → operator}
+   * 与关系规则的转出/收入），而**产权住在 {@code simos-actor}**：economy 切片刻意不认识它 （铁律 3）。⇒ "把这一天离开 {@code ClassRow}
+   * 的东西交给看得见 actor 那一侧的人"就是本方法的返回值。 ★ <b>扔掉它 = 静默丢产出</b>，所以它<b>不是</b>一个可选的回调、也不是一个字段：它是返回值。
    *
+   * <p>★ 单模块用例（只装 economy 的世界）可以照旧忽略返回值 —— 那里<b>没有 actor 账户可落</b>，行侧账由 {@code harvest} 自己落完（R5 ③）。
+   *
+   * <p>★ 与 {@code settle(base, from, to)} 的等价性因此是构造性的：那边的日循环调的就是这里调的东西。★ 反过来， {@code settle} 已
+   * **fail-closed**（关账要产出就抛）—— 单模块的多日推进请走本类。
+   *
+   * @return 当天的发生额（毛产 / 损耗 / 投入 / 产权条目 / cohort 入账 / 货币待办；什么都没发生 ⇒ {@link
+   *     ProductionLedger#empty()}）
    * @throws IllegalArgumentException {@code day < 1}（创世是第 0 天，没有"第 0 天"这一天）
    */
-  public void step(long day) {
+  public ProductionLedger step(long day) {
     if (day < 1L) {
       throw new IllegalArgumentException("结算的日号必须 ≥ 1（创世是第 0 天）: " + day);
     }
-    data = EconomySettlement.settleOneDay(data, day, flows, plantingDrawsFirst);
+    // ★ 每天一个**新的**累加器：它记的是"这一天"（跨日累计会让调用方重复落账，见 ProductionLedger 的类注）。
+    ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator();
+    data =
+        EconomySettlement.settleOneDay(
+            data, day, flows, plantingDrawsFirst, famineMortalityPerMille, ledger);
+    return ledger.toLedger();
   }
 
   /**

@@ -92,43 +92,47 @@ class EconomyFlowCycleTest {
   // ── ① 关账日读得到整周期、次日从 0 起（§八.5）──────────────────────────────────────────
 
   /**
-   * ★★ **关账那一支不清零**：第 {@value #CYCLE_DAYS} 天（周期末）读到的 {@code income} 是**一个**周期的毛产（含那天收获的分配）， 不是
-   * 0、也不是两个周期。
+   * ★★ **关账那一支不清零**：第 {@value #CYCLE_DAYS} 天（周期末）读到的 {@code income} 是**一个**周期的入账
+   * （那天收获经关系结算落到本行的量），不是 0、也不是两个周期。
+   *
+   * <p>★★ <b>T4 起口径是"实物入账"</b>（R1）：入账 = 关系实付 = <b>净产</b>（{@link #CYCLE_NET}）， <b>不是毛产</b>（{@link
+   * #CYCLE_GROSS}）—— 损耗既不进 {@code income} 也不进 {@code consumed}，它只进 {@code
+   * ProductionLedger.losses()}。
    *
    * <p>★ 判别力：把清零挪进 {@code progressed >= cycleDays} 那一支（控制器骨架的原写法）⇒ 这里读到 {@code income == 0} ⇒ 本条红。
    */
   @Test
   void theClosingDayCarriesTheWholeCyclesIncome() {
-    EconomyData closeOfCycleOne = EconomySettlement.settle(fixture(), 0L, CYCLE_DAYS);
+    EconomyData closeOfCycleOne = EconomyFixtures.advance(fixture(), 0L, CYCLE_DAYS);
 
     FlowRow flow = closeOfCycleOne.flows().get(PEASANT_KEY);
     assertThat(flow.income().get(EconomySettlement.GRAIN))
-        .as("关账日 = 一个周期的毛产（那次收获的分配）")
-        .isEqualTo(CYCLE_GROSS);
+        .as("关账日 = 一个周期的实物入账（= 关系实付 = 净产）")
+        .isEqualTo(CYCLE_NET);
     assertThat(flow.income().get(EconomySettlement.GRAIN))
         .as("★ 不是 0（在关账那一支清零会让收获当场消失）")
         .isNotZero();
     assertThat(flow.consumed().get(EconomySettlement.GRAIN))
-        .as("本期消费 = 一周期口粮 + 本期生产损耗份额")
-        .isEqualTo(CYCLE_RATION + (CYCLE_GROSS - CYCLE_NET));
+        .as("★ T4：本期消费**只有口粮**（生产损耗不再进 consumed —— 它不是「谁消费了」，是蒸发了）")
+        .isEqualTo(CYCLE_RATION);
     assertThat(closeOfCycleOne.industries().get(FARM).progressDays()).as("关账后进度归零").isZero();
     assertThat(closeOfCycleOne.meta().orElseThrow().lastClosedCycle()).hasValue(1L);
 
     EconomyData closeOfCycleTwo =
-        EconomySettlement.settle(closeOfCycleOne, CYCLE_DAYS, 2L * CYCLE_DAYS);
+        EconomyFixtures.advance(closeOfCycleOne, CYCLE_DAYS, 2L * CYCLE_DAYS);
 
     FlowRow second = closeOfCycleTwo.flows().get(PEASANT_KEY);
     assertThat(second.income().get(EconomySettlement.GRAIN))
         .as("★ 第 2 个关账日仍是**一个**周期的量（不是两个周期的累计）")
-        .isEqualTo(CYCLE_GROSS);
+        .isEqualTo(CYCLE_NET);
     assertThat(closeOfCycleTwo.meta().orElseThrow().lastClosedCycle()).hasValue(2L);
   }
 
   /** ★★ **新周期第一天整行从 0 重记**（清零点在这里，不在关账那一支）：关账日之后的**次日**读到的本期字段全部只含这一天。 */
   @Test
   void theFirstDayOfANewCycleStartsEveryFieldFromZero() {
-    EconomyData closed = EconomySettlement.settle(fixture(), 0L, CYCLE_DAYS);
-    EconomyData nextDay = EconomySettlement.settle(closed, CYCLE_DAYS, CYCLE_DAYS + 1L);
+    EconomyData closed = EconomyFixtures.advance(fixture(), 0L, CYCLE_DAYS);
+    EconomyData nextDay = EconomyFixtures.advance(closed, CYCLE_DAYS, CYCLE_DAYS + 1L);
 
     FlowRow flow = nextDay.flows().get(PEASANT_KEY);
     assertThat(nextDay.industries().get(FARM).progressDays())
@@ -164,11 +168,10 @@ class EconomyFlowCycleTest {
    */
   @Test
   void oneCyclesRationIsExactlyThePopulationTimesTenThousand() {
-    EconomyData closed = EconomySettlement.settle(fixture(), 0L, CYCLE_DAYS);
+    EconomyData closed = EconomyFixtures.advance(fixture(), 0L, CYCLE_DAYS);
 
-    long ration =
-        closed.flows().get(PEASANT_KEY).consumed().get(EconomySettlement.GRAIN)
-            - (CYCLE_GROSS - CYCLE_NET); // 减掉本期生产损耗那一份额，剩下的就是口粮
+    // ★ T4：`consumed` 里**只剩口粮**（生产损耗改挂 `ProductionLedger.losses()`）⇒ 不必再减那一份
+    long ration = closed.flows().get(PEASANT_KEY).consumed().get(EconomySettlement.GRAIN);
     assertThat(ration)
         .as("一周期 Σ 日耗 == 人口 × 10,000 毫粮（精确；旧的 83 口径会给出 9,960 × 人口）")
         .isEqualTo(POPULATION * 10_000L);
@@ -180,8 +183,8 @@ class EconomyFlowCycleTest {
   /** ★★ **§八.8：结算把当日需求写进 {@code ClassRow.naturalNeeds}**（读口与结算同源）—— 且**每天**都跟着走， 不是创世写一次就不动。 */
   @Test
   void settlementRewritesTheDailyNaturalNeedOnEveryDay() {
-    EconomyData day1 = EconomySettlement.settle(fixture(), 0L, 1L);
-    EconomyData day2 = EconomySettlement.settle(day1, 1L, 2L);
+    EconomyData day1 = EconomyFixtures.advance(fixture(), 0L, 1L);
+    EconomyData day2 = EconomyFixtures.advance(day1, 1L, 2L);
 
     assertThat(day1.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("第 1 天的需求")
@@ -192,7 +195,7 @@ class EconomyFlowCycleTest {
     assertThat(EconomyVocabulary.dailyRationMilli(POPULATION, 2L))
         .as("前两天口粮相等（10,000 ÷ 120 = 83.33 ⇒ 第 1、2 天各 83）⇒ 用第 3 天验'逐日不同'")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 1L));
-    EconomyData day3 = EconomySettlement.settle(day2, 2L, 3L);
+    EconomyData day3 = EconomyFixtures.advance(day2, 2L, 3L);
     assertThat(day3.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("第 3 天的需求（= 25,000 − 16,666 = 8,334，比前两天多 1）")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 3L));
@@ -215,17 +218,17 @@ class EconomyFlowCycleTest {
     EconomyData base = fixture();
     long total = 2L * CYCLE_DAYS;
 
-    EconomyData once = EconomySettlement.settle(base, 0L, total);
+    EconomyData once = EconomyFixtures.advance(base, 0L, total);
     EconomyData daily = base;
     for (long day = 1L; day <= total; day++) {
-      daily = EconomySettlement.settle(daily, day - 1L, day);
+      daily = EconomyFixtures.advance(daily, day - 1L, day);
     }
 
     assertThat(once).as("§十一：一次 240 天的终态 == 240 次单日").isEqualTo(daily);
     assertThat(once.flows()).as("流水也逐值相同（含两次周期清零）").isEqualTo(daily.flows());
     assertThat(once.flows().get(PEASANT_KEY).income().get(EconomySettlement.GRAIN))
-        .as("非平凡：终态落在一个周期末 ⇒ 所得是一个周期的量（不是 0，也不是 240 天的全部）")
-        .isEqualTo(CYCLE_GROSS);
+        .as("非平凡：终态落在一个周期末 ⇒ 入账是一个周期的量（不是 0，也不是 240 天的全部）")
+        .isEqualTo(CYCLE_NET);
   }
 
   /** 一份经济状态：一格、一个农业产业（周期 {@value #CYCLE_DAYS} 天）、一行贫农（缸 {@value #JAR}、**不配种子**）。 */
@@ -287,6 +290,8 @@ class EconomyFlowCycleTest {
                 "farm",
                 LABOR_MILLI,
                 FIRST_PERIOD)),
-        Map.of()); // ★ T2：生产关系表（本文件只谈周期流水 ⇒ 空表）
+        // ★★ **T4：关系表非空** —— 产出不再写进阶层行，行里的实物只能经关系结算的 cohort 入账回来。
+        //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）。
+        EconomyFixtures.laborShareToPeasant(industries));
   }
 }

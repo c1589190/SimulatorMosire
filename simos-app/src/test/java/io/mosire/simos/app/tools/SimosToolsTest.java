@@ -17,6 +17,9 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.gui.ApiViews;
@@ -1943,7 +1946,12 @@ class SimosToolsTest {
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
                 // ★ R2a：经济切片在场（本夹具未激活 ⇒ simos.economy.hex 应给 activated=false、空 industries）。
-                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
+                "economy",
+                    new EconomySnapshot(
+                        ref("main", 1),
+                        T7,
+                        EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -1955,7 +1963,8 @@ class SimosToolsTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new SdCodec(),
-                    new EconomyCodec())));
+                    new EconomyCodec(),
+                    new ActorCodec())));
   }
 
   private static Unit unit() {

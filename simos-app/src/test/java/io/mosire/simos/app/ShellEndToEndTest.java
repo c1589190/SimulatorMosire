@@ -8,6 +8,8 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
@@ -233,10 +235,13 @@ class ShellEndToEndTest {
           .as("Agent 写的信封链完整")
           .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_COMMITTED);
       assertThat(types(events, advanceRow.correlationId()))
-          .as("推进支的冻结序列（本壳 3 个 time participant（unit/sd/population）⇒ 模块提案 4 条（含 economy 与 social））")
+          .as(
+              "推进支的冻结序列（本壳 3 个 time participant（unit/sd/population）⇒ 模块提案 5 条"
+                  + "（含 economy / social / **actor** —— T5 起产权落账是第三片））")
           .containsExactly(
               EventTypes.COMMAND_RECEIVED,
               EventTypes.TIME_ADVANCE_STARTED,
+              EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
               EventTypes.MODULE_PROPOSAL,
@@ -266,8 +271,8 @@ class ShellEndToEndTest {
         proposalNamespaces.add(JSON.readTree(row.payload()).get("namespace").asText());
       }
       assertThat(proposalNamespaces)
-          .as("每一个**模块**各一条 module.proposal（population 参与者带 economy + social 两个模块键）")
-          .containsExactlyInAnyOrder("unit", "sd", "economy", "social");
+          .as("每一个**模块**各一条 module.proposal（population 参与者带 economy + social + **actor** 三个模块键）")
+          .containsExactlyInAnyOrder("unit", "sd", "economy", "social", "actor");
 
       // ③ 本壳的世界没有人口批次、经济也未激活 ⇒ **两份变更集都是不变的**（交不变变更集，不是空提案）。
       //   ★ R4 起 social 会真的变（生理压力/出生/死亡）—— 但**前提是有批次可算**；本壳是"世界还没初始化"那一形态，
@@ -418,7 +423,12 @@ class ShellEndToEndTest {
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
-                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
+                "economy",
+                    new EconomySnapshot(
+                        ref("main", 1),
+                        T7,
+                        EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(

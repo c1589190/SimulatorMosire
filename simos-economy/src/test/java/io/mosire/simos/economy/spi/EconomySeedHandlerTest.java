@@ -110,9 +110,9 @@ class EconomySeedHandlerTest {
   /**
    * ★★ `WageFirst`（资本主义工业）在 v1 没有结算实现 ⇒ 必须**播种期**拒（v2 spec §八.4）。
    *
-   * <p>判别力：v1 允许它入库，直到某个收获日才在 `EconomySettlement.harvest` 里抛 `UnsupportedOperationException` ——
-   * 那个异常穿出 `EconomyTimeParticipant.simulateWorld`， 让整条 `AdvanceTime` revision 失败（既不是 `Rejected`
-   * 也不是降级）。
+   * <p>判别力：v1 允许它入库，直到某个收获日才炸（T4 之前是 `EconomySettlement.harvest` 抛
+   * `UnsupportedOperationException`）—— 那个异常穿出协调器的 `simulateWorld`， 让整条 `AdvanceTime` revision
+   * 失败（既不是 `Rejected` 也不是降级）。★ T4 起 `harvest` 不再读 `AllocationRule` ⇒ 本守卫是这条口径**唯一**的落点。
    *
    * <p>★ 为什么拒在**载荷**这一层而不是 `Industry` 构造期：构造期拒会让 `WageFirst` 这个 **状态形状**（spec §五 的第四种制度）不可表达，连带
    * `EconomyCodecTest` 的 `wage_first` 多态往返夹具无法构造 ⇒ 丢一条 JSON 分支的覆盖。播种期拒已堵住命令路径，且不砍覆盖。

@@ -2,6 +2,9 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -66,8 +69,13 @@ public final class PopulationEconomyFixture {
 
   private PopulationEconomyFixture() {}
 
-  /** 一份"世界"：两个格的批次 + 真播种器产出的经济状态 + 当前世界日（{@code SocialData} 本身不带时刻）。 */
-  public record Fixture(SocialData social, EconomyData economy, long tick) {}
+  /**
+   * 一份"世界"：两个格的批次 + 真播种器产出的经济状态 + **产权账本** + 当前世界日（{@code SocialData} 本身不带时刻）。
+   *
+   * <p>★ T5：第三片 {@code actor} —— 协调器（{@link PopulationEconomyTimeParticipant}）同时写三片，产出落 operator
+   * 的账。
+   */
+  public record Fixture(SocialData social, EconomyData economy, ActorData actor, long tick) {}
 
   /** 创世（day 0）：平原格与沙漠格各有 1,000 人；经济侧由**真播种器**产出。 */
   public static Fixture seeded() {
@@ -84,7 +92,10 @@ public final class PopulationEconomyFixture {
     SimulationState empty =
         new SimulationState(
             new StateMeta(REF, SimosTimestamp.of(0)),
-            Map.of("economy", snap(EconomyData.empty(), 0L)),
+            Map.of(
+                "economy", snap(EconomyData.empty(), 0L),
+                // ★ T5：actor 片必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                "actor", actorSnap(ActorData.empty(), 0L)),
             InMemoryInfoSystem.empty());
     HandlerOutcome outcome = new EconomySeedHandler().handle(empty, payload);
     assertThat(outcome)
@@ -93,7 +104,7 @@ public final class PopulationEconomyFixture {
     EconomyData economy =
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
-    return new Fixture(social, economy, 0L);
+    return new Fixture(social, economy, ActorData.empty(), 0L);
   }
 
   /** 从 {@code fixture} 推进 {@code days} 天：真协调器的提案 + 真变更集 apply（这正是 Core ④ 做的事）。 */
@@ -104,7 +115,8 @@ public final class PopulationEconomyFixture {
             new StateMeta(REF, SimosTimestamp.of(now)),
             Map.of(
                 "economy", snap(fixture.economy(), now),
-                "social", socialSnap(fixture.social(), now)),
+                "social", socialSnap(fixture.social(), now),
+                "actor", actorSnap(fixture.actor(), now)),
             InMemoryInfoSystem.empty());
     WorldTimeProposal proposal =
         new PopulationEconomyTimeParticipant(MAP_ID)
@@ -117,7 +129,10 @@ public final class PopulationEconomyFixture {
     SocialData nextSocial =
         SocialChangeSet.apply(
             (SocialChangeSet) proposal.moduleChanges().get("social"), fixture.social());
-    return new Fixture(nextSocial, nextEconomy, now + days);
+    ActorData nextActor =
+        ActorChangeSet.apply(
+            (ActorChangeSet) proposal.moduleChanges().get("actor"), fixture.actor());
+    return new Fixture(nextSocial, nextEconomy, nextActor, now + days);
   }
 
   private static io.mosire.simos.social.gen.SettlementPlan plan(HexCoord hex) {
@@ -147,5 +162,9 @@ public final class PopulationEconomyFixture {
 
   private static Snapshot socialSnap(SocialData data, long tick) {
     return new SocialSnapshot(REF, SimosTimestamp.of(tick), data);
+  }
+
+  private static Snapshot actorSnap(ActorData data, long tick) {
+    return new ActorSnapshot(REF, SimosTimestamp.of(tick), data);
   }
 }

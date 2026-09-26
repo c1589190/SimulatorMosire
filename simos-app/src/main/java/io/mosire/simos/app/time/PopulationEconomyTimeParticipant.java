@@ -1,5 +1,9 @@
 package io.mosire.simos.app.time;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.change.ActorChangeSet;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -10,6 +14,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
@@ -71,6 +76,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   private static final String ECONOMY = "economy";
   private static final String SOCIAL = "social";
 
+  /** ★ T5 的第三片（产权落账）：actor 切片必须在场（缺席 ⇒ 抛 —— 产出没有地方落）。 */
+  private static final String ACTOR = "actor";
+
   private final String mapId;
 
   public PopulationEconomyTimeParticipant(String mapId) {
@@ -88,6 +96,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Objects.requireNonNull(range, "range");
     EconomyData economy = economyOf(state);
     SocialData social = socialOf(state);
+    // ★★ S1 阶段 4+5 Task 5：**第三片 actor** —— 产权落账只可能发生在同时看得见 economy 与 actor 的地方。
+    ActorData actor = actorOf(state);
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();
@@ -110,15 +120,23 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       reads.add(socialAddress("group", lot.value()));
       writes.add(socialAddress("group", lot.value()));
     }
+    // ★ T5：第三片 actor —— 读写集是 {@code actor:<mapId>:goods.<key>}（形制照 ActorResolver）。
+    reads.add(actorAddressRoot());
+    writes.add(actorAddressRoot());
+    for (GoodsAccountKey key : actor.accounts().keySet()) {
+      reads.add(accountAddress(key));
+      writes.add(accountAddress(key));
+    }
 
     Optional<io.mosire.simos.util.time.SimosTimestamp> to = range.to();
     if (to.isEmpty() || economy.meta().isEmpty()) {
-      // 无上界推进 / 经济未激活 ⇒ 两侧都不动（但**交的是不变变更集，不是空提案**：契约原文）。
+      // 无上界推进 / 经济未激活 ⇒ 三片都不动（但**交的是不变变更集，不是空提案**：契约原文）。
       return new WorldTimeProposal(
           NAMESPACE,
           Map.of(
               ECONOMY, EconomyChangeSet.between(economy, economy),
-              SOCIAL, SocialChangeSet.between(social, social)),
+              SOCIAL, SocialChangeSet.between(social, social),
+              ACTOR, ActorChangeSet.between(actor, actor)),
           reads,
           writes);
     }
@@ -130,10 +148,18 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Map<String, List<IndustryId>> industriesByHex = EconomySettlement.industriesByHex(economy);
     EconomyDayStepper stepper = new EconomyDayStepper(economy);
     SocialData currentSocial = social;
+    ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       LinkedHashMap<ClassKey, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> unmetBefore =
           unmetOf(stepper.flows());
-      stepper.step(day);
+      // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
+      ProductionLedger ledger = stepper.step(day);
+      if (!ledger.actorEntries().isEmpty()) {
+        currentBooks = OwnershipBooks.apply(currentBooks, ledger.actorEntries());
+        for (GoodsAccountKey key : currentBooks.accounts().keySet()) {
+          writes.add(accountAddress(key));
+        }
+      }
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
       currentSocial =
           applyDailyStress(
@@ -157,7 +183,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         NAMESPACE,
         Map.of(
             ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
-            SOCIAL, SocialChangeSet.between(social, currentSocial)),
+            SOCIAL, SocialChangeSet.between(social, currentSocial),
+            ACTOR, ActorChangeSet.between(actor, currentBooks)),
         reads,
         writes);
   }
@@ -339,5 +366,32 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   private String socialAddress(String kind, String localId) {
     return new Address(List.of(new Namespace(SOCIAL), Entity.of(mapId), Entity.of(kind, localId)))
         .canonical();
+  }
+
+  private String actorAddressRoot() {
+    return new Address(List.of(new Namespace(ACTOR), Entity.of(mapId))).canonical();
+  }
+
+  /**
+   * 一本产权账的地址：{@code actor:<mapId>:goods.<key>} —— ★ 形制照 {@code ActorResolver}（它的第三段 kind 就是 {@code
+   * goods}）。{@code <key>} 是 {@link GoodsAccountKey#toString()} 的产物，<b>本类不复述那个格式</b>。
+   */
+  private String accountAddress(GoodsAccountKey key) {
+    return new Address(
+            List.of(new Namespace(ACTOR), Entity.of(mapId), Entity.of("goods", key.toString())))
+        .canonical();
+  }
+
+  /** actor 切片只能从 actor 模块拿（铁律 3/4）；缺席或类型不对都是装配故障（同 {@link #economyOf} 的口径）。 */
+  private static ActorData actorOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(ACTOR)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 actor 切片（装配故障：产权落账口要求切片在场）"));
+    if (!(snapshot instanceof ActorSnapshot actorSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 actor 切片不是 ActorSnapshot: " + snapshot.getClass().getName());
+    }
+    return actorSnapshot.data();
   }
 }

@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
  * 结算必须把它当"周期已满、待收获"处理，**不是**抛。
  *
  * <p><b>病灶</b>：v1 用 {@code progressed == cycleDays} 判收获、否则 {@code nextProgress = progressed} ⇒
- * 该状态下次日构造出 {@code cycleDays + 1}，在 {@code Industry} 构造期抛 IAE，异常穿出 {@code
- * EconomyTimeParticipant.simulateWorld} ⇒ **整条推进 revision 失败**。
+ * 该状态下次日构造出 {@code cycleDays + 1}，在 {@code Industry} 构造期抛 IAE，异常穿出协调器的 {@code simulateWorld} ⇒
+ * **整条推进 revision 失败**。
  *
  * <p>★ <b>判别力</b>：把判据改回 {@code ==} ⇒ 本类第一条抛 IAE ⇒ 红。
  *
@@ -113,12 +113,15 @@ class EconomyCycleBoundaryTest {
                 "farm",
                 dailyLabor,
                 FIRST_PERIOD)),
-        Map.of()); // ★ T2：生产关系表（本文件只谈周期边界 ⇒ 空表 = 全归 residualOwner 的等价路径）
+        // ★★ **T4：关系表非空** —— 产出自本阶段起不再写进阶层行（R5 ②），行里的实物只能经关系结算的 cohort 入账回来。
+        //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）
+        //   ⇒ 下面"单行 ⇒ 权重 1000 ⇒ 全部归它"那条账（25,216,120）一字不改。
+        EconomyFixtures.laborShareToPeasant(Map.of(FARM, farm)));
   }
 
   @Test
   void aFullCycleHarvestsInsteadOfThrowing() {
-    EconomyData next = EconomySettlement.settle(fullCycleFixture(), 0L, 1L);
+    EconomyData next = EconomyFixtures.advance(fullCycleFixture(), 0L, 1L);
 
     assertThat(next.industries().get(FARM).progressDays()).as("周期已满 ⇒ 收获并归零").isZero();
     assertThat(next.industries().get(FARM).cycleLaborMilli()).as("周期累计清零").isZero();
@@ -132,7 +135,8 @@ class EconomyCycleBoundaryTest {
     //     —— 与旧式 floor(55,559 × 7 ÷ 1000) = 388 逐值相同（143 = ⌈1000/7⌉ 就是那条口径的倒数形式）
     //   毛产      = 388 × 67 × 1000 = 25,996,000 毫粮
     //   生产消耗  = 25,996,000 × (饲料 0‰ + 折旧 30‰) ÷ 1000 = 779,880 ⇒ 净 25,216,120
-    //   单行 ⇒ Split 权重 = (700×1000 + 300×1000) ÷ 1000 = 1000 ⇒ 全部归它
+    //   ★ T4：产出**不再**按 Split 分给行 —— 走 "+净产 → operator" + 关系结算（夹具那条规则把净产全给贫农队
+    //     cohort：受方劳动 58,000×950‰ = 55,100 = Σ劳动 ⇒ 实付 = 净产）⇒ 落到**行里**的仍是同一个数
     //   库存      = 10,000,000 − 第 1 天口粮 8,333 + 25,216,120 = 35,207,787
     //   ★ 口粮 = {@link EconomyVocabulary#dailyRationMilli}(100, 1) = floor(100 × 10,000 ÷ 120) =
     // 8,333
@@ -147,7 +151,7 @@ class EconomyCycleBoundaryTest {
     // Review Focus 第 8 条：cycleDays == 1 ⇒ avgLaborMilli = cycledLabor / 1，且当天即满足 progressed >=
     // cycleDays
     EconomyData base = withCycleDays(1L);
-    EconomyData next = EconomySettlement.settle(base, 0L, 1L);
+    EconomyData next = EconomyFixtures.advance(base, 0L, 1L);
     assertThat(next.industries().get(FARM).progressDays()).as("1 天周期：当天就收获并归零（且不许除零）").isZero();
   }
 
@@ -155,7 +159,7 @@ class EconomyCycleBoundaryTest {
   void aZeroPopulationHexProducesNothingAndDoesNotDivideByZero() {
     // Review Focus 第 3 条：农村人口为 0 的纯城市格（无劳动 ⇒ 投入面积 0 ⇒ 不造粮）
     EconomyData base = zeroPopulationFixture();
-    EconomyData next = EconomySettlement.settle(base, 0L, 1L);
+    EconomyData next = EconomyFixtures.advance(base, 0L, 1L);
     assertThat(next.classes().get(PEASANT_KEY).goods()).as("无劳动 ⇒ 投入面积 0 ⇒ 不造粮（也不许除零）").isEmpty();
   }
 

@@ -82,7 +82,7 @@ class EconomyDebtTest {
    */
   @Test
   void borrowingOnManyDaysOfOneCycleAggregatesIntoASingleDebtWithASummedPrincipal() {
-    EconomyData next = EconomySettlement.settle(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, 3L);
+    EconomyData next = EconomyFixtures.advance(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, 3L);
 
     List<DebtId> debts = next.classes().get(PEASANT_KEY).debts();
     assertThat(debts).as("三天借入聚合成**一条**（旧口径 3 条）").hasSize(1);
@@ -123,7 +123,7 @@ class EconomyDebtTest {
   @Test
   void aNewCycleOpensANewDebtAndKeepsTheOldOne() {
     EconomyData next =
-        EconomySettlement.settle(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, CYCLE_DAYS + 3L);
+        EconomyFixtures.advance(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, CYCLE_DAYS + 3L);
 
     assertThat(next.classes().get(PEASANT_KEY).debts()).as("两个周期各一条（行内两处引用）").hasSize(2);
     assertThat(next.debts()).as("债务表两条").hasSize(2);
@@ -185,8 +185,8 @@ class EconomyDebtTest {
   void theSameInputTwiceYieldsTheSameDebtIdsAndPrincipals() {
     EconomyData base = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
 
-    EconomyData once = EconomySettlement.settle(base, 0L, 2L * CYCLE_DAYS);
-    EconomyData twice = EconomySettlement.settle(base, 0L, 2L * CYCLE_DAYS);
+    EconomyData once = EconomyFixtures.advance(base, 0L, 2L * CYCLE_DAYS);
+    EconomyData twice = EconomyFixtures.advance(base, 0L, 2L * CYCLE_DAYS);
 
     assertThat(once.debts()).as("两次结算的债务表逐值相同（id 集合 + 本金）").isEqualTo(twice.debts());
     assertThat(once.debts().keySet()).as("id 集合").isEqualTo(twice.debts().keySet());
@@ -217,7 +217,7 @@ class EconomyDebtTest {
   @Test
   void theLenderKeepsAWholeCyclesSubsistenceAndNeverGoesBankruptFirst() {
     long lenderJar = 2_666L;
-    EconomyData next = EconomySettlement.settle(hex(2L, 0L, lenderJar), 0L, 2L);
+    EconomyData next = EconomyFixtures.advance(hex(2L, 0L, lenderJar), 0L, 2L);
 
     long lenderNeed = EconomyVocabulary.cumulativeRationMilli(10L, 2L);
     long lenderMealOnDayOne = EconomyVocabulary.dailyRationMilli(10L, 1L);
@@ -263,7 +263,7 @@ class EconomyDebtTest {
   @Test
   void interestAccruesOncePerCycleAndIsCapitalisedIntoThePrincipal() {
     EconomyData next =
-        EconomySettlement.settle(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, 2L * CYCLE_DAYS);
+        EconomyFixtures.advance(hex(CYCLE_DAYS, 0L, LANDLORD_JAR), 0L, 2L * CYCLE_DAYS);
 
     long perCycle = deficitOver(CYCLE_DAYS);
     long firstInterest = perCycle * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
@@ -311,7 +311,7 @@ class EconomyDebtTest {
    */
   @Test
   void interestIsChargedOncePerCycleEvenWhenSeveralIndustriesCloseTogether() {
-    EconomyData next = EconomySettlement.settle(multiHex(2, CYCLE_DAYS), 0L, CYCLE_DAYS);
+    EconomyData next = EconomyFixtures.advance(multiHex(2, CYCLE_DAYS), 0L, CYCLE_DAYS);
 
     long perCycle = deficitOver(CYCLE_DAYS);
     long once = perCycle + perCycle * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
@@ -345,7 +345,7 @@ class EconomyDebtTest {
     int days = (int) (cycles * CYCLE_DAYS);
     EconomyData base = multiHex(hexes, CYCLE_DAYS);
 
-    EconomyData next = EconomySettlement.settle(base, 0L, days);
+    EconomyData next = EconomyFixtures.advance(base, 0L, days);
 
     int slots = 2; // 贫农 + 地主（本夹具的槽位数）
     int upperBound = cycles * hexes * slots * (slots - 1);
@@ -377,7 +377,7 @@ class EconomyDebtTest {
   @Test
   void lendingIsAnInternalTransferSoTheHexLedgerStillBalances() {
     EconomyData base = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
-    EconomyData next = EconomySettlement.settle(base, 0L, CYCLE_DAYS);
+    EconomyData next = EconomyFixtures.advance(base, 0L, CYCLE_DAYS);
 
     long stockBefore = grainTotal(base);
     long stockAfter = grainTotal(next);
@@ -409,10 +409,10 @@ class EconomyDebtTest {
   void twentyDaysAtOnceEqualsTwentyDailyStepsWithDebtsAndInterest() {
     EconomyData base = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
 
-    EconomyData once = EconomySettlement.settle(base, 0L, 2L * CYCLE_DAYS);
+    EconomyData once = EconomyFixtures.advance(base, 0L, 2L * CYCLE_DAYS);
     EconomyData chained = base;
     for (long day = 1L; day <= 2L * CYCLE_DAYS; day++) {
-      chained = EconomySettlement.settle(chained, day - 1L, day);
+      chained = EconomyFixtures.advance(chained, day - 1L, day);
     }
 
     assertThat(once).as("§十一：一次 20 天 == 20 次单日（终态逐值，含债务表）").isEqualTo(chained);
@@ -438,7 +438,7 @@ class EconomyDebtTest {
         List.of(SocialClassId.LANDLORD, SocialClassId.RICH_PEASANT, SocialClassId.MIDDLE_PEASANT);
 
     for (SocialClassId lenderStratum : strata) {
-      EconomyData next = EconomySettlement.settle(hexWithOnlyLender(lenderStratum), 0L, 1L);
+      EconomyData next = EconomyFixtures.advance(hexWithOnlyLender(lenderStratum), 0L, 1L);
       ClassKey lenderKey = new ClassKey(FARM, lenderStratum);
 
       assertThat(next.debts()).as("★ %s 必须真的放得出贷（匹配不上 ⇒ 这里一条债都没有）", lenderStratum).hasSize(1);

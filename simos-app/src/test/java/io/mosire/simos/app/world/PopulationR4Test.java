@@ -163,7 +163,7 @@ class PopulationR4Test {
     long clothCycle1 = weaveClothIncome(advanced(seeded, 120L).economy());
     long clothCycle2 = weaveClothIncome(advanced(seeded, 240L).economy());
 
-    assertThat(clothCycle1).as("第 1 周期：织机吃创世那份纤维").isPositive();
+    assertThat(clothCycle1).as("第 1 周期：织机吃创世那份纤维 ⇒ 布落织布的人（T4/I4.3）").isPositive();
     assertThat(clothCycle2).as("★★ T0：第 2 周期仍然织出布（R3 的遗留已收口）").isPositive();
     assertThat(fiberConsumedTotal(advanced(seeded, 240L).economy()))
         .as("★ 对称记账：供方（农田）那一笔进了 consumed（不是单侧扣减）")
@@ -276,14 +276,15 @@ class PopulationR4Test {
         .sum();
   }
 
+  /**
+   * ★ <b>本格这一周期"织出了多少布"的可读读数（T4/T5 起）</b>：产出自本阶段起不再写进织机那四行 （它们人口为 0 ⇒ 永不是 cohort
+   * 受方），布落**织布的人**（同格的农业行，I4.3）⇒ 读数取**本格行里 收到的布**（流水所得那一维），织机的行自己算 0。
+   */
   private static long weaveClothIncome(EconomyData economy) {
     long total = 0L;
     for (Map.Entry<ClassKey, ClassRow> entry : economy.classes().entrySet()) {
-      if (!entry.getKey().industry().value().startsWith(EconomySeeder.WEAVE)) {
-        continue;
-      }
       var flow = economy.flows().get(entry.getKey());
-      if (flow != null) {
+      if (flow != null && flow.income().getOrDefault(EconomyTestWorld.CLOTH, 0L) > 0L) {
         total += flow.income().getOrDefault(EconomyTestWorld.CLOTH, 0L);
       }
     }

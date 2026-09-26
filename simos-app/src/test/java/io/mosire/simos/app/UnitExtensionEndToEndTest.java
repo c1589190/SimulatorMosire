@@ -2,6 +2,9 @@ package io.mosire.simos.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -423,7 +426,12 @@ class UnitExtensionEndToEndTest {
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
                 "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
-                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
+                "economy",
+                    new EconomySnapshot(
+                        ref("main", 1),
+                        T7,
+                        EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -435,7 +443,8 @@ class UnitExtensionEndToEndTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new SdCodec(),
-                    new EconomyCodec())));
+                    new EconomyCodec(),
+                    new ActorCodec())));
   }
 
   /** 创世单位（canonical 13 参）：MOVING、attached=true、无偏移、无回归意图；u-1 带"步枪/炮"两键（装备双轨判据的载体）。 */

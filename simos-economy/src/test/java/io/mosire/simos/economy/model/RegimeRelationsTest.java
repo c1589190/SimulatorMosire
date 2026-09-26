@@ -37,6 +37,9 @@ class RegimeRelationsTest {
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CommodityId CLOTH = new CommodityId("cloth");
 
+  /** ★ 纤维（农业的**副产**）：{@code feudal} 档最后四条规则给的就是它。 */
+  private static final CommodityId FIBER = new CommodityId("fiber");
+
   /**
    * ★★ **`feudal` 档逐值**（R8 第 1 行）：实物给养（`FIXED_IN_KIND_PER_LABOR`，按劳动量，粮） 给该格**四个阶层** cohort 各一条，+
    * 地租（`OUTPUT_SHARE × GROSS_OUTPUT` 300‰，粮）**显式**给 `(hex, landlord)` cohort（E4：不显式给，地主 cohort
@@ -54,13 +57,40 @@ class RegimeRelationsTest {
             "★ E9：余额归 residualOwner —— 四档都不写 SELF_RETENTION 规则（见 theFourTablesExpressSelfRetentionAsTheResidualOwner）")
         .isEqualTo(ESTATE);
     assertThat(relation.rules())
-        .as("四个阶层的给养各一条（R7/R8）+ 一条地租")
+        .as("四个阶层的给养各一条（R7/R8）+ 一条地租 + ★四个阶层的**副产纤维**各一条")
         .containsExactly(
             subsistence(SocialClassId.POOR_PEASANT),
             subsistence(SocialClassId.MIDDLE_PEASANT),
             subsistence(SocialClassId.RICH_PEASANT),
             subsistence(SocialClassId.LANDLORD),
-            grainShare(RuleType.OUTPUT_SHARE, Basis.GROSS_OUTPUT, 300, SocialClassId.LANDLORD, 20));
+            grainShare(RuleType.OUTPUT_SHARE, Basis.GROSS_OUTPUT, 300, SocialClassId.LANDLORD, 20),
+            byproduct(SocialClassId.POOR_PEASANT),
+            byproduct(SocialClassId.MIDDLE_PEASANT),
+            byproduct(SocialClassId.RICH_PEASANT),
+            byproduct(SocialClassId.LANDLORD));
+    // ★★ **副产那四条为什么必须在**（实现时实测到的收口）：产出自 T4 起不再写进阶层行（R5 ②），行里的实物只能经
+    //   关系规则回来。少了它，农田的纤维留在 operator 账上 ⇒ 「同格取材」（R4 的 T0：从**行**取材）无料可取 ⇒
+    //   织机第 2 个周期起停工（EconomyRealScaleClothTest / PopulationR4Test / WorldgenInitializeToolTest
+    // 三条端到端红）。
+    assertThat(
+            relation.rules().stream().filter(rule -> rule.commodity().orElseThrow().equals(FIBER)))
+        .as("（上一条已逐值钉住；这里补一条**可读**的说法）副产纤维给四个阶层 cohort，各 1000‰ × 净产")
+        .hasSize(4);
+  }
+
+  /**
+   * {@code feudal} 的**副产纤维**：{@code OUTPUT_SHARE × NET_AFTER_INPUTS} 1000‰，给四个阶层 cohort（各自的 {@code
+   * priority} 为 30）。★ 四条同率不是笔误：付款上限逐条咬合 ⇒ **Σ实付 == 净产**，按劳动量分。
+   */
+  private static CompensationRule byproduct(SocialClassId stratum) {
+    return new CompensationRule(
+        RuleType.OUTPUT_SHARE,
+        cohort(stratum),
+        Basis.NET_AFTER_INPUTS,
+        1000,
+        0L,
+        Optional.of(FIBER),
+        30);
   }
 
   /**
@@ -143,11 +173,26 @@ class RegimeRelationsTest {
 
     assertThat(
             RegimeRelations.defaultRelation(new RegimeId("feudal"), FARM, ESTATE).rules().stream()
-                .filter(rule -> rule.type() == RuleType.OUTPUT_SHARE)
+                // ★ 只看**粮**那一族（地租）：本条问的是"租写给谁"，副产纤维那四条不在本条的判据里。
+                .filter(
+                    rule ->
+                        rule.type() == RuleType.OUTPUT_SHARE
+                            && rule.commodity().orElseThrow().equals(GRAIN))
                 .map(CompensationRule::recipient)
                 .toList())
         .as("feudal 的地租：显式给 (hex, landlord) cohort")
         .containsExactly(landlord);
+    assertThat(
+            RegimeRelations.defaultRelation(new RegimeId("feudal"), FARM, ESTATE).rules().stream()
+                .filter(rule -> rule.commodity().orElseThrow().equals(FIBER))
+                .map(CompensationRule::recipient)
+                .toList())
+        .as("★ 副产纤维那四条**不写给地主**：它们给四个阶层 cohort（劳动分成，与地租各管一种商品）")
+        .containsExactly(
+            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.POOR_PEASANT)),
+            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.MIDDLE_PEASANT)),
+            new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), SocialClassId.RICH_PEASANT)),
+            landlord);
     assertThat(
             RegimeRelations.defaultRelation(
                     new RegimeId("tenant"), FARM, new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"))

@@ -15,6 +15,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.time.EconomyOwnershipTimeParticipant;
 import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.RichWorld;
@@ -34,8 +35,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
-import io.mosire.simos.economy.time.EconomySettlement;
-import io.mosire.simos.economy.time.EconomyTimeParticipant;
+import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -601,13 +601,26 @@ class WorldgenInitializeToolTest {
       }
       assertThat(weaveQuota).as("★ 判据 ①：全国农村批次给家庭纺织的配额必须非零").isPositive();
 
-      EconomyData afterOneYear =
-          EconomySettlement.settle(seeded, 0L, EconomySeeder.CYCLE_DAYS * 3L);
+      // ★ T4：多日静态入口已 fail-closed（产出要产权落账口）⇒ 走 economy 模块内的会话形态
+      //   （它逐步交回当天的 ProductionLedger；本用例只量**行侧库存**，故不接那本账）。
+      EconomyData afterOneYear = advanceLocally(seeded, EconomySeeder.CYCLE_DAYS * 3L);
       long clothStock = goodsStock(afterOneYear, cloth);
       long toolStock = goodsStock(afterOneYear, tool);
       long fiberStock = goodsStock(afterOneYear, fiber);
       assertThat(clothStock).as("★ 判据 ②：推一年后真档的 CLOTH 库存 > 0").isPositive();
-      assertThat(toolStock).as("★ 判据 ③：城市作坊自己的产品（工具）> 0").isPositive();
+      // ★★ T4 起：工具**没有规则付给 cohort** ⇒ 它整份留在 operator 的账上，**行里一件不进**。
+      //   本用例只读 economy 一片（没有 actor 片）⇒ 用**当天的 ledger**举证（那是产出离开 ClassRow 的账）；
+      //   "operator 账上确实有 169,750"那一条由 EconomyRealScaleClothTest 的 by-operator 断言逐值钉住。
+      CommodityId toolCommodity = new CommodityId(EconomySeeder.COMMODITY_TOOL);
+      long toolProduced =
+          ledgersOf(seeded, EconomySeeder.CYCLE_DAYS * 3L).stream()
+              .flatMap(ledger -> ledger.gross().values().stream())
+              .mapToLong(byCommodity -> byCommodity.getOrDefault(toolCommodity, 0L))
+              .sum();
+      assertThat(toolStock).as("★ 行里一件工具都没有（T4：没有规则付给 cohort）").isZero();
+      assertThat(toolProduced)
+          .as("★ 判据 ③：城市作坊自己的产品（工具）> 0 —— T4 起它进 ledger（落 operator 的账）")
+          .isPositive();
       assertThat(fiberStock).as("★ 判据 ④：田里也在出纤维（多商品产出；它内生于土地）").isPositive();
       assertThat(goodsStock(seeded, cloth)).as("非平凡：创世时一件布都没有").isZero();
       System.out.println(
@@ -942,10 +955,45 @@ class WorldgenInitializeToolTest {
     return sown;
   }
 
-  /** 真世界 + 真引擎 + **economy 参与者**（推进要用；必须在 worldgen 提交前注册，封存后 register 会抛）。 */
+  /**
+   * ★ T4：把"推 N 天"写成 {@link EconomyDayStepper} 的会话形态（多日静态入口 fail-closed 之后的唯一写法）。
+   *
+   * <p>★ 本用例只读**行侧**量（布/工具/纤维的库存）⇒ 交回的 {@code ProductionLedger} 在此刻意不接 （那条路要 actor 片，见 {@link
+   * EconomyOwnershipTimeParticipant}）。
+   */
+  private static EconomyData advanceLocally(EconomyData base, long days) {
+    EconomyDayStepper stepper = new EconomyDayStepper(base);
+    for (long day = 1L; day <= days; day++) {
+      stepper.step(day);
+    }
+    return stepper.finish();
+  }
+
+  /** 同 {@link #advanceLocally}，但把**逐日的 ledger** 攒起来（T4：产出离开 ClassRow 之后就在那儿）。 */
+  private static java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgersOf(
+      EconomyData base, long days) {
+    EconomyDayStepper stepper = new EconomyDayStepper(base);
+    java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgers =
+        new java.util.ArrayList<>();
+    for (long day = 1L; day <= days; day++) {
+      ledgers.add(stepper.step(day));
+    }
+    stepper.finish();
+    return ledgers;
+  }
+
+  /**
+   * 真世界 + 真引擎 + **经济 × 产权协调器**（S1 阶段 4+5 Task 5；必须在 worldgen 提交前注册，封存后 register 会抛）。
+   *
+   * <p>★ T4 起 {@code EconomyTimeParticipant} 已删除（多日静态入口 fail-closed）：产出必须由**同时看得见 {@code economy} 与
+   * {@code actor} 的参与者**落账 ⇒ 这里换成 {@link EconomyOwnershipTimeParticipant}， 并注册 {@link
+   * ActorCodec}（actor 片要真的过 Core 的编解码）。
+   */
   private static CoreSimos freshCoreWithEconomy(Path storeDir) {
     CoreSimos core = freshCore(storeDir);
-    core.register(new EconomyTimeParticipant(MAP_ID));
+    // ★ ActorCodec 已由 freshCore 注册（RichWorld 的 actor 切片逼出来的）⇒ 这里不能再注册一遍
+    //   （Core 的 register 会以保证"路由确定性"为由当场拒重复 namespace）。
+    core.register(new EconomyOwnershipTimeParticipant(MAP_ID));
     return core;
   }
 

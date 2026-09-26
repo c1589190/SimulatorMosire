@@ -74,7 +74,7 @@ class EconomyLaborAllocationTest {
    */
   @Test
   void dailyLaborComesFromTheAllocationsNotFromTheClassRows() {
-    EconomyData next = EconomySettlement.settle(fixture(), 0L, 1L);
+    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 1L);
 
     assertThat(next.industries().get(FARM).cycleLaborMilli())
         .as("farm 的配额之和 = 40,000（**不是**行算的 58,000）")
@@ -87,7 +87,7 @@ class EconomyLaborAllocationTest {
   /** ★ 多日推进：配额是**每天**的投入量 ⇒ N 天的累计 = N × 当日（与改口径前的口径一字不差）。 */
   @Test
   void theDailyQuotaAccumulatesOncePerSettledDay() {
-    EconomyData next = EconomySettlement.settle(fixture(), 0L, 3L);
+    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 3L);
 
     assertThat(next.industries().get(FARM).cycleLaborMilli())
         .as("3 天 × 40,000")
@@ -101,7 +101,7 @@ class EconomyLaborAllocationTest {
   @Test
   void settlementDoesNotTouchTheAllocationTable() {
     EconomyData base = fixture();
-    EconomyData next = EconomySettlement.settle(base, 0L, 2L);
+    EconomyData next = EconomyFixtures.advance(base, 0L, 2L);
 
     assertThat(next.allocations()).as("配额原样带过").isEqualTo(base.allocations());
     assertThat(next.laborSupply()).as("供给原样带过").isEqualTo(base.laborSupply());
@@ -114,7 +114,7 @@ class EconomyLaborAllocationTest {
    */
   @Test
   void householdQuotasDoNotFeedAnyIndustry() {
-    EconomyData next = EconomySettlement.settle(fixture(), 0L, 1L);
+    EconomyData next = EconomyFixtures.advance(fixture(), 0L, 1L);
 
     long industryLabor =
         next.industries().get(FARM).cycleLaborMilli()

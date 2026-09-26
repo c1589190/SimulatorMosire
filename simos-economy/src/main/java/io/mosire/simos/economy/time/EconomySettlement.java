@@ -1,7 +1,9 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -11,7 +13,8 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.population.LotChange;
-import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.ClassKey;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
@@ -20,6 +23,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionRecipe;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -74,15 +78,20 @@ import java.util.Set;
  *   <li>**生产消耗**：扣 {@code 饲料 + 折旧}（{@link #FEED_PER_MILLE} + {@link
  *       #DEPRECIATION_PER_MILLE}，**逐商品按同一千分比**）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
  *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
- *   <li>**分配**：按 {@link AllocationRule.Split}：{@code 行得 = 剩余产出 × (生产资料权重 × 该行土地占比 + 劳动权重 × 该行劳动占比)
- *       / 1000}（**定点整数、残差按最大余数法分派、Σ行得 = 剩余产出**，§八.7）。
+ *   <li>★★ **T4 起产出不再分配进阶层行**（裁定 R5 / 计划 R4）：**净产 → operator 的产权条目**（{@link
+ *       ProductionLedger#actorEntries()}），随后按该产业的 {@code relation} 逐条结算（{@link
+ *       ProductionSettlement}）—— actor 受方走产权条目、**cohort 受方落消费行**（过渡形态，阶段 6 换成 {@code
+ *       ConsumptionReceipt}）—— ★ 解析不到行的那一笔**留在 operator**（{@link #deliverCohortIntake}）。 ★ **旧口径的
+ *       {@link AllocationRule.Split} 本阶段起不由结算读取**（载荷/编码/往返全不动）：它已是**死数据**， 删它是另一件事（计划 Review Focus
+ *       ①）。
  *   <li>**计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：全部债务按 {@code principal × ratePerMillePerCycle
  *       ÷ 1000} 计**一次**、**并入本金**（纯数学：不搬运粮、**不动任何库存**），同额记入**债务人**本行流水的 {@code interestDue} —— 见
  *       {@link #chargeInterest}。★ **偿还行为不做**（它要"有粮才还"的判断，属 V7+）。
  *   <li>**饿死判据**（2026-09-25 用户点名；**默认不致命**）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@code
  *       famineMortalityPerMille}（**默认 {@link #FAMINE_MORTALITY_PER_MILLE} = 0‰**）致死；人口减少、有效劳动同比例缩，
  *       死亡数记入 {@link FlowRow#deaths()}。**顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
- *   <li>产出进各行粮库存；{@code progressDays} 归零、周期劳动清零、{@link EconomyMeta#lastClosedCycle()} +1。
+ *   <li>★ 产出**进当天的 {@link ProductionLedger}**（毛产/损耗/投入/产权条目/cohort 入账）—— 由调用方落账；{@code
+ *       progressDays} 归零、周期劳动清零、{@link EconomyMeta#lastClosedCycle()} +1。
  * </ol>
  *
  * <p>★★ **本期流水按周期清零，清零点在"新周期第一天"**（§八.5）：
@@ -101,10 +110,39 @@ import java.util.Set;
  * <p>★★ **量纲（§7 + §十）**：人口「人」；劳动「千分劳动」；土地「千分亩」；粮库存「**毫粮**」（1 粮 = 1000 毫粮， {@link
  * #MILLI_PER_GRAIN}）；利率/权重/投入率「千分」。**一切整数运算，禁 double**。
  *
- * <p>★★ **守恒（§6.1，账要平）**：本函数不凭空造物、也不凭空销物。把每日/每期的发生额记进 {@link FlowRow} 后，**逐商品**恒有 {@code Σ(推进前库存_j)
- * − Σ(推进后库存_j) == Σ(流水消费_j) − Σ(流水所得_j)}：日耗、**播种日扣掉的投入**与生产消耗在 {@code consumed} 里、收获的**毛产出**在
- * {@code income} 里（净产出进库存，差额 = 生产消耗）。买/借/税等跨主体转移不改变总和（同格借贷是内部划转）。 ★ **R3 起两种表都是逐商品的**（{@link
- * FlowRow#income()} 由标量改成 Map）：田里同时出粮与纤维 ⇒ "一条标量"表达不了"所得是什么"。
+ * <p>★★ **守恒（§6.1，账要平）—— T4 起换新式**（裁定 E1 / 计划 R1）。**逐商品、逐周期**：
+ *
+ * <pre>
+ * 【新式｜覆盖 消费行 + actor 账户】
+ *   ΔΣRowGoods_j + ΔΣActorGoods_j + ΣFinalConsumption_j + ΣLoss_j == ΣOutput_j − ΣProductionInputs_j
+ *
+ *   ΣOutput_j            本期毛产（规模 × outputPerUnit_j × 1000；{@link ProductionLedger#gross()}）
+ *   ΣProductionInputs_j  本期现扣投入（现扣步；★ 本阶段**仍从消费行扣**到 ⇒ 逐 actor 的 Input ≡ 0）
+ *   ΣLoss_j              本期生产损耗 = 毛产 × (饲料 + 折旧)‰（{@link ProductionLedger#losses()}；★ 不在 consumed 里）
+ *   ΣFinalConsumption_j  真正被吃掉的（日耗 + 借来吃掉的那部分；= Σ FlowRow.consumed − 投入 − 同格取材转出）
+ *   ΔΣRowGoods_j         消费行库存变化；ΔΣActorGoods_j  actor 账户变化（本阶段唯一被写的 actor 状态）
+ * </pre>
+ *
+ * <p>★★ **代数（逐项当场可核；写在这里免得有人把 spec §五 那条当成本阶段就该成立）**：
+ *
+ * <pre>
+ * 行侧：  ΔΣRow   = 入账 − 投入 − 消费        （同格取材两侧相消，见 transferIntraHexInputs）
+ *                  ★ 等价写法（形状不变、口径改）：ΔΣRow_j == Σ FlowRow.income_j − Σ FlowRow.consumed_j
+ * actor： ΔΣActor = 毛产 − 损耗 − 入账         （+净产 → operator，再 −实付 +实收；入账 = 落到行里的那一份）
+ * 相加：  ΔΣRow + ΔΣActor = 毛产 − 损耗 − 投入 − 消费
+ * ⇒ ΔΣRow + ΔΣActor + 消费 + 损耗 = 毛产 − 投入 ∎
+ * </pre>
+ *
+ * <p>★★ <b>spec §五 的那条是**特例**</b>：它把 {@code ΔΣRowGoods ≡ 0} 当成前提（"产出不再进行"的终态），而本阶段产出**还**要 经 cohort
+ * 入账落回消费行 ⇒ **必须带上 {@code ΔΣRowGoods}**，否则等式在过渡期<b>恒不成立</b>、 判据<b>从第一天就是假绿</b>。阶段 6/7 行里不再有 goods
+ * 时，本式自动退化成 spec §五 的第二式。
+ *
+ * <p>★★ <b>生产侧逐 actor（I4.1）</b>：{@code ΔActorGoods(a,j) = Output(a,j) − Input(a,j) −
+ * TransfersOut(a,j) + TransfersIn(a,j)}。★ 过渡期口径：投入仍从消费行扣 ⇒ **{@code Input(actor) ≡ 0}**（阶段 6/7 投入改从
+ * operator 扣时才非 0）； ★ 付款上限 = 本周期收到的产出（R6）⇒ {@code TransfersOut ≤ Output}，ΔActorGoods ≥ 0 结构性成立。
+ *
+ * <p>★ <b>两种表都是逐商品的</b>（R3 起）：田里同时出粮与纤维 ⇒ "一条标量"表达不了"所得是什么"。★★ 而 {@link FlowRow#income()} 的**口径自 T4
+ * 起改了**：它记的是**实物入账**（关系结算给本行的量 + 同格取材的转入），<b>不再是</b>毛产分成 —— 读口因此不再撒谎。
  *
  * <p>★ **未激活**（{@code meta} 空）：原样返回（不做任何公式，§6.6）。
  */
@@ -264,12 +302,27 @@ public final class EconomySettlement {
   }
 
   /**
-   * 同 {@link #settle(EconomyData, long, long)}，但**致死率可注入**（**包内可见**的旋钮，见 {@link
-   * #FAMINE_MORTALITY_PER_MILLE}）。
+   * ★★ **同 {@link #settle(EconomyData, long, long)}，但致死率可注入**（**包内可见**的旋钮，见 {@link
+   * #FAMINE_MORTALITY_PER_MILLE}）—— ★★ **并且 fail-closed**（裁定 E7 / 计划 R4）。
    *
-   * <p>★ 公开入口恒喂默认值；本重载服务用例（"改成非 0 ⇒ 死亡逐值可预测"必须**真的走得到**）与将来的 V7 参数目录。
+   * <p>★★ <b>为什么本入口必须 fail-closed</b>：产出自本阶段起<b>不再写进阶层行</b>（R5 ②）—— 它变成产权条目 （{@code +净产 →
+   * operator}）与 cohort 入账。而"把产权条目落到 {@code ActorData.accounts} 上"这件事，<b>本入口做不到</b>： 它只看经济切片，手里没有
+   * actor 状态。⇒ 一旦某一天真的关账并产出，那些条目<b>在账上静默消失</b>（ 行里那一份还在，落在 operator 那一份没了）——
+   * 那正是本仓最反对的形态，故<b>当场抛</b>。
+   *
+   * <p>★★ <b>正确的两条路径</b>（消息里一并点出）：
+   *
+   * <ol>
+   *   <li>{@link EconomyDayStepper} —— economy 模块内的**会话入口**：它逐步交回当天的 {@link ProductionLedger}
+   *       （调用方自己决定落到哪里）。单模块用例走它；
+   *   <li>**app 协调器**（{@code EconomyOwnershipTimeParticipant} / {@code
+   *       PopulationEconomyTimeParticipant}） —— 唯一同时看得见 {@code economy} 与 {@code actor} 的地方，产权由它落账。
+   * </ol>
+   *
+   * <p>★ 判据是"<b>要产出</b>"（{@link ProductionLedger#hasOutput()}），不是"是多日"：不跨周期末的区间照旧可用 （那些天没有任何产业关账）。
    *
    * @param famineMortalityPerMille 致死率（千分数；∈ [0, 1000] ⇒ 死亡 ≤ 需求未被满足的那部分人口）
+   * @throws IllegalStateException 区间内**有产业关账并产出**（本入口没有产权落账口，见上）
    */
   static EconomyData settle(
       EconomyData base, long fromTick, long toTick, int famineMortalityPerMille) {
@@ -284,9 +337,18 @@ public final class EconomySettlement {
     LinkedHashMap<ClassKey, FlowRow> flows = new LinkedHashMap<>(base.flows());
     EconomyData data = base;
     for (long day = fromTick + 1L; day <= toTick; day++) {
+      ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator();
       data =
           settleOneDay(
-              data, day, flows, PLANTING_DRAWS_BEFORE_CONSUMPTION, famineMortalityPerMille);
+              data, day, flows, PLANTING_DRAWS_BEFORE_CONSUMPTION, famineMortalityPerMille, ledger);
+      if (ledger.toLedger().hasOutput()) {
+        throw new IllegalStateException(
+            "第 "
+                + day
+                + " 天有产业关账并产出，但本入口没有**产权落账口**：产出离开 ClassRow 之后必须由同时看得见"
+                + " economy 与 actor 的那一处落账（app 协调器），否则它会在账上静默消失。"
+                + "单模块用例请改走 EconomyDayStepper（它的 step(day) 交回当天的 ProductionLedger）");
+      }
     }
     return data.withFlows(flows);
   }
@@ -312,22 +374,26 @@ public final class EconomySettlement {
       EconomyData base,
       long day,
       LinkedHashMap<ClassKey, FlowRow> flows,
-      boolean plantingDrawsFirst) {
-    return settleOneDay(base, day, flows, plantingDrawsFirst, FAMINE_MORTALITY_PER_MILLE);
+      boolean plantingDrawsFirst,
+      ProductionLedger.Accumulator ledger) {
+    return settleOneDay(base, day, flows, plantingDrawsFirst, FAMINE_MORTALITY_PER_MILLE, ledger);
   }
 
   /**
-   * 同 {@link #settleOneDay(EconomyData, long, LinkedHashMap, boolean)}，但**致死率可注入**（**包内可见**的旋钮， 见
-   * {@link #FAMINE_MORTALITY_PER_MILLE}）—— 这条入参是"旋钮"而非"死分支"的全部理由见该常量的注释。
+   * 同 {@link #settleOneDay(EconomyData, long, LinkedHashMap, boolean,
+   * ProductionLedger.Accumulator)}，但**致死率可注入** （**包内可见**的旋钮，见 {@link
+   * #FAMINE_MORTALITY_PER_MILLE}）—— 这条入参是"旋钮"而非"死分支"的全部理由见该常量的注释。
    *
    * @param famineMortalityPerMille 饿死判据的致死率（千分数；**默认 0‰ = 不致命**）
+   * @param ledger 当天的 {@link ProductionLedger} 累加器（**就地更新**；由调用方在日循环里逐日新建 ⇒ 它记的是**这一天**）
    */
   static EconomyData settleOneDay(
       EconomyData base,
       long day,
       LinkedHashMap<ClassKey, FlowRow> flows,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille) {
+      int famineMortalityPerMille,
+      ProductionLedger.Accumulator ledger) {
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -346,7 +412,9 @@ public final class EconomySettlement {
     LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> borrowing = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Map<CommodityId, Long>> income = new LinkedHashMap<>();
-    LinkedHashMap<ClassKey, Map<CommodityId, Long>> productionLoss = new LinkedHashMap<>();
+    // ★★ **R5/T4：生产损耗不再有"逐行累加器"** —— 损耗不是"谁消费了"，是"蒸发了"，它只进 {@link
+    //   ProductionLedger#losses()}（守恒式里自成一项，见类注 §6.1 的新式）。留一个"分了损耗但没人收"的中间残留
+    //   （旧口径里它是 consumed 的一部分）会让 I4.2 的 ΣLoss 被算两遍。
     LinkedHashMap<ClassKey, Map<CommodityId, Long>> unmetToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> deathsToday = new LinkedHashMap<>();
     LinkedHashMap<ClassKey, Long> birthsToday = new LinkedHashMap<>();
@@ -356,7 +424,7 @@ public final class EconomySettlement {
     //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
     //   ★★ R4（T0）：这一步里**先做一次同格取材**（把田里的纤维搬到织机上），再各扣各的（见 drawCycleInputs）。
     if (plantingDrawsFirst) {
-      drawCycleInputs(industries, rows, consumedGoods, income);
+      drawCycleInputs(industries, rows, consumedGoods, income, ledger);
     }
 
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
@@ -364,7 +432,7 @@ public final class EconomySettlement {
         industries, rows, debts, consumedGoods, borrowing, unmetToday, day, currentCycle, dueCycle);
 
     if (!plantingDrawsFirst) {
-      drawCycleInputs(industries, rows, consumedGoods, income);
+      drawCycleInputs(industries, rows, consumedGoods, income, ledger);
     }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
@@ -395,10 +463,10 @@ public final class EconomySettlement {
       // ★ v2 spec §八.3：`progressDays ∈ [0, cycleDays]` 是**闭区间**（v1 spec §3.1 原文），
       //   cycleDays 的语义是"周期已满、待收获"。用 >= 才能把该合法状态收获掉；
       //   用 == 会让 progressDays == cycleDays 的下一日构造出 cycleDays + 1，在 Industry 构造期抛，
-      //   异常穿出 EconomyTimeParticipant.simulateWorld ⇒ **整条推进 revision 失败**。
+      //   异常穿出协调器的 simulateWorld ⇒ **整条推进 revision 失败**。
       if (progressed >= industry.cycleDays()) {
-        // ── 周期末：产出 / 生产消耗 / 制度分配 —— 再算饿死（分配/收获不受死亡影响，本期产出照分给幸存者）──
-        harvest(industry, rows, keys, cycledLabor, income, productionLoss);
+        // ── 周期末：产出 → 产权条目 + 关系规则入账 —— 再算饿死（入账不受死亡影响，本期产出照分给幸存者）──
+        harvest(industry, rows, keys, cycledLabor, income, base.relations(), ledger);
         long populationBefore = 0L;
         for (ClassKey key : keys) {
           populationBefore += rows.get(key).population();
@@ -445,8 +513,10 @@ public final class EconomySettlement {
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
     for (ClassKey key : rows.keySet()) {
-      // ★ R3：两张实物表逐商品（消费 = 现扣投入 + 日耗 + 生产损耗；所得 = 收获的毛产分配）。
-      Map<CommodityId, Long> consumed = mergeGoods(consumedGoods.get(key), productionLoss.get(key));
+      // ★★ **T4 起两张实物表的口径都变了**（R1 的"行侧、形状不变、口径改"）：
+      //   · `consumed` = 现扣投入 + 日耗 + 同格取材的**转出**（生产损耗**不在里面**了：它只进 ledger）；
+      //   · `income`   = **实物入账**（关系给本行的 cohort 入账 + 同格取材的**转入**）—— **不再是**毛产分成。
+      Map<CommodityId, Long> consumed = consumedGoods.getOrDefault(key, Map.of());
       Map<CommodityId, Long> earned = income.getOrDefault(key, Map.of());
       long borrowed = borrowing.getOrDefault(key, 0L);
       long interest = interestToday.getOrDefault(key, 0L);
@@ -824,7 +894,8 @@ public final class EconomySettlement {
       LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<ClassKey, ClassRow> rows,
       LinkedHashMap<ClassKey, Map<CommodityId, Long>> consumedGoods,
-      LinkedHashMap<ClassKey, Map<CommodityId, Long>> income) {
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> income,
+      ProductionLedger.Accumulator ledger) {
     // ★★ **R4（T0）：先做一次"同格按需取材"，再各扣各的**（见 transferIntraHexInputs）——
     //   它把**田里的纤维搬到同格的织机上**（R3 的遗留：原料原先只有创世那一次性的一份 ⇒ 第 2 周期起停工）。
     transferIntraHexInputs(industries, rows, consumedGoods, income);
@@ -857,6 +928,10 @@ public final class EconomySettlement {
           }
           row = withGoods(row, commodity, stock - drawn);
           addGoods(consumedGoods, key, commodity, drawn);
+          // ★★ **T4：投入同时记进当天的 ledger**（I4.2 的 `ΣProductionInputs` 的唯一来源）。
+          //   ★ 它进的是 **ledger** 而不是"产权条目"：本阶段投入**仍从消费行扣**（本方法一字未改）⇒
+          //     **逐 actor 的 Input ≡ 0**（I4.1 的过渡口径，如实记；阶段 6/7 投入改从 operator 扣时才非 0）。
+          ledger.addInput(id, commodity, drawn);
           drawnTotal.merge(commodity, drawn, Long::sum);
         }
         rows.put(key, row);
@@ -1295,16 +1370,33 @@ public final class EconomySettlement {
   // ── 周期收获与制度分配 ─────────────────────────────────────────────────────────────
 
   /**
-   * 周期末的产出、生产消耗与制度分配（§四 周期结算 1~5；税明确不做）。
+   * ★★ <b>周期末的产出（§四 周期结算 1~5；税明确不做）</b>—— T4 起**产出不再写进阶层行**（R5 ②）。
    *
-   * <p>★★ **规模由最紧约束决定**（R3/V7）：{@link #scaleOf} 逐路取小（每种 capacity 一路 + 劳动一路 + 每种投入一路）。 旧口径（"可用亩 /
-   * 劳动可经营亩 / 种子可支撑亩"三路）是它在 {@code capacityPerUnit = {LAND: 1000}}、{@code inputPerUnit = {GRAIN:
-   * 8000}} 下的特例。
+   * <p>★★ <b>本方法的形状（一步都不能少）</b>：
    *
-   * <p>★★ **产出逐商品**：{@code 毛产_j = 规模 × outputPerUnit[j] × 1000 毫/单位}，各自扣生产损耗后按**同一组权重**
-   * 分配给本产业的各行（{@code Σ行得 == 剩余产出}，残差按最大余数法）。
+   * <pre>
+   * ① 规模 = 最紧约束（{@link #scaleOf}，R3/V7 泛化后的那一条 —— **一字未改**）
+   * ② 逐商品：毛产 = 规模 × outputPerUnit_j × 1000；损耗 = 毛产 × (饲料 + 折旧)‰；净产 = 毛产 − 损耗
+   *      · 毛产 / 损耗 → ledger（I4.2 的 ΣOutput / ΣLoss）
+   *      · **净产 → operator 的产权条目**（+net 一条；★ 产出离开 ClassRow 的**唯一去处**）
+   * ③ 按 relation 结算（{@link ProductionSettlement}）：转出/收入 → 产权条目，cohort 入账 → **就地落到消费行**
+   * ④ 解析不到行的 cohort 入账 ⇒ **留在 operator**（补一条 +unresolved：转出那一条恒产生，见 E17）
+   * </pre>
+   *
+   * <p>★★ <b>为什么 ② 与 ③ 必须在同一个方法里</b>（T4 与 T5 必须同批落地的全部理由）：产出一旦离开 {@code ClassRow}， 行里唯一还有实物的通道就只剩 ③
+   * 的 cohort 入账 —— 少了它，**cohort 当场断粮**（而账面上看不出少了谁：产权条目照旧生成）。 由 {@code
+   * ProductionLedgerTest#theCohortGetsItsPaidShareIntoTheConsumptionRow} 逐值守着。
+   *
+   * <p>★ <b>缺 {@code relation} 的产业</b>（{@code relations} 表里没有它）：<b>没有规则要结算</b>，产出全部留在 operator ——
+   * 与"空规则表 ⇒ 全归 {@code residualOwner}"是**同一条等价路径**（裁定 E9）。
+   *
+   * <p>★ <b>如实记的两处边界</b>：① {@link ProductionSettlement.Facts#inputs()} 本阶段没有公式读它（表里没有用到它的档）； ②
+   * {@code assetOfActor} 恒空 ⇒ {@code ASSET_QUANTITY} 那一族<b>恒 0</b>（{@code AssetHolding} 真档未种入 —— 见
+   * {@code ProductionRelation} 的类注，这是 S1 的边界，不是静默兜底）。
    *
    * @param cycledLabor 本周期累计实际劳动（千分劳动·日）；`/cycleDays` 得**平均每日实际劳动**
+   * @param relations 生产关系表（键 = 产业 id；缺键 ⇒ 无规则）
+   * @param ledger 当天的发生额累加器（毛产 / 损耗 / 产权条目 / cohort 入账 / 货币待办都进这里）
    */
   private static void harvest(
       Industry industry,
@@ -1312,73 +1404,205 @@ public final class EconomySettlement {
       List<ClassKey> keys,
       long cycledLabor,
       LinkedHashMap<ClassKey, Map<CommodityId, Long>> income,
-      LinkedHashMap<ClassKey, Map<CommodityId, Long>> productionLoss) {
+      Map<IndustryId, ProductionRelation> relations,
+      ProductionLedger.Accumulator ledger) {
     ProductionRecipe recipe = industry.recipe();
-    // ★★ **分配权重**（R3 起对**所有**产业都有意义）：生产资料那一路按**该产业声明的** capacity 种类求和
-    //   （原来只有"土地"一个键 ⇒ 非土地产业的权重恒 0，产出全凭劳动那一路）。
-    long[] rowMeans = new long[keys.size()]; // 各行在**本产业所有 capacity 种类**上的份额之和（未归一）
-    long[] rowLabor = new long[keys.size()];
-    long totalMeans = 0L;
-    long totalLabor = 0L;
-    for (int i = 0; i < keys.size(); i++) {
-      ClassRow row = rows.get(keys.get(i));
-      for (AssetKind kind : recipe.capacityPerUnit().keySet()) {
-        rowMeans[i] += row.meansOfProduction().getOrDefault(kind, 0L);
-      }
-      totalMeans += rowMeans[i];
-      // ★★ **R2 起这两件事分家，写清楚各自的角色**（免得后来者以为其中一个是漏改的旧算法）：
-      //   · `rowLabor`（= 行 laborMilli × 投入率）**只喂分配权重** —— 它回答"本产业的产出在**阶层之间**怎么分"
-      //     （贫农出多少工 vs 地主出多少工），是阶层关系，不是"这个产业投了多少劳动"；
-      //   · 产业**总共**投了多少劳动由 `cycledLabor`（= 劳动分配表的配额之和，见 settleOneDay）承担 —— 它回答
-      //     "劳动瓶颈允许多大生产规模"。
-      //   创世时两者逐值相等（配额就是按这条链算出来的），故改口径不改数。
-      rowLabor[i] = row.laborMilli() * row.participationPerMille() / 1000L;
-      totalLabor += rowLabor[i];
-    }
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
-    long scale = scaleOf(industry, rows, keys, avgLaborMilli); // ★ 最紧约束
-    // ★★ 生产消耗 = **饲料 + 农具折旧**（v2 spec §3.4：留种已移出收获扣减，改在现扣投入步）——
-    //   两项各自具名（V7 参数目录落地后各自可调），此处取**两者之和**、**逐商品按同一千分比**（作坊的 3% 即织机磨损）。
+    long scale = scaleOf(industry, rows, keys, avgLaborMilli); // ★ 最紧约束（一字未改）
 
-    AllocationRule rule = industry.allocation();
-    if (!(rule instanceof AllocationRule.Split split)) {
-      // v1 只结算 Split（小农/封建租佃/手工业）；资本主义 WageFirst 是 §五 的后续增量。
-      throw new UnsupportedOperationException(
-          "v1 的周期分配只支持 AllocationRule.Split，产业 " + industry.id() + " 是 " + rule);
-    }
-    long[] weights = new long[keys.size()];
-    for (int i = 0; i < keys.size(); i++) {
-      long meansPerMille = totalMeans == 0L ? 0L : rowMeans[i] * 1000L / totalMeans;
-      long laborPerMille = totalLabor == 0L ? 0L : rowLabor[i] * 1000L / totalLabor;
-      weights[i] =
-          (split.meansWeightPerMille() * meansPerMille
-                  + split.laborWeightPerMille() * laborPerMille)
-              / 1000L;
-    }
-    // ★★ **逐商品产出入账**（V7 的关键一步）：毛产 = 规模 × outputPerUnit[j] × 1000 毫/单位。
+    HexCoord location = hexOfIndustry(industry.id());
+    ActorRef operator = industry.operator();
+    // ★★ **逐商品产出入账**：毛产 = 规模 × outputPerUnit[j] × 1000 毫/单位（算式一字未改）。
+    Map<CommodityId, Long> grossByCommodity = new LinkedHashMap<>();
+    Map<CommodityId, Long> netByCommodity = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> output : recipe.outputPerUnit().entrySet()) {
       CommodityId commodity = output.getKey();
       long gross = scale * output.getValue() * MILLI_PER_GRAIN; // 毫单位（毛产出）
       if (gross <= 0L) {
         continue;
       }
+      // ★★ 生产消耗 = **饲料 + 农具折旧**（v2 spec §3.4：留种已移出收获扣减，改在现扣投入步）——
+      //   两项各自具名，此处取**两者之和**、**逐商品按同一千分比**（作坊的 3% 即织机磨损）。
       long loss = gross * (FEED_PER_MILLE + DEPRECIATION_PER_MILLE) / 1000L;
-      long net = gross - loss; // 剩余产出（待分配）
-      long[] netParts = allocate(net, weights);
-      long[] lossParts = allocate(loss, weights);
-      for (int i = 0; i < keys.size(); i++) {
-        ClassKey key = keys.get(i);
+      long net = gross - loss;
+      ledger.addGross(industry.id(), commodity, gross);
+      ledger.addLoss(industry.id(), commodity, loss);
+      grossByCommodity.put(commodity, gross);
+      netByCommodity.put(commodity, net);
+      // ★★ **R5 ②：净产进产权条目（+净产 → operator），不再写进本产业的行**。
+      //   ★ `location` = 该产业所在的那一格（{@link IndustryHexKeys} 是唯一拼写点）—— 账户 = (actor, location)。
+      ledger.addEntry(new ProductionSettlement.ActorEntry(operator, location, commodity, net));
+    }
+    if (netByCommodity.isEmpty()) {
+      return; // 规模 0（或产出表为空）⇒ 没有产出、也没有可付的：连规则都不必结算
+    }
+    ProductionRelation relation = relations.get(industry.id());
+    if (relation == null) {
+      return; // 缺 relation ⇒ 没有规则：产出全部留在 operator（等价路径，见方法注释）
+    }
+    // ★★ **R5 ③：按 relation 结算**（priority 序、付款上限 = 本周期收到的产出、E14 的守卫都在 {@link
+    //   ProductionSettlement} 里 —— 本方法只负责"把事实递给它、把结果落到该落的地方"）。
+    ProductionSettlement.Outcome outcome =
+        ProductionSettlement.settle(
+            relation,
+            new ProductionSettlement.Facts(
+                location,
+                grossByCommodity,
+                netByCommodity,
+                industry.cycleInputUsedMilli(),
+                laborOfCohort(rows, location, industry.cycleDays()),
+                // ★ AssetHolding 真档未种入 ⇒ 这一档只能查到 0（如实记，见方法注释）。
+                Map.of(),
+                industry.outputPerUnit()));
+    for (ProductionSettlement.ActorEntry entry : outcome.actorEntries()) {
+      ledger.addEntry(entry);
+    }
+    for (CompensationRule rule : outcome.deferredMoney()) {
+      ledger.addDeferred(rule);
+    }
+    for (Map.Entry<CohortKey, Map<CommodityId, Long>> intake : outcome.cohortIntake().entrySet()) {
+      deliverCohortIntake(
+          rows, income, operator, location, intake.getKey(), intake.getValue(), ledger);
+    }
+  }
+
+  /**
+   * ★★ <b>cohort 入账 → 消费行</b>（R5 ③ 的过渡形态；阶段 6 把它换成 {@code ConsumptionReceipt}）。
+   *
+   * <pre>
+   * 解析（{@link #classRowsOfCohort}，唯一拼写点）：同格 + 同 stratum + population &gt; 0
+   * 分派：按人口比例（{@link #allocate} ⇒ Σparts == 入账额，残差不丢）
+   * 落点：行的 goods += parts[i]；**income += parts[i]**（merge，不 put —— 同格两个产业给同一个 cohort 入账时要累加）
+   * 解析不到行 ⇒ **留在 operator**（补一条 +unresolved）
+   * </pre>
+   *
+   * <p>★★ <b>为什么"解析不到就补一条 +unresolved"而不是"少产生一条 −paid"</b>（E17）：付方的转出条目**恒产生** —— 否则 operator
+   * 侧不扣，同一份产出在账上就有了两份（I4.1/I4.2 当场开不了账）。于是"留在 operator"必须表达成 <b>一笔对 operator 的等额转入</b>：{@code −paid
+   * + unresolved == 0}，语义与"这一笔没付出去"逐值相同。
+   */
+  private static void deliverCohortIntake(
+      LinkedHashMap<ClassKey, ClassRow> rows,
+      LinkedHashMap<ClassKey, Map<CommodityId, Long>> income,
+      ActorRef operator,
+      HexCoord location,
+      CohortKey cohort,
+      Map<CommodityId, Long> intake,
+      ProductionLedger.Accumulator ledger) {
+    List<ClassKey> receivers = classRowsOfCohort(rows, cohort);
+    for (Map.Entry<CommodityId, Long> entry : intake.entrySet()) {
+      CommodityId commodity = entry.getKey();
+      long amount = entry.getValue();
+      if (amount <= 0L) {
+        continue;
+      }
+      ledger.addIntake(cohort, commodity, amount);
+      long[] populations = new long[receivers.size()];
+      for (int i = 0; i < receivers.size(); i++) {
+        populations[i] = rows.get(receivers.get(i)).population();
+      }
+      long[] parts = allocate(amount, populations); // Σparts == amount（分母 = Σ人口）
+      long delivered = 0L;
+      for (int i = 0; i < receivers.size(); i++) {
+        ClassKey key = receivers.get(i);
         rows.put(
             key,
             withGoods(
                 rows.get(key),
                 commodity,
-                rows.get(key).goods().getOrDefault(commodity, 0L) + netParts[i]));
-        // 所得记**毛产出**（净得 + 其份额的生产消耗）⇒ 与 consumed 里的生产消耗配平（§6.1 的账要平）。
-        addGoods(income, key, commodity, netParts[i] + lossParts[i]);
-        addGoods(productionLoss, key, commodity, lossParts[i]);
+                rows.get(key).goods().getOrDefault(commodity, 0L) + parts[i]));
+        addGoods(income, key, commodity, parts[i]); // ★ merge（addGoods 就走 merge）
+        delivered += parts[i];
+      }
+      if (amount > delivered) {
+        ledger.addEntry(
+            new ProductionSettlement.ActorEntry(operator, location, commodity, amount - delivered));
       }
     }
+  }
+
+  /**
+   * ★★ <b>R7：{@code CohortKey → 消费行}的解析 —— 唯一拼写点</b>（计划 R7）：<b>同格 + 同 {@code stratum} + {@code
+   * population > 0}</b>，序按（产业 id、槽位 id）字典序（可复现）。
+   *
+   * <p>★★ <b>{@code population > 0} 是硬条件，它承担 V3（I4.3）</b>：{@code weave@hex|*} 那四行<b>人口恒为 0</b>
+   * （{@code EconomySeeder.householdWeaving} 明写"它的阶层行不携带人口"）⇒ 它们<b>永远不是</b> cohort 受方 ⇒ 织造的布
+   * 不再落它们，而落<b>织布的人</b>（同格的 {@code farm@hex|<阶层>} 行）。★ 少写这一条 ⇒ 本仓的 I4.3 判据当场失效（ 而账面完全看不出来）。
+   *
+   * <p>★ <b>解析不到 ⇒ 空表</b>（调用方据此把那一笔留在 operator）：某个阶层人口为 0 是**合法状态**（ {@code splitByShares} 会造出 0
+   * 人的槽位），不是坏数据 —— 故这里不抛。
+   *
+   * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf}）：id 里没有格键的行<b>永远不匹配</b>
+   * （它没有"住在哪一格"这个事实，不许拿 {@code (0,0)} 顶替）。
+   */
+  static List<ClassKey> classRowsOfCohort(Map<ClassKey, ClassRow> rows, CohortKey cohort) {
+    List<ClassKey> matched = new ArrayList<>();
+    for (Map.Entry<ClassKey, ClassRow> entry : rows.entrySet()) {
+      ClassRow row = entry.getValue();
+      if (row.population() <= 0L) {
+        continue; // ★★ 硬条件（见方法注释：它承担 I4.3）
+      }
+      ClassKey key = entry.getKey();
+      if (!key.slot().equals(cohort.stratum())) {
+        continue;
+      }
+      Optional<HexCoord> residence = IndustryHexKeys.hexKeyOf(key.industry()).map(HexCoord::parse);
+      if (residence.isEmpty() || !residence.get().equals(cohort.residence())) {
+        continue;
+      }
+      matched.add(key);
+    }
+    matched.sort(
+        Comparator.comparing((ClassKey key) -> key.industry().value())
+            .thenComparing(key -> key.slot().value()));
+    return matched;
+  }
+
+  /**
+   * ★★ <b>本格各 cohort 本期劳动量</b>（{@code LABOR_AMOUNT} 那一族的分子/分母）：键 = {@code (本格, 该行的槽位)}， 值 = 该行的
+   * {@code rowLabor}（= {@code laborMilli × 投入率 ÷ 1000}）。★ 同键**累加**。
+   *
+   * <p>★★ <b>为什么取"本格"而不是"本产业自己的行"</b>（实现时实测到的收口，T4）：受方是 <b>cohort</b>（{@code (格, 阶层)},
+   * 与产业无关），而"谁在干活"在真档里**只写在有人口的那些行上** —— 农村家庭纺织那四行（{@code weave@hex|*}） <b>人口恒为 0、劳动恒为 0</b>（{@code
+   * EconomySeeder.householdWeaving} 明写：本格的人住在<b>农业行</b>里， 织布是同一批人的**第二份活**）。⇒ 按"本产业自己的行"取值，{@code
+   * household} 那条 <b>700‰ × 劳动量</b>的 布分成会算出 {@code Σ劳动 = 0} ⇒ 归零（{@code shareWithTotal} 的"不除零"那一支）⇒
+   * <b>织布的人一件布也拿不到</b> —— 而 V3 要的正是"织布的人拿到布"（I4.3）。按**本格**取值则同格农业行的劳动就是那批人的劳动。
+   *
+   * <p>★ 只放**非零**的行：{@code ProductionSettlement} 的 {@code laborOf} 查不到即 0，而 {@code Σ劳动} 是分母 —— 塞 0
+   * 进去不改变任何一个数，只会把表弄脏（{@code weave@hex|*} 那四行正是 0）。
+   */
+  static Map<CohortKey, Long> laborOfCohort(
+      Map<ClassKey, ClassRow> rows, HexCoord location, long cycleDays) {
+    Map<CohortKey, Long> byCohort = new LinkedHashMap<>();
+    for (Map.Entry<ClassKey, ClassRow> entry : rows.entrySet()) {
+      ClassRow row = entry.getValue();
+      // ★★ **每日口径 × 周期天数 = 本周期口径**（量纲的收口）：行的 `laborMilli` 与发放的配额同口径
+      //   （**每日**千分劳动；结算逐日把它累加进 `cycleLaborMilli`），而 {@code LABOR_AMOUNT} 那一族量的是
+      //   **本周期**的劳动量（{@code FIXED_IN_KIND_PER_LABOR} 的"每周期一笔"就写在名字里）。
+      //   ★ 少了这个乘数，给养只有应有值的 1/cycleDays —— 实测（真档 14,806 人的格）：一周期只拿到 0.8% 的口粮，
+      //     第 2 周期起人吃不饱、也播不下种 ⇒ 生产逐周期崩掉（`EconomyRealScaleClothTest` / `WorldgenInitializeToolTest`
+      //     的跨周期用例当场红）。★ 分成类（`OUTPUT_SHARE`）不受影响：那一路是比值，量纲自消。
+      long rowLabor = row.laborMilli() * row.participationPerMille() / 1000L * cycleDays;
+      if (rowLabor <= 0L) {
+        continue;
+      }
+      Optional<HexCoord> residence =
+          IndustryHexKeys.hexKeyOf(entry.getKey().industry()).map(HexCoord::parse);
+      if (residence.isEmpty() || !residence.get().equals(location)) {
+        continue;
+      }
+      byCohort.merge(new CohortKey(location, entry.getKey().slot()), rowLabor, Long::sum);
+    }
+    return byCohort;
+  }
+
+  /** 产业 id 里的格键 → 坐标（{@link IndustryHexKeys} 是唯一拼写点）；拿不到 ⇒ 抛（产权账户必须有地点）。 */
+  static HexCoord hexOfIndustry(IndustryId id) {
+    return HexCoord.parse(
+        IndustryHexKeys.hexKeyOf(id)
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "产业 id 里没有格键，无法为产出落产权账户（账户 = (actor, location)，不许拿 (0,0) 顶替）: " + id)));
   }
 
   /**

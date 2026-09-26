@@ -2,6 +2,8 @@ package io.mosire.simos.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -222,6 +224,8 @@ class ShellSmokeTest {
                 "sd", new SdSnapshot(ref("main", 1), T0, SdState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
                 "economy", new EconomySnapshot(ref("main", 1), T0, EconomyData.empty()),
+                // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                "actor", new ActorSnapshot(ref("main", 1), T0, ActorData.empty()),
                 // ★ R1：social 也成了时间参与者（T6）⇒ 它同样要求切片在场（缺席是装配故障，不是"无事"）。
                 "social", new SocialSnapshot(ref("main", 1), T0, SocialData.empty())),
             InMemoryInfoSystem.empty());

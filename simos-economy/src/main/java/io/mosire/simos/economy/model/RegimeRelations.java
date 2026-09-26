@@ -94,12 +94,24 @@ public final class RegimeRelations {
   /** 布的商品 id（同上）。 */
   private static final String CLOTH = EconomyVocabulary.CLOTH_COMMODITY_ID;
 
+  /** 纤维的商品 id（同上）：农业的**副产**（{@link #feudalRules()} 的最后一条规则用它）。 */
+  private static final String FIBER = EconomyVocabulary.FIBER_COMMODITY_ID;
+
   /**
    * {@code feudal} 的<b>地租率</b>（千分）：毛产的 {@code 300‰} —— spec §2.4 的"地租 30%"原例（{@code GROSS_OUTPUT}）。
    *
    * <p>★ 约束（分成类规则的通用边界）：{@code Σ 各档分成率 ≤ 1000‰}，否则 R6 的"付款上限 = 本周期产出"开始咬合、 实付被截断 ⇒ 制度表达失真。
    */
   private static final int FEUDAL_RENT_PER_MILLE = 300;
+
+  /**
+   * {@code feudal} 的**副产纤维**分成率（千分，{@code OUTPUT_SHARE × NET_AFTER_INPUTS} 给四个阶层 cohort）：{@code
+   * 1000}。
+   *
+   * <p>★ 取 1000 的**后果**（可读、也是取值依据）：四条规则的付款上限逐条咬合（{@code available = 净产 − 已付}）⇒ <b>Σ实付 ==
+   * 净产</b>，且按**劳动量**分给劳动者 —— 副产全留在种地的人手里，"地租"那条只对**粮**收（见 {@link #feudalRules()}）。
+   */
+  private static final int FEUDAL_BYPRODUCT_SHARE_PER_MILLE = 1000;
 
   /**
    * {@code feudal} 的<b>给养</b>（毫粮 / 1000 千分劳动）。
@@ -235,6 +247,23 @@ public final class RegimeRelations {
             0L,
             Optional.of(GRAIN),
             20));
+    // ★★ **本档的第二个典型产品：农田的副产纤维**（S1 阶段 4+5 Task 4 的实测收口）。
+    //   ★ 为什么它必须在这里：产出自本阶段起**不再写进阶层行**（R5 ②），行里的实物只能经关系规则回来 ——
+    //     而"田里的纤维 → 同格织机上"是**既有能力**（R4 的 T0：{@code transferIntraHexInputs} 从**行**取材，
+    //     织机因此每个周期都拿得到料）。少了这一条，纤维会留在 {@code operator} 的账上，织机**第 2 个周期起停工**
+    //     （{@code EconomyRealScaleClothTest} / {@code PopulationR4Test} / {@code
+    // WorldgenInitializeToolTest} 三条
+    //     端到端用例当场红——实现时实测到的）。★ 规则本身只**加了一条数据**：不改任何算式的形状。
+    //   ★ 分成率 1000‰ × 四个阶层 cohort（付款上限逐条咬合 ⇒ Σ实付 == 净产，按**劳动量**分给劳动者）：
+    //     副产是"田里长出来的"，留在种地的人手里（地租那一条只对**粮**收，见上）。
+    rules.addAll(
+        laborCohorts(
+            RuleType.OUTPUT_SHARE,
+            Basis.NET_AFTER_INPUTS,
+            FEUDAL_BYPRODUCT_SHARE_PER_MILLE,
+            0L,
+            Optional.of(FIBER),
+            30));
     return Collections.unmodifiableList(rules);
   }
 

@@ -145,7 +145,7 @@ class EconomyRealScaleSeedBottleneckTest {
         .isEqualTo(rowSum * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L)
         .isPositive();
 
-    EconomyData afterOneDay = EconomySettlement.settle(seeded, 0L, 1L);
+    EconomyData afterOneDay = EconomyOwnershipFixture.advanceEconomy(seeded, MAP_ID, 1L);
     assertThat(afterOneDay.industries().get(farm).cycleLaborMilli())
         .as("③ 农业第 1 天累加的就是它那一条配额（劳动投入取自配额表）")
         .isEqualTo(farmQuota);
@@ -214,7 +214,7 @@ class EconomyRealScaleSeedBottleneckTest {
     }
     assertThat(needMilli).as("满种量 = 3,098 亩 × 8,000 毫粮/亩").isEqualTo(24_784_000L);
 
-    EconomyData sowingDay = EconomySettlement.settle(seeded, 0L, 1L);
+    EconomyData sowingDay = EconomyOwnershipFixture.advanceEconomy(seeded, MAP_ID, 1L);
 
     assertThat(totalSown(sowingDay)).as("播种日扣满（第三路瓶颈**存在**：它决定投入面积）").isEqualTo(needMilli);
     assertThat(totalSown(sowingDay)).as("★ 判别力：与「没配种子」（恒 0）必须不同").isNotZero();
@@ -236,14 +236,19 @@ class EconomyRealScaleSeedBottleneckTest {
     }
     assertThat(seedCapMu).as("可支撑亩 = Σ 行亩（满种时它恰等于土地亩数的向下取整）").isEqualTo(3_098L);
 
-    EconomyData afterHarvest = EconomySettlement.settle(seeded, 0L, EconomySeeder.CYCLE_DAYS);
+    EconomyOwnershipFixture.Result afterHarvest =
+        EconomyOwnershipFixture.advance(
+            seeded, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
 
-    assertThat(harvestGrainGross(afterHarvest))
-        .as("毛产 = 3,098 亩 × 67 粮/亩 × 1000 毫粮/粮（**按种子可支撑的亩数**，不是按 3,100 亩）")
-        .isEqualTo(3_098L * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L);
-    assertThat(harvestGrainGross(afterHarvest))
-        .as("★ 判别力：若第三路没进 min（退回两路），这里会是 3,100 亩的 207,700,000")
-        .isNotEqualTo(EconomySeeder.MU_PER_HEX * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L);
+    // ★★ T4 起**净产**要在两处合读：行里收到的**关系入账** + {@code operator} 账上留下的那一份
+    //   （账户 = {@code (ESTATE:farm@0_0, 0_0)}）。毛产 = 净产 ÷ 0.97（损耗 30‰ 只进 `ProductionLedger.losses`）。
+    assertThat(harvestGrainNet(afterHarvest))
+        .as("净产 = 3,098 亩 × 67 粮/亩 × 1000 × 0.97（**按种子可支撑的亩数**，不是按 3,100 亩）")
+        .isEqualTo(3_098L * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 970L / 1000L);
+    assertThat(harvestGrainNet(afterHarvest))
+        .as("★ 判别力：若第三路没进 min（退回两路），这里会是 3,100 亩的 201,469,000")
+        .isNotEqualTo(
+            EconomySeeder.MU_PER_HEX * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L * 970L / 1000L);
   }
 
   // ── ② 缸空 ⇒ 颗粒无收；未配种子的对照格照常收获 ───────────────────────────────────────
@@ -264,19 +269,54 @@ class EconomyRealScaleSeedBottleneckTest {
       assertThat(row.goods()).as("行 %s 的缸已清空", row.key()).isEmpty();
     }
 
-    EconomyData starved = EconomySettlement.settle(emptied, 0L, EconomySeeder.CYCLE_DAYS);
-    EconomyData control = EconomySettlement.settle(emptiedUnseeded, 0L, EconomySeeder.CYCLE_DAYS);
+    EconomyOwnershipFixture.Result starved =
+        EconomyOwnershipFixture.advance(
+            emptied, EconomyOwnershipFixture.NO_BOOKS, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
+    EconomyOwnershipFixture.Result control =
+        EconomyOwnershipFixture.advance(
+            emptiedUnseeded,
+            EconomyOwnershipFixture.NO_BOOKS,
+            MAP_ID,
+            0L,
+            EconomySeeder.CYCLE_DAYS);
 
-    assertThat(harvestGrainGross(starved)).as("扣不到种 ⇒ 0 亩 ⇒ 不产粮").isZero();
-    assertThat(hexGrain(starved)).as("缸本来空、又不产粮 ⇒ 终态为 0").isZero();
-    assertThat(starved.industries().values())
+    assertThat(harvestGrainNet(starved)).as("扣不到种 ⇒ 0 亩 ⇒ 不产粮").isZero();
+    assertThat(hexGrain(starved.economy())).as("缸本来空、又不产粮 ⇒ 终态为 0").isZero();
+    assertThat(starved.economy().industries().values())
         .allSatisfy(
             industry -> assertThat(industry.cycleSeedUsedMilli()).as("周期已关账 ⇒ 累加器清零").isZero());
 
-    assertThat(harvestGrainGross(control))
-        .as("★ 未配种子的对照格：第三路不施加约束 ⇒ 按土地 3,100 亩满产（毛产）")
-        .isEqualTo(EconomySeeder.MU_PER_HEX * EconomySeeder.GRAIN_OUTPUT_PER_MU * 1000L);
-    assertThat(hexGrain(control)).as("对照格的终态 = 满产净额（扣饲料 0‰ + 折旧 30‰）").isEqualTo(201_469_000L);
+    assertThat(harvestGrainNet(control))
+        .as("★ 未配种子的对照格：第三路不施加约束 ⇒ 按土地 3,100 亩满产的**净额**（扣饲料 0‰ + 折旧 30‰）")
+        .isEqualTo(201_469_000L);
+    assertThat(hexGrain(control.economy()))
+        .as("行侧的入账非零（T4 起产出两处落：行里那份 + operator 账上那份）")
+        .isPositive();
+  }
+
+  /**
+   * ★★ <b>本格这一周期农业的粮**净产**</b>（T4 起两处合读）：行里收到的**关系入账** + {@code operator} 账上留下的那一份。 ★ 少了任何一半都会读小 ——
+   * 这正是"产出离开 {@code ClassRow}"的后果；毛产 = 它 ÷ 0.97（生产损耗 30‰）。
+   */
+  private static long harvestGrainNet(EconomyOwnershipFixture.Result result) {
+    long rows = 0L;
+    for (ClassRow row : result.economy().classes().values()) {
+      io.mosire.simos.economy.model.FlowRow flow = result.economy().flows().get(row.key());
+      if (flow != null) {
+        rows += flow.income().getOrDefault(EconomySettlement.GRAIN, 0L);
+      }
+    }
+    io.mosire.simos.economy.model.Industry farm =
+        result.economy().industries().get(IndustryHexKeys.id(EconomySeeder.FARM, 0, 0));
+    io.mosire.simos.actor.model.GoodsAccount account =
+        result
+            .actor()
+            .accounts()
+            .get(
+                new io.mosire.simos.actor.model.GoodsAccountKey(
+                    farm.operator(), new HexCoord(0, 0)));
+    return rows
+        + (account == null ? 0L : account.balances().getOrDefault(EconomySettlement.GRAIN, 0L));
   }
 
   // ── 夹具与读数 ───────────────────────────────────────────────────────────────────────
