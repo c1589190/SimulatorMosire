@@ -3,7 +3,6 @@ package io.mosire.simos.actor.resolve;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.AssetHoldingKey;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
@@ -19,28 +18,30 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code actor:} 命名空间的地址解析器（S1 spec §三；形制照 {@code EconomyResolver} / {@code SocialResolver}）。认三类主体
- * —— <b>与 {@link ActorData} 的三张表一一对应</b>：
+ * {@code actor:} 命名空间的地址解析器（S1 spec §三；形制照 {@code EconomyResolver} / {@code SocialResolver}）。认两类主体
+ * —— <b>与 {@link ActorData} 的两张带记录的表一一对应</b>（{@code meta} 是单值组件，不是表）：
  *
  * <ul>
  *   <li>{@code actor:<mapId>} —— 该地图的 actor 切片根主体（第 2 段是根主体 {@code Entity(∅,·)}）
  *   <li>{@code actor:<mapId>:actor.<KIND>.<id>} —— 主体（类型名 {@code "Actor"}）；无记录 ⇒ 空候选
- *   <li>{@code actor:<mapId>:holding.<key>} —— 产权（类型名 {@code "AssetHolding"}）；无记录 ⇒ 空候选
  *   <li>{@code actor:<mapId>:goods.<key>} —— 商品库存（类型名 {@code "GoodsAccount"}）；无记录 ⇒ 空候选
  * </ul>
  *
- * <p>★★ <b>后两类的 {@code <key>} 就是各自聚合键的规范串</b>（{@code <owner>|<location>|<assetKey>} / {@code
- * <owner>|<location>}）—— 它们的逆住在那两个类型<b>自己的</b> {@code parse} 里（裁定 R-48-f：格式的拼写与它的逆只许有一处），
- * 本类<b>只委托、不复述格式</b>，连"按第几个接缝切"都不判断。名字里含 {@code :} / {@code [} / {@code ]} 时（{@code ActorRef}
- * 的规范串就含 {@code :}）<b>需要在地址里加引</b>，canonical 形式由 {@link Address} 的 AST 按 §3.4 的按需加引规则产出。
+ * <p>★★ <b>2026-09-27 裁定 S3</b>：产权（{@code holding.<key>} / 类型名 {@code "AssetHolding"}）整块退役，本解析器
+ * <b>不再认领 {@code holding} 这个 kind</b> —— 它落进"其它 kind ⇒ 空候选"那一档，不再有地址解析。
+ *
+ * <p>★★ <b>库存那一类的 {@code <key>} 就是它聚合键的规范串</b>（{@code <owner>|<location>}）—— 它的逆住在那 个类型<b>自己的</b>
+ * {@code parse} 里（裁定 R-48-f：格式的拼写与它的逆只许有一处）， 本类<b>只委托、不复述格式</b>，连"按第几个接缝切"都不判断。名字里含 {@code :} /
+ * {@code [} / {@code ]} 时（{@code ActorRef} 的规范串就含 {@code :}）<b>需要在地址里加引</b>，canonical 形式由 {@link
+ * Address} 的 AST 按 §3.4 的按需加引规则产出。
  *
  * <p>★ <b>主体的地址拆成 {@code <KIND>.<id>} 两半</b>（而不是把整条规范串塞进名字）：地址 AST 的实体段本来就长成 {@code kind.name}，而
  * {@code ActorRef} 的两参 {@code parse(kindText, id)} <b>正是</b>这个形状 —— 于是词表外的种类 （{@code
  * actor:Map1:actor.MANOR.x}）当场抛在 {@code ActorKind.parse} 里，消息自带合法值清单。
  *
  * <p><b>空候选与抛的分工</b>（与 {@code EconomyResolver}/{@code LedgerResolver} 同款）：合法但本模块不服务（其它 kind、属性段、 段数
- * &gt; 3、Index 段、没有记录的主体/产权/库存）一律空候选；<b>抛只有两处</b>——装配故障（state 里没有 actor 切片 / 切片类型不对）与<b>认领了的
- * kind</b> 里<b>名字解析失败</b>（{@link ActorRef#parse} 等抛它自己的 IAE，不包不吞）。
+ * &gt; 3、Index 段、没有记录的主体/库存）一律空候选；<b>抛只有两处</b>——装配故障（state 里没有 actor 切片 / 切片类型不对）与<b>认领了的 kind</b>
+ * 里<b>名字解析失败</b>（{@link ActorRef#parse} 等抛它自己的 IAE，不包不吞）。
  *
  * <p>★ <b>canonical 只能由 {@link Address} AST 构造后调 {@code canonical()} 产出</b>（R13）：§3.4 的加引规则不在本类重实现。
  * {@code mapId} <b>只回显、不校验</b>（与 social/ledger/economy 同款：地图 ID 没有本切片内的判据）。
@@ -82,9 +83,8 @@ public final class ActorResolver implements Resolver {
     }
     return switch (entity.kind().get()) {
       case "actor" -> resolveActor(data, mapId, entity.name());
-      case "holding" -> resolveHolding(data, mapId, entity.name());
       case "goods" -> resolveGoods(data, mapId, entity.name());
-      default -> empty(); // 其它 kind 的合法地址，本模块不服务
+      default -> empty(); // 其它 kind（含已退役的 holding）的合法地址，本模块不服务
     };
   }
 
@@ -107,17 +107,6 @@ public final class ActorResolver implements Resolver {
         new SubjectId("actor.actor", ref.toString()),
         entityAddress(mapId, "actor", ref.kind().name() + "." + ref.id()),
         "Actor");
-  }
-
-  private static QueryResult resolveHolding(ActorData data, String mapId, String name) {
-    AssetHoldingKey key = AssetHoldingKey.parse(name); // 名字非法抛它自己的 IAE，不包不吞
-    if (!data.holdings().containsKey(key)) {
-      return empty();
-    }
-    return single(
-        new SubjectId("actor.holding", key.toString()),
-        entityAddress(mapId, "holding", key.toString()),
-        "AssetHolding");
   }
 
   private static QueryResult resolveGoods(ActorData data, String mapId, String name) {

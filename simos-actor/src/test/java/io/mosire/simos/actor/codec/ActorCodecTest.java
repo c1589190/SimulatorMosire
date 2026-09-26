@@ -9,11 +9,8 @@ import io.mosire.simos.actor.ActorMeta;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetClassKey;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.AssetHolding;
-import io.mosire.simos.actor.model.AssetHoldingKey;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -36,11 +33,10 @@ import org.junit.jupiter.api.Test;
 /**
  * actor 模块的 JSON 往返守卫（照 {@code EconomyCodecTest} / {@code LedgerCodecTest} 同制，夹具是 actor 自己的）。
  *
- * <p>★ 覆盖：{@code Optional<ActorMeta>} 两侧向（未激活 / 已激活）、**四张表各自的键类型**（{@code ActorRef}/{@code
- * AssetHoldingKey}/{@code GoodsAccountKey}，以及嵌套在 {@code GoodsAccount.balances} 里的 {@code
- * CommodityId}）、值的类型绑定（{@code Actor}/{@code AssetHolding}/{@code GoodsAccount} 不许退化成 {@code Map}）、
- * {@code FieldDelta} 四变体、单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点）、 外来切片的两条拒绝、坏键与缺
- * {@code data} 的响亮失败，以及旧档缺键的兼容。
+ * <p>★ 覆盖：{@code Optional<ActorMeta>} 两侧向（未激活 / 已激活）、**两张表各自的键类型**（{@code ActorRef}/ {@code
+ * GoodsAccountKey}，以及嵌套在 {@code GoodsAccount.balances} 里的 {@code CommodityId}）、值的类型绑定（{@code
+ * Actor}/{@code GoodsAccount} 不许退化成 {@code Map}）、 {@code FieldDelta} 四变体、单值组件的投影往返、**字节级**往返（含"派生判断
+ * {@code empty} 不进线格式"的观察点）、 外来切片的两条拒绝、坏键与缺 {@code data} 的响亮失败，以及旧档缺键的兼容。
  *
  * <p>★★ <b>{@code namespace()} 那一条不写成"字面量等于字符串"就完事</b>：{@code SimulationState} 构造期校验"modules 的键 ==
  * {@code snapshot.namespace()}"，故本测试**真的构造一次 {@code SimulationState}**（并配一条反例证明那条校验是活的）——
@@ -59,13 +55,6 @@ class ActorCodecTest {
   private static final HexCoord HEX = new HexCoord(0, 0);
 
   private static final HexCoord OTHER_HEX = new HexCoord(1, 0);
-
-  /** ★ 两个资产类**只差 quality 一段** ⇒ 任何"把 qualities 抹平"的键都会把两条压成一条。 */
-  private static final AssetClassKey ARABLE_B =
-      AssetClassKey.land(Map.of("arable", "true", "quality", "B"));
-
-  private static final AssetClassKey ARABLE_C =
-      AssetClassKey.land(Map.of("arable", "true", "quality", "C"));
 
   private static final CommodityId GRAIN = new CommodityId("grain");
 
@@ -119,11 +108,11 @@ class ActorCodecTest {
         new StateMeta(REF, TS), Map.of(key, snapshot), InMemoryInfoSystem.empty());
   }
 
-  // ── 正例：四张表都非空 ────────────────────────────────────────────────────────────
+  // ── 正例：两张表都非空 ────────────────────────────────────────────────────────────
 
-  /** 非平凡快照往返：带历注 + 四张表都非空 + 三层自定义键 + 四张表的每条记录每个字段都是非平凡值。 */
+  /** 非平凡快照往返：带历注 + 两张表都非空 + 两层自定义键 + 两张表的每条记录每个字段都是非平凡值。 */
   @Test
-  void snapshotRoundTripsWithAllFourTablesNonEmpty() {
+  void snapshotRoundTripsWithAllTablesNonEmpty() {
     ActorSnapshot snapshot = snapshotOf(fullData(), TS);
 
     ActorSnapshot back = (ActorSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
@@ -145,9 +134,9 @@ class ActorCodecTest {
   }
 
   /**
-   * ★★ <b>逐字段</b>：四张表的每一条、每一条的每个字段各断言一次（task-6 的"逐字段"口径，不是一条 {@code equals} 结账）。
+   * ★★ <b>逐字段</b>：两张表的每一条、每一条的每个字段各断言一次（task-6 的"逐字段"口径，不是一条 {@code equals} 结账）。
    *
-   * <p>★ <b>四张表都非空</b>是本条的前提，也是**键（反）序列化器被真正走到**的前提：空表会让注册项**永远不被执行** —— 那是"注册了却测不到"的假覆盖（{@code
+   * <p>★ <b>两张表都非空</b>是本条的前提，也是**键（反）序列化器被真正走到**的前提：空表会让注册项**永远不被执行** —— 那是"注册了却测不到"的假覆盖（{@code
    * EconomyCodecTest} 对 R2 两张表记的正是这一条）。
    */
   @Test
@@ -170,18 +159,7 @@ class ActorCodecTest {
     assertThat(back.actors().get(HOUSEHOLD).ref()).isEqualTo(HOUSEHOLD);
     assertThat(back.actors().get(HOUSEHOLD).label()).isEqualTo("佃农家户");
 
-    // ③ holdings：键（三段，含自带接缝的资产类段）+ 每条的两个组件
-    AssetHoldingKey estateHolding = new AssetHoldingKey(ESTATE, HEX, ARABLE_B);
-    AssetHoldingKey householdHolding = new AssetHoldingKey(HOUSEHOLD, OTHER_HEX, ARABLE_C);
-    assertThat(back.holdings()).containsOnlyKeys(estateHolding, householdHolding);
-    assertThat(back.holdings().get(estateHolding).key().owner()).isEqualTo(ESTATE);
-    assertThat(back.holdings().get(estateHolding).key().location()).isEqualTo(HEX);
-    assertThat(back.holdings().get(estateHolding).key().assetKey()).isEqualTo(ARABLE_B);
-    assertThat(back.holdings().get(estateHolding).quantity()).isEqualTo(10_000L);
-    assertThat(back.holdings().get(householdHolding).key().assetKey()).isEqualTo(ARABLE_C);
-    assertThat(back.holdings().get(householdHolding).quantity()).isEqualTo(3L);
-
-    // ④ accounts：键（两段）+ 余额表（键是 CommodityId —— 那是**嵌套**的一层自定义键）
+    // ③ accounts：键（两段）+ 余额表（键是 CommodityId —— 那是**嵌套**的一层自定义键）
     GoodsAccountKey estateAccount = new GoodsAccountKey(ESTATE, HEX);
     GoodsAccountKey householdAccount = new GoodsAccountKey(HOUSEHOLD, OTHER_HEX);
     assertThat(back.accounts()).containsOnlyKeys(estateAccount, householdAccount);
@@ -204,10 +182,10 @@ class ActorCodecTest {
    *
    * <p>★★ <b>为什么不能只写一条 {@code assertThat(back).isEqualTo(ActorData.empty())}</b>：{@code ActorData}
    * 的紧凑构造器把 {@code null} 归一成空表 / 未激活（旧档兼容，fail-closed）⇒ **"解码出来全是 null"与"解码出来是空表"在 {@code equals}
-   * 下不可区分**，那条断言对 codec 一句话都没说（它证的是构造器会归一）。 故四个组件**各断言一次**、且各自要求 <b>非 null</b>（{@code isNotNull()}
+   * 下不可区分**，那条断言对 codec 一句话都没说（它证的是构造器会归一）。 故三个组件**各断言一次**、且各自要求 <b>非 null</b>（{@code isNotNull()}
    * 在前：{@code null} 过不了 {@code isEmpty()}，但把这件事写出来才读得懂）。
    *
-   * <p>★★ <b>空态在线上有两种写法，两种都要逐字段</b>：我们写出去的是显式的 {@code "meta":null} + 三张 {@code {}}；旧档则四个键<b>全缺席</b>
+   * <p>★★ <b>空态在线上有两种写法，两种都要逐字段</b>：我们写出去的是显式的 {@code "meta":null} + 两张 {@code {}}；旧档则三个键<b>全缺席</b>
    * （{@code "data":{}}）。★ <b>「全缺席」那一路正是紧凑构造器的 fail-closed 归一被走到的地方</b>—— Jackson 对缺席的 {@code Map}
    * 组件传 {@code null}（而对缺席的 {@code Optional} 传 {@code Optional.empty()}，故 {@code meta}
    * 那一条归一其实够不着），所以它同时钉住"缺 ⇒ 空表"。
@@ -223,11 +201,10 @@ class ActorCodecTest {
 
     assertThat(back.meta()).as("meta：未激活 ⇒ 空 Optional（不是 null，也不是 present）").isNotNull().isEmpty();
     assertThat(back.actors()).as("actors：空表（不是 null）").isNotNull().isEmpty();
-    assertThat(back.holdings()).as("holdings：空表（不是 null）").isNotNull().isEmpty();
     assertThat(back.accounts()).as("accounts：空表（不是 null）").isNotNull().isEmpty();
     assertThat(back).as("整体相等只是最后一条").isEqualTo(empty);
 
-    // ★ 另一种空态写法：四个键**全缺席**（旧档）。逐字段同样要回来，且不许是 null。
+    // ★ 另一种空态写法：三个键**全缺席**（旧档）。逐字段同样要回来，且不许是 null。
     ActorData fromAbsentKeys =
         dataOf(
             CODEC.decodeSnapshot(
@@ -239,7 +216,6 @@ class ActorCodecTest {
         .as("缺键 → 空表（**不是 null** —— 这一条才真的走到构造器的归一）")
         .isNotNull()
         .isEmpty();
-    assertThat(fromAbsentKeys.holdings()).as("缺键 → 空表").isNotNull().isEmpty();
     assertThat(fromAbsentKeys.accounts()).as("缺键 → 空表").isNotNull().isEmpty();
     assertThat(fromAbsentKeys).as("两种空态写法必须落到**同一个** ActorData").isEqualTo(empty);
 
@@ -251,7 +227,7 @@ class ActorCodecTest {
     ActorData oneActorBack =
         dataOf(CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshotOf(oneActor, TS))));
 
-    assertThat(activatedBack).as("只激活 ⇒ 不与空相等（否则上一条的四条断言是白给的）").isNotEqualTo(empty);
+    assertThat(activatedBack).as("只激活 ⇒ 不与空相等（否则上一条的三条断言是白给的）").isNotEqualTo(empty);
     assertThat(activatedBack.meta()).isPresent();
     assertThat(activatedBack.actors()).as("激活不捎带造出主体").isEmpty();
     assertThat(oneActorBack).isNotEqualTo(empty);
@@ -259,17 +235,17 @@ class ActorCodecTest {
     assertThat(oneActorBack.meta()).as("落一条主体不捎带激活").isEmpty();
   }
 
-  /** ★ 空快照的**线格式**钉在这里：{@code meta} 写 {@code null}、三张表写 {@code {}}（与"缺键"是同一档，读侧都收成空）。 */
+  /** ★ 空快照的**线格式**钉在这里：{@code meta} 写 {@code null}、两张表写 {@code {}}（与"缺键"是同一档，读侧都收成空）。 */
   @Test
   void theEmptySnapshotHasAFrozenWireShape() {
     String json = CODEC.encodeSnapshot(snapshotOf(ActorData.empty(), SimosTimestamp.of(10)));
 
     assertThat(json)
-        .as("★ 冻结串：空态就是这四个键，一个不多一个不少（派生判断不在其中）")
+        .as("★ 冻结串：空态就是这三个键，一个不多一个不少（派生判断不在其中）")
         .isEqualTo(
             "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":3}},"
                 + "\"timestamp\":{\"tick\":10,\"calendarLabel\":null},"
-                + "\"data\":{\"meta\":null,\"actors\":{},\"holdings\":{},\"accounts\":{}}}");
+                + "\"data\":{\"meta\":null,\"actors\":{},\"accounts\":{}}}");
   }
 
   // ── 变更集：四条变体 + 值类型的绑定 ────────────────────────────────────────────────
@@ -307,10 +283,9 @@ class ActorCodecTest {
   }
 
   /**
-   * ★ 值类型的绑定不能在读入侧丢成 {@code Map}：{@code Actor} / {@code AssetHolding} / {@code GoodsAccount}
-   * 得还是它们自己， 且**它们的键**得还原成各自的自定义键类型（{@code ActorRef} / {@code AssetHoldingKey} / {@code
-   * GoodsAccountKey} 以及嵌套的 {@code CommodityId}）—— 键退化成 {@code String} 的话本仓 {@code
-   * FieldDelta.rebuild} 的键解析器就白写了。
+   * ★ 值类型的绑定不能在读入侧丢成 {@code Map}：{@code Actor} / {@code GoodsAccount} 得还是它们自己，
+   * 且**它们的键**得还原成各自的自定义键类型（{@code ActorRef} / {@code GoodsAccountKey} 以及嵌套的 {@code CommodityId}）——
+   * 键退化成 {@code String} 的话本仓 {@code FieldDelta.rebuild} 的键解析器就白写了。
    */
   @Test
   void deltaValuesSurviveAsTypedRowsWithParsedKeys() {
@@ -325,13 +300,6 @@ class ActorCodecTest {
     assertThat(estate).isInstanceOf(Actor.class);
     assertThat(estate.ref()).isEqualTo(ESTATE);
     assertThat(estate.label()).isEqualTo("庄园");
-
-    FieldDelta.Upsert<AssetHolding> holdings = upsert(back.holdings());
-    AssetHoldingKey estateHolding = new AssetHoldingKey(ESTATE, HEX, ARABLE_B);
-    AssetHolding holding = holdings.entries().get(estateHolding.toString());
-    assertThat(holding).isInstanceOf(AssetHolding.class);
-    assertThat(holding.key()).as("键的三段都得回来（资产类段自带接缝）").isEqualTo(estateHolding);
-    assertThat(holding.quantity()).isEqualTo(10_000L);
 
     FieldDelta.Upsert<GoodsAccount> accounts = upsert(back.accounts());
     GoodsAccountKey householdAccount = new GoodsAccountKey(HOUSEHOLD, OTHER_HEX);
@@ -375,7 +343,7 @@ class ActorCodecTest {
    * <p>★ <b>后一半才是真判据</b>："同一个对象编码两次"对任何纯函数都成立；能抓住的是**解码把有序容器换掉** —— 若读入侧把 {@code LinkedHashMap} 换成
    * {@code Map.copyOf}/乱序表，"内容相等而迭代序漂移"就会让第二次编码的字节抖起来。
    *
-   * <p>★ <b>本仓的读口约定</b>：状态里的插入序**不是内容的纯函数**（{@code Map.copyOf} 的迭代序就与插入序无关）⇒ 跟着它走字节会抖，故四张表一律 {@code
+   * <p>★ <b>本仓的读口约定</b>：状态里的插入序**不是内容的纯函数**（{@code Map.copyOf} 的迭代序就与插入序无关）⇒ 跟着它走字节会抖，故两张表一律 {@code
    * LinkedHashMap} + {@code Collections.unmodifiableMap}。本用例把这条约定**钉在字节上**。
    */
   @Test
@@ -423,9 +391,6 @@ class ActorCodecTest {
     String json = CODEC.encodeSnapshot(snapshotOf(fullData(), TS));
 
     assertThat(json).as("ActorRef 作键").contains("\"" + ESTATE + "\"");
-    assertThat(json)
-        .as("AssetHoldingKey 作键（三段，含资产类段自带的两个接缝）")
-        .contains("\"ESTATE:farm@0_0|0_0|LAND|arable=true|quality=B\"");
     assertThat(json).as("GoodsAccountKey 作键（两段）").contains("\"HOUSEHOLD:rural:0_0:MALE:1|1_0\"");
   }
 
@@ -464,10 +429,6 @@ class ActorCodecTest {
     assertThat(applied.ref()).isEqualTo(NEW_META.ref());
     assertThat(applied.timestamp()).isEqualTo(NEW_META.timestamp());
     assertThat(applied.data().actors()).containsOnlyKeys(ESTATE, HOUSEHOLD);
-    assertThat(applied.data().holdings())
-        .containsOnlyKeys(
-            new AssetHoldingKey(ESTATE, HEX, ARABLE_B),
-            new AssetHoldingKey(HOUSEHOLD, OTHER_HEX, ARABLE_C));
     assertThat(applied.data().accounts())
         .containsOnlyKeys(
             new GoodsAccountKey(ESTATE, HEX), new GoodsAccountKey(HOUSEHOLD, OTHER_HEX));
@@ -532,14 +493,14 @@ class ActorCodecTest {
   // ── 非法态：宁抛不静默 ───────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>坏键的快照字节读入即抛</b>：{@code ActorData} 的四张表是**真 {@code Map} 带类型化键** ⇒ 键反序列化器（各类型的 {@code
+   * ★★ <b>坏键的快照字节读入即抛</b>：{@code ActorData} 的两张表是**真 {@code Map} 带类型化键** ⇒ 键反序列化器（各类型的 {@code
    * parse}，宁抛不静默）在**解码期**就被走到，失败被 {@code readJson} 包成 {@link IllegalStateException}。
    *
    * <p>★ <b>"静默造一个半截的键"比"当场炸"难查得多</b>：若谁把键反序列化器写成"读进 String 就算了"，坏字节会变成一份 看起来合法、实则指向不存在主体 /
    * 不存在地格的档。
    *
-   * <p>★ <b>四档各打一路</b>：{@code actors}（{@code ActorRef}）、{@code holdings}（{@code AssetHoldingKey}）、
-   * {@code accounts}（{@code GoodsAccountKey}），以及<b>嵌套那一层</b>的 {@code CommodityId}。
+   * <p>★ <b>三档各打一路</b>：{@code actors}（{@code ActorRef}）、 {@code accounts}（{@code
+   * GoodsAccountKey}），以及<b>嵌套那一层</b>的 {@code CommodityId}。
    */
   @Test
   void aSnapshotWithAMalformedKeyFailsLoudly() {
@@ -551,12 +512,6 @@ class ActorCodecTest {
         head
             + "{\"actors\":{\"NO_SEPARATOR\":"
             + "{\"ref\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},\"label\":\"庄园\"}}}}";
-    String badHoldingKey =
-        head
-            + "{\"holdings\":{\"ESTATE:farm@0_0|0_0|\":"
-            + "{\"key\":{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
-            + "\"location\":{\"q\":0,\"r\":0},\"assetKey\":{\"kind\":\"LAND\",\"qualities\":{}}},"
-            + "\"quantity\":1}}}}";
     String badAccountKey =
         head
             + "{\"accounts\":{\"|0_0\":"
@@ -572,7 +527,6 @@ class ActorCodecTest {
     //   "静默造一个半截的键"（吞掉异常、退回一个默认键）过不了这一条。
     String[][] cases = {
       {badActorKey, "非法 actor 规范串"},
-      {badHoldingKey, "非法产权键"},
       {badAccountKey, "非法库存键"},
       {badCommodityKey, "CommodityId 不得为空白"},
     };
@@ -597,22 +551,9 @@ class ActorCodecTest {
   void aChangeSetWithAMalformedKeyIsRejectedWhenItIsApplied() {
     ActorChangeSet badActors =
         new ActorChangeSet(
-            null,
-            new FieldDelta.Upsert<>(Map.of("NO_SEPARATOR", new Actor(ESTATE, "庄园"))),
-            null,
-            null);
-    ActorChangeSet badHoldings =
-        new ActorChangeSet(
-            null,
-            null,
-            new FieldDelta.Upsert<>(
-                Map.of(
-                    "ESTATE:farm@0_0|0_0|",
-                    new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 1L))),
-            null);
+            null, new FieldDelta.Upsert<>(Map.of("NO_SEPARATOR", new Actor(ESTATE, "庄园"))), null);
     ActorChangeSet badAccounts =
         new ActorChangeSet(
-            null,
             null,
             null,
             new FieldDelta.Upsert<>(
@@ -621,10 +562,7 @@ class ActorCodecTest {
                     new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), Map.of(GRAIN, 1L)))));
 
     for (Map.Entry<ActorChangeSet, String> each :
-        List.of(
-            Map.entry(badActors, "非法 actor 规范串"),
-            Map.entry(badHoldings, "非法产权键"),
-            Map.entry(badAccounts, "非法库存键"))) {
+        List.of(Map.entry(badActors, "非法 actor 规范串"), Map.entry(badAccounts, "非法库存键"))) {
       ActorChangeSet handMade = each.getKey();
       ActorChangeSet back = (ActorChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(handMade));
 
@@ -643,7 +581,6 @@ class ActorCodecTest {
         new ActorChangeSet(
             null,
             new FieldDelta.Upsert<>(Map.of(ESTATE.toString(), new Actor(ESTATE, "庄园"))),
-            null,
             null);
 
     String json = CODEC.encodeChangeSet(handMade);
@@ -679,7 +616,7 @@ class ActorCodecTest {
     String drifted =
         "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":3}},"
             + "\"timestamp\":{\"tick\":10,\"calendarLabel\":null},"
-            + "\"data\":{\"meta\":null,\"actors\":{},\"holdings\":{},\"accounts\":{}},"
+            + "\"data\":{\"meta\":null,\"actors\":{},\"accounts\":{}},"
             + "\"surprise\":1}";
 
     assertThatThrownBy(() -> CODEC.decodeSnapshot(drifted))
@@ -692,7 +629,7 @@ class ActorCodecTest {
   /**
    * ★★ <b>旧档兼容：缺键的快照必须读得回来</b>（§11 的口径，照 {@code EconomyCodecTest}）。
    *
-   * <p>字节刻意只留 {@code actors}：{@code meta}/{@code holdings}/{@code accounts} 三个键**缺席**。若让构造器对 null
+   * <p>字节刻意只留 {@code actors}：{@code meta}/{@code accounts} 两个键**缺席**。若让构造器对 null
    * 抛，等于"这个世界打不开"。缺省方向是 fail-closed：缺 ⇒ 未激活 / 空表。
    */
   @Test
@@ -705,7 +642,6 @@ class ActorCodecTest {
     ActorSnapshot back = (ActorSnapshot) CODEC.decodeSnapshot(legacy);
 
     assertThat(back.data().actors()).isEmpty();
-    assertThat(back.data().holdings()).as("旧档没提产权 ⇒ 空表，不抛").isEmpty();
     assertThat(back.data().accounts()).as("旧档没提库存 ⇒ 空表，不抛").isEmpty();
     assertThat(back.data().meta()).as("旧档没提元信息 ⇒ 未激活，不抛").isEmpty();
   }
@@ -721,9 +657,8 @@ class ActorCodecTest {
     ActorChangeSet back = (ActorChangeSet) CODEC.decodeChangeSet(legacy);
 
     assertThat(back.meta()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.holdings()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.accounts()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("四个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+    assertThat(back.isEmpty()).as("三个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
     assertThat(ActorChangeSet.apply(back, ActorData.empty())).isEqualTo(ActorData.empty());
   }
 
@@ -739,7 +674,7 @@ class ActorCodecTest {
   }
 
   /**
-   * 非平凡数据：**四张表都非空**、三层自定义键、每条记录的每个字段都取非平凡值。
+   * 非平凡数据：**两张表都非空**、两层自定义键、每条记录的每个字段都取非平凡值。
    *
    * <p>★ 余额表刻意建成 {@code LinkedHashMap}：{@code Map.of} 的迭代序不是内容的纯函数（{@code ImmutableCollections} 的
    * SALT 每次 JVM 启动都不同）⇒ 拿它当夹具，字节级用例会**跨运行抖动**。
@@ -754,8 +689,6 @@ class ActorCodecTest {
         .withMeta(Optional.of(META))
         .withActor(new Actor(ESTATE, "庄园"))
         .withActor(new Actor(HOUSEHOLD, "佃农家户"))
-        .withHolding(new AssetHolding(new AssetHoldingKey(ESTATE, HEX, ARABLE_B), 10_000L))
-        .withHolding(new AssetHolding(new AssetHoldingKey(HOUSEHOLD, OTHER_HEX, ARABLE_C), 3L))
         .withAccount(new GoodsAccount(new GoodsAccountKey(ESTATE, HEX), estateBalances))
         .withAccount(
             new GoodsAccount(new GoodsAccountKey(HOUSEHOLD, OTHER_HEX), householdBalances));

@@ -5,9 +5,9 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 /**
  * ★★ <b>Actor 的身份本体</b>（S1 spec §三 L277）：<b>只有身份</b>。
  *
- * <p>★★ <b>为什么资产与库存都不在这里</b>（spec §2.3 L109、§三 L283/L290）："资产是 Actor <b>拥有的关系</b>，不是 Actor
- * <b>本体的一部分</b>" —— 卖掉 30% 土地只改 {@code AssetHolding}，不用打开整个 Actor aggregate。库存同理（{@code
- * GoodsAccount}）。
+ * <p>★★ <b>为什么库存不在这里</b>（spec §2.3 L109、§三 L283/L290）："资产是 Actor <b>拥有的关系</b>，不是 Actor
+ * <b>本体的一部分</b>" —— 改一本账不用打开整个 Actor aggregate。★ 2026-09-27 裁定 S3 之后，本切片里<b>商品库存</b>（{@code
+ * GoodsAccount}）<b>就是唯一的那本账</b>（产权表 {@code AssetHolding} 已整块退役：生产侧零写入者、收益恒 0）。
  *
  * <p>★★ <b>禁令</b>（spec §三 L283 原文）：<b>不许</b>出现 {@code ActorRow { Money money; List<Debt> debts; }}
  * 这种形状 —— 它会把 S1 刚拆开的产权/消费混合当场复活。★ 这条禁令<b>结构上可判</b>，故由 {@code ActorRoundTripTest} 的反射断言把守：本 record

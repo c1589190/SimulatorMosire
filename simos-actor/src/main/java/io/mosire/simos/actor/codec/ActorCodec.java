@@ -9,7 +9,6 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
-import io.mosire.simos.actor.model.AssetHoldingKey;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -29,23 +28,21 @@ import java.util.function.Function;
  * 这个字面量全仓<b>三处</b> （上面两处 + Task 9 的 {@code ToolSupport.ACTOR_NAMESPACE}），<b>改一处必须同时改另两处</b>；
  * 三处里只有装配期那一处<b>有牙</b>，故往返测试 真的构造了一次 {@code SimulationState} 来钉它。
  *
- * <p>★★ <b>树里的自定义键有四个</b>：{@code ActorRef}（{@code actors} 的键）、{@code AssetHoldingKey}（{@code
- * holdings} 的键）、{@code GoodsAccountKey}（{@code accounts} 的键），以及 {@code CommodityId}（<b>嵌套</b>在
- * {@code GoodsAccount.balances} 里的商品键——它不在 {@code ActorData} 的顶层组件上，漏了它会在**解码**时炸）。 前三个都住 {@code
- * simos-actor} 本模块，{@code CommodityId} 住 {@code simos-economy-api}（契约层，本模块依赖它故够得着， 铁律 3
- * 允许）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * <p>★★ <b>树里的自定义键有三个</b>：{@code ActorRef}（{@code actors} 的键）、{@code GoodsAccountKey}（{@code
+ * accounts} 的键），以及 {@code CommodityId}（<b>嵌套</b>在 {@code GoodsAccount.balances} 里的商品键——它不在 {@code
+ * ActorData} 的顶层组件上，漏了它会在**解码**时炸）。 前两个都住 {@code simos-actor} 本模块，{@code CommodityId} 住 {@code
+ * simos-economy-api}（契约层，本模块依赖它故够得着， 铁律 3 允许）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★★ <b>键的（反）序列化走的就是各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f / R-aa） ——★
  * <b>那正是那些配对存在的理由</b>：本仓 {@code FieldDelta} 的键模型假定"各 key 类型自带裸 {@code toString()} + {@code static
- * parse}"。四者都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆 ⇒ <b>只注册读侧</b> （写侧 Jackson
+ * parse}"。三者都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆 ⇒ <b>只注册读侧</b> （写侧 Jackson
  * 的默认键序列化器调 {@code toString()} 恰好就对了，同 {@code LedgerCodec} 的口径）。
  *
- * <p>★ <b>值类型一个注解都不加</b>：{@code ActorKind} / {@code AssetKind} 是 enum，走 Jackson 默认的 {@code
- * name()}；{@code ActorRef} / {@code Actor} / {@code AssetHolding} / {@code GoodsAccount} / {@code
- * AssetClassKey} / {@code HexCoord} 是<b>零 Jackson 注解</b>的 record，走默认的 record 序列化
- * ——<b>本类不引入任何会改格式的注解</b>（本模块的领域类型至今零 Jackson 注解，这条路要保持）。
+ * <p>★ <b>值类型一个注解都不加</b>：{@code ActorKind} 是 enum，走 Jackson 默认的 {@code name()}；{@code ActorRef} /
+ * {@code Actor} / {@code GoodsAccount} / {@code HexCoord} 是<b>零 Jackson 注解</b>的 record，走默认的 record
+ * 序列化 ——<b>本类不引入任何会改格式的注解</b>（本模块的领域类型至今零 Jackson 注解，这条路要保持）。
  *
- * <p>★ <b>字节是内容的纯函数</b>：四张表一律 {@code LinkedHashMap} 保插入序（{@link ActorData} 的构造器冻在赋值处）， 共享基座又**没有**开
+ * <p>★ <b>字节是内容的纯函数</b>：两张表一律 {@code LinkedHashMap} 保插入序（{@link ActorData} 的构造器冻在赋值处）， 共享基座又**没有**开
  * {@code ORDER_MAP_ENTRIES_BY_KEYS}（台账裁定 11：开了即抛，且打不中靶）⇒ 同一份状态编码两次逐字节相同。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
@@ -81,14 +78,13 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * 四路键反序列化器。<b>只注册读侧</b>：四者都重写了 {@code toString()}（= 裸值），Jackson 的默认键序列化器恰好就调它。
+   * 三路键反序列化器。<b>只注册读侧</b>：三者都重写了 {@code toString()}（= 裸值），Jackson 的默认键序列化器恰好就调它。
    *
-   * <p>★★ <b>前三个是顶层三张表的键，第四个（{@code CommodityId}）在嵌套位置</b>（{@code GoodsAccount.balances}）。
-   * 前三个**不注册就必炸**：{@code ActorRef} / {@code AssetHoldingKey} / {@code GoodsAccountKey} 都是多构件
-   * record， Jackson 推不出键的类型（实测：摘掉任一条 ⇒ 解码当场报 {@code Cannot find a (Map) Key deserializer for type
-   * …}）。
+   * <p>★★ <b>前两个是顶层两张表的键，第三个（{@code CommodityId}）在嵌套位置</b>（{@code GoodsAccount.balances}）。
+   * 前两个**不注册就必炸**：{@code ActorRef} / {@code GoodsAccountKey} 都是多构件 record， Jackson 推不出键的类型（实测：摘掉任一条
+   * ⇒ 解码当场报 {@code Cannot find a (Map) Key deserializer for type …}）。
    *
-   * <p>★★ <b>第四个则在「表空着」时测不到、在「表非空」时才走到</b>——故往返用例的夹具**必须是四张表都非空的** （{@code ActorCodecTest}
+   * <p>★★ <b>第三个则在「表空着」时测不到、在「表非空」时才走到</b>——故往返用例的夹具**必须是两张表都非空的** （{@code ActorCodecTest}
    * 的正例正是为此）。★ 而它的注册**今日与"不注册"行为等价**（实测：`CommodityId` 是单 {@code String} 构件的 record，Jackson
    * 会退回到"按规范构造器建键"那一档，而它的构造器与 {@code parse} 的校验一字不差）——**仍然显式注册**：本仓的规矩是"键的（反）序列化走各类型自带的 {@code
    * toString()}/{@code parse} 配对"（裁定 R-48-f / R-aa），这条规矩要**写出来**，不靠 Jackson 的构造器推断去碰巧满足。
@@ -96,7 +92,6 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("actor-json-keys");
     module.addKeyDeserializer(ActorRef.class, keyDeserializer(ActorRef::parseCanonical));
-    module.addKeyDeserializer(AssetHoldingKey.class, keyDeserializer(AssetHoldingKey::parse));
     module.addKeyDeserializer(GoodsAccountKey.class, keyDeserializer(GoodsAccountKey::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     return module;

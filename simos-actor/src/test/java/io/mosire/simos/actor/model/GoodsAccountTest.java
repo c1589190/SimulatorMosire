@@ -78,8 +78,8 @@ class GoodsAccountTest {
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
-  /** ★ 往返用例的起点：**未激活 + 三张空表**（组件个数按"当下真能编译"的四件写：meta + actors + holdings + accounts）。 */
+  /** ★ 往返用例的起点：**未激活 + 两张空表**（组件个数按"当下真能编译"的三件写：meta + actors + accounts）。 */
   private static ActorData empty() {
-    return new ActorData(Optional.empty(), Map.of(), Map.of(), Map.of());
+    return new ActorData(Optional.empty(), Map.of(), Map.of());
   }
 }

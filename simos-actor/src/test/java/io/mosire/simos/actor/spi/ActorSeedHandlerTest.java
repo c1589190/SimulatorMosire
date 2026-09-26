@@ -37,15 +37,11 @@ class ActorSeedHandlerTest {
   private static final ActorRef ESTATE_FARM = new ActorRef(ActorKind.ESTATE, "farm@0_0");
   private static final ActorRef HOUSEHOLD = new ActorRef(ActorKind.HOUSEHOLD, "house@0_0");
 
-  /** 一格的最小合法 entry：两个主体 + 一条产权 + 一本账。 */
+  /** 一格的最小合法 entry：两个主体 + 一本账。 */
   private static final String ENTRY_0 =
       "{\"q\":0,\"r\":0,"
           + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\",\"label\":\"农业庄园\"},"
           + "{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\",\"label\":\"农户\"}],"
-          + "\"holdings\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"},"
-          + "\"location\":{\"q\":0,\"r\":0},"
-          + "\"assetKey\":{\"kind\":\"LAND\",\"qualities\":{\"arable\":\"true\",\"quality\":\"B\"}},"
-          + "\"quantity\":10000}],"
           + "\"goods\":[{\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\"},"
           + "\"location\":{\"q\":0,\"r\":0},\"balances\":{\"grain\":2241000,\"fiber\":0}}]}";
 
@@ -72,7 +68,6 @@ class ActorSeedHandlerTest {
     assertThat(meta.rulesVersion()).isEqualTo("actor-v1");
     assertThat(meta.activatedDay()).as("激活日 = 世界当前 tick").isEqualTo(7L);
     assertThat(after.actors()).containsOnlyKeys(ESTATE_FARM, HOUSEHOLD);
-    assertThat(after.holdings()).as("产权表").hasSize(1);
     assertThat(after.accounts()).as("库存表").hasSize(1);
   }
 
@@ -84,7 +79,6 @@ class ActorSeedHandlerTest {
     ActorData both = apply(LATER_NATION_PAYLOAD, first, SimosTimestamp.of(9));
 
     assertThat(both.actors()).as("两批各 2 个主体").hasSize(4);
-    assertThat(both.holdings()).as("两批各 1 份产权").hasSize(2);
     assertThat(both.accounts()).as("两批各 1 本账").hasSize(2);
     assertThat(both.meta().orElseThrow().activatedDay()).as("meta 不覆盖：保留首次播种的激活日").isEqualTo(7L);
   }
@@ -130,12 +124,15 @@ class ActorSeedHandlerTest {
   }
 
   /**
-   * ★★ **悬空 owner 在命令边界是拒绝（不是抛）**：产权指向一个载荷与现有状态里都没有的主体。
+   * ★★ **悬空 owner 在命令边界是拒绝（不是抛）**：库存指向一个载荷与现有状态里都没有的主体。
    *
-   * <p>判别力：这条判据若不存在，一份拼错 owner 的载荷会被**静默收下**，那份产权从此查不到、也永远不报错。
+   * <p>判别力：这条判据若不存在，一份拼错 owner 的载荷会被**静默收下**，那本账从此查不到、也永远不报错。
+   *
+   * <p>★ <b>2026-09-27 裁定 S3</b>：夹具的 {@code "id":"house@0_0"}} 只命中库存行的 owner ⇒ 判据与断言一字未改，只是名字
+   * 从"产权"改成"库存"（产权随该裁定整块退役）。
    */
   @Test
-  void rejectsAHoldingWhoseOwnerIsNotDeclared() {
+  void rejectsAGoodsRowWhoseOwnerIsNotDeclared() {
     String payload = PAYLOAD.replace("\"id\":\"house@0_0\"}", "\"id\":\"house@9_9\"}");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
 
@@ -148,10 +145,15 @@ class ActorSeedHandlerTest {
         .contains("0_0");
   }
 
-  /** ★ 数值语义（负产权余额）由领域类型判，经 handler 的 catch 折成 {@code Rejected}。 */
+  /**
+   * ★ 数值语义（负余额）由领域类型判，经 handler 的 catch 折成 {@code Rejected}。
+   *
+   * <p>★ <b>2026-09-27 裁定 S3</b>：夹具原打在产权行的 {@code quantity} 上（随产权退役），现改打**库存行**的余额 —— 判据
+   * （领域类型的构造期守卫生成的 IAE 被折成 Rejected）与断言一字未改。
+   */
   @Test
-  void rejectsANegativeQuantityAsARejection() {
-    String payload = PAYLOAD.replace("\"quantity\":10000", "\"quantity\":-10000");
+  void rejectsANegativeBalanceAsARejection() {
+    String payload = PAYLOAD.replace("\"grain\":2241000", "\"grain\":-2241000");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
 
     HandlerOutcome outcome = HANDLER.handle(state(ActorData.empty(), T7), payload);

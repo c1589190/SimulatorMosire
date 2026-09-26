@@ -8,10 +8,7 @@ import io.mosire.simos.actor.ActorMeta;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetClassKey;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.AssetHolding;
-import io.mosire.simos.actor.model.AssetHoldingKey;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -35,10 +32,12 @@ import org.junit.jupiter.api.Test;
 /**
  * {@code actor:} 命名空间的地址解析（照 {@code EconomyResolver} 的形制与"空候选 / 抛"分工）。
  *
- * <p>★ <b>认三类主体</b>（{@code ActorData} 的三张表，每类各一个 kind）：{@code actor}（主体） / {@code holding}（产权） /
- * {@code goods}（库存）。★ 后两类的名字是**各自的聚合键的规范串**（{@code <owner>|<location>|<assetKey>} / {@code
- * <owner>|<location>}）—— 它们的逆住在那两个类型自己的 {@code parse} 里，<b>本解析器不复述任何格式</b>； 名字里带 {@code :} 时
- * canonical 会自动加引（§3.4 的按需加引，由 {@code Address} AST 产出，本类不手写）。
+ * <p>★ <b>认两类主体</b>（{@code ActorData} 的两张带记录的表，每类各一个 kind）：{@code actor}（主体） / {@code goods}（库存）。 ★
+ * 库存那一类的名字是**它聚合键的规范串**（{@code <owner>|<location>}）—— 它的逆住在那 个类型自己的 {@code parse}
+ * 里，<b>本解析器不复述任何格式</b>； 名字里带 {@code :} 时 canonical 会自动加引（§3.4 的按需加引，由 {@code Address} AST
+ * 产出，本类不手写）。
+ *
+ * <p>★ <b>2026-09-27 裁定 S3</b>：产权（{@code holding} kind）整块退役 ⇒ 本类不再认领它，相关用例随之删除。
  */
 class ActorResolverTest {
 
@@ -48,12 +47,9 @@ class ActorResolverTest {
 
   private static final ActorRef FARM = new ActorRef(ActorKind.ESTATE, "farm@0_0");
   private static final ActorRef LOT = new ActorRef(ActorKind.PEOPLE_LOT, "rural:0_0:MALE:1");
-  private static final AssetHoldingKey LAND =
-      new AssetHoldingKey(
-          FARM, new HexCoord(0, 0), AssetClassKey.land(Map.of("arable", "true", "quality", "B")));
   private static final GoodsAccountKey GRAIN = new GoodsAccountKey(FARM, new HexCoord(0, 0));
 
-  /** 一份已激活的切片：一个庄园主体（AGE）+ 一条产权 + 一本账，外加一个 id 里含 {@code :} 的人口批次。 */
+  /** 一份已激活的切片：一个庄园主体（AGE）+ 一本账，外加一个 id 里含 {@code :} 的人口批次。 */
   private static final ActorData DATA =
       ActorData.empty()
           .withMeta(Optional.of(new ActorMeta("Map1", 0, "actor-v1")))
@@ -61,7 +57,6 @@ class ActorResolverTest {
               Map.of(
                   FARM, new Actor(FARM, "农业庄园"),
                   LOT, new Actor(LOT, "0_0 的男性批次")))
-          .withHoldings(Map.of(LAND, new AssetHolding(LAND, 10_000L)))
           .withAccounts(
               Map.of(GRAIN, new GoodsAccount(GRAIN, Map.of(new CommodityId("grain"), 7L))));
 
@@ -115,19 +110,6 @@ class ActorResolverTest {
         .isEqualTo("PEOPLE_LOT:rural:0_0:MALE:1");
   }
 
-  /** 产权：名字是 {@code AssetHoldingKey} 的规范串（三段都含结构字符 ⇒ canonical 整体加引）。 */
-  @Test
-  void resolvesAHoldingByItsCompositeKey() {
-    ResolvedSubject subject =
-        only("actor:Map1:holding.\"ESTATE:farm@0_0|0_0|LAND|arable=true|quality=B\"");
-
-    assertThat(subject.id().namespace()).isEqualTo("actor.holding");
-    assertThat(subject.id().localId()).isEqualTo(LAND.toString());
-    assertThat(subject.typeName()).isEqualTo("AssetHolding");
-    assertThat(subject.canonicalAddress())
-        .isEqualTo("actor:Map1:holding.\"ESTATE:farm@0_0|0_0|LAND|arable=true|quality=B\"");
-  }
-
   /** 库存：名字是 {@code GoodsAccountKey} 的规范串。 */
   @Test
   void resolvesAGoodsAccountByItsCompositeKey() {
@@ -139,11 +121,10 @@ class ActorResolverTest {
     assertThat(subject.canonicalAddress()).isEqualTo("actor:Map1:goods.\"ESTATE:farm@0_0|0_0\"");
   }
 
-  /** ★ 合法但**没有记录**的主体/产权/库存 ⇒ **空候选**（不是错误）。 */
+  /** ★ 合法但**没有记录**的主体/库存 ⇒ **空候选**（不是错误）。 */
   @Test
   void rowsThatDoNotExistAreEmptyCandidates() {
     assertThat(resolve("actor:Map1:actor.ESTATE.farm@9_9")).isEmpty();
-    assertThat(resolve("actor:Map1:holding.\"ESTATE:farm@0_0|0_0|LAND|quality=C\"")).isEmpty();
     assertThat(resolve("actor:Map1:goods.\"HOUSEHOLD:house@0_0|0_0\"")).isEmpty();
   }
 
@@ -155,6 +136,9 @@ class ActorResolverTest {
     assertThat(resolve("actor:Map1:[0,0]")).as("Index 段：本切片没有位置型主体").isEmpty();
     assertThat(resolve("actor:Map1:\"Nation.区域A\"")).as("缺 kind 的实体").isEmpty();
     assertThat(resolve("actor:actor.ESTATE")).as("第 2 段（根主体）不许带 kind：那是命名空间自己的位置").isEmpty();
+    assertThat(resolve("actor:Map1:holding.\"ESTATE:farm@0_0|0_0\""))
+        .as("★ 已退役的 holding kind：不再认领 ⇒ 空候选（不是抛，也不再解析产权键）")
+        .isEmpty();
   }
 
   /** ★ 别的命名空间的合法地址 ⇒ 空候选（认领与否由返回值表达；未知命名空间抛是注册表的职责）。 */
@@ -164,9 +148,12 @@ class ActorResolverTest {
   }
 
   /**
-   * ★★ **认领了的 kind 里名字解析失败 ⇒ 抛**（不包不吞）：词表外的主体种类、缺接缝的产权键各抛它自己那份 IAE。
+   * ★★ **认领了的 kind 里名字解析失败 ⇒ 抛**（不包不吞）：词表外的主体种类、缺接缝的库存键各抛它自己那份 IAE。
    *
    * <p>判别力：若把这些异常吞成空候选，"拼错主体种类"与"这个主体不存在"就再也分不开了。
+   *
+   * <p>★ 第三条原以产权键（{@code holding.noseparator}，{@code AssetHoldingKey.parse} 抛）为夹具；裁定 S3 之后 {@code
+   * holding} 已不是本解析器认领的 kind（落进"其它 kind ⇒ 空候选"），故改用同形的**库存键**夹具。
    */
   @Test
   void aBadNameInsideAClaimedKindThrows() {
@@ -178,7 +165,7 @@ class ActorResolverTest {
         .as("缺 <id> 那一段（只给了 KIND）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("KIND");
-    assertThatThrownBy(() -> resolve("actor:Map1:holding.noseparator"))
+    assertThatThrownBy(() -> resolve("actor:Map1:goods.noseparator"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

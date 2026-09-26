@@ -7,8 +7,13 @@ import java.util.Map;
 
 /**
  * ★★ <b>库存：某人某一格上的商品余额</b>（spec §三 L277 的 {@code Goods ownership/inventory}）。<b>独立概念，不是 {@link
- * Actor} 的字段</b> —— 与 {@link AssetHolding} 同理："资产是 Actor <b>拥有的关系</b>，不是 Actor <b>本体的一部分</b>"。故本类型与
- * {@link Actor} 之间只有 {@link #key()} 里的 {@code owner} 这一条引用，没有嵌套。
+ * Actor} 的字段</b> —— "资产是 Actor <b>拥有的关系</b>，不是 Actor <b>本体的一部分</b>"。故本类型与 {@link Actor} 之间只有 {@link
+ * #key()} 里的 {@code owner} 这一条引用，没有嵌套。
+ *
+ * <p>★★ <b>2026-09-27 裁定 S3：本类型是本切片唯一的那本账</b> —— 同族的产权表 {@code AssetHolding}（及 {@code
+ * AssetClassKey} / {@code AssetHoldingKey}）已整块退役：实测生产侧零写入者（真档创世把 actor 起成 {@code
+ * ActorData.empty()}）、economy 侧 {@code harvest} 硬编码空表 ⇒ 那条路径收益为 0。资产（土地/工具/牲畜）推迟到真需要时再加； ★ {@code
+ * AssetKind} 粗类型词表仍被 economy 用作产能的键，故保留。
  *
  * <p>★★ <b>裁定 R6（本类型的立身之本，2026-09-26 用户裁定 —— 逐字引自 spec 追加-1）</b>：
  *
@@ -30,12 +35,12 @@ import java.util.Map;
  * "该余额<b>是多少</b>"，<b>不是</b>"加多少"：写入口 {@code ActorData.withAccount} 是<b>整本覆盖</b>，而"转入 500"
  * 是**命令**（先读余额、再算出新余额），不是状态类型的方法。
  *
- * <p>★★ <b>0 余额保留，负数当场抛</b>（同 {@link AssetHolding#quantity()} 的口径）：0 合法 ——「这一格这个人手里还有 0
- * 斤粮」与「这个人根本不在这格」是<b>两件事</b>，前者在阶段 4（产出落 operator）与阶段 6（消费从 receipt 来）含义完全不同。
- * 而负数不是余额：可以透支的是<b>信用</b>（S2 的领域），不是库存。★ 故余额表<b>不做任何归一</b>：既不移除 0，也不把 0 补成缺省。
+ * <p>★★ <b>0 余额保留，负数当场抛</b>：0 合法 ——「这一格这个人手里还有 0 斤粮」与「这个人根本不在这格」是<b>两件事</b>，前者在阶段 4（产出落
+ * operator）与阶段 6（消费从 receipt 来）含义完全不同。 而负数不是余额：可以透支的是<b>信用</b>（S2 的领域），不是库存。★
+ * 故余额表<b>不做任何归一</b>：既不移除 0，也不把 0 补成缺省。
  *
- * <p>★ <b>为什么没有 {@code id}</b>：身份就是聚合键 {@link #key()}（同 {@link AssetHolding}）—— 另造一个 id 等于把
- * "同一事实"记两处（铁律 1：id 是身份，不在切片里另造同义 ID）。
+ * <p>★ <b>为什么没有 {@code id}</b>：身份就是聚合键 {@link #key()} —— 另造一个 id 等于把 "同一事实"记两处（铁律 1：id
+ * 是身份，不在切片里另造同义 ID）。
  *
  * <p>★ <b>余额表保序不可变</b>：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，<b>绝不用 {@code
  * Map.copyOf}</b> —— 它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步<b>写在字段赋值处</b>（SpotBugs 的 {@code EI_EXPOSE_REP}
