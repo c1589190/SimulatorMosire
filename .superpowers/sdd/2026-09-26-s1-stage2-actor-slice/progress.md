@@ -174,3 +174,34 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
 - **Ruling（R-h）**：Minor 5（`simos-actor-api` 声明了 `simos-util` 却零 import）⇒ **随 Task 2 处置**：
   四个类型搬进来之后若仍无人 import `simos-util`，**就删掉这条依赖**（Task 2 正是让这个模块不再为空的提交）。
   —— **错了的代价**：低（真需要时编译立刻失败，加回一行）。
+
+- **Task 2 dispatched**（BASE=`4b3e3e5`）：实现 Agent = sonnet 档；brief `task-2-brief.md`，报告 `task-2-report.md`
+  ★ 随 dispatch 带过去的裁定：**R1**（纯机械迁移，AssetKind 六档一字不动）、**R4**（`ActorRef.parse`
+  两参签名原封不动）、**R5**（不加转发壳，编译失败即迁移清单）、**R7**（本任务是 A 段关账点）、
+  **R-e/R-f/R-h**（不声明 map / 修两条边界注释 / 搬完删空的 `simos-util` 依赖）、
+  以及两条新 Global Constraints（验证命令含 `spotless:check`；**变异体必须打到被测的那一层**）
+  ★ 明确告知：任务太大就报 `BLOCKED`，控制方会拆块 —— **烂活比不干更糟**
+
+### Task 2 实现报告（`7613599`，DONE，48 文件 / +244−161）
+
+**对照数字**：基线 `clean verify` **2306 绿** → 收尾 **2307 绿**
+（+1 = 新加的 characterization test；`simos-actor-api` 0→4、`simos-economy-api` 13→9 —— 四条护栏**换模块住**，不是新增）。
+23 个受影响测试类**逐个单独跑**全绿并以 surefire 报告核对；SpotBugs 全 0；**268 份报告 mtime 全落本轮**。
+三份类型**逐字节只改 `package` 行**；`AssetKind` 六档一字未动。变异自证：`ActorRef.parse` 改单参逆
+⇒ 编译红且**只**在搬过来的 3 处调用点报错（**全仓无别的调用者**——这本身就证明了调用面清点是全的）。
+
+- **Ruling（R-i，疑虑 1）**：`ActorRef.java` 的 javadoc 仍引述设计稿"各领域只依赖 api/util/map"，
+  **判定不改**。理由：那句话转述的是**设计稿对"领域模块"的约束**，而 `ActorRef` 现在正是"api"这一层的一员、
+  零 map 用法，**不与之冲突** ⇒ 不是事实性错误，是**适用对象不同**。若 Task 9 做文档回填时想统一措辞，那时再说。
+  —— **错了的代价**：一句措辞可能让读者多花一秒（低）。
+- **Ruling（R-j，疑虑 2）**：`simos-actor-api` 仍声明 `jackson-databind` 而**零 import** —— 与 R-h 的
+  `simos-util` **完全同型**。实现 Agent 因"R-h 未授权"而**没越权删**，这个判断是对的。
+  ⇒ **把 R-h 扩展到 `jackson-databind`**，但**动作推到 Task 3 结束**：Task 3 是第一个真正往 api 加类型
+  （`AssetClassKey`）的任务，那时才看得出要不要 jackson。若仍零 import ⇒ 删。
+  —— **错了的代价**：低（真要时编译失败，加回一行）。
+- **Ruling（R-k，疑虑 3）**：计划 Task 9 Step 2 预设"要给 `simos-core` 补 actor-api 的 test include"
+  —— **实测不需要**（actor-api 不在 core 的 ban 列表里）。⇒ **删掉该步骤**，改成"实测不需要；
+  若将来真有模块把 actor-api 传递进 core 的 test classpath，构建会红，那时再按第 110-118 行那套写法补"。
+  —— **错了的代价**：低（构建红即发现）。
+- **★ 疑虑 5 是评审的**重点靶子**：实现 Agent 如实记录了"删四条测试时一个 `Edit` 误删类尾 `}`，
+  当场 `tail` 发现并修回"。**提交态结构是否正确，必须由评审独立验**（不许采信自述）。
