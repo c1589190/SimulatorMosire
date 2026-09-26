@@ -108,13 +108,33 @@ public final class ToolSupport {
    */
   public static final String ACTOR_NAMESPACE = "actor";
 
-  /** 读工具的资源声明（spec §7.1：map+soc+unit READ_ONLY）。 */
+  /**
+   * 读工具的资源声明（spec §7.1：map+soc+unit READ_ONLY）。
+   *
+   * <p>★★ **actor 一维也在这里，但缺省策略是 {@code DENY}**（Task 10 补）。不声明它时，{@code ResourceAuthorizer} 对 {@code
+   * actor:…} 一律判否（"未声明即拒"⇒ 工具的 {@link #subjectVisible} 里那条 actor 分支**恒为假**）—— 本任务实测：只加分支、不加这条声明，MCP
+   * 的 {@code simos.state.resolve} 对 {@code actor:Map1} **仍是空候选**。 声明的意义就是让那条表达式有牙。
+   *
+   * <p>★ **为什么不照 map/social/unit 抄 {@code READ_ONLY}**：两条路都是**静默放宽**——
+   *
+   * <ol>
+   *   <li>未表态的调用者会**整片放行** actor 面（spec §5.2 第 3 条：空 = 不表态 = 放行 ⇒ 那正是失效方向朝"放宽"的一侧）；
+   *   <li>更要命的是 {@code ResourceAuthorizer#denial()} 那道**声明式前置闸**："只要**一个**声明过的命名空间原则上够得着"就放行整个调用，而
+   *       {@code READ_ONLY} 对**任何**调用者都算够得着 ⇒ 用本清单的九条读工具，前置闸会**永远通过** （那是"够不着就连审批都不问"的那道闸，{@code
+   *       ScopeFenceTest} 为它写了判别力用例）。
+   * </ol>
+   *
+   * ⇒ 取 {@code DENY}：**只有显式表过态的调用者**（GM 组的 {@code ResourceScope.unlimited()}，见 {@code
+   * Shell#gmPermissionSet}）看得见 actor 面；未表态者的**判定结果**与"没声明"完全相同——都是拒（fail-closed，不悄悄放宽），
+   * 只有拒因文案不同（"缺省 deny 且未表态" vs "未声明"）。
+   */
   public static final ResourceManifest ALL_READ =
       ResourceManifest.of(
           Map.of(
               MAP_NAMESPACE, ResourcePolicy.READ_ONLY,
               SOCIAL_NAMESPACE, ResourcePolicy.READ_ONLY,
-              UNIT_NAMESPACE, ResourcePolicy.READ_ONLY));
+              UNIT_NAMESPACE, ResourcePolicy.READ_ONLY,
+              ACTOR_NAMESPACE, ResourcePolicy.DENY));
 
   /** 单命名空间读声明（map.overview / map.hex）。 */
   public static final ResourceManifest MAP_READ =
@@ -273,6 +293,16 @@ public final class ToolSupport {
           context.resources().allows(Operation.READ, ResourceId.of(SOCIAL_NAMESPACE, localId));
       case "unit" -> unitVisible(context, new UnitId(localId));
       case "sd" -> sdVisible(context, localId);
+      // ★ S1 阶段 2（Task 10 补）：actor 切片的**根主体**（`actor:<mapId>`，localId 就是 mapId）——
+      //   形制与 `map` 那条逐字同款：主体的 localId 就是资源路径。缺了这一条时它落进 `default -> false`，
+      //   于是 MCP 的 `simos.state.resolve` 对 `actor:Map1` 回空候选（GUI 的 `/api/resolve` 却回一条）
+      //   ——"判不了就不可见"的兜底不该吞掉一条**判得了**的表达式。
+      case "actor" ->
+          context.resources().allows(Operation.READ, ResourceId.of(ACTOR_NAMESPACE, localId));
+      // ★ 三个子命名空间（`actor.actor` / `actor.holding` / `actor.goods`）**仍然 fail-closed**：它们的
+      //   localId 是聚合键的规范串（`UNIT:u-1`、`…|1_1|…`），而本切片在 `ResourcePaths` 里只有**逐格**的
+      //   `actor:<q>_<r>`（`actor.Seed` 的命令目标）——实体级资源路径不存在 ⇒ 该按什么判**没有出处**，
+      //   凭空定一条就是在编设计（AGENT.md §○：先裁决再写）。故这里只补有出处的根主体那条。
       default -> false;
     };
   }
