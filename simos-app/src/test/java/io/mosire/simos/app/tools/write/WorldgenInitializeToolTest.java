@@ -1176,33 +1176,33 @@ class WorldgenInitializeToolTest {
       long populationAtGenesis = totalGroups(seededState);
       Map<String, Long> bracketsAtGenesis = ageBrackets(seededState, 0L);
 
-      // ★★ **逐月推进**（每 30 天一条 revision），并在每次推进后读**当月新增**的出生/死亡：
-      //   流水是**本周期累计**、新周期第一天归零（§八.5）⇒ 差值法必须处理"归零"那一刻——
-      //   读到的数比上一次小 = 刚归零过 ⇒ 当月新增就是读到的那个数本身（归零后只记了这一个月）。
-      //   （★ 这一条是 AGENT.md §9.4 那类"窗口口径"陷阱的正面处置：先核窗口，再读数字。）
+      // ★★ **逐月推进**（每 30 天一条 revision），但**出生/死亡只在关账日读**：
+      //   流水是**本周期累计**、新周期第一天归零（§八.5）⇒ 关账日读到的那个数**就是本周期的整量**，
+      //   把三个关账日的读数相加即全年（本用例的注释原本就是这条口径）。
+      //   （★ 这是 AGENT.md §9.4 那类"窗口口径"陷阱的正面处置：先核窗口，再读数字。）
+      //   ★★ **2026-09-26（T6b / 裁定 E24）修的是"怎么读"，不是断言**：改前用的是
+      //      「逐月相减 + 读到的数比上次小就当归零」的启发式 —— 归零**看不出来**，只能从数值大小猜；
+      //      只要"归零后这一段的累计"超过"上一周期的总量"，它就会**少算**那一整个周期。
+      //      E24 之后真的撞上了（实测：第 3 周期的前 30 天新生 5,574 > 第 2 周期全年 5,560 ⇒ 少算 5,560）：
+      //        3,070,000 + 58,950 − 248,544 = 2,880,406 ≠ 2,885,966（人口）
+      //      按**关账日直接相加**则逐值精确（逐周期读数：出生 24,038 + 5,560 + 34,912 = 64,510；
+      //      死亡 76,921 + 93,334 + 78,289 = 248,544）：
+      //        3,070,000 + 64,510 − 248,544 = 2,885,966 ✓
+      //      逐月那 12 次采样照旧保留 —— 危机红灯（⑤）要的正是"青黄不接的那几个月"。
       long births = 0L;
       long deaths = 0L;
       long clothConsumed = 0L;
-      long previousBirths = 0L;
-      long previousDeaths = 0L;
-      long previousClothConsumed = 0L;
       Set<String> crisisKinds = new LinkedHashSet<>();
       long[] clothByCycleClose = new long[4];
       for (long day = 30L; day <= 360L; day += 30L) {
         advanceRange(core, day - 30L, day);
         SimulationState state = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
         EconomyData economy = economySlice(state);
-        long nowBirths = totalBirths(economy);
-        long nowDeaths = totalDeaths(economy);
-        long nowCloth = flowConsumedOf(economy, cloth);
-        births += nowBirths >= previousBirths ? nowBirths - previousBirths : nowBirths;
-        deaths += nowDeaths >= previousDeaths ? nowDeaths - previousDeaths : nowDeaths;
-        clothConsumed +=
-            nowCloth >= previousClothConsumed ? nowCloth - previousClothConsumed : nowCloth;
-        previousBirths = nowBirths;
-        previousDeaths = nowDeaths;
-        previousClothConsumed = nowCloth;
         if (day % 120L == 0L) {
+          // ★ 关账日：三个读数各自就是**本周期**的整量（新周期第一天归零）⇒ 直接累加。
+          births += totalBirths(economy);
+          deaths += totalDeaths(economy);
+          clothConsumed += flowConsumedOf(economy, cloth);
           clothByCycleClose[(int) (day / 120L) - 1] = goodsStock(economy, cloth);
         }
         // ⑤ 危机红灯：**逐月采样**（它是"当期"的判据 —— 第 365 天刚收获完，那时当然人人吃得饱，
