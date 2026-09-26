@@ -11,7 +11,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>SimulatorMosire</name>
-  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / LedgerSimos / EconomySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENT.md 的表。</description>
+  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENT.md 的表。</description>
 
   <modules>
     <module>simos-util</module>
@@ -28,19 +28,15 @@
     <module>simos-actor-api</module>
     <!-- ★ S1 阶段 2（C 段）：actor 切片——Actor 身份本体 + 产权/库存（本任务只建 Actor 身份与状态树骨架）。
          它依赖 actor-api（ActorRef）与 util（Snapshot/ChangeSet/FieldDelta），故排在 actor-api **之后**；
-         与 economy/ledger 是**兄弟切片**（互不依赖，由本模块 pom 的 enforcer 在构建期强制）。 -->
+         与 economy 是**兄弟切片**（互不依赖，由本模块 pom 的 enforcer 在构建期强制）。 -->
     <module>simos-actor</module>
     <!-- ★ 1b-2：经济切片共用契约。在领域切片更上游：只依赖 actor-api/util/map、不被 core 依赖，
-         property/production/ledger/market/government 与 social 共用它的稳定 ID。
+         property/production/market/government 与 social 共用它的稳定 ID。
          ★ **ActorRef 不在这份清单里**（它住在上面的 `simos-actor-api`，比本模块还底层）——本模块只**引用**它
          （`LaborAllocation.actor`），**不拥有**定义。 -->
     <module>simos-economy-api</module>
-    <!-- ★ 1b-3：账本切片（增量 2 spec §三的 v1 形状）。与 economy-api 同属经济面、在 core/app 之
-         上游：只依赖 util/economy-api，不被 core 依赖（core 的 enforcer 看不见领域类型）。
-         后续 1b-3 的 property/production/market/government 四切片同列于此。 -->
-    <module>simos-ledger</module>
     <!-- ★ R1（2026-09-25 新经济设计）：聚合式社会经济切片骨架——产业表/阶层行/债务表/周期流水 + 激活元信息，
-         **无公式**（§八 R1 行）。只依赖 util/economy-api，不被 core 依赖；与 ledger 同层、彼此不依赖。
+         **无公式**（§八 R1 行）。只依赖 util/economy-api，不被 core 依赖。
          后续 R2+ 的结算逻辑（人口→阶层、日/周期结算、税、市场）在本切片内续做。 -->
     <module>simos-economy</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
@@ -102,9 +98,6 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId><version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.mosire</groupId><artifactId>simos-ledger</artifactId><version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-economy</artifactId><version>${project.version}</version>

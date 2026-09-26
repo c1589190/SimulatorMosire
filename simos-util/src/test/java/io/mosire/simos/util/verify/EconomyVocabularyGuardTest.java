@@ -50,7 +50,6 @@ class EconomyVocabularyGuardTest {
           "simos-actor-api",
           "simos-actor",
           "simos-economy-api",
-          "simos-ledger",
           "simos-economy",
           "simos-app");
 
@@ -78,7 +77,7 @@ class EconomyVocabularyGuardTest {
     assertThat(declared)
         .as("★ 先证明解析器不是静默返回空（'命中 0 先怀疑自己的读取'：正则/读取坏掉时下面那条会变成恒真）")
         .contains("simos-util", "simos-actor-api", "simos-actor", "simos-app")
-        .hasSizeGreaterThanOrEqualTo(12);
+        .hasSizeGreaterThanOrEqualTo(11); // ★ 2026-09-27：simos-ledger 按裁定 D2-A 退役 ⇒ 模块数 −1
     assertThat(MODULES)
         .as("★★ 扫描面必须恰恰等于根 pom 的 <module> 集合——否则下个新模块还会静默漏掉")
         .containsExactlyInAnyOrderElementsOf(declared);

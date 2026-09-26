@@ -33,7 +33,6 @@ class ArchitectureGuardsTest {
           "simos-actor-api",
           "simos-actor",
           "simos-economy-api",
-          "simos-ledger",
           "simos-economy",
           "simos-app");
 
@@ -72,7 +71,6 @@ class ArchitectureGuardsTest {
             "simos-actor/src/main/java/io/mosire/simos/actor/change/ActorChangeSet.java",
             "simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
             "simos-economy/src/main/java/io/mosire/simos/economy/change/EconomyChangeSet.java",
-            "simos-ledger/src/main/java/io/mosire/simos/ledger/change/LedgerChangeSet.java",
             "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
             "simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java",
             "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
@@ -97,7 +95,7 @@ class ArchitectureGuardsTest {
     assertThat(declared)
         .as("★ 先证明解析器不是静默返回空（'命中 0 先怀疑自己的读取'：读取坏掉时下面那条会变成恒真）")
         .contains("simos-util", "simos-actor-api", "simos-actor", "simos-app")
-        .hasSizeGreaterThanOrEqualTo(12);
+        .hasSizeGreaterThanOrEqualTo(11); // ★ 2026-09-27：simos-ledger 按裁定 D2-A 退役 ⇒ 模块数 −1
     assertThat(MODULES)
         .as("★★ 扫描面必须恰恰等于根 pom 的 <module> 集合——否则下一个新模块的 ChangeSet 还会静默漏掉")
         .containsExactlyInAnyOrderElementsOf(declared);

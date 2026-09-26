@@ -76,7 +76,6 @@
                          （可以 import CommodityId 这类契约类型），**不允许**运行时领域控制流反向流入
                          （不许调用 economy 的结算 / ledger 的 repository）。 -->
                     <exclude>io.mosire:simos-economy</exclude>
-                    <exclude>io.mosire:simos-ledger</exclude>
                     <!-- 与 economy 的 enforcer 同款：切片之间互不依赖，且不许认识编排层。
                          ★ simos-economy-api **不在**禁列 —— 它是契约层，Task 6 要用它的 CommodityId。 -->
                     <exclude>io.mosire:simos-social</exclude>

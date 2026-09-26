@@ -46,7 +46,6 @@
                   <excludes>
                     <exclude>io.mosire:simos-economy-api</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
-                    <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-sd</exclude>

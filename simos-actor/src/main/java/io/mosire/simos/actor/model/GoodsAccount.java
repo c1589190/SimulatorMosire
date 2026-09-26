@@ -30,6 +30,12 @@ import java.util.Map;
  * simos-ledger} 被本模块 POM 的 enforcer 列在禁列，本类想引用它<b>编译就过不去</b>；
  * 故本类只<b>点名</b>（{@code @code}）而不<b>链接</b>（{@code @link}）—— 同 {@code ActorRef} 对迁移前包的处置。
  *
+ * <p>★★ <b>追加标注（2026-09-27，裁定 D2-A，上文一字不改）</b>：{@code simos-ledger} <b>整个模块已退役</b>
+ * （它零外部引用、无 handler、无人依赖；{@code Transfer} 的<b>形状</b>已按 D2-A 搬进 {@code simos-economy-api}）。
+ * ⇒ 上文 R6 的裁定<b>已成事实</b>：<b>本类型是商品余额的唯一真源</b>，而"另一边"那个类<b>不再存在</b>——
+ * 于是这条禁令不再需要 enforcer 的禁列来撑（那行已随之删除），它由"对面没有那个类"来保证。
+ * ★ 全仓对 {@code simos-ledger} 的引用现在只剩<b>历史叙述</b>（本段与若干设计文档的留痕）。
+ *
  * <p>★★ <b>库存是存量，不是流量</b>（spec §2.5 L166）：存量 = 能保存、出售、转移 = 有产权；而 {@code Cohort consumption receipt}
  * 是流量（本结算窗口内<b>可用于最终消费</b>的流入，≠ cohort 拥有库存）。两件事<b>不合并</b> ⇒ 本类型的语义是
  * "该余额<b>是多少</b>"，<b>不是</b>"加多少"：写入口 {@code ActorData.withAccount} 是<b>整本覆盖</b>，而"转入 500"
