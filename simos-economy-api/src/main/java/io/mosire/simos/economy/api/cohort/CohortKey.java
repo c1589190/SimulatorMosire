@@ -4,89 +4,96 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.map.hex.HexCoord;
 
 /**
- * ★★ <b>受方身份：某一格上的某个社会阶层</b>（spec §2.6 的 B′；S1 阶段 4+5 Task 1）。
+ * ★★ <b>家户身份：某一格、某种居住类型上的某个社会阶层</b>（spec §2.6 的 B′；S1 阶段 4+5 Task 1 建；
+ * <b>2026-09-27 H0.1 补上居住维</b>）。
  *
- * <p>★★ <b>它回答的问题只有一个：「这笔实物报酬是给谁的」</b>（{@code ProductionRelation} 的 {@code
- * CompensationRule.recipient} 的一种）。★ <b>它不是行键</b>（裁定 R9）：S1 阶段 4+5 <b>不合并</b> {@code ClassKey} →
- * {@code CohortKey}，行键的形状（含 {@code industry} 段）一字不动 ⇒ <b>V9 / I1.2 在本阶段开不了账</b>（如实记为未达成项，落点 =
- * {@code ClassRow} 收窄那一轮）。
+ * <p>★★ <b>它是"家户"的身份键</b>（2026-09-27 裁定 D3-C / R-N1-A）：<b>家户 = 持有商品与货币的经济主体</b>，
+ * 而人口数、劳动、需求、压力、生死是<b>同一批人的视图</b>（{@code ClassRow}）。
+ * 一个家户给多个产业出劳动 ⇒ <b>仍然只有一个身份</b>（这就是 V9 / I1.2）。
  *
- * <p>★★ <b>为什么住 {@code simos-economy-api}</b>（裁定 E3）：它需要 {@link SocialClassId}（本模块）与 {@link
- * HexCoord} （{@code simos-map}），而 spec §三 把它列在 {@code simos-actor-api} —— 那个模块的<b>主依赖为零</b>（阶段 2 把
- * {@code simos-map} / {@code simos-util} 都删了）⇒ 硬放会成 {@code actor-api → economy-api → actor-api}
- * <b>循环</b>。 与 {@code LaborAllocation} 同待遇：<b>两侧切片都要看得见的东西，只能住契约层</b>。
+ * <p>★★ <b>为什么必须带"居住类型"那一维</b>（H0.1 的核心，风险 R-N1）：播种器对
+ * {@code farm} / {@code weave} / {@code craft} <b>三个产业都用同一套四阶层</b>与同一组份额，
+ * 而同一格的城镇人口是<b>独立批次</b>（{@code urban:} 前缀）。少了这一维，
+ * <b>农村贫农与城镇贫农会并成同一个家户</b> ⇒ 农村余粮与城市缺口并到一本账上 ⇒
+ * <b>城市不再饿死，但不是因为修好了通道，而是因为账合并了</b>——
+ * 那正是 {@code AGENT.md} §9.1 的"假绿"，会长在"城市缺口收敛"这条判据上。
  *
- * <p>★★ <b>本类型自带「裸 {@code toString()} + 单参 {@code parse}」这一对</b>（硬约束 R9，照 {@code
- * GoodsAccountKey#parse} / {@link io.mosire.simos.actor.api.actor.ActorRef#parseCanonical} 的先例；前者住在
- * {@code simos-actor}、本模块<b>不依赖</b>它，故只点名不链接）：{@code FieldDelta}（{@code simos-util}）把状态表的键压成 {@code
- * toString()} 的产物、重建时用 {@code parse} 还原 ⇒ 缺了这条配对，下游（阶段 6 的 receipt 表）就被迫自己写规范串的逆，于是
- * <b>同一个格式有了两处拼写点</b>。★ <b>格式的拼写只许在一个文件之内</b>：分隔符常量、{@code toString()} 与 {@code parse} 同住本文件。
+ * <p>★★ <b>本类型自带「裸 {@code toString()} + 单参 {@code parse}」这一对</b>（照
+ * {@code GoodsAccountKey#parse} / {@code ActorRef#parseCanonical} 的先例）：
+ * {@code FieldDelta}（{@code simos-util}）把状态表的键压成 {@code toString()} 的产物、
+ * 重建时用 {@code parse} 还原 ⇒ 缺了这条配对，下游就被迫自己写规范串的逆，
+ * 于是<b>同一个格式有了两处拼写点</b>。★ 格式的拼写只许在一个文件之内。
  *
- * <p>★ <b>规范串的形状</b>：{@code <q>_<r>|<stratum>}，例如 {@code 3_-2|poor_peasant}。两段各自交给上游的逆（{@link
- * HexCoord#parse} / {@link SocialClassId#parse}）—— <b>本类不知道</b>下划线怎么切、阶层词表有哪几个值，只认「第一个 {@code |}
- * 是接缝」。
+ * <p>★ <b>规范串的形状</b>：{@code <q>_<r>|<residence>|<stratum>}，例如 {@code 3_-2|rural|poor_peasant}。
+ * 三段各自交给上游的逆（{@link HexCoord#parse} / {@link ResidenceKind#parse} /
+ * {@link SocialClassId#parse}）—— <b>本类不知道</b>下划线怎么切、居住类型有几个值、阶层词表有哪几个值。
  *
- * <p>★★ <b>为什么按「第一个 {@code |}」切</b>（与 {@code GoodsAccountKey} / {@code AssetHoldingKey} 同款）：
- * <b>两个分量都不含接缝</b>（坐标是 {@code 数字_数字}、阶层是四词词表）⇒ 在<b>合法</b>串上「第一个」与「最后一个」<b>恒等</b>，
- * 而坏输入上「第一个」把<b>整段尾巴</b>交给阶层词表（报错点落在真正的坏段上）。★ 反面写法「按<b>最后一个</b>接缝切」不会静默 产出错的键（它照样抛），但它把坏输入的报错引到坐标轴
- * ⇒ 本条契约里「接缝在第一个 {@code |}」是<b>显式写下的</b>，不是巧合。
+ * <p>★★ <b>为什么按「第一个、第二个 {@code |}」切</b>：<b>三个分量都不含接缝</b>
+ * （坐标是 {@code 数字_数字}、居住类型与阶层都是封闭词表）⇒ 在<b>合法</b>串上这种切法与任何切法恒等，
+ * 而坏输入上它把<b>整段尾巴</b>交给词表（报错点落在真正的坏段上）。
  *
- * <p>★ <b>身份键的粒度如实记</b>（裁定 R7）：{@code (hex, 阶层)} 在<b>城市格</b>上会把「农村贫农」与「城镇贫农」并成<b>一个</b>
- * cohort（它们今天靠 {@code ClassKey} 的产业段区分）—— 这<b>正是</b> R9 那条未合并的身份键的残留，也是 §2.6 目标模型的样子。
+ * <p>★ <b>本类型是 {@code EconomyData.classes} 与 {@code EconomyData.flows} 的键</b>，
+ * 也是 {@code ProductionRelation} 的 {@code CompensationRule.recipient} 的一种
+ * （"这笔实物报酬 / 这笔钱是给哪个家户的"）。
  *
- * <p>★ <b>补注（裁定 E24，2026-09-26）</b>：这一"并成一个 cohort"的残留只影响<b>身份键</b>，不影响<b>受方行</b>了 ——
- * 落到哪些行由<b>劳动侧</b>定池（{@code LaborAllocation.group} 的批次 → 它供给的产业，见 {@code
- * EconomySettlement.classRowsOfCohort}）：家庭纺织的 700‰ 只落<b>农业行</b>，作坊的 600‰ 只落<b>作坊行</b>。 ★
- * 本类型的<b>形状与规范串一字未改</b>（阶段 6 的 receipt 表仍按它键）。
- *
- * @param residence 居住格（{@code HexCoord} 是身份；「某人在哪一格」不影响它）
+ * @param hex 居住格（{@code HexCoord} 是身份；"某人在哪一格"不影响它）
+ * @param residence 居住类型（农村 / 城镇）★ H0.1 新增的那一维
  * @param stratum 社会阶层（**产业无关**的人口身份，spec §2.6）
  */
-public record CohortKey(HexCoord residence, SocialClassId stratum) {
+public record CohortKey(HexCoord hex, ResidenceKind residence, SocialClassId stratum) {
 
   /**
-   * 规范串的段分隔符 —— <b>只在 {@link #toString()} 与 {@link #parse(String)} 两处被读</b>（同处一个文件，故「分隔符长什么样」在本类型只有
-   * 这一个拼写点）。
+   * 规范串的段分隔符 —— <b>只在 {@link #toString()} 与 {@link #parse(String)} 两处被读</b>（同处一个文件，故「分隔符长什么样」在本类型只有这
+   * 一个拼写点）。
    */
   private static final String SEGMENT_SEPARATOR = "|";
 
   public CohortKey {
+    if (hex == null) {
+      throw new IllegalArgumentException("CohortKey.hex 不得为 null");
+    }
     if (residence == null) {
-      throw new IllegalArgumentException("CohortKey.residence 不得为 null");
+      throw new IllegalArgumentException(
+          "CohortKey.residence 不得为 null（居住类型是身份的一维：少了它，农村与城镇的同阶层家户会并账）");
     }
     if (stratum == null) {
       throw new IllegalArgumentException("CohortKey.stratum 不得为 null");
     }
   }
 
-  /** 规范串：{@code <q>_<r>|<stratum>}（既是状态表的键，也是阶段 6 receipt 表的键）。 */
+  /** 规范串：{@code <q>_<r>|<residence>|<stratum>}（既是状态表的键，也是 receipt / 转移记录的键）。 */
   @Override
   public String toString() {
-    return residence + SEGMENT_SEPARATOR + stratum;
+    return hex + SEGMENT_SEPARATOR + residence.value() + SEGMENT_SEPARATOR + stratum;
   }
 
   /**
-   * 解析 {@link #toString()} 的产物（见类注：按<b>第一个</b>接缝切）。
+   * 解析 {@link #toString()} 的产物（见类注：按<b>第一个与第二个</b>接缝切三段）。
    *
-   * <p>★ 两段各自交给上游的逆（{@link HexCoord#parse} / {@link SocialClassId#parse}）—— <b>本类不复述它们的格式</b>，
-   * 故上游改了规范串，本类的往返当场跟着红。
+   * <p>★ 三段各自交给上游的逆 —— <b>本类不复述它们的格式</b>，故上游改了规范串，本类的往返当场跟着红。
    *
-   * <p>★ <b>宁抛不静默</b>（照 {@code GoodsAccountKey#parse} 的口径）：{@code null} / 空白 / 没有接缝 / 接缝在首 /
-   * 接缝在尾，一律 {@link IllegalArgumentException} —— 静默造一个半截的受方身份，比当场炸难查得多。
+   * <p>★ <b>宁抛不静默</b>（照 {@code GoodsAccountKey#parse} 的口径）：{@code null} / 空白 / 段数不足 /
+   * 接缝在首或在尾，一律 {@link IllegalArgumentException} —— 静默造一个半截的家户身份，比当场炸难查得多。
    */
   public static CohortKey parse(String text) {
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("非法 cohort 键: " + text);
     }
-    int seam = text.indexOf(SEGMENT_SEPARATOR);
-    if (seam <= 0) {
-      throw new IllegalArgumentException("非法 cohort 键（居住段缺失或在首）: " + text);
+    int first = text.indexOf(SEGMENT_SEPARATOR);
+    if (first <= 0) {
+      throw new IllegalArgumentException("非法 cohort 键（格段缺失或在首）: " + text);
     }
-    if (seam == text.length() - SEGMENT_SEPARATOR.length()) {
-      throw new IllegalArgumentException("非法 cohort 键（阶层段缺失）: " + text);
+    int second = text.indexOf(SEGMENT_SEPARATOR, first + SEGMENT_SEPARATOR.length());
+    if (second < 0) {
+      throw new IllegalArgumentException("非法 cohort 键（居住段缺失：需要 <格>|<居住>|<阶层>）: " + text);
+    }
+    if (second == first + SEGMENT_SEPARATOR.length()
+        || second == text.length() - SEGMENT_SEPARATOR.length()) {
+      throw new IllegalArgumentException("非法 cohort 键（居住段或阶层段为空）: " + text);
     }
     return new CohortKey(
-        HexCoord.parse(text.substring(0, seam)),
-        SocialClassId.parse(text.substring(seam + SEGMENT_SEPARATOR.length())));
+        HexCoord.parse(text.substring(0, first)),
+        ResidenceKind.parse(text.substring(first + SEGMENT_SEPARATOR.length(), second)),
+        SocialClassId.parse(text.substring(second + SEGMENT_SEPARATOR.length())));
   }
 }

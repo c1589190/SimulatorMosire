@@ -107,12 +107,44 @@ economy 的 `EconomyDayStepper` 会话对象持有一份"家户账工作副本"*
 **理由**：没有货币，市场池的"有效需求"恒为 0 ⇒ 市场是死的（本仓设计原话："市场有粮仍可能有人饿"）。
 ⇒ `FIXED_MONEY_*` 真的结算 + 市场池**同批**落地，否则中间态没有意义。
 
-### K6 工具的配方（去掉外生断点）
+### K6 工具的配方（去掉外生断点）★ 2026-09-27 用户裁定
 
 **裁定**：作坊（`handicraft`）的 `inputPerUnit` 由 `{FIBER, IRON}` 改为 **`{FIBER, TOOL}`**，
 产出保留 `{CLOTH, TOOL}` 并**调参数使 TOOL 净产出 ≥ 0** ⇒ 工具存量**可再生**，外生断点消失。
-`IRON` 商品**从词表与播种中移除**（保留会变成"看起来在记、其实没人读"的死字段——
-本仓明文反对）；采矿/冶炼产业链留到以后那轮再加回（已裁 A 暂缓）。
+
+★ **用户裁定：`IRON` 商品保留作"留位"**（不删）。⇒ 但按本计划 §三 自己的反面纪律
+（"留位必须落在今天真会被读写的形状上，或带一条今天就能跑的断言"），**必须给它一个读者**，
+否则它就是我们刚批评过的死字段形态。落法：
+- `EconomyVocabulary` 加 **`allCommodityIds()`（含留位）**，并在 `IRON` 的 javadoc 上写明
+  "本轮无配方、无播种 ⇒ **留位**；采矿/冶炼轮接入（用户 2026-09-27 裁定）"；
+- **读口**（`ApiViews` 的 catalog/经济视图）暴露这张表 ⇒ 它**有真读者**，GM 也看得见"这个词表里有什么"。
+- ★ 判据：`IRON` 不再出现在任何 `inputPerUnit` / 播种载荷里；`allCommodityIds()` 有读口。
+
+### K8 一处台账纠错（`AGENT.md` §四：机制性描述一律回代码核）
+
+旧台账（`2026-09-26-s1-stage-breakdown.md:17`）写 "`ClassKey` 引用 **259 处 / 36 个文件**"。
+**实测**（`grep -rnE "(^|[^A-Za-z])ClassKey" | grep -v AssetClassKey`）：
+**298 处**，其中 **main 174 处 / test 124 处**。
+⇒ 旧计数**把 `AssetClassKey` 算进去了**（那是另一个类型，属 S3 的退役范围）。
+★ 本计划的 H0.1 按 **298 处**派活；`AssetClassKey` 的退役是**另一件事**（H0.5）。
+
+### K9 家户 actor 的 id 不能用 `CohortKey.toString()`（**一处只会在落盘时现形的冲突**）
+
+**问题（当场读码核到）**：`GoodsAccountKey` 的规范串是 `"<owner>|<location>"`、`parse` **按第一个 `|` 切**，
+把接缝之后**整段**交给 `HexCoord.parse`；它的类注明文依赖"全仓现行的 actor id **必然不含 `|`**"。
+而 `CohortKey.toString()` 是 `"<q>_<r>|<residence>|<stratum>"` —— **含 `|`**。
+⇒ 若家户 actor 的 id 直接取它，`GoodsAccountKey.toString()` 会产出
+`HOUSEHOLD:0_0|rural|poor_peasant|0_0`，`parse` 会把 `rural|poor_peasant|0_0` 喂给 `HexCoord.parse`
+⇒ **存盘 / 读档的往返当场抛**（一个只在落盘时才现形的晚期故障，而且不跑落盘就看不出来）。
+
+**裁定**：家户 actor 的 id 段分隔符取 **`:`**（与既有的批次 id 同族）
+⇒ 形状 `"<q>_<r>:<residence>:<stratum>"`（例 `0_0:rural:poor_peasant`）：
+不含 `|`（与 `GoodsAccountKey` / `AssetHoldingKey` 的接缝约定相容），
+而 `ActorRef.parseCanonical` 按**第一个 `:`** 切 ⇒ id 里含 `:` 合法。
+
+**落点**：新建 **`economy-api` 的 `cohort/HouseholdActors`** ——
+`of(CohortKey) → ActorRef(HOUSEHOLD, …)` 与 `cohortOf(ActorRef) → CohortKey` 的**唯一拼写点**（互逆、fail-closed）。
+★ 控制方已实现并**编译实测 exit 0**（`-pl simos-economy-api -am`）。
 
 ### K7 既有用例变红 ⇒ 按新口径**重算**，不许删/放宽断言
 
