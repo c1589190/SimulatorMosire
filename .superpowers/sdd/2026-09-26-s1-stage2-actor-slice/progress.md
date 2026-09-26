@@ -205,3 +205,62 @@ Breakdown: docs/superpowers/plans/2026-09-26-s1-stage-breakdown.md §三 阶段 
   —— **错了的代价**：低（构建红即发现）。
 - **★ 疑虑 5 是评审的**重点靶子**：实现 Agent 如实记录了"删四条测试时一个 `Edit` 误删类尾 `}`，
   当场 `tail` 发现并修回"。**提交态结构是否正确，必须由评审独立验**（不许采信自述）。
+
+- **Task 2: complete**（commits `4b3e3e5..7613599`，review clean —— Spec ✅ / Approved / 无 Critical / 无 Important）
+  ★★ **评审独立验实了两个"不许采信自述"的靶子**：
+  - **逐字节声明成立**：三个搬走的文件各自**只有一个 hunk**，且 `-`/`+` 对只有 `package` 行；
+    评审还**自己读了被 hunk 截断的文件尾**（`AssetKind:8-15` 六档原样、`ActorRef:28` 两参签名原样、
+    `ActorKind:29-59` 七档原序）—— 这正是"给风险命名再定点核查"的正确用法
+  - **误删的 `}` 不在提交态里**：删除块恰是**四条完整方法 + 一个空行**，类尾 `}` 是**未改动的 context 行**，
+    文件里恰剩一条 `@Test`
+  - 另：`R5/I2.3` 是**结构性证明**（`actor/` 目录**不再存在**），不是靠 grep 推断
+
+- **★★ R7（A 段关账条件）：控制方独立实跑 `clean verify` —— BUILD SUCCESS，12/12 模块**（新增 `ActorApiSimos`）
+  —— 评审明确标记"这是实现者声明、我看不到运行输出"，故**由我解**（放行不能建立在自述上）：
+  | 量 | 实现者自报 | 控制方实跑 |
+  |---|---|---|
+  | 测试总数 | 2306 → 2307 | **2307 / 0 失败 / 0 错误** ✓ |
+  | `actor-api` | 0 → 4 | **4** ✓ |
+  | `economy-api` | 13 → 9 | **9** ✓ |
+  | `economy` | 127 → 128 | **128** ✓ |
+  | surefire mtime | 全落本轮 | **0 份陈旧 / 268 份** ✓ |
+  | SpotBugs | 全 0 | `BugInstance size is 0` ✓ |
+  ⇒ **三个数字逐个吻合，R7 成立。**
+
+### A 段关账（Task 1 + Task 2）—— 五条 Minor 的裁定
+
+- **Ruling（R-m）**：`simos-actor-api/pom.xml:59` 与 `package-info.java:12-13` 的措辞
+  「S1 阶段 2 起 util 与 map 都不再声明」**读起来像"以前声明过 map"**（其实 R-e 一直是"不声明"）。
+  ⇒ 改成「**本模块只声明 jackson（util/map 都不声明）**」，**随 Task 3 一起改**（Task 3 本来就要为 R-j 动这个 pom）。
+  —— **错了的代价**：低（措辞）。
+- **Ruling（R-n，改判 R-i）**：`ActorRef.java:7` / `ActorKind.java:9` 那句"设计稿 §2 明确 api 只依赖 util/map"
+  现在**与两个文件之外的 pom 自相矛盾**（评审指出：等价的老文本在别处被修了、这两处没修，**不一致**）。
+  ⇒ **改**，但**推到 Task 9 的文档回填**（与 `AGENT.md` 模块表同一批）——
+  理由：B 段的纪律是"**不得回头修改迁移契约**"，而这两个文件**就是**迁移契约；文档任务里改才不与关账纪律冲突。
+  —— **错了的代价**：一句过时注释多留几个任务（低）。
+- **Ruling（R-o）**：**陈旧的归属声明**（`simos-economy-api/pom.xml:14` 的 `<description>` 仍写 economy-api 提供
+  "ActorRef…"；根 `pom.xml:30` 仍说 social/ledger "共用它的稳定 ID 与 ActorRef"）⇒ **也归 Task 9 文档回填**。
+  —— **为什么**：与 R-n 同批，且它们都是**同一个模块图的描述**，一起改才不会又出现"改一半"的不一致。
+  —— **错了的代价**：低（但会误导下一个人找是谁拥有 ActorRef）。
+- **Ruling（R-p）**：评审列出的"**超出四类允许改动**"的三处（`actor` 的 `package-info` 随迁移搬走并重写首句、
+  `economy-api` 的 `package-info` 删掉**已悬空**的 `{@link …economy.api.actor.ActorRef}` 并补一段、
+  根 `pom.xml:27` 顺手把 `util` 从 actor-api 描述里去掉）⇒ **判定可接受**。
+  —— **为什么**：留着 `{@link}` 会变**悬空链接**（本仓在阶段 1 刚因同类问题抓过一次真缺陷），
+  且"虚假归属声明"正是本任务要消除的那类东西；三处**都是文档、都已披露、都与迁移事实一致**。
+  —— **代价**：A 段的"允许改动类别"实际是**五类**（多一类"修正随迁移产生的**悬空/虚假文档引用**"）——
+  记在这里，免得收尾评审判它越界。
+- **Ruling（R-q）**：`EconomySeedHandlerTest:169-171` 与既有 `:149` 部分重叠 ⇒ **保留**（brief Step 1 要求，
+  且该测试的 ② 是**别的测试没覆盖的方向**：再编码回去）。**不删**。
+- **Ruling（R-k 扩展）**：⚠️ 评审指出 `simos-core` 的 test classpath 现在**经 `social → economy-api → actor-api`
+  传递到了 actor-api**，而 `simos-core/pom.xml` 里**没有** actor-api 的排除项 ⇒ 今天不炸，
+  但**边界处于未强制状态**。⇒ **Task 9 的回填范围加上 `simos-core` 的 `enforce-core-boundaries` excludes**
+  （宽 exclude + 需要时窄 include），与 `util`/`map`/`social`/`unit` 的 ban 回填同一批。
+  —— **错了的代价**：将来 core 悄悄依赖 actor-api 而无人拦（与 `AGENT.md:55-58` 记的是同一类欠账）。
+
+### 计划维护项（**派任务前必须先做**）
+
+- ★ Task 3 的测试草稿原有 `...` 占位 ⇒ **已补全**（含三条 fail-closed 用例：词表外、无 `=`、**键重复**）
+- ★ **Task 5 / Task 6 / Task 7 的测试草稿里仍有 `...` 占位** —— 按 writing-plans 的 "No Placeholders"，
+  **各自的 dispatch 之前必须先补成可执行代码**（与 Task 3 同样处理）。
+
+- **A 段关账 + Task 3 dispatched**（BASE=`7613599` 后的台账提交）：B 段开始 —— `AssetClassKey`（新建，TDD）

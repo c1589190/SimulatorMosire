@@ -412,21 +412,36 @@ class AssetClassKeyTest {
         .hasToString("LAND|arable=true|quality=B");
   }
 
-  /** ★ 往返：`parse(toString()) == 自身`。 */
+  /** ★ 往返：`parse(toString()) == 自身`（它是 Map 的键，这条挂了会**静默丢产权**）。 */
   @Test
-  void roundTripsThroughItsCanonicalString() { ... }
-
-  /** ★ 词表外的粗类型构造不出来（fail-closed）；qualities 的键值不许含分隔符。 */
-  @Test
-  void rejectsMalformedText() {
-    assertThatThrownBy(() -> AssetClassKey.parse("NOPE|a=b")).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> AssetClassKey.parse("LAND|noEqualsSign")).isInstanceOf(IllegalArgumentException.class);
+  void roundTripsThroughItsCanonicalString() {
+    for (String text : List.of("LAND|arable=true|quality=B", "CATTLE", "TOOL|tech=T1")) {
+      assertThat(AssetClassKey.parse(text)).hasToString(text);
+    }
   }
 
-  /** ★ 无 qualities 的粗类型也算合法键（`CATTLE` 就是一个）。 */
+  /** ★ **词表外即抛**（fail-closed）；qualities 的键值不许含分隔符（否则规范串不可逆）。 */
+  @Test
+  void rejectsMalformedText() {
+    assertThatThrownBy(() -> AssetClassKey.parse("NOPE|a=b"))
+        .as("粗类型词表外必须抛，且消息里点名那个值")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("NOPE");
+    assertThatThrownBy(() -> AssetClassKey.parse("LAND|noEqualsSign"))
+        .as("qualities 段没有 `=` ⇒ 不可逆 ⇒ 抛")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> AssetClassKey.parse("LAND|k=a|k=b"))
+        .as("★ 同一个键出现两次 ⇒ 规范串不可逆（解析回来只剩一个）⇒ 必须抛")
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  /** ★ 无 qualities 的粗类型也算合法键（`CATTLE` 就是一个）；`null` 与空 Map 等价。 */
   @Test
   void bareKindIsAValidKey() {
     assertThat(AssetClassKey.parse("CATTLE")).isEqualTo(new AssetClassKey(AssetKind.CATTLE, Map.of()));
+    assertThat(new AssetClassKey(AssetKind.CATTLE, null))
+        .as("null qualities 归一成空表，不是 NPE")
+        .isEqualTo(new AssetClassKey(AssetKind.CATTLE, Map.of()));
   }
 }
 ```
