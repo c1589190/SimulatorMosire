@@ -185,3 +185,27 @@ K8 台账纠错：`ClassKey` 实测 **298 处**（main 174 / test 124），旧�
    实测不再单调（第 2 周期 −1,665,975）⇒ 改成"本周期**关系入账** > 0"并注明；"布逐周期增长"两条一字未动。
 3. C 还修正了子 Agent 的一处误改（3,098/24,784,000 被改成 3,097/24,776,000）—— 实测复算
    `⌊3100×6663/14806⌋+⌊3100×5182/14806⌋+⌊3100×2221/14806⌋+⌊3100×740/14806⌋ = 1395+1084+465+154 = 3,098` ⇒ 已回退。
+
+### ★★ H1 冻结接口（控制方 2026-09-27 定；两个执行 Agent 必须一致，后续照此核）
+
+1. **家户 actor** = `HouseholdActors.of(CohortKey)` ⇒ `ActorRef(HOUSEHOLD, "<hex>:<residence>:<stratum>")`；
+   账户键 = `GoodsAccountKey(该 actor, cohort.hex())`。
+   ★ economy 切片**看不见 `GoodsAccountKey`**（它在 `simos-actor`）⇒ economy 只产出
+   `ActorEntry(actor, location, commodity, delta)`，**落账是 app 的事**（铁律 3）。
+2. **会话工作副本** = `Map<CohortKey, Map<CommodityId, Long>>`（缺失键 = 该家户没有该商品）：
+   `EconomyDayStepper(EconomyData, Map<…>)` **就地更新** + `householdGoods()` 访问器；
+   ★ **绝不进 `EconomyData` / 变更集 / 跨 revision**（裁定 K1）。
+   `EconomySettlement.settle(...)`（多日入口）**没有**副本 ⇒ 继续 fail-closed（消息指向 DayStepper）。
+3. ★ **fail-closed 的边界**：行 `population > 0` 而副本里**没有**该 cohort ⇒ **抛**（不许静默当库存 0）；
+   `population == 0` 的行**跳过消费与投入**；★ 但**分配（规则付款）不按人口过滤** ——
+   地租那类规则**仍可能**付给人口 0 的家户。
+4. ★ **家户 actor 为"每格两组四行"全部而建（含人口 0 的空账）** ⇒ 分配永不因"没有 actor"失败。
+   真档判据 = **799 格 × 8 = 6392**。
+
+### H1 的判据（阶段边界由控制方跑）
+
+- ★ **I4.1** 逐 actor 守恒：`Δ账本 == 净产 − 实付`（逐 actor × 逐商品）
+- ★★ **I4.2 无过渡项**：式子里的 `ΔΣRowGoods` **消失** —— 它还在 ⇒ 还有一本账没搬完
+- ★ **结构**：`ClassRow` 无 `goods`；`ProductionLedger` 无 `cohortIntake`
+- ★ **真档**：改前有饭吃 ⇒ 改后仍有饭吃；`GET /api/economy/ownership` 的 `accounts` 非空、
+  且**行侧应为全 0**（一本账）
