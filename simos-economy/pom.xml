@@ -17,7 +17,7 @@
        依赖面 = actor-api（AssetKind——S1 阶段 2 上移的产权基础词表）+ util（FieldDelta/Snapshot/地址与解析机制）
        + economy-api（IndustryId/ClassSlotId/RegimeId/DebtId/CommodityId——共用稳定 ID）+ Jackson。
        ★★ H4 起**也依赖 map**：市场表按**格**索引（EconomyData.markets 的键 = HexCoord，裁定 M1-A），
-       而"依赖传递不是契约"（AGENT.md §〇）⇒ 显式声明，不再靠 economy-api 的传递依赖拿 HexCoord。
+       而"依赖传递不是契约"（AGENTS.md §〇）⇒ 显式声明，不再靠 economy-api 的传递依赖拿 HexCoord。
        ★ 这不是新开的口子：economy-api 本来就依赖 map（LotChange.hex），本切片此前已在用它的传递类型。 -->
   <dependencies>
     <!-- ★ S1 阶段 2（裁定 R7 的 A 段）：AssetKind 上移后原先靠 economy-api 传递拿到，现按本模块的

@@ -45,7 +45,7 @@
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
-                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                    <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
                          `simos-actor` 依赖 map（产权"到格"⇒ 它的键就是 HexCoord），地图侧永远不知道切片存在。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
                     <exclude>io.mosire:simos-actor</exclude>

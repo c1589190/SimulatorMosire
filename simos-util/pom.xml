@@ -56,7 +56,7 @@
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-core</exclude>
-                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                    <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
                          方向是**反的**——`simos-actor` 依赖 util，故这里钉的是"不许反向依赖"。
                          ★ `simos-actor-api` **不在此列**：它是**契约层**（与 `economy-api` 同待遇，
                          文档明文允许被领域模块依赖），禁一个契约层没有出处。 -->

@@ -72,7 +72,7 @@
                          （`economy-api/package-info.java:9-11`、根 `pom.xml`、`economy-api/pom.xml`），
                          R1 的 `PopulationGroup.id` 正是复用它的 `PeopleLotId`（spec §八.1）。 -->
                     <exclude>io.mosire:simos-economy</exclude>
-                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                    <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
                          actor 与 social 是**兄弟切片**：`ActorKind.PEOPLE_LOT` 只是不透明种类串，
                          人群批次的**身份**（`PeopleLotId`）走的是 economy-api 那条明文允许的路，不是 actor。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->

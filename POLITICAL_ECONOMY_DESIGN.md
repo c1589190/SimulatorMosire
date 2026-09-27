@@ -28,7 +28,7 @@
 
 | 约束 | 代码依据 | 对本方案的含义 |
 |---|---|---|
-| 修改统一经过命令、变更集、修订 | [AGENT.md](AGENT.md)、[CommandBus.java](simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java) | 交易、税、征募、灾害均不得直接修改运行中的对象或另写一份数据库真相。 |
+| 修改统一经过命令、变更集、修订 | [AGENT.md](AGENTS.md)、[CommandBus.java](simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java) | 交易、税、征募、灾害均不得直接修改运行中的对象或另写一份数据库真相。 |
 | 模块只拥有自己的数据 | [SimulationState.java](simos-util/src/main/java/io/mosire/simos/util/state/SimulationState.java)、[pom.xml](simos-social/pom.xml) | 每个新模块有自己的 namespace、Snapshot、ChangeSet、Codec；政府的税权不塞进人口或市场状态，国库余额不在政府和账本两处各存一份。跨模块验证与命令编排在 app。 |
 | Core 不认识领域类型 | [CoreSimos.java](simos-core/src/main/java/io/mosire/simos/core/CoreSimos.java) | 新增通用的多模块时间提案协议与验证；Core 仍只认识 namespace、Snapshot、ChangeSet、Codec，不 import 经济模块。 |
 | 状态组件与变更集逐项对应 | [SocialData.java](simos-social/src/main/java/io/mosire/simos/social/SocialData.java)、[SocialChangeSet.java](simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java) | Social 仅扩人口组件；其他模块也各自维护完整状态、对应的变更集、codec 和往返测试。 |
@@ -257,7 +257,7 @@ grossOutput    = floor(配方基准产量 × 实际规模 × 地形系数
 3. **生产与基本税权**：实现 `production` 单位生产、日投入、周期和优先索取；同时建 `government` 最小税则与核定服务，由账本执行转移；用农业和工厂算例验收。
 4. **市场、政府扩展与政军接线**：`market` 有效需求/交易，扩展 `government` 辖区执行、交易税和支出，接权限/决策通道、征募/战损去重、GUI/MCP 共用视图；再扩跨 Hex 运输和性能优化。
 
-每个模块都要有自身变更集组件覆盖、codec 日制档往返、命令冲突/权限与一次日推进的集成测试；`SocialRoundTripTest` 只守社会组件，不能代替其他五个模块的测试。验收不能只看 Java 单元函数。单次多日推进被拒、快进按日提交、**跨切片原子性**、会计守恒、歉收优先级和无购买力饥饿是此机制的关键判据。项目的 Maven/前端门禁按 [AGENT.md](AGENT.md) 执行，避免并发 Maven 干扰测试结果。
+每个模块都要有自身变更集组件覆盖、codec 日制档往返、命令冲突/权限与一次日推进的集成测试；`SocialRoundTripTest` 只守社会组件，不能代替其他五个模块的测试。验收不能只看 Java 单元函数。单次多日推进被拒、快进按日提交、**跨切片原子性**、会计守恒、歉收优先级和无购买力饥饿是此机制的关键判据。项目的 Maven/前端门禁按 [AGENT.md](AGENTS.md) 执行，避免并发 Maven 干扰测试结果。
 
 ## 13. 本文件的验证边界
 

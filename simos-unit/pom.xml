@@ -47,7 +47,7 @@
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
-                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                    <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
                          actor 与 unit 是**兄弟切片**（actor 的 `ActorKind.UNIT` 只是个不透明种类串，
                          不 import 任何单位类型）⇒ 互不依赖由构建期强制。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->

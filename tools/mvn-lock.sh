@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ★★ Maven 串行化锁（AGENT.md §一.1：本机一次只能跑一个 Maven，两轮同抢 target/ 会让测试计数失真）。
+# ★★ Maven 串行化锁（AGENTS.md §一.1：本机一次只能跑一个 Maven，两轮同抢 target/ 会让测试计数失真）。
 #
 # 用法：把 `./mvnw` 换成 `tools/mvn-lock.sh`，其余参数原样透传：
 #     tools/mvn-lock.sh -q -DskipTests compile -pl simos-economy -am

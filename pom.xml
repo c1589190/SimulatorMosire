@@ -11,7 +11,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>SimulatorMosire</name>
-  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENT.md 的表。</description>
+  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENTS.md 的表。</description>
 
   <modules>
     <module>simos-util</module>

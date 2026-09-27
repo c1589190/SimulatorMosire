@@ -101,7 +101,7 @@
                          main scope 一律禁（与 sd 同款）；`economy-api` 的 test-scope 口子见下面 includes 那段。 -->
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
-                    <!-- ★ Task 10 回填（AGENT.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
+                    <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
                          actor 切片的 main scope 一律禁（与 sd/economy 同款：Core 编译期看不见领域类型）。
                          ★ `simos-actor-api` 是**契约层**、不是切片，本可照 `economy-api` 的形制只放开 test scope；
                          但 Core 的测试**一处都没 import** actor-api 的契约类型（`ActorRef` / `ActorKind` /
