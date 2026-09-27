@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.model.FlowRow;
 import java.util.Collections;
@@ -24,15 +25,19 @@ import java.util.Objects;
  * from, to)} 一次算完，就再也插不进"每一天之后"这一步； 而若把它拆成"N 次独立推进"，{@code range.to} 的语义（一条 revision）与 §十一 等价性都会走样
  * —— **日循环的语义必须留在同一个调用栈里**。
  *
- * <p>★★ **{@link #householdGoods()}：家户账的会话工作副本**（H1；裁定 K1 / D3-C）。为什么它不是"第二本账"：
+ * <p>★★ **{@link #householdGoods()} / {@link #householdMoney()}：家户账的会话工作副本**（商品 = H1/裁定 K1；★ 货币 =
+ * H4/裁定 K14）。两份副本**同形、同生命周期、同样不进 {@code EconomyData}**——为它们为什么"不是第二本账"：
  *
  * <ul>
  *   <li>**唯一的持久真源**是 actor 切片里该家户 actor 的 {@code GoodsAccount} （键 {@code
  *       (HouseholdActors.of(cohort), cohort.hex())}）—— 本类**看不见**它（economy 不认识 actor 切片）；
  *   <li>本副本由调用方（app 协调器）在推进前**从 actor 侧载入**、传进来；本类**就地更新**它（与已经持有的 {@code flows}
  *       累加器完全同形，有先例）；推进结束后调用方把它**落回 actor**；
- *   <li>★ **它不进 {@link EconomyData}、不进变更集、不跨 revision 存活** —— 这就是"不是第二本账"的可执行判据 （判别口径：{@code
+ *   <li>★ **它们不进 {@link EconomyData}、不进变更集、不跨 revision 存活** —— 这就是"不是第二本账"的可执行判据 （判别口径：{@code
  *       ClassRow} 里没有 {@code goods}，守恒式里没有 {@code ΔΣRowGoods} 这一项）。
+ *   <li>★★ <b>货币那一份的创世来源是"禀赋"而不是"发行"</b>（K14）：钱由 app 侧的播种给每一户一笔，economy 这一侧只<b>读/写会话副本</b>；本批没有任何
+ *       {@code MoneyAuthority} 实现 ⇒ 结算里<b>造不出一毫钱</b> （付不出就当场抛，见 {@code
+ *       EconomySettlement.applyTransferToHouseholds}）。
  * </ul>
  *
  * <p>★★ **副本的形状与语义**（H1 冻结的接口）：{@code Map<CohortKey, Map<CommodityId, Long>>} —— 键 = 家户身份； 值 =
@@ -52,30 +57,61 @@ public final class EconomyDayStepper {
   private EconomyData data;
   private final LinkedHashMap<CohortKey, FlowRow> flows;
 
-  /** ★★ 家户账的会话工作副本（**就地更新**；见类注。★ 调用方持有的那一份才是主人，本类只借它一程）。 */
+  /** ★★ 家户商品账的会话工作副本（**就地更新**；见类注。★ 调用方持有的那一份才是主人，本类只借它一程）。 */
   private final Map<CohortKey, Map<CommodityId, Long>> householdGoods;
 
   /**
-   * 从 {@code base} 起步，并接管**家户账的工作副本**（H1 冻结的构造器形状）。
+   * ★★ <b>家户货币账的会话工作副本</b>（H4；裁定 K14）—— 与 {@link #householdGoods} **同形、同生命周期、同样不进 {@link
+   * EconomyData}**：推进前由调用方从 actor 侧载入、推进中被就地更新、推进结束后落回 actor。
+   */
+  private final Map<CohortKey, Map<CurrencyId, Long>> householdMoney;
+
+  /**
+   * ★★ <b>从 {@code base} 起步，并接管家户账的<strong>两份</strong>会话工作副本</b>：商品（H1）与货币（H4/K14）。
    *
-   * @param householdGoods 家户账工作副本：键 = 家户身份、值 = 商品余额（缺失键 = 没有该商品）；**会被就地更新**。 ★ 它必须覆盖每一个 {@code
+   * @param householdGoods 家户商品账工作副本：键 = 家户身份、值 = 商品余额（缺失键 = 没有该商品）；**会被就地更新**。 ★ 它必须覆盖每一个 {@code
    *     population > 0} 的家户行（否则 {@link #step(long)} 当场抛）； {@code population == 0} 的行可以缺席。★
    *     内层表**只读**（本类换值一律 {@code put} 一张新表，不改旧表）。
+   * @param householdMoney 家户货币账工作副本（H4；裁定 K14）：键 = 家户身份、值 = 逐币种余额（**缺失币种 = 该币种 0**，但**外层键同样必须覆盖每一个
+   *     {@code population > 0} 的家户行**，否则 {@link #step(long)} 当场抛）—— ★ 创世禀赋由 app 侧播种、由 app 协调器在推进前从
+   *     actor 侧载入；economy 不认识 actor 切片。
    */
   public EconomyDayStepper(
-      EconomyData base, Map<CohortKey, Map<CommodityId, Long>> householdGoods) {
-    this(base, householdGoods, EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
+    this(base, householdGoods, householdMoney, EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
   }
 
   /**
-   * 同 {@link #EconomyDayStepper(EconomyData, Map)}，但**播种次序可注入**（见 {@code
+   * 同 {@link #EconomyDayStepper(EconomyData, Map, Map)}，但**播种次序可注入**（见 {@code
    * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION}）。
    */
   public EconomyDayStepper(
       EconomyData base,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       boolean plantingDrawsFirst) {
-    this(base, householdGoods, plantingDrawsFirst, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        plantingDrawsFirst,
+        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * ★ <b>单模块用例的短构造器：世界没有货币</b>（H4）—— 货币副本 = 每个家户一本**空钱包**。
+   *
+   * <p>★ 它是**包内可见**的（不是公开 API）：{@code simos-app} 的协调器**必须**把 actor 侧的货币余额显式载进来 ——
+   * 走这一支会让真档创世的钱<b>在账上静默消失</b>（市场买不动、货币工资付不出，而账面上看不出少了谁）。
+   */
+  EconomyDayStepper(EconomyData base, Map<CohortKey, Map<CommodityId, Long>> householdGoods) {
+    this(
+        base,
+        householdGoods,
+        EconomySettlement.emptyMoneyAccountsFor(base.classes().keySet()),
+        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
   }
 
   /**
@@ -87,12 +123,15 @@ public final class EconomyDayStepper {
   EconomyDayStepper(
       EconomyData base,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       boolean plantingDrawsFirst,
       int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(householdGoods, "householdGoods（家户账是会话状态，必须由调用方载入）");
+    Objects.requireNonNull(householdMoney, "householdMoney（H4：货币账是会话状态，必须由调用方载入）");
     this.data = base;
     this.householdGoods = householdGoods;
+    this.householdMoney = householdMoney;
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.flows = new LinkedHashMap<>(base.flows());
@@ -119,6 +158,20 @@ public final class EconomyDayStepper {
    */
   public Map<CohortKey, Map<CommodityId, Long>> householdGoods() {
     return Collections.unmodifiableMap(householdGoods);
+  }
+
+  /**
+   * ★★ <b>家户货币账工作副本的当前值</b>（H4；只读视图，形状与语义逐字照 {@link #householdGoods()}）：
+   *
+   * <ul>
+   *   <li>★ **它是"当前副本"，不是"副本的副本"**：外层表被包了一层 {@code unmodifiableMap}（改它当场抛）， 但内容是活的；
+   *   <li>★ <b>内层表不可变</b>：本类换值一律 {@code put} 一张新表 ⇒ 任何拿到的快照都不会被后续结算改掉；
+   *   <li>★★ <b>要在 {@link #finish()} 之后读它</b>：那时它是整段推进的终值，也正是**要落回 actor 的那一份** —— 货币守恒判据（M-J3：逐币种
+   *       Σ余额 恒定）读的就是它。
+   * </ul>
+   */
+  public Map<CohortKey, Map<CurrencyId, Long>> householdMoney() {
+    return Collections.unmodifiableMap(householdMoney);
   }
 
   /**
@@ -156,7 +209,14 @@ public final class EconomyDayStepper {
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(day);
     data =
         EconomySettlement.settleOneDay(
-            data, day, flows, householdGoods, plantingDrawsFirst, famineMortalityPerMille, ledger);
+            data,
+            day,
+            flows,
+            householdGoods,
+            householdMoney,
+            plantingDrawsFirst,
+            famineMortalityPerMille,
+            ledger);
     return ledger.toLedger();
   }
 
@@ -175,7 +235,10 @@ public final class EconomyDayStepper {
     flows.putAll(data.flows());
   }
 
-  /** 收尾：把累加器挂上，交出可以进变更集的**最终状态**（★ 家户账在 {@link #householdGoods()} 里，**不在**这个状态里）。 */
+  /**
+   * 收尾：把累加器挂上，交出可以进变更集的**最终状态**（★ 家户账在 {@link #householdGoods()} 与 {@link #householdMoney()}
+   * 里，**不在**这个状态里）。
+   */
   public EconomyData finish() {
     data = data.withFlows(flows);
     return data;

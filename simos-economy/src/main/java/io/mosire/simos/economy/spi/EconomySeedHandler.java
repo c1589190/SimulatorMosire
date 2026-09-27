@@ -91,7 +91,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.laborSupply(), seeded.laborSupply()),
             merge(base.allocations(), seeded.allocations()),
             // ★ T2：第 8 个组件按同一套判重口径追加（该格已被占用 ⇒ 上面就拒了）。
-            merge(base.relations(), seeded.relations()));
+            merge(base.relations(), seeded.relations()),
+            // ★ H4：第 9 个组件（每格的现货市场）按同一套判重口径追加 —— ★ 漏了它 = 播种时给的价格
+            //   **静默消失**（世界照旧起得来，只是市场全无、城市缺口不收敛，而账面上看不出是谁弄丢的）。
+            merge(base.markets(), seeded.markets()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

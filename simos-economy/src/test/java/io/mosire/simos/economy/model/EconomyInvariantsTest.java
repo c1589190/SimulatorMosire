@@ -101,6 +101,7 @@ class EconomyInvariantsTest {
                     // ★ R2 / T2 的新组件：本用例只谈阶层行的引用完整性 ⇒ 三条新表留空（合法状态）。
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不存在的产业");
@@ -115,6 +116,7 @@ class EconomyInvariantsTest {
                     Optional.of(meta()),
                     Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
                     Map.of(LANDLORD_KEY, classRow(LANDLORD_KEY)),
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of(),
@@ -138,6 +140,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ClassRow.key");
@@ -156,6 +159,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(PEASANT_KEY, row),
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of()))
@@ -345,6 +349,7 @@ class EconomyInvariantsTest {
         Map.of(),
         Map.of(),
         Map.of(),
+        Map.of(),
         Map.of());
   }
 
@@ -365,6 +370,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .as("债务的 debtor/creditor 必须在 classes 里存在（v2 spec §八.2）")
         .isInstanceOf(IllegalArgumentException.class)
@@ -381,6 +387,7 @@ class EconomyInvariantsTest {
                     Map.of(FARM, industryWithTwoSlots()),
                     Map.of(PEASANT_KEY, classRowWithDebtRef(D1)),
                     Map.of(), // ★ 债务表为空 ⇒ 行内引用的 D1 悬空
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of(),
@@ -404,6 +411,7 @@ class EconomyInvariantsTest {
                 LANDLORD_KEY,
                 classRowWithoutDebts(LANDLORD_KEY)),
             Map.of(D1, debt),
+            Map.of(),
             Map.of(),
             Map.of(),
             Map.of(),
@@ -517,6 +525,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of())
                 .relations())
         .as("null ⇒ 空表（缺键 = 空，同其余七个组件）")
@@ -534,7 +543,8 @@ class EconomyInvariantsTest {
         Map.of(),
         Map.of(),
         Map.of(),
-        relations);
+        relations,
+        Map.of());
   }
 
   /** 一条**非派生**的关系（规则内容与任何 regime 的推导值都不同：777‰ + 一条货币规则）。 */
@@ -1139,6 +1149,7 @@ class EconomyInvariantsTest {
         Map.of(),
         laborSupply,
         allocations,
+        Map.of(),
         Map.of());
   }
 

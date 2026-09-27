@@ -30,7 +30,20 @@ import java.util.Optional;
  * 粮"这种写法会让"方向"与"数量"两个概念揉进一个符号里（本类型最容易长出的那种病）。
  *
  * <p>★★ <b>货币腿按币种</b>（{@code Map<CurrencyId, Long>}）：一个钱包里可以同时有银与铜，而"跨币种求和"是没有意义的运算 ⇒ 不许用单个 {@code
- * long}。★ <b>本批它恒为空 map</b>：S1 的货币规则只定义、不结算（I5.3），货币真的动起来是 H4。
+ * long}。★ <b>H4 起它真的有钱</b>（I5.3 的"只定义、不结算"到此结束）：货币工资/地租走只带货币腿的转移、市场成交走一对转移（见下）。
+ *
+ * <p>★★ <b>货币腿的方向 = {@code from → to}（与商品腿同向）</b>：这一点是 H4 定的口径，理由是<b>本类自己的不变量</b> —— "方向由 {@code
+ * from}/{@code to} 表达，不用负号"（见下）。一张转移只有一对端点 ⇒ 两条腿不可能反向。 ⇒ <b>一笔"钱货两清"的买卖 = 一对转移</b> （同一格、同一天、同原因
+ * {@link TransferReason#MARKET_TRADE}）：
+ *
+ * <pre>
+ * ① 货：goods={商品: 数量}, money={}      from=卖方 → to=买方
+ * ② 钱：goods={},          money={币种: 数量} from=买方 → to=卖方
+ * </pre>
+ *
+ * ★ <b>为什么不做成"一张转移 + 按 reason 决定货币腿反向"</b>（如实记）：那会把"方向"这件事变成 {@code reason} 的函数 —— 同一份数据
+ * 在两处（economy 的落账口与 app 的产权落账口）各要判一次"这笔该不该反向"，而判错<b>不会报错</b>（钱货反向的账看起来同样"平"）。
+ * 一对同向转移没有这个问题：每一张转移的语义只有一条（{@code from} 给出、{@code to} 收到），钱与货各自成凭据。
  *
  * <p>★★ <b>id 的确定性</b>：{@code "tr-<day>-<seq>"}，{@code seq} = <b>当天</b>该账本内第几条（从 1 起），由 {@code
  * ProductionLedger.Accumulator} 分配 ⇒ 同一天同一序列必然给出同一串 id（重放 / 分支可比，与既有的 {@code debt-c<周期>-…} 同款做法）。★
@@ -57,7 +70,7 @@ import java.util.Optional;
  * @param to 入方（**恒为 actor**，且不得与 {@code from} 相等）
  * @param location 账户所在格（账户 = {@code (actor, location)}）
  * @param goods 商品腿（**可为空 map** = 纯货币转移）；键值非 null、逐值 ≥ 0
- * @param money 货币腿（**本批恒空 map**；H4 才有内容）；键值非 null、逐值 ≥ 0
+ * @param money 货币腿（**H4 起有内容**；没有这一腿就给空 map）；键值非 null、逐值 ≥ 0
  * @param reason 这笔转移是**什么制度**造成的
  * @param settles 若这笔转移在清偿某债权 ⇒ 那条债权的 id；非清偿用 {@code Optional.empty()}
  */

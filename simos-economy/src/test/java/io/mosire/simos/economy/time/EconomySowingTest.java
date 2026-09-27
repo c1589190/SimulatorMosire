@@ -265,7 +265,8 @@ class EconomySowingTest {
             //   **逐值等于净产**（own ÷ Σ劳动 = 1）⇒ 既有的收获字面量（{@link #FULL_HARVEST_NET} 那一族）一字不改。
             //   ★ H3：operator 就是受方那个家户时（tenant 档）**不能**用这条规则 —— 那会铸出一条自转移
             //     （{@code Transfer} 的两端不得相等）⇒ 那种世界用**空规则表**（= 全归 residualOwner，裁定 E9）。
-            relations),
+            relations,
+            Map.of()),
         goods);
   }
 

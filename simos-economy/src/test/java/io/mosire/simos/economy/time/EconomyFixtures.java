@@ -66,7 +66,16 @@ final class EconomyFixtures {
     if (base.meta().isEmpty()) {
       return base; // 未激活：不做任何公式（§6.6）—— 与 EconomySettlement.settle 的早退同款
     }
-    EconomyDayStepper stepper = new EconomyDayStepper(base, goods, true, famineMortalityPerMille);
+    // ★ H4（裁定 K14）：日推进入了"两份会话副本"的时代 —— 货币副本必须显式给。
+    //   ★ 本助手服务的是**不量货币**的那些夹具（它们连市场表都没有）⇒ 给"每个家户一本空钱包"的
+    //     合法状态（世界的货币总量 = 0），而不是悄悄借道"缺省即 0"。
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            base,
+            goods,
+            EconomySettlement.emptyMoneyAccountsFor(base.classes().keySet()),
+            true,
+            famineMortalityPerMille);
     for (long day = fromTick + 1L; day <= toTick; day++) {
       stepper.step(day);
     }

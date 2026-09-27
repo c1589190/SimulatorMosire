@@ -36,7 +36,7 @@ public final class RegimeOperators {
   /** 家户自给（农闲织布一类；spec §六）。 */
   public static final String HOUSEHOLD = "household";
 
-  /** 雇佣作坊（货币工资待 S2；spec §六）。 */
+  /** 雇佣作坊（货币工资档 H4 起真的结算；spec §六）。 */
   public static final String HANDICRAFT = "handicraft";
 
   /**

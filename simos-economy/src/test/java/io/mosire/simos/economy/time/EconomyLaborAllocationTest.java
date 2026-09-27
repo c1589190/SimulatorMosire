@@ -195,6 +195,7 @@ class EconomyLaborAllocationTest {
             Map.of(),
             supply,
             allocations,
+            Map.of(),
             Map.of()), // ★ T2：生产关系表（本文件只谈劳动配额 ⇒ 空表）
         goods);
   }

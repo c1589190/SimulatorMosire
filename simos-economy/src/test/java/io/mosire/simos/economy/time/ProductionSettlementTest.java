@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
@@ -138,7 +139,9 @@ class ProductionSettlementTest {
   /** 一份本周期的事实（劳动账/资产账由用例按需给 —— 本构造器给空表）。 */
   private static Facts grainFacts(
       Map<CommodityId, Long> gross, Map<CommodityId, Long> net, Map<CommodityId, Long> recipe) {
-    return new Facts(HEX, gross, net, Map.of(), Map.of(), recipe);
+    // ★ H4：Facts 多了第 7 个组件 availableMoney（货币档的付款上限）—— 本助手不量货币 ⇒ 给空表
+    //   （空表 = 每个币种可用 0：货币档照样有读数（应付 > 0、实付 0），只是这一族用例不看它）。
+    return new Facts(HEX, gross, net, Map.of(), Map.of(), recipe, Map.of());
   }
 
   private static ProductionRelation relation(CompensationRule... rules) {
@@ -223,22 +226,51 @@ class ProductionSettlementTest {
         .isNotEqualTo(intakeByCohort(onNet));
   }
 
-  /** ★★ <b>I5.3</b>：货币档<b>只定义、不结算</b> —— 一条转移都不产生，但要<b>明确报出来</b>（待 S2）。 */
+  /**
+   * ★★ <b>I5.3 的口径在 H4 被改掉了，本用例随之改判</b>（裁定 K7/K10：主语变了就重算，不删断言、不放宽）： 货币档<b>不再"只定义、不结算"</b> —— 它进
+   * {@code ruleSettlements()} 的读数，付得出就铸<b>只带货币腿</b>的转移。
+   *
+   * <p>★★ <b>本用例的判别力落在"付方没钱"这一支</b>（夹具的 {@code availableMoney} 是空表 ⇒ 每币种可用 0）：
+   *
+   * <pre>
+   * wage: due = 1,000        可用 0 ⇒ 实付 0（不铸转移）
+   * rent: due = 20,000,000   可用 0 ⇒ 实付 0（不铸转移）
+   * </pre>
+   *
+   * ★ 于是"货币规则不产生任何转移"这条**仍然成立、但理由完全变了**（旧的：压根不结算；新的：付方一分钱都没有） —— 这正是本用例必须**改判**而不是删掉的原因：它今天量的是 H4
+   * 的"付不出 ⇒ 不铸转移、但读数必须在"。 ★ 表序 = [租(20), 工资(10)]，而 priority 序 = [工资(10), 租(20)] ⇒
+   * 读数的**次序**也跟着数据走（照旧）。
+   */
   @Test
-  void i53_moneyRulesProduceNoTransfersAndAreReportedAsWaitingForS2() {
+  void i53_moneyRulesNowSettleIntoReadingsAndPayNothingWhenThePayerHasNoMoney() {
     // ★ 夹具刻意让毛产/净产**非零**（100,000 / 97,000）：否则"不产生条目"会因为"本来就没东西可分"而假绿。
-    //   ★ 表序 = [租(20), 工资(10)]，而 priority 序 = [工资(10), 租(20)] ⇒ 待办清单的**次序**也跟着数据走。
     Facts facts = grainFacts(Map.of(GRAIN, 100_000L), Map.of(GRAIN, 97_000L), GRAIN_RECIPE);
     CompensationRule rent = money(RuleType.FIXED_MONEY_RENT, 20_000_000L, toCohort(LANDLORD), 20);
     CompensationRule wage = money(RuleType.FIXED_MONEY_WAGE, 1_000L, toActor(WORKSHOP), 10);
 
     ProductionSettlement.Outcome outcome = ProductionSettlement.settle(relation(rent, wage), facts);
 
-    assertThat(outcome.transfers()).as("★ 货币规则不产生任何转移（I5.3 的判别力就在这一条）").isEmpty();
+    assertThat(outcome.transfers()).as("★ 付方在本格可见的货币是 0 ⇒ 实付 0 ⇒ 不铸转移（H4：付不出不落债权、也不许透支）").isEmpty();
     assertThat(intakeByCohort(outcome)).as("★ cohort 也不入账（既没有转移、也就没有家户那一族）").isEmpty();
-    assertThat(outcome.deferredMoney()).as("★ 但必须**报出来**（不许静默），且按付款次序").containsExactly(wage, rent);
+    assertThat(outcome.ruleSettlements())
+        .as("★★ H4：货币档**必须报出读数**（不许静默），且按付款次序")
+        .extracting(ProductionSettlement.RuleSettlement::rule)
+        .containsExactly(wage, rent);
+    assertThat(outcome.ruleSettlements())
+        .as("★ 应付照制度给（1,000 / 20,000,000）、实付 0 —— 三数并列里「欠」看得出来")
+        .extracting(
+            ProductionSettlement.RuleSettlement::dueAmount,
+            ProductionSettlement.RuleSettlement::paidNow)
+        .containsExactly(tuple(1_000L, 0L), tuple(20_000_000L, 0L));
+    assertThat(outcome.ruleSettlements().get(0).currency())
+        .as("★ 货币档的读数说得清「是哪一种钱」（恰其一：有币种、无商品）")
+        .contains(CURRENCY);
+    assertThat(outcome.ruleSettlements().get(0).commodity()).isEmpty();
+    assertThat(outcome.deferredMoney())
+        .as("★ H4：deferredMoney 成了**恒空的留档字段**（付不出的货币档也不再「待 S2」）")
+        .isEmpty();
     assertThat(ProductionSettlement.deferredMoneyReason(wage))
-        .as("★ 消息口径：读口读出「待 S2」+ 是哪一档")
+        .as("★ 旧读口仍在，且明说它已过期（本句只作旧档留痕）")
         .contains("待 S2", "FIXED_MONEY_WAGE");
   }
 
@@ -339,7 +371,9 @@ class ProductionSettlementTest {
             Map.of(GRAIN, 100_000L),
             Map.of(),
             Map.of(POOR, 30_000L, LANDLORD, 10_000L),
-            GRAIN_RECIPE);
+            GRAIN_RECIPE,
+            // ★ H4：availableMoney（本用例不量货币档 ⇒ 空表 = 可用 0）。
+            Map.of());
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation(
@@ -423,7 +457,9 @@ class ProductionSettlementTest {
             Map.of(GRAIN, 100_000L),
             Map.of(),
             Map.of(POOR, 30_500L, LANDLORD, 10_000L),
-            GRAIN_RECIPE);
+            GRAIN_RECIPE,
+            // ★ H4：availableMoney（本用例不量货币档 ⇒ 空表 = 可用 0）。
+            Map.of());
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation(
@@ -591,7 +627,8 @@ class ProductionSettlementTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> ProductionSettlement.settle(relation, null))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Facts(HEX, null, Map.of(), Map.of(), Map.of(), GRAIN_RECIPE))
+    assertThatThrownBy(
+            () -> new Facts(HEX, null, Map.of(), Map.of(), Map.of(), GRAIN_RECIPE, Map.of()))
         .as("★ 事实没给 = 坏数据，不是状态（同本仓各 record 的口径）")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> grainFacts(Map.of(GRAIN, -1L), Map.of(), GRAIN_RECIPE))

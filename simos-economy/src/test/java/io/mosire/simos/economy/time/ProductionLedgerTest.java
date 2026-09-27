@@ -330,7 +330,8 @@ class ProductionLedgerTest {
             Map.of(
                 ALLOCATION,
                 new LaborAllocation(ALLOCATION, LOT, OPERATOR, "farm", PEASANT_LABOR_MILLI, 1L)),
-            relations),
+            relations,
+            Map.of()),
         goods);
   }
 

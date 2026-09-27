@@ -10,6 +10,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -31,6 +32,7 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
@@ -71,6 +73,9 @@ class EconomyRoundTripTest {
 
   /** ★ R2：劳动供给与配额的夹具身份（一格一批人 ⇒ 供给一条、配额一条）。 */
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
+
+  /** ★ H4：市场夹具的计价货币（每格恰一种 —— 裁定 M1-A）。 */
+  private static final CurrencyId SILVER = new CurrencyId("silver");
 
   private static final LaborAllocationId ALLOCATION =
       new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
@@ -146,9 +151,17 @@ class EconomyRoundTripTest {
     assertThat(EXCLUDED_FROM_CHANGE_SET).as("EconomyData 没有豁免项；要加名字必须在 diff 里现形").isEmpty();
   }
 
+  /**
+   * ★★ <b>组件计数（H4 起 = 9）</b>：{@code meta} / {@code industries} / {@code classes} / {@code debts} /
+   * {@code flows} / {@code laborSupply} / {@code allocations} / {@code relations} / {@code
+   * markets}。
+   *
+   * <p>★ 这个名字里的数字**故意写死**（H4 从 {@code Eight} 改成 {@code Nine}）：它就是"又加了一个状态组件"这件事
+   * 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
+   */
   @Test
-  void changeSetHasExactlyEightComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(8);
+  void changeSetHasExactlyNineComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(9);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -196,6 +209,10 @@ class EconomyRoundTripTest {
       case "relations" ->
           base.withIndustries(Map.of(FARM, industry(FARM, 0L, NON_DEFAULT_OPERATOR)))
               .withRelations(Map.of(FARM, relation(FARM, NON_DEFAULT_OPERATOR)));
+      // ★ H4 的第 9 个组件：**自带支撑的格**（市场的键 = 格；本夹具的格就是 {@link #KEY} 所在那一格）。
+      //   ★ 价表**非空**：空价表与"字段没进变更集"在值层面不可区分（同上面 outputPerUnit 那条理由），
+      //     而"这一格什么价都没挂"恰恰是 H4 最想让人看得见的一种状态。
+      case "markets" -> base.withMarkets(Map.of(KEY.hex(), market()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -210,6 +227,7 @@ class EconomyRoundTripTest {
       case "laborSupply" -> cs.laborSupply().changed();
       case "allocations" -> cs.allocations().changed();
       case "relations" -> cs.relations().changed();
+      case "markets" -> cs.markets().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -313,6 +331,18 @@ class EconomyRoundTripTest {
   /** ★ R2 的供给夹具：毛额 60,000 ⇒ 配额恰好用满（{@code Σ allocated ≤ available} 取等号）。 */
   static LaborSupply laborSupply() {
     return new LaborSupply(LOT, 1L, 60_000L, 0L, 0L);
+  }
+
+  /**
+   * ★★ <b>H4 的市场夹具</b>（{@code EconomyData} 的第 9 个组件）：一格、单一计价货币 {@link #SILVER}、一张**非空**价表。
+   *
+   * <p>★ <b>为什么价表非空</b>：{@code Map.of()} 与"这个字段压根没进变更集"在值层面不可区分（同 {@code outputPerUnit} 那条理由）——
+   * 空价表会让"把 markets 分量写成恒 Unchanged"这种坏实现**假绿**。
+   *
+   * <p>★ <b>为什么不逐格建不同的价</b>：本用例量的是"变更集看得见市场表"，不是价格业务；逐格差异留给价格那一轮。
+   */
+  static Market market() {
+    return new Market(SILVER, Map.of(GRAIN, 3L, CLOTH, 5L));
   }
 
   /**

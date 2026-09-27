@@ -466,13 +466,15 @@ class EconomyCodecTest {
         flows,
         laborSupply,
         allocations,
-        relations);
+        relations,
+        Map.of());
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {
     return new EconomyData(
         Optional.of(meta()),
         industries,
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),

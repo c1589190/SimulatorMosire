@@ -13,15 +13,15 @@ import java.util.List;
  * <p>★★ <b>规范字面量 = {@link #value()} 的小写形式</b>（与 {@code ResidenceKind} 同制：规范串那一段用 {@code value()}， 而
  * {@code parse} 只认它、<b>不做归一</b>）—— 归一是"猜"，写错一个档必须<b>当场炸</b>并看得见全部合法值。
  *
- * <p>★★ <b>本批真正被写出来的只有三档</b>（三条搬运路径，见计划 H2.2）： {@link #RELATION_PAYMENT}（关系实付）· {@link
- * #INPUT_REQUISITION}（同格取料）· {@link #LOAN_PRINCIPAL}（同格借粮）。 其余三档是<b>留位</b>（如实记，不假装已经用上）：
+ * <p>★★ <b>本批（H4）真正被写出来的有五档</b>： {@link #RELATION_PAYMENT}（关系实付：实物与<b>货币</b>两族）· {@link
+ * #INPUT_REQUISITION}（投入征调）· {@link #LOAN_PRINCIPAL}（同格借粮）· {@link #MARKET_TRADE}（同格市场成交： 一笔买卖 =
+ * <b>一对</b>转移，货一条、钱一条 —— 见 {@code Transfer} 的货币腿口径）。 其余两档是<b>留位</b>（如实记，不假装已经用上）：
  *
  * <ul>
  *   <li>{@link #PRODUCTION_OUTPUT} —— "净产入 operator"。★ 今天它<b>不是一条转移</b>：产出是<b>造出来</b>的， 没有对端（{@code
  *       Transfer} 的两端恒为 actor、且不许相等）⇒ 净产仍走 {@code ProductionLedger} 的产出计提读数。
  *       这一档留给"产出的对端是一个与经营者不同的主体"（如独立的生产单位 actor）那种形态；
- *   <li>{@link #LOAN_REPAYMENT} —— 偿还（H5；今天 {@code FlowRow.repaid} 恒 0）；
- *   <li>{@link #MARKET_TRADE} —— 市场成交（H4；今天没有市场）。
+ *   <li>{@link #LOAN_REPAYMENT} —— 偿还（H5；今天 {@code FlowRow.repaid} 恒 0）。
  * </ul>
  */
 public enum TransferReason {
@@ -41,7 +41,7 @@ public enum TransferReason {
   /** 偿还本金（H5；本批只留档）。 */
   LOAN_REPAYMENT("loan_repayment"),
 
-  /** 市场成交（H4；本批只留档）。 */
+  /** 同格市场成交（H4：买方付钱、卖方交货 —— 一笔买卖铸<b>一对</b>转移，见 {@code Transfer} 的货币腿口径）。 */
   MARKET_TRADE("market_trade");
 
   private final String value;

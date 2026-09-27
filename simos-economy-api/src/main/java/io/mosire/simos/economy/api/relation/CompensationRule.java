@@ -17,7 +17,8 @@ import java.util.Optional;
  * <p>★★ <b>两个"空"各是一个事实，不是一个缺省</b>（裁定 I5.3 + H2 的币种位）：
  *
  * <ul>
- *   <li>{@code commodity}：<b>空 = 货币规则</b>（只定义、不结算，结算时进「待 S2/S4」的清单）；<b>非空 = 实物规则</b>；
+ *   <li>{@code commodity}：<b>空 = 货币规则</b>（H4 起**真的结算**：按"付方本期可用货币"付款，付不出的部分只进读数、 **不落债权** —— 见
+ *       {@code ProductionSettlement.settleMoneyRule}）；<b>非空 = 实物规则</b>；
  *   <li>{@code currency}：<b>空 = 实物规则</b>；<b>非空 = 货币规则</b>（钱的<b>种类</b>必须说清 —— "1000 毫钱"没有意义，"1000
  *       毫<b>银</b>"才是）。
  * </ul>
@@ -46,7 +47,7 @@ import java.util.Optional;
  * 把还没定的设计写进类型。★ 故两个数值字段<b>在一条规则里同时存在</b>（分成档的 {@code fixedAmount} 就是 0，反之亦然），这不是冗余，是「一条规则两个旋钮、由
  * type 决定读哪个」。
  *
- * @param type 规则类型（六档词表；{@code money()} 决定这一条结不结算）
+ * @param type 规则类型（六档词表；{@code money()} 决定这一条走货币那一支还是实物那一支）
  * @param recipient 受方（actor 或 cohort，**恰其一**）
  * @param pool 数量取自哪一层池（四档词表）
  * @param weight 池在受方之间怎么分（三档词表；固定额档恒 {@link Weight#NONE}）
@@ -100,7 +101,7 @@ public record CompensationRule(
     }
     if (type.money() && commodity.isPresent()) {
       throw new IllegalArgumentException(
-          "货币规则不得带商品（" + type + "）：commodity=" + commodity.get() + " —— 货币档只定义字段、不结算（I5.3）");
+          "货币规则不得带商品（" + type + "）：commodity=" + commodity.get() + " —— 货币档只带币种、不带商品（H4 起真的结算）");
     }
     if (!type.money() && commodity.isEmpty()) {
       throw new IllegalArgumentException(

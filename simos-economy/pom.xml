@@ -16,7 +16,9 @@
   <!-- ★ 新经济设计 §2：economy 切片独占产业表 / 阶层行 / 债务表 / 周期流水 / 分配函数。
        依赖面 = actor-api（AssetKind——S1 阶段 2 上移的产权基础词表）+ util（FieldDelta/Snapshot/地址与解析机制）
        + economy-api（IndustryId/ClassSlotId/RegimeId/DebtId/CommodityId——共用稳定 ID）+ Jackson。
-       **不依赖 map**：经济树里没有任何地图类型（本切片不认识 hex）。 -->
+       ★★ H4 起**也依赖 map**：市场表按**格**索引（EconomyData.markets 的键 = HexCoord，裁定 M1-A），
+       而"依赖传递不是契约"（AGENT.md §〇）⇒ 显式声明，不再靠 economy-api 的传递依赖拿 HexCoord。
+       ★ 这不是新开的口子：economy-api 本来就依赖 map（LotChange.hex），本切片此前已在用它的传递类型。 -->
   <dependencies>
     <!-- ★ S1 阶段 2（裁定 R7 的 A 段）：AssetKind 上移后原先靠 economy-api 传递拿到，现按本模块的
          "依赖传递不是契约"口径**显式**声明。 -->
@@ -28,6 +30,10 @@
     </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <!-- ★★ H4：市场表键 = HexCoord（见上面的依赖面注释）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>

@@ -16,6 +16,8 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.map.hex.HexCoord;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -24,7 +26,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 经济切片的完整状态树（新经济设计 §3 逐字）：激活元信息 + 产业表 + 阶层行 + 债务表 + 周期流水 + **劳动供给表 + 劳动分配表**（R2）。
+ * 经济切片的完整状态树（新经济设计 §3 逐字）：激活元信息 + 产业表 + 阶层行 + 债务表 + 周期流水 + **劳动供给表 + 劳动分配表**（R2） + 生产关系表（T2）+
+ * **市场表**（H4）。
  *
  * <p>★★ **{@code meta} 为空 {@code Optional} = 经济未激活**（§3.3 + §6.6）：未激活时日制世界仍可沿用简化人口查询（人口查询走 {@code
  * social}），但**日推进仍要求切片在场**。空快照 ≠ 已激活。
@@ -32,7 +35,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **八个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的八个组件一一对应**（铁律 5）：
+ * <p>★ **九个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的九个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -61,11 +64,11 @@ import java.util.Set;
  *       那等于把"不能凭空重复"这条判据本身留成后门。
  * </ol>
  *
- * <p>★★ **缺键 = 空**（§11 的旧档兼容口径，照 {@code LedgerData} 的先例）：八个组件在本切片**都是新引入的**， 故 Jackson 绑成 null
+ * <p>★★ **缺键 = 空**（§11 的旧档兼容口径，照 {@code LedgerData} 的先例）：九个组件在本切片**都是新引入的**， 故 Jackson 绑成 null
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
- * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/未激活。
+ * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **八张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **九张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -83,6 +86,17 @@ import java.util.Set;
  * + 阶层），{@code flows} 同键。⇒ "这个产业有哪些行"不再由键的产业段回答，而由**劳动配额表**推（{@code
  * EconomySettlement.householdKeysOf}，唯一拼写点）—— 一个家户给两个产业出劳动时，它<b>只有一行</b>（V9/I1.2）。
  *
+ * <p>★★ **{@code markets} 是第 9 个组件**（H4；裁定 M1-A）：键 = {@link HexCoord}（**格**），值 = {@link Market}
+ * （每格**单一计价货币** + 一张商品价格表）。★ 三条口径：
+ *
+ * <ol>
+ *   <li><b>缺格 = 该格没有市场</b>（合法状态，不抛）：结算对它什么都不做 —— 不造默认价、不猜一种货币；
+ *   <li><b>键是格而不是市场 id</b>：本批的市场就是"某格的现货池"（同格供需直接撮合，见 {@code MarketSettlement}）， 多一个 {@code
+ *       MarketId} 只会多一处可以漂开的身份（{@code MarketId} 那个契约留给"跨格市场节点"的后续增量）；
+ *   <li>★ <b>它不含任何数量</b>：价格是数据、供需是每周期现算的（{@code MarketSettlement} 从家户账的会话工作副本读） ——
+ *       市场表里没有"本期成交量"这类会过期的读数（读数在当天的 {@code ProductionLedger} 里）。
+ * </ol>
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -95,12 +109,21 @@ public record EconomyData(
     Map<CohortKey, FlowRow> flows,
     Map<PeopleLotId, LaborSupply> laborSupply,
     Map<LaborAllocationId, LaborAllocation> allocations,
-    Map<IndustryId, ProductionRelation> relations) {
+    Map<IndustryId, ProductionRelation> relations,
+    Map<HexCoord, Market> markets) {
 
-  /** 往返用例的起点：未激活 + 八张空表。 */
+  /** 往返用例的起点：未激活 + 九张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
-        Optional.empty(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        Optional.empty(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 
   public EconomyData {
@@ -131,6 +154,10 @@ public record EconomyData(
     //   ★ 空表 = **全归 residualOwner 的等价路径**（裁定 E9）：没有规则不是坏数据，是"全部自留"。
     if (relations == null) {
       relations = Map.of();
+    }
+    // ★ 第 9 个组件（H4）：同一口径（缺键 ⇒ 空表 = 世界上一个市场都没有，见类注释）。
+    if (markets == null) {
+      markets = Map.of();
     }
     Map<IndustryId, Industry> industriesCopy = new LinkedHashMap<>();
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
@@ -341,6 +368,18 @@ public record EconomyData(
                 + industry.operator());
       }
     }
+    // ── 第 9 个组件：市场表（H4；每格一个现货市场）──────────────────────────────────────
+    //   ★ 键 = 格（{@link HexCoord}）；**缺格 = 该格没有市场**（合法状态 —— 结算对它什么都不做，见 Market 的类注）。
+    //   ★ 只判 null 与结构：**价格是数据**（GM 可调），这里没有"价格该是多少""哪些商品该有价"的判据 ——
+    //     那些是 GM 的判断（信条十二），不是状态类型的守卫。
+    Map<HexCoord, Market> marketsCopy = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, Market> entry : markets.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("markets 的键与值都不得为 null: " + entry.getKey());
+      }
+      marketsCopy.put(entry.getKey(), entry.getValue());
+    }
+    markets = Collections.unmodifiableMap(marketsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -397,45 +436,59 @@ public record EconomyData(
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withMeta(Optional<EconomyMeta> value) {
     return new EconomyData(
-        value, industries, classes, debts, flows, laborSupply, allocations, relations);
+        value, industries, classes, debts, flows, laborSupply, allocations, relations, markets);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withIndustries(Map<IndustryId, Industry> value) {
-    return new EconomyData(meta, value, classes, debts, flows, laborSupply, allocations, relations);
+    return new EconomyData(
+        meta, value, classes, debts, flows, laborSupply, allocations, relations, markets);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withClasses(Map<CohortKey, ClassRow> value) {
     return new EconomyData(
-        meta, industries, value, debts, flows, laborSupply, allocations, relations);
+        meta, industries, value, debts, flows, laborSupply, allocations, relations, markets);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withDebts(Map<DebtId, Debt> value) {
     return new EconomyData(
-        meta, industries, classes, value, flows, laborSupply, allocations, relations);
+        meta, industries, classes, value, flows, laborSupply, allocations, relations, markets);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withFlows(Map<CohortKey, FlowRow> value) {
     return new EconomyData(
-        meta, industries, classes, debts, value, laborSupply, allocations, relations);
+        meta, industries, classes, debts, value, laborSupply, allocations, relations, markets);
   }
 
-  /** 一个组件一个 with（R2：劳动供给表）；其余七个组件原样带过。 */
+  /** 一个组件一个 with（R2：劳动供给表）；其余八个组件原样带过。 */
   public EconomyData withLaborSupply(Map<PeopleLotId, LaborSupply> value) {
-    return new EconomyData(meta, industries, classes, debts, flows, value, allocations, relations);
+    return new EconomyData(
+        meta, industries, classes, debts, flows, value, allocations, relations, markets);
   }
 
-  /** 一个组件一个 with（R2：劳动分配表）；其余七个组件原样带过。 */
+  /** 一个组件一个 with（R2：劳动分配表）；其余八个组件原样带过。 */
   public EconomyData withAllocations(Map<LaborAllocationId, LaborAllocation> value) {
-    return new EconomyData(meta, industries, classes, debts, flows, laborSupply, value, relations);
+    return new EconomyData(
+        meta, industries, classes, debts, flows, laborSupply, value, relations, markets);
   }
 
-  /** 一个组件一个 with（T2：生产关系表）；其余七个组件原样带过。 */
+  /** 一个组件一个 with（T2：生产关系表）；其余八个组件原样带过。 */
   public EconomyData withRelations(Map<IndustryId, ProductionRelation> value) {
     return new EconomyData(
-        meta, industries, classes, debts, flows, laborSupply, allocations, value);
+        meta, industries, classes, debts, flows, laborSupply, allocations, value, markets);
+  }
+
+  /**
+   * 一个组件一个 with（H4：市场表）；其余八个组件原样带过。
+   *
+   * <p>★ <b>它是"GM 定价格"的唯一写入口</b>（铁律 2：所有修改最终表示为 Command → ChangeSet → Revision）——
+   * 本批还没有"设价"命令，故它现在只被载荷（创世播种）与用例用到；命令留待 GM 参数目录落地。
+   */
+  public EconomyData withMarkets(Map<HexCoord, Market> value) {
+    return new EconomyData(
+        meta, industries, classes, debts, flows, laborSupply, allocations, relations, value);
   }
 }

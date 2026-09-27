@@ -482,7 +482,10 @@ class EconomySettlementTest {
             //   本夹具两行里**只有贫农有人口**（地主 10 人 … 见 {@link #row}）——
             //   ★ 如实记：本夹具的地主**有人口**（10 人），故它**也是** cohort 受方；但那条规则只付给贫农 cohort
             //     （受方在规则里写死）⇒ 地主这一档拿不到产出。旧口径（{@code Split(700,300)}）给它的 1,426 因此归零。
-            EconomyFixtures.laborShareToPeasant(industries)),
+            EconomyFixtures.laborShareToPeasant(industries),
+            // ★ H4：第 9 个组件 = 市场表（键 = 格）。本夹具量的是"一个周期的粮食账"（产出 / 分配 / 日耗），
+            //   与货币无关 ⇒ 给空表 = **这一格没有市场**（合法状态：结算对没有市场的格什么都不做）。
+            Map.of()),
         goods);
   }
 
@@ -549,6 +552,7 @@ class EconomySettlementTest {
             Map.of(LOT, supply(LOT, 58_000L)),
             Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
             // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -642,6 +646,7 @@ class EconomySettlementTest {
             Map.of(LOT, supply(LOT, 58_000L)),
             Map.of(ALLOCATION, allocation(ALLOCATION, LOT, FARM, 58_000L)),
             // ★ T2：生产关系表（本文件只谈日结算 ⇒ 空表 = 全归 residualOwner 的等价路径）
+            Map.of(),
             Map.of()),
         goods);
   }

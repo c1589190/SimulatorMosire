@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -14,6 +15,7 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.money.MoneyIssuance;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -501,7 +503,37 @@ public final class EconomySettlement {
       boolean plantingDrawsFirst,
       int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger) {
+    // ★★ **单模块入口：世界没有货币**（H4）—— 货币副本 = 每个家户一本**空账**。★ 这不是"忘了给钱"：
+    //   它是"这个世界的货币总量是 0"这个合法状态（没有货币 ⇒ 没有有效需求、没有货币工资，见 MarketSettlement）。
+    //   ★ app 协调器**不许**走这一支（它必须把 actor 侧的货币余额载进来）—— 故本重载是**包内可见**的。
+    return settleOneDay(
+        base,
+        day,
+        flows,
+        householdGoods,
+        emptyMoneyAccountsFor(base.classes().keySet()),
+        plantingDrawsFirst,
+        famineMortalityPerMille,
+        ledger);
+  }
+
+  /**
+   * ★★ <b>结算一天（H4 的完整入口）</b>：在商品账的会话工作副本之后，再接管**货币账的会话工作副本**（裁定 K14）。
+   *
+   * @param householdMoney 家户货币账工作副本：键 = 家户身份、值 = 逐币种余额（**缺失键 = 该币种 0**， 但**外层键必须覆盖每一个 {@code
+   *     population > 0} 的家户** —— 见 {@link #requireHouseholdMoney}）；**就地更新**
+   */
+  static EconomyData settleOneDay(
+      EconomyData base,
+      long day,
+      LinkedHashMap<CohortKey, FlowRow> flows,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille,
+      ProductionLedger.Accumulator ledger) {
     Objects.requireNonNull(householdGoods, "householdGoods（H1：家户账是会话状态，必须由调用方载入）");
+    Objects.requireNonNull(householdMoney, "householdMoney（H4：货币账是会话状态，必须由调用方载入）");
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -520,6 +552,10 @@ public final class EconomySettlement {
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
     //   ⇒ 它当天"吃 0、投入 0"，账面看不出少了谁。那正是本仓最反对的形态，故当场抛。
     requireHouseholdAccounts(rows, householdGoods);
+    // ★★ **H4 的第一条守卫：货币账必须覆盖每一个"可能要花钱的家户"**（与商品那条同款、同一条理由）：
+    //   缺键时若继续跑，那一家的可花余额会被当成 0 —— 它当天的有效需求因此是 0、市场买不到粮、
+    //   而账面（缺口只多不少）看起来完全正常。⇒ 缺键 ⇒ 当场抛（"没有账"与"账是空的"是两件事）。
+    requireHouseholdMoney(rows, householdMoney);
 
     // 逐行当日发生额（流水的事后组装）。★ R3 起两张实物表都是**逐商品**的（{@link FlowRow#income()} 由标量改成 Map）。
     LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
@@ -556,23 +592,29 @@ public final class EconomySettlement {
           allocations,
           base.relations(),
           householdGoods,
+          householdMoney,
           consumedGoods,
           householdOfActor,
           ledger);
     }
 
     // ── 1~2. 消费 + 同格缺口（借粮 / 记未满足需求）────────────────────────────────────
+    //   ★ H4：每条家户行的 cycleDays 提成局部量 —— 它同时喂"放贷余粮"（settleHexes）与"市场自留"（MarketSettlement），
+    //     两处各算一遍就是同一个量的第二处拼写点（算错不会报错，只会让两处口径悄悄漂开）。
+    Map<CohortKey, Long> cycleDaysByHousehold =
+        cycleDaysByHousehold(rows, industries, industriesOfHousehold);
     settleHexes(
         rows,
         debts,
         householdGoods,
+        householdMoney,
         consumedGoods,
         borrowing,
         unmetToday,
         day,
         currentCycle,
         dueCycle,
-        cycleDaysByHousehold(rows, industries, industriesOfHousehold),
+        cycleDaysByHousehold,
         householdOfActor,
         ledger);
 
@@ -583,6 +625,7 @@ public final class EconomySettlement {
           allocations,
           base.relations(),
           householdGoods,
+          householdMoney,
           consumedGoods,
           householdOfActor,
           ledger);
@@ -651,6 +694,7 @@ public final class EconomySettlement {
             cycledLabor,
             income,
             householdGoods,
+            householdMoney,
             base.relations(),
             householdOfActor,
             ledger);
@@ -696,6 +740,21 @@ public final class EconomySettlement {
     //     "今天有产业关账"这个**日级**事实上，不在那个逐产业的 for 里（否则同格的 farm + craft 会各计一遍）。
     if (anyCycleClosed) {
       chargeInterest(debts, interestToday);
+      // ── 6. 同格市场清算（H4；每周期一次，在收获与分配之后）────────────────────────────────
+      //   ★★ 为什么挂在"今天有产业关账"这个**日级**事实上（与计息同款）：周期的定义住在产业上（cycleDays），
+      //     而市场是"这一格这个周期的一次集市" ⇒ 一天之内几个产业同时关账也只开一次市。
+      //   ★ 它读 base.markets()（价格是数据）：缺格的格没有市场 ⇒ 这一支整块跳过（不造默认价）。
+      //   ★★ 买卖**只走唯一的 applier**（applyTransferToHouseholds）：本步绝不直接改副本 ——
+      //     "任何库存变动必有对应转移记录"这条不变量的落点因此仍是一处（见 MarketSettlement 的类注）。
+      MarketSettlement.clearOncePerCycle(
+          base.markets(),
+          rows,
+          householdGoods,
+          householdMoney,
+          unmetToday,
+          cycleDaysByHousehold,
+          householdOfActor,
+          ledger);
     }
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
@@ -760,7 +819,9 @@ public final class EconomySettlement {
         flows,
         laborSupply,
         allocations,
-        base.relations());
+        base.relations(),
+        // ★ H4：市场表**原样带过**（价格是数据、不是结算产物 —— 结算只读它，见 MarketSettlement）。
+        base.markets());
   }
 
   // ── 人口变动回写（R4：社会侧的出生/死亡 → 经济侧的行人口、劳动配额与流水）──────────────────
@@ -870,7 +931,8 @@ public final class EconomySettlement {
         flows,
         laborSupply,
         allocations,
-        base.relations()); // ★ T2：生产关系表原样带过（人口变动不动关系）
+        base.relations(), // ★ T2：生产关系表原样带过（人口变动不动关系）
+        base.markets()); // ★ H4：市场表同理（人口变动不动价格）
   }
 
   /**
@@ -1140,6 +1202,7 @@ public final class EconomySettlement {
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       Map<IndustryId, ProductionRelation> relations,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
@@ -1201,6 +1264,7 @@ public final class EconomySettlement {
               commodity,
               drawn,
               householdGoods,
+              householdMoney,
               consumedGoods,
               householdOfActor,
               ledger);
@@ -1227,6 +1291,7 @@ public final class EconomySettlement {
                 commodity,
                 drawn,
                 householdGoods,
+                householdMoney,
                 consumedGoods,
                 householdOfActor,
                 ledger);
@@ -1396,6 +1461,7 @@ public final class EconomySettlement {
       CommodityId commodity,
       long drawn,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
@@ -1412,7 +1478,7 @@ public final class EconomySettlement {
               supplierKey.hex(),
               Map.of(commodity, drawn),
               TransferReason.INPUT_REQUISITION);
-      applyTransferToHouseholds(householdGoods, householdOfActor, requisition);
+      applyTransferToHouseholds(householdGoods, householdMoney, householdOfActor, requisition);
       consumeFromHousehold(householdGoods, consumedGoods, operatorKey, commodity, drawn);
       return;
     }
@@ -1618,6 +1684,7 @@ public final class EconomySettlement {
       LinkedHashMap<CohortKey, ClassRow> rows,
       LinkedHashMap<DebtId, Debt> debts,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> consumedGoods,
       LinkedHashMap<CohortKey, Long> borrowing,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetNeed,
@@ -1708,7 +1775,7 @@ public final class EconomySettlement {
                   debtor.hex(),
                   Map.of(GRAIN, lent),
                   TransferReason.LOAN_PRINCIPAL);
-          applyTransferToHouseholds(householdGoods, householdOfActor, loan);
+          applyTransferToHouseholds(householdGoods, householdMoney, householdOfActor, loan);
           // ★★ **借到的粮当日即被吃掉**：紧接在转移之后从借方副本扣掉同一笔（⇒ 借方余额净 0，
           //   与改前逐值相同：改前根本不写借方库存，只记 consumed 与债务）。⇒ 两条痕都在：转移（粮从谁来）
           //   与消费（粮到哪去）。
@@ -1876,6 +1943,7 @@ public final class EconomySettlement {
       long cycledLabor,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> income,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       Map<IndustryId, ProductionRelation> relations,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
@@ -1930,14 +1998,19 @@ public final class EconomySettlement {
                 netByCommodity,
                 industry.cycleInputUsedMilli(),
                 laborOfCohort(rows, location, industry.cycleDays()),
-                industry.outputPerUnit()),
+                industry.outputPerUnit(),
+                // ★★ H4：货币档的付款上限 = **付方（operator）在本格可见的货币余额**（逐币种）。
+                //   economy 只认会话货币副本里的**家户账**（键 = CohortKey）⇒ 只有"operator 恰好是一个家户 actor"
+                //   时读得到；聚合主体（ESTATE / WORKSHOP / 产业型 HOUSEHOLD 的 id 形如 `farm@0_0`）的账住在
+                //   actor 切片上，本切片看不见 ⇒ **可用 0**（实付 0、欠额进读数 —— 那是如实报，不是静默付 0）。
+                availableMoneyOf(householdMoney, householdOfActor, industry.operator())),
             ledger);
     // ★★ **H2：实付一律是转移**（每条 from=operator、to=受方）—— 铸的时候已经进了当天的账，这里只需
     //   ① 把两端落到会话副本上（唯一 applier）② 把"收方是家户"的那一笔记进流水（实物入账读数）。
     //   ★ app 落盘时按副本的**绝对值**写回，不许把这条 +paid 再叠加一次（叠加 = 同一笔粮记两遍；
     //     见 EconomyDayStepper#step 的类注）。
     for (Transfer transfer : outcome.transfers()) {
-      applyTransferToHouseholds(householdGoods, householdOfActor, transfer);
+      applyTransferToHouseholds(householdGoods, householdMoney, householdOfActor, transfer);
       CohortKey cohort = householdOfActor.get(transfer.to());
       if (cohort != null) {
         for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
@@ -1968,10 +2041,12 @@ public final class EconomySettlement {
    * ledger.transfers()} 落账。★ 本类**只**写自己那份会话副本。
    *
    * <p>★ <b>减到负数 ⇒ 当场抛</b>（fail-closed，不静默）：转移是"把已有的东西换手"，扣不动说明上游算错了 （"凭空造"与"凭空吞"都属本仓明文反对的形态）。★
-   * 货币腿本批恒空 ⇒ 这里只走商品腿；H4 真的有钱时， 货币的会话副本要在**同一处**加（只有一个落点，不会漏）。
+   * <b>货币腿也走这里</b>（H4）：扣成负数时唯一的合法解释是"付方在发行" ⇒ 去问 {@link
+   * MoneyIssuance#requireIssuerOf(CurrencyId)}，而本批**没有任何发行人** ⇒ 恒抛。 ⇒ 逐币种守恒的守卫与商品守恒的守卫**落在同一处**。
    */
-  private static void applyTransferToHouseholds(
+  static void applyTransferToHouseholds(
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, CohortKey> householdOfActor,
       Transfer transfer) {
     CohortKey from = householdOfActor.get(transfer.from());
@@ -1993,11 +2068,37 @@ public final class EconomySettlement {
         }
         setStock(householdGoods, from, leg.getKey(), stock - leg.getValue());
       }
+      // ★★ H4：货币腿（同一套方向：from 付出、to 收到）。**付款不足 ⇒ 走发行闸门**：
+      //   唯一能"钱不够还照付"的主体是发行源，而本批没有任何发行人 ⇒ MoneyIssuance 恒抛。
+      //   ⇒ "除发行源外任何账户的货币余额不得为负"这条守卫落在这里（全模块唯一写货币副本的地方）。
+      for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+        long balance = moneyOf(householdMoney, from, leg.getKey());
+        if (balance < leg.getValue()) {
+          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey()); // ★ 本批恒抛（fail-closed）
+          throw new IllegalStateException(
+              "转移把家户的货币扣成了负数，而付方不是发行源（透支 = 发行）：家户="
+                  + from
+                  + " 币种="
+                  + leg.getKey()
+                  + " 余额="
+                  + balance
+                  + " 扣减="
+                  + leg.getValue()
+                  + " 发行源="
+                  + issuer
+                  + "；转移="
+                  + transfer);
+        }
+        setMoney(householdMoney, from, leg.getKey(), balance - leg.getValue());
+      }
     }
     CohortKey to = householdOfActor.get(transfer.to());
     if (to != null) {
       for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
         addStock(householdGoods, to, leg.getKey(), leg.getValue());
+      }
+      for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+        addMoney(householdMoney, to, leg.getKey(), leg.getValue());
       }
     }
   }
@@ -2360,8 +2461,13 @@ public final class EconomySettlement {
     return byActor;
   }
 
-  /** 按格（{@link IndustryHexKeys} 的 {@code <q>_<r>}）分组，格的顺序与行序都显式排序（可复现）。 */
-  private static Map<String, List<CohortKey>> rowsByHex(Iterable<CohortKey> keys) {
+  /**
+   * 按格（{@link IndustryHexKeys} 的 {@code <q>_<r>}）分组，格的顺序与行序都显式排序（可复现）。
+   *
+   * <p>★ H4：可见性从 {@code private} 放宽到**包内** —— {@code MarketSettlement} 要问同一个问题（"这一格有哪些家户"），
+   * 而它**只能有一个答案**（两处各写一份分组 = 同一个量的第二处拼写点）。
+   */
+  static Map<String, List<CohortKey>> rowsByHex(Iterable<CohortKey> keys) {
     Map<String, List<CohortKey>> byHex = new LinkedHashMap<>();
     for (CohortKey key : keys) {
       // ★ H0：格键不再从产业 id 里拆（行里没有产业了）—— 它就是键的那一维（{@link IndustryHexKeys#hexKey} 是拼写点）。
@@ -2434,6 +2540,113 @@ public final class EconomySettlement {
       return;
     }
     setStock(householdGoods, key, commodity, stockOf(householdGoods, key, commodity) + delta);
+  }
+
+  // ── 家户**货币**账（会话工作副本）的读写助手（H4）────────────────────────────────────
+  //
+  // ★★ 形制与上面那三个**逐字同款**（K14：货币副本与商品副本同形、同生命周期、同样不进 EconomyData）：
+  //   · 外层键缺失 = 该家户没有账 ⇒ **fail-closed**（requireHouseholdMoney 判死，同 requireHouseholdAccounts）；
+  //   · 内层缺失币种 = 该币种余额 0；
+  //   · 写 ≤ 0 ⇒ **去掉该币种键**（保持"空钱包"的纯形态）；
+  //   · 内层表**只读**：换值一律 put 一张新表。
+
+  /** 某家户在某币种上的余额（没有这个键 ⇒ 0）。 */
+  private static long moneyOf(
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney, CohortKey key, CurrencyId currency) {
+    return householdMoney.getOrDefault(key, Map.of()).getOrDefault(currency, 0L);
+  }
+
+  /** 把某家户在某币种上的余额**换成** {@code amount}（{@code ≤ 0} ⇒ 去掉该币种键）。 */
+  private static void setMoney(
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      CohortKey key,
+      CurrencyId currency,
+      long amount) {
+    Map<CurrencyId, Long> wallet = new LinkedHashMap<>(householdMoney.getOrDefault(key, Map.of()));
+    if (amount <= 0L) {
+      wallet.remove(currency);
+    } else {
+      wallet.put(currency, amount);
+    }
+    householdMoney.put(key, wallet);
+  }
+
+  /** 在某家户的钱包上**加一笔**（{@code delta} 可为负；走 {@link #setMoney} 的同一口径 ⇒ 归零即去键）。 */
+  private static void addMoney(
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      CohortKey key,
+      CurrencyId currency,
+      long delta) {
+    if (delta == 0L) {
+      return;
+    }
+    setMoney(householdMoney, key, currency, moneyOf(householdMoney, key, currency) + delta);
+  }
+
+  /**
+   * ★ <b>"这个世界没有货币"的会话副本</b>（每个家户一本空钱包）—— 只服务**包内**的单模块入口 （{@link #settleOneDay} 的短重载与 {@code
+   * EconomyDayStepper} 的短构造器）。
+   *
+   * <p>★ 它<b>不是</b>"余额为 0 的默认值"：它说的是"世界的货币总量是 0"这个**合法状态** —— 没有货币 ⇒ 没有有效需求（市场买不动）、没有货币工资（可用 0）。★
+   * <b>app 协调器不许走它</b>： 真档的货币（创世禀赋）住在 actor 侧，必须由协调器载入（否则钱会在账上静默消失）。
+   */
+  static LinkedHashMap<CohortKey, Map<CurrencyId, Long>> emptyMoneyAccountsFor(
+      Iterable<CohortKey> keys) {
+    LinkedHashMap<CohortKey, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
+    for (CohortKey key : keys) {
+      money.put(key, Map.of());
+    }
+    return money;
+  }
+
+  /**
+   * ★★ <b>付方（operator）在本格可见的货币</b>（H4；货币档"本期可用"的来源）：
+   *
+   * <pre>
+   * operator 是一个**家户 actor**（HouseholdActors.of(cohort) 命中）⇒ 该家户的钱包（逐币种）
+   * 其余（庄园 / 作坊 / 产业型家户的 id 形如 `farm@0_0`）              ⇒ **空表 = 每个币种可用 0**
+   * </pre>
+   *
+   * <p>★ <b>为什么"看不见 ⇒ 0"而不是"不封顶"</b>：不封顶等于让 economy 承诺一笔它无权承诺的钱（钱住在 actor 切片上），
+   * 而落账时会当场炸在**别人**的代码里；封顶 0 是如实报（读数里 {@code dueAmount > 0 && paidNow == 0} 看得见欠了多少）。 ★
+   * 把聚合主体的货币账接进来是后续批次的事（会话副本的键要能装下非家户主体）。
+   */
+  static Map<CurrencyId, Long> availableMoneyOf(
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, CohortKey> householdOfActor,
+      ActorRef operator) {
+    CohortKey cohort = householdOfActor.get(operator);
+    return cohort == null ? Map.of() : householdMoney.getOrDefault(cohort, Map.of());
+  }
+
+  /**
+   * ★★ <b>H4 的第一条守卫：货币账必须覆盖每一个"有人口"的家户</b>（与 {@link #requireHouseholdAccounts} 逐字同款的口径与理由）。
+   *
+   * <p>★★ <b>为什么必须抛而不是"当成 0"</b>：没有账的一家人可花余额被读成 0 ⇒ 它的有效需求是 0 ⇒ 市场买不到粮、
+   * 货币工资也付不出去，而账面（缺口、读数）看起来完全正常。★ 0 人口的家户**可以缺席**（它们不消费、不出工）。
+   */
+  private static void requireHouseholdMoney(
+      Map<CohortKey, ClassRow> rows, Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
+    List<String> missing = new ArrayList<>();
+    for (Map.Entry<CohortKey, ClassRow> entry : rows.entrySet()) {
+      if (entry.getValue().population() <= 0L) {
+        continue; // 0 人口：不消费、不出工 ⇒ 允许没有钱包
+      }
+      if (!householdMoney.containsKey(entry.getKey())) {
+        missing.add(entry.getKey() + "（人口 " + entry.getValue().population() + "）");
+      }
+    }
+    if (missing.isEmpty()) {
+      return;
+    }
+    throw new IllegalStateException(
+        "家户**货币**账缺失（H4 fail-closed，裁定 K14）：有 "
+            + missing.size()
+            + " 个「有人口」的家户在会话货币副本里没有键 —— 不许把'没有账'静默当成'余额 0'"
+            + "（那会让这一家人的有效需求恒为 0：市场买不到粮、货币工资收不到，而账面上看不出少了谁）。"
+            + "app 协调器必须在推进前从 actor 侧载入货币账（创世禀赋在播种时给它）；"
+            + "单模块用例请用 EconomyDayStepper 的 householdMoney 参数显式给账。缺失的家户（最多列 8 个）："
+            + missing.subList(0, Math.min(8, missing.size())));
   }
 
   /**

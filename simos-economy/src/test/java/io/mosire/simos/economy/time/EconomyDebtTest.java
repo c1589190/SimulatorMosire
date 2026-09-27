@@ -483,6 +483,7 @@ class EconomyDebtTest {
             Map.of(),
             Map.of(),
             Map.of(),
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -507,6 +508,7 @@ class EconomyDebtTest {
             Map.of(),
             Map.of(),
             Map.of(),
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -526,6 +528,7 @@ class EconomyDebtTest {
             Optional.of(meta),
             industries,
             classes,
+            Map.of(),
             Map.of(),
             Map.of(),
             Map.of(),

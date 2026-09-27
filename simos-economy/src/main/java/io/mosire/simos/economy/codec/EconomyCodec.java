@@ -23,6 +23,7 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
@@ -35,13 +36,18 @@ import java.util.function.Function;
 /**
  * economy 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code LedgerCodec} 同制，理由不重复——只记 economy 自己的那点差异。
  *
- * <p>★ 树里的自定义键有六个：{@code IndustryId}（{@code industries} 的键）、{@code CohortKey}（{@code
+ * <p>★ 树里的自定义键有七个：{@code IndustryId}（{@code industries} 的键）、{@code CohortKey}（{@code
  * classes}/{@code flows} 的键，H0 起 = <b>家户身份</b>）、{@code DebtId}（{@code debts} 的键）与 {@code
  * CommodityId}（{@code Industry.outputPerUnit} / {@code ClassRow.naturalNeeds} / {@code
  * effectiveDemand} / {@code FlowRow.consumed} / {@code AllocationRule.WageFirst.ownerResidual}
  * 的键），以及 **R2 的两个**：{@code PeopleLotId} （{@code laborSupply} 的键）与 {@code LaborAllocationId}（{@code
  * allocations} 的键）。六者都住在 {@code simos-economy-api}（H0 起 {@code CohortKey} 也在那里；本模块 {@code model}
  * 里那个两段式的旧键已按裁定 K2 删除）， economy 依赖它故够得着（铁律 3 允许）。键反序列化器照裁定 16 在**本模块** 注册，不进共享基座。
+ *
+ * <p>★★ <b>第七个键是 H4 的市场表键 {@code HexCoord}</b>（{@code 0_0}）：它住在 {@code simos-map}，本模块此前从没把它当过**键**
+ * —— 漏注册的症状是"读档时 {@code markets} 的键解析不出来"（Jackson 会去调 {@code HexCoord} 的构造器或报 {@code no
+ * String-argument constructor}）。★ 而 {@code HexCoord.toString()} 与 {@code HexCoord.parse} 互逆，
+ * 故只需读侧（同上面六个）。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -94,6 +100,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
+    // ★★ H4：市场表的键 = **格**（{@code 0_0}）—— 本模块第一次把 HexCoord 当键用（见类注）。
+    module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
     // ★★ H2：补偿规则的**旧档兼容**（旧线格式是单个 `basis`，H2 拆成 `pool` + `weight`）——见下面那个反序列化器。
     module.addDeserializer(CompensationRule.class, new CompensationRuleDeserializer());
     return module;

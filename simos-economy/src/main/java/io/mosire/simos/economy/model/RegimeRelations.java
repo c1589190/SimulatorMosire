@@ -49,7 +49,8 @@ import java.util.Set;
  *   </tr>
  *   <tr>
  *     <td>{@link RegimeOperators#HANDICRAFT}</td>
- *     <td>实物工资（{@code OUTPUT_SHARE × LABOR_AMOUNT} 600‰，布）给四个阶层 cohort + <b>货币工资档</b>（只定义、不结算，I5.3）+ 自留</td>
+ *     <td>实物工资（{@code OUTPUT_SHARE × LABOR_AMOUNT} 600‰，布）给四个阶层 cohort + <b>货币工资档</b>（{@code FIXED_MONEY_WAGE}
+ *       —— ★ H4 起**真的结算**：付方可见货币为 0 时实付 0、欠额进读数）+ 自留</td>
  *   </tr>
  *   <tr>
  *     <td>{@link RegimeOperators#TENANT}</td>
@@ -181,8 +182,11 @@ public final class RegimeRelations {
   private static final int HANDICRAFT_LABOR_SHARE_PER_MILLE = 600;
 
   /**
-   * {@code handicraft} 的<b>货币工资</b>（毫钱 / 周期 / 受方）：★ <b>占位出厂值</b> —— S1 只定义、不结算（I5.3），
-   * 故它唯一的职责是"让这条规则<b>看得见</b>"（读口能读到一条待 S2 的货币规则；0 会与"没有这条规则"无法区分）。 真值随 S2 的货币口径定。
+   * {@code handicraft} 的<b>货币工资</b>（毫钱 / 周期 / 受方）：★ <b>占位出厂值</b>（1,000 毫银/周期/受方）。
+   *
+   * <p>★★ <b>H4 起它真的结算</b>（I5.3 的「只定义、不结算」结束）：结算按"付方**本期可用货币**"付款 —— 而真档作坊的 operator
+   * 是**聚合主体**（{@code WORKSHOP:craft@<格>}），它的钱住在 actor 切片上、economy 看不见 ⇒ 上限 0 ⇒ **实付 0、 欠额进 {@code
+   * RuleSettlement} 读数**（如实报，不是静默付 0）。★ 真值随"经营者自己持账"（H5）与货币口径定。
    */
   private static final long HANDICRAFT_MONEY_WAGE_MILLI = 1_000L;
 
@@ -413,7 +417,7 @@ public final class RegimeRelations {
         10);
   }
 
-  /** {@code handicraft}（雇佣作坊）：实物工资（布 600‰ × 劳动量）+ 货币工资（只定义、不结算，I5.3）。 */
+  /** {@code handicraft}（雇佣作坊）：实物工资（布 600‰ × 劳动量）+ 货币工资（H4 起真的结算；付方可见货币为 0 ⇒ 实付 0）。 */
   private static List<RuleSpec> handicraftRules() {
     List<RuleSpec> rules =
         new ArrayList<>(

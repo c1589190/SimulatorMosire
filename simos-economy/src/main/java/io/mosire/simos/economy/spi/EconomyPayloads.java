@@ -31,6 +31,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -69,7 +70,8 @@ import java.util.Set;
  *                    "servedLaborMilli":0,"committedLaborMilli":0}],
  *    "allocations":[{"id":"alloc-0-farm@0_0","group":"rural:0_0:MALE:1",
  *                    "actor":{"kind":"ESTATE","id":"farm@0_0"},"activity":"farm",
- *                    "laborMilli":261000,"period":1}]}]}
+ *                    "laborMilli":261000,"period":1}]}],
+ *  "markets":{"0_0":{"numeraire":"silver","prices":{"grain":1,"cloth":5}}}}
  * }</pre>
  *
  * <p>★★ <b>H0（2026-09-27，裁定 K2/K3 + R-N1-A）的三处形状变化 —— 三条都是"编译绿、运行红"的坑，逐条写清</b>：
@@ -107,6 +109,22 @@ import java.util.Set;
  *   <li>两个投入表的**值侧带上商品维度**：{@code "cycleInputPerUnit":{"LAND":8000}} ⇒ {@code
  *       "cycleInputPerUnit":{"LAND":{"grain":8000}}}（"消耗 IRON"这种话原来表达不了）； {@code
  *       "cycleSeedUsedMilli":0} ⇒ {@code "cycleInputUsedMilli":{}}（按商品的累加器）。
+ * </ul>
+ *
+ * <p>★★ <b>H4 的第五处形状变化：顶层的 {@code markets}（第 9 个组件的载荷键）</b> —— <b>可选键</b>，形状 {@code
+ * {"<q>_<r>":{"numeraire":"<币种>","prices":{"<商品>":<单价>}}, …}}：
+ *
+ * <ul>
+ *   <li>★ <b>为什么是顶层、键 = 格</b>：{@code EconomyData.markets} 就是 {@code Map<HexCoord, Market>} ⇒
+ *       载荷与状态**同形**（一份数据一处拼写）。★ 键走 {@link HexCoord#parse}（{@code "0_0"} 是格串的唯一拼写点， 调用方不自己拼）；★ 缺键 /
+ *       缺格 = 该格没有市场（合法状态：真档创世只给有经济 entry 的格发市场）；
+ *   <li>★★ <b>每一格市场必须在 {@code entries} 里出现</b>（fail-closed）：命令的作用域是 entry 的格集 （{@code
+ *       EconomySeedHandler.targetPaths} 报的就是它）—— 一个落在 entry 之外的格会在<b>权限/目标</b>面上
+ *       成为"没人申报的写"，故此处当场拒（不静默种下一个谁也管不到的格）；
+ *   <li>★ <b>{@code numeraire} 必填</b>（每格恰一种计价货币，裁定 M1-A）；{@code prices} 可缺（⇒ 空表 = 这一格什么 都还没定价）。★
+ *       单价**逐值 &gt; 0**、量纲 = <b>毫计价货币 / 商品单位</b>（1 商品单位 = 1000 毫单位）—— 两条守卫都在 {@link Market}
+ *       的构造期与类注里，本层只做形状（同"数值语义交给领域类型"的既有口径）；
+ *   <li>★ <b>本批没有"设价"命令</b>：价格只能由创世载荷给（GM 调价要等参数目录/命令落地，见 {@code EconomyData.withMarkets}）。
  * </ul>
  *
  * <p>★ **旧档兼容不在本轮范围**（spec §十.4 的裁定："旧档：重建也没关系"）：随包的 {@code worlds/v17levant.json} **不含 economy
@@ -223,6 +241,8 @@ final class EconomyPayloads {
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     // ★ T2 的第 8 个组件：与 industries **同键**（关系的身份 = 它结算的那个产业）⇒ 逐产业一条，见下面的循环。
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
+    // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
+    Map<HexCoord, Market> markets = markets(payload, entries);
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
@@ -277,7 +297,74 @@ final class EconomyPayloads {
         Map.of(),
         laborSupply,
         allocations,
-        relations);
+        relations,
+        markets);
+  }
+
+  /**
+   * ★★ <b>顶层 {@code markets}：格 → 市场</b>（H4；可选键，见类注的第五处形状变化）。
+   *
+   * <pre>
+   * "markets":{"0_0":{"numeraire":"silver","prices":{"grain":1,"cloth":5}}, "0_1":{…}}
+   * </pre>
+   *
+   * <p>★ <b>三条 fail-closed</b>：键不是合法格串 ⇒ 抛（{@link HexCoord#parse}）；值不是对象 ⇒ 抛； ★★ <b>市场所在的格必须在
+   * {@code entries} 里</b> ⇒ 否则抛（命令作用域是 entry 的格集，见类注）。
+   *
+   * @param payload 整份载荷（本方法自己读它的 {@code markets} 键）
+   * @param entries 已经校验过的 {@code entries} 数组（用来判"市场落在 entry 之外"）
+   */
+  private static Map<HexCoord, Market> markets(JsonNode payload, JsonNode entries) {
+    Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    JsonNode node = optionalObject(payload, "markets");
+    if (node == null) {
+      return markets; // 缺键 ⇒ 世界上一个市场都没有（合法状态）
+    }
+    Set<HexCoord> entryHexes = new LinkedHashSet<>();
+    for (JsonNode entry : entries) {
+      entryHexes.add(new HexCoord(requireInt(entry, "q"), requireInt(entry, "r")));
+    }
+    node.fields()
+        .forEachRemaining(
+            field -> {
+              HexCoord hex;
+              try {
+                hex = HexCoord.parse(field.getKey());
+              } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                    "markets 的键必须是格串（<q>_<r>，见 HexCoord）: " + field.getKey(), e);
+              }
+              if (!field.getValue().isObject()) {
+                throw new IllegalArgumentException(
+                    "markets."
+                        + field.getKey()
+                        + " 必须是对象 {numeraire, prices}: "
+                        + field.getValue());
+              }
+              if (!entryHexes.contains(hex)) {
+                throw new IllegalArgumentException(
+                    "markets 指名的格 "
+                        + field.getKey()
+                        + " 不在 entries 里（命令的作用域是 entry 的格集，"
+                        + "落在它之外的市场没有人申报 ⇒ 拒绝，不静默种下一个谁也管不到的格）");
+              }
+              if (markets.putIfAbsent(hex, market(field.getValue())) != null) {
+                throw new IllegalArgumentException("markets 里格 " + field.getKey() + " 重复");
+              }
+            });
+    return markets;
+  }
+
+  /**
+   * ★★ <b>一格的市场</b>（{@code {"numeraire":"<币种>","prices":{"<商品>":<单价>}}}）。
+   *
+   * <p>★ <b>两个键的口径</b>：{@code numeraire} 必填（每格恰一种计价货币）；{@code prices} 可缺（⇒ 空表）； 单价**逐值 &gt; 0** 由
+   * {@link Market} 的构造期守卫判死（本层不重复实现那条规则，只做形状）。
+   */
+  private static Market market(JsonNode node) {
+    CurrencyId numeraire = CurrencyId.parse(requireText(node, "numeraire"));
+    Map<CommodityId, Long> prices = commodityMap(optionalObject(node, "prices"), "prices");
+    return new Market(numeraire, prices);
   }
 
   // ── 生产关系（T2；计划 R3/R8）────────────────────────────────────────────────────────

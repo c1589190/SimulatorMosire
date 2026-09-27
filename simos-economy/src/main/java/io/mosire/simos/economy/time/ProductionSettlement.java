@@ -45,7 +45,7 @@ import java.util.OptionalLong;
  *   <tr><td>{@link RuleType#OUTPUT_SHARE}</td><td>{@link Pool#NET_AFTER_INPUTS}</td><td>{@link Weight#LABOR_AMOUNT}</td><td>{@code net_j × rate ÷ 1000 × 本受方劳动 ÷ Σ劳动}（Σ 取 {@code laborOfCohort} 全体）</td></tr>
  *   <tr><td>{@link RuleType#FIXED_IN_KIND_PER_LABOR}</td><td>{@link Pool#NET_AFTER_INPUTS}</td><td>{@link Weight#LABOR_AMOUNT}</td><td>{@code ⌊本受方劳动 ÷ 1000⌋ × fixedAmount}</td></tr>
  *   <tr><td>{@link RuleType#FIXED_IN_KIND_RENT}</td><td>{@link Pool#FIXED_AMOUNT}</td><td>{@link Weight#NONE}</td><td>{@code fixedAmount}（每周期一笔）</td></tr>
- *   <tr><td>{@code FIXED_MONEY_*}</td><td>（不读）</td><td>（不读）</td><td><b>不产生任何转移</b>，进 {@code deferredMoney}（I5.3）</td></tr>
+ *   <tr><td>{@code FIXED_MONEY_WAGE} / {@code FIXED_MONEY_RENT}</td><td>（不读）</td><td>（不读）</td><td>{@code min(fixedAmount, 付方可用货币)} ⇒ <b>一条只带货币腿的转移</b>（H4；见 {@code settleMoneyRule}）</td></tr>
  * </table>
  *
  * <p>★ 表里的除法**按写法从左到右**逐步向下取整（先 {@code × rate ÷ 1000}，再乘本受方量、除以总量）； {@code Σ量 = 0} 那一路
@@ -81,7 +81,7 @@ import java.util.OptionalLong;
  * 0</b> —— 无人察觉，正是本仓最反对的形态。故它在<b>任何数量计算之前</b>判死（与"本期产了多少"无关： 产出表里有、本期产 0 仍然合法）。
  *
  * <p>★ <b>未登记的 (type × pool × weight) 组合</b>也 fail-closed（裁定 E11：组合的落点就是这张公式表）。★ 两类组合<b>不受</b>此判 ——
- * {@code FIXED_MONEY_*}（不结算）与 {@code SELF_RETENTION}（数量恒 0）：它们<b>不读池与权重</b>，而"没读的字段不判"。
+ * {@code FIXED_MONEY_*}（H4 起真的结算，但**不读池与权重**）与 {@code SELF_RETENTION}（数量恒 0）：它们不读那两个字段， 而"没读的字段不判"。
  *
  * <p>★ <b>"受方的家户行不存在"不在这里判</b>：本类是纯计算，看不见行、也看不见家户账。该判据在 {@code
  * EconomySettlement.harvest}（那里同时看得见关系、行与会话工作副本），**fail-closed**。
@@ -89,6 +89,11 @@ import java.util.OptionalLong;
  * <p>★ <b>本阶段如实不做的</b>（未达成项，落点见台账）：§2.5 的超额上限（{@code receipt = min(应得, 需求)}，阶段 6）、 cohort
  * 侧索取权、跨周期结转与欠租（S2 的 ledger）、以及"欠款按规则开关落成债权"（开关的默认值未定）。 ★ {@link Facts#inputs()}
  * <b>本阶段没有任何公式读它</b>（表里没有用到它的档）—— 留着是因为它是本周期的事实的一部分。
+ *
+ * <p>★★ <b>H4：货币档真的结算（I5.3 的"只定义、不结算"到此结束）</b>：{@code FIXED_MONEY_WAGE} / {@code FIXED_MONEY_RENT}
+ * 铸<b>只带货币腿</b>的转移（{@code from=operator → to=受方}，原因 {@link TransferReason#RELATION_PAYMENT}）， 上限 =
+ * {@link Facts#availableMoney()}（缺币种 ⇒ 0），欠额进 {@link RuleSettlement} 的读数（**不落债权**）。 ★
+ * 于是"制度规定了货币工资、实际一分没付"在账上看得见 —— 那正是 S4 三数并列（应付/实付/欠）的用途。
  */
 public final class ProductionSettlement {
 
@@ -108,13 +113,33 @@ public final class ProductionSettlement {
   @FunctionalInterface
   public interface TransferMint {
 
-    /** 铸一条转移（{@code money} 腿与 {@code settles} 本批恒空：H4 才有货币、清偿留待 H5）。 */
+    /**
+     * 铸一条转移（{@code settles} 恒空：清偿留待 H5）。
+     *
+     * <p>★★ <b>H4 起货币腿真的有钱</b>：货币工资/地租铸的是<b>只带货币腿</b>的转移（{@code goods} 给空表）。 ★ 两条腿都沿 {@code from →
+     * to}（见 {@code Transfer} 的货币腿口径）⇒ 一笔买卖铸<b>一对</b>转移。
+     */
     Transfer mint(
         ActorRef from,
         ActorRef to,
         HexCoord location,
         Map<CommodityId, Long> goods,
+        Map<CurrencyId, Long> money,
         TransferReason reason);
+
+    /**
+     * <b>纯商品转移</b>的便捷重载（没有货币腿 ⇒ 给一枚空 map）。
+     *
+     * <p>★ 它<b>不是</b>第二套语义：默认实现转调上面那一个，{@code money = Map.of()}。
+     */
+    default Transfer mint(
+        ActorRef from,
+        ActorRef to,
+        HexCoord location,
+        Map<CommodityId, Long> goods,
+        TransferReason reason) {
+      return mint(from, to, location, goods, Map.of(), reason);
+    }
   }
 
   /**
@@ -155,19 +180,34 @@ public final class ProductionSettlement {
    * target-economic-cycle-design} §七-4）—— 本类既不产生 {@code Debt}、也不产生 {@code Claim}， 不改任何守恒式。
    *
    * @param rule 这一条规则（付款次序里的那一条）；不得为 null
-   * @param commodity 这条规则的实物商品（★ 货币档进 {@code deferredMoney}、<b>没有</b>读数：它今天压根不结算）；不得为 null
+   * @param commodity 这条规则的**实物**商品（货币档为空）；与 {@code currency} <b>恰其一</b>
+   * @param currency 这条规则的**货币**币种（实物档为空；H4 起货币档也有读数）；与 {@code commodity} 互为反相
    * @param dueAmount 应付（毫单位；{@code ≥ 0}）
-   * @param paidNow 实付（毫单位；{@code ∈ [0, 应付]} —— 上限是 R6 的"本周期可用"）
+   * @param paidNow 实付（毫单位；{@code ∈ [0, 应付]} —— 上限是 R6 的"本周期可用"：实物 = 本周期产出、货币 = 付方可见的余额）
    */
   public record RuleSettlement(
-      CompensationRule rule, CommodityId commodity, long dueAmount, long paidNow) {
+      CompensationRule rule,
+      Optional<CommodityId> commodity,
+      Optional<CurrencyId> currency,
+      long dueAmount,
+      long paidNow) {
 
     public RuleSettlement {
       if (rule == null) {
         throw new IllegalArgumentException("RuleSettlement.rule 不得为 null");
       }
-      if (commodity == null) {
-        throw new IllegalArgumentException("RuleSettlement.commodity 不得为 null（货币档没有读数）");
+      if (commodity == null || currency == null) {
+        throw new IllegalArgumentException(
+            "RuleSettlement 的 commodity / currency 都不得为 null（空要用 Optional.empty()）");
+      }
+      // ★★ 恰其一（H4）：与 CompensationRule 的那条反相守卫同源 —— "两处都能填"会让读口的判别力当场消失
+      //   （分不清"这条付的是粮"还是"付的是银"）。
+      if (commodity.isPresent() == currency.isPresent()) {
+        throw new IllegalArgumentException(
+            "RuleSettlement 必须恰给 commodity 或 currency 之一（同时给/都不给都是坏数据）: "
+                + commodity
+                + " / "
+                + currency);
       }
       if (dueAmount < 0L) {
         throw new IllegalArgumentException("RuleSettlement.dueAmount 不得为负: " + dueAmount);
@@ -192,7 +232,10 @@ public final class ProductionSettlement {
    *
    * @param transfers 实付转移（<b>按付款次序</b>；每条实付一条 {@code from=operator, to=受方}）
    * @param ruleSettlements <b>逐规则的实得读数</b>（付款次序；含实付为 0 的那些；★ 货币档不在里面）
-   * @param deferredMoney 待 S2/S4 的货币规则（<b>按付款次序</b>；它们<b>不</b>产生 {@link #transfers()} 里的任何东西）
+   * @param deferredMoney ★ <b>留档字段</b>（H4 起<b>恒为空表</b>）：H2/H3 它装的是"只定义、不结算"的货币规则， H4 起货币档真的结算（进
+   *     {@link #transfers()} 与 {@link #ruleSettlements()}）⇒ 待办清单里再没有东西。 ★
+   *     字段与访问器<b>保留</b>：删它要动三处既有断言（"货币档不许静默"那条判据的历史留痕），而留着一个恒空的表 无害（它自己的类注与这条注释说明了为什么空）——
+   *     这正是"留档而不假装"的口径。
    */
   public record Outcome(
       List<Transfer> transfers,
@@ -231,6 +274,10 @@ public final class ProductionSettlement {
    * @param inputs 本期现扣投入（★ <b>本阶段没有公式读它</b>，如实记；阶段 6/7 投入改从 operator 扣时才进场）
    * @param laborOfCohort 本期各 cohort 的劳动量（{@code LABOR_AMOUNT} 那一族的分子/分母）
    * @param outputPerUnit 该产业的产出表（E14 的守卫只读键）
+   * @param availableMoney ★★ <b>H4：付方（{@code operator}）本期可用的货币</b>（逐币种）—— 它是**货币档** （{@code
+   *     FIXED_MONEY_*}）的付款上限（R6 的"本期可用"在货币那一维的同一条口径）。★ <b>缺币种 = 该币种可用 0</b> （⇒ 应付多少就欠多少，读数里看得见）；★
+   *     <b>看不见的账 ⇒ 可用 0</b>（economy 只认会话货币副本里的家户账， 聚合主体的账住在 actor 切片上 —— 见 {@code
+   *     EconomySettlement.harvest} 的接线注释）
    */
   public record Facts(
       HexCoord location,
@@ -238,7 +285,8 @@ public final class ProductionSettlement {
       Map<CommodityId, Long> net,
       Map<CommodityId, Long> inputs,
       Map<CohortKey, Long> laborOfCohort,
-      Map<CommodityId, Long> outputPerUnit) {
+      Map<CommodityId, Long> outputPerUnit,
+      Map<CurrencyId, Long> availableMoney) {
 
     public Facts {
       if (location == null) {
@@ -253,6 +301,9 @@ public final class ProductionSettlement {
           Collections.unmodifiableMap(requireQuantities(laborOfCohort, "Facts.laborOfCohort"));
       outputPerUnit =
           Collections.unmodifiableMap(requireQuantities(outputPerUnit, "Facts.outputPerUnit"));
+      // ★ H4：货币余额表走同一份"键值非 null、逐值 ≥ 0"的校验（负余额是"凭空造钱"，不是一种数量）。
+      availableMoney =
+          Collections.unmodifiableMap(requireQuantities(availableMoney, "Facts.availableMoney"));
     }
   }
 
@@ -290,36 +341,39 @@ public final class ProductionSettlement {
     List<CompensationRule> ordered = inPaymentOrder(relation.rules());
     requireProducibleCommodities(ordered, relation, facts); // ★ E14：在任何数量计算之前
     Map<CommodityId, Long> paid = new LinkedHashMap<>(); // 已付（逐商品；R6 的"可用"就靠它）
+    // ★★ H4：**已付的货币**（逐币种）—— 与上面那张表逐字同款、同一条理由：R6 的"本期可用"是
+    //   **本期剩下的**可用，不是"每一条规则各自看到的期初余额"。少了它，两条货币规则会把同一笔钱各付一遍
+    //   ⇒ 铸出的两条腿之和超过付方余额 ⇒ 唯一 applier 当场抛（透支 = 发行，见 MoneyIssuance）。
+    Map<CurrencyId, Long> paidMoney = new LinkedHashMap<>();
     List<Transfer> transfers = new ArrayList<>();
     List<RuleSettlement> readings = new ArrayList<>();
     List<CompensationRule> deferred = new ArrayList<>();
     for (CompensationRule rule : ordered) {
-      OptionalLong due = dueAmount(rule, facts, paid);
-      if (due.isEmpty()) {
-        deferred.add(rule); // ★ I5.3：货币档**只定义、不结算**（不产生任何转移）
+      if (rule.type().money()) {
+        // ★★ H4：货币档**真的结算**（I5.3 的"只定义、不结算"到此结束）—— 见 settleMoneyRule。
+        settleMoneyRule(rule, relation, facts, paidMoney, transfers, readings, mint);
         continue;
       }
+      OptionalLong due = dueAmount(rule, facts, paid);
       CommodityId commodity = commodityOf(rule);
       long available =
           Math.max(0L, facts.net().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
       long paidNow = Math.min(due.getAsLong(), available); // ★ R6：付款上限 = 本周期收到的产出
       // ★★ S4：读数**先记**（连实付 0 的那些）—— 只报实付会让"制度要得多、实际付不出"这件事在账上消失。
-      readings.add(new RuleSettlement(rule, commodity, due.getAsLong(), paidNow));
+      readings.add(
+          new RuleSettlement(
+              rule, Optional.of(commodity), Optional.empty(), due.getAsLong(), paidNow));
       if (paidNow <= 0L) {
         continue; // 归零 ⇒ 不产生转移（自留的 0、付不出的 0、受方不在账里的 0 都走这一支）
       }
       paid.merge(commodity, paidNow, Long::sum);
       // ★★ H2：实付 = 一条 `from=operator → to=受方` 的转移（受方恒为 actor —— 裁定 D1-A）。
       //   {@code ToCohort} 的家户 actor 由 {@link HouseholdActors#of(CohortKey)} 给出（家户身份的唯一拼写点，K9）。
-      ActorRef recipient =
-          switch (rule.recipient()) {
-            case Recipient.ToActor toActor -> toActor.actor();
-            case Recipient.ToCohort toCohort -> HouseholdActors.of(toCohort.cohort());
-          };
+      //   ★ H4：受方的解析收进 recipientOf（货币档与实物档共用同一处，不许两处各拼一遍）。
       transfers.add(
           mint.mint(
               relation.operator(),
-              recipient,
+              recipientOf(rule),
               facts.location(),
               Map.of(commodity, paidNow),
               TransferReason.RELATION_PAYMENT));
@@ -328,11 +382,15 @@ public final class ProductionSettlement {
   }
 
   /**
-   * ★ <b>I5.3 的读口</b>：把一条被推迟的货币规则渲染成一句可读的话（读口 / MCP / 日志用）。
+   * ★★ <b>「这条货币规则当年为什么没结算」的留档读口</b>（H4 起<b>只服务留痕</b>：货币档真的结算了，见 {@link
+   * #settleMoneyRule}，故它已<b>没有任何生产调用方</b>）。
    *
-   * <p>★★ <b>「待 S2」这句口径的唯一拼写点在本方法里</b>：别处再写一遍就是同一个格式的第二处拼写点。 ★
-   * 货币规则<b>只定义、不结算</b>是<b>必须报出来的事实</b>（静默的"什么都没发生"和"没有这条规则"无法区分）。 ★ H2 起这句话里带上<b>币种</b> （钱的种类必须说清
-   * —— "1000 毫钱"没有意义）。
+   * <p>★★ <b>为什么留着而不是删掉</b>：它是 I5.3 那条判据（"货币档不许静默"）的<b>历史留痕</b> ——
+   * 删它要一起删掉三处既有断言（那正是本批不许做的事），而留着一个诚实的旧口径读口无害。★ 本方法的类注与返回值都<b>明说它已过期</b>，
+   * 免得后来者把它当成"货币今天还不结算"的依据（那正是本仓最反对的"看起来在记、其实已作废"）。
+   *
+   * <p>★ <b>它渲染的是什么</b>：一条货币规则的"制度规定"（档位 / 受方 / 每周期多少 / 哪种钱）—— 口径一个字没改， 只是"待 S2"这句前缀现在读作历史（H4 的
+   * S1→H4 之间那一段）。
    *
    * @param rule 一条货币规则（{@code type.money()} 为 true）；非货币档 ⇒ 抛（那句话对它不成立）
    */
@@ -343,7 +401,7 @@ public final class ProductionSettlement {
     if (!rule.type().money()) {
       throw new IllegalArgumentException("只有货币档才「待 S2」，这一条是: " + rule.type());
     }
-    return "货币规则只定义、不结算（待 S2）："
+    return "货币规则只定义、不结算（待 S2 —— ★ H4 起已真的结算，本句只作旧档留痕）："
         + rule.type()
         + " → "
         + rule.recipient()
@@ -357,7 +415,7 @@ public final class ProductionSettlement {
   /** 纯函数自持的铸造口：日号 0（创世）、序号自 1 起（★ 只给不落账的调用方，见 {@link TransferMint}）。 */
   private static TransferMint selfMint() {
     long[] sequence = {0L};
-    return (from, to, location, goods, reason) ->
+    return (from, to, location, goods, money, reason) ->
         new Transfer(
             new TransferId("tr-0-" + (++sequence[0])),
             0L,
@@ -365,9 +423,96 @@ public final class ProductionSettlement {
             to,
             location,
             goods,
-            Map.of(),
+            money,
             reason,
             Optional.empty());
+  }
+
+  /**
+   * ★★ <b>货币档的结算</b>（H4；I5.3 的"只定义、不结算"到此结束）：
+   *
+   * <pre>
+   * 应付 due      = rule.fixedAmount                       // 毫计价货币（FIXED_MONEY_WAGE / FIXED_MONEY_RENT）
+   * 本期可用 avail = facts.availableMoney[rule.currency()] − 已付[该币种]   // ★ 缺币种 ⇒ 0（看不见的账 ⇒ 可用 0）
+   * 实付 paid     = min(due, avail)                        // ★ R6 的"本期可用"在货币那一维的同一条口径
+   * paid == 0 ⇒ **不铸转移**（同商品档"归零即不铸"）；欠额 owed = due − paid **只进读数**（S4 的记欠开关未实现 ⇒ 不落债权）
+   * </pre>
+   *
+   * <p>★★ <b>"本期可用"必须减去前面几条已经付掉的</b>（{@code paidMoney}）：否则两条货币规则会各自看到**期初余额** ⇒ 铸出的两条腿之和超过付方余额 ⇒ 唯一
+   * applier 当场抛（"透支 = 发行"，而本批没有发行人）。 ★ 这与实物档的 {@code net − paidOf(paid, commodity)} 是**逐字同一条口径**（R6
+   * 的"本期可用"只有一个意思：本周期**还剩**多少可付）。
+   *
+   * <p>★★ <b>它铸的是一条只带货币腿的转移</b>（{@code from=operator, to=受方}，原因 {@link
+   * TransferReason#RELATION_PAYMENT}）：钱的种类由 {@code rule.currency()} 说（H2 的币种位）， 数量由上面那个 min 说 —— ★
+   * <b>货币腿与商品腿同向</b>（{@code from → to}，见 {@code Transfer} 的货币腿口径）。
+   *
+   * <p>★★ <b>付款上限落在哪里</b>：economy 只看得见**会话货币副本**（家户账）⇒ 付方是家户时上限就是它的余额； 付方是聚合主体（庄园 / 作坊 / 产业型家户）时上限是
+   * 0（它的账在 actor 切片上，economy 不认识）⇒ <b>实付 0、欠额进读数</b>。 ★ 这是**如实记的边界**（不是静默付 0）：读数里 {@code dueAmount
+   * > 0 && paidNow == 0} 一眼可见，且"把货币账户接进会话副本"是后续批次的事。
+   *
+   * <p>★ <b>欠额不落债权</b>（同商品档）：{@code FIXED_MONEY_*} 付不出只报数，不产生 {@code Debt}、不产生索取权 ——
+   * "欠款按规则开关落成债权"的开关默认值仍未定（S4）。
+   *
+   * @param paidMoney 已付的货币（逐币种；**就地更新** —— R6 的"本期可用"是**本期剩下的**可用，见上）
+   * @param transfers 实付转移累加器（**就地追加**；本方法是唯一往它里面加货币腿的地方）
+   * @param readings 逐规则读数累加器（**就地追加**；连实付 0 的那些也报）
+   */
+  private static void settleMoneyRule(
+      CompensationRule rule,
+      ProductionRelation relation,
+      Facts facts,
+      Map<CurrencyId, Long> paidMoney,
+      List<Transfer> transfers,
+      List<RuleSettlement> readings,
+      TransferMint mint) {
+    // ★ 构造期守卫已判死"货币档必须带币种"（CompensationRule），此处是兜底：不猜、不取默认币种。
+    CurrencyId currency =
+        rule.currency()
+            .orElseThrow(
+                () -> new IllegalStateException("货币规则没有币种（CompensationRule 的守卫应已判死）: " + rule));
+    long due = moneyDue(rule);
+    long available =
+        Math.max(
+            0L,
+            facts.availableMoney().getOrDefault(currency, 0L)
+                - paidMoney.getOrDefault(currency, 0L));
+    long paidNow = Math.min(due, available);
+    // ★★ S4：读数**先记**（连实付 0 的那些）—— "制度规定了货币工资、实际一分没付"必须看得见。
+    readings.add(new RuleSettlement(rule, Optional.empty(), Optional.of(currency), due, paidNow));
+    if (paidNow <= 0L) {
+      return; // 归零 ⇒ 不铸转移（同商品档的"实付 0 不产生转移"）
+    }
+    paidMoney.merge(currency, paidNow, Long::sum);
+    transfers.add(
+        mint.mint(
+            relation.operator(),
+            recipientOf(rule),
+            facts.location(),
+            Map.of(),
+            Map.of(currency, paidNow),
+            TransferReason.RELATION_PAYMENT));
+  }
+
+  /**
+   * 货币档的**应付额**（毫计价货币）：{@code FIXED_MONEY_WAGE} / {@code FIXED_MONEY_RENT} 都是 {@code
+   * fixedAmount}（每周期一笔，与产出、劳动都无关 —— 与实物档的 {@code FIXED_IN_KIND_RENT} 同形）。
+   *
+   * <p>★ <b>表里没有的货币档 ⇒ 抛</b>（E11 的同一条纪律：组合的落点就是这张公式表）。今天 {@code RuleType} 里 {@code money() == true}
+   * 的恰两档，故这一支走不到 —— 它是留给"将来新增一个货币档却没写公式"的 fail-closed 出口。
+   */
+  private static long moneyDue(CompensationRule rule) {
+    return switch (rule.type()) {
+      case FIXED_MONEY_WAGE, FIXED_MONEY_RENT -> rule.fixedAmount();
+      default -> throw unregisteredCombination(rule);
+    };
+  }
+
+  /** 受方的 actor 引用（{@code ToCohort} 的家户 actor = {@code HouseholdActors.of(cohort)}；两档合流成同一条）。 */
+  private static ActorRef recipientOf(CompensationRule rule) {
+    return switch (rule.recipient()) {
+      case Recipient.ToActor toActor -> toActor.actor();
+      case Recipient.ToCohort toCohort -> HouseholdActors.of(toCohort.cohort());
+    };
   }
 
   // ── 次序 ─────────────────────────────────────────────────────────────────────────
@@ -435,7 +580,8 @@ public final class ProductionSettlement {
   // ── 公式表 ───────────────────────────────────────────────────────────────────────
 
   /**
-   * 一条规则的<b>应付量</b>；货币档返回 {@link OptionalLong#empty()}（⇒ 进 {@code deferredMoney}，不产生转移）。
+   * 一条**实物**规则的应付量（毫商品）。★ H4 起货币档<b>不走这里</b>（{@link #settleMoneyRule} 自己算）， 故本方法见到货币档 ⇒
+   * <b>抛</b>（走到这里说明调用方的分支写错了 —— 静默返回一个数会让货币档又变回"按商品算"）。
    *
    * <p>★ {@code SELF_RETENTION} 的数量恒为 {@code 0}（不读池与权重）—— 它经 {@link #dueAmount} 走到"实付 0 ⇒ 不产生转移"
    * 那一支，于是余额落在 {@code residualOwner} 手上（"不动"）。
@@ -443,7 +589,8 @@ public final class ProductionSettlement {
   private static OptionalLong dueAmount(
       CompensationRule rule, Facts facts, Map<CommodityId, Long> paid) {
     return switch (rule.type()) {
-      case FIXED_MONEY_WAGE, FIXED_MONEY_RENT -> OptionalLong.empty(); // ★ I5.3
+      case FIXED_MONEY_WAGE, FIXED_MONEY_RENT ->
+          throw new IllegalStateException("货币档不走实物那一支（H4：settleMoneyRule 自己算）: " + rule);
       case SELF_RETENTION -> OptionalLong.of(0L); // ★ 公式表：0（不动；余额归 residualOwner）
       case OUTPUT_SHARE -> OptionalLong.of(shareOf(rule, facts, paid));
       case FIXED_IN_KIND_PER_LABOR -> OptionalLong.of(perLabor(rule, facts));

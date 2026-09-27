@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -35,14 +36,17 @@ import java.util.Optional;
  *   <li>{@link #inputs()} 本期现扣周期投入 —— I4.2 的 {@code ΣProductionInputs}。★★ <b>H1
  *       起投入从家户账（会话工作副本）扣</b> ⇒ 它<b>不是一条转移</b>：扣减已经写在副本上，而"扣了多少料"在这里读得出来；
  *   <li>★★ {@link #transfers()} <b>当天的转移</b>（{@link Transfer}；H2 起这是全系统唯一的"东西从 A 到 B"的事实）——
- *       含三族：<b>关系实付</b>（{@code operator → 受方}）、<b>同格取材</b>（家户 → 家户）、<b>同格借粮</b>（家户 → 家户）。 ★
- *       协调器把它们折成 {@code (actor, location, commodity, delta)} 落到 {@code ActorData.accounts}（见 {@link
- *       #transfers()} 的注释）；
+ *       含五族：<b>关系实付</b>（实物与<b>货币</b>两族；{@code operator → 受方}）、<b>投入征调</b>（{@code 供方 → 经营者}）、
+ *       <b>同格借粮</b>（家户 → 家户）、<b>同格市场成交</b>（H4：一笔买卖<b>一对</b>转移 —— 货一条、钱一条）。 ★ <b>货币腿逐币种直接可读</b>（H4
+ *       的逐币种守恒判据就读它，不另设一张"货币发生额"表：同一件事两处拼写必然漂开）。 ★ 协调器把它们折成 {@code (actor, location, commodity,
+ *       delta)} 落到 {@code ActorData.accounts}（见 {@link #transfers()} 的注释）；
  *   <li>{@link #outputAccruals()} <b>产出计提</b>（{@code +净产 → operator}；{@link
  *       ProductionSettlement.ActorEntry}）。 ★ <b>它不是一条转移</b>：产出是<b>造出来</b>的、没有对端，而转移的两端恒为 actor
  *       且不许相等 —— 理由详见 {@link ProductionSettlement.ActorEntry}；
  *   <li>{@link #ruleSettlements()} <b>逐规则的实得读数</b>（应付 / 实付 / 欠；裁定 S4）。★ <b>只读</b>：不影响守恒、不落债权；
- *   <li>{@link #deferredMoney()} 待 S2/S4 的货币规则（I5.3：<b>只定义、不结算</b>，不产生上面任何一样）。
+ *   <li>{@link #deferredMoney()} ★ <b>留档字段</b>（H4 起<b>恒为空表</b>）：H2/H3 装的是"只定义、不结算"的货币规则； H4
+ *       起货币档真的结算（进 {@link #transfers()} 与 {@link #ruleSettlements()}）⇒ 它再没有内容 —— 保留的理由见 {@code
+ *       ProductionSettlement.Outcome} 的 {@code deferredMoney} 注释。
  * </ul>
  *
  * <p>★★ <b>{@link #hasOutput()} 是 fail-closed 的判据</b>（E7/R4）：{@link EconomySettlement#settle} 那类
@@ -85,8 +89,8 @@ public record ProductionLedger(
    * ★★ <b>这一天有没有"产出"</b>（E7/R4 的 fail-closed 判据）：有毛产、或有产出计提。
    *
    * <p>★ 为什么这两样：它们正是<b>离开 {@code ClassRow} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含 {@link
-   * #inputs()}：投入扣在家户账（会话副本）里、记在流水的 {@code consumed} 里，账是完整的。 ★ 为什么不含 {@link
-   * #deferredMoney()}：货币档<b>只定义、不结算</b>（I5.3），它不产生任何数量，丢不了东西。 ★ 为什么不含 {@link
+   * #inputs()}：投入扣在家户账（会话副本）里、记在流水的 {@code consumed} 里，账是完整的。 ★ 为什么不含 {@link #deferredMoney()}：H4
+   * 起它<b>恒为空</b>（货币档真的结算了），对判据没有影响。 ★ 为什么不含 {@link
    * #transfers()}：借粮与取材<b>不是产出</b>（它们是既有库存的换手）；而本判据服务的入口（多日静态 {@code settle}）
    * 在全零人口之外<b>根本进不来</b>（第一天之前就抛），那个状态里三者恒空。
    */
@@ -163,7 +167,8 @@ public record ProductionLedger(
     /**
      * ★★ <b>铸一条转移并记进当天的账</b>（唯一分配点；见类注）。
      *
-     * <p>★ {@code money} 与 {@code settles} 本批恒空：货币腿属 H4（I5.3 今天不产生任何货币）、清偿属 H5。
+     * <p>★ {@code settles} 恒空（清偿属 H5）；★ <b>H4 起货币腿真的有钱</b>（货币工资/地租走只带货币腿的转移、 市场成交走一对转移 —— 见 {@code
+     * Transfer} 的货币腿口径）。
      */
     @Override
     public Transfer mint(
@@ -171,6 +176,7 @@ public record ProductionLedger(
         ActorRef to,
         HexCoord location,
         Map<CommodityId, Long> goods,
+        Map<CurrencyId, Long> money,
         TransferReason reason) {
       Transfer transfer =
           new Transfer(
@@ -180,7 +186,7 @@ public record ProductionLedger(
               to,
               location,
               goods,
-              Map.of(),
+              money,
               reason,
               Optional.empty());
       transfers.add(transfer);
@@ -192,7 +198,10 @@ public record ProductionLedger(
       ruleSettlements.add(reading);
     }
 
-    /** 一条被推迟的货币规则（I5.3：只定义、不结算）。 */
+    /**
+     * 收下一条**被推迟的货币规则**（★ H4 起<b>没有生产调用方</b>：货币档真的结算了 ⇒ 这张表恒空；它只服务旧口径的留痕， 见 {@code
+     * ProductionSettlement.Outcome.deferredMoney}）。
+     */
     void addDeferred(CompensationRule rule) {
       deferredMoney.add(rule);
     }

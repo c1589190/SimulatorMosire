@@ -126,7 +126,10 @@ class EconomyCycleBoundaryTest {
             // ★★ **T4：关系表非空** —— 产出自本阶段起不再写进阶层行（R5 ②），行里的实物只能经关系结算的 cohort 入账回来。
             //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）
             //   ⇒ 下面"单行 ⇒ 权重 1000 ⇒ 全部归它"那条账（25,216,120）一字不改。
-            EconomyFixtures.laborShareToPeasant(Map.of(FARM, farm))),
+            EconomyFixtures.laborShareToPeasant(Map.of(FARM, farm)),
+            // ★ H4：第 9 个组件 = 市场表（键 = 格）。本夹具量的是周期边界（收获 / 播种 / 劳动），
+            //   与货币无关 ⇒ 给空表 = **这一格没有市场**（合法状态：结算对没有市场的格什么都不做）。
+            Map.of()),
         goods);
   }
 
