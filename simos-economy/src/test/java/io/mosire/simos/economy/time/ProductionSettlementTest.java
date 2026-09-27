@@ -274,6 +274,82 @@ class ProductionSettlementTest {
         .contains("待 S2", "FIXED_MONEY_WAGE");
   }
 
+  /**
+   * ★★★ <b>货币档真的把钱搬走（补的缺口：本类此前只量"付方没钱"那一支）</b>。
+   *
+   * <p>★★ <b>为什么补它</b>（关账期的变异自证发现的缺口）：本类原来 15 个用例的 {@code availableMoney} **全是空表** ⇒ 断言清一色是"应付 &gt;
+   * 0、实付 0、不铸转移"。于是把实现改成"实付恒 0"（静默付 0）**整类照样绿** —— "钱真的动了"这一半此前**没有任何判别力**。★
+   * 这是"判别力假货"的第三种（断言在，但只覆盖了恒 0 的那一支）。
+   *
+   * <p>本用例把付方**真的有钱**那一支钉住：{@code availableMoney = 5,000 毫银}、工资 1,000、地租 9,000 ⇒ ① 工资付满
+   * 1,000（付款上限之内）；② 地租只付得出剩下的 4,000（★ 上限是"本周期**剩下**的可用"， 不是"每条规则各自看到的期初余额"）；③
+   * 两条都铸出**只带货币腿**的转移，受方各拿 1,000 / 4,000。
+   */
+  @Test
+  void i53b_moneyRulesActuallyMoveMoneyWhenThePayerHasIt() {
+    Facts facts =
+        new Facts(
+            HEX,
+            Map.of(GRAIN, 100_000L),
+            Map.of(GRAIN, 97_000L),
+            Map.of(),
+            Map.of(),
+            GRAIN_RECIPE,
+            Map.of(CURRENCY, 5_000L));
+    CompensationRule wage = money(RuleType.FIXED_MONEY_WAGE, 1_000L, toActor(WORKSHOP), 10);
+    CompensationRule rent = money(RuleType.FIXED_MONEY_RENT, 9_000L, toCohort(LANDLORD), 20);
+
+    ProductionSettlement.Outcome outcome = ProductionSettlement.settle(relation(wage, rent), facts);
+
+    assertThat(outcome.ruleSettlements())
+        .as("★ 实付真的发生：工资 1,000 付满、地租只付得起剩下的 4,000（应付照制度 9,000 ⇒「欠」看得见）")
+        .extracting(
+            ProductionSettlement.RuleSettlement::dueAmount,
+            ProductionSettlement.RuleSettlement::paidNow)
+        .containsExactly(tuple(1_000L, 1_000L), tuple(9_000L, 4_000L));
+    assertThat(outcome.transfers()).as("★ 两条货币工资/地租各铸一条转移（只有货币腿、商品腿为空）").hasSize(2);
+    assertThat(outcome.transfers().get(0))
+        .as("★ 第 1 条：operator → 作坊（actor 受方），1,000 毫银")
+        .isEqualTo(
+            new Transfer(
+                new TransferId("tr-0-1"),
+                0L,
+                ESTATE,
+                WORKSHOP,
+                HEX,
+                Map.of(),
+                Map.of(CURRENCY, 1_000L),
+                TransferReason.RELATION_PAYMENT,
+                Optional.empty()));
+    assertThat(outcome.transfers().get(1).money().get(CURRENCY))
+        .as("★ 第 2 条：付方只剩 4,000 ⇒ 只搬 4,000（R6 的上限是「本周期剩下的可用」）")
+        .isEqualTo(4_000L);
+    assertThat(moneyIntake(outcome, HouseholdActors.of(LANDLORD)))
+        .as("★ 地租落到地主那一族手上（货币腿按 cohort 归集时读得出来：4,000）")
+        .containsEntry(CURRENCY, 4_000L);
+    assertThat(moneyIntake(outcome, WORKSHOP))
+        .as("★ 工资落到作坊那一本账上（1,000）")
+        .containsEntry(CURRENCY, 1_000L);
+  }
+
+  /**
+   * 受方是 {@code to} 那一端的**货币**入账（按 cohort / actor 归集）—— 同 {@link #intakeByCohort} 的口径，只是读 {@code
+   * Transfer.money()} 那一栏（货币是逐币种表 ⇒ 跨币种求和无意义）。
+   */
+  private static Map<CurrencyId, Long> moneyIntake(
+      ProductionSettlement.Outcome outcome, ActorRef recipient) {
+    Map<CurrencyId, Long> total = new LinkedHashMap<>();
+    for (Transfer transfer : outcome.transfers()) {
+      if (!transfer.to().equals(recipient)) {
+        continue;
+      }
+      for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+        total.merge(leg.getKey(), leg.getValue(), Long::sum);
+      }
+    }
+    return total;
+  }
+
   /** ★★ <b>I5.4</b>：{@code priority} 决定次序是<b>数据</b>，不是分支 —— 只对调两个整数，实得数就变。 */
   @Test
   void i54_priorityIsData_swappingTheTwoPrioritiesChangesWhatEachSideGets() {
