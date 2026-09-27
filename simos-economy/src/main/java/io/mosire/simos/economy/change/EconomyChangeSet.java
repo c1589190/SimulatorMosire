@@ -6,8 +6,10 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
@@ -24,9 +26,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 9 个：{@code meta} / {@code industries} /
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 10 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debts} / {@code flows} / {@code laborSupply} / {@code allocations} /
- * {@code relations} / {@code markets}）。
+ * {@code relations} / {@code markets} / {@code shipments}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -59,7 +61,8 @@ public record EconomyChangeSet(
     FieldDelta<LaborSupply> laborSupply,
     FieldDelta<LaborAllocation> allocations,
     FieldDelta<ProductionRelation> relations,
-    FieldDelta<Market> markets)
+    FieldDelta<Market> markets,
+    FieldDelta<ShipmentBatch> shipments)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -98,6 +101,10 @@ public record EconomyChangeSet(
     if (markets == null) {
       markets = new FieldDelta.Unchanged<>();
     }
+    // ★ 第 10 个组件（M2.4）：同一口径（旧档没提该组件，就是没动它）。
+    if (shipments == null) {
+      shipments = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -113,7 +120,8 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.laborSupply(), target.laborSupply()),
         FieldDelta.diff(base.allocations(), target.allocations()),
         FieldDelta.diff(base.relations(), target.relations()),
-        FieldDelta.diff(base.markets(), target.markets()));
+        FieldDelta.diff(base.markets(), target.markets()),
+        FieldDelta.diff(base.shipments(), target.shipments()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -129,7 +137,8 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.laborSupply(), cs.laborSupply(), PeopleLotId::parse),
         FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse),
         FieldDelta.rebuild(base.relations(), cs.relations(), IndustryId::parse),
-        FieldDelta.rebuild(base.markets(), cs.markets(), HexCoord::parse));
+        FieldDelta.rebuild(base.markets(), cs.markets(), HexCoord::parse),
+        FieldDelta.rebuild(base.shipments(), cs.shipments(), ShipmentId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -142,7 +151,8 @@ public record EconomyChangeSet(
         || laborSupply.changed()
         || allocations.changed()
         || relations.changed()
-        || markets.changed());
+        || markets.changed()
+        || shipments.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

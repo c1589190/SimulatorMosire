@@ -298,7 +298,9 @@ final class EconomyPayloads {
         laborSupply,
         allocations,
         relations,
-        markets);
+        markets,
+        // ★ M2.4：创世载荷没有在途（播种出来的世界货物都在账上；在途由市场发运产生）。
+        Map.of());
   }
 
   /**

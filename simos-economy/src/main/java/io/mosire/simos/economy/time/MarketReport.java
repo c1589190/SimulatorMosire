@@ -1,0 +1,154 @@
+package io.mosire.simos.economy.time;
+
+import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.market.MarketUnfilledReason;
+import io.mosire.simos.map.hex.HexCoord;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * ★★ <b>一轮区域市场的只读报告</b>（M2.3/M2.4 的读数原料；L3 的逐区读数组件接它）。
+ *
+ * <p>★★ <b>它不落盘</b>：本层（L2）只保证"信息被产生且不聚合丢失"，把"逐区逐商品供给/需求/成交量/到货价/运费/损耗/ 未成交原因分布/未利用运力"落成读数组件是
+ * L3（M2.7）的事。⇒ {@link EconomyDayStepper#lastMarketReport()} 交出的就是这一份；L3 新建读数组件时把它折进去即可，不必回头改撮合。
+ *
+ * <p>★★ <b>四类信息一个不少</b>（L3 需要的都在这里，不是"以后再算"）：
+ *
+ * <ul>
+ *   <li>{@link #fills()}：每一笔成交（含区内即时与跨区在途）—— 发货格/收货格/买卖双方/量/单价/运费/ETA/在途批次 id；
+ *   <li>{@link #unfilled()}：每一笔未成交剩余与**原因档**（{@link MarketUnfilledReason}；买/卖两侧分开）；
+ *   <li>{@link #routes()}：每条路线的运力、用量、瓶颈标志 —— ★ "有货、有路、运力不足 ⇒ 城市仍可能缺粮，系统报物流瓶颈"的落点；
+ *   <li>{@link #freightPaidMilli()} / {@link #freightUncollectedMilli()} / {@link
+ *       #scheduledLossMilli()}： 运费实收、无承运人时未收的运费、按批次损耗率预排的在途损耗（实际损耗在到货日进 ledger）。
+ * </ul>
+ *
+ * <p>★★ <b>跨区结算暂设即时</b>（M2.0 #4 的读数契约标注）：{@link #CROSS_REGION_SETTLEMENT_IMMEDIATE} 恒为 {@code true}
+ * —— 货款与运费在**发运日**结清、货在 ETA 之后才到。L3 的读数组件必须原样标注这条简化，不得把"付款日"读成"到货日"。
+ *
+ * @param day 本轮的世界日
+ * @param trigger 本轮为什么开市（例行/关账/低库存追加）
+ * @param carrierPresent 世界里有没有承运主体（{@code ActorKind.ORGANIZATION} 且会话里有货币账）—— {@code false}
+ *     时运费**不收**（没有收款方就不收，禁钱凭空消失）
+ * @param fills 逐笔成交（保序）
+ * @param unfilled 逐笔未成交剩余（保序）
+ * @param routes 逐路线运力用量（保序）
+ * @param freightPaidMilli 本轮实收运费（毫计价货币）
+ * @param freightUncollectedMilli 因无承运人而未收的运费（毫计价货币；读数看得见，不静默）
+ * @param scheduledLossMilli 按批次损耗率预排的在途损耗（毫商品；到货日才真的从在途量里扣）
+ * @param immediateFills 区内即时成交笔数
+ * @param crossRegionFills 跨区在途成交笔数
+ */
+public record MarketReport(
+    long day,
+    MarketTrigger trigger,
+    boolean carrierPresent,
+    List<Fill> fills,
+    List<Unfilled> unfilled,
+    List<RouteUsage> routes,
+    long freightPaidMilli,
+    long freightUncollectedMilli,
+    long scheduledLossMilli,
+    long immediateFills,
+    long crossRegionFills) {
+
+  /** ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。 */
+  public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE =
+      MarketSettlement.MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE;
+
+  public MarketReport {
+    Objects.requireNonNull(trigger, "trigger");
+    fills = fills == null ? List.of() : List.copyOf(fills);
+    unfilled = unfilled == null ? List.of() : List.copyOf(unfilled);
+    routes = routes == null ? List.of() : List.copyOf(routes);
+  }
+
+  /** 没有任何市场活动的空报告。 */
+  public static MarketReport empty(long day, MarketTrigger trigger, boolean carrierPresent) {
+    return new MarketReport(
+        day, trigger, carrierPresent, List.of(), List.of(), List.of(), 0L, 0L, 0L, 0L, 0L);
+  }
+
+  /** 未成交原因分布（档位 → 条数；保序 = {@link MarketUnfilledReason} 的声明序）。 */
+  public Map<MarketUnfilledReason, Long> unfilledReasonCounts() {
+    Map<MarketUnfilledReason, Long> counts = new LinkedHashMap<>();
+    for (Unfilled item : unfilled) {
+      counts.merge(item.reason(), 1L, Long::sum);
+    }
+    return counts;
+  }
+
+  /**
+   * ★ 一笔成交。{@code immediate == true} 时 {@code shipmentId} 为空串（区内即时，没有在途批次）； 否则 {@code shipmentId} 是
+   * {@code EconomyData.shipments} 里的键。
+   *
+   * @param unitPriceMilli 成交单价（毫计价货币 / 商品单位；跨区时 = 卖方区基准价，**不含**运费）
+   * @param freightPerUnitMilli 单位运费（毫计价货币 / 商品单位；无承运人时为 0）
+   * @param goodsPaymentMilli 货款（毫计价货币）
+   * @param freightMilli 运费（毫计价货币；无承运人时为 0）
+   * @param arrivalTick 到货世界日（区内即时 = 成交日）
+   */
+  public record Fill(
+      HexCoord from,
+      HexCoord to,
+      CommodityId commodity,
+      ActorRef seller,
+      ActorRef buyer,
+      long quantity,
+      long unitPriceMilli,
+      long freightPerUnitMilli,
+      long goodsPaymentMilli,
+      long freightMilli,
+      long arrivalTick,
+      boolean immediate,
+      String shipmentId) {
+
+    public Fill {
+      Objects.requireNonNull(from, "from");
+      Objects.requireNonNull(to, "to");
+      Objects.requireNonNull(commodity, "commodity");
+      Objects.requireNonNull(seller, "seller");
+      Objects.requireNonNull(buyer, "buyer");
+      Objects.requireNonNull(shipmentId, "shipmentId");
+    }
+  }
+
+  /** ★ 一笔未成交剩余。{@code buyerSide == true} 读作"买方没买到"，{@code false} 读作"卖方没卖掉"。 */
+  public record Unfilled(
+      ActorRef actor,
+      boolean buyerSide,
+      CommodityId commodity,
+      long quantity,
+      MarketUnfilledReason reason) {
+
+    public Unfilled {
+      Objects.requireNonNull(actor, "actor");
+      Objects.requireNonNull(commodity, "commodity");
+      Objects.requireNonNull(reason, "reason");
+    }
+  }
+
+  /**
+   * ★ 一条路线的运力用量与瓶颈标志。{@code bottleneck == true} = 本轮"买卖两边都还有剩余、且运力窗口被用满" —— 这正是"有货、有路、运力不足 ⇒
+   * 城市仍可能缺粮"的可读信号。
+   */
+  public record RouteUsage(
+      HexCoord from,
+      HexCoord to,
+      CommodityId commodity,
+      long capacityPerWindow,
+      long costPerUnit,
+      long used,
+      long demandMilli,
+      long supplyMilli,
+      boolean bottleneck) {
+
+    public RouteUsage {
+      Objects.requireNonNull(from, "from");
+      Objects.requireNonNull(to, "to");
+      Objects.requireNonNull(commodity, "commodity");
+    }
+  }
+}

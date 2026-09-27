@@ -6,8 +6,10 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -35,7 +37,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **九个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的九个组件一一对应**（铁律 5）：
+ * <p>★ **十个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的十个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -68,7 +70,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **九张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **十张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -97,6 +99,9 @@ import java.util.Set;
  *       市场表里没有"本期成交量"这类会过期的读数（读数在当天的 {@code ProductionLedger} 里）。
  * </ol>
  *
+ * <p>★★ **{@code shipments} 是第 10 个组件**（M2.4）：键 = {@link ShipmentId}，值 = {@link
+ * ShipmentBatch}（在途批次）。★ 它是**跨 tick 状态**：发运日建、到货日销；到货前目的地消费不到它。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -110,12 +115,14 @@ public record EconomyData(
     Map<PeopleLotId, LaborSupply> laborSupply,
     Map<LaborAllocationId, LaborAllocation> allocations,
     Map<IndustryId, ProductionRelation> relations,
-    Map<HexCoord, Market> markets) {
+    Map<HexCoord, Market> markets,
+    Map<ShipmentId, ShipmentBatch> shipments) {
 
-  /** 往返用例的起点：未激活 + 九张空表。 */
+  /** 往返用例的起点：未激活 + 十张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -380,6 +387,20 @@ public record EconomyData(
       marketsCopy.put(entry.getKey(), entry.getValue());
     }
     markets = Collections.unmodifiableMap(marketsCopy); // ★ 冻在赋值处
+    // ── 第 10 个组件：在途批次表（M2.4；跨 tick 状态）───────────────────────────────────────
+    //   ★ 键 = {@link ShipmentId}（{@code sh-<day>-<seq>}）；**缺键 = 这个世界的货物都在账上、没有在途**（合法状态）。
+    //   ★ 它在到货日由日循环销账、在发运日由区域撮合建账；到货前目的地**消费不到它**（判据落在这一维）。
+    if (shipments == null) {
+      shipments = Map.of();
+    }
+    Map<ShipmentId, ShipmentBatch> shipmentsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ShipmentId, ShipmentBatch> entry : shipments.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("shipments 的键与值都不得为 null: " + entry.getKey());
+      }
+      shipmentsCopy.put(entry.getKey(), entry.getValue());
+    }
+    shipments = Collections.unmodifiableMap(shipmentsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -436,49 +457,103 @@ public record EconomyData(
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withMeta(Optional<EconomyMeta> value) {
     return new EconomyData(
-        value, industries, classes, debts, flows, laborSupply, allocations, relations, markets);
+        value,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withIndustries(Map<IndustryId, Industry> value) {
     return new EconomyData(
-        meta, value, classes, debts, flows, laborSupply, allocations, relations, markets);
+        meta,
+        value,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withClasses(Map<CohortKey, ClassRow> value) {
     return new EconomyData(
-        meta, industries, value, debts, flows, laborSupply, allocations, relations, markets);
+        meta,
+        industries,
+        value,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withDebts(Map<DebtId, Debt> value) {
     return new EconomyData(
-        meta, industries, classes, value, flows, laborSupply, allocations, relations, markets);
+        meta,
+        industries,
+        classes,
+        value,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withFlows(Map<CohortKey, FlowRow> value) {
     return new EconomyData(
-        meta, industries, classes, debts, value, laborSupply, allocations, relations, markets);
+        meta,
+        industries,
+        classes,
+        debts,
+        value,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余八个组件原样带过。 */
   public EconomyData withLaborSupply(Map<PeopleLotId, LaborSupply> value) {
     return new EconomyData(
-        meta, industries, classes, debts, flows, value, allocations, relations, markets);
+        meta, industries, classes, debts, flows, value, allocations, relations, markets, shipments);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余八个组件原样带过。 */
   public EconomyData withAllocations(Map<LaborAllocationId, LaborAllocation> value) {
     return new EconomyData(
-        meta, industries, classes, debts, flows, laborSupply, value, relations, markets);
+        meta, industries, classes, debts, flows, laborSupply, value, relations, markets, shipments);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余八个组件原样带过。 */
   public EconomyData withRelations(Map<IndustryId, ProductionRelation> value) {
     return new EconomyData(
-        meta, industries, classes, debts, flows, laborSupply, allocations, value, markets);
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        value,
+        markets,
+        shipments);
   }
 
   /**
@@ -489,6 +564,34 @@ public record EconomyData(
    */
   public EconomyData withMarkets(Map<HexCoord, Market> value) {
     return new EconomyData(
-        meta, industries, classes, debts, flows, laborSupply, allocations, relations, value);
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        value,
+        shipments);
+  }
+
+  /**
+   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余九个组件原样带过。
+   *
+   * <p>★ 与 {@link #withMarkets} 同款：它是"跨 tick 状态"的唯一写入口（在日循环的到货销账与发运建账里被调用）， 不是 GM 命令面。
+   */
+  public EconomyData withShipments(Map<ShipmentId, ShipmentBatch> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        value);
   }
 }

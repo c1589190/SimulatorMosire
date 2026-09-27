@@ -94,7 +94,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.relations(), seeded.relations()),
             // ★ H4：第 9 个组件（每格的现货市场）按同一套判重口径追加 —— ★ 漏了它 = 播种时给的价格
             //   **静默消失**（世界照旧起得来，只是市场全无、城市缺口不收敛，而账面上看不出是谁弄丢的）。
-            merge(base.markets(), seeded.markets()));
+            merge(base.markets(), seeded.markets()),
+            // ★ M2.4：第 10 个组件（在途批次）—— 播种载荷没有在途，但**必须原样带过已有批次**：
+            //   漏了它 = 一次按格追加播种会把全世界正在路上的货物静默抹掉（比"没播"更糟：货权凭据消失）。
+            merge(base.shipments(), seeded.shipments()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

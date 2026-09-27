@@ -134,6 +134,9 @@ public record ProductionLedger(
     private final List<ProductionSettlement.RuleSettlement> ruleSettlements = new ArrayList<>();
     private final List<CompensationRule> deferredMoney = new ArrayList<>();
 
+    /** ★ M2.3/M2.4：当天区域市场的只读报告（瞬态；不进 {@link ProductionLedger}，由 stepper 交给 L3 读数）。 */
+    private MarketReport marketReport;
+
     /** 当天已铸的转移条数（{@link TransferId} 的 {@code seq} 段）。 */
     private long transferSequence;
 
@@ -204,6 +207,19 @@ public record ProductionLedger(
      */
     void addDeferred(CompensationRule rule) {
       deferredMoney.add(rule);
+    }
+
+    /**
+     * ★ 记下当天的区域市场报告（M2.3/M2.4；瞬态，不进落盘的 {@link ProductionLedger}）—— {@code
+     * EconomyDayStepper.lastMarketReport()} 读它。
+     */
+    void recordMarketReport(MarketReport report) {
+      this.marketReport = report;
+    }
+
+    /** 当天的市场报告（没开市 ⇒ {@code null}）。 */
+    MarketReport marketReport() {
+      return marketReport;
     }
 
     ProductionLedger toLedger() {

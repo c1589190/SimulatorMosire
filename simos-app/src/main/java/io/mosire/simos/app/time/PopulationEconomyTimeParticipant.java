@@ -135,6 +135,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     }
     // ★ T5：第三片 actor —— 读写集是 {@code actor:<mapId>:goods.<key>}（形制照 ActorResolver）。
     reads.add(actorAddressRoot());
+    if (state.module("map").isPresent()) {
+      // ★ M2.3：区域拓扑读地图（城市/地形）—— 只读声明，避免与地图写者同轮冲突时静默。
+      reads.add(mapAddressRoot());
+    }
     writes.add(actorAddressRoot());
     for (GoodsAccountKey key : actor.accounts().keySet()) {
       reads.add(accountAddress(key));
@@ -191,7 +195,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             operatorGoods,
             operatorMoney,
             operatorFrozenGoods,
-            operatorFrozenMoney);
+            operatorFrozenMoney,
+            // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
+            MarketTopologyBook.from(state));
     SocialData currentSocial = social;
     ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
@@ -402,6 +408,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   private String actorAddressRoot() {
     return new Address(List.of(new Namespace(ACTOR), Entity.of(mapId))).canonical();
+  }
+
+  private String mapAddressRoot() {
+    return new Address(List.of(new Namespace("map"), Entity.of(mapId))).canonical();
   }
 
   /**

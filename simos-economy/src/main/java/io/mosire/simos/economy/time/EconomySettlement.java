@@ -12,9 +12,12 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.market.ShipmentAllocation;
+import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuance;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -582,10 +585,13 @@ public final class EconomySettlement {
         householdMoney,
         Map.of(),
         Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
+        // ★ M2.3：冻结表是**可写工作副本**（挂单冻结→成交/轮末释放，净额回基值）⇒ 不能给 Map.of()。
+        new LinkedHashMap<>(),
+        new LinkedHashMap<>(),
+        new LinkedHashMap<>(),
+        new LinkedHashMap<>(),
+        // ★ M2.4：单模块入口没有城市拓扑 ⇒ 退化成"每格一区、不跨区"（M2-L1 的既有行为）。
+        MarketTopology.singleHex(base.markets()),
         plantingDrawsFirst,
         famineMortalityPerMille,
         ledger);
@@ -611,6 +617,8 @@ public final class EconomySettlement {
    *
    * @param operatorGoods 经营者商品账工作副本（键 = 经营者主体；**就地更新**）；没有就给空表
    * @param operatorMoney 经营者货币账工作副本（同上）；没有就给空表
+   * @param topology ★ M2.3 的区域拓扑（只读派生件；组合根按城市节点 + tier 半径 + 地形现算）。★ 单模块入口用 {@link
+   *     MarketTopology#singleHex} 退化成"每格一区、不跨区"（M2-L1 的既有行为）。
    */
   static EconomyData settleOneDay(
       EconomyData base,
@@ -624,6 +632,7 @@ public final class EconomySettlement {
       Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      MarketTopology topology,
       boolean plantingDrawsFirst,
       int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger) {
@@ -635,6 +644,7 @@ public final class EconomySettlement {
     Objects.requireNonNull(householdFrozenMoney, "householdFrozenMoney（M2：冻结表是只读快照；没有就给空表）");
     Objects.requireNonNull(operatorFrozenGoods, "operatorFrozenGoods（M2：冻结表是只读快照；没有就给空表）");
     Objects.requireNonNull(operatorFrozenMoney, "operatorFrozenMoney（M2：冻结表是只读快照；没有就给空表）");
+    Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -689,6 +699,13 @@ public final class EconomySettlement {
     //   在三个落点（关系实付 / 同格取材 / 同格借粮）**只能有一个答案**，故它在这里建好、逐处传下去。
     //   ★ 键集一天不变（人口的增减不改行的身份），故建一次就够。
     Map<ActorRef, CohortKey> householdOfActor = householdActorsOf(rows);
+
+    // ── 0b. 到货（M2.4：在途是跨 tick 状态；到达日"在途减、目的地库存增"）────────────────────
+    //   ★ 必须排在消费/市场/借粮**之前**：到货的粮当天就能吃、当天就能再挂牌（但到货前消费不到它）。
+    //   ★ 损耗逐票由买方承担（M2.5）：到达时从在途量里扣、记进 ledger 的损耗账户；买方只收到净额。
+    //   ★ 迟到（手工搭的状态里 arrivalTick < day）照样补投，不让货卡在在途表里。
+    LinkedHashMap<ShipmentId, ShipmentBatch> shipments = new LinkedHashMap<>(base.shipments());
+    deliverShipments(day, shipments, householdGoods, operatorGoods, householdOfActor, ledger);
 
     if (plantingDrawsFirst) {
       drawCycleInputs(
@@ -812,37 +829,41 @@ public final class EconomySettlement {
       industries.put(id, withCycleState(industry, nextProgress, nextCycleLabor, nextInputUsed));
     }
 
-    // ── 4. 同格市场清算（H4；每周期一次，在收获与分配之后）────────────────────────────────
-    //   ★★ 为什么挂在"今天有产业关账"这个**日级**事实上（与计息同款）：周期的定义住在产业上（cycleDays），
-    //     而市场是"这一格这个周期的一次集市" ⇒ 一天之内几个产业同时关账也只开一次市。
-    //   ★ 它读 base.markets()（价格是数据）：缺格的格没有市场 ⇒ 这一支整块跳过（不造默认价）。
+    // ── 4. 区域市场清算（M2.3/M2.4：每 5 天一轮 + 低库存追加轮；区内即时 / 跨区 ETA）────────────
+    //   ★★ 调度只依赖**绝对世界日 + 当前状态**（M0.1）：两条推进路径在同一天必然同轮。
+    //   ★ 它读 base.markets()（价格是数据）：缺格的格没有市场 ⇒ 不触发（不造默认价）。
     //   ★★ 买卖**只走唯一的 applier**（applyTransfer）：本步绝不直接改副本 ——
     //     "任何库存变动必有对应转移记录"这条不变量的落点因此仍是一处（见 MarketSettlement 的类注）。
     //   ★★ M2.1 起这一支不再按"本周期缺口/余量"就地配对，而是**主体各自生成订单**（家户 + 经营者，见
     //     {@link MarketSettlement} 的类注）：生活保留 = 5 天撮合间隔 + 30 天安全库存，旧 1000‰ 整周期自留已退休。
-    //   ★★ M2 的冻结写者尚未出现，但冻结表按 M1.4 的口径**一并带进会话**：订单的可卖量/预算先减冻结，
-    //     applyTransfer 的带冻结重载再校验一次（今天真档的冻结恒空 ⇒ 数值不变；L2 的挂单冻结一到就自动生效）。
+    //   ★★ M2 的冻结写者从这里接上：挂单冻结 → 成交/发运/轮末释放（冻结表随后原样带出，净额必然回到基值）。
     //   ★★ **H5 ②：市场排在借粮之前**（自产/分配 → 市场 → 救济(留位) → 借）—— 见下面的 {@link #lendDeficits}。
-    if (anyCycleClosed) {
-      MarketSettlement.clearOncePerCycle(
-          base.markets(),
-          new MarketSettlement.MarketRound(
-              day,
-              rows,
-              householdGoods,
-              householdMoney,
-              householdFrozenGoods,
-              householdFrozenMoney,
-              operatorGoods,
-              operatorMoney,
-              operatorFrozenGoods,
-              operatorFrozenMoney,
-              unmetToday,
-              householdOfActor,
-              industries,
-              base.relations(),
-              allocations,
-              ledger));
+    MarketSettlement.MarketRound marketRound =
+        new MarketSettlement.MarketRound(
+            day,
+            rows,
+            householdGoods,
+            householdMoney,
+            householdFrozenGoods,
+            householdFrozenMoney,
+            operatorGoods,
+            operatorMoney,
+            operatorFrozenGoods,
+            operatorFrozenMoney,
+            unmetToday,
+            householdOfActor,
+            industries,
+            base.relations(),
+            allocations,
+            shipments,
+            ledger);
+    MarketTrigger marketTrigger =
+        MarketSettlement.triggerFor(day, anyCycleClosed, base.markets(), marketRound);
+    if (marketTrigger != MarketTrigger.NONE) {
+      MarketReport marketReport =
+          MarketSettlement.clearOncePerCycle(base.markets(), marketRound, marketTrigger, topology);
+      // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
+      ledger.recordMarketReport(marketReport);
     }
 
     // ── 4b. 借粮（★ H5：**最后手段** —— 自产/分配 → 市场 → 救济(留位) → 借）──────────────────
@@ -999,7 +1020,61 @@ public final class EconomySettlement {
         allocations,
         base.relations(),
         // ★ H4：市场表**原样带过**（价格是数据、不是结算产物 —— 结算只读它，见 MarketSettlement）。
-        base.markets());
+        base.markets(),
+        // ★ M2.4：在途批次表是**结算的产物**（发运建账、到货销账）⇒ 交工作副本。
+        shipments);
+  }
+
+  /**
+   * ★★ <b>到货处理</b>（M2.4/M2.5）：把 {@code arrivalTick <= day} 的在途批次逐票落回买方账户。
+   *
+   * <pre>
+   * loss    = ⌊本票数量 × lossPerMille ÷ 1000⌋        // 在途实物减少
+   * arrived = 本票数量 − loss                         // 买方只收到净额（M2.5：买方承担损耗）
+   * 记损耗：ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, loss)   // 进损耗账户，不静默蒸发
+   * 记到货：买方账 += arrived（家户或经营者；账户缺席 ⇒ 抛，不许静默丢货）
+   * </pre>
+   *
+   * <p>★ <b>为什么在日循环里、且排在消费之前</b>：到货日是"目的地第一次能消费它"的那一天（M2.4 的判据）。 ★ <b>补投</b>：手工搭的状态可能给 {@code
+   * arrivalTick < day}，本方法照样投递，不让货卡在在途表里。 ★ 本批只产生 {@link
+   * io.mosire.simos.economy.api.market.LossBearer#BUYER}；其他分担方留位，见到即抛（不假装已实现）。
+   */
+  private static void deliverShipments(
+      long day,
+      LinkedHashMap<ShipmentId, ShipmentBatch> shipments,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, CohortKey> householdOfActor,
+      ProductionLedger.Accumulator ledger) {
+    var iterator = shipments.entrySet().iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<ShipmentId, ShipmentBatch> entry = iterator.next();
+      ShipmentBatch batch = entry.getValue();
+      if (batch.arrivalTick() > day) {
+        continue;
+      }
+      for (ShipmentAllocation allocation : batch.allocations()) {
+        if (allocation.lossBearer() != io.mosire.simos.economy.api.market.LossBearer.BUYER) {
+          throw new IllegalStateException(
+              "本批只支持买方承担在途损耗（M2.5 基线合同），见到其他分担方: " + allocation.lossBearer());
+        }
+        long loss = allocation.quantity() * batch.route().lossPerMille() / 1000L;
+        long arrived = allocation.quantity() - loss;
+        if (loss > 0L) {
+          ledger.addLoss(MarketSettlement.TRANSPORT_LOSS_ACCOUNT, batch.commodity(), loss);
+        }
+        CohortKey household = householdOfActor.get(allocation.buyer());
+        if (household != null) {
+          addStock(householdGoods, household, batch.commodity(), arrived);
+        } else if (operatorGoods.containsKey(allocation.buyer())) {
+          addOperatorStock(operatorGoods, allocation.buyer(), batch.commodity(), arrived);
+        } else {
+          throw new IllegalStateException(
+              "在途到货时买方账不在会话副本里（货不能静默丢）：批次=" + entry.getKey() + " 买方=" + allocation.buyer());
+        }
+      }
+      iterator.remove();
+    }
   }
 
   // ── 人口变动回写（R4：社会侧的出生/死亡 → 经济侧的行人口、劳动配额与流水）──────────────────
@@ -1110,7 +1185,8 @@ public final class EconomySettlement {
         laborSupply,
         allocations,
         base.relations(), // ★ T2：生产关系表原样带过（人口变动不动关系）
-        base.markets()); // ★ H4：市场表同理（人口变动不动价格）
+        base.markets(), // ★ H4：市场表同理（人口变动不动价格）
+        base.shipments()); // ★ M2.4：在途批次同理（人口变动不碰在途）
   }
 
   /**

@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * ★★ **逐日结算的会话**（R4；给 {@code simos-app} 的人口—经济协调器用）：把"一次推 N 天"的**内部日循环**开放给 **唯一同时看得见两个切片的调用方**。
@@ -55,8 +56,18 @@ public final class EconomyDayStepper {
 
   private final boolean plantingDrawsFirst;
   private final int famineMortalityPerMille;
+
+  /**
+   * ★★ <b>M2.3：区域市场拓扑（只读输入）</b>—— 由组合根从地图/城市现算后传给本类；没有城市信息的世界退化成 {@link
+   * MarketTopology#singleHex}（每格一区、不跨区，= M2-L1 的既有行为）。
+   */
+  private final MarketTopology topology;
+
   private EconomyData data;
   private final LinkedHashMap<CohortKey, FlowRow> flows;
+
+  /** ★ M2.3/M2.4：最近一次 step 的区域市场报告（瞬态；L3 读数接它，见 {@link MarketReport}）。 */
+  private MarketReport lastMarketReport;
 
   /** ★★ 家户商品账的会话工作副本（**就地更新**；见类注。★ 调用方持有的那一份才是主人，本类只借它一程）。 */
   private final Map<CohortKey, Map<CommodityId, Long>> householdGoods;
@@ -175,6 +186,36 @@ public final class EconomyDayStepper {
   }
 
   /**
+   * ★★ <b>M2.3 的组合根入口（区域拓扑版）</b>：与上面那个公开构造器逐字同款，只是把 {@link MarketTopology} 换成由 app
+   * 从地图/城市现算的区域拓扑；两个行为旋钮取出厂默认值。
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      MarketTopology topology) {
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        householdFrozenGoods,
+        householdFrozenMoney,
+        operatorGoods,
+        operatorMoney,
+        operatorFrozenGoods,
+        operatorFrozenMoney,
+        topology,
+        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
    * 同 {@link #EconomyDayStepper(EconomyData, Map, Map)}，但**播种次序可注入**（见 {@code
    * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION}）。
    */
@@ -254,12 +295,14 @@ public final class EconomyDayStepper {
         base,
         householdGoods,
         householdMoney,
-        Map.of(),
-        Map.of(),
+        // ★ M2.3 的冻结写者要求这两张表**可变**（挂单冻结 → 成交/轮末释放 ⇒ 净额回基值）：
+        //   旧的 Map.of() 会让"有参与者的单模块世界"在开市时 UnsupportedOperationException。
+        new LinkedHashMap<>(),
+        new LinkedHashMap<>(),
         operatorGoods,
         operatorMoney,
-        Map.of(),
-        Map.of(),
+        new LinkedHashMap<>(),
+        new LinkedHashMap<>(),
         plantingDrawsFirst,
         famineMortalityPerMille);
   }
@@ -282,6 +325,35 @@ public final class EconomyDayStepper {
       Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       boolean plantingDrawsFirst,
       int famineMortalityPerMille) {
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        householdFrozenGoods,
+        householdFrozenMoney,
+        operatorGoods,
+        operatorMoney,
+        operatorFrozenGoods,
+        operatorFrozenMoney,
+        MarketTopology.singleHex(base.markets()),
+        plantingDrawsFirst,
+        famineMortalityPerMille);
+  }
+
+  /** ★★ <b>M2.3：带区域拓扑的完整构造器</b>（包内可见）—— 与上面那个逐字同款，只是把"每格一区"换成组合根给的区域拓扑。 */
+  EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(householdGoods, "householdGoods（家户账是会话状态，必须由调用方载入）");
     Objects.requireNonNull(householdMoney, "householdMoney（H4：货币账是会话状态，必须由调用方载入）");
@@ -294,12 +366,16 @@ public final class EconomyDayStepper {
     this.data = base;
     this.householdGoods = householdGoods;
     this.householdMoney = householdMoney;
-    this.householdFrozenGoods = householdFrozenGoods;
-    this.householdFrozenMoney = householdFrozenMoney;
+    // ★ M2.3 起冻结表是**可写工作副本**（挂单冻结→成交/轮末释放，净额回基值）⇒ 构造期拷成可变表：
+    //   调用方交进来的"只读快照"（甚至 Map.of()）不会再被本类就地改写，也不会因子表不可变而在开市时炸。
+    this.householdFrozenGoods = new LinkedHashMap<>(householdFrozenGoods);
+    this.householdFrozenMoney = new LinkedHashMap<>(householdFrozenMoney);
     this.operatorGoods = operatorGoods;
     this.operatorMoney = operatorMoney;
-    this.operatorFrozenGoods = operatorFrozenGoods;
-    this.operatorFrozenMoney = operatorFrozenMoney;
+    this.operatorFrozenGoods = new LinkedHashMap<>(operatorFrozenGoods);
+    this.operatorFrozenMoney = new LinkedHashMap<>(operatorFrozenMoney);
+    this.topology =
+        Objects.requireNonNull(topology, "topology（M2.3：区域拓扑；没有城市信息用 MarketTopology.singleHex）");
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.flows = new LinkedHashMap<>(base.flows());
@@ -401,9 +477,15 @@ public final class EconomyDayStepper {
             householdFrozenMoney,
             operatorFrozenGoods,
             operatorFrozenMoney,
+            topology,
             plantingDrawsFirst,
             famineMortalityPerMille,
             ledger);
+    // ★ 只在新开了市时覆盖：非开市日保留"最近一轮"的报告（读数不必每天清空上一轮）。
+    MarketReport report = ledger.marketReport();
+    if (report != null) {
+      lastMarketReport = report;
+    }
     return ledger.toLedger();
   }
 
@@ -420,6 +502,15 @@ public final class EconomyDayStepper {
     data = EconomySettlement.applyPopulationChange(attached, changes);
     flows.clear();
     flows.putAll(data.flows());
+  }
+
+  /**
+   * ★★ <b>最近一次 {@link #step(long)} 的区域市场报告</b>（M2.3/M2.4；没开市 ⇒ {@link Optional#empty()}）。
+   *
+   * <p>★ <b>它是瞬态读数原料，不是状态</b>：L3 的读数组件（M2.7）把它折进逐区读数；本批不落盘（见 {@link MarketReport} 的类注）。
+   */
+  public Optional<MarketReport> lastMarketReport() {
+    return Optional.ofNullable(lastMarketReport);
   }
 
   /**

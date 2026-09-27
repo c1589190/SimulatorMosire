@@ -43,7 +43,15 @@ public enum TransferReason {
   LOAN_REPAYMENT("loan_repayment"),
 
   /** 同格市场成交（H4：买方付钱、卖方交货 —— 一笔买卖铸<b>一对</b>转移，见 {@code Transfer} 的货币腿口径）。 */
-  MARKET_TRADE("market_trade");
+  MARKET_TRADE("market_trade"),
+
+  /**
+   * ★★ <b>运费</b>（M2.4/M2.5：买方 → 承运主体的货币腿；{@code ActorKind.ORGANIZATION}）。
+   *
+   * <p>★ <b>为什么单独一档</b>：运费不是"货款的一部分"——它是运输这件事的对价，收款方是承运人而不是卖方。混进 {@code MARKET_TRADE}
+   * 会让读账时分不出"货卖了多少钱"与"路花了多少钱"（M2.4 的判据要求运费总额可读）。★ <b>世界里没有承运 actor 时不铸这条腿</b>（没有收款方就不收，禁钱凭空消失）。
+   */
+  CARRIER_FEE("carrier_fee");
 
   private final String value;
 

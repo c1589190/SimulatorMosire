@@ -18,6 +18,7 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
@@ -102,6 +103,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
     // ★★ H4：市场表的键 = **格**（{@code 0_0}）—— 本模块第一次把 HexCoord 当键用（见类注）。
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
+    // ★★ M2.4：在途批次表的键 = ShipmentId（{@code sh-<day>-<seq>}）—— 与上面同一条口径：toString/parse 互逆，只需读侧。
+    module.addKeyDeserializer(ShipmentId.class, keyDeserializer(ShipmentId::parse));
     // ★★ H2：补偿规则的**旧档兼容**（旧线格式是单个 `basis`，H2 拆成 `pool` + `weight`）——见下面那个反序列化器。
     module.addDeserializer(CompensationRule.class, new CompensationRuleDeserializer());
     return module;
