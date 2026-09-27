@@ -52,8 +52,18 @@ for t in 180 360; do
   ok=0
   for attempt in 1 2 3 4 5; do
     if ! alive; then echo "[m2sim] 服务不在 ⇒ 重启（第 $attempt 次）"; start_server || exit 1; fi
-    echo "===== advance -> $t（第 $attempt 次，$(date '+%T')）====="
-    /usr/bin/time -f "  advance 耗时 %E" python3 "$ADVANCE" "$t" 2>&1 | tail -8
+    echo "===== advance -> $t（第 $attempt 次；每 30 天一段，$(date '+%T')）====="
+    chunks_ok=1
+    for c in $(seq 30 30 "$t"); do
+      echo "  -- advance -> $c（$(date '+%T')）"
+      if ! /usr/bin/time -f "  chunk 耗时 %E" python3 "$ADVANCE" "$c" 2>&1 | tail -4; then
+        echo "  ★ chunk -> $c 失败 ⇒ 本轮中止，重试"; chunks_ok=0; break
+      fi
+    done
+    if [ "$chunks_ok" -ne 1 ]; then
+      if ! alive; then echo "[m2sim] 服务不在 ⇒ 重启"; start_server || exit 1; fi
+      continue
+    fi
     echo "===== dump $label（$(date '+%T')）====="
     if python3 "$DUMP" "$label" > "$HERE/dump-$label.log" 2>&1 && [ -f "/tmp/h6raw_${label}.json" ]; then
       tail -5 "$HERE/dump-$label.log"
