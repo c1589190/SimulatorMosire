@@ -89,3 +89,16 @@ L3 额外硬要求（在 MASTER 之外、由前两层与用户裁定逼出来的
 - **读数不许进 `EconomyData`**（该类注明写"市场表里没有会过期的读数；读数在当天的 ledger 里"）：
   优先**读时派生** + 进程内 `lastMarketReport`；哪些是"进程内可得、重启即失"必须如实标注。
 - **价格模式标注**：固定价（第一版）与自适应（默认关）必须在读数里可区分；跨区结算暂设即时也要标注。
+
+## 一年期批次（用户 2026-09-28 指令：只跑 tick 180 / 360）—— 进行中
+
+- **脚本**：`m2sim_full.sh`（本目录；服务由脚本进程树内起、死了重启；store 与读数落**持久目录**，不用 /tmp）。
+- **踩坑（已修，留痕）**：首跑 01:26 时 `simos.worldgen.initialize` 报"参数文件不存在"——`Shell` 按**工作目录（仓根）**拼
+  `config/worldgen/v17levant-nations.json`，而脚本 `cd` 到了 SDD 目录 ⇒ worldgen 3/3 全失败，世界只剩 bootstrap；
+  随后 `advance 180/360` **各 0.2 秒返回**（没有人口/经济可推），看起来像"卡住/空跑"。修法：`setsid bash -c "cd <仓根> && exec run-shaded.sh …"`；
+  worldgen 失败即中止（rc + `✓ revision=` 计数 3/3 双检），删空 store 重跑。
+- **第二次开跑**：01:28:13 起，worldgen **3/3 成功**（德意志 rev2 cmd=126 / 奥斯特马克 rev3 cmd=49 / 霍赫兰 rev4 cmd=76，均 tick 0）；
+  01:28:17 起 `advance -> 180` 进行中（服务 java 进程 **133% CPU**、13.9% 内存 —— 是真在算，不是空转）。
+- **产物（未到）**：`m2t180.json`、`m2t360.json`（逐格原始读数，落本目录；dump 走 `../2026-09-27-economic-cycle-impl/h6sim_dump.py`）。
+- **对照基线**：`2026-09-27-economic-cycle-impl/h6raw_tick{120,240,360}.json`（H5/H6 代码态的 120/240/360；本批只有 180/360，
+  与基线只在 360 同日可比，180 是新时点）。
