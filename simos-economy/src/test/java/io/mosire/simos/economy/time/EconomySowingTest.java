@@ -534,6 +534,16 @@ class EconomySowingTest {
    * 毛产 = 200 × 67 × 1000 = 13,400,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 12,998,000
    * 对照（同夹具**不配种子**）：土地是瓶颈 ⇒ 400 亩 ⇒ 净 25,996,000（= {@link #FULL_HARVEST_NET}）
    * </pre>
+   *
+   * <p>★★ <b>H5 的口径修正（改这两条期望值的算式，断言本身一条没动）</b>：结算的次序现在是 <b>吃饭 → 收获/分配 → 集市 → 借粮</b>（借粮是最后手段，见
+   * {@code EconomySettlement.lendDeficits} 的"再吃一口"） ⇒
+   * **关账日那一顿是从刚收获的粮里吃的**（改前：关账日的缺口记在读数里、人空着肚子等下一个周期）。逐条算式：
+   *
+   * <pre>
+   * 终态粮 = 净产 − 关账日那一顿（第 CYCLE_DAYS 天 = dailyRationMilli(400, 2) = 33,333）
+   * 未满足 = 整周期口粮(66,666) − 关账日那一顿(33,333) = 33,333   （第 1 天全缺口、第 2 天在收获里吃上了）
+   * 对照世界同理：净产 25,996,000 − 33,333
+   * </pre>
    */
   @Test
   void aShortJarShrinksTheSownAreaAndCutsTheHarvest() {
@@ -544,6 +554,8 @@ class EconomySowingTest {
             * EconomySettlement.MILLI_PER_GRAIN
             * (1000L - PRODUCTION_LOSS_PER_MILLE)
             / 1000L;
+    // ★ H5：关账日那一顿从收获里吃（见方法注释的算式）。
+    long closingDayMeal = rationOn(CYCLE_DAYS);
 
     EconomyFixtures.World seededWorld = farm(20_000L, seeds(SEED_PER_MU));
     EconomyFixtures.World bareWorld = farm(20_000L, Map.of());
@@ -552,8 +564,8 @@ class EconomySowingTest {
     EconomyData withoutSeeds = EconomyFixtures.advance(bareWorld.data(), bareWorld.goods(), 0L, 2L);
 
     assertThat(grainOf(seededWorld.goods(), PEASANT_KEY))
-        .as("20,000 毫粮的种子只够种 200 亩（土地本来能种 400 亩）⇒ 终态 = 200 亩的净产")
-        .isEqualTo(expectedNet);
+        .as("20,000 毫粮的种子只够种 200 亩（土地本来能种 400 亩）⇒ 终态 = 200 亩的净产 − 关账日那一顿")
+        .isEqualTo(expectedNet - closingDayMeal);
     // ★ 实测修正（见提交说明与"偏离"报告）：`settle(…, 0, 2)` 跑满一个 2 天周期 ⇒ **关账时累加器已清零**
     //   （任务 3 的 `sowingDayDrawsTheSeedBeforeTheDayIsEaten` 已逐值钉住"关账清零"）⇒ "扣光 20,000" 这一笔
     //   只能在**播种日当天**读。故这里另跑一次单日结算取第 1 天读数（期望值不变），而不是把断言放宽成 0。
@@ -563,10 +575,12 @@ class EconomySowingTest {
     assertThat(sowingDay.industries().get(FARM).cycleSeedUsedMilli())
         .as("扣光：缸里那 20,000 全变成种子（播种日当天读数；关账后归零）")
         .isEqualTo(20_000L);
-    assertThat(unmetOf(withSeeds, PEASANT_KEY)).as("两天全缺口").isEqualTo(rationOver(CYCLE_DAYS));
+    assertThat(unmetOf(withSeeds, PEASANT_KEY))
+        .as("整周期缺口 = 两天口粮 − 关账日那一顿（★ H5：第 2 天的那一顿在收获里吃上了）")
+        .isEqualTo(rationOver(CYCLE_DAYS) - closingDayMeal);
     assertThat(grainOf(bareWorld.goods(), PEASANT_KEY))
-        .as("对照：不配种子 ⇒ 第三路不施加约束 ⇒ 土地瓶颈满产；那 20,000 被第 1 天口粮吃光" + "（起点 0）⇒ 终态恰为净产")
-        .isEqualTo(FULL_HARVEST_NET);
+        .as("对照：不配种子 ⇒ 第三路不施加约束 ⇒ 土地瓶颈满产；那 20,000 被第 1 天口粮吃光" + "（起点 0）⇒ 终态 = 净产 − 关账日那一顿（★ H5）")
+        .isEqualTo(FULL_HARVEST_NET - closingDayMeal);
   }
 
   /** ★★ **缸全空 ⇒ 播种日扣不到 ⇒ 颗粒无收**（"冬春吃空缸 ⇒ 减产"在单周期的极端形态）。 */

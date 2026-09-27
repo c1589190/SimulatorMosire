@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
@@ -27,9 +28,10 @@ import java.util.Map;
  * 【供给】逐家户、逐**已定价**商品：
  *    自留 reserve = 该商品的整周期自然需求 × {@link #MARKET_SELF_RESERVE_PER_MILLE} ÷ 1000
  *    可售 supply_h = max(0, 余额_h − reserve)
- * 【需求】逐家户、逐**已定价**商品：
- *    缺口 gap_h     = max(0, naturalNeeds_h − 余额_h)        // 今天的口粮/衣着还差多少
- *    买得起 afford_h = 钱_h(计价货币) × 1000 ÷ 价格          // ★ 没钱的缺口**不是有效需求**
+ * 【需求】逐家户、逐**已定价**商品（★★ H5 ①：**本期（整周期）剩余需求**，不再是"当日缺口"）：
+ *    本期缺口 unmet_h = 本周期累计未满足需求（flows.unmetNeed_h + 当日 unmetToday_h）  // 毫单位
+ *    剩余 gap_h      = max(0, unmet_h − 余额_h)      // ★ "本周期还缺多少、手上又已经有多少" ⇒ 补到不缺口为止
+ *    买得起 afford_h  = 钱_h(计价货币) × 1000 ÷ 价格          // ★ 没钱的缺口**不是有效需求**
  *    需求 demand_h   = min(gap_h, afford_h)
  * 【成交】固定价：供 ≥ 求 ⇒ 按需成交；求 &gt; 供 ⇒ 按需求比例**配给**（最大余数法，Σ配给 == 供给）
  *    货款 = ⌈数量 × 价格 ÷ 1000⌉                            // ★ 向上取整：向下取整会让小额成交"白送"
@@ -38,6 +40,23 @@ import java.util.Map;
  * <p>★★ <b>"没钱的缺口不是有效需求"是本仓一贯的立场</b>（"市场有粮仍可能有人饿"）：需求那一维里 <b>购买力先于需要</b> ——
  * 饿肚子但分文没有的家户不产生一条需求（它的缺口照旧记在 {@code FlowRow.unmetNeed} 里）。 ★
  * 于是"市场开了、粮也卖光了、还是有人饿死"是一件<b>账面上说得清</b>的事。
+ *
+ * <p>★★ <b>H5 ①：需求窗口 = 本期剩余需求（改前是"当日缺口"）</b> —— 逐条理由：
+ *
+ * <pre>
+ * 改前：gap_h = max(0, 当日需求_h − 余额_h)        ⇒ 集市只在关账日开一次 ⇒ 只补得上**一天**的口粮
+ *       （其余 119 天照旧缺口；下一个周期又从空缸开始）—— 实测：整周期缺口几乎不收敛。
+ * 改后：gap_h = max(0, 本周期累计缺口_h − 余额_h)  ⇒ 关账日一次把"这一周期缺的那些"补齐（补到不缺口为止），
+ *       于是下一个周期从**满缸**开始 ⇒ 整周期缺口逐周期收敛（判据 ① 的实测见 H5 报告）。
+ * ★ 恒等式（两条口径的关系，逐值可核）：
+ *     本周期累计缺口_h = Σ_本周期各日 (当日需求 − 当日实得) = 本周期总需求_h − 本周期已吃_h
+ *   ⇒ gap_h = max(0, 本周期总需求_h − 本周期已吃_h − 余额_h)  —— 与规格里那个算式**逐字同形**。
+ *     （"本周期已吃"用 unmetNeed 表达：总需求 = 已吃 + 未满足 ⇒ 已吃 = 总需求 − unmetNeed。）
+ * </pre>
+ *
+ * <p>★ <b>为什么读 {@code unmetNeed} 而不是另立一张"本周期已吃"的表</b>：{@code FlowRow.unmetNeed} 已经是
+ * "本周期累计未满足需求"的**唯一**拼写点（逐日累加、新周期第一天归零），再算一遍必然漂开。★ 当日那一份在 {@code unmetToday} 里（还没并进流水）⇒ 两处相加 =
+ * 到此刻为止的整周期缺口。
  *
  * <p>★★ <b>自留口径（{@link #MARKET_SELF_RESERVE_PER_MILLE}）</b>：家户在挂牌之前先扣下 <b>{@code 千分比 ÷ 1000}
  * 倍的整周期自然需求</b>（默认 1000‰ = <b>留足 1 个整周期</b>的自需）。★ 与放贷那条 （{@code
@@ -63,6 +82,11 @@ import java.util.Map;
  *
  * <p>★ <b>本批如实不做的</b>：跨格市场（同格池之外没有搬运，见 {@code Market} 的类注）、市场库存/订单簿、价格随供需浮动 （价格是数据，见 {@code
  * Market}）、运输损耗与关税。
+ *
+ * <p>★★ <b>H5：买卖双方仍然只有家户</b>（经营者不参与市场）—— 两个 {@code operator*} 参数进来<b>只为</b>
+ * "任何库存变动必有对应转移记录"那条不变量的落点仍然只有一处（{@link EconomySettlement#applyTransfer} 要看得见
+ * 经营者账）；本类**不读**它们（既不出售经营者的布/工具，也不让它买料）。★ 后果如实记：经营者因此只有"付出"没有 "收入"（它的货币周转金是一次性的，见 {@code
+ * EconomySeeder.operatorWageReserveMilli} 的边界注释）。
  */
 final class MarketSettlement {
 
@@ -101,7 +125,10 @@ final class MarketSettlement {
       LinkedHashMap<CohortKey, ClassRow> rows,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetToday,
+      Map<CohortKey, FlowRow> flows,
       Map<CohortKey, Long> cycleDaysByHousehold,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
@@ -128,7 +155,10 @@ final class MarketSettlement {
             rows,
             householdGoods,
             householdMoney,
+            operatorGoods,
+            operatorMoney,
             unmetToday,
+            flows,
             cycleDaysByHousehold,
             householdOfActor,
             ledger);
@@ -146,7 +176,10 @@ final class MarketSettlement {
       Map<CohortKey, ClassRow> rows,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetToday,
+      Map<CohortKey, FlowRow> flows,
       Map<CohortKey, Long> cycleDaysByHousehold,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
@@ -175,7 +208,15 @@ final class MarketSettlement {
     for (CohortKey key : keys) {
       long demand =
           effectiveDemandOf(
-              rows.get(key), householdGoods, householdMoney, key, commodity, numeraire, price);
+              rows.get(key),
+              householdGoods,
+              householdMoney,
+              unmetToday,
+              flows,
+              key,
+              commodity,
+              numeraire,
+              price);
       if (demand <= 0L) {
         continue;
       }
@@ -225,6 +266,8 @@ final class MarketSettlement {
             buyer,
             householdGoods,
             householdMoney,
+            operatorGoods,
+            operatorMoney,
             unmetToday,
             householdOfActor,
             ledger);
@@ -256,6 +299,8 @@ final class MarketSettlement {
       CohortKey buyer,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetToday,
       Map<ActorRef, CohortKey> householdOfActor,
       ProductionLedger.Accumulator ledger) {
@@ -270,8 +315,8 @@ final class MarketSettlement {
             hex,
             Map.of(commodity, quantity),
             TransferReason.MARKET_TRADE);
-    EconomySettlement.applyTransferToHouseholds(
-        householdGoods, householdMoney, householdOfActor, goodsLeg);
+    EconomySettlement.applyTransfer(
+        householdGoods, householdMoney, operatorGoods, operatorMoney, householdOfActor, goodsLeg);
     // ② 钱：买方 → 卖方（★ 同一套方向语义：这一张转移的 from 就是付钱的人）。
     //   ★ 只有真有钱时才铸（货款 ≥ 1 是结构性的：price ≥ 1、quantity ≥ 1 ⇒ ⌈…⌉ ≥ 1）。
     Transfer moneyLeg =
@@ -282,8 +327,8 @@ final class MarketSettlement {
             Map.of(),
             Map.of(numeraire, payment),
             TransferReason.MARKET_TRADE);
-    EconomySettlement.applyTransferToHouseholds(
-        householdGoods, householdMoney, householdOfActor, moneyLeg);
+    EconomySettlement.applyTransfer(
+        householdGoods, householdMoney, operatorGoods, operatorMoney, householdOfActor, moneyLeg);
     // ③ 缺口读数：买到的量冲减**当日**的未满足需求（封顶 = 已记的缺口；不改成负数、不凭空抵消历史缺口）。
     long recorded = unmetToday.getOrDefault(buyer, Map.of()).getOrDefault(commodity, 0L);
     long reduced = Math.min(recorded, quantity);
@@ -326,17 +371,21 @@ final class MarketSettlement {
       ClassRow row,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetToday,
+      Map<CohortKey, FlowRow> flows,
       CohortKey key,
       CommodityId commodity,
       CurrencyId numeraire,
       long price) {
-    long gap =
-        Math.max(
-            0L,
-            row.naturalNeeds().getOrDefault(commodity, 0L)
-                - stockOf(householdGoods, key, commodity));
+    // ★★ **H5 ①：需求窗口 = 本期（整周期）剩余需求**（见类注的算式与理由）：
+    //   本周期累计缺口（流水里的 + 今天还没并进去的） − 现在手上的库存，下限 0。
+    FlowRow acc = flows.get(key);
+    long cycleUnmet =
+        (acc == null ? 0L : acc.unmetNeed().getOrDefault(commodity, 0L))
+            + unmetToday.getOrDefault(key, Map.of()).getOrDefault(commodity, 0L);
+    long gap = Math.max(0L, cycleUnmet - stockOf(householdGoods, key, commodity));
     if (gap <= 0L) {
-      return 0L; // 今天不缺它 ⇒ 没有需求（★ 不是"想囤一点"—— 囤积是另一套制度）
+      return 0L; // 本周期不缺口（或手上的存货已经够补上）⇒ 没有需求（★ 不是"想囤一点"—— 囤积是另一套制度）
     }
     long affordable =
         moneyOf(householdMoney, key, numeraire) * EconomySettlement.MILLI_PER_GRAIN / price;

@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -67,6 +68,20 @@ public final class EconomyDayStepper {
   private final Map<CohortKey, Map<CurrencyId, Long>> householdMoney;
 
   /**
+   * ★★ <b>经营者账的会话工作副本（H5）</b>—— 键 = 经营者主体（{@code ESTATE: farm@0_0} / {@code WORKSHOP: craft@0_0} /
+   * {@code HOUSEHOLD: weave@0_0}），值 = 商品余额；★ 与家户那两份**同形、同生命周期、同样不进 {@code EconomyData}}。
+   *
+   * <p>★ <b>它装什么</b>：净产（{@code harvest} 的产出计提）、关系实付的付出、投入的付出、货币工资的付出 —— "经营者自己持账"是 H5 ⑤
+   * 的题目（改前聚合主体的账 economy 看不见 ⇒ 可用 0 ⇒ 实付 0）。
+   *
+   * <p>★ <b>缺席是合法的</b>：手搭夹具、或这个世界还没给经营者播种 ⇒ 空表 ⇒ 那些主体照旧"看不见 ⇒ 可用 0" （H4 的既有口径，逐字不改）。
+   */
+  private final Map<ActorRef, Map<CommodityId, Long>> operatorGoods;
+
+  /** 经营者**货币**账的会话工作副本（H5）：同 {@link #operatorGoods} 的形状（值 = 逐币种余额）。 */
+  private final Map<ActorRef, Map<CurrencyId, Long>> operatorMoney;
+
+  /**
    * ★★ <b>从 {@code base} 起步，并接管家户账的<strong>两份</strong>会话工作副本</b>：商品（H1）与货币（H4/K14）。
    *
    * @param householdGoods 家户商品账工作副本：键 = 家户身份、值 = 商品余额（缺失键 = 没有该商品）；**会被就地更新**。 ★ 它必须覆盖每一个 {@code
@@ -80,7 +95,36 @@ public final class EconomyDayStepper {
       EconomyData base,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
-    this(base, householdGoods, householdMoney, EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        Map.of(),
+        Map.of(),
+        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * ★★ <b>结算一天的会话（H5 的完整构造器）</b>：家户的两份副本 + **经营者的两份副本**（见 {@link #operatorGoods}）。
+   *
+   * @param operatorGoods 经营者商品账工作副本（键 = 经营者主体；**就地更新**）；没有就给空表
+   * @param operatorMoney 经营者货币账工作副本（同上）；没有就给空表
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney) {
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        operatorGoods,
+        operatorMoney,
+        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
   }
 
   /**
@@ -96,6 +140,8 @@ public final class EconomyDayStepper {
         base,
         householdGoods,
         householdMoney,
+        Map.of(),
+        Map.of(),
         plantingDrawsFirst,
         EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
   }
@@ -111,7 +157,34 @@ public final class EconomyDayStepper {
         base,
         householdGoods,
         EconomySettlement.emptyMoneyAccountsFor(base.classes().keySet()),
-        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION);
+        Map.of(),
+        Map.of(),
+        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * ★ 先播种还是先吃饭（{@code plantingDrawsFirst}）**与致死率都可注入**（**包内可见**）—— 理由逐字见 {@link
+   * EconomySettlement#PLANTING_DRAWS_BEFORE_CONSUMPTION} 与 {@link
+   * EconomySettlement#FAMINE_MORTALITY_PER_MILLE}。
+   *
+   * <p>★ <b>H5：经营者账副本给空表</b>（"这个世界没有经营者账"这个**合法状态**，同上面那两支的注释）——
+   * 单模块夹具走它；要量"经营者自己持账"的用例走上面那个五参公开构造器。
+   */
+  EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille) {
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        Map.of(),
+        Map.of(),
+        plantingDrawsFirst,
+        famineMortalityPerMille);
   }
 
   /**
@@ -124,14 +197,20 @@ public final class EconomyDayStepper {
       EconomyData base,
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       boolean plantingDrawsFirst,
       int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(householdGoods, "householdGoods（家户账是会话状态，必须由调用方载入）");
     Objects.requireNonNull(householdMoney, "householdMoney（H4：货币账是会话状态，必须由调用方载入）");
+    Objects.requireNonNull(operatorGoods, "operatorGoods（H5：经营者账是会话状态；没有就给空表）");
+    Objects.requireNonNull(operatorMoney, "operatorMoney（H5：经营者账是会话状态；没有就给空表）");
     this.data = base;
     this.householdGoods = householdGoods;
     this.householdMoney = householdMoney;
+    this.operatorGoods = operatorGoods;
+    this.operatorMoney = operatorMoney;
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.flows = new LinkedHashMap<>(base.flows());
@@ -175,6 +254,19 @@ public final class EconomyDayStepper {
   }
 
   /**
+   * ★★ <b>经营者账工作副本的当前值（H5；商品）</b>—— 形状与语义逐字照 {@link #householdGoods()}（只读视图、内容是活的、 要在 {@link
+   * #finish()} 之后读它才是整段推进的终值，那时它正是**要落回 actor 的那一份**）。
+   */
+  public Map<ActorRef, Map<CommodityId, Long>> operatorGoods() {
+    return Collections.unmodifiableMap(operatorGoods);
+  }
+
+  /** ★★ <b>经营者货币账工作副本的当前值（H5）</b>—— 逐字照 {@link #operatorGoods()}（同一本账的第二个余额表）。 */
+  public Map<ActorRef, Map<CurrencyId, Long>> operatorMoney() {
+    return Collections.unmodifiableMap(operatorMoney);
+  }
+
+  /**
    * ★★ **结算一天**（{@code day} 是绝对世界日）：与 {@code EconomySettlement.settleOneDay} 是**同一条实现**， 并**交回当天**的
    * {@link ProductionLedger}（S1 阶段 4+5 Task 4；裁定 E7 的核心）。
    *
@@ -214,6 +306,8 @@ public final class EconomyDayStepper {
             flows,
             householdGoods,
             householdMoney,
+            operatorGoods,
+            operatorMoney,
             plantingDrawsFirst,
             famineMortalityPerMille,
             ledger);
