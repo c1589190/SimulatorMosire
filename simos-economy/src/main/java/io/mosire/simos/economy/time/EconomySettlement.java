@@ -582,6 +582,10 @@ public final class EconomySettlement {
         householdMoney,
         Map.of(),
         Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
         plantingDrawsFirst,
         famineMortalityPerMille,
         ledger);
@@ -616,6 +620,10 @@ public final class EconomySettlement {
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       boolean plantingDrawsFirst,
       int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger) {
@@ -623,6 +631,10 @@ public final class EconomySettlement {
     Objects.requireNonNull(householdMoney, "householdMoney（H4：货币账是会话状态，必须由调用方载入）");
     Objects.requireNonNull(operatorGoods, "operatorGoods（H5：经营者账是会话状态；没有就给空表）");
     Objects.requireNonNull(operatorMoney, "operatorMoney（H5：经营者账是会话状态；没有就给空表）");
+    Objects.requireNonNull(householdFrozenGoods, "householdFrozenGoods（M2：冻结表是只读快照；没有就给空表）");
+    Objects.requireNonNull(householdFrozenMoney, "householdFrozenMoney（M2：冻结表是只读快照；没有就给空表）");
+    Objects.requireNonNull(operatorFrozenGoods, "operatorFrozenGoods（M2：冻结表是只读快照；没有就给空表）");
+    Objects.requireNonNull(operatorFrozenMoney, "operatorFrozenMoney（M2：冻结表是只读快照；没有就给空表）");
     EconomyMeta meta = base.meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
@@ -806,22 +818,31 @@ public final class EconomySettlement {
     //   ★ 它读 base.markets()（价格是数据）：缺格的格没有市场 ⇒ 这一支整块跳过（不造默认价）。
     //   ★★ 买卖**只走唯一的 applier**（applyTransfer）：本步绝不直接改副本 ——
     //     "任何库存变动必有对应转移记录"这条不变量的落点因此仍是一处（见 MarketSettlement 的类注）。
-    //   ★★ **H5 ①：需求口径 = 本周期剩余需求**（= 本周期累计缺口 − 现在手上的库存，下限 0）——
-    //     改前读的是"当日缺口" ⇒ 关账日只补一天的口粮，其余日子照旧饿。逐条算式见 MarketSettlement 的类注。
+    //   ★★ M2.1 起这一支不再按"本周期缺口/余量"就地配对，而是**主体各自生成订单**（家户 + 经营者，见
+    //     {@link MarketSettlement} 的类注）：生活保留 = 5 天撮合间隔 + 30 天安全库存，旧 1000‰ 整周期自留已退休。
+    //   ★★ M2 的冻结写者尚未出现，但冻结表按 M1.4 的口径**一并带进会话**：订单的可卖量/预算先减冻结，
+    //     applyTransfer 的带冻结重载再校验一次（今天真档的冻结恒空 ⇒ 数值不变；L2 的挂单冻结一到就自动生效）。
     //   ★★ **H5 ②：市场排在借粮之前**（自产/分配 → 市场 → 救济(留位) → 借）—— 见下面的 {@link #lendDeficits}。
     if (anyCycleClosed) {
       MarketSettlement.clearOncePerCycle(
           base.markets(),
-          rows,
-          householdGoods,
-          householdMoney,
-          operatorGoods,
-          operatorMoney,
-          unmetToday,
-          flows,
-          cycleDaysByHousehold,
-          householdOfActor,
-          ledger);
+          new MarketSettlement.MarketRound(
+              day,
+              rows,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              operatorGoods,
+              operatorMoney,
+              operatorFrozenGoods,
+              operatorFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              base.relations(),
+              allocations,
+              ledger));
     }
 
     // ── 4b. 借粮（★ H5：**最后手段** —— 自产/分配 → 市场 → 救济(留位) → 借）──────────────────
@@ -2076,8 +2097,11 @@ public final class EconomySettlement {
    * ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋}。
    *
    * <p>★ 与收获日的 {@link #scaleOf} 的产能那一路是**同一个算式**（只是那里还要对劳动与投入取 min）—— 于是"一次想扣多少" 与产业"能产多少"用同一把尺。
+   *
+   * <p>★ M2.1 起 {@link MarketSettlement} 也算经营者的"必要生产投入"（= 本方法 × {@code inputPerUnit}），故它从 {@code
+   * private} 放宽到包内可见；算法一字未改。
    */
-  private static long capacityScaleOf(Industry industry) {
+  static long capacityScaleOf(Industry industry) {
     // ★ capacityPerUnit 非空且逐值 > 0（构造期守卫）⇒ 循环至少跑一次、scale 必然被赋一个有限值。
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
@@ -3135,10 +3159,52 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       Map<ActorRef, CohortKey> householdOfActor,
       Transfer transfer) {
+    // ★ 旧的五副本入口 = "这个世界没有冻结"（M1.4 之前的调用点逐字不改）；带冻结的调用走下面那个重载。
+    applyTransfer(
+        householdGoods,
+        householdMoney,
+        operatorGoods,
+        operatorMoney,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        householdOfActor,
+        transfer);
+  }
+
+  /**
+   * ★★ <b>M2：带冻结表的 {@code applyTransfer}</b>（唯一写口的同一处实现，M1.4 的两遍式一字不改）—— 第一遍除了"余额够不够"，
+   * 还判"扣完以后还剩多少、会不会花掉<b>已冻结</b>的那一部分"。
+   *
+   * <p>★★ <b>为什么要这个重载</b>：M2 的订单生成把 {@code frozen} 一并带进了会话（见 {@link MarketSettlement}），而 {@code
+   * GoodsAccount} 的构造期守卫要求 {@code 冻结 ≤ 余额} ⇒ 如果某条转移把余额扣到冻结以下，落回 actor 那一步会当场抛， 但半笔已经写在会话副本里了。⇒
+   * 这道校验必须在第一遍（只读、落账之前）判死。 ★ <b>本层的冻结写者还没出现</b>（真档 frozen 恒空） ⇒ 数值行为不变；这道守卫是给 L2 挂单冻结用的。
+   */
+  static void applyTransfer(
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      Map<ActorRef, CohortKey> householdOfActor,
+      Transfer transfer) {
     Objects.requireNonNull(transfer, "transfer");
     // ★★ M1.4 第一遍：**全量校验**（只读）—— 任一条腿不合法都在四份副本一字未动时抛出。
     validateApplyTransfer(
-        householdGoods, householdMoney, operatorGoods, operatorMoney, householdOfActor, transfer);
+        householdGoods,
+        householdMoney,
+        operatorGoods,
+        operatorMoney,
+        householdFrozenGoods,
+        householdFrozenMoney,
+        operatorFrozenGoods,
+        operatorFrozenMoney,
+        householdOfActor,
+        transfer);
     // ★★ M1.4 第二遍：**统一落账** —— 此刻所有付方腿的可扣性都已验证过 ⇒ 下面只写、不再判。
     CohortKey from = householdOfActor.get(transfer.from());
     if (from != null) {
@@ -3193,15 +3259,19 @@ public final class EconomySettlement {
    *   <li>收方**不校验**：记收（加钱加货）不可能失败，旧路径也不判 —— 保持成功路径逐值相同。
    * </ol>
    *
-   * <p>★ <b>冻结不在本方法的校验范围里（如实记）</b>：会话副本只有两张**余额**表（M1.2 的 {@code frozen*} 落在 actor 侧权威 {@code
-   * GoodsAccount} 上），而本批**没有任何冻结写者**（freeze/release 的调用方要到 M2 的挂单）。 ⇒ 这里能判的是"余额够不够"。等 M2
-   * 出现冻结写入后，副本要连冻结一起带过来，这条两遍式才会包含"冻结够不够"。
+   * <p>★★ <b>M2：冻结进了校验范围</b>（M1.4 的 Javadoc 预告过的那一步）：会话副本现在连 {@code frozen*} 一起带过来 ⇒ 付方的每一条腿除了"余额 ≥
+   * 腿额"，还要满足"扣完以后余额 ≥ 该商品的冻结额"—— 否则落回 actor 时 {@code GoodsAccount} 的"冻结 ≤ 余额"守卫会炸，而半笔已经写在会话里了。★
+   * 真档今天没有冻结写者 ⇒ 这两张表恒空、数值不变； 这道判据是给 L2 的挂单冻结用的。
    */
   private static void validateApplyTransfer(
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       Map<ActorRef, CohortKey> householdOfActor,
       Transfer transfer) {
     CohortKey from = householdOfActor.get(transfer.from());
@@ -3216,6 +3286,23 @@ public final class EconomySettlement {
                   + leg.getKey()
                   + " 余额="
                   + stock
+                  + " 扣减="
+                  + leg.getValue()
+                  + "；转移="
+                  + transfer);
+        }
+        long frozen =
+            householdFrozenGoods.getOrDefault(from, Map.of()).getOrDefault(leg.getKey(), 0L);
+        if (stock - leg.getValue() < frozen) {
+          throw new IllegalStateException(
+              "转移会花掉家户账上已冻结的商品（冻结只表达已明确的占用）：家户="
+                  + from
+                  + " 商品="
+                  + leg.getKey()
+                  + " 余额="
+                  + stock
+                  + " 冻结="
+                  + frozen
                   + " 扣减="
                   + leg.getValue()
                   + "；转移="
@@ -3243,6 +3330,23 @@ public final class EconomySettlement {
                   + "；转移="
                   + transfer);
         }
+        long frozen =
+            householdFrozenMoney.getOrDefault(from, Map.of()).getOrDefault(leg.getKey(), 0L);
+        if (balance - leg.getValue() < frozen) {
+          throw new IllegalStateException(
+              "转移会花掉家户账上已冻结的货币（冻结只表达已明确的占用）：家户="
+                  + from
+                  + " 币种="
+                  + leg.getKey()
+                  + " 余额="
+                  + balance
+                  + " 冻结="
+                  + frozen
+                  + " 扣减="
+                  + leg.getValue()
+                  + "；转移="
+                  + transfer);
+        }
       }
       return;
     }
@@ -3266,6 +3370,25 @@ public final class EconomySettlement {
                   + "；转移="
                   + transfer);
         }
+        long frozen =
+            operatorFrozenGoods
+                .getOrDefault(transfer.from(), Map.of())
+                .getOrDefault(leg.getKey(), 0L);
+        if (stock - leg.getValue() < frozen) {
+          throw new IllegalStateException(
+              "转移会花掉经营者账上已冻结的商品（冻结只表达已明确的占用）：经营者="
+                  + transfer.from()
+                  + " 商品="
+                  + leg.getKey()
+                  + " 余额="
+                  + stock
+                  + " 冻结="
+                  + frozen
+                  + " 扣减="
+                  + leg.getValue()
+                  + "；转移="
+                  + transfer);
+        }
       }
     }
     if (operatorMoney.containsKey(transfer.from())) {
@@ -3284,6 +3407,25 @@ public final class EconomySettlement {
                   + leg.getValue()
                   + " 发行源="
                   + issuer
+                  + "；转移="
+                  + transfer);
+        }
+        long frozen =
+            operatorFrozenMoney
+                .getOrDefault(transfer.from(), Map.of())
+                .getOrDefault(leg.getKey(), 0L);
+        if (balance - leg.getValue() < frozen) {
+          throw new IllegalStateException(
+              "转移会花掉经营者账上已冻结的货币（冻结只表达已明确的占用）：经营者="
+                  + transfer.from()
+                  + " 币种="
+                  + leg.getKey()
+                  + " 余额="
+                  + balance
+                  + " 冻结="
+                  + frozen
+                  + " 扣减="
+                  + leg.getValue()
                   + "；转移="
                   + transfer);
         }

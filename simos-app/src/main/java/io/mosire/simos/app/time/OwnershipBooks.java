@@ -545,6 +545,106 @@ public final class OwnershipBooks {
     return books.withAccounts(accounts);
   }
 
+  // ── 冻结快照的载入（M2）────────────────────────────────────────────────────────────
+  //
+  // ★★ 为什么要有这四个 load（而不是把冻结塞进余额）：M1.2 的冻结额是"已明确的占用"（挂单要卖的货、已承诺的交付），
+  //   它与余额**同键、同本 GoodsAccount**，但语义不同。M2 的订单生成要算
+  //   `可卖 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)` 与 `预算 = max(0, 余额 − 冻结货币)`，
+  //   而 economy 看不见 actor ⇒ 由本类在推进前把两张冻结表**只读**载进会话（见 EconomyDayStepper 的 M2 构造器）。
+  // ★★ 真档今天没有冻结写者（`OwnershipBooks.freeze*` 生产侧零调用）⇒ 这四条载入出来的都是空表；带它们进来是
+  //   照 M1.4 的 Javadoc 把冻结一并带上，等 L2 的挂单冻结一到就自动生效。★ 本类**不落回**冻结：L1 的订单是瞬时的，
+  //   不修改任何冻结额；`land*` 的五个落账点本来就按原值带过两张冻结表。
+
+  /**
+   * ★★ <b>把家户商品账的冻结额载入成只读快照</b>（M2）—— 与 {@link #loadHouseholdGoods} 同一驱动集、同一条 fail-closed（行集里有家户没有账
+   * ⇒ 抛；不许把"没有账"静默当成"没有冻结"）。
+   */
+  public static Map<CohortKey, Map<CommodityId, Long>> loadHouseholdFrozenGoods(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<CohortKey, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    List<CohortKey> missing = new ArrayList<>();
+    for (CohortKey cohort : economy.classes().keySet()) {
+      GoodsAccount account = books.accounts().get(accountKeyOf(cohort));
+      if (account == null) {
+        missing.add(cohort);
+        continue;
+      }
+      copy.put(cohort, new LinkedHashMap<>(account.frozenBalances()));
+    }
+    requireNoMissingHouseholdAccounts(missing, "冻结（商品）");
+    return copy;
+  }
+
+  /** ★★ <b>把家户货币账的冻结额载入成只读快照</b>（M2）—— 与上一条逐字同形（同一本账的第二个冻结表）。 */
+  public static Map<CohortKey, Map<CurrencyId, Long>> loadHouseholdFrozenMoney(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<CohortKey, Map<CurrencyId, Long>> copy = new LinkedHashMap<>();
+    List<CohortKey> missing = new ArrayList<>();
+    for (CohortKey cohort : economy.classes().keySet()) {
+      GoodsAccount account = books.accounts().get(accountKeyOf(cohort));
+      if (account == null) {
+        missing.add(cohort);
+        continue;
+      }
+      copy.put(cohort, new LinkedHashMap<>(account.frozenMoney()));
+    }
+    requireNoMissingHouseholdAccounts(missing, "冻结（货币）");
+    return copy;
+  }
+
+  /**
+   * ★★ <b>把经营者商品账的冻结额载入成只读快照</b>（M2）—— 与 {@link #loadOperatorGoods} 同一条口径： <b>缺席不抛</b>（这个世界还没给经营者播种
+   * = 合法状态）。
+   */
+  public static Map<ActorRef, Map<CommodityId, Long>> loadOperatorFrozenGoods(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<ActorRef, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, HexCoord> entry : operatorLocations(economy).entrySet()) {
+      GoodsAccount account =
+          books.accounts().get(new GoodsAccountKey(entry.getKey(), entry.getValue()));
+      if (account != null) {
+        copy.put(entry.getKey(), new LinkedHashMap<>(account.frozenBalances()));
+      }
+    }
+    return copy;
+  }
+
+  /** ★★ <b>把经营者货币账的冻结额载入成只读快照</b>（M2）—— 与上一条逐字同形（同一本账的第二个冻结表）。 */
+  public static Map<ActorRef, Map<CurrencyId, Long>> loadOperatorFrozenMoney(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<ActorRef, Map<CurrencyId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, HexCoord> entry : operatorLocations(economy).entrySet()) {
+      GoodsAccount account =
+          books.accounts().get(new GoodsAccountKey(entry.getKey(), entry.getValue()));
+      if (account != null) {
+        copy.put(entry.getKey(), new LinkedHashMap<>(account.frozenMoney()));
+      }
+    }
+    return copy;
+  }
+
+  /** 家户冻结载入的 fail-closed 收口（两条 load 共用同一段错误消息）。 */
+  private static void requireNoMissingHouseholdAccounts(List<CohortKey> missing, String label) {
+    if (!missing.isEmpty()) {
+      throw new IllegalStateException(
+          "家户 actor / 账本缺失 "
+              + missing.size()
+              + " 个（"
+              + label
+              + "是订单生成的可卖量/预算输入，缺了不能当 0 —— H1 的播种应为「每格 × 两组四行」一个不少）："
+              + missing.subList(0, Math.min(5, missing.size()))
+              + (missing.size() > 5 ? " …" : ""));
+    }
+  }
+
   // ── 冻结 / 解冻（M1.2）──────────────────────────────────────────────────────────────
   //
   // ★★ 为什么落在这里、为什么**不是**第二个 applier：

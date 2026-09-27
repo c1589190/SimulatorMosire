@@ -82,6 +82,23 @@ public final class EconomyDayStepper {
   private final Map<ActorRef, Map<CurrencyId, Long>> operatorMoney;
 
   /**
+   * ★★ <b>M2：家户的冻结额快照（商品）</b>—— 与 {@link #householdGoods} 同键、同生命周期，但本层是<b>只读</b>的： 订单生成用它算"可卖 = 持有
+   * − 已冻结 − …"，本类不修改它（L1 的订单是瞬时的，不产生持久冻结）。
+   *
+   * <p>★ 真档今天没有冻结写者 ⇒ 恒空；带它进来是照 M1.4 的 Javadoc 把冻结一并带上，等 L2 的挂单冻结一到就自动生效。
+   */
+  private final Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods;
+
+  /** ★★ M2：家户的冻结额快照（货币）—— 预算算"可花的钱 = 余额 − 冻结货币"。 */
+  private final Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney;
+
+  /** ★★ M2：经营者的冻结额快照（商品）—— 同 {@link #householdFrozenGoods} 的形状与生命周期。 */
+  private final Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods;
+
+  /** ★★ M2：经营者的冻结额快照（货币）—— 同 {@link #householdFrozenMoney}。 */
+  private final Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney;
+
+  /**
    * ★★ <b>从 {@code base} 起步，并接管家户账的<strong>两份</strong>会话工作副本</b>：商品（H1）与货币（H4/K14）。
    *
    * @param householdGoods 家户商品账工作副本：键 = 家户身份、值 = 商品余额（缺失键 = 没有该商品）；**会被就地更新**。 ★ 它必须覆盖每一个 {@code
@@ -123,6 +140,36 @@ public final class EconomyDayStepper {
         householdMoney,
         operatorGoods,
         operatorMoney,
+        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+  }
+
+  /**
+   * ★★ <b>M2：app 协调器的完整入口</b>（九参）—— 在 H5 的两份余额副本之外，再接管家户/经营者的**两张冻结快照**（商品 + 货币）。
+   *
+   * <p>★ 冻结由 app 侧 {@code OwnershipBooks} 从 actor 的 {@code GoodsAccount} 载入（只读）；本层不产生持久冻结。
+   * 两个行为旋钮取出厂默认值（与 {@link #EconomyDayStepper(EconomyData, Map, Map, Map, Map)} 同款）。
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney) {
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        householdFrozenGoods,
+        householdFrozenMoney,
+        operatorGoods,
+        operatorMoney,
+        operatorFrozenGoods,
+        operatorFrozenMoney,
         EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
         EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
   }
@@ -192,6 +239,8 @@ public final class EconomyDayStepper {
    * EconomySettlement#PLANTING_DRAWS_BEFORE_CONSUMPTION} 与 {@link
    * EconomySettlement#FAMINE_MORTALITY_PER_MILLE}：它们**不是死分支**，故必须有路真的走得到，而 {@code simos-app}
    * 的协调器只该看到公开入口那份默认值。
+   *
+   * <p>★ 旧的七参重载 = "这个世界没有冻结"（M1.4 之前的调用点逐字不改）；带冻结的调用走下面那个十一参重载。
    */
   EconomyDayStepper(
       EconomyData base,
@@ -201,16 +250,56 @@ public final class EconomyDayStepper {
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       boolean plantingDrawsFirst,
       int famineMortalityPerMille) {
+    this(
+        base,
+        householdGoods,
+        householdMoney,
+        Map.of(),
+        Map.of(),
+        operatorGoods,
+        operatorMoney,
+        Map.of(),
+        Map.of(),
+        plantingDrawsFirst,
+        famineMortalityPerMille);
+  }
+
+  /**
+   * ★★ <b>M2：带冻结表的完整构造器</b>（包内可见）—— 两份余额副本 + 两份冻结快照（家户/经营者 × 商品/货币），两个旋钮可注入。
+   *
+   * <p>★ 冻结是<b>只读快照</b>：本类不改它（L1 的订单是瞬时的，不产生持久冻结）；订单生成用它算可卖量与预算，落回 actor 时按 {@code GoodsAccount}
+   * 的原值保留。真档今天没有冻结写者 ⇒ 这些表恒空。
+   */
+  EconomyDayStepper(
+      EconomyData base,
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(householdGoods, "householdGoods（家户账是会话状态，必须由调用方载入）");
     Objects.requireNonNull(householdMoney, "householdMoney（H4：货币账是会话状态，必须由调用方载入）");
+    Objects.requireNonNull(householdFrozenGoods, "householdFrozenGoods（M2：冻结快照；没有就给空表）");
+    Objects.requireNonNull(householdFrozenMoney, "householdFrozenMoney（M2：冻结快照；没有就给空表）");
     Objects.requireNonNull(operatorGoods, "operatorGoods（H5：经营者账是会话状态；没有就给空表）");
     Objects.requireNonNull(operatorMoney, "operatorMoney（H5：经营者账是会话状态；没有就给空表）");
+    Objects.requireNonNull(operatorFrozenGoods, "operatorFrozenGoods（M2：冻结快照；没有就给空表）");
+    Objects.requireNonNull(operatorFrozenMoney, "operatorFrozenMoney（M2：冻结快照；没有就给空表）");
     this.data = base;
     this.householdGoods = householdGoods;
     this.householdMoney = householdMoney;
+    this.householdFrozenGoods = householdFrozenGoods;
+    this.householdFrozenMoney = householdFrozenMoney;
     this.operatorGoods = operatorGoods;
     this.operatorMoney = operatorMoney;
+    this.operatorFrozenGoods = operatorFrozenGoods;
+    this.operatorFrozenMoney = operatorFrozenMoney;
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.flows = new LinkedHashMap<>(base.flows());
@@ -308,6 +397,10 @@ public final class EconomyDayStepper {
             householdMoney,
             operatorGoods,
             operatorMoney,
+            householdFrozenGoods,
+            householdFrozenMoney,
+            operatorFrozenGoods,
+            operatorFrozenMoney,
             plantingDrawsFirst,
             famineMortalityPerMille,
             ledger);

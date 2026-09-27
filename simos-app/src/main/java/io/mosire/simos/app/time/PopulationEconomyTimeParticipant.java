@@ -170,9 +170,28 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         OwnershipBooks.loadOperatorGoods(economy, actor);
     Map<ActorRef, Map<CurrencyId, Long>> operatorMoney =
         OwnershipBooks.loadOperatorMoney(economy, actor);
+    // ★★ M2（M1.2/M1.4 的接缝）：家户与经营者的**两张冻结快照**（商品 + 货币）—— 与余额副本同一次载入、
+    //   同一生命周期；订单生成用它们算可卖量与预算，本类不落回（L1 的订单是瞬时的，冻结额不变）。
+    //   真档今天没有冻结写者 ⇒ 这四张表恒空。
+    Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods =
+        OwnershipBooks.loadHouseholdFrozenGoods(economy, actor);
+    Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney =
+        OwnershipBooks.loadHouseholdFrozenMoney(economy, actor);
+    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods =
+        OwnershipBooks.loadOperatorFrozenGoods(economy, actor);
+    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney =
+        OwnershipBooks.loadOperatorFrozenMoney(economy, actor);
     EconomyDayStepper stepper =
         new EconomyDayStepper(
-            economy, householdGoods, householdMoney, operatorGoods, operatorMoney);
+            economy,
+            householdGoods,
+            householdMoney,
+            householdFrozenGoods,
+            householdFrozenMoney,
+            operatorGoods,
+            operatorMoney,
+            operatorFrozenGoods,
+            operatorFrozenMoney);
     SocialData currentSocial = social;
     ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
