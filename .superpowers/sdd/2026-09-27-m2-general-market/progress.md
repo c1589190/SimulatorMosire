@@ -65,3 +65,27 @@
   `EconomyChangeSet`/`EconomyCodec`/`EconomyPayloads`（铁律 5），并在报告里点名会红的往返用例（测试留到最后）。
 - **地图事实的入口**：`economy` 可 import `simos-map`、**禁 `simos-unit`**；运输代价自写（口径抄 `SettlementGenerator` 的
   `hexDistance × moveCost(目标格)`）；地形/邻接必须由 app 侧以**只读输入**或生成期数据交给 economy（不许给 economy 加对 GameMap 的隐藏全局依赖）。
+
+## L2 区域撮合与运输（M2.3+M2.4+M2.5）—— ✅ 代码落地，提交 `6908c455`
+
+**调度**：`MarketTrigger` = 每 5 天 PERIODIC + 关账日 CYCLE_CLOSE 保底 + 粮覆盖 <10 天时窗口第 3 天 LOW_GRAIN_STOCK
+（只看绝对日 + 状态 ⇒ M0.1 同日同轮）。**区域**：`MarketRegion/MarketNode/MarketTopology`（经济侧只读件）+
+组合根 `MarketTopologyBook`（social.cities → map.cities → craft@ 三档回退；半径取 tier 上界）。
+**运输**：`TradeRoute/ShipmentBatch/ShipmentAllocation/LossBearer`；运费 10‰/hex→ORGANIZATION 承运人（无承运人则**不收**、
+只记 `freightUncollectedMilli`）；实际投入 = 距离×目标格 moveCost；损耗 5‰ 买方承担 → `market-transport` 损耗账户；
+ETA=1 天/格；运力 = 100,000,000×8÷距离、每轮 4 窗口。**铁律 5**：`EconomyData` 第 10 组件 `shipments` + ChangeSet/Codec/
+Payloads/SeedHandler 同批回填。**冻结生命周期**接上（挂单冻结→成交/发运/轮末释放）。
+
+**★ 已如实记的边界**：9 参 `new EconomyData(...)` 的测试将**测试源码编译红**（留到最后）；守恒网需加"在途资产"项；
+价格桶未实现；无寻路（直线距离×目标格 moveCost）；一轮内多笔无整轮回滚；实际投入未从账上扣；真档无 ORGANIZATION ⇒ 运费实收 0。
+
+## L3 价格与读数（M2.6+M2.7 + 丙条仪器）—— 进行中
+
+L3 额外硬要求（在 MASTER 之外、由前两层与用户裁定逼出来的）：
+- **丙条仪器**：逐行 `cycleNaturalNeedMilli` 累加器（新周期清零；`ClassRow` 加字段要照旧档兼容 = 缺键 0），
+  `economyHex` 报 `tick/lastSettledDay` 与该值的人口快照口径；两个"不可比口径"不得再并排当同一分母。
+- **M0.3 的 `unavailable` 项复评**：`logisticsGap`（M2.4 后已有定义）必须处理；`paymentInstrumentGap` 的接受规则属 M2；
+  `productionSelfSufficiency` 要 ledger 的周期累计（能做才做，做不了保持具名 unavailable，**绝不填 0**）。
+- **读数不许进 `EconomyData`**（该类注明写"市场表里没有会过期的读数；读数在当天的 ledger 里"）：
+  优先**读时派生** + 进程内 `lastMarketReport`；哪些是"进程内可得、重启即失"必须如实标注。
+- **价格模式标注**：固定价（第一版）与自适应（默认关）必须在读数里可区分；跨区结算暂设即时也要标注。
