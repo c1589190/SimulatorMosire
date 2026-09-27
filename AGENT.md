@@ -351,6 +351,15 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
   （目前：`simos.map.path`、`simos.sd.decision-makers`、`simos.sd.decision-maker`）。
 - ★ **GUI 与 MCP 读工具共用同一份视图**（`app/gui/ApiViews` 是公开的视图层）——别再各写一份
   （那正是"同一资源的两个形状"的由来，见 `.superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md` §二-6）。
+- ★★ **追加（2026-09-27，M0.3）：`ApiViews.economyHex` 里多了一栏 `grainDiagnosis`**（逐格粮食诊断）。
+  做得到四项：`coverageDays`（库存 ÷ **日耗**）、`importDemand`（= 本周期累计未满足）、
+  `affordableGrain` + `purchasingGap`（钱 × 1000 ÷ 本格粮价，**是上限**——市场只算"既缺口又付得起"的家户）、
+  `satisfactionPerMille` + `unmetPersonDays`。
+  ★★ **算不出的三项具名列在 `unavailable` 里、绝不填 0**：`productionSelfSufficiency`（要本周期 ledger 的毛产/损耗/投入，
+  而 ledger **当日丢弃** ⇒ 落点 M2 的市场读数组件）、`logisticsGap`（M2.4 之前无定义）、
+  `paymentInstrumentGap`（货币工具属 M1）。★ 视图里的 `window` 字段**写出本周期需求量**，因为
+  `importDemand`/满足率/人日都是**本期累计**（只有关账日读才是整周期的量）。
+  ⇒ 报表脚本按格 dump 的那一份**自动带上它**（`h6sim_dump.py` 走的就是 `/api/economy/hex`）。
 
 ### 8.4 图片通路（让决策人 / 外部 agent「看图」）
 
