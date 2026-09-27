@@ -266,6 +266,12 @@ node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-
 ```
 
 ★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
+★★ **真数（2026-09-27，经济循环 H6 收口轮，`mvn test -pl simos-app -am` 之后逐模块清点 surefire 报告）**：
+**11 个模块 / 2460 条 / 0 失败 / 0 错误**（app 681、map 379、unit 305、core 215、util 199、sd 188、social 188、
+economy 170、actor 104、economy-api 23、actor-api 8），前端门禁 **297/297**。
+★ 报"测试数"之前**先 `rm -rf */target/surefire-reports`**（否则读到两轮的并集，见 §三.1）；
+★ `simos-app/target/surefire-reports/` **可能整个目录不存在** —— 那说明 app 侧这一轮**没跑到 test 阶段**
+（编译或前置模块失败、或被中断），**不能读成"app 没有测试"**，更不能拿上游 10 个模块的绿当 app 的绿。
 ★★ **追加（2026-09-27 实测踩到三次）：阶段边界的门禁要跑「全仓 `verify`」，不是模块级。**
 `verify -pl <某模块> -am` 只对**该模块及其上游**跑 Spotless/Checkstyle/SpotBugs ⇒ 我在别的模块欠的格式账
 （`simos-social` / `simos-actor`）**跨了两个批次都没被发现**，直到一次全仓 verify 才暴露。
@@ -299,6 +305,21 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
 - ★ 端口约定：GUI **5711**（常用 5817 起演示实例）、MCP **5715**、审批 **5713**。
 - ★ **store 是世界的本体**：`--store <dir>` 指向一个 SQLite 库；**空库首启会就地种入富世界**
   （`v17levant` 复刻：59223 hex / 252 区域 / 240 河流边），**非空库绝不覆盖**。换库 = 换世界。
+- ★★ **2026-09-27 实测（重启会抹掉长程模拟的全部中间产物）**：本机 16:38 重启过一次，`uptime` 归零的同时
+  **`/tmp` 被整个清空** —— 正在跑的 600 天批次的服务快照、`--store`（SQLite 世界本体）、
+  `h6raw_*.json` / `h6agg_*.json` 原始读数**一起没了**（`/tmp` 里的痕迹 **0 个**，事后无从判断跑到哪一天）。
+  ⇒ ① **长程模拟的 store 与逐关账日读数要落在重启后仍存在的地方**，或**明确接受"重启即重跑"**
+  （关账批每跑一个关账日就落一次读数，正是为了这个）；② 判"这批跑到哪了"**只能看产物**，
+  不要靠"进程应该还在"；③ 重启后先 `uptime` + `pgrep`，再据产物决定"接着跑"还是"从头跑"。
+- ★ **600 天关账批的实测参数（同一脚本内的约定，别照抄缺省端口）**：服务由
+  `.superpowers/sdd/2026-09-27-economic-cycle-impl/h6sim_full.sh` **在自己的进程树里**起
+  （★ 单独 `nohup` 起的服务会在**别的后台作业结束时**收到停止信号 —— 实测两次），端口
+  **GUI 5827 / MCP 5725 / 审批 5723**，推进器 `../2026-09-26-year-one-simulation/v3curve_advance.py`。
+  ★ 一批要 **几小时**（一次 `advance` 到下一关账日 + 一次逐格 dump），起它要用**受管后台作业**。
+  ★★ **两批分属两个代码态，顺序不能反**：基线批跑**重打包之前**的 shaded jar（H5 代码），
+  关账批要**先 `package` 出 H6 的 jar 再跑**；两批各用独立 store（`/tmp/simos-v3curve-h6` / `-h6r2`），
+  对照由 `h6cmp.py <基线前缀> <关账前缀>` 出表（自比 `h6cmp.py tick tick` 应当恒 +0，先拿它冒烟自检）。
+  ★ 服务在跑时**不要 `package`**（§二）：要重打包就先收工（`ps -eo pid,cmd | grep simos-shaded` 拿 PID ⇒ `kill`）。
 
 ### 8.2 世界数据的两层：bootstrap ≠ 世界初始化
 
