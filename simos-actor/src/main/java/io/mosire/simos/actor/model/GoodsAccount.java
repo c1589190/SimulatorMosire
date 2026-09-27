@@ -1,6 +1,7 @@
 package io.mosire.simos.actor.model;
 
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -51,10 +52,31 @@ import java.util.Map;
  * Map.copyOf}</b> —— 它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步<b>写在字段赋值处</b>（SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装），故外部那张 {@code Map} 之后被改也不影响已建的账。
  *
+ * <p>★★ <b>追加（2026-09-27，裁定 K15 / H4）：本账现在同时装【商品】与【货币】</b> —— H4 起钱要有落点，
+ * 而"同一主体在同一格的那本账"只能有<b>一个</b>身份 ⇒ 加一个 {@code money} 组件，
+ * <b>不是</b>另立一张同键的表（那会把同一身份写成两处，本仓明令禁止）。
+ * ★ <b>类名是历史的</b>（它最初只装商品）：为省一次全模块改名，本批保留名字、以本注为准；
+ * 若要改名（{@code HolderAccount} 之类），属**纯机械重构**，记在关账的清理项里。
+ * ★ 货币余额的口径与商品**逐条同款**：最小币值定点整数、≥ 0、0 保留、保序不可变、冻结写在赋值处。
+ * ★ 货币的<b>发行/回笼</b>不在本类型：那要 {@code MoneyAuthority}（本批无实现者）⇒ 任何账户的货币余额不得为负。
+ *
  * @param key 聚合键（{@code (owner, location)}）
  * @param balances 各商品余额（{@code CommodityId} → 最小计量单位的定点整数；≥ 0，<b>0 保留</b>）
+ * @param money 各币种余额（{@code CurrencyId} → 最小币值的定点整数；≥ 0，<b>0 保留</b>）
  */
-public record GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances) {
+public record GoodsAccount(
+    GoodsAccountKey key, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
+
+  /**
+   * 便捷构造器：**只有商品、没有钱**（钱为空表）。
+   *
+   * <p>★ 存在的理由：H4 之前建的账户（以及大量只关心商品的夹具与读法）不必为"多了一个组件"逐处改。
+   * ★ <b>它不是"忘记传钱"的掩护</b>：真正要动钱的路径（{@code OwnershipBooks} 的落账、{@code HouseholdSeeder}
+   * 的创世禀赋）一律走**三参**构造器；而"钱有没有被序列化丢"由 {@code ActorCodec} 的往返用例守着。
+   */
+  public GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances) {
+    this(key, balances, Map.of());
+  }
 
   public GoodsAccount {
     if (key == null) {
@@ -62,6 +84,9 @@ public record GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances)
     }
     if (balances == null) {
       throw new IllegalArgumentException("GoodsAccount.balances 不得为 null");
+    }
+    if (money == null) {
+      throw new IllegalArgumentException("GoodsAccount.money 不得为 null（没有钱用空 map）");
     }
     Map<CommodityId, Long> balancesCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : balances.entrySet()) {
@@ -75,5 +100,21 @@ public record GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances)
       balancesCopy.put(entry.getKey(), entry.getValue());
     }
     balances = Collections.unmodifiableMap(balancesCopy); // ★ 冻在赋值处（含防御性拷贝）
+    // ★ 货币余额：守卫与冻结**与 balances 逐条同款**（口径一致，读的人不必记两套规则）。
+    Map<CurrencyId, Long> moneyCopy = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : money.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("money 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() < 0) {
+        throw new IllegalArgumentException(
+            "GoodsAccount 的货币余额是存量、不得为负（发行/回笼要 MoneyAuthority，本批无实现者）: "
+                + entry.getKey()
+                + "="
+                + entry.getValue());
+      }
+      moneyCopy.put(entry.getKey(), entry.getValue());
+    }
+    money = Collections.unmodifiableMap(moneyCopy); // ★ 冻在赋值处（含防御性拷贝）
   }
 }

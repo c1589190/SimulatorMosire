@@ -11,11 +11,13 @@ import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -182,7 +184,25 @@ final class ActorPayloads {
                 parsed.put(
                     CommodityId.parse(entry.getKey()),
                     requireIntegral(entry.getValue(), "balances." + entry.getKey())));
-    return new GoodsAccount(new GoodsAccountKey(owner, location), parsed);
+    // ★ H4（裁定 K15）：同一本账里还可以带【货币】余额。缺键 ⇒ 空表（"这一格这个人账上没钱"）。
+    Map<CurrencyId, Long> money = new LinkedHashMap<>();
+    JsonNode moneyNode = node.get("money");
+    if (moneyNode != null && !moneyNode.isNull()) {
+      if (!moneyNode.isObject()) {
+        throw new IllegalArgumentException(node + " 的 money 必须是对象（币种 → 最小币值）");
+      }
+      Iterator<Map.Entry<String, JsonNode>> it = moneyNode.fields();
+      while (it.hasNext()) {
+        Map.Entry<String, JsonNode> field = it.next();
+        long amount = requireIntegral(field.getValue(), node + " 的 money." + field.getKey());
+        if (amount < 0L) {
+          throw new IllegalArgumentException(
+              node + " 的 money." + field.getKey() + " 不得为负（余额是存量）: " + amount);
+        }
+        money.put(new CurrencyId(field.getKey()), amount);
+      }
+    }
+    return new GoodsAccount(new GoodsAccountKey(owner, location), parsed, money);
   }
 
   /** {@code {"kind","id"}}：主体引用（载荷里主体行与两张表的 {@code owner} 共用**同一个**形状与解析）。 */
