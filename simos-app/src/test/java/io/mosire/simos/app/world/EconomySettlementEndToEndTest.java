@@ -640,6 +640,60 @@ class EconomySettlementEndToEndTest {
     }
   }
 
+  // ── (f2) M0.1 ★★ 推进路径一致性：一次 360 天 == 三次 120 天（判据基线 = 一年期）────────────
+
+  /**
+   * ★★ <b>M0.1：一次 360 天 == 三次 120 天</b>（一年期的推进路径一致性；本仓的仪器判据，不碰模型）。
+   *
+   * <p>★★ <b>它与 (f) 那条 150 天的关系</b>：(f) 守的是"一次 N 天 == N 次<b>单日</b>"（150 天刻意跨过第 120 天那个周期末）。
+   * 本条守的是**另一条路**：一次 N 天 == 若干次**跨周期的大步**（120 + 120 + 120）—— 真档的一年期读数走的正是这条路 （{@code
+   * h6sim_full_*.sh} 按周期分段推进）。两条路都要与"一次算完"逐值相同，否则<b>读数取决于怎么推</b>。
+   *
+   * <p>★★ <b>判别力</b>：任何"按调用边界维护的跨日状态"（累加器、相位、关账标志、劳动配额的重排时点）只要在段边界上被重置或 重复施加一次，两次的终态就会不同。★
+   * 已知的严格更强版本（"逐项一致"而非"不相等就报错"）由 {@code EconomyData} 的 整份 record 相等承担 ——
+   * 它含产业进度/周期劳动、家户与经营者库存/货币/债务、债务表、流水、meta；再加上 actor 侧那一整份账。
+   *
+   * <p>★ <b>刻意不比较的</b>：revision 条数（一次 = 1 条、三次 = 3 条 —— 那是"分几条 revision"的差别，不是结算的差别）。
+   */
+  @Test
+  void threeHundredSixtyDaysInOneCommandEqualsThreeBatchesOfOneHundredTwenty() throws Exception {
+    Path onceDir = tempDir.resolve("once360");
+    Path batchesDir = tempDir.resolve("batches360");
+    java.nio.file.Files.createDirectories(onceDir);
+    java.nio.file.Files.createDirectories(batchesDir);
+
+    try (CoreSimos once = freshCoreAt(onceDir);
+        CoreSimos batches = freshCoreAt(batchesDir)) {
+      advanceRange(once, 0L, 360L); // 一次 360 天（≈ 真档一年期的一条大推进）
+      advanceRange(batches, 0L, 120L); // 三次 120 天（= 真档按周期分段的推法）
+      advanceRange(batches, 120L, 240L);
+      advanceRange(batches, 240L, 360L);
+
+      EconomyData onceData = economy(once);
+      EconomyData batchData = economy(batches);
+      ActorData onceBooks = actor(once);
+      ActorData batchBooks = actor(batches);
+
+      // ★★ 两层终态逐值相等：economy 切片整份 record + actor 侧整份账（家户/经营者/货币/债务都住在里面）。
+      assertThat(onceData)
+          .as("M0.1：advance(0→360) 的 economy 终态 == 三次 120 天的终态")
+          .isEqualTo(batchData);
+      assertThat(onceBooks).as("M0.1：advance(0→360) 的 actor 账 == 三次 120 天的账").isEqualTo(batchBooks);
+      assertThat(onceData.flows()).as("M0.1：流水逐值相同（不是两边都只留最后一天）").isEqualTo(batchData.flows());
+
+      // ★ 非平凡：一年真的走完了三个周期，且流水跨周期累加过（不是"两边都是空表"）。
+      assertThat(onceData.meta().orElseThrow().lastClosedCycle())
+          .as("360 天 ⇒ 恰走过 3 个周期末")
+          .hasValue(3L);
+      assertThat(farm(onceData, FARM_0).progressDays())
+          .as("第 4 个周期刚开头（360 − 3×120 = 0 天）")
+          .isZero();
+      assertThat(flowConsumed(onceData))
+          .as("流水已跨 360 天累加（远大于一个周期的口粮）")
+          .isGreaterThan(3L * hexRationOver(onceData, 0, 0, 120L));
+    }
+  }
+
   // ── (g) 缺口：默认不致命（V4）——缺口读得到、一个人不少；标定后的收获结束青黄不接 ────────────
 
   /**

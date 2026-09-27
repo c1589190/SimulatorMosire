@@ -266,12 +266,20 @@ node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-
 ```
 
 ★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
-★★ **真数（2026-09-27，经济循环 H6 收口轮，`mvn test -pl simos-app -am` 之后逐模块清点 surefire 报告）**：
-**11 个模块 / 2460 条 / 0 失败 / 0 错误**（app 681、map 379、unit 305、core 215、util 199、sd 188、social 188、
-economy 170、actor 104、economy-api 23、actor-api 8），前端门禁 **297/297**。
+★★ **真数（2026-09-27，M0 批开工基线，`mvn test -pl simos-economy,simos-app -am` 之后逐模块清点 surefire 报告）**：
+**11 个模块 / 2464 条 / 0 失败 / 0 错误**（app 683、map 379、unit 305、core 215、util 199、sd 188、social 188、
+economy 171、actor 104、economy-api 26、actor-api 8），前端门禁 **297/297**。
+★ **上一版记的 2460/681/170/23 是 H6 收口轮的数**（app 681、economy 170、economy-api 23）——
+本批 M0.1+M0.5 又加了 3 条（app 681→683），economy-api 的 26 是更早一轮的增量。**以本行为准**。
 ★ 报"测试数"之前**先 `rm -rf */target/surefire-reports`**（否则读到两轮的并集，见 §三.1）；
 ★ `simos-app/target/surefire-reports/` **可能整个目录不存在** —— 那说明 app 侧这一轮**没跑到 test 阶段**
 （编译或前置模块失败、或被中断），**不能读成"app 没有测试"**，更不能拿上游 10 个模块的绿当 app 的绿。
+★★ **追加（2026-09-27，M0 批实测踩到，代价三轮返工）**：
+① **`-Dtest='A+B'` 是 JUnit5 的 tag 表达式、不是"或"** ⇒ 不匹配任何类、surefire **一条不跑**、
+打印 `test` 目标、**退出 0**。正确写法是**逗号**：`-Dtest='A,B'`。**差一点把"一条都没跑"当成"测试通过"。**
+② **Maven 增量编译不可全信**：实测 `simos-economy` 的类文件比源文件**新 21 秒**却没重编
+（`-pl simos-app -am` 下没有 `Recompiling the module`）⇒ 两轮诊断都跑在**旧字节码**上。
+**纪律：改完生产代码，先 `rm -rf <模块>/target/classes`（或 `target/test-classes`）再跑测试。**
 ★★ **追加（2026-09-27 实测踩到三次）：阶段边界的门禁要跑「全仓 `verify`」，不是模块级。**
 `verify -pl <某模块> -am` 只对**该模块及其上游**跑 Spotless/Checkstyle/SpotBugs ⇒ 我在别的模块欠的格式账
 （`simos-social` / `simos-actor`）**跨了两个批次都没被发现**，直到一次全仓 verify 才暴露。
