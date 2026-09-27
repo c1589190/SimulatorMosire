@@ -192,7 +192,11 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
       MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
       // ★★ 落账：当天的条目只落一次（ledger 是**一天一本**的）；落出来的新账户也要进写集。
-      List<ActorEntry> entries = OwnershipBooks.fold(ledger);
+      //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折** —— 双方都是本轮参与者（家户账必被载入；经营者只在
+      //   副本有账时才入市）⇒ 市场成交落在账户上的那一份已由会话副本的绝对值落回覆盖，在途那一份由
+      //   ShipmentBatch 承载；再叠一遍只会在"买方 × 卖方格"这个异地键上造幽灵账（理由逐条见
+      //   {@link OwnershipBooks#REASONS_NOT_FOLDED}）。
+      List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
       if (!entries.isEmpty()) {
         books = OwnershipBooks.apply(books, entries);
         for (GoodsAccountKey key : books.accounts().keySet()) {

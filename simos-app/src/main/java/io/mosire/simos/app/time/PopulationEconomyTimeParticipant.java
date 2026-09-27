@@ -203,10 +203,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
       // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
+      //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
+      //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
+      //   ShipmentBatch 承载；再折一遍会在异地键上造幽灵账。
       ProductionLedger ledger = stepper.step(day);
       // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
       MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
-      List<ActorEntry> entries = OwnershipBooks.fold(ledger);
+      List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
       if (!entries.isEmpty()) {
         currentBooks = OwnershipBooks.apply(currentBooks, entries);
         for (GoodsAccountKey key : currentBooks.accounts().keySet()) {

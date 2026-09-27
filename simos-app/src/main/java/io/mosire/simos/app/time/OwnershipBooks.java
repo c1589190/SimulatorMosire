@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>产权落账</b>（S1 阶段 4+5 Task 5）：把一天/{@code ProductionLedger} 交出来的 {@link ActorEntry} 落到 {@link
@@ -61,6 +63,33 @@ public final class OwnershipBooks {
    * @throws IllegalStateException 某本账的余额会变成负数（见类注第 ③ 条）
    */
   /**
+   * ★★ <b>折进 actor 账时要排除的转移原因</b>（两个 ownership 参与者共用）：今天只有一条 —— {@link
+   * TransferReason#MARKET_TRADE}。
+   *
+   * <p>★★ <b>为什么必须排除市场成交</b>（M2 跨格"凭空造货"守恒缺陷的收口）：
+   *
+   * <pre>
+   * MarketSettlement.executeTrade 记的货腿：from=卖方、to=买方，location = route == null ? sell.hex : route.from
+   * OwnershipBooks.apply(fold(ledger))：在 (买方, 卖方格) 上给买方 +amount（跨格时 = 异地幽灵账）
+   * 随后的 landHouseholdGoods / landOperatorGoods / landHouseholdMoney / landOperatorMoney：
+   *     按**会话副本的绝对值**覆盖 (actor, 本格) 的账 ⇒ 卖方那笔扣减被覆盖（净影响 = 0），
+   *     而买方在异地格上的那本账**没人覆盖** ⇒ 净造货。
+   * </pre>
+   *
+   * <p>★★ <b>为什么"跳过市场条目"不会漏账</b>：市场买卖双方都必须是本轮参与者 —— 家户的账<b>必被载入</b>（{@link #loadHouseholdGoods}
+   * 缺席即抛），经营者只有"账在会话副本里"时才被 {@code MarketSettlement.participantsFor} 收进参与者（它明文跳过副本缺席者）⇒
+   * <b>市场成交落在账户上的那一份已由会话绝对值落回覆盖</b>；跨格尚未到货的那一份由 {@code ShipmentBatch} 唯一承载（{@code loadInTransit}
+   * 把它从买方会话余额移出、到货日再落回目的地账）—— fold 再叠一遍只会在"买方 × 卖方格"这个异地键上多出一本幽灵账（既重复了账户那一份、也重复了在途那一份）。
+   *
+   * <p>★ <b>ledger 本身一字不改</b>：{@code MarketSettlement} 照旧 mint 市场的货腿/钱腿（审计与守恒网要它）—— 只是 app 侧 fold
+   * 不再把它们叠到 actor 账上。
+   *
+   * <p>★ <b>为什么不排除 {@link TransferReason#CARRIER_FEE}、也不排除其他 reason</b>：承运人可能不在会话副本里， fold
+   * 是"副本覆盖不到的主体"的条目落账路径（把它一并挡掉会让那些腿静默消失）；其余 reason 同理一律不动。
+   */
+  public static final Set<TransferReason> REASONS_NOT_FOLDED = Set.of(TransferReason.MARKET_TRADE);
+
+  /**
    * ★★ <b>把当天的账折成"产权条目"——本折算的<b>唯一拼写点</b></b>（H2 / 裁定 D2-A 的 app 侧收口）。
    *
    * <p>H2 起，全系统的"东西从 A 到 B"只有一种事实：{@link Transfer}（`simos-economy-api`）。 而 actor 切片的账本写入口 {@link
@@ -77,15 +106,34 @@ public final class OwnershipBooks {
    *       市场成交与工钱的货币腿都写在副本上）⇒ 落盘走 {@link #landHouseholdMoney} 的**绝对值**那一条路。 在这里再折一遍货币腿 =
    *       同一笔钱记两遍（随后被绝对值覆盖，于是**只有付方那半**留下痕迹）。 ★ <b>如实记的边界</b>：本批的货币副本只覆盖**家户**（键 = {@code
    *       CohortKey}）⇒ 非家户主体（庄园/作坊经营者）的 货币余额**没有落点**；"经营者自己持账"是 H5 的事（与产出归属同一条账）。
+   *   <li>★★ <b>按原因过滤</b>：{@link #REASONS_NOT_FOLDED} 里的原因（今天 = {@link
+   *       TransferReason#MARKET_TRADE}） <b>不折</b> —— 理由见那个常量的说明（市场成交落在账户上的那一份已由会话副本绝对值落回覆盖； 在途那一份由
+   *       {@code ShipmentBatch} 承载；再叠会在异地键上造幽灵账）。
    * </ul>
    *
    * <p>★★ <b>别在这一步把家户账"叠加"一遍</b>：家户那一端的余额由 {@link #landHouseholdGoods} 按**副本绝对值**写回（日耗 / 投入 /
    * 同格取材只写副本，它们不是条目） ⇒ 这里是"产权条目"的落点，那里是"家户账"的落点，两处不重叠。
    */
   public static List<ActorEntry> fold(ProductionLedger ledger) {
+    return fold(ledger, REASONS_NOT_FOLDED);
+  }
+
+  /**
+   * 折账的**带过滤版本**：{@code excludedReasons} 里的转移原因不产生任何条目 —— 两个 ownership 参与者都显式传 {@link
+   * #REASONS_NOT_FOLDED}（见那里的机制说明）；需要"一条不落"的调用方显式传 {@code Set.of()}。
+   *
+   * @param ledger 当天的账本；不得为 null
+   * @param excludedReasons 不折进 actor 账的转移原因；不得为 null（一条都不排除请给空表）
+   */
+  public static List<ActorEntry> fold(
+      ProductionLedger ledger, Set<TransferReason> excludedReasons) {
     Objects.requireNonNull(ledger, "ledger");
+    Objects.requireNonNull(excludedReasons, "excludedReasons");
     List<ActorEntry> entries = new ArrayList<>(ledger.outputAccruals());
     for (Transfer transfer : ledger.transfers()) {
+      if (excludedReasons.contains(transfer.reason())) {
+        continue; // ★ 市场成交的效果由会话副本绝对值落回覆盖，fold 不再叠（见 REASONS_NOT_FOLDED）
+      }
       for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
         long amount = leg.getValue();
         if (amount <= 0L) {

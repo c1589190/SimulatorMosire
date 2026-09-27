@@ -654,6 +654,13 @@ public final class EconomySettlement {
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>(base.industries());
     LinkedHashMap<CohortKey, ClassRow> rows = new LinkedHashMap<>(base.classes());
     LinkedHashMap<DebtId, Debt> debts = new LinkedHashMap<>(base.debts());
+    // ★★ **计息的"昨日本金" = 当日起始快照**（M0.5 权威口径：计息日 {@code + ⌊昨 × 率 ÷ 1000⌋}，"昨"是当日开始时
+    //   的本金）。必须在 4b 放贷 / 4c 偿还之前取；否则当天新借的债当天就被计息，与守恒式不符（实测：第 120 天
+    //   新债 8,750 被记成 8,925，多出 175 = ⌊8,750 × 20‰⌋）。
+    Map<DebtId, Long> principalAtDayStart = new LinkedHashMap<>();
+    for (Map.Entry<DebtId, Debt> debtEntry : debts.entrySet()) {
+      principalAtDayStart.put(debtEntry.getKey(), debtEntry.getValue().principal());
+    }
     // ★★ **R2：劳动配额表**——日结算**读**它（当日劳动的唯一来源），R4 起在**饿死**那一步**按存活比例缩**它
     //   （见 {@link #scaleLaborOfIndustry}："人死了劳动没减"这条旧账的收口）⇒ 需要工作副本。
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations =
@@ -959,21 +966,22 @@ public final class EconomySettlement {
     //     "今天有产业关账"这个**日级**事实上，不在那个逐产业的 for 里（否则同格的 farm + craft 会各计一遍）。
     //   ★ 次序：**偿还先于计息**（还掉的那部分本金不再生息 —— 这是"先还后计"的标准序，也是改后债务曲线下降的一半原因）。
     if (anyCycleClosed) {
-      chargeInterest(debts, interestToday);
+      chargeInterest(debts, principalAtDayStart, interestToday);
     }
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
-    for (CohortKey key : rows.keySet()) {
+    for (Map.Entry<CohortKey, ClassRow> rowEntry : rows.entrySet()) {
+      CohortKey key = rowEntry.getKey();
       // ★★ **M2.7（丙条仪器）：周期累加器的清零点与流水同一天** —— 新周期第一天把
       //   {@code cycleNaturalNeedMilli} 重置为"今天这一份"（{@code withDailyNeed} 在消费步刚累加过）。
       //   ★ 放在这里而不是 {@code withDailyNeed} 里：只有这里同时看得见 {@code newCycleHouseholds}
       //     （由产业 progressDays 推、且与 FlowRow 的清零同一判据）。重置为"当天那一份"而不是 0 —— 理由见
       //     {@link #withCycleNaturalNeed}。
       if (newCycleHouseholds.contains(key)) {
-        ClassRow cycleRow = rows.get(key);
+        ClassRow cycleRow = rowEntry.getValue();
         if (cycleRow != null) {
-          rows.put(
-              key, withCycleNaturalNeed(cycleRow, cycleRow.naturalNeeds().getOrDefault(GRAIN, 0L)));
+          rowEntry.setValue(
+              withCycleNaturalNeed(cycleRow, cycleRow.naturalNeeds().getOrDefault(GRAIN, 0L)));
         }
       }
       // ★★ **T4 起两张实物表的口径都变了**（R1 的"行侧、形状不变、口径改"）：
@@ -3844,17 +3852,27 @@ public final class EconomySettlement {
    * <p>★ **偿还行为不做**（brief 明列的"留位"）：它要"有粮才还"的判断（属 spec §二 的"判"，应做成 GM 可调预设）。 {@link Debt#dueCycle()}
    * 保留、但**当前不被任何代码读**（本仓禁"看起来在记、其实永远是 0"的静默字段， 故在 {@link Debt} 的注释里写明）。
    *
-   * <p>★ **计息对象 = 债务表里的全部债务**（不是"本周期新借的那些"）：{@code ratePerMillePerCycle} 的字面意思
-   * 就是"每周期一次"，一条在第一周期借的债在第二周期末**照样**要再计一次（复利）。用 id 里的周期号去筛"只给新债计息" 反而会让老债从此永不生息。
+   * <p>★★ **计息本金取"当日起始"快照，不取当日 lend/repay 之后的本金**（M0.5 守恒式的权威口径：计息日 {@code + ⌊昨 × 率 ÷ 1000⌋}，"昨" =
+   * 当日开始时的本金）：当天新借的债当天不计息；当天还掉的那部分本金 **今天照样计息**（"先还后计"的偿还次序不变，只是计息基数不跟着偿还缩水）。计息仍并入**当前**本金 ⇒ 与守恒式
+   * {@code 本金_今 = 昨 + 放出 − 偿还 + ⌊昨 × 率 ÷ 1000⌋} 逐值一致。★ 快照由 {@code settleOneDay} 在任何 lend/repay
+   * 之前建好传入。
    *
    * @param debts 债务表（就地更新：本金并入利息）
+   * @param principalAtDayStart 当日起始的逐债本金快照（当日新借的债不在快照里 ⇒ 今天不计息）
    * @param interest 本日利息的逐行累加器（**只记债务人**那一侧）
    */
   private static void chargeInterest(
-      LinkedHashMap<DebtId, Debt> debts, LinkedHashMap<CohortKey, Long> interest) {
-    for (DebtId id : new ArrayList<>(debts.keySet())) {
-      Debt debt = debts.get(id);
-      long charged = debt.principal() * debt.ratePerMillePerCycle() / 1000L;
+      LinkedHashMap<DebtId, Debt> debts,
+      Map<DebtId, Long> principalAtDayStart,
+      LinkedHashMap<CohortKey, Long> interest) {
+    for (Map.Entry<DebtId, Debt> entry : new ArrayList<>(debts.entrySet())) {
+      DebtId id = entry.getKey();
+      Long startPrincipal = principalAtDayStart.get(id);
+      if (startPrincipal == null || startPrincipal <= 0L) {
+        continue; // 当日新借（不在快照里）或本金本来就是 0 ⇒ 今天不计息
+      }
+      Debt debt = entry.getValue();
+      long charged = startPrincipal * debt.ratePerMillePerCycle() / 1000L;
       if (charged <= 0L) {
         continue; // 本金小到算不出 1 毫粮（或利率 0）⇒ 本轮不记：不写"看起来在记、其实永远是 0"的流水
       }

@@ -81,8 +81,8 @@ public record MarketReadout(
     Objects.requireNonNull(priceMode, "priceMode");
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
     regions = regions == null ? List.of() : List.copyOf(regions);
-    provenance = freezeStrings(provenance);
-    unavailable = freezeStrings(unavailable);
+    provenance = Collections.unmodifiableMap(copyStrings(provenance));
+    unavailable = Collections.unmodifiableMap(copyStrings(unavailable));
   }
 
   /** 包含该格的那个区（没有 ⇒ {@link Optional#empty()}：那一格不在任何市场区，合法状态）。 */
@@ -417,10 +417,10 @@ public record MarketReadout(
     return Math.max(0L, money - frozen);
   }
 
-  /** 字符串表：保序不可变（旧档/空表按空处理）。 */
-  private static Map<String, String> freezeStrings(Map<String, String> values) {
+  /** 字符串表的**构造期防御性拷贝**（保序；旧档/空表按空处理）。不可变包装写在构造器赋值处（SpotBugs 只认那里）。 */
+  private static Map<String, String> copyStrings(Map<String, String> values) {
     if (values == null) {
-      return Map.of();
+      return new LinkedHashMap<>();
     }
     Map<String, String> copy = new LinkedHashMap<>();
     for (Map.Entry<String, String> entry : values.entrySet()) {
@@ -429,7 +429,7 @@ public record MarketReadout(
       }
       copy.put(entry.getKey(), entry.getValue());
     }
-    return Collections.unmodifiableMap(copy);
+    return copy;
   }
 
   /** 逐区读数的只读视图（{@code members} 是派生的成员格集，供"这个格属于哪个区"反查）。 */
@@ -526,16 +526,17 @@ public record MarketReadout(
 
     public CommodityMatchReadout {
       Objects.requireNonNull(landedPriceMilli, "landedPriceMilli");
-      unfilledBuyCounts = freezeCounts(unfilledBuyCounts);
-      unfilledSellCounts = freezeCounts(unfilledSellCounts);
-      unfilledBuyQuantities = freezeCounts(unfilledBuyQuantities);
-      unfilledSellQuantities = freezeCounts(unfilledSellQuantities);
+      unfilledBuyCounts = Collections.unmodifiableMap(copyCounts(unfilledBuyCounts));
+      unfilledSellCounts = Collections.unmodifiableMap(copyCounts(unfilledSellCounts));
+      unfilledBuyQuantities = Collections.unmodifiableMap(copyCounts(unfilledBuyQuantities));
+      unfilledSellQuantities = Collections.unmodifiableMap(copyCounts(unfilledSellQuantities));
     }
 
-    private static Map<MarketUnfilledReason, Long> freezeCounts(
+    /** 原因分布的**构造期防御性拷贝**；不可变包装写在赋值处（SpotBugs 只认那里）。 */
+    private static Map<MarketUnfilledReason, Long> copyCounts(
         Map<MarketUnfilledReason, Long> counts) {
       if (counts == null) {
-        return Map.of();
+        return new LinkedHashMap<>();
       }
       Map<MarketUnfilledReason, Long> copy = new LinkedHashMap<>();
       for (Map.Entry<MarketUnfilledReason, Long> entry : counts.entrySet()) {
@@ -544,7 +545,7 @@ public record MarketReadout(
         }
         copy.put(entry.getKey(), entry.getValue());
       }
-      return Collections.unmodifiableMap(copy);
+      return copy;
     }
   }
 

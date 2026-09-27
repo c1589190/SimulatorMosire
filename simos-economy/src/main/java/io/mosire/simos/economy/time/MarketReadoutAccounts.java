@@ -37,14 +37,16 @@ public record MarketReadoutAccounts(
     Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney) {
 
   public MarketReadoutAccounts {
-    householdGoods = freezeGoods(householdGoods);
-    householdFrozenGoods = freezeGoods(householdFrozenGoods);
-    operatorGoods = freezeGoods(operatorGoods);
-    operatorFrozenGoods = freezeGoods(operatorFrozenGoods);
-    householdMoney = freezeMoney(householdMoney);
-    householdFrozenMoney = freezeMoney(householdFrozenMoney);
-    operatorMoney = freezeMoney(operatorMoney);
-    operatorFrozenMoney = freezeMoney(operatorFrozenMoney);
+    // ★ 外层不可变包装写在赋值处（SpotBugs 的 EI_EXPOSE_REP 不做跨过程分析，只认赋值点看得见的
+    //   Collections.unmodifiableMap）；内层逐值防御性拷贝 + 不可变包装仍由 helper 完成。
+    householdGoods = Collections.unmodifiableMap(copyGoods(householdGoods));
+    householdFrozenGoods = Collections.unmodifiableMap(copyGoods(householdFrozenGoods));
+    operatorGoods = Collections.unmodifiableMap(copyGoods(operatorGoods));
+    operatorFrozenGoods = Collections.unmodifiableMap(copyGoods(operatorFrozenGoods));
+    householdMoney = Collections.unmodifiableMap(copyMoney(householdMoney));
+    householdFrozenMoney = Collections.unmodifiableMap(copyMoney(householdFrozenMoney));
+    operatorMoney = Collections.unmodifiableMap(copyMoney(operatorMoney));
+    operatorFrozenMoney = Collections.unmodifiableMap(copyMoney(operatorFrozenMoney));
   }
 
   /** 八张空表：单模块用例/无账户世界的合法形态（读时派生按"看不见"处理）。 */
@@ -53,10 +55,10 @@ public record MarketReadoutAccounts(
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
-  private static <K> Map<K, Map<CommodityId, Long>> freezeGoods(
+  private static <K> Map<K, Map<CommodityId, Long>> copyGoods(
       Map<K, Map<CommodityId, Long>> values) {
     if (values == null) {
-      return Map.of();
+      return new LinkedHashMap<>();
     }
     Map<K, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
     for (Map.Entry<K, Map<CommodityId, Long>> entry : values.entrySet()) {
@@ -65,13 +67,12 @@ public record MarketReadoutAccounts(
       }
       copy.put(entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
     }
-    return Collections.unmodifiableMap(copy);
+    return copy;
   }
 
-  private static <K> Map<K, Map<CurrencyId, Long>> freezeMoney(
-      Map<K, Map<CurrencyId, Long>> values) {
+  private static <K> Map<K, Map<CurrencyId, Long>> copyMoney(Map<K, Map<CurrencyId, Long>> values) {
     if (values == null) {
-      return Map.of();
+      return new LinkedHashMap<>();
     }
     Map<K, Map<CurrencyId, Long>> copy = new LinkedHashMap<>();
     for (Map.Entry<K, Map<CurrencyId, Long>> entry : values.entrySet()) {
@@ -80,6 +81,6 @@ public record MarketReadoutAccounts(
       }
       copy.put(entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
     }
-    return Collections.unmodifiableMap(copy);
+    return copy;
   }
 }

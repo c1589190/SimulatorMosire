@@ -151,8 +151,10 @@ final class MarketSettlement {
   static final int MARKET_TRANSPORT_LOSS_PER_MILLE = 5;
 
   /**
-   * ★ <b>预算取整的安全边距</b>（毫计价货币）：货款与运费各自 {@code ⌈…⌉}，两处向上取整相加最多比 {@code 数量 × 单位到货价 ÷ 1000} 多 2
-   * 毫。买得起的量按它回退，避免"货腿已落、钱腿不足"的半笔。
+   * ★ <b>买方可付额的回退边距</b>（毫计价货币）：货款与运费各自 {@code ⌈…⌉}，按这个边距先少买一点。
+   *
+   * <p>★★ <b>安全性不再靠它</b>（缺陷 A 的收口）：任何成交序列的累计付款 ≤ 买方剩余可付，由 {@link #pairUp} 每笔成交前 按当前实际账重新复核 + {@link
+   * #totalCostAtMost} 的精确上限保证。本边距只保留原口径的"保守少买"行为，不让取整余数咬进预算。
    */
   static final long MARKET_MONEY_ROUNDING_MARGIN_MILLI = 2L;
 
@@ -440,7 +442,7 @@ final class MarketSettlement {
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(topology, "topology");
     Optional<ActorRef> carrier = carrierOf(round);
-    MatchContext ctx = new MatchContext(round, markets, topology, trigger, carrier);
+    MatchContext ctx = new MatchContext(round, markets, topology, carrier);
     if (markets.isEmpty() || trigger == MarketTrigger.NONE) {
       return new MarketOutcome(
           MarketReport.empty(round.day, trigger, carrier.isPresent()), markets);
@@ -474,7 +476,7 @@ final class MarketSettlement {
           if (buyer == null) {
             throw new IllegalStateException("买订单的主体不在本轮参与者里（订单生成与撮合漂开了）: " + order.requester());
           }
-          ctx.buys.add(new BuySlot(order, buyer, hex, market, region, market.numeraire()));
+          ctx.buys.add(new BuySlot(order, buyer, hex, region, market.numeraire()));
         }
         for (SellOrder order : orders.sells()) {
           Participant seller = ctx.participants.get(order.supplier());
@@ -515,11 +517,9 @@ final class MarketSettlement {
               acc.bottleneck));
     }
     // ── 6. M2.6 可选自适应：只看**本轮计划订单**（有预算且限价内的需求 vs 可出售供给），
-    //   在撮合之后改下一轮的参考价。默认关 ⇒ 价格表原样带过、更新表为空。
-    AdaptivePrices adapted =
-        MARKET_ADAPTIVE_PRICING_ENABLED
-            ? adaptPrices(markets, ctx)
-            : new AdaptivePrices(List.of(), markets);
+    //   在撮合之后改下一轮的参考价。★ 开关判据收在 adaptPrices 内部、这里**无条件调用** ——
+    //   否则 javac 会把默认关（常量 false）的分支连同私有方法一起当死码剔除，SpotBugs 报 UPM_UNCALLED_PRIVATE_METHOD。
+    AdaptivePrices adapted = adaptPrices(markets, ctx);
     return new MarketOutcome(
         new MarketReport(
             round.day,
@@ -557,7 +557,7 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>按供需 z 逐区改价</b>（M2.6 可选；只在 {@link #MARKET_ADAPTIVE_PRICING_ENABLED} 为真时被调用）。
+   * ★★ <b>按供需 z 逐区改价</b>（M2.6 可选；开关判据在本方法内，调用点无条件）—— 默认关时立即原样交回入参价格表。
    *
    * <pre>
    * z      = clamp((demand − supply) / max(demand + supply, ε), −1, 1)
@@ -572,6 +572,11 @@ final class MarketSettlement {
    * 这就是"每区每商品一个报价"的落点，也避免成员价格各自漂开后"区价"这个词失去意义。
    */
   private static AdaptivePrices adaptPrices(Map<HexCoord, Market> markets, MatchContext ctx) {
+    if (!MARKET_ADAPTIVE_PRICING_ENABLED) {
+      // ★ 默认固定报价：价格表逐值原样带过、更新表为空。判断放在这里而不是调用点，
+      //   是为了让本方法在字节码里真的存在（见 clearOncePerCycle 第 6 步的注释）。
+      return new AdaptivePrices(List.of(), markets);
+    }
     // 逐 (region, commodity) 汇总订单；region 用拓扑对象本身当键（它由 node+members 派生，等值即同区）。
     Map<MarketRegion, Map<CommodityId, long[]>> byRegion = new LinkedHashMap<>();
     for (BuySlot buy : ctx.buys) {
@@ -871,6 +876,7 @@ final class MarketSettlement {
         List<BuySlot> buys = new ArrayList<>();
         for (BuySlot buy : ctx.buys) {
           if (buy.remaining > 0
+              && !buy.noMoney
               && buy.region.equals(region)
               && buy.order.commodity().equals(commodity)
               && buy.order.maxLandedPrice() >= price
@@ -934,6 +940,7 @@ final class MarketSettlement {
       List<HexCoord> buyerHexes = new ArrayList<>();
       for (BuySlot buy : ctx.buys) {
         if (buy.remaining > 0
+            && !buy.noMoney
             && buy.order.commodity().equals(commodity)
             && !buyerHexes.contains(buy.hex)) {
           buyerHexes.add(buy.hex);
@@ -945,6 +952,7 @@ final class MarketSettlement {
         List<BuySlot> buys = new ArrayList<>();
         for (BuySlot buy : ctx.buys) {
           if (buy.remaining > 0
+              && !buy.noMoney
               && buy.order.commodity().equals(commodity)
               && buy.hex.equals(buyerHex)) {
             buys.add(buy);
@@ -980,14 +988,18 @@ final class MarketSettlement {
             continue;
           }
           matchRoute(ctx, buyerHex, sellerHex, commodity, buys, sells);
-          // 这一对买卖里买家已经满足的不必再看别的卖方路线。
-          buys.removeIf(buy -> buy.remaining <= 0);
+          // 这一对买卖里买家已经满足 / 钱包已耗尽的都不必再看别的卖方路线。
+          buys.removeIf(buy -> buy.remaining <= 0 || buy.noMoney);
           if (buys.isEmpty()) {
             break;
           }
         }
       }
     }
+  }
+
+  private static long moveCostOf(MatchContext ctx, HexCoord hex) {
+    return ctx.moveCostCache.computeIfAbsent(hex, key -> (long) ctx.topology.moveCostAt(key));
   }
 
   /** 一条具体的 sellerHex → buyerHex 路线：判价/时限/地形，再在有限轮内分运力。 */
@@ -999,7 +1011,7 @@ final class MarketSettlement {
       List<BuySlot> rawBuys,
       List<SellSlot> rawSells) {
     long distance = ctx.topology.travelTicks(sellerHex, buyerHex);
-    long moveCost = ctx.topology.moveCostAt(buyerHex);
+    long moveCost = moveCostOf(ctx, buyerHex);
     if (moveCost >= TerrainType.IMPASSABLE_MOVE_COST) {
       for (BuySlot buy : rawBuys) {
         buy.blocked = MarketUnfilledReason.NO_ROUTE;
@@ -1107,7 +1119,14 @@ final class MarketSettlement {
     }
   }
 
-  /** 一批买卖按比例配对落账（区内即时或跨区在途）。 */
+  /**
+   * 一批买卖按比例配对落账（区内即时或跨区在途）。
+   *
+   * <p>★★ <b>逐笔复核买方的剩余可付</b>（缺陷 A 的修法）：预分配的 {@code buyParts} 只是**上限**；每一小笔真正落账前， 都按当前账（{@code
+   * spendable + 本单剩余冻结}、订单预算余额）重新算一次"这一笔最多买多少"，并取小。
+   * 货款/运费每个小笔各自向上取整，因此整单按总价反解出的数量不保证逐笔加起来付得起；只有把每笔的实际付款累进 {@link BuySlot#spentMilli}（{@code
+   * executeTrade} 写）再递推复核，任何成交序列下累计付款才不会越过后端的冻结/余额守卫。
+   */
   private static void pairUp(
       MatchContext ctx,
       List<BuySlot> buyers,
@@ -1120,6 +1139,7 @@ final class MarketSettlement {
     long sellLeft = sellers.isEmpty() ? 0L : sellParts[0];
     for (int i = 0; i < buyers.size(); i++) {
       long need = buyParts[i];
+      BuySlot buy = buyers.get(i);
       while (need > 0L) {
         while (sellerIndex < sellers.size() && sellLeft <= 0L) {
           sellerIndex++;
@@ -1131,8 +1151,27 @@ final class MarketSettlement {
           return;
         }
         SellSlot sell = sellers.get(sellerIndex);
-        BuySlot buy = buyers.get(i);
         long quantity = Math.min(need, sellLeft);
+        // ★ 递归约束：上一笔实际付款（含各自 ceil 的货款与运费）已经写进 spentMilli 与余额/冻结表，
+        //   这里按**当前**剩余可付重算上限，堵住 N 笔各 ceil 一毫的累计越界。先取原口径的保守配给量，
+        //   再用逐笔实际算式精确封顶（跨区运费 floor + 两处 ceil 的累计误差都在这里削平）。
+        long affordable = affordableQuantity(ctx, buy, price, route);
+        if (quantity > affordable) {
+          quantity = affordable;
+        }
+        long payable = payableMoneyOf(ctx, buy);
+        quantity = exactAffordableUpTo(quantity, payable, price, route);
+        if (quantity <= 0L) {
+          // 钱包/预算在账面上已经归零（不是"这个价买不起"）⇒ 这个买方在**任何**正价格上都再无成交可能：
+          // 置 noMoney 让后续跨区路线直接跳过它（否则它会以 remaining>0 的身份把每条路线都试一遍）。
+          if (payable <= 0L) {
+            buy.noMoney = true;
+            if (buy.blocked == null) {
+              buy.blocked = MarketUnfilledReason.NO_BUDGET;
+            }
+          }
+          break;
+        }
         executeTrade(ctx, buy, sell, quantity, price, route);
         buy.remaining -= quantity;
         sell.remaining -= quantity;
@@ -1393,22 +1432,113 @@ final class MarketSettlement {
         quantity * unitPrice * travelTicks * MARKET_FREIGHT_PER_MILLE_PER_HEX, 1_000_000L);
   }
 
-  /** 买方在这条路上买得起多少：可花余额 + 本单剩余冻结，按"单价 + 单位运费"折算；再受订单预算余额封顶。 */
+  /**
+   * 买方在这条路上**计划**买得起多少：可花余额 + 本单剩余冻结，按"单价 + 单位运费"折算，再受订单预算余额封顶， 并保留 {@link
+   * #MARKET_MONEY_ROUNDING_MARGIN_MILLI} 的保守回退。
+   *
+   * <p>★★ <b>它不是安全边界的守卫</b>：货款/运费各自向上取整，整单反解出的量逐笔成交时可能多付。累计付款 ≤ 买方 可支配的保证在 {@link #pairUp} ——
+   * 每笔成交前用 {@link #totalCostAtMost} 按当前剩余可付精确复核并封顶（见 {@link
+   * #exactAffordableUpTo}）。这样保留原口径的配给数量，不再依赖边距兜住"N 笔各 ceil 一毫"。
+   */
   private static long affordableQuantity(
       MatchContext ctx, BuySlot buy, long unitPrice, RouteContext route) {
-    long freightPerUnit = route == null ? 0L : route.freightPerUnit;
-    long unitCost = unitPrice + freightPerUnit;
-    long money = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
-    long budgetLeft = Math.max(0L, buy.order.budget().amountMilli() - buy.spentMilli);
-    money = Math.min(money, budgetLeft + buy.frozenRemaining);
+    long money = payableMoneyOf(ctx, buy);
     if (money <= MARKET_MONEY_ROUNDING_MARGIN_MILLI) {
       return 0L;
     }
     money -= MARKET_MONEY_ROUNDING_MARGIN_MILLI;
+    long unitCost = unitPrice + (route == null ? 0L : route.freightPerUnit);
     if (unitCost <= 0L) {
-      return money * EconomySettlement.MILLI_PER_GRAIN;
+      return safeMulDiv(money, EconomySettlement.MILLI_PER_GRAIN, 1L);
     }
-    return money * EconomySettlement.MILLI_PER_GRAIN / unitCost;
+    return safeMulDiv(money, EconomySettlement.MILLI_PER_GRAIN, unitCost);
+  }
+
+  /**
+   * 这一张买单当前还能动用的钱：{@code min(可花 + 本单剩余冻结, 订单预算余额 + 本单剩余冻结)}。
+   *
+   * <p>★ 它不是"还买得起多少"（那还要按价与逐笔 ceil 反解），只是"钱包/预算层面是否已经耗尽" —— {@link #pairUp} 用它给 {@link
+   * BuySlot#noMoney} 置位，避免余额已经归零的买方在每条跨区路线上反复重试。
+   */
+  private static long payableMoneyOf(MatchContext ctx, BuySlot buy) {
+    long money = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
+    long budgetLeft = Math.max(0L, buy.order.budget().amountMilli() - buy.spentMilli);
+    return Math.min(money, budgetLeft + buy.frozenRemaining);
+  }
+
+  /**
+   * 这一笔数量按**与 {@link #executeTrade} 同一算式**算出的总价（货款 + 名义运费）是否 ≤ {@code money}。 全程 {@code
+   * long}；乘法真的会溢出 ⇒ 这个数量在 {@code executeTrade} 里同样不可付，按"付不起"处理。
+   */
+  private static boolean totalCostAtMost(
+      long quantity, long money, long unitPrice, RouteContext route) {
+    long scaled;
+    try {
+      scaled = Math.multiplyExact(quantity, unitPrice);
+    } catch (ArithmeticException overflow) {
+      return false;
+    }
+    long payment = ceilDivPositive(scaled, EconomySettlement.MILLI_PER_GRAIN);
+    if (payment > money) {
+      return false;
+    }
+    if (route == null) {
+      return true;
+    }
+    long rawFreight;
+    try {
+      rawFreight = Math.multiplyExact(scaled, route.travelTicks);
+      rawFreight = Math.multiplyExact(rawFreight, MARKET_FREIGHT_PER_MILLE_PER_HEX);
+    } catch (ArithmeticException overflow) {
+      return false;
+    }
+    long freight = ceilDivPositive(rawFreight, 1_000_000L);
+    return freight <= money - payment;
+  }
+
+  /**
+   * 把预分配/计划量按**当前剩余可付**精确封顶：最大 {@code q ≤ upper} 使 {@code q} 这一笔的总价（货款 + 名义运费）≤ {@code payable}。
+   *
+   * <p>★ 这是缺陷 A 的安全点：{@link #affordableQuantity} 的边距只负责"保守少买"，跨区运费 floor 与逐笔 ceil 造成
+   * 的累计越界在这里被逐笔按实际账削平 ⇒ 任何成交序列下付款 ≤ 可支配（冻结 + 可花）。
+   */
+  private static long exactAffordableUpTo(
+      long upper, long payable, long unitPrice, RouteContext route) {
+    if (upper <= 0L || payable <= 0L) {
+      return 0L;
+    }
+    if (totalCostAtMost(upper, payable, unitPrice, route)) {
+      return upper;
+    }
+    long low = 0L;
+    long high = upper;
+    while (low < high) {
+      long mid = low + (high - low + 1L) / 2L;
+      if (totalCostAtMost(mid, payable, unitPrice, route)) {
+        low = mid;
+      } else {
+        high = mid - 1L;
+      }
+    }
+    return low;
+  }
+
+  /** 向下取整的 {@code value × multiplier ÷ divisor}；乘法溢出时保守回退成 `Long.MAX_VALUE`。 */
+  private static long safeMulDiv(long value, long multiplier, long divisor) {
+    if (divisor <= 0L) {
+      return Long.MAX_VALUE;
+    }
+    try {
+      return Math.multiplyExact(value, multiplier) / divisor;
+    } catch (ArithmeticException overflow) {
+      return Long.MAX_VALUE;
+    }
+  }
+
+  /** 正整数的向上取整除法（不靠 {@code numerator + divisor - 1}，避免那一处溢出）。 */
+  private static long ceilDivPositive(long numerator, long divisor) {
+    long quotient = numerator / divisor;
+    return numerator % divisor == 0L ? quotient : quotient + 1L;
   }
 
   // ── 未成交原因 ─────────────────────────────────────────────────────────────────────
@@ -1821,7 +1951,6 @@ final class MarketSettlement {
     final BuyOrder order;
     final Participant buyer;
     final HexCoord hex;
-    final Market market;
     final MarketRegion region;
     final CurrencyId currency;
     long remaining;
@@ -1829,19 +1958,14 @@ final class MarketSettlement {
     long baseFrozenMoney;
     long requestedMoney;
     long spentMilli;
+    boolean noMoney;
     MarketUnfilledReason blocked;
 
     BuySlot(
-        BuyOrder order,
-        Participant buyer,
-        HexCoord hex,
-        Market market,
-        MarketRegion region,
-        CurrencyId currency) {
+        BuyOrder order, Participant buyer, HexCoord hex, MarketRegion region, CurrencyId currency) {
       this.order = order;
       this.buyer = buyer;
       this.hex = hex;
-      this.market = market;
       this.region = region;
       this.currency = currency;
       this.remaining = order.quantity();
@@ -1932,7 +2056,6 @@ final class MarketSettlement {
     final MarketRound round;
     final Map<HexCoord, Market> markets;
     final MarketTopology topology;
-    final MarketTrigger trigger;
     final Optional<ActorRef> carrier;
     final List<BuySlot> buys = new ArrayList<>();
     final List<SellSlot> sells = new ArrayList<>();
@@ -1942,6 +2065,8 @@ final class MarketSettlement {
     final List<MarketReport.Unfilled> unfilled = new ArrayList<>();
     final Map<String, RouteAccumulator> routes = new LinkedHashMap<>();
     final Map<ShipmentKey, ShipmentBuilder> shipments = new LinkedHashMap<>();
+    // ★ 地形代价的纯记忆化：组合根的 moveCostAt 会重建整张地形索引，同一 buyerHex 在逐卖方路线里只需算一次。
+    final Map<HexCoord, Long> moveCostCache = new LinkedHashMap<>();
     long freightPaidMilli;
     long freightUncollectedMilli;
     long scheduledLossMilli;
@@ -1953,12 +2078,10 @@ final class MarketSettlement {
         MarketRound round,
         Map<HexCoord, Market> markets,
         MarketTopology topology,
-        MarketTrigger trigger,
         Optional<ActorRef> carrier) {
       this.round = round;
       this.markets = markets;
       this.topology = topology;
-      this.trigger = trigger;
       this.carrier = carrier;
     }
   }
