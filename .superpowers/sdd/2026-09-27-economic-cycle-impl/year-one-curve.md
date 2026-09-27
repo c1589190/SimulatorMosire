@@ -7,7 +7,7 @@
 > - **代码态**：**H5**（重打包前那份 shaded jar，md5 `ace6fa8f0fffc22753211a056755869a`；
 >   `jar tf` 里没有 H6 的 `EconomySettlement$InputPlan`）。⇒ **本报表是"改前基线"，不是 H6 之后的世界。**
 > - **推进方式**：`simos.advance` 分段推进到 **tick 120 / 240 / 360（＝一年）**，每个关账日**先落逐格原始读数**
->   （`/tmp/h6raw_tick{120,240,360}.json`，各 5.9 MB），再由 `h6agg.py` 聚合成 `/tmp/h6agg_tick*.json`。
+>   （**已入库**：本目录 `h6raw_tick{120,240,360}.json`，各约 5.7 MB），再由 `h6agg.py` 聚合成 `agg/h6agg_tick*.json`（**已入库**）。
 > - **本报表由脚本生成**：`h6report.py`（读聚合产物、只做 `//1000` 折算、缺文件即报错，不重算口径）。
 > - ★ **未做**：600 天（tick 480/600）、**H6 代码态的对照批**（用户 2026-09-27 裁定"只跑一年"）。
 >   H6-lite 的判据目前只有单元级证据（见 §四）。
@@ -95,8 +95,8 @@ MORTALITY = 死亡率 > 20‰、DEBT = 本期新借 ≥ 本周期至今需求的
 
 | 件 | 路径 |
 |---|---|
-| 逐格原始读数 | `/tmp/h6raw_tick{120,240,360}.json`（各 5.9 MB；★ 推进是覆盖式的 ⇒ **这五个文件是唯一留痕**） |
-| 聚合产物 | `/tmp/h6agg_tick{120,240,360}.json` |
+| 逐格原始读数 | `h6raw_tick{120,240,360}.json`（各约 5.7 MB；★ 推进是覆盖式的 ⇒ **这三个文件是唯一留痕**，已入库） |
+| 聚合产物 | `agg/h6agg_tick{120,240,360}.json` |
 | 聚合脚本 | `.superpowers/sdd/2026-09-27-economic-cycle-impl/h6agg.py` |
 | 报表脚本 | `.superpowers/sdd/2026-09-27-economic-cycle-impl/h6report.py` |
 | 对照脚本（两批之间） | `.superpowers/sdd/2026-09-27-economic-cycle-impl/h6cmp.py` |
@@ -106,6 +106,6 @@ MORTALITY = 死亡率 > 20‰、DEBT = 本期新借 ≥ 本周期至今需求的
 ★ **复算命令**（不联网、不跑 Maven，几秒）：
 ```bash
 cd .superpowers/sdd/2026-09-27-economic-cycle-impl
-python3 h6agg.py tick120 && python3 h6agg.py tick240 && python3 h6agg.py tick360
+cp agg/h6agg_tick*.json /tmp/ 2>/dev/null; python3 h6agg.py tick120 && python3 h6agg.py tick240 && python3 h6agg.py tick360
 python3 h6report.py        # 本文件 §一 那张表就是它的输出
 ```

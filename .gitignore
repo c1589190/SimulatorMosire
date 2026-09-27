@@ -28,3 +28,10 @@ CLAUDE.local.md
 
 # Maven 串行化锁（tools/mvn-lock.sh 用；放在仓根以便不受 clean 影响）
 .mvn-lock.d/
+
+# omo/codegraph 运行时（会话延续 + 代码图缓存）—— 本机专用，可随时重建，不进仓库
+.omo/
+
+# Python 字节码（脚本目录下自动生成，可重建）
+__pycache__/
+*.pyc

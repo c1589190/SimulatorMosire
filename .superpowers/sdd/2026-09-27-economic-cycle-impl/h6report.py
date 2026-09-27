@@ -2,7 +2,7 @@
 
 用法: python3 h6report.py > /tmp/h6report.md
 
-★ 一切数字**原样**取自 /tmp/h6agg_tick{120,240,360}.json（不重算口径、不联网、不跑 Maven）；
+★ 一切数字**原样**取自 `agg/h6agg_tick{120,240,360}.json`（仓内留痕；缺则回落 `/tmp`）（不重算口径、不联网、不跑 Maven）；
   折算只在打印时 //1000。缺文件**明确打印"缺 <路径>"**，绝不静默跳过（同 h6cmp.py 的纪律）。
 """
 
@@ -10,15 +10,16 @@ import json
 import os
 
 TICKS = ('120', '240', '360')
-AGG_FMT = '/tmp/h6agg_tick%s.json'
+AGG_FMTS = ('agg/h6agg_tick%s.json', '/tmp/h6agg_tick%s.json')  # ★ 仓内留痕优先，回落 /tmp
 
 
 def load(t):
-    p = AGG_FMT % t
-    if not os.path.exists(p):
-        raise SystemExit('缺 %s' % p)
-    with open(p, encoding='utf-8') as fh:
-        return json.load(fh)['total']
+    for fmt in AGG_FMTS:
+        p = fmt % t if fmt.count('%s') == 1 else fmt % (t, t)
+        if os.path.exists(p):
+            with open(p, encoding='utf-8') as fh:
+                return json.load(fh)['total']
+    raise SystemExit('缺 %s（仓内 agg/ 与 /tmp 都没有）' % (AGG_FMTS[0] % t))
 
 
 def row(label, fn):
