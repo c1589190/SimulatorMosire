@@ -129,7 +129,13 @@ public final class OwnershipBooks {
       // ★★ H4/K15：**整本覆盖必须把货币带过** —— 两参构造器给的是"钱 = 空表"，
       //   用它写回会**静默把钱清零**（今天只靠"货币落回排在后面"兜住，任何只调 apply 的新路径都会中招）。
       Map<CurrencyId, Long> money = account == null ? Map.of() : account.money();
-      books = books.withAccount(new GoodsAccount(key, balances, money));
+      // ★★ M1.2：**冻结额同样要带过**（两张表都要）—— 三参构造器给的是"冻结 = 空表"，用它写回会把"已明确的占用"
+      //   静默清零。今天这条之所以还没咬人，只是因为只有 M2 的挂单才会产生冻结；一旦冻结非空，漏带 = 挂单的货
+      //   第二天又变成"可卖"（同一批货被卖两次）。
+      Map<CommodityId, Long> frozenBalances = account == null ? Map.of() : account.frozenBalances();
+      Map<CurrencyId, Long> frozenMoney = account == null ? Map.of() : account.frozenMoney();
+      books =
+          books.withAccount(new GoodsAccount(key, balances, money, frozenBalances, frozenMoney));
     }
     return books;
   }
@@ -228,11 +234,16 @@ public final class OwnershipBooks {
                   + balance.getValue());
         }
       }
-      // ★★ 同 ①：按绝对值写回**商品**，但钱要**原样带过**（别用两参构造器把它清零）。
+      // ★★ 同 ①：按绝对值写回**商品**，但钱与**两张冻结表**要**原样带过**（别用两参构造器把它们清零）。
       GoodsAccount existing = books.accounts().get(key);
       accounts.put(
           key,
-          new GoodsAccount(key, entry.getValue(), existing == null ? Map.of() : existing.money()));
+          new GoodsAccount(
+              key,
+              entry.getValue(),
+              existing == null ? Map.of() : existing.money(),
+              existing == null ? Map.of() : existing.frozenBalances(),
+              existing == null ? Map.of() : existing.frozenMoney()));
     }
     return books.withAccounts(accounts);
   }
@@ -326,8 +337,16 @@ public final class OwnershipBooks {
         throw new IllegalStateException(
             "货币落回要求该家户的账本已在 actor 侧存在（商品落回在前，顺序不能反）：家户=" + key.owner() + " 格=" + key.location());
       }
-      // ★ 商品那一半**原样带过**（`GoodsAccount` 是整本覆盖的写入口）。
-      accounts.put(key, new GoodsAccount(key, existing.balances(), entry.getValue()));
+      // ★ 商品那一半**原样带过**（`GoodsAccount` 是整本覆盖的写入口）；★ M1.2：两张**冻结表**同样原样带过
+      //   （否则"每天的货币落回"会把冻结清零）。
+      accounts.put(
+          key,
+          new GoodsAccount(
+              key,
+              existing.balances(),
+              entry.getValue(),
+              existing.frozenBalances(),
+              existing.frozenMoney()));
     }
     return books.withAccounts(accounts);
   }
@@ -453,7 +472,12 @@ public final class OwnershipBooks {
       GoodsAccount existing = accounts.get(key);
       accounts.put(
           key,
-          new GoodsAccount(key, entry.getValue(), existing == null ? Map.of() : existing.money()));
+          new GoodsAccount(
+              key,
+              entry.getValue(),
+              existing == null ? Map.of() : existing.money(),
+              existing == null ? Map.of() : existing.frozenBalances(),
+              existing == null ? Map.of() : existing.frozenMoney()));
     }
     return books.withAccounts(accounts);
   }
@@ -492,8 +516,106 @@ public final class OwnershipBooks {
       accounts.put(
           key,
           new GoodsAccount(
-              key, existing == null ? Map.of() : existing.balances(), entry.getValue()));
+              key,
+              existing == null ? Map.of() : existing.balances(),
+              entry.getValue(),
+              existing == null ? Map.of() : existing.frozenBalances(),
+              existing == null ? Map.of() : existing.frozenMoney()));
     }
     return books.withAccounts(accounts);
+  }
+
+  // ── 冻结 / 解冻（M1.2）──────────────────────────────────────────────────────────────
+  //
+  // ★★ 为什么落在这里、为什么**不是**第二个 applier：
+  //   本类已是 app 侧"账务纯函数"的唯一落点（apply / 四个 land*）——它们都是 `ActorData → ActorData`、无 IO、
+  //   不写状态。freeze / release 与它们**逐字同形**，因此没有引入第二条写状态的路：真正落进 revision 的仍然是
+  //   铁律 2 的那条链（调用方把本函数的结果与基态交给 `ActorChangeSet.between` 派生出变更集，再经
+  //   `CommandBus` 提交）。★ 经济侧的**唯一写口**（`EconomySettlement.applyTransfer`）一字未动：冻结不是换手，
+  //   它不动余额、不产生任何转移腿。
+  //
+  // ★★ 语义（三条，都是判据）：
+  //   ① **绝对值**：本对函数给的是"这本账现在的冻结额是多少"（与余额同一口径：整本覆盖）。
+  //      幂等由这条语义来 —— 同一个数写两次 ⇒ 状态逐字段相同 ⇒ `ActorChangeSet.between` 报"一字未动"。
+  //      ★ 反面（增量 "+N"）不幂等：重放一次就多占一份，而挂单/交付恰恰是要能被重放的。
+  //   ② **只动 frozen**：余额（商品与货币）逐键不变。冻结不是注销、不是转移 —— 它只是把已有的一部分标成"已占用"
+  //      ⇒ 货币守恒（Σ余额恒定）不受影响。
+  //   ③ **账本缺席 ⇒ 抛**：冻结是"对**已有**库存下的一条处置命令"，对一本不存在的账冻结等于凭空造出一本账
+  //      （`land*` 那两种缺席口径是"落账"，与这里不同，见 §"经营者账"的注释）。
+  //
+  // ★★ 边界（用户 2026-09-27 裁定）：`frozen` **只表达"已明确的占用"**（挂单要卖的货、已承诺的交付）。
+  //   生活保留 / 必要生产投入 / 经营储备**不许**经这对函数落进账户 —— 它们是决策层的策略，按
+  //   `可售库存 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)` 在 M2 的算式里逐项算。
+  //   ⇒ 本对函数的调用方（M2 的挂单）必须先有一条**明确的承诺**，才允许调 freeze。
+
+  /**
+   * ★★ <b>冻结一笔商品</b>（M1.2）：把 {@code key} 这本账上 {@code commodity} 的冻结额**置为</b> {@code amount}。
+   *
+   * <p>★ <b>幂等</b>：同一个 {@code amount} 连着写两次，第二次的结果与第一次逐字段相同（绝对值语义）。
+   *
+   * @param books 落冻结前的 actor 状态；不得为 null
+   * @param key 目标账本（{@code (owner, location)}）；不得为 null，且该账本必须已存在
+   * @param commodity 被占用的商品；不得为 null
+   * @param amount 冻结额（{@code ≥ 0}；{@code 0} = 有这条占用但当前为 0，<b>0 保留</b>）
+   * @return 落冻结后的新状态（只换那一本账；其余账户与其余商品的冻结原样带过）
+   * @throws IllegalArgumentException {@code amount < 0}，或 {@code amount} 超过余额（由 {@link
+   *     GoodsAccount} 的构造期守卫判 —— 数值语义只在一处实现）
+   * @throws IllegalStateException 该账本不存在（见上"语义 ③"）
+   */
+  public static ActorData freeze(
+      ActorData books, GoodsAccountKey key, CommodityId commodity, long amount) {
+    return withFrozenGoods(books, key, commodity, amount);
+  }
+
+  /**
+   * ★★ <b>解冻一笔商品</b>（M1.2）＝ {@link #freeze} 置 {@code 0}（**保留那条 0**，不删键 —— 照 {@code GoodsAccount}
+   * 的"0 保留"口径：占用曾经存在，与"根本没有这条"不是同一件事）。★ 同样幂等。
+   */
+  public static ActorData release(ActorData books, GoodsAccountKey key, CommodityId commodity) {
+    return withFrozenGoods(books, key, commodity, 0L);
+  }
+
+  /**
+   * ★★ <b>冻结一笔货币</b>（M1.2）：与 {@link #freeze(ActorData, GoodsAccountKey, CommodityId, long)} 逐条同款。
+   */
+  public static ActorData freeze(
+      ActorData books, GoodsAccountKey key, CurrencyId currency, long amount) {
+    return withFrozenMoney(books, key, currency, amount);
+  }
+
+  /** ★★ <b>解冻一笔货币</b>（M1.2）：与 {@link #release(ActorData, GoodsAccountKey, CommodityId)} 逐条同款。 */
+  public static ActorData release(ActorData books, GoodsAccountKey key, CurrencyId currency) {
+    return withFrozenMoney(books, key, currency, 0L);
+  }
+
+  private static ActorData withFrozenGoods(
+      ActorData books, GoodsAccountKey key, CommodityId commodity, long amount) {
+    GoodsAccount account = requireAccount(books, key);
+    Map<CommodityId, Long> frozen = new LinkedHashMap<>(account.frozenBalances());
+    frozen.put(commodity, amount);
+    // ★ 余额两张表**原样带过**（冻结只动 frozen）；数值守卫（0 ≤ amount ≤ 余额）由 GoodsAccount 判。
+    return books.withAccount(
+        new GoodsAccount(key, account.balances(), account.money(), frozen, account.frozenMoney()));
+  }
+
+  private static ActorData withFrozenMoney(
+      ActorData books, GoodsAccountKey key, CurrencyId currency, long amount) {
+    GoodsAccount account = requireAccount(books, key);
+    Map<CurrencyId, Long> frozen = new LinkedHashMap<>(account.frozenMoney());
+    frozen.put(currency, amount);
+    return books.withAccount(
+        new GoodsAccount(
+            key, account.balances(), account.money(), account.frozenBalances(), frozen));
+  }
+
+  /** 目标账本（缺席 ⇒ 抛，见上面"语义 ③"）。 */
+  private static GoodsAccount requireAccount(ActorData books, GoodsAccountKey key) {
+    Objects.requireNonNull(books, "books");
+    Objects.requireNonNull(key, "key");
+    GoodsAccount account = books.accounts().get(key);
+    if (account == null) {
+      throw new IllegalStateException("冻结/解冻要求该账本已在 actor 侧存在（对不存在的账冻结 = 凭空造账）：键=" + key);
+    }
+    return account;
   }
 }

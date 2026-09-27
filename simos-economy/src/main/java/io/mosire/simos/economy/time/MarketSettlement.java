@@ -102,6 +102,10 @@ final class MarketSettlement {
    * 写死成"全卖掉"会让农户把口粮也卖掉、下个周期自己变成缺口户并推高粮价（本仓最反对的"用模型替 GM 做判断"）。 ★ <b>V7 参数目录落地后</b>它迁入 {@code
    * economy} 切片的参数表、成为 GM 可调（与致死率、播种次序、放贷自留同一条路）。 ★ 取 {@code 0} = 全部可售（旧口径的"余粮即全部库存"）；取 {@code
    * 2000} = 留足两个周期（饥荒预期下的囤积）。
+   *
+   * <p>★★ <b>M1.2 边界：保留策略留在本层，账户层的 {@code frozen} 只表达"已明确的占用"</b> —— 本常量是<b>只读算式的中间量</b>
+   * （它不写任何字段、不占任何库存），<b>不许</b>把它折进 {@code GoodsAccount.frozenBalances}（那正是"把储备政策搬进账户模型"）。 M2
+   * 的可售算式在这些项之外**再减**一次 {@code frozen}，且各项互不重复扣除。
    */
   static final int MARKET_SELF_RESERVE_PER_MILLE = 1000;
 

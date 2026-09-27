@@ -309,6 +309,11 @@ public final class EconomySettlement {
    *
    * <p>★ 它是**制度层参数**（spec §4.1：借贷规则由生产关系双方决定），但**参数目录属 V7** ⇒ 与致死率、口粮系数、 播种次序同处置：先做**具名常量**，注释写明"V7
    * 迁入 {@code economy} 切片的参数表、成为 GM 可调、作用域 全局→国家→格/产业"。**不造半套目录**。
+   *
+   * <p>★★ <b>M1.2 边界：保留策略留在本层，账户层的 {@code frozen} 只表达"已明确的占用"</b> —— 本常量与 {@code lendableOf}
+   * 都是<b>只读算式</b>（"保留额不是冻结起来的一笔粮"，见 {@code lendableOf} 的注释）， <b>不许</b>把它折进 {@code
+   * GoodsAccount.frozenBalances}。★ 两者的差别是<b>语义</b>的：这里是"<b>打算</b>留着的下界"（每天都可能变），
+   * 冻结是"<b>已经</b>承诺出去的占用"（挂单/交付）——M2 的算式把它们当作**两项**、互不重复地各减一次。
    */
   public static final int LENDER_SUBSISTENCE_RESERVE_PER_MILLE = 1000;
 

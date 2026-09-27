@@ -4,6 +4,7 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
@@ -649,11 +650,20 @@ public final class ApiViews {
    * <pre>
    * {"q":0,"r":0,
    *  "accounts":[{"actor":"HOUSEHOLD:0_0:rural|poor_peasant"…→ 实为 ActorRef.toString()（{@code <KIND>:<id>}）,
-   *               "kind":"HOUSEHOLD","goods":{"grain":123,"cloth":4},"money":{"silver":12}}],
+   *               "kind":"HOUSEHOLD",
+   *               "goods":{"grain":123,"cloth":4},"money":{"silver":12},          // 余额（事实）
+   *               "frozenGoods":{"grain":23},"frozenMoney":{"silver":2},          // ★ M1.2 冻结（事实）
+   *               "availableGoods":{"grain":100},"availableMoney":{"silver":10}}],// ★ M1.2 可支配（派生）
    *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 GoodsAccount 的**商品**合计
    *  "actorMoneyTotal":{"silver":12},          // ★ H4：actor 侧：同一批账的**货币**合计（逐币种）
    *  "rowGoodsTotal":{"grain":456,"cloth":0}}     // 行侧：= {@link #economyHex} 里那份 Σ 行库存（结构性的空表）
    * </pre>
+   *
+   * <p>★★ <b>M1.2：一本账的四个表 + 两栏派生量全在同一处</b>（余额 / 冻结 / 可支配一次读全）—— 冻结额只表达"<b>已明确的占用</b>"
+   * （挂单要卖的货、已承诺的交付），<b>不含</b>生活保留 / 必要生产投入 / 经营储备（那些是决策层的策略，落点在 M2）。 ★ <b>读口只读、不重算</b>：{@code
+   * available*} 两栏逐键调 {@link AvailableStock#available(GoodsAccount,
+   * CommodityId)}（唯一算法），本层<b>没有</b>第二处减法。★ 两张 {@code available*} 的键集 = 余额表 ∪ 冻结表（冻结表里可能有 余额表没有的 0 键
+   * —— "缺键 = 0"那条守卫的合法形态）。
    *
    * <p>★★ **为什么两个 total 必须一起给**（这是本视图存在的理由）：行侧的 {@code ClassRow.goods} 与 actor 侧的 {@code
    * GoodsAccount} 是**两本不同性质的账**（前者是"这批人当期可用/持有"的视图，后者是本切片里商品余额的唯一真源），
@@ -684,6 +694,13 @@ public final class ApiViews {
       entry.put("goods", sortedCommodities(account.balances()));
       // ★★ H4：同一个 actor 的**货币账**（逐币种；缺币种 = 这个家户没有那种钱）。
       entry.put("money", sortedCurrencies(account.money()));
+      // ★★ M1.2：**余额 / 冻结 / 可支配三者一次读全**（同一处、同一本账）——
+      //   前两栏是**事实**（账户里存的两个表），后两栏是**派生量**，且派生只经唯一那个算法
+      //   `AvailableStock.available`（★ 读口**不重算**：这里没有第二处减法）。
+      entry.put("frozenGoods", sortedCommodities(account.frozenBalances()));
+      entry.put("frozenMoney", sortedCurrencies(account.frozenMoney()));
+      entry.put("availableGoods", availableCommodities(account));
+      entry.put("availableMoney", availableCurrencies(account));
       accounts.add(entry);
       mergeInto(actorGoodsTotal, account.balances());
       mergeMoneyInto(actorMoneyTotal, account.money());
@@ -898,6 +915,34 @@ public final class ApiViews {
     for (Map.Entry<CurrencyId, Long> entry : source.entrySet()) {
       target.merge(entry.getKey().value(), entry.getValue(), Long::sum);
     }
+  }
+
+  /**
+   * ★★ <b>可支配商品表</b>（M1.2）：逐商品问 {@link AvailableStock#available(GoodsAccount, CommodityId)} —— 读口
+   * <b>只读不重算</b>（这一栏里没有第二处 `余额 − 冻结`）。键集 = 余额表 ∪ 冻结表，键序 = 商品名字典序。
+   */
+  private static Map<String, Long> availableCommodities(GoodsAccount account) {
+    Map<String, Long> out = new TreeMap<>();
+    for (CommodityId id : union(account.balances().keySet(), account.frozenBalances().keySet())) {
+      out.put(id.value(), AvailableStock.available(account, id));
+    }
+    return out;
+  }
+
+  /** ★★ <b>可支配货币表</b>（M1.2）：与 {@link #availableCommodities} 逐条同款（**逐币种**，不跨币种求和）。 */
+  private static Map<String, Long> availableCurrencies(GoodsAccount account) {
+    Map<String, Long> out = new TreeMap<>();
+    for (CurrencyId id : union(account.money().keySet(), account.frozenMoney().keySet())) {
+      out.put(id.value(), AvailableStock.available(account, id));
+    }
+    return out;
+  }
+
+  /** 两张表的键的并集（保序：先 A 后补 B 的新键）—— `available*` 两栏的键集就是它（缺键 = 0）。 */
+  private static <A> Set<A> union(Set<A> first, Set<A> second) {
+    Set<A> all = new LinkedHashSet<>(first);
+    all.addAll(second);
+    return all;
   }
 
   /**

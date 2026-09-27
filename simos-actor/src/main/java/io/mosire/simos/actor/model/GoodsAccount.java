@@ -58,15 +58,57 @@ import java.util.Map;
  * 之类），属**纯机械重构**，记在关账的清理项里。 ★ 货币余额的口径与商品**逐条同款**：最小币值定点整数、≥ 0、0 保留、保序不可变、冻结写在赋值处。 ★
  * 货币的<b>发行/回笼</b>不在本类型：那要 {@code MoneyAuthority}（本批无实现者）⇒ 任何账户的货币余额不得为负。
  *
+ * <p>★★ <b>追加（2026-09-27，M1.2）：本账多出第三、第四张表 —— 冻结额</b>（{@link #frozenBalances()} / {@link
+ * #frozenMoney()}）。<b>余额</b>是"这本账有多少"，<b>冻结额</b>是"其中多少已经被明确占用"； 两者之差 = <b>可支配</b>（唯一算法住在 {@code
+ * AvailableStock}，本类型只存事实、不做减法）。
+ *
+ * <p>★★ <b>冻结额的边界（用户 2026-09-27 裁定，这是本类型最容易被做歪的一处）</b>：{@code frozen} <b>只表达"已明确的占用"</b> ——
+ * 挂单要卖的货、已承诺的交付。 <b>生活保留、必要生产投入、经营储备一律不在这里</b>：它们是<b>决策层的策略</b>，照
+ *
+ * <pre>
+ * 可售库存 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)   // 各项互不重复扣除；落点是 M2 的订单/保留算式
+ * </pre>
+ *
+ * 逐项算在 M2。⇒ 两条禁令（都不是洁癖，是"把储备政策搬进账户模型"这个错误的两个具体形态）：
+ *
+ * <ol>
+ *   <li><b>不许</b>把 {@code MarketSettlement.MARKET_SELF_RESERVE_PER_MILLE} 或 {@code
+ *       EconomySettlement.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 折进 {@code frozen} ——
+ *       那两条是<b>只读算式的中间量</b>（{@code EconomySettlement}
+ *       逐字写着"保留额不是冻结起来的一笔粮"），搬进来就等于让"制度参数"变成"某人的库存事实"；
+ *   <li><b>不许</b>让 {@code frozen} 变成"按阶层/人口自动算出来的保留额" —— 那样一来，"已经承诺出去的东西"与"自己打算留着的东西" 就再也分不开，而 M2
+ *       的算式恰恰要求它们<b>逐项互不重复扣除</b>。
+ * </ol>
+ *
+ * <p>★★ <b>为什么是两张表、不是一个 {@code Map<Asset, Long>}</b>（★ 形态由实现裁，理由记在这里）：本账既有的形状<b>就是两张余额表</b> （{@code
+ * balances} 键 {@link CommodityId}、{@code money} 键 {@link CurrencyId}）—— 冻结若合成一张统一键的表，就得多造一个"商品 ∪
+ * 货币"的联合键类型， 而每一处"读某个币种的冻结额"都要先做一次类型分派；<b>照旧两张表</b>则与余额<b>逐键同型</b>：同一个 {@code CommodityId} / {@code
+ * CurrencyId} 在余额表与冻结表里的键是同一个，读的人不必记两套规则， 构造期守卫也能按<b>逐条同款</b>的两段写（口径一致 —— 与 H4 把货币并进本账时给的理由是同一条）。
+ *
+ * <p>★ <b>冻结额也是存量</b>：<b>绝对值</b>（"现在被占用多少"），不是增量 —— 写入口给的是"这本账现在的冻结额是多少"， 与余额同一口径（{@code
+ * ActorData.withAccount} 是整本覆盖）。<b>幂等由这条语义来</b>：同一个数写两次 ⇒ 状态逐字段相同。 ★ <b>0 保留</b>：冻结表同样不做任何归一 —— 一条
+ * {@code 0} 的意思是"这个商品的占用<u>曾经</u>存在、现在是 0"，与"根本没有这一条"在审计上不是同一件事。
+ *
+ * <p>★ <b>缺键（{@code null}）⇒ 空表</b>（旧档兼容，照 {@code ActorData} 的同款口径）：M1.2 之前落盘的 {@code GoodsAccount}
+ * 没有这两张表，Jackson 会绑成 {@code null} ⇒ 收成空表、<b>此处不抛</b>（抛了等于"旧档全部读不回来"）。 ★ 方向是
+ * fail-closed：旧档没提冻结，就是<b>没有冻结</b>。★ 而余额那两张表不适用本条：它们是这本账的<b>本体</b>，{@code null} 仍是坏数据、照样抛。
+ *
  * @param key 聚合键（{@code (owner, location)}）
  * @param balances 各商品余额（{@code CommodityId} → 最小计量单位的定点整数；≥ 0，<b>0 保留</b>）
  * @param money 各币种余额（{@code CurrencyId} → 最小币值的定点整数；≥ 0，<b>0 保留</b>）
+ * @param frozenBalances 各商品的<b>冻结额</b>（{@code CommodityId} → 定点整数；{@code 0 ≤ 冻结 ≤ 余额}，缺键 = 0，<b>0
+ *     保留</b>）
+ * @param frozenMoney 各币种的<b>冻结额</b>（{@code CurrencyId} → 定点整数；口径与 {@code frozenBalances} 逐条同款）
  */
 public record GoodsAccount(
-    GoodsAccountKey key, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
+    GoodsAccountKey key,
+    Map<CommodityId, Long> balances,
+    Map<CurrencyId, Long> money,
+    Map<CommodityId, Long> frozenBalances,
+    Map<CurrencyId, Long> frozenMoney) {
 
   /**
-   * 便捷构造器：**只有商品、没有钱**（钱为空表）。
+   * 便捷构造器：**只有商品、没有钱、没有冻结**（货币与两张冻结表都是空表）。
    *
    * <p>★ 存在的理由：H4 之前建的账户（以及大量只关心商品的夹具与读法）不必为"多了一个组件"逐处改。 ★ <b>它不是"忘记传钱"的掩护</b>：真正要动钱的路径（{@code
    * OwnershipBooks} 的落账、{@code HouseholdSeeder} 的创世禀赋）一律走**三参**构造器；而"钱有没有被序列化丢"由 {@code
@@ -74,7 +116,18 @@ public record GoodsAccount(
    * "由 {@code ActorCodec} 的往返用例守着"，而**那条用例当时并不存在** —— 本仓第 5 例幻影判别力，落盘路径因此在整个 M1 之前无人守）。
    */
   public GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances) {
-    this(key, balances, Map.of());
+    this(key, balances, Map.of(), Map.of(), Map.of());
+  }
+
+  /**
+   * 便捷构造器：商品 + 货币，**没有冻结**（两张冻结表都是空表）—— <b>语义与 M1.2 之前逐字不变</b>。
+   *
+   * <p>★★ <b>但"整本覆盖"的写入口要小心它</b>：{@code OwnershipBooks} 的 5 个落账点若用它写回，会把<b>已有的冻结额静默清零</b>（与 H4
+   * 两参构造器把钱静默清零是同一个形态的病）⇒ 那些点必须显式把冻结带过（见 {@code OwnershipBooks} 的注释与用例）。
+   */
+  public GoodsAccount(
+      GoodsAccountKey key, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
+    this(key, balances, money, Map.of(), Map.of());
   }
 
   public GoodsAccount {
@@ -86,6 +139,15 @@ public record GoodsAccount(
     }
     if (money == null) {
       throw new IllegalArgumentException("GoodsAccount.money 不得为 null（没有钱用空 map）");
+    }
+    // ★★ M1.2：两张**冻结**表缺键（null）⇒ 空表（旧档兼容，fail-closed 方向 —— 旧档没提冻结就是没有冻结）。
+    //   与上面那两条**刻意不同**：余额表是这本账的本体，null 是坏数据；冻结表是 M1.2 新增的组件，
+    //   M1.2 之前落盘的 JSON 里根本没有它们（照 ActorData 的同款口径）。
+    if (frozenBalances == null) {
+      frozenBalances = Map.of();
+    }
+    if (frozenMoney == null) {
+      frozenMoney = Map.of();
     }
     Map<CommodityId, Long> balancesCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : balances.entrySet()) {
@@ -115,5 +177,54 @@ public record GoodsAccount(
       moneyCopy.put(entry.getKey(), entry.getValue());
     }
     money = Collections.unmodifiableMap(moneyCopy); // ★ 冻在赋值处（含防御性拷贝）
+    // ★★ M1.2 冻结守卫：`0 ≤ 冻结 ≤ 余额`，**逐键**（缺键 = 0）。商品与货币**两张表各判一遍**（口径同款）。
+    //   ★ 判在副本上（上面两张表已经归一并冻结完），故守卫读到的余额就是本账最终的余额。
+    //   ★ 缺键 = 0 这一条**有牙**：冻结表里出现一个余额表里没有的键、且冻结 > 0 ⇒ 当场抛（"占用了不存在的东西"）。
+    Map<CommodityId, Long> frozenBalancesCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : frozenBalances.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("frozenBalances 的键与值都不得为 null: " + entry.getKey());
+      }
+      long frozen = entry.getValue();
+      if (frozen < 0L) {
+        throw new IllegalArgumentException(
+            "冻结额不得为负（它是「已明确的占用」，不是可以透支的信用）: " + entry.getKey() + "=" + frozen);
+      }
+      long balance = balances.getOrDefault(entry.getKey(), 0L);
+      if (frozen > balance) {
+        throw new IllegalArgumentException(
+            "冻结额不得超过余额（冻结只是把已有的一部分标成「已占用」，它不凭空造出库存）: "
+                + entry.getKey()
+                + " 冻结="
+                + frozen
+                + " 余额="
+                + balance);
+      }
+      frozenBalancesCopy.put(entry.getKey(), frozen);
+    }
+    frozenBalances = Collections.unmodifiableMap(frozenBalancesCopy); // ★ 冻在赋值处（含防御性拷贝）
+    Map<CurrencyId, Long> frozenMoneyCopy = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : frozenMoney.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("frozenMoney 的键与值都不得为 null: " + entry.getKey());
+      }
+      long frozen = entry.getValue();
+      if (frozen < 0L) {
+        throw new IllegalArgumentException(
+            "货币冻结额不得为负（它是「已明确的占用」，不是可以透支的信用）: " + entry.getKey() + "=" + frozen);
+      }
+      long balance = money.getOrDefault(entry.getKey(), 0L);
+      if (frozen > balance) {
+        throw new IllegalArgumentException(
+            "货币冻结额不得超过余额（冻结只是把已有的一部分标成「已占用」，它不凭空造出钱）: "
+                + entry.getKey()
+                + " 冻结="
+                + frozen
+                + " 余额="
+                + balance);
+      }
+      frozenMoneyCopy.put(entry.getKey(), frozen);
+    }
+    frozenMoney = Collections.unmodifiableMap(frozenMoneyCopy); // ★ 冻在赋值处（含防御性拷贝）
   }
 }
