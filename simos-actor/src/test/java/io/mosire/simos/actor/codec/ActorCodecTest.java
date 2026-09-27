@@ -14,6 +14,7 @@ import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
@@ -59,6 +60,13 @@ class ActorCodecTest {
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   private static final CommodityId CLOTH = new CommodityId("cloth");
+
+  /** ★ 币种夹具：**三种**，各代表一种"钱在不在"的形状 —— 有余额 / 余额恰为 0 / 完全没有这种钱。 */
+  private static final CurrencyId SILVER = new CurrencyId("silver");
+
+  private static final CurrencyId COPPER = new CurrencyId("copper");
+
+  private static final CurrencyId GOLD = new CurrencyId("gold");
 
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(3));
 
@@ -413,6 +421,68 @@ class ActorCodecTest {
     assertThat(json)
         .as("★ 冻结串：键是裸值、**0 保留**（库存是存量）、插入序保留（grain 在 cloth 之前）")
         .contains("\"balances\":{\"grain\":100,\"cloth\":0}");
+  }
+
+  /**
+   * ★★ <b>钱（{@code GoodsAccount.money}）的序列化往返</b>：一本带<b>多币种</b>余额的账经真 {@code ActorCodec} 出去再回来，
+   * <b>逐值</b>断言商品表与货币表都一字不差。
+   *
+   * <p>★★ <b>它为什么必须存在</b>（2026-09-27，M1.0 的由来，本仓第 5 例幻影判别力）：{@code GoodsAccount} 的类注曾声称"钱有没有被序列化丢 由
+   * {@code ActorCodec} 的往返用例守着"——而<b>那条用例当时并不存在</b>（{@code simos-actor/src/test} 对 {@code money()}
+   * 零断言），且 {@code ActorCodec} 给 {@code CommodityId} 注册了键反序列化器却<b>没给</b> {@code CurrencyId} 注册（而
+   * {@code money} 的键正是它）。⇒ 钱的落盘能力在这条用例出现之前，本模块内<b>没有任何判别力</b>。
+   *
+   * <p>★★ <b>夹具的形状就是判别力</b>——三个币种各代表一种"钱在不在"：
+   *
+   * <ul>
+   *   <li>{@code silver} = 1,200：<b>有余额</b>（正常那一档）；
+   *   <li>{@code copper} = <b>0</b>：余额恰为 0 但**这种钱存在** —— 0 是存量（"这个人手里还有 0 毫铜钱"），
+   *       <b>不许</b>被归一成"没有这个键"；
+   *   <li>{@code gold}：<b>根本没有这种钱</b> —— 它<b>不是</b>夹具的一部分，读回来也不许出现（没有 = 键缺席）。
+   * </ul>
+   *
+   * ⇒ 任何"把货币表压成单值 / 把 0 归一掉 / 把缺的币种补成 0"的写法，本条都会红。
+   *
+   * <p>★ <b>同时钉住线格式</b>：键是各币种的裸 {@code toString()}（值本身），0 保留、插入序保留 —— 币种键与商品键走的是<b>同一条</b> "裸值 +
+   * {@code parse} 配对"的规矩（裁定 R-48-f / R-aa）。
+   */
+  @Test
+  void moneyRoundTripsThroughTheWireWithZeroKeptAndAbsentDistinct() {
+    Map<CurrencyId, Long> money = new LinkedHashMap<>();
+    money.put(SILVER, 1_200L);
+    money.put(COPPER, 0L);
+    GoodsAccountKey account = new GoodsAccountKey(HOUSEHOLD, OTHER_HEX);
+    ActorData data =
+        ActorData.empty().withAccount(new GoodsAccount(account, Map.of(GRAIN, 7L), money));
+
+    String json = CODEC.encodeSnapshot(snapshotOf(data, TS));
+    ActorData back = dataOf(CODEC.decodeSnapshot(json));
+
+    assertThat(json)
+        .as("★ 线格式：键是裸币种名、**0 保留**、插入序保留（币种与商品同制）")
+        .contains("\"money\":{\"silver\":1200,\"copper\":0}");
+
+    // ① 货币表：逐币种逐值（这是"钱真的过线了"的判据 —— 是本用例存在的理由）
+    Map<CurrencyId, Long> moneyBack = back.accounts().get(account).money();
+    assertThat(moneyBack).as("★ 两个币种都得回来").containsOnlyKeys(SILVER, COPPER);
+    assertThat(moneyBack).containsEntry(SILVER, 1_200L);
+    assertThat(moneyBack)
+        .as("★★ 余额为 0 的币种**保留**（0 是存量）—— 归一掉它就与「没有这种钱」分不开了")
+        .containsEntry(COPPER, 0L);
+    assertThat(moneyBack).as("★★ 完全没有的币种**不得**被补出来（缺席 ≠ 0）").doesNotContainKey(GOLD);
+    assertThat(moneyBack).as("逐值相等：1,200 毫银 + 0 毫铜钱").isEqualTo(Map.of(SILVER, 1_200L, COPPER, 0L));
+
+    // ② 商品表：同一次往返里两表互不顶替（钱不许把货挤掉，货也不许把钱挤掉）
+    assertThat(back.accounts().get(account).balances())
+        .as("★ 货币表非空时，商品表照样逐值回来")
+        .isEqualTo(Map.of(GRAIN, 7L));
+
+    // ③ 字节稳定：带着钱再编码一次，逐字节相同（解码不许在货币表上换容器/换序）
+    assertThat(CODEC.encodeSnapshot(CODEC.decodeSnapshot(json)))
+        .as("★ 解码 → 再编码：逐字节相同")
+        .isEqualTo(json);
+
+    assertThat(back).as("整体相等只是最后一条").isEqualTo(data);
   }
 
   // ── 施加（C28）与 diff（铁律 5） ──────────────────────────────────────────────────

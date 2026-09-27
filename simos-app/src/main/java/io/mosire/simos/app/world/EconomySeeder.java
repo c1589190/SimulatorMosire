@@ -373,7 +373,9 @@ public final class EconomySeeder {
    * ★★ <b>出厂计价货币</b>（H4；裁定 M1-A"每格市场只有一个记账单位"）：{@code silver}。
    *
    * <p>★★ <b>唯一拼写点是 {@link RegimeRelations#DEFAULT_CURRENCY}</b>（H2 的币种位）—— 本类**不写第二份** {@code
-   * "silver"} 字面量：同一件事两处拼写，改名那天必然漂开（而"钱是哪种"漂开不会有任何编译错误）。
+   * "silver"} 字面量：同一件事两处拼写，改名那天必然漂开（而"钱是哪种"漂开不会有任何编译错误）。★ <b>M1.1 补记</b>：字面量本身已 搬进世界级货币词表 {@code
+   * MoneyVocabulary}（{@code DEFAULT_CURRENCY} 引用它）⇒ 全仓 {@code src/main} 里 {@code "silver"} 恰一处，由
+   * {@code EconomyVocabularyGuardTest} 的源扫描钉住。
    */
   public static final CurrencyId MARKET_NUMERAIRE = RegimeRelations.DEFAULT_CURRENCY;
 

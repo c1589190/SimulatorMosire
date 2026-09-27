@@ -11,6 +11,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
@@ -28,9 +29,10 @@ import java.util.function.Function;
  * 这个字面量全仓<b>三处</b> （上面两处 + Task 9 的 {@code ToolSupport.ACTOR_NAMESPACE}），<b>改一处必须同时改另两处</b>；
  * 三处里只有装配期那一处<b>有牙</b>，故往返测试 真的构造了一次 {@code SimulationState} 来钉它。
  *
- * <p>★★ <b>树里的自定义键有三个</b>：{@code ActorRef}（{@code actors} 的键）、{@code GoodsAccountKey}（{@code
- * accounts} 的键），以及 {@code CommodityId}（<b>嵌套</b>在 {@code GoodsAccount.balances} 里的商品键——它不在 {@code
- * ActorData} 的顶层组件上，漏了它会在**解码**时炸）。 前两个都住 {@code simos-actor} 本模块，{@code CommodityId} 住 {@code
+ * <p>★★ <b>树里的自定义键有四个</b>：{@code ActorRef}（{@code actors} 的键）、{@code GoodsAccountKey}（{@code
+ * accounts} 的键），以及<b>嵌套</b>在 {@code GoodsAccount} 里的两个余额表键 —— {@code CommodityId}（{@code
+ * balances}）与 {@code CurrencyId}（{@code money}；★ M1.0 补记：钱的键与商品的键同住一层，此前只登记了前者）。 它们都不在 {@code
+ * ActorData} 的顶层组件上，漏了任一个会在**解码**时炸。 前两个都住 {@code simos-actor} 本模块，后两个住 {@code
  * simos-economy-api}（契约层，本模块依赖它故够得着， 铁律 3 允许）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★★ <b>键的（反）序列化走的就是各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f / R-aa） ——★
@@ -78,22 +80,27 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * 三路键反序列化器。<b>只注册读侧</b>：三者都重写了 {@code toString()}（= 裸值），Jackson 的默认键序列化器恰好就调它。
+   * 四路键反序列化器。<b>只注册读侧</b>：四者都重写了 {@code toString()}（= 裸值），Jackson 的默认键序列化器恰好就调它。
    *
-   * <p>★★ <b>前两个是顶层两张表的键，第三个（{@code CommodityId}）在嵌套位置</b>（{@code GoodsAccount.balances}）。
-   * 前两个**不注册就必炸**：{@code ActorRef} / {@code GoodsAccountKey} 都是多构件 record， Jackson 推不出键的类型（实测：摘掉任一条
-   * ⇒ 解码当场报 {@code Cannot find a (Map) Key deserializer for type …}）。
+   * <p>★★ <b>前两个是顶层两张表的键，后两个（{@code CommodityId} / {@code CurrencyId}）在嵌套位置</b>（{@code
+   * GoodsAccount.balances} 与 {@code GoodsAccount.money}）。 前两个**不注册就必炸**：{@code ActorRef} / {@code
+   * GoodsAccountKey} 都是多构件 record， Jackson 推不出键的类型（实测：摘掉任一条 ⇒ 解码当场报 {@code Cannot find a (Map) Key
+   * deserializer for type …}）。
    *
-   * <p>★★ <b>第三个则在「表空着」时测不到、在「表非空」时才走到</b>——故往返用例的夹具**必须是两张表都非空的** （{@code ActorCodecTest}
-   * 的正例正是为此）。★ 而它的注册**今日与"不注册"行为等价**（实测：`CommodityId` 是单 {@code String} 构件的 record，Jackson
-   * 会退回到"按规范构造器建键"那一档，而它的构造器与 {@code parse} 的校验一字不差）——**仍然显式注册**：本仓的规矩是"键的（反）序列化走各类型自带的 {@code
-   * toString()}/{@code parse} 配对"（裁定 R-48-f / R-aa），这条规矩要**写出来**，不靠 Jackson 的构造器推断去碰巧满足。
+   * <p>★★ <b>后两个则在「表空着」时测不到、在「表非空」时才走到</b>——故往返用例的夹具**必须是两张表都非空的** （{@code ActorCodecTest}
+   * 的正例正是为此）。★ 而它们的注册**今日与"不注册"行为等价**（实测：两者都是单 {@code String} 构件的 record，Jackson
+   * 会退回到"按规范构造器建键"那一档，而它们的构造器与 {@code parse} 的校验一字不差；{@code CurrencyId} 这一条由 M1.0 新增的 {@code
+   * moneyRoundTripsThroughTheWireWithZeroKeptAndAbsentDistinct}
+   * 在**注册之前**实测为绿）——**仍然显式注册**：本仓的规矩是"键的（反）序列化走各类型自带的 {@code toString()}/{@code parse} 配对"（裁定
+   * R-48-f / R-aa），这条规矩要**写出来**，不靠 Jackson 的构造器推断去碰巧满足。★ 尤其**不许**只登记商品键而漏掉货币键：两者同住 {@code
+   * GoodsAccount} 这一层，"登记一半"本身就是一条会漂的规矩。
    */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("actor-json-keys");
     module.addKeyDeserializer(ActorRef.class, keyDeserializer(ActorRef::parseCanonical));
     module.addKeyDeserializer(GoodsAccountKey.class, keyDeserializer(GoodsAccountKey::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
+    module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
     return module;
   }
 

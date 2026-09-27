@@ -69,8 +69,9 @@ public record GoodsAccount(
    * 便捷构造器：**只有商品、没有钱**（钱为空表）。
    *
    * <p>★ 存在的理由：H4 之前建的账户（以及大量只关心商品的夹具与读法）不必为"多了一个组件"逐处改。 ★ <b>它不是"忘记传钱"的掩护</b>：真正要动钱的路径（{@code
-   * OwnershipBooks} 的落账、{@code HouseholdSeeder} 的创世禀赋）一律走**三参**构造器；而"钱有没有被序列化丢"由 {@code ActorCodec}
-   * 的往返用例守着。
+   * OwnershipBooks} 的落账、{@code HouseholdSeeder} 的创世禀赋）一律走**三参**构造器；而"钱有没有被序列化丢"由 {@code
+   * ActorCodecTest#moneyRoundTripsThroughTheWireWithZeroKeptAndAbsentDistinct} 守着（★ M1.0 补记：本条曾声称
+   * "由 {@code ActorCodec} 的往返用例守着"，而**那条用例当时并不存在** —— 本仓第 5 例幻影判别力，落盘路径因此在整个 M1 之前无人守）。
    */
   public GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances) {
     this(key, balances, Map.of());

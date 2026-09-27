@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.EconomicRuleId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketId;
 import io.mosire.simos.economy.api.id.OrderId;
@@ -35,10 +36,14 @@ import org.junit.jupiter.api.Test;
  * <p>★ S1 阶段 2：{@code ActorRef} / {@code ActorKind} 的护栏**随类型搬到 {@code simos-actor-api}** （那边的
  * {@code ActorTypesTest}）—— 它们的家已不在本模块，故本类也不再覆盖它们。
  *
- * <p>★ **覆盖方式**：{@link #IDS} 是**逐类登记的清单**，循环对每一个 ID 断言同一组性质。清单用 {@code hasSize(20)} 钉住 ——漏登记一个 ID
+ * <p>★ **覆盖方式**：{@link #IDS} 是**逐类登记的清单**，循环对每一个 ID 断言同一组性质。清单用 {@code hasSize(23)} 钉住（★ M1.1 起：H2
+ * 加 CurrencyId 是 22，本轮加 InstrumentId ⇒ 23）——漏登记一个 ID
  * 就等于那一类没有护栏（"数个数对张冠李戴零判别力"，但这里的清单同时是**遍历源**，少一项立刻少一类断言， 故个数断言与循环互补）。
  *
- * <p>★ **本轮不删旧的 16 个**（新经济设计 §1 待裁 D1）：只把新经济设计 §3 的 4 个新 ID 登记进来 ⇒ 16 + 4 = 20。 裁剪留到 D1 裁定后的独立提交。
+ * <p>★ **本轮不删旧的 16 个**（新经济设计 §1 待裁 D1）：只把新经济设计 §3 的 4 个新 ID 登记进来 ⇒ 16 + 4 = 20。 裁剪留到 D1 裁定后的独立提交。 ★
+ * <b>追加（2026-09-27，M1.1）</b>：上面那句是**历史留痕**（当时的 20）；此后 H2 加了 {@code CurrencyId}（22）、M1.1 加了 {@code
+ * InstrumentId} ⇒ <b>23</b>。数字以 {@link #everyIdCoversTheThreePieceContract()} 里的 {@code hasSize}
+ * 为准。
  */
 class EconomyIdsTest {
 
@@ -76,11 +81,13 @@ class EconomyIdsTest {
           // ★ R2：劳动分配表的主键（第三阶段设计稿 §四）。
           new IdKind("LaborAllocationId", LaborAllocationId::new, LaborAllocationId::parse),
           // ★★ H2：货币 ID（用户 2026-09-27「货币作为接口留好」）—— 与 CommodityId 同族、同形制。
-          new IdKind("CurrencyId", CurrencyId::new, CurrencyId::parse));
+          new IdKind("CurrencyId", CurrencyId::new, CurrencyId::parse),
+          // ★★ M1.1：货币工具 ID（币种 ≠ 货币工具）—— 同族、同形制；★ 加进清单 = 它当场有了三件套护栏。
+          new IdKind("InstrumentId", InstrumentId::new, InstrumentId::parse));
 
   @Test
   void everyIdCoversTheThreePieceContract() {
-    assertThat(IDS).as("清单必须覆盖全部 22 个 ID（漏一个 = 那一类没有护栏）").hasSize(22);
+    assertThat(IDS).as("清单必须覆盖全部 23 个 ID（漏一个 = 那一类没有护栏）").hasSize(23);
 
     for (IdKind id : IDS) {
       String what = id.name();

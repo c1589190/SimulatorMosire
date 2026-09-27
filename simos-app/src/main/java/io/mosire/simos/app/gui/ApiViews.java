@@ -2,6 +2,7 @@ package io.mosire.simos.app.gui;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.access.DecisionScopeView;
@@ -21,6 +22,9 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.money.CurrencyDef;
+import io.mosire.simos.economy.api.money.MoneyInstrument;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -480,6 +484,15 @@ public final class ApiViews {
     //     "铁"就退化成没人读得到的孤字面量（本仓禁"看起来在记、其实永远不被读"）。逐条口径见
     //     {@link EconomyVocabulary#allCommodityIds()}。
     view.put("commodityIds", EconomyVocabulary.allCommodityIds());
+    // ★★ M1.1：**货币词表**（同样是世界级常量、与格无关；同因住在这个唯一的 economy 读口里）。
+    //   ★ 为什么必须发出来：M1.1 新增的 `CurrencyDef` / `MoneyInstrument` 若没有读口，就是"没人读得到的孤类型"
+    //     （本仓禁"看起来在记"）—— 钱的**工具身份**（币种 ≠ 工具）从今天起在报表里看得见。
+    //   ★ `currencyDefs` 给"这个币种的最小单位精度是几位"（scale；币种总量恒定 ≠ 逐工具恒定，M1.6 要用它）。
+    //   ★ `moneyInstruments` 逐条给 {id, currency, kind, issuer, redeemer}：issuer/redeemer 为 null =
+    // **没有**
+    //     （金属币没有发行人；兑现属 M4+，`redeemer` 是具名留位）—— 不是"读不到"。逐条口径见 MoneyVocabulary 的类注。
+    view.put("currencyDefs", currencyDefViews());
+    view.put("moneyInstruments", moneyInstrumentViews());
     view.put("classes", classes);
     view.put("industries", industries);
     // ★★ M0.3：**逐格粮食诊断**（七项里今天做得到的四项 + 三项"做不到"的具名占位）。
@@ -504,8 +517,9 @@ public final class ApiViews {
    * ③ 预计进口需求                      ✓   = 本周期累计未满足需求（unmetNeed）
    * ④ 有效购买力缺口                    ✓   = 未满足 − 该格全部账本按本格粮价能买到的量
    * ⑤ 物流缺口                          ✗   今天**没有跨格运输**（M2.4）⇒ 这一项无定义
-   * ⑥ 币种/支付缺口                     ~   只给"逐币种货币"与"能买到多少"；**收款方接受哪些工具、有无发行方**
-   *                                        属 M1（货币工具）⇒ 今天不判"付得出去吗"
+   * ⑥ 币种/支付缺口                     ~   只给"逐币种货币"与"能买到多少"；★ M1.1 起工具的**身份**已读得出
+   *                                        （见 currencyDefs / moneyInstruments），但**收款方接受哪些工具**属
+   *                                        M2 的订单/参与者面、兑现属 M4+ ⇒ 今天仍不判"付得出去吗"
    * ⑦ 实际满足率与未满足人日            ✓   满足率 = (累计需求 − 未满足) ÷ 累计需求；人日由未满足反解
    * </pre>
    *
@@ -590,7 +604,7 @@ public final class ApiViews {
     Map<String, Object> unavailable = new LinkedHashMap<>();
     unavailable.put("productionSelfSufficiency", PRODUCTION_NEEDS_LEDGER);
     unavailable.put("logisticsGap", "今天没有跨格运输（M2.4 的在途与运力）⇒ 这一项无定义");
-    unavailable.put("paymentInstrumentGap", "货币工具与接受规则属 M1（币种 ≠ 货币工具）⇒ 今天不判「付得出去吗」");
+    unavailable.put("paymentInstrumentGap", PAYMENT_INSTRUMENT_GAP);
     view.put("unavailable", unavailable);
     // ★ 粮布换算比：顺带给出"库存里那匹布在这个价下折多少粮"（向下取整 ⇒ 0 只表示"不足 1 毫粮"，不是无价值）。
     long cloth = goods.getOrDefault(EconomyVocabulary.CLOTH_COMMODITY_ID, 0L);
@@ -605,6 +619,17 @@ public final class ApiViews {
   private static final String PRODUCTION_NEEDS_LEDGER =
       "要读本周期 ledger 的毛产/损耗/投入（含留种与损耗，故不能说\"自给率\"而不交代扣没扣）——"
           + "而 ledger 是当日丢弃的（协调器落完账就扔）⇒ 持久状态里没有这个量。落点：M2 的市场读数组件";
+
+  /**
+   * ⑥ 币种/支付缺口报不出来的原因（唯一拼写点）。
+   *
+   * <p>★ <b>M1.1 更新（如实记：老话"货币工具属 M1"已经过期一半）</b>：工具的<b>身份</b>已经落地（见 {@code currencyDefs} / {@code
+   * moneyInstruments} 两栏），但<b>接受规则</b>（谁收哪种工具、按什么条件收）与兑现仍然不存在 ⇒ "付得出去吗"照样判不出来。★ 剩下这一半的落点是 M2
+   * 的订单/参与者面（收付条件）+ M4+（兑现）。
+   */
+  private static final String PAYMENT_INSTRUMENT_GAP =
+      "货币工具的**身份**已由 M1.1 给出（见本视图 currencyDefs / moneyInstruments 两栏），但**接受规则**（谁收哪种工具、"
+          + "按什么条件收）与兑现仍未定义（属 M2 的订单/参与者面与 M4+）⇒ 今天不判「付得出去吗」";
 
   /** 该格的周期天数（同格各产业同步走 ⇒ 取最大；没有产业 ⇒ 1，与行侧口径一致）。 */
   private static long cycleDaysAt(EconomyData data, HexCoord coord) {
@@ -721,10 +746,8 @@ public final class ApiViews {
     //     重推会把"制度只负责初始化、不负责持续约束"（spec §2.4）抹掉 —— 阶段 4 的产出归属就会落到**推出来的**主体上。
     //   ★ **不**折算成 {@code ActorRef.toString()} 的规范串（R6：那是**键**的形制，不是读口的形制）。
     //   ★ 两个键的次序固定为 {@code kind,id}（{@code LinkedHashMap} + 不重排 ⇒ 同状态两次响应逐字节相同）。
-    Map<String, Object> operator = new LinkedHashMap<>();
-    operator.put("kind", industry.operator().kind().name());
-    operator.put("id", industry.operator().id());
-    view.put("operator", operator);
+    //   ★ M1.1：该形状收成 {@link #actorRefView}（货币工具的 issuer/redeemer 用的是同一个形，不允许两套写法）。
+    view.put("operator", actorRefView(industry.operator()));
     view.put("cycleDays", industry.cycleDays());
     view.put("progressDays", industry.progressDays());
     // ★★ H0.3（K3）：**本格该产业的产能总量**（承接原 {@code ClassRow.meansOfProduction}）——
@@ -875,6 +898,57 @@ public final class ApiViews {
     for (Map.Entry<CurrencyId, Long> entry : source.entrySet()) {
       target.merge(entry.getKey().value(), entry.getValue(), Long::sum);
     }
+  }
+
+  /**
+   * ★★ <b>币种定义的读侧形</b>（M1.1）：{@code [{id:"silver", scale:3}]} —— **保序**（词表序）、只读不重算。
+   *
+   * <p>★ 唯一来源是 {@link MoneyVocabulary#allCurrencyDefs()}（世界级货币词表的唯一拼写点）—— 本层**不**自己拼币种名、 也不自己定精度。★
+   * {@code scale} 是"1 个币种单位 = 10^scale 个最小单位"（毫银 ⇒ 3）。
+   */
+  private static List<Map<String, Object>> currencyDefViews() {
+    List<Map<String, Object>> defs = new ArrayList<>();
+    for (CurrencyDef def : MoneyVocabulary.allCurrencyDefs()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", def.id());
+      item.put("scale", def.scale());
+      defs.add(item);
+    }
+    return defs;
+  }
+
+  /**
+   * ★★ <b>货币工具的读侧形</b>（M1.1）：{@code [{id, currency, kind, issuer, redeemer}]} —— **保序**（词表序）。
+   *
+   * <p>★★ <b>{@code issuer / redeemer} 为 {@code null} = 这张工具**没有**发行人/兑现人</b>（金属币没有发行人，兑现属 M4+）——
+   * 不是"读不到"。★ 形状照本仓读口对主体的口径：{@code {kind, id}}（**不**折算成 {@code ActorRef.toString()} 的规范串 ——
+   * R6：那是**键**的形制，不是读口的形制）。★ 唯一来源是 {@link MoneyVocabulary#allInstruments()}。
+   */
+  private static List<Map<String, Object>> moneyInstrumentViews() {
+    List<Map<String, Object>> instruments = new ArrayList<>();
+    for (MoneyInstrument instrument : MoneyVocabulary.allInstruments()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", instrument.id().value());
+      item.put("currency", instrument.currency().value());
+      item.put("kind", instrument.kind().name());
+      item.put("issuer", instrument.issuer().map(ApiViews::actorRefView).orElse(null));
+      item.put("redeemer", instrument.redeemer().map(ApiViews::actorRefView).orElse(null));
+      instruments.add(item);
+    }
+    return instruments;
+  }
+
+  /**
+   * 主体引用的读侧形：{@code {kind, id}}（与 {@code labor.actors[]} 及写侧载荷的 {@code actor} 同形）。
+   *
+   * <p>★ 键序固定为 {@code kind, id}（{@code LinkedHashMap} + 不重排 ⇒ 同状态两次响应逐字节相同）。★ <b>不</b>走 {@code
+   * ActorRef.toString()}（R6：那是**键**的形制）。
+   */
+  private static Map<String, Object> actorRefView(ActorRef ref) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("kind", ref.kind().name());
+    view.put("id", ref.id());
+    return view;
   }
 
   /**

@@ -266,11 +266,10 @@ node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-
 ```
 
 ★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
-★★ **真数（2026-09-27，M0 批开工基线，`mvn test -pl simos-economy,simos-app -am` 之后逐模块清点 surefire 报告）**：
-**11 个模块 / 2464 条 / 0 失败 / 0 错误**（app 683、map 379、unit 305、core 215、util 199、sd 188、social 188、
-economy 171、actor 104、economy-api 26、actor-api 8），前端门禁 **297/297**。
-★ **上一版记的 2460/681/170/23 是 H6 收口轮的数**（app 681、economy 170、economy-api 23）——
-本批 M0.1+M0.5 又加了 3 条（app 681→683），economy-api 的 26 是更早一轮的增量。**以本行为准**。
+★★ **真数（2026-09-27，M1.0+M1.1 之后，全仓 `clean verify` 后逐模块清点 surefire 报告）**：
+**11 个模块 / 2483 条 / 0 失败 / 0 错误**（app 685、map 379、unit 305、core 215、util 201、sd 188、social 188、
+economy 171、actor 105、economy-api 38、actor-api 8），前端门禁 **297/297**。
+★ 历史：H6 收口轮 2460 → M0 批 2467 → **M1.0+M1.1 后 2483**（util +2、economy-api +12、actor +1、app +1）。**以本行为准**。
 ★ 报"测试数"之前**先 `rm -rf */target/surefire-reports`**（否则读到两轮的并集，见 §三.1）；
 ★ `simos-app/target/surefire-reports/` **可能整个目录不存在** —— 那说明 app 侧这一轮**没跑到 test 阶段**
 （编译或前置模块失败、或被中断），**不能读成"app 没有测试"**，更不能拿上游 10 个模块的绿当 app 的绿。

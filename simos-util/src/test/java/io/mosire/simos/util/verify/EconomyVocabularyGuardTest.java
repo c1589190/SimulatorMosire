@@ -183,4 +183,34 @@ class EconomyVocabularyGuardTest {
           .isEmpty();
     }
   }
+
+  /**
+   * ★★ <b>M1.1：币种 id 的字面量也恰一份</b>（世界级货币词表 = {@code MoneyVocabulary}，独立于商品词表）。
+   *
+   * <p>★ <b>为什么护栏要跟着加</b>：M1.1 把 {@code "silver"} 从 {@code RegimeRelations.DEFAULT_CURRENCY}（一个就地
+   * {@code new CurrencyId("silver")}）搬进 {@code MoneyVocabulary}，并新增了 {@code CurrencyDef} / {@code
+   * MoneyInstrument} 两个类型 —— 若没人钉住"字面量只写一次"，下一处 {@code new CurrencyId("silver")}
+   * 会<b>静默</b>地把"哪种钱"分叉成两种 （币种名漂开不会有任何编译错误，这正是 M1.1 词表存在的理由）。
+   *
+   * <p>★ <b>为什么落点是 {@code economy-api} 而不是 util 的 {@code EconomyVocabulary}</b>：货币词表<b>带类型</b>
+   * （{@code CurrencyDef} / {@code MoneyInstrument} 要用 {@code ActorRef} 与 {@code CurrencyId}），util
+   * 看不见它们 ⇒ 只能住契约层。★ 本护栏只读文件、不依赖 economy，故照旧住在 util。
+   */
+  @Test
+  void silverCurrencyIdLiteralIsWrittenExactlyOnce() {
+    assertThat(occurrencesByFile("SILVER_CURRENCY_ID = \"silver\""))
+        .as("★ 银的币种 id 字面量在全仓 src/main 里必须只被直接赋值一次（M1.1 的世界级货币词表）")
+        .containsExactly(
+            entry(
+                "simos-economy-api/src/main/java/io/mosire/simos/economy/api/money/MoneyVocabulary.java",
+                1L));
+  }
+
+  /** ★★ 与商品那条同款：**不许**有模块就地把币种身份拼出来（`new CurrencyId("silver")`）。 */
+  @Test
+  void noModuleSpellsTheSilverCurrencyInline() {
+    assertThat(occurrencesByFile("CurrencyId(\"silver\")"))
+        .as("不许有模块就地写 new CurrencyId(\"silver\")（M1.1 之前 RegimeRelations 正是这样写的）")
+        .isEmpty();
+  }
 }

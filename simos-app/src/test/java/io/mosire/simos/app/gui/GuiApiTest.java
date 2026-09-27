@@ -993,6 +993,58 @@ class GuiApiTest {
   }
 
   /**
+   * ★★ <b>M1.1：货币词表读得出来</b>（{@code currencyDefs} / {@code moneyInstruments} 两栏）。
+   *
+   * <p>★★ <b>这条用例存在的理由 = "新增类型不许是没人读得到的孤类型"</b>（本仓禁"看起来在记"）：M1.1 新增的 {@code CurrencyDef} / {@code
+   * MoneyInstrument} / {@code InstrumentKind} 若没有读口，就只是四个躺在契约层、 谁也看不见的类型 ⇒ 本条**经真 HTTP
+   * 端点**断言它们真的出现在报表里、且**逐值**等于词表（不是"有这两栏"就完事）。
+   *
+   * <p>★ <b>判别力</b>：① 币种定义逐值（{@code id="silver"}、{@code scale=3} = 毫银）；② 工具逐值（{@code
+   * kind="SPECIE"}、 {@code currency="silver"}、{@code issuer=null} —— <b>金属币没有发行人</b>，而 {@code
+   * redeemer=null} 是兑现的具名留位）； ③ 与旧的 {@code CurrencyId} 读口**并排**：同一格里 {@code actorMoneyTotal}
+   * 的币种键（{@code silver}）正是这张工具的 {@code currency} ⇒ "币种 ≠ 工具"这一维加了，而"钱仍然只按币种入账"这条旧口径没被动过。
+   */
+  @Test
+  void moneyVocabularyIsPublishedThroughTheEconomyReadout() throws Exception {
+    JsonNode body = getJson("/api/economy/hex?q=1&r=1");
+
+    // ① 币种定义（保序、词表序）。
+    JsonNode defs = body.get("currencyDefs");
+    assertThat(defs).as("M1.1：economyHex 必须带上币种定义这一栏").isNotNull().hasSize(1);
+    assertThat(defs.get(0).get("id").asText()).isEqualTo("silver");
+    assertThat(defs.get(0).get("scale").asInt())
+        .as("★ scale = 3（毫银）：'1 银 = 1000 毫银'这个数从此在读口里看得见")
+        .isEqualTo(3);
+
+    // ② 货币工具（逐组件：id / currency / kind / issuer / redeemer）。
+    JsonNode instruments = body.get("moneyInstruments");
+    assertThat(instruments).as("M1.1：economyHex 必须带上货币工具这一栏").isNotNull().hasSize(1);
+    JsonNode specie = instruments.get(0);
+    assertThat(specie.get("id").asText()).isEqualTo("silver-specie");
+    assertThat(specie.get("currency").asText()).isEqualTo("silver");
+    assertThat(specie.get("kind").asText()).isEqualTo("SPECIE");
+    assertThat(specie.get("issuer").isNull())
+        .as("★ 金属币**没有**发行人 ⇒ null（不是『读不到』；国币/存款才必须有发行人）")
+        .isTrue();
+    assertThat(specie.get("redeemer").isNull())
+        .as("★ 兑现属 M4+ ⇒ {@code redeemer} 是具名留位，今天恒 null")
+        .isTrue();
+    //   键序固定（读口的硬要求：同状态两次响应逐字节相同）。
+    assertThat(fieldNames(specie))
+        .as("instrument 的键序固定为 id → currency → kind → issuer → redeemer")
+        .containsExactly("id", "currency", "kind", "issuer", "redeemer");
+
+    // ③ 旧 CurrencyId 读口保留：钱照样只按**币种**入账，工具的币种就是那个币种。
+    JsonNode moneyTotals = body.get("actorMoneyTotal");
+    assertThat(moneyTotals.has(specie.get("currency").asText()))
+        .as("★★ M1.1 只加身份、不动账：余额表的键仍是 CurrencyId（工具的 currency 必须能在钱表里找到）")
+        .isTrue();
+    assertThat(body.get("market").get("numeraire").asText())
+        .as("★ 计价货币仍是 CurrencyId 的裸值（Market 的类型本批一字不动）")
+        .isEqualTo("silver");
+  }
+
+  /**
    * ★★ **一处改动覆盖两条读口**（`AGENT.md` §8.3 的硬规矩：GUI 与 MCP 读工具**共用** {@code ApiViews} 这一份视图； 先例 = {@code
    * SimosToolsTest#populationToolServesTheSameViewAsTheGuiRoute}）：经**真工具调用**（{@link
    * Shell#toolRegistry()} 里那一条、真 {@link ToolContext}）取回 MCP 那一份，与 HTTP 那一份对拍。

@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -133,8 +134,12 @@ public final class RegimeRelations {
    *
    * <p>★ <b>它只是出厂值</b>（判断结果，V7 参数目录 + S2 货币口径落地后由 GM 调；届时它迁入参数表， 本常量只作默认值）。★ 载荷边缘（{@code
    * EconomyPayloads}）读旧档缺 {@code currency} 键时也引用<b>这一个</b>拼写点 —— 同一个"出厂货币"两处各写一份，会在旧档与新档之间静默漂开。
+   *
+   * <p>★ <b>追加（2026-09-27，M1.1）</b>：{@code "silver"} <b>字面量</b>的唯一拼写点已移到世界级货币词表 {@link
+   * MoneyVocabulary}（那里同时给出 {@code CurrencyDef} 与 {@code SPECIE} 工具；唯一性由 {@code
+   * EconomyVocabularyGuardTest} 的源扫描钉住），本常量改为<b>引用</b>它 —— 本类不再是字面量的家，"出厂货币是哪种"这个语义仍在这里。
    */
-  public static final CurrencyId DEFAULT_CURRENCY = new CurrencyId("silver");
+  public static final CurrencyId DEFAULT_CURRENCY = MoneyVocabulary.SILVER_CURRENCY;
 
   /** 粮的商品 id（{@link EconomyVocabulary} 是唯一拼写点，本类只引用）。 */
   private static final String GRAIN = EconomyVocabulary.GRAIN_COMMODITY_ID;
