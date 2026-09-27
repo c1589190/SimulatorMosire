@@ -16,6 +16,7 @@ import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
+import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -34,6 +35,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -74,6 +76,12 @@ import java.util.Set;
  *
  * <p>★★ <b>跨区结算暂设即时</b>：{@code MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true} —— 货款与运费在**发运日**
  * 结清，货却在 ETA 之后才到；这是设计允许的简化，L3 的读数契约必须原样标注（M2.0 #4）。
+ *
+ * <p>★★ <b>价格（M2.6）</b>：参考价仍是格价表里的固定报价（区内成交价 = 集散节点格价、跨区 = 卖方格价）；买卖两侧的 **限价**由 {@code Market}
+ * 的两个具名常量现算（bid = 卖方底价、ask = 买方限价），订单按限价过滤 —— 价差没有中间人截留， 成交仍按参考价。可选自适应（{@link
+ * #MARKET_ADAPTIVE_PRICING_ENABLED}，<b>默认关</b>）在每轮撮合后按供需 z 改下一轮的 **区价**（成员格同改），改价只经 {@link
+ * #clearOncePerCycle} 返回的 {@code MarketOutcome} 交回 {@code EconomySettlement} ⇒ 走 {@code markets}
+ * 这个既有 {@code FieldDelta} 组件的变更集，没有第二处改价。
  *
  * <p>★★ <b>本类仍不是第二个 applier</b>：一切库存/货币的换手都经 {@code EconomySettlement.applyTransfer}（唯一写口）； 冻结只动
  * {@code frozen*} 表（M1.2 的 {@code freeze*}/{@code release*} 语义），在发运/成交/轮末释放。★ 唯一的例外是
@@ -153,6 +161,38 @@ final class MarketSettlement {
    * 本批不做到货付款（那要一条信用/挂账机制，属后续增量）。
    */
   static final boolean MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true;
+
+  /**
+   * ★★ <b>M2.6 可选自适应价格的开关（默认 {@code false} = 固定报价）</b>：打开后每轮结算<b>结束</b>时按 {@code z =
+   * clamp((有预算且合限价的需求 − 可出售供给) / max(需求 + 供给, ε), −1, 1)}、 {@code p_next = max(p_min, round(p × (1
+   * + α·z)))} 更新**各区集散节点价**，并把同一区成员格的同商品价一并改到该值 （"每区每商品一个报价"）。
+   *
+   * <p>★★ <b>唯一写回路径</b>：{@link #clearOncePerCycle} 返回新的市场表，{@code EconomySettlement} 把这份表放进它交出的
+   * {@code EconomyData} —— 于是 {@code markets} 作为既有的 {@code FieldDelta} 组件进变更集。本类<b>不</b>直接改任何
+   * {@code EconomyData}，也没有第二处改价。
+   *
+   * <p>★ 默认关闭 ⇒ 本常量取 {@code false} 时价格表逐值原样带过（数值行为与 M2.6 之前完全相同）。
+   */
+  static final boolean MARKET_ADAPTIVE_PRICING_ENABLED = false;
+
+  /**
+   * ★★ <b>自适应的步长 α（千分比/轮）</b>：{@code 50‰ = 5%} —— 计划要求的**起步上界 ≤5%/轮**。
+   *
+   * <p>★ 它是 GM 可调出厂值，与 {@link #MARKET_ADAPTIVE_PRICING_ENABLED} 分开：开关回答"调不调"，本值回答"每轮最多调多少"。
+   */
+  static final long MARKET_ADAPTIVE_ALPHA_PER_MILLE = 50L;
+
+  /**
+   * ★ <b>自适应价格的下限 p_min</b>（毫计价货币/商品单位）：{@code 1} —— 与 {@code Market} 的"价格必须 &gt; 0"同一条守卫。
+   * 需求远小于供给时价格仍会停在 1 毫，不会出现 0 或负价。
+   */
+  static final long MARKET_PRICE_FLOOR_MILLI = 1L;
+
+  /**
+   * ★ <b>自适应公式里分母的 ε</b>（毫商品）：{@code 1} —— {@code max(需求 + 供给, ε)} 的分母保护，保证零供需时 {@code z = 0}
+   * 而不是除零。
+   */
+  static final long MARKET_ADAPTIVE_Z_EPSILON_MILLI = 1L;
 
   /**
    * ★★ <b>运输损耗的记账账户</b>：{@code ProductionLedger.losses} 的键是 {@code IndustryId}，而运输不是产业 ——
@@ -250,6 +290,22 @@ final class MarketSettlement {
     }
   }
 
+  /**
+   * ★★ <b>一轮市场的完整交出物（M2.6/M2.7）</b>：{@code report} = 只读读数原料；{@code markets} = 本轮结束时的价格表
+   * （固定模式下与入参逐值相同，自适应模式下是改价后的新表）。
+   *
+   * <p>★ 价格表<b>只经这里</b>离开本类 → {@code EconomySettlement} 把它放进交出的 {@code EconomyData} → {@code
+   * markets} 作为既有 {@code FieldDelta} 组件进变更集。没有第二条改价路径。
+   */
+  record MarketOutcome(MarketReport report, Map<HexCoord, Market> markets) {
+    MarketOutcome {
+      Objects.requireNonNull(report, "report");
+      Objects.requireNonNull(markets, "markets");
+      // ★ 保序不可变（不用 Map.copyOf：迭代序不是内容的纯函数）；值是不可变 record。
+      markets = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(markets));
+    }
+  }
+
   /** 一个格的预计算：参与者 + 逐主体的必要生产投入 / 生活保留（按商品）。 */
   private static final class HexPlan {
     final List<Participant> participants;
@@ -336,31 +392,45 @@ final class MarketSettlement {
   static PlannedOrders planOrders(
       MarketRound round, HexCoord hex, Market market, CommodityId commodity) {
     Objects.requireNonNull(round, "round");
+    return planOrders(
+        round, hex, market, commodity, EconomySettlement.rowsByHex(round.rows.keySet()));
+  }
+
+  /**
+   * ★ <b>纯订单生成的"已建索引"重载</b>（M2.7 读口用）：{@code rowsByHex} 由调用方一次建好 —— 逐区读数会对同一个 {@code rows}
+   * 调它几十次，每次重扫全部行是纯浪费；两条重载走的是同一条 {@code ordersFor}。
+   */
+  static PlannedOrders planOrders(
+      MarketRound round,
+      HexCoord hex,
+      Market market,
+      CommodityId commodity,
+      Map<String, List<CohortKey>> rowsByHex) {
+    Objects.requireNonNull(round, "round");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(market, "market");
     Objects.requireNonNull(commodity, "commodity");
-    long price = market.priceOf(commodity);
-    if (price <= 0L) {
+    Objects.requireNonNull(rowsByHex, "rowsByHex");
+    if (market.priceOf(commodity) <= 0L) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（同 Market 的口径）
     }
     List<CohortKey> keys =
-        EconomySettlement.rowsByHex(round.rows.keySet())
-            .getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
-    return ordersFor(round, planFor(round, hex, keys), hex, market, commodity, price);
+        rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
+    return ordersFor(round, planFor(round, hex, keys), hex, market, commodity);
   }
 
   /**
    * ★★ <b>开一次市</b>（由 {@code EconomySettlement.settleOneDay} 在触发日调用一次）。
    *
-   * <p>★ 返回 {@link MarketReport} 是 L3 的读数原料（见它的类注）：本类保证"信息不聚合丢失"， 不替 L3 落成读数组件。失败时抛异常 ——
-   * 一次推进整条回滚，不产生半轮市场。
+   * <p>★ 返回 {@link MarketOutcome}（= 报告 + 本轮结束时的价格表）是 L3 的读数原料与 M2.6 的**唯一改价出口**（见 {@link
+   * #MARKET_ADAPTIVE_PRICING_ENABLED}）：本类保证"信息不聚合丢失"，不替 L3 落成读数组件。失败时抛异常 —— 一次推进整条回滚，不产生半轮市场。
    *
    * @param markets 价格表（键 = 格；缺格 = 该格没有市场）
    * @param round 本轮只读/可写会话视图（余额与冻结都在这里）
    * @param trigger 今天为什么开市（由 {@link #triggerFor} 判定；{@link MarketTrigger#NONE} 不该走到这里）
    * @param topology 区域拓扑（派生件；由组合根传入）
    */
-  static MarketReport clearOncePerCycle(
+  static MarketOutcome clearOncePerCycle(
       Map<HexCoord, Market> markets,
       MarketRound round,
       MarketTrigger trigger,
@@ -372,7 +442,8 @@ final class MarketSettlement {
     Optional<ActorRef> carrier = carrierOf(round);
     MatchContext ctx = new MatchContext(round, markets, topology, trigger, carrier);
     if (markets.isEmpty() || trigger == MarketTrigger.NONE) {
-      return MarketReport.empty(round.day, trigger, carrier.isPresent());
+      return new MarketOutcome(
+          MarketReport.empty(round.day, trigger, carrier.isPresent()), markets);
     }
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
@@ -392,12 +463,11 @@ final class MarketSettlement {
         ctx.participantHex.put(participant.actor, hex);
       }
       for (Map.Entry<CommodityId, Long> priced : market.prices().entrySet()) {
-        long price = priced.getValue();
-        if (price <= 0L) {
+        CommodityId commodity = priced.getKey();
+        if (market.priceOf(commodity) <= 0L) {
           continue; // Market 的构造期守卫已判死，这里只防御
         }
-        CommodityId commodity = priced.getKey();
-        PlannedOrders orders = ordersFor(round, plan, hex, market, commodity, price);
+        PlannedOrders orders = ordersFor(round, plan, hex, market, commodity);
         MarketRegion region = topology.regionOf(hex);
         for (BuyOrder order : orders.buys()) {
           Participant buyer = ctx.participants.get(order.requester());
@@ -444,30 +514,173 @@ final class MarketSettlement {
               acc.supplyMilli,
               acc.bottleneck));
     }
-    return new MarketReport(
-        round.day,
-        trigger,
-        ctx.carrier.isPresent(),
-        ctx.fills,
-        ctx.unfilled,
-        routeUsages,
-        ctx.freightPaidMilli,
-        ctx.freightUncollectedMilli,
-        ctx.scheduledLossMilli,
-        ctx.immediateFills,
-        ctx.crossRegionFills);
+    // ── 6. M2.6 可选自适应：只看**本轮计划订单**（有预算且限价内的需求 vs 可出售供给），
+    //   在撮合之后改下一轮的参考价。默认关 ⇒ 价格表原样带过、更新表为空。
+    AdaptivePrices adapted =
+        MARKET_ADAPTIVE_PRICING_ENABLED
+            ? adaptPrices(markets, ctx)
+            : new AdaptivePrices(List.of(), markets);
+    return new MarketOutcome(
+        new MarketReport(
+            round.day,
+            trigger,
+            ctx.carrier.isPresent(),
+            ctx.fills,
+            ctx.unfilled,
+            routeUsages,
+            ctx.freightPaidMilli,
+            ctx.freightUncollectedMilli,
+            ctx.scheduledLossMilli,
+            ctx.immediateFills,
+            ctx.crossRegionFills,
+            priceMode(),
+            adapted.updates()),
+        adapted.markets());
+  }
+
+  /** 本进程当前的报价模式（M2.6 的开关只有一个：默认固定）。 */
+  static PriceMode priceMode() {
+    return MARKET_ADAPTIVE_PRICING_ENABLED ? PriceMode.ADAPTIVE : PriceMode.FIXED;
+  }
+
+  /**
+   * ★★ <b>M2.6 自适应的一轮结果</b>：{@code markets} = 更新后的价格表（未更新时就是入参本身）；{@code updates} = 逐 (集散节点, 商品)
+   * 的改价记录（读数组件原样发出）。
+   */
+  record AdaptivePrices(List<MarketReport.PriceUpdate> updates, Map<HexCoord, Market> markets) {
+    AdaptivePrices {
+      updates = List.copyOf(updates);
+      Objects.requireNonNull(markets, "markets");
+      // ★ 保序不可变（不用 Map.copyOf：迭代序不是内容的纯函数）；值是不可变 record。
+      markets = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(markets));
+    }
+  }
+
+  /**
+   * ★★ <b>按供需 z 逐区改价</b>（M2.6 可选；只在 {@link #MARKET_ADAPTIVE_PRICING_ENABLED} 为真时被调用）。
+   *
+   * <pre>
+   * z      = clamp((demand − supply) / max(demand + supply, ε), −1, 1)
+   * p_next = max(p_min, round(p × (1 + α·z)))       // 定点整数：BigInteger 中间量，避免 long 溢出与 double 不可复现
+   * </pre>
+   *
+   * <p>★★ <b>需求口径</b>：{@code demand} = 本轮**已生成**的买订单数量（{@code ordersFor} 已在生成时施加"预算 &gt; 0 +
+   * 买得起"两重过滤）之和；{@code supply} = 卖订单的 {@code sellable} 之和。★ 只按绝对供需，不看本轮成交结果 ——
+   * 成交已受运力/运费/时限约束，那些属物流读数，不是价格信号。
+   *
+   * <p>★★ <b>区价 = 集散节点价，成员格同改</b>：新价对**该区所有"已经给这个商品定价"的成员格**生效（缺价的格不凭空造一行）——
+   * 这就是"每区每商品一个报价"的落点，也避免成员价格各自漂开后"区价"这个词失去意义。
+   */
+  private static AdaptivePrices adaptPrices(Map<HexCoord, Market> markets, MatchContext ctx) {
+    // 逐 (region, commodity) 汇总订单；region 用拓扑对象本身当键（它由 node+members 派生，等值即同区）。
+    Map<MarketRegion, Map<CommodityId, long[]>> byRegion = new LinkedHashMap<>();
+    for (BuySlot buy : ctx.buys) {
+      byRegion.computeIfAbsent(buy.region, ignored -> new LinkedHashMap<>())
+              .computeIfAbsent(buy.order.commodity(), ignored -> new long[2])[0] +=
+          buy.order.quantity();
+    }
+    for (SellSlot sell : ctx.sells) {
+      byRegion.computeIfAbsent(sell.region, ignored -> new LinkedHashMap<>())
+              .computeIfAbsent(sell.order.commodity(), ignored -> new long[2])[1] +=
+          sell.order.sellable();
+    }
+    LinkedHashMap<HexCoord, Market> updated = new LinkedHashMap<>(markets);
+    List<MarketReport.PriceUpdate> updates = new ArrayList<>();
+    for (MarketRegion region : ctx.topology.regions()) {
+      Market anchorMarket = markets.get(region.anchor());
+      if (anchorMarket == null) {
+        continue;
+      }
+      Map<CommodityId, long[]> quantities = byRegion.getOrDefault(region, Map.of());
+      for (CommodityId commodity : orderedCommodities(ctx)) {
+        long reference = anchorMarket.priceOf(commodity);
+        if (reference <= 0L) {
+          continue;
+        }
+        long[] demandSupply = quantities.get(commodity);
+        long demand = demandSupply == null ? 0L : demandSupply[0];
+        long supply = demandSupply == null ? 0L : demandSupply[1];
+        long next = adaptiveNextPrice(reference, demand, supply);
+        if (next == reference) {
+          continue;
+        }
+        for (HexCoord member : region.members()) {
+          Market current = updated.get(member);
+          if (current == null || current.priceOf(commodity) <= 0L) {
+            continue;
+          }
+          if (current.priceOf(commodity) == next) {
+            continue;
+          }
+          Map<CommodityId, Long> prices = new LinkedHashMap<>(current.prices());
+          prices.put(commodity, next);
+          updated.put(member, new Market(current.numeraire(), prices));
+        }
+        updates.add(new MarketReport.PriceUpdate(region.anchor(), commodity, reference, next));
+      }
+    }
+    return new AdaptivePrices(updates, updated);
+  }
+
+  /**
+   * ★★ <b>自适应公式的定点实现</b>（包内可见，直接可测）：{@code z} 用有理数表示（分子 = demand − supply、分母 = max(demand + supply,
+   * ε)），再按 {@code p_next = max(p_min, round(p × (1 + α·z)))} 取整。
+   *
+   * <p>★ 为什么用 {@link BigInteger}：{@code price × α × 需求量} 在量级上可以越过 {@code long}；浮点又会破坏"可复现"。
+   * BigInteger 是整数、无平台差异，且每轮每区每商品只调用一次（真档 &lt; 1000 次/轮），不是热路径。
+   *
+   * <p>★ 取整 = <b>四舍五入（远离零）</b>：余数 × 2 ≥ 分母就向远离零方向加一毫。z 为负（供 &gt; 求）时价格下调，公式对 {@code α·z ∈ (−5%, 0]}
+   * 对称。
+   */
+  static long adaptiveNextPrice(long price, long demand, long supply) {
+    if (price <= 0L) {
+      throw new IllegalArgumentException("自适应价格的入参 price 必须 > 0: " + price);
+    }
+    BigInteger d = BigInteger.valueOf(Math.max(0L, demand));
+    BigInteger s = BigInteger.valueOf(Math.max(0L, supply));
+    BigInteger denominator = d.add(s);
+    if (denominator.signum() == 0) {
+      denominator = BigInteger.valueOf(MARKET_ADAPTIVE_Z_EPSILON_MILLI);
+    }
+    BigInteger numerator = d.subtract(s);
+    // z ∈ [−1, 1]：分子 clamp 到 ±分母。
+    if (numerator.compareTo(denominator) > 0) {
+      numerator = denominator;
+    } else if (numerator.compareTo(denominator.negate()) < 0) {
+      numerator = denominator.negate();
+    }
+    BigInteger scaled =
+        BigInteger.valueOf(price)
+            .multiply(BigInteger.valueOf(MARKET_ADAPTIVE_ALPHA_PER_MILLE))
+            .multiply(numerator);
+    BigInteger divisor = BigInteger.valueOf(1000L).multiply(denominator);
+    BigInteger[] quotientAndRemainder = scaled.divideAndRemainder(divisor);
+    BigInteger delta = quotientAndRemainder[0];
+    if (quotientAndRemainder[1].abs().shiftLeft(1).compareTo(divisor) >= 0) {
+      delta = delta.add(scaled.signum() < 0 ? BigInteger.ONE.negate() : BigInteger.ONE);
+    }
+    long next;
+    try {
+      next = price + delta.longValueExact();
+    } catch (ArithmeticException overflow) {
+      next = delta.signum() < 0 ? MARKET_PRICE_FLOOR_MILLI : Long.MAX_VALUE;
+    }
+    return Math.max(MARKET_PRICE_FLOOR_MILLI, next);
   }
 
   // ── 订单生成 ───────────────────────────────────────────────────────────────────────
 
   /** 生成一个格 × 一个商品上的全部订单（主体各自生成；见类注的算式）。 */
   private static PlannedOrders ordersFor(
-      MarketRound round,
-      HexPlan plan,
-      HexCoord hex,
-      Market market,
-      CommodityId commodity,
-      long price) {
+      MarketRound round, HexPlan plan, HexCoord hex, Market market, CommodityId commodity) {
+    // ★★ M2.6：参考价 = 本格价表里的固定报价；两个限价由 Market 的两个**各自独立**的常量现算
+    //   （bid = 卖方底价、ask = 买方限价），订单按它们过滤；成交仍按参考价（区内）/ 卖方格参考价（跨区）。
+    long reference = market.priceOf(commodity);
+    long bid = market.bidPriceOf(commodity);
+    long ask = market.askPriceOf(commodity);
+    if (reference <= 0L || bid <= 0L || ask <= 0L) {
+      return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（与 Market.priceOf 同口径）
+    }
     List<BuyOrder> buys = new ArrayList<>();
     List<SellOrder> sells = new ArrayList<>();
     long deadline = round.day + MARKET_BUY_DEADLINE_DAYS;
@@ -490,7 +703,7 @@ final class MarketSettlement {
                 hex,
                 commodity,
                 sellable,
-                price,
+                bid,
                 round.day,
                 SILVER_SPECIE)); // 本批单一工具（silver-specie）；多工具是后续增量
       }
@@ -506,7 +719,10 @@ final class MarketSettlement {
       if (budget <= 0L) {
         continue; // 没钱的缺口不是有效需求（与旧口径同一条立场）
       }
-      long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / price;
+      // ★ 买得起多少按**参考价**折算：区内成交价就是它；跨区若卖方到货价更高，{@link #matchRoute} 会按实际
+      //   "单价 + 运费"复核预算并缩小成交。★ ask 只做**限价过滤**（买方最多愿付），不在这里折数量 —— 否则
+      //   价格表很小时（真档粮价 = 1 毫）整数网格会把 +1 毫的价差放大成"买得起的量减半"。
+      long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
       long quantity = Math.min(gap, affordable);
       if (quantity <= 0L) {
         continue;
@@ -518,7 +734,7 @@ final class MarketSettlement {
               hex,
               commodity,
               quantity,
-              price,
+              ask,
               deadline,
               new Budget(budget, SILVER_SPECIE),
               SILVER_SPECIE));
@@ -637,6 +853,10 @@ final class MarketSettlement {
 
   // ── 区内撮合 ───────────────────────────────────────────────────────────────────────
 
+  /**
+   * 区内逐 (region, commodity) 撮合：参考价 = **集散节点格的市场价**（M2.6 的"区价"）；买方限价 = ask、卖方底价 = bid，
+   * 两侧限价在这里按参考价过滤（正常时 ask ≥ 参考价 ≥ bid ⇒ 全部通过；成员格价表不同时由限价真的把单挡下）。
+   */
   private static void matchWithinRegions(MatchContext ctx) {
     for (MarketRegion region : ctx.topology.regions()) {
       Market anchorMarket = ctx.markets.get(region.anchor());
@@ -1041,7 +1261,8 @@ final class MarketSettlement {
               0L,
               round.day,
               true,
-              ""));
+              "",
+              0L));
       return;
     }
 
@@ -1086,7 +1307,9 @@ final class MarketSettlement {
             freight,
             route.arrivalTick,
             false,
-            shipmentId));
+            shipmentId,
+            // ★ M2.7：逐票预排损耗与到货日的扣减公式逐字同源（deliverShipments 也是 quantity × lossPerMille ÷ 1000）。
+            quantity * route.lossPerMille / 1000L));
   }
 
   /** 把刚记到买方名下的量移出会话余额（在途资产的装载；到货日反向落回）。 */
@@ -1147,14 +1370,14 @@ final class MarketSettlement {
   }
 
   /**
-   * 同一对 (sellerHex,buyerHex) 上的成交单价：取该商品卖单底价的**上界**（同一价表下所有卖单同价；多价表时宁高不低， 不让卖家亏本）。★ 限价过滤在 {@link
-   * #matchRoute} 里逐买方判，不走这里。
+   * 同一对 (sellerHex,buyerHex) 上的成交单价：取卖方**格价表里的参考价**的上界（M2.6：成交仍按参考价，买卖双方各自比自己的 bid/ask
+   * 限价占优；多价表时宁高不低，不让卖家亏本）。★ 限价过滤在 {@link #matchRoute} 里逐买方判，不走这里。
    */
   private static long unitPriceOf(List<SellSlot> sells, CommodityId commodity) {
     long price = 0L;
     for (SellSlot sell : sells) {
       if (sell.order.commodity().equals(commodity)) {
-        price = Math.max(price, sell.order.minPrice());
+        price = Math.max(price, sell.market.priceOf(commodity));
       }
     }
     return price;
@@ -1223,7 +1446,7 @@ final class MarketSettlement {
       }
       ctx.unfilled.add(
           new MarketReport.Unfilled(
-              buy.buyer.actor, true, buy.order.commodity(), buy.remaining, reason));
+              buy.buyer.actor, true, buy.order.commodity(), buy.remaining, reason, buy.hex));
     }
     for (SellSlot sell : ctx.sells) {
       if (sell.remaining <= 0L) {
@@ -1240,7 +1463,7 @@ final class MarketSettlement {
           anyBuy ? MarketUnfilledReason.NO_BUDGET : MarketUnfilledReason.NO_BUYER;
       ctx.unfilled.add(
           new MarketReport.Unfilled(
-              sell.seller.actor, false, sell.order.commodity(), sell.remaining, reason));
+              sell.seller.actor, false, sell.order.commodity(), sell.remaining, reason, sell.hex));
     }
   }
 

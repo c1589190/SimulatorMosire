@@ -673,7 +673,7 @@ final class EconomyPayloads {
   /**
    * ★★ <b>一条家户行</b>（H0：键 = 该 entry 的格 + 行上显式声明的 {@code residence} + {@code slot}）： {@code
    * {residence, slot, population, laborMilli, participationPerMille, money, debts, naturalNeeds,
-   * effectiveDemand}}。
+   * effectiveDemand, cycleNaturalNeedMilli?}}。
    *
    * <p>★★ <b>三条 fail-closed（{@code goods} 那条是 H1 新增的）</b>：
    *
@@ -687,6 +687,9 @@ final class EconomyPayloads {
    *       EconomyDayStepper} 的入参）。★ 播种那一份要**搬**过去（app 的 {@code HouseholdSeeder}）， 静默忽略它 =
    *       创世库存凭空消失（真档表现为第 1 天全员断粮，而载荷看起来完全正常）。
    * </ul>
+   *
+   * <p>★★ <b>M2.7 的 {@code cycleNaturalNeedMilli} 是可选键</b>（旧档缺键 ⇒ 0，照本类 {@code money} 的同款先例）：
+   * 它是**结算逐日累加的读数**（本周期累计自然口粮需要），创世载荷通常不写它；旧载荷读成 0 = "还没开始累计"，不是"没有需要"。
    */
   private static ClassRow classRow(HexCoord hex, JsonNode node) {
     ResidenceKind residence = ResidenceKind.parse(requireText(node, "residence"));
@@ -706,6 +709,7 @@ final class EconomyPayloads {
               + node.get("goods"));
     }
     long money = optionalLong(node, "money", 0L);
+    long cycleNaturalNeedMilli = optionalLong(node, "cycleNaturalNeedMilli", 0L);
     List<DebtId> debts = new ArrayList<>();
     for (JsonNode debt : optionalArray(node, "debts")) {
       // ★ §十：本轮"不做债务"⇒ 只接受空数组（拒绝非空，免得落下一批指向空债务表的悬空引用）。
@@ -723,7 +727,8 @@ final class EconomyPayloads {
         money,
         debts,
         needs,
-        demand);
+        demand,
+        cycleNaturalNeedMilli);
   }
 
   /**

@@ -720,7 +720,7 @@ public final class ToolSupport {
    * GoodsAccount} 读 ⇒ 本视图同时要 economy 与 actor 两片（同 {@link #economyOwnership}）。
    */
   public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {
-    return ApiViews.economyHex(coord, ApiViews.economyData(state), ApiViews.actorData(state));
+    return ApiViews.economyHex(coord, state);
   }
 
   /**

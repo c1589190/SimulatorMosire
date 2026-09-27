@@ -27,6 +27,10 @@ import java.util.Map;
  * <p>★ <b>为什么价格必须 &gt; 0</b>：它是"可花的钱 ÷ 价格"那个式子的分母 —— 取 0 会让"买得起多少"除零， 而"白送"不是一种价格（它是另一套制度：配给/救济）。 ⇒
  * 逐值 {@code > 0}，构造期判死（不静默归一）。
  *
+ * <p>★★ <b>M2.6：本类同时给出买卖两侧的挂牌限价</b>（{@link #bidPriceOf} / {@link #askPriceOf}）—— 参考价仍在 {@link
+ * #prices()} 里，两个限价由 {@link #BID_PER_MILLE} / {@link #ASK_PER_MILLE} <b>两个各自独立</b>的具名常量现算；
+ * 订单按它们过滤，成交仍走参考价。★ 为什么参考价不换成"成交价"：市场撮合在本层是买卖双方直接配对（没有做市商库存）， 价差只表达"双方愿意让步的范围"，不构成一笔要落账的收入。
+ *
  * <p>★ <b>缺格的格 = 该格没有市场</b>（{@code EconomyData.markets} 里没有那个键）：<b>合法状态</b>，不是坏数据 ——
  * 本仓的世界可以只有一部分格子有市场（真档创世只给城市格播种），结算对它们<b>什么都不做</b>（不抛、不造一个默认价）。
  *
@@ -67,4 +71,56 @@ public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
   public long priceOf(CommodityId commodity) {
     return prices.getOrDefault(commodity, 0L);
   }
+
+  /**
+   * ★★ <b>M2.6：卖方的挂牌底价（bid）</b>：{@code ⌊参考价 × {@value #BID_PER_MILLE} ÷ 1000⌋}，且至少 1 毫。
+   *
+   * <p>★★ <b>为什么 bid/ask 必须是两个具名常量</b>：价差的两条腿（买方最多愿付、卖方最少愿收）是**两件事** —— 用一个
+   * "价差"常量同时推两边，改一边就会悄悄改另一边；照本仓"不许一个常量兼两职"的纪律拆成两个数，各自可调、各自可读。
+   *
+   * <p>★ <b>它只决定限价，不决定成交价</b>：成交仍按参考价（区内 = 集散节点市价、跨区 = 卖方格市价）—— 买卖双方都比自己的限价占优，
+   * 价差没有中间人截留（钱不许凭空消失）。参考价缺失（{@code 0}）时返回 {@code 0} = 本格不交易它。
+   *
+   * @param commodity 商品；不得为 null
+   * @return 卖方最低可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0
+   */
+  public long bidPriceOf(CommodityId commodity) {
+    long price = priceOf(commodity);
+    return price <= 0L ? 0L : Math.max(1L, price * BID_PER_MILLE / 1000L);
+  }
+
+  /**
+   * ★★ <b>M2.6：买方的最高限价（ask）</b>：{@code ⌈参考价 × {@value #ASK_PER_MILLE} ÷ 1000⌉}，且严格高于 {@link
+   * #bidPriceOf}（极小的价格上价差退化成 1 毫 —— 那仍是"分开的两个限价"，不是同一个数）。
+   *
+   * <p>★ 口径与 {@link #bidPriceOf} 对称：只进限价过滤，不决定成交价。没有定价 ⇒ 0。
+   *
+   * <p>★★ <b>整数网格的如实边界</b>：价格是毫单位的整数 ⇒ 当 {@code p} 小到 1% 不足 1 毫时（真档粮价 = 1）， 价差退化成"两侧各让 1 毫"（bid 至少
+   * 1、ask 至少 bid+1），相对幅度会大于 1%。这是网格的必然，不是公式走样 —— 成交仍按参考价，价差只放宽/收紧**限价过滤**。
+   *
+   * @param commodity 商品；不得为 null
+   * @return 买方最高可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0
+   */
+  public long askPriceOf(CommodityId commodity) {
+    long price = priceOf(commodity);
+    if (price <= 0L) {
+      return 0L;
+    }
+    long ask = (price * ASK_PER_MILLE + 999L) / 1000L;
+    return Math.max(bidPriceOf(commodity) + 1L, ask);
+  }
+
+  /**
+   * ★ <b>卖方底价的千分比</b>：{@code 990‰} ⇒ 挂牌 bid 比参考价低约 1%。
+   *
+   * <p>★ 它是 GM 可调出厂值（V7 参数目录落地后迁入），与 {@link #ASK_PER_MILLE} 各自独立可调。
+   */
+  public static final long BID_PER_MILLE = 990L;
+
+  /**
+   * ★ <b>买方限价的千分比</b>：{@code 1010‰} ⇒ 挂牌 ask 比参考价高约 1%。两腿合计 ≈2% 价差。
+   *
+   * <p>★ 命名纪律：**不许**用本常量同时推 bid —— 两个方向各有一个具名常量，改哪边只影响哪边。
+   */
+  public static final long ASK_PER_MILLE = 1010L;
 }

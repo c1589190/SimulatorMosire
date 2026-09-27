@@ -31,6 +31,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.ProductionRecipe;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -658,6 +659,10 @@ public final class EconomySettlement {
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations =
         new LinkedHashMap<>(base.allocations());
     LinkedHashMap<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>(base.laborSupply());
+    // ★★ **M2.6（自适应价格的写回点）**：市场表的工作副本 —— 固定模式下结算只读它、终态与 {@code base.markets()} 逐值相同；
+    //   自适应打开时 {@code MarketSettlement} 返回更新后的价格表，本方法把**这一份**交给终态 ⇒ 改价只经
+    //   "状态 → 变更集（markets 是既有 FieldDelta 组件）"这一条路，没有第二处改价。
+    LinkedHashMap<HexCoord, Market> markets = new LinkedHashMap<>(base.markets());
 
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
@@ -858,12 +863,14 @@ public final class EconomySettlement {
             shipments,
             ledger);
     MarketTrigger marketTrigger =
-        MarketSettlement.triggerFor(day, anyCycleClosed, base.markets(), marketRound);
+        MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
     if (marketTrigger != MarketTrigger.NONE) {
-      MarketReport marketReport =
-          MarketSettlement.clearOncePerCycle(base.markets(), marketRound, marketTrigger, topology);
+      MarketSettlement.MarketOutcome outcome =
+          MarketSettlement.clearOncePerCycle(markets, marketRound, marketTrigger, topology);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
-      ledger.recordMarketReport(marketReport);
+      ledger.recordMarketReport(outcome.report());
+      // ★★ M2.6：自适应模式把价格表工作副本换成 outcome 交回的新表（默认固定模式下两者逐值相同 ⇒ 无状态变化）。
+      markets = new LinkedHashMap<>(outcome.markets());
     }
 
     // ── 4b. 借粮（★ H5：**最后手段** —— 自产/分配 → 市场 → 救济(留位) → 借）──────────────────
@@ -957,6 +964,18 @@ public final class EconomySettlement {
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
     for (CohortKey key : rows.keySet()) {
+      // ★★ **M2.7（丙条仪器）：周期累加器的清零点与流水同一天** —— 新周期第一天把
+      //   {@code cycleNaturalNeedMilli} 重置为"今天这一份"（{@code withDailyNeed} 在消费步刚累加过）。
+      //   ★ 放在这里而不是 {@code withDailyNeed} 里：只有这里同时看得见 {@code newCycleHouseholds}
+      //     （由产业 progressDays 推、且与 FlowRow 的清零同一判据）。重置为"当天那一份"而不是 0 —— 理由见
+      //     {@link #withCycleNaturalNeed}。
+      if (newCycleHouseholds.contains(key)) {
+        ClassRow cycleRow = rows.get(key);
+        if (cycleRow != null) {
+          rows.put(
+              key, withCycleNaturalNeed(cycleRow, cycleRow.naturalNeeds().getOrDefault(GRAIN, 0L)));
+        }
+      }
       // ★★ **T4 起两张实物表的口径都变了**（R1 的"行侧、形状不变、口径改"）：
       //   · `consumed` = 现扣投入 + 日耗 + 同格取材的**转出**（生产损耗**不在里面**了：它只进 ledger）；
       //   · `income`   = **实物入账**（关系给本行的 cohort 入账 + 同格取材的**转入**）—— **不再是**毛产分成。
@@ -1019,8 +1038,9 @@ public final class EconomySettlement {
         laborSupply,
         allocations,
         base.relations(),
-        // ★ H4：市场表**原样带过**（价格是数据、不是结算产物 —— 结算只读它，见 MarketSettlement）。
-        base.markets(),
+        // ★ H4：市场表在固定模式下原样带过；★★ M2.6：自适应开启时它是**结算的产物**（工作副本，见上面的 markets 局部量）——
+        //   改价只经这一条路（markets 是既有 FieldDelta 组件），没有第二处改价。
+        markets,
         // ★ M2.4：在途批次表是**结算的产物**（发运建账、到货销账）⇒ 交工作副本。
         shipments);
   }
@@ -4275,6 +4295,10 @@ public final class EconomySettlement {
    * <p>★★ **R3 起口径来自 {@link EconomyVocabulary#dailyNeedsMilli}**（每商品一条：粮 + 布）："粮食不足与衣物不足对死亡的时间尺度
    * 显然不能一样"（spec §七）—— 形状先做出来，**阈值与死亡作用留 R4**（故布的缺口本轮只被记下来、不参与饿死判据）。 ★ H1：{@code population == 0}
    * 的行也照写（空表）—— 需求是人口的函数，读口不许留一个陈旧的旧值。
+   *
+   * <p>★★ <b>M2.7（丙条仪器）：同一步里累加 {@code cycleNaturalNeedMilli}</b> —— 粮的当日需要（同一份 {@code
+   * dailyNeedsMilli}，不另立公式）加到行上的本周期累加器；<b>新周期的重置不在这里</b>，而在流水清零点（新周期第一天） 把它置为"当天那一份"（见 {@code
+   * settleOneDay} 的流水循环旁注释）—— 那里才能同时看见"今天是不是新周期第一天"。
    */
   private static ClassRow withDailyNeed(ClassRow row, long day) {
     Map<CommodityId, Long> needs = new LinkedHashMap<>();
@@ -4284,6 +4308,7 @@ public final class EconomySettlement {
         needs.put(new CommodityId(entry.getKey()), entry.getValue());
       }
     }
+    long dayGrainNeed = needs.getOrDefault(GRAIN, 0L);
     return new ClassRow(
         row.key(),
         row.population(),
@@ -4292,7 +4317,8 @@ public final class EconomySettlement {
         row.money(),
         row.debts(),
         needs,
-        row.effectiveDemand());
+        row.effectiveDemand(),
+        row.cycleNaturalNeedMilli() + dayGrainNeed);
   }
 
   /** 追加一条债务引用（其余字段原样带过）。 */
@@ -4307,7 +4333,8 @@ public final class EconomySettlement {
         row.money(),
         debts,
         row.naturalNeeds(),
-        row.effectiveDemand());
+        row.effectiveDemand(),
+        row.cycleNaturalNeedMilli());
   }
 
   /** 换人口与有效劳动（饿死惩罚用；其余字段原样带过）。 */
@@ -4320,7 +4347,27 @@ public final class EconomySettlement {
         row.money(),
         row.debts(),
         row.naturalNeeds(),
-        row.effectiveDemand());
+        row.effectiveDemand(),
+        row.cycleNaturalNeedMilli());
+  }
+
+  /**
+   * ★★ <b>M2.7：把周期累加器重置为"今天这一份"</b>（新周期第一天用）。
+   *
+   * <p>★ 为什么不是置 0：今天已经吃掉的这一份**属于新周期**（{@code withDailyNeed} 在消费步刚累加过）—— 置 0 会把新周期第一天的需要
+   * 抹掉，整周期分母因此少一天。调用点必须用"最近结算日写下的 {@code naturalNeeds[grain]}"作为参数（同源，不另算）。
+   */
+  private static ClassRow withCycleNaturalNeed(ClassRow row, long cycleNaturalNeedMilli) {
+    return new ClassRow(
+        row.key(),
+        row.population(),
+        row.laborMilli(),
+        row.participationPerMille(),
+        row.money(),
+        row.debts(),
+        row.naturalNeeds(),
+        row.effectiveDemand(),
+        cycleNaturalNeedMilli);
   }
 
   /** 换进度、周期劳动累计与周期投入累计（其余字段原样带过；★ 配方四段、产能两张表与两张投入表都必须透传，丢了 = 静默清零）。 */

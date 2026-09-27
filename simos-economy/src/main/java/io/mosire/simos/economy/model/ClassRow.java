@@ -52,6 +52,11 @@ import java.util.Map;
  * @param debts 指向债务表的引用；可空、不得含 null
  * @param naturalNeeds 本期自然需求（生存/再生产；v1 只做前两档）；键值非空、逐值 ≥ 0
  * @param effectiveDemand 有效需求（= 有支付力的那部分，§十四/§十五 的分野）；键值非空、逐值 ≥ 0
+ * @param cycleNaturalNeedMilli ★★ <b>M2.7 丙条仪器：本周期累计自然口粮需要</b>（毫粮）= {@code Σ_d
+ *     dailyRationMilli(population_d, d)}，{@code population_d} = 第 d 天结算前的行人口（日初人口）—— 由 {@code
+ *     EconomySettlement} 逐日累加、新周期第一天重置为当天需要（见 {@code withDailyNeed} 与流水清零点旁的注释）。
+ *     <b>它是唯一与"周期累计未满足需求"同窗口的自然需求分母</b>；旧的"某一天人口 × 整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒
+ *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.classRow} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
 public record ClassRow(
     CohortKey key,
@@ -61,7 +66,8 @@ public record ClassRow(
     long money,
     List<DebtId> debts,
     Map<CommodityId, Long> naturalNeeds,
-    Map<CommodityId, Long> effectiveDemand) {
+    Map<CommodityId, Long> effectiveDemand,
+    long cycleNaturalNeedMilli) {
 
   public ClassRow {
     if (key == null) {
@@ -79,6 +85,10 @@ public record ClassRow(
     }
     if (money < 0) {
       throw new IllegalArgumentException("ClassRow.money 不得为负: " + money);
+    }
+    if (cycleNaturalNeedMilli < 0L) {
+      throw new IllegalArgumentException(
+          "ClassRow.cycleNaturalNeedMilli 不得为负（它是逐日累加的自然口粮需要，不是赤字）: " + cycleNaturalNeedMilli);
     }
     if (naturalNeeds == null) {
       throw new IllegalArgumentException("ClassRow.naturalNeeds 不得为 null（无需求用空 map）");

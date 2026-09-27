@@ -11,6 +11,7 @@ import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.app.time.MarketReadoutAssembly;
 import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
@@ -23,6 +24,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
@@ -40,6 +42,8 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.economy.time.MarketReadout;
+import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -427,10 +431,54 @@ public final class ApiViews {
    *
    * <p>★ **未激活**（§6.6：{@code meta} 空）或该格没有产业 ⇒ 各聚合量为 0、{@code industries} 为空数组——**不 404**：
    * "这一格没有经济数据"与"这一格不存在"是两件事，前者要能在界面上看见。
+   *
+   * <p>★★ <b>M2.7 追加</b>：本视图新增 {@code tick} / {@code lastSettledDay} / {@code
+   * cycleNaturalNeedMilli}（丙条累加器合计）与 {@code marketReadout}（焦点区逐商品读数；进程内报告派生部分见其类注）。 不传状态的 3
+   * 参重载仍保留（没有 tick / 没有进程内报告 ⇒ 那一栏具名 unavailable，不填 0）。
    */
   public static Map<String, Object> economyHex(HexCoord coord, EconomyData data, ActorData actors) {
+    return economyHex(
+        coord,
+        data,
+        actors,
+        Optional.empty(),
+        Optional.empty(),
+        -1L,
+        "读口没有 SimulationState 上下文（3 参重载）⇒ 拿不到 tick 与进程内市场报告");
+  }
+
+  /** ★★ M2.7：GUI / MCP 的正式入口（从状态装配焦点区市场读数与进程内报告；与 {@link MarketReadoutAssembly} 同源）。 */
+  public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {
+    EconomyData data = economyData(state);
+    ActorData actors = actorData(state);
+    MarketReadoutAssembly.MarketReadoutContext context =
+        MarketReadoutAssembly.contextFor(state, coord);
+    return economyHex(
+        coord,
+        data,
+        actors,
+        context.readout(),
+        context.report(),
+        context.tick(),
+        context.readoutUnavailable());
+  }
+
+  private static Map<String, Object> economyHex(
+      HexCoord coord,
+      EconomyData data,
+      ActorData actors,
+      Optional<MarketReadout> readout,
+      Optional<MarketReport> report,
+      long tick,
+      String readoutUnavailable) {
     Map<String, Object> view = hexCoord(coord);
     view.put("activated", data.meta().isPresent());
+    // ★★ M2.7：把读数的坐标与窗口随视图发出去（此前读口没有 tick，读者无法判断"这个数属于哪一天"）。
+    view.put("tick", tick < 0L ? null : tick);
+    Long lastSettledDay =
+        data.meta().isPresent() && tick >= data.meta().orElseThrow().activatedDay() ? tick : null;
+    view.put("lastSettledDay", lastSettledDay);
+    view.put("lastSettledDayNote", "由当前 state tick 派生（经济日结算与状态推进同步）；naturalNeeds 写于最近一次结算日");
     long population = 0L;
     long laborMilli = 0L;
     // ★★ M1.8：该格**按阶层参与率折扣后的**每日劳动合计（逐值 = Σ 各行的 participationAdjustedLaborMilli）
@@ -443,6 +491,9 @@ public final class ApiViews {
     long creditPrincipal = 0L;
     long creditCount = 0L;
     long grainDailyConsumption = 0L;
+    // ★★ M2.7 丙条仪器：该格 Σ 各行的**本周期累计自然口粮需要**（毫粮；人口逐日变时唯一与
+    //   "本周期累计未满足需求"同窗口的分母）。★ 不再用"某一天人口 × 整周期配额"并排冒充它。
+    long cycleNaturalNeedMilli = 0L;
     // ★★ H1：**商品库存的唯一真源是 actor 侧的 {@code GoodsAccount}**（裁定 D3-C/K1；{@code ClassRow} 里没有 goods）
     //   ⇒ 本视图的商品读数从**该格的全部账户**求和，逐值等于 {@link #economyOwnership} 的 {@code actorGoodsTotal}。
     //   ★ 行侧那一栏（旧版的 Σ{@code row.goods()}）**结构性消失** —— 不是"读不到"，是"那里已经没有这本账"。
@@ -477,6 +528,7 @@ public final class ApiViews {
       laborMilli += row.laborMilli();
       participationAdjustedLaborMilli += row.participationAdjustedLaborMilli();
       grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
+      cycleNaturalNeedMilli += row.cycleNaturalNeedMilli();
       // 债务人侧：仍按行里的引用清点（它是放贷时写下的权威清单）。
       for (DebtId debtId : row.debts()) {
         Debt debt = data.debts().get(debtId);
@@ -509,6 +561,12 @@ public final class ApiViews {
     //     物理上复算不出结算当天那个数）。
     view.put("grainStock", grainStock);
     view.put("grainDailyConsumption", grainDailyConsumption);
+    // ★★ M2.7 丙条仪器：本周期累计自然需要（与 unmetNeed/income/consumed 同为"本周期累计"窗口；新周期第一天重置）。
+    //   ★ 人口快照口径随值发出：它用**每个结算日的日初人口**逐日累加，不是读口时刻的人口。
+    view.put("cycleNaturalNeedMilli", cycleNaturalNeedMilli);
+    view.put("cycleNaturalNeedClock", CYCLE_NATURAL_NEED_CLOCK);
+    // ★ 日耗那一栏的窗口（与上面那栏不可并排当同一分母：丙条已查清两者口径本就不可比）。
+    view.put("grainDailyConsumptionClock", GRAIN_DAILY_CONSUMPTION_CLOCK);
     // ★★ H6：**旧的行侧货币栏（{@code money}）已删** —— 它读的是 {@code Σ ClassRow.money()}，而 H1 起行里没有钱
     //   （{@code EconomySeeder} 写下的 {@code ClassRow.money} 恒为 0）⇒ 那是一栏**结构性的 0**：不是"这一格没钱"，
     //   是"那本账不存在"，读数的人只会把它当成真值（本仓最反对的"看起来在记"）。
@@ -543,44 +601,59 @@ public final class ApiViews {
     view.put("moneyInstruments", moneyInstrumentViews());
     view.put("classes", classes);
     view.put("industries", industries);
+    // ★★ M2.7：**焦点区的逐区逐商品市场读数**（与 MCP / GUI 共用同一份视图；进程内报告缺失时 match=null 且具名）。
+    //   ★ 挂进同一个 economyHex 而不新开路由/工具：GUI 与 MCP 的读口数量不变（工具面测试不需要改名单）。
+    view.put("marketReadout", readout.map(ApiViews::marketReadoutView).orElse(null));
+    if (readout.isEmpty()) {
+      view.put("marketReadoutUnavailable", readoutUnavailable);
+    } else if (!readoutUnavailable.isEmpty()) {
+      view.put("marketReadoutUnavailable", readoutUnavailable);
+    }
     // ★★ M0.3：**逐格粮食诊断**（七项里今天做得到的四项 + 三项"做不到"的具名占位）。
     //   ★ 它挂在**同一个视图**里（不另开读口）：报表脚本按格 dump 的就是这一份，多一栏即多一栏读数。
+    //   ★ M2.7 复评：logisticsGap 在拿到进程内报告时就可算；productionSelfSufficiency / paymentInstrumentGap
+    //     仍具名不可算（见方法注释），绝不填 0。
     view.put(
-        "grainDiagnosis", grainDiagnosis(coord, data, actors, grainStock, goods, actorMoneyTotal));
+        "grainDiagnosis",
+        grainDiagnosis(coord, data, actors, grainStock, goods, actorMoneyTotal, report));
     return view;
   }
 
   /**
-   * ★★ <b>M0.3：逐格粮食诊断</b>（master plan §三 M0.3 的七项，今天做得到四项 + 三项具名"做不到"）。
+   * ★★ <b>M0.3：逐格粮食诊断</b>（master plan §三 M0.3 的七项；M2.7 复评后的现状）。
    *
-   * <p>★★ <b>为什么它是一个独立函数、又嵌在 {@link #economyHex} 里</b>：七项里有四项（覆盖天数 / 未满足 / 满足率 /
-   * 购买力缺口）都能从**已落盘的状态**算出来，另外三项（生产自给率 / 物流缺口 / 币种支付缺口）**今天算不出**。
-   * 把"算得出的"与"算不出的"放在**同一张表**里、后者<b>具名列出原因</b>，读的人就不会把缺栏当成 0 （本仓最反对的"看起来在记、其实没有"）。
+   * <p>★★ <b>为什么它是一个独立函数、又嵌在 {@link #economyHex} 里</b>：能算的项从**状态 + 进程内报告**算出来，
+   * 算不出的项<b>具名列出原因</b>，读的人就不会把缺栏当成 0（本仓最反对的"看起来在记、其实没有"）。
    *
    * <pre>
    * 项目                              本批  算法 / 为什么做不到
-   * ① 生产自给率（标是否扣种子与损耗）   ✗   要读**本周期 ledger 的毛产/损耗/投入** —— 而 ledger 是**当日丢弃**的
-   *                                        （协调器落完账就扔）⇒ 持久状态里没有这个量。落点：M2 的市场读数组件
-   * ② 可用库存覆盖天数                  ✓   grainStock ÷ 该格当日口粮
+   * ① 生产自给率（标是否扣种子与损耗）   ✗   要读**本周期 ledger 的毛产/损耗/投入** —— 而 ledger 是**当日瞬态**
+   *                                        （{@code ProductionLedger.Accumulator} 在协调器落账后即丢）⇒ 状态里没有
+   *                                        周期累计的毛产/损耗/投入。FlowRow.income/consumed 不是毛产/损耗/投入，
+   *                                        不许冒充。落点：将来把 ledger 的周期累计落成一个持久读数组件
+   * ② 可用库存覆盖天数                  ✓   grainStock ÷ 该格当日口粮（日初人口那一份）
    * ③ 预计进口需求                      ✓   = 本周期累计未满足需求（unmetNeed）
-   * ④ 有效购买力缺口                    ✓   = 未满足 − 该格全部账本按本格粮价能买到的量
-   * ⑤ 物流缺口                          ✗   今天**没有跨格运输**（M2.4）⇒ 这一项无定义
-   * ⑥ 币种/支付缺口                     ~   只给"逐币种货币"与"能买到多少"；★ M1.1 起工具的**身份**已读得出
-   *                                        （见 currencyDefs / moneyInstruments），但**收款方接受哪些工具**属
-   *                                        M2 的订单/参与者面、兑现属 M4+ ⇒ 今天仍不判"付得出去吗"
-   * ⑦ 实际满足率与未满足人日            ✓   满足率 = (累计需求 − 未满足) ÷ 累计需求；人日由未满足反解
+   * ④ 有效购买力缺口                    ✓   = 未满足 − 该格全部账本按本格粮价**ask**能买到的量（上限）
+   * ⑤ 物流缺口                          ~   M2.7：拿到进程内 MarketReport 时可算（买方侧未成交 × 物流原因档：
+   *                                        运力/时限/无路/无邻区）；拿不到报告 ⇒ 具名 unavailable，不填 0
+   * ⑥ 币种/支付缺口                     ~   只给"逐币种货币"与"能买到多少"；★ M1.1 起工具的**身份**已读得出、
+   *                                        M2.1 起订单里也有 payWith/receiveWith 字段，但**接受规则**（谁收哪种
+   *                                        工具、多工具校验/兑现）仍未实现（本层市场只收 silver-specie）⇒ 不判
+   * ⑦ 实际满足率与未满足人日            ✓   分母 = **cycleNaturalNeedMilli**（逐日累加，见丙条），
+   *                                        满足率 = (周期自然需要 − 本周期未满足) ÷ 周期自然需要；人日由未满足反解
    * </pre>
    *
-   * <p>★★ <b>两个窗口标注（M0.2 的纪律：报任何数之前先核窗口）</b>：{@code unmetNeed} 与 {@code income}/{@code consumed}
-   * 一样是**本周期累计**（新周期第一天归零）⇒ {@code importDemand} / {@code satisfactionPerMille} / {@code
-   * unmetPersonDays} 三项<b>只有在关账日读才是"整周期"的量</b>； 非关账日读到的是"本周期到现在为止"。视图里用 {@code window}
-   * 字段把这件事**写出来**，不靠注释提醒。
+   * <p>★★ <b>窗口标注（M0.2 的纪律 + 丙条裁定）</b>：{@code importDemand} / {@code satisfactionPerMille} / {@code
+   * unmetPersonDays} / {@code cycleNaturalNeedMilli} 都是**本周期累计**（新周期第一天重置）⇒ 只有关账日读到的 才是整周期的量；{@code
+   * grainDailyNeed} / {@code coverageDays} 是**最近一次结算日**的日口径。 ★ <b>严禁</b>再用"某一天人口 × 整周期配额"（{@code
+   * Σpop×10,000}）与"日耗 × 120"并排当同一分母 —— 两者口径本就不可比 （丙条查清）；可比的需求只有 {@code cycleNaturalNeedMilli}。
    *
    * <p>★ <b>不设任何门槛</b>（用户裁定：自给率是**诊断读数**，不是"必须 ≥100%"的创世门槛）—— 本函数只报数、不判断。
    *
    * @param grainStock 该格 Σ 商品库存里的粮（毫粮；由 {@link #economyHex} 那趟遍历给出，本函数不重算）
    * @param goods 该格 Σ 商品库存（逐商品；算"粮布换算比"用）
    * @param actorMoneyTotal 该格 Σ 货币（逐币种；算购买力用）
+   * @param report 进程内最近一轮市场报告（可为空：为空时物流缺口具名 unavailable）
    */
   private static Map<String, Object> grainDiagnosis(
       HexCoord coord,
@@ -588,7 +661,8 @@ public final class ApiViews {
       ActorData actors,
       long grainStock,
       Map<String, Long> goods,
-      Map<String, Long> actorMoneyTotal) {
+      Map<String, Long> actorMoneyTotal,
+      Optional<MarketReport> report) {
     Map<String, Object> view = new LinkedHashMap<>();
     List<CohortKey> keys = cohortKeysAt(data, coord);
     long population = 0L;
@@ -605,40 +679,51 @@ public final class ApiViews {
         rowDaily = EconomyVocabulary.dailyRationMilli(row.population(), 1L);
       }
       dailyNeed += rowDaily;
+      // ★★ M2.7：周期分母改读**丙条累加器**（逐日、日初人口累加）—— 不再用"读口时刻人口 × 整周期配额"现算。
+      cycleNeed += row.cycleNaturalNeedMilli();
       FlowRow flow = data.flows().get(key);
       if (flow == null) {
         continue;
       }
-      cycleNeed +=
-          EconomyVocabulary.cumulativeRationMilli(row.population(), cycleDaysAt(data, coord));
       unmet += flow.unmetNeed().getOrDefault(GRAIN, 0L);
     }
     view.put("unit", "milli-grain");
     view.put("population", population);
+    view.put(
+        "populationSnapshot", "读口时刻的行人口（日末口径，月末回写之后）；cycleNaturalNeedMilli 用的是逐日日初人口，两者不可并排当同一时点");
     view.put("grainStock", grainStock);
     view.put("grainDailyNeed", dailyNeed);
+    view.put("grainDailyNeedClock", GRAIN_DAILY_CONSUMPTION_CLOCK);
+    view.put("cycleNaturalNeedMilli", cycleNeed);
+    view.put("cycleNaturalNeedClock", CYCLE_NATURAL_NEED_CLOCK);
     // ② 覆盖天数（**向下取整**；日耗为 0 ⇒ null = 无定义，不是 0 天）。
     view.put("coverageDays", dailyNeed <= 0L ? null : grainStock / dailyNeed);
     // ③ 预计进口需求 = 本周期累计未满足（★ 这是"已经缺掉的那部分"，对下一周期的外推要生产预测 ⇒ M2 才做）。
     view.put("importDemand", unmet);
     // ④ 有效购买力缺口：该格全部账本按本格粮价能买到的量（**上限**，见下面的 caveat）。
+    //   ★ M2.6：另给一栏按 ask（买方限价）算的更紧上限 —— 两者都只是账本级上限，不是市场的有效需求。
     Market market = data.markets().get(coord);
     Long price = market == null ? null : market.prices().get(GRAIN);
+    Long ask = market == null ? null : market.askPriceOf(GRAIN);
     CurrencyId numeraire = market == null ? null : market.numeraire();
     long money = numeraire == null ? 0L : actorMoneyTotal.getOrDefault(numeraire.value(), 0L);
     long affordable = price == null || price <= 0L ? 0L : money * MILLI_PER_GRAIN / price;
+    long affordableAtAsk = ask == null || ask <= 0L ? 0L : money * MILLI_PER_GRAIN / ask;
     view.put("numeraire", numeraire == null ? null : numeraire.value());
     view.put("grainPrice", price);
+    view.put("grainAskPrice", ask);
     // ★★ M1.6：它只是 `actorMoneyTotal` 里计价货币那一个标量 —— 私人流通 / 全部基础货币 / 银行存款的**分栏**
     //   在父视图（economyHex / economyOwnership）的 {@code moneyLayers} 那一栏，不在这里另算一份。
     view.put("numeraireMoney", money);
     view.put("affordableGrain", affordable);
+    view.put("affordableGrainAtAsk", affordableAtAsk);
     view.put("purchasingGap", Math.max(0L, unmet - affordable));
     view.put(
         "purchasingCaveat",
-        "affordableGrain 是**上限**：它把该格全部账本的钱与全部库存混在一起算，而市场的有效需求只算"
-            + "「本周期还缺口 且 手上钱够」的家户（见 MarketSettlement.effectiveDemandOf）⇒ 实际能成交的量 ≤ 它");
-    // ⑦ 满足率（千分）与未满足人日。
+        "affordableGrain / affordableGrainAtAsk 都是**账本级上限**：它们把该格全部账本的钱与全部库存混在一起算，"
+            + "而市场的有效需求只算「本轮有预算、按参考价买得起且限价内」的家户"
+            + "（见 MarketReadout 的 effectiveDemandMilli / needsButCannotAffordMilli 两栏）⇒ 实际能成交的量 ≤ 它们");
+    // ⑦ 满足率（千分）与未满足人日 —— 分母 = 丙条的**逐日累加周期需要**。
     view.put(
         "satisfactionPerMille",
         cycleNeed <= 0L ? null : Math.max(0L, (cycleNeed - unmet)) * 1000L / cycleNeed);
@@ -647,13 +732,22 @@ public final class ApiViews {
         unmet / (EconomyVocabulary.RATION_MILLI_PER_PERSON / EconomyVocabulary.RATION_CYCLE_DAYS));
     view.put(
         "window",
-        "importDemand / satisfactionPerMille / unmetPersonDays 是**本周期累计**（新周期第一天归零）"
-            + "⇒ 只有关账日读到的才是整周期的量；cycleNeed="
-            + cycleNeed);
-    // ★★ 七项里**今天做不到**的三项：具名列出（不是留空、更不是填 0 —— 那会被读成"没有缺口"）。
+        "importDemand / satisfactionPerMille / unmetPersonDays / cycleNaturalNeedMilli 是**本周期累计**"
+            + "（新周期第一天重置）⇒ 只有关账日读到的才是整周期的量；cycleNeed="
+            + cycleNeed
+            + "（= Σ_d dailyRationMilli(pop_d, d)，pop_d = 每日结算前的日初人口）");
+    // ★★ 七项里**仍做不到**的项：具名列出（不是留空、更不是填 0 —— 那会被读成"没有缺口"）。
     Map<String, Object> unavailable = new LinkedHashMap<>();
     unavailable.put("productionSelfSufficiency", PRODUCTION_NEEDS_LEDGER);
-    unavailable.put("logisticsGap", "今天没有跨格运输（M2.4 的在途与运力）⇒ 这一项无定义");
+    // ★ M2.7 复评：物流缺口在拿到进程内报告时可算；拿不到就具名说清缺的是哪一份（不填 0）。
+    if (report.isPresent()) {
+      view.put("logisticsGap", report.orElseThrow().logisticsGapMilli(coord));
+      view.put(
+          "logisticsGapWindow",
+          "本市场轮该格买方侧未成交、原因 ∈ {运力不足/到货超时限/无路/无邻区} 的量（毫商品）；" + "只报缺口，不掩饰为 0：0 表示本轮确实没有被物流挡住的买方需求");
+    } else {
+      unavailable.put("logisticsGap", LOGISTICS_GAP_NO_REPORT);
+    }
     unavailable.put("paymentInstrumentGap", PAYMENT_INSTRUMENT_GAP);
     view.put("unavailable", unavailable);
     // ★ 粮布换算比：顺带给出"库存里那匹布在这个价下折多少粮"（向下取整 ⇒ 0 只表示"不足 1 毫粮"，不是无价值）。
@@ -665,30 +759,130 @@ public final class ApiViews {
     return view;
   }
 
+  /**
+   * ★★ <b>M2.7：{@link MarketReadout} → JSON 视图</b>（GUI 与 MCP 共用；逐区逐商品）。
+   *
+   * <p>★ <b>进程内/重启即失</b>由读数对象自己的 {@code unavailable} 标注原样带出；{@code match = null} 不是 0。
+   */
+  private static Map<String, Object> marketReadoutView(MarketReadout readout) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("tick", readout.tick());
+    view.put(
+        "lastSettledDay",
+        readout.lastSettledDay().isPresent() ? readout.lastSettledDay().getAsLong() : null);
+    view.put("priceMode", readout.priceMode().value());
+    view.put("adaptivePricingEnabled", readout.adaptivePricingEnabled());
+    view.put("crossRegionSettlementImmediate", readout.crossRegionSettlementImmediate());
+    List<Map<String, Object>> priceUpdates = new ArrayList<>(readout.priceUpdates().size());
+    for (MarketReport.PriceUpdate update : readout.priceUpdates()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("anchor", update.anchor().toString());
+      item.put("commodity", update.commodity().value());
+      item.put("previousPriceMilli", update.previousPriceMilli());
+      item.put("nextPriceMilli", update.nextPriceMilli());
+      priceUpdates.add(item);
+    }
+    view.put("priceUpdates", priceUpdates);
+    view.put("provenance", readout.provenance());
+    view.put("unavailable", readout.unavailable());
+    List<Map<String, Object>> regions = new ArrayList<>(readout.regions().size());
+    for (MarketReadout.RegionReadout region : readout.regions()) {
+      Map<String, Object> regionView = new LinkedHashMap<>();
+      regionView.put("regionId", region.regionId());
+      regionView.put("anchor", region.anchor().toString());
+      regionView.put("radiusHex", region.radiusHex());
+      regionView.put("numeraire", region.numeraire().value());
+      List<String> members = new ArrayList<>(region.members().size());
+      for (HexCoord member : region.members()) {
+        members.add(member.toString());
+      }
+      regionView.put("members", members);
+      List<Map<String, Object>> commodities = new ArrayList<>(region.commodities().size());
+      for (MarketReadout.CommodityReadout commodity : region.commodities()) {
+        Map<String, Object> commodityView = new LinkedHashMap<>();
+        commodityView.put("commodity", commodity.commodity().value());
+        commodityView.put("referencePriceMilli", commodity.referencePriceMilli());
+        commodityView.put("bidPriceMilli", commodity.bidPriceMilli());
+        commodityView.put("askPriceMilli", commodity.askPriceMilli());
+        commodityView.put("supplyMilli", commodity.supplyMilli());
+        commodityView.put("naturalNeedMilli", commodity.naturalNeedMilli());
+        commodityView.put("naturalNeedWindow", commodity.naturalNeedWindow());
+        commodityView.put("cycleNaturalNeedMilli", commodity.cycleNaturalNeedMilli());
+        commodityView.put("effectiveDemandMilli", commodity.effectiveDemandMilli());
+        commodityView.put("needsButCannotAffordMilli", commodity.needsButCannotAffordMilli());
+        commodityView.put(
+            "needsButCannotAffordHouseholds", commodity.needsButCannotAffordHouseholds());
+        commodityView.put(
+            "match", commodity.match().map(ApiViews::commodityMatchView).orElse(null));
+        commodities.add(commodityView);
+      }
+      regionView.put("commodities", commodities);
+      regions.add(regionView);
+    }
+    view.put("regions", regions);
+    return view;
+  }
+
+  /** 撮合结果读数的 JSON 形（{@code landedPriceMilli} 无成交 ⇒ null；四张原因分布逐档给）。 */
+  private static Map<String, Object> commodityMatchView(MarketReadout.CommodityMatchReadout match) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("tradedMilli", match.tradedMilli());
+    view.put(
+        "landedPriceMilli",
+        match.landedPriceMilli().isPresent() ? match.landedPriceMilli().getAsLong() : null);
+    view.put("freightMilli", match.freightMilli());
+    view.put("lossMilli", match.lossMilli());
+    view.put("unusedCapacityMilli", match.unusedCapacityMilli());
+    view.put("capacityBottleneck", match.capacityBottleneck());
+    view.put("unfilledBuyCounts", reasonCountsView(match.unfilledBuyCounts()));
+    view.put("unfilledSellCounts", reasonCountsView(match.unfilledSellCounts()));
+    view.put("unfilledBuyQuantities", reasonCountsView(match.unfilledBuyQuantities()));
+    view.put("unfilledSellQuantities", reasonCountsView(match.unfilledSellQuantities()));
+    return view;
+  }
+
+  /** 未成交原因分布：键 = 规范字面量（小写下划线），保序（原因档声明序已在读数组件里保序）。 */
+  private static Map<String, Long> reasonCountsView(Map<MarketUnfilledReason, Long> counts) {
+    Map<String, Long> view = new LinkedHashMap<>();
+    for (Map.Entry<MarketUnfilledReason, Long> entry : counts.entrySet()) {
+      view.put(entry.getKey().value(), entry.getValue());
+    }
+    return view;
+  }
+
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =
       "要读本周期 ledger 的毛产/损耗/投入（含留种与损耗，故不能说\"自给率\"而不交代扣没扣）——"
-          + "而 ledger 是当日丢弃的（协调器落完账就扔）⇒ 持久状态里没有这个量。落点：M2 的市场读数组件";
+          + "而 ProductionLedger 是**当日瞬态**（Accumulator 交成 ledger 后由协调器落账即丢），"
+          + "状态里没有周期累计；FlowRow.income/consumed 不是毛产/损耗/投入，不许冒充。"
+          + "落点：将来把 ledger 的周期累计落成一个持久读数组件";
+
+  /** ⑤ 物流缺口在**没有进程内报告**时的具名原因（唯一拼写点）。 */
+  private static final String LOGISTICS_GAP_NO_REPORT =
+      "物流缺口要读 L2 的进程内 MarketReport（逐笔未成交原因）：它不落盘、重启/换进程即失，" + "当前读口没有同 tick 的那份报告 ⇒ 这一项读不到（不是 0）";
 
   /**
    * ⑥ 币种/支付缺口报不出来的原因（唯一拼写点）。
    *
-   * <p>★ <b>M1.1 更新（如实记：老话"货币工具属 M1"已经过期一半）</b>：工具的<b>身份</b>已经落地（见 {@code currencyDefs} / {@code
-   * moneyInstruments} 两栏），但<b>接受规则</b>（谁收哪种工具、按什么条件收）与兑现仍然不存在 ⇒ "付得出去吗"照样判不出来。★ 剩下这一半的落点是 M2
-   * 的订单/参与者面（收付条件）+ M4+（兑现）。
+   * <p>★ <b>M2.7 复评（如实记：M1.1 之后措辞更新过一次，这次再收一半）</b>：工具的<b>身份</b>已经落地（见 {@code currencyDefs} / {@code
+   * moneyInstruments} 两栏），M2.1 的订单里也有 {@code payWith} / {@code receiveWith}
+   * 字段；但<b>接受规则</b>（谁收哪种工具、按什么条件收、多工具如何校验与兑现）仍未实现 —— 本层市场只收 {@code silver-specie} 单一工具（见 {@code
+   * MarketSettlement} 的硬编码）⇒ "付得出去吗"照样判不出来。★ 兑现属 M4+。
    */
   private static final String PAYMENT_INSTRUMENT_GAP =
-      "货币工具的**身份**已由 M1.1 给出（见本视图 currencyDefs / moneyInstruments 两栏），但**接受规则**（谁收哪种工具、"
-          + "按什么条件收）与兑现仍未定义（属 M2 的订单/参与者面与 M4+）⇒ 今天不判「付得出去吗」";
+      "货币工具的**身份**已由 M1.1 给出（见本视图 currencyDefs / moneyInstruments 两栏）、订单也带了 payWith/receiveWith 字段，"
+          + "但**接受规则**（谁收哪种工具、按什么条件收、多工具校验与兑现）仍未实现 —— 本层市场只收 silver-specie 单一工具"
+          + "⇒ 今天不判「付得出去吗」";
 
-  /** 该格的周期天数（同格各产业同步走 ⇒ 取最大；没有产业 ⇒ 1，与行侧口径一致）。 */
-  private static long cycleDaysAt(EconomyData data, HexCoord coord) {
-    long days = 0L;
-    for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
-      days = Math.max(days, data.industries().get(id).cycleDays());
-    }
-    return days == 0L ? 1L : days;
-  }
+  /** ★ M2.7 丙条：{@code cycleNaturalNeedMilli} 的人口快照口径（唯一拼写点）。 */
+  private static final String CYCLE_NATURAL_NEED_CLOCK =
+      "Σ_d dailyRationMilli(pop_d, d)：pop_d = 第 d 天经济结算前的行人口（= 日初人口）；本周期第一天重置为"
+          + "当天那一份，此后逐日累加。它是与「本周期累计未满足需求」同窗口的唯一自然需求分母";
+
+  /** ★ M2.7 丙条：日耗那一栏的窗口（与周期累加器不可并排当同一分母）。 */
+  private static final String GRAIN_DAILY_CONSUMPTION_CLOCK =
+      "最近一次结算日 d 的当天自然口粮需要（逐日覆盖，不是周期累计、也不是周期均值）；"
+          + "人口时点 = 该日结算前的日初人口。不得用它 × 120 与周期量并排比较（丙条：口径不可比）";
 
   /** 千分率的分母（口粮折算用；与 {@code EconomySettlement.MILLI_PER_GRAIN} 同值，此处只服务读口）。 */
   private static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
@@ -1010,6 +1204,8 @@ public final class ApiViews {
     }
     view.put("debtDetails", debtDetails);
     view.put("naturalNeeds", sortedCommodities(row.naturalNeeds()));
+    // ★★ M2.7 丙条：本行**本周期累计自然口粮需要**（毫粮；与自然需求并排，窗口标注见 economyHex 的 clock 两栏）。
+    view.put("cycleNaturalNeedMilli", row.cycleNaturalNeedMilli());
     view.put("effectiveDemand", sortedCommodities(row.effectiveDemand()));
     view.put("flow", flowView(flow));
     return view;

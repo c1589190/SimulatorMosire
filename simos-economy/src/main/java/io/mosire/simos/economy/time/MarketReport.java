@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
+import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,20 +14,22 @@ import java.util.Objects;
  * ★★ <b>一轮区域市场的只读报告</b>（M2.3/M2.4 的读数原料；L3 的逐区读数组件接它）。
  *
  * <p>★★ <b>它不落盘</b>：本层（L2）只保证"信息被产生且不聚合丢失"，把"逐区逐商品供给/需求/成交量/到货价/运费/损耗/ 未成交原因分布/未利用运力"落成读数组件是
- * L3（M2.7）的事。⇒ {@link EconomyDayStepper#lastMarketReport()} 交出的就是这一份；L3 新建读数组件时把它折进去即可，不必回头改撮合。
+ * L3（M2.7）的事。⇒ {@link EconomyDayStepper#lastMarketReport()} 交出的就是这一份；L3 的 {@code MarketReadout}
+ * 把它折进去（读时派生、进程内、重启即失），不必回头改撮合。
  *
  * <p>★★ <b>四类信息一个不少</b>（L3 需要的都在这里，不是"以后再算"）：
  *
  * <ul>
- *   <li>{@link #fills()}：每一笔成交（含区内即时与跨区在途）—— 发货格/收货格/买卖双方/量/单价/运费/ETA/在途批次 id；
- *   <li>{@link #unfilled()}：每一笔未成交剩余与**原因档**（{@link MarketUnfilledReason}；买/卖两侧分开）；
+ *   <li>{@link #fills()}：每一笔成交（含区内即时与跨区在途）—— 发货格/收货格/买卖双方/量/单价/运费/ETA/在途批次 id/逐票预排损耗；
+ *   <li>{@link #unfilled()}：每一笔未成交剩余与**原因档** + **所在格**（{@link MarketUnfilledReason}；买/卖两侧分开）；
  *   <li>{@link #routes()}：每条路线的运力、用量、瓶颈标志 —— ★ "有货、有路、运力不足 ⇒ 城市仍可能缺粮，系统报物流瓶颈"的落点；
  *   <li>{@link #freightPaidMilli()} / {@link #freightUncollectedMilli()} / {@link
  *       #scheduledLossMilli()}： 运费实收、无承运人时未收的运费、按批次损耗率预排的在途损耗（实际损耗在到货日进 ledger）。
  * </ul>
  *
  * <p>★★ <b>跨区结算暂设即时</b>（M2.0 #4 的读数契约标注）：{@link #CROSS_REGION_SETTLEMENT_IMMEDIATE} 恒为 {@code true}
- * —— 货款与运费在**发运日**结清、货在 ETA 之后才到。L3 的读数组件必须原样标注这条简化，不得把"付款日"读成"到货日"。
+ * —— 货款与运费在**发运日**结清、货在 ETA 之后才到。L3 的读数组件必须原样标注这条简化，不得把"付款日"读成"到货日"。 ★ M2.6：{@link #priceMode()} 与
+ * {@link #priceUpdates()} 让读数分清"固定价 / 自适应"。
  *
  * @param day 本轮的世界日
  * @param trigger 本轮为什么开市（例行/关账/低库存追加）
@@ -40,6 +43,8 @@ import java.util.Objects;
  * @param scheduledLossMilli 按批次损耗率预排的在途损耗（毫商品；到货日才真的从在途量里扣）
  * @param immediateFills 区内即时成交笔数
  * @param crossRegionFills 跨区在途成交笔数
+ * @param priceMode ★ M2.6：本轮报价模式（{@code fixed} = 固定价、{@code adaptive} = 自适应）—— 读数必须能区分
+ * @param priceUpdates ★ M2.6：自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒为空表
  */
 public record MarketReport(
     long day,
@@ -52,7 +57,9 @@ public record MarketReport(
     long freightUncollectedMilli,
     long scheduledLossMilli,
     long immediateFills,
-    long crossRegionFills) {
+    long crossRegionFills,
+    PriceMode priceMode,
+    List<PriceUpdate> priceUpdates) {
 
   /** ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。 */
   public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE =
@@ -60,15 +67,29 @@ public record MarketReport(
 
   public MarketReport {
     Objects.requireNonNull(trigger, "trigger");
+    Objects.requireNonNull(priceMode, "priceMode");
     fills = fills == null ? List.of() : List.copyOf(fills);
     unfilled = unfilled == null ? List.of() : List.copyOf(unfilled);
     routes = routes == null ? List.of() : List.copyOf(routes);
+    priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
   }
 
   /** 没有任何市场活动的空报告。 */
   public static MarketReport empty(long day, MarketTrigger trigger, boolean carrierPresent) {
     return new MarketReport(
-        day, trigger, carrierPresent, List.of(), List.of(), List.of(), 0L, 0L, 0L, 0L, 0L);
+        day,
+        trigger,
+        carrierPresent,
+        List.of(),
+        List.of(),
+        List.of(),
+        0L,
+        0L,
+        0L,
+        0L,
+        0L,
+        MarketSettlement.priceMode(),
+        List.of());
   }
 
   /** 未成交原因分布（档位 → 条数；保序 = {@link MarketUnfilledReason} 的声明序）。 */
@@ -81,14 +102,33 @@ public record MarketReport(
   }
 
   /**
+   * ★★ <b>M0.3「物流缺口」的逐格读数</b>（M2.7 复评落点）：该格**买方侧**未成交、且原因属于 {@link
+   * MarketUnfilledReason#logistics()} 的剩余量之和（毫商品）。
+   *
+   * <p>★ 口径：只看买方没买到的量（"需求被运力/路网挡住"）；卖方没卖掉的剩余不是物流缺口。没有市场、没开市、 或报告来自别格 ⇒ 0 ——
+   * 这是"真的没有物流缺口"，不是"读不到"（读不到由调用方的 {@code unavailable} 具名）。
+   */
+  public long logisticsGapMilli(HexCoord hex) {
+    Objects.requireNonNull(hex, "hex");
+    long sum = 0L;
+    for (Unfilled item : unfilled) {
+      if (item.buyerSide() && item.hex().equals(hex) && item.reason().logistics()) {
+        sum += item.quantity();
+      }
+    }
+    return sum;
+  }
+
+  /**
    * ★ 一笔成交。{@code immediate == true} 时 {@code shipmentId} 为空串（区内即时，没有在途批次）； 否则 {@code shipmentId} 是
    * {@code EconomyData.shipments} 里的键。
    *
-   * @param unitPriceMilli 成交单价（毫计价货币 / 商品单位；跨区时 = 卖方区基准价，**不含**运费）
+   * @param unitPriceMilli 成交单价（毫计价货币 / 商品单位；跨区时 = 卖方格参考价，**不含**运费）
    * @param freightPerUnitMilli 单位运费（毫计价货币 / 商品单位；无承运人时为 0）
    * @param goodsPaymentMilli 货款（毫计价货币）
    * @param freightMilli 运费（毫计价货币；无承运人时为 0）
    * @param arrivalTick 到货世界日（区内即时 = 成交日）
+   * @param lossMilli ★ M2.7：本票按路线损耗率**预排**的在途损耗（毫商品；公式与到货日的扣减逐字同源）；区内即时 = 0
    */
   public record Fill(
       HexCoord from,
@@ -103,7 +143,8 @@ public record MarketReport(
       long freightMilli,
       long arrivalTick,
       boolean immediate,
-      String shipmentId) {
+      String shipmentId,
+      long lossMilli) {
 
     public Fill {
       Objects.requireNonNull(from, "from");
@@ -115,18 +156,43 @@ public record MarketReport(
     }
   }
 
-  /** ★ 一笔未成交剩余。{@code buyerSide == true} 读作"买方没买到"，{@code false} 读作"卖方没卖掉"。 */
+  /**
+   * ★ 一笔未成交剩余。{@code buyerSide == true} 读作"买方没买到"，{@code false} 读作"卖方没卖掉"。
+   *
+   * <p>★ M2.7：{@code hex} = 这一单所在的格（买方 = 收货格、卖方 = 发货格）—— 逐区读数需要它把剩余归到区， 不能靠"猜 actor
+   * 在哪"（那会是同一事实的第二处拼写）。
+   */
   public record Unfilled(
       ActorRef actor,
       boolean buyerSide,
       CommodityId commodity,
       long quantity,
-      MarketUnfilledReason reason) {
+      MarketUnfilledReason reason,
+      HexCoord hex) {
 
     public Unfilled {
       Objects.requireNonNull(actor, "actor");
       Objects.requireNonNull(commodity, "commodity");
       Objects.requireNonNull(reason, "reason");
+      Objects.requireNonNull(hex, "hex");
+    }
+  }
+
+  /**
+   * ★★ <b>M2.6 自适应模式的一条改价记录</b>（逐集散节点 × 商品）：{@code nextPriceMilli} 从下一轮起生效。
+   *
+   * <p>★ 它只服务读数与审计（固定模式恒为空表）；价格真值始终在 {@code EconomyData.markets} 里。
+   */
+  public record PriceUpdate(
+      HexCoord anchor, CommodityId commodity, long previousPriceMilli, long nextPriceMilli) {
+
+    public PriceUpdate {
+      Objects.requireNonNull(anchor, "anchor");
+      Objects.requireNonNull(commodity, "commodity");
+      if (previousPriceMilli <= 0L || nextPriceMilli <= 0L) {
+        throw new IllegalArgumentException(
+            "PriceUpdate 的两个价格都必须 > 0: " + previousPriceMilli + " -> " + nextPriceMilli);
+      }
     }
   }
 

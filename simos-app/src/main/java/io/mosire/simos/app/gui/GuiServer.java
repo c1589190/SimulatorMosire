@@ -905,8 +905,7 @@ public final class GuiServer implements AutoCloseable {
       body.put("error", "hex not found");
       return Reply.of(404, body);
     }
-    return Reply.of(
-        200, ApiViews.economyHex(coord, ApiViews.economyData(state), ApiViews.actorData(state)));
+    return Reply.of(200, ApiViews.economyHex(coord, state));
   }
 
   /**

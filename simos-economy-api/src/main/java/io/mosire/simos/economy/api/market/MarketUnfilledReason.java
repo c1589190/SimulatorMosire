@@ -79,6 +79,20 @@ public enum MarketUnfilledReason {
   }
 
   /**
+   * ★★ <b>M0.3 的"物流缺口"这一档的原因集合</b>（M2.7 复评落点）：买方的剩余是因为<b>运不进来</b>，而不是"没有货"或"没钱"—— 四档一起构成 logistic
+   * gap：{@link #LOGISTICS_CAPACITY}（运力不足）、{@link #LOGISTICS_TIME}（到货超时限）、 {@link
+   * #NO_ROUTE}（地形不可通行）、{@link #NO_ADJACENT_SUPPLY}（本区无卖方且没有直接邻接供应区）。
+   *
+   * <p>★ 它的用途是<b>归因分档</b>，不是"把四档合并成一个数"：报表里四档仍各自可见，本方法只回答"这一条算不算物流那一类"。
+   */
+  public boolean logistics() {
+    return this == LOGISTICS_CAPACITY
+        || this == LOGISTICS_TIME
+        || this == NO_ROUTE
+        || this == NO_ADJACENT_SUPPLY;
+  }
+
+  /**
    * 按规范字面量解析（<b>大小写敏感</b>，不归一：归一即猜）。
    *
    * @throws IllegalArgumentException 空白、或不在词表里（消息列出全部合法值）

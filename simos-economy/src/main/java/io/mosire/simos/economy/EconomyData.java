@@ -96,7 +96,8 @@ import java.util.Set;
  *   <li><b>键是格而不是市场 id</b>：本批的市场就是"某格的现货池"（同格供需直接撮合，见 {@code MarketSettlement}）， 多一个 {@code
  *       MarketId} 只会多一处可以漂开的身份（{@code MarketId} 那个契约留给"跨格市场节点"的后续增量）；
  *   <li>★ <b>它不含任何数量</b>：价格是数据、供需是每周期现算的（{@code MarketSettlement} 从家户账的会话工作副本读） ——
- *       市场表里没有"本期成交量"这类会过期的读数（读数在当天的 {@code ProductionLedger} 里）。
+ *       市场表里没有"本期成交量"这类会过期的读数（读数在当天的 {@code ProductionLedger} 里；★ M2.7 的逐区读数是 {@code MarketReadout}
+ *       在**读时**用它 + 进程内 {@code MarketReport} 现算的，同样不落进本切片）。
  * </ol>
  *
  * <p>★★ **{@code shipments} 是第 10 个组件**（M2.4）：键 = {@link ShipmentId}，值 = {@link

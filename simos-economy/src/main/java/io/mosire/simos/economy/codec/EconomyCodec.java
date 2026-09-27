@@ -57,6 +57,11 @@ import java.util.function.Function;
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
  * EconomyChangeSet#between(EconomyData, EconomyData)}。
+ *
+ * <p>★★ <b>M2.7 的类结构增量与旧档兼容</b>：{@code ClassRow.cycleNaturalNeedMilli} 是追加在记录末尾的原始 {@code long} ——
+ * Jackson 的记录绑定对<b>缺失的原始组件</b>取默认值 {@code 0}（本批实测过：把该键从 JSON 里删掉仍能读出 0，不抛），这就是"旧档缺该键 ⇒ 0 =
+ * 还没开始累计"的兜底；载荷边缘的 {@code EconomyPayloads.classRow} 另有一条 {@code optionalLong(..., 0L)}
+ * 的同款兜底。两条都<b>不新增迁移代码</b>：缺键的方向本来就是 fail-closed 的 0。
  */
 public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
 

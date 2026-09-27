@@ -189,6 +189,8 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     ActorData books = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
+      // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
+      MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
       // ★★ 落账：当天的条目只落一次（ledger 是**一天一本**的）；落出来的新账户也要进写集。
       List<ActorEntry> entries = OwnershipBooks.fold(ledger);
       if (!entries.isEmpty()) {
