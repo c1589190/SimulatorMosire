@@ -15,6 +15,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -27,6 +28,7 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -416,8 +418,12 @@ public final class ApiViews {
     //   ⇒ 本视图的商品读数从**该格的全部账户**求和，逐值等于 {@link #economyOwnership} 的 {@code actorGoodsTotal}。
     //   ★ 行侧那一栏（旧版的 Σ{@code row.goods()}）**结构性消失** —— 不是"读不到"，是"那里已经没有这本账"。
     Map<String, Long> goods = new TreeMap<>();
+    // ★★ H4：**货币与商品同住一本 {@code GoodsAccount}**（裁定 M2：两个独立身份、两张余额表）⇒ 货币读数走
+    //   **同一趟**遍历（两次遍历会在"账本中途变化"时给出两个不同世界的读数）。
+    Map<String, Long> actorMoneyTotal = new TreeMap<>();
     for (GoodsAccount account : accountsAt(actors, coord)) {
       mergeInto(goods, account.balances());
+      mergeMoneyInto(actorMoneyTotal, account.money());
     }
     long grainStock = goods.getOrDefault(EconomyVocabulary.GRAIN_COMMODITY_ID, 0L);
     List<Map<String, Object>> industries = new ArrayList<>();
@@ -457,6 +463,13 @@ public final class ApiViews {
     view.put("grainStock", grainStock);
     view.put("grainDailyConsumption", grainDailyConsumption);
     view.put("money", money);
+    // ★★ H4：**actor 侧的货币合计**（逐币种）—— 与行侧那个恒 0 的 {@code money} 并排（同 {@code goods} 与
+    //   {@code rowGoodsTotal} 的处置）：行侧那一栏读的是 {@code ClassRow.money}（结构性的 0），
+    //   真值在 actor 侧的家户账上 ⇒ 两个数一起给，读的人当场看得见"钱记在哪本账上"。
+    view.put("actorMoneyTotal", actorMoneyTotal);
+    // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
+    //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
+    view.put("market", marketView(data.markets().get(coord)));
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
     view.put("classes", classes);
@@ -470,17 +483,22 @@ public final class ApiViews {
    * <pre>
    * {"q":0,"r":0,
    *  "accounts":[{"actor":"HOUSEHOLD:0_0:rural|poor_peasant"…→ 实为 ActorRef.toString()（{@code <KIND>:<id>}）,
-   *               "kind":"HOUSEHOLD","goods":{"grain":123,"cloth":4}}],
-   *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 GoodsAccount 的合计
-   *  "rowGoodsTotal":{"grain":456,"cloth":0}}     // 行侧：= {@link #economyHex} 里那份 Σ 行库存
+   *               "kind":"HOUSEHOLD","goods":{"grain":123,"cloth":4},"money":{"silver":12}}],
+   *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 GoodsAccount 的**商品**合计
+   *  "actorMoneyTotal":{"silver":12},          // ★ H4：actor 侧：同一批账的**货币**合计（逐币种）
+   *  "rowGoodsTotal":{"grain":456,"cloth":0}}     // 行侧：= {@link #economyHex} 里那份 Σ 行库存（结构性的空表）
    * </pre>
    *
    * <p>★★ **为什么两个 total 必须一起给**（这是本视图存在的理由）：行侧的 {@code ClassRow.goods} 与 actor 侧的 {@code
    * GoodsAccount} 是**两本不同性质的账**（前者是"这批人当期可用/持有"的视图，后者是本切片里商品余额的唯一真源），
    * 任何一方被单独读成"全系统有多少"都是一次口径错。并排发出来 ⇒ 读的人当场看得见两者差多少，而不是靠注释提醒。
    *
+   * <p>★★ <b>H4：货币在同一个 {@code accounts} 里、同一个 actor 下</b>（{@code money} 与 {@code goods} 并列）—— 裁定 M2
+   * 说 {@code CurrencyId} 与 {@code CommodityId} 是**两个独立身份**，而它们**住同一本账**：读口因此
+   * 既分得开（两张表、逐币种），又不会让人以为有两本账。★ {@code actorMoneyTotal} 是**逐币种**的 （"跨币种求和"是没有意义的运算）。
+   *
    * <p>★ **本轮（H0）家户 actor 还没播种**（H1 的事）⇒ {@code accounts} 是空表、{@code actorGoodsTotal} 全 0 —— 那是
-   * **合法且正确**的状态，不是"读口坏了"。★ 排序：{@code accounts} 按 {@code actor} 规范串字典序、两个 total 的商品键字典序 （可复现；照
+   * **合法且正确**的状态，不是"读口坏了"。★ 排序：{@code accounts} 按 {@code actor} 规范串字典序、两个 total 的商品/币种键字典序 （可复现；照
    * {@link #economyHex} 的口径）。
    *
    * <p>★ {@code actor} 走 {@link ActorRef#toString()}（{@code <KIND>:<id>}）—— 本层**不自己拼 id**（家户 id
@@ -492,13 +510,17 @@ public final class ApiViews {
     List<GoodsAccount> atHex = accountsAt(actors, coord);
     List<Map<String, Object>> accounts = new ArrayList<>(atHex.size());
     Map<String, Long> actorGoodsTotal = new TreeMap<>();
+    Map<String, Long> actorMoneyTotal = new TreeMap<>();
     for (GoodsAccount account : atHex) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("actor", account.key().owner().toString());
       entry.put("kind", account.key().owner().kind().name());
       entry.put("goods", sortedCommodities(account.balances()));
+      // ★★ H4：同一个 actor 的**货币账**（逐币种；缺币种 = 这个家户没有那种钱）。
+      entry.put("money", sortedCurrencies(account.money()));
       accounts.add(entry);
       mergeInto(actorGoodsTotal, account.balances());
+      mergeMoneyInto(actorMoneyTotal, account.money());
     }
     // ★★ H1：行侧**没有商品了**（{@code ClassRow} 无 goods，裁定 D3-C/K1）⇒ 这一栏是**结构性的空表**
     //   （不是"读不到"，是"那里已经没有这本账"）。它照旧发出来，正是为了让"一本账"这条判据**并排可见**：
@@ -506,6 +528,7 @@ public final class ApiViews {
     Map<String, Long> rowGoodsTotal = new TreeMap<>();
     view.put("accounts", accounts);
     view.put("actorGoodsTotal", actorGoodsTotal);
+    view.put("actorMoneyTotal", actorMoneyTotal);
     view.put("rowGoodsTotal", rowGoodsTotal);
     return view;
   }
@@ -633,6 +656,9 @@ public final class ApiViews {
     //   {@link OwnershipBooks#accountKeyOf}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
     GoodsAccount account = actors.accounts().get(OwnershipBooks.accountKeyOf(key));
     view.put("goods", sortedCommodities(account == null ? Map.of() : account.balances()));
+    // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code GoodsAccount}）——
+    //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
+    view.put("actorMoney", sortedCurrencies(account == null ? Map.of() : account.money()));
     view.put("money", row.money());
     List<String> debts = new ArrayList<>(row.debts().size());
     for (DebtId debt : row.debts()) {
@@ -689,6 +715,43 @@ public final class ApiViews {
     for (Map.Entry<CommodityId, Long> entry : source.entrySet()) {
       target.merge(entry.getKey().value(), entry.getValue(), Long::sum);
     }
+  }
+
+  /**
+   * 货币表按**币种名**字典序（可复现）—— ★ 与 {@link #sortedCommodities} 同一个形制，但**键的类型不同**： {@code CurrencyId} 与
+   * {@code CommodityId} 是两个独立身份（裁定 M2）⇒ 两张表**不合并**（"银"作为货币与作为商品 是两笔账）。
+   */
+  private static Map<String, Long> sortedCurrencies(Map<CurrencyId, Long> source) {
+    Map<String, Long> out = new TreeMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : source.entrySet()) {
+      out.put(entry.getKey().value(), entry.getValue());
+    }
+    return out;
+  }
+
+  /** 把一个货币表并入目标（**逐币种**：跨币种求和无意义 ⇒ 键是币种名，绝不加总成一个数）。 */
+  private static void mergeMoneyInto(Map<String, Long> target, Map<CurrencyId, Long> source) {
+    for (Map.Entry<CurrencyId, Long> entry : source.entrySet()) {
+      target.merge(entry.getKey().value(), entry.getValue(), Long::sum);
+    }
+  }
+
+  /**
+   * ★★ <b>一格市场的读侧形</b>（H4；{@link #economyHex} 用）：{@code {numeraire, prices}} —— {@code {"silver",
+   * {"grain":1,"cloth":5,…}}}。
+   *
+   * <p>★★ <b>只读、不重算</b>（AGENT.md §8.3：视图装配只在 {@code ApiViews}，且**没有第二个价表拼写点**）： 计价货币与价格都直接取自 {@link
+   * Market}（它们是 economy 侧从创世载荷读进来的**数据**，GM 可调，信条十二）。 ★ 键序走 {@link #sortedCommodities}（字典序）⇒
+   * 响应字节是内容的纯函数。 ★ <b>该格没有市场 ⇒ {@code null}</b>：那是**合法状态**（缺格的格没有市场），不是缺数据。
+   */
+  private static Map<String, Object> marketView(Market market) {
+    if (market == null) {
+      return null;
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("numeraire", market.numeraire().value());
+    view.put("prices", sortedCommodities(market.prices()));
+    return view;
   }
 
   /**

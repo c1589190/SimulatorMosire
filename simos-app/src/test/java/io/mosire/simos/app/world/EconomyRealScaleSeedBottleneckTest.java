@@ -104,9 +104,10 @@ class EconomyRealScaleSeedBottleneckTest {
    * <p>★ 与 {@link HouseholdSeeder#books} 同一条路（id 由 {@code HouseholdActors} 拼、空账也建）⇒ 与真档同形。
    */
   private static ActorData realScaleBooks() {
-    return HouseholdSeeder.books(
-        EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(realScalePlan(), 0L), at -> "plains")
-            .householdStocks());
+    // ★★ H4：货币禀赋与开缸库存同源（同一份 plan）—— 账本要带上钱，否则与真播种路径不同形。
+    EconomySeeder.Seed seeding =
+        EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(realScalePlan(), 0L), at -> "plains");
+    return HouseholdSeeder.books(seeding.householdStocks(), seeding.householdMoney());
   }
 
   private static SettlementPlan realScalePlan() {
@@ -409,7 +410,9 @@ class EconomyRealScaleSeedBottleneckTest {
   private static ActorData withEmptyJars(ActorData books) {
     LinkedHashMap<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
     for (Map.Entry<GoodsAccountKey, GoodsAccount> entry : books.accounts().entrySet()) {
-      accounts.put(entry.getKey(), new GoodsAccount(entry.getKey(), Map.of()));
+      // ★★ H4：清空的是**商品**那半 —— 货币那半原样带过（"冬春把缸吃空"不是"把钱也烧了"）。
+      accounts.put(
+          entry.getKey(), new GoodsAccount(entry.getKey(), Map.of(), entry.getValue().money()));
     }
     return books.withAccounts(accounts);
   }

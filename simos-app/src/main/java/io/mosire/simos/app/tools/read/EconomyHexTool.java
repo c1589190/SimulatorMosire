@@ -58,8 +58,10 @@ public final class EconomyHexTool implements AgentTool {
 
   @Override
   public String description() {
-    return "查某格的经济读数：人口 / 有效劳动 / 土地（千分亩）/ 粮库存（actor 侧账本合计）/ 货币 / 负债 / 各产业制度与周期进度"
-        + "（按产业 id、槽位 id 字典序发；未激活或该格无产业 ⇒ activated=false、industries 为空）";
+    return "查某格的经济读数：人口 / 有效劳动 / 土地（千分亩）/ 粮库存（actor 侧账本合计）/ 货币"
+        + "（actorMoneyTotal，逐币种）/ 本格市场（计价货币 + 商品价格表）/ 负债 / 各产业制度与周期进度"
+        + "（按产业 id、槽位 id 字典序发；未激活或该格无产业 ⇒ activated=false、industries 为空；"
+        + "该格没有市场 ⇒ market=null，那是合法状态）";
   }
 
   @Override

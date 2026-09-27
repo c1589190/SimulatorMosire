@@ -10,6 +10,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,8 +45,13 @@ import java.util.Objects;
  *       同一份库存表，故两条路的 id / 键 / 空账口径逐字相同）。
  * </ol>
  *
- * <p>★ <b>不写 holdings</b>：产权表（{@code AssetHolding} / {@code AssetClassKey}）已按裁定 S3 整块退役 ⇒
- * 本切片里商品库存（{@code GoodsAccount}）是唯一的账（{@code AssetKind} 仍在，它是产业产能的键）。
+ * <p>★ <b>不写 holdings</b>：产权表（{@code AssetHolding} / {@code AssetClassKey}）已按裁定 S3 整块退役 ⇒ 本切片里家户的
+ * {@code GoodsAccount} 是唯一的账（★ H4 起它是**两张余额表**：商品 + 货币，裁定 M2"两个独立身份"； {@code AssetKind}
+ * 仍在，它是产业产能的键）。
+ *
+ * <p>★★ <b>H4：创世货币禀赋也在这里播</b>——{@code goods} 那条记录多一个 {@code money} 键（见 {@link #goodsNode}）， 值来自
+ * {@link EconomySeeder.Seed#householdMoney()}（每人 1.2 个周期的口粮等价，见 {@code
+ * EconomySeeder.genesisMoneyMilliPerCapita}）。★ 它是**初始条件、不是发行**（{@code MoneyAuthority} 无实现者）。
  *
  * <p>★ <b>键序是内容的纯函数</b>：逐格按 {@code (q,r)} 字典序、格内按 {@code (居住类型, 阶层)} 字典序 —— 同一份库存表两次调用逐字段产出同一份载荷 /
  * 同一个状态（可复现、可写进字面量断言）。
@@ -62,7 +68,8 @@ public final class HouseholdSeeder {
   private HouseholdSeeder() {}
 
   /**
-   * ★★ <b>{@code actor.Seed} 的载荷</b>：为库存表里的每个家户建一个 actor + 一本账（{@code balances} 可以全 0）。
+   * ★★ <b>{@code actor.Seed} 的载荷</b>：为库存表里的每个家户建一个 actor + 一本账（{@code balances} 可以全 0）， 外加 H4
+   * 的**创世货币禀赋**（{@code money}，同样可以全 0）。
    *
    * <p>载荷形状见 {@code ActorPayloads}（本类**只组装**那个形状，不复述它的解析规则）：
    *
@@ -71,22 +78,33 @@ public final class HouseholdSeeder {
    *   {"q":0,"r":0,
    *    "actors":[{"kind":"HOUSEHOLD","id":"0_0:rural:poor_peasant","label":"农村 贫农 家户"}, …],
    *    "goods":[{"owner":{"kind":"HOUSEHOLD","id":"0_0:rural:poor_peasant"},
-   *              "location":{"q":0,"r":0},"balances":{"grain":2241000,"fiber":…}}, …]}]}
+   *              "location":{"q":0,"r":0},"balances":{"grain":2241000,"fiber":…},
+   *              "money":{"silver":12}}, …]}]}
    * }</pre>
    *
    * <p>★★ <b>{@code goods} 与 {@code actors} 逐条对齐</b>：一本账的 owner 必须<b>是已声明的主体</b>（{@code
    * ActorPayloads} 的"悬空 owner ⇒ 拒"），故两者由同一次遍历产出 —— 少写一条就是"账没有主人"，多写一条就是"主体凭空多出来"。
    *
+   * <p>★★ <b>H4：钱与货在同一本账里</b>（同一本 {@code GoodsAccount} 的两个余额表）：商品余额来自 {@link
+   * EconomySeeder.Seed#householdStocks()}、货币余额来自 {@link EconomySeeder.Seed#householdMoney()} ——
+   * 两条都出自 **同一次** {@code EconomySeeder.plan}（"一次算出、同一份喂两条命令"）。★ 货币的出厂值与依据见 {@code
+   * EconomySeeder.genesisMoneyMilliPerCapita}（每人 1.2 个周期的口粮等价，初始条件而非发行）。
+   *
    * @param mapId 本世界的 map 称谓（非空白；进 {@code ActorMeta}）
    * @param householdStocks 逐家户的开缸库存（键 = 家户身份；值可以为空表 = 一本空账）；不得为 null
+   * @param householdMoney 逐家户的创世货币（键 = 家户身份；值可以为空表 = 一文不名）；不得为 null ★ 键集应与 {@code householdStocks}
+   *     一致（人口 0 的家户 ⇒ 一本空钱包），由 {@code EconomySeeder} 保证
    * @throws IllegalArgumentException {@code mapId} 为空白
    */
   public static String payload(
-      String mapId, Map<CohortKey, Map<CommodityId, Long>> householdStocks) {
+      String mapId,
+      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
     if (mapId == null || mapId.isBlank()) {
       throw new IllegalArgumentException("mapId 不得为空白: " + mapId);
     }
     Objects.requireNonNull(householdStocks, "householdStocks");
+    Objects.requireNonNull(householdMoney, "householdMoney");
     List<Map<String, Object>> entries = new ArrayList<>();
     for (Map.Entry<HexCoord, List<CohortKey>> atHex : byHex(householdStocks).entrySet()) {
       HexCoord hex = atHex.getKey();
@@ -95,7 +113,12 @@ public final class HouseholdSeeder {
       for (CohortKey cohort : atHex.getValue()) {
         ActorRef actor = HouseholdActors.of(cohort);
         actors.add(actorNode(actor, labelOf(cohort)));
-        goods.add(goodsNode(actor, hex, householdStocks.getOrDefault(cohort, Map.of())));
+        goods.add(
+            goodsNode(
+                actor,
+                hex,
+                householdStocks.getOrDefault(cohort, Map.of()),
+                householdMoney.getOrDefault(cohort, Map.of())));
       }
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
@@ -119,11 +142,17 @@ public final class HouseholdSeeder {
    * ActorData.empty().withMeta(...).withActors(...).withAccounts(...)} 自己拼（{@code ActorData} 是三件：
    * meta / actors / accounts）。
    *
-   * <p>★★ 与 {@link #payload(String, Map)} <b>读的是同一份库存表、同一套 id</b>（{@link HouseholdActors}）⇒
-   * "命令播出来的世界"与"夹具手搭的世界"在这两张表上逐字段同形。
+   * <p>★★ 与 {@link #payload(String, Map, Map)} <b>读的是同一份库存表、同一份货币表、同一套 id</b>（{@link
+   * HouseholdActors}）⇒ "命令播出来的世界"与"夹具手搭的世界"在这两张表上逐字段同形。
+   *
+   * <p>★★ <b>H4：一本账 = 货 + 钱</b>（{@code GoodsAccount} 的两个余额表）：手搭的世界同样要带上创世货币禀赋，
+   * 否则"手搭世界"与"真播种世界"会在钱上漂开 —— 而那正是本仓最忌的"同一事实两处拼写点"。
    */
-  public static ActorData books(Map<CohortKey, Map<CommodityId, Long>> householdStocks) {
+  public static ActorData books(
+      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
     Objects.requireNonNull(householdStocks, "householdStocks");
+    Objects.requireNonNull(householdMoney, "householdMoney");
     Map<ActorRef, Actor> actors = new LinkedHashMap<>();
     Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, List<CohortKey>> atHex : byHex(householdStocks).entrySet()) {
@@ -131,11 +160,13 @@ public final class HouseholdSeeder {
         ActorRef actor = HouseholdActors.of(cohort);
         actors.put(actor, new Actor(actor, labelOf(cohort)));
         // ★ 账本**按绝对值**建（含空账）：0 余额保留是本仓既定口径（读口因此读得到"这个家户在这一格有一本账"）。
+        GoodsAccountKey accountKey = new GoodsAccountKey(actor, atHex.getKey());
         accounts.put(
-            new GoodsAccountKey(actor, atHex.getKey()),
+            accountKey,
             new GoodsAccount(
-                new GoodsAccountKey(actor, atHex.getKey()),
-                householdStocks.getOrDefault(cohort, Map.of())));
+                accountKey,
+                householdStocks.getOrDefault(cohort, Map.of()),
+                householdMoney.getOrDefault(cohort, Map.of())));
       }
     }
     return ActorData.empty().withActors(actors).withAccounts(accounts);
@@ -181,13 +212,20 @@ public final class HouseholdSeeder {
   }
 
   /**
-   * 一本账：{@code {owner, location, balances}}。
+   * 一本账：{@code {owner, location, balances, money}}。
    *
    * <p>★ {@code location} 是 {@code {q,r}} 对象（载荷形状），而 {@code balances} 的键是 {@link
    * CommodityId#toString()} 的产物 —— ★ <b>本类不复述那个格式</b>（键序沿用库存表的插入序：粮在前）。
+   *
+   * <p>★★ <b>H4：{@code money} 与 {@code balances} 并列在同一本账里</b>（{@code GoodsAccount} 的两个余额表）—— 键是
+   * {@link CurrencyId#value()}（币种名，例如 {@code silver}），值是**最小币值**。★ <b>钱不是商品</b>（裁定 M2：{@code
+   * CurrencyId} 与 {@code CommodityId} 各守各的余额与守恒）⇒ 它是**同一条 {@code goods} 记录里的另一个键**， 不是 {@code
+   * balances} 里的第六个商品。
+   *
+   * <p>★ <b>键序沿用表本身的插入序</b>（{@code EconomySeeder.genesisMoney} 只发本格计价货币那一种）⇒ 同一份货币表 两次调用产出同一份载荷。
    */
   private static Map<String, Object> goodsNode(
-      ActorRef owner, HexCoord at, Map<CommodityId, Long> balances) {
+      ActorRef owner, HexCoord at, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
     Map<String, Object> node = new LinkedHashMap<>();
     Map<String, Object> ref = new LinkedHashMap<>();
     ref.put("kind", owner.kind().name());
@@ -202,6 +240,11 @@ public final class HouseholdSeeder {
       table.put(entry.getKey().toString(), entry.getValue());
     }
     node.put("balances", table);
+    Map<String, Object> wallet = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : money.entrySet()) {
+      wallet.put(entry.getKey().value(), entry.getValue());
+    }
+    node.put("money", wallet);
     return node;
   }
 }

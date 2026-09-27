@@ -9,6 +9,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -64,6 +65,10 @@ import java.util.Optional;
  * ② 生理压力：读**当天**的发生额（需求与实得）⇒ 逐批次 stressAfter
  * ③ 每 30 天：月度结算（出生/死亡）⇒ 改社会侧的 count，并把同一份账回写经济侧（行人口/配额/流水）
  * </pre>
+ *
+ * <p>★★ <b>H4：两份副本（商品 + 货币）按同一顺序收尾</b>：<b>载入</b>（{@link OwnershipBooks#loadHouseholdGoods} / {@link
+ * OwnershipBooks#loadHouseholdMoney}）→ step（两者都由 {@code EconomyDayStepper} 就地更新）→ 条目落账 （{@link
+ * OwnershipBooks#apply}）→ **两份副本按绝对值落回**（先商品、后货币；顺序不能反，因为它们写的是同一本 {@code GoodsAccount} 的两个余额表）。
  *
  * <p>★★ **它是"人口守恒"的落点**：出生与死亡在这一处算出来、在两侧各落一次账（社会侧改 {@code count}、 经济侧改行人口与 {@code
  * FlowRow.births/deaths}）⇒ {@code Σ新人口 == Σ旧人口 + 出生 − 死亡} 逐值可核。
@@ -153,7 +158,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     //   ★ 载入不出来 ⇒ {@link OwnershipBooks#loadHouseholdGoods} 当场抛（真档应为"每格两组四行"一个不少）。
     Map<CohortKey, Map<CommodityId, Long>> householdGoods =
         OwnershipBooks.loadHouseholdGoods(economy, actor);
-    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods);
+    // ★★ H4（裁定 K14）：**货币账的会话工作副本** —— 与商品副本逐字同形、同一生命周期（同一本
+    //   {@code GoodsAccount} 的第二个余额表）：同格市场池按它算购买力，工钱/地租的货币腿也写在它上面。
+    //   ★ 它同样**不进 EconomyData、不进变更集、不跨 revision**；★ 载入不出来同样当场抛。
+    Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
+        OwnershipBooks.loadHouseholdMoney(economy, actor);
+    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods, householdMoney);
     SocialData currentSocial = social;
     ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
@@ -171,6 +181,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       //   日耗 / 投入 / 同格取材只写副本（它们不是产权条目），而关系实付既进条目、也已计进副本
       //   ⇒ 这一步是它们唯一共同的落点。★ 副本是**活的**（step 就地更新）⇒ 每天重新读访问器，不缓存引用。
       currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
+      // ★★ H4：货币账紧跟着按绝对值落回（同一本账的另一个余额表；顺序不能反，见
+      //   {@link OwnershipBooks#landHouseholdMoney}）。
+      currentBooks = OwnershipBooks.landHouseholdMoney(currentBooks, stepper.householdMoney());
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
       currentSocial = applyDailyStress(stepper.data(), currentSocial, stepper.flows(), unmetBefore);
       // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
@@ -182,6 +195,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
           //   ★ 放在月度回写之后、且**在条目落账之后**：家户账以副本的绝对值收尾（顺序反了会把条目加两遍）。
           currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
+          // ★★ H4：货币副本同样在**同一个月度边界**重新对齐（它与商品副本同生命周期 ⇒ 一起收尾）。
+          currentBooks = OwnershipBooks.landHouseholdMoney(currentBooks, stepper.householdMoney());
         }
       }
     }

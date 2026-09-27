@@ -1068,7 +1068,10 @@ class WorldgenInitializeToolTest {
       java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgersOut) {
     Map<CohortKey, Map<CommodityId, Long>> householdGoods =
         OwnershipBooks.loadHouseholdGoods(base, books);
-    EconomyDayStepper stepper = new EconomyDayStepper(base, householdGoods);
+    // ★★ H4（裁定 K14）：货币账的会话副本与商品副本同形、同生命周期（同一本 GoodsAccount 的第二个余额表）。
+    Map<CohortKey, Map<io.mosire.simos.economy.api.id.CurrencyId, Long>> householdMoney =
+        OwnershipBooks.loadHouseholdMoney(base, books);
+    EconomyDayStepper stepper = new EconomyDayStepper(base, householdGoods, householdMoney);
     ActorData current = books;
     for (long day = 1L; day <= days; day++) {
       io.mosire.simos.economy.time.ProductionLedger ledger = stepper.step(day);
@@ -1077,6 +1080,8 @@ class WorldgenInitializeToolTest {
       }
       current = OwnershipBooks.apply(current, OwnershipBooks.fold(ledger));
       current = OwnershipBooks.landHouseholdGoods(current, stepper.householdGoods());
+      // ★ 顺序不能反：货币那半紧跟商品之后（写的是同一本账的另一个余额表）。
+      current = OwnershipBooks.landHouseholdMoney(current, stepper.householdMoney());
     }
     return new Advance(stepper.finish(), current);
   }

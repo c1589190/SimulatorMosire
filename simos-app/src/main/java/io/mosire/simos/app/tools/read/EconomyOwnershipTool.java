@@ -65,8 +65,9 @@ public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
 
   @Override
   public String description() {
-    return "查某格的产权读数：actor 侧每本库存账（谁在这格持有什么）+ actor 侧合计 + **行侧家户库存合计**"
-        + "（两个合计并排 ⇒ 不会把其中一本账读成「全系统」；本轮家户 actor 尚未播种 ⇒ accounts 为空表）";
+    return "查某格的产权读数：actor 侧每本账（谁在这格持有什么：goods + money）+ actor 侧商品合计 +"
+        + " **actor 侧货币合计（actorMoneyTotal，逐币种）** + **行侧家户库存合计**"
+        + "（两个合计并排 ⇒ 不会把其中一本账读成「全系统」；钱与货同住一本 GoodsAccount，裁定 M2）";
   }
 
   @Override

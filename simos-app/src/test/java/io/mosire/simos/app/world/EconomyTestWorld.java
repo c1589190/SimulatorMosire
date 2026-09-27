@@ -11,6 +11,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -25,6 +26,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
@@ -159,7 +161,7 @@ public final class EconomyTestWorld {
    * hex)}、空账也建（人口 0 的那一组）。
    */
   public static ActorData books() {
-    ActorData books = HouseholdSeeder.books(openingStocks());
+    ActorData books = HouseholdSeeder.books(openingStocks(), openingMoney());
     return books.withMeta(Optional.of(new ActorMeta(MAP_ID, 0L, HouseholdSeeder.RULES_VERSION)));
   }
 
@@ -170,8 +172,20 @@ public final class EconomyTestWorld {
    */
   public static Map<CohortKey, Map<CommodityId, Long>> openingStocks() {
     Map<CohortKey, Map<CommodityId, Long>> stocks = new LinkedHashMap<>();
-    data(stocks);
+    data(stocks, new LinkedHashMap<>());
     return stocks;
+  }
+
+  /**
+   * ★★ <b>H4：逐家户的创世货币禀赋</b>（毫银）—— 与 {@link #openingStocks()} 由**同一条构造**产出 （人口 → 口粮 →
+   * 钱），口径照真播种器：{@link EconomySeeder#genesisMoney(long)}（唯一拼写点）。
+   *
+   * <p>★ 本夹具不另拍一个数：改口径时它与真档**一起**变（"手搭的世界"与"命令播出来的世界"在钱上也不许漂）。
+   */
+  public static Map<CohortKey, Map<CurrencyId, Long>> openingMoney() {
+    Map<CohortKey, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
+    data(new LinkedHashMap<>(), money);
+    return money;
   }
 
   /**
@@ -189,7 +203,7 @@ public final class EconomyTestWorld {
 
   /** 五格的经济状态（已激活；{@code lastClosedCycle} 空 = 还没关过账）。 */
   public static EconomyData data() {
-    return data(new LinkedHashMap<>());
+    return data(new LinkedHashMap<>(), new LinkedHashMap<>());
   }
 
   /**
@@ -197,7 +211,8 @@ public final class EconomyTestWorld {
    *
    * <p>★ 只有一处构造：{@link #data()} 给一张丢弃的表、{@link #openingStocks()} 收下它 ⇒ 两条路不可能漂开。
    */
-  private static EconomyData data(Map<CohortKey, Map<CommodityId, Long>> stocks) {
+  private static EconomyData data(
+      Map<CohortKey, Map<CommodityId, Long>> stocks, Map<CohortKey, Map<CurrencyId, Long>> money) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
@@ -288,6 +303,11 @@ public final class EconomyTestWorld {
     EconomyMeta meta =
         new EconomyMeta(
             MAP_ID, 0L, OptionalLong.empty(), EconomySeeder.RULES_VERSION, Optional.empty());
+    // ★★ H4：**创世货币禀赋**（毫银）—— 与行由**同一次构造**产出（人口 → 钱），口径照真播种器
+    //   （{@link EconomySeeder#genesisMoney(long)} 是唯一拼写点）；★ 空账（人口 0）⇒ 空钱包。
+    for (Map.Entry<CohortKey, ClassRow> row : classes.entrySet()) {
+      money.put(row.getKey(), EconomySeeder.genesisMoney(row.getValue().population()));
+    }
     return new EconomyData(
         Optional.of(meta),
         industries,
@@ -300,7 +320,22 @@ public final class EconomyTestWorld {
         //   本夹具按**每个产业自己的 regime** 推默认关系（{@link RegimeRelations#defaultRelation}），
         //   与真播种器载荷走的是**同一条推导**（{@code EconomyPayloads.relation}）⇒ 夹具与真档不漂。
         //   ★ 产出自此不再写进阶层行：行里的实物只经"cohort 入账"回来（R5 ③）。
-        relations(industries));
+        relations(industries),
+        // ★★ H4：第 9 个组件（市场表）—— 本夹具**逐格给一个市场**（与真播种器的"每格一个"同口径），
+        //   计价货币与价表取真装载器的出厂值 {@link EconomySeeder#MARKET_FACTORY}（唯一拼写点）。
+        markets(classes));
+  }
+
+  /**
+   * ★★ <b>H4：逐格市场表</b>（{@code EconomyData.markets} 的第 9 个组件）：本夹具的**每一格**一个市场， 值取真播种器的出厂市场（{@link
+   * EconomySeeder#MARKET_FACTORY}）—— 夹具**不另拍价表**， 否则"夹具里的价"与"真档的价"会在两次改动之间静默漂开。
+   */
+  private static Map<HexCoord, Market> markets(Map<CohortKey, ClassRow> classes) {
+    Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    for (CohortKey key : classes.keySet()) {
+      markets.putIfAbsent(key.hex(), EconomySeeder.MARKET_FACTORY);
+    }
+    return markets;
   }
 
   /**

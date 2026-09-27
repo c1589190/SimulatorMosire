@@ -134,10 +134,10 @@ class EconomyRealScaleClothTest {
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
     // ★ H1：家户账本由**同一份 plan** 的开缸库存建（真路径里这是同批的第二条命令 actor.Seed）。
-    ActorData books =
-        HouseholdSeeder.books(
-            EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains")
-                .householdStocks());
+    EconomySeeder.Seed seeding =
+        EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains");
+    // ★★ H4：账本 = 商品 + 货币（两者同源，都出自这一份 plan）。
+    ActorData books = HouseholdSeeder.books(seeding.householdStocks(), seeding.householdMoney());
     return new Seeded(economy, books);
   }
 

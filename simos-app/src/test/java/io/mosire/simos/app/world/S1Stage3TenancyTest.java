@@ -133,7 +133,7 @@ class S1Stage3TenancyTest {
     ActorData data =
         ActorData.empty()
             .withActor(new Actor(ESTATE, "庄园"))
-            .withAccount(new GoodsAccount(ESTATE_ACCOUNT, Map.of(GRAIN, 10_000L)));
+            .withAccount(new GoodsAccount(ESTATE_ACCOUNT, Map.of(GRAIN, 10_000L), Map.of()));
 
     // ── 前提：两件事各自真的成立（否则下面的断言测的是别的东西）──────────────────────────
     assertThat(industry.regime().value())

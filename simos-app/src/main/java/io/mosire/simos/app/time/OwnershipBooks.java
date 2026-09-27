@@ -7,6 +7,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
@@ -66,8 +67,11 @@ public final class OwnershipBooks {
    *   <li>{@link ProductionLedger#outputAccruals()} —— <b>产出计提</b>（净产 → operator）**原样带过**：
    *       它**不是转移**（产出没有对端，而 {@link Transfer} 明令 `from ≠ to`）；
    *   <li>{@link ProductionLedger#transfers()} —— 每条转移的**每个商品腿**折成**两条**条目： 付方 {@code −amount}、收方
-   *       {@code +amount}（两端同一格 = `transfer.location()`）。 ★ 货币腿本批恒空（货币是 H4 的事）⇒
-   *       只折商品腿；将来接货币时，**在这里**加一条货币路径。
+   *       {@code +amount}（两端同一格 = `transfer.location()`）。 ★★ <b>货币腿仍然不在这里折</b>（H4 的口径变了、结论没变）：
+   *       家户的货币账**住同一本 {@code GoodsAccount}**，而它的权威值是**工作副本**（{@code EconomyDayStepper} 就地更新 ——
+   *       市场成交与工钱的货币腿都写在副本上）⇒ 落盘走 {@link #landHouseholdMoney} 的**绝对值**那一条路。 在这里再折一遍货币腿 =
+   *       同一笔钱记两遍（随后被绝对值覆盖，于是**只有付方那半**留下痕迹）。 ★ <b>如实记的边界</b>：本批的货币副本只覆盖**家户**（键 = {@code
+   *       CohortKey}）⇒ 非家户主体（庄园/作坊经营者）的 货币余额**没有落点**；"经营者自己持账"是 H5 的事（与产出归属同一条账）。
    * </ul>
    *
    * <p>★★ <b>别在这一步把家户账"叠加"一遍</b>：家户那一端的余额由 {@link #landHouseholdGoods} 按**副本绝对值**写回（日耗 / 投入 /
@@ -117,7 +121,10 @@ public final class OwnershipBooks {
                 + after);
       }
       balances.put(entry.commodity(), after);
-      books = books.withAccount(new GoodsAccount(key, balances));
+      // ★★ H4/K15：**整本覆盖必须把货币带过** —— 两参构造器给的是"钱 = 空表"，
+      //   用它写回会**静默把钱清零**（今天只靠"货币落回排在后面"兜住，任何只调 apply 的新路径都会中招）。
+      Map<CurrencyId, Long> money = account == null ? Map.of() : account.money();
+      books = books.withAccount(new GoodsAccount(key, balances, money));
     }
     return books;
   }
@@ -216,7 +223,106 @@ public final class OwnershipBooks {
                   + balance.getValue());
         }
       }
-      accounts.put(key, new GoodsAccount(key, entry.getValue()));
+      // ★★ 同 ①：按绝对值写回**商品**，但钱要**原样带过**（别用两参构造器把它清零）。
+      GoodsAccount existing = books.accounts().get(key);
+      accounts.put(
+          key,
+          new GoodsAccount(key, entry.getValue(), existing == null ? Map.of() : existing.money()));
+    }
+    return books.withAccounts(accounts);
+  }
+
+  /**
+   * ★★ <b>把家户的<strong>货币账</strong>载入成会话工作副本</b>（H4；裁定 K1 / K14）—— 供 {@code EconomyDayStepper}
+   * 的第三个构造参数用（同格市场池按它算"谁买得起"）。
+   *
+   * <pre>
+   * 副本键 = {@code CohortKey}（家户身份）；值 = 货币余额（**缺失键 = 该家户没有该币种**）
+   * 取账   = {@code actor.accounts().get(new GoodsAccountKey(HouseholdActors.of(cohort), cohort.hex()))}
+   * </pre>
+   *
+   * <p>★★ <b>与 {@link #loadHouseholdGoods} 逐字同形</b>（同一份 {@code OwnershipBooks}、同一个驱动集、同一条
+   * fail-closed 口径）：货币不是"另一条落账路径"，它就是**同一本 {@code GoodsAccount} 的第二个余额表**（裁定 M2： {@code CurrencyId}
+   * 与 {@code CommodityId} 各守各的守恒，但住同一本账）—— 故两条载入读的是**同一个**账户对象。
+   *
+   * <p>★ <b>为什么以"economy 的家户行集"为驱动</b>：理由与商品那条一字不差（{@code HOUSEHOLD} 这个种类不只有家户； 副本的键集本来就该等于行集）。★
+   * <b>载入不出来 ⇒ 抛</b>：不许把"没有账"静默当成"没有钱"。
+   *
+   * @param economy 家户行集（= 副本的键集）；不得为 null
+   * @param books actor 切片当前状态（家户账的真源）；不得为 null
+   * @throws IllegalStateException 行集里有家户在 actor 切片里没有账（消息点名前几个 + 总数）
+   */
+  public static Map<CohortKey, Map<CurrencyId, Long>> loadHouseholdMoney(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<CohortKey, Map<CurrencyId, Long>> copy = new LinkedHashMap<>();
+    List<CohortKey> missing = new ArrayList<>();
+    for (CohortKey cohort : economy.classes().keySet()) {
+      GoodsAccount account = books.accounts().get(accountKeyOf(cohort));
+      if (account == null) {
+        missing.add(cohort);
+        continue;
+      }
+      copy.put(cohort, new LinkedHashMap<>(account.money()));
+    }
+    if (!missing.isEmpty()) {
+      throw new IllegalStateException(
+          "家户 actor / 账本缺失 "
+              + missing.size()
+              + " 个（货币账与商品账同住一本 GoodsAccount，缺了不能当余额 0 —— H1 的播种应为"
+              + "「每格 × 两组四行」一个不少，含人口 0 的空账）："
+              + missing.subList(0, Math.min(5, missing.size()))
+              + (missing.size() > 5 ? " …" : ""));
+    }
+    return copy;
+  }
+
+  /**
+   * ★★ <b>把家户的货币账工作副本<strong>按绝对值</strong>落回 actor 切片</b>（H4；裁定 K1 / K14）。
+   *
+   * <p>★★ <b>与 {@link #landHouseholdGoods} 逐字同形</b>：市场成交（商品反向、货币正向）与工钱/地租的**货币腿**只写进 副本（economy
+   * 侧就地更新它），落盘时按副本的**绝对值**写回即可 —— **不许**把条目再叠加到副本上（叠加 = 同一笔钱 记两遍）。★
+   * <b>顺序**不能**反</b>：本方法必须在该家户的**商品**落回之后调用（写的是同一本账的另一个余额表 ⇒ 它要把商品那一半原样带过，而那半必须是**已经落好的**）。
+   *
+   * <p>★ <b>0 余额保留</b>：副本里的 0 照写（读口因此读得到"这个家户有一本货币账"），不过滤、不归一。 ★ <b>批量写</b>（一次 {@code
+   * withAccounts}）：真档 6392 本账，逐本 {@code withAccount} 会是 O(n²)。
+   *
+   * @param books 落账前的 actor 状态（**该家户的商品已经落好**）；不得为 null
+   * @param householdMoney 货币工作副本（键 = 家户身份；值 = 币种余额）；不得为 null
+   * @return 落账后的新状态（家户账的货币表整表覆盖，商品表与其余账户原样带过）
+   * @throws IllegalStateException 某本账的余额为负（副本不该出现负数：透支是信用，不是货币）；或该家户的账本缺席 （说明商品那一半还没落 —— 顺序反了）
+   */
+  public static ActorData landHouseholdMoney(
+      ActorData books, Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
+    Objects.requireNonNull(books, "books");
+    Objects.requireNonNull(householdMoney, "householdMoney");
+    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(books.accounts());
+    for (Map.Entry<CohortKey, Map<CurrencyId, Long>> entry : householdMoney.entrySet()) {
+      CohortKey cohort = entry.getKey();
+      GoodsAccountKey key = accountKeyOf(cohort);
+      for (Map.Entry<CurrencyId, Long> balance : entry.getValue().entrySet()) {
+        if (balance.getValue() < 0L) {
+          throw new IllegalStateException(
+              "家户货币余额不得为负（透支是信用，不是货币）：家户="
+                  + key.owner()
+                  + " 格="
+                  + key.location()
+                  + " 币种="
+                  + balance.getKey()
+                  + " 余额="
+                  + balance.getValue());
+        }
+      }
+      GoodsAccount existing = accounts.get(key);
+      if (existing == null) {
+        // ★ fail-closed：货币与商品住**同一本账** ⇒ 账本缺席只可能是"商品那一步还没跑"（顺序反了），
+        //   而不是"这本账不存在"。静默新建一本**没有商品**的账会把那一半悄悄抹掉。
+        throw new IllegalStateException(
+            "货币落回要求该家户的账本已在 actor 侧存在（商品落回在前，顺序不能反）：家户=" + key.owner() + " 格=" + key.location());
+      }
+      // ★ 商品那一半**原样带过**（`GoodsAccount` 是整本覆盖的写入口）。
+      accounts.put(key, new GoodsAccount(key, existing.balances(), entry.getValue()));
     }
     return books.withAccounts(accounts);
   }

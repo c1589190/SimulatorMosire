@@ -22,6 +22,7 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.time.OwnershipBooks;
+import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -835,7 +836,10 @@ class GuiApiTest {
         laborAllocations(),
         // ★ T2：第 8 个组件（生产关系表）。★ 这里刻意**留空**而不是按 regime 推：本夹具测的是 GUI 的读口
         //   （账户/库存的视图），关系那一层不在它的断言面上；空表是合法状态（全归 residualOwner）。
-        Map.of());
+        Map.of(),
+        // ★★ H4：第 9 个组件（市场表）—— 本夹具那一格给一个市场（计价货币 + 出厂价表都取真装载器的
+        //   {@link EconomySeeder#MARKET_FACTORY}，**本夹具不另拍价**）。
+        Map.of(H11, EconomySeeder.MARKET_FACTORY));
   }
 
   /**
@@ -851,7 +855,13 @@ class GuiApiTest {
     GoodsAccountKey accountKey = OwnershipBooks.accountKeyOf(key);
     return ActorData.empty()
         .withActor(new io.mosire.simos.actor.model.Actor(accountKey.owner(), "农村贫农家户"))
-        .withAccount(new GoodsAccount(accountKey, Map.of(new CommodityId("grain"), 498_000L)));
+        // ★★ H4：货币账与商品账同住一本（同一本 GoodsAccount 的两个余额表）——
+        //   本夹具给这个家户**创世禀赋**那笔钱（口径同真播种器：{@link EconomySeeder#genesisMoney(long)}）。
+        .withAccount(
+            new GoodsAccount(
+                accountKey,
+                Map.of(new CommodityId("grain"), 498_000L),
+                EconomySeeder.genesisMoney(100L)));
   }
 
   /** 第二个产业（手工业 = 作坊）：只借身份（无阶层行 ⇒ 无人口/劳动，读口多一条空产业）。 */

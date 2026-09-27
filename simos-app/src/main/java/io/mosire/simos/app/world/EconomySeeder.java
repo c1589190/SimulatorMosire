@@ -5,10 +5,13 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -334,6 +337,97 @@ public final class EconomySeeder {
   /** 铁（R3；作坊的原料）。 */
   public static final String COMMODITY_IRON = EconomyVocabulary.IRON_COMMODITY_ID;
 
+  // ── H4：同格市场（固定价、每格单一计价货币）与创世货币禀赋 ──────────────────────────────
+
+  /**
+   * ★★ <b>出厂计价货币</b>（H4；裁定 M1-A"每格市场只有一个记账单位"）：{@code silver}。
+   *
+   * <p>★★ <b>唯一拼写点是 {@link RegimeRelations#DEFAULT_CURRENCY}</b>（H2 的币种位）—— 本类**不写第二份** {@code
+   * "silver"} 字面量：同一件事两处拼写，改名那天必然漂开（而"钱是哪种"漂开不会有任何编译错误）。
+   */
+  public static final CurrencyId MARKET_NUMERAIRE = RegimeRelations.DEFAULT_CURRENCY;
+
+  /**
+   * ★★ <b>粮价 = 1</b>：整张表的**基准商品**（口粮口径的实物；M1-A 的计价实物）。
+   *
+   * <p>★ 依据：粮是本世界唯一"人人要吃、天天要吃"的商品 ⇒ 取它作价值基准，其余商品按"生产一个单位要多少劳动/投入" 与之相比（见下面逐条）。
+   */
+  public static final long MARKET_PRICE_GRAIN = 1L;
+
+  /**
+   * ★★ <b>布价 = 5</b>（1 匹布 = 5 粮的等价 = 5 毫银）。
+   *
+   * <p>★ 依据（按"生产一个单位要多少劳动/投入"）：一匹布 = <b>1 单位纤维</b>（{@link #FIBER_MILLI_PER_CLOTH}）+ 约 <b>33.3
+   * 千分劳动</b>（{@link #LABOR_MILLI_PER_LOOM} 1000 ÷ {@link #CLOTH_PER_LOOM_PER_CYCLE} 30）。 取 5 = 原料 1
+   * + 加工 4 —— "加工增值约为原料的四倍"，与"1 匹布换 5 单位粮"的前现代量级相符。 ★ 城市作坊的同一条配方每匹摊到的劳动减半、而多耗 1/6 单位铁（{@link
+   * #CLOTH_PER_WORKSHOP_PER_CYCLE}） ⇒ 两条技术路线在同一挂牌价下的毛利率不同：**固定价不看成本**是本批的已知简化 （动态价格 P' =
+   * P(1+k(D−S)/(D+S)) 留给价格那一轮）。
+   */
+  public static final long MARKET_PRICE_CLOTH = 5L;
+
+  /**
+   * ★★ <b>纤维价 = 1</b>（与粮同价）。
+   *
+   * <p>★ 依据：纤维是**农田的副产**——同一亩地、同一份劳动同时出 67 粮（{@link #GRAIN_OUTPUT_PER_MU}）与 6 单位纤维 （{@link
+   * #FIBER_OUTPUT_PER_MU}）⇒ 它没有独立的"多花一份工"的成本，出厂按**同价**是保守取值（不给副产折价、 也不溢价）。★ 折价（例如 1/2）同样可辩护；这是 GM
+   * 旋钮。
+   */
+  public static final long MARKET_PRICE_FIBER = 1L;
+
+  /**
+   * ★★ <b>铁价 = 10</b>（1 单位铁 = 10 粮的等价）：<b>依据最弱的一条，如实记</b>。
+   *
+   * <p>★★ 本轮**没有冶炼流程**（{@link #COMMODITY_IRON} 只来自创世给的初始库存，K6 的"留位"商品）⇒ 铁**没有生产成本可推**。
+   * 按"它比农副产（纤维）贵一个量级、与工具同量级"给一个判断值；★ 采矿/冶炼接入那一轮必须重定（并且届时它才有 "按劳动推"的依据）。
+   */
+  public static final long MARKET_PRICE_IRON = 10L;
+
+  /**
+   * ★★ <b>工具价 = 20</b>：**由配方内生的比值**，不是另拍的数。
+   *
+   * <p>★ 依据：作坊每件工具耗 2 单位铁（{@link #IRON_MILLI_PER_TOOL} 2000 毫铁 = 2 单位）⇒ {@code 2 × 铁价 =
+   * 20}。工具的加工劳动**已经计在布的售价里**（作坊是"布 + 工具"的联合生产，laborPerUnit 只有一份）⇒ 工具挂牌价恰等于它的铁含量价值，不重复计价。
+   */
+  public static final long MARKET_PRICE_TOOL = 20L;
+
+  /**
+   * ★★ <b>出厂价格表（保序：粮 → 布 → 纤维 → 工具 → 铁）</b>—— 逐格市场的 {@code prices}，键 = 商品 id。
+   *
+   * <p>★★ <b>量纲（与 {@code Market} 的契约逐字一致）：{@code 价格 = 毫计价货币 / 商品单位}</b>（1 商品单位 = 1000 最小计量单位，见
+   * {@link EconomyVocabulary#MILLI_PER_COMMODITY_UNIT}）⇒ economy 侧的结算是 {@code 货款(毫银) = 数量(毫商品) × 价格
+   * ÷ 1000}。★ 于是 {@link #MARKET_PRICE_GRAIN}（= 1）读作 <b>1 粮 = 1 毫银</b>（10,000 毫粮 ↔ 10 毫银 =
+   * 一个周期的口粮）——"每单位商品的毫银数"是本表的唯一读法， 本类**不另立一套量纲**（价格量纲的唯一拼写点在 {@code Market} 的类注）。
+   *
+   * <p>★★ <b>整张表都是 GM 可调的数据，不是写死的行为</b>（信条十二）：本类只给**出厂值**，改价 = 改这一行 （或将来迁进 V7
+   * 参数目录）；**没有任何代码分支依赖某个具体价格**——价格只被写进载荷、由 economy 侧的同格市场池读。
+   *
+   * <p>★★ <b>为什么没有木</b>（{@code EconomyVocabulary.WOOD_COMMODITY_ID}）：本轮**无配方、无播种、无库存** ⇒
+   * 挂一个没有生产者、也没有持有者的牌价只是噪声（与 K6 对 {@code IRON} 的要求"留位必须有读者"同一条纪律的 反面：**不留没有读者的价**）。木材接入那一轮再加一行。
+   *
+   * <p>★ <b>键序 = 商品 id 的声明序</b>（{@link #COMMODITY_GRAIN} / {@link #COMMODITY_CLOTH} / {@link
+   * #COMMODITY_FIBER} / {@link #COMMODITY_TOOL} / {@link #COMMODITY_IRON}）—— {@code Map.of} 的
+   * 迭代序不是内容的纯函数 ⇒ 用 {@code LinkedHashMap} 包一层再冻结（载荷字节因此可复现）。
+   */
+  public static final Map<CommodityId, Long> MARKET_PRICES_FACTORY = factoryPrices();
+
+  /**
+   * ★★ <b>出厂市场</b>（每格同一个：单一计价货币 {@link #MARKET_NUMERAIRE} + 同一张出厂价表）。
+   *
+   * <p>★ 本批**逐格价格没有差异**（地力/距离进价格是后续轮次的事）⇒ 一个不可变实例被所有格共享（不逐格新建 799 份 逐字相同的对象）。
+   */
+  public static final Market MARKET_FACTORY = new Market(MARKET_NUMERAIRE, MARKET_PRICES_FACTORY);
+
+  /**
+   * ★★ <b>创世货币禀赋的缓冲系数（‰）</b>：{@code 1200} —— 每人 <b>1.2 个周期</b>的口粮等价。
+   *
+   * <p>★★ <b>为什么必须 ≥ 1000‰</b>（brief 的硬要求："必须够买一个周期的口粮，否则市场形同虚设"）：市场的有效需求 = 有购买力的缺口；若禀赋
+   * <b>一个周期</b>的口粮等价，家户在第 1 天就买不起自己那份口粮 ⇒ 市场开张即死。
+   *
+   * <p>★ <b>为什么多那 200‰</b>：挂牌价是固定价、成交还受"供 &lt; 求 ⇒ 按需求比例配给"约束，且家户一年还要添一身 衣裳（每人每年 1 匹布 = 5 粮的等价）⇒
+   * 留两成周转余量，别让禀赋卡在"恰好够粮"的边界上。★ 它是 GM 旋钮。
+   */
+  public static final int GENESIS_MONEY_BUFFER_PER_MILLE = 1_200;
+
   /** 规则版本标签（§5 末条"改参数 = 改 rulesVersion"）：写入 {@code EconomyMeta}。 */
   public static final String RULES_VERSION = "aggregate-v1";
 
@@ -351,30 +445,37 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ <b>一次生成的<strong>内存形态</strong></b>（H1）：同一条循环的**两个**产物 —— {@code economy.Seed} 的逐格 {@code
-   * entries} 与**家户创世库存**（键 = 家户身份）。
+   * ★★ <b>一次生成的<strong>内存形态</strong></b>（H1）：同一条循环的<strong>四个</strong>产物 —— {@code economy.Seed}
+   * 的逐格 {@code entries} 与 {@code markets}，以及**家户的创世库存**与**创世货币禀赋**（键 = 家户身份）。
    *
    * <p>★★ <b>为什么把它们放在一起</b>：H1 起"商品库存"<b>不在阶层行里</b>（{@code ClassRow} 没有 {@code goods}，裁定 D3-C/K1）——
    * 它的持久真源是 actor 切片里该家户的 {@code GoodsAccount}。而"每格两组四行的开缸余额"（口粮按阶层天数、纤维按田亩副产、
    * 城镇行的纤维与铁按作坊数）<b>只能算一次</b>：两处各算一遍必然漂移（本仓最忌"同一事实两处拼写点"）。故本记录是那条接缝 —— {@link #payload(String,
-   * List, GameMap)} 取 {@link #entries()}，{@link HouseholdSeeder} 取 {@link #householdStocks()}。
+   * List, GameMap)} 取 {@link #entries()} 与 {@link #markets()}，{@link HouseholdSeeder} 取 {@link
+   * #householdStocks()} 与 {@link #householdMoney()}（**同一份**：命令播出来的世界与夹具手搭的世界逐字段同形）。
    *
-   * <p>★ <b>键序是内容的纯函数</b>：entry 按 {@code (q,r)} 字典序（{@code hexes.sort}）、每组按 {@code RURAL →
+   * <p>★★ <b>H4 的货币为什么不在这里"发行"</b>（裁定 K14）：{@link #householdMoney()} 是**初始条件**，与开缸口粮/纤维/铁 同类 —— 它由
+   * {@link #genesisMoneyMilli(long)} 按人口一次算出、写进 {@code actor.Seed} 的账本， 此后世界上**没有任何铸造路径**（{@code
+   * MoneyAuthority} 本批无实现者 ⇒ 发行/回笼 fail-closed），逐币种总量恒定， 只有交易在搬它。
+   *
+   * <p>★ <b>键序是内容的纯函数</b>：entry/市场按 {@code (q,r)} 字典序（{@code hexes.sort}）、每组按 {@code RURAL →
    * URBAN}、每个阶层按 {@link #CLASS_IDS} 序 —— 同一份输入两次调用逐字段相同。★ <b>账本为空的家户也在表里</b>（人口 0 的行：余额可能全 0）—— 见
    * {@link #cohortGroup}。
    */
   public record Seed(
       String mapId,
       List<Map<String, Object>> entries,
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks) {
+      Map<HexCoord, Market> markets,
+      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
 
     /**
-     * ★★ <b>两张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
+     * ★★ <b>四张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
      * EI_EXPOSE_REP} <b>不做跨过程分析</b>，看不出"构造器收了可变对象"之后有没有被改，
      * 故防御性拷贝与包装必须写在<b>它看得见的地方</b>（这里），而不是抽成一个助手再调。
      *
-     * <p>★ <b>为什么必须冻</b>：本记录是"每格两组四行的开缸余额"的<b>唯一拼写点</b>（economy 载荷与家户账本共用一份）， 一旦被外部改到，两处就会静默漂开 ——
-     * 那正是本仓最忌的"同一事实两处拼写点"。
+     * <p>★ <b>为什么必须冻</b>：本记录是"每格两组四行的开缸余额"与"创世货币禀赋"的<b>唯一拼写点</b>（economy 载荷与
+     * 家户账本共用一份），一旦被外部改到，两处就会静默漂开 —— 那正是本仓最忌的"同一事实两处拼写点"。
      */
     public Seed {
       if (mapId == null || mapId.isBlank()) {
@@ -383,6 +484,9 @@ public final class EconomySeeder {
       List<Map<String, Object>> entriesCopy =
           new ArrayList<>(entries == null ? List.of() : entries);
       entries = Collections.unmodifiableList(entriesCopy);
+      // ★ 市场表：外层的键序 = 逐格（(q,r) 字典序，由 plan 保证）；值是共享的不可变 {@link Market}。
+      markets =
+          Collections.unmodifiableMap(new LinkedHashMap<>(markets == null ? Map.of() : markets));
       Map<CohortKey, Map<CommodityId, Long>> stocksCopy = new LinkedHashMap<>();
       if (householdStocks != null) {
         for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : householdStocks.entrySet()) {
@@ -391,11 +495,22 @@ public final class EconomySeeder {
         }
       }
       householdStocks = Collections.unmodifiableMap(stocksCopy);
+      Map<CohortKey, Map<CurrencyId, Long>> moneyCopy = new LinkedHashMap<>();
+      if (householdMoney != null) {
+        for (Map.Entry<CohortKey, Map<CurrencyId, Long>> entry : householdMoney.entrySet()) {
+          moneyCopy.put(
+              entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
+        }
+      }
+      householdMoney = Collections.unmodifiableMap(moneyCopy);
     }
 
-    /** {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} 在顶层；entries 原样）。 */
+    /**
+     * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
+     * markets} 都在顶层）。
+     */
     public String economyPayload() {
-      return jsonOf(mapId, entries);
+      return jsonOf(mapId, entries, markets);
     }
   }
 
@@ -423,13 +538,48 @@ public final class EconomySeeder {
         });
   }
 
-  /** 把 {@code entries} 包成 {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} 在顶层）。 */
-  static String jsonOf(String mapId, List<Map<String, Object>> entries) {
+  /**
+   * 把 {@code entries} 与 {@code markets} 包成 {@code economy.Seed} 的载荷文本（{@code mapId} / {@code
+   * rulesVersion} 在顶层）。
+   *
+   * <p>★★ <b>H4 的市场载荷（app 写、economy 读的形状）</b>：
+   *
+   * <pre>{@code
+   * {"mapId":"Map1","rulesVersion":"aggregate-v1","entries":[…],
+   *  "markets":{"0_0":{"numeraire":"silver","prices":{"grain":1,"cloth":5,"fiber":1,"tool":20,"iron":10}}, …}}
+   * }</pre>
+   *
+   * ★ <b>键 = {@link HexCoord#toString()} 的规范串</b>（{@code "<q>_<r>"}）—— 本类**不自己拼**那个格式（
+   * "格怎么写成一个串"的唯一拼写点在 {@code HexCoord}）；★ 逐格按 {@code (q,r)} 字典序（{@code LinkedHashMap} 保序） ⇒
+   * 同一份输入两次调用**逐字节**相同。
+   *
+   * <p>★★ <b>缺格的格 = 没有市场</b>（合法状态）：市场只在"本格有经济 entry"时发出（格集 = 批次落点集合）——
+   * "这一格没有市场"与"这一格不存在"是两件事，读口照此回答（{@code ApiViews.economyHex}）。
+   */
+  static String jsonOf(
+      String mapId, List<Map<String, Object>> entries, Map<HexCoord, Market> markets) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("mapId", mapId);
     payload.put("rulesVersion", RULES_VERSION);
     payload.put("entries", entries);
+    Map<String, Object> marketNodes = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, Market> atHex : markets.entrySet()) {
+      marketNodes.put(atHex.getKey().toString(), marketNode(atHex.getValue()));
+    }
+    payload.put("markets", marketNodes);
     return ToolSupport.json(payload);
+  }
+
+  /** 一格市场的载荷节点：{@code {numeraire, prices}}（键序固定 ⇒ 载荷字节可复现）。 */
+  static Map<String, Object> marketNode(Market market) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("numeraire", market.numeraire().value());
+    Map<String, Object> prices = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> price : market.prices().entrySet()) {
+      prices.put(price.getKey().value(), price.getValue());
+    }
+    node.put("prices", prices);
+    return node;
   }
 
   /**
@@ -459,6 +609,11 @@ public final class EconomySeeder {
 
     List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
     Map<CohortKey, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
+    // ★★ H4：创世货币禀赋（裁定 K14）走**同一处接缝** —— 与 householdStocks 同一次循环算出、同一份交给
+    //   {@link HouseholdSeeder}（两处各算一遍必然漂开）。★ 它是**初始条件**，不是发行：见 {@link #householdMoney}。
+    Map<CohortKey, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
+    // ★★ H4：逐格市场的载荷（M1-A 每格单一计价货币 + 固定价）。本批逐格价格无差异 ⇒ 共享同一个不可变 {@link Market}。
+    Map<HexCoord, Market> markets = new LinkedHashMap<>();
     for (HexCoord hex : hexes) {
       List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
       List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
@@ -533,8 +688,9 @@ public final class EconomySeeder {
       // ★★ **H1：开缸库存的去处 = 家户账**（actor 侧的 {@code GoodsAccount}）。本方法把它**一次算好**并交回
       //   （{@code Seed.householdStocks}），载荷里的阶层行**不再带 {@code goods}** —— 行里没有商品这件事
       //   在"一本账"的判据（守恒式无 ΔΣRowGoods）里是必须的。
-      classes.addAll(ruralCohort(hex, ruralPool, landMilliMu, householdStocks));
-      classes.addAll(urbanCohort(hex, urbanPool, workshops, householdStocks));
+      //   ★★ H4：**创世货币禀赋与它同源**（同一处循环、同一份人口口径）⇒ 商品与货币两本账在同一次 plan 里算定。
+      classes.addAll(ruralCohort(hex, ruralPool, landMilliMu, householdStocks, householdMoney));
+      classes.addAll(urbanCohort(hex, urbanPool, workshops, householdStocks, householdMoney));
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
@@ -543,8 +699,73 @@ public final class EconomySeeder {
       entry.put("laborSupply", laborSupply);
       entry.put("allocations", allocations);
       entries.add(entry);
+      // ★★ H4：本格的市场（M1-A：每格一个计价货币 + 一张价表）。★ **有 entry 才有市场** ——
+      //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
+      markets.put(hex, MARKET_FACTORY);
     }
-    return new Seed(mapId, entries, householdStocks);
+    return new Seed(mapId, entries, markets, householdStocks, householdMoney);
+  }
+
+  // ── H4：出厂价表与创世货币禀赋（纯函数）──────────────────────────────────────────────
+
+  /**
+   * 出厂价表（{@link #MARKET_PRICES_FACTORY} 的构造）—— **保序**：粮 → 布 → 纤维 → 工具 → 铁。
+   *
+   * <p>★ 为什么不直接 {@code Map.of(...)}：它的迭代序不是内容的纯函数 ⇒ 载荷字节会抖（本仓对"可复现"的既定口径）。
+   */
+  static Map<CommodityId, Long> factoryPrices() {
+    Map<CommodityId, Long> prices = new LinkedHashMap<>();
+    prices.put(new CommodityId(COMMODITY_GRAIN), MARKET_PRICE_GRAIN);
+    prices.put(new CommodityId(COMMODITY_CLOTH), MARKET_PRICE_CLOTH);
+    prices.put(new CommodityId(COMMODITY_FIBER), MARKET_PRICE_FIBER);
+    prices.put(new CommodityId(COMMODITY_TOOL), MARKET_PRICE_TOOL);
+    prices.put(new CommodityId(COMMODITY_IRON), MARKET_PRICE_IRON);
+    return Collections.unmodifiableMap(prices);
+  }
+
+  /**
+   * ★★ <b>创世货币禀赋的每人出厂值（毫银）</b>（裁定 K14）—— <b>按人口</b>的一次性初始条件：
+   *
+   * <pre>
+   * 每人一个周期的口粮 = RATION_MILLI_PER_PERSON = 10,000 毫粮（= 10 粮，120 天）
+   * 买下它的钱       = 10,000 毫粮 × 粮价 1 ÷ 1000 = 10 毫银          ← 价量表的口径：毫银 / 商品单位
+   * 禀赋             = 10 毫银 × 缓冲 1200‰ = 12 毫银（毫银的最小币值）
+   * </pre>
+   *
+   * ★ <b>它为什么"够买一个周期的口粮"</b>：家户一个周期（{@link #CYCLE_DAYS} 120 天）要买的口粮 = {@code
+   * RATION_MILLI_PER_PERSON} = 10,000 毫粮/人 ⇒ 按挂牌粮价折 **10 毫银**；本值 **12 毫银 = 1.2 倍** （多出的两成是周转余量，见
+   * {@link #GENESIS_MONEY_BUFFER_PER_MILLE}）。★ 口径与结算**同源**：口粮毫数取自 {@link
+   * EconomyVocabulary#RATION_MILLI_PER_PERSON}（与 {@code EconomySettlement} 每日需求同一个常量）， 价格换算的 {@code
+   * ÷ 1000} 与 {@code Market} 的货款公式**逐字同式**，不是本类另拍的数。
+   *
+   * <p>★★ <b>为什么是"初始条件"而不是"发行"</b>（裁定 K14）：发行要有发行人 —— {@code MoneyAuthority} 本批**无实现者**（M-J1：未注册发行人
+   * ⇒ 任何发行尝试当场抛）⇒ 世界上根本没有"铸币"这条路径。这笔钱与开缸口粮、 纤维、铁**同类**：它们是这份创世载荷的一部分，只在创世出现一次。⇒ 逐币种总量 {@code Σ(人口 ×
+   * 12)} 在创世之后 **恒定**，此后只有交易在搬它（守恒式可核：买卖两腿相消）。
+   */
+  public static long genesisMoneyMilliPerCapita() {
+    return EconomyVocabulary.RATION_MILLI_PER_PERSON
+        * MARKET_PRICE_GRAIN
+        * GENESIS_MONEY_BUFFER_PER_MILLE
+        / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+        / 1000L;
+  }
+
+  /**
+   * 一个家户的创世钱包（毫银）：{@code 人口 × }{@link #genesisMoneyMilliPerCapita()}。
+   *
+   * <p>★ <b>口径与开缸库存逐字同形</b>（见 {@link #openingStock}）：<b>只落正的量</b> —— 人口 0 的家户拿到一本
+   * **空的钱包**（键在、表空），与"一本空账"同义；"没有钱"与"没有这个家户"是两件事。
+   *
+   * <p>★ <b>可见性 = public</b>（H4 收口）：它是**跨包**的测试夹具（{@code app.gui.GuiApiTest} 与 {@code
+   * app.world.EconomyTestWorld} 都要造出"与真播种器逐值相同的钱包"）—— 口径只有一个拼写点，夹具不许自己再拍一个价。
+   */
+  public static Map<CurrencyId, Long> genesisMoney(long population) {
+    Map<CurrencyId, Long> wallet = new LinkedHashMap<>();
+    long amount = population * genesisMoneyMilliPerCapita();
+    if (amount > 0L) {
+      wallet.put(MARKET_NUMERAIRE, amount);
+    }
+    return wallet;
   }
 
   /** 一群批次的人数：{@code Σ count}（"每格人数"的唯一算法）。 */
@@ -973,11 +1194,12 @@ public final class EconomySeeder {
       HexCoord hex,
       List<PopulationGroup> pool,
       long landMilliMu,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<CohortKey, Map<CurrencyId, Long>> money) {
     // ★★ **纤维的去处**：旧版按阶层份额落在那四行**纺织行**上，H0.2 起并入**农村四行**（同一批人的同一本账）。
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), CLASS_SHARE_PER_MILLE));
-    return cohortGroup(hex, ResidenceKind.RURAL, pool, goods, stocks);
+    return cohortGroup(hex, ResidenceKind.RURAL, pool, goods, stocks, money);
   }
 
   /**
@@ -992,7 +1214,8 @@ public final class EconomySeeder {
       HexCoord hex,
       List<PopulationGroup> pool,
       long workshops,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<CohortKey, Map<CurrencyId, Long>> money) {
     long[] shopByClass = splitByShares(workshops, CLASS_SHARE_PER_MILLE);
     long[] fiber = new long[CLASS_IDS.length];
     long[] iron = new long[CLASS_IDS.length];
@@ -1004,7 +1227,7 @@ public final class EconomySeeder {
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, fiber);
     goods.put(COMMODITY_IRON, iron);
-    return cohortGroup(hex, ResidenceKind.URBAN, pool, goods, stocks);
+    return cohortGroup(hex, ResidenceKind.URBAN, pool, goods, stocks, money);
   }
 
   /**
@@ -1012,13 +1235,17 @@ public final class EconomySeeder {
    * 的旧注：阶层之间"年龄性别同分布"这条明说的假设）。
    *
    * <p>★ {@code goodsByClass} 是"逐商品的**逐阶层**存量表"（与 {@link #CLASS_IDS} 同序）：0 ⇒ 不落键（保持空商品表的纯形态）。
+   *
+   * <p>★★ <b>H4：货币与商品在**同一处**算定</b>（{@code money} 出参）：{@link #genesisMoney(long)} 按**同一份人口</b>
+   * （{@code people[i]}）算出 ⇒ "这家户有多少人、于是有多少口粮、于是有多少钱"三件事不会各算一遍而漂开。
    */
   private static List<Map<String, Object>> cohortGroup(
       HexCoord hex,
       ResidenceKind residence,
       List<PopulationGroup> pool,
       Map<String, long[]> goodsByClass,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<CohortKey, Map<CurrencyId, Long>> money) {
     long[] people = splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE);
     long poolLabor = laborMilli(pool);
     long poolCount = populationOf(pool);
@@ -1027,9 +1254,11 @@ public final class EconomySeeder {
       // ★★ **H1：这个家户的开缸库存 → actor 侧的账本**（键 = {@link HouseholdActors#of} 的那个家户身份）。
       //   ★ **空账也落键**（人口 0 ⇒ 余额全 0）：读口因此读得到"这个家户在这一格有一本账"（既定口径），
       //     而"账本为空"与"这一格没有这个家户"是两件事。
-      stocks.put(
-          new CohortKey(hex, residence, new SocialClassId(CLASS_IDS[i])),
-          openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
+      CohortKey key = new CohortKey(hex, residence, new SocialClassId(CLASS_IDS[i]));
+      stocks.put(key, openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
+      // ★★ H4：创世货币禀赋走**同一本账**（actor 侧的同一个 {@code GoodsAccount}）—— 见 {@link
+      // #genesisMoneyMilliPerCapita}。
+      money.put(key, genesisMoney(people[i]));
       rows.add(
           cohortRow(
               residence, CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], poolLabor, poolCount));

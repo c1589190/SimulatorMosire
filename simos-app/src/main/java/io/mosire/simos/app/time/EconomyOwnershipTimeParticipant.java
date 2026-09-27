@@ -8,6 +8,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.time.EconomyDayStepper;
@@ -51,7 +52,11 @@ import java.util.Optional;
  * 经济结算一天（{@code EconomyDayStepper.step(day)}）⇒ 它交回当天的 ProductionLedger
  * 产权落账（{@link OwnershipBooks#apply}）⇒ actor 账本 += 当天的条目（operator 那一路）
  * 家户账落回（{@link OwnershipBooks#landHouseholdGoods}）⇒ 家户账 = 会话副本的**绝对值**
+ * 货币账落回（{@link OwnershipBooks#landHouseholdMoney}）⇒ 同一本账的第二个余额表 = 货币副本的**绝对值**
  * </pre>
+ *
+ * <p>★★ <b>H4：两份副本、同一顺序</b>（载入 → step → 条目落账 → 两份副本按绝对值落回）：货币副本**必须**紧跟商品副本 之后落（写的是同一本 {@code
+ * GoodsAccount} 的另一个余额表，它要把商品那一半原样带过）。
  *
  * <p>★★ <b>H1：家户账是会话副本</b>（裁定 K1 / D3-C）—— 日耗 / 投入 / 同格取材只写副本（不是产权条目）， 而关系实付给家户既是条目、也计进了副本 ⇒
  * 两条路在"按绝对值落回"这一步合成一本账（顺序：条目先、副本后）。 ★ 本参与者因此在推进前也要从 actor 侧**载入**副本（{@link
@@ -141,7 +146,12 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     //   本参与者服务"有 economy + actor、没有 social"的世界，家户账照样要从 actor 侧载入。
     Map<CohortKey, Map<CommodityId, Long>> householdGoods =
         OwnershipBooks.loadHouseholdGoods(economy, actor);
-    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods);
+    // ★★ H4（裁定 K14）：**货币账的会话工作副本** —— 与商品副本**逐字同形、同一生命周期**（同一本
+    //   {@code GoodsAccount} 的第二个余额表）：载入 → step → 副本按绝对值落回。★ 它同样**不进 EconomyData、
+    //   不进变更集、不跨 revision**。
+    Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
+        OwnershipBooks.loadHouseholdMoney(economy, actor);
+    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods, householdMoney);
     ActorData books = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
@@ -157,6 +167,9 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       //   ⇒ 按副本的绝对值写回，不叠加条目 —— 见 {@link OwnershipBooks#landHouseholdGoods}）。
       //   ★ 顺序不能反：条目先落、副本收尾（反了同一笔粮会记两遍）。
       books = OwnershipBooks.landHouseholdGoods(books, stepper.householdGoods());
+      // ★★ H4：货币账同样**按绝对值**落回，且**必须紧跟在商品之后**（写的是同一本账的另一个余额表 ⇒
+      //   它要把商品那一半原样带过，而那半必须已经落好；顺序反了 {@link OwnershipBooks#landHouseholdMoney} 当场抛）。
+      books = OwnershipBooks.landHouseholdMoney(books, stepper.householdMoney());
     }
     EconomyData currentEconomy = stepper.finish();
     return new WorldTimeProposal(

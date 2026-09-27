@@ -554,8 +554,9 @@ public final class WorldgenInitializeTool implements AgentTool {
             SEED_GROUPS_TYPE,
             PopulationSeeder.payload(groups)));
     // ★★ H1：**经济与家户 actor 同源**（裁定 D3-C/K1）—— 一条 {@link EconomySeeder#plan} 同时交出
-    //   {@code economy.Seed} 的 entries 与家户的开缸库存（后者进 {@code actor.Seed} 的账本）：
-    //   "一次算出、同一份喂两条命令"，两处各算一遍必然漂开（本仓明令禁止的"同一事实两处拼写点"）。
+    //   {@code economy.Seed} 的 entries + markets 与家户的开缸库存 + **创世货币禀赋**（后两者进
+    //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
+    //   （本仓明令禁止的"同一事实两处拼写点"）。
     EconomySeeder.Seed seeding = EconomySeeder.plan(mapId, groups, map);
     batch.add(
         envelope(
@@ -572,7 +573,8 @@ public final class WorldgenInitializeTool implements AgentTool {
             branch,
             expectedRevision,
             SEED_ACTOR_TYPE,
-            HouseholdSeeder.payload(mapId, seeding.householdStocks())));
+            // ★★ H4（裁定 K14）：货币是和开缸库存**同一次**算出来的（同源），故它们一起进这条命令。
+            HouseholdSeeder.payload(mapId, seeding.householdStocks(), seeding.householdMoney())));
     return List.copyOf(batch);
   }
 

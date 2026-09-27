@@ -100,7 +100,10 @@ public final class PopulationEconomyFixture {
                 // ★ T5：actor 片必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
                 // ★★ H1：家户 actor 与账本也要在创世就位（商品库存的唯一真源是 actor 侧的 GoodsAccount）
                 //   —— 由**同一个 plan** 的开缸库存建（与真播种路径的 actor.Seed 同源）。
-                "actor", actorSnap(HouseholdSeeder.books(seeded.householdStocks()), 0L)),
+                "actor",
+                    actorSnap(
+                        HouseholdSeeder.books(seeded.householdStocks(), seeded.householdMoney()),
+                        0L)),
             InMemoryInfoSystem.empty());
     HandlerOutcome outcome = new EconomySeedHandler().handle(empty, payload);
     assertThat(outcome)
@@ -109,7 +112,11 @@ public final class PopulationEconomyFixture {
     EconomyData economy =
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
-    return new Fixture(social, economy, HouseholdSeeder.books(seeded.householdStocks()), 0L);
+    return new Fixture(
+        social,
+        economy,
+        HouseholdSeeder.books(seeded.householdStocks(), seeded.householdMoney()),
+        0L);
   }
 
   /** 从 {@code fixture} 推进 {@code days} 天：真协调器的提案 + 真变更集 apply（这正是 Core ④ 做的事）。 */
