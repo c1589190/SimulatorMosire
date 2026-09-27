@@ -3121,11 +3121,83 @@ public final class EconomySettlement {
    *       ledger.transfers()} 落账（H2 的既有口径，逐字不改）。★ 本类**只**写自己那两份会话副本。
    * </ol>
    *
-   * <p>★ <b>减到负数 ⇒ 当场抛</b>（fail-closed，不静默）：转移是"把已有的东西换手"，扣不动说明上游算错了 （"凭空造"与"凭空吞"都属本仓明文反对的形态）。★
-   * <b>货币腿也走这里</b>（H4）：扣成负数时唯一的合法解释是"付方在发行" ⇒ 去问 {@link
-   * MoneyIssuance#requireIssuerOf(CurrencyId)}，而本批**没有任何发行人** ⇒ 恒抛。 ⇒ 逐币种守恒的守卫与商品守恒的守卫**落在同一处**。
+   * <p>★★ <b>M1.4：本方法是两遍式</b>（照 {@link #drawCycleInputs} 的三遍式先例）：第一遍 {@link #validateApplyTransfer}
+   * **只读**地判"每一条付方腿是否扣得动"（余额不足 / 货币不足 ⇒ 走发行闸门）， 任一条不合法都在**四份副本一字未动**时抛出；第二遍才统一落账 ——
+   * 于是"付方扣了、收方没加"的半笔在结构上不可能。 ★ <b>仍然只有一个 applier</b>：校验是只读的、落账仍只在本方法内（经营者那一端走的是既有的私有 {@code
+   * debitOperator}，M1.4 把判据摘掉了，避免同一算式两处拼写）。
+   *
+   * <p>★ <b>成功路径逐值不变</b>：第二遍的写入次序与旧路径逐字相同（家户/经营者付端 → 收端），只是 "边判边扣"改成了"先判完再扣"。
    */
   static void applyTransfer(
+      Map<CohortKey, Map<CommodityId, Long>> householdGoods,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, CohortKey> householdOfActor,
+      Transfer transfer) {
+    Objects.requireNonNull(transfer, "transfer");
+    // ★★ M1.4 第一遍：**全量校验**（只读）—— 任一条腿不合法都在四份副本一字未动时抛出。
+    validateApplyTransfer(
+        householdGoods, householdMoney, operatorGoods, operatorMoney, householdOfActor, transfer);
+    // ★★ M1.4 第二遍：**统一落账** —— 此刻所有付方腿的可扣性都已验证过 ⇒ 下面只写、不再判。
+    CohortKey from = householdOfActor.get(transfer.from());
+    if (from != null) {
+      for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+        setStock(
+            householdGoods,
+            from,
+            leg.getKey(),
+            stockOf(householdGoods, from, leg.getKey()) - leg.getValue());
+      }
+      for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+        setMoney(
+            householdMoney,
+            from,
+            leg.getKey(),
+            moneyOf(householdMoney, from, leg.getKey()) - leg.getValue());
+      }
+    } else if (operatorGoods.containsKey(transfer.from())
+        || operatorMoney.containsKey(transfer.from())) {
+      // ★ 经营者付端：纯落账（判据已由第一遍做完 —— 见 validateApplyTransfer）。
+      debitOperator(
+          operatorGoods, operatorMoney, transfer.from(), transfer.goods(), transfer.money());
+    }
+    CohortKey to = householdOfActor.get(transfer.to());
+    if (to != null) {
+      for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+        addStock(householdGoods, to, leg.getKey(), leg.getValue());
+      }
+      for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+        addMoney(householdMoney, to, leg.getKey(), leg.getValue());
+      }
+    } else if (operatorGoods.containsKey(transfer.to())
+        || operatorMoney.containsKey(transfer.to())) {
+      creditOperator(
+          operatorGoods, operatorMoney, transfer.to(), transfer.goods(), transfer.money());
+    }
+  }
+
+  /**
+   * ★★ <b>M1.4 第一遍：把"这一次转移扣得动吗"一次判完</b>（只读；照 {@link #drawCycleInputs} 的"调查 → 配给 → 落账"先例）。
+   *
+   * <p>★★ <b>它为什么必须独立成一趟</b>：改前 {@code applyTransfer} 边判边扣（先扣付方全部腿、再记收方），
+   * 中途任一条腿抛错都会把"付方已扣、收方未记"的半笔留在**可变**会话副本上。校验与落账分成两趟之后， 半笔在**结构上**不可能：本方法只读四份副本，第二遍只写、不再判。
+   *
+   * <p>★ <b>校验范围（逐条对着旧路径）</b>：
+   *
+   * <ol>
+   *   <li>付方是家户 ⇒ 商品腿逐条"余额 ≥ 腿额"；货币腿逐条同款（不足 ⇒ 先问 {@link
+   *       MoneyIssuance#requireIssuerOf(CurrencyId)}，本批零注册 ⇒ 恒抛）；
+   *   <li>付方是经营者且它的账在副本里 ⇒ 商品与货币两条同款；
+   *   <li>付方两本账都不在副本里 ⇒ **不校验、也不落账**（既有的跳过口径：它的账在 actor 切片上，由 app 按 {@code ledger.transfers()} 落账）；
+   *   <li>收方**不校验**：记收（加钱加货）不可能失败，旧路径也不判 —— 保持成功路径逐值相同。
+   * </ol>
+   *
+   * <p>★ <b>冻结不在本方法的校验范围里（如实记）</b>：会话副本只有两张**余额**表（M1.2 的 {@code frozen*} 落在 actor 侧权威 {@code
+   * GoodsAccount} 上），而本批**没有任何冻结写者**（freeze/release 的调用方要到 M2 的挂单）。 ⇒ 这里能判的是"余额够不够"。等 M2
+   * 出现冻结写入后，副本要连冻结一起带过来，这条两遍式才会包含"冻结够不够"。
+   */
+  private static void validateApplyTransfer(
       Map<CohortKey, Map<CommodityId, Long>> householdGoods,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
@@ -3149,7 +3221,6 @@ public final class EconomySettlement {
                   + "；转移="
                   + transfer);
         }
-        setStock(householdGoods, from, leg.getKey(), stock - leg.getValue());
       }
       // ★★ H4：货币腿（同一套方向：from 付出、to 收到）。**付款不足 ⇒ 走发行闸门**：
       //   唯一能"钱不够还照付"的主体是发行源，而本批没有任何发行人 ⇒ MoneyIssuance 恒抛。
@@ -3172,30 +3243,51 @@ public final class EconomySettlement {
                   + "；转移="
                   + transfer);
         }
-        setMoney(householdMoney, from, leg.getKey(), balance - leg.getValue());
       }
-    } else if (operatorGoods.containsKey(transfer.from())
-        || operatorMoney.containsKey(transfer.from())) {
-      debitOperator(
-          operatorGoods,
-          operatorMoney,
-          transfer.from(),
-          transfer,
-          transfer.goods(),
-          transfer.money());
+      return;
     }
-    CohortKey to = householdOfActor.get(transfer.to());
-    if (to != null) {
+    if (!operatorGoods.containsKey(transfer.from())
+        && !operatorMoney.containsKey(transfer.from())) {
+      return; // 两端都不在会话副本里 ⇒ 本类不落这一端（既有口径，见类注第 ③ 条）。
+    }
+    if (operatorGoods.containsKey(transfer.from())) {
       for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
-        addStock(householdGoods, to, leg.getKey(), leg.getValue());
+        long stock = operatorStockOf(operatorGoods, transfer.from(), leg.getKey());
+        if (stock < leg.getValue()) {
+          throw new IllegalStateException(
+              "转移把经营者账扣成了负数（不许凭空吞）：经营者="
+                  + transfer.from()
+                  + " 商品="
+                  + leg.getKey()
+                  + " 余额="
+                  + stock
+                  + " 扣减="
+                  + leg.getValue()
+                  + "；转移="
+                  + transfer);
+        }
       }
+    }
+    if (operatorMoney.containsKey(transfer.from())) {
       for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
-        addMoney(householdMoney, to, leg.getKey(), leg.getValue());
+        long balance = operatorMoneyOf(operatorMoney, transfer.from(), leg.getKey());
+        if (balance < leg.getValue()) {
+          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey()); // ★ 本批恒抛（fail-closed）
+          throw new IllegalStateException(
+              "转移把经营者的货币扣成了负数，而付方不是发行源（透支 = 发行）：经营者="
+                  + transfer.from()
+                  + " 币种="
+                  + leg.getKey()
+                  + " 余额="
+                  + balance
+                  + " 扣减="
+                  + leg.getValue()
+                  + " 发行源="
+                  + issuer
+                  + "；转移="
+                  + transfer);
+        }
       }
-    } else if (operatorGoods.containsKey(transfer.to())
-        || operatorMoney.containsKey(transfer.to())) {
-      creditOperator(
-          operatorGoods, operatorMoney, transfer.to(), transfer.goods(), transfer.money());
     }
   }
 
@@ -3218,53 +3310,34 @@ public final class EconomySettlement {
     }
   }
 
-  /** 经营者账的**付端**：与家户那一端**逐字同一条口径**（扣不动 ⇒ 当场抛；货币扣不动 ⇒ 走发行闸门 ⇒ 本批恒抛）。 */
+  /**
+   * 经营者账的**付端纯落账**：与家户那一端**逐字同一条口径**。
+   *
+   * <p>★★ <b>调用前必须先过 {@link #validateApplyTransfer}（M1.4 两遍式）</b> —— 判据（商品余额够不够、货币够不够）
+   * 只写在第一遍那一处；这里再写一遍就是同一算式的第二个拼写点，两边一旦漂移没人发现（旧版正是"边判边扣"）。
+   */
   private static void debitOperator(
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       ActorRef actor,
-      Transfer transfer,
       Map<CommodityId, Long> goods,
       Map<CurrencyId, Long> money) {
     if (operatorGoods.containsKey(actor)) {
       for (Map.Entry<CommodityId, Long> leg : goods.entrySet()) {
-        long stock = operatorStockOf(operatorGoods, actor, leg.getKey());
-        if (stock < leg.getValue()) {
-          throw new IllegalStateException(
-              "转移把经营者账扣成了负数（不许凭空吞）：经营者="
-                  + actor
-                  + " 商品="
-                  + leg.getKey()
-                  + " 余额="
-                  + stock
-                  + " 扣减="
-                  + leg.getValue()
-                  + "；转移="
-                  + transfer);
-        }
-        setOperatorStock(operatorGoods, actor, leg.getKey(), stock - leg.getValue());
+        setOperatorStock(
+            operatorGoods,
+            actor,
+            leg.getKey(),
+            operatorStockOf(operatorGoods, actor, leg.getKey()) - leg.getValue());
       }
     }
     if (operatorMoney.containsKey(actor)) {
       for (Map.Entry<CurrencyId, Long> leg : money.entrySet()) {
-        long balance = operatorMoneyOf(operatorMoney, actor, leg.getKey());
-        if (balance < leg.getValue()) {
-          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey()); // ★ 本批恒抛（fail-closed）
-          throw new IllegalStateException(
-              "转移把经营者的货币扣成了负数，而付方不是发行源（透支 = 发行）：经营者="
-                  + actor
-                  + " 币种="
-                  + leg.getKey()
-                  + " 余额="
-                  + balance
-                  + " 扣减="
-                  + leg.getValue()
-                  + " 发行源="
-                  + issuer
-                  + "；转移="
-                  + transfer);
-        }
-        setOperatorMoney(operatorMoney, actor, leg.getKey(), balance - leg.getValue());
+        setOperatorMoney(
+            operatorMoney,
+            actor,
+            leg.getKey(),
+            operatorMoneyOf(operatorMoney, actor, leg.getKey()) - leg.getValue());
       }
     }
   }

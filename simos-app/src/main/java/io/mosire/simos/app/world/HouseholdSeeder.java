@@ -197,20 +197,27 @@ public final class HouseholdSeeder {
         ActorRef actor = HouseholdActors.of(cohort);
         actors.put(actor, new Actor(actor, labelOf(cohort)));
         // ★ 账本**按绝对值**建（含空账）：0 余额保留是本仓既定口径（读口因此读得到"这个家户在这一格有一本账"）。
+        // ★★ M1.3：显式带过两张**冻结表** —— 创世没有冻结（M1.2 的两张表从空表开始），但这里**不许**用三参便捷
+        //   构造器：它给的是"冻结 = 空表"，将来若创世要带冻结（例如"先落占用再交割"的世界），漏带会静默清零。
         GoodsAccountKey accountKey = new GoodsAccountKey(actor, atHex.getKey());
         accounts.put(
             accountKey,
             new GoodsAccount(
                 accountKey,
                 householdStocks.getOrDefault(cohort, Map.of()),
-                householdMoney.getOrDefault(cohort, Map.of())));
+                householdMoney.getOrDefault(cohort, Map.of()),
+                Map.of(),
+                Map.of()));
       }
     }
     // ★★ H5：经营主体的主体 + 账（同一份 OperatorSeed 同时给出两者 ⇒ 不会出现"有账没主体"）。
     for (EconomySeeder.OperatorSeed operator : operators) {
       actors.put(operator.owner(), new Actor(operator.owner(), operator.label()));
       GoodsAccountKey accountKey = new GoodsAccountKey(operator.owner(), operator.location());
-      accounts.put(accountKey, new GoodsAccount(accountKey, operator.goods(), operator.money()));
+      // ★★ M1.3：同家户那条 —— 显式带过两张冻结表（创世为空表），不给三参构造器留静默清零的机会。
+      accounts.put(
+          accountKey,
+          new GoodsAccount(accountKey, operator.goods(), operator.money(), Map.of(), Map.of()));
     }
     return ActorData.empty().withActors(actors).withAccounts(accounts);
   }

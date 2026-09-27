@@ -436,8 +436,9 @@ public final class OwnershipBooks {
    * ★★ <b>把经营者商品账工作副本<strong>按绝对值</strong>落回 actor 切片</b>（H5 ⑤）—— 与 {@link #landHouseholdGoods}
    * 逐字同款（含"钱原样带过"那一条：{@code GoodsAccount} 是整本覆盖的写入口）。
    *
-   * <p>★ <b>与家户那一处的唯一区别：账本不存在 ⇒ <b>建</b>一本</b>（家户那边要求已存在，因为商品落回必须排在货币落回之前）。
-   * 经营者账的生命周期独立于家户：创世给它播，之后每一天它都可能第一次被写到（例：产出的净产是它的第一笔）。
+   * <p>★ <b>账本不存在 ⇒ 建一本</b>：经营者账的生命周期独立于家户 —— 创世给它播，之后每一天它都可能第一次被写到 （例：产出的净产是它的第一笔）。家户那边由 {@link
+   * #loadHouseholdGoods} 保证"行行有账" ⇒ 缺席是装配错，本方法 照旧防御性建账；真正的 fail-closed 落在<b>货币那一半</b>（{@link
+   * #landHouseholdMoney} / {@link #landOperatorMoney} 两条 M1.3 已统一为"缺席 ⇒ 抛"）。
    *
    * @param economy 驱动集（{@code operator → 格}）；不得为 null
    * @param books 落账前的 actor 状态；不得为 null
@@ -485,6 +486,15 @@ public final class OwnershipBooks {
   /**
    * ★★ <b>把经营者货币账工作副本<strong>按绝对值</strong>落回</b>（H5 ⑤）—— 与 {@link #landHouseholdMoney}
    * 同款（商品那一半原样带过；★ 它必须排在本方法之前）。
+   *
+   * <p>★★ <b>M1.3 对称化（fail-closed）：账本缺席 ⇒ 抛</b>。此前经营者这一条在缺席时<b>静默新建</b>一本 "商品为空"的账 —— 与家户那条（{@link
+   * #landHouseholdMoney} 的缺席 ⇒ 抛）口径不对称，顺序写反时会把商品那一半 悄悄抹成 0。现在两条口径统一：货币与商品住<b>同一本</b> {@code
+   * GoodsAccount}，货币落回本来就要求该经营者的 <b>商品已经落好</b>（{@link #landOperatorGoods} 会为第一次写到的经营者建账）⇒
+   * 账本在这里缺席只可能是 "商品那一半还没落"（顺序反了）或"这个主体的格说不出来"（{@code operatorLocations} 跳过），<b>两者都不该
+   * 由货币这一半新造一本商品为空的账</b>。
+   *
+   * <p>★ 这与 {@link #loadOperatorMoney} 的"载入缺席不抛"<b>不冲突</b>：那条是<b>载入</b>口径（缺席 = 这个世界
+   * 还没给经营者播种，是合法状态）；本条是<b>落回</b>口径（副本里既然有这笔货币，就必然对应 actor 侧一本已存在的账， 落不回去是顺序/装配错）。
    */
   public static ActorData landOperatorMoney(
       EconomyData economy, ActorData books, Map<ActorRef, Map<CurrencyId, Long>> operatorMoney) {
@@ -513,14 +523,24 @@ public final class OwnershipBooks {
         }
       }
       GoodsAccount existing = accounts.get(key);
+      if (existing == null) {
+        // ★★ M1.3：与家户那条同一条 fail-closed 口径（理由见方法注释）——不许在这里静默造一本商品为空的账。
+        throw new IllegalStateException(
+            "经营者货币落回要求该经营者的账本已在 actor 侧存在（商品落回在前，顺序不能反；"
+                + "账本缺席只可能是商品那一半还没落）：经营者="
+                + key.owner()
+                + " 格="
+                + key.location());
+      }
+      // ★ 商品那一半与两张**冻结表**原样带过（GoodsAccount 是整本覆盖的写入口）。
       accounts.put(
           key,
           new GoodsAccount(
               key,
-              existing == null ? Map.of() : existing.balances(),
+              existing.balances(),
               entry.getValue(),
-              existing == null ? Map.of() : existing.frozenBalances(),
-              existing == null ? Map.of() : existing.frozenMoney()));
+              existing.frozenBalances(),
+              existing.frozenMoney()));
     }
     return books.withAccounts(accounts);
   }
@@ -531,8 +551,8 @@ public final class OwnershipBooks {
   //   本类已是 app 侧"账务纯函数"的唯一落点（apply / 四个 land*）——它们都是 `ActorData → ActorData`、无 IO、
   //   不写状态。freeze / release 与它们**逐字同形**，因此没有引入第二条写状态的路：真正落进 revision 的仍然是
   //   铁律 2 的那条链（调用方把本函数的结果与基态交给 `ActorChangeSet.between` 派生出变更集，再经
-  //   `CommandBus` 提交）。★ 经济侧的**唯一写口**（`EconomySettlement.applyTransfer`）一字未动：冻结不是换手，
-  //   它不动余额、不产生任何转移腿。
+  //   `CommandBus` 提交）。★ 经济侧的**唯一换手写口**仍是 `EconomySettlement.applyTransfer`：冻结不是换手，
+  //   它不动余额、不产生任何转移腿（M1.4 把那条换手路径改成两遍式，但**没有**新增第二个 applier，见那里的方法注释）。
   //
   // ★★ 语义（三条，都是判据）：
   //   ① **绝对值**：本对函数给的是"这本账现在的冻结额是多少"（与余额同一口径：整本覆盖）。
@@ -541,7 +561,8 @@ public final class OwnershipBooks {
   //   ② **只动 frozen**：余额（商品与货币）逐键不变。冻结不是注销、不是转移 —— 它只是把已有的一部分标成"已占用"
   //      ⇒ 货币守恒（Σ余额恒定）不受影响。
   //   ③ **账本缺席 ⇒ 抛**：冻结是"对**已有**库存下的一条处置命令"，对一本不存在的账冻结等于凭空造出一本账
-  //      （`land*` 那两种缺席口径是"落账"，与这里不同，见 §"经营者账"的注释）。
+  //      （`land*` 的商品侧允许建账、货币侧缺席是抛 —— M1.3 已把家户与经营者两条货币口径统一，见 {@link
+  //      #landOperatorMoney}）。
   //
   // ★★ 边界（用户 2026-09-27 裁定）：`frozen` **只表达"已明确的占用"**（挂单要卖的货、已承诺的交付）。
   //   生活保留 / 必要生产投入 / 经营储备**不许**经这对函数落进账户 —— 它们是决策层的策略，按

@@ -111,9 +111,13 @@ public record GoodsAccount(
    * 便捷构造器：**只有商品、没有钱、没有冻结**（货币与两张冻结表都是空表）。
    *
    * <p>★ 存在的理由：H4 之前建的账户（以及大量只关心商品的夹具与读法）不必为"多了一个组件"逐处改。 ★ <b>它不是"忘记传钱"的掩护</b>：真正要动钱的路径（{@code
-   * OwnershipBooks} 的落账、{@code HouseholdSeeder} 的创世禀赋）一律走**三参**构造器；而"钱有没有被序列化丢"由 {@code
+   * OwnershipBooks} 的落账、{@code HouseholdSeeder} 的创世禀赋）一律走**五参**构造器；而"钱有没有被序列化丢"由 {@code
    * ActorCodecTest#moneyRoundTripsThroughTheWireWithZeroKeptAndAbsentDistinct} 守着（★ M1.0 补记：本条曾声称
    * "由 {@code ActorCodec} 的往返用例守着"，而**那条用例当时并不存在** —— 本仓第 5 例幻影判别力，落盘路径因此在整个 M1 之前无人守）。
+   *
+   * <p>★★ <b>M1.3 收口后，全仓 {@code src/main} 里没有本构造器的调用点</b>（{@code ActorPayloads} / {@code
+   * HouseholdSeeder} / {@code OwnershipBooks} 五处落账点全部显式带过 两张冻结表）—— 留着它只为测试夹具与"确认无钱、无冻结"的旧读法。★
+   * <b>写回点一律用五参</b>：它给的是"冻结 = 空表"， 用它写回会把已有冻结静默清零。
    */
   public GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances) {
     this(key, balances, Map.of(), Map.of(), Map.of());
@@ -123,7 +127,8 @@ public record GoodsAccount(
    * 便捷构造器：商品 + 货币，**没有冻结**（两张冻结表都是空表）—— <b>语义与 M1.2 之前逐字不变</b>。
    *
    * <p>★★ <b>但"整本覆盖"的写入口要小心它</b>：{@code OwnershipBooks} 的 5 个落账点若用它写回，会把<b>已有的冻结额静默清零</b>（与 H4
-   * 两参构造器把钱静默清零是同一个形态的病）⇒ 那些点必须显式把冻结带过（见 {@code OwnershipBooks} 的注释与用例）。
+   * 两参构造器把钱静默清零是同一个形态的病）⇒ 那些点必须显式把冻结带过（见 {@code OwnershipBooks} 的注释与用例）。 ★ <b>M1.3 收口后，全仓 {@code
+   * src/main} 里同样没有本构造器的调用点</b>（载荷解析与创世装配已改走五参）—— 理由与两参那条一字不差。
    */
   public GoodsAccount(
       GoodsAccountKey key, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {

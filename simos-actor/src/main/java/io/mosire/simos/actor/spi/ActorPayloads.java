@@ -38,7 +38,9 @@ import java.util.Set;
  *              {"kind":"HOUSEHOLD","id":"house@0_0","label":"农户"}],
  *    "goods":[{"owner":{"kind":"HOUSEHOLD","id":"house@0_0"},
  *              "location":{"q":0,"r":0},
- *              "balances":{"grain":2241000,"fiber":0}}]}]}
+ *              "balances":{"grain":2241000,"fiber":0},
+ *              "money":{"silver":1200},          // ★ H4：可缺省（缺 = 空表）
+ *              "frozenBalances":{},"frozenMoney":{}}]}]}   // ★ M1.2：可缺省（缺 = 空表，M1.3 显式带过）
  * }</pre>
  *
  * <p>★ <b>逐格声明</b>（{@code entries[]}）：<b>格是命令目标与权限的粒度</b> —— {@code CommandTargets.targetPaths}
@@ -164,8 +166,12 @@ final class ActorPayloads {
   }
 
   /**
-   * 一本账：{@code {owner, location, balances:{<commodityId>:<余额>}}}（余额是**存量**：0 保留、负数由 {@code
-   * GoodsAccount} 拒）。
+   * 一本账：{@code {owner, location, balances:{<commodityId>:<余额>}, money?:{<currencyId>:<余额>},
+   * frozenBalances?:{<commodityId>:<冻结额>}, frozenMoney?:{<currencyId>:<冻结额>}}}（余额与冻结额都是**存量**：0
+   * 保留；数值守卫 —— 余额非负、{@code 0 ≤ 冻结 ≤ 余额} —— 由 {@code GoodsAccount} 拒，本层不重复实现）。
+   *
+   * <p>★ {@code money} / {@code frozenBalances} / {@code frozenMoney} 三键**可缺省**（缺 = 空表）：前者是 H4
+   * 的口径，后两者是 M1.2 新增的组件 ⇒ M1.2 之前写的载荷里根本没有它们（照 {@code GoodsAccount} 的旧档兼容口径）。
    */
   private static GoodsAccount goods(JsonNode node, HexCoord atHex, Set<ActorRef> declared) {
     ActorRef owner = owner(node);
@@ -202,7 +208,33 @@ final class ActorPayloads {
         money.put(new CurrencyId(field.getKey()), amount);
       }
     }
-    return new GoodsAccount(new GoodsAccountKey(owner, location), parsed, money);
+    // ★★ M1.3：M1.2 新增的两张**冻结表**同样是这本账的一部分，本解析**显式带过**它们（不许经三参便捷构造器
+    //   静默清零）：① 缺键（旧载荷 / 创世载荷）⇒ 空表（fail-closed 方向：没写就是没有冻结）；
+    //   ② 写了就逐键解析，数值语义（0 ≤ 冻结 ≤ 余额）交给 GoodsAccount 的构造期守卫 —— 本层不重复实现。
+    Map<CommodityId, Long> frozenBalances = new LinkedHashMap<>();
+    JsonNode frozenBalancesNode = optionalObject(node, "frozenBalances");
+    if (frozenBalancesNode != null) {
+      frozenBalancesNode
+          .fields()
+          .forEachRemaining(
+              field ->
+                  frozenBalances.put(
+                      CommodityId.parse(field.getKey()),
+                      requireIntegral(field.getValue(), "frozenBalances." + field.getKey())));
+    }
+    Map<CurrencyId, Long> frozenMoney = new LinkedHashMap<>();
+    JsonNode frozenMoneyNode = optionalObject(node, "frozenMoney");
+    if (frozenMoneyNode != null) {
+      frozenMoneyNode
+          .fields()
+          .forEachRemaining(
+              field ->
+                  frozenMoney.put(
+                      new CurrencyId(field.getKey()),
+                      requireIntegral(field.getValue(), "frozenMoney." + field.getKey())));
+    }
+    return new GoodsAccount(
+        new GoodsAccountKey(owner, location), parsed, money, frozenBalances, frozenMoney);
   }
 
   /** {@code {"kind","id"}}：主体引用（载荷里主体行与两张表的 {@code owner} 共用**同一个**形状与解析）。 */

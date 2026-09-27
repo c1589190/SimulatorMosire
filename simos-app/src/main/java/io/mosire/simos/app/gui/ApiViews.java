@@ -24,12 +24,14 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.money.CurrencyDef;
+import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -117,6 +119,16 @@ import java.util.TreeMap;
  * .superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md} 实测过"同一资源的两个形状"（GUI 与 MCP 各写一份视图 ⇒
  * 语义安全品发散，无判据能发现）。共用一份 = 形状发散在**结构上**不可能，而不是靠人记得。 故类与上述方法从包内可见提升为 {@code public}（仍是 app
  * 层内部的类型，不外发）。
+ *
+ * <p>★★ <b>M1.6（2026-09-27）：货币读数按「逐工具守恒」组织，<u>没有</u>"全世界总量永远不变"这条总不变量。</b> 可成立的等式是<b>逐工具</b>的
+ *
+ * <pre>
+ * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销
+ * </pre>
+ *
+ * 发行/注销会让总量变 ⇒ 本批发行 = 注销 = 0（{@code MoneyIssuance.REGISTERED} 为空）时它才退化成今天的 "逐币种 Σ持有恒定"。读口因此给 {@code
+ * moneyLayers} 三栏（私人流通 / 全部基础货币 /（将来）银行存款）： 它们读的是<b>账户事实</b>，不是发行量。将来的累计发行/注销登记点挂在 {@code
+ * MoneyIssuance.REGISTERED} 旁 （该类的类注已写明），本层不另存一份 —— 那会是"同一事实的第二处拼写"。
  */
 public final class ApiViews {
 
@@ -420,6 +432,9 @@ public final class ApiViews {
     long landMilliMu = 0L;
     long debtPrincipal = 0L;
     long debtCount = 0L;
+    // ★★ M1.5：债权人侧合计（今天这两栏不存在 ⇒ 读口只能看见"谁欠着"这一半）。
+    long creditPrincipal = 0L;
+    long creditCount = 0L;
     long grainDailyConsumption = 0L;
     // ★★ H1：**商品库存的唯一真源是 actor 侧的 {@code GoodsAccount}**（裁定 D3-C/K1；{@code ClassRow} 里没有 goods）
     //   ⇒ 本视图的商品读数从**该格的全部账户**求和，逐值等于 {@link #economyOwnership} 的 {@code actorGoodsTotal}。
@@ -442,12 +457,15 @@ public final class ApiViews {
       industries.add(industryView(industry));
     }
     // ★★ H0.2：**家户行挂在格上**（键 = {@code (格, 居住类型, 阶层)}），不再属于任何产业 ⇒ 视图里它们是该格的一个数组。
+    // ★★ M1.5：债权人侧索引**一次派生、整格复用**（{@link DebtIndex#byCreditor}；不在每一行里 O(债务) 重扫）。
+    Map<CohortKey, List<DebtId>> creditsByCohort = DebtIndex.byCreditor(data.debts());
     List<Map<String, Object>> classes = new ArrayList<>();
     for (CohortKey key : cohortKeysAt(data, coord)) {
       ClassRow row = data.classes().get(key);
       population += row.population();
       laborMilli += row.laborMilli();
       grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
+      // 债务人侧：仍按行里的引用清点（它是放贷时写下的权威清单）。
       for (DebtId debtId : row.debts()) {
         Debt debt = data.debts().get(debtId);
         if (debt != null) {
@@ -455,7 +473,16 @@ public final class ApiViews {
           debtPrincipal += debt.principal();
         }
       }
-      classes.add(classRowView(key, row, data.flows().get(key), actors));
+      // ★★ M1.5：债权人侧——"这一格的家户应收多少"以前完全读不到；逐条走同一张债务表（方向只是挂给谁）。
+      List<DebtId> credits = creditsByCohort.getOrDefault(key, List.of());
+      for (DebtId debtId : credits) {
+        Debt debt = data.debts().get(debtId);
+        if (debt != null) {
+          creditCount++;
+          creditPrincipal += debt.principal();
+        }
+      }
+      classes.add(classRowView(key, row, data.flows().get(key), actors, credits, data.debts()));
     }
     view.put("population", population);
     view.put("laborMilli", laborMilli);
@@ -475,11 +502,17 @@ public final class ApiViews {
     //     "跨币种求和的 money"本来也不是一个有意义的量（同 {@link #economyOwnership} 的口径）。
     // ★★ H4：**actor 侧的货币合计**（逐币种）—— 该格每一本 {@code GoodsAccount} 的钱，与 {@code goods} 同一趟遍历。
     view.put("actorMoneyTotal", actorMoneyTotal);
+    // ★★ M1.6：**逐工具守恒的三个分栏**（私人流通 / 全部基础货币 /（将来）银行存款）—— 纯派生自上面那一趟
+    //   同源遍历，不在视图层再扫一账；逐条口径见 {@link #moneyLayers}。
+    view.put("moneyLayers", moneyLayers(actorMoneyTotal));
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
     view.put("market", marketView(data.markets().get(coord)));
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
+    // ★★ M1.5：同一条事实的另一半（债权人侧）。两个方向来自同一张债务表 ⇒ 逐条本金一致。
+    view.put("creditCount", creditCount);
+    view.put("creditPrincipal", creditPrincipal);
     // ★★ H5 ④：**商品词表（含留位）** —— 世界级常量，与格无关；放在这里是因为这是 economy 切片唯一的读口。
     //   ★ 为什么必须有：H5 起 IRON 不再进任何配方（作坊的投入由铁改成工具）⇒ 若读口不列"世界有哪些商品"，
     //     "铁"就退化成没人读得到的孤字面量（本仓禁"看起来在记、其实永远不被读"）。逐条口径见
@@ -582,6 +615,8 @@ public final class ApiViews {
     long affordable = price == null || price <= 0L ? 0L : money * MILLI_PER_GRAIN / price;
     view.put("numeraire", numeraire == null ? null : numeraire.value());
     view.put("grainPrice", price);
+    // ★★ M1.6：它只是 `actorMoneyTotal` 里计价货币那一个标量 —— 私人流通 / 全部基础货币 / 银行存款的**分栏**
+    //   在父视图（economyHex / economyOwnership）的 {@code moneyLayers} 那一栏，不在这里另算一份。
     view.put("numeraireMoney", money);
     view.put("affordableGrain", affordable);
     view.put("purchasingGap", Math.max(0L, unmet - affordable));
@@ -656,6 +691,9 @@ public final class ApiViews {
    *               "availableGoods":{"grain":100},"availableMoney":{"silver":10}}],// ★ M1.2 可支配（派生）
    *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 GoodsAccount 的**商品**合计
    *  "actorMoneyTotal":{"silver":12},          // ★ H4：actor 侧：同一批账的**货币**合计（逐币种）
+   *  "moneyLayers":{"privateCirculation":{"silver":12},   // ★ M1.6：私人流通 / 全部基础货币 /
+   *                 "baseMoney":{"silver":12},           //    （将来）银行存款三栏（纯派生）
+   *                 "bankDeposits":{},"unclassifiedCurrencies":[]},
    *  "rowGoodsTotal":{"grain":456,"cloth":0}}     // 行侧：= {@link #economyHex} 里那份 Σ 行库存（结构性的空表）
    * </pre>
    *
@@ -712,6 +750,8 @@ public final class ApiViews {
     view.put("accounts", accounts);
     view.put("actorGoodsTotal", actorGoodsTotal);
     view.put("actorMoneyTotal", actorMoneyTotal);
+    // ★★ M1.6：与 {@link #economyHex} **同一份**分栏（同一趟遍历的派生量；两处不许各算一套）。
+    view.put("moneyLayers", moneyLayers(actorMoneyTotal));
     view.put("rowGoodsTotal", rowGoodsTotal);
     return view;
   }
@@ -817,13 +857,25 @@ public final class ApiViews {
   }
 
   /**
-   * 一个家户行（§3.2 逐字段：**居住类型** / 人口 / 有效劳动 / 投入率 / 库存 / 货币 / 债务 / 两类需求）；{@code flow} = 本期流水（R3a，可为
-   * null）。
+   * 一个家户行（§3.2 逐字段：**居住类型** / 人口 / 有效劳动 / 投入率 / 库存 / 货币 / **债权债务** / 两类需求）；{@code flow} =
+   * 本期流水（R3a，可为 null）。
    *
    * <p>★ **没有"土地"这一项**：H0.3（K3）把生产资料搬到 {@code Industry.capacity} ⇒ 行侧只报"这本账有多少商品/多少钱/欠谁"。
+   *
+   * <p>★★ <b>M1.5 起债务双向可查</b>：{@code debts}（我欠谁，保持旧形状 = id 字符串数组）、{@code credits}
+   * （谁欠我，新增）两个方向并列；{@code debtDetails} 给每一条债的**明细**（含此前零读口的 {@code dueCycle}）， 一条债在两个方向上读到的本金 / 利率
+   * / 到期周期逐值相同（它们回的是同一条 {@link Debt} 记录）。
+   *
+   * @param credits 该行的债权人侧 {@link DebtId}（由 {@link DebtIndex#byCreditor} 一次派生、整格复用；可为空表）
+   * @param debtBook 该切片的债务表（{@code EconomyData.debts()}；只读，不在本层改）
    */
   private static Map<String, Object> classRowView(
-      CohortKey key, ClassRow row, FlowRow flow, ActorData actors) {
+      CohortKey key,
+      ClassRow row,
+      FlowRow flow,
+      ActorData actors,
+      List<DebtId> credits,
+      Map<DebtId, Debt> debtBook) {
     Map<String, Object> view = new LinkedHashMap<>();
     // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
     //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
@@ -841,14 +893,58 @@ public final class ApiViews {
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
     view.put("actorMoney", sortedCurrencies(account == null ? Map.of() : account.money()));
     view.put("money", row.money());
+    // 债务人方向：旧形状保持不变（id 字符串数组），另在 debtDetails 里补明细。
     List<String> debts = new ArrayList<>(row.debts().size());
     for (DebtId debt : row.debts()) {
       debts.add(debt.value());
     }
     view.put("debts", debts);
+    // ★★ M1.5：债权人方向（此前完全读不到）——"谁欠我"。
+    List<String> creditsView = new ArrayList<>(credits.size());
+    for (DebtId credit : credits) {
+      creditsView.add(credit.value());
+    }
+    view.put("credits", creditsView);
+    // ★★ M1.5：同一批债务的明细（两个方向同源；dueCycle 由此接入读口，它此前零 reader）。
+    List<Map<String, Object>> debtDetails = new ArrayList<>(row.debts().size() + credits.size());
+    for (DebtId debtId : row.debts()) {
+      Debt debt = debtBook.get(debtId);
+      if (debt != null) {
+        debtDetails.add(debtDetailView(debt, false));
+      }
+    }
+    for (DebtId debtId : credits) {
+      Debt debt = debtBook.get(debtId);
+      if (debt != null) {
+        debtDetails.add(debtDetailView(debt, true));
+      }
+    }
+    view.put("debtDetails", debtDetails);
     view.put("naturalNeeds", sortedCommodities(row.naturalNeeds()));
     view.put("effectiveDemand", sortedCommodities(row.effectiveDemand()));
     view.put("flow", flowView(flow));
+    return view;
+  }
+
+  /**
+   * ★★ <b>一条债的双向明细</b>（M1.5）：两个方向读的是<b>同一条</b> {@link Debt} 记录 ⇒ {@code principal} / {@code
+   * ratePerMillePerCycle} / {@code dueCycle} / {@code defaulted} <b>逐值相同</b>，不同的只有 {@code
+   * direction} 与 {@code counterparty}。
+   *
+   * <p>★ {@code commodity = null} ⇒ 货币债（沿用 {@code Optional.empty()} 的既有口径，不是"读不到"）。 ★ {@code
+   * principal} 已含周期末并入的利息（{@code chargeInterest} 只增本金、不自动增可花余额 —— 债权人侧的"应收"<b>不进</b> {@code
+   * FlowRow.income}，那是粮口径；见 {@code chargeInterest} 的类注）。
+   */
+  private static Map<String, Object> debtDetailView(Debt debt, boolean creditorSide) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", debt.id().value());
+    view.put("direction", creditorSide ? "receivable" : "payable");
+    view.put("counterparty", (creditorSide ? debt.debtor() : debt.creditor()).toString());
+    view.put("commodity", debt.commodity().map(CommodityId::value).orElse(null));
+    view.put("principal", debt.principal());
+    view.put("ratePerMillePerCycle", debt.ratePerMillePerCycle());
+    view.put("dueCycle", debt.dueCycle());
+    view.put("defaulted", debt.defaulted());
     return view;
   }
 
@@ -915,6 +1011,61 @@ public final class ApiViews {
     for (Map.Entry<CurrencyId, Long> entry : source.entrySet()) {
       target.merge(entry.getKey().value(), entry.getValue(), Long::sum);
     }
+  }
+
+  /**
+   * ★★ <b>M1.6：货币的逐工具分栏</b>（私人流通 / 全部基础货币 /（将来）银行存款）—— <b>纯派生、零新状态组件</b>。
+   *
+   * <pre>
+   * privateCirculation  这一格里**全部已落账的 actor 账本余额**（逐币种）—— 账户事实，不是发行量
+   * baseMoney           币种的已登记工具档**全部**落在 {SPECIE, STATE_NOTE} 的那部分持有量
+   * bankDeposits        币种的工具档含 BANK_DEPOSIT 的那部分持有量（今天没有这一档 ⇒ 空表）
+   * unclassifiedCurrencies  账上有、但分不进上面任何一栏的币种（具名列出来，绝不静默塞进某一栏）
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须明写"没有全世界总量永远不变这条总不变量"</b>（master plan M1.6 的否定判据）： 可成立的是<b>逐工具</b>的 {@code
+   * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销}；发行/注销会让总量变。 本批发行 = 注销 = 0（{@code MoneyIssuance.REGISTERED} 为空）⇒
+   * 数值上退化成"逐币种 Σ持有恒定"。 将来的累计发行/注销登记点挂在 {@code MoneyIssuance.REGISTERED} 旁，本层不另存一份。
+   *
+   * <p>★ <b>为什么按币种而不是按工具分</b>：账户余额的键是 {@code CurrencyId}（M1.1 明文不动它）⇒ 同一币种登记了
+   * 多种工具时，账户层<b>分不出</b>"这张钱是哪种工具"。本栏不假装能分：既含基础档又含存款档的币种落进 {@code
+   * unclassifiedCurrencies}，让读的人看见"这里读不出来"，而不是看到一个编出来的 0 或半数。 今天 {@code silver} 只有 {@code SPECIE}
+   * 一种工具 ⇒ {@code baseMoney} 与 {@code privateCirculation} 逐值相同。
+   */
+  private static Map<String, Object> moneyLayers(Map<String, Long> actorMoneyTotal) {
+    Map<String, Set<InstrumentKind>> kindsByCurrency = new LinkedHashMap<>();
+    for (MoneyInstrument instrument : MoneyVocabulary.allInstruments()) {
+      kindsByCurrency
+          .computeIfAbsent(instrument.currency().value(), ignored -> new LinkedHashSet<>())
+          .add(instrument.kind());
+    }
+    Map<String, Long> privateCirculation = new TreeMap<>(actorMoneyTotal);
+    Map<String, Long> baseMoney = new TreeMap<>();
+    Map<String, Long> bankDeposits = new TreeMap<>();
+    List<String> unclassified = new ArrayList<>();
+    for (Map.Entry<String, Long> entry : privateCirculation.entrySet()) {
+      Set<InstrumentKind> kinds = kindsByCurrency.get(entry.getKey());
+      if (kinds == null || kinds.isEmpty()) {
+        unclassified.add(entry.getKey()); // 词表里没有任何工具认领这个币种 ⇒ 分不进任何一栏
+        continue;
+      }
+      boolean deposit = kinds.contains(InstrumentKind.BANK_DEPOSIT);
+      boolean base =
+          kinds.contains(InstrumentKind.SPECIE) || kinds.contains(InstrumentKind.STATE_NOTE);
+      if (deposit && base) {
+        unclassified.add(entry.getKey()); // 同一币种混两档：账户按币种记账，读不出各占多少
+      } else if (deposit) {
+        bankDeposits.put(entry.getKey(), entry.getValue());
+      } else {
+        baseMoney.put(entry.getKey(), entry.getValue());
+      }
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("privateCirculation", privateCirculation);
+    view.put("baseMoney", baseMoney);
+    view.put("bankDeposits", bankDeposits);
+    view.put("unclassifiedCurrencies", unclassified);
+    return view;
   }
 
   /**
