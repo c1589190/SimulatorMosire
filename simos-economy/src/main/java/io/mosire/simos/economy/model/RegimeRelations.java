@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -297,6 +298,33 @@ public final class RegimeRelations {
     //   但"谁出料"从此是**本表的一行**，不再是结算里按人口算出来的一个比例。
     return new ProductionRelation(
         industry, operator, defaultInputSupplier(regime, operator), rules, operator);
+  }
+
+  /**
+   * ★★ <b>M1.7：默认关系里的"实物给养义务"展开</b> —— 由 {@link #defaultRelation(RegimeId, IndustryId, ActorRef,
+   * Set)} 先推出该档的默认关系，再按 {@link SubsistenceObligation#of(ProductionRelation, Map)} 展开成具名义务。
+   *
+   * <p>★ <b>为什么需要它</b>：本类的四档里只有 {@code feudal} 有给养那一档（{@code FIXED_IN_KIND_PER_LABOR}）—— 其余三档展开
+   * 出<b>空表</b>（不是抛、也不是 0：那三档的制度里没有这项义务）。读口/验收要问"某经营者每周期应交付多少、给谁"时，若状态里还没有显式关系
+   * （如手搭夹具），走这个入口得到的就是"制度会展开成什么"。
+   *
+   * <p>★ <b>它是派生视图、不是第二份规则表</b>：义务量由 {@code defaultRelation} 的规则 + 实际劳动量现算 ⇒ 与 {@code
+   * EconomyPayloads} 在载荷边缘展开的关系<b>不可能漂开</b>（两处都只走 {@code defaultRelation}）。
+   *
+   * @param regime 生产制度；不得为 null（未登记 ⇒ 抛，同 {@code defaultRelation}）
+   * @param industry 产业（身份 + 地点都取自它）；不得为 null
+   * @param operator 经营主体；不得为 null
+   * @param residences 供给这个产业的那些家户的居住类型（见 {@code defaultRelation}）；不得为 null
+   * @param laborOfCohort 本周期各 cohort 的劳动量（缺键 ⇒ 0 劳动 ⇒ 应付 0）；不得为 null
+   */
+  public static List<SubsistenceObligation> defaultSubsistenceObligations(
+      RegimeId regime,
+      IndustryId industry,
+      ActorRef operator,
+      Set<ResidenceKind> residences,
+      Map<CohortKey, Long> laborOfCohort) {
+    return SubsistenceObligation.of(
+        defaultRelation(regime, industry, operator, residences), laborOfCohort);
   }
 
   /**

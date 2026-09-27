@@ -27,6 +27,9 @@ import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -36,6 +39,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -429,6 +433,9 @@ public final class ApiViews {
     view.put("activated", data.meta().isPresent());
     long population = 0L;
     long laborMilli = 0L;
+    // ★★ M1.8：该格**按阶层参与率折扣后的**每日劳动合计（逐值 = Σ 各行的 participationAdjustedLaborMilli）
+    //   —— 与 {@code laborMilli}（毛量）并排发，四档人均劳动因此可逐值核对（见 classRowView）。
+    long participationAdjustedLaborMilli = 0L;
     long landMilliMu = 0L;
     long debtPrincipal = 0L;
     long debtCount = 0L;
@@ -454,7 +461,11 @@ public final class ApiViews {
       // ★★ H0.3（K3）：土地不再是**行**的生产资料，而是**产业**的产能 ⇒ 该格的亩数从产业读，
       //   行那一侧不再有这个字段（一个"恒为 0 的行级 landMilliMu"就是本仓最反对的"看起来在记"）。
       landMilliMu += industry.capacity().getOrDefault(AssetKind.LAND, 0L);
-      industries.add(industryView(industry));
+      // ★★ M1.7：给养义务读口要"按本周期实际劳动量" —— 走结算侧的**同一个函数**（{@code EconomySettlement.laborOfCohort}），
+      //   不在视图层另写一套（口径两处各写一遍 = 读到的义务与实付的义务会漂开）。
+      Map<CohortKey, Long> cycleLabor =
+          EconomySettlement.laborOfCohort(data.classes(), coord, industry.cycleDays());
+      industries.add(industryView(industry, data.relations().get(id), cycleLabor));
     }
     // ★★ H0.2：**家户行挂在格上**（键 = {@code (格, 居住类型, 阶层)}），不再属于任何产业 ⇒ 视图里它们是该格的一个数组。
     // ★★ M1.5：债权人侧索引**一次派生、整格复用**（{@link DebtIndex#byCreditor}；不在每一行里 O(债务) 重扫）。
@@ -464,6 +475,7 @@ public final class ApiViews {
       ClassRow row = data.classes().get(key);
       population += row.population();
       laborMilli += row.laborMilli();
+      participationAdjustedLaborMilli += row.participationAdjustedLaborMilli();
       grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
       // 债务人侧：仍按行里的引用清点（它是放贷时写下的权威清单）。
       for (DebtId debtId : row.debts()) {
@@ -486,6 +498,8 @@ public final class ApiViews {
     }
     view.put("population", population);
     view.put("laborMilli", laborMilli);
+    // ★★ M1.8：毛量旁边发**折扣后**的可用劳动（同一批行的两个口径并排 ⇒ 参与率是否真的进了计算可逐值核对）。
+    view.put("participationAdjustedLaborMilli", participationAdjustedLaborMilli);
     view.put("landMilliMu", landMilliMu);
     view.put("goods", goods);
     // ★ R3a：该格粮库存合计与日耗合计（"看变化"的两个直接读数；单位 = 毫粮）。
@@ -792,8 +806,19 @@ public final class ApiViews {
    * {@code outputPerUnit} + 本周期实际扣到的投入）：这几项原来**不在任何读口里**，而"每单位**什么**"正是 R3 变成数据的那一维 —— 不读出来，"每座作坊产
    * N 匹布"在报表里就只是数字。★ {@code inputPerUnit} 走 {@link Industry#inputPerUnit()}（={@code
    * cycleInputPerUnit} 的合计），**不在视图层另算一遍**。
+   *
+   * <p>★★ <b>M1.7：把"实物给养义务"发出来</b>（{@code subsistenceObligations} / {@code subsistencePromised}）——
+   * 改前"谁给谁多少给养"只能从规则表 + 劳动账现算，读口里根本不存在；现在它由**契约层的** {@link
+   * SubsistenceObligation#of(ProductionRelation, Map)} 纯派生（受方 / 按什么劳动量 / 每周期应付 / 商品），
+   * 而"按什么量"用的是**结算侧的同一个** {@code EconomySettlement.laborOfCohort}（M1.8 的折扣后口径）⇒ 读到的义务与实付的应付**同源**。
+   * ★ 缺 relation ⇒ 空表（"没有规则 ⇒ 全归 residualOwner"的等价路径，不是读不到）；{@code subsistencePromised} = 逐商品 Σ
+   * 应付，也正是 M2 保留算式经 {@link SubsistenceObligation#retentionOf} 封顶时用的"承诺额"。
+   *
+   * @param relation 该产业的生产关系（{@code EconomyData.relations}；可为 null = 没有规则）
+   * @param laborOfCohort 本周期各 cohort 的劳动量（由 {@code EconomySettlement.laborOfCohort} 算好传入；不得为 null）
    */
-  private static Map<String, Object> industryView(Industry industry) {
+  private static Map<String, Object> industryView(
+      Industry industry, ProductionRelation relation, Map<CohortKey, Long> laborOfCohort) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", industry.id().value());
     view.put("name", industry.name());
@@ -833,7 +858,60 @@ public final class ApiViews {
       slots.add(slotView);
     }
     view.put("slots", slots);
+    // ★★ M1.7：实物给养义务（谁 → 向谁 / 按什么劳动量 / 每周期应付多少 / 什么商品）—— 纯派生、不落状态。
+    //   ★ 缺 relation ⇒ 空表（没有规则 = 全归 residualOwner 的等价路径，见方法注释）。
+    List<SubsistenceObligation> obligations =
+        relation == null ? List.of() : SubsistenceObligation.of(relation, laborOfCohort);
+    List<Map<String, Object>> obligationViews = new ArrayList<>(obligations.size());
+    for (SubsistenceObligation obligation : obligations) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("provider", actorRefView(obligation.provider())); // 谁（= 本产业的 operator，自含一份便于逐条核）
+      item.put("recipient", recipientView(obligation.recipient())); // 向谁
+      item.put("commodity", obligation.commodity().value()); // 给养是什么
+      item.put("laborMilli", obligation.laborMilli()); // 按什么量（本周期劳动量）
+      item.put("perLaborMilli", obligation.perLaborMilli()); // 每 1000 千分劳动给多少
+      item.put("dueAmount", obligation.dueAmount()); // 本周期应付
+      item.put("rulePriority", obligation.rule().priority()); // 来源规则在付款次序里的位置（可回查）
+      obligationViews.add(item);
+    }
+    view.put("subsistenceObligations", obligationViews);
+    view.put(
+        "subsistencePromised",
+        sortedCommodities(SubsistenceObligation.promisedByCommodity(obligations)));
     return view;
+  }
+
+  /**
+   * 一个 {@link Recipient} 的读口形状（M1.7 给养义务用；两档恰其一）。
+   *
+   * <p>★ {@code ToActor} → {@code {kind:"actor", actor:{kind,id}}}；{@code ToCohort} → {@code
+   * {kind:"cohort", cohort:"<q>_<r>|<residence>|<stratum>"}} —— cohort 用契约自带的规范串（{@link
+   * CohortKey#toString()}），视图层不另拼一套。★ 保序 {@code LinkedHashMap} ⇒ 同状态两次响应逐字节相同。
+   */
+  private static Map<String, Object> recipientView(Recipient recipient) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    switch (recipient) {
+      case Recipient.ToActor toActor -> {
+        view.put("kind", "actor");
+        view.put("actor", actorRefView(toActor.actor()));
+      }
+      case Recipient.ToCohort toCohort -> {
+        view.put("kind", "cohort");
+        // ★ 规范串是 CohortKey 的唯一拼写点（toString/parse 成对），本层不复述它的格式。
+        view.put("cohort", toCohort.cohort().toString());
+      }
+    }
+    return view;
+  }
+
+  /**
+   * 人均劳动（M1.8 读口派生量，单位 = 千分劳动/人）：{@code laborMilli ÷ population}。
+   *
+   * <p>★ <b>不再乘 1000</b>：{@code laborMilli} 本身就是"千分劳动"（一个人满劳动 = 1000）⇒ 它除以人口得到的就已经是 千分数（真档四阶层 =
+   * 562.0‰ 的那条读数就是它）；再乘 1000 会变成"每百万人"的假单位。人口为 0 ⇒ 0（不做除零、不臆造）。 ★ 整数除法逐行向下取整（读口不发明小数精度）。
+   */
+  private static long perCapitaLaborMilli(long laborMilli, long population) {
+    return population == 0L ? 0L : laborMilli / population;
   }
 
   /** 制度分配函数（§5 的两种形状逐字段；不含任何"算出来的"结果——那是 R4 的活）。 */
@@ -866,6 +944,11 @@ public final class ApiViews {
    * （谁欠我，新增）两个方向并列；{@code debtDetails} 给每一条债的**明细**（含此前零读口的 {@code dueCycle}）， 一条债在两个方向上读到的本金 / 利率
    * / 到期周期逐值相同（它们回的是同一条 {@link Debt} 记录）。
    *
+   * <p>★★ <b>M1.8：劳动口径可逐值核对</b>：{@code laborMilli}（未折算的每日毛劳动）+ {@code participationPerMille} 旁边发
+   * {@code participationAdjustedLaborMilli}（{@link ClassRow#participationAdjustedLaborMilli()}
+   * 的**唯一算法**）与两个"人均" 读数（千分/人）—— 改前四阶层 {@code labor/pop} 全部相同（真档 562.0‰）；改后参与率 950‰ 的贫农与 100‰
+   * 的地主的人均有效劳动相差 **9.5 倍**（如 534.0‰ vs 56.2‰）。 ★ 两个"人均"都是本层派生量（行里不存第二份），分母为 0 ⇒ 0（不做除零、也不臆造）。
+   *
    * @param credits 该行的债权人侧 {@link DebtId}（由 {@link DebtIndex#byCreditor} 一次派生、整格复用；可为空表）
    * @param debtBook 该切片的债务表（{@code EconomyData.debts()}；只读，不在本层改）
    */
@@ -884,6 +967,12 @@ public final class ApiViews {
     view.put("population", row.population());
     view.put("laborMilli", row.laborMilli());
     view.put("participationPerMille", row.participationPerMille());
+    // ★★ M1.8：按阶层参与率折扣后的可用劳动（唯一算法在 ClassRow）+ 两个人均读数 —— 四档差别在报表里可逐值核对。
+    view.put("participationAdjustedLaborMilli", row.participationAdjustedLaborMilli());
+    view.put("laborPerCapitaPerMille", perCapitaLaborMilli(row.laborMilli(), row.population()));
+    view.put(
+        "participationAdjustedLaborPerCapitaPerMille",
+        perCapitaLaborMilli(row.participationAdjustedLaborMilli(), row.population()));
     // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code GoodsAccount}，键 =
     //   {@code (HouseholdActors.of(key), key.hex())}）—— 行里没有 goods 这一栏。★ 键的拼法只经
     //   {@link OwnershipBooks#accountKeyOf}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。

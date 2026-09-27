@@ -3426,8 +3426,11 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>本格各家户本期劳动量</b>（{@code LABOR_AMOUNT} 那一族的分子/分母）：键 = **行键本身**（H0：行就是 cohort）， 值 = 该行的
-   * {@code rowLabor}（= {@code laborMilli × 投入率 ÷ 1000 × cycleDays}）。
+   * ★★ <b>本格各家户本期劳动量</b>（{@code LABOR_AMOUNT} 那一族的分子/分母，也是 M1.7 给养义务的"按什么量"）：键 = **行键本身**（H0：行就是
+   * cohort），值 = 该行的 {@code rowLabor}（= <b>按参与率折算后的每日可用劳动</b> × cycleDays）。
+   *
+   * <p>★★ <b>M1.8：折算只有一处拼写点</b> —— {@link ClassRow#participationAdjustedLaborMilli()}（= {@code
+   * laborMilli × participationPerMille ÷ 1000}）。本方法<b>不再自己乘一次</b>参与率：否则读口/配额与这里会各折算一遍，真档数字会崩。
    *
    * <p>★★ <b>H0 起它不再"按 (格, 阶层) 并池"（E28 的收口）</b>：改前两池人的劳动被并进同一个 {@code (格, 阶层)}
    * 键（农村行与城镇行），而**受方行**那一侧已由 E24 分开 ⇒ 城市格上"这一格的产出在四个阶层之间怎么分"被另一池人的劳动**参与计权** （自述量级 ≤ 0.04‰）。现在键 =
@@ -3439,10 +3442,13 @@ public final class EconomySettlement {
    * <p>★ 只放**非零**的行：{@code ProductionSettlement} 的 {@code laborOf} 查不到即 0，而 {@code Σ劳动} 是分母 —— 塞 0
    * 进去不改变任何一个数，只会把表弄脏。
    *
+   * <p>★ <b>可见性 public</b>（M1.7）：读口（{@code ApiViews.industryView} 的给养义务一栏）要用**同一个函数**算"按什么劳动量"，
+   * 不许在视图层另写一套（两处各写一套 = 读到的义务与实付的义务会漂开）。
+   *
    * @param location 产业所在的那一格（{@code IndustryHexKeys.hexKeyOf} 是唯一拼写点）
    * @param cycleDays 该产业的周期天数（把"每日劳动"折成"本周期劳动"；见下面的量纲注释）
    */
-  static Map<CohortKey, Long> laborOfCohort(
+  public static Map<CohortKey, Long> laborOfCohort(
       Map<CohortKey, ClassRow> rows, HexCoord location, long cycleDays) {
     Map<CohortKey, Long> byCohort = new LinkedHashMap<>();
     for (Map.Entry<CohortKey, ClassRow> entry : rows.entrySet()) {
@@ -3456,7 +3462,8 @@ public final class EconomySettlement {
       //   ★ 少了这个乘数，给养只有应有值的 1/cycleDays —— 实测（真档 14,806 人的格）：一周期只拿到 0.8% 的口粮，
       //     第 2 周期起人吃不饱、也播不下种 ⇒ 生产逐周期崩掉（`EconomyRealScaleClothTest` / `WorldgenInitializeToolTest`
       //     的跨周期用例当场红）。★ 分成类（`OUTPUT_SHARE`）不受影响：那一路是比值，量纲自消。
-      long rowLabor = row.laborMilli() * row.participationPerMille() / 1000L * cycleDays;
+      //   ★ M1.8：参与率的折算收进 ClassRow 的唯一算法（上面乘一次，这里不许再乘）。
+      long rowLabor = row.participationAdjustedLaborMilli() * cycleDays;
       if (rowLabor <= 0L) {
         continue;
       }

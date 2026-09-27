@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.RegimeOperators;
@@ -315,6 +316,32 @@ public final class EconomySeeder {
 
   /** 槽位劳动投入率上限（‰）：{@code ClassSlot} 的既定口径（贫农 950 / 中农 900 / 富农 750 / 地主 100）。 */
   static final int[] CLASS_LABOR_PER_MILLE = {950, 900, 750, 100};
+
+  /**
+   * ★★ <b>M1.8：阶层加权的参与率（‰）</b> —— {@code Σ(阶层份额 × 该阶层参与率) ÷ 1000}。
+   *
+   * <pre>
+   * (450×950 + 350×900 + 150×750 + 50×100) ÷ 1000 = 860 000 ÷ 1000 = 860‰
+   * </pre>
+   *
+   * <p>★★ <b>它为什么存在、以及它为什么不是"第二次折扣"</b>：配额是**按批次**发的，而一个批次（性别 × 年龄）里混着四个阶层 ——
+   * 批次的"可用劳动"只能按**池的阶层构成**取加权参与率。于是同一份毛劳动在两条投影上各折算<b>一次</b>： 逐行 = {@link
+   * ClassRow#participationAdjustedLaborMilli()}（阶层自己的参与率），逐批次 = 本常量；两者在池上的总量相等（同一批人、同一套份额）。 ★
+   * <b>严禁</b>任何调用点在乘过本常量之后又去乘一次逐阶层的参与率（或反过来）—— 那会把同一份劳动折算两遍（M1.8 的靶子）。
+   *
+   * <p>★ <b>它是派生量、不是第二个参数表</b>：公式只读 {@link #CLASS_SHARE_PER_MILLE} 与 {@link #CLASS_LABOR_PER_MILLE}
+   * —— 改那两张表，本值跟着变，不可能漂开。
+   */
+  static final int CLASS_WEIGHTED_LABOR_PER_MILLE = classWeightedParticipationPerMille();
+
+  /** {@link #CLASS_WEIGHTED_LABOR_PER_MILLE} 的算式（静态初始化用；两处不得各写一份）。 */
+  private static int classWeightedParticipationPerMille() {
+    long weighted = 0L;
+    for (int i = 0; i < CLASS_SHARE_PER_MILLE.length; i++) {
+      weighted += (long) CLASS_SHARE_PER_MILLE[i] * CLASS_LABOR_PER_MILLE[i];
+    }
+    return (int) (weighted / 1000L);
+  }
 
   /**
    * 有效劳动的年龄档（D4 默认，§十"有效劳动"行）：0-14 / 15-59 / 60+ 的人数占比（‰）。
@@ -808,7 +835,9 @@ public final class EconomySeeder {
       if (hasRural) {
         long ruralDaily = industryDailyLabor(ruralPool);
         long weaveQuota = ruralDaily * WEAVE_SHARE_PER_MILLE / 1000L;
-        // ★ 残差归农业（"农业 = ruralDaily − weaveQuota"⇒ **默认参数下**两条配额之和恒等于本池日劳动）。
+        // ★ 残差归农业（"农业 = ruralDaily − weaveQuota"⇒ **要切的总量**之和恒等于本池日劳动（折扣后口径））。
+        //   ★★ M1.8 起不等于"实际发出的配额之和"：预算按**逐批次折扣后的可用劳动**封顶，性别权重偏斜时某些批次会
+        //      被压到上限 ⇒ 总配额可以**分不满**（合法状态；见 appendAllocation / laborBudget 的类注）。
         Map<PeopleLotId, Long> budget = laborBudget(ruralPool);
         appendAllocation(
             allocations,
@@ -993,7 +1022,11 @@ public final class EconomySeeder {
   static long industryDailyLabor(long[] people, long poolLabor, long poolCount) {
     long total = 0L;
     for (int i = 0; i < CLASS_IDS.length; i++) {
-      total += rowLaborMilli(people[i], poolLabor, poolCount) * CLASS_LABOR_PER_MILLE[i] / 1000L;
+      // ★ M1.8：按参与率折算的唯一算法在 ClassRow（本处与结算/读口调的是同一个函数）—— 这里不再自己写
+      //   `rowLabor * CLASS_LABOR_PER_MILLE / 1000`（公式同值，但两处写法就是两份会漂开的真相）。
+      total +=
+          ClassRow.participationAdjustedLaborMilli(
+              rowLaborMilli(people[i], poolLabor, poolCount), CLASS_LABOR_PER_MILLE[i]);
     }
     return total;
   }
@@ -1001,6 +1034,23 @@ public final class EconomySeeder {
   /** 一个批次的**毛劳动**（千分劳动）：{@code 人数 × 年龄×性别系数} —— {@link #laborMilli(List)} 的单批次形态。 */
   static long grossLaborMilli(PopulationGroup group) {
     return group.count() * perCapitaLaborPerMille(group);
+  }
+
+  /**
+   * ★★ <b>M1.8：一个批次按阶层参与率折扣后的每日可用劳动</b>（千分劳动/日）= 毛额 × {@link #CLASS_WEIGHTED_LABOR_PER_MILLE} ÷
+   * 1000。
+   *
+   * <p>★★ <b>它是批次侧的唯一"可用"口径</b>：{@link #laborBudget}（配额上限）与 {@link #appendAllocation}（权重）都读它 ——
+   * 两处不许各乘一次（同一份劳动最多折算一次）。逐行的折算见 {@link ClassRow#participationAdjustedLaborMilli()}：
+   * 两条投影在池上的总量相等（同一批人、同一套阶层份额与参与率）。
+   *
+   * <p>★ <b>为什么不是把折算写进 {@code LaborSupply.grossLaborMilli}</b>：那个字段的契约口径是"毛额 = Σ(人数 × 年龄×性别系数)"
+   * （{@code LaborSupply} 的类注），改它的语义会牵动 codec/往返与"已服役 + 已承诺 ≤ 毛额"那条不变量 ⇒ 本批<b>零契约改动</b>：
+   * 状态里仍是毛额，折扣发生在"预算/权重"这一使用点上。{@code EconomyData} 的构造期守卫因此仍以毛额为更宽的一道网（见 {@link #laborBudget}）。
+   */
+  static long participationAdjustedLaborMilli(PopulationGroup group) {
+    return ClassRow.participationAdjustedLaborMilli(
+        grossLaborMilli(group), CLASS_WEIGHTED_LABOR_PER_MILLE);
   }
 
   /**
@@ -1034,25 +1084,25 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ **给一个产业发配额**（R2；R3 起按活动加性别权重）：把 {@code total} 按各批次的**加权毛劳动**成比例切给它们 （最大余数法，{@code Σ 配额 ==
-   * total}）。
+   * ★★ **给一个产业发配额**（R2；R3 起按活动加性别权重；M1.8 起按**折扣后的可用劳动**加权）：把 {@code total} 按各批次的 **加权可用劳动**成比例切给它们
+   * （最大余数法，{@code Σ 配额 == total}）。
    *
    * <pre>
-   * 权重(batch) = 该批次毛劳动 × ACTIVITY_SEX_WEIGHT_PER_MILLE[活动][该批次性别] ÷ 1000
+   * 权重(batch) = 该批次**按阶层参与率折扣后的可用劳动** × ACTIVITY_SEX_WEIGHT_PER_MILLE[活动][该批次性别] ÷ 1000
    * 配额(batch) = total × 权重 ÷ Σ权重                              // Σ == total（精确，残差按最大余数法）
    * </pre>
    *
-   * <p>★★ **"同一批次可以供给多个产业"因此是结构上成立的**：本方法只写"某一 (批次, 产业) 对"的一条配额，同一批次被另一个活动 再调用一次就会拿到**第二条**配额。
+   * <p>★★ <b>"同一批次可以供给多个产业"因此是结构上成立的</b>：本方法只写"某一 (批次, 产业) 对"的一条配额，同一批次被另一个活动 再调用一次就会拿到**第二条**配额。
    * 创世给农村批次发**两条** （农业 900‰ + 家庭纺织 100‰），**这正是 spec §四 那条压力测试**（"同一批人口能否同时参与多个生产过程，并保持劳动力守恒"）。
    *
    * <p>★★ **性别在这里进入配置**：权重按批次性别取 {@link #ACTIVITY_SEX_WEIGHT_PER_MILLE} ⇒ 纺织的配额默认偏向女性
    * （"男耕女织"），而**不是**"女 = 纺织"的硬编码（男人照样有一条非零的纺织配额，只是权重低）。
    *
-   * <p>★★ **每一批次的配额受 {@code budget} 约束**（见 {@link #laborBudget}）：切出来的份额若超过该批次**剩下的**可支配劳动，
+   * <p>★★ **每一批次的配额受 {@code budget} 约束**（见 {@link #laborBudget}）：切出来的份额若超过该批次**剩下的** 可支配劳动，
    * 就压到上限（**多出来的部分留在预算里，也就是"分不满"** —— R2 明说配额之和可以小于可用劳动）。 ⇒ "Σ 该批次在各产业的配额 ≤
    * 其可用劳动"**构造性成立**，不依赖"默认权重恰好不越界"。★ 这道预算是实测出来的： 把 {@link #WEAVE_SHARE_PER_MILLE} 改成 0（一个完全合理的 GM
-   * 配置）时，性别权重的偏斜加上 86% 的参与率折扣，会让男性青壮批次 分到 4,202,381 &gt; 它的可用 4,072,000 ⇒ 载荷被 {@code EconomyData}
-   * 的构造期守卫**当场拒**（世界播不出来）。
+   * 配置）时，性别权重的偏斜会让男性青壮批次要 4,202,381 —— 改前（预算 = 毛额 4,072,000）它被压到毛额；★ M1.8 起预算 = 折扣后的可用
+   * 3,501,920，压得更早、更紧（这正是"参与率进计算"的落点）。★ 没有预算时载荷会被 {@code EconomyData} 的构造期守卫**当场拒**（世界播不出来）。
    *
    * <p>★ **{@code total ≤ 0} 时不发**（该池没活干，或该活动拿到的份额取整为 0）；**权重为 0 的批次也不发**（"没有配额"与"0 的配额"逐值同效）。
    *
@@ -1082,10 +1132,11 @@ public final class EconomySeeder {
     List<PopulationGroup> workers = new ArrayList<>(pool.size());
     List<Long> weights = new ArrayList<>(pool.size());
     for (PopulationGroup group : pool) {
-      long gross = grossLaborMilli(group);
-      if (gross > 0L) {
+      // ★★ M1.8：权重 = **按阶层参与率折扣后的**可用劳动（不是毛额）—— 与 total（也是折扣后的口径）同侧。
+      long available = participationAdjustedLaborMilli(group);
+      if (available > 0L) {
         workers.add(group);
-        weights.add(gross * sexWeightOf(sexWeights, group.sex()) / 1000L);
+        weights.add(available * sexWeightOf(sexWeights, group.sex()) / 1000L);
       }
     }
     if (workers.isEmpty()) {
@@ -1119,21 +1170,27 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ **一个池的劳动预算**：每批次的可用劳动（= {@link #grossLaborMilli}，与劳动供给的毛额**同一个数**）。
+   * ★★ **M1.8：一个池的劳动预算**：每批次**按阶层参与率折扣后的可用劳动**（{@link
+   * #participationAdjustedLaborMilli(PopulationGroup)}） —— 不再是毛额。
    *
-   * <p>★★ **为什么要有它**：{@link #appendAllocation} 按"性别权重 × 毛劳动"切活动总量，而**一个池的日劳动是该池各行的 参与率折扣后的数**（≈ 毛额的
-   * 86%）—— 两个活动先后发配额时，偏重的那一性完全可能被分到超过自己那份毛额 （实测：{@link #WEAVE_SHARE_PER_MILLE} 设 0 时男性青壮批次
-   * 4,202,381 &gt; 4,072,000）。 那时载荷会被 {@code EconomyData} 的构造期守卫拒 ⇒
-   * **世界直接播不出来**。有了预算，那种配置退化成"分不满"（合法状态）。
+   * <p>★★ <b>为什么要有它</b>：{@link #appendAllocation} 按"性别权重 ×
+   * 可用劳动"切活动总量，而**一个池的日劳动本身已经是各行的参与率折扣后的数**（≈ 毛额的 86%）—— 两个活动先后发配额时，偏重的那一性完全可能被分到超过自己那份**可用**劳动
+   * （{@link #WEAVE_SHARE_PER_MILLE} 设 0 时男性青壮批次实测 4,202,381 &gt; 它的毛额 4,072,000，更远超它的折扣后可用
+   * 3,501,920）。 那时载荷会被 {@code EconomyData} 的构造期守卫拒 ⇒ **世界直接播不出来**。有了预算，那种配置退化成"分不满"（合法状态）。
    *
-   * <p>★ 预算与供给的毛额同源（{@code grossLaborMilli}）⇒ "Σ 配额 ≤ availableLabor"这条不变量的两侧读的是同一个数。
+   * <p>★★ <b>M1.8 修的是什么</b>：改前预算是**毛额** ⇒ "地主 100‰ / 贫农 950‰"的差别只在产业**总量**里出现过一次，逐批次上限里完全不存在
+   * （真档实测四阶层 {@code labor/pop} 全 = 562.0‰）。现在预算与权重都走**同一个折扣后的可用劳动** ⇒ 参与率的差别在配额这一步就咬合。
+   *
+   * <p>★ <b>两条网各自的口径（如实记）</b>：本预算 = <b>紧</b>的那道（按参与率折扣，配额的实际上限）；{@code EconomyData} 的构造期守卫仍以 {@code
+   * LaborSupply.availableLabor()} = <b>毛额</b>为上限（宽的那道，零契约改动的代价）。 两者不矛盾：折扣后的配额必然 ≤
+   * 毛额，故守卫保持绿；"同一份劳动不得被两个产业各算一次满额"这条不变量由守卫守， 而"不得超过参与率折扣后的可用"由本预算守。
    */
   static Map<PeopleLotId, Long> laborBudget(List<PopulationGroup> pool) {
     Map<PeopleLotId, Long> budget = new LinkedHashMap<>();
     for (PopulationGroup group : pool) {
-      long gross = grossLaborMilli(group);
-      if (gross > 0L) {
-        budget.put(group.id(), gross);
+      long available = participationAdjustedLaborMilli(group);
+      if (available > 0L) {
+        budget.put(group.id(), available);
       }
     }
     return budget;

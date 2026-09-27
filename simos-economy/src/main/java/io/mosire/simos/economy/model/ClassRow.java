@@ -44,7 +44,9 @@ import java.util.Map;
  *
  * @param key 身份（家户 = 格 + 居住类型 + 阶层）；在 {@code EconomyData.classes} 里必须与其 Map 键一致
  * @param population 人口（人）；不得为负
- * @param laborMilli 有效劳动（千分劳动）——由 social 的人数 × 年龄系数而来；不得为负
+ * @param laborMilli **未按参与率折算的**每日劳动（千分劳动/日）——由 social 的人数 × 年龄×性别系数而来；不得为负 ★
+ *     M1.8：它是"这份人有多少劳动能力"的毛量；按阶层参与率折算后的可用劳动<b>不存成第二份字段</b>，而是由 {@link
+ *     #participationAdjustedLaborMilli()} 现算（唯一算法，见该方法）
  * @param participationPerMille 本期实际劳动投入率（≤ 该格各产业的槽位上限）；必须 ∈ [0, 1000]
  * @param money 货币（最小币值）；不得为负
  * @param debts 指向债务表的引用；可空、不得含 null
@@ -121,5 +123,48 @@ public record ClassRow(
       debtsCopy.add(debt);
     }
     debts = Collections.unmodifiableList(debtsCopy); // ★ 冻在赋值处
+  }
+
+  /**
+   * ★★ <b>M1.8：按阶层参与率折算后的每日可用劳动</b>（千分劳动/日）= {@code laborMilli × participationPerMille ÷
+   * 1000}（整数、向下取整）。
+   *
+   * <p>★★ <b>它是"同一份劳动最多只能折算一次"的唯一拼写点</b>：本方法（及其 static 形态）是**仅有的**把 {@code participationPerMille}
+   * 乘进劳动量的地方；三处读者都调它，谁也不许再各乘一次：
+   *
+   * <ul>
+   *   <li>{@code EconomySeeder.industryDailyLabor}（产业当日的配额总量）；
+   *   <li>{@code EconomySettlement.laborOfCohort}（关账时逐 cohort 的**本周期**劳动量，再乘 {@code cycleDays}）；
+   *   <li>读口 {@code ApiViews.classRowView} 的 {@code participationAdjustedLaborMilli} 一栏。
+   * </ul>
+   *
+   * <p>★★ <b>为什么不把折算结果存成字段</b>：① 存了就有两个数（毛量与折算量），任何一处忘记同步都会让"劳动总量守恒"悄悄漂开； ②
+   * 状态记录加组件会牵动变更集/codec/往返（铁律 5）—— 而本折算只是 {@code (laborMilli, participationPerMille)}
+   * 的纯函数，没有存它的理由。★ 本阶段 {@code participationPerMille} 不在运行期变化（创世发一次、人死只缩 {@code laborMilli}），
+   * 故"现算"与"存一份"逐值等价、而现算不可能漂开。
+   */
+  public long participationAdjustedLaborMilli() {
+    return participationAdjustedLaborMilli(laborMilli, participationPerMille);
+  }
+
+  /**
+   * ★★ <b>折算算法的 static 形态</b>（服务于还没有 {@code ClassRow} 对象的调用点：{@code
+   * EconomySeeder.industryDailyLabor} 在生成载荷时用逐行的"人数 × 池人均劳动"临时量算总量）。
+   *
+   * <p>公式与不变量见 {@link #participationAdjustedLaborMilli()} —— 两个形态是<b>同一处</b>拼写点，实例方法只负责取自己的两个字段。
+   *
+   * @param laborMilli 未折算的每日劳动（千分劳动/日）；不得为负
+   * @param participationPerMille 参与率（千分）；必须 ∈ [0, 1000]
+   * @throws IllegalArgumentException 劳动量为负、或参与率越界（"折算系数"越界不是一种状态，是坏数据）
+   */
+  public static long participationAdjustedLaborMilli(long laborMilli, int participationPerMille) {
+    if (laborMilli < 0L) {
+      throw new IllegalArgumentException("折算的 laborMilli 不得为负: " + laborMilli);
+    }
+    if (participationPerMille < 0 || participationPerMille > 1000) {
+      throw new IllegalArgumentException(
+          "折算的 participationPerMille 必须 ∈ [0, 1000]: " + participationPerMille);
+    }
+    return laborMilli * participationPerMille / 1000L;
   }
 }

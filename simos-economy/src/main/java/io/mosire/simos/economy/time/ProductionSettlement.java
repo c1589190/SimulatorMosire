@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
@@ -630,12 +631,15 @@ public final class ProductionSettlement {
    * {@code FIXED_IN_KIND_PER_LABOR}：{@code ⌊本受方劳动 ÷ 1000⌋ × fixedAmount}（★ 只按**本受方**的劳动量，不除以 Σ）。
    *
    * <p>★ 它读的是<b>权重</b>那一维（"按劳动量"）—— 池只是旧档映射带过来的（{@link Pool#NET_AFTER_INPUTS}），本档不用它算数。
+   *
+   * <p>★★ <b>M1.7：算式调用的是具名义务类型里的同一个函数</b>（{@link SubsistenceObligation#perLaborDue(long, long)}）——
+   * 读口展开出的"应付给养"与这里真的付出去的那一笔因此<b>不可能漂开</b>（同一处拼写点）； 差额只在 R6 的可用上限与 S4 的读数里。
    */
   private static long perLabor(CompensationRule rule, Facts facts) {
     if (rule.pool() != Pool.NET_AFTER_INPUTS || rule.weight() != Weight.LABOR_AMOUNT) {
       throw unregisteredCombination(rule);
     }
-    return laborOf(facts, rule.recipient()) / PER_MILLE * rule.fixedAmount();
+    return SubsistenceObligation.perLaborDue(laborOf(facts, rule.recipient()), rule.fixedAmount());
   }
 
   /** {@code FIXED_IN_KIND_RENT}：{@code fixedAmount}（每周期一笔；★ 与产出、劳动都无关 ⇒ 池是固定额、权重不适用）。 */
@@ -669,12 +673,14 @@ public final class ProductionSettlement {
     return total == 0L ? 0L : share * own / total;
   }
 
-  /** 本受方的<b>劳动量</b>：cohort 查 {@code laborOfCohort}；★ actor 在本阶段<b>没有劳动账</b> ⇒ 0（归零，见类注）。 */
+  /**
+   * 本受方的<b>劳动量</b>：cohort 查 {@code laborOfCohort}；★ actor 在本阶段<b>没有劳动账</b> ⇒ 0（归零，见类注）。
+   *
+   * <p>★ <b>M1.7：委托给具名义务类型的同一个函数</b>（{@link SubsistenceObligation#laborOf(Recipient, Map)}）——
+   * "谁有劳动账、谁的劳动量是 0"只有一处拼写点，读口与实付不会各答一套。
+   */
   private static long laborOf(Facts facts, Recipient recipient) {
-    return switch (recipient) {
-      case Recipient.ToCohort toCohort -> facts.laborOfCohort().getOrDefault(toCohort.cohort(), 0L);
-      case Recipient.ToActor ignored -> 0L;
-    };
+    return SubsistenceObligation.laborOf(recipient, facts.laborOfCohort());
   }
 
   /** 一张数量表的逐值之和（{@code Σ劳动} / {@code Σ资产量}）。 */
