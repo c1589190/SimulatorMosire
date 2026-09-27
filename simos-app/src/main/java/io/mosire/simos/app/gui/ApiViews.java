@@ -410,7 +410,6 @@ public final class ApiViews {
     long population = 0L;
     long laborMilli = 0L;
     long landMilliMu = 0L;
-    long money = 0L;
     long debtPrincipal = 0L;
     long debtCount = 0L;
     long grainDailyConsumption = 0L;
@@ -440,7 +439,6 @@ public final class ApiViews {
       ClassRow row = data.classes().get(key);
       population += row.population();
       laborMilli += row.laborMilli();
-      money += row.money();
       grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
       for (DebtId debtId : row.debts()) {
         Debt debt = data.debts().get(debtId);
@@ -462,10 +460,12 @@ public final class ApiViews {
     //     物理上复算不出结算当天那个数）。
     view.put("grainStock", grainStock);
     view.put("grainDailyConsumption", grainDailyConsumption);
-    view.put("money", money);
-    // ★★ H4：**actor 侧的货币合计**（逐币种）—— 与行侧那个恒 0 的 {@code money} 并排（同 {@code goods} 与
-    //   {@code rowGoodsTotal} 的处置）：行侧那一栏读的是 {@code ClassRow.money}（结构性的 0），
-    //   真值在 actor 侧的家户账上 ⇒ 两个数一起给，读的人当场看得见"钱记在哪本账上"。
+    // ★★ H6：**旧的行侧货币栏（{@code money}）已删** —— 它读的是 {@code Σ ClassRow.money()}，而 H1 起行里没有钱
+    //   （{@code EconomySeeder} 写下的 {@code ClassRow.money} 恒为 0）⇒ 那是一栏**结构性的 0**：不是"这一格没钱"，
+    //   是"那本账不存在"，读数的人只会把它当成真值（本仓最反对的"看起来在记"）。
+    //   ★ 钱的真值只有一处：actor 侧 {@code GoodsAccount} 的**逐币种**合计（下面那一栏）—— 币种各自守恒，
+    //     "跨币种求和的 money"本来也不是一个有意义的量（同 {@link #economyOwnership} 的口径）。
+    // ★★ H4：**actor 侧的货币合计**（逐币种）—— 该格每一本 {@code GoodsAccount} 的钱，与 {@code goods} 同一趟遍历。
     view.put("actorMoneyTotal", actorMoneyTotal);
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。

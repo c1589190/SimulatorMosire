@@ -904,7 +904,17 @@ class GuiApiTest {
     assertThat(body.get("laborMilli").asLong()).isEqualTo(58_000L);
     assertThat(body.get("landMilliMu").asLong()).isEqualTo(1_000_000L);
     assertThat(body.get("goods").get("grain").asLong()).isEqualTo(498_000L);
-    assertThat(body.get("money").asLong()).isEqualTo(12L);
+    // ★★ H6：**钱的那一栏换口径了**（旧断言是 `money == 12`）。旧栏读的是 `Σ ClassRow.money()` —— 那是**结构性的 0**
+    //   （H1 起行里没有钱，`EconomySeeder` 写下的 `ClassRow.money` 恒为 0），把这行夹具手填的 12 当成了"这一格的钱"。
+    //   真值在 actor 侧的家户账上、而且**逐币种**（`actorMoneyTotal`）⇒ 旧栏已删，断言改读真值：
+    //   本夹具唯一那本家户账 = `EconomySeeder.genesisMoney(100L)`（见 `actorData()`）= 100 人 × 每人 12 毫银
+    //   （12 = 一个周期的口粮 10,000 毫粮 × 粮价 1 ÷ 1000 × 缓冲 1200‰）= **1,200 毫银**。
+    assertThat(body.has("money"))
+        .as("★★ H6：读 Σ ClassRow.money()（结构性 0）的旧栏**已删** —— 不许再发一个会说谎的 0")
+        .isFalse();
+    assertThat(body.get("actorMoneyTotal").get("silver").asLong())
+        .as("★ H6：钱的真值 = actor 侧家户账的逐币种合计（本夹具 = genesisMoney(100) = 1,200 毫银）")
+        .isEqualTo(1_200L);
     assertThat(body.get("debtCount").asLong()).isZero();
     assertThat(body.get("debtPrincipal").asLong()).isZero();
     JsonNode industry = body.get("industries").get(0);
