@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.api.labor;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 
@@ -68,5 +69,29 @@ public record LaborAllocation(
     if (period < 0L) {
       throw new IllegalArgumentException("LaborAllocation.period 不得为负: " + period);
     }
+  }
+
+  /**
+   * ★★ <b>配额 id 的唯一拼写点</b>（H5）：{@code alloc-<产业 id>-<批次 id>}。
+   *
+   * <p>★★ <b>为什么它必须在契约层</b>：H5 之前这个格式只被 {@code EconomySeeder} 写（创世发配额）；H5 起 {@code
+   * EconomySettlement} 的**劳动再分配**也会新发配额（"未吸收的劳动回池 ⇒ 分给有缺口的产业"，裁定 C2）——
+   * 同一个格式因此有了第二个写者。把它钉在这里，两个写者读同一处（"同一事实两处拼写点"是本仓明令禁止的形态）。
+   *
+   * <p>★ <b>确定性</b>：{@code (产业, 批次)} 的纯函数 ⇒ 同一对必然给出同一个 id（重放/分支可比），且同一对不会重复。 ★ <b>不含 {@code
+   * "."}</b>：产业 id 形如 {@code farm@0_0}、批次 id 形如 {@code rural:0_0:MALE:1}，两者都不含点 ⇒ 地址 {@code
+   * economy:<mapId>:allocation.<id>} 不会被 {@code AddressParser} 在第一个点处截断。
+   *
+   * @param industry 收劳动的那个产业；不得为 null
+   * @param group 出劳动的人口批次；不得为 null
+   */
+  public static LaborAllocationId idOf(IndustryId industry, PeopleLotId group) {
+    if (industry == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOf 的 industry 不得为 null");
+    }
+    if (group == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOf 的 group 不得为 null");
+    }
+    return new LaborAllocationId("alloc-" + industry.value() + "-" + group.value());
   }
 }

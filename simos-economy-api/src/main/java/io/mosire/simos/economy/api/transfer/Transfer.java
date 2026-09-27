@@ -71,8 +71,15 @@ import java.util.Optional;
  * @param location 账户所在格（账户 = {@code (actor, location)}）
  * @param goods 商品腿（**可为空 map** = 纯货币转移）；键值非 null、逐值 ≥ 0
  * @param money 货币腿（**H4 起有内容**；没有这一腿就给空 map）；键值非 null、逐值 ≥ 0
+ *     <p>★★ <b>{@code settles} 今天恒为 {@code Optional.empty()} —— 这是裁定，不是遗漏</b>（H5）：本批真的产生了债权 （{@code
+ *     Debt}：{@code LOAN_PRINCIPAL} 借出、{@code LOAN_REPAYMENT} 偿还），但那条债权的身份是 {@link
+ *     io.mosire.simos.economy.api.id.DebtId}，而本字段的类型是 {@link ClaimId} —— <b>两者不是同一种东西</b> （{@code
+ *     Claim} 体系随 {@code simos-ledger} 在 2026-09-27 退役，{@code ClaimId} 只作为契约保留）。⇒ 把 {@code DebtId}
+ *     硬塞进一个 {@code ClaimId} 的槽位，等于凭空发明一套"债 = 债权"的对应关系（而本仓的债务表与 将来的索取权体系是两套东西）。★ <b>清偿指针留给 S2 的
+ *     claim 体系</b>：等 {@code Claim} 落地时，借/还两条转移 各自指回它清偿的那条 claim —— 那时本字段才有第一个非空值。
  * @param reason 这笔转移是**什么制度**造成的
- * @param settles 若这笔转移在清偿某债权 ⇒ 那条债权的 id；非清偿用 {@code Optional.empty()}
+ * @param settles 若这笔转移在清偿某 {@link ClaimId} 债权 ⇒ 那条债权的 id；★ 本批恒 {@code Optional.empty()} （借粮/偿还产生的是
+ *     {@code DebtId}，见上）
  */
 public record Transfer(
     TransferId id,

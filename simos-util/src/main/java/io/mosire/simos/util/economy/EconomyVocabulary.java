@@ -92,6 +92,38 @@ public final class EconomyVocabulary {
   private EconomyVocabulary() {}
 
   /**
+   * ★★ <b>全部商品 id（<b>保序</b>：粮 → 布 → 纤维 → 工具 → 铁 → 木）—— <b>含留位商品</b></b>（H5 ④）。
+   *
+   * <p>★★ <b>它为什么必须有</b>（用户裁定"铁留作留位"的同一条要求）：本仓禁"看起来在记、其实永远不被读"的字段 —— 而 <b>H5 起 {@link
+   * #IRON_COMMODITY_ID} 不再进任何配方</b>（作坊的投入由铁改成工具，见 {@code
+   * EconomySeeder.TOOL_MILLI_PER_WORKSHOP_CYCLE}）：它仍是词表里的一个商品、仍由创世给一份库存、 仍在价格表里 ——
+   * 若没有一个读口列出"这个世界有哪些商品"，它就成了**没人读得到的孤字面量**。 ⇒ 本方法给出那份清单，{@code ApiViews} 把它发进经济读口（{@code
+   * commodityIds}）。
+   *
+   * <p>★ <b>留位与在用的分界（如实记，不假装）</b>：
+   *
+   * <ul>
+   *   <li>**在用**：{@code grain} / {@code cloth}（自然需求 + 配方）/ {@code fiber}（农田副产 + 织机与作坊的投入）/ {@code
+   *       tool}（作坊的产出**与投入** —— H5 ④ 起自产自用）；
+   *   <li>**留位**：{@code iron}（★ H5 起**没有任何配方读它**；等冶炼流程）/ {@code wood}（R3 起只进词表， 等建材/燃料增量）。
+   * </ul>
+   *
+   * <p>★ <b>为什么是"含留位"的完整清单而不是"在用商品"清单</b>：读口要回答的是"世界里存在哪些商品"（进账本、进价格表、 进守恒式的那一套），而"哪一条配方读它"是另一个问题（读
+   * {@code Industry.inputPerUnit/outputPerUnit} 就看得出来）。 把留位项藏起来，等于把"铁到底是留位还是没人知道的死字面量"这件事从读口抹掉。
+   *
+   * <p>★ 返回的是**保序**的不可变清单（声明序 = 本类的常量序）：调用方可以直接当"词表序"用（读口的键序要求）。
+   */
+  public static java.util.List<String> allCommodityIds() {
+    return java.util.List.of(
+        GRAIN_COMMODITY_ID,
+        CLOTH_COMMODITY_ID,
+        FIBER_COMMODITY_ID,
+        TOOL_COMMODITY_ID,
+        IRON_COMMODITY_ID,
+        WOOD_COMMODITY_ID);
+  }
+
+  /**
    * **累计口粮**（毫粮）：{@code population} 人 **{@code days} 天**的总需求 = {@code 人口 × 10,000 × 天 ÷ 120}（向下取整）。
    *
    * <p>★ **这才是"多日口粮"的唯一写法**：{@code n × 某一天的量} 在逐日差分的口径下**乘不出来**（每日的量本身逐日不同）。

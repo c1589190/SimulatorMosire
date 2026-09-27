@@ -21,7 +21,8 @@ import java.util.List;
  *   <li>{@link #PRODUCTION_OUTPUT} —— "净产入 operator"。★ 今天它<b>不是一条转移</b>：产出是<b>造出来</b>的， 没有对端（{@code
  *       Transfer} 的两端恒为 actor、且不许相等）⇒ 净产仍走 {@code ProductionLedger} 的产出计提读数。
  *       这一档留给"产出的对端是一个与经营者不同的主体"（如独立的生产单位 actor）那种形态；
- *   <li>{@link #LOAN_REPAYMENT} —— 偿还（H5；今天 {@code FlowRow.repaid} 恒 0）。
+ *   <li>{@link #LOAN_REPAYMENT} —— 偿还（★ H5 起真的有写者：周期末按本期所得的比例先偿债， {@code FlowRow.repaid} 因此第一次有了非 0
+ *       值）。
  * </ul>
  */
 public enum TransferReason {
@@ -38,7 +39,7 @@ public enum TransferReason {
   /** 借粮的本金（要还的信用：债权人 → 债务人）。 */
   LOAN_PRINCIPAL("loan_principal"),
 
-  /** 偿还本金（H5；本批只留档）。 */
+  /** ★★ 偿还本金（H5 起**真的有写者**：{@code EconomySettlement.repayDebts} 铸 {@code 债务人 → 债权人} 的粮腿）。 */
   LOAN_REPAYMENT("loan_repayment"),
 
   /** 同格市场成交（H4：买方付钱、卖方交货 —— 一笔买卖铸<b>一对</b>转移，见 {@code Transfer} 的货币腿口径）。 */
