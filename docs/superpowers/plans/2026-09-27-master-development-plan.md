@@ -205,7 +205,30 @@ M0 仪器 ──→ M1 货币与关系 ──→ M2 一般市场（本期目标�
 
 # 第四部分：M1 —— 货币、账与关系（不碰市场撮合）
 
+> ★★ **本节已按 2026-09-27 的只读勘察（`.superpowers/sdd/2026-09-27-m1-accounts/survey.md`）重写。**
+> 勘察把三处**原计划的错**挖了出来，三个都动到任务定义，故先改计划、再开工：
+>
+> | # | 原计划写的 | 勘察实测 | 现在的写法 |
+> |---|---|---|---|
+> | A | M1.5「替换/包裹今天的 `Debt`」用新的 `Claim` 类型 | `Transfer` 的类注**明令禁止**把 `DebtId` 塞进 `ClaimId` 槽位（"等于凭空发明一套债=债权的对应关系"）；**`Claim` 体系已于 2026-09-27 随 `simos-ledger` 退役**，`ClaimId` 只作契约保留 | **不复活 `Claim`**。M1.5 改为"**债权人侧可查**"：给 `Debt` 建**债权人索引/视图** + `dueCycle` 读口，**零契约改动** |
+> | B | M1.2 把"预留"与 `frozen` 合并进账户模型 | 两条 `reserve` 算式**已经在 settlement（决策层）**，且 `EconomySettlement` 逐字写着"保留额**不是**冻结起来的一笔粮"；用户裁定也要求保留策略留在决策层 | **`frozen` 只做"已承诺占用"的机制**（挂单/已承诺交付），**不表达**保留策略；保留策略留在 `M2.x` 的决策层，**M1 不搬它** |
+> | C | M1.4 的动机 = "多市场不得重复使用同一余额" | 今天**连"多市场"这个前提都不成立**（每格一个市场、每周期一次、单线程）；真正的病灶是 **`applyTransfer` 先扣付方、再记收方 ⇒ 中途抛错在可变副本上留半笔** | M1.4 立为"**单次结算内的原子性**"（照 `drawCycleInputs` 的三遍式先例）；"多市场隔离"由 `frozen` 机制**预留能力**，等 M2 有多市场时才有实义 |
+>
+> ★ **好消息（勘察证实）**：**稳定主体身份**、**多币种账户**、**债务同源（一条 `Debt` 同时带 debtor 与 creditor）**、
+> **产品归属（`residualOwner`）**、**供料责任（`inputSupplier`）** 这五样**已经存在** ⇒ M1 不重做它们。
+>
+> ★★ **勘察挖出的一处幻影判别力（第 5 例）**：`GoodsAccount` 的类注声称"钱有没有被序列化丢**由 `ActorCodec` 的往返用例守着**"
+> —— **该断言不存在**（`simos-actor/src/test` 对 `money()` 零断言；`ActorCodec` 给 `CommodityId` 注册了 key deserializer
+> 却**没给 `CurrencyId`**）。⇒ **M1.0 先补这一条**（钱能不能落盘是 M1 一切的前提）。
+
+### M1.0 幻影判别力收口（前置，小）★
+- **做什么**：① `GoodsAccount.money()` 的**磁盘往返**用例（经真 `ActorCodec`）；② 若它红 ⇒ 给 `CurrencyId`
+  补 key deserializer（照 `CommodityId` 的先例）；③ 改正 `GoodsAccount` 类注里那句不成立的断言。
+- **判据**：往返用例真的调用 `money()`（★ 报"某测试守着它"之前先核它存在——本仓第 5 次踩这个坑）。
+- **为什么**：钱不能落盘 ⇒ 后面全部白做。
+
 ### M1.1 币种与货币工具身份
+- **现状**：只有 `CurrencyId`（一个 id），**没有**"币种 ≠ 货币工具"的区分。
 - **新增（`simos-economy-api/.../money/`）**：
   ```
   record CurrencyDef(String id, int scale)                     // 计价单位 + 最小单位精度
@@ -216,69 +239,69 @@ M0 仪器 ──→ M1 货币与关系 ──→ M2 一般市场（本期目标�
 - **判据**：`silver` 迁成"一个 `CurrencyDef` + 一个 `SPECIE` 工具"；**旧的 `CurrencyId` 读口保留**（兼容）。
 - **不做**：铸熔、成色、兑现（M4+）。
 
-### M1.2 `FinancialAccount` + 冻结
-- **新增（`simos-economy-api/.../money/`）**：
+### M1.2 冻结机制（`frozen`）+ 统一可支配库存查询 ★★
+- **做什么**：给账户加**冻结额**（= **已明确的占用**：挂单要卖的货、已承诺的交付），并给出**统一入口**：
   ```
-  record FinancialAccount(AccountId id, ActorRef owner, InstrumentId instrument,
-                          long balance, long frozen)            // 0 <= frozen <= balance
+  available(actor, location, asset) = 余额 − 冻结          // 唯一算法，一处拼写
   ```
-- **落点**：`EconomyData` 加组件（第 10 个）⇒ **必须回填 `EconomyChangeSet`**（铁律 5，`EconomyRoundTripTest` 自动把守）；
-  `EconomyCodec` / `EconomyPayloads` / `ApiViews` 同步。
-- **判据**：冻结计入余额、**不重复相加**；`frozen > balance` 当场抛。
+- **落点**：`simos-actor/.../model/GoodsAccount.java` 加 `frozen`（商品与货币**两表各一份**，或一个
+  `Map<asset, long>`；取哪一形由实现裁，但**必须只有一个拼写点**）+ `OwnershipBooks` 的载入/落回 +
+  读口（`ApiViews.economyOwnership` 加 `frozen` / `available` 两栏）。
+- **判据**：① `0 ≤ frozen ≤ balance`（构造期守卫 + 用例）；② **`available` 只有一处算法**（grep 可核）；
+  ③ 家户与经营者**同一入口**（不再各遍历各的）。
+- **★★ 边界（用户裁定，写进类型注释）**：`frozen` **只表达"已明确的占用"**；
+  **生活保留、必要生产投入、经营储备一律不在这里** —— 它们是决策层的策略，落在 M2 的订单/保留算式里，
+  照 `可售库存 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)` 逐项**互不重复扣除**。
+- **不做**：把 M2 的保留策略搬进账户模型（那正是裁定要防的）。
 
 ### M1.3 唯一余额权威 ★
-- **做什么**：`GoodsAccount.money` 保留为**兼容读口**，底层**只留一份权威**；不允许两处可写。
-- **落点**：`simos-actor/.../model/GoodsAccount.java` + `OwnershipBooks` 四个 `load*/land*` + `applyTransfer` 的货币腿。
-- **判据**：新旧两条读路逐值一致（对拍用例）；写入只经一处。
+- **现状**：`GoodsAccount.money` 是唯一真源，但**往返无守卫**（见 M1.0）、且 `landOperatorMoney` 与
+  `landHouseholdMoney` 的失败口径**不对称**（家户抛、经营者静默新建空商品账）。
+- **做什么**：① 载入/落回的**对称化**（经营者也 fail-closed，或两处都写明为何不同）；② 一次
+  "会话副本 vs actor 账"的**逐值对拍**用例。
+- **判据**：新旧两条读路逐值一致；写入只经一处（`applyTransfer` + 四个 `land*`）。
 
-### M1.4 预留 + 原子结算（`SettlementBatch`）
-- **新增（`simos-economy-api/.../settle/`）**：
-  ```
-  record SettlementBatch(BatchId id, long tick, List<Entry> entries, BatchStatus status)
-  record Entry(ActorRef actor, InstrumentId|CommodityId asset, long delta, EntryKind kind)
-  ```
-- **流程**：冻结资源 → 验证双方与（将来的）路线条件 → **一次提交全部分录** → 释放预留。
-- **判据**：`applyTransfer` 仍是**唯一写口**（不新增第二个 applier）；半途失败不留半笔。
+### M1.4 单次结算内的原子性（不新增 applier）
+- **病灶（勘察实测）**：`EconomySettlement.applyTransfer` **先扣付方全部腿、再记收方** ⇒ 中途抛错会在
+  可变副本上留**半笔**（付方扣了、收方没加）。
+- **做什么**：把一次结算的**全部转移**先**校验**（余额/冻结是否够、双方账是否存在），再**统一提交**；
+  照 `drawCycleInputs` 的三遍式先例（survey → 配给 → 落账）。
+- **判据**：① `applyTransfer` 仍是**唯一写口**（不新增第二个 applier）；② 注入一处失败 ⇒ **两边都不动**
+  （用例：构造一笔余额不足的转移，断言抛之前**账本一字未改**）。
+- **不做**：跨格的路线校验（M2.4）。
 
-### M1.5 `Claim` 双向视图 ★
-- **新增（`simos-economy-api/.../claim/`）**：
-  ```
-  record Claim(ClaimId id, ActorRef creditor, ActorRef debtor, AssetRef principal,
-               long principalAmount, long accruedInterest, long dueTick,
-               int ratePerMillePerCycle, ClaimState state)
-      // state ∈ { ACTIVE, OVERDUE, RESTRUCTURED, WRITTEN_DOWN, EXTINGUISHED }
-  ```
-- **落点**：替换/包裹今天的 `Debt`（粮债）；**债权人的"应收"必须落账**（今天**零**）。
-- **判据**：**一笔债两视图同源**；计息**只增应收/应付、不自动增可花余额**；★ 债权侧入账**在此完成，不等国家模块**。
-- **不做**：违约处置、重组、抵押执行（M4+）。
+### M1.5 债权**双向可查**（★ 不复活 `Claim`）
+- **现状**：`Debt` **已经同源**（一条记录同时带 debtor 与 creditor）；缺的是**债权人侧的可查**：
+  `ClassRow.debts()` 只记债务人，两个读口都只遍历它。
+- **做什么**：① 债权人索引（`Map<CohortKey, List<DebtId>>`）**或**一个纯派生查询函数；
+  ② 读口：某主体"我欠谁多少 / 谁欠我多少"**两个方向都读得到**；③ `Debt.dueCycle` 接进读口
+  （今天**没有任何读口** ⇒ 它是"看起来在记"）。
+- **判据**：一笔债**两个方向读到的本金/利息/利率逐值相同**；★ **计息只增本金、不自动增可花余额**
+  （货币守恒仍成立）；★ 债权人侧"应收"**不入 `FlowRow.income`**（那是粮口径，塞进去守恒式当场不成立
+  —— `chargeInterest` 的类注已写明）。
+- **不做**：违约处置、重组、抵押执行（M4+）；**不引入 `Claim`/`ClaimId` 体系**（已退役）。
 
 ### M1.6 逐工具守恒
 - **做什么**：判据从"`Σ银恒定`"改为 **`Σ持有账户 = 创世 + 累计发行 − 累计注销`**（本阶段 `发行=注销=0` ⇒ 退化为今天的形态）。
 - **落点**：`EconomyMoneyInvariantTest` 扩写；读数里把**私人流通 / 全部基础货币 / （将来）银行存款**分栏。
 - **判据**：★ 明写**没有"全世界总量永远不变"的总不变量**。
 
-### M1.7 关系面（B 组架构）★★
-- **做什么**：`ProductionRelation` 加三面：
-  ```
-  + List<AssetOccupation> occupations   // (holder, kind, quantity, sharePerMille)
-  + List<UseRight> useRights            // (user, kind, basis∈{OWNED,TENURED,JOINT,OTHER}, grantor)
-  + LaborSource laborSource             // FAMILY_SELF / TENANCY / DEPENDENT / EMPLOYED(employer, laborMilli, rewardRule)
-  ```
-- **落点**：`simos-economy-api/.../relation/`（新类型）+ `RegimeRelations` 的 `defaultRelation` 加缺省展开；
-  `EconomyChangeSet` 回填；`ApiViews` 读口。
-- **判据**：① `Σ occupations[kind] ≤ capacity[kind]`（新不变量，构造期守卫）；
-  ② **地租受方 = 土地关系里的权利主体**（改一条关系就换收租人）；
-  ③ **雇佣量 ≤ 支配规模所需劳动**；
-  ④ 四档人均劳动**不再齐次**（修 M-4：`participationPerMille` 进计算，见 M1.8）。
+### M1.7 关系面（产品归属 / 供料责任 / **实物给养义务**）★★
+- **现状**：归属（`residualOwner`）与供料（`inputSupplier`）**已有**；**"实物给养义务"没有具名类型**
+  （只是 `FIXED_IN_KIND_PER_LABOR` 的一种用法）。
+- **做什么**：把"实物给养义务"**具名**（谁、向谁、每周期多少、按什么量），并让**保留算式读得到它**
+  —— ★ 这正是用户裁定那条"**经营者不能因为关联了某批人口，就再替这批人口扣一次完整口粮**"的落点：
+  经营者只保留**它确实承担的**那份给养，家户收到后**不在经营者账上重复保留**。
+- **落点**：`simos-economy-api/.../relation/`（新类型）+ `RegimeRelations` 的缺省展开 + `ApiViews` 读口。
+- **判据**：① 给养义务**可查**（某经营者每周期应交付多少、给谁）；② **Σ经营者保留的给养 ≤ 它承诺的**
+  （不许按关联人口重复扣一份口粮 —— 用例逐值钉）。
 - **不做**：资产市场、抵押、土地买卖。
 
 ### M1.8 修 M-4（`participationPerMille` 进计算）
-- **病灶**：配额预算用 `grossLaborMilli`（`EconomySeeder.java:1083/1132`）⇒ 地主 100‰ 与贫农 950‰ 的差别**不进任何计算**；
-  真档实测四阶层 `labor/pop` **全部 = 562.8**。
+- **病灶**：配额预算用 `grossLaborMilli`（`EconomySeeder.java:1083/1132`）⇒ 地主 100‰ 与贫农 950‰ 的差别
+  **不进任何计算**；真档实测四阶层 `labor/pop` **全部 = 562.8**。
 - **做什么**：配额预算改为"**按阶层参与率折扣后的可用劳动**"。
 - **判据**：四档人均劳动**拉开**（地主 ≈100‰ vs 贫农 ≈950‰，约 9.5 倍）；`Σ allocated ≤ available` 仍绿。
-
----
 
 # 第五部分：M2 —— 一般市场（**本轮目标**）
 
@@ -376,7 +399,7 @@ M0 仪器 ──→ M1 货币与关系 ──→ M2 一般市场（本期目标�
 
 ```
 第一批（仪器）        ✅ 已完成：M0.1 → M0.5 → M0.2 → M0.3 → M0.4 → M0.6
-第二批（账户与关系）  ← 下一步：M1.1/M1.2/M1.3 → M1.4 → M1.5 → M1.6 → M1.7 → M1.8
+第二批（账户与关系）  ← 下一步：M1.0 → M1.2 → M1.1 → M1.3 → M1.4 → M1.5 → M1.6 → M1.7 → M1.8
 第三批（一般市场＝本轮目标）： M2.0 定案 → M2.1 → M2.2 → M2.4 → M2.3 → M2.5 → M2.6 → M2.7
 可选增厚：                    M3
 后续独立立项：                M4+（国家模块：国库/发行/税/外汇/银行）
