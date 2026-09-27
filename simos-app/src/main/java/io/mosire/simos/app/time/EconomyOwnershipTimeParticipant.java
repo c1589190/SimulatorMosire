@@ -2,6 +2,7 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
@@ -151,7 +152,15 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     //   不进变更集、不跨 revision**。
     Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
         OwnershipBooks.loadHouseholdMoney(economy, actor);
-    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods, householdMoney);
+    // ★★ H5（⑤）：**经营者账的两份会话工作副本** —— 与家户那两份逐字同形、同一生命周期（载入 → step → 按绝对值落回）。
+    //   ★ 缺席不抛（手搭夹具的合法状态）：真档创世给每个经营主体播一本（HouseholdSeeder）。
+    Map<ActorRef, Map<CommodityId, Long>> operatorGoods =
+        OwnershipBooks.loadOperatorGoods(economy, actor);
+    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney =
+        OwnershipBooks.loadOperatorMoney(economy, actor);
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            economy, householdGoods, householdMoney, operatorGoods, operatorMoney);
     ActorData books = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
@@ -170,6 +179,9 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       // ★★ H4：货币账同样**按绝对值**落回，且**必须紧跟在商品之后**（写的是同一本账的另一个余额表 ⇒
       //   它要把商品那一半原样带过，而那半必须已经落好；顺序反了 {@link OwnershipBooks#landHouseholdMoney} 当场抛）。
       books = OwnershipBooks.landHouseholdMoney(books, stepper.householdMoney());
+      // ★★ H5（⑤）：经营者账同样按**绝对值**落回（商品先、货币后：同一本账的两张余额表，顺序不能反）。
+      books = OwnershipBooks.landOperatorGoods(stepper.data(), books, stepper.operatorGoods());
+      books = OwnershipBooks.landOperatorMoney(stepper.data(), books, stepper.operatorMoney());
     }
     EconomyData currentEconomy = stepper.finish();
     return new WorldTimeProposal(

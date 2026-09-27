@@ -102,7 +102,9 @@ public final class PopulationEconomyFixture {
                 //   —— 由**同一个 plan** 的开缸库存建（与真播种路径的 actor.Seed 同源）。
                 "actor",
                     actorSnap(
-                        HouseholdSeeder.books(seeded.householdStocks(), seeded.householdMoney()),
+                        // ★★ H5（⑤）：经营主体的开缸账（与家户同一次 plan）—— 少了它作坊开不起来。
+                        HouseholdSeeder.books(
+                            seeded.householdStocks(), seeded.householdMoney(), seeded.operators()),
                         0L)),
             InMemoryInfoSystem.empty());
     HandlerOutcome outcome = new EconomySeedHandler().handle(empty, payload);
@@ -115,7 +117,8 @@ public final class PopulationEconomyFixture {
     return new Fixture(
         social,
         economy,
-        HouseholdSeeder.books(seeded.householdStocks(), seeded.householdMoney()),
+        HouseholdSeeder.books(
+            seeded.householdStocks(), seeded.householdMoney(), seeded.operators()),
         0L);
   }
 

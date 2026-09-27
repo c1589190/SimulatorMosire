@@ -930,9 +930,17 @@ class EconomySeederTest {
         .isEqualTo(EconomySeeder.CLOTH_PER_WORKSHOP_PER_CYCLE);
     assertThat(craft.get("outputPerUnit").get("tool").asLong())
         .isEqualTo(EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE);
-    assertThat(craft.get("cycleInputPerUnit").get("WORKSHOP").get("iron").asLong())
-        .as("★「消耗 IRON」这句原来表达不了 —— R3 的换型就是为了它")
-        .isEqualTo(EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE * EconomySeeder.IRON_MILLI_PER_TOOL);
+    // ★★ H5 ④：作坊的投入由 **IRON 改成 TOOL**（工具自产自用 ⇒ 存量可再生，"创世一箱铁 → 用完永久停工"
+    //   这个外生断点消失）。逐值算式（见 EconomySeeder.TOOL_MILLI_PER_WORKSHOP_CYCLE）：
+    //     净产(工具/座·周期) = 5,000(5 件) − 150(毛产 × (0‰ + 30‰)) = 4,850
+    //     投入(工具/座·周期) = TOOL_MILLI_PER_WORKSHOP_CYCLE(2,000) ⇒ 净产出 = +2,850 ≥ 0
+    assertThat(craft.get("cycleInputPerUnit").get("WORKSHOP").get("tool").asLong())
+        .as("★ H5 ④：作坊消耗的是**它自己产的工具**（不是铁）—— 净产出 = 4,850 − 2,000 = +2,850 毫工具/座·周期")
+        .isEqualTo(EconomySeeder.TOOL_MILLI_PER_WORKSHOP_CYCLE)
+        .isEqualTo(EconomySeeder.toolPerWorkshopMilli());
+    assertThat(craft.get("cycleInputPerUnit").get("WORKSHOP").has("iron"))
+        .as("★ 铁**退出配方**（用户裁定：留作词表里的留位商品）—— 它只剩创世库存与读口的商品清单这两个落点")
+        .isFalse();
   }
 
   /**

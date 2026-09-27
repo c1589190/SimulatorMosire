@@ -472,6 +472,11 @@ public final class ApiViews {
     view.put("market", marketView(data.markets().get(coord)));
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
+    // ★★ H5 ④：**商品词表（含留位）** —— 世界级常量，与格无关；放在这里是因为这是 economy 切片唯一的读口。
+    //   ★ 为什么必须有：H5 起 IRON 不再进任何配方（作坊的投入由铁改成工具）⇒ 若读口不列"世界有哪些商品"，
+    //     "铁"就退化成没人读得到的孤字面量（本仓禁"看起来在记、其实永远不被读"）。逐条口径见
+    //     {@link EconomyVocabulary#allCommodityIds()}。
+    view.put("commodityIds", EconomyVocabulary.allCommodityIds());
     view.put("classes", classes);
     view.put("industries", industries);
     return view;

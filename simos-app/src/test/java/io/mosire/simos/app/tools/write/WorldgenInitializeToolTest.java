@@ -1071,7 +1071,16 @@ class WorldgenInitializeToolTest {
     // ★★ H4（裁定 K14）：货币账的会话副本与商品副本同形、同生命周期（同一本 GoodsAccount 的第二个余额表）。
     Map<CohortKey, Map<io.mosire.simos.economy.api.id.CurrencyId, Long>> householdMoney =
         OwnershipBooks.loadHouseholdMoney(base, books);
-    EconomyDayStepper stepper = new EconomyDayStepper(base, householdGoods, householdMoney);
+    // ★★ H5（⑤）：**经营者账的两份副本**也要载入/落回（真协调器走的就是这条路）—— 少了它，作坊的净产与
+    //   工具投入都没有落点（实测：真档第 1 个周期工具产量就是 0）。
+    Map<io.mosire.simos.actor.api.actor.ActorRef, Map<CommodityId, Long>> operatorGoods =
+        OwnershipBooks.loadOperatorGoods(base, books);
+    Map<
+            io.mosire.simos.actor.api.actor.ActorRef,
+            Map<io.mosire.simos.economy.api.id.CurrencyId, Long>>
+        operatorMoney = OwnershipBooks.loadOperatorMoney(base, books);
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(base, householdGoods, householdMoney, operatorGoods, operatorMoney);
     ActorData current = books;
     for (long day = 1L; day <= days; day++) {
       io.mosire.simos.economy.time.ProductionLedger ledger = stepper.step(day);
@@ -1082,6 +1091,9 @@ class WorldgenInitializeToolTest {
       current = OwnershipBooks.landHouseholdGoods(current, stepper.householdGoods());
       // ★ 顺序不能反：货币那半紧跟商品之后（写的是同一本账的另一个余额表）。
       current = OwnershipBooks.landHouseholdMoney(current, stepper.householdMoney());
+      // ★★ H5（⑤）：经营者账同样按绝对值落回（商品先、货币后）。
+      current = OwnershipBooks.landOperatorGoods(base, current, stepper.operatorGoods());
+      current = OwnershipBooks.landOperatorMoney(base, current, stepper.operatorMoney());
     }
     return new Advance(stepper.finish(), current);
   }

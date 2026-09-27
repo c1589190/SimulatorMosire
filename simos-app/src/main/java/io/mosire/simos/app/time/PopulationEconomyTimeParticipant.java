@@ -2,6 +2,7 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
@@ -163,7 +164,15 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     //   ★ 它同样**不进 EconomyData、不进变更集、不跨 revision**；★ 载入不出来同样当场抛。
     Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
         OwnershipBooks.loadHouseholdMoney(economy, actor);
-    EconomyDayStepper stepper = new EconomyDayStepper(economy, householdGoods, householdMoney);
+    // ★★ H5（⑤）：**经营者账的两份会话工作副本**（商品 + 货币）—— 与家户那两份同形、同生命周期、同样不进
+    //   EconomyData/变更集；载入缺席不抛（手搭夹具的合法状态，见 {@link OwnershipBooks#loadOperatorGoods}）。
+    Map<ActorRef, Map<CommodityId, Long>> operatorGoods =
+        OwnershipBooks.loadOperatorGoods(economy, actor);
+    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney =
+        OwnershipBooks.loadOperatorMoney(economy, actor);
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            economy, householdGoods, householdMoney, operatorGoods, operatorMoney);
     SocialData currentSocial = social;
     ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
@@ -184,6 +193,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       // ★★ H4：货币账紧跟着按绝对值落回（同一本账的另一个余额表；顺序不能反，见
       //   {@link OwnershipBooks#landHouseholdMoney}）。
       currentBooks = OwnershipBooks.landHouseholdMoney(currentBooks, stepper.householdMoney());
+      // ★★ H5（⑤）：经营者账同样按绝对值落回（商品先、货币后）。
+      currentBooks =
+          OwnershipBooks.landOperatorGoods(stepper.data(), currentBooks, stepper.operatorGoods());
+      currentBooks =
+          OwnershipBooks.landOperatorMoney(stepper.data(), currentBooks, stepper.operatorMoney());
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
       currentSocial = applyDailyStress(stepper.data(), currentSocial, stepper.flows(), unmetBefore);
       // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
@@ -197,6 +211,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
           // ★★ H4：货币副本同样在**同一个月度边界**重新对齐（它与商品副本同生命周期 ⇒ 一起收尾）。
           currentBooks = OwnershipBooks.landHouseholdMoney(currentBooks, stepper.householdMoney());
+          // ★ H5：经营者账在**同一个月度边界**重新对齐（与家户那两份同生命周期 ⇒ 一起收尾）。
+          currentBooks =
+              OwnershipBooks.landOperatorGoods(
+                  stepper.data(), currentBooks, stepper.operatorGoods());
+          currentBooks =
+              OwnershipBooks.landOperatorMoney(
+                  stepper.data(), currentBooks, stepper.operatorMoney());
         }
       }
     }

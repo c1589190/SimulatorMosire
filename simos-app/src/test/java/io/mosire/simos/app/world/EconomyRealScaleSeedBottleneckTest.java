@@ -107,7 +107,9 @@ class EconomyRealScaleSeedBottleneckTest {
     // ★★ H4：货币禀赋与开缸库存同源（同一份 plan）—— 账本要带上钱，否则与真播种路径不同形。
     EconomySeeder.Seed seeding =
         EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(realScalePlan(), 0L), at -> "plains");
-    return HouseholdSeeder.books(seeding.householdStocks(), seeding.householdMoney());
+    // ★★ H5（⑤）：经营主体的开缸账与家户同源（同一次 plan）。
+    return HouseholdSeeder.books(
+        seeding.householdStocks(), seeding.householdMoney(), seeding.operators());
   }
 
   private static SettlementPlan realScalePlan() {
@@ -205,12 +207,41 @@ class EconomyRealScaleSeedBottleneckTest {
 
     EconomyData afterOneDay =
         EconomyOwnershipFixture.advanceEconomy(seeded, realScaleBooks(), MAP_ID, 1L);
-    assertThat(afterOneDay.industries().get(farm).cycleLaborMilli())
-        .as("③ 农业第 1 天累加的就是它那一条配额（劳动投入取自配额表）")
-        .isEqualTo(farmQuota);
+    // ★★ **H5 ③（裁定 C2）改了这一条的数值口径（断言本身没动：仍是"第 1 天累加的劳动逐值可推"）**：
+    //   劳动配额不再"种下去就不动"—— 周期第一天会按**缺口信号**在产业之间重排（未吸收的劳动回池 ⇒ 有缺口的产业
+    //   优先吸收，最后雇主是产粮的农业）。本格（一格、无城）只有两个产业，逐条算式：
+    //
+    //   ① 纺织的"用得上"的劳动 = min(织机 740, 本周期扣到的纤维 ÷ 每台用量) × 每台劳动
+    //        纤维 = 3,100 亩 × 6 单位/亩 × 1000 = 18,600,000 毫 → ÷ 30,000 = **620 台**
+    //        ⇒ 纺织需要 620 × 1,000 = **620,000** 千分劳动（**纤维**那一路上最紧，不是织机、更不是劳动）
+    //   ② 纺织原来的配额 738,581 > 620,000 ⇒ 多出来的 118,581 **回池**
+    //   ③ 农业自己的需求（3,100 亩 × 143）= 443,300 < 它原来的配额 6,647,235 ⇒ 它自己也把多余的放回池
+    //      两个产业都没有"缺口"了 ⇒ 回池的劳动按最后雇主那一档（农业）收下 ⇒
+    //        农业第 1 天 = 443,300 + (6,203,935 + 118,581) = **6,765,816** = 原配额 + (纺织配额 − 纺织需求)
+    //      ★ 守恒：6,765,816 + 620,000 = 7,385,816 = 两条原配额之和（劳动只在产业之间搬，一毫不增不减）。
+    long weaveLaborNeed =
+        Long.min(
+                seeded.industries().get(weave).capacity().getOrDefault(AssetKind.TOOL, 0L),
+                afterOneDay
+                        .industries()
+                        .get(weave)
+                        .cycleInputUsedMilli()
+                        .getOrDefault(EconomyTestWorld.FIBER, 0L)
+                    / (EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
+                        * EconomySeeder.FIBER_MILLI_PER_CLOTH))
+            * EconomySeeder.LABOR_MILLI_PER_LOOM;
+    assertThat(weaveLaborNeed).as("① 纺织用得上 620 台（纤维那一路最紧）").isEqualTo(620_000L);
     assertThat(afterOneDay.industries().get(weave).cycleLaborMilli())
-        .as("③ 纺织第 1 天累加的是它那一条配额")
-        .isEqualTo(weaveQuota);
+        .as("③ 纺织第 1 天累加的是**它用得上的**那一条（H5 ③：不再是原配额）")
+        .isEqualTo(weaveLaborNeed);
+    assertThat(afterOneDay.industries().get(farm).cycleLaborMilli())
+        .as("③ 农业第 1 天累加的是它那一条配额 + 纺织回池的那一份（最后雇主）")
+        .isEqualTo(farmQuota + (weaveQuota - weaveLaborNeed));
+    assertThat(
+            afterOneDay.industries().get(farm).cycleLaborMilli()
+                + afterOneDay.industries().get(weave).cycleLaborMilli())
+        .as("★★ H5 ③ 的守恒：重排之后**两条配额之和一份不少**（劳动只在产业之间搬）")
+        .isEqualTo(farmQuota + weaveQuota);
   }
 
   /**

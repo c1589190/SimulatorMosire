@@ -161,8 +161,42 @@ public final class EconomyTestWorld {
    * hex)}、空账也建（人口 0 的那一组）。
    */
   public static ActorData books() {
-    ActorData books = HouseholdSeeder.books(openingStocks(), openingMoney());
+    // ★★ H5（⑤）：**经营主体的开缸账也要播**（真创世那条路：`EconomySeeder.plan` 的 `Seed.operators()` →
+    //   `HouseholdSeeder.books/​payload`）—— 少了它，作坊的投入（工具）没有来处、净产也落不进它的账：
+    //   实测（本夹具）：作坊第 1 个周期就开不起来（工具可用 0 ⇒ usableScale 0）、工具产量 0。
+    ActorData books = HouseholdSeeder.books(openingStocks(), openingMoney(), operators());
     return books.withMeta(Optional.of(new ActorMeta(MAP_ID, 0L, HouseholdSeeder.RULES_VERSION)));
+  }
+
+  /**
+   * ★★ <b>本夹具的经营主体开缸账</b>（H5 ⑤）：**从它自己的经济状态推**，与真播种器**同一条规则** （{@link EconomySeeder#operatorSeed}
+   * —— 主体由 regime 推、钱包 = 工资周转金、账户键 = (主体, 产业那一格)）。
+   *
+   * <p>★ <b>开缸商品</b>：{@code handicraft} 的作坊拿到<b>一个周期的工具用量 / 座</b>（它自己的周转料 ——
+   * 工具是它自己的产品，故这份料必须记在**它自己**的账上，理由见 {@code EconomySeeder.TOOL_MILLI_PER_WORKSHOP_CYCLE}）；
+   * 其余产业开缸为空（庄园的种子在出料主体的账上、织机的纤维在农村家户的账上，见 {@code EconomySeeder.plan} 的同款注释）。
+   */
+  public static List<EconomySeeder.OperatorSeed> operators() {
+    List<EconomySeeder.OperatorSeed> seeds = new ArrayList<>();
+    for (Map.Entry<IndustryId, Industry> entry : data().industries().entrySet()) {
+      IndustryId id = entry.getKey();
+      Industry industry = entry.getValue();
+      HexCoord hex =
+          IndustryHexKeys.hexKeyOf(id)
+              .map(HexCoord::parse)
+              .orElseThrow(() -> new IllegalStateException("产业 id 里没有格键: " + id));
+      Map<CommodityId, Long> goods = new LinkedHashMap<>();
+      if (industry.operator().kind() == ActorKind.WORKSHOP) {
+        long workshops = industry.capacity().getOrDefault(AssetKind.WORKSHOP, 0L);
+        if (workshops > 0L) {
+          goods.put(
+              new CommodityId(EconomySeeder.COMMODITY_TOOL),
+              workshops * EconomySeeder.toolPerWorkshopMilli());
+        }
+      }
+      seeds.add(EconomySeeder.operatorSeed(id, industry.regime().value(), hex, goods));
+    }
+    return seeds;
   }
 
   /**
@@ -479,6 +513,8 @@ public final class EconomyTestWorld {
     long fiberPerShop = clothPerWorkshop() * EconomySeeder.FIBER_MILLI_PER_CLOTH;
     long ironPerShop =
         EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE * EconomySeeder.IRON_MILLI_PER_TOOL;
+    // ★★ H5 ④：作坊的投入是 **TOOL**（与真播种器同一条口径 —— 工具自产自用 ⇒ 净产为正 ⇒ 存量可再生）。
+    long toolPerShop = EconomySeeder.toolPerWorkshopMilli();
     industries.put(
         id,
         industry(
@@ -491,7 +527,7 @@ public final class EconomyTestWorld {
             Map.of(AssetKind.WORKSHOP, workshops),
             EconomySeeder.LABOR_MILLI_PER_WORKSHOP,
             Map.of(CLOTH, clothPerWorkshop(), TOOL, EconomySeeder.TOOL_PER_WORKSHOP_PER_CYCLE),
-            Map.of(AssetKind.WORKSHOP, Map.of(FIBER, fiberPerShop, IRON, ironPerShop))));
+            Map.of(AssetKind.WORKSHOP, Map.of(FIBER, fiberPerShop, TOOL, toolPerShop))));
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
       // ★★ H0.2：旧的 craft 四行 = 新的**城镇四行**（人口逐值不动；作坊搬到产业产能、纤维与铁留在家户账上）。
       addRow(
@@ -501,6 +537,8 @@ public final class EconomyTestWorld {
           people[i],
           Stock.NORMAL,
           // ★ 原料库存 = 该家户分到的作坊数 × 一座作坊**一个周期**的用量（自洽，不是一个拍出来的总量）。
+          // ★★ H5 ④：**工具不再记在家户账上** —— 它是作坊自己的产品，故那份周转料由**经营者**的账持有
+          //   （见 {@link #operators()}）；家户这边照旧只有纤维与铁（铁是词表里的留位商品，本仓没有配方读它）。
           Map.of(FIBER, shopByClass[i] * fiberPerShop, IRON, shopByClass[i] * ironPerShop),
           stocks);
     }

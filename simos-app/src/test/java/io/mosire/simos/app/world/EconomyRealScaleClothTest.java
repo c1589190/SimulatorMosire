@@ -137,7 +137,10 @@ class EconomyRealScaleClothTest {
     EconomySeeder.Seed seeding =
         EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains");
     // ★★ H4：账本 = 商品 + 货币（两者同源，都出自这一份 plan）。
-    ActorData books = HouseholdSeeder.books(seeding.householdStocks(), seeding.householdMoney());
+    // ★★ H5（⑤）：经营主体的开缸账与家户同源（同一次 plan）—— 见 EconomyTestWorld 的同款注释。
+    ActorData books =
+        HouseholdSeeder.books(
+            seeding.householdStocks(), seeding.householdMoney(), seeding.operators());
     return new Seeded(economy, books);
   }
 

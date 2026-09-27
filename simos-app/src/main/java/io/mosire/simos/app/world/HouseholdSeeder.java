@@ -100,11 +100,30 @@ public final class HouseholdSeeder {
       String mapId,
       Map<CohortKey, Map<CommodityId, Long>> householdStocks,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
+    return payload(mapId, householdStocks, householdMoney, List.of());
+  }
+
+  /**
+   * ★★ <b>{@code actor.Seed} 的载荷（H5 的完整口径：家户 + 经营者）</b>—— 见 {@link #payload(String, Map, Map)}。
+   *
+   * <p>★★ <b>H5 ⑤：经营者的账与家户的账**在同一份载荷里的同一个 {@code goods} 数组**</b>（形状一字不改： {@code entries[].actors[]}
+   * 先声明主体、{@code entries[].goods[]} 再给账 —— "悬空 owner ⇒ 拒"那条守卫因此照旧）。 ★
+   * 主体与账**逐条对齐**（同一次遍历产出）：少写一条就是"账没有主人"，多写一条就是"主体凭空多出来"。
+   *
+   * @param operators 经营主体的开缸账（来自 {@code EconomySeeder.plan} 的 {@code Seed.operators()}；键序 = 产业生成序）
+   */
+  public static String payload(
+      String mapId,
+      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      List<EconomySeeder.OperatorSeed> operators) {
     if (mapId == null || mapId.isBlank()) {
       throw new IllegalArgumentException("mapId 不得为空白: " + mapId);
     }
     Objects.requireNonNull(householdStocks, "householdStocks");
     Objects.requireNonNull(householdMoney, "householdMoney");
+    Objects.requireNonNull(operators, "operators（没有经营者就给空表）");
+    Map<HexCoord, List<EconomySeeder.OperatorSeed>> operatorsByHex = operatorsByHex(operators);
     List<Map<String, Object>> entries = new ArrayList<>();
     for (Map.Entry<HexCoord, List<CohortKey>> atHex : byHex(householdStocks).entrySet()) {
       HexCoord hex = atHex.getKey();
@@ -119,6 +138,11 @@ public final class HouseholdSeeder {
                 hex,
                 householdStocks.getOrDefault(cohort, Map.of()),
                 householdMoney.getOrDefault(cohort, Map.of())));
+      }
+      // ★★ H5：本格的经营主体（有产业才有它；见 EconomySeeder.operatorSeed）—— 与家户同一个 actors/goods 形状。
+      for (EconomySeeder.OperatorSeed operator : operatorsByHex.getOrDefault(hex, List.of())) {
+        actors.add(actorNode(operator.owner(), operator.label()));
+        goods.add(goodsNode(operator.owner(), hex, operator.goods(), operator.money()));
       }
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
@@ -151,8 +175,21 @@ public final class HouseholdSeeder {
   public static ActorData books(
       Map<CohortKey, Map<CommodityId, Long>> householdStocks,
       Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
+    return books(householdStocks, householdMoney, List.of());
+  }
+
+  /**
+   * ★★ <b>直接装配 actor 切片的那两件（H5 的完整口径：家户 + 经营者）</b>—— 见 {@link #books(Map, Map)}。★ 与 {@link
+   * #payload(String, Map, Map, List)} 读的是**同一份**库存/货币/经营者表 ⇒ "命令播出来的世界"与"夹具手搭的世界"逐字段同形（H1 的那条接缝，H5
+   * 只是多了经营者这一族）。
+   */
+  public static ActorData books(
+      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      List<EconomySeeder.OperatorSeed> operators) {
     Objects.requireNonNull(householdStocks, "householdStocks");
     Objects.requireNonNull(householdMoney, "householdMoney");
+    Objects.requireNonNull(operators, "operators（没有经营者就给空表）");
     Map<ActorRef, Actor> actors = new LinkedHashMap<>();
     Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, List<CohortKey>> atHex : byHex(householdStocks).entrySet()) {
@@ -169,7 +206,23 @@ public final class HouseholdSeeder {
                 householdMoney.getOrDefault(cohort, Map.of())));
       }
     }
+    // ★★ H5：经营主体的主体 + 账（同一份 OperatorSeed 同时给出两者 ⇒ 不会出现"有账没主体"）。
+    for (EconomySeeder.OperatorSeed operator : operators) {
+      actors.put(operator.owner(), new Actor(operator.owner(), operator.label()));
+      GoodsAccountKey accountKey = new GoodsAccountKey(operator.owner(), operator.location());
+      accounts.put(accountKey, new GoodsAccount(accountKey, operator.goods(), operator.money()));
+    }
     return ActorData.empty().withActors(actors).withAccounts(accounts);
+  }
+
+  /** 经营者按格分组（键序 = 传入序；格序 = 首次出现序）—— 载荷按格装 {@code actors}/{@code goods} 用。 */
+  private static Map<HexCoord, List<EconomySeeder.OperatorSeed>> operatorsByHex(
+      List<EconomySeeder.OperatorSeed> operators) {
+    Map<HexCoord, List<EconomySeeder.OperatorSeed>> byHex = new LinkedHashMap<>();
+    for (EconomySeeder.OperatorSeed operator : operators) {
+      byHex.computeIfAbsent(operator.location(), ignored -> new ArrayList<>()).add(operator);
+    }
+    return byHex;
   }
 
   /** 家户的显示名（{@code <居住类型> <阶层> 家户}）—— ★ **只为读**，不参与任何身份判定（身份是 {@link ActorRef}）。 */

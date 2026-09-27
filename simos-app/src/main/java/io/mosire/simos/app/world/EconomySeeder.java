@@ -1,6 +1,7 @@
 package io.mosire.simos.app.world;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -8,9 +9,14 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.GameMap;
@@ -29,6 +35,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -206,8 +213,31 @@ public final class EconomySeeder {
   /** ★★ **每匹布需要多少纤维**（毫纤维/匹）：**1,000**（= 1 单位）。织机与作坊共用同一条口径（同一门手艺）。 */
   public static final long FIBER_MILLI_PER_CLOTH = 1_000L;
 
-  /** ★★ **每件工具需要多少铁**（毫铁/件）：**2,000**（= 2 单位）。 */
+  /** ★★ **每件工具需要多少铁**（毫铁/件）：**2,000**（= 2 单位）。★ H5 起**没有配方读它**（见下）。 */
   public static final long IRON_MILLI_PER_TOOL = 2_000L;
+
+  /**
+   * ★★ <b>一座作坊每周期消耗的工具（毫工具 / 座·周期）：2,000（= 2 件）</b>—— H5 ④ 的出厂参数（GM 可调）。
+   *
+   * <pre>
+   * 一座作坊一个周期的工具账（单位：毫工具；{@code 1 件 = 1000 毫}）：
+   *   毛产   = TOOL_PER_WORKSHOP_PER_CYCLE(5 件) × 1000                    = 5,000
+   *   损耗   = 毛产 × (FEED 0‰ + DEPRECIATION 30‰)                          =   150
+   *   净产   = 5,000 − 150                                                  = 4,850
+   *   投入   = TOOL_MILLI_PER_WORKSHOP_CYCLE(2 件) × 1000                   = 2,000
+   *   ★ 净产出 = 4,850 − 2,000 = **+2,850 毫工具 / 座·周期 ≥ 0**            ⇒ 工具存量**可再生**
+   * </pre>
+   *
+   * <p>★★ <b>改前是什么样</b>（H5 ④ 要消灭的那个外生断点）：作坊的投入是<b>铁</b>（{@code TOOL_PER_WORKSHOP_PER_CYCLE ×
+   * IRON_MILLI_PER_TOOL = 10,000 毫铁/座·周期}），而**本仓没有任何冶炼流程** ⇒ 铁只能来自创世给的那一箱 ⇒ 用完（实测第 2
+   * 个周期）作坊**永久停工**、工具产量归 0（{@code EconomyRealScaleClothTest} 实测：第 240 天作坊布产 =
+   * 0）。改成"工具自产自用"之后，作坊吃的是**它自己产出的工具**（净产为正）⇒ 只要它开得起来，就一直开得下去。
+   *
+   * <p>★ <b>铁的去处</b>（用户裁定"铁留作留位"）：它仍是词表里的商品、仍由创世给城镇家户一份库存、仍在读口的商品清单里 （{@link
+   * EconomyVocabulary#allCommodityIds()}）—— <b>但有话直说：本批没有任何配方读它</b>（留位，不是"在用"）。 ★ 取 0 ⇒
+   * 作坊不再吃工具（工具只增不减）；取 ≥ 4,850 ⇒ 净产出为负（工具存量**净消耗** ⇒ 又变回"用完停工"， 只是把铁换成了工具）。
+   */
+  public static final long TOOL_MILLI_PER_WORKSHOP_CYCLE = 2_000L;
 
   /** 织造的产业活动标签（{@code LaborAllocation.activity}）。 */
   public static final String ACTIVITY_WEAVE = WEAVE;
@@ -467,7 +497,8 @@ public final class EconomySeeder {
       List<Map<String, Object>> entries,
       Map<HexCoord, Market> markets,
       Map<CohortKey, Map<CommodityId, Long>> householdStocks,
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
+      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      List<OperatorSeed> operators) {
 
     /**
      * ★★ <b>四张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
@@ -503,6 +534,9 @@ public final class EconomySeeder {
         }
       }
       householdMoney = Collections.unmodifiableMap(moneyCopy);
+      // ★ H5：经营主体的开缸账（逐格逐产业，键序 = 产业生成序 ⇒ 内容的纯函数）。
+      operators =
+          Collections.unmodifiableList(new ArrayList<>(operators == null ? List.of() : operators));
     }
 
     /**
@@ -512,6 +546,108 @@ public final class EconomySeeder {
     public String economyPayload() {
       return jsonOf(mapId, entries, markets);
     }
+  }
+
+  /**
+   * ★★ <b>一个经营主体的开缸账</b>（H5 ⑤）：<b>经营者自己持账</b> —— 主体（{@code ESTATE: farm@0_0} / {@code WORKSHOP:
+   * craft@0_0} / {@code HOUSEHOLD: weave@0_0}）、它那一格、它的开缸商品与开缸货币。
+   *
+   * <p>★★ <b>它为什么必须存在</b>（H5 的题目）：改前经营者**没有任何账**（创世只给家户播）⇒ ① 净产计提在 app 落账时 与家户账的绝对落回打架（{@code
+   * tenant} 档的 operator 就是佃农家户 ⇒ 计提被抹掉）；② 关系实付/货币工资的付方是聚合主体 ⇒ economy 看不见它 ⇒ "可用 0 ⇒ 实付 0"（H4
+   * 如实记的边界）。
+   *
+   * <p>★ <b>goods 与 money 都按 {@code GoodsAccount} 的两张余额表</b>（裁定 K15）：0 ⇒ 不落键（空表的纯形态）。 ★
+   * <b>货币从哪来</b>：见 {@link #operatorWageReserveMilli}（它自己那条制度里货币档的每周期应付 × 缓冲）——
+   * 它是**创世初始条件**（与家户的禀赋同一条口径，裁定 K14），不是发行。
+   *
+   * @param owner 经营主体（不得为 null；账户真源的键 = {@code (owner, location)}）
+   * @param location 该产业所在的那一格（不得为 null）
+   * @param label 显示名（**只为读**，不参与任何身份判定）
+   * @param goods 开缸商品（逐商品；毫单位）
+   * @param money 开缸货币（逐币种；最小币值）
+   */
+  public record OperatorSeed(
+      ActorRef owner,
+      HexCoord location,
+      String label,
+      Map<CommodityId, Long> goods,
+      Map<CurrencyId, Long> money) {
+
+    public OperatorSeed {
+      if (owner == null) {
+        throw new IllegalArgumentException("OperatorSeed.owner 不得为 null");
+      }
+      if (location == null) {
+        throw new IllegalArgumentException(
+            "OperatorSeed.location 不得为 null（账户 = (actor, location)）");
+      }
+      if (label == null || label.isBlank()) {
+        throw new IllegalArgumentException("OperatorSeed.label 不得为空白");
+      }
+      Map<CommodityId, Long> goodsCopy = new LinkedHashMap<>();
+      for (Map.Entry<CommodityId, Long> entry :
+          (goods == null ? Map.<CommodityId, Long>of() : goods).entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null || entry.getValue() < 0L) {
+          throw new IllegalArgumentException(
+              "OperatorSeed.goods 的键值非 null 且不得为负: " + entry.getKey());
+        }
+        if (entry.getValue() > 0L) {
+          goodsCopy.put(entry.getKey(), entry.getValue());
+        }
+      }
+      goods = Collections.unmodifiableMap(goodsCopy);
+      Map<CurrencyId, Long> moneyCopy = new LinkedHashMap<>();
+      for (Map.Entry<CurrencyId, Long> entry :
+          (money == null ? Map.<CurrencyId, Long>of() : money).entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null || entry.getValue() < 0L) {
+          throw new IllegalArgumentException(
+              "OperatorSeed.money 的键值非 null 且不得为负: " + entry.getKey());
+        }
+        if (entry.getValue() > 0L) {
+          moneyCopy.put(entry.getKey(), entry.getValue());
+        }
+      }
+      money = Collections.unmodifiableMap(moneyCopy);
+    }
+  }
+
+  /**
+   * ★★ <b>经营者的创世<strong>工资周转金</strong></b>（毫计价货币；H5 ⑤）：<b>它自己那条制度里全部货币档规则的 每周期应付之和 × {@link
+   * #GENESIS_MONEY_BUFFER_PER_MILLE}÷1000</b>。
+   *
+   * <pre>
+   * handicraft：4 条 FIXED_MONEY_WAGE × 1,000 毫/周期 = 4,000 毫银/周期
+   *             × 1200‰（与家户禀赋同一个缓冲）= **4,800 毫银**（= 1.2 个周期的工资）
+   * 其余三档（feudal / household / tenant）：没有货币档规则 ⇒ 0 ⇒ 空钱包
+   * </pre>
+   *
+   * <p>★★ <b>为什么口径取自"制度里的货币档"而不是另拍一个数</b>：{@code RegimeRelations} 是"每周期该付多少"的**唯一拼写点** ——
+   * 播种器另写一份必然与它对不上（改一个数要改两处，而漏改不会报错）。
+   *
+   * <p>★★ <b>如实记的边界（本批没做的事）</b>：本批**没有任何钱回流到经营者的通道**（同格市场只在家户之间；经营者作为市场 参与者是后续批次）⇒
+   * 这笔周转金是**一次性的**：它付完 N=1.2 个周期的工资就见底（此后货币工资回到"实付 0"， 读数里 {@code due > 0 && paid == 0} 看得见）。★
+   * 这不是"静默付 0"：付不出是**账面上读得出来**的状态； 要让它长期成立，得让经营者**卖得掉它的布与工具**（市场参与者扩容）。
+   */
+  static long operatorWageReserveMilli(String regime, IndustryId id, ActorRef owner) {
+    ProductionRelation relation =
+        RegimeRelations.defaultRelation(
+            new RegimeId(regime), id, owner, Set.of(ResidenceKind.URBAN));
+    long perCycle = 0L;
+    for (CompensationRule rule : relation.rules()) {
+      if (rule.type().money()) {
+        perCycle += rule.fixedAmount();
+      }
+    }
+    return perCycle * GENESIS_MONEY_BUFFER_PER_MILLE / 1000L;
+  }
+
+  /** 一个经营者的开缸钱包（毫计价货币；0 ⇒ 空钱包）—— 逐字照 {@link #genesisMoney(long)} 的"只落正的量"。 */
+  static Map<CurrencyId, Long> operatorWallet(long milli) {
+    Map<CurrencyId, Long> wallet = new LinkedHashMap<>();
+    if (milli > 0L) {
+      wallet.put(MARKET_NUMERAIRE, milli);
+    }
+    return wallet;
   }
 
   /**
@@ -614,6 +750,8 @@ public final class EconomySeeder {
     Map<CohortKey, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
     // ★★ H4：逐格市场的载荷（M1-A 每格单一计价货币 + 固定价）。本批逐格价格无差异 ⇒ 共享同一个不可变 {@link Market}。
     Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
+    List<OperatorSeed> operators = new ArrayList<>();
     for (HexCoord hex : hexes) {
       List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
       List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
@@ -637,6 +775,25 @@ public final class EconomySeeder {
       boolean hasCraft = populationOf(urbanPool) > 0L;
       if (hasCraft) {
         industries.add(handicraft(hex, workshops));
+      }
+      // ★★ H5 ⑤：**经营者自己持账** —— 有产业才有经营主体，故这一份与上面三个产业**逐条对齐**：
+      //   · farm（恒有，ESTATE）：开缸商品空（它的种子在**出料主体**的账上 —— feudal 档的 inputSupplier 就是它自己，
+      //     而它的缸空 ⇒ H3 的家户代理那一层照旧供种，逐值不变）；无货币档 ⇒ 空钱包；
+      //   · weave（有农村人口才有，HOUSEHOLD）：开缸商品空（纤维在**农村家户**的账上，H0.2 的既定分工）；无货币档；
+      //   · craft（有城镇人口才有，WORKSHOP）：开缸商品 = **一个周期的工具用量 / 座**（H5 ④：工具是它自己的产品，
+      //     故这份周转料交给它自己 —— 若仍留在城镇家户账上，"作坊吃自己产的工具"这条通道就断在别人的缸里）；
+      //     钱包 = 工资周转金（见 {@link #operatorWageReserveMilli}）。
+      operators.add(operatorSeed(farmId, REGIME_FEUDAL, hex, Map.of()));
+      if (hasRural) {
+        operators.add(operatorSeed(weaveId, REGIME_HOUSEHOLD, hex, Map.of()));
+      }
+      if (hasCraft) {
+        operators.add(
+            operatorSeed(
+                craftId,
+                REGIME_HANDICRAFT,
+                hex,
+                Map.of(new CommodityId(COMMODITY_TOOL), workshops * toolPerWorkshopMilli())));
       }
       // ★★ **R2：该格的劳动供给与配额**（第三阶段设计稿 §四）—— 创世按"农村批次 → 农业（庄园）/ 城镇批次 →
       //   手工业（作坊）"初始化配额；**R3 起农村那 1000‰ 拆成"农业 900‰ + 家庭纺织 100‰"**（同一批人两条配额，
@@ -703,7 +860,27 @@ public final class EconomySeeder {
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
       markets.put(hex, MARKET_FACTORY);
     }
-    return new Seed(mapId, entries, markets, householdStocks, householdMoney);
+    return new Seed(mapId, entries, markets, householdStocks, householdMoney, operators);
+  }
+
+  /**
+   * 一个产业的**经营主体开缸账**（H5 ⑤）：主体由 {@code regime} 推导（{@link RegimeOperators#defaultOperator}，
+   * 与载荷边缘**同一条**规则 ⇒ 命令播出来的主体与这里算的是同一个），钱包由 {@link #operatorWageReserveMilli} 给出。
+   *
+   * @param id 产业 id（主体的 id 就是它 —— 见 {@code RegimeOperators} 的裁定 R3）
+   * @param regime 该产业的制度（决定主体的种类与货币档）
+   * @param hex 该产业所在的那一格（= 主体账户的第二段）
+   * @param goods 开缸商品（逐商品；0 项不落键）
+   */
+  static OperatorSeed operatorSeed(
+      IndustryId id, String regime, HexCoord hex, Map<CommodityId, Long> goods) {
+    ActorRef owner = RegimeOperators.defaultOperator(new RegimeId(regime), id);
+    return new OperatorSeed(
+        owner,
+        hex,
+        id.value() + " 经营者",
+        goods,
+        operatorWallet(operatorWageReserveMilli(regime, id, owner)));
   }
 
   // ── H4：出厂价表与创世货币禀赋（纯函数）──────────────────────────────────────────────
@@ -977,7 +1154,10 @@ public final class EconomySeeder {
    * economy:<mapId>:allocation.<id>} 不会被 {@code AddressParser} 在第一个点处截断。
    */
   static String allocationId(IndustryId industry, PopulationGroup group) {
-    return "alloc-" + industry.value() + "-" + group.id().value();
+    // ★★ H5：格式的**唯一拼写点**已上移到契约层（{@link LaborAllocation#idOf}）—— 因为劳动再分配
+    //   （{@code EconomySettlement.reallocateLabor}）也会新发配额，而它不是本模块的代码。本方法只做转调，
+    //   **不再复述那个格式**（两处各拼一遍 ⇒ 改一处漏一处，而漏了不会报错）。
+    return LaborAllocation.idOf(industry, group.id()).value();
   }
 
   // ── 三个产业（**只留制度 + 配方 + 产能**；行已搬到 {@link #ruralCohort} / {@link #urbanCohort}）──────
@@ -1072,9 +1252,22 @@ public final class EconomySeeder {
     return CLOTH_PER_WORKSHOP_PER_CYCLE * FIBER_MILLI_PER_CLOTH;
   }
 
-  /** 一座作坊**一个周期**的铁用量（毫铁）= 产工具 × 每件耗铁。★ 同上（唯一拼写点）。 */
+  /**
+   * 一座作坊**一个周期**的铁用量（毫铁）= 产工具 × 每件耗铁。★ 同上（唯一拼写点）。
+   *
+   * <p>★ <b>H5 起它只喂创世库存</b>（{@link #urbanCohort} 给城镇家户那一箱铁的用度估计），**没有配方读它** —— 铁按用户裁定留位（见 {@link
+   * #TOOL_MILLI_PER_WORKSHOP_CYCLE} 的注释）。
+   */
   static long ironPerWorkshopMilli() {
     return TOOL_PER_WORKSHOP_PER_CYCLE * IRON_MILLI_PER_TOOL;
+  }
+
+  /**
+   * 一座作坊**一个周期**的工具用量（毫工具）= {@link #TOOL_MILLI_PER_WORKSHOP_CYCLE} —— ★ 与 {@code
+   * handicraft().cycleInputPerUnit} **同一条口径**（唯一拼写点）。
+   */
+  static long toolPerWorkshopMilli() {
+    return TOOL_MILLI_PER_WORKSHOP_CYCLE;
   }
 
   /**
@@ -1111,10 +1304,14 @@ public final class EconomySeeder {
             CLOTH_PER_WORKSHOP_PER_CYCLE,
             COMMODITY_TOOL,
             TOOL_PER_WORKSHOP_PER_CYCLE),
+        // ★★ H5 ④：投入 = **纤维 + 工具**（改前是纤维 + 铁）—— 工具是作坊**自己的产品**（净产为正）
+        //   ⇒ 存量可再生，"创世一箱铁 → 用完永久停工"这个外生断点消失。逐条算式见
+        //   {@link #TOOL_MILLI_PER_WORKSHOP_CYCLE}。
         Map.of(
             "WORKSHOP",
             Map.of(
-                COMMODITY_FIBER, fiberPerWorkshopMilli(), COMMODITY_IRON, ironPerWorkshopMilli())));
+                COMMODITY_FIBER, fiberPerWorkshopMilli(),
+                COMMODITY_TOOL, toolPerWorkshopMilli())));
   }
 
   /**

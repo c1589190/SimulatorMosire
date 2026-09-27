@@ -1,6 +1,7 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
@@ -8,14 +9,18 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
+import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * ★★ <b>产权落账</b>（S1 阶段 4+5 Task 5）：把一天/{@code ProductionLedger} 交出来的 {@link ActorEntry} 落到 {@link
@@ -333,5 +338,162 @@ public final class OwnershipBooks {
    */
   public static GoodsAccountKey accountKeyOf(CohortKey cohort) {
     return new GoodsAccountKey(HouseholdActors.of(cohort), cohort.hex());
+  }
+
+  // ── 经营者账（H5 ⑤）────────────────────────────────────────────────────────────────
+  //
+  // ★★ 为什么它必须与家户账走**同一对载入/落回**：经营者的账也是 GoodsAccount（键 = (actor, location)），
+  //   而它是**唯一**能接住"净产计提 / 关系实付的付出 / 货币工资的付出"的地方 —— 少了它，那些腿要么被绝对落回抹掉
+  //   （家户形式的 operator）、要么落不了盘（聚合主体）。★ 三条口径与家户那两条**逐字同款**：驱动集来自
+  //   economy（这里是"每个产业的 operator"，家户那边是"每条家户行"）、载入不出来 ⇒ 抛、落回按**绝对值**。
+
+  /**
+   * ★★ <b>经营者 actor → 它那一格</b>（H5）：逐产业取 {@code (operator, 产业 id 的格)}。
+   *
+   * <p>★ <b>为什么"格"必须从产业 id 里取</b>：账户的键是 {@code (actor, location)}，而 economy 侧的会话副本以 {@link
+   * ActorRef} 为键（{@code RegimeOperators} 用产业 id 当主体的 id ⇒ 一个主体只可能有一格）⇒ 落盘时要**重新算** 那一格。{@link
+   * IndustryHexKeys} 是"产业 id 里的格"的唯一拼写点，本类不复述格式。
+   */
+  public static Map<ActorRef, HexCoord> operatorLocations(EconomyData economy) {
+    Objects.requireNonNull(economy, "economy");
+    Map<ActorRef, HexCoord> locations = new LinkedHashMap<>();
+    for (IndustryId id : economy.industries().keySet()) {
+      Optional<HexCoord> hex = IndustryHexKeys.hexKeyOf(id).map(HexCoord::parse);
+      if (hex.isEmpty()) {
+        continue; // 产业 id 里没有格键（手搭状态）：说不出账户在哪一格 ⇒ 不进表（落回时同样跳过）
+      }
+      locations.put(economy.industries().get(id).operator(), hex.get());
+    }
+    return locations;
+  }
+
+  /**
+   * ★★ <b>把经营者账载入成会话工作副本（商品）</b>（H5 ⑤）。
+   *
+   * <p>★★ <b>与 {@link #loadHouseholdGoods} 的一处刻意不同：缺席不抛</b>——理由逐条：
+   *
+   * <ol>
+   *   <li>家户那边"缺席 ⇒ 抛"是因为**每一行都必须有账**（播种漏了就是漏了，静默当 0 会让那一家人静默断粮）；
+   *   <li>经营者这边"缺席"是**合法状态**：手搭夹具、旧存档、以及"这个世界还没有给经营者播种"的世界都是这一形态 —— 那时它的语义就是 H4 如实记过的那一条（看不见的账 ⇒ 可用
+   *       0 ⇒ 实付 0，读数里看得见欠了多少）；
+   *   <li>★ 真档创世**必给**（{@code HouseholdSeeder} 按 {@code EconomySeeder.plan} 的 {@code operators}
+   *       播）—— 端到端用例逐值钉着"作坊的货币工资真的付出来了"（判据 ⑤）。
+   * </ol>
+   *
+   * @return 键 = 经营主体（**只在 actor 侧真有账时才有键**）；值 = 商品余额（可变的新表）
+   */
+  public static Map<ActorRef, Map<CommodityId, Long>> loadOperatorGoods(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<ActorRef, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, HexCoord> entry : operatorLocations(economy).entrySet()) {
+      GoodsAccount account =
+          books.accounts().get(new GoodsAccountKey(entry.getKey(), entry.getValue()));
+      if (account != null) {
+        copy.put(entry.getKey(), new LinkedHashMap<>(account.balances()));
+      }
+    }
+    return copy;
+  }
+
+  /** ★★ <b>把经营者账载入成会话工作副本（货币）</b>（H5 ⑤）—— 与 {@link #loadOperatorGoods} 逐字同形、同一本账。 */
+  public static Map<ActorRef, Map<CurrencyId, Long>> loadOperatorMoney(
+      EconomyData economy, ActorData books) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Map<ActorRef, Map<CurrencyId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, HexCoord> entry : operatorLocations(economy).entrySet()) {
+      GoodsAccount account =
+          books.accounts().get(new GoodsAccountKey(entry.getKey(), entry.getValue()));
+      if (account != null) {
+        copy.put(entry.getKey(), new LinkedHashMap<>(account.money()));
+      }
+    }
+    return copy;
+  }
+
+  /**
+   * ★★ <b>把经营者商品账工作副本<strong>按绝对值</strong>落回 actor 切片</b>（H5 ⑤）—— 与 {@link #landHouseholdGoods}
+   * 逐字同款（含"钱原样带过"那一条：{@code GoodsAccount} 是整本覆盖的写入口）。
+   *
+   * <p>★ <b>与家户那一处的唯一区别：账本不存在 ⇒ <b>建</b>一本</b>（家户那边要求已存在，因为商品落回必须排在货币落回之前）。
+   * 经营者账的生命周期独立于家户：创世给它播，之后每一天它都可能第一次被写到（例：产出的净产是它的第一笔）。
+   *
+   * @param economy 驱动集（{@code operator → 格}）；不得为 null
+   * @param books 落账前的 actor 状态；不得为 null
+   * @param operatorGoods 商品工作副本（键 = 经营主体）；不得为 null
+   */
+  public static ActorData landOperatorGoods(
+      EconomyData economy, ActorData books, Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Objects.requireNonNull(operatorGoods, "operatorGoods");
+    Map<ActorRef, HexCoord> locations = operatorLocations(economy);
+    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(books.accounts());
+    for (Map.Entry<ActorRef, Map<CommodityId, Long>> entry : operatorGoods.entrySet()) {
+      HexCoord location = locations.get(entry.getKey());
+      if (location == null) {
+        continue; // 说不出一格的账不落（同 operatorLocations 的跳过口径：不拿 (0,0) 顶替）
+      }
+      GoodsAccountKey key = new GoodsAccountKey(entry.getKey(), location);
+      for (Map.Entry<CommodityId, Long> balance : entry.getValue().entrySet()) {
+        if (balance.getValue() < 0L) {
+          throw new IllegalStateException(
+              "经营者账余额不得为负（透支是信用，不是库存）：经营者="
+                  + key.owner()
+                  + " 格="
+                  + key.location()
+                  + " 商品="
+                  + balance.getKey()
+                  + " 余额="
+                  + balance.getValue());
+        }
+      }
+      GoodsAccount existing = accounts.get(key);
+      accounts.put(
+          key,
+          new GoodsAccount(key, entry.getValue(), existing == null ? Map.of() : existing.money()));
+    }
+    return books.withAccounts(accounts);
+  }
+
+  /**
+   * ★★ <b>把经营者货币账工作副本<strong>按绝对值</strong>落回</b>（H5 ⑤）—— 与 {@link #landHouseholdMoney}
+   * 同款（商品那一半原样带过；★ 它必须排在本方法之前）。
+   */
+  public static ActorData landOperatorMoney(
+      EconomyData economy, ActorData books, Map<ActorRef, Map<CurrencyId, Long>> operatorMoney) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(books, "books");
+    Objects.requireNonNull(operatorMoney, "operatorMoney");
+    Map<ActorRef, HexCoord> locations = operatorLocations(economy);
+    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(books.accounts());
+    for (Map.Entry<ActorRef, Map<CurrencyId, Long>> entry : operatorMoney.entrySet()) {
+      HexCoord location = locations.get(entry.getKey());
+      if (location == null) {
+        continue;
+      }
+      GoodsAccountKey key = new GoodsAccountKey(entry.getKey(), location);
+      for (Map.Entry<CurrencyId, Long> balance : entry.getValue().entrySet()) {
+        if (balance.getValue() < 0L) {
+          throw new IllegalStateException(
+              "经营者货币余额不得为负（透支是信用，不是货币）：经营者="
+                  + key.owner()
+                  + " 格="
+                  + key.location()
+                  + " 币种="
+                  + balance.getKey()
+                  + " 余额="
+                  + balance.getValue());
+        }
+      }
+      GoodsAccount existing = accounts.get(key);
+      accounts.put(
+          key,
+          new GoodsAccount(
+              key, existing == null ? Map.of() : existing.balances(), entry.getValue()));
+    }
+    return books.withAccounts(accounts);
   }
 }

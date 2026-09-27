@@ -574,7 +574,10 @@ public final class WorldgenInitializeTool implements AgentTool {
             expectedRevision,
             SEED_ACTOR_TYPE,
             // ★★ H4（裁定 K14）：货币是和开缸库存**同一次**算出来的（同源），故它们一起进这条命令。
-            HouseholdSeeder.payload(mapId, seeding.householdStocks(), seeding.householdMoney())));
+            // ★★ H5（⑤）：**经营主体的开缸账**也来自同一次 plan（`Seed.operators()`）⇒ 家户与经营者两族主体
+            //   在同一份载荷里播下（命令数不变：仍是同一批里的一条 actor.Seed）。
+            HouseholdSeeder.payload(
+                mapId, seeding.householdStocks(), seeding.householdMoney(), seeding.operators())));
     return List.copyOf(batch);
   }
 

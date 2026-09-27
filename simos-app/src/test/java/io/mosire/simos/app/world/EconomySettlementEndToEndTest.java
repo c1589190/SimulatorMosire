@@ -153,6 +153,29 @@ class EconomySettlementEndToEndTest {
       EconomyVocabulary.cumulativeRationMilli(50L, 40L);
 
   /**
+   * ★★ <b>H5 ②：关账日"缺粮行"在<strong>自己的收成</strong>里吃上的那一顿</b>（毫粮）。
+   *
+   * <pre>
+   * (0,0) 平原 1000 人 ⇒ 贫农 450 / 中农 350 / 富农 150 / 地主 50
+   * 缺粮的是**贫农与中农**（贫农第 30 天见底、中农第 61 天见底，而地主第 41 天起停贷 ⇒ 改前它们第 120 天借不到粮）
+   * ⇒ 那一顿 = dailyRationMilli(450, 120) + dailyRationMilli(350, 120) = 37,500 + 29,167 = **66,667**
+   * </pre>
+   *
+   * <p>★★ <b>改前 vs 改后</b>：改前的次序是"吃饭 → **借粮** → 收获"，关账日那一顿在借不到粮时**吃不上** （缺口照记）；H5 把借粮挪到"自产/分配 →
+   * 市场"之后，而关账日的收获与分配**已经入账** ⇒ 这两行人从自己的收成里 吃上了那一顿。⇒ 同一格里：<b>缺口读数少 66,667、库存少
+   * 66,667</b>（吃掉的粮不再躺在缸里）。 ★ 富农与地主那两份不变（它们本来就吃得上，见 {@code eatenOnHarvestDay}）。
+   */
+  private static final long PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY =
+      rationOn(450L, 120L) + rationOn(350L, 120L);
+
+  /**
+   * ★★ 同 {@link #PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY}，但用于 (1,0) 低丘格（500 人 ⇒ 贫 225 / 中 175）。
+   * 逐值：{@code dailyRationMilli(225,120) + dailyRationMilli(175,120) = 18,750 + 14,583 = 33,333}。
+   */
+  private static final long HILLS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY =
+      rationOn(225L, 120L) + rationOn(175L, 120L);
+
+  /**
    * ★★ <b>T4/T5 起：产出不再进阶层行，行里收到的是**关系入账**</b>—— 本常量算的正是那些入账。
    *
    * <pre>
@@ -225,8 +248,14 @@ class EconomySettlementEndToEndTest {
    */
   private static final long WEAVE_LOOMS_SEEDED = 1_000L / EconomySeeder.RURAL_CAPITA_PER_LOOM;
 
-  /** 本周期实际开动的织机（见 {@link #WEAVE_LOOMS_SEEDED} 的算式）。 */
-  private static final long WEAVE_LOOMS_OPENED = 49L;
+  /**
+   * 本周期实际开动的织机（见 {@link #WEAVE_LOOMS_SEEDED} 的算式）。
+   *
+   * <p>★★ <b>H5 ③ 起是 50（改前 49）</b>：劳动的瓶颈来自配额 —— 改前农村那 100‰ = 49,880 千分劳动 ⇒ 劳动那一路折出 ⌊49,880 ÷ 1,000⌋
+   * = 49 台；H5 起**缺口信号**把农业用不上的 120 千分劳动给了有缺口的纺织 ⇒ 配额 50,000 ⇒ 劳动那一路 50 台，与产能（50 台）、纤维（创世库存按产能取足）对齐
+   * ⇒ 规模 = 50。
+   */
+  private static final long WEAVE_LOOMS_OPENED = 50L;
 
   /**
    * 织机**没取走**的那份创世纤维（毫纤维）。
@@ -249,10 +278,19 @@ class EconomySettlementEndToEndTest {
    * ⇒ 布入账 = **977,758**（逐行取整少 2）
    * </pre>
    *
-   * <p>★ <b>旧值 998,129 → 新值 977,758 的理由</b>：规模 49 → 48（见 {@link #WEAVE_LOOMS_SEEDED} 那条"逐行取整"）， 净产
-   * 1,425,900 → 1,396,800。这是 H0.4 现行投入口径的后果，**不是**放宽断言（逐值照旧钉死）。
+   * <p>★★ <b>H5 ③ 起（规模 49 → 50）逐值重算</b>：
+   *
+   * <pre>
+   * 布净产 = 50 台 × 30 匹 × 1000 × 0.97 = 1,455,000；分成那一笔 = ⌊1,455,000 × 700 ÷ 1000⌋ = 1,018,500
+   *   四行按各自劳动（247,950 / 182,700 / 65,250 / 2,900，Σ = 498,800）逐行向下取整：
+   *     贫 ⌊1,018,500 × 247,950 ÷ 498,800⌋ = 506,289 · 中 ⌊…× 182,700 ÷ 498,800⌋ = 373,055
+   *     富 ⌊…× 65,250 ÷ 498,800⌋ = 133,234 · 地 ⌊…× 2,900 ÷ 498,800⌋ = 5,921
+   * ⇒ 布入账 = 506,289 + 373,055 + 133,234 + 5,921 = **1,018,499**（逐行取整少 1）
+   * </pre>
+   *
+   * ★ 口径为什么变：见 {@link #WEAVE_LOOMS_OPENED}（劳动配额经 H5 ③ 的缺口信号从 49,880 → 50,000）。
    */
-  private static final long WEAVE_CLOTH_INTAKE = 998_129L;
+  private static final long WEAVE_CLOTH_INTAKE = 1_018_499L;
 
   /**
    * ★★ **(1,0) 的放贷方（地主 25 人）在周期末缸里剩下的余量**（毫粮）—— 同 {@link #PLAINS_LENDER_LEFTOVER} 的算式。
@@ -406,14 +444,18 @@ class EconomySettlementEndToEndTest {
           .as("第 119 天 (0,0)：只剩富农与地主**第 120 天那一顿**，外加地主多留的余量")
           .isEqualTo(PLAINS_LENDER_LEFTOVER + rationOn(50L, 120L) + rationOn(150L, 120L));
       assertThat(farm(beforeHarvest, FARM_0).progressDays()).isEqualTo(119L);
+      // ★★ **H5 ③（裁定 C2）改了这两条的数值口径**（断言没动：仍是"每天累加的就是那一条配额 × 119 天"）：
+      //   周期第一天按**缺口信号**重排 —— 纺织用得上 50 × 1,000 = 50,000（纤维按产能取足、织机 50 台），
+      //   而它原来只有 498,800 × 100‰ = 49,880 ⇒ 缺 120，从农业（用不上那 120）手里吸走
+      //   ⇒ 农业 = 448,920 − 120 = **448,800**、纺织 = **50,000**；两者之和仍是 498,800（一份不多、一份不少）。
       assertThat(farm(beforeHarvest, FARM_0).cycleLaborMilli())
           .as(
-              "周期劳动累计 = 119 天 × **448,920** 千分劳动"
-                  + "（★ R3：农村那一池的 498,800 拆成农业 900‰ = 448,920 + 家庭纺织 100‰ = 49,880）")
-          .isEqualTo(119L * 448_920L);
+              "周期劳动累计 = 119 天 × **448,800** 千分劳动"
+                  + "（★ R3 的 900‰ = 448,920；★ H5 ③ 把其中 120 给了有缺口的纺织）")
+          .isEqualTo(119L * 448_800L);
       assertThat(farm(beforeHarvest, WEAVE_0).cycleLaborMilli())
-          .as("家庭纺织那一份：119 天 × 49,880")
-          .isEqualTo(119L * 49_880L);
+          .as("家庭纺织那一份：119 天 × 50,000（★ H5 ③：49,880 的配额 + 从农业吸来的 120）")
+          .isEqualTo(119L * 50_000L);
 
       advance(core, 1);
       EconomyData afterHarvest = economy(core);
@@ -425,14 +467,19 @@ class EconomySettlementEndToEndTest {
       // 毛产 = 3,100 × 67 粮/亩 × 1000 毫粮/粮；生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 97%。
       // ★ 收获当天（第 120 天）各行先照常吃自己那一顿：富农那 12,500 吃光、地主还剩 166,666（停贷后多留的余量）。
       assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
-          .as("★ T4 起：库存 = **关系入账 70,929,264** + 周期末尚未吃完的 166,666（产出换了路径，总量仍是净产的分配）")
-          .isEqualTo(PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER);
-      // 第 120 天 (0,0) 实际吃掉的口粮：只有富农（12,500）与地主（4,167）吃得上 —— 贫农/中农借不到粮（缺口照记）。
-      long eatenOnHarvestDay = rationOn(150L, 120L) + rationOn(50L, 120L);
+          .as(
+              "★ T4 起：库存 = **关系入账 70,929,264** + 周期末尚未吃完的 166,666"
+                  + " − ★ H5 ②：缺粮的两行在自己收成里吃上的那一顿 66,667")
+          .isEqualTo(
+              PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER - PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY);
+      // 第 120 天 (0,0) 实际吃掉的口粮：富农（12,500）与地主（4,167）照旧；★ H5 ② 起贫农/中农那 66,667
+      // 也从自己的收成里吃上了（改前它们借不到粮 ⇒ 那一顿吃不上）。
+      long eatenOnHarvestDay =
+          rationOn(150L, 120L) + rationOn(50L, 120L) + PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY;
       assertThat(
               hexGrain(afterHarvestBooks, afterHarvest, 0, 0)
                   - hexGrain(beforeHarvestBooks, beforeHarvest, 0, 0))
-          .as("本次推进的库存增量 = 关系入账 − 第 120 天实际吃掉的口粮（富农 12,500 + 地主 4,167）")
+          .as("本次推进的库存增量 = 关系入账 − 第 120 天实际吃掉的口粮（富农 + 地主 + ★ H5 起的贫农/中农）")
           .isEqualTo(PLAINS_INTAKE - eatenOnHarvestDay);
       // ★★ **生产损耗的可观测性变了**（如实记）：它**不再进 FlowRow.consumed**，只进 `ProductionLedger.losses`
       //   —— 而 Core 只落 economy/actor 两片的状态，ledger 不进状态树 ⇒ 端到端**读不到**那一笔。
@@ -498,8 +545,11 @@ class EconomySettlementEndToEndTest {
       EconomyData afterHarvest = economy(core);
       ActorData afterHarvestBooks = actor(core);
       assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
-          .as("(0,0) 平原格：**关系入账**（给养 71,424 + 地租 62,310,000）+ 放贷方周期末尚未吃完的余量")
-          .isEqualTo(PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER);
+          .as(
+              "(0,0) 平原格：**关系入账**（给养 71,424 + 地租 62,310,000）+ 放贷方周期末尚未吃完的余量"
+                  + " − ★ H5 ②：缺粮行在自己收成里吃上的那一顿")
+          .isEqualTo(
+              PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER - PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY);
       // ★ 低丘格的绝对值不写死：标定后它的实际投入亩由**劳动瓶颈**（而非土地）决定。
       // ★ 诚实标注这条的**实际**判别力：它只挡"低丘格颗粒无收/两格用了同一条公式"这类粗错
       //   —— 注意它**挡不住**地形系数失效（低丘土地即便按平原算，劳动瓶颈仍给出 1,569 亩 ≠ 平原的 3,100 亩，两格照样不等）。
@@ -516,8 +566,8 @@ class EconomySettlementEndToEndTest {
       //   毛产 = 1,569 × 67 × 1000 = 105,123,000；扣生产损耗（饲料 0‰ + 折旧 30‰）⇒ 净 **101,969,310**。
       //   ★ V6 §7.1① 起再加"放贷方周期末尚未吃完的余量"（低丘地主 25 人 ⇒ 83,333，算式见 HILLS_LENDER_LEFTOVER）。
       assertThat(hexGrain(afterHarvestBooks, afterHarvest, 1, 0))
-          .as("(1,0) 低丘格：关系入账按**劳动瓶颈**算出的毛产推（不是按地）+ 放贷方余量")
-          .isEqualTo(HILLS_INTAKE + HILLS_LENDER_LEFTOVER);
+          .as("(1,0) 低丘格：关系入账按**劳动瓶颈**算出的毛产推（不是按地）+ 放贷方余量" + " − ★ H5 ②：缺粮行在自己收成里吃上的那一顿")
+          .isEqualTo(HILLS_INTAKE + HILLS_LENDER_LEFTOVER - HILLS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY);
       assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
           .as("两格收获必须不相等（地形系数与劳动瓶颈都在起作用）")
           .isNotEqualTo(hexGrain(afterHarvestBooks, afterHarvest, 1, 0));
@@ -619,8 +669,12 @@ class EconomySettlementEndToEndTest {
       //   （周期末还剩 166,666，见 PLAINS_LENDER_LEFTOVER）⇒ 实吃 = 缸 − 余量，缺口比"需求 − 缸"**多**这一笔。
       //   ★ 这正是"只有真缺粮的行缺粮"：富农（恰好 120 天）与地主（250 天）都不再被借空，饿的是贫农与中农。
       assertThat(hexUnmet(cycle1, 0, 0))
-          .as("(0,0) 第一周期的缺口 = Σ行需求 − 整缸库存 + 放贷方周期末尚未吃完的余量")
-          .isEqualTo(need1 - hexStock(initialBooks, initial, 0, 0) + PLAINS_LENDER_LEFTOVER);
+          .as("(0,0) 第一周期的缺口 = Σ行需求 − 整缸库存 + 放贷方周期末尚未吃完的余量" + " − ★ H5 ②：缺粮行在关账日自己收成里吃上的那一顿")
+          .isEqualTo(
+              need1
+                  - hexStock(initialBooks, initial, 0, 0)
+                  + PLAINS_LENDER_LEFTOVER
+                  - PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY);
       assertThat(PLAINS_LENDER_LEFTOVER)
           .as("★ 绝对锚：地主 50 人停贷后那 40 天的口粮 = 166,666 毫粮")
           .isEqualTo(166_666L);
@@ -751,7 +805,8 @@ class EconomySettlementEndToEndTest {
           .isEqualTo(grossFiber * 970L / 1000L);
       assertThat(hexGrain(afterHarvestBooks, afterHarvest, 0, 0))
           .as("★ 非平凡：粮与纤维**同时**落进同一批行（两条公式共用一次规模，商品各记各的）")
-          .isEqualTo(PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER);
+          .isEqualTo(
+              PLAINS_INTAKE + PLAINS_LENDER_LEFTOVER - PLAINS_DEFICIT_ROWS_MEAL_ON_HARVEST_DAY);
     }
   }
 
