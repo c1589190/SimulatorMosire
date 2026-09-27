@@ -16,9 +16,14 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.market.LossBearer;
+import io.mosire.simos.economy.api.market.ShipmentAllocation;
+import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.api.market.TradeRoute;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -79,6 +84,9 @@ class EconomyRoundTripTest {
 
   private static final LaborAllocationId ALLOCATION =
       new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
+
+  /** ★ M2.4：在途批次的夹具身份（键 = 批次 id；值里带路线/商品/发运到达日/逐票分配）。 */
+  private static final ShipmentId SHIPMENT = new ShipmentId("shipment-1");
 
   /** ★ 唯一的豁免集合：v1 的 EconomyData 没有"不进变更集"的组件 ⇒ 必须是空集，且被单独钉死。 */
   private static final Set<String> EXCLUDED_FROM_CHANGE_SET = Set.of();
@@ -152,16 +160,16 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * ★★ <b>组件计数（H4 起 = 9）</b>：{@code meta} / {@code industries} / {@code classes} / {@code debts} /
-   * {@code flows} / {@code laborSupply} / {@code allocations} / {@code relations} / {@code
-   * markets}。
+   * ★★ <b>组件计数（M2.4 起 = 10）</b>：{@code meta} / {@code industries} / {@code classes} / {@code debts}
+   * / {@code flows} / {@code laborSupply} / {@code allocations} / {@code relations} / {@code
+   * markets} / {@code shipments}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（H4 从 {@code Eight} 改成 {@code Nine}）：它就是"又加了一个状态组件"这件事
-   * 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
+   * <p>★ 这个名字里的数字**故意写死**（H4 从 {@code Eight} 改成 {@code Nine}，M2.4 再改成 {@code
+   * Ten}）：它就是"又加了一个状态组件"这件事 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
    */
   @Test
-  void changeSetHasExactlyNineComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(9);
+  void changeSetHasExactlyTenComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(10);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -213,6 +221,9 @@ class EconomyRoundTripTest {
       //   ★ 价表**非空**：空价表与"字段没进变更集"在值层面不可区分（同上面 outputPerUnit 那条理由），
       //     而"这一格什么价都没挂"恰恰是 H4 最想让人看得见的一种状态。
       case "markets" -> base.withMarkets(Map.of(KEY.hex(), market()));
+      // ★ M2.4 的第 10 个组件：**自带支撑的票**（在途批次没有跨表守卫，但仍要有真实的路线与至少一票，
+      //   否则构造期就会拦下"在途必须能追到票"）。
+      case "shipments" -> base.withShipments(Map.of(SHIPMENT, shipment()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -228,6 +239,7 @@ class EconomyRoundTripTest {
       case "allocations" -> cs.allocations().changed();
       case "relations" -> cs.relations().changed();
       case "markets" -> cs.markets().changed();
+      case "shipments" -> cs.shipments().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -298,7 +310,7 @@ class EconomyRoundTripTest {
   static ClassRow classRow(CohortKey key) {
     // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 GoodsAccount / 经济侧的会话工作副本里）。
     return new ClassRow(
-        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
+        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   static Debt debt() {
@@ -343,6 +355,27 @@ class EconomyRoundTripTest {
    */
   static Market market() {
     return new Market(SILVER, Map.of(GRAIN, 3L, CLOTH, 5L));
+  }
+
+  /**
+   * ★★ <b>M2.4 的在途夹具</b>（{@code EconomyData} 的第 10 个组件 {@code shipments}）：一条 1 天的路线、一票买方承担损耗的 grain
+   * 在途。★ 数量与票面之和取非 0 且相等 —— 构造期就判"批次量 == 各票之和（同一件事不许两处拼写）"。
+   */
+  static ShipmentBatch shipment() {
+    TradeRoute route = new TradeRoute(new HexCoord(0, 0), new HexCoord(1, 0), 1_000L, 1L, 1L, 5);
+    return new ShipmentBatch(
+        route,
+        GRAIN,
+        10L,
+        11L,
+        500L,
+        List.of(
+            new ShipmentAllocation(
+                new ActorRef(ActorKind.ESTATE, FARM.value()),
+                new ActorRef(ActorKind.HOUSEHOLD, "house-7"),
+                new HexCoord(1, 0),
+                500L,
+                LossBearer.BUYER)));
   }
 
   /**

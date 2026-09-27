@@ -467,6 +467,7 @@ class EconomyCodecTest {
         laborSupply,
         allocations,
         relations,
+        Map.of(),
         Map.of());
   }
 
@@ -474,6 +475,7 @@ class EconomyCodecTest {
     return new EconomyData(
         Optional.of(meta()),
         industries,
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -624,7 +626,7 @@ class EconomyCodecTest {
   private static ClassRow classRow(CohortKey key, long population) {
     // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 GoodsAccount / 经济侧的会话工作副本里）。
     return new ClassRow(
-        key, population, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
+        key, population, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   private static Debt grainDebt() {

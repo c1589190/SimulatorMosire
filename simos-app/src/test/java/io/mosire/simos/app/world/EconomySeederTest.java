@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;
@@ -445,61 +446,69 @@ class EconomySeederTest {
   // ── R2：劳动供给与配额（第三阶段设计稿 §四）────────────────────────────────────────
 
   /**
-   * ★★ **R2（T3 的播种侧）+ R3（T4）：一个池的配额之和 == 该池"改口径前的当日劳动"** —— 后者正是 {@code EconomySettlement} 每天的
-   * {@code Σ(行 laborMilli × participationPerMille ÷ 1000)}， 而 R2
-   * 起它取自配额表。**两者逐值相等就是"真档数字一个都不变"的全部理由**。
+   * ★★ **R2（T3）+ R3（T4）+ M1.8（9521bd00）：逐产业的配额实发值由"折算后的批次预算"封顶**。
+   *
+   * <p>★★ <b>旧判据"一个池的配额之和 == 498,800（改口径不改数）"已被 M1.8 取代</b>：预算从"批次的**毛额**"
+   * 改成"批次按阶层参与率折算后的**可用**劳动"（{@code gross × CLASS_WEIGHTED_LABOR_PER_MILLE(860‰)}）， {@code
+   * appendAllocation} 的每个批次份额再被自己的预算逐批封顶 ⇒ 偏斜的性别权重会让某些批次**分不满** （R2 明文允许："Σ 配额可以 <
+   * 可用劳动"）。本用例把手推的新值逐条钉死（不是"改成 ≤ 就完事"）。
    *
    * <pre>
-   * 平原纯农村（1000 人）：行 laborMilli = 450/350/150/50 × 580，槽位投入率 = 950/900/750/100‰
-   *   ⇒ 261,000×950‰ + 203,000×900‰ + 87,000×750‰ + 29,000×100‰
-   *   = 247,950 + 182,700 + 65,250 + 2,900 = **498,800**（= 该池的当日劳动 ruralDaily）
-   * R3：把它拆成两条 —— 农业 900‰ = **448,920**、家庭纺织 100‰ = **49,880**（残差归农业 ⇒ 和恒等于 498,800）
-   * 批次的毛劳动：每性别 500 人 ⇒ 未成年 175（系数 0，不发）、青壮 275（×1000‰）、老年 50（×300‰）
-   *   ⇒ 每性别 2 条配额；**权重按活动加性别**（农业 男 600/女 400、纺织 男 200/女 800）：
-   *   农业 Σ权重 = (275,000 + 15,000) × (600+400)‰ = 290,000
-   *       男青壮 = 448,920 × 165,000 ÷ 290,000 = 255,420；女青壮 = 448,920 × 110,000 ÷ 290,000 = 170,280
-   *       男老年 = 448,920 ×   9,000 ÷ 290,000 =  13,932；女老年 = 448,920 ×   6,000 ÷ 290,000 =   9,288
-   *   纺织 Σ权重 = (275,000 + 15,000) × (200+800)‰ = 290,000
-   *       男青壮 =  49,880 ×  55,000 ÷ 290,000 =   9,460；女青壮 =  49,880 × 220,000 ÷ 290,000 =  37,840
-   *       男老年 =  49,880 ×   3,000 ÷ 290,000 =     516；女老年 =  49,880 ×   2,000 ÷ 290,000 =   2,064
-   *   ⇒ **女织**：女性在纺织上的配额（37,840）是男性（9,460）的四倍；**男耕**：男性在农业上是女性的 1.5 倍
+   * 平原纯农村（1000 人）：每性别的批次毛额 = 青壮 275,000 / 老年 15,000
+   *   M1.8 折算（×860‰）后的批次预算：男青壮 236,500 · 男老年 12,900 · 女青壮 236,500 · 女老年 12,900
+   * 农业要切 448,920（= 498,800 × 900‰），权重 = 折算可用 × 性别权重（男 600/女 400）：
+   *   男青壮 141,900 · 男老年 7,740 · 女青壮 94,600 · 女老年 5,160（Σ = 249,400）
+   *   份额 = 448,920 × 权重 ÷ 249,400 ⇒ 255,420 / 13,932 / 170,280 / 9,288
+   *   ⇒ 男青壮、男老年**撞预算**：压到 236,500 / 12,900（农业实发 428,968，缺口 19,952 留预算）
+   * 纺织要切 49,880（= 498,800 × 100‰），权重 = 折算可用 ×（男 200/女 800）：
+   *   男青壮 47,300 · 男老年 2,580 · 女青壮 189,200 · 女老年 10,320（Σ = 249,400）
+   *   份额 ⇒ 男 9,460 / 516 的预算已被农业用尽 ⇒ 压到 0（不发）；女青壮 37,840、女老年 2,064
+   *   ⇒ 纺织实发 39,904（缺口 9,976）；两业合计 468,872 = 498,800 − 29,928（19,952 + 9,976）
    * </pre>
+   *
+   * <p>★ 判别力：把预算改回毛额 ⇒ 男青壮的农业份额不再撞额（255,420 > 236,500）⇒ 本条逐值红； 漏乘 860‰ 或漏掉逐批封顶 ⇒ 总和/逐值红。★
+   * 性别权重本身的判别力（男织非零）由 {@link #sexWeightsTiltFarmToMenAndWeavingToWomen} 用**不撞预算**的直调补回。
    */
   @Test
-  void everyIndustryQuotaSumEqualsTheDailyLaborItReplaces() throws Exception {
+  void perIndustryQuotasAreCappedByTheParticipationAdjustedBatchBudget() throws Exception {
     JsonNode entry = entry(payload(), 0, 0);
     List<JsonNode> allocations = toList(entry.get("allocations"));
 
-    assertThat(allocations).as("纯农村格：**8** 条配额（农业 4 + 家庭纺织 4；未成年批次毛劳动 0 ⇒ 两条都不发）").hasSize(8);
+    assertThat(allocations).as("纯农村格：6 条配额（农业 4 + 纺织 2；纺织的男青壮/男老年份额被预算压成 0 ⇒ 不发）").hasSize(6);
     assertThat(allocations)
         .extracting(node -> node.get("laborMilli").asLong())
-        .as("四个批次各两条（农业 + 纺织），逐值如上表")
-        .containsExactly(
-            255_420L, 13_932L, 170_280L, 9_288L, // 农业：男青壮 / 男老年 / 女青壮 / 女老年
-            9_460L, 516L, 37_840L, 2_064L); // 纺织：同序
+        .as("逐值如上表（农业 4 条 + 纺织女 2 条，按载荷里的发生序）")
+        .containsExactly(236_500L, 12_900L, 170_280L, 9_288L, 37_840L, 2_064L);
     assertThat(sumOf(allocations, "laborMilli"))
-        .as("Σ 两条活动之和 == 该池改口径前的当日劳动（R2 判据在 R3 之后的形式）")
-        .isEqualTo(498_800L);
+        .as("Σ 两条活动实发 = 468,872 = 498,800（折算后日劳动）− 29,928（逐批封顶留下的缺口）")
+        .isEqualTo(468_872L)
+        .isLessThan(498_800L);
     assertThat(sumForActor(allocations, "weave@0_0"))
-        .as("★ 纺织拿到的总额 = 498,800 × WEAVE_SHARE_PER_MILLE ÷ 1000（非零 ⇒ 织机有活干）")
-        .isEqualTo(49_880L);
+        .as("★ 纺织实发 39,904（> 0 ⇒ 织机有活干；比 100‰ 的 49,880 少 9,976 —— 预算封顶的后果）")
+        .isEqualTo(39_904L)
+        .isPositive();
     assertThat(sumForActor(allocations, "farm@0_0"))
-        .as("农业那一条 = 498,800 − 49,880（残差归农业 ⇒ 两者之和恒等于该池的当日劳动）")
-        .isEqualTo(448_920L);
+        .as("农业实发 428,968（比 448,920 少 19,952 —— 男青壮/男老年批次撞了折算后的预算）")
+        .isEqualTo(428_968L);
   }
 
   /**
-   * ★★ **同一份载荷里"行"与"配额"逐值对拍**（三个格）：**一个池**的配额之和 == 该池各行折算出的当日劳动。
+   * ★★ **同一份载荷里"行"与"配额"的跨表示对拍（M1.8 后的新形态；三个格）**。
    *
-   * <p>★ 这是"改口径不等于改数"的**跨表示**判据：行给的是"产出在阶层之间怎么分"，配额给的是"这批人投了多少" ——
-   * 两者在真档必须相等（同一份人口、同一条折算链），否则真档的收获瓶颈当场变（那就是"真档数字变了"）。
+   * <p>★★ <b>旧判据"逐池配额之和 == 行折算日劳动"已被 M1.8（9521bd00）取代</b>：预算改成逐批次 "毛额 × 860‰"后，偏斜的性别权重会让某些批次撞顶 ⇒
+   * Σ配额**可以小于**行折算日劳动（R2 明说的"分不满"）。 本用例改钉两条仍然精确的关系：
    *
-   * <p>★★ **R3 起按"池"对拍，不再按"产业"**（T4）：农村那一池的当日劳动现在分给**两个产业**（农业 900‰ + 家庭纺织 100‰） ⇒
-   * 逐产业只剩一个零头。判据改成"**池**的配额之和 == **池**各行折算出的当日劳动"， 而"每个产业各拿多少"由 {@code
-   * everyIndustryQuotaSumEqualsTheDailyLaborItReplaces} 逐值钉住。
+   * <ol>
+   *   <li><b>逐批次</b>：Σ(该批次在各产业的配额) ≤ 该批次折算后的可用劳动（{@code gross × CLASS_WEIGHTED_LABOR_PER_MILLE ÷
+   *       1000}）—— 这是 M1.8 的新硬上限；
+   *   <li><b>逐池</b>：Σ配额 ≤ 该池行侧折算日劳动（同一条上限在池上的汇总）。
+   * </ol>
+   *
+   * <p>★ 逐值钉死由 {@link #perIndustryQuotasAreCappedByTheParticipationAdjustedBatchBudget} 承担（1000
+   * 人格）； 本用例守的是"三个格的跨表示关系都不许越界"。
    */
   @Test
-  void everyQuotaSumMatchesItsPoolRowsInEveryHex() throws Exception {
+  void everyQuotaSumStaysWithinItsPoolRowsAndBatchBudget() throws Exception {
     JsonNode payload = payload();
 
     for (JsonNode entry : payload.get("entries")) {
@@ -518,9 +527,40 @@ class EconomySeederTest {
         for (String id : ids) {
           quotaSum += sumForActor(toList(entry.get("allocations")), id);
         }
+        long poolRows = rowBasedDailyLabor(entry, pool);
         assertThat(quotaSum)
-            .as("格 %s_%s：%s 池的配额之和必须等于该池各行折算出的当日劳动", entry.get("q"), entry.get("r"), pool)
-            .isEqualTo(rowBasedDailyLabor(entry, pool));
+            .as(
+                "格 %s_%s：%s 池的配额之和不得超过该池各行折算出的当日劳动（M1.8：逐批预算封顶 ⇒ 分不满合法）",
+                entry.get("q"), entry.get("r"), pool)
+            .isLessThanOrEqualTo(poolRows);
+
+        // ★ M1.8 的**批次级**硬上限：同一批次供给两个产业时，两条配额之和 ≤ 它折算后的可用劳动。
+        Map<String, Long> quotaByGroup = new LinkedHashMap<>();
+        for (JsonNode allocation : toList(entry.get("allocations"))) {
+          String group = allocation.get("group").asText();
+          if (group.startsWith(pool + ":")) {
+            quotaByGroup.merge(group, allocation.get("laborMilli").asLong(), Long::sum);
+          }
+        }
+        for (JsonNode supply : toList(entry.get("laborSupply"))) {
+          String group = supply.get("group").asText();
+          if (!group.startsWith(pool + ":")) {
+            continue;
+          }
+          long gross = supply.get("grossLaborMilli").asLong();
+          long adjusted = gross * EconomySeeder.CLASS_WEIGHTED_LABOR_PER_MILLE / 1000L;
+          assertThat(quotaByGroup.getOrDefault(group, 0L))
+              .as(
+                  "格 %s_%s：批次 %s 的配额之和不得超过折算后的可用劳动（毛 %d × %d‰ = %d）",
+                  entry.get("q"),
+                  entry.get("r"),
+                  group,
+                  gross,
+                  EconomySeeder.CLASS_WEIGHTED_LABOR_PER_MILLE,
+                  adjusted)
+              .isLessThanOrEqualTo(adjusted)
+              .isLessThanOrEqualTo(gross);
+        }
       }
     }
   }
@@ -589,14 +629,15 @@ class EconomySeederTest {
   }
 
   /**
-   * ★★ **劳动预算把"分不满"变成合法状态，而不是让载荷被拒**（**实测出来的洞**，不是设想）：
+   * ★★ **劳动预算把"分不满"变成合法状态，而不是让载荷被拒**（**实测出来的洞**，不是设想；M1.8 后预算口径 = 折算后可用劳动）：
    *
    * <pre>
    * 直接给农业发**整池的日劳动** 498,800（= "农村 1000‰ 全给农业"那种配置）：
-   *   性别权重 600/400 把总量偏向男性，而该池的日劳动只有毛额的 ≈86%（参与率折扣）
-   *   ⇒ 男青壮按权重该拿 498,800 × 165,000 ÷ 290,000 = **283,800**，而它的毛额只有 **275,000**
-   * 有预算约束 ⇒ 它被压到 275,000（男老年同理压到 15,000），女青壮 189,200、女老年 10,320 照常
-   *   ⇒ Σ = 489,520 &lt; 498,800（**分不满**），而"Σ 该批次 ≤ 其可用劳动"恒成立
+   *   M1.8（9521bd00）的批次预算 = 毛额 × 860‰ ⇒ 男青壮 236,500 / 男老年 12,900 / 女青壮 236,500 / 女老年 12,900
+   *   性别权重 600/400 把总量偏向男性 ⇒ 男青壮按权重该拿 498,800 × 141,900 ÷ 249,400 = **283,800**
+   *     而它折算后的可用劳动只有 **236,500**（毛额 275,000）⇒ 被压到 236,500（男老年同理压到 12,900）
+   *   女青壮 189,200、女老年 10,320 照常
+   *   ⇒ Σ = **448,920** &lt; 498,800（**分不满**），而"Σ 该批次 ≤ 其折算后的可用劳动"恒成立
    * </pre>
    *
    * <p>★★ **为什么这条必须存在**：没有预算时，把 {@link EconomySeeder#WEAVE_SHARE_PER_MILLE} 改成 0（一个完全合理的 GM 配置）会让
@@ -604,7 +645,7 @@ class EconomySeederTest {
    * Rejected[批次 rural:0_0:MALE:1 的劳动配额之和 4202381 超过其可用劳动 4072000]}）。
    *
    * <p>★ 判别力：把 {@code appendAllocation} 里的 {@code Math.min(shares[i], budget…)} 去掉 ⇒ "Σ 逐批次 ≤
-   * 毛额"这条当场红（男青壮 283,800 &gt; 275,000）。
+   * 折算后可用"这条当场红（男青壮 283,800 &gt; 236,500）。
    */
   @Test
   void theLaborBudgetKeepsEveryBatchWithinItsAvailableLabor() {
@@ -615,7 +656,7 @@ class EconomySeederTest {
       }
     }
     long poolDaily = EconomySeeder.industryDailyLabor(pool);
-    assertThat(poolDaily).as("该池的当日劳动（改口径前那条算式）").isEqualTo(498_800L);
+    assertThat(poolDaily).as("该池的当日劳动（各行按参与率折算后的和）").isEqualTo(498_800L);
 
     List<Map<String, Object>> allocations = new ArrayList<>();
     EconomySeeder.appendAllocation(
@@ -632,20 +673,20 @@ class EconomySeederTest {
       long share = ((Number) allocation.get("laborMilli")).longValue();
       total += share;
       String groupId = (String) allocation.get("group");
-      long gross =
+      long available =
           pool.stream()
               .filter(g -> g.id().value().equals(groupId))
-              .mapToLong(EconomySeeder::grossLaborMilli)
+              .mapToLong(EconomySeeder::participationAdjustedLaborMilli)
               .findFirst()
               .orElseThrow();
       assertThat(share)
-          .as("★ 批次 %s 的配额不得超过它自己的毛额（构造性成立，不靠「默认权重恰好不越界」）", groupId)
-          .isLessThanOrEqualTo(gross);
+          .as("★ 批次 %s 的配额不得超过它**折算后的可用劳动**（构造性成立，不靠「默认权重恰好不越界」）", groupId)
+          .isLessThanOrEqualTo(available);
     }
     assertThat(total)
         .as("★ 被预算截断 ⇒ **分不满**（R2 明说配额之和可以小于可用劳动），而不是把载荷做到被拒")
         .isLessThan(poolDaily)
-        .isEqualTo(489_520L);
+        .isEqualTo(448_920L);
   }
 
   /** ★ 创世的初始配额是"该批次 1000‰ 归它的乡土产业"：农村 → 农业（庄园）、城镇 → 手工业（作坊）。 */
@@ -946,12 +987,19 @@ class EconomySeederTest {
   /**
    * ★★ **R3（T4）"男耕女织"的默认配置权重**（spec §四：性别影响各类劳动活动的默认配置权重，**不是**"女 = 纺织"的硬编码）。
    *
-   * <p>判据：同一个农村池的**同一性别**，在农业与纺织上的配额占比**相反**；且两者都不是 0（男人照样进纺织）。
+   * <p>★★ <b>M1.8（9521bd00）后本用例分两段，缺一不可</b>：
+   *
+   * <ol>
+   *   <li>创世载荷：逐批预算 = 折算后可用劳动 ⇒ 农业先发、男批次的预算被用尽 ⇒ 男织份额被压成 0 （合法后果，见 {@link
+   *       #perIndustryQuotasAreCappedByTheParticipationAdjustedBatchBudget}）。 这一段只守"农业仍偏男、纺织仍偏女"。
+   *   <li>直调 {@code appendAllocation} 且**给不撞预算的预算**（= 每批次毛额）：把性别权重本身的判别力 钉回原样 —— 男织非零、农业男 600‰、纺织女
+   *       800‰。★ 没有第 2 段，"男织 = 0"就让本用例的 原始判别力（抓"女 = 纺织"硬编码）退化成恒真。
+   * </ol>
    */
   @Test
   void sexWeightsTiltFarmToMenAndWeavingToWomen() throws Exception {
+    // ── ① 创世载荷：M1.8 封顶后的现实（男织在默认配置里 = 0） ──────────────────────────
     List<JsonNode> allocations = toList(entry(payload(), 0, 0).get("allocations"));
-
     long maleFarm = 0L;
     long femaleFarm = 0L;
     long maleWeave = 0L;
@@ -974,13 +1022,85 @@ class EconomySeederTest {
     }
     assertThat(maleFarm).as("★ 男耕：男性在农业上的配额 > 女性").isGreaterThan(femaleFarm);
     assertThat(femaleWeave).as("★ 女织：女性在纺织上的配额 > 男性").isGreaterThan(maleWeave);
-    assertThat(maleWeave).as("★ 不是「女 = 纺织」的硬编码：男人也有一条非零的纺织配额").isPositive();
-    assertThat(maleFarm * 1000L / (maleFarm + femaleFarm))
+
+    // ── ② 不撞预算的直调：性别权重本身的判别力（原判据的落点） ─────────────────────────
+    List<PopulationGroup> pool = new ArrayList<>();
+    for (PopulationGroup group : PopulationSeeder.groups(plan(), 0L)) {
+      if (group.residence().equals(PLAINS_RURAL)) {
+        pool.add(group);
+      }
+    }
+    long poolDaily = EconomySeeder.industryDailyLabor(pool);
+    long weaveQuota = poolDaily * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L;
+    // ★ 预算 = 每批次**毛额**（≥ 折算后可用 ≥ 任何份额）⇒ 逐批封顶不会咬合，量到的是纯性别权重。
+    List<Map<String, Object>> weightsOnly = new ArrayList<>();
+    EconomySeeder.appendAllocation(
+        weightsOnly,
+        grossBudget(pool),
+        pool,
+        new IndustryId("farm@0_0"),
+        ActorKind.ESTATE,
+        EconomySeeder.FARM,
+        poolDaily - weaveQuota);
+    EconomySeeder.appendAllocation(
+        weightsOnly,
+        grossBudget(pool),
+        pool,
+        new IndustryId("weave@0_0"),
+        ActorKind.HOUSEHOLD,
+        EconomySeeder.WEAVE,
+        weaveQuota);
+
+    long maleFarmWeighted = 0L;
+    long femaleFarmWeighted = 0L;
+    long maleWeaveWeighted = 0L;
+    long femaleWeaveWeighted = 0L;
+    for (Map<String, Object> allocation : weightsOnly) {
+      boolean male = ((String) allocation.get("group")).contains(":MALE:");
+      boolean weaving = EconomySeeder.WEAVE.equals(allocation.get("activity"));
+      long labor = ((Number) allocation.get("laborMilli")).longValue();
+      if (weaving) {
+        if (male) {
+          maleWeaveWeighted += labor;
+        } else {
+          femaleWeaveWeighted += labor;
+        }
+      } else if (male) {
+        maleFarmWeighted += labor;
+      } else {
+        femaleFarmWeighted += labor;
+      }
+    }
+    assertThat(maleWeaveWeighted)
+        .as("★ 不是「女 = 纺织」的硬编码：**不撞预算**时男人也有一条非零的纺织配额")
+        .isPositive()
+        .isEqualTo(9_460L + 516L);
+    assertThat(femaleWeaveWeighted)
+        .as("纺织女青壮 37,840 + 女老年 2,064（逐值钉死，不是只看比例）")
+        .isEqualTo(37_840L + 2_064L);
+    assertThat(maleFarmWeighted).as("农业男青壮 255,420 + 男老年 13,932").isEqualTo(255_420L + 13_932L);
+    assertThat(femaleFarmWeighted).as("农业女青壮 170,280 + 女老年 9,288").isEqualTo(170_280L + 9_288L);
+    assertThat(maleFarmWeighted + femaleFarmWeighted)
+        .as("不撞预算时农业实发 = 该池日劳动的 900‰")
+        .isEqualTo(poolDaily - weaveQuota);
+    assertThat(maleWeaveWeighted + femaleWeaveWeighted)
+        .as("不撞预算时纺织实发 = 该池日劳动的 100‰")
+        .isEqualTo(weaveQuota);
+    assertThat(maleFarmWeighted * 1000L / (maleFarmWeighted + femaleFarmWeighted))
         .as("农业的男性权重 = 600‰（{@code ACTIVITY_SEX_WEIGHT_PER_MILLE}）")
         .isEqualTo(600L);
-    assertThat(femaleWeave * 1000L / (maleWeave + femaleWeave))
+    assertThat(femaleWeaveWeighted * 1000L / (maleWeaveWeighted + femaleWeaveWeighted))
         .as("纺织的女性权重 = 800‰")
         .isEqualTo(800L);
+  }
+
+  /** 每批次的**毛额**预算（不撞预算的直调用；M1.8 的紧预算是 {@code laborBudget}）。 */
+  private static Map<PeopleLotId, Long> grossBudget(List<PopulationGroup> pool) {
+    Map<PeopleLotId, Long> budget = new LinkedHashMap<>();
+    for (PopulationGroup group : pool) {
+      budget.put(group.id(), EconomySeeder.grossLaborMilli(group));
+    }
+    return budget;
   }
 
   @Test

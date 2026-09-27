@@ -37,7 +37,10 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.market.ShipmentAllocation;
+import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -505,21 +508,25 @@ class WorldgenInitializeToolTest {
             .as("%s：这一格（%d 人）必须有劳动配额 —— 真档路径不许'忘了发配额'", hex, socialSide)
             .isPositive();
         hexAllocated += allocatedHere;
-        // ★★ R2（T3）+ R3（T4）：**逐池**对拍"这一池的配额之和 == 这一池各行折算出的当日劳动"（真档 138 格）。
-        //   后者正是改口径前 EconomySettlement 每天累加的那个数 ⇒ 两者逐值相等 = **真档数字一个都不变**
-        //   （收获的劳动瓶颈、平均日劳动、投入面积全都不动）。
+        // ★★ R2（T3）+ R3（T4）+ M1.8（9521bd00）：**逐池**对拍"这一池的配额之和 ≤ 这一池各行折算出的当日劳动"
+        //   （真档 138 格）。后者正是改口径前 EconomySettlement 每天累加的那个数。
+        //   ★★ M1.8 把预算从"毛额"改成"逐批次折算后的可用劳动"，偏斜的性别权重会让某些批次撞顶 ⇒
+        //      "改口径不改数"的**等式退休**，新判据是 R2 明文允许的 `≤`（分不满合法）；逐值钉死由
+        //      {@code EconomySeederTest} 的小夹具（1000 人格）承担，真档这一层的单格绝对值留给 M1.8 的新用例。
         //   ★ R3 起农村那一池的日劳动分给**两个产业**（农业 900‰ + 家庭纺织 100‰）⇒ 判据按**池**对拍，而不是逐产业。
         //   ★★ H0（K2/K3）起**行里没有产业了**（键 = 格 + 居住类型 + 阶层）⇒ "池"就是**这一格的两组四行**：
         //     配额那一侧照旧逐产业加，行那一侧按**格**加一次（旧口径下"Σ 各产业的行"逐值同数：
         //     农村那两组合成一组，而 weave 那四行人口/劳动恒 0）。★ 若仍逐产业加行，家庭纺织会把同一批人的日劳动**双计**。
         long poolQuota = 0L;
         for (IndustryId industryId : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
-          // ★ 配额**逐产业都要算**（家庭纺织那一路的配额是它自己的）—— 两边加起来必须相等：
-          //   R3 把农村那一池的日劳动拆成两条配额，**总额不动**。
+          // ★ 配额**逐产业都要算**（家庭纺织那一路的配额是它自己的）。
           poolQuota += quotaSumOf(economy, industryId);
         }
         long poolRows = rowBasedDailyLabor(economy, hex);
-        assertThat(poolQuota).as("%s：这一格的配额之和必须等于各池各行折算出的当日劳动（改口径不改数）", hex).isEqualTo(poolRows);
+        assertThat(poolQuota)
+            .as("%s：这一格的配额之和不得超过各池各行折算出的当日劳动（M1.8：逐批预算封顶 ⇒ 分不满合法）", hex)
+            .isPositive()
+            .isLessThanOrEqualTo(poolRows);
         if (socialSide != economySide && firstMismatch.isEmpty()) {
           firstMismatch = hex + " social=" + socialSide + " economy=" + economySide;
         }
@@ -607,9 +614,15 @@ class WorldgenInitializeToolTest {
       long weaveQuota = 0L;
       long ruralDaily = 0L;
       for (Map.Entry<String, Long> entry : ruralDailyByHex.entrySet()) {
+        long desired = entry.getValue() * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L;
+        // ★★ M1.8（9521bd00）：逐批预算 = 折算后可用劳动 ⇒ 配额**可以**少于名义的 100‰（分不满合法），
+        //   但绝不能超过它。真档 138 格的单格绝对值留给 M1.8 的新判据；这里守住"非零 + 不超名义份额"。
         assertThat(weaveQuotaByHex.get(entry.getKey()))
-            .as("★ 判据 ①：格 %s 给家庭纺织的配额 == 该格农村日劳动 × WEAVE_SHARE_PER_MILLE ÷ 1000", entry.getKey())
-            .isEqualTo(entry.getValue() * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L);
+            .as(
+                "★ 判据 ①：格 %s 给家庭纺织的配额 > 0 且 ≤ 该格农村日劳动 × WEAVE_SHARE_PER_MILLE ÷ 1000",
+                entry.getKey())
+            .isPositive()
+            .isLessThanOrEqualTo(desired);
         weaveQuota += weaveQuotaByHex.get(entry.getKey());
         ruralDaily += entry.getValue();
       }
@@ -850,10 +863,10 @@ class WorldgenInitializeToolTest {
       assertThat(economy.classes().values().stream().mapToLong(ClassRow::population).sum())
           .as("两国经济人口合计（3,070,000 + 2,530,000）")
           .isEqualTo(firstNation.population() + secondNation.population());
-      assertThat(grainTotal(twoNationsBooks, economy))
-          .as("两国初始库存合计 = Σ 行 cumulativeRationMilli(人口, 该阶层天数)")
+      assertThat(grainStock(twoNationsBooks, economy))
+          .as("两国初始库存合计（账户 + 在途）= Σ 行 cumulativeRationMilli(人口, 该阶层天数)")
           .isEqualTo(rationTotal(economy));
-      assertThat(grainTotal(twoNationsBooks, economy))
+      assertThat(grainStock(twoNationsBooks, economy))
           .as("★ 判别力：与旧口径（人人 60 天 × 每人每日 83）必须不同，否则阶层天数表没被用到")
           .isNotEqualTo((firstNation.population() + secondNation.population()) * 83L * 60L);
       assertThat(economy.meta().orElseThrow().activatedDay()).as("meta 不覆盖：激活日仍是创世日 0").isZero();
@@ -903,40 +916,80 @@ class WorldgenInitializeToolTest {
     long unmetGrandTotal = 0L;
     long sownGrandTotal = 0L;
     long decreaseGrandTotal = 0L;
+    long inTransitGrandTotal = 0L;
+    long transportLossGrandTotal = 0L;
     for (NationCase nation : NATIONS) {
       String id = nation.regionId();
       try (CoreSimos core = freshCoreWithEconomy(dir("advance-" + id))) {
         ToolResult result = execute(tool(core), Map.of("nation", id, "dryRun", false));
         assertThat(result.success()).as(id + ": " + result.message()).isTrue();
 
-        SimulationState before = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
+        long headBefore = core.head(MAIN).orElseThrow().value();
+        SimulationState before = core.replay(new StateRef(MAIN, new RevisionId(headBefore)));
         EconomyData economy = economySlice(before);
         long population = economy.classes().values().stream().mapToLong(ClassRow::population).sum();
         assertThat(population).as(id + " 经济人口 == 社会总人口").isEqualTo(nation.population());
         ActorData booksBefore = actorSlice(before);
-        long grainBefore = grainTotal(booksBefore, economy);
+        long inTransitBefore = grainInTransit(economy);
+        long accountBefore = grainTotal(booksBefore);
+        long stockBefore = grainStock(booksBefore, economy);
         long sown = expectedSownOnTheSowingDay(booksBefore, economy);
         // ★ 头 10 天的口粮 = Σ 行 cumulativeRationMilli(行人口, 10)（**逐行**向下取整 ⇒ 不能写成"总人口 × 一天的量"）。
         long ration10 = rationOverDays(economy, 10L);
         long landMu = farmLandMilliMu(economy) / 1_000L;
 
         advanceDays(core, 10);
+        long headAfter = core.head(MAIN).orElseThrow().value();
 
-        SimulationState after = core.replay(new StateRef(MAIN, core.head(MAIN).orElseThrow()));
-        long grainAfter = grainTotal(actorSlice(after), economySlice(after));
+        SimulationState after = core.replay(new StateRef(MAIN, new RevisionId(headAfter)));
+        EconomyData economyAfter = economySlice(after);
+        ActorData booksAfter = actorSlice(after);
+        long accountAfter = grainTotal(booksAfter);
+        long inTransit10 = grainInTransit(economyAfter);
+        long stockAfter = grainStock(booksAfter, economyAfter);
+        long unmet10 = unmetTotal(economyAfter);
         // ★★ **V6 §7.1① 起必须减掉"没吃到的"那一项**：放贷方要留本周期自需 ⇒ 真档里那些"把储备播成种子、
         //   自己缸空"的行（见下）**借不到粮**了，缺口如实记进 {@code FlowRow.unmetNeed}（缺的粮不凭空生出来，
         //   它留在别人的缸里）。故守恒式是 **Δ库存 == Σ实吃 + Σ种子 == (逐行口粮 − 缺口) + 种子**。
-        long unmet10 = unmetTotal(economySlice(after));
+        //
+        // ★★ **M2/T3 口径收口（2026-09-28，T3）**：库存/粮的权威读法 = **全部商品账户合计 + 在途资产**
+        //   （{@link #grainStock} = {@link #grainTotal} + {@link #grainInTransit}）。在途那一份必须计入，依据是
+        //   **M2.5 基线合同**："发运时买方付货款与运费、货权归买方（进入其在途资产）；卖方库存减少；到达日
+        //   在途减、目的地库存增"——{@code ShipmentBatch} 是货权的落点，货在到货前既不在任何账户里，也不在
+        //   目的地可消费的量里。只读账户会把"已发运、未到货"读成"已被消费/被播种"。
+        //   定位数据（德意志第二帝国，第 10 天，T3 复核）：账户合计减少 15,560,752,192；tick=10 的
+        //   {@code shipments} 里未到货粮 368,126,292 ⇒ 15,560,752,192 − 368,126,292 = 15,192,625,900
+        //   = 逐行口粮 5,191,665,900 − 缺口 0 + 播种 10,000,960,000。本窗口没有任何批次到货
+        //   （逐日持久状态核过：第 1~9 天 pendingGrain=0，第 10 天才出现 368,126,292 且 arrivalTick>10）。
+        //   ★ 运输损耗项**不写死 0**：{@link #transportLossInWindow} 从**持久状态**逐日比较
+        //   {@code EconomyData.shipments}（某批次在 day 存在、day+1 消失 ⇒ 到货），按
+        //   {@code EconomySettlement.deliverShipments} 的逐票公式 ⌊票量 × lossPerMille ÷ 1000⌋ 求和；
+        //   本窗口实测 0，但仍作为算式里的一项参与精确相等断言。
+        long transportLoss10 = transportLossInWindow(core, headBefore, headAfter);
         assertThat(sown).as(id + "：真档真的扣了种（V3 的第三路瓶颈由此在 799 格里读得到）").isPositive();
         assertThat(sown)
             .as(id + "：扣到的种子 ≤ Σ地亩 × 每亩需种（第三路只**缩**面积，永不放大）")
             .isLessThanOrEqualTo(landMu * EconomySeeder.SEED_MILLI_PER_MU);
-        assertThat(grainBefore - grainAfter)
+        assertThat(stockBefore - stockAfter)
             .as(
-                "%s：推进 10 天 ⇒ 粮库存减少 = 头 10 天口粮（逐行累计）%d − 缺口 %d + 播种日扣的种子 %d",
-                id, ration10, unmet10, sown)
-            .isEqualTo(ration10 - unmet10 + sown);
+                "%s：推进 10 天 ⇒ **账户 + 在途**的粮库存减少 = 头 10 天口粮（逐行累计）%d − 缺口 %d + 播种日扣的种子 %d + 在途运输损耗 %d",
+                id, ration10, unmet10, sown, transportLoss10)
+            .isEqualTo(ration10 - unmet10 + sown + transportLoss10);
+        System.out.println(
+            "[R3A-INTRANSIT] nation="
+                + id
+                + " stockDecrease="
+                + (stockBefore - stockAfter)
+                + " accountDecrease="
+                + (accountBefore - accountAfter)
+                + " inTransitBefore="
+                + inTransitBefore
+                + " inTransit="
+                + inTransit10
+                + " transportLoss="
+                + transportLoss10
+                + " expected="
+                + (ration10 - unmet10 + sown + transportLoss10));
         // ★ 逐国只钉"缺口远小于口粮"（量级）。★ **不能逐国断言 unmet10 > 0**：各国人均地力不同，
         //   实测德意志第二帝国 10 天内缺口恰为 **0**（缸没见底）⇒ 那条会假红。判别力放在三国合计上（见循环之后）。
         assertThat(unmet10)
@@ -945,21 +998,46 @@ class WorldgenInitializeToolTest {
         rationGrandTotal += ration10;
         unmetGrandTotal += unmet10;
         sownGrandTotal += sown;
-        decreaseGrandTotal += grainBefore - grainAfter;
+        decreaseGrandTotal += stockBefore - stockAfter;
+        inTransitGrandTotal += inTransit10;
+        transportLossGrandTotal += transportLoss10;
         economyHexTotal += economyHexCount(economySlice(after));
       }
     }
     assertThat(economyHexTotal).as("三国 799 格都真的经结算推进过").isEqualTo(799L);
     // ★ 三国**合计**的账面（不再是"11,830,000 × 830"这种把常数乘一遍的算术）：实际库存减少 == 逐行累计口粮 + 扣到的种子。
     //   逐行的向下取整让"总人口 × 一天的量"这条路彻底不可用 —— 合计必须由行级数据累加而来。
+    //   ★ M2/T3 起"库存"= 账户 + 在途；到货窗口的运输损耗是系统外流，故也在等式右边单列。
     assertThat(decreaseGrandTotal)
-        .as("Σ(三国 10 天库存减少) == Σ 逐行口粮累计 − Σ 缺口 + Σ 扣到的种子")
-        .isEqualTo(rationGrandTotal - unmetGrandTotal + sownGrandTotal);
-    // ★★ **V6 §7.1① 的真档可见性**：放贷方留口粮 ⇒ 缸空的行借不到粮 ⇒ 缺口**真的出现**（不再被借粮抹平）。
-    //   ★ 为什么判在**三国合计**上：逐国可能恰为 0（实测德意志第二帝国 10 天内缸没见底）⇒ 逐国判正会假红。
-    //   ★ 上面那条守恒式**挡不住**这件事（缺口为 0 那一侧它也成立）—— 对 §7.1① 的判别力**只**落在这一条上。
-    //   实测：把 LENDER_SUBSISTENCE_RESERVE_PER_MILLE 改回 0（V1 口径）⇒ 这里恒为 0 ⇒ 本条红。
-    assertThat(unmetGrandTotal).as("★ V6 起真档也真的缺粮：三国合计在第 10 天前就出现借不到的缺口（V1 口径下恒为 0）").isPositive();
+        .as("Σ(三国 10 天库存（账户 + 在途）减少) == Σ 逐行口粮累计 − Σ 缺口 + Σ 扣到的种子 + Σ 在途运输损耗")
+        .isEqualTo(rationGrandTotal - unmetGrandTotal + sownGrandTotal + transportLossGrandTotal);
+    System.out.println(
+        "[R3A-GRAND] stockDecrease="
+            + decreaseGrandTotal
+            + " inTransit="
+            + inTransitGrandTotal
+            + " transportLoss="
+            + transportLossGrandTotal
+            + " ration="
+            + rationGrandTotal
+            + " unmet="
+            + unmetGrandTotal
+            + " sown="
+            + sownGrandTotal);
+    // ★★ **M2/T3 口径重钉（2026-09-28，T3）——旧期望 >0 已作废，改钉精确 0（不是放宽成"非负"）**：
+    //   本条原为 V6 §7.1① 的**真档可见性**（cc9fdcb3，M2 之前）：那时"救济"只有同格借粮，放贷方留整周期
+    //   口粮 ⇒ 缸空的行借不到 ⇒ ΣunmetNeed 真的 > 0。M2 起市场成为**借贷之外的另一条救济通道**
+    //   （同格市场在当天撮合、把有粮户的余粮卖给缺口户；自留额也从"整周期 1000‰"改为"30 天安全库存"，
+    //   见 MarketSettlement 的安全库存常量注释）⇒ 真档前 10 天的粮缺口被市场闭合，逐值 = 0。
+    //   ★ 这不是"缺口不再记"：EconomySettlement 仍先把当日缺口整笔记进 unmetNeed，再由市场/借粮/再吃一口
+    //   trim 回残差（口径未变）；本窗口残差恰为 0，是 M2 权威口径下的**结论**。
+    //   ★ 判别力去处（没有被删除）：V6 放贷保护由 **EconomyDebtTest.
+    //   theLenderKeepsAWholeCyclesSubsistenceAndNeverGoesBankruptFirst** 用无市场夹具逐值守卫（那条在
+    //   本仓全量测试里跑）；本条的判别力则落在"市场+借贷后缺口**精确**闭合"上——若 M2 市场没有真的供货、
+    //   或把未到货读成已吃，前面的守恒式（账户 + 在途 + 损耗）会当场红。
+    assertThat(unmetGrandTotal)
+        .as("★ M2 起三国头 10 天的粮缺口由市场闭合：ΣunmetNeed == 0（旧 M2 前 >0 期望已作废；V6 另由单测守）")
+        .isZero();
     assertThat(rationGrandTotal)
         .as("口粮项的量级锚：11,830,000 人 × 10 天 ≈ 985,833,333 毫粮（逐行取整 ⇒ 略小于它，且差值 < 行数）")
         .isBetween(
@@ -1152,11 +1230,84 @@ class WorldgenInitializeToolTest {
         .sum();
   }
 
-  /** 某国全部家户的粮库存合计（毫粮）—— H1：从 actor 侧的账本读。 */
-  private static long grainTotal(ActorData books, EconomyData economy) {
-    return economy.classes().keySet().stream()
-        .mapToLong(key -> householdGoods(books, key, GRAIN))
-        .sum();
+  /**
+   * 某国**全部库存账**的粮合计（毫粮）—— H1：从 actor 侧的账本读。
+   *
+   * <p>★★ <b>M2 收口改口径（如实记）</b>：旧实现只加 {@code economy.classes().keySet()}（家户族账）。M2 起市场把粮在
+   * **家户与经营者之间**搬动（经营者作为 M2 的市场参与者入市买料/卖货）⇒ 只加家户账会把"卖给经营者"读成"吃掉了"， 守恒式（{@code Δ库存 == Σ实吃 +
+   * Σ种子}）当场差出一个正数。本实现改为加 actor 切片里**所有**商品账 （家户 + 经营者；市场成交只在两族之间搬、不进不出）⇒ 守恒式重新闭口。
+   *
+   * <p>★★ <b>T3 收口（2026-09-28）</b>：本方法只读**账户**（"在场"的那一份）；完整的"库存/粮"读法见 {@link #grainStock} （账户合计 +
+   * 在途资产）。跨格市场成交发运后、到货前，货既不在任何账户里、又还没被消费 ⇒ 只读账户会把在途读成"已吃掉"。
+   */
+  private static long grainTotal(ActorData books) {
+    long total = 0L;
+    for (GoodsAccount account : books.accounts().values()) {
+      total += account.balances().getOrDefault(GRAIN, 0L);
+    }
+    return total;
+  }
+
+  /**
+   * 某国**在途资产**的粮合计（毫粮）：Σ {@code EconomyData.shipments} 里该商品的批次数量。
+   *
+   * <p>★★ <b>为什么"未到货量"直接读批次数量</b>：{@code shipments} 是**跨 tick 持久状态**（M2.4 的第十个组件）： 发运日建、到货日由 {@code
+   * EconomySettlement.deliverShipments} 删除 ⇒ 任意 revision 的快照里，表里剩下的每一批**都尚未到货** （到货的那一批已不在表里）。
+   * 本方法只读持久状态，绝不读 {@code MarketReportFeed}/会话副本这类进程内瞬时量。
+   *
+   * <p>★ 依据 <b>M2.5 基线合同</b>：发运时买方付货款与运费、**货权归买方（进入其在途资产）**；卖方库存减少； 到达日"在途减、目的地库存增"。
+   */
+  private static long grainInTransit(EconomyData economy) {
+    long total = 0L;
+    for (ShipmentBatch batch : economy.shipments().values()) {
+      if (batch.commodity().equals(GRAIN)) {
+        total += batch.quantity();
+      }
+    }
+    return total;
+  }
+
+  /**
+   * 某国**库存/粮**的权威读法（毫粮）= 全部商品账户合计（{@link #grainTotal}）+ 在途资产（{@link #grainInTransit}）。
+   *
+   * <p>★★ 两项都来自持久状态（actor 切片的账户 + economy 切片的 {@code shipments}），不读进程内瞬时量。
+   */
+  private static long grainStock(ActorData books, EconomyData economy) {
+    return grainTotal(books) + grainInTransit(economy);
+  }
+
+  /**
+   * 窗口 {@code (headBefore, headAfter]} 内**到货**批次的 market-transport 运输损耗（毫粮）。
+   *
+   * <p>★★ <b>为什么要单独一项</b>：运输损耗在到货日从系统里消失（{@code deliverShipments} 只把**净额**加到目的地账），
+   * 既不在账户里、也不在剩余在途里；守恒式若只算"账户 + 当前在途"，会把这部分读成被消费。
+   *
+   * <p>★★ <b>怎么算（只用持久状态）</b>：逐日 replay 相邻两个 revision，比较同一国 {@code EconomyData.shipments} 的键集 —— 某
+   * {@code ShipmentId} 在前一天表里、在当天表里消失 ⇒ 它当天到货。对它的**每一张票**按 {@code
+   * EconomySettlement.deliverShipments} 的同一公式 ⌊票量 × route.lossPerMille ÷ 1000⌋ 求和（只算粮）， 与生产侧逐字同源。★
+   * 不用"到货量 × 当前损耗率"反推，也不读 ledger / MarketReportFeed 这类进程内量。
+   */
+  private static long transportLossInWindow(CoreSimos core, long headBefore, long headAfter) {
+    long loss = 0L;
+    EconomyData previous =
+        economySlice(core.replay(new StateRef(MAIN, new RevisionId(headBefore))));
+    for (long head = headBefore + 1L; head <= headAfter; head++) {
+      EconomyData current = economySlice(core.replay(new StateRef(MAIN, new RevisionId(head))));
+      for (Map.Entry<ShipmentId, ShipmentBatch> entry : previous.shipments().entrySet()) {
+        if (current.shipments().containsKey(entry.getKey())) {
+          continue; // 还在途
+        }
+        ShipmentBatch batch = entry.getValue();
+        if (!batch.commodity().equals(GRAIN)) {
+          continue; // 本式只守恒粮：别商品的到货损耗与粮账无关
+        }
+        for (ShipmentAllocation allocation : batch.allocations()) {
+          loss += allocation.quantity() * batch.route().lossPerMille() / 1000L;
+        }
+      }
+      previous = current;
+    }
+    return loss;
   }
 
   /**

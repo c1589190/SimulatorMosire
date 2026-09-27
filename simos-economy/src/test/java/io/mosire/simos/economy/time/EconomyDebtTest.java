@@ -123,7 +123,10 @@ class EconomyDebtTest {
    *
    * <pre>
    * 周期 1（第 1~10 天）：借 10 天 = cumulativeRationMilli(400, 10) = 333,333
-   *      周期末计息 333,333 × 20‰ = 6,666（向下取整）⇒ 本金 339,999
+   *      周期末（第 10 天）计息按**当日起始本金快照** = 第 1~9 天借入合计 cumulativeRationMilli(400, 9) = 300,000
+   *      ⇒ 利息 ⌊300,000 × 20 ÷ 1000⌋ = 6,000 ⇒ 本金 333,333 + 6,000 = 339,333
+   *      （第 10 天当天新借的 33,333 当天不计息 —— 依据 M0.5 守恒式「本金_今 = 昨 + 放出 − 偿还 + ⌊昨×率÷1000⌋」，
+   *       即 `.superpowers/sdd/2026-09-27-m0-instrument/progress.md` 第 57 行 / 本批 B 口径）
    * 周期 2（第 11~13 天）：借 3 天 = cumulativeRationMilli(400, 13) − cumulativeRationMilli(400, 10) = 100,000
    * </pre>
    */
@@ -135,6 +138,8 @@ class EconomyDebtTest {
     assertThat(next.classes().get(PEASANT_KEY).debts()).as("两个周期各一条（行内两处引用）").hasSize(2);
     assertThat(next.debts()).as("债务表两条").hasSize(2);
     long cycleOne = deficitOver(CYCLE_DAYS);
+    // ★ 依据 B（计息日取**当日起始本金**快照）：第 10 天开始时只有第 1~9 天借入的 cumulativeRationMilli(400, 9) 生息。
+    long cycleOneDayStart = deficitOver(CYCLE_DAYS - 1L);
     Debt first =
         next.debts().get(new DebtId("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
     Debt second =
@@ -142,8 +147,10 @@ class EconomyDebtTest {
     assertThat(first).as("★ 旧条没被新周期覆盖").isNotNull();
     assertThat(second).as("★ 新周期开新条（id 里的周期号不同）").isNotNull();
     assertThat(first.principal())
-        .as("周期 1 的本金 = 10 天缺口 + 周期末计息 %d × 20‰", cycleOne)
-        .isEqualTo(cycleOne + cycleOne * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L);
+        .as("周期 1 的本金 = 10 天缺口 + 周期末按当日起始本金 %d 计的息 %d × 20‰", cycleOneDayStart, cycleOneDayStart)
+        .isEqualTo(
+            cycleOne + cycleOneDayStart * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L)
+        .isEqualTo(339_333L);
     assertThat(second.principal())
         .as("周期 2 的本金 = 第 11~13 天的缺口之和（尚未计息：周期 2 还没关账）")
         .isEqualTo(deficitOver(CYCLE_DAYS + 3L) - deficitOver(CYCLE_DAYS));
@@ -252,18 +259,23 @@ class EconomyDebtTest {
   // ── ③ §7.1③ 计息（并入本金 + 记 interestDue）────────────────────────────────────────
 
   /**
-   * ★★ **周期末按 {@code principal × ratePerMillePerCycle ÷ 1000} 计一次、并入本金**，同额记入债务人本行流水的 {@code
+   * ★★ **周期末按 {@code 当日起始本金 × ratePerMillePerCycle ÷ 1000} 计一次、并入本金**，同额记入债务人本行流水的 {@code
    * interestDue}（向下取整；V6 明写"取整 = 整除"）。
    *
+   * <p>★★ **计息基数 = 当日起始本金快照（口径 B）**：依据 M0.5 守恒式「本金_今 = 昨 + 放出 − 偿还 + ⌊昨×率÷1000⌋」
+   * （`.superpowers/sdd/2026-09-27-m0-instrument/progress.md` 第 57 行）——"昨"是当日开始时的本金 ⇒
+   * 关账日当天新借的债当天不计息。
+   *
    * <pre>
-   * 周期 1 末（第 10 天）：本金 333,333 ⇒ 利息 floor(333,333 × 20 ÷ 1000) = 6,666 ⇒ 本金 339,999
-   * 周期 2 末（第 20 天）：① 周期 1 那条**再计一次**（复利）：floor(339,999 × 20 ÷ 1000) = 6,799 ⇒ 346,798
-   *                    ② 周期 2 那条：本金 333,333 ⇒ +6,666 ⇒ 339,999
-   *                    ③ 债务人本周期 interestDue = 6,666 + 6,799 = 13,465（两条都归它 ⇒ 合并入同一行流水）
+   * 周期 1 末（第 10 天）：当日起始本金 = 第 1~9 天借入 cumulativeRationMilli(400, 9) = 300,000
+   *                    ⇒ 利息 floor(300,000 × 20 ÷ 1000) = 6,000 ⇒ 本金 333,333 + 6,000 = 339,333
+   * 周期 2 末（第 20 天）：① 周期 1 那条**再计一次**（复利）：当日起始本金 339,333 ⇒ floor(339,333 × 20 ÷ 1000) = 6,786 ⇒ 346,119
+   *                    ② 周期 2 那条：当日起始本金 = 第 11~19 天借入 300,000 ⇒ +6,000 ⇒ 339,333
+   *                    ③ 债务人本周期 interestDue = 6,000 + 6,786 = 12,786（两条都归它 ⇒ 合并入同一行流水）
    * </pre>
    *
    * <p>★ 判别力（变异轮实测）：①把"并入本金"改成"只记流水不动本金" ⇒ 本条先在"周期 1 的债在**两次**周期末各计一次"那行红。 ②"只在**新债**上计息"（拿 id
-   * 里的周期号筛）**未做专属变异** —— 它是**推演**：那样周期 1 那条第二轮不再变 ⇒ 期望值 346,798 / 13,465 都不成立（值写死在这里，故这两条断言不是同义反复）。
+   * 里的周期号筛）**未做专属变异** —— 它是**推演**：那样周期 1 那条第二轮不再变 ⇒ 期望值 346,119 / 12,786 都不成立（值写死在这里，故这两条断言不是同义反复）。
    *
    * <p>★★ **本夹具只有一个产业，挡不住"计息挂进逐产业的关账分支"那一类错**（同一天关两个产业 ⇒ 每条债被计两遍）—— 那件事由 {@link
    * #interestIsChargedOncePerCycleEvenWhenSeveralIndustriesCloseTogether} 负责（两个产业、同一天关账、
@@ -275,12 +287,16 @@ class EconomyDebtTest {
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 2L * CYCLE_DAYS);
 
     long perCycle = deficitOver(CYCLE_DAYS);
-    long firstInterest = perCycle * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
+    // ★ 口径 B：计息取**当日起始本金快照** —— 周期 1 的第 10 天开始时只有第 1~9 天的借入；周期 2 的第 20 天
+    //   开始时只有第 11~19 天的借入（当天新借的当天不计息）。见本用例 Javadoc 的依据。
+    long firstDayStart = deficitOver(CYCLE_DAYS - 1L);
+    long firstInterest = firstDayStart * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
     long firstAfterOne = perCycle + firstInterest;
     long secondInterest = firstAfterOne * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
     long secondCyclePrincipal = deficitOver(2L * CYCLE_DAYS) - deficitOver(CYCLE_DAYS);
+    long secondCycleDayStart = deficitOver(2L * CYCLE_DAYS - 1L) - deficitOver(CYCLE_DAYS);
     long secondInterestOwn =
-        secondCyclePrincipal * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
+        secondCycleDayStart * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
 
     Debt first =
         next.debts().get(new DebtId("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
@@ -289,24 +305,24 @@ class EconomyDebtTest {
     assertThat(first.principal())
         .as("周期 1 的债在**两次**周期末各计一次（%d + %d + %d）", perCycle, firstInterest, secondInterest)
         .isEqualTo(firstAfterOne + secondInterest)
-        .isEqualTo(346_798L);
+        .isEqualTo(346_119L);
     assertThat(second.principal())
-        .as("周期 2 的债在周期 2 末计一次")
+        .as("周期 2 的债在周期 2 末计一次（当日起始本金 %d）", secondCycleDayStart)
         .isEqualTo(secondCyclePrincipal + secondInterestOwn)
-        .isEqualTo(339_999L);
+        .isEqualTo(339_333L);
 
     FlowRow peasantFlow = next.flows().get(PEASANT_KEY);
     assertThat(peasantFlow.interestDue())
         .as("★ 周期 2 的 interestDue = 两条债各自那一笔之和（同额记入**债务人**行）")
         .isEqualTo(secondInterestOwn + secondInterest)
-        .isEqualTo(13_465L);
+        .isEqualTo(12_786L);
     assertThat(next.flows().get(LANDLORD_KEY).interestDue()).as("债权人行不记应付利息").isZero();
     assertThat(peasantFlow.netSurplus())
         .as("netSurplus = income(0) − 消费 − 利息（§3.3 的口径：并入本金的利息照样进赤字）")
-        .isEqualTo(-(peasantFlow.consumed().get(GRAIN) + 13_465L));
+        .isEqualTo(-(peasantFlow.consumed().get(GRAIN) + 12_786L));
     assertThat(next.debts().values().stream().mapToLong(Debt::principal).sum())
         .as("存量本金 = 两条之和（利息只进本金一次，没有影子字段）")
-        .isEqualTo(346_798L + 339_999L);
+        .isEqualTo(346_119L + 339_333L);
   }
 
   /**
@@ -314,8 +330,8 @@ class EconomyDebtTest {
    *
    * <pre>
    * 夹具：**两格**（两个产业、同一个 cycleDays = 10 ⇒ 同一天关账），每格各借出一个周期
-   * 周期末：每格那条债各计一次 333,333 × 20‰ = 6,666 ⇒ 本金 339,999
-   * ★ 变异轮实测：把计息挂进"逐产业的关账分支"（两个产业各跑一遍 ⇒ 每条债被计两次）⇒ 本条红（实得 346,798）。
+   * 周期末：每格那条债各计一次 —— 当日起始本金 300,000（第 1~9 天借入）× 20‰ = 6,000 ⇒ 本金 339,333
+   * ★ 变异轮实测：把计息挂进"逐产业的关账分支"（两个产业各跑一遍 ⇒ 每条债被计两次）⇒ 本条红（实得 345,333）。
    * </pre>
    */
   @Test
@@ -324,8 +340,11 @@ class EconomyDebtTest {
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
     long perCycle = deficitOver(CYCLE_DAYS);
-    long once = perCycle + perCycle * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
-    long twice = once + once * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
+    // ★ 口径 B：当日起始本金 = 第 1~9 天借入。同一天被计两遍时（快照固定）利息也是两笔同样的重算。
+    long dayStartInterest =
+        deficitOver(CYCLE_DAYS - 1L) * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
+    long once = perCycle + dayStartInterest;
+    long twice = perCycle + 2L * dayStartInterest;
     assertThat(next.industries()).as("两个产业（两个格）确实在同一天关账").hasSize(2);
     assertThat(next.debts()).as("两条债（每格一条）").hasSize(2);
     assertThat(next.debts().values().stream().map(Debt::principal).toList())
@@ -429,8 +448,8 @@ class EconomyDebtTest {
     assertThat(once).as("§十一：一次 20 天 == 20 次单日（终态逐值，含债务表）").isEqualTo(chained);
     assertThat(once.flows()).as("流水逐值相同（含 interestDue）").isEqualTo(chained.flows());
     assertThat(once.debts().values().stream().mapToLong(Debt::principal).sum())
-        .as("计息只发生两次（第 10、20 天），不是 20 次")
-        .isEqualTo(346_798L + 339_999L);
+        .as("计息只发生两次（第 10、20 天），不是 20 次；基数 = 各次当日起始本金（口径 B，见 interestAccrues…）")
+        .isEqualTo(346_119L + 339_333L);
   }
 
   /**
@@ -484,6 +503,7 @@ class EconomyDebtTest {
             Map.of(),
             Map.of(),
             Map.of(),
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -509,6 +529,7 @@ class EconomyDebtTest {
             Map.of(),
             Map.of(),
             Map.of(),
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -528,6 +549,7 @@ class EconomyDebtTest {
             Optional.of(meta),
             industries,
             classes,
+            Map.of(),
             Map.of(),
             Map.of(),
             Map.of(),
@@ -620,7 +642,8 @@ class EconomyDebtTest {
         0L,
         new ArrayList<>(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(population, 1L)),
-        Map.of());
+        Map.of(),
+        0L);
   }
 
   /** 全部家户的粮余额之和（★ H1：从**会话工作副本**读 —— 行里没有 {@code goods} 了）。 */

@@ -331,6 +331,7 @@ class ProductionLedgerTest {
                 ALLOCATION,
                 new LaborAllocation(ALLOCATION, LOT, OPERATOR, "farm", PEASANT_LABOR_MILLI, 1L)),
             relations,
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -345,7 +346,8 @@ class ProductionLedgerTest {
         0L,
         List.of(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(population, 1L)),
-        Map.of());
+        Map.of(),
+        0L);
   }
 
   /** 某家户的粮余额（★ H1：从**会话工作副本**读 —— 行里没有 {@code goods} 了）。 */

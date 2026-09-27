@@ -281,7 +281,8 @@ class EconomyFlowCycleTest {
             0L,
             List.of(),
             Map.of(EconomySettlement.GRAIN, EconomyVocabulary.dailyRationMilli(POPULATION, 1L)),
-            Map.of());
+            Map.of(),
+            0L);
     LinkedHashMap<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     LinkedHashMap<CohortKey, ClassRow> classes = new LinkedHashMap<>();
@@ -313,6 +314,7 @@ class EconomyFlowCycleTest {
             // ★★ **T4：关系表非空** —— 产出不再写进阶层行，行里的实物只能经关系结算的 cohort 入账回来。
             //   本夹具**只有一行有人口**（贫农）⇒ 那条 1000‰ 的劳动分成**逐值等于净产**（own ÷ Σ劳动 = 1）。
             EconomyFixtures.laborShareToPeasant(industries),
+            Map.of(),
             Map.of()),
         goods);
   }

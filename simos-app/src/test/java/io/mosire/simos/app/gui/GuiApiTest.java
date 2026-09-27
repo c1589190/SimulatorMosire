@@ -819,7 +819,8 @@ class GuiApiTest {
             12L,
             List.of(),
             Map.of(new CommodityId("grain"), 8_300L),
-            Map.of());
+            Map.of(),
+            0L);
     return new EconomyData(
         java.util.Optional.of(
             new EconomyMeta(
@@ -839,7 +840,8 @@ class GuiApiTest {
         Map.of(),
         // ★★ H4：第 9 个组件（市场表）—— 本夹具那一格给一个市场（计价货币 + 出厂价表都取真装载器的
         //   {@link EconomySeeder#MARKET_FACTORY}，**本夹具不另拍价**）。
-        Map.of(H11, EconomySeeder.MARKET_FACTORY));
+        Map.of(H11, EconomySeeder.MARKET_FACTORY),
+        Map.of());
   }
 
   /**

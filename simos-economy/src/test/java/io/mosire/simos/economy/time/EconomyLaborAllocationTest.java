@@ -196,6 +196,7 @@ class EconomyLaborAllocationTest {
             supply,
             allocations,
             Map.of(),
+            Map.of(),
             Map.of()), // ★ T2：生产关系表（本文件只谈劳动配额 ⇒ 空表）
         goods);
   }
@@ -220,7 +221,8 @@ class EconomyLaborAllocationTest {
         0L,
         List.of(),
         Map.of(),
-        Map.of());
+        Map.of(),
+        0L);
   }
 
   private static Industry industry(IndustryId id, String name, String regime, AllocationRule rule) {

@@ -104,7 +104,7 @@ class EconomyConservationNetTest {
       Map<CommodityId, Long> lossTotal = new LinkedHashMap<>();
       Map<CommodityId, Long> inputTotal = new LinkedHashMap<>();
       long principalAtStart = sumPrincipal(base);
-      boolean capitalisedInterest = false;
+      long maxPrincipalDuringCycle = principalAtStart;
 
       EconomyDayStepper stepper =
           new EconomyDayStepper(base, householdGoods, householdMoney, operatorGoods, operatorMoney);
@@ -154,8 +154,9 @@ class EconomyConservationNetTest {
 
         // ③ 债务守恒（逐笔：本金变化必有凭据；计息按利率自算）。
         debtIdsSeen.addAll(afterDay.debts().keySet());
-        capitalisedInterest |= assertDebtConservation(day, beforeDay, afterDay, ledger);
+        assertDebtConservation(day, beforeDay, afterDay, ledger);
         loanTransfers += countLoanTransfers(ledger);
+        maxPrincipalDuringCycle = Math.max(maxPrincipalDuringCycle, sumPrincipal(afterDay));
         beforeDay = afterDay; // ★ 下一格的"昨"
         goodsBefore = goodsAfter;
       }
@@ -175,12 +176,46 @@ class EconomyConservationNetTest {
       assertThat(relationPaidByCommodity).as("★ 关系实付真的分了粮（不是只有空表）").containsKey(GRAIN);
       assertThat(debtIdsSeen).as("★ 真的借出了债（否则债务守恒恒真）").isNotEmpty();
       assertThat(loanTransfers).as("★ 真的放出了粮（否则'新债必有凭据'恒真）").isPositive();
-      assertThat(sumPrincipal(stepper.data()))
-          .as("★ 一个周期后债务本金变大（昨 %d → 今 %d）", principalAtStart, sumPrincipal(stepper.data()))
+      assertThat(maxPrincipalDuringCycle)
+          .as(
+              "★ 周期内债务本金真的变大过（期初 %d → 峰值 %d；M2 市场让借款可在周期内还清 ⇒ 期末回到 0 不再是失败）",
+              principalAtStart, maxPrincipalDuringCycle)
           .isGreaterThan(principalAtStart);
       assertThat(grossTotal).as("★ 真的产出了东西（否则全局守恒恒真）").isNotEmpty();
-      assertThat(capitalisedInterest).as("★ 周期末真的把利息并入了本金（否则那条等式只走到「计息前」那一支）").isTrue();
+      // ★★ M2 实测（收尾轮 probe）：带市场世界里第一周期的债在计息日前就还清（峰值本金 8,333、期末 0）
+      //   ⇒ 利息并本那一支**在本世界不再发生**。不写替代性的恒真断言：该分支的覆盖由**无市场世界**跑补回。
+      assertDebtInterestBranchIsCoveredWithoutMarkets();
     }
+  }
+
+  /**
+   * ★★ 债务链"计息并本"分支的覆盖（M2 收尾补回，覆盖不放低）。
+   *
+   * <p>带市场世界（上面的主跑）已走不到 {@code chargeInterest} 那一支；本助手用 {@link
+   * EconomyTestWorld#genesisWithoutMarkets()}（同一份五格夹具、其余逐字段相同）再跑一个周期：逐日核债务守恒， 并要求计息并本真的发生 ——
+   * 拿不到覆盖就红，**不写恒真断言**。
+   */
+  private void assertDebtInterestBranchIsCoveredWithoutMarkets() {
+    SimulationState state = EconomyTestWorld.genesisWithoutMarkets();
+    EconomyData base = ((EconomySnapshot) state.module("economy").orElseThrow()).data();
+    ActorData books = ((ActorSnapshot) state.module("actor").orElseThrow()).data();
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            base,
+            OwnershipBooks.loadHouseholdGoods(base, books),
+            OwnershipBooks.loadHouseholdMoney(base, books),
+            OwnershipBooks.loadOperatorGoods(base, books),
+            OwnershipBooks.loadOperatorMoney(base, books));
+    EconomyData beforeDay = stepper.data();
+    boolean capitalised = false;
+    for (long day = 1L; day <= ONE_CYCLE_DAYS; day++) {
+      ProductionLedger ledger = stepper.step(day);
+      EconomyData afterDay = stepper.data();
+      capitalised |= assertDebtConservation(day, beforeDay, afterDay, ledger);
+      beforeDay = afterDay;
+    }
+    assertThat(stepper.finish().debts()).as("★ 无市场世界真的借出了债（否则下面的覆盖是空的）").isNotEmpty();
+    assertThat(capitalised).as("★ 周期末真的把利息并入了本金（带市场世界已不再走到这一支，见上面主跑的注释）").isTrue();
   }
 
   /**
@@ -563,7 +598,8 @@ class EconomyConservationNetTest {
    * ★★ <b>余额归 {@code residualOwner}（= operator）—— 由账目实测，不从规则反推</b>。
    *
    * <pre>
-   * 逐 (operator, 格, 商品)： 期末余额 − 期初余额 == 产出计提 − 该产业转出的关系实付
+   * 逐 (operator, 格, 商品)：
+   *   期末余额 − 期初余额 == 产出计提 − 该产业转出的关系实付 − 该 operator 经**其他转移**的净付出
    * </pre>
    *
    * <p>★★ <b>它替换掉的是一条错的判据</b>（如实留痕）：本用例最初写成"{@code 关系实付之和 == 净产}"， 实测在 {@code farm@0_0} 上得
@@ -571,6 +607,10 @@ class EconomyConservationNetTest {
    * FEUDAL_RENT_PER_MILLE}）+ 按劳动量的实物口粮</b>， <b>余下的（约 65% 的净产）按定义留在 operator 手上</b>（{@code
    * SELF_RETENTION} 不动、余额归 {@code residualOwner}）。⇒ 正确的说法是"<b>所得 = 净产</b>"（operator 自留 + 受方实付 =
    * 计提），而它由这条**账目实测**钉住： 计提与实付的差**必须恰好留在 operator 的账上**（不在别人的账上、也不会凭空消失）。
+   *
+   * <p>★★ <b>M2 新增的第三项</b>（如实记）：经营者自 M2.2 起也入市 ⇒ 它的商品账不只被"计提 + 关系实付"改动，还被 {@code MARKET_TRADE}
+   * 的货腿（卖净额 / 买净额）改动 —— 实测 {@code farm@2_0} 的 grain 差 **604,381** 正是这一笔。 本方法把**除关系实付以外的所有转移货腿**逐条按
+   * {@code from 付出 / to 收入} 汇总成净额一起减掉；漏记任何一种转移 （或把腿记错边）这条当场红。★ 它同时覆盖在途/损耗将来若也走转移的腿，不另开一处拼写。
    *
    * <p>★ 判别力：把一条实付的受方改错（付给了别的 actor）、或者把自留那一份错记到某个家户头上，这条当场红。
    *
@@ -586,13 +626,23 @@ class EconomyConservationNetTest {
           .merge(accrual.commodity(), accrual.delta(), Long::sum);
     }
     Map<ActorRef, Map<CommodityId, Long>> paid = new LinkedHashMap<>();
+    // ★ M2：关系实付之外的一切商品腿（市场成交、借还实物……）——from 付出记正、to 收入记负。
+    Map<ActorRef, Map<CommodityId, Long>> otherNetOut = new LinkedHashMap<>();
     for (Transfer transfer : ledger.transfers()) {
-      if (transfer.reason() != TransferReason.RELATION_PAYMENT) {
+      if (transfer.reason() == TransferReason.RELATION_PAYMENT) {
+        for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+          paid.computeIfAbsent(transfer.from(), key -> new LinkedHashMap<>())
+              .merge(leg.getKey(), leg.getValue(), Long::sum);
+        }
         continue;
       }
       for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
-        paid.computeIfAbsent(transfer.from(), key -> new LinkedHashMap<>())
+        otherNetOut
+            .computeIfAbsent(transfer.from(), key -> new LinkedHashMap<>())
             .merge(leg.getKey(), leg.getValue(), Long::sum);
+        otherNetOut
+            .computeIfAbsent(transfer.to(), key -> new LinkedHashMap<>())
+            .merge(leg.getKey(), -leg.getValue(), Long::sum);
       }
     }
     for (Map.Entry<ActorRef, Map<CommodityId, Long>> entry : accruals.entrySet()) {
@@ -602,11 +652,18 @@ class EconomyConservationNetTest {
             goodsAfter.goodsOf(operator, commodity.getKey())
                 - goodsBefore.goodsOf(operator, commodity.getKey());
         long paidOut = paid.getOrDefault(operator, Map.of()).getOrDefault(commodity.getKey(), 0L);
+        long marketOut =
+            otherNetOut.getOrDefault(operator, Map.of()).getOrDefault(commodity.getKey(), 0L);
         assertThat(delta)
             .as(
-                "关系守恒（余额归 operator）：%s 的 %s 期末−期初(%d) == 计提(%d) − 转出(%d)",
-                operator.id(), commodity.getKey().value(), delta, commodity.getValue(), paidOut)
-            .isEqualTo(commodity.getValue() - paidOut);
+                "关系守恒（余额归 operator）：%s 的 %s 期末−期初(%d) == 计提(%d) − 关系转出(%d) − 其他转移净付出(%d)",
+                operator.id(),
+                commodity.getKey().value(),
+                delta,
+                commodity.getValue(),
+                paidOut,
+                marketOut)
+            .isEqualTo(commodity.getValue() - paidOut - marketOut);
       }
     }
   }

@@ -144,10 +144,27 @@ public final class EconomyTestWorld {
    * {@code goods} 逐值相同）。
    */
   public static SimulationState genesis() {
+    return genesis(true);
+  }
+
+  /**
+   * ★★ <b>无市场变体</b>（M2 收尾新增）：与 {@link #genesis()} 逐字段同形，只把 {@code markets} 置空。
+   *
+   * <p>★★ <b>为什么需要它</b>：{@link EconomySettlementEndToEndTest} 的闭式期望（第 119 天缸里的余量、缺口、收获后库存、
+   * 守恒式）全是按"窗口内没有市场成交"手推的；M2 起每 5 天开市、家户只留 35 天生活库存、经营者也入市 ⇒ 同一批粮会被市场 重新分配，那些闭式期望的前提**整类失效**（实测差
+   * 183,333 / 604,381）。该用例组测的是**日结算 + 周期收获 + 借粮**， 市场不是它的被测物 ——
+   * 与其把几十条闭式期望改成"抄实际值"，不如给它一个无市场创世（**不放宽任何断言**）。 市场侧的守恒由 {@link EconomyConservationNetTest}
+   * 与真档用例承担（它们用 {@link #genesis()} 的带市场世界）。
+   */
+  public static SimulationState genesisWithoutMarkets() {
+    return genesis(false);
+  }
+
+  private static SimulationState genesis(boolean withMarkets) {
     StateRef ref = new StateRef(new BranchId("main"), new RevisionId(1));
     SimosTimestamp at = SimosTimestamp.of(0);
     Map<String, Snapshot> modules = new LinkedHashMap<>();
-    EconomyData data = data();
+    EconomyData data = data(new LinkedHashMap<>(), new LinkedHashMap<>(), withMarkets);
     modules.put("economy", new EconomySnapshot(ref, at, data));
     modules.put("actor", new ActorSnapshot(ref, at, books()));
     return new SimulationState(new StateMeta(ref, at), modules, InMemoryInfoSystem.empty());
@@ -247,6 +264,13 @@ public final class EconomyTestWorld {
    */
   private static EconomyData data(
       Map<CohortKey, Map<CommodityId, Long>> stocks, Map<CohortKey, Map<CurrencyId, Long>> money) {
+    return data(stocks, money, true);
+  }
+
+  private static EconomyData data(
+      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<CohortKey, Map<CurrencyId, Long>> money,
+      boolean withMarkets) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
     Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
@@ -357,7 +381,9 @@ public final class EconomyTestWorld {
         relations(industries),
         // ★★ H4：第 9 个组件（市场表）—— 本夹具**逐格给一个市场**（与真播种器的"每格一个"同口径），
         //   计价货币与价表取真装载器的出厂值 {@link EconomySeeder#MARKET_FACTORY}（唯一拼写点）。
-        markets(classes));
+        //   ★ M2 收尾：{@link #genesisWithoutMarkets()} 走 withMarkets=false ⇒ 空表（该用例组的闭式期望按无市场推）。
+        withMarkets ? markets(classes) : Map.of(),
+        Map.of());
   }
 
   /**
@@ -472,7 +498,8 @@ public final class EconomyTestWorld {
         0L,
         List.of(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(0L, 1L)),
-        Map.of());
+        Map.of(),
+        0L);
   }
 
   /** 农村家户行的键（{@code (格, RURAL, 阶层)}；H0.2 的键形状）。 */
@@ -736,7 +763,8 @@ public final class EconomyTestWorld {
             0L,
             List.of(),
             Map.of(GRAIN, firstDayNeed),
-            Map.of()));
+            Map.of(),
+            0L));
   }
 
   /**

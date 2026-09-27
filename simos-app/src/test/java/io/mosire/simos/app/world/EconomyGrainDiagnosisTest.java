@@ -17,7 +17,6 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -130,12 +129,14 @@ class EconomyGrainDiagnosisTest {
           .as("M0.3：今天算不出的三项必须具名列出（不是留空、更不是填 0）")
           .containsKeys("productionSelfSufficiency", "logisticsGap", "paymentInstrumentGap");
       assertThat(String.valueOf(unavailable.get("productionSelfSufficiency")))
-          .as("★ 生产自给率那条要说清「为什么算不出 + 落点」（ledger 当日丢弃 ⇒ 落点 M2 的读数组件）")
+          .as("★ 生产自给率那条要说清「为什么算不出 + 落点」（M2.7 措辞更新：ledger 当日瞬态 ⇒ 要等持久读数组件）")
           .contains("ledger")
-          .contains("M2");
+          .contains("周期累计")
+          .contains("落点");
       assertThat(String.valueOf(unavailable.get("logisticsGap")))
-          .as("★ 物流缺口那条要说清「M2.4 之前无定义」")
-          .contains("M2.4");
+          .as("★ 物流缺口那条要说清「缺的是哪一份」：L2 的进程内 MarketReport 不落盘、当前读口拿不到")
+          .contains("MarketReport")
+          .contains("不落盘");
 
       // ★ 窗口标注必须把本周期需求数写出来（报数前先核窗口）。
       assertThat(String.valueOf(diagnosis.get("window")))
@@ -178,20 +179,13 @@ class EconomyGrainDiagnosisTest {
     return data.classes().keySet().stream().filter(key -> key.hex().equals(PLAINS)).toList();
   }
 
-  private static long cycleDaysAt(EconomyData data) {
-    long days = 0L;
-    for (var id : IndustryHexKeys.at(data.industries(), PLAINS.q(), PLAINS.r())) {
-      days = Math.max(days, data.industries().get(id).cycleDays());
-    }
-    return days == 0L ? 1L : days;
-  }
-
   private static long cycleNeedAt(EconomyData data) {
-    long days = cycleDaysAt(data);
+    // ★★ M2.7/丙条：周期需求分母 = ClassRow 的逐日累加器 cycleNaturalNeedMilli（日初人口），
+    //   不再用"读口时刻人口 × 整周期配额"现算（两者口径不可比，M0.3 的旧分母已退休）。
     long total = 0L;
     for (CohortKey key : keysAt(data)) {
       ClassRow row = data.classes().get(key);
-      total += EconomyVocabulary.cumulativeRationMilli(row.population(), days);
+      total += row.cycleNaturalNeedMilli();
     }
     return total;
   }

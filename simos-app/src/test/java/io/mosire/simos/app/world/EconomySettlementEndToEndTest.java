@@ -1029,7 +1029,9 @@ class EconomySettlementEndToEndTest {
     core.register(new EconomyCodec());
     core.register(new ActorCodec());
     core.register(new EconomyOwnershipTimeParticipant(EconomyTestWorld.MAP_ID));
-    core.bootstrapGenesis(EconomyTestWorld.genesis());
+    // ★ M2 收尾：本类测日结算/收获/借粮，闭式期望一律按"窗口内无市场"手推 ⇒ 用无市场创世
+    //   （M2 市场会重新分配同格库存，见 EconomyTestWorld.genesisWithoutMarkets 的类注）。
+    core.bootstrapGenesis(EconomyTestWorld.genesisWithoutMarkets());
     return core;
   }
 

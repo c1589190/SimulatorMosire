@@ -144,7 +144,8 @@ class EconomySowingTest {
         0L,
         List.of(),
         Map.of(GRAIN, rationOn(1L)),
-        Map.of());
+        Map.of(),
+        0L);
   }
 
   /** **不占地**的一行（真档里每座城的手工业行都是这一形态）：无生产资料 ⇒ 种子需求恒 0。 */
@@ -157,12 +158,13 @@ class EconomySowingTest {
         0L,
         List.of(),
         Map.of(GRAIN, rationOn(1L)),
-        Map.of());
+        Map.of(),
+        0L);
   }
 
   /** 一行的地主（0 人、0 劳动、投入率 0 —— 它的缸只是种子本钱与同格放贷的余粮）。 */
   private static ClassRow landlordRow() {
-    return new ClassRow(LANDLORD_KEY, 0L, 0L, 0, 0L, List.of(), Map.of(), Map.of());
+    return new ClassRow(LANDLORD_KEY, 0L, 0L, 0, 0L, List.of(), Map.of(), Map.of(), 0L);
   }
 
   /**
@@ -266,6 +268,7 @@ class EconomySowingTest {
             //   ★ H3：operator 就是受方那个家户时（tenant 档）**不能**用这条规则 —— 那会铸出一条自转移
             //     （{@code Transfer} 的两端不得相等）⇒ 那种世界用**空规则表**（= 全归 residualOwner，裁定 E9）。
             relations,
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -775,15 +778,16 @@ class EconomySowingTest {
     Debt aggregated = next.debts().get(peasantDebts.get(0));
     assertThat(aggregated.principal())
         .as(
-            "本金递增（两天缺口之和 = 头 2 天口粮）+ 周期末计息（第 2 天就是关账日：%d × %d‰ = %d）",
-            rationOver(CYCLE_DAYS),
+            "本金递增（两天缺口之和 = 头 2 天口粮）+ 周期末计息按**当日起始本金**（第 2 天开始时只有第 1 天的借入 %d；第 2 天新借的 %d 当天不计息）⇒ %d × %d‰ = %d",
+            rationOn(1L),
+            rationOn(2L),
+            rationOn(1L),
             EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
-            rationOver(CYCLE_DAYS) * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L)
+            rationOn(1L) * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L)
         .isEqualTo(
             rationOver(CYCLE_DAYS)
-                + rationOver(CYCLE_DAYS)
-                    * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE
-                    / 1000L);
+                + rationOn(1L) * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L)
+        .isEqualTo(67_332L);
     assertThat(aggregated.debtor()).isEqualTo(PEASANT_KEY);
     assertThat(aggregated.creditor()).isEqualTo(LANDLORD_KEY);
     assertThat(aggregated.id().value())

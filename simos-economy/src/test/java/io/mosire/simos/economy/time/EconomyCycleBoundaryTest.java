@@ -100,7 +100,8 @@ class EconomyCycleBoundaryTest {
             0L,
             List.of(),
             Map.of(),
-            Map.of());
+            Map.of(),
+            0L);
     Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     EconomyFixtures.hold(goods, PEASANT_KEY, EconomySettlement.GRAIN, 10_000_000L); // 10,000 粮
     return new EconomyFixtures.World(
@@ -129,6 +130,7 @@ class EconomyCycleBoundaryTest {
             EconomyFixtures.laborShareToPeasant(Map.of(FARM, farm)),
             // ★ H4：第 9 个组件 = 市场表（键 = 格）。本夹具量的是周期边界（收获 / 播种 / 劳动），
             //   与货币无关 ⇒ 给空表 = **这一格没有市场**（合法状态：结算对没有市场的格什么都不做）。
+            Map.of(),
             Map.of()),
         goods);
   }
@@ -267,7 +269,8 @@ class EconomyCycleBoundaryTest {
                         row.money(),
                         row.debts(),
                         row.naturalNeeds(),
-                        row.effectiveDemand())))
+                        row.effectiveDemand(),
+                        0L)))
             // ★ R2：第三处 —— 配额与供给一起清空（见方法注释：三者少一个，"无人口 ⇒ 不产粮"就测不出来）。
             //   ★ **次序有讲究**：先清配额再清供给 —— 反过来会在中间态造出"有配额、没供给"的非法状态，
             //     构造期守卫当场抛（那条守卫是**对的**：没有供给的配额没有上限）。

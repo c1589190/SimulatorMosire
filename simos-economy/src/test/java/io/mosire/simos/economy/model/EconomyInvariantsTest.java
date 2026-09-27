@@ -102,6 +102,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不存在的产业");
@@ -116,6 +117,7 @@ class EconomyInvariantsTest {
                     Optional.of(meta()),
                     Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
                     Map.of(LANDLORD_KEY, classRow(LANDLORD_KEY)),
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of(),
@@ -141,6 +143,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ClassRow.key");
@@ -159,6 +162,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(PEASANT_KEY, row),
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of(),
@@ -340,11 +344,13 @@ class EconomyInvariantsTest {
             50L,
             List.of(),
             Map.of(GRAIN, 40L),
-            Map.of(GRAIN, 30L));
+            Map.of(GRAIN, 30L),
+            0L);
     return new EconomyData(
         Optional.of(meta()),
         Map.of(FARM, industry),
         Map.of(PEASANT_KEY, row),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -371,6 +377,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of()))
         .as("债务的 debtor/creditor 必须在 classes 里存在（v2 spec §八.2）")
         .isInstanceOf(IllegalArgumentException.class)
@@ -387,6 +394,7 @@ class EconomyInvariantsTest {
                     Map.of(FARM, industryWithTwoSlots()),
                     Map.of(PEASANT_KEY, classRowWithDebtRef(D1)),
                     Map.of(), // ★ 债务表为空 ⇒ 行内引用的 D1 悬空
+                    Map.of(),
                     Map.of(),
                     Map.of(),
                     Map.of(),
@@ -411,6 +419,7 @@ class EconomyInvariantsTest {
                 LANDLORD_KEY,
                 classRowWithoutDebts(LANDLORD_KEY)),
             Map.of(D1, debt),
+            Map.of(),
             Map.of(),
             Map.of(),
             Map.of(),
@@ -526,6 +535,7 @@ class EconomyInvariantsTest {
                     Map.of(),
                     Map.of(),
                     Map.of(),
+                    Map.of(),
                     Map.of())
                 .relations())
         .as("null ⇒ 空表（缺键 = 空，同其余七个组件）")
@@ -544,6 +554,7 @@ class EconomyInvariantsTest {
         Map.of(),
         Map.of(),
         relations,
+        Map.of(),
         Map.of());
   }
 
@@ -792,7 +803,7 @@ class EconomyInvariantsTest {
   /** 无债务的阶层行（参与率 800 在其槽位上限之内）；`key` 必须与它在 `classes` 里的键一致。 */
   private static ClassRow classRowWithoutDebts(CohortKey key) {
     return new ClassRow(
-        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
+        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   /** 行内引用一份债务（其两端由调用方保证）。 */
@@ -805,7 +816,8 @@ class EconomyInvariantsTest {
         50L,
         List.of(debtId),
         Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        Map.of(GRAIN, 30L),
+        0L);
   }
 
   // ── 夹具 ──
@@ -898,7 +910,7 @@ class EconomyInvariantsTest {
 
   private static ClassRow classRow(CohortKey key) {
     return new ClassRow(
-        key, 120L, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
+        key, 120L, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   private static ClassRow classRowWithParticipation(int participationPerMille) {
@@ -910,7 +922,8 @@ class EconomyInvariantsTest {
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        Map.of(GRAIN, 30L),
+        0L);
   }
 
   private static ClassRow classRowWithPopulation(long population) {
@@ -922,7 +935,8 @@ class EconomyInvariantsTest {
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        Map.of(GRAIN, 30L),
+        0L);
   }
 
   private static ClassRow classRowWithLabor(long laborMilli) {
@@ -934,12 +948,21 @@ class EconomyInvariantsTest {
         50L,
         List.of(D1),
         Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L));
+        Map.of(GRAIN, 30L),
+        0L);
   }
 
   private static ClassRow classRowWithMoney(long money) {
     return new ClassRow(
-        PEASANT_KEY, 120L, 60000L, 800, money, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L));
+        PEASANT_KEY,
+        120L,
+        60000L,
+        800,
+        money,
+        List.of(D1),
+        Map.of(GRAIN, 40L),
+        Map.of(GRAIN, 30L),
+        0L);
   }
 
   // ★★ 2026-09-27（H1/K1）：改前这里有一个 classRowWithGoods(Map) 助手，喂给上面那条"负数库存被拒"。
@@ -1149,6 +1172,7 @@ class EconomyInvariantsTest {
         Map.of(),
         laborSupply,
         allocations,
+        Map.of(),
         Map.of(),
         Map.of());
   }
