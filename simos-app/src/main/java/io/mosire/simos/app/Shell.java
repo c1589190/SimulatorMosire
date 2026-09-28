@@ -54,6 +54,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -440,6 +441,8 @@ public final class Shell implements AutoCloseable {
                 new EconomySeedHandler(),
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
                 new EconomyMigrateHouseholdHandler(),
+                // ── economy（R4-B.3b）：GM/事件用的实物资产份额拆分/转移（确定性新 id、逐资产守恒）──
+                new EconomyTransferAssetShareHandler(),
                 // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──

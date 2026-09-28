@@ -20,6 +20,7 @@ import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
@@ -404,9 +405,16 @@ public record EconomyData(
       debtsCopy.put(entry.getKey(), entry.getValue());
     }
     debts = Collections.unmodifiableMap(debtsCopy); // ★ 冻在赋值处
+    // ★★ B.3b（R3 决策单 §0.3）：c1 孤儿债对账 —— 以 debts 表为唯一权威，按 debtor 分组、DebtId canonical
+    //   升序重建每个 ClassRow.debts 引用。★ 必须在**跨表守卫之前**：守卫要求"引用的债存在"，而孤儿债是
+    //   "债存在、引用缺失"；对账不碰债务表本身（principal/defaulted 守恒），只在 debtor/creditor 家户行缺失时
+    //   fail-closed 具名抛。★ 迁移器之后：迁移只对齐 unit/劳动键，不改债务引用。
+    classesCopy = DebtReferenceReconciler.reconcile(debtsCopy, classesCopy);
+    classes = Collections.unmodifiableMap(classesCopy); // ★ 冻在赋值处（可能与上面同一实例）
     // ★ v2 spec §八.2：两张表的**交叉引用完整性**。★ 必须等两张表都建完再判 ——
     //   在任一段内查对方会陷入循环依赖（debts 要查 classes、classes 要查 debts），故不能靠调顺序解决。
     //   v1 的 debts 循环只查 null ⇒ 悬空主体能安静入库，错在结算里现形、根在状态里。
+    //   ★ B.3b 起 classes 侧的引用已由上面的 DebtReferenceReconciler 重建过，本循环是对账后的兜底断言。
     for (Map.Entry<DebtId, Debt> entry : debtsCopy.entrySet()) {
       Debt debt = entry.getValue();
       if (!classesCopy.containsKey(debt.debtor()) || !classesCopy.containsKey(debt.creditor())) {
@@ -768,33 +776,10 @@ public record EconomyData(
       unitsCopy.put(entry.getKey(), unit);
     }
     units = Collections.unmodifiableMap(unitsCopy); // ★ 冻在赋值处
-    // ★ 份额键索引建一次（O(share)）：逐 unit 全表扫是 O(unit × share)，而本构造器每个 revision 都跑。
-    Set<String> shareOperators = new LinkedHashSet<>();
-    for (AssetShare share : assetSharesCopy.values()) {
-      shareOperators.add(
-          industryOperatorKey(
-              share.industry(), share.operator().kind().name(), share.operator().id()));
-    }
-    for (ProductionUnit unit : unitsCopy.values()) {
-      OperatorCondition condition = operatorConditionsCopy.get(unit.id());
-      OperatorCondition.IndustryStatus status = condition == null ? null : condition.status();
-      if (status == OperatorCondition.IndustryStatus.EXITED
-          || status == OperatorCondition.IndustryStatus.ABANDONED) {
-        continue; // 已退出/弃置：份额的去向由退出处置负责，不在这里判"必须有份额"
-      }
-      if (!shareOperators.contains(
-          industryOperatorKey(
-              unit.industry(), unit.operator().kind().name(), unit.operator().id()))) {
-        throw new IllegalArgumentException(
-            "非 EXITED/ABANDONED 的生产单元必须至少有一条同 industry 的 AssetShare（AssetShare 是实物总账；"
-                + "没有份额的 unit 没有任何产能来源）：unit="
-                + unit.id()
-                + " industry="
-                + unit.industry()
-                + " operator="
-                + unit.operator());
-      }
-    }
+    // ★★ B.3b：**unit 不要求必须有 AssetShare**（R4 计划禁把"资产闲置/退出"判成坏数据）。
+    //   资产可以全部转走（见 economy.TransferAssetShare），此时该 unit 的规模由
+    //   ProductionUnitBook 纯派生为 0 —— "有经营者、无资产、不生产"是合法状态（也是 E1 退出处置的前态）。
+    //   unit↔relation / operatorConditions 的 operator/industry 一致性已由上面两段守卫把守，不因本放宽而松。
   }
 
   /**
@@ -1186,11 +1171,6 @@ public record EconomyData(
         || industry.cycleLaborMilli() > 0L
         || !industry.capacity().isEmpty()
         || !industry.cycleInputUsedMilli().isEmpty();
-  }
-
-  /** 份额/unit 的 (industry, operator) 复合键（只作构造期索引，不持久化）。 */
-  private static String industryOperatorKey(IndustryId industry, String kind, String operatorId) {
-    return industry.value() + "|" + kind + "|" + operatorId;
   }
 
   /**

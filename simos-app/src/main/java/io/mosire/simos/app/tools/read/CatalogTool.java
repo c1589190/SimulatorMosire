@@ -125,6 +125,13 @@ public final class CatalogTool implements AgentTool {
                   + "（★ S3：只搬视图与份额，身份/人口不变，账 location 不搬；"
                   + "家户不存在 / 目标格不在图上 / 目标格=原格 ⇒ 拒）"),
           Map.entry(
+              "economy.TransferAssetShare",
+              "share(原份额 id 文本), quantity?(缺省=原全部；须 ∈ (0,原 quantity]),"
+                  + " toOwner{kind,id}?, toOperator{kind,id}?, kind(OWNED|TENANCY|COMMUNAL)?, reason?"
+                  + "（★ 三者至少一项与现值不同；quantity=原值 ⇒ 整条换 id，<原值 ⇒ 拆成两行；"
+                  + "份额总量逐 (industry,asset) 守恒；不动商品/货币/债务/劳动；"
+                  + "同形现有份额尾段序号最大值+1 生成新 id，尾段不可解析 ⇒ 拒）"),
+          Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
                   + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"

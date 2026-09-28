@@ -122,3 +122,36 @@ B.3a-perf：为结算加**每次推进一次**的派生索引（AssetShare→uni
 ### 下一步
 B.3b：`economy.TransferAssetShare` 命令 + c1 孤儿债对账（`DebtReferenceReconciler`）。
 `CloseProductionUnit` 与 `ReclassifyHousehold` 分别并入 E1（退出处置）与 B.4（纯派生），不在此片造半成品出口。
+
+---
+
+## B.3b 资产转移命令 + c1 孤儿债对账 —— 已完成
+
+### 实现了什么
+- 新 `economy.TransferAssetShare` handler：`share` 必填；`quantity` 缺省=原量；owner/operator/kind 至少一项变化；
+  整条转移删旧行+新 id，部分拆分原行扣减+新行；新 id 用同 tuple 现有 id 尾段最大 sequence+1（不可解析 fail-closed）；
+  非法 quantity/无差异/重复 id 一律 Rejected；只写 `assetShares`，不动商品/货币/债务/劳动/关系。
+- 新 `DebtReferenceReconciler`：以债务表为权威、按 debtor 分组 canonical 排序重建 `ClassRow.debts`；debtor/creditor 行缺失具名 fail-closed；
+  principal/defaulted 不动；一致时 no-op。调用点在 `EconomyData` 构造期（LegacyHouseholdMigration 之后、跨表守卫之前）。
+- 放宽“非 EXITED unit 必须有同 industry 份额”的守卫：unit 允许 0 份额（规模=0），这是退出/闲置/资产全转走的合法状态；
+  unit↔relation/condition 的 operator/industry 一致性仍守。
+- 注册 `Shell` handler 与 `CatalogTool.PAYLOAD_HINTS` 条目（启动期 fail-closed 覆盖全部 type）。
+- `CloseProductionUnit` 留 E1（必须与退出资产/劳动/库存处置一起）；`ReclassifyHousehold` 不做（B.4 纯派生，显式改标签会破坏）。
+
+### 领域验收证据（8 线程，shaded jar md5 2872058a…）
+- 编译/Checkstyle/spotless 绿。
+- Transfer E2E：整条改 operator committed（旧 id 消失、新 tuple/quantity 正确、原 unit 0 份额）；部分拆分 committed（quantity−1 + 新行 1，sequence=max+1）；
+  quantity=0/超量/无差异三次 REJECTED、head 不变；rev7/8 changeset 只动 assetShares；推进 121→122 6.2s，0 份额 unit 不抛、逐 (industry,asset) 总量不变；15/15 守恒/身份断言 PASS。
+- c1：合成三案例 PASS=13/0（补引用、幂等、principal/defaulted 不变、debtor/creditor 缺失 fail-closed、重复/多余引用重建）；
+  真实 tick120 旧档组件探针：332 债 / **62 条孤儿 → 0**、principal 10,495,732 不变、defaulted 未动、Σ引用=332、幂等，PASS=7/0。
+  该旧档整体经 Timeline 仍因 R3 前 `useRights` 严格绑定不可读（记录为旧档兼容阻断，未越界修）。
+- 回归：B.2 Probe3 PASS=60/0、Probe5 PASS=11/0、Probe2 两条 OK；B.3a 固定世界 0→10 6.8s 无异常。
+
+### 与计划不同的地方 / 剩余阻断
+1. `CommandTargets` 未声明 unit 地址（与 `economy.MigrateHousehold` 同款），GM `simos.command.submit` 可用；directive 内会被 fail-closed 拒。
+2. 真实 c1 存档不可经完整 command/advance 路径重放（旧 `useRights` 绑定问题），对账用同包探针在组件层验证。
+3. 未跑 test/verify/SpotBugs/1-4-8/全年。
+
+### 下一步
+B.4：删除 `HouseholdClassRule` 的 `slotCapFallback/feasibleStratum`，确认分类只写 `ClassRow.view`、不改 participationPerMille/劳动/资产/账户/债务；
+验收同状态重放分类一致、无富农证据就输出 0、账户/劳动先变标签后变。
