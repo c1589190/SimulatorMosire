@@ -1,237 +1,168 @@
-# R3 语义收口决策单（2026-09-28）
+# R3 语义收口决策单（有效执行版，2026-09-28）
 
-> **用途**：R3 已经能跑通 0→360 的三段真实模拟，但每轮修复都会暴露下一层“旧模型假设 vs 新目标”的冲突。
-> 本单只做一件事：把 R3 剩余的四个语义选择一次冻结，之后只派**一轮集中修复**，不再零敲碎打。
+> **状态**：本文件是 R3 的**唯一有效执行口径**。旧版方案、旧切片、旧勾选项一律只作废弃附录，编码 Agent 不得执行。
 >
-> **代码态**：`ts/m1` @ `0e0fc566`；R0–R2 + 多线程市场优化 + R3 主体已提交；工作树代码干净。
-> **约束**：本文件不改生产代码；测试/完整验收仍留 V 阶段；每个修复批次允许一次 ≤3 分钟的 90 tick 冒烟。
+> **代码态**：`ts/m1` @ `83007b00`；R0–R2 + 多线程市场优化 + R3 主体已提交；工作树干净。
+> **总约束**：本文件不改生产代码；测试/完整验收仍留 V；每个修复批次允许一次 ≤3 分钟的 90 tick 冒烟。
 
-## 0. 用户追加裁定（2026-09-28，覆盖下文旧选项）
+---
 
-- **D2 确定走“动态调整”**：阶层派生结果要写回 `ClassRow.view` 时，先调整该户的
-  `participationPerMille` 与 `LaborAllocation`，使目标阶层在槽位上限内合法，然后写 view；
-  不再使用静默 `slotCapFallback` 作为长期方案。
-- **D3 救济不做**：救济属于政府/宗教模块，最基础的 GOV 模块在后续计划中实现；
-  R3 现在不新增 `RELIEF` 转移、不建救济义务。债务、未满足需求、违约状态先保留为可读状态；
-  c1 孤儿债作为数据完整性问题留给迁移/V 阶段，不在 R3 用“救济”掩盖。
-- **D1 + D4 合并为“资产份额表 + 事件时更新”**：
-  - 行 = `(地点/产业, 资产类型, 所有者, 实际经营者, 数量)`；
-  - `所有者 == 经营者` = 自有自营；`所有者 != 经营者` = 租佃/委托/占用等；
-  - D1 只负责**首次写表**；租佃、转让、退出、迁移、未来的 GOV 占有/征用只在**事件时改表**；
-  - 地租/分成仍由 `ProductionRelation` 结算，不塞进资产份额表；
-  - 日常生产只读“各经营者可用资产汇总”；份额表变化时重建一次汇总，不每天重算产权；
-  - **边界**：若实际经营者与产业当前 operator 不同，实际经营者必须有对应的生产活动与产出账户；
-    不允许“地记在甲名下、产出全落到庄园经营者账上”。
+## 0. 用户最终裁定：三条互相独立的主线
 
-> 下文 §1–§5 保留原始选项作为讨论留痕；执行时以本节的用户裁定为准。
+用户原话要点：**生产方式/生产力，和它带来的阶层划分，必须分离；产权本来就是独立的东西。**
 
-### 0.1 最终裁定：D1/D4 = 方案 B（生产模型与阶层模型分离）
+```text
+① 产权/资产线：AssetShare        —— 谁拥有、谁使用、多少实物资产
+② 生产/生产力线：Industry(模板) + ProductionUnit(实际生产活动) + ProductionRelation
+③ 阶层线：ClassRow.view          —— 从①+②+劳动/债务纯派生，只写标签，不改事实
+```
 
-- **B 已确认**：`Industry` 降为**技术/配方模板**；新增 `ProductionUnit` 表示“某经营者实际进行的生产活动”；
-  `AssetShare` 表示“地点/产业、资产类型、所有者、实际经营者、数量”；
-- 阶层划分只读 `AssetShare`（owner/operator）、`ProductionUnit`、`ProductionRelation`、`LaborAllocation`、债务，
-  **不把阶层塞进生产单位**；
-- 产出/投入/账户严格归 `ProductionUnit.operator`；禁止“资产记在甲名下、产出落到庄园”；
-- D1 只首次写 `AssetShare` + `ProductionUnit`；D4 的租佃/转让/退出/迁移/未来 GOV 征用只在事件点改这两张表；
-- 汇总索引（各经营者可用资产）只在份额/生产单位变化时重建，日常生产直接读索引。
+### 0.1 禁止的根本性倒置
 
-**实施切片（每片只编译 + 一次 ≤3 min 90 tick 冒烟）**：
+- **不得**为了写出目标阶层标签，去修改 `participationPerMille`、`LaborAllocation`、资产份额或账户；
+- 劳动参与和配额由**生产、人口、劳动关系和事件**改变；阶层分类**只读**这些事实；
+- 若旧“槽位上限”不允许写入真实分类，就修改**槽位数据约束 / 守卫的归属**，不是修改劳动量迁就标签；
+- `Industry.slots` / `ClassSlot` 是**生产方式里的角色/劳动配置**，不是“家户阶层标签的上限”；
+  `ClassRow.view` 不得再被拿来强制 `participationPerMille` 的上限。
+
+### 0.2 旧档迁移 vs 新世界播种必须分开
+
+- **旧档迁移**：逐条一对一保留事实。旧 `UseRight(holder=X)` ⇒ `AssetShare(owner=X, operator=X, quantity 原样)`；
+  旧 `Industry` 的 operator/progress/inputUsed ⇒ 一个默认 `ProductionUnit(operator=旧 operator)`；
+  **迁移不得凭空制造地主/佃户/新份额结构**。
+- **新世界播种**：才按明确的初始规则创建“庄园自营 + 家户佃耕/自有”等多个 `ProductionUnit` 和份额行；
+  播种规则是**独立配置**，不混进旧档迁移代码。
+
+### 0.3 c1 孤儿债进 R3，不推迟到 V
+
+起点 tick120 存在 62 条 c1 债：债权人侧有记录、债务人 `ClassRow.debts` 无引用。
+它会让债务相关的阶层判断读到不完整状态，**不得留到 V**。
+R3B.3 增加一次显式对账/迁移：以**债务表为权威**重建 `ClassRow.debts` 引用（或在无法归属时具名标记并转移/核销），
+并对账 principal 守恒。做完后 `Σ(行引用) == 债务表`，不得再有孤儿。
+
+---
+
+## 1. 目标数据模型（方案 B）
+
+### 1.1 AssetShare：独立的实物资产份额表
+
+```text
+AssetShare(
+  AssetShareId id,        // 确定性 id；不含 '.'，可由 (location, asset, owner, operator, sequence) 拼
+  HexCoord location,
+  AssetKind asset,        // LAND / TOOL / WORKSHOP / ...
+  ActorRef owner,         // 所有权人：庄园、家户、公共/组织
+  ActorRef operator,      // 实际使用/经营者；owner==operator = 自有自营
+  long quantity,          // 实物数量；LAND 千分亩，其余件
+  RightKind kind)         // OWNED / TENANCY / COMMUNAL；只表达权利性质
+```
+
+- **这是唯一的实物资产总账**：`Σ quantity(location, asset)` 由所有份额行求和得到，不再由 `Industry.capacity` 充当；
+- `Industry` 模板不保存土地/工具/作坊的实物总量；
+- 地租、分成、工资仍由 `ProductionRelation` 结算，**不在这里存**；
+- `owner != operator` = 租佃/委托/占用；终止租佃时只把该行的 `operator` 改为 owner（或新 operator），
+  `owner` 和 `quantity` 不变。
+
+### 1.2 Industry：生产技术/配方模板（不含实物总账）
+
+```text
+Industry(
+  IndustryId id,          // 当前按 (hex, kind) 实例；R3B 不改成全局 recipe
+  String name,
+  RegimeId regime,
+  long cycleDays,
+  Map<AssetKind, Long> capacityPerUnit,   // 每 1 单位规模需要多少资产
+  Map<CommodityId, Long> inputPerUnit, ...,
+  long laborPerUnit,
+  Map<CommodityId, Long> outputPerUnit,
+  ...,
+  List<ClassSlot> slots)   // 生产方式内部的角色/劳动配置，不是家户标签上限
+```
+
+- 移除 `Industry.operator`、`progressDays`、`cycleLaborMilli`、`cycleInputUsedMilli`、实物 `capacity`；
+- 模板只回答“怎么做、每单位需要什么、产出什么”；
+- `slots` 只用于生产方式内部角色和劳动配置，不再作为 `ClassRow.view` 的上限来源。
+
+### 1.3 ProductionUnit：谁实际在生产
+
+```text
+ProductionUnit(
+  ProductionUnitId id,     // 确定性：由 (IndustryId, ActorRef operator) 拼；不含 '.'
+  IndustryId industry,     // 引用技术模板
+  ActorRef operator,       // 实际经营者；产出/投入/关系都归它
+  Map<AssetKind, Long> usableAssets,  // 由 AssetShare 汇总：operator 在此产业可用的实物资产
+  long progressDays,
+  long cycleLaborMilli,
+  Map<CommodityId, Long> cycleInputUsedMilli)
+```
+
+- `usableAssets` 是**派生索引**：只读该 operator 在本产业相关资产上的 `AssetShare` 之和；
+- 生产规模 = `min(usableAssets[k] / capacityPerUnit[k], 劳动, 实扣投入)`；
+- 产出计提、投入扣减、关系分账、货币账户全部归 `unit.operator`；
+- 同一 `Industry` 下可以有多个 `ProductionUnit`：庄园自营 60、甲佃耕 40，各自一条。
+- **边界**：绝不允许“AssetShare 记甲、产出落庄园”。若甲有份额并实际经营，就必须有甲的 ProductionUnit 和产出账。
+
+### 1.4 ProductionRelation：挂在 ProductionUnit 上
+
+- 键与 `activity` 从 `IndustryId` 改为 `ProductionUnitId`；
+- `relation.operator == unit.operator`；
+- 一个 industry 有多个 unit ⇒ 多条 relation（各自规则、投入来源、剩余归属）。
+
+### 1.5 阶层：纯派生
+
+`HouseholdClassRule.classify` 只读：
+
+```text
+AssetShare(owner/operator) + ProductionUnit(operator) + ProductionRelation
++ LaborAllocation + 租/工资规则 + 债务
+```
+
+- 分类结果只写 `ClassRow.view`；
+- 不修改 `participationPerMille`、`LaborAllocation`、资产、账户、债务；
+- 没有富农证据就报告 0 个富农，不得为了“四档齐全”造标签；
+- 同一份资产/劳动/分成/债务状态必须得到同一分类（纯函数，可重放）。
+
+---
+
+## 2. 有效实施切片（R3B.1–R3B.4）
 
 | 切片 | 内容 | 完成判据 |
 |---|---|---|
-| **R3B.1** | `UseRight` → `AssetShare`（owner/operator/quantity）；EconomyData/ChangeSet/Codec/迁移；旧档 owner=operator=旧 holder；不改变现有单 operator 产出归属 | 编译绿；tick0 `Σ AssetShare == capacity`；旧档可读 |
-| **R3B.2** | 新增 `ProductionUnit`（operator/capacity/progress/inputs/output 账户）；`Industry` 只留配方/技术容量；`ProductionRelation` 键改 `ProductionUnitId`；旧 `Industry.operator/progress` 迁移到默认生产单位 | 编译绿；单 operator 行为与 R3B.1 逐值一致 |
-| **R3B.3** | 播种/迁移按份额生成多个 ProductionUnit（庄园 60 + 甲佃耕 40）；事件命令改份额与 operator；产出按实际 operator 落账 | 冒烟：庄园/甲两个 unit 各有 progress/产出账；`Σ shares == capacity` |
-| **R3B.4** | D2 动态调整 class transition；移除 `slotCapFallback` 长期兜底；D3 只保留债务/未满足读数，不做救济 | 冒烟：living 行四档齐全；阶层变化伴随 participation/labor 合法调整 |
+| **R3B.1** | `UseRight` → `AssetShare`（location/asset/owner/operator/quantity/kind）；EconomyData/ChangeSet/Codec/Resolver/ApiViews/Payloads/Seeder/LegacyMigration 同步；旧档 owner=operator=旧 holder 一对一 | 编译绿；旧档可读；tick0 `Σ shares` 对账；分类器改读 owner/operator，仍纯派生 |
+| **R3B.2** | 新增 `ProductionUnit` + `Industry` 模板化（移除 operator/progress/inputUsed/实物 capacity）；`ProductionRelation` 键改 `ProductionUnitId`；结算/市场/读口改按 unit 取 operator/capacity/progress/inputs；旧档生成一个默认 unit | 编译绿；单 unit 旧世界行为与现状逐值等价；`Σ AssetShare == 实物总账`；产出归 unit.operator |
+| **R3B.3** | 新世界播种规则创建多个 unit（庄园自营 / 家户佃耕 / 家户自有）；事件命令改份额与 operator；c1 孤儿债显式对账（债务表为权威）；不做救济 | 冒烟：同一 hex 至少两个 unit 各有 progress/产出账；无孤儿债；principal 守恒；资产份额变化先于产出归属变化 |
+| **R3B.4** | 分类纯派生：移除 `slotCapFallback` 与任何“改劳动迁就标签”的路径；`ClassRow.view` 只写标签；旧槽位约束改为生产方式/劳动配置的内部约束 | 冒烟：同状态重放分类一致；改生产关系后账户先变、阶层后变；活跃富农为 0 时如实为 0；无“为标签改 participationPerMille” |
 
-
----
-
-## 0. 当前事实（回代码核过）
-
-### 0.1 使用权
-
-- `EconomySeeder.useRightsOf`（`simos-app/.../EconomySeeder.java:1695`）把每个产业的**全部 capacity**
-  发成 `UseRight(kind=OWNED, holder=operator actor)`；
-- 真档 1799 条 `UseRight` 的 holder 全是 `ESTATE:farm@…` / `HOUSEHOLD:weave@…` / `WORKSHOP:craft@…`，
-  **没有任何家户直接持有 LAND/TOOL/WORKSHOP**；
-- `EconomyData` 构造期守卫（`EconomyData.java:427-516`）要求：
-  1. `Σ quantity(activity, asset) ≤ Industry.capacity(activity, asset)`；
-  2. **若该产业有使用权，`ProductionRelation.operator` 必须是其中一个 holder**。
-
-### 0.2 阶层分类
-
-- `HouseholdClassRule` 当前已读 `UseRight + ProductionRelation(LaborSource/operator/inputSupplier/residualOwner)
-  + LaborAllocation + 租规则 + 债务`；
-- 但因为 0.1，living 行中没有家户持有 LAND/TOOL/WORKSHOP；分类只能靠“地租受方/劳动关系”近似；
-- 最新 240→360 实测：living 行 `landlord 799 / middle 1053 / poor 2148 / rich 0`；
-  **living rich = 0 是数据边界，不是分类器漏读**；
-- `EconomyData` 槽位守卫：派生出的新阶层若 `participationPerMille` 超过旧 slots 上限，会被降级（当前降级到合法旧档）。
-
-### 0.3 债务、救济、违约
-
-- 最新 240→360 实测：debts 412 条 / principal **8,847,700**；newBorrowing **106,238**（旧代码 3.08B）；
-- `repaid` 仍低（20,986），其中 8,455,383 是起点 tick120 的 **c1 孤儿债**（债权人侧有、债务人行 `debts` 无引用，
-  `repayDebts` 遍历不到）；
-- 信用线收紧后，缺口从隐性债务变成显性 `unmet_grain` 4.11B → **9.86B**；
-- 没有救济制度；`Debt.defaulted=true` 目前只可能由 `settleOperatorExits` 写，本阶段还没触发过。
-
-### 0.4 退出与使用权/劳动去向
-
-- `OperatorSettlement` 能到 `CONTRACTING / OVERSUPPLIED`，但 0→360 内没有 `INDEBTED/SUSPENDED/EXITED`；
-- `UseRight` 只有 `holder` 一栏，**没有“所有权人/授予人”维度**；退出时若把权利从 holder 移走，
-  没有合法去处，也没有“地主收回/债权人受偿/继承”的表达；
-- `economy.MigrateHousehold` 当前只改 `ClassRow.view.hex`，不搬账户、不搬使用权；
-- `LaborAllocation` 可以在产业停业时回池，但“使用权随人/随债/随继承”没有路径。
+**顺序约束**：B.1 → B.2 → B.3 → B.4；每片只编译 + 一次 ≤3 min 90 tick 冒烟；不得跳片合并，不得在 B.4 前用旧槽位限制改写分类结果。
 
 ---
 
-## 1. D1：土地使用权初始归属
+## 3. 验收（替换旧“四档齐全”式判据）
 
-### 选项
-
-| 方案 | 内容 | 优点 | 代价 |
-|---|---|---|---|
-| **A 维持 operator 持有** | 不拆权利；阶层分类继续按生产关系/租佃近似 | 改动最小；与现有 `relation.operator = holder` 守卫相容 | living rich 永远不可达；landlord 只能靠地租受方识别；“谁占有土地”仍答不出 |
-| **B 全部分给家户** | 每个产业的 capacity 按家户份额分成 `UseRight`；operator 不再是 holder | 阶层直接由占有关系决定；最符合目标 | 与 `relation.operator ∈ holders` 守卫冲突；必须同时改关系/operator；大规模重标定 |
-| **C 混合（推荐）** | operator 保留**直营份额**（OWNED），其余按阶层份额分给家户；总 rights == capacity | 兼容守卫；地主/富农/中农/贫农都能从占有关系产生；operator 仍是 holder | 需要新的初始份额配置 + 旧档迁移 + 参与率/地租联动 |
-
-### C 的默认初始份额（可调，建议先冻结为 preset）
-
-以 `OWNERSHIP_SHARE_PER_MILLE` 配置表表达；建议初值：
-
-| 产业 / 资产 | operator 直营 | landlord | rich | middle | poor | 说明 |
-|---|---:|---:|---:|---:|---:|---|
-| farm / LAND | 100 | 400 | 250 | 200 | 50 | 地主+富农占多数，贫农只有少量 |
-| farm / TOOL | 600 | 100 | 100 | 100 | 100 | 农具主要归庄园/富农 |
-| weave / TOOL | 400 | 100 | 200 | 200 | 100 | 家庭纺织工具分散 |
-| craft / WORKSHOP | 700 | 0 | 100 | 100 | 100 | 作坊主要在 operator 手里 |
-
-- 每个 `(activity, asset)` 的份额之和必须恰为 1000‰，且 `Σ rights == capacity`；
-- `kind` 初值：operator 直营 = `OWNED`；家户份额 = `TENANCY` 或 `OWNED` 由用户选（建议
-  farm LAND 家户份额用 `OWNED`，weave/craft 家户份额用 `TENANCY`）；
-- 旧档迁移：旧 `UseRight(holder=operator)` ⇒ “operator 直营份额 + 家户份额”按同一 preset 拆分；
-- `relation.operator` 仍是 holder（operator 保留直营份额 ⇒ 守卫通过）。
-
-### D1 需要拍板
-1. 选 A / B / C？
-2. 若选 C：上表初值是否接受？家户份额的 `kind` 是 `OWNED` 还是 `TENANCY`？
+1. **分类纯函数性**：同一资产/劳动/分成/债务状态，重复分类逐值相同；
+2. **先因后果**：改变生产关系/资产/配额后，先看到账户/份额/劳动变化，再看到阶层标签变化；
+3. **允许零**：真实账本没有富农，就输出 0 个富农；不得为了分布好看造标签；
+4. **不变量**：
+   - `Σ AssetShare(location, asset)` = 实物总账（迁移时与旧 capacity 对账）；
+   - `Σ AssetShare(operator) = ProductionUnit.usableAssets`；
+   - `ProductionUnit.operator == relation.operator`；
+   - 产出/投入/债务/账户都归 unit.operator；
+5. **旧档迁移**：owner=operator=旧 holder 一对一；不凭空造地主/佃户；
+6. **新世界播种**：多 unit/佃耕按显式种子规则创建；
+7. **c1 孤儿债为 0**（或全部具名标记并完成显式处置/守恒）；
+8. **无禁止性修改**：不存在“分类器改 participationPerMille/LaborAllocation/资产”的代码路径；
+9. **运行**：0→360 分三段，每段 ≤3 min；无负余额、无守恒异常。
 
 ---
 
-## 2. D2：阶层分类与槽位上限
+## 附录 A：废弃方案（DEPRECATED，不得执行）
 
-### 推荐规则（D1 选 C 时）
+> 以下内容仅作讨论留痕。编码 Agent **不得**按这里执行。
 
-1. **先看直接 `UseRight`**：
-   - LAND > 0：净雇工且自耕规模大 ⇒ rich；自足 ⇒ middle；净卖劳动或债务压力高 ⇒ poor；
-   - TOOL/WORKSHOP > 0 且自营 ⇒ artisan；
-   - 净收稳定地租且不卖劳动 ⇒ landlord。
-2. **再看 `ProductionRelation.LaborSource`**（家户没有直接权利时）：
-   - `TENANT`：有部分投入/产出且债务不高 ⇒ middle，否则 poor；
-   - `SERF`：poor；
-   - `FAMILY/SELF`：middle，债务压力高 ⇒ poor；
-   - `WAGE`：landless_laborer。
-3. **零人口行、无任何观察证据的行**：保留当前 `view`，不伪造阶档；
-4. **新阶层**：`landless_laborer/artisan/official` 只追加，旧四档值/parse 不变；
-5. **槽位上限**：
-   - 若派生阶层的 `participationPerMille` 超过旧 slots 上限：
-     - 优先由**家户状态机**调整参与率/劳动配额，再写回；
-     - 若本轮不实现状态机调整，保留“合法退化”作为过渡，但必须在 `reason` 里写 `slotCapFallback(...)`，
-       且计入 `unmet/readout`，不许静默改字段。
+- 旧 D1 的 A/B/C 三选一，以及“按阶层份额先分地、再用地推阶层”；
+- 旧 D2 的 `slotCapFallback` / “为写出目标阶层而调整 participationPerMille/LaborAllocation”；
+- 旧 D3 的 `RELIEF` 转移、救济制度、违约核销；
+- 旧 R3.1–R3.4 切片编号与旧勾选清单（本文件 §2 已用 R3B.1–R3B.4 取代）；
+- 旧验收“四档必须齐全”。
 
-### D2 需要拍板
-1. 是否接受“直接使用权优先、劳动关系 fallback”的规则顺序？
-2. 槽位超限时：先做参与率调整（改动大），还是先保留合法退化（改动小）？
-
----
-
-## 3. D3：救济、违约、孤儿债
-
-### 现状
-- 信用线收紧后，城镇缺口户拿不到粮，`unmet_grain` 9.86B；
-- 没有救济制度；债务人只能靠自己的粮还债，城镇无粮户永远还不上；
-- c1 孤儿债 8.45M 在债务人行侧无引用。
-
-### 推荐方案（组合）
-
-| 优先级 | 规则 | 说明 |
-|---|---|---|
-| ① 同格救济 | 有可贷余粮的家户（不限阶层）可向同格缺口户铸 `RELIEF` 转移；上限 = 可自用余粮扣除一日口粮；不产生 `Debt` | 把“隐性债务”换成可读的实物救济；救急不救穷 |
-| ② 邻格/区域救济（可后置） | 同格无余粮时，允许跨格/跨市场区救济；运输走既有在途语义 | 第一版可只做同格，跨格留 P3 |
-| ③ 违约判定 | 连续 N 个关账周期 `debtServiceDue > 可用偿付` 且无救济 ⇒ `Debt.defaulted=true`，本金保留、不删除、不静默减记 | 违约后债权人的损失由谁承担要在读口可见；可影响 landlord 阶层 |
-| ④ 孤儿债迁移 | 以债务表为权威，重建 `ClassRow.debts` 的引用；或把孤儿债显式标记为 `orphan` 并进入违约/核销流程 | 不允许“遍历不到 = 不存在” |
-
-### D3 需要拍板
-1. 是否先做同格救济（推荐），还是直接做违约？
-2. 违约后的本金是保留（推荐）还是核销？损失由债权人承担（推荐）还是社会化？
-3. c1 孤儿债：重建引用，还是显式标记/核销？
-
----
-
-## 4. D4：退出、迁移与使用权/劳动去向
-
-### 现状问题
-- `UseRight` 没有“所有权人/授予人”维度 ⇒ 退出时权利无处可去；
-- `MigrateHousehold` 只改 view hex，不搬使用权/账户；
-- 退出后劳动配额可以回池，但“失地/失具”没有表达。
-
-### 选项
-
-| 方案 | 内容 | 优点 | 代价 |
-|---|---|---|---|
-| **A 保守** | 退出保留原 holder；只释放劳动；不做权利再分配 | 改动最小 | 死权利、无失地/兼并、地主不能收回土地 |
-| **B 增加 owner/source 维度（推荐）** | `UseRight` 增加 `ownerActor`/`grantorActor`（或独立 `RightOrigin`）；退出/违约时 holder 可回到 owner、债权人、继承人或集体；迁移时可显式转移 | 能表达失地、兼并、继承、租佃终止 | 状态形状/迁移/codec 改动；需明确“谁有权处置” |
-| **C 使用权市场** | 权利作为可交易资产，进入市场或拍卖 | 最完整 | 远超前现代阶段范围，建议不做 |
-
-### 推荐
-- D4 选 B：新增 `owner`/`grantor` 语义（命名待定），旧档 `owner = holder`；
-- 退出时：`UseRight.holder` 先转移给 `owner`（或债权人，按违约规则），劳动配额回池；
-- 迁移时：`MigrateHousehold` 允许 `UseRight` 随人显式转移；账户 location 仍不自动搬；
-- 死亡只走人口机制，不从使用权直接推死亡；无生计家户先 `DESTITUTE`，长期才触发迁移/违约。
-
-### D4 需要拍板
-1. 选 A / B / C？
-2. 若选 B：字段命名、旧档默认规则、退出时权利回到 owner 还是债权人？
-
----
-
-## 5. 推荐的整体组合
-
-| 决策 | 推荐 | 一句话理由 |
-|---|---|---|
-| D1 | **C 混合** | operator 保留直营份额即可兼容现有守卫；家户份额让占有关系真正决定阶层 |
-| D2 | 直接权利优先 + 劳动关系 fallback；槽位超限先合法退化并留痕 | 既有数据下马上可跑；后续再由状态机调整参与率 |
-| D3 | 同格救济 → 邻格救济 → 违约；孤儿债以债务表为权威迁移 | 先把“隐性债务”换成可读行为，再谈违约损失 |
-| D4 | **B 增加 owner/source 维度** | 不增加这一维，退出/兼并/失地永远无法表达 |
-
----
-
-## 6. 实施顺序与验收
-
-> 每个切片只写生产代码、只过编译 + **一次 ≤3 分钟 90 tick 冒烟**；测试仍留 V。
-
-| 切片 | 内容 | 冒烟验收 |
-|---|---|---|
-| **R3.1** | D1 份额配置 + seeder/迁移拆分 UseRight；守卫兼容 | tick0：`Σ rights == capacity`；living 行出现 landlord/rich/middle/poor 的直接权利 |
-| **R3.2** | D2 分类规则 + 槽位合法退化/参与率调整 | 120→240：living 分布四档齐全；每个 class transition reason 可解释 |
-| **R3.3** | D3 救济 + 违约 + 孤儿债迁移 | 240→360：repaid > 0 或 defaulted 有解释；孤儿债为 0 或显式标记；conservation 不报负余额 |
-| **R3.4** | D4 owner/source + 退出/迁移权利处置 | 240→360：至少一个 CONTRACTING 走到 SUSPENDED/EXITED；权利按规则转移、劳动回池 |
-| **V** | 1/4/8、守恒、场景、360 tick 全年、10k 格 | 最终验收 |
-
-**R3 完成的建议判据**：
-1. tick0 的 `UseRight` 分布能让 living 行产生 landlord/rich/middle/poor 四档；
-2. 0→360（分三段，每段 ≤3 min）无负余额、无守恒异常；
-3. `newBorrowing` 不回到 3B 量级；至少有一条 `repaid` 或 `defaulted` 路径真实发生；
-4. 至少一个经营者走完 `CONTRACTING → INDEBTED/SUSPENDED/EXITED` 并有权利/劳动去向；
-5. 所有读数组件可解释：`classifications/classTransitions/operatorConditions/arrears`。
-
----
-
-## 7. 请您拍板（勾选即可）
-
-- [ ] D1：A / **B / C**（推荐 C；若 C 请确认份额表与 kind）
-- [ ] D2：规则顺序是否接受；槽位超限先做“合法退化+留痕”还是“参与率调整”
-- [ ] D3：救济优先（推荐）；违约本金保留（推荐）；孤儿债重建引用（推荐）
-- [ ] D4：**B 增加 owner/source 维度**（推荐）；字段名与退出规则
-- [ ] 切片顺序 R3.1 → R3.2 → R3.3 → R3.4 是否接受
+**当前唯一有效计划 = 本文 §0–§3。**
