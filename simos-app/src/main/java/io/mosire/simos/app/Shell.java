@@ -510,7 +510,8 @@ public final class Shell implements AutoCloseable {
         List.of(
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
             new SdTimeParticipant(config.mapId()),
-            new PopulationEconomyTimeParticipant(config.mapId()));
+            // ★ R2：经济日结算的并行度由 CLI → ShellConfig → 这里进 stepper；缺省 1 = 单线程退化路径。
+            new PopulationEconomyTimeParticipant(config.mapId(), config.economyWorkerCount()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
@@ -720,7 +721,7 @@ public final class Shell implements AutoCloseable {
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant={}"
             + " resolver={} facet={} tool={} mapId={} bindAddress={} mcpPort={} guiPort={}"
-            + " approvalPort={}",
+            + " approvalPort={} economyThreads={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
@@ -733,7 +734,8 @@ public final class Shell implements AutoCloseable {
         config.bindAddress(),
         mcpServer.boundPort(),
         guiServer.boundPort(),
-        approvalEndpoint.boundPort());
+        approvalEndpoint.boundPort(),
+        config.economyWorkerCount());
     return new Shell(
         config,
         coreSimos,

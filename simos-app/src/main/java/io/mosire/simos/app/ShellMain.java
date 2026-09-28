@@ -13,11 +13,13 @@ import org.slf4j.LoggerFactory;
 /**
  * 可执行入口（spec §3.4；计划 T1 Step 4）：解析命令行 → 起壳 → 打印生效配置 → 阻塞到 SIGINT → 关闭。
  *
- * <p>★ **解析五个开关**（计划 T1 Step 4 的四个 + M10 新增 {@code --bind-address}；T9b 的 {@code --demo}
+ * <p>★ **解析六个开关**（计划 T1 Step 4 的四个 + M10 新增 {@code --bind-address}；T9b 的 {@code --demo}
  * 已随"没有就就地初始化"的裁定拔掉，见 {@link #parse})：{@code --store <dir>}（必填）、 {@code --gui-port N}、 {@code
  * --mcp-port N}、{@code --approval-port N} （三者缺省取自 {@link ShellConfig}）、{@code --bind-address
- * <host>} （GUI / MCP 的绑定地址，缺省 {@code 127.0.0.1}； ★ 审批端点恒回环，见 {@link ShellConfig#bindAddress()})。
- * {@code mcpPath} / {@code mcpInitiator} / {@code mapId} / {@code checkpointInterval} 暂无开关，取缺省。
+ * <host>} （GUI / MCP 的绑定地址，缺省 {@code 127.0.0.1}； ★ 审批端点恒回环，见 {@link ShellConfig#bindAddress()})。 R2
+ * 起还有 {@code --economy-threads N}（经济日结算 worker 数，缺省 {@value
+ * ShellConfig#DEFAULT_ECONOMY_WORKER_COUNT} = 单线程退化路径；N ≥ 2 才真的并行）。 {@code mcpPath} / {@code
+ * mcpInitiator} / {@code mapId} / {@code checkpointInterval} 暂无开关，取缺省。
  *
  * <p>★ **世界从哪来**：**有世界就是有，没有就就地初始化一个新的**。起壳后若库为空，经 {@link CoreSimos#bootstrapGenesis} 就地种入 {@link
  * RichWorld}（{@code v17levant} 复刻）；**非空库绝不覆盖**（数据安全线，见 {@link
@@ -47,7 +49,7 @@ public final class ShellMain {
       LOG.error("参数错误：{}", e.getMessage());
       LOG.error(
           "用法：--store <dir> [--gui-port N] [--mcp-port N] [--approval-port N]"
-              + " [--bind-address <host>] [--opening-snapshot]");
+              + " [--bind-address <host>] [--opening-snapshot] [--economy-threads N]");
       return;
     }
     run(config);
@@ -66,6 +68,7 @@ public final class ShellMain {
     int approvalPort = ShellConfig.DEFAULT_APPROVAL_PORT;
     String bindAddress = ShellConfig.DEFAULT_BIND_ADDRESS;
     boolean openingSnapshot = ShellConfig.DEFAULT_OPENING_SNAPSHOT;
+    int economyWorkerCount = ShellConfig.DEFAULT_ECONOMY_WORKER_COUNT;
     for (int i = 0; i < args.length; i++) {
       switch (args[i]) {
         case "--store" -> store = Path.of(value(args, ++i, "--store"));
@@ -76,6 +79,9 @@ public final class ShellMain {
         case "--bind-address" -> bindAddress = value(args, ++i, "--bind-address");
         // ★ 无值开关（P4）：它不开取值，故不在 value(...) 那一族里。
         case "--opening-snapshot" -> openingSnapshot = true;
+        // ★ R2：并行度取值必须 ≥ 1；非法值拒绝并指路（见 workerCount(...)）。
+        case "--economy-threads" ->
+            economyWorkerCount = workerCount(value(args, ++i, "--economy-threads"));
         default -> throw new IllegalArgumentException("未知参数: " + args[i]);
       }
     }
@@ -92,7 +98,8 @@ public final class ShellMain {
         ShellConfig.DEFAULT_MCP_INITIATOR,
         ShellConfig.DEFAULT_MAP_ID,
         bindAddress,
-        openingSnapshot);
+        openingSnapshot,
+        economyWorkerCount);
   }
 
   /**
@@ -109,7 +116,7 @@ public final class ShellMain {
       }
       LOG.info(
           "Simos Shell 已启动: store={} checkpointInterval={} 模块数={} bindAddress={} guiPort={}"
-              + " mcpPort={} mcpPath={} approvalPort={} mapId={}",
+              + " mcpPort={} mcpPath={} approvalPort={} mapId={} economyThreads={}",
           config.storeDir(),
           config.checkpointInterval(),
           shell.registeredModuleCount(),
@@ -118,7 +125,8 @@ public final class ShellMain {
           shell.boundMcpPort(),
           config.mcpPath(),
           config.approvalPort(),
-          config.mapId());
+          config.mapId(),
+          config.economyWorkerCount());
       LOG.info("WebUI 就绪（点击打开）：http://127.0.0.1:{}/", shell.boundGuiPort());
       CountDownLatch stop = new CountDownLatch(1);
       Runtime.getRuntime()
@@ -180,5 +188,20 @@ public final class ShellMain {
     } catch (NumberFormatException e) {
       throw new IllegalArgumentException(flag + " 必须是整数: " + text);
     }
+  }
+
+  /** 经济结算 worker 数：必须是 ≥ 1 的整数（1 = 单线程退化路径，≥ 2 才真的并行）。 */
+  private static int workerCount(String text) {
+    int parsed;
+    try {
+      parsed = Integer.parseInt(text);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("--economy-threads 必须是整数（≥ 1；1 = 单线程）: " + text);
+    }
+    if (parsed < 1) {
+      throw new IllegalArgumentException(
+          "--economy-threads 必须 ≥ 1（1 = 单线程退化路径，≥ 2 才真的并行）: " + parsed);
+    }
+    return parsed;
   }
 }

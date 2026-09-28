@@ -113,6 +113,8 @@ public final class EconomyParallelism implements AutoCloseable {
   public String toString() {
     return "EconomyParallelism[workers="
         + workerCount
+        + ", parallel="
+        + parallel()
         + ", partitions="
         + STRUCTURAL_PARTITIONS
         + "]";

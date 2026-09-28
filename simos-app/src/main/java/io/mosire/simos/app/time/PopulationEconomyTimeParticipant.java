@@ -4,6 +4,7 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -17,6 +18,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
+import io.mosire.simos.economy.time.EconomyParallelism;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
@@ -40,6 +42,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ★★ **人口—经济协调器**（R4）：**唯一同时看得见 {@code social} 与 {@code economy} 的推进参与者** —— 于是"人"第一次真的随时间变：**年龄推进
@@ -79,6 +83,8 @@ import java.util.Optional;
  */
 public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
+  private static final Logger LOG = LoggerFactory.getLogger(PopulationEconomyTimeParticipant.class);
+
   /** 参与者身份（**不是模块名**：它同时写 {@code social} 与 {@code economy} 两个模块）。 */
   public static final String NAMESPACE = "population";
 
@@ -90,8 +96,33 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   private final String mapId;
 
+  /**
+   * ★★ <b>经济日结算的 worker 数</b>（R2）：由组合根从 {@code ShellConfig.economyWorkerCount()} 传入；缺省 1 = 单线程退化路径。
+   *
+   * <p>★ 本参与者在每次 {@code simulateWorld} 里构造一次 {@link EconomyParallelism#of(int)}（自建池），并由 {@link
+   * EconomyDayStepper#finish()}/{@link EconomyDayStepper#close()} 关池；异常路径由 {@code try/finally} 收口
+   * ——推进失败不留下活着的结算线程池。
+   */
+  private final int economyWorkerCount;
+
+  /** 旧调用点（测试/夹具）兼容：并行度取缺省 {@link ShellConfig#DEFAULT_ECONOMY_WORKER_COUNT}（单线程退化路径）。 */
   public PopulationEconomyTimeParticipant(String mapId) {
+    this(mapId, ShellConfig.DEFAULT_ECONOMY_WORKER_COUNT);
+  }
+
+  /** ★ R2 组合根入口：{@code economyWorkerCount} 必须 ≥ 1（1 = 单线程退化路径，≥ 2 才真的并行）。 */
+  public PopulationEconomyTimeParticipant(String mapId, int economyWorkerCount) {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    if (economyWorkerCount < 1) {
+      throw new IllegalArgumentException(
+          "economyWorkerCount 必须 ≥ 1（1 = 单线程退化路径，≥ 2 才真的并行）: " + economyWorkerCount);
+    }
+    this.economyWorkerCount = economyWorkerCount;
+  }
+
+  /** ★ R2：本参与者配置的经济结算 worker 数（只读；服务装配日志/诊断）。 */
+  public int economyWorkerCount() {
+    return economyWorkerCount;
   }
 
   @Override
@@ -168,74 +199,97 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       writes.add(accountAddress(key));
     }
     AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
-    EconomyDayStepper stepper =
-        new EconomyDayStepper(
-            economy,
-            session,
-            // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
-            MarketTopologyBook.from(state));
-    // ★★ S1.4 后置不变量（app 侧，唯一看得见 social 的地方）：
-    //   · 旧档（meta.rulesVersion = pre-modern-v1）的迁移器只能按行人口反推近似份额 / 合成 lot ⇒ 第一次推进前按
-    //     social 真实批次重建一次（片区总量对不上 ⇒ fail-closed）；
-    //   · 新档 ⇒ 逐 lot 严格校验（不等当场抛，不静默均摊）。
-    if (isLegacyMigration(economy)) {
-      if (!MembershipWriteback.isConsistent(stepper.memberships(), stepper.classRows(), social)) {
-        MembershipWriteback.rebuildLegacy(stepper.classRows(), stepper.memberships(), social);
-      }
-    } else {
-      MembershipWriteback.requireConsistent(stepper.memberships(), stepper.classRows(), social);
-    }
-    ActorData currentBooks = migratedBooks;
-    SocialData currentSocial = social;
-    for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
-      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
-      // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
-      //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
-      //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
-      //   ShipmentBatch 承载；再折一遍会在异地键上造幽灵账。
-      ProductionLedger ledger = stepper.step(day);
-      // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
-      MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
-      List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
-      if (!entries.isEmpty()) {
-        currentBooks = OwnershipBooks.apply(currentBooks, entries);
-        for (GoodsAccountKey key : currentBooks.accounts().keySet()) {
-          writes.add(accountAddress(key));
+    // ★★ R2：并行度进构造器；workerCount == 1 时 EconomyParallelism.of 走单线程退化路径（不建池）。
+    //   池的生命周期：finish()/close() 关闭；下面的 try/finally 保证日循环抛异常也不泄漏结算线程池。
+    EconomyParallelism parallelism = EconomyParallelism.of(economyWorkerCount);
+    try {
+      EconomyDayStepper stepper =
+          new EconomyDayStepper(
+              economy,
+              session,
+              // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
+              MarketTopologyBook.from(state),
+              EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+              EconomySettlement.FAMINE_MORTALITY_PER_MILLE,
+              parallelism);
+      try {
+        // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。
+        LOG.info(
+            "人口—经济推进并行入口: workerCount={} parallelism={}",
+            economyWorkerCount,
+            stepper.parallelism());
+        // ★★ S1.4 后置不变量（app 侧，唯一看得见 social 的地方）：
+        //   · 旧档（meta.rulesVersion = pre-modern-v1）的迁移器只能按行人口反推近似份额 / 合成 lot ⇒ 第一次推进前按
+        //     social 真实批次重建一次（片区总量对不上 ⇒ fail-closed）；
+        //   · 新档 ⇒ 逐 lot 严格校验（不等当场抛，不静默均摊）。
+        if (isLegacyMigration(economy)) {
+          if (!MembershipWriteback.isConsistent(
+              stepper.memberships(), stepper.classRows(), social)) {
+            MembershipWriteback.rebuildLegacy(stepper.classRows(), stepper.memberships(), social);
+          }
+        } else {
+          MembershipWriteback.requireConsistent(stepper.memberships(), stepper.classRows(), social);
         }
-      }
-      // ★★ H1：家户账**按绝对值**落回 actor 切片（不是"再叠加一遍条目"，见 OwnershipBooks 的类注）——
-      //   日耗 / 投入 / 同格取材只写副本（它们不是产权条目），而关系实付既进条目、也已计进副本
-      //   ⇒ 这一步是它们唯一共同的落点。★ 副本是**活的**（step 就地更新）⇒ 每天重新读访问器，不缓存引用。
-      // ★★ S1：全部账户（家户 + 经营者；商品 + 货币 + 冻结）按会话绝对值一次落回。
-      currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
-      // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
-      currentSocial =
-          applyDailyStress(stepper.classRows(), currentSocial, stepper.flows(), unmetBefore);
-      // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
-      if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
-        PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
-        currentSocial = outcome.data();
-        if (!outcome.isEmpty()) {
-          stepper.applyPopulationChange(outcome.changeList());
-          // ★★ S1.4.1 的跨切片收口：出生落在**新的 born lot**（社会侧），存量 lot 只减死亡 ⇒ 在这里按行人口权重
-          //   为新批次补建份额，然后逐 lot 硬校验。顺序必须在 landAccountSession 之前（份额不进账户，但它与行人口
-          //   同属 economy 工作副本，先收口再构造终态）。
-          MembershipWriteback.reconcile(stepper.classRows(), stepper.memberships(), currentSocial);
-          // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
-          //   ★ 放在月度回写之后、且**在条目落账之后**：全部账户以会话的绝对值收尾（顺序反了会把条目加两遍）。
+        ActorData currentBooks = migratedBooks;
+        SocialData currentSocial = social;
+        for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
+          LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
+          // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
+          //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
+          //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
+          //   ShipmentBatch 承载；再折一遍会在异地键上造幽灵账。
+          ProductionLedger ledger = stepper.step(day);
+          // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
+          MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
+          List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
+          if (!entries.isEmpty()) {
+            currentBooks = OwnershipBooks.apply(currentBooks, entries);
+            for (GoodsAccountKey key : currentBooks.accounts().keySet()) {
+              writes.add(accountAddress(key));
+            }
+          }
+          // ★★ H1：家户账**按绝对值**落回 actor 切片（不是"再叠加一遍条目"，见 OwnershipBooks 的类注）——
+          //   日耗 / 投入 / 同格取材只写副本（它们不是产权条目），而关系实付既进条目、也已计进副本
+          //   ⇒ 这一步是它们唯一共同的落点。★ 副本是**活的**（step 就地更新）⇒ 每天重新读访问器，不缓存引用。
+          // ★★ S1：全部账户（家户 + 经营者；商品 + 货币 + 冻结）按会话绝对值一次落回。
           currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
+          // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
+          currentSocial =
+              applyDailyStress(stepper.classRows(), currentSocial, stepper.flows(), unmetBefore);
+          // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
+          if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
+            PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
+            currentSocial = outcome.data();
+            if (!outcome.isEmpty()) {
+              stepper.applyPopulationChange(outcome.changeList());
+              // ★★ S1.4.1 的跨切片收口：出生落在**新的 born lot**（社会侧），存量 lot 只减死亡 ⇒ 在这里按行人口权重
+              //   为新批次补建份额，然后逐 lot 硬校验。顺序必须在 landAccountSession 之前（份额不进账户，但它与行人口
+              //   同属 economy 工作副本，先收口再构造终态）。
+              MembershipWriteback.reconcile(
+                  stepper.classRows(), stepper.memberships(), currentSocial);
+              // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
+              //   ★ 放在月度回写之后、且**在条目落账之后**：全部账户以会话的绝对值收尾（顺序反了会把条目加两遍）。
+              currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
+            }
+          }
         }
+        EconomyData currentEconomy = stepper.finish();
+        return new WorldTimeProposal(
+            NAMESPACE,
+            Map.of(
+                ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
+                SOCIAL, SocialChangeSet.between(social, currentSocial),
+                ACTOR, ActorChangeSet.between(actor, currentBooks)),
+            reads,
+            writes);
+      } finally {
+        stepper.close();
       }
+    } catch (RuntimeException | Error failure) {
+      // stepper 构造失败 ⇒ 池从未交给 finish()/close()；这里补关一次（已关时幂等）。
+      parallelism.close();
+      throw failure;
     }
-    EconomyData currentEconomy = stepper.finish();
-    return new WorldTimeProposal(
-        NAMESPACE,
-        Map.of(
-            ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
-            SOCIAL, SocialChangeSet.between(social, currentSocial),
-            ACTOR, ActorChangeSet.between(actor, currentBooks)),
-        reads,
-        writes);
   }
 
   // ── 逐日生理压力（社会侧唯一的日常写点）────────────────────────────────────────────────

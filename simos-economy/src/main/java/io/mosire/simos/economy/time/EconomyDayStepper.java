@@ -32,7 +32,7 @@ import java.util.Optional;
  * <p>★ <b>{@link #finish()} 之前拿到的 {@link #data()} 里流水还是旧的</b>（累加器在会话里）：日循环结束后由 {@code finish()}
  * 一次性挂上。
  */
-public final class EconomyDayStepper {
+public final class EconomyDayStepper implements AutoCloseable {
 
   private final boolean plantingDrawsFirst;
   private final int famineMortalityPerMille;
@@ -234,7 +234,23 @@ public final class EconomyDayStepper {
     try {
       return session.build();
     } finally {
-      parallelism.close(); // ★ R2：自建的结算线程池随本次推进一起收掉（注入的池由调用方关）
+      close(); // ★ R2：自建的结算线程池随本次推进一起收掉（注入的池由调用方关；重复 close 幂等）。
     }
+  }
+
+  /**
+   * ★★ <b>关闭本会话自建的结算线程池</b>（R2 生命周期）：由 {@link #finish()} 自动调用，也供调用方在 <b>异常路径</b>用 {@code
+   * try/finally} 收口（{@code simulateWorld} 的日循环抛错时 {@code finish()} 根本走不到）。
+   *
+   * <p>★ 幂等：{@link EconomyParallelism#close()} 对已关/未自建的池是安全操作；注入的池不归本类关。
+   */
+  @Override
+  public void close() {
+    parallelism.close();
+  }
+
+  @Override
+  public String toString() {
+    return "EconomyDayStepper[" + parallelism + "]";
   }
 }

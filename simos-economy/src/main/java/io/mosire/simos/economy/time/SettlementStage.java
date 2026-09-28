@@ -25,9 +25,9 @@ public enum SettlementStage {
   CONSUMPTION(PartitionBasis.HEX, "消费"),
   /** 收获/关系分账（按 hex 并行；同格内 farm/weave/craft 共享家户账户，必须串行）。 */
   HARVEST(PartitionBasis.HEX, "收获/分账"),
-  /** 区内市场（按市场区并行**构建订单/参与者**；撮合与冻结提交仍是协调器单线程，见 R2 边界）。 */
+  /** 区内市场（按市场区并行计算订单与撮合意向；协调器按拓扑区序回放，冻结写仍在协调阶段——见 R2/R3 边界）。 */
   LOCAL_MARKET(PartitionBasis.MARKET_REGION, "区内市场"),
-  /** 跨区市场（所有邻接区买卖单与在途；协调阶段，稳定序一次算完 —— R3 的 P3）。 */
+  /** 跨区市场（所有邻接区买卖单与在途；P1.2 索引 + 协调器稳定序一次算完，按 buyerRegion 的分区留 R3 的 P3）。 */
   CROSS_REGION_MARKET(PartitionBasis.COORDINATOR, "跨区市场"),
   /** 借粮（按 hex 并行；同格内家户之间串行；跨格借贷不在此阶段）。 */
   LENDING(PartitionBasis.HEX, "借粮"),

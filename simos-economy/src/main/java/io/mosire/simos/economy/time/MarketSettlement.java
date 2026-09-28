@@ -38,6 +38,7 @@ import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -453,13 +454,19 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>R2 并行入口</b>：把"逐格建参与者 + 生成买卖订单"（本方法第 1 步，P1.2 扫描热点）按<b>市场区</b>并行， 结果按 hex 的 {@code (q,r)}
-   * 序在协调器重新拼回 —— 拼回序与原串行遍历序<b>逐字相同</b>，因此后续 冻结/撮合/报告不受线程数影响。
+   * ★★ <b>R2 并行入口</b>：① 按<b>市场区</b>并行构建参与者/买卖订单（P1.2 扫描热点）；② 按<b>市场区</b>并行执行区内撮合 —— worker
+   * 只在<b>本区账户副本</b>上算出 {@code FillIntent}（不可变意向），协调器再按<b>拓扑区序</b>把每个区的意向经唯一写口 {@code
+   * EconomySettlement.applyTransfer} 回放到真实会话（冻结写只发生在协调器阶段，M8）。
    *
-   * <p>★★ <b>撮合本身仍是协调器单线程</b>（本 R2 的如实边界）：区内撮合会写账户、挂冻结、铸 {@code MARKET_TRADE}
-   * 转移；跨区撮合在一次成交里同时触碰卖方区与买方区（路线/在途/运费），必须由跨区协调器按 {@code (landedPrice, costRank, canonical seller,
-   * canonical buyer, orderId)} 全局稳定序一次算完 —— 那是 R3（P3 跨区协调）的工作。本步只把"订单/参与者视图构建"这一读-only
-   * 阶段并行化，不改任何撮合顺序与数值。
+   * <p>★★ <b>为什么 worker 要拿账户副本</b>：同一区域的多个主体共用账户表，撮合是"先扣后加、再判断"的可变计算；直接让多个 worker 写 {@code
+   * MarketRound} 的八张共享表是数据竞争。⇒ 每个区在 worker 内建一份<b>本区参与者的账户副本</b>（外层表复制、内层表只读换新）， 用与串行路径
+   * <b>逐字同一条</b> {@code matchGroup/pairUp/executeTrade} 算完本区的成交序列；协调器按区序回放这些成交（同一套算式、同一套写口），
+   * 因此最终账户/冻结/读数与串行路径逐值相同，且线程数不改变任何判定。
+   *
+   * <p>★★ <b>撮合顺序</b>：回放序 = {@code topology.regions()} 的拓扑区序 × 区内 {@code orderedCommodities} 商品序 ×
+   * worker 的 canonical 槽位序（{@code ctx.buys}/{@code ctx.sells} 的全局插入序）。三者都是内容的纯函数，与 worker 完成顺序、线程
+   * id 无关；因此 1/4/8 线程产出的成交序列、账户终态与报告逐值相同。★ 跨区撮合仍是协调器单线程（跨区一笔同时触碰两个区的路线/在途/运费， 属 R3 的 P3
+   * 跨区协调）；本轮只把区内并行做实，并用 P1.2 索引去掉它的全表扫描。
    */
   static MarketOutcome clearOncePerCycle(
       Map<HexCoord, Market> markets,
@@ -481,6 +488,11 @@ final class MarketSettlement {
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
     //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
+    //   ★★ C4：rowsByHex 只在这里建一次（旧 R2 让每个分区 worker 各自重建一次），只读传给 worker。
+    //   ★★ 并行安全：worker 读的必须是**普通只读表**，不能是 AccountSession 的活视图（owner 守卫在 worker 线程
+    //     第一次 get 就抛）⇒ 协调器先把八张账户表浅拷成 planningRound，worker 只读它。
+    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.rows);
+    MarketRound planningRound = readOnlyPlanningRound(round);
     TreeMap<String, List<HexCoord>> hexesByRegion = new TreeMap<>();
     for (HexCoord hex : markets.keySet()) {
       hexesByRegion
@@ -497,14 +509,13 @@ final class MarketSettlement {
         SettlementExecutor.execute(
             plan,
             partition -> {
-              Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.rows);
               List<HexOrderPlan> planned = new ArrayList<>();
               for (String regionId : partition.canonicalKeys()) {
                 for (HexCoord hex : hexesByRegion.get(regionId)) {
                   Market market = markets.get(hex);
                   List<HouseholdId> keys =
                       rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
-                  HexPlan hexPlan = planFor(round, hex, keys);
+                  HexPlan hexPlan = planFor(planningRound, hex, keys);
                   if (hexPlan.participants.isEmpty()) {
                     continue;
                   }
@@ -520,7 +531,8 @@ final class MarketSettlement {
                     if (market.priceOf(commodity) <= 0L) {
                       continue; // Market 的构造期守卫已判死，这里只防御
                     }
-                    PlannedOrders orders = ordersFor(round, hexPlan, hex, market, commodity);
+                    PlannedOrders orders =
+                        ordersFor(planningRound, hexPlan, hex, market, commodity);
                     for (BuyOrder order : orders.buys()) {
                       Participant buyer = byActor.get(order.requester());
                       if (buyer == null) {
@@ -561,20 +573,30 @@ final class MarketSettlement {
       ctx.buys.addAll(ordered.buys());
       ctx.sells.addAll(ordered.sells());
     }
+    // ★ 槽位的全局下标 = 它们在 ctx.buys / ctx.sells 里的位置；worker 产出的 FillIntent 用它定位回放目标。
+    for (int i = 0; i < ctx.buys.size(); i++) {
+      ctx.buys.get(i).orderIndex = i;
+    }
+    for (int i = 0; i < ctx.sells.size(); i++) {
+      ctx.sells.get(i).orderIndex = i;
+    }
+
+    // ── 1b. P1.2：每轮只建一次的只读索引（区内/跨区/邻接/商品序）—— worker 只读，不持有可写状态 ─────
+    MarketIndexes indexes = MarketIndexes.build(ctx);
 
     // ── 2. 冻结（M1.2 的写者接上）：挂单即占用；成交/发运/轮末释放 ────────────────────────
     commitFreezes(ctx);
     try {
-      // ── 3. 区内优先 ─────────────────────────────────────────────────────────────────
-      matchWithinRegions(ctx);
-      // ── 4. 跨区候选（第一版只考直接邻接供应区）──────────────────────────────────────────
-      matchAcrossRegions(ctx);
+      // ── 3. 区内优先：按市场区并行计算 FillIntent，协调器按拓扑区序回放（唯一写口仍 applyTransfer）
+      matchWithinRegions(ctx, parallelism, indexes);
+      // ── 4. 跨区候选（第一版只考直接邻接供应区；P1.2 索引去掉全表扫描，协调器单线程）──────────────
+      matchAcrossRegions(ctx, indexes);
     } finally {
       releaseAllFreezes(ctx);
     }
 
     // ── 5. 未成交原因（不聚合丢失；买卖两侧分开）────────────────────────────────────────
-    collectUnfilled(ctx);
+    collectUnfilled(ctx, indexes);
 
     List<MarketReport.RouteUsage> routeUsages = new ArrayList<>();
     for (RouteAccumulator acc : ctx.routes.values()) {
@@ -841,15 +863,19 @@ final class MarketSettlement {
   // ── 冻结生命周期（M1.2 的写者）────────────────────────────────────────────────────────
 
   private static void commitFreezes(MatchContext ctx) {
-    // 卖：每条卖单全额冻结（绝对值 = 底值 + 承诺）。
+    // 卖：每条卖单全额冻结（绝对值 = 底值 + 承诺）。★ P1.3：按 (seller, commodity) 轴一次求和，不再逐条扫全表。
+    ctx.sellFrozenSums.clear();
     for (SellSlot sell : ctx.sells) {
       sell.baseFrozenGoods = frozenGoodsOf(ctx.round, sell.seller, sell.order.commodity());
       sell.frozenRemaining = sell.order.sellable();
+      ctx.sellFrozenSums.merge(sellFrozenAxis(sell), sell.frozenRemaining, Long::sum);
     }
     for (SellSlot sell : ctx.sells) {
-      refreshSellFrozen(ctx, sell);
+      refreshSellFrozen(ctx, sell); // O(1)：读轴累计值（见 MatchContext.sellFrozenSums）
     }
     // 买：逐主体把"最多要花多少钱"按可花余额封顶后冻结（预算独立算，但承诺不许超过钱包）。
+    //   ★ P1.3：先把全部分组的 frozenRemaining 定完，再按 (buyer, currency) 轴一次写冻结表。
+    ctx.buyFrozenSums.clear();
     Map<String, List<BuySlot>> byOwner = new LinkedHashMap<>();
     for (BuySlot buy : ctx.buys) {
       String key = buy.buyer.actor.kind() + ":" + buy.buyer.actor.id() + ":" + buy.currency.value();
@@ -884,9 +910,12 @@ final class MarketSettlement {
           group.get(i).frozenRemaining = parts[i];
         }
       }
-      for (BuySlot buy : group) {
-        refreshBuyFrozen(ctx, buy);
-      }
+    }
+    for (BuySlot buy : ctx.buys) {
+      ctx.buyFrozenSums.merge(buyFrozenAxis(buy), buy.frozenRemaining, Long::sum);
+    }
+    for (BuySlot buy : ctx.buys) {
+      refreshBuyFrozen(ctx, buy); // O(1)：读轴累计值
     }
   }
 
@@ -907,72 +936,616 @@ final class MarketSettlement {
       sell.frozenRemaining = 0L;
       setFrozenGoods(ctx.round, sell.seller, sell.order.commodity(), sell.baseFrozenGoods);
     }
+    ctx.buyFrozenSums.clear();
+    ctx.sellFrozenSums.clear();
   }
 
+  /**
+   * ★ P1.3：卖单冻结的轴键 = {@code (seller actor, commodity)}。一个主体的全部卖单必在同一市场区（账户在唯一格），因此 worker
+   * 的本区副本上的轴累计值与全局轴累计值一致。
+   */
+  private static String sellFrozenAxis(SellSlot sell) {
+    return sell.seller.actor.kind()
+        + ":"
+        + sell.seller.actor.id()
+        + ":"
+        + sell.order.commodity().value();
+  }
+
+  /** ★ P1.3：买单冻结的轴键 = {@code (buyer actor, currency)}（与 commitFreezes 的分组键逐字同源）。 */
+  private static String buyFrozenAxis(BuySlot buy) {
+    return buy.buyer.actor.kind() + ":" + buy.buyer.actor.id() + ":" + buy.currency.value();
+  }
+
+  /** 刷新卖方商品冻结为绝对值：{@code base + 该轴剩余承诺}`（轴累计值由 commitFreezes/executeTrade 增量维护）。 */
   private static void refreshSellFrozen(MatchContext ctx, SellSlot sell) {
-    long sum = 0L;
-    for (SellSlot other : ctx.sells) {
-      if (other.seller.actor.equals(sell.seller.actor)
-          && other.order.commodity().equals(sell.order.commodity())) {
-        sum += other.frozenRemaining;
-      }
-    }
+    long sum = ctx.sellFrozenSums.getOrDefault(sellFrozenAxis(sell), 0L);
     setFrozenGoods(ctx.round, sell.seller, sell.order.commodity(), sell.baseFrozenGoods + sum);
   }
 
+  /** 刷新买方货币冻结为绝对值：{@code base + 该轴剩余承诺}`（轴累计值由 commitFreezes/executeTrade 增量维护）。 */
   private static void refreshBuyFrozen(MatchContext ctx, BuySlot buy) {
-    long sum = 0L;
-    for (BuySlot other : ctx.buys) {
-      if (other.buyer.actor.equals(buy.buyer.actor) && other.currency.equals(buy.currency)) {
-        sum += other.frozenRemaining;
-      }
-    }
+    long sum = ctx.buyFrozenSums.getOrDefault(buyFrozenAxis(buy), 0L);
     setFrozenMoney(ctx.round, buy.buyer, buy.currency, buy.baseFrozenMoney + sum);
   }
 
-  // ── 区内撮合 ───────────────────────────────────────────────────────────────────────
+  /** 从卖冻结轴累计值里扣掉已释放量（成交释放冻结时调用；负值 = 轴账与槽位漂开 ⇒ fail-closed）。 */
+  private static void releaseSellFrozenSum(MatchContext ctx, SellSlot sell, long released) {
+    if (released == 0L) {
+      return;
+    }
+    String axis = sellFrozenAxis(sell);
+    long sum = ctx.sellFrozenSums.getOrDefault(axis, 0L) - released;
+    if (sum < 0L) {
+      throw new IllegalStateException("卖冻结轴累计值被扣成负数（槽位与轴账漂开）：轴=" + axis + " 释放=" + released);
+    }
+    ctx.sellFrozenSums.put(axis, sum);
+  }
+
+  /** 从买冻结轴累计值里扣掉已释放量（成交释放冻结时调用；负值 = 轴账与槽位漂开 ⇒ fail-closed）。 */
+  private static void releaseBuyFrozenSum(MatchContext ctx, BuySlot buy, long released) {
+    if (released == 0L) {
+      return;
+    }
+    String axis = buyFrozenAxis(buy);
+    long sum = ctx.buyFrozenSums.getOrDefault(axis, 0L) - released;
+    if (sum < 0L) {
+      throw new IllegalStateException("买冻结轴累计值被扣成负数（槽位与轴账漂开）：轴=" + axis + " 释放=" + released);
+    }
+    ctx.buyFrozenSums.put(axis, sum);
+  }
+
+  // ── P1.2：每轮一次的只读索引（worker 只读；构建序全部来自 canonical 内容）──────────────────────
+
+  /**
+   * ★★ <b>市场轮索引</b>（P1.2）：把区内/跨区撮合里的 O(买卖单 × 商品 × 格) 全表扫描换成一次建表、按 (区/格, 商品) 直取。
+   *
+   * <p>★ <b>为什么索引里的槽位列表必须是全局插入序</b>：区内 {@code matchGroup} 与跨区 {@code matchRoute} 都按 {@code
+   * ctx.buys}/{@code ctx.sells} 的插入序决定 {@code ProportionalSplit} 的下标序（tie-break = 下标升序）⇒
+   * 索引只做<b>分桶</b>，桶内保持原相对序；动态条件（{@code remaining}/{@code noMoney}/限价/时限）在取用时过滤，不在建表时淘汰。
+   *
+   * <p>★ <b>邻接表</b>：按 {@code topology.regions()} 的声明序建 {@code regionId → 邻接 regionId 集}，只消费 {@code
+   * topology.adjacent}（唯一判定处）；跨区循环只查表，不再对每个买卖单对调一次几何判断。
+   */
+  private static final class MarketIndexes {
+
+    final Map<String, Map<CommodityId, List<BuySlot>>> buysByRegionCommodity;
+    final Map<String, Map<CommodityId, List<SellSlot>>> sellsByRegionCommodity;
+    final Map<String, Map<CommodityId, List<BuySlot>>> buysByHexCommodity;
+    final Map<String, Map<CommodityId, List<SellSlot>>> sellsByHexCommodity;
+    final Map<CommodityId, List<HexCoord>> buyHexesByCommodity;
+    final Map<CommodityId, List<HexCoord>> sellHexesByCommodity;
+    final Map<String, Set<String>> adjacentRegionIds;
+    final Map<String, List<Participant>> participantsByHex;
+    final List<CommodityId> commodities;
+
+    private MarketIndexes(
+        Map<String, Map<CommodityId, List<BuySlot>>> buysByRegionCommodity,
+        Map<String, Map<CommodityId, List<SellSlot>>> sellsByRegionCommodity,
+        Map<String, Map<CommodityId, List<BuySlot>>> buysByHexCommodity,
+        Map<String, Map<CommodityId, List<SellSlot>>> sellsByHexCommodity,
+        Map<CommodityId, List<HexCoord>> buyHexesByCommodity,
+        Map<CommodityId, List<HexCoord>> sellHexesByCommodity,
+        Map<String, Set<String>> adjacentRegionIds,
+        Map<String, List<Participant>> participantsByHex,
+        List<CommodityId> commodities) {
+      this.buysByRegionCommodity = buysByRegionCommodity;
+      this.sellsByRegionCommodity = sellsByRegionCommodity;
+      this.buysByHexCommodity = buysByHexCommodity;
+      this.sellsByHexCommodity = sellsByHexCommodity;
+      this.buyHexesByCommodity = buyHexesByCommodity;
+      this.sellHexesByCommodity = sellHexesByCommodity;
+      this.adjacentRegionIds = adjacentRegionIds;
+      this.participantsByHex = participantsByHex;
+      this.commodities = commodities;
+    }
+
+    static MarketIndexes build(MatchContext ctx) {
+      Map<String, Map<CommodityId, List<BuySlot>>> buysByRegionCommodity = new LinkedHashMap<>();
+      Map<String, Map<CommodityId, List<BuySlot>>> buysByHexCommodity = new LinkedHashMap<>();
+      Map<CommodityId, LinkedHashSet<HexCoord>> buyHexes = new LinkedHashMap<>();
+      for (BuySlot buy : ctx.buys) {
+        CommodityId commodity = buy.order.commodity();
+        addIndexed(buysByRegionCommodity, buy.region.node().nodeId(), commodity, buy);
+        addIndexed(buysByHexCommodity, hexKeyOf(buy.hex), commodity, buy);
+        buyHexes.computeIfAbsent(commodity, ignored -> new LinkedHashSet<>()).add(buy.hex);
+      }
+      Map<String, Map<CommodityId, List<SellSlot>>> sellsByRegionCommodity = new LinkedHashMap<>();
+      Map<String, Map<CommodityId, List<SellSlot>>> sellsByHexCommodity = new LinkedHashMap<>();
+      Map<CommodityId, LinkedHashSet<HexCoord>> sellHexes = new LinkedHashMap<>();
+      for (SellSlot sell : ctx.sells) {
+        CommodityId commodity = sell.order.commodity();
+        addIndexed(sellsByRegionCommodity, sell.region.node().nodeId(), commodity, sell);
+        addIndexed(sellsByHexCommodity, hexKeyOf(sell.hex), commodity, sell);
+        sellHexes.computeIfAbsent(commodity, ignored -> new LinkedHashSet<>()).add(sell.hex);
+      }
+      Map<String, Set<String>> adjacentRegionIds = new LinkedHashMap<>();
+      for (MarketRegion region : ctx.topology.regions()) {
+        LinkedHashSet<String> adjacent = new LinkedHashSet<>();
+        for (MarketRegion other : ctx.topology.regions()) {
+          if (!other.equals(region) && ctx.topology.adjacent(region, other)) {
+            adjacent.add(other.node().nodeId());
+          }
+        }
+        adjacentRegionIds.put(region.node().nodeId(), Collections.unmodifiableSet(adjacent));
+      }
+      Map<String, List<Participant>> participantsByHex = new LinkedHashMap<>();
+      for (Participant participant : ctx.participants.values()) {
+        HexCoord hex = ctx.participantHex.get(participant.actor);
+        if (hex == null) {
+          continue; // 与 ctx.participantHex 同源；正常路径每个参与者都有落点格
+        }
+        participantsByHex
+            .computeIfAbsent(hexKeyOf(hex), ignored -> new ArrayList<>())
+            .add(participant);
+      }
+      return new MarketIndexes(
+          buysByRegionCommodity,
+          sellsByRegionCommodity,
+          buysByHexCommodity,
+          sellsByHexCommodity,
+          sortedHexes(buyHexes),
+          sortedHexes(sellHexes),
+          adjacentRegionIds,
+          participantsByHex,
+          orderedCommodities(ctx));
+    }
+  }
+
+  /** 往 {@code (outerKey, innerKey)} 桶里按遍历序追加一条（桶内相对序 = 全局插入序，见 MarketIndexes 类注）。 */
+  private static <K, V> void addIndexed(
+      Map<String, Map<K, List<V>>> table, String outerKey, K innerKey, V value) {
+    table
+        .computeIfAbsent(outerKey, ignored -> new LinkedHashMap<>())
+        .computeIfAbsent(innerKey, ignored -> new ArrayList<>())
+        .add(value);
+  }
+
+  /** 每个商品一条按 {@code (q, r)} 升序的 distinct hex 表（与串行路径的 sort 口径逐字相同）。 */
+  private static Map<CommodityId, List<HexCoord>> sortedHexes(
+      Map<CommodityId, LinkedHashSet<HexCoord>> raw) {
+    Map<CommodityId, List<HexCoord>> sorted = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, LinkedHashSet<HexCoord>> entry : raw.entrySet()) {
+      List<HexCoord> hexes = new ArrayList<>(entry.getValue());
+      hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+      sorted.put(entry.getKey(), List.copyOf(hexes));
+    }
+    return sorted;
+  }
+
+  /** 行键与 {@code EconomySettlement.rowsByHex} 同源：一格一个 canonical 串（唯一拼写点）。 */
+  private static String hexKeyOf(HexCoord hex) {
+    return IndustryHexKeys.hexKey(hex.q(), hex.r());
+  }
+
+  // ── 区内撮合（按市场区并行算意向；协调器按拓扑区序回放）────────────────────────────────
 
   /**
    * 区内逐 (region, commodity) 撮合：参考价 = **集散节点格的市场价**（M2.6 的"区价"）；买方限价 = ask、卖方底价 = bid，
    * 两侧限价在这里按参考价过滤（正常时 ask ≥ 参考价 ≥ bid ⇒ 全部通过；成员格价表不同时由限价真的把单挡下）。
+   *
+   * <p>★★ <b>并行形态</b>（见 {@code clearOncePerCycle} 的 R2 注释）：按市场区把"同区同商品池"分给 worker；worker 在
+   * <b>本区账户副本</b>上用同一条 {@code matchGroup} 算出 {@code FillIntent}，不碰共享账户表；协调器收集后按 {@code
+   * topology.regions()} 的拓扑区序逐个回放（每笔仍走 {@code executeTrade} → 唯一写口 {@code applyTransfer}），
+   * 冻结写只发生在协调器阶段（M8）。回放序 = 拓扑区序 × 区内商品序 × 槽位 canonical 序，与线程到达序无关。
    */
-  private static void matchWithinRegions(MatchContext ctx) {
+  private static void matchWithinRegions(
+      MatchContext ctx, EconomyParallelism parallelism, MarketIndexes indexes) {
+    List<MarketRegion> regions = new ArrayList<>();
     for (MarketRegion region : ctx.topology.regions()) {
-      Market anchorMarket = ctx.markets.get(region.anchor());
-      if (anchorMarket == null) {
-        continue;
+      if (ctx.markets.get(region.anchor()) == null) {
+        continue; // 串行路径的同款跳过：锚格没有市场表 ⇒ 这个区没有可交易报价
       }
-      for (CommodityId commodity : orderedCommodities(ctx)) {
-        long price = anchorMarket.priceOf(commodity);
-        if (price <= 0L) {
-          continue;
-        }
-        List<BuySlot> buys = new ArrayList<>();
-        for (BuySlot buy : ctx.buys) {
-          if (buy.remaining > 0
-              && !buy.noMoney
-              && buy.region.equals(region)
-              && buy.order.commodity().equals(commodity)
-              && buy.order.maxLandedPrice() >= price
-              && buy.order.latestArrivalTick() >= ctx.round.day) {
-            buys.add(buy);
-          }
-        }
-        List<SellSlot> sells = new ArrayList<>();
-        for (SellSlot sell : ctx.sells) {
-          if (sell.remaining > 0
-              && sell.region.equals(region)
-              && sell.order.commodity().equals(commodity)
-              && sell.order.minPrice() <= price
-              && sell.order.availableFromTick() <= ctx.round.day) {
-            sells.add(sell);
-          }
-        }
-        if (buys.isEmpty() || sells.isEmpty()) {
-          continue;
-        }
-        matchGroup(ctx, buys, sells, price, null);
+      String regionId = region.node().nodeId();
+      if (!indexes.buysByRegionCommodity.containsKey(regionId)
+          && !indexes.sellsByRegionCommodity.containsKey(regionId)) {
+        continue; // 本区没有买卖单 ⇒ 撮合无事可做（省一次空副本）
       }
+      regions.add(region);
+    }
+    if (regions.isEmpty()) {
+      return;
+    }
+    // ★★ worker 不能读 AccountSession 的活视图（owner 守卫在第一次 get 就抛）⇒ 本区账户副本必须在**协调器线程**
+    //   先建好；ExecutorService.submit 的 happens-before 把建好的副本安全发布给 worker（worker 只改自己的副本）。
+    Map<String, RegionClone> clonesById = new LinkedHashMap<>();
+    for (MarketRegion region : regions) {
+      RegionClone clone = prepareRegion(region, ctx, indexes);
+      clonesById.put(clone.regionId, clone);
+    }
+    List<String> regionIds = new ArrayList<>(clonesById.keySet());
+    PartitionPlan plan =
+        PartitionPlan.of(SettlementStage.LOCAL_MARKET, regionIds, parallelism.partitionCount());
+    List<List<RegionOutcome>> outcomesByPartition =
+        SettlementExecutor.execute(
+            plan,
+            partition -> {
+              List<RegionOutcome> outcomes = new ArrayList<>(partition.size());
+              for (String regionId : partition.canonicalKeys()) {
+                outcomes.add(clonesById.get(regionId).run(indexes));
+              }
+              return outcomes;
+            },
+            parallelism.poolOrNull());
+    Map<String, RegionOutcome> outcomesByRegion = new LinkedHashMap<>();
+    for (List<RegionOutcome> partitionOutcomes : outcomesByPartition) {
+      for (RegionOutcome outcome : partitionOutcomes) {
+        outcomesByRegion.put(outcome.regionId(), outcome);
+      }
+    }
+    for (MarketRegion region : regions) {
+      RegionOutcome outcome = outcomesByRegion.get(region.node().nodeId());
+      if (outcome != null) {
+        replayRegionOutcome(ctx, outcome);
+      }
+    }
+  }
+
+  /**
+   * <b>协调器线程</b>里建立一个区的私有副本：买卖单槽位复制 + 本区参与者账户表复制 + 本地账本/冻结轴累计。
+   *
+   * <p>★★ <b>为什么必须在协调器线程建</b>：账户表是 {@link AccountSession} 的活视图，owner 守卫在 worker 线程第一次读时就抛 ——
+   * 这正是"worker 只准拿不可变快照/意向缓冲"的结构化边界。建好的副本经 {@code ExecutorService.submit} 的 happens-before 安全发布给
+   * worker；worker 之后只改自己的副本。
+   *
+   * <p>★ <b>为什么副本只含本区参与者</b>：账户键 {@code (actor, location)} 的 actor 只属于一个格、一个区；本区成交的付方/收方都是本区
+   * participant ⇒ 副本足以让本区内的因果链（付款 → 余额 → 下一笔可付）逐值复现。跨区成交不在 worker 里做（R3 的 P3）。
+   */
+  private static RegionClone prepareRegion(
+      MarketRegion region, MatchContext ctx, MarketIndexes indexes) {
+    String regionId = region.node().nodeId();
+    Map<CommodityId, List<BuySlot>> localBuysByCommodity = new LinkedHashMap<>();
+    List<BuySlot> localBuys = new ArrayList<>();
+    for (Map.Entry<CommodityId, List<BuySlot>> entry :
+        indexes.buysByRegionCommodity.getOrDefault(regionId, Map.of()).entrySet()) {
+      List<BuySlot> copies = new ArrayList<>(entry.getValue().size());
+      for (BuySlot buy : entry.getValue()) {
+        BuySlot copy = new BuySlot(buy);
+        copies.add(copy);
+        localBuys.add(copy);
+      }
+      localBuysByCommodity.put(entry.getKey(), copies);
+    }
+    Map<CommodityId, List<SellSlot>> localSellsByCommodity = new LinkedHashMap<>();
+    List<SellSlot> localSells = new ArrayList<>();
+    for (Map.Entry<CommodityId, List<SellSlot>> entry :
+        indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of()).entrySet()) {
+      List<SellSlot> copies = new ArrayList<>(entry.getValue().size());
+      for (SellSlot sell : entry.getValue()) {
+        SellSlot copy = new SellSlot(sell);
+        copies.add(copy);
+        localSells.add(copy);
+      }
+      localSellsByCommodity.put(entry.getKey(), copies);
+    }
+    Map<ActorRef, Participant> regionParticipants = new LinkedHashMap<>();
+    for (BuySlot buy : localBuys) {
+      regionParticipants.putIfAbsent(buy.buyer.actor, buy.buyer);
+    }
+    for (SellSlot sell : localSells) {
+      regionParticipants.putIfAbsent(sell.seller.actor, sell.seller);
+    }
+    // 八张账户表的本区副本：外层表复制（worker 只改自己的副本），内层表只读换新（与 applyTransfer 的写法逐字相容）。
+    Map<HouseholdId, Map<CommodityId, Long>> householdGoods = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
+    Map<ActorRef, Map<CommodityId, Long>> operatorGoods = new LinkedHashMap<>();
+    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney = new LinkedHashMap<>();
+    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods = new LinkedHashMap<>();
+    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CommodityId, Long>> unmetToday = new LinkedHashMap<>();
+    for (Participant participant : regionParticipants.values()) {
+      if (participant.household != null) {
+        HouseholdId household = participant.household;
+        householdGoods.put(household, copyBalances(ctx.round.householdGoods, household));
+        householdMoney.put(household, copyBalances(ctx.round.householdMoney, household));
+        householdFrozenGoods.put(
+            household, copyBalances(ctx.round.householdFrozenGoods, household));
+        householdFrozenMoney.put(
+            household, copyBalances(ctx.round.householdFrozenMoney, household));
+        Map<CommodityId, Long> recorded = ctx.round.unmetToday.get(household);
+        if (recorded != null) {
+          unmetToday.put(household, new LinkedHashMap<>(recorded));
+        }
+      } else {
+        ActorRef actor = participant.actor;
+        // ★ 经营者账"缺席合法"（没播种）：只复制存在的表，保持 applyTransfer 的 containsKey 路由语义。
+        if (ctx.round.operatorGoods.containsKey(actor)) {
+          operatorGoods.put(actor, copyBalances(ctx.round.operatorGoods, actor));
+        }
+        if (ctx.round.operatorMoney.containsKey(actor)) {
+          operatorMoney.put(actor, copyBalances(ctx.round.operatorMoney, actor));
+        }
+        if (ctx.round.operatorFrozenGoods.containsKey(actor)) {
+          operatorFrozenGoods.put(actor, copyBalances(ctx.round.operatorFrozenGoods, actor));
+        }
+        if (ctx.round.operatorFrozenMoney.containsKey(actor)) {
+          operatorFrozenMoney.put(actor, copyBalances(ctx.round.operatorFrozenMoney, actor));
+        }
+      }
+    }
+    MarketRound localRound =
+        new MarketRound(
+            ctx.round.day,
+            ctx.round.rows,
+            householdGoods,
+            householdMoney,
+            householdFrozenGoods,
+            householdFrozenMoney,
+            operatorGoods,
+            operatorMoney,
+            operatorFrozenGoods,
+            operatorFrozenMoney,
+            unmetToday,
+            ctx.round.householdOfActor,
+            ctx.round.industries,
+            ctx.round.relations,
+            ctx.round.allocations,
+            ctx.round.shipments,
+            // ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
+            new ProductionLedger.Accumulator(ctx.round.day));
+    MatchContext local = new MatchContext(localRound, ctx.markets, ctx.topology, ctx.carrier);
+    local.buys.addAll(localBuys);
+    local.sells.addAll(localSells);
+    local.recordFillIntents = true;
+    for (BuySlot buy : localBuys) {
+      local.buyFrozenSums.merge(buyFrozenAxis(buy), buy.frozenRemaining, Long::sum);
+    }
+    for (SellSlot sell : localSells) {
+      local.sellFrozenSums.merge(sellFrozenAxis(sell), sell.frozenRemaining, Long::sum);
+    }
+    return new RegionClone(
+        regionId,
+        localBuysByCommodity,
+        localSellsByCommodity,
+        localBuys,
+        localSells,
+        local,
+        ctx.markets.get(region.anchor()),
+        ctx.round.day);
+  }
+
+  /**
+   * 一个区的 worker 私有工作集：协调器建好副本后交给 worker，worker 只在本对象内跑同一条 {@code matchGroup}，交回不可变结果。
+   *
+   * <p>★ 本类<b>不</b>持有 {@link AccountSession}、{@link MarketRound} 的活账户视图或任何共享可写表 ——
+   * 线程安全靠"每区一个实例、实例只被一个 worker 触碰"的结构保证。
+   */
+  private static final class RegionClone {
+
+    final String regionId;
+    final Map<CommodityId, List<BuySlot>> buysByCommodity;
+    final Map<CommodityId, List<SellSlot>> sellsByCommodity;
+    final List<BuySlot> allBuys;
+    final List<SellSlot> allSells;
+    final MatchContext local;
+    final Market anchorMarket;
+    final long day;
+
+    RegionClone(
+        String regionId,
+        Map<CommodityId, List<BuySlot>> buysByCommodity,
+        Map<CommodityId, List<SellSlot>> sellsByCommodity,
+        List<BuySlot> allBuys,
+        List<SellSlot> allSells,
+        MatchContext local,
+        Market anchorMarket,
+        long day) {
+      this.regionId = regionId;
+      this.buysByCommodity = buysByCommodity;
+      this.sellsByCommodity = sellsByCommodity;
+      this.allBuys = allBuys;
+      this.allSells = allSells;
+      this.local = local;
+      this.anchorMarket = anchorMarket;
+      this.day = day;
+    }
+
+    /** worker 入口：按商品序跑区内撮合，交回意向 + 槽位终态（不读共享账户表）。 */
+    RegionOutcome run(MarketIndexes indexes) {
+      if (anchorMarket != null) {
+        for (CommodityId commodity : indexes.commodities) {
+          long price = anchorMarket.priceOf(commodity);
+          if (price <= 0L) {
+            continue;
+          }
+          List<BuySlot> buys = activeBuys(buysByCommodity.get(commodity), price, day);
+          if (buys.isEmpty()) {
+            continue;
+          }
+          List<SellSlot> sells = activeSells(sellsByCommodity.get(commodity), price, day);
+          if (sells.isEmpty()) {
+            continue;
+          }
+          matchGroup(local, buys, sells, price, null);
+        }
+      }
+      List<BuySlotState> buyStates = new ArrayList<>(allBuys.size());
+      for (BuySlot buy : allBuys) {
+        buyStates.add(
+            new BuySlotState(
+                buy.orderIndex,
+                buy.remaining,
+                buy.frozenRemaining,
+                buy.spentMilli,
+                buy.noMoney,
+                buy.blocked));
+      }
+      List<SellSlotState> sellStates = new ArrayList<>(allSells.size());
+      for (SellSlot sell : allSells) {
+        sellStates.add(new SellSlotState(sell.orderIndex, sell.remaining, sell.frozenRemaining));
+      }
+      return new RegionOutcome(
+          regionId, List.copyOf(local.fillIntents), buyStates, sellStates, local.round.unmetToday);
+    }
+  }
+
+  /** 买方槽位的动态过滤（与串行扫描里的条件逐字相同；桶内相对序不变 ⇒ ProportionalSplit 下标序不变）。 */
+  private static List<BuySlot> activeBuys(List<BuySlot> source, long price, long day) {
+    if (source == null) {
+      return List.of();
+    }
+    List<BuySlot> result = new ArrayList<>();
+    for (BuySlot buy : source) {
+      if (buy.remaining > 0
+          && !buy.noMoney
+          && buy.order.maxLandedPrice() >= price
+          && buy.order.latestArrivalTick() >= day) {
+        result.add(buy);
+      }
+    }
+    return result;
+  }
+
+  /** 卖方槽位的动态过滤（与串行扫描里的条件逐字相同）。 */
+  private static List<SellSlot> activeSells(List<SellSlot> source, long price, long day) {
+    if (source == null) {
+      return List.of();
+    }
+    List<SellSlot> result = new ArrayList<>();
+    for (SellSlot sell : source) {
+      if (sell.remaining > 0
+          && sell.order.minPrice() <= price
+          && sell.order.availableFromTick() <= day) {
+        result.add(sell);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * ★★ <b>按拓扑区序回放一个区的意向</b>：每笔走与 worker 内逐字同一条 {@code executeTrade}（唯一写口），随后校验并抄回槽位终态。
+   *
+   * <p>★ <b>为什么校验会抛</b>：回放只按 worker 已算好的序列执行；{@code remaining}/{@code frozenRemaining}/{@code
+   * spentMilli} 若与 worker 不一致，说明分区副本或回放序漂开了 —— 这正是"不许按到达序兜底"要判死的形态，宁抛不静默改数。
+   */
+  private static void replayRegionOutcome(MatchContext ctx, RegionOutcome outcome) {
+    for (FillIntent fill : outcome.fills()) {
+      BuySlot buy = ctx.buys.get(fill.buyIndex());
+      SellSlot sell = ctx.sells.get(fill.sellIndex());
+      // ★ canonical 键自检：worker 的意向必须落在它声明的 (区, 商品, 卖方, 买方) 槽位上；回放序仍是
+      //   topology 区序 × worker 成交序（内容的纯函数），不按 (seller,buyer) 重排 —— 重排会改变同一区内
+      //   已由串行基准确定的逐笔顺序与冻结释放中间态。
+      if (!fill.regionId().equals(sell.region.node().nodeId())
+          || !fill.commodity().equals(sell.order.commodity())
+          || !fill.sellerKey().equals(actorKeyOf(sell.seller.actor))
+          || !fill.buyerKey().equals(actorKeyOf(buy.buyer.actor))) {
+        throw new IllegalStateException(
+            "FillIntent 的 canonical 键与回放槽位不一致（分区/拼接漂开）：买槽="
+                + fill.buyIndex()
+                + " 卖槽="
+                + fill.sellIndex());
+      }
+      executeTrade(ctx, buy, sell, fill.quantity(), fill.unitPrice(), null);
+      buy.remaining -= fill.quantity();
+      sell.remaining -= fill.quantity();
+    }
+    for (BuySlotState state : outcome.buyStates()) {
+      BuySlot buy = ctx.buys.get(state.orderIndex());
+      if (buy.remaining != state.remaining()
+          || buy.frozenRemaining != state.frozenRemaining()
+          || buy.spentMilli != state.spentMilli()) {
+        throw new IllegalStateException(
+            "区内市场回放与 worker 分区计算漂开（拒绝按到达序静默兜底）：买槽=" + state.orderIndex());
+      }
+      buy.noMoney = state.noMoney();
+      buy.blocked = state.blocked();
+    }
+    for (SellSlotState state : outcome.sellStates()) {
+      SellSlot sell = ctx.sells.get(state.orderIndex());
+      if (sell.remaining != state.remaining() || sell.frozenRemaining != state.frozenRemaining()) {
+        throw new IllegalStateException(
+            "区内市场回放与 worker 分区计算漂开（拒绝按到达序静默兜底）：卖槽=" + state.orderIndex());
+      }
+    }
+    ctx.round.unmetToday.putAll(copyUnmet(outcome.unmetToday()));
+  }
+
+  /** 深拷贝 {@code unmetToday} 的一层两层表（worker 交出的读取物与共享表脱钩）。 */
+  private static Map<HouseholdId, Map<CommodityId, Long>> copyUnmet(
+      Map<HouseholdId, Map<CommodityId, Long>> source) {
+    Map<HouseholdId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : source.entrySet()) {
+      copy.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
+    }
+    return copy;
+  }
+
+  /** ★ 审计/稳定键用的主体 canonical 串（只进意向记录，不参与任何判定）。 */
+  private static String actorKeyOf(ActorRef actor) {
+    return actor.kind() + ":" + actor.id();
+  }
+
+  /** 复制一张账户表里某一主体的内层余额表（内层表只读；改值一律由 applyTransfer 换新表）。 */
+  private static <K, I> Map<I, Long> copyBalances(Map<K, Map<I, Long>> table, K key) {
+    return new LinkedHashMap<>(table.getOrDefault(key, Map.of()));
+  }
+
+  /**
+   * ★★ <b>给并行 worker 用的只读市场轮</b>：八张账户表浅拷成普通 {@code LinkedHashMap}（内层表只读共享）， 避开 {@link
+   * AccountSession} 活视图的 owner 守卫；账本换成本地空累加器（订单生成不铸转移）。
+   *
+   * <p>★ 只允许在<b>协调器线程</b>调用（读活视图本身要过 owner 守卫），产物在并行阶段只读。
+   */
+  private static MarketRound readOnlyPlanningRound(MarketRound round) {
+    return new MarketRound(
+        round.day,
+        round.rows,
+        new LinkedHashMap<>(round.householdGoods),
+        new LinkedHashMap<>(round.householdMoney),
+        new LinkedHashMap<>(round.householdFrozenGoods),
+        new LinkedHashMap<>(round.householdFrozenMoney),
+        new LinkedHashMap<>(round.operatorGoods),
+        new LinkedHashMap<>(round.operatorMoney),
+        new LinkedHashMap<>(round.operatorFrozenGoods),
+        new LinkedHashMap<>(round.operatorFrozenMoney),
+        new LinkedHashMap<>(round.unmetToday),
+        round.householdOfActor,
+        round.industries,
+        round.relations,
+        round.allocations,
+        round.shipments,
+        new ProductionLedger.Accumulator(round.day));
+  }
+
+  /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
+  private record FillIntent(
+      int buyIndex,
+      int sellIndex,
+      long quantity,
+      long unitPrice,
+      String regionId,
+      CommodityId commodity,
+      String sellerKey,
+      String buyerKey) {}
+
+  /** worker 交回的买槽终态（noMoney/blocked 只可能由本区撮合改变；remaining/frozen/spent 会在回放后校验）。 */
+  private record BuySlotState(
+      int orderIndex,
+      long remaining,
+      long frozenRemaining,
+      long spentMilli,
+      boolean noMoney,
+      MarketUnfilledReason blocked) {}
+
+  /** worker 交回的卖槽终态。 */
+  private record SellSlotState(int orderIndex, long remaining, long frozenRemaining) {}
+
+  /** 一个区的 worker 产物（回放序 = 协调器遍历 topology.regions() 的区序；区与区之间的账户不重叠）。 */
+  private record RegionOutcome(
+      String regionId,
+      List<FillIntent> fills,
+      List<BuySlotState> buyStates,
+      List<SellSlotState> sellStates,
+      Map<HouseholdId, Map<CommodityId, Long>> unmetToday) {
+
+    RegionOutcome {
+      Objects.requireNonNull(regionId, "regionId");
+      fills = List.copyOf(fills);
+      buyStates = List.copyOf(buyStates);
+      sellStates = List.copyOf(sellStates);
+      unmetToday = copyUnmet(unmetToday);
     }
   }
 
@@ -1004,60 +1577,41 @@ final class MarketSettlement {
     pairUp(ctx, buys, buyParts, sells, sellParts, price, route);
   }
 
-  // ── 跨区撮合（邻接供应区）──────────────────────────────────────────────────────────
+  // ── 跨区撮合（邻接供应区；协调器单线程 + P1.2 索引）────────────────────────────────────
 
-  private static void matchAcrossRegions(MatchContext ctx) {
+  private static void matchAcrossRegions(MatchContext ctx, MarketIndexes indexes) {
     if (!ctx.topology.regional()) {
       return;
     }
-    for (CommodityId commodity : orderedCommodities(ctx)) {
+    for (CommodityId commodity : indexes.commodities) {
       List<HexCoord> buyerHexes = new ArrayList<>();
-      for (BuySlot buy : ctx.buys) {
-        if (buy.remaining > 0
-            && !buy.noMoney
-            && buy.order.commodity().equals(commodity)
-            && !buyerHexes.contains(buy.hex)) {
-          buyerHexes.add(buy.hex);
+      for (HexCoord hex : indexes.buyHexesByCommodity.getOrDefault(commodity, List.of())) {
+        if (hasActiveBuyAtHex(indexes, hex, commodity)) {
+          buyerHexes.add(hex);
         }
       }
-      buyerHexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
       for (HexCoord buyerHex : buyerHexes) {
         MarketRegion buyerRegion = ctx.topology.regionOf(buyerHex);
-        List<BuySlot> buys = new ArrayList<>();
-        for (BuySlot buy : ctx.buys) {
-          if (buy.remaining > 0
-              && !buy.noMoney
-              && buy.order.commodity().equals(commodity)
-              && buy.hex.equals(buyerHex)) {
-            buys.add(buy);
-          }
-        }
+        List<BuySlot> buys = activeBuysAtHex(indexes, buyerHex, commodity);
         if (buys.isEmpty()) {
           continue;
         }
         List<HexCoord> sellerHexes = new ArrayList<>();
-        for (SellSlot sell : ctx.sells) {
-          if (sell.remaining > 0
-              && sell.order.commodity().equals(commodity)
-              && !sellerHexes.contains(sell.hex)) {
-            sellerHexes.add(sell.hex);
+        for (HexCoord hex : indexes.sellHexesByCommodity.getOrDefault(commodity, List.of())) {
+          if (hasActiveSellAtHex(indexes, hex, commodity)) {
+            sellerHexes.add(hex);
           }
         }
-        sellerHexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
         for (HexCoord sellerHex : sellerHexes) {
           MarketRegion sellerRegion = ctx.topology.regionOf(sellerHex);
           if (sellerRegion.equals(buyerRegion)
-              || !ctx.topology.adjacent(buyerRegion, sellerRegion)) {
+              || !indexes
+                  .adjacentRegionIds
+                  .getOrDefault(buyerRegion.node().nodeId(), Set.of())
+                  .contains(sellerRegion.node().nodeId())) {
             continue;
           }
-          List<SellSlot> sells = new ArrayList<>();
-          for (SellSlot sell : ctx.sells) {
-            if (sell.remaining > 0
-                && sell.order.commodity().equals(commodity)
-                && sell.hex.equals(sellerHex)) {
-              sells.add(sell);
-            }
-          }
+          List<SellSlot> sells = activeSellsAtHex(indexes, sellerHex, commodity);
           if (sells.isEmpty()) {
             continue;
           }
@@ -1070,6 +1624,64 @@ final class MarketSettlement {
         }
       }
     }
+  }
+
+  private static boolean hasActiveBuyAtHex(
+      MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
+    for (BuySlot buy : indexedBuysAtHex(indexes, hex, commodity)) {
+      if (buy.remaining > 0 && !buy.noMoney) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static List<BuySlot> activeBuysAtHex(
+      MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
+    List<BuySlot> result = new ArrayList<>();
+    for (BuySlot buy : indexedBuysAtHex(indexes, hex, commodity)) {
+      if (buy.remaining > 0 && !buy.noMoney) {
+        result.add(buy);
+      }
+    }
+    return result;
+  }
+
+  private static List<BuySlot> indexedBuysAtHex(
+      MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
+    return indexes
+        .buysByHexCommodity
+        .getOrDefault(hexKeyOf(hex), Map.of())
+        .getOrDefault(commodity, List.of());
+  }
+
+  private static boolean hasActiveSellAtHex(
+      MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
+    for (SellSlot sell : indexedSellsAtHex(indexes, hex, commodity)) {
+      if (sell.remaining > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static List<SellSlot> activeSellsAtHex(
+      MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
+    List<SellSlot> result = new ArrayList<>();
+    for (SellSlot sell : indexedSellsAtHex(indexes, hex, commodity)) {
+      if (sell.remaining > 0) {
+        result.add(sell);
+      }
+    }
+    return result;
+  }
+
+  private static List<SellSlot> indexedSellsAtHex(
+      MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
+    return indexes
+        .sellsByHexCommodity
+        .getOrDefault(hexKeyOf(hex), Map.of())
+        .getOrDefault(commodity, List.of());
   }
 
   private static long moveCostOf(MatchContext ctx, HexCoord hex) {
@@ -1275,6 +1887,7 @@ final class MarketSettlement {
     // ① 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
     long sellRelease = Math.min(quantity, sell.frozenRemaining);
     sell.frozenRemaining -= sellRelease;
+    releaseSellFrozenSum(ctx, sell, sellRelease);
     refreshSellFrozen(ctx, sell);
     Transfer goodsLeg =
         round.ledger.mint(
@@ -1306,6 +1919,7 @@ final class MarketSettlement {
     long total = payment + freight;
     long buyRelease = Math.min(total, buy.frozenRemaining);
     buy.frozenRemaining -= buyRelease;
+    releaseBuyFrozenSum(ctx, buy, buyRelease);
     refreshBuyFrozen(ctx, buy);
     if (payment > 0L) {
       Transfer moneyLeg =
@@ -1353,6 +1967,19 @@ final class MarketSettlement {
       ctx.freightUncollectedMilli += nominalFreight;
     }
     buy.spentMilli += total;
+    if (ctx.recordFillIntents) {
+      // ★ worker 的区内意向：全局槽位下标 + 唯一标识（区/商品/买卖方 canonical 串），协调器按区序回放。
+      ctx.fillIntents.add(
+          new FillIntent(
+              buy.orderIndex,
+              sell.orderIndex,
+              quantity,
+              unitPrice,
+              sell.region.node().nodeId(),
+              commodity,
+              actorKeyOf(sell.seller.actor),
+              actorKeyOf(buy.buyer.actor)));
+    }
 
     if (route == null) {
       // 区内即时：买到的量冲减**当日**未满足需求（封顶 = 已记的缺口；只对家户，经营者没有那条读数）。
@@ -1617,7 +2244,7 @@ final class MarketSettlement {
 
   // ── 未成交原因 ─────────────────────────────────────────────────────────────────────
 
-  private static void collectUnfilled(MatchContext ctx) {
+  private static void collectUnfilled(MatchContext ctx, MarketIndexes indexes) {
     Map<CommodityId, Long> sellRemainingByCommodity = new LinkedHashMap<>();
     Map<CommodityId, Long> minSellerPriceByCommodity = new LinkedHashMap<>();
     for (SellSlot sell : ctx.sells) {
@@ -1638,8 +2265,8 @@ final class MarketSettlement {
             || spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining <= 0L) {
           reason = MarketUnfilledReason.NO_BUDGET;
         } else if (totalSellRemaining <= 0L) {
-          reason = classifyNoSupply(ctx, buy);
-        } else if (!hasSupplyNear(ctx, buy)) {
+          reason = classifyNoSupply(ctx, buy, indexes);
+        } else if (!hasSupplyNear(buy, indexes)) {
           reason = MarketUnfilledReason.NO_ADJACENT_SUPPLY;
         } else if (minSellerPrice != Long.MAX_VALUE
             && buy.order.maxLandedPrice() < minSellerPrice) {
@@ -1671,39 +2298,57 @@ final class MarketSettlement {
     }
   }
 
-  /** 买方的区里/直接邻接供应区里，还有同商品的剩余卖单吗（"看不见的供给"与"没有供给"分开）。 */
-  private static boolean hasSupplyNear(MatchContext ctx, BuySlot buy) {
-    for (SellSlot sell : ctx.sells) {
-      if (sell.remaining <= 0L || !sell.order.commodity().equals(buy.order.commodity())) {
-        continue;
-      }
-      if (sell.region.equals(buy.region) || ctx.topology.adjacent(buy.region, sell.region)) {
+  /**
+   * 买方的区里/直接邻接供应区里，还有同商品的剩余卖单吗（"看不见的供给"与"没有供给"分开）。
+   *
+   * <p>★ P1.2：用 {@code sellsByRegionCommodity} + {@code adjacentRegionIds} 直取，不再扫全部卖单、也不再逐对调几何判断。
+   */
+  private static boolean hasSupplyNear(BuySlot buy, MarketIndexes indexes) {
+    CommodityId commodity = buy.order.commodity();
+    String regionId = buy.region.node().nodeId();
+    if (hasActiveSellInRegion(indexes, regionId, commodity)) {
+      return true;
+    }
+    for (String adjacent : indexes.adjacentRegionIds.getOrDefault(regionId, Set.of())) {
+      if (hasActiveSellInRegion(indexes, adjacent, commodity)) {
         return true;
       }
     }
     return false;
   }
 
-  /** 没有可卖余量时的进一步归因：全部被保留 ⇒ {@code ALL_RESERVED}；根本没有邻区 ⇒ {@code NO_ADJACENT_SUPPLY}。 */
-  private static MarketUnfilledReason classifyNoSupply(MatchContext ctx, BuySlot buy) {
-    MarketRegion region = buy.region;
-    for (Participant participant : ctx.participants.values()) {
-      if (!ctx.participantHex.getOrDefault(participant.actor, buy.hex).equals(buy.hex)) {
-        continue;
+  /** 某个区的某商品桶里还有剩余卖单吗（只读；桶内相对序不影响布尔结果）。 */
+  private static boolean hasActiveSellInRegion(
+      MarketIndexes indexes, String regionId, CommodityId commodity) {
+    for (SellSlot sell :
+        indexes
+            .sellsByRegionCommodity
+            .getOrDefault(regionId, Map.of())
+            .getOrDefault(commodity, List.of())) {
+      if (sell.remaining > 0L) {
+        return true;
       }
+    }
+    return false;
+  }
+
+  /**
+   * 没有可卖余量时的进一步归因：全部被保留 ⇒ {@code ALL_RESERVED}；根本没有邻区 ⇒ {@code NO_ADJACENT_SUPPLY}。
+   *
+   * <p>★ P1.2：参与者按 hex 预索引（{@link MarketIndexes#participantsByHex}），邻接只查 {@code adjacentRegionIds}。
+   */
+  private static MarketUnfilledReason classifyNoSupply(
+      MatchContext ctx, BuySlot buy, MarketIndexes indexes) {
+    for (Participant participant :
+        indexes.participantsByHex.getOrDefault(hexKeyOf(buy.hex), List.of())) {
       long held = stockOf(ctx.round, participant, buy.order.commodity());
       long frozen = frozenGoodsOf(ctx.round, participant, buy.order.commodity());
       if (held - frozen > 0L) {
         return MarketUnfilledReason.ALL_RESERVED;
       }
     }
-    boolean anyAdjacent = false;
-    for (MarketRegion other : ctx.topology.regions()) {
-      if (!other.equals(region) && ctx.topology.adjacent(region, other)) {
-        anyAdjacent = true;
-        break;
-      }
-    }
+    boolean anyAdjacent =
+        !indexes.adjacentRegionIds.getOrDefault(buy.region.node().nodeId(), Set.of()).isEmpty();
     return anyAdjacent ? MarketUnfilledReason.NO_SELLER : MarketUnfilledReason.NO_ADJACENT_SUPPLY;
   }
 
@@ -2033,6 +2678,10 @@ final class MarketSettlement {
     final HexCoord hex;
     final MarketRegion region;
     final CurrencyId currency;
+
+    /** 在 {@code ctx.buys} 里的全局下标（worker 的 FillIntent 用它定位回放目标）。 */
+    int orderIndex;
+
     long remaining;
     long frozenRemaining;
     long baseFrozenMoney;
@@ -2050,6 +2699,23 @@ final class MarketSettlement {
       this.currency = currency;
       this.remaining = order.quantity();
     }
+
+    /** ★ worker 的本区副本：状态照抄，后续只改副本（不触共享槽位）。 */
+    BuySlot(BuySlot other) {
+      this.order = other.order;
+      this.buyer = other.buyer;
+      this.hex = other.hex;
+      this.region = other.region;
+      this.currency = other.currency;
+      this.orderIndex = other.orderIndex;
+      this.remaining = other.remaining;
+      this.frozenRemaining = other.frozenRemaining;
+      this.baseFrozenMoney = other.baseFrozenMoney;
+      this.requestedMoney = other.requestedMoney;
+      this.spentMilli = other.spentMilli;
+      this.noMoney = other.noMoney;
+      this.blocked = other.blocked;
+    }
   }
 
   /** 一条卖订单的撮合槽。 */
@@ -2059,6 +2725,10 @@ final class MarketSettlement {
     final HexCoord hex;
     final Market market;
     final MarketRegion region;
+
+    /** 在 {@code ctx.sells} 里的全局下标（worker 的 FillIntent 用它定位回放目标）。 */
+    int orderIndex;
+
     long remaining;
     long frozenRemaining;
     long baseFrozenGoods;
@@ -2071,6 +2741,19 @@ final class MarketSettlement {
       this.market = market;
       this.region = region;
       this.remaining = order.sellable();
+    }
+
+    /** ★ worker 的本区副本：状态照抄，后续只改副本（不触共享槽位）。 */
+    SellSlot(SellSlot other) {
+      this.order = other.order;
+      this.seller = other.seller;
+      this.hex = other.hex;
+      this.market = other.market;
+      this.region = other.region;
+      this.orderIndex = other.orderIndex;
+      this.remaining = other.remaining;
+      this.frozenRemaining = other.frozenRemaining;
+      this.baseFrozenGoods = other.baseFrozenGoods;
     }
   }
 
@@ -2147,6 +2830,12 @@ final class MarketSettlement {
     final Map<ShipmentKey, ShipmentBuilder> shipments = new LinkedHashMap<>();
     // ★ 地形代价的纯记忆化：组合根的 moveCostAt 会重建整张地形索引，同一 buyerHex 在逐卖方路线里只需算一次。
     final Map<HexCoord, Long> moveCostCache = new LinkedHashMap<>();
+    // ★ R2：worker 本区副本上产生的区内成交意向（协调器回放；真实 ctx 的 recordFillIntents = false）。
+    final List<FillIntent> fillIntents = new ArrayList<>();
+    boolean recordFillIntents;
+    // ★ P1.3：冻结轴累计值（key 见 sellFrozenAxis/buyFrozenAxis）；commitFreezes/executeTrade 增量维护。
+    final Map<String, Long> sellFrozenSums = new LinkedHashMap<>();
+    final Map<String, Long> buyFrozenSums = new LinkedHashMap<>();
     long freightPaidMilli;
     long freightUncollectedMilli;
     long scheduledLossMilli;
