@@ -24,6 +24,7 @@ import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -44,6 +45,8 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.time.ClassTransition;
+import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.HouseholdClassRule;
 import io.mosire.simos.economy.time.HouseholdCondition;
@@ -618,13 +621,41 @@ public final class ApiViews {
         data.meta().isPresent()
             ? EconomyDayFeed.last(data.meta().orElseThrow().mapId(), tick)
             : Optional.empty();
+    String mapId = data.meta().map(meta -> meta.mapId()).orElse(null);
+    List<HouseholdId> householdKeys = cohortKeysAt(data, coord);
+    Set<HouseholdId> hexHouseholds = new LinkedHashSet<>(householdKeys);
+    // ★ 索引一次、逐户 O(1)：读口一格里通常 4 行，但分类要扫 UsesRight/配额/租规则，不能每户各扫一遍。
+    HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data);
     List<Map<String, Object>> householdConditions = new ArrayList<>();
-    for (HouseholdId key : cohortKeysAt(data, coord)) {
+    List<Map<String, Object>> classifications = new ArrayList<>();
+    for (HouseholdId key : householdKeys) {
+      ClassRow row = data.classes().get(key);
       HouseholdCondition condition = HouseholdCondition.derive(data, key, dayLedger);
-      String derivedClass = HouseholdClassRule.classify(data, key, dayLedger).value();
-      householdConditions.add(householdConditionView(condition, derivedClass));
+      HouseholdClassRule.Classification classification = classIndex.classify(key, dayLedger);
+      householdConditions.add(householdConditionView(condition, classification.stratum().value()));
+      classifications.add(
+          classificationView(key, row == null ? null : row.view().stratum(), classification));
     }
     view.put("householdConditions", householdConditions);
+    // ★★ S3：写回结果与"从哪一档跳来"的具名读数——classes[].slot 是当前真值；classifications 给逐户证据；
+    //   classTransitions 是关账日写回的审计（进程内、不落盘；读不到时具名，不填 0/空数组冒充）。
+    view.put("classifications", classifications);
+    if (tick >= 0L && mapId != null) {
+      Optional<ClassTransitionFeed.Snapshot> classTransitions =
+          ClassTransitionFeed.last(mapId, tick);
+      if (classTransitions.isPresent()) {
+        view.put(
+            "classTransitions",
+            classTransitionsView(classTransitions.orElseThrow(), hexHouseholds));
+        view.put("classTransitionsUnavailable", null);
+      } else {
+        view.put("classTransitions", null);
+        view.put("classTransitionsUnavailable", CLASS_TRANSITIONS_PROCESS_ONLY);
+      }
+    } else {
+      view.put("classTransitions", null);
+      view.put("classTransitionsUnavailable", CLASS_TRANSITIONS_PROCESS_ONLY);
+    }
     // ★★ S3：当日欠款（WageArrears / RentArrears / SubsistenceArrears；进程内瞬态，读不到 ⇒ null + 具名原因）。
     if (dayLedger.isPresent()) {
       view.put("arrears", arrearsView(dayLedger.orElseThrow()));
@@ -919,6 +950,19 @@ public final class ApiViews {
     view.put("consecutiveSuspendedCycles", condition.consecutiveSuspendedCycles());
     view.put("reopens", condition.reopens());
     view.put("lastReason", condition.lastReason());
+    // ★★ S3 修复：本周期累计市场证据（每轮市场结束后累加；关账消费后清零）。无市场轮的周期 cycleMarketRounds=0，
+    //   读口因此能分清"整周期没开市"与"开了市但没卖出去"。
+    view.put("cycleOfferedQty", condition.cycleOfferedQty());
+    view.put("cycleFilledQty", condition.cycleFilledQty());
+    view.put("cycleUnfilledQty", condition.cycleUnfilledQty());
+    view.put("cycleRevenueMilli", condition.cycleRevenueMilli());
+    view.put("cycleOutcompetedActors", condition.cycleOutcompetedActors());
+    view.put("cycleOutcompetedQty", condition.cycleOutcompetedQty());
+    view.put("cycleMarketRounds", condition.cycleMarketRounds());
+    view.put("cycleInputShortfallCycles", condition.cycleInputShortfallCycles());
+    view.put(
+        "cycleEvidenceNote",
+        "cycle* 市场证据跨市场轮累计、关账日 advance 消费后清零；cycleInputShortfallCycles 保留最近一次关账的投入不足读数 0/1");
     return view;
   }
 
@@ -943,6 +987,69 @@ public final class ApiViews {
     view.put("stressCycles", condition.stressCycles());
     view.put(
         "statusNote", "status=派生（UseRight/laborSource/未满足/债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
+    return view;
+  }
+
+  /**
+   * ★ S3：一家户的分类证据（关账日写回之后 {@code rowClass} 与 {@code classifiedAs} 应当逐值相同；还没到关账日/本 revision
+   * 尚未写回时，读的人能当场看见"当前档 vs 派生档"的差，而不是被静默抹平）。
+   */
+  private static Map<String, Object> classificationView(
+      HouseholdId household,
+      SocialClassId rowClass,
+      HouseholdClassRule.Classification classification) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("householdId", household.value());
+    view.put("rowClass", rowClass == null ? null : rowClass.value());
+    view.put("classifiedAs", classification.stratum().value());
+    view.put("matches", rowClass != null && rowClass.equals(classification.stratum()));
+    view.put("ownLandMilliMu", classification.ownLandMilliMu());
+    view.put("rightQuantity", classification.rightQuantity());
+    view.put("laborSoldMilli", classification.laborSoldMilli());
+    view.put("laborHiredMilli", classification.laborHiredMilli());
+    view.put("netLaborSoldMilli", classification.netLaborSoldMilli());
+    view.put("rentEntitled", classification.rentEntitled());
+    view.put(
+        "rentPaidMilli",
+        classification.rentPaidMilli().isPresent()
+            ? classification.rentPaidMilli().getAsLong()
+            : null);
+    view.put("rentPaidComplete", classification.rentPaidComplete());
+    view.put("debtPrincipalMilli", classification.debtPrincipalMilli());
+    view.put("debtStressPerMille", classification.debtStressPerMille());
+    view.put("reason", classification.reason());
+    view.put(
+        "rentPaidNote",
+        classification.rentPaidMilli().isPresent()
+            ? "租金实付来自当日 ProductionLedger（关账日的 ledger 即本周期分配）；本户全部租权规则都完整可归属"
+            : "当日 ProductionLedger 读不到，或本户租权规则没有全部出现在该账本里（含规则无法唯一归属）⇒ 租金实付为空，不给部分数冒充整周期");
+    return view;
+  }
+
+  /** ★ S3：本格最近一次关账日的阶层写回审计（只保留本格的 HouseholdId；没有写回时 items 为空数组）。 */
+  private static Map<String, Object> classTransitionsView(
+      ClassTransitionFeed.Snapshot snapshot, Set<HouseholdId> hexHouseholds) {
+    List<Map<String, Object>> items = new ArrayList<>();
+    List<ClassTransition> transitions = new ArrayList<>(snapshot.transitions());
+    transitions.sort(Comparator.comparing(transition -> transition.household().value()));
+    for (ClassTransition transition : transitions) {
+      if (!hexHouseholds.contains(transition.household())) {
+        continue;
+      }
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("householdId", transition.household().value());
+      item.put("fromClass", transition.fromClass().value());
+      item.put("toClass", transition.toClass().value());
+      item.put("reason", transition.reason());
+      items.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("day", snapshot.day());
+    view.put("items", items);
+    view.put(
+        "provenance", "关账日 EconomySettlement 写回 ClassRow.view 时投递的进程内审计；day = 最近一次不晚于当前 tick 的关账日");
+    view.put(
+        "classReasonNote", "reason 字段保留 lastClassReason 语义（见 HouseholdClassRule.Classification）");
     return view;
   }
 
@@ -986,6 +1093,11 @@ public final class ApiViews {
   /** ★ S3：欠款读不到的具名原因（唯一拼写点）。 */
   private static final String ARREARS_PROCESS_ONLY =
       "当日 ProductionLedger 是进程内瞬态（重启/换进程/还没结算即失）：租与工资欠款读不到；缺失不是 0，" + "而是\"这一轮没有可读账本\"";
+
+  /** ★ S3：阶层写回审计读不到的具名原因（唯一拼写点）。 */
+  private static final String CLASS_TRANSITIONS_PROCESS_ONLY =
+      "阶层写回的审计是进程内瞬态（ClassTransitionFeed；不落盘）：重启/换进程/本轮推进没跨关账日时"
+          + "读不到\"从哪一档跳来\"；当前阶层真值仍在 classes[].slot 与 classifications[] 两栏";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =

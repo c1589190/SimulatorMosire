@@ -31,6 +31,15 @@ import java.util.Objects;
  * @param unsoldStockMilli 滞销库存（毫商品）
  * @param selfUsableStockMilli 可自用库存（毫商品）
  * @param lastReason 最近一次状态转移的原因（具名文本；可空串）
+ * @param cycleOfferedQty ★ S3：本周期累计挂单量（毫商品）—— 每轮市场结束后累加、关账日状态机消费后清零
+ * @param cycleFilledQty ★ S3：本周期累计成交量（毫商品）—— 同上
+ * @param cycleUnfilledQty ★ S3：本周期累计未成交量（毫商品）—— 同上
+ * @param cycleRevenueMilli ★ S3：本周期累计货款（毫货币）—— 同上
+ * @param cycleOutcompetedActors ★ S3：本周期累计"更便宜且真的卖掉的卖方家数"证据（逐轮求和）—— 同上
+ * @param cycleOutcompetedQty ★ S3：本周期累计被更便宜卖方挤掉的数量（毫商品）—— 同上
+ * @param cycleMarketRounds ★ S3：本周期已经观察到的市场轮数（0 = 本周期没有市场证据；&gt;0 = 有）—— 同上
+ * @param cycleInputShortfallCycles ★ S3：最近一个关账周期是否存在投入不足（0/1）。★ 市场证据在关账消费后清零；
+ *     本字段保留最近一次关账读数到下一个关账日（历史连续计数在 {@link #consecutiveInputShortfallCycles()}）。
  */
 public record OperatorCondition(
     IndustryId industry,
@@ -48,7 +57,15 @@ public record OperatorCondition(
     long consecutiveDebtStressCycles,
     long consecutiveSuspendedCycles,
     long reopens,
-    String lastReason) {
+    String lastReason,
+    long cycleOfferedQty,
+    long cycleFilledQty,
+    long cycleUnfilledQty,
+    long cycleRevenueMilli,
+    long cycleOutcompetedActors,
+    long cycleOutcompetedQty,
+    long cycleMarketRounds,
+    long cycleInputShortfallCycles) {
 
   /** S3.2 的经营者状态词表（状态转移规则在 S3 落地；本阶段只固定形状）。 */
   public enum IndustryStatus {
@@ -126,5 +143,63 @@ public record OperatorCondition(
     if (lastReason == null) {
       throw new IllegalArgumentException("OperatorCondition.lastReason 不得为 null（没有就空串）");
     }
+    if (cycleOfferedQty < 0L
+        || cycleFilledQty < 0L
+        || cycleUnfilledQty < 0L
+        || cycleRevenueMilli < 0L
+        || cycleOutcompetedActors < 0L
+        || cycleOutcompetedQty < 0L
+        || cycleMarketRounds < 0L
+        || cycleInputShortfallCycles < 0L) {
+      throw new IllegalArgumentException("OperatorCondition 的周期累计证据不得为负");
+    }
+  }
+
+  /**
+   * ★★ <b>一轮市场结束后累加周期证据</b>（唯一写口）—— 只增量、不解释；关账日由 {@code OperatorSettlement.advance} 消费并清零。
+   *
+   * <p>★ <b>为什么用 {@code Math.addExact} 而不是裸加</b>：这些量会跨多个市场轮、跨多个 revision 累加；溢出时必须当场炸， 不能回绕成负数再被
+   * {@code < 0} 守卫当成坏数据或悄悄改变状态机判据。
+   */
+  public OperatorCondition plusCycleEvidence(
+      long offeredQty,
+      long filledQty,
+      long unfilledQty,
+      long revenueMilli,
+      long outcompetedActors,
+      long outcompetedQty) {
+    if (offeredQty < 0L
+        || filledQty < 0L
+        || unfilledQty < 0L
+        || revenueMilli < 0L
+        || outcompetedActors < 0L
+        || outcompetedQty < 0L) {
+      throw new IllegalArgumentException("OperatorCondition.plusCycleEvidence 的增量不得为负");
+    }
+    return new OperatorCondition(
+        industry,
+        status,
+        consecutiveUnsoldCycles,
+        consecutiveInputShortfallCycles,
+        cashReserveMilli,
+        debtPrincipalMilli,
+        debtServiceDueMilli,
+        lastCycleRevenueMilli,
+        lastCycleCostMilli,
+        lastCycleNetMilli,
+        unsoldStockMilli,
+        selfUsableStockMilli,
+        consecutiveDebtStressCycles,
+        consecutiveSuspendedCycles,
+        reopens,
+        lastReason,
+        Math.addExact(cycleOfferedQty, offeredQty),
+        Math.addExact(cycleFilledQty, filledQty),
+        Math.addExact(cycleUnfilledQty, unfilledQty),
+        Math.addExact(cycleRevenueMilli, revenueMilli),
+        Math.addExact(cycleOutcompetedActors, outcompetedActors),
+        Math.addExact(cycleOutcompetedQty, outcompetedQty),
+        Math.addExact(cycleMarketRounds, 1L),
+        cycleInputShortfallCycles);
   }
 }

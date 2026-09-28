@@ -9,6 +9,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>经济 × 产权的协调器</b>（S1 阶段 4+5 Task 5）：<b>唯一同时看得见 {@code economy} 与 {@code actor} 的推进参与者</b> ——
@@ -159,6 +161,8 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       writes.add(accountAddress(key));
     }
     AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
+    // ★★ S3 缺陷修复：会话负责的账户由绝对值落回收尾，ledger 条目不再对 actor 基准叠一遍（同 PopulationEconomyTimeParticipant）。
+    Set<AccountPartitionKey> sessionAccounts = new LinkedHashSet<>(session.accounts().keySet());
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
@@ -177,7 +181,7 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       //   {@link OwnershipBooks#REASONS_NOT_FOLDED}）。
       List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
       if (!entries.isEmpty()) {
-        books = OwnershipBooks.apply(books, entries);
+        books = OwnershipBooks.apply(books, entries, sessionAccounts);
         for (GoodsAccountKey key : books.accounts().keySet()) {
           writes.add(accountAddress(key));
         }

@@ -16,6 +16,7 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomyParallelism;
@@ -42,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -199,6 +201,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       writes.add(accountAddress(key));
     }
     AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
+    // ★★ S3 缺陷修复：会话登记过的账户当天终值由 landAccountSession 的**绝对值**落回覆盖；
+    //   这些账户上的 ledger 条目不能再对 actor 基准叠一遍（否则跨区到货等"只写会话"的当天流入会让付方被误判透支）。
+    //   非会话账户（承运人、未播种经营者等）仍按 ledger 条目逐笔折入 actor 账。
+    Set<AccountPartitionKey> sessionAccounts = new LinkedHashSet<>(session.accounts().keySet());
     // ★★ R2：并行度进构造器；workerCount == 1 时 EconomyParallelism.of 走单线程退化路径（不建池）。
     //   池的生命周期：finish()/close() 关闭；下面的 try/finally 保证日循环抛异常也不泄漏结算线程池。
     EconomyParallelism parallelism = EconomyParallelism.of(economyWorkerCount);
@@ -245,7 +251,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           EconomyDayFeed.publish(mapId, Optional.of(ledger), day);
           List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
           if (!entries.isEmpty()) {
-            currentBooks = OwnershipBooks.apply(currentBooks, entries);
+            currentBooks = OwnershipBooks.apply(currentBooks, entries, sessionAccounts);
             for (GoodsAccountKey key : currentBooks.accounts().keySet()) {
               writes.add(accountAddress(key));
             }

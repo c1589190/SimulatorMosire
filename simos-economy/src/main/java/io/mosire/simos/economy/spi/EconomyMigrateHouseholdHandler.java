@@ -73,6 +73,8 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
       ClassRow moved =
           new ClassRow(
               row.id(),
+              // ★ S3 审计：迁移只换格，**阶层原样保留当前 view**（可能是 landless_laborer/artisan/official）；
+              //   不从旧四档反推，也不改 participationPerMille（EconomyData 守卫对派生阶层不施加创世槽位上限）。
               new CohortKey(to, row.view().residence(), row.view().stratum()),
               row.population(),
               row.laborMilli(),

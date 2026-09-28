@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -386,6 +387,11 @@ public final class EconomySettlement {
    * 当场抓到的，不是"没人发现"；`simos-economy` 自己的用例全绿只是因为它的债务夹具里**只有贫农+地主两行**。 ⇒ 下面那条 {@code
    * eachLenderStratumInThePriorityListCanLend} 补的正是本模块内的判别力（尤其是 {@code middle_peasant}
    * 这一档：换装后全仓**没有任何夹具**用它做债权人）。
+   *
+   * <p>★★ <b>S3 交互（本批审计的结论）</b>：放贷序列按 {@code ClassRow} 的**当前 view.stratum** 选人，而 S3 关账写回会派生 {@code
+   * landless_laborer}/{@code artisan}/{@code official}。这三档**不自动进入**本表 —— 这是显式的传统放贷制度（"地主 → 富农 →
+   * 中农"，贫农禁贷同属制度），不是"把新阶层映射回旧四档"，也不是静默放宽。新阶层若日后要有放贷资格，必须显式扩展本表并说明其经济来源； 不得按 view
+   * 做兼容映射，也不得把新阶层改写成旧档来绕过本节。★ 本表仍按 {@code grainOf(...) > 0} 先做事实门槛（没有存粮的人不会被选为债权人）。
    */
   private static final List<SocialClassId> LENDER_SLOT_PRIORITY =
       List.of(SocialClassId.LANDLORD, SocialClassId.RICH_PEASANT, SocialClassId.MIDDLE_PEASANT);
@@ -864,6 +870,9 @@ public final class EconomySettlement {
               markets, marketRound, marketTrigger, topology, parallelism);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
+      // ★★ S3 修复：把本轮的逐卖方证据累加进经营者条件的"本周期累计"字段。一个周期有多轮市场，关账日那轮
+      //   很可能已经看不到更早轮里的滞销/被挤出 ⇒ 不在这里累加，状态机的连续计数就永远不涨。
+      OperatorSettlement.accumulateMarketEvidence(operatorConditions, industries, outcome.report());
       // ★★ M2.6：自适应模式把价格表工作副本换成 outcome 交回的新表（默认固定模式下两者逐值相同 ⇒ 无状态变化）。
       markets = new LinkedHashMap<>(outcome.markets());
     }
@@ -968,16 +977,18 @@ public final class EconomySettlement {
     }
 
     // ── 5b. S3 经营者状态机（可观察量 → IndustryStatus；退出处置先偿债、不足才 defaulted）──────────
-    //   ★ 只在关账日推进：连续计数以**关账周期**为单位；市场证据只取**当天**那一轮（没有当天市场 ⇒ 不拿旧读数冒充）。
+    //   ★ 只在关账日前进，而且只更新**本日关账**的产业：每个产业的连续计数以它自己的关账周期为单位，
+    //     未关账产业的周期证据不能被别人关账时顺手消费掉。
+    //   ★ 市场证据取的是**本周期累计**（每轮市场结束后累加到 OperatorCondition.cycle*），不再要求 evidence.day == day；
+    //     若本周期一个市场轮都没有（cycleMarketRounds == 0），连续计数保持、不用 0 覆盖。
     //   ★ 缩产/停业只改"计划规模系数"（StressPolicy），capacity 与 UseRight 一字不动。
+    Set<IndustryId> closingIndustries = new LinkedHashSet<>();
     if (anyCycleClosed) {
       Map<IndustryId, Boolean> shortfallByIndustry = new LinkedHashMap<>();
       for (ClosedIndustry closing : closed) {
+        closingIndustries.add(closing.id());
         shortfallByIndustry.put(closing.id(), closing.inputShortfall());
       }
-      MarketReport latestReport = ledger.marketReport();
-      MarketReport evidence =
-          latestReport != null && latestReport.day() == day ? latestReport : null;
       List<OperatorSettlement.Exit> exits =
           OperatorSettlement.advance(
               operatorConditions,
@@ -990,9 +1001,8 @@ public final class EconomySettlement {
               operatorMoney,
               householdOfActor,
               markets,
-              shortfallByIndustry,
-              evidence,
-              day);
+              closingIndustries,
+              shortfallByIndustry);
       if (!exits.isEmpty()) {
         settleOperatorExits(
             exits,
@@ -1005,6 +1015,37 @@ public final class EconomySettlement {
             ledger,
             day);
       }
+    }
+
+    // ── 5c. S3 阶层写回（关账日、经营者状态机之后）────────────────────────────────────────
+    //   ★ 只改 ClassRow.view：稳定 HouseholdId、actor/账户/债务/劳动配额/人口/成员份额一字不动（withView 的方法承诺）。
+    //   ★ 分类用本日 ledger（关账日 = 本周期收获/分配的结算账本，租金实付是整周期口径）；读不到时不填 0。
+    //   ★ 原四档允许跳变；这里不新增人口、不改任何守恒量。
+    if (anyCycleClosed) {
+      ProductionLedger classLedger = ledger.toLedger();
+      HouseholdClassRule.Index classIndex =
+          HouseholdClassRule.Index.of(
+              useRights, allocations, industries, base.relations(), rows, debts);
+      List<ClassTransition> classTransitions = new ArrayList<>();
+      for (HouseholdId key : new ArrayList<>(rows.keySet())) {
+        ClassRow row = rows.get(key);
+        if (row == null) {
+          continue;
+        }
+        HouseholdClassRule.Classification classification =
+            classIndex.classify(key, Optional.of(classLedger));
+        SocialClassId derived = classification.stratum();
+        if (derived.equals(row.view().stratum())) {
+          continue;
+        }
+        ClassTransition transition =
+            new ClassTransition(day, key, row.view().stratum(), derived, classification.reason());
+        rows.put(
+            key, row.withView(new CohortKey(row.view().hex(), row.view().residence(), derived)));
+        classTransitions.add(transition);
+      }
+      // ★ 具名审计读数：即使没有写回也投递空表（读口才分得清"这次关账没有变化"与"没读到"）。
+      ClassTransitionFeed.publish(meta.mapId(), day, classTransitions);
     }
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
@@ -1909,7 +1950,8 @@ public final class EconomySettlement {
           continue; // 该格本来就没有任何经济状态（世界还没播种到这里）⇒ 没有可摊的行
         }
       }
-      // ★★ **H0：这批人的家户行 = （它供给的那些产业的格）× 它自己的居住类型 × 四个阶层**，**并集去重** ——
+      // ★★ **H0/S3：这批人的家户行 = 供给目标产业的配额里、居住类型匹配的 LaborAllocation.household 并集**，
+      //   **并集去重** —— 不按四阶层枚举、也不读 ClassRow.view.stratum（阶层写回后仍不漏行/错行）。
       //   农村批次同时供给农业与家庭纺织（两者落在**同一批农村家户行**上）⇒ 不去重就会把它的人与生死**算两遍**。
       List<HouseholdId> keys =
           householdKeysOfLot(rows, targets, ResidenceKind.ofLot(change.group()), allocations);
@@ -3147,7 +3189,7 @@ public final class EconomySettlement {
    * <pre>
    * ① 产业所在格 = IndustryHexKeys.hexKeyOf(industryId)      （唯一拼写点；拿不到格键 ⇒ 空表，不猜 (0,0)）
    * ② 居住类型   = ResidenceKind.ofLot(allocation.group())   （批次前缀的唯一拼写点在 ResidenceKind）
-   * ③ 家户行     = (该格, 该居住类型) × SocialClassId.all() 四行，**只取真的存在的那些**
+   * ③ 家户行     = 从 LaborAllocation.household 取"actor 命中该产业"的家户，按稳定 HouseholdId 去重、只留真有行的
    * </pre>
    *
    * <p>★★ <b>它取代了改前的 {@code classKeysOf(rows, industryId)}</b>（按行键里的产业段过滤）：H0 之后**行里没有产业了** （键 = 格
@@ -3157,8 +3199,12 @@ public final class EconomySettlement {
    * <p>★ <b>行不存在 ⇒ 跳过</b>（不是坏数据）：逐组件增量落盘 ⇒ 配额先到、行后到是合法写序（同 {@code EconomyData} 的
    * "表与表之间没有引用完整性约束"）。★ <b>一条配额都没有的产业 ⇒ 空表</b>（没有家户 ⇒ 没有劳动者；收获的产出全留 operator）。
    *
-   * <p>★ 序 = 阶层（{@code SocialClassId.all()} 的保序）× 居住类型（{@code ResidenceKind.all()}）—— <b>不是</b>插入序：
-   * 它是"这一格这一居住类型的四行"的纯函数（可复现，与配额表的条数无关）。
+   * <p>★★ <b>S3：本方法不读 {@code ClassRow.view.stratum}，也不按四阶层枚举</b> —— 归属的唯一事实源是 {@link
+   * LaborAllocation#household()}（H0 的裁定，S3 写回阶层后仍然成立）。故阶层改成 {@code landless_laborer}/{@code
+   * artisan}/{@code official} 后，这里既不会漏行也不会错行。
+   *
+   * <p>★ 序 = 稳定 {@link HouseholdId#value()} 字典序（纯函数、与配额表插入序无关；不再按 {@code SocialClassId.all()}
+   * 的四档顺序假想行集合）。
    */
   static List<HouseholdId> householdKeysOf(
       Map<HouseholdId, ClassRow> rows,
@@ -3199,11 +3245,14 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>一个批次的出生/死亡该摊到哪些家户行</b>（{@link #applyPopulationChange} 用）：它供给的那些产业的格 × 它自己的居住类型 ×
-   * 四个阶层，**并集去重**。
+   * ★★ <b>一个批次的出生/死亡该摊到哪些家户行</b>（{@link #applyPopulationChange} 用）：它供给的那些产业名下、 {@code
+   * LaborAllocation.household} 指名且居住类型匹配的家户，**并集去重**。
    *
    * <p>★★ <b>去重不是优化，是正确性</b>：真档里农村批次同时供给 {@code farm@hex} 与 {@code weave@hex}，而两者落在**同一批农村家户行**
    * 上（H0 之后行不含产业段）—— 不去重会把这批人的出生/死亡**算两遍**（人口账当场对不上）。
+   *
+   * <p>★ <b>S3：不按阶层枚举</b>——旧注释里的"× 四个阶层"在 H0 已作废；阶层写回只改 {@code ClassRow.view}， 而本方法的键来自 {@code
+   * LaborAllocation.household} 与 {@code ResidenceKind.ofLot}，故新派生阶层不会漏行/错行。
    */
   private static List<HouseholdId> householdKeysOfLot(
       Map<HouseholdId, ClassRow> rows,
@@ -3397,6 +3446,8 @@ public final class EconomySettlement {
       // #lendableOf}）。
       //   ★ 付款路径**不按人口过滤**（H1 明文）：人口为 0 的家户照样可以是债权人（它有存粮、它借得出）。
       List<HouseholdId> lenders = new ArrayList<>();
+      // ★ S3 审计点：这里只认传统三档的**当前 view**；新派生阶层不在本表里是有意为之（见
+      //   LENDER_SLOT_PRIORITY 的类注）——不从 view 反推旧档、也不把 S3 新阶层映射进来。
       for (SocialClassId slot : LENDER_SLOT_PRIORITY) {
         for (HouseholdId key : keys) {
           if (rows.get(key).view().stratum().equals(slot) && grainOf(householdGoods, key) > 0L) {
@@ -4996,6 +5047,7 @@ public final class EconomySettlement {
     for (String hexKey : hexKeys) {
       List<HouseholdId> members = byHex.get(hexKey);
       // ★ 行序 = 阶层（字典序）→ 居住类型（直接读视图；键不再带这两维）。
+      //   ★ S3：landless_laborer/artisan/official 也按同一个 value 字典序参与，只用于确定性；不映射回旧四档。
       members.sort(
           Comparator.comparing((HouseholdId id) -> rows.get(id).view().stratum().value())
               .thenComparing(id -> rows.get(id).view().residence()));

@@ -841,6 +841,8 @@ final class EconomyPayloads {
             : HouseholdId.ofSeed(hex, residence, slot);
     return new ClassRow(
         householdId,
+        // ★ 这是创世载荷声明的 view（slot 可含 S3 新阶层）；运行期只由 HouseholdClassRule 改写 ClassRow.view，
+        //   不回写载荷、也不反过来从 view 推身份（householdId 缺失时才由 ofSeed 生成稳定身份）。
         new CohortKey(hex, residence, slot),
         population,
         laborMilli,

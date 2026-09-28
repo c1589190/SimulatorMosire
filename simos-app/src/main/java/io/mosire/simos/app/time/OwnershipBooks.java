@@ -95,11 +95,33 @@ public final class OwnershipBooks {
    * <p>★ <b>溢出</b>：前缀与终值都用 {@code Math.addExact}；溢出是坏数据，抛具名 {@link IllegalStateException}，不静默回绕。
    */
   public static ActorData apply(ActorData base, List<ActorEntry> entries) {
+    return apply(base, entries, Set.of());
+  }
+
+  /**
+   * ★★ <b>带「会话已负责账户」过滤的批处理落账</b>（S3 缺陷修复）：日结算的账户会话是**绝对值**落回 actor 账本的， 凡是会话里登记过的 {@code (actor,
+   * location)}，其当天终值都会被 {@link #landAccountSession} 整体覆盖； 因此这些账户上的 ledger 条目<b>不能再对 actor
+   * 基准叠一遍</b>。
+   *
+   * <p>★★ <b>它修的是什么（实测）</b>：跨区在途到货（{@code deliverShipments}）当天只写会话副本、不产生 ledger 条目。
+   * 买方当天在会话里拿到货后放贷，ledger 里出现一条 {@code LOAN_PRINCIPAL}；旧实现把这条也折到 actor 基准上， 而 actor 基准没有当天的到货（到货的
+   * actor 侧落点就是会话绝对值）⇒ {@code OwnershipBooks.apply} 误报负余额 （实测 tick136：账户 grain 0 被 {@code -62333}
+   * 扣成负数）。会话负责的账户跳过折叠后， 它们由绝对值落回统一收尾，而非会话账户（承运人、未播种的经营者等）仍按 ledger 条目逐笔落账。
+   *
+   * @param alreadyMaterialized 当天会由账户会话绝对值落回的账户键（{@link AccountSession#accounts()} 的键集）； {@code
+   *     Set.of()} = 旧逐条落账口径（所有条目都折）
+   */
+  public static ActorData apply(
+      ActorData base, List<ActorEntry> entries, Set<AccountPartitionKey> alreadyMaterialized) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(entries, "entries");
+    Objects.requireNonNull(alreadyMaterialized, "alreadyMaterialized");
     Map<GoodsAccountKey, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
     Map<GoodsAccountKey, Map<CommodityId, Long>> prefix = new LinkedHashMap<>();
     for (ActorEntry entry : entries) {
+      if (alreadyMaterialized.contains(new AccountPartitionKey(entry.actor(), entry.location()))) {
+        continue; // ★ 会话负责：终值由 landAccountSession 的绝对值覆盖，这里不再叠一遍。
+      }
       GoodsAccountKey key = new GoodsAccountKey(entry.actor(), entry.location());
       deltas
           .computeIfAbsent(key, ignored -> new LinkedHashMap<>())

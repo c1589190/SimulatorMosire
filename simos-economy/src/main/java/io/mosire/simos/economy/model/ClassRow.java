@@ -151,6 +151,30 @@ public record ClassRow(
   }
 
   /**
+   * ★★ <b>S3 阶层写回：只换当前视图，别的字段一字不动</b>—— 身份（{@link #id()}）、人口、劳动、参与率、货币、债务引用、 两类需求与周期累计自然需要全部原样保留。
+   *
+   * <p>★★ <b>为什么必须是一个方法而不是调用方逐字段抄</b>：写回路径（{@code EconomySettlement} 的关账日阶层分类）若在调用点 手抄字段，任何一次
+   * {@code ClassRow} 加字段都会把写回路径变成"静默丢字段"的第二处拼写点；本方法把"只改 view"的承诺钉在类型内部， 将来加字段时这段也只会编译失败一次（不会静默漏）。★
+   * 它<b>不改</b> {@code HouseholdId}（铁律 1：ID 是身份，视图是可变的）。
+   */
+  public ClassRow withView(CohortKey newView) {
+    if (newView == null) {
+      throw new IllegalArgumentException("ClassRow.withView 的 newView 不得为 null");
+    }
+    return new ClassRow(
+        id,
+        newView,
+        population,
+        laborMilli,
+        participationPerMille,
+        money,
+        debts,
+        naturalNeeds,
+        effectiveDemand,
+        cycleNaturalNeedMilli);
+  }
+
+  /**
    * ★★ <b>M1.8：按阶层参与率折算后的每日可用劳动</b>（千分劳动/日）= {@code laborMilli × participationPerMille ÷
    * 1000}（整数、向下取整）。
    *

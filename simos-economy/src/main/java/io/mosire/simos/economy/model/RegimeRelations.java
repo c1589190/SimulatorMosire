@@ -553,7 +553,16 @@ public final class RegimeRelations {
                 10)));
   }
 
-  /** 该格**四个传统阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。 */
+  /**
+   * 该格**四个传统阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。
+   *
+   * <p>★★ <b>S3 审计结论（保持原样）</b>：本方法只服务**创世缺省关系模板**（{@code EconomyPayloads} / {@code EconomySeeder}
+   * 在载荷缺 {@code relation} 时调用），不按运行期 {@code ClassRow.view} 派生。模板产出的 {@code ToCohort} 会在 {@code
+   * EconomyData} 构造期由 {@code normalizeRecipients} 一对一归一成 {@code ToHousehold(稳定 HouseholdId)} ⇒ S3
+   * 关账写回把 {@code ClassRow.view.stratum} 改成 {@code landless_laborer}/{@code artisan}/{@code
+   * official} 后，这些默认规则的对象仍然是同一家户， 不会漏行/错行。 新阶层没有创世行，由 S2/S3 的显式关系数据点名，不在这里追加（见 {@link
+   * #TRADITIONAL_STRATA} 的类注）。
+   */
   private static List<RuleSpec> laborCohorts(
       RuleType type,
       Pool pool,
@@ -575,6 +584,8 @@ public final class RegimeRelations {
   private static CompensationRule toRule(RuleSpec spec, HexCoord hex, ResidenceKind residence) {
     return new CompensationRule(
         spec.type(),
+        // ★ 这是**创世模板**的 view 受方：EconomyData 构造期会在一对一时归一为 ToHousehold(稳定身份)，
+        //   之后 S3 的 ClassRow.view 写回不会改这条规则指向的家户。
         new Recipient.ToCohort(new CohortKey(hex, residence, spec.stratum())),
         spec.pool(),
         spec.weight(),
