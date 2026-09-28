@@ -986,7 +986,7 @@ public final class ApiViews {
     view.put("derivedClass", derivedClass);
     view.put("stressCycles", condition.stressCycles());
     view.put(
-        "statusNote", "status=派生（UseRight/laborSource/未满足/债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
+        "statusNote", "status=派生（AssetShare owner/operator、laborSource、未满足、债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
     return view;
   }
 

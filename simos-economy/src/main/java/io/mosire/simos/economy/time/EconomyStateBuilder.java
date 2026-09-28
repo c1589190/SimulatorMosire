@@ -8,7 +8,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -20,7 +20,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -53,7 +53,7 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<LaborAllocationId, LaborAllocation> allocations;
   private LinkedHashMap<PeopleLotId, LaborSupply> laborSupply;
   private LinkedHashMap<MembershipId, Membership> memberships;
-  private LinkedHashMap<UseRightId, UseRight> useRights;
+  private LinkedHashMap<AssetShareId, AssetShare> assetShares;
   private LinkedHashMap<IndustryId, OperatorCondition> operatorConditions;
   private LinkedHashMap<HexCoord, Market> markets;
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
@@ -115,12 +115,12 @@ public final class EconomyStateBuilder {
     return memberships;
   }
 
-  /** 使用权表工作副本。 */
-  public LinkedHashMap<UseRightId, UseRight> useRights() {
-    if (useRights == null) {
-      useRights = new LinkedHashMap<>(base.useRights());
+  /** 实物资产份额表工作副本（R3B.1）。 */
+  public LinkedHashMap<AssetShareId, AssetShare> assetShares() {
+    if (assetShares == null) {
+      assetShares = new LinkedHashMap<>(base.assetShares());
     }
-    return useRights;
+    return assetShares;
   }
 
   /** 经营者状态表工作副本（S3.2 第 13 个组件；S1 只补齐形状，本阶段没有写入者）。 */
@@ -172,7 +172,7 @@ public final class EconomyStateBuilder {
         markets == null ? base.markets() : markets,
         shipments == null ? base.shipments() : shipments,
         memberships == null ? base.memberships() : memberships,
-        useRights == null ? base.useRights() : useRights,
+        assetShares == null ? base.assetShares() : assetShares,
         operatorConditions == null ? base.operatorConditions() : operatorConditions);
   }
 }

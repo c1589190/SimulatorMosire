@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
@@ -24,7 +24,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -37,17 +37,19 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 /**
- * ★★ <b>S3.4 阶层分化：{@code classify(household)} 的唯一拼写点</b>—— 判据全部来自可观察状态：{@code UseRight} + {@code
+ * ★★ <b>S3.4 阶层分化：{@code classify(household)} 的唯一拼写点</b>—— 判据全部来自可观察状态：{@code AssetShare} + {@code
  * ProductionRelation}（{@code laborSource}/{@code operator}/{@code inputSupplier}/{@code
  * residualOwner} + 规则受方） + {@code LaborAllocation} + 地租/工资 + 债务；<b>没有</b>"产量达到 X 就产生地主"这类硬编码产量阈值。
  *
- * <p>★★ <b>本版修正（2026-09-28 R3 续修）</b>：旧实现把 {@code UseRight.holder} 当成唯一所有权来源，而真档的 holder
- * 是<strong>产业的经营者 actor</strong>（{@code ESTATE:farm@…} / {@code WORKSHOP:craft@…} / {@code
- * HOUSEHOLD:weave@…}）——它们不是家户行 ⇒ 绝大多数家户 {@code ownLand=0}、直接落到 {@code
- * LANDLESS_LABORER}。本版按"本户在生产关系里出什么/以什么身份参与"分类：
+ * <p>★★ <b>R3B.1 的字段口径</b>：{@code AssetShare} 有 {@code owner}（所有权主体）与 {@code operator}（实际经营/使用主体）
+ * 两栏，本规则两栏都读（同一条份额 owner == operator 时只计一次）；旧 {@code UseRight.holder} 的读取对应
+ * {@code operator}，判自耕/所有权的那几步结合 {@code owner}。真档里 {@code owner/operator} 常是<strong>产业的经营者
+ * actor</strong>（{@code ESTATE:farm@…} / {@code WORKSHOP:craft@…} / {@code HOUSEHOLD:weave@…}）
+ * ——它们不是家户行 ⇒ 绝大多数家户 {@code ownLand=0}、直接落到 {@code LANDLESS_LABORER}。本版按"本户在生产关系里
+ * 出什么/以什么身份参与"分类：
  *
  * <pre>
- * ① 直接 {@code UseRight}（holder 能反解成本状态里的家户）：
+ * ① 直接 {@code AssetShare}（owner/operator 能反解成本状态里的家户）：
  *    有 LAND：
  *      · 净收地租且不是净卖劳动（{@code netLaborSold ≤ 0}）⇒ LANDLORD；
  *      · 净雇工（{@code netLaborSold < 0}）⇒ RICH_PEASANT；
@@ -57,7 +59,7 @@ import java.util.Set;
  *    其它直接权利/经营身份（CATTLE 等尚未启用的资产）⇒ 无债 MIDDLE_PEASANT、有债 POOR_PEASANT。
  * ② 无直接权利时看 {@link ProductionRelation} 与 {@code LaborAllocation}：
  *    · 地租受方只作 LANDLORD 的辅助证据（结构上有租规则 + 净不卖劳动），不再被折成"家户自有土地"；
- *    · 本户是某产业的 operator/inputSupplier/residualOwner 时，即使 UseRight 归经营者 actor，也按该身份给
+ *    · 本户是某产业的 operator/inputSupplier/residualOwner 时，即使份额登记在经营者 actor 名下，也按该身份给
  *      LAND/TOOL 那一档的 rich/middle/poor（不得因"权利不在本户名下"直接判 landless）；
  *    · 纯劳动供给按 laborSource 判：
  *        TENANT  ⇒ 有投入/产出占有且债务不高 ⇒ MIDDLE_PEASANT，否则 POOR_PEASANT；
@@ -158,7 +160,7 @@ public final class HouseholdClassRule {
 
   /** 结算侧入口：直接拿日结算的工作表分量，避免为一次分类构造整棵 {@code EconomyData}。 */
   static Classification classifyDetailed(
-      Map<UseRightId, UseRight> useRights,
+      Map<AssetShareId, AssetShare> assetShares,
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<IndustryId, Industry> industries,
       Map<IndustryId, ProductionRelation> relations,
@@ -166,7 +168,7 @@ public final class HouseholdClassRule {
       Map<DebtId, Debt> debts,
       HouseholdId household,
       Optional<ProductionLedger> ledger) {
-    return Index.of(useRights, allocations, industries, relations, classes, debts)
+    return Index.of(assetShares, allocations, industries, relations, classes, debts)
         .classify(household, ledger);
   }
 
@@ -212,7 +214,7 @@ public final class HouseholdClassRule {
   }
 
   /**
-   * ★★ <b>一次性索引</b>：把 {@code UseRight} / 生产关系 / {@code LaborAllocation} / 租规则 / 债务折成逐家户可 O(1)
+   * ★★ <b>一次性索引</b>：把 {@code AssetShare} / 生产关系 / {@code LaborAllocation} / 租规则 / 债务折成逐家户可 O(1)
    * 分类的判据。
    *
    * <p>★★ <b>为什么必须一次建索引</b>：关账日要对全部家户写回（真档 4,000+ 行），若每户都重扫全部关系与配额， 就是 O(行 × 关系 × 规则)
@@ -234,13 +236,13 @@ public final class HouseholdClassRule {
     /** 无格键产业（对任意格都算"可能"）的最紧槽位上限；口径与 {@code EconomyData.requireStratumAllowed} 一致。 */
     private final Map<SocialClassId, Long> universalSlotCaps = new LinkedHashMap<>();
 
-    // ── 直接使用权（holder 能反解为本状态里的家户）──────────────────────────────────────
+    // ── 直接资产份额（owner/operator 能反解为本状态里的家户）────────────────────────────
     private final Map<HouseholdId, Long> directRightQuantity = new LinkedHashMap<>();
     private final Map<HouseholdId, Long> directLandMilliMu = new LinkedHashMap<>();
     private final Map<HouseholdId, Long> directToolOrWorkshop = new LinkedHashMap<>();
     private final Map<HouseholdId, Boolean> communalRight = new LinkedHashMap<>();
     private final Map<HouseholdId, Set<IndustryId>> directActivities = new LinkedHashMap<>();
-    // ── 本户是 operator / inputSupplier / residualOwner 的产业（UseRight 可能不在本户名下）────
+    // ── 本户是 operator / inputSupplier / residualOwner 的产业（AssetShare 可能不在本户名下）────
     private final Map<HouseholdId, Long> operatedLandMilliMu = new LinkedHashMap<>();
     private final Map<HouseholdId, Long> operatedToolOrWorkshop = new LinkedHashMap<>();
     private final Map<HouseholdId, Set<IndustryId>> operatedActivities = new LinkedHashMap<>();
@@ -267,7 +269,7 @@ public final class HouseholdClassRule {
     private final Map<HouseholdId, Long> debtPrincipal = new LinkedHashMap<>();
 
     private Index(
-        Map<UseRightId, UseRight> useRights,
+        Map<AssetShareId, AssetShare> assetShares,
         Map<LaborAllocationId, LaborAllocation> allocations,
         Map<IndustryId, Industry> industries,
         Map<IndustryId, ProductionRelation> relations,
@@ -303,26 +305,20 @@ public final class HouseholdClassRule {
       //   的兼容解析（默认关系已在 EconomyData 构造期归一为 ToHousehold 稳定身份）；S3 阶层写回后它不会
       //   被当成身份缓存，也不会让新阶层"漏行"。
 
-      // ① 直接使用权：holder 就是本户 actor / 可反解为本户的那一份。
-      for (UseRight right : useRights.values()) {
-        HouseholdId holder = householdOf(right.holder(), classes, householdByActor);
-        if (holder == null) {
-          continue;
+      // ① 直接资产份额（R3B.1）：份额的 owner（所有权）与 operator（实际经营）任一能反解为本户，就计入本户。
+      //    ★ 旧 holder 的读取按语义拆到这两栏：owner == operator（旧档一对一迁移/创世整额）时只计一次，不双计。
+      for (AssetShare share : assetShares.values()) {
+        HouseholdId owner = householdOf(share.owner(), classes, householdByActor);
+        HouseholdId operator = householdOf(share.operator(), classes, householdByActor);
+        if (owner != null) {
+          mergeDirectShare(owner, share);
         }
-        directRightQuantity.merge(holder, right.quantity(), Math::addExact);
-        directActivities(holder).add(right.activity());
-        controlledActivities(holder).add(right.activity());
-        if (right.asset() == AssetKind.LAND) {
-          directLandMilliMu.merge(holder, right.quantity(), Math::addExact);
-        } else if (right.asset() == AssetKind.TOOL || right.asset() == AssetKind.WORKSHOP) {
-          directToolOrWorkshop.merge(holder, right.quantity(), Math::addExact);
-        }
-        if (right.kind() == UseRight.RightKind.COMMUNAL && right.quantity() > 0L) {
-          communalRight.put(holder, true);
+        if (operator != null && !operator.equals(owner)) {
+          mergeDirectShare(operator, share);
         }
       }
 
-      // ② 生产关系：本户是 operator/inputSupplier/residualOwner 的产业（它的 UseRight 可能在经营者 actor 名下），
+      // ② 生产关系：本户是 operator/inputSupplier/residualOwner 的产业（它的 AssetShare 可能在经营者 actor 名下），
       //    以及所有租规则受方。★ 这里**不**把森林式的"每个受方都是地主"折成所有权，只记事实。
       Map<IndustryId, Set<HouseholdId>> rentRecipientsByActivity = new LinkedHashMap<>();
       for (ProductionRelation relation : relations.values()) {
@@ -375,7 +371,7 @@ public final class HouseholdClassRule {
         }
       }
 
-      // ②a 经营身份对应的技术产能：即使 UseRight.holder 是经营者 actor，operator/inputSupplier/residualOwner
+      // ②a 经营身份对应的技术产能：即使 AssetShare 的 owner/operator 是经营者 actor，operator/inputSupplier/residualOwner
       //    的 LAND / TOOL / WORKSHOP 也要算进该家户的分类资产（计划 §S3.4 "不得因权利不在本户名下直接判 landless"）。
       for (Map.Entry<HouseholdId, Set<IndustryId>> entry : operatedActivities.entrySet()) {
         for (IndustryId activity : entry.getValue()) {
@@ -482,7 +478,7 @@ public final class HouseholdClassRule {
     public static Index of(EconomyData data) {
       Objects.requireNonNull(data, "data");
       return of(
-          data.useRights(),
+          data.assetShares(),
           data.allocations(),
           data.industries(),
           data.relations(),
@@ -491,19 +487,19 @@ public final class HouseholdClassRule {
     }
 
     public static Index of(
-        Map<UseRightId, UseRight> useRights,
+        Map<AssetShareId, AssetShare> assetShares,
         Map<LaborAllocationId, LaborAllocation> allocations,
         Map<IndustryId, Industry> industries,
         Map<IndustryId, ProductionRelation> relations,
         Map<HouseholdId, ClassRow> classes,
         Map<DebtId, Debt> debts) {
-      Objects.requireNonNull(useRights, "useRights");
+      Objects.requireNonNull(assetShares, "assetShares");
       Objects.requireNonNull(allocations, "allocations");
       Objects.requireNonNull(industries, "industries");
       Objects.requireNonNull(relations, "relations");
       Objects.requireNonNull(classes, "classes");
       Objects.requireNonNull(debts, "debts");
-      return new Index(useRights, allocations, industries, relations, classes, debts);
+      return new Index(assetShares, allocations, industries, relations, classes, debts);
     }
 
     /** 按上面的可观察量给一家户分档；{@code ledger} 只用于租金实付读数（读不到 ⇒ empty，不填 0）。 */
@@ -857,6 +853,26 @@ public final class HouseholdClassRule {
 
     private Set<IndustryId> directActivities(HouseholdId household) {
       return directActivities.computeIfAbsent(household, ignored -> new LinkedHashSet<>());
+    }
+
+    /**
+     * 把一条 AssetShare 的资产事实记到某个家户名下（owner 与 operator 都调用它；同一家户同一份只调一次）。
+     *
+     * <p>★ 判据与旧实现逐字对应，只把 {@code holder/activity} 换成 {@code owner|operator/industry}：
+     * 数量进资产基数、产业进直接/控制活动、LAND/TOOL/WORKSHOP 分类累计、COMMUNAL 记名。
+     */
+    private void mergeDirectShare(HouseholdId household, AssetShare share) {
+      directRightQuantity.merge(household, share.quantity(), Math::addExact);
+      directActivities(household).add(share.industry());
+      controlledActivities(household).add(share.industry());
+      if (share.asset() == AssetKind.LAND) {
+        directLandMilliMu.merge(household, share.quantity(), Math::addExact);
+      } else if (share.asset() == AssetKind.TOOL || share.asset() == AssetKind.WORKSHOP) {
+        directToolOrWorkshop.merge(household, share.quantity(), Math::addExact);
+      }
+      if (share.kind() == AssetShare.RightKind.COMMUNAL && share.quantity() > 0L) {
+        communalRight.put(household, true);
+      }
     }
 
     private Set<IndustryId> directActivitiesOrEmpty(HouseholdId household) {

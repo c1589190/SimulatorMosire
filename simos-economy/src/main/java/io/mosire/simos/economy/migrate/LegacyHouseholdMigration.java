@@ -7,14 +7,14 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
-import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Membership;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -32,7 +32,18 @@ import java.util.Optional;
  * <pre>
  * needed = 任一 LaborAllocation.household 是 pending 占位
  *       或 classes 非空而 memberships 为空（旧档没有成员份额组件）
+ *       或 industries 非空而 assetShares 为空（旧档没有资产份额组件 ⇒ 一次性按旧 capacity 物化，见下）
  * </pre>
+ *
+ * <p>★★ <b>R3B.1 的实物份额口径（旧档迁移）</b>：
+ *
+ * <ul>
+ *   <li><b>旧档已有 UseRight</b>：codec 读入时一对一整形成 {@code AssetShare(owner=operator=旧 holder,
+ *       industry=旧 activity, quantity/kind/id 原样)} —— 这里只原样搬运，<b>不</b>凭空拆出地主/佃户/多生产单位；
+ *   <li><b>旧档没有 useRights 组件但有 Industry</b>：对每个 {@code capacity > 0} 的项生成一条 {@code
+ *       AssetShare(owner=operator=旧 Industry.operator, quantity=capacity, kind=OWNED)}。★ 这是旧档的
+ *       <b>一次性初始实物份额物化</b>；{@code Industry.capacity} 从此只是过渡技术字段，<b>不是</b>持续上界。
+ * </ul>
  *
  * <p>迁移执行后：所有 allocation 的 household 都是真实家户（∈ classes）、{@code memberships} 补齐； 再调用 {@link #needed}
  * 为 false ⇒ <b>不会二次迁移</b>。{@link io.mosire.simos.economy.EconomyData} 的构造期 末尾还有一层守卫（pending
@@ -57,7 +68,7 @@ import java.util.Optional;
  * Σ Membership.count == Σ ClassRow.population} 这条 economy 侧可判的守恒成立。★ 它<b>不等于</b> social 侧 {@code
  * PopulationGroup.count}，本迁移器也不声称逐 lot 相等：旧档的跨切片对账由 <b>app 协调器</b>在首次推进前完成 （{@code
  * MembershipWriteback.rebuildLegacy} 按 social 真实批次重建份额并丢弃合成 lot；片区总量对不上 ⇒ fail-closed）。
- * 本迁移器只负责"economy 内部能过构造期守卫、劳动/使用权不丢"。
+ * 本迁移器只负责"economy 内部能过构造期守卫、劳动/资产份额不丢"。
  *
  * <p>★ <b>旧 DebtId 原样保留</b>（不重算）：本类只改 LaborAllocation/Membership；Debt 两端由 codec 的 {@code
  * HouseholdId} 反序列化器按视图映射，id 不动。
@@ -76,7 +87,7 @@ public final class LegacyHouseholdMigration {
   public record Result(
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<MembershipId, Membership> memberships,
-      Map<UseRightId, UseRight> useRights,
+      Map<AssetShareId, AssetShare> assetShares,
       Optional<EconomyMeta> meta) {}
 
   /** ★ 迁移是否已完成（meta 的 rulesVersion 标记；无 meta 视为未迁移）。 */
@@ -92,9 +103,9 @@ public final class LegacyHouseholdMigration {
       Map<HouseholdId, ClassRow> classes,
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<MembershipId, Membership> memberships,
-      Map<UseRightId, UseRight> useRights,
+      Map<AssetShareId, AssetShare> assetShares,
       Optional<EconomyMeta> meta) {
-    // ★ 迁移完成的判据 = meta.rulesVersion 已升到 pre-modern-v1（幂等标记）；它保证"没有产能 ⇒ 生成的使用权表
+    // ★ 迁移完成的判据 = meta.rulesVersion 已升到 pre-modern-v1（幂等标记）；它保证"没有产能 ⇒ 生成的资产份额表
     //   仍为空"的状态不会被日复一日地重复迁移。
     boolean migrated = isMigrated(meta);
     if (!migrated
@@ -106,8 +117,8 @@ public final class LegacyHouseholdMigration {
     if (!migrated
         && industries != null
         && !industries.isEmpty()
-        && (useRights == null || useRights.isEmpty())) {
-      return true; // 旧档没有使用权组件 ⇒ 按 Industry.capacity + operator 生成整额 OWNED
+        && (assetShares == null || assetShares.isEmpty())) {
+      return true; // 旧档没有资产份额组件 ⇒ 按旧 Industry.capacity + operator 一次性物化整额 OWNED
     }
     if (allocations != null) {
       for (LaborAllocation allocation : allocations.values()) {
@@ -125,7 +136,7 @@ public final class LegacyHouseholdMigration {
       Map<HouseholdId, ClassRow> classes,
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<MembershipId, Membership> memberships,
-      Map<UseRightId, UseRight> useRights,
+      Map<AssetShareId, AssetShare> assetShares,
       Optional<EconomyMeta> meta) {
     Map<LaborAllocationId, LaborAllocation> migratedAllocations = new LinkedHashMap<>();
     // 每条旧配额在迁移前的“位置/居住/权重”快照，供 Membership 反推用（迁移后 id 与原表已不同）。
@@ -210,47 +221,55 @@ public final class LegacyHouseholdMigration {
     if (classes != null && !classes.isEmpty()) {
       deriveMemberships(classes, former, migratedMemberships);
     }
-    Map<UseRightId, UseRight> migratedUseRights = new LinkedHashMap<>();
-    if (useRights != null) {
-      migratedUseRights.putAll(useRights);
+    Map<AssetShareId, AssetShare> migratedAssetShares = new LinkedHashMap<>();
+    if (assetShares != null) {
+      // ★★ R3B.1：旧档已有 UseRight 时，codec 已按"一对一把 holder 填成 owner=operator"整形成 AssetShare
+      //   （见 EconomyCodec 的旧节点整形）；这里只原样搬运 ⇒ id 字符串不改写、不重算、不拆地主/佃户。
+      migratedAssetShares.putAll(assetShares);
     }
-    if (migratedUseRights.isEmpty() && industries != null) {
-      generateOwnedUseRights(industries, migratedUseRights);
+    if (migratedAssetShares.isEmpty() && industries != null) {
+      generateOwnedAssetShares(industries, migratedAssetShares);
     }
     Optional<EconomyMeta> migratedMeta = migrateMeta(meta);
-    return new Result(migratedAllocations, migratedMemberships, migratedUseRights, migratedMeta);
+    return new Result(migratedAllocations, migratedMemberships, migratedAssetShares, migratedMeta);
   }
 
   /**
-   * ★★ <b>旧档：按 {@code Industry.capacity + operator} 生成整额 {@code OWNED} 使用权</b>（S1.5 明文）。
+   * ★★ <b>旧档：按 {@code Industry.capacity + operator} 生成整额 {@code OWNED} 实物份额</b>（S1.5 明文；R3B.1 换型）。
    *
-   * <p>★ 只生成 {@code capacity > 0} 的项（0 产能 ⇒ 没有可用的权利）；{@code sequence = 0}（每 {@code (activity,
-   * asset, holder, kind)} 在旧档里至多一条）。
+   * <p>★★ <b>这是一次性初始化，不是持续上界</b>：旧档没有 UseRight 组件时，用旧的 {@code Industry.capacity} 给该产业的
+   * operator 物化一份初始实物账（{@code owner == operator == 旧 Industry.operator}）；此后实物总量由 AssetShare
+   * 自己说话，{@code EconomyData} <b>不</b>再拿 capacity 当上界。
+   *
+   * <p>★ 只生成 {@code capacity > 0} 的项（0 产能 ⇒ 没有要登记的实物）；{@code sequence = 0}（每 {@code (industry,
+   * asset, owner, operator, kind)} 在旧档里至多一条）。
    */
-  private static void generateOwnedUseRights(
-      Map<IndustryId, Industry> industries, Map<UseRightId, UseRight> out) {
+  private static void generateOwnedAssetShares(
+      Map<IndustryId, Industry> industries, Map<AssetShareId, AssetShare> out) {
     for (Industry industry : industries.values()) {
       for (Map.Entry<io.mosire.simos.actor.api.asset.AssetKind, Long> capacity :
           industry.capacity().entrySet()) {
         if (capacity.getValue() <= 0L) {
           continue;
         }
-        UseRightId id =
-            UseRight.idOf(
+        AssetShareId id =
+            AssetShare.idOf(
                 industry.id(),
                 capacity.getKey(),
                 industry.operator(),
-                UseRight.RightKind.OWNED,
+                industry.operator(),
+                AssetShare.RightKind.OWNED,
                 0L);
         out.put(
             id,
-            new UseRight(
+            new AssetShare(
                 id,
                 industry.id(),
-                industry.operator(),
                 capacity.getKey(),
+                industry.operator(),
+                industry.operator(),
                 capacity.getValue(),
-                UseRight.RightKind.OWNED));
+                AssetShare.RightKind.OWNED));
       }
     }
   }

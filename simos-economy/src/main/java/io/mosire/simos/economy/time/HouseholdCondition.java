@@ -10,24 +10,24 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.FlowRow;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
  * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code ClassRow} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
- * {@code EconomyData} 组件、不改变更集/codec 形状，全部字段都能由 {@code FlowRow + LaborAllocation + UseRight + Debt
+ * {@code EconomyData} 组件、不改变更集/codec 形状，全部字段都能由 {@code FlowRow + LaborAllocation + AssetShare + Debt
  * + ProductionLedger(瞬态)} 逐值复算。
  *
  * <pre>
  * unmetNeedMilliGrain/Cloth = 本周期累计未满足（FlowRow.unmetNeed；与"本周期"同窗口）
- * debtStress               = 债务本金 ÷ max(1, 使用权数量) × 1000（资产估价近似，如实标注为近似）
+ * debtStress               = 债务本金 ÷ max(1, 资产份额数量) × 1000（资产估价近似，如实标注为近似）
  * laborSoldMilli           = Σ LaborAllocation(household=本户).laborMilli
  * laborSelfMilli           = Σ LaborAllocation(household=本户 且 actor=本户 actor).laborMilli
  * rentPaidMilli            = 本日 ledger 里本户作为付方的租规则实付（账本缺失 ⇒ empty，不填 0）
  * wageArrearsMilli         = 本日 ledger 里本户作为受方的工资欠款（WageArrears）
- * status                   = 由 laborSource / 使用权 / 未满足 / 债务压力推出
+ * status                   = 由 laborSource / 资产份额 / 未满足 / 债务压力推出
  * </pre>
  *
  * <p>★★ <b>如实边界</b>：本批没有"连续 M 周期"的持久计数器（{@code HouseholdCondition} 不是 {@code EconomyData}
@@ -58,7 +58,7 @@ public record HouseholdCondition(
 
   /** 生计状态（计划 §S3.3 的词表）。 */
   public enum LivelihoodStatus {
-    /** 自给生产（持有使用权；卖不出去也不自动转业/死亡）。 */
+    /** 自给生产（持有资产份额；卖不出去也不自动转业/死亡）。 */
     SELF_PROVISION,
     /** 佃耕。 */
     TENANT,
@@ -66,7 +66,7 @@ public record HouseholdCondition(
     SERF,
     /** 雇工/工资劳动。 */
     WAGE,
-    /** 失去生计（无使用权、无雇主、无目的地）。 */
+    /** 失去生计（无资产份额、无雇主、无目的地）。 */
     DESTITUTE,
     /** 迁移中（迁移命令/自治迁移的过渡态）。 */
     MIGRATING
@@ -110,9 +110,12 @@ public record HouseholdCondition(
       }
     }
     long assetQuantity = 0L;
-    for (UseRight right : data.useRights().values()) {
-      if (right.holder().equals(HouseholdActors.of(household))) {
-        assetQuantity += right.quantity();
+    for (AssetShare share : data.assetShares().values()) {
+      // ★ R3B.1：旧 holder 语义拆成 owner/operator 两栏 —— 拥有或实际经营的份额都算本户的资产基数；
+      //   同一条份额（owner == operator）只计一次。
+      if (share.owner().equals(HouseholdActors.of(household))
+          || share.operator().equals(HouseholdActors.of(household))) {
+        assetQuantity += share.quantity();
       }
     }
     long debtStress = principal == 0L ? 0L : principal * 1_000L / Math.max(1L, assetQuantity);
@@ -168,7 +171,7 @@ public record HouseholdCondition(
   }
 
   /**
-   * 生计状态推导：先按本户供给的产业关系定 {@code TENANT}/{@code SERF}/{@code WAGE}（制度优先）， 再看使用权给出 {@code
+   * 生计状态推导：先按本户供给的产业关系定 {@code TENANT}/{@code SERF}/{@code WAGE}（制度优先）， 再看资产份额给出 {@code
    * SELF_PROVISION}，都没有则 {@code DESTITUTE}。
    */
   private static LivelihoodStatus livelihoodOf(
@@ -195,8 +198,10 @@ public record HouseholdCondition(
       return LivelihoodStatus.SERF;
     }
     boolean hasRight = false;
-    for (UseRight right : data.useRights().values()) {
-      if (right.holder().equals(HouseholdActors.of(household)) && right.quantity() > 0L) {
+    for (AssetShare share : data.assetShares().values()) {
+      if (share.quantity() > 0L
+          && (share.owner().equals(HouseholdActors.of(household))
+              || share.operator().equals(HouseholdActors.of(household)))) {
         hasRight = true;
         break;
       }

@@ -19,7 +19,7 @@ import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.Basis;
@@ -40,7 +40,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -251,10 +251,10 @@ final class EconomyPayloads {
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
     Map<HexCoord, Market> markets = markets(payload, entries);
     // ★ S1 的两个新组件：可选的逐格声明；缺省 ⇒ 空表（由 EconomyData 的迁移器补齐成员份额；
-    //   使用权则是"没有登记就没有权利" —— 不凭产能替谁发明权利，见 UseRight 的类注）。
+    //   资产份额则是"没有登记就没有份额" —— 不凭产能替谁发明权利，见 AssetShare 的类注）。
     Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
-    Map<UseRightId, UseRight> useRights = new LinkedHashMap<>();
-    Map<String, Long> useRightSequences = new LinkedHashMap<>();
+    Map<AssetShareId, AssetShare> assetShares = new LinkedHashMap<>();
+    Map<String, Long> assetShareSequences = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
@@ -313,41 +313,21 @@ final class EconomyPayloads {
           throw new IllegalArgumentException("同一份载荷里成员份额重复: " + membership.id());
         }
       }
-      // ★ S1：该格的使用权（可选；id 由载荷内确定性序号给出）。
+      // ★★ R3B.1：该格的实物资产份额（可选）。新键 = {@code assetShares}（形状 {industry, owner, operator,
+      //   asset, quantity, kind}）；旧键 = {@code useRights}（形状 {activity, holder, asset, quantity, kind}，
+      //   一对一翻译成 owner=operator=holder、industry=activity）。★ 两者同时出现 ⇒ fail-closed，不猜哪一份为准。
+      boolean hasNewShares = entry.has("assetShares");
+      boolean hasLegacyShares = entry.has("useRights");
+      if (hasNewShares && hasLegacyShares) {
+        throw new IllegalArgumentException(
+            "同一 entry 不得同时给 assetShares 与 useRights（R3B.1 起新键是 assetShares，旧键按一对一代际翻译）: "
+                + entry);
+      }
+      for (JsonNode node : optionalArray(entry, "assetShares")) {
+        addAssetShare(assetShares, assetShareSequences, node, false);
+      }
       for (JsonNode node : optionalArray(entry, "useRights")) {
-        IndustryId activity = IndustryId.parse(requireText(node, "activity"));
-        JsonNode holderNode = optionalObject(node, "holder");
-        if (holderNode == null) {
-          throw new IllegalArgumentException("使用权的字段 holder 必须是对象: " + node);
-        }
-        ActorRef holder = actorRef(holderNode);
-        AssetKind asset;
-        try {
-          asset = AssetKind.valueOf(requireText(node, "asset"));
-        } catch (IllegalArgumentException e) {
-          throw new IllegalArgumentException("使用权的 asset 不是生产资料种类: " + node, e);
-        }
-        long quantity = requireLong(node, "quantity");
-        UseRight.RightKind kind;
-        try {
-          kind = UseRight.RightKind.valueOf(requireText(node, "kind"));
-        } catch (IllegalArgumentException e) {
-          throw new IllegalArgumentException("使用权的 kind 不是 OWNED/TENANCY/COMMUNAL: " + node, e);
-        }
-        String sequenceKey = activity + "|" + asset + "|" + holder + "|" + kind;
-        long sequence = useRightSequences.getOrDefault(sequenceKey, 0L);
-        useRightSequences.put(sequenceKey, sequence + 1L);
-        UseRight useRight =
-            new UseRight(
-                UseRight.idOf(activity, asset, holder, kind, sequence),
-                activity,
-                holder,
-                asset,
-                quantity,
-                kind);
-        if (useRights.putIfAbsent(useRight.id(), useRight) != null) {
-          throw new IllegalArgumentException("同一份载荷里使用权重复: " + useRight.id());
-        }
+        addAssetShare(assetShares, assetShareSequences, node, true);
       }
     }
     EconomyMeta meta =
@@ -365,7 +345,7 @@ final class EconomyPayloads {
         // ★ M2.4：创世载荷没有在途（播种出来的世界货物都在账上；在途由市场发运产生）。
         Map.of(),
         memberships,
-        useRights,
+        assetShares,
         // ★ S3 预留的第 13 个组件：创世载荷暂不声明经营者状态（空表 = 尚未登记任何状态机状态）。
         Map.of());
   }
@@ -661,6 +641,79 @@ final class EconomyPayloads {
         requireText(node, "activity"),
         requireLong(node, "laborMilli"),
         requireLong(node, "period"));
+  }
+
+  // ── 实物资产份额（R3B.1）────────────────────────────────────────────────────────────
+
+  /**
+   * ★★ <b>一条实物资产份额载荷 → {@link AssetShare}</b>。
+   *
+   * <p>★ <b>新形状</b>：{@code {industry, owner:{kind,id}, operator:{kind,id}, asset, quantity, kind}} ——
+   * {@code owner} 与 {@code operator} 是两件事，允许不等（租佃/委托）。
+   *
+   * <p>★ <b>旧形状（{@code useRights} 数组）</b>：{@code {activity, holder, asset, quantity, kind}} ⇒
+   * 一对一翻译 {@code holder ⇒ owner=operator}、{@code activity ⇒ industry}；不拆地主/佃户/多 unit（R3B.1 边界）。
+   *
+   * <p>★ <b>id 一律不信任载荷、由确定性序号生成</b>（{@link AssetShare#idOf}）：同一份载荷重放得到同一批 id，
+   * 禁止随机数/时间戳；旧档里已落盘的 {@code use-…} id 不走本方法（那条路在 {@code EconomyCodec} 里原样保留）。
+   */
+  private static void addAssetShare(
+      Map<AssetShareId, AssetShare> out,
+      Map<String, Long> sequences,
+      JsonNode node,
+      boolean legacy) {
+    IndustryId industry;
+    ActorRef owner;
+    ActorRef operator;
+    if (legacy) {
+      industry = IndustryId.parse(requireText(node, "activity"));
+      JsonNode holderNode = optionalObject(node, "holder");
+      if (holderNode == null) {
+        throw new IllegalArgumentException("旧使用权（useRights）的字段 holder 必须是对象: " + node);
+      }
+      owner = actorRef(holderNode);
+      operator = owner;
+    } else {
+      industry = IndustryId.parse(requireText(node, "industry"));
+      JsonNode ownerNode = optionalObject(node, "owner");
+      if (ownerNode == null) {
+        throw new IllegalArgumentException("资产份额的字段 owner 必须是对象: " + node);
+      }
+      JsonNode operatorNode = optionalObject(node, "operator");
+      if (operatorNode == null) {
+        throw new IllegalArgumentException("资产份额的字段 operator 必须是对象: " + node);
+      }
+      owner = actorRef(ownerNode);
+      operator = actorRef(operatorNode);
+    }
+    AssetKind asset;
+    try {
+      asset = AssetKind.valueOf(requireText(node, "asset"));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("资产份额的 asset 不是生产资料种类: " + node, e);
+    }
+    long quantity = requireLong(node, "quantity");
+    AssetShare.RightKind kind;
+    try {
+      kind = AssetShare.RightKind.valueOf(requireText(node, "kind"));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("资产份额的 kind 不是 OWNED/TENANCY/COMMUNAL: " + node, e);
+    }
+    String sequenceKey = industry + "|" + asset + "|" + owner + "|" + operator + "|" + kind;
+    long sequence = sequences.getOrDefault(sequenceKey, 0L);
+    sequences.put(sequenceKey, sequence + 1L);
+    AssetShare share =
+        new AssetShare(
+            AssetShare.idOf(industry, asset, owner, operator, kind, sequence),
+            industry,
+            asset,
+            owner,
+            operator,
+            quantity,
+            kind);
+    if (out.putIfAbsent(share.id(), share) != null) {
+      throw new IllegalArgumentException("同一份载荷里资产份额重复: " + share.id());
+    }
   }
 
   // ── 产业 / 阶层行 ────────────────────────────────────────────────────────────────────

@@ -2,7 +2,6 @@ package io.mosire.simos.economy;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -12,7 +11,7 @@ import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -30,7 +29,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -119,9 +118,10 @@ import java.util.Set;
  * ShipmentBatch}（在途批次）。★ 它是**跨 tick 状态**：发运日建、到货日销；到货前目的地消费不到它。
  *
  * <p>★★ **S1 的第 11/12 个组件**：{@code memberships}（键 = {@link MembershipId}；成员份额，Σcount ==
- * 行人口的全局守卫在这里判）与 {@code useRights}（键 = {@link UseRightId}；使用权，Σquantity ≤ Industry.capacity
- * 的守卫在这里判）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由 S1
- * 一次性补齐，本阶段空表缺省。
+ * 行人口的全局守卫在这里判）与 {@code assetShares}（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>，
+ * 逐行判"键 == 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
+ * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2
+ * 的经营者状态机）由 S1 一次性补齐，本阶段空表缺省。
  *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
@@ -139,7 +139,7 @@ public record EconomyData(
     Map<HexCoord, Market> markets,
     Map<ShipmentId, ShipmentBatch> shipments,
     Map<MembershipId, Membership> memberships,
-    Map<UseRightId, UseRight> useRights,
+    Map<AssetShareId, AssetShare> assetShares,
     Map<IndustryId, OperatorCondition> operatorConditions) {
 
   /** 往返用例的起点：未激活 + 十三张空表。 */
@@ -189,8 +189,8 @@ public record EconomyData(
     if (memberships == null) {
       memberships = Map.of();
     }
-    if (useRights == null) {
-      useRights = Map.of();
+    if (assetShares == null) {
+      assetShares = Map.of();
     }
     // ★ S3 预留的第 13 个组件（S3.2 的经营者状态机）：缺键 ⇒ 空表（与其余组件同一条旧档兼容口径）。
     if (operatorConditions == null) {
@@ -200,17 +200,17 @@ public record EconomyData(
     //   旧 LaborAllocation 没有 household / 旧档没有 memberships 组件时，在这里一次性补齐。
     //   ★ 它必须发生在**所有守卫之前**：迁移后的状态才参与 pending 检查、Σ 守卫与关系归一。
     //   ★★ Minor-5（2026-09-28 评审）：这一步是**构造期自动**跑的 ⇒ 任何旧形状测试夹具（classes 非空但
-    //   memberships/useRights 为空、或 allocation 的 household 是 pending 占位）都会被静默补齐
-    //   memberships/useRights 后才进守卫。V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的
+    //   memberships/assetShares 为空、或 allocation 的 household 是 pending 占位）都会被静默补齐
+    //   memberships/assetShares 后才进守卫。V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的
     //   组件，是构造期补出来的）；本批不改行为、只留提示。
     if (LegacyHouseholdMigration.needed(
-        industries, classes, allocations, memberships, useRights, meta)) {
+        industries, classes, allocations, memberships, assetShares, meta)) {
       LegacyHouseholdMigration.Result migrated =
           LegacyHouseholdMigration.migrate(
-              industries, classes, allocations, memberships, useRights, meta);
+              industries, classes, allocations, memberships, assetShares, meta);
       allocations = migrated.allocations();
       memberships = migrated.memberships();
-      useRights = migrated.useRights();
+      assetShares = migrated.assetShares();
       meta = migrated.meta();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。
@@ -422,50 +422,33 @@ public record EconomyData(
                 + "（同一批人的劳动不得被两个产业各算一次满额，设计稿 §四）");
       }
     }
-    // ── S1 第 12 个组件：使用权表 ─────────────────────────────────────────────────────────
-    //   ★ 键 == 值内 id；activity 必须存在；每个 (activity, asset) 的 Σ quantity ≤ Industry.capacity；
-    //     关系表的 operator 若该产业有使用权，必须是其中一个 holder（S1 §6.1 第 6/7 条）。
-    Map<UseRightId, UseRight> useRightsCopy = new LinkedHashMap<>();
-    Map<IndustryId, Map<AssetKind, Long>> usedByActivity = new LinkedHashMap<>();
-    Map<IndustryId, Set<ActorRef>> holdersByActivity = new LinkedHashMap<>();
-    for (Map.Entry<UseRightId, UseRight> entry : useRights.entrySet()) {
+    // ── R3B.1 第 12 个组件：实物资产份额表 ──────────────────────────────────────────────
+    //   ★ 键 == 值内 id；industry 必须存在；asset/owner/operator/kind 非空、quantity ≥ 0（非空与 quantity
+    //     由 AssetShare 构造期判，这里判跨表的 industry 引用与键身份）。
+    //   ★★ **这里不再有"Σ quantity ≤ Industry.capacity"的上界守卫，也不写 Σ == capacity**：AssetShare 是
+    //     独立的实物资产总账，Industry.capacity 在 B.1 里只是过渡字段（B.2 移出生产模型）；把技术模板当
+    //     实物账本上界，会把"实物已存在、模板尚未及更新"这类合法状态误判成坏数据。
+    //   ★ 关系表的 operator 若该产业有份额行，必须是其中一个 operator（不是 owner）——见第 8 个组件的守卫。
+    Map<AssetShareId, AssetShare> assetSharesCopy = new LinkedHashMap<>();
+    Map<IndustryId, Set<ActorRef>> operatorsByActivity = new LinkedHashMap<>();
+    for (Map.Entry<AssetShareId, AssetShare> entry : assetShares.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("useRights 的键与值都不得为 null: " + entry.getKey());
+        throw new IllegalArgumentException("assetShares 的键与值都不得为 null: " + entry.getKey());
       }
-      UseRight useRight = entry.getValue();
-      if (!entry.getKey().equals(useRight.id())) {
+      AssetShare share = entry.getValue();
+      if (!entry.getKey().equals(share.id())) {
         throw new IllegalArgumentException(
-            "useRights 的键必须与 UseRight.id 一致：键=" + entry.getKey() + "，行内 id=" + useRight.id());
+            "assetShares 的键必须与 AssetShare.id 一致：键=" + entry.getKey() + "，行内 id=" + share.id());
       }
-      if (!industriesCopy.containsKey(useRight.activity())) {
-        throw new IllegalArgumentException("使用权指名的产业不存在: " + useRight.activity());
+      if (!industriesCopy.containsKey(share.industry())) {
+        throw new IllegalArgumentException("资产份额指名的产业不存在: " + share.industry());
       }
-      usedByActivity
-          .computeIfAbsent(useRight.activity(), ignored -> new LinkedHashMap<>())
-          .merge(useRight.asset(), useRight.quantity(), Math::addExact);
-      holdersByActivity
-          .computeIfAbsent(useRight.activity(), ignored -> new LinkedHashSet<>())
-          .add(useRight.holder());
-      useRightsCopy.put(entry.getKey(), useRight);
+      operatorsByActivity
+          .computeIfAbsent(share.industry(), ignored -> new LinkedHashSet<>())
+          .add(share.operator());
+      assetSharesCopy.put(entry.getKey(), share);
     }
-    for (Map.Entry<IndustryId, Map<AssetKind, Long>> entry : usedByActivity.entrySet()) {
-      Industry industry = industriesCopy.get(entry.getKey());
-      for (Map.Entry<AssetKind, Long> usage : entry.getValue().entrySet()) {
-        long capacity = industry.capacity().getOrDefault(usage.getKey(), 0L);
-        if (usage.getValue() > capacity) {
-          throw new IllegalArgumentException(
-              "使用权的 Σ quantity 不得超过 Industry.capacity（S1 §6.1 第 6 条）："
-                  + entry.getKey()
-                  + " / "
-                  + usage.getKey()
-                  + " 使用权="
-                  + usage.getValue()
-                  + " > capacity="
-                  + capacity);
-        }
-      }
-    }
-    useRights = Collections.unmodifiableMap(useRightsCopy); // ★ 冻在赋值处
+    assetShares = Collections.unmodifiableMap(assetSharesCopy); // ★ 冻在赋值处
 
     // ── 第 8 个组件：生产关系表（S1 阶段 4+5 Task 2；计划 R3）──────────────────────────────
     Map<IndustryId, ProductionRelation> relationsRaw = new LinkedHashMap<>();
@@ -505,15 +488,15 @@ public record EconomyData(
                 + "，产业="
                 + industry.operator());
       }
-      Set<ActorRef> holders = holdersByActivity.get(entry.getKey());
-      if (holders != null && !holders.isEmpty() && !holders.contains(relation.operator())) {
+      Set<ActorRef> operators = operatorsByActivity.get(entry.getKey());
+      if (operators != null && !operators.isEmpty() && !operators.contains(relation.operator())) {
         throw new IllegalArgumentException(
-            "关系的 operator 必须是该产业使用权的一个 holder（S1 §6.1 第 7 条）："
+            "关系的 operator 必须是该产业某条 AssetShare 的 operator（不是 owner；S1 §6.1 第 7 条的 R3B.1 口径）："
                 + entry.getKey()
                 + " operator="
                 + relation.operator()
-                + "，holders="
-                + holders);
+                + "，operators="
+                + operators);
       }
     }
     // ── S1 第 11 个组件：成员份额表 ───────────────────────────────────────────────────────
@@ -704,7 +687,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -722,7 +705,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -740,7 +723,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -758,7 +741,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -776,7 +759,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -794,7 +777,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -812,7 +795,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -830,7 +813,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -853,7 +836,7 @@ public record EconomyData(
         value,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -875,7 +858,7 @@ public record EconomyData(
         markets,
         value,
         memberships,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
@@ -893,12 +876,12 @@ public record EconomyData(
         markets,
         shipments,
         value,
-        useRights,
+        assetShares,
         operatorConditions);
   }
 
-  /** 一个组件一个 with（S1：使用权表）；其余十二个组件原样带过。 */
-  public EconomyData withUseRights(Map<UseRightId, UseRight> value) {
+  /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十二个组件原样带过。 */
+  public EconomyData withAssetShares(Map<AssetShareId, AssetShare> value) {
     return new EconomyData(
         meta,
         industries,
@@ -929,7 +912,7 @@ public record EconomyData(
         markets,
         shipments,
         memberships,
-        useRights,
+        assetShares,
         value);
   }
 

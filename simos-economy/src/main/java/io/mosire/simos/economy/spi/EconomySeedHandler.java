@@ -97,10 +97,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★ M2.4：第 10 个组件（在途批次）—— 播种载荷没有在途，但**必须原样带过已有批次**：
             //   漏了它 = 一次按格追加播种会把全世界正在路上的货物静默抹掉（比"没播"更糟：货权凭据消失）。
             merge(base.shipments(), seeded.shipments()),
-            // ★ S1：成员份额与使用权按同一套"该格已被占用 ⇒ 上面就拒"的口径追加 —— 漏了它们 =
-            //   第二批播种的家户成员份额/使用权静默消失（世界照旧起得来，缺口却在账面上查无此人）。
+            // ★ S1：成员份额与 R3B.1 的实物资产份额按同一套"该格已被占用 ⇒ 上面就拒"的口径追加 —— 漏了它们 =
+            //   第二批播种的家户成员份额/资产份额静默消失（世界照旧起得来，缺口却在账面上查无此人）。
             merge(base.memberships(), seeded.memberships()),
-            merge(base.useRights(), seeded.useRights()),
+            merge(base.assetShares(), seeded.assetShares()),
             // ★ S3 预留的第 13 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.operatorConditions(), seeded.operatorConditions()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));

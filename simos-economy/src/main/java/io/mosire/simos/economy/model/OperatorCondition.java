@@ -81,7 +81,7 @@ public record OperatorCondition(
     INDEBTED,
     /** 停业（债务压力/再生产压力触发）。 */
     SUSPENDED,
-    /** 退出中（处理库存/使用权/债务）。 */
+    /** 退出中（处理库存/资产份额/债务）。 */
     EXITING,
     /** 已退出（不再生产）。 */
     EXITED,

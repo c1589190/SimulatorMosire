@@ -16,7 +16,7 @@ import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
@@ -39,7 +39,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionRecipe;
-import io.mosire.simos.economy.model.UseRight;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
@@ -642,10 +642,10 @@ public final class EconomySettlement {
     //   （见 {@link #scaleLaborOfIndustry}："人死了劳动没减"这条旧账的收口）⇒ 需要工作副本。
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
     LinkedHashMap<PeopleLotId, LaborSupply> laborSupply = session.sheet().laborSupply();
-    // ★ S1：成员份额与使用权的工作副本（死亡/人口回写要缩成员份额；使用权本步原样带过，
+    // ★ S1：成员份额与资产份额的工作副本（死亡/人口回写要缩成员份额；资产份额本步原样带过，
     //   但日结算必须交出**同一份**状态，不能让两个组件在终态里漂开）。
     LinkedHashMap<MembershipId, Membership> memberships = session.sheet().memberships();
-    LinkedHashMap<UseRightId, UseRight> useRights = session.sheet().useRights();
+    LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
     // ★★ S3：经营者状态机的工作副本 —— 与 industries/rows 同一条"日结算就地更新、结束后整体交出"的口径；
     //   状态转移读市场报告与债务/库存的可观察量，不在这里重算生产公式。
     LinkedHashMap<IndustryId, OperatorCondition> operatorConditions =
@@ -982,7 +982,7 @@ public final class EconomySettlement {
     //     未关账产业的周期证据不能被别人关账时顺手消费掉。
     //   ★ 市场证据取的是**本周期累计**（每轮市场结束后累加到 OperatorCondition.cycle*），不再要求 evidence.day == day；
     //     若本周期一个市场轮都没有（cycleMarketRounds == 0），连续计数保持、不用 0 覆盖。
-    //   ★ 缩产/停业只改"计划规模系数"（StressPolicy），capacity 与 UseRight 一字不动。
+    //   ★ 缩产/停业只改"计划规模系数"（StressPolicy），capacity 与 AssetShare 一字不动。
     Set<IndustryId> closingIndustries = new LinkedHashSet<>();
     if (anyCycleClosed) {
       Map<IndustryId, Boolean> shortfallByIndustry = new LinkedHashMap<>();
@@ -1026,7 +1026,7 @@ public final class EconomySettlement {
       ProductionLedger classLedger = ledger.toLedger();
       HouseholdClassRule.Index classIndex =
           HouseholdClassRule.Index.of(
-              useRights, allocations, industries, base.relations(), rows, debts);
+              assetShares, allocations, industries, base.relations(), rows, debts);
       List<ClassTransition> classTransitions = new ArrayList<>();
       for (HouseholdId key : new ArrayList<>(rows.keySet())) {
         ClassRow row = rows.get(key);
@@ -1920,10 +1920,10 @@ public final class EconomySettlement {
     LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
     LinkedHashMap<PeopleLotId, LaborSupply> laborSupply = session.sheet().laborSupply();
-    // ★ S1：成员份额与使用权的工作副本（死亡/人口回写要缩成员份额；使用权本步原样带过，
+    // ★ S1：成员份额与资产份额的工作副本（死亡/人口回写要缩成员份额；资产份额本步原样带过，
     //   但日结算必须交出**同一份**状态，不能让两个组件在终态里漂开）。
     LinkedHashMap<MembershipId, Membership> memberships = session.sheet().memberships();
-    LinkedHashMap<UseRightId, UseRight> useRights = session.sheet().useRights();
+    LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
     // 批次 → 它供给的产业（保序、去重；只认**真的落在某个产业上**的 actor，见 EconomyData 的构造期守卫）。
     Map<PeopleLotId, List<IndustryId>> industriesOf = new LinkedHashMap<>();
     for (LaborAllocation allocation : allocations.values()) {
@@ -3148,7 +3148,7 @@ public final class EconomySettlement {
   /**
    * ★★ <b>S3：计划规模</b> = 技术产能规模 × 状态机的计划系数（{@link StressPolicy}）。
    *
-   * <p>★ 缩产/停业只影响"本周期的计划"（投入需求、劳动需求、收获规模），<b>不销毁</b> {@code capacity} / {@code UseRight}：
+   * <p>★ 缩产/停业只影响"本周期的计划"（投入需求、劳动需求、收获规模），<b>不销毁</b> {@code capacity} / {@code AssetShare}：
    * 条件缺失（旧档）或状态回到 {@code ACTIVE} ⇒ 系数 1000‰ ⇒ 与旧行为逐值相同。
    */
   static long plannedCapacityScaleOf(Industry industry, OperatorCondition condition) {
@@ -4193,7 +4193,7 @@ public final class EconomySettlement {
     ProductionRecipe recipe = industry.recipe();
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
     // ★★ **K3：产能那一路读 {@code industry.capacity()}**（不再 Σ各行的 meansOfProduction —— 行里没有它了）。
-    //   ★ S3：再乘状态机的计划规模系数（缩产/停业不改 capacity/UseRight，只改本周期计划）。
+    //   ★ S3：再乘状态机的计划规模系数（缩产/停业不改 capacity/AssetShare，只改本周期计划）。
     long scale = scaleOf(industry, avgLaborMilli, plannedPerMille); // ★ 最紧约束
 
     HexCoord location = hexOfIndustry(industry.id());
@@ -4831,7 +4831,7 @@ public final class EconomySettlement {
       scale =
           Math.min(scale, industry.capacity().getOrDefault(entry.getKey(), 0L) / entry.getValue());
     }
-    // ★★ S3：状态机的计划规模系数（缩产/停业）—— 只压"本周期计划"，capacity / UseRight 原样保留。
+    // ★★ S3：状态机的计划规模系数（缩产/停业）—— 只压"本周期计划"，capacity / AssetShare 原样保留。
     if (scale != Long.MAX_VALUE) {
       scale = scale * plannedPerMille / 1_000L;
     }

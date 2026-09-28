@@ -22,7 +22,8 @@ import java.util.Objects;
  * ★★ <b>S3.3 {@code economy.MigrateHousehold} 的最小合法入口</b>（计划 §S3.5 命令面）：
  * 把一条家户行从原格搬到目标格，<b>身份不变</b>（{@link HouseholdId} 仍是同一把键）、 <b>人口不变</b>（只搬 {@code
  * ClassRow.view}，不新增/删除任何人）、 <b>成员份额不变</b>（{@code Membership} 只挂 household + lot，不含格，故原样带过）、
- * <b>使用权不变</b>（{@code UseRight.activity/holder} 不含居住格；人迁走而权利留在原产业是合法形态，如不在村地主）。
+ * <b>资产份额不变</b>（{@code AssetShare.industry/owner/operator} 不含居住格；人迁走而份额留在原产业是合法形态，
+ * 如不在村地主）。
  *
  * <pre>{@code
  * {"household":"hh-0_0-rural-poor_peasant","toHex":"1_0"}

@@ -35,7 +35,7 @@ import java.util.Set;
  *
  * <p>★★ <b>本类只判"状态怎么变 + 谁该退出"</b>；退出时的库存/货币偿债与 {@code Debt.defaulted} 处置由 {@code
  * EconomySettlement.settleOperatorExits} 落账（那里才有唯一写口 {@code applyTransfer}）。缩产只乘进"计划规模系数"，
- * <b>不销毁</b> {@code Industry.capacity} / {@code UseRight}。
+ * <b>不销毁</b> {@code Industry.capacity} / {@code AssetShare}。
  *
  * <p>★★ <b>S3 修复：关账证据改成"本周期累计"</b>—— 一个周期里会有多轮市场（例行轮 + 低库存轮 + 关账轮），
  * 旧实现只取关账日当天那一轮报告作证据，于是"更早的轮里已经滞销/被挤出"在关账日完全看不见。现在每个市场轮结束后由 {@link #accumulateMarketEvidence}
@@ -46,9 +46,10 @@ import java.util.Set;
  * <p>★★ <b>无市场轮 ≠ 零成交</b>：若本周期一个市场轮都没有（{@code cycleMarketRounds == 0}），{@code advance} 保留已有连续计数、 不用
  * 0 覆盖（"没开市"不是"卖不出去"的证据）。
  *
- * <p>★★ <b>退出时的使用权去向（如实记）</b>：本批的 {@code UseRight} 只有 {@code holder} 一栏、没有独立的"土地所有者" 主体（S1
- * 迁移生成的整额权利默认 holder = 经营者）⇒ "按 RightKind 退回 holder" 在当前数据形状下只能落实为 <b>权利原样留在 holder 名下、退出不删除也不改
- * holder</b>（不凭空发明一个地主 actor）。真正的退回/重新分配要等 "所有权人身份"这一维落地；在那之前不静默删权利、也不造假转移。
+ * <p>★★ <b>退出时的资产份额去向（如实记；R3B.1 口径）</b>：{@code AssetShare} 现在有独立的 {@code owner} 与 {@code operator}
+ * 两栏，但本批的退出处置仍<b>不改份额</b> —— 退出只更新 {@link OperatorCondition} 与账户/债务（见
+ * {@code EconomySettlement.settleOperatorExits}），份额原样保留（owner/operator 都不动）。真正的"退还经营权/改 operator"
+ * 等 B.2/B.3 的多 unit 与关系改挂落地后再做；在那之前不静默删份额、也不造假转移。
  */
 final class OperatorSettlement {
 

@@ -916,13 +916,13 @@ public final class EconomySeeder {
       entry.put("classes", classes);
       entry.put("laborSupply", laborSupply);
       entry.put("allocations", allocations);
-      // ★★ S1：本格各产业的使用权（旧档迁移规则同源：容量整额 OWNED 给 operator；这里由 seeder 显式发出）。
+      // ★★ S1：本格各产业的资产份额（旧档迁移规则同源：容量整额 OWNED 给 operator；这里由 seeder 显式发出）。
       //   ★ 逐产业从它自己的载荷节点取 capacity/operator（不在这里另算一份产能 —— "同一事实两处拼写点"）。
-      List<Map<String, Object>> useRights = new ArrayList<>();
+      List<Map<String, Object>> assetShares = new ArrayList<>();
       for (Map<String, Object> industryPayload : industries) {
-        useRights.addAll(useRightsOf(industryPayload));
+        assetShares.addAll(assetSharesOf(industryPayload));
       }
-      entry.put("useRights", useRights);
+      entry.put("assetShares", assetShares);
       entry.put("memberships", memberships);
       allMemberships.addAll(memberships);
       entries.add(entry);
@@ -1546,8 +1546,9 @@ public final class EconomySeeder {
     industry.put("id", id);
     industry.put("name", name);
     industry.put("regime", regime);
-    // ★★ 实战模拟接线修复（2026-09-28）：industry 载荷必须带 operator —— useRightsOf 从它取 holder。
-    //   缺它 ⇒ useRights 播成空表 ⇒ EconomyData 构造期把新档误判为旧档，跑 LegacyHouseholdMigration，
+    // ★★ 实战模拟接线修复（2026-09-28；R3B.1 更新）：industry 载荷必须带 operator —— assetSharesOf 把它填进
+    //   owner 与 operator 两栏。
+    //   缺它 ⇒ assetShares 播成空表 ⇒ EconomyData 构造期把新档误判为旧档，跑 LegacyHouseholdMigration，
     //   把逐 lot 精确的 memberships 重写成按劳动权重的近似值（S1.4 逐 lot 守恒被静默破坏）。
     ActorRef operator = RegimeOperators.defaultOperator(new RegimeId(regime), new IndustryId(id));
     Map<String, Object> operatorNode = new LinkedHashMap<>();
@@ -1687,18 +1688,19 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ <b>S1：一个产业载荷节点 → 它的整额 OWNED 使用权</b>（键 = capacity 的逐项，holder = 该节点的 operator）。
+   * ★★ <b>R3B.1：一个产业载荷节点 → 它的整额 OWNED 实物资产份额</b>（键 = capacity 的逐项；{@code owner} 与
+   * {@code operator} 都 = 该节点的 operator，即新世界播种的"自有自营"档）。
    *
-   * <p>★ 只发 {@code quantity > 0} 的项（0 产能 ⇒ 没有可用的权利）；{@code kind = OWNED} 是创世默认档 （与旧档迁移规则同源：旧 {@code
-   * Industry.capacity + operator} ⇒ 整额 OWNED）。
+   * <p>★ 只发 {@code quantity > 0} 的项（0 产能 ⇒ 没有要登记的实物）；{@code kind = OWNED} 是创世默认档 （与旧档迁移规则同源：旧
+   * {@code Industry.capacity + operator} ⇒ 整额 OWNED）。★ B.1 不拆多 unit：一块 capacity 只发一条整额份额。
    */
-  private static List<Map<String, Object>> useRightsOf(Map<String, Object> industryPayload) {
-    Object activity = industryPayload.get("id");
-    Object holder = industryPayload.get("operator");
+  private static List<Map<String, Object>> assetSharesOf(Map<String, Object> industryPayload) {
+    Object industry = industryPayload.get("id");
+    Object operator = industryPayload.get("operator");
     Object capacityNode = industryPayload.get("capacity");
-    List<Map<String, Object>> rights = new ArrayList<>();
-    if (!(capacityNode instanceof Map<?, ?> capacity) || activity == null || holder == null) {
-      return rights;
+    List<Map<String, Object>> shares = new ArrayList<>();
+    if (!(capacityNode instanceof Map<?, ?> capacity) || industry == null || operator == null) {
+      return shares;
     }
     for (Map.Entry<?, ?> entry : capacity.entrySet()) {
       if (!(entry.getValue() instanceof Number number)) {
@@ -1708,15 +1710,16 @@ public final class EconomySeeder {
       if (quantity <= 0L) {
         continue;
       }
-      Map<String, Object> right = new LinkedHashMap<>();
-      right.put("activity", activity);
-      right.put("holder", holder);
-      right.put("asset", entry.getKey());
-      right.put("quantity", quantity);
-      right.put("kind", "OWNED");
-      rights.add(right);
+      Map<String, Object> share = new LinkedHashMap<>();
+      share.put("industry", industry);
+      share.put("owner", operator);
+      share.put("operator", operator);
+      share.put("asset", entry.getKey());
+      share.put("quantity", quantity);
+      share.put("kind", "OWNED");
+      shares.add(share);
     }
-    return rights;
+    return shares;
   }
 
   /**

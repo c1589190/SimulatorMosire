@@ -9,10 +9,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -21,7 +23,6 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.id.UseRightId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -38,6 +39,8 @@ import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -48,7 +51,8 @@ import java.util.function.Function;
  * flows}；旧档的 {@code CohortKey} 规范串由 {@code HouseholdIdDeserializer} 识别并映射成 {@code ofLegacy}）、{@code
  * DebtId} （{@code debts}）、{@code CommodityId}（产业产出/投入、行需求、流水与规则里的商品键）、{@code PeopleLotId} （{@code
  * laborSupply}）、{@code LaborAllocationId}（{@code allocations}）、{@code MembershipId} （{@code
- * memberships}）、{@code UseRightId}（{@code useRights}）、{@code HexCoord}（{@code markets}， 住在 {@code
+ * memberships}）、{@code AssetShareId}（{@code assetShares}；旧档的 {@code use-…} 键字符串由 {@link
+ * AssetShareId#parse(String)} opaque 原样读入）、{@code HexCoord}（{@code markets}， 住在 {@code
  * simos-map}）、{@code ShipmentId}（{@code shipments}）。★ 它们都重写了 {@code toString()} 并与 各自的 {@code
  * parse} 互为逆，故只需读侧；键反序列化器照裁定 16 在**本模块**注册，不进共享基座。★ 漏注册的症状是"读档时键 解析不出来"（Jackson 会去调构造器或报 {@code no
  * String-argument constructor}）。
@@ -113,9 +117,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
-    // ★★ S1：memberships / useRights 两张新表的键。
+    // ★★ S1：memberships / assetShares 两张新表的键（R3B.1 起后者 = AssetShareId；旧 use-… 串 opaque 可读）。
     module.addKeyDeserializer(MembershipId.class, keyDeserializer(MembershipId::parse));
-    module.addKeyDeserializer(UseRightId.class, keyDeserializer(UseRightId::parse));
+    module.addKeyDeserializer(AssetShareId.class, keyDeserializer(AssetShareId::parse));
+    // ★★ R3B.1：AssetShare 值内的 id 可能是本 codec 旧字节的 {"value":"use-…"}，也可能是裸字符串
+    //   （手写/外部工具/旧别名）⇒ 值侧显式收两种（keyModule 同时供 PLAIN 使用）；其它形状仍 fail-closed。
+    module.addDeserializer(AssetShareId.class, new AssetShareIdDeserializer());
     // ★★ H4：市场表的键 = **格**（{@code 0_0}）—— 本模块第一次把 HexCoord 当键用（见类注）。
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
     // ★★ M2.4：在途批次表的键 = ShipmentId（{@code sh-<day>-<seq>}）—— 与上面同一条口径：toString/parse 互逆，只需读侧。
@@ -123,7 +130,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     return module;
   }
 
-  /** ★★ S1/H2 的值类型兼容层：旧形状整形成新形状之后交给 {@link #PLAIN} 绑定（避免递归）。 */
+  /** ★★ S1/H2/R3B.1 的值类型兼容层：旧形状整形成新形状之后交给 {@link #PLAIN} 绑定（避免递归）。 */
   private static SimpleModule compatModule() {
     SimpleModule module = new SimpleModule("economy-json-legacy-values");
     // ★★ H2：补偿规则的旧线格式（单个 `basis` → `pool` + `weight`）。
@@ -132,6 +139,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addDeserializer(ClassRow.class, new LegacyClassRowDeserializer());
     module.addDeserializer(FlowRow.class, new LegacyFlowRowDeserializer());
     module.addDeserializer(LaborAllocation.class, new LegacyLaborAllocationDeserializer());
+    // ★★ R3B.1：旧档组件键 `useRights` → `assetShares`，旧值 `activity/holder` → `industry/owner+operator`。
+    //   两条都在 codec 边缘做**显式节点整形**，领域类型保持零 Jackson 注解；Delegate 给 PLAIN 以免递归。
+    module.addDeserializer(EconomyData.class, new LegacyEconomyDataDeserializer());
+    module.addDeserializer(EconomyChangeSet.class, new LegacyEconomyChangeSetDeserializer());
     return module;
   }
 
@@ -321,6 +332,166 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       } catch (JsonProcessingException e) {
         throw new IllegalStateException("LaborAllocation 解码失败: " + node, e);
       }
+    }
+  }
+
+  // ── R3B.1：旧档 useRights → assetShares 的读侧整形 ──────────────────────────────────────
+
+  /**
+   * ★★ <b>旧档经济状态的读侧整形</b>（R3B.1）：顶层组件键 {@code useRights} → {@code assetShares}，并把值节点的旧形状
+   * {@code {id, activity, holder, asset, quantity, kind}} 整成新形状 {@code {id, industry, owner, operator, asset,
+   * quantity, kind}}（{@code activity→industry}、{@code holder} 同时填 {@code owner} 与 {@code operator}）。
+   *
+   * <p>★ <b>为什么必须显式整形、而不是关掉 {@code FAIL_ON_UNKNOWN_PROPERTIES}</b>：关掉会把所有真实漂移字段一起吞掉
+   * （铁律 5 的守卫拆一半）；这里只认两个具名旧键、逐字段翻译，其余未知字段照旧 fail-closed。
+   *
+   * <p>★ <b>fail-closed</b>：同一对象同时出现 {@code useRights} 与 {@code assetShares} ⇒ 抛（同一件事两处拼写，
+   * 没有哪一处能判谁对）；旧值节点同时出现 {@code activity/holder} 与 {@code industry/owner/operator} ⇒ 抛；旧键只给一半 ⇒ 抛。
+   */
+  private static ObjectNode migrateLegacyAssetShareComponent(ObjectNode node) {
+    boolean hasOld = node.has("useRights");
+    boolean hasNew = node.has("assetShares");
+    if (hasOld && hasNew) {
+      throw new IllegalStateException(
+          "经济状态不得同时给 useRights 与 assetShares（R3B.1 起新键是 assetShares，旧档键是 useRights）: " + node);
+    }
+    if (hasOld) {
+      JsonNode legacy = node.remove("useRights");
+      reshapeLegacyAssetShareNodes(legacy);
+      node.set("assetShares", legacy);
+    } else if (hasNew) {
+      // 新键下混入旧值形状也整形（幂等）：逐组件增量落盘可能只换了键名、没换完值。
+      reshapeLegacyAssetShareNodes(node.get("assetShares"));
+    }
+    return node;
+  }
+
+  /** 递归整形一整个 {@code assetShares} / {@code useRights} 子树里的旧值节点（只认具名旧字段，其余原样）。 */
+  private static void reshapeLegacyAssetShareNodes(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return;
+    }
+    if (node.isArray()) {
+      for (JsonNode child : node) {
+        reshapeLegacyAssetShareNodes(child);
+      }
+      return;
+    }
+    if (!node.isObject()) {
+      return;
+    }
+    ObjectNode object = (ObjectNode) node;
+    boolean hasActivity = object.has("activity");
+    boolean hasHolder = object.has("holder");
+    if (hasActivity || hasHolder) {
+      if (!hasActivity || !hasHolder) {
+        throw new IllegalStateException(
+            "旧资产份额必须同时有 activity 与 holder 两个键（缺一个就无法一对一迁移）: " + object);
+      }
+      if (object.has("industry") || object.has("owner") || object.has("operator")) {
+        throw new IllegalStateException(
+            "资产份额不得同时给旧 activity/holder 与新 industry/owner/operator（拒绝同一件事的两处拼写）: " + object);
+      }
+      JsonNode industry = object.remove("activity");
+      JsonNode holder = object.remove("holder");
+      // ★ 旧别名可能把 activity 写成裸字符串（本 codec 旧字节是 {"value":…}）⇒ 统一整成 IndustryId 的
+      //   record 对象形态；两种形态都能被 PLAIN 绑定，裸字符串不行（Jackson 不把单参 record 当 delegating）。
+      object.set("industry", normalizeIndustryIdNode(industry));
+      object.set("owner", holder);
+      object.set("operator", holder);
+    }
+    List<String> names = new ArrayList<>();
+    object.fieldNames().forEachRemaining(names::add);
+    for (String name : names) {
+      reshapeLegacyAssetShareNodes(object.get(name));
+    }
+  }
+
+  /**
+   * ★ 把旧 {@code activity} 的两种形态归一到 {@link IndustryId} 的 record 对象形态：裸字符串 ⇒ {@code
+   * {"value":"…"}}；已是对象 ⇒ 原样。★ 不猜空/数字等坏形状（交给后续绑定 fail-closed）。
+   */
+  private static JsonNode normalizeIndustryIdNode(JsonNode industry) {
+    if (industry != null && industry.isTextual()) {
+      ObjectNode wrapped = JsonNodeFactory.instance.objectNode();
+      wrapped.put("value", industry.asText());
+      return wrapped;
+    }
+    return industry;
+  }
+
+  /**
+   * ★★ R3B.1：{@link EconomyData} 的旧档读侧兼容（组件键 {@code useRights} 与旧值形状）。
+   *
+   * <p>★ <b>翻译而不是猜</b>：旧 {@code holder} 同时填 {@code owner} 与 {@code operator}（一对一的旧档事实），
+   * 不凭空拆出地主/佃户；旧 id 字符串原样保留（{@link AssetShareId#parse(String)} 是 opaque 的）。
+   *
+   * <p>★ 新形状原样交给 {@link #PLAIN}；不在本层手写新形状绑定，保持"一条记录怎么从 JSON 造出来"只有一处拼写点。
+   */
+  private static final class LegacyEconomyDataDeserializer extends JsonDeserializer<EconomyData> {
+
+    @Override
+    public EconomyData deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("EconomyData 必须是 JSON 对象: " + raw);
+      }
+      node = migrateLegacyAssetShareComponent(node);
+      try {
+        return PLAIN.treeToValue(node, EconomyData.class);
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException("EconomyData 解码失败: " + node, e);
+      }
+    }
+  }
+
+  /**
+   * ★★ R3B.1：{@link EconomyChangeSet} 的同款旧档读侧兼容（组件键 {@code useRights} → {@code assetShares}，
+   * 以及 {@code FieldDelta} 各变体里旧值节点的整形）。
+   *
+   * <p>★ {@link io.mosire.simos.util.state.FieldDelta} 的 diff/rebuild 机制一字不动：本层只把节点整成新形状，
+   * 键解析仍由 {@code EconomyChangeSet.apply} 的 {@code AssetShareId::parse} 一处负责。
+   */
+  private static final class LegacyEconomyChangeSetDeserializer
+      extends JsonDeserializer<EconomyChangeSet> {
+
+    @Override
+    public EconomyChangeSet deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("EconomyChangeSet 必须是 JSON 对象: " + raw);
+      }
+      node = migrateLegacyAssetShareComponent(node);
+      try {
+        return PLAIN.treeToValue(node, EconomyChangeSet.class);
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException("EconomyChangeSet 解码失败: " + node, e);
+      }
+    }
+  }
+
+  /**
+   * ★★ R3B.1：{@link AssetShareId} 的**值侧**读入（Map 键走上面的 {@code KeyDeserializer}，两者独立）。
+   *
+   * <p>★ <b>为什么收两种形态</b>：本 codec 旧版把 {@code UseRightId} 按 record 默认写成 {@code {"value":"use-…"}}
+   * （与 {@link #PLAIN} 的写出形态一致）；而旧档别名/手写夹具/外部工具可能写裸字符串。两种都必须能读， 否则"旧档可读"只成立于本 codec 自产的字节。★
+   * 只认这两种：其它形状（数字/数组/缺 value）⇒ 抛，不静默造 id。
+   */
+  private static final class AssetShareIdDeserializer extends JsonDeserializer<AssetShareId> {
+
+    @Override
+    public AssetShareId deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (raw.isTextual()) {
+        return AssetShareId.parse(raw.asText());
+      }
+      if (raw.isObject() && raw.hasNonNull("value") && raw.get("value").isTextual()) {
+        return AssetShareId.parse(raw.get("value").asText());
+      }
+      throw new IllegalStateException("AssetShareId 必须是字符串或 {value:\"…\"}: " + raw);
     }
   }
 

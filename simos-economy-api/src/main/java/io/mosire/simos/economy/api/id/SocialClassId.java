@@ -50,7 +50,7 @@ public record SocialClassId(String value) {
   /** 地主。 */
   public static final SocialClassId LANDLORD = new SocialClassId(VALUES.get(3));
 
-  /** ★ S3：无地雇农/佃工（无使用权且净卖劳动）。 */
+  /** ★ S3：无地雇农/佃工（无资产份额且净卖劳动）。 */
   public static final SocialClassId LANDLESS_LABORER = new SocialClassId(VALUES.get(4));
 
   /** ★ S3：手工业者（laborSource=WAGE/FAMILY 且经营手工业的 fallback 档）。 */

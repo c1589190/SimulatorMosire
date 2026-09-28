@@ -82,7 +82,7 @@ public enum MarketUnfilledReason {
   UNSOLD_SELF_USABLE("unsold_self_usable"),
 
   /**
-   * ★ <b>S3：真正无法维持再生产</b>—— 连续周期满足 {@code ReproductionStress} 阈值，且库存、借款、使用权等缓冲全部耗尽。 ★
+   * ★ <b>S3：真正无法维持再生产</b>—— 连续周期满足 {@code ReproductionStress} 阈值，且库存、借款、资产份额等缓冲全部耗尽。 ★
    * 只有这一档才允许走向停业/退出；它不能由单轮滞销直接推出（那是 {@link #UNSOLD_SELF_USABLE} 或 {@link #OUTCOMPETED}）。
    */
   CANNOT_REPRODUCE("cannot_reproduce"),
