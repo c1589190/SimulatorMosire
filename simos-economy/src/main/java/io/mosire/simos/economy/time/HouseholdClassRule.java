@@ -20,13 +20,16 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.UseRight;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,23 +38,45 @@ import java.util.Set;
 
 /**
  * ★★ <b>S3.4 阶层分化：{@code classify(household)} 的唯一拼写点</b>—— 判据全部来自可观察状态：{@code UseRight} + {@code
- * LaborAllocation} + 生产关系里的租规则 + 债务；<b>没有</b>"产量达到 X 就产生地主"这类硬编码。
+ * ProductionRelation}（{@code laborSource}/{@code operator}/{@code inputSupplier}/{@code
+ * residualOwner} + 规则受方） + {@code LaborAllocation} + 地租/工资 + 债务；<b>没有</b>"产量达到 X 就产生地主"这类硬编码产量阈值。
+ *
+ * <p>★★ <b>本版修正（2026-09-28 R3 续修）</b>：旧实现把 {@code UseRight.holder} 当成唯一所有权来源，而真档的 holder
+ * 是<strong>产业的经营者 actor</strong>（{@code ESTATE:farm@…} / {@code WORKSHOP:craft@…} / {@code
+ * HOUSEHOLD:weave@…}）——它们不是家户行 ⇒ 绝大多数家户 {@code ownLand=0}、直接落到 {@code
+ * LANDLESS_LABORER}。本版按"本户在生产关系里出什么/以什么身份参与"分类：
  *
  * <pre>
- * ownLand       = Σ UseRight[holder=本户, asset=LAND].quantity
- *               + Σ 本户有租权（rentEntitled）的产业产能[LAND] ÷ 该产业租权受方家户数
- * laborSold     = Σ LaborAllocation[household=本户].laborMilli
- * laborHired    = Σ 其他家户供给"本户持有使用权/租权"的产业的劳动 + 直接以本户 actor 为雇主的劳动
- * netLaborSold  = laborSold − laborHired
- * netRentIncome = ledger 里本户作为租金受方的实付（读不到 ⇒ OptionalLong.empty，不填 0）
- * debtStress    = debtPrincipal × 1000 ÷ max(1, 使用权总量 + 租权推定地)
+ * ① 直接 {@code UseRight}（holder 能反解成本状态里的家户）：
+ *    有 LAND：
+ *      · 净收地租且不是净卖劳动（{@code netLaborSold ≤ 0}）⇒ LANDLORD；
+ *      · 净雇工（{@code netLaborSold < 0}）⇒ RICH_PEASANT；
+ *      · 自耕/净劳动平衡（{@code netLaborSold == 0}）⇒ 债务压力高 ⇒ POOR_PEASANT，否则 MIDDLE_PEASANT；
+ *      · 净卖劳动 ⇒ 地少（≤ 自耕阈值）或债务压力高 ⇒ POOR_PEASANT，否则 MIDDLE_PEASANT；
+ *    无 LAND 但有 TOOL/WORKSHOP（直接持有或本户是该关系的 operator/inputSupplier/residualOwner）⇒ ARTISAN；
+ *    其它直接权利/经营身份（CATTLE 等尚未启用的资产）⇒ 无债 MIDDLE_PEASANT、有债 POOR_PEASANT。
+ * ② 无直接权利时看 {@link ProductionRelation} 与 {@code LaborAllocation}：
+ *    · 地租受方只作 LANDLORD 的辅助证据（结构上有租规则 + 净不卖劳动），不再被折成"家户自有土地"；
+ *    · 本户是某产业的 operator/inputSupplier/residualOwner 时，即使 UseRight 归经营者 actor，也按该身份给
+ *      LAND/TOOL 那一档的 rich/middle/poor（不得因"权利不在本户名下"直接判 landless）；
+ *    · 纯劳动供给按 laborSource 判：
+ *        TENANT  ⇒ 有投入/产出占有且债务不高 ⇒ MIDDLE_PEASANT，否则 POOR_PEASANT；
+ *        SERF    ⇒ POOR_PEASANT（依附农）；
+ *        FAMILY/SELF ⇒ MIDDLE_PEASANT（家庭自营）；债务压力高 ⇒ POOR_PEASANT；
+ *        WAGE    ⇒ LANDLESS_LABORER。
+ *    同一家户可以同时有多个关系（真档：既给庄园出 SERF 劳、也给家庭纺织出 FAMILY 劳）。本规则**优先自营/半自营**：
+ *    只要本户在 FAMILY/SELF 关系里确有劳动且债务压力不高，就按"家庭自营"给 MIDDLE_PEASANT；债务压力高或只有依附劳动
+ *    才落到 POOR_PEASANT。SERF 的"依附"仍是它的兜底身份，也是没有自营关系时的落点。
+ * ③ 没有任何可观察证据（无权利、无关系、无劳动、无租）⇒ <b>保留当前 {@code ClassRow.view}</b>，不凭空发明
+ *    {@code LANDLESS_LABORER}；{@code reason} 写明 {@code retainedCurrentView:noObservableEvidence}。
  * </pre>
  *
+ * <p>★★ <b>地租受方的边界（计划 §S3.4 的"辅助证据"）</b>：地租规则受方仍可推出"本户是这块地的租权人/所有者近似"， 但它只用于两件事：① LANDLORD 的辅助判据；②
+ * 把该产业算作租权受方的"控制活动"以便把雇入劳动计进净劳动（否则地主 的小额自劳会把"净不卖劳动"读成净卖劳动）。<b>不再</b>把推定的土地数量加进 {@code ownLand} 去伪造
+ * rich/middle/poor。
+ *
  * <p>★★ <b>允许聚合近似、禁止硬编码产量阈值</b>：{@code selfCultivationThreshold} 是**土地数量**阈值（千分亩），
- * 不是产量阈值；比例类聚合由可观察量的和算出。★ "租权推定地"是一条**具名的聚合近似**：本批 {@code UseRight.holder} 记的是**经营者 actor**（庄园 / 作坊
- * / 产业型家户），不是 {@code HouseholdId}，而 {@code RegimeRelations} 的租规则受方已经是稳定的 {@code ToHousehold} ⇒
- * "谁是这块地的租权受方"是可观察事实；拿它给"所有权"一个可复算的近似（有多个租权受方时按人数均分）。 这不是"凭空生成人口/权利"：没有改任何 {@code UseRight}、账户或
- * {@code ClassRow} 的其它字段。
+ * 不是产量阈值；比例类聚合由可观察量的和算出（地租受方多于一个时按人数均分推定控制关系，<b>不</b>均分给 rich/middle）。
  *
  * <p>★★ <b>旧四档不受影响</b>：本规则返回的 {@link SocialClassId} 可以是旧四档，也可以是 S3 追加的 {@code
  * landless_laborer}/{@code artisan}/{@code official}；旧档的 parse 行为不变（见 {@code SocialClassId}）。
@@ -60,7 +85,7 @@ import java.util.Set;
 public final class HouseholdClassRule {
 
   /**
-   * ★ "自耕规模"的土地数量阈值（千分亩）：{@code ownLand > 此值} 且净雇工 ⇒ 富农。
+   * ★ "自耕规模"的土地数量阈值（千分亩）：{@code ownLand > 此值} 且净卖劳动时，才可能是中农而不是贫农。
    *
    * <p>★ 这是**土地数量**的配置阈值（计划 §S3.4 明文：不是产量阈值）；真档每户农业产能约 3,100 千分亩（3.1 亩）， 故 1,000 千分亩（1
    * 亩）是"明显高于自耕口粮地"的保守档位。V 阶段迁入 GM 参数目录。
@@ -73,6 +98,19 @@ public final class HouseholdClassRule {
    * <p>★ 这是"债务维度"在分类里的唯一使用点（计划 §S3.4 的 {@code debtRatio}）；阈值是政策值，V 阶段迁入参数目录。
    */
   public static final long DEBT_STRESS_THRESHOLD_PER_MILLE = 1_000L;
+
+  /**
+   * ★ 旧四档：有创世槽位与参与率上限（见 {@code EconomyData} 的槽位守卫）；S3 派生阶层没有创世槽位、也不设参与率上限。
+   *
+   * <p>它不是"第二份阶层表"：四档的常量值与判定顺序仍以 {@code SocialClassId} 为唯一来源；这里只回答"哪些档位受槽位上限约束"， 供 {@link Index}
+   * 在分类时避免派生出一个参与率超过新档位上限的组合（构造期守卫会拒收那种状态）。
+   */
+  private static final Set<SocialClassId> LEGACY_TIER_STRATA =
+      Set.of(
+          SocialClassId.POOR_PEASANT,
+          SocialClassId.MIDDLE_PEASANT,
+          SocialClassId.RICH_PEASANT,
+          SocialClassId.LANDLORD);
 
   private HouseholdClassRule() {}
 
@@ -135,7 +173,8 @@ public final class HouseholdClassRule {
   /**
    * 该家户本户供给的产业的劳动来源（分类 fallback 可读；多档时取"最强制度"：TENANT/SERF &gt; WAGE &gt; 其它）。
    *
-   * <p>★ 保留为公开读口：V 阶段与上层状态机需要"制度身份"这一可观察量，而不只是最终阶层。
+   * <p>★ 保留为公开读口：V 阶段与上层状态机需要"制度身份"这一可观察量，而不只是最终阶层。★ <b>它不是 {@code classify}
+   * 的缩写</b>：分类还要读同户的多条关系、债务与资产；这里只回答"最强制度身份是哪一档"。
    */
   public static LaborSource laborSourceOf(EconomyData data, HouseholdId household) {
     Objects.requireNonNull(data, "data");
@@ -173,30 +212,59 @@ public final class HouseholdClassRule {
   }
 
   /**
-   * ★★ <b>一次性索引</b>：把 {@code UseRight} / {@code LaborAllocation} / 租规则 / 债务折成逐家户可 O(1) 分类的判据。
+   * ★★ <b>一次性索引</b>：把 {@code UseRight} / 生产关系 / {@code LaborAllocation} / 租规则 / 债务折成逐家户可 O(1)
+   * 分类的判据。
    *
-   * <p>★★ <b>为什么必须一次建索引</b>：关账日要对全部家户写回（真档 4,000 行），若每户都重扫全部关系与配额， 就是 O(行 × 关系 × 规则)
+   * <p>★★ <b>为什么必须一次建索引</b>：关账日要对全部家户写回（真档 4,000+ 行），若每户都重扫全部关系与配额， 就是 O(行 × 关系 × 规则)
    * 的重复劳动；而且"同一事实只算一次"也要求这些派生量在一处生成。
    */
   public static final class Index {
 
     private final Map<HouseholdId, ClassRow> classes;
-    private final Map<HouseholdId, Long> ownLandMilliMu = new LinkedHashMap<>();
-    private final Map<HouseholdId, Long> rightQuantity = new LinkedHashMap<>();
+
+    /**
+     * 逐格（以及无格键产业）的槽位参与率上限：{@code hexKey → (旧四档 → min 上限)}。
+     *
+     * <p>★ 只读构造期数据，用来避免分类派生出一个"参与率 > 新档位上限"的旧四档组合 —— 那种组合会被 {@code EconomyData} 的构造期守卫拒收（真档 tick120
+     * 实测：poor_peasant 行 950‰ 派生 middle_peasant 上限 900‰ ⇒ 整批 advance 失败）。它不是新阈值，值全部取自 {@link
+     * Industry#slots()}。
+     */
+    private final Map<String, Map<SocialClassId, Long>> slotCapsByHex = new LinkedHashMap<>();
+
+    /** 无格键产业（对任意格都算"可能"）的最紧槽位上限；口径与 {@code EconomyData.requireStratumAllowed} 一致。 */
+    private final Map<SocialClassId, Long> universalSlotCaps = new LinkedHashMap<>();
+
+    // ── 直接使用权（holder 能反解为本状态里的家户）──────────────────────────────────────
+    private final Map<HouseholdId, Long> directRightQuantity = new LinkedHashMap<>();
+    private final Map<HouseholdId, Long> directLandMilliMu = new LinkedHashMap<>();
+    private final Map<HouseholdId, Long> directToolOrWorkshop = new LinkedHashMap<>();
     private final Map<HouseholdId, Boolean> communalRight = new LinkedHashMap<>();
-    private final Map<HouseholdId, Long> laborSold = new LinkedHashMap<>();
-    private final Map<HouseholdId, Long> laborHired = new LinkedHashMap<>();
-    private final Map<HouseholdId, Boolean> handicraft = new LinkedHashMap<>();
-    private final Map<HouseholdId, Boolean> tenantLabor = new LinkedHashMap<>();
+    private final Map<HouseholdId, Set<IndustryId>> directActivities = new LinkedHashMap<>();
+    // ── 本户是 operator / inputSupplier / residualOwner 的产业（UseRight 可能不在本户名下）────
+    private final Map<HouseholdId, Long> operatedLandMilliMu = new LinkedHashMap<>();
+    private final Map<HouseholdId, Long> operatedToolOrWorkshop = new LinkedHashMap<>();
+    private final Map<HouseholdId, Set<IndustryId>> operatedActivities = new LinkedHashMap<>();
+    // ── 租规则受方（只作 LANDLORD 辅助证据 + 推定控制活动）────────────────────────────────
+    private final Map<HouseholdId, Long> rentInferredLandMilliMu = new LinkedHashMap<>();
     private final Map<HouseholdId, Boolean> rentEntitled = new LinkedHashMap<>();
-    private final Map<HouseholdId, Long> inferredLand = new LinkedHashMap<>();
-    private final Map<HouseholdId, Long> debtPrincipal = new LinkedHashMap<>();
-    private final Map<HouseholdId, Set<IndustryId>> ownedActivitiesByHousehold =
-        new LinkedHashMap<>();
     private final Map<HouseholdId, Set<CompensationRule>> rentRulesByHousehold =
         new LinkedHashMap<>();
     private final Map<CompensationRule, HouseholdId> rentRuleRecipient = new LinkedHashMap<>();
     private final Set<CompensationRule> ambiguousRentRules = new LinkedHashSet<>();
+    // ── 产出/投入占有（TENANT 的"占有部分投入/产出"判据）──────────────────────────────────
+    private final Map<HouseholdId, Set<IndustryId>> productionStakeActivities =
+        new LinkedHashMap<>();
+    // ── 净劳动：控制的活动里"别人出的劳动"算雇入（真档的农场全部由庄园雇入）────────────────
+    private final Map<HouseholdId, Set<IndustryId>> controlledActivities = new LinkedHashMap<>();
+    private final Map<HouseholdId, Long> laborSold = new LinkedHashMap<>();
+    private final Map<HouseholdId, Long> laborHired = new LinkedHashMap<>();
+    private final Map<HouseholdId, Map<LaborSource, Long>> laborBySource = new LinkedHashMap<>();
+    private final Map<HouseholdId, Boolean> tenantStake = new LinkedHashMap<>();
+    // ── 原因字符串的证据（保序；只读口/审计使用，不参与分类算术）──────────────────────────
+    private final Map<HouseholdId, Map<String, Long>> laborEvidence = new LinkedHashMap<>();
+    private final Map<HouseholdId, Set<String>> roleEvidence = new LinkedHashMap<>();
+    // ── 债务：本金合计（分类只用"本金 ÷ 资产数量"这一个比值）────────────────────────────
+    private final Map<HouseholdId, Long> debtPrincipal = new LinkedHashMap<>();
 
     private Index(
         Map<UseRightId, UseRight> useRights,
@@ -206,6 +274,17 @@ public final class HouseholdClassRule {
         Map<HouseholdId, ClassRow> classes,
         Map<DebtId, Debt> debts) {
       this.classes = new LinkedHashMap<>(classes);
+      for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
+        Map<SocialClassId, Long> target =
+            IndustryHexKeys.hexKeyOf(entry.getKey())
+                .map(
+                    hexKey ->
+                        slotCapsByHex.computeIfAbsent(hexKey, ignored -> new LinkedHashMap<>()))
+                .orElse(universalSlotCaps);
+        for (ClassSlot slot : entry.getValue().slots()) {
+          target.merge(slot.id(), (long) slot.laborParticipationPerMille(), Math::min);
+        }
+      }
       Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
       for (ClassRow row : classes.values()) {
         householdByActor.put(HouseholdActors.of(row.id()), row.id());
@@ -224,47 +303,102 @@ public final class HouseholdClassRule {
       //   的兼容解析（默认关系已在 EconomyData 构造期归一为 ToHousehold 稳定身份）；S3 阶层写回后它不会
       //   被当成身份缓存，也不会让新阶层"漏行"。
 
-      // ① 使用权：直接持有（holder 就是本户 actor / 可反解为本户）的那一份。
+      // ① 直接使用权：holder 就是本户 actor / 可反解为本户的那一份。
       for (UseRight right : useRights.values()) {
         HouseholdId holder = householdOf(right.holder(), classes, householdByActor);
         if (holder == null) {
           continue;
         }
-        rightQuantity.merge(holder, right.quantity(), Math::addExact);
+        directRightQuantity.merge(holder, right.quantity(), Math::addExact);
+        directActivities(holder).add(right.activity());
+        controlledActivities(holder).add(right.activity());
         if (right.asset() == AssetKind.LAND) {
-          ownLandMilliMu.merge(holder, right.quantity(), Math::addExact);
+          directLandMilliMu.merge(holder, right.quantity(), Math::addExact);
+        } else if (right.asset() == AssetKind.TOOL || right.asset() == AssetKind.WORKSHOP) {
+          directToolOrWorkshop.merge(holder, right.quantity(), Math::addExact);
         }
         if (right.kind() == UseRight.RightKind.COMMUNAL && right.quantity() > 0L) {
           communalRight.put(holder, true);
         }
-        ownedActivities(holder).add(right.activity());
       }
 
-      // ② 租权：受方是稳定的 HouseholdId（EconomyData 归一化后的 ToHousehold）；用它推出"这块地的所有权近似"。
+      // ② 生产关系：本户是 operator/inputSupplier/residualOwner 的产业（它的 UseRight 可能在经营者 actor 名下），
+      //    以及所有租规则受方。★ 这里**不**把森林式的"每个受方都是地主"折成所有权，只记事实。
       Map<IndustryId, Set<HouseholdId>> rentRecipientsByActivity = new LinkedHashMap<>();
       for (ProductionRelation relation : relations.values()) {
+        IndustryId activity = relation.activity();
+        HouseholdId operator = householdOf(relation.operator(), classes, householdByActor);
+        if (operator != null) {
+          operatedActivities(operator).add(activity);
+          controlledActivities(operator).add(activity);
+          roleEvidence(operator).add("operator@" + activity.value());
+        }
+        HouseholdId inputSupplier =
+            recipientHousehold(
+                relation.inputSupplier(), classes, householdByActor, householdByView);
+        if (inputSupplier != null) {
+          operatedActivities(inputSupplier).add(activity);
+          controlledActivities(inputSupplier).add(activity);
+          roleEvidence(inputSupplier).add("inputSupplier@" + activity.value());
+        }
+        HouseholdId residualOwner =
+            householdOf(relation.residualOwner(), classes, householdByActor);
+        if (residualOwner != null) {
+          operatedActivities(residualOwner).add(activity);
+          controlledActivities(residualOwner).add(activity);
+          roleEvidence(residualOwner).add("residualOwner@" + activity.value());
+        }
         for (CompensationRule rule : relation.rules()) {
-          if (!isRentShaped(rule)) {
-            continue;
-          }
           HouseholdId recipient =
               recipientHousehold(rule.recipient(), classes, householdByActor, householdByView);
           if (recipient == null) {
             continue;
           }
-          rentEntitled.put(recipient, true);
-          rentRulesByHousehold
-              .computeIfAbsent(recipient, ignored -> new LinkedHashSet<>())
-              .add(rule);
-          rentRecipientsByActivity
-              .computeIfAbsent(relation.activity(), ignored -> new LinkedHashSet<>())
-              .add(recipient);
-          HouseholdId previous = rentRuleRecipient.putIfAbsent(rule, recipient);
-          if (previous != null && !previous.equals(recipient)) {
-            ambiguousRentRules.add(rule);
+          if (isRentShaped(rule)) {
+            rentEntitled.put(recipient, true);
+            rentRulesByHousehold
+                .computeIfAbsent(recipient, ignored -> new LinkedHashSet<>())
+                .add(rule);
+            rentRecipientsByActivity
+                .computeIfAbsent(activity, ignored -> new LinkedHashSet<>())
+                .add(recipient);
+            roleEvidence(recipient).add("rentRecipient@" + activity.value());
+            HouseholdId previous = rentRuleRecipient.putIfAbsent(rule, recipient);
+            if (previous != null && !previous.equals(recipient)) {
+              ambiguousRentRules.add(rule);
+            }
+          } else {
+            // ★ TENANT 的"占有部分投入/产出"判据：本户是该关系里非租形状规则的受方（自留/分成/劳动报酬）。
+            productionStakeActivities(recipient).add(activity);
+            roleEvidence(recipient).add("compensated@" + activity.value());
           }
         }
       }
+
+      // ②a 经营身份对应的技术产能：即使 UseRight.holder 是经营者 actor，operator/inputSupplier/residualOwner
+      //    的 LAND / TOOL / WORKSHOP 也要算进该家户的分类资产（计划 §S3.4 "不得因权利不在本户名下直接判 landless"）。
+      for (Map.Entry<HouseholdId, Set<IndustryId>> entry : operatedActivities.entrySet()) {
+        for (IndustryId activity : entry.getValue()) {
+          Industry industry = industries.get(activity);
+          if (industry == null) {
+            continue;
+          }
+          for (Map.Entry<AssetKind, Long> capacity : industry.capacity().entrySet()) {
+            if (capacity.getValue() <= 0L) {
+              continue;
+            }
+            if (capacity.getKey() == AssetKind.LAND) {
+              operatedLandMilliMu.merge(entry.getKey(), capacity.getValue(), Math::addExact);
+            } else if (capacity.getKey() == AssetKind.TOOL
+                || capacity.getKey() == AssetKind.WORKSHOP) {
+              operatedToolOrWorkshop.merge(entry.getKey(), capacity.getValue(), Math::addExact);
+            }
+          }
+        }
+      }
+
+      // ②b 租权推定控制：地租受方按"该产业有几个受方"均分该产业的 LAND，只用于把租权受方的雇入劳动算进净劳动
+      //    （真档一格一个地主，故就是整块地）；不写进 ownLand，避免再用"租受方=土地所有者"的旧近似。
       for (Map.Entry<IndustryId, Set<HouseholdId>> entry : rentRecipientsByActivity.entrySet()) {
         Industry industry = industries.get(entry.getKey());
         if (industry == null || entry.getValue().isEmpty()) {
@@ -276,53 +410,63 @@ public final class HouseholdClassRule {
         }
         long share = land / entry.getValue().size();
         for (HouseholdId household : entry.getValue()) {
-          inferredLand.merge(household, share, Math::addExact);
-          ownedActivities(household).add(entry.getKey());
+          rentInferredLandMilliMu.merge(household, share, Math::addExact);
+          controlledActivities(household).add(entry.getKey());
         }
       }
-      for (Map.Entry<HouseholdId, Long> entry : inferredLand.entrySet()) {
-        ownLandMilliMu.merge(entry.getKey(), entry.getValue(), Math::addExact);
-      }
 
-      // ③ 劳动：本户卖出的劳动 + 本户经营/持有租权的产业雇入的劳动（含直接以本户为雇主的配额）。
+      // ③ 劳动：本户卖出的劳动 + 本户控制/经营产业里雇入的劳动（含直接以本户为雇主的配额）。
       Map<IndustryId, Long> activityLaborTotal = new LinkedHashMap<>();
       Map<IndustryId, Map<HouseholdId, Long>> activityLaborByHousehold = new LinkedHashMap<>();
       Map<HouseholdId, Map<IndustryId, Long>> directHiredByActivity = new LinkedHashMap<>();
       for (LaborAllocation allocation : allocations.values()) {
         HouseholdId household = allocation.household();
         IndustryId activity = new IndustryId(allocation.actor().id());
-        laborSold.merge(household, allocation.laborMilli(), Math::addExact);
-        activityLaborTotal.merge(activity, allocation.laborMilli(), Math::addExact);
+        long laborMilli = allocation.laborMilli();
+        laborSold.merge(household, laborMilli, Math::addExact);
+        activityLaborTotal.merge(activity, laborMilli, Math::addExact);
         activityLaborByHousehold
             .computeIfAbsent(activity, ignored -> new LinkedHashMap<>())
-            .merge(household, allocation.laborMilli(), Math::addExact);
+            .merge(household, laborMilli, Math::addExact);
         HouseholdId employer = householdOf(allocation.actor(), classes, householdByActor);
         if (employer != null && !employer.equals(household)) {
           directHiredByActivity
               .computeIfAbsent(employer, ignored -> new LinkedHashMap<>())
-              .merge(activity, allocation.laborMilli(), Math::addExact);
-        }
-        Industry industry = industries.get(activity);
-        if (industry != null && RegimeOperators.HANDICRAFT.equals(industry.regime().value())) {
-          handicraft.put(household, true);
+              .merge(activity, laborMilli, Math::addExact);
         }
         ProductionRelation relation = relations.get(activity);
-        if (relation != null && relation.laborSource() == LaborSource.TENANT) {
-          tenantLabor.put(household, true);
+        if (relation == null) {
+          continue;
+        }
+        LaborSource source = relation.laborSource();
+        laborBySource
+            .computeIfAbsent(household, ignored -> new LinkedHashMap<>())
+            .merge(source, laborMilli, Math::addExact);
+        laborEvidence
+            .computeIfAbsent(household, ignored -> new LinkedHashMap<>())
+            .merge(source.name() + "@" + activity.value(), laborMilli, Math::addExact);
+        if (source == LaborSource.TENANT
+            && (productionStakeActivitiesOrEmpty(household).contains(activity)
+                || directActivitiesOrEmpty(household).contains(activity)
+                || operatedActivitiesOrEmpty(household).contains(activity))) {
+          tenantStake.put(household, true);
         }
       }
       for (HouseholdId household : classes.keySet()) {
         long hired = 0L;
-        Set<IndustryId> owned = ownedActivitiesOrEmpty(household);
-        for (IndustryId activity : owned) {
+        Set<IndustryId> controlled = controlledActivitiesOrEmpty(household);
+        for (IndustryId activity : controlled) {
           long total = activityLaborTotal.getOrDefault(activity, 0L);
           long self =
               activityLaborByHousehold.getOrDefault(activity, Map.of()).getOrDefault(household, 0L);
-          hired += total - self;
+          long other = total - self;
+          if (other > 0L) {
+            hired += other;
+          }
         }
         Map<IndustryId, Long> direct = directHiredByActivity.getOrDefault(household, Map.of());
         for (Map.Entry<IndustryId, Long> entry : direct.entrySet()) {
-          if (!owned.contains(entry.getKey())) {
+          if (!controlled.contains(entry.getKey())) {
             hired += entry.getValue();
           }
         }
@@ -370,16 +514,25 @@ public final class HouseholdClassRule {
       if (row == null) {
         throw new IllegalArgumentException("分类的家户没有 ClassRow 行: " + household);
       }
-      long ownLand = ownLandMilliMu.getOrDefault(household, 0L);
-      long rights = rightQuantity.getOrDefault(household, 0L);
+      long directLand = directLandMilliMu.getOrDefault(household, 0L);
+      long operatedLand = operatedLandMilliMu.getOrDefault(household, 0L);
+      long ownLand = directLand + operatedLand;
+      long directToolOrWorkshopQuantity = directToolOrWorkshop.getOrDefault(household, 0L);
+      long operatedToolOrWorkshopQuantity = operatedToolOrWorkshop.getOrDefault(household, 0L);
+      long toolOrWorkshop = directToolOrWorkshopQuantity + operatedToolOrWorkshopQuantity;
+      long directRights = directRightQuantity.getOrDefault(household, 0L);
+      long inferredLand = rentInferredLandMilliMu.getOrDefault(household, 0L);
+      long assetBase = directRights + operatedLand + operatedToolOrWorkshopQuantity + inferredLand;
       long sold = laborSold.getOrDefault(household, 0L);
       long hired = laborHired.getOrDefault(household, 0L);
       long netLaborSold = sold - hired;
       boolean rent = rentEntitled.getOrDefault(household, false);
       long debt = debtPrincipal.getOrDefault(household, 0L);
-      long assetBase = rights + inferredLand.getOrDefault(household, 0L);
       long debtStress = debtStressPerMille(debt, assetBase);
       boolean debtStressed = debtStress >= DEBT_STRESS_THRESHOLD_PER_MILLE;
+      Map<LaborSource, Long> sources = laborBySource.getOrDefault(household, Map.of());
+      boolean communal = communalRight.getOrDefault(household, false);
+      boolean tenantStakeOfHousehold = tenantStake.getOrDefault(household, false);
 
       OptionalLong rentPaid = OptionalLong.empty();
       boolean rentPaidComplete = false;
@@ -412,61 +565,214 @@ public final class HouseholdClassRule {
         rentPaid = rentPaidComplete ? OptionalLong.of(paid) : OptionalLong.empty();
       }
 
-      boolean tenant = tenantLabor.getOrDefault(household, false);
-      boolean handi = handicraft.getOrDefault(household, false);
-      boolean communal = communalRight.getOrDefault(household, false);
       SocialClassId stratum;
       String reason;
+      String evidence = compactEvidence(household);
       if (rent && netLaborSold <= 0L) {
         stratum = SocialClassId.LANDLORD;
         reason =
-            "landlord:rentEntitled,netLaborSoldMilli="
+            "landlord:rentEntitled;netLaborSoldMilli="
                 + netLaborSold
-                + ",ownLandMilliMu="
-                + ownLand;
-      } else if (ownLand > SELF_CULTIVATION_THRESHOLD_MILLI_MU && netLaborSold < 0L) {
-        stratum = SocialClassId.RICH_PEASANT;
-        reason = "rich_peasant:netLaborSoldMilli=" + netLaborSold + ",ownLandMilliMu=" + ownLand;
-      } else if (ownLand > 0L && netLaborSold == 0L) {
-        if (debtStressed) {
+                + ";ownLandMilliMu="
+                + ownLand
+                + ";inferredRentLandMilliMu="
+                + inferredLand
+                + ";debtStressPerMille="
+                + debtStress
+                + ";"
+                + evidence;
+      } else if (ownLand > 0L) {
+        // 有 LAND：净雇工 ⇒ 富农；自耕平衡 ⇒ 中农/贫农（看债务）；净卖劳动 ⇒ 地少或欠债才贫农。
+        if (netLaborSold < 0L) {
+          stratum = SocialClassId.RICH_PEASANT;
+          reason =
+              "rich_peasant:ownLandMilliMu="
+                  + ownLand
+                  + ";directLandMilliMu="
+                  + directLand
+                  + ";operatedLandMilliMu="
+                  + operatedLand
+                  + ";netLaborSoldMilli="
+                  + netLaborSold
+                  + ";debtStressPerMille="
+                  + debtStress
+                  + ";"
+                  + evidence;
+        } else if (netLaborSold == 0L) {
+          if (debtStressed) {
+            stratum = SocialClassId.POOR_PEASANT;
+            reason =
+                "poor_peasant:ownLandMilliMu="
+                    + ownLand
+                    + ";selfCultivatingButDebtStressed;debtStressPerMille="
+                    + debtStress
+                    + ";"
+                    + evidence;
+          } else {
+            stratum = SocialClassId.MIDDLE_PEASANT;
+            reason =
+                "middle_peasant:ownLandMilliMu="
+                    + ownLand
+                    + ";selfCultivating;debtStressPerMille="
+                    + debtStress
+                    + ";"
+                    + evidence;
+          }
+        } else if (debtStressed || ownLand <= SELF_CULTIVATION_THRESHOLD_MILLI_MU) {
           stratum = SocialClassId.POOR_PEASANT;
-          reason = "poor_peasant:debtStressPerMille=" + debtStress + ",ownLandMilliMu=" + ownLand;
+          reason =
+              "poor_peasant:ownLandMilliMu="
+                  + ownLand
+                  + ";netLaborSoldMilli="
+                  + netLaborSold
+                  + ";smallholdingOrDebtStressed;debtStressPerMille="
+                  + debtStress
+                  + ";"
+                  + evidence;
         } else {
           stratum = SocialClassId.MIDDLE_PEASANT;
-          reason = "middle_peasant:ownLandMilliMu=" + ownLand;
+          reason =
+              "middle_peasant:ownLandMilliMu="
+                  + ownLand
+                  + ";netLaborSoldMilli="
+                  + netLaborSold
+                  + ";sellsSomeLaborButLanded;debtStressPerMille="
+                  + debtStress
+                  + ";"
+                  + evidence;
         }
-      } else if (ownLand > 0L && (netLaborSold > 0L || debtStressed)) {
-        stratum = SocialClassId.POOR_PEASANT;
-        reason =
-            "poor_peasant:netLaborSoldMilli="
-                + netLaborSold
-                + ",debtStressPerMille="
-                + debtStress
-                + ",ownLandMilliMu="
-                + ownLand;
-      } else if (ownLand == 0L && netLaborSold > 0L && tenant) {
-        stratum = SocialClassId.POOR_PEASANT;
-        reason = "poor_peasant:tenantLabor,netLaborSoldMilli=" + netLaborSold;
-      } else if (ownLand == 0L && netLaborSold > 0L && handi) {
+      } else if (toolOrWorkshop > 0L) {
         stratum = SocialClassId.ARTISAN;
-        reason = "artisan:handicraftLabor,netLaborSoldMilli=" + netLaborSold;
-      } else if (ownLand == 0L && netLaborSold > 0L) {
-        stratum = SocialClassId.LANDLESS_LABORER;
-        reason = "landless_laborer:netLaborSoldMilli=" + netLaborSold;
+        reason =
+            "artisan:directToolOrWorkshop="
+                + directToolOrWorkshopQuantity
+                + ";operatedToolOrWorkshop="
+                + operatedToolOrWorkshopQuantity
+                + ";netLaborSoldMilli="
+                + netLaborSold
+                + ";debtStressPerMille="
+                + debtStress
+                + ";"
+                + evidence;
       } else if (communal) {
         stratum = SocialClassId.OFFICIAL;
-        reason = "official:communalRight";
+        reason = "official:communalRight;netLaborSoldMilli=" + netLaborSold + ";" + evidence;
+      } else if (directRights > 0L || !operatedActivitiesOrEmpty(household).isEmpty()) {
+        // 其它尚未启用的资产（CATTLE/MACHINE/SHIP）或没有可计产能的经营身份：有资产事实，但无法套 LAND/TOOL 档。
+        if (debtStressed || netLaborSold > 0L) {
+          stratum = SocialClassId.POOR_PEASANT;
+          reason =
+              "poor_peasant:assetHolder;directRightQuantity="
+                  + directRights
+                  + ";netLaborSoldMilli="
+                  + netLaborSold
+                  + ";debtStressPerMille="
+                  + debtStress
+                  + ";"
+                  + evidence;
+        } else {
+          stratum = SocialClassId.MIDDLE_PEASANT;
+          reason =
+              "middle_peasant:assetHolder;directRightQuantity="
+                  + directRights
+                  + ";netLaborSoldMilli="
+                  + netLaborSold
+                  + ";"
+                  + evidence;
+        }
+      } else if (!sources.isEmpty()) {
+        if (sources.containsKey(LaborSource.TENANT)) {
+          if (debtStressed || !tenantStakeOfHousehold) {
+            stratum = SocialClassId.POOR_PEASANT;
+            reason =
+                "poor_peasant:tenantNoStakeOrDebtStressed;tenantStake="
+                    + tenantStakeOfHousehold
+                    + ";debtStressPerMille="
+                    + debtStress
+                    + ";"
+                    + evidence;
+          } else {
+            stratum = SocialClassId.MIDDLE_PEASANT;
+            reason =
+                "middle_peasant:tenantWithInputOutputStake;debtStressPerMille="
+                    + debtStress
+                    + ";"
+                    + evidence;
+          }
+        } else if (sources.containsKey(LaborSource.FAMILY)
+            || sources.containsKey(LaborSource.SELF)) {
+          // ★ 混合身份（真档：SERF 庄园劳动 + FAMILY 家庭纺织）：自营是"本户自己的生产"，不因同时给庄园出劳
+          //   就消失；债务压力高时才退回贫农。依附身份（SERF）仍是它的兜底，reason 里两条关系都写出来。
+          if (debtStressed) {
+            stratum = SocialClassId.POOR_PEASANT;
+            reason =
+                "poor_peasant:selfEmploymentButDebtStressed;debtStressPerMille="
+                    + debtStress
+                    + ";"
+                    + evidence;
+          } else {
+            stratum = SocialClassId.MIDDLE_PEASANT;
+            reason =
+                "middle_peasant:familySelfEmployment;debtStressPerMille="
+                    + debtStress
+                    + ";"
+                    + evidence;
+          }
+        } else if (sources.containsKey(LaborSource.SERF)) {
+          stratum = SocialClassId.POOR_PEASANT;
+          reason = "poor_peasant:serfDependent;debtStressPerMille=" + debtStress + ";" + evidence;
+        } else if (sources.containsKey(LaborSource.WAGE)) {
+          stratum = SocialClassId.LANDLESS_LABORER;
+          reason =
+              "landless_laborer:wageLabor;netLaborSoldMilli="
+                  + netLaborSold
+                  + ";debtStressPerMille="
+                  + debtStress
+                  + ";"
+                  + evidence;
+        } else {
+          stratum = row.view().stratum();
+          reason =
+              "retainedCurrentView:unmappedLaborSource(current="
+                  + stratum.value()
+                  + ");"
+                  + evidence;
+        }
       } else {
-        // 制度 fallback：没有任何可占有资产、也没有可观察的净卖出劳动 ⇒ 无地劳动者（DESTITUTE 的生计状态在
-        // HouseholdCondition，不在阶层词表）。
-        stratum = SocialClassId.LANDLESS_LABORER;
-        reason = "landless_laborer:noAssetNoNetLabor";
+        // ★★ 没有任何可观察证据（无权利、无租、无劳动、无关系）⇒ 保留当前视图；不凭空把空行判成 landless。
+        stratum = row.view().stratum();
+        reason =
+            "retainedCurrentView:noObservableEvidence(current="
+                + stratum.value()
+                + ");ownLandMilliMu="
+                + ownLand
+                + ";rightQuantity="
+                + directRights
+                + ";laborSoldMilli="
+                + sold
+                + ";rentEntitled="
+                + rent;
+      }
+      SocialClassId feasible = feasibleStratum(row, stratum);
+      if (!feasible.equals(stratum)) {
+        reason =
+            reason
+                + ";slotCapFallback(derived="
+                + stratum.value()
+                + ",slotCap="
+                + slotCapText(row, stratum)
+                + ",participationPerMille="
+                + row.participationPerMille()
+                + "->"
+                + feasible.value()
+                + ")";
+        stratum = feasible;
       }
       return new Classification(
           stratum,
           reason,
           ownLand,
-          rights,
+          directRights,
           sold,
           hired,
           netLaborSold,
@@ -477,13 +783,112 @@ public final class HouseholdClassRule {
           debtStress);
     }
 
-    private Set<IndustryId> ownedActivities(HouseholdId household) {
-      return ownedActivitiesByHousehold.computeIfAbsent(
-          household, ignored -> new LinkedHashSet<>());
+    /**
+     * ★ 分类结果必须是**该行参与率在新档位槽位上限内**的旧四档，或不受上限约束的 S3 派生阶层。
+     *
+     * <p>★ 真档实测（本类头部注释的场景）：poor_peasant 行 950‰ 被本规则派生成 middle_peasant，而 middle 槽位上限 900‰ ⇒ {@code
+     * EconomyData} 构造期守卫拒收整批 advance。修复不是放宽守卫，也不是改参与率（写回只改 view），而是
+     * **在分类侧选一个参与率可行的档位**：能保持派生档就保持，否则按富→中→贫的顺序退化，退化理由写进 reason。
+     */
+    private SocialClassId feasibleStratum(ClassRow row, SocialClassId derived) {
+      if (!LEGACY_TIER_STRATA.contains(derived)) {
+        return derived; // S3 派生阶层没有创世槽位上限（EconomyData 的两分法）
+      }
+      OptionalLong cap = slotCapOf(row, derived);
+      if (cap.isPresent() && row.participationPerMille() <= cap.getAsLong()) {
+        return derived;
+      }
+      for (SocialClassId candidate : fallbackOrder(derived)) {
+        OptionalLong candidateCap = slotCapOf(row, candidate);
+        if (candidateCap.isPresent() && row.participationPerMille() <= candidateCap.getAsLong()) {
+          return candidate;
+        }
+      }
+      // 连一个可行的旧档都没有（只应出现在坏数据/手工状态）：保留当前视图 —— 它在构造期已经过同一守卫。
+      return row.view().stratum();
     }
 
-    private Set<IndustryId> ownedActivitiesOrEmpty(HouseholdId household) {
-      return ownedActivitiesByHousehold.getOrDefault(household, Set.of());
+    /** 派生档位不可行时的退化顺序：富→中→贫；地主→中→贫（地租受方若参与率过高，至少可落到中/贫）。 */
+    private static List<SocialClassId> fallbackOrder(SocialClassId derived) {
+      if (derived.equals(SocialClassId.RICH_PEASANT) || derived.equals(SocialClassId.LANDLORD)) {
+        return List.of(SocialClassId.MIDDLE_PEASANT, SocialClassId.POOR_PEASANT);
+      }
+      if (derived.equals(SocialClassId.MIDDLE_PEASANT)) {
+        return List.of(SocialClassId.POOR_PEASANT);
+      }
+      return List.of();
+    }
+
+    /** 该行所在格（含无格键产业）对某档的最紧参与率上限；没有该档槽位 ⇒ empty（S3 派生阶层/坏数据）。 */
+    private OptionalLong slotCapOf(ClassRow row, SocialClassId stratum) {
+      String hexKey = IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r());
+      Long cap = null;
+      Map<SocialClassId, Long> local = slotCapsByHex.get(hexKey);
+      if (local != null) {
+        cap = local.get(stratum);
+      }
+      Long universal = universalSlotCaps.get(stratum);
+      if (universal != null) {
+        cap = cap == null ? universal : Math.min(cap, universal);
+      }
+      return cap == null ? OptionalLong.empty() : OptionalLong.of(cap);
+    }
+
+    private String slotCapText(ClassRow row, SocialClassId stratum) {
+      OptionalLong cap = slotCapOf(row, stratum);
+      return cap.isPresent() ? Long.toString(cap.getAsLong()) : "none";
+    }
+
+    /** 保序取一条家户的证据串（原因字符串用；不参与算术）。 */
+    private String compactEvidence(HouseholdId household) {
+      List<String> parts = new ArrayList<>();
+      Map<String, Long> labor = laborEvidence.getOrDefault(household, Map.of());
+      for (Map.Entry<String, Long> entry : labor.entrySet()) {
+        if (parts.size() >= 4) {
+          parts.add("…+" + (labor.size() - 4));
+          break;
+        }
+        parts.add(entry.getKey() + "=" + entry.getValue());
+      }
+      Set<String> roles = roleEvidence.getOrDefault(household, Set.of());
+      parts.addAll(roles);
+      return parts.isEmpty() ? "noRelationEvidence" : "evidence[" + String.join(",", parts) + "]";
+    }
+
+    private Set<IndustryId> directActivities(HouseholdId household) {
+      return directActivities.computeIfAbsent(household, ignored -> new LinkedHashSet<>());
+    }
+
+    private Set<IndustryId> directActivitiesOrEmpty(HouseholdId household) {
+      return directActivities.getOrDefault(household, Set.of());
+    }
+
+    private Set<IndustryId> operatedActivities(HouseholdId household) {
+      return operatedActivities.computeIfAbsent(household, ignored -> new LinkedHashSet<>());
+    }
+
+    private Set<IndustryId> operatedActivitiesOrEmpty(HouseholdId household) {
+      return operatedActivities.getOrDefault(household, Set.of());
+    }
+
+    private Set<IndustryId> controlledActivities(HouseholdId household) {
+      return controlledActivities.computeIfAbsent(household, ignored -> new LinkedHashSet<>());
+    }
+
+    private Set<IndustryId> controlledActivitiesOrEmpty(HouseholdId household) {
+      return controlledActivities.getOrDefault(household, Set.of());
+    }
+
+    private Set<IndustryId> productionStakeActivities(HouseholdId household) {
+      return productionStakeActivities.computeIfAbsent(household, ignored -> new LinkedHashSet<>());
+    }
+
+    private Set<IndustryId> productionStakeActivitiesOrEmpty(HouseholdId household) {
+      return productionStakeActivities.getOrDefault(household, Set.of());
+    }
+
+    private Set<String> roleEvidence(HouseholdId household) {
+      return roleEvidence.computeIfAbsent(household, ignored -> new LinkedHashSet<>());
     }
 
     /** 债务压力（千分）：{@code debt × 1000 ÷ max(1, 资产数量)}；无资产但欠债 ⇒ {@link Long#MAX_VALUE}。 */
