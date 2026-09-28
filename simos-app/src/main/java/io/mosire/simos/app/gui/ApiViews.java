@@ -20,6 +20,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -514,15 +515,15 @@ public final class ApiViews {
       landMilliMu += industry.capacity().getOrDefault(AssetKind.LAND, 0L);
       // ★★ M1.7：给养义务读口要"按本周期实际劳动量" —— 走结算侧的**同一个函数**（{@code EconomySettlement.laborOfCohort}），
       //   不在视图层另写一套（口径两处各写一遍 = 读到的义务与实付的义务会漂开）。
-      Map<CohortKey, Long> cycleLabor =
+      Map<HouseholdId, Long> cycleLabor =
           EconomySettlement.laborOfCohort(data.classes(), coord, industry.cycleDays());
       industries.add(industryView(industry, data.relations().get(id), cycleLabor));
     }
     // ★★ H0.2：**家户行挂在格上**（键 = {@code (格, 居住类型, 阶层)}），不再属于任何产业 ⇒ 视图里它们是该格的一个数组。
     // ★★ M1.5：债权人侧索引**一次派生、整格复用**（{@link DebtIndex#byCreditor}；不在每一行里 O(债务) 重扫）。
-    Map<CohortKey, List<DebtId>> creditsByCohort = DebtIndex.byCreditor(data.debts());
+    Map<HouseholdId, List<DebtId>> creditsByCohort = DebtIndex.byCreditor(data.debts());
     List<Map<String, Object>> classes = new ArrayList<>();
-    for (CohortKey key : cohortKeysAt(data, coord)) {
+    for (HouseholdId key : cohortKeysAt(data, coord)) {
       ClassRow row = data.classes().get(key);
       population += row.population();
       laborMilli += row.laborMilli();
@@ -664,12 +665,12 @@ public final class ApiViews {
       Map<String, Long> actorMoneyTotal,
       Optional<MarketReport> report) {
     Map<String, Object> view = new LinkedHashMap<>();
-    List<CohortKey> keys = cohortKeysAt(data, coord);
+    List<HouseholdId> keys = cohortKeysAt(data, coord);
     long population = 0L;
     long dailyNeed = 0L;
     long cycleNeed = 0L;
     long unmet = 0L;
-    for (CohortKey key : keys) {
+    for (HouseholdId key : keys) {
       ClassRow row = data.classes().get(key);
       population += row.population();
       // ★ 日耗读结算写下的 naturalNeeds（与面板同源）；★ 结算还没跑过 ⇒ 那一栏是 0，此处**按口粮公式兜底**
@@ -979,17 +980,18 @@ public final class ApiViews {
     return atHex;
   }
 
-  /** 该格的家户行键（{@code CohortKey}），**按 (居住类型, 阶层 id) 字典序**（可复现；见 {@link #economyHex}）。 */
-  private static List<CohortKey> cohortKeysAt(EconomyData data, HexCoord coord) {
-    List<CohortKey> keys = new ArrayList<>();
-    for (CohortKey key : data.classes().keySet()) {
-      if (key.hex().equals(coord)) {
-        keys.add(key);
+  /** 该格的家户**稳定身份**（{@code HouseholdId}），**按 (居住类型, 阶层 id) 字典序**（可复现；见 {@link #economyHex}）。 */
+  private static List<HouseholdId> cohortKeysAt(EconomyData data, HexCoord coord) {
+    List<HouseholdId> keys = new ArrayList<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
+      if (entry.getValue().view().hex().equals(coord)) {
+        keys.add(entry.getKey());
       }
     }
     keys.sort(
-        Comparator.comparing((CohortKey key) -> key.residence().value())
-            .thenComparing(key -> key.stratum().value()));
+        Comparator.comparing(
+                (HouseholdId key) -> data.classes().get(key).view().residence().value())
+            .thenComparing(key -> data.classes().get(key).view().stratum().value()));
     return keys;
   }
 
@@ -1012,7 +1014,7 @@ public final class ApiViews {
    * @param laborOfCohort 本周期各 cohort 的劳动量（由 {@code EconomySettlement.laborOfCohort} 算好传入；不得为 null）
    */
   private static Map<String, Object> industryView(
-      Industry industry, ProductionRelation relation, Map<CohortKey, Long> laborOfCohort) {
+      Industry industry, ProductionRelation relation, Map<HouseholdId, Long> laborOfHousehold) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", industry.id().value());
     view.put("name", industry.name());
@@ -1055,7 +1057,7 @@ public final class ApiViews {
     // ★★ M1.7：实物给养义务（谁 → 向谁 / 按什么劳动量 / 每周期应付多少 / 什么商品）—— 纯派生、不落状态。
     //   ★ 缺 relation ⇒ 空表（没有规则 = 全归 residualOwner 的等价路径，见方法注释）。
     List<SubsistenceObligation> obligations =
-        relation == null ? List.of() : SubsistenceObligation.of(relation, laborOfCohort);
+        relation == null ? List.of() : SubsistenceObligation.of(relation, laborOfHousehold);
     List<Map<String, Object>> obligationViews = new ArrayList<>(obligations.size());
     for (SubsistenceObligation obligation : obligations) {
       Map<String, Object> item = new LinkedHashMap<>();
@@ -1089,9 +1091,13 @@ public final class ApiViews {
         view.put("kind", "actor");
         view.put("actor", actorRefView(toActor.actor()));
       }
+      case Recipient.ToHousehold toHousehold -> {
+        view.put("kind", "household");
+        view.put("household", toHousehold.household().value());
+      }
+      // ★ 旧档变体（S1 迁移前）：仍按旧视图规范串发出来（读口兼容；S3 再解释为视图选择器）。
       case Recipient.ToCohort toCohort -> {
         view.put("kind", "cohort");
-        // ★ 规范串是 CohortKey 的唯一拼写点（toString/parse 成对），本层不复述它的格式。
         view.put("cohort", toCohort.cohort().toString());
       }
     }
@@ -1147,7 +1153,7 @@ public final class ApiViews {
    * @param debtBook 该切片的债务表（{@code EconomyData.debts()}；只读，不在本层改）
    */
   private static Map<String, Object> classRowView(
-      CohortKey key,
+      HouseholdId key,
       ClassRow row,
       FlowRow flow,
       ActorData actors,
@@ -1156,8 +1162,8 @@ public final class ApiViews {
     Map<String, Object> view = new LinkedHashMap<>();
     // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
     //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
-    view.put("residence", key.residence().value());
-    view.put("slot", key.stratum().value());
+    view.put("residence", row.view().residence().value());
+    view.put("slot", row.view().stratum().value());
     view.put("population", row.population());
     view.put("laborMilli", row.laborMilli());
     view.put("participationPerMille", row.participationPerMille());
@@ -1170,7 +1176,8 @@ public final class ApiViews {
     // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code GoodsAccount}，键 =
     //   {@code (HouseholdActors.of(key), key.hex())}）—— 行里没有 goods 这一栏。★ 键的拼法只经
     //   {@link OwnershipBooks#accountKeyOf}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
-    GoodsAccount account = actors.accounts().get(OwnershipBooks.accountKeyOf(key));
+    GoodsAccount account =
+        actors.accounts().get(OwnershipBooks.accountKeyOf(key, row.view().hex()));
     view.put("goods", sortedCommodities(account == null ? Map.of() : account.balances()));
     // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code GoodsAccount}）——
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。

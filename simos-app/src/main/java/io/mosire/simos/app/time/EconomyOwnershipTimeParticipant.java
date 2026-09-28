@@ -2,16 +2,14 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
-import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
@@ -117,11 +115,11 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     // 0_0|rural|poor_peasant}）。
     //   行键里已经没有产业，旧版内联拼的 {@code <industryId>.<slotId>} 是同一格式的第二处拼写点（已删）。
     //   ★ 必须与 {@code EconomyResolver} 的 class/flow 地址逐字同串。
-    for (CohortKey key : economy.classes().keySet()) {
+    for (HouseholdId key : economy.classes().keySet()) {
       reads.add(economyAddress("class", key.toString()));
       writes.add(economyAddress("class", key.toString()));
     }
-    for (CohortKey key : economy.flows().keySet()) {
+    for (HouseholdId key : economy.flows().keySet()) {
       writes.add(economyAddress("flow", key.toString()));
     }
     reads.add(actorAddressRoot());
@@ -147,46 +145,21 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
           writes);
     }
 
-    // ★★ H1（裁定 K1）：家户账的**会话工作副本**（见 PopulationEconomyTimeParticipant 的同款接线）——
-    //   本参与者服务"有 economy + actor、没有 social"的世界，家户账照样要从 actor 侧载入。
-    Map<CohortKey, Map<CommodityId, Long>> householdGoods =
-        OwnershipBooks.loadHouseholdGoods(economy, actor);
-    // ★★ H4（裁定 K14）：**货币账的会话工作副本** —— 与商品副本**逐字同形、同一生命周期**（同一本
-    //   {@code GoodsAccount} 的第二个余额表）：载入 → step → 副本按绝对值落回。★ 它同样**不进 EconomyData、
-    //   不进变更集、不跨 revision**。
-    Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
-        OwnershipBooks.loadHouseholdMoney(economy, actor);
-    // ★★ H5（⑤）：**经营者账的两份会话工作副本** —— 与家户那两份逐字同形、同一生命周期（载入 → step → 按绝对值落回）。
-    //   ★ 缺席不抛（手搭夹具的合法状态）：真档创世给每个经营主体播一本（HouseholdSeeder）。
-    Map<ActorRef, Map<CommodityId, Long>> operatorGoods =
-        OwnershipBooks.loadOperatorGoods(economy, actor);
-    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney =
-        OwnershipBooks.loadOperatorMoney(economy, actor);
-    // ★★ M2（M1.2/M1.4 的接缝）：家户与经营者的**两张冻结快照**（商品 + 货币）—— 与余额副本同一次载入、
-    //   同一生命周期；订单生成用它们算可卖量与预算，本类不落回（L1 的订单是瞬时的，冻结额不变）。
-    //   真档今天没有冻结写者 ⇒ 这四张表恒空。
-    Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods =
-        OwnershipBooks.loadHouseholdFrozenGoods(economy, actor);
-    Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney =
-        OwnershipBooks.loadHouseholdFrozenMoney(economy, actor);
-    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods =
-        OwnershipBooks.loadOperatorFrozenGoods(economy, actor);
-    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney =
-        OwnershipBooks.loadOperatorFrozenMoney(economy, actor);
+    // ★★ S1：唯一账户会话（家户 + 经营者；商品 + 货币 + 冻结）一次装载。
+    //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
+    ActorData migratedBooks = OwnershipBooks.migrateLegacyHouseholdAccounts(actor, economy);
+    for (GoodsAccountKey key : migratedBooks.accounts().keySet()) {
+      reads.add(accountAddress(key));
+      writes.add(accountAddress(key));
+    }
+    AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
-            householdGoods,
-            householdMoney,
-            householdFrozenGoods,
-            householdFrozenMoney,
-            operatorGoods,
-            operatorMoney,
-            operatorFrozenGoods,
-            operatorFrozenMoney,
+            session,
             // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
             MarketTopologyBook.from(state));
-    ActorData books = actor;
+    ActorData books = migratedBooks;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
       // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
@@ -203,16 +176,9 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
           writes.add(accountAddress(key));
         }
       }
-      // ★★ H1：家户账**按绝对值**落回（日耗 / 投入 / 同格取材只写副本；关系实付既进条目也已进副本
-      //   ⇒ 按副本的绝对值写回，不叠加条目 —— 见 {@link OwnershipBooks#landHouseholdGoods}）。
-      //   ★ 顺序不能反：条目先落、副本收尾（反了同一笔粮会记两遍）。
-      books = OwnershipBooks.landHouseholdGoods(books, stepper.householdGoods());
-      // ★★ H4：货币账同样**按绝对值**落回，且**必须紧跟在商品之后**（写的是同一本账的另一个余额表 ⇒
-      //   它要把商品那一半原样带过，而那半必须已经落好；顺序反了 {@link OwnershipBooks#landHouseholdMoney} 当场抛）。
-      books = OwnershipBooks.landHouseholdMoney(books, stepper.householdMoney());
-      // ★★ H5（⑤）：经营者账同样按**绝对值**落回（商品先、货币后：同一本账的两张余额表，顺序不能反）。
-      books = OwnershipBooks.landOperatorGoods(stepper.data(), books, stepper.operatorGoods());
-      books = OwnershipBooks.landOperatorMoney(stepper.data(), books, stepper.operatorMoney());
+      // ★★ S1：全部账户（家户 + 经营者；商品 + 货币 + 冻结）按会话绝对值一次落回
+      //   （条目先落、会话收尾；顺序反了同一笔粮会记两遍）。
+      books = OwnershipBooks.landAccountSession(books, stepper.accounts());
     }
     EconomyData currentEconomy = stepper.finish();
     return new WorldTimeProposal(

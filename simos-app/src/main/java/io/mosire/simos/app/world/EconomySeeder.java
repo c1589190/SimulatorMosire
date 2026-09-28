@@ -3,10 +3,10 @@ package io.mosire.simos.app.world;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -525,8 +525,9 @@ public final class EconomySeeder {
       String mapId,
       List<Map<String, Object>> entries,
       Map<HexCoord, Market> markets,
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       List<OperatorSeed> operators) {
 
     /**
@@ -547,17 +548,21 @@ public final class EconomySeeder {
       // ★ 市场表：外层的键序 = 逐格（(q,r) 字典序，由 plan 保证）；值是共享的不可变 {@link Market}。
       markets =
           Collections.unmodifiableMap(new LinkedHashMap<>(markets == null ? Map.of() : markets));
-      Map<CohortKey, Map<CommodityId, Long>> stocksCopy = new LinkedHashMap<>();
+      // ★ S1：家户 id → 它账所在的格（actor id 不进家户 id；账户 location 由这张表显式带过）。
+      householdLocations =
+          Collections.unmodifiableMap(
+              new LinkedHashMap<>(householdLocations == null ? Map.of() : householdLocations));
+      Map<HouseholdId, Map<CommodityId, Long>> stocksCopy = new LinkedHashMap<>();
       if (householdStocks != null) {
-        for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : householdStocks.entrySet()) {
+        for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : householdStocks.entrySet()) {
           stocksCopy.put(
               entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
         }
       }
       householdStocks = Collections.unmodifiableMap(stocksCopy);
-      Map<CohortKey, Map<CurrencyId, Long>> moneyCopy = new LinkedHashMap<>();
+      Map<HouseholdId, Map<CurrencyId, Long>> moneyCopy = new LinkedHashMap<>();
       if (householdMoney != null) {
-        for (Map.Entry<CohortKey, Map<CurrencyId, Long>> entry : householdMoney.entrySet()) {
+        for (Map.Entry<HouseholdId, Map<CurrencyId, Long>> entry : householdMoney.entrySet()) {
           moneyCopy.put(
               entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
         }
@@ -773,14 +778,18 @@ public final class EconomySeeder {
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
 
     List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
-    Map<CohortKey, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
+    // ★ S1：家户 id → 账所在格（去重表：id 由 ofSeed 生成 ⇒ 同 (格,居住,阶层) 恒同一 id）。
+    Map<HouseholdId, HexCoord> householdLocations = new LinkedHashMap<>();
     // ★★ H4：创世货币禀赋（裁定 K14）走**同一处接缝** —— 与 householdStocks 同一次循环算出、同一份交给
     //   {@link HouseholdSeeder}（两处各算一遍必然漂开）。★ 它是**初始条件**，不是发行：见 {@link #householdMoney}。
-    Map<CohortKey, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
     // ★★ H4：逐格市场的载荷（M1-A 每格单一计价货币 + 固定价）。本批逐格价格无差异 ⇒ 共享同一个不可变 {@link Market}。
     Map<HexCoord, Market> markets = new LinkedHashMap<>();
     // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
     List<OperatorSeed> operators = new ArrayList<>();
+    // ★ S1.4：全部格的成员份额集中一份，供出口守恒自检（逐 lot Σcount == 该批次的 social 人数）。
+    List<Map<String, Object>> allMemberships = new ArrayList<>();
     for (HexCoord hex : hexes) {
       List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
       List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
@@ -830,6 +839,8 @@ public final class EconomySeeder {
       //   ★ **供给行每池只发一次**（{@link #appendSupply}）；配额按 (池, 产业) 各发一条（{@link #appendAllocation}）。
       List<Map<String, Object>> laborSupply = new ArrayList<>();
       List<Map<String, Object>> allocations = new ArrayList<>();
+      // ★★ S1：成员份额（逐 lot → 家户）：由 cohortGroup 按 row population × pool 各批次人数权重拆出。
+      List<Map<String, Object>> memberships = new ArrayList<>();
       appendSupply(laborSupply, ruralPool);
       appendSupply(laborSupply, urbanPool);
       if (hasRural) {
@@ -843,6 +854,7 @@ public final class EconomySeeder {
             allocations,
             budget,
             ruralPool,
+            hex,
             farmId,
             ActorKind.ESTATE,
             FARM,
@@ -851,6 +863,7 @@ public final class EconomySeeder {
             allocations,
             budget,
             ruralPool,
+            hex,
             weaveId,
             ActorKind.HOUSEHOLD,
             ACTIVITY_WEAVE,
@@ -861,6 +874,7 @@ public final class EconomySeeder {
             allocations,
             laborBudget(urbanPool),
             urbanPool,
+            hex,
             craftId,
             ActorKind.WORKSHOP,
             CRAFT,
@@ -877,8 +891,24 @@ public final class EconomySeeder {
       //   （{@code Seed.householdStocks}），载荷里的阶层行**不再带 {@code goods}** —— 行里没有商品这件事
       //   在"一本账"的判据（守恒式无 ΔΣRowGoods）里是必须的。
       //   ★★ H4：**创世货币禀赋与它同源**（同一处循环、同一份人口口径）⇒ 商品与货币两本账在同一次 plan 里算定。
-      classes.addAll(ruralCohort(hex, ruralPool, landMilliMu, householdStocks, householdMoney));
-      classes.addAll(urbanCohort(hex, urbanPool, workshops, householdStocks, householdMoney));
+      classes.addAll(
+          ruralCohort(
+              hex,
+              ruralPool,
+              landMilliMu,
+              householdLocations,
+              householdStocks,
+              householdMoney,
+              memberships));
+      classes.addAll(
+          urbanCohort(
+              hex,
+              urbanPool,
+              workshops,
+              householdLocations,
+              householdStocks,
+              householdMoney,
+              memberships));
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
@@ -886,12 +916,24 @@ public final class EconomySeeder {
       entry.put("classes", classes);
       entry.put("laborSupply", laborSupply);
       entry.put("allocations", allocations);
+      // ★★ S1：本格各产业的使用权（旧档迁移规则同源：容量整额 OWNED 给 operator；这里由 seeder 显式发出）。
+      //   ★ 逐产业从它自己的载荷节点取 capacity/operator（不在这里另算一份产能 —— "同一事实两处拼写点"）。
+      List<Map<String, Object>> useRights = new ArrayList<>();
+      for (Map<String, Object> industryPayload : industries) {
+        useRights.addAll(useRightsOf(industryPayload));
+      }
+      entry.put("useRights", useRights);
+      entry.put("memberships", memberships);
+      allMemberships.addAll(memberships);
       entries.add(entry);
       // ★★ H4：本格的市场（M1-A：每格一个计价货币 + 一张价表）。★ **有 entry 才有市场** ——
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
       markets.put(hex, MARKET_FACTORY);
     }
-    return new Seed(mapId, entries, markets, householdStocks, householdMoney, operators);
+    // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
+    requireMembershipConservation(groups, allMemberships);
+    return new Seed(
+        mapId, entries, markets, householdLocations, householdStocks, householdMoney, operators);
   }
 
   /**
@@ -1118,6 +1160,7 @@ public final class EconomySeeder {
       List<Map<String, Object>> allocations,
       Map<PeopleLotId, Long> budget,
       List<PopulationGroup> pool,
+      HexCoord hex,
       IndustryId industry,
       ActorKind kind,
       String activity,
@@ -1147,6 +1190,7 @@ public final class EconomySeeder {
       weightArray[i] = weights.get(i);
     }
     long[] shares = splitProportional(total, weightArray); // Σ shares == total（最大余数法，一个人不丢）
+    ResidenceKind residence = ResidenceKind.ofLot(pool.get(0).id());
     for (int i = 0; i < workers.size(); i++) {
       PopulationGroup group = workers.get(i);
       // ★★ 预算约束（见方法注释）：份额超过该批次**剩下的**可支配劳动 ⇒ 压到上限，多出来的留在预算里。
@@ -1155,17 +1199,113 @@ public final class EconomySeeder {
       if (share <= 0L) {
         continue; // 该批次在这一活动上的权重为 0 / 取整为 0 / 预算已用尽 ⇒ 不发 0 配额
       }
-      Map<String, Object> allocation = new LinkedHashMap<>();
-      allocation.put("id", allocationId(industry, group));
-      allocation.put("group", group.id().value());
-      Map<String, Object> actor = new LinkedHashMap<>();
-      actor.put("kind", kind.name());
-      actor.put("id", industry.value());
-      allocation.put("actor", actor);
-      allocation.put("activity", activity);
-      allocation.put("laborMilli", share);
-      allocation.put("period", FIRST_PERIOD);
-      allocations.add(allocation);
+      // ★★ S1：同一批次的这一份劳动按**阶层份额**拆到该居住类型的四个家户（与行的 CLASS_SHARE 同源），
+      //   于是每条配额都显式指名家户（不再有"pending 占位"这一运行期形态）。
+      long[] byHousehold = splitByShares(share, CLASS_SHARE_PER_MILLE);
+      for (int stratum = 0; stratum < CLASS_IDS.length; stratum++) {
+        long householdShare = byHousehold[stratum];
+        if (householdShare <= 0L) {
+          continue;
+        }
+        HouseholdId household =
+            HouseholdId.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[stratum]));
+        Map<String, Object> allocation = new LinkedHashMap<>();
+        allocation.put("id", LaborAllocation.idOf(industry, group.id(), household).value());
+        allocation.put("group", group.id().value());
+        allocation.put("household", household.value());
+        Map<String, Object> actor = new LinkedHashMap<>();
+        actor.put("kind", kind.name());
+        actor.put("id", industry.value());
+        allocation.put("actor", actor);
+        allocation.put("activity", activity);
+        allocation.put("laborMilli", householdShare);
+        allocation.put("period", FIRST_PERIOD);
+        allocations.add(allocation);
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>S1.4：tick0 份额守恒自检</b>：逐 lot 的 {@code Σ membership.count} 必须等于该 {@link PopulationGroup}
+   * 的人数。
+   *
+   * <p>★ seed 是份额的**构造点**（拆分的最大余数法在 {@link #appendMemberships} 里）⇒ 出口这一道是"拆分没丢/没多" 的判别力所在：不等 ⇒
+   * 当场抛，把坏载荷挡在命令面之前（播进去的状态再想对账就晚了）。
+   */
+  private static void requireMembershipConservation(
+      List<PopulationGroup> groups, List<Map<String, Object>> memberships) {
+    Map<String, Long> expected = new LinkedHashMap<>();
+    for (PopulationGroup group : groups) {
+      expected.merge(group.id().value(), group.count(), Math::addExact);
+    }
+    Map<String, Long> actual = new LinkedHashMap<>();
+    for (Map<String, Object> membership : memberships) {
+      Object lot = membership.get("lot");
+      Object count = membership.get("count");
+      if (!(lot instanceof String lotId) || !(count instanceof Number number)) {
+        throw new IllegalStateException("成员份额载荷形状非法（lot/count）: " + membership);
+      }
+      actual.merge(lotId, number.longValue(), Math::addExact);
+    }
+    java.util.LinkedHashSet<String> lots = new java.util.LinkedHashSet<>(expected.keySet());
+    lots.addAll(actual.keySet());
+    List<String> mismatches = new ArrayList<>();
+    for (String lot : lots) {
+      long want = expected.getOrDefault(lot, 0L);
+      long got = actual.getOrDefault(lot, 0L);
+      if (want != got) {
+        mismatches.add("lot=" + lot + "：份额=" + got + " ≠ 社会人数=" + want);
+      }
+    }
+    if (!mismatches.isEmpty()) {
+      throw new IllegalStateException(
+          "tick0 seed 的 Σ Membership.count(lot) 必须等于 PopulationGroup.count(lot)（S1.4）："
+              + mismatches.subList(0, Math.min(5, mismatches.size())));
+    }
+  }
+
+  /**
+   * ★★ <b>S1：一组家户的成员份额（逐 lot 切）</b>：对池内每个批次，把它的人数在**同居住类型/同格的四个家户** 之间按行人口权重用最大余数法分配。
+   *
+   * <p>★★ <b>为什么按 lot 切而不是逐家户切</b>：要守的跨切片不变量是<b>逐 lot</b> 的 {@code Σcount ==
+   * PopulationGroup.count(lot)}。逐家户各自按 lot 权重切会在"某一家户人很少、而 lot 权重很偏"时 把同一 lot 的余数都堆到一个方向，逐 lot
+   * 之和就可能偏离（小样本下实测可差若干人）。按 lot 切让每个 lot 的分配 <b>构造性</b>地等于它的人数；代价是同一家户跨 lot 的份额之和可能与行人口差几个舍入人 —— 全局
+   * Σ 仍逐值相等。
+   *
+   * <p>★ 权重 = 该家户的**行人口**（四个阶层份额切出来的 {@code people[i]}）；人口为 0 的空壳家户不落份额（它收不下人）。 池空 / 池人口为 0 ⇒ 不发。
+   */
+  private static void appendMembershipsByLot(
+      List<Map<String, Object>> memberships,
+      List<PopulationGroup> pool,
+      List<HouseholdId> householdKeys,
+      long[] householdPopulation) {
+    if (pool.isEmpty() || householdKeys.size() != householdPopulation.length) {
+      return;
+    }
+    long totalHousehold = 0L;
+    for (long population : householdPopulation) {
+      totalHousehold = Math.addExact(totalHousehold, population);
+    }
+    if (totalHousehold <= 0L) {
+      return;
+    }
+    for (PopulationGroup group : pool) {
+      if (group.count() <= 0L) {
+        continue;
+      }
+      long[] parts =
+          io.mosire.simos.util.economy.ProportionalSplit.byDenominator(
+              group.count(), householdPopulation, totalHousehold);
+      for (int i = 0; i < householdKeys.size(); i++) {
+        if (parts[i] <= 0L) {
+          continue;
+        }
+        Map<String, Object> membership = new LinkedHashMap<>();
+        membership.put("lot", group.id().value());
+        membership.put("household", householdKeys.get(i).value());
+        membership.put("count", parts[i]);
+        memberships.add(membership);
+      }
     }
   }
 
@@ -1212,12 +1352,6 @@ public final class EconomySeeder {
    * id 形如 {@code farm@0_0}、批次 id 形如 {@code rural:0_0:MALE:1}，两者都不含点 ⇒ 地址 {@code
    * economy:<mapId>:allocation.<id>} 不会被 {@code AddressParser} 在第一个点处截断。
    */
-  static String allocationId(IndustryId industry, PopulationGroup group) {
-    // ★★ H5：格式的**唯一拼写点**已上移到契约层（{@link LaborAllocation#idOf}）—— 因为劳动再分配
-    //   （{@code EconomySettlement.reallocateLabor}）也会新发配额，而它不是本模块的代码。本方法只做转调，
-    //   **不再复述那个格式**（两处各拼一遍 ⇒ 改一处漏一处，而漏了不会报错）。
-    return LaborAllocation.idOf(industry, group.id()).value();
-  }
 
   // ── 三个产业（**只留制度 + 配方 + 产能**；行已搬到 {@link #ruralCohort} / {@link #urbanCohort}）──────
 
@@ -1450,12 +1584,15 @@ public final class EconomySeeder {
       HexCoord hex,
       List<PopulationGroup> pool,
       long landMilliMu,
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
-      Map<CohortKey, Map<CurrencyId, Long>> money) {
+      Map<HouseholdId, HexCoord> locations,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> money,
+      List<Map<String, Object>> memberships) {
     // ★★ **纤维的去处**：旧版按阶层份额落在那四行**纺织行**上，H0.2 起并入**农村四行**（同一批人的同一本账）。
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), CLASS_SHARE_PER_MILLE));
-    return cohortGroup(hex, ResidenceKind.RURAL, pool, goods, stocks, money);
+    return cohortGroup(
+        hex, ResidenceKind.RURAL, pool, goods, locations, stocks, money, memberships);
   }
 
   /**
@@ -1470,8 +1607,10 @@ public final class EconomySeeder {
       HexCoord hex,
       List<PopulationGroup> pool,
       long workshops,
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
-      Map<CohortKey, Map<CurrencyId, Long>> money) {
+      Map<HouseholdId, HexCoord> locations,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> money,
+      List<Map<String, Object>> memberships) {
     long[] shopByClass = splitByShares(workshops, CLASS_SHARE_PER_MILLE);
     long[] fiber = new long[CLASS_IDS.length];
     long[] iron = new long[CLASS_IDS.length];
@@ -1483,7 +1622,8 @@ public final class EconomySeeder {
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, fiber);
     goods.put(COMMODITY_IRON, iron);
-    return cohortGroup(hex, ResidenceKind.URBAN, pool, goods, stocks, money);
+    return cohortGroup(
+        hex, ResidenceKind.URBAN, pool, goods, locations, stocks, money, memberships);
   }
 
   /**
@@ -1500,26 +1640,75 @@ public final class EconomySeeder {
       ResidenceKind residence,
       List<PopulationGroup> pool,
       Map<String, long[]> goodsByClass,
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
-      Map<CohortKey, Map<CurrencyId, Long>> money) {
+      Map<HouseholdId, HexCoord> locations,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> money,
+      List<Map<String, Object>> memberships) {
     long[] people = splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE);
     long poolLabor = laborMilli(pool);
     long poolCount = populationOf(pool);
     List<Map<String, Object>> rows = new ArrayList<>(CLASS_IDS.length);
+    List<HouseholdId> householdKeys = new ArrayList<>(CLASS_IDS.length);
     for (int i = 0; i < CLASS_IDS.length; i++) {
       // ★★ **H1：这个家户的开缸库存 → actor 侧的账本**（键 = {@link HouseholdActors#of} 的那个家户身份）。
       //   ★ **空账也落键**（人口 0 ⇒ 余额全 0）：读口因此读得到"这个家户在这一格有一本账"（既定口径），
       //     而"账本为空"与"这一格没有这个家户"是两件事。
-      CohortKey key = new CohortKey(hex, residence, new SocialClassId(CLASS_IDS[i]));
+      HouseholdId key = HouseholdId.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[i]));
+      locations.put(key, hex);
+      householdKeys.add(key);
       stocks.put(key, openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
       // ★★ H4：创世货币禀赋走**同一本账**（actor 侧的同一个 {@code GoodsAccount}）—— 见 {@link
       // #genesisMoneyMilliPerCapita}。
       money.put(key, genesisMoney(people[i]));
       rows.add(
           cohortRow(
-              residence, CLASS_IDS[i], people[i], CLASS_LABOR_PER_MILLE[i], poolLabor, poolCount));
+              key,
+              residence,
+              CLASS_IDS[i],
+              people[i],
+              CLASS_LABOR_PER_MILLE[i],
+              poolLabor,
+              poolCount));
     }
+    // ★★ S1.4：份额按**逐 lot** 切（不是逐家户各自切）：每个 lot 的 group.count 在本组四个家户之间按行人口权重
+    //   用最大余数法分配 ⇒ **逐 lot 严格 Σcount == 该批次社会人数**（seed 出口自检的判据因此构造性成立）。
+    //   ★ 代价如实记：同一家户跨 lot 的份额之和可能与它的行人口差几个人（最大余数法的舍入），
+    //     而"Σ 全部份额 == Σ 全部行人口"仍是逐值相等（EconomyData 的全局守卫照过）。
+    appendMembershipsByLot(memberships, pool, householdKeys, people);
     return rows;
+  }
+
+  /**
+   * ★★ <b>S1：一个产业载荷节点 → 它的整额 OWNED 使用权</b>（键 = capacity 的逐项，holder = 该节点的 operator）。
+   *
+   * <p>★ 只发 {@code quantity > 0} 的项（0 产能 ⇒ 没有可用的权利）；{@code kind = OWNED} 是创世默认档 （与旧档迁移规则同源：旧 {@code
+   * Industry.capacity + operator} ⇒ 整额 OWNED）。
+   */
+  private static List<Map<String, Object>> useRightsOf(Map<String, Object> industryPayload) {
+    Object activity = industryPayload.get("id");
+    Object holder = industryPayload.get("operator");
+    Object capacityNode = industryPayload.get("capacity");
+    List<Map<String, Object>> rights = new ArrayList<>();
+    if (!(capacityNode instanceof Map<?, ?> capacity) || activity == null || holder == null) {
+      return rights;
+    }
+    for (Map.Entry<?, ?> entry : capacity.entrySet()) {
+      if (!(entry.getValue() instanceof Number number)) {
+        continue;
+      }
+      long quantity = number.longValue();
+      if (quantity <= 0L) {
+        continue;
+      }
+      Map<String, Object> right = new LinkedHashMap<>();
+      right.put("activity", activity);
+      right.put("holder", holder);
+      right.put("asset", entry.getKey());
+      right.put("quantity", quantity);
+      right.put("kind", "OWNED");
+      rights.add(right);
+    }
+    return rights;
   }
 
   /**
@@ -1555,6 +1744,7 @@ public final class EconomySeeder {
    * 如农村行的纤维，则它仍在：**地不因没人种而消失**），只是记在 actor 侧的账本上（H1）。
    */
   private static Map<String, Object> cohortRow(
+      HouseholdId householdId,
       ResidenceKind residence,
       String slot,
       long population,
@@ -1565,6 +1755,8 @@ public final class EconomySeeder {
     // ★★ **居住类型是身份的一维**（H0.1/R-N1-A）：少了它，同一格的农村贫农与城镇贫农会并成同一本账
     //   ⇒ "农村的余粮 + 城市的缺口"并到一起 ⇒ 城市不再饿死，但那不是因为修好了通道。
     //   ★ 字面量取自 {@link ResidenceKind#value()}（前缀/字面的唯一拼写点在契约里，本类不写第二份）。
+    // ★★ S1：家户稳定身份随行发出（载荷把它带进 EconomyData；运行期不再从视图派生 actor id）。
+    row.put("householdId", householdId.value());
     row.put("residence", residence.value());
     row.put("slot", slot);
     row.put("population", population);

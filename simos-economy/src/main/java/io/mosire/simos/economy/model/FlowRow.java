@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -42,8 +42,7 @@ import java.util.Map;
  * <p>★ 两张商品表都保序不可变（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**），冻结写在字段赋值处。
  *
- * @param key 身份（家户 = 格 + 居住类型 + 阶层；见 {@link ClassRow} 的类注）；在 {@code EconomyData.flows} 里必须与其 Map
- *     键一致
+ * @param id 家户稳定身份（S1；见 {@link ClassRow} 的类注）；在 {@code EconomyData.flows} 里必须与其 Map 键一致
  * @param income 本期所得（**逐商品**，按最小计量单位）；键值非空、逐值 ≥ 0
  * @param consumed ★★ <b>本期"从本行账上离开"的量</b>（**逐商品**；键值非空、逐值 ≥ 0）—— <b>只含两项</b>：
  *     <ol>
@@ -74,7 +73,7 @@ import java.util.Map;
  *     死亡"写不出来）
  */
 public record FlowRow(
-    CohortKey key,
+    HouseholdId id,
     Map<CommodityId, Long> income,
     Map<CommodityId, Long> consumed,
     long taxPaid,
@@ -87,8 +86,8 @@ public record FlowRow(
     long births) {
 
   public FlowRow {
-    if (key == null) {
-      throw new IllegalArgumentException("FlowRow.key 不得为 null");
+    if (id == null) {
+      throw new IllegalArgumentException("FlowRow.id 不得为 null（家户稳定身份，S1 起与视图分离）");
     }
     if (income == null) {
       throw new IllegalArgumentException("FlowRow.income 不得为 null（无所得用空 map）");
@@ -153,5 +152,13 @@ public record FlowRow(
       consumedCopy.put(entry.getKey(), entry.getValue());
     }
     consumed = Collections.unmodifiableMap(consumedCopy); // ★ 冻在赋值处
+  }
+
+  /**
+   * ★ 兼容别名：{@code id}（家户稳定身份）。旧调用点的 {@code flow.key()} 逐字换成 {@code flow.id()} 即可； 本别名只是让"键 ==
+   * 值内键"的守卫读起来与原口径同形。
+   */
+  public HouseholdId key() {
+    return id;
   }
 }

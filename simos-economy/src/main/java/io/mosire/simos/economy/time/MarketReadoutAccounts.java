@@ -1,9 +1,9 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -27,10 +27,10 @@ import java.util.Map;
  * @param operatorFrozenMoney 经营者货币冻结额
  */
 public record MarketReadoutAccounts(
-    Map<CohortKey, Map<CommodityId, Long>> householdGoods,
-    Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
-    Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
-    Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+    Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+    Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+    Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
     Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
     Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
     Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,

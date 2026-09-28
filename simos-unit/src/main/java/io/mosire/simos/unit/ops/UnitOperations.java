@@ -43,10 +43,6 @@ import java.util.Set;
  * <p>★ **reparent 的成环不在这里重复实现**：{@code reparent} 只校验新父存在，环由 {@link UnitState} 构造期拒绝。 **唯一的例外是
  * {@link #attachSubtree}**：P3 要求 attach 成环时给可读理由，故它在 op 内**先显式拒**（不依赖构造期的兜底消息）；T4 的 {@link
  * #reparentSubtree} 同制。
- *
- * <p>★★ **attach 是"偏移式加入"（2026-09-24 改）**：{@link #attachSubtree} 清掉子树每个节点的自身位置（进入跟随）**并同时**
- * 反算并落段它们相对**各自将跟随的父**的偏移 ⇒ 加入后位置**原地不动**、之后随父移动。故它**不再要求同格**（上一轮的"同格前提"已于 2026-09-24 撤销）；{@link
- * #mergeFormation} 的"只有同格才能合体"（spec §一.5 / E2）**不变**——那是物理并到一格，与本操作是两件事。详见该方法的 javadoc。
  */
 public final class UnitOperations {
 
@@ -386,42 +382,6 @@ public final class UnitOperations {
 
   // ── 编制命令 A（T3 / spec §一.3 / P2 / P3） ──────────────────────
 
-  /**
-   * attach（P3：**级联**）：把 `id` 挂到 `parent` 下，并把 `id` **及其全部后代**的 `attached` 追加 `true` 段； 只有 `id`
-   * 换父，后代的 `parent` 不动（子树整体迁移是另一条命令）。
-   *
-   * <p>★★ **一次 attach 同时做三件事**（后两件是 2026-09-24 起的**偏移式加入**，原行为只有第一件）：
-   *
-   * <ol>
-   *   <li>子树每个节点的 `attached` 追加 `true`（P3 级联，原行为不变）；
-   *   <li>子树每个节点的 `position` 追加 `Optional.empty()`——清掉自身位置 ⇒ 之后 {@code UnitState.effectivePosition}
-   *       命中"无自身位置 ⇒ 向父取"那一支，父动子随。此前 attach 只翻 `attached`、不碰 `position`，而 {@code unit.CreateUnit}
-   *       又强制每个单位带自身位置 ⇒ **"跟随"在命令面上不可达**（根单位走了、兵种留在 原地）；
-   *   <li>子树每个节点的 `offset` 追落一段，值 = **加入前**该节点的有效位置 − **它将跟随的父亲**在加入前的有效位置（逐分量差）； 同刻已有段则替换（{@link
-   *       #setOrAppend}，与 `position` 同口径）。清位与反算偏移同刻落段，二者是一件事的两半：只清位会跨格瞬移， 配上偏移就地不动。
-   * </ol>
-   *
-   * <p>★ **"它将跟随的父亲"在加入后是谁**：对根 `id` 是新父 `parent`；对后代是它们各自**本来的父**（只有 `id` 换父，后代不改挂）。
-   * 于是反算出的偏移让**整棵子树在原地不动**——加入后 `effectivePosition` 逐值等于加入前；随后把新父移到别格 ⇒ 子树整体跟着平移（跟随）。 判据见用例 {@code
-   * attachAcrossDifferentHexesKeepsTheSubtreeInPlaceAndThenFollows}。
-   *
-   * <p>★ **"位置不可确定时保留原 offset"的口径**：只有"加入前自身有效位置 `here`"与"将跟随父的有效位置 `parentHere`"**都可确定**
-   * 时才反算并落段；**任一为空**（例如单位本就不在图上、或新父无位可给）⇒ `offset` 段**原样保留**（不追加、不清空、不拿 (0,0) 顶替）。
-   * 此时清位后该节点的有效位置由它原本的类型决定：原本跟随型继续跟随（可能因新父无位而暂时不可确定），原本独立型本就无位可给。
-   *
-   * <p>★★ **同格前提已于 2026-09-24 撤销（改为偏移式加入）**；{@link #mergeFormation} 的"只有同格才能合体"（spec §一.5 / E2）
-   * **不变**——那是物理并到一格，与本操作是两件事。撤销理由：清位**配上偏移**后子单位不再跨格瞬移，故"不同格就拒"这条防线已无必要。 （上一轮加的 {@code
-   * requireSameHexToAttach} 及其调用已随之删除。）
-   *
-   * <p>★ **成环在 op 内先显式拒**（判据 = `parent` 落在 `id` 的子树内，含 `id` 自身）：{@link UnitState}
-   * 构造期也会拒，但那里的理由是"编制树…成环"；命令边界要给出**可读的原因**（plan §三 T3 第 1 步、spec §一.5 表）。成环检查
-   * **先于一切**（先于算位置、先于任何写），且既有成环用例断言的是"子树"字样。
-   *
-   * <p>★ 两处**有意不拒**（裁定见 T3 台账）：`parent` 已是 `id` 当前的父不拒（重挂同一父正是 P9 的"合体 = 重新 attach"，
-   * 且级联对子树仍有效）；`attached` 已是 `true` 的节点也不拒（本操作面不判"无变化命令"）。 对一个**已是跟随型**（无自身位置 + 已有 offset）的节点再
-   * attach ⇒ 反算出的偏移与原来相同、各字段当刻取值不变（**幂等**，见用例 {@code
-   * attachingAnAlreadyFollowingNodeIsFieldwiseIdempotent}）。
-   */
   /**
    * 把 `id` 及其**全部后代**编入 `parent` 那一支「一同移动」的编制（**编制 v2**，2026-09-24 取代"偏移式加入 + 进入跟随"）。
    *
@@ -925,13 +885,15 @@ public final class UnitOperations {
    * 落一段、`unit.SplitFormation`（内部 detach）随后又要物化位置：若仍走 {@link #append}
    * 直接撞严格升序。语义上同刻的第二笔写就是"覆盖此刻生效的值"，替换即正确解。
    *
-   * <p>★ **`offset` 于 2026-09-24 加入本列**：{@link #attachSubtree}（偏移式加入）与 {@link #setOffset} 也会在同刻写
-   * `offset` （{@code McpCoverageTest} 里 attach 之后紧跟 SetFormationOffset），故它同样走本方法。
+   * <p>★ <b>{@code offset} 走本方法的原因是 {@link #setOffset}</b>（它会写 {@code offset}）；{@link
+   * #attachSubtree} 编制 v2 起**不再动 {@code offset}**（位置各归各的），只是 {@code attached}/{@code parent}
+   * 的同刻写也要覆盖， 故同样经本方法落段。
    *
-   * <p>★★ **`attached`/`parent` 于 2026-09-24 稍后也加入本列**（**live 跑出来的**，不是顺手扩张）：三国决策人在 **tick 0** 出令"先
-   * `unit.DetachUnit` 再下路线"，三条 detach 全被拒——创世段就在 tick 0、命令也落在 tick 0 ⇒ `段必须按 from
-   * 严格升序（同刻两段无法判定谁生效）`。世界不推进时间时，**任何第二条改编都会撞**。语义与上面 那条一致：同刻的第二笔写就是"覆盖此刻生效的归属"，替换即正确解。⇒ {@link
-   * #attachSubtree} / {@link #detachUnit} / {@link #reparent} / {@link #reparentSubtree} 全部改走本方法。
+   * <p>★★ <b>{@code attached}/{@code parent} 于 2026-09-24 稍后也加入本列</b>（<b>live
+   * 跑出来的</b>，不是顺手扩张）：三国决策人在 <b>tick 0</b> 出令"先 `unit.DetachUnit` 再下路线"，三条 detach 全被拒——创世段就在 tick
+   * 0、命令也落在 tick 0 ⇒ `段必须按 from 严格升序（同刻两段无法判定谁生效）`。世界不推进时间时，<b>任何第二条改编都会撞</b>。语义与上面
+   * 那条一致：同刻的第二笔写就是"覆盖此刻生效的归属"，替换即正确解。⇒ {@link #attachSubtree} / {@link #detachUnit} / {@link
+   * #reparent} / {@link #reparentSubtree} 全部改走本方法。
    */
   private static <T> SegmentedSeries<T> setOrAppend(
       SegmentedSeries<T> series, SimosTimestamp at, T value) {
@@ -1024,12 +986,10 @@ public final class UnitOperations {
    * 三个分量（`status`/ `rejoinTarget`/`visionRadius` 仍原样带过）。四个形参类型两两不同 ⇒ 传错顺序是**编译错误**，不是静默错位；编制三件套的操作
    * （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 14 参。
    *
-   * <p>★ **`position` 是随"移动时跟随"语义一起进来的第四个可变分量**（本次改动）：`attachSubtree` 要给子树每个节点清位（进入
-   * 跟随）、`detachUnit` 要把有效位置物化进自身 `position`（脱离后还能钉在原地）——两者都改 `position`，故它不再是"原样带过"
-   * 的那一批。`setOffset`/`reparentSubtree` 传回 `unit.position()`（不动）。
-   *
-   * <p>★ **`offset` 也随之成为 attach 的可变分量**（2026-09-24 偏移式加入）：`attachSubtree` 现在会**反算并落一段偏移**（加入后原地
-   * 不动）；`detachUnit`/`reparentSubtree` 仍传回 `unit.offset()`（不动）。
+   * <p>★★ **编制 v2（2026-09-24，取消跟随）起本方法的实际用法**：{@code attachSubtree}、{@code detachUnit}、 {@code
+   * reparentSubtree} 都**只改 `parent`/`attached`**，`position`/`offset` 一律原样传回（不再清位、不再反算、
+   * 不再物化位置）；当前唯一写 `offset` 的调用点是 {@link #setOffset}。★ 两个形参保留，是因为 {@code Unit} 的构造
+   * 仍需要它们且未来若要写位也不必再改签名。
    */
   private static Unit copyFormation(
       Unit unit,

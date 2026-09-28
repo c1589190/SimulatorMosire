@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -45,6 +46,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * ★★ <b>区域市场撮合与在途运输（M2.3 + M2.4 + M2.5）</b>：把 M2.1/M2.2 的"订单体系"从"每格一次"扩成 <b>每 5 天一轮、区内优先、邻区稀疏跨区、跨区走
@@ -216,17 +218,17 @@ final class MarketSettlement {
   static final class MarketRound {
 
     private final long day;
-    private final Map<CohortKey, ClassRow> rows;
-    private final Map<CohortKey, Map<CommodityId, Long>> householdGoods;
-    private final Map<CohortKey, Map<CurrencyId, Long>> householdMoney;
-    private final Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods;
-    private final Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney;
+    private final Map<HouseholdId, ClassRow> rows;
+    private final Map<HouseholdId, Map<CommodityId, Long>> householdGoods;
+    private final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
+    private final Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods;
+    private final Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney;
     private final Map<ActorRef, Map<CommodityId, Long>> operatorGoods;
     private final Map<ActorRef, Map<CurrencyId, Long>> operatorMoney;
     private final Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods;
     private final Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney;
-    private final Map<CohortKey, Map<CommodityId, Long>> unmetToday;
-    private final Map<ActorRef, CohortKey> householdOfActor;
+    private final Map<HouseholdId, Map<CommodityId, Long>> unmetToday;
+    private final Map<ActorRef, HouseholdId> householdOfActor;
     private final Map<IndustryId, Industry> industries;
     private final Map<IndustryId, ProductionRelation> relations;
     private final Map<LaborAllocationId, LaborAllocation> allocations;
@@ -235,17 +237,17 @@ final class MarketSettlement {
 
     MarketRound(
         long day,
-        Map<CohortKey, ClassRow> rows,
-        Map<CohortKey, Map<CommodityId, Long>> householdGoods,
-        Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
-        Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods,
-        Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney,
+        Map<HouseholdId, ClassRow> rows,
+        Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+        Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
         Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
         Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
         Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
         Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
-        Map<CohortKey, Map<CommodityId, Long>> unmetToday,
-        Map<ActorRef, CohortKey> householdOfActor,
+        Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
+        Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
         Map<IndustryId, ProductionRelation> relations,
         Map<LaborAllocationId, LaborAllocation> allocations,
@@ -274,7 +276,8 @@ final class MarketSettlement {
   }
 
   /** 一个参与主体：家户（{@code household != null}）或经营者（{@code household == null}）。 */
-  private record Participant(ActorRef actor, CohortKey household, List<IndustryId> industries) {
+  private record Participant(
+      ActorRef actor, HouseholdId household, CohortKey view, List<IndustryId> industries) {
     Participant {
       Objects.requireNonNull(actor, "actor");
       Objects.requireNonNull(industries, "industries");
@@ -291,6 +294,15 @@ final class MarketSettlement {
       sells = List.copyOf(sells);
     }
   }
+
+  /**
+   * ★★ <b>R2：一个 hex 的并行订单构建产物</b>（参与者 + 买卖槽，均按原串行遍历序）。
+   *
+   * <p>worker 在分区内构建、协调器按 {@code (q,r)} 升序拼回 ⇒ 与串行版本的插入序逐字相同（见 {@code clearOncePerCycle}
+   * 的并行入口注释）。字段都只在本次调用内流转，不进状态、不共享。
+   */
+  private record HexOrderPlan(
+      HexCoord hex, List<Participant> participants, List<BuySlot> buys, List<SellSlot> sells) {}
 
   /**
    * ★★ <b>一轮市场的完整交出物（M2.6/M2.7）</b>：{@code report} = 只读读数原料；{@code markets} = 本轮结束时的价格表
@@ -356,9 +368,9 @@ final class MarketSettlement {
    * 的首都就是"整格都没有可卖余量"的形态）。★ 每个 5 天窗口最多追加一次 （绝对日相位），因此逐行判的代价有上界。
    */
   private static boolean lowGrainStock(MarketRound round, Map<HexCoord, Market> markets) {
-    Map<String, List<CohortKey>> rowsByHex = EconomySettlement.rowsByHex(round.rows.keySet());
+    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.rows);
     for (HexCoord hex : markets.keySet()) {
-      for (CohortKey key :
+      for (HouseholdId key :
           rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of())) {
         ClassRow row = round.rows.get(key);
         if (row == null) {
@@ -394,8 +406,7 @@ final class MarketSettlement {
   static PlannedOrders planOrders(
       MarketRound round, HexCoord hex, Market market, CommodityId commodity) {
     Objects.requireNonNull(round, "round");
-    return planOrders(
-        round, hex, market, commodity, EconomySettlement.rowsByHex(round.rows.keySet()));
+    return planOrders(round, hex, market, commodity, EconomySettlement.rowsByHex(round.rows));
   }
 
   /**
@@ -407,7 +418,7 @@ final class MarketSettlement {
       HexCoord hex,
       Market market,
       CommodityId commodity,
-      Map<String, List<CohortKey>> rowsByHex) {
+      Map<String, List<HouseholdId>> rowsByHex) {
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(market, "market");
@@ -416,7 +427,7 @@ final class MarketSettlement {
     if (market.priceOf(commodity) <= 0L) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（同 Market 的口径）
     }
-    List<CohortKey> keys =
+    List<HouseholdId> keys =
         rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
     return ordersFor(round, planFor(round, hex, keys), hex, market, commodity);
   }
@@ -437,10 +448,30 @@ final class MarketSettlement {
       MarketRound round,
       MarketTrigger trigger,
       MarketTopology topology) {
+    return clearOncePerCycle(
+        markets, round, trigger, topology, EconomyParallelism.singleThreaded());
+  }
+
+  /**
+   * ★★ <b>R2 并行入口</b>：把"逐格建参与者 + 生成买卖订单"（本方法第 1 步，P1.2 扫描热点）按<b>市场区</b>并行， 结果按 hex 的 {@code (q,r)}
+   * 序在协调器重新拼回 —— 拼回序与原串行遍历序<b>逐字相同</b>，因此后续 冻结/撮合/报告不受线程数影响。
+   *
+   * <p>★★ <b>撮合本身仍是协调器单线程</b>（本 R2 的如实边界）：区内撮合会写账户、挂冻结、铸 {@code MARKET_TRADE}
+   * 转移；跨区撮合在一次成交里同时触碰卖方区与买方区（路线/在途/运费），必须由跨区协调器按 {@code (landedPrice, costRank, canonical seller,
+   * canonical buyer, orderId)} 全局稳定序一次算完 —— 那是 R3（P3 跨区协调）的工作。本步只把"订单/参与者视图构建"这一读-only
+   * 阶段并行化，不改任何撮合顺序与数值。
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<HexCoord, Market> markets,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism) {
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(topology, "topology");
+    Objects.requireNonNull(parallelism, "parallelism");
     Optional<ActorRef> carrier = carrierOf(round);
     MatchContext ctx = new MatchContext(round, markets, topology, carrier);
     if (markets.isEmpty() || trigger == MarketTrigger.NONE) {
@@ -449,43 +480,86 @@ final class MarketSettlement {
     }
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
-    Map<String, List<CohortKey>> rowsByHex = EconomySettlement.rowsByHex(round.rows.keySet());
-    List<HexCoord> hexes = new ArrayList<>(markets.keySet());
-    hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
-    for (HexCoord hex : hexes) {
-      Market market = markets.get(hex);
-      List<CohortKey> keys =
-          rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
-      HexPlan plan = planFor(round, hex, keys);
-      if (plan.participants.isEmpty()) {
-        continue;
-      }
-      for (Participant participant : plan.participants) {
+    //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
+    TreeMap<String, List<HexCoord>> hexesByRegion = new TreeMap<>();
+    for (HexCoord hex : markets.keySet()) {
+      hexesByRegion
+          .computeIfAbsent(topology.regionOf(hex).node().nodeId(), ignored -> new ArrayList<>())
+          .add(hex);
+    }
+    for (List<HexCoord> regionHexes : hexesByRegion.values()) {
+      regionHexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+    }
+    PartitionPlan plan =
+        PartitionPlan.of(
+            SettlementStage.LOCAL_MARKET, hexesByRegion.keySet(), parallelism.partitionCount());
+    List<List<HexOrderPlan>> plansByPartition =
+        SettlementExecutor.execute(
+            plan,
+            partition -> {
+              Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.rows);
+              List<HexOrderPlan> planned = new ArrayList<>();
+              for (String regionId : partition.canonicalKeys()) {
+                for (HexCoord hex : hexesByRegion.get(regionId)) {
+                  Market market = markets.get(hex);
+                  List<HouseholdId> keys =
+                      rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
+                  HexPlan hexPlan = planFor(round, hex, keys);
+                  if (hexPlan.participants.isEmpty()) {
+                    continue;
+                  }
+                  Map<ActorRef, Participant> byActor = new LinkedHashMap<>();
+                  for (Participant participant : hexPlan.participants) {
+                    byActor.put(participant.actor, participant);
+                  }
+                  List<BuySlot> buys = new ArrayList<>();
+                  List<SellSlot> sells = new ArrayList<>();
+                  MarketRegion region = topology.regionOf(hex);
+                  for (Map.Entry<CommodityId, Long> priced : market.prices().entrySet()) {
+                    CommodityId commodity = priced.getKey();
+                    if (market.priceOf(commodity) <= 0L) {
+                      continue; // Market 的构造期守卫已判死，这里只防御
+                    }
+                    PlannedOrders orders = ordersFor(round, hexPlan, hex, market, commodity);
+                    for (BuyOrder order : orders.buys()) {
+                      Participant buyer = byActor.get(order.requester());
+                      if (buyer == null) {
+                        throw new IllegalStateException(
+                            "买订单的主体不在本轮参与者里（订单生成与撮合漂开了）: " + order.requester());
+                      }
+                      buys.add(new BuySlot(order, buyer, hex, region, market.numeraire()));
+                    }
+                    for (SellOrder order : orders.sells()) {
+                      Participant seller = byActor.get(order.supplier());
+                      if (seller == null) {
+                        throw new IllegalStateException(
+                            "卖订单的主体不在本轮参与者里（订单生成与撮合漂开了）: " + order.supplier());
+                      }
+                      sells.add(new SellSlot(order, seller, hex, market, region));
+                    }
+                  }
+                  planned.add(
+                      new HexOrderPlan(hex, List.copyOf(hexPlan.participants), buys, sells));
+                }
+              }
+              return planned;
+            },
+            parallelism.poolOrNull());
+    List<HexOrderPlan> orderedPlans = new ArrayList<>();
+    for (List<HexOrderPlan> partitionPlans : plansByPartition) {
+      orderedPlans.addAll(partitionPlans);
+    }
+    // ★ 拼回序 = 原先的 hex (q,r) 升序（分区只影响谁先算完，不影响拼回后的顺序）。
+    orderedPlans.sort(
+        Comparator.comparingInt((HexOrderPlan entry) -> entry.hex().q())
+            .thenComparingInt(entry -> entry.hex().r()));
+    for (HexOrderPlan ordered : orderedPlans) {
+      for (Participant participant : ordered.participants()) {
         ctx.participants.put(participant.actor, participant);
-        ctx.participantHex.put(participant.actor, hex);
+        ctx.participantHex.put(participant.actor, ordered.hex());
       }
-      for (Map.Entry<CommodityId, Long> priced : market.prices().entrySet()) {
-        CommodityId commodity = priced.getKey();
-        if (market.priceOf(commodity) <= 0L) {
-          continue; // Market 的构造期守卫已判死，这里只防御
-        }
-        PlannedOrders orders = ordersFor(round, plan, hex, market, commodity);
-        MarketRegion region = topology.regionOf(hex);
-        for (BuyOrder order : orders.buys()) {
-          Participant buyer = ctx.participants.get(order.requester());
-          if (buyer == null) {
-            throw new IllegalStateException("买订单的主体不在本轮参与者里（订单生成与撮合漂开了）: " + order.requester());
-          }
-          ctx.buys.add(new BuySlot(order, buyer, hex, region, market.numeraire()));
-        }
-        for (SellOrder order : orders.sells()) {
-          Participant seller = ctx.participants.get(order.supplier());
-          if (seller == null) {
-            throw new IllegalStateException("卖订单的主体不在本轮参与者里（订单生成与撮合漂开了）: " + order.supplier());
-          }
-          ctx.sells.add(new SellSlot(order, seller, hex, market, region));
-        }
-      }
+      ctx.buys.addAll(ordered.buys());
+      ctx.sells.addAll(ordered.sells());
     }
 
     // ── 2. 冻结（M1.2 的写者接上）：挂单即占用；成交/发运/轮末释放 ────────────────────────
@@ -1356,7 +1430,7 @@ final class MarketSettlement {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
     if (buy.buyer.household != null) {
-      CohortKey key = buy.buyer.household;
+      HouseholdId key = buy.buyer.household;
       long stock = householdStockOf(round.householdGoods, key, commodity);
       if (stock < quantity) {
         throw new IllegalStateException(
@@ -1379,13 +1453,13 @@ final class MarketSettlement {
   // ── 会话副本的最小读写（本类不引入第二个 applier；这里只是把"哪张表、哪个键"说清）──────────────
 
   private static long householdStockOf(
-      Map<CohortKey, Map<CommodityId, Long>> goods, CohortKey key, CommodityId commodity) {
+      Map<HouseholdId, Map<CommodityId, Long>> goods, HouseholdId key, CommodityId commodity) {
     return goods.getOrDefault(key, Map.of()).getOrDefault(commodity, 0L);
   }
 
   private static void setHouseholdStock(
-      Map<CohortKey, Map<CommodityId, Long>> goods,
-      CohortKey key,
+      Map<HouseholdId, Map<CommodityId, Long>> goods,
+      HouseholdId key,
       CommodityId commodity,
       long value) {
     Map<CommodityId, Long> inner = new LinkedHashMap<>(goods.getOrDefault(key, Map.of()));
@@ -1653,17 +1727,20 @@ final class MarketSettlement {
 
   /** 一个格的参与者：家户（按行）在前，经营者（该格产业的主体，逐 actor 去重）在后。 */
   private static List<Participant> participantsFor(
-      MarketRound round, HexCoord hex, List<CohortKey> keys) {
+      MarketRound round, HexCoord hex, List<HouseholdId> keys) {
     Map<ActorRef, List<IndustryId>> operatorIndustries = new LinkedHashMap<>();
     for (IndustryId id : IndustryHexKeys.at(round.industries, hex.q(), hex.r())) {
       Industry industry = round.industries.get(id);
       operatorIndustries.computeIfAbsent(industry.operator(), ignored -> new ArrayList<>()).add(id);
     }
     LinkedHashMap<ActorRef, Participant> byActor = new LinkedHashMap<>();
-    for (CohortKey key : keys) {
+    for (HouseholdId key : keys) {
       ActorRef actor = HouseholdActors.of(key);
       List<IndustryId> industries = operatorIndustries.remove(actor);
-      byActor.put(actor, new Participant(actor, key, industries == null ? List.of() : industries));
+      byActor.put(
+          actor,
+          new Participant(
+              actor, key, round.rows.get(key).view(), industries == null ? List.of() : industries));
     }
     for (Map.Entry<ActorRef, List<IndustryId>> entry : operatorIndustries.entrySet()) {
       ActorRef actor = entry.getKey();
@@ -1674,13 +1751,13 @@ final class MarketSettlement {
           && !round.operatorFrozenMoney.containsKey(actor)) {
         continue;
       }
-      byActor.put(actor, new Participant(actor, null, entry.getValue()));
+      byActor.put(actor, new Participant(actor, null, null, entry.getValue()));
     }
     return List.copyOf(byActor.values());
   }
 
   /** 一个格的预计算（参与者 + 必要生产投入 + 生活保留）。 */
-  private static HexPlan planFor(MarketRound round, HexCoord hex, List<CohortKey> keys) {
+  private static HexPlan planFor(MarketRound round, HexCoord hex, List<HouseholdId> keys) {
     List<Participant> participants = participantsFor(round, hex, keys);
     Map<ActorRef, Map<CommodityId, Long>> necessary = new LinkedHashMap<>();
     Map<ActorRef, Map<CommodityId, Long>> life = new LinkedHashMap<>();
@@ -1754,7 +1831,7 @@ final class MarketSettlement {
         continue;
       }
       long population = 0L;
-      for (CohortKey key : EconomySettlement.householdKeysOf(round.rows, id, round.allocations)) {
+      for (HouseholdId key : EconomySettlement.householdKeysOf(round.rows, id, round.allocations)) {
         ClassRow row = round.rows.get(key);
         if (row != null) {
           population += row.population();
@@ -1784,8 +1861,11 @@ final class MarketSettlement {
   private static boolean supplies(Participant participant, Recipient supplier) {
     return switch (supplier) {
       case Recipient.ToActor toActor -> participant.actor.equals(toActor.actor());
+      case Recipient.ToHousehold toHousehold ->
+          participant.household != null && participant.household.equals(toHousehold.household());
+      // ★ 旧档变体：按**视图**比对（构造期归一化已把一对一转到 ToHousehold；这是兼容读的窄出口）。
       case Recipient.ToCohort toCohort ->
-          participant.household != null && participant.household.equals(toCohort.cohort());
+          participant.view != null && participant.view.equals(toCohort.cohort());
     };
   }
 
@@ -1898,8 +1978,8 @@ final class MarketSettlement {
 
   /** 买到手的量冲减当日未满足需求（封顶 = 已记的缺口；**只对家户**，经营者没有那条读数）。 */
   private static void reduceUnmet(
-      Map<CohortKey, Map<CommodityId, Long>> unmetToday,
-      CohortKey buyer,
+      Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
+      HouseholdId buyer,
       CommodityId commodity,
       long quantity) {
     long recorded = unmetToday.getOrDefault(buyer, Map.of()).getOrDefault(commodity, 0L);

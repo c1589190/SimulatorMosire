@@ -1,8 +1,8 @@
 package io.mosire.simos.app.crisis;
 
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
@@ -90,10 +90,11 @@ public final class CrisisMonitor {
     // ★★ H0.2：**格直接住在行键里**（{@code CohortKey.hex()}）—— 旧版要靠"行属于哪个产业、产业 id 里带哪一格"
     //   反解两次，现在一次都不必（"行在哪一格"与"产业在哪一格"从此是两件事，各读各的）。
     //   ★ 分组键仍是 {@code <q>_<r>} 字符串（{@link IndustryHexKeys#hexKey}），排序口径与旧版逐字相同（字典序）。
-    Map<String, List<CohortKey>> byHex = new LinkedHashMap<>();
-    for (CohortKey key : economy.classes().keySet()) {
-      String hex = IndustryHexKeys.hexKey(key.hex().q(), key.hex().r());
-      byHex.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(key);
+    Map<String, List<HouseholdId>> byHex = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      HexCoord hex = entry.getValue().view().hex();
+      String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
+      byHex.computeIfAbsent(hexKey, ignored -> new ArrayList<>()).add(entry.getKey());
     }
     List<String> hexKeys = new ArrayList<>(byHex.keySet());
     hexKeys.sort(String::compareTo);
@@ -111,17 +112,17 @@ public final class CrisisMonitor {
   /** 单格的红灯（空清单 = 没有红灯）。 */
   public static List<Light> lightsAt(
       HexCoord coord, EconomyData economy, SocialData social, long atTick) {
-    List<CohortKey> keys = new ArrayList<>();
-    for (CohortKey key : economy.classes().keySet()) {
-      if (key.hex().equals(coord)) {
-        keys.add(key);
+    List<HouseholdId> keys = new ArrayList<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      if (entry.getValue().view().hex().equals(coord)) {
+        keys.add(entry.getKey());
       }
     }
     return lightsAt(coord, keys, economy, social, atTick);
   }
 
   private static List<Light> lightsAt(
-      HexCoord coord, List<CohortKey> keys, EconomyData economy, SocialData social, long atTick) {
+      HexCoord coord, List<HouseholdId> keys, EconomyData economy, SocialData social, long atTick) {
     long grainNeed = 0L;
     long grainUnmet = 0L;
     long clothNeed = 0L;
@@ -131,7 +132,7 @@ public final class CrisisMonitor {
     long borrowing = 0L;
     long elapsedDaysSeen = 0L;
     long cycleDaysSeen = 0L;
-    for (CohortKey key : keys) {
+    for (HouseholdId key : keys) {
       ClassRow row = economy.classes().get(key);
       FlowRow flow = economy.flows().get(key);
       if (row == null) {
@@ -224,9 +225,10 @@ public final class CrisisMonitor {
    *
    * <p>★ **周期第 0 天按 1 天算**：既不除零，也不把"周期刚开始"读成"完全满足"。 不设产业（手工搭的状态）⇒ 同样返回 1。
    */
-  private static long elapsedDaysOf(EconomyData economy, CohortKey key) {
+  private static long elapsedDaysOf(EconomyData economy, HouseholdId key) {
     long elapsed = 0L;
-    for (IndustryId id : IndustryHexKeys.at(economy.industries(), key.hex().q(), key.hex().r())) {
+    HexCoord hex = economy.classes().get(key).view().hex();
+    for (IndustryId id : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
       elapsed = Math.max(elapsed, phaseDaysOf(economy.industries().get(id)));
     }
     // ★ 该格没有任何产业（手工搭的状态）⇒ 按旧口径返回 1（既不除零，也不把"周期刚开始"读成"完全满足"）。
@@ -234,9 +236,10 @@ public final class CrisisMonitor {
   }
 
   /** 该家户所属格的**整周期**天数（只用于 evidence 里标出相位）；该格没有产业 ⇒ 1。 */
-  private static long cycleDaysOf(EconomyData economy, CohortKey key) {
+  private static long cycleDaysOf(EconomyData economy, HouseholdId key) {
     long days = 0L;
-    for (IndustryId id : IndustryHexKeys.at(economy.industries(), key.hex().q(), key.hex().r())) {
+    HexCoord hex = economy.classes().get(key).view().hex();
+    for (IndustryId id : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
       days = Math.max(days, economy.industries().get(id).cycleDays());
     }
     return days == 0L ? 1L : days;

@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.api.relation;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -135,16 +135,22 @@ public record SubsistenceObligation(
     return laborMilli / PER_MILLE * perLaborMilli;
   }
 
-  /** 受方的劳动量（cohort 查本周期劳动量表；actor 本阶段没有劳动账 ⇒ 0）—— 结算与派生共用的唯一拼写点。 */
-  public static long laborOf(Recipient recipient, Map<CohortKey, Long> laborOfCohort) {
+  /**
+   * 受方本周期劳动量：家户查本周期劳动量表；{@code ToCohort} 是旧档变体（S1 起不再由运行期生产）、{@code ToActor} 本阶段没有劳动账 ⇒ 0 ——
+   * 结算与派生共用的唯一拼写点。
+   */
+  public static long laborOf(Recipient recipient, Map<HouseholdId, Long> laborOfHousehold) {
     if (recipient == null) {
       throw new IllegalArgumentException("laborOf 的 recipient 不得为 null");
     }
-    if (laborOfCohort == null) {
-      throw new IllegalArgumentException("laborOf 的 laborOfCohort 不得为 null（没有劳动请给空 map）");
+    if (laborOfHousehold == null) {
+      throw new IllegalArgumentException("laborOf 的 laborOfHousehold 不得为 null（没有劳动请给空 map）");
     }
     return switch (recipient) {
-      case Recipient.ToCohort toCohort -> laborOfCohort.getOrDefault(toCohort.cohort(), 0L);
+      case Recipient.ToHousehold toHousehold ->
+          laborOfHousehold.getOrDefault(toHousehold.household(), 0L);
+      // ★ 旧档变体（S1 迁移前）：没有家户身份可查 ⇒ 0；迁移器会把它换成 ToHousehold（不在这里猜视图）。
+      case Recipient.ToCohort ignored -> 0L;
       // ★ 本阶段没有 actor 劳动账（与 ProductionSettlement 的类注同款）：归零，不猜。
       case Recipient.ToActor ignored -> 0L;
     };
@@ -159,25 +165,25 @@ public record SubsistenceObligation(
    * <p>★ 次序 = 付款次序（{@code priority} 升序、同值按表序稳定）⇒ 与实付的次序同源、可逐条对回。
    *
    * @param relation 生产关系；不得为 null
-   * @param laborOfCohort 本周期各 cohort 的劳动量（键值非空、逐值非负；缺键 ⇒ 0 劳动 ⇒ 应付 0）；不得为 null
+   * @param laborOfHousehold 本周期各家户的劳动量（键值非空、逐值非负；缺键 ⇒ 0 劳动 ⇒ 应付 0）；不得为 null
    * @return 该关系的全部实物给养义务（保序、不可变；没有 ⇒ 空表）
    */
   public static List<SubsistenceObligation> of(
-      ProductionRelation relation, Map<CohortKey, Long> laborOfCohort) {
+      ProductionRelation relation, Map<HouseholdId, Long> laborOfHousehold) {
     if (relation == null) {
       throw new IllegalArgumentException("SubsistenceObligation.of 的 relation 不得为 null");
     }
-    if (laborOfCohort == null) {
+    if (laborOfHousehold == null) {
       throw new IllegalArgumentException(
-          "SubsistenceObligation.of 的 laborOfCohort 不得为 null（没有劳动请给空 map）");
+          "SubsistenceObligation.of 的 laborOfHousehold 不得为 null（没有劳动请给空 map）");
     }
-    for (Map.Entry<CohortKey, Long> entry : laborOfCohort.entrySet()) {
+    for (Map.Entry<HouseholdId, Long> entry : laborOfHousehold.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("laborOfCohort 的键与值都不得为 null: " + entry.getKey());
+        throw new IllegalArgumentException("laborOfHousehold 的键与值都不得为 null: " + entry.getKey());
       }
       if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "laborOfCohort 的劳动量不得为负：" + entry.getKey() + " = " + entry.getValue());
+            "laborOfHousehold 的劳动量不得为负：" + entry.getKey() + " = " + entry.getValue());
       }
     }
     List<CompensationRule> ordered = new ArrayList<>(relation.rules());
@@ -202,7 +208,7 @@ public record SubsistenceObligation(
               relation.activity(),
               relation.operator(),
               rule.recipient(),
-              laborOf(rule.recipient(), laborOfCohort),
+              laborOf(rule.recipient(), laborOfHousehold),
               rule));
     }
     return List.copyOf(obligations); // ★ 保序不可变（List.copyOf 保迭代序）
@@ -245,13 +251,13 @@ public record SubsistenceObligation(
    * <p>★ <b>本阶段没有生产调用方</b>（经营者还没进市场）；M2.1/M2.2 的订单与保留算式落地时接这里（见类注）。
    *
    * @param relation 生产关系；不得为 null
-   * @param laborOfCohort 本周期各 cohort 的劳动量（见 {@link #of(ProductionRelation, Map)}）；不得为 null
+   * @param laborOfHousehold 本周期各家户的劳动量（见 {@link #of(ProductionRelation, Map)}）；不得为 null
    * @param requestedRetention 策略想保留的量（逐商品；不得为 null，没有请求给空 map）——逐值不得为负
    * @return 逐商品的保留额（保序不可变；只在有承诺的商品上有键）
    */
   public static Map<CommodityId, Long> retentionOf(
       ProductionRelation relation,
-      Map<CohortKey, Long> laborOfCohort,
+      Map<HouseholdId, Long> laborOfHousehold,
       Map<CommodityId, Long> requestedRetention) {
     if (requestedRetention == null) {
       throw new IllegalArgumentException("retentionOf 的 requestedRetention 不得为 null（没有请求请给空 map）");
@@ -265,7 +271,7 @@ public record SubsistenceObligation(
             "requestedRetention 的量不得为负：" + entry.getKey() + " = " + entry.getValue());
       }
     }
-    Map<CommodityId, Long> promised = promisedByCommodity(of(relation, laborOfCohort));
+    Map<CommodityId, Long> promised = promisedByCommodity(of(relation, laborOfHousehold));
     Map<CommodityId, Long> retained = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : promised.entrySet()) {
       long requested = requestedRetention.getOrDefault(entry.getKey(), 0L);

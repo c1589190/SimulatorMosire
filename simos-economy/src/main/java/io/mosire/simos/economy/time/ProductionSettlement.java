@@ -1,10 +1,10 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -285,7 +285,7 @@ public final class ProductionSettlement {
       Map<CommodityId, Long> gross,
       Map<CommodityId, Long> net,
       Map<CommodityId, Long> inputs,
-      Map<CohortKey, Long> laborOfCohort,
+      Map<HouseholdId, Long> laborOfHousehold,
       Map<CommodityId, Long> outputPerUnit,
       Map<CurrencyId, Long> availableMoney) {
 
@@ -298,8 +298,9 @@ public final class ProductionSettlement {
       gross = Collections.unmodifiableMap(requireQuantities(gross, "Facts.gross"));
       net = Collections.unmodifiableMap(requireQuantities(net, "Facts.net"));
       inputs = Collections.unmodifiableMap(requireQuantities(inputs, "Facts.inputs"));
-      laborOfCohort =
-          Collections.unmodifiableMap(requireQuantities(laborOfCohort, "Facts.laborOfCohort"));
+      laborOfHousehold =
+          Collections.unmodifiableMap(
+              requireQuantities(laborOfHousehold, "Facts.laborOfHousehold"));
       outputPerUnit =
           Collections.unmodifiableMap(requireQuantities(outputPerUnit, "Facts.outputPerUnit"));
       // ★ H4：货币余额表走同一份"键值非 null、逐值 ≥ 0"的校验（负余额是"凭空造钱"，不是一种数量）。
@@ -512,6 +513,8 @@ public final class ProductionSettlement {
   private static ActorRef recipientOf(CompensationRule rule) {
     return switch (rule.recipient()) {
       case Recipient.ToActor toActor -> toActor.actor();
+      case Recipient.ToHousehold toHousehold -> HouseholdActors.of(toHousehold.household());
+      // ★ 旧档变体（S1 迁移前）：仍按旧视图拼 actor（constructor 归一化会把一对一转到 ToHousehold）。
       case Recipient.ToCohort toCohort -> HouseholdActors.of(toCohort.cohort());
     };
   }
@@ -619,7 +622,7 @@ public final class ProductionSettlement {
                 shareWithTotal(
                     perMille(net, rate),
                     laborOf(facts, rule.recipient()),
-                    totalOf(facts.laborOfCohort()));
+                    totalOf(facts.laborOfHousehold()));
             case EQUAL -> throw unregisteredCombination(rule); // ★ 留位：今天没有公式
           };
       case OPERATOR_SURPLUS -> requireNoWeight(rule, perMille(net - paidOf(paid, commodity), rate));
@@ -680,7 +683,7 @@ public final class ProductionSettlement {
    * "谁有劳动账、谁的劳动量是 0"只有一处拼写点，读口与实付不会各答一套。
    */
   private static long laborOf(Facts facts, Recipient recipient) {
-    return SubsistenceObligation.laborOf(recipient, facts.laborOfCohort());
+    return SubsistenceObligation.laborOf(recipient, facts.laborOfHousehold());
   }
 
   /** 一张数量表的逐值之和（{@code Σ劳动} / {@code Σ资产量}）。 */

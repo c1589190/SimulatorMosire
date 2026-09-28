@@ -82,13 +82,29 @@ import java.util.List;
  *     ToActor(operator)}</b>；四档的默认见 {@code RegimeRelations}
  * @param rules 补偿规则（**一张表、保序、不可变**；空表 = 全部自留）
  * @param residualOwner 余额归谁（一般是 {@code operator}；不产生任何条目）
+ * @param laborSource ★★ <b>这份生产的劳动来源</b>（S1；SELF/FAMILY/TENANT/SERF/WAGE）。旧档缺该键 ⇒ {@link
+ *     LaborSource#SELF}（见构造期兜底）；显式档位由 {@code RegimeRelations} 与载荷给出。
  */
 public record ProductionRelation(
     IndustryId activity,
     ActorRef operator,
     Recipient inputSupplier,
     List<CompensationRule> rules,
-    ActorRef residualOwner) {
+    ActorRef residualOwner,
+    LaborSource laborSource) {
+
+  /**
+   * ★ 旧形状的便捷构造（{@code laborSource} 缺省 {@link LaborSource#SELF}）：新代码请显式给那一档；
+   * 本重载只服务"这一步与劳动来源无关"的调用点与旧档迁移（缺键 ⇒ SELF，见 {@link #laborSource()}）。
+   */
+  public ProductionRelation(
+      IndustryId activity,
+      ActorRef operator,
+      Recipient inputSupplier,
+      List<CompensationRule> rules,
+      ActorRef residualOwner) {
+    this(activity, operator, inputSupplier, rules, residualOwner, LaborSource.SELF);
+  }
 
   public ProductionRelation {
     if (activity == null) {
@@ -100,6 +116,10 @@ public record ProductionRelation(
     if (inputSupplier == null) {
       // ★ 缺省 = 经营者（H3/C3 的默认；四档默认同值 ⇒ 这一处就是"缺省"的唯一落点，见类注）。
       inputSupplier = new Recipient.ToActor(operator);
+    }
+    if (laborSource == null) {
+      // ★ 旧档（S1 之前）没有这一维 ⇒ 读成"经营者自营"（该口径下最保守、且不改旧结算结果的映射）。
+      laborSource = LaborSource.SELF;
     }
     if (rules == null) {
       throw new IllegalArgumentException("ProductionRelation.rules 不得为 null（无规则请给空表）");

@@ -1,12 +1,16 @@
 package io.mosire.simos.actor.codec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
@@ -18,6 +22,7 @@ import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
+import java.io.IOException;
 import java.util.function.Function;
 
 /**
@@ -97,11 +102,71 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
    */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("actor-json-keys");
-    module.addKeyDeserializer(ActorRef.class, keyDeserializer(ActorRef::parseCanonical));
-    module.addKeyDeserializer(GoodsAccountKey.class, keyDeserializer(GoodsAccountKey::parse));
+    // ★★ S1 旧档迁移（actor 侧）：旧三段 HOUSEHOLD id（0_0:rural:poor_peasant）→ 新稳定 id
+    //   （legacy-0_0:rural:poor_peasant）。产业型 HOUSEHOLD（weave@0_0）没有冒号 ⇒ 不映射；已是 legacy- ⇒ 幂等。
+    module.addKeyDeserializer(
+        ActorRef.class, keyDeserializer(ActorCodec::legacyAwareActorRefCanonical));
+    module.addKeyDeserializer(
+        GoodsAccountKey.class, keyDeserializer(ActorCodec::legacyAwareAccountKeyCanonical));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
+    // ★ 嵌套位置（Actor.ref / GoodsAccountKey.owner 作为对象构件）走值反序列化器，同一套迁移规则。
+    module.addDeserializer(ActorRef.class, new LegacyAwareActorRefDeserializer());
     return module;
+  }
+
+  /** ★ S1：旧三段家户 actor 规范串 → 新稳定 actor 规范串；其余原样。 */
+  private static ActorRef legacyAwareActorRefCanonical(String canonical) {
+    return legacyAwareActorRef(ActorRef.parseCanonical(canonical));
+  }
+
+  /** ★ S1：{@code GoodsAccountKey} 的迁移 = 只换 owner（location 不变）。 */
+  private static GoodsAccountKey legacyAwareAccountKeyCanonical(String canonical) {
+    GoodsAccountKey key = GoodsAccountKey.parse(canonical);
+    ActorRef migrated = legacyAwareActorRef(key.owner());
+    return migrated.equals(key.owner()) ? key : new GoodsAccountKey(migrated, key.location());
+  }
+
+  /**
+   * ★★ <b>S1 actor 侧旧档映射</b>：{@code HOUSEHOLD} 且 id 形如旧三段 {@code <q>_<r>:<residence>:<stratum>} ⇒
+   * {@code legacy-<旧 id>}。
+   *
+   * <p>★ <b>只映射家户三段 id</b>（映射规则见 S1.5）：产业型 {@code HOUSEHOLD:weave@0_0} 不含冒号 ⇒ 原样； 已是 {@code
+   * legacy-} 前缀 ⇒ 幂等跳过。段数判据只做形状检查（不解析居住/阶层词表，避免 actor 模块反向解释 economy 词表）。
+   */
+  private static ActorRef legacyAwareActorRef(ActorRef ref) {
+    if (ref.kind() != ActorKind.HOUSEHOLD) {
+      return ref;
+    }
+    String id = ref.id();
+    if (id.startsWith("legacy-") || id.indexOf('@') >= 0) {
+      return ref;
+    }
+    int first = id.indexOf(':');
+    int second = first < 0 ? -1 : id.indexOf(':', first + 1);
+    if (first <= 0 || second < 0 || second == first + 1 || second == id.length() - 1) {
+      return ref; // 不是旧三段 id：不猜
+    }
+    return new ActorRef(ActorKind.HOUSEHOLD, "legacy-" + id);
+  }
+
+  /** ★ 值反序列化器（{@code Actor.ref} / 嵌套 owner）：收规范串或 {@code {kind,id}} 对象，再走同一映射。 */
+  private static final class LegacyAwareActorRefDeserializer extends JsonDeserializer<ActorRef> {
+
+    @Override
+    public ActorRef deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode node = parser.getCodec().readTree(parser);
+      ActorRef ref;
+      if (node.isTextual()) {
+        ref = ActorRef.parseCanonical(node.asText());
+      } else if (node.isObject() && node.hasNonNull("kind") && node.hasNonNull("id")) {
+        ref = ActorRef.parse(node.get("kind").asText(), node.get("id").asText());
+      } else {
+        throw new IllegalStateException("ActorRef 必须是规范串或 {kind,id} 对象: " + node);
+      }
+      return legacyAwareActorRef(ref);
+    }
   }
 
   private static <K> KeyDeserializer keyDeserializer(Function<String, K> parse) {

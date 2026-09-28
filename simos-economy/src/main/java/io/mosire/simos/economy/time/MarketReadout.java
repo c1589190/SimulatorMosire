@@ -2,10 +2,10 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -174,25 +174,25 @@ public record MarketReadout(
         regionByHex.put(member, region);
       }
     }
-    Map<MarketRegion, List<CohortKey>> rowsByRegion = new LinkedHashMap<>();
+    Map<MarketRegion, List<HouseholdId>> rowsByRegion = new LinkedHashMap<>();
     for (MarketRegion region : regions) {
       rowsByRegion.put(region, new ArrayList<>());
     }
-    for (CohortKey key : data.classes().keySet()) {
-      MarketRegion region = regionByHex.get(key.hex());
+    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
+      MarketRegion region = regionByHex.get(entry.getValue().view().hex());
       if (region != null) {
-        rowsByRegion.get(region).add(key);
+        rowsByRegion.get(region).add(entry.getKey());
       }
     }
     // ★ 一次建好"格 → 行"索引：逐区逐商品调 planOrders 时不再每次重扫全部行。
-    Map<String, List<CohortKey>> rowsByHex = EconomySettlement.rowsByHex(data.classes().keySet());
+    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(data.classes());
     List<RegionReadout> regionReadouts = new ArrayList<>(regions.size());
     for (MarketRegion region : regions) {
       Market anchorMarket = data.markets().get(region.anchor());
       if (anchorMarket == null) {
         continue;
       }
-      List<CohortKey> rows = rowsByRegion.getOrDefault(region, List.of());
+      List<HouseholdId> rows = rowsByRegion.getOrDefault(region, List.of());
       List<CommodityReadout> commodities = new ArrayList<>();
       for (CommodityId commodity : sortedCommodities(anchorMarket)) {
         long reference = anchorMarket.priceOf(commodity);
@@ -219,7 +219,7 @@ public record MarketReadout(
         }
         long dailyNeed = 0L;
         long cycleNeed = 0L;
-        for (CohortKey key : rows) {
+        for (HouseholdId key : rows) {
           ClassRow row = data.classes().get(key);
           if (row == null) {
             continue;
@@ -234,7 +234,7 @@ public record MarketReadout(
         boolean grain = commodity.equals(EconomySettlement.GRAIN);
         if (grain) {
           long ask = anchorMarket.askPriceOf(commodity);
-          for (CohortKey key : rows) {
+          for (HouseholdId key : rows) {
             ClassRow row = data.classes().get(key);
             if (row == null) {
               continue;
@@ -291,8 +291,9 @@ public record MarketReadout(
       unavailable.put("matchResults", MATCH_REPORT_PROCESS_ONLY);
     }
     long missingHouseholdAccounts = 0L;
-    for (CohortKey key : data.classes().keySet()) {
-      if (regionByHex.containsKey(key.hex()) && !accounts.householdGoods().containsKey(key)) {
+    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
+      if (regionByHex.containsKey(entry.getValue().view().hex())
+          && !accounts.householdGoods().containsKey(entry.getKey())) {
         missingHouseholdAccounts++;
       }
     }
@@ -410,7 +411,7 @@ public record MarketReadout(
   }
 
   private static long spendableMoney(
-      MarketReadoutAccounts accounts, CohortKey key, CurrencyId currency) {
+      MarketReadoutAccounts accounts, HouseholdId key, CurrencyId currency) {
     long money = accounts.householdMoney().getOrDefault(key, Map.of()).getOrDefault(currency, 0L);
     long frozen =
         accounts.householdFrozenMoney().getOrDefault(key, Map.of()).getOrDefault(currency, 0L);

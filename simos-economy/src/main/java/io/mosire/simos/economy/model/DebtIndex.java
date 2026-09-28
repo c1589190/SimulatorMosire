@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -34,28 +34,28 @@ public final class DebtIndex {
   private DebtIndex() {}
 
   /** 债务人侧索引：债务人 → 它欠的 {@link DebtId}（按 id 字典序）。 */
-  public static Map<CohortKey, List<DebtId>> byDebtor(Map<DebtId, Debt> debts) {
+  public static Map<HouseholdId, List<DebtId>> byDebtor(Map<DebtId, Debt> debts) {
     return index(debts, Debt::debtor);
   }
 
   /** ★★ 债权人侧索引：债权人 → 它应收的 {@link DebtId}（按 id 字典序）—— M1.5 新增的那一半。 */
-  public static Map<CohortKey, List<DebtId>> byCreditor(Map<DebtId, Debt> debts) {
+  public static Map<HouseholdId, List<DebtId>> byCreditor(Map<DebtId, Debt> debts) {
     return index(debts, Debt::creditor);
   }
 
   /** 建索引的**唯一实现**：两个方向只差一个"把这条债挂给哪一端"的函数 ⇒ 同一段遍历/排序/冻结只写一遍 （本仓的"唯一拼写点"纪律）。 */
-  private static Map<CohortKey, List<DebtId>> index(
-      Map<DebtId, Debt> debts, Function<Debt, CohortKey> side) {
+  private static Map<HouseholdId, List<DebtId>> index(
+      Map<DebtId, Debt> debts, Function<Debt, HouseholdId> side) {
     Objects.requireNonNull(debts, "debts");
     Objects.requireNonNull(side, "side");
     List<Debt> sorted = new ArrayList<>(debts.values());
     sorted.sort(Comparator.comparing(debt -> debt.id().value()));
-    Map<CohortKey, List<DebtId>> index = new LinkedHashMap<>();
+    Map<HouseholdId, List<DebtId>> index = new LinkedHashMap<>();
     for (Debt debt : sorted) {
       index.computeIfAbsent(side.apply(debt), ignored -> new ArrayList<>()).add(debt.id());
     }
-    Map<CohortKey, List<DebtId>> frozen = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, List<DebtId>> entry : index.entrySet()) {
+    Map<HouseholdId, List<DebtId>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, List<DebtId>> entry : index.entrySet()) {
       frozen.put(entry.getKey(), Collections.unmodifiableList(entry.getValue()));
     }
     return Collections.unmodifiableMap(frozen); // ★ 冻在赋值处

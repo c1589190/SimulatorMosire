@@ -7,9 +7,10 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReadoutAccounts;
 import io.mosire.simos.economy.time.MarketReport;
@@ -85,12 +86,14 @@ public final class MarketReadoutAssembly {
   static MarketReadoutAccounts accountsOf(EconomyData economy, ActorData actor) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(actor, "actor");
-    Map<CohortKey, Map<CommodityId, Long>> householdGoods = new LinkedHashMap<>();
-    Map<CohortKey, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
-    Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods = new LinkedHashMap<>();
-    Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
-    for (CohortKey key : economy.classes().keySet()) {
-      GoodsAccount account = actor.accounts().get(OwnershipBooks.accountKeyOf(key));
+    Map<HouseholdId, Map<CommodityId, Long>> householdGoods = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      HouseholdId key = entry.getKey();
+      GoodsAccount account =
+          actor.accounts().get(OwnershipBooks.accountKeyOf(key, entry.getValue().view().hex()));
       if (account == null) {
         continue; // 读口覆盖不足：由 MarketReadout 的 unavailable.householdAccounts 计数点名
       }

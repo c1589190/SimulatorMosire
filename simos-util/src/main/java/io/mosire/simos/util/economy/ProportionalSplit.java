@@ -1,5 +1,7 @@
 package io.mosire.simos.util.economy;
 
+import java.math.BigInteger;
+
 /**
  * ★★ **按权重成比例切分 + 最大余数法分派残差**（全仓**唯一**实现；v2 spec §八.7）。
  *
@@ -20,6 +22,10 @@ package io.mosire.simos.util.economy;
  * <p>★ **{@code Σparts ≥ total} 时不静默修正**（比例表被改坏时 {@code remainder < 0}）：原样返回 ⇒ 调用方的守恒判据看得见。
  *
  * <p>★ **整数运算、禁 double**（v2 spec §7 的量纲纪律）；权重与总量都不得为负（调用方各自校验并抛具名异常）。
+ *
+ * <p>★★ <b>R0（S0.2）：{@code total × weight} 不再裸乘</b>——快路 {@code Math.multiplyExact}，溢出进 {@code
+ * BigInteger} 分支；{@code Σparts} 用 {@code Math.addExact} 安全累加。外部语义（floor + 最大余数法、 同余数按下标升序、{@code
+ * denominator == 0} 记第一项、负残差不修正）逐条不变。
  */
 public final class ProportionalSplit {
 
@@ -50,14 +56,65 @@ public final class ProportionalSplit {
     }
     long[] residues = new long[n];
     long assigned = 0L;
+    // ★★ R0：`assigned` 必须用安全累加（`Math.addExact`）——溢出不再静默回绕。真溢出的输入是坏数据/极端状态，
+    //   此时改用 BigInteger 精确累加，让"残差是否 ≤ 0"的判断仍按数学值走（不把回绕后的负数当成真残差）。
+    BigInteger assignedExact = null;
     for (int i = 0; i < n; i++) {
-      long product = total * weights[i];
-      parts[i] = product / denominator;
-      residues[i] = product % denominator; // 小数部分的分子：精确份额 = parts[i] + residues[i]/denominator
-      assigned += parts[i];
+      long[] share = mulDivParts(total, weights[i], denominator);
+      parts[i] = share[0];
+      residues[i] = share[1]; // 小数部分的分子：精确份额 = parts[i] + residues[i]/denominator
+      if (assignedExact != null) {
+        assignedExact = assignedExact.add(BigInteger.valueOf(share[0]));
+      } else {
+        try {
+          assigned = Math.addExact(assigned, share[0]);
+        } catch (ArithmeticException overflow) {
+          assignedExact = BigInteger.valueOf(assigned).add(BigInteger.valueOf(share[0]));
+        }
+      }
     }
-    distributeByLargestRemainder(parts, residues, total - assigned);
+    long remainder;
+    if (assignedExact == null) {
+      remainder = total - assigned;
+    } else {
+      BigInteger exactRemainder = BigInteger.valueOf(total).subtract(assignedExact);
+      if (exactRemainder.signum() <= 0) {
+        return parts; // 与旧语义一致：Σparts ≥ total ⇒ 原样返回、不静默修正（见类注）。
+      }
+      try {
+        remainder = exactRemainder.longValueExact();
+      } catch (ArithmeticException tooLarge) {
+        throw new ArithmeticException(
+            "ProportionalSplit 的残差超出 long（total=" + total + "，已分配=" + assignedExact + "）；拒绝静默回绕");
+      }
+    }
+    distributeByLargestRemainder(parts, residues, remainder);
     return parts;
+  }
+
+  /**
+   * ★★ <b>R0：单槽位的 {@code total × weight ÷ denominator}（floor）与余数</b>。
+   *
+   * <p>★ 常数级小权重走 {@code long} 快路；只有 {@code Math.multiplyExact} 当场溢出才进 {@code BigInteger} fallback（见
+   * S0.2 的算式）。商超出 {@code long} ⇒ {@link BigInteger#longValueExact()} 抛具名异常 ——
+   * <b>宁抛不静默</b>（回绕会造出负数份额，正是本修复要消灭的形态）。分母为 0 不走这里（上面已单独处理）。
+   */
+  private static long[] mulDivParts(long total, long weight, long denominator) {
+    if (weight == 0L) {
+      return new long[] {0L, 0L};
+    }
+    try {
+      long product = Math.multiplyExact(total, weight);
+      return new long[] {product / denominator, product % denominator};
+    } catch (ArithmeticException overflow) {
+      BigInteger[] quotientAndRemainder =
+          BigInteger.valueOf(total)
+              .multiply(BigInteger.valueOf(weight))
+              .divideAndRemainder(BigInteger.valueOf(denominator));
+      return new long[] {
+        quotientAndRemainder[0].longValueExact(), quotientAndRemainder[1].longValueExact()
+      };
+    }
   }
 
   /**

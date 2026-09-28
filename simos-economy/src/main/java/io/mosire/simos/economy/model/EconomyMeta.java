@@ -28,6 +28,9 @@ public record EconomyMeta(
     String rulesVersion,
     Optional<String> migrationSource) {
 
+  /** ★ S1 迁移后的规则版本标签（计划 S1.5）：迁移器把旧档升到本版本；再次加载不得二次迁移。 */
+  public static final String RULES_VERSION_PRE_MODERN_V1 = "pre-modern-v1";
+
   public EconomyMeta {
     if (mapId == null || mapId.isBlank()) {
       throw new IllegalArgumentException("EconomyMeta.mapId 不得为空白");

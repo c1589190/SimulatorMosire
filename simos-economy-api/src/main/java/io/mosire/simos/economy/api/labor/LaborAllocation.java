@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.api.labor;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -35,6 +36,7 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
  *
  * @param id 稳定身份（由产出方给短名；不含 {@code "."}，见 {@link LaborAllocationId}）
  * @param group 出劳动的人口批次（**人口的真值源在 social**；本类型只持它的稳定身份）
+ * @param household ★★ <b>这份劳动属于哪个家户</b>（S1 起；同一批人可按家户分别给不同主体出劳动，见 S1.1）
  * @param actor 收劳动的经济主体（本轮 = 产业 {@code farm@q_r} / {@code craft@q_r}，或家户）
  * @param activity 这笔劳动**干什么**（调用方的词，本层不解释：{@code farm} / {@code craft} / {@code weaving}…） ★
  *     **本轮没有消费方读它**：结算按 {@code actor} 归集、读口也按 {@code actor} 合计 —— 这一维是设计稿 §四 钉死的**形状** （R3 的"耕作 /
@@ -45,6 +47,7 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
 public record LaborAllocation(
     LaborAllocationId id,
     PeopleLotId group,
+    HouseholdId household,
     ActorRef actor,
     String activity,
     long laborMilli,
@@ -56,6 +59,11 @@ public record LaborAllocation(
     }
     if (group == null) {
       throw new IllegalArgumentException("LaborAllocation.group 不得为 null");
+    }
+    if (household == null) {
+      // ★ 旧档缺 household 的兜底**不在这里**：由 EconomyCodec 的旧档反序列化器造 pending 占位、
+      //   再由 LegacyHouseholdMigration 换成真实家户（见 HouseholdId.PENDING_LEGACY_PREFIX）。
+      throw new IllegalArgumentException("LaborAllocation.household 不得为 null");
     }
     if (actor == null) {
       throw new IllegalArgumentException("LaborAllocation.actor 不得为 null");
@@ -72,25 +80,44 @@ public record LaborAllocation(
   }
 
   /**
-   * ★★ <b>配额 id 的唯一拼写点</b>（H5）：{@code alloc-<产业 id>-<批次 id>}。
+   * ★★ <b>配额 id 的唯一拼写点</b>（H5；S1 起带上家户）：{@code alloc-<产业 id>-<批次 id>-<家户 id>}。
    *
    * <p>★★ <b>为什么它必须在契约层</b>：H5 之前这个格式只被 {@code EconomySeeder} 写（创世发配额）；H5 起 {@code
    * EconomySettlement} 的**劳动再分配**也会新发配额（"未吸收的劳动回池 ⇒ 分给有缺口的产业"，裁定 C2）——
    * 同一个格式因此有了第二个写者。把它钉在这里，两个写者读同一处（"同一事实两处拼写点"是本仓明令禁止的形态）。
    *
-   * <p>★ <b>确定性</b>：{@code (产业, 批次)} 的纯函数 ⇒ 同一对必然给出同一个 id（重放/分支可比），且同一对不会重复。 ★ <b>不含 {@code
-   * "."}</b>：产业 id 形如 {@code farm@0_0}、批次 id 形如 {@code rural:0_0:MALE:1}，两者都不含点 ⇒ 地址 {@code
+   * <p>★ <b>确定性</b>：{@code (产业, 批次, 家户)} 的纯函数 ⇒ 同一三元组必然给出同一个 id（重放/分支可比）。 ★ <b>不含 {@code
+   * "."}</b>：产业 id 形如 {@code farm@0_0}、批次 id 形如 {@code rural:0_0:MALE:1}， 家户 id 形如 {@code
+   * hh-0_0-rural-poor_peasant}/{@code legacy-0_0|rural|poor_peasant} ⇒ 地址 {@code
    * economy:<mapId>:allocation.<id>} 不会被 {@code AddressParser} 在第一个点处截断。
    *
    * @param industry 收劳动的那个产业；不得为 null
    * @param group 出劳动的人口批次；不得为 null
+   * @param household 这份劳动所属的家户；不得为 null
    */
-  public static LaborAllocationId idOf(IndustryId industry, PeopleLotId group) {
+  public static LaborAllocationId idOf(
+      IndustryId industry, PeopleLotId group, HouseholdId household) {
     if (industry == null) {
       throw new IllegalArgumentException("LaborAllocation.idOf 的 industry 不得为 null");
     }
     if (group == null) {
       throw new IllegalArgumentException("LaborAllocation.idOf 的 group 不得为 null");
+    }
+    if (household == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOf 的 household 不得为 null");
+    }
+    return new LaborAllocationId(
+        "alloc-" + industry.value() + "-" + group.value() + "-" + household.value());
+  }
+
+  /** ★ 旧档（无 household）的 id 形状 {@code alloc-<产业>-<批次>}；<b>只准旧档迁移读取/对账</b>。 */
+  @Deprecated
+  public static LaborAllocationId idOfLegacy(IndustryId industry, PeopleLotId group) {
+    if (industry == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOfLegacy 的 industry 不得为 null");
+    }
+    if (group == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOfLegacy 的 group 不得为 null");
     }
     return new LaborAllocationId("alloc-" + industry.value() + "-" + group.value());
   }

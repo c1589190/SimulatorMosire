@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.api.cohort;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.map.hex.HexCoord;
 
@@ -57,6 +59,7 @@ public record CohortKey(HexCoord hex, ResidenceKind residence, SocialClassId str
 
   /** 规范串：{@code <q>_<r>|<residence>|<stratum>}（既是状态表的键，也是 receipt / 转移记录的键）。 */
   @Override
+  @JsonValue
   public String toString() {
     return hex + SEGMENT_SEPARATOR + residence.value() + SEGMENT_SEPARATOR + stratum;
   }
@@ -69,6 +72,7 @@ public record CohortKey(HexCoord hex, ResidenceKind residence, SocialClassId str
    * <p>★ <b>宁抛不静默</b>（照 {@code GoodsAccountKey#parse} 的口径）：{@code null} / 空白 / 段数不足 / 接缝在首或在尾，一律
    * {@link IllegalArgumentException} —— 静默造一个半截的家户身份，比当场炸难查得多。
    */
+  @JsonCreator
   public static CohortKey parse(String text) {
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("非法 cohort 键: " + text);

@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.Optional;
 
 /**
@@ -28,7 +28,7 @@ import java.util.Optional;
  * dueCycle ≥ 0}；{@code commodity} 不得为 null（货币债用 {@code Optional.empty()}）。
  *
  * @param id 稳定身份（由 {@code (周期, 债务人, 债权人, 商品)} 确定性算出、不含 {@code "."}、跨周期不同）
- * @param debtor 债务人（**家户** = {@link CohortKey}；H0 起"行就是家户"，债务两端因此是家户身份）
+ * @param debtor 债务人（**家户** = {@link HouseholdId}；S1 起债务两端是稳定身份，不再随视图迁移改键）
  * @param creditor 债权人（同上）
  * @param commodity 实物债的商品；**货币债 = {@code Optional.empty()}**
  * @param principal 本金（余额；**周期末计息并入** ⇒ 不只是"借入之和"）；不得为负
@@ -38,8 +38,8 @@ import java.util.Optional;
  */
 public record Debt(
     DebtId id,
-    CohortKey debtor,
-    CohortKey creditor,
+    HouseholdId debtor,
+    HouseholdId creditor,
     Optional<CommodityId> commodity,
     long principal,
     int ratePerMillePerCycle,

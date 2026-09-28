@@ -15,14 +15,20 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ShipmentId;
+import io.mosire.simos.economy.api.id.UseRightId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -37,18 +43,15 @@ import java.util.function.Function;
 /**
  * economy 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code LedgerCodec} 同制，理由不重复——只记 economy 自己的那点差异。
  *
- * <p>★ 树里的自定义键有七个：{@code IndustryId}（{@code industries} 的键）、{@code CohortKey}（{@code
- * classes}/{@code flows} 的键，H0 起 = <b>家户身份</b>）、{@code DebtId}（{@code debts} 的键）与 {@code
- * CommodityId}（{@code Industry.outputPerUnit} / {@code ClassRow.naturalNeeds} / {@code
- * effectiveDemand} / {@code FlowRow.consumed} / {@code AllocationRule.WageFirst.ownerResidual}
- * 的键），以及 **R2 的两个**：{@code PeopleLotId} （{@code laborSupply} 的键）与 {@code LaborAllocationId}（{@code
- * allocations} 的键）。六者都住在 {@code simos-economy-api}（H0 起 {@code CohortKey} 也在那里；本模块 {@code model}
- * 里那个两段式的旧键已按裁定 K2 删除）， economy 依赖它故够得着（铁律 3 允许）。键反序列化器照裁定 16 在**本模块** 注册，不进共享基座。
- *
- * <p>★★ <b>第七个键是 H4 的市场表键 {@code HexCoord}</b>（{@code 0_0}）：它住在 {@code simos-map}，本模块此前从没把它当过**键**
- * —— 漏注册的症状是"读档时 {@code markets} 的键解析不出来"（Jackson 会去调 {@code HexCoord} 的构造器或报 {@code no
- * String-argument constructor}）。★ 而 {@code HexCoord.toString()} 与 {@code HexCoord.parse} 互逆，
- * 故只需读侧（同上面六个）。
+ * <p>★ <b>树里的自定义键（读侧注册；写侧靠各自的 {@code toString()}）</b>：{@code IndustryId}（{@code industries} /
+ * {@code relations} / {@code operatorConditions}）、{@code HouseholdId}（{@code classes} / {@code
+ * flows}；旧档的 {@code CohortKey} 规范串由 {@code HouseholdIdDeserializer} 识别并映射成 {@code ofLegacy}）、{@code
+ * DebtId} （{@code debts}）、{@code CommodityId}（产业产出/投入、行需求、流水与规则里的商品键）、{@code PeopleLotId} （{@code
+ * laborSupply}）、{@code LaborAllocationId}（{@code allocations}）、{@code MembershipId} （{@code
+ * memberships}）、{@code UseRightId}（{@code useRights}）、{@code HexCoord}（{@code markets}， 住在 {@code
+ * simos-map}）、{@code ShipmentId}（{@code shipments}）。★ 它们都重写了 {@code toString()} 并与 各自的 {@code
+ * parse} 互为逆，故只需读侧；键反序列化器照裁定 16 在**本模块**注册，不进共享基座。★ 漏注册的症状是"读档时键 解析不出来"（Jackson 会去调构造器或报 {@code no
+ * String-argument constructor}）。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -65,18 +68,18 @@ import java.util.function.Function;
  */
 public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
 
-  /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
-  private static final ObjectMapper MAPPER =
-      withChangeSetMixin(SimosObjectMapper.create(keyModule()));
-
   /**
-   * ★★ <b>一台"不带本模块兼容层"的 mapper</b>（H2）：新形状的补偿规则交给它 —— 走 Jackson 的默认 record 绑定 （{@code Optional}
-   * 由共享基座的 {@code Jdk8Module} 管、{@code Recipient} 的多态注解跟着类型走）。
+   * ★★ <b>"纯绑定" mapper</b>：只带键反序列化器（含旧 {@code CohortKey} 键 → {@link HouseholdId} 的识别），
+   * <b>不带值类型兼容层</b> —— 兼容层把旧节点整形成新节点后交给它绑定（避免"兼容层再进兼容层"的递归）。
    *
-   * <p>★ 为什么不让 {@link CompensationRuleDeserializer} 自己手写每个字段：那样"一条规则怎么从 JSON 造出来"就有了
-   * <b>第二处</b>拼写点（兼容层与默认绑定各一份，迟早漂开）。兼容层只做一件事：<b>把旧节点整形成新节点</b>。
+   * <p>★ 先例：H2 的补偿规则兼容层就是"整形后交给 {@code PLAIN}"；S1 的旧档迁移沿用同一分工。 ⇒ "一条记录怎么从 JSON
+   * 造出来"永远只有<b>一处</b>拼写点（Jackson 的 record 绑定），兼容层只负责改节点。
    */
-  private static final ObjectMapper PLAIN = SimosObjectMapper.create();
+  private static final ObjectMapper PLAIN = SimosObjectMapper.create(keyModule());
+
+  /** 本模块唯一的一台 mapper：共享基座 + 键反序列化器 + S1/H2 的值兼容层。 */
+  private static final ObjectMapper MAPPER =
+      withChangeSetMixin(SimosObjectMapper.create(keyModule(), compatModule()));
 
   /**
    * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code LedgerCodec} 同制）：Jackson 会把 {@code
@@ -99,20 +102,47 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("economy-json-keys");
     module.addKeyDeserializer(IndustryId.class, keyDeserializer(IndustryId::parse));
-    module.addKeyDeserializer(CohortKey.class, keyDeserializer(CohortKey::parse));
+    // ★★ S1：classes/flows 的键 = HouseholdId。旧档的键是 CohortKey 规范串 ⇒ 这里做一次"旧视图 → ofLegacy"
+    //   识别（新档 id 的 parse 是恒等）。识别器同时注册为**值**反序列化器（Debt.debtor/creditor、ClassRow.id）。
+    module.addKeyDeserializer(
+        HouseholdId.class, keyDeserializer(EconomyCodec::legacyAwareHouseholdId));
+    module.addDeserializer(HouseholdId.class, new HouseholdIdDeserializer());
     module.addKeyDeserializer(DebtId.class, keyDeserializer(DebtId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     // ★ R2 起是两张新表的键：laborSupply（PeopleLotId → LaborSupply）与 allocations（LaborAllocationId
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
+    // ★★ S1：memberships / useRights 两张新表的键。
+    module.addKeyDeserializer(MembershipId.class, keyDeserializer(MembershipId::parse));
+    module.addKeyDeserializer(UseRightId.class, keyDeserializer(UseRightId::parse));
     // ★★ H4：市场表的键 = **格**（{@code 0_0}）—— 本模块第一次把 HexCoord 当键用（见类注）。
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
     // ★★ M2.4：在途批次表的键 = ShipmentId（{@code sh-<day>-<seq>}）—— 与上面同一条口径：toString/parse 互逆，只需读侧。
     module.addKeyDeserializer(ShipmentId.class, keyDeserializer(ShipmentId::parse));
-    // ★★ H2：补偿规则的**旧档兼容**（旧线格式是单个 `basis`，H2 拆成 `pool` + `weight`）——见下面那个反序列化器。
-    module.addDeserializer(CompensationRule.class, new CompensationRuleDeserializer());
     return module;
+  }
+
+  /** ★★ S1/H2 的值类型兼容层：旧形状整形成新形状之后交给 {@link #PLAIN} 绑定（避免递归）。 */
+  private static SimpleModule compatModule() {
+    SimpleModule module = new SimpleModule("economy-json-legacy-values");
+    // ★★ H2：补偿规则的旧线格式（单个 `basis` → `pool` + `weight`）。
+    module.addDeserializer(CompensationRule.class, new CompensationRuleDeserializer());
+    // ★★ S1：ClassRow/FlowRow 的旧键 `key`（CohortKey）→ `id` + `view`；LaborAllocation 缺 household。
+    module.addDeserializer(ClassRow.class, new LegacyClassRowDeserializer());
+    module.addDeserializer(FlowRow.class, new LegacyFlowRowDeserializer());
+    module.addDeserializer(LaborAllocation.class, new LegacyLaborAllocationDeserializer());
+    return module;
+  }
+
+  /**
+   * ★ 旧 {@code CohortKey} 规范串（含 {@code |}、且非 legacy- 前缀）⇒ {@code HouseholdId.ofLegacy}；其余原样 parse。
+   */
+  private static HouseholdId legacyAwareHouseholdId(String text) {
+    if (text != null && !text.startsWith(HouseholdId.LEGACY_PREFIX) && text.indexOf('|') >= 0) {
+      return HouseholdId.ofLegacy(CohortKey.parse(text));
+    }
+    return HouseholdId.parse(text);
   }
 
   /**
@@ -185,6 +215,113 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       throw new IllegalStateException("补偿规则的字段 " + field + " 必须是非空文本: " + node);
     }
     return value.asText();
+  }
+
+  /** ★★ S1：{@link HouseholdId} 的值反序列化（旧 {@code CohortKey} 串 ⇒ {@code ofLegacy}；新档 ⇒ parse）。 */
+  private static final class HouseholdIdDeserializer extends JsonDeserializer<HouseholdId> {
+
+    @Override
+    public HouseholdId deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!raw.isTextual()) {
+        throw new IllegalStateException("HouseholdId 必须是字符串: " + raw);
+      }
+      return legacyAwareHouseholdId(raw.asText());
+    }
+  }
+
+  /**
+   * ★★ S1：旧档 {@code ClassRow} 的整形（旧键 {@code key} = CohortKey 规范串，没有 {@code id}/{@code view}） ⇒
+   * 新形状（{@code id = HouseholdId.ofLegacy(key)}、{@code view = key}）。
+   *
+   * <p>★ 新形状原样交给 {@link #PLAIN}；**缺 {@code id} 且缺 {@code key} ⇒ 抛**（不猜"大概是哪个家户"）。
+   */
+  private static final class LegacyClassRowDeserializer extends JsonDeserializer<ClassRow> {
+
+    @Override
+    public ClassRow deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("ClassRow 必须是 JSON 对象: " + raw);
+      }
+      if (!node.hasNonNull("id")) {
+        if (!node.hasNonNull("key")) {
+          throw new IllegalStateException("ClassRow 既没有新键 id、也没有旧键 key: " + node);
+        }
+        CohortKey view = CohortKey.parse(node.get("key").asText());
+        ObjectNode migrated = node.deepCopy();
+        migrated.remove("key");
+        migrated.put("id", HouseholdId.ofLegacy(view).value());
+        migrated.put("view", view.toString());
+        node = migrated;
+      }
+      try {
+        return PLAIN.treeToValue(node, ClassRow.class);
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException("ClassRow 解码失败: " + node, e);
+      }
+    }
+  }
+
+  /**
+   * ★★ S1：旧档 {@code FlowRow} 的整形（{@code key = CohortKey} ⇒ {@code id = HouseholdId.ofLegacy(key)}）。
+   */
+  private static final class LegacyFlowRowDeserializer extends JsonDeserializer<FlowRow> {
+
+    @Override
+    public FlowRow deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("FlowRow 必须是 JSON 对象: " + raw);
+      }
+      if (!node.hasNonNull("id")) {
+        if (!node.hasNonNull("key")) {
+          throw new IllegalStateException("FlowRow 既没有新键 id、也没有旧键 key: " + node);
+        }
+        CohortKey view = CohortKey.parse(node.get("key").asText());
+        ObjectNode migrated = node.deepCopy();
+        migrated.remove("key");
+        migrated.put("id", HouseholdId.ofLegacy(view).value());
+        node = migrated;
+      }
+      try {
+        return PLAIN.treeToValue(node, FlowRow.class);
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException("FlowRow 解码失败: " + node, e);
+      }
+    }
+  }
+
+  /**
+   * ★★ S1：旧档 {@code LaborAllocation} 的整形（缺 {@code household}）⇒ 造 {@link HouseholdId#pendingLegacy}
+   * 占位；真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code EconomyData} 构造期按行人口拆出。
+   */
+  private static final class LegacyLaborAllocationDeserializer
+      extends JsonDeserializer<LaborAllocation> {
+
+    @Override
+    public LaborAllocation deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("LaborAllocation 必须是 JSON 对象: " + raw);
+      }
+      if (!node.hasNonNull("household")) {
+        if (!node.hasNonNull("id")) {
+          throw new IllegalStateException("LaborAllocation 缺 household 且没有旧键 id，无法定位占位: " + node);
+        }
+        node = node.deepCopy();
+        node.put("household", HouseholdId.pendingLegacy(node.get("id").asText()).value());
+      }
+      try {
+        return PLAIN.treeToValue(node, LaborAllocation.class);
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException("LaborAllocation 解码失败: " + node, e);
+      }
+    }
   }
 
   private static <K> KeyDeserializer keyDeserializer(Function<String, K> parse) {

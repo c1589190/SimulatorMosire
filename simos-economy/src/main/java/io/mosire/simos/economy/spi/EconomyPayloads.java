@@ -12,15 +12,19 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.id.UseRightId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
@@ -31,9 +35,12 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.economy.model.UseRight;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -235,7 +242,7 @@ final class EconomyPayloads {
     }
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     // ★★ H0：家户行是**entry 级**的（键 = (格, 居住类型, 阶层)），不再嵌在产业节点里 —— 见类注 ①。
-    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
     // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
     Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
@@ -243,6 +250,11 @@ final class EconomyPayloads {
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
     Map<HexCoord, Market> markets = markets(payload, entries);
+    // ★ S1 的两个新组件：可选的逐格声明；缺省 ⇒ 空表（由 EconomyData 的迁移器补齐成员份额；
+    //   使用权则是"没有登记就没有权利" —— 不凭产能替谁发明权利，见 UseRight 的类注）。
+    Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
+    Map<UseRightId, UseRight> useRights = new LinkedHashMap<>();
+    Map<String, Long> useRightSequences = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
@@ -257,6 +269,10 @@ final class EconomyPayloads {
       for (JsonNode node : requireArray(entry, "industries")) {
         Industry industry = industry(node);
         IndustryId id = industry.id();
+        // ★★ R0：**entry 格 ↔ industry.id 格必须一致**（见 requireIndustryHexMatchesEntry）——
+        //   entry 只划"这条命令动哪些格"，而产业按自己的 id 格参与结算 ⇒ 不一致时命令目标与真实
+        //   写入面错位。旧版从这里旁路进去（R0 的 S0.1）。
+        requireIndustryHexMatchesEntry(hex, id);
         if (industries.putIfAbsent(id, industry) != null) {
           throw new IllegalArgumentException("同一份载荷里产业 id 重复: " + id);
         }
@@ -267,8 +283,8 @@ final class EconomyPayloads {
       // ★★ **H0：该格的家户行（entry 级）** —— 每行显式带 {@code residence}，键 = (格, 居住类型, 阶层)。
       for (JsonNode row : optionalArray(entry, "classes")) {
         ClassRow classRow = classRow(hex, row);
-        if (classes.putIfAbsent(classRow.key(), classRow) != null) {
-          throw new IllegalArgumentException("同一份载荷里家户行重复: " + classRow.key());
+        if (classes.putIfAbsent(classRow.id(), classRow) != null) {
+          throw new IllegalArgumentException("同一份载荷里家户行重复: " + classRow.id());
         }
       }
       // ★ R2：该格各批次的劳动供给（可支配劳动的上限）—— 缺省 ⇒ 空表（与 classes 同款）。
@@ -286,6 +302,53 @@ final class EconomyPayloads {
           throw new IllegalArgumentException("同一份载荷里劳动分配重复: " + allocation.id());
         }
       }
+      // ★ S1：该格的成员份额（可选；键 = (lot, household) 的确定性 id）。
+      for (JsonNode node : optionalArray(entry, "memberships")) {
+        PeopleLotId lot = PeopleLotId.parse(requireText(node, "lot"));
+        HouseholdId household = HouseholdId.parse(requireText(node, "household"));
+        Membership membership =
+            new Membership(
+                Membership.idOf(lot, household), lot, household, requireLong(node, "count"));
+        if (memberships.putIfAbsent(membership.id(), membership) != null) {
+          throw new IllegalArgumentException("同一份载荷里成员份额重复: " + membership.id());
+        }
+      }
+      // ★ S1：该格的使用权（可选；id 由载荷内确定性序号给出）。
+      for (JsonNode node : optionalArray(entry, "useRights")) {
+        IndustryId activity = IndustryId.parse(requireText(node, "activity"));
+        JsonNode holderNode = optionalObject(node, "holder");
+        if (holderNode == null) {
+          throw new IllegalArgumentException("使用权的字段 holder 必须是对象: " + node);
+        }
+        ActorRef holder = actorRef(holderNode);
+        AssetKind asset;
+        try {
+          asset = AssetKind.valueOf(requireText(node, "asset"));
+        } catch (IllegalArgumentException e) {
+          throw new IllegalArgumentException("使用权的 asset 不是生产资料种类: " + node, e);
+        }
+        long quantity = requireLong(node, "quantity");
+        UseRight.RightKind kind;
+        try {
+          kind = UseRight.RightKind.valueOf(requireText(node, "kind"));
+        } catch (IllegalArgumentException e) {
+          throw new IllegalArgumentException("使用权的 kind 不是 OWNED/TENANCY/COMMUNAL: " + node, e);
+        }
+        String sequenceKey = activity + "|" + asset + "|" + holder + "|" + kind;
+        long sequence = useRightSequences.getOrDefault(sequenceKey, 0L);
+        useRightSequences.put(sequenceKey, sequence + 1L);
+        UseRight useRight =
+            new UseRight(
+                UseRight.idOf(activity, asset, holder, kind, sequence),
+                activity,
+                holder,
+                asset,
+                quantity,
+                kind);
+        if (useRights.putIfAbsent(useRight.id(), useRight) != null) {
+          throw new IllegalArgumentException("同一份载荷里使用权重复: " + useRight.id());
+        }
+      }
     }
     EconomyMeta meta =
         new EconomyMeta(mapId, at.tick(), OptionalLong.empty(), rulesVersion, Optional.empty());
@@ -300,6 +363,10 @@ final class EconomyPayloads {
         relations,
         markets,
         // ★ M2.4：创世载荷没有在途（播种出来的世界货物都在账上；在途由市场发运产生）。
+        Map.of(),
+        memberships,
+        useRights,
+        // ★ S3 预留的第 13 个组件：创世载荷暂不声明经营者状态（空表 = 尚未登记任何状态机状态）。
         Map.of());
   }
 
@@ -418,7 +485,13 @@ final class EconomyPayloads {
     for (JsonNode rule : optionalArray(relationNode, "rules")) {
       rules.add(compensationRule(rule));
     }
-    return new ProductionRelation(industry.id(), operator, inputSupplier, rules, residualOwner);
+    // ★ S1：劳动来源（可选键；缺省留给 ProductionRelation 的构造期兜底 SELF，与旧档口径一致）。
+    LaborSource laborSource =
+        relationNode.hasNonNull("laborSource")
+            ? LaborSource.parse(requireText(relationNode, "laborSource"))
+            : null;
+    return new ProductionRelation(
+        industry.id(), operator, inputSupplier, rules, residualOwner, laborSource);
   }
 
   /**
@@ -434,17 +507,19 @@ final class EconomyPayloads {
   private static Recipient recipient(JsonNode node, String what) {
     JsonNode actorNode = optionalObject(node, "actor");
     boolean hasCohort = node.hasNonNull("cohort");
-    if ((actorNode != null) == hasCohort) {
+    boolean hasHousehold = node.hasNonNull("household");
+    int given = (actorNode != null ? 1 : 0) + (hasCohort ? 1 : 0) + (hasHousehold ? 1 : 0);
+    if (given != 1) {
       throw new IllegalArgumentException(
-          what
-              + " 必须恰给 actor 或 cohort 之一（"
-              + (actorNode != null ? "两个都给了" : "两个都没给")
-              + "）: "
-              + node);
+          what + " 必须恰给 actor / household / cohort 之一（给 " + given + " 个）: " + node);
     }
-    return actorNode != null
-        ? new Recipient.ToActor(actorRef(actorNode))
-        : new Recipient.ToCohort(CohortKey.parse(requireText(node, "cohort")));
+    if (actorNode != null) {
+      return new Recipient.ToActor(actorRef(actorNode));
+    }
+    if (hasHousehold) {
+      return new Recipient.ToHousehold(HouseholdId.parse(requireText(node, "household")));
+    }
+    return new Recipient.ToCohort(CohortKey.parse(requireText(node, "cohort")));
   }
 
   /**
@@ -573,9 +648,15 @@ final class EconomyPayloads {
     if (actor == null) {
       throw new IllegalArgumentException("劳动分配的字段 actor 必须是对象: " + node);
     }
+    LaborAllocationId id = LaborAllocationId.parse(requireText(node, "id"));
     return new LaborAllocation(
-        LaborAllocationId.parse(requireText(node, "id")),
+        id,
         PeopleLotId.parse(requireText(node, "group")),
+        // ★ S1：新载荷可以显式给 household；旧载荷没有该键 ⇒ pending 占位，由 EconomyData 构造期的
+        //   LegacyHouseholdMigration 按"产业格 + 居住类型"的行人口拆到真实家户（与旧档同一条规则）。
+        node.hasNonNull("household")
+            ? HouseholdId.parse(requireText(node, "household"))
+            : HouseholdId.pendingLegacy(id.value()),
         actorRef(actor),
         requireText(node, "activity"),
         requireLong(node, "laborMilli"),
@@ -583,6 +664,41 @@ final class EconomyPayloads {
   }
 
   // ── 产业 / 阶层行 ────────────────────────────────────────────────────────────────────
+
+  /**
+   * ★★ <b>R0（S0.1）：entry 的格必须与 {@code industry.id} 里携带的格逐字一致</b>。
+   *
+   * <p>★★ <b>为什么必须在这里判死</b>：{@code entries[]} 是命令的<b>作用域</b>（{@code CommandTargets} 逐格判越权）， 而产业按
+   * {@code id} 里的格参与结算/读口。两者不一致时，一条只被授权动 {@code (0,0)} 的播种命令会把 {@code farm@9_9} 的产业写进世界 ——
+   * 命令目标与真实写入面错位（这正是 R0 要堵的旁路）。
+   *
+   * <p>★ <b>id 不带格键也拒</b>：那种 id 无法与任何 entry 对账（{@link IndustryHexKeys#hexKeyOf} 返回空），
+   * 放行等于把这条守卫留成"只要不写 {@code @} 就能绕过"。★ 旧档（非播种载荷）不受影响：它们由 {@code EconomyCodec} 读入，不经本方法。
+   */
+  private static void requireIndustryHexMatchesEntry(HexCoord entryHex, IndustryId id) {
+    String entryKey = IndustryHexKeys.hexKey(entryHex.q(), entryHex.r());
+    Optional<String> industryKey = IndustryHexKeys.hexKeyOf(id);
+    if (industryKey.isEmpty()) {
+      throw new IllegalArgumentException(
+          "产业 id 必须携带格键（<kind>@<q>_<r>）才能与它所在的 entry 对账: industry.id="
+              + id
+              + "，entry 格="
+              + entryKey);
+    }
+    if (!industryKey.get().equals(entryKey)) {
+      throw new IllegalArgumentException(
+          "产业 id 的格与它所在的 entry 格不一致（拒绝该播种载荷）: industry.id="
+              + id
+              + " ⇒ 格 "
+              + industryKey.get()
+              + "；entry=(q="
+              + entryHex.q()
+              + ",r="
+              + entryHex.r()
+              + ") ⇒ 格 "
+              + entryKey);
+    }
+  }
 
   private static Industry industry(JsonNode node) {
     IndustryId id = IndustryId.parse(requireText(node, "id"));
@@ -719,7 +835,12 @@ final class EconomyPayloads {
         commodityMap(optionalObject(node, "naturalNeeds"), "naturalNeeds");
     Map<CommodityId, Long> demand =
         commodityMap(optionalObject(node, "effectiveDemand"), "effectiveDemand");
+    HouseholdId householdId =
+        node.hasNonNull("householdId")
+            ? HouseholdId.parse(requireText(node, "householdId"))
+            : HouseholdId.ofSeed(hex, residence, slot);
     return new ClassRow(
+        householdId,
         new CohortKey(hex, residence, slot),
         population,
         laborMilli,

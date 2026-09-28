@@ -2,8 +2,8 @@ package io.mosire.simos.economy.resolve;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
@@ -114,24 +114,26 @@ public final class EconomyResolver implements Resolver {
   }
 
   private static QueryResult resolveClassRow(EconomyData data, String mapId, String name) {
-    CohortKey key = CohortKey.parse(name); // ★ 局部名 = 规范串本身（唯一拼写点），坏名字抛它自己的 IAE
-    if (!data.classes().containsKey(key)) {
+    // ★ S1：class 的局部名 = 家户**稳定身份**（HouseholdId）的规范串；旧档的 CohortKey 串由
+    //   EconomyCodec 在读入时映射成 ofLegacy 身份（地址解析器不复述那段兼容）。
+    HouseholdId id = HouseholdId.parse(name);
+    if (!data.classes().containsKey(id)) {
       return empty();
     }
     return single(
-        new SubjectId("economy.class", key.toString()),
-        entityAddress(mapId, "class", key.toString()),
+        new SubjectId("economy.class", id.value()),
+        entityAddress(mapId, "class", id.value()),
         "ClassRow");
   }
 
   private static QueryResult resolveFlowRow(EconomyData data, String mapId, String name) {
-    CohortKey key = CohortKey.parse(name);
-    if (!data.flows().containsKey(key)) {
+    HouseholdId id = HouseholdId.parse(name);
+    if (!data.flows().containsKey(id)) {
       return empty();
     }
     return single(
-        new SubjectId("economy.flow", key.toString()),
-        entityAddress(mapId, "flow", key.toString()),
+        new SubjectId("economy.flow", id.value()),
+        entityAddress(mapId, "flow", id.value()),
         "FlowRow");
   }
 

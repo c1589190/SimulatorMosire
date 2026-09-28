@@ -3,10 +3,13 @@ package io.mosire.simos.economy.change;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ShipmentId;
+import io.mosire.simos.economy.api.id.UseRightId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -17,6 +20,9 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.UseRight;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
@@ -26,9 +32,10 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 10 个：{@code meta} / {@code industries} /
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 13 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debts} / {@code flows} / {@code laborSupply} / {@code allocations} /
- * {@code relations} / {@code markets} / {@code shipments}）。
+ * {@code relations} / {@code markets} / {@code shipments} / {@code memberships} / {@code useRights}
+ * / {@code operatorConditions}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -62,7 +69,10 @@ public record EconomyChangeSet(
     FieldDelta<LaborAllocation> allocations,
     FieldDelta<ProductionRelation> relations,
     FieldDelta<Market> markets,
-    FieldDelta<ShipmentBatch> shipments)
+    FieldDelta<ShipmentBatch> shipments,
+    FieldDelta<Membership> memberships,
+    FieldDelta<UseRight> useRights,
+    FieldDelta<OperatorCondition> operatorConditions)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -105,6 +115,17 @@ public record EconomyChangeSet(
     if (shipments == null) {
       shipments = new FieldDelta.Unchanged<>();
     }
+    // ★ S1 的两个新组件：同一口径（旧档没提该组件，就是没动它）。
+    if (memberships == null) {
+      memberships = new FieldDelta.Unchanged<>();
+    }
+    if (useRights == null) {
+      useRights = new FieldDelta.Unchanged<>();
+    }
+    // ★ 第 13 个组件（S3.2）：同一口径（旧档没提该组件，就是没动它）。
+    if (operatorConditions == null) {
+      operatorConditions = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -121,7 +142,10 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.allocations(), target.allocations()),
         FieldDelta.diff(base.relations(), target.relations()),
         FieldDelta.diff(base.markets(), target.markets()),
-        FieldDelta.diff(base.shipments(), target.shipments()));
+        FieldDelta.diff(base.shipments(), target.shipments()),
+        FieldDelta.diff(base.memberships(), target.memberships()),
+        FieldDelta.diff(base.useRights(), target.useRights()),
+        FieldDelta.diff(base.operatorConditions(), target.operatorConditions()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -131,14 +155,17 @@ public record EconomyChangeSet(
     return new EconomyData(
         metaOf(FieldDelta.rebuild(metaTable(base.meta()), cs.meta(), Function.identity())),
         FieldDelta.rebuild(base.industries(), cs.industries(), IndustryId::parse),
-        FieldDelta.rebuild(base.classes(), cs.classes(), CohortKey::parse),
+        FieldDelta.rebuild(base.classes(), cs.classes(), EconomyChangeSet::householdId),
         FieldDelta.rebuild(base.debts(), cs.debts(), DebtId::parse),
-        FieldDelta.rebuild(base.flows(), cs.flows(), CohortKey::parse),
+        FieldDelta.rebuild(base.flows(), cs.flows(), EconomyChangeSet::householdId),
         FieldDelta.rebuild(base.laborSupply(), cs.laborSupply(), PeopleLotId::parse),
         FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse),
         FieldDelta.rebuild(base.relations(), cs.relations(), IndustryId::parse),
         FieldDelta.rebuild(base.markets(), cs.markets(), HexCoord::parse),
-        FieldDelta.rebuild(base.shipments(), cs.shipments(), ShipmentId::parse));
+        FieldDelta.rebuild(base.shipments(), cs.shipments(), ShipmentId::parse),
+        FieldDelta.rebuild(base.memberships(), cs.memberships(), MembershipId::parse),
+        FieldDelta.rebuild(base.useRights(), cs.useRights(), UseRightId::parse),
+        FieldDelta.rebuild(base.operatorConditions(), cs.operatorConditions(), IndustryId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -152,7 +179,10 @@ public record EconomyChangeSet(
         || allocations.changed()
         || relations.changed()
         || markets.changed()
-        || shipments.changed());
+        || shipments.changed()
+        || memberships.changed()
+        || useRights.changed()
+        || operatorConditions.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */
@@ -163,5 +193,17 @@ public record EconomyChangeSet(
   /** 上一条的逆：单键表 → {@code Optional}。空表 ⇒ 未激活。 */
   private static Optional<EconomyMeta> metaOf(Map<String, EconomyMeta> table) {
     return Optional.ofNullable(table.get(META_KEY));
+  }
+
+  /**
+   * ★★ S1：变更集里的键是 {@code toString()} 的产物 ⇒ 旧档的 CohortKey 串（{@code 0_0|rural|poor}，含 {@code |} 且非
+   * legacy- 前缀）必须在**重建时**映射成 {@link HouseholdId#ofLegacy}，否则它与快照迁移后的 classes 键对不上。 已是 {@code
+   * legacy-} 前缀的新键 ⇒ 原样 parse（幂等）。
+   */
+  private static HouseholdId householdId(String text) {
+    if (text != null && !text.startsWith(HouseholdId.LEGACY_PREFIX) && text.indexOf('|') >= 0) {
+      return HouseholdId.ofLegacy(CohortKey.parse(text));
+    }
+    return HouseholdId.parse(text);
   }
 }

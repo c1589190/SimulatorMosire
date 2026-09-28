@@ -577,7 +577,11 @@ public final class WorldgenInitializeTool implements AgentTool {
             // ★★ H5（⑤）：**经营主体的开缸账**也来自同一次 plan（`Seed.operators()`）⇒ 家户与经营者两族主体
             //   在同一份载荷里播下（命令数不变：仍是同一批里的一条 actor.Seed）。
             HouseholdSeeder.payload(
-                mapId, seeding.householdStocks(), seeding.householdMoney(), seeding.operators())));
+                mapId,
+                seeding.householdLocations(),
+                seeding.householdStocks(),
+                seeding.householdMoney(),
+                seeding.operators())));
     return List.copyOf(batch);
   }
 

@@ -7,10 +7,10 @@ import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -98,9 +98,10 @@ public final class HouseholdSeeder {
    */
   public static String payload(
       String mapId,
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
-    return payload(mapId, householdStocks, householdMoney, List.of());
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+    return payload(mapId, householdLocations, householdStocks, householdMoney, List.of());
   }
 
   /**
@@ -114,30 +115,33 @@ public final class HouseholdSeeder {
    */
   public static String payload(
       String mapId,
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       List<EconomySeeder.OperatorSeed> operators) {
     if (mapId == null || mapId.isBlank()) {
       throw new IllegalArgumentException("mapId 不得为空白: " + mapId);
     }
+    Objects.requireNonNull(householdLocations, "householdLocations");
     Objects.requireNonNull(householdStocks, "householdStocks");
     Objects.requireNonNull(householdMoney, "householdMoney");
     Objects.requireNonNull(operators, "operators（没有经营者就给空表）");
     Map<HexCoord, List<EconomySeeder.OperatorSeed>> operatorsByHex = operatorsByHex(operators);
     List<Map<String, Object>> entries = new ArrayList<>();
-    for (Map.Entry<HexCoord, List<CohortKey>> atHex : byHex(householdStocks).entrySet()) {
+    for (Map.Entry<HexCoord, List<HouseholdId>> atHex :
+        byHex(householdLocations, householdStocks).entrySet()) {
       HexCoord hex = atHex.getKey();
       List<Map<String, Object>> actors = new ArrayList<>(atHex.getValue().size());
       List<Map<String, Object>> goods = new ArrayList<>(atHex.getValue().size());
-      for (CohortKey cohort : atHex.getValue()) {
-        ActorRef actor = HouseholdActors.of(cohort);
-        actors.add(actorNode(actor, labelOf(cohort)));
+      for (HouseholdId household : atHex.getValue()) {
+        ActorRef actor = HouseholdActors.of(household);
+        actors.add(actorNode(actor, labelOf(household)));
         goods.add(
             goodsNode(
                 actor,
                 hex,
-                householdStocks.getOrDefault(cohort, Map.of()),
-                householdMoney.getOrDefault(cohort, Map.of())));
+                householdStocks.getOrDefault(household, Map.of()),
+                householdMoney.getOrDefault(household, Map.of())));
       }
       // ★★ H5：本格的经营主体（有产业才有它；见 EconomySeeder.operatorSeed）—— 与家户同一个 actors/goods 形状。
       for (EconomySeeder.OperatorSeed operator : operatorsByHex.getOrDefault(hex, List.of())) {
@@ -173,9 +177,10 @@ public final class HouseholdSeeder {
    * 否则"手搭世界"与"真播种世界"会在钱上漂开 —— 而那正是本仓最忌的"同一事实两处拼写点"。
    */
   public static ActorData books(
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney) {
-    return books(householdStocks, householdMoney, List.of());
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+    return books(householdLocations, householdStocks, householdMoney, List.of());
   }
 
   /**
@@ -184,18 +189,21 @@ public final class HouseholdSeeder {
    * 只是多了经营者这一族）。
    */
   public static ActorData books(
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks,
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney,
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       List<EconomySeeder.OperatorSeed> operators) {
+    Objects.requireNonNull(householdLocations, "householdLocations");
     Objects.requireNonNull(householdStocks, "householdStocks");
     Objects.requireNonNull(householdMoney, "householdMoney");
     Objects.requireNonNull(operators, "operators（没有经营者就给空表）");
     Map<ActorRef, Actor> actors = new LinkedHashMap<>();
     Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
-    for (Map.Entry<HexCoord, List<CohortKey>> atHex : byHex(householdStocks).entrySet()) {
-      for (CohortKey cohort : atHex.getValue()) {
-        ActorRef actor = HouseholdActors.of(cohort);
-        actors.put(actor, new Actor(actor, labelOf(cohort)));
+    for (Map.Entry<HexCoord, List<HouseholdId>> atHex :
+        byHex(householdLocations, householdStocks).entrySet()) {
+      for (HouseholdId household : atHex.getValue()) {
+        ActorRef actor = HouseholdActors.of(household);
+        actors.put(actor, new Actor(actor, labelOf(household)));
         // ★ 账本**按绝对值**建（含空账）：0 余额保留是本仓既定口径（读口因此读得到"这个家户在这一格有一本账"）。
         // ★★ M1.3：显式带过两张**冻结表** —— 创世没有冻结（M1.2 的两张表从空表开始），但这里**不许**用三参便捷
         //   构造器：它给的是"冻结 = 空表"，将来若创世要带冻结（例如"先落占用再交割"的世界），漏带会静默清零。
@@ -204,8 +212,8 @@ public final class HouseholdSeeder {
             accountKey,
             new GoodsAccount(
                 accountKey,
-                householdStocks.getOrDefault(cohort, Map.of()),
-                householdMoney.getOrDefault(cohort, Map.of()),
+                householdStocks.getOrDefault(household, Map.of()),
+                householdMoney.getOrDefault(household, Map.of()),
                 Map.of(),
                 Map.of()));
       }
@@ -233,8 +241,9 @@ public final class HouseholdSeeder {
   }
 
   /** 家户的显示名（{@code <居住类型> <阶层> 家户}）—— ★ **只为读**，不参与任何身份判定（身份是 {@link ActorRef}）。 */
-  private static String labelOf(CohortKey cohort) {
-    return cohort.residence().value() + " " + cohort.stratum().value() + " 家户";
+  private static String labelOf(HouseholdId household) {
+    // ★ S1：显示名只为读，不参与任何身份判定；家户的视图不再从 id 反解（视图是 ClassRow 的字段）。
+    return "家户 " + household.value();
   }
 
   /**
@@ -242,20 +251,24 @@ public final class HouseholdSeeder {
    *
    * <p>★ <b>排序而不是沿用 Map 的插入序</b>：插入序是"谁先算出来"的函数，而调用方可能来自别处（夹具/迁移）； 排序后"同一份库存表 ⇒ 同一份载荷/状态"这条判据是构造性的。
    */
-  static Map<HexCoord, List<CohortKey>> byHex(
-      Map<CohortKey, Map<CommodityId, Long>> householdStocks) {
-    Map<HexCoord, List<CohortKey>> byHex = new LinkedHashMap<>();
-    for (CohortKey cohort : householdStocks.keySet()) {
-      byHex.computeIfAbsent(cohort.hex(), ignored -> new ArrayList<>()).add(cohort);
+  static Map<HexCoord, List<HouseholdId>> byHex(
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks) {
+    Map<HexCoord, List<HouseholdId>> byHex = new LinkedHashMap<>();
+    for (HouseholdId household : householdStocks.keySet()) {
+      HexCoord location = householdLocations.get(household);
+      if (location == null) {
+        throw new IllegalStateException(
+            "家户缺 location，无法装配账户键（S1：账户 = (actor, location)）：" + household);
+      }
+      byHex.computeIfAbsent(location, ignored -> new ArrayList<>()).add(household);
     }
-    for (List<CohortKey> atHex : byHex.values()) {
-      atHex.sort(
-          Comparator.comparing((CohortKey key) -> key.residence().value())
-              .thenComparing(key -> key.stratum().value()));
+    for (List<HouseholdId> atHex : byHex.values()) {
+      atHex.sort(Comparator.comparing(HouseholdId::value));
     }
     List<HexCoord> hexes = new ArrayList<>(byHex.keySet());
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
-    Map<HexCoord, List<CohortKey>> sorted = new LinkedHashMap<>();
+    Map<HexCoord, List<HouseholdId>> sorted = new LinkedHashMap<>();
     for (HexCoord hex : hexes) {
       sorted.put(hex, byHex.get(hex));
     }

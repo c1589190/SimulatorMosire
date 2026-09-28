@@ -2,20 +2,20 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
@@ -118,11 +118,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     // 0_0|rural|poor_peasant}）。
     //   键里已经没有产业 ⇒ 旧版内联拼的 {@code <industryId>.<slotId>} 既拼不出来、也不该再拼（那是**第二处拼写点**）。
     //   ★ 与 {@code EconomyResolver} 的 class/flow 地址**必须逐字同串**：读写集的冲突检测全靠它。
-    for (CohortKey key : economy.classes().keySet()) {
+    for (HouseholdId key : economy.classes().keySet()) {
       reads.add(economyAddress("class", key.toString()));
       writes.add(economyAddress("class", key.toString()));
     }
-    for (CohortKey key : economy.flows().keySet()) {
+    for (HouseholdId key : economy.flows().keySet()) {
       writes.add(economyAddress("flow", key.toString()));
     }
     reads.add(economyAddressRoot());
@@ -158,50 +158,37 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           writes);
     }
 
-    // ★★ H1（裁定 K1）：家户账的**会话工作副本** —— 持久真源是 actor 切片的 {@code GoodsAccount}，
-    //   日结算（消费 / 投入 / 同格取材 / 关系实付入账）在副本上就地发生 ⇒ 推进前从 actor 侧载入。
-    //   ★ 载入不出来 ⇒ {@link OwnershipBooks#loadHouseholdGoods} 当场抛（真档应为"每格两组四行"一个不少）。
-    Map<CohortKey, Map<CommodityId, Long>> householdGoods =
-        OwnershipBooks.loadHouseholdGoods(economy, actor);
-    // ★★ H4（裁定 K14）：**货币账的会话工作副本** —— 与商品副本逐字同形、同一生命周期（同一本
-    //   {@code GoodsAccount} 的第二个余额表）：同格市场池按它算购买力，工钱/地租的货币腿也写在它上面。
-    //   ★ 它同样**不进 EconomyData、不进变更集、不跨 revision**；★ 载入不出来同样当场抛。
-    Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
-        OwnershipBooks.loadHouseholdMoney(economy, actor);
-    // ★★ H5（⑤）：**经营者账的两份会话工作副本**（商品 + 货币）—— 与家户那两份同形、同生命周期、同样不进
-    //   EconomyData/变更集；载入缺席不抛（手搭夹具的合法状态，见 {@link OwnershipBooks#loadOperatorGoods}）。
-    Map<ActorRef, Map<CommodityId, Long>> operatorGoods =
-        OwnershipBooks.loadOperatorGoods(economy, actor);
-    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney =
-        OwnershipBooks.loadOperatorMoney(economy, actor);
-    // ★★ M2（M1.2/M1.4 的接缝）：家户与经营者的**两张冻结快照**（商品 + 货币）—— 与余额副本同一次载入、
-    //   同一生命周期；订单生成用它们算可卖量与预算，本类不落回（L1 的订单是瞬时的，冻结额不变）。
-    //   真档今天没有冻结写者 ⇒ 这四张表恒空。
-    Map<CohortKey, Map<CommodityId, Long>> householdFrozenGoods =
-        OwnershipBooks.loadHouseholdFrozenGoods(economy, actor);
-    Map<CohortKey, Map<CurrencyId, Long>> householdFrozenMoney =
-        OwnershipBooks.loadHouseholdFrozenMoney(economy, actor);
-    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods =
-        OwnershipBooks.loadOperatorFrozenGoods(economy, actor);
-    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney =
-        OwnershipBooks.loadOperatorFrozenMoney(economy, actor);
+    // ★★ S1：唯一账户会话 —— 家户（商品/货币/冻结）+ 经营者（商品/货币/冻结）一次装载；
+    //   键 = (ActorRef, HexCoord)，家户 actor id 由 HouseholdId 唯一派生（不再从 CohortKey 拼）。
+    //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
+    ActorData migratedBooks = OwnershipBooks.migrateLegacyHouseholdAccounts(actor, economy);
+    // ★ S1.5：搬迁后的新账户键也要进读写集（否则第二次推进的冲突检测看不见它们）。
+    for (GoodsAccountKey key : migratedBooks.accounts().keySet()) {
+      reads.add(accountAddress(key));
+      writes.add(accountAddress(key));
+    }
+    AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
-            householdGoods,
-            householdMoney,
-            householdFrozenGoods,
-            householdFrozenMoney,
-            operatorGoods,
-            operatorMoney,
-            operatorFrozenGoods,
-            operatorFrozenMoney,
+            session,
             // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
             MarketTopologyBook.from(state));
+    // ★★ S1.4 后置不变量（app 侧，唯一看得见 social 的地方）：
+    //   · 旧档（meta.rulesVersion = pre-modern-v1）的迁移器只能按行人口反推近似份额 / 合成 lot ⇒ 第一次推进前按
+    //     social 真实批次重建一次（片区总量对不上 ⇒ fail-closed）；
+    //   · 新档 ⇒ 逐 lot 严格校验（不等当场抛，不静默均摊）。
+    if (isLegacyMigration(economy)) {
+      if (!MembershipWriteback.isConsistent(stepper.memberships(), stepper.classRows(), social)) {
+        MembershipWriteback.rebuildLegacy(stepper.classRows(), stepper.memberships(), social);
+      }
+    } else {
+      MembershipWriteback.requireConsistent(stepper.memberships(), stepper.classRows(), social);
+    }
+    ActorData currentBooks = migratedBooks;
     SocialData currentSocial = social;
-    ActorData currentBooks = actor;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
-      LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
+      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
       // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
       //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
       //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
@@ -219,35 +206,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       // ★★ H1：家户账**按绝对值**落回 actor 切片（不是"再叠加一遍条目"，见 OwnershipBooks 的类注）——
       //   日耗 / 投入 / 同格取材只写副本（它们不是产权条目），而关系实付既进条目、也已计进副本
       //   ⇒ 这一步是它们唯一共同的落点。★ 副本是**活的**（step 就地更新）⇒ 每天重新读访问器，不缓存引用。
-      currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
-      // ★★ H4：货币账紧跟着按绝对值落回（同一本账的另一个余额表；顺序不能反，见
-      //   {@link OwnershipBooks#landHouseholdMoney}）。
-      currentBooks = OwnershipBooks.landHouseholdMoney(currentBooks, stepper.householdMoney());
-      // ★★ H5（⑤）：经营者账同样按绝对值落回（商品先、货币后）。
-      currentBooks =
-          OwnershipBooks.landOperatorGoods(stepper.data(), currentBooks, stepper.operatorGoods());
-      currentBooks =
-          OwnershipBooks.landOperatorMoney(stepper.data(), currentBooks, stepper.operatorMoney());
+      // ★★ S1：全部账户（家户 + 经营者；商品 + 货币 + 冻结）按会话绝对值一次落回。
+      currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
       // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
-      currentSocial = applyDailyStress(stepper.data(), currentSocial, stepper.flows(), unmetBefore);
+      currentSocial =
+          applyDailyStress(stepper.classRows(), currentSocial, stepper.flows(), unmetBefore);
       // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
       if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
         PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
         currentSocial = outcome.data();
         if (!outcome.isEmpty()) {
           stepper.applyPopulationChange(outcome.changeList());
+          // ★★ S1.4.1 的跨切片收口：出生落在**新的 born lot**（社会侧），存量 lot 只减死亡 ⇒ 在这里按行人口权重
+          //   为新批次补建份额，然后逐 lot 硬校验。顺序必须在 landAccountSession 之前（份额不进账户，但它与行人口
+          //   同属 economy 工作副本，先收口再构造终态）。
+          MembershipWriteback.reconcile(stepper.classRows(), stepper.memberships(), currentSocial);
           // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
-          //   ★ 放在月度回写之后、且**在条目落账之后**：家户账以副本的绝对值收尾（顺序反了会把条目加两遍）。
-          currentBooks = OwnershipBooks.landHouseholdGoods(currentBooks, stepper.householdGoods());
-          // ★★ H4：货币副本同样在**同一个月度边界**重新对齐（它与商品副本同生命周期 ⇒ 一起收尾）。
-          currentBooks = OwnershipBooks.landHouseholdMoney(currentBooks, stepper.householdMoney());
-          // ★ H5：经营者账在**同一个月度边界**重新对齐（与家户那两份同生命周期 ⇒ 一起收尾）。
-          currentBooks =
-              OwnershipBooks.landOperatorGoods(
-                  stepper.data(), currentBooks, stepper.operatorGoods());
-          currentBooks =
-              OwnershipBooks.landOperatorMoney(
-                  stepper.data(), currentBooks, stepper.operatorMoney());
+          //   ★ 放在月度回写之后、且**在条目落账之后**：全部账户以会话的绝对值收尾（顺序反了会把条目加两遍）。
+          currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
         }
       }
     }
@@ -284,14 +260,14 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * @param unmetBefore 当日结算**之前**的 {@code FlowRow.unmetNeed} 快照（用于取"当天新增的那一笔"）
    */
   private static SocialData applyDailyStress(
-      EconomyData economy,
+      Map<HouseholdId, ClassRow> classes,
       SocialData social,
-      Map<CohortKey, FlowRow> flows,
-      Map<CohortKey, Map<CommodityId, Long>> unmetBefore) {
-    if (social.groups().isEmpty() || economy.classes().isEmpty()) {
+      Map<HouseholdId, FlowRow> flows,
+      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore) {
+    if (social.groups().isEmpty() || classes.isEmpty()) {
       return social; // 没有批次/没有经济 ⇒ 没有可算的人
     }
-    Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(economy, flows, unmetBefore);
+    Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(classes, flows, unmetBefore);
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
     for (PopulationGroup group : social.groups().values()) {
       // ★ 批次 → 家户：**落点格 + 居住类型**（前缀的唯一判定在 {@link ResidenceKind#ofLot}）。
@@ -317,15 +293,17 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   /** 逐家户组的当日 {@code [粮需求, 粮实得, 布需求, 布实得]}（毫单位）—— 该格该居住类型的**四行求和**。 */
   private static Map<HouseholdRef, long[]> dailyProvisioning(
-      EconomyData economy,
-      Map<CohortKey, FlowRow> flows,
-      Map<CohortKey, Map<CommodityId, Long>> unmetBefore) {
+      Map<HouseholdId, ClassRow> classes,
+      Map<HouseholdId, FlowRow> flows,
+      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore) {
     Map<HouseholdRef, long[]> byHousehold = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, ClassRow> entry : economy.classes().entrySet()) {
-      CohortKey key = entry.getKey();
+    for (Map.Entry<HouseholdId, ClassRow> entry : classes.entrySet()) {
+      HouseholdId key = entry.getKey();
+      ClassRow classRow = entry.getValue();
       long[] row =
           byHousehold.computeIfAbsent(
-              new HouseholdRef(key.hex(), key.residence()), ignored -> new long[4]);
+              new HouseholdRef(classRow.view().hex(), classRow.view().residence()),
+              ignored -> new long[4]);
       long grainNeed = entry.getValue().naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
       long clothNeed = entry.getValue().naturalNeeds().getOrDefault(EconomySettlement.CLOTH, 0L);
       row[0] += grainNeed;
@@ -338,9 +316,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   /** 某行某商品**当天新增**的未满足需求（= 结算后 − 结算前）。 */
   private static long dayUnmet(
-      Map<CohortKey, FlowRow> flows,
-      Map<CohortKey, Map<CommodityId, Long>> unmetBefore,
-      CohortKey key,
+      Map<HouseholdId, FlowRow> flows,
+      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore,
+      HouseholdId key,
       CommodityId commodity) {
     FlowRow after = flows.get(key);
     long now = after == null ? 0L : after.unmetNeed().getOrDefault(commodity, 0L);
@@ -358,16 +336,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   }
 
   /** 各行的 {@code unmetNeed} 快照（当日结算前）——只读一份，供"当天新增"的差分用。 */
-  private static LinkedHashMap<CohortKey, Map<CommodityId, Long>> unmetOf(
-      Map<CohortKey, FlowRow> flows) {
-    LinkedHashMap<CohortKey, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, FlowRow> entry : flows.entrySet()) {
+  private static LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetOf(
+      Map<HouseholdId, FlowRow> flows) {
+    LinkedHashMap<HouseholdId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, FlowRow> entry : flows.entrySet()) {
       copy.put(entry.getKey(), entry.getValue().unmetNeed());
     }
     return copy;
   }
 
   // ── 切片读取与地址 ────────────────────────────────────────────────────────────────────
+
+  /** ★ 是否旧档迁移态（只有旧档需要按 social 重建份额；新档逐 lot 严格校验）。 */
+  private static boolean isLegacyMigration(EconomyData economy) {
+    return economy
+        .meta()
+        .map(meta -> EconomyMeta.RULES_VERSION_PRE_MODERN_V1.equals(meta.rulesVersion()))
+        .orElse(false);
+  }
 
   private static EconomyData economyOf(SimulationState state) {
     Snapshot snapshot =

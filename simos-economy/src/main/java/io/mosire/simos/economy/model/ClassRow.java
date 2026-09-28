@@ -3,6 +3,7 @@ package io.mosire.simos.economy.model;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -42,7 +43,8 @@ import java.util.Map;
  * Map.copyOf}**——迭代序不是内容的纯函数。冻结那一步**写在字段赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP} 不做跨过程分析，只认它看得见的包装）⇒
  * 逐段构造**逐字展开、不抽 helper**（照 {@code Account}/{@code Industry} 的先例）。
  *
- * @param key 身份（家户 = 格 + 居住类型 + 阶层）；在 {@code EconomyData.classes} 里必须与其 Map 键一致
+ * @param id ★★ <b>家户稳定身份</b>（S1）：是 {@code EconomyData.classes} 的键，迁移/分层/居住变化都不改它
+ * @param view 当前视图（格 + 居住类型 + 阶层）：可变，不再是身份
  * @param population 人口（人）；不得为负
  * @param laborMilli **未按参与率折算的**每日劳动（千分劳动/日）——由 social 的人数 × 年龄×性别系数而来；不得为负 ★
  *     M1.8：它是"这份人有多少劳动能力"的毛量；按阶层参与率折算后的可用劳动<b>不存成第二份字段</b>，而是由 {@link
@@ -59,7 +61,8 @@ import java.util.Map;
  *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.classRow} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
 public record ClassRow(
-    CohortKey key,
+    HouseholdId id,
+    CohortKey view,
     long population,
     long laborMilli,
     int participationPerMille,
@@ -70,8 +73,11 @@ public record ClassRow(
     long cycleNaturalNeedMilli) {
 
   public ClassRow {
-    if (key == null) {
-      throw new IllegalArgumentException("ClassRow.key 不得为 null");
+    if (id == null) {
+      throw new IllegalArgumentException("ClassRow.id 不得为 null（家户稳定身份，S1 起与视图分离）");
+    }
+    if (view == null) {
+      throw new IllegalArgumentException("ClassRow.view 不得为 null（当前格 + 居住类型 + 阶层）");
     }
     if (population < 0) {
       throw new IllegalArgumentException("ClassRow.population 不得为负: " + population);
@@ -133,6 +139,15 @@ public record ClassRow(
       debtsCopy.add(debt);
     }
     debts = Collections.unmodifiableList(debtsCopy); // ★ 冻在赋值处
+  }
+
+  /**
+   * ★ 当前视图（{@code 格 + 居住类型 + 阶层}）—— 旧调用点的兼容别名；新代码请写 {@link #view()}。
+   *
+   * <p>★★ <b>它不再是可以当身份用的键</b>：{@code EconomyData.classes/flows} 的键是 {@link #id()}。
+   */
+  public CohortKey key() {
+    return view;
   }
 
   /**

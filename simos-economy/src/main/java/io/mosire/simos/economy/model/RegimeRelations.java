@@ -5,11 +5,13 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
@@ -297,7 +299,40 @@ public final class RegimeRelations {
     // ★★ H3/C3：投入的提供者由**制度**说（见 defaultInputSupplier 的类注）—— 四档默认同值（都落在 operator 上），
     //   但"谁出料"从此是**本表的一行**，不再是结算里按人口算出来的一个比例。
     return new ProductionRelation(
-        industry, operator, defaultInputSupplier(regime, operator), rules, operator);
+        industry,
+        operator,
+        defaultInputSupplier(regime, operator),
+        rules,
+        operator,
+        laborSourceFor(regime));
+  }
+
+  /**
+   * ★★ <b>S1：四档默认的 {@link LaborSource}</b>（唯一拼写点）—— {@code feudal=SERF}、{@code tenant=TENANT}、
+   * {@code household=FAMILY}、{@code handicraft=WAGE}。
+   *
+   * <p>★ 旧档没有这一维时 {@code ProductionRelation} 的构造期兜底是 {@code SELF}；本方法服务"按制度推导"的新路径。 未登记 ⇒
+   * 抛（与其余入口同口径）。
+   */
+  public static LaborSource laborSourceFor(RegimeId regime) {
+    if (regime == null) {
+      throw new IllegalArgumentException("regime 不得为 null");
+    }
+    String value = regime.value();
+    if (RegimeOperators.FEUDAL.equals(value)) {
+      return LaborSource.SERF;
+    }
+    if (RegimeOperators.TENANT.equals(value)) {
+      return LaborSource.TENANT;
+    }
+    if (RegimeOperators.HOUSEHOLD.equals(value)) {
+      return LaborSource.FAMILY;
+    }
+    if (RegimeOperators.HANDICRAFT.equals(value)) {
+      return LaborSource.WAGE;
+    }
+    throw new IllegalArgumentException(
+        "未登记的制度，无法推导默认劳动来源：" + value + "；已登记的档: " + BY_REGIME.keySet());
   }
 
   /**
@@ -322,9 +357,9 @@ public final class RegimeRelations {
       IndustryId industry,
       ActorRef operator,
       Set<ResidenceKind> residences,
-      Map<CohortKey, Long> laborOfCohort) {
+      Map<HouseholdId, Long> laborOfHousehold) {
     return SubsistenceObligation.of(
-        defaultRelation(regime, industry, operator, residences), laborOfCohort);
+        defaultRelation(regime, industry, operator, residences), laborOfHousehold);
   }
 
   /**

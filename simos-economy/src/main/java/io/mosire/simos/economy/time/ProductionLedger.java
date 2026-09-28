@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -141,10 +142,26 @@ public record ProductionLedger(
     private long transferSequence;
 
     /**
+     * ★★ <b>分区序号</b>（R2）：{@code < 0} = 协调器累加器（id 形如 {@code tr-<day>-<seq>}）； {@code ≥ 0} = worker
+     * 分区累加器（id 形如 {@code tr-<day>-p<partition>-<seq>}）。
+     *
+     * <p>★ 为什么必须分段：并行 worker 各自从 1 起算序号，若仍拼 {@code tr-<day>-<seq>}，两个分区会铸出<b>同一条 id</b>。
+     * 带上固定分区号后，{@code (partition, seq)} 在当天唯一；分区号来自与提交序同一处 {@code
+     * AccountPartitionKey.partitionIndexOf}，1/4/8 线程（结构分区数固定）给出同一批 id。
+     */
+    private final int partitionIndex;
+
+    /**
      * @param day 这一天是第几个世界日（进 {@link Transfer#day()} 与 id 的第二段）
      */
     Accumulator(long day) {
+      this(day, -1);
+    }
+
+    /** ★ R2：worker 的分区累加器（id 带 {@code p<partitionIndex>} 段；见 {@link #partitionIndex}）。 */
+    Accumulator(long day, int partitionIndex) {
       this.day = day;
+      this.partitionIndex = partitionIndex;
     }
 
     void addGross(IndustryId industry, CommodityId commodity, long amount) {
@@ -181,19 +198,50 @@ public record ProductionLedger(
         Map<CommodityId, Long> goods,
         Map<CurrencyId, Long> money,
         TransferReason reason) {
+      long sequence = ++transferSequence;
+      String id =
+          partitionIndex < 0
+              ? "tr-" + day + "-" + sequence
+              : "tr-" + day + "-p" + partitionIndex + "-" + sequence;
       Transfer transfer =
           new Transfer(
-              new TransferId("tr-" + day + "-" + (++transferSequence)),
-              day,
-              from,
-              to,
-              location,
-              goods,
-              money,
-              reason,
-              Optional.empty());
+              new TransferId(id), day, from, to, location, goods, money, reason, Optional.empty());
       transfers.add(transfer);
       return transfer;
+    }
+
+    /**
+     * ★★ <b>把一个分区 worker 的账本吸收进协调器账本</b>（R2）：调用方按 {@link PartitionPlan} 的分区序遍历结果逐个吸收 ⇒
+     * 列表序与读数序是内容的纯函数。
+     *
+     * <p>★ 逐商品表按量合并（整数加法可交换）；四个列表<b>追加</b>，保持"先阶段、再分区、再分区内生成序"的稳定序。 分区号不参与拼接判定（同一天的不同阶段都会有分区
+     * 0..N），序由调用方的遍历序承担。
+     */
+    void absorb(Accumulator partitionLedger) {
+      Objects.requireNonNull(partitionLedger, "partitionLedger");
+      mergeQuantities(gross, partitionLedger.gross);
+      mergeQuantities(losses, partitionLedger.losses);
+      mergeQuantities(inputs, partitionLedger.inputs);
+      outputAccruals.addAll(partitionLedger.outputAccruals);
+      transfers.addAll(partitionLedger.transfers);
+      ruleSettlements.addAll(partitionLedger.ruleSettlements);
+      deferredMoney.addAll(partitionLedger.deferredMoney);
+      if (marketReport == null && partitionLedger.marketReport != null) {
+        marketReport = partitionLedger.marketReport;
+      }
+    }
+
+    /** 逐产业 × 逐商品的两层表按量合并（键序 = 首次出现序；不引入第二份累加器）。 */
+    private static void mergeQuantities(
+        Map<IndustryId, Map<CommodityId, Long>> target,
+        Map<IndustryId, Map<CommodityId, Long>> source) {
+      for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : source.entrySet()) {
+        Map<CommodityId, Long> inner =
+            target.computeIfAbsent(entry.getKey(), ignored -> new LinkedHashMap<>());
+        for (Map.Entry<CommodityId, Long> quantity : entry.getValue().entrySet()) {
+          inner.merge(quantity.getKey(), quantity.getValue(), Long::sum);
+        }
+      }
     }
 
     /** 一条逐规则的实得读数（应付 / 实付 / 欠；★ 只读）。 */

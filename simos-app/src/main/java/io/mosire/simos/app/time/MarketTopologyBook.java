@@ -19,6 +19,7 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,10 @@ import java.util.Set;
  *
  * <p>★ <b>M2.7 起 {@link MarketReadoutAssembly}（同包）复用本类</b>：逐格市场读数与结算读的是同一份拓扑
  * （不许在视图层另算一套区域）；它仍是纯派生件、不是状态。
+ *
+ * <p>★★ <b>R0 / P1.1：地形索引在本类里只建一次</b>（{@link #terrainCostIndex(GameMap)}），交给 {@link MarketTopology}
+ * 的 lambda 只查表 —— 消除每次调用 {@code GameMap.terrainIndex()} 重建 59,223 条 的主项（见 {@code
+ * from(SimulationState)} 的注释）。语义逐值不变。
  */
 final class MarketTopologyBook {
 
@@ -108,8 +113,14 @@ final class MarketTopologyBook {
     if (nodes.isEmpty()) {
       return MarketTopology.singleHex(economy.markets());
     }
+    // ★★ R0 / P1.1：地形索引**一次构建、之后查表**。`GameMap.terrainIndex()` 每次调用都会重建
+    //   59,223 条（实测占市场轮 22.66%），而旧写法在 `moveCostAt` 里**逐格调用**它 ⇒ O(格数²)。
+    Map<HexCoord, Integer> terrainCost = terrainCostIndex(gameMap);
     return MarketTopology.of(
-        nodes, economy.markets(), economy.markets().keySet(), hex -> moveCostAt(gameMap, hex));
+        nodes,
+        economy.markets(),
+        economy.markets().keySet(),
+        hex -> terrainCostOf(terrainCost, hex));
   }
 
   /** 一个节点：锚格必须有市场（否则没有报价币种可用）；非 silver 市场本批跳过（单一货币工具）。 */
@@ -139,14 +150,26 @@ final class MarketTopologyBook {
     return null;
   }
 
-  /** 逐格地形代价（原始 moveCost；上层按 {@code TerrainType.IMPASSABLE_MOVE_COST} 判不可通行）。 */
-  private static int moveCostAt(GameMap map, HexCoord hex) {
-    String key = map.terrainIndex().get(hex);
-    if (key == null) {
-      return 1; // 不在图上的格（单模块夹具）：按平原，不因缺图把路判死
+  /**
+   * ★★ <b>R0 / P1.1：一次性地形代价索引</b>（键 = 格，值 = 原始 {@code moveCost}）。
+   *
+   * <p>构建一次的成本 = 一次 {@link GameMap#terrainIndex()}（O(格数)）；查表是 O(1)。旧实现在 {@link #moveCostAt} 里逐格重建索引
+   * ⇒ 市场轮的地形项从 O(格数) 涨到 O(格数²)。本方法保持**逐值同旧** （地形 key 查不到类型 ⇒ 平原 1；缺格 ⇒ 平原 1）。
+   */
+  private static Map<HexCoord, Integer> terrainCostIndex(GameMap map) {
+    Map<String, TerrainType> types = map.terrainTypes();
+    Map<HexCoord, Integer> index = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, String> entry : map.terrainIndex().entrySet()) {
+      TerrainType type = types.get(entry.getValue());
+      index.put(entry.getKey(), type == null ? 1 : type.moveCost());
     }
-    TerrainType type = map.terrainTypes().get(key);
-    return type == null ? 1 : type.moveCost();
+    return index;
+  }
+
+  /** 查表：不在索引里的格（单模块夹具）按平原 1，不因缺图把路判死（与旧 {@code moveCostAt} 逐值一致）。 */
+  private static int terrainCostOf(Map<HexCoord, Integer> terrainCost, HexCoord hex) {
+    Integer cost = terrainCost.get(hex);
+    return cost == null ? 1 : cost;
   }
 
   private static EconomyData economyOf(SimulationState state) {
