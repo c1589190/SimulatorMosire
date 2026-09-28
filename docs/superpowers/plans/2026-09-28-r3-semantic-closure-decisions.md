@@ -25,6 +25,26 @@
 
 > 下文 §1–§5 保留原始选项作为讨论留痕；执行时以本节的用户裁定为准。
 
+### 0.1 最终裁定：D1/D4 = 方案 B（生产模型与阶层模型分离）
+
+- **B 已确认**：`Industry` 降为**技术/配方模板**；新增 `ProductionUnit` 表示“某经营者实际进行的生产活动”；
+  `AssetShare` 表示“地点/产业、资产类型、所有者、实际经营者、数量”；
+- 阶层划分只读 `AssetShare`（owner/operator）、`ProductionUnit`、`ProductionRelation`、`LaborAllocation`、债务，
+  **不把阶层塞进生产单位**；
+- 产出/投入/账户严格归 `ProductionUnit.operator`；禁止“资产记在甲名下、产出落到庄园”；
+- D1 只首次写 `AssetShare` + `ProductionUnit`；D4 的租佃/转让/退出/迁移/未来 GOV 征用只在事件点改这两张表；
+- 汇总索引（各经营者可用资产）只在份额/生产单位变化时重建，日常生产直接读索引。
+
+**实施切片（每片只编译 + 一次 ≤3 min 90 tick 冒烟）**：
+
+| 切片 | 内容 | 完成判据 |
+|---|---|---|
+| **R3B.1** | `UseRight` → `AssetShare`（owner/operator/quantity）；EconomyData/ChangeSet/Codec/迁移；旧档 owner=operator=旧 holder；不改变现有单 operator 产出归属 | 编译绿；tick0 `Σ AssetShare == capacity`；旧档可读 |
+| **R3B.2** | 新增 `ProductionUnit`（operator/capacity/progress/inputs/output 账户）；`Industry` 只留配方/技术容量；`ProductionRelation` 键改 `ProductionUnitId`；旧 `Industry.operator/progress` 迁移到默认生产单位 | 编译绿；单 operator 行为与 R3B.1 逐值一致 |
+| **R3B.3** | 播种/迁移按份额生成多个 ProductionUnit（庄园 60 + 甲佃耕 40）；事件命令改份额与 operator；产出按实际 operator 落账 | 冒烟：庄园/甲两个 unit 各有 progress/产出账；`Σ shares == capacity` |
+| **R3B.4** | D2 动态调整 class transition；移除 `slotCapFallback` 长期兜底；D3 只保留债务/未满足读数，不做救济 | 冒烟：living 行四档齐全；阶层变化伴随 participation/labor 合法调整 |
+
+
 ---
 
 ## 0. 当前事实（回代码核过）
