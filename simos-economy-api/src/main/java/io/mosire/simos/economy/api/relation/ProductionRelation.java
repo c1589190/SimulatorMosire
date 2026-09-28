@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.api.relation;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,8 +10,9 @@ import java.util.List;
  * <b>劳动提供者</b>、<b>资产所有者</b>之间分掉（裁定 E4 的单列表形态）。
  *
  * <p>★★ <b>它不另造 id</b>：身份 = 它结算的那个 {@link #activity()}（铁律 1 —— id 是身份，不在切片里另造同义 ID）。★ 关系表因此是 {@code
- * EconomyData} 的<b>第 8 个组件</b>、键 = {@code IndustryId}，并与 {@code Industry.operator} 有<b>跨表守卫</b>
- * （两处拼写必须一致；守卫住 {@code EconomyData}，不在这里 —— 本类型看得见自己，看不见那张产业表）。
+ * EconomyData} 的<b>第 8 个组件</b>、键 = {@code ProductionUnitId}（R3B.2 起），并与 {@code
+ * ProductionUnit.operator} 有<b>跨表守卫</b> （两处拼写必须一致；守卫住 {@code EconomyData}，不在这里 ——
+ * 本类型看得见自己，看不见那张生产单元表）。
  *
  * <p>★★ <b>单列表 + {@code priority}（裁定 E4，取代 spec §2.4 的 labor/asset 两张表）</b>：
  *
@@ -86,7 +87,7 @@ import java.util.List;
  *     LaborSource#SELF}（见构造期兜底）；显式档位由 {@code RegimeRelations} 与载荷给出。
  */
 public record ProductionRelation(
-    IndustryId activity,
+    ProductionUnitId activity,
     ActorRef operator,
     Recipient inputSupplier,
     List<CompensationRule> rules,
@@ -98,7 +99,7 @@ public record ProductionRelation(
    * 本重载只服务"这一步与劳动来源无关"的调用点与旧档迁移（缺键 ⇒ SELF，见 {@link #laborSource()}）。
    */
   public ProductionRelation(
-      IndustryId activity,
+      ProductionUnitId activity,
       ActorRef operator,
       Recipient inputSupplier,
       List<CompensationRule> rules,
@@ -136,5 +137,17 @@ public record ProductionRelation(
       rulesCopy.add(rule);
     }
     rules = List.copyOf(rulesCopy); // ★ 冻在赋值处（含防御性拷贝，且保序）
+  }
+
+  /**
+   * ★★ <b>换身份（activity）</b>：迁移器把旧 {@code industryId} 串解析成 {@code ProductionUnitId} 后，用本方法把值内 {@code
+   * activity} 一并对齐到新键（其余字段逐值带过）。★ 这不是第二份状态——它就是"同一件事实的键与值同时改"。
+   */
+  public ProductionRelation withActivity(ProductionUnitId newActivity) {
+    if (newActivity == null) {
+      throw new IllegalArgumentException("ProductionRelation.withActivity 的 newActivity 不得为 null");
+    }
+    return new ProductionRelation(
+        newActivity, operator, inputSupplier, rules, residualOwner, laborSource);
   }
 }

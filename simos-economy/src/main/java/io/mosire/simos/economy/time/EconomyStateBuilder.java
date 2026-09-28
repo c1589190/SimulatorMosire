@@ -1,17 +1,19 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -20,7 +22,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -54,7 +56,8 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<PeopleLotId, LaborSupply> laborSupply;
   private LinkedHashMap<MembershipId, Membership> memberships;
   private LinkedHashMap<AssetShareId, AssetShare> assetShares;
-  private LinkedHashMap<IndustryId, OperatorCondition> operatorConditions;
+  private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
+  private LinkedHashMap<ProductionUnitId, ProductionUnit> units;
   private LinkedHashMap<HexCoord, Market> markets;
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private Optional<EconomyMeta> meta;
@@ -123,12 +126,20 @@ public final class EconomyStateBuilder {
     return assetShares;
   }
 
-  /** 经营者状态表工作副本（S3.2 第 13 个组件；S1 只补齐形状，本阶段没有写入者）。 */
-  public LinkedHashMap<IndustryId, OperatorCondition> operatorConditions() {
+  /** 经营者状态表工作副本（S3.2 第 13 个组件；R3B.2 起键 = unit id）。 */
+  public LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions() {
     if (operatorConditions == null) {
       operatorConditions = new LinkedHashMap<>(base.operatorConditions());
     }
     return operatorConditions;
+  }
+
+  /** ★★ R3B.2 生产单元表工作副本（第 14 个组件；日结算推进进度/劳动/投入的唯一写点）。 */
+  public LinkedHashMap<ProductionUnitId, ProductionUnit> units() {
+    if (units == null) {
+      units = new LinkedHashMap<>(base.units());
+    }
+    return units;
   }
 
   /** 市场表工作副本。 */
@@ -173,6 +184,7 @@ public final class EconomyStateBuilder {
         shipments == null ? base.shipments() : shipments,
         memberships == null ? base.memberships() : memberships,
         assetShares == null ? base.assetShares() : assetShares,
-        operatorConditions == null ? base.operatorConditions() : operatorConditions);
+        operatorConditions == null ? base.operatorConditions() : operatorConditions,
+        units == null ? base.units() : units);
   }
 }

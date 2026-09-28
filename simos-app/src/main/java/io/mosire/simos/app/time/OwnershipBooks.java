@@ -9,13 +9,13 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
-import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
@@ -462,12 +462,13 @@ public final class OwnershipBooks {
   public static Map<ActorRef, HexCoord> operatorLocations(EconomyData economy) {
     Objects.requireNonNull(economy, "economy");
     Map<ActorRef, HexCoord> locations = new LinkedHashMap<>();
-    for (IndustryId id : economy.industries().keySet()) {
-      Optional<HexCoord> hex = IndustryHexKeys.hexKeyOf(id).map(HexCoord::parse);
+    // ★★ R3B.2：经营者账的格来自它实际生产的 unit（unit.industry 的格键），不是产业模板。
+    for (ProductionUnit unit : economy.units().values()) {
+      Optional<HexCoord> hex = IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse);
       if (hex.isEmpty()) {
         continue; // 产业 id 里没有格键（手搭状态）：说不出账户在哪一格 ⇒ 不进表
       }
-      locations.put(economy.industries().get(id).operator(), hex.get());
+      locations.put(unit.operator(), hex.get());
     }
     return locations;
   }

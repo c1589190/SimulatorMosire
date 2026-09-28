@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -98,8 +99,9 @@ import java.util.Set;
  * <p>★★ <b>H0（2026-09-27，裁定 R-N1-A）起"居住类型"是受方身份的一维 —— 而本类看不见它</b>：家户 = {@code (格, 居住类型, 阶层)}，
  * 而"这个产业的这批人住农村还是城镇"的<b>唯一事实来源是劳动配额表</b>（{@code ResidenceKind.ofLot(allocation.group())}，
  * 批次前缀的唯一拼写点在 {@link ResidenceKind}）。⇒ 本类的 {@code defaultRelation} 多收一个 {@code Set<ResidenceKind>}
- * （{@link #defaultRelation(RegimeId, IndustryId, ActorRef, Set)}），由**唯一同时看得见产业与配额的地方**——载荷边缘 {@code
- * EconomyPayloads}——算好传进来。★ 本类**不猜**（不按产业种类、也不按制度推居住类型：制度与居住是两件事， 同一个 {@code feudal} 完全可以在城里）。
+ * （{@link #defaultRelation(RegimeId, ProductionUnitId, IndustryId, ActorRef,
+ * Set)}），由**唯一同时看得见产业与配额的地方**——载荷边缘 {@code EconomyPayloads}——算好传进来。★
+ * 本类**不猜**（不按产业种类、也不按制度推居住类型：制度与居住是两件事， 同一个 {@code feudal} 完全可以在城里）。
  *
  * <p>★ <b>为什么"每个 spec × 每个居住类型"展开是对的（劳动加权那两族）</b>：{@code OUTPUT_SHARE × LABOR_AMOUNT} 与 {@code
  * FIXED_IN_KIND_PER_LABOR} 的量都乘"本受方劳动 ÷ Σ劳动"（{@code ProductionSettlement} 的公式表）⇒ 没有人（或没有劳动）的 cohort
@@ -264,9 +266,16 @@ public final class RegimeRelations {
    *     里没有格键（关系必须有地点）、或 {@code residences} 多于一种居住类型
    */
   public static ProductionRelation defaultRelation(
-      RegimeId regime, IndustryId industry, ActorRef operator, Set<ResidenceKind> residences) {
+      RegimeId regime,
+      ProductionUnitId activity,
+      IndustryId industry,
+      ActorRef operator,
+      Set<ResidenceKind> residences) {
     if (regime == null) {
       throw new IllegalArgumentException("regime 不得为 null");
+    }
+    if (activity == null) {
+      throw new IllegalArgumentException("activity（ProductionUnitId）不得为 null");
     }
     if (industry == null) {
       throw new IllegalArgumentException("industry 不得为 null");
@@ -317,7 +326,7 @@ public final class RegimeRelations {
     // ★★ H3/C3：投入的提供者由**制度**说（见 defaultInputSupplier 的类注）—— 四档默认同值（都落在 operator 上），
     //   但"谁出料"从此是**本表的一行**，不再是结算里按人口算出来的一个比例。
     return new ProductionRelation(
-        industry,
+        activity,
         operator,
         defaultInputSupplier(regime, operator),
         rules,
@@ -383,12 +392,13 @@ public final class RegimeRelations {
    */
   public static List<SubsistenceObligation> defaultSubsistenceObligations(
       RegimeId regime,
+      ProductionUnitId activity,
       IndustryId industry,
       ActorRef operator,
       Set<ResidenceKind> residences,
       Map<HouseholdId, Long> laborOfHousehold) {
     return SubsistenceObligation.of(
-        defaultRelation(regime, industry, operator, residences), laborOfHousehold);
+        defaultRelation(regime, activity, industry, operator, residences), laborOfHousehold);
   }
 
   /**

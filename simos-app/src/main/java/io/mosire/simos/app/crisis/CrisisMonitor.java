@@ -8,6 +8,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.AgeBracket;
@@ -228,10 +229,15 @@ public final class CrisisMonitor {
   private static long elapsedDaysOf(EconomyData economy, HouseholdId key) {
     long elapsed = 0L;
     HexCoord hex = economy.classes().get(key).view().hex();
-    for (IndustryId id : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
-      elapsed = Math.max(elapsed, phaseDaysOf(economy.industries().get(id)));
+    // ★★ R3B.2：相位住在 unit 上（同一格可能有多个 unit）；产业模板只回答 cycleDays。
+    String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
+    for (ProductionUnit unit : economy.units().values()) {
+      if (IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isEmpty()) {
+        continue;
+      }
+      elapsed = Math.max(elapsed, phaseDaysOf(unit, economy.industries().get(unit.industry())));
     }
-    // ★ 该格没有任何产业（手工搭的状态）⇒ 按旧口径返回 1（既不除零，也不把"周期刚开始"读成"完全满足"）。
+    // ★ 该格没有任何 unit（手工搭的状态）⇒ 按旧口径返回 1（既不除零，也不把"周期刚开始"读成"完全满足"）。
     return elapsed == 0L ? 1L : elapsed;
   }
 
@@ -256,10 +262,11 @@ public final class CrisisMonitor {
    *
    * <p>★ 一个家户的相位取自**它那一格的产业**（H0.2：行键里没有产业）：同一格的产业由同一条日推进同步走 ⇒ 取其中最大的那个与旧口径（逐行各取自己产业的相位、再取 max）同值。
    */
-  private static long phaseDaysOf(Industry industry) {
-    return industry == null
-        ? 1L
-        : (industry.progressDays() == 0L ? industry.cycleDays() : industry.progressDays());
+  private static long phaseDaysOf(ProductionUnit unit, Industry industry) {
+    if (unit == null || industry == null) {
+      return 1L;
+    }
+    return unit.progressDays() == 0L ? industry.cycleDays() : unit.progressDays();
   }
 
   /** 满足率（‰）：{@code 需求 == 0 ⇒ 1000}；否则 {@code (需求 − 缺口) × 1000 ÷ 需求}。 */

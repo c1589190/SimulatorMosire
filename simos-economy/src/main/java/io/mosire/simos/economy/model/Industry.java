@@ -6,7 +6,6 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -16,19 +15,20 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 产业（新经济设计 §3.1 逐字）：**一整个产业**的聚合状态——制度、周期与进度、投入、产出、允许的阶层槽位、分配函数，外加 **V7 的通用生产配方** （{@link
+ * 产业（新经济设计 §3.1 逐字）：**R3B.2 起是"一整个产业"的纯技术模板**——制度、周期、投入、产出、允许的阶层槽位、分配函数，外加 **V7 的通用生产配方** （{@link
  * #capacityPerUnit()} / {@link #laborPerUnit()} / {@link #inputPerUnit()} / {@link
- * #outputPerUnit()}）。
+ * #outputPerUnit()}）；record 末尾另有 **5 个旧档反序列化兼容位**（见下方 B.2b 段，生产路径禁读）。
  *
  * <p>★ **不再是逐生产单位**（§1 取代表）：周期/进度/投入/产出函数都挂在产业这一层，复杂度不随人口或单位数线性增长。
  *
- * <p>★★ <b>{@link #capacity()} 是 K3 的落点（2026-09-27 裁定）：本格该产业的产能总量</b>（键 = {@link AssetKind}，单位同
+ * <p>★★ <b>{@link #capacity()} 曾是 K3 的落点（2026-09-27 裁定）：本格该产业的产能总量</b>（键 = {@link AssetKind}，单位同
  * {@link #capacityPerUnit()}：{@code LAND} 千分亩、其余件）。改前它散在各 {@code ClassRow.meansOfProduction} 里，
- * 收获时靠 {@code Σ各行} 折出规模 —— 那是"家户持有生产资料"的形态；K2 把行变成家户之后，产能是**该格该产业的技术属性** ⇒ 只有一份总量，读它的唯一地方是 {@code
- * EconomySettlement.scaleOf}。
+ * 收获时靠 {@code Σ各行} 折出规模 —— 那是"家户持有生产资料"的形态；K2 把行变成家户之后，产能曾是**该格该产业的技术属性**。 ★ <b>B.2 起生产规模只从 {@link
+ * AssetShare} 派生</b>（见 {@code ProductionUnitBook}），本字段降级为旧档兼容位（见下方 B.2b 段）—— <b>不再有任何生产读者</b>。
  *
- * <p>★★ <b>为什么"逐值可以为 0"而 {@code capacityPerUnit} 必须 > 0</b>：两者性质不同 —— 前者是**存量**（沙漠格 {@code LAND =
- * 0}、人口 &lt; 20 的格 {@code TOOL = 0} 都是真档的合法形态 ⇒ 那种产业本周期不生产），后者是**除数** （"每 1 单位规模需要多少"，为 0 就不是一个约束）。
+ * <p>★★ <b>为什么"逐值可以为 0"而 {@code capacityPerUnit} 必须 > 0</b>（说的是旧档兼容位的合法值域）：两者性质不同 —— 前者是**存量**（沙漠格
+ * {@code LAND = 0}、人口 &lt; 20 的格 {@code TOOL = 0} 都是旧档的合法形态 ⇒ 那种产业本周期不生产）， 后者是**除数** （"每 1
+ * 单位规模需要多少"，为 0 就不是一个约束）。
  *
  * <p>★★ **R3（V7）起"每单位什么"是数据**（spec §五 / §一.4）：本类新添 {@code capacityPerUnit} 与 {@code laborPerUnit}，
  * 并把两个投入表的**值侧**从"无商品维度的标量"换成 {@code Map<CommodityId, Long>}（原来表达不了"消耗 IRON"）。四个分量合起来就是 {@link
@@ -68,20 +68,34 @@ import java.util.Set;
  *       ClassRow.population} 的观测派生，见 {@link ClassSlot} 的类注释）
  * </ul>
  *
- * <p>★ **四张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **各表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——迭代序不是内容的纯函数（会产出不同字节）。冻结那一步**写在字段赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
+ *
+ * <p>★★ <b>B.2b：末尾 5 个组件是旧档反序列化兼容位</b>（{@code operator} / {@code progressDays} / {@code capacity} /
+ * {@code cycleLaborMilli} / {@code cycleInputUsedMilli}）。B.2 已把"经营主体、周期进度、本格产能总量、 本周期累计劳动/投入"分别移交给
+ * {@link ProductionUnit}（实例状态）与 {@link AssetShare}（实物总账），本类只留技术模板； 这 5 个字段被加回来<b>只有一个目的</b>：让历史
+ * changeset / 旧内联字节能被 {@code Timeline.readChangeSet} 的<b>全局严格 mapper</b> 直接绑定（那条路径不经过 {@code
+ * EconomyCodec.decodeChangeSet} 的旧档节点整形，{@code FAIL_ON_UNKNOWN_PROPERTIES}
+ * 默认开启）。<b>它们不是第二份状态真相</b>：
+ *
+ * <ul>
+ *   <li>★ <b>生产结算路径（以及一切新代码）一律不得读这 5 个兼容位</b>；新代码只许走 12 参构造器（末尾 5 个取中性值 {@code null/0/Map.of()}）。
+ *   <li>★ 旧档值在 {@code EconomyData} 构造期被归一化成默认 {@link ProductionUnit} + 整额 OWNED {@link AssetShare}，
+ *       随后该 {@code Industry} 被换成 12 参模板 —— 于是 {@code EconomyChangeSet.between/diff} 不再产生兼容位漂移。
+ *   <li>★ 紧凑构造器对兼容位只判"旧档合法值域"：{@code operator} 允许 {@code null}、两张表 {@code null ⇒ Map.of()}、{@code
+ *       progressDays/cycleLaborMilli ≥ 0} 且 {@code progressDays ≤ cycleDays}。
+ * </ul>
  *
  * @param id 稳定身份
  * @param name 展示名
  * @param regime 生产制度（小农 / 领主自营庄园 / 手工业 / 家户自给 / 租佃 …）：决定允许哪些阶层槽位
  * @param cycleDays 生产周期（天）；农业 120、手工业可短；必须 ≥ 1
- * @param progressDays 当前进度（天）；必须 ∈ [0, cycleDays]
+ * @param progressDays ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"当前进度（天）"；新档恒 {@code 0}，必须 ∈ [0, cycleDays]
  * @param capacityPerUnit 每 1 单位规模需要的生产资料（{@code LAND} 按**千分亩**、其余按件）；键值非空、逐值 ≥ 0。空表 =
  *     无产能约束（只受劳动与投入约束）
- * @param capacity ★★ <b>本格该产业的产能总量</b>（K3；{@code LAND} 千分亩、其余件）：键值非空、逐值 <b>≥ 0</b>（0 = 本格没有这类产能 ⇒
- *     {@code scaleOf} 那一路算出 0）；<b>键必须是 {@link #capacityPerUnit()} 的键的子集</b> （多出来的键没有任何"每单位需求"读它 ⇒
- *     是死数据，构造期即抛）。缺键 = 0（该生产资料本格没有）
+ * @param capacity ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"本格该产业的产能总量"（K3；{@code LAND} 千分亩、其余件）。 键值非空、逐值 <b>≥
+ *     0</b>（0 是旧档合法值）；新档恒空表。★ 实物总量的真相已归 {@link AssetShare}（{@code Σ quantity}）
  * @param dailyInputPerUnit 每 1 单位规模**每日**原料需求（按生产资料种类归类）；键值非空、逐值 ≥ 0。★ **本轮仍是零读取点** （spec §3.3
  *     明说两个字段并存、语义各自清楚；"每日原料"在 §四 的后续增量里）
  * @param dailyLaborPerUnit 每 1 单位规模的每日劳动需求（千分劳动）；不得为负。★ 本轮零读取点（同上）
@@ -94,25 +108,20 @@ import java.util.Set;
  *     "工具的保养要耗粮"完全可以只出现在投入表里）；**合计**才进规模公式。键值非空、逐值 ≥ 0
  * @param slots 该制度允许的阶层槽位；非空、id 不重复（**不含人口占比**）
  * @param allocation 制度分配函数（版本化参数；本类不执行它）
- * @param cycleLaborMilli 本周期**累计的实际投入劳动**（千分劳动·日）：日结算每天把该产业名下的劳动配额之和累加进来 （**供收获时用**）。
- *     收获当天先加当日量再取平均（{@code /cycleDays}），据此按 {@link #laborPerUnit()} 算规模上限；周期关账后清零。不得为负
- * @param cycleInputUsedMilli 本周期**实际扣到的投入**（毫单位，**按商品**）累加器，形制同 {@link #cycleLaborMilli()}：
- *     播种日（{@code progressDays == 0}）逐行累加、周期关账后清零。键值非空、逐值 ≥ 0。 ★ 它同时是"投入的计量"（v2 spec §二
- *     把留种列在**数**里）：收获日用 {@code cycleInputUsedMilli[j] / inputPerUnit[j]} 得**该投入能支撑的规模**，构成投入那一路瓶颈。
- *     ★ **R3 起是 Map**（原来只有"种子"一个标量）：作坊要"消耗 FIBER 与 IRON"，一条标量表达不了两种原料
- * @param operator ★★ 经营主体（S1 spec §2.1 的 {@code ProductionOperator}）：**谁组织这次生产**。
- *     <p>★★ <b>它不是从 {@code regime} 派生的标签</b>（裁定 R4）：本类<b>不校验</b>两者的对应关系 —— 同一个 {@code feudal} 可以有"A
- *     格地租 30% / B 格五五分成 / C 格领主直营"（spec §2.4）， 那些差异**在数据里**，不在类型上。缺省推导只发生在**载荷边缘**，本类<b>不做推导</b>： 收
- *     null ⇒ 抛，与其余 15 个组件同口径。
+ * @param cycleLaborMilli ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"本周期累计的实际投入劳动"（千分劳动·日）；新档恒 {@code 0}，不得为负。 ★
+ *     新档该状态住在 {@link ProductionUnit#cycleLaborMilli()}
+ * @param cycleInputUsedMilli ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"本周期实际扣到的投入"（毫单位，按商品）； 新档恒空表，键值非空、逐值 ≥ 0。★
+ *     新档该状态住在 {@link ProductionUnit#cycleInputUsedMilli()}
+ * @param operator ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"经营主体"（S1 spec §2.1 的 {@code ProductionOperator}）。新档恒
+ *     {@code null}；<b>允许 null 仅限本兼容位</b>。★ 新档经营主体住在 {@link ProductionUnit#operator()}；旧档缺省由 {@code
+ *     EconomyData} 的归一化按 {@code RegimeOperators.defaultOperator(regime, industryId)} 推导
  */
 public record Industry(
     IndustryId id,
     String name,
     RegimeId regime,
     long cycleDays,
-    long progressDays,
     Map<AssetKind, Long> capacityPerUnit,
-    Map<AssetKind, Long> capacity,
     Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
     long dailyLaborPerUnit,
     long laborPerUnit,
@@ -120,9 +129,48 @@ public record Industry(
     Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit,
     List<ClassSlot> slots,
     AllocationRule allocation,
+    ActorRef operator,
+    long progressDays,
+    Map<AssetKind, Long> capacity,
     long cycleLaborMilli,
-    Map<CommodityId, Long> cycleInputUsedMilli,
-    ActorRef operator) {
+    Map<CommodityId, Long> cycleInputUsedMilli) {
+
+  /**
+   * ★★ <b>新形状（纯模板）的 12 参构造器</b>：新代码的唯一入口。末尾 5 个旧档兼容位取中性值 （{@code null / 0 / Map.of()}，见类注），委托给 17 参
+   * canonical 构造器。
+   */
+  public Industry(
+      IndustryId id,
+      String name,
+      RegimeId regime,
+      long cycleDays,
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
+      long dailyLaborPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit,
+      List<ClassSlot> slots,
+      AllocationRule allocation) {
+    this(
+        id,
+        name,
+        regime,
+        cycleDays,
+        capacityPerUnit,
+        dailyInputPerUnit,
+        dailyLaborPerUnit,
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
+        slots,
+        allocation,
+        null,
+        0L,
+        Map.of(),
+        0L,
+        Map.of());
+  }
 
   public Industry {
     if (id == null) {
@@ -134,32 +182,33 @@ public record Industry(
     if (regime == null) {
       throw new IllegalArgumentException("Industry.regime 不得为 null");
     }
-    // ★★ **与 regime 同一族、而不是与下面那批 null 检查同批排**：两者是"这次生产由谁组织"的一对
-    //   （制度 + 经营主体），故挨着写。★ **缺省推导不在这里**（裁定 D1）：null ⇒ 抛。
-    //   若在此处 `null ⇒ RegimeOperators.defaultOperator(...)`，则 25 处构造点里任一处**漏传**都会
-    //   静默换成默认值、不崩 —— 而"显式绑定的 operator 被悄悄改回去"正是本仓最反对的形态。
-    //   代价（如实记）：**落盘于 S1 阶段 3 之前的 economy 归档打不开**（与 spec §十.4「旧档重建也没关系」一致）。
-    if (operator == null) {
-      throw new IllegalArgumentException("Industry.operator 不得为 null（缺省由载荷边缘按 regime 推导）");
-    }
     if (allocation == null) {
       throw new IllegalArgumentException("Industry.allocation 不得为 null");
     }
     if (cycleDays < 1) {
       throw new IllegalArgumentException("Industry.cycleDays 必须 ≥ 1: " + cycleDays);
     }
-    if (progressDays < 0 || progressDays > cycleDays) {
+    // ★★ B.2b 旧档兼容位（record 末尾 5 个；见类注。生产路径禁读）：只判"旧档合法值域"。
+    //   ★ operator 允许 null（仅这 5 个兼容位中的它享有此豁免；新代码 12 参构造器恒传 null）。
+    if (progressDays < 0L || progressDays > cycleDays) {
       throw new IllegalArgumentException(
-          "Industry.progressDays 必须 ∈ [0, cycleDays]：progressDays="
+          "Industry.progressDays 必须 ∈ [0, cycleDays]（旧档兼容位）：progressDays="
               + progressDays
               + ", cycleDays="
               + cycleDays);
     }
-    if (capacityPerUnit == null) {
-      throw new IllegalArgumentException("Industry.capacityPerUnit 不得为 null（无产能约束用空 map）");
+    if (cycleLaborMilli < 0L) {
+      throw new IllegalArgumentException(
+          "Industry.cycleLaborMilli 不得为负（旧档兼容位）: " + cycleLaborMilli);
     }
     if (capacity == null) {
-      throw new IllegalArgumentException("Industry.capacity 不得为 null（本格没有产能用空 map）");
+      capacity = Map.of(); // 旧档缺键 / 显式 null ⇒ 空表（新档 12 参构造器的中性值）
+    }
+    if (cycleInputUsedMilli == null) {
+      cycleInputUsedMilli = Map.of(); // 同上
+    }
+    if (capacityPerUnit == null) {
+      throw new IllegalArgumentException("Industry.capacityPerUnit 不得为 null（无产能约束用空 map）");
     }
     if (dailyInputPerUnit == null) {
       throw new IllegalArgumentException("Industry.dailyInputPerUnit 不得为 null（无投入用空 map）");
@@ -170,22 +219,16 @@ public record Industry(
     if (cycleInputPerUnit == null) {
       throw new IllegalArgumentException("Industry.cycleInputPerUnit 不得为 null（无一次投入用空 map）");
     }
-    if (cycleInputUsedMilli == null) {
-      throw new IllegalArgumentException("Industry.cycleInputUsedMilli 不得为 null（未投入用空 map）");
-    }
     if (dailyLaborPerUnit < 0) {
       throw new IllegalArgumentException("Industry.dailyLaborPerUnit 不得为负: " + dailyLaborPerUnit);
     }
     if (laborPerUnit < 0) {
       throw new IllegalArgumentException("Industry.laborPerUnit 不得为负: " + laborPerUnit);
     }
-    if (cycleLaborMilli < 0) {
-      throw new IllegalArgumentException("Industry.cycleLaborMilli 不得为负: " + cycleLaborMilli);
-    }
     if (slots == null) {
       throw new IllegalArgumentException("Industry.slots 不得为 null");
     }
-    // ★★ **五段构造逐字展开、不抽 helper**（照本仓先例）：SpotBugs 的 EI_EXPOSE_REP **不做跨过程分析**，
+    // ★★ **下面各表逐字展开、不抽 helper**（照本仓先例；B.2b 的两张兼容位表同款）：SpotBugs 的 EI_EXPOSE_REP **不做跨过程分析**，
     //   只认它看得见的包装 ⇒ 把"复制 + unmodifiableMap"塞进 helper 会让这五张表全部被报为"暴露内部表示"
     //   （实测：verify 的 spotbugs-check 直接 7 个 Medium 把构建打红）。
     Map<AssetKind, Long> capacityCopy = new LinkedHashMap<>();
@@ -202,27 +245,6 @@ public record Industry(
       capacityCopy.put(entry.getKey(), entry.getValue());
     }
     capacityPerUnit = Collections.unmodifiableMap(capacityCopy); // ★ 冻在赋值处
-    // ★★ K3 的产能总量：**逐值 ≥ 0**（0 是真档的合法形态：沙漠格 LAND=0、人口不足一厂的格 TOOL=0），
-    //   但**键必须落在 capacityPerUnit 里** —— 否则这个数永远不会被 scaleOf 读（"看起来在记、其实永远不被读"）。
-    Map<AssetKind, Long> capacityTotalCopy = new LinkedHashMap<>();
-    for (Map.Entry<AssetKind, Long> entry : capacity.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("Industry.capacity 的键与值都不得为 null: " + entry.getKey());
-      }
-      if (entry.getValue() < 0L) {
-        throw new IllegalArgumentException(
-            "Industry.capacity 不得为负：" + entry.getKey() + " = " + entry.getValue());
-      }
-      if (!capacityPerUnit.containsKey(entry.getKey())) {
-        throw new IllegalArgumentException(
-            "Industry.capacity 的键必须是 capacityPerUnit 的键（否则没有'每单位需求'读它 = 死数据）："
-                + entry.getKey()
-                + " ∉ "
-                + capacityPerUnit.keySet());
-      }
-      capacityTotalCopy.put(entry.getKey(), entry.getValue());
-    }
-    capacity = Collections.unmodifiableMap(capacityTotalCopy); // ★ 冻在赋值处
     Map<AssetKind, Map<CommodityId, Long>> dailyInputCopy = new LinkedHashMap<>();
     for (Map.Entry<AssetKind, Map<CommodityId, Long>> entry : dailyInputPerUnit.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -254,15 +276,32 @@ public record Industry(
       cycleInputCopy.put(entry.getKey(), freezeLine(entry.getValue(), "cycleInputPerUnit"));
     }
     cycleInputPerUnit = Collections.unmodifiableMap(cycleInputCopy); // ★ 冻在赋值处
+    // ★★ B.2b 旧档兼容位两张表的冻结（键值非空、逐值 ≥ 0；0 是旧档合法值）。同上面五段，逐字展开在赋值处。
+    Map<AssetKind, Long> legacyCapacityCopy = new LinkedHashMap<>();
+    for (Map.Entry<AssetKind, Long> entry : capacity.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "Industry.capacity 的键与值都不得为 null（旧档兼容位）: " + entry.getKey());
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "Industry.capacity 的数量不得为负（旧档兼容位）：" + entry.getKey() + " = " + entry.getValue());
+      }
+      legacyCapacityCopy.put(entry.getKey(), entry.getValue());
+    }
+    capacity = Collections.unmodifiableMap(legacyCapacityCopy); // ★ 冻在赋值处
     Map<CommodityId, Long> cycleInputUsedCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : cycleInputUsedMilli.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
-            "Industry.cycleInputUsedMilli 的键与值都不得为 null: " + entry.getKey());
+            "Industry.cycleInputUsedMilli 的键与值都不得为 null（旧档兼容位）: " + entry.getKey());
       }
       if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "Industry.cycleInputUsedMilli 的数量不得为负：" + entry.getKey() + " = " + entry.getValue());
+            "Industry.cycleInputUsedMilli 的数量不得为负（旧档兼容位）："
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
       }
       cycleInputUsedCopy.put(entry.getKey(), entry.getValue());
     }
@@ -296,18 +335,6 @@ public record Industry(
    */
   public ProductionRecipe recipe() {
     return new ProductionRecipe(capacityPerUnit, inputPerUnit(), laborPerUnit, outputPerUnit);
-  }
-
-  /**
-   * ★ **本周期实际扣到的种子**（毫粮）= {@link #cycleInputUsedMilli()} 在**粮**这一商品上的投影 —— 农业的"留种的计量" 读它（v2 spec §二
-   * 把留种列在**数**里）。
-   *
-   * <p>★ **它是派生视图、不是第二份真相**：同一个 {@code cycleInputUsedMilli} 表，多商品的累计读原表、只关心种子的那几处读它。 这样"R3
-   * 把累加器从标量换成按商品的表"就不必把每一处"本周期扣了多少种子"的断言都改写成取键 —— 而那些断言测的东西一个字没变。
-   */
-  public long cycleSeedUsedMilli() {
-    return cycleInputUsedMilli.getOrDefault(
-        new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID), 0L);
   }
 
   /**

@@ -159,6 +159,8 @@ public record MarketReadout(
             Map.of(),
             Map.of(),
             data.industries(),
+            data.units(),
+            data.assetShares(),
             data.relations(),
             data.allocations(),
             data.shipments(),

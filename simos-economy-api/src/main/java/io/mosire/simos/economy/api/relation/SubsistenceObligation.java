@@ -3,7 +3,7 @@ package io.mosire.simos.economy.api.relation;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.HouseholdId;
-import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -49,7 +49,7 @@ import java.util.Map;
  * <p>★ <b>本类型不做的事</b>：不落账、不产生 {@code Debt}/{@code Claim}、不改任何守恒式；"欠了多少"也<b>不跨周期累计</b> （那是 M1.5
  * 明确不做的跨周期债务）。实数计算一律毫单位、整数、向下取整。
  *
- * @param activity 这条义务出自哪个生产活动（身份 = 产业；铁律 1，不另造 id）
+ * @param activity 这条义务出自哪个生产活动（身份 = 生产单元 unit；铁律 1，不另造 id）
  * @param provider <b>谁承担</b>（= 该关系的经营者 {@code ProductionRelation.operator()}；不得为 null）
  * @param recipient <b>向谁</b>（{@code Recipient}：家户 cohort 或 actor，恰其一；不得为 null）
  * @param laborMilli <b>按什么量</b>：本受方本周期（周期口径，非日口径）的实际劳动量（千分劳动）；不得为负
@@ -57,7 +57,7 @@ import java.util.Map;
  *     带上它是为了可追溯：读口/用例能把一条义务逐值对回关系表里的那一条，而不是看一个孤立数字。
  */
 public record SubsistenceObligation(
-    IndustryId activity,
+    ProductionUnitId activity,
     ActorRef provider,
     Recipient recipient,
     long laborMilli,

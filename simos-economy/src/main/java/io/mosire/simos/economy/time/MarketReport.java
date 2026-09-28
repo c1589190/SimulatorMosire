@@ -3,7 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.HouseholdId;
-import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
@@ -239,7 +239,7 @@ public record MarketReport(
    *
    * @param roundDay 本轮世界日
    * @param actor 卖方主体
-   * @param industryId 认出的经营产业（认不出 ⇒ empty，成本按未知档排后）
+   * @param unitId 认出的生产单元（认不出 ⇒ empty，成本按未知档排后；R3B.2 起归属到 unit）
    * @param hex 卖单所在格（发货格）
    * @param commodity 商品
    * @param offeredQty 挂单量（报价时的 {@code sellable}；毫单位）
@@ -259,7 +259,7 @@ public record MarketReport(
   public record SellerOutcome(
       long roundDay,
       ActorRef actor,
-      Optional<IndustryId> industryId,
+      Optional<ProductionUnitId> unitId,
       HexCoord hex,
       CommodityId commodity,
       long offeredQty,
@@ -278,7 +278,7 @@ public record MarketReport(
 
     public SellerOutcome {
       Objects.requireNonNull(actor, "actor");
-      Objects.requireNonNull(industryId, "industryId");
+      Objects.requireNonNull(unitId, "unitId");
       Objects.requireNonNull(hex, "hex");
       Objects.requireNonNull(commodity, "commodity");
       Objects.requireNonNull(bestAcceptedLandedPriceMilli, "bestAcceptedLandedPriceMilli");

@@ -36,6 +36,7 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -45,6 +46,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.EconomySettlement;
@@ -54,6 +56,7 @@ import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionSettlement;
+import io.mosire.simos.economy.time.ProductionUnitBook;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -519,17 +522,70 @@ public final class ApiViews {
     List<Map<String, Object>> industries = new ArrayList<>();
     for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
       Industry industry = data.industries().get(id);
-      // ★★ H0.3（K3）：土地不再是**行**的生产资料，而是**产业**的产能 ⇒ 该格的亩数从产业读，
-      //   行那一侧不再有这个字段（一个"恒为 0 的行级 landMilliMu"就是本仓最反对的"看起来在记"）。
-      landMilliMu += industry.capacity().getOrDefault(AssetKind.LAND, 0L);
+      // ★★ R3B.2：该行业在本格的 unit（按 unit id canonical 序；旧口径"一产业一 unit"下恰一条）。
+      List<ProductionUnit> units = new ArrayList<>();
+      for (ProductionUnit unit : data.units().values()) {
+        if (unit.industry().equals(id)) {
+          units.add(unit);
+        }
+      }
+      units.sort(Comparator.comparing(unit -> unit.id().value()));
+      // ★★ R3B.2：土地不再是**产业模板**的产能，而是 unit 从 AssetShare 派生的可用资产 ⇒ 该格的亩数
+      //   由各 unit 的 usableAssets[LAND] 求和（一产业一 unit 时与旧 capacity 逐值相同）。
+      Map<AssetKind, Long> unitAssets = new TreeMap<>();
+      Map<String, Long> cycleInputUsed = new TreeMap<>();
+      for (ProductionUnit unit : units) {
+        for (Map.Entry<AssetKind, Long> asset :
+            ProductionUnitBook.usableAssets(unit, data.assetShares()).entrySet()) {
+          unitAssets.merge(asset.getKey(), asset.getValue(), Long::sum);
+        }
+        for (Map.Entry<CommodityId, Long> used : unit.cycleInputUsedMilli().entrySet()) {
+          cycleInputUsed.merge(used.getKey().value(), used.getValue(), Long::sum);
+        }
+      }
+      landMilliMu += unitAssets.getOrDefault(AssetKind.LAND, 0L);
       // ★★ M1.7：给养义务读口要"按本周期实际劳动量" —— 走结算侧的**同一个函数**（{@code EconomySettlement.laborOfCohort}），
       //   不在视图层另写一套（口径两处各写一遍 = 读到的义务与实付的义务会漂开）。
       Map<HouseholdId, Long> cycleLabor =
           EconomySettlement.laborOfCohort(data.classes(), coord, industry.cycleDays());
+      // ★★ R3B.2：关系挂在 unit 上 ⇒ 产业行的"给养义务"兼容字段取**第一条 unit** 的关系
+      //   （一产业一 unit 时与旧读法逐值相同；多 unit 时逐条见 units[].relation）。
+      ProductionUnit compatUnit = units.isEmpty() ? null : units.get(0);
       Map<String, Object> industryView =
-          industryView(industry, data.relations().get(id), cycleLabor);
-      // ★★ S3：经营者状态机读数（空表 = 旧档/还没关账；不伪造 ACTIVE）。
-      OperatorCondition condition = data.operatorConditions().get(id);
+          industryView(
+              industry,
+              compatUnit == null ? null : data.relations().get(compatUnit.id()),
+              cycleLabor);
+      // ★★ 旧 industry 字段的兼容一版：operator/progressDays/capacity/cycleInputUsedMilli 从 unit 汇总
+      //   （一产业一 unit 时逐值等于旧读法；多 unit 时是确定性聚合，读口新增 units[] 逐条可见）。
+      ProductionUnit first = compatUnit;
+      industryView.put("operator", first == null ? null : actorRefView(first.operator()));
+      long progressDays = 0L;
+      for (ProductionUnit unit : units) {
+        progressDays = Math.max(progressDays, unit.progressDays());
+      }
+      industryView.put("progressDays", progressDays);
+      Map<String, Long> capacityCompat = new TreeMap<>();
+      for (Map.Entry<AssetKind, Long> asset : unitAssets.entrySet()) {
+        capacityCompat.put(asset.getKey().name(), asset.getValue());
+      }
+      industryView.put("capacity", capacityCompat);
+      industryView.put("cycleInputUsedMilli", cycleInputUsed);
+      // ★★ R3B.2 的正式读口：逐 unit 一行（operator/mode/assets/progress/condition/relation）。
+      List<Map<String, Object>> unitViews = new ArrayList<>(units.size());
+      for (ProductionUnit unit : units) {
+        unitViews.add(
+            productionUnitView(
+                unit,
+                industry,
+                data.assetShares(),
+                data.relations().get(unit.id()),
+                data.operatorConditions().get(unit.id())));
+      }
+      industryView.put("units", unitViews);
+      // ★★ S3：经营者状态机读数（空表 = 旧档/还没关账；不伪造 ACTIVE）。兼容字段 = 第一条 unit 的条件。
+      OperatorCondition condition =
+          first == null ? null : data.operatorConditions().get(first.id());
       industryView.put("condition", condition == null ? null : operatorConditionView(condition));
       industries.add(industryView);
     }
@@ -986,7 +1042,8 @@ public final class ApiViews {
     view.put("derivedClass", derivedClass);
     view.put("stressCycles", condition.stressCycles());
     view.put(
-        "statusNote", "status=派生（AssetShare owner/operator、laborSource、未满足、债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
+        "statusNote",
+        "status=派生（AssetShare owner/operator、laborSource、未满足、债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
     return view;
   }
 
@@ -1244,6 +1301,37 @@ public final class ApiViews {
   }
 
   /**
+   * ★★ <b>R3B.2：一个 unit 的读口行</b>（{@code id/industry/operator/modeKey/progressDays/cycleLaborMilli/
+   * cycleInputUsedMilli/assets/condition/relation}）。资产走 {@link ProductionUnitBook#usableAssets}
+   * 纯派生。
+   */
+  private static Map<String, Object> productionUnitView(
+      ProductionUnit unit,
+      Industry industry,
+      Map<io.mosire.simos.economy.api.id.AssetShareId, AssetShare> assetShares,
+      ProductionRelation relation,
+      OperatorCondition condition) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", unit.id().value());
+    view.put("industry", unit.industry().value());
+    view.put("operator", actorRefView(unit.operator()));
+    view.put("modeKey", unit.modeKey());
+    view.put("progressDays", unit.progressDays());
+    view.put("cycleDays", industry.cycleDays());
+    view.put("cycleLaborMilli", unit.cycleLaborMilli());
+    view.put("cycleInputUsedMilli", sortedCommodities(unit.cycleInputUsedMilli()));
+    Map<String, Object> assets = new TreeMap<>();
+    for (Map.Entry<AssetKind, Long> entry :
+        ProductionUnitBook.usableAssets(unit, assetShares).entrySet()) {
+      assets.put(entry.getKey().name(), entry.getValue());
+    }
+    view.put("assets", assets);
+    view.put("condition", condition == null ? null : operatorConditionView(condition));
+    view.put("relation", relation == null ? null : relationView(relation));
+    return view;
+  }
+
+  /**
    * 一个产业（§3.1 的读侧：制度 / **经营主体** / 周期 / 进度 / **V7 配方** / 分配函数 / 槽位）与该产业的阶层行。
    *
    * <p>★★ **R3（T6）起把配方发出来**（{@code capacityPerUnit} / {@code inputPerUnit} / {@code laborPerUnit} /
@@ -1267,22 +1355,8 @@ public final class ApiViews {
     view.put("id", industry.id().value());
     view.put("name", industry.name());
     view.put("regime", industry.regime().value());
-    // ★★ S1 阶段 3：把**经营主体**发出来（形状与同视图的 {@code labor.actors[]} 及写侧载荷的 {@code actor} 同形：{kind,id}）。
-    //   ★ **读的是存起来的那个主体**，不在视图层按 regime 重推一遍：推导只发生在**载荷边缘**（{@code EconomyPayloads}），
-    //     重推会把"制度只负责初始化、不负责持续约束"（spec §2.4）抹掉 —— 阶段 4 的产出归属就会落到**推出来的**主体上。
-    //   ★ **不**折算成 {@code ActorRef.toString()} 的规范串（R6：那是**键**的形制，不是读口的形制）。
-    //   ★ 两个键的次序固定为 {@code kind,id}（{@code LinkedHashMap} + 不重排 ⇒ 同状态两次响应逐字节相同）。
-    //   ★ M1.1：该形状收成 {@link #actorRefView}（货币工具的 issuer/redeemer 用的是同一个形，不允许两套写法）。
-    view.put("operator", actorRefView(industry.operator()));
+    // ★★ R3B.2：Industry 只留模板 —— 经营者/进度/产能/累计投入改由调用方从 units 汇总发兼容字段（见 economyHex）。
     view.put("cycleDays", industry.cycleDays());
-    view.put("progressDays", industry.progressDays());
-    // ★★ H0.3（K3）：**本格该产业的产能总量**（承接原 {@code ClassRow.meansOfProduction}）——
-    //   读口必须发它，否则"这一格有多少亩/多少台织机"在报表里就只剩"每单位要多少"（{@code capacityPerUnit}）而算不出规模。
-    Map<String, Object> capacity = new TreeMap<>();
-    for (Map.Entry<AssetKind, Long> entry : industry.capacity().entrySet()) {
-      capacity.put(entry.getKey().name(), entry.getValue());
-    }
-    view.put("capacity", capacity);
     Map<String, Object> capacityPerUnit = new TreeMap<>();
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       capacityPerUnit.put(entry.getKey().name(), entry.getValue());
@@ -1291,7 +1365,6 @@ public final class ApiViews {
     view.put("inputPerUnit", sortedCommodities(industry.inputPerUnit()));
     view.put("laborPerUnit", industry.laborPerUnit());
     view.put("outputPerUnit", sortedCommodities(industry.outputPerUnit()));
-    view.put("cycleInputUsedMilli", sortedCommodities(industry.cycleInputUsedMilli()));
     view.put("allocation", allocationView(industry.allocation()));
     List<Map<String, Object>> slots = new ArrayList<>(industry.slots().size());
     for (ClassSlot slot : industry.slots()) {
@@ -1322,6 +1395,20 @@ public final class ApiViews {
     view.put(
         "subsistencePromised",
         sortedCommodities(SubsistenceObligation.promisedByCommodity(obligations)));
+    return view;
+  }
+
+  /**
+   * ★★ <b>R3B.2：一条生产关系的读口形状</b>（activity/operator/inputSupplier/residualOwner/laborSource） ——
+   * 规则的逐条明细不在这里（读口用 {@code subsistenceObligations} 与市场读数回答"谁拿多少"）。
+   */
+  private static Map<String, Object> relationView(ProductionRelation relation) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("activity", relation.activity().value());
+    view.put("operator", actorRefView(relation.operator()));
+    view.put("inputSupplier", recipientView(relation.inputSupplier()));
+    view.put("residualOwner", actorRefView(relation.residualOwner()));
+    view.put("laborSource", relation.laborSource().name());
     return view;
   }
 

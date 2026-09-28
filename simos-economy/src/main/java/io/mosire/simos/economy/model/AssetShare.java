@@ -6,17 +6,17 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.IndustryId;
 
 /**
- * ★★ <b>实物资产份额</b>（R3B.1：产权/资产线的独立账本）：某种实物资产（{@code asset}）的一份数量记录，同时说清 <b>谁拥有</b>
- * （{@code owner}）与 <b>谁实际经营/使用</b>（{@code operator}）。
+ * ★★ <b>实物资产份额</b>（R3B.1：产权/资产线的独立账本）：某种实物资产（{@code asset}）的一份数量记录，同时说清 <b>谁拥有</b> （{@code owner}）与
+ * <b>谁实际经营/使用</b>（{@code operator}）。
  *
- * <p>★★ <b>与 {@code Industry.capacity} 的关系（B.1 过渡口径）</b>：本表是唯一的实物资产总账 —— 对每个 {@code
- * (industry, asset)}，{@code Σ AssetShare.quantity} 就是实物总量。{@code Industry.capacity} 在 B.1 里只是过渡字段
- * （B.2 会把它从生产模型中移走），旧档/播种器允许用它<b>一次性</b>生成初始份额，但它<b>不是</b>持续存在的实物账本上界： 本类型与
- * {@code EconomyData} 都<b>不</b>保留"Σ quantity ≤ capacity"或"Σ quantity == capacity"这类把技术模板与实物账本绑死的不变量。
+ * <p>★★ <b>与 {@code Industry.capacity} 的关系（B.1 过渡口径）</b>：本表是唯一的实物资产总账 —— 对每个 {@code (industry,
+ * asset)}，{@code Σ AssetShare.quantity} 就是实物总量。{@code Industry.capacity} 在 B.1 里只是过渡字段 （B.2
+ * 会把它从生产模型中移走），旧档/播种器允许用它<b>一次性</b>生成初始份额，但它<b>不是</b>持续存在的实物账本上界： 本类型与 {@code EconomyData}
+ * 都<b>不</b>保留"Σ quantity ≤ capacity"或"Σ quantity == capacity"这类把技术模板与实物账本绑死的不变量。
  *
- * <p>★ <b>{@code owner} 与 {@code operator} 的语义</b>：{@code owner == operator} = 自有自营；{@code owner != operator}
- * = 租佃/委托/占用 —— 终止租佃时只改该行的 {@code operator}（或改回 owner），{@code owner} 与 {@code quantity} 不变。
- * 地租、分成、工资由 {@code ProductionRelation} 结算，不在这里存。
+ * <p>★ <b>{@code owner} 与 {@code operator} 的语义</b>：{@code owner == operator} = 自有自营；{@code owner !=
+ * operator} = 租佃/委托/占用 —— 终止租佃时只改该行的 {@code operator}（或改回 owner），{@code owner} 与 {@code quantity}
+ * 不变。 地租、分成、工资由 {@code ProductionRelation} 结算，不在这里存。
  *
  * <p>★ <b>{@code kind} 三档语义</b>：{@code OWNED}（自有；旧档迁移的默认档）、{@code TENANCY}（租佃）、 {@code
  * COMMUNAL}（公地/共同使用）；{@code kind} 只表达权利性质，不表达数量约束。

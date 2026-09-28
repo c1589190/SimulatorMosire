@@ -1,12 +1,15 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
@@ -115,13 +118,26 @@ public final class ProducerCostBook {
    * 按计划公式算单位成本估计。{@code market} 提供参考价（{@code prices}）；{@code market == null} ⇒ 所有投入都缺价（逐项按
    * 0、标记缺失），不抛 —— 读口要能对"这一格没有市场表"如实给估计。
    *
-   * @param industry 产业（配方 + 产能）；不得为 null
+   * @param unit 生产单元（可用资产从 AssetShare 派生）；不得为 null
+   * @param industry 产业模板（配方）；不得为 null
+   * @param assetShares 实物总账（产能规模的来源）；不得为 null
    * @param market 本格市场（参考价唯一真值源）；可为 null（= 没有价表）
    * @param relation 生产关系（固定租规则的来源）；可为 null
    */
-  public static Estimate estimate(Industry industry, Market market, ProductionRelation relation) {
+  public static Estimate estimate(
+      ProductionUnit unit,
+      Industry industry,
+      Map<AssetShareId, AssetShare> assetShares,
+      Market market,
+      ProductionRelation relation) {
+    if (unit == null) {
+      throw new IllegalArgumentException("ProducerCostBook.estimate 的 unit 不得为 null");
+    }
     if (industry == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 industry 不得为 null");
+    }
+    if (assetShares == null) {
+      throw new IllegalArgumentException("ProducerCostBook.estimate 的 assetShares 不得为 null");
     }
     List<CommodityId> missing = new ArrayList<>();
     long inputCost = 0L;
@@ -155,7 +171,12 @@ public final class ProducerCostBook {
         laborCost = Math.multiplyExact(laborMilliMoney, grainPrice);
       }
     }
-    long assetRent = assetRentPerUnit(industry, market, relation);
+    long assetRent =
+        assetRentPerUnit(
+            industry,
+            market,
+            relation,
+            EconomySettlement.capacityScaleOf(unit, industry, assetShares));
     long total = Math.addExact(Math.addExact(inputCost, laborCost), assetRent);
     return new Estimate(total, inputCost, laborCost, assetRent, missing, grainMissing, false);
   }
@@ -167,7 +188,7 @@ public final class ProducerCostBook {
    * <p>★ 只读规则类型 + {@code fixedAmount}；不解释规则公式（那是 {@code ProductionSettlement} 的职责）。
    */
   public static long assetRentPerUnit(
-      Industry industry, Market market, ProductionRelation relation) {
+      Industry industry, Market market, ProductionRelation relation, long capacityScale) {
     if (relation == null || relation.rules().isEmpty()) {
       return DEFAULT_ASSET_RENT_PER_UNIT;
     }
@@ -191,7 +212,7 @@ public final class ProducerCostBook {
     if (perCycle <= 0L) {
       return 0L;
     }
-    long scale = Math.max(1L, EconomySettlement.capacityScaleOf(industry));
+    long scale = Math.max(1L, capacityScale);
     return perCycle / scale;
   }
 

@@ -102,7 +102,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.memberships(), seeded.memberships()),
             merge(base.assetShares(), seeded.assetShares()),
             // ★ S3 预留的第 13 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
-            merge(base.operatorConditions(), seeded.operatorConditions()));
+            merge(base.operatorConditions(), seeded.operatorConditions()),
+            // ★★ R3B.2 第 14 个组件（生产单元）：同一套口径追加 —— 漏了它 = 新播的 unit 静默消失，
+            //   而关系/条件指着这些 unit ⇒ 构造期守卫当场把整批种子拒掉（宁可当场拒，不静默半播）。
+            merge(base.units(), seeded.units()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

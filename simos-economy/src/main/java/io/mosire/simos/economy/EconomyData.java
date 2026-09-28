@@ -2,16 +2,18 @@ package io.mosire.simos.economy;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -19,6 +21,7 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
@@ -29,7 +32,8 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +54,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **十三个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的十三个组件一一对应**（铁律 5）：
+ * <p>★ **十四个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的十四个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -83,7 +87,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **十三张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **十四张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -118,10 +122,10 @@ import java.util.Set;
  * ShipmentBatch}（在途批次）。★ 它是**跨 tick 状态**：发运日建、到货日销；到货前目的地消费不到它。
  *
  * <p>★★ **S1 的第 11/12 个组件**：{@code memberships}（键 = {@link MembershipId}；成员份额，Σcount ==
- * 行人口的全局守卫在这里判）与 {@code assetShares}（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>，
- * 逐行判"键 == 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
- * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2
- * 的经营者状态机）由 S1 一次性补齐，本阶段空表缺省。
+ * 行人口的全局守卫在这里判）与 {@code assetShares}（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>， 逐行判"键 ==
+ * 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
+ * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由
+ * S1 一次性补齐，本阶段空表缺省。
  *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
@@ -135,17 +139,19 @@ public record EconomyData(
     Map<HouseholdId, FlowRow> flows,
     Map<PeopleLotId, LaborSupply> laborSupply,
     Map<LaborAllocationId, LaborAllocation> allocations,
-    Map<IndustryId, ProductionRelation> relations,
+    Map<ProductionUnitId, ProductionRelation> relations,
     Map<HexCoord, Market> markets,
     Map<ShipmentId, ShipmentBatch> shipments,
     Map<MembershipId, Membership> memberships,
     Map<AssetShareId, AssetShare> assetShares,
-    Map<IndustryId, OperatorCondition> operatorConditions) {
+    Map<ProductionUnitId, OperatorCondition> operatorConditions,
+    Map<ProductionUnitId, ProductionUnit> units) {
 
-  /** 往返用例的起点：未激活 + 十三张空表。 */
+  /** 往返用例的起点：未激活 + 十四张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -196,6 +202,113 @@ public record EconomyData(
     if (operatorConditions == null) {
       operatorConditions = Map.of();
     }
+    // ★★ R3B.2 第 14 个组件（生产单元）：缺键 ⇒ 空表（旧档由迁移器从资产份额反推默认 unit）。
+    if (units == null) {
+      units = Map.of();
+    }
+    // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
+    if (relations == null) {
+      relations = Map.of();
+    }
+    // ★★ R3B.2b：旧档 Industry 兼容位（record 末尾 5 个）→ 默认 unit + 整额 OWNED AssetShare。
+    //   ★ **必须在 LegacyHouseholdMigration 之前**：迁移器要靠新造的 unit 才能把旧 relations /
+    //     operatorConditions 键与 allocations.activity 对齐。
+    //   ★ 它是 **Timeline 直读旧 changeset** 的兜底（那条路径不经过 EconomyCodec.decodeChangeSet 的节点整形）；
+    //     codec/载荷已把兼容位摘成中性的路径下，这里的判据不成立 ⇒ 本段 no-op，两条路径幂等共存。
+    //   ★ 判据 = "兼容位非中性"（operator 非 null / progress/劳动 > 0 / 两张表非空）；新形状恒中性。
+    if (hasLegacyProductionBits(industries)) {
+      Map<IndustryId, Industry> normalizedIndustries = new LinkedHashMap<>();
+      Map<ProductionUnitId, ProductionUnit> normalizedUnits = new LinkedHashMap<>(units);
+      Map<AssetShareId, AssetShare> normalizedShares = new LinkedHashMap<>(assetShares);
+      Set<IndustryId> unitIndustries = new LinkedHashSet<>();
+      for (ProductionUnit unit : normalizedUnits.values()) {
+        unitIndustries.add(unit.industry());
+      }
+      Set<IndustryId> shareIndustries = new LinkedHashSet<>();
+      for (AssetShare share : normalizedShares.values()) {
+        shareIndustries.add(share.industry());
+      }
+      for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
+        Industry industry = entry.getValue();
+        IndustryId industryId = entry.getKey();
+        if (industry == null || !hasLegacyProductionBits(industry)) {
+          normalizedIndustries.put(industryId, industry);
+          continue;
+        }
+        // ★ operator 缺省：与 EconomyCodec.migrateLegacyProductionComponents / EconomyPayloads 同一拼写点 ——
+        //   industry.operator 有就用；否则 RegimeOperators.defaultOperator(regime, industryId)（不另拼）。
+        ActorRef operator =
+            industry.operator() != null
+                ? industry.operator()
+                : RegimeOperators.defaultOperator(industry.regime(), industryId);
+        // ★ AssetShare：该 industry 尚无任何份额时才物化；只造 quantity > 0 的项（0 值不造行、也不构成生产规模）。
+        //   id 走 AssetShare.idOf(..., sequence=0)：与既有迁移同一条 id 规则 ⇒ 重放/重跑不会重复。
+        boolean hasExistingShare = shareIndustries.contains(industryId);
+        boolean hasPositiveCapacity = false;
+        for (Map.Entry<AssetKind, Long> capacity : industry.capacity().entrySet()) {
+          if (capacity.getValue() <= 0L) {
+            continue;
+          }
+          hasPositiveCapacity = true;
+          if (hasExistingShare) {
+            continue;
+          }
+          AssetShareId shareId =
+              AssetShare.idOf(
+                  industryId,
+                  capacity.getKey(),
+                  operator,
+                  operator,
+                  AssetShare.RightKind.OWNED,
+                  0L);
+          normalizedShares.putIfAbsent(
+              shareId,
+              new AssetShare(
+                  shareId,
+                  industryId,
+                  capacity.getKey(),
+                  operator,
+                  operator,
+                  capacity.getValue(),
+                  AssetShare.RightKind.OWNED));
+        }
+        // ★ 默认 unit：同 industry 已有 unit 则不动（幂等）；capacity 全 0/空 ⇒ 旧档"规模恒 0、无生产"，不造 unit。
+        //   进度/劳动/投入从兼容位原样带过。
+        if (!unitIndustries.contains(industryId) && hasPositiveCapacity) {
+          ProductionUnitId unitId = ProductionUnitId.idOf(industryId, operator);
+          normalizedUnits.putIfAbsent(
+              unitId,
+              new ProductionUnit(
+                  unitId,
+                  industryId,
+                  operator,
+                  industryId.value(),
+                  industry.progressDays(),
+                  industry.cycleLaborMilli(),
+                  industry.cycleInputUsedMilli()));
+          unitIndustries.add(industryId);
+        }
+        // ★ 归一化后换成 12 参模板：兼容位清成中性 ⇒ EconomyChangeSet.between/diff 不再产生兼容位漂移。
+        normalizedIndustries.put(
+            industryId,
+            new Industry(
+                industryId,
+                industry.name(),
+                industry.regime(),
+                industry.cycleDays(),
+                industry.capacityPerUnit(),
+                industry.dailyInputPerUnit(),
+                industry.dailyLaborPerUnit(),
+                industry.laborPerUnit(),
+                industry.outputPerUnit(),
+                industry.cycleInputPerUnit(),
+                industry.slots(),
+                industry.allocation()));
+      }
+      industries = normalizedIndustries;
+      units = normalizedUnits;
+      assetShares = normalizedShares;
+    }
     // ★★ S1 旧档迁移（显式、幂等、可重放；见 LegacyHouseholdMigration 的类注）：
     //   旧 LaborAllocation 没有 household / 旧档没有 memberships 组件时，在这里一次性补齐。
     //   ★ 它必须发生在**所有守卫之前**：迁移后的状态才参与 pending 检查、Σ 守卫与关系归一。
@@ -204,20 +317,35 @@ public record EconomyData(
     //   memberships/assetShares 后才进守卫。V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的
     //   组件，是构造期补出来的）；本批不改行为、只留提示。
     if (LegacyHouseholdMigration.needed(
-        industries, classes, allocations, memberships, assetShares, meta)) {
+        industries,
+        units,
+        classes,
+        allocations,
+        memberships,
+        assetShares,
+        relations,
+        operatorConditions,
+        meta)) {
       LegacyHouseholdMigration.Result migrated =
           LegacyHouseholdMigration.migrate(
-              industries, classes, allocations, memberships, assetShares, meta);
+              industries,
+              units,
+              classes,
+              allocations,
+              memberships,
+              assetShares,
+              relations,
+              operatorConditions,
+              meta);
+      units = migrated.units();
       allocations = migrated.allocations();
       memberships = migrated.memberships();
       assetShares = migrated.assetShares();
+      relations = migrated.relations();
+      operatorConditions = migrated.operatorConditions();
       meta = migrated.meta();
     }
-    // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。
-    //   ★ 空表 = **全归 residualOwner 的等价路径**（裁定 E9）：没有规则不是坏数据，是"全部自留"。
-    if (relations == null) {
-      relations = Map.of();
-    }
+    // ★ 空表 = **全归 residualOwner 的等价路径**（裁定 E9）：没有规则不是坏数据，是"全部自留"。
     // ★ 第 9 个组件（H4）：同一口径（缺键 ⇒ 空表 = 世界上一个市场都没有，见类注释）。
     if (markets == null) {
       markets = Map.of();
@@ -340,6 +468,12 @@ public record EconomyData(
     for (IndustryId id : industriesCopy.keySet()) {
       industryIds.add(id.value());
     }
+    // ★★ R3B.2：劳动配额的 activity 是 unit id（String）⇒ "这份劳动喂哪条生产活动"按值查 unit。
+    //   ★ 用 values 建索引（id 值 → unit）：units 表自身的键一致性由后面的 unit 守卫判。
+    Map<String, ProductionUnit> unitsByValue = new LinkedHashMap<>();
+    for (ProductionUnit unit : units.values()) {
+      unitsByValue.put(unit.id().value(), unit);
+    }
     Map<LaborAllocationId, LaborAllocation> allocationsCopy = new LinkedHashMap<>();
     Map<PeopleLotId, Long> allocatedPerGroup = new LinkedHashMap<>();
     for (Map.Entry<LaborAllocationId, LaborAllocation> entry : allocations.entrySet()) {
@@ -391,6 +525,26 @@ public record EconomyData(
                 + allocation.actor().id()
                 + " ⇒ 非产业型主体的 id 不得与任何产业 id 相同");
       }
+      // ①-c ★★ R3B.2：activity 若指名了现存 unit，则收劳动的主体必须就是该 unit 的 operator ——
+      //   "劳动喂了谁"（activity）与"谁收劳动"（actor）是同一件事的两处拼写，不一致时没有哪一处能判谁对。
+      //   ★ activity 不命中 unit 的配额合法（自由家户劳动/旧档未接线档）：它不喂任何生产，只进守恒与读口。
+      ProductionUnit referencedUnit = unitsByValue.get(allocation.activity());
+      if (referencedUnit == null && allocation.activity().startsWith(UNIT_ID_PREFIX)) {
+        throw new IllegalArgumentException(
+            "劳动配额的 activity 看起来是 unit id（以 \""
+                + UNIT_ID_PREFIX
+                + "\" 开头）但该 unit 不存在（悬空引用；自由家户劳动请用非 unit 的活动词）: "
+                + allocation);
+      }
+      if (referencedUnit != null && !referencedUnit.operator().equals(allocation.actor())) {
+        throw new IllegalArgumentException(
+            "劳动配额的 activity 指名的 unit 与 actor 不一致（同一件事不许两处拼写）：activity="
+                + allocation.activity()
+                + " unit.operator="
+                + referencedUnit.operator()
+                + "，actor="
+                + allocation.actor());
+      }
       // ② 配额必须有**同期**的供给记录（没有供给的配额没有上限）。
       LaborSupply supply = supplyCopy.get(allocation.group());
       if (supply == null || supply.period() != allocation.period()) {
@@ -428,9 +582,8 @@ public record EconomyData(
     //   ★★ **这里不再有"Σ quantity ≤ Industry.capacity"的上界守卫，也不写 Σ == capacity**：AssetShare 是
     //     独立的实物资产总账，Industry.capacity 在 B.1 里只是过渡字段（B.2 移出生产模型）；把技术模板当
     //     实物账本上界，会把"实物已存在、模板尚未及更新"这类合法状态误判成坏数据。
-    //   ★ 关系表的 operator 若该产业有份额行，必须是其中一个 operator（不是 owner）——见第 8 个组件的守卫。
+    //   ★ 关系表的 operator 与 unit 的关系由**第 14 个组件（units）**的守卫判（R3B.2 起关系挂在 unit 上）。
     Map<AssetShareId, AssetShare> assetSharesCopy = new LinkedHashMap<>();
-    Map<IndustryId, Set<ActorRef>> operatorsByActivity = new LinkedHashMap<>();
     for (Map.Entry<AssetShareId, AssetShare> entry : assetShares.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("assetShares 的键与值都不得为 null: " + entry.getKey());
@@ -443,16 +596,13 @@ public record EconomyData(
       if (!industriesCopy.containsKey(share.industry())) {
         throw new IllegalArgumentException("资产份额指名的产业不存在: " + share.industry());
       }
-      operatorsByActivity
-          .computeIfAbsent(share.industry(), ignored -> new LinkedHashSet<>())
-          .add(share.operator());
       assetSharesCopy.put(entry.getKey(), share);
     }
     assetShares = Collections.unmodifiableMap(assetSharesCopy); // ★ 冻在赋值处
 
-    // ── 第 8 个组件：生产关系表（S1 阶段 4+5 Task 2；计划 R3）──────────────────────────────
-    Map<IndustryId, ProductionRelation> relationsRaw = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, ProductionRelation> entry : relations.entrySet()) {
+    // ── 第 8 个组件：生产关系表（S1 阶段 4+5 Task 2；计划 R3；R3B.2 起键/activity = unit id）────────
+    Map<ProductionUnitId, ProductionRelation> relationsRaw = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionRelation> entry : relations.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("relations 的键与值都不得为 null: " + entry.getKey());
       }
@@ -461,12 +611,13 @@ public record EconomyData(
     // ★★ S1：把旧档/默认关系里的 {@code ToCohort(view)} 一对一归一到 {@code ToHousehold(id)}
     //   （同一 view 恰有一个家户时才归一 —— 一一对应是旧档的既有事实；view 有歧义时保留 ToCohort
     //   作为 S3 的视图选择器，不在构造期猜）。归一化是"键/受方迁移"的唯一落点，幂等。
-    Map<IndustryId, ProductionRelation> relationsCopy =
+    Map<ProductionUnitId, ProductionRelation> relationsCopy =
         normalizeRecipients(relationsRaw, classesCopy);
     relations = Collections.unmodifiableMap(relationsCopy); // ★ 冻在赋值处
-    // ★★ 两条跨表守卫（见类注释）。★ 判在**构造期**：两条都是"同一件事有两处拼写"的口子，事后在结算里
-    //   "顺手算对"既不可能（那时两处已经不一致了），也把"谁对"的判断留在了一段没有能力判断的代码里。
-    for (Map.Entry<IndustryId, ProductionRelation> entry : relationsCopy.entrySet()) {
+    // ★★ 两条跨表守卫（R3B.2 改口径）：① 键 == 值内 activity（同 classes/flows 的键身份口径）；
+    //   ② 关系挂在一个**已存在的 unit** 上、且 operator 与 unit.operator 逐值相等
+    //      （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）。
+    for (Map.Entry<ProductionUnitId, ProductionRelation> entry : relationsCopy.entrySet()) {
       ProductionRelation relation = entry.getValue();
       if (!entry.getKey().equals(relation.activity())) {
         throw new IllegalArgumentException(
@@ -475,28 +626,21 @@ public record EconomyData(
                 + "，行内 activity="
                 + relation.activity());
       }
-      Industry industry = industriesCopy.get(entry.getKey());
-      if (industry == null) {
-        throw new IllegalArgumentException("关系指名的产业不存在: " + entry.getKey());
-      }
-      if (!relation.operator().equals(industry.operator())) {
+      ProductionUnit unit = unitsByValue.get(entry.getKey().value());
+      if (unit == null) {
         throw new IllegalArgumentException(
-            "关系的 operator 必须与产业的 operator 一致（同一件事不许两处拼写）："
+            "关系指名的生产单元（unit）不存在："
+                + entry.getKey()
+                + "（旧档请先由 LegacyHouseholdMigration 把旧 industry 键对齐到 unit）");
+      }
+      if (!relation.operator().equals(unit.operator())) {
+        throw new IllegalArgumentException(
+            "关系的 operator 必须与 unit.operator 一致（同一件事不许两处拼写）："
                 + entry.getKey()
                 + " 关系="
                 + relation.operator()
-                + "，产业="
-                + industry.operator());
-      }
-      Set<ActorRef> operators = operatorsByActivity.get(entry.getKey());
-      if (operators != null && !operators.isEmpty() && !operators.contains(relation.operator())) {
-        throw new IllegalArgumentException(
-            "关系的 operator 必须是该产业某条 AssetShare 的 operator（不是 owner；S1 §6.1 第 7 条的 R3B.1 口径）："
-                + entry.getKey()
-                + " operator="
-                + relation.operator()
-                + "，operators="
-                + operators);
+                + "，unit="
+                + unit.operator());
       }
     }
     // ── S1 第 11 个组件：成员份额表 ───────────────────────────────────────────────────────
@@ -565,24 +709,92 @@ public record EconomyData(
       shipmentsCopy.put(entry.getKey(), entry.getValue());
     }
     shipments = Collections.unmodifiableMap(shipmentsCopy); // ★ 冻在赋值处
-    // ── 第 13 个组件：经营者状态表（S3.2；S1 一次性补齐组件/变更集/编解码，避免以后再破 schema）───────
-    //   ★ 键 = IndustryId，值内也必须带同一个 industry（键值同身份，同 classes 的判据）。
+    // ── 第 13 个组件：经营者状态表（S3.2；R3B.2 起键 = ProductionUnitId，形状/词表不变）──────────
+    //   ★ 键 = unit id；值内 {@code industry} 仍是技术模板 id（形状不动）⇒ 守卫判"key 的 unit 存在"且
+    //     "值内 industry == unit.industry"。
     //   ★ 空表合法：S3 之前没有状态机读者，空表 = "尚未登记任何经营者状态"（不是坏数据）。
-    Map<IndustryId, OperatorCondition> operatorConditionsCopy = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, OperatorCondition> entry : operatorConditions.entrySet()) {
+    Map<ProductionUnitId, OperatorCondition> operatorConditionsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, OperatorCondition> entry : operatorConditions.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("operatorConditions 的键与值都不得为 null: " + entry.getKey());
       }
-      if (!entry.getKey().equals(entry.getValue().industry())) {
+      ProductionUnit unit = unitsByValue.get(entry.getKey().value());
+      if (unit == null) {
         throw new IllegalArgumentException(
-            "operatorConditions 的键必须与 OperatorCondition.industry 一致：键="
+            "operatorConditions 指名的生产单元（unit）不存在："
                 + entry.getKey()
+                + "（旧档请先由 LegacyHouseholdMigration 把旧 industry 键对齐到 unit）");
+      }
+      if (!unit.industry().equals(entry.getValue().industry())) {
+        throw new IllegalArgumentException(
+            "operatorConditions 值内的 industry 必须与 unit.industry 一致：键="
+                + entry.getKey()
+                + "，unit.industry="
+                + unit.industry()
                 + "，值内="
                 + entry.getValue().industry());
       }
       operatorConditionsCopy.put(entry.getKey(), entry.getValue());
     }
     operatorConditions = Collections.unmodifiableMap(operatorConditionsCopy); // ★ 冻在赋值处
+    // ── R3B.2 第 14 个组件：生产单元表（units）────────────────────────────────────────────
+    //   ★ 键 == unit.id；industry 必须存在；progressDays ≤ industry.cycleDays（跨表上界）。
+    //   ★★ **迁移完成态**：每个非 EXITED/ABANDONED 的 unit，其 operator 至少有一条同 industry 的
+    //     AssetShare（否则明确抛，不静默）—— 这条守卫是"AssetShare 是实物总账、unit 是实际生产"两件事
+    //     之间的桥：没有份额的 unit 没有任何产能来源，让它留在 ACTIVE 或让它在结算里静默产出都是坏数据。
+    Map<ProductionUnitId, ProductionUnit> unitsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionUnit> entry : units.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("units 的键与值都不得为 null: " + entry.getKey());
+      }
+      ProductionUnit unit = entry.getValue();
+      if (!entry.getKey().equals(unit.id())) {
+        throw new IllegalArgumentException(
+            "units 的键必须与 ProductionUnit.id 一致：键=" + entry.getKey() + "，行内 id=" + unit.id());
+      }
+      Industry industryTemplate = industriesCopy.get(unit.industry());
+      if (industryTemplate == null) {
+        throw new IllegalArgumentException("生产单元指名的产业（技术模板）不存在: " + unit.industry());
+      }
+      if (unit.progressDays() > industryTemplate.cycleDays()) {
+        throw new IllegalArgumentException(
+            "ProductionUnit.progressDays 必须 ∈ [0, industry.cycleDays]：unit="
+                + entry.getKey()
+                + " progressDays="
+                + unit.progressDays()
+                + "，cycleDays="
+                + industryTemplate.cycleDays());
+      }
+      unitsCopy.put(entry.getKey(), unit);
+    }
+    units = Collections.unmodifiableMap(unitsCopy); // ★ 冻在赋值处
+    // ★ 份额键索引建一次（O(share)）：逐 unit 全表扫是 O(unit × share)，而本构造器每个 revision 都跑。
+    Set<String> shareOperators = new LinkedHashSet<>();
+    for (AssetShare share : assetSharesCopy.values()) {
+      shareOperators.add(
+          industryOperatorKey(
+              share.industry(), share.operator().kind().name(), share.operator().id()));
+    }
+    for (ProductionUnit unit : unitsCopy.values()) {
+      OperatorCondition condition = operatorConditionsCopy.get(unit.id());
+      OperatorCondition.IndustryStatus status = condition == null ? null : condition.status();
+      if (status == OperatorCondition.IndustryStatus.EXITED
+          || status == OperatorCondition.IndustryStatus.ABANDONED) {
+        continue; // 已退出/弃置：份额的去向由退出处置负责，不在这里判"必须有份额"
+      }
+      if (!shareOperators.contains(
+          industryOperatorKey(
+              unit.industry(), unit.operator().kind().name(), unit.operator().id()))) {
+        throw new IllegalArgumentException(
+            "非 EXITED/ABANDONED 的生产单元必须至少有一条同 industry 的 AssetShare（AssetShare 是实物总账；"
+                + "没有份额的 unit 没有任何产能来源）：unit="
+                + unit.id()
+                + " industry="
+                + unit.industry()
+                + " operator="
+                + unit.operator());
+      }
+    }
   }
 
   /**
@@ -688,7 +900,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -706,7 +919,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -724,7 +938,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -742,7 +957,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -760,7 +976,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余十二个组件原样带过。 */
@@ -778,7 +995,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余十二个组件原样带过。 */
@@ -796,11 +1014,12 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余十二个组件原样带过。 */
-  public EconomyData withRelations(Map<IndustryId, ProductionRelation> value) {
+  public EconomyData withRelations(Map<ProductionUnitId, ProductionRelation> value) {
     return new EconomyData(
         meta,
         industries,
@@ -814,7 +1033,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /**
@@ -837,7 +1057,8 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /**
@@ -859,7 +1080,8 @@ public record EconomyData(
         value,
         memberships,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（S1：成员份额表）；其余十二个组件原样带过。 */
@@ -877,7 +1099,8 @@ public record EconomyData(
         shipments,
         value,
         assetShares,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十二个组件原样带过。 */
@@ -895,11 +1118,12 @@ public record EconomyData(
         shipments,
         memberships,
         value,
-        operatorConditions);
+        operatorConditions,
+        units);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余十二个组件原样带过。 */
-  public EconomyData withOperatorConditions(Map<IndustryId, OperatorCondition> value) {
+  public EconomyData withOperatorConditions(Map<ProductionUnitId, OperatorCondition> value) {
     return new EconomyData(
         meta,
         industries,
@@ -913,7 +1137,60 @@ public record EconomyData(
         shipments,
         memberships,
         assetShares,
+        value,
+        units);
+  }
+
+  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十三个组件原样带过。 */
+  public EconomyData withUnits(Map<ProductionUnitId, ProductionUnit> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
         value);
+  }
+
+  /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
+  private static final String UNIT_ID_PREFIX = "unit-";
+
+  /** ★★ B.2b：任一 Industry 带非中性旧档兼容位 ⇒ 构造期归一化（见 compact 构造器那一段）。 */
+  private static boolean hasLegacyProductionBits(Map<IndustryId, Industry> industries) {
+    for (Industry industry : industries.values()) {
+      if (industry != null && hasLegacyProductionBits(industry)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * ★★ B.2b：单个 {@link Industry} 的旧档兼容位判据（与修复规格逐字一致）：{@code operator != null || progressDays > 0 ||
+   * cycleLaborMilli > 0 || !capacity.isEmpty() || !cycleInputUsedMilli.isEmpty()}。
+   *
+   * <p>★ 新形状（12 参构造器 / 归一化后）恒为 {@code false} —— 这是"codec 已整形路径 no-op、Timeline 直读 changeset
+   * 路径兜底"的幂等边界。
+   */
+  private static boolean hasLegacyProductionBits(Industry industry) {
+    return industry.operator() != null
+        || industry.progressDays() > 0L
+        || industry.cycleLaborMilli() > 0L
+        || !industry.capacity().isEmpty()
+        || !industry.cycleInputUsedMilli().isEmpty();
+  }
+
+  /** 份额/unit 的 (industry, operator) 复合键（只作构造期索引，不持久化）。 */
+  private static String industryOperatorKey(IndustryId industry, String kind, String operatorId) {
+    return industry.value() + "|" + kind + "|" + operatorId;
   }
 
   /**
@@ -926,8 +1203,8 @@ public record EconomyData(
    * ToHousehold(稳定身份)} ⇒ 之后的阶层写回只改 {@code ClassRow.view}，不会让这些规则改指到别的家户；仍保留的 {@code ToCohort}
    * 是旧档/多义视图的兼容窄口，按当前行集合解释。
    */
-  private static Map<IndustryId, ProductionRelation> normalizeRecipients(
-      Map<IndustryId, ProductionRelation> raw, Map<HouseholdId, ClassRow> classes) {
+  private static Map<ProductionUnitId, ProductionRelation> normalizeRecipients(
+      Map<ProductionUnitId, ProductionRelation> raw, Map<HouseholdId, ClassRow> classes) {
     Map<CohortKey, HouseholdId> unique = new LinkedHashMap<>();
     Set<CohortKey> ambiguous = new LinkedHashSet<>();
     for (ClassRow row : classes.values()) {
@@ -938,8 +1215,8 @@ public record EconomyData(
     for (CohortKey view : ambiguous) {
       unique.remove(view);
     }
-    Map<IndustryId, ProductionRelation> normalized = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, ProductionRelation> entry : raw.entrySet()) {
+    Map<ProductionUnitId, ProductionRelation> normalized = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionRelation> entry : raw.entrySet()) {
       ProductionRelation relation = entry.getValue();
       List<CompensationRule> rules = new ArrayList<>(relation.rules().size());
       boolean changed = false;

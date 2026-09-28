@@ -5,6 +5,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 
 /**
  * ★★ **一次劳动分配**（第三阶段设计稿 §四）："**这批人**把**这么多**劳动供给**这个主体**，在这个周期里"。
@@ -38,9 +39,9 @@ import io.mosire.simos.economy.api.id.PeopleLotId;
  * @param group 出劳动的人口批次（**人口的真值源在 social**；本类型只持它的稳定身份）
  * @param household ★★ <b>这份劳动属于哪个家户</b>（S1 起；同一批人可按家户分别给不同主体出劳动，见 S1.1）
  * @param actor 收劳动的经济主体（本轮 = 产业 {@code farm@q_r} / {@code craft@q_r}，或家户）
- * @param activity 这笔劳动**干什么**（调用方的词，本层不解释：{@code farm} / {@code craft} / {@code weaving}…） ★
- *     **本轮没有消费方读它**：结算按 {@code actor} 归集、读口也按 {@code actor} 合计 —— 这一维是设计稿 §四 钉死的**形状** （R3 的"耕作 /
- *     织布"才用它区分同一主体的不同活动），故**如实记下"暂时没人读"**，不假装它在用（本仓禁的从来不是"值暂时无用"， 而是"**看起来在记、其实永远不被读**却没人说"）。
+ * @param activity ★★ <b>R3B.2 起 = 生产单元 id（{@code ProductionUnitId.value()}）</b>：结算按它把劳动归集到 unit
+ *     （{@code EconomySettlement.laborByUnit}），"这份劳动喂哪条生产活动"的唯一答案。★ 旧档的旧活动标签 / 旧 actor id 由 {@code
+ *     LegacyHouseholdMigration} 在构造期对齐到 unit；对不上任何 unit 的配额**合法**（自由家户劳动，只进守恒与读口， 不喂任何生产）。
  * @param laborMilli 承诺投入的劳动（千分劳动·日）；不得为负
  * @param period 发放周期（世界周期序号）；不得为负
  */
@@ -108,6 +109,28 @@ public record LaborAllocation(
     }
     return new LaborAllocationId(
         "alloc-" + industry.value() + "-" + group.value() + "-" + household.value());
+  }
+
+  /**
+   * ★★ <b>R3B.2：按 {@code ProductionUnitId} 拼配额 id</b>（{@code alloc-<unit>-<批次>-<家户>}）。
+   *
+   * <p>★ <b>为什么必须新增而不是复用产业版</b>：同一产业可以有多个 unit（同一批人给两个单位出劳动）⇒ 用产业 id 拼会让两条配额撞同一个 id（{@code
+   * FieldDelta} 的 map 键撞车 = 静默丢一条劳动）。unit id 是 {@code unit-<industry>-<operator>}，已含产业段 ⇒ 新旧 id
+   * 不会撞。
+   */
+  public static LaborAllocationId idOf(
+      ProductionUnitId unit, PeopleLotId group, HouseholdId household) {
+    if (unit == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOf 的 unit 不得为 null");
+    }
+    if (group == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOf 的 group 不得为 null");
+    }
+    if (household == null) {
+      throw new IllegalArgumentException("LaborAllocation.idOf 的 household 不得为 null");
+    }
+    return new LaborAllocationId(
+        "alloc-" + unit.value() + "-" + group.value() + "-" + household.value());
   }
 
   /** ★ 旧档（无 household）的 id 形状 {@code alloc-<产业>-<批次>}；<b>只准旧档迁移读取/对账</b>。 */

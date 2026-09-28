@@ -8,17 +8,17 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.FlowRow;
-import io.mosire.simos.economy.model.AssetShare;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
  * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code ClassRow} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
- * {@code EconomyData} 组件、不改变更集/codec 形状，全部字段都能由 {@code FlowRow + LaborAllocation + AssetShare + Debt
- * + ProductionLedger(瞬态)} 逐值复算。
+ * {@code EconomyData} 组件、不改变更集/codec 形状，全部字段都能由 {@code FlowRow + LaborAllocation + AssetShare +
+ * Debt + ProductionLedger(瞬态)} 逐值复算。
  *
  * <pre>
  * unmetNeedMilliGrain/Cloth = 本周期累计未满足（FlowRow.unmetNeed；与"本周期"同窗口）
@@ -181,9 +181,10 @@ public record HouseholdCondition(
       if (!allocation.household().equals(household)) {
         continue;
       }
+      io.mosire.simos.economy.api.id.ProductionUnitId unitId =
+          new io.mosire.simos.economy.api.id.ProductionUnitId(allocation.activity());
       ProductionRelation relation =
-          data.relations()
-              .get(new io.mosire.simos.economy.api.id.IndustryId(allocation.actor().id()));
+          data.units().containsKey(unitId) ? data.relations().get(unitId) : null;
       if (relation != null) {
         source = relation.laborSource();
         if (source == LaborSource.TENANT || source == LaborSource.SERF) {
