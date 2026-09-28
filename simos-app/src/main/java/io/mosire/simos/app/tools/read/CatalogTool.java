@@ -113,6 +113,11 @@ public final class CatalogTool implements AgentTool {
                   + OPERATOR_HINT
                   + "）"),
           Map.entry(
+              "economy.MigrateHousehold",
+              "household(家户 id 文本), toHex(目标格 q_r 文本)"
+                  + "（★ S3：只搬视图与份额，身份/人口不变，账 location 不搬；"
+                  + "家户不存在 / 目标格不在图上 / 目标格=原格 ⇒ 拒）"),
+          Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
                   + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"

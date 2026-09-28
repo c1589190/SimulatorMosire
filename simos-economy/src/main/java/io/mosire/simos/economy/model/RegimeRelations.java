@@ -208,6 +208,24 @@ public final class RegimeRelations {
   private static final long TENANT_RENT_MILLI_GRAIN = 20_000_000L;
 
   /**
+   * ★★ <b>默认关系只覆盖传统四档</b>（贫农/中农/富农/地主）—— 不能读 {@code SocialClassId.all()}： S3 追加的 {@code
+   * landless_laborer}/{@code artisan}/{@code official} <b>没有</b>创世行（播种器仍按传统四档建行）， 若默认规则点名它们，收获时的
+   * {@code requireCohortRows} 会因"受方行不存在"fail-closed ⇒ 旧世界开不了账。 新档位由 S2/S3
+   * 的显式候选/关系数据点名，不由默认模板生成（不改变旧四档行为）。
+   *
+   * <p>★★ <b>声明位置是初始化顺序的一部分</b>：本字段必须在 {@link #BY_REGIME} 的静态初始化块之前声明 —— 那个块（静态初始化期）调用 {@link
+   * #feudalRules()} 等模板构造器，而它们经 {@link #laborCohorts} 读本字段； 若声明在后，类初始化时读到 {@code null} ⇒ {@code
+   * ExceptionInInitializerError}/{@code NullPointerException} （{@code NoClassDefFoundError}
+   * 只是后续表现）。
+   */
+  private static final List<SocialClassId> TRADITIONAL_STRATA =
+      List.of(
+          SocialClassId.POOR_PEASANT,
+          SocialClassId.MIDDLE_PEASANT,
+          SocialClassId.RICH_PEASANT,
+          SocialClassId.LANDLORD);
+
+  /**
    * 登记表：{@code regime 字面量 → 该档的规则模板（保序）}。
    *
    * <p>★★ <b>静态初始化块 + {@code LinkedHashMap} + {@code Collections.unmodifiableMap}</b>：顺序 = spec §六
@@ -534,19 +552,6 @@ public final class RegimeRelations {
                 Optional.of(GRAIN),
                 10)));
   }
-
-  /**
-   * ★★ <b>默认关系只覆盖传统四档</b>（贫农/中农/富农/地主）—— 不能读 {@code SocialClassId.all()}： S3 追加的 {@code
-   * landless_laborer}/{@code artisan}/{@code official} <b>没有</b>创世行（播种器仍按传统四档建行）， 若默认规则点名它们，收获时的
-   * {@code requireCohortRows} 会因"受方行不存在"fail-closed ⇒ 旧世界开不了账。 新档位由 S2/S3
-   * 的显式候选/关系数据点名，不由默认模板生成（不改变旧四档行为）。
-   */
-  private static final List<SocialClassId> TRADITIONAL_STRATA =
-      List.of(
-          SocialClassId.POOR_PEASANT,
-          SocialClassId.MIDDLE_PEASANT,
-          SocialClassId.RICH_PEASANT,
-          SocialClassId.LANDLORD);
 
   /** 该格**四个传统阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。 */
   private static List<RuleSpec> laborCohorts(
