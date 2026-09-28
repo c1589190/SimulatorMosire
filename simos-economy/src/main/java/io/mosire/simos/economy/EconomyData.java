@@ -13,7 +13,6 @@ import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -24,7 +23,6 @@ import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
@@ -371,29 +369,11 @@ public record EconomyData(
                 + "，行内 id="
                 + entry.getValue().id());
       }
-      Optional<ClassSlot> slot =
-          requireStratumAllowed(industriesCopy, entry.getValue().view(), "classes");
       ClassRow row = entry.getValue();
-      // ★ v2 spec §八.1：`0 ≤ participationPerMille ≤ slot.laborParticipationPerMille ≤ 1000` 里，
-      //   中间那条**只有这里能判**（ClassRow 只守了 [0,1000] 两头，槽位上限要跨对象）。
-      //   不守的后果：laborMilli × participationPerMille ÷ 1000 被悄悄放大 ⇒ 劳动瓶颈、产出、
-      //   按劳动权重的分配全变大，而账面看不出来（不凭空造粮，但凭空造劳动）。
-      //   ★ S3：只有"本格 slots 里真的有这个阶层"时才有槽位上限；家户派生阶层（空 Optional）不施加。
-      if (slot.isPresent()) {
-        ClassSlot slotLimit = slot.orElseThrow();
-        if (row.participationPerMille() > slotLimit.laborParticipationPerMille()) {
-          throw new IllegalArgumentException(
-              "classes 的 participationPerMille 不得超过其槽位上限（v2 spec §八.1）："
-                  + entry.getKey()
-                  + "（view="
-                  + row.view()
-                  + "）行="
-                  + row.participationPerMille()
-                  + "‰ > 槽位="
-                  + slotLimit.laborParticipationPerMille()
-                  + "‰");
-        }
-      }
+      // ★★ R4-B.4（R3 决策单 §0.1/§1.5，R3B.4）：**view 不再受 Industry.slots 约束**。
+      //   旧守卫（view 必须命中该格产业的 slots 且 participationPerMille ≤ 该 slot 的
+      //   laborParticipationPerMille）已删除；Industry.slots / ClassSlot 只作为生产方式内部的角色/劳动配置。
+      //   ClassRow 自己的 [0,1000] 参与率守卫仍在（见 ClassRow 构造期）。
       classesCopy.put(entry.getKey(), row);
     }
     classes = Collections.unmodifiableMap(classesCopy); // ★ 冻在赋值处
@@ -451,7 +431,7 @@ public record EconomyData(
       if (flowRow == null) {
         throw new IllegalArgumentException("flows 的键必须是已存在的家户（S1 起两表同键）：" + entry.getKey());
       }
-      requireStratumAllowed(industriesCopy, flowRow.view(), "flows");
+      requireIndustryRegistered(industriesCopy, flowRow.view(), "flows");
       flowsCopy.put(entry.getKey(), entry.getValue());
     }
     flows = Collections.unmodifiableMap(flowsCopy); // ★ 冻在赋值处
@@ -783,54 +763,16 @@ public record EconomyData(
   }
 
   /**
-   * ★ <b>创世槽位里的四个传统阶层</b>（S3 之前 {@code Industry.slots} 的词表，见 {@code EconomySeeder.CLASS_IDS}）：
-   * {@link #requireStratumAllowed} 用它们区分"S3 派生阶层放行"与"传统四档漏槽仍 fail-closed"。
+   * ★★ <b>flows 行的结构引用完整性</b>：flow 行的 view 指出它住在哪一格，该格必须登记过至少一个产业 —— 否则这行流水没有落点。
    *
-   * <p>★ <b>为什么不能读 {@code SocialClassId.all()}</b>：那个词表在 S3 追加了 {@code landless_laborer}/{@code
-   * artisan}/{@code official}，而这三档没有创世槽位；若拿全词表当传统档，三档会被误判成"旧档漏槽"而拒绝合法的关账写回（本类正是为此改判据）。
-   *
-   * <p>★ <b>顺序不参与任何行为</b>：这里只做 {@code contains} 判断，故用 {@code Set.of}（不涉及迭代序）。
+   * <p>★★ <b>R4-B.4 收窄</b>：本方法**只**判"该格存在产业"。旧版还判 view 必须命中该格产业的 {@code ClassSlot}、并返回最紧槽位供调用方限制
+   * {@code participationPerMille}；该槽位耦合已删除 —— {@code Industry.slots} / {@code ClassSlot}
+   * 只作为生产方式内部的角色/劳动配置， 不再是 {@code ClassRow.view} 的限制来源。{@code classes} 侧也不再调用本方法（view 完全由 {@code
+   * HouseholdClassRule} 纯派生）。
    */
-  private static final Set<SocialClassId> CREATION_SLOT_STRATA =
-      Set.of(
-          SocialClassId.POOR_PEASANT,
-          SocialClassId.MIDDLE_PEASANT,
-          SocialClassId.RICH_PEASANT,
-          SocialClassId.LANDLORD);
-
-  /**
-   * ★★ <b>家户行的结构引用完整性</b>（H0 改写；改前是 {@code (industry, slot)} 必须落在该产业的 {@code slots} 里； ★ S3
-   * 扩展了"派生阶层没有创世槽位"这一合法形态）：家户行的键 = {@code (格, 居住类型, 阶层)}，判据换成 ——
-   * <b>该格上至少有一个产业允许这个阶层</b>；返回其中**最紧**的那个槽位（投入率上限取 min）。
-   *
-   * <p>★★ <b>为什么"该格上的任一产业"而不是"真供给它的那些产业"</b>：后者要读**劳动配额表** ⇒ 那会把"行 ↔ 配额"的引用完整性
-   * 变成一条构造期守卫，而本记录**有意不判跨表引用**（同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）：逐组件增量落盘 ⇒
-   * <b>产业/行先到、配额后到是合法写序</b>，判死它等于让"经济状态刚种下、配额还没发"的世界构造不出来。
-   *
-   * <p>★ <b>上限取 min 的理由</b>：一条家户行的 {@code participationPerMille} 是**一个数**，而它可能同时给几个产业出劳动（农村家户
-   * 既种地又织布）—— 取最紧的那个槽位 ⇒ 不会因"某个产业的上限更宽"而把劳动悄悄放大（这条守卫的全部目的）。 真档三个产业的四个槽位共用同一组参与率 ⇒ 与改前逐值相同。
-   *
-   * <p>★★ <b>S3 的两分法（改判据的全部内容）</b>：{@code HouseholdClassRule} 会把 {@code ClassRow.view.stratum} 写成
-   * {@code landless_laborer}/{@code artisan}/{@code official}，这些是**家户派生阶层、没有创世槽位**（播种器的 {@code
-   * Industry.slots} 仍只有传统四档）⇒ 它们不能沿用"必须命中 slots"的 fail-closed 判据，否则整个状态会在关账写回后被拒。 但传统四档（{@link
-   * #CREATION_SLOT_STRATA}）**一条也不能放宽**：
-   *
-   * <ul>
-   *   <li>stratum 命中该格任一产业 slots ⇒ 返回最紧槽位，调用方照旧判 {@code participationPerMille ≤
-   *       slot.laborParticipationPerMille}（防劳动被参与率悄悄放大）；
-   *   <li>stratum 是 S3 派生阶层且不命中任何 slots ⇒ 返回 {@link Optional#empty()}：这是**具名的放行**（见方法内注释）， 不施加槽位上限；
-   *   <li>stratum 是传统四档却不命中任何 slots ⇒ **保持原判据抛**（坏数据/坏迁移，不允许借 S3 的口子混进来）。
-   * </ul>
-   *
-   * <p>★ <b>另有一条如实记的放宽</b>：改前还隐含"居住类型必须与产业对得上"（行键的产业段自带格），现在居住类型那一维**不在这里判** ——
-   * 它由"供给关系"决定（配额表的批次前缀，见 {@code EconomySettlement.householdKeysOf}），
-   * 而这里判不了它（要读配额表）。一条居住类型没有任何批次供给的家户行是**合法状态**（它只是不参与任何产业的生产）。
-   */
-  private static Optional<ClassSlot> requireStratumAllowed(
+  private static void requireIndustryRegistered(
       Map<IndustryId, Industry> industries, CohortKey key, String what) {
     String hexKey = IndustryHexKeys.hexKey(key.hex().q(), key.hex().r());
-    ClassSlot tightest = null;
-    boolean anyIndustry = false;
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
       // ★ **没有格键的产业 id**（{@code IndustryId} 允许这种值，真档里不会出现）：说不出它在哪一格 ⇒
       //   **不拿它来否决**（对任何格都算"可能"）。★ 反过来，带了格键的必须**逐字相等**才算命中 ——
@@ -839,35 +781,11 @@ public record EconomyData(
           && IndustryHexKeys.hexKeyOf(entry.getKey()).isPresent()) {
         continue;
       }
-      anyIndustry = true;
-      for (ClassSlot slot : entry.getValue().slots()) {
-        if (!slot.id().equals(key.stratum())) {
-          continue;
-        }
-        if (tightest == null
-            || slot.laborParticipationPerMille() < tightest.laborParticipationPerMille()) {
-          tightest = slot;
-        }
-      }
+      return; // 该格有产业登记
     }
-    if (!anyIndustry) {
-      // ★ 消息保留"不存在的产业"这几个字：它是既有的判据用语（{@code EconomyInvariantsTest} 逐字钉着）。
-      throw new IllegalArgumentException(
-          what + " 引用了不存在的产业（该格上没有登记任何产业）: " + hexKey + "（键=" + key + "）");
-    }
-    if (tightest != null) {
-      return Optional.of(tightest);
-    }
-    if (CREATION_SLOT_STRATA.contains(key.stratum())) {
-      throw new IllegalArgumentException(
-          what + " 引用了该格任何产业都未允许的阶层槽位: " + key.stratum() + " ∉ 格 " + hexKey + " 各产业的 slots");
-    }
-    // ★★ S3 具名放行：landless_laborer / artisan / official 是 HouseholdClassRule 从可观察量派生的
-    //   家户阶层，Industry.slots 里没有为它们保留创世槽位 ⇒ 这里允许，且**不施加槽位上限**
-    //   （ClassRow 自己的 [0,1000] 守卫仍在；劳动折算仍是同一个 participationPerMille，不发散）。
-    //   ★ 这不是"把新阶层映射回旧四档"：它们没有参与率上限这一制度参数，故不存在可套用的上限；
-    //     传统四档漏槽仍在上面的分支 fail-closed。
-    return Optional.empty();
+    // ★ 消息保留"不存在的产业"这几个字：它是既有的判据用语（{@code EconomyInvariantsTest} 逐字钉着）。
+    throw new IllegalArgumentException(
+        what + " 引用了不存在的产业（该格上没有登记任何产业）: " + hexKey + "（键=" + key + "）");
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */

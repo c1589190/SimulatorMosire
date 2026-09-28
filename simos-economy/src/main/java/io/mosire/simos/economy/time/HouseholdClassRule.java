@@ -22,10 +22,8 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionUnit;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -84,6 +82,9 @@ import java.util.Set;
  * <p>★★ <b>旧四档不受影响</b>：本规则返回的 {@link SocialClassId} 可以是旧四档，也可以是 S3 追加的 {@code
  * landless_laborer}/{@code artisan}/{@code official}；旧档的 parse 行为不变（见 {@code SocialClassId}）。
  * <b>写回</b>只发生在结算关账日，且只改 {@code ClassRow.view}（见 {@code EconomySettlement}）。
+ *
+ * <p>★★ <b>R4-B.4：纯派生</b>：分类不再读 {@code Industry.slots}，也没有任何"槽位上限回退"分支；{@code Industry.slots} /
+ * {@code ClassSlot} 只作为生产方式内部的角色/劳动配置，不再是 {@code ClassRow.view} 或参与率的上限来源。
  */
 public final class HouseholdClassRule {
 
@@ -101,19 +102,6 @@ public final class HouseholdClassRule {
    * <p>★ 这是"债务维度"在分类里的唯一使用点（计划 §S3.4 的 {@code debtRatio}）；阈值是政策值，V 阶段迁入参数目录。
    */
   public static final long DEBT_STRESS_THRESHOLD_PER_MILLE = 1_000L;
-
-  /**
-   * ★ 旧四档：有创世槽位与参与率上限（见 {@code EconomyData} 的槽位守卫）；S3 派生阶层没有创世槽位、也不设参与率上限。
-   *
-   * <p>它不是"第二份阶层表"：四档的常量值与判定顺序仍以 {@code SocialClassId} 为唯一来源；这里只回答"哪些档位受槽位上限约束"， 供 {@link Index}
-   * 在分类时避免派生出一个参与率超过新档位上限的组合（构造期守卫会拒收那种状态）。
-   */
-  private static final Set<SocialClassId> LEGACY_TIER_STRATA =
-      Set.of(
-          SocialClassId.POOR_PEASANT,
-          SocialClassId.MIDDLE_PEASANT,
-          SocialClassId.RICH_PEASANT,
-          SocialClassId.LANDLORD);
 
   private HouseholdClassRule() {}
 
@@ -234,18 +222,6 @@ public final class HouseholdClassRule {
     private final Map<String, List<ProductionUnitId>> unitsByIndustryOperator =
         new LinkedHashMap<>();
 
-    /**
-     * 逐格（以及无格键产业）的槽位参与率上限：{@code hexKey → (旧四档 → min 上限)}。
-     *
-     * <p>★ 只读构造期数据，用来避免分类派生出一个"参与率 > 新档位上限"的旧四档组合 —— 那种组合会被 {@code EconomyData} 的构造期守卫拒收（真档 tick120
-     * 实测：poor_peasant 行 950‰ 派生 middle_peasant 上限 900‰ ⇒ 整批 advance 失败）。它不是新阈值，值全部取自 {@link
-     * Industry#slots()}。
-     */
-    private final Map<String, Map<SocialClassId, Long>> slotCapsByHex = new LinkedHashMap<>();
-
-    /** 无格键产业（对任意格都算"可能"）的最紧槽位上限；口径与 {@code EconomyData.requireStratumAllowed} 一致。 */
-    private final Map<SocialClassId, Long> universalSlotCaps = new LinkedHashMap<>();
-
     // ── 直接资产份额（owner/operator 能反解为本状态里的家户）────────────────────────────
     private final Map<HouseholdId, Long> directRightQuantity = new LinkedHashMap<>();
     private final Map<HouseholdId, Long> directLandMilliMu = new LinkedHashMap<>();
@@ -287,7 +263,6 @@ public final class HouseholdClassRule {
         Map<AssetShareId, AssetShare> assetShares,
         Map<LaborAllocationId, LaborAllocation> allocations,
         Map<ProductionUnitId, ProductionUnit> units,
-        Map<IndustryId, Industry> industries,
         Map<ProductionUnitId, ProductionRelation> relations,
         Map<HouseholdId, ClassRow> classes,
         Map<DebtId, Debt> debts,
@@ -299,17 +274,6 @@ public final class HouseholdClassRule {
             .computeIfAbsent(
                 industryOperatorKey(unit.industry(), unit.operator()), ignored -> new ArrayList<>())
             .add(unit.id());
-      }
-      for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
-        Map<SocialClassId, Long> target =
-            IndustryHexKeys.hexKeyOf(entry.getKey())
-                .map(
-                    hexKey ->
-                        slotCapsByHex.computeIfAbsent(hexKey, ignored -> new LinkedHashMap<>()))
-                .orElse(universalSlotCaps);
-        for (ClassSlot slot : entry.getValue().slots()) {
-          target.merge(slot.id(), (long) slot.laborParticipationPerMille(), Math::min);
-        }
       }
       Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
       for (ClassRow row : classes.values()) {
@@ -536,8 +500,8 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(relations, "relations");
       Objects.requireNonNull(classes, "classes");
       Objects.requireNonNull(debts, "debts");
-      return new Index(
-          assetShares, allocations, units, industries, relations, classes, debts, null);
+      // ★ B.4：industries 形参保留（结算/读口的公开重载不换签名），但 Index 不再读 Industry.slots。
+      return new Index(assetShares, allocations, units, relations, classes, debts, null);
     }
 
     /**
@@ -561,8 +525,8 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(classes, "classes");
       Objects.requireNonNull(debts, "debts");
       Objects.requireNonNull(settlementIndex, "settlementIndex");
-      return new Index(
-          assetShares, allocations, units, industries, relations, classes, debts, settlementIndex);
+      // ★ B.4：industries 形参保留（结算侧公开重载不换签名），但 Index 不再读 Industry.slots。
+      return new Index(assetShares, allocations, units, relations, classes, debts, settlementIndex);
     }
 
     /** 资产汇总的唯一取值口：有结算索引走索引，旧读口/测试路径仍逐份额扫（两者同一个算式）。 */
@@ -820,21 +784,6 @@ public final class HouseholdClassRule {
                 + ";rentEntitled="
                 + rent;
       }
-      SocialClassId feasible = feasibleStratum(row, stratum);
-      if (!feasible.equals(stratum)) {
-        reason =
-            reason
-                + ";slotCapFallback(derived="
-                + stratum.value()
-                + ",slotCap="
-                + slotCapText(row, stratum)
-                + ",participationPerMille="
-                + row.participationPerMille()
-                + "->"
-                + feasible.value()
-                + ")";
-        stratum = feasible;
-      }
       return new Classification(
           stratum,
           reason,
@@ -848,62 +797,6 @@ public final class HouseholdClassRule {
           rentPaidComplete,
           debt,
           debtStress);
-    }
-
-    /**
-     * ★ 分类结果必须是**该行参与率在新档位槽位上限内**的旧四档，或不受上限约束的 S3 派生阶层。
-     *
-     * <p>★ 真档实测（本类头部注释的场景）：poor_peasant 行 950‰ 被本规则派生成 middle_peasant，而 middle 槽位上限 900‰ ⇒ {@code
-     * EconomyData} 构造期守卫拒收整批 advance。修复不是放宽守卫，也不是改参与率（写回只改 view），而是
-     * **在分类侧选一个参与率可行的档位**：能保持派生档就保持，否则按富→中→贫的顺序退化，退化理由写进 reason。
-     */
-    private SocialClassId feasibleStratum(ClassRow row, SocialClassId derived) {
-      if (!LEGACY_TIER_STRATA.contains(derived)) {
-        return derived; // S3 派生阶层没有创世槽位上限（EconomyData 的两分法）
-      }
-      OptionalLong cap = slotCapOf(row, derived);
-      if (cap.isPresent() && row.participationPerMille() <= cap.getAsLong()) {
-        return derived;
-      }
-      for (SocialClassId candidate : fallbackOrder(derived)) {
-        OptionalLong candidateCap = slotCapOf(row, candidate);
-        if (candidateCap.isPresent() && row.participationPerMille() <= candidateCap.getAsLong()) {
-          return candidate;
-        }
-      }
-      // 连一个可行的旧档都没有（只应出现在坏数据/手工状态）：保留当前视图 —— 它在构造期已经过同一守卫。
-      return row.view().stratum();
-    }
-
-    /** 派生档位不可行时的退化顺序：富→中→贫；地主→中→贫（地租受方若参与率过高，至少可落到中/贫）。 */
-    private static List<SocialClassId> fallbackOrder(SocialClassId derived) {
-      if (derived.equals(SocialClassId.RICH_PEASANT) || derived.equals(SocialClassId.LANDLORD)) {
-        return List.of(SocialClassId.MIDDLE_PEASANT, SocialClassId.POOR_PEASANT);
-      }
-      if (derived.equals(SocialClassId.MIDDLE_PEASANT)) {
-        return List.of(SocialClassId.POOR_PEASANT);
-      }
-      return List.of();
-    }
-
-    /** 该行所在格（含无格键产业）对某档的最紧参与率上限；没有该档槽位 ⇒ empty（S3 派生阶层/坏数据）。 */
-    private OptionalLong slotCapOf(ClassRow row, SocialClassId stratum) {
-      String hexKey = IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r());
-      Long cap = null;
-      Map<SocialClassId, Long> local = slotCapsByHex.get(hexKey);
-      if (local != null) {
-        cap = local.get(stratum);
-      }
-      Long universal = universalSlotCaps.get(stratum);
-      if (universal != null) {
-        cap = cap == null ? universal : Math.min(cap, universal);
-      }
-      return cap == null ? OptionalLong.empty() : OptionalLong.of(cap);
-    }
-
-    private String slotCapText(ClassRow row, SocialClassId stratum) {
-      OptionalLong cap = slotCapOf(row, stratum);
-      return cap.isPresent() ? Long.toString(cap.getAsLong()) : "none";
     }
 
     /** 保序取一条家户的证据串（原因字符串用；不参与算术）。 */

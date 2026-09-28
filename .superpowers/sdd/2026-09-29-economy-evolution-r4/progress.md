@@ -155,3 +155,66 @@ B.3b：`economy.TransferAssetShare` 命令 + c1 孤儿债对账（`DebtReference
 ### 下一步
 B.4：删除 `HouseholdClassRule` 的 `slotCapFallback/feasibleStratum`，确认分类只写 `ClassRow.view`、不改 participationPerMille/劳动/资产/账户/债务；
 验收同状态重放分类一致、无富农证据就输出 0、账户/劳动先变标签后变。
+
+---
+
+## B.4 阶层纯派生收口 —— 已完成（未提交）
+
+### 实现了什么
+- `HouseholdClassRule`：删除 `feasibleStratum/fallbackOrder/slotCapOf/slotCapText/slotCapsByHex/universalSlotCaps/LEGACY_TIER_STRATA`
+  与 `Index` 构造期的 slots 建表；`classify` 直接返回纯派生 `stratum`，reason 不再拼槽位回退段。
+- `EconomyData`：删除 classes 的 `requireStratumAllowed` 调用与 `participationPerMille ≤ slot.laborParticipationPerMille`
+  守卫；flows 侧 helper 退化为 `requireIndustryRegistered`（只判“该格有产业”）；删除 `CREATION_SLOT_STRATA` 与相关 import。
+- 未改 `EconomySettlement`/`MarketSettlement`/`EconomySeeder`/`SettlementIndex`/`EconomyChangeSet`/`EconomyCodec`/
+  `Industry`/`ClassSlot` 形状；`Industry.slots` 线格式不变。
+
+### 领域验收证据
+- 编译/spotless 绿（`/tmp/b4-final-compile.log` 等）；shaded jar md5 `3000a539c240300408996568bc61eafd`。
+- 纯函数：同一 tick0 `EconomyData` 6,392 行，每行同 Index 连续 2 次 + 独立 Index 第 3 次 `Classification`
+  逐行相等（0 不一致）；分类前后 14 组件 SHA-256 指纹不变（tick0/tick120 各一份）。
+- 0→120（8 线程，35.27 s；同初态）：与 B.4 前 8 线程关账 store（B.3a-perf final120）全状态 diff，
+  **唯一不同组件 = `economy.classes`**；6,392 键相同，799 行只改 `view`，非 view 字段 0 差异，
+  其余组件（allocations/assetShares/debts/账户等）逐值相同。
+- 前后分布：baseline `{middle 2196, poor 1452, …}` → B.4 `{middle 2995, poor 653, …}`，恰好 799 行
+  `poor 950‰ 派生 middle` 不再被降回 poor；landlord/artisan/rich 不变。
+- 活跃富农 = 0 的证据：`ownLand>0 & netLaborSold<0 & 无租权` 的行数 = 0；总数 598 的 `rich_peasant`
+  全部是 `retainedCurrentView:noObservableEvidence`（既有语义，不是新造标签）。
+- 1 vs 8 线程 0→120（1t 38.62 s）：canonical 全状态 0 组件差异，classes/classifications 分布逐值相同。
+- 回归：Probe2 world 两条 OK；Probe3 `PASS=60/0`；Probe5 `PASS=11/0`。
+
+### 与计划不同 / 剩余阻断
+1. `requireStratumAllowed` 的 flows 调用点保留为 `requireIndustryRegistered`（只判产业存在）；classes 侧
+   “该格有产业”校验随调用一并删除。
+2. `Index.of(...)` 的 `industries` 形参保留但不读（不改结算/读口签名）。
+3. 既有测试仍写着旧槽位上限断言（V 统一适配）；`ClassRow`/`EconomyMigrateHouseholdHandler` 有陈旧注释。
+4. 未做 4 线程/全年/峰值内存/JFR/TransferAssetShare 命令 E2E；未跑 test/verify；未 commit。
+
+详见 `.superpowers/sdd/2026-09-29-economy-evolution-r4/B4-report.md`。
+
+---
+
+## B.4 阶层纯派生收口 —— 已完成
+
+### 实现了什么
+- `HouseholdClassRule`：删除 `feasibleStratum/fallbackOrder/slotCapOf/slotCapText/slotCapsByHex` 与 slots 建表；`classify` 直接返回派生档，
+  reason 不再拼 `slotCapFallback`。
+- `EconomyData`：删除 `ClassRow.view` 的 `participationPerMille ≤ Industry.slots` 上限守卫与相关 helper/import；保留人群/债务/成员/份额/参与率范围等守卫。
+- `Industry.slots` 保留为生产方式内部角色配置，线格式不改；不做任何“为标签改 participationPerMille/劳动/资产/账户/债务”的路径。
+
+### 领域验收证据
+- 编译/spotless 绿；shaded jar md5 `3000a539c240300408996568bc61eafd`。
+- 纯函数性：6,392 行同状态连续 2 次 + 独立 Index 第 3 次分类，Classification 不一致 0；分类前后 14 组件 SHA-256 指纹不变。
+- 0→120（8 线程 35.27 s）：与 B.4 前同初态全状态 diff，**唯一不同组件 = economy.classes**；6,392 键相同、799 行只改 view；
+  allocations/assetShares/debts/账户等逐值相同。
+- 分布：middle 2196→2995、poor 1452→653；恰好 799 行 “poor 950‰ 派生 middle 被旧槽位降回 poor” 现在保留 middle；
+  landlord/artisan/rich 不变。零活跃富农证据：`ownLand>0 & netLaborSold<0 & 无租权` = 0；598 个 rich 全是无证据时保留旧 view 的既有语义。
+- 1 vs 8 线程 0→120：1t 38.62 s / 8t 35.27 s，全领域 canonical 状态 0 差异，classes/classifications 分布逐值相同。
+- 回归：Probe2 OK、Probe3 PASS=60/0、Probe5 PASS=11/0。
+- 禁止性路径审计：`slotCapFallback/feasibleStratum/slotCapsByHex/requireStratumAllowed` main = 0 命中；写回唯一写点 `row.withView(...)`。
+
+### 剩余阻断 / 未验证
+- 既有测试仍保留旧槽位断言、部分陈旧注释；V 阶段统一适配。
+- 未跑 test/verify/4 线程/全年/峰值内存；未 commit（本台账追加后由控制方提交）。
+
+### 下一步
+E1：旧生产方式衰退 → 经营者/关联家户不同后果；退出时资产份额、劳动配额、库存、债务都有去向；自用可维生不判破产。
