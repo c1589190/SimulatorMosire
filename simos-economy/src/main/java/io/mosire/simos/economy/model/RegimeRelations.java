@@ -336,6 +336,17 @@ public final class RegimeRelations {
   }
 
   /**
+   * ★★ <b>R3：给养口径的对外读口</b>（毫粮 / 1000 千分劳动）—— {@link #FEUDAL_SUBSISTENCE_MILLI_PER_LABOR}
+   * 是四档制度里唯一有实物给养的那一档的标定值；{@code ProducerCostBook} 算"劳动成本估计"时读它。
+   *
+   * <p>★ 为什么要有这个读口而不是让成本簿自己写一个数：给养与劳动成本必须是<b>同一个数</b>——两处各写一份会漂开，
+   * 而"制度按规定发多少"与"成本估计按多少算"正是同一件事的两个面（唯一拼写点纪律）。
+   */
+  public static long subsistenceMilliPerLabor() {
+    return FEUDAL_SUBSISTENCE_MILLI_PER_LABOR;
+  }
+
+  /**
    * ★★ <b>M1.7：默认关系里的"实物给养义务"展开</b> —— 由 {@link #defaultRelation(RegimeId, IndustryId, ActorRef,
    * Set)} 先推出该档的默认关系，再按 {@link SubsistenceObligation#of(ProductionRelation, Map)} 展开成具名义务。
    *
@@ -524,7 +535,20 @@ public final class RegimeRelations {
                 10)));
   }
 
-  /** 该格**四个阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。 */
+  /**
+   * ★★ <b>默认关系只覆盖传统四档</b>（贫农/中农/富农/地主）—— 不能读 {@code SocialClassId.all()}： S3 追加的 {@code
+   * landless_laborer}/{@code artisan}/{@code official} <b>没有</b>创世行（播种器仍按传统四档建行）， 若默认规则点名它们，收获时的
+   * {@code requireCohortRows} 会因"受方行不存在"fail-closed ⇒ 旧世界开不了账。 新档位由 S2/S3
+   * 的显式候选/关系数据点名，不由默认模板生成（不改变旧四档行为）。
+   */
+  private static final List<SocialClassId> TRADITIONAL_STRATA =
+      List.of(
+          SocialClassId.POOR_PEASANT,
+          SocialClassId.MIDDLE_PEASANT,
+          SocialClassId.RICH_PEASANT,
+          SocialClassId.LANDLORD);
+
+  /** 该格**四个传统阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。 */
   private static List<RuleSpec> laborCohorts(
       RuleType type,
       Pool pool,
@@ -533,8 +557,8 @@ public final class RegimeRelations {
       long fixedAmount,
       Optional<String> commodity,
       int priority) {
-    List<RuleSpec> rules = new ArrayList<>(SocialClassId.all().size());
-    for (SocialClassId stratum : SocialClassId.all()) {
+    List<RuleSpec> rules = new ArrayList<>(TRADITIONAL_STRATA.size());
+    for (SocialClassId stratum : TRADITIONAL_STRATA) {
       rules.add(
           new RuleSpec(
               type, stratum, pool, weight, ratePerMille, fixedAmount, commodity, priority));

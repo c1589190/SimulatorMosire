@@ -32,6 +32,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -46,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -236,6 +238,9 @@ final class MarketSettlement {
     private final Map<ShipmentId, ShipmentBatch> shipments;
     private final ProductionLedger.Accumulator ledger;
 
+    /** ★ S3：经营者状态（只读；市场的原因归因与"真无法再生产"判据读它，不写它）。 */
+    private final Map<IndustryId, OperatorCondition> operatorConditions;
+
     MarketRound(
         long day,
         Map<HouseholdId, ClassRow> rows,
@@ -253,7 +258,8 @@ final class MarketSettlement {
         Map<IndustryId, ProductionRelation> relations,
         Map<LaborAllocationId, LaborAllocation> allocations,
         Map<ShipmentId, ShipmentBatch> shipments,
-        ProductionLedger.Accumulator ledger) {
+        ProductionLedger.Accumulator ledger,
+        Map<IndustryId, OperatorCondition> operatorConditions) {
       this.day = day;
       this.rows = Objects.requireNonNull(rows, "rows");
       this.householdGoods = Objects.requireNonNull(householdGoods, "householdGoods");
@@ -273,6 +279,8 @@ final class MarketSettlement {
       this.allocations = Objects.requireNonNull(allocations, "allocations");
       this.shipments = Objects.requireNonNull(shipments, "shipments");
       this.ledger = Objects.requireNonNull(ledger, "ledger");
+      this.operatorConditions =
+          operatorConditions == null ? Map.of() : Map.copyOf(operatorConditions);
     }
   }
 
@@ -547,7 +555,7 @@ final class MarketSettlement {
                         throw new IllegalStateException(
                             "卖订单的主体不在本轮参与者里（订单生成与撮合漂开了）: " + order.supplier());
                       }
-                      sells.add(new SellSlot(order, seller, hex, market, region));
+                      sells.add(new SellSlot(order, seller, hex, market, region, planningRound));
                     }
                   }
                   planned.add(
@@ -630,7 +638,9 @@ final class MarketSettlement {
             ctx.immediateFills,
             ctx.crossRegionFills,
             priceMode(),
-            adapted.updates()),
+            adapted.updates(),
+            ctx.sellerOutcomes,
+            ctx.buyerOutcomes),
         adapted.markets());
   }
 
@@ -1284,7 +1294,8 @@ final class MarketSettlement {
             ctx.round.allocations,
             ctx.round.shipments,
             // ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
-            new ProductionLedger.Accumulator(ctx.round.day));
+            new ProductionLedger.Accumulator(ctx.round.day),
+            ctx.round.operatorConditions);
     MatchContext local = new MatchContext(localRound, ctx.markets, ctx.topology, ctx.carrier);
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
@@ -1506,7 +1517,8 @@ final class MarketSettlement {
         round.relations,
         round.allocations,
         round.shipments,
-        new ProductionLedger.Accumulator(round.day));
+        new ProductionLedger.Accumulator(round.day),
+        round.operatorConditions);
   }
 
   /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
@@ -1549,32 +1561,85 @@ final class MarketSettlement {
     }
   }
 
-  /** 一个区内分组（已是同一 region × commodity）：按预算/供给配给后逐笔即时成交。 */
+  /**
+   * ★★ <b>一个区内分组（已是同一 region × commodity）：按成本从低到高分档配给</b>—— 同成本层内仍走 {@link
+   * ProportionalSplit#byDenominator}（溢出已由 S0 修复），成交价仍由参考价决定。
+   *
+   * <p>★★ <b>S3 成本排序（计划 §S3.1）</b>：卖方先按 {@code unitCostEstimate + freightPerUnit} 升序、同成本按 {@code
+   * (hex, actor)} canonical 升序；买方剩余需求优先分配给<b>最低成本层</b>，该层吃满才轮到下一层。 同层内"按可用量与需求比例分配"的语义逐字保留（现有
+   * {@code ProportionalSplit}）。
+   *
+   * <p>★ <b>成本只改"谁先被选"</b>：{@code price} 一路不变，成交单价与限价过滤都不看成本（计划明文）。
+   */
   private static void matchGroup(
       MatchContext ctx, List<BuySlot> buys, List<SellSlot> sells, long price, RouteContext route) {
-    long[] weights = new long[buys.size()];
-    long demand = 0L;
-    for (int i = 0; i < buys.size(); i++) {
-      long affordable = affordableQuantity(ctx, buys.get(i), price, route);
-      weights[i] = Math.min(buys.get(i).remaining, affordable);
-      demand += weights[i];
-    }
-    if (demand <= 0L) {
+    if (buys.isEmpty() || sells.isEmpty()) {
       return;
     }
-    long[] sellWeights = new long[sells.size()];
-    long supply = 0L;
-    for (int i = 0; i < sells.size(); i++) {
-      sellWeights[i] = sells.get(i).remaining;
-      supply += sellWeights[i];
+    List<SellSlot> ordered = new ArrayList<>(sells);
+    ordered.sort(costOrder(route));
+    int tierStart = 0;
+    while (tierStart < ordered.size()) {
+      long tierCost = landedCostOf(ordered.get(tierStart), route);
+      int tierEnd = tierStart + 1;
+      while (tierEnd < ordered.size() && landedCostOf(ordered.get(tierEnd), route) == tierCost) {
+        tierEnd++;
+      }
+      List<SellSlot> tier = new ArrayList<>(tierEnd - tierStart);
+      long supply = 0L;
+      for (int i = tierStart; i < tierEnd; i++) {
+        SellSlot sell = ordered.get(i);
+        if (sell.remaining > 0L) {
+          tier.add(sell);
+          supply += sell.remaining;
+        }
+      }
+      // ★ 需求按**当前剩余**重算：上一层吃掉的量不再计入（"最低成本层优先"因此是逐层的，不是一次性预分配）。
+      long[] weights = new long[buys.size()];
+      long demand = 0L;
+      for (int i = 0; i < buys.size(); i++) {
+        long affordable = affordableQuantity(ctx, buys.get(i), price, route);
+        weights[i] = Math.min(buys.get(i).remaining, affordable);
+        demand += weights[i];
+      }
+      if (demand <= 0L) {
+        return; // 没有可付需求 ⇒ 后面的层也卖不动（成本排序不改变这一事实）
+      }
+      long matched = Math.min(demand, supply);
+      if (matched > 0L) {
+        long[] sellWeights = new long[tier.size()];
+        for (int i = 0; i < tier.size(); i++) {
+          sellWeights[i] = tier.get(i).remaining;
+        }
+        long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
+        long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
+        pairUp(ctx, buys, buyParts, tier, sellParts, price, route);
+      }
+      tierStart = tierEnd;
     }
-    long matched = Math.min(demand, supply);
-    if (matched <= 0L) {
-      return;
+  }
+
+  /** 卖方成本排序（{@code unitCostEstimate + freightPerUnit} 升序；同成本按 canonical key 升序）。 */
+  private static Comparator<SellSlot> costOrder(RouteContext route) {
+    return (left, right) -> {
+      int byCost = Long.compare(landedCostOf(left, route), landedCostOf(right, route));
+      if (byCost != 0) {
+        return byCost;
+      }
+      return left.costTieBreak.compareTo(right.costTieBreak);
+    };
+  }
+
+  /**
+   * 一条卖槽的到货成本（同一刻度；{@link ProducerCostBook#landedCostMilli} 是唯一算式）。 ★ 成本未知（无配方）⇒ 排到已知成本之后（{@link
+   * Long#MAX_VALUE}/2，不参与 {@code addExact} 的真相加）。
+   */
+  private static long landedCostOf(SellSlot sell, RouteContext route) {
+    if (!sell.costEstimate.costKnown()) {
+      return Long.MAX_VALUE / 2L;
     }
-    long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
-    long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
-    pairUp(ctx, buys, buyParts, sells, sellParts, price, route);
+    long freight = route == null ? 0L : route.freightPerUnit;
+    return ProducerCostBook.landedCostMilli(sell.costEstimate.unitCostEstimateMilli(), freight);
   }
 
   // ── 跨区撮合（邻接供应区；协调器单线程 + P1.2 索引）────────────────────────────────────
@@ -1781,20 +1846,52 @@ final class MarketSettlement {
       if (demand <= 0L || supply <= 0L) {
         break;
       }
-      long matched = Math.min(demand, Math.min(supply, capacityPerWindow));
-      if (matched <= 0L) {
-        break;
+      // ★★ S3：本路线按 unitCostEstimate + freightPerUnit 升序分档；每档在剩余运力内按同一条 ProportionalSplit 配给。
+      List<SellSlot> ordered = new ArrayList<>(sells);
+      ordered.sort(costOrder(route));
+      long capacityLeft = capacityPerWindow;
+      int tierStart = 0;
+      while (tierStart < ordered.size() && capacityLeft > 0L) {
+        long tierCost = landedCostOf(ordered.get(tierStart), route);
+        int tierEnd = tierStart + 1;
+        while (tierEnd < ordered.size() && landedCostOf(ordered.get(tierEnd), route) == tierCost) {
+          tierEnd++;
+        }
+        List<SellSlot> tier = new ArrayList<>(tierEnd - tierStart);
+        long tierSupply = 0L;
+        for (int i = tierStart; i < tierEnd; i++) {
+          SellSlot sell = ordered.get(i);
+          if (sell.remaining > 0L) {
+            tier.add(sell);
+            tierSupply += sell.remaining;
+          }
+        }
+        // 需求按**当前剩余**重算（前一层已成交的不再计入；与 matchGroup 的逐层语义同源）。
+        long[] tierBuyWeights = new long[buys.size()];
+        long tierDemand = 0L;
+        for (int i = 0; i < buys.size(); i++) {
+          long affordable = affordableQuantity(ctx, buys.get(i), unitPrice, route);
+          tierBuyWeights[i] = Math.min(buys.get(i).remaining, affordable);
+          tierDemand += tierBuyWeights[i];
+        }
+        if (tierDemand <= 0L) {
+          break;
+        }
+        long matched = Math.min(tierDemand, Math.min(tierSupply, capacityLeft));
+        if (matched > 0L) {
+          long[] sellWeights = new long[tier.size()];
+          for (int i = 0; i < tier.size(); i++) {
+            sellWeights[i] = tier.get(i).remaining;
+          }
+          long[] buyParts = ProportionalSplit.byDenominator(matched, tierBuyWeights, tierDemand);
+          long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, tierSupply);
+          acc.used += matched;
+          capacityLeft -= matched;
+          pairUp(ctx, buys, buyParts, tier, sellParts, unitPrice, route);
+        }
+        tierStart = tierEnd;
       }
-      long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
-      long[] sellWeights = new long[sells.size()];
-      for (int i = 0; i < sells.size(); i++) {
-        sellWeights[i] = sells.get(i).remaining;
-      }
-      long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
-      acc.used += matched;
-      pairUp(ctx, buys, buyParts, sells, sellParts, unitPrice, route);
-      if (matched >= capacityPerWindow
-          && (remainingOf(buys) > 0L || remainingOfSells(sells) > 0L)) {
+      if (capacityLeft <= 0L && (remainingOf(buys) > 0L || remainingOfSells(sells) > 0L)) {
         acc.bottleneck = true;
         for (BuySlot buy : buys) {
           if (buy.remaining > 0L && buy.blocked == null) {
@@ -2244,6 +2341,12 @@ final class MarketSettlement {
 
   // ── 未成交原因 ─────────────────────────────────────────────────────────────────────
 
+  /**
+   * ★★ <b>S3：逐买方 / 逐卖方原因 + 逐槽位只读结果</b>（计划 §S3.1）。
+   *
+   * <p>★★ <b>卖方原因不再由全局 {@code anyBuy} 决定</b>：逐条卖方剩余按"同商品、同/邻区是否存在合格买方 （预算、限价、到货时限、路线可达）"分档；买方的
+   * {@code NO_BUDGET} 只挂在该买方自己的槽位上（见下）。
+   */
   private static void collectUnfilled(MatchContext ctx, MarketIndexes indexes) {
     Map<CommodityId, Long> sellRemainingByCommodity = new LinkedHashMap<>();
     Map<CommodityId, Long> minSellerPriceByCommodity = new LinkedHashMap<>();
@@ -2252,6 +2355,7 @@ final class MarketSettlement {
       sellRemainingByCommodity.merge(commodity, Math.max(0L, sell.remaining), Long::sum);
       minSellerPriceByCommodity.merge(commodity, sell.order.minPrice(), Math::min);
     }
+    // ── 买方：逐槽位（NO_BUDGET 只挂在该买方上）────────────────────────────────────────
     for (BuySlot buy : ctx.buys) {
       if (buy.remaining <= 0L) {
         continue;
@@ -2265,7 +2369,10 @@ final class MarketSettlement {
             || spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining <= 0L) {
           reason = MarketUnfilledReason.NO_BUDGET;
         } else if (totalSellRemaining <= 0L) {
-          reason = classifyNoSupply(ctx, buy, indexes);
+          reason =
+              inputShortfallNear(ctx, buy)
+                  ? MarketUnfilledReason.INPUT_SHORTFALL
+                  : classifyNoSupply(ctx, buy, indexes);
         } else if (!hasSupplyNear(buy, indexes)) {
           reason = MarketUnfilledReason.NO_ADJACENT_SUPPLY;
         } else if (minSellerPrice != Long.MAX_VALUE
@@ -2279,23 +2386,430 @@ final class MarketSettlement {
           new MarketReport.Unfilled(
               buy.buyer.actor, true, buy.order.commodity(), buy.remaining, reason, buy.hex));
     }
+    // ── 卖方：逐条按"合格买方是否存在"分档（不再 anyBuy ⇒ NO_BUDGET 的全局写法）────────────
+    Map<SellSlot, MarketUnfilledReason> sellerReasons = new LinkedHashMap<>();
     for (SellSlot sell : ctx.sells) {
       if (sell.remaining <= 0L) {
         continue;
       }
-      boolean anyBuy = false;
-      for (BuySlot buy : ctx.buys) {
-        if (buy.remaining > 0L && buy.order.commodity().equals(sell.order.commodity())) {
-          anyBuy = true;
-          break;
-        }
-      }
-      MarketUnfilledReason reason =
-          anyBuy ? MarketUnfilledReason.NO_BUDGET : MarketUnfilledReason.NO_BUYER;
+      MarketUnfilledReason reason = sellerReason(ctx, sell, indexes);
+      sellerReasons.put(sell, reason);
       ctx.unfilled.add(
           new MarketReport.Unfilled(
               sell.seller.actor, false, sell.order.commodity(), sell.remaining, reason, sell.hex));
     }
+    collectSellerOutcomes(ctx, indexes, sellerReasons);
+    collectBuyerOutcomes(ctx, indexes);
+  }
+
+  /** 一个卖方槽位的合格买方扫描结果（逐条判定；{@code anyBuy} 只作证据，不直接决定档位）。 */
+  private record BuyEligibility(
+      boolean anyBuy,
+      boolean anyAffordable,
+      boolean budgetBlocked,
+      boolean priceBlocked,
+      boolean routeBlocked,
+      boolean timeBlocked,
+      boolean hasAdjacent) {}
+
+  /**
+   * ★★ <b>S3 的卖方原因分档</b>（优先级 = 计划 §S3.1 的表）：
+   *
+   * <ol>
+   *   <li>可自用 ⇒ {@code UNSOLD_SELF_USABLE}（卖不掉不等于无法再生产）；
+   *   <li>状态机判定的真无法再生产 ⇒ {@code CANNOT_REPRODUCE}；
+   *   <li>存在合格买方但自己没被选中 ⇒ {@code OUTCOMPETED}（有更便宜的卖方成交）或兜底；
+   *   <li>有买方但都被预算/限价/时限/路线挡下 ⇒ 相应档位（{@code NO_BUDGET} 是"这些买方都没钱"的**逐条**结论）；
+   *   <li>根本没有同商品买方 ⇒ {@code NO_BUYER}。
+   * </ol>
+   */
+  private static MarketUnfilledReason sellerReason(
+      MatchContext ctx, SellSlot sell, MarketIndexes indexes) {
+    if (sellerSelfUsable(ctx, sell)) {
+      return MarketUnfilledReason.UNSOLD_SELF_USABLE;
+    }
+    if (sellerCannotReproduce(ctx, sell)) {
+      return MarketUnfilledReason.CANNOT_REPRODUCE;
+    }
+    BuyEligibility eligible = scanEligibleBuyers(ctx, sell, indexes);
+    if (eligible.anyAffordable()) {
+      return outcompetedBy(ctx, sell, indexes).actors() > 0L
+          ? MarketUnfilledReason.OUTCOMPETED
+          : MarketUnfilledReason.ALGORITHM_UNCOVERED;
+    }
+    if (!eligible.anyBuy()) {
+      return MarketUnfilledReason.NO_BUYER;
+    }
+    if (eligible.budgetBlocked()) {
+      return MarketUnfilledReason.NO_BUDGET;
+    }
+    if (eligible.priceBlocked()) {
+      return MarketUnfilledReason.PRICE_LIMIT;
+    }
+    if (eligible.routeBlocked()) {
+      return MarketUnfilledReason.NO_ROUTE;
+    }
+    if (eligible.timeBlocked()) {
+      return MarketUnfilledReason.LOGISTICS_TIME;
+    }
+    return eligible.hasAdjacent()
+        ? MarketUnfilledReason.ALGORITHM_UNCOVERED
+        : MarketUnfilledReason.NO_ADJACENT_SUPPLY;
+  }
+
+  /** 扫描同区 + 直接邻接区的同商品买方：预算/限价/时限/路线逐条判（"合格"= 四关全过）。 */
+  private static BuyEligibility scanEligibleBuyers(
+      MatchContext ctx, SellSlot sell, MarketIndexes indexes) {
+    CommodityId commodity = sell.order.commodity();
+    String regionId = sell.region.node().nodeId();
+    boolean anyBuy = false;
+    boolean anyAffordable = false;
+    boolean budgetBlocked = false;
+    boolean priceBlocked = false;
+    boolean routeBlocked = false;
+    boolean timeBlocked = false;
+    boolean hasAdjacent = false;
+    List<String> regionIds = new ArrayList<>();
+    regionIds.add(regionId);
+    Set<String> adjacent = indexes.adjacentRegionIds.getOrDefault(regionId, Set.of());
+    hasAdjacent = !adjacent.isEmpty();
+    regionIds.addAll(adjacent);
+    for (String candidateRegion : regionIds) {
+      List<BuySlot> regionBuys =
+          indexes
+              .buysByRegionCommodity
+              .getOrDefault(candidateRegion, Map.of())
+              .getOrDefault(commodity, List.of());
+      for (BuySlot buy : regionBuys) {
+        if (buy.remaining <= 0L) {
+          continue;
+        }
+        anyBuy = true;
+        long spendable = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
+        if (buy.noMoney || spendable <= 0L) {
+          budgetBlocked = true;
+          continue;
+        }
+        boolean sameRegion = candidateRegion.equals(regionId);
+        if (!sameRegion) {
+          HexCoord buyerHex = buy.hex;
+          if (moveCostOf(ctx, buyerHex) >= TerrainType.IMPASSABLE_MOVE_COST) {
+            routeBlocked = true;
+            continue;
+          }
+          long travel = Math.max(1L, ctx.topology.travelTicks(sell.hex, buyerHex));
+          if (buy.order.latestArrivalTick() < ctx.round.day + travel) {
+            timeBlocked = true;
+            continue;
+          }
+        }
+        if (buy.order.maxLandedPrice() < sell.order.minPrice()) {
+          priceBlocked = true;
+          continue;
+        }
+        anyAffordable = true;
+      }
+    }
+    return new BuyEligibility(
+        anyBuy, anyAffordable, budgetBlocked, priceBlocked, routeBlocked, timeBlocked, hasAdjacent);
+  }
+
+  /** 更便宜（同商品、同/邻区；按 {@code unitCostEstimate} 比）且真的卖掉的卖方家数与数量。 */
+  private static Outcompeted outcompetedBy(MatchContext ctx, SellSlot sell, MarketIndexes indexes) {
+    CommodityId commodity = sell.order.commodity();
+    String regionId = sell.region.node().nodeId();
+    Set<String> adjacent = indexes.adjacentRegionIds.getOrDefault(regionId, Set.of());
+    long ownCost = landedCostOf(sell, null);
+    Set<String> cheaperActors = new LinkedHashSet<>();
+    long cheaperFilled = 0L;
+    List<String> regionIds = new ArrayList<>();
+    regionIds.add(regionId);
+    regionIds.addAll(adjacent);
+    for (String candidateRegion : regionIds) {
+      for (SellSlot other :
+          indexes
+              .sellsByRegionCommodity
+              .getOrDefault(candidateRegion, Map.of())
+              .getOrDefault(commodity, List.of())) {
+        if (other == sell || landedCostOf(other, null) >= ownCost) {
+          continue;
+        }
+        long filled = Math.max(0L, other.order.sellable() - other.remaining);
+        if (filled > 0L) {
+          cheaperActors.add(other.seller.actor.kind() + ":" + other.seller.actor.id());
+          cheaperFilled += filled;
+        }
+      }
+    }
+    return new Outcompeted(cheaperActors.size(), cheaperFilled);
+  }
+
+  private record Outcompeted(long actors, long qty) {}
+
+  /** 买方"没有供给"时是否其实是生产侧投入不足：本格有产该商品、有产能、但本周期投入没凑齐的产业。 ★ 只查买方所在格（第一版口径；邻接格留待跨区协调那一轮，不为假想需要造扫描）。 */
+  private static boolean inputShortfallNear(MatchContext ctx, BuySlot buy) {
+    String hexKey = hexKeyOf(buy.hex);
+    for (Participant participant : indexesParticipantsOf(ctx, hexKey)) {
+      for (IndustryId id : participant.industries) {
+        Industry industry = ctx.round.industries.get(id);
+        if (industry == null || !industry.outputPerUnit().containsKey(buy.order.commodity())) {
+          continue;
+        }
+        long scale =
+            EconomySettlement.plannedCapacityScaleOf(
+                industry, ctx.round.operatorConditions.get(id));
+        if (scale <= 0L) {
+          continue;
+        }
+        for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+          if (entry.getValue() <= 0L) {
+            continue;
+          }
+          long required = entry.getValue() * scale;
+          long used = industry.cycleInputUsedMilli().getOrDefault(entry.getKey(), 0L);
+          if (used < required) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /** 本格参与者（{@code inputShortfallNear} 用；索引在 {@link MarketIndexes} 里按 hex 建好）。 */
+  private static List<Participant> indexesParticipantsOf(MatchContext ctx, String hexKey) {
+    List<Participant> result = new ArrayList<>();
+    for (Participant participant : ctx.participants.values()) {
+      HexCoord hex = ctx.participantHex.get(participant.actor);
+      if (hex != null && hexKeyOf(hex).equals(hexKey)) {
+        result.add(participant);
+      }
+    }
+    return result;
+  }
+
+  /** 卖方的未卖余量是否可用于自身再生产（下一周期投入 / 家庭生活保留）。 */
+  private static boolean sellerSelfUsable(MatchContext ctx, SellSlot sell) {
+    CommodityId commodity = sell.order.commodity();
+    if (necessaryInputsOf(ctx.round, sell.seller).getOrDefault(commodity, 0L) > 0L) {
+      return true;
+    }
+    if (sell.seller.household() != null) {
+      ClassRow row = ctx.round.rows.get(sell.seller.household());
+      return row != null && householdLifeReserveOf(row).getOrDefault(commodity, 0L) > 0L;
+    }
+    return false;
+  }
+
+  /** 经营者状态机判定"真无法再生产"：{@code INDEBTED} 及以后（ACTIVE/TRIALING/CONTRACTING 不在此列）。 */
+  private static boolean sellerCannotReproduce(MatchContext ctx, SellSlot sell) {
+    Industry industry = industryForSeller(ctx.round, sell.seller, sell.order.commodity());
+    if (industry == null) {
+      return false;
+    }
+    OperatorCondition condition = ctx.round.operatorConditions.get(industry.id());
+    if (condition == null) {
+      return false;
+    }
+    return switch (condition.status()) {
+      case INDEBTED, SUSPENDED, EXITING, EXITED, ABANDONED -> true;
+      default -> false;
+    };
+  }
+
+  /** 逐卖方槽位的只读结果（成本排名 / 成交 / 未成交原因 / 被谁挤掉）。 */
+  private static void collectSellerOutcomes(
+      MatchContext ctx, MarketIndexes indexes, Map<SellSlot, MarketUnfilledReason> sellerReasons) {
+    Map<SellSlot, Integer> ranks = sellerCostRanks(ctx);
+    for (SellSlot sell : ctx.sells) {
+      CommodityId commodity = sell.order.commodity();
+      long offered = sell.order.sellable();
+      long filled = Math.max(0L, offered - sell.remaining);
+      long unfilled = Math.max(0L, sell.remaining);
+      MarketUnfilledReason reason = sellerReasons.get(sell);
+      Outcompeted outcompeted =
+          reason == MarketUnfilledReason.OUTCOMPETED
+              ? outcompetedBy(ctx, sell, indexes)
+              : new Outcompeted(0L, 0L);
+      Industry industry = industryForSeller(ctx.round, sell.seller, commodity);
+      ctx.sellerOutcomes.add(
+          new MarketReport.SellerOutcome(
+              ctx.round.day,
+              sell.seller.actor,
+              industry == null ? Optional.empty() : Optional.of(industry.id()),
+              sell.hex,
+              commodity,
+              offered,
+              filled,
+              unfilled,
+              sell.market.priceOf(commodity),
+              sell.costEstimate.unitCostEstimateMilli(),
+              0L,
+              bestAcceptedLandedPrice(ctx, sell),
+              ranks.getOrDefault(sell, 0),
+              Optional.ofNullable(reason),
+              outcompeted.actors(),
+              reason == MarketUnfilledReason.OUTCOMPETED ? unfilled : 0L,
+              sell.costEstimate.priceMissing(),
+              sell.costEstimate.costKnown()));
+    }
+  }
+
+  /** 同商品同区的到货成本名次（0 起；成本未知排已知之后；同成本按 canonical key）。 */
+  private static Map<SellSlot, Integer> sellerCostRanks(MatchContext ctx) {
+    Map<String, List<SellSlot>> groups = new LinkedHashMap<>();
+    for (SellSlot sell : ctx.sells) {
+      String key = sell.region.node().nodeId() + "#" + sell.order.commodity().value();
+      groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(sell);
+    }
+    Map<SellSlot, Integer> ranks = new LinkedHashMap<>();
+    for (List<SellSlot> group : groups.values()) {
+      group.sort(costOrder(null));
+      for (int i = 0; i < group.size(); i++) {
+        ranks.put(group.get(i), i);
+      }
+    }
+    return ranks;
+  }
+
+  /** 本卖方的商品成交里最低的一笔到货价（单价 + 单位运费；无成交 ⇒ empty）。 */
+  private static OptionalLong bestAcceptedLandedPrice(MatchContext ctx, SellSlot sell) {
+    long best = Long.MAX_VALUE;
+    for (MarketReport.Fill fill : ctx.fills) {
+      if (!fill.commodity().equals(sell.order.commodity())
+          || !fill.seller().equals(sell.seller.actor())) {
+        continue;
+      }
+      long landed = fill.unitPriceMilli() + fill.freightPerUnitMilli();
+      if (landed < best) {
+        best = landed;
+      }
+    }
+    return best == Long.MAX_VALUE ? OptionalLong.empty() : OptionalLong.of(best);
+  }
+
+  /** 逐买方槽位的只读结果（库存/覆盖/缺口/预算/下单/成交/原因；含"库存已足"的 {@code STOCK_SUFFICIENT}）。 */
+  private static void collectBuyerOutcomes(MatchContext ctx, MarketIndexes indexes) {
+    // ★ P1.2 同款：到货量按 (buyer, commodity) 预索引一次（逐槽位现扫 shipments 会把它乘进 participants×commodities）。
+    long deadline = ctx.round.day + MARKET_BUY_DEADLINE_DAYS;
+    Map<String, Long> incomingByActorCommodity = new LinkedHashMap<>();
+    for (ShipmentBatch batch : ctx.round.shipments.values()) {
+      if (batch.arrivalTick() > deadline) {
+        continue;
+      }
+      for (ShipmentAllocation allocation : batch.allocations()) {
+        incomingByActorCommodity.merge(
+            actorKeyOf(allocation.buyer()) + "#" + batch.commodity().value(),
+            allocation.quantity(),
+            Long::sum);
+      }
+    }
+    Map<String, List<BuySlot>> buysByActorCommodity = new LinkedHashMap<>();
+    for (BuySlot buy : ctx.buys) {
+      CommodityId commodity = buy.order.commodity();
+      buysByActorCommodity
+          .computeIfAbsent(
+              actorKeyOf(buy.buyer.actor) + "#" + commodity.value(), ignored -> new ArrayList<>())
+          .add(buy);
+    }
+    for (Participant participant : ctx.participants.values()) {
+      HexCoord hex = ctx.participantHex.get(participant.actor);
+      if (hex == null) {
+        continue;
+      }
+      Market market = ctx.markets.get(hex);
+      if (market == null) {
+        continue;
+      }
+      for (CommodityId commodity : indexes.commodities) {
+        long reference = market.priceOf(commodity);
+        if (reference <= 0L) {
+          continue;
+        }
+        long desired =
+            participant.household() == null
+                ? necessaryInputsOf(ctx.round, participant).getOrDefault(commodity, 0L)
+                : lifeReserveOfParticipant(ctx, participant, commodity);
+        List<BuySlot> slots =
+            buysByActorCommodity.getOrDefault(
+                actorKeyOf(participant.actor) + "#" + commodity.value(), List.of());
+        if (desired <= 0L && slots.isEmpty()) {
+          continue;
+        }
+        long stock = stockOf(ctx.round, participant, commodity);
+        long frozen = frozenGoodsOf(ctx.round, participant, commodity);
+        long onHand = Math.max(0L, stock - frozen);
+        long incoming =
+            incomingByActorCommodity.getOrDefault(
+                actorKeyOf(participant.actor) + "#" + commodity.value(), 0L);
+        long gap = Math.max(0L, desired - onHand - incoming);
+        long budget = spendableMoneyOf(ctx.round, participant, market.numeraire());
+        long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+        long ordered = 0L;
+        long filled = 0L;
+        MarketUnfilledReason slotReason = null;
+        for (BuySlot buy : slots) {
+          ordered += buy.order.quantity();
+          filled += buy.order.quantity() - buy.remaining;
+          if (buy.remaining > 0L && slotReason == null && buy.blocked != null) {
+            slotReason = buy.blocked;
+          }
+        }
+        OptionalLong coverDays = OptionalLong.empty();
+        if (participant.household() != null) {
+          ClassRow row = ctx.round.rows.get(participant.household());
+          if (row != null) {
+            long daily = row.naturalNeeds().getOrDefault(commodity, 0L);
+            if (daily > 0L) {
+              coverDays = OptionalLong.of(onHand / daily);
+            }
+          }
+        }
+        Optional<MarketUnfilledReason> reason;
+        if (gap <= 0L) {
+          reason = Optional.of(MarketUnfilledReason.STOCK_SUFFICIENT);
+        } else if (ordered <= 0L) {
+          reason =
+              Optional.of(
+                  budget <= 0L || affordable <= 0L
+                      ? MarketUnfilledReason.NO_BUDGET
+                      : MarketUnfilledReason.ALGORITHM_UNCOVERED);
+        } else if (filled >= ordered) {
+          reason = Optional.empty();
+        } else if (slotReason != null) {
+          reason = Optional.of(slotReason);
+        } else {
+          reason =
+              Optional.of(
+                  spendableMoneyOf(ctx.round, participant, market.numeraire()) <= 0L
+                      ? MarketUnfilledReason.NO_BUDGET
+                      : MarketUnfilledReason.ALGORITHM_UNCOVERED);
+        }
+        ctx.buyerOutcomes.add(
+            new MarketReport.BuyerOutcome(
+                ctx.round.day,
+                participant.actor(),
+                Optional.ofNullable(participant.household()),
+                hex,
+                commodity,
+                onHand,
+                coverDays,
+                gap,
+                desired,
+                budget,
+                affordable,
+                ordered,
+                filled,
+                reason));
+      }
+    }
+  }
+
+  /** 家户在某商品上的生活保留（家户没有该商品的需要 ⇒ 0；不是"读不到"）。 */
+  private static long lifeReserveOfParticipant(
+      MatchContext ctx, Participant participant, CommodityId commodity) {
+    ClassRow row = ctx.round.rows.get(participant.household());
+    return row == null ? 0L : householdLifeReserveOf(row).getOrDefault(commodity, 0L);
   }
 
   /**
@@ -2418,6 +2932,55 @@ final class MarketSettlement {
     return new HexPlan(participants, necessary, life);
   }
 
+  /**
+   * ★★ <b>S3：一个卖方的单位成本估计</b>（{@link ProducerCostBook} 是唯一拼写点）—— 先在本格产业里认出"经营这个卖方的 产业"（优先：同一 actor
+   * 既是 operator 又产出该商品；其次：本格任一出产该商品的产业，按 id canonical 取小）， 再按该产业的配方 + 本格参考价算成本。
+   *
+   * <p>★★ <b>认不出产业 ⇒ {@link ProducerCostBook.Estimate#unknown()}</b>（排序排在已知成本之后）：不拿 0
+   * 冒充"成本很低"（那是本仓禁的"假装便宜"）。
+   */
+  private static ProducerCostBook.Estimate costEstimateOf(
+      MarketRound round, Market market, Participant seller, CommodityId commodity) {
+    Industry industry = industryForSeller(round, seller, commodity);
+    if (industry == null) {
+      return ProducerCostBook.Estimate.unknown();
+    }
+    return ProducerCostBook.estimate(industry, market, round.relations.get(industry.id()));
+  }
+
+  /**
+   * ★★ <b>"经营这个卖方的产业"的唯一判定</b>：优先本格产业里 {@code operator == seller} 且出产该商品者 （按 id canonical
+   * 取小），否则本格任一出产该商品者（同序取小）；认不出 ⇒ null（成本未知）。
+   */
+  private static Industry industryForSeller(
+      MarketRound round, Participant seller, CommodityId commodity) {
+    Industry match = null;
+    for (IndustryId id : seller.industries) {
+      Industry candidate = round.industries.get(id);
+      if (candidate == null
+          || !candidate.outputPerUnit().containsKey(commodity)
+          || !seller.actor.equals(candidate.operator())) {
+        continue;
+      }
+      if (match == null || id.value().compareTo(match.id().value()) < 0) {
+        match = candidate;
+      }
+    }
+    if (match != null) {
+      return match;
+    }
+    for (IndustryId id : seller.industries) {
+      Industry candidate = round.industries.get(id);
+      if (candidate == null || !candidate.outputPerUnit().containsKey(commodity)) {
+        continue;
+      }
+      if (match == null || id.value().compareTo(match.id().value()) < 0) {
+        match = candidate;
+      }
+    }
+    return match;
+  }
+
   private static Map<CommodityId, Long> necessaryInputsOf(
       MarketRound round, Participant participant) {
     Map<CommodityId, Long> necessary = new LinkedHashMap<>();
@@ -2432,9 +2995,10 @@ final class MarketSettlement {
       if (!supplies(participant, supplier)) {
         continue;
       }
-      long scale = EconomySettlement.capacityScaleOf(industry);
+      long scale =
+          EconomySettlement.plannedCapacityScaleOf(industry, round.operatorConditions.get(id));
       if (scale <= 0L) {
-        continue; // 本格没有产能 ⇒ 不要料（同 drawCycleInputs 的口径）
+        continue; // 本格没有产能 / 已缩到 0 ⇒ 不要料（同 drawCycleInputs 的口径）
       }
       for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
         if (entry.getValue() <= 0L) {
@@ -2726,6 +3290,17 @@ final class MarketSettlement {
     final Market market;
     final MarketRegion region;
 
+    /**
+     * ★★ <b>S3：卖方单位成本估计</b>（{@link ProducerCostBook}；唯一拼写点）—— 同商品同区/邻区的撮合按 {@code unitCostEstimate
+     * + freightPerUnit} 升序选卖方；同成本按 {@link #costTieBreak} 稳定升序。
+     *
+     * <p>★ 成本只在协调器建槽位时算一次（纯函数、只读），worker 副本逐值照抄 ⇒ 1/4/8 线程同序。
+     */
+    final ProducerCostBook.Estimate costEstimate;
+
+    /** 同成本层的 canonical tie-break（{@code hex|actorKind|actorId}；内容的纯函数）。 */
+    final String costTieBreak;
+
     /** 在 {@code ctx.sells} 里的全局下标（worker 的 FillIntent 用它定位回放目标）。 */
     int orderIndex;
 
@@ -2734,13 +3309,20 @@ final class MarketSettlement {
     long baseFrozenGoods;
 
     SellSlot(
-        SellOrder order, Participant seller, HexCoord hex, Market market, MarketRegion region) {
+        SellOrder order,
+        Participant seller,
+        HexCoord hex,
+        Market market,
+        MarketRegion region,
+        MarketRound round) {
       this.order = order;
       this.seller = seller;
       this.hex = hex;
       this.market = market;
       this.region = region;
       this.remaining = order.sellable();
+      this.costEstimate = costEstimateOf(round, market, seller, order.commodity());
+      this.costTieBreak = ProducerCostBook.canonicalKey(hex, seller.actor);
     }
 
     /** ★ worker 的本区副本：状态照抄，后续只改副本（不触共享槽位）。 */
@@ -2750,6 +3332,8 @@ final class MarketSettlement {
       this.hex = other.hex;
       this.market = other.market;
       this.region = other.region;
+      this.costEstimate = other.costEstimate;
+      this.costTieBreak = other.costTieBreak;
       this.orderIndex = other.orderIndex;
       this.remaining = other.remaining;
       this.frozenRemaining = other.frozenRemaining;
@@ -2826,6 +3410,9 @@ final class MarketSettlement {
     final Map<ActorRef, HexCoord> participantHex = new LinkedHashMap<>();
     final List<MarketReport.Fill> fills = new ArrayList<>();
     final List<MarketReport.Unfilled> unfilled = new ArrayList<>();
+    // ★ S3：逐槽位只读结果（不落盘；供 MarketReadout / ApiViews 聚合）。
+    final List<MarketReport.SellerOutcome> sellerOutcomes = new ArrayList<>();
+    final List<MarketReport.BuyerOutcome> buyerOutcomes = new ArrayList<>();
     final Map<String, RouteAccumulator> routes = new LinkedHashMap<>();
     final Map<ShipmentKey, ShipmentBuilder> shipments = new LinkedHashMap<>();
     // ★ 地形代价的纯记忆化：组合根的 moveCostAt 会重建整张地形索引，同一 buyerHex 在逐卖方路线里只需算一次。

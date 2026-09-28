@@ -59,6 +59,34 @@ public enum MarketUnfilledReason {
   /** 卖方视角：有余货，但没有买方（无需求或都买不起）。 */
   NO_BUYER("no_buyer"),
 
+  /**
+   * ★ <b>S3：买方库存已足、根本不应挂单</b>—— {@code gapQty == 0}（生活保留 / 必要投入已被自有库存与在途覆盖）。
+   *
+   * <p>★ 它与"挂了单但没买到"是两件事：这一档的量<b>不是</b>卖方的失败（不把"没下单"算成卖方没卖掉）。
+   */
+  STOCK_SUFFICIENT("stock_sufficient"),
+
+  /**
+   * ★ <b>S3：卖方被同商品更低到货价的卖方挤掉</b>—— 同区/邻区存在 {@code unitCostEstimate + freightPerUnit}
+   * 更低、且真的成交/仍有供给的卖方，本卖方的剩余因此没卖掉。★ 读数的 {@code outcompetedBy} 记下"被几个更便宜的卖方挤掉"。
+   */
+  OUTCOMPETED("outcompeted"),
+
+  /**
+   * ★ <b>S3：生产投入不足</b>—— {@code Industry.cycleInputUsedMilli} 低于本周期满规模所需，或 {@code capacityScaleOf}
+   * 被投入那一路压低。★ 这是<b>生产侧</b>原因，不是市场原因；它让"卖不动"与"根本没产出来"在读数上分开。
+   */
+  INPUT_SHORTFALL("input_shortfall"),
+
+  /** ★ <b>S3：产品卖不出去但仍可自用</b>—— 卖方的库存足以覆盖自身保留量 / 下一周期投入 / 家庭消费，未卖掉不等于无法再生产。 */
+  UNSOLD_SELF_USABLE("unsold_self_usable"),
+
+  /**
+   * ★ <b>S3：真正无法维持再生产</b>—— 连续周期满足 {@code ReproductionStress} 阈值，且库存、借款、使用权等缓冲全部耗尽。 ★
+   * 只有这一档才允许走向停业/退出；它不能由单轮滞销直接推出（那是 {@link #UNSOLD_SELF_USABLE} 或 {@link #OUTCOMPETED}）。
+   */
+  CANNOT_REPRODUCE("cannot_reproduce"),
+
   /** 算法没有覆盖到的剩余（兜底，不静默）。 */
   ALGORITHM_UNCOVERED("algorithm_uncovered");
 

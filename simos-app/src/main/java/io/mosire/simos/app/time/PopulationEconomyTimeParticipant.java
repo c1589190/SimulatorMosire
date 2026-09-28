@@ -241,6 +241,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           ProductionLedger ledger = stepper.step(day);
           // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
           MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
+          // ★★ S3：把"当日结账账本"投递给读口（租/工资欠款与逐规则欠额的唯一进程内来源；同款边界）。
+          EconomyDayFeed.publish(mapId, Optional.of(ledger), day);
           List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
           if (!entries.isEmpty()) {
             currentBooks = OwnershipBooks.apply(currentBooks, entries);

@@ -162,7 +162,8 @@ public record MarketReadout(
             data.relations(),
             data.allocations(),
             data.shipments(),
-            new ProductionLedger.Accumulator(tick));
+            new ProductionLedger.Accumulator(tick),
+            data.operatorConditions());
     Map<HexCoord, MarketRegion> regionByHex = new LinkedHashMap<>();
     List<MarketRegion> regions = new ArrayList<>();
     for (MarketRegion region : topology.regions()) {
@@ -391,6 +392,70 @@ public record MarketReadout(
         traded > 0L
             ? OptionalLong.of(landedNumerator.divide(BigInteger.valueOf(traded)).longValueExact())
             : OptionalLong.empty();
+    // ★★ S3：逐槽位结果的**聚合**（MarketReport 里有逐条，这里按区×商品折成可读的计数/极值；
+    //   "缺价/未知成本"与"库存已足"因此不会消失在总数里）。
+    long sellerOutcomeCount = 0L;
+    long sellerSelfUsableQtyMilli = 0L;
+    long sellerOutcompetedCount = 0L;
+    long sellerOutcompetedQtyMilli = 0L;
+    long sellerPriceMissingCount = 0L;
+    long cheapestSellerCost = Long.MAX_VALUE;
+    long dearestSellerCost = Long.MIN_VALUE;
+    for (MarketReport.SellerOutcome outcome : report.sellerOutcomes()) {
+      if (!outcome.commodity().equals(commodity)) {
+        continue;
+      }
+      MarketRegion at = regionByHex.get(outcome.hex());
+      if (at == null || !at.equals(region)) {
+        continue;
+      }
+      sellerOutcomeCount++;
+      MarketUnfilledReason reason = outcome.unfilledReason().orElse(null);
+      if (reason == MarketUnfilledReason.UNSOLD_SELF_USABLE) {
+        sellerSelfUsableQtyMilli += outcome.unfilledQty();
+      }
+      if (reason == MarketUnfilledReason.OUTCOMPETED) {
+        sellerOutcompetedCount++;
+        sellerOutcompetedQtyMilli += outcome.outcompetedQty();
+      }
+      if (outcome.priceMissing()) {
+        sellerPriceMissingCount++;
+      }
+      if (outcome.costKnown()) {
+        cheapestSellerCost = Math.min(cheapestSellerCost, outcome.unitCostEstimateMilli());
+        dearestSellerCost = Math.max(dearestSellerCost, outcome.unitCostEstimateMilli());
+      }
+    }
+    long buyerOutcomeCount = 0L;
+    long buyerStockSufficientCount = 0L;
+    long buyerNoBudgetCount = 0L;
+    long buyerGapMilli = 0L;
+    for (MarketReport.BuyerOutcome outcome : report.buyerOutcomes()) {
+      if (!outcome.commodity().equals(commodity)) {
+        continue;
+      }
+      MarketRegion at = regionByHex.get(outcome.hex());
+      if (at == null || !at.equals(region)) {
+        continue;
+      }
+      buyerOutcomeCount++;
+      MarketUnfilledReason reason = outcome.unfilledReason().orElse(null);
+      if (reason == MarketUnfilledReason.STOCK_SUFFICIENT) {
+        buyerStockSufficientCount++;
+      }
+      if (reason == MarketUnfilledReason.NO_BUDGET) {
+        buyerNoBudgetCount++;
+      }
+      buyerGapMilli += outcome.gapQty();
+    }
+    OptionalLong cheapestSellerCostReadout =
+        cheapestSellerCost == Long.MAX_VALUE
+            ? OptionalLong.empty()
+            : OptionalLong.of(cheapestSellerCost);
+    OptionalLong dearestSellerCostReadout =
+        dearestSellerCost == Long.MIN_VALUE
+            ? OptionalLong.empty()
+            : OptionalLong.of(dearestSellerCost);
     return new CommodityMatchReadout(
         traded,
         landedPrice,
@@ -398,6 +463,17 @@ public record MarketReadout(
         loss,
         unusedCapacity,
         bottleneck,
+        sellerOutcomeCount,
+        sellerSelfUsableQtyMilli,
+        sellerOutcompetedCount,
+        sellerOutcompetedQtyMilli,
+        sellerPriceMissingCount,
+        cheapestSellerCostReadout,
+        dearestSellerCostReadout,
+        buyerOutcomeCount,
+        buyerStockSufficientCount,
+        buyerNoBudgetCount,
+        buyerGapMilli,
         buyCounts,
         sellCounts,
         buyQuantities,
@@ -520,6 +596,17 @@ public record MarketReadout(
       long lossMilli,
       long unusedCapacityMilli,
       boolean capacityBottleneck,
+      long sellerOutcomeCount,
+      long sellerSelfUsableQtyMilli,
+      long sellerOutcompetedCount,
+      long sellerOutcompetedQtyMilli,
+      long sellerPriceMissingCount,
+      OptionalLong cheapestSellerUnitCostMilli,
+      OptionalLong dearestSellerUnitCostMilli,
+      long buyerOutcomeCount,
+      long buyerStockSufficientCount,
+      long buyerNoBudgetCount,
+      long buyerGapMilli,
       Map<MarketUnfilledReason, Long> unfilledBuyCounts,
       Map<MarketUnfilledReason, Long> unfilledSellCounts,
       Map<MarketUnfilledReason, Long> unfilledBuyQuantities,
@@ -527,6 +614,19 @@ public record MarketReadout(
 
     public CommodityMatchReadout {
       Objects.requireNonNull(landedPriceMilli, "landedPriceMilli");
+      Objects.requireNonNull(cheapestSellerUnitCostMilli, "cheapestSellerUnitCostMilli");
+      Objects.requireNonNull(dearestSellerUnitCostMilli, "dearestSellerUnitCostMilli");
+      if (sellerOutcomeCount < 0L
+          || sellerSelfUsableQtyMilli < 0L
+          || sellerOutcompetedCount < 0L
+          || sellerOutcompetedQtyMilli < 0L
+          || sellerPriceMissingCount < 0L
+          || buyerOutcomeCount < 0L
+          || buyerStockSufficientCount < 0L
+          || buyerNoBudgetCount < 0L
+          || buyerGapMilli < 0L) {
+        throw new IllegalArgumentException("CommodityMatchReadout 的 S3 计数/数量不得为负");
+      }
       unfilledBuyCounts = Collections.unmodifiableMap(copyCounts(unfilledBuyCounts));
       unfilledSellCounts = Collections.unmodifiableMap(copyCounts(unfilledSellCounts));
       unfilledBuyQuantities = Collections.unmodifiableMap(copyCounts(unfilledBuyQuantities));

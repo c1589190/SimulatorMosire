@@ -29,7 +29,14 @@ public record SocialClassId(String value) {
    * ExceptionInInitializerError}，本类的首版就这么挂的， 是 {@code SocialClassIdTest} 当场抓出来的）。
    */
   private static final List<String> VALUES =
-      List.of("poor_peasant", "middle_peasant", "rich_peasant", "landlord");
+      List.of(
+          "poor_peasant",
+          "middle_peasant",
+          "rich_peasant",
+          "landlord",
+          "landless_laborer",
+          "artisan",
+          "official");
 
   /** 贫农。 */
   public static final SocialClassId POOR_PEASANT = new SocialClassId(VALUES.get(0));
@@ -43,9 +50,25 @@ public record SocialClassId(String value) {
   /** 地主。 */
   public static final SocialClassId LANDLORD = new SocialClassId(VALUES.get(3));
 
-  /** 词表（**保序**）—— 由四个常量派生，供遍历与断言用。 */
+  /** ★ S3：无地雇农/佃工（无使用权且净卖劳动）。 */
+  public static final SocialClassId LANDLESS_LABORER = new SocialClassId(VALUES.get(4));
+
+  /** ★ S3：手工业者（laborSource=WAGE/FAMILY 且经营手工业的 fallback 档）。 */
+  public static final SocialClassId ARTISAN = new SocialClassId(VALUES.get(5));
+
+  /** ★ S3：官署依附/公职（官署产业或 communal 权的 fallback 档）。 */
+  public static final SocialClassId OFFICIAL = new SocialClassId(VALUES.get(6));
+
+  /** 词表（**保序**）—— 由常量派生，供遍历与断言用（★ S3 只追加，旧四档位置不变）。 */
   private static final List<SocialClassId> ALL =
-      List.of(POOR_PEASANT, MIDDLE_PEASANT, RICH_PEASANT, LANDLORD);
+      List.of(
+          POOR_PEASANT,
+          MIDDLE_PEASANT,
+          RICH_PEASANT,
+          LANDLORD,
+          LANDLESS_LABORER,
+          ARTISAN,
+          OFFICIAL);
 
   public SocialClassId {
     if (value == null || value.isBlank()) {

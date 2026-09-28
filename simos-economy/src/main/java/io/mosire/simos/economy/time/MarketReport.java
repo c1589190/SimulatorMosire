@@ -2,6 +2,8 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
@@ -9,6 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * ★★ <b>一轮区域市场的只读报告</b>（M2.3/M2.4 的读数原料；L3 的逐区读数组件接它）。
@@ -45,6 +49,8 @@ import java.util.Objects;
  * @param crossRegionFills 跨区在途成交笔数
  * @param priceMode ★ M2.6：本轮报价模式（{@code fixed} = 固定价、{@code adaptive} = 自适应）—— 读数必须能区分
  * @param priceUpdates ★ M2.6：自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒为空表
+ * @param sellerOutcomes ★ S3：逐卖方槽位的只读结果（成本估计 / 成交 / 未成交原因 / 被谁挤掉）；空表 = 本轮没有卖方槽
+ * @param buyerOutcomes ★ S3：逐买方槽位的只读结果（库存/覆盖/缺口/预算/下单/成交/原因）；空表 = 本轮没有买方槽
  */
 public record MarketReport(
     long day,
@@ -59,7 +65,9 @@ public record MarketReport(
     long immediateFills,
     long crossRegionFills,
     PriceMode priceMode,
-    List<PriceUpdate> priceUpdates) {
+    List<PriceUpdate> priceUpdates,
+    List<SellerOutcome> sellerOutcomes,
+    List<BuyerOutcome> buyerOutcomes) {
 
   /** ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。 */
   public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE =
@@ -72,6 +80,8 @@ public record MarketReport(
     unfilled = unfilled == null ? List.of() : List.copyOf(unfilled);
     routes = routes == null ? List.of() : List.copyOf(routes);
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
+    sellerOutcomes = sellerOutcomes == null ? List.of() : List.copyOf(sellerOutcomes);
+    buyerOutcomes = buyerOutcomes == null ? List.of() : List.copyOf(buyerOutcomes);
   }
 
   /** 没有任何市场活动的空报告。 */
@@ -89,6 +99,8 @@ public record MarketReport(
         0L,
         0L,
         MarketSettlement.priceMode(),
+        List.of(),
+        List.of(),
         List.of());
   }
 
@@ -215,6 +227,124 @@ public record MarketReport(
       Objects.requireNonNull(from, "from");
       Objects.requireNonNull(to, "to");
       Objects.requireNonNull(commodity, "commodity");
+    }
+  }
+
+  /**
+   * ★★ <b>S3：逐卖方的只读结果</b>（不落盘；L3 读数组件按区/商品聚合）。
+   *
+   * <p>★★ <b>量纲</b>：{@code unitCostEstimateMilli} 与 {@code freightPerUnitMilli} 的单位是 {@link
+   * ProducerCostBook#ESTIMATE_SCALE 千分之一毫银 / 单位规模}（唯一拼写点在成本簿；这样"劳动成本"不会被整数除法 截成 0）。{@code
+   * unitPriceMilli} 仍是成交口径的毫银 / 商品单位（参考价）。
+   *
+   * @param roundDay 本轮世界日
+   * @param actor 卖方主体
+   * @param industryId 认出的经营产业（认不出 ⇒ empty，成本按未知档排后）
+   * @param hex 卖单所在格（发货格）
+   * @param commodity 商品
+   * @param offeredQty 挂单量（报价时的 {@code sellable}；毫单位）
+   * @param filledQty 已成交（毫单位）
+   * @param unfilledQty 未成交剩余（毫单位）
+   * @param unitPriceMilli 本格参考价（毫银 / 商品单位；成本不改变成交单价）
+   * @param unitCostEstimateMilli 单位成本估计（千分之一毫银 / 规模；缺价按 0 计但 {@code priceMissing=true}）
+   * @param freightPerUnitMilli 卖方承担/发生的单位运费（本批恒 0：跨区运费由买方付，见市场类注）
+   * @param bestAcceptedLandedPriceMilli 本轮同商品已成交的最低到货价（无成交 ⇒ empty，绝不填 0）
+   * @param costRank 同商品同区按到货成本升序的名次（0 起；未知成本排在已知之后）
+   * @param unfilledReason 未成交原因（卖光/无剩余 ⇒ empty）
+   * @param outcompetedByActorCount 更便宜且真的卖掉的卖方家数（{@code OUTCOMPETED} 的证据；不是估算）
+   * @param outcompetedQty 被更便宜卖方挤掉的数量（= 本槽未成交剩余，当且仅当原因是 {@code OUTCOMPETED}）
+   * @param priceMissing 投入/劳动有一项缺参考价（读数必须能标 {@code PRICE_MISSING}）
+   * @param costKnown 认出了经营配方（false ⇒ 成本未知，排序排在已知成本之后）
+   */
+  public record SellerOutcome(
+      long roundDay,
+      ActorRef actor,
+      Optional<IndustryId> industryId,
+      HexCoord hex,
+      CommodityId commodity,
+      long offeredQty,
+      long filledQty,
+      long unfilledQty,
+      long unitPriceMilli,
+      long unitCostEstimateMilli,
+      long freightPerUnitMilli,
+      OptionalLong bestAcceptedLandedPriceMilli,
+      int costRank,
+      Optional<MarketUnfilledReason> unfilledReason,
+      long outcompetedByActorCount,
+      long outcompetedQty,
+      boolean priceMissing,
+      boolean costKnown) {
+
+    public SellerOutcome {
+      Objects.requireNonNull(actor, "actor");
+      Objects.requireNonNull(industryId, "industryId");
+      Objects.requireNonNull(hex, "hex");
+      Objects.requireNonNull(commodity, "commodity");
+      Objects.requireNonNull(bestAcceptedLandedPriceMilli, "bestAcceptedLandedPriceMilli");
+      Objects.requireNonNull(unfilledReason, "unfilledReason");
+      if (offeredQty < 0L || filledQty < 0L || unfilledQty < 0L || filledQty + unfilledQty < 0L) {
+        throw new IllegalArgumentException(
+            "SellerOutcome 的数量不得为负: " + offeredQty + "/" + filledQty + "/" + unfilledQty);
+      }
+      if (costRank < 0 || outcompetedByActorCount < 0L || outcompetedQty < 0L) {
+        throw new IllegalArgumentException(
+            "SellerOutcome 的排名/计数不得为负: " + costRank + "/" + outcompetedByActorCount);
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>S3：逐买方的只读结果</b>（不落盘；L3 读数组件按区/商品聚合）。
+   *
+   * @param roundDay 本轮世界日
+   * @param actor 买方主体
+   * @param household 家户（经营者 ⇒ empty）
+   * @param hex 收货格
+   * @param commodity 商品
+   * @param stockOnHandMilli 可动用库存（持有 − 冻结；毫单位）
+   * @param stockCoverDays 库存覆盖天数 = 库存 ÷ 日需求（日需求 0 ⇒ empty，不填 0 冒充"没库存"）
+   * @param gapQty 缺口 = 目标 − 自有 − 在途（≤ 0 时计 {@code STOCK_SUFFICIENT}；毫单位）
+   * @param desiredQty 目标（家户 = 生活保留、经营者 = 必要投入；毫单位）
+   * @param spendableMoneyMilli 可花货币（持有 − 冻结；毫币）
+   * @param affordableQty 按参考价折算的买得起量（毫单位）
+   * @param orderedQty 本槽挂单量（= 0 时看原因：库存够 / 没钱）
+   * @param filledQty 已成交（毫单位）
+   * @param unfilledReason 未成交原因（买满 ⇒ empty；库存已足 ⇒ {@code STOCK_SUFFICIENT}）
+   */
+  public record BuyerOutcome(
+      long roundDay,
+      ActorRef actor,
+      Optional<HouseholdId> household,
+      HexCoord hex,
+      CommodityId commodity,
+      long stockOnHandMilli,
+      OptionalLong stockCoverDays,
+      long gapQty,
+      long desiredQty,
+      long spendableMoneyMilli,
+      long affordableQty,
+      long orderedQty,
+      long filledQty,
+      Optional<MarketUnfilledReason> unfilledReason) {
+
+    public BuyerOutcome {
+      Objects.requireNonNull(actor, "actor");
+      Objects.requireNonNull(household, "household");
+      Objects.requireNonNull(hex, "hex");
+      Objects.requireNonNull(commodity, "commodity");
+      Objects.requireNonNull(stockCoverDays, "stockCoverDays");
+      Objects.requireNonNull(unfilledReason, "unfilledReason");
+      if (stockOnHandMilli < 0L
+          || gapQty < 0L
+          || desiredQty < 0L
+          || spendableMoneyMilli < 0L
+          || affordableQty < 0L
+          || orderedQty < 0L
+          || filledQty < 0L) {
+        throw new IllegalArgumentException(
+            "BuyerOutcome 的库存/数量不得为负: " + stockOnHandMilli + "/" + gapQty + "/" + desiredQty);
+      }
     }
   }
 }

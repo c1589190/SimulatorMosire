@@ -45,6 +45,9 @@ public record OperatorCondition(
     long lastCycleNetMilli,
     long unsoldStockMilli,
     long selfUsableStockMilli,
+    long consecutiveDebtStressCycles,
+    long consecutiveSuspendedCycles,
+    long reopens,
     String lastReason) {
 
   /** S3.2 的经营者状态词表（状态转移规则在 S3 落地；本阶段只固定形状）。 */
@@ -53,8 +56,12 @@ public record OperatorCondition(
     ACTIVE,
     /** 试产（候选生产进入试产窗口）。 */
     TRIALING,
+    /** ★ S3：积压（连续滞销且有 OUTCOMPETED 证据，尚未缩产）。 */
+    OVERSUPPLIED,
     /** 缩产（卖不动但还没到破产）。 */
     CONTRACTING,
+    /** ★ S3：债务压力（现金/库存缓冲不足以覆盖下一周期投入/本息，但还没停业）。 */
+    INDEBTED,
     /** 停业（债务压力/再生产压力触发）。 */
     SUSPENDED,
     /** 退出中（处理库存/使用权/债务）。 */
@@ -104,6 +111,17 @@ public record OperatorCondition(
     if (selfUsableStockMilli < 0L) {
       throw new IllegalArgumentException(
           "OperatorCondition.selfUsableStockMilli 不得为负: " + selfUsableStockMilli);
+    }
+    if (consecutiveDebtStressCycles < 0L) {
+      throw new IllegalArgumentException(
+          "OperatorCondition.consecutiveDebtStressCycles 不得为负: " + consecutiveDebtStressCycles);
+    }
+    if (consecutiveSuspendedCycles < 0L) {
+      throw new IllegalArgumentException(
+          "OperatorCondition.consecutiveSuspendedCycles 不得为负: " + consecutiveSuspendedCycles);
+    }
+    if (reopens < 0L) {
+      throw new IllegalArgumentException("OperatorCondition.reopens 不得为负: " + reopens);
     }
     if (lastReason == null) {
       throw new IllegalArgumentException("OperatorCondition.lastReason 不得为 null（没有就空串）");

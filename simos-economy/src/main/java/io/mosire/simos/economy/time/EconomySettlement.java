@@ -21,6 +21,7 @@ import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuance;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -35,6 +36,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionRecipe;
 import io.mosire.simos.economy.model.UseRight;
 import io.mosire.simos.map.hex.HexCoord;
@@ -638,6 +640,10 @@ public final class EconomySettlement {
     //   但日结算必须交出**同一份**状态，不能让两个组件在终态里漂开）。
     LinkedHashMap<MembershipId, Membership> memberships = session.sheet().memberships();
     LinkedHashMap<UseRightId, UseRight> useRights = session.sheet().useRights();
+    // ★★ S3：经营者状态机的工作副本 —— 与 industries/rows 同一条"日结算就地更新、结束后整体交出"的口径；
+    //   状态转移读市场报告与债务/库存的可观察量，不在这里重算生产公式。
+    LinkedHashMap<IndustryId, OperatorCondition> operatorConditions =
+        session.sheet().operatorConditions();
     // ★★ **M2.6（自适应价格的写回点）**：市场表的工作副本 —— 固定模式下结算只读它、终态与 {@code base.markets()} 逐值相同；
     //   自适应打开时 {@code MarketSettlement} 返回更新后的价格表，本方法把**这一份**交给终态 ⇒ 改价只经
     //   "状态 → 变更集（markets 是既有 FieldDelta 组件）"这一条路，没有第二处改价。
@@ -782,11 +788,26 @@ public final class EconomySettlement {
         // ── 周期末：产出 → 产权条目 + 关系规则入账（★ 饿死判据**挪到所有救济通道之后**，见下面的 4d）──
         // ★★ R2：这里只登记工作单元；真正的 harvest 在收集完后按 hex 并行跑 —— 它读的是**产业关账前**的
         //   industry 快照（cycleInputUsedMilli / cycleLaborMilli 都还没被下一周期状态覆盖）。
-        harvestWorks.add(new HarvestWork(industry, cycledLabor, hexOfIndustry(id), harvestOrder++));
+        OperatorCondition condition = operatorConditions.get(id);
+        harvestWorks.add(
+            new HarvestWork(
+                industry,
+                cycledLabor,
+                hexOfIndustry(id),
+                harvestOrder++,
+                StressPolicy.plannedScalePerMille(
+                    condition == null
+                        ? OperatorCondition.IndustryStatus.ACTIVE
+                        : condition.status())));
         // ★★ **H5：关账的产业先记下来，饿死判据等救济通道走完再算**（改前它挂在收获那一支里、早于市场与借粮）——
         //   理由：饿死是"**所有**救济都用尽了"之后的判据（自产/分配 → 市场 → 救济(留位) → 借）；把它排在借粮**之前**
         //   会让"当天借到粮的人"照样按缺口去死（改前的次序里借粮恰好在它之前 ⇒ 那个口径必须保住）。
-        closed.add(new ClosedIndustry(id, keys, industry.cycleDays()));
+        closed.add(
+            new ClosedIndustry(
+                id,
+                keys,
+                industry.cycleDays(),
+                inputShortfallOf(industry, operatorConditions.get(id))));
         nextProgress = 0L;
         nextCycleLabor = 0L;
         nextInputUsed = Map.of(); // ★ 与 cycleLaborMilli 同处清零（不清零 ⇒ 下周期的投入瓶颈凭空变大）
@@ -833,7 +854,8 @@ public final class EconomySettlement {
             base.relations(),
             allocations,
             shipments,
-            ledger);
+            ledger,
+            operatorConditions);
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
     if (marketTrigger != MarketTrigger.NONE) {
@@ -943,6 +965,46 @@ public final class EconomySettlement {
     //   ★ 次序：**偿还先于计息**（还掉的那部分本金不再生息 —— 这是"先还后计"的标准序，也是改后债务曲线下降的一半原因）。
     if (anyCycleClosed) {
       chargeInterest(debts, principalAtDayStart, interestToday);
+    }
+
+    // ── 5b. S3 经营者状态机（可观察量 → IndustryStatus；退出处置先偿债、不足才 defaulted）──────────
+    //   ★ 只在关账日推进：连续计数以**关账周期**为单位；市场证据只取**当天**那一轮（没有当天市场 ⇒ 不拿旧读数冒充）。
+    //   ★ 缩产/停业只改"计划规模系数"（StressPolicy），capacity 与 UseRight 一字不动。
+    if (anyCycleClosed) {
+      Map<IndustryId, Boolean> shortfallByIndustry = new LinkedHashMap<>();
+      for (ClosedIndustry closing : closed) {
+        shortfallByIndustry.put(closing.id(), closing.inputShortfall());
+      }
+      MarketReport latestReport = ledger.marketReport();
+      MarketReport evidence =
+          latestReport != null && latestReport.day() == day ? latestReport : null;
+      List<OperatorSettlement.Exit> exits =
+          OperatorSettlement.advance(
+              operatorConditions,
+              industries,
+              base.relations(),
+              debts,
+              householdGoods,
+              householdMoney,
+              operatorGoods,
+              operatorMoney,
+              householdOfActor,
+              markets,
+              shortfallByIndustry,
+              evidence,
+              day);
+      if (!exits.isEmpty()) {
+        settleOperatorExits(
+            exits,
+            debts,
+            householdGoods,
+            householdMoney,
+            operatorGoods,
+            operatorMoney,
+            householdOfActor,
+            ledger,
+            day);
+      }
     }
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
@@ -1347,6 +1409,8 @@ public final class EconomySettlement {
     LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
     Map<IndustryId, ProductionRelation> relations = session.base().relations();
+    // ★ S3：缩产/停业后的"计划规模"要进投入调查（条件缺失 ⇒ 系数 1000‰ ⇒ 旧行为逐值相同）。
+    Map<IndustryId, OperatorCondition> operatorConditions = session.sheet().operatorConditions();
     TreeMap<String, LinkedHashMap<IndustryId, Industry>> byHex = new TreeMap<>();
     List<IndustryId> noHex = new ArrayList<>();
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
@@ -1387,6 +1451,7 @@ public final class EconomySettlement {
                     rows,
                     allocations,
                     relations,
+                    operatorConditions,
                     tables.householdGoods,
                     tables.householdMoney,
                     tables.operatorGoods,
@@ -1429,6 +1494,7 @@ public final class EconomySettlement {
           rows,
           allocations,
           relations,
+          operatorConditions,
           accounts.householdGoods(),
           accounts.householdMoney(),
           accounts.operatorGoods(),
@@ -1458,6 +1524,8 @@ public final class EconomySettlement {
     LinkedHashMap<IndustryId, Industry> industries = session.sheet().industries();
     LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
+    // ★ S3：劳动需求按"计划规模"算（缩产/停业 ⇒ 要的劳动变少/归零；条件缺失 ⇒ 与旧行为逐值相同）。
+    Map<IndustryId, OperatorCondition> operatorConditions = session.sheet().operatorConditions();
     Map<String, List<IndustryId>> hexToIndustries = industriesByHexMap(industries);
     TreeMap<String, List<IndustryId>> active = new TreeMap<>();
     for (Map.Entry<String, List<IndustryId>> entry : hexToIndustries.entrySet()) {
@@ -1494,7 +1562,7 @@ public final class EconomySettlement {
                   seeded.add(allocation.id());
                 }
               }
-              reallocateLabor(localIndustries, rows, localAllocations);
+              reallocateLabor(localIndustries, rows, localAllocations, operatorConditions);
               return new LaborPartition(localAllocations, seeded);
             },
             parallelism.poolOrNull());
@@ -1509,7 +1577,8 @@ public final class EconomySettlement {
   }
 
   /** 收获阶段的一条工作单元（关账前的产业快照 + 本周期劳动 + 所在格 + 原遍历序）。 */
-  private record HarvestWork(Industry industry, long cycledLabor, HexCoord location, int order) {}
+  private record HarvestWork(
+      Industry industry, long cycledLabor, HexCoord location, int order, long plannedPerMille) {}
 
   /** 收获阶段一个分区的产出（意向 + 本地实物入账 + 本地账本）。 */
   private record HarvestPartition(
@@ -1567,6 +1636,7 @@ public final class EconomySettlement {
                       work.industry(),
                       rows,
                       work.cycledLabor(),
+                      work.plannedPerMille(),
                       localIncome,
                       tables.householdGoods,
                       tables.householdMoney,
@@ -2286,6 +2356,7 @@ public final class EconomySettlement {
       LinkedHashMap<HouseholdId, ClassRow> rows,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       Map<IndustryId, ProductionRelation> relations,
+      Map<IndustryId, OperatorCondition> operatorConditions,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
@@ -2300,6 +2371,7 @@ public final class EconomySettlement {
             rows,
             allocations,
             relations,
+            operatorConditions,
             householdGoods,
             operatorGoods,
             householdOfActor);
@@ -2410,6 +2482,7 @@ public final class EconomySettlement {
       LinkedHashMap<HouseholdId, ClassRow> rows,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       Map<IndustryId, ProductionRelation> relations,
+      Map<IndustryId, OperatorCondition> operatorConditions,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, HouseholdId> householdOfActor) {
@@ -2423,9 +2496,9 @@ public final class EconomySettlement {
       if (perScale.isEmpty()) {
         continue; // ★ 空表与"缺键"同义：不扣、不缩规模 ⇒ 未配投入的产业行为与 V2 一字不差
       }
-      long capacityScale = capacityScaleOf(industry);
+      long capacityScale = plannedCapacityScaleOf(industry, operatorConditions.get(id));
       if (capacityScale <= 0L) {
-        continue; // 本格没有产能 ⇒ 它不产出、也不要料（"地荒着"）
+        continue; // 本格没有产能 / 已缩到 0 ⇒ 它不产出、也不要料（"地荒着"）
       }
       // ★★ H3：**谁出料由 relation 说**。缺 relation（合法状态：关系表里可以没有这个产业）⇒ 退回缺省 = operator
       //   （与 ProductionRelation 的构造期缺省**同值**、同一条道理 —— 本层不发明第二份缺省）。
@@ -3030,6 +3103,45 @@ public final class EconomySettlement {
   }
 
   /**
+   * ★★ <b>S3：计划规模</b> = 技术产能规模 × 状态机的计划系数（{@link StressPolicy}）。
+   *
+   * <p>★ 缩产/停业只影响"本周期的计划"（投入需求、劳动需求、收获规模），<b>不销毁</b> {@code capacity} / {@code UseRight}：
+   * 条件缺失（旧档）或状态回到 {@code ACTIVE} ⇒ 系数 1000‰ ⇒ 与旧行为逐值相同。
+   */
+  static long plannedCapacityScaleOf(Industry industry, OperatorCondition condition) {
+    return capacityScaleOf(industry)
+        * StressPolicy.plannedScalePerMille(
+            condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
+        / 1_000L;
+  }
+
+  /**
+   * ★★ <b>S3：本周期"投入没凑齐"的可观察事实</b>（在周期状态被清零之前捕获）：按状态机的计划规模系数（缩产/停业）算应投， 与 {@code
+   * cycleInputUsedMilli} 比。停业（系数 0）⇒ 不投也不构成"投入不足"（那是主动停，不是失败）。
+   */
+  static boolean inputShortfallOf(Industry industry, OperatorCondition condition) {
+    long planned =
+        capacityScaleOf(industry)
+            * StressPolicy.plannedScalePerMille(
+                condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
+            / 1_000L;
+    if (planned <= 0L) {
+      return false;
+    }
+    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue;
+      }
+      long required = entry.getValue() * planned;
+      long used = industry.cycleInputUsedMilli().getOrDefault(entry.getKey(), 0L);
+      if (used < required) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * ★★ <b>"供给这个产业的家户行"的唯一算法</b>（H0；裁定 K2 + R-N1-A）：
    *
    * <pre>
@@ -3214,7 +3326,8 @@ public final class EconomySettlement {
    * ★ <b>本日关账的一个产业</b>（H5）：它的 id、它名下的家户行、它的周期天数 —— 饿死判据（{@link #applyFamine}） 与死亡后的劳动缩放（{@link
    * #scaleLaborOfIndustry}）要等**市场与借粮**走完才跑，故先把这三样收起来。
    */
-  private record ClosedIndustry(IndustryId id, List<HouseholdId> keys, long cycleDays) {}
+  private record ClosedIndustry(
+      IndustryId id, List<HouseholdId> keys, long cycleDays, boolean inputShortfall) {}
 
   /**
    * ★★ <b>同格借粮：最后手段</b>（H5 ②；改前的 {@code settleHexes} 的第二半）—— 逐格：缺口行向**本格余粮** （地主 → 富农 → 中农，见 {@link
@@ -3469,6 +3582,119 @@ public final class EconomySettlement {
   }
 
   /**
+   * ★★ <b>S3：退出经营者（{@code SUSPENDED -> EXITED}）的剩余库存/货币偿债处置</b>（计划 §S3.2 "SUSPENDED -> EXITED"
+   * 那一行）。
+   *
+   * <pre>
+   * 逐条债务（优先级 = (到期周期, 商品维, id) 的 canonical 升序）：
+   *   paid = min(本金, 可用余额)      // 实物债扣实物、货币债扣货币；扣不动 ⇒ paid=0
+   *   paid > 0 ⇒ 铸 LOAN_REPAYMENT 转移（债务人 → 债权人，经唯一写口 applyTransfer）
+   *   本金 −= paid；仍有余额 ⇒ Debt.defaulted = true（**不足才违约**，不静默清债）
+   * </pre>
+   *
+   * <p>★★ <b>三条硬边界</b>：① 只处置**家户债务人**（{@code Debt} 的两端就是 {@code HouseholdId}；聚合主体的账不在 economy
+   * 会话里，不能凭空给它销债）；② 还不起的部分**只标 {@code defaulted}**，不从表里删、不由结算“核销”； ③
+   * 剩余库存/货币留在原主体账上（没有“没收”规则，不凭空造也不删）。
+   */
+  private static void settleOperatorExits(
+      List<OperatorSettlement.Exit> exits,
+      LinkedHashMap<DebtId, Debt> debts,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      ProductionLedger.Accumulator ledger,
+      long day) {
+    for (OperatorSettlement.Exit exit : exits) {
+      HouseholdId debtor = exit.household();
+      if (debtor == null) {
+        continue; // 聚合主体：它的账/债不在 economy 会话内，留给看得见 actor 账的一侧
+      }
+      HexCoord location =
+          IndustryHexKeys.hexKeyOf(exit.industry()).map(HexCoord::parse).orElse(null);
+      if (location == null) {
+        continue; // 说不出在哪一格 ⇒ 无法铸转移（手搭状态；债务表通常也为空）
+      }
+      List<Debt> owed = new ArrayList<>();
+      for (Debt debt : debts.values()) {
+        if (debt.debtor().equals(debtor)) {
+          owed.add(debt);
+        }
+      }
+      owed.sort(
+          Comparator.comparingLong(Debt::dueCycle)
+              .thenComparing(debt -> debt.commodity().map(CommodityId::value).orElse("~money"))
+              .thenComparing(debt -> debt.id().value()));
+      for (Debt debt : owed) {
+        long available;
+        if (debt.commodity().isPresent()) {
+          available = stockOf(householdGoods, debtor, debt.commodity().get());
+        } else {
+          // ★ Debt 没有币种字段（货币债按本批唯一的计价货币银结算）⇒ 只按银余额判，不拿"逐币种合计"冒充银余额
+          //   （后者会让一笔银转移超过银余额，唯一 applier 当场抛）。
+          available =
+              householdMoney
+                  .getOrDefault(debtor, Map.of())
+                  .getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L);
+        }
+        long paid = Math.min(debt.principal(), Math.max(0L, available));
+        if (paid <= 0L) {
+          if (debt.principal() > 0L) {
+            debts.put(
+                debt.id(),
+                new Debt(
+                    debt.id(),
+                    debt.debtor(),
+                    debt.creditor(),
+                    debt.commodity(),
+                    debt.principal(),
+                    debt.ratePerMillePerCycle(),
+                    debt.dueCycle(),
+                    true));
+          }
+          continue;
+        }
+        Transfer repayment =
+            debt.commodity().isPresent()
+                ? ledger.mint(
+                    HouseholdActors.of(debt.debtor()),
+                    HouseholdActors.of(debt.creditor()),
+                    location,
+                    Map.of(debt.commodity().get(), paid),
+                    Map.of(),
+                    TransferReason.LOAN_REPAYMENT)
+                : ledger.mint(
+                    HouseholdActors.of(debt.debtor()),
+                    HouseholdActors.of(debt.creditor()),
+                    location,
+                    Map.of(),
+                    Map.of(MoneyVocabulary.SILVER_CURRENCY, paid),
+                    TransferReason.LOAN_REPAYMENT);
+        applyTransfer(
+            householdGoods,
+            householdMoney,
+            operatorGoods,
+            operatorMoney,
+            householdOfActor,
+            repayment);
+        long remaining = debt.principal() - paid;
+        debts.put(
+            debt.id(),
+            new Debt(
+                debt.id(),
+                debt.debtor(),
+                debt.creditor(),
+                debt.commodity(),
+                remaining,
+                debt.ratePerMillePerCycle(),
+                debt.dueCycle(),
+                remaining > 0L)); // ★ 不足才违约；还清 = defaulted=false、本金 0（历史留痕）
+      }
+    }
+  }
+
+  /**
    * ★★ <b>周期末偿还（H5 ②；{@code FlowRow.repaid} 的第一个写入点）</b>。
    *
    * <pre>
@@ -3585,7 +3811,8 @@ public final class EconomySettlement {
   private static void reallocateLabor(
       LinkedHashMap<IndustryId, Industry> industries,
       LinkedHashMap<HouseholdId, ClassRow> rows,
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations) {
+      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      Map<IndustryId, OperatorCondition> operatorConditions) {
     Map<String, List<IndustryId>> hexToIndustries = industriesByHexMap(industries);
     for (Map.Entry<String, List<IndustryId>> hex : hexToIndustries.entrySet()) {
       List<IndustryId> ids = hex.getValue();
@@ -3610,7 +3837,10 @@ public final class EconomySettlement {
       }
       Map<IndustryId, Long> need = new LinkedHashMap<>();
       for (IndustryId id : ids) {
-        need.put(id, laborNeedOf(industries.get(id), allocated.getOrDefault(id, 0L)));
+        need.put(
+            id,
+            laborNeedOf(
+                industries.get(id), allocated.getOrDefault(id, 0L), operatorConditions.get(id)));
       }
       // ② 保留 + 回池（逐 (批次, 产业) 配额）
       Map<IndustryId, Long> kept = new LinkedHashMap<>();
@@ -3704,12 +3934,12 @@ public final class EconomySettlement {
    * 配额**全部回池**（这正是 H5 ③ 要的"作坊停工 ⇒ 那批劳动不再卡死"）。★ 数据缺项与数据为零是两件事： 前者不施加约束（读 {@code scaleOf}
    * 的同款口径），后者是一个**真的为 0** 的规模。
    */
-  private static long laborNeedOf(Industry industry, long allocated) {
+  private static long laborNeedOf(Industry industry, long allocated, OperatorCondition condition) {
     long laborPerUnit = industry.recipe().laborPerUnit();
     if (laborPerUnit <= 0L) {
       return allocated; // ★ 劳动那一路**不施加约束**（与 scaleOf 的同款口径："每单位需求为 0 ⇒ 这一路不构成约束"）
     }
-    long scale = capacityScaleOf(industry);
+    long scale = plannedCapacityScaleOf(industry, condition);
     if (scale == Long.MAX_VALUE) {
       return allocated; // 产能表为空 ⇒ 产能那一路同样不施加约束
     }
@@ -3887,6 +4117,7 @@ public final class EconomySettlement {
       Industry industry,
       LinkedHashMap<HouseholdId, ClassRow> rows,
       long cycledLabor,
+      long plannedPerMille,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> income,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -3898,7 +4129,8 @@ public final class EconomySettlement {
     ProductionRecipe recipe = industry.recipe();
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
     // ★★ **K3：产能那一路读 {@code industry.capacity()}**（不再 Σ各行的 meansOfProduction —— 行里没有它了）。
-    long scale = scaleOf(industry, avgLaborMilli); // ★ 最紧约束
+    //   ★ S3：再乘状态机的计划规模系数（缩产/停业不改 capacity/UseRight，只改本周期计划）。
+    long scale = scaleOf(industry, avgLaborMilli, plannedPerMille); // ★ 最紧约束
 
     HexCoord location = hexOfIndustry(industry.id());
     ActorRef operator = industry.operator();
@@ -4526,7 +4758,7 @@ public final class EconomySettlement {
    *
    * @param avgLaborMilli 平均每日实际劳动（千分劳动）= 本周期配额之和 ÷ cycleDays
    */
-  private static long scaleOf(Industry industry, long avgLaborMilli) {
+  private static long scaleOf(Industry industry, long avgLaborMilli, long plannedPerMille) {
     ProductionRecipe recipe = industry.recipe();
     long scale = Long.MAX_VALUE;
     // ★★ **K3：产能那一路 = 本格该产业的产能总量 ÷ 每单位需求**（{@link #capacityScaleOf} 是同一个算式；
@@ -4534,6 +4766,10 @@ public final class EconomySettlement {
     for (Map.Entry<AssetKind, Long> entry : recipe.capacityPerUnit().entrySet()) {
       scale =
           Math.min(scale, industry.capacity().getOrDefault(entry.getKey(), 0L) / entry.getValue());
+    }
+    // ★★ S3：状态机的计划规模系数（缩产/停业）—— 只压"本周期计划"，capacity / UseRight 原样保留。
+    if (scale != Long.MAX_VALUE) {
+      scale = scale * plannedPerMille / 1_000L;
     }
     if (recipe.laborPerUnit() > 0L) {
       scale = Math.min(scale, avgLaborMilli / recipe.laborPerUnit());

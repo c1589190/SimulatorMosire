@@ -218,6 +218,32 @@ public final class OwnershipBooks {
         }
       }
       if (account == null) {
+        // ★★ S3：家户迁移（economy.MigrateHousehold）只搬视图、不搬账的 location（S1.3 的既有口径）——
+        //   故按 **actor 身份**回找这本账；同一 actor 有多本（说不出哪本权威）⇒ 当场抛，不猜。
+        GoodsAccountKey foundKey = null;
+        GoodsAccount found = null;
+        for (Map.Entry<GoodsAccountKey, GoodsAccount> candidate : books.accounts().entrySet()) {
+          if (!candidate.getKey().owner().equals(actor)) {
+            continue;
+          }
+          if (foundKey != null && !candidate.getKey().equals(foundKey)) {
+            throw new IllegalStateException(
+                "家户 actor 有多本账，无法判断哪本是权威（拒绝静默合并）：actor="
+                    + actor
+                    + "，键="
+                    + foundKey
+                    + " 与 "
+                    + candidate.getKey());
+          }
+          foundKey = candidate.getKey();
+          found = candidate.getValue();
+        }
+        if (found != null) {
+          account = found;
+          location = foundKey.location();
+        }
+      }
+      if (account == null) {
         missing.add(household + "（" + location + "）");
         continue;
       }

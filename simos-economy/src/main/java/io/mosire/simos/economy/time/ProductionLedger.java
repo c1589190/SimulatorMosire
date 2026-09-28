@@ -114,6 +114,37 @@ public record ProductionLedger(
     return inputs.getOrDefault(industry, Map.of()).getOrDefault(commodity, 0L);
   }
 
+  /** ★★ <b>S3：本日全部具名欠款</b>（由 {@code ruleSettlements} 的 {@code owed>0} 派生；不新增状态组件）。 */
+  public List<ProductionSettlement.Arrear> arrears() {
+    List<ProductionSettlement.Arrear> result = new ArrayList<>();
+    for (ProductionSettlement.RuleSettlement reading : ruleSettlements) {
+      if (reading.owed() > 0L) {
+        result.add(ProductionSettlement.Arrear.of(reading));
+      }
+    }
+    return List.copyOf(result);
+  }
+
+  /** ★ S3：工资欠款（WageArrears）具名读数。 */
+  public List<ProductionSettlement.Arrear> wageArrears() {
+    return arrearsOfKind(ProductionSettlement.Arrear.Kind.WAGE);
+  }
+
+  /** ★ S3：地租欠款（RentArrears）具名读数。 */
+  public List<ProductionSettlement.Arrear> rentArrears() {
+    return arrearsOfKind(ProductionSettlement.Arrear.Kind.RENT);
+  }
+
+  private List<ProductionSettlement.Arrear> arrearsOfKind(ProductionSettlement.Arrear.Kind kind) {
+    List<ProductionSettlement.Arrear> result = new ArrayList<>();
+    for (ProductionSettlement.Arrear arrear : arrears()) {
+      if (arrear.kind() == kind) {
+        result.add(arrear);
+      }
+    }
+    return List.copyOf(result);
+  }
+
   /**
    * ★★ <b>一天的可变累加器</b>（包内可见）—— 日结算边跑边记，跑完 {@link #toLedger()} 冻成上面那个 record。
    *

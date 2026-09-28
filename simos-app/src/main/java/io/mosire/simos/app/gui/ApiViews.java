@@ -11,6 +11,7 @@ import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReadoutAssembly;
 import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.timeline.RevisionRow;
@@ -42,9 +43,14 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.economy.time.HouseholdClassRule;
+import io.mosire.simos.economy.time.HouseholdCondition;
 import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReport;
+import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.ProductionSettlement;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -517,7 +523,12 @@ public final class ApiViews {
       //   不在视图层另写一套（口径两处各写一遍 = 读到的义务与实付的义务会漂开）。
       Map<HouseholdId, Long> cycleLabor =
           EconomySettlement.laborOfCohort(data.classes(), coord, industry.cycleDays());
-      industries.add(industryView(industry, data.relations().get(id), cycleLabor));
+      Map<String, Object> industryView =
+          industryView(industry, data.relations().get(id), cycleLabor);
+      // ★★ S3：经营者状态机读数（空表 = 旧档/还没关账；不伪造 ACTIVE）。
+      OperatorCondition condition = data.operatorConditions().get(id);
+      industryView.put("condition", condition == null ? null : operatorConditionView(condition));
+      industries.add(industryView);
     }
     // ★★ H0.2：**家户行挂在格上**（键 = {@code (格, 居住类型, 阶层)}），不再属于任何产业 ⇒ 视图里它们是该格的一个数组。
     // ★★ M1.5：债权人侧索引**一次派生、整格复用**（{@link DebtIndex#byCreditor}；不在每一行里 O(债务) 重扫）。
@@ -602,6 +613,26 @@ public final class ApiViews {
     view.put("moneyInstruments", moneyInstrumentViews());
     view.put("classes", classes);
     view.put("industries", industries);
+    // ★★ S3：逐家户的状态读数与阶层分化（派生；来源与边界见 HouseholdCondition / HouseholdClassRule 的类注）。
+    Optional<ProductionLedger> dayLedger =
+        data.meta().isPresent()
+            ? EconomyDayFeed.last(data.meta().orElseThrow().mapId(), tick)
+            : Optional.empty();
+    List<Map<String, Object>> householdConditions = new ArrayList<>();
+    for (HouseholdId key : cohortKeysAt(data, coord)) {
+      HouseholdCondition condition = HouseholdCondition.derive(data, key, dayLedger);
+      String derivedClass = HouseholdClassRule.classify(data, key, dayLedger).value();
+      householdConditions.add(householdConditionView(condition, derivedClass));
+    }
+    view.put("householdConditions", householdConditions);
+    // ★★ S3：当日欠款（WageArrears / RentArrears / SubsistenceArrears；进程内瞬态，读不到 ⇒ null + 具名原因）。
+    if (dayLedger.isPresent()) {
+      view.put("arrears", arrearsView(dayLedger.orElseThrow()));
+      view.put("arrearsUnavailable", null);
+    } else {
+      view.put("arrears", null);
+      view.put("arrearsUnavailable", ARREARS_PROCESS_ONLY);
+    }
     // ★★ M2.7：**焦点区的逐区逐商品市场读数**（与 MCP / GUI 共用同一份视图；进程内报告缺失时 match=null 且具名）。
     //   ★ 挂进同一个 economyHex 而不新开路由/工具：GUI 与 MCP 的读口数量不变（工具面测试不需要改名单）。
     view.put("marketReadout", readout.map(ApiViews::marketReadoutView).orElse(null));
@@ -835,6 +866,25 @@ public final class ApiViews {
     view.put("lossMilli", match.lossMilli());
     view.put("unusedCapacityMilli", match.unusedCapacityMilli());
     view.put("capacityBottleneck", match.capacityBottleneck());
+    view.put("sellerOutcomeCount", match.sellerOutcomeCount());
+    view.put("sellerSelfUsableQtyMilli", match.sellerSelfUsableQtyMilli());
+    view.put("sellerOutcompetedCount", match.sellerOutcompetedCount());
+    view.put("sellerOutcompetedQtyMilli", match.sellerOutcompetedQtyMilli());
+    view.put("sellerPriceMissingCount", match.sellerPriceMissingCount());
+    view.put(
+        "cheapestSellerUnitCostMilli",
+        match.cheapestSellerUnitCostMilli().isPresent()
+            ? match.cheapestSellerUnitCostMilli().getAsLong()
+            : null);
+    view.put(
+        "dearestSellerUnitCostMilli",
+        match.dearestSellerUnitCostMilli().isPresent()
+            ? match.dearestSellerUnitCostMilli().getAsLong()
+            : null);
+    view.put("buyerOutcomeCount", match.buyerOutcomeCount());
+    view.put("buyerStockSufficientCount", match.buyerStockSufficientCount());
+    view.put("buyerNoBudgetCount", match.buyerNoBudgetCount());
+    view.put("buyerGapMilli", match.buyerGapMilli());
     view.put("unfilledBuyCounts", reasonCountsView(match.unfilledBuyCounts()));
     view.put("unfilledSellCounts", reasonCountsView(match.unfilledSellCounts()));
     view.put("unfilledBuyQuantities", reasonCountsView(match.unfilledBuyQuantities()));
@@ -850,6 +900,92 @@ public final class ApiViews {
     }
     return view;
   }
+
+  /** ★ S3：经营者状态（制度状态机读数；字段口径见 {@code OperatorCondition} 类注）。 */
+  private static Map<String, Object> operatorConditionView(OperatorCondition condition) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("status", condition.status().name().toLowerCase(java.util.Locale.ROOT));
+    view.put("consecutiveUnsoldCycles", condition.consecutiveUnsoldCycles());
+    view.put("consecutiveInputShortfallCycles", condition.consecutiveInputShortfallCycles());
+    view.put("cashReserveMilli", condition.cashReserveMilli());
+    view.put("debtPrincipalMilli", condition.debtPrincipalMilli());
+    view.put("debtServiceDueMilli", condition.debtServiceDueMilli());
+    view.put("lastCycleRevenueMilli", condition.lastCycleRevenueMilli());
+    view.put("lastCycleCostMilli", condition.lastCycleCostMilli());
+    view.put("lastCycleNetMilli", condition.lastCycleNetMilli());
+    view.put("unsoldStockMilli", condition.unsoldStockMilli());
+    view.put("selfUsableStockMilli", condition.selfUsableStockMilli());
+    view.put("consecutiveDebtStressCycles", condition.consecutiveDebtStressCycles());
+    view.put("consecutiveSuspendedCycles", condition.consecutiveSuspendedCycles());
+    view.put("reopens", condition.reopens());
+    view.put("lastReason", condition.lastReason());
+    return view;
+  }
+
+  /** ★ S3：一家户的状态读数 + 派生阶层（可观察量见两个领域类的类注）。 */
+  private static Map<String, Object> householdConditionView(
+      HouseholdCondition condition, String derivedClass) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("householdId", condition.household().value());
+    view.put("status", condition.status().name().toLowerCase(java.util.Locale.ROOT));
+    view.put("unmetNeedMilliGrain", condition.unmetNeedMilliGrain());
+    view.put("unmetNeedMilliCloth", condition.unmetNeedMilliCloth());
+    view.put("debtStress", condition.debtStress());
+    view.put("laborSoldMilli", condition.laborSoldMilli());
+    view.put("laborSelfMilli", condition.laborSelfMilli());
+    view.put(
+        "rentPaidMilli",
+        condition.rentPaidMilli().isPresent() ? condition.rentPaidMilli().getAsLong() : null);
+    view.put(
+        "wageArrearsMilli",
+        condition.wageArrearsMilli().isPresent() ? condition.wageArrearsMilli().getAsLong() : null);
+    view.put("derivedClass", derivedClass);
+    view.put("stressCycles", condition.stressCycles());
+    view.put(
+        "statusNote", "status=派生（UseRight/laborSource/未满足/债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
+    return view;
+  }
+
+  /** ★ S3：当日欠款（WageArrears/RentArrears/SubsistenceArrears）的 JSON 形；逐条给 due/paid/owed。 */
+  private static Map<String, Object> arrearsView(ProductionLedger ledger) {
+    List<Map<String, Object>> items = new ArrayList<>();
+    long wageOwed = 0L;
+    long rentOwed = 0L;
+    long subsistenceOwed = 0L;
+    for (ProductionSettlement.Arrear arrear : ledger.arrears()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("kind", arrear.kind().name().toLowerCase(java.util.Locale.ROOT));
+      item.put("ruleType", arrear.rule().type().name());
+      item.put("recipient", arrear.rule().recipient().toString());
+      item.put("commodity", arrear.commodity().map(CommodityId::value).orElse(null));
+      item.put("currency", arrear.currency().map(CurrencyId::value).orElse(null));
+      item.put("dueAmount", arrear.dueAmount());
+      item.put("paidNow", arrear.paidNow());
+      item.put("owed", arrear.owed());
+      items.add(item);
+      switch (arrear.kind()) {
+        case WAGE -> wageOwed += arrear.owed();
+        case RENT -> rentOwed += arrear.owed();
+        case SUBSISTENCE -> subsistenceOwed += arrear.owed();
+        case OTHER -> {
+          // 其它档不合并进上面三个具名数（不静默混同）。
+        }
+      }
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("items", items);
+    view.put("wageArrearsMilli", wageOwed);
+    view.put("rentArrearsMilli", rentOwed);
+    view.put("subsistenceArrearsMilli", subsistenceOwed);
+    view.put(
+        "provenance",
+        "来自本日 ProductionLedger 的逐规则读数（进程内瞬态；重启即失；不落债权，见 ProductionSettlement.Arrear 类注）");
+    return view;
+  }
+
+  /** ★ S3：欠款读不到的具名原因（唯一拼写点）。 */
+  private static final String ARREARS_PROCESS_ONLY =
+      "当日 ProductionLedger 是进程内瞬态（重启/换进程/还没结算即失）：租与工资欠款读不到；缺失不是 0，" + "而是\"这一轮没有可读账本\"";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =

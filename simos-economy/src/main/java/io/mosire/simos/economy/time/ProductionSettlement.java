@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -257,6 +258,107 @@ public final class ProductionSettlement {
       ruleSettlements = List.copyOf(requireNoNulls(ruleSettlements, "Outcome.ruleSettlements"));
       deferredMoney = List.copyOf(requireNoNulls(deferredMoney, "Outcome.deferredMoney"));
     }
+
+    /** ★ S3：全部具名欠款（{@code owed > 0}），按付款次序保序；空表 = 制度全付清。 */
+    public List<Arrear> arrears() {
+      List<Arrear> result = new ArrayList<>();
+      for (RuleSettlement reading : ruleSettlements) {
+        if (reading.owed() > 0L) {
+          result.add(Arrear.of(reading));
+        }
+      }
+      return List.copyOf(result);
+    }
+
+    /** ★ S3：工资欠款（WageArrears；{@code FIXED_MONEY_WAGE} 的未付部分）。 */
+    public List<Arrear> wageArrears() {
+      return arrearsOfKind(Arrear.Kind.WAGE);
+    }
+
+    /** ★ S3：地租欠款（RentArrears；两类固定租的未付部分）。 */
+    public List<Arrear> rentArrears() {
+      return arrearsOfKind(Arrear.Kind.RENT);
+    }
+
+    private List<Arrear> arrearsOfKind(Arrear.Kind kind) {
+      List<Arrear> result = new ArrayList<>();
+      for (Arrear arrear : arrears()) {
+        if (arrear.kind() == kind) {
+          result.add(arrear);
+        }
+      }
+      return List.copyOf(result);
+    }
+  }
+
+  /**
+   * ★★ <b>S3：具名欠款（WageArrears / RentArrears / SubsistenceArrears）</b>—— 由 {@link RuleSettlement} 里
+   * {@code owed > 0} 的那些派生；<b>不是新状态、不是债权</b>（本批不把欠款自动落成 {@code Debt}，见类注的裁定），
+   * 但它是"制度规定要付、实际付不出"的<b>具名可读聚合</b>：不把欠款静默当 0。
+   *
+   * <p>★ 它的名字按规则类型分档：{@link RuleType#FIXED_MONEY_WAGE} ⇒ {@link Kind#WAGE}（WageArrears）； 两类固定租 ⇒
+   * {@link Kind#RENT}（RentArrears）；给养/实物劳动报酬 ⇒ {@link Kind#SUBSISTENCE}。
+   */
+  public record Arrear(
+      CompensationRule rule,
+      Kind kind,
+      Optional<CommodityId> commodity,
+      Optional<CurrencyId> currency,
+      long dueAmount,
+      long paidNow,
+      long owed) {
+
+    /** 欠款名目（具名，不合成一个"总欠款"）。 */
+    public enum Kind {
+      /** 货币工资欠款（WageArrears）。 */
+      WAGE,
+      /** 地租欠款（RentArrears）。 */
+      RENT,
+      /** 给养/实物劳动报酬欠款（SubsistenceArrears）。 */
+      SUBSISTENCE,
+      /** 其它未偿规则（不静默丢；本批枚举里没有别的档会走到这里）。 */
+      OTHER
+    }
+
+    public Arrear {
+      if (rule == null || kind == null || commodity == null || currency == null) {
+        throw new IllegalArgumentException("ProductionSettlement.Arrear 的字段不得为 null");
+      }
+      if (dueAmount < 0L || paidNow < 0L || paidNow > dueAmount) {
+        throw new IllegalArgumentException("Arrear 的实付必须在 [0, 应付] 里: " + dueAmount + "/" + paidNow);
+      }
+      if (owed != dueAmount - paidNow) {
+        throw new IllegalArgumentException(
+            "Arrear.owed 必须逐值等于 应付 − 实付: " + owed + " != " + (dueAmount - paidNow));
+      }
+    }
+
+    /** 从一条逐规则读数派生（{@code owed == 0} ⇒ 调用方应过滤）。 */
+    public static Arrear of(RuleSettlement reading) {
+      Objects.requireNonNull(reading, "reading");
+      return new Arrear(
+          reading.rule(),
+          kindOf(reading.rule().type()),
+          reading.commodity(),
+          reading.currency(),
+          reading.dueAmount(),
+          reading.paidNow(),
+          reading.owed());
+    }
+
+    /** 规则的欠款名目（唯一分档点）。 */
+    public static Kind kindOf(RuleType type) {
+      if (type == RuleType.FIXED_MONEY_WAGE) {
+        return Kind.WAGE;
+      }
+      if (type == RuleType.FIXED_IN_KIND_RENT || type == RuleType.FIXED_MONEY_RENT) {
+        return Kind.RENT;
+      }
+      if (type == RuleType.FIXED_IN_KIND_PER_LABOR) {
+        return Kind.SUBSISTENCE;
+      }
+      return Kind.OTHER;
+    }
   }
 
   /**
@@ -340,7 +442,7 @@ public final class ProductionSettlement {
     if (mint == null) {
       throw new IllegalArgumentException("mint 不得为 null（没有铸造口就没有转移凭据）");
     }
-    List<CompensationRule> ordered = inPaymentOrder(relation.rules());
+    List<CompensationRule> ordered = inPaymentOrder(relation);
     requireProducibleCommodities(ordered, relation, facts); // ★ E14：在任何数量计算之前
     Map<CommodityId, Long> paid = new LinkedHashMap<>(); // 已付（逐商品；R6 的"可用"就靠它）
     // ★★ H4：**已付的货币**（逐币种）—— 与上面那张表逐字同款、同一条理由：R6 的"本期可用"是
@@ -522,13 +624,23 @@ public final class ProductionSettlement {
   // ── 次序 ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>付款次序 = 数据</b>：按 {@code priority} 升序、<b>同值按规则在 {@code rules} 里的先后</b>。
+   * ★★ <b>付款次序 = 制度档 × 数据</b>：先按 {@link
+   * LaborSourcePolicy#priorityTier(io.mosire.simos.economy.api.relation.LaborSource,
+   * CompensationRule)} 的制度档（{@code SERF} 先给养后地租、{@code TENANT} 先自留、{@code WAGE} 先工资），同档再按 {@code
+   * priority} 升序，最后按规则在 {@code rules} 里的先后（{@code List.sort} 稳定）。
    *
-   * <p>★ {@code List.sort} 是<b>稳定</b>排序 ⇒ 同值天然保表序（不必再带"表内序号"当第二关键字）；这一点是判据的一部分 （可复现），不是实现细节。
+   * <p>★★ 制度档放在 {@code priority} <b>之前</b>（而不是只当 tie-break）：否则 {@code LaborSource} 在既有数据 （给养
+   * priority=10、租=20、手工业工资=20）上永远不改变任何次序 = 一个"看起来在算、其实恒不起作用"的标签。 现在的后果是
+   * <b>可观察的</b>：手工业的工资档先于分成档（WAGE）；庄园的给养先于地租（SERF）；佃农的自留先于地租（TENANT）。 同一制度档内仍完全尊重数据里的 {@code
+   * priority} 与表序。
    */
-  private static List<CompensationRule> inPaymentOrder(List<CompensationRule> rules) {
-    List<CompensationRule> ordered = new ArrayList<>(rules);
-    ordered.sort(Comparator.comparingInt(CompensationRule::priority));
+  private static List<CompensationRule> inPaymentOrder(ProductionRelation relation) {
+    List<CompensationRule> ordered = new ArrayList<>(relation.rules());
+    ordered.sort(
+        Comparator.comparingInt(
+                (CompensationRule rule) ->
+                    LaborSourcePolicy.priorityTier(relation.laborSource(), rule))
+            .thenComparingInt(CompensationRule::priority));
     return ordered;
   }
 
