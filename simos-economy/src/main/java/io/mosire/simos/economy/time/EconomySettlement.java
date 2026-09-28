@@ -893,7 +893,9 @@ public final class EconomySettlement {
             shipments,
             ledger,
             operatorConditions,
-            settlementIndex);
+            settlementIndex,
+            // ★★ R4-E2：当日有效需求来自状态组件的只读账本（订单路径据此把"生活保留基线 + 需求目标"合成买卖目标）。
+            base.demands());
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
     if (marketTrigger != MarketTrigger.NONE) {

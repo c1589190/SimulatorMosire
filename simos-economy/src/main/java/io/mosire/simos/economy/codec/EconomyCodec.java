@@ -17,8 +17,10 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -138,6 +140,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
     // ★★ M2.4：在途批次表的键 = ShipmentId（{@code sh-<day>-<seq>}）—— 与上面同一条口径：toString/parse 互逆，只需读侧。
     module.addKeyDeserializer(ShipmentId.class, keyDeserializer(ShipmentId::parse));
+    // ★★ R4-E2：demands / candidates 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    module.addKeyDeserializer(DemandId.class, keyDeserializer(DemandId::parse));
+    module.addKeyDeserializer(CandidateId.class, keyDeserializer(CandidateId::parse));
     return module;
   }
 

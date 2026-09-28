@@ -132,6 +132,26 @@ public final class CatalogTool implements AgentTool {
                   + "份额总量逐 (industry,asset) 守恒；不动商品/货币/债务/劳动；"
                   + "同形现有份额尾段序号最大值+1 生成新 id，尾段不可解析 ⇒ 拒）"),
           Map.entry(
+              "economy.SetMarketPrice",
+              "q, r, commodity, price(> 0)（★ 该格无市场 ⇒ 用 Silver 计价创建空市场；有市场 ⇒ 只 upsert 该商品价；"
+                  + "只写 markets，不造商品/货币）"),
+          Map.entry(
+              "economy.AddDemand",
+              "scope(HOUSEHOLD|HEX), household(scope=HOUSEHOLD 必填), hex{q,r}?(scope=HEX 必填),"
+                  + " commodity, kind(RECURRING|ONE_OFF), unit(TOTAL|PER_CAPITA), quantityPerCycle(> 0),"
+                  + " createdDay?(缺省 0), expiresDay?(缺省 -1=永久), priority?(缺省 0), source?(缺省 gm), id?(缺省自动生成)"
+                  + "（★ 商品在该需求范围对应的市场必须有价，否则拒并指名 economy.SetMarketPrice；"
+                  + "只写 demands）"),
+          Map.entry("economy.CancelDemand", "demand(需求 id 文本)（★ 不存在 ⇒ 拒；只写 demands）"),
+          Map.entry(
+              "economy.RegisterCandidate",
+              "id, version?(缺省 1；修订须严格更大), name?, output, outputPerUnit{商品:>0 整数},"
+                  + " inputPerUnit{商品:≥0 整数}?, requiredAssets{资产种类:≥0 整数}?, laborPerUnit?(缺省 0),"
+                  + " buildDays?(缺省 0), cycleDays(≥1), regime, laborSource?(缺省 SELF),"
+                  + " acceptedRightKinds[OWNED|TENANCY|COMMUNAL]?, assetSource{kind,id}?"
+                  + "（★ (id,version) 已存在 ⇒ 拒；旧 unit 的 modeKey=id@version 不受修订影响；只写 candidates；"
+                  + "进入采用算法留 E2b）"),
+          Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
                   + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"

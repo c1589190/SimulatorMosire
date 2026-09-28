@@ -177,7 +177,9 @@ public record MarketReadout(
             data.shipments(),
             new ProductionLedger.Accumulator(tick),
             data.operatorConditions(),
-            index);
+            index,
+            // ★★ R4-E2：读口与结算走同一条 planOrders ⇒ 需求目标必须同源传入，否则读到的订单会与真实下单漂开。
+            data.demands());
     Map<HexCoord, MarketRegion> regionByHex = new LinkedHashMap<>();
     List<MarketRegion> regions = new ArrayList<>();
     for (MarketRegion region : topology.regions()) {

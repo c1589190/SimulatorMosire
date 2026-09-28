@@ -22,6 +22,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -42,11 +43,13 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.DebtIndex;
+import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
@@ -653,6 +656,11 @@ public final class ApiViews {
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
     view.put("market", marketView(data.markets().get(coord)));
+    // ★★ R4-E2：**需求账本**只读视图（本格相关：HEX 范围命中本格 + HOUSEHOLD 范围住在该格的家户）。
+    //   ★ 与订单路径同一份状态（{@code EconomyData.demands()}），视图不重算摊分；{@code effective} 由当前 tick 现判。
+    view.put("demands", demandViews(data, coord, tick));
+    // ★★ R4-E2：**候选预设**只读视图（世界级、与格无关 ⇒ 全量发；按 id 值排序 ⇒ 响应字节是内容的纯函数）。
+    view.put("candidates", candidateViews(data));
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
     // ★★ M1.5：同一条事实的另一半（债权人侧）。两个方向来自同一张债务表 ⇒ 逐条本金一致。
@@ -1819,6 +1827,86 @@ public final class ApiViews {
     view.put("numeraire", market.numeraire().value());
     view.put("prices", sortedCommodities(market.prices()));
     return view;
+  }
+
+  /**
+   * ★★ <b>R4-E2：本格相关需求账本的只读视图</b>：HEX 范围命中本格的需求 + HOUSEHOLD 范围住在该格家户的需求。
+   *
+   * <p>★ 只读、不重算摊分；{@code effective} 由当前 {@code tick} 现判（{@code tick < 0} ⇒ {@code null} =
+   * 读口没有世界时钟，不猜）。
+   */
+  private static List<Map<String, Object>> demandViews(
+      EconomyData data, HexCoord coord, long tick) {
+    List<Map.Entry<DemandId, DemandEntry>> entries = new ArrayList<>(data.demands().entrySet());
+    entries.sort(Comparator.comparing(entry -> entry.getKey().value()));
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (Map.Entry<DemandId, DemandEntry> entry : entries) {
+      DemandEntry demand = entry.getValue();
+      if (!demandTouchesHex(data, demand, coord)) {
+        continue;
+      }
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", demand.id().value());
+      view.put("scope", demand.scope().name());
+      view.put("household", demand.household().map(HouseholdId::value).orElse(null));
+      view.put("hex", demand.hex().map(ApiViews::hexCoord).orElse(null));
+      view.put("commodity", demand.commodity().value());
+      view.put("kind", demand.kind().name());
+      view.put("unit", demand.unit().name());
+      view.put("quantityPerCycle", demand.quantityPerCycle());
+      view.put("createdDay", demand.createdDay());
+      view.put("expiresDay", demand.expiresDay());
+      view.put("priority", demand.priority());
+      view.put("source", demand.source());
+      view.put("effective", tick < 0L ? null : demand.effectiveOn(tick));
+      out.add(view);
+    }
+    return out;
+  }
+
+  /** 本格相关：HEX 需求命中本格，或 HOUSEHOLD 需求的家户住在该格。 */
+  private static boolean demandTouchesHex(EconomyData data, DemandEntry demand, HexCoord coord) {
+    if (demand.scope() == DemandEntry.DemandScope.HEX) {
+      return demand.hex().map(coord::equals).orElse(false);
+    }
+    ClassRow row = data.classes().get(demand.household().orElse(null));
+    return row != null && row.view().hex().equals(coord);
+  }
+
+  /** ★★ R4-E2：候选预设的全量只读视图（世界级、与格无关；按 id 值升序）。 */
+  private static List<Map<String, Object>> candidateViews(EconomyData data) {
+    List<ProductionCandidate> candidates = new ArrayList<>(data.candidates().values());
+    candidates.sort(Comparator.comparing(candidate -> candidate.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(candidates.size());
+    for (ProductionCandidate candidate : candidates) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", candidate.id().value());
+      view.put("version", candidate.version());
+      view.put("modeKey", candidate.modeKey());
+      view.put("name", candidate.name());
+      view.put("output", candidate.output().value());
+      view.put("outputPerUnit", sortedCommodities(candidate.outputPerUnit()));
+      view.put("inputPerUnit", sortedCommodities(candidate.inputPerUnit()));
+      Map<String, Long> requiredAssets = new TreeMap<>();
+      for (Map.Entry<AssetKind, Long> asset : candidate.requiredAssets().entrySet()) {
+        requiredAssets.put(asset.getKey().name(), asset.getValue());
+      }
+      view.put("requiredAssets", requiredAssets);
+      view.put("laborPerUnit", candidate.laborPerUnit());
+      view.put("buildDays", candidate.buildDays());
+      view.put("cycleDays", candidate.cycleDays());
+      view.put("regime", candidate.regime().value());
+      view.put("laborSource", candidate.laborSource().name());
+      List<String> rights = new ArrayList<>();
+      for (AssetShare.RightKind right : candidate.acceptedRightKinds()) {
+        rights.add(right.name());
+      }
+      rights.sort(Comparator.naturalOrder());
+      view.put("acceptedRightKinds", rights);
+      view.put("assetSource", candidate.assetSource().map(ApiViews::actorRefView).orElse(null));
+      out.add(view);
+    }
+    return out;
   }
 
   /**

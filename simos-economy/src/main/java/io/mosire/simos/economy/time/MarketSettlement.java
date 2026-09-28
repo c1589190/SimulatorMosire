@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
@@ -32,6 +33,7 @@ import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -255,6 +257,12 @@ final class MarketSettlement {
     /** ★★ R4-B.3a-perf：本轮参与者/必要投入/自留/家户归属共用的只读派生索引（入口构建一次）。 */
     private final SettlementIndex index;
 
+    /**
+     * ★★ R4-E2：需求账本（只读；由 {@code EconomySettlement}/{@code MarketReadout} 从 {@code
+     * EconomyData.demands()} 传入）。订单路径用它把"生活保留基线 + 有效需求目标"合成买/不卖目标。
+     */
+    private final Map<DemandId, DemandEntry> demands;
+
     MarketRound(
         long day,
         Map<HouseholdId, ClassRow> rows,
@@ -276,7 +284,8 @@ final class MarketSettlement {
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
         Map<ProductionUnitId, OperatorCondition> operatorConditions,
-        SettlementIndex index) {
+        SettlementIndex index,
+        Map<DemandId, DemandEntry> demands) {
       this.day = day;
       this.rows = Objects.requireNonNull(rows, "rows");
       this.householdGoods = Objects.requireNonNull(householdGoods, "householdGoods");
@@ -301,6 +310,12 @@ final class MarketSettlement {
       this.operatorConditions =
           operatorConditions == null ? Map.of() : Map.copyOf(operatorConditions);
       this.index = Objects.requireNonNull(index, "index");
+      this.demands = demands == null ? Map.of() : demands;
+    }
+
+    /** ★ R4-E2：需求账本（只读；空表 = 没有 GM 需求，订单退回旧基线）。 */
+    Map<DemandId, DemandEntry> demands() {
+      return demands;
     }
   }
 
@@ -355,13 +370,18 @@ final class MarketSettlement {
     final Map<ActorRef, Map<CommodityId, Long>> necessaryInputs;
     final Map<ActorRef, Map<CommodityId, Long>> lifeReserves;
 
+    /** ★★ R4-E2：逐家户、逐商品的**有序**需求分段（list 序 = 预算优先级序；经营者恒为空表）。目标总量 = 各段之和。 */
+    final Map<ActorRef, Map<CommodityId, List<Long>>> demandParts;
+
     HexPlan(
         List<Participant> participants,
         Map<ActorRef, Map<CommodityId, Long>> necessaryInputs,
-        Map<ActorRef, Map<CommodityId, Long>> lifeReserves) {
+        Map<ActorRef, Map<CommodityId, Long>> lifeReserves,
+        Map<ActorRef, Map<CommodityId, List<Long>>> demandParts) {
       this.participants = participants;
       this.necessaryInputs = necessaryInputs;
       this.lifeReserves = lifeReserves;
+      this.demandParts = demandParts;
     }
   }
 
@@ -822,11 +842,24 @@ final class MarketSettlement {
               .getOrDefault(commodity, 0L);
       long life =
           plan.lifeReserves.getOrDefault(participant.actor, Map.of()).getOrDefault(commodity, 0L);
+      // ★★ R4-E2：GM 需求只归家户；经营者不因需求加目标（demandParts 恒空）。
+      List<Long> demandParts =
+          participant.household == null
+              ? List.of()
+              : plan.demandParts
+                  .getOrDefault(participant.actor, Map.of())
+                  .getOrDefault(commodity, List.of());
+      long demandTarget = 0L;
+      for (long part : demandParts) {
+        demandTarget = Math.addExact(demandTarget, part);
+      }
       long stock = stockOf(round, participant, commodity);
       long frozen = frozenGoodsOf(round, participant, commodity);
       long available = Math.max(0L, stock - frozen);
-      // ── 卖：可卖 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留) ─────────────────────
-      long sellable = Math.max(0L, stock - frozen - necessary - life);
+      // ── 卖：可卖 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留基线 − 有效需求目标) ─────
+      //   ★★ 需求目标同时进"不卖"一侧：要买的粮/布（或任何新商品）不许在同一轮又被当余量卖掉。
+      long retention = Math.addExact(life, demandTarget);
+      long sellable = Math.max(0L, stock - frozen - necessary - retention);
       if (sellable > 0L) {
         sells.add(
             new SellOrder(
@@ -838,26 +871,21 @@ final class MarketSettlement {
                 round.day,
                 SILVER_SPECIE)); // 本批单一工具（silver-specie）；多工具是后续增量
       }
-      // ── 买：家户补到生活保留，经营者补到必要生产投入 ────────────────────────────────
+      // ── 买：家户补到"生活保留基线 + 有效需求目标"；经营者补到必要生产投入 ─────────────────
       //   ★ M2.4：目标缺口 = target − 可用 − **该时限前确定到货**（在途批次里买方那一份；M2.1 的原文）。
-      long target = participant.household != null ? life : necessary;
+      //   ★★ R4-E2 的预算优先级：先保生活保留基线，再按 demands 的 priority 升序（同 priority 按
+      //     DemandId）逐个扣"按参考价折算的买得起量"；下层需求拿上一层剩下的额度。
+      long baseTarget = participant.household != null ? life : necessary;
       long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
-      long gap = Math.max(0L, target - available - incoming);
-      if (gap <= 0L) {
-        continue;
-      }
       long budget = spendableMoneyOf(round, participant, market.numeraire());
-      if (budget <= 0L) {
-        continue; // 没钱的缺口不是有效需求（与旧口径同一条立场）
+      long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+      long quantity = allocateQuantity(baseTarget, demandParts, available, incoming, affordable);
+      if (quantity <= 0L) {
+        continue; // 没缺口 / 没钱的缺口不是有效需求（与旧口径同一条立场）
       }
       // ★ 买得起多少按**参考价**折算：区内成交价就是它；跨区若卖方到货价更高，{@link #matchRoute} 会按实际
       //   "单价 + 运费"复核预算并缩小成交。★ ask 只做**限价过滤**（买方最多愿付），不在这里折数量 —— 否则
       //   价格表很小时（真档粮价 = 1 毫）整数网格会把 +1 毫的价差放大成"买得起的量减半"。
-      long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
-      long quantity = Math.min(gap, affordable);
-      if (quantity <= 0L) {
-        continue;
-      }
       // ★ 限价 = **货款**上限；跨区运费另计（M2.5：买方付货款与运费）。到货时限 = 生活保留天数（见常量注释）。
       buys.add(
           new BuyOrder(
@@ -871,6 +899,35 @@ final class MarketSettlement {
               SILVER_SPECIE));
     }
     return new PlannedOrders(buys, sells);
+  }
+
+  /**
+   * ★★ R4-E2：把"生活保留基线 + 有序需求分段"的缺口切进有限的买得起量。
+   *
+   * <p>顺序固定：① 基线缺口先拿；② 每个需求分段按调用方给的有序 list 逐个拿（缺口按"库存 + 在途"先抵基线、 再抵高优先级需求）；③ 每层只拿剩余额度。{@code
+   * demandParts} 为空时逐值等于旧式 {@code min(max(0, target - available - incoming), affordable)}。
+   */
+  private static long allocateQuantity(
+      long baseTarget, List<Long> demandParts, long available, long incoming, long affordable) {
+    if (baseTarget < 0L) {
+      throw new IllegalArgumentException("目标量不得为负: " + baseTarget);
+    }
+    long covered = Math.addExact(available, incoming);
+    long baseGap = Math.max(0L, baseTarget - covered);
+    long residualCover = Math.max(0L, covered - baseTarget);
+    long quantity = Math.min(baseGap, affordable);
+    long remaining = affordable - quantity;
+    for (long part : demandParts) {
+      long unmet = Math.max(0L, part - residualCover);
+      residualCover = Math.max(0L, residualCover - part);
+      if (unmet <= 0L || remaining <= 0L) {
+        continue;
+      }
+      long take = Math.min(unmet, remaining);
+      quantity = Math.addExact(quantity, take);
+      remaining -= take;
+    }
+    return quantity;
   }
 
   /** 某买方在某商品上、在时限前**确定到货**的在途量（买方自己的票，按 allocation 逐票求和）。 */
@@ -1318,7 +1375,8 @@ final class MarketSettlement {
             // ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
             new ProductionLedger.Accumulator(ctx.round.day),
             ctx.round.operatorConditions,
-            ctx.round.index);
+            ctx.round.index,
+            ctx.round.demands);
     MatchContext local = new MatchContext(localRound, ctx.markets, ctx.topology, ctx.carrier);
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
@@ -1544,7 +1602,8 @@ final class MarketSettlement {
         round.shipments,
         new ProductionLedger.Accumulator(round.day),
         round.operatorConditions,
-        round.index);
+        round.index,
+        round.demands);
   }
 
   /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
@@ -2730,6 +2789,10 @@ final class MarketSettlement {
               actorKeyOf(buy.buyer.actor) + "#" + commodity.value(), ignored -> new ArrayList<>())
           .add(buy);
     }
+    // ★★ R4-E2：读口 desired 必须与订单生成同源 —— 有效需求目标也进"目标量"（否则报告会说"缺口 0"
+    //   而买单非 0）。量与 planFor 走同一段 DemandTargets 逻辑，不另算一份。
+    Map<String, Map<HouseholdId, Map<CommodityId, Long>>> demandTargetsByHex =
+        DemandTargets.totalsByHex(ctx.round.demands(), ctx.round.rows, ctx.round.day);
     for (Participant participant : ctx.participants.values()) {
       HexCoord hex = ctx.participantHex.get(participant.actor);
       if (hex == null) {
@@ -2744,10 +2807,18 @@ final class MarketSettlement {
         if (reference <= 0L) {
           continue;
         }
-        long desired =
-            participant.household() == null
-                ? necessaryInputsOf(ctx.round, participant).getOrDefault(commodity, 0L)
-                : lifeReserveOfParticipant(ctx, participant, commodity);
+        long desired;
+        if (participant.household() == null) {
+          desired = necessaryInputsOf(ctx.round, participant).getOrDefault(commodity, 0L);
+        } else {
+          long demandTarget =
+              demandTargetsByHex
+                  .getOrDefault(hexKeyOf(hex), Map.of())
+                  .getOrDefault(participant.household(), Map.of())
+                  .getOrDefault(commodity, 0L);
+          desired =
+              Math.addExact(lifeReserveOfParticipant(ctx, participant, commodity), demandTarget);
+        }
         List<BuySlot> slots =
             buysByActorCommodity.getOrDefault(
                 actorKeyOf(participant.actor) + "#" + commodity.value(), List.of());
@@ -2945,21 +3016,28 @@ final class MarketSettlement {
     return List.copyOf(byActor.values());
   }
 
-  /** 一个格的预计算（参与者 + 必要生产投入 + 生活保留）。 */
+  /** 一个格的预计算（参与者 + 必要生产投入 + 生活保留 + 有效需求分段）。 */
   private static HexPlan planFor(MarketRound round, HexCoord hex, List<HouseholdId> keys) {
     List<Participant> participants = participantsFor(round, hex, keys);
     Map<ActorRef, Map<CommodityId, Long>> necessary = new LinkedHashMap<>();
     Map<ActorRef, Map<CommodityId, Long>> life = new LinkedHashMap<>();
+    // ★★ R4-E2：需求账本 → 本格逐户目标量（每 hex 扫一次 demand 表；demands 空时是空表、零行为差异）。
+    Map<HouseholdId, Map<CommodityId, List<Long>>> demandParts =
+        DemandTargets.partsForHex(round.demands(), round.rows, hex, keys, round.day);
+    Map<ActorRef, Map<CommodityId, List<Long>>> demandPartsByActor = new LinkedHashMap<>();
     for (Participant participant : participants) {
       necessary.put(participant.actor, necessaryInputsOf(round, participant));
       if (participant.household != null) {
         ClassRow row = round.rows.get(participant.household);
         life.put(participant.actor, row == null ? Map.of() : householdLifeReserveOf(row));
+        demandPartsByActor.put(
+            participant.actor, demandParts.getOrDefault(participant.household, Map.of()));
       } else {
         life.put(participant.actor, operatorLifeRetentionOf(round, participant, hex));
+        demandPartsByActor.put(participant.actor, Map.of()); // 需求只归家户；经营者不因 GM 需求加目标
       }
     }
-    return new HexPlan(participants, necessary, life);
+    return new HexPlan(participants, necessary, life, demandPartsByActor);
   }
 
   /**

@@ -252,3 +252,33 @@ E1：旧生产方式衰退 → 经营者/关联家户不同后果；退出时资
 ### 下一步
 E2：GM 注入需求（AddDemand/SetMarketPrice/RegisterCandidate）→ 订单可见 → 合条件家户采用预设形成 TRIALING 新 unit；
 无可行预设则需求未满足；旧经营者默认延续、不自动全局 ROI 切换。
+
+---
+
+## E2a 需求账本 + 候选预设 + GM 命令 + 订单路径 —— 已完成
+
+### 实现了什么
+- 第 15/16 状态组件：`demands: Map<DemandId,DemandEntry>`（HOUSEHOLD/HEX scope、RECURRING/ONE_OFF、TOTAL/PER_CAPITA、created/expires/priority/source）、
+  `candidates: Map<CandidateId,ProductionCandidate>`（version/配方/requiredAssets/labor/buildDays/cycleDays/regime/laborSource/acceptedRightKinds/assetSource）。
+  同步 `EconomyData/empty/withX/缺键空表/跨表守卫/EconomyChangeSet 键解析/Codec 键反序列化/ApiViews`。
+- 四条 GM 命令：`SetMarketPrice`（可建 Silver 空市场，不造商品/货币）、`AddDemand`（无价拒绝并指名 SetMarketPrice）、`CancelDemand`、`RegisterCandidate`
+  （`(id,version)` 唯一；旧 unit modeKey 不动）；Shell + CatalogTool PAYLOAD_HINTS 同步。
+- 订单路径：`MarketRound/HexPlan` 只读 demands；新 `DemandTargets`（HOUSEHOLD 直归、HEX 按人口最大余数摊、TOTAL/PER_CAPITA、时间窗过滤、priority+DemandId 序）；
+  `ordersFor` 家户目标 = 粮/布 35 天基线 + 有效需求，需求同时进“不卖”侧；预算先基线再按 priority 拿剩余；缺价不生成订单。
+  `demands` 空表时 42 组件与旧基线逐值相同。
+
+### 领域验收
+- 编译/spotless/package 绿；shaded jar md5 `8cacdd8b…`。
+- 固定世界 0→10（HEAD worktree jar vs 本片，8 线程）：42 组件 **0 差异**；0→120 与 HEAD 已关账 store：changed_components=NONE。
+- GM：wool 定 10 毫 → AddDemand → D+1 `effectiveDemandMilli=10,000`；Cancel 后下一轮 0；同三时点 grain/cloth/fiber 与无需求世界逐值相等。
+- 边界：无价 AddDemand Rejected 指名 SetMarketPrice；重复 `(id,version)`/版本回退 Rejected；SetMarketPrice 只写 markets、需求命令只写 demands。
+- 性能 0→120 34.218 s（HEAD 34.313 s）；VmHWM 1.65 GiB；Probe2/3/5 全过。
+
+### 与计划的差异 / 剩余阻断
+1. `ONE_OFF` 不做跨轮剩余递减（有效窗口内按目标量；E4 若需要再补）。
+2. `candidates` 每个 id 只保留当前版本（version 修订即覆盖旧版本行；旧 unit 的 modeKey 不变）；如需版本历史留 V/E3。
+3. 未实现进入算法 `EconomyEntrySettlement`（E2b）；`CommandTargets` 未声明（GM command.submit 可用，directive 内 fail-closed）。
+4. 未跑 test/verify。
+
+### 下一步
+E2b：候选预设实际采用（合条件家户形成 TRIALING unit、buildDays 前无产出、无可行预设保持未满足、旧经营者不自动 ROI 切换）。

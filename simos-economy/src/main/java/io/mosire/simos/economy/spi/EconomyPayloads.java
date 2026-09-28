@@ -487,7 +487,10 @@ final class EconomyPayloads {
         assetShares,
         // ★ S3 预留的第 13 个组件：创世载荷暂不声明经营者状态（空表 = 尚未登记任何状态机状态）。
         Map.of(),
-        units);
+        units,
+        // ★★ R4-E2：创世载荷不声明 GM 需求/候选预设（空表 = 由 economy.AddDemand/RegisterCandidate 注入）。
+        Map.of(),
+        Map.of());
   }
 
   /**

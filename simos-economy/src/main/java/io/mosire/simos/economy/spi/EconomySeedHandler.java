@@ -105,7 +105,11 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.operatorConditions(), seeded.operatorConditions()),
             // ★★ R3B.2 第 14 个组件（生产单元）：同一套口径追加 —— 漏了它 = 新播的 unit 静默消失，
             //   而关系/条件指着这些 unit ⇒ 构造期守卫当场把整批种子拒掉（宁可当场拒，不静默半播）。
-            merge(base.units(), seeded.units()));
+            merge(base.units(), seeded.units()),
+            // ★★ R4-E2 第 15/16 个组件：播种载荷不含需求/候选预设 ⇒ 原样带过已有状态（漏了它 = 再播一国时
+            //   把 GM 注入的需求/预设静默抹掉）。
+            base.demands(),
+            base.candidates());
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

@@ -185,6 +185,9 @@ public final class EconomyStateBuilder {
         memberships == null ? base.memberships() : memberships,
         assetShares == null ? base.assetShares() : assetShares,
         operatorConditions == null ? base.operatorConditions() : operatorConditions,
-        units == null ? base.units() : units);
+        units == null ? base.units() : units,
+        // ★★ R4-E2：需求/候选不参与日结算写回 —— 原样带过 base 的表（写入口只有 GM 命令）。
+        base.demands(),
+        base.candidates());
   }
 }

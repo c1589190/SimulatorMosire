@@ -5,7 +5,9 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -24,6 +26,7 @@ import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -31,6 +34,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
@@ -53,7 +57,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **十四个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的十四个组件一一对应**（铁律 5）：
+ * <p>★ **十六个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的十六个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -86,7 +90,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **十四张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **十六张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -144,12 +148,16 @@ public record EconomyData(
     Map<MembershipId, Membership> memberships,
     Map<AssetShareId, AssetShare> assetShares,
     Map<ProductionUnitId, OperatorCondition> operatorConditions,
-    Map<ProductionUnitId, ProductionUnit> units) {
+    Map<ProductionUnitId, ProductionUnit> units,
+    Map<DemandId, DemandEntry> demands,
+    Map<CandidateId, ProductionCandidate> candidates) {
 
-  /** 往返用例的起点：未激活 + 十四张空表。 */
+  /** 往返用例的起点：未激活 + 十六张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -204,6 +212,13 @@ public record EconomyData(
     // ★★ R3B.2 第 14 个组件（生产单元）：缺键 ⇒ 空表（旧档由迁移器从资产份额反推默认 unit）。
     if (units == null) {
       units = Map.of();
+    }
+    // ★★ R4-E2 第 15/16 个组件（需求账本 + 候选预设）：缺键 ⇒ 空表（旧档不因缺键失败）。
+    if (demands == null) {
+      demands = Map.of();
+    }
+    if (candidates == null) {
+      candidates = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -760,6 +775,99 @@ public record EconomyData(
     //   资产可以全部转走（见 economy.TransferAssetShare），此时该 unit 的规模由
     //   ProductionUnitBook 纯派生为 0 —— "有经营者、无资产、不生产"是合法状态（也是 E1 退出处置的前态）。
     //   unit↔relation / operatorConditions 的 operator/industry 一致性已由上面两段守卫把守，不因本放宽而松。
+    // ── R4-E2 第 15 个组件：需求账本 ───────────────────────────────────────────────────────
+    //   ★ 键 == 值内 id；scope ↔ household/hex 的互斥与必填由 DemandEntry 构造期判；
+    //     这里判跨表引用：HOUSEHOLD 的家户必须存在；HEX 的格必须在本世界里可定位
+    //     （产业/家户行/市场三者任一登记的格，见 hexRegistered）。
+    Map<DemandId, DemandEntry> demandsCopy = new LinkedHashMap<>();
+    for (Map.Entry<DemandId, DemandEntry> entry : demands.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("demands 的键与值都不得为 null: " + entry.getKey());
+      }
+      DemandEntry demand = entry.getValue();
+      if (!entry.getKey().equals(demand.id())) {
+        throw new IllegalArgumentException(
+            "demands 的键必须与 DemandEntry.id 一致：键=" + entry.getKey() + "，行内 id=" + demand.id());
+      }
+      if (demand.scope() == DemandEntry.DemandScope.HOUSEHOLD) {
+        HouseholdId household = demand.household().orElseThrow();
+        if (!classesCopy.containsKey(household)) {
+          throw new IllegalArgumentException(
+              "HOUSEHOLD 范围的需求指名的家户不存在: " + demand.id().value() + " → " + household.value());
+        }
+      } else {
+        HexCoord hex = demand.hex().orElseThrow();
+        if (!hexRegistered(industriesCopy, classesCopy, markets, hex)) {
+          throw new IllegalArgumentException(
+              "HEX 范围的需求指名的格没有经济状态（该格不存在/未播种，也不在任何市场键里）: " + demand.id().value() + " → " + hex);
+        }
+      }
+      demandsCopy.put(entry.getKey(), demand);
+    }
+    demands = Collections.unmodifiableMap(demandsCopy); // ★ 冻在赋值处
+    // ── R4-E2 第 16 个组件：候选预设表 ────────────────────────────────────────────────────
+    //   ★ 键 == 值内 id；regime 必须是已登记的制度（否则 E2b 建 relation 时必然抛 —— 登记处 fail-closed）；
+    //     output 必须在本行的 outputPerUnit 里（ProductionCandidate 构造期已判，这里对状态入口再兜一层）。
+    Map<CandidateId, ProductionCandidate> candidatesCopy = new LinkedHashMap<>();
+    for (Map.Entry<CandidateId, ProductionCandidate> entry : candidates.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("candidates 的键与值都不得为 null: " + entry.getKey());
+      }
+      ProductionCandidate candidate = entry.getValue();
+      if (!entry.getKey().equals(candidate.id())) {
+        throw new IllegalArgumentException(
+            "candidates 的键必须与 ProductionCandidate.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + candidate.id());
+      }
+      if (!RegimeOperators.registered().containsKey(candidate.regime().value())) {
+        throw new IllegalArgumentException(
+            "候选预设的 regime 未登记（进入算法无法为它推导默认经营主体/关系）: "
+                + candidate.id().value()
+                + " regime="
+                + candidate.regime().value()
+                + "；已登记: "
+                + RegimeOperators.registered().keySet());
+      }
+      if (!candidate.outputPerUnit().containsKey(candidate.output())) {
+        throw new IllegalArgumentException(
+            "候选预设的 output 必须出现在 outputPerUnit 里: "
+                + candidate.id().value()
+                + " output="
+                + candidate.output().value());
+      }
+      candidatesCopy.put(entry.getKey(), candidate);
+    }
+    candidates = Collections.unmodifiableMap(candidatesCopy); // ★ 冻在赋值处
+  }
+
+  /**
+   * ★★ R4-E2：一个格在 economy 侧是否"可定位" —— 该格至少登记过一条产业、一行家户，或一张市场。
+   *
+   * <p>★ <b>为什么市场也算</b>：{@code economy.SetMarketPrice} 可以先给一个尚无家户/产业的格建市场（命令只要求格存在），其后落在该格的 HEX
+   * 需求不应因为"还没有家户行"被判成坏状态 —— 需求路径会在订单生成时按当时人口摊到 0 户（合法）。
+   *
+   * <p>★ <b>为什么没有格键的产业不算</b>：{@code IndustryId} 允许不带格键的值（说不出它在哪一格）⇒ 不拿它当"该格存在"的证据（同 {@code
+   * requireIndustryRegistered} 的保守方向）。
+   */
+  private static boolean hexRegistered(
+      Map<IndustryId, Industry> industries,
+      Map<HouseholdId, ClassRow> classes,
+      Map<HexCoord, Market> markets,
+      HexCoord hex) {
+    String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
+    for (IndustryId id : industries.keySet()) {
+      if (IndustryHexKeys.hexKeyOf(id).filter(hexKey::equals).isPresent()) {
+        return true;
+      }
+    }
+    for (ClassRow row : classes.values()) {
+      if (row.view().hex().equals(hex)) {
+        return true;
+      }
+    }
+    return markets.containsKey(hex);
   }
 
   /**
@@ -804,7 +912,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -823,7 +933,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -842,7 +954,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -861,7 +975,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -880,7 +996,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余十二个组件原样带过。 */
@@ -899,7 +1017,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余十二个组件原样带过。 */
@@ -918,7 +1038,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余十二个组件原样带过。 */
@@ -937,7 +1059,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /**
@@ -961,7 +1085,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /**
@@ -984,7 +1110,9 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（S1：成员份额表）；其余十二个组件原样带过。 */
@@ -1003,7 +1131,9 @@ public record EconomyData(
         value,
         assetShares,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十二个组件原样带过。 */
@@ -1022,7 +1152,9 @@ public record EconomyData(
         memberships,
         value,
         operatorConditions,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余十二个组件原样带过。 */
@@ -1041,10 +1173,12 @@ public record EconomyData(
         memberships,
         assetShares,
         value,
-        units);
+        units,
+        demands,
+        candidates);
   }
 
-  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十三个组件原样带过。 */
+  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十四个组件原样带过。 */
   public EconomyData withUnits(Map<ProductionUnitId, ProductionUnit> value) {
     return new EconomyData(
         meta,
@@ -1060,6 +1194,50 @@ public record EconomyData(
         memberships,
         assetShares,
         operatorConditions,
+        value,
+        demands,
+        candidates);
+  }
+
+  /** ★★ R4-E2：需求账本（第 15 个组件）；其余十五个组件原样带过（GM 命令的唯一写入口）。 */
+  public EconomyData withDemands(Map<DemandId, DemandEntry> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        value,
+        candidates);
+  }
+
+  /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十五个组件原样带过（GM 命令的唯一写入口）。 */
+  public EconomyData withCandidates(Map<CandidateId, ProductionCandidate> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
         value);
   }
 
