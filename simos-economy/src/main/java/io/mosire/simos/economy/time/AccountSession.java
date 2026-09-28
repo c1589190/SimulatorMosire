@@ -34,7 +34,7 @@ import java.util.function.Function;
  * │   · 只有本线程可读写（{@link #checkCoordinatorThread()} 结构上把死） │
  * │   · 唯一写口：日结算的既有单线程路径 + {@link #commit} 的单线程提交器 │
  * ├──────────────────────── worker（1..N，只读）─────────────────────────┤
- * │ {@link #snapshot()} 的不可变投影 + {@link #intentBuffer} 的线程本地增量 │
+ * │ {@link #snapshot()} 的不可变投影 + AccountIntentBuffer.on/onHexPartition 的线程本地增量 │
  * │   · worker 拿不到活表；意向 = AccountDelta / TransferIntent / FreezeIntent │
  * └──────────────────────────────────────────────────────────────────────┘
  * </pre>
@@ -47,13 +47,14 @@ import java.util.function.Function;
  * {@code (stage, partitionIndex, canonicalKey, intraIndex)} 稳定序落账； 转移一条不差地走 {@code
  * EconomySettlement.applyTransfer}（两遍式唯一写口），增量的余额 / 冻结校验与 {@code validateApplyTransfer} 同向。
  *
- * <p>★ <b>兼容视图</b>：{@link #householdGoods()} 等八个访问器返回<b>活视图</b>（{@code AbstractMap}）—— 旧
- * 日结算代码可以继续以"键 → 内层表"的形状读写，而存储仍只有一处。视图只支持读与 {@code put}（整体替换内层表）； 迭代序 = 索引的插入序（{@code
- * LinkedHashMap}，确定性）。★ 视图只准协调器线程使用（见上）。
+ * <p>★ <b>兼容视图</b>：{@link #householdGoods()} 等八个访问器返回<b>协调器专用视图</b>（{@code AbstractMap}）—— 旧
+ * 日结算代码可以继续以"键 → 内层表"的形状读写，而存储仍只有一处。★ 内层表是<b>只读活视图</b>（{@code Collections.unmodifiableMap}），视图的
+ * {@code put}（整体替换内层表）只允许协调器线程调用；worker 即使被协调器递到视图， 任何读写入口都会在 owner 守卫处当场抛（M1）。迭代序 = 索引的插入序（{@code
+ * LinkedHashMap}，确定性）。
  */
 public final class AccountSession {
 
-  /** 一本账的四张活表（商品/货币 × 余额/冻结）；只有协调器线程能拿到它。 */
+  /** 一本账的四张活表（商品/货币 × 余额/冻结）；活表本体只有本类与 {@link AccountSession#commit} 能写，外部只能拿只读视图。 */
   public static final class ActorAccount {
 
     private final AccountPartitionKey key;
@@ -61,6 +62,20 @@ public final class AccountSession {
     private final LinkedHashMap<CurrencyId, Long> money = new LinkedHashMap<>();
     private final LinkedHashMap<CommodityId, Long> frozenGoods = new LinkedHashMap<>();
     private final LinkedHashMap<CurrencyId, Long> frozenMoney = new LinkedHashMap<>();
+
+    /**
+     * ★★ <b>M1：四张活表的只读视图</b>（活 = 随账本更新；不可写 = 不构成第二条写路径）。
+     *
+     * <p>它们是 {@code Collections.unmodifiableMap} 包装，写操作（{@code put}/{@code remove}/{@code
+     * clear}/{@code merge}） 一律当场抛 {@link UnsupportedOperationException}；活表本体仍是 private，只有本类与 {@code
+     * AccountSession} 的提交器能写。 worker 即使拿到 {@link ActorAccount}，也只能读、不能绕过 {@link
+     * AccountSession#commit} 直写。
+     */
+    private final Map<CommodityId, Long> goodsView = Collections.unmodifiableMap(goods);
+
+    private final Map<CurrencyId, Long> moneyView = Collections.unmodifiableMap(money);
+    private final Map<CommodityId, Long> frozenGoodsView = Collections.unmodifiableMap(frozenGoods);
+    private final Map<CurrencyId, Long> frozenMoneyView = Collections.unmodifiableMap(frozenMoney);
 
     private ActorAccount(AccountPartitionKey key) {
       this.key = Objects.requireNonNull(key, "key");
@@ -70,24 +85,24 @@ public final class AccountSession {
       return key;
     }
 
-    /** 商品余额（**活表**：就地 put/merge 即更新会话；只准协调器线程）。 */
+    /** 商品余额（**只读活视图**；写路径只有 {@link AccountSession#commit}）。 */
     public Map<CommodityId, Long> goods() {
-      return goods;
+      return goodsView;
     }
 
-    /** 货币余额（活表；只准协调器线程）。 */
+    /** 货币余额（只读活视图）。 */
     public Map<CurrencyId, Long> money() {
-      return money;
+      return moneyView;
     }
 
-    /** 商品冻结（活表；只读方约定不改它；只准协调器线程）。 */
+    /** 商品冻结（只读活视图）。 */
     public Map<CommodityId, Long> frozenGoods() {
-      return frozenGoods;
+      return frozenGoodsView;
     }
 
-    /** 货币冻结（活表；只准协调器线程）。 */
+    /** 货币冻结（只读活视图）。 */
     public Map<CurrencyId, Long> frozenMoney() {
-      return frozenMoney;
+      return frozenMoneyView;
     }
 
     /** 整体替换商品余额（结算里少数"换一张新内层表"的旧路径用；保持同一本账对象）。 */
@@ -148,7 +163,8 @@ public final class AccountSession {
    * ★ <b>owner 线程守卫</b>：活表 / 索引 / 注册 / 落回 / 提交只允许创建本会话的线程访问。
    *
    * <p>★ 违反 ⇒ 当场抛（不静默、不降级成"看起来能跑但结果不可重放"）。并行 worker 请用 {@link #snapshot()} 与 {@link
-   * #intentBuffer(SettlementStage, int, int)}。
+   * AccountIntentBuffer#on(AccountSnapshot, SettlementStage, int, int)} / {@link
+   * AccountIntentBuffer#onHexPartition(AccountSnapshot, SettlementStage, int, int)}（M3：会话不代建缓冲）。
    */
   public void checkCoordinatorThread() {
     if (Thread.currentThread() != coordinatorThread) {
@@ -197,18 +213,15 @@ public final class AccountSession {
       snapshotAccounts.put(
           entry.getKey(),
           new AccountSnapshot.SnapshotAccount(
-              account.goods(), account.money(), account.frozenGoods(), account.frozenMoney()));
+              account.goods, account.money, account.frozenGoods, account.frozenMoney));
     }
     return AccountSnapshot.of(
         snapshotAccounts, new LinkedHashMap<>(householdIndex), new LinkedHashMap<>(operatorIndex));
   }
 
-  /** 为某个分区创建一个线程本地意向缓冲（worker 在分区内用；缓冲不共享、不发布）。 */
-  public AccountIntentBuffer intentBuffer(
-      SettlementStage stage, int partitionIndex, int partitionCount) {
-    checkCoordinatorThread();
-    return AccountIntentBuffer.on(snapshot(), stage, partitionIndex, partitionCount);
-  }
+  // ★ M3：原 public AccountSession.intentBuffer(...) 已删除（main 零调用的第二缓冲入口）。
+  //   worker 缓冲的唯一官方产出点是 AccountIntentBuffer.on / onHexPartition（由 SettlementExecutor.execute
+  //   的调用方在拿到 AccountSnapshot 后显式创建）；本会话只交 snapshot，不代建缓冲。
 
   /** 登记家户账（视图索引 + 账户；同一家户重复登记同键 ⇒ 幂等，不同键 ⇒ 抛）。 */
   public void registerHousehold(
@@ -370,7 +383,7 @@ public final class AccountSession {
                         + " 冻结="
                         + frozen);
               }
-              putOrRemove(account.goods(), leg.getKey(), after);
+              putOrRemove(account.goods, leg.getKey(), after);
             }
             for (Map.Entry<CurrencyId, Long> leg : delta.money().entrySet()) {
               long before = account.money().getOrDefault(leg.getKey(), 0L);
@@ -398,14 +411,19 @@ public final class AccountSession {
                         + " 冻结="
                         + frozen);
               }
-              putOrRemove(account.money(), leg.getKey(), after);
+              putOrRemove(account.money, leg.getKey(), after);
             }
           }
+
+          /** ★ M8：本批已见过的冻结轴（账户 canonical + 商品/币种）。 */
+          private final Set<String> frozenAxes = new LinkedHashSet<>();
 
           @Override
           public void applyFreeze(FreezeIntent intent) {
             ActorAccount account = requireLiveAccount(intent.accountKey());
             if (intent instanceof FreezeIntent.Goods goodsFreeze) {
+              requireSingleFreeze(
+                  frozenAxes, account.key().canonical() + " 商品=" + goodsFreeze.commodity());
               long balance = account.goods().getOrDefault(goodsFreeze.commodity(), 0L);
               if (goodsFreeze.amount() > balance) {
                 throw new IllegalStateException(
@@ -418,8 +436,10 @@ public final class AccountSession {
                         + " 冻结="
                         + goodsFreeze.amount());
               }
-              account.frozenGoods().put(goodsFreeze.commodity(), goodsFreeze.amount());
+              account.frozenGoods.put(goodsFreeze.commodity(), goodsFreeze.amount());
             } else if (intent instanceof FreezeIntent.Money moneyFreeze) {
+              requireSingleFreeze(
+                  frozenAxes, account.key().canonical() + " 币种=" + moneyFreeze.currency());
               long balance = account.money().getOrDefault(moneyFreeze.currency(), 0L);
               if (moneyFreeze.amount() > balance) {
                 throw new IllegalStateException(
@@ -432,12 +452,26 @@ public final class AccountSession {
                         + " 冻结="
                         + moneyFreeze.amount());
               }
-              account.frozenMoney().put(moneyFreeze.currency(), moneyFreeze.amount());
+              account.frozenMoney.put(moneyFreeze.currency(), moneyFreeze.amount());
             } else {
               throw new IllegalStateException("未知的冻结意向: " + intent.getClass().getName());
             }
           }
         });
+  }
+
+  /**
+   * ★★ <b>M8：同一批提交里，同一账户同一轴的冻结意向只允许一条</b>。
+   *
+   * <p>冻结是<b>绝对值</b>语义（{@code Frozen = amount}）：两条绝对值意向落在同一账户同一轴时，后提交者会静默覆盖前者的占用 ——
+   * 两个分区各自从快照派生一条时，两处都不会报错，最终只冻结了一个分区的量。本守卫把这条接缝判死：冻结必须由<b>协调器</b> 在全局可用量校验后合并成一条绝对值再提交（R3
+   * 接入跨区挂冻时同款）。
+   */
+  private static void requireSingleFreeze(Set<String> seen, String axis) {
+    if (!seen.add(axis)) {
+      throw new IllegalStateException(
+          "同一批提交里同一账户同轴的冻结意向出现多条（绝对值冻结只允许协调器全局合并成一条，" + "禁止按提交序后写覆盖）：" + axis);
+    }
   }
 
   /** 活表查账（提交器专用；缺账 ⇒ 抛 —— 并行阶段要求相关主体都已登记）。 */
@@ -484,6 +518,7 @@ public final class AccountSession {
   public Map<HouseholdId, Map<CommodityId, Long>> householdGoods() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         householdIndex,
         account -> account.goods(),
@@ -494,6 +529,7 @@ public final class AccountSession {
   public Map<HouseholdId, Map<CurrencyId, Long>> householdMoney() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         householdIndex,
         account -> account.money(),
@@ -504,6 +540,7 @@ public final class AccountSession {
   public Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         householdIndex,
         account -> account.frozenGoods(),
@@ -514,6 +551,7 @@ public final class AccountSession {
   public Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         householdIndex,
         account -> account.frozenMoney(),
@@ -524,6 +562,7 @@ public final class AccountSession {
   public Map<ActorRef, Map<CommodityId, Long>> operatorGoods() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         operatorIndex,
         account -> account.goods(),
@@ -534,6 +573,7 @@ public final class AccountSession {
   public Map<ActorRef, Map<CurrencyId, Long>> operatorMoney() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         operatorIndex,
         account -> account.money(),
@@ -544,6 +584,7 @@ public final class AccountSession {
   public Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         operatorIndex,
         account -> account.frozenGoods(),
@@ -554,25 +595,36 @@ public final class AccountSession {
   public Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney() {
     checkCoordinatorThread();
     return new AccountView<>(
+        this,
         accounts,
         operatorIndex,
         account -> account.frozenMoney(),
         (account, value) -> account.replaceFrozenMoney(value));
   }
 
-  /** ★ <b>通用活视图</b>（索引：视图键 → 账户键；值：取哪张表；替换：整体写回）。键未知 ⇒ 抛（不静默造账）。 */
+  /**
+   * ★★ <b>通用协调器视图</b>（索引：视图键 → 账户键；值：只读活表；替换：整体写回）。键未知 ⇒ 抛（不静默造账）。
+   *
+   * <p>★ <b>M1 的两道守卫</b>：① 内层值来自 {@link ActorAccount} 的 {@code Collections.unmodifiableMap}
+   * 只读视图，写内层表当场抛；② 本类<b>每一个入口</b>（读、写、迭代、{@code setValue}）都先过 {@link
+   * AccountSession#checkCoordinatorThread()}，worker 即使被协调器递到视图对象，也在第一次调用时抛 —— 不能借它绕过 {@link
+   * AccountSession#commit} 直写活账本。
+   */
   private static final class AccountView<K, V> extends AbstractMap<K, Map<V, Long>> {
 
+    private final AccountSession owner;
     private final Map<AccountPartitionKey, ActorAccount> accountStore;
     private final Map<K, AccountPartitionKey> index;
     private final Function<ActorAccount, Map<V, Long>> reader;
     private final Replacer<V> writer;
 
     AccountView(
+        AccountSession owner,
         Map<AccountPartitionKey, ActorAccount> accountStore,
         Map<K, AccountPartitionKey> index,
         Function<ActorAccount, Map<V, Long>> reader,
         Replacer<V> writer) {
+      this.owner = Objects.requireNonNull(owner, "owner");
       this.accountStore = accountStore;
       this.index = index;
       this.reader = reader;
@@ -581,17 +633,20 @@ public final class AccountSession {
 
     @Override
     public Map<V, Long> get(Object key) {
+      owner.checkCoordinatorThread();
       ActorAccount account = accountOrNull(key);
       return account == null ? null : reader.apply(account);
     }
 
     @Override
     public boolean containsKey(Object key) {
+      owner.checkCoordinatorThread();
       return accountOrNull(key) != null;
     }
 
     @Override
     public Map<V, Long> put(K key, Map<V, Long> value) {
+      owner.checkCoordinatorThread();
       Objects.requireNonNull(value, "value");
       ActorAccount account = requireAccount(key);
       Map<V, Long> previous = new LinkedHashMap<>(reader.apply(account));
@@ -601,18 +656,22 @@ public final class AccountSession {
 
     @Override
     public Set<Entry<K, Map<V, Long>>> entrySet() {
+      owner.checkCoordinatorThread();
       return new AbstractSet<>() {
         @Override
         public Iterator<Entry<K, Map<V, Long>>> iterator() {
+          owner.checkCoordinatorThread();
           Iterator<Map.Entry<K, AccountPartitionKey>> delegate = index.entrySet().iterator();
           return new Iterator<>() {
             @Override
             public boolean hasNext() {
+              owner.checkCoordinatorThread();
               return delegate.hasNext();
             }
 
             @Override
             public Entry<K, Map<V, Long>> next() {
+              owner.checkCoordinatorThread();
               if (!delegate.hasNext()) {
                 throw new NoSuchElementException();
               }
@@ -621,6 +680,7 @@ public final class AccountSession {
               return new SimpleEntry<>(raw.getKey(), reader.apply(account)) {
                 @Override
                 public Map<V, Long> setValue(Map<V, Long> value) {
+                  owner.checkCoordinatorThread();
                   Map<V, Long> previous = new LinkedHashMap<>(getValue());
                   writer.replace(account, value);
                   return previous;
@@ -632,6 +692,7 @@ public final class AccountSession {
 
         @Override
         public int size() {
+          owner.checkCoordinatorThread();
           return index.size();
         }
       };

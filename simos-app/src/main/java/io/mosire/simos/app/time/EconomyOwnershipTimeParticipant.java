@@ -76,7 +76,13 @@ import java.util.Optional;
  * </ul>
  *
  * <p>★ <b>未激活</b>（{@code meta} 空）：交一份"两边都不变"的提案（经济还没播种，这一天没有公式要跑）。
+ *
+ * @deprecated ★★ <b>已退役的注册入口（2026-09-28 评审 Minor-1）</b>：本类已不在 {@code Shell} 注册（真档由 {@link
+ *     PopulationEconomyTimeParticipant} 承担 economy+social+actor 三片协调），且<b>不执行</b> {@code
+ *     MembershipWriteback.reconcile}。保留它是为了不破坏既有测试/旧夹具的编译；<b>新生产代码不得再注册本参与者</b>， 需要"只有 economy +
+ *     actor"的世界时先确认份额回写由谁负责。删除会牵动测试编译，留到 V 阶段统一适配。
  */
+@Deprecated
 public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
 
   /** 参与者身份（**不是模块名**：它同时写 {@code economy} 与 {@code actor} 两个模块）。 */

@@ -10,6 +10,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.market.ShipmentAllocation;
+import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.ClassRow;
@@ -251,7 +253,54 @@ public final class OwnershipBooks {
           new LinkedHashMap<>(account.frozenBalances()),
           new LinkedHashMap<>(account.frozenMoney()));
     }
+    // ★★ M6：把 economy.shipments() 里出现的买方/卖方 actor 一并载入 —— 到货路径要求买方账已在会话里
+    //   （deliverShipments 对缺账 fail-closed），而跨区经营者未在 actor 侧播种时，上面的经营者循环会合法地跳过它。
+    //   shipments 证明这些 actor 已参与经济（在途是发运日从卖方扣出、由买方承担的在途资产）⇒ 能定位产业格就补一本零账，
+    //   给到货日留出落点；零余额不改变任何守恒式。
+    registerShipmentCounterparties(session, economy);
     return session;
+  }
+
+  /**
+   * ★★ <b>M6：在途批次的买卖双方 → 零账补载</b>（唯一触发点是 {@link #loadAccountSession}）。
+   *
+   * <pre>
+   * 对 economy.shipments() 每票的 buyer / seller：
+   *   已在会话家户/经营者索引里          ⇒ 不动（载入是幂等的）
+   *   能由 EconomyData 定位到产业格      ⇒ registerOperator(空四表) —— 缺账时建零账，不静默丢货
+   *   定位不了（不是任何家户 actor、也没有产业格）⇒ 不猜账；到货时若它真是买方，deliverShipments 按“真正无主”抛
+   * </pre>
+   *
+   * <p>★ 家户 actor 缺席不走这里：{@link #loadAccountSession} 的家户循环对"行在而账缺"已经 fail-closed 抛出 （H1
+   * 的守卫，不放宽）；本方法只补经营者那条"缺席合法"的口子。
+   */
+  private static void registerShipmentCounterparties(AccountSession session, EconomyData economy) {
+    Map<ActorRef, HexCoord> operatorByActor = operatorLocations(economy);
+    for (ShipmentBatch batch : economy.shipments().values()) {
+      for (ShipmentAllocation allocation : batch.allocations()) {
+        registerLocatableOperator(session, allocation.buyer(), operatorByActor);
+        registerLocatableOperator(session, allocation.seller(), operatorByActor);
+      }
+    }
+  }
+
+  /** 单个 shipment 相关方：已在索引或定位不了就跳过；能定位产业格的经营者补零账（见上面口径）。 */
+  private static void registerLocatableOperator(
+      AccountSession session, ActorRef actor, Map<ActorRef, HexCoord> operatorByActor) {
+    if (session.actorKeyOrNull(actor) != null) {
+      return; // 家户/经营者账已经载入（含 actor 侧已有账的那一份）
+    }
+    HexCoord location = operatorByActor.get(actor);
+    if (location == null) {
+      return; // 连产业格都定位不了 ⇒ 到货路径按真正无主 fail-closed，不在这里猜一本账
+    }
+    session.registerOperator(
+        actor,
+        location,
+        Map.<CommodityId, Long>of(),
+        Map.<CurrencyId, Long>of(),
+        Map.<CommodityId, Long>of(),
+        Map.<CurrencyId, Long>of());
   }
 
   /**

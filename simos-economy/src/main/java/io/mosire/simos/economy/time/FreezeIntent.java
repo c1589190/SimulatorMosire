@@ -14,6 +14,11 @@ import java.util.Objects;
  * <p>★ <b>绝对值语义照 {@code OwnershipBooks.freeze/release} 逐字一致</b>：同一账户同一商品的多次放置，后提交者生效； 提交器按 {@link
  * CommitOrder} 的顺序落，故"后者"由稳定序决定，与 worker 完成先后无关。
  *
+ * <p>★★ <b>M8 的边界（R3 接入前必须成立）</b>：绝对值冻结的产出点<b>只允许协调阶段</b>（{@link
+ * AccountIntentBuffer#forCoordinator}）；worker 分区缓冲禁止 {@code freezeGoods/freezeMoney}。原因是"后提交者生效"
+ * 在同一账户同一轴上被多条绝对值意向触发时是<b>静默覆盖</b>：两个分区各自从快照派生冻结、各自发一条，提交后只留下一条， 而两处都不报错。⇒ 跨区挂冻必须先在协调器收齐各分区需求、按
+ * canonical 全局合并成一条绝对值再提交； 提交器对同账户同轴的多条冻结意向当场判死（{@link AccountSession#commit}）。
+ *
  * <p>★ 两个变体（商品 / 货币）各自带强类型键；金额单位随各自 {@code Map} 的口径（毫商品 / 最小币值）。
  */
 public sealed interface FreezeIntent extends OrderedAccountIntent {

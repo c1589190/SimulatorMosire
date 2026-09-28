@@ -198,6 +198,10 @@ public record EconomyData(
     // ★★ S1 旧档迁移（显式、幂等、可重放；见 LegacyHouseholdMigration 的类注）：
     //   旧 LaborAllocation 没有 household / 旧档没有 memberships 组件时，在这里一次性补齐。
     //   ★ 它必须发生在**所有守卫之前**：迁移后的状态才参与 pending 检查、Σ 守卫与关系归一。
+    //   ★★ Minor-5（2026-09-28 评审）：这一步是**构造期自动**跑的 ⇒ 任何旧形状测试夹具（classes 非空但
+    //   memberships/useRights 为空、或 allocation 的 household 是 pending 占位）都会被静默补齐
+    //   memberships/useRights 后才进守卫。V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的
+    //   组件，是构造期补出来的）；本批不改行为、只留提示。
     if (LegacyHouseholdMigration.needed(
         industries, classes, allocations, memberships, useRights, meta)) {
       LegacyHouseholdMigration.Result migrated =

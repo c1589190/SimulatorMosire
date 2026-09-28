@@ -67,7 +67,14 @@ public record AccountDelta(
     return money.getOrDefault(currency, 0L);
   }
 
-  /** 合并同账户的另一份增量（同一 worker 内使用；跨 worker 由分区规则禁止）。 */
+  /**
+   * ★★ <b>合并同账户的另一份增量</b>（同一 worker 内使用；跨 worker 由分区规则禁止）。
+   *
+   * <p>★ <b>M3：返回值是 canonical 排序后的冻结副本</b> —— 即使两张入参表的迭代序不同，本方法也经规范构造器 （{@code
+   * freezeSortedGoods}/{@code freezeSortedMoney}）重新按 id 升序冻结；调用方拿到的键序是内容的纯函数。 ★
+   * 它<b>不是账户写入口</b>：唯一落账路径仍是 {@link AccountSession#commit}（会话侧也已删除 {@code intentBuffer}
+   * 这个第二缓冲入口，worker 缓冲只从 {@code AccountIntentBuffer.on/onHexPartition} 产出）。
+   */
   public AccountDelta merge(AccountDelta other) {
     Objects.requireNonNull(other, "other");
     if (!order.canonicalKey().equals(other.order.canonicalKey())) {
@@ -82,6 +89,7 @@ public record AccountDelta(
     for (Map.Entry<CurrencyId, Long> entry : other.money.entrySet()) {
       mergedMoney.merge(entry.getKey(), entry.getValue(), Math::addExact);
     }
+    // ★ M3：规范构造器不可绕过 —— 它重新按 canonical id 升序冻结；这里不需要也不允许再手拼一张未排序的表。
     return new AccountDelta(order, mergedGoods, mergedMoney);
   }
 

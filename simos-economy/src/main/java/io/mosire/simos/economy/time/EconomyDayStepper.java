@@ -146,43 +146,50 @@ public final class EconomyDayStepper {
     return session.flowsView();
   }
 
-  /** 家户商品账活视图（键 = 家户稳定身份；见 {@link #accounts()}）。 */
-  public Map<HouseholdId, Map<CommodityId, Long>> householdGoods() {
+  /**
+   * ★★ <b>八个协调器账户视图（M1：包内可见，不是 public API）</b> —— 只服务同包日结算代码的既有"键 → 内层表"写法。
+   *
+   * <p>★ <b>为什么不 public</b>：这些视图经 {@link AccountSession} 的 owner 守卫访问活表；把它们开成 public，等于给 app/worker
+   * 递一条"拿到视图就能读写活账本"的接缝。R1/R2 的结构契约是：worker 只能拿 {@link AccountSession#snapshot()}（不可变）与 {@code
+   * AccountIntentBuffer}（线程本地）；跨分区的写只能经 {@link AccountSession#commit}。★ 内层表本身是只读活视图，即使被同包代码误传给
+   * worker，写也会抛。
+   */
+  Map<HouseholdId, Map<CommodityId, Long>> householdGoods() {
     return accounts.householdGoods();
   }
 
-  /** 家户货币账活视图。 */
-  public Map<HouseholdId, Map<CurrencyId, Long>> householdMoney() {
+  /** 家户货币协调器视图（包内；见上面的八个视图说明）。 */
+  Map<HouseholdId, Map<CurrencyId, Long>> householdMoney() {
     return accounts.householdMoney();
   }
 
-  /** 经营者商品账活视图（键 = 主体）。 */
-  public Map<ActorRef, Map<CommodityId, Long>> operatorGoods() {
+  /** 经营者商品协调器视图（包内；键 = 主体）。 */
+  Map<ActorRef, Map<CommodityId, Long>> operatorGoods() {
     return accounts.operatorGoods();
   }
 
-  /** 经营者货币账活视图。 */
-  public Map<ActorRef, Map<CurrencyId, Long>> operatorMoney() {
+  /** 经营者货币协调器视图（包内）。 */
+  Map<ActorRef, Map<CurrencyId, Long>> operatorMoney() {
     return accounts.operatorMoney();
   }
 
-  /** 家户商品冻结活视图（载入时登记；本类只读）。 */
-  public Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods() {
+  /** 家户商品冻结协调器视图（包内）。 */
+  Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods() {
     return accounts.householdFrozenGoods();
   }
 
-  /** 家户货币冻结活视图。 */
-  public Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney() {
+  /** 家户货币冻结协调器视图（包内）。 */
+  Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney() {
     return accounts.householdFrozenMoney();
   }
 
-  /** 经营者商品冻结活视图。 */
-  public Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods() {
+  /** 经营者商品冻结协调器视图（包内）。 */
+  Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods() {
     return accounts.operatorFrozenGoods();
   }
 
-  /** 经营者货币冻结活视图。 */
-  public Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney() {
+  /** 经营者货币冻结协调器视图（包内）。 */
+  Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney() {
     return accounts.operatorFrozenMoney();
   }
 

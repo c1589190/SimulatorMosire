@@ -130,13 +130,24 @@ public final class LegacyHouseholdMigration {
     Map<LaborAllocationId, LaborAllocation> migratedAllocations = new LinkedHashMap<>();
     // 每条旧配额在迁移前的“位置/居住/权重”快照，供 Membership 反推用（迁移后 id 与原表已不同）。
     List<FormerAllocation> former = new ArrayList<>();
+    // ★ M4：本次迁移是否会重建 memberships —— 能定位格的配额全量进 former（见下）；定位不了的非 pending
+    //   配额若同时存在，就是无法逐 lot 对账的混合态 ⇒ 立刻 fail-closed，不静默按权重近似。
+    boolean rebuildMemberships = classes != null && !classes.isEmpty();
     for (Map.Entry<LaborAllocationId, LaborAllocation> entry : allocations.entrySet()) {
       LaborAllocation allocation = entry.getValue();
       Optional<HexCoord> maybeHex = industryHexOf(industries, allocation.actor());
       if (maybeHex.isEmpty()) {
-        // 非 pending 的配额（新档）：它的 actor 不是产业 id 也能合法存在（家户自营）⇒ 原样带过；
-        // pending 的旧配额不能定位产业格 ⇒ 抛（拒绝把旧配额静默丢到别的格）。
         if (!allocation.household().isPending()) {
+          if (rebuildMemberships) {
+            throw new IllegalStateException(
+                "旧档迁移失败：配额 "
+                    + entry.getKey()
+                    + " 的 actor "
+                    + allocation.actor()
+                    + " 无法定位产业格，而本次迁移要重建 memberships ⇒ 该 lot 进不了权重表、无法逐 lot 对账"
+                    + "（混合态拒绝静默近似：请先补齐产业格键，或不要在同一批里混入无法定位的配额）");
+          }
+          // 非 pending 的新档配额（actor 不是产业 id 也能合法存在 —— 家户自营）：本次不重建 memberships ⇒ 原样带过。
           migratedAllocations.put(entry.getKey(), allocation);
           continue;
         }
@@ -148,6 +159,9 @@ public final class LegacyHouseholdMigration {
       }
       HexCoord hex = maybeHex.get();
       ResidenceKind residence = ResidenceKind.ofLot(allocation.group());
+      // ★★ M4：凡**能定位产业格**的配额（pending 或非 pending）都进 former —— deriveMemberships 的
+      //   lot 权重表必须覆盖全部可定位的劳动归属，不能只收 pending 那一半。非 pending 的配额另外照旧原样进
+      //   migratedAllocations（它已有真实家户，不再拆分）；但它的 lot 权重同样参与本次成员份额反推。
       former.add(new FormerAllocation(allocation, hex, residence));
       if (!allocation.household().isPending()) {
         migratedAllocations.put(entry.getKey(), allocation);
@@ -245,7 +259,13 @@ public final class LegacyHouseholdMigration {
   private record FormerAllocation(
       LaborAllocation allocation, HexCoord hex, ResidenceKind residence) {}
 
-  /** 每个 (格, 居住类型) 上的供给权重：lot → Σ laborMilli。 */
+  /**
+   * ★★ <b>每个 (格, 居住类型) 上的供给权重</b>：lot → Σ laborMilli。
+   *
+   * <p>★ <b>M4 的口径</b>：{@code former} 由 {@link #migrate} <b>全量</b>收集“凡能定位产业格”的配额（pending 与
+   * non-pending 都算），不再只收 pending；因此每个可对账的 lot 都会进入本权重表。无法定位格的非 pending 配额 在 {@code migrate} 里已作为混合态
+   * fail-closed，不会走到这里被静默略过。
+   */
   private static void deriveMemberships(
       Map<HouseholdId, ClassRow> classes,
       List<FormerAllocation> former,

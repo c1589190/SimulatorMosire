@@ -1046,7 +1046,8 @@ public final class EconomySettlement {
    * loss    = ⌊本票数量 × lossPerMille ÷ 1000⌋        // 在途实物减少
    * arrived = 本票数量 − loss                         // 买方只收到净额（M2.5：买方承担损耗）
    * 记损耗：ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, loss)   // 进损耗账户，不静默蒸发
-   * 记到货：买方账 += arrived（家户或经营者；账户缺席 ⇒ 抛，不许静默丢货）
+   * 记到货：买方账 += arrived（家户或经营者）★ M6：能定位的买方/卖方由 app 侧 loadAccountSession 一并载入
+   * （缺 actor 账建零账）；这里只在**真正无主**时抛，货不静默丢
    * </pre>
    *
    * <p>★ <b>为什么在日循环里、且排在消费之前</b>：到货日是"目的地第一次能消费它"的那一天（M2.4 的判据）。 ★ <b>补投</b>：手工搭的状态可能给 {@code
@@ -1119,8 +1120,16 @@ public final class EconomySettlement {
         long arrived = allocation.quantity() - loss;
         AccountPartitionKey buyerKey = snapshot.actorKeyOrNull(allocation.buyer());
         if (buyerKey == null) {
+          // ★★ M6：货仍然不能丢，但"缺账"只在**真正无主**时才抛 —— 能在 EconomyData 里定位的买方/卖方
+          //   （家户行 / 产业 operator）已由 app 的 OwnershipBooks.loadAccountSession 一并载入（缺 actor 账时建零账），
+          //   到货日不会再因"跨区经营者未播种"这种口径缺口整条推进失败。
           throw new IllegalStateException(
-              "在途到货时买方账不在会话副本里（货不能静默丢）：批次=" + entry.getKey() + " 买方=" + allocation.buyer());
+              "在途到货时买方在 economy 侧也定位不到账户（真正无主，货不能静默丢）：批次="
+                  + entry.getKey()
+                  + " 买方="
+                  + allocation.buyer()
+                  + " 收货格="
+                  + allocation.deliverTo());
         }
         works.add(
             new DeliveryWork(
@@ -1403,6 +1412,9 @@ public final class EconomySettlement {
           industries.put(update.getKey(), update.getValue());
         }
         mergeGoodsInto(consumedGoods, partition.consumed());
+        // ★★ M7：协调器按分区序 absorb ⇒ 列表序 = (阶段 → 分区序 → 分区内生成序)；转移 id 带 p<partition> 段，
+        //   seq 是分区内序号，与旧串行号的对应关系不保证。同代码态内 1/4/8 线程确定；V 阶段跨代码态比较
+        //   transfers/outputAccruals/ruleSettlements 一律"按业务键排序后比较集合"，不得按 id 或列表下标逐条比。
         ledger.absorb(partition.ledger());
       }
     }
@@ -1575,6 +1587,7 @@ public final class EconomySettlement {
     accounts.commit(intents);
     for (HarvestPartition partition : partitions) {
       mergeGoodsInto(income, partition.income());
+      // ★★ M7：同投入阶段 —— 列表序由协调器的分区遍历序决定；跨代码态比较按业务键排序后比较集合（见投入阶段的注释）。
       ledger.absorb(partition.ledger());
     }
   }
@@ -1730,6 +1743,7 @@ public final class EconomySettlement {
           unmetNeed.put(key, new LinkedHashMap<>(updated));
         }
       }
+      // ★ M7：同投入/收获阶段 —— 分区序决定列表序与转移 id 的 p 段；跨代码态比较按业务键排序后比较集合。
       ledger.absorb(partition.ledger());
     }
   }

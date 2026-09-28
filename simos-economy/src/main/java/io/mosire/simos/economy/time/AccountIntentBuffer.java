@@ -25,6 +25,11 @@ import java.util.function.Predicate;
  *
  * <p>★ <b>顺序</b>：每个意向在创建时从本缓冲的单调计数器取 `intraIndex`；分区内实体必须按 canonical 升序遍历 （{@link PartitionPlan}
  * 保证）⇒ 意向生成序是内容的纯函数。<b>绝不允许</b>按线程到达序/线程 id/随机 UUID 生成。
+ *
+ * <p>★★ <b>M8：冻结写只允许协调阶段</b> —— {@link #on} / {@link #onHexPartition} 建的是 worker 缓冲 （{@code
+ * freezeAllowed=false}），调 {@link #freezeGoods} / {@link #freezeMoney} 当场抛；只有 {@link
+ * #forCoordinator} 建的缓冲允许写冻结。原因是冻结是绝对值：worker 本地 {@code frozenGoods} 看不到
+ * 另一分区同阶段放置的冻结，两条各自从快照派生的绝对值会互相覆盖且两处都不报错。
  */
 public final class AccountIntentBuffer {
 
@@ -32,6 +37,16 @@ public final class AccountIntentBuffer {
   private final SettlementStage stage;
   private final int partitionIndex;
   private final int partitionCount;
+
+  /**
+   * ★★ <b>M8：本缓冲是否允许写冻结</b>。分区 worker 的缓冲恒为 {@code false}（{@link #on} / {@link
+   * #onHexPartition}）；只有协调器用 {@link #forCoordinator} 建的那一种为 {@code true}。
+   *
+   * <p>★ 理由：冻结是<b>绝对值</b>，而 worker 的本地 {@code frozenGoods} 只看得到"本缓冲 + 快照" ——
+   * 两个分区各自从同一快照派生冻结、各自发一条绝对值意向，提交时后一条会静默覆盖前一条（两处都不报错）。 ⇒ 冻结只允许协调阶段在全局可用量校验后写；worker 里调 {@code
+   * freezeGoods/freezeMoney} 当场抛。
+   */
+  private final boolean freezeAllowed;
 
   /**
    * ★★ <b>本分区拥有哪些账户</b>：默认 = 账户 canonical 串哈希到本 {@code partitionIndex}（到货那类按账户分区的阶段）； {@link
@@ -54,7 +69,8 @@ public final class AccountIntentBuffer {
       SettlementStage stage,
       int partitionIndex,
       int partitionCount,
-      Predicate<AccountPartitionKey> ownsKey) {
+      Predicate<AccountPartitionKey> ownsKey,
+      boolean freezeAllowed) {
     this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
     this.stage = Objects.requireNonNull(stage, "stage");
     if (partitionIndex < 0) {
@@ -67,11 +83,15 @@ public final class AccountIntentBuffer {
     this.partitionIndex = partitionIndex;
     this.partitionCount = partitionCount;
     this.ownsKey = Objects.requireNonNull(ownsKey, "ownsKey");
+    this.freezeAllowed = freezeAllowed;
   }
 
   /**
    * 产出点：worker 从分区计划拿到 {@code partitionIndex} 与 {@code partitionCount} 后调用（快照由协调器传入， worker 不自造）。★
    * 带上 {@code partitionCount} 是为了在缓冲内部**结构性拒绝**"worker 写别的分区账户"。
+   *
+   * <p>★ M8：worker 缓冲<b>不允许冻结写</b>（{@link #freezeGoods} / {@link #freezeMoney} 当场抛）； 冻结请走 {@link
+   * #forCoordinator}。
    */
   public static AccountIntentBuffer on(
       AccountSnapshot snapshot, SettlementStage stage, int partitionIndex, int partitionCount) {
@@ -80,7 +100,8 @@ public final class AccountIntentBuffer {
         stage,
         partitionIndex,
         partitionCount,
-        key -> key.partitionIndex(partitionCount) == partitionIndex);
+        key -> key.partitionIndex(partitionCount) == partitionIndex,
+        false);
   }
 
   /**
@@ -88,7 +109,7 @@ public final class AccountIntentBuffer {
    * HexCoord.toString()}，与 {@link PartitionPlan} 的 hex 键逐字同源）决定 —— 同一格的多个主体
    * （农场、作坊、城镇家户）因此必然落同一分区、串行执行；跨格不可能写同一本账（冲突表的结论）。
    *
-   * <p>★ 谓词只读账户的 {@code location}：不含线程 id / 到达序 / 随机源。
+   * <p>★ 谓词只读账户的 {@code location}：不含线程 id / 到达序 / 随机源。★ M8：同样不允许冻结写。
    */
   public static AccountIntentBuffer onHexPartition(
       AccountSnapshot snapshot, SettlementStage stage, int partitionIndex, int partitionCount) {
@@ -99,7 +120,26 @@ public final class AccountIntentBuffer {
         partitionCount,
         key ->
             AccountPartitionKey.partitionIndexOf(key.location().toString(), partitionCount)
-                == partitionIndex);
+                == partitionIndex,
+        false);
+  }
+
+  /**
+   * ★★ <b>协调器缓冲（M8：唯一允许写冻结的产出点）</b> —— 冻结的绝对值必须在全局可用量校验后由协调器算好， 再经 {@link AccountSession#commit}
+   * 的单线程提交器落账；同一账户同一轴只允许一条意向（提交器会判死重复）。
+   *
+   * <p>★ 本工厂不代替 owner 守卫：调用方仍须是创建该 {@link AccountSnapshot} 的 {@link AccountSession} 的协调器线程； 提交时会再过
+   * {@link AccountSession#checkCoordinatorThread()}。
+   */
+  static AccountIntentBuffer forCoordinator(
+      AccountSnapshot snapshot, SettlementStage stage, int partitionIndex, int partitionCount) {
+    return new AccountIntentBuffer(
+        snapshot,
+        stage,
+        partitionIndex,
+        partitionCount,
+        key -> key.partitionIndex(partitionCount) == partitionIndex,
+        true);
   }
 
   /** 这个缓冲服务的分区号（提交序的第二段）。 */
@@ -201,8 +241,9 @@ public final class AccountIntentBuffer {
     local.money.merge(currency, amount, Math::addExact);
   }
 
-  /** ★ 放置商品冻结（绝对值语义，{@code amount == 0} = 解冻）。 */
+  /** ★ 放置商品冻结（绝对值语义，{@code amount == 0} = 解冻）；★ M8：只允许协调器缓冲写（见 {@link #freezeAllowed}）。 */
   public void freezeGoods(AccountPartitionKey key, CommodityId commodity, long amount) {
+    requireCoordinatorFreeze("freezeGoods");
     requireNonNegative(amount, "freezeGoods");
     long balance = goods(key, commodity);
     if (amount > balance) {
@@ -222,13 +263,14 @@ public final class AccountIntentBuffer {
         FreezeIntent.goods(key, stage, partitionIndex, nextIntraIndex(), commodity, amount));
   }
 
-  /** ★ 释放商品冻结（= 置 0）。 */
+  /** ★ 释放商品冻结（= 置 0）；★ M8：只允许协调器缓冲写。 */
   public void releaseGoods(AccountPartitionKey key, CommodityId commodity) {
     freezeGoods(key, commodity, 0L);
   }
 
-  /** ★ 放置货币冻结（绝对值语义，{@code amount == 0} = 解冻）。 */
+  /** ★ 放置货币冻结（绝对值语义，{@code amount == 0} = 解冻）；★ M8：只允许协调器缓冲写（见 {@link #freezeAllowed}）。 */
   public void freezeMoney(AccountPartitionKey key, CurrencyId currency, long amount) {
+    requireCoordinatorFreeze("freezeMoney");
     requireNonNegative(amount, "freezeMoney");
     long balance = money(key, currency);
     if (amount > balance) {
@@ -247,9 +289,30 @@ public final class AccountIntentBuffer {
     emitted.add(FreezeIntent.money(key, stage, partitionIndex, nextIntraIndex(), currency, amount));
   }
 
-  /** ★ 释放货币冻结（= 置 0）。 */
+  /** ★ 释放货币冻结（= 置 0）；★ M8：只允许协调器缓冲写。 */
   public void releaseMoney(AccountPartitionKey key, CurrencyId currency) {
     freezeMoney(key, currency, 0L);
+  }
+
+  /**
+   * ★★ <b>M8：冻结写只允许协调阶段</b> —— worker 分区缓冲调用即抛，消息给出正确入口。
+   *
+   * <p>这不是性能守卫，是结构守卫：本地 {@code frozenGoods} 看不到别的分区同阶段放置的冻结，绝对值意向在提交器里
+   * 互相覆盖时两处都不会报错。协调器必须先把全局可用量与各分区需求收齐、合并成一条绝对值，再用 {@link #forCoordinator} 产出。
+   */
+  private void requireCoordinatorFreeze(String operation) {
+    if (!freezeAllowed) {
+      throw new IllegalStateException(
+          operation
+              + " 只允许协调阶段写（M8：worker 分区缓冲的本地 frozenGoods 看不到另一分区同阶段放置的冻结；"
+              + "各自从快照派生绝对值会在提交期静默互相覆盖）。冻结必须由协调器全局校验后合并成一条绝对值，"
+              + "并用 AccountIntentBuffer.forCoordinator(...) 产出。本缓冲：stage="
+              + stage
+              + " partition="
+              + partitionIndex
+              + "/"
+              + partitionCount);
+    }
   }
 
   /**

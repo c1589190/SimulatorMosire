@@ -27,7 +27,9 @@ import java.util.function.Function;
  * {@code put} 回去"。本类的 {@code put} 因此是<b>绝对值替换</b>：对 "快照 + 本地增量"的当前值求差，差为正 ⇒ {@code credit*}，差为负 ⇒
  * {@code debit*}。最终提交的仍是逐账户净增量， 中间多次读改写只在本地缓冲里累积。
  *
- * <p>★ <b>冻结视图</b>由快照构造、按绝对值写（本阶段只读；写口留成形制一致，供后续市场阶段接入）。
+ * <p>★ <b>冻结视图</b>由快照构造、按绝对值写；但 worker 缓冲（{@link AccountIntentBuffer#on} / {@link
+ * AccountIntentBuffer#onHexPartition}）禁止冻结写（M8），故本阶段的冻结视图对 worker 是只读的 —— 跨区挂冻
+ * 必须由协调器收齐需求、全局合并成一条绝对值，再用 {@link AccountIntentBuffer#forCoordinator} 产出。 写口形制保留，供 R3 的协调器路径复用。
  *
  * <p>★ <b>确定性</b>：视图的键序一律按 canonical 串排序（账户键 / 内层 id），绝不用 {@code HashMap} 裸迭代； 视图只服务单个 worker，不共享。
  */
@@ -294,6 +296,20 @@ final class BufferedAccountTables {
       return (Set<V>) ((MoneyAxisAdapter) axis).ids(account);
     }
 
+    /** 轴的中文名（只服务 M2 的具名异常消息）。 */
+    private String axisName() {
+      if (axis == GOODS) {
+        return "商品余额";
+      }
+      if (axis == FROZEN_GOODS) {
+        return "商品冻结";
+      }
+      if (axis == MONEY) {
+        return "货币余额";
+      }
+      return "货币冻结";
+    }
+
     /** 内层视图：单本账、单条轴上的余额表（读 = 快照 + 本地增量；写 = 绝对值替换）。 */
     private final class InnerView<W> extends AbstractMap<W, Long> {
 
@@ -320,7 +336,7 @@ final class BufferedAccountTables {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(value, "value");
         Long previous = get(id);
-        setAbsolute(id, Math.max(0L, value));
+        setAbsolute(id, requireNonNegativeValue(id, value));
         touched.add(id);
         return previous;
       }
@@ -342,12 +358,31 @@ final class BufferedAccountTables {
         ids.addAll(replacement.keySet());
         for (W id : ids) {
           Long target = replacement.get(id);
-          long desired = target == null ? 0L : Math.max(0L, target);
+          long desired = target == null ? 0L : requireNonNegativeValue(id, target);
           if (desired != currentValueUnchecked(id)) {
             setAbsolute(id, desired);
             touched.add(id);
           }
         }
+      }
+
+      /**
+       * ★★ <b>M2：绝对值的负值守卫</b> —— 负余额/负冻结不是一种状态（{@code GoodsAccount} 的构造期守卫同向），
+       * 这里<b>显式抛具名异常</b>，绝不改成"负值静默钳到 0"：钳 0 会把符号写错的算式藏到落回 actor 才现形。
+       */
+      private long requireNonNegativeValue(W id, long value) {
+        if (value < 0L) {
+          throw new IllegalArgumentException(
+              "账户绝对值写口的"
+                  + axisName()
+                  + "不得为负（护栏是红不是钳）：账户="
+                  + key.canonical()
+                  + " 键="
+                  + id
+                  + " 值="
+                  + value);
+        }
+        return value;
       }
 
       @Override

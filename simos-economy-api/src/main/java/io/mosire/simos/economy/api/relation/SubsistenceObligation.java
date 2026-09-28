@@ -41,8 +41,10 @@ import java.util.Map;
  * <p>★ <b>M2 的接缝</b>：M2 的订单/保留算式是 {@code 可售库存 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)}； 其中经营者的"生活保留"必须走
  * {@link #retentionOf(ProductionRelation, Map, Map)} —— 类注见该方法的 Javadoc。
  *
- * <p>★ <b>受方的两档与结算同源</b>：{@code ToCohort} 的劳动量查本周期劳动量表，{@code ToActor} 在本阶段没有劳动账 ⇒ 0 （口径与 {@code
- * ProductionSettlement.laborOf} 逐字相同，且本类型的 {@link #laborOf(Recipient, Map)} 就是它的唯一拼写点）。
+ * <p>★ <b>受方的两档与结算同源</b>：{@code ToHousehold} 的劳动量查本周期劳动量表，{@code ToActor} 在本阶段没有劳动账 ⇒ 0 （口径与 {@code
+ * ProductionSettlement.laborOf} 逐字相同，且本类型的 {@link #laborOf(Recipient, Map)} 就是它的唯一拼写点）。 ★ <b>未归一化的
+ * {@code ToCohort}</b> 没有家户身份可查 ⇒ <b>当场抛</b>（M5：与结算侧 {@code requireCohortRows} 的 fail-closed
+ * 同向）；不得读成 0 —— "算不出"与"劳动量是 0"在给养义务里会给出完全不同的应付额。
  *
  * <p>★ <b>本类型不做的事</b>：不落账、不产生 {@code Debt}/{@code Claim}、不改任何守恒式；"欠了多少"也<b>不跨周期累计</b> （那是 M1.5
  * 明确不做的跨周期债务）。实数计算一律毫单位、整数、向下取整。
@@ -136,8 +138,12 @@ public record SubsistenceObligation(
   }
 
   /**
-   * 受方本周期劳动量：家户查本周期劳动量表；{@code ToCohort} 是旧档变体（S1 起不再由运行期生产）、{@code ToActor} 本阶段没有劳动账 ⇒ 0 ——
-   * 结算与派生共用的唯一拼写点。
+   * ★★ <b>受方本周期劳动量（唯一拼写点）</b>：家户查本周期劳动量表；{@code ToActor} 本阶段没有劳动账 ⇒ 0； {@code ToCohort} 是旧档变体（S1
+   * 起不再由运行期生产）且**没有家户身份可查** ⇒ 当场抛（M5）。
+   *
+   * <p>★★ <b>为什么 {@code ToCohort} 不能再归零</b>：结算侧 {@code requireCohortRows} 对同一状态按视图反查家户、
+   * 找不到/有歧义就抛；这里若返回 0，读口会显示一条"应付 0"的给养义务，而结算会在同一天抛 —— 两处口径分叉， 且分叉的方向正是本仓最忌的"静默付 0"。⇒ 统一为具名 {@link
+   * IllegalStateException}，让归一化缺口在第一次派生时现形。
    */
   public static long laborOf(Recipient recipient, Map<HouseholdId, Long> laborOfHousehold) {
     if (recipient == null) {
@@ -149,8 +155,12 @@ public record SubsistenceObligation(
     return switch (recipient) {
       case Recipient.ToHousehold toHousehold ->
           laborOfHousehold.getOrDefault(toHousehold.household(), 0L);
-      // ★ 旧档变体（S1 迁移前）：没有家户身份可查 ⇒ 0；迁移器会把它换成 ToHousehold（不在这里猜视图）。
-      case Recipient.ToCohort ignored -> 0L;
+      // ★ M5：旧档变体（S1 迁移前）没有可查的家户身份 ⇒ fail-closed（与结算侧 requireCohortRows 同向），不读成 0。
+      case Recipient.ToCohort toCohort ->
+          throw new IllegalStateException(
+              "未归一化的 Recipient.ToCohort 没有家户身份，无法查本周期劳动量（拒绝把算不出读成 0）：cohort="
+                  + toCohort.cohort()
+                  + "。请先在 EconomyData 构造期把一对一视图归一为 Recipient.ToHousehold；视图有歧义时结算与读口都拒绝猜");
       // ★ 本阶段没有 actor 劳动账（与 ProductionSettlement 的类注同款）：归零，不猜。
       case Recipient.ToActor ignored -> 0L;
     };

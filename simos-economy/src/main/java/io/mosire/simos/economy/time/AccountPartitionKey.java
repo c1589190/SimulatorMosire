@@ -84,6 +84,10 @@ public record AccountPartitionKey(ActorRef actor, HexCoord location)
    * {@link #canonical()} 的逆（只服务"提交序只带规范串、提交时需要还原账户键"这一条路）。
    *
    * <p>★ <b>按第一个 {@code |} 切</b>（理由见类注）；段缺失/在首/在尾一律抛。
+   *
+   * <p>★★ <b>Minor-2：解析后做 canonical 往返自检</b> —— 若 {@code ActorRef.parseCanonical} / {@code
+   * HexCoord.parse} 对某段做了规范化（或 actor id 里混进了会切歪的 {@code |}），拼回来的串与入参不等 ⇒ 当场抛，
+   * 不让"解析出一个同形但不同身份"的键进入提交序。
    */
   public static AccountPartitionKey parseCanonical(String canonical) {
     if (canonical == null || canonical.isBlank()) {
@@ -96,8 +100,15 @@ public record AccountPartitionKey(ActorRef actor, HexCoord location)
     if (actorEnd == canonical.length() - SEGMENT_SEPARATOR.length()) {
       throw new IllegalArgumentException("非法账户分区键（格段缺失）: " + canonical);
     }
-    return new AccountPartitionKey(
-        ActorRef.parseCanonical(canonical.substring(0, actorEnd)),
-        HexCoord.parse(canonical.substring(actorEnd + SEGMENT_SEPARATOR.length())));
+    AccountPartitionKey parsed =
+        new AccountPartitionKey(
+            ActorRef.parseCanonical(canonical.substring(0, actorEnd)),
+            HexCoord.parse(canonical.substring(actorEnd + SEGMENT_SEPARATOR.length())));
+    String roundTrip = parsed.canonical();
+    if (!roundTrip.equals(canonical)) {
+      throw new IllegalArgumentException(
+          "非法账户分区键（解析后 canonical 往返不相等，拒绝让同形不同身份的键进入提交序）：入参=" + canonical + " 往返=" + roundTrip);
+    }
+    return parsed;
   }
 }

@@ -117,9 +117,11 @@ public record ProductionLedger(
   /**
    * ★★ <b>一天的可变累加器</b>（包内可见）—— 日结算边跑边记，跑完 {@link #toLedger()} 冻成上面那个 record。
    *
-   * <p>★★ <b>它还管一件事：转移凭据的铸造</b>（H2）。{@link #mint} 是<b>全系统唯一分配 {@link TransferId} 的地方</b>： id =
-   * {@code "tr-<day>-<seq>"}，{@code seq} = <b>当天</b>该账本内第几条（从 1 起）⇒ 同一天同一序列必然给出同一串 id （重放/分支可比）。★
-   * 日号由构造器收（调用方知道它推进到了第几天），序号在累加器里自增 —— 两段都只有一处拼写点。
+   * <p>★★ <b>它还管一件事：转移凭据的铸造</b>（H2）。{@link #mint} 是<b>全系统唯一分配 {@link TransferId} 的地方</b>： 协调器铸造
+   * {@code "tr-<day>-<seq>"}，R2 的分区 worker 铸造 {@code "tr-<day>-p<partition>-<seq>"} （{@code seq} =
+   * <b>本铸造器</b>当天第几条，从 1 起）⇒ 同代码态、同分区计划下 1/4/8 线程给出同一批 id。 ★ <b>M7：跨代码态的 {@code seq}
+   * 与列表序不可逐条比较</b>（V 阶段按业务键排序后比较集合，见 {@link #mint} 的 javadoc）。 日号由构造器收（调用方知道它推进到了第几天），序号在累加器里自增 ——
+   * 两段都只有一处拼写点。
    *
    * <p>★ 形制与 {@code settleOneDay} 里那几张"逐日累加器"同款（{@code consumedGoods} / {@code income}）：<b>可变的那一份
    * 不出包</b>，外部拿到的永远是冻好的值。
@@ -185,7 +187,20 @@ public record ProductionLedger(
     }
 
     /**
-     * ★★ <b>铸一条转移并记进当天的账</b>（唯一分配点；见类注）。
+     * ★★ <b>铸一条转移并记进当天的账</b>（唯一分配点；见类注的 id 兼容边界）。
+     *
+     * <p>★★ <b>M7：id 的兼容边界（V 阶段的比较口径）</b>：
+     *
+     * <pre>
+     * 协调器铸造：id = "tr-<day>-<seq>"
+     * 分区 worker：id = "tr-<day>-p<partitionIndex>-<seq>"（R2 起；分区号来自固定 STRUCTURAL_PARTITIONS）
+     * </pre>
+     *
+     * <p>★ {@code seq} 是"<b>本铸造器</b>当天第几条"：同代码态、同分区计划下 1/4/8 线程给出同一批 id； 但<b>跨代码态</b>（旧串行 {@code
+     * tr-<day>-<seq>}、R2 后的 {@code tr-<day>-p…}）的 id 与列表序<b>不可逐条比较</b> —— 分区顺序改变了 {@code seq} 的分配。⇒
+     * V 阶段对 {@code transfers}/{@code outputAccruals}/{@code ruleSettlements}
+     * 的跨代码态/跨线程数比较<b>一律"按业务键排序后比较集合"</b>（业务键 = day + from + to + location + reason + goods/money 内容
+     * + 产出归属等），不得按 id 或列表下标逐条比，也不得为了旧 id 兼容破坏 1/4/8 的确定性。
      *
      * <p>★ {@code settles} 恒空（清偿属 H5）；★ <b>H4 起货币腿真的有钱</b>（货币工资/地租走只带货币腿的转移、 市场成交走一对转移 —— 见 {@code
      * Transfer} 的货币腿口径）。

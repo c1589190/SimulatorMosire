@@ -1546,6 +1546,14 @@ public final class EconomySeeder {
     industry.put("id", id);
     industry.put("name", name);
     industry.put("regime", regime);
+    // ★★ 实战模拟接线修复（2026-09-28）：industry 载荷必须带 operator —— useRightsOf 从它取 holder。
+    //   缺它 ⇒ useRights 播成空表 ⇒ EconomyData 构造期把新档误判为旧档，跑 LegacyHouseholdMigration，
+    //   把逐 lot 精确的 memberships 重写成按劳动权重的近似值（S1.4 逐 lot 守恒被静默破坏）。
+    ActorRef operator = RegimeOperators.defaultOperator(new RegimeId(regime), new IndustryId(id));
+    Map<String, Object> operatorNode = new LinkedHashMap<>();
+    operatorNode.put("kind", operator.kind().name());
+    operatorNode.put("id", operator.id());
+    industry.put("operator", operatorNode);
     industry.put("cycleDays", CYCLE_DAYS);
     industry.put("progressDays", 0);
     // ★★ H0.3（K3）：**本格该产业的产能总量**（承接原 ClassRow.meansOfProduction）——
