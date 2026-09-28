@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.LongSupplier;
 
 /**
  * ★★ <b>S3：生产者单位成本估计（唯一拼写点）</b>—— 市场按 {@code unitCostEstimate + freightPerUnit}
@@ -139,6 +140,48 @@ public final class ProducerCostBook {
     if (assetShares == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 assetShares 不得为 null");
     }
+    return estimate(
+        unit,
+        industry,
+        market,
+        relation,
+        () -> EconomySettlement.capacityScaleOf(unit, industry, assetShares));
+  }
+
+  /**
+   * ★★ <b>索引口径的单位成本估计</b>（R4-B.3a-perf）：产能规模从日结算入口的 {@link SettlementIndex} 查，不再逐 unit 扫 {@code
+   * AssetShare}。除“规模从哪里来”以外，公式、量纲、缺价读数与旧签名逐字相同。
+   */
+  public static Estimate estimate(
+      ProductionUnit unit,
+      Industry industry,
+      SettlementIndex index,
+      Market market,
+      ProductionRelation relation) {
+    if (index == null) {
+      throw new IllegalArgumentException("ProducerCostBook.estimate 的 index 不得为 null");
+    }
+    return estimate(
+        unit,
+        industry,
+        market,
+        relation,
+        () -> EconomySettlement.capacityScaleOf(unit, industry, index));
+  }
+
+  /** 单位成本估计的唯一算式：{@code capacityScale} 作为延迟取值在**与旧实现相同的位置**调用，故异常/取整顺序都保持不变。 */
+  private static Estimate estimate(
+      ProductionUnit unit,
+      Industry industry,
+      Market market,
+      ProductionRelation relation,
+      LongSupplier capacityScale) {
+    if (unit == null) {
+      throw new IllegalArgumentException("ProducerCostBook.estimate 的 unit 不得为 null");
+    }
+    if (industry == null) {
+      throw new IllegalArgumentException("ProducerCostBook.estimate 的 industry 不得为 null");
+    }
     List<CommodityId> missing = new ArrayList<>();
     long inputCost = 0L;
     for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
@@ -171,12 +214,7 @@ public final class ProducerCostBook {
         laborCost = Math.multiplyExact(laborMilliMoney, grainPrice);
       }
     }
-    long assetRent =
-        assetRentPerUnit(
-            industry,
-            market,
-            relation,
-            EconomySettlement.capacityScaleOf(unit, industry, assetShares));
+    long assetRent = assetRentPerUnit(industry, market, relation, capacityScale.getAsLong());
     long total = Math.addExact(Math.addExact(inputCost, laborCost), assetRent);
     return new Estimate(total, inputCost, laborCost, assetRent, missing, grainMissing, false);
   }

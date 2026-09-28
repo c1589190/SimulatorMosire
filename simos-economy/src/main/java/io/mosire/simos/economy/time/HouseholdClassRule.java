@@ -280,6 +280,9 @@ public final class HouseholdClassRule {
     // ── 债务：本金合计（分类只用"本金 ÷ 资产数量"这一个比值）────────────────────────────
     private final Map<HouseholdId, Long> debtPrincipal = new LinkedHashMap<>();
 
+    /** ★ R4-B.3a-perf：结算入口的只读派生索引；{@code null} = 读口/测试的旧路径（现扫 AssetShare）。 */
+    private final SettlementIndex settlementIndex;
+
     private Index(
         Map<AssetShareId, AssetShare> assetShares,
         Map<LaborAllocationId, LaborAllocation> allocations,
@@ -287,7 +290,9 @@ public final class HouseholdClassRule {
         Map<IndustryId, Industry> industries,
         Map<ProductionUnitId, ProductionRelation> relations,
         Map<HouseholdId, ClassRow> classes,
-        Map<DebtId, Debt> debts) {
+        Map<DebtId, Debt> debts,
+        SettlementIndex settlementIndex) {
+      this.settlementIndex = settlementIndex;
       this.classes = new LinkedHashMap<>(classes);
       for (ProductionUnit unit : units.values()) {
         unitsByIndustryOperator
@@ -401,8 +406,7 @@ public final class HouseholdClassRule {
           }
           // ★★ R3B.2：经营身份对应的产能从 **AssetShare 纯派生**（unit 的可用资产），不再读
           //   {@code Industry.capacity} —— 实物总账只有一个来源，分类与结算不可能漂开。
-          for (Map.Entry<AssetKind, Long> usable :
-              ProductionUnitBook.usableAssets(unit, assetShares).entrySet()) {
+          for (Map.Entry<AssetKind, Long> usable : usableAssetsOf(unit, assetShares).entrySet()) {
             if (usable.getValue() <= 0L) {
               continue;
             }
@@ -423,8 +427,7 @@ public final class HouseholdClassRule {
         if (unit == null || entry.getValue().isEmpty()) {
           continue;
         }
-        long land =
-            ProductionUnitBook.usableAssets(unit, assetShares).getOrDefault(AssetKind.LAND, 0L);
+        long land = usableAssetsOf(unit, assetShares).getOrDefault(AssetKind.LAND, 0L);
         if (land <= 0L) {
           continue;
         }
@@ -533,7 +536,41 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(relations, "relations");
       Objects.requireNonNull(classes, "classes");
       Objects.requireNonNull(debts, "debts");
-      return new Index(assetShares, allocations, units, industries, relations, classes, debts);
+      return new Index(
+          assetShares, allocations, units, industries, relations, classes, debts, null);
+    }
+
+    /**
+     * ★★ <b>结算侧入口（R4-B.3a-perf）</b>：产能/资产从日结算入口的 {@link SettlementIndex} 查，不再为每个 {@code
+     * operatedActivity} 现扫整张 {@code AssetShare}。其余输入与旧重载逐字相同。
+     */
+    public static Index of(
+        Map<AssetShareId, AssetShare> assetShares,
+        Map<LaborAllocationId, LaborAllocation> allocations,
+        Map<ProductionUnitId, ProductionUnit> units,
+        Map<IndustryId, Industry> industries,
+        Map<ProductionUnitId, ProductionRelation> relations,
+        Map<HouseholdId, ClassRow> classes,
+        Map<DebtId, Debt> debts,
+        SettlementIndex settlementIndex) {
+      Objects.requireNonNull(assetShares, "assetShares");
+      Objects.requireNonNull(allocations, "allocations");
+      Objects.requireNonNull(units, "units");
+      Objects.requireNonNull(industries, "industries");
+      Objects.requireNonNull(relations, "relations");
+      Objects.requireNonNull(classes, "classes");
+      Objects.requireNonNull(debts, "debts");
+      Objects.requireNonNull(settlementIndex, "settlementIndex");
+      return new Index(
+          assetShares, allocations, units, industries, relations, classes, debts, settlementIndex);
+    }
+
+    /** 资产汇总的唯一取值口：有结算索引走索引，旧读口/测试路径仍逐份额扫（两者同一个算式）。 */
+    private Map<AssetKind, Long> usableAssetsOf(
+        ProductionUnit unit, Map<AssetShareId, AssetShare> assetShares) {
+      return settlementIndex == null
+          ? ProductionUnitBook.usableAssets(unit, assetShares)
+          : ProductionUnitBook.usableAssets(unit, settlementIndex);
     }
 
     /** 按上面的可观察量给一家户分档；{@code ledger} 只用于租金实付读数（读不到 ⇒ empty，不填 0）。 */

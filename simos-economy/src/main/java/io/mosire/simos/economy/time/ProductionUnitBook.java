@@ -52,6 +52,15 @@ public final class ProductionUnitBook {
   }
 
   /**
+   * ★★ <b>索引口径的可用资产</b>（R4-B.3a-perf）：日结算入口已按 {@code (industry, operator)} 一次聚合，热路径只查表。
+   *
+   * <p>★ 与旧签名同值（旧路径逐份额现扫）；本重载只是把同一张表的来源换成 {@link SettlementIndex}，不做第二套算术。
+   */
+  public static Map<AssetKind, Long> usableAssets(ProductionUnit unit, SettlementIndex index) {
+    return index.usableAssetsOf(unit);
+  }
+
+  /**
    * ★★ <b>unit 的产能规模</b> = {@code min over k ∈ capacityPerUnit: ⌊usableAssets[k] ÷
    * capacityPerUnit[k]⌋}。
    *
@@ -59,7 +68,20 @@ public final class ProductionUnitBook {
    */
   public static long capacityScaleOf(
       ProductionUnit unit, Industry industry, Map<AssetShareId, AssetShare> assetShares) {
-    Map<AssetKind, Long> usable = usableAssets(unit, assetShares);
+    return capacityScaleOf(usableAssets(unit, assetShares), industry);
+  }
+
+  /**
+   * ★★ <b>索引口径的产能规模</b>（R4-B.3a-perf）：可用资产取一次聚合表；模板 {@code capacityPerUnit} 仍由调用方传入，
+   * 算式与旧签名逐字相同（不复制第二份模板，也不改变缺项/取整口径）。
+   */
+  public static long capacityScaleOf(
+      ProductionUnit unit, Industry industry, SettlementIndex index) {
+    return capacityScaleOf(index.usableAssetsOf(unit), industry);
+  }
+
+  /** 产能规模的唯一算式（两个重载共用；避免“索引版”和“扫描版”各写一份）。 */
+  private static long capacityScaleOf(Map<AssetKind, Long> usable, Industry industry) {
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       scale = Math.min(scale, usable.getOrDefault(entry.getKey(), 0L) / entry.getValue());
@@ -76,6 +98,15 @@ public final class ProductionUnitBook {
       Map<AssetShareId, AssetShare> assetShares,
       OperatorCondition condition) {
     return capacityScaleOf(unit, industry, assetShares)
+        * StressPolicy.plannedScalePerMille(
+            condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
+        / 1_000L;
+  }
+
+  /** ★★ 索引口径的计划规模（产能规模查 {@link SettlementIndex}；计划系数的算式与旧签名逐字相同）。 */
+  public static long plannedCapacityScaleOf(
+      ProductionUnit unit, Industry industry, SettlementIndex index, OperatorCondition condition) {
+    return capacityScaleOf(unit, industry, index)
         * StressPolicy.plannedScalePerMille(
             condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
         / 1_000L;

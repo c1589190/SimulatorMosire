@@ -144,6 +144,16 @@ public record MarketReadout(
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(report, "report");
     // 市场轮次会话视图：只被 planOrders 读（不改状态）。★ 用 readout 自己的只读账本副本，不碰真实会话。
+    // ★ R4-B.3a-perf：MarketRound 的参与者/必要投入/家户归属走只读索引；读口每次现建一份快照
+    //   （O(unit + 配额 + 份额) 构建，避免逐格全表扫描）。
+    SettlementIndex index =
+        SettlementIndex.build(
+            data.units(),
+            data.industries(),
+            data.assetShares(),
+            data.allocations(),
+            data.classes(),
+            data.debts());
     MarketSettlement.MarketRound round =
         new MarketSettlement.MarketRound(
             tick,
@@ -165,7 +175,8 @@ public record MarketReadout(
             data.allocations(),
             data.shipments(),
             new ProductionLedger.Accumulator(tick),
-            data.operatorConditions());
+            data.operatorConditions(),
+            index);
     Map<HexCoord, MarketRegion> regionByHex = new LinkedHashMap<>();
     List<MarketRegion> regions = new ArrayList<>();
     for (MarketRegion region : topology.regions()) {

@@ -92,3 +92,33 @@ progress/产出账、`Σ 份额 == 旧 capacity`、无孤儿债、资产变化�
 B.3a-perf：为结算加**每次推进一次**的派生索引（AssetShare→unit 可用资产/规模、allocation→unit/家户），
 消除 O(units×allocations) 串行扫描；验收 0→120 ≤3 分钟且与 B.3a 同初态逐值等价。
 之后 B.3b：`economy.TransferAssetShare` + c1 孤儿债对账（`DebtReferenceReconciler`）。
+
+---
+
+## B.3a-perf 结算索引化 —— 已完成
+
+### 实现了什么
+- 新增 `simos-economy/time/SettlementIndex.java`：**每步一次**构建的只读派生索引（不进 EconomyData/ChangeSet/Codec）：
+  `usableAssetsByUnit`、`capacityScaleByUnit`、`allocationsByUnit`、`householdsByUnit`、`unitsByHousehold`、
+  `unitsByHex`、`debtsByDebtor` 等；协调器单线程建、并行 worker 只读。
+- `ProductionUnitBook`/`EconomySettlement`/`MarketSettlement`/`OperatorSettlement`/`HouseholdClassRule`/`ProducerCostBook`
+  的热点调用点改查索引；算式、顺序、并列规则、`StressPolicy`、价格、常量未动。
+
+### 领域验收证据
+- 0→10 tick 完整领域状态 A/B（同一固定 tick0，8 线程）：基线 45.7 s vs 新 7.3 s，**canonical state 0 差异**；
+  另一固定世界（B.3a 自租修复后的 rev4 裁出）同样 0 差异。
+- 0→120 tick（8 线程）：**36.0 s**（另一次 34.8 s），对照 B.3a 752.723 s 约 **20.9×**；峰值 RSS ≈1.53 GiB。
+- 1 vs 8 线程 0→10：完整领域状态 **0 差异**。
+- tick120 守恒读数与 B.3a 报告逐项相同（人口/alloc/AssetShare/货币/goods/debts/conditions、`max(Σalloc−available)`）。
+- 旧档迁移 Probe3：PASS=60 / FAIL=0。
+- 编译/spotless 绿；shaded jar md5 `2cf86215762fb90807074133249bf281`。
+
+### 与计划不同的地方 / 阻断
+1. 任务书默认的 `/tmp/b3a-store` 实为 B.3a 自租修复**前**的世界（799 条自环租规则，0→120 第 120 天会被 Transfer 自环守卫拒）；
+   性能/守恒/固定夹具 A/B 改用 `/tmp/b3a-store2` 的 rev4（自租修复后世界）。自租修复已在 B.3a 代码中，不是新问题。
+2. 未做 0→120 的完整基线逐值 A/B（基线 0→120 进程被环境回收）；0→10 的完整逐值 A/B 已覆盖行为不变性。
+3. 未做全年 1/4/8、峰值内存正式协议、JFR；V 阶段统一。
+
+### 下一步
+B.3b：`economy.TransferAssetShare` 命令 + c1 孤儿债对账（`DebtReferenceReconciler`）。
+`CloseProductionUnit` 与 `ReclassifyHousehold` 分别并入 E1（退出处置）与 B.4（纯派生），不在此片造半成品出口。

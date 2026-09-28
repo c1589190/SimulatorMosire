@@ -1,16 +1,13 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -85,6 +82,55 @@ final class OperatorSettlement {
     if (report == null) {
       return;
     }
+    // ★★ R4-B.3a-perf：旧实现逐 unit 扫整份报告（8,940 × 每轮卖方槽/成交），这里把报告一次摊到 unit。
+    //   ★ 累加顺序仍逐 unit 保持“报告内的 outcome/fill 顺序”：外层按报告序，内层才按 unit —— 每个 unit 看到的
+    //     仍是同一串发生额的同一序，故整数和与旧实现逐值相同（含 outcompeted 的入场条件）。
+    Map<ActorRef, List<ProductionUnitId>> unitsByOperator = new LinkedHashMap<>();
+    for (ProductionUnit unit : units.values()) {
+      if (unit == null) {
+        continue;
+      }
+      unitsByOperator.computeIfAbsent(unit.operator(), ignored -> new ArrayList<>()).add(unit.id());
+    }
+    Map<ProductionUnitId, long[]> byUnit = new LinkedHashMap<>();
+    for (MarketReport.SellerOutcome outcome : report.sellerOutcomes()) {
+      List<ProductionUnitId> candidates = unitsByOperator.get(outcome.actor());
+      if (candidates == null) {
+        continue;
+      }
+      for (ProductionUnitId id : candidates) {
+        ProductionUnit unit = units.get(id);
+        Industry industry = unit == null ? null : industries.get(unit.industry());
+        if (unit == null || industry == null || !belongsTo(outcome, unit, industry)) {
+          continue;
+        }
+        long[] evidence = byUnit.computeIfAbsent(id, ignored -> new long[6]);
+        evidence[0] += outcome.offeredQty();
+        evidence[1] += outcome.filledQty();
+        evidence[2] += outcome.unfilledQty();
+        if (outcome.unfilledReason().orElse(null) == MarketUnfilledReason.OUTCOMPETED) {
+          evidence[4] += outcome.outcompetedByActorCount();
+          evidence[5] += outcome.outcompetedQty();
+        }
+      }
+    }
+    for (MarketReport.Fill fill : report.fills()) {
+      List<ProductionUnitId> candidates = unitsByOperator.get(fill.seller());
+      if (candidates == null) {
+        continue;
+      }
+      for (ProductionUnitId id : candidates) {
+        ProductionUnit unit = units.get(id);
+        Industry industry = unit == null ? null : industries.get(unit.industry());
+        if (unit == null
+            || industry == null
+            || !industry.outputPerUnit().containsKey(fill.commodity())) {
+          continue;
+        }
+        long[] evidence = byUnit.computeIfAbsent(id, ignored -> new long[6]);
+        evidence[3] += fill.goodsPaymentMilli();
+      }
+    }
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
       ProductionUnit unit = units.get(id);
       if (unit == null) {
@@ -94,7 +140,15 @@ final class OperatorSettlement {
       if (industry == null) {
         continue;
       }
-      MarketEvidence evidence = evidenceOf(report, unit, industry);
+      long[] accumulated = byUnit.get(id);
+      long offered = accumulated == null ? 0L : accumulated[0];
+      long filled = accumulated == null ? 0L : accumulated[1];
+      long unfilled = accumulated == null ? 0L : accumulated[2];
+      long revenue = accumulated == null ? 0L : accumulated[3];
+      long outcompetedActors = accumulated == null ? 0L : accumulated[4];
+      long outcompetedQty = accumulated == null ? 0L : accumulated[5];
+      MarketEvidence evidence =
+          new MarketEvidence(offered, filled, unfilled, revenue, outcompetedActors, outcompetedQty);
       OperatorCondition prev = conditions.get(id);
       boolean observed =
           evidence.offered > 0L
@@ -133,8 +187,7 @@ final class OperatorSettlement {
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<ProductionUnitId, ProductionRelation> relations,
-      Map<AssetShareId, AssetShare> assetShares,
-      LinkedHashMap<DebtId, Debt> debts,
+      SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
@@ -175,10 +228,8 @@ final class OperatorSettlement {
       long debtServiceDue = 0L;
       boolean debtStress = false;
       if (household != null) {
-        for (Debt debt : debts.values()) {
-          if (!debt.debtor().equals(household)) {
-            continue;
-          }
+        // ★ R4-B.3a-perf：debtor → debts 在日结算入口/债务阶段边界建好，只查本户的债，不再每次扫全表。
+        for (Debt debt : index.debtsByDebtor().getOrDefault(household, List.of())) {
           long due = debt.principal() + debt.principal() * debt.ratePerMillePerCycle() / 1_000L;
           debtPrincipal += debt.principal();
           debtServiceDue += due;
@@ -253,7 +304,7 @@ final class OperatorSettlement {
         case SUSPENDED -> {
           long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
           long selfUsable =
-              selfUsableOf(household, unit, industry, assetShares, householdGoods, operatorGoods);
+              selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
           suspendedCycles = prev.consecutiveSuspendedCycles() + 1L;
           // ★ 停业期间计划系数为 0 ⇒ 它自己没有卖单、不会有 filled>0 的"恢复证据"；恢复只能看缓冲：
           //   债务压力解除 + 有现金/可自用库存可垫下一周期投入。
@@ -277,14 +328,13 @@ final class OperatorSettlement {
           // ★ 已退出/弃置：状态不再自转；恢复只能走显式重开（本批没有该命令）。
         }
       }
-      long plannedScale =
-          ProductionUnitBook.plannedCapacityScaleOf(unit, industry, assetShares, prev);
+      long plannedScale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, prev);
       long costEstimate = 0L;
       HexCoord hex = IndustryHexKeys.hexKeyOf(industry.id()).map(HexCoord::parse).orElse(null);
       if (hex != null) {
         Market market = markets.get(hex);
         ProducerCostBook.Estimate estimate =
-            ProducerCostBook.estimate(unit, industry, assetShares, market, relations.get(id));
+            ProducerCostBook.estimate(unit, industry, index, market, relations.get(id));
         costEstimate = estimate.unitCostEstimateMilli() * plannedScale / 1_000L;
       }
       // ★ 无市场轮 ⇒ 没有新证据：lastCycle* 与滞销读数保持上一周期原值，不用 0 覆盖。
@@ -293,7 +343,7 @@ final class OperatorSettlement {
       long lastCycleNet = hadMarket ? lastCycleRevenue - lastCycleCost : prev.lastCycleNetMilli();
       long unsoldStock = hadMarket ? prev.cycleUnfilledQty() : prev.unsoldStockMilli();
       long selfUsable =
-          selfUsableOf(household, unit, industry, assetShares, householdGoods, operatorGoods);
+          selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
       long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
       conditions.put(
           id,
@@ -334,35 +384,6 @@ final class OperatorSettlement {
       long revenue,
       long outcompetedActors,
       long outcompetedQty) {}
-
-  private static MarketEvidence evidenceOf(
-      MarketReport report, ProductionUnit unit, Industry industry) {
-    long offered = 0L;
-    long filled = 0L;
-    long unfilled = 0L;
-    long revenue = 0L;
-    long outcompeted = 0L;
-    long outcompetedQty = 0L;
-    for (MarketReport.SellerOutcome outcome : report.sellerOutcomes()) {
-      if (!belongsTo(outcome, unit, industry)) {
-        continue;
-      }
-      offered += outcome.offeredQty();
-      filled += outcome.filledQty();
-      unfilled += outcome.unfilledQty();
-      if (outcome.unfilledReason().orElse(null) == MarketUnfilledReason.OUTCOMPETED) {
-        outcompeted += outcome.outcompetedByActorCount();
-        outcompetedQty += outcome.outcompetedQty();
-      }
-    }
-    for (MarketReport.Fill fill : report.fills()) {
-      if (fill.seller().equals(unit.operator())
-          && industry.outputPerUnit().containsKey(fill.commodity())) {
-        revenue += fill.goodsPaymentMilli();
-      }
-    }
-    return new MarketEvidence(offered, filled, unfilled, revenue, outcompeted, outcompetedQty);
-  }
 
   /**
    * 一条卖方槽是不是本 unit 的：优先认 {@code SellerOutcome.unitId}（市场侧已经认出来的 unit）， 认不出来时回退到 {@code actor +
@@ -442,10 +463,10 @@ final class OperatorSettlement {
       HouseholdId household,
       ProductionUnit unit,
       Industry industry,
-      Map<AssetShareId, AssetShare> assetShares,
+      SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
-    long scale = ProductionUnitBook.capacityScaleOf(unit, industry, assetShares);
+    long scale = ProductionUnitBook.capacityScaleOf(unit, industry, index);
     long sum = 0L;
     for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
       if (entry.getValue() <= 0L) {

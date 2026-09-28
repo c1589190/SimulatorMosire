@@ -252,6 +252,9 @@ final class MarketSettlement {
     /** ★ S3：经营者状态（只读；市场的原因归因与"真无法再生产"判据读它，不写它；R3B.2 起键 = unit id）。 */
     private final Map<ProductionUnitId, OperatorCondition> operatorConditions;
 
+    /** ★★ R4-B.3a-perf：本轮参与者/必要投入/自留/家户归属共用的只读派生索引（入口构建一次）。 */
+    private final SettlementIndex index;
+
     MarketRound(
         long day,
         Map<HouseholdId, ClassRow> rows,
@@ -272,7 +275,8 @@ final class MarketSettlement {
         Map<LaborAllocationId, LaborAllocation> allocations,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
-        Map<ProductionUnitId, OperatorCondition> operatorConditions) {
+        Map<ProductionUnitId, OperatorCondition> operatorConditions,
+        SettlementIndex index) {
       this.day = day;
       this.rows = Objects.requireNonNull(rows, "rows");
       this.householdGoods = Objects.requireNonNull(householdGoods, "householdGoods");
@@ -296,6 +300,7 @@ final class MarketSettlement {
       this.ledger = Objects.requireNonNull(ledger, "ledger");
       this.operatorConditions =
           operatorConditions == null ? Map.of() : Map.copyOf(operatorConditions);
+      this.index = Objects.requireNonNull(index, "index");
     }
   }
 
@@ -1312,7 +1317,8 @@ final class MarketSettlement {
             ctx.round.shipments,
             // ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
             new ProductionLedger.Accumulator(ctx.round.day),
-            ctx.round.operatorConditions);
+            ctx.round.operatorConditions,
+            ctx.round.index);
     MatchContext local = new MatchContext(localRound, ctx.markets, ctx.topology, ctx.carrier);
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
@@ -1537,7 +1543,8 @@ final class MarketSettlement {
         round.allocations,
         round.shipments,
         new ProductionLedger.Accumulator(round.day),
-        round.operatorConditions);
+        round.operatorConditions,
+        round.index);
   }
 
   /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
@@ -2389,7 +2396,7 @@ final class MarketSettlement {
           reason = MarketUnfilledReason.NO_BUDGET;
         } else if (totalSellRemaining <= 0L) {
           reason =
-              inputShortfallNear(ctx, buy)
+              inputShortfallNear(ctx, buy, indexes)
                   ? MarketUnfilledReason.INPUT_SHORTFALL
                   : classifyNoSupply(ctx, buy, indexes);
         } else if (!hasSupplyNear(buy, indexes)) {
@@ -2566,9 +2573,10 @@ final class MarketSettlement {
   private record Outcompeted(long actors, long qty) {}
 
   /** 买方"没有供给"时是否其实是生产侧投入不足：本格有产该商品、有产能、但本周期投入没凑齐的 unit。 ★ 只查买方所在格（第一版口径；邻接格留待跨区协调那一轮，不为假想需要造扫描）。 */
-  private static boolean inputShortfallNear(MatchContext ctx, BuySlot buy) {
+  private static boolean inputShortfallNear(MatchContext ctx, BuySlot buy, MarketIndexes indexes) {
     String hexKey = hexKeyOf(buy.hex);
-    for (Participant participant : indexesParticipantsOf(ctx, hexKey)) {
+    // ★ R4-B.3a-perf：参与者按 hex 的索引已在 MarketIndexes 里建好（旧实现每次现扫全部参与者）。
+    for (Participant participant : indexes.participantsByHex.getOrDefault(hexKey, List.of())) {
       for (ProductionUnitId id : participant.units) {
         ProductionUnit unit = ctx.round.units.get(id);
         Industry industry = unit == null ? null : ctx.round.industries.get(unit.industry());
@@ -2579,7 +2587,7 @@ final class MarketSettlement {
         }
         long scale =
             ProductionUnitBook.plannedCapacityScaleOf(
-                unit, industry, ctx.round.assetShares, ctx.round.operatorConditions.get(id));
+                unit, industry, ctx.round.index, ctx.round.operatorConditions.get(id));
         if (scale <= 0L) {
           continue;
         }
@@ -2596,18 +2604,6 @@ final class MarketSettlement {
       }
     }
     return false;
-  }
-
-  /** 本格参与者（{@code inputShortfallNear} 用；索引在 {@link MarketIndexes} 里按 hex 建好）。 */
-  private static List<Participant> indexesParticipantsOf(MatchContext ctx, String hexKey) {
-    List<Participant> result = new ArrayList<>();
-    for (Participant participant : ctx.participants.values()) {
-      HexCoord hex = ctx.participantHex.get(participant.actor);
-      if (hex != null && hexKeyOf(hex).equals(hexKey)) {
-        result.add(participant);
-      }
-    }
-    return result;
   }
 
   /** 卖方的未卖余量是否可用于自身再生产（下一周期投入 / 家庭生活保留）。 */
@@ -2911,11 +2907,13 @@ final class MarketSettlement {
       MarketRound round, HexCoord hex, List<HouseholdId> keys) {
     String hexKey = hexKeyOf(hex);
     Map<ActorRef, List<ProductionUnitId>> unitsByOperator = new LinkedHashMap<>();
-    for (ProductionUnit unit : round.units.values()) {
-      if (IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isEmpty()) {
-        continue; // unit 不在这一格（或产业 id 没有格键 ⇒ 没有账户地址）
+    // ★ R4-B.3a-perf：本格 unit 由入口索引一次给出（序 = unit 表序，旧实现的全表过滤同此序）。
+    for (ProductionUnitId id : round.index.unitsInHex(hexKey)) {
+      ProductionUnit unit = round.units.get(id);
+      if (unit == null) {
+        continue; // 索引与活表同源；这里只防御手工状态在两者之间被改动
       }
-      unitsByOperator.computeIfAbsent(unit.operator(), ignored -> new ArrayList<>()).add(unit.id());
+      unitsByOperator.computeIfAbsent(unit.operator(), ignored -> new ArrayList<>()).add(id);
     }
     LinkedHashMap<ActorRef, Participant> byActor = new LinkedHashMap<>();
     for (HouseholdId key : keys) {
@@ -2982,7 +2980,7 @@ final class MarketSettlement {
       return ProducerCostBook.Estimate.unknown();
     }
     return ProducerCostBook.estimate(
-        unit, industry, round.assetShares, market, round.relations.get(unit.id()));
+        unit, industry, round.index, market, round.relations.get(unit.id()));
   }
 
   /**
@@ -3038,7 +3036,7 @@ final class MarketSettlement {
       }
       long scale =
           ProductionUnitBook.plannedCapacityScaleOf(
-              unit, industry, round.assetShares, round.operatorConditions.get(id));
+              unit, industry, round.index, round.operatorConditions.get(id));
       if (scale <= 0L) {
         continue; // 本格没有产能 / 已缩到 0 ⇒ 不要料（同 drawCycleInputs 的口径）
       }
@@ -3083,7 +3081,8 @@ final class MarketSettlement {
         continue;
       }
       long population = 0L;
-      for (HouseholdId key : EconomySettlement.householdKeysOf(round.rows, id, round.allocations)) {
+      // ★ R4-B.3a-perf：家户行由入口索引给（旧实现每个 unit 现扫全量配额）。
+      for (HouseholdId key : round.index.householdsOf(id)) {
         ClassRow row = round.rows.get(key);
         if (row != null) {
           population += row.population();
