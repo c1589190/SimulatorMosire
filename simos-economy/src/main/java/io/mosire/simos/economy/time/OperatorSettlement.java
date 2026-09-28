@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -29,10 +30,16 @@ import java.util.Set;
  *
  * <pre>
  * ACTIVE/TRIALING --连续滞销+OUTCOMPETED--> OVERSUPPLIED --再一个周期--> CONTRACTING
- * CONTRACTING --连续债务压力--> INDEBTED --连续无法偿付--> SUSPENDED --连续停业--> EXITED
+ * CONTRACTING --连续债务压力--> INDEBTED --连续无法偿付--> SUSPENDED --连续停业且不能自用维生--> EXITED
  * ACTIVE/TRIALING --连续投入不足--> CONTRACTING（生产侧原因；不经过滞销）
+ * CONTRACTING --不能自用维生且投入不足/滞销连续超阈值--> SUSPENDED（生产侧破产；不必先经债务表）
  * INDEBTED/— --恢复证据（有成交、不欠本息、有现金）--> ACTIVE（有限重开）
  * </pre>
+ *
+ * <p>★★ <b>E1 的自用维生硬门</b>：{@link #canSelfProvision} 为真时，{@code CONTRACTING} 只停在 {@code
+ * CONTRACTING}（reason {@code self_provision:...}），{@code INDEBTED} 回 {@code CONTRACTING}（reason
+ * {@code recovered:self_provision}），{@code SUSPENDED} 永不因停业够久退出（最多有限重开）。解析不到家户的 ESTATE / WORKSHOP /
+ * 聚合 weave 仍可缩产、停业、退出，只是不会凭空产生家户债务压力。
  *
  * <p>★★ <b>本类只判"状态怎么变 + 谁该退出"</b>；退出时的库存/货币偿债与 {@code Debt.defaulted} 处置由 {@code
  * EconomySettlement.settleOperatorExits} 落账（那里才有唯一写口 {@code applyTransfer}）。缩产只乘进"计划规模系数"，
@@ -187,12 +194,12 @@ final class OperatorSettlement {
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<ProductionUnitId, ProductionRelation> relations,
+      Map<HouseholdId, ClassRow> rows,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
-      Map<ActorRef, HouseholdId> householdOfActor,
       Map<HexCoord, Market> markets,
       Set<ProductionUnitId> closingUnits,
       Map<ProductionUnitId, Boolean> inputShortfallByUnit) {
@@ -209,7 +216,9 @@ final class OperatorSettlement {
       if (industry == null) {
         throw new IllegalStateException("生产单元指名的产业模板不存在（状态已被改坏）: " + unit);
       }
-      HouseholdId household = householdOfActor.get(unit.operator());
+      // ★★ E1：经营者 → 关联经济家户由 SettlementIndex 的唯一解析结果给出（tenant/artisan/自营家户命中；ESTATE /
+      //   WORKSHOP / 聚合 weave 解析不到 ⇒ household=null：不伪造家户、不强行借债，但仍可缩产/停业/退出）。
+      HouseholdId household = index.economicHouseholdOf(id).orElse(null);
       OperatorCondition prev = conditions.getOrDefault(id, neutralCondition(id, industry.id()));
       boolean hadMarket = prev.cycleMarketRounds() > 0L;
       boolean outcompeted = prev.cycleOutcompetedActors() >= StressPolicy.OUTCOMPETED_MIN_ACTORS;
@@ -252,6 +261,12 @@ final class OperatorSettlement {
       long reopens = prev.reopens();
       IndustryStatus status = prev.status();
       String reason = prev.lastReason();
+      // ★★ E1：自用维生硬门（唯一判据在 canSelfProvision）—— 提前算好，下面四条新路径都读同一个答案。
+      long selfUsable =
+          selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
+      long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
+      boolean canSelfProvision =
+          canSelfProvision(unit, household, industry, index, rows, householdGoods, operatorGoods);
       switch (status) {
         case ACTIVE, TRIALING -> {
           if (hadMarket
@@ -280,7 +295,26 @@ final class OperatorSettlement {
           }
         }
         case CONTRACTING -> {
-          if (debtStressCycles >= StressPolicy.DEBT_STRESS_CYCLES_BEFORE_INDEBTED) {
+          // ★★ E1 规则 2：可自用维生 ⇒ 停在 CONTRACTING（不得进 INDEBTED/SUSPENDED/EXITED）；不能自用且再生产压力
+          //   连续超阈值 ⇒ 直接停业（生产侧破产路径，不要求先经过债务表）。债务压力路径仍保留在它后面。
+          if (canSelfProvision) {
+            status = IndustryStatus.CONTRACTING;
+            reason =
+                "self_provision:shortfallCycles="
+                    + shortfallCycles
+                    + ",unsoldCycles="
+                    + unsoldCycles
+                    + ",selfUsable="
+                    + selfUsable;
+          } else if (shortfallCycles >= StressPolicy.INPUT_SHORTFALL_CYCLES_BEFORE_CANNOT_REPRODUCE
+              || unsoldCycles >= StressPolicy.UNSOLD_CYCLES_BEFORE_CANNOT_REPRODUCE) {
+            status = IndustryStatus.SUSPENDED;
+            reason =
+                "cannot_reproduce:shortfallCycles="
+                    + shortfallCycles
+                    + ",unsoldCycles="
+                    + unsoldCycles;
+          } else if (debtStressCycles >= StressPolicy.DEBT_STRESS_CYCLES_BEFORE_INDEBTED) {
             status = IndustryStatus.INDEBTED;
             reason = "indebted:debtStressCycles=" + debtStressCycles;
           } else if (hadMarket
@@ -292,8 +326,11 @@ final class OperatorSettlement {
           }
         }
         case INDEBTED -> {
-          long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
-          if (debtStressCycles >= StressPolicy.DEBT_STRESS_CYCLES_BEFORE_SUSPENDED) {
+          // ★★ E1 规则 3：可自用维生 ⇒ 回 CONTRACTING（recovered:self_provision），不进 SUSPENDED；债务压力路径保留。
+          if (canSelfProvision) {
+            status = IndustryStatus.CONTRACTING;
+            reason = "recovered:self_provision";
+          } else if (debtStressCycles >= StressPolicy.DEBT_STRESS_CYCLES_BEFORE_SUSPENDED) {
             status = IndustryStatus.SUSPENDED;
             reason = "suspended:debtStressCycles=" + debtStressCycles;
           } else if (hadMarket && !debtStress && prev.cycleFilledQty() > 0L && cash > 0L) {
@@ -302,9 +339,6 @@ final class OperatorSettlement {
           }
         }
         case SUSPENDED -> {
-          long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
-          long selfUsable =
-              selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
           suspendedCycles = prev.consecutiveSuspendedCycles() + 1L;
           // ★ 停业期间计划系数为 0 ⇒ 它自己没有卖单、不会有 filled>0 的"恢复证据"；恢复只能看缓冲：
           //   债务压力解除 + 有现金/可自用库存可垫下一周期投入。
@@ -313,10 +347,15 @@ final class OperatorSettlement {
             reopens++;
             suspendedCycles = 0L;
             reason = "reopened:cash=" + cash + ",selfUsable=" + selfUsable;
-          } else if (suspendedCycles >= StressPolicy.SUSPENDED_CYCLES_BEFORE_EXIT) {
+          } else if (suspendedCycles >= StressPolicy.SUSPENDED_CYCLES_BEFORE_EXIT
+              && !canSelfProvision) {
+            // ★★ E1 规则 4：退出必须同时满足"停业够久"与"确实不能自用维生"；后者为真时永不退出。
             status = IndustryStatus.EXITED;
             reason = "exited:suspendedCycles=" + suspendedCycles;
             exits.add(new Exit(id, unit.industry(), unit.operator(), household, reason));
+          } else if (canSelfProvision) {
+            // 停业够久但还能自用 ⇒ 保持停业（绝不退出）；reason 明确写出是因为自用维生而没退。
+            reason = "suspended:self_provision";
           }
         }
         case EXITING -> {
@@ -342,9 +381,6 @@ final class OperatorSettlement {
       long lastCycleCost = hadMarket ? costEstimate : prev.lastCycleCostMilli();
       long lastCycleNet = hadMarket ? lastCycleRevenue - lastCycleCost : prev.lastCycleNetMilli();
       long unsoldStock = hadMarket ? prev.cycleUnfilledQty() : prev.unsoldStockMilli();
-      long selfUsable =
-          selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
-      long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
       conditions.put(
           id,
           new OperatorCondition(
@@ -456,6 +492,81 @@ final class OperatorSettlement {
     return household != null
         ? householdGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L)
         : operatorGoods.getOrDefault(operator, Map.of()).getOrDefault(commodity, 0L);
+  }
+
+  /**
+   * ★★ <b>E1：这个 unit 能不能自用维生（只读判据；唯一拼写点）</b>。
+   *
+   * <pre>
+   * 家户可解析（且行存在）：
+   *   ① 粮库存 ≥ 本周期基本口粮 = cumulativeRationMilli(人口, industry.cycleDays)          ⇒ true
+   *   ② 否则：粮库存 ≥ SELF_PROVISION_GUARD_DAYS 天的口粮（守卫，防"有种子没饭吃"）
+   *      且 selfUsableOf 覆盖下一周期全部投入需求                                          ⇒ true
+   *   ③ 其余                                                                              ⇒ false
+   * 解析不到（ESTATE / WORKSHOP / 聚合 weave）：用 operator 账的 selfUsableOf 覆盖下一周期投入需求
+   * </pre>
+   *
+   * <p>★★ <b>为什么自用品要"覆盖全部投入"而不是"有正数"</b>：只要有一种投入覆盖不到，下一周期就开不了工；把 {@code Σ min(库存, 需求)} 与 {@code Σ
+   * 需求} 比较，两者相等当且仅当每种投入都覆盖到 —— 与 {@link #selfUsableOf} 同一口径。
+   *
+   * <p>★ 本判据不改任何状态；{@code CONTRACTING/INDEBTED/SUSPENDED} 的转移用它作硬门。
+   */
+  static boolean canSelfProvision(
+      ProductionUnit unit,
+      HouseholdId household,
+      Industry industry,
+      SettlementIndex index,
+      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
+    if (household != null) {
+      ClassRow row = rows.get(household);
+      if (row != null) {
+        long grainStock =
+            stockOf(
+                household, unit.operator(), EconomySettlement.GRAIN, householdGoods, operatorGoods);
+        long cycleRation =
+            io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
+                row.population(), industry.cycleDays());
+        if (grainStock >= cycleRation) {
+          return true;
+        }
+        long guardRation =
+            io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
+                row.population(), StressPolicy.SELF_PROVISION_GUARD_DAYS);
+        return grainStock >= guardRation
+            && coversNextCycleInputs(
+                unit, household, industry, index, householdGoods, operatorGoods);
+      }
+    }
+    // ★ 解析不到家户（或家户行缺失）：只看 operator 账的可自用投入覆盖 —— 不伪造家户，也不凭空给它口粮。
+    return coversNextCycleInputs(unit, null, industry, index, householdGoods, operatorGoods);
+  }
+
+  /** 下一周期投入需求是否被自用库存全覆盖（{@code Σ min(库存,需求) == Σ 需求}；无投入需求视为已覆盖）。 */
+  private static boolean coversNextCycleInputs(
+      ProductionUnit unit,
+      HouseholdId household,
+      Industry industry,
+      SettlementIndex index,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
+    long scale = ProductionUnitBook.capacityScaleOf(unit, industry, index);
+    if (scale <= 0L) {
+      return false; // 没有可用资产 ⇒ 没有"下一周期生产"可谈（不是"投入需求为零所以已覆盖"）
+    }
+    long required = 0L;
+    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue;
+      }
+      required += entry.getValue() * scale;
+    }
+    if (required <= 0L) {
+      return true; // 没有实物投入需求 ⇒ 没有"覆盖不到"的投入
+    }
+    long covered = selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
+    return covered >= required;
   }
 
   /** 自用可覆盖量 = Σ_c min(库存_c, 下一周期投入需求_c)（库存能顶多少再生产，不是估价）。 */

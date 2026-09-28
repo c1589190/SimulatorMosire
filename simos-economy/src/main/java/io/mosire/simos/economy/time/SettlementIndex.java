@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
@@ -25,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -54,6 +56,10 @@ final class SettlementIndex {
   // ── 资产生成 ─────────────────────────────────────────────────────────────────────────
   private final Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit;
   private final Map<ProductionUnitId, Long> capacityScaleByUnit;
+  private final Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit;
+
+  // ── 经营者 → 关联经济家户（E1：唯一解析结果的索引化快照）────────────────────────────
+  private final Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit;
 
   // ── 劳动 / 家户 ─────────────────────────────────────────────────────────────────────
   private final Map<ProductionUnitId, List<LaborAllocation>> allocationsByUnit;
@@ -74,6 +80,8 @@ final class SettlementIndex {
   private SettlementIndex(
       Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit,
       Map<ProductionUnitId, Long> capacityScaleByUnit,
+      Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit,
+      Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit,
       Map<ProductionUnitId, List<LaborAllocation>> allocationsByUnit,
       Map<ProductionUnitId, List<LaborAllocationId>> allocationIdsByUnit,
       Map<PeopleLotId, List<LaborAllocationId>> allocationIdsByGroup,
@@ -88,6 +96,8 @@ final class SettlementIndex {
       Map<HouseholdId, List<Debt>> debtsByDebtor) {
     this.usableAssetsByUnit = usableAssetsByUnit;
     this.capacityScaleByUnit = capacityScaleByUnit;
+    this.assetShareIdsByUnit = assetShareIdsByUnit;
+    this.economicHouseholdByUnit = economicHouseholdByUnit;
     this.allocationsByUnit = allocationsByUnit;
     this.allocationIdsByUnit = allocationIdsByUnit;
     this.allocationIdsByGroup = allocationIdsByGroup;
@@ -114,18 +124,24 @@ final class SettlementIndex {
       Map<AssetShareId, AssetShare> assetShares,
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<HouseholdId, ClassRow> rows,
-      Map<DebtId, Debt> debts) {
+      Map<DebtId, Debt> debts,
+      Map<ProductionUnitId, ProductionRelation> relations) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
     Objects.requireNonNull(allocations, "allocations");
     Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(relations, "relations");
 
     Map<ProductionUnitId, Map<AssetKind, Long>> usable = usableAssets(units, assetShares);
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
+    Map<ProductionUnitId, List<AssetShareId>> shareIds = assetShareIdsByUnit(units, assetShares);
+    Map<ActorRef, HouseholdId> householdOfActor = householdByActor(rows);
     return new SettlementIndex(
         usable,
         capacity,
+        shareIds,
+        economicHouseholds(units, relations, assetShares, shareIds, householdOfActor),
         allocationsByUnit(allocations),
         allocationIdsByUnit(allocations),
         allocationIdsByGroup(allocations),
@@ -133,7 +149,7 @@ final class SettlementIndex {
         unitsByHousehold(units, allocations, rows),
         unitsByGroup(units, allocations),
         laborByUnit(allocations),
-        householdByActor(rows),
+        householdOfActor,
         unitsByHex(units),
         hexByUnit(units),
         industriesByHex(industries),
@@ -151,6 +167,8 @@ final class SettlementIndex {
     return new SettlementIndex(
         usableAssetsByUnit,
         capacityScaleByUnit,
+        assetShareIdsByUnit,
+        economicHouseholdByUnit,
         allocationsByUnit(allocations),
         allocationIdsByUnit(allocations),
         allocationIdsByGroup(allocations),
@@ -171,6 +189,8 @@ final class SettlementIndex {
     return new SettlementIndex(
         usableAssetsByUnit,
         capacityScaleByUnit,
+        assetShareIdsByUnit,
+        economicHouseholdByUnit,
         allocationsByUnit,
         allocationIdsByUnit,
         allocationIdsByGroup,
@@ -197,6 +217,19 @@ final class SettlementIndex {
 
   Long capacityScaleOf(ProductionUnitId unit) {
     return capacityScaleByUnit.get(unit);
+  }
+
+  /** 某个 unit 名下（{@code industry + operator} 作用域）的份额 id 快照（序 = 全局份额表序）。 */
+  List<AssetShareId> assetShareIdsOfUnit(ProductionUnitId unit) {
+    return assetShareIdsByUnit.getOrDefault(unit, List.of());
+  }
+
+  /**
+   * ★★ <b>E1：某个 unit 解析出的关联经济家户</b>（{@link EconomicHouseholdResolver} 的唯一结果；解析不到 ⇒ {@link
+   * Optional#empty()}，不伪造）。
+   */
+  Optional<HouseholdId> economicHouseholdOf(ProductionUnitId unit) {
+    return Optional.ofNullable(economicHouseholdByUnit.get(unit));
   }
 
   List<HouseholdId> householdsOf(ProductionUnitId unit) {
@@ -283,6 +316,66 @@ final class SettlementIndex {
           entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
     }
     return Collections.unmodifiableMap(frozen);
+  }
+
+  /**
+   * 逐 unit 的份额 id（{@code (industry, operator)} 作用域，序 = 全局份额表序）。
+   *
+   * <p>★ 与 {@link #usableAssets} 同一套作用域判定：一个作用域下的每个 unit 都拿到同一串 id（同 scope 多 unit 是合法形态）； 退出处置用 id
+   * 回活表取当前行，绝不缓存 record（处置会改 {@code operator}）。
+   */
+  private static Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit(
+      Map<ProductionUnitId, ProductionUnit> units, Map<AssetShareId, AssetShare> assetShares) {
+    Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
+    Map<ProductionUnitId, List<AssetShareId>> raw = new LinkedHashMap<>();
+    for (ProductionUnit unit : units.values()) {
+      raw.put(unit.id(), new ArrayList<>());
+      unitsByScope
+          .computeIfAbsent(
+              new AssetScope(unit.industry(), unit.operator()), ignored -> new ArrayList<>())
+          .add(unit.id());
+    }
+    for (AssetShare share : assetShares.values()) {
+      List<ProductionUnitId> scoped =
+          unitsByScope.get(new AssetScope(share.industry(), share.operator()));
+      if (scoped == null) {
+        continue;
+      }
+      for (ProductionUnitId id : scoped) {
+        raw.get(id).add(share.id());
+      }
+    }
+    Map<ProductionUnitId, List<AssetShareId>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, List<AssetShareId>> entry : raw.entrySet()) {
+      frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
+    }
+    return Collections.unmodifiableMap(frozen);
+  }
+
+  /**
+   * ★★ <b>E1：逐 unit 的关联家户快照</b>——对每个 unit 调用 {@link EconomicHouseholdResolver#resolve} 一次（O(unit +
+   * 份额)），结果在整天内共享（unit/relation/份额/行键集在日结算的处置之前不变）。解析不到 ⇒ 不进表。
+   */
+  private static Map<ProductionUnitId, HouseholdId> economicHouseholds(
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, List<AssetShareId>> shareIdsByUnit,
+      Map<ActorRef, HouseholdId> householdOfActor) {
+    Map<ProductionUnitId, HouseholdId> raw = new LinkedHashMap<>();
+    for (ProductionUnit unit : units.values()) {
+      List<AssetShare> shares = new ArrayList<>();
+      for (AssetShareId id : shareIdsByUnit.getOrDefault(unit.id(), List.of())) {
+        AssetShare share = assetShares.get(id);
+        if (share != null) {
+          shares.add(share);
+        }
+      }
+      EconomicHouseholdResolver.resolve(
+              unit, relations.get(unit.id()), List.copyOf(shares), householdOfActor)
+          .ifPresent(household -> raw.put(unit.id(), household));
+    }
+    return Collections.unmodifiableMap(raw);
   }
 
   /**

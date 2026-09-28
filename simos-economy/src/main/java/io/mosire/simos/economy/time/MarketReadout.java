@@ -153,7 +153,8 @@ public record MarketReadout(
             data.assetShares(),
             data.allocations(),
             data.classes(),
-            data.debts());
+            data.debts(),
+            data.relations());
     MarketSettlement.MarketRound round =
         new MarketSettlement.MarketRound(
             tick,

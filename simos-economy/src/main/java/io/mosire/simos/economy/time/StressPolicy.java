@@ -22,6 +22,33 @@ public final class StressPolicy {
   /** 连续多少个关账周期投入不足，才进入 {@code CONTRACTING}（单周期天气式波动不触发）。 */
   public static final long INPUT_SHORTFALL_CYCLES_BEFORE_CONTRACTING = 2L;
 
+  /**
+   * ★★ <b>E1：连续投入不足多少个关账周期，{@code CONTRACTING} 就升级为 {@code SUSPENDED}</b>（前提是 {@code
+   * !canSelfProvision}）。
+   *
+   * <p>取值 3 = 进入 {@code CONTRACTING}（2 个周期）后再观察一个周期，避免"单周期投入波动 = 破产"。自用可维生的经营者被 {@code
+   * canSelfProvision} 挡在这条路之外，可长期停在 {@code CONTRACTING}。
+   */
+  public static final long INPUT_SHORTFALL_CYCLES_BEFORE_CANNOT_REPRODUCE = 3L;
+
+  /**
+   * ★★ <b>E1：连续滞销多少个关账周期，{@code CONTRACTING} 就升级为 {@code SUSPENDED}</b>（前提是 {@code
+   * !canSelfProvision}）。
+   *
+   * <p>滞销计数只在"有市场轮、有挂单、零成交、且有 OUTCOMPETED 证据"时累加（见 {@code OperatorSettlement.advance}）——
+   * 单轮没成交、买方没钱、买方本来就有库存都不算，本阈值因此不是"一轮卖不动就破产"。取 3 与投入不足同尺。
+   */
+  public static final long UNSOLD_CYCLES_BEFORE_CANNOT_REPRODUCE = 3L;
+
+  /**
+   * ★★ <b>E1：自用覆盖判据的守卫窗（天）</b>—— 用"库存可覆盖下一周期投入"代替"粮库存够一整个周期口粮"时，家户还必须至少有这一窗天数的
+   * 基本口粮；否则"有种子、没饭吃"会被误判成"可自用维生"。
+   *
+   * <p>建议出厂值 30 天（一个月的安全垫），口径走 {@link
+   * io.mosire.simos.util.economy.EconomyVocabulary#cumulativeRationMilli}，不另写"每人每天多少"。
+   */
+  public static final long SELF_PROVISION_GUARD_DAYS = 30L;
+
   /** 连续多少个关账周期"现金+可自用产出 < 本息"，才进入 {@code INDEBTED}。 */
   public static final long DEBT_STRESS_CYCLES_BEFORE_INDEBTED = 2L;
 

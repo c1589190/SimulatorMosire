@@ -664,7 +664,8 @@ public final class EconomySettlement {
     //     日结算内始终有效。LaborAllocation 会在劳动再分配后被改写 ⇒ 那之后用 withLabor(...) 换一次配额侧视图；
     //     Debt 会在借粮/偿还/计息后被改写 ⇒ 状态机之前用 withDebts(...) 换一次债务视图。
     SettlementIndex settlementIndex =
-        SettlementIndex.build(units, industries, assetShares, allocations, rows, debts);
+        SettlementIndex.build(
+            units, industries, assetShares, allocations, rows, debts, base.relations());
 
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
@@ -1027,32 +1028,43 @@ public final class EconomySettlement {
         closingUnits.add(closing.unit());
         shortfallByUnit.put(closing.unit(), closing.inputShortfall());
       }
+      SettlementIndex stateIndex = settlementIndex.withDebts(debts);
       List<OperatorSettlement.Exit> exits =
           OperatorSettlement.advance(
               operatorConditions,
               units,
               industries,
               base.relations(),
-              settlementIndex.withDebts(debts),
+              rows,
+              stateIndex,
               householdGoods,
               householdMoney,
               operatorGoods,
               operatorMoney,
-              householdOfActor,
               markets,
               closingUnits,
               shortfallByUnit);
       if (!exits.isEmpty()) {
+        // ★★ E1：退出事实处置（劳动释放 → 资产退回/留 owner → 债务偿还/违约 → 状态与理由）。
         settleOperatorExits(
             exits,
+            operatorConditions,
+            assetShares,
+            allocations,
             debts,
             householdGoods,
             householdMoney,
             operatorGoods,
             operatorMoney,
             householdOfActor,
+            stateIndex,
             ledger,
             day);
+        // ★ 资产 operator / 劳动配额刚被改写 ⇒ 换一份索引，后面的阶层写回（读 unit 可用资产）不拿旧快照。
+        //   这是**退出日的一次重建**（O(unit + 份额 + 配额)），不是逐查询重扫；退出本身是低频事件。
+        settlementIndex =
+            SettlementIndex.build(
+                units, industries, assetShares, allocations, rows, debts, base.relations());
       }
     }
 
@@ -1993,7 +2005,8 @@ public final class EconomySettlement {
             assetShares,
             allocations,
             rows,
-            null);
+            null,
+            base.relations());
     // 批次 → 它供给的 unit（保序、去重；只认 activity 命中现存 unit 的配额）。
     Map<ProductionUnitId, ProductionUnit> units = session.sheet().units();
     Map<PeopleLotId, List<ProductionUnitId>> unitsOf = index.unitsByGroup();
@@ -3756,114 +3769,218 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>S3：退出经营者（{@code SUSPENDED -> EXITED}）的剩余库存/货币偿债处置</b>（计划 §S3.2 "SUSPENDED -> EXITED"
-   * 那一行）。
+   * ★★ <b>E1：退出经营者的固定顺序事实处置</b>（{@code SUSPENDED -> EXITED} / {@code EXITING -> EXITED}）。
    *
    * <pre>
-   * 逐条债务（优先级 = (到期周期, 商品维, id) 的 canonical 升序）：
-   *   paid = min(本金, 可用余额)      // 实物债扣实物、货币债扣货币；扣不动 ⇒ paid=0
-   *   paid > 0 ⇒ 铸 LOAN_REPAYMENT 转移（债务人 → 债权人，经唯一写口 applyTransfer）
-   *   本金 −= paid；仍有余额 ⇒ Debt.defaulted = true（**不足才违约**，不静默清债）
+   * 1. 劳动释放   ：删除 activity == exit.unit 的全部 LaborAllocation（laborSupply 不动），释放量进读数
+   * 2. 资产处置   ：unit 名下（industry + operator）份额里，owner != operator 的只把 operator 改回 owner；
+   *                owner == operator 的份额原样留在 owner 名下（unit 已停业，计划系数 0）
+   * 3. 债务处置   ：只对解析出的 exit.household 执行（null = 聚合主体 ⇒ 跳过，不伪造家户债）：
+   *                逐条按 (到期周期, 商品维, id) canonical 升序；paid = min(本金, 可用余额)；
+   *                paid > 0 ⇒ 铸 LOAN_REPAYMENT 转移（唯一写口 applyTransfer）；不足才 defaulted=true
+   * 4. 库存/货币  ：剩余留在原主体账上，不没收、不蒸发
+   * 5. 状态与理由 ：状态机已置 EXITED；这里只把处置摘要追加进 lastReason
    * </pre>
    *
-   * <p>★★ <b>三条硬边界</b>：① 只处置**家户债务人**（{@code Debt} 的两端就是 {@code HouseholdId}；聚合主体的账不在 economy
-   * 会话里，不能凭空给它销债）；② 还不起的部分**只标 {@code defaulted}**，不从表里删、不由结算“核销”； ③
-   * 剩余库存/货币留在原主体账上（没有“没收”规则，不凭空造也不删）。
+   * <p>★★ <b>五条硬边界</b>：① 债务只处置解析出的家户债务人（聚合主体的债不在 economy 会话里，不能凭空给它销债）；② 还不起的部分**只标 {@code
+   * defaulted}**，不从表里删、不由结算“核销”； ③ 剩余库存/货币留在原主体账上（没有“没收”规则，不凭空造也不删）；④ 资产份额**只改
+   * operator**，owner/quantity/kind 与 id 不变； ⑤ 每个 unit 只在本列表里处置一次（状态机被判 EXITED 后不再自转）。
    */
   private static void settleOperatorExits(
       List<OperatorSettlement.Exit> exits,
+      LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions,
+      LinkedHashMap<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       LinkedHashMap<DebtId, Debt> debts,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       Map<ActorRef, HouseholdId> householdOfActor,
+      SettlementIndex index,
       ProductionLedger.Accumulator ledger,
       long day) {
     for (OperatorSettlement.Exit exit : exits) {
-      HouseholdId debtor = exit.household();
-      if (debtor == null) {
-        continue; // 聚合主体：它的账/债不在 economy 会话内，留给看得见 actor 账的一侧
+      // ── 1. 释放劳动：删除 activity == 本 unit 的全部配额（laborSupply 一字不动）────────────────
+      long releasedLaborMilli = 0L;
+      int releasedAllocations = 0;
+      for (LaborAllocationId allocationId : index.allocationIdsOfUnit(exit.unit())) {
+        LaborAllocation allocation = allocations.get(allocationId);
+        if (allocation == null || !allocation.activity().equals(exit.unit().value())) {
+          continue; // 索引是入口快照；处置过程中可能已被前一个 exit 改动 ⇒ 按当前行再核一次
+        }
+        releasedLaborMilli += allocation.laborMilli();
+        allocations.remove(allocationId);
+        releasedAllocations++;
       }
+
+      // ── 2. 资产处置：TENANCY/委托份额 operator 改回 owner；OWNED 份额留在 owner 名下 ──────────
+      //   不得删份额、不得改 owner/quantity/kind；id 不变（opaque 身份，operator 只是行内一栏）。
+      int returnedShares = 0;
+      long returnedQuantity = 0L;
+      int keptOwnedShares = 0;
+      for (AssetShareId shareId : index.assetShareIdsOfUnit(exit.unit())) {
+        AssetShare share = assetShares.get(shareId);
+        if (share == null
+            || !share.industry().equals(exit.industry())
+            || !share.operator().equals(exit.operator())) {
+          continue; // 同上：用当前行再核作用域，避免处理已被前一个 exit 改过的份额
+        }
+        if (!share.owner().equals(exit.operator())) {
+          assetShares.put(
+              shareId,
+              new AssetShare(
+                  share.id(),
+                  share.industry(),
+                  share.asset(),
+                  share.owner(),
+                  share.owner(), // ★ 只改 operator：份额回到所有者、可再出租
+                  share.quantity(),
+                  share.kind()));
+          returnedShares++;
+          returnedQuantity += share.quantity();
+        } else {
+          keptOwnedShares++; // owner == operator：本来就是它自己的，unit 不再运行（计划系数 0），份额原样留下
+        }
+      }
+
+      // ── 3. 债务处置：保留既有"剩余库存/货币先偿债、不足才 defaulted"逻辑 ──────────────────────
+      HouseholdId debtor = exit.household();
+      long debtPaidMilli = 0L;
+      long debtDefaultedMilli = 0L;
+      int debtDefaultedItems = 0;
       HexCoord location =
           IndustryHexKeys.hexKeyOf(exit.industry()).map(HexCoord::parse).orElse(null);
-      if (location == null) {
-        continue; // 说不出在哪一格 ⇒ 无法铸转移（手搭状态；债务表通常也为空）
-      }
-      List<Debt> owed = new ArrayList<>();
-      for (Debt debt : debts.values()) {
-        if (debt.debtor().equals(debtor)) {
-          owed.add(debt);
-        }
-      }
-      owed.sort(
-          Comparator.comparingLong(Debt::dueCycle)
-              .thenComparing(debt -> debt.commodity().map(CommodityId::value).orElse("~money"))
-              .thenComparing(debt -> debt.id().value()));
-      for (Debt debt : owed) {
-        long available;
-        if (debt.commodity().isPresent()) {
-          available = stockOf(householdGoods, debtor, debt.commodity().get());
-        } else {
-          // ★ Debt 没有币种字段（货币债按本批唯一的计价货币银结算）⇒ 只按银余额判，不拿"逐币种合计"冒充银余额
-          //   （后者会让一笔银转移超过银余额，唯一 applier 当场抛）。
-          available =
-              householdMoney
-                  .getOrDefault(debtor, Map.of())
-                  .getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L);
-        }
-        long paid = Math.min(debt.principal(), Math.max(0L, available));
-        if (paid <= 0L) {
-          if (debt.principal() > 0L) {
-            debts.put(
-                debt.id(),
-                new Debt(
-                    debt.id(),
-                    debt.debtor(),
-                    debt.creditor(),
-                    debt.commodity(),
-                    debt.principal(),
-                    debt.ratePerMillePerCycle(),
-                    debt.dueCycle(),
-                    true));
+      if (debtor != null && location != null) {
+        // ★ 索引给出该债务人的债务 id 序（全局债务表序）；再逐条取活表当前值（前面的 exit 可能已改本金）。
+        List<Debt> owed = new ArrayList<>(index.debtsByDebtor().getOrDefault(debtor, List.of()));
+        owed.sort(
+            Comparator.comparingLong(Debt::dueCycle)
+                .thenComparing(debt -> debt.commodity().map(CommodityId::value).orElse("~money"))
+                .thenComparing(debt -> debt.id().value()));
+        for (Debt snapshot : owed) {
+          Debt debt = debts.get(snapshot.id());
+          if (debt == null || !debt.debtor().equals(debtor)) {
+            continue;
           }
-          continue;
+          long available;
+          if (debt.commodity().isPresent()) {
+            available = stockOf(householdGoods, debtor, debt.commodity().get());
+          } else {
+            // ★ Debt 没有币种字段（货币债按本批唯一的计价货币银结算）⇒ 只按银余额判，不拿"逐币种合计"冒充银余额
+            //   （后者会让一笔银转移超过银余额，唯一 applier 当场抛）。
+            available =
+                householdMoney
+                    .getOrDefault(debtor, Map.of())
+                    .getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L);
+          }
+          long paid = Math.min(debt.principal(), Math.max(0L, available));
+          if (paid <= 0L) {
+            if (debt.principal() > 0L) {
+              debts.put(
+                  debt.id(),
+                  new Debt(
+                      debt.id(),
+                      debt.debtor(),
+                      debt.creditor(),
+                      debt.commodity(),
+                      debt.principal(),
+                      debt.ratePerMillePerCycle(),
+                      debt.dueCycle(),
+                      true));
+              debtDefaultedMilli += debt.principal();
+              debtDefaultedItems++;
+            }
+            continue;
+          }
+          Transfer repayment =
+              debt.commodity().isPresent()
+                  ? ledger.mint(
+                      HouseholdActors.of(debt.debtor()),
+                      HouseholdActors.of(debt.creditor()),
+                      location,
+                      Map.of(debt.commodity().get(), paid),
+                      Map.of(),
+                      TransferReason.LOAN_REPAYMENT)
+                  : ledger.mint(
+                      HouseholdActors.of(debt.debtor()),
+                      HouseholdActors.of(debt.creditor()),
+                      location,
+                      Map.of(),
+                      Map.of(MoneyVocabulary.SILVER_CURRENCY, paid),
+                      TransferReason.LOAN_REPAYMENT);
+          applyTransfer(
+              householdGoods,
+              householdMoney,
+              operatorGoods,
+              operatorMoney,
+              householdOfActor,
+              repayment);
+          long remaining = debt.principal() - paid;
+          debts.put(
+              debt.id(),
+              new Debt(
+                  debt.id(),
+                  debt.debtor(),
+                  debt.creditor(),
+                  debt.commodity(),
+                  remaining,
+                  debt.ratePerMillePerCycle(),
+                  debt.dueCycle(),
+                  remaining > 0L)); // ★ 不足才违约；还清 = defaulted=false、本金 0（历史留痕）
+          debtPaidMilli += paid;
+          if (remaining > 0L) {
+            debtDefaultedMilli += remaining;
+            debtDefaultedItems++;
+          }
         }
-        Transfer repayment =
-            debt.commodity().isPresent()
-                ? ledger.mint(
-                    HouseholdActors.of(debt.debtor()),
-                    HouseholdActors.of(debt.creditor()),
-                    location,
-                    Map.of(debt.commodity().get(), paid),
-                    Map.of(),
-                    TransferReason.LOAN_REPAYMENT)
-                : ledger.mint(
-                    HouseholdActors.of(debt.debtor()),
-                    HouseholdActors.of(debt.creditor()),
-                    location,
-                    Map.of(),
-                    Map.of(MoneyVocabulary.SILVER_CURRENCY, paid),
-                    TransferReason.LOAN_REPAYMENT);
-        applyTransfer(
-            householdGoods,
-            householdMoney,
-            operatorGoods,
-            operatorMoney,
-            householdOfActor,
-            repayment);
-        long remaining = debt.principal() - paid;
-        debts.put(
-            debt.id(),
-            new Debt(
-                debt.id(),
-                debt.debtor(),
-                debt.creditor(),
-                debt.commodity(),
-                remaining,
-                debt.ratePerMillePerCycle(),
-                debt.dueCycle(),
-                remaining > 0L)); // ★ 不足才违约；还清 = defaulted=false、本金 0（历史留痕）
+      }
+
+      // ── 4./5. 留存库存读数 + 状态与理由（只追加摘要，不改状态机的判据字段）────────────────────
+      long keptGoodsMilli = 0L;
+      long keptMoneyMilli = 0L;
+      if (debtor != null) {
+        for (long value : householdGoods.getOrDefault(debtor, Map.of()).values()) {
+          keptGoodsMilli += value;
+        }
+        for (long value : householdMoney.getOrDefault(debtor, Map.of()).values()) {
+          keptMoneyMilli += value;
+        }
+      } else {
+        for (long value : operatorGoods.getOrDefault(exit.operator(), Map.of()).values()) {
+          keptGoodsMilli += value;
+        }
+        for (long value : operatorMoney.getOrDefault(exit.operator(), Map.of()).values()) {
+          keptMoneyMilli += value;
+        }
+      }
+      OperatorCondition condition = operatorConditions.get(exit.unit());
+      if (condition != null) {
+        operatorConditions.put(
+            exit.unit(),
+            condition.withLastReason(
+                exit.reason()
+                    + ";disposition{laborReleasedMilli="
+                    + releasedLaborMilli
+                    + ",releasedAllocations="
+                    + releasedAllocations
+                    + ",assetSharesReturned="
+                    + returnedShares
+                    + ",assetQuantityReturned="
+                    + returnedQuantity
+                    + ",assetSharesKeptOwned="
+                    + keptOwnedShares
+                    + ",debtPaidMilli="
+                    + debtPaidMilli
+                    + ",debtDefaultedMilli="
+                    + debtDefaultedMilli
+                    + ",debtDefaultedItems="
+                    + debtDefaultedItems
+                    + ",keptGoodsMilli="
+                    + keptGoodsMilli
+                    + ",keptMoneyMilli="
+                    + keptMoneyMilli
+                    + "}"));
       }
     }
   }

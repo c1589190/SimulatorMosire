@@ -156,6 +156,43 @@ public record OperatorCondition(
   }
 
   /**
+   * ★★ <b>只换 {@code lastReason}</b>（E1 的退出处置摘要追加口）：其余字段逐字带过。
+   *
+   * <p>退出处置发生在状态机已把本 unit 置为 {@code EXITED} 之后（{@code EconomySettlement.settleOperatorExits} 里），
+   * 那里只追加"资产退回 / 劳动释放 / 偿债违约 / 留存库存"的事实摘要，不改任何转移判据字段 —— 本方法就是那条"只改理由"的写口。
+   */
+  public OperatorCondition withLastReason(String nextReason) {
+    if (nextReason == null) {
+      throw new IllegalArgumentException("OperatorCondition.lastReason 不得为 null（没有就空串）");
+    }
+    return new OperatorCondition(
+        industry,
+        status,
+        consecutiveUnsoldCycles,
+        consecutiveInputShortfallCycles,
+        cashReserveMilli,
+        debtPrincipalMilli,
+        debtServiceDueMilli,
+        lastCycleRevenueMilli,
+        lastCycleCostMilli,
+        lastCycleNetMilli,
+        unsoldStockMilli,
+        selfUsableStockMilli,
+        consecutiveDebtStressCycles,
+        consecutiveSuspendedCycles,
+        reopens,
+        nextReason,
+        cycleOfferedQty,
+        cycleFilledQty,
+        cycleUnfilledQty,
+        cycleRevenueMilli,
+        cycleOutcompetedActors,
+        cycleOutcompetedQty,
+        cycleMarketRounds,
+        cycleInputShortfallCycles);
+  }
+
+  /**
    * ★★ <b>一轮市场结束后累加周期证据</b>（唯一写口）—— 只增量、不解释；关账日由 {@code OperatorSettlement.advance} 消费并清零。
    *
    * <p>★ <b>为什么用 {@code Math.addExact} 而不是裸加</b>：这些量会跨多个市场轮、跨多个 revision 累加；溢出时必须当场炸， 不能回绕成负数再被

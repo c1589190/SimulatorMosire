@@ -218,3 +218,37 @@ B.4：删除 `HouseholdClassRule` 的 `slotCapFallback/feasibleStratum`，确认
 
 ### 下一步
 E1：旧生产方式衰退 → 经营者/关联家户不同后果；退出时资产份额、劳动配额、库存、债务都有去向；自用可维生不判破产。
+
+---
+
+## E1 衰退 / 退出处置 / 家户后果 —— 已完成
+
+### 实现了什么
+- 新 `EconomicHouseholdResolver`（唯一解析点）：operator 家户 → relation 家户受方 → 份额 owner/operator 反查 → empty；
+  `SettlementIndex` 一次建 `economicHouseholdByUnit/assetShareIdsByUnit`；ESTATE/WORKSHOP/聚合 weave 解析不到家户 ⇒ 不强行借债，但市场/投入压力仍可推进退出。
+- `StressPolicy` 新增 `INPUT_SHORTFALL_CYCLES_BEFORE_CANNOT_REPRODUCE=3`、`UNSOLD_CYCLES_BEFORE_CANNOT_REPRODUCE=3`、`SELF_PROVISION_GUARD_DAYS=30`；
+  `OperatorSettlement.canSelfProvision`：粮库存 ≥ 本周期基本口粮，或 30 天口粮 + 自用投入全覆盖。
+- 状态转移新增：CONTRACTING 自用维生硬门（不进退、reason `self_provision`）；无法再生产→SUSPENDED；INDEBTED 自用恢复→CONTRACTING；
+  SUSPENDED→EXITED 必须“停业够久 **且** !canSelfProvision”。
+- `settleOperatorExits` 固定顺序：释放 `activity==unit id` 的劳动配额（laborSupply 不动）→ TENANCY 份额只改 `operator` 回 owner、OWNED 留 owner →
+  既有债务偿还/defaulted（只对解析出的家户，走 applyTransfer）→ 库存/货币留原账 → `lastReason` 追加处置摘要。
+- `HouseholdCondition` 新增只读 `grainCoveragePerMille`；`livelihoodOf` 仅在无资产、无劳动卖出、无自用覆盖时判 DESTITUTE；
+  `ApiViews.economyHex` 从 actor 账取逐户粮库存输出新字段。
+- **未新增 EconomyData 状态组件**；ChangeSet/Codec 未动；`OperatorCondition` 只加 `withLastReason` helper（形状不变）。
+
+### 受控场景验收（/tmp/E1Probe.java PASS=74/0）
+- A 自用维生：持续滞销+投入不足 8 周期仍止于 CONTRACTING（reason `self_provision`）；家户 TENANT / laborSold=3000 / laborSelf=3000 / unmetGrain=0 / coverage=1000。
+- B 无法再生产→EXITED：配额删 2 条释放 3000；TENANCY 600 回 owner、OWNED 400 保留；债务 500 = 还 200 + 违约 300；123 毫粮留存；
+  人口不变；diff `allocations removed=2, sharesChanged=1, debtsChanged=1, goodsChanged=0, moneyChanged=2`。
+- C 同 owner 两 unit：退出处置不触碰存续 unit 的份额/劳动/债务/货币/状态；重放两次六张表逐值一致。
+- 0→120（8 线程）34.183 s；与 B.4 8 线程 store 全模块/全组件 diff = NONE；Probe3 60/0、Probe5 11/0、Probe2 OK、分类 0 mismatch/0 non-view 写回。
+
+### 与计划的差异 / 剩余阻断
+1. 0→120 只有一个关账周期，8,940 条 condition 全 ACTIVE，**自然退出为 0**；退出路径由受控探针覆盖。
+2. 未新增 `livelihoods` 持久组件（继续读时派生）；家户后果通过 coverage/status/配额/份额读数观察。
+3. `economy.CloseProductionUnit` 显式命令未实现（留作独立小片或 V）。
+4. 未跑全年/受控场景 1vs8（用同状态重放两次替代）/真实 c1 旧档/GOV 租赋；未跑 test/verify。
+
+### 下一步
+E2：GM 注入需求（AddDemand/SetMarketPrice/RegisterCandidate）→ 订单可见 → 合条件家户采用预设形成 TRIALING 新 unit；
+无可行预设则需求未满足；旧经营者默认延续、不自动全局 ROI 切换。

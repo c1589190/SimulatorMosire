@@ -18,6 +18,7 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
@@ -121,6 +122,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -680,13 +682,32 @@ public final class ApiViews {
     String mapId = data.meta().map(meta -> meta.mapId()).orElse(null);
     List<HouseholdId> householdKeys = cohortKeysAt(data, coord);
     Set<HouseholdId> hexHouseholds = new LinkedHashSet<>(householdKeys);
+    // ★ E1：库存粮是 actor 侧的账（economy 状态里没有），这里按家户 actor 现取一份只读映射；
+    //   账缺席的键不填 0（保留"读不到"的哨兵），由 HouseholdCondition 的 grainCoveragePerMille 原样标出。
+    Map<ActorRef, HouseholdId> householdOfActorAtHex = new LinkedHashMap<>();
+    for (HouseholdId key : householdKeys) {
+      householdOfActorAtHex.put(HouseholdActors.of(key), key);
+    }
+    Map<HouseholdId, Long> grainStockByHousehold = new LinkedHashMap<>();
+    for (GoodsAccount account : accountsAt(actors, coord)) {
+      HouseholdId key = householdOfActorAtHex.get(account.key().owner());
+      if (key == null) {
+        continue;
+      }
+      grainStockByHousehold.merge(key, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+    }
     // ★ 索引一次、逐户 O(1)：读口一格里通常 4 行，但分类要扫 UsesRight/配额/租规则，不能每户各扫一遍。
     HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data);
     List<Map<String, Object>> householdConditions = new ArrayList<>();
     List<Map<String, Object>> classifications = new ArrayList<>();
     for (HouseholdId key : householdKeys) {
       ClassRow row = data.classes().get(key);
-      HouseholdCondition condition = HouseholdCondition.derive(data, key, dayLedger);
+      OptionalLong grainStockMilli =
+          grainStockByHousehold.containsKey(key)
+              ? OptionalLong.of(grainStockByHousehold.get(key))
+              : OptionalLong.empty();
+      HouseholdCondition condition =
+          HouseholdCondition.derive(data, key, dayLedger, grainStockMilli);
       HouseholdClassRule.Classification classification = classIndex.classify(key, dayLedger);
       householdConditions.add(householdConditionView(condition, classification.stratum().value()));
       classifications.add(
@@ -1042,8 +1063,16 @@ public final class ApiViews {
     view.put("derivedClass", derivedClass);
     view.put("stressCycles", condition.stressCycles());
     view.put(
+        "grainCoveragePerMille",
+        condition.grainCoveragePerMille().isPresent()
+            ? condition.grainCoveragePerMille().getAsLong()
+            : null);
+    view.put(
+        "grainCoverageNote",
+        "grainCoveragePerMille=库存粮 ÷ cumulativeRationMilli(人口, 本户 cycleDays)，封顶 1000；null=读不到账/算不出分母（不填 0）");
+    view.put(
         "statusNote",
-        "status=派生（AssetShare owner/operator、laborSource、未满足、债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
+        "status=派生（AssetShare owner/operator、laborSource、自用粮覆盖、未满足、债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
     return view;
   }
 
