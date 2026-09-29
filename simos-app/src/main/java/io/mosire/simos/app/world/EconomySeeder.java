@@ -6,20 +6,28 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetRuleId;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.PledgeId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.money.GovernmentActors;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -36,6 +44,7 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -56,6 +65,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -644,7 +654,11 @@ public final class EconomySeeder {
       Map<GovernmentId, Government> governments,
       Map<CurrencyId, Long> genesisEndowment,
       long genesisMoneyMilliPerCapita,
-      FoundationProfile profile) {
+      FoundationProfile profile,
+      List<Map<String, Object>> debtContracts,
+      List<Map<String, Object>> pledges,
+      List<Map<String, Object>> extraMoneyIssuances,
+      TestConditions.Report conditionReport) {
 
     /** ★ 旧 10 参构造（缺 profile ⇒ LEGACY）：保持既有调用点的源兼容与旧 payload 逐字节不变。 */
     public Seed(
@@ -669,7 +683,42 @@ public final class EconomySeeder {
           governments,
           genesisEndowment,
           genesisMoneyMilliPerCapita,
-          FoundationProfile.LEGACY);
+          FoundationProfile.LEGACY,
+          List.of(),
+          List.of(),
+          List.of(),
+          TestConditions.Report.EMPTY);
+    }
+
+    /** ★ P1 的 11 参构造（带 profile、无条件）：P3 起条件表缺省为空 ⇒ 逐值等于 P1。 */
+    public Seed(
+        String mapId,
+        List<Map<String, Object>> entries,
+        Map<HexCoord, Market> markets,
+        Map<HouseholdId, HexCoord> householdLocations,
+        Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+        List<OperatorSeed> operators,
+        Map<GovernmentId, Government> governments,
+        Map<CurrencyId, Long> genesisEndowment,
+        long genesisMoneyMilliPerCapita,
+        FoundationProfile profile) {
+      this(
+          mapId,
+          entries,
+          markets,
+          householdLocations,
+          householdStocks,
+          householdMoney,
+          operators,
+          governments,
+          genesisEndowment,
+          genesisMoneyMilliPerCapita,
+          profile,
+          List.of(),
+          List.of(),
+          List.of(),
+          TestConditions.Report.EMPTY);
     }
 
     /**
@@ -728,11 +777,40 @@ public final class EconomySeeder {
         throw new IllegalArgumentException(
             "Seed.genesisMoneyMilliPerCapita 不得为负: " + genesisMoneyMilliPerCapita);
       }
+      // ★★ P3：条件产物（债务/质押节点 + 外部注入发行记录 + 报告）也冻在赋值处 —— 它们与 actor.Seed 的账本
+      //   是同一次 plan 的同一份事实，被外部改到就会"载荷里的债"与"账上的钱/货"静默漂开。
+      //   ★ 拷贝/包装**写在这里而不是抽助手**：SpotBugs 的 EI_EXPOSE_REP 不做跨过程分析（与上方 entries 同款）。
+      List<Map<String, Object>> debtContractsCopy =
+          new ArrayList<>(debtContracts == null ? List.of() : debtContracts);
+      for (Map<String, Object> node : debtContractsCopy) {
+        if (node == null) {
+          throw new IllegalArgumentException("Seed.debtContracts 的元素不得为 null");
+        }
+      }
+      debtContracts = Collections.unmodifiableList(debtContractsCopy);
+      List<Map<String, Object>> pledgesCopy =
+          new ArrayList<>(pledges == null ? List.of() : pledges);
+      for (Map<String, Object> node : pledgesCopy) {
+        if (node == null) {
+          throw new IllegalArgumentException("Seed.pledges 的元素不得为 null");
+        }
+      }
+      pledges = Collections.unmodifiableList(pledgesCopy);
+      List<Map<String, Object>> extraMoneyIssuancesCopy =
+          new ArrayList<>(extraMoneyIssuances == null ? List.of() : extraMoneyIssuances);
+      for (Map<String, Object> node : extraMoneyIssuancesCopy) {
+        if (node == null) {
+          throw new IllegalArgumentException("Seed.extraMoneyIssuances 的元素不得为 null");
+        }
+      }
+      extraMoneyIssuances = Collections.unmodifiableList(extraMoneyIssuancesCopy);
+      conditionReport = conditionReport == null ? TestConditions.Report.EMPTY : conditionReport;
     }
 
     /**
      * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
-     * markets} 都在顶层）。LEGACY profile 的键集与键序逐字节不变；COMPLETE 追加六个地基键。
+     * markets} 都在顶层）。LEGACY profile 的键集与键序逐字节不变；COMPLETE 追加六个地基键。 ★ P3：无 conditions 时 {@code
+     * debtContracts}/{@code pledges} 仍是空表、也不出现 {@code testConditions} 键 ⇒ 与 P1 逐字节相同。
      */
     public String economyPayload() {
       return jsonOf(
@@ -742,7 +820,11 @@ public final class EconomySeeder {
           governments,
           genesisEndowment,
           genesisMoneyMilliPerCapita,
-          profile);
+          profile,
+          debtContracts,
+          pledges,
+          extraMoneyIssuances,
+          conditionReport);
     }
   }
 
@@ -881,16 +963,20 @@ public final class EconomySeeder {
   /** ★ P1：真地图 + profile（初始禀赋取默认值）；{@link FoundationProfile#LEGACY} 逐值等于旧行为。 */
   public static Seed plan(
       String mapId, List<PopulationGroup> groups, GameMap map, FoundationProfile profile) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile);
+    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile, TestConditions.EMPTY);
   }
 
-  /** ★★ P1：真地图 + 初始禀赋 + profile 的主入口；只有 profile 为 COMPLETE 时追加六个地基键。 */
+  /**
+   * ★★ <b>P3：真地图 + 初始禀赋 + profile + 测试条件</b>。要求条件的家户/份额都在本 seed 的格集内（跨 seed 引用没有对侧）；空条件（{@link
+   * TestConditions#EMPTY}）逐值等于 P1。
+   */
   public static Seed plan(
       String mapId,
       List<PopulationGroup> groups,
       GameMap map,
       long genesisMoneyMilliPerCapita,
-      FoundationProfile profile) {
+      FoundationProfile profile,
+      TestConditions conditions) {
     Map<HexCoord, String> terrain = map.terrainIndex();
     return plan(
         mapId,
@@ -903,7 +989,29 @@ public final class EconomySeeder {
           return key;
         },
         genesisMoneyMilliPerCapita,
-        profile);
+        profile,
+        conditions);
+  }
+
+  /** ★★ P1：真地图 + 初始禀赋 + profile 的主入口；P3 起条件缺省为空（逐值等于 P1）。 */
+  public static Seed plan(
+      String mapId,
+      List<PopulationGroup> groups,
+      GameMap map,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile) {
+    return plan(mapId, groups, map, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
+  }
+
+  /** ★★ P3：真地图 + profile + 测试条件（初始禀赋取默认值）—— 载荷便捷入口。 */
+  public static String payload(
+      String mapId,
+      List<PopulationGroup> groups,
+      GameMap map,
+      FoundationProfile profile,
+      TestConditions conditions) {
+    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile, conditions)
+        .economyPayload();
   }
 
   /**
@@ -957,6 +1065,41 @@ public final class EconomySeeder {
       Map<CurrencyId, Long> genesisEndowment,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile) {
+    return jsonOf(
+        mapId,
+        entries,
+        markets,
+        governments,
+        genesisEndowment,
+        genesisMoneyMilliPerCapita,
+        profile,
+        List.of(),
+        List.of(),
+        List.of(),
+        TestConditions.Report.EMPTY);
+  }
+
+  /**
+   * ★★ <b>P3：带初始条件产物的载荷构造</b>。{@code debtContracts}/{@code pledges} 由 {@link #applyTestConditions}
+   * 在真实转账/拆分成功后给出；{@code extraMoneyIssuances} 是外部注入货币的 {@code FISCAL_ISSUE} 审计节点（**不并入**
+   * INITIAL_ENDOWMENT）；{@code conditionReport} 非空时额外落一个顶层 {@code testConditions} 报告键（可审计"这次 seed
+   * 注入了什么"）。
+   *
+   * <p>★★ <b>无 conditions 的路径逐字节不变</b>：三张条件表为空 + 报告为空 ⇒ 不出现 {@code testConditions} 键， {@code
+   * debtContracts}/{@code pledges} 仍是空数组，与本方法 P1 版本的输出逐字节相同。
+   */
+  static String jsonOf(
+      String mapId,
+      List<Map<String, Object>> entries,
+      Map<HexCoord, Market> markets,
+      Map<GovernmentId, Government> governments,
+      Map<CurrencyId, Long> genesisEndowment,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile,
+      List<Map<String, Object>> debtContracts,
+      List<Map<String, Object>> pledges,
+      List<Map<String, Object>> extraMoneyIssuances,
+      TestConditions.Report conditionReport) {
     if (profile == null) {
       throw new IllegalArgumentException("jsonOf 的 profile 不得为 null");
     }
@@ -971,9 +1114,14 @@ public final class EconomySeeder {
     payload.put("markets", marketNodes);
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
     payload.put("governments", governmentNodes(governments));
-    payload.put(
-        "moneyIssuances",
-        issuanceNodes(mapId, entries, genesisEndowment, genesisMoneyMilliPerCapita));
+    List<Map<String, Object>> issuances =
+        new ArrayList<>(
+            issuanceNodes(mapId, entries, genesisEndowment, genesisMoneyMilliPerCapita));
+    // ★★ P3：外部注入的货币走独立的 FISCAL_ISSUE 记录 —— 绝不并进 INITIAL_ENDOWMENT 的总量（见 TestConditions）。
+    if (extraMoneyIssuances != null) {
+      issuances.addAll(extraMoneyIssuances);
+    }
+    payload.put("moneyIssuances", issuances);
     if (profile == FoundationProfile.COMPLETE) {
       // ★★ P1：完整经济地基（E1 + E2 的规则表）。classStandings 按 entries 里每行的
       //   ClassRow.view.stratum（slot）映射到默认结构的 7 个位置；原始/当前 = 同一位置。
@@ -984,11 +1132,14 @@ public final class EconomySeeder {
       payload.put("assetRules", foundationAssetRuleNodes());
       payload.put("liquidationPolicies", foundationLiquidationPolicyNodes());
     }
-    // ★★ E4c：新键的空语义 —— 本 seeder 仍不种初始债务/质押（发空表 = 世界从零债开始，合法）。
-    //   载荷层已放开非空；若将来要种初始债，**必须**先在本 seeder / actor.Seed 协调器里给 debtor/creditor
-    //   备好对应的真实库存/货币/权利（economy 不会替 actor 搬账），否则就是凭空种出无对价的债权名册。
-    payload.put("debtContracts", List.of());
-    payload.put("pledges", List.of());
+    // ★★ E4c/P3：新键的空语义 —— 无条件时发空表（世界从零债开始，合法）；有条件时**只发真实对价已备好的**
+    //   债务/质押（见 applyTestConditions：债权人库存/货币真扣、资产份额真拆、质押真 OWNED 份额）。
+    payload.put("debtContracts", debtContracts == null ? List.of() : debtContracts);
+    payload.put("pledges", pledges == null ? List.of() : pledges);
+    if (conditionReport != null && !conditionReport.isEmpty()) {
+      // ★ 条件应用的可读报告（条数 + 外部注入总量 + 具名 reason）：随载荷走，读口/审计可核。
+      payload.put("testConditions", conditionReport.toWireMap());
+    }
     return ToolSupport.json(payload);
   }
 
@@ -1296,12 +1447,26 @@ public final class EconomySeeder {
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile) {
+    return plan(
+        mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
+  }
+
+  /** ★★ P3：纯函数主入口 + 初始禀赋 + profile + 测试条件（空条件逐值等于 P1）。 */
+  static Seed plan(
+      String mapId,
+      List<PopulationGroup> groups,
+      Function<HexCoord, String> terrainOf,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile,
+      TestConditions conditions) {
     if (genesisMoneyMilliPerCapita < 0L) {
       throw new IllegalArgumentException("初始禀赋（毫/人）不得为负: " + genesisMoneyMilliPerCapita);
     }
     if (profile == null) {
       throw new IllegalArgumentException("profile 不得为 null");
     }
+    // ★ P3：缺省/空 conditions = P1 路径（不新增任何键、不碰任何账）。
+    conditions = conditions == null ? TestConditions.EMPTY : conditions;
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
     for (PopulationGroup group : groups) {
@@ -1523,7 +1688,11 @@ public final class EconomySeeder {
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
     requireMembershipConservation(groups, allMemberships);
     Map<GovernmentId, Government> governments = Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
+    // ★★ P3：INITIAL_ENDOWMENT 的总量取**条件注入之前**的家户+经营者钱包 —— 外部注入的货币走独立
+    //   FISCAL_ISSUE 审计（见 applyTestConditions），绝不混进"每人禀赋"这条记录。
     Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
+    AppliedConditions applied =
+        applyTestConditions(mapId, entries, householdStocks, householdMoney, profile, conditions);
     return new Seed(
         mapId,
         entries,
@@ -1535,7 +1704,11 @@ public final class EconomySeeder {
         governments,
         genesisEndowment,
         genesisMoneyMilliPerCapita,
-        profile);
+        profile,
+        applied.debtContracts(),
+        applied.pledges(),
+        applied.extraMoneyIssuances(),
+        applied.report());
   }
 
   /**
@@ -3038,5 +3211,623 @@ public final class EconomySeeder {
     }
     return ProportionalSplit.byDenominator(
         total, weights, denominator < 0L ? weightSum : denominator);
+  }
+
+  // ── P3：测试条件的应用（真实对价 / 守恒 / 审计）─────────────────────────────────────────
+
+  /** 条件应用产物（不可变；无 conditions 时 = {@link #empty()}）。 */
+  private record AppliedConditions(
+      List<Map<String, Object>> debtContracts,
+      List<Map<String, Object>> pledges,
+      List<Map<String, Object>> extraMoneyIssuances,
+      TestConditions.Report report) {
+
+    static AppliedConditions empty() {
+      return new AppliedConditions(List.of(), List.of(), List.of(), TestConditions.Report.EMPTY);
+    }
+  }
+
+  /**
+   * ★★ <b>P3：把测试条件应用到已建好的家户账 / 资产份额 / 经营者表上</b> —— <b>每一条都有真实对价</b>：
+   *
+   * <ol>
+   *   <li>{@code extraGoods}/{@code extraMoney}：直接加到家户开缸库存/钱包，但这是**具名的外部注入** （{@code
+   *       test-condition:external-endowment}）⇒ 货币注入同时发一条 {@code FISCAL_ISSUE} {@code
+   *       MoneyIssuanceRecord}，<b>不并进</b> INITIAL_ENDOWMENT；
+   *   <li>{@code InitialDebt}：真实从债权人库存/货币扣、加给债务人；不足 ⇒ 具名拒绝（不改 {@code moveInventory=false}）； {@code
+   *       moveInventory=false} 只能消耗本批外部注入的**未承诺余量**（同一份注入不许被两条债重复当对价）；
+   *   <li>{@code AssetSplit}：源 {@code OWNED} 份额减、同 industry/asset 的新 {@code OWNED}
+   *       份额（owner=operator=目标家户）加， 逐 {@code (industry, asset)} 总量守恒（出口复核，不等即抛）；
+   *   <li>{@code InitialPledge}：只引用本批真实合同与真实 {@code OWNED} 份额，校验 owner=债务人、Σ活跃质押 ≤ 份额数量、 {@code
+   *       modeId} 已被本 profile 种下。
+   * </ol>
+   *
+   * <p>★ 条件里的每一个家户都必须在<b>本次 seed 的格集</b>里（跨 seed 引用没有对侧，具名拒绝）。
+   */
+  private static AppliedConditions applyTestConditions(
+      String mapId,
+      List<Map<String, Object>> entries,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      FoundationProfile profile,
+      TestConditions conditions) {
+    if (conditions == null || conditions.isEmpty()) {
+      return AppliedConditions.empty();
+    }
+    // ── ① 外部注入（具名；货币另发 FISCAL_ISSUE 审计）──────────────────────────────────────
+    Map<CommodityId, Long> injectedGoodsTotal = new LinkedHashMap<>();
+    Map<CurrencyId, Long> injectedMoneyTotal = new LinkedHashMap<>();
+    // ★ "未承诺的注入余量"：moveInventory=false 的债只能消耗这份余量（逐条扣减 ⇒ 不重复计价）。
+    Map<HouseholdId, Map<String, Long>> uncommittedInjection = new LinkedHashMap<>();
+    List<Map<String, Object>> extraIssuances = new ArrayList<>();
+    int issuanceIndex = 0;
+    for (Map.Entry<HouseholdId, Map<CommodityId, Long>> byHousehold :
+        conditions.extraGoodsByHousehold().entrySet()) {
+      HouseholdId household = byHousehold.getKey();
+      requireSeededHousehold(household, householdStocks, householdMoney, "extraGoodsByHousehold");
+      Map<CommodityId, Long> stock = householdStocks.get(household);
+      for (Map.Entry<CommodityId, Long> amount : byHousehold.getValue().entrySet()) {
+        stock.merge(amount.getKey(), amount.getValue(), Math::addExact);
+        injectedGoodsTotal.merge(amount.getKey(), amount.getValue(), Math::addExact);
+        injectionCoverage(uncommittedInjection, household)
+            .merge(DebtUnit.commodity(amount.getKey()).key(), amount.getValue(), Math::addExact);
+      }
+    }
+    for (Map.Entry<HouseholdId, Map<CurrencyId, Long>> byHousehold :
+        conditions.extraMoneyByHousehold().entrySet()) {
+      HouseholdId household = byHousehold.getKey();
+      requireSeededHousehold(household, householdStocks, householdMoney, "extraMoneyByHousehold");
+      Map<CurrencyId, Long> wallet = householdMoney.get(household);
+      for (Map.Entry<CurrencyId, Long> amount : byHousehold.getValue().entrySet()) {
+        wallet.merge(amount.getKey(), amount.getValue(), Math::addExact);
+        injectedMoneyTotal.merge(amount.getKey(), amount.getValue(), Math::addExact);
+        injectionCoverage(uncommittedInjection, household)
+            .merge(DebtUnit.money(amount.getKey()).key(), amount.getValue(), Math::addExact);
+        extraIssuances.add(
+            externalIssuanceNode(
+                mapId, entries, household, amount.getKey(), amount.getValue(), issuanceIndex++));
+      }
+    }
+    // ── ② 初始债务（真实转账 / 真实外部对价）──────────────────────────────────────────────
+    List<Map<String, Object>> debtNodes = new ArrayList<>();
+    Map<DebtContractId, TestConditions.InitialDebt> debtsById = new LinkedHashMap<>();
+    Set<DebtContractId> seenContracts = new LinkedHashSet<>();
+    for (int i = 0; i < conditions.initialDebts().size(); i++) {
+      TestConditions.InitialDebt debt = conditions.initialDebts().get(i);
+      String where = "initialDebts[" + i + "]";
+      requireSeededHousehold(debt.debtor(), householdStocks, householdMoney, where + ".debtor");
+      requireSeededHousehold(debt.creditor(), householdStocks, householdMoney, where + ".creditor");
+      if (debt.debtor().equals(debt.creditor())) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 的债务人 == 债权人（自己欠自己不是债）: " + debt.debtor());
+      }
+      DebtContractId id =
+          DebtContractId.idOf(debt.debtor(), debt.creditor(), debt.unit(), debt.terms());
+      if (!seenContracts.add(id)) {
+        throw new IllegalArgumentException(
+            "test-condition: 同 (debtor, creditor, unit, terms) 在条件里出现多次 ⇒ 合同 id 重复，"
+                + "不许静默合并或覆盖: "
+                + id);
+      }
+      debtsById.put(id, debt);
+      if (debt.moveInventory()) {
+        transferForInitialDebt(debt, householdStocks, householdMoney);
+      } else {
+        consumeInjectedConsideration(debt, uncommittedInjection, where);
+      }
+      debtNodes.add(debtContractNode(id, debt));
+    }
+    // ── ③ 资产份额：先按 EconomyPayloads 的确定性序列口径给每条既有份额算出 id，再应用拆分 ──────
+    Map<AssetShareId, ShareHandle> shares = new LinkedHashMap<>();
+    Map<String, Long> sequences = new LinkedHashMap<>();
+    Map<String, Long> conservedBefore = new LinkedHashMap<>();
+    for (int entryIndex = 0; entryIndex < entries.size(); entryIndex++) {
+      for (Map<String, Object> node : assetSharesList(entries.get(entryIndex), entryIndex)) {
+        ShareHandle handle = parseShareHandle(node, entryIndex);
+        String sequenceKey = sequenceKeyOf(handle);
+        long sequence = sequences.getOrDefault(sequenceKey, 0L);
+        sequences.put(sequenceKey, sequence + 1L);
+        AssetShareId id =
+            AssetShare.idOf(
+                handle.industry(),
+                handle.asset(),
+                handle.owner(),
+                handle.operator(),
+                handle.kind(),
+                sequence);
+        if (shares.putIfAbsent(id, handle) != null) {
+          throw new IllegalStateException("资产份额确定性 id 冲突（plan 内部构造错误）: " + id);
+        }
+        conservedBefore.merge(assetTotalsKey(handle), handle.quantity(), Math::addExact);
+      }
+    }
+    int splitShareCount = 0;
+    for (int i = 0; i < conditions.assetSplits().size(); i++) {
+      TestConditions.AssetSplit split = conditions.assetSplits().get(i);
+      String where = "assetSplits[" + i + "]";
+      requireSeededHousehold(
+          split.targetHousehold(), householdStocks, householdMoney, where + ".targetHousehold");
+      ShareHandle source = resolveSourceShare(split, shares, where);
+      if (source.kind() != AssetShare.RightKind.OWNED) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 的源份额必须是 OWNED（拆分只拆自有份额）: id 对应 " + source.kind());
+      }
+      long available = source.quantity();
+      if (available < split.quantity()) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 的源份额数量不足：现有=" + available + "，需要=" + split.quantity());
+      }
+      source.node().put("quantity", available - split.quantity());
+      ActorRef target = HouseholdActors.of(split.targetHousehold());
+      String sequenceKey =
+          source.industry()
+              + "|"
+              + source.asset()
+              + "|"
+              + target
+              + "|"
+              + target
+              + "|"
+              + AssetShare.RightKind.OWNED;
+      long sequence = sequences.getOrDefault(sequenceKey, 0L);
+      sequences.put(sequenceKey, sequence + 1L);
+      AssetShareId newId =
+          AssetShare.idOf(
+              source.industry(),
+              source.asset(),
+              target,
+              target,
+              AssetShare.RightKind.OWNED,
+              sequence);
+      Map<String, Object> newNode =
+          assetShareNode(
+              source.industry().value(),
+              source.asset().name(),
+              target,
+              target,
+              AssetShare.RightKind.OWNED,
+              split.quantity());
+      assetSharesList(entries.get(source.entryIndex()), source.entryIndex()).add(newNode);
+      if (shares.putIfAbsent(
+              newId,
+              new ShareHandle(
+                  source.entryIndex(),
+                  newNode,
+                  source.industry(),
+                  source.asset(),
+                  target,
+                  target,
+                  AssetShare.RightKind.OWNED))
+          != null) {
+        throw new IllegalStateException("拆分新建份额 id 冲突（plan 内部构造错误）: " + newId);
+      }
+      splitShareCount++;
+    }
+    Map<String, Long> conservedAfter = new LinkedHashMap<>();
+    for (int entryIndex = 0; entryIndex < entries.size(); entryIndex++) {
+      for (Map<String, Object> node : assetSharesList(entries.get(entryIndex), entryIndex)) {
+        ShareHandle handle = parseShareHandle(node, entryIndex);
+        conservedAfter.merge(assetTotalsKey(handle), handle.quantity(), Math::addExact);
+      }
+    }
+    if (!conservedBefore.equals(conservedAfter)) {
+      throw new IllegalStateException(
+          "test-condition: 资产份额拆分违反逐 (industry, asset) 总量守恒：before="
+              + conservedBefore
+              + " after="
+              + conservedAfter);
+    }
+    // ── ④ 初始质押（真实合同 + 真实 OWNED 份额 + 债务人所有权）────────────────────────────
+    List<Map<String, Object>> pledgeNodes = new ArrayList<>();
+    Map<AssetShareId, Long> activePledged = new LinkedHashMap<>();
+    for (int i = 0; i < conditions.initialPledges().size(); i++) {
+      TestConditions.InitialPledge pledge = conditions.initialPledges().get(i);
+      String where = "initialPledges[" + i + "]";
+      TestConditions.InitialDebt backed = debtsById.get(pledge.debtContractId());
+      if (backed == null) {
+        throw new IllegalArgumentException(
+            "test-condition: "
+                + where
+                + " 指名的债务合同不在本批 conditions 内（跨 seed / 凭空引用被拒）: "
+                + pledge.debtContractId());
+      }
+      ShareHandle share = shares.get(pledge.assetShareId());
+      if (share == null) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 指名的资产份额不在本次 seed 的份额表里: " + pledge.assetShareId());
+      }
+      if (share.kind() != AssetShare.RightKind.OWNED) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 的质押份额必须是真实 OWNED 份额（当前 " + share.kind() + "）");
+      }
+      ActorRef debtorActor = HouseholdActors.of(backed.debtor());
+      if (!share.owner().equals(debtorActor)) {
+        throw new IllegalArgumentException(
+            "test-condition: "
+                + where
+                + " 的质押份额 owner 必须 = 债务人的 OWNED 份额：owner="
+                + share.owner()
+                + "，debtor="
+                + debtorActor);
+      }
+      long pledged = activePledged.merge(pledge.assetShareId(), pledge.quantity(), Math::addExact);
+      if (pledged > share.quantity()) {
+        throw new IllegalArgumentException(
+            "test-condition: "
+                + where
+                + " 违反 Σ活跃质押 ≤ 份额数量：份额="
+                + pledge.assetShareId()
+                + " 质押合计="
+                + pledged
+                + "，份额数量="
+                + share.quantity());
+      }
+      if (profile != FoundationProfile.COMPLETE) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 需要 complete profile（legacy 不种 mode/资产规则，质押没有落点）");
+      }
+      ProductionModeId defaultMode = LegacyClassStructure.defaultModeId();
+      if (!pledge.modeId().equals(defaultMode)) {
+        throw new IllegalArgumentException(
+            "test-condition: "
+                + where
+                + " 指名的 mode 不存在（本 profile 只种 "
+                + defaultMode.value()
+                + "）: "
+                + pledge.modeId());
+      }
+      pledgeNodes.add(pledgeNode(pledgeIdFor(i, pledge), pledge));
+    }
+    TestConditions.Report report =
+        new TestConditions.Report(
+            debtNodes.size(),
+            pledgeNodes.size(),
+            splitShareCount,
+            injectedGoodsTotal,
+            injectedMoneyTotal);
+    return new AppliedConditions(
+        Collections.unmodifiableList(debtNodes),
+        Collections.unmodifiableList(pledgeNodes),
+        Collections.unmodifiableList(extraIssuances),
+        report);
+  }
+
+  /** 条件里指名的家户必须在本 seed 的账表里（stocks 与 money 两表同键，由 {@code cohortGroup} 保证）。 */
+  private static void requireSeededHousehold(
+      HouseholdId household,
+      Map<HouseholdId, ?> householdStocks,
+      Map<HouseholdId, ?> householdMoney,
+      String where) {
+    if (household == null
+        || !householdStocks.containsKey(household)
+        || !householdMoney.containsKey(household)) {
+      throw new IllegalArgumentException(
+          "test-condition: " + where + " 指名的家户不在本次 seed 的格集里（跨 seed 引用没有对侧，拒绝）: " + household);
+    }
+  }
+
+  /** 未承诺的注入余量表（按家户惰性建表）。 */
+  private static Map<String, Long> injectionCoverage(
+      Map<HouseholdId, Map<String, Long>> coverage, HouseholdId household) {
+    return coverage.computeIfAbsent(household, ignored -> new LinkedHashMap<>());
+  }
+
+  /** {@code moveInventory=false} 的对价校验：只能消耗本批外部注入的未承诺余量（逐条扣减 ⇒ 同一份注入不被两条债重复计价）。 */
+  private static void consumeInjectedConsideration(
+      TestConditions.InitialDebt debt,
+      Map<HouseholdId, Map<String, Long>> uncommittedInjection,
+      String where) {
+    Map<String, Long> byUnit = injectionCoverage(uncommittedInjection, debt.debtor());
+    String key = debt.unit().key();
+    long available = byUnit.getOrDefault(key, 0L);
+    if (available < debt.principal()) {
+      throw new IllegalArgumentException(
+          "test-condition: "
+              + where
+              + " moveInventory=false，但债务人的外部注入对价不足（不许无对价建条）：家户="
+              + debt.debtor()
+              + "，标的="
+              + key
+              + "，可用注入="
+              + available
+              + "，需要="
+              + debt.principal());
+    }
+    long remaining = available - debt.principal();
+    if (remaining == 0L) {
+      byUnit.remove(key);
+    } else {
+      byUnit.put(key, remaining);
+    }
+  }
+
+  /** 初始债务的真实转账：债权人的对应库存/货币真扣、债务人真加；不足 ⇒ 具名拒绝（不改 {@code moveInventory=false}）。 */
+  private static void transferForInitialDebt(
+      TestConditions.InitialDebt debt,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+    if (debt.unit() instanceof DebtUnit.Commodity commodity) {
+      CommodityId id = commodity.commodity();
+      Map<CommodityId, Long> creditorStock = householdStocks.get(debt.creditor());
+      long have = creditorStock.getOrDefault(id, 0L);
+      if (have < debt.principal()) {
+        throw new IllegalArgumentException(
+            "test-condition: 债权人库存不足，拒绝生成无对价的初始债务：creditor="
+                + debt.creditor()
+                + "，商品="
+                + id.value()
+                + "，现有="
+                + have
+                + "，需要="
+                + debt.principal());
+      }
+      putOrRemove(creditorStock, id, have - debt.principal());
+      householdStocks.get(debt.debtor()).merge(id, debt.principal(), Math::addExact);
+      return;
+    }
+    if (debt.unit() instanceof DebtUnit.Money money) {
+      CurrencyId currency = money.currency();
+      Map<CurrencyId, Long> creditorWallet = householdMoney.get(debt.creditor());
+      long have = creditorWallet.getOrDefault(currency, 0L);
+      if (have < debt.principal()) {
+        throw new IllegalArgumentException(
+            "test-condition: 债权人货币不足，拒绝生成无对价的初始债务：creditor="
+                + debt.creditor()
+                + "，币种="
+                + currency.value()
+                + "，现有="
+                + have
+                + "，需要="
+                + debt.principal());
+      }
+      putOrRemove(creditorWallet, currency, have - debt.principal());
+      householdMoney.get(debt.debtor()).merge(currency, debt.principal(), Math::addExact);
+      return;
+    }
+    throw new IllegalStateException("未知 DebtUnit 变体: " + debt.unit());
+  }
+
+  /** 余额 0 ⇒ 删键（与"只落正的量"的纯形态一致），否则写回。 */
+  private static <K> void putOrRemove(Map<K, Long> map, K key, long amount) {
+    if (amount == 0L) {
+      map.remove(key);
+    } else {
+      map.put(key, amount);
+    }
+  }
+
+  /** 一条初始债务的 {@code debtContracts[]} 载荷节点（id 由四元组派生、openedDay=0、从未计息、NORMAL）。 */
+  private static Map<String, Object> debtContractNode(
+      DebtContractId id, TestConditions.InitialDebt debt) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", id.value());
+    node.put("debtor", debt.debtor().value());
+    node.put("creditor", debt.creditor().value());
+    Map<String, Object> unit = new LinkedHashMap<>();
+    if (debt.unit() instanceof DebtUnit.Commodity commodity) {
+      unit.put("kind", "commodity");
+      unit.put("commodity", commodity.commodity().value());
+    } else if (debt.unit() instanceof DebtUnit.Money money) {
+      unit.put("kind", "money");
+      unit.put("currency", money.currency().value());
+    } else {
+      throw new IllegalStateException("未知 DebtUnit 变体: " + debt.unit());
+    }
+    node.put("unit", unit);
+    DebtTerms terms = debt.terms();
+    Map<String, Object> termsNode = new LinkedHashMap<>();
+    termsNode.put("interestRatePerMillePerCycle", terms.interestRatePerMillePerCycle());
+    termsNode.put("interestTiming", terms.interestTiming().name());
+    termsNode.put("repaymentRule", terms.repaymentRule().name());
+    termsNode.put("monetaryConversion", terms.monetaryConversion().name());
+    termsNode.put("defaultRemedy", terms.defaultRemedy().name());
+    if (terms.dueCycle().isPresent()) {
+      termsNode.put("dueCycle", terms.dueCycle().getAsLong());
+    }
+    if (terms.dueDay().isPresent()) {
+      termsNode.put("dueDay", terms.dueDay().getAsLong());
+    }
+    node.put("terms", termsNode);
+    node.put("principal", debt.principal());
+    node.put("openedDay", 0L);
+    // 尚未计息/无约定到期周期：显式 null（载荷解析口径：缺席/null ⇒ 空）。
+    node.put("lastInterestDay", null);
+    node.put("dueCycle", debt.dueCycle().isPresent() ? debt.dueCycle().getAsLong() : null);
+    node.put("status", DebtStatus.NORMAL.name());
+    return node;
+  }
+
+  /**
+   * 外部注入货币的审计节点：{@link MoneyIssuanceKind#FISCAL_ISSUE}，reason 含 {@link
+   * TestConditions#EXTERNAL_ENDOWMENT_REASON}，<b>绝不并进</b> INITIAL_ENDOWMENT。
+   */
+  private static Map<String, Object> externalIssuanceNode(
+      String mapId,
+      List<Map<String, Object>> entries,
+      HouseholdId household,
+      CurrencyId currency,
+      long amount,
+      int index) {
+    String id =
+        "testcondition-" + mapId + "-" + seedAnchor(entries) + "-" + index + "-" + currency.value();
+    if (id.indexOf('|') >= 0) {
+      throw new IllegalArgumentException(
+          "test-condition: 外部注入的 MoneyIssuanceId 含 '|'（请改 mapId/币种）: " + id);
+    }
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", id);
+    node.put("governmentId", GENESIS_GOVERNMENT_ID.value());
+    node.put("day", 0L);
+    node.put("period", FIRST_PERIOD);
+    node.put("currency", currency.value());
+    node.put("amount", amount);
+    node.put("kind", MoneyIssuanceKind.FISCAL_ISSUE.name());
+    node.put(
+        "reason",
+        TestConditions.EXTERNAL_ENDOWMENT_REASON
+            + "（测试外部注入，不计入 INITIAL_ENDOWMENT）：家户="
+            + household.value()
+            + "，金额="
+            + amount
+            + " 毫最小币值");
+    return node;
+  }
+
+  /** 一条 {@code pledges[]} 载荷节点（状态恒 ACTIVE；id 由条件序号 + 合同 + 份额确定性派生）。 */
+  private static Map<String, Object> pledgeNode(PledgeId id, TestConditions.InitialPledge pledge) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", id.value());
+    node.put("debtContractId", pledge.debtContractId().value());
+    node.put("assetShareId", pledge.assetShareId().value());
+    node.put("quantity", pledge.quantity());
+    node.put("modeId", pledge.modeId().value());
+    node.put("priority", pledge.priority());
+    node.put("status", Pledge.Status.ACTIVE.name());
+    return node;
+  }
+
+  /** 质押 id：确定性 + 不含 {@code '.'}（地址截断）/{@code '|'}（分段符）。 */
+  private static PledgeId pledgeIdFor(int index, TestConditions.InitialPledge pledge) {
+    String value =
+        "testcondition-pledge-"
+            + index
+            + "-"
+            + pledge.debtContractId().value()
+            + "-"
+            + pledge.assetShareId().value();
+    if (value.indexOf('.') >= 0 || value.indexOf('|') >= 0) {
+      throw new IllegalArgumentException(
+          "test-condition: 生成的 PledgeId 含 '.' 或 '|'（地址/分段冲突），请改用其它家户或份额: " + value);
+    }
+    return new PledgeId(value);
+  }
+
+  /** 一条既有资产份额节点的内存视图（node 可变：拆分只改它的 quantity）。 */
+  private record ShareHandle(
+      int entryIndex,
+      Map<String, Object> node,
+      IndustryId industry,
+      AssetKind asset,
+      ActorRef owner,
+      ActorRef operator,
+      AssetShare.RightKind kind) {
+
+    long quantity() {
+      return ((Number) node.get("quantity")).longValue();
+    }
+  }
+
+  /**
+   * ★★ <b>与经济载荷解析器逐字同式的确定性 id 口径</b>：序列键 = {@code industry|asset|owner|operator|kind} （{@code
+   * EconomyPayloads.addAssetShare} 的 {@code sequenceKey}），序号 = 该键在<b>整份载荷</b>里出现的第几条（从 0 起）。
+   * 本类先在拆分前对全部既有份额算一遍，拆分新建的份额再按同一张计数器往后发 —— 于是本类算出的 id 与 economy 侧解析出的 id <b>逐值相同</b>（拆分创建的目标份额因此可被
+   * {@code InitialPledge.assetShareId} 直接引用）。
+   */
+  private static String sequenceKeyOf(ShareHandle handle) {
+    return handle.industry()
+        + "|"
+        + handle.asset()
+        + "|"
+        + handle.owner()
+        + "|"
+        + handle.operator()
+        + "|"
+        + handle.kind();
+  }
+
+  /** 守恒复核对账键：逐 {@code (industry, asset)}。 */
+  private static String assetTotalsKey(ShareHandle handle) {
+    return handle.industry().value() + "|" + handle.asset().name();
+  }
+
+  /** entry 的资产份额列表（plan 内部构造保证存在）。 */
+  @SuppressWarnings("unchecked")
+  private static List<Map<String, Object>> assetSharesList(
+      Map<String, Object> entry, int entryIndex) {
+    Object value = entry.get("assetShares");
+    if (!(value instanceof List<?>)) {
+      throw new IllegalStateException("entry[" + entryIndex + "] 缺 assetShares 列表（plan 内部构造错误）");
+    }
+    return (List<Map<String, Object>>) value;
+  }
+
+  private static ShareHandle parseShareHandle(Map<String, Object> node, int entryIndex) {
+    Object industryNode = node.get("industry");
+    Object assetNode = node.get("asset");
+    Object kindNode = node.get("kind");
+    Object ownerNode = node.get("owner");
+    Object operatorNode = node.get("operator");
+    Object quantityNode = node.get("quantity");
+    if (!(industryNode instanceof String industry)
+        || !(assetNode instanceof String asset)
+        || !(kindNode instanceof String kind)
+        || !(ownerNode instanceof Map<?, ?> owner)
+        || !(operatorNode instanceof Map<?, ?> operator)
+        || !(quantityNode instanceof Number)) {
+      throw new IllegalStateException("资产份额节点形状非法（plan 内部构造错误）: " + node);
+    }
+    return new ShareHandle(
+        entryIndex,
+        node,
+        IndustryId.parse(industry),
+        AssetKind.valueOf(asset),
+        parseActorNode(owner),
+        parseActorNode(operator),
+        AssetShare.RightKind.valueOf(kind));
+  }
+
+  private static ActorRef parseActorNode(Map<?, ?> node) {
+    Object kind = node.get("kind");
+    Object id = node.get("id");
+    if (!(kind instanceof String kindText) || !(id instanceof String idText)) {
+      throw new IllegalStateException("actor 节点形状非法（plan 内部构造错误）: " + node);
+    }
+    return ActorRef.parse(kindText, idText);
+  }
+
+  /** 拆分源解析：具体 id ⇒ 直查；查询 ⇒ 必须唯一命中一条 OWNED 份额（有歧义则具名拒绝）。 */
+  private static ShareHandle resolveSourceShare(
+      TestConditions.AssetSplit split, Map<AssetShareId, ShareHandle> shares, String where) {
+    if (split.sourceAssetShareId().isPresent()) {
+      AssetShareId id = split.sourceAssetShareId().get();
+      ShareHandle handle = shares.get(id);
+      if (handle == null) {
+        throw new IllegalArgumentException(
+            "test-condition: " + where + " 找不到 sourceAssetShareId（不在本次 seed 的份额表里）: " + id);
+      }
+      return handle;
+    }
+    IndustryId industry = split.industry().orElseThrow();
+    AssetKind asset = split.asset().orElseThrow();
+    ActorRef sourceOwner = split.sourceOwner().orElseThrow();
+    List<ShareHandle> matches = new ArrayList<>();
+    for (ShareHandle handle : shares.values()) {
+      if (handle.kind() == AssetShare.RightKind.OWNED
+          && handle.industry().equals(industry)
+          && handle.asset() == asset
+          && handle.owner().equals(sourceOwner)) {
+        matches.add(handle);
+      }
+    }
+    if (matches.isEmpty()) {
+      throw new IllegalArgumentException(
+          "test-condition: "
+              + where
+              + " 查询不到匹配的 OWNED 源份额：industry="
+              + industry
+              + "，asset="
+              + asset
+              + "，sourceOwner="
+              + sourceOwner);
+    }
+    if (matches.size() > 1) {
+      throw new IllegalArgumentException(
+          "test-condition: "
+              + where
+              + " 的查询命中 "
+              + matches.size()
+              + " 条 OWNED 源份额（有歧义）⇒ 请改用 sourceAssetShareId");
+    }
+    return matches.get(0);
   }
 }

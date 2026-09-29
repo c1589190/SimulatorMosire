@@ -19,6 +19,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.HouseholdSeeder;
 import io.mosire.simos.app.world.PopulationSeeder;
+import io.mosire.simos.app.world.TestConditions;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -277,6 +278,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
         + " economyProfile?(legacy|complete，缺省 legacy),"
+        + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/质押/资产拆分/外部库存货币注入),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
         + ")}。"
@@ -307,6 +309,13 @@ public final class WorldgenInitializeTool implements AgentTool {
         "economyProfile",
         ToolSupport.prop(
             "string", "经济地基 profile：legacy（缺省，旧 payload 逐字节不变）或 complete（种完整 E1/E2 地基）"));
+    props.put(
+        "economyTestConditions",
+        ToolSupport.prop(
+            "string",
+            "P3 测试条件 JSON（缺省 null=无条件）：initialDebts/initialPledges/assetSplits/"
+                + "extraGoodsByHousehold/extraMoneyByHousehold；每条条件都在播种期有真实对价/守恒校验，"
+                + "非法条件 BAD_REQUEST 具名拒绝"));
     props.put(
         "cityLimit", ToolSupport.prop("integer", "返回的城市表最多列几行（缺省 " + DEFAULT_CITY_LIMIT + "）"));
     return ToolSupport.schema(props, List.of("nation"));
@@ -367,6 +376,10 @@ public final class WorldgenInitializeTool implements AgentTool {
       EconomySeeder.FoundationProfile economyProfile =
           EconomySeeder.FoundationProfile.parse(
               ToolSupport.optionalText(args, "economyProfile", "legacy"));
+      // ★★ P3：测试条件（JSON 文本；缺省 null = 无条件）。解析失败 ⇒ BAD_REQUEST（具名原因，不静默忽略）。
+      String conditionsText = ToolSupport.optionalText(args, "economyTestConditions", null);
+      TestConditions conditions =
+          conditionsText == null ? TestConditions.EMPTY : TestConditions.parseJson(conditionsText);
       int cityLimit = limitArg == null ? DEFAULT_CITY_LIMIT : (int) Math.min(limitArg, 1_000_000L);
 
       // 世界状态：**没 head 就没有世界**（dryRun 也一样要读地图拿区域格集）。
@@ -395,6 +408,13 @@ public final class WorldgenInitializeTool implements AgentTool {
         summary.put(
             "army", armySummary(region.id().value(), setup.displayName(), setup.army(), armyAt));
       }
+      // ★★ P3：有测试条件时在摘要里回一份"请求了什么"（dryRun ⇒ applied=false；committed ⇒ applied=true）。
+      //   无 conditions 时**不出现**该键 ⇒ 旧摘要逐键不变。
+      if (!conditions.isEmpty()) {
+        Map<String, Object> conditionsSummary = new LinkedHashMap<>(conditions.wireSummary());
+        conditionsSummary.put("applied", !dryRun);
+        summary.put("testConditions", conditionsSummary);
+      }
       if (dryRun) {
         return ToolSupport.ok(summary);
       }
@@ -419,7 +439,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                   armyAt,
                   anchorTick,
                   genesisMoneyMilliPerCapita,
-                  economyProfile)
+                  economyProfile,
+                  conditions)
               : buildBatch(
                   batchId,
                   initiator,
@@ -432,7 +453,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                   seed,
                   anchorTick,
                   genesisMoneyMilliPerCapita,
-                  economyProfile);
+                  economyProfile,
+                  conditions);
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
         summary.put("revision", committed.ref().revision().value());
@@ -595,7 +617,7 @@ public final class WorldgenInitializeTool implements AgentTool {
   /**
    * ★★ P1：人口+城市+经济+家户 actor 批的完整入口 —— 额外把经济地基 profile 透传给 {@link EconomySeeder#plan(String, List,
    * GameMap, long, EconomySeeder.FoundationProfile)}。 {@code economy.Seed} 与 {@code actor.Seed}
-   * 仍读同一次 plan（同源接缝不走样）。
+   * 仍读同一次 plan（同源接缝不走样）。★ P3 起条件缺省为空（逐值等于 P1）。
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -610,6 +632,40 @@ public final class WorldgenInitializeTool implements AgentTool {
       long anchorTick,
       long genesisMoneyMilliPerCapita,
       EconomySeeder.FoundationProfile economyProfile) {
+    return buildBatch(
+        batchId,
+        initiator,
+        mapId,
+        branch,
+        expectedRevision,
+        map,
+        region,
+        plan,
+        seed,
+        anchorTick,
+        genesisMoneyMilliPerCapita,
+        economyProfile,
+        TestConditions.EMPTY);
+  }
+
+  /**
+   * ★★ <b>P3：人口+城市+经济+家户 actor 批 + 测试条件</b> —— 条件只透传给<b>同一次</b> {@link EconomySeeder#plan}（于是
+   * {@code economy.Seed} 的债/质押/份额与 {@code actor.Seed} 的库存/货币是同一次 plan 的同一份事实；无条件的旁路逐值等于 P1）。
+   */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      String mapId,
+      BranchId branch,
+      RevisionId expectedRevision,
+      GameMap map,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      long anchorTick,
+      long genesisMoneyMilliPerCapita,
+      EconomySeeder.FoundationProfile economyProfile,
+      TestConditions conditions) {
     List<CommandEnvelope> batch = new ArrayList<>(4 + plan.cities().size());
     batch.add(
         envelope(
@@ -643,7 +699,8 @@ public final class WorldgenInitializeTool implements AgentTool {
     //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
     //   （本仓明令禁止的"同一事实两处拼写点"）。
     EconomySeeder.Seed seeding =
-        EconomySeeder.plan(mapId, groups, map, genesisMoneyMilliPerCapita, economyProfile);
+        EconomySeeder.plan(
+            mapId, groups, map, genesisMoneyMilliPerCapita, economyProfile, conditions);
     batch.add(
         envelope(
             batchId,
@@ -747,7 +804,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         EconomySeeder.FoundationProfile.LEGACY);
   }
 
-  /** ★★ P1：军队批 + 初始禀赋 + 经济地基 profile（与无军队那支共用同一个透传点）。 */
+  /** ★★ P1：军队批 + 初始禀赋 + 经济地基 profile（与无军队那支共用同一个透传点）。P3 起条件缺省为空。 */
   static List<CommandEnvelope> buildBatch(
       String batchId,
       String initiator,
@@ -764,6 +821,43 @@ public final class WorldgenInitializeTool implements AgentTool {
       long anchorTick,
       long genesisMoneyMilliPerCapita,
       EconomySeeder.FoundationProfile economyProfile) {
+    return buildBatch(
+        batchId,
+        initiator,
+        mapId,
+        branch,
+        expectedRevision,
+        map,
+        region,
+        plan,
+        seed,
+        army,
+        displayName,
+        at,
+        anchorTick,
+        genesisMoneyMilliPerCapita,
+        economyProfile,
+        TestConditions.EMPTY);
+  }
+
+  /** ★★ P3：军队批 + 初始禀赋 + profile + 测试条件（条件透传到同一次 {@code EconomySeeder.plan}）。 */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      String mapId,
+      BranchId branch,
+      RevisionId expectedRevision,
+      GameMap map,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      ArmyPlan army,
+      String displayName,
+      HexCoord at,
+      long anchorTick,
+      long genesisMoneyMilliPerCapita,
+      EconomySeeder.FoundationProfile economyProfile,
+      TestConditions conditions) {
     List<CommandEnvelope> batch =
         new ArrayList<>(
             buildBatch(
@@ -778,7 +872,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                 seed,
                 anchorTick,
                 genesisMoneyMilliPerCapita,
-                economyProfile));
+                economyProfile,
+                conditions));
     appendArmyCommands(
         batch, batchId, initiator, branch, expectedRevision, region, army, displayName, at);
     return List.copyOf(batch);
