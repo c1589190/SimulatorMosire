@@ -191,6 +191,19 @@ final class BufferedAccountTables {
     private final Function<K, AccountPartitionKey> resolver;
     private final Object axis;
 
+    /**
+     * ★★ 每个账户只持有一个 {@link InnerView}（键序 = 首次触达序，确定性）。
+     *
+     * <p>★★ <b>为什么必须缓存</b>：{@code InnerView.touched} 记录"本 worker 在这个账户上首次触达的键"——若每次 {@code
+     * get}/{@code put}/{@code entrySet} 都 new 一个新视图，那么"先写一个快照里尚不存在的键（例如第一次收获的 fiber） →
+     * 下一次读同一账户"会在新视图的 {@code entrySet} 里看不到那个键（它既不在快照、也不在这个新实例的 touched）， 于是本地读一致性承诺 （{@code
+     * AccountIntentBuffer} 的类注）被违反：借记会被算成 0、不会产出。
+     *
+     * <p>★ 本视图只服务分区 worker 的单线程（见 {@link BufferedAccountTables} 类注），故这里按现有约定使用 LinkedHashMap，不引入
+     * ConcurrentHashMap（后者会破坏迭代序的确定性）。
+     */
+    private final Map<AccountPartitionKey, InnerView<V>> innerViews = new LinkedHashMap<>();
+
     private OuterView(Set<K> indexKeys, Function<K, AccountPartitionKey> resolver, Object axis) {
       this.indexKeys = Objects.requireNonNull(indexKeys, "indexKeys");
       this.resolver = Objects.requireNonNull(resolver, "resolver");
@@ -200,7 +213,7 @@ final class BufferedAccountTables {
     @Override
     public Map<V, Long> get(Object key) {
       AccountPartitionKey accountKey = resolve(key);
-      return accountKey == null ? null : new InnerView<>(accountKey);
+      return accountKey == null ? null : inner(accountKey);
     }
 
     @Override
@@ -215,7 +228,7 @@ final class BufferedAccountTables {
       if (accountKey == null) {
         throw new IllegalArgumentException("账户视图里没有这个键（拒绝静默造一本新账）: " + key);
       }
-      InnerView<V> inner = new InnerView<>(accountKey);
+      InnerView<V> inner = inner(accountKey);
       Map<V, Long> previous = new LinkedHashMap<>();
       for (Map.Entry<V, Long> entry : inner.entrySet()) {
         previous.put(entry.getKey(), entry.getValue());
@@ -243,7 +256,7 @@ final class BufferedAccountTables {
               if (accountKey == null) {
                 throw new NoSuchElementException("账户索引在迭代中变了: " + key);
               }
-              Map<V, Long> value = new InnerView<>(accountKey);
+              Map<V, Long> value = inner(accountKey);
               return new AbstractMap.SimpleEntry<>(key, value) {
                 @Override
                 public Map<V, Long> setValue(Map<V, Long> replacement) {
@@ -260,6 +273,11 @@ final class BufferedAccountTables {
           return indexKeys.size();
         }
       };
+    }
+
+    /** 同一 accountKey 复用同一个 {@link InnerView}（缺省新建并缓存；只对 {@code resolve} 已确认存在的账户调用）。 */
+    private InnerView<V> inner(AccountPartitionKey accountKey) {
+      return innerViews.computeIfAbsent(accountKey, InnerView::new);
     }
 
     @SuppressWarnings("unchecked")
