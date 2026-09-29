@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
@@ -13,13 +14,19 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.codec.MapCodec;
@@ -373,6 +380,98 @@ class CompactThreeNationsEconomyTest {
             .as("货币余额 ≥0：%s", account.key())
             .allSatisfy(value -> assertThat(value).isNotNegative());
       }
+    }
+  }
+
+  // ── 压力 720：到期自动 DEFAULTED → 自动挂质押 → 处置 → 阶层下滑 → hex 信号 ────────────────
+
+  @Test
+  void threeNations720TickDefaultLiquidation() throws IOException {
+    Path store = Files.createDirectories(tempDir.resolve("compact-store-stress-720"));
+    try (CoreSimos core = shellAlikeCore(store)) {
+      core.bootstrapGenesis(CompactThreeNationsWorld.state(CompactThreeNationsWorld.MAP_ID));
+      assertThat(
+              CompactThreeNationsWorld.initializeNations(
+                  core,
+                  CompactThreeNationsWorld.stressConditions(),
+                  CompactThreeNationsWorld.GRANARY))
+          .hasSize(3);
+
+      CommodityId grain = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
+      DebtContractId debtId =
+          DebtContractId.idOf(
+              CompactThreeNationsWorld.TYPICAL_DEBTOR,
+              CompactThreeNationsWorld.STRESS_CREDITOR,
+              DebtUnit.commodity(grain),
+              DebtTerms.legacyDefault(
+                  CompactThreeNationsWorld.STRESS_INTEREST_RATE_PER_MILLE_PER_CYCLE));
+
+      long headBefore = core.head(MAIN).orElseThrow().value();
+      CommandResult advanced =
+          core.submit(
+              new AdvanceTime(
+                  "cmd-advance-0-720-stress",
+                  "corr-advance-0-720-stress",
+                  INITIATOR,
+                  MAIN,
+                  new RevisionId(headBefore),
+                  new TimeRange(SimosTimestamp.of(0L), Optional.of(SimosTimestamp.of(720L)))));
+      assertThat(advanced)
+          .isEqualTo(
+              new CommandResult.Committed(new StateRef(MAIN, new RevisionId(headBefore + 1L))));
+
+      SimulationState after = core.replay(new StateRef(MAIN, new RevisionId(headBefore + 1L)));
+      EconomyData economy = CompactThreeNationsWorld.economyOf(after);
+      DebtContract debt = economy.debtContracts().get(debtId);
+      Pledge autoPledge =
+          economy.pledges().values().stream()
+              .filter(pledge -> pledge.debtContractId().equals(debtId))
+              .findFirst()
+              .orElse(null);
+      ClassStanding afterStanding =
+          economy.classStandings().get(CompactThreeNationsWorld.TYPICAL_DEBTOR);
+      boolean creditorOwnsLand =
+          economy.assetShares().values().stream()
+              .anyMatch(
+                  share ->
+                      share.asset() == AssetKind.LAND
+                          && share.kind() == AssetShare.RightKind.OWNED
+                          && share.quantity() > 0L
+                          && share
+                              .owner()
+                              .equals(
+                                  HouseholdActors.of(CompactThreeNationsWorld.STRESS_CREDITOR)));
+      Set<HexCrisisSignal.Kind> signalKinds = new TreeSet<>();
+      economy.crisisSignals().values().forEach(signal -> signalKinds.add(signal.kind()));
+
+      System.out.println(
+          "[STRESS-720] debt=" + debt + " pledge=" + autoPledge + " standing=" + afterStanding);
+      System.out.println(
+          "[STRESS-720] creditorOwnsLand="
+              + creditorOwnsLand
+              + " signals="
+              + economy.crisisSignals().values());
+
+      assertThat(debt).as("压力初始债仍在合同表里").isNotNull();
+      assertThat(debt.status()).as("到期未清 ⇒ DEFAULTED").isEqualTo(DebtStatus.DEFAULTED);
+      assertThat(debt.principal())
+          .as("大额债在 720 后仍未清，但已真实减额")
+          .isPositive()
+          .isLessThan(CompactThreeNationsWorld.STRESS_DEBT_PRINCIPAL_MILLI);
+      assertThat(autoPledge).as("无 InitialPledge ⇒ 自动挂质押").isNotNull();
+      assertThat(autoPledge.id().value()).startsWith("autopledge-");
+      assertThat(autoPledge.quantity())
+          .as("自动质押已执行（quantity 下降）")
+          .isPositive()
+          .isLessThan(CompactThreeNationsWorld.STRESS_LAND_SPLIT_MILLI_MU);
+      assertThat(creditorOwnsLand).as("对应 LAND 份额已转给债权人").isTrue();
+      assertThat(afterStanding.currentPositionId())
+          .as("核心生产资料被处置 ⇒ 阶层下滑")
+          .isNotEqualTo(afterStanding.originalPositionId());
+      assertThat(afterStanding.reason()).startsWith("class-decline");
+      assertThat(signalKinds)
+          .as("hex 同时出现 CLASS_DECLINE 与 DEBT_EXPLOSION")
+          .contains(HexCrisisSignal.Kind.CLASS_DECLINE, HexCrisisSignal.Kind.DEBT_EXPLOSION);
     }
   }
 

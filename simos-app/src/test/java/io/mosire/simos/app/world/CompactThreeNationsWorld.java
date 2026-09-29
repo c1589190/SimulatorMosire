@@ -185,6 +185,23 @@ public final class CompactThreeNationsWorld {
       HouseholdId.ofSeed(
           TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("landlord"));
 
+  /** ★★ 压力 720 的债权人 = 同一格中农（阶层份额更大、总储备通常高于地主；真实库存足够。） */
+  public static final HouseholdId STRESS_CREDITOR =
+      HouseholdId.ofSeed(
+          TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("middle_peasant"));
+
+  /** ★★ 压力 720 的初始粮债本金（显著大于贫农 F/收入；不得超过债权人真实库存，否则播种 fail-closed）。 */
+  public static final long STRESS_DEBT_PRINCIPAL_MILLI = 5_400_000L;
+
+  /**
+   * ★★ 压力 720 的利率（500‰/周期）：legacy 20‰ 下 4c 会用借入本金先还清、5 计息只留 2% 尾巴，E5b 一两轮就结清 ⇒ 720 读不到
+   * DEFAULTED。这里仍走同一条 terms/结算路径，只把合同调成高利贷，让"欠债不还"持续到 720。
+   */
+  public static final int STRESS_INTEREST_RATE_PER_MILLE_PER_CYCLE = 500;
+
+  /** ★★ 压力 720 唯一拆给贫农的 LAND 份额（毫亩；不给 InitialPledge ⇒ 专门测自动挂质押）。 */
+  public static final long STRESS_LAND_SPLIT_MILLI_MU = 20_000L;
+
   /**
    * ★★ <b>P3 的"典型条件"</b>（P4 备用）：粮仓国中心格上"地主借粮给贫农 + 庄园拆一块 LAND 给贫农 + 一条质押"， 并给贫农一笔具名外部粮注入（只加开缸库存，走
    * {@code test-condition:external-endowment} 报告）。
@@ -234,6 +251,38 @@ public final class CompactThreeNationsWorld {
                 TYPICAL_DEBTOR,
                 landSplitMilliMu)),
         Map.of(TYPICAL_DEBTOR, Map.of(grain, extraGrainMilli)),
+        Map.of());
+  }
+
+  /**
+   * ★★ <b>P4 压力条件</b>：粮仓国中心格"中农 → 贫农"一笔到期即违约的大额粮债（{@code dueCycle=1}、真实转账、无外部注入）+ 一块拆给贫农的 LAND（无
+   * InitialPledge）—— 让 E5b 的"到期自动 DEFAULTED → 自动挂质押 → 处置 → 减债 → 阶层下滑 → 危机信号" 全部发生。
+   */
+  public static TestConditions stressConditions() {
+    IndustryId farm =
+        IndustryHexKeys.id(
+            EconomySeeder.FARM, TYPICAL_CONDITIONS_HEX.q(), TYPICAL_CONDITIONS_HEX.r());
+    CommodityId grain = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
+    DebtUnit unit = DebtUnit.commodity(grain);
+    DebtTerms terms = DebtTerms.legacyDefault(STRESS_INTEREST_RATE_PER_MILLE_PER_CYCLE);
+    return new TestConditions(
+        List.of(
+            TestConditions.InitialDebt.moving(
+                TYPICAL_DEBTOR,
+                STRESS_CREDITOR,
+                unit,
+                STRESS_DEBT_PRINCIPAL_MILLI,
+                terms,
+                OptionalLong.of(1L))),
+        List.of(),
+        List.of(
+            TestConditions.AssetSplit.byQuery(
+                farm,
+                AssetKind.LAND,
+                RegimeOperators.defaultOperator(new RegimeId(EconomySeeder.REGIME_FEUDAL), farm),
+                TYPICAL_DEBTOR,
+                STRESS_LAND_SPLIT_MILLI_MU)),
+        Map.of(),
         Map.of());
   }
 
