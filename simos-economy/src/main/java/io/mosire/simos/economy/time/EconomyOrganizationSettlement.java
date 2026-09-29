@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -328,6 +329,25 @@ final class EconomyOrganizationSettlement {
       }
       List<ClassPositionId> orderedPositions = new ArrayList<>(structure.positions().keySet());
       orderedPositions.sort(Comparator.comparing(ClassPositionId::value));
+      // ★★ P1：本 mode 下"自己会生产"的家户集合。它们的 OWNED 份额是自家组织的生产资料，
+      //   不能被别家的租佃计划当闲置份额拆走 —— 否则先建的组织会在同一天被后建的租佃拆空，
+      //   到 revision 边界留下指向已删除份额的 assetSources（实测的构造期守卫失败）。
+      Set<ActorRef> reservedHouseholdOwners = new LinkedHashSet<>();
+      for (ClassPositionId positionId : orderedPositions) {
+        ClassPosition position = structure.positions().get(positionId);
+        if (position == null || !shouldProduce(position)) {
+          continue;
+        }
+        for (HouseholdId household : orderedHouseholds) {
+          if (!positionId.equals(positionByHousehold.get(household))) {
+            continue;
+          }
+          ClassRow row = rows.get(household);
+          if (row != null && row.population() > 0L) {
+            reservedHouseholdOwners.add(HouseholdActors.of(household));
+          }
+        }
+      }
       for (ClassPositionId positionId : orderedPositions) {
         ClassPosition position = structure.positions().get(positionId);
         if (position == null || !shouldProduce(position)) {
@@ -369,6 +389,7 @@ final class EconomyOrganizationSettlement {
                     hex,
                     hexKey,
                     orgId,
+                    reservedHouseholdOwners,
                     rows,
                     industries,
                     pledges,
@@ -421,6 +442,7 @@ final class EconomyOrganizationSettlement {
       HexCoord hex,
       String hexKey,
       ProductionOrganizationId orgId,
+      Set<ActorRef> reservedHouseholdOwners,
       Map<HouseholdId, ClassRow> rows,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
@@ -565,8 +587,9 @@ final class EconomyOrganizationSettlement {
         ProductionUnitBook.usableAssets(industryId, organizer, assetShares);
     long ownCapacity =
         ProductionUnitBook.capacityScaleOf(industryId, organizer, industry, assetShares);
-    // 资产天花板 = 自有 + 同产业全部可租闲置份额；目标规模不超过它（防溢出，也把"资产那一路"作为真实上界）。
-    long assetCeiling = assetCeiling(industry, organizer, usable, assetShares);
+    // 资产天花板 = 自有 + 同产业全部可租闲置份额（"自家会生产"的家户份额除外）；目标规模不超过它。
+    long assetCeiling =
+        assetCeiling(industry, organizer, usable, assetShares, reservedHouseholdOwners);
     long desired;
     if (target == UNCONSTRAINED) {
       desired = Math.max(1L, Math.min(Math.max(ownCapacity, 0L), assetCeiling));
@@ -577,7 +600,14 @@ final class EconomyOrganizationSettlement {
     TenancyPlan tenancy =
         ownCapacity < desired
             ? planTenancy(
-                assetRuleByModeKind, mode, industry, organizer, usable, desired, assetShares)
+                assetRuleByModeKind,
+                mode,
+                industry,
+                organizer,
+                usable,
+                desired,
+                assetShares,
+                reservedHouseholdOwners)
             : new TenancyPlan(List.of(), List.of());
     long expectedCapacity = expectedCapacityAfterGrants(industry, usable, tenancy.grants());
     if (expectedCapacity < 1L) {
@@ -837,7 +867,8 @@ final class EconomyOrganizationSettlement {
       ActorRef organizer,
       Map<AssetKind, Long> usable,
       long desiredScale,
-      Map<AssetShareId, AssetShare> assetShares) {
+      Map<AssetShareId, AssetShare> assetShares,
+      Set<ActorRef> reservedHouseholdOwners) {
     List<AssetGrant> grants = new ArrayList<>();
     // 缺资产那几路按 AssetKind.name() 稳定序处理（同一产业内的资产种类集合来自模板）。
     List<AssetKind> required = new ArrayList<>(industry.capacityPerUnit().keySet());
@@ -868,7 +899,8 @@ final class EconomyOrganizationSettlement {
         continue;
       }
       long taken = 0L;
-      for (AssetShare source : idleSources(industry.id(), assetKind, organizer, assetShares)) {
+      for (AssetShare source :
+          idleSources(industry.id(), assetKind, organizer, assetShares, reservedHouseholdOwners)) {
         long give = Math.min(deficit - taken, source.quantity());
         if (give <= 0L) {
           continue;
@@ -899,12 +931,14 @@ final class EconomyOrganizationSettlement {
       Industry industry,
       ActorRef organizer,
       Map<AssetKind, Long> usable,
-      Map<AssetShareId, AssetShare> assetShares) {
+      Map<AssetShareId, AssetShare> assetShares,
+      Set<ActorRef> reservedHouseholdOwners) {
     long ceiling = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       AssetKind assetKind = entry.getKey();
       long available = usable.getOrDefault(assetKind, 0L);
-      for (AssetShare source : idleSources(industry.id(), assetKind, organizer, assetShares)) {
+      for (AssetShare source :
+          idleSources(industry.id(), assetKind, organizer, assetShares, reservedHouseholdOwners)) {
         available = saturatingAdd(available, source.quantity());
       }
       ceiling = Math.min(ceiling, available / entry.getValue());
@@ -918,12 +952,18 @@ final class EconomyOrganizationSettlement {
     return sum < 0L ? Long.MAX_VALUE : sum;
   }
 
-  /** 同产业、同资产种类、自有自营（operator == owner）、不属于组织者、TENANCY 之外的闲置份额（按 id 升序）。 */
+  /**
+   * 同产业、同资产种类、自有自营（operator == owner）、不属于组织者、TENANCY 之外的闲置份额（按 id 升序）。
+   *
+   * <p>★ {@code reservedHouseholdOwners} = 本 mode 下自己会生产的家户 actor 集合：这些家户的 OWNED 份额要留给
+   * 他们自己的组织，不能被别家的租佃拆走（见 {@code organize} 里的注释）。非生产位置（地主/官署）的家户份额不在此列。
+   */
   private static List<AssetShare> idleSources(
       IndustryId industryId,
       AssetKind assetKind,
       ActorRef organizer,
-      Map<AssetShareId, AssetShare> assetShares) {
+      Map<AssetShareId, AssetShare> assetShares,
+      Set<ActorRef> reservedHouseholdOwners) {
     List<AssetShare> sources = new ArrayList<>();
     for (AssetShare share : assetShares.values()) {
       if (!share.industry().equals(industryId) || share.asset() != assetKind) {
@@ -937,6 +977,9 @@ final class EconomyOrganizationSettlement {
       }
       if (share.owner().equals(organizer)) {
         continue; // 本户自己的份额已经在 usable 里
+      }
+      if (reservedHouseholdOwners.contains(share.owner())) {
+        continue; // 该份额的主人自己会生产：留给它，不当别家的闲置
       }
       if (share.quantity() <= 0L) {
         continue;
@@ -1070,9 +1113,10 @@ final class EconomyOrganizationSettlement {
       ProductionRelation byRegime =
           RegimeRelations.defaultRelation(
               industry.regime(), unitId, industryId, organizer, Set.of(row.view().residence()));
-      if (recipientsResolvable(byRegime, rows, row.view().hex())) {
+      ProductionRelation normalized = normalizeRecipients(byRegime, rows, row.view().hex());
+      if (normalized != null) {
         return new GeneratedRelation(
-            byRegime, "mode:" + mode.id().value() + ":regime:" + industry.regime().value());
+            normalized, "mode:" + mode.id().value() + ":regime:" + industry.regime().value());
       }
     } catch (IllegalArgumentException ignored) {
       // regime 未登记（没有默认关系模板）⇒ 退回最小自留关系；不猜制度。
@@ -1089,32 +1133,86 @@ final class EconomyOrganizationSettlement {
         minimal, "mode:" + mode.id().value() + ":position:" + position.id().value());
   }
 
-  /** regime 默认模板里的 cohort/家户受方在本格是否都能解析成唯一行（harvest 的 fail-closed 前置判据）。 */
-  private static boolean recipientsResolvable(
+  /**
+   * ★★ <b>把 regime 默认模板里的 cohort 受方一对一归一成 {@link Recipient.ToHousehold}，并剔除 受方 == organizer
+   * 的自付规则</b>。
+   *
+   * <p>★★ <b>为什么必须在 E2 就地归一</b>：新建 unit 的关系当天就会被 harvest/settle 使用，而 {@code EconomyData} 的构造期归一到
+   * revision 边界才发生；若把 {@code ToCohort} 留到那时， 按劳动加权的分账会在 {@code SubsistenceObligation.laborOf}
+   * 处因"没有家户身份"fail-closed（实测）。 返回 {@code null} = 视图不唯一 / 受方不在本格 / 家户不存在 ⇒ 调用方退回最小自留关系，不猜。
+   *
+   * <p>★★ <b>自付规则为什么直接剔除而不是留到转移端</b>：{@code Transfer} 的两端不得相等（自转移是坏数据）。 一条"付给 organizer
+   * 自己"的规则对余额是恒等变换：产出已经归 residualOwner = organizer，工资/租金也只是 从自己的一个口袋到另一个口袋。这四档默认模板的 cohort 受方在 E2
+   * 里就是 operator 本人时（家户自营）， 对应的份额 <b>本来就该留在 operator 手里</b>，故剔除；其余受方照原率保留。
+   */
+  private static ProductionRelation normalizeRecipients(
       ProductionRelation relation, Map<HouseholdId, ClassRow> rows, HexCoord hex) {
-    for (CompensationRule rule : relation.rules()) {
-      if (rule.recipient() instanceof Recipient.ToHousehold toHousehold) {
-        ClassRow row = rows.get(toHousehold.household());
-        if (row == null || !row.view().hex().equals(hex)) {
-          return false;
-        }
-      } else if (rule.recipient() instanceof Recipient.ToCohort toCohort) {
-        int matches = 0;
-        boolean sameHex = true;
-        for (ClassRow row : rows.values()) {
-          if (row.view().equals(toCohort.cohort())) {
-            matches++;
-            if (!row.view().hex().equals(hex)) {
-              sameHex = false;
-            }
-          }
-        }
-        if (matches != 1 || !sameHex) {
-          return false;
-        }
+    Map<CohortKey, HouseholdId> householdByView = new LinkedHashMap<>();
+    Set<CohortKey> ambiguous = new LinkedHashSet<>();
+    for (ClassRow row : rows.values()) {
+      if (householdByView.putIfAbsent(row.view(), row.id()) != null) {
+        ambiguous.add(row.view());
       }
     }
-    return true;
+    for (CohortKey view : ambiguous) {
+      householdByView.remove(view);
+    }
+    List<CompensationRule> rules = new ArrayList<>(relation.rules().size());
+    boolean changed = false;
+    for (CompensationRule rule : relation.rules()) {
+      Recipient recipient = rule.recipient();
+      if (recipient instanceof Recipient.ToHousehold toHousehold) {
+        if (HouseholdActors.of(toHousehold.household()).equals(relation.operator())) {
+          changed = true; // 自付：净额恒等，不落转移（见类注）
+          continue;
+        }
+        ClassRow target = rows.get(toHousehold.household());
+        if (target == null || !target.view().hex().equals(hex)) {
+          return null;
+        }
+        rules.add(rule);
+      } else if (recipient instanceof Recipient.ToCohort toCohort) {
+        HouseholdId household = householdByView.get(toCohort.cohort());
+        if (household == null) {
+          return null;
+        }
+        if (HouseholdActors.of(household).equals(relation.operator())) {
+          changed = true; // 自付：与上面同一条口径
+          continue;
+        }
+        ClassRow target = rows.get(household);
+        if (target == null || !target.view().hex().equals(hex)) {
+          return null;
+        }
+        rules.add(
+            new CompensationRule(
+                rule.type(),
+                new Recipient.ToHousehold(household),
+                rule.pool(),
+                rule.weight(),
+                rule.ratePerMille(),
+                rule.fixedAmount(),
+                rule.commodity(),
+                rule.currency(),
+                rule.priority()));
+        changed = true;
+      } else if (recipient instanceof Recipient.ToActor toActor
+          && toActor.actor().equals(relation.operator())) {
+        changed = true; // 自付：同一条口径（默认模板不走这档，留给将来）
+        continue;
+      } else {
+        rules.add(rule);
+      }
+    }
+    return changed
+        ? new ProductionRelation(
+            relation.activity(),
+            relation.operator(),
+            relation.inputSupplier(),
+            rules,
+            relation.residualOwner(),
+            relation.laborSource())
+        : relation;
   }
 
   /** 位置 → 劳动来源档（最小自留关系用；E2 只做形状，逐档结算差异属后续阶段）。 */

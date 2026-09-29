@@ -21,6 +21,7 @@ import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
+import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -52,10 +53,14 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
@@ -67,9 +72,12 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.Pledge;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.economy.model.RentRule;
+import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -295,6 +303,13 @@ final class EconomyPayloads {
     Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
     Map<HexCoord, Market> markets = markets(payload, entries);
+    // ★★ P1：E1/E2 的六个可选地基键（缺键 ⇒ 空表；旧载荷逐值不变）。解析只做形状/词表，
+    //   键身份、结构↔位置闭环、standing 家户/位置引用等由 EconomyData 构造期守卫 fail-closed。
+    Map<ProductionModeId, ProductionMode> modes = parseModes(payload);
+    Map<ClassStructureId, ClassStructure> classStructures = parseClassStructures(payload);
+    Map<ClassPositionId, ClassPosition> classPositions = parseClassPositions(payload);
+    Map<HouseholdId, ClassStanding> classStandings = parseClassStandings(payload);
+    Map<AssetRuleId, AssetRule> assetRules = parseAssetRules(payload);
     // ★★ E3 的第 23/24 个组件：顶层可选 `governments` / `moneyIssuances`（缺键 ⇒ 空表；旧载荷逐值不变）。
     Map<GovernmentId, Government> governments = governments(payload);
     Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances =
@@ -540,15 +555,15 @@ final class EconomyPayloads {
         // ★★ R4-E2：创世载荷不声明 GM 需求/候选预设（空表 = 由 economy.AddDemand/RegisterCandidate 注入）。
         Map.of(),
         Map.of(),
-        // ★★ E1：创世载荷暂不声明生产方式/阶层结构/阶层位置/家户阶层归属；四条空表 = 旧路径继续跑，
-        //   新地基由后续阶段的命令/迁移器显式注入（E1 不接线结算，也不猜默认 mode）。
+        // ★★ P1：E1 的四张地基表从载荷可选键解析（缺键 ⇒ 空表 = 旧路径继续跑）。
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        // ★★ E2：生产组织**不由创世载荷声明** —— 必须留给 EconomyOrganizationSettlement 的自动组织阶段
+        //   在 modes 非空后生成（手种 = 第二真相）；生产资料规则则由 P1 的 assetRules 键显式给出。
         Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        // ★★ E2：创世载荷暂不声明生产组织/生产资料规则；两张空表 = 自动组织阶段整体 no-op（旧路径逐值不变）。
-        Map.of(),
-        Map.of(),
+        assetRules,
         // ★★ E3：政府 / 货币发行审计（创世载荷可选声明；缺键 ⇒ 空表 = 零登记、无发行）。
         governments,
         moneyIssuances,
@@ -626,6 +641,263 @@ final class EconomyPayloads {
     CurrencyId numeraire = CurrencyId.parse(requireText(node, "numeraire"));
     Map<CommodityId, Long> prices = commodityMap(optionalObject(node, "prices"), "prices");
     return new Market(numeraire, prices);
+  }
+
+  // ── P1：E1/E2 完整经济地基的可选载荷（缺键 ⇒ 空表；词表/范围守卫复用领域构造期）────────────
+
+  /**
+   * ★★ <b>顶层可选 {@code modes} 数组</b>（缺键 ⇒ 空表）。每项： {@code
+   * {"id","name","version","classStructureId"}}。非法值由 {@link ProductionMode} 构造期守卫判， 同一份载荷里 id 重复 ⇒
+   * 抛。
+   */
+  private static Map<ProductionModeId, ProductionMode> parseModes(JsonNode payload) {
+    Map<ProductionModeId, ProductionMode> modes = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "modes")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("modes 的每项必须是对象: " + node);
+      }
+      ProductionModeId id = ProductionModeId.parse(requireText(node, "id"));
+      ProductionMode mode =
+          new ProductionMode(
+              id,
+              requireText(node, "name"),
+              requireInt(node, "version"),
+              ClassStructureId.parse(requireText(node, "classStructureId")));
+      if (modes.putIfAbsent(id, mode) != null) {
+        throw new IllegalArgumentException("同一份载荷里 mode id 重复: " + id);
+      }
+    }
+    return modes;
+  }
+
+  /**
+   * ★★ <b>顶层可选 {@code classStructures} 数组</b>（缺键 ⇒ 空表）。每项： {@code
+   * {"id","modeId","positions":[...],"defaultSharesPerMille":{...}}}； {@code positions}
+   * 非空/重复键由构造期守卫与解析层判死，{@code defaultSharesPerMille} 可缺省 ⇒ 空表。
+   */
+  private static Map<ClassStructureId, ClassStructure> parseClassStructures(JsonNode payload) {
+    Map<ClassStructureId, ClassStructure> structures = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "classStructures")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("classStructures 的每项必须是对象: " + node);
+      }
+      ClassStructureId id = ClassStructureId.parse(requireText(node, "id"));
+      ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
+      Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
+      for (JsonNode positionNode : requireArray(node, "positions")) {
+        ClassPosition position = classPosition(positionNode);
+        if (positions.putIfAbsent(position.id(), position) != null) {
+          throw new IllegalArgumentException(
+              "同一份 classStructure 里 position id 重复: " + position.id());
+        }
+      }
+      Map<ClassPositionId, Long> shares =
+          classPositionShareMap(
+              optionalObject(node, "defaultSharesPerMille"),
+              "classStructures[].defaultSharesPerMille");
+      ClassStructure structure = new ClassStructure(id, modeId, positions, shares);
+      if (structures.putIfAbsent(id, structure) != null) {
+        throw new IllegalArgumentException("同一份载荷里 classStructure id 重复: " + id);
+      }
+    }
+    return structures;
+  }
+
+  /**
+   * ★★ <b>顶层可选 {@code classPositions} 数组</b>（缺键 ⇒ 空表）。形状与 classStructures 内嵌的位置逐字相同；
+   * 两条路径都构造同值对象，随后由 {@link EconomyData} 判"结构内位置 == 全局位置表"。
+   */
+  private static Map<ClassPositionId, ClassPosition> parseClassPositions(JsonNode payload) {
+    Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "classPositions")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("classPositions 的每项必须是对象: " + node);
+      }
+      ClassPosition position = classPosition(node);
+      if (positions.putIfAbsent(position.id(), position) != null) {
+        throw new IllegalArgumentException("同一份载荷里 classPosition id 重复: " + position.id());
+      }
+    }
+    return positions;
+  }
+
+  /** 一个阶层位置节点：id/modeId/name + 三个结构维词表 + 可选 ruleExtensions（缺键 ⇒ 空表）。 */
+  private static ClassPosition classPosition(JsonNode node) {
+    ClassPositionId id = ClassPositionId.parse(requireText(node, "id"));
+    ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
+    ClassPosition.RelationToMeans relationToMeans =
+        enumValue(
+            ClassPosition.RelationToMeans.class,
+            requireText(node, "relationToMeans"),
+            "classPositions[].relationToMeans");
+    ClassPosition.LaborRole laborRole =
+        enumValue(
+            ClassPosition.LaborRole.class,
+            requireText(node, "laborRole"),
+            "classPositions[].laborRole");
+    ClassPosition.SurplusRole surplusRole =
+        enumValue(
+            ClassPosition.SurplusRole.class,
+            requireText(node, "surplusRole"),
+            "classPositions[].surplusRole");
+    Map<String, String> extensions =
+        stringMap(optionalObject(node, "ruleExtensions"), "classPositions[].ruleExtensions");
+    return new ClassPosition(
+        id, modeId, requireText(node, "name"), relationToMeans, laborRole, surplusRole, extensions);
+  }
+
+  /**
+   * ★★ <b>顶层可选 {@code classStandings} 数组</b>（缺键 ⇒ 空表）。每项： {@code
+   * {"householdId","originalPositionId","currentPositionId","retainedShares"?,
+   * "consecutiveDebtStressCycles"?,"lastTransitionDay"?,"reason"?}}；数值可缺省，reason 缺省空串。
+   * 引用完整性（家户存在、位置存在）由 {@link EconomyData} 构造期守卫判。
+   */
+  private static Map<HouseholdId, ClassStanding> parseClassStandings(JsonNode payload) {
+    Map<HouseholdId, ClassStanding> standings = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "classStandings")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("classStandings 的每项必须是对象: " + node);
+      }
+      HouseholdId householdId = HouseholdId.parse(requireText(node, "householdId"));
+      ClassPositionId original = ClassPositionId.parse(requireText(node, "originalPositionId"));
+      ClassPositionId current = ClassPositionId.parse(requireText(node, "currentPositionId"));
+      Map<ClassPositionId, Long> retainedShares =
+          classPositionShareMap(
+              optionalObject(node, "retainedShares"), "classStandings[].retainedShares");
+      long consecutiveDebtStressCycles = optionalLong(node, "consecutiveDebtStressCycles", 0L);
+      long lastTransitionDay = optionalLong(node, "lastTransitionDay", 0L);
+      String reason = optionalText(node, "reason").orElse("");
+      ClassStanding standing =
+          new ClassStanding(
+              householdId,
+              original,
+              current,
+              retainedShares,
+              consecutiveDebtStressCycles,
+              lastTransitionDay,
+              reason);
+      if (standings.putIfAbsent(householdId, standing) != null) {
+        throw new IllegalArgumentException("同一份载荷里 classStanding 家户重复: " + householdId);
+      }
+    }
+    return standings;
+  }
+
+  /**
+   * ★★ <b>顶层可选 {@code assetRules} 数组</b>（缺键 ⇒ 空表）。每项： {@code
+   * {"modeId","assetKind","isCoreMeans","pledgeable","liquidationPriority",
+   * "rentRule"?,"transferRule"}}；id 由 {@code AssetRuleId.idOf(modeId, assetKind)} 派生，若显式给了 {@code
+   * id} 必须与派生值一致。
+   */
+  private static Map<AssetRuleId, AssetRule> parseAssetRules(JsonNode payload) {
+    Map<AssetRuleId, AssetRule> rules = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "assetRules")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("assetRules 的每项必须是对象: " + node);
+      }
+      ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
+      AssetKind assetKind =
+          enumValue(AssetKind.class, requireText(node, "assetKind"), "assetRules[].assetKind");
+      boolean isCoreMeans = requireBoolean(node, "isCoreMeans");
+      boolean pledgeable = requireBoolean(node, "pledgeable");
+      int liquidationPriority = requireInt(node, "liquidationPriority");
+      Optional<RentRule> rentRule =
+          node.hasNonNull("rentRule")
+              ? Optional.of(rentRule(requireObject(node, "rentRule")))
+              : Optional.empty();
+      TransferRule transferRule = transferRule(requireObject(node, "transferRule"));
+      AssetRuleId derived = AssetRuleId.idOf(modeId, assetKind);
+      if (node.hasNonNull("id")) {
+        AssetRuleId declared = AssetRuleId.parse(requireText(node, "id"));
+        if (!declared.equals(derived)) {
+          throw new IllegalArgumentException(
+              "assetRules[].id 必须与 (modeId, assetKind) 派生值一致（不许手写第二份身份）：声明="
+                  + declared
+                  + " 派生="
+                  + derived);
+        }
+      }
+      AssetRule rule =
+          new AssetRule(
+              derived,
+              modeId,
+              assetKind,
+              isCoreMeans,
+              pledgeable,
+              liquidationPriority,
+              rentRule,
+              transferRule);
+      if (rules.putIfAbsent(derived, rule) != null) {
+        throw new IllegalArgumentException("同一份载荷里 assetRule id 重复: " + derived);
+      }
+    }
+    return rules;
+  }
+
+  /** 一条租金模板节点：type/priority/legs；leg 的 kind/rate/fixed 与商品/币种二选一由构造期守卫判。 */
+  private static RentRule rentRule(JsonNode node) {
+    RentRule.RentType type = RentRule.RentType.parse(requireText(node, "type"));
+    int priority = requireInt(node, "priority");
+    List<RentRule.RentLeg> legs = new ArrayList<>();
+    for (JsonNode legNode : requireArray(node, "legs")) {
+      if (!legNode.isObject()) {
+        throw new IllegalArgumentException("assetRules[].rentRule.legs 的每项必须是对象: " + legNode);
+      }
+      RentRule.RentType kind = RentRule.RentType.parse(requireText(legNode, "kind"));
+      int ratePerMille = optionalInt(legNode, "ratePerMille", 0);
+      long fixedAmount = optionalLong(legNode, "fixedAmount", 0L);
+      Optional<CommodityId> commodity = optionalText(legNode, "commodity").map(CommodityId::parse);
+      Optional<CurrencyId> currency = optionalText(legNode, "currency").map(CurrencyId::parse);
+      legs.add(new RentRule.RentLeg(kind, ratePerMille, fixedAmount, commodity, currency));
+    }
+    return new RentRule(type, priority, legs);
+  }
+
+  /** 一条转移规则节点（三个布尔都必填；构造期无额外不变量，形状即语义）。 */
+  private static TransferRule transferRule(JsonNode node) {
+    return new TransferRule(
+        requireBoolean(node, "transferable"),
+        requireBoolean(node, "requiresOwnerConsent"),
+        requireBoolean(node, "allowSublease"));
+  }
+
+  /** 位置 id → 千分比/数量表（用于 classStructures.defaultSharesPerMille 与 classStandings.retainedShares）。 */
+  private static Map<ClassPositionId, Long> classPositionShareMap(JsonNode object, String field) {
+    Map<ClassPositionId, Long> out = new LinkedHashMap<>();
+    if (object == null) {
+      return out;
+    }
+    object
+        .fields()
+        .forEachRemaining(
+            entry ->
+                out.put(
+                    ClassPositionId.parse(entry.getKey()),
+                    requireIntegral(entry.getValue(), field + "." + entry.getKey())));
+    return out;
+  }
+
+  /** 字符串表（用于 {@code ClassPosition.ruleExtensions}）；值非文本 ⇒ 抛。 */
+  private static Map<String, String> stringMap(JsonNode object, String field) {
+    Map<String, String> out = new LinkedHashMap<>();
+    if (object == null) {
+      return out;
+    }
+    object
+        .fields()
+        .forEachRemaining(
+            entry -> {
+              if (entry.getKey() == null || entry.getKey().isBlank()) {
+                throw new IllegalArgumentException(field + " 的键不得为空白: " + entry.getKey());
+              }
+              JsonNode value = entry.getValue();
+              if (value == null || !value.isTextual()) {
+                throw new IllegalArgumentException(
+                    field + "." + entry.getKey() + " 必须是字符串: " + value);
+              }
+              out.put(entry.getKey(), value.asText());
+            });
+    return out;
   }
 
   // ── 生产关系（T2；计划 R3/R8）────────────────────────────────────────────────────────
@@ -1888,12 +2160,32 @@ final class EconomyPayloads {
     return value.asInt();
   }
 
+  /** 布尔键（三个字段必填）：缺键 / null / 非布尔 ⇒ 抛（不把漏写静默补成 false）。 */
+  private static boolean requireBoolean(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    if (value == null || !value.isBoolean()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是布尔值: " + node);
+    }
+    return value.asBoolean();
+  }
+
   private static long optionalLong(JsonNode node, String field, long fallback) {
     JsonNode value = node.get(field);
     if (value == null || value.isNull()) {
       return fallback;
     }
     return requireIntegral(value, field);
+  }
+
+  private static int optionalInt(JsonNode node, String field, int fallback) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + node);
+    }
+    return value.asInt();
   }
 
   /**

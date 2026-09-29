@@ -2,9 +2,12 @@ package io.mosire.simos.app.world;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.AssetRuleId;
+import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -24,13 +27,19 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -96,6 +105,56 @@ import java.util.function.Function;
  * money=0}、无债务）；{@code dailyInputPerUnit}/{@code dailyLaborPerUnit} 没有依据 ⇒ 0（不臆造）。
  */
 public final class EconomySeeder {
+
+  /**
+   * ★★ <b>P1 经济地基 profile</b>：决定 {@code economy.Seed} 载荷是否带上 E1/E2 的完整地基表。
+   *
+   * <p>★ {@link #LEGACY} = 旧 payload 形状逐字节不变（不出现 {@code modes}/{@code classStructures}/... 六个新键）；
+   * {@link #COMPLETE} = 额外种下默认 mode、7 个阶层位置、按家户阶层映射的 standing、LAND/TOOL/WORKSHOP 三条资产规则与对应清算政策。两种
+   * profile 都不在本 seeder 里手种 {@code productionOrganizations} —— 那由 economy 的 E2 自动组织阶段在 {@code
+   * modes} 非空后生成。
+   */
+  public enum FoundationProfile {
+    /** 只种旧产业/阶层行/市场/政府与货币发行；payload 与旧版本逐字节相同。 */
+    LEGACY("legacy"),
+    /** 额外种完整经济地基（E1 mode/结构/位置/归属 + E2 资产规则/清算政策）。 */
+    COMPLETE("complete");
+
+    private final String wireName;
+
+    FoundationProfile(String wireName) {
+      this.wireName = wireName;
+    }
+
+    /** 线格式名（{@code "legacy"} / {@code "complete"}）。 */
+    public String wireName() {
+      return wireName;
+    }
+
+    /** 按线格式名解析；未知值 fail-closed（当前只认小写两个词）。 */
+    public static FoundationProfile parse(String text) {
+      if (text == null || text.isBlank()) {
+        throw new IllegalArgumentException("economyProfile 不得为空白；合法值: legacy, complete");
+      }
+      return switch (text.trim()) {
+        case "legacy" -> LEGACY;
+        case "complete" -> COMPLETE;
+        default ->
+            throw new IllegalArgumentException(
+                "未知的 economyProfile: " + text + "；合法值: legacy, complete");
+      };
+    }
+  }
+
+  /** ★ COMPLETE profile 的 standing reason（具名、可审计；不是显示文本）。 */
+  public static final String COMPLETE_CLASS_STANDING_REASON = "seed:complete-foundations";
+
+  /** COMPLETE profile 显式种规则/清算政策的核心生产资料种类（其余资产不发明规则）。 */
+  private static final List<AssetKind> COMPLETE_ASSET_KINDS =
+      List.of(AssetKind.LAND, AssetKind.TOOL, AssetKind.WORKSHOP);
+
+  /** COMPLETE profile 的默认资产规则租率（千分比；与旧佃租 300‰ 同一制度量级）。 */
+  private static final int COMPLETE_RENT_SHARE_PER_MILLE = 300;
 
   /** 农业产业种类标签（{@link IndustryHexKeys} 的前缀）。 */
   public static final String FARM = "farm";
@@ -584,7 +643,34 @@ public final class EconomySeeder {
       List<OperatorSeed> operators,
       Map<GovernmentId, Government> governments,
       Map<CurrencyId, Long> genesisEndowment,
-      long genesisMoneyMilliPerCapita) {
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile) {
+
+    /** ★ 旧 10 参构造（缺 profile ⇒ LEGACY）：保持既有调用点的源兼容与旧 payload 逐字节不变。 */
+    public Seed(
+        String mapId,
+        List<Map<String, Object>> entries,
+        Map<HexCoord, Market> markets,
+        Map<HouseholdId, HexCoord> householdLocations,
+        Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+        List<OperatorSeed> operators,
+        Map<GovernmentId, Government> governments,
+        Map<CurrencyId, Long> genesisEndowment,
+        long genesisMoneyMilliPerCapita) {
+      this(
+          mapId,
+          entries,
+          markets,
+          householdLocations,
+          householdStocks,
+          householdMoney,
+          operators,
+          governments,
+          genesisEndowment,
+          genesisMoneyMilliPerCapita,
+          FoundationProfile.LEGACY);
+    }
 
     /**
      * ★★ <b>四张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
@@ -597,6 +683,9 @@ public final class EconomySeeder {
     public Seed {
       if (mapId == null || mapId.isBlank()) {
         throw new IllegalArgumentException("Seed.mapId 不得为空白");
+      }
+      if (profile == null) {
+        throw new IllegalArgumentException("Seed.profile 不得为 null（缺省用 FoundationProfile.LEGACY）");
       }
       List<Map<String, Object>> entriesCopy =
           new ArrayList<>(entries == null ? List.of() : entries);
@@ -643,11 +732,17 @@ public final class EconomySeeder {
 
     /**
      * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
-     * markets} 都在顶层）。
+     * markets} 都在顶层）。LEGACY profile 的键集与键序逐字节不变；COMPLETE 追加六个地基键。
      */
     public String economyPayload() {
       return jsonOf(
-          mapId, entries, markets, governments, genesisEndowment, genesisMoneyMilliPerCapita);
+          mapId,
+          entries,
+          markets,
+          governments,
+          genesisEndowment,
+          genesisMoneyMilliPerCapita,
+          profile);
     }
   }
 
@@ -768,18 +863,34 @@ public final class EconomySeeder {
 
   /**
    * 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List,
-   * GameMap)}；初始禀赋取默认值。
+   * GameMap)}；初始禀赋取默认值，profile 缺省 {@link FoundationProfile#LEGACY}。
    */
   public static Seed plan(String mapId, List<PopulationGroup> groups, GameMap map) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita());
+    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), FoundationProfile.LEGACY);
   }
 
   /**
    * ★★ E3：真地图重载 + **初始禀赋参数**（毫/人）。默认重载逐值等于旧行为；本重载只改 {@code INITIAL_ENDOWMENT}
-   * 的每人金额，商品/人口/劳动/资产口径一字不动。
+   * 的每人金额，商品/人口/劳动/资产口径一字不动。profile 缺省 {@link FoundationProfile#LEGACY}。
    */
   public static Seed plan(
       String mapId, List<PopulationGroup> groups, GameMap map, long genesisMoneyMilliPerCapita) {
+    return plan(mapId, groups, map, genesisMoneyMilliPerCapita, FoundationProfile.LEGACY);
+  }
+
+  /** ★ P1：真地图 + profile（初始禀赋取默认值）；{@link FoundationProfile#LEGACY} 逐值等于旧行为。 */
+  public static Seed plan(
+      String mapId, List<PopulationGroup> groups, GameMap map, FoundationProfile profile) {
+    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile);
+  }
+
+  /** ★★ P1：真地图 + 初始禀赋 + profile 的主入口；只有 profile 为 COMPLETE 时追加六个地基键。 */
+  public static Seed plan(
+      String mapId,
+      List<PopulationGroup> groups,
+      GameMap map,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile) {
     Map<HexCoord, String> terrain = map.terrainIndex();
     return plan(
         mapId,
@@ -791,7 +902,8 @@ public final class EconomySeeder {
           }
           return key;
         },
-        genesisMoneyMilliPerCapita);
+        genesisMoneyMilliPerCapita,
+        profile);
   }
 
   /**
@@ -819,6 +931,35 @@ public final class EconomySeeder {
       Map<GovernmentId, Government> governments,
       Map<CurrencyId, Long> genesisEndowment,
       long genesisMoneyMilliPerCapita) {
+    return jsonOf(
+        mapId,
+        entries,
+        markets,
+        governments,
+        genesisEndowment,
+        genesisMoneyMilliPerCapita,
+        FoundationProfile.LEGACY);
+  }
+
+  /**
+   * ★★ <b>P1：带 profile 的载荷构造</b>。LEGACY 只走旧键集（逐字不变）；COMPLETE 在 {@code moneyIssuances} 之后、{@code
+   * debtContracts}/{@code pledges} 之前追加六个地基键： {@code modes / classStructures / classPositions /
+   * classStandings / assetRules / liquidationPolicies}。
+   *
+   * <p>★ 所有节点都是 {@link LinkedHashMap} + 稳定遍历序；无随机/时钟/UUID。{@code productionOrganizations}
+   * <b>不在这里种</b>：E2 的自动组织阶段会在 {@code modes} 非空后生成它。
+   */
+  static String jsonOf(
+      String mapId,
+      List<Map<String, Object>> entries,
+      Map<HexCoord, Market> markets,
+      Map<GovernmentId, Government> governments,
+      Map<CurrencyId, Long> genesisEndowment,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile) {
+    if (profile == null) {
+      throw new IllegalArgumentException("jsonOf 的 profile 不得为 null");
+    }
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("mapId", mapId);
     payload.put("rulesVersion", RULES_VERSION);
@@ -833,12 +974,188 @@ public final class EconomySeeder {
     payload.put(
         "moneyIssuances",
         issuanceNodes(mapId, entries, genesisEndowment, genesisMoneyMilliPerCapita));
+    if (profile == FoundationProfile.COMPLETE) {
+      // ★★ P1：完整经济地基（E1 + E2 的规则表）。classStandings 按 entries 里每行的
+      //   ClassRow.view.stratum（slot）映射到默认结构的 7 个位置；原始/当前 = 同一位置。
+      payload.put("modes", foundationModeNodes());
+      payload.put("classStructures", foundationClassStructureNodes());
+      payload.put("classPositions", foundationClassPositionNodes());
+      payload.put("classStandings", foundationClassStandingNodes(entries));
+      payload.put("assetRules", foundationAssetRuleNodes());
+      payload.put("liquidationPolicies", foundationLiquidationPolicyNodes());
+    }
     // ★★ E4c：新键的空语义 —— 本 seeder 仍不种初始债务/质押（发空表 = 世界从零债开始，合法）。
     //   载荷层已放开非空；若将来要种初始债，**必须**先在本 seeder / actor.Seed 协调器里给 debtor/creditor
     //   备好对应的真实库存/货币/权利（economy 不会替 actor 搬账），否则就是凭空种出无对价的债权名册。
     payload.put("debtContracts", List.of());
     payload.put("pledges", List.of());
     return ToolSupport.json(payload);
+  }
+
+  /** ★ P1：默认 mode 的载荷（一个 mode；用 {@link LegacyClassStructure} 的默认值，不发明新 mode）。 */
+  static List<Map<String, Object>> foundationModeNodes() {
+    ProductionMode mode = LegacyClassStructure.defaultMode();
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", mode.id().value());
+    node.put("name", mode.name());
+    node.put("version", mode.version());
+    node.put("classStructureId", mode.classStructureId().value());
+    return List.of(node);
+  }
+
+  /** ★ P1：默认阶层结构（7 个位置 + 全零默认份额；份额是 LegacyClassStructure 的兼容占位，不另造）。 */
+  static List<Map<String, Object>> foundationClassStructureNodes() {
+    var structure = LegacyClassStructure.defaultClassStructure();
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", structure.id().value());
+    node.put("modeId", structure.modeId().value());
+    List<Map<String, Object>> positions = new ArrayList<>(structure.positions().size());
+    for (ClassPosition position : structure.positions().values()) {
+      positions.add(classPositionNode(position));
+    }
+    node.put("positions", positions);
+    Map<String, Object> shares = new LinkedHashMap<>();
+    for (Map.Entry<ClassPositionId, Long> entry : structure.defaultSharesPerMille().entrySet()) {
+      shares.put(entry.getKey().value(), entry.getValue());
+    }
+    node.put("defaultSharesPerMille", shares);
+    return List.of(node);
+  }
+
+  /** ★ P1：7 个默认阶层位置的顶层载荷（与 {@link #foundationClassStructureNodes()} 内嵌的逐值同形）。 */
+  static List<Map<String, Object>> foundationClassPositionNodes() {
+    List<Map<String, Object>> nodes = new ArrayList<>();
+    for (ClassPosition position : LegacyClassStructure.defaultClassPositions().values()) {
+      nodes.add(classPositionNode(position));
+    }
+    return nodes;
+  }
+
+  /** 一个阶层位置的载荷节点；{@code ruleExtensions} 也落出来（空表是合法形态）。 */
+  static Map<String, Object> classPositionNode(ClassPosition position) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", position.id().value());
+    node.put("modeId", position.modeId().value());
+    node.put("name", position.name());
+    node.put("relationToMeans", position.relationToMeans().name());
+    node.put("laborRole", position.laborRole().name());
+    node.put("surplusRole", position.surplusRole().name());
+    Map<String, String> extensions = new LinkedHashMap<>(position.ruleExtensions());
+    node.put("ruleExtensions", extensions);
+    return node;
+  }
+
+  /**
+   * ★ P1：为 {@code entries} 里每一个被 seed 的家户生成一条 {@link ClassStanding} 载荷。
+   *
+   * <p>映射口径 = 旧 {@code ClassRow.view.stratum}（载荷里的 {@code slot}）经 {@link
+   * LegacyClassStructure#positionIdOf} 到默认位置；{@code original == current}， {@code retainedShares}
+   * 空表，{@code consecutiveDebtStressCycles=0}，{@code lastTransitionDay=0}， reason = {@link
+   * #COMPLETE_CLASS_STANDING_REASON}。包含人口 0 的空行（"每个被 seed 的家户"）。
+   */
+  static List<Map<String, Object>> foundationClassStandingNodes(List<Map<String, Object>> entries) {
+    List<Map<String, Object>> nodes = new ArrayList<>();
+    for (Map<String, Object> entry : entries) {
+      Object classesNode = entry.get("classes");
+      if (!(classesNode instanceof List<?> classes)) {
+        throw new IllegalStateException("seed entry 缺 classes 列表，无法生成 classStandings: " + entry);
+      }
+      for (Object rowNode : classes) {
+        if (!(rowNode instanceof Map<?, ?> row)) {
+          throw new IllegalStateException("classes 的元素不是对象: " + rowNode);
+        }
+        Object householdNode = row.get("householdId");
+        Object slotNode = row.get("slot");
+        if (!(householdNode instanceof String household) || !(slotNode instanceof String slot)) {
+          throw new IllegalStateException(
+              "class row 缺 householdId/slot，无法生成 classStanding: " + rowNode);
+        }
+        ClassPositionId positionId = LegacyClassStructure.positionIdOf(SocialClassId.parse(slot));
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("householdId", household);
+        node.put("originalPositionId", positionId.value());
+        node.put("currentPositionId", positionId.value());
+        node.put("retainedShares", Map.of());
+        node.put("consecutiveDebtStressCycles", 0L);
+        node.put("lastTransitionDay", 0L);
+        node.put("reason", COMPLETE_CLASS_STANDING_REASON);
+        nodes.add(node);
+      }
+    }
+    return nodes;
+  }
+
+  /** ★ P1：LAND/TOOL/WORKSHOP 三条核心生产资料规则（mode=legacy；核心、可抵押、稳定清算优先级）。 */
+  static List<Map<String, Object>> foundationAssetRuleNodes() {
+    List<Map<String, Object>> nodes = new ArrayList<>(COMPLETE_ASSET_KINDS.size());
+    for (AssetKind assetKind : COMPLETE_ASSET_KINDS) {
+      AssetRuleId ruleId = AssetRuleId.idOf(LegacyClassStructure.defaultModeId(), assetKind);
+      Map<String, Object> node = new LinkedHashMap<>();
+      node.put("id", ruleId.value());
+      node.put("modeId", LegacyClassStructure.defaultModeId().value());
+      node.put("assetKind", assetKind.name());
+      node.put("isCoreMeans", true);
+      node.put("pledgeable", true);
+      // LAND/WORKSHOP = 1、TOOL = 2：土地/作坊先于工具处置（测试世界的显式制度参数，不是通用公式）。
+      node.put("liquidationPriority", assetKind == AssetKind.TOOL ? 2 : 1);
+      node.put("rentRule", foundationRentRuleNode(assetKind));
+      node.put("transferRule", foundationTransferRuleNode());
+      nodes.add(node);
+    }
+    return nodes;
+  }
+
+  /**
+   * 一条合法租金模板：产出分成 300‰。
+   *
+   * <p>LAND 分成粮（农业产出粮）；TOOL/WORKSHOP 分成布（家庭纺织/作坊产出布）。选分成而不是固定额的理由：规则挂在 {@code AssetRule}
+   * 上、不随租入规模缩放，固定额会在多份资产租入时重复；分成随实际产出走，是当前结算侧已认识的 {@code OUTPUT_SHARE} 口径。
+   */
+  static Map<String, Object> foundationRentRuleNode(AssetKind assetKind) {
+    String commodity = assetKind == AssetKind.LAND ? COMMODITY_GRAIN : COMMODITY_CLOTH;
+    Map<String, Object> leg = new LinkedHashMap<>();
+    leg.put("kind", RentRule.RentType.SHARE.name());
+    leg.put("ratePerMille", COMPLETE_RENT_SHARE_PER_MILLE);
+    leg.put("fixedAmount", 0L);
+    leg.put("commodity", commodity);
+    Map<String, Object> rule = new LinkedHashMap<>();
+    rule.put("type", RentRule.RentType.SHARE.name());
+    rule.put("priority", 10);
+    rule.put("legs", List.of(leg));
+    return rule;
+  }
+
+  /**
+   * ★ P1 的显式转移制度：{@code transferable=true}（清算需要处置权）、 {@code
+   * requiresOwnerConsent=true}（保护所有权人，不让经营者单方卖地/作坊）、 {@code allowSublease=false}（E2 的 {@code
+   * idleSources} 已把 TENANCY 排除；此处显式钉死不许转租）。
+   */
+  static Map<String, Object> foundationTransferRuleNode() {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("transferable", true);
+    node.put("requiresOwnerConsent", true);
+    node.put("allowSublease", false);
+    return node;
+  }
+
+  /**
+   * ★ P1：三条 {@link AssetRuleId} 各一条 {@link LiquidationPolicy}。当前没有市场资产价，故用 POLICY 制度价 4
+   * 毫/单位；其余参数是测试世界的显式制度值，不是公式。
+   */
+  static List<Map<String, Object>> foundationLiquidationPolicyNodes() {
+    List<Map<String, Object>> nodes = new ArrayList<>(COMPLETE_ASSET_KINDS.size());
+    for (AssetKind assetKind : COMPLETE_ASSET_KINDS) {
+      AssetRuleId ruleId = AssetRuleId.idOf(LegacyClassStructure.defaultModeId(), assetKind);
+      Map<String, Object> node = new LinkedHashMap<>();
+      node.put("ruleId", ruleId.value());
+      node.put("maxLiquidatePerMille", 500);
+      node.put("protectedReserve", 1000L);
+      node.put("priceSource", LiquidationPolicy.PriceSource.POLICY.name());
+      node.put("policyValuePerUnitMilli", 4L);
+      node.put("recipientRule", LiquidationPolicy.RecipientRule.CREDITOR_FIRST.name());
+      nodes.add(node);
+    }
+    return nodes;
   }
 
   /** E3：政府载荷节点（键序 = 传入 map 序；{@code issuable} 保序）。 */
@@ -945,20 +1262,45 @@ public final class EconomySeeder {
    */
   static Seed plan(
       String mapId, List<PopulationGroup> groups, Function<HexCoord, String> terrainOf) {
-    return plan(mapId, groups, terrainOf, genesisMoneyMilliPerCapita());
+    return plan(mapId, groups, terrainOf, genesisMoneyMilliPerCapita(), FoundationProfile.LEGACY);
+  }
+
+  /** ★ P1：纯函数主入口 + profile（初始禀赋取默认值）。 */
+  static Seed plan(
+      String mapId,
+      List<PopulationGroup> groups,
+      Function<HexCoord, String> terrainOf,
+      FoundationProfile profile) {
+    return plan(mapId, groups, terrainOf, genesisMoneyMilliPerCapita(), profile);
   }
 
   /**
    * ★★ E3：纯函数主入口 + 初始禀赋参数（{@code genesisMoneyMilliPerCapita}，毫/人；≥ 0）。 初始发行记录的总量按**家户钱包 +
-   * 经营者钱包**逐币种汇总，与 actor.Seed 同一份表。
+   * 经营者钱包**逐币种汇总，与 actor.Seed 同一份表；profile 缺省 LEGACY。
    */
   static Seed plan(
       String mapId,
       List<PopulationGroup> groups,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita) {
+    return plan(mapId, groups, terrainOf, genesisMoneyMilliPerCapita, FoundationProfile.LEGACY);
+  }
+
+  /**
+   * ★★ P1：纯函数主入口 + 初始禀赋 + profile。{@link FoundationProfile#COMPLETE} 只在 {@link
+   * Seed#economyPayload()} 里追加六个地基键；entries/库存/货币/发行记录逐值不变。
+   */
+  static Seed plan(
+      String mapId,
+      List<PopulationGroup> groups,
+      Function<HexCoord, String> terrainOf,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile) {
     if (genesisMoneyMilliPerCapita < 0L) {
       throw new IllegalArgumentException("初始禀赋（毫/人）不得为负: " + genesisMoneyMilliPerCapita);
+    }
+    if (profile == null) {
+      throw new IllegalArgumentException("profile 不得为 null");
     }
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
@@ -1192,7 +1534,8 @@ public final class EconomySeeder {
         operators,
         governments,
         genesisEndowment,
-        genesisMoneyMilliPerCapita);
+        genesisMoneyMilliPerCapita,
+        profile);
   }
 
   /**

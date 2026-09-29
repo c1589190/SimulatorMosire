@@ -276,6 +276,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
+        + " economyProfile?(legacy|complete，缺省 legacy),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
         + ")}。"
@@ -302,6 +303,10 @@ public final class WorldgenInitializeTool implements AgentTool {
             "是否连军队编制一起建（缺省 true：同一批追加 sd.CreateNation + 单位 + 指挥链 + sd.CreateArmy）；"
                 + "false = 只做人口+城市（不写国家 tag、不建国）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
+    props.put(
+        "economyProfile",
+        ToolSupport.prop(
+            "string", "经济地基 profile：legacy（缺省，旧 payload 逐字节不变）或 complete（种完整 E1/E2 地基）"));
     props.put(
         "cityLimit", ToolSupport.prop("integer", "返回的城市表最多列几行（缺省 " + DEFAULT_CITY_LIMIT + "）"));
     return ToolSupport.schema(props, List.of("nation"));
@@ -358,6 +363,10 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       long genesisMoneyMilliPerCapita =
           genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
+      // ★★ P1：经济地基 profile（GM 可传参数；缺省 legacy，保证旧载荷逐值不变）。不用 System property。
+      EconomySeeder.FoundationProfile economyProfile =
+          EconomySeeder.FoundationProfile.parse(
+              ToolSupport.optionalText(args, "economyProfile", "legacy"));
       int cityLimit = limitArg == null ? DEFAULT_CITY_LIMIT : (int) Math.min(limitArg, 1_000_000L);
 
       // 世界状态：**没 head 就没有世界**（dryRun 也一样要读地图拿区域格集）。
@@ -409,7 +418,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                   setup.displayName(),
                   armyAt,
                   anchorTick,
-                  genesisMoneyMilliPerCapita)
+                  genesisMoneyMilliPerCapita,
+                  economyProfile)
               : buildBatch(
                   batchId,
                   initiator,
@@ -421,7 +431,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                   plan,
                   seed,
                   anchorTick,
-                  genesisMoneyMilliPerCapita);
+                  genesisMoneyMilliPerCapita,
+                  economyProfile);
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
         summary.put("revision", committed.ref().revision().value());
@@ -546,12 +557,13 @@ public final class WorldgenInitializeTool implements AgentTool {
         plan,
         seed,
         anchorTick,
-        EconomySeeder.genesisMoneyMilliPerCapita());
+        EconomySeeder.genesisMoneyMilliPerCapita(),
+        EconomySeeder.FoundationProfile.LEGACY);
   }
 
   /**
    * ★★ E3：同上一支 + **初始禀赋参数**（毫/人）。缺省重载逐值等于 E3 之前；本重载把参数透传给 {@link EconomySeeder#plan(String, List,
-   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。
+   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。profile 缺省 LEGACY。
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -565,6 +577,39 @@ public final class WorldgenInitializeTool implements AgentTool {
       long seed,
       long anchorTick,
       long genesisMoneyMilliPerCapita) {
+    return buildBatch(
+        batchId,
+        initiator,
+        mapId,
+        branch,
+        expectedRevision,
+        map,
+        region,
+        plan,
+        seed,
+        anchorTick,
+        genesisMoneyMilliPerCapita,
+        EconomySeeder.FoundationProfile.LEGACY);
+  }
+
+  /**
+   * ★★ P1：人口+城市+经济+家户 actor 批的完整入口 —— 额外把经济地基 profile 透传给 {@link EconomySeeder#plan(String, List,
+   * GameMap, long, EconomySeeder.FoundationProfile)}。 {@code economy.Seed} 与 {@code actor.Seed}
+   * 仍读同一次 plan（同源接缝不走样）。
+   */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      String mapId,
+      BranchId branch,
+      RevisionId expectedRevision,
+      GameMap map,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      long anchorTick,
+      long genesisMoneyMilliPerCapita,
+      EconomySeeder.FoundationProfile economyProfile) {
     List<CommandEnvelope> batch = new ArrayList<>(4 + plan.cities().size());
     batch.add(
         envelope(
@@ -597,7 +642,8 @@ public final class WorldgenInitializeTool implements AgentTool {
     //   {@code economy.Seed} 的 entries + markets 与家户的开缸库存 + **创世货币禀赋**（后两者进
     //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
     //   （本仓明令禁止的"同一事实两处拼写点"）。
-    EconomySeeder.Seed seeding = EconomySeeder.plan(mapId, groups, map, genesisMoneyMilliPerCapita);
+    EconomySeeder.Seed seeding =
+        EconomySeeder.plan(mapId, groups, map, genesisMoneyMilliPerCapita, economyProfile);
     batch.add(
         envelope(
             batchId,
@@ -663,10 +709,11 @@ public final class WorldgenInitializeTool implements AgentTool {
         displayName,
         at,
         anchorTick,
-        EconomySeeder.genesisMoneyMilliPerCapita());
+        EconomySeeder.genesisMoneyMilliPerCapita(),
+        EconomySeeder.FoundationProfile.LEGACY);
   }
 
-  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。 */
+  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。profile 缺省 LEGACY。 */
   static List<CommandEnvelope> buildBatch(
       String batchId,
       String initiator,
@@ -682,6 +729,41 @@ public final class WorldgenInitializeTool implements AgentTool {
       HexCoord at,
       long anchorTick,
       long genesisMoneyMilliPerCapita) {
+    return buildBatch(
+        batchId,
+        initiator,
+        mapId,
+        branch,
+        expectedRevision,
+        map,
+        region,
+        plan,
+        seed,
+        army,
+        displayName,
+        at,
+        anchorTick,
+        genesisMoneyMilliPerCapita,
+        EconomySeeder.FoundationProfile.LEGACY);
+  }
+
+  /** ★★ P1：军队批 + 初始禀赋 + 经济地基 profile（与无军队那支共用同一个透传点）。 */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      String mapId,
+      BranchId branch,
+      RevisionId expectedRevision,
+      GameMap map,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      ArmyPlan army,
+      String displayName,
+      HexCoord at,
+      long anchorTick,
+      long genesisMoneyMilliPerCapita,
+      EconomySeeder.FoundationProfile economyProfile) {
     List<CommandEnvelope> batch =
         new ArrayList<>(
             buildBatch(
@@ -695,7 +777,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                 plan,
                 seed,
                 anchorTick,
-                genesisMoneyMilliPerCapita));
+                genesisMoneyMilliPerCapita,
+                economyProfile));
     appendArmyCommands(
         batch, batchId, initiator, branch, expectedRevision, region, army, displayName, at);
     return List.copyOf(batch);
