@@ -319,3 +319,55 @@ E2b：候选预设实际采用（合条件家户形成 TRIALING unit、buildDays
 
 ### 下一步
 E3：实际生产实践的经验积累（挂稳定 HouseholdId × modeKey；实劳实产才计提；纯收租 0；阶层变化不丢；地区规模有界渐近）。
+
+---
+
+## 阶段总结（2026-09-29，E3 暂缓）
+
+### 当前状态
+- 分支 `ts/m1-r3b2`，HEAD `a3dbcbdc`；工作树干净、无 stash、无残留服务/Maven；所有提交都在本地（`origin/ts/m1` 仍停在 `6170760f`，未 push）。
+- `EconomyData` 当前 **16 个组件**：meta / industries / classes / debts / flows / laborSupply / allocations / relations /
+  markets / shipments / memberships / assetShares / operatorConditions / units / demands / candidates。
+- 已完成切片（10 个提交，从旧到新）：
+  1. `915d328b` **B.2** ProductionUnit + AssetShare 生产接线（旧档兼容 + 配额去重）；
+  2. `24108dba` **B.3a** 新世界多 unit 播种（庄园自营+佃耕+家户纺织，只拆不加）；
+  3. `dfee4bf7` **B.3a-perf** 结算派生索引化；
+  4. `ecdfe04f` **B.3b** TransferAssetShare + c1 孤儿债对账；
+  5. `dd95b8f2` **B.4** 阶层纯派生收口；
+  6. `e2a48c49` **E1** 衰退/退出处置/家户后果；
+  7. `5d3435d6` **E2a** 需求账本/候选预设/GM 命令/订单路径；
+  8. `a3dbcbdc` **E2b** 候选预设实际采用（TRIALING 试产）；
+  （另有 `76d9e792` 文档：缺口表+计划+台账）。
+
+### 四项目标完成度
+| 目标 | 状态 | 关键证据 |
+|---|---|---|
+| 1 旧方式衰退 + 经营者/家户后果 | **已实现，受控验证** | E1 探针 PASS=74/0：自用维生止于 CONTRACTING；不可再生产→EXITED 后配额释放/TENANCY 份额回 owner/债务还或违约/库存留账/人口不变；0→120 与 B.4 全组件 0 差异 |
+| 2 新需求→已有/新预设采用 | **已实现，端到端验证** | E2a：空表基线 0 差异；wool 需求 D+1 订单 10,000、取消后 0。E2b：tick1 出现 2 个 TRIALING unit、day30 净产 34,920,000、Σ份额守恒、1vs8 全组件 0 差异、不可行具名拒绝 |
+| 3 生产实践经验 | **未实现（本轮暂缓）** | 无代码、无状态组件；E3 代理写盘前被取消 |
+| 4 收入梯度消费 | **未开始** | 尚无 NeedProfile/四量/基本-改善缺口；`effectiveDemand` 仍未接消费反馈链 |
+| V 最终验收 | **未开始** | JUnit/变异/4 线程/全年 360+峰值内存/10k 格/场景清单/SpotBugs 全未跑；既有测试未按新 Industry/16 组件形状适配 |
+
+### 已核实的关键读数
+- 多 unit：8,940 个 unit / 1,799 个产业，同格 farm/weave 主+4 户、craft 4–5 条；tick0 Σ 份额/配额与旧世界逐值相等。
+- 性能：0→120 tick 8 线程 **36.0 s**（索引化前 752.7 s），VmHWM ≈1.6 GiB；带进入场景 37.6 s。
+- 确定性：多个切片 1 vs 8 线程完整领域状态 0 差异；4 线程未跑。
+- 守恒：各片均核过人口/商品/货币/资产份额/劳动配额/债务；E1/E2 处置与拆分只改归属/分布。
+- 旧档：R3B.1 及之后形状可读并迁移；c1 孤儿债在真实 tick120 旧状态上 62→0、principal 10,495,732 不变。
+
+### 主要阻断 / 缺口（按优先级）
+1. **E3 经验未做**：`experiences` 组件、实劳实产计提、modeKey 全局化、地区有界系数、阶层×模式读口全部缺失。
+2. **E4 梯度消费未做**：`needProfiles`、人均四量（基本/期望/有效/实际）、可支配资源、基本-改善缺口分离、`effectiveDemand` 进订单与消费反馈链全部缺失；因此“消费变化→新需求→进入/竞争/退出”完整链未复验。
+3. **V 未开始**：现有测试仍按旧 `Industry`/旧组件数构造（`-DskipTests compile` 不编译 test），JUnit/往返/变异/SpotBugs 均未适配；1/4/8、全年 360、峰值内存正式协议、10k 格未做。
+4. **旧档兼容边界**：S1 之前的 changeset（如 M2 `store-m2` 的 `useRights` 组件）在核心 `Timeline.readChangeSet` 严格绑定下仍不可读（B.2 前后同样失败，非本阶段回归）；
+   如需支持，需与 `Industry` 兼容位同款的 `useRights→assetShares` record 级兼容层（可能很大，R3 决策单允许 S1 前归档不可开）。
+5. **显式命令缺口**：`economy.CloseProductionUnit` 未实现（退出由状态机/受控探针触发）；`ReclassifyHousehold` 有意不做（B.4 纯派生）。
+6. **E2 边界**：`ONE_OFF` 需求无跨轮剩余递减；candidate 只存当前版本；`EntryOutcomeFeed` 进程内瞬态、重启即失；`TRIAL_ABORTED` 完整回滚未做；
+   `CommandTargets` 未声明（GM `simos.command.submit` 可用，directive 内 fail-closed）。
+7. **自然长期观察不足**：0→120 只有一个关账周期，未观察到自然退出；退出/采用路径主要靠受控探针与命令注入验证；全年行为待 V。
+
+### 恢复建议（若继续）
+1. 先补 E4（用户四目标中缺口最大的一项，且独立于 E3）；E3 可在 E4 之后补，或与 E4 同批（经验 bonus 只影响预设内效率）。
+2. E3 恢复时直接按 `docs/superpowers/plans/2026-09-29-economy-evolution-r4-plan.md` §E3 执行：新 `experiences` 组件挂稳定 HouseholdId×modeKey、
+   收获日按实际劳动/实际产出计提、纯收租 0、有界渐近、阶层视图只读聚合、旧档缺键空表。
+3. 最后统一 V：测试适配、1/4/8、全年 360+峰值内存、10k 格、场景清单、SpotBugs；再决定是否补 `CloseProductionUnit` 与 S1 前旧档兼容。
