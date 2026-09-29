@@ -375,6 +375,29 @@ public final class ToolSupport {
     return args.get(name) != null;
   }
 
+  /**
+   * 可选布尔参数（缺省 = {@link Optional#empty()}；字符串 {@code "true"}/{@code "false"} 也接受，与既有窄工具的 dryRun
+   * 形态一致）。类型不对 ⇒ {@link IllegalArgumentException}（由工具折成具名 {@code BAD_REQUEST}，不静默按缺省办）。
+   */
+  public static Optional<Boolean> optionalBoolean(Map<String, Object> args, String name) {
+    Object value = args.get(name);
+    if (value == null) {
+      return Optional.empty();
+    }
+    if (value instanceof Boolean bool) {
+      return Optional.of(bool);
+    }
+    if (value instanceof String text && !text.isBlank()) {
+      if ("true".equalsIgnoreCase(text.trim())) {
+        return Optional.of(true);
+      }
+      if ("false".equalsIgnoreCase(text.trim())) {
+        return Optional.of(false);
+      }
+    }
+    throw new IllegalArgumentException("参数 " + name + " 必须是布尔值");
+  }
+
   // ── JSON Schema 小件（工具定义给模型看）──────────────────────────────────────────────
 
   public static Map<String, Object> prop(String type, String description) {

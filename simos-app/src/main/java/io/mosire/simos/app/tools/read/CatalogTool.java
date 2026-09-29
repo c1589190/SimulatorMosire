@@ -7,11 +7,13 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.app.access.CatalogVisibility;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -152,6 +154,20 @@ public final class CatalogTool implements AgentTool {
                   + "（★ (id,version) 已存在 ⇒ 拒；旧 unit 的 modeKey=id@version 不受修订影响；只写 candidates；"
                   + "进入采用算法留 E2b）"),
           Map.entry(
+              "economy.SwitchMode",
+              "organizationId, toModeId, retainOriginalPerMille(0..1000),"
+                  + " effectiveDay?(缺省=当前日；不得早于当前日), reason?"
+                  + "（★ GM-only：只登记 PENDING，迁移在日结算自动组织之前执行；"
+                  + "普通决策人令 / RegisterEffect 不可嵌入它）"),
+          Map.entry(
+              "economy.GmAdjust",
+              "adjustment(forgiveDebt|setLiquidationPolicy), parameters(JSON 对象), reason(必填非空白)"
+                  + "（★ GM-only、只改源状态：白名单外/派生读数 ⇒ 拒；"
+                  + "forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
+                  + "setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
+                  + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
+                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒）"),
+          Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
                   + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"
@@ -224,10 +240,34 @@ public final class CatalogTool implements AgentTool {
   private final CatalogVisibility visibility;
 
   /**
+   * ★ 单参兼容构造（既有用例/调用点）：catalog 清单与"可嵌入令"白名单**同源**（同一份输入集交给 {@link CatalogVisibility} 与 {@link
+   * DirectiveWhitelist} 各自推导）。
+   *
    * @param commandTypes 已注册命令类型（与 {@code Shell} 注册的 handler 同源）；本类只读它
    * @throws IllegalArgumentException 有已注册 type 未登记载荷提示（缺项不静默——见 {@link #PAYLOAD_HINTS}）
    */
   public CatalogTool(Set<String> commandTypes) {
+    this(commandTypes, commandTypes);
+  }
+
+  /**
+   * ★★ E6b：清单与"令里可嵌白名单"**拆开** —— catalog 可见的命令类型可以 ⊋ 可嵌入令的白名单。
+   *
+   * <p>为什么需要它：E6a 起 {@code GmOnlyCommand}（{@code economy.SwitchMode} / {@code economy.GmAdjust}）不得进
+   * {@code DirectiveWhitelist}，但 GM 的 catalog 仍要列出它们（GM 能用 {@code simos.command.submit} 直接提交）。 若继续把
+   * {@code registered − GmOnly} 喂给 catalog，GM 就看不到这两条；而把完整注册面同时当白名单来源，决策人又会看到 {@code
+   * GmOnlyCommand}（它们不在 {@code directiveCommandTypes} 里）。故此处收两份输入：catalog 面取完整注册面，白名单面取 {@code
+   * Shell} 已派生的"注册面 − GmOnly"。
+   *
+   * @param commandTypes catalog 可见的**完整注册面**（含 GM-only）；本类只读它
+   * @param embeddableCommandTypes 可嵌入令白名单的**输入集**（{@code Shell} 的 {@code directiveCommandTypes} =
+   *     注册面 − GmOnly）；{@link CatalogVisibility} 会照旧经 {@link DirectiveWhitelist} 过滤 {@code sd.*} /
+   *     通用写
+   * @throws IllegalArgumentException 已注册 type 缺载荷提示，或可嵌入白名单含未注册 type（两处都不静默）
+   */
+  public CatalogTool(Set<String> commandTypes, Set<String> embeddableCommandTypes) {
+    Objects.requireNonNull(commandTypes, "commandTypes");
+    Objects.requireNonNull(embeddableCommandTypes, "embeddableCommandTypes");
     List<String> sorted = new ArrayList<>(commandTypes);
     Collections.sort(sorted);
     List<String> missing = new ArrayList<>();
@@ -239,9 +279,19 @@ public final class CatalogTool implements AgentTool {
     if (!missing.isEmpty()) {
       throw new IllegalArgumentException("已注册命令类型未登记载荷提示（PAYLOAD_HINTS）: " + missing);
     }
+    List<String> notRegistered = new ArrayList<>();
+    for (String type : embeddableCommandTypes) {
+      if (!commandTypes.contains(type)) {
+        notRegistered.add(type);
+      }
+    }
+    if (!notRegistered.isEmpty()) {
+      throw new IllegalArgumentException("可嵌入令的白名单含未注册命令类型: " + notRegistered);
+    }
     this.types = List.copyOf(sorted);
-    // ★ 可见性判据与注册面**同一份输入**（不是另一张表）：过滤规则见 CatalogVisibility 的类注。
-    this.visibility = new CatalogVisibility(Set.copyOf(sorted));
+    // ★ 决策人可见性仍走既有唯一判据 CatalogVisibility（内部照旧用 DirectiveWhitelist 过滤 sd 自指/通用写）：
+    //   E6b 只把"输入集"从完整注册面换成已排除 GmOnly 的 directiveCommandTypes ⇒ 决策人行为逐值不变。
+    this.visibility = new CatalogVisibility(embeddableCommandTypes);
   }
 
   @Override

@@ -36,6 +36,7 @@ import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
+import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.MapCreateRegionTool;
@@ -146,6 +147,11 @@ public final class SimosToolSource implements ToolSource {
    *
    * <p>★ GM 桶请用带 {@code commandTargets} 的那条：缺了它 {@code sd.AdjudicateTick} 会因"没有任何命令有目标声明"
    * 而**一律拒**（fail-closed，不会静默放行——但这显然不是想要的行为）。
+   *
+   * @param commandTypes E6b 起 = catalog 可见的**完整注册面**（含 GM-only）；只读
+   * @param embeddableCommandTypes E6b 起 = **可嵌入令白名单的输入集**（注册面 − GM-only；{@code DirectiveWhitelist}
+   *     会再过滤 {@code sd.*} 自指与通用写）；{@code CatalogTool} 的决策人可见性判据与 {@code sd.AdjudicateTick} 的
+   *     whitelist 都用它（见 {@link #SimosToolSource} 的类注）
    */
   public SimosToolSource(
       CoreSimos core,
@@ -154,6 +160,7 @@ public final class SimosToolSource implements ToolSource {
       String mapId,
       Path worldgenConfigFile,
       Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
       SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
@@ -166,6 +173,7 @@ public final class SimosToolSource implements ToolSource {
         mapId,
         worldgenConfigFile,
         commandTypes,
+        embeddableCommandTypes,
         skills,
         renderService,
         gmToolUsage,
@@ -178,6 +186,9 @@ public final class SimosToolSource implements ToolSource {
   /**
    * 全参装配：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）。
    *
+   * @param commandTypes catalog 可见的完整注册面（含 GM-only；E6b 起与 embeddableCommandTypes 拆开）
+   * @param embeddableCommandTypes 可嵌入令白名单的输入集（注册面 − GM-only；E6b 起供 {@code CatalogTool} 的决策人过滤与
+   *     {@code sd.AdjudicateTick} 的 whitelist，两者各自经 {@code DirectiveWhitelist} 过滤自指/通用写）
    * @param commandTargets {@code type → 目标声明}（**必须**由同一份已注册 handler 清单派生，见 {@link CommandTargets}）
    * @param decisionAgent **只被 {@link Role#GM} 用到**（触发工具只在 GM 面）；该角色下为 null ⇒ **当场抛**
    *     （装配故障不静默兜底），{@link Role#DECISION_AGENT} 下**无关**（它没有触发工具，也不需要运行流）
@@ -193,6 +204,7 @@ public final class SimosToolSource implements ToolSource {
       String mapId,
       Path worldgenConfigFile,
       Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
       SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
@@ -206,6 +218,7 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(mapId, "mapId");
     Objects.requireNonNull(worldgenConfigFile, "worldgenConfigFile");
     Objects.requireNonNull(commandTypes, "commandTypes");
+    Objects.requireNonNull(embeddableCommandTypes, "embeddableCommandTypes");
     Objects.requireNonNull(skills, "skills");
     Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     Objects.requireNonNull(commandTargets, "commandTargets");
@@ -218,6 +231,7 @@ public final class SimosToolSource implements ToolSource {
                     query,
                     mapId,
                     commandTypes,
+                    embeddableCommandTypes,
                     skills,
                     renderService,
                     gmToolUsage,
@@ -229,10 +243,11 @@ public final class SimosToolSource implements ToolSource {
         addGmWrites(
             built,
             core,
+            query,
             initiator,
             mapId,
             worldgenConfigFile,
-            commandTypes,
+            embeddableCommandTypes,
             commandTargets,
             requireDecisionAgent(decisionAgent));
       }
@@ -279,10 +294,11 @@ public final class SimosToolSource implements ToolSource {
   private static void addGmWrites(
       List<AgentTool> built,
       CoreSimos core,
+      QueryService query,
       String initiator,
       String mapId,
       Path worldgenConfigFile,
-      Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
       Map<String, CommandTargets> commandTargets,
       DecisionAgentService decisionAgent) {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
@@ -295,7 +311,10 @@ public final class SimosToolSource implements ToolSource {
     built.add(new RunDecisionTool(core, initiator, mapId, decisionAgent));
     // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
     //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new AdjudicateTickTool(core, initiator, mapId, commandTypes, commandTargets));
+    //   ★★ E6b：它吃的是**可嵌入令**白名单（注册面 − GM-only）——economy.SwitchMode / economy.GmAdjust
+    //     不会作为决策命令被代执行。
+    built.add(
+        new AdjudicateTickTool(core, initiator, mapId, embeddableCommandTypes, commandTargets));
     // 2026-09-23 用户裁定「只有生效裁决和作废裁决」：把某 tick 的裁决**作废**——世界回滚 + 令退回待裁决 + 记录标 VOIDED，
     //   一条 revision 原子（走 core.submitRestore）。★ **只在 GM 桶**；★ 也不是命令类型 ⇒ 不进 catalog。
     built.add(new VoidAdjudicationTool(core, initiator));
@@ -347,6 +366,10 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SdRegisterEffectTool(core, initiator, mapId));
     built.add(new SdCancelEffectTool(core, initiator, mapId));
     built.add(new SdSetDecisionMakerProviderTool(core, initiator, mapId));
+    // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
+    //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
+    //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
+    built.add(new EconomyAdjustTool(core, query, initiator, mapId));
   }
 
   /**
@@ -359,6 +382,11 @@ public final class SimosToolSource implements ToolSource {
    *
    * <p>★ **本清单要与 {@code DecisionCallerFactory} 的白名单同源**：那边给的是**权限组**（工具名白名单），这里给的是**桶**（注册进 MCP
    * 口用）——两处都收窄才算"改不掉"，只改一处等于留一条旁路。
+   *
+   * <p>★★ <b>E6b 负向证明：{@code simos.economy.adjust} 不在决策人可达面上</b>——它只在上面的 {@link #addGmWrites}
+   * 里注册（本桶没有）；{@code DecisionCallerFactory.WHITELIST} 也不含 {@link EconomyAdjustTool#NAME}；它封装 {@code
+   * economy.GmAdjust}，而该命令标了 {@code GmOnlyCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
+   * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
   private static void addDecisionAgentWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
@@ -371,12 +399,15 @@ public final class SimosToolSource implements ToolSource {
       QueryService query,
       String mapId,
       Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
       SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig) {
     return List.of(
-        new CatalogTool(commandTypes),
+        // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
+        //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
+        new CatalogTool(commandTypes, embeddableCommandTypes),
         new StateResolveTool(query, mapId),
         new StateFacetsTool(query, mapId),
         new BranchListTool(core),

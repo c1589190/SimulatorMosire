@@ -54,6 +54,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
+import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
@@ -253,11 +254,18 @@ public final class Shell implements AutoCloseable {
   private final List<DecisionChannel> decisionChannels;
 
   /**
-   * 决策面命令类型（E6a 起 = 注册面 − {@link GmOnlyCommand}）：按角色重建工具面时供 catalog 读，也是 {@code DirectiveWhitelist}
-   * 的输入。★ 完整注册面仍在 Core 的 handler 注册表与 {@code commandTargets} 里， 故 GM 的 {@code simos.command.submit}
-   * 不受这份过滤影响。
+   * **GM catalog 可见的命令类型**（E6b 起 = 完整注册面，含 {@link GmOnlyCommand}）：按角色重建工具面时供 catalog 读。 ★ 决策人侧仍由
+   * {@code CatalogVisibility} 按权限过滤 —— GM-only 命令不在其"可嵌入令"白名单里，故决策人看不到。
    */
   private final Set<String> commandTypes;
+
+  /**
+   * **可嵌入令 / 可入 RegisterEffect 的白名单输入集**（E6b 起与 catalog 面拆开；= 注册面 − {@link GmOnlyCommand}）： {@code
+   * IssueDirectiveHandler} 的 {@code DirectiveWhitelist}（再过滤 {@code sd.*} 自指与通用写）、{@code
+   * sd.AdjudicateTick} 重建的白名单与 {@code RegisterEffectHandler} 的可入队白名单共用这一份。★ GM-only 命令仍注册在 Core、仍进
+   * {@code commandTargets}，GM 的 {@code simos.command.submit} 不受影响。
+   */
+  private final Set<String> directiveCommandTypes;
 
   /**
    * Skill 库（2026-09-23）：决策人的**外部方法论与常识**（仓库种子 {@code config/skills} + store 覆盖 {@code
@@ -321,6 +329,7 @@ public final class Shell implements AutoCloseable {
       SdCommandDrain sdCommandDrain,
       List<DecisionChannel> decisionChannels,
       Set<String> commandTypes,
+      Set<String> directiveCommandTypes,
       Map<String, CommandTargets> commandTargets,
       SkillLibrary skillLibrary,
       RenderService renderService,
@@ -347,6 +356,7 @@ public final class Shell implements AutoCloseable {
     this.sdCommandDrain = sdCommandDrain;
     this.decisionChannels = List.copyOf(decisionChannels);
     this.commandTypes = Set.copyOf(commandTypes);
+    this.directiveCommandTypes = Set.copyOf(directiveCommandTypes);
     this.skillLibrary = Objects.requireNonNull(skillLibrary, "skillLibrary");
     this.renderService = Objects.requireNonNull(renderService, "renderService");
     this.artifactStore = Objects.requireNonNull(artifactStore, "artifactStore");
@@ -464,6 +474,10 @@ public final class Shell implements AutoCloseable {
                 // commandTargets，
                 //   GM 的 simos.command.submit 照常可用（见下方 directiveCommandTypes）。──
                 new EconomySwitchModeHandler(),
+                // ── economy（E6b）：GM 经济调整（减免债务 / upsert 清算政策）。★ 同样 GM-only：handler 照常注册、
+                //   照进 commandTargets；但排除出令白名单 / RegisterEffect / 决策人目录（见下方
+                //   catalogCommandTypes 与 directiveCommandTypes 的拆分）。──
+                new EconomyGmAdjustHandler(),
                 // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
@@ -493,12 +507,17 @@ public final class Shell implements AutoCloseable {
       }
     }
     handlers.add(new RegisterEffectHandler(drainableCommandTypes));
-    // ★★ E6a：决策面命令类型（**排除 GM-only 标记**）。它同时供 IssueDirectiveHandler 的白名单、CatalogTool
-    //   目录与 sd.AdjudicateTick 重建的白名单使用 —— 一处过滤，三条路径同源；handler 仍在上面的循环里注册到
-    //   Core（GM simos.command.submit 照常可达），commandTargets 也仍从完整 handler 清单派生。
+    // ★★ E6b：把"**GM catalog 可见的命令类型**"与"**可嵌入令/可入 RegisterEffect 的白名单**"拆开：
+    //   - catalogCommandTypes = 完整注册面（含 GmOnlyCommand）⇒ GM 的 simos.command.catalog 看得到
+    //     economy.SwitchMode / economy.GmAdjust；
+    //   - directiveCommandTypes = 注册面 − GmOnlyCommand（E6a 口径不变）⇒ IssueDirective 白名单、
+    //     sd.AdjudicateTick 重建的白名单、RegisterEffect 可入队白名单与决策人工具目录继续排除它们。
+    //   ★ catalog 的过滤仍在 CatalogVisibility（受限调用者只看到"自己可触发的"）；两条命令对决策人不可见。
+    Set<String> catalogCommandTypes = new LinkedHashSet<>();
     Set<String> directiveCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
+      catalogCommandTypes.add(handler.type());
       if (!(handler instanceof GmOnlyCommand)) {
         directiveCommandTypes.add(handler.type());
       }
@@ -532,6 +551,7 @@ public final class Shell implements AutoCloseable {
             resetDecisionMakerConversationHandler)) {
       handlers.add(late);
       coreSimos.register(late);
+      catalogCommandTypes.add(late.type());
       directiveCommandTypes.add(late.type());
     }
 
@@ -644,6 +664,7 @@ public final class Shell implements AutoCloseable {
                 config.mcpInitiator(),
                 config.mapId(),
                 WORLDGEN_CONFIG_FILE,
+                catalogCommandTypes,
                 directiveCommandTypes,
                 skillLibrary,
                 renderService,
@@ -682,6 +703,7 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             WORLDGEN_CONFIG_FILE,
+            catalogCommandTypes,
             directiveCommandTypes,
             skillLibrary,
             renderService,
@@ -788,6 +810,7 @@ public final class Shell implements AutoCloseable {
         codecs.size(),
         new SdCommandDrain(coreSimos),
         decisionChannels,
+        catalogCommandTypes,
         directiveCommandTypes,
         commandTargets,
         skillLibrary,
@@ -858,6 +881,7 @@ public final class Shell implements AutoCloseable {
             config.mapId(),
             WORLDGEN_CONFIG_FILE,
             commandTypes,
+            directiveCommandTypes,
             skillLibrary,
             renderService,
             gmToolUsage,
