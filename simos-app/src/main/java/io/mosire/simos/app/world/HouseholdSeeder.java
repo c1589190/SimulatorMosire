@@ -51,7 +51,9 @@ import java.util.Objects;
  *
  * <p>★★ <b>H4：创世货币禀赋也在这里播</b>——{@code goods} 那条记录多一个 {@code money} 键（见 {@link #goodsNode}）， 值来自
  * {@link EconomySeeder.Seed#householdMoney()}（每人 1.2 个周期的口粮等价，见 {@code
- * EconomySeeder.genesisMoneyMilliPerCapita}）。★ 它是**初始条件、不是发行**（{@code MoneyAuthority} 无实现者）。
+ * EconomySeeder.genesisMoneyMilliPerCapita}）。★★ E3 起它是**显式 INITIAL_ENDOWMENT 发行记录**：
+ * {@code EconomySeeder.Seed#genesisEndowment()} 与钱包同一份表，由 {@code economy.Seed} 随载荷落进
+ * {@code EconomyData.moneyIssuances}；发行主体是世界级最小政府（见 {@code EconomySeeder.GENESIS_GOVERNMENT_ID} 的 E3 口径）。
  *
  * <p>★ <b>键序是内容的纯函数</b>：逐格按 {@code (q,r)} 字典序、格内按 {@code (居住类型, 阶层)} 字典序 —— 同一份库存表两次调用逐字段产出同一份载荷 /
  * 同一个状态（可复现、可写进字面量断言）。

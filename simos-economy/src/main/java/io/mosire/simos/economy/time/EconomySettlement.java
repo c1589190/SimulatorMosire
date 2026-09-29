@@ -9,10 +9,12 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -22,6 +24,8 @@ import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuance;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -34,6 +38,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -45,6 +50,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -615,6 +621,9 @@ public final class EconomySettlement {
     Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
     Objects.requireNonNull(parallelism, "parallelism（R2：并行度配置）");
     EconomyData base = session.base();
+    // ★★ E3：发行主体的权威答案是当前世界状态（governments），不是进程里的旧登记。
+    //   日结算开始按 base 重建登记表：旧世界/旧档 governments 为空 ⇒ 清空登记 ⇒ requireIssuerOf 逐字保留旧 fail-closed 行为。
+    MoneyIssuance.syncAuthorities(base.governments().values());
     LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods = accounts.householdGoods();
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = accounts.householdMoney();
@@ -627,6 +636,9 @@ public final class EconomySettlement {
     EconomyMeta meta = session.sheet().meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
+    // ★★ E3：本次 revision 的发行审计收集器（id 由 transfer id + 币种确定性派生；并行分区也安全）。
+    //   ★ 发行腿只在付方余额不足且付方 = 当前政府国库时才会用到；旧路径（无 issuer）不产生任何记录。
+    MoneyIssuanceJournal issuanceJournal = new MoneyIssuanceJournal(base.governments(), currentCycle);
 
     // 工作副本：一律保序（绝不用 Map.copyOf——迭代序不是内容的纯函数）。
     LinkedHashMap<IndustryId, Industry> industries = session.sheet().industries();
@@ -962,6 +974,7 @@ public final class EconomySettlement {
         accounts,
         income,
         ledger,
+        issuanceJournal,
         day,
         parallelism);
 
@@ -1060,7 +1073,8 @@ public final class EconomySettlement {
           operatorMoney,
           repaidToday,
           householdOfActor,
-          ledger);
+          ledger,
+          issuanceJournal);
     }
 
     // ── 4d. 饿死判据（★ H5：**所有救济通道之后** —— 市场（4）→ 借（4b）→ 还（4c）之后才判）────────────
@@ -1164,7 +1178,8 @@ public final class EconomySettlement {
             householdOfActor,
             stateIndex,
             ledger,
-            day);
+            day,
+            issuanceJournal);
         // ★ 资产 operator / 劳动配额刚被改写 ⇒ 换一份索引，后面的阶层写回（读 unit 可用资产）不拿旧快照。
         //   这是**退出日的一次重建**（O(unit + 份额 + 配额)），不是逐查询重扫；退出本身是低频事件。
         settlementIndex =
@@ -1271,6 +1286,20 @@ public final class EconomySettlement {
             meta.migrationSource());
     // ★ R2：劳动供给表与配额表**原样带过结算的日常部分**（配额属命令层、供给属 social 的人口真值源）；
     //   R4 起它们在**饿死**那一步会被按存活比例缩（上面的工作副本），故这里交出的是**工作副本**。
+    // ★★ E3：把本次结算日产生的发行审计记录落进状态表（按 id 确定性排序；map 键 = 记录 id）。
+    //   ★ 只有真的发生单边发行才有记录；没有发行时连工作副本都不碰（旧路径逐值不变）。
+    List<MoneyIssuanceRecord> issuedToday = issuanceJournal.drainSorted();
+    if (!issuedToday.isEmpty()) {
+      LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> issuanceTable =
+          session.sheet().moneyIssuances();
+      for (MoneyIssuanceRecord record : issuedToday) {
+        MoneyIssuanceRecord existing = issuanceTable.putIfAbsent(record.id(), record);
+        if (existing != null && !existing.equals(record)) {
+          throw new IllegalStateException(
+              "同一天同一笔转移产生了两条不同的发行记录（id 冲突）: " + record.id());
+        }
+      }
+    }
     // ★ T2：生产关系表**原样带过**（本任务行为不变：{@code harvest} 还没读它 —— 那时 T4 的事）。
     session.sheet().meta(Optional.of(nextMeta));
   }
@@ -1846,6 +1875,7 @@ public final class EconomySettlement {
       AccountSession accounts,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> income,
       ProductionLedger.Accumulator ledger,
+      MoneyIssuanceJournal issuanceJournal,
       long day,
       EconomyParallelism parallelism) {
     if (works.isEmpty()) {
@@ -1892,7 +1922,8 @@ public final class EconomySettlement {
                       tables.operatorMoney,
                       relations,
                       householdOfActor,
-                      partitionLedger);
+                      partitionLedger,
+                      issuanceJournal);
                 }
               }
               return new HarvestPartition(buffer.drainIntents(), localIncome, partitionLedger);
@@ -3936,7 +3967,8 @@ public final class EconomySettlement {
       Map<ActorRef, HouseholdId> householdOfActor,
       SettlementIndex index,
       ProductionLedger.Accumulator ledger,
-      long day) {
+      long day,
+      MoneyIssuanceJournal issuanceJournal) {
     for (OperatorSettlement.Exit exit : exits) {
       // ── 1. 释放劳动：删除 activity == 本 unit 的全部配额（laborSupply 一字不动）────────────────
       long releasedLaborMilli = 0L;
@@ -4052,7 +4084,8 @@ public final class EconomySettlement {
               operatorGoods,
               operatorMoney,
               householdOfActor,
-              repayment);
+              repayment,
+              issuanceJournal);
           long remaining = debt.principal() - paid;
           debts.put(
               debt.id(),
@@ -4161,7 +4194,8 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       LinkedHashMap<HouseholdId, Long> repaid,
       Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionSettlement.TransferMint mint) {
+      ProductionSettlement.TransferMint mint,
+      MoneyIssuanceJournal issuanceJournal) {
     for (HouseholdId debtor : new ArrayList<>(rows.keySet())) {
       ClassRow row = rows.get(debtor);
       if (row.debts().isEmpty()) {
@@ -4200,7 +4234,8 @@ public final class EconomySettlement {
             operatorGoods,
             operatorMoney,
             householdOfActor,
-            repayment);
+            repayment,
+            issuanceJournal);
         debts.put(debtId, withPrincipal(debt, debt.principal() - paid));
         repaid.merge(debtor, paid, Long::sum);
         budget -= paid;
@@ -4562,7 +4597,8 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionLedger.Accumulator ledger) {
+      ProductionLedger.Accumulator ledger,
+      MoneyIssuanceJournal issuanceJournal) {
     ProductionRecipe recipe = industry.recipe();
     long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
     // ★★ **R3B.2：产能那一路从 {@code AssetShare} 派生**（{@code ProductionUnitBook} 是唯一拼写点）。
@@ -4632,7 +4668,13 @@ public final class EconomySettlement {
     //     见 EconomyDayStepper#step 的类注）。
     for (Transfer transfer : outcome.transfers()) {
       applyTransfer(
-          householdGoods, householdMoney, operatorGoods, operatorMoney, householdOfActor, transfer);
+          householdGoods,
+          householdMoney,
+          operatorGoods,
+          operatorMoney,
+          householdOfActor,
+          transfer,
+          issuanceJournal);
       HouseholdId cohort = householdOfActor.get(transfer.to());
       if (cohort != null) {
         for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
@@ -4683,7 +4725,7 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       Map<ActorRef, HouseholdId> householdOfActor,
       Transfer transfer) {
-    // ★ 旧的五副本入口 = "这个世界没有冻结"（M1.4 之前的调用点逐字不改）；带冻结的调用走下面那个重载。
+    // ★ 旧的五副本入口 = "这个世界没有冻结"（M1.4 之前的调用点逐字不改）；带冻结的调用走下面的重载。
     applyTransfer(
         householdGoods,
         householdMoney,
@@ -4694,16 +4736,42 @@ public final class EconomySettlement {
         Map.of(),
         Map.of(),
         householdOfActor,
-        transfer);
+        transfer,
+        null);
+  }
+
+  /**
+   * ★★ E3：带发行审计落点的五副本入口（无冻结）—— 发行腿只在付方 = 当前政府国库、且余额不足时使用；
+   * {@code journal} 为 null ⇒ 发行腿 fail-closed（不许造钱而没有审计记录）。
+   */
+  static void applyTransfer(
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      Transfer transfer,
+      MoneyIssuanceJournal journal) {
+    applyTransfer(
+        householdGoods,
+        householdMoney,
+        operatorGoods,
+        operatorMoney,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        householdOfActor,
+        transfer,
+        journal);
   }
 
   /**
    * ★★ <b>M2：带冻结表的 {@code applyTransfer}</b>（唯一写口的同一处实现，M1.4 的两遍式一字不改）—— 第一遍除了"余额够不够"，
    * 还判"扣完以后还剩多少、会不会花掉<b>已冻结</b>的那一部分"。
    *
-   * <p>★★ <b>为什么要这个重载</b>：M2 的订单生成把 {@code frozen} 一并带进了会话（见 {@link MarketSettlement}），而 {@code
-   * GoodsAccount} 的构造期守卫要求 {@code 冻结 ≤ 余额} ⇒ 如果某条转移把余额扣到冻结以下，落回 actor 那一步会当场抛， 但半笔已经写在会话副本里了。⇒
-   * 这道校验必须在第一遍（只读、落账之前）判死。 ★ <b>本层的冻结写者还没出现</b>（真档 frozen 恒空） ⇒ 数值行为不变；这道守卫是给 L2 挂单冻结用的。
+   * <p>★ E3：本重载不接受发行审计落点（{@code journal = null}）—— 普通转移路径逐值不变；若真的需要发行腿，调用方走带
+   * {@link MoneyIssuanceJournal} 的重载。
    */
   static void applyTransfer(
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
@@ -4716,6 +4784,45 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       Map<ActorRef, HouseholdId> householdOfActor,
       Transfer transfer) {
+    applyTransfer(
+        householdGoods,
+        householdMoney,
+        operatorGoods,
+        operatorMoney,
+        householdFrozenGoods,
+        householdFrozenMoney,
+        operatorFrozenGoods,
+        operatorFrozenMoney,
+        householdOfActor,
+        transfer,
+        null);
+  }
+
+  /**
+   * ★★ <b>E3：唯一转移写口（带冻结 + 发行审计落点）</b>：
+   *
+   * <pre>
+   * 第一遍（只读校验）：付方余额不足时先 MoneyIssuance.requireIssuerOf(currency)；
+   *   · 付方 ≠ 发行源 ⇒ 保留旧 fail-closed 抛；
+   *   · 付方 = 发行源 ⇒ 允许单边发行，但必须带 journal（否则当场抛，不静默造钱）。
+   * 第二遍（统一落账）：普通腿逐值不变；发行腿只扣发行源实际持有的部分（不越过冻结），
+   *   收方仍足额到账，差额写一条 FISCAL_ISSUE 审计记录。
+   * </pre>
+   *
+   * <p>★ 商品腿不受发行影响：商品余额不足依旧抛，不允许借发行路径吞掉商品。
+   */
+  static void applyTransfer(
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      Transfer transfer,
+      MoneyIssuanceJournal journal) {
     Objects.requireNonNull(transfer, "transfer");
     // ★★ M1.4 第一遍：**全量校验**（只读）—— 任一条腿不合法都在会话活表一字未动时抛出。
     validateApplyTransfer(
@@ -4728,7 +4835,8 @@ public final class EconomySettlement {
         operatorFrozenGoods,
         operatorFrozenMoney,
         householdOfActor,
-        transfer);
+        transfer,
+        journal);
     // ★★ M1.4 第二遍：**统一落账** —— 此刻所有付方腿的可扣性都已验证过 ⇒ 下面只写、不再判。
     HouseholdId from = householdOfActor.get(transfer.from());
     if (from != null) {
@@ -4739,18 +4847,24 @@ public final class EconomySettlement {
             leg.getKey(),
             stockOf(householdGoods, from, leg.getKey()) - leg.getValue());
       }
-      for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
-        setMoney(
-            householdMoney,
-            from,
-            leg.getKey(),
-            moneyOf(householdMoney, from, leg.getKey()) - leg.getValue());
-      }
+      debitHouseholdMoney(
+          householdMoney, householdFrozenMoney, from, transfer, journal);
     } else if (operatorGoods.containsKey(transfer.from())
         || operatorMoney.containsKey(transfer.from())) {
-      // ★ 经营者付端：纯落账（判据已由第一遍做完 —— 见 validateApplyTransfer）。
-      debitOperator(
-          operatorGoods, operatorMoney, transfer.from(), transfer.goods(), transfer.money());
+      // ★ 经营者付端：商品腿纯落账；货币腿可能走发行腿（见 debitOperatorMoney）。
+      if (operatorGoods.containsKey(transfer.from())) {
+        for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
+          setOperatorStock(
+              operatorGoods,
+              transfer.from(),
+              leg.getKey(),
+              operatorStockOf(operatorGoods, transfer.from(), leg.getKey()) - leg.getValue());
+        }
+      }
+      if (operatorMoney.containsKey(transfer.from())) {
+        debitOperatorMoney(
+            operatorMoney, operatorFrozenMoney, transfer.from(), transfer, journal);
+      }
     }
     HouseholdId to = householdOfActor.get(transfer.to());
     if (to != null) {
@@ -4767,25 +4881,97 @@ public final class EconomySettlement {
     }
   }
 
+  /** 家户货币付端：普通腿照旧扣；发行腿只扣实际持有（不越过冻结），差额交 journal 记发行。 */
+  private static void debitHouseholdMoney(
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
+      HouseholdId from,
+      Transfer transfer,
+      MoneyIssuanceJournal journal) {
+    for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+      CurrencyId currency = leg.getKey();
+      long amount = leg.getValue();
+      long balance = moneyOf(householdMoney, from, currency);
+      long frozen = householdFrozenMoney.getOrDefault(from, Map.of()).getOrDefault(currency, 0L);
+      long debit = amount;
+      if (balance < amount) {
+        ActorRef issuer = MoneyIssuance.requireIssuerOf(currency);
+        if (!transfer.from().equals(issuer)) {
+          throw new IllegalStateException(
+              "转移把家户的货币扣成了负数，而付方不是发行源（透支 = 发行）：家户="
+                  + from
+                  + " 币种="
+                  + currency
+                  + " 余额="
+                  + balance
+                  + " 扣减="
+                  + amount
+                  + " 发行源="
+                  + issuer
+                  + "；转移="
+                  + transfer);
+        }
+        debit = Math.min(amount, Math.max(0L, balance - frozen));
+        if (debit < amount) {
+          if (journal == null) {
+            throw new IllegalStateException(
+                "这条入口没有发行审计落点，拒绝单边发行（不许造钱而没有审计记录）：转移=" + transfer);
+          }
+          journal.recordIssuance(transfer, currency, amount - debit);
+        }
+      }
+      setMoney(householdMoney, from, currency, balance - debit);
+    }
+  }
+
+  /** 经营者货币付端：与 {@link #debitHouseholdMoney} 逐字同一条口径（只是账键不同）。 */
+  private static void debitOperatorMoney(
+      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      ActorRef from,
+      Transfer transfer,
+      MoneyIssuanceJournal journal) {
+    for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+      CurrencyId currency = leg.getKey();
+      long amount = leg.getValue();
+      long balance = operatorMoneyOf(operatorMoney, from, currency);
+      long frozen = operatorFrozenMoney.getOrDefault(from, Map.of()).getOrDefault(currency, 0L);
+      long debit = amount;
+      if (balance < amount) {
+        ActorRef issuer = MoneyIssuance.requireIssuerOf(currency);
+        if (!from.equals(issuer)) {
+          throw new IllegalStateException(
+              "转移把经营者的货币扣成了负数，而付方不是发行源（透支 = 发行）：经营者="
+                  + from
+                  + " 币种="
+                  + currency
+                  + " 余额="
+                  + balance
+                  + " 扣减="
+                  + amount
+                  + " 发行源="
+                  + issuer
+                  + "；转移="
+                  + transfer);
+        }
+        debit = Math.min(amount, Math.max(0L, balance - frozen));
+        if (debit < amount) {
+          if (journal == null) {
+            throw new IllegalStateException(
+                "这条入口没有发行审计落点，拒绝单边发行（不许造钱而没有审计记录）：转移=" + transfer);
+          }
+          journal.recordIssuance(transfer, currency, amount - debit);
+        }
+      }
+      setOperatorMoney(operatorMoney, from, currency, balance - debit);
+    }
+  }
+
   /**
    * ★★ <b>M1.4 第一遍：把"这一次转移扣得动吗"一次判完</b>（只读；照 {@link #drawCycleInputs} 的"调查 → 配给 → 落账"先例）。
    *
-   * <p>★★ <b>它为什么必须独立成一趟</b>：改前 {@code applyTransfer} 边判边扣（先扣付方全部腿、再记收方），
-   * 中途任一条腿抛错都会把"付方已扣、收方未记"的半笔留在**可变**会话副本上。校验与落账分成两趟之后， 半笔在**结构上**不可能：本方法只读会话活表，第二遍只写、不再判。
-   *
-   * <p>★ <b>校验范围（逐条对着旧路径）</b>：
-   *
-   * <ol>
-   *   <li>付方是家户 ⇒ 商品腿逐条"余额 ≥ 腿额"；货币腿逐条同款（不足 ⇒ 先问 {@link
-   *       MoneyIssuance#requireIssuerOf(CurrencyId)}，本批零注册 ⇒ 恒抛）；
-   *   <li>付方是经营者且它的账在副本里 ⇒ 商品与货币两条同款；
-   *   <li>付方两本账都不在副本里 ⇒ **不校验、也不落账**（既有的跳过口径：它的账在 actor 切片上，由 app 按 {@code ledger.transfers()} 落账）；
-   *   <li>收方**不校验**：记收（加钱加货）不可能失败，旧路径也不判 —— 保持成功路径逐值相同。
-   * </ol>
-   *
-   * <p>★★ <b>M2：冻结进了校验范围</b>（M1.4 的 Javadoc 预告过的那一步）：会话副本现在连 {@code frozen*} 一起带过来 ⇒ 付方的每一条腿除了"余额 ≥
-   * 腿额"，还要满足"扣完以后余额 ≥ 该商品的冻结额"—— 否则落回 actor 时 {@code GoodsAccount} 的"冻结 ≤ 余额"守卫会炸，而半笔已经写在会话里了。★
-   * 真档今天没有冻结写者 ⇒ 这两张表恒空、数值不变； 这道判据是给 L2 的挂单冻结用的。
+   * <p>★ E3 起货币不足的判据收成两条：付方不是发行源 ⇒ 保留旧 fail-closed 文案；付方是发行源 ⇒ 必须带
+   * {@link MoneyIssuanceJournal}（否则不静默发行），且只扣实际持有的部分（冻结仍然受保护）。
    */
   private static void validateApplyTransfer(
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
@@ -4797,7 +4983,8 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       Map<ActorRef, HouseholdId> householdOfActor,
-      Transfer transfer) {
+      Transfer transfer,
+      MoneyIssuanceJournal journal) {
     HouseholdId from = householdOfActor.get(transfer.from());
     if (from != null) {
       for (Map.Entry<CommodityId, Long> leg : transfer.goods().entrySet()) {
@@ -4833,29 +5020,34 @@ public final class EconomySettlement {
                   + transfer);
         }
       }
-      // ★★ H4：货币腿（同一套方向：from 付出、to 收到）。**付款不足 ⇒ 走发行闸门**：
-      //   唯一能"钱不够还照付"的主体是发行源，而本批没有任何发行人 ⇒ MoneyIssuance 恒抛。
-      //   ⇒ "除发行源外任何账户的货币余额不得为负"这条守卫落在这里（全模块唯一写货币副本的地方）。
       for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
         long balance = moneyOf(householdMoney, from, leg.getKey());
-        if (balance < leg.getValue()) {
-          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey()); // ★ 本批恒抛（fail-closed）
-          throw new IllegalStateException(
-              "转移把家户的货币扣成了负数，而付方不是发行源（透支 = 发行）：家户="
-                  + from
-                  + " 币种="
-                  + leg.getKey()
-                  + " 余额="
-                  + balance
-                  + " 扣减="
-                  + leg.getValue()
-                  + " 发行源="
-                  + issuer
-                  + "；转移="
-                  + transfer);
-        }
         long frozen =
             householdFrozenMoney.getOrDefault(from, Map.of()).getOrDefault(leg.getKey(), 0L);
+        if (balance < leg.getValue()) {
+          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey());
+          if (!transfer.from().equals(issuer)) {
+            throw new IllegalStateException(
+                "转移把家户的货币扣成了负数，而付方不是发行源（透支 = 发行）：家户="
+                    + from
+                    + " 币种="
+                    + leg.getKey()
+                    + " 余额="
+                    + balance
+                    + " 扣减="
+                    + leg.getValue()
+                    + " 发行源="
+                    + issuer
+                    + "；转移="
+                    + transfer);
+          }
+          if (journal == null) {
+            throw new IllegalStateException(
+                "家户付方是发行源，但这条入口没有发行审计落点，拒绝单边发行（不许造钱而没有审计记录）：转移="
+                    + transfer);
+          }
+          continue; // 发行腿：只扣实际持有的部分，冻结仍受 debitHouseholdMoney 保护
+        }
         if (balance - leg.getValue() < frozen) {
           throw new IllegalStateException(
               "转移会花掉家户账上已冻结的货币（冻结只表达已明确的占用）：家户="
@@ -4876,6 +5068,19 @@ public final class EconomySettlement {
     }
     if (!operatorGoods.containsKey(transfer.from())
         && !operatorMoney.containsKey(transfer.from())) {
+      // ★ E3：发行主体不在本会话副本里 ⇒ 不能静默跳过（那会让收方足额到账却没有发行审计）。
+      for (CurrencyId currency : transfer.money().keySet()) {
+        ActorRef issuer = MoneyIssuance.issuerOfRegistered(currency);
+        if (issuer != null && issuer.equals(transfer.from())) {
+          throw new IllegalStateException(
+              "发行主体的账不在本会话副本里，拒绝静默发行（账户必须先载入会话）：付方="
+                  + transfer.from()
+                  + " 币种="
+                  + currency
+                  + "；转移="
+                  + transfer);
+        }
+      }
       return; // 两端都不在会话副本里 ⇒ 本类不落这一端（既有口径，见类注第 ③ 条）。
     }
     if (operatorGoods.containsKey(transfer.from())) {
@@ -4918,26 +5123,34 @@ public final class EconomySettlement {
     if (operatorMoney.containsKey(transfer.from())) {
       for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
         long balance = operatorMoneyOf(operatorMoney, transfer.from(), leg.getKey());
-        if (balance < leg.getValue()) {
-          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey()); // ★ 本批恒抛（fail-closed）
-          throw new IllegalStateException(
-              "转移把经营者的货币扣成了负数，而付方不是发行源（透支 = 发行）：经营者="
-                  + transfer.from()
-                  + " 币种="
-                  + leg.getKey()
-                  + " 余额="
-                  + balance
-                  + " 扣减="
-                  + leg.getValue()
-                  + " 发行源="
-                  + issuer
-                  + "；转移="
-                  + transfer);
-        }
         long frozen =
             operatorFrozenMoney
                 .getOrDefault(transfer.from(), Map.of())
                 .getOrDefault(leg.getKey(), 0L);
+        if (balance < leg.getValue()) {
+          ActorRef issuer = MoneyIssuance.requireIssuerOf(leg.getKey());
+          if (!transfer.from().equals(issuer)) {
+            throw new IllegalStateException(
+                "转移把经营者的货币扣成了负数，而付方不是发行源（透支 = 发行）：经营者="
+                    + transfer.from()
+                    + " 币种="
+                    + leg.getKey()
+                    + " 余额="
+                    + balance
+                    + " 扣减="
+                    + leg.getValue()
+                    + " 发行源="
+                    + issuer
+                    + "；转移="
+                    + transfer);
+          }
+          if (journal == null) {
+            throw new IllegalStateException(
+                "经营者付方是发行源，但这条入口没有发行审计落点，拒绝单边发行（不许造钱而没有审计记录）：转移="
+                    + transfer);
+          }
+          continue;
+        }
         if (balance - leg.getValue() < frozen) {
           throw new IllegalStateException(
               "转移会花掉经营者账上已冻结的货币（冻结只表达已明确的占用）：经营者="
@@ -4954,6 +5167,68 @@ public final class EconomySettlement {
                   + transfer);
         }
       }
+    }
+  }
+
+  /**
+   * ★★ <b>E3：一次结算会话的发行审计收集器</b>（线程安全，供并行分区提交发行腿）。id 由 {@link
+   * MoneyIssuanceId#forTransfer(TransferId, CurrencyId)} 确定性派生，因此重放/分支不会因线程调度产生不同记录。
+   */
+  static final class MoneyIssuanceJournal {
+
+    private final long period;
+    private final Map<ActorRef, GovernmentId> governmentByTreasury;
+    private final ConcurrentLinkedQueue<MoneyIssuanceRecord> records = new ConcurrentLinkedQueue<>();
+
+    MoneyIssuanceJournal(Map<GovernmentId, Government> governments, long period) {
+      this.period = period;
+      LinkedHashMap<ActorRef, GovernmentId> byTreasury = new LinkedHashMap<>();
+      for (Government government : governments.values()) {
+        GovernmentId previous = byTreasury.putIfAbsent(government.treasury(), government.id());
+        if (previous != null && !previous.equals(government.id())) {
+          throw new IllegalStateException(
+              "同一个国库 actor 对应两个政府，无法写发行审计："
+                  + government.treasury()
+                  + " → "
+                  + previous
+                  + " / "
+                  + government.id());
+        }
+      }
+      this.governmentByTreasury = Map.copyOf(byTreasury);
+    }
+
+    /** 记录一条单边发行差额（金额 &gt; 0；发行主体必须是当前政府表里的国库）。 */
+    void recordIssuance(Transfer transfer, CurrencyId currency, long amount) {
+      if (amount <= 0L) {
+        throw new IllegalArgumentException("发行差额必须 > 0: " + amount);
+      }
+      GovernmentId governmentId = governmentByTreasury.get(transfer.from());
+      if (governmentId == null) {
+        throw new IllegalStateException(
+            "发行腿的付方不在当前政府表里（说不出是哪届政府在发行）："
+                + transfer.from()
+                + "；转移="
+                + transfer);
+      }
+      records.add(
+          new MoneyIssuanceRecord(
+              MoneyIssuanceId.forTransfer(transfer.id(), currency),
+              governmentId,
+              transfer.day(),
+              period,
+              currency,
+              amount,
+              MoneyIssuanceKind.FISCAL_ISSUE,
+              "发行腿：" + transfer.reason().name()));
+    }
+
+    /** 取出并按 id 稳定排序（跨并行分区也得到确定性顺序）。 */
+    List<MoneyIssuanceRecord> drainSorted() {
+      List<MoneyIssuanceRecord> drained = new ArrayList<>(records);
+      records.clear();
+      drained.sort(Comparator.comparing(record -> record.id().value()));
+      return drained;
     }
   }
 

@@ -24,10 +24,12 @@ import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -167,6 +169,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(
         ProductionOrganizationId.class, keyDeserializer(ProductionOrganizationId::parse));
     module.addKeyDeserializer(AssetRuleId.class, keyDeserializer(AssetRuleId::parse));
+    // ★★ E3：governments / moneyIssuances 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    module.addKeyDeserializer(GovernmentId.class, keyDeserializer(GovernmentId::parse));
+    module.addKeyDeserializer(MoneyIssuanceId.class, keyDeserializer(MoneyIssuanceId::parse));
     return module;
   }
 

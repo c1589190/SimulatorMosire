@@ -2,59 +2,46 @@ package io.mosire.simos.economy.api.money;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
- * ★★ <b>「钱从哪来」的唯一闸门</b>（H4）：全系统<b>唯一</b>可以回答"这个币种归谁发行"的地方；回答不出来 ⇒ <b>当场抛</b> （fail-closed）。
+ * ★★ <b>「钱从哪来」的唯一闸门</b>（H4；E3 起可登记，但零登记行为逐字保留）。
  *
- * <p>★★ <b>本批的注册表是空的</b>（{@link #registered()} 恒为空表）：{@link MoneyAuthority} 在 H4 <b>没有任何实现</b> ⇒
- * <b>世界上没有"发行/回笼"这条路径</b>。这不是"还没接线"，而是本批<b>刻意</b>的状态： 只要有发行人，"Σ货币余额恒定"就不再成立，而本批要的正是那条恒等式 （判据 M-J3）。
+ * <p>★★ <b>登记表是进程内静态的，不是世界状态</b>：权威世界状态在 {@code EconomyData.governments}（可持久、可回放、可分支）。
+ * 日结算开始时从当前世界的 {@code governments} 调 {@link #syncAuthorities(Collection)} 重建登记表；世界没有政府/没有发行人时
+ * 登记表为空，{@link #requireIssuerOf(CurrencyId)} 的旧 fail-closed 行为<b>逐字保留</b>。
  *
- * <p>★★ <b>它落在哪条链上</b>：货币腿的落账（{@code EconomySettlement.applyTransferToHouseholds}）在
- * <b>付方余额不足以支付</b>时调 {@link #requireIssuerOf(CurrencyId)} —— 因为"钱不够还照付"只有一种合法解释：付方是发行源
- * （它在发行）。本批没有发行源 ⇒ 这一支<b>必然抛</b>。⇒ 不变量可执行：
+ * <p>★★ <b>跨世界隔离（如实记）</b>：静态表仍是进程级的；同步按当前世界重建后，前一个世界的登记不会静默留下。直接调用
+ * {@code register}/{@code deregister} 的调用方必须自己保证成对使用；做不到时用 {@link #clear()}。累计发行/回笼的权威记录在
+ * {@code EconomyData.moneyIssuances}（可重放），不在这里再存一份。
  *
- * <pre>
- * 除发行源外，任何账户的货币余额不得为负        （透支 = 发行，而发行这条路在本批恒抛）
- * ⇒ 没有发行人时，逐币种 Σ余额 恒定             （转移两端对冲：一方 −x、另一方 +x）
- * </pre>
- *
- * <p>★★ <b>M1.6 的限量（写在这里，因为它最容易被误读成总不变量）</b>：<b>没有</b>"全世界货币总量永远不变"这条 总不变量。可成立的守恒是<b>逐工具</b>的：
- *
- * <pre>
- * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销
- * </pre>
- *
- * 发行/注销都会让总量变；本批 {@code REGISTERED} 为空 ⇒ 发行 = 注销 = 0，上面那条等式才退化为 "逐币种 Σ持有恒定"。★
- * <b>将来真要做发行/注销时，累计量的登记点在本类（{@code REGISTERED} 旁，一处拼写点）</b> —— 不在读口、不在调用方另存一份（那会是"同一事实的第二处拼写"）。
- *
- * <p>★ <b>为什么注册表是一个常量而不是一张可变的全局表</b>：世界级的可变单例既不可重放、也不可分支（同一份存档在两个进程里会有两个 "谁是发行人"的答案）。本批零注册 ⇒ 表就是
- * {@code List.of()}；将来真有实现时，注册点是<b>这里</b>（一处拼写点）， 而不是散在各调用方的构造器里。
+ * <p>★ <b>唯一注册点是这里</b>：任何"谁是发行人"的答案都从本类出去；调用方不得另存一份发行主体映射。
  */
 public final class MoneyIssuance {
 
-  /**
-   * ★★ <b>本批**零注册**</b>：没有任何 {@link MoneyAuthority} 实现 ⇒ 没有任何币种可被发行。
-   *
-   * <p>★ 它的存在本身就是判据：把这一行改成非空，M-J1（"未注册发行人 ⇒ 发行尝试当场抛"）与 M-J3（逐币种守恒）都要重新论证。
-   */
-  private static final List<MoneyAuthority> REGISTERED = List.of();
+  /** 当前登记表（保序、不可变快照）。零登记 ⇒ 空表。 */
+  private static List<MoneyAuthority> REGISTERED = List.of();
 
   private MoneyIssuance() {}
 
-  /** 已登记的发行人（**本批恒为空表**；保序、不可变）。 */
-  public static List<MoneyAuthority> registered() {
+  /** 已登记的发行人（保序、不可变快照；零登记 ⇒ 空表）。 */
+  public static synchronized List<MoneyAuthority> registered() {
     return REGISTERED;
   }
 
   /**
-   * 全部<b>可被发行</b>的币种（= 已登记发行人各自 {@link MoneyAuthority#issuable()} 的并集）。
+   * 全部<b>可被发行</b>的币种（= 已登记发行人各自 {@link MoneyAuthority#issuable()} 的并集；保序）。
    *
-   * <p>★ 本批恒为空集：一个字面量也没有。⇒ "世界上没有一条路径能造出钱"这句话在代码里可读、可断言。
+   * <p>★ 零登记 ⇒ 空集：世界上没有一条路径能造出钱。
    */
-  public static Set<CurrencyId> issuable() {
+  public static synchronized Set<CurrencyId> issuable() {
     Set<CurrencyId> currencies = new LinkedHashSet<>();
     for (MoneyAuthority authority : REGISTERED) {
       currencies.addAll(authority.issuable());
@@ -63,17 +50,111 @@ public final class MoneyIssuance {
   }
 
   /**
+   * ★★ <b>登记一个发行人</b>：逐个 {@code issuable()} 内的币种校验 {@link MoneyAuthority#authorityOf(CurrencyId)} 非
+   * null，且该币种在登记表里还没有<b>另一个</b>发行主体（一个币种只能有一个发行主体）。
+   *
+   * @throws IllegalArgumentException authority/币种/发行主体为空，或与已登记主体冲突
+   */
+  public static synchronized void register(MoneyAuthority authority) {
+    Objects.requireNonNull(authority, "MoneyIssuance.register 的 authority 不得为 null");
+    Set<CurrencyId> currencies = authority.issuable();
+    if (currencies == null) {
+      throw new IllegalArgumentException("MoneyAuthority.issuable() 不得为 null");
+    }
+    if (REGISTERED.contains(authority)) {
+      return; // 政府记录是不可变值；逐值相同的登记是幂等的
+    }
+    // 先只读校验：任何冲突都在表被改动之前抛出。
+    for (CurrencyId currency : currencies) {
+      ActorRef issuer = requireIssuer(authority, currency);
+      ActorRef existing = issuerOfRegistered(currency);
+      if (existing != null && !existing.equals(issuer)) {
+        throw new IllegalArgumentException(
+            "币种 " + currency + " 已有另一个发行主体 " + existing + "，不能再登记 " + issuer);
+      }
+    }
+    List<MoneyAuthority> next = new ArrayList<>(REGISTERED);
+    next.add(authority);
+    REGISTERED = List.copyOf(next);
+  }
+
+  /**
+   * 撤销一个已登记发行人（按 {@link Object#equals(Object)} 匹配；没登记过 ⇒ 返回 {@code false}，不抛）。
+   */
+  public static synchronized boolean deregister(MoneyAuthority authority) {
+    Objects.requireNonNull(authority, "MoneyIssuance.deregister 的 authority 不得为 null");
+    List<MoneyAuthority> next = new ArrayList<>(REGISTERED.size());
+    boolean removed = false;
+    for (MoneyAuthority registered : REGISTERED) {
+      if (!removed && registered.equals(authority)) {
+        removed = true;
+        continue;
+      }
+      next.add(registered);
+    }
+    if (removed) {
+      REGISTERED = List.copyOf(next);
+    }
+    return removed;
+  }
+
+  /** 清空登记表（跨世界/测试隔离的显式口子；清空后 {@link #requireIssuerOf(CurrencyId)} 的行为与零登记逐字相同）。 */
+  public static synchronized void clear() {
+    REGISTERED = List.of();
+  }
+
+  /**
+   * ★★ <b>按当前世界权威状态重建登记表</b>（幂等、确定性）：先清空，再逐个登记非空 {@code issuable()} 的发行人。任何
+   * "一个币种两个发行主体"的冲突都在表被改动到一半之前抛出（本地先建索引，校验完再一次性替换）。
+   *
+   * <p>★ 空 issuer 集合 ⇒ 清空后仍为零登记：旧世界的 fail-closed 行为不变。
+   *
+   * @param authorities 当前世界的政府/发行人；不得为 null、元素不得为 null
+   */
+  public static synchronized void syncAuthorities(
+      Collection<? extends MoneyAuthority> authorities) {
+    Objects.requireNonNull(authorities, "MoneyIssuance.syncAuthorities 的 authorities 不得为 null");
+    Map<CurrencyId, ActorRef> issuers = new LinkedHashMap<>();
+    List<MoneyAuthority> effective = new ArrayList<>();
+    Set<MoneyAuthority> seen = new LinkedHashSet<>();
+    for (MoneyAuthority authority : authorities) {
+      Objects.requireNonNull(authority, "MoneyIssuance.syncAuthorities 的元素不得为 null");
+      Set<CurrencyId> currencies = authority.issuable();
+      if (currencies == null) {
+        throw new IllegalArgumentException("MoneyAuthority.issuable() 不得为 null: " + authority);
+      }
+      if (currencies.isEmpty() || !seen.add(authority)) {
+        continue;
+      }
+      for (CurrencyId currency : currencies) {
+        ActorRef issuer = requireIssuer(authority, currency);
+        ActorRef existing = issuers.putIfAbsent(currency, issuer);
+        if (existing != null && !existing.equals(issuer)) {
+          throw new IllegalStateException(
+              "同一币种出现两个发行主体（当前世界状态冲突）：币种="
+                  + currency
+                  + "，发行主体="
+                  + existing
+                  + " vs "
+                  + issuer);
+        }
+      }
+      effective.add(authority);
+    }
+    REGISTERED = List.copyOf(effective);
+  }
+
+  /**
    * ★★ <b>唯一的发行查询</b>：这个币种的发行源是谁。<b>查不到 ⇒ 当场抛</b>（不是"返回 null 让调用方自己看着办"）。
    *
-   * <p>★★ <b>谁会调它</b>：货币腿的落账在"付方余额不足"时 —— 那一刻唯一的合法解释是"付方在发行"， 而"谁是发行人"只有这里能回答。本批零注册 ⇒
-   * 这个调用<b>必然抛</b>，于是"余额不得为负"这条守卫不依赖任何调用方的自觉。
+   * <p>★ 零登记时抛出的消息与 H4 逐字相同（E3 的兼容判据）。
    *
    * @param currency 币种；不得为 null
-   * @return 发行主体（唯一一个可以透支该币种的主体）
+   * @return 发行主体（唯一一个可以透支/单边发行该币种的主体）
    * @throws IllegalArgumentException 币种为 null
-   * @throws IllegalStateException 没有任何已登记的发行人发行该币种（**本批的常态**：发行/回笼这条路不存在）
+   * @throws IllegalStateException 没有任何已登记的发行人发行该币种
    */
-  public static ActorRef requireIssuerOf(CurrencyId currency) {
+  public static synchronized ActorRef requireIssuerOf(CurrencyId currency) {
     if (currency == null) {
       throw new IllegalArgumentException("CurrencyId 不得为 null（说不出币种就答不出发行人）");
     }
@@ -88,5 +169,30 @@ public final class MoneyIssuance {
             + "（H4：MoneyAuthority 在本批**没有实现** ⇒ 世界上没有'发行/回笼'这条路径）。"
             + "⇒ 付方余额不足以支付时不许透支（透支 = 发行），逐币种 Σ余额 因此恒定。"
             + "若确实需要发行，先实现 MoneyAuthority 并在 MoneyIssuance 登记它（唯一注册点）");
+  }
+
+  /** 已登记表里这个币种的发行源；没有 ⇒ {@code null}（只读查询，不抛）。 */
+  public static synchronized ActorRef issuerOfRegistered(CurrencyId currency) {
+    if (currency == null) {
+      return null;
+    }
+    for (MoneyAuthority authority : REGISTERED) {
+      if (authority.issuable().contains(currency)) {
+        return authority.authorityOf(currency);
+      }
+    }
+    return null;
+  }
+
+  private static ActorRef requireIssuer(MoneyAuthority authority, CurrencyId currency) {
+    if (currency == null) {
+      throw new IllegalArgumentException("MoneyAuthority.issuable() 不得含 null: " + authority);
+    }
+    ActorRef issuer = authority.authorityOf(currency);
+    if (issuer == null) {
+      throw new IllegalArgumentException(
+          "MoneyAuthority.authorityOf(" + currency + ") 不得为 null（说不出'谁发的'就不是发行人）: " + authority);
+    }
+    return issuer;
   }
 }

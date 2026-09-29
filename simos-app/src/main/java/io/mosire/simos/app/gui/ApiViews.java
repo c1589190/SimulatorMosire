@@ -15,12 +15,15 @@ import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReadoutAssembly;
 import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.timeline.RevisionRow;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -154,9 +157,10 @@ import java.util.TreeMap;
  * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销
  * </pre>
  *
- * 发行/注销会让总量变 ⇒ 本批发行 = 注销 = 0（{@code MoneyIssuance.REGISTERED} 为空）时它才退化成今天的 "逐币种 Σ持有恒定"。读口因此给 {@code
- * moneyLayers} 三栏（私人流通 / 全部基础货币 /（将来）银行存款）： 它们读的是<b>账户事实</b>，不是发行量。将来的累计发行/注销登记点挂在 {@code
- * MoneyIssuance.REGISTERED} 旁 （该类的类注已写明），本层不另存一份 —— 那会是"同一事实的第二处拼写"。
+ * 发行/注销会让总量变 ⇒ {@code MoneyIssuance.REGISTERED} 为空、{@code moneyIssuances} 为空时它才退化成 "逐币种 Σ持有恒定"。读口因此给 {@code
+ * moneyLayers} 三栏（私人流通 / 全部基础货币 /（将来）银行存款）： 它们读的是<b>账户事实</b>，不是发行量。E3 起发行/回笼的权威记录是
+ * {@code EconomyData.moneyIssuances}，本类另发 {@code moneyIssuance} 一栏（initialEndowment / fiscalIssue /
+ * cumulativeIssuance / cumulativeWithdrawal / circulation / netIssuance）—— 只从状态求和，不另存一份。
  */
 public final class ApiViews {
 
@@ -655,6 +659,10 @@ public final class ApiViews {
     // ★★ M1.6：**逐工具守恒的三个分栏**（私人流通 / 全部基础货币 /（将来）银行存款）—— 纯派生自上面那一趟
     //   同源遍历，不在视图层再扫一账；逐条口径见 {@link #moneyLayers}。
     view.put("moneyLayers", moneyLayers(actorMoneyTotal));
+    // ★★ E3：发行/回笼/流通量与 actor kind / 家户阶层聚合（世界级时点口径；见方法注释）。
+    view.put("moneyIssuance", moneyIssuanceView(data, moneyTotals(actors)));
+    view.put("moneyByActorKind", moneyByActorKind(actors));
+    view.put("moneyByHouseholdClass", moneyByHouseholdClass(data, actors));
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
     view.put("market", marketView(data.markets().get(coord)));
@@ -1327,6 +1335,10 @@ public final class ApiViews {
     view.put("actorMoneyTotal", actorMoneyTotal);
     // ★★ M1.6：与 {@link #economyHex} **同一份**分栏（同一趟遍历的派生量；两处不许各算一套）。
     view.put("moneyLayers", moneyLayers(actorMoneyTotal));
+    // ★★ E3：发行/回笼/流通量与 actor kind / 家户阶层聚合（世界级时点口径；见方法注释）。
+    view.put("moneyIssuance", moneyIssuanceView(economy, moneyTotals(actors)));
+    view.put("moneyByActorKind", moneyByActorKind(actors));
+    view.put("moneyByHouseholdClass", moneyByHouseholdClass(economy, actors));
     view.put("rowGoodsTotal", rowGoodsTotal);
     return view;
   }
@@ -1712,8 +1724,9 @@ public final class ApiViews {
    * </pre>
    *
    * <p>★★ <b>为什么必须明写"没有全世界总量永远不变这条总不变量"</b>（master plan M1.6 的否定判据）： 可成立的是<b>逐工具</b>的 {@code
-   * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销}；发行/注销会让总量变。 本批发行 = 注销 = 0（{@code MoneyIssuance.REGISTERED} 为空）⇒
-   * 数值上退化成"逐币种 Σ持有恒定"。 将来的累计发行/注销登记点挂在 {@code MoneyIssuance.REGISTERED} 旁，本层不另存一份。
+   * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销}；发行/注销会让总量变。 {@code MoneyIssuance.REGISTERED} 为空、发行记录为空 ⇒
+   * 数值上退化成"逐币种 Σ持有恒定"。★ E3 起累计发行/回笼的权威记录在 {@code EconomyData.moneyIssuances}，
+   * {@link #moneyIssuanceView(EconomyData, Map)} 只读它求和，本层不另存一份。
    *
    * <p>★ <b>为什么按币种而不是按工具分</b>：账户余额的键是 {@code CurrencyId}（M1.1 明文不动它）⇒ 同一币种登记了
    * 多种工具时，账户层<b>分不出</b>"这张钱是哪种工具"。本栏不假装能分：既含基础档又含存款档的币种落进 {@code
@@ -1754,6 +1767,101 @@ public final class ApiViews {
     view.put("bankDeposits", bankDeposits);
     view.put("unclassifiedCurrencies", unclassified);
     return view;
+  }
+
+  /** ★★ E3：全部 actor 账本的货币合计（逐币种时点；世界级，不分局）。 */
+  private static Map<String, Long> moneyTotals(ActorData actors) {
+    Map<String, Long> totals = new TreeMap<>();
+    for (GoodsAccount account : actors.accounts().values()) {
+      mergeMoneyInto(totals, account.money());
+    }
+    return totals;
+  }
+
+  /**
+   * ★★ <b>E3：货币发行/回笼/流通量的只读视图</b>（时点 = 当前 revision；窗口 = activatedDay 至当前，累计）。
+   *
+   * <pre>
+   * initialEndowment       Σ kind=INITIAL_ENDOWMENT 的 amount（逐币种，累计）
+   * fiscalIssue            Σ kind=FISCAL_ISSUE 的 amount（逐币种，累计）
+   * cumulativeIssuance     = initialEndowment + fiscalIssue
+   * cumulativeWithdrawal   Σ kind=WITHDRAWAL 的 amount（逐币种，累计）
+   * circulation            Σ 全部 actor GoodsAccount.money 余额（逐币种时点）
+   * netIssuance            = cumulativeIssuance − cumulativeWithdrawal（逐币种）
+   * </pre>
+   *
+   * <p>★ 记录来自 {@code EconomyData.moneyIssuances}（可持久/回放），本层只求和、不伪造缺失字段；发行腿的实时差额由
+   * {@code FISCAL_ISSUE} 记录，创世钱包由 {@code INITIAL_ENDOWMENT} 记录。
+   */
+  private static Map<String, Object> moneyIssuanceView(
+      EconomyData data, Map<String, Long> circulation) {
+    Map<String, Long> initial = new TreeMap<>();
+    Map<String, Long> fiscal = new TreeMap<>();
+    Map<String, Long> withdrawal = new TreeMap<>();
+    for (MoneyIssuanceRecord record : data.moneyIssuances().values()) {
+      if (record.kind() == MoneyIssuanceKind.INITIAL_ENDOWMENT) {
+        initial.merge(record.currency().value(), record.amount(), Long::sum);
+      } else if (record.kind() == MoneyIssuanceKind.FISCAL_ISSUE) {
+        fiscal.merge(record.currency().value(), record.amount(), Long::sum);
+      } else {
+        withdrawal.merge(record.currency().value(), record.amount(), Long::sum);
+      }
+    }
+    Map<String, Long> cumulativeIssuance = new TreeMap<>();
+    mergeIssuance(cumulativeIssuance, initial);
+    mergeIssuance(cumulativeIssuance, fiscal);
+    Map<String, Long> net = new TreeMap<>(cumulativeIssuance);
+    for (Map.Entry<String, Long> entry : withdrawal.entrySet()) {
+      net.merge(entry.getKey(), -entry.getValue(), Long::sum);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("window", "累计（EconomyMeta.activatedDay 至当前 revision；无按日窗口）");
+    view.put("recordCount", data.moneyIssuances().size());
+    view.put("initialEndowment", initial);
+    view.put("fiscalIssue", fiscal);
+    view.put("cumulativeIssuance", cumulativeIssuance);
+    view.put("cumulativeWithdrawal", withdrawal);
+    view.put("netIssuance", net);
+    view.put("circulation", new TreeMap<>(circulation));
+    return view;
+  }
+
+  private static void mergeIssuance(Map<String, Long> target, Map<String, Long> source) {
+    for (Map.Entry<String, Long> entry : source.entrySet()) {
+      target.merge(entry.getKey(), entry.getValue(), Long::sum);
+    }
+  }
+
+  /** ★★ E3：货币余额按 actor kind 聚合（逐币种；世界级时点）。键序 = kind 名 / 币种名字典序。 */
+  private static Map<String, Map<String, Long>> moneyByActorKind(ActorData actors) {
+    Map<String, Map<String, Long>> byKind = new TreeMap<>();
+    for (GoodsAccount account : actors.accounts().values()) {
+      mergeMoneyInto(
+          byKind.computeIfAbsent(account.key().owner().kind().name(), ignored -> new TreeMap<>()),
+          account.money());
+    }
+    return byKind;
+  }
+
+  /**
+   * ★★ E3：家户货币余额按 {@code ClassRow.view.stratum} 聚合（逐币种；世界级时点）。
+   * 只认 {@code ActorKind.HOUSEHOLD} 且能在 economy 行集里定位的家户；定位不到的家户不静默塞进某一阶层，而是记进
+   * {@code "__unmapped__"}。
+   */
+  private static Map<String, Map<String, Long>> moneyByHouseholdClass(
+      EconomyData data, ActorData actors) {
+    Map<String, Map<String, Long>> byClass = new TreeMap<>();
+    for (GoodsAccount account : actors.accounts().values()) {
+      if (account.key().owner().kind() != ActorKind.HOUSEHOLD) {
+        continue;
+      }
+      HouseholdId household = HouseholdActors.householdOf(account.key().owner());
+      ClassRow row = data.classes().get(household);
+      String stratum = row == null ? "__unmapped__" : row.view().stratum().value();
+      mergeMoneyInto(
+          byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), account.money());
+    }
+    return byClass;
   }
 
   /**

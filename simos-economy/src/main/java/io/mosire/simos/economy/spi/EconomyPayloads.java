@@ -13,11 +13,13 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -37,9 +39,12 @@ import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
@@ -261,6 +266,10 @@ final class EconomyPayloads {
     Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
     Map<HexCoord, Market> markets = markets(payload, entries);
+    // ★★ E3 的第 23/24 个组件：顶层可选 `governments` / `moneyIssuances`（缺键 ⇒ 空表；旧载荷逐值不变）。
+    Map<GovernmentId, Government> governments = governments(payload);
+    Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances =
+        moneyIssuances(payload, at, governments);
     // ★ S1 的两个新组件：可选的逐格声明；缺省 ⇒ 空表（由 EconomyData 的迁移器补齐成员份额；
     //   资产份额则是"没有登记就没有份额" —— 不凭产能替谁发明权利，见 AssetShare 的类注）。
     Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
@@ -499,7 +508,10 @@ final class EconomyPayloads {
         Map.of(),
         // ★★ E2：创世载荷暂不声明生产组织/生产资料规则；两张空表 = 自动组织阶段整体 no-op（旧路径逐值不变）。
         Map.of(),
-        Map.of());
+        Map.of(),
+        // ★★ E3：政府 / 货币发行审计（创世载荷可选声明；缺键 ⇒ 空表 = 零登记、无发行）。
+        governments,
+        moneyIssuances);
   }
 
   /**
@@ -1284,6 +1296,89 @@ final class EconomyPayloads {
                     CommodityId.parse(entry.getKey()),
                     requireIntegral(entry.getValue(), field + "." + entry.getKey())));
     return out;
+  }
+
+  // ── E3：政府与货币发行审计的载荷解析 ─────────────────────────────────────────────────
+
+  /**
+   * 顶层可选 {@code governments}：{@code [{id,nationRef,treasury:{kind,id},issuable:[币种…]}]}。
+   * <p>缺键 ⇒ 空表（旧载荷没有政府 ⇒ 零登记，旧 fail-closed 行为逐字不变）；一个币种只能有一个发行主体由
+   * {@code EconomyData} 的构造期守卫判死。
+   */
+  private static Map<GovernmentId, Government> governments(JsonNode payload) {
+    Map<GovernmentId, Government> governments = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "governments")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("governments 的每项必须是对象: " + node);
+      }
+      GovernmentId id = GovernmentId.parse(requireText(node, "id"));
+      String nationRef = requireText(node, "nationRef");
+      JsonNode treasuryNode = requireObject(node, "treasury");
+      ActorRef treasury = actorRef(treasuryNode);
+      Set<CurrencyId> issuable = new LinkedHashSet<>();
+      for (JsonNode currencyNode : optionalArray(node, "issuable")) {
+        if (!currencyNode.isTextual() || currencyNode.asText().isBlank()) {
+          throw new IllegalArgumentException(
+              "governments[].issuable 的每项必须是非空币种字符串: " + node);
+        }
+        issuable.add(CurrencyId.parse(currencyNode.asText()));
+      }
+      Government government = new Government(id, nationRef, treasury, issuable);
+      if (governments.putIfAbsent(id, government) != null) {
+        throw new IllegalArgumentException("同一份载荷里政府 id 重复: " + id);
+      }
+    }
+    return governments;
+  }
+
+  /**
+   * 顶层可选 {@code moneyIssuances}：{@code [{id,governmentId,day?,period?,currency,amount,kind,reason}]}。
+   * <p>缺 {@code day} ⇒ 取命令锚点 {@code at.tick()}；缺 {@code period} ⇒ 1（创世周期，与
+   * {@code EconomySeeder.FIRST_PERIOD} 同值，但载荷边缘不复用 app 常量）；缺键 ⇒ 空表。
+   */
+  private static Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances(
+      JsonNode payload, SimosTimestamp at, Map<GovernmentId, Government> governments) {
+    Map<MoneyIssuanceId, MoneyIssuanceRecord> records = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "moneyIssuances")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("moneyIssuances 的每项必须是对象: " + node);
+      }
+      MoneyIssuanceId id = MoneyIssuanceId.parse(requireText(node, "id"));
+      GovernmentId governmentId = GovernmentId.parse(requireText(node, "governmentId"));
+      if (!governments.containsKey(governmentId)) {
+        throw new IllegalArgumentException(
+            "发行记录指名的政府不存在（同一份载荷内）：记录=" + id + "，governmentId=" + governmentId);
+      }
+      long day = optionalLong(node, "day", at.tick());
+      long period = optionalLong(node, "period", 1L);
+      CurrencyId currency = CurrencyId.parse(requireText(node, "currency"));
+      long amount = requireLong(node, "amount");
+      MoneyIssuanceKind kind = issuanceKind(requireText(node, "kind"));
+      String reason = requireText(node, "reason");
+      MoneyIssuanceRecord record =
+          new MoneyIssuanceRecord(id, governmentId, day, period, currency, amount, kind, reason);
+      if (records.putIfAbsent(id, record) != null) {
+        throw new IllegalArgumentException("同一份载荷里发行记录 id 重复: " + id);
+      }
+    }
+    return records;
+  }
+
+  private static MoneyIssuanceKind issuanceKind(String text) {
+    try {
+      return MoneyIssuanceKind.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "未知的 MoneyIssuanceKind: " + text + "；合法值: " + java.util.Arrays.toString(MoneyIssuanceKind.values()), e);
+    }
+  }
+
+  private static JsonNode requireObject(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    if (value == null || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是对象: " + node);
+    }
+    return value;
   }
 
   // ── 形状助手 ─────────────────────────────────────────────────────────────────────────

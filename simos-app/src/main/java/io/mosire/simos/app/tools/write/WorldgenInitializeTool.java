@@ -350,6 +350,13 @@ public final class WorldgenInitializeTool implements AgentTool {
       if (limitArg != null && limitArg < 0) {
         return ToolResult.error("BAD_REQUEST", "cityLimit 不得为负: " + limitArg);
       }
+      // ★★ E3：初始禀赋是 GM 可传参数（毫/人；缺省 = EconomySeeder 的出厂值）。不用 System property。
+      Long genesisMoneyArg = ToolSupport.optionalLong(args, "genesisMoneyMilliPerCapita");
+      if (genesisMoneyArg != null && genesisMoneyArg < 0L) {
+        return ToolResult.error("BAD_REQUEST", "genesisMoneyMilliPerCapita 不得为负: " + genesisMoneyArg);
+      }
+      long genesisMoneyMilliPerCapita =
+          genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
       int cityLimit = limitArg == null ? DEFAULT_CITY_LIMIT : (int) Math.min(limitArg, 1_000_000L);
 
       // 世界状态：**没 head 就没有世界**（dryRun 也一样要读地图拿区域格集）。
@@ -400,7 +407,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                   setup.army(),
                   setup.displayName(),
                   armyAt,
-                  anchorTick)
+                  anchorTick,
+                  genesisMoneyMilliPerCapita)
               : buildBatch(
                   batchId,
                   initiator,
@@ -411,7 +419,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                   region,
                   plan,
                   seed,
-                  anchorTick);
+                  anchorTick,
+                  genesisMoneyMilliPerCapita);
       BatchResult result = core.submitBatch(batch);
       if (result instanceof BatchResult.Committed committed) {
         summary.put("revision", committed.ref().revision().value());
@@ -525,6 +534,36 @@ public final class WorldgenInitializeTool implements AgentTool {
       SettlementPlan plan,
       long seed,
       long anchorTick) {
+    return buildBatch(
+        batchId,
+        initiator,
+        mapId,
+        branch,
+        expectedRevision,
+        map,
+        region,
+        plan,
+        seed,
+        anchorTick,
+        EconomySeeder.genesisMoneyMilliPerCapita());
+  }
+
+  /**
+   * ★★ E3：同上一支 + **初始禀赋参数**（毫/人）。缺省重载逐值等于 E3 之前；本重载把参数透传给
+   * {@link EconomySeeder#plan(String, List, GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。
+   */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      String mapId,
+      BranchId branch,
+      RevisionId expectedRevision,
+      GameMap map,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      long anchorTick,
+      long genesisMoneyMilliPerCapita) {
     List<CommandEnvelope> batch = new ArrayList<>(4 + plan.cities().size());
     batch.add(
         envelope(
@@ -557,7 +596,8 @@ public final class WorldgenInitializeTool implements AgentTool {
     //   {@code economy.Seed} 的 entries + markets 与家户的开缸库存 + **创世货币禀赋**（后两者进
     //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
     //   （本仓明令禁止的"同一事实两处拼写点"）。
-    EconomySeeder.Seed seeding = EconomySeeder.plan(mapId, groups, map);
+    EconomySeeder.Seed seeding =
+        EconomySeeder.plan(mapId, groups, map, genesisMoneyMilliPerCapita);
     batch.add(
         envelope(
             batchId,
@@ -609,6 +649,39 @@ public final class WorldgenInitializeTool implements AgentTool {
       String displayName,
       HexCoord at,
       long anchorTick) {
+    return buildBatch(
+        batchId,
+        initiator,
+        mapId,
+        branch,
+        expectedRevision,
+        map,
+        region,
+        plan,
+        seed,
+        army,
+        displayName,
+        at,
+        anchorTick,
+        EconomySeeder.genesisMoneyMilliPerCapita());
+  }
+
+  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。 */
+  static List<CommandEnvelope> buildBatch(
+      String batchId,
+      String initiator,
+      String mapId,
+      BranchId branch,
+      RevisionId expectedRevision,
+      GameMap map,
+      Region region,
+      SettlementPlan plan,
+      long seed,
+      ArmyPlan army,
+      String displayName,
+      HexCoord at,
+      long anchorTick,
+      long genesisMoneyMilliPerCapita) {
     List<CommandEnvelope> batch =
         new ArrayList<>(
             buildBatch(
@@ -621,7 +694,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                 region,
                 plan,
                 seed,
-                anchorTick));
+                anchorTick,
+                genesisMoneyMilliPerCapita));
     appendArmyCommands(
         batch, batchId, initiator, branch, expectedRevision, region, army, displayName, at);
     return List.copyOf(batch);

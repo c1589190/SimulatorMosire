@@ -121,7 +121,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.classStandings(), seeded.classStandings()),
             // ★★ E2 第 21/22 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.productionOrganizations(), seeded.productionOrganizations()),
-            merge(base.assetRules(), seeded.assetRules()));
+            merge(base.assetRules(), seeded.assetRules()),
+            // ★★ E3 第 23/24 个组件：政府按 id 幂等合并（同一份世界级最小政府在三国的 seed 里逐值相同），
+            //   发行记录按 id 追加（每个 seed 一条 INITIAL_ENDOWMENT 聚合记录；id 含该 seed 的格集指纹）。
+            //   ★ 漏了这两项 = 已播国家的政府/发行记录在后续国家 seed 时静默消失（账面上看不出是谁弄丢的）。
+            merge(base.governments(), seeded.governments()),
+            merge(base.moneyIssuances(), seeded.moneyIssuances()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

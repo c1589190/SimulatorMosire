@@ -4,9 +4,11 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -20,8 +22,10 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionOrganization;
@@ -65,6 +69,8 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<ProductionOrganizationId, ProductionOrganization> productionOrganizations;
   private LinkedHashMap<HexCoord, Market> markets;
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
+  private LinkedHashMap<GovernmentId, Government> governments;
+  private LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances;
   private Optional<EconomyMeta> meta;
 
   public EconomyStateBuilder(EconomyData base) {
@@ -190,6 +196,22 @@ public final class EconomyStateBuilder {
     return shipments;
   }
 
+  /** ★★ E3：政府表工作副本（发行腿切换前由 `syncAuthorities` 读它；写口目前只在 GM 命令）。 */
+  public LinkedHashMap<GovernmentId, Government> governments() {
+    if (governments == null) {
+      governments = new LinkedHashMap<>(base.governments());
+    }
+    return governments;
+  }
+
+  /** ★★ E3：货币发行审计表工作副本（settleOneDay 的发行腿按转移 id 确定性追加记录）。 */
+  public LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances() {
+    if (moneyIssuances == null) {
+      moneyIssuances = new LinkedHashMap<>(base.moneyIssuances());
+    }
+    return moneyIssuances;
+  }
+
   /** 元信息（未写 ⇒ base 的原值）。 */
   public Optional<EconomyMeta> meta() {
     return meta == null ? base.meta() : meta;
@@ -230,6 +252,8 @@ public final class EconomyStateBuilder {
         base.classStandings(),
         // ★★ E2：生产组织由自动组织阶段 upsert（显式工作副本）；生产资料规则只读 —— 原样带过 base 的表。
         productionOrganizations == null ? base.productionOrganizations() : productionOrganizations,
-        base.assetRules());
+        base.assetRules(),
+        governments == null ? base.governments() : governments,
+        moneyIssuances == null ? base.moneyIssuances() : moneyIssuances);
   }
 }

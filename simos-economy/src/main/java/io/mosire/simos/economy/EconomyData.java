@@ -7,14 +7,17 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -38,9 +41,11 @@ import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionCandidate;
@@ -68,7 +73,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **二十二个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十二个组件一一对应**（铁律 5）：
+ * <p>★ **二十四个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十四个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -101,7 +106,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **二十二张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **二十四张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -151,6 +156,10 @@ import java.util.Set;
  * 租佃/抵押/清算/转移规则（{@code AssetRule}）。★ 两张表为空时自动组织阶段整体 no-op，旧路径逐值不变；非空时的引用完整性同样按 "对侧是否已提供"分段生效（unit /
  * assetShare / classPosition / mode 存在性）。
  *
+ * <p>★★ **E3 追加第 23–24 个组件**（{@code governments} / {@code moneyIssuances}）：政府表建立"谁是哪个币种的发行主体"，
+ * 发行审计表记录 INITIAL_ENDOWMENT / FISCAL_ISSUE / WITHDRAWAL。两表为空时旧结算路径逐值不变（零登记 ⇒ 付方余额不足照旧
+ * fail-closed）；旧档缺这两个键 ⇒ 空表。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -177,12 +186,16 @@ public record EconomyData(
     Map<ClassPositionId, ClassPosition> classPositions,
     Map<HouseholdId, ClassStanding> classStandings,
     Map<ProductionOrganizationId, ProductionOrganization> productionOrganizations,
-    Map<AssetRuleId, AssetRule> assetRules) {
+    Map<AssetRuleId, AssetRule> assetRules,
+    Map<GovernmentId, Government> governments,
+    Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances) {
 
-  /** 往返用例的起点：未激活 + 二十二张空表。 */
+  /** 往返用例的起点：未激活 + 二十四张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -273,6 +286,14 @@ public record EconomyData(
     }
     if (assetRules == null) {
       assetRules = Map.of();
+    }
+    // ★★ E3 的第 23/24 个组件（政府 / 货币发行审计）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
+    //   空表 = 没有政府、没有发行记录、MoneyIssuance 零登记 ⇒ 旧结算路径的 fail-closed 行为逐字不变。
+    if (governments == null) {
+      governments = Map.of();
+    }
+    if (moneyIssuances == null) {
+      moneyIssuances = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -1148,6 +1169,75 @@ public record EconomyData(
       assetRulesCopy.put(entry.getKey(), rule);
     }
     assetRules = Collections.unmodifiableMap(assetRulesCopy); // ★ 冻在赋值处
+    // ── E3 第 23/24 个组件：政府（发行主体）与货币发行审计记录 ──────────────────────────────
+    //   ★ 政府表：键 == 值内 id；同一 actor 不能同时是两届政府（否则发行记录无法归属），
+    //     且一个币种只能有一个发行主体（跨政府判死 —— 不靠"最后写入者赢"）。
+    Map<GovernmentId, Government> governmentsCopy = new LinkedHashMap<>();
+    Set<ActorRef> treasuries = new LinkedHashSet<>();
+    Map<CurrencyId, ActorRef> issuersByCurrency = new LinkedHashMap<>();
+    for (Map.Entry<GovernmentId, Government> entry : governments.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("governments 的键与值都不得为 null: " + entry.getKey());
+      }
+      Government government = entry.getValue();
+      if (!entry.getKey().equals(government.id())) {
+        throw new IllegalArgumentException(
+            "governments 的键必须与 Government.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + government.id());
+      }
+      if (!treasuries.add(government.treasury())) {
+        throw new IllegalArgumentException(
+            "同一个国库 actor 不能同时是两届政府（发行记录无法归属）：" + government.treasury());
+      }
+      for (CurrencyId currency : government.issuable()) {
+        ActorRef issuer = government.authorityOf(currency);
+        if (issuer == null) {
+          throw new IllegalArgumentException(
+              "Government.authorityOf 不得为 null：政府=" + government.id() + "，币种=" + currency);
+        }
+        ActorRef existing = issuersByCurrency.putIfAbsent(currency, issuer);
+        if (existing != null && !existing.equals(issuer)) {
+          throw new IllegalArgumentException(
+              "同一币种只能有一个发行主体：币种="
+                  + currency
+                  + "，已有发行主体="
+                  + existing
+                  + "，新发行主体="
+                  + issuer
+                  + "（政府="
+                  + government.id()
+                  + "）");
+        }
+      }
+      governmentsCopy.put(entry.getKey(), government);
+    }
+    governments = Collections.unmodifiableMap(governmentsCopy); // ★ 冻在赋值处
+    Map<MoneyIssuanceId, MoneyIssuanceRecord> issuancesCopy = new LinkedHashMap<>();
+    for (Map.Entry<MoneyIssuanceId, MoneyIssuanceRecord> entry : moneyIssuances.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "moneyIssuances 的键与值都不得为 null: " + entry.getKey());
+      }
+      MoneyIssuanceRecord record = entry.getValue();
+      if (!entry.getKey().equals(record.id())) {
+        throw new IllegalArgumentException(
+            "moneyIssuances 的键必须与 MoneyIssuanceRecord.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + record.id());
+      }
+      if (!governmentsCopy.containsKey(record.governmentId())) {
+        throw new IllegalArgumentException(
+            "发行记录的 governmentId 必须是已存在的政府：记录="
+                + entry.getKey()
+                + "，governmentId="
+                + record.governmentId());
+      }
+      issuancesCopy.put(entry.getKey(), record);
+    }
+    moneyIssuances = Collections.unmodifiableMap(issuancesCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -1228,7 +1318,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1255,7 +1347,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1282,7 +1376,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1309,7 +1405,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1336,7 +1434,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余十九个组件原样带过。 */
@@ -1363,7 +1463,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余十九个组件原样带过。 */
@@ -1390,7 +1492,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余十九个组件原样带过。 */
@@ -1417,7 +1521,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /**
@@ -1449,7 +1555,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /**
@@ -1480,7 +1588,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（S1：成员份额表）；其余十九个组件原样带过。 */
@@ -1507,7 +1617,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十九个组件原样带过。 */
@@ -1534,7 +1646,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余十九个组件原样带过。 */
@@ -1561,7 +1675,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十九个组件原样带过。 */
@@ -1588,7 +1704,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1615,7 +1733,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1642,7 +1762,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余十九个组件原样带过。 */
@@ -1669,7 +1791,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余十九个组件原样带过。 */
@@ -1696,7 +1820,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余十九个组件原样带过。 */
@@ -1723,7 +1849,9 @@ public record EconomyData(
         value,
         classStandings,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余十九个组件原样带过。 */
@@ -1750,7 +1878,9 @@ public record EconomyData(
         classPositions,
         value,
         productionOrganizations,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余二十一个组件原样带过。 */
@@ -1778,7 +1908,9 @@ public record EconomyData(
         classPositions,
         classStandings,
         value,
-        assetRules);
+        assetRules,
+        governments,
+        moneyIssuances);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余二十一个组件原样带过。 */
@@ -1805,6 +1937,66 @@ public record EconomyData(
         classPositions,
         classStandings,
         productionOrganizations,
+        value,
+        governments,
+        moneyIssuances);
+  }
+
+  /** ★★ E3：政府表（第 23 个组件）；其余二十三个组件原样带过。 */
+  public EconomyData withGovernments(Map<GovernmentId, Government> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        value,
+        moneyIssuances);
+  }
+
+  /** ★★ E3：货币发行审计表（第 24 个组件）；其余二十三个组件原样带过。 */
+  public EconomyData withMoneyIssuances(Map<MoneyIssuanceId, MoneyIssuanceRecord> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
         value);
   }
 
