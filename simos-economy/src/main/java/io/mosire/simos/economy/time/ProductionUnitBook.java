@@ -1,13 +1,16 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * ★★ <b>生产单元的派生读口</b>（R3B.2）：从 {@code AssetShare} 实物总账<b>纯派生</b>一个 unit 的可用资产与规模，不落第二份状态。
@@ -61,6 +64,28 @@ public final class ProductionUnitBook {
   }
 
   /**
+   * ★★ <b>按 {@code (industry, operator)} 直接聚合可用资产</b>（E2 生产组织阶段的只读入口）：还没有 {@code ProductionUnit}
+   * 对象时（组织阶段要先生成/采用 unit 再谈规模），不得在前置阶段另写一份求和。
+   *
+   * <p>★ 判据与 {@link #usableAssets(ProductionUnit, Map)} 逐字相同：{@code industry} 与 {@code operator}
+   * 双等值；唯一拼写点仍是这里。返回表按份额首次出现序保序。
+   */
+  public static Map<AssetKind, Long> usableAssets(
+      IndustryId industry, ActorRef operator, Map<AssetShareId, AssetShare> assetShares) {
+    Objects.requireNonNull(industry, "industry");
+    Objects.requireNonNull(operator, "operator");
+    Objects.requireNonNull(assetShares, "assetShares");
+    Map<AssetKind, Long> sums = new LinkedHashMap<>();
+    for (AssetShare share : assetShares.values()) {
+      if (!share.industry().equals(industry) || !share.operator().equals(operator)) {
+        continue;
+      }
+      sums.merge(share.asset(), share.quantity(), Math::addExact);
+    }
+    return sums;
+  }
+
+  /**
    * ★★ <b>unit 的产能规模</b> = {@code min over k ∈ capacityPerUnit: ⌊usableAssets[k] ÷
    * capacityPerUnit[k]⌋}。
    *
@@ -78,6 +103,22 @@ public final class ProductionUnitBook {
   public static long capacityScaleOf(
       ProductionUnit unit, Industry industry, SettlementIndex index) {
     return capacityScaleOf(index.usableAssetsOf(unit), industry);
+  }
+
+  /**
+   * ★★ <b>按 {@code (industry, operator)} 直接算产能规模</b>（E2 生产组织阶段的只读入口）：与 {@link
+   * #capacityScaleOf(ProductionUnit, Industry, Map)} 共用同一个私有算式；"规模 = 最紧的资产那一路"只有这一处。
+   */
+  public static long capacityScaleOf(
+      IndustryId industryId,
+      ActorRef operator,
+      Industry industry,
+      Map<AssetShareId, AssetShare> assetShares) {
+    Objects.requireNonNull(industryId, "industryId");
+    Objects.requireNonNull(operator, "operator");
+    Objects.requireNonNull(industry, "industry");
+    Objects.requireNonNull(assetShares, "assetShares");
+    return capacityScaleOf(usableAssets(industryId, operator, assetShares), industry);
   }
 
   /** 产能规模的唯一算式（两个重载共用；避免“索引版”和“扫描版”各写一份）。 */

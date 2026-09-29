@@ -496,6 +496,9 @@ final class EconomyPayloads {
         Map.of(),
         Map.of(),
         Map.of(),
+        Map.of(),
+        // ★★ E2：创世载荷暂不声明生产组织/生产资料规则；两张空表 = 自动组织阶段整体 no-op（旧路径逐值不变）。
+        Map.of(),
         Map.of());
   }
 

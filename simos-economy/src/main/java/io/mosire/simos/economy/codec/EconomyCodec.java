@@ -16,6 +16,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -29,6 +30,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -161,6 +163,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(ProductionModeId.class, keyDeserializer(ProductionModeId::parse));
     module.addKeyDeserializer(ClassStructureId.class, keyDeserializer(ClassStructureId::parse));
     module.addKeyDeserializer(ClassPositionId.class, keyDeserializer(ClassPositionId::parse));
+    // ★★ E2：productionOrganizations / assetRules 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    module.addKeyDeserializer(
+        ProductionOrganizationId.class, keyDeserializer(ProductionOrganizationId::parse));
+    module.addKeyDeserializer(AssetRuleId.class, keyDeserializer(AssetRuleId::parse));
     return module;
   }
 

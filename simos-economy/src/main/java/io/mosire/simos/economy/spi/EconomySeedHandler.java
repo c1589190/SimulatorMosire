@@ -118,7 +118,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.modes(), seeded.modes()),
             merge(base.classStructures(), seeded.classStructures()),
             merge(base.classPositions(), seeded.classPositions()),
-            merge(base.classStandings(), seeded.classStandings()));
+            merge(base.classStandings(), seeded.classStandings()),
+            // ★★ E2 第 21/22 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
+            merge(base.productionOrganizations(), seeded.productionOrganizations()),
+            merge(base.assetRules(), seeded.assetRules()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

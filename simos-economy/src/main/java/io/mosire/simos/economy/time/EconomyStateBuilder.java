@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -23,6 +24,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
@@ -60,6 +62,7 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
   private LinkedHashMap<ProductionUnitId, ProductionUnit> units;
   private LinkedHashMap<ProductionUnitId, ProductionRelation> relations;
+  private LinkedHashMap<ProductionOrganizationId, ProductionOrganization> productionOrganizations;
   private LinkedHashMap<HexCoord, Market> markets;
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private Optional<EconomyMeta> meta;
@@ -160,6 +163,17 @@ public final class EconomyStateBuilder {
     return relations == null ? base.relations() : relations;
   }
 
+  /**
+   * ★★ <b>E2：生产组织表工作副本</b>（第 21 个组件）—— 自动组织阶段会 upsert 组织（ACTIVE/SHORTAGE）； 未物化时 {@link #build} 直接复用
+   * base 的不可变表（旧的空表基线因此不产生任何拷贝）。
+   */
+  public LinkedHashMap<ProductionOrganizationId, ProductionOrganization> productionOrganizations() {
+    if (productionOrganizations == null) {
+      productionOrganizations = new LinkedHashMap<>(base.productionOrganizations());
+    }
+    return productionOrganizations;
+  }
+
   /** 市场表工作副本。 */
   public LinkedHashMap<HexCoord, Market> markets() {
     if (markets == null) {
@@ -213,6 +227,9 @@ public final class EconomyStateBuilder {
         base.modes(),
         base.classStructures(),
         base.classPositions(),
-        base.classStandings());
+        base.classStandings(),
+        // ★★ E2：生产组织由自动组织阶段 upsert（显式工作副本）；生产资料规则只读 —— 原样带过 base 的表。
+        productionOrganizations == null ? base.productionOrganizations() : productionOrganizations,
+        base.assetRules());
   }
 }

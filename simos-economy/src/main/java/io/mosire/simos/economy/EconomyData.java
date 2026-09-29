@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -16,6 +17,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -26,6 +28,7 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
+import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
@@ -42,6 +45,7 @@ import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionMode;
+import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
@@ -64,7 +68,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **二十个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十个组件一一对应**（铁律 5）：
+ * <p>★ **二十二个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十二个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -97,7 +101,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **二十张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **二十二张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -142,6 +146,11 @@ import java.util.Set;
  * HouseholdClassRule}、旧 {@code settle*} 路径与旧档行为逐值不变；有值时也只做状态与读口， 旧路径仍以 {@code ClassRow.view} 为准（见
  * {@code ClassStanding} 的类注）。★ 跨表守卫按"对侧是否已提供"分段生效， 以便 {@code with*} 能逐组件构造；两侧都非空时引用完整性 fail-closed。
  *
+ * <p>★★ **E2 追加第 21–22 个组件**（{@code productionOrganizations} / {@code assetRules}）：前者是"生产方式 + 阶层结构
+ * + 劳动 + 资产"之间的桥（{@code ProductionOrganization}），由日结算的自动组织阶段 upsert；后者是 mode 下每种生产资料的
+ * 租佃/抵押/清算/转移规则（{@code AssetRule}）。★ 两张表为空时自动组织阶段整体 no-op，旧路径逐值不变；非空时的引用完整性同样按 "对侧是否已提供"分段生效（unit /
+ * assetShare / classPosition / mode 存在性）。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -166,12 +175,16 @@ public record EconomyData(
     Map<ProductionModeId, ProductionMode> modes,
     Map<ClassStructureId, ClassStructure> classStructures,
     Map<ClassPositionId, ClassPosition> classPositions,
-    Map<HouseholdId, ClassStanding> classStandings) {
+    Map<HouseholdId, ClassStanding> classStandings,
+    Map<ProductionOrganizationId, ProductionOrganization> productionOrganizations,
+    Map<AssetRuleId, AssetRule> assetRules) {
 
-  /** 往返用例的起点：未激活 + 二十张空表。 */
+  /** 往返用例的起点：未激活 + 二十二张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -253,6 +266,13 @@ public record EconomyData(
     }
     if (classStandings == null) {
       classStandings = Map.of();
+    }
+    // ★★ E2 的第 21/22 个组件（生产组织 / 生产资料规则）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
+    if (productionOrganizations == null) {
+      productionOrganizations = Map.of();
+    }
+    if (assetRules == null) {
+      assetRules = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -1026,6 +1046,108 @@ public record EconomyData(
       standingsCopy.put(entry.getKey(), standing);
     }
     classStandings = Collections.unmodifiableMap(standingsCopy); // ★ 冻在赋值处
+    // ── E2 第 21/22 个组件：生产组织 / 生产资料规则 ───────────────────────────────────
+    //   ★ 旧档缺键 ⇒ 空表（上面已归一）；两张表为空时本段整体 no-op，旧结算路径逐值不变。
+    //   ★ 引用完整性按"对侧是否已提供"分段生效（与 E1 四条同款），保证 with* 能逐组件构造。
+    Map<ProductionOrganizationId, ProductionOrganization> organizationsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionOrganizationId, ProductionOrganization> entry :
+        productionOrganizations.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "productionOrganizations 的键与值都不得为 null: " + entry.getKey());
+      }
+      ProductionOrganization organization = entry.getValue();
+      if (!entry.getKey().equals(organization.id())) {
+        throw new IllegalArgumentException(
+            "productionOrganizations 的键必须与 ProductionOrganization.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + organization.id());
+      }
+      if (!modesCopy.isEmpty() && !modesCopy.containsKey(organization.modeId())) {
+        throw new IllegalArgumentException(
+            "生产组织的 modeId 必须是已存在的生产方式：组织=" + entry.getKey() + "，modeId=" + organization.modeId());
+      }
+      if (!positionsCopy.isEmpty() && !positionsCopy.containsKey(organization.classPositionId())) {
+        throw new IllegalArgumentException(
+            "生产组织的 classPositionId 必须是已存在的阶层位置：组织="
+                + entry.getKey()
+                + "，位置="
+                + organization.classPositionId());
+      }
+      if (organization.unitId().isPresent()
+          && !units.isEmpty()
+          && !units.containsKey(organization.unitId().get())) {
+        throw new IllegalArgumentException(
+            "生产组织指名的 unit 必须已存在：组织=" + entry.getKey() + "，unitId=" + organization.unitId().get());
+      }
+      if (organization.unitId().isPresent() && units.containsKey(organization.unitId().get())) {
+        ProductionUnit organizedUnit = units.get(organization.unitId().get());
+        if (!organizedUnit.operator().equals(organization.organizer())) {
+          throw new IllegalArgumentException(
+              "生产组织的 organizer 必须与它指名 unit 的 operator 一致（同一件事不许两处拼写）：组织="
+                  + entry.getKey()
+                  + " organizer="
+                  + organization.organizer()
+                  + "，unit.operator="
+                  + organizedUnit.operator());
+        }
+      }
+      for (AssetShareId assetSource : organization.assetSources()) {
+        if (!assetShares.isEmpty() && !assetShares.containsKey(assetSource)) {
+          throw new IllegalArgumentException(
+              "生产组织使用的资产份额必须已存在：组织=" + entry.getKey() + "，份额=" + assetSource);
+        }
+        if (!assetShares.isEmpty()) {
+          AssetShare organizedShare = assetShares.get(assetSource);
+          if (organizedShare != null
+              && !organizedShare.operator().equals(organization.organizer())) {
+            throw new IllegalArgumentException(
+                "生产组织使用的 AssetShare 必须由 organizer 经营（operator 一致）：组织="
+                    + entry.getKey()
+                    + "，份额="
+                    + assetSource
+                    + "，份额 operator="
+                    + organizedShare.operator());
+          }
+        }
+      }
+      for (HouseholdId laborSource : organization.laborSources()) {
+        if (!classesCopy.isEmpty() && !classesCopy.containsKey(laborSource)) {
+          throw new IllegalArgumentException(
+              "生产组织的劳动来源家户必须已存在：组织=" + entry.getKey() + "，家户=" + laborSource);
+        }
+      }
+      organizationsCopy.put(entry.getKey(), organization);
+    }
+    productionOrganizations = Collections.unmodifiableMap(organizationsCopy); // ★ 冻在赋值处
+    Map<AssetRuleId, AssetRule> assetRulesCopy = new LinkedHashMap<>();
+    Set<String> assetRuleModeKindKeys = new LinkedHashSet<>();
+    for (Map.Entry<AssetRuleId, AssetRule> entry : assetRules.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("assetRules 的键与值都不得为 null: " + entry.getKey());
+      }
+      AssetRule rule = entry.getValue();
+      if (!entry.getKey().equals(rule.id())) {
+        throw new IllegalArgumentException(
+            "assetRules 的键必须与 AssetRule.id 一致：键=" + entry.getKey() + "，行内 id=" + rule.id());
+      }
+      if (!modesCopy.isEmpty() && !modesCopy.containsKey(rule.modeId())) {
+        throw new IllegalArgumentException(
+            "生产资料规则的 modeId 必须是已存在的生产方式：规则=" + entry.getKey() + "，modeId=" + rule.modeId());
+      }
+      // ★ 身份 = (modeId, assetKind) 的纯函数 ⇒ 同一组合只允许一条规则（重复 = 同一件事两个拼写点）。
+      String modeKindKey = rule.modeId().value() + "|" + rule.assetKind().name();
+      if (!assetRuleModeKindKeys.add(modeKindKey)) {
+        throw new IllegalArgumentException(
+            "同一 (modeId, assetKind) 只允许一条 AssetRule（重复 = 同一件事两处拼写）: "
+                + rule.modeId()
+                + " / "
+                + rule.assetKind());
+      }
+      assetRulesCopy.put(entry.getKey(), rule);
+    }
+    assetRules = Collections.unmodifiableMap(assetRulesCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -1104,7 +1226,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1129,7 +1253,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1154,7 +1280,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1179,7 +1307,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1204,7 +1334,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余十九个组件原样带过。 */
@@ -1229,7 +1361,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余十九个组件原样带过。 */
@@ -1254,7 +1388,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余十九个组件原样带过。 */
@@ -1279,7 +1415,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /**
@@ -1309,7 +1447,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /**
@@ -1338,7 +1478,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（S1：成员份额表）；其余十九个组件原样带过。 */
@@ -1363,7 +1505,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十九个组件原样带过。 */
@@ -1388,7 +1532,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余十九个组件原样带过。 */
@@ -1413,7 +1559,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十九个组件原样带过。 */
@@ -1438,7 +1586,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1463,7 +1613,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1488,7 +1640,9 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余十九个组件原样带过。 */
@@ -1513,7 +1667,9 @@ public record EconomyData(
         value,
         classStructures,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余十九个组件原样带过。 */
@@ -1538,7 +1694,9 @@ public record EconomyData(
         modes,
         value,
         classPositions,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余十九个组件原样带过。 */
@@ -1563,7 +1721,9 @@ public record EconomyData(
         modes,
         classStructures,
         value,
-        classStandings);
+        classStandings,
+        productionOrganizations,
+        assetRules);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余十九个组件原样带过。 */
@@ -1588,6 +1748,63 @@ public record EconomyData(
         modes,
         classStructures,
         classPositions,
+        value,
+        productionOrganizations,
+        assetRules);
+  }
+
+  /** ★★ E2：生产组织表（第 21 个组件）；其余二十一个组件原样带过。 */
+  public EconomyData withProductionOrganizations(
+      Map<ProductionOrganizationId, ProductionOrganization> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        value,
+        assetRules);
+  }
+
+  /** ★★ E2：生产资料规则表（第 22 个组件）；其余二十一个组件原样带过。 */
+  public EconomyData withAssetRules(Map<AssetRuleId, AssetRule> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
         value);
   }
 

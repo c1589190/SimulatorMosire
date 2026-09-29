@@ -756,6 +756,44 @@ public final class EconomySettlement {
     // ★★ **H5：当日的缺口**（"今天这一顿没吃上多少"）—— 它先被记下、**不在吃饭那一步就借**
     //   （借是最后手段：自产/分配 → 市场 → 救济(留位) → 借；见 {@link #lendDeficitsInHex}）。
     LinkedHashMap<HouseholdId, Long> deficitToday = new LinkedHashMap<>();
+    // ── 0-entry.5. ★★ E2 自动生产组织（理想架构 §4.2 ①；计划 E2）────────────────────────────
+    //   ★★ 位置：在 **0-entry 候选采用之后、现扣投入/劳动再分配/消费之前** —— 今天新建的 unit 因此当天就能进入本周期
+    //      （progressDays=0 ⇒ 现扣投入会为它扣一次料，随后劳动再分配按它的 need 保留配额）。
+    //   ★★ 闸门：`modes` 为空时**这一整段不执行**（连工作副本都不建）⇒ 旧档/未接线世界的 HouseholdClassRule
+    //      与全部 settle* 路径逐值不变。闸门在调用点与 organize 内各判一次（显式、可读）。
+    //   ★ 自动组织只写五张工作副本：units / relations / assetShares（租佃拆分）/ allocations /
+    //      productionOrganizations；不新建 Industry 模板、不写 markets/rows/debts。
+    EconomyOrganizationSettlement.Outcome organizationOutcome =
+        EconomyOrganizationSettlement.Outcome.empty();
+    if (!base.modes().isEmpty()) {
+      organizationOutcome =
+          EconomyOrganizationSettlement.organize(
+              base,
+              rows,
+              industries,
+              units,
+              session.sheet().relations(),
+              assetShares,
+              allocations,
+              memberships,
+              laborSupply,
+              householdGoods,
+              markets,
+              session.sheet().productionOrganizations());
+      if (!organizationOutcome.createdUnitIds().isEmpty()) {
+        // unit/关系/份额/配额都变了 ⇒ 换一份索引再进现有日结算（与 0-entry 的执行后重建同款）。
+        relations = session.sheet().relationsOrBase();
+        settlementIndex =
+            SettlementIndex.build(
+                units, industries, assetShares, allocations, rows, debts, relations);
+        // ★ 今天由组织阶段新建的 unit 加进"刚进入"豁免集：不得让它触发/参与同格既有周期的重排
+        //   （与 R4-E2b 的 enteredToday 同一条口径；下一个日结算日它自然成为普通 unit）。
+        Set<ProductionUnitId> withOrganized = new LinkedHashSet<>(enteredToday);
+        withOrganized.addAll(organizationOutcome.createdUnitIds());
+        enteredToday = withOrganized;
+      }
+    }
+
     // ── 0. 现扣周期投入（周期的第一天）：**在当天吃饭之前**把种子/原料划走（v2 spec §3.2）──────
     //   ★ 次序可注入（preset）：取 false 时把同一步挪到消费之后。
     //   ★★ H3（C3）：这一步里"谁出料"由 relation.inputSupplier 说 —— 家户供方取它自己那一本账（缸不够就扣光 ⇒ 规模缩）；

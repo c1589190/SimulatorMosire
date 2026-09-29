@@ -15,6 +15,15 @@ package io.mosire.simos.economy.time;
  * （R1 起账户只有 {@link AccountSession} 一个活表，见其类注）。
  */
 public enum SettlementStage {
+  /**
+   * ★★ <b>E2 自动生产组织</b>：按 mode + 阶层结构 + 可支配劳动 + 可用 {@code AssetShare} 建立/激活生产单元。
+   *
+   * <p>★ 它是<b>协调器单线程的前置阶段</b>（ordinal 排第一，实际执行在到货/现扣之前，见 {@code
+   * EconomySettlement.settleOneDayInto}）： "哪个阶层的哪一批劳动/哪一份资产应当组成哪条生产活动"要看见全天的全局状态（跨 hex 的既有 unit
+   * id、全表资产份额、各批次余量）， 分区会把它拆成互不相见的碎片。本阶段不铸转移、不进 {@code PartitionPlan}/{@code CommitOrder}（它的确定性由稳定
+   * id 排序承担）。
+   */
+  ORGANIZE_PRODUCTION(PartitionBasis.COORDINATOR, "生产组织"),
   /** 到货：在途 → 买方账户（按目的地账户并行；同一买方多票并到同一分区）。 */
   DELIVER_SHIPMENTS(PartitionBasis.ACCOUNT, "到货"),
   /** 周期投入：供方账户 → 产业（按 hex 并行；同格内串行）。 */
